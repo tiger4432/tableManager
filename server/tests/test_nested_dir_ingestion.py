@@ -617,7 +617,7 @@ class _RecordingLane:
     def __init__(self):
         self.jobs = []
 
-    def submit(self, job):
+    def submit(self, job, key):
         self.jobs.append(job)
 
 

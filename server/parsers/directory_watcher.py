@@ -1,7 +1,6 @@
 import os
 import re
 import time
-import queue
 import shutil
 import logging
 import threading
@@ -764,6 +763,25 @@ def get_heavy_threshold_bytes() -> int:
     return int(val * 1024 * 1024)
 
 
+DEFAULT_HEAVY_LANE_WORKERS = 1
+
+
+def heavy_lane_workers() -> int:
+    """How many heavy-lane workers the lane starts (총괄 8a556feb0). Read when the lane is
+    built, so a change takes a watcher restart. 1 is the single worker there always was."""
+    val = load_ingestion_settings().get("heavy_lane_workers", DEFAULT_HEAVY_LANE_WORKERS)
+    if isinstance(val, bool) or not isinstance(val, int) or val < 1:
+        warn_key = ("heavy_lane_workers", repr(val))
+        if warn_key not in _invalid_field_warned:
+            _invalid_field_warned.add(warn_key)
+            logger.warning(
+                f"Ignoring invalid 'heavy_lane_workers' value {val!r} in "
+                f"ingestion_settings.json — expected a whole number of 1 or more. "
+                f"Falling back to default {DEFAULT_HEAVY_LANE_WORKERS}.")
+        return DEFAULT_HEAVY_LANE_WORKERS
+    return val
+
+
 # ── [P2] 체크포인트 재개 / 해시 dedup 설정 ────────────────────────────────
 DEFAULT_DEDUP_BY_SIGNATURE = True
 DEFAULT_RESUME_FROM_CHECKPOINT = True
@@ -875,8 +893,14 @@ _workspace_serial_locks: dict = {}
 _workspace_serial_locks_guard = threading.Lock()
 
 
+def workspace_key(workspace_path: str) -> str:
+    """The one spelling of 「which workspace」 - the serial lock and the heavy lane's per-table
+    queue key on it, so the two can never disagree about whether two files share a table."""
+    return os.path.normcase(os.path.abspath(workspace_path))
+
+
 def get_workspace_serial_lock(workspace_path: str) -> threading.Lock:
-    key = os.path.normcase(os.path.abspath(workspace_path))
+    key = workspace_key(workspace_path)
     with _workspace_serial_locks_guard:
         lock = _workspace_serial_locks.get(key)
         if lock is None:
@@ -895,48 +919,77 @@ class HeavyIngestionLane:
 
     같은 워크스페이스 내 순서 보존은 핸들러의 backlog 라우팅(후속 파일도 큐 후미로)
     + 워크스페이스 직렬화 락(get_workspace_serial_lock)이 담당한다.
+
+    🔴 [총괄 8a556feb0 ㄷ] WORKERS N, ONE TABLE ONE WORKER. Jobs wait in arrival order with
+    their workspace key; a worker takes the OLDEST job whose table no worker is on, so a
+    table's files run in order and different tables run at once. N is `heavy_lane_workers`
+    (default 1 = the single worker there always was), read when the lane is built.
     """
 
     WORKER_THREAD_NAME = "watcher-heavy-lane"
 
-    def __init__(self):
-        self._queue = queue.Queue()
+    def __init__(self, workers: int | None = None):
+        self._workers = heavy_lane_workers() if workers is None else workers
+        self._waiting = []                   # (key, job), oldest first
+        self._running = set()                # keys a worker is on now
+        self._cond = threading.Condition()
         self._stop_event = threading.Event()
-        self._thread = None
+        self._threads = []
         self._thread_guard = threading.Lock()
 
-    def submit(self, job) -> None:
-        """job: 인자 없는 callable. 워커 스레드는 지연 기동(첫 submit 시)."""
+    def submit(self, job, key) -> None:
+        """job: 인자 없는 callable · key: workspace_key(작업공간). 워커는 지연 기동(첫 submit 시)."""
         self._ensure_running()
-        self._queue.put(job)
+        with self._cond:
+            self._waiting.append((key, job))
+            self._cond.notify_all()
 
     def _ensure_running(self):
         with self._thread_guard:
-            if self._thread is not None and self._thread.is_alive():
-                return
             if self._stop_event.is_set():
                 raise RuntimeError("HeavyIngestionLane is stopped")
-            self._thread = threading.Thread(
-                target=self._worker_loop, name=self.WORKER_THREAD_NAME, daemon=True,
-            )
-            self._thread.start()
+            self._threads = [t for t in self._threads if t.is_alive()]
+            while len(self._threads) < self._workers:
+                n = len(self._threads)
+                thread = threading.Thread(
+                    target=self._worker_loop, daemon=True,
+                    name=self.WORKER_THREAD_NAME + ("-%d" % (n + 1) if n else ""))
+                thread.start()
+                self._threads.append(thread)
+
+    def _take(self):
+        """The oldest waiting job whose table no worker is on, marked running - or None
+        once the lane is stopped."""
+        with self._cond:
+            while not self._stop_event.is_set():
+                for i, (key, job) in enumerate(self._waiting):
+                    if key not in self._running:
+                        del self._waiting[i]
+                        self._running.add(key)
+                        return key, job
+                self._cond.wait(timeout=0.5)
+            return None
 
     def _worker_loop(self):
-        while not self._stop_event.is_set():
-            try:
-                job = self._queue.get(timeout=0.5)
-            except queue.Empty:
-                continue
+        while True:
+            taken = self._take()
+            if taken is None:
+                return
+            key, job = taken
             try:
                 job()
             except Exception as e:
                 # 방어선: _run_lane_job이 자체 예외 처리를 하므로 여기는 최후 로깅만
                 logger.error(f"[HeavyLane] Unexpected error in heavy lane job: {e}")
             finally:
-                self._queue.task_done()
+                with self._cond:
+                    self._running.discard(key)
+                    self._cond.notify_all()
 
     def stop(self):
         self._stop_event.set()
+        with self._cond:
+            self._cond.notify_all()
 
 
 def find_workspace_alias(folder_name: str, table_config: dict) -> str | None:
@@ -1919,7 +1972,8 @@ class IngestionHandler(FileSystemEventHandler):
         })
         try:
             self.heavy_lane.submit(
-                lambda: self._run_lane_job(abs_path, uploader, t_display, lane, size_bytes)
+                lambda: self._run_lane_job(abs_path, uploader, t_display, lane, size_bytes),
+                workspace_key(self.workspace_path),
             )
         except Exception as e:
             with self._lane_state_lock:

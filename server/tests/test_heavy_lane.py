@@ -70,7 +70,7 @@ class FakeLane:
     def __init__(self):
         self.jobs = []
 
-    def submit(self, job):
+    def submit(self, job, key):
         self.jobs.append(job)
 
     def run_all(self):
@@ -594,7 +594,7 @@ def test_queued_notification_precedes_instant_worker_pickup(tmp_path, monkeypatc
 
     class InstantLane:
         """submit 즉시 잡을 동기 실행 — 빈 큐 + 즉시 픽업 경합의 결정적 재현."""
-        def submit(self, job):
+        def submit(self, job, key):
             job()
 
     monkeypatch.setattr(directory_watcher, "get_heavy_threshold_bytes", lambda: 100)
@@ -617,7 +617,7 @@ def test_submit_failure_cleans_up_preemptive_queued_state(tmp_path, monkeypatch,
     (장기 TTL — F1)가 남지 않도록 FINISHED 정리를 발신하고 인라인 폴백해야 한다."""
 
     class BrokenLane:
-        def submit(self, job):
+        def submit(self, job, key):
             raise RuntimeError("lane stopped")
 
     monkeypatch.setattr(directory_watcher, "get_heavy_threshold_bytes", lambda: 100)
@@ -698,3 +698,119 @@ def test_active_api_snapshot_shape(client):
         assert body["total"] == 0 and body["data"] == []
     finally:
         activity.registry.clear()
+
+
+# ---------------------------------------------------------------------------
+# 총괄 8a556feb0 ㄷ — N workers, one table one worker, a table's files in order
+# ---------------------------------------------------------------------------
+
+def _blocking_job(log, name, gate=None):
+    started = threading.Event()
+
+    def job():
+        log.append(("start", name))
+        started.set()
+        if gate is not None:
+            assert gate.wait(5), "test gate never opened"
+        log.append(("end", name))
+    return job, started
+
+
+def test_a_table_busy_on_one_worker_is_skipped_for_the_next_table():
+    """A1 holds table A; A2 waits behind it even with a worker free, and that free worker
+    takes B1 - the oldest job whose table nobody is on - instead of waiting for A."""
+    lane = HeavyIngestionLane(workers=2)
+    log, gate = [], threading.Event()
+    a1, a1_started = _blocking_job(log, "A1", gate)
+    a2, _ = _blocking_job(log, "A2")
+    b1, b1_started = _blocking_job(log, "B1")
+    try:
+        lane.submit(a1, "A")
+        assert a1_started.wait(5)
+        lane.submit(a2, "A")
+        lane.submit(b1, "B")
+        assert b1_started.wait(5), "a different table must run while A is busy"
+        assert ("start", "A2") not in log, "a table's second file ran beside its first"
+        gate.set()
+        assert _wait_until(lambda: ("end", "A2") in log)
+        assert log.index(("end", "A1")) < log.index(("start", "A2"))
+    finally:
+        gate.set()
+        lane.stop()
+
+
+def test_one_worker_is_the_single_lane_there_always_was():
+    """N=1: a different table waits behind the running one - today's FIFO, unchanged."""
+    lane = HeavyIngestionLane(workers=1)
+    log, gate = [], threading.Event()
+    a1, a1_started = _blocking_job(log, "A1", gate)
+    b1, _ = _blocking_job(log, "B1")
+    try:
+        lane.submit(a1, "A")
+        assert a1_started.wait(5)
+        lane.submit(b1, "B")
+        time.sleep(0.3)
+        assert ("start", "B1") not in log
+        gate.set()
+        assert _wait_until(lambda: ("end", "B1") in log)
+        assert [t.name for t in lane._threads] == [HeavyIngestionLane.WORKER_THREAD_NAME]
+    finally:
+        gate.set()
+        lane.stop()
+
+
+@pytest.mark.parametrize("declared, workers", [(None, 1), (4, 4), (0, 1), (2.5, 1),
+                                               (True, 1), ("4", 1)])
+def test_the_worker_count_is_one_cell_read_when_the_lane_is_built(
+        tmp_path, monkeypatch, declared, workers):
+    settings = tmp_path / "ingestion_settings.json"
+    settings.write_text(json.dumps({} if declared is None
+                                   else {"heavy_lane_workers": declared}), encoding="utf-8")
+    monkeypatch.setattr(directory_watcher, "INGESTION_SETTINGS_PATH", str(settings))
+    lane = HeavyIngestionLane()
+    try:
+        lane.submit(lambda: None, "A")
+        assert _wait_until(lambda: len(lane._threads) == workers)
+        assert len(lane._threads) == workers
+    finally:
+        lane.stop()
+
+
+def test_two_tables_share_the_lane_and_each_keeps_its_order(tmp_path, monkeypatch):
+    """Through the handlers: table A's second heavy file waits behind its first while a
+    free worker takes table B's - the key the handler hands the lane is its workspace."""
+    monkeypatch.setattr(directory_watcher, "get_heavy_threshold_bytes", lambda: 100)
+    ws_a = _make_workspace(tmp_path, "hvy_test_two_a", {"a1.csv": 200, "a2.csv": 200})
+    ws_b = _make_workspace(tmp_path, "hvy_test_two_b", {"b1.csv": 200})
+    log, gate = [], threading.Event()
+    a1_started, b1_done = threading.Event(), threading.Event()
+
+    def fake_process(self, file_path, uploader="system", retries=3, delay=1.0):
+        name = os.path.basename(file_path)
+        log.append(("start", name))
+        if name == "a1.csv":
+            a1_started.set()
+            assert gate.wait(5), "test gate never opened"
+        log.append(("end", name))
+        if name == "b1.csv":
+            b1_done.set()
+
+    monkeypatch.setattr(IngestionHandler, "process_with_retry", fake_process)
+    lane = HeavyIngestionLane(workers=2)
+    handlers = {ws: IngestionHandler(ws, None, os.path.join(ws, "archives"),
+                                     default_table_name=os.path.basename(ws),
+                                     heavy_lane=lane)
+                for ws in (ws_a, ws_b)}
+    try:
+        handlers[ws_a]._handle_event(os.path.join(ws_a, "raws", "a1.csv"))
+        assert a1_started.wait(5)
+        handlers[ws_a]._handle_event(os.path.join(ws_a, "raws", "a2.csv"))
+        handlers[ws_b]._handle_event(os.path.join(ws_b, "raws", "b1.csv"))
+        assert b1_done.wait(5), "table B must run while table A is busy"
+        assert ("start", "a2.csv") not in log
+        gate.set()
+        assert _wait_until(lambda: ("end", "a2.csv") in log)
+        assert log.index(("end", "a1.csv")) < log.index(("start", "a2.csv"))
+    finally:
+        gate.set()
+        lane.stop()

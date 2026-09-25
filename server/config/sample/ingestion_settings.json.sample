@@ -2,6 +2,8 @@
   "_comment": "파일 인제션 시스템 설정. 실제 적용하려면 이 파일을 ingestion_settings.json으로 복사하세요. 파일이 없으면 모든 값이 기본값으로 동작합니다.",
   "_heavy_file_mb_doc": "heavy 레인 라우팅 크기 임계(MB, 양수). 이 크기 이상 파일은 전용 heavy 워커에서 처리되어 다른 테이블의 소형 파일을 막지 않습니다. 기본값 10. 핫리로드: 다음 파일 이벤트부터 반영.",
   "heavy_file_mb": 10,
+  "_heavy_lane_workers_doc": "heavy 레인 워커 수(1 이상 정수). 한 표의 파일은 한 워커가 차례대로, 다른 표끼리는 동시에 처리합니다. 기본값 1(= 워커 하나, 전 표 한 줄). 감시자 재기동 때 읽습니다(핫리로드 없음). 쓰기가 대부분인 적재라 워커를 늘리면 DB 부하도 같이 늘어납니다.",
+  "heavy_lane_workers": 1,
   "_dedup_by_signature_doc": "[P2] 동일 내용(sha256 시그니처) 파일이 이미 적재 완료됐으면 재처리를 건너뜁니다(기본 true). 스킵은 무음이 아니라 로그 + FileIngestionLog(status=SKIPPED, 사유) + 완료 통지 detail로 남습니다. 개별 파일만 강제 재처리하려면 파일명에 '__force__'를 포함시키세요(예: report__force__.csv). false로 두면 dedup 자체를 끕니다.",
   "dedup_by_signature": true,
   "_dedup_by_path_stat_doc": "[Tier 1] 같은 경로에 (mtime, size)가 그대로인 파일은 **내용을 읽지 않고** 건너뜁니다(기본 true). 이 박스 실측(22,626 파일 / 194.6MB): stat만 1.0초 vs 전체 sha256 39.4초 — 파일을 옮기지 않게 되면 스윕마다 나는 차이입니다. 🔴 실패 방향을 알고 켜십시오: tier 1은 「mtime과 size가 그대로인 채 내용만 바뀐 파일을 다시 읽지 않는 쪽」으로 집니다(mtime을 보존하는 복사 도구, 같은 길이·같은 마이크로초 덮어쓰기). 파일을 한 번만 쓰는 피드에는 맞는 거래지만 판단이지 공짜가 아닙니다. false로 두면 항상 전체 해시를 계산합니다. dedup_by_signature를 false로 두면 이 값과 무관하게 tier 1도 함께 꺼집니다(전역 강제 재처리 스위치가 조용히 무력해지지 않도록).",
