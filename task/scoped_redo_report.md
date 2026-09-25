@@ -59770,3 +59770,120 @@ RUN.md    그 이름 0
 그래서 일 12 를 running_now 의 출처별 판정 넷으로 접고, 프로세스 넷은 그대로 두는 것으로 짓겠습니다
 그 넷도 넣으라시면 그렇게 바꿉니다
 ```
+
+---
+
+## [구현자 -> 총괄] 「지금 도는 것」 한 문 착지 (5996d7f54) — d6f4b8bcc
+
+```
+자리      runtime/running.py — running_now(db) 가 넷을 한 모양으로
+          chain_sight(체인 루프가 어디서 보이나 — 대기열 라우트에서 옮겨 옴) · retroactive.in_flight_rows(새, 소급의 판정 하나)
+          collector_is_running · ingestion_is_running
+대기열    /admin/chain/queue 에 now_running. 옛 running 은 화면이 옮기는 라운드에 은퇴
+모양      {what, where, pid, started_at, elapsed_seconds, progress: {processed, total} | null, cancel: {run_id} | null}
+          where = chain_worker · own_process · scheduler · watcher
+          cancel 은 소급 등록부가 취소를 받는 실행에만
+상수      수집기 상태 "RUNNING" · 인제션 "PROCESSING" 을 쓰는 쪽과 읽는 쪽이 같은 상수를 지남 (event_constants)
+소급 판정  in_flight_rows 하나를 in_flight · 대기열의 고아 목록이 같이 부름 (고아 목록이 같은 거름을 따로 적었음)
+```
+
+### 서버 «도는 중» 판정 자리 — 전 · 후 (AST, 추적 파일)
+
+```
+전   16 곳 — 비교 8 · 부름 8
+후   26 곳 — 비교 9 · 부름 17
+후의 비교 9 곳이 무엇인가
+     출처별 판정 셋 — in_flight_rows(소급) · collector_is_running · ingestion_is_running  (체인은 activity.view 가 판정, 비교가 아닌 모양)
+     남긴 것
+       run_claimed      자식이 «자기 줄이 정확히 running 인가» 를 묻는 인수 절차 — 「무엇이 도나」 가 아님
+       _collectors_running  스케줄러의 수집기 자물쇠(두 번 뜨지 않게) — 상태 파일의 RUNNING 은 이것의 그림자
+       apply_state      인제션 레지스트리가 «받는 낱말»의 거름(QUEUED · PROCESSING)
+       프로세스 생존 3   감독자 둘 · health 하나 — 총괄 d02b5a4f4 대로 이 문 밖 (넷째인 체인 루프 잠금은 «부름» 쪽에 셈)
+```
+
+### 게이트
+
+| 칸 | 시험 | 변이 |
+|---|---|---|
+| 넷이 한 문 · 한 모양 | test_the_four_sources_run_through_one_door_in_one_shape | 출처 하나씩 빼면 넷 다 빨강 (2 failed · 2 failed · 1 failed · 1 failed) |
+| 끝난 것 · 기다리는 것은 안 셈 | test_nothing_running_is_an_empty_list (done 소급 · SUCCESS 수집기 · QUEUED 파일) | 수집기 · 인제션 판정을 「never」 로 바꾸면 빨강 (1 failed · 1 failed) |
+| 대기열이 그 문을 실음 | test_the_queue_carries_the_seat | — |
+
+```
+범위    바뀐 모듈을 import 하는 시험 145 파일 -> 2092 passed, 16 skipped, 1 xfailed
+```
+
+### 박스 — 대기열 함수를 같은 프로세스에서 0.5 초마다 (API 는 토큰 뒤라 in-process)
+
+```
+겹침 1   소급 resolve(dt_inventory) + 수집기 run-now(dt_log)
+         0.0s  old running=0  now_running=[]
+         1.1s  old running=0  now_running=['own_process', 'scheduler']
+         2.1s  old running=0  now_running=['own_process']
+         45.1s  old running=0  now_running=[]
+         PEAK by where: {'own_process': 1, 'scheduler': 1}
+         ENDED with now_running empty: True
+겹침 2   체인 리플레이(lot_event_to_lot_slot_wafer) + 수집기 run-now
+         0.0s  old running=0  now_running=['chain_worker']
+         2.1s  old running=0  now_running=['chain_worker', 'scheduler']
+         2.6s  old running=0  now_running=['chain_worker']
+         11.4s  old running=0  now_running=[]
+         PEAK by where: {'chain_worker': 1, 'scheduler': 1}
+         ENDED with now_running empty: True
+전 · 후  같은 순간에 옛 running(맨 위 대기열이 세던 것)은 내내 0, now_running 은 도는 것을 셈 · 끝나면 0
+```
+
+```
+⚠️ 박스에서 못 잰 둘
+   파일 적재   그 레지스트리는 API 프로세스 메모리에만 있음 — in-process 호출로는 못 봄. 시험은 레지스트리의 진짜 입구(apply_state)로 잼
+   체인 규칙   워커가 따로 돌면 lap 이 «반복이 끝날 때» 찍혀서, 그때는 규칙이 이미 끝남. 이 박스의 규칙 한 번은 짧아 두 겹침에서 0
+              고치려면 워커가 규칙을 도는 «동안» 심박을 써야 함 — 새 기제라 범위 동결로 «보고만»
+보고만     수집기가 도중에 죽으면 상태 파일이 RUNNING 으로 남음 (총괄 5996d7f54 ③ 대로 안 가름)
+```
+
+```
+⚠️ 새 파일 둘(running.py · 그 시험)은 96be27e71 에 먼저 실렸습니다 — 제가 셈을 위해 스테이징해 둔 것을 다른 레인의 커밋이 쓸어 담음.
+   그 사이 main 에 «코드 없는 시험» 이 있었고 d6f4b8bcc 가 닫음. 앞으로 커밋 직전에만 스테이징합니다
+```
+
+### 다음
+
+```
+2 취소 다 (rescope · confirm) — 한 페이지 = 걷어냄 + 다시 번역이 한 트랜잭션인지부터 보고
+```
+
+---
+
+## [구현자 -> 총괄] 취소 다 (8d8abfb5d) — 짓기 전 보고 · 짓기 시작함
+
+> 재기동함 — API 한 번 (pid 17976 이 20:13 에 뜸) · now_running 을 화면이 읽을 수 있게
+
+### rescope — 한 페이지 = 걷어냄 + 다시 번역이 한 트랜잭션인가
+
+```
+예       걷어냄은 withdraw_refs 로 write_batch 에 실려 «새 번역을 쓰는 그 커밋» 안에서 돎 (backfill.rescope 의 docstring 이 잰 등급 1 수리)
+그러나   rescope 에는 «페이지가 없음» — 범위 전체를 한 프레임으로 읽고 한 번에 번역 · 한 커밋
+         그래서 멈출 수 있는 경계는 «시작 전» 과 «끝난 뒤» 뿐
+그리고   번역이 더는 안 말하는 행의 색인 지우기(forget_row_refs)는 그 뒤 «둘째 커밋»
+```
+
+```
+지을 것   범위를 페이지 키 순서로 페이지마다 읽음 (_fetch_v2_lineage_rows 가 이미 after · limit · scope 를 받음)
+         페이지마다  그 행들의 걷어낼 참조(미리보기 ∪ 색인) -> write_batch 한 커밋 -> 그 페이지의 색인 지우기 -> 체크포인트(취소)
+         묶음(group_by) 소스는 페이지 끝을 «묶음 경계»에 맞춤 — 묶음 하나를 두 페이지로 가르면 반쪽 묶음으로 다시 번역됨 (분자 하나 = 원자의 출처)
+멈춘 자리  페이지 단위로 온전 — 끝난 페이지는 걷어냄 + 다시 번역 + 색인이 다 됨, 안 간 페이지는 손 안 댐
+다시 돌림  처음부터 — 이미 한 페이지는 같은 답(중복은 deduped)
+보고만    한 페이지의 write 커밋과 색인 커밋 «사이»에 프로세스가 죽는 창은 지금도 있음 — 취소는 체크포인트에서만 멈추므로 그 창에 안 걸림
+```
+
+### enrichment_confirm
+
+```
+지금     큐 전체를 모은 뒤 confirm_keys 한 호출 — 커밋은 그 아래 apply_batch_updates 가 쪼갬
+지을 것   모은 큐를 이 층에서 페이지로 쪼개 confirm_keys 를 페이지마다 · 사이에 체크포인트 · 통계는 합침
+확인할 것  caps(읽기 상한)가 «호출마다» 인지 «쓸기 전체» 인지 — 호출마다면 페이지로 쪼갤 때 상한의 뜻이 바뀜. 짓기 전에 잼
+```
+
+```
+게이트    둘 다 박스에서 두 페이지 이상 · 첫 페이지 뒤 취소 -> cancelled · 멈춘 자리 페이지 단위 온전 · 다시 돌리면 끝까지 (전 · 후) · 변이: 페이지 사이 체크포인트를 빼면 빨강
+```

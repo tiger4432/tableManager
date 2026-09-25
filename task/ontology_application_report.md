@@ -33393,3 +33393,22 @@ CLI 기록의 요청자   CLI 실행 행의 requested_by 가 비어 있습니다
              커밋은 「cursor_after 는 via-events 은퇴 몫」이라 뺐고, 은퇴(a36ec7d3) 뒤에도 서버 결과 dict 가 그 키를 싣습니다
 계기 한 줄    제 요약 수(「제목에 경로가 든 줄 0 · 0」)는 틀린 계기였습니다 — 제목이 {src, text} 물건이라 문자열로 못 봤습니다. 표의 줄별 출력이 근거입니다
 ```
+
+---
+
+## 전·후 — 「도는 것」 한 자리 (d6f4b8bc) (09-25 20:14)
+
+프로세스 안에서 HEAD 코드로 `/admin/chain/queue` 함수를 1초마다 읽었습니다. 소급은 void_obs resolve(옮겨질 칸 0), 어드민 하나 · CLI 하나.
+
+| | 전(둘째 판 c539062a2) | 후 |
+|---|---|---|
+| 어드민 소급이 도는 동안 대기열이 말하는 「도는 것」 | 체인 전용 `running` 뿐 — 집힌 소급은 0 | `now_running` 에 한 줄 ✓ — 제목(연산 이름) · where `own_process` · 자식 pid · 진행 · `cancel.run_id` |
+| CLI 소급이 도는 동안 | 0 | `now_running` 에 한 줄 ✓ — CLI pid · 진행이 오름(6,300 → 13,500) |
+| 그 `cancel.run_id` 로 취소 | — | 둘 다 멈춤 ✓(어드민 cancelled · CLI 종료 코드 2) |
+| 끝난 뒤 | — | `now_running` 0 ✓ |
+| 옛 칸 `running` | [] | [] 그대로 — 화면이 새 칸을 읽을 때까지 남긴다는 커밋 설명대로 |
+
+```
+보고만(동결)  어드민 자식과 CLI 가 둘 다 where "own_process" — 누가 띄웠는지는 pid 만 가릅니다
+             `runtime/running.py` 는 이 기능 커밋이 아니라 총괄의 지시 커밋(96be27e71)에 실려 main 에 들어갔습니다 — 동작은 멀쩡합니다(추적 파일)
+```

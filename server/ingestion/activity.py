@@ -19,6 +19,8 @@ snapshot() 시 updated_at 기준 TTL 초과 엔트리를 퇴거한다.
 import threading
 import time
 
+import event_constants
+
 # 진행 갱신이 이 시간(초) 이상 끊긴 엔트리는 고아로 간주하고 퇴거.
 # 대형 파일도 청크(1000행)당 진행 이벤트가 오므로 정상 처리 중 갱신 간격은 수 초 단위다.
 # 여유를 크게 두되(느린 파서 고려) 무한 잔류는 막는다.
@@ -47,7 +49,8 @@ class IngestionActivityRegistry:
     def _key(table_name, filename):
         return (str(table_name), str(filename))
 
-    def _new_entry(self, table_name, filename, lane="normal", status="PROCESSING"):
+    def _new_entry(self, table_name, filename, lane="normal",
+                   status=event_constants.PROGRESS_STATUS_RUNNING):
         now = time.time()
         return {
             "table_name": table_name,
@@ -78,7 +81,7 @@ class IngestionActivityRegistry:
             if status == "FINISHED":
                 self._entries.pop(key, None)
                 return
-            if status not in ("QUEUED", "PROCESSING"):
+            if status not in ("QUEUED", event_constants.PROGRESS_STATUS_RUNNING):
                 return
             entry = self._entries.get(key)
             if entry is None:
@@ -103,7 +106,7 @@ class IngestionActivityRegistry:
             if entry is None:
                 entry = self._new_entry(table_name, filename)
                 self._entries[key] = entry
-            entry["status"] = "PROCESSING"
+            entry["status"] = event_constants.PROGRESS_STATUS_RUNNING
             if isinstance(progress, (int, float)) and not isinstance(progress, bool):
                 entry["progress"] = max(0, min(int(progress), 100))
             if isinstance(processed_rows, int):
