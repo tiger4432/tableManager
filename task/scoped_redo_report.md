@@ -59186,3 +59186,90 @@ CLI 문       retroactive 에 함수 하나 — 관문 -> 기록을 running · �
             관문이 막으면 「REFUSED: <관문 문장>」 · 종료 코드 2 (CLI 들이 이미 쓰는 모양)
 params 넓히기 위 표대로 + int · bool 읽기
 ```
+
+---
+
+## [09-25 17:22] 구현자 — CLI 같은 문 착지 (`9ca3633f1`) · 어드민 소급 별도 프로세스, 짓기 전 보고 가·나·다
+
+### `9ca3633f1` — CLI 다섯이 어드민 소급과 같은 기록 · 관문 · 취소 · 끝맺기로 (㉤ · 물음 넷 답대로)
+
+```
+문       retroactive.run_here — 기록을 running · 이 프로세스로 바로 씀 (초인종 없음 -> 데몬이 못 집음)
+         관문이 막으면 CLI 가 그 문장으로 거절 (종료 2) · 화면 취소는 페이지 사이에서 먹음 (CANCELLED · 종료 2)
+         Ctrl-C -> 기록 cancelled · 연산 자체의 오류 -> 기록 failed 뒤 그 오류가 전처럼 터미널로
+심박      도는 동안 cli 라는 이름으로 뜀 · runner 도 그 이름. 죽으면 60 초 뒤 「주인 없음」 -> 화면 취소가 잠금을 풂
+끝맺기    done · cancelled · failed 를 쓰는 함수 하나 — execute 와 CLI 문이 같이 지남
+드라이런   문 밖 (①)
+params   CLI 옵션 여덟이 연산 params 로 · 폼에는 안 보임 (form: false, ③) · int · bool 을 읽음
+         probe 상한은 한 곳에서 접음 — CLI 와 실행이 같은 것을 씀
+출력      연산의 원래 결과로 전과 같은 문장 (④). 더해진 줄 둘: 「[Retroactive] run_id=… START / DONE」
+```
+
+문 때문에 바뀐 동작 셋
+
+```
+replay-all    조인의 반쪽 규칙(companion)을 통째로 다시 돌리지 않음 — S-270 의 한 술어(replay_is_refused)를 지나게
+              문이 그 규칙을 거절하므로, 안 지나면 replay-all 이 중간에 멈춤 (앞 규칙들은 이미 돈 뒤). 드라이런 목록도 같은 집합
+triage        --replay-cancelled 가 business key 대신 취소된 이벤트가 이름 댄 row_ids 로 — 반쪽 규칙이 거절되지 않는 길 (S-270)
+              「business keys resolved: N」 줄이 없어짐
+--ignore-knob 넓히지 않음 (표대로). --apply 와 같이 오면 전처럼 sweep 이 읽기 전에 거절 — 문에 안 들어감
+```
+
+게이트
+
+```
+시험   문 — 목록에 뜸 · 데몬이 못 집음 · 관문 거절 · 화면 취소 · Ctrl-C · 실패 · 죽은 심박이면 취소가 잠금을 풂
+       CLI 표 — --apply 열셋 갈래가 전부 문으로 · 드라이런은 문 밖 · CLI 가 apply=True 로 직접 부르는 곳 없음
+       params — 폼에 안 보임 · 기록엔 들어감 · 준 것만 연산에 · 안 준 것은 연산 기본값
+       원장 CLI 출력 시험 둘이 이 박스의 table_config.json (gitignore) 에 기대고 있었음 -> 기록 없는 문으로 바꿈
+          표를 비우고 돌려서 통과 확인 (비우기 전 45 항목)
+변이   여덟 다 빨강
+박스   python -m ledger.backfill --source lot_event --max-batches 0 (0 페이지 — 원자 안 씀)
+       실행 목록에 뜸 · runner cli/DESKTOP-OVKV3HK/21680 = cli 심박 파일의 pid · params 에 CLI 옵션 · 끝난 뒤 관문 열림
+       재기동 셋 (스케줄러 · 체인 워커 · API) 뒤 /health ok · problems 없음 · cli 줄 off_roster
+```
+
+### 곁에 본 것
+
+```
+원장 CLI 의 마지막 출력 줄이 KeyError 'not_yet' 로 죽음 — 제 변경 전부터 (옛 호출도 not_yet 이 없음, 이 박스 lot_event)
+   run() 은 rows_not_yet_translated 의 답에서 not_yet 을 골라 싣는데 그 답에 없음. 왜 없는지는 안 쟀습니다
+   종료 코드 1 은 전과 같음. 출력 시험은 run 을 not_yet: 0 을 주는 가짜로 바꿔 두어서 이걸 못 봄
+cli.json 은 CLI 가 끝난 뒤에도 남아 /health 에 off_roster 줄로 계속 보임 (나이만 늘어남)
+두 CLI 가 같은 순간 관문을 지나면 (확인과 기록이 한 번에가 아님 — 데몬 쪽도 같은 모양) 같은 cli 이름에 pid 둘
+   -> 덮인 쪽이 「주인 없음」으로 보이고 화면 취소가 살아 있는 실행을 failed 로 풀 수 있음. 가장자리 경우
+```
+
+### 7d2c5845b — 어드민 소급 별도 프로세스, 짓기 전 보고
+
+```
+모양   자식 = python -m admin.retroactive_child <run_id>  (진입점 하나)
+       대기 기록을 집고 (queued -> running, execute 와 같은 집기) -> CLI 와 같은 「이 프로세스에서 돌기」 (심박 · 끝맺기)
+       스케줄러는 부르는 대신 띄움 · 체인 리플레이는 체인 워커 스레드 그대로
+
+가  재기동을 넘어 사나
+   스케줄러만 죽으면 (크래시 · 재기동)   자식은 삶 — 감독자의 재기동 길은 손자를 안 죽임 (손자를 죽이는 곳은 stop_all 하나)
+                                     새 스케줄러는 도는 기록을 보고 관문에서 기다림
+   앱 전체 정지 (stop_all)              자식도 죽음 — psutil 로 손자까지
+                                     단 스케줄러가 재기동되기 «전»에 띄운 자식은 새 스케줄러의 손자가 아니라 앱 정지를 넘어 삶
+   죽으면                              심박 60 초 뒤 「주인 없음」 -> 화면 취소가 잠금을 풂 (CLI 와 같은 기제 · 시험 있음)
+   진행 · 취소가 보이나                  진행은 DB 와 /internal/events/broadcast (API_BASE_URL 환경변수) — 프로세스와 무관
+나  로그   logs/retroactive.log — 자식이 자기 프로세스 로거로. 줄마다 「[Retroactive] run_id=…」
+          자식의 stdout · stderr 도 그 파일로 (크래시 traceback 이 남게)
+다  동시   관문 그대로면 하나. 병렬로 가면 심박 이름을 실행마다 나눠야 하고, 그러면 /health 에 실행마다 줄이 생김
+```
+
+### 짓기 전에 여쭐 것 넷
+
+```
+① 심박 이름    자식도 같은 이름을 쓰면 「cli」가 거짓 -> retroactive 로 바꿀지 (CLI 와 자식이 한 이름)
+② 앱 정지      도는 자식을 앱 정지 때 멈출지. 멈춘다면 감독자가 심박 파일의 pid 로 찾아 멈춤 (작음)
+              안 멈추면 일은 끝까지 돌고 끝나면 스스로 나감
+③ 띄움과 집기 사이   자식이 기록을 집기 전 (파이썬 기동 몇 초) 기록은 아직 queued 라 관문이 열려 있음
+              -> 스케줄러가 다음 틱에 같은 기록으로 자식을 하나 더 띄우거나, 다음 대기 기록을 띄울 수 있음
+              제안: 스케줄러가 자기가 띄운 자식이 살아 있는 동안은 「도는 중」으로 셈
+④ 초인종 행    outbox 의 RETROACTIVE_RUN 행 — 지금은 execute 가 끝난 뒤 처리됨으로. 띄우는 순간 처리됨으로 바꿈
+              (publish 의 주석: 일은 이 행에 있지 않다)
+```
+
+답을 기다리는 동안 새 연산 둘 (--via-events · resolve R3) 을 소급 연산 표와 CLI 문에 같은 모양으로 짓습니다 — 자식과 무관한 부분입니다.
