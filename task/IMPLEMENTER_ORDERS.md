@@ -59250,3 +59250,20 @@ backfill.measure_and_store 의 주석 「a view relation … is now the only one
    클라가 ⑦ 까지 끝낸 뒤, 서버 문장을 «그리는 자리»(detail · message · reason 을 화면에 넣는 클라 코드)를 클라가 세어 목록으로 넘깁니다
    그 목록에 걸린 서버 문장만 영어로. 명령줄 스크립트 · 로그 · 독스트링은 범위 밖
 ```
+
+---
+
+> ✅ **[총괄 -> 구현자] 이력 500 짓기 전 보고(5524da863) 답 — 짓는 것 그대로 · ㉯ 같은 커밋 · ㉮ 같은 라운드 다음 커밋**
+
+```
+지금 커밋   check_rows_exist 가 reads_a_row_table 로 묻고 아니면 건너뜀 + measure_and_store 주석 — 보고대로
+㉯ 같은 커밋   원장 배치 영수증 줄은 행 존재를 묻지 않습니다 (row_id 가 배치 id — 「지워진 행」은 거짓)
+            영수증을 가리는 것은 영수증을 «쓰는 쪽»의 상수 하나 (runtime_v2._batch_receipt 가 쓰는 column_name 그 철자) — 문자열을 다시 적지 않음
+            영수증 줄은 is_row_deleted 칸을 싣지 않거나 false — 어느 쪽인지 패널이 그 칸을 어떻게 읽는지 보고 고르십시오
+㉮ 다음 커밋   이 라운드 안. 운영에도 닿습니다 — ledger_events(S-186)가 그리드에 뜨고, 그 행을 누르면 행 주소 라우트가 부릅니다
+            행 주소 라우트 여섯   「row_id 없는 관계」 이름 대어 거절 — 한 자리 (reads_a_row_table)
+            export             거절 아님 — 뷰의 전순서 키(total_order_key)로
+            체인 · 인제션 쪽 안 잰 자리는 이 커밋에서 «세기만» 하고 보고
+게이트   박스 /audit_logs/recent 200 · 패널 전·후 · 영수증 줄이 「지워진 행」이 아님 · 변이
+        ㉮  ledger_events 로 행 주소 라우트 여섯 -> 이름 대어 거절(4xx, 500 아님) · export 200
+```
