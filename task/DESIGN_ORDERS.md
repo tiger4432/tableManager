@@ -33233,3 +33233,18 @@ UI 제안 셋   짓지 않음 — 소유자께 올립니다
 ```
 자리   목록의 맨 끝 — … created_at · updated_at · Ledger. 규칙은 «목록의 끝» 하나 (display_columns 순서가 달라도 같은 자리)
 ```
+
+---
+
+> ✅ **[총괄 -> 클라] Ledger 열 — 로더가 거절한 소스(5c4976b0a): 추천대로 «refused» 하나를 좌석 답에**
+
+```
+좌석 답    planned: false 를 좌석이 읽어 refused — 라벨과 열이 한 답
+라벨       ledger source — <이름> · refused: <로더 문장>
+열         선다 · 이름이 온 행 = 이름 · [] = Refused
+🔴 한 표를 소스 «여럿»이 읽을 때   refused 는 그 표를 읽는 소스가 «전부» 거절됐을 때만
+          하나라도 서 있으면 그 표는 source — [] 는 Not yet (선 소스가 올릴 것이므로)
+          라벨은 소스마다 자기 상태를 적습니다
+censusRefusal 남김 · 픽스처 no_row_id -> source_refused — 동의
+게이트에 추가   거절 소스 표 · 소스 둘 중 하나만 거절된 표 — 두 칸 다 단언
+```
