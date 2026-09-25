@@ -345,72 +345,128 @@
     .runtime-table td[data-col="knob"] { font-family: var(--font-mono); color: var(--text-dim); }
     .runtime-table td[data-col="loop"] { font-weight: 600; }
 
-    /* Chain 대기열 — 목록 한 줄 머리. 카드 스트립을 대신하므로 가로로 넘치지 않는다. */
-    .chain-queue-headline {
-      display: flex;
-      align-items: center;
-      flex-wrap: wrap;
-      gap: 6.8px;
-      padding: 3.4px 3.4px 10.2px;
-    }
-    .chain-queue-headline-main {
-      font-weight: 600;
-      color: var(--text);
-      font-variant-numeric: tabular-nums;
-    }
-    .chain-queue-headline-sub {
-      color: var(--text-dim);
-    }
-    /* 실패 수는 «대기 옆»입니다. 값 하나이고 문장이 아닙니다. */
-    /* 도는 체인 — 「수 + 그 0 이 무엇인지」. 값이고 문장이 아닙니다. */
-    /* 어느 로그 파일을 열어야 하나 — 이름 하나입니다. 경로가 아닙니다. */
-    .chain-queue-headline-log {
-      color: var(--text-dim);
-      font-family: var(--font-mono);
-      white-space: nowrap;
-    }
-    .chain-queue-headline-running {
-      color: var(--text-dim);
-      font-variant-numeric: tabular-nums;
-      white-space: nowrap;
-    }
-    .chain-queue-headline-fail {
-      color: var(--danger);
-      font-weight: 600;
-      font-variant-numeric: tabular-nums;
-      white-space: nowrap;
-    }
-/* 🔴 「집는 이의 생사」 is the first fact on this line and reads as one -- the queue
-       length cannot separate 「about to run」 from 「nothing is picking up」 and this can.
-       ⚠️ It is NOT the danger colour: the age is a number to read, not a verdict, and
-       painting it red would be the invented threshold the part refuses to compute. */
-    .chain-queue-headline-pickup {
-      color: var(--text);
-      font-weight: 600;
-      font-variant-numeric: tabular-nums;
-      white-space: nowrap;
-    }
-    .chain-queue-headline-basis,
-    .chain-queue-headline-ahead {
-      color: var(--text-dim);
-      font-variant-numeric: tabular-nums;
-      white-space: nowrap;
-    }
-    /* 「도는 중인데 주인이 없음」 -- decided by the heartbeat, and the one line here that IS
-       a fault rather than a number. */
-    .chain-queue-headline-orphan {
-      color: var(--danger);
-      font-weight: 600;
-      white-space: nowrap;
-    }
+    /* Chain 대기열 — 시안 A (소유자 「A 로 해」): 숫자 넷 · 표 · 메타 한 줄. 두 자리(Overview 절 ·
+       Chain 탭)에 같은 모양. 여백은 격자 토큰으로만. */
+    .chain-queue-stale,
     .chain-queue-truncated {
-      margin: 0 0 10.2px;
-      padding: 6.8px 10.2px;
+      margin: 0 0 var(--space-3);
+      padding: var(--space-2) var(--space-3);
       border: 1px dashed var(--warning);
       border-radius: 0;
       color: var(--text-dim);
-      font-size: 0.8rem;
+      font-size: var(--fs-label);
     }
+    /* 못 읽은 칸은 부품이 «빼므로» 셋·둘로 선다. 폭은 칸 수로 나눈다. */
+    .chain-queue-numbers {
+      display: grid;
+      grid-auto-flow: column;
+      grid-auto-columns: minmax(0, 1fr);
+      gap: var(--space-4);
+      padding: 0 0 var(--space-4);
+    }
+    .chain-queue-number-label {
+      font-size: var(--fs-label);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-dim);
+    }
+    /* 32 = 캐논 h2. 토큰은 글자 위계 라운드(43c97d354)에서 생긴다. */
+    .chain-queue-number-value {
+      font-family: var(--oe-font-head);
+      font-size: 32px;
+      font-weight: 600;
+      line-height: 1.12;
+      font-variant-numeric: tabular-nums;
+      color: var(--text);
+    }
+    /* 색은 Failed «하나», 0 이 아닐 때만 — 나이를 칠하면 지어낸 문턱이다. */
+    .chain-queue-number[data-tone="danger"] .chain-queue-number-value { color: var(--danger); }
+    .chain-queue-number-sub {
+      font-size: var(--fs-label);
+      color: var(--text-dim);
+      font-variant-numeric: tabular-nums;
+    }
+    /* px 고정 폭 없음 — Tables 칸이 남는 폭, 나머지는 내용 폭. */
+    .chain-queue-table .table-header th,
+    .chain-queue-table .table-row td {
+      padding: var(--space-2);
+      white-space: nowrap;
+    }
+    .chain-queue-table .table-row td { font-size: var(--fs-body); }
+    .chain-queue-table [data-col="tables"] { width: 100%; white-space: normal; overflow-wrap: anywhere; }
+    .chain-queue-table [data-col="rows"] { text-align: right; }
+    /* 13 = 캐논 h6 (토큰 없음, 위와 같은 사정). */
+    .chain-queue-table .table-row td[data-col="tx"] { font-family: var(--font-mono); font-size: 13px; }
+    .chain-queue-owner-badge,
+    .chain-queue-retry-badge {
+      display: inline-block;
+      margin-right: var(--space-1);
+      padding: 0 var(--space-1);
+      border: 1px solid var(--border);
+      font-size: var(--fs-label);
+      color: var(--text);
+    }
+    .chain-queue-retry-badge { color: var(--text-dim); }
+    .chain-queue-empty {
+      padding: var(--space-3) 0;
+      color: var(--text-dim);
+    }
+    /* 조각 사이의 점은 글자가 아니라 여기서 — 부품은 값만 낸다. */
+    .chain-queue-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--space-2);
+      padding: var(--space-2) 0 0;
+      font-size: var(--fs-label);
+      color: var(--text-dim);
+      font-variant-numeric: tabular-nums;
+    }
+    .chain-queue-meta > span + span::before { content: '·'; margin-right: var(--space-2); }
+    .chain-queue-meta-log { font-family: var(--font-mono); }
+    /* 메타 줄 아래 — 이상할 때만 나오는 줄, 그다음 스케줄러 세 줄. */
+    .chain-queue-running-old,
+    .chain-queue-orphan,
+    .chain-queue-pickup,
+    .chain-queue-basis,
+    .chain-queue-ahead {
+      padding-top: var(--space-1);
+      font-size: var(--fs-label);
+      font-variant-numeric: tabular-nums;
+      color: var(--text-dim);
+    }
+    /* 「도는 중인데 주인이 없음」 — 하트비트가 정한 «고장»이라 이 줄만 위험색. */
+    .chain-queue-orphan { color: var(--danger); font-weight: 600; }
+    /* 「집는 이의 생사」 — 읽을 수이지 판정이 아니라 위험색이 아니다. */
+    .chain-queue-pickup { color: var(--text); font-weight: 600; }
+    /* Overview 절 틀 (시안 A) — 표면 위 1px 선, 모서리 0, 머리는 --bg-header. */
+    .ov-section {
+      margin: var(--space-5);
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: 0;
+    }
+    .ov-section-head {
+      display: flex;
+      align-items: baseline;
+      gap: var(--space-3);
+      padding: var(--space-2) var(--space-3);
+      background: var(--bg-header);
+      border-bottom: 1px solid var(--border);
+    }
+    .ov-section-sub { font-size: var(--fs-label); color: var(--text-dim); }
+    .ov-section-open {
+      margin-left: auto;
+      padding: 0;
+      border: 0;
+      background: none;
+      font: inherit;
+      font-size: var(--fs-label);
+      color: var(--accent);
+      cursor: pointer;
+    }
+    .ov-section-open:focus { outline: none; }
+    .ov-section-open:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    .ov-section-body { padding: var(--space-3) var(--space-4); }
     /* 누가 비우나 — 머리 줄 아래의 한 줄씩. 세로로 쌓입니다(가로로 늘어놓지 않습니다). */
     /* 표 머리의 한 줄. 단락이 아니고 상자도 아닙니다 — 수가 무엇의 수인지만 말합니다. */
     .ledger-sources-note {
@@ -686,8 +742,8 @@
     .chain-queue-owner-strip {
       display: flex;
       flex-direction: column;
-      gap: 2px;
-      margin: 0 0 10px;
+      gap: var(--space-1);
+      margin: var(--space-2) 0 0;
     }
     .chain-queue-owner {
       color: var(--text);
@@ -695,7 +751,7 @@
     }
     /* `blocked_by` — 서버가 준 값만 적습니다. 문장은 서버의 `recovery` 입니다. */
     .chain-queue-blocked {
-      margin: 0 0 10.2px;
+      margin: var(--space-2) 0 0;
       padding: 6.8px 10.2px;
       border: 1px solid var(--warning);
       border-radius: 0;
@@ -718,34 +774,6 @@
       color: var(--text);
       line-height: 1.5;
       white-space: normal;
-    }
-    .chain-queue-row-owners {
-      color: var(--text-dim);
-      margin-top: 2px;
-    }
-    .chain-queue-age {
-      font-variant-numeric: tabular-nums;
-      white-space: nowrap;
-    }
-    .chain-queue-notmeasured {
-      margin-top: 10.2px;
-      padding: 10.2px 13.6px;
-      border: 1px dashed var(--border);
-      border-radius: 0;
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-    }
-    /* 🔴 `.health-card-sub` is `nowrap` + `overflow: hidden`, because a CARD subtitle is
-       short. What goes in this box is a SENTENCE, and that sentence IS rule ② -- the reason a
-       number was not measured. Measured on screen at a 392px panel: 556px and 598px of text in
-       a 362px box, so both were cut mid-word with no ellipsis. The DOM had them and the harness
-       was green; the person could not read them. Unwrapped only INSIDE this box, so the cards
-       elsewhere keep their one-line shape. */
-    .chain-queue-notmeasured .health-card-sub {
-      white-space: normal;
-      overflow: visible;
-      line-height: 1.5;
     }
     .health-card:hover {
       transform: translateY(-1px);
@@ -1736,6 +1764,7 @@
     .section-title,
     .panel-title,
     .ov-title,
+    .ov-section-title,
     .cfg-domain-title {
       font-family: var(--oe-font-body);
       font-size: 13px;
@@ -1747,12 +1776,6 @@
     }
     /* ② 라벨 · 부제 */
     .section-summary,
-    .chain-queue-headline-fail,
-    .chain-queue-headline-running,
-    .chain-queue-headline-log,
-    .chain-queue-headline-basis,
-    .chain-queue-headline-ahead,
-    .chain-queue-row-owners,
     .ledger-sources-sub,
     .ledger-sources-reason,
     .ledger-sources-unaccounted,
@@ -1775,7 +1798,6 @@
     /* ④ 본문 */
     .table-row td,
     .chain-queue-owner,
-    .chain-queue-headline-sub,
     .chain-queue-blocked-why,
     .chain-queue-blocked-recovery,
     .chain-rule-refusal-why,
@@ -2044,11 +2066,18 @@
           <!-- ═══ C-80 (소유자 「overview 에서 설정 반영은 아래로, 대기열과 고리는 위로」) ═══
                블록 «순서»만 바뀐다. 부품은 그대로이고 각자 자기 div 를 만든다 (조립식 상설) —
                배치는 부품 «밖»인 이 화면의 일이다. -->
+          <!-- 시안 A ① Queue 절 (맨 위). 절 틀은 이 화면의 것이고, 안은 Chain 탭의 그 부품의
+               «두 번째 인스턴스»다 — 탭에서 «빼 오지» 않는다. 빼면 Chain 탭이 자기 화면을 잃는다. -->
+          <section class="ov-section" id="overview-queue">
+            <div class="ov-section-head">
+              <span class="ov-section-title">Queue</span>
+              <span class="ov-section-sub">chain worker · scheduler</span>
+              <button type="button" class="ov-section-open" id="overview-queue-open">Open Chain tab ›</button>
+            </div>
+            <div class="ov-section-body"><div id="overview-queue-mount"></div></div>
+          </section>
           <!-- C-74: 아홉 고리가 마지막으로 무엇을 했나. 값만 — RuntimePanel 이 자기 div 를 만든다 -->
           <div id="runtime-mount"></div>
-          <!-- C-80: Chain 대기열. Chain 탭의 그 부품을 «두 번째 인스턴스»로 앉힌다 —
-               탭에서 «빼 오지» 않는다. 빼면 Chain 탭이 자기 화면을 잃는다. -->
-          <div id="overview-queue-mount"></div>
           <div id="overview-grid" class="overview-grid">
             <!-- admin.js renderOverview()가 채움 -->
           </div>
