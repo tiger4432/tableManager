@@ -104,7 +104,7 @@ def test_an_undeclared_table_is_NAMED_rather_than_silently_absent():
 
     body = inspect.getsource(admin.relations_view)
     assert "undeclared" in body
-    assert "테이블 미등록" in body, (
+    assert "Table not registered" in body, (
         "the undeclared-table sentence changed - it is the operator's next action")
 
 
@@ -116,7 +116,7 @@ def test_raw_json_that_does_not_parse_is_refused_WITH_A_POSITION():
         '{\n  "kind": "observation",\n  "oops": ,\n}')
     assert parsed is None
     assert refusal["code"] == "declaration_rejected"
-    assert "3행" in refusal["detail_ko"], refusal["detail_ko"]
+    assert "line 3" in refusal["detail_ko"], refusal["detail_ko"]
 
     parsed, refusal = admin.parse_raw_declaration('["not", "an", "object"]')
     assert parsed is None and refusal["code"] == "declaration_rejected"

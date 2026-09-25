@@ -66,13 +66,16 @@ const stateMeanings = (ing) => serverWords(ing, 'states');
 // 🔴 총괄 909ea2052 ①: 짧은 «이름»도 서버가 같은 자리(SOURCE_STATES)에서 보냅니다. 화면은 받은 이름을
 //    그리고, 토큰은 `data-state` 열쇠로만 남습니다. 이름이 안 오면(옛 서버) 토큰을 그립니다.
 const stateNames = (ing) => serverWords(ing, 'state_names');
+// 🔴 총괄 bed890af2: 사유의 «이름»도 같은 방법 — `ingestion.reason_names` (`gate.REFUSAL_REASON_NAMES`).
+const reasonNames = (ing) => serverWords(ing, 'reason_names');
 
-/** 사유 이름은 «서버 낱말»입니다 — 번역하지 않고, «전부» 나갑니다(자르지 않습니다). */
-function reasonsOf(s) {
+/** 사유는 «서버 낱말»입니다 — 이름도 서버가 주고, «전부» 나갑니다(자르지 않습니다). */
+function reasonsOf(s, names = {}) {
   const r = s && s.refusal_reasons;
   if (!r || typeof r !== 'object' || Array.isArray(r)) return [];
   return Object.keys(r).map(name => Object.freeze({
     name: String(name),
+    label: names[String(name)] || String(name),
     // 수가 없으면 `—` 입니다. 0 이 아닙니다 — 이 파일의 규칙 ④ 그대로입니다.
     count: countText(r[name] && typeof r[name] === 'object' ? r[name].count : undefined),
   }));
@@ -85,6 +88,23 @@ function unaccountedOf(s) {
 }
 
 import { backlogCells, censusRefusal } from './source_backlog.js';
+import { NO_TIME, localShort } from './server_time.js';
+
+/** 서버 시각 -> 보는 쪽 벽시계. census 의 `measured_at` 과 «같은 함수»입니다 — 한 사실에 시계 하나. */
+function localOrAsSent(value) {
+  const local = localShort(value);
+  return local === NO_TIME ? String(value) : local;
+}
+
+/**
+ * `translator_ver` — 「지우면 틀리게 읽나」: 예. 소스끼리 다른 선언으로 번역됐다는 것이 이 값뿐입니다.
+ * 그 판별에는 머리 몇 자면 됩니다 — 64 자 해시는 칸을 넓히고 읽히지 않습니다. 전부는 툴팁에.
+ */
+function shortVersion(value) {
+  const at = value.lastIndexOf(':');
+  const tail = value.slice(at + 1);
+  return tail.length > 12 ? `${value.slice(0, at + 1)}${tail.slice(0, 8)}…` : value;
+}
 
 /**
  * 한 소스의 «인구조사» 칸 — 대시보드 표와 탐색기 인스펙터가 «같은 리더»를 지납니다(C-47).
@@ -94,11 +114,12 @@ import { backlogCells, censusRefusal } from './source_backlog.js';
  * ⚠️ census 는 «공개 라우트»(선언)에서 옵니다. admin 응답이 401 이어도 이 칸들은 «옵니다» —
  *    그래서 두 반쪽의 «가용성이 다릅니다», 그리고 그 사실이 행에 그대로 드러납니다.
  */
-function censusOf(census) {
-  const refusal = censusRefusal(census);
+function censusOf(census, names) {
+  const refusal = censusRefusal(census, names);
   return Object.freeze({
-    cells: Object.freeze(backlogCells(census).map((c) => Object.freeze({ ...c }))),
+    cells: Object.freeze(backlogCells(census, names).map((c) => Object.freeze({ ...c }))),
     refusedReason: refusal ? refusal.reason : '',
+    refusedName: refusal ? refusal.name : '',
     refusedRemedy: refusal ? refusal.remedy : '',
   });
 }
@@ -109,13 +130,14 @@ function censusOf(census) {
  * @param {object|null} payload  `/admin/ledger/sources` 의 응답, 또는 null
  * @param {{unavailable?: string}} [opts] 응답 자체를 못 얻은 이유
  * @param {object} [census] 소스 id -> `sources[].census`, «공개 선언 라우트»의 것
+ * @param {object} [names] 그 봉투의 `census_names` (`censusNames(body)`)
  */
-export function sourcesView(payload, opts = {}, census = {}) {
+export function sourcesView(payload, opts = {}, census = {}, names = {}) {
   const censusBy = census && typeof census === 'object' ? census : {};
   // 🔴 census 는 admin 응답과 «가용성이 다릅니다» — 토큰이 없어 위가 401 이어도 여기는 옵니다.
   //    그래서 「아무것도 못 그린다」는 이제 «틀린 답»이고, 아래 두 이른 반환이 census 를 싣습니다.
   const censusRows = Object.freeze(Object.keys(censusBy).sort().map((source) => Object.freeze({
-    source, ...censusOf(censusBy[source]),
+    source, ...censusOf(censusBy[source], names),
   })));
   const empty = Object.freeze({
     available: false, reason: '', note: '', rows: Object.freeze([]),
@@ -149,11 +171,12 @@ export function sourcesView(payload, opts = {}, census = {}) {
   //    두 번 읽으면 그 둘이 갈라질 수 있고, 그것이 이 파일이 피하는 모양입니다.
   const stateWords = stateMeanings(ing);
   const nameWords = stateNames(ing);
+  const reasonWords = reasonNames(ing);
   const src = Array.isArray(ing.sources) ? ing.sources : [];
   const rows = src.map(s => Object.freeze({
     source: String((s && s.source) == null ? '' : s.source),
     // C-47: 같은 리더가 읽은 인구조사. 없는 소스는 빈 칸 — 「안 쟀다」입니다.
-    census: censusOf(censusBy[String((s && s.source) == null ? '' : s.source)]),
+    census: censusOf(censusBy[String((s && s.source) == null ? '' : s.source)], names),
     // 규칙 ①: 서버의 낱말 그대로. 모르는 낱말이 와도 «그대로» 보여 줍니다 —
     // 화면이 아는 넷으로 «접으면» 새 상태가 조용히 사라집니다.
     state: String((s && s.state) == null ? '' : s.state),
@@ -168,15 +191,16 @@ export function sourcesView(payload, opts = {}, census = {}) {
     //    (S-113: S-76 뒤 아무도 그 칸을 안 썼고, 화면은 얼어붙은 수를 현재형으로 말했습니다).
     //    빈 칸으로 두지 «않습니다» — 빈 칸은 「안 쟀다」이고, 이건 「이제 그런 수가 없다」입니다.
     moleculesRefused: localeCountText(s && s.molecules_refused),
-    updatedAt: (s && s.updated_at) ? String(s.updated_at) : ABSENT,
+    updatedAt: (s && s.updated_at) ? localOrAsSent(s.updated_at) : ABSENT,
     // 보조 줄 — 칸을 늘리지 않기 위해 행 안에 둡니다
-    translatorVer: (s && s.translator_ver) ? String(s.translator_ver) : ABSENT,
+    translatorVer: (s && s.translator_ver) ? shortVersion(String(s.translator_ver)) : ABSENT,
+    translatorVerFull: (s && s.translator_ver) ? String(s.translator_ver) : '',
     // 🔴 셋을 접지 «않습니다». `none`(거절이 없었다) · `named`(분해가 있다) ·
     //    `unknowable`(이 행이 컬럼보다 오래됐다) 는 서로 «다른 사실»이고, 접으면
     //    「모른다」와 「없다」가 같은 픽셀이 됩니다. 그리고 «키가 아예 없는» 것이 넷째입니다 —
     //    한 번도 안 돈 소스에는 커서 행이 없어 서버가 이 셋을 싣지 않습니다.
     refusals: (s && typeof s.refusals === 'string') ? s.refusals : '',
-    refusalReasons: Object.freeze(reasonsOf(s)),
+    refusalReasons: Object.freeze(reasonsOf(s, reasonWords)),
     // 🔴 0 은 보통 · >0 은 «배포 이력»(컬럼이 생기기 전에 센 거절) · <0 은 «장부 결함».
     //    서버가 그 셋을 자기 주석에 그렇게 갈라 뒀으므로 화면도 «부호»로 가릅니다.
     unaccounted: unaccountedOf(s),
@@ -258,7 +282,7 @@ export class LedgerSourcesPanel {
     // 🔴 거절이 «먼저»입니다. 셀 수 없다는 것은 조작자가 «고칠 수 있는» 사실이고, 수 아래
     //    묻히면 「아직 안 돌았나 보다」로 읽힙니다. 고칠 문장은 문지기의 것 그대로(S-39).
     if (census.refusedReason) {
-      const line = this._line('ledger-sources-census-refused', census.refusedReason);
+      const line = this._line('ledger-sources-census-refused', census.refusedName || census.refusedReason);
       line.setAttribute('data-refused', census.refusedReason);
       if (census.refusedRemedy) line.title = census.refusedRemedy;
       out.push(line);
@@ -266,8 +290,8 @@ export class LedgerSourcesPanel {
     const drawn = (census.cells || []).filter((c) => c.text !== '');
     if (drawn.length) {
       const line = this._line('ledger-sources-census',
-        drawn.map((c) => `${c.name} ${c.text}`).join(' · '));
-      const methods = drawn.filter((c) => c.method).map((c) => `${c.name}: ${c.method}`);
+        drawn.map((c) => `${c.label || c.name} ${c.text}`).join(' · '));
+      const methods = drawn.filter((c) => c.method).map((c) => `${c.label || c.name}: ${c.method}`);
       if (methods.length) line.title = methods.join('\n');
       out.push(line);
     }
@@ -275,10 +299,14 @@ export class LedgerSourcesPanel {
   }
 
   /** 소스 이름 칸 — 보조 줄과 인구조사가 «여기» 삽니다. 일곱째 칸을 만들지 않습니다. */
-  _nameCell(source, census, sub) {
+  _nameCell(source, census, sub, subTitle) {
     const td = this.doc.createElement('td');
     td.appendChild(this._line('ledger-sources-name', source));
-    if (sub) td.appendChild(this._line('ledger-sources-sub', sub));
+    if (sub) {
+      const line = this._line('ledger-sources-sub', sub);
+      if (subTitle) line.title = subTitle;
+      td.appendChild(line);
+    }
     for (const line of this._censusLines(census)) td.appendChild(line);
     return td;
   }
@@ -320,8 +348,8 @@ export class LedgerSourcesPanel {
    * @param {object|null} payload @param {{unavailable?: string}} [opts]
    * @param {object} [census] 소스 id -> `sources[].census`, «공개 선언 라우트»의 것
    */
-  render(payload, opts = {}, census = {}) {
-    const view = sourcesView(payload, opts, census);
+  render(payload, opts = {}, census = {}, names = {}) {
+    const view = sourcesView(payload, opts, census, names);
     const doc = this.doc;
     this.root.textContent = '';
 
@@ -388,7 +416,7 @@ export class LedgerSourcesPanel {
 
       // 보조 줄과 인구조사가 이름 칸 «안»에 삽니다 — 일곱째 칸 대신입니다
       tr.appendChild(this._nameCell(r.source, r.census,
-        `translator_ver ${r.translatorVer}`));
+        `Translator ${r.translatorVer}`, r.translatorVerFull));
 
       // 🔴 서버의 낱말 그대로. `data-state` 로 나가지만 «색은 없습니다».
       // 🔴 C-54. 상태 낱말 옆에 «서버가 준 뜻» 한 줄(툴팁). 다섯 낱말 중 넷은 이 박스에
@@ -400,7 +428,7 @@ export class LedgerSourcesPanel {
       //    ⚠️ 칸을 «늘리지 않습니다» — 같은 칸 안에서 줄로 쌓입니다.
       const tdRefused = this._td(r.moleculesRefused, 'center');
       for (const reason of r.refusalReasons) {
-        const line = this._line('ledger-sources-reason', `${reason.name} · ${reason.count}`);
+        const line = this._line('ledger-sources-reason', `${reason.label} · ${reason.count}`);
         line.setAttribute('data-reason', reason.name);
         tdRefused.appendChild(line);
       }

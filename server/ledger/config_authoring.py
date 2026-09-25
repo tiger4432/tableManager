@@ -128,9 +128,9 @@ TIER_DIAGNOSTIC = "diagnostic"
 #: `sources`; they stopped being questions. What the operator answers instead is the
 #: binding for each Role the predicate forces, which `_mapping_fields` lays out.
 STEPS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
-    ("entities", "엔터티", ("entities",)),
-    ("vocabulary", "낱말", ("vocabulary",)),
-    ("sources", "소스", ("sources",)),
+    ("entities", "Entities", ("entities",)),
+    ("vocabulary", "Predicates", ("vocabulary",)),
+    ("sources", "Sources", ("sources",)),
 )
 
 #: The three column universes of §3E, which are NOT one set.  Measured: a preparer output
@@ -141,8 +141,8 @@ UNIVERSE_RELATION = "RELATION"
 UNIVERSE_PREPARED = "PREPARED"
 
 _UNIVERSE_NOTE = {
-    UNIVERSE_RELATION: "물리 표 컬럼",
-    UNIVERSE_PREPARED: "물리 표 + 준비기 산출 컬럼",
+    UNIVERSE_RELATION: "Table columns",
+    UNIVERSE_PREPARED: "Table columns + preparer outputs",
 }
 
 _ABSENT = object()
@@ -674,10 +674,10 @@ def closed_lists(sources: Any = None) -> dict[str, Any]:
         # what the default was counted from instead of trusting the word.
         "implementations": implementations,
         "tiers": [
-            {"id": TIER_STRUCTURAL, "label": "구조적 제거"},
-            {"id": TIER_DERIVATION, "label": "유도"},
-            {"id": TIER_CONSTRAINED, "label": "제약 입력"},
-            {"id": TIER_DIAGNOSTIC, "label": "진단"},
+            {"id": TIER_STRUCTURAL, "label": "Structural"},
+            {"id": TIER_DERIVATION, "label": "Derived"},
+            {"id": TIER_CONSTRAINED, "label": "Constrained"},
+            {"id": TIER_DIAGNOSTIC, "label": "Diagnostic"},
         ],
     }
 
@@ -820,11 +820,11 @@ def _entities_fields(bundle: Mapping[str, Any]) -> Iterable[Field]:
         keys = _listed(entity.get("keys")) if isinstance(entity, Mapping) else ()
         yield Field(
             path=f"bundle.entities.{entity_id}.keys",
-            step="entities", label="식별키",
+            step="entities", label="Identity keys",
             state="answered" if keys else "missing",
             tier=TIER_CONSTRAINED,
             value=list(keys), declared=list(keys) if keys else _ABSENT,
-            note="이 이름이 이후 모든 entity binding의 keys를 결정한다.",
+            note="These names set the keys of every entity binding that follows.",
         )
         # 🔴 ONLY WHERE THE TYPE DECLARES ONE.  `attributes` is optional on an entity, so
         # a row drawn unconditionally would put a square on every type in every declaration
@@ -837,11 +837,11 @@ def _entities_fields(bundle: Mapping[str, Any]) -> Iterable[Field]:
         names = _listed(entity.get("attributes"))
         yield Field(
             path=f"bundle.entities.{entity_id}.attributes",
-            step="entities", label="속성",
+            step="entities", label="Attributes",
             state="answered" if names else "missing",
             tier=TIER_CONSTRAINED,
             value=list(names), declared=list(names) if names else _ABSENT,
-            note="이 이름이 소스의 attributes 결선 칸을 결정한다.",
+            note="These names set the attribute binding squares of each source.",
         )
 
 
@@ -854,7 +854,7 @@ def _vocabulary_fields(bundle: Mapping[str, Any]) -> Iterable[Field]:
         base = f"bundle.vocabulary.{predicate_id}"
         subjects = _listed(predicate.get("subjects"))
         yield Field(
-            path=f"{base}.subjects", step="vocabulary", label="주어 타입",
+            path=f"{base}.subjects", step="vocabulary", label="Subject types",
             state="answered" if subjects else "missing", tier=TIER_CONSTRAINED,
             value=list(subjects), declared=list(subjects) if subjects else _ABSENT,
             candidates=tuple(entities),
@@ -863,7 +863,7 @@ def _vocabulary_fields(bundle: Mapping[str, Any]) -> Iterable[Field]:
         obj = obj if isinstance(obj, Mapping) else {}
         kind = obj.get("kind")
         yield Field(
-            path=f"{base}.object.kind", step="vocabulary", label="목적어 종류",
+            path=f"{base}.object.kind", step="vocabulary", label="Object kind",
             state="answered" if kind else "missing", tier=TIER_CONSTRAINED,
             value=kind, declared=kind if kind else _ABSENT,
             candidates=tuple(sorted(OBJECT_KINDS)),
@@ -871,11 +871,11 @@ def _vocabulary_fields(bundle: Mapping[str, Any]) -> Iterable[Field]:
         if kind == "entity_ref":
             types = _listed(obj.get("types"))
             yield Field(
-                path=f"{base}.object.types", step="vocabulary", label="목적어 엔터티",
+                path=f"{base}.object.types", step="vocabulary", label="Object entities",
                 state="answered" if types else "missing", tier=TIER_CONSTRAINED,
                 value=list(types), declared=list(types) if types else _ABSENT,
                 candidates=tuple(entities),
-                note="entity_ref일 때만 존재하는 칸.",
+                note="Only when the object kind is entity_ref.",
             )
 
 
@@ -884,7 +884,7 @@ def _vocabulary_fields(bundle: Mapping[str, Any]) -> Iterable[Field]:
 #: `implementations._descendants()` picks a newly written class up on the next start.  Said
 #: once, because the preparer list and the mapper list are the same situation.
 NEW_IMPLEMENTATION_NOTE = (
-    "새 구현: /admin/scripts/code 에서 mappers/ledger_v2_*.py 작성 · 서버 재시작 후 후보")
+    "New implementation: write mappers/ledger_v2_*.py in /admin/scripts/code · listed after a server restart")
 
 
 def _registered_ids(declarations: Mapping[tuple[str, int], type]) -> tuple[str, ...]:
@@ -947,14 +947,14 @@ def _implementation_clause_fields(base: str, clause: Mapping[str, Any],
     versions = _registered_versions(declarations, identifier)
     yield Field(
         path=f"{base}.implementation_version", step="sources",
-        label=f"{label} 버전", state="derived", tier=TIER_STRUCTURAL,
+        label=f"{label} version", state="derived", tier=TIER_STRUCTURAL,
         value=versions[-1] if versions else None,
         declared=clause.get("implementation_version", _ABSENT) if versions else _ABSENT,
         ground=Ground(
             "implementation_version_from_registered_id",
-            (f"채움: 등록된 {identifier}@{versions[-1]}"
-             + (f" · 이 이름의 등록 버전 {len(versions)}개" if len(versions) > 1 else "")
-             ) if versions else "채움: implementation_id를 고르면 버전이 따라온다",
+            (f"Filled: registered {identifier}@{versions[-1]}"
+             + (f" · {len(versions)} registered versions of this name" if len(versions) > 1 else "")
+             ) if versions else "Filled: picking implementation_id picks the version",
             (f"{base}.implementation_id",), versions[-1] if versions else None),
     )
 
@@ -1045,7 +1045,7 @@ def _implementation_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
         # Not gated on `physical`: which preparer runs is a fact about the REGISTRY, and a
         # source whose relation is not in the catalog yet still has to be able to name one.
         yield from _implementation_clause_fields(
-            prep_base, preparation, preparers, preparer_ids, "준비기 구현",
+            prep_base, preparation, preparers, preparer_ids, "Preparer implementation",
             NEW_IMPLEMENTATION_NOTE)
         if physical:
             # 🔴 EMPTY IS UNANSWERED HERE, AND THAT IS A RULING, NOT AN OVERSIGHT.  Do not
@@ -1087,14 +1087,14 @@ def _implementation_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
             # the locks and the everything-default had to land together.
             yield Field(
                 path=f"{prep_base}.input_columns", step="sources",
-                label="준비기 input_columns",
+                label="Preparer input_columns",
                 state="derived", tier=TIER_DERIVATION,
                 value=[name for name in physical if name not in locked_all],
                 declared=declared_inputs,
                 ground=Ground(
                     "preparer_inputs_from_relation_minus_locked",
-                    f"기본값: relation {relation}의 컬럼 {len(physical)}개 중 "
-                    f"read가 이미 읽는 {len(prep_locked)}개를 뺀 나머지",
+                    f"Default: the {len(physical)} columns of relation {relation} minus the "
+                    f"{len(prep_locked)} that read already reads",
                     (f"{PHYSICAL_CATALOG_FILENAME}:{relation}",),
                     [name for name in physical if name not in locked_all]),
                 # 🔴 STATED, NOT MEASURED, AND `comparison` IS NOT THE LEVER FOR IT.  The
@@ -1108,7 +1108,7 @@ def _implementation_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
                 disposition="default_overridable",
                 candidates=tuple(physical), universe=UNIVERSE_RELATION,
                 locked=prep_locked,
-                note="잠김 = read가 이미 읽는 컬럼 · 나머지 토글",
+                note="Locked = columns read already reads · the rest toggle",
             )
             outputs = preparation.get("output_columns")
             names = sorted(outputs, key=str) if isinstance(outputs, Mapping) else []
@@ -1129,7 +1129,7 @@ def _implementation_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
             if said is not None:
                 yield Field(
                     path=f"{prep_base}.output_columns", step="sources",
-                    label="준비기 output_columns", state="derived", tier=TIER_STRUCTURAL,
+                    label="Preparer output_columns", state="derived", tier=TIER_STRUCTURAL,
                     # The MAPPING, not the name list: `filled_declaration` writes a derived
                     # value into the file, and `_column_types` refuses anything that is not
                     # `{column: type}` -- a list of names here would fill the square with a
@@ -1142,10 +1142,10 @@ def _implementation_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
                     disposition="grammar_requires_it",
                     ground=Ground(
                         "preparer_output_columns_from_implementation",
-                        "채움: %s가 내는 컬럼 %d개 · 다르면 실행이 거절"
+                        "Filled: %s emits %d columns · a different list is refused at run"
                         % (preparation.get("implementation_id"), len(said)),
                         (f"{prep_base}.implementation_id",), dict(said)),
-                    note="구현이 밝힌 산출 컬럼.",
+                    note="The output columns the implementation states.",
                 )
             else:
                 # NOT a derived value.  The relation's columns are what this field may not
@@ -1153,15 +1153,15 @@ def _implementation_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
                 # `output_column_collision` refuses.
                 yield Field(
                     path=f"{prep_base}.output_columns", step="sources",
-                    label="준비기 output_columns",
+                    label="Preparer output_columns",
                     state="answered" if names else "unanswered", tier=TIER_CONSTRAINED,
                     value=names, declared=names if names else _ABSENT,
                     forbidden=tuple(physical),
                     ground=Ground(
                         "preparer_output_collision_from_relation",
-                        f"제한: relation {relation}의 컬럼 {len(physical)}개와 이름이 겹칠 수 없음",
+                        f"Limit: no name may repeat one of the {len(physical)} columns of relation {relation}",
                         (f"{PHYSICAL_CATALOG_FILENAME}:{relation}",), list(physical)),
-                    note="준비기가 새로 만드는 컬럼 이름. 물리 표에 있는 이름은 쓸 수 없다.",
+                    note="Names of the columns the preparer adds. A name the table already has is not allowed.",
                 )
         inherited = _listed(preparation.get("inherit_virtual_join_rules"))
         # 🔴 IS THIS DECLARATION EVEN NEEDED -- ASKED BEFORE IT WAS WIRED.  Measured
@@ -1189,9 +1189,9 @@ def _implementation_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
             declared=preparation.get("accepts_verified_join_rules", _ABSENT),
             ground=Ground(
                 "accepts_join_rules_from_inheritance",
-                f"채움: 소스 {source_id}가 join rule {len(inherited)}건 상속"
+                f"Filled: source {source_id} inherits {len(inherited)} join rules"
                 if inherited else
-                f"기본값: 소스 {source_id}가 상속하는 join rule 없음 → false",
+                f"Default: source {source_id} inherits no join rule -> false",
                 (f"{prep_base}.inherit_virtual_join_rules",), bool(inherited)),
         )
 
@@ -1199,8 +1199,8 @@ def _implementation_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
         mapper = _mapper(source)
         base = f"bundle.sources.{source_id}.map"
         yield from _implementation_clause_fields(
-            base, mapper, mappers, mapper_ids, "매퍼 구현",
-            "맨 앞은 코드 없이 선언만으로 도는 구현 · " + NEW_IMPLEMENTATION_NOTE)
+            base, mapper, mappers, mapper_ids, "Mapper implementation",
+            "The first one runs on the declaration alone, with no code · " + NEW_IMPLEMENTATION_NOTE)
         # `emits` was a `derived` row here until 2026-08-21 -- set equality in BOTH
         # directions, zero degrees of freedom.  A field the screen fills and never asks is
         # still a field the file carries, so this round removed the declaration instead:
@@ -1219,7 +1219,7 @@ def _implementation_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
             declared_mapper_inputs = mapper_inputs if mapper_inputs else _ABSENT
             yield Field(
                 path=f"{base}.input_columns", step="sources",
-                label="매퍼 input_columns", state="derived", tier=TIER_DERIVATION,
+                label="Mapper input_columns", state="derived", tier=TIER_DERIVATION,
                 value=_with_required_columns(
                     [name for name in prepared if name not in locked_all],
                     mapper, profile, profile_base),
@@ -1228,9 +1228,9 @@ def _implementation_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
                 declared=declared_mapper_inputs,
                 ground=Ground(
                     "mapper_inputs_from_prepared_frame_minus_locked",
-                    f"기본값: 준비 뒤 프레임 컬럼 {len(prepared)}개 중 "
-                    f"read가 이미 읽는 {len(map_locked)}개를 뺀 나머지 "
-                    f"(relation {relation} + 준비기 output_columns)",
+                    f"Default: the {len(prepared)} prepared frame columns minus the "
+                    f"{len(map_locked)} that read already reads "
+                    f"(relation {relation} + preparer output_columns)",
                     (f"{PHYSICAL_CATALOG_FILENAME}:{relation}",
                      f"{prep_base}.output_columns"),
                     _with_required_columns(
@@ -1254,12 +1254,12 @@ def _implementation_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
                 # off is harmless: `base_select_columns` already drops mapper inputs that
                 # are preparer outputs, so it never widens the physical SELECT either way.
                 locked=map_locked,
-                note="잠김 = read가 이미 읽는 컬럼 · 나머지 토글",
+                note="Locked = columns read already reads · the rest toggle",
             )
         unit = mapper.get("unit") if isinstance(mapper.get("unit"), Mapping) else {}
         kind = unit.get("kind")
         yield Field(
-            path=f"{base}.unit.kind", step="sources", label="매퍼 단위",
+            path=f"{base}.unit.kind", step="sources", label="Mapper unit",
             state="answered" if kind else "missing", tier=TIER_CONSTRAINED,
             value=kind, declared=kind if kind else _ABSENT,
             candidates=tuple(sorted(_MAPPER_UNITS)),
@@ -1278,8 +1278,8 @@ def _implementation_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
                 tier=TIER_CONSTRAINED,
                 value=columns, declared=columns if columns else _ABSENT,
                 candidates=tuple(derived_inputs),
-                note="소스 read.group_by와 같게 · "
-                     f"{', '.join(str(key) for key in group_by) or '없음'}",
+                note="Same as the source's read.group_by · "
+                     f"{', '.join(str(key) for key in group_by) or 'none'}",
             )
 
 
@@ -1330,11 +1330,11 @@ def _profile_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
         # button that answers it.  No control is added; the refusal is given the square the
         # screen was already drawing.
         yield Field(
-            path=f"{base}.mappings", step="sources", label="문장",
+            path=f"{base}.mappings", step="sources", label="Sentences",
             state="answered" if sentences else "missing", tier=TIER_CONSTRAINED,
             value=[sentence for sentence, _ in sentences],
             declared=[sentence for sentence, _ in sentences] if sentences else _ABSENT,
-            note="아래 「+ 매핑」으로 문장을 하나 이상 추가",
+            note="Add one or more sentences with + Mapping below",
         )
         # 🔴 판정 179 ⓑ. A TIME role's binding is IGNORED by the compiler -- always, not
         # only where a basis is declared (`roleframe`, ruled 2026-08-23: the instant comes
@@ -1375,23 +1375,23 @@ def _mapping_fields(base: str, sentence: str, mapping: Mapping[str, Any],
                  if isinstance(predicate_id, str) else None)
     if not isinstance(predicate, Mapping):
         yield Field(
-            path=f"{mpath}.predicate", step="sources", label="낱말",
+            path=f"{mpath}.predicate", step="sources", label="Predicate",
             state="missing", tier=TIER_CONSTRAINED,
             value=predicate_id, declared=predicate_id,
             candidates=tuple(sorted(
                 name for name, item in vocabulary.items()
                 if isinstance(item, Mapping) and item.get("status") == "active")),
-            note="이 문장이 말하는 낱말. 고르면 아래 역할 칸이 깔린다.",
+            note="The predicate this sentence states. Picking one lays out the role squares below.",
         )
         return
     yield Field(
-        path=f"{mpath}.predicate", step="sources", label="낱말",
+        path=f"{mpath}.predicate", step="sources", label="Predicate",
         state="answered", tier=TIER_CONSTRAINED,
         value=predicate_id, declared=predicate_id,
         candidates=tuple(sorted(
             name for name, item in vocabulary.items()
             if isinstance(item, Mapping) and item.get("status") == "active")),
-        note="retired 낱말은 후보에서 빠진다.",
+        note="Retired predicates are not candidates.",
     )
     # The screen lays out one row per slot the predicate forces, and since S-52 an
     # object-less predicate forces one per attribute its subject types declare - so the
@@ -1403,12 +1403,12 @@ def _mapping_fields(base: str, sentence: str, mapping: Mapping[str, Any],
 
     # The row set itself is derived: which roles exist is the predicate's business.
     yield Field(
-        path=f"{mpath}.bind", step="sources", label="결선할 역할",
+        path=f"{mpath}.bind", step="sources", label="Roles to bind",
         state="derived", tier=TIER_DERIVATION,
         value=sorted(roles, key=str),
         ground=Ground(
             "bind_rows_from_predicate",
-            f"채움: 낱말 {predicate_id}이 요구하는 역할 {len(roles)}개",
+            f"Filled: the {len(roles)} roles predicate {predicate_id} requires",
             (f"bundle.vocabulary.{predicate_id}",),
             sorted(roles, key=str)),
         disposition="shape",
@@ -1429,17 +1429,17 @@ def _mapping_fields(base: str, sentence: str, mapping: Mapping[str, Any],
                              if isinstance(declared, Mapping) else None)
             yield Field(
                 path=f"{mpath}.bind.{role_id}", step="sources",
-                label=f"역할 {role_id}", state="derived", tier=TIER_DERIVATION,
+                label=f"Role {role_id}", state="derived", tier=TIER_DERIVATION,
                 value=time_basis,
                 ground=Ground(
                     "time_from_source_basis",
-                    f"채움: 이 소스의 시각은 read.occurred_at.basis={time_basis!r} "
-                    f"가 정합니다",
+                    f"Filled: this source's time is set by "
+                    f"read.occurred_at.basis={time_basis!r}",
                     (f"bundle.sources.{source_id}.read.occurred_at",),
                     time_basis),
                 disposition="shape",
-                note=(f"이 칸은 읽히지 않습니다"
-                      + (f" — 적혀 있는 {declared_cell!r} 도 무시됩니다"
+                note=(f"This square is not read"
+                      + (f" - the {declared_cell!r} written here is ignored too"
                          if declared_cell else "")),
             )
             continue
@@ -1448,7 +1448,7 @@ def _mapping_fields(base: str, sentence: str, mapping: Mapping[str, Any],
         if not isinstance(binding, Mapping):
             yield Field(
                 path=f"{mpath}.bind.{role_id}", step="sources",
-                label=f"역할 {role_id}",
+                label=f"Role {role_id}",
                 state="missing" if required else "unanswered",
                 tier=TIER_CONSTRAINED,
                 candidates=tuple(role_binding_kinds(role)),
@@ -1462,7 +1462,7 @@ def _mapping_fields(base: str, sentence: str, mapping: Mapping[str, Any],
             continue
         yield Field(
             path=f"{mpath}.bind.{role_id}.kind", step="sources",
-            label=f"역할 {role_id} 결선 종류",
+            label=f"Role {role_id} binding kind",
             state="answered" if binding.get("kind") else "missing",
             tier=TIER_CONSTRAINED, value=binding.get("kind"),
             declared=binding.get("kind"),
@@ -1471,7 +1471,7 @@ def _mapping_fields(base: str, sentence: str, mapping: Mapping[str, Any],
         if role.get("kind") == "symbolic" and binding.get("kind") == "constant":
             yield Field(
                 path=f"{mpath}.bind.{role_id}.value", step="sources",
-                label=f"역할 {role_id} 상수",
+                label=f"Role {role_id} constant",
                 state="answered" if binding.get("value") else "missing",
                 tier=TIER_CONSTRAINED, value=binding.get("value"),
                 declared=binding.get("value"),
@@ -1488,7 +1488,7 @@ def _mapping_fields(base: str, sentence: str, mapping: Mapping[str, Any],
         if binding.get("kind") == "column":
             yield Field(
                 path=f"{mpath}.bind.{role_id}.column", step="sources",
-                label=f"역할 {role_id} 컬럼",
+                label=f"Role {role_id} column",
                 state="answered" if binding.get("column") else "missing",
                 tier=TIER_CONSTRAINED, value=binding.get("column"),
                 declared=binding.get("column"),
@@ -1501,12 +1501,12 @@ def _mapping_fields(base: str, sentence: str, mapping: Mapping[str, Any],
         if role_id not in roles:
             yield Field(
                 path=f"{mpath}.bind.{role_id}", step="sources",
-                label=f"역할 {role_id}", state="missing", tier=TIER_DIAGNOSTIC,
+                label=f"Role {role_id}", state="missing", tier=TIER_DIAGNOSTIC,
                 candidates=tuple(sorted(roles, key=str)),
                 refusals=({
                     "code": "unknown_role", "path": f"{mpath}.bind.{role_id}",
                     "message": f"role {role_id!r} is not declared by Claim"},),
-                note="Claim이 선언하지 않은 역할.",
+                note="A role Claim does not declare.",
             )
 
 
@@ -1515,7 +1515,7 @@ def _entity_binding_fields(path: str, binding: Mapping[str, Any],
                            ) -> Iterable[Field]:
     entity_type = binding.get("entity_type")
     yield Field(
-        path=f"{path}.entity_type", step="sources", label="엔터티 타입",
+        path=f"{path}.entity_type", step="sources", label="Entity type",
         state="answered" if entity_type else "missing", tier=TIER_CONSTRAINED,
         value=entity_type, declared=entity_type if entity_type else _ABSENT,
         candidates=tuple(sorted(entities, key=str)),
@@ -1539,7 +1539,7 @@ def _entity_binding_fields(path: str, binding: Mapping[str, Any],
     # ① 오늘의 발단.  The validator demands SET EQUALITY with the entity's keys, so the
     # only remaining question is which column supplies each key.
     yield Field(
-        path=f"{path}.keys", step="sources", label="식별키 이름",
+        path=f"{path}.keys", step="sources", label="Identity key names",
         state="derived", tier=TIER_STRUCTURAL,
         # Set equality is the rule (`_binding_refs`), so both sides are compared sorted:
         # a differing ORDER is not a defect and must not render as a conflict.
@@ -1548,9 +1548,9 @@ def _entity_binding_fields(path: str, binding: Mapping[str, Any],
         if isinstance(declared_keys, Mapping) else _ABSENT,
         ground=Ground(
             "entity_binding_keys_from_entity",
-            f"채움: {entity_type}의 식별키",
+            f"Filled: the identity keys of {entity_type}",
             (f"bundle.entities.{entity_type}.keys",), list(keys)),
-        note="각 키에 어느 컬럼인지만 아래에서 고르세요",
+        note="Pick only which column feeds each key below",
         disposition="shape",
     )
     for key in keys:
@@ -1558,7 +1558,7 @@ def _entity_binding_fields(path: str, binding: Mapping[str, Any],
         column = child.get("column") if isinstance(child, Mapping) else None
         yield Field(
             path=f"{path}.keys.{key}.column", step="sources",
-            label=f"키 {key} 공급 컬럼",
+            label=f"Key {key} column",
             state="answered" if column else "unanswered", tier=TIER_CONSTRAINED,
             value=column, declared=column if column else _ABSENT,
             candidates=tuple(available), universe=UNIVERSE_PREPARED,
@@ -1593,12 +1593,12 @@ def _attribute_binding_fields(path: str, entity_type: str, declared: Sequence[An
     held = bound if isinstance(bound, Mapping) else {}
     if names:
         yield Field(
-            path=f"{path}.attributes", step="sources", label="속성",
+            path=f"{path}.attributes", step="sources", label="Attributes",
             state="derived", tier=TIER_STRUCTURAL,
             value=names,
             ground=Ground(
                 "entity_binding_attributes_from_entity",
-                f"채움: {entity_type}의 속성",
+                f"Filled: the attributes of {entity_type}",
                 (f"bundle.entities.{entity_type}.attributes",), names),
             disposition="shape",
         )
@@ -1608,7 +1608,7 @@ def _attribute_binding_fields(path: str, entity_type: str, declared: Sequence[An
     for name in sorted({*names, *(str(key) for key in held)}, key=str):
         yield Field(
             path=f"{path}.attributes.{name}", step="sources",
-            label=f"속성 {name}",
+            label=f"Attribute {name}",
             state="answered" if name in held else "unanswered",
             tier=TIER_CONSTRAINED,
             value=held.get(name),
@@ -1693,11 +1693,11 @@ def _source_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
             state="answered" if relation else "missing", tier=TIER_CONSTRAINED,
             value=relation, declared=relation if relation else _ABSENT,
             candidates=tuple(sorted(catalog, key=str)),
-            note=f"후보의 출처는 {PHYSICAL_CATALOG_FILENAME}. 없으면 거기서 먼저 선언한다.",
+            note=f"Candidates come from {PHYSICAL_CATALOG_FILENAME}. Declare a missing one there first.",
         )
         unit = driver.get("unit")
         yield Field(
-            path=f"{base}.read.unit", step="sources", label="단위",
+            path=f"{base}.read.unit", step="sources", label="Unit",
             state="answered" if unit else "missing", tier=TIER_CONSTRAINED,
             value=unit, declared=unit if unit else _ABSENT,
             candidates=tuple(sorted(_SOURCE_UNITS)),
@@ -1717,9 +1717,9 @@ def _source_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
                 if "group_by" in driver else _ABSENT,
                 ground=Ground(
                     "group_by_absent_for_row_unit",
-                    "채움: unit=row → group_by 없음",
+                    "Filled: unit=row -> no group_by",
                     (f"{base}.read.unit",), "row"),
-                note="unit=row면 이 칸 자체가 없다.",
+                note="With unit=row this square does not exist.",
             )
         elif unit == "group":
             group_by = list(_listed(driver.get("group_by")))
@@ -1752,9 +1752,9 @@ def _source_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
                 disposition="default_overridable" if filling else "",
                 ground=Ground(
                     "group_by_default_from_identity",
-                    f"기본값: identity {', '.join(str(key) for key in identity)}",
+                    f"Default: identity {', '.join(str(key) for key in identity)}",
                     (f"{base}.read.identity",), list(identity)) if filling else None,
-                note="후보는 identity로 제한된다.",
+                note="Candidates are limited to identity.",
             )
         table = catalog.get(relation) if isinstance(relation, str) else None
         unique_keys = declared_unique_keys(table) if isinstance(table, Mapping) else ()
@@ -1773,7 +1773,7 @@ def _source_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
                 declared=list(_listed(declared)) if declared is not None else _ABSENT,
                 ground=Ground(
                     "ordering_default_from_catalog_key",
-                    f"기본값: {PHYSICAL_CATALOG_FILENAME}의 {relation} 선언 키 "
+                    f"Default: the declared key of {relation} in {PHYSICAL_CATALOG_FILENAME} "
                     f"{list(shortest)}",
                     (f"{PHYSICAL_CATALOG_FILENAME}:{relation}",),
                     [list(key) for key in unique_keys]),
@@ -1784,8 +1784,8 @@ def _source_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
                 # printed on the operator's form, where it reads as a warning about
                 # something they cannot act on.  The default is IN the boxes; the only
                 # thing left to say is that it can be changed and how.
-                note=f"기본 {', '.join(str(key) for key in shortest)}"
-                     " · 바꾸려면 고르세요",
+                note=f"Default {', '.join(str(key) for key in shortest)}"
+                     " · pick to change",
             )
         occurred = driver.get("occurred_at")
         occurred = occurred if isinstance(occurred, Mapping) else {}
@@ -1815,7 +1815,7 @@ def _source_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
         zone = (zone.strip() if isinstance(zone, str) and zone.strip()
                 else timezone_default)
         yield Field(
-            path=f"{base}.read.occurred_at", step="sources", label="시각",
+            path=f"{base}.read.occurred_at", step="sources", label="Time",
             state="answered" if answered else "missing", tier=TIER_CONSTRAINED,
             value=dict(occurred) if occurred else None,
             declared=dict(occurred) if occurred else _ABSENT,
@@ -1826,15 +1826,15 @@ def _source_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
             universe=UNIVERSE_RELATION,
             ground=Ground(
                 "occurred_at_candidates_from_column_types",
-                (f"제한: {relation}에 시각으로 읽을 컬럼 없음 → basis만"
+                (f"Limit: {relation} has no column to read as a time -> basis only"
                  if narrowed
-                 else f"후보: {relation}의 시각으로 읽을 컬럼 {len(time_columns)}개 + basis"),
+                 else f"Candidates: {len(time_columns)} columns of {relation} readable as a time + basis"),
                 (f"{PHYSICAL_CATALOG_FILENAME}:{relation}",), list(time_columns)),
             # 🔴 A PENDING RULING IS NOT A FORM FIELD'S BUSINESS.  This said which question
             # was still open and named the task file holding it -- true, and useless to
             # somebody filling the box, who cannot act on either.  What is left is the one
             # rule that changes what they press.
-            note="column · basis 중 하나만 고르세요",
+            note="Pick one of column · basis",
         )
         # 🔴 THE SQUARE THE TIMEZONE REFUSAL LANDS ON.  Filling it from the picker above is
         # only half: the validator refuses at `…occurred_at.timezone`, and with no row at
@@ -1848,7 +1848,7 @@ def _source_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
         answered_zone = isinstance(declared_zone, str) and bool(declared_zone.strip())
         yield Field(
             path=f"{base}.read.occurred_at.timezone", step="sources",
-            label="시각 timezone",
+            label="Time zone",
             state="answered" if answered_zone else "missing", tier=TIER_CONSTRAINED,
             value=declared_zone if answered_zone else None,
             declared=declared_zone if answered_zone else _ABSENT,
@@ -1856,7 +1856,7 @@ def _source_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
             # plus the default -- no IANA table is shipped and none is enforced, so a site
             # outside Seoul types it once and every later source is offered that answer.
             candidates=timezone_candidates,
-            note="시각을 고르면 함께 채워짐 · 다르면 직접 입력",
+            note="Filled with the time · type another if it differs",
         )
         probes = _listed(driver.get("registration_probe"))
         single_key = tuple(sorted(
@@ -1880,17 +1880,17 @@ def _source_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
         if registers or probes:
             yield Field(
                 path=f"{base}.read.registration_probe", step="sources",
-                label="등록 탐침",
+                label="Registration probe",
                 state="answered" if probes else "missing", tier=TIER_CONSTRAINED,
                 value=[dict(probe) for probe in probes if isinstance(probe, Mapping)],
                 declared=list(probes) if probes else _ABSENT,
                 ground=Ground(
                     "registration_probe_required_by_register_sentences",
-                    f"필요: 이 소스의 register 문장 {len(registers)}개 "
-                    f"({', '.join(sentence for sentence, _ in registers) or '없음'})",
+                    f"Needed: this source has {len(registers)} register sentences "
+                    f"({', '.join(sentence for sentence, _ in registers) or 'none'})",
                     tuple(f"{base}.bind.mappings.{sentence}"
                           for sentence, _ in registers) or (base,)),
-                note="register 문장이 있으면 필수 · 없으면 백필이 통째로 거절",
+                note="Required when there is a register sentence · without it the whole backfill is refused",
             )
         for probe_index, probe in enumerate(probes):
             if not isinstance(probe, Mapping):
@@ -1898,12 +1898,12 @@ def _source_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
             ppath = f"{base}.read.registration_probe[{probe_index}]"
             yield Field(
                 path=f"{ppath}.entity_type",
-                step="sources", label="등록 탐침 엔터티",
+                step="sources", label="Registration probe entity",
                 state="answered" if probe.get("entity_type") else "missing",
                 tier=TIER_CONSTRAINED, value=probe.get("entity_type"),
                 declared=probe.get("entity_type"),
                 candidates=probe_entities,
-                note="register 문장이 등록하는 엔터티 · 식별키 1개",
+                note="The entity a register sentence registers · one identity key",
             )
             columns = list(_listed(probe.get("columns")))
             # 🔴 RELATION, NOT PREPARED, AND THE SAME REFUSAL SAYS SO.  The probe is asked
@@ -1912,11 +1912,11 @@ def _source_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
             # `unknown_column ... has no column`, which is exactly the refusal a person
             # gets today for typing the binding's spelling from memory.
             yield Field(
-                path=f"{ppath}.columns", step="sources", label="등록 탐침 컬럼",
+                path=f"{ppath}.columns", step="sources", label="Registration probe columns",
                 state="answered" if columns else "missing", tier=TIER_CONSTRAINED,
                 value=columns, declared=columns if columns else _ABSENT,
                 candidates=tuple(physical), universe=UNIVERSE_RELATION,
-                note="준비 전에 묻기 때문에 물리 표 컬럼만",
+                note="Asked before preparation, so table columns only",
             )
             # 🔴 `list_separator` GETS NO ROW HERE, AND THE MEASUREMENT IS WHY.  It reads
             # like the obvious third row -- `waferids` is `:`-separated and probing the

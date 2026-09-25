@@ -155,7 +155,7 @@ def test_the_numbers_never_travel_without_the_sentence_that_says_what_they_are()
     "how many are in the ledger", it is wrong and looks authoritative."""
     view = admin.ingestion_view(_Cursor({"alive": wrote()}), declared=["alive"])
     assert view["note"], "the numbers shipped bare"
-    assert "번역기" in view["note"] and "재건" in view["note"], view["note"]
+    assert "translator" in view["note"] and "rebuilding" in view["note"], view["note"]
 
 
 def test_it_reads_the_cursor_table_and_not_the_ledger():

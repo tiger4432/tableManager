@@ -980,6 +980,18 @@ def rows_not_yet_translated(engine, setup, source, *, exact_rows=True):
 #: crowding the database at 2am edits a cell there rather than a constant.
 ROW_CENSUS_JOB = "ledger_row_census"
 
+#: What each census word is CALLED on a screen, shipped beside the census on
+#: `/api/ledger/declaration` the way `SOURCE_STATES` ships the state names (lead bed890af2).
+#: Keys are the census's own cells and its refusal code (`_loader_refusal`); a screen draws
+#: the name and falls back to the key. English because it reaches the screen.
+CENSUS_NAMES = {
+    "relation_rows": "Table rows",
+    "indexed_rows": "Indexed",
+    "not_yet": "Not yet",
+    "measured_at": "Measured",
+    "source_refused": "Refused by the loader",
+}
+
 
 def measure_row_census(engine, setup, source, now=None, *, exact_rows=True):
     """One source's census, STAMPED -- what was counted, how, and when.

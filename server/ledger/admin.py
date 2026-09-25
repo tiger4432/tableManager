@@ -84,17 +84,17 @@ def check_identifier(value, field) -> list:
     text = "" if value is None else str(value)
     if not text.strip():
         return [violation("invalid_identifier", field,
-                          f"{field}가 비었습니다.", f"{field} is blank")]
+                          f"{field} is blank.", f"{field} is blank")]
     if len(text) > IDENTIFIER_MAX:
         return [violation("invalid_identifier", field,
-                          f"{field}('{text}')가 {IDENTIFIER_MAX}자를 넘습니다.",
+                          f"{field} ('{text}') is longer than {IDENTIFIER_MAX} characters.",
                           f"{field} exceeds {IDENTIFIER_MAX} characters")]
     if not IDENTIFIER_RE.match(text):
         return [violation(
             "invalid_identifier", field,
-            f"{field}('{text}')는 SQL 식별자 규칙에 맞지 않습니다 — 소문자·숫자·밑줄만 "
-            f"쓰고 문자나 밑줄로 시작해야 합니다. 이 이름은 질의에 **그대로** 박히는 "
-            f"자리라 따옴표로 감싸지 않습니다.",
+            f"{field} ('{text}') is not a bare SQL identifier - lowercase letters, digits "
+            f"and underscores only, starting with a letter or an underscore. The name goes "
+            f"into the query exactly as written, so it is never quoted.",
             f"{field} {text!r} is not a bare SQL identifier")]
     return []
 
@@ -214,7 +214,7 @@ def check_source_declaration(db, source: str, declaration: dict) -> list:
 
     out = []
     if not isinstance(declaration, dict):
-        return [violation("declaration_rejected", None, "선언은 객체여야 합니다.",
+        return [violation("declaration_rejected", None, "The declaration must be an object.",
                           "declaration must be an object")]
 
     # ---- 🔴 FIRST: the source table must be one `table_config.json` declares (owner,
@@ -226,19 +226,18 @@ def check_source_declaration(db, source: str, declaration: dict) -> list:
     if source not in declared_tables():
         return [violation(
             "undeclared_table", "source",
-            f"'{source}'은 `table_config.json`에 선언되지 않은 테이블입니다. 먼저 거기 "
-            f"선언하세요 — 선언되지 않은 테이블은 키 컬럼도 인제션도 체인도 없어서, "
-            f"원장에 이으면 시스템의 나머지가 지목할 수 없는 행에 대한 원자를 만들게 "
-            f"됩니다.",
+            f"'{source}' is not declared in `table_config.json`. Declare it there first - "
+            f"an undeclared table has no key columns, no ingestion and no chain, so atoms "
+            f"about its rows would name something nothing else can point at.",
             f"{source!r} is not declared in table_config.json")]
 
     kind = declaration.get("kind", ledger_config.SOURCE_KIND_LINEAGE)
     if kind not in ledger_config.SOURCE_KINDS:
         return [violation(
             "unsupported_kind", "kind",
-            f"kind '{kind}'는 번역기가 없는 종류입니다. 지금 실행할 수 있는 문법은 "
-            f"{', '.join(sorted(ledger_config.SOURCE_KINDS))}뿐입니다. 어느 문법에도 안 "
-            f"맞으면 억지로 밀어 넣지 말고 새 kind 판정으로 올려야 합니다.",
+            f"kind '{kind}' has no translator. The grammars that run today are "
+            f"{', '.join(sorted(ledger_config.SOURCE_KINDS))}. If none fits, raise a new "
+            f"kind for a ruling rather than forcing it into one.",
             f"kind {kind!r} has no translator")]
 
     # ---- SQL 식별자: 참조 무결보다 먼저. 규칙에 안 맞는 이름을 information_schema에
@@ -278,8 +277,8 @@ def check_source_declaration(db, source: str, declaration: dict) -> list:
                 missing_relations.add(str(value))
                 out.append(violation(
                     "unknown_relation", field,
-                    f"'{value}' 테이블이 현재 스키마에 없습니다. 먼저 테이블을 만들거나 "
-                    f"(파일 인제션 화면 소관) 이름을 확인하세요.",
+                    f"Table '{value}' is not in the current schema. Create it first "
+                    f"(the file ingestion screen does that) or check the name.",
                     f"relation {value!r} does not exist"))
             continue
         target = str(relation) if relation else str(source)
@@ -291,7 +290,7 @@ def check_source_declaration(db, source: str, declaration: dict) -> list:
         if str(value) not in known:
             out.append(violation(
                 "unknown_column", field,
-                f"'{target}'에 '{value}' 컬럼이 없습니다.",
+                f"'{target}' has no column '{value}'.",
                 f"column {value!r} not found on {target!r}"))
 
     # ---- 주어 타입: «선언»이 소유한다. `validate`가 이미 물지만, 사유 코드가 화면에
@@ -305,7 +304,7 @@ def check_source_declaration(db, source: str, declaration: dict) -> list:
         if _bare(member) not in declared_types:
             out.append(violation(
                 "undeclared_entity_type", "subject_types",
-                f"'{member}'는 선언된 개체 타입이 아닙니다.",
+                f"'{member}' is not a declared entity type.",
                 f"{member!r} is not a declared entity type"))
 
     # ---- 번역기 ↔ 선언의 `vocabulary` 섹션 결합.  문법이 맞는 선언도 번역기가
@@ -322,7 +321,7 @@ def check_source_declaration(db, source: str, declaration: dict) -> list:
             "translator_vocabulary_mismatch",
             issue.get("configured_by") or "vocabulary",
             issue.get("detail_ko") or
-            f"번역기가 발화할 '{predicate}' 원자가 선언의 서명과 맞지 않습니다.",
+            f"The '{predicate}' atom the translator emits does not match the declaration's signature.",
             f"translator emission {predicate!r} does not match the live declaration"))
 
     return out
@@ -416,9 +415,9 @@ def source_raw_view(source: str = None) -> dict:
         "sources": sorted(s for s in sources if not str(s).startswith("__")),
         "error": error,
         "editable_unit": "source",
-        "note_ko": "편집 단위는 «소스 하나»입니다. 파일 전체를 덮어쓰면 다른 사람이 방금 "
-                   "선언한 소스가 말없이 사라지기 때문입니다. 저장은 폼과 똑같이 3단"
-                   "(문법 검증 → 드라이런 → 저장)을 거칩니다.",
+        "note_ko": "One source is the unit of editing: overwriting the whole file would "
+                   "silently drop a source someone else just declared. A save takes the "
+                   "same three steps as the form (grammar check -> dry run -> save).",
     }
     # 🔴 [판정 521] 「길이 0 인 문자열은 NULL 이다」 (소유자 2026-09-11). `?source=` arrives as
     #   `''`, which `is not None` reads as A NAME - so the route looked for a source called
@@ -514,11 +513,11 @@ def save_table_config_raw(table: str, declaration, base: str) -> dict:
     """
     if not isinstance(table, str) or not table.strip():
         raise _table_config_refusal("table_name_required", "table",
-                                    "저장할 표 이름이 없습니다")
+                                    "No table name to save")
     if not isinstance(declaration, dict):
         raise _table_config_refusal(
             "declaration_not_object", f"tables.{table}",
-            "표 등록은 JSON 객체여야 합니다")
+            "A table registration must be a JSON object")
     # 🔴 `column_types` IS READ AS A MAPPING AT BOOT AND NOWHERE ELSE CHECKS IT.
     # `init_dynamic_models` does `table_cfg.get("column_types", {}).items()`, so a list
     # here raises INSIDE the boot path, where `main`'s broad except swallows it: the server
@@ -529,20 +528,20 @@ def save_table_config_raw(table: str, declaration, base: str) -> dict:
             declaration.get("column_types"), dict):
         raise _table_config_refusal(
             "column_types_not_object", f"tables.{table}.column_types",
-            "column_types 는 JSON 객체여야 합니다 (부팅이 이 값을 매핑으로 읽습니다)")
+            "column_types must be a JSON object (boot reads it as a mapping)")
 
     path = table_config_path()
     current_base = file_fingerprint(path)
     if base != current_base:
         raise _table_config_refusal(
             "stale_base", "base",
-            "이 파일이 열어 본 뒤에 바뀌었습니다. 다시 열어 확인한 뒤 저장하십시오")
+            "This file changed after you opened it. Reopen it, check, then save")
 
     document = _read_json(path, {})
     if not isinstance(document, dict):
         raise _table_config_refusal(
             "config_not_object", "table_config.json",
-            "table_config.json 이 JSON 객체가 아닙니다")
+            "table_config.json is not a JSON object")
 
     merged = dict(document)
     merged[table] = declaration
@@ -552,7 +551,7 @@ def save_table_config_raw(table: str, declaration, base: str) -> dict:
     except Exception as exc:                                   # noqa: BLE001
         raise _table_config_refusal(
             "declaration_not_serialisable", f"tables.{table}",
-            f"저장할 수 없는 값이 들어 있습니다: {exc}") from exc
+            f"It holds a value that cannot be saved: {exc}") from exc
 
     backup = _atomic_write(path, merged)
     return {"ok": True, "table": table, "base": file_fingerprint(path),
@@ -733,8 +732,8 @@ def rule_index_named(rules, name):
     if len(found) > 1:
         raise _table_config_refusal(
             "name_claimed_twice", "rules.%s" % name,
-            "같은 규칙 이름이 %d 번 적혀 있습니다 — 어느 쪽도 돌지 않고, 어느 쪽을 뜻하셨는지 "
-            "제품이 알 수 없습니다. 한쪽의 이름을 바꾸십시오" % len(found))
+            "The same rule name is written %d times - neither copy runs, and the product "
+            "cannot tell which one you meant. Rename one of them" % len(found))
     return found[0] if found else None
 
 
@@ -756,22 +755,22 @@ def save_chain_rule_raw(name: str, declaration, base: str) -> dict:
     """
     if not isinstance(name, str) or not name.strip():
         raise _table_config_refusal("rule_name_required", "name",
-                                    "저장할 규칙 이름이 없습니다")
+                                    "No rule name to save")
     if not isinstance(declaration, dict):
         raise _table_config_refusal("declaration_not_object", f"rules.{name}",
-                                    "규칙은 JSON 객체여야 합니다")
+                                    "A rule must be a JSON object")
 
     path = chain_rules_path()
     if base != file_fingerprint(path):
         raise _table_config_refusal(
             "stale_base", "base",
-            "이 파일이 열어 본 뒤에 바뀌었습니다. 다시 열어 확인한 뒤 저장하십시오")
+            "This file changed after you opened it. Reopen it, check, then save")
 
     document = _read_json(path, {})
     if not isinstance(document, dict) or not isinstance(document.get("rules"), list):
         raise _table_config_refusal(
             "config_not_object", "chain_rules.json",
-            "chain_rules.json 이 rules 배열을 가진 객체가 아닙니다")
+            "chain_rules.json is not an object with a rules array")
 
     # 🔴 [판정 556] WHAT THIS SAVE DOES NOT RECOGNISE, IT CARRIES - it does not drop it.
     #   This read `[dict(r) for r in ... if isinstance(r, dict)]`, so any entry in the
@@ -913,10 +912,10 @@ def _rerun_report(before, after):
         after, catalogue.TABLE_CONFIG)
 
     if refused_before or refused_after:
-        return {"why": "이 규칙을 펼치지 못해 다시 돌 것을 세지 못했습니다"}
+        return {"why": "This rule could not be expanded, so what reruns was not counted"}
     if stood_before == stood_after:
-        return {"rows": 0, "why": "규칙이 하던 일이 그대로입니다"}
-    return {"why": "이 변환이 규칙의 실행 모양을 바꿉니다"}
+        return {"rows": 0, "why": "The rule does the same work as before"}
+    return {"why": "This conversion changes how the rule runs"}
 
 
 def convert_chain_rule_grammar(name: str, to: str, dry_run: bool = True,
@@ -942,11 +941,11 @@ def convert_chain_rule_grammar(name: str, to: str, dry_run: bool = True,
     """
     if not isinstance(name, str) or not name.strip():
         raise _table_config_refusal("rule_name_required", "name",
-                                    "변환할 규칙 이름이 없습니다")
+                                    "No rule name to convert")
     if to not in ("unified", "flat"):
         raise _table_config_refusal(
             "grammar_unknown", "to",
-            "문법은 unified 또는 flat 입니다 (받은 값: %r)" % (to,))
+            "The grammar is unified or flat (received: %r)" % (to,))
 
     from chain import rule_shape
 
@@ -956,19 +955,19 @@ def convert_chain_rule_grammar(name: str, to: str, dry_run: bool = True,
     if not isinstance(rules, list):
         raise _table_config_refusal(
             "config_not_object", "chain_rules.json",
-            "chain_rules.json 이 rules 배열을 가진 객체가 아닙니다")
+            "chain_rules.json is not an object with a rules array")
 
     index = rule_index_named(rules, name)
     stored = rules[index] if index is not None else None
     if stored is None:
         raise _table_config_refusal("rule_not_found", "rules.%s" % name,
-                                    "그 이름의 규칙이 파일에 없습니다: %s" % name)
+                                    "No rule by that name in the file: %s" % name)
 
     grammar = grammar_of(stored)
     if grammar is None:
         raise _table_config_refusal(
             "grammar_unreadable", "rules.%s" % name,
-            "이 규칙의 문법을 읽지 못했습니다: %s. 추측해서 바꾸지 않습니다" % name)
+            "This rule's grammar could not be read: %s. Not converting on a guess" % name)
 
     # 🔴 [총괄 e91b96a28] AN OLD-SHAPE JOIN (`derive.join.right_table`) IS MODERNISED ON THIS
     #    SAME DOOR - `on` becomes the source. Done before either direction, so 「to flat」 does
@@ -987,7 +986,7 @@ def convert_chain_rule_grammar(name: str, to: str, dry_run: bool = True,
         #    fear a button that is idempotent.
         return {"ok": True, "name": name, "from": grammar, "to": to,
                 "changed": False, "saved": False,
-                "why": "이 규칙은 이미 %s 문법입니다" % to}
+                "why": "This rule is already in the %s grammar" % to}
 
     answer = {"ok": True, "name": name, "from": grammar, "to": to,
               "changed": True, "declaration": converted,
@@ -1012,8 +1011,8 @@ def convert_chain_rule_grammar(name: str, to: str, dry_run: bool = True,
     if not isinstance(base, str) or not base.strip():
         raise _table_config_refusal(
             "base_required", "base",
-            "이 규칙을 «다시 열고» 저장하십시오 — 연 뒤에 파일이 바뀌었는지 가릴 수 없는 "
-            "상태라 저장하지 않았습니다")
+            "Reopen this rule and save again - without its fingerprint the product cannot "
+            "tell whether the file changed after you opened it, so nothing was saved")
 
     saved = save_chain_rule_raw(name, converted, base)
     answer["saved"] = True
@@ -1036,17 +1035,17 @@ def parse_raw_declaration(raw: str):
     except ValueError as exc:
         line = getattr(exc, "lineno", None)
         column = getattr(exc, "colno", None)
-        where = f" ({line}행 {column}열)" if line else ""
+        where = f" (line {line}, column {column})" if line else ""
         return None, violation(
             "declaration_rejected", "raw",
-            f"JSON을 읽지 못했습니다{where}: {exc.msg if hasattr(exc, 'msg') else exc}. "
-            f"드라이런을 돌릴 수 없으니 저장도 하지 않습니다 — 파싱되지 않는 선언은 "
-            f"무엇을 낳을지 보여 줄 수가 없습니다.",
+            f"The JSON could not be read{where}: {exc.msg if hasattr(exc, 'msg') else exc}. "
+            f"Without a dry run there is no save - a declaration that does not parse cannot "
+            f"show what it would produce.",
             f"raw declaration is not valid JSON: {exc}")
     if not isinstance(parsed, dict):
         return None, violation(
             "declaration_rejected", "raw",
-            "선언은 JSON 객체여야 합니다(배열이나 값이 아니라).",
+            "The declaration must be a JSON object (not an array or a value).",
             "raw declaration must be a JSON object")
     return parsed, None
 
@@ -1155,9 +1154,9 @@ def check_base(path: str, base: str):
         return None
     return violation(
         "stale_base", None,
-        "이 파일은 당신이 연 뒤에 바뀌었습니다 — 다른 사람이 먼저 저장했거나 파일이 직접 "
-        "편집됐습니다. 지금 저장하면 그 변경이 «말없이» 사라집니다(config 파일은 설계상 "
-        "git 이력이 없어 되돌릴 수 없습니다). 다시 읽어 편집 내용을 얹은 뒤 저장하세요.",
+        "This file changed after you opened it - someone saved first or it was edited "
+        "directly. Saving now would silently drop that change (config files have no git "
+        "history by design, so it cannot be undone). Reload, reapply your edit, then save.",
         f"base fingerprint {base} does not match current {current}")
 
 
@@ -1178,10 +1177,10 @@ def save_source(source: str, declaration: dict) -> dict:
 # ---------------------------------------------------------------------------
 
 KIND_LABELS = {
-    "lineage": "랏 이벤트 — 행 쌍 하나가 한 사건(분할·병합·트랙인)",
-    "observation": "관측 — 한 행이 한 발화(보이드·박리 등 불량 관측)",
-    "transfer": "이동 — 한 그룹(잡 런)이 한 사건(DT 픽킹·본딩)",
-    "declared": "선언형 — 한 행이 «선언한 대로» 원자 1~N개(대장·참조표. 코드 0줄)",
+    "lineage": "Lot event - one row pair is one event (split, merge, track-in)",
+    "observation": "Observation - one row is one utterance (a defect finding such as a void)",
+    "transfer": "Transfer - one group (a job run) is one event (DT picking, bonding)",
+    "declared": "Declared - one row gives 1..N atoms as declared (registers, reference tables; no code)",
 }
 
 
@@ -1228,23 +1227,24 @@ def kinds_view() -> list:
          # 쓰는 것만으로 빌드가 빨개진다. 규칙을 쓰는 사람만이 답을 안다.
          "classes": [
              {"value": ledger_config.EMIT_CLASS_OBSERVATION, "rank": 2,
-              "label_ko": "관측 — 이 행이 그렇게 «말했다»",
-              "help_ko": "원자의 내용이 눈앞의 행에서 왔습니다. 번역기는 모양만 바꿨고 "
-                         "행에 없던 것을 더하지 않았습니다."},
+              "label_ko": "Observation - this row said so",
+              "help_ko": "The atom's content came from the row itself. The translator only "
+                         "changed its shape and added nothing the row did not hold."},
              {"value": ledger_config.EMIT_CLASS_INFERENCE, "rank": 3,
-              "label_ko": "추론 — 행이 말하지 않은 «규칙»에 기댄다",
-              "help_ko": "원자의 내용이 관례·기본값·규칙에서 왔습니다. 나중에 실측이 "
-                         "나오면 그 실측이 «자동으로» 이깁니다 — 아무도 무언가를 "
-                         "철회하지 않아도."}],
+              "label_ko": "Inference - leans on a rule the row did not state",
+              "help_ko": "The atom's content came from a convention, a default or a rule. "
+                         "When a measurement arrives later it wins automatically - nobody "
+                         "has to retract anything."}],
          "occurred_at_bases": [
              {"value": "claim_time",
-              "label_ko": "주장 시각 — 이 컬럼이 «배정·승인된 순간»이 맞다"},
+              "label_ko": "Claim time - this column is the moment it was assigned or approved"},
              {"value": "row_created",
-              "label_ko": "행 생성 시각 — 승인 시각이 아니라 행이 생긴 때다(그렇게 실린다)"}],
+              "label_ko": "Row created - when the row appeared, not when it was approved"}],
          "column_ref_prefix": ledger_config.COLUMN_REF_PREFIX,
-         "note_ko": "값은 `$컬럼`이면 그 행의 컬럼, 아니면 리터럴입니다(`$$`는 «$» 자체). "
-                    "리스트 열 분해·위치 짝짓기는 이 문법의 범위 밖입니다 — 그건 선언이 "
-                    "아니라 작은 프로그래밍 언어가 됩니다."},
+         "note_ko": "A value written `$column` is that column of the row, anything else is a "
+                    "literal (`$$` is a literal $). Splitting list columns and pairing by "
+                    "position are outside this grammar - that would be a small programming "
+                    "language, not a declaration."},
     ]
 
 
@@ -1257,10 +1257,10 @@ UNSUPPORTED_KINDS = (
     # 하루 차이로 같은 「넷째」 자리를 말했고, 나중 것(브리핑 §6-2 = `declared`)이 정본이라
     # 이 항목은 이름을 유지한 채 미구현으로 남는다.
     {"kind": "derivation",
-     "detail_ko": "원장을 «걸어서» 조건을 평가하는 추론 규칙(3류·근거 원자 필수)은 아직 "
-                  "번역기가 없습니다(판정 R-2026-08-15-M ⑤). 소스 «행»을 선언대로 "
-                  "번역하는 것이 목적이면 그건 `declared` 문법입니다 — 그쪽은 지금 "
-                  "됩니다."},
+     "detail_ko": "Inference rules that walk the ledger to evaluate a condition (class 3, "
+                  "grounding atoms required) have no translator yet (ruling "
+                  "R-2026-08-15-M ⑤). To translate a source's rows as declared, use the "
+                  "`declared` grammar - that one runs today."},
 )
 
 
@@ -1429,8 +1429,10 @@ def ingestion_view(db, declared) -> dict:
                 entry["refusals_unaccounted"] = _unaccounted(
                     {"molecules_refused": row.get("molecules_refused")}, reasons)
             rows.append(entry)
+    from ledger.gate import REFUSAL_REASON_NAMES
     return {"note": INGESTION_NOTE, "sources": rows, "unavailable": unavailable,
-            "states": dict(SOURCE_STATE_MEANINGS), "state_names": dict(SOURCE_STATE_NAMES)}
+            "states": dict(SOURCE_STATE_MEANINGS), "state_names": dict(SOURCE_STATE_NAMES),
+            "reason_names": dict(REFUSAL_REASON_NAMES)}
 
 
 def sources_view(db=None) -> dict:
@@ -1564,10 +1566,10 @@ def relations_view(db, query: str = None, limit: int = 200) -> dict:
         declared_set = set(declared)
         undeclared = [
             {"name": row[0],
-             "detail_ko": f"테이블 미등록 — 먼저 `table_config.json`에 '{row[0]}'을 "
-                          f"선언하세요. 선언되지 않은 테이블은 키 컬럼도 인제션도 없어서, "
-                          f"원장에 이으면 시스템의 나머지가 지목할 수 없는 행에 대한 "
-                          f"원자를 만들게 됩니다."}
+             "detail_ko": f"Table not registered - declare '{row[0]}' in `table_config.json` "
+                          f"first. An undeclared table has no key columns and no ingestion, "
+                          f"so linking it to the ledger would make atoms about rows nothing "
+                          f"else can point at."}
             for row in rows if row[0] not in declared_set]
 
     return {

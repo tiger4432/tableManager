@@ -85,7 +85,7 @@ import {
 // 한다 — 지도의 리더도, 편집기도 자기 모듈이 소유한다.
 import { initOntologyExplorer, refreshOntologyExplorer } from './ontology_explorer.js';
 import { LedgerSourcesPanel } from './ledger_sources_panel.js';
-import { censusBySource } from './source_backlog.js';
+import { censusBySource, censusNames } from './source_backlog.js';
 import { TableConfigPanel } from './table_config_panel.js';
 import { ChainRulePanel, mapperChoices, mapperNotes } from './chain_rule_panel.js';
 import { countWithAbsence } from './count_with_absence.js';
@@ -1322,10 +1322,11 @@ let ledgerSourcesPanels = null;
 async function loadSourceCensus() {
   try {
     const res = await fetch(`${API_BASE}/api/ledger/declaration`);
-    if (!res.ok) return {};
-    return censusBySource(await res.json().catch(() => null));
+    if (!res.ok) return { bySource: {}, names: {} };
+    const body = await res.json().catch(() => null);
+    return { bySource: censusBySource(body), names: censusNames(body) };
   } catch (e) {                                              // noqa
-    return {};
+    return { bySource: {}, names: {} };
   }
 }
 
@@ -1368,7 +1369,7 @@ async function refreshLedgerSources() {
     opts = { unavailable: fetchFailureLine(null, 'Source status read failed') };
   }
   const census = await censusRequest;
-  const [view] = ledgerSourcesPanels.map((panel) => panel.render(body, opts, census));
+  const [view] = ledgerSourcesPanels.map((panel) => panel.render(body, opts, census.bySource, census.names));
   const count = byId('ledger-sources-count');
   // \ubabb \uc77d\uc5c8\uc73c\uba74 \u00ab0 \uc774 \uc544\ub2c8\ub77c\u00bb \ub300\uc2dc\uc785\ub2c8\ub2e4 \u2014 view.count \uac00 \uc774\ubbf8 \uadf8\ub807\uac8c \ub3cc\uc544\uc635\ub2c8\ub2e4.
   if (count) count.textContent = view.count;

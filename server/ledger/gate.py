@@ -205,6 +205,23 @@ REFUSAL_REASONS = frozenset({
     REFUSE_UNDECLARED_SUBJECT_TYPE,
 })
 
+#: What each reason is CALLED on a screen, shipped with the translator's ledger
+#: (`ledger.admin.ingestion_view`) the way the source states ship theirs (lead bed890af2).
+REFUSAL_REASON_NAMES = {
+    REFUSE_UNDECLARED_SOURCE: "Undeclared source",
+    REFUSE_UNDECLARED_VOCABULARY: "Undeclared predicate",
+    REFUSE_NO_TIME_DECLARATION: "No time declared",
+    REFUSE_MISSING_OCCURRED_AT: "Time missing",
+    REFUSE_NO_IDENTITY: "No identity",
+    REFUSE_NOT_TRUE_ALONE: "Not true alone",
+    REFUSE_ATOMICITY: "Not atomic",
+    REFUSE_UNDECLARED_DERIVATION: "Undeclared derivation",
+    REFUSE_NO_RAW_REF: "No raw reference",
+    REFUSE_PAYLOAD_NOT_PRESERVABLE: "Payload not preservable",
+    REFUSE_AMBIGUOUS_PAIR: "Ambiguous pair",
+    REFUSE_UNDECLARED_SUBJECT_TYPE: "Undeclared subject type",
+}
+
 # Detail is capped, counts never are - every detail string here derives from SOURCE
 # data, so a malformed feed must not be able to grow the report without limit. Same
 # discipline as `chain_key_gate.MAX_REFUSAL_ROWS`.

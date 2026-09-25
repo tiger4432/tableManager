@@ -15,6 +15,7 @@
 // Run: node client2/tests/ledger_sources_panel_harness.mjs
 import { sourcesView, LedgerSourcesPanel } from '../src/ledger_sources_panel.js';
 import { ABSENT } from '../src/absent.js';
+import { localShort } from '../src/server_time.js';
 
 let pass = 0;
 const failures = [];
@@ -195,7 +196,7 @@ console.log('\n[4] the screen');
     rowsOf(host).map(r => r.children[1].textContent));
   ok('the surviving cursor field rides inside the row, not in a fifth column',
     byClass(host, 'ledger-sources-sub').length === 5
-    && /translator_ver/.test(host.textContent) && !/atoms_deduped/.test(host.textContent));
+    && /Translator /.test(host.textContent) && !/atoms_deduped/.test(host.textContent));
   eq('the view reports the row count for the section chip', v.count, '5');
 
   // unavailable: no table at all, and the reason on screen
@@ -398,6 +399,49 @@ console.log('\n[7] the census: a different route, a different availability');
   eq('...and no census line appears', censusIn(noCensus.host).length, 0);
   eq('...and the call may omit the argument entirely',
     rowsOf(drawWith(FIVE, {}, undefined).host).length, 5);
+}
+
+// 🔴 총괄 bed890af2 — the inner lines were machine words and the one fact had two clocks.
+//    Names come from the server's two seats (`census_names` · `reason_names`); both clocks go
+//    through `server_time.localShort`, so the expected text is that function's answer here.
+console.log('\n[8] inner lines: server names, one local clock, a short hash');
+{
+  const AT = '2026-09-09T01:30:31.658998+00:00';
+  const box = (estimate) => ({ estimate, exact: true, method: 'm', measured_at: AT });
+  const CENSUS = {
+    a: { source: 'a', relation: 'r', measured_at: AT,
+         relation_rows: box(10), indexed_rows: box(9), not_yet: box(1) },
+    b: { source: 'b', relation: 'q', measured_at: AT, refused: 'source_refused', remedy: 'fix' },
+  };
+  const NAMES = { relation_rows: 'Table rows', indexed_rows: 'Indexed', not_yet: 'Not yet',
+                  measured_at: 'Measured', source_refused: 'Refused by the loader' };
+  const HASH = 'ledger-v2:' + '0123456789abcdef'.repeat(4);
+  const payload = { ingestion: { note: NOTE, unavailable: null, states: STATE_WORDS,
+    state_names: STATE_NAMES, reason_names: { no_identity: 'No identity' },
+    sources: [row('a', 'ran_and_wrote', { translator_ver: HASH, updated_at: AT, refusals: 'named',
+      refusal_reasons: { no_identity: { count: 2 }, brand_new: { count: 1 } } }),
+      row('b', 'ran_and_wrote')] } };
+  const doc = makeDoc();
+  const host = doc.createElement('div');
+  new LedgerSourcesPanel(host, { doc }).render(payload, {}, CENSUS, NAMES);
+  const line = byClass(host, 'ledger-sources-census')[0];
+  const local = localShort(AT);
+  ok('census cells draw the server names', /Table rows 10/.test(line.textContent)
+    && /Not yet 1/.test(line.textContent) && !/relation_rows/.test(line.textContent), line.textContent);
+  eq('the census stamp is on the local clock', line.textContent.endsWith(`Measured ${local}`), true);
+  eq('...and so is Last — one fact, one clock', rowsOf(host)[0].children[3].textContent, local);
+  eq('a refused census draws its server name', byClass(host, 'ledger-sources-census-refused')[0].textContent,
+    'Refused by the loader');
+  eq('...and keeps the code as the key', byClass(host, 'ledger-sources-census-refused')[0].getAttribute('data-refused'),
+    'source_refused');
+  const reasons = byClass(host, 'ledger-sources-reason');
+  eq('a reason draws its server name', reasons[0].textContent, 'No identity · 2');
+  eq('...a reason the table does not name draws its key', reasons[1].textContent, 'brand_new · 1');
+  eq('...and the key rides as the attribute', reasons[0].getAttribute('data-reason'), 'no_identity');
+  const sub = byClass(host, 'ledger-sources-sub')[0];
+  eq('the hash is shortened on the line', sub.textContent, 'Translator ledger-v2:01234567…');
+  eq('...and whole in the tooltip', sub.title, HASH);
+  eq('a short version is not cut', byClass(host, 'ledger-sources-sub')[1].textContent, 'Translator ledger-v2:abc');
 }
 
 console.log(`\n════ RESULT: ${pass} passed, ${failures.length} failed ════`);

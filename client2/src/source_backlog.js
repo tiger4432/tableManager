@@ -26,9 +26,13 @@
 //    이유가 주석에 적혀 있습니다 — 「약 1,300만」이 「1,300만」이 되는 것을 막는 것. 그래서
 //    exact 가 아니면 값 앞에 «≈» 하나가 붙습니다. 문장이 아니라 기호 하나입니다.
 //
-// ⛔ 시각을 «다시 쓰지» 않습니다. `measured_at` 은 서버가 준 그대로 — 여기서 「몇 분 전」으로
-//    바꾸면 이 화면이 시계의 두 번째 저자가 되고, 새로 안 고친 화면은 그 수를 현재형으로 말합니다.
+// ⛔ 「몇 분 전」으로 바꾸지 않습니다 — 새로 안 고친 화면이 그 수를 현재형으로 말합니다.
+//    🔴 현지 벽시계로는 «옮깁니다»(총괄 bed890af2: 같은 사실의 시각이 UTC 와 현지 «둘»이었습니다).
+//    옮기는 저자는 `server_time.js` 하나이고, 못 읽는 문자열은 서버 글자 그대로 냅니다.
+// 🔴 이름은 서버가 줍니다 — 봉투의 `census_names` (`backfill.CENSUS_NAMES`). 없으면 키 그대로.
 // ═══════════════════════════════════════════════════════════════════════════════
+
+import { NO_TIME, localShort } from './server_time.js';
 
 /** 정확하지 않은 수 앞에 붙는 «기호 하나». 문장이 아닙니다. */
 const ESTIMATE_MARK = '≈';
@@ -50,17 +54,30 @@ export const MEASURED_AT = 'measured_at';
  * 🔴 문지기의 문장을 «그대로» 나릅니다(S-39 와 같은 규율). 여기서 다시 쓰면 조작자가 고칠
  *    자리를 잃고, 사전을 만들면 다음 사유가 생기는 날 화면이 그것을 모르는 채 빠뜨립니다.
  */
-export function censusRefusal(census) {
+export function censusRefusal(census, names = {}) {
   const src = census && typeof census === 'object' ? census : null;
   if (!src || !src.refused) return null;
-  return { reason: String(src.refused), remedy: src.remedy ? String(src.remedy) : '' };
+  const reason = String(src.refused);
+  return { reason, name: nameOf(names, reason), remedy: src.remedy ? String(src.remedy) : '' };
+}
+
+const nameOf = (names, key) => (names && typeof names[key] === 'string' && names[key]) || key;
+
+/** 봉투의 `census_names` — 서버 한 자리의 이름표. 없으면 빈 표(그러면 키가 그려집니다). */
+export function censusNames(body) {
+  const src = body && body.census_names;
+  if (!src || typeof src !== 'object' || Array.isArray(src)) return Object.freeze({});
+  const out = {};
+  for (const key of Object.keys(src)) if (typeof src[key] === 'string') out[key] = src[key];
+  return Object.freeze(out);
 }
 
 /**
  * @param {object} census `sources[].census`, 서버가 준 그대로
- * @returns {{name: string, text: string, method: string}[]} 칸 넷. 안 센 칸은 `text` 가 «빈 문자열»
+ * @param {object} [names] `censusNames(body)`
+ * @returns {{name: string, label: string, text: string, method: string}[]} 칸 넷. 안 센 칸은 `text` 가 «빈 문자열»
  */
-export function backlogCells(census) {
+export function backlogCells(census, names = {}) {
   const src = census && typeof census === 'object' ? census : {};
   const cells = BACKLOG_FIELDS.map((name) => {
     // ⚠️ 「키가 있나」로 봅니다. 참/거짓으로 보면 «0 이 사라집니다» — 그리고 0 은 이 화면이
@@ -80,8 +97,9 @@ export function backlogCells(census) {
     return { name, text: `${mark}${count}`, method };
   });
   const at = src[MEASURED_AT];
-  cells.push({ name: MEASURED_AT, text: at == null ? '' : String(at), method: '' });
-  return cells;
+  const local = at == null ? '' : localShort(at);
+  cells.push({ name: MEASURED_AT, text: at == null ? '' : local === NO_TIME ? String(at) : local, method: '' });
+  return cells.map((cell) => ({ ...cell, label: nameOf(names, cell.name) }));
 }
 
 /**

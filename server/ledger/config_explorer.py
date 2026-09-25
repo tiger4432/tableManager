@@ -551,41 +551,41 @@ def _has_other_version(
 
 def _edge_status_message(status: str, target_id: str, expected_kind: str) -> str:
     if status == "resolved":
-        return "같은 compiled snapshot에서 참조가 해소됨"
+        return "Resolved in the same compiled snapshot"
     if status == "wrong_kind":
-        return f"{target_id!r}가 존재하지만 {expected_kind} 선언이 아님"
+        return f"{target_id!r} exists but is not a {expected_kind} declaration"
     if status == "wrong_version":
-        return f"{expected_kind} {target_id!r}의 요청 버전이 등록되지 않음"
+        return f"The requested version of {expected_kind} {target_id!r} is not registered"
     if status == "signature_mismatch":
-        return f"{target_id!r} 참조의 signature가 선언과 일치하지 않음"
-    return f"{expected_kind} {target_id!r}를 같은 snapshot에서 찾을 수 없음"
+        return f"The signature of the reference {target_id!r} does not match its declaration"
+    return f"{expected_kind} {target_id!r} is not in the same snapshot"
 
 
 def _node_description(kind: str, raw: Any) -> str:
     if not isinstance(raw, Mapping):
-        return f"{kind} 선언"
+        return f"{kind} declaration"
     if kind == "predicate":
-        return f"{raw.get('layer', 'ontology')} predicate · {raw.get('status', 'status 없음')}"
+        return f"{raw.get('layer', 'ontology')} predicate · {raw.get('status', 'no status')}"
     if kind == "entity":
-        return f"identity keys: {', '.join(map(str, raw.get('keys', []))) or '없음'}"
+        return f"identity keys: {', '.join(map(str, raw.get('keys', []))) or 'none'}"
     if kind == "profile":
         # `packs` was named here until 2026-08-21.  It was `sorted(set(...))` of the packs
         # the mappings already name through `use`, so the line said the same thing twice
         # and the second copy is the one that left.
-        return f"mappings {len(raw.get('mappings', {}))}개"
+        return f"mappings {len(raw.get('mappings', {}))}"
     if kind == "mapping":
-        return f"낱말 {raw.get('predicate', '없음')}"
+        return f"predicate {raw.get('predicate', 'none')}"
     if kind == "binding":
         return f"{raw.get('kind', 'unknown')} binding"
     if kind in {"preparer", "mapper"}:
-        return f"implementation {raw.get('implementation_id', '없음')}"
+        return f"implementation {raw.get('implementation_id', 'none')}"
     if kind == "source_plan":
-        return f"relation {raw.get('relation', '없음')}"
+        return f"relation {raw.get('relation', 'none')}"
     if kind == "verified_join":
-        return "물리 UNIQUE 검증을 거친 virtual join"
+        return "Virtual join verified by a physical UNIQUE index"
     if kind == "table":
-        return f"columns {len(raw.get('columns', {}))}개"
-    return f"{kind} 선언"
+        return f"columns {len(raw.get('columns', {}))}"
+    return f"{kind} declaration"
 
 
 @dataclass(frozen=True)
@@ -1249,23 +1249,23 @@ def integrity_checks(index: ExplorerIndex, selection: str) -> list[dict[str, str
     common = [{
         "code": "reference_resolution",
         "status": "valid" if unresolved == 0 else "invalid",
-        "message": f"직접 참조 {len(edges)}건 · 미해소 {unresolved}건",
+        "message": f"Direct references {len(edges)} · unresolved {unresolved}",
     }]
     if node.kind == "predicate":
         common.append({"code": "predicate_signature", "status": "valid",
-                       "message": "subject/object/qualifier signature가 compile됨"})
+                       "message": "subject/object/qualifier signature compiled"})
     elif node.kind == "entity":
         common.append({"code": "entity_identity", "status": "valid",
-                       "message": "identity key와 사용처가 compile됨"})
+                       "message": "Identity keys and their uses compiled"})
     elif node.kind in {"profile", "mapping"}:
         common.append({"code": "profile_binding", "status": "valid",
-                       "message": "낱말·Role binding이 compile됨"})
+                       "message": "Predicate and role bindings compiled"})
     elif node.kind == "source_plan":
         common.append({"code": "source_plan", "status": "valid",
-                       "message": "relation·cursor·preparer·mapper 계약이 compile됨"})
+                       "message": "relation · cursor · preparer · mapper contract compiled"})
     else:
         common.append({"code": "kind_specific", "status": "not_applicable",
-                       "message": f"{node.kind}에는 추가 signature 검사가 적용되지 않음"})
+                       "message": f"No further signature check applies to {node.kind}"})
     return common
 
 

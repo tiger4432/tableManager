@@ -23,6 +23,8 @@ export const initialExplorerState = Object.freeze({
   // 소스마다의 «행 인구조사» — `/api/ledger/declaration` 의 sources[].census, 그대로.
   // 🔴 «키 없음»이 「아직 안 쟀다」입니다. 빈 객체로 채우면 「재 봤는데 없다」가 됩니다.
   census: {},
+  // 그 봉투의 `census_names` — 이름표는 서버 한 자리(총괄 bed890af2). 없으면 키가 그려집니다.
+  censusNames: {},
   currentPath: null,
   changes: [],
   edgeChanges: [],
@@ -146,7 +148,7 @@ export function reduceExplorerState(state = initialExplorerState, action) {
     //    `/api/ledger/declaration` is NOT admin-token gated, so it answers where the refusal
     //    report may not — and a failure here must leave the counts absent rather than empty.
     case 'CENSUS_RECEIVED':
-      return { ...state, census: action.bySource || {} };
+      return { ...state, census: action.bySource || {}, censusNames: action.names || {} };
     case 'REQUEST_FAILED':
       if (action.generation !== state.requestGeneration) return state;
       if (action.code === 'unknown_selection' || action.code === 'context_mismatch') {

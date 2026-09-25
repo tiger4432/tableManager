@@ -927,10 +927,14 @@ def ledger_declaration_catalog():
     # client that had to read two arrays would grow a branch. `origin` tells them apart for
     # anyone who needs it; nobody has to look. `subjects` stays VERSIONED (`die@1`) because
     # the client filters options by subject and a bare spelling would match nothing.
+    from ledger.backfill import CENSUS_NAMES
     catalogue = {
         "state": "ready" if entities else "empty",
         "entities": entities,
         "predicates": predicates,
+        # What each `sources[].census` word is called on a screen (lead bed890af2). A
+        # vocabulary, not data, so it rides whether or not the setup compiles.
+        "census_names": dict(CENSUS_NAMES),
     }
 
     # 🔴 `scope_columns` IS `base_select_columns`, NOT A SECOND LIST THAT LOOKS LIKE IT.

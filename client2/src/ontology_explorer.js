@@ -11,7 +11,7 @@ import {
   splitBundlePath, setAtPath, getAtPath, deleteAtPath, writeShapeAtPath, addMember,
 } from './ontology_path.js';
 import { declarationShape, shapeAt } from './ontology_skeleton.js';
-import { censusBySource } from './source_backlog.js';
+import { censusBySource, censusNames } from './source_backlog.js';
 
 /**
  * C-59 — 시험 실행이 «어느 행»을 읽었는지 볼 만큼. 서버 상한은 100 이고 기본이 10 입니다.
@@ -741,7 +741,7 @@ No effect`;
       const res = await fetch(`${apiBase}/api/ledger/declaration`);
       if (!res.ok) return;
       const body = await res.json().catch(() => null);
-      dispatch({ type: 'CENSUS_RECEIVED', bySource: censusBySource(body) });
+      dispatch({ type: 'CENSUS_RECEIVED', bySource: censusBySource(body), names: censusNames(body) });
     } catch (error) {
       void error;                       // the line simply does not appear — see above
     }

@@ -1002,21 +1002,23 @@ function renderInspector(state) {
   const census = state.census?.[state.selection.canonical_id];
   if (state.selection.kind === 'source_plan' && hasBacklog(census)) {
     const line = h('div', 'oe-backlog');
-    const refusal = censusRefusal(census);
+    const names = state.censusNames || {};
+    const refusal = censusRefusal(census, names);
     // 🔴 「셀 수가 없다」는 «빈 칸이 아닙니다». 문지기가 사유와 «고칠 자리»를 문장으로 줬고,
     //    그 문장은 여기서 다시 쓰지 않습니다 — 이미 무엇을 선언하면 되는지 말하고 있습니다.
+    //    사유의 «이름»은 서버의 이름표에서 옵니다 — 그 이름이 거절을 말하므로 「refused」 딱지를 따로 달지 않습니다.
     if (refusal) {
       const why = h('span', 'oe-backlog-cell');
-      why.append(h('code', 'oe-backlog-name', 'refused'),
-                 h('span', 'oe-backlog-value', refusal.reason));
+      why.setAttribute('data-refused', refusal.reason);
+      why.append(h('span', 'oe-backlog-value', refusal.name));
       if (refusal.remedy) why.title = refusal.remedy;
       line.append(why);
     }
-    for (const cell of backlogCells(census)) {
+    for (const cell of backlogCells(census, names)) {
       if (!cell.text) continue;
       const item = h('span', 'oe-backlog-cell');
-      // 이름은 «서버가 보낸 키 그대로». 번역하면 서버가 키를 바꾸는 날 옛 이름으로 옳아 보입니다.
-      item.append(h('code', 'oe-backlog-name', cell.name),
+      // 이름은 서버의 이름표(`census_names`). 모르는 키는 «키 그대로» — 번역하지 않습니다(판정 177).
+      item.append(h('code', 'oe-backlog-name', cell.label),
                   h('span', 'oe-backlog-value', cell.text));
       line.append(item);
     }

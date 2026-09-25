@@ -8,8 +8,8 @@
         {
           "key": "attributes",
           "required": false,
-          "label": "속성 (이 역할만)",
-          "help": "한 문장이 같은 타입을 두 역할로 쓸 때만. 없으면 소스 것을 물려받는다.",
+          "label": "Attributes (this role only)",
+          "help": "Only when one sentence uses the same type in two roles. Otherwise the source's are inherited.",
           "when": {
             "field": "kind",
             "is": "entity"
@@ -17,7 +17,7 @@
           "node": {
             "kind": "map",
             "keyed_by": "name",
-            "member": "속성",
+            "member": "Attribute",
             "of": {
               "use": "binding"
             }
@@ -26,7 +26,7 @@
         {
           "key": "kind",
           "required": true,
-          "label": "바인딩",
+          "label": "Binding",
           "node": {
             "kind": "leaf",
             "hint": "choice",
@@ -48,8 +48,8 @@
         {
           "key": "timezone",
           "required": false,
-          "label": "시간대 (timestamp 값일 때)",
-          "help": "이 컬럼의 «naive한» 읽기가 어느 시간대인지. 글자에 오프셋이 있으면 그쪽이 이깁니다. 값 타입이 timestamp 인 역할에는 «필수»입니다 - 없으면 번역에서 모든 원자가 거절됩니다. 예: Asia/Seoul",
+          "label": "Time zone (for timestamp values)",
+          "help": "Which time zone a naive reading of this column is in. An offset in the text wins. Required for a role whose value type is timestamp - without it every atom is refused in translation. e.g. Asia/Seoul",
           "when": {
             "field": "kind",
             "is": "column"
@@ -90,7 +90,7 @@
           "node": {
             "kind": "map",
             "keyed_by": "name",
-            "member": "식별키",
+            "member": "Identity key",
             "of": {
               "use": "identity_binding"
             }
@@ -105,7 +105,7 @@
         {
           "key": "kind",
           "required": true,
-          "label": "바인딩",
+          "label": "Binding",
           "node": {
             "kind": "leaf",
             "hint": "choice",
@@ -156,18 +156,18 @@
         "node": {
           "kind": "map",
           "keyed_by": "name",
-          "member": "엔터티 id · e.g. Lot@1",
+          "member": "Entity id · e.g. Lot@1",
           "of": {
             "kind": "record",
             "fields": [
               {
                 "key": "keys",
                 "required": true,
-                "label": "식별키",
+                "label": "Identity keys",
                 "node": {
                   "kind": "map",
                   "keyed_by": "index",
-                  "member": "컬럼",
+                  "member": "Column",
                   "of": {
                     "kind": "leaf",
                     "hint": "free"
@@ -177,12 +177,12 @@
               {
                 "key": "attributes",
                 "required": false,
-                "label": "속성",
-                "help": "이 엔티티가 드는 값의 이름. 식별키와 겹칠 수 없다.",
+                "label": "Attributes",
+                "help": "Names of the values this entity carries. Must not repeat an identity key.",
                 "node": {
                   "kind": "map",
                   "keyed_by": "index",
-                  "member": "이름",
+                  "member": "Name",
                   "of": {
                     "kind": "leaf",
                     "hint": "free"
@@ -192,11 +192,11 @@
               {
                 "key": "attribute_cardinality",
                 "required": false,
-                "label": "속성 값 개수 — 값을 여럿 드는 속성만 적습니다 (비우면 하나)",
+                "label": "Values per attribute - only for an attribute that holds several (blank = one)",
                 "node": {
                   "kind": "map",
                   "keyed_by": "name",
-                  "member": "속성",
+                  "member": "Attribute",
                   "of": {
                     "kind": "leaf",
                     "hint": "choice",
@@ -215,7 +215,7 @@
               {
                 "key": "class",
                 "required": false,
-                "label": "노드 분류 — static 이면 걷기가 이 타입에서 static 타입으로만 나갑니다 (비우면 제한 없음)",
+                "label": "Node class - static means a walk leaves this type only to static types (blank = no limit)",
                 "node": {
                   "kind": "leaf",
                   "hint": "free"
@@ -224,7 +224,7 @@
               {
                 "key": "status",
                 "required": false,
-                "label": "상태",
+                "label": "Status",
                 "node": {
                   "kind": "leaf",
                   "hint": "choice",
@@ -241,7 +241,7 @@
         "node": {
           "kind": "map",
           "keyed_by": "name",
-          "member": "낱말 id · e.g. register@1",
+          "member": "Predicate id · e.g. register@1",
           "of": {
             "kind": "record",
             "fields": [
@@ -257,11 +257,11 @@
               {
                 "key": "subjects",
                 "required": true,
-                "label": "주어 타입",
+                "label": "Subject types",
                 "node": {
                   "kind": "map",
                   "keyed_by": "index",
-                  "member": "엔터티",
+                  "member": "Entity",
                   "of": {
                     "kind": "leaf",
                     "hint": "ref",
@@ -272,14 +272,14 @@
               {
                 "key": "object",
                 "required": true,
-                "label": "목적어",
+                "label": "Object",
                 "node": {
                   "kind": "record",
                   "fields": [
                     {
                       "key": "kind",
                       "required": true,
-                      "label": "종류",
+                      "label": "Kind",
                       "node": {
                         "kind": "leaf",
                         "hint": "choice",
@@ -289,7 +289,7 @@
                     {
                       "key": "types",
                       "required": false,
-                      "label": "목적어 엔터티",
+                      "label": "Object entities",
                       "when": {
                         "field": "kind",
                         "is": "entity_ref"
@@ -297,7 +297,7 @@
                       "node": {
                         "kind": "map",
                         "keyed_by": "index",
-                        "member": "엔터티",
+                        "member": "Entity",
                         "of": {
                           "kind": "leaf",
                           "hint": "ref",
@@ -307,19 +307,19 @@
                     },
                     {
                       "key": "qualifiers",
-                      "label": "한정어",
+                      "label": "Qualifiers",
                       "required": true,
                       "node": {
                         "kind": "record",
                         "fields": [
                           {
                             "key": "required",
-                            "label": "필수",
+                            "label": "Required",
                             "required": true,
                             "node": {
                               "kind": "map",
                               "keyed_by": "index",
-                              "member": "한정어 이름",
+                              "member": "Qualifier name",
                               "of": {
                                 "kind": "leaf",
                                 "hint": "free"
@@ -328,12 +328,12 @@
                           },
                           {
                             "key": "optional",
-                            "label": "선택",
+                            "label": "Optional",
                             "required": true,
                             "node": {
                               "kind": "map",
                               "keyed_by": "index",
-                              "member": "한정어 이름",
+                              "member": "Qualifier name",
                               "of": {
                                 "kind": "leaf",
                                 "hint": "free"
@@ -346,7 +346,7 @@
                     {
                       "key": "value_type",
                       "required": false,
-                      "label": "값 타입",
+                      "label": "Value type",
                       "node": {
                         "kind": "leaf",
                         "hint": "choice",
@@ -359,7 +359,7 @@
               {
                 "key": "cardinality",
                 "required": false,
-                "label": "주어당 개수",
+                "label": "Per subject",
                 "node": {
                   "kind": "leaf",
                   "hint": "choice",
@@ -369,7 +369,7 @@
               {
                 "key": "absence_confirmed_by",
                 "required": false,
-                "label": "부재를 확인해 주는 술어 — 이것이 있는데 이 술어가 없으면 «봤는데 없음» (비우면 «모름»)",
+                "label": "Absence confirmed by - present without this predicate reads as seen and absent (blank = unknown)",
                 "node": {
                   "kind": "leaf",
                   "hint": "ref",
@@ -386,7 +386,7 @@
         "node": {
           "kind": "map",
           "keyed_by": "name",
-          "member": "소스 id",
+          "member": "Source id",
           "of": {
             "kind": "record",
             "fields": [
@@ -401,14 +401,14 @@
               {
                 "key": "read",
                 "required": true,
-                "label": "읽기",
+                "label": "Read",
                 "node": {
                   "kind": "record",
                   "fields": [
                     {
                       "key": "unit",
                       "required": true,
-                      "label": "단위",
+                      "label": "Unit",
                       "node": {
                         "kind": "leaf",
                         "hint": "choice",
@@ -421,7 +421,7 @@
                       "node": {
                         "kind": "map",
                         "keyed_by": "index",
-                        "member": "컬럼",
+                        "member": "Column",
                         "of": {
                           "kind": "leaf",
                           "hint": "free"
@@ -434,7 +434,7 @@
                       "node": {
                         "kind": "map",
                         "keyed_by": "index",
-                        "member": "컬럼",
+                        "member": "Column",
                         "of": {
                           "kind": "leaf",
                           "hint": "free"
@@ -447,7 +447,7 @@
                       "node": {
                         "kind": "map",
                         "keyed_by": "index",
-                        "member": "컬럼",
+                        "member": "Column",
                         "of": {
                           "kind": "leaf",
                           "hint": "free"
@@ -457,7 +457,7 @@
                     {
                       "key": "occurred_at",
                       "required": true,
-                      "label": "시각",
+                      "label": "Time",
                       "node": {
                         "kind": "record",
                         "fields": [
@@ -495,7 +495,7 @@
                       "node": {
                         "kind": "map",
                         "keyed_by": "index",
-                        "member": "탐침",
+                        "member": "Probe",
                         "of": {
                           "kind": "record",
                           "fields": [
@@ -514,7 +514,7 @@
                               "node": {
                                 "kind": "map",
                                 "keyed_by": "index",
-                                "member": "컬럼",
+                                "member": "Column",
                                 "of": {
                                   "kind": "leaf",
                                   "hint": "free"
@@ -565,7 +565,7 @@
                       "node": {
                         "kind": "map",
                         "keyed_by": "index",
-                        "member": "컬럼",
+                        "member": "Column",
                         "of": {
                           "kind": "leaf",
                           "hint": "free"
@@ -578,7 +578,7 @@
                       "node": {
                         "kind": "map",
                         "keyed_by": "name",
-                        "member": "컬럼",
+                        "member": "Column",
                         "of": {
                           "kind": "leaf",
                           "hint": "free"
@@ -599,7 +599,7 @@
                       "node": {
                         "kind": "map",
                         "keyed_by": "index",
-                        "member": "규칙",
+                        "member": "Rule",
                         "of": {
                           "kind": "leaf",
                           "hint": "ref",
@@ -610,11 +610,11 @@
                     {
                       "key": "exclude_when",
                       "required": false,
-                      "label": "제외 조건",
+                      "label": "Exclude when",
                       "node": {
                         "kind": "map",
                         "keyed_by": "index",
-                        "member": "조건",
+                        "member": "Condition",
                         "of": {
                           "kind": "record",
                           "fields": [
@@ -640,12 +640,12 @@
                     }
                   ]
                 },
-                "label": "준비"
+                "label": "Prepare"
               },
               {
                 "key": "map",
                 "required": true,
-                "label": "매핑",
+                "label": "Map",
                 "node": {
                   "kind": "record",
                   "fields": [
@@ -669,14 +669,14 @@
                     {
                       "key": "unit",
                       "required": true,
-                      "label": "단위",
+                      "label": "Unit",
                       "node": {
                         "kind": "record",
                         "fields": [
                           {
                             "key": "kind",
                             "required": true,
-                            "label": "종류",
+                            "label": "Kind",
                             "node": {
                               "kind": "leaf",
                               "hint": "choice",
@@ -693,7 +693,7 @@
                             "node": {
                               "kind": "map",
                               "keyed_by": "index",
-                              "member": "컬럼",
+                              "member": "Column",
                               "of": {
                                 "kind": "leaf",
                                 "hint": "free"
@@ -709,7 +709,7 @@
                       "node": {
                         "kind": "map",
                         "keyed_by": "index",
-                        "member": "컬럼",
+                        "member": "Column",
                         "of": {
                           "kind": "leaf",
                           "hint": "free"
@@ -722,30 +722,30 @@
               {
                 "key": "bind",
                 "required": true,
-                "label": "연결",
+                "label": "Bind",
                 "node": {
                   "kind": "record",
                   "fields": [
                     {
                       "key": "entities",
                       "required": false,
-                      "label": "엔티티 속성",
-                      "help": "이 소스가 그 엔티티에 매기는 값. 엔티티마다 한 번.",
+                      "label": "Entity attributes",
+                      "help": "The values this source gives that entity. Once per entity.",
                       "node": {
                         "kind": "map",
                         "keyed_by": "name",
-                        "member": "엔티티",
+                        "member": "Entity",
                         "of": {
                           "kind": "record",
                           "fields": [
                             {
                               "key": "attributes",
                               "required": true,
-                              "label": "속성",
+                              "label": "Attributes",
                               "node": {
                                 "kind": "map",
                                 "keyed_by": "name",
-                                "member": "속성",
+                                "member": "Attribute",
                                 "of": {
                                   "use": "binding"
                                 }
@@ -761,14 +761,14 @@
                       "node": {
                         "kind": "map",
                         "keyed_by": "name",
-                        "member": "매핑",
+                        "member": "Mapping",
                         "of": {
                           "kind": "record",
                           "fields": [
                             {
                               "key": "predicate",
                               "required": true,
-                              "label": "낱말",
+                              "label": "Predicate",
                               "node": {
                                 "kind": "leaf",
                                 "hint": "ref",
@@ -778,11 +778,11 @@
                             {
                               "key": "bind",
                               "required": true,
-                              "label": "역할 바인딩",
+                              "label": "Role bindings",
                               "node": {
                                 "kind": "map",
                                 "keyed_by": "name",
-                                "member": "역할",
+                                "member": "Role",
                                 "of": {
                                   "use": "binding"
                                 }
@@ -791,11 +791,11 @@
                             {
                               "key": "when",
                               "required": false,
-                              "label": "행 조건",
+                              "label": "Row condition",
                               "node": {
                                 "kind": "map",
                                 "keyed_by": "name",
-                                "member": "컬럼",
+                                "member": "Column",
                                 "of": {
                                   "kind": "leaf",
                                   "hint": "free"
@@ -812,7 +812,7 @@
               {
                 "key": "status",
                 "required": false,
-                "label": "상태",
+                "label": "Status",
                 "node": {
                   "kind": "leaf",
                   "hint": "choice",
@@ -829,7 +829,7 @@
         "node": {
           "kind": "map",
           "keyed_by": "name",
-          "member": "조인 규칙 id",
+          "member": "Join rule id",
           "of": {
             "kind": "record",
             "fields": [
@@ -855,7 +855,7 @@
                 "node": {
                   "kind": "map",
                   "keyed_by": "index",
-                  "member": "키 짝",
+                  "member": "Key pair",
                   "of": {
                     "kind": "record",
                     "fields": [
@@ -885,7 +885,7 @@
                 "node": {
                   "kind": "map",
                   "keyed_by": "index",
-                  "member": "컬럼",
+                  "member": "Column",
                   "of": {
                     "kind": "leaf",
                     "hint": "free"
@@ -931,7 +931,7 @@
                 "node": {
                   "kind": "map",
                   "keyed_by": "name",
-                  "member": "규칙",
+                  "member": "Rule",
                   "of": {
                     "kind": "leaf",
                     "hint": "flag"

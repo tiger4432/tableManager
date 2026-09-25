@@ -15,6 +15,7 @@
  * Run:  node client2/tests/source_backlog_harness.mjs [--mutate]
  */
 import { loadWithProbe } from './lib/probe.mjs';
+import { localShort } from '../src/server_time.js';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
@@ -47,7 +48,7 @@ const REFUSED = { source: 'bonded_from', relation: 'bonding_die_from_core', meas
 async function score(mutate) {
   pass = 0; failures.length = 0;
   const { probe } = await loadWithProbe(SRC, {
-    expose: ['backlogCells', 'hasBacklog', 'censusRefusal', 'censusBySource',
+    expose: ['backlogCells', 'hasBacklog', 'censusRefusal', 'censusBySource', 'censusNames',
              'BACKLOG_FIELDS', 'MEASURED_AT'],
     mutate, tag: 'backlog',
   });
@@ -77,7 +78,11 @@ async function score(mutate) {
   eq('B1 the count comes out of the envelope', '117742', textOf(COUNTED, 'relation_rows'));
   eq('B2 a measured ZERO is drawn as zero — somebody counted', '0', textOf(COUNTED, 'not_yet'));
   eq('B3 ...and a real remainder is drawn', '742', textOf(BEHIND, 'not_yet'));
-  eq('B4 the stamp is carried as sent, never reworded', AT, textOf(COUNTED, 'measured_at'));
+  // 🔴 총괄 bed890af2 — the stamp is moved onto the viewer's clock by `server_time` (one author);
+  //    an unreadable one is carried as sent. This line used to say 「carried as sent, never reworded」.
+  eq('B4 the stamp is on the viewer\'s clock, by server_time', localShort(AT), textOf(COUNTED, 'measured_at'));
+  eq('B5 ...and an unreadable stamp is carried as sent', 'not a time',
+    textOf({ ...COUNTED, measured_at: 'not a time' }, 'measured_at'));
 
   // ══ ③ 「추정」과 「정확」이 «같은 픽셀이 아니다» ══════════════════════════════════════
   // 🔴 `measured()` EXISTS FOR THIS: 「약 1,300만」 becoming 「1,300만」. One symbol, not a
@@ -99,7 +104,7 @@ async function score(mutate) {
   ok('D4 a counted census is not a refusal', refusalOf(COUNTED) === null);
   ok('D5 ...nor is an absent one', refusalOf(undefined) === null && refusalOf(null) === null);
   // ⚠️ 거절이어도 «시각»은 남습니다 — 「언제 못 셌는지」도 사실입니다.
-  eq('D6 a refused census still says when it tried', AT, textOf(REFUSED, 'measured_at'));
+  eq('D6 a refused census still says when it tried', localShort(AT), textOf(REFUSED, 'measured_at'));
   eq('D7 ...and its counts are blank rather than zero', '', textOf(REFUSED, 'relation_rows'));
 
   // ══ ⑤ 줄을 «그릴까» ═══════════════════════════════════════════════════════════════
@@ -158,6 +163,23 @@ async function score(mutate) {
     [byName(null), byName({}), byName({ sources: 'nope' })]
       .map((m) => Object.keys(m).length).join(','));
 
+  // ══ ⑧ 이름은 서버 한 자리 — `census_names` (총괄 bed890af2) ══════════════════════════
+  const NAMES = { relation_rows: 'Table rows', measured_at: 'Measured',
+                  source_refused: 'Refused by the loader' };
+  const labelOf = (census, name, names) =>
+    (cells(census, names).find((c) => c.name === name) || {}).label;
+  eq('H1 a cell draws the server name', 'Table rows', labelOf(COUNTED, 'relation_rows', NAMES));
+  eq('H2 ...a cell the table does not name draws its key', 'indexed_rows',
+    labelOf(COUNTED, 'indexed_rows', NAMES));
+  eq('H3 ...and with no table every cell draws its key', 'relation_rows', labelOf(COUNTED, 'relation_rows'));
+  eq('H4 a refusal draws the server name', 'Refused by the loader', (refusalOf(REFUSED, NAMES) || {}).name);
+  eq('H5 ...and keeps the code', 'source_refused', (refusalOf(REFUSED, NAMES) || {}).reason);
+  eq('H6 the table is read off the envelope', 'Table rows',
+    probe.censusNames({ census_names: NAMES }).relation_rows);
+  eq('H7 a missing or malformed table is empty', '0,0,0',
+    [probe.censusNames(null), probe.censusNames({}), probe.censusNames({ census_names: ['x'] })]
+      .map((m) => Object.keys(m).length).join(','));
+
   return { pass, failures: failures.slice() };
 }
 
@@ -186,9 +208,10 @@ const MUTATIONS = [
    s => s.replace('  if (censusRefusal(census)) return true;', '')],
   ['M8 the remedy is dropped, leaving a reason nobody can act on',
    s => s.replace("remedy: src.remedy ? String(src.remedy) : ''", "remedy: ''")],
-  ['M9 the stamp is reworded instead of carried',
-   s => s.replace("text: at == null ? '' : String(at)",
-                  "text: at == null ? '' : String(at).slice(0, 10)")],
+  ['M9 the stamp is drawn as sent, so one fact keeps two clocks',
+   s => s.replace("local === NO_TIME ? String(at) : local", 'String(at)')],
+  ['M9b an unreadable stamp is drawn as the no-time mark, so the server text is lost',
+   s => s.replace("local === NO_TIME ? String(at) : local", 'local')],
   ['M10 the labels are translated, so a renamed field keeps the old name',
    s => s.replace("Object.freeze(['relation_rows', 'indexed_rows', 'not_yet'])",
                   "Object.freeze(['전체', '색인', '남음'])")],
@@ -200,6 +223,12 @@ const MUTATIONS = [
   ['M13 sources with no census enter the map, so 「안 쟀다」 becomes 「셌더니 없다」',
    s => s.replace('if (row && row.source && row.census) bySource[row.source] = row.census;',
                   'if (row && row.source) bySource[row.source] = row.census || {};')],
+  ['M14 the server names are ignored, so the machine word is drawn',
+   s => s.replace('label: nameOf(names, cell.name)', 'label: cell.name')],
+  ['M15 a refusal draws its code, not its name',
+   s => s.replace('name: nameOf(names, reason)', 'name: reason')],
+  ['M16 the name table is read off the wrong key, so every name falls back',
+   s => s.replace('const src = body && body.census_names;', 'const src = body && body.names;')],
 ];
 
 if (process.argv.includes('--mutate')) {
