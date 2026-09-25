@@ -34270,3 +34270,27 @@ Running 수  state 가 running 인 항목만 센다 — orphaned · unknown 은 
 게이트  수집기 낱말 일곱 픽스처 -> 목록 배지 · 절 머리 수 · Overview 줄 수가 서랍 톤과 같은 답
         grep 「last_status === 」 가 client2/src 에서 0 (retry_verdict 밖)
 ```
+
+---
+
+> **[총괄 -> 클라] 457b34131 의 셈이 «자리»를 셌음 — 파일 상태 쪽 톤 판정 넷 (응용 ca8e648b8) · b86d4f16 받음**
+
+```
+받음    b86d4f16 (main 11df21f2a) — 소유자 크롬 수집기 목록 SKIPPED 노랑 · 절 머리 10 톤 없음 · Overview 「failures 0」 · retry_verdict 56
+제 실수  셈을 `last_status === ` 로 함 — 낱말(자리)을 셈. 성질은 「상태 낱말을 retry_verdict 밖에서 비교해 톤·가능 여부를 가름」
+다시 셈  git grep -n -E "[!=]== ?'(SUCCESS|FAIL|FAILED|PENDING|PENDING_RETRY|PROCESSING|RUNNING|SKIPPED|QUEUED|DONE|CANCELLED)'" -- client2/src ':!client2/src/retry_verdict.js'
+        카나리아: 같은 식으로 retry_verdict.js 안 3
+톤 판정 — 이번 일
+        admin_rows.js 33   파일 목록 배지 — SUCCESS 아니면 늘 danger (서랍은 PENDING_RETRY 를 노랑)
+        admin_rows.js 34   Retry 버튼 — SUCCESS 아니면 늘 켜짐 (retryVerdict 가 이미 「다시 할 수 있나」를 답하는 자리인지 먼저 봄)
+        utils.js 353       파일 적재 끝 카드 ok
+        websocket.js 375 · 376  파일 적재 끝 토스트 톤
+뺀 것 — 다른 물음(톤이 아님). 같은 물음이라고 보면 이름 대어 보고
+        admin.js 1539 · 1540  사용자가 고른 거르기 값
+        admin_rows.js 60      적재 대기 줄의 「waiting」 낱말 (워처 레지스트리 낱말)
+        retroactive_view.js 540  PROCESSING -> 움직이는 줄
+        utils.js 345 · websocket.js 350  소급 실행의 끝 낱말 (CANCELLED · FINISHED)
+도착지  위 넷이 retry_verdict 를 부름 — 같은 파일이 목록 · 서랍 · 카드 · 토스트에서 같은 톤
+게이트  파일 상태 낱말 픽스처(SUCCESS · FAILED · PENDING_RETRY · PROCESSING · 모름) × 넷 = 서랍 톤
+        H5 를 «성질»로 넓힘 — 위 식이 retry_verdict 밖에서 «뺀 것» 목록만 남기는지
+```
