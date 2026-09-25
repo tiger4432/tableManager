@@ -547,7 +547,7 @@ async function suite(probe) {
   await flush();
   ok(Boolean(convertBtn()) && convertBtn().getAttribute('data-to') === 'unified',
      'M a rule stored flat offers ONE control, pointing at unified');
-  ok(Boolean(convertBtn()) && convertBtn().textContent === '통합으로',
+  ok(Boolean(convertBtn()) && convertBtn().textContent === 'To unified',
      `M ... and it says where it goes (${convertBtn() ? convertBtn().textContent : 'none'})`);
 
   // 🔴 THE DRY RUN COMES FIRST AND THE WRITE NEEDS A YES. 547: an unrevertable save must not land,
@@ -614,6 +614,29 @@ async function suite(probe) {
   await flush();
   ok(Boolean(convertBtn()) && convertBtn().getAttribute('data-to') === 'flat',
      'M a rule now unified offers the way BACK through the same control, not a second button');
+
+  // 🔴 [총괄 6ef4ab1f2] AN OLD-SHAPE JOIN OFFERS 「TO NEW JOIN SHAPE」, NOT 「TO FLAT」. The grammar
+  //    alone said unified -> flat, and pressing that turned the join flat with no `:target` half.
+  //    Whether the join is old is the SERVER's word (`join_needs_new_shape`), never a guess from a cell.
+  serve(() => ({ ...rawView(RULE.name), grammar: 'unified', join_needs_new_shape: true }));
+  await refreshChainRule(RULE.name);
+  await flush();
+  const offered = convertBtn() ? `${convertBtn().getAttribute('data-to')} / ${convertBtn().textContent}` : 'none';
+  ok(Boolean(convertBtn()) && convertBtn().getAttribute('data-to') === 'unified'
+     && convertBtn().textContent === 'To new join shape',
+     `N an old-shape join offers ONE control, to the new join shape (${offered})`);
+  globalThis.window.confirm = () => false;
+  serve((call) => (call.url.includes('/chain/rules/grammar')
+    ? { ok: true, name: RULE.name, to: 'unified', changed: true, reruns: { rows: 0, why: '' } }
+    : { ...rawView(askedName(call)), grammar: 'unified', join_needs_new_shape: true }));
+  calls.length = 0;
+  clickConvert();
+  await flush();
+  await flush();
+  const modernise = calls.filter((c) => c.url.includes('/chain/rules/grammar'));
+  ok(modernise.length === 1 && modernise[0].body.to === 'unified' && modernise[0].body.dry_run === true,
+     `N ...and pressing it asks the server for to=unified, the dry run first `
+     + `(${modernise.map((c) => JSON.stringify(c.body)).join(' ') || 'no call'})`);
   return { pass: pass - before.pass, fail: fail - before.fail };
 }
 

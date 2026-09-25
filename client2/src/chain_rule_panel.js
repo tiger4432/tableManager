@@ -204,10 +204,17 @@ export const CHAIN_RULE_REGISTRY = Object.freeze({
   //    (`to: unified|flat`) 되돌리기가 «반대 방향»일 뿐이고, 그래서 버튼이 하나입니다.
   // ⚠️ 문법을 «못 읽는» 규칙에는 «없습니다» — 추측해서 변환하지 않습니다(판정 543·548 ④).
   //    「이미 그 문법이면 아무것도 안 한다」도 여기서 갈립니다: 갈 곳이 «자기»면 컨트롤이 없습니다.
+  // 🔴 [총괄 6ef4ab1f2] 옛 모양 조인에는 «새 모양으로»가 이깁니다. 문법만 보면 통합 규칙의 버튼은
+  //    「평면으로」 하나였고, 그것을 누르면 거절은 풀리되 짝(:target) 없는 평면 규칙이 됐습니다.
+  //    옛 모양인지는 서버가 말합니다(`join_needs_new_shape`, modernize_join 의 판정) — 화면이
+  //    right_table 같은 칸을 보고 짐작하지 않습니다. 변환 문은 같은 라우트의 to=unified 입니다.
   convert: (payload) => {
+    if (payload && payload.join_needs_new_shape === true) {
+      return { to: 'unified', label: 'To new join shape' };
+    }
     const grammar = payload && payload.grammar;
-    if (grammar === 'flat') return { to: 'unified', label: '통합으로' };
-    if (grammar === 'unified') return { to: 'flat', label: '평면으로' };
+    if (grammar === 'flat') return { to: 'unified', label: 'To unified' };
+    if (grammar === 'unified') return { to: 'flat', label: 'To flat' };
     return null;
   },
 
