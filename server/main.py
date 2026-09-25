@@ -4644,25 +4644,12 @@ def get_chain_queue_depth(db: Session = Depends(get_db)):
     # 🔴 `loop_in_this_process` 가 같이 나갑니다 — 목록이 비었을 때 그것이 「도는 게 없다」
     #    인지 「내가 못 본다」인지 화면이 구별해야 합니다. 별도 워커로 띄우면 후자입니다.
     from chain import activity
-    from utils import heartbeat
-    # 🔴 «어느 파일을 열어야 하나» — 로거에서 «읽는다», 상수는 거짓이 된다(통합 프로세스는
-    #    server.log, 단독 워커는 chain_worker.log). «이름»이지 경로가 아니다.
-    from utils import logger as process_logging
-    # 🔴 WHOSE LOOP (총괄 3c3f2b1f2). This process's registry when the loop runs here; the
-    #    chain worker's heartbeat lap when it runs on its own - the API's registry is empty
-    #    then, and drew 「Loop Unknown · never_evaluated」 forever; nobody's when that lap is
-    #    stale or predates these fields. `activity.view` turns either into the same shape.
-    loop_seen_via, loop_seen_age, loop_log, instants = None, None, None, {}
-    if activity.registry.attached:
-        loop_seen_via, loop_seen_age = "this_process", 0.0
-        instants, loop_log = activity.registry.instants(), process_logging.active_log_filename()
-    else:
-        beat = heartbeat.read_all().get("chain") or {}
-        lap = (beat.get("laps") or {}).get("chain") or {}
-        if "outcomes" in lap and not beat.get("stale"):
-            loop_seen_via, loop_seen_age = "chain_worker_heartbeat", beat.get("age_seconds")
-            instants, loop_log = lap, lap.get("log_filename")
-    shape = activity.view(instants, now=now_utc.timestamp())
+    from runtime import running as running_seat
+    # 🔴 WHOSE LOOP (총괄 3c3f2b1f2) — `running_seat.chain_sight`, the same sight
+    #    `now_running` reads. `activity.view` turns either loop into the same shape.
+    sight = running_seat.chain_sight()
+    loop_seen_via, loop_seen_age, loop_log = sight["via"], sight["age"], sight["log"]
+    shape = activity.view(sight["instants"], now=now_utc.timestamp())
 
     return {
         # 🔴 이 수들이 「지금」이 아니라 «그때»의 것이다. 새로 고치지 않은 화면은 오래된
@@ -4671,6 +4658,10 @@ def get_chain_queue_depth(db: Session = Depends(get_db)):
         #    그대로 낸다(§`now_utc`). 여기서 `now()` 를 다시 부르면 값이 «항상 신선»해 보인다.
         "generated_at": now_utc.isoformat(),
         "waiting": int(waiting or 0),
+        # 🔴 EVERYTHING RUNNING, ONE SHAPE, FOUR SOURCES (총괄 78ebdcfc0 · 5996d7f54) - chain
+        #    rules, the retroactive run, collectors, file loads. `running` below is the chain
+        #    rules alone and goes when the screen reads this one.
+        "now_running": running_seat.running_now(db, now=now_utc, sight=sight, shape=shape),
         "running": shape["running"],
         "rule_outcomes": shape["rule_outcomes"],
         "loop_in_this_process": activity.registry.attached,

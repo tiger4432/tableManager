@@ -1,5 +1,27 @@
 # 지금 돌리면 되는 것
 
+> ## 🔴 [09-25 밤 4] **「지금 도는 것」 한 문 — 대기열 응답에 now_running · 마이그레이션 «없음» · 재기동 API**
+>
+> ```
+> 무엇     /admin/chain/queue 가 now_running 을 싣는다 — 체인 규칙 · 소급 실행 · 수집기 · 파일 적재, 한 모양
+>          옛 running(체인 규칙만)은 화면이 now_running 을 읽을 때까지 그대로
+> 확인     server 에서 (API 를 거치지 않고 같은 함수를 부름 — 파일 적재는 API 메모리에만 있어 여기선 안 보임)
+> ```
+> ```bash
+> python -c "import main; from database.database import SessionLocal as S; print(main.get_chain_queue_depth(db=S())['now_running'])"
+> ```
+> ```
+> 답의 뜻   []                                   지금 도는 것 없음
+>          where=own_process · cancel={run_id}   소급 실행이 자기 프로세스에서 돎 — 화면 취소가 닿음
+>          where=chain_worker · cancel={run_id}  체인 리플레이 (체인 워커 안)
+>          where=scheduler                       수집기가 돎 (취소 문 없음)
+>          where=chain_worker · cancel=null      체인 규칙 — 워커가 따로 돌면 lap 이 찍힌 순간에만 보임(짧은 규칙은 거의 안 잡힘)
+>          KeyError 'now_running'                옛 코드 — git pull 안 됨
+> 되돌리기  git revert. 쓰는 것 없음 — 응답에 칸 하나가 는 것뿐
+> ```
+
+---
+
 > ## 🔴 [09-25 밤 3] **실패 재시도: 행이 지워진 줄은 «끝냄», 한 것이 없으면 refused · 「언제부터 실패」 는 마지막 실패 시각 — 마이그레이션 «없음» · 재기동 API 만**
 >
 > ```

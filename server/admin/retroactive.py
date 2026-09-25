@@ -1057,8 +1057,7 @@ def queue_view(db, now=None):
     # decidable for runs stamped by THIS host - a pid on another machine is not something
     # this process may call dead, so it is reported as unknown rather than orphaned.
     orphaned = []
-    running_rows = (db.query(models.RetroactiveRun)
-                    .filter(models.RetroactiveRun.state.in_(IN_FLIGHT_STATES)).all())
+    running_rows = in_flight_rows(db).all()
     for r in running_rows:
         owner = _runner_state(r.runner)
         if owner in ("orphaned", "unknown"):
@@ -1126,6 +1125,15 @@ def _runner_state(runner):
     return "owned" if str(beating) == str(pid) else "orphaned"
 
 
+def in_flight_rows(db):
+    """The run rows that are running - THE judgement for this source (총괄 5996d7f54). The gate,
+    the queue's orphan list and `runtime.running` all ask here."""
+    from database import models
+
+    return (db.query(models.RetroactiveRun)
+            .filter(models.RetroactiveRun.state.in_(IN_FLIGHT_STATES)))
+
+
 def in_flight(db, now=None, stall_after=None):
     """The run the scheduler's gate is closed on, and whether it is still moving.
 
@@ -1161,8 +1169,7 @@ def in_flight(db, now=None, stall_after=None):
         stall_after = heartbeat.DEFAULT_STALL_AFTER_SEC
     now = now or datetime.now(timezone.utc)
 
-    row = (db.query(models.RetroactiveRun)
-           .filter(models.RetroactiveRun.state.in_(IN_FLIGHT_STATES))
+    row = (in_flight_rows(db)
            # ⚰️ `.nullslast()` REMOVED (S-131 의 같은 부류, S-130 커밋에 같이).
            # `DESC NULLS LAST` 는 btree 가 «뒤로 읽어» 줄 수 있는 순서가 아니라
            # 인덱스를 못 쓰게 만든다 — 그 절이 그리드에서 0.25 s 를 먹였다.
@@ -1215,6 +1222,7 @@ def in_flight(db, now=None, stall_after=None):
         "params": json.loads(row.params) if row.params else {},
         "requested_by": row.requested_by,
         "queued_at": row.queued_at.isoformat() if row.queued_at else None,
+        "started_at": row.started_at.isoformat() if row.started_at else None,
         "state": row.state,
         "moving": moving,
         # 🔴 «WHO» IS HOLDING THE GATE, and it travels raw. A run row can outlive its

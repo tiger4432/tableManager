@@ -301,6 +301,9 @@ EVENT_INGESTION_PROGRESS = "file_ingestion_progress"
 
 #: 진행이 «끝났다**. 완료든 취소든 이 이름 하나다 — 끝난 이유는 `status` 가 말한다.
 PROGRESS_STATUS_RUNNING = "PROCESSING"
+#: A collector's `last_status` in the scheduler's status file while it runs - written by the
+#: scheduler, read by `runtime.running.collector_is_running`. One spelling for both ends.
+COLLECTOR_STATUS_RUNNING = "RUNNING"
 PROGRESS_STATUS_DONE = "FINISHED"
 PROGRESS_STATUS_CANCELLED = "CANCELLED"
 

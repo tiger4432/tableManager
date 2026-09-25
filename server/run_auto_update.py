@@ -619,7 +619,7 @@ class MultiDiscoveryScheduler:
         수집기를 래핑 실행하고 상태를 기록합니다.
         """
         collector.last_run = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        collector.last_status = "RUNNING"
+        collector.last_status = event_constants.COLLECTOR_STATUS_RUNNING
         collector.last_error = None
         
         if getattr(collector, "cron_expression", None):
