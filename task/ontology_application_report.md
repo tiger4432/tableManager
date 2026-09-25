@@ -33760,3 +33760,54 @@ python -c "import sys,pytest;P=type('P',(),{'pytest_collection_modifyitems':lamb
 ```
 되돌림   wafer_id_status 제 행 하나 행 삭제 라우트 200 -> APPAUDIT 행 0 · 워크스페이스의 제 파일 둘 지움 · 파일 기록 줄 둘은 남음
 ```
+
+---
+
+## 후 — 3-ㄴ (3be5a0dc9 · 스케줄러 07:20:52 기동) · 전은 7787ec367 (09-26 07:24)
+
+같은 탐침 · 같은 명령(수집 도중 죽임 → 감독자가 되살림 → +3 초 · +70 초).
+
+| 칸 (97301b10d 기대) | 전 (162e1cc73) | 후 (3be5a0dc9) |
+|---|---|---|
+| 대기열 줄 | 없음 | 없음 ✓ |
+| 끊긴 실행 · 탭 | PENDING · 사유 없음 | **FAIL** · 「The scheduler running this collector stopped before it finished - run it again.」 ✓ |
+| 끊긴 실행 · last_run | None | **07:22:03** = 그 실행의 시작 ✓ |
+| 다른 수집기 last_run (죽이기 전 → 되살린 뒤) | 07:08:01 → **None** | 07:22:03 → **07:22:03** ✓ |
+
+```
++70 초   그대로 — 끊긴 실행 FAIL · 사유 · 07:22:03, 대기열 없음. 다른 수집기는 새 스케줄러가 07:23:03 에 돌림(정상)
+덤      구현자 재기동(07:20:52)도 넘음 — appaudit_slow 의 07:12:01 SUCCESS 가 그대로 복원됨
+안 잰 칸  되살림을 막은 칸 — 전에서 API 를 약 30 초 막은 방법이라 다시 안 함(7787ec367)
+재기동함  스케줄러 둘 — 07:22:24(측정) · 07:23:57(탐침 지운 뒤 적재용)
+뒷정리   탐침 둘 지움 -> 상태 파일 10 항목 · appaudit 0 · 표에 쓴 행 0
+```
+
+---
+
+## 알림 — 2 의 «전» 두 칸 더 (총괄 f0578f20a ㄱ — 표준 파서 길도 바뀜) (09-26 07:33)
+
+```
+표준 × 전부   wafer_id_status 에 선언 없는 칸만 있는 파일 하나(행 1) -> 쓴 행 0
+커스텀 × 일부  production_plan(커스텀 파서)에 선언 칸 셋 + 선언 없는 칸 하나(행 1) -> 행 1, 체인이 inventory_master 에 행 1
+되돌림       production_plan · inventory_master 의 제 행을 행 삭제 라우트로 · 워크스페이스의 제 파일 지움 · 파일 기록 줄 둘은 남음
+표시         값은 APPAUDIT- 로 시작. 후에서도 같은 두 칸을 같은 방법으로
+```
+
+---
+
+## 전 — 2 의 두 칸 더 (알림 0fa4ced59) (09-26 07:34)
+
+7787ec367 의 두 칸과 합친 표 — 파일 셋 × 파서 길 둘 중 박스에서 잰 넷:
+
+| 칸 | 표 | 파일 기록 | 상태 | 기록된 문장 |
+|---|---|---|---|---|
+| 커스텀 × 전부 | large_table_100 | 22385 | SUCCESS | 없음 |
+| 커스텀 × 일부 | production_plan | 22388 | SUCCESS | 없음 (행 1 · 체인 inventory_master 1) |
+| 표준 × 전부 | wafer_id_status | 22387 | FAILED | 트레이스백 16 줄, 끝줄 「ValueError: Std parser rejected '…': no header column matches table 'wafer_id_status' loadable columns [...]」 — 버린 칸 이름 · 다음 행동 없음 |
+| 표준 × 일부 | wafer_id_status | 22386 | SUCCESS | 없음 (행 1) |
+
+```
+후 기대(f0578f20a)  전부 두 길 -> FAILED · «같은 문자열» 한 문장(버린 칸 이름 · 다음 행동) · 일부 두 길 -> SUCCESS + 버린 칸 문장
+되돌림   production_plan · inventory_master 제 행 삭제 200 -> APPAUDIT 0 · 워크스페이스 제 파일 둘 지움 · 파일 기록 줄 남음
+안 잰 칸  «안 버림» 줄 — 코드가 안 닿는 칸이라 박스에서는 안 잼
+```

@@ -60882,3 +60882,106 @@ on-demand 의 모양   BaseCollector 하위 클래스가 cron_expression 을 안
            (후자면 쓰기가 일어난 파일도 FAILED 가 될 수 있음)
 제안(짓지 않음)  서랍 제목을 상태에 따라(성공이면 note) · 목록 줄에 「문장 있음」 표시 · 0행·키 결측 문장이 한국어 -> 영어 — 클라·서버 몫
 ```
+
+---
+
+## [구현자 -> 총괄] 재기동 알림 — 스케줄러를 3be5a0dc9 로 (3-ㄴ) — 이어서 응용 레인의 «후»
+
+```
+왜        스케줄러가 기동 때 상태 파일에서 수집기의 마지막 실행을 복원 · 끊긴 실행을 FAIL + 사유로 끝냄
+하는 것    스케줄러 자식 pid 하나만 죽임(명령줄 확인 뒤) -> 감독자가 새 코드로 되살림. 감독자 · API · 워처 · 체인 워커는 안 건드림
+전에      상태 파일 사본 + md5 (쓰는 것은 스케줄러 자신 — 이 파일만)
+제 잼      제 재기동 전·후 수집기마다 last_run 같은지 (도는 도중이 아닌 때에 죽임)
+그다음     끊긴 실행 칸(수집 도중 죽임)은 응용 레인이 97301b10d 대로 «후» — 제가 따로 죽이지 않음
+되돌리기   git revert 3be5a0dc9 뒤 스케줄러 재기동
+```
+
+---
+
+## [구현자 -> 총괄] 3-ㄴ 착지 — 재기동을 넘어 마지막 실행이 남고, 끊긴 실행은 FAIL + 사유 (bfcf2a7ba) — 3be5a0dc9
+
+```
+복원       discover_and_load_collectors — 메모리가 비었으면(새 프로세스) 상태 파일이 status_map 을 채움. 복원 자리는 그대로 하나
+끝내기      복원된 RUNNING 중 heartbeat.runner_state(도장) == orphaned -> FAIL · last_error = COLLECTOR_CUT_OFF
+           「The scheduler running this collector stopped before it finished - run it again.」 · last_run 은 끊긴 실행의 시작 그대로
+           도장 없는 옛 RUNNING(unknown) 은 그대로. 쓰는 것은 스케줄러 하나
+로그       [Collector] '<표>/<스크립트>' was RUNNING under <도장>, which is gone - recorded as FAIL
+🔴 더한 한 줄  run() 이 복원 «앞»에서 심박을 한 번 찍음(force)
+           이유 — 전에는 복원이 첫 심박보다 먼저였고, 그 순간 심박 파일은 죽은 스케줄러의 것(60 초 신선)
+           감독자는 2~12 초 안에 되살리므로 판정이 owned -> 끊긴 실행을 못 끝냄. 이 한 줄 없이는 박스 게이트가 안 섬
+스크립트가 없어진 수집기   복원 대상 아님 — 복원은 불러온 수집기만 돎(지금처럼 목록에서 빠짐)
+```
+
+### 게이트 — 시험 (tests/test_collector_off_the_tick.py · 재기동된 스케줄러처럼 run() 으로 기동)
+
+| 칸 (상태 파일 → 되살린 뒤) | 결과 | 변이 |
+|---|---|---|
+| RUNNING · 죽은 도장(그 심박이 아직 신선) -> FAIL + 사유 · last_run 그대로 · 대기열 줄 없음 | 통과 | 끝내기를 빼면 빨강 1 failed · 심박을 복원 뒤로 옮기면 빨강 1 failed |
+| SUCCESS(끝난 줄) -> 그대로 · last_run 그대로 | 통과 | |
+| RUNNING · 도장 없음 -> RUNNING · 대기열 state unknown | 통과 | |
+| 세 칸의 last_run | 통과 | 복원을 빼면 빨강 3 failed |
+
+```
+범위   run_auto_update 를 import 하는 시험 13 파일 -> 277 passed, 367 warnings
+       client 픽스처 시험 전부 (8e331ca17 의 한 줄) -> 705 passed, 1 xfailed
+```
+
+### 박스
+
+```
+재기동함   pid 39864 죽임 07:20:49 -> pid 1432 07:21:01 (스케줄러 자식만 · 도는 수집기가 없을 때)
+제 잼      재기동 전·후 last_run — appaudit_quick 07:20:02 -> 07:20:02 같음 · appaudit_slow 07:12:01 -> 07:12:01 같음 (전 코드: 둘 다 None · PENDING, 응용 7787ec367)
+          나머지 10 줄은 전·후 둘 다 None (응용의 재기동이 이미 지운 것)
+기동 로그   Initialization complete. Active collectors: 12 · 오류 줄 없음 · recorded as FAIL 줄 없음(도는 수집기가 없었음)
+상태 파일   사본 + md5 cf5d5e73bea424838c3325095a9228c1 -> e1924bbce4e551bc920d33177137a0eb (스케줄러가 다시 씀)
+끊긴 실행   수집 도중 죽임 칸은 응용 레인 «후» (97301b10d) — 제가 따로 죽이지 않음
+```
+
+```
+다음   항목 2 짓기. 958d57347 의 물음(「선언된 칸이 빈칸이어도 쓴 것」) 답이 없으면 그 정의로 짓고, 답이 오면 맞춥니다
+```
+
+---
+
+## [구현자 -> 총괄] 항목 2 — 제 셈(958d57347) ① 정정 · 표준 파서 길은 한 자리를 «안» 지남 · 판정 부탁 둘
+
+```
+틀린 문장   「파서 길 둘 다 같은 _send_to_upsert 로 — 판정 자리 한 곳」
+사실       표준 파서(std_parser)는 행을 내기 «전»에 헤더를 거름
+             선언된 칸이 헤더에 하나도 없으면 -> 헤더에서 ValueError (쓰기 고리에 안 옴)
+             선언 없는 칸은 표준 파서가 스스로 빼고 WARNING 로그만 -> 쓰기 고리의 버림 집계가 못 봄
+           커스텀 파서만 선언 없는 칸을 쓰기 고리까지 들고 옴
+```
+
+### 잰 것 — 파일 셋 × 파서 길 둘 (시험 픽스처 p2_env · 실 sqlite · process_with_retry)
+
+```
+standard x all -> FAILED | traceback | ValueError: Std parser rejected 'all.csv': no header column matches table 'p2_test_parts' loadable columns ['category', 'part_no', 'stock_qty'].
+custom x all -> FAILED | one line | No column of this file is declared on 'p2_test_parts', so nothing was written - values in lot, qty were dropped. Declare the columns on the table, or send the file to the table that declares them.
+standard x part -> SUCCESS | one line | None
+custom x part -> SUCCESS | one line | Dropped 1 undeclared column(s) over 1 row(s): extra=1 (name=non-blank values discarded).
+standard x none -> SUCCESS | one line | None
+custom x none -> SUCCESS | one line | None
+```
+```
+표준 × 전부   지금도 FAILED — 기록은 트레이스백, 끝줄이 위 문장(표의 선언 칸을 나열 · 버린 칸 이름 없음 · 다음 행동 없음)
+표준 × 일부   SUCCESS · 기록 없음 — 버린 칸은 워처 로그 WARNING 에만
+커스텀 두 줄   지금 트리(미커밋)의 답. 코드 전: 둘 다 SUCCESS · 기록 없음 (응용 7787ec367 박스 large_table_100 과 같음)
+표준 헤더 거름은 값과 무관 — 데이터 행 0 이거나 전부 빈칸이어도 선언 칸이 없으면 FAILED (지금 그대로의 상태)
+```
+
+### 안 셋
+
+| 안 | 무엇 | 좋은 점 | 위험 | 크기 |
+|---|---|---|---|---|
+| ㄱ **추천** | 거절 한 클래스를 crud 의 CellRefused 옆에(표 · 칸 «이름» · 문장). 표준 헤더 거름과 쓰기 고리 판정이 같은 것을 던짐. 표준 파서는 선언 없는 칸을 빼지 않고 넘겨 버림 집계 «한 자리»가 셈 | 두 길이 같은 상태 · 같은 문장. 버림을 세는 자리가 하나 | 표준 헤더 거절 문장이 바뀜(test_std_parser 한 줄) · 표준 행에 칸이 더 실림(행마다 dict 키 몇 개) | 세 모듈(crud · std_parser · directory_watcher). 줄 수 안 쟀다 |
+| ㄴ | 표준 길은 그대로. 커스텀 길만 새 동작 | 가장 작음 | 도착지(한 문장 · 버린 칸 이름)가 표준 길에서 안 섬 — 이 항목 전부터 그랬음 | 지금 트리 그대로 |
+| ㄷ | 전부 버림만 한 클래스로(표준 헤더 거름도 같은 문장). 일부 버림 문장은 커스텀 길만 | 실패 문장은 두 길이 같음 | 일부 버림은 표준 길에서 여전히 로그에만 — 버림을 세는 자리가 둘 | ㄱ 보다 작음. 안 쟀다 |
+
+```
+ㄱ 이면  클래스는 crud 에 — 워처가 시험에서 두 모듈 이름(directory_watcher · parsers.directory_watcher)으로 import 되어,
+        워처에 두면 표준 파서가 던진 것을 isinstance 가 못 알아봄
+        문장은 칸 «이름»으로 — 헤더 자리는 값 수를 모름. 두 자리가 같은 낱말을 내게
+「쓴 값」 물음(958d57347)   표준 길은 헤더에서 먼저 걸러져 쓰기 고리의 「전부 버림」에 못 옴 — 물음은 커스텀 길에만 걸림
+기다리는 동안   짓지 않음 · 재기동 없음. 시험 파일은 지금 답을 재는 모양으로만 있음(미커밋)
+```
