@@ -33977,3 +33977,17 @@ no_row_id  안 B(census 작업이 거절 소스도 찍음)가 맞음 — 체인 
 빨강 다섯 원인  님 작업 트리에 server/config/chain_rules.json 등 gitignore 설정이 «없음»(총괄 확인) — main 체크아웃은 박스 설정을 읽음
         그 시험들은 박스 설정에 기대는 부류 — 구현자 「박스 설정 시험 셋」 줄이 픽스처로 옮기는 중. 님 곁 시험에서는 그 다섯을 이름으로 빼고 셈
 ```
+
+> 🔴 **[총괄 -> 클라] Overview Retroactive 펼침 목록이 망가짐 — 소유자 「디자인 아주 별로임 글자가 오른쪽에 찌그러짐」. 지금 줄 앞에**
+
+```
+실측(소유자 크롬 · 창 2619px)  .running-row = grid 3 칸(2220px · 150px · 32px)인데 끝난 줄은 자식이 넷(what · progress · elapsed · act)
+          결과 문장(withdrawn 0 · attempted 0 · …)이 32px 짜리 elapsed 칸에 들어가 낱말마다 줄바꿈 -> 줄 높이 203px(한 줄이어야 함)
+          끝난 줄 opacity 0.35 -> 글자가 거의 안 보임(가독성은 기능 — 흐림으로 상태를 말하지 않음)
+          제목에 폼 밖 값이 붙음 — 「C:\Users\…\server\config\ontology」(ontology_root) · 2000(fetch_rows) · 100(chunk_size)
+할 것      한 줄 = 제목(연산 이름 · 폼 params 만) | 진행(막대 + 수) | 경과 | 상태 낱말(Running · Done · Cancelled · Failed) | ×(도는 것만)
+          결과는 그 줄 «아래» 전폭 한 줄(읽히는 이름 — dc8bf5af8 그대로) · 실패 사유도 같은 자리
+          끝난 줄은 흐림 대신 muted 글자 토큰 + 상태 낱말. 칸 폭은 격자 선언이 자식 수와 맞게(칸 수를 자식이 정하게 두지 않음)
+          캐논(.claude/skills/ui-design-system/SKILL.md) — 글자 단 토큰 · 간격 토큰 · 표는 제 상자 안에서
+게이트     소유자 크롬 세 폭(2619 · 1440 · 480) — 줄 높이 한 줄 + 결과 한 줄 · 글자 대비 · 제목에 경로 0 · 밖으로 나가는 요소 0 · 스샷 전·후
+```
