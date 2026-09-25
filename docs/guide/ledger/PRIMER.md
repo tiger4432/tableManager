@@ -26,6 +26,10 @@
 
 ## 0. 출발 — 실물 행 (`lot_slot_move` 뷰, 라이브)
 
+> 🔴 **[09-25 `c193986a8`] 이 예시의 소스는 오늘 «거절»됩니다.** `lot_slot_move` 는 DB 뷰였고, 원장 소스는 이제 `row_id` 가 있는 «표»만 읽습니다 —
+> 뷰를 읽는 소스는 로드 때 이름 대어 빠집니다(「… which is not a table that has row_id (view); a ledger source must read a table that has row_id」).
+> 아래 여행의 «걸음»(소스 → `read` → `prepare` → `map` → `bind` → 게이트 → 원자)은 그대로 읽으십시오. 다만 예시 소스는 오늘 설 수 없는 소스입니다.
+
 ```
 from_lot=CL-2601-005 · from_slot=04 · to_lot=CL-2601-005-A5 · to_slot=04
 wafer=WF.010504 · event_time=2026-05-03 11:25:00 · event_type=split
