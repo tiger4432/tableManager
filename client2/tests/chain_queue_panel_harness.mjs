@@ -110,7 +110,7 @@ console.log('\n[1] an empty queue and a queue that just received something are D
   ok('nor a status token', a.status !== b.status, `${a.status} / ${b.status}`);
 
   // and each says the right thing, so "different" cannot be satisfied by two wrong answers
-  ok('empty says nothing is waiting', /대기 없음/.test(a.main), a.main);
+  ok('empty says nothing is waiting', /Nothing waiting/.test(a.main), a.main);
   eq('empty is the only OK state on this line', a.status, STATUS.OK);
   ok('just-arrived shows a real zero, not an absence', /0/.test(b.main) && !/없/.test(b.main), b.main);
   ok('and its explanation carries the timestamp it has been waiting since',
@@ -174,18 +174,18 @@ console.log('\n[3] the panel judges nothing it was not told, and prints no numbe
   // declaration, not a constant hidden in a view.
   const v = queueView(BACKED_UP);
   eq('a large age is NOT coloured as danger', v.headline.status, STATUS.NEUTRAL);
-  ok('and the line says how to read it instead', /자라는지/.test(v.headline.sub));
+  ok('and the line says how to read it instead', /whether it grows/.test(v.headline.sub));
   // the same restraint per row: 3 retries is stated, not judged
   eq('a row with retries states the count', v.rows[0].maxRetry, '3');
   eq('and a row with none leaves the cell empty, not 0', v.rows[1].maxRetry, '');
 
   // A missing count is a dash. `0` would be a claim.
   const partial = queueView({ oldest_waiting_seconds: null, not_measured: NOT_MEASURED });
-  ok('an absent depth is a dash, not 0', /대기 —개/.test(partial.headline.aggregate),
+  ok('an absent depth is a dash, not 0', /Waiting — /.test(partial.headline.aggregate),
     partial.headline.aggregate);
-  ok('an absent retry count is a dash, not 0', /재시도 —개/.test(partial.headline.aggregate),
+  ok('an absent retry count is a dash, not 0', /retried —/.test(partial.headline.aggregate),
     partial.headline.aggregate);
-  ok('a present zero IS a zero', /대기 0개/.test(queueView(EMPTY).headline.aggregate),
+  ok('a present zero IS a zero', /Waiting 0 /.test(queueView(EMPTY).headline.aggregate),
     queueView(EMPTY).headline.aggregate);
   eq('and a response with no list at all draws no rows, rather than throwing',
     partial.rows.length, 0);
@@ -209,7 +209,7 @@ console.log('\n[4] truncation is stated, and only when it happened');
   const cut = queueView(BACKED_UP);
   ok('a capped read says so', cut.truncated.length > 0, cut.truncated);
   ok('and names both the rows read and the cap', /200/.test(cut.truncated), cut.truncated);
-  ok('and says the list is not the whole queue', /전부가 아닙니다/.test(cut.truncated), cut.truncated);
+  ok('and says the list is not the whole queue', /not the whole queue/.test(cut.truncated), cut.truncated);
 
   // 🔴 NEGATIVE CONTROL. An uncut list must say NOTHING -- a permanent warning is the same
   //    as no warning, because the reader stops seeing it.
@@ -250,7 +250,7 @@ console.log('\n[5] the list is drawn in the order it arrived, oldest first');
         waiting_seconds: 5,
         retroactive: [{ run_id: 'r1', op: 'enrichment_confirm', requested_by: 'kk980',
                         params: { rule: 'dt_frame' }, outbox_id: 12 }] }] }).rows[0].tables,
-    '소급 · enrichment_confirm · kk980 · {"rule":"dt_frame"}');
+    'Retroactive · enrichment_confirm · kk980 · {"rule":"dt_frame"}');
   // ⚠️ AND THE OTHER SIDE OF THE FORK IS THE HALF THAT CAN GO WRONG SILENTLY: a row with no
   //    `retroactive` key must be BYTE-IDENTICAL to yesterday. The dash assertion above already
   //    covers the empty case; this covers a row that DOES name tables.
@@ -278,7 +278,7 @@ console.log('\n[5] the list is drawn in the order it arrived, oldest first');
   const host2 = doc2.createElement('div');
   new ChainQueuePanel(host2, { doc: doc2 }).render(EMPTY);
   eq('an empty queue draws no table at all', byTag(host2, 'TABLE').length, 0);
-  ok('and says so in words', /대기 중인 트랜잭션이 없습니다/.test(host2.textContent));
+  ok('and says so in words', /No transactions waiting/.test(host2.textContent));
   // ...but the headline is still there, because 「대기 없음」 is itself the answer (rule ①)
   eq('while the headline stays', byClass(host2, 'chain-queue-headline-main').length, 1);
 }
@@ -416,8 +416,8 @@ console.log('\n[8] the owner split, and unknown is not chain');
   new ChainQueuePanel(host, { doc }).render(OWNED);
   const owners = walk(host).filter(n => n.getAttribute && n.getAttribute('data-owner'));
   eq('three owner elements are drawn as three', new Set(owners.map(n => n.getAttribute('data-owner'))).size, 3);
-  ok('chain\'s line says 5, not 8', /chain · 대기 5개/.test(host.textContent), host.textContent.slice(0, 120));
-  ok('unknown appears on screen under its own name', /unknown · 대기 1개/.test(host.textContent));
+  ok('chain\'s line says 5, not 8', /chain · waiting 5 /.test(host.textContent), host.textContent.slice(0, 120));
+  ok('unknown appears on screen under its own name', /unknown · waiting 1 /.test(host.textContent));
   eq('exactly one blocked box is drawn', byClass(host, 'chain-queue-blocked').length, 1);
   ok('and it prints the tokens rather than a translation',
     /stalled/.test(host.textContent) && /never/.test(host.textContent));
@@ -443,7 +443,7 @@ console.log('\n[8] the owner split, and unknown is not chain');
   new ChainQueuePanel(host3, { doc: doc3 }).render(UNREAD);
   eq('an unread blocker draws a box', byClass(host3, 'chain-queue-blocked').length, 1);
   ok('and the box says it is unknown rather than none',
-    /모름/.test(byClass(host3, 'chain-queue-blocked-head')[0].textContent));
+    /Unknown/.test(byClass(host3, 'chain-queue-blocked-head')[0].textContent));
 
   // 🔴 NEGATIVE CONTROL, AND IT IS THE ONE THAT MATTERS. A quiet system must stay
   //    quiet — if this drew a box too, the new line would be the invented zero's twin.
@@ -513,10 +513,10 @@ console.log('\n[8] the owner split, and unknown is not chain');
   ok('R4 ...and neither is empty, so they differ by content rather than by absence',
     never.length > 0 && justNow.length > 0);
   // 모름: 값이 못 읽히는 것은 「0」이 아니다.
-  ok('R5 an unreadable loop age reads 모름, never 0s',
-    restartOf({ loop_uptime_seconds: 'x', mapper_reload_age_seconds: 0 }).includes('모름'));
-  ok('R6 CONTROL: a real loop age is NOT 모름 — else R5 passes for the wrong reason',
-    !restartOf({ loop_uptime_seconds: 90, mapper_reload_age_seconds: 0 }).includes('루프 모름'));
+  ok('R5 an unreadable loop age reads Unknown, never 0s',
+    restartOf({ loop_uptime_seconds: 'x', mapper_reload_age_seconds: 0 }).includes('Unknown'));
+  ok('R6 CONTROL: a real loop age is NOT Unknown — else R5 passes for the wrong reason',
+    !restartOf({ loop_uptime_seconds: 90, mapper_reload_age_seconds: 0 }).includes('Loop Unknown'));
 
   // 🔴 R7 EXISTS BECAUSE R3 DID NOT DO WHAT IT CLAIMED. Deleting the explicit `null` branch
   //    was run as a mutant and R3 STAYED GREEN: `formatAge(null)` yields 모름, so the two
@@ -524,8 +524,8 @@ console.log('\n[8] the owner split, and unknown is not chain');
   //    the guard. But 모름 is the WRONG WORD here — the server's `null` means 「한 번도 재적재
   //    안 함」, which is a fact it KNOWS, not one it failed to read. Conflating a known
   //    absence with an unreadable value is the same collapse rule ① forbids, one word over.
-  ok('R7 「never reloaded」 is a KNOWN fact, so it must not read 모름',
-    !restartOf({ loop_uptime_seconds: 90, mapper_reload_age_seconds: null }).includes('재적재 모름'));
+  ok('R7 「never reloaded」 is a KNOWN fact, so it must not read Unknown',
+    !restartOf({ loop_uptime_seconds: 90, mapper_reload_age_seconds: null }).includes('reloaded Unknown'));
 }
 
 // ═══ S-20: 「이 수들이 «언제» 것인가」 — 발신은 살아 있었고 «듣는 쪽»이 0 이었다 ═══
@@ -551,12 +551,12 @@ console.log('\n[8] the owner split, and unknown is not chain');
   // 🔴 G3 IS THE POINT. A screen that cannot read the stamp must say so; substituting a
   //    client clock here would make every stale panel look freshly measured, which is the
   //    exact failure this row exists to close.
-  ok('G3 an unreadable stamp reads 모름, never an invented time',
-    genOf({ generated_at: null }).includes('모름'));
-  ok('G4 CONTROL: a real stamp is NOT 모름 — else G3 passes for the wrong reason',
-    !genOf({ generated_at: AT }).includes('모름'));
+  ok('G3 an unreadable stamp reads Unknown, never an invented time',
+    genOf({ generated_at: null }).includes('Unknown'));
+  ok('G4 CONTROL: a real stamp is NOT Unknown — else G3 passes for the wrong reason',
+    !genOf({ generated_at: AT }).includes('Unknown'));
   ok('G5 an empty string is not a time either (it is neither null nor undefined)',
-    genOf({ generated_at: '' }).includes('모름'));
+    genOf({ generated_at: '' }).includes('Unknown'));
 
   // 🔴 무회귀, AND IT IS THE WHOLE VIEW, NOT A SPOT CHECK. Adding the stamp must not move
   //    one other thing the panel already drew.

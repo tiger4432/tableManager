@@ -114,8 +114,8 @@ export async function adminFetch(url, init, deps = {}) {
   if (!deps.askForToken) return res;
 
   const message = readAdminToken()
-    ? '관리자 토큰이 거부되었습니다. 다시 입력해 주세요.'
-    : '관리자 토큰을 입력하세요.';
+    ? 'Admin token declined · enter it again'
+    : 'Enter the admin token';
   const token = await deps.askForToken(message);
   // Retry once only. A second rejection returns to the caller so the page shows
   // its own error instead of looping the operator on a modal.

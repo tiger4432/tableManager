@@ -74,7 +74,7 @@ export function sectionsByType(nodes) {
 
 /** 구획 머리 «한 줄» — 타입과 수. 문장이 아니다(설명 문구 금지 상설). */
 export function sectionHeading(type, count) {
-  return `${type || '타입 없음'} · ${count}`;
+  return `${type || 'No type'} · ${count}`;
 }
 
 /**
@@ -140,9 +140,9 @@ export function tableColumns(entities, type, qualifierNames, preset = COLUMNS.FU
   // 🔴 THE PRESET CHOOSES THE WIDTH. IT NEVER CHOOSES THE AUTHOR. Both presets read the same
   //    declaration for the same type, so a key added to the declaration reaches BOTH screens
   //    with no edit — which is the whole reason the narrow list stopped naming its own three.
-  if (preset === COLUMNS.FOR_PICKING) return [...identity, { name: '라벨', kind: 'label' }];
+  if (preset === COLUMNS.FOR_PICKING) return [...identity, { name: 'Label', kind: 'label' }];
   return [
-    { name: '깊이', kind: 'depth' },
+    { name: 'Depth', kind: 'depth' },
     ...identity,
     ...(qualifierNames || []).map((key) => ({ name: key, kind: 'qualifier', key })),
     ...attributes.map((key) => ({ name: key, kind: 'attribute', key })),
@@ -152,14 +152,14 @@ export function tableColumns(entities, type, qualifierNames, preset = COLUMNS.FU
     //    operator who never sees the column cannot learn that the question is being asked.
     //    A type declaring no attributes gets no column at all, which keeps today's table
     //    byte-identical.
-    ...(attributes.length ? [{ name: '충돌', kind: 'conflicts' }] : []),
+    ...(attributes.length ? [{ name: 'Conflicts', kind: 'conflicts' }] : []),
     // 🔴 C-98. 「이 술어가 안 보이는 것이 무슨 뜻인가」. 열이 서는 조건은 «선언»이 확인 술어를
     //    이름 댄 것이지 어느 노드가 판정을 든 것이 아닙니다 — 충돌 열과 같은 규율이고, 같은
     //    사유입니다: 답이 표의 «모양»을 정하면 같은 걷기가 두 표를 그립니다.
     //    ⚠️ 주어로 거르지 «않습니다». 서버가 entity·event 노드 전부에 판정을 다는 것이 실측이고,
     //       화면이 그중 일부를 빼면 그건 서버가 «센 것»을 화면이 숨기는 것입니다.
     ...(confirmers || []).map((key) => ({ name: key, kind: 'absence', key })),
-    { name: '라벨', kind: 'label' },
+    { name: 'Label', kind: 'label' },
     { name: 'id', kind: 'id' },
   ];
 }

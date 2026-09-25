@@ -138,7 +138,7 @@ console.log('\n[4] the part carries no domain word - and the one place that stil
   //    지금은 소비자가 하나라 «거짓이 아니»지만, 고치려면 「접기 요약을 누구 말로 쓸까」를
   //    정해야 하고 그건 판정입니다. 그래서 여기서 «세어» 둡니다 — 하나보다 늘면 빨개집니다.
   ok('the overflow summary is the ONE place still speaking a domain word',
-    (code.match(/적재/g) || []).length === 1 && code.includes('건 적재 중'));
+    (code.match(/loading/g) || []).length === 1 && code.includes('more loading'));
 }
 
 console.log(`\n════ RESULT: ${pass} passed, ${failures.length} failed ════`);

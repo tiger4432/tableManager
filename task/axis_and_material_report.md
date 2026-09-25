@@ -1,3 +1,57 @@
+> ## [09-25 14:44 디자인] 화면의 한국어 ① 공유 — 여러 화면이 같이 쓰는 모듈 14 파일이 영어 · 낱말 상수 한 파일
+
+dd00d6dad 의 ①. 커밋 `4a2751e0d`.
+
+### 한 것
+
+```
+공유 모듈   두 화면 이상이 닿는 모듈 14 파일의 렌더 한국어 142 -> 0 (진입점 여섯에서 import 를 따라가 셈)
+           chain_queue_panel 51 · rnd_board/api 29 · utils 15 · config_resolve_view 12 · pickup_state 11 · count_with_absence 7 ·
+           walk/derive 5 · admin_token · progress_card · retroactive_note · theme · truncation · absent · rnd_board/table_part
+ui_words.js 새 파일 — LOADING · WALKING · SERVER_REFUSED · WAITING · FAILED · REFUSED · NONE · NO_VALUE · CHOOSE
+           결측 낱말(모름 · 안 고름)은 자리가 이미 있는 absent.js 의 UNKNOWN · UNPICKED
+           ①의 모듈은 지금 이 상수를 부르고, 나머지 화면은 «자기 커밋»에서 부릅니다 — 한 화면 안에 한·영이 섞이는 사이를 안 만들려고
+```
+
+### 29 개 중 상수로 «안» 접은 것 — 판단을 적습니다
+
+```
+단위·문장 조각   「개」 · 「건」 · 「행」 · 「전」 · 「칸」 · 「개 중」 · 「기준」 · 「출처」 · 「값」 · 「상태」 · 「노드」 · 「· 엣지」
+                영어에서는 문장마다 자리를 옮기거나 빠지거나 복수가 되어, 상수로 두면 어순이 깨집니다. 문장째 그 자리에서 씁니다
+같은 문장 셋     「컬럼 '…' 의 값 '…' 은(는) 올바른 숫자 형식이 아닙니다」 (api · clipboard · grid) — 함수 하나로, ② 그리드 커밋에서
+한 화면 안       「좌상단 시작」 · 「우상단 시작」 · 「채점 불가」 (맵 편집기 2 만) — ⑤ 에서
+정적 HTML       「테마 전환」 title 넷 — HTML 은 상수를 못 부릅니다. 그 화면 커밋에서 글자로
+```
+
+### 하니스 — 화면 글자를 단언하던 줄만
+
+```
+빨개진 것 11 -> 초록   chain_queue_panel 152 · count_with_absence 28 · disabled_reason 25 · pickup_state 33 · progress_card 19 ·
+                      retroactive_note 15 · rnd_board_reach 63 · toast_stack 23 · truncation 37 · walk_route_fill 71 · walk_wire 94 — 실패 0
+바꾼 것   기대 글자만 (예: 「대기 0개」 -> 「Waiting 0」, 「3초 전」 -> 「3s ago」). 단언의 «뜻»이 바뀐 줄은 없습니다
+변이 앵커 walk_route_fill 의 둘이 옮긴 줄을 가리켜 멈췄고, 같은 뜻으로 옮겼습니다
+계약     walk_node_shape 의 «클라 쪽» 하니스 한 줄(열 머리 「깊이,k,라벨,id」)과 그 주석 — vectors.json(서버와 나누는 값)은 안 건드림.
+         계약 12 갈라짐 없음
+토스트   같은 토스트 접힘 수가 「· 2건」 -> 「· ×2」
+```
+
+### 게이트
+
+```
+npm run build (계약 + 하니스 전수) exit 0 · 번들 같은 커밋
+화면   제 worktree 의 개발 서버(5173, 박스 8080 을 읽음)로 R&D 보드를 열어 봄 — 패널의 「None selected」 8 번 그려짐.
+       한국어 줄 576 은 ⑥ 의 몫으로 남아 있음. 이 도구의 스샷은 파일로 안 남아 보고에 못 붙입니다 — 픽셀은 소유자 몫
+       어드민의 공유 패널(대기열 · 설정 반영)은 토큰이 있어야 열려 제가 못 봤습니다
+```
+
+### 남은 것 · 다음
+
+```
+발견   walk/main.js 가 「노드 타입을 먼저 고르십시오」를 rnd_board/api 의 PICK_TYPE_FIRST 와 «따로» 적습니다 — ⑦ 에서 상수로 접습니다
+응용   count_with_absence 의 낱말 정본이라 적힌 task/APPLICATION_RUN_WORDS.md 는 한국어 그대로입니다 — 그 문서의 몫
+다음   ② 그리드 (167 + index.html 29) — hex 두 줄 · isVirtualColumn 주석(8c8f4e5d3) 같이
+```
+
 > ## [09-25 14:19 디자인] 화면의 한국어 걷기(377231278) — 짓기 «전» 셈: 클라 2,099 개 · 92 파일. 크기가 커서 착지 방식을 여쭙니다
 
 ### 셈 — 주석은 안 셉니다 (AST)

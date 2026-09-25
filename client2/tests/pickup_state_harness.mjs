@@ -44,15 +44,15 @@ const STALLED = { ...LIVE, last_pickup_age_seconds: 320.5, waiting_count: 1,
 // ═══ ① 집기의 세 상태 ═══════════════════════════════════════════════════════════════
 console.log('\n[1] never picked up is not just-picked-up');
 {
-  eq('a recent pickup says how long ago', pickupState(LIVE).pickup, '마지막 집기 · 3초 전');
+  eq('a recent pickup says how long ago', pickupState(LIVE).pickup, 'Last pickup · 3s ago');
   eq('an old one says the same way, in its own unit',
-    pickupState(STALLED).pickup, '마지막 집기 · 5분 전');
+    pickupState(STALLED).pickup, 'Last pickup · 5m ago');
   // 🔴 ① The inversion this guards.
   eq('a queue nothing ever picked up says THAT',
     pickupState({ ...LIVE, last_pickup_at: null, last_pickup_age_seconds: null }).pickup,
-    '집은 적 없음');
+    'Never picked up');
   ok('...and does not read as a fresh pickup',
-    !pickupState({ ...LIVE, last_pickup_at: null }).pickup.includes('0초'));
+    !pickupState({ ...LIVE, last_pickup_at: null }).pickup.includes('0s'));
   eq('a stamp with no age is 「모름」, not zero',
     pickupState({ ...LIVE, last_pickup_age_seconds: null }).pickup, PICKUP_UNREAD);
   eq('nothing fetched at all is 「모름」 too, and says it is unread',
@@ -68,15 +68,15 @@ console.log('\n[2] no invented verdict, and the basis travels with the number');
     ok(`${label}: no verdict word is invented`,
       !/멈춤|늦음|정상|죽음/.test(v.pickup + v.basis));
   }
-  eq('the declared interval is carried, with its unit', pickupState(LIVE).basis, '주기 5초');
+  eq('the declared interval is carried, with its unit', pickupState(LIVE).basis, 'Every 5s');
   ok('...so the age has something to be read against',
-    pickupState(STALLED).basis === '주기 5초');
+    pickupState(STALLED).basis === 'Every 5s');
   eq('an absent interval draws no basis rather than a made-up one',
     pickupState({ ...LIVE, picker_interval_seconds: null }).basis, '');
   // The unit switches so the number stays readable; the fact does not change.
-  eq('seconds stay seconds', ageText(45), '45초');
-  eq('minutes become minutes', ageText(320.5), '5분');
-  eq('hours become hours', ageText(7200), '2시간');
+  eq('seconds stay seconds', ageText(45), '45s');
+  eq('minutes become minutes', ageText(320.5), '5m');
+  eq('hours become hours', ageText(7200), '2h');
   eq('an absent duration draws nothing', ageText(null), '');
 }
 
@@ -85,12 +85,12 @@ console.log('\n[3] the count is the server\'s, and truncation is said out loud')
 {
   eq('the waiting count comes from the server', pickupState(LIVE).waiting, 2);
   eq('...and reads as one number when the list is whole',
-    pickupState(LIVE).waitingText, '대기 2');
+    pickupState(LIVE).waitingText, 'Waiting 2');
   // 🔴 ② The list is newest-first and capped. Measuring it would under-report.
   const capped = { ...LIVE, waiting_count: 40 };
   eq('a truncated list does not become the count', pickupState(capped).waiting, 40);
   eq('...and the screen says both numbers', pickupState(capped).waitingText,
-    '대기 40 · 목록 2');
+    'Waiting 40 · listed 2');
   eq('...and marks itself truncated', pickupState(capped).truncated, true);
   eq('a whole list is not marked truncated', pickupState(LIVE).truncated, false);
   eq('a missing count is 「모름」, not 0',
@@ -113,7 +113,7 @@ console.log('\n[4] running with no owner, decided by the heartbeat and not here'
   ] };
   const v = pickupState(withOrphan);
   eq('only the orphaned one is drawn', v.orphaned.map((o) => o.runId), ['r9']);
-  eq('...with how long it has been running', v.orphaned[0].age, '15분');
+  eq('...with how long it has been running', v.orphaned[0].age, '15m');
   eq('...and what it is', v.orphaned[0].op, 'replay');
   eq('no orphans, no rows', pickupState(LIVE).orphaned, []);
   eq('an absent orphan list is not a crash',

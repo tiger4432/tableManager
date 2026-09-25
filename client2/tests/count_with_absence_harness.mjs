@@ -29,9 +29,9 @@ console.log('\n[1] a zero says what kind of zero it is');
 {
   eq('a plain zero is a zero', countWithAbsence({ value: 0 }).text, '0');
   eq('a zero with a reason carries it',
-    countWithAbsence({ value: 0, absence: 'truly_none' }).text, '0 · 정말 없음');
+    countWithAbsence({ value: 0, absence: 'truly_none' }).text, '0 · Truly none');
   eq('...and the word is the operator\'s, from the closed list',
-    countWithAbsence({ value: 0, absence: 'not_yet' }).word, '아직');
+    countWithAbsence({ value: 0, absence: 'not_yet' }).word, 'Not yet');
   // ⚠️ all seven, so a token added to the map is not silently half-wired. The seventh
   //    (`not_counted_here`) joined the SERVER's list for S-143 and sat unmapped here until
   //    2026-09-17, which is why an English token was reaching the screen through redo_cost.
@@ -83,7 +83,7 @@ console.log('\n[5] two callers, two declarations, one part');
   ok('the first says its own thing', loop.text === ABSENT && loop.word === '이 프로세스에 루프 없음');
   ok('the second is untouched by it', failed.text === '3' && failed.word === '');
   const queueRunning = countWithAbsence({ value: 0, absence: 'truly_none' });
-  ok('and a third declaration reads the server\'s word', queueRunning.text === '0 · 정말 없음');
+  ok('and a third declaration reads the server\'s word', queueRunning.text === '0 · Truly none');
 }
 
 console.log(`\n════ RESULT: ${pass} passed, ${failures.length} failed ════`);

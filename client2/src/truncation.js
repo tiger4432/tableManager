@@ -88,7 +88,7 @@ export function withinCap(rows, cap) {
 
 /** 값 제안 목록이 잘렸을 때 «두 화면이 같이» 쓰는 한 문장. `shown` 은 «화면에 있는 수»입니다. */
 export function suggestTruncatedNote(shown) {
-  return `상위 ${shown}개만 표시 — 더 입력하면 좁혀집니다`;
+  return `Top ${shown} only · type more to narrow`;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

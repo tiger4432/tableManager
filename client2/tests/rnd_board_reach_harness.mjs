@@ -318,7 +318,7 @@ async function suite(mods) {
   pr.mount();
   await settle();
   const refusedText = textOf(hostR);
-  ok('E3 a refusal says the server refused', refusedText.includes('거절'), refusedText.slice(0, 60));
+  ok('E3 a refusal says the server refused', refusedText.includes('refused'), refusedText.slice(0, 60));
   ok('E4 a refusal is not the not-chosen state', !refusedText.includes(UNPICKED));
 
   const hostN = doc.createElement('div');

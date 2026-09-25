@@ -119,28 +119,28 @@ function suite(M) {
   const colNames = (cols) => cols.map((c) => c.name).join(',');
   const DIE = [{ type: 'die@1', keys: ['mat_id', 'x', 'y', 'mat_type'] },
     { type: 'wafer@1', keys: ['wafer'] }];
-  ok(colNames(M.tableColumns(DIE, 'die', [])) === '깊이,mat_id,x,y,mat_type,라벨,id',
+  ok(colNames(M.tableColumns(DIE, 'die', [])) === 'Depth,mat_id,x,y,mat_type,Label,id',
     'T1 the columns are depth, the declared keys in order, label, then id');
-  ok(colNames(M.tableColumns(DIE, 'wafer', [])) === '깊이,wafer,라벨,id',
+  ok(colNames(M.tableColumns(DIE, 'wafer', [])) === 'Depth,wafer,Label,id',
     'T2 a different type brings its OWN keys, which is why sections are per type');
   const GREW = [{ type: 'die@1', keys: ['mat_id', 'x', 'y', 'mat_type', 'lot'] }];
   ok(colNames(M.tableColumns(GREW, 'die', [])).includes('lot'),
     'T3 a key added to the declaration adds a column, with no edit here');
   ok(colNames(M.tableColumns(DIE, 'die', ['gate', 'unit']))
-    === '깊이,mat_id,x,y,mat_type,gate,unit,라벨,id',
+    === 'Depth,mat_id,x,y,mat_type,gate,unit,Label,id',
     'T4 qualifiers that arrived become columns too, after the keys');
   // 🔴 The control: a type the declaration does not carry must not invent identity columns.
-  ok(colNames(M.tableColumns(DIE, 'unknown_type', [])) === '깊이,라벨,id',
+  ok(colNames(M.tableColumns(DIE, 'unknown_type', [])) === 'Depth,Label,id',
     'T5 an undeclared type gets no key columns rather than borrowed ones');
   ok(colNames(M.tableColumns(DIE, 'die@1', [])).includes('mat_id'),
     'T6 the version suffix does not hide the declaration from the lookup');
 
   // 🔴 C-70. 좁은 프리셋과 구획 — 걷기 «검색창»이 이 둘을 불러서 자기 컬럼을 짓습니다. 두 화면이
   //    같은 함수를 지나는지는 그쪽 하니스가 화면으로 재고, 여기서는 그 «함수 자체»를 잽니다.
-  ok(colNames(M.tableColumns(DIE, 'die', [], M.COLUMNS.FOR_PICKING)) === 'mat_id,x,y,mat_type,라벨',
+  ok(colNames(M.tableColumns(DIE, 'die', [], M.COLUMNS.FOR_PICKING)) === 'mat_id,x,y,mat_type,Label',
     'G1 the picking preset is the declared keys and the label, and nothing else');
   ok(colNames(M.tableColumns(DIE, 'die', ['gate'], M.COLUMNS.FOR_PICKING))
-    === 'mat_id,x,y,mat_type,라벨',
+    === 'mat_id,x,y,mat_type,Label',
     'G2 a qualifier that arrived is NOT a picking column — it is read on the other screen');
   ok(colNames(M.tableColumns(GREW, 'die', [], M.COLUMNS.FOR_PICKING)).includes('lot'),
     'G3 a key added to the declaration reaches the picking list too, with no edit here');
@@ -157,7 +157,7 @@ function suite(M) {
     'G7 nothing walked is NO section rather than one empty one');
   ok(M.sectionHeading('die@1', 3) === 'die@1 · 3',
     'G8 the section head is the type and the count, not a sentence');
-  ok(M.sectionHeading('', 0) === '타입 없음 · 0',
+  ok(M.sectionHeading('', 0) === 'No type · 0',
     'G9 a node whose type is missing still says so, and 0 is still drawn');
 
   // ── 판정 130-C ㉡: the layout has ONE author ────────────────────────────────────
@@ -174,8 +174,8 @@ function suite(M) {
   //    layout can be scored BEFORE it lands rather than after it breaks.
   const WITH_ATTRS = [{ type: 'die@1', keys: ['mat_id', 'x'], attributes: ['grade', 'lot'] }];
   ok(colNames(M.tableColumns(WITH_ATTRS, 'die', ['gate']))
-    === '깊이,mat_id,x,gate,grade,lot,충돌,라벨,id',
-    'T7 declared attributes are columns of their own, after the qualifiers and before 라벨');
+    === 'Depth,mat_id,x,gate,grade,lot,Conflicts,Label,id',
+    'T7 declared attributes are columns of their own, after the qualifiers and before Label');
   ok(M.tableColumns(WITH_ATTRS, 'die', ['gate']).map((c) => c.kind).join(',')
     === 'depth,key,key,qualifier,attribute,attribute,conflicts,label,id',
     'T8 every column says WHERE it reads from — that is what removes the arithmetic');
@@ -186,7 +186,7 @@ function suite(M) {
     'T10 a type declaring no attributes gets no disagreement column either');
   // 🔴 THE BYTE-IDENTICAL GATE. Today's declaration carries no `attributes`, so the drawn
   //    table must be exactly what it was. T1-T6 are that gate; this states it as one line.
-  ok(colNames(M.tableColumns(DIE, 'die', ['gate'])) === '깊이,mat_id,x,y,mat_type,gate,라벨,id'
+  ok(colNames(M.tableColumns(DIE, 'die', ['gate'])) === 'Depth,mat_id,x,y,mat_type,gate,Label,id'
     && M.tableColumns(DIE, 'die', ['gate']).every((c) => c.kind !== 'attribute'),
     'T9 a declaration without attributes leaves the table exactly as it is');
 
@@ -355,13 +355,13 @@ const DEFECTS = [
   //    a louder failure than a green mutant but still a wasted round.
   ['the picking preset stops being a preset and answers with the full table',
     (s) => s.replace("  if (preset === COLUMNS.FOR_PICKING) return [...identity,"
-      + " { name: '라벨', kind: 'label' }];",
+      + " { name: 'Label', kind: 'label' }];",
       '  if (false) return identity;')],
   ['sections stop keeping the order the walk returned them in',
     (s) => s.replace('  return sections;', '  return new Map([...sections].reverse());')],
   ['the section head drops the count and says only the type',
-    (s) => s.replace("  return `${type || '타입 없음'} · ${count}`;",
-      "  return `${type || '타입 없음'}`;")],
+    (s) => s.replace("  return `${type || 'No type'} · ${count}`;",
+      "  return `${type || 'No type'}`;")],
   ['the spellings are compared directly again, so nothing is ticked',
     (s) => s.replace('  const wanted = new Set((routeFollow || []).map(bareName));\n'
       + '  return (declaredNames || []).filter((name) => wanted.has(bareName(name)));',
@@ -416,17 +416,17 @@ const DEFECTS = [
     (s) => s.replace('  const attributes = (found && found.attributes) || [];',
       '  const attributes = [];')],
   ['the disagreement column appears for every type, so today\'s table stops being unchanged',
-    (s) => s.replace("    ...(attributes.length ? [{ name: '충돌', kind: 'conflicts' }] : []),",
-      "    { name: '충돌', kind: 'conflicts' },")],
+    (s) => s.replace("    ...(attributes.length ? [{ name: 'Conflicts', kind: 'conflicts' }] : []),",
+      "    { name: 'Conflicts', kind: 'conflicts' },")],
   // ⚠️ 앵커가 C-98 에서 한 번 옮겨갔습니다 — 충돌 열과 라벨 열 «사이»에 부재 열이 들어왔고,
   //    두 줄을 붙여 잡던 앵커가 사라졌습니다. 주장은 그대로라 «한 줄»로 다시 잡습니다:
   //    충돌 열은 자기가 말하는 것 «옆»에 서고, 라벨 뒤로 가면 무엇에 대한 수인지 자리가
   //    말하지 않습니다.
   ['the disagreement column moves behind the label, away from what it is about',
-    (s) => s.replace("    ...(attributes.length ? [{ name: '충돌', kind: 'conflicts' }] : []),",
+    (s) => s.replace("    ...(attributes.length ? [{ name: 'Conflicts', kind: 'conflicts' }] : []),",
       '')
       .replace("    { name: 'id', kind: 'id' },",
-        "    ...(attributes.length ? [{ name: '충돌', kind: 'conflicts' }] : []),\n"
+        "    ...(attributes.length ? [{ name: 'Conflicts', kind: 'conflicts' }] : []),\n"
         + "    { name: 'id', kind: 'id' },")],
   ['a measured zero is drawn as 0, which tells the operator nothing is wrong',
     (s) => s.replace('      return Number.isFinite(count) && count > 0 ? count : undefined;',

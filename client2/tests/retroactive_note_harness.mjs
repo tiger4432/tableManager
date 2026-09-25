@@ -45,20 +45,20 @@ async function score(mutate) {
   const one = [{ run_id: 'r1', op: 'enrichment_confirm', requested_by: 'kk980',
                  params: { rule: 'dt_frame' }, outbox_id: 12 }];
   eq('A5 op·요청자·인자가 한 줄에, 서버 값 그대로',
-     '소급 · enrichment_confirm · kk980 · {"rule":"dt_frame"}', N(one));
+     'Retroactive · enrichment_confirm · kk980 · {"rule":"dt_frame"}', N(one));
 
   // 🔴 「물었는데 아무도 안 적었다」와 「해당 없음」은 다른 사실입니다. 앞은 «없음»을 그립니다.
   eq('A6 요청자가 null 이면 「없음」 — 빈칸이 아니다',
-     '소급 · enrichment_confirm · 없음 · {"rule":"dt_frame"}',
+     'Retroactive · enrichment_confirm · None · {"rule":"dt_frame"}',
      N([{ ...one[0], requested_by: null }]));
   eq('A7 op 이 null 이어도 자리는 남는다 (그 행이 소급이라는 사실은 남는다)',
-     '소급 · 없음 · kk980 · {"rule":"dt_frame"}', N([{ ...one[0], op: null }]));
+     'Retroactive · None · kk980 · {"rule":"dt_frame"}', N([{ ...one[0], op: null }]));
 
   // 인자가 «없는» 것과 «빈» 것은 그릴 것이 없다는 점에서 같습니다 — 자리만 사라집니다.
   eq('A8 인자가 없으면 그 마디만 빠진다',
-     '소급 · enrichment_confirm · kk980', N([{ ...one[0], params: null }]));
+     'Retroactive · enrichment_confirm · kk980', N([{ ...one[0], params: null }]));
   eq('A9 빈 인자도 마디를 만들지 않는다',
-     '소급 · enrichment_confirm · kk980', N([{ ...one[0], params: {} }]));
+     'Retroactive · enrichment_confirm · kk980', N([{ ...one[0], params: {} }]));
 
   // ══ 🔴 배열이다 — 지시서는 객체 하나라고 했고, 서버는 append 한다 ═══════════════
   const two = [one[0], { run_id: 'r2', op: 'backfill', requested_by: 'ops', params: null }];
@@ -71,13 +71,13 @@ async function score(mutate) {
   const text = N([long]);
   ok('A12 긴 인자는 잘리고, 잘렸다고 말한다', text.endsWith('…'), text.slice(-20));
   ok('A13 ...그리고 앞의 낱말들은 살아 있다',
-     text.startsWith('소급 · enrichment_confirm · kk980 · '), text.slice(0, 40));
+     text.startsWith('Retroactive · enrichment_confirm · kk980 · '), text.slice(0, 40));
   // 🔴 자르기가 «뜻을 짓지» 않는지: 서버 문자열의 앞부분이 그대로 남아야 합니다.
   ok('A14 잘린 것은 서버 값의 «앞부분» 그대로', text.includes('{"note":"xxxx'), text.slice(0, 80));
 
   // 문자열 인자(서버가 그렇게 보내는 자리)도 그대로 지나갑니다.
   eq('A15 문자열 인자는 JSON 으로 감싸지 않는다',
-     '소급 · backfill · ops · rule=dt_frame',
+     'Retroactive · backfill · ops · rule=dt_frame',
      N([{ op: 'backfill', requested_by: 'ops', params: 'rule=dt_frame' }]));
 
   return { pass, failures: failures.slice() };

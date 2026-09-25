@@ -19,12 +19,12 @@ import { ABSENT, isCount } from './absent.js';
  * ⚠️ 모르는 토큰은 «그대로» 내보냅니다. 아는 일곱으로 접으면 새 낱말이 조용히 사라집니다.
  */
 export const ABSENCE_WORDS = Object.freeze({
-  not_yet: '아직',
-  not_exhaustive: '전수가 아님',
-  cannot_point: '가리킬 수 없음',
-  truly_none: '정말 없음',
-  already_missing: '이미 빠져 있음',
-  not_applicable: '해당 없음',
+  not_yet: 'Not yet',
+  not_exhaustive: 'Not exhaustive',
+  cannot_point: 'Cannot point',
+  truly_none: 'Truly none',
+  already_missing: 'Already missing',
+  not_applicable: 'N/A',
   // 🔴 서버의 «일곱째» (S-143 · 판정 322). 「셀 수 있으나 이 자리에서 안 셈」이고,
   //    서버가 «어디서 세는지»를 스스로 적습니다 — `config_drafts.py`: 「the count is still
   //    available on the retroactive route, and that sentence is what makes the refusal
@@ -33,7 +33,7 @@ export const ABSENCE_WORDS = Object.freeze({
   //    ⚠️ 정본 `task/APPLICATION_RUN_WORDS.md` 는 «여섯까지»만 들고 있습니다 — 일곱째는
   //       그 문서(2026-08-31) 뒤에 생겼습니다. 그 한 줄은 그 문서를 쓴 레인의 몫이라 총괄에
   //       올렸고, 여기는 «그때까지 화면이 영어 토큰을 내는 것»을 멈춥니다.
-  not_counted_here: '소급에서 셈',
+  not_counted_here: 'Counted in Retroactive',
 });
 
 /**

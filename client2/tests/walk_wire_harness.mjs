@@ -483,7 +483,7 @@ async function refusalSuite(M) {
   ok('F7 a bare string detail still reads as before',
     (await said(500, { detail: 'boom' })) === 'boom');
   ok('F8 and a body with nothing usable still falls back to the status',
-    (await said(503, {})) === '걷지 못했습니다 (503)');
+    (await said(503, {})) === 'Walk failed (503)');
   return { failed: failures.length - before };
 }
 

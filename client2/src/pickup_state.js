@@ -13,8 +13,11 @@
 //
 // ⚠️ 그리고 「집은 적 없음」과 「안 물어봤음」은 다릅니다. 앞은 답이고 뒤는 답이 없는 것입니다.
 
+import { UNKNOWN } from './absent.js';
+import { WAITING } from './ui_words.js';
+
 /** 안 물어봤거나 못 받았습니다. */
-export const PICKUP_UNREAD = '집기 · 모름';
+export const PICKUP_UNREAD = `Pickup · ${UNKNOWN}`;
 
 const num = (value) => (Number.isFinite(value) ? value : null);
 const int = (value) => (Number.isInteger(value) ? value : null);
@@ -23,9 +26,9 @@ const int = (value) => (Number.isInteger(value) ? value : null);
 export function ageText(seconds) {
   const s = num(seconds);
   if (s === null) return '';
-  if (s < 60) return `${Math.round(s)}초`;
-  if (s < 3600) return `${Math.round(s / 60)}분`;
-  return `${Math.round(s / 360) / 10}시간`;
+  if (s < 60) return `${Math.round(s)}s`;
+  if (s < 3600) return `${Math.round(s / 60)}m`;
+  return `${Math.round(s / 360) / 10}h`;
 }
 
 /**
@@ -44,11 +47,11 @@ export function pickupState(queue, opts = {}) {
   // 🔴 세 상태입니다: 집은 적 «없음» · 나이 «있음» · 나이를 «안 보냄».
   //    「집은 적 없음」을 0초로 그리면 방금 집은 것처럼 보입니다.
   let pickup;
-  if (!queue.last_pickup_at) pickup = '집은 적 없음';
+  if (!queue.last_pickup_at) pickup = 'Never picked up';
   else if (age === null) pickup = PICKUP_UNREAD;
-  else pickup = `마지막 집기 · ${ageText(age)} 전`;
+  else pickup = `Last pickup · ${ageText(age)} ago`;
   // 주기는 «기준»이라 남깁니다 — 없으면 나이가 무엇에 견줄 수인지 알 수 없습니다.
-  const basis = interval === null ? '' : `주기 ${ageText(interval)}`;
+  const basis = interval === null ? '' : `Every ${ageText(interval)}`;
 
   // 🔴 앞에 몇 개는 «서버가 센 수»만 씁니다. 목록은 최신순이고 잘릴 수 있어서, 화면이 길이를
   //    세면 잘린 만큼 «적게» 말합니다 — 그리고 그 잘림은 화면에서 안 보입니다.
@@ -87,7 +90,7 @@ export function pickupState(queue, opts = {}) {
     stale: failures !== null && failures > 0,
     waiting,
     waitingText: waiting === null ? PICKUP_UNREAD
-      : truncated ? `대기 ${waiting} · 목록 ${rows.length}` : `대기 ${waiting}`,
+      : truncated ? `${WAITING} ${waiting} · listed ${rows.length}` : `${WAITING} ${waiting}`,
     truncated,
     orphaned,
     rows,

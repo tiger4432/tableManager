@@ -46,7 +46,7 @@ export const UNKNOWN = 'Unknown';
  *    그것이 이 화면의 배지가 이미 쓰는 말투입니다(「읽기 marking:1 · 쓰기 marking:1」).
  */
 export function subjectText(marking) {
-  return `주어 ${marking || ABSENT}`;
+  return `Subject ${marking || ABSENT}`;
 }
 
 /**
