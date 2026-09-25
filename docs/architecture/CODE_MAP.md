@@ -945,7 +945,7 @@ FastAPI 웹서버. 모든 REST/WS의 단일 진입점. 워커·워처와는 outb
 |---|---|---|
 | 🪦 POST `/api/graph/sync` | 🆕⑱ **핸들러가 «없다»**(구: `manual_graph_sync`) | 🔴 🆕⑱ **[2026-09-05 실측 · `6345ef3d`] 이 라우트는 등록되지 않는다** — `8ffe23d7` 이 스텁 일곱을 지웠고 `manual_graph_sync` 는 `server/` 전건 grep **0**이다. 실제 응답은 **404**(`/api` 접두어가 catch-all 가드에 있다). 아래 [§1.5](#15-그래프-조회-구간은-410으로-은퇴했다--그-일곱은-이제-없다). **아래는 410 이던 시절의 기록이다.** ⚰️ ~~**[2026-08-18 실측] 본체는 `raise _graph_branch_retired()` 한 줄이다 — 410.**~~ 종전 이 칸은 「:8090 프록시 백필/복구 트리거」와 `httpx.AsyncClient(trust_env=False)` 프록시 규율을 서술했는데, **`GraphSyncRequest`도 httpx 호출도 이 파일에 없다**(grep 0건). 프록시 규율 자체는 여전히 유효하고 살아 있는 서술은 [§1.7](#17-serverinternal_event_clientpy--내부-http-호출의-단일-소유자-23a346d-신설)에 있다 — **여기서 읽지 마라**. 아래 [§1.5](#15-그래프-조회-구간은-410으로-은퇴했다--그-일곱은-이제-없다) |
 | 🔒 POST `/admin/outbox/retry-failed` | `retry_failed_outbox_events` | outbox 실패 재시도 |
-| 🔒 GET `/admin/outbox/failed` | `get_failed_outbox_events` | outbox 실패 목록(페이징) |
+| 🔒 GET `/admin/outbox/failed` | `get_failed_outbox_events` | outbox 실패 목록(페이징). 🆕 09-25: 실패의 정의는 `event_constants.failure_clause` 하나(「FAILED 이고 풀리지 않은 줄」, `313a7d71`) · `summary` 는 (표 · 종류 · 날) 한 줄씩, 날은 `tz` 로 보는 쪽 날(못 읽으면 UTC, `day_zone` 이 말함) · `table` · `event_type` · `day` 로 목록을 거름 — 요약과 «같은» 날 식(`ad4a4e69`). `oldest_failed_at` 과 줄의 `failed_at` 은 마지막 실패 시각(`processed_at`, `8dfd50ab`) |
 | 🔒 GET `/admin/file-ingestion/logs` · `/failed` | `get_file_ingestion_logs` / `get_failed_file_ingestion_logs` | 파일 인제션 로그/실패 목록 |
 | 🔒 GET `/admin/file-ingestion/active` | `get_active_file_ingestions` | **[P1]** 진행 중 인제션 스냅샷(레지스트리 `snapshot()` — 인메모리, TTL 퇴거 포함) — admin File 탭/헬스 스트립 소비 |
 | 🔒 POST `/admin/file-ingestion/retry-failed` | `retry_failed_file_ingestion` | 아카이브 파일 재처리(동기 콜백 배선 포함) — 워크스페이스는 `resolve_workspace_root` 역조회(별칭 대응) |
@@ -5204,6 +5204,9 @@ export const COMPUTABLE_TOKENS = Object.freeze([DECLARED, ASSUMED, CONFIRMED]);
 - module-private **9종**: `KIND_TONE`(~101) · `list`(~119) · `text`(~164) · `integer`(~168) · `operationTone`(~179) · `buildFacts`(~187) · `buildParam`(~197) · `buildOperation`(~208) · `buildExtras`(~261).
 - ⚠️ **`resolveCount` 안의 지역 `const count`(~143)가 ~28에서 import한 `count` 헬퍼를 가린다.** 오늘은 무해하지만(그 함수는 숫자를 포맷하지 않는다) 그 안에서 `count(...)`를 부르는 순간 조용히 틀린다.
 - **소비자**: `admin.js` — 🆕⑯ **15개 중 «11개»를 가져간다**(실측 import 목록: `buildOperationsView`·`buildCountView`·`buildRunView`·`buildConfirmLines`·`buildActionsView`·`resolveCount`·`paramEntries`·`paramsKey`·`RETRO_CHROME`·`buildRunsView`·`buildConfirmActions`). 🔴 **`elapsedMinutes`·`buildProgressCell` 은 «안» 가져간다** — `buildRunsView` 가 안에서 부르므로 화면이 다시 부를 일이 없다(그 둘이 화면에서 다시 불리기 시작하면 판정이 두 자리에 생긴 것이다). `RETRO_CHROME_STRINGS`와 재export된 `CHROME`은 안 쓴다(후자는 `config_resolve_view.js`에서 직접 받는다) — **하니스 전용 export**다(`client2/tests/retroactive_view_harness.mjs`, 🆕⑯ **886줄**).
+
+### 🆕 `failure_summary.js` (**82줄**, 09-25 `ad4a4e69` 신설) — Chain 탭 실패 절의 «요약 한 줄»
+- `failureSummaryView(body, sentZone)` 순수 — 한 줄 = (표 · 종류 · 날) 「dt_inventory EDIT 33 · 09-23 00:14–00:39 · attempts 1」, 폭은 `server_time.localSpan`. 요청이 zone 을 못 보냈으면 줄이 「(UTC day)」 를 단다. `lineKey(line)` · `class FailureSummary` 부품 — 줄을 열면 그 줄의 행 표(행 재시도 · 진단)가 그 아래로 옮겨 온다(둘째 표 없음). 재시도 답은 `retry_verdict.outboxRetryMessage` 가 읽음(refused → 거절 토스트 · 서버 문장). 읽는 자: `admin.js`
 
 ### 🆕 `run_lines.js` (**117줄**, 09-25 `a551702ef` 신설) — 소급 실행 «한 줄» 부품
 - `runLineView(run)` 순수 · `class RunLines` 부품. 줄은 언제나 다섯 칸(제목 | 진행 | 경과 | 상태 | ×), 결과 문장 · 실패 사유는 그 줄 «아래» 전폭 한 줄. 끝난 줄은 흐림이 아니라 muted 글자 토큰 + 상태 낱말(서버 `state_names`). 읽는 자: `admin.js`(Retroactive 목록). 앞으로 위 대기열 RUNNING 이 같은 부품을 쓸 자리(총괄 78ebdcfc0)
