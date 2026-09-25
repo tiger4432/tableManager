@@ -60054,7 +60054,7 @@ RUN.md 「런처가 다시 떠야 먹습니다」 줄 지움
 | 범위 묶음 규칙을 기여자로 | 시험 없음 — 규칙 실행 전체가 필요 · 박스로도 안 잼(체인 실패를 새로 만들어야 함, 재시도 금지) | — |
 
 ```
-범위    전체 시험 (crud 를 거의 모든 시험이 import) -> 4 failed, 6948 passed, 140 skipped, 3 xfailed — 실패 넷: test_a_rule_says_why_it_did_nothing.py · test_retiring_a_dynamic_model_takes_both_singletons.py · test_the_queue_answer_says_when_it_was_taken.py · test_a_rule_says_why_it_did_nothing.py · test_map_alignment_single_key.py · test_retiring_a_dynamic_model_takes_both_singletons.py · test_the_queue_answer_says_when_it_was_taken.py. 앞 둘은 40361b7c3 의 옛 running 칸 은퇴가 부른 것(client 로 라우트를 부르는 시험이라 import 범위에 안 잡힘) -> 218c31eb4 로 고침 · 셋째는 혼자 돌리면 통과(순서 탓) · 넷째는 13:38(c193986a8)부터의 빨강 — 제 변경 밖, 보고만
+범위    전체 시험 (crud 를 거의 모든 시험이 import) -> 4 failed, 6948 passed, 140 skipped, 3 xfailed — 실패 넷: test_a_rule_says_why_it_did_nothing.py · test_the_queue_answer_says_when_it_was_taken.py · test_map_alignment_single_key.py · test_retiring_a_dynamic_model_takes_both_singletons.py. 앞 둘은 40361b7c3 의 옛 running 칸 은퇴가 부른 것(client 로 라우트를 부르는 시험이라 import 범위에 안 잡힘) -> 218c31eb4 로 고침 · 셋째는 혼자 돌리면 통과(순서 탓) · 넷째는 13:38(c193986a8)부터의 빨강 — 제 변경 밖, 보고만
 ```
 
 ### 박스 (먼저 알린 대로 — 표에 쓴 것 0)
