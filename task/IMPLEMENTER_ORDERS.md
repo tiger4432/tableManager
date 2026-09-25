@@ -59484,3 +59484,21 @@ health-strip  소유자 답 대기 — 지금은 그대로 둠
    「FAILED 81 · PENDING 24 안 뜸 전·후」 게이트는 철회 — «전»이 이미 안 뜸
 8a1f32f99 의 1 · 2 · 3 (CLI 같은 문 · triage 취소 · 옛 줄 치우기) 은 그대로
 ```
+
+---
+
+> 🔴 **[총괄 -> 구현자] 대기열 라운드에 둘 더 — 소유자 「ㅇㅇ 추가하고 백필 CLI 도 세 봐」**
+
+```
+1 replay_sweep 고리   체인 워커가 heartbeat.record_lap("chain", "replay_sweep") 로 기록하는데 runtime/loops.py 의 LOOPS 에 없음
+                     -> 어드민 고리 표에 안 나옴(살았나 모름). LOOPS 에 한 줄 (프로세스 chain · 손잡이가 있으면 KNOBS)
+                     게이트  고리 표에 replay_sweep 줄 · 워커를 멈추면 그 줄이 죽음으로 (전·후)
+                     전수    record_lap 을 부르는 고리 이름 전부 = LOOPS 이름 전부 — 시험 하나로 (하나 빠지면 빨강)
+2 「CLI 도 같은 문」(8a1f32f99 1) 의 모집단 — 총괄이 센 넷, 짓기 전에 다시 세서 확정
+   ledger/backfill.py __main__        run(ledger_backfill) · rescope(ledger_rescope) · withdraw_deleted_rows(withdraw) · index_existing_refs(소급 연산에 짝 없음)
+   scripts/backfill_enrichment.py     run_backfill(enrichment_backfill)
+   scripts/chain_replay_cli.py        replay · replay_all · replay_rule (chain_replay)
+   scripts/outbox_triage.py           cancel · replay_cancelled · replay_rule (대기열 쪽)
+   소급 연산(retroactive OPS) 여섯 = chain_replay · withdraw · ledger_backfill · ledger_rescope · enrichment_backfill · enrichment_confirm
+   CLI 는 새 종류가 아니라 이 여섯의 일을 «옆문»으로 부름 — 같은 실행 기록을 지나게. index_existing_refs 처럼 짝 없는 것은 보고
+```
