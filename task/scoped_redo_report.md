@@ -59273,3 +59273,55 @@ cli.json 은 CLI 가 끝난 뒤에도 남아 /health 에 off_roster 줄로 계�
 ```
 
 답을 기다리는 동안 새 연산 둘 (--via-events · resolve R3) 을 소급 연산 표와 CLI 문에 같은 모양으로 짓습니다 — 자식과 무관한 부분입니다.
+
+---
+
+## [09-25 17:41] 구현자 — resolve 연산 (`3321158b2`) · resolve 취소 (`cb6f93657`) · 원장 CLI not_yet (`7a0683d8e`) · via-events 물음 하나
+
+### `3321158b2` · `cb6f93657` — resolve (R3 표시값 다시 맞추기) 가 소급 연산 · 페이지 사이 취소
+
+```
+연산      resolve — params table · columns (폼) · limit · chunk_size (CLI 옵션, 폼 밖)
+          세기는 짧은 드라이런 — 예산이 표를 다 덮으면 exact, 아니면 sample
+          지우는 것 없음 — 쌓인 층에서 보이는 값만 옮김 · 옮긴 칸마다 AuditLog
+CLI      chain_replay_cli resolve --apply 가 문으로 · 드라이런은 문 밖
+취소      recompute_display_values 가 페이지 경계에서 control 을 읽음 · cancellable: True
+          설명 칸: 「멈춘 자리에서 이어하기 없음 — 다시 돌리면 처음부터, 쌓인 층에서 다시 계산이라 두 번 해도 같은 답」
+박스      void_obs (103,858 행 · --chunk-size 100 · --apply · 드라이런으로 옮길 칸 0 확인 -> 쓰는 것 없음)
+   전     2.6 초에 화면 취소 -> 무시하고 1,039 페이지 끝까지 · 기록 done (취소 요청이 덮임)
+   후     2.8 초에 화면 취소 -> 2,600 행에서 멈춤 · 기록 cancelled · CLI 종료 2
+          취소 없이 다시 -> 103,858 행 끝까지 · 기록 done
+변이      페이지 사이 읽기 뺌 · 어댑터가 control 을 안 넘김 — 둘 다 빨강
+화면      어드민 토큰이 이 브라우저에 없어 카드를 못 열었습니다 (토큰 입력은 제가 안 합니다)
+          화면이 받는 값은 확인: 폼 칸 table · columns · cancellable True · 라벨 영어
+```
+
+### `7a0683d8e` — 원장 CLI 끝줄 KeyError 'not_yet' (ⓐ)
+
+```
+원인   lot_event 는 묶음(group) 소스 — rows_not_yet_translated 가 not_yet 대신 not_comparable 문장을 답함 (행과 묶음은 뺄 수 없음, 일부러)
+       run() 이 네 칸만 골라 실으면서 그 문장을 버렸고, 출력 줄이 not_yet 을 읽다 죽음
+고침   run() 이 싣는 칸을 상수 하나로 · not_comparable 포함. 출력 줄이 두 모양을 이름 대어 다룸
+시험   가짜가 행 모양 하나뿐이었음 -> 센서스가 실제로 내는 두 모양 다. 출력이 읽는 칸이 run 이 싣는 칸 안에 있는지도
+박스   같은 0 페이지 실행이 「relation rows 3633 | indexed 490 | this source reads by group …」 찍고 종료 0 (전에는 1)
+변이   실는 칸에서 뺌 · 출력이 not_yet 만 읽음 — 둘 다 빨강
+```
+
+### 한 줄 물음 답
+
+```
+17:30:24 걷기 000   네 — 그 시각 resolve 연산을 화면에 올리려고 API 를 재기동했습니다. 17:30:36 health 200
+                    17:40:20 에도 같은 이유(resolve 취소)로 API · 스케줄러를 재기동했습니다 (17:40:32 health 200)
+```
+
+### via-events — 짓기 전에 여쭐 것 하나
+
+```
+담당표 문장  「via-events  행을 새 행으로 넣는 것까지 자식 프로세스 · 번역은 그 행을 받은 체인 워커 ledger_followup」
+코드       load_via_events 는 번역 안 된 행을 followup 의 «메모리» 큐에 넣고, 같은 프로세스에서 drain_once 로 «번역까지» 함
+           (코드 주석: 「the queue is memory」). 체인 워커로 넘기는 것이 아니라 followup 코드를 자기 프로세스에서 돌림
+그래서      지금 모양 그대로 연산으로 올리면 번역도 자식(또는 CLI) 프로세스에서 일어남 — 담당표 문장과 다름
+여쭐 것     ① 지금 모양 그대로 (번역까지 자기 프로세스)
+           ② 표 문장대로 — 행 id 를 체인 워커가 받는 길로 넘기고 번역은 체인 워커가 (길을 새로 이어야 함 · 크기 안 쟀음)
+답 오기 전에는 via-events 를 안 짓습니다. 그동안 ⓑ 심박 파일 지우기 · ⓒ 관문 잠금 · ① 이름 retroactive 를 짓습니다
+```
