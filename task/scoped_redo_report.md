@@ -58861,3 +58861,33 @@ run_auto_update 의 다섯 — 지시의 「넷」과 다릅니다
 2  ① rule_outcomes 를 heartbeat 로 건넬지, 비울지
 3  ② 는 소유자께 — ㄱ · ㄴ · ㄷ
 ```
+
+---
+
+## [09-25 15:42] 구현자 — 대기열 (3c3f2b1f2) 짓는 중 · 물음 둘 (클라가 읽을 모양이라 먼저 올립니다)
+
+```
+짓는 중   ㉯ mark_processed 를 event_constants 로 옮기고 스케줄러 다섯 자리가 지나게
+          워커가 자기 registry 를 chain lap 에 싣고, API 는 자기 registry 가 눈멀었을 때 그 lap 을 읽음
+          (같은 모양으로 바꾸는 함수는 하나 — 프로세스 안에서 읽든 heartbeat 로 읽든)
+```
+
+### 물음 1 — running 을 «목록 그대로» 실어도 될까요 (지시는 「수 · 가장 오래된 나이」)
+
+```
+이유   API 응답의 running 은 지금도 «목록»(규칙 · 도는 초)이고, 클라는 그 길이로 수를, 가장 큰 초로 나이를,
+       1분 넘은 것의 «규칙 이름»을 그립니다. 목록을 실으면 응답 모양이 그대로라 클라 변경 0
+       수와 나이만 실으면 running 을 채울 수 없어 새 칸 둘이 생기고 클라가 그것을 읽어야 합니다
+크기   목록은 워커의 동시 실행 수만큼만 — 이 박스에서 파일 크기는 짓고 나서 재서 보고합니다
+```
+
+### 물음 2 — 「heartbeat 로 봤다」를 응답에 어떻게 적을까요
+
+```
+사실   loop_in_this_process 는 «이 프로세스»라는 뜻이라 API 에서는 계속 false 가 참입니다
+       클라는 지금 이 칸이 false 면 「No loop in this process」(눈멂)로 그립니다
+제안   새 칸 하나  loop_seen_via: "this_process" | "chain_worker_heartbeat" | null (못 봄)
+       + heartbeat 나이 loop_seen_age_seconds (오래됐으면 서버가 null 로 — 60 초, heartbeat 의 기존 stale 기준)
+       클라 변경 한 줄: 「loop_in_this_process || loop_seen_via」 이면 봄
+       Log 줄은 워커가 자기 로그 이름을 같은 lap 에 실어 그것을 냅니다 — 못 읽으면 log_filename 칸을 안 실음(줄 빠짐)
+```
