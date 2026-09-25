@@ -1764,7 +1764,14 @@
     /* 🔴 한 실행 = 한 줄 (총괄 a274c90f0) — 제목 | 진행 | 경과 | 상태 | × , 결과는 그 줄 «아래» 전폭.
           칸 수는 «격자 선언»이 정합니다: 다섯 칸이고 줄은 언제나 다섯 자식입니다(`run_lines.js`).
           끝난 줄은 흐리지 않습니다 — muted 글자 토큰과 상태 낱말이 말합니다. */
-    .run-lines { display: flex; flex-direction: column; gap: var(--space-1); }
+    .run-lines { display: flex; flex-direction: column; gap: var(--space-1); container-type: inline-size; }
+    /* 좁은 자리(총괄 bd69f91c6 — 480 폭에서 제목이 한 글자로 잘림): 제목이 첫 줄 전폭,
+       진행 · 경과 · 상태 · × 는 그 아래 한 줄. 같은 다섯 칸이고, 창이 아니라 «부품의 폭»을 봅니다 —
+       위 대기열에 앉을 때도 같은 규칙입니다. */
+    @container (max-width: 520px) {
+      .run-line { grid-template-columns: minmax(0, 1fr) max-content max-content var(--space-6); }
+      .run-line__what { grid-column: 1 / -1; }
+    }
     .run-line { display: grid;
       grid-template-columns: minmax(0, 1fr) minmax(calc(var(--space-6) * 4), calc(var(--space-6) * 6))
                              max-content max-content var(--space-6);
