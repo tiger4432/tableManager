@@ -33781,3 +33781,14 @@ python -c "import sys,pytest;P=type('P',(),{'pytest_collection_modifyitems':lamb
 재기동함  스케줄러 둘 — 07:22:24(측정) · 07:23:57(탐침 지운 뒤 적재용)
 뒷정리   탐침 둘 지움 -> 상태 파일 10 항목 · appaudit 0 · 표에 쓴 행 0
 ```
+
+---
+
+## 알림 — 2 의 «전» 두 칸 더 (총괄 f0578f20a ㄱ — 표준 파서 길도 바뀜) (09-26 07:33)
+
+```
+표준 × 전부   wafer_id_status 에 선언 없는 칸만 있는 파일 하나(행 1) -> 쓴 행 0
+커스텀 × 일부  production_plan(커스텀 파서)에 선언 칸 셋 + 선언 없는 칸 하나(행 1) -> 행 1, 체인이 inventory_master 에 행 1
+되돌림       production_plan · inventory_master 의 제 행을 행 삭제 라우트로 · 워크스페이스의 제 파일 지움 · 파일 기록 줄 둘은 남음
+표시         값은 APPAUDIT- 로 시작. 후에서도 같은 두 칸을 같은 방법으로
+```
