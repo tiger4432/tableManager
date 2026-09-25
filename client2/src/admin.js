@@ -81,6 +81,7 @@ import {
   resolveCount, paramEntries, paramsKey, RETRO_CHROME, buildRunsView,
   buildConfirmActions, groupExtras,
 } from './retroactive_view.js';
+import { RunLines } from './run_lines.js';
 // [원장 선언] 구조 맵을 admin이 호스트한다(브리프 §6-1 + 소유자 판정). 이 파일은 배선만
 // 한다 — 지도의 리더도, 편집기도 자기 모듈이 소유한다.
 import { initOntologyExplorer, refreshOntologyExplorer } from './ontology_explorer.js';
@@ -2611,12 +2612,15 @@ async function refreshRunning() {
     if (!runs) failed.push('run list');
     if (!ingest) failed.push('file ingestion');
     const cancellable = {};
+    const formParams = {};
     for (const op of (retroactiveView && retroactiveView.operations) || []) {
       if (op && op.op) cancellable[op.op] = op.cancellable === true;
+      if (op && op.op) formParams[op.op] = (op.params || []).map((p) => p.key);
     }
     runsView = buildRunsView(
-      { runs: (runs && runs.runs) || [], ingestions: (ingest && ingest.data) || [] },
-      Date.now(), cancellable);
+      { runs: (runs && runs.runs) || [], ingestions: (ingest && ingest.data) || [],
+        state_names: (runs && runs.state_names) || {} },
+      Date.now(), cancellable, formParams);
     runsView.failedSources = failed;
     renderRunning();
   } finally {
@@ -2663,117 +2667,20 @@ async function requestRunCancel(runId) {
   refreshRunning();
 }
 
+// 🔴 총괄 a274c90f0 · 78ebdcfc0 — the line is ONE part (`RunLines`), mounted here and, next, in the
+//    top queue's RUNNING. The page only decides where it sits and what a × and a result box do.
+let runLines = null;
 function renderRunning() {
   const body = byId('running-body');
   if (!body) return;
   const view = runsView;
-  body.textContent = '';
   // 줄의 사실(「N running」 · 가장 오래 · 못 읽은 출처)은 `retroactiveRow` 한 자리가 짓는다.
   overviewBoard().update(retroactiveRow(view === null ? undefined : view));
-  if (!view) return;
-  if (view.empty) return;
-
-  const list = document.createElement('div');
-  list.className = 'running-list';
-  for (const row of view.rows) {
-    const line = document.createElement('div');
-    line.className = 'running-row'
-      + (row.finished ? ' is-finished' : (row.moving ? '' : ' is-waiting'));
-    line.setAttribute('data-run-id', row.id);
-
-    const what = document.createElement('span');
-    what.className = 'running-what';
-    what.textContent = cfgText(row.what) + (cfgText(row.detail) ? ` · ${cfgText(row.detail)}` : '');
-    line.appendChild(what);
-
-    // \u{1f534} 「누가 걸었나」 — 체인 큐 패널이 «이미» 그리는 그 사실입니다. 같은 값이 이 목록에도
-    //    오는데 이 화면만 «안 그렸습니다»(기준 ④). 서버가 안 보낸 행에는 «아무 말도» 안 합니다 —
-    //    「모름」을 매 행에 다는 것은 그 낱말이 뜻을 잃게 만듭니다(큐 패널은 «한 줄»짜리 요약이라
-    //    그 자리에서 「모름」이 뜻이 있고, 여기는 «목록»입니다).
-    if (row.who) {
-      const who = document.createElement('span');
-      who.className = 'running-who';
-      who.textContent = cfgText(row.who);
-      line.appendChild(who);
-    }
-
-    const prog = document.createElement('span');
-    prog.className = 'running-progress';
-    if (row.progress.mode === 'bar') {
-      const bar = document.createElement('span');
-      bar.className = 'running-bar';
-      const fill = document.createElement('span');
-      fill.className = 'running-bar__fill';
-      fill.style.width = `${row.progress.percent}%`;
-      bar.appendChild(fill);
-      prog.appendChild(bar);
-      const pct = document.createElement('span');
-      pct.className = 'running-pct';
-      pct.textContent = `${row.progress.percent}%`;
-      prog.appendChild(pct);
-    } else {
-      // 🔴 폭을 «주장하지 않는» 막대. 전체를 모르는데 찬 막대를 그리면 그 폭이 곧 거짓말이고,
-      //    글자로 「처리 N」이라 적으면 소유자 지적대로 막대가 있는데 말을 또 하는 것입니다.
-      //    움직임이 「도는 중」을, 수가 「어디까지」를 말합니다.
-      const bar = document.createElement('span');
-      // 🔴 움직임이 「도는 중」입니다. 기다리는 줄은 «빈 궤도»로 앉습니다 — 글자는 안 늘립니다.
-      bar.className = 'running-bar is-unknown' + (row.moving ? '' : ' is-waiting');
-      const fill = document.createElement('span');
-      fill.className = 'running-bar__fill';
-      bar.appendChild(fill);
-      prog.appendChild(bar);
-      const t = document.createElement('span');
-      t.className = 'running-pct';
-      t.textContent = row.progress.text;
-      prog.appendChild(t);
-    }
-    if (row.progress.elapsed) {
-      const el = document.createElement('span');
-      el.className = 'running-elapsed';
-      el.textContent = ` · ${row.progress.elapsed}`;
-      prog.appendChild(el);
-    }
-    line.appendChild(prog);
-
-    // 🔴 실패 사유는 «서버가 쓴 문장» 그대로입니다.
-    //    없으면 아무것도 그리지 않습니다 — 성한 줄은 오늘과 같습니다.
-    // 🔴 서버가 만든 문장 그대로. 끝난 실행이 «무엇을 얼마나» 했는지를
-    //    서버가 이미 나르고 있었고 화면이 안 보고 있었습니다.
-    // 🔴 이 실행이 «무엇을 안 만들었나» — 수로. 예행 패널과 «같은 함수»가 그립니다.
-    //    0 도 그립니다: 안 그리면 「없음」과 「안 세어 봄」이 같은 그림입니다.
-    retroExtraBoxes(row.extras).forEach((b) => line.appendChild(b));
-    if (cfgText(row.summary)) {
-      const sum = document.createElement('span');
-      sum.className = 'running-elapsed';
-      sum.textContent = ` · ${cfgText(row.summary)}`;
-      line.appendChild(sum);
-    }
-    if (cfgText(row.reason)) {
-      const why = document.createElement('span');
-      why.className = 'running-reason';
-      why.textContent = ` — ${cfgText(row.reason)}`;
-      line.appendChild(why);
-    }
-
-    const act = document.createElement('span');
-    act.className = 'running-act';
-    if (row.stopping) {
-      // 🔴 말 대신 «색»입니다 (소유자 지시). 줄이 흐려지고 막대가 멈춥니다 — 그리고 «남습니다».
-      line.className += ' is-stopping';
-      line.title = 'stopping after the current batch';
-    } else if (row.cancel) {
-      const btn = document.createElement('button');
-      btn.className = 'admin-btn running-x';
-      btn.textContent = '×';
-      btn.title = 'stop this one — the server keeps running';
-      btn.addEventListener('click', () => requestRunCancel(row.id));
-      act.appendChild(btn);
-    }
-    // 🔴 못 멈추는 것에는 «아무것도» 안 그립니다. 죽은 × 는 화면이 하는 거짓말입니다.
-    line.appendChild(act);
-    list.appendChild(line);
+  if (!runLines) {
+    runLines = new RunLines(body, { onCancel: (id) => requestRunCancel(id),
+                                    resultBoxes: (extras) => retroExtraBoxes(extras) });
   }
-  body.appendChild(list);
+  runLines.render(view && !view.empty ? view.rows : []);
 }
 
 function initRetroactiveLine() {

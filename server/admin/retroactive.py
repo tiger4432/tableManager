@@ -950,6 +950,13 @@ RUN_CANCEL_REQUESTED = "cancel_requested"
 RUN_CANCELLED = "cancelled"
 RUN_FAILED = "failed"
 
+#: What each state is CALLED on a screen, shipped with the run list (lead a274c90f0: the row
+#: ends in its state word instead of a fade). The token stays the key.
+RUN_STATE_NAMES = {
+    RUN_QUEUED: "Queued", RUN_RUNNING: "Running", RUN_CANCEL_REQUESTED: "Stopping",
+    RUN_DONE: "Done", RUN_CANCELLED: "Cancelled", RUN_FAILED: "Failed",
+}
+
 #: How a run that is still `running` is MOVING. `running` alone cannot say it: a backfill
 #: that legitimately takes an hour and one that stopped an hour ago are the same row, the
 #: same gate, and the same silence. On 2026-09-04 that silence is what an operator saw -
@@ -2123,6 +2130,31 @@ def _describes_a_number(key: str) -> bool:
     return any(key.endswith(tail) for tail in NUMBER_DESCRIBERS)
 
 
+#: What each result number is CALLED - one table for every registered operation (lead
+#: dc8bf5af8: the result line printed its keys). Still one rule, no branch per operation:
+#: an operation's own `<key>_label` wins, then this table, then the key as written.
+#: ⚠️ `cursor_after` is left out: the implementer's via-events retirement removes it.
+RESULT_NAMES = {
+    "withdrawn": "atoms withdrawn", "attempted": "atoms attempted",
+    "inserted": "atoms inserted", "deduped": "already in the ledger",
+    "rows_in_scope": "rows in scope", "applied": "applied",
+    "rows_staged": "rows staged", "events_staged": "events staged",
+    "rows_scanned": "rows scanned", "rows_read": "rows read",
+    "cells_withdrawn": "cells withdrawn", "revealed": "values revealed",
+    "emptied": "cells emptied", "pinned_skipped": "pinned, skipped",
+    "cells_changed": "cells changed", "cells_examined": "cells examined",
+    "confirmed": "confirmed", "written_cells": "cells written", "queue_size": "queue size",
+    "batches": "batches", "molecules": "molecules", "stopped": "stopped early",
+}
+
+
+def _result_value(value) -> str:
+    """A result value as read: a boolean is yes / no, not Python's `False`."""
+    if isinstance(value, bool):
+        return "yes" if value else "no"
+    return str(value)
+
+
 def run_result_sentence(stored) -> str | None:
     """연산이 돌려준 수들 -> 화면이 «그대로 그릴» 한 문장. 없으면 None.
 
@@ -2147,7 +2179,7 @@ def run_result_sentence(stored) -> str | None:
         return None
     labels = {k[:-len("_label")]: v for k, v in values.items()
               if k.endswith("_label")}
-    return " · ".join("%s %s" % (labels.get(k, k), v)
+    return " · ".join("%s %s" % (labels.get(k) or RESULT_NAMES.get(k, k), _result_value(v))
                       for k, v in values.items() if not _describes_a_number(k))
 
 

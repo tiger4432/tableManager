@@ -1200,6 +1200,9 @@ const FLOORS = new Map([
   //    green while a member was swapped, and a member is exactly what protects a column.
   ['push_gate_harness.mjs', 34],
   ['retroactive_view_harness.mjs', 345],
+  // New with lead a274c90f0: one run is one line of five cells, its result a line under it.
+  // Floor is the count it reports on the commit that introduces it.
+  ['run_lines_harness.mjs', 19],
   // NEW 2026-09-03 at the count it reports on the commit that revives it -- there is no
   // earlier tree to measure it against, because it scored nothing from 2026-07-30 to here.
   // 6 of the 34 are the absence check standing in for the five deleted subjects, and one of

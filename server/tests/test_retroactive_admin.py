@@ -1615,10 +1615,39 @@ class TestTheRunSentenceSaysWhatWasNotMade:
     """
 
     def test_an_operation_without_labels_reads_exactly_as_before(self):
-        """㉤ 「갈래를 안 만들었다」를 보이는 줄. 라벨을 안 단 연산의 문장은 한 글자도
-        안 바뀐다 — 이 함수는 어느 연산인지 여전히 모른다."""
+        """㉤ 「갈래를 안 만들었다」를 보이는 줄. 이 함수는 어느 연산인지 여전히 모른다 —
+        라벨도 이름표도 없는 키는 쓴 그대로 읽힌다.
+        ⚠️ [총괄 dc8bf5af8] 이 줄이 박던 `cells_withdrawn 1` 은 이제 이름표(RESULT_NAMES)로
+        읽힌다. 뜻(연산별 갈래 없음)은 이름표에 «없는» 키로 그대로 잰다."""
+        assert "unnamed_count" not in retroactive.RESULT_NAMES
         assert retroactive.run_result_sentence(
-            {"cells_withdrawn": 1, "revealed": 0}) == "cells_withdrawn 1 · revealed 0"
+            {"unnamed_count": 1, "revealed": 0}) == "unnamed_count 1 · values revealed 0"
+
+    def test_a_result_number_is_read_by_the_registrys_name_and_a_label_still_wins(self):
+        """총괄 dc8bf5af8 — 「cells_changed 0 · … · applied False」가 기계 낱말 그대로였다.
+        이름표는 등록부 한 자리(RESULT_NAMES), 연산의 `_label` 이 먼저, 참·거짓은 yes / no."""
+        assert retroactive.run_result_sentence(
+            {"cells_changed": 0, "cells_examined": 1, "applied": False}) \
+            == "cells changed 0 · cells examined 1 · applied no"
+        assert retroactive.run_result_sentence(
+            {"rows_scanned": 3, "rows_scanned_label": "rows looked at"}) == "rows looked at 3"
+
+    def test_every_operation_result_key_is_named_but_the_retiring_cursor(self):
+        """모집단 — 등록된 연산이 돌려주는 수 칸 «전부»에 이름이 있다(cursor_after 는 은퇴 중이라 뺌).
+        키는 각 `_run_*` 의 반환 dict 에서 읽은 것이다."""
+        returned = {"withdrawn", "attempted", "inserted", "deduped", "rows_in_scope", "applied",
+                    "rows_staged", "events_staged", "rows_scanned", "cells_withdrawn",
+                    "revealed", "emptied", "pinned_skipped", "cells_changed", "cells_examined",
+                    "confirmed", "written_cells", "queue_size", "rows_read", "batches",
+                    "molecules", "stopped"}
+        assert returned <= set(retroactive.RESULT_NAMES), returned - set(retroactive.RESULT_NAMES)
+        assert "cursor_after" not in retroactive.RESULT_NAMES
+
+    def test_every_run_state_has_a_name(self):
+        """총괄 a274c90f0 — 줄 끝의 상태 낱말. 토큰은 열쇠로 남는다."""
+        states = {retroactive.RUN_QUEUED, retroactive.RUN_RUNNING, retroactive.RUN_CANCEL_REQUESTED,
+                  retroactive.RUN_DONE, retroactive.RUN_CANCELLED, retroactive.RUN_FAILED}
+        assert set(retroactive.RUN_STATE_NAMES) == states
 
     def test_a_labelled_number_is_read_by_its_label_and_the_label_is_not_drawn(self):
         """㉢ 문장에 raw 키 이름이 없다. 그리고 라벨 자체가 «수인 척» 문장에 서지 않는다."""

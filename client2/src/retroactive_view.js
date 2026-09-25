@@ -443,9 +443,11 @@ export function buildProgressCell(processed, total, minutes) {
  * @param payload  `{ runs, ingestions }` — 둘 다 없을 수 있고, 그때는 «빈 목록»입니다
  * @param cancellable  `op -> boolean`. 연산 선언이 말하는 것을 그대로 받습니다
  */
-export function buildRunsView(payload, now, cancellable) {
+export function buildRunsView(payload, now, cancellable, formParams) {
   const data = payload || {};
   const canCancel = cancellable || {};
+  const forms = formParams || {};
+  const stateNames = data.state_names && typeof data.state_names === 'object' ? data.state_names : {};
   const rows = [];
   const done = [];
 
@@ -472,7 +474,16 @@ export function buildRunsView(payload, now, cancellable) {
       id: String(run.run_id || ''),
       kind: 'run',
       what: text(run.label) || text(run.op),
-      detail: text(Object.values(run.params || {}).join(' · ')),
+      // 🔴 총괄 a274c90f0 — the FORM's params only. A run record also keeps what the form does not
+      //    offer (`form=False`: ontology_root · fetch_rows · chunk_size), and those reached the title
+      //    as a path and two bare numbers. The form's list is the inventory's, not a list here.
+      detail: text((Array.isArray(forms[run.op]) ? forms[run.op] : [])
+        .map((key) => (run.params || {})[key])
+        .filter((value) => value !== null && value !== undefined && value !== '')
+        .map((value) => (Array.isArray(value) ? value.join(', ') : String(value)))
+        .join(' · ')),
+      // The state word the server names (`state_names`); the token stays `state`, the key.
+      stateName: text(stateNames[state] || state),
       // \u{1f534} 「«누가» 걸었나」. 같은 사실이 «체인 큐 패널엔 가고 이 목록엔 안 갔습니다» —
       //    서버는 네 자리에서 `requested_by` 를 내는데(`retroactive.py` 의 queue_view ·
       //    in_flight · runs · publish) 읽는 화면이 «하나»였습니다. 기준 ④ 이고, 갈라진 쪽이
@@ -530,6 +541,7 @@ export function buildRunsView(payload, now, cancellable) {
       // 이 레지스트리는 «도는 것만» 들고 있습니다 (FINISHED 는 지워집니다).
       finished: false,
       state: text(job.status),
+      stateName: text(job.status),
     });
   }
 

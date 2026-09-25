@@ -6705,7 +6705,8 @@ def list_retroactive_runs(limit: int = 50, db: Session = Depends(get_db)):
     from admin import retroactive
 
     try:
-        return {"runs": retroactive.runs(db, limit=limit)}
+        return {"runs": retroactive.runs(db, limit=limit),
+                "state_names": dict(retroactive.RUN_STATE_NAMES)}
     except Exception as e:
         db.rollback()
         logger.error(f"[Retroactive] failed to list runs: {e}")
