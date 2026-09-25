@@ -686,7 +686,8 @@ def _proposed_reference_view(rule: dict, antecedent: tuple, target_field: str,
 
 def run_auto_confirm_sweep(db, rule: dict, apply: bool = False, limit: int = None,
                            ignore_knob: bool = False, log=logger.info,
-                           caps: dict = None) -> dict:
+                           caps: dict = None, page_rows: int = None,
+                           checkpoint=None) -> dict:
     """Apply ① to the EXISTING queue (the chain hook only sees new writes).
 
     Dry-run is the default and performs reads only, so this is also the
@@ -754,8 +755,20 @@ def run_auto_confirm_sweep(db, rule: dict, apply: bool = False, limit: int = Non
     # ⚠️ THE SCOPE IS THE FIX, NOT THE ABSENCE OF ONE. `discarding` still undoes everything
     # this call wrote - it undoes exactly that and nothing above it.
     if apply:
-        stats = enrichment.candidates.confirm_keys(
-            db, rule, keyed, apply=True, tx_prefix="enrichment_sweep", caps=caps)
+        # 🔴 A PAGE IS WHERE A STOP LANDS (총괄 8d8abfb5d). Each page's writes commit inside
+        #    its own call, so a stop between two leaves whole pages behind; the counters
+        #    accumulate in one dict and the pages share one transaction id - one sweep in
+        #    the history. `page_rows=None` is the whole queue as one page.
+        stats, tx_id = {}, enrichment.candidates.new_tx_id("enrichment_sweep")
+        page = page_rows or len(keyed) or 1
+        for start in range(0, len(keyed), page) or [0]:
+            enrichment.candidates.confirm_keys(
+                db, rule, keyed[start:start + page], apply=True, stats=stats,
+                tx_prefix="enrichment_sweep", caps=caps, tx_id=tx_id)
+            if checkpoint is not None and checkpoint(
+                    min(start + page, len(keyed)), len(keyed)):
+                stats["stopped"] = True
+                break
     else:
         import session_contract
 

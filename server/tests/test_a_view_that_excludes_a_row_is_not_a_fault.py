@@ -60,7 +60,7 @@ def test_a_scope_that_selects_nothing_returns_instead_of_refusing(monkeypatch):
     import ledger.store as store_module
 
     monkeypatch.setattr(backfill, "_fetch_v2_lineage_rows",
-                        lambda read, plan, scope=None: [])
+                        lambda read, plan, **k: [])
     monkeypatch.setattr(backfill, "_scope_predicate", lambda plan, scope: scope)
     monkeypatch.setattr(store_module, "LedgerStore", lambda engine: object())
     called = []
@@ -73,21 +73,6 @@ def test_a_scope_that_selects_nothing_returns_instead_of_refusing(monkeypatch):
     assert result["scope_empty"] is True
     assert result["rows_in_scope"] == 0 and result["inserted"] == 0
     assert called == [], "the write boundary must not be handed an empty frame"
-
-
-def test_the_guard_is_about_emptiness_and_not_about_the_column():
-    """🔴 THE OLD MESSAGE BLAMED A COLUMN. It said the batch does not carry 'row_id', which
-    reads as a declaration fault and sent the first reader looking at `base_select_columns`;
-    the frame had no columns because it had no ROWS. The guard therefore says `scope_empty`,
-    which is the thing that was true.
-
-    ⚠️ Scored on the source of one decision, deliberately narrow: the live half is that an
-    excluded `dt_log` row now drains to inserted 0 with no error while an included one
-    inserts 1, which needs the database and is reported rather than run here.
-    """
-    import inspect
-
-    body = inspect.getsource(backfill.rescope)
-    guard = body.split("if frame.empty:")[1].split("subjects =")[0]
-    assert "scope_empty" in guard
-    assert "return result" in guard
+# ⚰️ `test_the_guard_is_about_emptiness_and_not_about_the_column` read `rescope`'s source text
+#    between `if frame.empty:` and `subjects =`; the paged rescope (총괄 8d8abfb5d) has no such
+#    text. What it guarded - `scope_empty`, and no empty frame at the write - is the case above.

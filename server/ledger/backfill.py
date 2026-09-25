@@ -431,11 +431,6 @@ def preview_rescope(engine, setup, source, scope_column, scope_values):
     gone" is a different and more expensive question than "atoms outside this scope", and
     reporting the second under the first's name would be a number that lies.
     """
-    from . import schema
-    from .store import LedgerStore
-    from .setup import preview_selected_cursor_batch
-    from .runtime_v2 import _filtered_event_atoms
-
     plan = setup.snapshot.source_plans[source]
     scoped = _scope_predicate(plan, (scope_column, scope_values))
     read = engine.raw_connection()
@@ -447,10 +442,20 @@ def preview_rescope(engine, setup, source, scope_column, scope_values):
     result = {"source": source, "scope_column": scoped[0],
               "scope_values": len(scoped[1]), "rows_in_scope": len(rows),
               "withdraw": 0, "remake": 0, "refs": []}
-    if not rows:
-        return result
+    if rows:
+        result.update(_preview_frame(engine, setup, source, plan, _v2_frame(rows)))
+    return result
 
-    frame = _v2_frame(rows)
+
+def _preview_frame(engine, setup, source, plan, frame):
+    """`preview_rescope`'s three numbers for rows already read - a whole scope, or one page
+    of a paged `rescope` (총괄 8d8abfb5d)."""
+    from . import schema
+    from .store import LedgerStore
+    from .setup import preview_selected_cursor_batch
+    from .runtime_v2 import _filtered_event_atoms
+
+    result = {}
     subjects = _v2_registration_subjects(plan, frame)
     ordered = frame.sort_values(list(plan.driver.cursor_columns))
     last = ordered.iloc[-1]
@@ -651,7 +656,7 @@ def _scope_row_ids(plan, frame):
 
 
 def rescope(engine, setup, source, scope_column, scope_values, apply=False,
-            withdraw=True):
+            withdraw=True, page_rows=None, checkpoint=None):
     """Redo exactly the part of a source the named rows touched. Withdraw, then remake.
 
     `apply=False` is `preview_rescope` and writes nothing; the numbers it reports are the
@@ -717,74 +722,117 @@ def rescope(engine, setup, source, scope_column, scope_values, apply=False,
     #
     # ⚠️ EDIT STILL WITHDRAWS. A corrected row DOES hold atoms, and remaking without
     # withdrawing would leave the old generation standing beside the new one.
-    if withdraw:
-        result = preview_rescope(engine, setup, source, scope_column, scope_values)
-        refs = result.pop("refs", [])
-    else:
-        result, refs = {"rows_in_scope": None, "previewed": False}, None
-    result.update({"applied": False, "withdrawn": 0, "forgotten": 0,
-                   "attempted": 0, "inserted": 0, "deduped": 0})
+    zeros = {"applied": False, "withdrawn": 0, "forgotten": 0,
+             "attempted": 0, "inserted": 0, "deduped": 0}
     if not apply:
+        if withdraw:
+            result = preview_rescope(engine, setup, source, scope_column, scope_values)
+            result.pop("refs", None)
+        else:
+            result = {"rows_in_scope": None, "previewed": False}
+        result.update(zeros)
         return result
 
     plan = setup.snapshot.source_plans[source]
     scoped = _scope_predicate(plan, (scope_column, scope_values))
     store = LedgerStore(engine)
-
-    read = engine.raw_connection()
-    try:
-        rows = _fetch_v2_lineage_rows(read, plan, scope=scoped)
-    finally:
-        read.rollback()
-        read.close()
-    frame = _v2_frame(rows)
-    if result.get("rows_in_scope") is None:
-        result["rows_in_scope"] = len(frame)
-    if frame.empty:
+    result = ({"source": source, "scope_column": scoped[0], "scope_values": len(scoped[1]),
+               "withdraw": 0, "remake": 0, "indexed_refs": 0} if withdraw
+              else {"previewed": False})
+    result.update(zeros, rows_in_scope=0, pages=0)
+    # 🔴 A PAGE IS WHERE A STOP LANDS (총괄 8d8abfb5d, 소유자 「취소 다 되게 해」). Each page
+    #    withdraws and remakes ITS rows in one commit, then clears ITS stale index rows, and
+    #    only then is the checkpoint asked - so a stop leaves whole pages behind it and
+    #    untouched ones ahead. `page_rows=None` is one page, the whole scope: the live
+    #    follow-up path, whose receipt rides that one commit.
+    for frame in _scope_pages(engine, plan, scoped, page_rows):
+        result["rows_in_scope"] += len(frame)
+        result["pages"] += 1
+        scope_row_ids = _scope_row_ids(plan, frame)
+        aimed = None
+        if withdraw:
+            previewed = _preview_frame(engine, setup, source, plan, frame)
+            result["withdraw"] += previewed["withdraw"]
+            result["remake"] += previewed["remake"]
+            indexed = {ref for who, ref
+                       in store.row_refs_for(plan.relation, scope_row_ids)
+                       if who == source}
+            result["indexed_refs"] += len(indexed)
+            aimed = sorted(set(previewed["refs"]) | indexed)
+        # Neither the new translation nor the index says anything about these rows: there
+        # is nothing to withdraw and nothing to put in its place.
+        if aimed is None or aimed:
+            subjects = _v2_registration_subjects(plan, frame)
+            executed = execute_selected_scoped_batch(
+                setup, source, frame, scoped, _no_join_reader(), store,
+                known_registrations=None if subjects is None else (),
+                withdraw_refs=aimed)
+            written = executed.store_result
+            for key in ("withdrawn", "attempted", "inserted", "deduped"):
+                result[key] += int(written.get(key, 0))
+            result["applied"] = True
+            if withdraw and scope_row_ids:
+                # 🔴 THE INDEX ROWS GO LAST, for the reason `withdraw_deleted_rows` states:
+                # while they are still here the withdrawal can be run again, and a run that
+                # dies between the two leaves an index row pointing at atoms already
+                # withdrawn - which the next pass reads as "nothing to withdraw" and clears.
+                #
+                # Only the rows the new generation did NOT name: one it did name has just had
+                # its index line rewritten by that same transaction. And only THIS source's
+                # line, because the row is still there and another source still speaks for it.
+                spoken = {str(row_id) for _relation, row_id, _ref in executed.preview.row_refs}
+                stale = [row_id for row_id in scope_row_ids if row_id not in spoken]
+                if stale:
+                    result["forgotten"] += store.forget_row_refs(
+                        plan.relation, stale, source=source)
+        if checkpoint is not None and checkpoint(result["rows_in_scope"]):
+            result["stopped"] = True
+            break
+    if not result["rows_in_scope"]:
         # 🔴 AN EMPTY SCOPE IS AN ANSWER, NOT A FAULT (S-81) - the row can be gone by the
         # time it is read. Falling through handed an empty frame to the write boundary, which
         # refused it as `scope.row_id: the batch does not carry 'row_id'`; it repeated every
         # three seconds and the drain DROPPED each event.
         result["scope_empty"] = True
-        return result
-    scope_row_ids = _scope_row_ids(plan, frame)
-    aimed = refs
-    if withdraw:
-        indexed = {ref for who, ref
-                   in store.row_refs_for(plan.relation, scope_row_ids)
-                   if who == source}
-        result["indexed_refs"] = len(indexed)
-        aimed = sorted(set(refs or ()) | indexed)
-        if not aimed:
-            # Neither the new translation nor the index says anything about these rows, so
-            # there is nothing to withdraw and nothing to put in its place.
-            return result
-    subjects = _v2_registration_subjects(plan, frame)
-    executed = execute_selected_scoped_batch(
-        setup, source, frame, scoped, _no_join_reader(), store,
-        known_registrations=None if subjects is None else (),
-        withdraw_refs=aimed)
-    written = executed.store_result
-    result["withdrawn"] = int(written.get("withdrawn", 0))
-    result["attempted"] = int(written.get("attempted", 0))
-    result["inserted"] = int(written.get("inserted", 0))
-    result["deduped"] = int(written.get("deduped", 0))
-    result["applied"] = True
-    if withdraw and scope_row_ids:
-        # 🔴 THE INDEX ROWS GO LAST, for the reason `withdraw_deleted_rows` states: while
-        # they are still here the withdrawal can be run again, and a run that dies between
-        # the two leaves an index row pointing at atoms already withdrawn - which the next
-        # pass reads as "nothing to withdraw" and then clears.
-        #
-        # Only the rows the new generation did NOT name: one it did name has just had its
-        # index line rewritten by that same transaction. And only THIS source's line, because
-        # the row is still there and another source reading it still speaks for it.
-        spoken = {str(row_id) for _relation, row_id, _ref in executed.preview.row_refs}
-        stale = [row_id for row_id in scope_row_ids if row_id not in spoken]
-        if stale:
-            result["forgotten"] = store.forget_row_refs(
-                plan.relation, stale, source=source)
     return result
+
+
+#: Scope rows one page of an operator's rescope reads - a stop lands between two of them.
+#: A collapsed event's worth, the unit the live path already translates in one commit.
+RESCOPE_PAGE_ROWS = 1000
+
+
+def _scope_pages(engine, plan, scoped, page_rows):
+    """The scope's rows a page at a time, in page-key order, each as a frame.
+
+    🔴 A PAGE ENDS ON A PAGE-KEY BOUNDARY. The page key is constant within a group
+    (`_page_key`), so a page that took the rest of its last key's rows cannot split a
+    molecule - half a group remade on its own is a wrong atom, not a smaller one.
+    `page_rows=None` is the whole scope, one read."""
+    key = None if page_rows is None else _page_key(plan)
+    after = None
+    while True:
+        read = engine.raw_connection()
+        try:
+            rows = _fetch_v2_lineage_rows(read, plan, after=after, limit=page_rows,
+                                          scope=scoped)
+            if page_rows is not None and len(rows) >= page_rows:
+                last = rows[-1][key]
+                rows = [row for row in rows if row[key] != last] + _fetch_v2_lineage_rows(
+                    read, plan, group_value=last, scope=scoped)
+        finally:
+            read.rollback()
+            read.close()
+        if not rows:
+            return
+        yield _v2_frame(rows)
+        if page_rows is None:
+            return
+        after = rows[-1][key]
+        if after is None:
+            # `after` None would read the scope from its first row again, forever.
+            raise ValueError("page key %r is NULL in %s; a rescope cannot page past it"
+                             % (key, plan.relation))
 
 
 #: How many pages may sit in the follow-up queue before the loader stops reading and drains.

@@ -615,7 +615,8 @@ def _run_ledger_rescope(db, params, log, control=None):
              else load_setup())
     s = backfill.rescope(
         db.get_bind(), setup, params["source"], params["scope_column"],
-        params.get("scope_values") or [], apply=True)
+        params.get("scope_values") or [], apply=True,
+        page_rows=backfill.RESCOPE_PAGE_ROWS, checkpoint=_checkpoint(control))
     log(f"[rescope] {s['source']} {s['scope_column']}: rows {s['rows_in_scope']}, "
         f"withdrawn {s['withdrawn']}, written {s['inserted']} of {s['attempted']}")
     _final_progress(control, s.get("rows_in_scope"), s)
@@ -703,14 +704,12 @@ def _run_enrichment_backfill(db, params, log, control=None):
 
 
 def _run_enrichment_confirm(db, params, log, control=None):
-    # 🔴 NO CHECKPOINT, AND THAT IS REPORTED RATHER THAN FAKED. `run_auto_confirm_sweep`
-    # collects the whole queue and then hands it to `confirm_keys` in ONE call; the commits
-    # are chunked a level below that, inside `apply_batch_updates`. A hook at this level
-    # could therefore only stop the run BEFORE any writing began, and a cancel that works
-    # only in the first instant is worse than none - an operator would press it mid-run and
-    # watch it do nothing. The registry entry declares `cancellable: False` so the screen
-    # does not offer the button at all.
+    # 🔴 THE CHECKPOINT IS BETWEEN PAGES OF THE QUEUE (총괄 8d8abfb5d). The sweep used to hand
+    #    the whole queue to `confirm_keys` in one call, so a hook here could only stop it
+    #    before any writing began; the sweep now pages the queue at the write chunk and asks
+    #    between pages.
     from chain.enrichment import analysis
+    from chain.enrichment import candidates
 
     # ignore_knob stays FALSE here: the knob is where a human consents to
     # automatic writes, and `run_auto_confirm_sweep` refuses apply without it.
@@ -721,8 +720,11 @@ def _run_enrichment_confirm(db, params, log, control=None):
         enrichment_config.CAP_PROBE_DISTINCT_VALUES))
     s = analysis.run_auto_confirm_sweep(
         db, _enrichment_rule(params["rule"]), apply=True, ignore_knob=False, log=log,
-        caps=caps, **_given(params, "limit"))
-    _final_progress(control, s.get("queue_size"), s)
+        caps=caps, page_rows=candidates.CHUNK_SIZE, checkpoint=_checkpoint(control),
+        **_given(params, "limit"))
+    # The rows the pages reached - the whole queue when it finished, fewer when a cancel
+    # stopped it. `queue_size` would call a stopped run's unread pages processed.
+    _final_progress(control, s.get("rows_examined"), s)
     return {"confirmed": s.get("confirmed", 0), "written_cells": s.get("written_cells", 0),
             "queue_size": s.get("queue_size", 0)}
 
@@ -882,13 +884,15 @@ OPERATIONS = {
         # `source_who` is in the delete predicate, so an atom another source wrote about
         # the same die is unreachable from here however the scope is spelled.
         "deletes": "ledger_events rows (this source's atoms from the named rows only)",
-        # The withdrawal and the remake are two commits, so a run that dies between them
-        # leaves the atoms withdrawn and not yet rewritten. Re-running the same scope
-        # finishes it - measured on 2026-08-31, when exactly that happened.
+        # A page's withdrawal and remake are one commit (S-60), and a cancel lands between
+        # pages (총괄 8d8abfb5d): done pages are whole, the rest untouched. Re-running the
+        # same scope redoes it from the first page - the remake dedupes what is already there.
         "reads_as": "pair",
-        "cancellable": False,
+        "cancellable": True,
         "restartable": True,
-        "commit_granularity": "one commit for the withdrawal, one for the remake",
+        "commit_granularity": ("one commit per page of scope rows - its withdrawal and remake "
+                               "together - then its stale index rows; a stop lands between "
+                               "pages"),
         "cli_only": [],
     },
     "enrichment_backfill": {
@@ -928,9 +932,10 @@ OPERATIONS = {
                 "[--probe-scan-rows N] [--probe-distinct-values N] --apply"),
         "deletes": None,
         "reads_as": "number",
-        "cancellable": False,
+        "cancellable": True,
         "restartable": True,
-        "commit_granularity": "crud.apply_batch_updates commits per write chunk",
+        "commit_granularity": ("the queue is written a page at a time (the write chunk), each "
+                               "page committed; a stop lands between pages"),
         "cli_only": ["--ignore-knob (measure a rule whose knob is off)",
                      "classify / propose subcommands", "all rules at once"],
     },

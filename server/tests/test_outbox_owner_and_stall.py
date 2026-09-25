@@ -219,16 +219,15 @@ def test_a_run_that_reported_and_then_stopped_is_stalled():
 
 def test_a_run_that_has_never_reported_is_unreported_and_NOT_called_stalled():
     """🔴 `_mark_run(started=True)` stamps `last_progress_at` AT THE START, so an old
-    stamp alone proves nothing - and two of the six registered operations
-    (`ledger_rescope`, `enrichment_confirm`, measured 2026-09-04) never pass a
-    `_checkpoint` hook, so they never report while they run. Calling their silence a
-    stall would name a fault nobody established."""
+    stamp alone proves nothing - a run inside its first page has not reported yet (every
+    operation pages since 총괄 8d8abfb5d; `ledger_rescope` and `enrichment_confirm` did not
+    before it). Calling that silence a stall would name a fault nobody established."""
     row = run_row(op="ledger_rescope", started_ago=7200.0)
     row.last_progress_at = row.started_at                 # stamped once, never advanced
     got = retroactive.in_flight(_Runs(row))
     assert got["moving"] == retroactive.MOVING_UNREPORTED
-    assert got["cancel_reaches"] == retroactive.CANCEL_NEVER, (
-        "this operation declares cancellable: False - it has no batch boundary to offer")
+    assert got["cancel_reaches"] == retroactive.CANCEL_UNKNOWN, (
+        "cancellable, but it has not reached a page boundary since it started")
 
 
 def test_a_cancel_already_requested_is_still_in_flight():

@@ -609,9 +609,17 @@ def _record_cap_hit(st: dict, res: dict):
         slot["max_read"] = max(slot["max_read"], err.get("detail") or 0)
 
 
+def new_tx_id(tx_prefix: str = None) -> str:
+    """One write's transaction id. A caller writing in pages passes ONE to every page
+    (`confirm_keys(tx_id=...)`) so the history reads one sweep, not one per page."""
+    import uuid
+
+    return f"{tx_prefix or SOURCE_NAME}_{uuid.uuid4().hex[:8]}"
+
+
 def confirm_keys(db, rule: dict, keyed_rows: list, apply: bool = False,
                  stats: dict = None, tx_prefix: str = None, caps: dict = None,
-                 propose_into: list = None) -> dict:
+                 propose_into: list = None, tx_id: str = None) -> dict:
 
     """Resolve + (optionally) write single candidates for a set of derived rows.
     `propose_into`: pass a list and the update items are APPENDED to it and NOT
@@ -784,8 +792,7 @@ def confirm_keys(db, rule: dict, keyed_rows: list, apply: bool = False,
             #   the cells that go wrong without saying so (판정 567 says it for the join).
             propose_into.extend(items)
         else:
-            import uuid
-            tx_id = f"{tx_prefix or SOURCE_NAME}_{uuid.uuid4().hex[:8]}"
+            tx_id = tx_id or new_tx_id(tx_prefix)
             for i in range(0, len(items), CHUNK_SIZE):
                 batch = schemas.GeneralUpdateBatch(
                     updates=items[i:i + CHUNK_SIZE], transaction_id=tx_id, silent=False)

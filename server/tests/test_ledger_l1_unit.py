@@ -1017,10 +1017,10 @@ def test_a_scoped_redo_re_reads_the_row_so_a_humans_correction_reaches_the_ledge
         events.append("fetch")
         return [{"row_id": "R1", "core_wafer": "C1", "value": CORRECTED}]
 
-    def _preview(engine, setup, source, column, values):
-        return {"source": source, "scope_column": column, "scope_values": len(values),
-                "rows_in_scope": 1, "withdraw": 1, "remake": 1, "refs": ["REF-1"],
-                # what a caller reusing the preview would hand the writer
+    def _preview(engine, setup, source, plan, frame):
+        # The page's preview (총괄 8d8abfb5d) is handed the frame just read; a writer that
+        # got its rows anywhere else would show the stale value below.
+        return {"withdraw": 1, "remake": 1, "refs": ["REF-1"],
                 "stale_rows": [{"core_wafer": "C1", "value": STALE}]}
 
     written = {}
@@ -1038,7 +1038,7 @@ def test_a_scoped_redo_re_reads_the_row_so_a_humans_correction_reaches_the_ledge
                               "preview": type("P", (), {"row_refs": [
                                   ("src_table", "R1", "REF-1")]})()})()
 
-    monkeypatch.setattr(ledger_backfill, "preview_rescope", _preview)
+    monkeypatch.setattr(ledger_backfill, "_preview_frame", _preview)
     monkeypatch.setattr(ledger_backfill, "_scope_predicate",
                         lambda plan, scope: ("core_wafer", ["C1"]))
     monkeypatch.setattr(ledger_backfill, "_fetch_v2_lineage_rows", _fetch)

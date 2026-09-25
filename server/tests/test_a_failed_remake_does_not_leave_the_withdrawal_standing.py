@@ -129,9 +129,9 @@ class SpyConnection:
 def run_rescope(setup, monkeypatch, store, rows):
     statements = []
 
-    monkeypatch.setattr(backfill, "preview_rescope", lambda *a, **k: {
-        "source": "dt_job", "scope_column": "dt_job", "scope_values": 1,
-        "rows_in_scope": len(rows), "withdraw": 2, "remake": 2, "refs": list(REFS)})
+    # The apply path previews each page it read (총괄 8d8abfb5d) - the seat for the refs.
+    monkeypatch.setattr(backfill, "_preview_frame", lambda *a, **k: {
+        "withdraw": 2, "remake": 2, "refs": list(REFS)})
     monkeypatch.setattr(backfill, "_fetch_v2_lineage_rows",
                         lambda *a, **k: rows)
     monkeypatch.setattr("ledger.store.LedgerStore", lambda engine: store)
@@ -193,9 +193,8 @@ def test_nothing_is_withdrawn_when_neither_the_preview_nor_the_index_names_a_ref
     """
     store = SpyStore()
     statements = []
-    monkeypatch.setattr(backfill, "preview_rescope", lambda *a, **k: {
-        "source": "dt_job", "scope_column": "dt_job", "scope_values": 1,
-        "rows_in_scope": 3, "withdraw": 0, "remake": 0, "refs": []})
+    monkeypatch.setattr(backfill, "_preview_frame", lambda *a, **k: {
+        "withdraw": 0, "remake": 0, "refs": []})
     monkeypatch.setattr(backfill, "_fetch_v2_lineage_rows", lambda *a, **k: dt_log_rows(3))
     monkeypatch.setattr("ledger.store.LedgerStore", lambda engine: store)
     result = backfill.rescope(
