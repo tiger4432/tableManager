@@ -18,6 +18,7 @@ import { LOADING, unitText } from './ui_words.js';
 import { failedSince } from './chain_queue_panel.js';
 import { runtimeView } from './runtime_panel.js';
 import { sourcesView } from './ledger_sources_panel.js';
+import { isFailedStatus } from './retry_verdict.js';
 
 export const TONE = Object.freeze({ OK: 'ok', WARN: 'warn', DANGER: 'danger', UNKNOWN: 'unknown' });
 export const WORDS = Object.freeze({ ok: 'OK', warn: 'Warning', danger: 'Failing', unknown: 'Unknown' });
@@ -81,7 +82,7 @@ export function autoRow({ auto, failed } = {}) {
   if (absent) return row('auto', 'Auto Update', ['No status file', absent], TONE.WARN);
   const collectors = Array.isArray(auto.data) ? auto.data : [];
   if (!collectors.length) return row('auto', 'Auto Update', ['No collectors'], TONE.UNKNOWN);
-  const failCount = collectors.filter((c) => c.last_status === 'FAIL').length;
+  const failCount = collectors.filter((c) => isFailedStatus(c.last_status)).length;
   const activeCount = collectors.filter((c) => c.active !== false).length;
   const tables = new Set(collectors.map((c) => c.table_name));
   const logs = failed && Array.isArray(failed.data) ? failed.data : null;

@@ -26,6 +26,7 @@
 //    attributes — `data-table="${…}"` is the position where the quote-only drift was unsafe.
 import { escapeHtml } from './utils.js';
 import { localeCountText, isCount } from './absent.js';
+import { statusBadgeClass } from './retry_verdict.js';
 
 /** File Ingestion 로그 행. `withStatus` 는 Auto Update 탭 실패 목록과 공용이라 남습니다. */
 export function fileLogRowHtml(log, { withStatus, timeStr }) {
@@ -121,11 +122,8 @@ export function mapperRowHtml(mapper) {
  *    그 문자를 놔두고 있었고, 그래서 이름이 같은데 안전하지 않았습니다.
  */
 export function autoUpdateRowHtml(col, { isActive, nextRunText, lastRunText }) {
-  const statusBadge = `<span class="badge ${
-    col.last_status === 'SUCCESS' ? 'badge-success' :
-    col.last_status === 'FAIL' ? 'badge-danger' :
-    col.last_status === 'RUNNING' ? 'badge-warning' : 'badge-warning'
-  }">${escapeHtml(col.last_status || 'PENDING')}</span>`;
+  // The badge's class is the drawer's (retry_verdict, lead 457b34131) — no status ternary here.
+  const statusBadge = `<span class="${statusBadgeClass(col.last_status)}">${escapeHtml(col.last_status || 'PENDING')}</span>`;
   const inactiveBadge = isActive ? '' :
     '<span class="badge badge-muted" style="margin-left: 8px; flex: none;">Inactive</span>';
   return `

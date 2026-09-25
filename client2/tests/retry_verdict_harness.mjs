@@ -14,10 +14,12 @@
 // Three harnesses died tonight because their subjects are cut out of source and run in a vm, and
 // one added import put a name out of reach — CLAUDE.md's standing ban describes exactly that, and
 // naming a module that can be imported is the destination it points at.
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { loadWithProbe } from './lib/probe.mjs';
 import * as BASELINE from '../src/retry_verdict.js';
+import { autoUpdateRowHtml } from '../src/admin_rows.js';
+import { autoRow } from '../src/overview_status.js';
 
 const SRC_PATH = fileURLToPath(new URL('../src/retry_verdict.js', import.meta.url));
 
@@ -219,6 +221,34 @@ console.log('\n── G. THE COLLECTOR DRAWER — the same seat, its own words (
     X.collectorMessageView('FAIL', ' Cut off by a restart. ').body === 'Cut off by a restart.');
 }
 
+console.log('\n── H. EVERY SEAT THAT READS A COLLECTOR STATUS GIVES THE DRAWER\'S ANSWER (lead 457b34131) ──');
+{
+  const WORDS = ['PENDING', 'RUNNING', 'SUCCESS', 'FAIL', 'SKIPPED', 'orphaned', 'unknown'];
+  const drawerFailed = WORDS.filter((s) => X.collectorMessageView(s, '').tone === 'danger').length;
+  // the list badge, drawn by the real row renderer
+  const listBadge = (s) => (autoUpdateRowHtml({ table_name: 't', script_name: 'x', cron_expression: '*', last_status: s },
+    { isActive: true, nextRunText: '', lastRunText: '' }).match(/<span class="(badge [^"]+)">/) || [])[1];
+  ok('H1 the collector list badge is the drawer\'s badge for all seven words',
+    WORDS.every((s) => listBadge(s) === X.collectorMessageView(s, '').badgeClass), WORDS.map((s) => [s, listBadge(s)]));
+  // the Overview line, counted by the real row builder
+  const line = autoRow({ auto: { data: WORDS.map((s, i) => ({ table_name: `t${i}`, script_name: 'x', last_status: s })) },
+    failed: { data: [] } });
+  ok('H2 the Overview line counts the failures the drawer calls failures',
+    drawerFailed === 1 && line.facts.includes(`failures ${drawerFailed}`), { drawerFailed, facts: line.facts });
+  ok('H3 the section count\'s judge agrees with the drawer',
+    WORDS.filter((s) => X.isFailedStatus(s)).length === drawerFailed);
+  const js = readFileSync(new URL('../src/admin.js', import.meta.url), 'utf8');
+  ok('H4 the Auto Update section count goes through that judge',
+    /autoUpdateData\.filter\(c => isFailedStatus\(c\.last_status\)\)/.test(js), 'the section count spells a status itself');
+  // 🔴 the order's gate: no seat compares the spelling but this module. Text is the subject.
+  const dir = new URL('../src/', import.meta.url);
+  const files = readdirSync(dir, { recursive: true }).map(String).filter((f) => f.endsWith('.js'));
+  const spelling = files.filter((f) => !f.endsWith('retry_verdict.js')
+    && /last_status ===/.test(readFileSync(new URL(f.replace(/\\/g, '/'), dir), 'utf8')));
+  ok('H5 no file in client2/src but retry_verdict compares last_status by spelling (files read from the folder)',
+    files.length > 20 && spelling.length === 0, { files: files.length, spelling });
+}
+
 console.log('\n── E. THE OUTBOX RETRY REPLY — the server\'s status is the verdict ───────');
 {
   // The reply as `retry_failed_outbox_events` answers today (8dfd50ab): reset · ended_missing_row · skipped_reexpanded.
@@ -280,7 +310,10 @@ const DEFECTS = [
   ['M14 every drawer body is drawn red (the colour 1f87a0baf names)',
     swap("bodyClass: tone === 'danger' ? DRAWER_BODY_CLASS :", 'bodyClass: true ? DRAWER_BODY_CLASS :')],
   ['M15 the badge class stops following the tone',
-    swap("badgeClass: `badge badge-${tone === 'ok' ? 'success'", "badgeClass: `badge badge-${true ? 'success'")],
+    swap("return `badge badge-${tone === 'ok' ? 'success'", "return `badge badge-${true ? 'success'")],
+  ['M16 nothing is counted as a failure (the count 457b34131 moves here)',
+    swap("export const isFailedStatus = (status) => retryVerdict(status).tone === 'danger';",
+      'export const isFailedStatus = (status) => false;')],
 ];
 
 const CONTROLS = [
@@ -309,7 +342,9 @@ function verdict(M) {
     || M.ingestionMessageView('SUCCESS', ' m ').body !== 'm'
     || M.collectorMessageView('FAIL', '').tone !== 'danger'
     || M.ingestionMessageView('SUCCESS', 'm').bodyClass === M.ingestionMessageView('FAILED', 'm').bodyClass
-    || M.collectorMessageView('FAIL', 'm').badgeClass === M.collectorMessageView('SUCCESS', 'm').badgeClass;
+    || M.collectorMessageView('FAIL', 'm').badgeClass === M.collectorMessageView('SUCCESS', 'm').badgeClass
+    || M.isFailedStatus('FAIL') !== true || M.isFailedStatus('SKIPPED') !== false
+    || M.statusBadgeClass('FAIL') === M.statusBadgeClass('SUCCESS');
 }
 
 if (verdict(BASELINE)) die('the scorer already fails on the UNMUTATED module — '

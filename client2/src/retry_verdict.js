@@ -94,6 +94,17 @@ export function outboxRetryMessage(body) {
     text: `❔ Unknown reply${reply.status ? ` (${reply.status})` : ''}${said ? ` — ${said}` : ''}` };
 }
 
+/** 「Did it fail?」 — tone danger, for a count as for a badge (lead 457b34131: the spelling is
+ *  compared in this file only). */
+export const isFailedStatus = (status) => retryVerdict(status).tone === 'danger';
+
+/** A status badge's class from its tone — the collector list, the file drawer and the collector
+ *  drawer all read this one. */
+export function statusBadgeClass(status) {
+  const tone = retryVerdict(status).tone;
+  return `badge badge-${tone === 'ok' ? 'success' : tone === 'danger' ? 'danger' : 'warning'}`;
+}
+
 /** The drawer body's own class (admin.html `.traceback-text`, red). Every drawer that writes the
  *  body sets its class, so none inherits the neutral one a success file left behind. */
 export const DRAWER_BODY_CLASS = 'traceback-text';
@@ -112,7 +123,7 @@ function drawerMessageView(status, message, words) {
   return { tone,
     title: `${words.subject} ${tone === 'danger' ? 'error' : 'message'}`,
     body: said || empty,
-    badgeClass: `badge badge-${tone === 'ok' ? 'success' : tone === 'danger' ? 'danger' : 'warning'}`,
+    badgeClass: statusBadgeClass(status),
     bodyClass: tone === 'danger' ? DRAWER_BODY_CLASS : `${DRAWER_BODY_CLASS} is-neutral` };
 }
 
