@@ -59385,3 +59385,44 @@ G 회색 줄      구현자 B 의 표를 받아, 영원히 남는 줄은 «남�
 ③ 대기열 머리 한 줄에 사실 일곱이 붙어 있음 (Nothing waiting · Failed · Running · Log · Loop · Mapper · Waiting · As of <마이크로초 UTC>)
    -> 클라 F 가독성에 같이. 시각은 사람이 읽는 모양으로
 ```
+
+---
+
+> ✅ **[총괄 -> 구현자] 대기열 짓기 전 보고(6ef2c040a) 답**
+
+```
+1  ㉯ — mark_processed 를 chain_state_of 옆(event_constants)으로. 함수 하나, 두 칸(status · processed_chain)을 쓰고 읽는 모듈 하나
+   다섯 자리 모두 그 함수를 지남 (실패도 시각이 찍힘). 「ingestion_worker 의」는 총괄 지시의 위치였지 소유자 문장이 아님
+2  rule_outcomes — heartbeat 로 «건넵니다». Chain 탭의 never_evaluated 16 개가 거짓인 채 남는 것이 소유자가 본 증상
+   Loop · purge 는 이미 있는 laps 로 · 재적재 시각 · running(수 · 가장 오래된 나이)은 chain lap 칸으로
+   파일 크기와 쓰기 빈도를 이 박스에서 재서 보고 — 바뀔 때만 쓰거나, 사유 문장이 부담이면 그때 올리십시오
+   Log 줄(API 의 server.log)은 체인 일을 적는 파일이 아니므로 워커 로그 이름으로 — 모르면 줄을 빼기
+3  실패 81 의 모양(ㄱ ㄴ ㄷ)은 소유자께 여쭙니다. 답 전에는 이 칸 안 짓습니다
+```
+
+> ✅ **[총괄 -> 클라] Overview — 소유자 「A 로 해」 (시안 A · 현황판). D · F 짓기 시작**
+
+```
+시안   소유자 캔버스(비공개)의 A — 모양을 글로 옮깁니다. 모두 캐논(ui-design-system) 토큰으로
+바탕   --bg-inset · 섹션은 --bg-surface 에 1px --border · 모서리 0 · 섹션 머리 --bg-header 에 h6(13 대문자 0.08em) · 섹션 사이 --space-5
+
+1 QUEUE 섹션 (맨 위)
+   머리   「Queue」 · 옆에 「chain worker · scheduler」 · 오른쪽 「Open Chain tab ›」
+   숫자 넷 한 줄(4 칸 grid)   Waiting · Oldest · Running · Failed since <날짜>  — 라벨 12 대문자 --text-dim, 수 32 Barlow Condensed 600 tabular-nums
+                             Failed 만 --danger. 수가 없으면(눈먼 칸) 칸째 빼고 셋·둘로
+   표     Transaction(mono 13) · Waiting · Tables · Rows(오른쪽 정렬) · Drained by(배지 12, 1px 선)
+          글자 14 · 칸 패딩 --space-2 · 행 사이 옅은 선 · px 고정 폭 없음(내용 최소폭 + 남는 폭)
+   머리 한 줄에 붙던 Log · Loop · Mapper · As of 는 표 «아래» 한 줄 메타(12)로, 시각은 사람이 읽는 로컬 시각
+2 STATUS 섹션
+   머리   「Status」 · 옆에 「one line per part · red rows need a look」
+   줄     [점 10px] [이름 600] [사실 — 수 · 수 · 수, tabular-nums] [상태 한 낱말 13 600 — 점과 같은 색] [Open ›]
+          grid 5 칸 · 패딩 --space-3/--space-4 · 줄 사이 옅은 선 · 붉은 줄만 배경 --danger-weak
+   순서   Workers(9 of 9 alive) · File Ingestion · Chain · Auto Update · Enrichment · Ledger(active · refused) ·
+          Declarations(rejected · no effect · fine) · Retroactive(runs in progress) · Re-correction · Correction effort
+   펼침   줄을 누르면 그 아래 제자리에서. Declarations 펼침 = 영역마다 한 줄(「Ledger 15 rejected · 1 no effect」 …) + 「Show all N lines ›」
+          (E 의 묶기와 같은 셈)
+   고리 표(runtime)는 Workers 줄의 펼침으로 · 소급 폼 · 체인 그래프는 자기 탭(Retroactive 탭 신설 · Chain 탭)
+글자   Overview 와 대기열 부품은 12 미만 0 — --fs-label 이상만. 캐논 토큰(11 · 10) 자체를 올릴지는 소유자 답 대기 (지금은 안 바꿈)
+health-strip  소유자 답 대기 — 지금은 그대로 둠
+게이트  토큰 있는 어드민을 총괄이 소유자 크롬에서 엶 — 1920 · 1280 · 폰 폭, 대기 줄을 넣은 상태 포함. 전·후 스샷
+```
