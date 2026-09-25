@@ -33412,3 +33412,22 @@ CLI 기록의 요청자   CLI 실행 행의 requested_by 가 비어 있습니다
 보고만(동결)  어드민 자식과 CLI 가 둘 다 where "own_process" — 누가 띄웠는지는 pid 만 가릅니다
              `runtime/running.py` 는 이 기능 커밋이 아니라 총괄의 지시 커밋(96be27e71)에 실려 main 에 들어갔습니다 — 동작은 멀쩡합니다(추적 파일)
 ```
+
+---
+
+## 전·후 — 실패 요약 한 줄 (ad4a4e69) · 보기 모델로 (09-25 20:26)
+
+실제 `/admin/outbox/failed` 답(프로세스 안 HEAD · tz Asia/Seoul)과 실제 재시도 답을 새 `failureSummaryView` · `outboxRetryMessage` 에 넣었습니다. 화면은 총괄 몫.
+
+| | 전 (28ab23ec0 에서 잰 것) | 후 |
+|---|---|---|
+| 요약 칸(first_at · last_at · day · retry_max)을 읽는 클라 코드 | 0 | `failure_summary.js` 가 읽음 ✓ |
+| 화면 요청의 zone | 안 보냄 → day_zone UTC | `&tz=` 보는 쪽 zone ✓(세 자리) |
+| 줄 모양 | — | 「dt_inventory EDIT 33 · 09-23 00:14–00:39 · attempts 1」 — 현지 시각 ✓ |
+| zone 을 못 보냈을 때 | — | 「… · 2026-09-22 (UTC day) · …」 로 UTC 날임을 말함 ✓ |
+| 묶음 줄 재시도(refused) | 성공 토스트 | 거절 토스트 · 서버 문장 그대로 ✓ |
+| 행 재시도(success) | 성공 토스트 | 성공 토스트 ✓ |
+
+```
+목록의 metro EDIT 1 (09-25 18:52) 은 제 5139290 입니다 — 행이 지워진 행별 줄. 두라는 지시대로 뒀습니다
+```
