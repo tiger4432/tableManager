@@ -1,3 +1,12 @@
+> ## [22:22 디자인] 탭 버튼 착지 뒤 — 그려진 크기 게이트 0
+
+```
+f788fac2f 가 main 에 든 뒤, main 이 띄운 어드민(포트 5173 · 서빙된 admin.html 에 수정 있음 확인)
+   일곱 탭 모두 단 밖 0 (전 7) · .tab-btn 14px · 카나리아 steps_read 12
+   탭마다 그려진 글자 요소  Overview 54 · Tables 22 · File 40 · Chain 63 · Auto Update 49 · Retroactive 30 · Ontology Explorer 82
+⚠️ 그 페이지는 API 데이터 없이 떠서 데이터 행은 안 그려졌습니다 — 소유자 크롬(데이터 있음)에서 같은 명령이 남은 확인입니다
+```
+
 > ## [22:20 디자인] 탭 버튼 끝맺음 (f788fac2f) · 클라 목록 마감
 
 ```
