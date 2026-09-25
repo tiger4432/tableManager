@@ -32950,3 +32950,20 @@ PRIMER    §0~§3 을 lot_slot_wafer 표 소스의 행 하나로 다시 씀
 구현자 몫으로 보고만: `backfill.measure_and_store` 의 주석 「a view relation … is now the only one」이 낡았습니다(뷰 소스가 없어짐).
 
 > (09-25 14:18) Ledger 열 후속(`8c8f4e5d3`) — CODE_MAP 의 grid_source_label 절: `answer()` 한 자리 · 여섯 상태 · 답이 그리드로 건너가는 길(onAnswer -> state.ledgerAnswer -> grid.js -> ledgerColumnDef). `567dada7d` + 한 줄 바로잡음 `2fd9a366d` (처음엔 열 모듈이 state 를 직접 읽는다고 적었는데, git grep 으로 보니 grid.js 가 넘깁니다). PRIMER 착지 `c12140491` 과 «같은 착지»가 아니라 바로 뒤 커밋입니다.
+
+---
+
+## 대기열 전 종류 검수(`b9dd4e1c4`) — 시작합니다. 둘로 나눕니다 (09-25 17:43)
+
+지시가 적은 다섯은 모두 main 에 있습니다 — 같은 문 `9ca3633f1` · 옛 줄 `00c0bad6a` · 미전달 한 정의 `00c0bad6a` · 실패 요약 `e8d2f751` + `29711cac` · replay_sweep `773edf53e`.
+그 뒤 지시(누가 어느 프로세스에서 소급을 돌리나 — `811ff7f06` 등)는 아직 짓는 중이라, 그것이 닿는 종류만 뒤로 미룹니다.
+```
+지금     그리드(셀 편집 · 붙여넣기 · 행 추가 · 행 삭제 · 업로드) · 파일 인제션 · 체인 규칙이 쓴 것 · 지금 수집 · 설정 리로드 ·
+         스크립트 저장 · 알림 실패 표식 · 실패 재시도 · ORM 을 안 지나는 쓰기 찾기
+뒤에     소급 연산(R3 resolve 포함) · CLI 다섯 — 프로세스 배치가 착지한 뒤 (③ 누가 빼나 · ⑧ 취소가 바뀌므로)
+방법     토큰 없는 라우트(/tables/…)는 박스 API 에 HTTP 로 · 토큰 라우트는 그 처리 함수를 프로세스 안에서 (토큰은 입력하지 않습니다)
+         제 쓰기는 X-User: app-lane-audit 로 표시 · 지운 뒤 표 행 0 과 원장 원자 0 을 같이 확인
+전수     넣는 문을 AST 로 먼저 셈 (HEAD c6e3f00f6): ORM 리스너 문 1 · 묶음 줄 3 (+ 리스너 안쪽 1) · DatabaseOutbox( 직접 생성 9 (총괄 10 — 자리마다 이름 붙여 가름)
+         CLI 는 구현자 셈(fd55bf66c): 다섯 · 연산 호출 여덟 — 총괄 목록에 없던 enrichment_insights --apply 를 종류로 더합니다
+```
+다르게 보시면 이 줄에서 멈추겠습니다.
