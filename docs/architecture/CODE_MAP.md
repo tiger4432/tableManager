@@ -3513,7 +3513,7 @@ note_naive_time(...)      셈 · `naive_time_counts()` · `naive_time_note()` �
 
 > ⚰️ **[2026-09-09 판정 173 · 조각 3] 이 표의 «커서» 항목들은 죽었습니다 — 아래 넷은 «코드에 없습니다».** `_run_v2_lineage`(전진 스캔 드라이버, 255줄) · `rows_past_cursor`(「커서 뒤 한 페이지」 세기) · `BackfillResult`(그 드라이버만 짓던 결과 클래스) · `run(...)` 의 `probe_lag`(호출자 0 · 읽는 곳 0 — 이 지도가 🆕⑩ 에서 이미 「읽히지 않는다」고 적어 둔 그것). 그리고 `schema.CAUGHT_UP_COLUMN` · `store.mark_caught_up` 도 함께 은퇴했습니다(컬럼은 «DROP 하지 않습니다» — 판정 165 의 `supersedes` 처방, 쓰는 자 0).
 >
-> 🔴 **대신 들어온 것 «하나»**: **`rows_not_yet_translated(engine, setup, source)`** — 「표 행 N · 색인 M · 남은 N−M」을 «값 셋»으로 돌려주고, row_id 를 안 나르는 소스는 `refused: no_row_id` + 두 줄 처방으로 «거절»합니다(0 을 답하지 않습니다). 소비자 둘: `retroactive._count_ledger_backfill` · `backfill.main` 의 CLI. 실행 경로는 `run()` → **`_run_via_events`** 하나입니다.
+> 🔴 **대신 들어온 것 «하나»**: **`rows_not_yet_translated(engine, setup, source)`** — 「표 행 N · 색인 M · 남은 N−M」을 «값 셋»으로 돌려주고, 로더가 거절한 소스는 `refused: source_refused` + 「the loader refused this source (<자리>): <문장>」 으로 «거절»합니다(0 을 답하지 않습니다). ⚰️ 종전 `no_row_id` 와 「view column 으로 row_id 를 드러내라」 두 줄 처방은 뷰 소스 은퇴와 함께 없어졌고, 09-25 `519b0d75` 부터 센서스 바퀴가 거절된 소스도 다시 찍어 옛 처방이 저장값에서도 사라집니다. 소비자 둘: `retroactive._count_ledger_backfill` · `backfill.main` 의 CLI. 실행 경로는 `run()` → **`_run_via_events`** 하나입니다.
 >
 > ⚠️ **아래 표의 나머지 커서 문장들은 이 패스에서 «재측정하지 않았습니다» — 낡았다고 가정하십시오.** 이 줄이 지우는 것은 「없는 심볼을 있다고 적은 것」뿐입니다.
 
