@@ -919,7 +919,7 @@ FastAPI 웹서버. 모든 REST/WS의 단일 진입점. 워커·워처와는 outb
 | DELETE `/tables/{t}/rows/{row_id}` | `delete_row` | 단일 삭제 |
 | POST `/tables/{t}/rows/batch_delete` | `delete_rows_batch_endpoint` | 일괄 삭제(+WS) |
 | POST `/tables/{t}/row_ids/target` | `get_target_row_ids` | 필터 조건 → row_id 목록(범위 작업용) |
-| POST `/tables/{t}/upload` | `upload_file` | 파일 업로드 → 워크스페이스 투입(`paths.workspace_path(table,"raws")`) |
+| POST `/tables/{t}/upload` | `upload_file` | 파일 업로드 → 워크스페이스 투입(`paths.workspace_path(table,"raws")`). 🆕 09-25 `d18646be` — `raws/` «옆»(같은 볼륨)에 다 쓴 뒤 옮겨 넣는다: 워처가 반쯤 쓴 파일의 크기를 재지 않아 큰 업로드가 대형 레인을 탄다 |
 
 ### 1.3 API 라우트 표 — 이력/레이어링(소스·우선순위)
 
