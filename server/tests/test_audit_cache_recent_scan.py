@@ -428,7 +428,7 @@ def test_k_only_a_table_that_has_row_id_is_asked_for_its_rows(monkeypatch):
     that DOES carry `row_id` is not asked either - asking the model instead would let it in.
     """
     import main
-    from ledger import setup as ledger_setup
+    from database import crud
 
     class _Column:
         def in_(self, ids):
@@ -453,13 +453,12 @@ def test_k_only_a_table_that_has_row_id_is_asked_for_its_rows(monkeypatch):
             return type("Q", (), {"filter": lambda self, ids: type(
                 "R", (), {"all": lambda self: [(i,) for i in ids if i == "R1"]})()})()
 
-    for name, model in (("k_rows", _Table), ("k_view", _ViewWithout),
-                        ("k_view_rid", _ViewWith)):
+    for name, model, entry in (
+            ("k_rows", _Table, {"column_types": {"a": "string"}}),
+            ("k_view", _ViewWithout, {"kind": "view", "column_types": {"a": "string"}}),
+            ("k_view_rid", _ViewWith, {"kind": "view", "column_types": {"row_id": "string"}})):
         monkeypatch.setitem(models.DYNAMIC_TABLES, name, model)
-    monkeypatch.setattr(ledger_setup, "live_physical_catalog", lambda: {
-        "k_rows": {"kind": "table", "columns": {"row_id": "string"}},
-        "k_view": {"kind": "view", "columns": {"a": "string"}},
-        "k_view_rid": {"kind": "view", "columns": {"row_id": "string"}}})
+        monkeypatch.setitem(crud.TABLE_CONFIG, name, entry)
 
     found = main.check_rows_exist(_Db(), [("k_rows", "R1"), ("k_rows", "R2"),
                                           ("k_view", "B1"), ("k_view_rid", "R1")])

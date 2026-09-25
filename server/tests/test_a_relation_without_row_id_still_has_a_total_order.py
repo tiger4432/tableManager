@@ -256,3 +256,96 @@ def test_a_view_row_carries_no_layering_metadata_and_renders_its_times():
     assert set(row["data"]["seen_at"]) == {"value"}
     assert isinstance(row["data"]["seen_at"]["value"], str), "a raw datetime costs 10x"
     assert row["data"]["seen_at"]["value"].endswith("+00:00")
+
+
+# ---------------------------------------------------------------------------
+# 총괄 218f907f5 · 4e508835a — a view on the grid, through the routes
+# ---------------------------------------------------------------------------
+
+GRID_VIEW = "s186_grid_view"
+
+
+@pytest.fixture
+def grid_view(client, db_session):
+    """A view the way `ledger_events` stands on the grid: declared `kind: view`, keyed by its
+    `id`, no `row_id`, no layering pair - and two rows in the relation."""
+    from datetime import datetime, timezone
+
+    from conftest import retire_dynamic_model
+    from database import models
+
+    crud.TABLE_CONFIG[GRID_VIEW] = {
+        "kind": "view", "business_key": "id",
+        "column_types": {"id": "string", "occurred_at": "datetime"}}
+    models.init_dynamic_models(dict(crud.TABLE_CONFIG))
+    table = models.DYNAMIC_TABLES[GRID_VIEW].__table__
+    bind = db_session.get_bind()
+    table.create(bind=bind)
+    db_session.execute(table.insert(), [
+        {"id": "EV-1", "occurred_at": datetime(2026, 9, 1, tzinfo=timezone.utc)},
+        {"id": "EV-2", "occurred_at": datetime(2026, 9, 2, tzinfo=timezone.utc)}])
+    db_session.commit()
+    try:
+        yield client
+    finally:
+        table.drop(bind=bind)
+        crud.TABLE_CONFIG.pop(GRID_VIEW, None)
+        retire_dynamic_model(GRID_VIEW)
+        models.init_dynamic_models(dict(crud.TABLE_CONFIG))
+
+
+ROW_ADDRESSED = [
+    ("get", "/tables/%s/EV-1", None),
+    ("get", "/tables/%s/EV-1/id/sources", None),
+    ("get", "/tables/%s/rows/EV-1/history", None),
+    ("get", "/tables/%s/rows/EV-1/cells/id/history", None),
+    ("post", "/tables/%s/row_ids/target", {"offsets": [0]}),
+    ("post", "/tables/%s/cells/sources/query",
+     {"updates": [{"row_id": "EV-1", "column_name": "id"}]}),
+    ("get", "/tables/%s/data?transaction_id=tx", None),
+    ("get", "/tables/%s/data/count?transaction_id=tx", None),
+    ("get", "/tables/%s/export?transaction_id=tx", None),
+]
+
+
+def test_every_route_that_addresses_a_views_row_refuses_it_by_name(grid_view):
+    said = {}
+    for method, path, body in ROW_ADDRESSED:
+        url = path % GRID_VIEW
+        response = getattr(grid_view, method)(url, **({"json": body} if body else {}))
+        said[url] = (response.status_code, GRID_VIEW in str(response.json().get("detail")))
+    assert said == {path % GRID_VIEW: (422, True) for _m, path, _b in ROW_ADDRESSED}
+    table = grid_view.get("/tables/raw_table_1/data?transaction_id=tx")
+    assert table.status_code == 200, "CANARY: a table's transaction filter still reads"
+
+
+def test_a_view_exports_in_its_key_order_with_the_layering_pair_left_empty(grid_view):
+    import csv
+    import io as _io
+
+    response = grid_view.get("/tables/%s/export?order_by=row_id&order_desc=true" % GRID_VIEW)
+    assert response.status_code == 200, response.text
+    rows = list(csv.reader(_io.StringIO(response.content.decode("utf-8-sig"))))
+    assert rows[0] == ["id", "occurred_at", "created_at", "updated_at"]
+    assert [row[0] for row in rows[1:]] == ["EV-2", "EV-1"], "ordered by the view's key"
+    assert {tuple(row[2:]) for row in rows[1:]} == {("", "")}
+
+
+def test_a_search_on_id_finds_a_views_key_and_a_tables_sql_is_unchanged(grid_view, db_session):
+    from database import models
+
+    found = grid_view.get("/tables/%s/data?q=EV-2&cols=id" % GRID_VIEW)
+    assert found.status_code == 200, found.text
+    assert [row["row_id"] for row in found.json()["data"]] == ["EV-2"]
+    assert grid_view.get("/tables/%s/data?q=EV" % GRID_VIEW).status_code == 200
+
+    table = models.DYNAMIC_TABLES["raw_table_1"]
+    sql = str(main.apply_search_filter(db_session.query(table), table, "raw_table_1",
+                                       "x", "row_id").statement)
+    assert "row_id" in sql and "CAST" not in sql.upper(), sql
+    # ⚠️ The declared key is cast: `ledger_events.id` is declared string over a uuid, and
+    #   PostgreSQL refuses ILIKE on a uuid - sqlite here would not.
+    view = models.DYNAMIC_TABLES[GRID_VIEW]
+    sql = str(main.apply_search_filter(db_session.query(view), view, GRID_VIEW,
+                                       "x", "id").statement)
+    assert "CAST(%s.id AS" % GRID_VIEW in sql.replace('"', ""), sql

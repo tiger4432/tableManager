@@ -1314,6 +1314,27 @@ def resolve_missing_business_keys(db: Session, log_models: list) -> None:
 from ledger.runtime_v2 import RECEIPT_COLUMN  # noqa: E402
 
 
+def has_row_id(table_name) -> bool:
+    """`setup_bundle.reads_a_row_table` over the entry THIS process built the model from
+    (`crud.TABLE_CONFIG`), adapted the way the ledger adapts it (총괄 377231278 · 218f907f5).
+    ⚠️ Not a re-read of the file: between an edit and the reload the file and the models
+    differ, and one bad entry in the file would fail every table's question."""
+    from ledger.setup_bundle import _adapt_physical_catalog, reads_a_row_table
+
+    entry = crud.TABLE_CONFIG.get(table_name)
+    return reads_a_row_table(_adapt_physical_catalog({table_name: entry}), table_name)
+
+
+def refuse_row_address(table_name):
+    """🔴 THE ONE PLACE a route that addresses a row BY `row_id` refuses a relation without
+    one - a view (`ledger_events` on the grid) - by name, instead of the 500 its model's
+    missing `row_id` raised."""
+    if not has_row_id(table_name):
+        raise HTTPException(status_code=422, detail=(
+            "'%s' is not a table that has row_id, so a row of it cannot be addressed by "
+            "row_id" % table_name))
+
+
 def _names_a_row(log) -> bool:
     """Whether an audit line names a row of its relation — the one question the three audit
     lists ask before 「was this row deleted」. A batch line does not, and neither does the
@@ -1334,13 +1355,9 @@ def check_rows_exist(db: Session, row_keys: list[tuple[str, str]]) -> set[tuple[
     # 🔴 A VIEW HAS NO `row_id` TO LOOK UP (총괄 377231278). Its lines are the ledger's batch
     #   receipts, and asking its model for `row_id` was the history panel's 500. The seat
     #   answers; a relation it refuses goes the way a relation without a model goes.
-    from ledger.setup import live_physical_catalog
-    from ledger.setup_bundle import reads_a_row_table
-
-    catalog = live_physical_catalog()
     for t_name, r_ids in by_table.items():
         table_model = models.DYNAMIC_TABLES.get(t_name)
-        if table_model and r_ids and reads_a_row_table(catalog, t_name):
+        if table_model and r_ids and has_row_id(t_name):
             found = db.query(table_model.row_id).filter(table_model.row_id.in_(r_ids)).all()
             for (f_id,) in found:
                 existing_keys.add((t_name, f_id))
@@ -2110,7 +2127,15 @@ def apply_search_filter(query, table_model, table_name, q, cols,
             target_col = table_model.created_at if col == "created_at" else table_model.updated_at
             conditions.append(cast(target_col, String).ilike(f"%{safe_q}%", escape="\\"))
         elif col in ["row_id", "id"]:
-            conditions.append(table_model.row_id.ilike(f"%{safe_q}%", escape="\\"))
+            # 🔴 THE ROW'S IDENTITY, NOT A COLUMN NAMED row_id (총괄 4e508835a). The
+            #   total-order key IS `row_id` wherever it exists - the same SQL - and a
+            #   view's declared key otherwise (`ledger_events` searches its `id`).
+            #   ⚠️ A declared key is CAST like every other column here: the declaration can
+            #   say `string` over a uuid (`ledger_events.id`), and PostgreSQL refuses ILIKE.
+            row_id = getattr(table_model, "row_id", None)
+            for key in total_order_keys(table_model, table_name):
+                text_key = key if key is row_id else cast(key, String)
+                conditions.append(text_key.ilike(f"%{safe_q}%", escape="\\"))
         elif col == "business_key_val":
             conditions.append(table_model.business_key_val.ilike(f"%{safe_q}%", escape="\\"))
         elif hasattr(table_model, col):
@@ -2254,6 +2279,7 @@ def narrowed_table_query(db, table_name, table_model, *, q=None, cols=None,
 
     # [NEW] 트랜잭션 필터링
     if transaction_id:
+        refuse_row_address(table_name)
         subquery = db.query(models.AuditLog.row_id).filter(
             models.AuditLog.table_name == table_name,
             models.AuditLog.transaction_id == transaction_id
@@ -2730,6 +2756,7 @@ def get_target_row_ids(table_name: str, req: schemas.TargetedRowIdRequest, trans
     table_model = models.DYNAMIC_TABLES.get(table_name)
     if not table_model:
         raise HTTPException(status_code=404, detail=f"Table '{table_name}' not found")
+    refuse_row_address(table_name)
         
     query = db.query(table_model)
     
@@ -2850,6 +2877,7 @@ def export_table_csv(
     
     # [NEW] 트랜잭션 필터링
     if transaction_id:
+        refuse_row_address(table_name)
         subquery = db.query(models.AuditLog.row_id).filter(
             models.AuditLog.table_name == table_name,
             models.AuditLog.transaction_id == transaction_id
@@ -2863,17 +2891,11 @@ def export_table_csv(
     query = apply_search_filter(query, table_model, table_name, q, cols)
 
     # [Sort] 정렬 조건 동기화
-    from sqlalchemy.sql import func
-    if order_by == "updated_at":
-        sort_expr = table_model.updated_at.desc() if order_desc else table_model.updated_at.asc()
-        tie_breaker = table_model.row_id.desc() if order_desc else table_model.row_id.asc()
-        final_sort = [sort_expr, tie_breaker]
-    elif order_by == "id":
-        bk_sort = table_model.business_key_val.desc() if order_desc else table_model.business_key_val.asc()
-        tie_breaker_bk = table_model.row_id.desc() if order_desc else table_model.row_id.asc()
-        final_sort = [bk_sort, tie_breaker_bk]
-    else:
-        final_sort = [table_model.row_id.asc()]
+    from sqlalchemy.sql import func, null
+    # 🔴 THE GRID'S SORT, NOT A COPY (총괄 218f907f5). The copy read `row_id` for every
+    #   tiebreak, so a view's export was a 500; `resolve_sort` breaks ties by
+    #   `total_order_keys`, which is `row_id` wherever it exists.
+    query, final_sort = resolve_sort(query, table_model, table_name, order_by, order_desc)
 
     # 1. 헤더 구성
     cfg = crud.TABLE_CONFIG.get(table_name, {})
@@ -2903,8 +2925,10 @@ def export_table_csv(
     for col in business_cols:
         select_entities.append(getattr(table_model, col).label(col))
 
-    select_entities.append(table_model.created_at)
-    select_entities.append(table_model.updated_at)
+    for name in ("created_at", "updated_at"):
+        # ⚠️ A VIEW HAS NO LAYERING PAIR (S-186); the header keeps its place, empty.
+        column = getattr(table_model, name, None)
+        select_entities.append(column if column is not None else null().label(name))
 
     # The one invariant that keeps a CSV honest: a header cell per selected value. Any
     # future edit that adds to one list and forgets the other shifts every column after
@@ -3152,6 +3176,7 @@ def get_row_data(table_name: str, row_id: str, db: Session = Depends(get_db)):
     table_model = models.DYNAMIC_TABLES.get(table_name)
     if not table_model:
         raise HTTPException(status_code=404, detail="Table not found")
+    refuse_row_address(table_name)
         
     row = db.query(table_model).filter(table_model.row_id == row_id).first()
     if not row:
@@ -3196,6 +3221,7 @@ def _history_page(db: Session, table_name: str, row_id: str, base_query,
     the count of audit entries on the ROW, which is the one fact that tells an
     empty cell page apart from a row with no history. See `AuditHistoryPage`.
     """
+    refuse_row_address(table_name)
     settings = audit_history.resolve_settings(audit_history.load_config())
     page_size = audit_history.resolve_limit(limit, settings)
     try:
@@ -3852,6 +3878,7 @@ def get_cell_sources(table_name: str, row_id: str, col_name: str, db: Session = 
     table_model = models.DYNAMIC_TABLES.get(table_name)
     if not table_model:
         raise HTTPException(status_code=404, detail=f"Table '{table_name}' not found")
+    refuse_row_address(table_name)
         
     row = db.query(table_model).filter(table_model.row_id == row_id).first()
     if not row or not hasattr(table_model, col_name):
@@ -4139,6 +4166,7 @@ def query_cells_sources(
     table_model = models.DYNAMIC_TABLES.get(table_name)
     if not table_model:
         raise HTTPException(status_code=404, detail="Table not found")
+    refuse_row_address(table_name)
         
     rows = db.query(table_model).filter(
         table_model.row_id.in_(row_ids)
