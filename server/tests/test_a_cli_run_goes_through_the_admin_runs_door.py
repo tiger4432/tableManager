@@ -119,6 +119,21 @@ def test_a_failure_is_recorded_and_its_own_exception_reaches_the_terminal(retro_
     assert (_row(retro_env).state, _row(retro_env).error) == (retroactive.RUN_FAILED, "boom")
 
 
+def test_resolve_is_an_operation_the_admin_counts_and_a_cli_runs(retro_env):
+    """총괄 b39604b58 — R3 (recompute shown values) is a retroactive operation: counted
+    exactly on a table the budget covers, and run through the same record."""
+    counted = retroactive.count(retro_env, "resolve", {"table": "retro_test_target"})
+    assert (counted["affected"], counted["absence"], counted["count_kind"]) == (
+        0, retroactive.ABSENCE_TRULY_NONE, retroactive.COUNT_EXACT)
+
+    out = retroactive.run_here("resolve", {"table": "retro_test_target"},
+                               log=lambda *_: None)
+    row = retro_env.query(models.RetroactiveRun).filter(
+        models.RetroactiveRun.op == "resolve").one()
+    assert (row.state, json.loads(row.result)["cells_changed"]) == (retroactive.RUN_DONE, 0)
+    assert out["stats"]["table"] == "retro_test_target"
+
+
 def test_a_killed_one_is_nobodys_and_a_cancel_releases_it(retro_env, monkeypatch):
     """The CLI died without its ending: its heartbeat goes stale, and the gate says the
     cancel releases the lock rather than 「cannot be judged」."""

@@ -207,7 +207,7 @@ class TestInventory:
         # the forward scan was the one the owner could only stop by restarting the server.
         assert {o["op"] for o in body["operations"]} == {
             "chain_replay", "withdraw", "enrichment_backfill", "enrichment_confirm",
-            "ledger_rescope", "ledger_backfill"}
+            "ledger_rescope", "ledger_backfill", "resolve"}
 
     def test_the_run_list_and_the_cancel_request_are_actually_reachable(self, client):
         """🔴 A CONVENTION WITH NO ROUTE IS A FUNCTION NOBODY CAN CALL.
@@ -1359,6 +1359,7 @@ def test_every_operation_that_CLAIMS_it_can_be_cancelled_actually_passes_the_hoo
                    lambda name, rules=None, row_scoped=False: {"name": name})
         mp.setattr(replay, "replay_rule", recorder("chain_replay"))
         mp.setattr(replay, "withdraw_source", recorder("withdraw"))
+        mp.setattr(replay, "recompute_display_values", recorder("resolve"))
         mp.setattr(enrichment.backfill, "load_rule", lambda *a, **k: {"name": "r"})
         mp.setattr(enrichment.backfill, "run_backfill", recorder("enrichment_backfill"))
         mp.setattr(analysis, "run_auto_confirm_sweep",
@@ -1371,6 +1372,7 @@ def test_every_operation_that_CLAIMS_it_can_be_cancelled_actually_passes_the_hoo
 
         retroactive._run_chain_replay(None, {"rule": "r"}, log, control)
         retroactive._run_withdraw(None, {"table": "t", "source": "s"}, log, control)
+        retroactive._run_resolve(None, {"table": "t"}, log, control)
         retroactive._run_enrichment_backfill(None, {"rule": "r"}, log, control)
         retroactive._run_enrichment_confirm(None, {"rule": "r"}, log, control)
         retroactive._run_ledger_backfill(_BindOnly(), {"source": "s"}, log, control)
@@ -1381,7 +1383,7 @@ def test_every_operation_that_CLAIMS_it_can_be_cancelled_actually_passes_the_hoo
             f"{op} declares cancellable={declared} but "
             f"{'passes' if hook is not None else 'does not pass'} a checkpoint")
     # Non-vacuous: the walk has to have reached every operation it claims to judge.
-    assert set(seen) == {"chain_replay", "withdraw", "enrichment_backfill",
+    assert set(seen) == {"chain_replay", "withdraw", "resolve", "enrichment_backfill",
                          "enrichment_confirm", "ledger_backfill"}
 
 

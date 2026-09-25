@@ -19,6 +19,11 @@ REPLAY_STATS = {"mode": "apply", "rule": "r", "trigger_table": "a", "target_tabl
 WITHDRAW_STATS = {"mode": "apply", "source": "s", "table": "t", "cells_matched": 0,
                   "cells_withdrawn": 0, "revealed": 0, "emptied": 0, "value_unchanged": 0,
                   "pinned_skipped": 0, "samples": []}
+RESOLVE_STATS = {"mode": "apply", "table": "t", "rows_scanned": 0, "pages": 0,
+                 "cells_examined": 0, "pinned_examined": 0, "cells_changed": 0,
+                 "changed_by_tiebreak": 0, "changed_by_stale_materialisation": 0,
+                 "pinned_changed": 0, "changes": []}
+STATS = {"withdraw": WITHDRAW_STATS, "resolve": RESOLVE_STATS}
 REAL_SWEEP = analysis.run_auto_confirm_sweep
 
 
@@ -30,7 +35,7 @@ def seen(retro_env, monkeypatch):
 
     def door(op, params, log=print):
         calls["door"].append((op, {k: v for k, v in params.items() if v is not None}))
-        return {"stats": WITHDRAW_STATS if op == "withdraw" else REPLAY_STATS}
+        return {"stats": STATS.get(op, REPLAY_STATS)}
 
     def direct(name, answer):
         def fn(*args, **kwargs):
@@ -42,6 +47,8 @@ def seen(retro_env, monkeypatch):
     monkeypatch.setattr(retroactive, "run_here", door)
     monkeypatch.setattr(replay, "replay_rule", direct("replay_rule", REPLAY_STATS))
     monkeypatch.setattr(replay, "withdraw_source", direct("withdraw_source", WITHDRAW_STATS))
+    monkeypatch.setattr(replay, "recompute_display_values",
+                        direct("recompute_display_values", RESOLVE_STATS))
     monkeypatch.setattr(replay, "find_rule", lambda name, row_scoped=False: {"name": name})
     monkeypatch.setattr(replay, "load_rules", lambda: [
         {"name": "r1", "trigger_table": "triage_tbl"},
@@ -96,6 +103,9 @@ CASES = [
     ("withdraw --apply", "chain", ["withdraw", "t", "s", "--columns", "a", "--apply"],
      [("withdraw", {"table": "t", "source": "s", "columns": ["a"]})], []),
     ("withdraw dry", "chain", ["withdraw", "t", "s"], [], ["withdraw_source"]),
+    ("resolve --apply", "chain", ["resolve", "t", "--limit", "5", "--apply"],
+     [("resolve", {"table": "t", "limit": 5, "chunk_size": 1000})], []),
+    ("resolve dry", "chain", ["resolve", "t"], [], ["recompute_display_values"]),
     ("enrichment --apply", "enrich", ["e", "--force-disabled", "--apply"],
      [("enrichment_backfill", {"rule": "e", "chunk_size": 1000, "force_disabled": True})], []),
     ("enrichment dry", "enrich", ["e"], [], ["run_backfill"]),

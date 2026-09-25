@@ -253,6 +253,34 @@ def _count_withdraw(db, params, scan_limit):
     }
 
 
+def _count_resolve(db, params, scan_limit):
+    from chain import replay
+
+    s = replay.recompute_display_values(
+        db, params["table"], columns=params.get("columns"), apply=False, limit=scan_limit,
+        log=lambda m: logger.debug(m))
+    truncated = s["rows_scanned"] >= scan_limit
+    affected = s["cells_changed"]
+    return {
+        "affected": affected,
+        "absence": (ABSENCE_NOT_EXHAUSTIVE if truncated
+                    else ABSENCE_TRULY_NONE if not affected else None),
+        "affected_label": "cells whose shown value moves",
+        "count_kind": COUNT_SAMPLE if truncated else COUNT_EXACT,
+        "scanned": s["rows_scanned"],
+        "scan_limit": scan_limit,
+        "truncated": truncated,
+        "detail": (
+            f"{s['cells_examined']} cell(s) with two or more layers in {s['rows_scanned']} "
+            f"row(s) of '{params['table']}'; {affected} would show a different value. "
+            f"No layer is created or deleted - only the shown value moves, and each moved "
+            f"cell gets a history entry."
+        ),
+        "extra": {"cells_examined": s["cells_examined"],
+                  "pinned_changed": s["pinned_changed"]},
+    }
+
+
 def _count_enrichment_backfill(db, params, scan_limit):
     # `enrichment_backfill`, NOT `scripts/backfill_enrichment`: the CLI is not
     # importable from a runtime process (server/scripts is on nobody's sys.path),
@@ -634,6 +662,20 @@ def _run_withdraw(db, params, log, control=None):
             "emptied": s["emptied"], "pinned_skipped": s["pinned_skipped"]}
 
 
+def _run_resolve(db, params, log, control=None):
+    # 🔴 NO CHECKPOINT: `recompute_display_values` takes none, so no stop between pages is
+    #    offered (`cancellable: False`) rather than faked. It commits per page, so a killed run
+    #    loses at most the page in flight and a re-run finishes it.
+    from chain import replay
+
+    s = replay.recompute_display_values(db, params["table"], columns=params.get("columns"),
+                                        apply=True, log=log,
+                                        **_given(params, "limit", "chunk_size"))
+    _final_progress(control, s.get("rows_scanned"), s)
+    return {"cells_changed": s["cells_changed"], "cells_examined": s["cells_examined"],
+            "rows_scanned": s["rows_scanned"]}
+
+
 def _run_enrichment_backfill(db, params, log, control=None):
     from chain import enrichment
     from database import crud
@@ -771,6 +813,29 @@ OPERATIONS = {
         "restartable": True,
         "commit_granularity": "explicit commit per row chunk",
         "cli_only": ["--columns is available here too; nothing else exists on this path"],
+    },
+    "resolve": {
+        "label": "Recompute shown values from stored layers (R3)",
+        "what_is_missing": "a cell shows a value its own stored layers no longer pick",
+        "params": [_p("table"),
+                   _p("columns", required=False, kind="csv",
+                      help="comma-separated column allowlist"),
+                   _p("limit", required=False, kind="int", form=False,
+                      help="bound the rows scanned"),
+                   _p("chunk_size", required=False, kind="int", form=False,
+                      help="rows per page")],
+        "count": _count_resolve,
+        "run": _run_resolve,
+        "cli": ("server/scripts/chain_replay_cli.py resolve <table> [--columns a,b] "
+                "[--limit N] [--chunk-size N] --apply"),
+        # Only the shown column moves, from layers already stored; no layer is created or
+        # deleted. Every moved cell gets an AuditLog row.
+        "deletes": None,
+        "reads_as": "number",
+        "cancellable": False,
+        "restartable": True,
+        "commit_granularity": "one commit per page of rows",
+        "cli_only": ["--list-all (prints every moved cell)"],
     },
     "ledger_backfill": {
         "label": "Translate the ledger forward (everything after the cursor)",

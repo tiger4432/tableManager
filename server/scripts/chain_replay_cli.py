@@ -223,9 +223,12 @@ def main(argv=None):
                 print(_report_replay(s))
         elif args.cmd == "resolve":
             cols = [c.strip() for c in args.columns.split(",")] if args.columns else None
-            print(_report_resolve(replay.recompute_display_values(
-                db, args.table, columns=cols, apply=args.apply, limit=args.limit,
-                chunk_size=args.chunk_size, log=lambda m: print(f"  {m}")),
+            print(_report_resolve(written("resolve", {
+                "table": args.table, "columns": cols, "limit": args.limit,
+                "chunk_size": args.chunk_size})
+                if args.apply else replay.recompute_display_values(
+                    db, args.table, columns=cols, apply=False, limit=args.limit,
+                    chunk_size=args.chunk_size, log=say),
                 list_all=args.list_all))
         else:
             cols = [c.strip() for c in args.columns.split(",")] if args.columns else None

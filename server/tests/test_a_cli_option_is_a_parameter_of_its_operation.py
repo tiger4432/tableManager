@@ -19,8 +19,10 @@ WIDENED = {
     "chain_replay": {"limit": 5, "chunk_size": 7},
     "enrichment_backfill": {"limit": 5, "force_disabled": True, "chunk_size": 7},
     "enrichment_confirm": {"limit": 5, "probe_scan_rows": 11, "probe_distinct_values": 13},
+    "resolve": {"limit": 5, "chunk_size": 7},
 }
 REQUIRED = {
+    "resolve": {"table": "t"},
     "ledger_backfill": {"source": "s"},
     "ledger_rescope": {"source": "s", "scope_column": "c", "scope_values": "a"},
     "chain_replay": {"rule": "r"},
@@ -88,6 +90,8 @@ def calls(monkeypatch):
         "skipped_blank_identity": 0}))
     monkeypatch.setattr(retroactive, "_enrichment_rule", lambda name: {"name": name})
     monkeypatch.setattr(analysis, "run_auto_confirm_sweep", record("sweep", {}))
+    monkeypatch.setattr(replay, "recompute_display_values", record("recompute", {
+        "cells_changed": 0, "cells_examined": 0, "rows_scanned": 0}))
     return seen
 
 
@@ -102,6 +106,7 @@ RECEIVES = {
     "chain_replay": ("replay_rule", ["limit", "chunk_size"]),
     "enrichment_backfill": ("run_backfill", ["limit", "chunk_size"]),
     "enrichment_confirm": ("sweep", ["limit"]),
+    "resolve": ("recompute", ["limit", "chunk_size"]),
 }
 
 
