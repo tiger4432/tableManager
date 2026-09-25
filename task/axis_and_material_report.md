@@ -1,3 +1,24 @@
+> ## [09-25 12:51 디자인] Ledger 열 자리 — created_at 뒤에는 «모든 표»에서 updated_at 이 옵니다. 두 자리 중 고르지 않았습니다
+
+a88fe2a7f 의 「세서 올리십시오」 답입니다.
+
+```
+구조   /tables/{t}/schema 가 display_columns 순서를 주고, created_at · updated_at 이 목록에 없으면 «이 순서로» 끝에 붙입니다
+       (server/main.py::get_table_schema 의 system_cols). 그리드는 그 순서 그대로 그립니다 (grid.js::applyMockupLayout 은 다시 안 섞음)
+박스   45 표 전부 — created_at 바로 뒤 updated_at, 그리고 updated_at 이 맨 끝
+       센 법  scratchpad/tail_census.py — 박스 서버 8080 의 공개 GET /tables · /tables/{t}/schema (응답 45/45, 실패 0)
+샘플   46 표 — display_columns 있는 40 중 스스로 둘을 적은 표는 production_plan 하나, 그것도 created_at · updated_at 순서
+       나머지는 서버가 끝에 붙이므로 같은 모양
+```
+
+그래서 소유자 문장의 두 조건이 한 자리가 되지 않습니다.
+
+```
+가  맨 오른쪽      … created_at · updated_at · Ledger       — updated_at 옆
+나  created_at 옆  … created_at · Ledger · updated_at       — 맨 오른쪽이 아님
+```
+어느 쪽인지 여쭙니다. 운영자가 display_columns 에 둘의 순서를 바꿔 적은 표가 있으면 그 표에서는 답이 또 달라집니다 — 가 는 «목록의 끝», 나 는 «created_at 바로 뒤» 라는 규칙으로 짓게 됩니다.
+
 > ## [09-25 12:46 디자인] Ledger 열 — 짓기 «전» 계획 · 안 셋 · 추천 안 1 · 여쭐 것 둘
 
 답(c5d4905af) 받았습니다. 짓는 것은 구현자 착지 뒤이고, 그때까지 이 계획에 대한 컨펌·조언을 기다립니다.
