@@ -33748,3 +33748,32 @@ Overview 에 옛 모양이 한 조각도 안 남는 것이 게이트 — 총괄�
 게이트   저장 거절 · 기동 뒤 목록 사유 · 정상 셋(join · decide · mapper) 무변 (박스 · 전·후) · 변이: 거절 줄을 빼면 빨강
 순서     909ea2052 넷 · 503b52049 과 겹치면 님 판단 — 작으면 먼저
 ```
+
+---
+
+> ✅ **[총괄 -> 클라] 21194559e 받음(API 재기동 뒤 소유자 크롬에서 엶) · 물음 셋 답 · 새로 본 것 하나**
+
+```
+재검     Ledger 줄 「Translated 11 · Not measured 4」 · 누르면 제자리 펼침 · Open › -> #ontology 소스 현황 절이 화면 안(위에서 174px)
+         Declarations 펼침 — 영역 영어 · 사유 이름(Not declared · Mapping unavailable) · Retroactive 「0 running」
+         Retroactive 탭 속도 넷 영어 · 그 탭 한글 0 · Overview 현황판 한글 0
+물음 답   1 Explorer 탭 서버 문장 셋(config_authoring · admin · config_explorer) 영어 — 한 커밋(한 탭 = 한 화면 상태). 셈 명령 그대로 전·후
+         2 Declarations 본문(config_resolve_report 135 줄) 영어 — 1 과 같은 라운드, 따로 커밋이어도 됨
+         3 모집단 낱말 — 사유와 같은 방법(vocabulary 에 이름). 「40 ineffective」 -> 시안의 「40 no effect」
+새로 본 것  Ledger 펼침(= 소스 현황 부품) 안쪽 줄이 기계 낱말 그대로
+            relation_rows ≈117662 · indexed_rows · not_yet · measured_at · translator_ver ledger-v2:<64자 해시> · no_row_id
+         그리고 같은 사실의 시각이 둘 — measured_at 은 UTC ISO(04:23:06+00:00), LAST 칸은 현지(13:23:06+09:00)
+         고칠 것  낱말은 상태 이름과 같은 방법(서버 한 자리) · 시각은 server_time 한 자리로 현지 하나 · 해시는 판별식(「지우면 틀리게 읽나」)으로 님이 정함
+         1 과 같은 묶음으로
+```
+
+> 🔵 **[총괄 -> 응용] 대기열 검수 첫 판(97229cf5c) 받음 — 빨간 칸 셋은 구현자로 · 물음 답**
+
+```
+빨강     ① 대형 레인 안 탐 · ② 파일 인제션 실패 사유가 날 트레이스백 · ③ BROADCAST_RECOVERY 주인 unknown — 구현자 지시로 보냄(원인 가르기부터)
+관찰     그리드 거절 문장(숫자 형식) 한국어 -> ② 와 한 자리로 구현자가 영어까지 · 조인 거절 문장 한국어 -> 클라 영어 묶음
+         실패 요약 first_at · last_at — 화면이 현지로 그리는지 둘째 판에서 «열어» 봄
+⑦ 억지 실패  소유자께 여쭘(박스 설정에 시험용 실패 규칙을 넣었다 빼는 것) — 답 오기 전에는 「못 만듦」 그대로
+남긴 파일   raws/ 의 CSV 넷 — 지우면 무엇이 도는지(감시자가 삭제를 사건으로 읽나) 코드로 먼저. 아무것도 안 돌면 지움 · 돌면 두고 보고
+둘째 판     구현자의 별도 프로세스 착지 뒤 — 소급 여섯 · CLI 다섯 · 취소
+```
