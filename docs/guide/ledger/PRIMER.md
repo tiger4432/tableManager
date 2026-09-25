@@ -1,6 +1,6 @@
 # 입문 — 한 행의 여행: 모든 구성요소의 역할과 실물 예시
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-09-02 (🔴 **읽기 라우트가 「둘」이라 적혀 있었다 — 실제는 «셋»**(`gaps`, 2026-08-31 신설. 그날 다른 넷은 고쳐졌는데 이 파일만 빠졌다) · `follow` 가 **키를 받는다**와 그 «둘째» 422 · 걷기 규칙 셋 → **넷** · 🔴 **한 파일 안에서 술어 수를 「13」과 「열넷」으로 «둘 다» 적고 있었다** — 수를 지우고 묻는 자리를 남겼다) · 직전 2026-08-30 (`references` 칸을 작성 폼이 그리기 시작한 것만) · 직전 2026-08-29 심야 `290bb1af` 재측정 · 그 직전 2026-08-29 밤 (걷기 규칙 셋 · `backbone_hops` · `in_container@1` 반영. 직전: 개정 6 — 읽기측 §4·§5 와 `observed` 예시 정정) | **Owner:** Server / Ledger
+> **Status:** 🟢 Living | **Last-verified:** 2026-09-25 (🔴 **§0~§3 의 실물을 «표 소스» `lot_slot_wafer` 로 다시 썼다** — 종전 예시 `lot_slot_move` 는 DB 뷰였고, 뷰를 읽는 원장 소스는 09-25 `c193986a8` 부터 로드 때 거절된다. 행 · 원자 · 색인 줄은 이 박스에서 열어 본 것) · 직전 2026-09-02 (🔴 **읽기 라우트가 「둘」이라 적혀 있었다 — 실제는 «셋»**(`gaps`, 2026-08-31 신설. 그날 다른 넷은 고쳐졌는데 이 파일만 빠졌다) · `follow` 가 **키를 받는다**와 그 «둘째» 422 · 걷기 규칙 셋 → **넷** · 🔴 **한 파일 안에서 술어 수를 「13」과 「열넷」으로 «둘 다» 적고 있었다** — 수를 지우고 묻는 자리를 남겼다) · 직전 2026-08-30 (`references` 칸을 작성 폼이 그리기 시작한 것만) · 직전 2026-08-29 심야 `290bb1af` 재측정 · 그 직전 2026-08-29 밤 (걷기 규칙 셋 · `backbone_hops` · `in_container@1` 반영. 직전: 개정 6 — 읽기측 §4·§5 와 `observed` 예시 정정) | **Owner:** Server / Ledger
 > **Source-of-truth:** `server/config/ontology/ledger_config.json`(선언) ·
 > `server/ledger/setup_bundle.py`(검증기) · `server/ledger/gate.py`(게이트)
 
@@ -24,16 +24,15 @@
 원자는 원장에 있으면서 **선언이 이름을 몰라 walk 의 주어가 되지 못한다.** 정당한 호출자는
 `server/ledger/runtime_v2.py` «하나»다.
 
-## 0. 출발 — 실물 행 (`lot_slot_move` 뷰, 라이브)
-
-> 🔴 **[09-25 `c193986a8`] 이 예시의 소스는 오늘 «거절»됩니다.** `lot_slot_move` 는 DB 뷰였고, 원장 소스는 이제 `row_id` 가 있는 «표»만 읽습니다 —
-> 뷰를 읽는 소스는 로드 때 이름 대어 빠집니다(「… which is not a table that has row_id (view); a ledger source must read a table that has row_id」).
-> 아래 여행의 «걸음»(소스 → `read` → `prepare` → `map` → `bind` → 게이트 → 원자)은 그대로 읽으십시오. 다만 예시 소스는 오늘 설 수 없는 소스입니다.
+## 0. 출발 — 실물 행 (`lot_slot_wafer` 표, 이 박스 2026-09-25)
 
 ```
-from_lot=CL-2601-005 · from_slot=04 · to_lot=CL-2601-005-A5 · to_slot=04
-wafer=WF.010504 · event_time=2026-05-03 11:25:00 · event_type=split
+row_id=01a05648-d135-7914-8467-90b41cebbf1b · lot=NAB123 · slot=01 · wafer=NAB123-W01
+event_type=split · event_time=2026-01-01 13:00:00 · lot_slot_wafer_key=NAB123|01|NAB123-W01|2026-01-01T13:00:00
 ```
+
+⚰️ 종전 예시는 `lot_slot_move` «뷰»의 행이었다. 원장 소스는 이제 `row_id` 가 있는 «표»만 읽고, 뷰를 읽는 소스는 로드 때 이름 대어 빠진다
+(「… which is not a table that has row_id (view); a ledger source must read a table that has row_id」, 09-25 `c193986a8`).
 
 이 행은 아직 **뜻이 없다.** 그냥 문자열이다. 아래 요소들이 뜻을 붙인다.
 
@@ -42,52 +41,57 @@ wafer=WF.010504 · event_time=2026-05-03 11:25:00 · event_type=split
 | # | 요소 | 정체 (비유) | 역할 | 이 예시에서 실물 |
 |---|---|---|---|---|
 | 1 | **소스 관계** | 세계의 수첩 | 사실이 행으로 눕는 곳. 뜻 없음 | 위의 행 |
-| 2 | **`table_config.json`** | 표의 주민등록 | 이 표의 행을 시스템이 «지목»할 수 있게 하는 것 | 선언이 고를 수 있는 관계 집합이 곧 여기 있는 것 |
-| 3 | **선언의 `sources.<이름>`** | 이 소스의 독해 지침서 | 「이 표를 어떻게 읽는가」 전부. 칸은 넷: `read` · `prepare` · `map` · `bind` | `relation: lot_slot_move` |
-| 4 | **`read`** | 제본기 | 행을 «분자(한 사건)»로 묶고, 언제인지·어디까지 읽었는지를 정한다 | `unit: row` · `identity: [from_lot, from_slot, to_lot, to_slot, wafer, event_time]` · `occurred_at: {column: event_time, timezone: Asia/Seoul}` |
+| 2 | **`table_config.json`** | 표의 주민등록 | 이 표의 행을 시스템이 «지목»할 수 있게 하는 것 | 선언이 고를 수 있는 관계 집합이 곧 여기 있는 것. 원장 소스가 읽으려면 뷰가 아니라 `row_id` 가 있는 «표»여야 한다 |
+| 3 | **선언의 `sources.<이름>`** | 이 소스의 독해 지침서 | 「이 표를 어떻게 읽는가」 전부. 칸은 넷: `read` · `prepare` · `map` · `bind` | `relation: lot_slot_wafer` (체인이 만드는 표) |
+| 4 | **`read`** | 제본기 | 행을 «분자(한 사건)»로 묶고, 언제인지·어디까지 읽었는지를 정한다 | `unit: row` · `identity: [lot_slot_wafer_key]` · `occurred_at: {column: event_time, timezone: Asia/Seoul}` |
 | 5 | **`prepare`** | 자료 준비 | 필요한 컬럼을 모은다(조인이 필요하면 여기서) | `implementation_id: direct-join` |
 | 6 | **`map`** | 통역사 | 분자를 원자 후보로 편다. **구현은 «선언이 고르는 것»이다** | `implementation_id: declarative-role` |
 | 7 | **`bind`** | 문장 작성 | 원자의 «칸마다» 어느 컬럼이 들어가는지 적는다. 코드 0줄 | 아래 §2 |
-| 8 | **선언의 `vocabulary`** | 문법책 | 술어마다 주어·목적어의 «서명». 서명에 안 맞으면 못 들어온다 | `slot_map@1`: 주어 `lot_slot@1`, 목적어 `entity_ref` → `lot_slot@1`, 수식어 `event_type`(선택) |
-| 9 | **선언의 `entities`** | 국어사전 | 개체 타입과 그 «신원 키» | `lot_slot@1`: keys `[lot, slot]` |
-| 10 | **게이트** (`ledger/gate.py`) | 검문소 | 원자마다 선언과 대조 — 하나라도 틀리면 **분자 전체** 거절 | 주어가 `lot_slot` 인가? 목적어가 `lot_slot` ref 인가? |
+| 8 | **선언의 `vocabulary`** | 문법책 | 술어마다 주어·목적어의 «서명». 서명에 안 맞으면 못 들어온다 | `has_wafer@1`: 주어 `lot_slot@1`, 목적어 `entity_ref` → `wafer@1`, 수식어 없음 |
+| 9 | **선언의 `entities`** | 국어사전 | 개체 타입과 그 «신원 키» | `lot_slot@1`: keys `[lot, slot]` · `wafer@1`: keys `[wafer]` |
+| 10 | **게이트** (`ledger/gate.py`) | 검문소 | 원자마다 선언과 대조 — 하나라도 틀리면 **분자 전체** 거절 | 주어가 `lot_slot` 인가? 목적어가 `wafer` ref 인가? |
 | 11 | **봉투** (`ledger/envelope.py`) | 규격 서류 양식 | 모든 원자의 고정 필드 모양 | §3 의 실물 원자 |
-| 12 | **원장** (`ledger_events`) | 등기부 | 통과한 문장이 영구히 눕는 곳. 추가 전용 | 원자 1 삽입 |
+| 12 | **원장** (`ledger_events`) | 등기부 | 통과한 문장이 영구히 눕는 곳. 추가 전용 | 원자 1 삽입 — 같은 트랜잭션에 행 색인(`ledger_source_row_ref`) 1 줄 |
 | 13 | **읽기측** | walk | 마킹에서 걸어서 서브그래프를 «질의 시점에» 만든다 | §4 |
 
 ## 2. `bind` — 「코드 0줄」이 무슨 뜻인가
 
-이 소스의 `bind.mappings["seat-to-seat"]` 전문(라이브에서 인용, `approval_status` 생략):
+이 소스의 `bind.mappings["seat-holds-wafer"]` 전문(커밋된 샘플 `server/config/sample/ledger_config.json.sample` 에서 인용 — 이 박스의 선언도 같은 문장, `approval_status` 생략):
 
 ```jsonc
-{ "predicate": "slot_map@1",
+{ "predicate": "has_wafer@1",
   "bind": {
     "occurred_at": { "kind": "column", "column": "event_time" },
     "subject":     { "kind": "entity", "entity_type": "lot_slot@1",
-                     "keys": { "lot":  { "kind": "column", "column": "from_lot" },
-                               "slot": { "kind": "column", "column": "from_slot" } } },
-    "target":      { "kind": "entity", "entity_type": "lot_slot@1",
-                     "keys": { "lot":  { "kind": "column", "column": "to_lot" },
-                               "slot": { "kind": "column", "column": "to_slot" } } },
-    "event_type":  { "kind": "column", "column": "event_type" } } }
+                     "keys": { "lot":  { "kind": "column", "column": "lot" },
+                               "slot": { "kind": "column", "column": "slot" } } },
+    "target":      { "kind": "entity", "entity_type": "wafer@1",
+                     "keys": { "wafer": { "kind": "column", "column": "wafer" } } } } }
 ```
 
 읽는 법은 한 줄이다: **「이 술어의 주어는 이 컬럼들로 이름 붙은 이 개체다」.**
 자리가 하나 늘거나 컬럼 이름이 바뀌면 «이 선언»만 바뀐다. 파이썬은 한 줄도 안 바뀐다.
 
-🔴 **`slot_map` 은 자리에서 자리로 간다** (`lot_slot -> lot_slot`).
-랏에서 랏으로 가면서 슬롯을 수식어로 달고 다니지 «않는다» — 자리가 노드이고 이동이 엣지 자체다.
+🔴 **`has_wafer` 는 «자리»가 웨이퍼를 든다** (`lot_slot -> wafer`).
+슬롯을 웨이퍼의 수식어로 달지 «않는다» — 자리가 노드이고, 든다는 사실이 엣지 자체다.
+그리고 §0 의 행에 있는 `event_type=split` 은 이 문장이 «매지 않았다» — 그래서 §3 의 원자에 없다. 칸을 원자에 싣는 것은 `bind` 뿐이다.
 
-## 3. 도착 — 실물 원자 (라이브 원장에서 인용)
+## 3. 도착 — 실물 원자 (이 박스 원장에서 인용, 2026-09-25)
+
+§0 의 행 하나에서 원자 «하나»와 행 색인 «한 줄»이 났다(이 박스에서 열어 셈):
 
 ```json
-{"predicate": "slot_map", "subject_type": "lot_slot",
- "subject_keys": {"lot": "CL-2601-007-A2", "slot": "01"},
+{"predicate": "has_wafer", "subject_type": "lot_slot",
+ "subject_keys": {"lot": "NAB123", "slot": "01"},
  "object_kind": "entity_ref",
- "object_payload": {"type": "lot_slot", "keys": {"lot": "CL-2601-007-A2-A3", "slot": "01"},
-                    "qualifiers": {"event_type": "split"}},
- "occurred_at": "2026-05-03T06:51:00+09:00", "source_who": "lot_slot_move"}
+ "object_payload": {"type": "wafer", "keys": {"wafer": "NAB123-W01"}},
+ "occurred_at": "2026-01-01T13:00:00+09:00", "source_who": "lot_slot_wafer"}
 ```
+```
+ledger_source_row_ref   relation=lot_slot_wafer · row_id=01a05648-d135-7914-8467-90b41cebbf1b · source_who=lot_slot_wafer
+                        source_raw_ref = 위 원자의 source_raw_ref (같은 트랜잭션에 씀)
+```
+그리드의 Ledger 칸은 이 색인 줄을 읽어 그 행에 `lot_slot_wafer` 라고 적는다(09-25 `2fbe12b3f`). 줄이 없으면 Not yet 이다.
 
 다른 술어의 실물도 같은 봉투다:
 
@@ -107,6 +111,7 @@ wafer=WF.010504 · event_time=2026-05-03 11:25:00 · event_type=split
                                    "run_uid": "sat|SYN-AUG-BW-001-01|10|10|7|…"}},
  "source_who": "void_observation"}
 ```
+⚠️ 위 `observed` 원자의 소스 `void_observation` 은 뷰(`void_obs_observed`)를 읽어 09-25 부터 로드 때 거절된다 — 이 원자는 «봉투의 모양»의 예로만 읽는다.
 
 🔴 **[2026-08-28] 종전 이 자리의 `observed` 예시는 `object_kind: "value"` 에 수식어
 `finding_kind: "void"` 를 달고 있었고, 그 원자는 «오늘 게이트가 거절한다».**
@@ -126,7 +131,7 @@ wafer=WF.010504 · event_time=2026-05-03 11:25:00 · event_type=split
 하나도 없다」는 «둘 다» 틀렸다** — 그때도 `has_netdie@1` 은 `value` 였다. 그래서 §3 의
 「목적어가 값이면 노드를 안 만든다」는 계약이면서 **오늘 실제로 발화하는 갈래**다.
 
-문자열이던 행이 「CL-2601-007-A2 의 01번 자리가 …-A3 의 01번 자리로 갔다(split)」라는
+문자열이던 행이 「NAB123 의 01번 자리가 웨이퍼 NAB123-W01 을 든다」라는
 **검사받은 문장 하나**가 됐다.
 
 ## 4. 읽기측 — walk 하나, 창 여럿
