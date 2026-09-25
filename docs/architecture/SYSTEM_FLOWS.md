@@ -324,7 +324,8 @@ Enrichment Queue · 맵 오버레이 · 전사 계획 · 어드민 5탭 · 실�
                  ⚠️ 둘은 어긋날 수 있다: _mark_run 이 실패하면 outbox 행은 소비되는데
                     실행 행은 영원히 queued 로 남는다. 그래서 record_failures() 가
                     로그가 아니라 «큐 옆의 값»으로 나간다
-❌ 큐 아님        _collectors_running(set) · _retroactive_thread — 둘 다 «거절»하지 «적재»하지 않는다
+❌ 큐 아님        _collectors_running(set) · 소급 관문(retroactive_runs 의 running 행 — 09-25 `bfbe8a525` 에
+                 _retroactive_thread 를 대신함) — 둘 다 «거절»하지 «적재»하지 않는다
 ❌ 큐 아님        "…to ingestion queue." 로그의 그 큐 = raws/ «디렉터리»
 ```
 

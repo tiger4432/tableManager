@@ -33171,3 +33171,24 @@ PRIMER    §0~§3 을 lot_slot_wafer 표 소스의 행 하나로 다시 씀
   구현자 ① 수리의 전 사진으로 이 셋을 남겨 둡니다 — 치울지 말씀 주십시오
 표 행 · 원장은 앞 판에서 0 확인. 이번 판은 대기열 줄만 건드림
 ```
+
+---
+
+## 문서 정비 첫 묶음 — 오늘 은퇴·이동한 것 (09-25 18:44)
+
+지시 `b744549be`. 살아 있는 문서(docs/guide · architecture · spec · qa · README · RUN.md · server/*.md)만 셌습니다. history · _archive · task 는 기록이라 안 건드렸습니다.
+
+| 항목 | 고친 자리 | 남긴 것(의도) |
+|---|---|---|
+| 뷰 소스 은퇴 | BASIS 「소스 = 표/뷰」 · CODE_MAP `_NOT_ATOM_MATERIAL` 넷 | 묘비 · 판정 기록 · 결함 대기열의 닫힌 줄 |
+| Enrichment 탭 은퇴 | CODE_MAP 라우팅 · 「Enrichment 탭: renderEnrichmentTable」 줄 · 점검표 탭 축 · Enrichment 줄 | — |
+| 규칙 목록 Kind · 모르는 종류 거절 | CODE_MAP `declared_kind` 줄(현 코드로 다시 씀) · 규칙 라우트 줄 · backend · chain_rules 가이드 `derive.kind` 줄 | — |
+| 담당표 (스케줄러 → 자식 프로세스 · CLI 자기 프로세스) | CODE_MAP §5-D · run_auto_update 줄 · 라우트 줄 · RUNTIME_MAP 고리 표에 ⑥-b 한 줄 · AUTO_UPDATE_GUIDE §4-quater · BACKFILL_GUIDE §0·§1·§7 · backend · SYSTEM_FLOWS · README · 점검표 | — |
+| resolve 가 등록부 연산이 됨 | BACKFILL_GUIDE 넷 · chain_ingestion_guide 하나 (「CLI 전용 · 등록부에 없음」이 거짓) | — |
+| 🆕 Overview 현황판 (5efa71f75) | 소급 폼이 Retroactive 탭으로 · 점검표 Overview 줄 · 재교정률 두 줄의 코드 이름 | 지시 목록 밖이지만 같은 문장들 안이라 같이 고쳤습니다 |
+
+```
+센 명령  git grep 으로 은퇴 이름 · 옛 문장 — 카나리아: 같은 범위의 retroactive 19 파일, ledger_source_row_ref 4 파일
+남은 둘  --via-events 은퇴 · 원장 백필 「cursor」 낱말 — 코드에 아직 있음(load_via_events · 라벨 「after the cursor」). 착지 뒤 같은 방식으로
+.claude/doc_sync_pending  위 둘까지 끝내고 지우겠습니다
+```

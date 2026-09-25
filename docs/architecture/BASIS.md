@@ -186,7 +186,7 @@ fact : N × P × (∅ | V | N) × Q × τ × Π → α                   원장�
 ```
 D_T   타입 선언      keys · attributes(이름 · «읽기 규칙» 단수/집합) · class · status
 D_P   술어 선언      subjects · object.kind(∅|V|N) · V 의 «타입» · qualifiers(이름 · 타입) · «제약»(카디널리티 · 필수) · status
-D_Π   출처 선언      소스 = 표/뷰 → fact 로 가는 «번역»(read · prepare · map · bind) · decision_key(판단 단위) · status
+D_Π   출처 선언      소스 = row_id 가 있는 표 → fact 로 가는 «번역»(09-25 `c193986a8` — 뷰는 이름 대어 거절)(read · prepare · map · bind) · decision_key(판단 단위) · status
                  · ✅ **행 선택** 「이 행이 «이 소스의» 행인가」 — S-91 착지(09-09 17:10)로 «칸 있음»:
                    `sources.<s>.prepare.exclude_when: [{column, blank:true}]`
                    (검증 `setup_bundle.py:1351` · 읽는 곳 `source_preparation.py:459` · 폼 `ledger_skeleton.json:576`)
