@@ -1420,7 +1420,8 @@ let chainQueuePanels = null;
 function renderChainQueue(payload, opts) {
   if (!chainQueuePanels) {
     chainQueuePanels = ['chain-queue-mount', 'overview-queue-mount']
-      .map((id) => byId(id)).filter(Boolean).map((mount) => new ChainQueuePanel(mount));
+      .map((id) => byId(id)).filter(Boolean)
+      .map((mount) => new ChainQueuePanel(mount, { onCancel: (id) => requestRunCancel(id) }));
   }
   if (!chainQueuePanels.length) return;
   const [view] = chainQueuePanels.map((panel) => panel.render(payload, opts));
@@ -2720,7 +2721,9 @@ function renderRunning() {
     runLines = new RunLines(body, { onCancel: (id) => requestRunCancel(id),
                                     resultBoxes: (extras) => retroExtraBoxes(extras) });
   }
-  runLines.render(view && !view.empty ? view.rows : []);
+  // 🔴 총괄 78ebdcfc0 — this unfold is the RECENT RESULTS only; what is running is the top queue's
+  //    RUNNING (`now_running`, one seat), drawn by the same part.
+  runLines.render(view && !view.empty ? view.rows.filter((row) => row.finished) : []);
 }
 
 function initRetroactiveLine() {

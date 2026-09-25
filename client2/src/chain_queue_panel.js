@@ -50,6 +50,32 @@ import { countWithAbsence } from './count_with_absence.js';
 import { pickupState } from './pickup_state.js';
 import { retroactiveNote } from './retroactive_note.js';
 import { NO_TIME, localShort, localStamp } from './server_time.js';
+import { RunLines } from './run_lines.js';
+import { buildProgressCell } from './retroactive_view.js';
+
+/**
+ * One `now_running` item -> a `RunLines` row. `where` is the server's word, drawn as it comes
+ * (5996d7f54: the screen never branches on it); `cancel` null means no ×.
+ */
+export function runLineRow(item) {
+  const r = item || {};
+  const secs = Number(r.elapsed_seconds);
+  const known = r.elapsed_seconds !== null && r.elapsed_seconds !== undefined && Number.isFinite(secs) && secs >= 0;
+  const p = r.progress || {};
+  const cell = buildProgressCell(p.processed, p.total, known ? Math.floor(secs / 60) : NaN);
+  const where = [r.where, r.pid != null ? `pid ${r.pid}` : ''].filter(Boolean).join(' · ');
+  const runId = r.cancel && r.cancel.run_id ? String(r.cancel.run_id) : '';
+  return Object.freeze({
+    id: runId || `${r.where || ''}:${r.what || ''}`,
+    what: { text: r.what ? String(r.what) : ABSENT },
+    detail: where ? { text: where } : null,
+    progress: { ...cell, elapsed: known ? formatAge(secs) : '' },
+    cancel: Boolean(runId),
+    moving: true,
+    finished: false,
+    stopping: false,
+  });
+}
 
 // 🔴 THE MINUTE IS ONE CONSTANT, READ FROM TWO PLACES. `formatAge` switches off 「초」
 //    here, and C-61 lists a running chain 「나이가 분 단위를 넘으면」 — the SAME question.
@@ -252,36 +278,27 @@ export function queueView(payload, opts = {}) {
   const generatedAt = !('generated_at' in payload) ? ''
     : (typeof payload.generated_at === 'string' && payload.generated_at
       ? (stamp === NO_TIME ? payload.generated_at : stamp) : UNKNOWN);
-  // Seen and 0 is a plain 0 (lead a80361a63) — unseen has no cell, so the two cannot mix.
-  const running = payload.loop_seen_via && Array.isArray(payload.running) ? payload.running.length : null;
+  // 🔴 총괄 4994c3afe · 5996d7f54 (소유자 「러닝도 한문으로」) — 「지금 도는 것」 is ONE server seat,
+  //    `runtime.running.running_now`: chain rules, retroactive runs, collectors and file ingestion in
+  //    one shape. The count, the longest and one line per item all read `now_running`; the old
+  //    chain-only `running` is no longer read here. The count still asks `loop_seen_via` ALONE
+  //    (lead 36dff3b6a): an unseen chain loop adds nothing to the seat, so its count is blind,
+  //    not 0. An older server without the field has no Running cell either.
+  const nowRunning = Array.isArray(payload.now_running) ? payload.now_running : null;
+  const running = payload.loop_seen_via && nowRunning ? nowRunning.length : null;
   // 🔴 C-61 (소유자 09-10: 「가짜 running 3개 남아있음」). A COUNT CANNOT SEPARATE 「걸린 것」
-  //    FROM 「가짜」 — both draw the same 「도는 체인 3」. What separates them is AGE, and the
-  //    server has carried `running_seconds` on every entry all along (`chain_activity.py`
-  //    `snapshot()`); nothing read it. So there is no new route and no new field here — only
-  //    a reader.
+  //    FROM 「가짜」 — what separates them is AGE, so the longest rides beside the count and
+  //    every item's line carries its own elapsed time (`elapsed_seconds`, the seat's).
   // ⚠️ 세 상태 그대로: 나이가 읽히면 값 · 안 읽히면 «안 그림»(0 으로 접지 않습니다 —
   //    「방금 시작함」은 「나이를 모름」의 반대 사실입니다) · 목록이 비면 아무것도 없음.
-  const runningItems = Array.isArray(payload.running) ? payload.running : [];
+  const runningItems = nowRunning || [];
   const runningAges = runningItems
-    .map((r) => Number(r && r.running_seconds))
+    .map((r) => Number(r && r.elapsed_seconds))
     .filter((v) => Number.isFinite(v) && v >= 0);
   const longestRunning = runningAges.length ? formatAge(Math.max(...runningAges)) : null;
-  // 🔴 ONLY THE ONES OLDER THAN A MINUTE GET A NAME. Listing everything buries the subject
-  //    the operator is looking for (the rule name they will take to `pg_stat_activity`)
-  //    under the chains that are merely running. The server sorts `running` by `started`
-  //    ascending, so this list is ALREADY oldest-first and is not re-sorted — same rule as
-  //    the waiting list below: the server order IS the answer.
-  // ⛔ 판정 낱말 없음. 「멈춤」·「가짜」는 이 화면이 알 수 없는 것이고, 나이가 그것을 묻는
-  //    사람의 재료입니다 — 문턱을 색으로 칠하지 않는 규칙 ③ 그대로.
-  const oldRunning = runningItems
-    .filter((r) => Number(r && r.running_seconds) >= MINUTE_SECONDS)
-    .map((r) => Object.freeze({
-      // A rule that did not arrive is 「모름」, never the string "undefined" — this name is
-      // the whole point of the line, so inventing one would send someone hunting a rule
-      // that does not exist.
-      rule: r && r.rule ? String(r.rule) : ABSENT,
-      age: formatAge(r.running_seconds),
-    }));
+  // One line per item in the server's order, drawn by the SAME part as the Overview's recent
+  // runs (`RunLines`, lead 78ebdcfc0) — what · where · progress · elapsed · × where cancel reaches.
+  const runningRows = runningItems.map(runLineRow);
   // rule ①, drawn: nothing waiting is 「—」 and one that arrived this second is 「0s」. An age
   // that does not read is `null` here — a blind cell, dropped (lead 6fdd79d4e: 「Oldest —」).
   const oldest = secs === null || secs === undefined ? ABSENT : formatAge(secs);
@@ -388,7 +405,7 @@ export function queueView(payload, opts = {}) {
     available: true,
     reason: '',
     numbers: Object.freeze(numbers),
-    runningOld: Object.freeze(oldRunning),
+    runningRows: Object.freeze(runningRows),
     meta: Object.freeze(meta),
     depth: countOf(payload.waiting),
     byOwner: Object.freeze(byOwner),
@@ -417,6 +434,8 @@ export class ChainQueuePanel {
     this.root = this.doc.createElement('div');
     this.root.className = 'chain-queue-panel';
     this.mount.appendChild(this.root);
+    // × on a running line asks the page to cancel by run id; the page owns the route.
+    this.onCancel = deps.onCancel || (() => {});
   }
 
   /** @param {string} cls @param {string} text */
@@ -493,9 +512,12 @@ export class ChainQueuePanel {
 
     // ── below the meta line: what needs a look first, then the scheduler's and the owners' lines ──
     // 🔴 C-61. 「최장」이 「걸린 것이 있다」를 말하고, 이 줄들이 «어느 것인지»를 말합니다 —
-    //    이름 · 나이, 그리고 판정은 운영자의 것.
-    for (const item of view.runningOld) {
-      this.root.appendChild(this._line('chain-queue-running-old', `${item.rule} · ${item.age}`));
+    //    도는 것마다 한 줄(RunLines), 판정은 운영자의 것.
+    if (view.runningRows && view.runningRows.length) {
+      const box = this.doc.createElement('div');
+      box.className = 'chain-queue-running';
+      this.root.appendChild(box);
+      new RunLines(box, { doc: this.doc, onCancel: this.onCancel }).render(view.runningRows);
     }
     // 「도는 중인데 주인이 없음」 — the heartbeat decided it, not this file.
     for (const orphan of (view.pickup ? view.pickup.orphaned : [])) {

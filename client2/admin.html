@@ -397,8 +397,8 @@
     }
     .chain-queue-meta > span + span::before { content: '·'; margin-right: var(--space-2); }
     .chain-queue-meta-log { font-family: var(--font-mono); }
-    /* 메타 줄 아래 — 이상할 때만 나오는 줄, 그다음 스케줄러 세 줄. */
-    .chain-queue-running-old,
+    /* 메타 줄 아래 — 도는 것의 줄(RunLines), 이상할 때만 나오는 줄, 그다음 스케줄러 세 줄. */
+    .chain-queue-running { padding-top: var(--space-1); }
     .chain-queue-orphan,
     .chain-queue-pickup,
     .chain-queue-basis,

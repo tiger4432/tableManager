@@ -41,6 +41,8 @@ function makeNode(doc, tag) {
   const node = {
     tagName: String(tag).toUpperCase(),
     className: '', style: {}, children: [], attrs: Object.create(null), _text: '', title: '',
+    listeners: Object.create(null),
+    addEventListener(type, fn) { (this.listeners[type] ||= []).push(fn); },
     appendChild(c) { this.children.push(c); return c; },
     setAttribute(k, v) { this.attrs[String(k)] = String(v); },
     getAttribute(k) { return Object.prototype.hasOwnProperty.call(this.attrs, String(k)) ? this.attrs[String(k)] : null; },
@@ -157,16 +159,24 @@ console.log('\n[2] a number the screen cannot read has no cell; not_measured is 
   eq('and the retry count is on the meta line', metaOf(v, 'retried'), 'retried 17');
   ok('and both reach the screen', valueOf(host, 'waiting') === '812' && /retried 17/.test(host.textContent));
 
-  // ── Running asks `loop_seen_via` ALONE (lead 36dff3b6a) ──
-  const RUN = { waiting: 0, oldest_waiting_seconds: null, running: [{ rule: 'r', running_seconds: 5 }] };
+  // ── Running is `now_running`'s count — one seat, four sources (lead 4994c3afe · 5996d7f54) ──
+  const RUN = { waiting: 0, oldest_waiting_seconds: null, loop_seen_via: 'this_process',
+    now_running: [{ what: 'r', where: 'chain_worker', pid: 1, elapsed_seconds: 5, progress: null, cancel: null }] };
+  eq('an answer without the seat has no Running cell — not 0',
+    numberOf(queueView({ waiting: 0, oldest_waiting_seconds: null, loop_seen_via: 'this_process' }), 'running'),
+    undefined);
+  eq('...and the old chain-only field is no longer read — two fields must not answer one question',
+    numberOf(queueView({ waiting: 0, oldest_waiting_seconds: null, loop_seen_via: 'this_process',
+      running: [{ rule: 'r', running_seconds: 5 }] }), 'running'), undefined);
+  eq('the seat\'s items are counted', numberOf(queueView(RUN), 'running').value, '1');
+  eq('and an empty seat is a read 0', numberOf(queueView({ ...RUN, now_running: [] }), 'running').value, '0');
+  // ── the count asks `loop_seen_via` ALONE (lead 36dff3b6a) ──
   eq('a loop nobody saw has no Running cell — not 0',
     numberOf(queueView({ ...RUN, loop_seen_via: null }), 'running'), undefined);
   eq('...even when the old field says this process — two fields must not answer one question',
     numberOf(queueView({ ...RUN, loop_seen_via: null, loop_in_this_process: true }), 'running'), undefined);
   eq('a loop seen through the worker\'s heartbeat is counted',
     numberOf(queueView({ ...RUN, loop_seen_via: 'chain_worker_heartbeat' }), 'running').value, '1');
-  eq('and one seen in this process too',
-    numberOf(queueView({ ...RUN, loop_seen_via: 'this_process' }), 'running').value, '1');
   const blind = makeDoc();
   const blindHost = blind.createElement('div');
   new ChainQueuePanel(blindHost, { doc: blind }).render({ ...RUN, loop_seen_via: null });
@@ -641,83 +651,74 @@ console.log('\n[8] the owner split, and unknown is not chain');
 
 
 // ═══ C-61: 「도는 체인 3」 이 「걸린 것 3」 과 «같은 픽셀»이었다 ═══════════════════════════
-// 🔴 소유자 09-10: 「가짜 running 3개 남아있음」. 수는 그것을 말할 수 없다 — 방금 시작한
-//    셋과, 41분째 등록부에 남아 있는 셋이 «같은 3»이다. 가르는 것은 «나이»이고, 서버는
-//    항목마다 `running_seconds` 를 이미 싣고 있었다(`chain_activity.py` `snapshot()`).
-//    그래서 이 블록이 재는 것은 「없던 것을 지었나」가 아니라 「오던 것을 읽나」다.
-// 🔴 픽스처는 «셋이 서로 다른 답을 내야» 한다: 0초(방금) · 12초(막 도는 중) · 2,460초(41분).
-//    셋이 다 같은 나이면 「최장」이 «최대»인지 «첫 항목»인지, 줄 기준이 도는지가 안 갈린다.
+// 🔴 소유자 09-10: 「가짜 running 3개 남아있음」. 수는 그것을 말할 수 없다 — 가르는 것은 «나이»다.
+// 🔴 총괄 4994c3afe · 78ebdcfc0 — the items come from ONE seat (`now_running`: chain rules,
+//    retroactive runs, collectors, file ingestion) and each is ONE line of the `RunLines` part:
+//    what · where · progress · elapsed · × where a cancel reaches. The count keeps its longest.
+// 🔴 픽스처는 «셋이 서로 다른 답을 내야» 한다: 0초 · 12초 · 2,460초(41분), 그리고 × 는 하나만.
 {
-  const RUNNING_THREE = [
-    { rule: 'just_started', mapper: 'm1', target_table: 't', rows_in: 1, running_seconds: 0 },
-    { rule: 'warming_up', mapper: 'm2', target_table: 't', rows_in: 2, running_seconds: 12 },
-    { rule: 'stuck_since_lunch', mapper: 'm3', target_table: 't', rows_in: 3, running_seconds: 2460 },
+  const NOW_THREE = [
+    { what: 'just_started', where: 'chain_worker', pid: 7, elapsed_seconds: 0,
+      progress: { processed: null, total: 1 }, cancel: null },
+    { what: 'warming_up', where: 'chain_worker', pid: 7, elapsed_seconds: 12, progress: null, cancel: null },
+    { what: 'Recompute shown values (R3)', where: 'own_process', pid: 42, elapsed_seconds: 2460,
+      progress: { processed: 50, total: 100 }, cancel: { run_id: 'run-9' } },
   ];
   const BODY = (over) => ({
     waiting: 0, oldest_waiting_seconds: null, waiting_by_owner: [], retried_among_waiting: 0,
-    loop_seen_via: 'this_process', running: [], ...over,
+    loop_seen_via: 'this_process', now_running: [], ...over,
   });
   const viewOf = (over) => queueView(BODY(over));
   const runOf = (over) => numberOf(viewOf(over), 'running');
+  const cancelled = [];
   const drawn = (over) => {
     const d = makeDoc();
     const host = d.createElement('div');
-    new ChainQueuePanel(host, { doc: d }).render(BODY(over));
+    new ChainQueuePanel(host, { doc: d, onCancel: (id) => cancelled.push(id) }).render(BODY(over));
     return host;
   };
 
-  // ── the count keeps its meaning, and gains the one fact it could not carry ──
-  const three = viewOf({ running: RUNNING_THREE });
-  eq('C1 the count is still there', runOf({ running: RUNNING_THREE }).value, '3');
-  ok('C2 ...and says how old the oldest is, beside it', runOf({ running: RUNNING_THREE }).sub.includes('41m'),
-    runOf({ running: RUNNING_THREE }).sub);
-  // 🔴 C3 IS THE DISCRIMINANT. `[0]` and `max` agree on the server's order, so a fixture in
-  //    server order cannot tell "took the maximum" from "took the first". Reversed, it can.
+  // ── the count keeps its meaning, and the longest age rides beside it ──
+  const three = viewOf({ now_running: NOW_THREE });
+  eq('C1 the count is the seat\'s items', runOf({ now_running: NOW_THREE }).value, '3');
+  ok('C2 ...and says how old the oldest is, beside it', runOf({ now_running: NOW_THREE }).sub.includes('41m'),
+    runOf({ now_running: NOW_THREE }).sub);
+  // 🔴 C3 IS THE DISCRIMINANT: `[0]` and `max` agree on the server's order; reversed, they do not.
   eq('C3 「longest」 is the MAXIMUM, not whichever came first',
-    runOf({ running: [...RUNNING_THREE].reverse() }), runOf({ running: RUNNING_THREE }));
-  // ⚠️ 세 상태. 나이가 하나도 안 읽히면 조각이 «안 붙는다» — 「0초」도 「모름」도 아니다.
-  const ageless = runOf({ running: [{ rule: 'r' }, { rule: 'r2' }] });
+    runOf({ now_running: [...NOW_THREE].reverse() }), runOf({ now_running: NOW_THREE }));
+  const ageless = runOf({ now_running: [{ what: 'r' }, { what: 'r2' }] });
   ok('C4 an entry with no age adds no 「longest」 at all', !ageless.sub.includes('longest'), ageless.sub);
   eq('C5 ...and the count of them is still drawn', ageless.value, '2');
-  ok('C6 NEGATIVE CONTROL: an empty running list draws no 「longest」 either',
-    !runOf({ running: [] }).sub.includes('longest'), runOf({ running: [] }).sub);
-  // lead a80361a63: seen and 0 is a plain 0 — no explaining word under it.
-  eq('C6b seen and nothing running is 0, with nothing under it', [runOf({ running: [] }).value, runOf({ running: [] }).sub], ['0', '']);
+  eq('C6 seen and nothing running is 0, with nothing under it', [runOf({}).value, runOf({}).sub], ['0', '']);
 
-  // ── the lines: one per item OLDER THAN A MINUTE, and they carry the subject ──
-  eq('C7 only the ones past a minute get a line', 1, three.runningOld.length);
-  eq('C8 ...and the line names the rule, which is what an operator searches by',
-    'stuck_since_lunch', three.runningOld[0].rule);
-  eq('C9 ...beside its age', '41m', three.runningOld[0].age);
-  // 🔴 C10: the boundary is ONE constant shared with `formatAge`, so 「분 단위를 넘는다」 and
-  //    「초로 안 끝난다」 cannot drift apart. Measured AT the boundary, both sides.
-  eq('C10 exactly at the boundary counts as past it', 1,
-    viewOf({ running: [{ rule: 'r', running_seconds: MINUTE_SECONDS }] }).runningOld.length);
-  eq('C11 ...and one second under it does not', 0,
-    viewOf({ running: [{ rule: 'r', running_seconds: MINUTE_SECONDS - 1 }] }).runningOld.length);
-  // ⚠️ 이름이 안 오면 「—」다. `String(undefined)` 는 화면에 "undefined" 라는 «있지도 않은
-  //    규칙 이름»을 띄우고, 운영자를 없는 것을 찾으러 보낸다.
-  eq('C12 a rule that did not arrive is ABSENT, never the word "undefined"', ABSENT,
-    viewOf({ running: [{ running_seconds: 900 }] }).runningOld[0].rule);
+  // ── one line per item, in the server's order, through the one part ──
+  eq('C7 every item has a line', three.runningRows.length, 3);
+  eq('C8 ...titled what · where · pid, the server\'s words as they come',
+    three.runningRows.map((r) => `${r.what.text} · ${r.detail.text}`),
+    ['just_started · chain_worker · pid 7', 'warming_up · chain_worker · pid 7',
+     'Recompute shown values (R3) · own_process · pid 42']);
+  eq('C9 ...each beside its own elapsed time', three.runningRows.map((r) => r.progress.elapsed), ['0s', '12s', '41m']);
+  eq('C10 a known total is a bar, an unknown one is not', three.runningRows.map((r) => r.progress.mode),
+    ['text', 'text', 'bar']);
+  eq('C11 × only where the seat names a run to cancel', three.runningRows.map((r) => r.cancel), [false, false, true]);
+  eq('C12 a what that did not arrive is ABSENT, never the word "undefined"',
+    viewOf({ now_running: [{ elapsed_seconds: 900 }] }).runningRows[0].what.text, ABSENT);
 
   // ── on the screen, not only in the view model ──
-  const lines = byClass(drawn({ running: RUNNING_THREE }), 'chain-queue-running-old');
-  eq('C13 the line is painted', 1, lines.length);
-  ok('C14 ...carrying both the rule and the age',
-    !!lines[0] && lines[0].textContent.includes('stuck_since_lunch')
-      && lines[0].textContent.includes('41m'), lines[0] && lines[0].textContent);
-  eq('C15 NEGATIVE CONTROL: three fresh chains paint no such line at all', 0,
-    byClass(drawn({ running: RUNNING_THREE.slice(0, 2) }), 'chain-queue-running-old').length);
-  // ⚠️ 이름 충돌 — G10 과 같은 이유. 「도는 체인」 수 자체를 이 클래스로 잡으면 스타일이
-  //    한 줄을 두 뜻으로 그린다.
-  eq('C16 the Running number is its own cell, apart from those lines', '3',
-    valueOf(drawn({ running: RUNNING_THREE }), 'running'));
+  const host = drawn({ now_running: NOW_THREE });
+  eq('C13 each item is painted as a run line', byClass(host, 'run-line').length, 3);
+  const xs = byClass(host, 'running-x');
+  eq('C14 ...with one ×', xs.length, 1);
+  (xs[0] && xs[0].listeners && xs[0].listeners.click || []).forEach((fn) => fn());
+  eq('C15 pressing it asks the page to cancel that run by id', cancelled, ['run-9']);
+  eq('C16 NEGATIVE CONTROL: nothing running paints no run line', byClass(drawn({}), 'run-line').length, 0);
+  eq('C16a an unseen loop blinds the count, not the lines the seat did read',
+    [valueOf(drawn({ now_running: NOW_THREE, loop_seen_via: null }), 'running'),
+     byClass(drawn({ now_running: NOW_THREE, loop_seen_via: null }), 'run-line').length], [null, 3]);
+  eq('C16b the Running number is its own cell, apart from those lines', '3',
+    valueOf(drawn({ now_running: NOW_THREE }), 'running'));
 
-  // 🔴 C17/C18 SPLIT THE SEAM. The listing rule (「분 단위를 넘으면」) and `formatAge`'s unit
-  //    switch (「초로 안 끝나면」) are the SAME boundary, and they now read one constant. A
-  //    mutation that moves the constant moves BOTH sides together and stays green — which is
-  //    exactly why the assertion is written against the constant rather than against 60: what
-  //    must be caught is the day someone writes the literal back into one of the two.
+  // 🔴 C17/C18: 「분 단위」 and `formatAge`'s unit switch read ONE constant.
   eq('C17 the constant IS the one formatAge switches on', '1m', formatAge(MINUTE_SECONDS));
   eq('C18 ...and one second under it is still seconds',
     `${MINUTE_SECONDS - 1}s`, formatAge(MINUTE_SECONDS - 1));
