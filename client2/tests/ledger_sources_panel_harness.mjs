@@ -69,11 +69,17 @@ const STATE_WORDS = {
   orphan: '선언에 없는 소스인데 등록부에 행이 있습니다',
   not_measured: '아직 세지 않았습니다 — 「없다」가 아니라 「모른다」입니다',
 };
+/** 총괄 909ea2052 ① — 상태마다 짧은 이름도 서버가 같은 자리에서. */
+const STATE_NAMES = {
+  ran_and_wrote: 'Translated', ran_wrote_nothing: 'Refused all', never_ran: 'Not run',
+  orphan: 'Orphan', not_measured: 'Not measured',
+};
 const FIVE = {
   ingestion: {
     note: NOTE,
     unavailable: null,
     states: STATE_WORDS,
+    state_names: STATE_NAMES,
     sources: [row('a', 'ran_and_wrote'), row('b', 'ran_wrote_nothing'),
               row('c', 'never_ran', { translator_ver: null, molecules_refused: null,
                                       updated_at: null }),
@@ -120,6 +126,8 @@ console.log('\n[2] four states, in the server\'s own words');
     v.byState.map(b => b.meaning), Object.keys(STATE_WORDS).map(k => STATE_WORDS[k]));
   eq('the row carries it too, so the cell can show it beside the word',
     v.rows[4].stateMeaning, STATE_WORDS.not_measured);
+  eq('...and each carries the NAME the server sent (909ea2052 ①)',
+    v.byState.map(b => b.name), Object.keys(STATE_WORDS).map(k => STATE_NAMES[k]));
   // 🔴 「행이 없다」는 이제 상태 «다섯째»입니다. 예전엔 그것이 `never_ran` 이었고, S-76 뒤로
   //    그 문장은 거짓이었습니다 — 안 쟀을 뿐인 소스가 「한 번도 안 돌았다」로 읽혔습니다.
   eq('a source with no registry row is not_measured, not never_ran',
@@ -133,6 +141,7 @@ console.log('\n[2] four states, in the server\'s own words');
   eq('...and counted under its own name', odd.byState.map(b => b.state), ['something_new']);
   // ⚠️ 뜻을 «지어내지» 않습니다. 서버가 안 준 낱말은 뜻이 빈 문자열이고, 화면은 수만 그립니다.
   eq('...with no meaning invented for it', odd.byState[0].meaning, '');
+  eq('...and no name invented either — the token is what is drawn', odd.byState[0].name, '');
 
   // one state is not a split
   const one = sourcesView({ ingestion: { note: NOTE, unavailable: null,
@@ -180,6 +189,10 @@ console.log('\n[4] the screen');
   ok('each state reaches the screen under its own name',
     ['ran_and_wrote', 'ran_wrote_nothing', 'never_ran', 'orphan']
       .every(s => rowsOf(host).some(r => r.getAttribute('data-state') === s)));
+  // 909ea2052 ①: the cell DRAWS the server's name; the token stays only as the key.
+  ok('the state cell draws the server\'s name, not the machine word',
+    rowsOf(host).every(r => r.children[1].textContent === STATE_NAMES[r.getAttribute('data-state')]),
+    rowsOf(host).map(r => r.children[1].textContent));
   ok('the surviving cursor field rides inside the row, not in a fifth column',
     byClass(host, 'ledger-sources-sub').length === 5
     && /translator_ver/.test(host.textContent) && !/atoms_deduped/.test(host.textContent));

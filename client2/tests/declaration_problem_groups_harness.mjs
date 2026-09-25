@@ -20,7 +20,8 @@ const REAL = await import('../src/config_resolve_view.js');
 
 const entry = (subject, reason, detail) => ({ subject, reason, detail, fields: {} });
 const REPORT = {
-  vocabulary: { populations: ['effective', 'ineffective', 'rejected', 'someday'] },
+  vocabulary: { populations: ['effective', 'ineffective', 'rejected', 'someday'],
+                reason_names: { not_declared: 'Not declared' } },
   domains: [
     { domain: 'chain', title: 'Chain',
       effective: [entry('a', 'ok_reason', 'fine')],
@@ -63,6 +64,9 @@ async function suite(mod) {
   eq('B5 a group carries no sentence of its own — the first line names one table', 'detail' in groups[0], false);
   eq('B6 the group keeps its lines, so opening it can show them',
     groups.find((g) => g.reason && g.reason.text === 'not_declared').lines.map((l) => l.entry.subject.text), ['t1', 't2']);
+  eq('B8 a group draws the server\'s reason name, and a reason it was sent no name for draws none',
+    [(groups.find((g) => g.reason && g.reason.text === 'not_declared').reasonName || {}).text,
+     groups.find((g) => g.reason && g.reason.text === 'mapping_unavailable').reasonName], ['Not declared', null]);
   eq('B7 the biggest group first, and equal counts keep the report\'s order',
     groups.map((g) => g.count.text), ['3', '2', '1', '1', '1', '1']);
   return { ran, failures };
@@ -83,9 +87,11 @@ const MUTANTS = [
   { id: 'X4', what: 'lines with no reason fold into one', catches: ['B4'],
     mutate: (s) => s.replace('const key = reason === null ? null : ', 'const key = reason === null ? `${population.name}\\u0000-` : ') },
   { id: 'X5', what: 'the first line\'s sentence rides on the group again', catches: ['B5'],
-    mutate: (s) => s.replace('reason: entry.reason, lines: [] };', 'reason: entry.reason, detail: entry.detail, lines: [] };') },
+    mutate: (s) => s.replace('reasonName: entry.reasonName, lines: [] };', 'reasonName: entry.reasonName, detail: entry.detail, lines: [] };') },
   { id: 'X6', what: 'the count is the number of groups, not of lines', catches: ['B1', 'B7'],
     mutate: (s) => s.replace('count: count(group.lines.length)', 'count: count(1)') },
+  { id: 'X8', what: 'the reason name never reaches the group', catches: ['B8'],
+    mutate: (s) => s.replace('reasonName: entry.reasonName, lines: [] };', 'reasonName: null, lines: [] };') },
   { id: 'X7', what: 'the groups stay in report order', catches: ['B7'],
     mutate: (s) => s.replace('.sort((x, y) => y.lines.length - x.lines.length)', '') },
 ];

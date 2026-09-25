@@ -54,14 +54,18 @@ import { ABSENT, countText, localeCountText } from './absent.js';
  *    지켜질 수 없었습니다. 이제 `ingestion.states = {이름: 한 줄 뜻}` 을 «그대로» 받습니다.
  * ⚠️ 뜻도 서버 문장 그대로입니다. 여기서 다시 쓰면 규칙이 바뀌는 날 화면이 옛 뜻으로 옳아 보입니다.
  */
-function stateMeanings(ing) {
-  const src = ing && ing.states && typeof ing.states === 'object' && !Array.isArray(ing.states)
-    ? ing.states : null;
+function serverWords(ing, key) {
+  const src = ing && ing[key] && typeof ing[key] === 'object' && !Array.isArray(ing[key])
+    ? ing[key] : null;
   if (!src) return Object.freeze({});
   const out = {};
   for (const name of Object.keys(src)) out[String(name)] = String(src[name] == null ? '' : src[name]);
   return Object.freeze(out);
 }
+const stateMeanings = (ing) => serverWords(ing, 'states');
+// 🔴 총괄 909ea2052 ①: 짧은 «이름»도 서버가 같은 자리(SOURCE_STATES)에서 보냅니다. 화면은 받은 이름을
+//    그리고, 토큰은 `data-state` 열쇠로만 남습니다. 이름이 안 오면(옛 서버) 토큰을 그립니다.
+const stateNames = (ing) => serverWords(ing, 'state_names');
 
 /** 사유 이름은 «서버 낱말»입니다 — 번역하지 않고, «전부» 나갑니다(자르지 않습니다). */
 function reasonsOf(s) {
@@ -144,6 +148,7 @@ export function sourcesView(payload, opts = {}, census = {}) {
   // 🔴 상태 «목록과 뜻»은 서버가 줍니다(판정 223). 한 번 읽어 행과 머리 줄이 같이 씁니다 —
   //    두 번 읽으면 그 둘이 갈라질 수 있고, 그것이 이 파일이 피하는 모양입니다.
   const stateWords = stateMeanings(ing);
+  const nameWords = stateNames(ing);
   const src = Array.isArray(ing.sources) ? ing.sources : [];
   const rows = src.map(s => Object.freeze({
     source: String((s && s.source) == null ? '' : s.source),
@@ -152,6 +157,7 @@ export function sourcesView(payload, opts = {}, census = {}) {
     // 규칙 ①: 서버의 낱말 그대로. 모르는 낱말이 와도 «그대로» 보여 줍니다 —
     // 화면이 아는 넷으로 «접으면» 새 상태가 조용히 사라집니다.
     state: String((s && s.state) == null ? '' : s.state),
+    stateName: nameWords[String((s && s.state) == null ? '' : s.state)] || '',
     // 뜻은 «서버 문장 그대로». 모르는 낱말이면 빈 문자열 — 지어내지 않습니다.
     stateMeaning: (() => {
       const name = String((s && s.state) == null ? '' : s.state);
@@ -189,7 +195,7 @@ export function sourcesView(payload, opts = {}, census = {}) {
   // 🔴 뜻은 «값 옆»의 한 줄입니다 — 단락이 아닙니다(소유자 상설 2026-09-04).
   //    서버가 안 준 낱말은 뜻이 «빈 문자열»이고, 그때 화면은 수만 그립니다(지어내지 않습니다).
   const byState = ordered.map(state => Object.freeze({
-    state, count: countText(seen.get(state)),
+    state, name: nameWords[state] || '', count: countText(seen.get(state)),
     meaning: Object.prototype.hasOwnProperty.call(stateWords, state) ? stateWords[state] : '',
   }));
 
@@ -331,7 +337,7 @@ export class LedgerSourcesPanel {
       const strip = doc.createElement('div');
       strip.className = 'ledger-sources-states';
       for (const s of view.byState) {
-        const line = this._line('ledger-sources-state', `${s.state} · ${s.count}`);
+        const line = this._line('ledger-sources-state', `${s.name || s.state} · ${s.count}`);
         line.setAttribute('data-state', s.state);
         // 🔴 C-54. 「이 낱말이 무슨 뜻인가」는 서버가 «값으로» 보냅니다. 값 옆에 답니다 —
         //    툴팁이라 표를 넓히지 않고, 화면이 그 문장의 두 번째 저자가 되지 않습니다.
@@ -387,7 +393,7 @@ export class LedgerSourcesPanel {
       // 🔴 서버의 낱말 그대로. `data-state` 로 나가지만 «색은 없습니다».
       // 🔴 C-54. 상태 낱말 옆에 «서버가 준 뜻» 한 줄(툴팁). 다섯 낱말 중 넷은 이 박스에
       //    안 나타나므로, 뜻이 없으면 조작자는 그 낱말을 «추측»합니다.
-      const tdState = this._td(r.state);
+      const tdState = this._td(r.stateName || r.state);
       if (r.stateMeaning) tdState.title = r.stateMeaning;
       tr.appendChild(tdState);
       // 🔴 「몇 개」 옆에 「무슨 사유로 몇 개」. 수만 있으면 운영자가 수까지 가고 멈춥니다.

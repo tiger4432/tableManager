@@ -249,7 +249,8 @@ const FLOORS = new Map([
   // -- the server keeps 'could not read' and 'nothing ran' apart on purpose -- and the four
   // states stay four rather than folding into normal/warning/error, because the server never
   // said which of them is bad and a screen deciding that would be inventing a judgement.
-  ['ledger_sources_panel_harness.mjs', 86],
+  // 86 -> 89 (lead 909ea2052 ①): the state's short name comes from the server's one seat and is drawn.
+  ['ledger_sources_panel_harness.mjs', 89],
   // TABLE CONFIG. The two it exists for: the `base` fingerprint survives the round trip
   // (drop it and two operators editing one file erase each other silently, which is the
   // guard the server made part of the ruling), and a refusal keeps the server's own code,
@@ -1549,10 +1550,12 @@ const FLOORS = new Map([
   // New 2026-09-25 (lead b73255fc5 E). The declaration check's problem lines, the same server reason
   // folded into one — scored on the real view module; which lines are problems is POPULATION_TONE's.
   // 14 -> 17 (b93cdf327): the domain joins the key, the biggest group first, no sentence carried.
-  ['declaration_problem_groups_harness.mjs', 17],
+  // 17 -> 19 (lead 909ea2052 ②): a group draws the server's reason name — one check, one mutant.
+  ['declaration_problem_groups_harness.mjs', 19],
   // New 2026-09-25 (mockup A · lead 5d157581e). The STATUS board: a closed four of words, one
   // judge per row (File · Auto Update stay in health_card_absence), and the board part itself.
-  ['overview_board_harness.mjs', 48],
+  // 48 -> 49 (lead 909ea2052 ①): the Ledger row draws the server's state names.
+  ['overview_board_harness.mjs', 49],
 ]);
 
 // ── the ceilings ────────────────────────────────────────────────────────────────

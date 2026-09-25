@@ -1284,8 +1284,8 @@ SOURCE_NOT_MEASURED = "not_measured"
 #: counts read as "how many are in the ledger right now", which is a different question
 #: and one this row cannot answer.
 INGESTION_NOTE = (
-    "이 수는 «번역기의 장부»입니다 — 지금 원장에 몇 개 있는지가 아닙니다. "
-    "원자를 지우거나 재건해도 이 수는 되돌아가지 않습니다."
+    "These numbers are the translator's ledger, not what the ledger holds now. "
+    "Deleting or rebuilding atoms does not move them back."
 )
 
 #: What the cursor row carries into the view.
@@ -1317,16 +1317,21 @@ INGESTION_NOTE = (
 _CURSOR_FIELDS = ("translator_ver", "molecules_refused", "refusal_reasons",
                   "row_census", "updated_at")
 
-#: What each source state MEANS, shipped with the answer so the screen does not keep its
-#: own copy of the vocabulary (ruling 223). A client that renders `states[entry.state]`
-#: cannot drift from the rule that produced it, and a state added here arrives explained.
-SOURCE_STATE_MEANINGS = {
-    SOURCE_RAN_AND_WROTE: "행 색인이 이 소스의 행을 이름 대고 있습니다 — 번역된 행이 있습니다",
-    SOURCE_RAN_WROTE_NOTHING: "색인된 행이 0 인데 거절이 있습니다 — 돌았고, 아무것도 안 남았습니다",
-    SOURCE_NEVER_RAN: "색인된 행이 0 이고 거절도 없습니다",
-    SOURCE_ORPHAN: "선언에 없는 소스인데 등록부에 행이 있습니다",
-    SOURCE_NOT_MEASURED: "아직 세지 않았습니다 — 「없다」가 아니라 「모른다」입니다",
+#: What each source state is CALLED and what it MEANS, shipped with the answer so the screen does
+#: not keep its own copy of the vocabulary (ruling 223). A client that renders
+#: `state_names[entry.state]` cannot drift from the rule that produced it, and a state added here
+#: arrives named and explained. 🔴 ONE SEAT, TWO READINGS (lead 909ea2052 ①): the short name a
+#: row shows and the sentence behind it live in one row, so they cannot be edited apart.
+#: The strings are English because they reach the screen (owner 2026-08-31).
+SOURCE_STATES = {
+    SOURCE_RAN_AND_WROTE: ("Translated", "The row index names this source's rows - translated rows exist"),
+    SOURCE_RAN_WROTE_NOTHING: ("Refused all", "The index names no rows but refusals exist - it ran and left nothing"),
+    SOURCE_NEVER_RAN: ("Not run", "The index names no rows and there are no refusals"),
+    SOURCE_ORPHAN: ("Orphan", "A source the declaration does not name has rows in the registry"),
+    SOURCE_NOT_MEASURED: ("Not measured", "Not counted yet - unknown, not none"),
 }
+SOURCE_STATE_NAMES = {state: name for state, (name, _meaning) in SOURCE_STATES.items()}
+SOURCE_STATE_MEANINGS = {state: meaning for state, (_name, meaning) in SOURCE_STATES.items()}
 
 #: The three states of a breakdown, as VALUES.
 REFUSALS_NONE = "none"                  # `{}` - the writer owned this row, nothing refused
@@ -1425,7 +1430,7 @@ def ingestion_view(db, declared) -> dict:
                     {"molecules_refused": row.get("molecules_refused")}, reasons)
             rows.append(entry)
     return {"note": INGESTION_NOTE, "sources": rows, "unavailable": unavailable,
-            "states": dict(SOURCE_STATE_MEANINGS)}
+            "states": dict(SOURCE_STATE_MEANINGS), "state_names": dict(SOURCE_STATE_NAMES)}
 
 
 def sources_view(db=None) -> dict:

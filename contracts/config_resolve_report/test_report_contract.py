@@ -183,6 +183,14 @@ def test_server_vocabulary_is_exactly_the_contract_vocabulary():
     assert list(crr.SCOPES) == VECTORS["vocabulary"]["scopes"]
 
 
+def test_every_reason_has_exactly_one_name_and_the_response_carries_them():
+    """총괄 909ea2052 ② — the screen draws the name it is sent and keeps no copy of these words,
+    so a reason without a name here is a machine word on the screen."""
+    assert dict(crr.REASON_NAMES) == VECTORS["vocabulary"]["reason_names"]
+    assert set(crr.REASON_NAMES) == set(crr.REASONS)
+    assert crr.resolve_report()["vocabulary"]["reason_names"] == dict(crr.REASON_NAMES)
+
+
 #: The one report reason with no runtime twin, and the reason it has none. See the
 #: xfail below - it is a NAMED red, not an exemption.
 _AWAITING_RUNTIME = {"scope_unresolved"}

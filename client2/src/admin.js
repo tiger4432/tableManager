@@ -1308,7 +1308,10 @@ async function saveTableConfig({ table, base, raw }) {
   }
 }
 
-let ledgerSourcesPanel = null;
+// 🔴 총괄 909ea2052 ①: 자리가 «둘»이다 (Ontology 탭의 소스 현황 절 · Overview Ledger 줄의 펼침). 같은 부품의
+//    두 인스턴스이고, 한 번 받은 답을 둘 다에 그린다 — 각자 받으면 두 화면이 «다른 순간»을 그린다.
+//    Ledger 줄의 사실도 «같은» 답에서 나온다(Overview 가 따로 읽던 것은 없앴다).
+let ledgerSourcesPanels = null;
 
 // 🔴 C-47. 「돌 게 있나」는 «공개 선언 라우트»에 삽니다 — `adminFetch` 가 아니라 맨 `fetch`
 //    입니다. 그래서 이 반쪽은 토큰 없이 «옵니다», 그리고 아래 장부 조회가 401 이어도 화면이
@@ -1327,9 +1330,11 @@ async function loadSourceCensus() {
 }
 
 async function refreshLedgerSources() {
-  const mount = byId('ledger-sources-mount');
-  if (!mount) return;
-  if (!ledgerSourcesPanel) ledgerSourcesPanel = new LedgerSourcesPanel(mount);
+  if (!ledgerSourcesPanels) {
+    ledgerSourcesPanels = ['ledger-sources-mount', 'overview-ledger-mount']
+      .map((id) => byId(id)).filter(Boolean).map((mount) => new LedgerSourcesPanel(mount));
+  }
+  if (!ledgerSourcesPanels.length) return;
   // 두 라우트를 «나란히» 부릅니다. 하나가 못 답해도 다른 하나를 지우지 않습니다.
   const censusRequest = loadSourceCensus();
   let body = null;
@@ -1362,10 +1367,12 @@ async function refreshLedgerSources() {
   } catch (e) {                                              // noqa
     opts = { unavailable: fetchFailureLine(null, 'Source status read failed') };
   }
-  const view = ledgerSourcesPanel.render(body, opts, await censusRequest);
+  const census = await censusRequest;
+  const [view] = ledgerSourcesPanels.map((panel) => panel.render(body, opts, census));
   const count = byId('ledger-sources-count');
   // \ubabb \uc77d\uc5c8\uc73c\uba74 \u00ab0 \uc774 \uc544\ub2c8\ub77c\u00bb \ub300\uc2dc\uc785\ub2c8\ub2e4 \u2014 view.count \uac00 \uc774\ubbf8 \uadf8\ub807\uac8c \ub3cc\uc544\uc635\ub2c8\ub2e4.
   if (count) count.textContent = view.count;
+  overviewBoard().update(ledgerRow(body));
 }
 
 // ── Renderers ──────────────────────────────────────────────
@@ -2277,7 +2284,7 @@ function renderDeclarationGroups(view) {
   host.textContent = '';
   for (const group of problemGroups(view)) {
     const head = cfgEl('button', 'declaration-group', [cfgText(group.domain),
-      `${group.count.text} ${cfgText(group.population)}`, group.reason ? cfgText(group.reason) : '']
+      `${group.count.text} ${cfgText(group.population)}`, group.reason ? cfgText(group.reasonName || group.reason) : '']
       .filter(Boolean).join(' · '));
     head.type = 'button';
     head.dataset.tone = group.tone;
@@ -2396,7 +2403,7 @@ function cfgEntryEl(entry, tone) {
   if (entry.subject) head.appendChild(cfgEl('span', 'cfg-subject', cfgText(entry.subject)));
   // 사유·경고는 서버 어휘를 **데이터로** 받아 그대로 칩에 적는다. 색은 항목이 들어간
   // 모집단에서 오지 사유 단어에서 오지 않는다 — 사유별 분기는 이 계약이 금지하는 것이다.
-  if (entry.reason) head.appendChild(cfgChip(cfgText(entry.reason), tone));
+  if (entry.reason) head.appendChild(cfgChip(cfgText(entry.reasonName || entry.reason), tone));
   entry.warnings.forEach((w) => head.appendChild(cfgChip(cfgText(w), 'warn')));
   row.appendChild(head);
   if (entry.detail) row.appendChild(cfgEl('div', 'cfg-detail', cfgText(entry.detail)));
@@ -3405,21 +3412,21 @@ async function fetchOverview(isStale) {
 
   // 🔴 C-80: 대기열이 여기 «하나 더» 있다. 전에는 `tab === 'chain'` 아래서만 받았으므로,
   //    Overview 에 자리만 놓으면 Chain 탭을 «들른 적 없는» 사람에게 빈 상자가 된다.
-  const [failedRes, outboxRes, rulesRes, mappersRes, autoRes, activeRes, queueRes, ledgerRes] = await Promise.all([
+  // Ledger 줄은 소스 현황과 «같은» 읽기 — 본문 렌더를 기다리지 않는다(위의 설정 반영과 같은 이유).
+  void refreshLedgerSources();
+  const [failedRes, outboxRes, rulesRes, mappersRes, autoRes, activeRes, queueRes] = await Promise.all([
     adminFetch(`${API_BASE}/admin/file-ingestion/failed?page=1&limit=100`),
     adminFetch(`${API_BASE}/admin/outbox/failed?page=1&limit=3`),
     adminFetch(`${API_BASE}/admin/chain/rules`),
     adminFetch(`${API_BASE}/admin/mappers/list`),
     adminFetch(`${API_BASE}/admin/auto-update/status`),
     adminFetch(`${API_BASE}/admin/file-ingestion/active`), // [Heavy Lane P1] 진행 중 인제션
-    adminFetch(`${API_BASE}/admin/chain/queue`),
-    // Ledger 줄 — 원장을 안 읽고 소스당 한 행(커서 표)이라 30 초 폴에 얹어도 가볍다.
-    adminFetch(`${API_BASE}/admin/ledger/sources`)
+    adminFetch(`${API_BASE}/admin/chain/queue`)
   ].map(p => p.catch(() => null)));
 
   const jsonOf = async (r) => (r && r.ok) ? r.json().catch(() => null) : null;
-  const [failed, outbox, rules, mappers, auto, active, ledger] = await Promise.all(
-    [failedRes, outboxRes, rulesRes, mappersRes, autoRes, activeRes, ledgerRes].map(jsonOf)
+  const [failed, outbox, rules, mappers, auto, active] = await Promise.all(
+    [failedRes, outboxRes, rulesRes, mappersRes, autoRes, activeRes].map(jsonOf)
   );
 
   // 🔴 THE FILTER LEARNS ITS OPTIONS HERE, AT LOAD, BEFORE THE FILE TAB ASKS ANYTHING.
@@ -3449,7 +3456,7 @@ async function fetchOverview(isStale) {
     throw new Error('overview fetch failed');
   }
 
-  renderOverview({ failed, outbox, rules, mappers, auto, enrich, active, ledger });
+  renderOverview({ failed, outbox, rules, mappers, auto, enrich, active });
 }
 
 // 시안 A ② Status — 판은 한 번 만들고 재사용한다. 줄 판정은 `overview_status` 한 자리이고,
@@ -3460,15 +3467,16 @@ function overviewBoard() {
   const mount = byId('overview-status-mount');
   if (!mount) return { update() {} };
   overviewBoardPart = new OverviewBoard(mount, {
-    bodies: { workers: byId('ov-body-workers'), declarations: byId('ov-body-declarations'),
-              retroactive: byId('ov-body-retroactive') },
+    bodies: { workers: byId('ov-body-workers'), ledger: byId('ov-body-ledger'),
+              declarations: byId('ov-body-declarations'), retroactive: byId('ov-body-retroactive') },
     open: {
       file: () => { filePage = 1; switchTab('file', { statusFilter: 'FAILED' }); },
       chain: () => { outboxPage = 1; switchTab('chain'); },
       auto: () => switchTab('autoupdate'),
       // Enrichment 탭은 은퇴 — 규칙은 Chain 탭 목록에 종류 순으로 선다 (총괄 7085e2dc6).
       enrichment: () => switchTab('chain'),
-      ledger: () => switchTab('ontology'),
+      // 소스 현황 절은 그 탭 맨 아래라 탭만 열면 운영자가 못 찾는다 (총괄 909ea2052 ①) — 절까지 간다.
+      ledger: () => { switchTab('ontology'); const sec = byId('sec-ledger-sources'); if (sec) sec.scrollIntoView(); },
       retroactive: () => switchTab('retroactive'),
     },
   });
@@ -3480,13 +3488,12 @@ function overviewBoard() {
   return overviewBoardPart;
 }
 
-function renderOverview({ failed, outbox, rules, mappers, auto, enrich, active, ledger }) {
+function renderOverview({ failed, outbox, rules, mappers, auto, enrich, active }) {
   const rows = overviewBoard();
   rows.update(fileRow({ failed, active }));
   rows.update(chainRow({ outbox, rules, mappers }));
   rows.update(autoRow({ auto, failed }));
   rows.update(enrichmentRow(enrich));
-  rows.update(ledgerRow(ledger));
 }
 
 // ── Selection & Diagnostics ────────────────────────────────

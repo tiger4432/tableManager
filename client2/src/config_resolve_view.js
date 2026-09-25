@@ -236,7 +236,7 @@ function buildView(view) {
   };
 }
 
-function buildEntry(entry, domainName) {
+function buildEntry(entry, domainName, reasonNames = {}) {
   const fields = (entry && entry.fields) || {};
   const measurable = domainName === MEASURABLE_DOMAIN
     && Object.prototype.hasOwnProperty.call(fields, MEASURABLE_FIELD)
@@ -248,6 +248,10 @@ function buildEntry(entry, domainName) {
     // THE sentence. Straight through, untouched.
     detail: entry && entry.detail != null ? srv(entry.detail) : null,
     reason: entry && entry.reason != null ? srv(entry.reason) : null,
+    // The reason's NAME is the server's too (`vocabulary.reason_names`, lead 909ea2052 ②). The token
+    // stays `reason` — it is the key things are grouped by; the name is only what is drawn.
+    reasonName: entry && entry.reason != null && reasonNames[entry.reason] != null
+      ? srv(reasonNames[entry.reason]) : null,
     warnings: warnings.map(srv),
     views: list(fields.reference_views).map(buildView),
     // Open the view list without a click when the entry carries a warning: the trap sentence
@@ -303,7 +307,7 @@ function stepIndex(vocabulary) {
 const LAST = Number.MAX_SAFE_INTEGER;
 const stepRank = (item) => (item && item.step != null ? Number(item.step) : LAST);
 
-function buildDomain(domain, populations, stepItem) {
+function buildDomain(domain, populations, stepItem, reasonNames) {
   const name = domain && domain.domain != null ? String(domain.domain) : '';
   const blocked = domain && domain.blocked_by != null ? domain.blocked_by : null;
   return {
@@ -329,7 +333,7 @@ function buildDomain(domain, populations, stepItem) {
         label: srv(population),
         count: count(entries.length),
         tone: POPULATION_TONE[population] || '',
-        entries: entries.map((e) => buildEntry(e, name)),
+        entries: entries.map((e) => buildEntry(e, name, reasonNames)),
       };
     }),
   };
@@ -339,6 +343,8 @@ function buildDomain(domain, populations, stepItem) {
 export function buildConfigResolveView(report) {
   const vocabulary = (report && report.vocabulary) || {};
   const populations = list(vocabulary.populations).map(String);
+  const names = vocabulary.reason_names;
+  const reasonNames = names && typeof names === 'object' && !Array.isArray(names) ? names : {};
   const steps = stepIndex(vocabulary);
   // C-87. 걸음 «순서»로 세웁니다. 서버가 보낸 순서가 아니라 서버가 «말한 순서»입니다 — 그리고
   // 번호가 없는 도메인은 뒤에, 받은 순서 그대로(`sort` 는 안정 정렬입니다).
@@ -365,7 +371,7 @@ export function buildConfigResolveView(report) {
     totals,
     tone,
     titles: domains.map((d) => (d && d.title != null ? srv(d.title) : null)).filter(Boolean),
-    domains: domains.map((d) => buildDomain(d, populations, steps.get(String(d && d.domain)))),
+    domains: domains.map((d) => buildDomain(d, populations, steps.get(String(d && d.domain)), reasonNames)),
     // 걸음 밖 무리가 «있을 때만» 그 이름이 있습니다. 비어 있는 구분선은 없는 무리를 있는 것처럼
     // 그립니다.
     unsteppedLabel: domains.some((d) => !steps.get(String(d && d.domain)))
@@ -396,7 +402,7 @@ export function problemGroups(view) {
         let group = key === null ? null : byKey.get(key);
         if (!group) {
           group = { domain: domain.title || { text: domain.name }, population: population.label, tone,
-                    reason: entry.reason, lines: [] };
+                    reason: entry.reason, reasonName: entry.reasonName, lines: [] };
           if (key !== null) byKey.set(key, group);
           groups.push(group);
         }

@@ -20,7 +20,7 @@
     🔴 클라이언트는 「효과 없음」을 자기 규칙으로 판정하지 않는다. 서버가 만든
     `detail` 문자열을 그대로 렌더한다. 클라가 사유를 유도하기 시작하면 U6에서 6종을
     삭제한 하드코딩 사본 계급이 그대로 재발한다. 그래서 사람이 읽을 문장은 **전부
-    서버가 만든다**(UI 문자열이므로 한국어).
+    서버가 만든다**(UI 문자열이므로 영어 — 소유자 2026-08-31 「UI 무조건 영어로」).
 
 닫힌 어휘 — 새 단어를 만들지 않는다
     런타임 열화 어휘(`main.CHIP_TRACE_*`)를 그대로 재사용한다. 같은 구분이 config 로드
@@ -106,6 +106,14 @@ REASON_SCOPE_UNRESOLVED = "scope_unresolved"
 REASON_NOT_REACHED = "not_reached"
 REASONS = (REASON_NOT_DECLARED, REASON_MAPPING_UNAVAILABLE,
            REASON_SCOPE_UNRESOLVED, REASON_NOT_REACHED)
+#: What each reason is CALLED on a screen (lead 909ea2052 ②). The token stays the key; the screen
+#: draws the name it is sent and keeps no copy of these words.
+REASON_NAMES = {
+    REASON_NOT_DECLARED: "Not declared",
+    REASON_MAPPING_UNAVAILABLE: "Mapping unavailable",
+    REASON_SCOPE_UNRESOLVED: "Scope unresolved",
+    REASON_NOT_REACHED: "Not reached",
+}
 
 POPULATIONS = ("effective", "ineffective", "rejected")
 
@@ -247,7 +255,7 @@ def _resolve_chain() -> dict:
             "체인 규칙 파일을 읽지 못했습니다 (%s). 이 파일이 안 읽히면 «어떤» 표도 파생을 "
             "일으키지 않습니다." % read["error"],
             reason=REASON_MAPPING_UNAVAILABLE))
-        return build_domain(DOMAIN_CHAIN, "파생 (체인 규칙)", sources, [],
+        return build_domain(DOMAIN_CHAIN, DOMAIN_TITLES[DOMAIN_CHAIN], sources, [],
                             effective, ineffective, rejected)
 
     triggered = set()
@@ -321,7 +329,7 @@ def _resolve_chain() -> dict:
             "규칙이 없습니다. 파생이 필요 없는 표라면 이것이 정상입니다." % table,
             reason=REASON_NOT_DECLARED))
 
-    return build_domain(DOMAIN_CHAIN, "파생 (체인 규칙)", sources, [],
+    return build_domain(DOMAIN_CHAIN, DOMAIN_TITLES[DOMAIN_CHAIN], sources, [],
                         effective, ineffective, rejected)
 
 
@@ -552,7 +560,7 @@ def _resolve_enrichment() -> dict:
                 if not settings_exists else "파일을 읽었습니다."),
                exists=settings_exists),
     ]
-    return build_domain(DOMAIN_ENRICHMENT, "Enrichment 자동 확정",
+    return build_domain(DOMAIN_ENRICHMENT, DOMAIN_TITLES[DOMAIN_ENRICHMENT],
                         sources, settings, effective, ineffective, rejected)
 
 
@@ -731,7 +739,7 @@ def _resolve_notation() -> dict:
                         "정규화 값을 읽는 순간 기존 map_id가 자기 메타 행과 어긋납니다. "
                         "그것은 설정 스위치가 아니라 데이터 마이그레이션입니다.")),
     ]
-    return build_domain(DOMAIN_NOTATION, "표기 정규화 선언",
+    return build_domain(DOMAIN_NOTATION, DOMAIN_TITLES[DOMAIN_NOTATION],
                         sources, settings, effective, ineffective, rejected)
 
 
@@ -880,7 +888,7 @@ def _resolve_binding() -> dict:
                 f"거절합니다(추측한 좌표는 0건을 정상처럼 보이게 만듭니다).",
                 reason=REASON_MAPPING_UNAVAILABLE, fields={"table": table}))
 
-    return build_domain(DOMAIN_BINDING, "맵 좌표·정체성 바인딩",
+    return build_domain(DOMAIN_BINDING, DOMAIN_TITLES[DOMAIN_BINDING],
                         sources, [], effective, ineffective, rejected)
 
 
@@ -938,7 +946,7 @@ def _resolve_catalog() -> dict:
             "표 선언 파일을 읽지 못했습니다 (%s). 표가 없으면 파생·확정·조인·원장·걷기가 "
             "가리킬 것이 없습니다." % load_error,
             reason=REASON_MAPPING_UNAVAILABLE))
-        return build_domain(DOMAIN_CATALOG, "표 카탈로그", sources, [],
+        return build_domain(DOMAIN_CATALOG, DOMAIN_TITLES[DOMAIN_CATALOG], sources, [],
                             effective, ineffective, rejected)
 
     for name, declared in sorted((document or {}).items(), key=lambda kv: str(kv[0])):
@@ -971,11 +979,23 @@ def _resolve_catalog() -> dict:
             fields={"columns": sorted(relation.get("columns") or {}),
                     "composite_key": list(relation.get("composite_key") or [])}))
 
-    return build_domain(DOMAIN_CATALOG, "표 카탈로그", sources, [],
+    return build_domain(DOMAIN_CATALOG, DOMAIN_TITLES[DOMAIN_CATALOG], sources, [],
                         effective, ineffective, rejected)
 
 
 DOMAIN_LEDGER = "ledger"
+
+#: One English title per domain (lead 909ea2052 ②) — three domains are built in two places each,
+#: and a literal per call site is how two builds of one domain come to say two names.
+DOMAIN_TITLES = {
+    DOMAIN_CHAIN: "Derived (chain rules)",
+    DOMAIN_ENRICHMENT: "Enrichment auto-confirm",
+    DOMAIN_NOTATION: "Notation normalisation",
+    DOMAIN_BINDING: "Map coordinate and identity binding",
+    DOMAIN_CATALOG: "Table catalogue",
+    DOMAIN_LEDGER: "Ledger declaration (sources and vocabulary)",
+    DOMAIN_WALK: "Walk seats",
+}
 
 
 def _resolve_ledger() -> dict:
@@ -1091,7 +1111,7 @@ def _resolve_ledger() -> dict:
                "소스 → 원장 번역 선언(컬럼 매핑·시각 컬럼·주어 타입·워터마크).",
                degraded=bool(load_error)),
     ]
-    return build_domain(DOMAIN_LEDGER, "원장 — 선언(소스와 어휘)",
+    return build_domain(DOMAIN_LEDGER, DOMAIN_TITLES[DOMAIN_LEDGER],
                         sources, settings, effective, ineffective, rejected)
 
 
@@ -1182,7 +1202,7 @@ def _resolve_walk() -> dict:
             SCOPE_FILE, "entities",
             "선언을 읽지 못해 걷기가 «무엇을 고를 수 있는지» 말할 수 없습니다 — %s" % failure,
             reason=REASON_MAPPING_UNAVAILABLE))
-        return build_domain(DOMAIN_WALK, "걷기 좌석", sources, [],
+        return build_domain(DOMAIN_WALK, DOMAIN_TITLES[DOMAIN_WALK], sources, [],
                             effective, ineffective, rejected)
 
     for name in sorted(collectable):
@@ -1197,7 +1217,7 @@ def _resolve_walk() -> dict:
             "묻지 못합니다. ⑤ 에 엔터티를 적으면 여기가 채워집니다.",
             reason=REASON_NOT_DECLARED))
 
-    return build_domain(DOMAIN_WALK, "걷기 좌석", sources, [],
+    return build_domain(DOMAIN_WALK, DOMAIN_TITLES[DOMAIN_WALK], sources, [],
                         effective, ineffective, rejected)
 
 
@@ -1316,7 +1336,8 @@ def resolve_report(domains: list = None) -> dict:
     return {
         "domains": _annotate_steps(out),
         # 클라이언트가 라벨/필터를 **하드코딩하지 않도록** 어휘를 함께 싣는다.
-        "vocabulary": {"reasons": list(REASONS), "populations": list(POPULATIONS),
+        "vocabulary": {"reasons": list(REASONS), "reason_names": dict(REASON_NAMES),
+                       "populations": list(POPULATIONS),
                        "scopes": list(SCOPES),
                        # 🔴 순서도 «어휘»입니다 — 화면이 걸음 이름을 자기가 적으면 이 리스트와
                        # 갈라지고, 갈라진 쪽은 오류를 안 냅니다.

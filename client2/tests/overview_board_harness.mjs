@@ -85,6 +85,11 @@ async function suite({ status: S, board: B }) {
   eq('L1 sources by the server\'s own state words', said(r(S.ledgerRow(LEDGER(0)))), 'ok|ran_and_wrote 1 · never_ran 1');
   eq('L2 refused molecules are counted and warn', said(r(S.ledgerRow(LEDGER(1234)))),
     'warn|ran_and_wrote 1 · never_ran 1 · refused 1,234');
+  // lead 909ea2052 ①: the row says the server's short names once the server sends them.
+  const named = LEDGER(0);
+  named.ingestion.state_names = { ran_and_wrote: 'Translated', never_ran: 'Not run' };
+  eq('L3 the row draws the server\'s state names, not the machine words', said(r(S.ledgerRow(named))),
+    'ok|Translated 1 · Not run 1');
 
   // ── D Declarations ──
   const decl = r(S.declarationsRow(RESOLVE));

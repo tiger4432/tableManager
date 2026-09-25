@@ -10,26 +10,26 @@
   },
   "paces": {
     "fast": {
-      "label": "빠르게 — 지금까지와 같습니다",
-      "when": "급할 때. 서비스가 한가하거나, 이 작업이 끝나야 다음이 되는 때",
+      "label": "Fast - as before",
+      "when": "When it is urgent: the service is quiet, or the next step waits for this one",
       "units_per_cycle": null,
       "rest_seconds": 0
     },
     "slow": {
-      "label": "천천히 — 서비스 중에",
-      "when": "화면이나 API 가 같이 느려지면. 오래 걸리지만 남을 덜 밉니다",
+      "label": "Slow - while in service",
+      "when": "When screens or the API slow down with it. Takes longer, crowds others less",
       "units_per_cycle": 5,
       "rest_seconds": 1.0
     },
     "trickle": {
-      "label": "아주 천천히 — 밤새 돌릴 때",
-      "when": "끝나는 시각보다 «남에게 안 걸리는 것»이 중요할 때",
+      "label": "Very slow - overnight",
+      "when": "When staying out of the way matters more than when it finishes",
       "units_per_cycle": 1,
       "rest_seconds": 3.0
     },
     "background": {
-      "label": "백그라운드 — 재는 일이지 끝내는 일이 아닐 때",
-      "when": "센서스처럼 «상시 도는» 작업. 한 바퀴가 무한히 느려도 되고, 그 사이에 남이 느려지면 안 된다",
+      "label": "Background - measuring, not finishing",
+      "when": "Always-on work such as the census. A lap may be as slow as it likes; others must not slow down meanwhile",
       "units_per_cycle": 1,
       "rest_seconds": 60.0
     }

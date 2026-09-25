@@ -117,7 +117,7 @@ export function ledgerRow(sources) {
   if (!view.available) return row('ledger', 'Ledger', [view.reason], TONE.UNKNOWN);
   const raw = Array.isArray(sources.ingestion.sources) ? sources.ingestion.sources : [];
   const refused = raw.reduce((sum, s) => sum + (s && isCount(s.molecules_refused) ? Number(s.molecules_refused) : 0), 0);
-  const facts = view.byState.map((b) => `${b.state} ${b.count}`);
+  const facts = view.byState.map((b) => `${b.name || b.state} ${b.count}`);
   if (refused) facts.push(`refused ${localeCountText(refused)}`);
   return row('ledger', 'Ledger', facts, !view.rows.length ? TONE.UNKNOWN : refused ? TONE.WARN : TONE.OK);
 }
