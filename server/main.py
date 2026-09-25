@@ -4625,29 +4625,25 @@ def get_chain_queue_depth(db: Session = Depends(get_db)):
     # 🔴 `loop_in_this_process` 가 같이 나갑니다 — 목록이 비었을 때 그것이 「도는 게 없다」
     #    인지 「내가 못 본다」인지 화면이 구별해야 합니다. 별도 워커로 띄우면 후자입니다.
     from chain import activity
-    running = activity.registry.snapshot()
-    # 🔴 「이 규칙이 «왜» 아무것도 안 했나」 — 규칙별 «마지막 결과». `running` 을 내는 «같은
-    #    경로»다(두 번째 경로 금지). 이력이 «아니라» 마지막 하나이고, 수명은 `running` 과
-    #    같은 «이 프로세스»다.
-    # ⚠️ `last_age_seconds` 이지 `last_at` 이 아니다 — 이 레지스트리는 시각이 아니라 «나이»를
-    #    낸다고 자기 docstring 에 적어 두었고(읽는 쪽이 서로와 `oldest_waiting_seconds` 와
-    #    견주므로), 기준 시각은 이 응답의 `generated_at` 이 이미 준다.
-    rule_outcomes = {name: {"last_outcome": e["outcome"], "last_reason": e["reason"],
-                            "last_age_seconds": e["age_seconds"]}
-                     for name, e in activity.registry.outcomes().items()}
-
-    # 🔴 «어느 파일을 열어야 하나». `loop_in_this_process` 는 「어느 «프로세스»인가」를
-    # 답하는데, 운영자가 다음에 하는 일은 «파일을 여는» 것이고 그 이름을 내는 자리가
-    # 어디에도 없었다 (응용·클라가 각각 재서 같은 자리를 지목).
-    #
-    # 🔴 로거에서 «읽는다». 상수로 적으면 거짓이 된다 — 통합 프로세스는 server.log 를,
-    # 단독 워커는 chain_worker.log 를 쓰고, 그 판정은 「누가 먼저 열었나」가 한다. 오늘 밤
-    # 맵퍼 태그가 상수라 거짓말할 뻔한 것과 «같은 병»이라 같은 방식으로 막는다.
-    #
-    # ⚠️ «이름»이지 경로가 아니다. 서버 디스크 구조는 화면에 나갈 것이 아니고, 데이터 루트가
-    # 그 경로를 옮길 수도 있다. 아직 정해지지 않았으면 null — 「모를 때의 기본값」을 지어내면
-    # 화면이 「모름」을 그릴 수 없다.
+    from utils import heartbeat
+    # 🔴 «어느 파일을 열어야 하나» — 로거에서 «읽는다», 상수는 거짓이 된다(통합 프로세스는
+    #    server.log, 단독 워커는 chain_worker.log). «이름»이지 경로가 아니다.
     from utils import logger as process_logging
+    # 🔴 WHOSE LOOP (총괄 3c3f2b1f2). This process's registry when the loop runs here; the
+    #    chain worker's heartbeat lap when it runs on its own - the API's registry is empty
+    #    then, and drew 「Loop Unknown · never_evaluated」 forever; nobody's when that lap is
+    #    stale or predates these fields. `activity.view` turns either into the same shape.
+    loop_seen_via, loop_seen_age, loop_log, instants = None, None, None, {}
+    if activity.registry.attached:
+        loop_seen_via, loop_seen_age = "this_process", 0.0
+        instants, loop_log = activity.registry.instants(), process_logging.active_log_filename()
+    else:
+        beat = heartbeat.read_all().get("chain") or {}
+        lap = (beat.get("laps") or {}).get("chain") or {}
+        if "outcomes" in lap and not beat.get("stale"):
+            loop_seen_via, loop_seen_age = "chain_worker_heartbeat", beat.get("age_seconds")
+            instants, loop_log = lap, lap.get("log_filename")
+    shape = activity.view(instants, now=now_utc.timestamp())
 
     return {
         # 🔴 이 수들이 「지금」이 아니라 «그때»의 것이다. 새로 고치지 않은 화면은 오래된
@@ -4656,15 +4652,21 @@ def get_chain_queue_depth(db: Session = Depends(get_db)):
         #    그대로 낸다(§`now_utc`). 여기서 `now()` 를 다시 부르면 값이 «항상 신선»해 보인다.
         "generated_at": now_utc.isoformat(),
         "waiting": int(waiting or 0),
-        "running": running,
-        "rule_outcomes": rule_outcomes,
+        "running": shape["running"],
+        "rule_outcomes": shape["rule_outcomes"],
         "loop_in_this_process": activity.registry.attached,
-        "log_filename": process_logging.active_log_filename(),
+        # The one field a reader asks 「is the loop seen」 (총괄 36dff3b6a), and how old that
+        # sight is. `None` = not seen: the lists above are then blind, not empty.
+        "loop_seen_via": loop_seen_via,
+        "loop_seen_age_seconds": loop_seen_age,
+        # The file THE LOOP writes. Unknown -> no key, so no 「Log」 line: the API's own file
+        # is not where chain work is logged.
+        **({"log_filename": loop_log} if loop_log else {}),
         # 🔴 「재시작하면 풀리나」에 답하는 두 수. 그 판단의 근거는 이미 이 프로세스 안에
         #    있었는데 «큐가 1분 이상 막힌 뒤에만» «로그 문장 속 글자»로 나갔다 — 즉 이미
         #    멈춘 시스템의 로그를 읽고 있는 사람만 물을 수 있는 질문이었다.
         #    ⚠️ 재적재가 없었으면 `null` 이다. `0` 은 「방금」이라는 «반대» 사실이다.
-        **activity.registry.ages(),
+        **{key: shape[key] for key in activity.AGE_KEYS},
         "waiting_by_owner": [owners[k] for k in sorted(owners)],
         "oldest_waiting_seconds": oldest_seconds,
         "oldest_waiting_at": to_local_str(oldest) if oldest is not None else None,

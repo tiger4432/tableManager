@@ -140,7 +140,10 @@ def test_every_column_this_route_already_had_is_still_there(client, db_session):
     """이 라운드는 «말하기»이지 «바꾸기»가 아니다."""
     _plant(db_session)
     body = _queue(client)
-    for key in ("waiting", "running", "loop_in_this_process", "log_filename",
+    # ⚠️ `log_filename` is the LOOP's file and has no key when no loop is seen (총괄
+    #   3c3f2b1f2) - test_queue_says_which_log_to_open pins it; `loop_seen_*` are new.
+    for key in ("waiting", "running", "loop_in_this_process", "loop_seen_via",
+                "loop_seen_age_seconds",
                 "loop_uptime_seconds", "mapper_reload_age_seconds", "waiting_by_owner",
                 "oldest_waiting_seconds", "oldest_waiting_at", "retried_among_waiting",
                 "waiting_transactions", "listed", "not_measured"):

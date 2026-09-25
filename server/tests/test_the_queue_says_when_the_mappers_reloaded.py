@@ -107,7 +107,7 @@ def test_the_route_publishes_both_names():
     import main
 
     body = inspect.getsource(main.get_chain_queue_depth)
-    assert "activity.registry.ages()" in body
+    assert "activity.AGE_KEYS" in body
     assert set(activity.registry.ages()) == {"loop_uptime_seconds",
                                                    "mapper_reload_age_seconds",
                                                    "outbox_purge_age_seconds",

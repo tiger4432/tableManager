@@ -3918,8 +3918,13 @@ async def start_chain_ingestion_worker(db_session_factory):
                 # the timer the iteration already kept; nothing new is measured. The depth
                 # this loop is judged by is the outbox backlog, and THAT is a database
                 # question the route asks directly rather than one this seat counts.
+                # 🔴 AND WHAT THE QUEUE VIEW NEEDS FROM THIS PROCESS (총괄 3c3f2b1f2): the API
+                #   serves `/admin/chain/queue` from ITS registry, which is empty when this
+                #   loop runs in its own process. The lap is the door out that already exists.
                 heartbeat.record_lap("chain", "chain",
-                                     seconds=time.monotonic() - iter_start_ts)
+                                     seconds=time.monotonic() - iter_start_ts,
+                                     log_filename=process_logging.active_log_filename(),
+                                     **activity.registry.instants())
                 db.close()
         except Exception as e:
             logger.error(f"Database session setup failed in Chain Worker: {e}")

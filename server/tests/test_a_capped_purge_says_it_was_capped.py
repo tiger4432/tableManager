@@ -151,6 +151,7 @@ def test_the_route_spreads_the_ages_dict_these_keys_live_in():
     import main
 
     body = inspect.getsource(main.get_chain_queue_depth)
-    assert "**activity.registry.ages()" in body
+    assert "activity.AGE_KEYS" in body
+    assert set(activity.AGE_KEYS) == set(activity.registry.ages())
     for key in ("outbox_purge_age_seconds", "outbox_purge_deleted", "outbox_purge_capped"):
         assert key in activity.registry.ages()

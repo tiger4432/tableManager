@@ -140,11 +140,9 @@ class ChainActivityRegistry:
     def outcomes(self) -> dict:
         """규칙 이름 -> `{outcome, reason, age_seconds}`. 빈 dict = 이 프로세스가 아직
         «아무 규칙도» 평가하지 않았다 — 그것도 답이다."""
-        now = time.time()
-        with self._lock:
-            return {name: {"outcome": e["outcome"], "reason": e["reason"],
-                           "age_seconds": round(now - e["at"], 3)}
-                    for name, e in self._outcomes.items()}
+        return {name: {"outcome": e["last_outcome"], "reason": e["last_reason"],
+                       "age_seconds": e["last_age_seconds"]}
+                for name, e in view(self.instants())["rule_outcomes"].items()}
 
     def finish(self, token):
         """Idempotent, and never raises: a registry that can fail must not be able to take
@@ -152,42 +150,29 @@ class ChainActivityRegistry:
         with self._lock:
             self._running.pop(token, None)
 
-    def snapshot(self) -> list:
-        now = time.time()
+    def instants(self) -> dict:
+        """This process's state as INSTANTS - what crosses to another process through the
+        worker's heartbeat lap (총괄 3c3f2b1f2). Ages are taken where it is read (`view`),
+        so a lap written thirty seconds ago does not under-report them by thirty."""
         with self._lock:
-            entries = sorted(self._running.values(), key=lambda e: e["started"])
-            return [{"rule": e["rule"], "mapper": e["mapper"],
-                     "target_table": e["target_table"], "rows_in": e["rows_in"],
-                     "running_seconds": round(now - e["started"], 3)}
-                    for e in entries]
+            return {
+                "attached_at": self._attached_at,
+                "reloaded_at": self._reloaded_at,
+                "purged_at": self._purged_at,
+                "purged_rows": self._purged_rows,
+                "purge_capped": self._purge_capped,
+                "running": [dict(e) for e in sorted(self._running.values(),
+                                                    key=lambda e: e["started"])],
+                "outcomes": {name: dict(e) for name, e in self._outcomes.items()},
+            }
+
+    def snapshot(self) -> list:
+        return view(self.instants())["running"]
 
     def ages(self) -> dict:
-        """How long this process's loop has been up, and how long since it re-imported.
-
-        Ages rather than instants: the reader is comparing them with each other and with
-        `oldest_waiting_seconds`, and a clock string would have to be reconciled against
-        the reader's own clock first.
-        """
-        now = time.time()
-        with self._lock:
-            attached_at, reloaded_at = self._attached_at, self._reloaded_at
-            purged_at = self._purged_at
-            purged_rows, purge_capped = self._purged_rows, self._purge_capped
-        return {
-            "loop_uptime_seconds": (None if attached_at is None
-                                    else round(now - attached_at, 3)),
-            "mapper_reload_age_seconds": (None if reloaded_at is None
-                                          else round(now - reloaded_at, 3)),
-            # [P-6] Flat, like the two above, so the route that spreads this dict does
-            # not change. `outbox_purge_capped` is the one that carries the fact the
-            # row count cannot: True = stopped at the per-cycle cap with more expired
-            # rows waiting, False = drained everything expired, None = never ran, or
-            # the last cycle raised before it could tell.
-            "outbox_purge_age_seconds": (None if purged_at is None
-                                         else round(now - purged_at, 3)),
-            "outbox_purge_deleted": purged_rows,
-            "outbox_purge_capped": purge_capped,
-        }
+        """How long this process's loop has been up, and how long since it re-imported."""
+        shape = view(self.instants())
+        return {key: shape[key] for key in AGE_KEYS}
 
     def clear(self):
         with self._lock:
@@ -203,6 +188,43 @@ class ChainActivityRegistry:
 
 #: Process singleton, the same shape `ingestion_activity` publishes.
 registry = ChainActivityRegistry()
+
+#: The flat keys the queue route spreads. `outbox_purge_capped`: True = stopped at the
+#: per-cycle cap with more expired rows waiting, False = drained everything expired, None =
+#: never ran, or the last cycle raised before it could tell.
+AGE_KEYS = ("loop_uptime_seconds", "mapper_reload_age_seconds", "outbox_purge_age_seconds",
+            "outbox_purge_deleted", "outbox_purge_capped")
+
+
+def view(instants, now=None) -> dict:
+    """`instants()` -> the queue route's shape: ages, not instants, because the reader
+    compares them with each other and with `oldest_waiting_seconds`.
+
+    🔴 ONE CONVERSION for both sources - this process's registry and the chain worker's
+    heartbeat lap - so the two cannot answer the route differently.
+    ⚠️ A missing instant is `None`, never `0`: 「never reloaded」 is the opposite of 「just now」.
+    """
+    now = time.time() if now is None else now
+    instants = instants or {}
+
+    def age(at):
+        return None if at is None else round(now - float(at), 3)
+
+    return {
+        "running": [{"rule": e.get("rule"), "mapper": e.get("mapper"),
+                     "target_table": e.get("target_table"), "rows_in": e.get("rows_in"),
+                     "running_seconds": age(e.get("started"))}
+                    for e in instants.get("running") or ()],
+        "rule_outcomes": {name: {"last_outcome": e.get("outcome"),
+                                 "last_reason": e.get("reason"),
+                                 "last_age_seconds": age(e.get("at"))}
+                          for name, e in (instants.get("outcomes") or {}).items()},
+        "loop_uptime_seconds": age(instants.get("attached_at")),
+        "mapper_reload_age_seconds": age(instants.get("reloaded_at")),
+        "outbox_purge_age_seconds": age(instants.get("purged_at")),
+        "outbox_purge_deleted": instants.get("purged_rows"),
+        "outbox_purge_capped": instants.get("purge_capped"),
+    }
 
 
 # 🪦 [판정 525 ①] `NO_ROWS_REASON = "the mapper produced no rows"` STOOD HERE AS A DEFAULT,

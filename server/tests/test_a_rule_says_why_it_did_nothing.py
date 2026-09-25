@@ -92,7 +92,10 @@ def test_never_evaluated_is_a_value_not_an_absence():
 
 # ============================================ 3. 라우트 — 같은 경로, «값»으로
 
-def test_the_route_carries_it_on_the_same_path_as_running(client):
+def test_the_route_carries_it_on_the_same_path_as_running(client, monkeypatch):
+    # The loop runs in this process for this test: an unattached registry is blind now,
+    # and the route reads the chain worker's heartbeat instead (총괄 3c3f2b1f2).
+    monkeypatch.setattr(activity.registry, "_attached", True)
     activity.registry.record_outcome(
         "gate-probe", ec.RULE_OUTCOME_SKIPPED_DISABLED, "rule declares enabled: false")
     body = client.get("/admin/chain/queue",
