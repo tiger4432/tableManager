@@ -106,7 +106,8 @@ def test_the_route_carries_it_on_the_same_path_as_running(client, monkeypatch):
     assert row["last_reason"]
     assert isinstance(row["last_age_seconds"], (int, float))
     #: 무회귀 — 기존 칸이 그대로
-    for key in ("running", "waiting", "loop_in_this_process", "oldest_waiting_seconds"):
+    #: `running` retired into `now_running` (총괄 c1dc16fdd)
+    for key in ("now_running", "waiting", "loop_in_this_process", "oldest_waiting_seconds"):
         assert key in body
 
 

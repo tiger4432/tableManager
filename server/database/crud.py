@@ -952,6 +952,23 @@ def normalize_stored_text(value: Any) -> Any:
     return value.strip() if isinstance(value, str) else value
 
 
+class CellRefused(ValueError):
+    """A value its column's type does not take - ONE sentence for it, whichever door wrote the
+    row (총괄 bed890af2 ②: the grid said it in Korean, a file load stored a traceback).
+
+    `row` is the 1-based row of what the caller submitted: `apply_batch_updates` sets the
+    batch position, and a file load re-sets it to the file's data row before it records."""
+
+    def __init__(self, column, value, expected, row=None):
+        super().__init__(column, value, expected)
+        self.column, self.value, self.expected, self.row = column, value, expected, row
+
+    def __str__(self):
+        where = "Row %s: column" % self.row if self.row is not None else "Column"
+        return "%s '%s' does not take '%s' - %s is expected." % (
+            where, self.column, self.value, self.expected)
+
+
 def cast_value_by_type(value: Any, col_type: str, col_name: str,
                        table_name: str = None) -> Any:
     """컬럼의 타입 스펙에 맞춰 데이터를 int, float 등으로 명시적으로 형변환합니다.
@@ -1013,7 +1030,7 @@ def cast_value_by_type(value: Any, col_type: str, col_name: str,
                 parsed = None
             if parsed is not None and math.isfinite(parsed):
                 return parsed
-            raise ValueError(f"컬럼 '{col_name}'의 값 '{value}'은(는) 올바른 숫자 형식이 아닙니다.")
+            raise CellRefused(col_name, value, "a number") from None
 
     # Strip BEFORE sanitizing: the UTF-8 scrub can only remove bytes, so it can turn
     # `"abc\udcff"` into `"abc"` but never introduces whitespace - order is not
@@ -3150,7 +3167,11 @@ def apply_row_update_internal(
 
         # 3. 소스 데이터 upsert
         col_type = (config.get("column_types") or {}).get(col_name, "string")
-        clean_val = cast_value_by_type(val, col_type, col_name, table_name)
+        try:
+            clean_val = cast_value_by_type(val, col_type, col_name, table_name)
+        except CellRefused as refused:
+            refused.item = update_item      # `apply_batch_updates` turns this into a row
+            raise
 
         # 🔴 [S-243, 판정 405] ABSENCE MAKES NO LAYER; ONLY A DELIBERATE BLANK DOES.
         # 소유자 2026-09-15: 「빈 층 고의 입력은 진짜 빈 것, 그냥 없던 것은 아직 입력하지
@@ -4455,6 +4476,8 @@ def apply_batch_updates(db: Session, table_name: str, batch: schemas.GeneralUpda
     replay_key_col = _replay_sensitive_key_column(table_name, batch)
     pristine_payload = (_snapshot_payload_identity(batch, replay_key_col)
                         if replay_key_col else None)
+    # The row a refusal names is the CALLER's - taken before anything below filters the batch.
+    positions = {id(item): index for index, item in enumerate(batch.updates, start=1)}
 
     for attempt in range(BK_CONFLICT_MAX_RETRIES + 1):
         if attempt and pristine_payload is not None:
@@ -4466,6 +4489,9 @@ def apply_batch_updates(db: Session, table_name: str, batch: schemas.GeneralUpda
         try:
             return _apply_batch_updates_once(db, table_name, batch, replace_report,
                                              drop_report)
+        except CellRefused as refused:
+            refused.row = positions.get(id(getattr(refused, "item", None)))
+            raise
         except IntegrityError as exc:
             if not _is_business_key_unique_violation(exc):
                 # 🔴 [S-269] EVERY OTHER CONSTRAINT IS STILL REFUSED - BY NAME, AND AFTER A

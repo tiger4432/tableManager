@@ -2108,7 +2108,8 @@ class IngestionHandler(FileSystemEventHandler):
                 time.sleep(delay)
             except Exception as e:
                 import traceback
-                error_msg = traceback.format_exc()
+                # A named refusal is its sentence (총괄 bed890af2 ②); anything else keeps its trace.
+                error_msg = str(e) if isinstance(e, crud.CellRefused) else traceback.format_exc()
                 logger.error(f"[{t_name}] ❌ Error processing file {os.path.basename(file_path)}: {error_msg}")
                 dest_path = self._move_to_err_folder(file_path)
                 if not dest_path:
@@ -2660,7 +2661,7 @@ class IngestionHandler(FileSystemEventHandler):
             return True
         except Exception as e:
             import traceback
-            error_msg = traceback.format_exc()
+            error_msg = str(e) if isinstance(e, crud.CellRefused) else traceback.format_exc()
             logger.error(f"[{t_name}] ❌ Error retrying file {os.path.basename(filepath)}: {error_msg}")
             log_entry.status = "FAILED"
             log_entry.error_message = error_msg
@@ -3162,9 +3163,10 @@ class IngestionHandler(FileSystemEventHandler):
                 with alignment_batch_counts.counting_group() as chunk_counts:
                     chunk_started = time.monotonic()
                     items = []
-                
+                    item_rows = []      # each item's data row in the FILE, for a refusal to name
+
                     with alignment_batch_counts.stage("parse"):
-                        for row in chunk:
+                        for file_row, row in enumerate(chunk, start=processed_rows + 1):
                             normalized_row = {}
                             bk_val = None
                     
@@ -3192,6 +3194,7 @@ class IngestionHandler(FileSystemEventHandler):
                                     source_name=real_source,
                                     updated_by=uploader
                                 ))
+                                item_rows.append(file_row)
                 
                     if not items:
                         processed_rows += len(chunk)
@@ -3231,7 +3234,13 @@ class IngestionHandler(FileSystemEventHandler):
                             _sampler = None
 
                         with alignment_batch_counts.stage("apply"):
-                            results, changed_cells, created_logs, deleted_row_ids = crud.apply_batch_updates(db, t_name, batch_obj)
+                            try:
+                                results, changed_cells, created_logs, deleted_row_ids = \
+                                    crud.apply_batch_updates(db, t_name, batch_obj)
+                            except crud.CellRefused as refused:
+                                # The write names the chunk's row; the operator reads the file's.
+                                refused.row = item_rows[refused.row - 1] if refused.row else None
+                                raise
 
                         with alignment_batch_counts.stage("commit"):
                             db.commit()

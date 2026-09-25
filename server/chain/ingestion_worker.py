@@ -1258,6 +1258,7 @@ def apply_chain_writes(db, tx_id, rule, incoming_depth, rules_by_target,
                                       request_chain_depth, outbox_mode)
 
         chain_tx_id = f"chain_{tx_id}"
+        writing = None
         token_user = request_user.set("chain_worker")
         token_tx = request_transaction_id.set(chain_tx_id)
         # 🔴 [판정 423] THE VALUES ARE THE SEAT'S. The source string and the `+ 1` were spelled
@@ -1294,6 +1295,7 @@ def apply_chain_writes(db, tx_id, rule, incoming_depth, rules_by_target,
             write_batches.extend((target, updates, scope is not None, scope, retract)
                                  for target, updates, scope, retract in scoped_batches)
             for target_table, updates_list, replace_map, scope, retract in write_batches:
+                writing = target_table          # the target a failure below is about
                 batch_data = schemas.GeneralUpdateBatch(
                     updates=updates_list,
                     transaction_id=chain_tx_id,
@@ -1607,9 +1609,19 @@ def apply_chain_writes(db, tx_id, rule, incoming_depth, rules_by_target,
                     
         except Exception as e:
             import traceback
-            error_msg = traceback.format_exc()
-            _who = ", ".join(n for ns in table_contributors.values() for n in ns if n) or "(unknown)"
-            _tbls = ", ".join(sorted(table_contributors)) or "(unknown)"
+            # 🔴 THE TARGET WHOSE WRITE FAILED, AND ITS RULES (총괄 a4cb623e0 ②) - not every
+            #    target of the group; a named refusal is its one sentence, not a traceback
+            #    (총괄 bed890af2 ②, the same sentence the grid and a file load say).
+            error_msg = (str(e) if isinstance(e, crud.CellRefused)
+                         else traceback.format_exc())
+            if writing is not None:
+                _who = ", ".join(n for n in table_contributors.get(writing, ()) if n) \
+                    or "(unknown)"
+                _tbls = writing
+            else:
+                _who = ", ".join(n for ns in table_contributors.values() for n in ns if n) \
+                    or "(unknown)"
+                _tbls = ", ".join(sorted(table_contributors)) or "(unknown)"
             error_msg = "[rules=%s target=%s] %s" % (_who, _tbls, error_msg)
             log_failure_folded(logger, _who, _tbls, error_msg)
             return False, error_msg
@@ -1871,6 +1883,10 @@ def _process_chain_transaction_group_sync(tx_id, events, db, rules):
                             scoped_batches.append(
                                 dt_map_derivation.normalize_scoped_batch(
                                     requested, rule, target_table))
+                        # A scoped batch writes this target too - a failure in it has to be
+                        # able to name this rule (총괄 a4cb623e0 ②).
+                        if rule.get("name") not in table_contributors[target_table]:
+                            table_contributors[target_table].append(rule.get("name"))
                 else:
                     # Single event execution - one call per ROW. The fan-out moved INTO the
                     # seat with the door it belongs to, so this hands over the whole

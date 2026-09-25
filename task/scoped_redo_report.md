@@ -60026,3 +60026,67 @@ RUN.md 「런처가 다시 떠야 먹습니다」 줄 지움
    사유 머리가 «그룹의 모든 규칙»을 적음 — 실패한 쓰기의 규칙이 아님. 그리고 범위 묶음(scoped batch)으로 쓰는 규칙은 기여자로 안 적혀서
    dt_map 규칙이 머리에 없었고, 행별 잎처럼 그 쓰기만 남는 줄은 (unknown)
 ```
+
+---
+
+## [구현자 -> 총괄] 검수 ② 착지 — 형 변환 거절은 한 문장 · 체인 사유는 실패한 쓰기의 규칙 (bed890af2 ② · a4cb623e0 ②) — ac876304e
+
+```
+한 문장   crud.CellRefused — 「Row N: column 'C' does not take 'V' - a number is expected.」 (영어 · 행 · 칸 · 값)
+          cast_value_by_type 가 그것을 던짐 (전: 한국어 ValueError, 그 위에 int() 의 트레이스백이 엮여 있었음)
+행 번호   그리드   보낸 묶음에서 몇 번째 — apply_batch_updates 가 «거르기 전» 위치를 잡아 둠(가상 조인 거절이 묶음을 줄여도 안 밀림)
+          파일     파일의 몇 번째 데이터 행 — 감시자가 청크를 만들 때 행 번호를 같이 적어 둠(칸이 안 맞아 건너뛴 행이 있어도 안 밀림)
+          체인     그 규칙이 쓴 묶음에서 몇 번째
+파일 사유  이름 붙은 거절이면 그 문장, 아니면 지금처럼 트레이스백 (감시자의 실패 두 자리 모두)
+체인 사유  머리 = «쓰기가 실패한 대상» 과 그 대상의 규칙 (전: 그룹의 모든 대상 · 모든 규칙)
+          범위 묶음(scoped batch)으로 쓰는 규칙도 기여자로 적음 — 전에는 빠져서 dt_map 규칙이 머리에 없었고 그 쓰기만 남은 줄은 (unknown)
+          몸통 = 이름 붙은 거절이면 그 한 문장
+```
+
+### 게이트
+
+| 칸 | 시험 | 변이 |
+|---|---|---|
+| 캐스트가 이름으로 거절 | test_the_cast_refuses_by_name | 빨강 (3 failed) |
+| 그리드 400 = 보낸 행 | test_the_grid_answers_it_with_the_row_it_was_sent | 위치를 안 적으면 빨강 (2 failed) |
+| 파일 = 파일의 행 | test_a_file_load_names_the_file_row_not_the_batch_row | 파일 행으로 안 바꾸면 빨강 (1 failed) |
+| 체인 머리 = 실패한 대상 | test_a_chain_failure_names_the_rule_and_target_whose_write_was_refused | 모든 대상을 적으면 빨강 (1 failed) |
+| 범위 묶음 규칙을 기여자로 | 시험 없음 — 규칙 실행 전체가 필요 · 박스로도 안 잼(체인 실패를 새로 만들어야 함, 재시도 금지) | — |
+
+```
+범위    전체 시험 (crud 를 거의 모든 시험이 import) -> 4 failed, 6948 passed, 140 skipped, 3 xfailed — 실패 넷: test_a_rule_says_why_it_did_nothing.py · test_the_queue_answer_says_when_it_was_taken.py · test_map_alignment_single_key.py · test_retiring_a_dynamic_model_takes_both_singletons.py. 앞 둘은 40361b7c3 의 옛 running 칸 은퇴가 부른 것(client 로 라우트를 부르는 시험이라 import 범위에 안 잡힘) -> 218c31eb4 로 고침 · 셋째는 혼자 돌리면 통과(순서 탓) · 넷째는 13:38(c193986a8)부터의 빨강 — 제 변경 밖, 보고만
+```
+
+### 박스 (먼저 알린 대로 — 표에 쓴 것 0)
+
+> 재기동함 — API · 감시자 · 체인 워커 (자식만)
+
+```
+전   그리드   (응용 검수 기록) 한국어 문장 · 행 없음
+     파일     file_ingestion_logs 22371 — 트레이스백 전체, 끝줄이 한국어 문장
+     체인     20:35 실패 줄의 머리 [rules=inventory_confirmed, test, dt_transform_update target=dt_inventory, dt_log] + 트레이스백
+후   그리드  400 | Row 1: column 'target_qty' does not take 'abc' - a number is expected.
+     파일    (22374, 'FAILED') | Row 1: column 'target_qty' does not take 'abc' - a number is expected.
+     같은 문장  True
+     production_plan rows before 10 after 10
+```
+
+### 검수 ① 대형 레인 — 원인만
+
+```
+원인   크기를 «파일이 생긴 순간» 한 번 잼 — 감시자가 on_created 에서 곧바로 _classify_lane (크기가 멎기를 기다리지 않음)
+       업로드 라우트는 raws/ 에 «제자리»로 씀(open -> write). 그 순간 덜 쓰였으면 작게 읽혀 normal -> 인라인
+       _classify_lane 의 docstring 이 이 열화를 이미 적어 둠 — 「복사가 진행 중인 파일은 작게 읽혀 normal 로 오분류될 수 있음」
+박스   H 파일(11,010,119 B) — 「New file detected」 17:54:36.172 · 처리 시작 17:54:37.190 · 「Routed to heavy lane」 줄 없음
+       대형 레인은 살아 있음 — 감시자 로그에 그 줄 2,751 번 (가장 최근 2026-08-30)
+안 쟀다 제자리 쓰기 vs 임시 이름 뒤 이름 바꾸기를 박스에서 재현 — 타이밍 경쟁이라 한 번의 재현이 원인을 증명하지 않음
+고칠 자리(짓지 않음)  ㄱ 업로드 라우트가 임시 이름으로 쓴 뒤 raws/ 로 이름 바꾸기 — 감시자는 다 쓴 파일을 봄
+                   ㄴ 감시자가 크기가 멎은 뒤 레인을 가름 — 폴더 적재는 이미 「멎을 때까지」 를 봄(같은 규칙을 파일에)
+                   대형 레인 병렬 라운드(3f4ce1cc8)가 이것 없이는 공허 — 업로드 파일이 그 레인에 안 들어감
+```
+
+### 다음
+
+```
+관찰 다섯 -> 박스 설정 시험 -> 대형 레인 병렬
+```
