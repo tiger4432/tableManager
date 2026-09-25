@@ -58726,3 +58726,40 @@ ledger_events 에서 500 둘 더 — row_id 가 아니라 «틀 칸»(business_k
    (사유 AttributeError … row_id / updated_at). 모양 검사가 모든 관계에 row_id · updated_at · created_at 을 묻는데, 뷰는 원래 그 칸이 없습니다
    — 「모양이 틀어진 표」라는 거짓 보고. 뷰는 이 검사를 건너뛰게(catalog_kind 자리) 할까요
 ```
+
+---
+
+## [09-25 15:04] 구현자 — 이력 500 라운드 셋째 커밋 `58d7d8581` (지시 01cad807c) — ㉮ ㉯
+
+```
+착지   58d7d8581  2 파일, 50+, 3-
+id 정렬     _named_sort 의 id — 모델에 business_key_val 이 있으면 그 칸(표 SQL 그대로), 없으면 전순서 키. updated_at 갈래와 같은 모양
+틀 칸 검색  created_at · updated_at · business_key_val 이 모델에 없으면 기존 unsearchable 갈래로
+대시보드    모양 검사에서 뷰를 건너뜀 — catalog_kind 한 자리
+```
+
+### 게이트
+
+```
+화면   ledger_events 그리드에서 ID 머리글을 실제로 누름 (브라우저 창)
+       전   정렬 없음 · 첫 행 01a0d61c-11f… · 01a0cbf6-87d… (updated_at 내림차순)
+       한 번 order_by=id&order_desc=false -> 200 · 화살표 ↑ · 첫 셋 01a03c1e-4c13-701a… · 701b… · 701c…
+       두 번 order_by=id&order_desc=true  -> 200 · 화살표 descending · 첫 셋 01a0d61c-11f2-7009… · 7008… · 7007…
+박스   order_by=id 오름·내림 200 (143 · 71 ms, 순서 맞음) · export order_by=id (q 로 좁힘) 200 · 표 dt_log order_by=id 200 (17 ms)
+       대시보드 uncounted_tables 11 -> 0
+시험   바뀐 라우트를 부르는 시험 17 파일 245 통과 (앞 목록 + _named_sort · dashboard/summary · order_by=)
+변이   열넷 다 빨강 · 원복 확인 (앞 열 + id 가 business_key_val 을 다시 읽음 · id 를 늘 전순서 키로(표가 UUID 순) ·
+       틀 칸을 모델에 그냥 물음 · 대시보드가 뷰를 검사함)
+```
+
+### 🔴 게이트 하나가 지시와 다르게 나왔습니다 — 여쭙니다
+
+```
+지시   ledger_events 에 q=…&cols=created_at -> 200
+실제   400 — 「검색할 수 없는 컬럼입니다: created_at …」 (500 아님)
+이유   동의하신 「기존 unsearchable 갈래」가 그렇게 동작합니다 — 검색 범위(cols)를 준 요청에서 «찾을 수 있는 칸이 하나도 없으면»
+       「전체를 돌려주면 검색한 것처럼 보이므로 거부」(그 갈래의 원래 판정)
+       cols=created_at,id 처럼 찾을 수 있는 칸이 하나라도 있으면 200 이고 created_at 은 경고와 함께 빠집니다 (박스에서 200 확인)
+물음   400 을 그대로 둘까요 (추천 — 원래 판정 그대로), 아니면 뷰에 한해 200 으로 바꿀까요
+⚠️ 그 400 문장은 한국어입니다 — 서버 문장을 화면이 그리는 자리라면 클라가 넘길 목록(dd00d6dad)에 들어올 것입니다
+```
