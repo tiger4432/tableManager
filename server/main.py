@@ -4977,12 +4977,33 @@ def get_failed_outbox_events(page: int = 1, limit: int = 10, db: Session = Depen
     # 같은 응답의 다른 시각 칸들과 «같은 모양»(isoformat). 여기서 형식을 새로 만들지 않는다.
     oldest_failed_at = min(stamped).isoformat() if stamped else None
 
+    # 🔴 ONE LINE PER (TABLE · KIND · DAY) (소유자 「ㄴ」, 총괄 36dff3b6a) — the Chain tab's list
+    #    and the Overview's Chain line both read THIS answer: 81 rows of one burst were 81
+    #    lines, and a two-day-old burst read as 「now」. One GROUP BY; no payload is loaded.
+    #    The day is the UTC day, cut from the one session-independent spelling
+    #    (`crud.temporal_text_sql`) - `date(created_at)` cut it in the PG session's TimeZone.
+    from sqlalchemy import func
+
+    outbox = models.DatabaseOutbox
+    day = func.substr(crud.temporal_text_sql(outbox.created_at), 1, 10)
+    summary = [{
+        "table_name": table, "event_type": kind, "day": on_day,
+        "count": int(n), "first_at": to_local_str(first), "last_at": to_local_str(last),
+        "retry_max": int(retry_max or 0),
+    } for table, kind, on_day, n, first, last, retry_max in db.query(
+        outbox.table_name, outbox.event_type, day, func.count(), func.min(outbox.created_at),
+        func.max(outbox.created_at), func.max(outbox.retry_count))
+        .filter(outbox.status == "FAILED")
+        .group_by(outbox.table_name, outbox.event_type, day)
+        .order_by(func.max(outbox.created_at).desc()).all()]
+
     return {
         "status": "success",
         "total": total,
         "page": page,
         "limit": limit,
         "oldest_failed_at": oldest_failed_at,
+        "summary": summary,
         # 🔴 이 목록의 상태가 아니라 이 «계열이 쓸 수 있는» 상태 어휘다.
         #    화면의 필터 목록이 여기서 나온다 — 그래서 «로드 때 이미 부르는» 이
         #    응답이 싣는다. 목록 라우트에 실으면 화면이 «첫 요청»을 보낸 뒤에야
