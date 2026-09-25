@@ -33792,3 +33792,22 @@ python -c "import sys,pytest;P=type('P',(),{'pytest_collection_modifyitems':lamb
 되돌림       production_plan · inventory_master 의 제 행을 행 삭제 라우트로 · 워크스페이스의 제 파일 지움 · 파일 기록 줄 둘은 남음
 표시         값은 APPAUDIT- 로 시작. 후에서도 같은 두 칸을 같은 방법으로
 ```
+
+---
+
+## 전 — 2 의 두 칸 더 (알림 0fa4ced59) (09-26 07:34)
+
+7787ec367 의 두 칸과 합친 표 — 파일 셋 × 파서 길 둘 중 박스에서 잰 넷:
+
+| 칸 | 표 | 파일 기록 | 상태 | 기록된 문장 |
+|---|---|---|---|---|
+| 커스텀 × 전부 | large_table_100 | 22385 | SUCCESS | 없음 |
+| 커스텀 × 일부 | production_plan | 22388 | SUCCESS | 없음 (행 1 · 체인 inventory_master 1) |
+| 표준 × 전부 | wafer_id_status | 22387 | FAILED | 트레이스백 16 줄, 끝줄 「ValueError: Std parser rejected '…': no header column matches table 'wafer_id_status' loadable columns [...]」 — 버린 칸 이름 · 다음 행동 없음 |
+| 표준 × 일부 | wafer_id_status | 22386 | SUCCESS | 없음 (행 1) |
+
+```
+후 기대(f0578f20a)  전부 두 길 -> FAILED · «같은 문자열» 한 문장(버린 칸 이름 · 다음 행동) · 일부 두 길 -> SUCCESS + 버린 칸 문장
+되돌림   production_plan · inventory_master 제 행 삭제 200 -> APPAUDIT 0 · 워크스페이스 제 파일 둘 지움 · 파일 기록 줄 남음
+안 잰 칸  «안 버림» 줄 — 코드가 안 닿는 칸이라 박스에서는 안 잼
+```
