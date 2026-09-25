@@ -1482,7 +1482,8 @@ const FLOORS = new Map([
   // New 2026-09-11 with C-77. 🔴 ZONE-INDEPENDENT BY CONSTRUCTION: it asserts that two
   // spellings of one instant agree and that two different instants disagree, never a literal
   // wall clock -- otherwise the runner's TZ would decide the verdict.
-  ['server_time_harness.mjs', 19],
+  // 19 -> 24 (lead bed890af2): `localShortOrAsSent`, the one spelling of the sources panel's two clocks.
+  ['server_time_harness.mjs', 24],
   ['chain_graph_harness.mjs', 91],
   ['runtime_panel_harness.mjs', 39],
   ['reference_view_head_harness.mjs', 69],

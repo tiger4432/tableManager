@@ -32,7 +32,7 @@
 // 🔴 이름은 서버가 줍니다 — 봉투의 `census_names` (`backfill.CENSUS_NAMES`). 없으면 키 그대로.
 // ═══════════════════════════════════════════════════════════════════════════════
 
-import { NO_TIME, localShort } from './server_time.js';
+import { localShortOrAsSent } from './server_time.js';
 
 /** 정확하지 않은 수 앞에 붙는 «기호 하나». 문장이 아닙니다. */
 const ESTIMATE_MARK = '≈';
@@ -97,8 +97,7 @@ export function backlogCells(census, names = {}) {
     return { name, text: `${mark}${count}`, method };
   });
   const at = src[MEASURED_AT];
-  const local = at == null ? '' : localShort(at);
-  cells.push({ name: MEASURED_AT, text: at == null ? '' : local === NO_TIME ? String(at) : local, method: '' });
+  cells.push({ name: MEASURED_AT, text: at == null ? '' : localShortOrAsSent(at), method: '' });
   return cells.map((cell) => ({ ...cell, label: nameOf(names, cell.name) }));
 }
 
