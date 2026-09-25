@@ -714,8 +714,9 @@ function suite(M) {
       ? (p.skeleton || {}).unified_root : (p.skeleton || {}).root) || null,
     grammarOf: (p) => (p && typeof p.grammar === 'string' ? p.grammar : '') };
   const uniPayload = (declaration) => payloadFor(SKELETON, declaration, { grammar: 'unified' });
-  const JOINED = { name: 'alpha', on: { table: 'dt_left' },
-                   derive: { kind: 'join', join: { right_table: 'dt_right' } },
+  // ⚠️ [총괄 e91b96a28] `on` names the source; the join branch has no `right_table` cell.
+  const JOINED = { name: 'alpha', on: { table: 'dt_right' },
+                   derive: { kind: 'join', join: { take: ['dt_lot'] } },
                    into: { table: 'dt_left' } };
 
   const u = makePanel(M, UNI_SPEC);
@@ -730,7 +731,7 @@ function suite(M) {
   ok(deriveDrawn.length > 0 && deriveDrawn.every((p) => p.startsWith('derive.join.')),
     `U3 only the CHOSEN branch is drawn [${[...uniPaths].filter((p) => p.startsWith('derive')).join('|')}]`);
   // 🔴 판정 411: 가지의 노드는 «가지 키 밑»에 삽니다 — 선언이 그 모양이기 때문입니다.
-  ok(uniPaths.has('derive.join.right_table'),
+  ok(uniPaths.has('derive.join.take'),
     `U4 ... at the branch KEY, which is where the declaration puts it`);
   const pickers = attrOf(u.host, 'data-action').filter(
     (el) => el.attrs['data-action'] === 'edit-shape-branch');

@@ -31,9 +31,9 @@ DECIDE = {"name": "m640", "on": {"table": "m640_src"}, "into": {"table": "m640_d
           "derive": {"kind": "decide",
                      "decide": {"key": ["k"], "fields": ["f"], "auto_confirm": True}}}
 
-JOIN = {"name": "m640_join", "on": {"table": "L"}, "into": {"table": "L"},
+JOIN = {"name": "m640_join", "on": {"table": "R"}, "into": {"table": "L"},
         "derive": {"kind": "join", "join": {
-            "right_table": "R", "on": [{"left": "a", "right": "a"}],
+            "on": [{"left": "a", "right": "a"}],
             "take": [{"from": "b", "into": "c"}]}}}
 
 MAPPER = {"name": "m640_mapper", "on": {"table": "L"}, "into": {"table": "L"},
@@ -111,12 +111,12 @@ def test_writing_the_opposite_is_not_silently_flipped():
 
 
 def test_the_same_cells_still_reach_join_and_its_reference_side_and_mapper():
-    """⚠️ 회귀 칸. 640 이 「join · join:reference · mapper 는 오늘과 같음」이라 적었고,
+    """⚠️ 회귀 칸. 640 이 「join · join:reference · mapper 는 오늘과 같음」(짝 이름은 e91b96a28 부터 :target)이라 적었고,
     이 파일이 그것을 «단언»한다 — 좌석을 빼면서 그쪽을 잃으면 여기서 빨개진다."""
     joins, _notes = _stood(JOIN, {"allow_chain_trigger": True,
                                   "limits": {"idempotent": True}})
 
-    assert sorted(joins) == ["m640_join", "m640_join:reference"]
+    assert sorted(joins) == ["m640_join", "m640_join:target"]
     for name, rule in joins.items():
         assert rule["allow_chain_trigger"] is True, name
         assert rule["idempotent"] is True, name

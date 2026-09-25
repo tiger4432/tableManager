@@ -93,7 +93,7 @@ def test_the_key_and_limit_cells_come_from_their_own_lists():
 #: actually commits. The KEY is already the cell - so `into: {"table": "dt_x"}` means the
 #: `table` branch is the table NAME, not a record containing a `table` field.
 DECLARED_AT_BRANCH = {
-    ("derive", "join"): {"right_table": "r", "on": [], "take": []},
+    ("derive", "join"): {"on": [], "take": []},
     ("derive", "decide"): {"key": ["a"], "fields": ["b"]},
     # 🔴 [판정 536 ⑥] THIS ENTRY SAID `"mappers.x.y"` AND THE LOADER CANNOT READ THAT.
     #   Measured 2026-09-17: `as_chain_rule` does `out.update(derive.get("mapper") or {})`,

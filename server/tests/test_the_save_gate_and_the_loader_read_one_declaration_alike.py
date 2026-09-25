@@ -37,11 +37,10 @@ LEFT = "s244_left"
 RIGHT = "s244_right"
 
 JOIN_DECLARATION = {
-    "on": {"table": LEFT},
+    "on": {"table": RIGHT},
     "into": {"table": LEFT},
     "derive": {"kind": "join",
-               "join": {"right_table": RIGHT,
-                        "on": [{"left": "job", "right": "job"}],
+               "join": {"on": [{"left": "job", "right": "job"}],
                         "take": [{"from": "lot", "into": "lot_confirmed"}]}},
 }
 
@@ -113,7 +112,7 @@ def test_a_unified_join_declaration_can_be_saved_and_then_stands_two_rules(clien
     # producer before consumer. While it stood `follow_up` the walk skipped it and the two
     # kept file order. This asserts the SET by name either way; the order is the walk's.
     assert sorted(r.get("name") for r in worker.load_chain_rules()) == sorted([
-        "s244_join", "s244_join" + rule_shape.REFERENCE_SUFFIX])
+        "s244_join", "s244_join" + rule_shape.COMPANION_SUFFIX])
 
 
 def test_a_unified_decide_declaration_can_be_saved_too(client, rules_file):

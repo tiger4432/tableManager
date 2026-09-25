@@ -7,7 +7,7 @@
 🔴 배너가 쓰던 것은 `GET /admin/chain/rules` — 파일 «원문»이다. 원문이라 ① 통합 join 은 안
 보이고(`on.table` 을 쓰지 `trigger_table` 이 없다) ② 합성 규칙(enrichment·가상 조인)은 아예
 없고 ③ 어느 표의 규칙인지 «거를 수 없다». 소급이 실제로 도는 집합은 로더가 번역·합성한
-`replay.load_rules()` 이고, 참조 쪽은 `is_reference_side` 가 거절한다.
+`replay.load_rules()` 이고, 짝(`:target`)은 `is_companion` 이 통째로는 거절한다.
 
 ⛔ 목록과 실행은 «같은 함수»를 지나야 한다. 두 번째 철자였다면 화면이 내미는 이름을 소급이
 거절할 수 있고, 그 어긋남은 운영자가 «누른 뒤에» 안다.
@@ -31,10 +31,9 @@ RIGHT = "s250_right"
 
 JOIN = {
     "name": "s250_join", "enabled": True,
-    "on": {"table": LEFT}, "into": {"table": LEFT},
+    "on": {"table": RIGHT}, "into": {"table": LEFT},
     "derive": {"kind": "join",
-               "join": {"right_table": RIGHT,
-                        "on": [{"left": "job", "right": "job"}],
+               "join": {"on": [{"left": "job", "right": "job"}],
                         "take": [{"from": "lot", "into": "lot_confirmed"}]}},
 }
 
@@ -58,42 +57,44 @@ def fixture_loaded(monkeypatch):
 # 🔴 ⓐ — the filter: this table, replayable, joins included
 # ---------------------------------------------------------------------------
 
-def test_a_unified_join_appears_for_the_table_it_writes(loaded):
+def test_a_unified_join_appears_for_its_source_table(loaded):
     """🔴 THE OWNER'S ASK. A unified join was invisible to the banner because the FILE says
-    `on.table` and the banner read the file."""
+    `on.table` and the banner read the file. (Since 총괄 e91b96a28 `on` is the source, so the
+    declaration's rule is listed where its value changes.)"""
     loaded(_stood(JOIN))
 
-    found = replay.replayable_rules_for(LEFT)
+    found = replay.replayable_rules_for(RIGHT)
 
     assert [entry["name"] for entry in found] == ["s250_join"]
     assert found[0]["kind"] == "join"
-    assert (found[0]["trigger_table"], found[0]["target_table"]) == (LEFT, LEFT)
+    assert (found[0]["trigger_table"], found[0]["target_table"]) == (RIGHT, LEFT)
 
 
-def test_the_reference_half_is_not_offered_for_a_replay_of_the_whole_table(loaded):
-    """⛔ THE SAME DISCRIMINATOR THE BACKFILL REFUSES WITH (S-242). Replaying the follow-up
-    half redoes, once per reference row, what the target half does for every row - so a
-    list that offered it would be a screen inviting a refusal."""
+def test_the_companion_is_not_offered_for_a_replay_of_the_whole_table(loaded):
+    """⛔ THE SAME DISCRIMINATOR THE BACKFILL REFUSES WITH (S-242). Replaying a companion whole
+    redoes what the declaration's rule already does - so a list that offered it would be a
+    screen inviting a refusal."""
     stood = _stood(JOIN)
-    assert any(r["name"].endswith(":reference") for r in stood), "fixture lost its half"
+    assert any(r["name"].endswith(rule_shape.COMPANION_SUFFIX) for r in stood), (
+        "fixture lost its half")
     loaded(stood)
 
-    assert replay.replayable_rules_for(RIGHT) == []
+    assert replay.replayable_rules_for(LEFT) == []
 
 
-def test_the_reference_half_IS_offered_when_the_caller_will_pick_rows(loaded):
+def test_the_companion_IS_offered_when_the_caller_will_pick_rows(loaded):
     """🔴 [S-270] ONE FIXTURE, BOTH ANSWERS — the axis is the SCOPE and nothing else.
     S-242's cost argument is about replaying a whole table; the grid's banner always sends
-    `row_ids`, and with rows picked this is the only rule that can do what was asked (the
-    target-side rule triggers on a table that grid cannot select). The same predicate
+    `row_ids`, and with rows picked this is the only rule on this table that can do what
+    was asked (the declaration's rule triggers on the source table). The same predicate
     decides here and in `find_rule`, so the list cannot offer a name the backfill refuses."""
     loaded(_stood(JOIN))
 
-    scoped = replay.replayable_rules_for(RIGHT, row_scoped=True)
+    scoped = replay.replayable_rules_for(LEFT, row_scoped=True)
 
-    assert [entry["name"] for entry in scoped] == ["s250_join:reference"]
+    assert [entry["name"] for entry in scoped] == ["s250_join:target"]
     assert scoped[0]["kind"] == "join"
-    assert replay.replayable_rules_for(RIGHT) == [], "the whole-table answer must not move"
+    assert replay.replayable_rules_for(LEFT) == [], "the whole-table answer must not move"
 
 
 def test_another_tables_rules_are_not_on_this_tables_list(loaded):
@@ -101,7 +102,7 @@ def test_another_tables_rules_are_not_on_this_tables_list(loaded):
                             "target_table": "other_t",
                             "mapper_module": "m", "mapper_function": "f"}])
 
-    assert [entry["name"] for entry in replay.replayable_rules_for(LEFT)] == ["s250_join"]
+    assert [entry["name"] for entry in replay.replayable_rules_for(RIGHT)] == ["s250_join"]
 
 
 def test_a_switched_off_declaration_never_reaches_the_list(loaded):
@@ -178,10 +179,10 @@ def test_the_route_answers_with_the_filtered_set(client, monkeypatch):
     reach - this round's list has to arrive through the door the banner knocks on."""
     import main
 
-    monkeypatch.setitem(main.crud.TABLE_CONFIG, LEFT, {"column_types": {}})
+    monkeypatch.setitem(main.crud.TABLE_CONFIG, RIGHT, {"column_types": {}})
     monkeypatch.setattr(replay, "load_rules", lambda: _stood(JOIN))
 
-    answer = client.get("/admin/chain/rules/replayable?table=%s" % LEFT)
+    answer = client.get("/admin/chain/rules/replayable?table=%s" % RIGHT)
 
     assert answer.status_code == 200, answer.text
     body = answer.json()
@@ -195,15 +196,15 @@ def test_the_route_carries_the_scope_the_caller_asked_for(client, monkeypatch):
     ignored would be 「폼이 그리는데 읽는 쪽이 없다」 with a query string instead of a form."""
     import main
 
-    monkeypatch.setitem(main.crud.TABLE_CONFIG, RIGHT, {"column_types": {}})
+    monkeypatch.setitem(main.crud.TABLE_CONFIG, LEFT, {"column_types": {}})
     monkeypatch.setattr(replay, "load_rules", lambda: _stood(JOIN))
 
-    whole = client.get("/admin/chain/rules/replayable?table=%s" % RIGHT)
-    scoped = client.get("/admin/chain/rules/replayable?table=%s&row_scoped=true" % RIGHT)
+    whole = client.get("/admin/chain/rules/replayable?table=%s" % LEFT)
+    scoped = client.get("/admin/chain/rules/replayable?table=%s&row_scoped=true" % LEFT)
 
     assert whole.status_code == scoped.status_code == 200, (whole.text, scoped.text)
     assert whole.json()["data"] == []
-    assert [e["name"] for e in scoped.json()["data"]] == ["s250_join:reference"]
+    assert [e["name"] for e in scoped.json()["data"]] == ["s250_join:target"]
 
 
 def test_a_table_nobody_declared_is_refused_by_name_rather_than_answered_empty(client):

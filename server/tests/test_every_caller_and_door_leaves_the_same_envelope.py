@@ -62,10 +62,9 @@ TABLES = {
 
 DECLARATION = {
     "name": "s424_lot_from_attribution",
-    "on": {"table": LEFT},
+    "on": {"table": RIGHT},
     "derive": {"kind": "join",
-               "join": {"right_table": RIGHT,
-                        "on": [{"left": "job", "right": "job"}],
+               "join": {"on": [{"left": "job", "right": "job"}],
                         "take": [{"from": "lot", "into": "lot_confirmed"}]}},
     "into": {"table": LEFT},
 }
@@ -259,7 +258,8 @@ def _retroactively(db, rule):
 
 def test_retroactive_through_the_builtin_door(db):
     _seed(db)
-    before = _retroactively(db, _join_rules()[0])
+    # [1] is the `:target` half - it walks the LEFT rows this matrix scores (e91b96a28).
+    before = _retroactively(db, _join_rules()[1])
     _score(db, before, "retroactive/builtin", _written(db, "lot_confirmed"))
 
 

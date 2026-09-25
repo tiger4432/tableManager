@@ -44,10 +44,9 @@ TABLES = {
 
 DECLARATION = {
     "name": "s242_join", "enabled": True,
-    "on": {"table": LEFT}, "into": {"table": LEFT},
+    "on": {"table": RIGHT}, "into": {"table": LEFT},
     "derive": {"kind": "join",
-               "join": {"right_table": RIGHT,
-                        "on": [{"left": "job", "right": "job"}],
+               "join": {"on": [{"left": "job", "right": "job"}],
                         "take": [{"from": "lot", "into": "lot_confirmed"}]}},
 }
 
@@ -73,6 +72,9 @@ def fixture_db():
 
 
 def _rules():
+    """[0] the declaration's own rule, on the source table (RIGHT) - what an operator replays
+    by name. [1] its `:target` half, on LEFT - it walks the rows the join writes, so the
+    paging tests below use it (one RIGHT row cannot make two pages)."""
     internal = rule_shape.from_declaration(DECLARATION)
     return [rule_shape.as_chain_rule(internal)] + rule_shape.companion_rules(internal)
 
@@ -129,7 +131,9 @@ def test_a_replay_of_a_declared_join_fills_the_rows_that_were_already_there(db):
 
     stats = _hand_over(db, _rules()[0])
     assert _left(db) == {"L1": None, "L2": None}, "it wrote by itself; it must hand over"
-    assert stats["rows_staged"] == 2 and stats["events_staged"] == 1
+    # ⚠️ ONE ROW HANDED OVER: the declaration's rule walks the SOURCE table (one RIGHT row),
+    #    and that one row is what reaches both LEFT rows below.
+    assert stats["rows_staged"] == 1 and stats["events_staged"] == 1
     _drain(db, _rules()[0])
 
     assert _left(db) == {"L1": "LOT-1", "L2": "LOT-1"}
@@ -163,14 +167,14 @@ def test_a_backfill_page_makes_ONE_event_not_one_per_row(db):
                                   source_name="seed", updated_by="s279")
         for n in range(5)], silent=True))
     db.commit()
-    stats = _hand_over(db, _rules()[0])
+    stats = _hand_over(db, _rules()[1])
     assert stats["rows_staged"] == 5, "nothing was handed over, so this proves nothing"
     # ⚠️ COUNTED FROM AFTER THE HAND-OVER. The staged event is on this table too (it is the
     #    trigger side), and counting it as one of the write's would hide a real second one.
     before = db.query(models.DatabaseOutbox).filter(
         models.DatabaseOutbox.table_name == LEFT).count()
 
-    _drain(db, _rules()[0])
+    _drain(db, _rules()[1])
 
     made = db.query(models.DatabaseOutbox).filter(
         models.DatabaseOutbox.table_name == LEFT).count() - before
@@ -203,8 +207,8 @@ def test_one_run_writes_one_transaction_label_however_many_pages(db):
 
     before = _labels()
 
-    stats = _hand_over(db, _rules()[0], chunk_size=1)
-    _drain(db, _rules()[0])
+    stats = _hand_over(db, _rules()[1], chunk_size=1)
+    _drain(db, _rules()[1])
 
     assert stats["pages"] > 1, (
         "one page cannot decide this - the fixture stopped being a discriminant")
@@ -222,7 +226,7 @@ def test_a_dry_run_writes_nothing_and_says_what_it_would_be_handed(db):
     of the write judgment, which [소유자 2026-09-23 「ㄷ」] removed."""
     _seed(db)
 
-    stats = replay.replay_rule(db, _rules()[0], apply=False, log=lambda m: None)
+    stats = replay.replay_rule(db, _rules()[1], apply=False, log=lambda m: None)
 
     assert _left(db) == {"L1": None, "L2": None}, "a run without apply wrote"
     assert stats["rows_scanned"] == 2
@@ -261,7 +265,7 @@ def test_a_page_that_throws_costs_that_page_and_the_session_survives(db, monkeyp
     monkeypatch.setattr(db, "rollback",
                         lambda: rolled.append(True) or real_rollback())
 
-    stats = replay.replay_rule(db, _rules()[0], apply=True, chunk_size=1,
+    stats = replay.replay_rule(db, _rules()[1], apply=True, chunk_size=1,
                                log=lambda m: None)
 
     assert stats["pages_failed"] == 1
@@ -290,21 +294,21 @@ def test_a_page_that_throws_costs_that_page_and_the_session_survives(db, monkeyp
 # ⚠️ ⓒ — what replay must NOT be asked to do
 # ---------------------------------------------------------------------------
 
-def test_the_reference_side_rule_is_refused_by_name():
-    """⛔ REPLAYING THE FOLLOW-UP HALF IS THE SAME ANSWER, PAID FOR TWICE. It walks every
-    reference row and re-finds its targets - work the target-side rule already does for every
-    row. An operator who ran both would pay twice, so the name is refused with the way out."""
+def test_the_companion_is_refused_whole_by_name():
+    """⛔ REPLAYING A COMPANION WHOLE IS THE SAME ANSWER, PAID FOR TWICE - the declaration's
+    rule already recomputes it. The name is refused with the way out, and the way out is the
+    DECLARATION's name (since 총괄 e91b96a28 the companion is the `:target` half)."""
     rules = _rules()
-    reference = rules[1]
+    companion = rules[1]
 
     with pytest.raises(replay.ReplayRefused) as raised:
-        replay.find_rule(reference["name"], rules)
+        replay.find_rule(companion["name"], rules)
 
-    assert "follow-up half" in str(raised.value)
+    assert "second half of declaration 's242_join'" in str(raised.value)
     assert "Replay that one instead" in str(raised.value)
 
 
-def test_the_target_side_rule_is_found_normally():
+def test_the_declarations_rule_is_found_normally():
     """🔴 THE DISCRIMINATOR, AND IT EARNED ITS KEEP. The first cut asked 「is it
     `follow_up`」 - and BOTH halves of a unified join are paced (S-237), so it refused the
     very rule an operator should replay. This went red and the guard became a PROPERTY: the
@@ -313,8 +317,8 @@ def test_the_target_side_rule_is_found_normally():
     rules = _rules()
 
     assert replay.find_rule(rules[0]["name"], rules)["name"] == "s242_join"
-    assert replay.is_reference_side(rules[1]) is True
-    assert replay.is_reference_side(rules[0]) is False
+    assert replay.is_companion(rules[1]) is True
+    assert replay.is_companion(rules[0]) is False
     assert rules[0].get("follow_up") == rules[1].get("follow_up") is None, (
         "the two halves differ by their trigger; S-278 took BOTH off the paced lap")
 
@@ -374,12 +378,13 @@ def test_the_pre_count_does_not_say_nothing_about_a_run_that_rewrites_everything
 
     answer = retroactive._count_chain_replay(db, {"rule": "s242_join"}, 1000)
 
-    assert answer["affected"] == 2
+    # ⚠️ ONE: the declaration's rule hands over its SOURCE rows (one RIGHT row here).
+    assert answer["affected"] == 1
     # ⚰️ [판정 505 · 소유자 2026-09-23 「ㄷ」] THE UNIT WAS CELLS, COUNTED BY A DRY RUN OF THE
     #   RULE. Rows is what this run hands over, so rows is what it can count - and the label
     #   is English because it is rendered in a browser.
     assert answer["affected_label"] == "rows to re-run"
-    assert "2 row(s)" in answer["detail"], answer["detail"]
+    assert "1 row(s)" in answer["detail"], answer["detail"]
     assert not any(chr(0xac00) <= ch <= chr(0xd7a3) for ch in answer["detail"]), (
         "the consent screen renders this sentence in a browser")
 

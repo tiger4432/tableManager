@@ -101,7 +101,7 @@ def ensure_declared_unique_keys(db, rules) -> dict:
             report["skipped"].append((name, skip))
             continue
         # ⚠️ ONE DECLARATION STANDS TWO RULES AND NEEDS ONE INDEX. The target half and
-        # its `:reference` companion join the same two tables on the same key, so they ask
+        # its `:target` companion join the same two tables on the same key, so they ask
         # for the SAME index name - asking twice would probe `pg_index` twice at every
         # reload and report one index as two.
         index_name = vjc.required_index_name(table, columns, folds)
@@ -320,8 +320,10 @@ def approval_report(db, known_tables: dict = None) -> dict:
     for name, table, columns, folds, skip, kind in declared_unique_targets(stood_all):
         rule = by_name.get(name) or {}
         if skip or not table or not columns:
-            # ⚠️ 동반 반쪽(`:reference`)은 같은 선언의 반쪽이라 한 행으로 접는다.
-            base = (name or "").split(rule_shape.REFERENCE_SUFFIX)[0]
+            # ⚠️ 동반 반쪽(`:target`)은 같은 선언의 반쪽이라 한 행으로 접는다.
+            # 🔴 [총괄 e91b96a28 ①] THE CELL, NOT THE NAME. This cut the name at `:reference`;
+            #    the suffix is a label and the loader stamps the fact (S-270).
+            base = rule.get(rule_shape.COMPANION_CELL) or name or ""
             if base in seen:
                 continue
             seen.add(base)
@@ -416,7 +418,7 @@ def right_keys_for(db, table_name: str) -> list:
                     ingestion_worker.load_chain_rules()):
                 if skip or not table or not columns:
                     continue
-                # ⚠️ ONE UNIQUENESS, ONE ENTRY. A join and its `:reference` companion declare
+                # ⚠️ ONE UNIQUENESS, ONE ENTRY. A join and its `:target` companion declare
                 #    the SAME key on the same table, so both arrive here. Kept as two, the
                 #    write gate checks one key twice and an operator sees the SAME duplicate
                 #    reported under two rule names - 「한 사실, 두 문장」. The index seat

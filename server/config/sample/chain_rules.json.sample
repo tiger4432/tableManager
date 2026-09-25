@@ -188,12 +188,11 @@
       "name": "sample_unified_join",
       "enabled": false,
       "on": {
-        "table": "dt_inventory"
+        "table": "dt_job_attribution"
       },
       "derive": {
         "kind": "join",
         "join": {
-          "right_table": "dt_job_attribution",
           "on": [
             {
               "left": "dt_job",

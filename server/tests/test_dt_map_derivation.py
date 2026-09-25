@@ -113,17 +113,16 @@ TABLES = {
 # here fully formed. These are file entries, `expand_declaration` stands them, and the
 # derivation reads what the product stood.
 #
-# ⚠️ ONE DECLARATION STANDS TWO RULES - `<name>` and `<name>:reference` - so the lookup
+# ⚠️ ONE DECLARATION STANDS TWO RULES - `<name>` and `<name>:target` - so the lookup
 # has to match the name EXACTLY. Taking the companion would be silent: it carries the same
 # `params`, so every assertion here would still pass while the gate resolved the wrong rule.
 JOIN_DECLARATIONS = [
     {
         "name": derivation.CONFIRMED_JOIN_RULE, "enabled": True,
-        "on": {"table": LOG}, "into": {"table": LOG},
+        "on": {"table": JOBATTR}, "into": {"table": LOG},
         "key": {"unique": True},
         "derive": {"kind": "join",
-                   "join": {"right_table": JOBATTR,
-                            "on": [{"left": "job", "right": "job"}],
+                   "join": {"on": [{"left": "job", "right": "job"}],
                             # 🔴 `into` DIFFERS FROM `from` ON PURPOSE, ON ONE OF THE
                             # TWO. Written the easy way - `take: [{from: x}]` - `_takes`
                             # defaults `into` to `from` and the two sides are the SAME
@@ -137,11 +136,10 @@ JOIN_DECLARATIONS = [
     },
     {
         "name": derivation.FRAME_JOIN_RULE, "enabled": True,
-        "on": {"table": LOG}, "into": {"table": LOG},
+        "on": {"table": FRAMEATTR}, "into": {"table": LOG},
         "key": {"unique": True},
         "derive": {"kind": "join",
-                   "join": {"right_table": FRAMEATTR,
-                            "on": [{"left": "eqp", "right": "eqp"},
+                   "join": {"on": [{"left": "eqp", "right": "eqp"},
                                    {"left": "prod", "right": "prod"}],
                             # Takes BOTH frames, exactly as the live rule does. Only one
                             # may be read.
@@ -906,7 +904,7 @@ def test_a_join_key_no_unique_index_covers_is_a_named_refusal(env, monkeypatch):
 
 def test_the_gate_takes_the_rule_and_not_its_reference_companion(env):
     """🔴 ONE DECLARATION STANDS TWO CHAIN RULES. `expand_declaration` yields
-    `<name>` and `<name>:reference`, and they carry IDENTICAL `params` - so a lookup that
+    `<name>` and `<name>:target`, and they carry IDENTICAL `params` - so a lookup that
     took the companion would satisfy every other assertion in this file while resolving
     the gate from the wrong rule. The name has to match exactly.
     """
@@ -924,7 +922,7 @@ def test_the_gate_matches_the_name_exactly_and_not_as_a_prefix(env, monkeypatch)
     """⚰️ THE ORDER WAS DOING THE WORK, NOT THE COMPARISON. Loosening the lookup to
     `startswith` left the suite GREEN - the exactly-named rule simply comes first, so the
     wrong comparison never got to be wrong. Ordering is not a guarantee: `<name>` and
-    `<name>:reference` come out of one declaration, and any future companion or a rule an
+    `<name>:target` come out of one declaration, and any future companion or a rule an
     operator names with the same stem would resolve this gate from the wrong declaration,
     silently, because the companion carries identical `params`.
 

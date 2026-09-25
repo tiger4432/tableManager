@@ -74,10 +74,12 @@ function suite(M) {
   const derive = at(['derive']);
   ok(derive && derive.kind === 'oneOf',
     'D1 the shipped `derive` cell is a oneOf — the subject exists', show(derive && derive.kind));
-  const rightTable = at(['derive', 'join', 'right_table']);
-  ok(rightTable && rightTable.kind === 'leaf',
-    'D2 shapeAt reaches a field INSIDE the picked branch — derive.join.right_table',
-    show(rightTable));
+  // ⚠️ [총괄 e91b96a28] This read derive.join.right_table; the join branch has no leaf cell now
+  //    (`on` names the source), so the leaf inside a picked branch is decide's flag.
+  const insideBranch = at(['derive', 'decide', 'auto_confirm']);
+  ok(insideBranch && insideBranch.kind === 'leaf',
+    'D2 shapeAt reaches a field INSIDE the picked branch — derive.decide.auto_confirm',
+    show(insideBranch));
   const table = at(['into', 'table']);
   ok(table && table.kind === 'leaf' && table.hint === 'ref',
     'D3 ...and a leaf branch is the shape at its own key (ruling 411), not a record around it',
@@ -85,7 +87,7 @@ function suite(M) {
   // 🔴 THE CONTROLS. Without them a reader that answered for any key would satisfy D2-D3.
   ok(at(['derive', 'no_such_branch']) === null,
     'D4 CONTROL: a branch the skeleton does not declare resolves to nothing');
-  ok(at(['derive', 'join', 'right_table', 'deeper']) === null,
+  ok(at(['derive', 'decide', 'auto_confirm', 'deeper']) === null,
     'D5 CONTROL: nothing lives under a leaf, inside a branch or not');
 
   // ══ ② oneOf 안의 oneOf — 문법의 주장 ═══════════════════════════════════════════════════

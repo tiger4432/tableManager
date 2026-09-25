@@ -43,9 +43,8 @@ def _join(name, unique=True, enabled=True, right="a678_inventory"):
     """실제 선언(`inventory_confirmed`)과 «같은 모양». 손으로 지은 모양이 아니다."""
     declaration = {
         "name": name,
-        "on": {"table": "a678_log"},
+        "on": {"table": right},
         "derive": {"kind": "join", "join": {
-            "right_table": right,
             "on": [{"left": "dt_job", "right": "dt_job"}],
             "take": ["dt_lot", "dt_slot"]}},
         "into": {"table": "a678_log"},
@@ -264,7 +263,7 @@ def test_a_refused_declaration_of_another_kind_is_not_on_this_panel(monkeypatch)
 # ---------------------------------------------------------------------------
 
 def test_one_uniqueness_is_one_row_even_though_two_rules_stand(monkeypatch):
-    """⚠️ 조인과 그 `:reference` 짝은 «같은 키»를 선언합니다. 둘로 두면 운영자가 한 인덱스를
+    """⚠️ 조인과 그 `:target` 짝은 «같은 키»를 선언합니다. 둘로 두면 운영자가 한 인덱스를
     두 줄로 읽고, 패널의 수가 «인덱스의 수»와 안 맞습니다."""
     probes = []
     _document(monkeypatch, [_join("a678_ok")], probes=probes)
