@@ -253,3 +253,21 @@ def test_an_edit_made_while_refused_arrives_after_convert_and_replay(db, rules_f
     _drain(db, rules, mark)
 
     assert _log(db) == {"L1": "C", "L2": "C", "L3": None}
+
+
+# ---------------------------------------------------------------------------
+# 총괄 6ef4ab1f2 — the rule view says which rule needs the new-shape conversion
+# ---------------------------------------------------------------------------
+
+def test_the_rule_view_says_an_old_join_needs_the_new_shape_and_nothing_else_does(rules_file):
+    """The screen's convert offered only `to=flat` for a unified rule, which stands no
+    `:target` half. The server says which rule needs `to=unified`, by the judgement the
+    conversion itself runs - the screen does not guess from the cells."""
+    mapper = {"name": "e91_mapper", "on": {"table": INV}, "into": {"table": LOG},
+              "derive": {"kind": "mapper", "mapper": {"mapper": "x"}}}
+    rules_file(OLD, dict(DECLARATION, name="e91_new"), mapper)
+
+    said = {name: admin.chain_rule_raw_view(name)["join_needs_new_shape"]
+            for name in (NAME, "e91_new", "e91_mapper")}
+
+    assert said == {NAME: True, "e91_new": False, "e91_mapper": False}
