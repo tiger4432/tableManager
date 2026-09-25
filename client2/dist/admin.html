@@ -202,32 +202,6 @@
       min-height: 0;
     }
 
-    /* ── Pipeline Health Strip (4 파이프라인 상시 요약 — Overview 탭에선 숨김) ── */
-    .health-strip {
-      display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap: 14px;
-      padding: 18px 30px 0;
-      flex-shrink: 0;
-    }
-    @media (max-width: 1100px) {
-      .health-strip { grid-template-columns: repeat(2, 1fr); }
-    }
-    .health-card {
-      text-align: left;
-      background: var(--bg-surface);
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 12px 16px;
-      cursor: pointer;
-      font-family: var(--font-sans);
-      color: var(--text);
-      box-shadow: var(--shadow-card);
-      display: flex;
-      flex-direction: column;
-      gap: 5px;
-      transition: transform 0.15s ease, border-color 0.15s ease;
-    }
     /* C-75 체인 그래프 — 네 선언이 한 그림. 종류는 «선 모양»으로 갈립니다. */
     .chain-graph-panel { padding: var(--space-2); }
     /* 🔴 그림의 «상자». 높이 상한이 여기 있고, 넘치면 «이 안»에서 스크롤한다 — 페이지가
@@ -356,11 +330,11 @@
       color: var(--text-dim);
       font-size: var(--fs-label);
     }
-    /* 못 읽은 칸은 부품이 «빼므로» 셋·둘로 선다. 폭은 칸 수로 나눈다. */
+    /* 못 읽은 칸은 부품이 «빼므로» 셋·둘로 선다. 좁으면 2×2 (총괄 a80361a63) — 칸의 최소폭은
+       격자 토큰의 배수라 px 를 새로 적지 않는다. */
     .chain-queue-numbers {
       display: grid;
-      grid-auto-flow: column;
-      grid-auto-columns: minmax(0, 1fr);
+      grid-template-columns: repeat(auto-fit, minmax(calc(var(--space-6) * 5), 1fr));
       gap: var(--space-4);
       padding: 0 0 var(--space-4);
     }
@@ -440,7 +414,6 @@
     .chain-queue-pickup { color: var(--text); font-weight: 600; }
     /* Overview 절 틀 (시안 A) — 표면 위 1px 선, 모서리 0, 머리는 --bg-header. */
     .ov-section {
-      margin: var(--space-5);
       background: var(--bg-surface);
       border: 1px solid var(--border);
       border-radius: 0;
@@ -775,53 +748,6 @@
       line-height: 1.5;
       white-space: normal;
     }
-    .health-card:hover {
-      transform: translateY(-1px);
-      border-color: var(--accent);
-    }
-    .health-card-top {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-    .health-dot {
-      width: 9px;
-      height: 9px;
-      border-radius: 50%;
-      background: var(--text-dim);
-      flex-shrink: 0;
-      transition: background 0.2s ease, box-shadow 0.2s ease;
-    }
-    /* 🔴 「못 읽었다」는 「읽는 중」이 아닙니다 (C-83). 점은 오늘의 기본과 «같은 색»이고,
-       바뀐 것은 이 상태에 «이름이 생겼다»는 것입니다 — 그래야 거절문 옆에서 로딩이 계속
-       돌고 있는지를 셀 수 있습니다. */
-    [data-status="unread"] .health-dot { background: var(--text-dim); box-shadow: none; }
-    [data-status="ok"] .health-dot { background: var(--success); box-shadow: 0 0 0 3px var(--success-weak); }
-    [data-status="warn"] .health-dot { background: var(--warning); box-shadow: 0 0 0 3px var(--warning-weak); }
-    [data-status="danger"] .health-dot { background: var(--danger); box-shadow: 0 0 0 3px var(--danger-weak); }
-    .health-card-title {
-      font-size: 0.72rem;
-      font-weight: 600;
-      letter-spacing: 0.6px;
-      text-transform: uppercase;
-      color: var(--text-muted);
-    }
-    .health-card-main {
-      font-size: 1.02rem;
-      font-weight: 600;
-      font-variant-numeric: tabular-nums;
-    }
-    .health-card[data-status="danger"] .health-card-main { color: var(--danger); }
-    .health-card[data-status="warn"] .health-card-main { color: var(--warning); }
-    .health-card-sub {
-      font-size: 0.73rem;
-      color: var(--text-dim);
-      font-family: var(--font-mono);
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-
     /* ── 파일 로그 정렬 가능 헤더 / Transaction ID 축약 칩 ── */
     th.sortable {
       cursor: pointer;
@@ -1197,81 +1123,12 @@
       padding: 0 4px;
     }
 
-    /* ── 핵심가치 #1 계기 두 줄 (Overview 상단) — 재교정률 · 교정 공수 ──
-       카드도 패널도 아닌 한 줄씩. 값 옆에 분모를 항상 같이 적는다 —
-       분모 없는 비율은 표본이 8개일 때도 그럴듯해 보인다.
-       (클래스 이름은 재교정률이 먼저 생겨서 그대로 쓴다. 두 줄이 같은 문법으로 읽혀야
-        해서 스타일을 공유하는 것이지, 교정 공수가 재교정률의 부속이라는 뜻이 아니다.) */
-    /* 🔴 C-117 ㉰. 이 네 줄이 `--text-primary` / `--text-secondary` 를 불렀는데 그 둘은
-       이 저장소에 «정의가 없습니다»(git 이력상 «한 번도» 없었습니다 — 지어진 이름입니다).
-       `color` 의 무효는 «상속»이라 값도 라벨도 muted 도 «전부 같은 색»이 됐고, 그래서
-       아래 `[data-tone="muted"]` 이 «무효»였습니다 — 「측정 안 함」이 「측정된 값」과
-       같은 픽셀입니다. 제 기억의 부류 「같아 보이는 다섯 개의 0」 그대로입니다.
-       ⛔ 정의를 «더하지» 않습니다: 캐논에 `--text` · `--text-dim` 이 이미 그 두 역할입니다. */
-    .recorrection-line {
-      display: flex;
-      align-items: baseline;
-      gap: 10px;
-      padding: 14px 20px 0;
-      font-size: 0.84rem;
-      color: var(--text-dim);
-    }
-    .recorrection-line .rc-label {
-      font-weight: 600;
-      color: var(--text);
-    }
-    .recorrection-line .rc-value {
-      font-variant-numeric: tabular-nums;
-      font-weight: 700;
-      font-size: 1.05rem;
-      color: var(--text);
-    }
-    .recorrection-line[data-tone="warn"] .rc-value { color: var(--warning); }
-    .recorrection-line[data-tone="danger"] .rc-value { color: var(--danger); }
-    .recorrection-line[data-tone="muted"] .rc-value { color: var(--text-dim); }
-    .recorrection-line .rc-sub { font-size: 0.78rem; }
-    /* 교정 공수 줄에 한해, 위험 상태에서는 값(대시)뿐 아니라 사유 문장도 붉게 한다.
-       이 줄의 존재 이유가 수집 중단 감지라서, 붉은 대시 하나로는 눈에 걸리지 않는다.
-       #effort-line으로 한정 — 재교정률 줄의 표현은 건드리지 않는다. */
-    #effort-line[data-tone="danger"] .rc-sub { color: var(--danger); }
-
-    /* ── 설정 반영 한 줄 (Overview 상단, 세 번째 줄) — F9 ──
-       「내 config가 먹었는가」에 답하는 유일한 화면. 위의 두 줄과 같은 문법으로 읽히도록
-       summary가 .recorrection-line을 그대로 입는다(값·사유·톤 규칙 공유).
-       카드도 패널도 모달도 아니다 — 헤드라인은 항상 보이고, 펼침은 제자리에서 일어난다.
-       문장은 전부 서버가 만든 것이고 이 CSS는 위계와 색만 담당한다. */
-    .cfg-block > summary {
-      cursor: pointer;
-      list-style: none;
-      user-select: none;
-    }
-    .cfg-block > summary::-webkit-details-marker { display: none; }
-    .cfg-block > summary:hover .rc-sub { color: var(--text-muted); }
-    .cfg-block[open] > summary { padding-bottom: 4px; }
-    .cfg-toggle {
-      margin-left: auto;
-      display: inline-flex;
-      align-items: baseline;
-      gap: 6px;
-      font-size: 0.78rem;
-      color: var(--text-dim);
-      flex-shrink: 0;
-    }
-    .cfg-block > summary:hover .cfg-toggle { color: var(--accent); }
-    .cfg-caret {
-      font-size: 0.7rem;
-      color: inherit;
-      transition: transform 0.15s ease;
-      display: inline-block;
-    }
-    #config-resolve-value,
     #retroactive-value {
       display: inline-flex;
       align-items: baseline;
       gap: 6px;
       flex-wrap: wrap;
     }
-    .cfg-block[open] .cfg-caret { transform: rotate(180deg); }
 
     /* 모집단 카운트 칩 — 서버 어휘(effective/ineffective/rejected)를 그대로 적는다.
        한국어 라벨을 지어내면 그 순간 클라가 「효과 없음」의 뜻을 스스로 갖게 된다. */
@@ -1573,111 +1430,80 @@
     /* ⚠️ `gap` 이 아니라 «형제 여백»이다. 탭 전환이 `wrapper.style.display = 'block'` 을
        «인라인»으로 박으므로(admin.js switchTab) 시트의 `display:flex` 가 진다 — 그러면 gap 이
        조용히 0 이 된다. 이 규칙은 display 가 무엇이든 같은 값을 준다. */
-    #overview-wrapper > * + * { margin-top: var(--space-4); }
-    .overview-grid {
+    #overview-wrapper > * + * { margin-top: var(--space-5); }
+
+    /* 시안 A ② Status — [점][이름][사실][상태 낱말][Open ›] 5 칸. 점과 낱말은 같은 색, 붉은 줄만
+       바탕이 --danger-weak. 판정은 overview_status 한 자리 — 여기는 색뿐이다. */
+    .ov-row {
       display: grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap: var(--space-4);
-      /* 바깥 여백은 위의 wrapper 가 준다 — 여기서 또 주면 두 배가 된다. */
-      padding: 0;
-    }
-    @media (max-width: 1100px) {
-      .overview-grid { grid-template-columns: 1fr; }
-    }
-    .ov-card {
-      background: var(--bg-inset);
-      border: 1px solid var(--border);
-      border-radius: 14px;
-      padding: 16px 20px 14px;
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
-      cursor: pointer;
-      transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
-    }
-    .ov-card:hover {
-      transform: translateY(-1px);
-      border-color: var(--accent);
-      box-shadow: var(--shadow-card);
-    }
-    .ov-card-head {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-    }
-    .ov-title {
-      flex: 1;
-    }
-    .ov-metrics {
-      display: flex;
-      gap: 22px;
-      flex-wrap: wrap;
-    }
-    .ov-metric-value {
-      font-size: 1.35rem;
-      font-weight: 600;
-      font-variant-numeric: tabular-nums;
-      line-height: 1.2;
-    }
-    .ov-metric[data-tone="danger"] .ov-metric-value { color: var(--danger); }
-    .ov-metric[data-tone="warn"] .ov-metric-value { color: var(--warning); }
-    .ov-metric[data-tone="ok"] .ov-metric-value { color: var(--success); }
-    .ov-metric-label {
-      font-size: var(--fs-label);
-      font-weight: 600;
-      letter-spacing: 0.4px;
-      text-transform: uppercase;
-      color: var(--text-dim);
-      margin-top: 2px;
-    }
-    .ov-events {
-      list-style: none;
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-      border-top: 1px dashed var(--border);
-      padding-top: 10px;
-      min-height: 30px;
-    }
-    .ov-event {
-      font-family: var(--font-mono);
-      font-size: 0.76rem;
-      color: var(--text-muted);
-      display: flex;
-      gap: 10px;
+      grid-template-columns: auto minmax(0, max-content) minmax(0, 1fr) auto auto;
       align-items: baseline;
+      column-gap: var(--space-3);
+      padding: var(--space-3) var(--space-4);
+      border-bottom: 1px solid var(--border);
+      font-size: var(--fs-body);
+    }
+    .ov-row[role="button"] { cursor: pointer; }
+    .ov-row[role="button"]:hover { background: var(--oe-tint-row); }
+    .ov-row:focus { outline: none; }
+    .ov-row:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+    .ov-row[data-tone="danger"] { background: var(--danger-weak); }
+    .ov-row-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      align-self: center;
+      background: var(--text-dim);
+    }
+    .ov-row[data-tone="ok"] .ov-row-dot { background: var(--success); }
+    .ov-row[data-tone="warn"] .ov-row-dot { background: var(--warning); }
+    .ov-row[data-tone="danger"] .ov-row-dot { background: var(--danger); }
+    .ov-row-name { font-weight: 600; color: var(--text); white-space: nowrap; }
+    .ov-row-facts { color: var(--text-dim); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+    /* 13 = 캐논 h6 (토큰은 글자 위계 라운드에서). */
+    .ov-row-word { font-size: 13px; font-weight: 600; white-space: nowrap; }
+    .ov-row[data-tone="ok"] .ov-row-word { color: var(--success); }
+    .ov-row[data-tone="warn"] .ov-row-word { color: var(--warning); }
+    .ov-row[data-tone="danger"] .ov-row-word { color: var(--danger); }
+    .ov-row[data-tone="unknown"] .ov-row-word { color: var(--text-dim); }
+    .ov-row-open,
+    .ov-show-all {
+      padding: 0;
+      border: 0;
+      background: none;
+      font: inherit;
+      font-size: var(--fs-label);
+      color: var(--accent);
+      cursor: pointer;
       white-space: nowrap;
-      overflow: hidden;
     }
-    .ov-event-time {
-      color: var(--text-dim);
-      flex-shrink: 0;
+    .ov-row-open:focus,
+    .ov-show-all:focus { outline: none; }
+    .ov-row-open:focus-visible,
+    .ov-show-all:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    .ov-show-all { margin-top: var(--space-2); }
+    .ov-row-body {
+      padding: var(--space-3) var(--space-4);
+      border-bottom: 1px solid var(--border);
     }
-    .ov-event-text {
-      overflow: hidden;
-      text-overflow: ellipsis;
+    .ov-scroll { overflow-x: auto; }
+    .declaration-group {
+      display: block;
+      width: 100%;
+      padding: var(--space-1) 0;
+      border: 0;
+      background: none;
+      font: inherit;
+      text-align: left;
+      color: var(--text);
+      cursor: pointer;
+      overflow-wrap: anywhere;
     }
-    .ov-event-badge {
-      font-size: 0.66rem;
-      font-weight: 700;
-      padding: 0 6px;
-      border-radius: 4px;
-      flex-shrink: 0;
-    }
-    .ov-event-badge.danger { color: var(--danger); background: var(--danger-weak); }
-    .ov-event-badge.warn { color: var(--warning); background: var(--warning-weak); }
-    .ov-event-badge.ok { color: var(--success); background: var(--success-weak); }
-    .ov-empty-line {
-      font-size: 0.76rem;
-      color: var(--text-dim);
-      font-family: var(--font-mono);
-    }
-    .ov-error {
-      padding: 40px;
-      text-align: center;
-      color: var(--text-muted);
-      grid-column: 1 / -1;
-    }
+    .declaration-group[data-tone="warn"] { color: var(--warning); }
+    .declaration-group[data-tone="danger"] { color: var(--danger); }
+    .declaration-group:focus { outline: none; }
+    .declaration-group:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    .declaration-group-lines { padding: 0 0 var(--space-2) var(--space-4); }
 
     /* JSON & Traceback styling */
     .detail-section {
@@ -1758,12 +1584,11 @@
 
     /* ① 제목 — 타이포도 색도 여기 «한 자리»입니다. 그것이 게이트①의 정의입니다.
        🔴 그리고 «모든 영역»입니다 — 진단 패널의 머리(`.panel-title`)와
-       개관 카드의 머리(`.ov-title`) 도 같은 역할이라 여기 들어옵니다.
+       개관 절의 머리(`.ov-section-title`) 도 같은 역할이라 여기 들어옵니다.
        ⚠️ `.panel-title` 은 18.4px 에서 13px 로 «작아집니다». 절 제목과 «같은 단»이
           된다는 뜻이고, 그것이 「모든 영역 다」의 결과입니다. 보고에 적어 올립니다. */
     .section-title,
     .panel-title,
-    .ov-title,
     .ov-section-title,
     .cfg-domain-title {
       font-family: var(--oe-font-body);
@@ -1997,11 +1822,11 @@
     .retro-group.is-chosen { border-color: var(--accent); color: var(--accent); }
 
   </style>
-  <script type="module" crossorigin src="/assets/admin-CAaWjcJW.js"></script>
+  <script type="module" crossorigin src="/assets/admin-D7vUip0V.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/absent-Bk9s5MPb.js">
   <link rel="modulepreload" crossorigin href="/assets/disabled_reason-Cd0wapM5.js">
   <link rel="modulepreload" crossorigin href="/assets/server_time-iaRLMMi6.js">
-  <link rel="modulepreload" crossorigin href="/assets/chain_queue_panel-BJNx7xil.js">
+  <link rel="modulepreload" crossorigin href="/assets/chain_queue_panel-DCdghF9G.js">
   <link rel="modulepreload" crossorigin href="/assets/config-BUp4smhE.js">
   <link rel="modulepreload" crossorigin href="/assets/effort_meter-CUYmTmql.js">
   <link rel="modulepreload" crossorigin href="/assets/truncation-C-l5U8XY.js">
@@ -2029,29 +1854,6 @@
   </header>
 
   <!-- Pipeline Health Strip: 파이프라인 탭 화면 상시 요약 (Overview 탭에선 본문이 확장판이므로 숨김) -->
-  <div id="health-strip" class="health-strip">
-    <button type="button" class="health-card" id="health-card-file" data-status="loading" title="File Ingestion pipeline — click: File Ingestion tab (failed filter)">
-      <div class="health-card-top"><span class="health-dot"></span><span class="health-card-title">File Ingestion</span></div>
-      <div class="health-card-main" id="health-file-main">—</div>
-      <div class="health-card-sub" id="health-file-sub">Loading…</div>
-    </button>
-    <button type="button" class="health-card" id="health-card-chain" data-status="loading" title="Chain (derived tables) pipeline — click: Chain tab">
-      <div class="health-card-top"><span class="health-dot"></span><span class="health-card-title">Chain</span></div>
-      <div class="health-card-main" id="health-chain-main">—</div>
-      <div class="health-card-sub" id="health-chain-sub">Loading…</div>
-    </button>
-    <button type="button" class="health-card" id="health-card-auto" data-status="loading" title="Auto Update collectors — click: Auto Update tab">
-      <div class="health-card-top"><span class="health-dot"></span><span class="health-card-title">Auto Update</span></div>
-      <div class="health-card-main" id="health-auto-main">—</div>
-      <div class="health-card-sub" id="health-auto-sub">Loading…</div>
-    </button>
-    <button type="button" class="health-card" id="health-card-enrichment" data-status="loading" title="Enrichment Queue — click: Enrichment tab">
-      <div class="health-card-top"><span class="health-dot"></span><span class="health-card-title">Enrichment</span></div>
-      <div class="health-card-main" id="health-enrichment-main">—</div>
-      <div class="health-card-sub" id="health-enrichment-sub">Loading…</div>
-    </button>
-  </div>
-
   <main>
     <!-- Left panel: 파이프라인 5탭 (Overview / File Ingestion / Chain / Auto Update / Enrichment) -->
     <section class="panel left-panel">
@@ -2063,6 +1865,7 @@
           <button id="tab-chain-btn" class="tab-btn">Chain</button>
           <button id="tab-autoupdate-btn" class="tab-btn">Auto Update</button>
           <button id="tab-enrichment-btn" class="tab-btn">Enrichment</button>
+          <button id="tab-retroactive-btn" class="tab-btn">Retroactive</button>
           <button id="tab-ontology-btn" class="tab-btn">Ontology Explorer</button>
         </div>
         <div style="display: flex; gap: 10px; align-items: center;">
@@ -2074,9 +1877,8 @@
       <div class="panel-body" style="padding: 0; display: flex; flex-direction: column;">
         <!-- ═══ Overview 탭: 4 파이프라인 확장 카드 (첫 화면, 좌패널 전폭) ═══ -->
         <div id="overview-wrapper" style="flex: 1; overflow: auto;">
-          <!-- ═══ C-80 (소유자 「overview 에서 설정 반영은 아래로, 대기열과 고리는 위로」) ═══
-               블록 «순서»만 바뀐다. 부품은 그대로이고 각자 자기 div 를 만든다 (조립식 상설) —
-               배치는 부품 «밖»인 이 화면의 일이다. -->
+          <!-- ═══ 시안 A (소유자 「A 로 해」) — Queue 절 · Status 절 둘. 부품은 각자 자기 div 를 만들고
+               (조립식 상설) 배치는 부품 «밖»인 이 화면의 일이다. ═══ -->
           <!-- 시안 A ① Queue 절 (맨 위). 절 틀은 이 화면의 것이고, 안은 Chain 탭의 그 부품의
                «두 번째 인스턴스»다 — 탭에서 «빼 오지» 않는다. 빼면 Chain 탭이 자기 화면을 잃는다. -->
           <section class="ov-section" id="overview-queue">
@@ -2087,98 +1889,50 @@
             </div>
             <div class="ov-section-body"><div id="overview-queue-mount"></div></div>
           </section>
-          <!-- C-74: 아홉 고리가 마지막으로 무엇을 했나. 값만 — RuntimePanel 이 자기 div 를 만든다 -->
-          <div id="runtime-mount"></div>
-          <div id="overview-grid" class="overview-grid">
-            <!-- admin.js renderOverview()가 채움 -->
+          <!-- 시안 A ② Status 절. 줄은 OverviewBoard 가 그리고 overview_status 가 판정한다. -->
+          <section class="ov-section" id="overview-status">
+            <div class="ov-section-head">
+              <span class="ov-section-title">Status</span>
+              <span class="ov-section-sub">one line per part · red rows need a look</span>
+            </div>
+            <div class="ov-section-body"><div id="overview-status-mount"></div></div>
+          </section>
+          <!-- 줄 펼침 — admin.js 가 판에 «한 번» 옮겨 앉힌다(부품은 자기 mount 를 그대로 가진다). -->
+          <div id="overview-row-bodies" hidden>
+            <!-- Workers: C-74 고리 표. 표는 제 상자 안에서 가로로 흐른다 — 폰 폭에서 페이지를 밀던 것이 이 표였다
+                 (총괄 575a844f7, 캐논 §5). -->
+            <div id="ov-body-workers" class="ov-scroll"><div id="runtime-mount"></div></div>
+            <!-- Declarations: (영역, 사유) 한 줄씩 -> 「Show all N lines ›」 = 설정 반영 본문 전부 (F9).
+                 ⚠️ 사유 문장은 전부 서버 소유다 — admin.js 는 `detail` 을 그대로 렌더한다. -->
+            <div id="ov-body-declarations">
+              <div id="declaration-groups"></div>
+              <button type="button" class="ov-show-all" id="declaration-show-all" aria-expanded="false"></button>
+              <div id="declaration-all" hidden>
+                <div class="cfg-body" id="config-resolve-body"></div>
+                <!-- 🔴 「승인됐나」는 「선언이 유효한가」와 «다른 질문»이고 다른 라우트가 답한다.
+                     `/admin/config/resolve` 는 「DB 질의 0건」이 계약이라 설정 파일만 읽는데,
+                     승인 조건인 「조인 키를 덮는 UNIQUE 인덱스」는 `pg_index` 가 아는 사실이다.
+                     `/admin/chain/join/verify` 가 그것을 «만들 DDL 문장»까지 내고 있었고
+                     소비자가 0 이었다. ⛔ 위의 한 낱말을 «지우지» 않는다 — 여기는 그 옆이다. -->
+                <div class="cfg-body" id="join-verify-body"></div>
+                <!-- 🔴 「선언이 있어야 한다고 한 자리 중 원장이 비어 있는 곳」. 거절문이 사람을
+                     명세로 보내는데 명세는 「이 이름이 무슨 뜻인가」를 답하지 「지금 «내 것 중»
+                     무엇이 그건가」를 답하지 않는다. 🔴 그리고 «공허함» -- 선언상 있을 수 «없는»
+                     것과 있을 수 있는데 없는 것 -- 이 갈리지 않으면 운영자가 선언이 금지한
+                     데이터를 찾으러 간다. 목록만 «공짜»다(선언만 읽는다); 세는 것은 펼 때다. -->
+                <div class="cfg-body" id="gap-catalogue-body"></div>
+                <!-- 🔴 「내가 쓴 이 선언이 받아들여지나, 아니면 «왜» 거절되나」. 지도 화면이 부르는
+                     `/api/transfer-plan/stages` 는 역할마다 connected/missing «한 낱말»을 내는데 그
+                     낱말로는 config 를 못 고친다. 이 진단은 사유·해석된 컬럼·그 컬럼의 출처·
+                     「지우면 무엇이 유도되는지」를 같이 낸다.
+                     ⚠️ 어드민에 있는 이유는 «토큰» 때문이다 — 지도 화면에는 토큰을 보낼 기계가 없고,
+                     거기에 자격증명 표면을 만드는 것은 UI 라운드가 할 결정이 아니다(총괄 판정). -->
+                <div class="cfg-body" id="plan-dry-run-body"></div>
+              </div>
+            </div>
+            <!-- Retroactive: 「도는 것」 — 줄마다 × 로 하나만 끊는다 (소유자 1순위 화면). 폼은 Retroactive 탭. -->
+            <div id="ov-body-retroactive"><div class="cfg-body" id="running-body"></div></div>
           </div>
-          <!-- 재교정률 한 줄: 사람이 같은 셀을 두 번 이상 고친 비율 (핵심가치 #1 "최소 공수 교정" 계기) -->
-          <div id="recorrection-line" class="recorrection-line">
-            <span class="rc-label">Re-correction rate</span>
-            <span class="rc-value" id="recorrection-value">—</span>
-            <span class="rc-sub" id="recorrection-sub">Loading…</span>
-          </div>
-          <!-- 교정 공수 한 줄: 한 교정을 끝내기까지의 상호작용 점수 + 계측 커버리지.
-               커버리지(measured_ratio)를 같이 두는 이유는 이것이 수집 중단 감지기이기
-               때문이다 — 화면에 없으면 기준선 창 전체가 조용히 비어도 아무도 모른다. -->
-          <div id="effort-line" class="recorrection-line"
-               title="Interaction score to finish one correction (key 1 · click 3 · a move that loses context 5). Lower is better.">
-            <span class="rc-label">Correction effort</span>
-            <span class="rc-value" id="effort-value">—</span>
-            <span class="rc-sub" id="effort-sub">Loading…</span>
-          </div>
-          <!-- 설정 반영 한 줄 (F9): 「내 config가 먹었는가」.
-               `POST /admin/reload-configs`는 아무것도 반환하지 않는 쓰기 전용 버튼이었다 —
-               이 줄이 그 공백을 메운다. 헤드라인(모집단 카운트)은 클릭 없이 항상 보이고,
-               펼치면 서버가 만든 문장이 제자리에 나온다. 새 페이지도 모드도 모달도 없다.
-               ⚠️ 사유 문장은 전부 서버 소유다 — admin.js는 `detail`을 그대로 렌더한다. -->
-          <details id="config-resolve" class="cfg-block">
-            <summary class="recorrection-line" id="config-resolve-summary">
-              <span class="rc-label">Config resolution</span>
-              <span class="rc-value" id="config-resolve-value">—</span>
-              <span class="rc-sub" id="config-resolve-sub">Loading…</span>
-              <span class="cfg-toggle">
-                <!-- 문구는 admin.js가 config_resolve_view.js의 CHROME에서 채운다 —
-                     클라가 쓰는 문자열의 정본은 그 표 하나다. -->
-                <span id="config-resolve-hint"></span><span class="cfg-caret" aria-hidden="true">▾</span>
-              </span>
-            </summary>
-            <div class="cfg-body" id="config-resolve-body"></div>
-            <!-- 🔴 「승인됐나」는 「선언이 유효한가」와 «다른 질문»이고 다른 라우트가 답한다.
-                 `/admin/config/resolve` 는 「DB 질의 0건」이 계약이라 설정 파일만 읽는데,
-                 승인 조건인 「조인 키를 덮는 UNIQUE 인덱스」는 `pg_index` 가 아는 사실이다.
-                 `/admin/chain/join/verify` 가 그것을 «만들 DDL 문장»까지 내고 있었고
-                 소비자가 0 이었다. ⛔ 위의 한 낱말을 «지우지» 않는다 — 여기는 그 옆이다. -->
-            <div class="cfg-body" id="join-verify-body"></div>
-            <!-- 🔴 「선언이 있어야 한다고 한 자리 중 원장이 비어 있는 곳」. 거절문이 사람을
-                 명세로 보내는데 명세는 「이 이름이 무슨 뜻인가」를 답하지 「지금 «내 것 중»
-                 무엇이 그건가」를 답하지 않는다. 🔴 그리고 «공허함» -- 선언상 있을 수 «없는»
-                 것과 있을 수 있는데 없는 것 -- 이 갈리지 않으면 운영자가 선언이 금지한
-                 데이터를 찾으러 간다. 목록만 «공짜»다(선언만 읽는다); 세는 것은 펼 때다. -->
-            <div class="cfg-body" id="gap-catalogue-body"></div>
-            <!-- 🔴 「내가 쓴 이 선언이 받아들여지나, 아니면 «왜» 거절되나」. 지도 화면이 부르는
-                 `/api/transfer-plan/stages` 는 역할마다 connected/missing «한 낱말»을 내는데 그
-                 낱말로는 config 를 못 고친다. 이 진단은 사유·해석된 컬럼·그 컬럼의 출처·
-                 「지우면 무엇이 유도되는지」를 같이 낸다.
-                 ⚠️ 어드민에 있는 이유는 «토큰» 때문이다 — 지도 화면에는 토큰을 보낼 기계가 없고,
-                 거기에 자격증명 표면을 만드는 것은 UI 라운드가 할 결정이 아니다(총괄 판정). -->
-            <div class="cfg-body" id="plan-dry-run-body"></div>
-          </details>
-          <!-- 소급 적용 한 줄 (Queue 25): 「규칙보다 오래된 데이터에 지금 적용하면 몇 건인가」.
-               다섯 연산 전부 CLI로만 존재했고 어드민에는 화면이 없었다. 위의 「설정 반영」과
-               **같은 문법**으로 읽히도록 details/summary 구조를 그대로 쓴다 — 새 페이지도
-               모드도 모달도 없다. 연산당 표면은 「건수 하나 · 버튼 하나」가 전부다.
-               ⚠️ 숫자·문장·한정어는 전부 서버 소유다. admin.js는 서버가 라벨을 붙여 준
-               숫자만 그리고, 어떤 수가 근사인지 스스로 판정하지 않는다. -->
-          <details id="retroactive" class="cfg-block">
-            <summary class="recorrection-line" id="retroactive-summary">
-              <span class="rc-label">Retroactive</span>
-              <span class="rc-value" id="retroactive-value">—</span>
-              <span class="rc-sub" id="retroactive-sub">…</span>
-              <span class="cfg-toggle">
-                <!-- 문구는 admin.js가 retroactive_view.js의 RETRO_CHROME에서 채운다. -->
-                <span id="retroactive-hint"></span><span class="cfg-caret" aria-hidden="true">▾</span>
-              </span>
-            </summary>
-            <div class="cfg-body" id="retroactive-body"></div>
-          </details>
-          <!-- 도는 것들 — 소급 블록 «옆»의 자기 블록. 접힌 줄에서 몇 개가 도는지 보이므로
-               열지 않고도 끊을지 정할 수 있습니다 (소유자 1순위 화면). -->
-          <details id="running" class="cfg-block">
-            <summary class="recorrection-line" id="running-summary">
-              <span class="rc-label">Running</span>
-              <span class="rc-value" id="running-value">—</span>
-              <span class="rc-sub" id="running-sub">…</span>
-              <span class="cfg-toggle">
-                <span id="running-hint"></span><span class="cfg-caret" aria-hidden="true">▾</span>
-              </span>
-            </summary>
-            <div class="cfg-body" id="running-body"></div>
-          </details>
-          <!-- C-75: 네 선언이 한 그림. ChainGraphPanel 이 자기 div 를 만든다.
-               ⚠️ 그림은 «맨 아래»다 — 지시가 정한 넷(고리·대기열·카드·줄) 밖이고, 넷 중
-               어디에 끼워도 그 순서를 깨기 때문이다. 이 한 자리는 제가 정했고 보고에 적었다. -->
-          <div id="chain-graph-mount"></div>
         </div>
 
         <!-- ═══ File Ingestion 탭: 진행 중(Active) → 현황(Workspaces) → 오류/실행(Logs + Retry) ═══ -->
@@ -2400,6 +2154,15 @@
               </div>
             </div>
           </div>
+
+          <!-- C-75: 네 선언이 한 그림 — Overview 에서 옮겨 왔다 (시안 A). ChainGraphPanel 이 자기 div 를 만든다. -->
+          <div class="stage-section" id="sec-chain-graph">
+            <div class="section-header" data-section="sec-chain-graph">
+              <span class="section-title">Chain graph</span>
+              <span class="section-chevron">▾</span>
+            </div>
+            <div class="section-body"><div id="chain-graph-mount"></div></div>
+          </div>
         </div>
 
         <!-- ═══ Auto Update 탭: 현황/실행(Collectors + Run Now) → 오류(산출물 인제션 실패 연계) ═══ -->
@@ -2522,6 +2285,20 @@
                 Edit rules in the Chain tab (<code>derive.decide</code>). Fill missing values in the main grid.
               </div>
             </div>
+          </div>
+        </div>
+
+        <!-- ═══ Retroactive 탭 (시안 A): 소급 적용 — 「규칙보다 오래된 데이터에 지금 적용하면 몇 건인가」.
+             ⚠️ 숫자·문장·한정어는 전부 서버 소유다. 도는 것 목록은 Overview 의 Retroactive 줄 펼침에 있다. ═══ -->
+        <div id="retroactive-tab-wrapper" style="flex: 1; overflow: auto; display: none;">
+          <div class="stage-section" id="sec-retroactive">
+            <div class="section-header" data-section="sec-retroactive" id="retroactive-summary">
+              <span class="section-title">Retroactive</span>
+              <span class="section-count" id="retroactive-value">—</span>
+              <span class="section-summary" id="retroactive-sub"></span>
+              <span class="section-chevron">▾</span>
+            </div>
+            <div class="section-body"><div class="cfg-body" id="retroactive-body"></div></div>
           </div>
         </div>
 

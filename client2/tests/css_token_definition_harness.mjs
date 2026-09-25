@@ -129,8 +129,9 @@ function suite(overrides = {}) {
   ok(Boolean(fillToken) && g.defined.has(fillToken),
      'T3 체인 그래프 노드 원의 fill 이 «정의된» 토큰이다 — 무효면 초기값(검정)이다', circleFill);
 
-  const normal = declOf(admin, '.recorrection-line .rc-value', 'color');
-  const muted = declOf(admin, '.recorrection-line[data-tone="muted"] .rc-value', 'color');
+  // 2026-09-25 (시안 A): 재교정률 줄이 현황판 «줄»이 됐습니다. 같은 물음 — 「값」(OK)과 「측정 못 함」(Unknown)이 같은 픽셀인가.
+  const normal = declOf(admin, '.ov-row[data-tone="ok"] .ov-row-word', 'color');
+  const muted = declOf(admin, '.ov-row[data-tone="unknown"] .ov-row-word', 'color');
   const nToken = (/var\(\s*(--[A-Za-z0-9_-]+)/.exec(normal) || [])[1] || '';
   const mToken = (/var\(\s*(--[A-Za-z0-9_-]+)/.exec(muted) || [])[1] || '';
   ok(Boolean(nToken) && g.defined.has(nToken) && Boolean(mToken) && g.defined.has(mToken),
@@ -169,10 +170,10 @@ const DEFECTS = [
    () => ({ [TOKENS]: swap(TOKENS_TEXT, '  --text-dim: #5b6779;', '  --removed-dim: #5b6779;') })],
   ['M3 「측정 안 함」이 「값」과 «같은 토큰»을 쓴다 -> T5',
    () => ({ [ADMIN_HTML]: swap(ADMIN_TEXT,
-     '.recorrection-line[data-tone="muted"] .rc-value { color: var(--text-dim); }',
-     '.recorrection-line[data-tone="muted"] .rc-value { color: var(--text); }') })],
+     '.ov-row[data-tone="unknown"] .ov-row-word { color: var(--text-dim); }',
+     '.ov-row[data-tone="unknown"] .ov-row-word { color: var(--success); }') })],
   ['M4 어두운 쪽에서만 둘이 같아진다 -> T7',
-   () => ({ [TOKENS]: swap(TOKENS_TEXT, '  --text-dim: #8b99ae;', '  --text-dim: #e9edf4;') })],
+   () => ({ [TOKENS]: swap(TOKENS_TEXT, '  --text-dim: #8b99ae;', '  --text-dim: #33d68f;') })],
   ['M5 원의 fill 이 토큰을 안 쓴다 -> T3',
    () => ({ [ADMIN_HTML]: swap(ADMIN_TEXT, 'fill: var(--bg-surface);', 'fill: none;') })],
 ];

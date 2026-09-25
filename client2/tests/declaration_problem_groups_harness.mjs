@@ -1,10 +1,11 @@
 /**
- * DECLARATION PROBLEM GROUPS — the declaration check's problem lines, the same reason folded into one
- * (lead b73255fc5 E · a48d1f2da: the function and the count first; the drawing waits for the mockup).
+ * DECLARATION PROBLEM GROUPS — the declaration check's problem lines, one line per
+ * (domain, population, reason) (lead b73255fc5 E · b93cdf327: one level, count first).
  *
  *   A  which lines are problems — the populations POPULATION_TONE colours warn or danger, nothing else
- *   B  folding — one group per (population, reason); the count is the lines folded; the sentence is the
- *      first line's, verbatim; a line with no reason token stands alone
+ *   B  folding — one group per (domain, population, reason); the count is the lines folded; no
+ *      sentence is carried (the first line's names one table); a line with no reason stands alone;
+ *      the biggest group first
  *
  * Every assertion is woken by a mutant below.
  */
@@ -28,7 +29,8 @@ const REPORT = {
       rejected: [entry('r1', 'not_declared', 'rejected for the same word')],
       someday: [entry('s1', 'not_declared', 'a population the client has no colour for')] },
     { domain: 'ledger', title: 'Ledger',
-      rejected: [entry('r2', 'mapping_unavailable', 'bad mapping'), entry('r3', 'mapping_unavailable', 'bad mapping again')] },
+      rejected: [entry('r2', 'mapping_unavailable', 'bad mapping'), entry('r3', 'mapping_unavailable', 'bad mapping again'),
+                 entry('r4', 'mapping_unavailable', 'and a third'), entry('r5', 'not_declared', 'the chain word, in another domain')] },
   ],
 };
 
@@ -41,25 +43,28 @@ async function suite(mod) {
     if (g !== w) failures.push(`${name}: got ${g}, want ${w}`);
   };
   const groups = mod.problemGroups(mod.buildConfigResolveView(REPORT));
-  const label = (g) => `${g.population.text}|${g.reason ? g.reason.text : '-'}|${g.count.text}`;
+  const label = (g) => `${g.domain.text}|${g.population.text}|${g.reason ? g.reason.text : '-'}|${g.count.text}`;
 
   eq('A1 an effective line is never a problem', groups.some((g) => g.population.text === 'effective'), false);
   eq('A2 a population with no colour is not counted as a problem', groups.some((g) => g.population.text === 'someday'), false);
   eq('A3 every problem line is in exactly one group',
-    groups.reduce((s, g) => s + g.lines.length, 0), 4 + 1 + 2);
-  eq('B1 the same reason in the same population is one group, counted',
+    groups.reduce((s, g) => s + g.lines.length, 0), 4 + 1 + 4);
+  eq('B1 the same reason in the same population and domain is one group, counted',
     groups.filter((g) => g.population.text === 'ineffective' && g.reason && g.reason.text === 'not_declared').map(label),
-    ['ineffective|not_declared|2']);
+    ['Chain|ineffective|not_declared|2']);
   eq('B2 the same reason in another population is its own group',
-    groups.filter((g) => g.reason && g.reason.text === 'not_declared').map(label),
-    ['ineffective|not_declared|2', 'rejected|not_declared|1']);
-  eq('B3 folding crosses domains', groups.filter((g) => g.reason && g.reason.text === 'mapping_unavailable').map(label),
-    ['rejected|mapping_unavailable|2']);
+    groups.filter((g) => g.domain.text === 'Chain' && g.reason && g.reason.text === 'not_declared').map(label),
+    ['Chain|ineffective|not_declared|2', 'Chain|rejected|not_declared|1']);
+  eq('B3 the same reason in another DOMAIN is its own group (b93cdf327)',
+    groups.filter((g) => g.population.text === 'rejected' && g.reason && g.reason.text === 'not_declared').map(label),
+    ['Chain|rejected|not_declared|1', 'Ledger|rejected|not_declared|1']);
   eq('B4 a line with no reason stands alone — two such lines are two groups',
-    groups.filter((g) => !g.reason).map((g) => g.detail.text), ['says one thing', 'says another']);
-  eq('B5 the sentence is the first line\'s, verbatim, and says it is the server\'s',
-    [groups[0].detail.text, groups[0].detail.src], ['first sentence', 'server']);
-  eq('B6 the group keeps its lines, so opening it can show them', groups[0].lines.map((l) => l.entry.subject.text), ['t1', 't2']);
+    groups.filter((g) => !g.reason).map((g) => g.lines[0].entry.detail.text), ['says one thing', 'says another']);
+  eq('B5 a group carries no sentence of its own — the first line names one table', 'detail' in groups[0], false);
+  eq('B6 the group keeps its lines, so opening it can show them',
+    groups.find((g) => g.reason && g.reason.text === 'not_declared').lines.map((l) => l.entry.subject.text), ['t1', 't2']);
+  eq('B7 the biggest group first, and equal counts keep the report\'s order',
+    groups.map((g) => g.count.text), ['3', '2', '1', '1', '1', '1']);
   return { ran, failures };
 }
 
@@ -71,14 +76,18 @@ result.failures.forEach((f) => console.log(`  FAIL  ${f}`));
 const MUTANTS = [
   { id: 'X1', what: 'every population is a problem', catches: ['A1', 'A2', 'A3'],
     mutate: (s) => s.replace("if (tone !== 'warn' && tone !== 'danger') continue;", '') },
-  { id: 'X2', what: 'the key forgets the population, so two populations fold together', catches: ['B2'],
-    mutate: (s) => s.replace('`${population.name}\\u0000${reason}`', 'reason') },
-  { id: 'X3', what: 'lines with no reason fold into one', catches: ['B4'],
+  { id: 'X2', what: 'the key forgets the domain, so two domains fold together', catches: ['B3'],
+    mutate: (s) => s.replace('`${domain.name}\\u0000${population.name}\\u0000${reason}`', '`${population.name}\\u0000${reason}`') },
+  { id: 'X3', what: 'the key forgets the population', catches: ['B2'],
+    mutate: (s) => s.replace('`${domain.name}\\u0000${population.name}\\u0000${reason}`', '`${domain.name}\\u0000${reason}`') },
+  { id: 'X4', what: 'lines with no reason fold into one', catches: ['B4'],
     mutate: (s) => s.replace('const key = reason === null ? null : ', 'const key = reason === null ? `${population.name}\\u0000-` : ') },
-  { id: 'X4', what: 'the sentence is taken from the last line', catches: ['B5'],
-    mutate: (s) => s.replace('group.lines.push({ domain: domain.name, entry });', 'group.lines.push({ domain: domain.name, entry }); group.detail = entry.detail;') },
-  { id: 'X5', what: 'the count is the number of groups, not of lines', catches: ['B1', 'B3'],
+  { id: 'X5', what: 'the first line\'s sentence rides on the group again', catches: ['B5'],
+    mutate: (s) => s.replace('reason: entry.reason, lines: [] };', 'reason: entry.reason, detail: entry.detail, lines: [] };') },
+  { id: 'X6', what: 'the count is the number of groups, not of lines', catches: ['B1', 'B7'],
     mutate: (s) => s.replace('count: count(group.lines.length)', 'count: count(1)') },
+  { id: 'X7', what: 'the groups stay in report order', catches: ['B7'],
+    mutate: (s) => s.replace('.sort((x, y) => y.lines.length - x.lines.length)', '') },
 ];
 console.log('');
 console.log('-- defect mutants (each must be CAUGHT by its named line) -----------');

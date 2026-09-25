@@ -31,7 +31,13 @@ import {
 import { queueQuery } from './enrichment_queue.js';
 // 「체인 요청이 몇 개 씹히는 것 같다」를 수로 바꾸는 계측기. 뷰 모델이 DOM 없는 자기 모듈에
 // 살아서 하니스가 import 로 채점한다 (`client2/tests/chain_queue_panel_harness.mjs`).
-import { ChainQueuePanel, failedSince } from './chain_queue_panel.js';
+import { ChainQueuePanel } from './chain_queue_panel.js';
+// 시안 A ② Status — 줄 판정은 `overview_status` 한 자리, 판은 그리기만 한다.
+import { OverviewBoard } from './overview_board.js';
+import {
+  workersRow, fileRow, chainRow, autoRow, enrichmentRow, ledgerRow, declarationsRow, retroactiveRow,
+  recorrectionRow, effortRow,
+} from './overview_status.js';
 // 🔴 C-74. 아홉 고리의 «값» 표. 판정은 `/health` 가 하고 이 표는 값만 냅니다.
 import { RuntimePanel } from './runtime_panel.js';
 // 🔴 C-75. 네 선언(chain·enrichment·vjoin·ledger)이 «한 그림». 값만 그립니다.
@@ -54,7 +60,7 @@ import { ROUTES, startSession, installGlobalListeners, installNavLinkCounting } 
 // page renders `detail` VERBATIM. Nothing here decides what counts as ineffective.
 import {
   buildConfigResolveView, buildDryRunView, CHROME, fetchFailureLine,
-  failureFactOf, retroFailureLine,
+  failureFactOf, problemGroups, retroFailureLine,
 } from './config_resolve_view.js';
 // The other half of the same question: `/admin/config/resolve` says whether a virtual-join
 // declaration is VALID, and this says whether it is APPROVED -- plus the DDL that would
@@ -232,7 +238,7 @@ let fetchSeq = 0;                   // 탭 전환/연타 fetch 레이스 가드 
 let fileSortKey = null;             // B3: 파일 로그 현재 페이지 내 클라이언트 정렬
 let fileSortDir = 'asc';
 let tabDefs = [];                   // switchTab()이 참조하는 탭 정의 (setupEventListeners에서 채움)
-const AUTO_REFRESH_MS = 30000;      // 절제된 자동 갱신 주기 (Overview/File/Chain 탭 + 헬스 스트립)
+const AUTO_REFRESH_MS = 30000;      // 절제된 자동 갱신 주기 (Overview/File/Chain 탭)
 
 // 구 탭 딥링크·북마크 호환: 구 메커니즘 탭 이름 → 신 파이프라인 탭
 const TAB_ALIASES = {
@@ -243,6 +249,7 @@ const TAB_ALIASES = {
   autoupdate: 'autoupdate',
   enrichment: 'enrichment',
   ontology: 'ontology',
+  retroactive: 'retroactive',
   outbox: 'chain',      // 구 Outbox Failures 탭 (outbox fail = chain fail)
   workspace: 'file',    // 구 Workspaces 탭
   mapper: 'chain'       // 구 Mappers 탭
@@ -257,6 +264,7 @@ const tabChainBtn = byId('tab-chain-btn');
 const tabAutoUpdateBtn = byId('tab-autoupdate-btn');
 const tabEnrichmentBtn = byId('tab-enrichment-btn');
 const tabOntologyBtn = byId('tab-ontology-btn');
+const tabRetroactiveBtn = byId('tab-retroactive-btn');
 
 const overviewWrapper = byId('overview-wrapper');
 const tablesTabWrapper = byId('tables-tab-wrapper');
@@ -265,10 +273,9 @@ const chainTabWrapper = byId('chain-tab-wrapper');
 const autoUpdateTabWrapper = byId('autoupdate-tab-wrapper');
 const enrichmentTabWrapper = byId('enrichment-tab-wrapper');
 const ontologyTabWrapper = byId('ontology-tab-wrapper');
+const retroactiveTabWrapper = byId('retroactive-tab-wrapper');
 const ontologyExplorerRoot = byId('ontology-explorer-root');
 
-const overviewGrid = byId('overview-grid');
-const healthStripEl = byId('health-strip');
 const statusFilterSelect = byId('status-filter');
 
 const outboxListBody = byId('outbox-list-body');
@@ -342,7 +349,6 @@ document.addEventListener('DOMContentLoaded', () => {
   installNavLinkCounting(ROUTES.ADMIN);
   setupEventListeners();
   initMonacoEditor();
-  initConfigResolveLine();
   initRetroactiveLine();
   refreshRunning();
   scheduleRunsPoll();
@@ -465,7 +471,8 @@ const TAB_ERROR_MSG = {
   file: '❌ File Ingestion status failed to load',
   chain: '❌ Chain pipeline status failed to load',
   autoupdate: '❌ Auto Update status failed to load',
-  enrichment: '❌ Enrichment rules failed to load'
+  enrichment: '❌ Enrichment rules failed to load',
+  retroactive: '❌ Retroactive operations failed to load'
 };
 
 // mapper_module ("mappers.foo" / "pkg.mod") → 편집 가능한 파일 경로
@@ -523,7 +530,8 @@ function isEditorViewOpen() {
 
 // 좌패널 전폭으로 도는 탭 — 우패널의 진단·에디터를 쓰지 않고 자기 본문이 넓어야 하는 것들.
 // (원장 선언 지도가 여기 있었다. 2026-08-25 탭과 함께 빠졌다.)
-const FULL_BLEED_TABS = ['overview', 'ontology'];
+// 소급 폼은 Overview(전폭)에서 옮겨 왔다 — 폭은 그대로 간다 (시안 A).
+const FULL_BLEED_TABS = ['overview', 'ontology', 'retroactive'];
 
 function updatePanelLayout() {
   // 전폭 탭은 우패널·리사이저를 숨긴다. 단, 에디터 뷰가 열리면 우패널을 되살린다.
@@ -547,10 +555,6 @@ function updatePanelLayout() {
     splitResizerEl.style.display = 'block';
     rightPanelEl.style.display = 'flex';
   }
-  // 🔴 소유자: 「띄 다 빼」 (2026-09-05). 카드 넷이 하던 일 둘 중
-  //    «이동»은 탭 바가 이미 하고, «수»는 각 탭의 절이 다시 말합니다(보고 참조).
-  //    마크업과 `refreshHealthStrip` 은 남깁니다 — 되돌리는 것이 한 줄이어야 하기 때문입니다.
-  healthStripEl.style.display = 'none';
 }
 
 // ── 탭 전환 본체 — 탭 버튼·헬스 카드·해시 라우터가 공용 ────
@@ -622,6 +626,7 @@ function setupEventListeners() {
     { btn: tabChainBtn, tab: 'chain', wrapper: chainTabWrapper },
     { btn: tabAutoUpdateBtn, tab: 'autoupdate', wrapper: autoUpdateTabWrapper },
     { btn: tabEnrichmentBtn, tab: 'enrichment', wrapper: enrichmentTabWrapper },
+    { btn: tabRetroactiveBtn, tab: 'retroactive', wrapper: retroactiveTabWrapper },
     { btn: tabOntologyBtn, tab: 'ontology', wrapper: ontologyTabWrapper }
   ];
 
@@ -632,34 +637,16 @@ function setupEventListeners() {
     });
   });
 
-  // Pipeline Health 카드 딥링크: 해당 파이프라인 탭으로 이동
-  const healthCardFile = byId('health-card-file');
-  const healthCardChain = byId('health-card-chain');
-  const healthCardAuto = byId('health-card-auto');
-  const healthCardEnrichment = byId('health-card-enrichment');
-  if (healthCardFile) {
-    healthCardFile.addEventListener('click', () => {
-      filePage = 1;
-      switchTab('file', { statusFilter: 'FAILED' });
-    });
-  }
-  if (healthCardChain) {
-    healthCardChain.addEventListener('click', () => {
-      outboxPage = 1;
-      switchTab('chain');
-    });
-  }
-  // 시안 A 의 Queue 절 머리 — 절 틀은 화면(admin.html)의 것이라 버튼도 여기서 잇는다.
+  // 시안 A 의 절 머리 — 절 틀은 화면(admin.html)의 것이라 버튼도 여기서 잇는다.
   const overviewQueueOpen = byId('overview-queue-open');
   if (overviewQueueOpen) overviewQueueOpen.addEventListener('click', () => switchTab('chain'));
-  if (healthCardAuto) {
-    healthCardAuto.addEventListener('click', () => {
-      switchTab('autoupdate');
-    });
-  }
-  if (healthCardEnrichment) {
-    healthCardEnrichment.addEventListener('click', () => {
-      switchTab('enrichment');
+  // Declarations 펼침 맨 끝 「Show all N lines ›」 — 지금까지의 설정 반영 본문 전부.
+  const declarationShowAll = byId('declaration-show-all');
+  const declarationAll = byId('declaration-all');
+  if (declarationShowAll && declarationAll) {
+    declarationShowAll.addEventListener('click', () => {
+      declarationAll.hidden = !declarationAll.hidden;
+      declarationShowAll.setAttribute('aria-expanded', String(!declarationAll.hidden));
     });
   }
 
@@ -933,6 +920,8 @@ async function fetchData(options = {}) {
       // 규칙 편집기는 «따로» 받습니다 — 이 라우트가 없는 옛 서버에서 Chain 탭 전체가
       // 안 뜨는 것을 막는, 대기열과 같은 이유입니다.
       void refreshChainRule();
+      // 체인 그래프도 «따로» — Overview 에서 이 탭으로 옮겨 왔다 (시안 A).
+      void refreshChainGraph();
       // ⚠️ 대기열은 «따로» 받는다. 같이 묶어 던지면, 이 라우트가 없는 옛 서버 프로세스에서
       //    Chain 탭 «전체»가 안 뜬다 — 계측기 하나가 자기가 진단하려던 화면을 끄는 것이다.
       const [obRes, rulesRes, mapRes, queueRes] = await Promise.all([
@@ -1016,6 +1005,10 @@ async function fetchData(options = {}) {
       }
       if (isStale()) return false;
       if (status) renderEnrichmentTable(status);
+    } else if (tab === 'retroactive') {
+      // 소급 «폼»은 자기 탭이다 (시안 A). Overview 폴이 부르는 것과 «같은» 함수다.
+      await refreshRetroactiveOperations(true);
+      if (isStale()) return false;
     } else if (tab === 'tables') {
       // 🔴 `switchTab` 이 이 탭에 «이미» 이 함수를 부릅니다 (:588). 여기 없었을 뿐입니다 —
       //    그래서 「이 탭의 데이터를 읽는다」에 경로가 «둘» 있었고 둘이 «서로 다른 탭 목록»을
@@ -2025,108 +2018,8 @@ function renderEnrichmentTable(status) {
 const RECORRECTION_MIN_INTERVAL_MS = 5 * 60 * 1000;
 let recorrectionLastAt = 0;
 
-function renderRecorrection(stat) {
-  const line = byId('recorrection-line');
-  const valueEl = byId('recorrection-value');
-  const subEl = byId('recorrection-sub');
-  if (!line || !valueEl || !subEl) return;
-
-  // 🔴 갈래가 «셋»입니다. 전에는 둘이었고, 그래서 「stat 자체가 안 온」 경우가
-  //    「최근 7일간 고친 셀 없음」으로 찍혔습니다 — 응답이 그 계기를 «보고하지 않은» 것을
-  //    「없다」로 말하고, 게다가 그 `7` 은 «리터럴 기본값»이라 안 읽은 창의 «길이»까지
-  //    지어냈습니다. 옆 줄(renderEffort)이 이 갈래를 이미 넷으로 적어 두고 있었습니다.
-  if (!stat) {
-    valueEl.textContent = '—';
-    line.dataset.tone = 'muted';
-    // 상설(2026-09-05): 상태는 «명사», 수와 사유는 «옆에», 접속사 대신 `·`.
-    subEl.textContent = 'No report · /dashboard/summary';
-    return;
-  }
-  if (stat.rate_pct == null) {
-    valueEl.textContent = '—';
-    line.dataset.tone = 'muted';
-    // ⚠️ 창의 «길이»도 모르면 말하지 않습니다 — 오늘의 NULL 규칙과 같은 자리입니다.
-    // ⚠️ 창의 «길이»는 «단위»라 남깁니다 — 없으면 다른 수로 읽힙니다. 모르면 «안 붙입니다».
-    const win = stat.window_days == null ? '' : ` · last ${stat.window_days} days`;
-    if (stat.unavailable_reason) {
-      subEl.textContent = `Aggregation failed · ${stat.unavailable_reason}`;
-    } else if (stat.measured_cells == null) {
-      // 🔴 넷째 갈래 — 「센 값이 «안 왔다»」와 「세었더니 «0» 이다」는 다른 사실입니다.
-      subEl.textContent = `Not aggregated${win}`;
-    } else {
-      subEl.textContent = `No corrected cells${win}`;
-    }
-    return;
-  }
-
-  const { rate_pct: rate, measured_cells: cells, recorrected_cells: recorr, window_days: days } = stat;
-  // 🔴 THE GUARD ABOVE CHECKS `rate_pct` AND NOTHING ELSE. A response carrying the rate
-  //    without `measured_cells` reached `cells.toLocaleString()` and THREW — the loud half of
-  //    this class. The rate itself is guarded by that early return, so it stays as it was.
-  valueEl.textContent = `${rate.toFixed(1)}%`;
-  // 분모는 항상 함께 — 표본이 작으면 읽는 사람이 스스로 알아채야 한다.
-  subEl.textContent =
-    `Last ${days} days · ${localeCountText(recorr)} of ${localeCountText(cells)} human-corrected cells corrected twice or more`
-    + (cells < 100 ? ' · small sample, not a trend' : '');
-  line.dataset.tone = cells < 100 ? 'muted' : (rate >= 10 ? 'danger' : (rate >= 5 ? 'warn' : ''));
-}
-
-// ── 교정 공수 한 줄 (재교정률 바로 아래) ────────────────────
-// 한 교정을 끝내기까지의 상호작용 점수(키 1 · 클릭 3 · 화면이동 5). 낮을수록 좋다.
-//
-// 커버리지(measured_ratio)를 값과 **분리하지 않는** 이유: 이 수치는 클라이언트가 보내 줄
-// 때만 쌓인다. 서버는 기록 예외를 삼키므로, 수집이 통째로 죽어도 어디에도 빨간 불이 켜지지
-// 않는다 — 화면에 커버리지가 없으면 "표본이 없다"와 "계기가 죽었다"가 똑같이 대시(—)로
-// 보인다. 그 구별이 전부인 이유는 기준선을 잴 창이 **한 번뿐**이기 때문이다.
-function renderEffort(stat) {
-  const line = byId('effort-line');
-  const valueEl = byId('effort-value');
-  const subEl = byId('effort-sub');
-  if (!line || !valueEl || !subEl) return;
-
-  const days = stat && stat.window_days != null ? stat.window_days : 7;
-  const ratio = stat ? stat.measured_ratio : null;
-  const covText = ratio == null ? 'coverage unknown' : `coverage ${(ratio * 100).toFixed(0)}%`;
-
-  if (!stat || stat.avg_score == null) {
-    valueEl.textContent = '—';
-    // 사유가 있으면 사유를 그대로 적는다. 원인 없는 대시는 정상(표본 없음)과 장애(수집
-    // 중단)를 섞어버리고, 이 계기에서 그 둘은 정반대 대응을 요구한다.
-    if (!stat) {
-      // 응답에 effort 필드 자체가 없다 = 구 서버이거나 계약이 어긋난 것. "교정이 없었다"고
-      // 적으면 서버가 말하지 않은 것을 대신 지어내는 것이 된다.
-      line.dataset.tone = 'muted';
-      subEl.textContent = 'No report · /dashboard/summary';
-    } else if (stat.unavailable_reason) {
-      line.dataset.tone = 'danger';
-      subEl.textContent = `Aggregation failed · ${stat.unavailable_reason}`;
-    } else if (ratio === 0) {
-      // 사람이 고친 교정은 있는데 계측된 것이 0건 = 수집 중단. 이 한 줄이 그 감지기다.
-      // 🔴 판정을 «낱말로» 내지 않는다. 두 수를 나란히 두면 운영자가 읽습니다 —
-      //    「끊겼다」는 이 파일이 지어낼 것이 아니고, 큐 화면에서 같은 이유로 안 썼습니다.
-      line.dataset.tone = 'danger';
-      subEl.textContent = `⚠ 0 measured · human corrections exist · last ${days} days`;
-    } else {
-      line.dataset.tone = 'muted';
-      subEl.textContent = `No corrections · last ${days} days`;
-    }
-    return;
-  }
-
-  const { avg_score: score, tx_count: txs, session_count: sessions } = stat;
-  valueEl.textContent = `${score.toFixed(1)} pts`;
-  const lowCoverage = ratio != null && ratio < 0.5;
-  subEl.textContent =
-    // 🔴 `|| 0` HERE TOO — 「안 왔다」가 「0개」가 되던 자리입니다. 두 줄 위의 던지는 자리와
-    //    «같은 함수 안»에 있었고, 그것이 이것을 «부류»로 만듭니다.
-    `Last ${days} days · mean of ${localeCountText(sessions)} sessions · ${localeCountText(txs)} corrections measured (${covText})`
-    + (ratio == null ? ' · coverage unknown, not representative'
-       : lowCoverage ? ' · low coverage, not representative' : '');
-  line.dataset.tone = (ratio == null || lowCoverage) ? 'warn' : '';
-}
-
 // 두 줄(재교정률 · 교정 공수)은 같은 /dashboard/summary 응답에서 나온다 — 요청은 한 번이고,
-// 위의 스로틀이 두 줄을 함께 덮는다.
+// 위의 스로틀이 두 줄을 함께 덮는다. 줄의 판정은 `overview_status` 의 recorrectionRow · effortRow.
 async function refreshCoreValueLines(force = false) {
   const now = Date.now();
   if (!force && now - recorrectionLastAt < RECORRECTION_MIN_INTERVAL_MS) return;
@@ -2135,14 +2028,14 @@ async function refreshCoreValueLines(force = false) {
     const res = await adminFetch(`${API_BASE}/dashboard/summary`);
     if (!res.ok) throw new Error(`dashboard summary ${res.status}`);
     const data = await res.json();
-    renderRecorrection(data.recorrection || null);
+    overviewBoard().update(recorrectionRow(data.recorrection || null));
     // `effort` 자체가 없으면(구 서버) 사유를 지어내지 않는다 — 서버가 안 준 것과 서버가
     // "집계 실패"라고 말한 것은 다른 상태다.
-    renderEffort(data.effort || null);
+    overviewBoard().update(effortRow(data.effort || null));
   } catch (e) {
     // 보조 지표다 — 실패해도 Overview 본문 흐름을 방해하지 않는다.
-    renderRecorrection({ rate_pct: null, window_days: 7, unavailable_reason: 'read failed' });
-    renderEffort({ avg_score: null, window_days: 7, unavailable_reason: 'read failed' });
+    overviewBoard().update(recorrectionRow({ rate_pct: null, window_days: 7, unavailable_reason: 'read failed' }));
+    overviewBoard().update(effortRow({ avg_score: null, window_days: 7, unavailable_reason: 'read failed' }));
   }
 }
 
@@ -2170,9 +2063,6 @@ let configResolveLastAt = 0;
 let configResolveTokenGeneration = 0;
 let configResolveView = null;
 let configResolveRaw = '';
-// 문제가 있을 때 클릭 없이 보이게 하되 **한 번만** — 운영자가 접은 것을 자동 갱신이
-// 30초마다 다시 펴면 그 펼침은 곧 무시당한다.
-let configResolveAutoOpened = false;
 // 드라이런 결과는 규칙 이름으로 들고 있는다: 자동 갱신이 블록을 다시 그려도 방금 얻은
 // 측정값이 사라지지 않아야 한다. (설정이 바뀌면 낡은 측정이므로 통째로 버린다.)
 const dryRunByRule = new Map();
@@ -2190,11 +2080,6 @@ function cfgChip(text, tone) {
   const el = cfgEl('span', 'cfg-chip', text);
   if (tone) el.dataset.tone = tone;
   return el;
-}
-
-function initConfigResolveLine() {
-  const hint = byId('config-resolve-hint');
-  if (hint) hint.textContent = CHROME.DETAIL_HINT;
 }
 
 // 🔴 C-122. `failureFactOf` 는 `config_resolve_view.js` 로 갔습니다 — 그리드 페이지가
@@ -2457,46 +2342,56 @@ async function refreshConfigResolve(force = false) {
 
 // Stays quiet and muted on failure: no auto-open, no toast, no modal. Only the words change.
 function renderConfigResolveFailure(text) {
-  const line = byId('config-resolve-summary');
-  const valueEl = byId('config-resolve-value');
-  const subEl = byId('config-resolve-sub');
-  const body = byId('config-resolve-body');
-  if (!line || !valueEl || !subEl) return;
-  valueEl.textContent = '―';
-  subEl.textContent = text;
-  line.dataset.tone = 'muted';
-  if (body) body.textContent = '';
+  overviewBoard().update(declarationsRow(null, text));
+  for (const id of ['config-resolve-body', 'declaration-groups']) {
+    const el = byId(id);
+    if (el) el.textContent = '';
+  }
 }
 
 function renderConfigResolve() {
   const view = configResolveView;
-  const line = byId('config-resolve-summary');
-  const valueEl = byId('config-resolve-value');
-  const subEl = byId('config-resolve-sub');
   const body = byId('config-resolve-body');
-  if (!view || !line || !valueEl || !subEl || !body) return;
-
-  // 헤드라인: 모집단 카운트를 **서버 어휘 그대로** 적는다. 비어 있는 모집단은 muted —
-  // 0건인 rejected가 붉게 보이면 그 색은 곧 의미를 잃는다.
-  valueEl.textContent = '';
-  view.totals.forEach((total) => {
-    valueEl.appendChild(cfgChip(`${cfgText(total.label)} ${total.count.text}`,
-      total.count.value > 0 ? total.tone : 'muted'));
-  });
-  subEl.textContent = view.titles.map(cfgText).join(' · ');
-  line.dataset.tone = view.tone;
-
+  if (!view || !body) return;
+  overviewBoard().update(declarationsRow(view));
+  renderDeclarationGroups(view);
   body.textContent = '';
-  // C-87. 두 자리가 «같은 함수»로 그립니다 — 탭과 원장 편집기의 저장 응답. 각자 돌면
-  // 걸음 구분선이 한쪽에만 생깁니다(그 둘이 갈라질 수 있는 것이 criterion ④).
   renderResolveInto(body, view);
-  if (view.empty) return;
+}
 
-  const block = byId('config-resolve');
-  if (block && !configResolveAutoOpened && view.tone) {
-    block.open = true;
-    configResolveAutoOpened = true;
+/**
+ * Declarations 펼침 (시안 A · 총괄 b93cdf327) — (영역, 사유) 한 줄씩, 수 큰 순. 줄을 누르면 그 줄들이
+ * 나오고, 맨 끝 「Show all N lines ›」 은 지금까지의 본문 전부다. 묶기는 `problemGroups` 한 자리다.
+ */
+function renderDeclarationGroups(view) {
+  const host = byId('declaration-groups');
+  if (!host) return;
+  host.textContent = '';
+  for (const group of problemGroups(view)) {
+    const head = cfgEl('button', 'declaration-group', [cfgText(group.domain),
+      `${group.count.text} ${cfgText(group.population)}`, group.reason ? cfgText(group.reason) : '']
+      .filter(Boolean).join(' · '));
+    head.type = 'button';
+    head.dataset.tone = group.tone;
+    head.setAttribute('aria-expanded', 'false');
+    const lines = cfgEl('div', 'declaration-group-lines');
+    lines.hidden = true;
+    for (const { entry } of group.lines) {
+      lines.appendChild(cfgEl('div', 'cfg-detail',
+        [cfgText(entry.subject), cfgText(entry.detail)].filter(Boolean).join(' — ')));
+    }
+    head.addEventListener('click', () => {
+      lines.hidden = !lines.hidden;
+      head.setAttribute('aria-expanded', String(!lines.hidden));
+    });
+    host.appendChild(head);
+    host.appendChild(lines);
   }
+  // 「N」 은 본문이 그리는 줄 수 그대로다 — 소스 · 설정 · 항목.
+  const all = view.domains.reduce((sum, d) => sum + d.sources.length + d.settings.length
+    + d.populations.reduce((n, pop) => n + pop.entries.length, 0), 0);
+  const toggle = byId('declaration-show-all');
+  if (toggle) toggle.textContent = `Show all ${unitText(all, 'line')} ›`;
 }
 
 /** 「먹었는가」 보고서를 임의의 컨테이너에 그린다 — 원장 선언 편집기가 저장 응답의 `resolve`를
@@ -2762,6 +2657,12 @@ function renderChainGraph(payload) {
   chainGraphPanel.render(payload);
 }
 
+/** 체인 그래프는 Chain 탭의 절이다 (시안 A) — 그 탭이 열릴 때 규칙 편집기처럼 «따로» 받는다. */
+async function refreshChainGraph() {
+  const res = await adminFetch(`${API_BASE}/chain/graph`).catch(() => null);
+  renderChainGraph(res && res.ok ? (await res.json().catch(() => null)) : null);
+}
+
 function renderRuntime(payload) {
   const mount = byId('runtime-mount');
   if (!mount) return;
@@ -2769,6 +2670,7 @@ function renderRuntime(payload) {
   // 🔴 «못 읽었으면 null 을 넘깁니다». 빈 객체를 넘기면 패널이 「고리 0개」를 그리고,
   //    그건 「아무것도 안 돈다」는 거짓입니다 — 이 표가 없애려는 바로 그 침묵입니다.
   runtimePanel.render(payload);
+  overviewBoard().update(workersRow(payload));
 }
 
 async function refreshRunning() {
@@ -2778,19 +2680,15 @@ async function refreshRunning() {
     // 🔴 C-74. 런타임 표는 «이 폴에 얹혀» 갑니다 — 새 타이머가 없습니다. 이 폴은 이미
     //    개요 탭에서만 돌고 숨은 탭에서 쉬므로, 타이머를 하나 더 두면 그 두 규칙을
     //    «두 번째로» 적게 되고 둘이 갈라지는 날 아무 오류도 안 납니다.
-    const [runsRes, ingestRes, runtimeRes, graphRes] = await Promise.all([
+    const [runsRes, ingestRes, runtimeRes] = await Promise.all([
       adminFetch(`${API_BASE}/admin/retroactive/runs?limit=50`).catch(() => null),
       adminFetch(`${API_BASE}/admin/file-ingestion/active`).catch(() => null),
       adminFetch(`${API_BASE}/runtime`).catch(() => null),
-      // 🔴 C-75 ②. 런타임 패널과 «같은 바퀴»에 얹습니다 — 새 타이머 0.
-      adminFetch(`${API_BASE}/chain/graph`).catch(() => null),
     ]);
     const runs = runsRes && runsRes.ok ? (await runsRes.json().catch(() => null)) : null;
     const ingest = ingestRes && ingestRes.ok ? (await ingestRes.json().catch(() => null)) : null;
     renderRuntime(runtimeRes && runtimeRes.ok
       ? (await runtimeRes.json().catch(() => null)) : null);
-    renderChainGraph(graphRes && graphRes.ok
-      ? (await graphRes.json().catch(() => null)) : null);
     // 🔴 «못 읽은 것»과 «없는 것»을 가릅니다. 실패를 빈 배열로 접으면 화면이
     //    「도는 작업 없음」이라고 «거짓»을 말합니다.
     const failed = [];
@@ -2850,34 +2748,13 @@ async function requestRunCancel(runId) {
 }
 
 function renderRunning() {
-  const valueEl = byId('running-value');
-  const subEl = byId('running-sub');
   const body = byId('running-body');
-  if (!valueEl || !subEl || !body) return;
+  if (!body) return;
   const view = runsView;
   body.textContent = '';
-  if (!view) {
-    valueEl.textContent = '—';
-    subEl.textContent = '…';
-    return;
-  }
-  valueEl.textContent = String(view.liveCount);
-  // 접힌 줄이 「열지 말지」를 정합니다: 몇 개가 도는지와 가장 오래된 것.
-  // 🔴 「가장 오래」는 «최댓값»입니다. 마지막 줄을 집으면 목록 순서가 바뀌는 날 조용히
-  //    다른 수를 말합니다 — 접힌 줄만 보고 끊을지 정하는 화면이라 그 한 수가 판단입니다.
-  // 🔴 끝난 줄은 «시간»에서도 빼야 합니다 -- 08:52 에 끝난 것을 09:13 에 「oldest 21m」로
-  //    적으면 그 수가 「21분째 서버를 물고 있다」로 읽힙니다.
-  const oldestMinutes = view.rows.filter((r) => !r.finished).reduce((max, r) => {
-    const m = r.progress && typeof r.progress.elapsedMinutes === 'number'
-      ? r.progress.elapsedMinutes : null;
-    return m === null ? max : (max === null ? m : Math.max(max, m));
-  }, null);
-  const oldest = oldestMinutes === null ? null : `${oldestMinutes}m`;
-  subEl.textContent = view.liveCount === 0 ? 'idle' : (oldest ? `oldest ${oldest}` : '');
-  if (view.failedSources && view.failedSources.length) {
-    // 🔴 못 읽은 출처를 «이름 대어» 말합니다. 안 말하면 그만큼이 「없는 것」이 됩니다.
-    subEl.textContent += ` · ${view.failedSources.join(', ')} unreachable`;
-  }
+  // 줄의 사실(「N running」 · 가장 오래 · 못 읽은 출처)은 `retroactiveRow` 한 자리가 짓는다.
+  overviewBoard().update(retroactiveRow(view === null ? undefined : view));
+  if (!view) return;
   if (view.empty) return;
 
   const list = document.createElement('div');
@@ -2984,8 +2861,6 @@ function renderRunning() {
 }
 
 function initRetroactiveLine() {
-  const hint = byId('retroactive-hint');
-  if (hint) hint.textContent = RETRO_CHROME.HINT;
   adoptRescopeHandoff();
 }
 
@@ -3017,8 +2892,8 @@ function adoptRescopeHandoff() {
   // 넘어온 것은 «파라미터»이지 측정이 아닙니다. 들고 있던 수가 있으면 그건 다른 범위의
   // 것이므로 버립니다 -- 안 버리면 새 범위 옆에 옛 수가 붙어 있게 됩니다.
   state.count = null;
-  const block = byId('retroactive');
-  if (block) block.open = true;
+  // 폼은 Retroactive 탭에 있다 (시안 A) — 넘김을 받았으면 첫 라우팅이 그 탭을 열게 한다.
+  history.replaceState(null, '', '#retroactive');
   refreshRetroactiveOperations(true);
 }
 
@@ -3622,20 +3497,21 @@ async function fetchOverview(isStale) {
 
   // 🔴 C-80: 대기열이 여기 «하나 더» 있다. 전에는 `tab === 'chain'` 아래서만 받았으므로,
   //    Overview 에 자리만 놓으면 Chain 탭을 «들른 적 없는» 사람에게 빈 상자가 된다.
-  const [failedRes, wsRes, outboxRes, rulesRes, mappersRes, autoRes, activeRes, queueRes] = await Promise.all([
+  const [failedRes, outboxRes, rulesRes, mappersRes, autoRes, activeRes, queueRes, ledgerRes] = await Promise.all([
     adminFetch(`${API_BASE}/admin/file-ingestion/failed?page=1&limit=100`),
-    adminFetch(`${API_BASE}/admin/file-ingestion/workspaces`),
     adminFetch(`${API_BASE}/admin/outbox/failed?page=1&limit=3`),
     adminFetch(`${API_BASE}/admin/chain/rules`),
     adminFetch(`${API_BASE}/admin/mappers/list`),
     adminFetch(`${API_BASE}/admin/auto-update/status`),
     adminFetch(`${API_BASE}/admin/file-ingestion/active`), // [Heavy Lane P1] 진행 중 인제션
-    adminFetch(`${API_BASE}/admin/chain/queue`)
+    adminFetch(`${API_BASE}/admin/chain/queue`),
+    // Ledger 줄 — 원장을 안 읽고 소스당 한 행(커서 표)이라 30 초 폴에 얹어도 가볍다.
+    adminFetch(`${API_BASE}/admin/ledger/sources`)
   ].map(p => p.catch(() => null)));
 
   const jsonOf = async (r) => (r && r.ok) ? r.json().catch(() => null) : null;
-  const [failed, ws, outbox, rules, mappers, auto, active] = await Promise.all(
-    [failedRes, wsRes, outboxRes, rulesRes, mappersRes, autoRes, activeRes].map(jsonOf)
+  const [failed, outbox, rules, mappers, auto, active, ledger] = await Promise.all(
+    [failedRes, outboxRes, rulesRes, mappersRes, autoRes, activeRes, ledgerRes].map(jsonOf)
   );
 
   // 🔴 THE FILTER LEARNS ITS OPTIONS HERE, AT LOAD, BEFORE THE FILE TAB ASKS ANYTHING.
@@ -3648,7 +3524,7 @@ async function fetchOverview(isStale) {
   let enrich = null;
   try {
     enrich = await fetchEnrichmentStatus();
-  } catch (e) { /* 카드에서 조회 실패 표기 */ }
+  } catch (e) { /* null — 줄이 「Unknown」 으로 선다 */ }
 
   if (isStale()) return;
 
@@ -3660,258 +3536,48 @@ async function fetchOverview(isStale) {
     renderChainQueue(queue.body, { ...queue.opts, failed: outbox });
   }
 
-  // 전 소스 실패면 탭 에러 경로로 (개별 실패는 카드 단위 표기)
+  // 전 소스 실패면 탭 에러 경로로 (개별 실패는 줄 단위 표기)
   if (!failed && !outbox && !auto && !enrich) {
     throw new Error('overview fetch failed');
   }
 
-  renderOverview({ failed, ws, outbox, rules, mappers, auto, enrich, active });
+  renderOverview({ failed, outbox, rules, mappers, auto, enrich, active, ledger });
 }
 
-function ovEventItem({ time, text, badge, badgeTone }) {
-  const li = document.createElement('li');
-  li.className = 'ov-event';
-  if (time != null) {
-    const t = document.createElement('span');
-    t.className = 'ov-event-time';
-    t.textContent = time;
-    li.appendChild(t);
+// 시안 A ② Status — 판은 한 번 만들고 재사용한다. 줄 판정은 `overview_status` 한 자리이고,
+// 펼침에 앉는 것은 이 화면이 가진 부품들이다(판이 «한 번» 옮겨 앉힌다 — 부품은 자기 mount 그대로).
+let overviewBoardPart = null;
+function overviewBoard() {
+  if (overviewBoardPart) return overviewBoardPart;
+  const mount = byId('overview-status-mount');
+  if (!mount) return { update() {} };
+  overviewBoardPart = new OverviewBoard(mount, {
+    bodies: { workers: byId('ov-body-workers'), declarations: byId('ov-body-declarations'),
+              retroactive: byId('ov-body-retroactive') },
+    open: {
+      file: () => { filePage = 1; switchTab('file', { statusFilter: 'FAILED' }); },
+      chain: () => { outboxPage = 1; switchTab('chain'); },
+      auto: () => switchTab('autoupdate'),
+      enrichment: () => switchTab('enrichment'),
+      ledger: () => switchTab('ontology'),
+      retroactive: () => switchTab('retroactive'),
+    },
+  });
+  // 아직 안 온 줄은 «기다림»으로 선다 — 빈 칸이 아니다.
+  for (const pending of [workersRow(), fileRow(), chainRow(), autoRow(), enrichmentRow(), ledgerRow(),
+    declarationsRow(), retroactiveRow(), recorrectionRow(), effortRow()]) {
+    overviewBoardPart.update(pending);
   }
-  const tx = document.createElement('span');
-  tx.className = 'ov-event-text';
-  tx.textContent = text;
-  tx.title = text;
-  li.appendChild(tx);
-  if (badge != null) {
-    const b = document.createElement('span');
-    b.className = `ov-event-badge ${badgeTone || ''}`;
-    b.textContent = badge;
-    li.appendChild(b);
-  }
-  return li;
+  return overviewBoardPart;
 }
 
-function ovCard({ status, title, metrics, events, emptyText, onOpen, extraButtons }) {
-  const card = document.createElement('article');
-  card.className = 'ov-card';
-  card.dataset.status = status;
-
-  const head = document.createElement('div');
-  head.className = 'ov-card-head';
-  const dot = document.createElement('span');
-  dot.className = 'health-dot';
-  const titleEl = document.createElement('span');
-  titleEl.className = 'ov-title';
-  titleEl.textContent = title;
-  head.appendChild(dot);
-  head.appendChild(titleEl);
-
-  (extraButtons || []).forEach(({ label, onClick }) => {
-    const b = document.createElement('button');
-    b.className = 'admin-btn btn-primary admin-btn--sm';
-    b.textContent = label;
-    b.addEventListener('click', (e) => {
-      e.stopPropagation();
-      onClick();
-    });
-    head.appendChild(b);
-  });
-
-  const openBtn = document.createElement('button');
-  openBtn.className = 'admin-btn admin-btn--sm';
-  openBtn.textContent = 'Open tab →';
-  openBtn.addEventListener('click', (e) => {
-    e.stopPropagation();
-    onOpen();
-  });
-  head.appendChild(openBtn);
-  card.appendChild(head);
-
-  const metricsEl = document.createElement('div');
-  metricsEl.className = 'ov-metrics';
-  metrics.forEach(({ value, label, tone }) => {
-    const m = document.createElement('div');
-    m.className = 'ov-metric';
-    if (tone) m.dataset.tone = tone;
-    const v = document.createElement('div');
-    v.className = 'ov-metric-value';
-    v.textContent = value;
-    const l = document.createElement('div');
-    l.className = 'ov-metric-label';
-    l.textContent = label;
-    m.appendChild(v);
-    m.appendChild(l);
-    metricsEl.appendChild(m);
-  });
-  card.appendChild(metricsEl);
-
-  const list = document.createElement('ul');
-  list.className = 'ov-events';
-  if (events && events.length) {
-    events.forEach(ev => list.appendChild(ovEventItem(ev)));
-  } else {
-    const line = document.createElement('li');
-    line.className = 'ov-empty-line';
-    line.textContent = emptyText || 'No recent events';
-    list.appendChild(line);
-  }
-  card.appendChild(list);
-
-  card.addEventListener('click', onOpen);
-  return card;
-}
-
-function renderOverview({ failed, ws, outbox, rules, mappers, auto, enrich, active }) {
-  overviewGrid.innerHTML = '';
-
-  // ① File Ingestion 카드 (+ [Heavy Lane P1] 진행 중 인제션 = 재기동 경고)
-  {
-    const total = failed ? (failed.total || 0) : null;
-    const wsCount = ws ? (ws.data || []).length : null;
-    const activeItems = active ? (active.data || []) : [];
-    const activeCell = countWithAbsence(active
-      ? { value: activeItems.length, absence: NONE }
-      : { unread: UNKNOWN });
-    let status = total == null ? 'loading' : (total > 0 ? 'danger' : 'ok');
-    if (status === 'ok' && activeItems.length > 0) status = 'warn';
-    // 진행 중 항목을 이벤트 라인 상단에 노출 (실패 라인보다 앞) — 재기동 전 확인 유도
-    const activeEvents = activeItems.slice(0, 2).map(i => ({
-      time: null,
-      text: `${i.filename} → ${i.table_name} (${i.progress || 0}%${i.lane === 'heavy' ? ' · heavy' : ''}) — reprocessed from the start on restart`,
-      badge: i.status === 'QUEUED' ? WAITING : 'Running',
-      badgeTone: 'warn'
-    }));
-    const events = activeEvents.concat(
-      (failed ? (failed.data || []).slice(0, 3 - activeEvents.length) : []).map(l => ({
-        time: formatTimestamp(l.created_at),
-        text: `${l.filename} → ${l.table_name}`,
-        badge: 'FAIL',
-        badgeTone: 'danger'
-      }))
-    );
-    overviewGrid.appendChild(ovCard({
-      status,
-      title: 'File Ingestion',
-      metrics: [
-        { value: total == null ? '—' : total, label: 'Ingestion failures', tone: total > 0 ? 'danger' : (total === 0 ? 'ok' : null) },
-        // 🔴 못 읽은 것을 «0 으로» 그리던 자리입니다. `active` 가 null 이면
-        //    `activeItems` 가 [] 가 되고 그 길이가 0 이라, 「조회 실패」가 「진행 중 없음」과
-        //    «같은 픽셀»이었습니다. 부품이 그 둘을 가릅니다.
-        { value: activeCell.read ? String(activeItems.length) : activeCell.text,
-          label: activeCell.word ? `Running · ${activeCell.word}` : 'Running',
-          tone: activeItems.length > 0 ? 'warn' : null },
-        { value: wsCount == null ? '—' : wsCount, label: 'Workspaces' }
-      ],
-      events,
-      // 위와 «같은 부류»입니다 — 0 이 「안 돌았다」일 수도 있어 건강을 주장하지 않습니다.
-      emptyText: total == null ? 'Status read failed' : 'No recent failures',
-      onOpen: () => switchTab('file', total > 0 ? { statusFilter: 'FAILED' } : {})
-    }));
-  }
-
-  // ② Chain 카드 (outbox fail = chain fail)
-  {
-    // 🔴 「언제부터」. 서버가 «집합 전체»의 MIN 을 최상위 한 칸으로 냅니다
-    //    (`oldest_failed_at`, 구현자 8f0b4858) — 수만 있으면 「방금 하나」와 「나흘째 스물」이
-    //    «같아 보입니다». 못 읽음 · 0 · N(그 시각부터) 가르기는 대기열 Failed 칸과 «한 함수»입니다.
-    const failCell = failedSince(outbox);
-    const total = failCell.total;
-    const sinceWord = failCell.read && failCell.since ? `since ${failCell.since}` : failCell.word;
-    const ruleCount = rules ? (rules.data || []).length : null;
-    const mapperCount = mappers ? (mappers.data || []).length : null;
-    const status = total == null ? 'loading' : (total > 0 ? 'danger' : 'ok');
-    const events = (outbox ? (outbox.data || []).slice(0, 3) : []).map(tx => ({
-      time: formatTimestamp(tx.failed_at),
-      text: (tx.table_names || []).join(', ') || shortTxId(tx.transaction_id),
-      badge: `Retry ${tx.retry_count}`,
-      badgeTone: 'danger'
-    }));
-    overviewGrid.appendChild(ovCard({
-      status,
-      title: 'Chain',
-      metrics: [
-        { value: failCell.read ? String(total) : failCell.text,
-          label: sinceWord ? `Failed transactions · ${sinceWord}` : 'Failed transactions',
-          tone: total > 0 ? 'danger' : (total === 0 ? 'ok' : null) },
-        { value: ruleCount == null ? '—' : ruleCount, label: 'Rules' },
-        { value: mapperCount == null ? '—' : mapperCount, label: 'Mappers' }
-      ],
-      events,
-      // 🔴 「0 이니 정상」이라고 «주장하지» 않습니다. 규칙이 거절되거나 꺼져 있어
-      //    체인이 «아예 안 돌아도» 실패는 0 입니다 — 그 0 으로 건강을 말하면 거짓입니다.
-      emptyText: total == null ? 'Status read failed' : 'No failed transactions',
-      onOpen: () => switchTab('chain')
-    }));
-  }
-
-  // ③ Auto Update 카드 (+ 산출물 인제션 연계 — 감사 §1.2 bonding_log 시나리오)
-  {
-    const collectors = auto ? (auto.data || []) : null;
-    const failCount = collectors ? collectors.filter(c => c.last_status === 'FAIL').length : null;
-    const activeCount = collectors ? collectors.filter(c => c.active !== false).length : null;
-    let linked = null;
-    if (collectors && failed) {
-      const autoTables = new Set(collectors.map(c => c.table_name));
-      linked = (failed.data || []).filter(l => autoTables.has(l.table_name)).length;
-    }
-    let status = 'loading';
-    if (collectors) {
-      if (failCount > 0) status = 'danger';
-      else if (linked > 0) status = 'warn';
-      else if (collectors.length > 0 && activeCount === 0) status = 'warn'; // 전부 비활성 = 수집 전면 중단
-      else status = 'ok';
-    }
-    const events = (collectors || [])
-      .slice()
-      .sort((a, b) => String(b.last_run || '').localeCompare(String(a.last_run || '')))
-      .slice(0, 3)
-      .map(c => ({
-        time: formatTimestamp(c.last_run),
-        text: c.script_name,
-        badge: c.last_status || 'PENDING',
-        badgeTone: c.last_status === 'SUCCESS' ? 'ok' : (c.last_status === 'FAIL' ? 'danger' : 'warn')
-      }));
-    overviewGrid.appendChild(ovCard({
-      status,
-      title: 'Auto Update',
-      metrics: [
-        {
-          value: collectors == null ? '—' : `${activeCount}/${collectors.length}`,
-          label: 'Active collectors',
-          tone: collectors && collectors.length > 0 && activeCount === 0 ? 'warn'
-            : (collectors && activeCount < collectors.length ? null
-              : (collectors ? 'ok' : null))
-        },
-        { value: failCount == null ? '—' : failCount, label: 'Collector failures', tone: failCount > 0 ? 'danger' : (failCount === 0 ? 'ok' : null) },
-        { value: linked == null ? '—' : linked, label: 'Output ingestion failures', tone: linked > 0 ? 'warn' : (linked === 0 ? 'ok' : null) }
-      ],
-      events,
-      emptyText: collectors == null ? 'Status read failed' : 'No collectors registered',
-      onOpen: () => switchTab('autoupdate')
-    }));
-  }
-
-  // ④ Enrichment 카드
-  {
-    const status = enrich == null ? 'loading' : (enrich.totalMissing > 0 ? 'warn' : 'ok');
-    const events = (enrich ? enrich.perRule.slice(0, 3) : []).map(({ rule, missing }) => ({
-      time: null,
-      text: rule.name,
-      badge: missing == null ? 'Read failed' : `Missing ${missing}`,
-      badgeTone: missing > 0 ? 'warn' : 'ok'
-    }));
-    overviewGrid.appendChild(ovCard({
-      status,
-      title: 'Enrichment',
-      metrics: [
-        { value: enrich == null ? '—' : enrich.rules.length, label: 'Rules' },
-        { value: enrich == null ? '—' : enrich.totalMissing, label: 'Missing total', tone: enrich && enrich.totalMissing > 0 ? 'warn' : (enrich ? 'ok' : null) }
-      ],
-      events,
-      emptyText: enrich == null ? 'Status read failed' : 'No active rules',
-      onOpen: () => switchTab('enrichment')
-    }));
-  }
+function renderOverview({ failed, outbox, rules, mappers, auto, enrich, active, ledger }) {
+  const rows = overviewBoard();
+  rows.update(fileRow({ failed, active }));
+  rows.update(chainRow({ outbox, rules, mappers }));
+  rows.update(autoRow({ auto, failed }));
+  rows.update(enrichmentRow(enrich));
+  rows.update(ledgerRow(ledger));
 }
 
 // ── Selection & Diagnostics ────────────────────────────────
@@ -4518,10 +4184,8 @@ async function reloadSystemConfigs() {
   enrichmentStatusCache = null; // 규칙이 바뀌었을 수 있음
   scriptsListCache = null;      // 스크립트 목록도 최신화
   // [F9] 이 버튼이 **처음으로 무언가를 돌려주는** 자리. 리로드는 선언의 효과가 바뀌는
-  // 유일한 계기이므로 스로틀을 무시하고 다시 읽는다. 자동 펼침 1회 권한도 되살린다 —
-  // 방금 누른 리로드의 결과가 접혀 있으면 의미가 없다. (보고서가 실제로 달라졌을 때만
+  // 유일한 계기이므로 스로틀을 무시하고 다시 읽는다. (보고서가 실제로 달라졌을 때만
   // 다시 그려지고, 그때 낡은 드라이런 측정값도 함께 버려진다.)
-  configResolveAutoOpened = false;
   refreshConfigResolve(true);
   // 소급 적용 목록도 규칙 이름(체인·Enrichment)에서 나오므로 리로드가 그 유일한 변경
   // 계기다. force로 스로틀을 건너뛰되, **버리는 판정은 내용 비교가 한다** — 목록이 실제로
@@ -4852,186 +4516,4 @@ async function fetchEnrichmentStatus(force = false) {
   const data = { rules, perRule, totalMissing };
   enrichmentStatusCache = { ts: now, data };
   return data;
-}
-
-// ── Pipeline Health Strip (파이프라인 탭 상시 요약 — Overview에선 본문이 대체) ──
-// 기존 API만 조합: /admin/file-ingestion/failed · /admin/outbox/failed
-//                 · /admin/auto-update/status · /enrichment/rules (+blank 필터 카운트)
-// 신규 서버 API 없음. 실패 시 카드만 '조회 실패'로 두고 무음 (본문 흐름 비방해).
-
-// 🔴 「읽는 중」과 「못 읽었다」는 다른 상태입니다 (C-83, 총괄이 화면에서 봄: 거절문 옆에서
-//    로딩 표시가 계속 돌고 있었음). 넷 다 «거절 문장»을 그리면서 `loading` 으로 남아 있었고,
-//    그건 「자막 단 실패」 그대로입니다 — 글자는 실패라 말하고 상태는 아직 오는 중이라 말합니다.
-//    `unread` 는 오늘의 `loading` 과 «같은 픽셀»입니다(둘 다 기본 점). 바뀐 것은 «말»이고,
-//    그래서 이 자리가 게이트로 잴 수 있는 자리가 됩니다.
-// ⚠️ 「규칙 없음」·「수집기 없음」 둘은 «안 건드렸습니다» — 그건 읽기가 «성공»했고 없는 것이라
-//    `unread` 가 아닙니다. 이름이 틀린 것은 맞고, 보고에 올립니다.
-function setHealthCard(key, status, main, sub) {
-  const card = byId(`health-card-${key}`);
-  if (!card) return;
-  card.dataset.status = status;
-  const mainEl = byId(`health-${key}-main`);
-  const subEl = byId(`health-${key}-sub`);
-  if (mainEl) mainEl.textContent = main;
-  if (subEl) {
-    subEl.textContent = sub;
-    subEl.title = sub;
-  }
-}
-
-let healthRefreshInFlight = false;
-async function refreshHealthStrip() {
-  if (healthRefreshInFlight) return; // 수동 Refresh + 30s 폴링 중첩 방지
-  healthRefreshInFlight = true;
-  try {
-    await Promise.allSettled([
-      refreshFileAndAutoHealth(),
-      refreshChainHealth(),
-      refreshEnrichmentHealth()
-    ]);
-  } finally {
-    healthRefreshInFlight = false;
-  }
-}
-
-// File 카드 + Auto Update 카드 (실패 로그 최근 100건을 공용으로 사용)
-async function refreshFileAndAutoHealth() {
-  let failedTotal = null;
-  let failedLogs = [];
-  try {
-    const res = await adminFetch(`${API_BASE}/admin/file-ingestion/failed?page=1&limit=100`);
-    if (res.ok) {
-      const r = await res.json();
-      failedTotal = r.total || 0;
-      failedLogs = r.data || [];
-    }
-  } catch (e) { /* 아래에서 조회 실패 카드 처리 */ }
-
-  // [Heavy Lane P1] 진행 중 인제션 — 재기동 경고 (조회 실패는 무음, 카운트 0 취급)
-  let activeCount = 0;
-  let activeHeavy = 0;
-  try {
-    const res = await adminFetch(`${API_BASE}/admin/file-ingestion/active`);
-    if (res.ok) {
-      const r = await res.json();
-      activeCount = r.total || 0;
-      activeHeavy = (r.data || []).filter(i => i.lane === 'heavy').length;
-    }
-  } catch (e) { /* 보조 정보 — 무음 */ }
-  const activeSub = activeCount > 0
-    ? `⚠️ Ingesting ${activeCount}${activeHeavy ? ` (heavy ${activeHeavy})` : ''} — reprocessed from the start on restart`
-    : null;
-
-  if (failedTotal === null) {
-    setHealthCard('file', 'unread', '—', activeSub || 'Status read failed');
-  } else if (failedTotal > 0) {
-    setHealthCard('file', 'danger', `Failed ${failedTotal}`,
-      activeSub || 'Click → File tab, failed filter');
-  } else if (activeCount > 0) {
-    setHealthCard('file', 'warn', `Ingesting ${activeCount}`, activeSub);
-  } else {
-    setHealthCard('file', 'ok', '0 failed', 'File ingestion healthy');
-  }
-
-  try {
-    const res = await adminFetch(`${API_BASE}/admin/auto-update/status`);
-    if (!res.ok) throw new Error('auto-update status fetch failed');
-    const r = await res.json();
-    // 🔴 THE SAME THREE READINGS THE TAB ALREADY DOES (see the auto-update tab load).
-    //    This card recomputed both numbers from the same two sources and asked NONE of the
-    //    questions the tab asks, so a repair that landed there did not land here. 실측
-    //    2026-09-07: 이 두 수를 그리는 자리 «둘» · 가드가 있는 자리 «하나».
-    const autoFailure = errorText(r);
-    if (autoFailure) {
-      // 200 with an error envelope. `r.data` is undefined here, so the old code drew
-      // 「수집기 없음」 - 「못 물어봤다」 painted as 「등록된 것이 없다」.
-      setHealthCard('auto', 'unread', '—', autoFailure);
-      return;
-    }
-    const autoAbsent = absentPath(r);
-    if (autoAbsent) {
-      // ⚠️ 「한 번도 안 돌았다」 ≠ 「상태 파일이 사라졌다」. Both arrive as an empty
-      //    `data`, and the second one is the one an operator has to act on.
-      setHealthCard('auto', 'warn', 'No status file', autoAbsent);
-      return;
-    }
-    const collectors = r.data || [];
-    if (collectors.length === 0) {
-      setHealthCard('auto', 'loading', 'No collectors', 'No auto-update settings registered');
-      return;
-    }
-
-    const failCount = collectors.filter(c => c.last_status === 'FAIL').length;
-    const activeCount = collectors.filter(c => c.active !== false).length;
-    // 감사 §1.2 실증 시나리오 연계: 수집기는 SUCCESS인데 산출물 파일 인제션이
-    // 실패 중인 경우를 카드에서 즉시 노출 (auto-update 대상 테이블 ∩ 최근 실패 로그)
-    const autoTables = new Set(collectors.map(c => c.table_name));
-    // 🔴 THE INTERSECTION NEEDS BOTH SIDES, AND ONE OF THEM MAY NOT HAVE ANSWERED.
-    //    `failedTotal === null` is this function's own word for 「실패 로그를 못 읽었다」 - the
-    //    File card three lines above already refuses to draw on it. This card did not, so an
-    //    unanswered query produced `linkedFails = 0` and the card said 「최근 실행 …」, which
-    //    reads as 「연계 실패 없음」. Not knowing and knowing there is none are not one fact.
-    const linkedRead = failedTotal !== null;
-    const linkedFails = linkedRead
-      ? failedLogs.filter(l => autoTables.has(l.table_name)).length : null;
-    const linkedSuffix = (linkedRead && failedTotal > failedLogs.length) ? '+' : '';
-
-    let status = 'ok';
-    if (failCount > 0) status = 'danger';
-    else if (linkedFails > 0) status = 'warn';
-    else if (!linkedRead) status = 'warn';   // 못 읽은 것은 「없음」이 아니다
-    else if (activeCount === 0) status = 'warn'; // 전 수집기 비활성 = 자동 수집 전면 중단
-
-    const main = failCount > 0
-      ? `Collector failures ${failCount}/${collectors.length}`
-      : `${activeCount} of ${collectors.length} collectors active`;
-    const sub = !linkedRead
-      ? 'Output ingestion link unchecked — failure logs unreadable'
-      : (linkedFails > 0
-        ? `Output ingestion failures ${linkedFails}${linkedSuffix}`
-        : (activeCount === 0
-          ? 'All collectors are inactive'
-          : `Last run ${formatTimestamp(latestLastRun(collectors))}`));
-    setHealthCard('auto', status, main, sub);
-  } catch (e) {
-    setHealthCard('auto', 'unread', '—', 'Status read failed');
-  }
-}
-
-function latestLastRun(collectors) {
-  const runs = collectors.map(c => c.last_run).filter(Boolean).sort();
-  return runs.length ? runs[runs.length - 1] : null;
-}
-
-async function refreshChainHealth() {
-  try {
-    const res = await adminFetch(`${API_BASE}/admin/outbox/failed?page=1&limit=1`);
-    if (!res.ok) throw new Error('chain health fetch failed');
-    const r = await res.json();
-    const total = r.total || 0;
-    if (total > 0) {
-      setHealthCard('chain', 'danger', `Failed transactions ${total}`, 'Click → Chain tab, failed list');
-    } else {
-      setHealthCard('chain', 'ok', '0 failed', 'Chain pipeline healthy');
-    }
-  } catch (e) {
-    setHealthCard('chain', 'unread', '—', 'Status read failed');
-  }
-}
-
-async function refreshEnrichmentHealth() {
-  try {
-    const s = await fetchEnrichmentStatus();
-    if (s.rules.length === 0) {
-      setHealthCard('enrichment', 'loading', 'No rules', 'No active enrichment rules');
-      return;
-    }
-    if (s.totalMissing > 0) {
-      setHealthCard('enrichment', 'warn', `Missing ${s.totalMissing}`, `${unitText(s.rules.length, 'rule')} · click → Enrichment tab`);
-    } else {
-      setHealthCard('enrichment', 'ok', '0 missing', `${unitText(s.rules.length, 'rule')} · all filled`);
-    }
-  } catch (e) {
-    setHealthCard('enrichment', 'unread', '—', 'Status read failed');
-  }
 }

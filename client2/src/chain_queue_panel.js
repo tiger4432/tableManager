@@ -248,9 +248,8 @@ export function queueView(payload, opts = {}) {
   const generatedAt = !('generated_at' in payload) ? ''
     : (typeof payload.generated_at === 'string' && payload.generated_at
       ? (stamp === NO_TIME ? payload.generated_at : stamp) : UNKNOWN);
-  const running = Array.isArray(payload.running) ? payload.running.length : null;
-  const runningCell = payload.loop_seen_via
-    ? countWithAbsence({ value: running, absence: 'truly_none' }) : null;
+  // Seen and 0 is a plain 0 (lead a80361a63) — unseen has no cell, so the two cannot mix.
+  const running = payload.loop_seen_via && Array.isArray(payload.running) ? payload.running.length : null;
   // 🔴 C-61 (소유자 09-10: 「가짜 running 3개 남아있음」). A COUNT CANNOT SEPARATE 「걸린 것」
   //    FROM 「가짜」 — both draw the same 「도는 체인 3」. What separates them is AGE, and the
   //    server has carried `running_seconds` on every entry all along (`chain_activity.py`
@@ -360,9 +359,9 @@ export function queueView(payload, opts = {}) {
   // 🔴 C-61. 「최장」은 수 «옆»에 붙습니다 — 따로 줄을 만들면 운영자가 수를 먼저 읽고
   //    「3 개 돈다, 정상」으로 판정한 «뒤»에 나이를 봅니다. 나이가 읽히는 것이 하나도
   //    없으면 이 조각은 «안 붙습니다»(0 으로도, 「모름」으로도 지어내지 않습니다).
-  if (runningCell && runningCell.read) {
+  if (running !== null) {
     numbers.push(cell('running', 'Running', String(running),
-      { sub: longestRunning ? `longest ${longestRunning}` : runningCell.word }));
+      { sub: longestRunning ? `longest ${longestRunning}` : '' }));
   }
   if (failed.read) {
     numbers.push(cell('failed', failed.since ? `${FAILED} since ${failed.since}` : FAILED,
