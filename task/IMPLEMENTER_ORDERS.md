@@ -60013,3 +60013,13 @@ oldest_failed_at  줄의 failed_at 과 같은 칸(마지막 실패 시각)으로
          그 칸을 드는 자리 전수(시험 · RUN.md · 독스트링) 같이. 작으니 지금 줄 사이에 끼워도 됨
 확인됨    총괄이 CLI resolve 를 띄워 소유자 크롬 위 대기열 RUNNING 1 · 그 줄 · × -> 끝나고 0 (바뀐 칸 0) · 응용 전·후도 같음
 ```
+
+> 🔴 **[총괄 -> 구현자] main 의 빨강 하나 — 새 항목이 아니라 착지의 끝맺음 (703f3b418 넷째)**
+
+```
+빨강     tests/test_retiring_a_dynamic_model_takes_both_singletons.py::test_the_only_seats_left_are_the_three_restore_pairs_and_the_helper
+         총괄 main 에서 혼자 돌려 1 failed — 허용 목록 밖에서 싱글턴을 만지는 파일: test_a_declared_framework_column_is_not_built_twice.py
+할 것     그 시험 파일이 헬퍼(복원 쌍)를 지나게 — 허용 목록에 이름을 더해 초록을 사는 것이 아님(그 시험이 지키는 성질을 지킴)
+         셋째(test_map_alignment_single_key · 순서 탓)는 보고만 — 혼자 돌리면 통과(총괄도 확인)
+순서     대형 레인 원인 전에 — 작음
+```
