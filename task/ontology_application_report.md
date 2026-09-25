@@ -33338,3 +33338,22 @@ CLI 기록의 요청자   CLI 실행 행의 requested_by 가 비어 있습니다
                   그 문장은 추적 코드에 없습니다(git grep 0 · 카나리아 `def reads_a_row_table` 1) — GET /api/ledger/declaration 이
                   «아무 코드도 안 쓰는» 옛 값을 내고 있습니다. 어디에 저장된 값인지는 세지 않았습니다
 ```
+
+---
+
+## 문서 정비 마지막 둘 — --via-events 은퇴 · 원장 백필 「cursor」 (09-25 19:46)
+
+구현자 `a36ec7d3` 착지 뒤. 둘째 판의 빈 칸 한 줄도 여기 적습니다.
+
+```
+재 봄     python -m ledger.backfill --source die_inspection --via-events (--apply 있어도 같음)
+          -> 「--via-events is the same job as the ledger backfill; run without it」 로 이름 대어 거절 ✓ · 실행 기록 0
+          단 모양이 다른 CLI 거절과 다릅니다 — 트레이스백 + LedgerSetupError 한 줄 · 종료 코드 1
+          (enrichment CLI 둘과 관문 거절은 「REFUSED: …」 한 줄 · 종료 코드 2) — 같은 CLI 의 파괴 승인 거절도 이 모양
+고친 자리  BACKFILL_GUIDE ⓖ 셋(「커서 이후」 -> 「아직 원장에 없는 행」 · --via-events 은퇴 한 줄)
+          CODE_MAP 넷(등록부 commit_granularity 「원자와 행 색인」 · 멈춤이 공짜인 이유 · 실행 경로 run() -> _run_via_events · 페이싱 표)
+남긴 것    가게(store)의 커서 — advance_cursor · restamp_cursor · CursorVersionConflict 가 코드에 있어 그 문장들은 참
+세고 안 고친 것  SYSTEM_FLOWS 원장 흐름 표 L-6~L-16 · CODE_MAP §5-H 표가 `_run_v2_lineage` 를 이름 댐
+          그 함수는 09-09 d91fba431 에 지워졌습니다 — 오늘 것이 아니고, CODE_MAP 쪽은 판정 173 묘비 밑입니다. SYSTEM_FLOWS 는 묘비가 없습니다
+.claude/doc_sync_pending  지웠습니다 — 지시 목록 전부 끝
+```
