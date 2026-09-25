@@ -59887,3 +59887,62 @@ RUN.md    그 이름 0
 ```
 게이트    둘 다 박스에서 두 페이지 이상 · 첫 페이지 뒤 취소 -> cancelled · 멈춘 자리 페이지 단위 온전 · 다시 돌리면 끝까지 (전 · 후) · 변이: 페이지 사이 체크포인트를 빼면 빨강
 ```
+
+---
+
+## [구현자 -> 총괄] 취소 다 착지 (8d8abfb5d) — 3bf01b96d
+
+```
+rescope   범위를 1,000 행 페이지로(페이지 키 순서). 페이지는 마지막 키의 나머지 행을 끝까지 가져감 -> 묶음을 안 가름
+          페이지마다  걷어냄 + 다시 번역 한 커밋 -> 그 페이지의 색인 지우기 -> 체크포인트
+          page_rows 없으면 한 페이지 = 지금과 같음 (체인 뒤따름 길 — 영수증이 그 한 커밋에 실림)
+          preview_rescope 의 «프레임 절반» 을 _preview_frame 으로 — 페이지가 그것을 물음
+confirm   큐를 쓰기 청크(1,000)로 페이지 · 통계는 한 dict · 거래 id 는 쓸기 하나에 하나(confirm_keys 가 tx_id 를 받음)
+          끝 진행 수 = 페이지가 닿은 행 (전: 큐 크기 — 멈춘 실행이 안 읽은 페이지까지 «처리» 로 셈. 박스 첫 측정에서 봄)
+카드      일곱 다 cancellable: True
+          rescope 카드 주석이 「걷어냄과 다시 번역은 두 커밋」 이라 했음 — S-60 이후 거짓. 고침
+은퇴 시험  test_the_guard_is_about_emptiness_and_not_about_the_column — rescope 의 소스 글자를 잘라 읽던 것
+          같은 성질(scope_empty · 빈 프레임은 쓰기에 안 감)은 옆의 동작 시험이 잼
+```
+
+### 게이트
+
+| 칸 | 시험 | 변이 |
+|---|---|---|
+| 일곱 다 취소 받음 | test_every_registered_operation_takes_a_cancel | — |
+| 묶음 안 가름 | test_a_rescope_page_ends_on_a_group_boundary | 묶음 채우기를 빼면 빨강 (2 failed) |
+| rescope 페이지 사이 멈춤 · 다시 돌리면 끝까지 | test_a_rescope_stop_leaves_whole_pages_and_a_rerun_finishes | 체크포인트를 빼면 빨강 (1 failed) |
+| 뒤따름 길은 한 페이지 | test_the_live_path_is_still_one_page | — |
+| confirm 페이지 사이 멈춤 · 거래 하나 | test_a_confirm_stop_lands_between_pages_under_one_transaction | 체크포인트를 빼면 빨강 (1 failed) · 페이지마다 거래면 빨강 (1 failed) |
+| 운영자 실행이 페이지로 돎 | test_the_operator_rescope_pages_and_asks_the_run · …confirm… | 러너가 페이지 · 체크포인트를 안 넘기면 빨강 (1 failed) · 빨강 (1 failed) |
+
+```
+범위    backfill · retroactive · enrichment 를 이름으로 드는 시험 + 만진 시험 161 파일 -> 2877 passed, 54 skipped, 1 xfailed
+        (진행 수 고침이 그 실행 뒤라 confirm 러너를 부르는 시험 5 파일을 다시 -> 150 passed)
+```
+
+### 박스 — 취소는 취소 라우트의 함수를 같은 프로세스에서 (토큰 뒤라)
+
+```
+rescope   lot_slot_wafer · lot 30 개 = 범위 행 4777
+          전        {'atoms_of_source': 37335, 'index_lines_in_scope': 4777, 'scope_rows': 4777}
+          1 회      442d2c066967 state cancelled | processed 1000 | cancel sent at rows 1000 | 13.4s · {'withdrawn': 1000, 'attempted': 1000, 'inserted': 1000, 'deduped': 0, 'rows_in_scope': 1000, 'applied': True}
+          취소 뒤   {'atoms_of_source': 37335, 'index_lines_in_scope': 4777, 'scope_rows': 4777}
+          다시      404da5158b03 state done | processed 4777 | 48.5s · {'withdrawn': 4777, 'attempted': 4777, 'inserted': 4777, 'deduped': 0, 'rows_in_scope': 4777, 'applied': True}
+          다시 뒤   {'atoms_of_source': 37335, 'index_lines_in_scope': 4777, 'scope_rows': 4777}
+          -> 원자 수와 범위 색인 줄이 세 번 다 같음 — 끝난 페이지는 걷어냄 + 다시 번역이 다 됐고 나머지는 손 안 댐
+
+confirm   enrich_in_chain_probe · limit 2,200 (페이지 1,000 · 1,000 · 200)
+  첫 측정   f1b8f1f724a1 state cancelled | processed 2200 | cancel sent at rows 1000 | 10.5s · {'confirmed': 452, 'written_cells': 452, 'queue_size': 2200}
+            쓴 칸 12 -> 464 — 결과의 written_cells 와 같은 증가 (두 페이지 온전)
+            취소는 첫 페이지 뒤에 보냈고 둘째 페이지 경계에서 멈춤 — 취소는 «다음» 경계에서 읽힘
+            진행 수가 큐 크기로 찍힘 -> 고침
+  고친 뒤   388ee0edf9e0 state cancelled | processed 1000 | cancel sent at rows 1000 | 9.1s · {'confirmed': 0, 'written_cells': 0, 'queue_size': 2200}
+            다시 돌림 aacee3617997 state done | processed 2200 | 12.9s · {'confirmed': 0, 'written_cells': 0, 'queue_size': 2200}
+```
+
+### 다음
+
+```
+3 앱 정지 (내림 · 올림 두 번)
+```
