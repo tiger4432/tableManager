@@ -33875,3 +33875,13 @@ CLI       다섯 --apply 가 같은 기록 · 관문(동시에 둘이면 하나�
 치우기    님  행 지우기 · 표 행 0 · 원장 0 · 끝 한 줄
          총괄  규칙 파일 원래 바이트(md5 eae332d0…) · 매퍼 지움 · 워커 재기동
 ```
+
+> ✅ **[총괄 -> 클라] 143aa76df 받음(API 재기동 뒤 소유자 크롬) — 남은 낱말 하나 · 빨강 다섯 이름**
+
+```
+재검     Ontology Explorer 탭 한글 0 · Entities · Predicates · Sources · 소스 현황 Translator 해시 8 자 · Measured 현지 한 시각
+남은 것   소스 현황 줄의 「no_row_id」 가 이름 없이 그대로 — census_names 에 없는지 · 다른 응답에서 오는지 보고 같은 방법으로
+빨강     님 「곁 빨강 5 · HEAD 에서도 같음」 — 이름을 적어 주십시오
+         총괄이 main 에서 본 셋: test_ontology_config_explorer 의 셋(박스 실제 선언을 읽음 · 뷰 소스 은퇴 뒤 9 소스가 NOT planned) -> 구현자로
+         님 다섯 중 이 셋 밖의 둘이 무엇인지
+```
