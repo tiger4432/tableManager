@@ -178,6 +178,11 @@ def test_the_cli_prints_the_three_values_rather_than_the_word_None(monkeypatch, 
 
     monkeypatch.setattr(database_module, "engine", _SatisfiedEngine())
     monkeypatch.setattr(backfill, "beat", lambda result: None)
+    # The write goes through the admin runs' door now (80d61ae05); this test scores what
+    # the CLI forwards and prints, so the door runs the adapter without a record.
+    from admin import retroactive
+    from tests.support.retro_door import run_without_a_record
+    monkeypatch.setattr(retroactive, "run_here", run_without_a_record(database_module.engine))
     monkeypatch.setattr(backfill, "run", lambda engine, **kwargs: {
         "source": "wafer_process", "rows_read": 0, "batches": 0,
         "relation_rows": 478035, "indexed_rows": 478035, "not_yet": 0})

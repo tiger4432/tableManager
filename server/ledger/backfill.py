@@ -1888,6 +1888,20 @@ def beat(result):
         logger.warning("[Ledger] heartbeat could not be written: %s", exc)
 
 
+def _written(op, params):
+    """A write through the admin button's run record, gate and cancel - the work stays in
+    this process. The operation's own result, or `None` once a refusal or cancel is logged."""
+    from admin import retroactive
+
+    try:
+        return retroactive.run_here(op, params, log=logger.info)["stats"]
+    except retroactive.RetroactiveRefused as exc:
+        logger.error("[Ledger] REFUSED: %s", exc)
+    except retroactive.RunCancelled as exc:
+        logger.error("[Ledger] CANCELLED: %s", exc)
+    return None
+
+
 def main(argv=None):
     _bootstrap_path()
     # 🔴 S-88 — THE CLI IS A PROCESS TOO, and it must not need the daemon to have run
@@ -1973,9 +1987,16 @@ def main(argv=None):
                 "a column with no values selects nothing and values with no column "
                 "cannot be matched")
         values = [item.strip() for item in args.scope_values.split(",") if item.strip()]
-        setup = load_setup(args.ontology_root)
-        scoped = rescope(engine, setup, args.source, args.scope_column, values,
-                         apply=args.apply)
+        if args.apply:
+            scoped = _written("ledger_rescope", {
+                "source": args.source, "scope_column": args.scope_column,
+                "scope_values": values, "ontology_root": args.ontology_root})
+            if scoped is None:
+                return 2
+        else:
+            setup = load_setup(args.ontology_root)
+            scoped = rescope(engine, setup, args.source, args.scope_column, values,
+                             apply=False)
         logger.info("[Ledger] %s", scoped)
         if not args.apply:
             logger.info("[Ledger] dry-run: nothing was written. Re-run with --apply.")
@@ -1991,9 +2012,12 @@ def main(argv=None):
             logger.info("[Ledger] dry-run: nothing was staged. Re-run with --apply.")
         return 0
 
-    result = run(engine, source=args.source, fetch_rows=args.fetch_rows, pace=args.pace,
-                 reset_cursor=args.reset_cursor, start_from=args.start_from,
-                 max_batches=args.max_batches, ontology_root=args.ontology_root)
+    # `reset_cursor` / `start_from` never reach here - refused above, before any store access.
+    result = _written("ledger_backfill", {
+        "source": args.source, "fetch_rows": args.fetch_rows, "pace": args.pace,
+        "max_batches": args.max_batches, "ontology_root": args.ontology_root})
+    if result is None:
+        return 2
     beat(result)
 
     logger.info("[Ledger] %s", result)

@@ -451,6 +451,11 @@ def test_operator_cli_has_no_legacy_escape_hatch(monkeypatch):
     # there」, which is the state a running install is in.
     monkeypatch.setattr(database_module, "engine", _SatisfiedEngine())
     monkeypatch.setattr(backfill, "beat", lambda result: None)
+    # The write goes through the admin runs' door now (80d61ae05); this test scores what
+    # the CLI forwards and prints, so the door runs the adapter without a record.
+    from admin import retroactive
+    from tests.support.retro_door import run_without_a_record
+    monkeypatch.setattr(retroactive, "run_here", run_without_a_record(database_module.engine))
     monkeypatch.setattr(
         backfill, "run", lambda engine, **kwargs: calls.append(kwargs) or {})
 

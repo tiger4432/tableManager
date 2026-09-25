@@ -139,14 +139,25 @@ def main(argv=None):
         print(f"REFUSED: {e}")
         return 2
 
+    from admin import retroactive
+
     db = SessionLocal()
     try:
-        stats = enrichment.backfill.run_backfill(
-            db, rule, apply=args.apply, limit=args.limit, chunk_size=args.chunk_size)
+        if args.apply:
+            # The admin button's run record, gate and cancel - the work stays here.
+            stats = retroactive.run_here("enrichment_backfill", {
+                "rule": args.rule_name, "limit": args.limit, "chunk_size": args.chunk_size,
+                "force_disabled": args.force_disabled}, log=print)["stats"]
+        else:
+            stats = enrichment.backfill.run_backfill(
+                db, rule, apply=False, limit=args.limit, chunk_size=args.chunk_size)
         print(format_report(stats, limit=args.limit))
         return 0
-    except BackfillRefused as e:
+    except (BackfillRefused, retroactive.RetroactiveRefused) as e:
         print(f"REFUSED: {e}")
+        return 2
+    except retroactive.RunCancelled as e:
+        print(f"CANCELLED: {e}")
         return 2
     finally:
         db.close()

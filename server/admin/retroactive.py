@@ -86,7 +86,7 @@ class RetroactiveRefused(Exception):
 # Parameter declaration
 # ---------------------------------------------------------------------------
 
-def _p(name, required=True, kind="string", help="", choices=None):
+def _p(name, required=True, kind="string", help="", choices=None, form=True):
     """One parameter's declaration.
 
     🔴 `choices` IS FOR ANY PARAMETER WITH A CLOSED SET, not for pace. Only one uses it
@@ -102,9 +102,12 @@ def _p(name, required=True, kind="string", help="", choices=None):
     when the inventory is asked for, so a new entry in the declaration is visible without a
     restart. `None` means the parameter is free text, and a client showing free text for it
     is correct rather than lazy.
+
+    `form=False` keeps a parameter off the admin form (`inventory`) and still accepts it
+    into the run record - a CLI option the button does not offer (총괄 45410384c ③).
     """
     return {"name": name, "required": required, "type": kind, "help": help,
-            "choices": choices}
+            "choices": choices, "form": form}
 
 
 def _resolved_choices(param):
@@ -424,12 +427,19 @@ def _count_ledger_backfill(db, params, scan_limit):
     }
 
 
+def _given(params, *names):
+    """The CLI-only options a run carries, only where given - each operation's own default
+    stands for the rest. Spelling the defaults here too would make a second author."""
+    return {name: params[name] for name in names if name in params}
+
+
 def _run_ledger_backfill(db, params, log, control=None):
     from ledger import backfill
 
     s = backfill.run(db.get_bind(), source=params["source"],
-                     checkpoint=_checkpoint(control), pace=params.get("pace"))
-    _final_progress(control, s.get("rows_read"))
+                     checkpoint=_checkpoint(control), pace=params.get("pace"),
+                     **_given(params, "fetch_rows", "max_batches", "ontology_root"))
+    _final_progress(control, s.get("rows_read"), s)
     return {"rows_read": s.get("rows_read"), "batches": s.get("batches"),
             "inserted": s.get("inserted"), "deduped": s.get("deduped"),
             "molecules": s.get("molecules"), "stopped": bool(s.get("stopped")),
@@ -528,8 +538,10 @@ def _count_ledger_rescope(db, params, scan_limit):
     }
 
 
-def _final_progress(control, rows):
-    """Write the finished run's own count, once, when the work is over.
+def _final_progress(control, rows, stats):
+    """Write the finished run's own count, once, when the work is over - and keep the
+    operation's unreduced answer on the control for a CLI that prints it (총괄 45410384c
+    ④). The stored result stays the reduced dict the adapter returns.
 
     🔴 A RUN THAT FINISHED IN ONE BATCH HAD NO BATCH BOUNDARY TO REPORT AT, so its progress
     column stayed 0 while its result said 80 rows - and "never started" and "completely
@@ -541,7 +553,10 @@ def _final_progress(control, rows):
     that per-operation knowledge in the client, where every new operation would need it
     again.
     """
-    if control is not None and rows is not None:
+    if control is None:
+        return
+    control.stats = stats
+    if rows is not None:
         control.progress(rows)
 
 
@@ -568,12 +583,14 @@ def _run_ledger_rescope(db, params, log, control=None):
     from ledger import backfill
     from ledger.setup import load_setup
 
+    setup = (load_setup(params["ontology_root"]) if "ontology_root" in params
+             else load_setup())
     s = backfill.rescope(
-        db.get_bind(), load_setup(), params["source"], params["scope_column"],
+        db.get_bind(), setup, params["source"], params["scope_column"],
         params.get("scope_values") or [], apply=True)
     log(f"[rescope] {s['source']} {s['scope_column']}: rows {s['rows_in_scope']}, "
         f"withdrawn {s['withdrawn']}, written {s['inserted']} of {s['attempted']}")
-    _final_progress(control, s.get("rows_in_scope"))
+    _final_progress(control, s.get("rows_in_scope"), s)
     return {"withdrawn": s["withdrawn"], "attempted": s["attempted"],
             "inserted": s["inserted"], "deduped": s["deduped"],
             "rows_in_scope": s["rows_in_scope"], "applied": s["applied"]}
@@ -591,8 +608,9 @@ def _run_chain_replay(db, params, log, control=None):
                                  checkpoint=_checkpoint(control),
                                  business_keys=params.get("business_keys"),
                                  row_ids=params.get("row_ids"),
-                                 pace=params.get("pace"))
-    _final_progress(control, s.get("rows_scanned"))
+                                 pace=params.get("pace"),
+                                 **_given(params, "limit", "chunk_size"))
+    _final_progress(control, s.get("rows_scanned"), s)
     # 🔴 THIS RUN NO LONGER WRITES, SO IT MUST NOT REPORT WRITES. It hands the rows to the
     #    worker as ordinary trigger events and the worker writes them, later, in its own
     #    transaction. `cells_written` / `rows_created` / `rows_updated` would all be 0 here
@@ -611,7 +629,7 @@ def _run_withdraw(db, params, log, control=None):
     s = replay.withdraw_source(db, params["table"], params["source"],
                                      columns=params.get("columns"), apply=True, log=log,
                                      checkpoint=_checkpoint(control))
-    _final_progress(control, s.get("cells_claimed", s.get("cells_withdrawn")))
+    _final_progress(control, s.get("cells_claimed", s.get("cells_withdrawn")), s)
     return {"cells_withdrawn": s["cells_withdrawn"], "revealed": s["revealed"],
             "emptied": s["emptied"], "pinned_skipped": s["pinned_skipped"]}
 
@@ -620,10 +638,12 @@ def _run_enrichment_backfill(db, params, log, control=None):
     from chain import enrichment
     from database import crud
 
-    rule = enrichment.backfill.load_rule(params["rule"], crud.TABLE_CONFIG)
+    rule = enrichment.backfill.load_rule(params["rule"], crud.TABLE_CONFIG,
+                                         **_given(params, "force_disabled"))
     s = enrichment.backfill.run_backfill(db, rule, apply=True, log=log,
-                                         checkpoint=_checkpoint(control))
-    _final_progress(control, s.get("rows_scanned"))
+                                         checkpoint=_checkpoint(control),
+                                         **_given(params, "limit", "chunk_size"))
+    _final_progress(control, s.get("rows_scanned"), s)
     # 🔴 [판정 b3b6e8d55] 안 만든 행의 수가 여기서 «버려지고» 있었다 — 실행이 화면에
     # 닿는 통로는 `result_sentence` 한 문장뿐이라(판정 33), 이 dict 에 없는 수는 운영자가
     # 볼 길이 «없다». 그래서 다섯을 다 싣고, 0 도 싣는다: 0 이 안 보이면 「없음」과
@@ -655,9 +675,15 @@ def _run_enrichment_confirm(db, params, log, control=None):
 
     # ignore_knob stays FALSE here: the knob is where a human consents to
     # automatic writes, and `run_auto_confirm_sweep` refuses apply without it.
+    from chain.enrichment import config as enrichment_config
+
+    caps = enrichment_config.load_read_caps(overrides=_given(
+        params, enrichment_config.CAP_PROBE_SCAN_ROWS,
+        enrichment_config.CAP_PROBE_DISTINCT_VALUES))
     s = analysis.run_auto_confirm_sweep(
-        db, _enrichment_rule(params["rule"]), apply=True, ignore_knob=False, log=log)
-    _final_progress(control, s.get("queue_size"))
+        db, _enrichment_rule(params["rule"]), apply=True, ignore_knob=False, log=log,
+        caps=caps, **_given(params, "limit"))
+    _final_progress(control, s.get("queue_size"), s)
     return {"confirmed": s.get("confirmed", 0), "written_cells": s.get("written_cells", 0),
             "queue_size": s.get("queue_size", 0)}
 
@@ -708,11 +734,16 @@ OPERATIONS = {
                            "holds for every table. Use this from a screen; "
                            "`business_keys` is for a plain-keyed table's operator and "
                            "the CLI. Sending both is refused"),
-                   _pace_param()],
+                   _pace_param(),
+                   _p("limit", required=False, kind="int", form=False,
+                      help="bound the source rows scanned"),
+                   _p("chunk_size", required=False, kind="int", form=False,
+                      help="rows per write chunk")],
         "count": _count_chain_replay,
         "run": _run_chain_replay,
         "cli": ("server/scripts/chain_replay_cli.py replay <rule> "
-                "[--business-keys a,b,c] [--row-ids r1,r2] [--pace slow] --apply"),
+                "[--business-keys a,b,c] [--row-ids r1,r2] [--pace slow] "
+                "[--limit N] [--chunk-size N] --apply"),
         "deletes": None,
         "reads_as": "number",
         "cancellable": True,
@@ -720,7 +751,7 @@ OPERATIONS = {
         "commit_granularity": ("crud.apply_batch_updates commits per 1000-item write "
                                "chunk; a pace yields at the page boundary, after those "
                                "commits and before the next page is read"),
-        "cli_only": ["replay-all (every rule in dependency order)", "--limit", "--chunk-size"],
+        "cli_only": ["replay-all (every rule in dependency order)"],
     },
     "withdraw": {
         "label": "Withdraw a stale source (R2)",
@@ -745,10 +776,17 @@ OPERATIONS = {
         "label": "Translate the ledger forward (everything after the cursor)",
         "what_is_missing": "the declaration reads this source, but rows after the cursor are not in the ledger yet",
         "params": [_p("source", help="ledger source id (GET /api/ledger/declaration)"),
-                   _pace_param()],
+                   _pace_param(),
+                   _p("fetch_rows", required=False, kind="int", form=False,
+                      help="rows read per page"),
+                   _p("max_batches", required=False, kind="int", form=False,
+                      help="stop after this many pages"),
+                   _p("ontology_root", required=False, form=False,
+                      help="the Ledger config root to read")],
         "count": _count_ledger_backfill,
         "run": _run_ledger_backfill,
-        "cli": "server/ledger/backfill.py --source <source> [--pace slow]",
+        "cli": ("server/ledger/backfill.py --source <source> [--pace slow] "
+                "[--fetch-rows N] [--max-batches N] [--ontology-root <dir>]"),
         "deletes": None,
         # 🔴 THIS IS THE ONE THE OWNER NAMED: "백필 돌리다 서버 렉먹는데 백필만 못꺼서
         # 서버 재기동". It commits per page and resumes from the cursor, so asking it to
@@ -758,8 +796,7 @@ OPERATIONS = {
         "cancellable": True,
         "restartable": True,
         "commit_granularity": "atoms and cursor in one commit per page",
-        "cli_only": ["--fetch-rows", "--max-batches", "--ontology-root",
-                     "--scope-column/--scope-values (that is `ledger_rescope` here)"],
+        "cli_only": ["--scope-column/--scope-values (that is `ledger_rescope` here)"],
     },
     "ledger_rescope": {
         "label": "Re-translate a ledger scope",
@@ -769,11 +806,13 @@ OPERATIONS = {
                       help="a column this source's read declares; anything else is "
                            "refused by name with the declared list"),
                    _p("scope_values", kind="csv",
-                      help="comma-separated values of that column")],
+                      help="comma-separated values of that column"),
+                   _p("ontology_root", required=False, form=False,
+                      help="the Ledger config root to read")],
         "count": _count_ledger_rescope,
         "run": _run_ledger_rescope,
         "cli": ("server/ledger/backfill.py --source <source> --scope-column <column> "
-                "--scope-values <a,b,c> --apply"),
+                "--scope-values <a,b,c> [--ontology-root <dir>] --apply"),
         # It deletes this source's atoms from the NAMED rows and nothing else:
         # `source_who` is in the delete predicate, so an atom another source wrote about
         # the same die is unreachable from here however the scope is spelled.
@@ -785,36 +824,49 @@ OPERATIONS = {
         "cancellable": False,
         "restartable": True,
         "commit_granularity": "one commit for the withdrawal, one for the remake",
-        "cli_only": ["--ontology-root (read a different config root)"],
+        "cli_only": [],
     },
     "enrichment_backfill": {
         "label": "Create enrichment derived rows",
         "what_is_missing": "the derived rows were never created at all",
-        "params": [_p("rule", help="enrichment rule name (chain_rules.json)")],
+        "params": [_p("rule", help="enrichment rule name (chain_rules.json)"),
+                   _p("limit", required=False, kind="int", form=False,
+                      help="caps NEW identities, not the scan"),
+                   _p("force_disabled", required=False, kind="bool", form=False,
+                      help="run even if the rule is disabled"),
+                   _p("chunk_size", required=False, kind="int", form=False,
+                      help="source scan chunk size")],
         "count": _count_enrichment_backfill,
         "run": _run_enrichment_backfill,
-        "cli": "server/scripts/backfill_enrichment.py <rule> --apply",
+        "cli": ("server/scripts/backfill_enrichment.py <rule> [--limit N] "
+                "[--force-disabled] [--chunk-size N] --apply"),
         "deletes": None,
         "reads_as": "number",
         "cancellable": True,
         "restartable": True,
         "commit_granularity": "crud.apply_batch_updates commits per source chunk",
-        "cli_only": ["--limit (caps NEW identities, not the scan)", "--force-disabled",
-                     "--chunk-size"],
+        "cli_only": [],
     },
     "enrichment_confirm": {
         "label": "Auto-confirm single candidates",
         "what_is_missing": "the derived rows exist but the target cell is empty",
-        "params": [_p("rule", help="enrichment rule name (chain_rules.json)")],
+        "params": [_p("rule", help="enrichment rule name (chain_rules.json)"),
+                   _p("limit", required=False, kind="int", form=False,
+                      help="cap the number of rows examined"),
+                   _p("probe_scan_rows", required=False, kind="int", form=False,
+                      help="max rows one candidate probe scans"),
+                   _p("probe_distinct_values", required=False, kind="int", form=False,
+                      help="max distinct values one probe may see")],
         "count": _count_enrichment_confirm,
         "run": _run_enrichment_confirm,
-        "cli": "server/scripts/enrichment_insights.py confirm <rule> --apply",
+        "cli": ("server/scripts/enrichment_insights.py confirm <rule> [--limit N] "
+                "[--probe-scan-rows N] [--probe-distinct-values N] --apply"),
         "deletes": None,
         "reads_as": "number",
         "cancellable": False,
         "restartable": True,
         "commit_granularity": "crud.apply_batch_updates commits per write chunk",
-        "cli_only": ["--limit", "--ignore-knob (measure a rule whose knob is off)",
+        "cli_only": ["--ignore-knob (measure a rule whose knob is off)",
                      "classify / propose subcommands", "all rules at once"],
     },
 }
@@ -1137,6 +1189,8 @@ class RunControl:
         #: 화면이 「무슨 일이 도는가」를 못 말한다 — S-36 이 대기열에서 고친 그 부족이다.
         self.op = op
         self.stopped = False
+        #: The operation's own answer, unreduced - what a CLI prints (`_final_progress`).
+        self.stats = None
         self._session_factory = session_factory
 
     def _session(self):
@@ -1359,7 +1413,8 @@ def inventory() -> list:
     """
     return [
         {"op": op, "label": s["label"], "what_is_missing": s["what_is_missing"],
-         "params": [dict(p, choices=_resolved_choices(p)) for p in s["params"]], "cli": s["cli"], "cli_only": s["cli_only"],
+         "params": [dict(p, choices=_resolved_choices(p)) for p in s["params"] if p["form"]],
+         "cli": s["cli"], "cli_only": s["cli_only"],
          "deletes": s["deletes"], "restartable": s["restartable"],
          "cancellable": s["cancellable"], "reads_as": s["reads_as"],
          "commit_granularity": s["commit_granularity"]}
@@ -1397,6 +1452,17 @@ def validate(op: str, params: dict) -> dict:
                 if isinstance(raw, str) else [str(c).strip() for c in raw if str(c).strip()]
             if not value:
                 continue
+        elif p["type"] == "int":
+            try:
+                value = int(str(raw).strip())
+            except ValueError:
+                raise RetroactiveRefused(
+                    f"'{op}' parameter '{p['name']}' must be a whole number; got {raw!r}")
+        elif p["type"] == "bool":
+            value = {"true": True, "false": False}.get(str(raw).strip().lower())
+            if value is None:
+                raise RetroactiveRefused(
+                    f"'{op}' parameter '{p['name']}' must be true or false; got {raw!r}")
         else:
             value = str(raw).strip()
         out[p["name"]] = value
@@ -1615,7 +1681,6 @@ def execute(payload: dict, log=logger.info) -> dict:
     (same rule as `config_backup.run_scheduled`).
     """
     from database import crud, models
-    from database.database import SessionLocal
 
     op = (payload or {}).get("op")
     run_id = (payload or {}).get("run_id", "?")
@@ -1649,6 +1714,103 @@ def execute(payload: dict, log=logger.info) -> dict:
             return out
     else:
         _mark_run(run_id, state=RUN_RUNNING, started=True)
+    return _run_to_the_end(run_id, op, spec, params, log, control)
+
+
+#: The heartbeat a run in its own process beats under, so a killed one is judged
+#: 「nobody's」 60 s later and a screen cancel releases its lock (총괄 45410384c ②).
+RUN_HERE_HEARTBEAT = "cli"
+RUN_HERE_BEAT_SECONDS = 10
+
+
+class RunCancelled(Exception):
+    """A run in this process was cancelled from the screen and stopped between pages."""
+
+
+def run_here(op: str, params: dict, log=print) -> dict:
+    """A run that executes in THIS process - a CLI's - through the same record, gate,
+    cancel and ending as a queued one (총괄 8a1f32f99 ① · 3d03bc819 · 80d61ae05).
+
+    No doorbell and no `queued` state: the row is written `running`, stamped with this
+    process, so no daemon can claim it - a queued row could be won by the scheduler or the
+    chain worker, and the CLI would print 「skipped」 while the work ran elsewhere.
+
+    :return: the ending's answer plus `stats`, the operation's own unreduced result.
+    :raises RetroactiveRefused: bad params, nothing registered, or the gate is closed -
+        before anything is written.
+    :raises RunCancelled: cancelled from the screen; what committed stays.
+    An exception from the operation reaches the caller after the row says `failed`.
+    """
+    from datetime import datetime, timezone
+
+    from database import crud, models
+    from database.database import SessionLocal
+    from utils import heartbeat
+
+    spec = operation(op)
+    params = validate(op, params)
+    if not crud.TABLE_CONFIG:
+        raise RetroactiveRefused(
+            "table_config.json is empty or missing - nothing is registered")
+    models.init_dynamic_models(crud.TABLE_CONFIG)
+    db = SessionLocal()
+    try:
+        refusal = gate_refusal(db)
+        if refusal:
+            raise RetroactiveRefused(refusal)
+        # Beat BEFORE the stamp: `runner_identity` names the heartbeat this process beats.
+        heartbeat.beat(RUN_HERE_HEARTBEAT, force=True)
+        run_id = uuid.uuid4().hex[:12]
+        now = datetime.now(timezone.utc)
+        db.add(models.RetroactiveRun(
+            run_id=run_id, op=op, params=json.dumps(params, ensure_ascii=False),
+            state=RUN_RUNNING, started_at=now, last_progress_at=now,
+            runner=runner_identity()))
+        db.commit()
+    finally:
+        db.close()
+
+    import threading
+
+    stop = threading.Event()
+
+    def beat_until_stopped():
+        while not stop.wait(RUN_HERE_BEAT_SECONDS):
+            heartbeat.beat(RUN_HERE_HEARTBEAT, force=True)
+
+    threading.Thread(target=beat_until_stopped, name="run-here-heartbeat",
+                     daemon=True).start()
+    control = RunControl(run_id, op=op)
+    try:
+        out = _run_to_the_end(run_id, op, spec, params, log, control, raise_failure=True)
+    except Exception:
+        raise                                   # the ending already wrote `failed`
+    except BaseException:
+        # Ctrl-C. What committed stays and the rest did not run - a cancel, not a failure.
+        # Without this the row stays `running` and holds the gate for every later run.
+        _mark_run(run_id, state=RUN_CANCELLED, finished=True,
+                  error="interrupted in the terminal that ran it")
+        announce_progress(run_id, op, ec.PROGRESS_STATUS_CANCELLED)
+        raise
+    finally:
+        stop.set()
+    if out["status"] == "cancelled":
+        raise RunCancelled("run_id=%s op=%s was cancelled from the screen; what it "
+                           "committed stays: %s" % (run_id, op, out["result"]))
+    return dict(out, stats=control.stats)
+
+
+def _run_to_the_end(run_id, op, spec, params, log, control, raise_failure=False) -> dict:
+    """Run a claimed run's operation and write how it ended: done, cancelled or failed.
+
+    🔴 THE ONE ENDING (총괄 b39604b58). `execute` (a queued run a daemon claimed) and
+       `run_here` (a run in its own process) both finish here, so 「how a run ends」 has
+       one spelling. A daemon must never raise (`raise_failure=False`); a terminal wants
+       the operation's own exception, after the row says `failed`.
+    """
+    from database.database import SessionLocal
+
+    out = {"run_id": run_id, "op": op, "status": "ok", "result": None, "error": None}
     db = SessionLocal()
     try:
         log(f"[Retroactive] run_id={run_id} op={op} params={params} START")
@@ -1676,6 +1838,8 @@ def execute(payload: dict, log=logger.info) -> dict:
         # ⚠️ 실패도 «끝»이다. 안 내면 화면의 진행 표시가 «영원히» 돌고,
         #    그것은 「도는 중」과 구별이 안 된다.
         announce_progress(control.run_id, op, ec.PROGRESS_STATUS_CANCELLED)
+        if raise_failure:
+            raise
     finally:
         db.close()
     return out

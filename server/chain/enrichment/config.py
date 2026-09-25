@@ -171,8 +171,9 @@ def read_cap_home(name: str) -> str:
     return f"ingestion_settings.json -> \"{READ_CAPS_SETTINGS_KEY}\": {{\"{name}\": ...}}"
 
 
-def load_read_caps(settings: dict = None) -> dict:
-    """Snapshot of the four read caps.
+def load_read_caps(settings: dict = None, overrides: dict = None) -> dict:
+    """Snapshot of the four read caps. `overrides` ({name: value}) is an explicit per-run
+    value - a CLI flag or a run's params - and reads as declared.
 
     Returns `{name: {"value": int|None, "declared": bool}}`. `declared` is not
     decoration: it is the difference between "your cap is 5000" and "nobody ever
@@ -204,6 +205,9 @@ def load_read_caps(settings: dict = None) -> dict:
             out[name] = {"value": shipped, "declared": False}
             continue
         out[name] = {"value": val, "declared": True}
+    for name, val in (overrides or {}).items():
+        if val is not None:
+            out[name] = {"value": val, "declared": True}
     return out
 
 

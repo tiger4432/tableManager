@@ -172,6 +172,14 @@ def main(argv=None):
     from database import crud, models
     from database.database import SessionLocal
     from chain import replay
+    from admin import retroactive
+
+    def say(m):
+        print(f"  {m}")
+
+    def written(op, params):
+        """--apply: the admin button's run record, gate and cancel - the work stays here."""
+        return retroactive.run_here(op, params, log=say)["stats"]
 
     if not crud.TABLE_CONFIG:
         print("REFUSED: table_config.json is empty or missing - nothing is registered")
@@ -199,14 +207,18 @@ def main(argv=None):
             # reference-side rule a legal subject. Asking first and narrowing after is how
             # a CLI comes to refuse what the button accepts (S-254 was that shape).
             rule = replay.find_rule(args.rule_name, row_scoped=bool(rows))
-            print(_report_replay(replay.replay_rule(
-                db, rule, apply=args.apply, limit=args.limit,
-                chunk_size=args.chunk_size, business_keys=selected, row_ids=rows,
-                pace=args.pace, log=lambda m: print(f"  {m}"))))
+            print(_report_replay(written("chain_replay", {
+                "rule": rule["name"], "business_keys": selected, "row_ids": rows,
+                "pace": args.pace, "limit": args.limit, "chunk_size": args.chunk_size})
+                if args.apply else replay.replay_rule(
+                    db, rule, apply=False, limit=args.limit, chunk_size=args.chunk_size,
+                    business_keys=selected, row_ids=rows, pace=args.pace, log=say)))
         elif args.cmd == "replay-all":
-            out = replay.replay_all(db, apply=args.apply, limit=args.limit,
-                                          chunk_size=args.chunk_size,
-                                          log=lambda m: print(f"  {m}"))
+            out = replay.replay_all(
+                db, apply=args.apply, limit=args.limit, chunk_size=args.chunk_size, log=say,
+                run_rule=(lambda rule: written("chain_replay", {
+                    "rule": rule["name"], "limit": args.limit,
+                    "chunk_size": args.chunk_size})) if args.apply else None)
             for s in out["rules"]:
                 print(_report_replay(s))
         elif args.cmd == "resolve":
@@ -217,11 +229,15 @@ def main(argv=None):
                 list_all=args.list_all))
         else:
             cols = [c.strip() for c in args.columns.split(",")] if args.columns else None
-            print(_report_withdraw(replay.withdraw_source(
-                db, args.table, args.source, columns=cols, apply=args.apply,
-                log=lambda m: print(f"  {m}"))))
-    except replay.ReplayRefused as e:
+            print(_report_withdraw(written("withdraw", {
+                "table": args.table, "source": args.source, "columns": cols})
+                if args.apply else replay.withdraw_source(
+                    db, args.table, args.source, columns=cols, apply=False, log=say)))
+    except (replay.ReplayRefused, retroactive.RetroactiveRefused) as e:
         print(f"REFUSED: {e}")
+        return 2
+    except retroactive.RunCancelled as e:
+        print(f"CANCELLED: {e}")
         return 2
     finally:
         db.close()

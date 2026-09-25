@@ -1445,17 +1445,19 @@ def test_every_parameter_a_button_takes_is_findable_in_the_cli_line_it_promises(
         return {name, name.replace("_", "-"), f"--{name}", f"--{name.replace('_', '-')}",
                 f"<{name}>"}
 
+    # Every DECLARED parameter, not only the form's: a CLI option the button hides
+    # (`form=False`) is still a promise of the cli line.
     missing = []
-    for row in retroactive.inventory():
-        haystack = " ".join([row["cli"]] + list(row["cli_only"]))
-        for param in row["params"]:
+    for op, spec in sorted(retroactive.OPERATIONS.items()):
+        haystack = " ".join([spec["cli"]] + list(spec["cli_only"]))
+        for param in spec["params"]:
             if not any(word in haystack for word in spellings(param["name"])):
-                missing.append(f"{row['op']}.{param['name']}")
+                missing.append(f"{op}.{param['name']}")
     assert not missing, (
         "these parameters exist on the operation but appear nowhere in its cli line or "
         f"cli_only, so the promise is false for them: {missing}")
     # Non-vacuous: there have to be parameters to check.
-    assert sum(len(row["params"]) for row in retroactive.inventory()) >= 6
+    assert sum(len(spec["params"]) for spec in retroactive.OPERATIONS.values()) >= 6
 
 
 def test_adding_a_pace_to_the_declaration_reaches_the_screen_with_no_code_change(monkeypatch):

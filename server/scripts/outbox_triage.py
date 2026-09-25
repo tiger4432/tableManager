@@ -25,6 +25,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 
 from sqlalchemy import text                                          # noqa: E402
 
+from admin import retroactive                                        # noqa: E402
 from database.database import SessionLocal                           # noqa: E402
 
 CANCEL_MARK = "cancelled_by"
@@ -183,15 +184,14 @@ def replay_cancelled(db, table, apply=False, chunk=1000):
     models.init_dynamic_models(crud.TABLE_CONFIG)
     from chain import replay
 
-    keys = [r[0] for r in db.execute(text(
-        "SELECT business_key_val FROM " + table + " WHERE row_id = ANY(:i)"),
-        {"i": ids}).fetchall()]
-    print("   business keys resolved: %d" % len(keys))
     rules = [r for r in replay.load_rules()
              if r.get("trigger_table") == table and r.get("enabled", True)]
     for rule in replay.order_rules(rules):
-        replay.replay_rule(db, rule, apply=True, business_keys=keys,
-                                 log=lambda *a, **k: None)
+        # One run record per rule: the admin button's gate and cancel; the work stays here.
+        # By `row_ids` - the rows these events named, which is also what makes a join's
+        # companion half a legal subject (S-270); business keys would be refused for it.
+        retroactive.run_here("chain_replay", {"rule": rule.get("name"), "row_ids": ids},
+                             log=lambda *a, **k: None)
         print("   replayed %s" % rule.get("name"))
     return len(ids)
 
@@ -231,7 +231,14 @@ def main(argv=None):
             if not args.table:
                 print("REFUSED: --replay-cancelled needs --table.")
                 return 2
-            replay_cancelled(db, args.table, args.apply, args.chunk)
+            try:
+                replay_cancelled(db, args.table, args.apply, args.chunk)
+            except retroactive.RetroactiveRefused as e:
+                print(f"REFUSED: {e}")
+                return 2
+            except retroactive.RunCancelled as e:
+                print(f"CANCELLED: {e}")
+                return 2
             return 0
     finally:
         db.close()

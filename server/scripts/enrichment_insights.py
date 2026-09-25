@@ -52,13 +52,9 @@ def _caps_from_args(args):
     """
     from chain.enrichment import config as ec
 
-    caps = ec.load_read_caps()
-    for flag, key in ((getattr(args, "probe_scan_rows", None), ec.CAP_PROBE_SCAN_ROWS),
-                      (getattr(args, "probe_distinct_values", None),
-                       ec.CAP_PROBE_DISTINCT_VALUES)):
-        if flag is not None:
-            caps[key] = {"value": flag, "declared": True}
-    return caps
+    return ec.load_read_caps(overrides={
+        ec.CAP_PROBE_SCAN_ROWS: getattr(args, "probe_scan_rows", None),
+        ec.CAP_PROBE_DISTINCT_VALUES: getattr(args, "probe_distinct_values", None)})
 
 
 def _cap_lines(res):
@@ -274,6 +270,7 @@ def main(argv=None):
     from database import crud, models
     from database.database import SessionLocal
     from chain.enrichment import analysis as ea
+    from admin import retroactive
 
     if not crud.TABLE_CONFIG:
         print("REFUSED: table_config.json is empty or missing - nothing is registered")
@@ -301,14 +298,26 @@ def main(argv=None):
                     print(_report_propose(ea.analyze_promotions(
                         db, rule, min_support=args.min_support, limit=args.limit,
                         log=lambda m: print(f"  {m}"))))
+                elif args.apply and not args.ignore_knob:
+                    # The admin button's run record, gate and cancel - the work stays here.
+                    print(_report_confirm(retroactive.run_here("enrichment_confirm", {
+                        "rule": rule["name"], "limit": args.limit,
+                        "probe_scan_rows": args.probe_scan_rows,
+                        "probe_distinct_values": args.probe_distinct_values},
+                        log=lambda m: print(f"  {m}"))["stats"]))
                 else:
+                    # A dry run - or --ignore-knob with --apply, which the sweep refuses
+                    # before it reads anything: the knob is where a human consents.
                     print(_report_confirm(ea.run_auto_confirm_sweep(
                         db, rule, apply=args.apply, limit=args.limit,
                         ignore_knob=args.ignore_knob, caps=caps,
                         log=lambda m: print(f"  {m}"))))
-            except ea.AnalysisRefused as e:
+            except (ea.AnalysisRefused, retroactive.RetroactiveRefused) as e:
                 print(f"REFUSED [{rule['name']}]: {e}")
                 rc = 2
+            except retroactive.RunCancelled as e:
+                print(f"CANCELLED [{rule['name']}]: {e}")
+                return 2
     finally:
         db.close()
     return rc
