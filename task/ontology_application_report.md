@@ -33602,3 +33602,22 @@ CLI 기록의 요청자   CLI 실행 행의 requested_by 가 비어 있습니다
 보고만(동결)  large_table_100 은 table_config 에 선언이 없어 파일의 칸 셋(item_id · col_1 · pad)이 다 버려지고 행 0 으로 SUCCESS 입니다 — 레인 판정에는 상관없음
 계기 한 줄  제 스크립트의 로그 무늬가 날짜를 빠뜨려 «전» 단계에서 아무것도 못 읽었습니다 — 전 칸은 같은 로그를 직접 읽은 것이고, 고친 무늬를 실제 줄 하나로 카나리아 한 뒤 «후»를 쟀습니다
 ```
+
+---
+
+## 전·후 — 표 · 원장 연산의 이름 판정 (075174b4 · 구현자 4 · 제 관찰 「없는 원장 소스는 두 답」) (09-26 06:14)
+
+프로세스 안 HEAD 로 발행. 거절이면 아무것도 안 씁니다.
+
+| 연산 · 없는 이름 | 전 (88845215f) | 후 |
+|---|---|---|
+| ledger_backfill · 소스 | 실행 줄 + 아웃박스 → 자식에서 failed | **발행에서 거절** 「… is not declared in ontology」 · 기록 0 ✓ |
+| ledger_rescope · 소스 | (같은 모양) | 거절 · 기록 0 ✓ |
+| resolve · 표 | (안 잼) | 거절 「table model '…' is not initialized」 · 기록 0 ✓ |
+| withdraw · 표 | (안 잼) | 🔴 **아직 기록** — 실행 줄 + 아웃박스 → 자식에서 failed, 사유가 resolve 의 거절과 «같은 문장» |
+
+```
+보고만   withdraw 의 판정은 보호 소스만 보고 표는 안 봅니다 — resolve 와 같은 물음(그 표가 있나)에 두 답
+        재현: POST /admin/retroactive/withdraw/run {"table": "없는표", "source": "x"}
+        남긴 것: failed 실행 줄 하나(run_id e17404775f7a)
+```
