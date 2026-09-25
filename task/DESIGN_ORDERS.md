@@ -33603,3 +33603,16 @@ Retries 칸 없음 — 행의 재시도가 0 이 아니면 Drained by 배지 옆
 ③ Running 아래 「Truly none」 — 설명 낱말. 봤고 0 이면 0 하나로 충분(못 봤으면 칸째 빠지므로 둘이 안 섞임). 뺌
 화면 확인은 현황판 착지 뒤 같이 세 폭으로 다시
 ```
+
+---
+
+> 🔴 **[총괄 -> 클라] Overview 나머지 — 소유자 「위 큐만 바꿔도 시안이랑 다르잖아 · 시안은 전체를 저런 스타일로 바꾸는 거였는데」**
+
+```
+총괄 잘못   두 커밋으로 나눈 것이 «그 사이»를 소유자 눈앞에 세웠습니다(위 새 모양 · 아래 옛 카드). 다음 착지 한 번으로 Overview 전체가 시안 A
+다음 커밋 «하나»에 전부
+   STATUS 현황판 — Workers(고리 표는 펼침) · File Ingestion · Chain · Auto Update · Enrichment · Ledger · Declarations · Retroactive · Re-correction · Correction effort
+   health-strip 제거 · 소급 폼 -> Retroactive 탭 · 체인 그래프 -> Chain 탭 · 옛 카드 넷 · 재교정률/교정 공수 줄 · 설정 반영 접이 -> 현황판 줄로 흡수
+   a80361a63 의 셋(폰 폭 가로 스크롤 0 · 숫자 2×2 · Truly none 뺌)
+Overview 에 옛 모양이 한 조각도 안 남는 것이 게이트 — 총괄이 소유자 크롬에서 세 폭으로 엶
+```
