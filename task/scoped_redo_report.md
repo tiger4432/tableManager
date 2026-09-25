@@ -60426,3 +60426,61 @@ auto_update 가 raws/ «안»에 「<이름>.tmp」 로 복사한 뒤 옮김(run
          변이: 「한 표 한 워커」를 빼면 순서 게이트 빨강
 여쭐 것   ㄷ 로 가도 되나 · 칸 이름(heavy_lane_workers)과 「재기동 때 읽음」이 괜찮은가
 ```
+
+---
+
+## [구현자 -> 총괄] 대형 레인 병렬 착지 — 표마다 FIFO · 한 표 한 워커 · heavy_lane_workers (8a556feb0 ㄷ) — 18e54f8a2
+
+```
+레인      기다리는 파일을 도착 순서로 (작업공간 키, 일). 워커는 «아무 워커도 안 도는 표»의 가장 오래된 파일을 가져감
+          끝나면 그 표를 풀고 기다리는 워커를 깨움. 워커 이름 watcher-heavy-lane, 둘째부터 -2 · -3 …
+키        workspace_key(작업공간) — 작업공간 직렬 락과 같은 함수 (같은 판단 한 자리)
+칸        heavy_lane_workers — 레인을 만들 때 읽음(감시자 재기동) · 1 이상 정수 아니면 경고 한 줄 뒤 1
+          추적 표본(config/sample/ingestion_settings.json.sample)에 칸과 설명을 적음, 값 1. 박스 설정은 안 건드림
+```
+
+### 게이트 — 시험
+
+| 칸 | 시험 | 변이 |
+|---|---|---|
+| 도는 표는 건너뛰고 다음 표의 가장 오래된 파일 · 같은 표 둘째는 첫째 뒤 | test_a_table_busy_on_one_worker_is_skipped_for_the_next_table | 「한 표 한 워커」를 빼면 2 failed |
+| 워커 1 = 전과 같은 한 줄 | test_one_worker_is_the_single_lane_there_always_was | 워커 수를 무시하면 3 failed |
+| 칸 읽기 · 잘못된 값은 1 | test_the_worker_count_is_one_cell_read_when_the_lane_is_built (6 칸) | 칸을 안 읽으면 1 failed |
+| 핸들러가 넘기는 키 = 작업공간 (두 표가 레인을 나눔) | test_two_tables_share_the_lane_and_each_keeps_its_order | 파일마다 키를 주면 1 failed |
+
+```
+가짜 레인 넷의 submit 모양도 같이 바꿈 — FakeLane · InstantLane · BrokenLane(test_heavy_lane) · _RecordingLane(test_nested_dir_ingestion)
+   처음 센 때 하나만 봤고 시험이 나머지를 알려 줌 — 셈은 「def submit(」 로 다시 해서 넷
+범위   감시자를 부르는 시험 42 파일 -> 741 passed, 3 skipped, 1137 warnings
+```
+
+### 게이트 — 분리 환경 (assy_qa · API :8081), 운영 DB 아님
+
+```
+파일      서로 다른 표 넷(체인 규칙이 트리거로 안 삼는 표 — inventory_master · dt_job_attribution · wafer_id_status · valid_die_ref)
+          각 약 11 MB · 거기에 첫 표(inventory_master)의 작은 다섯째 파일 — 첫 파일의 키 500 개 값을 바꿈(뒤 파일이 이겨야 함)
+          다섯째는 작지만 그 표에 대형 적재가 걸려 있어 레인 뒤로 감(workspace-order)
+워커 1    전체 1325 s · 감시자 메모리 최고 366 MB · 체인 대기열 가장 오래 기다린 줄 1.3 s · 뒤 파일이 이김 500 / 500 (그 키의 행 500)
+워커 4    전체 825 s · 감시자 메모리 최고 371 MB · 체인 대기열 가장 오래 기다린 줄 2.7 s · 뒤 파일이 이김 500 / 500 (그 키의 행 500)
+배        워커 4 가 워커 1 의 0.62 배 시간 (1.61 배 빠름)
+파일별    워커 1 inventory_master SUCCESS 366 s · dt_job_attribution SUCCESS 697 s · wafer_id_status SUCCESS 927 s · valid_die_ref SUCCESS 1323 s · 다섯째 SUCCESS 1325 s
+          워커 4 inventory_master SUCCESS 795 s · dt_job_attribution SUCCESS 803 s · wafer_id_status SUCCESS 593 s · valid_die_ref SUCCESS 825 s · 다섯째 SUCCESS 799 s
+```
+
+```
+분리 환경에 한 일  ingestion_settings.json 을 분리 설정 폴더에만 만들었다가(heavy_lane_workers 4) 지움 · 감시자 재기동 둘
+                  끝에 분리 환경을 내림 — 오늘 밤 처음 봤을 때 내려가 있었음
+                  분리 DB 에 드릴 행이 쌓임(inventory_master 등, 운영 무관)
+                  분리 DB 에 운영이 이미 가진 마이그레이션 하나(add_cell_source_origin_row.sql)를 걸었음 — 앞 보고
+운영 박스        재기동 «안 함» — 감시자가 새 코드를 읽으려면 재기동이 필요하고, 칸이 없으니 재기동해도 1 (= 지금과 같음)
+```
+
+### 곁 — 짓지 않음
+
+```
+㉠ 의 빈 설정 칸   표 설정이 비었을 때 publish · CLI 의 run_here 는 「rule 'x' is not declared …」, CLI 셋은 그 전에 「table_config.json is empty」
+                  run_here · execute · run_claimed 가 validate(이제 이름 판정 포함)를 표 설정 확인 «앞»에 둠 — 옮기면 한 문장
+                  (박스에서 load_rule("x", {}) 로 확인)
+㉠ 의 하는 일      판정이 연산의 조회를 부르고, 실행이 다시 부름 — 규칙 목록 읽기가 요청·자식마다 한 번에서 두 번
+analyze_after_rows 잘못된 값의 경고가 heavy_file_mb 의 문장을 씀(warn_invalid_heavy_threshold_once 를 빌려 씀) — 로그가 다른 칸 이름을 댐
+```
