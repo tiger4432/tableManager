@@ -61000,3 +61000,76 @@ custom x none -> SUCCESS | one line | None
 되돌리기   끝나면 watcher-down · PERF 행 지움 · public 의 ledger 표가 0 인지 확인해 적음
 박스      안 건드림
 ```
+
+---
+
+## [구현자 -> 총괄] 항목 2(ㄱ) — 지었고 게이트는 초록, 성능 게이트에서 «파싱 칸이 5 % 넘어» 멈춥니다 (f0578f20a) — 착지 안 함
+
+### 지은 것 (미커밋 · 작업 트리)
+
+```
+crud.NothingWritten      CellRefused 옆. 표 · 칸 «이름» · __str__ 이 문장의 유일한 저자
+std_parser               선언 칸이 하나도 없으면 crud.NothingWritten(표, 헤더의 선언 없는 칸) — 전: ValueError 트레이스백
+                         선언 없는 칸을 빼지 않고 행에 실어 보냄(빈 행 판정은 선언 칸만 봄 — 그대로)
+                         "ignoring unknown column(s)" WARNING 없앰(이제 안 빼므로 거짓) — 버린 칸 로그는 워처 한 자리
+directory_watcher        쓰기 고리 끝 한 판정 _nothing_written -> crud.NothingWritten(표, 버린 칸)
+                         일부 버림 문장 = 로그 INFO 와 같은 문장 -> 파일 기록(_compose_detail) · 두 except 가 새 거절을 문장으로
+시험 test_std_parser     두 줄이 뒤집힘 — 헤더 거절 문장 · 「선언 없는 칸은 버린다」 시험이 「실어 보낸다」로
+```
+
+### 게이트 — 시험
+
+```
+PASSED tests\test_a_file_that_wrote_nothing_fails.py::test_status_and_sentence[all-standard]
+PASSED tests\test_a_file_that_wrote_nothing_fails.py::test_status_and_sentence[all-custom]
+PASSED tests\test_a_file_that_wrote_nothing_fails.py::test_status_and_sentence[part-standard]
+PASSED tests\test_a_file_that_wrote_nothing_fails.py::test_status_and_sentence[part-custom]
+PASSED tests\test_a_file_that_wrote_nothing_fails.py::test_status_and_sentence[none-standard]
+PASSED tests\test_a_file_that_wrote_nothing_fails.py::test_status_and_sentence[none-custom]
+PASSED tests\test_a_file_that_wrote_nothing_fails.py::test_the_sentence_names_the_columns_and_the_next_step
+7 passed, 16 warnings in 1.74s
+```
+| 변이 | 결과 |
+|---|---|
+| 표준 파서가 다시 뺌 | 빨강 1 failed |
+| 쓰기 고리가 판정 안 함 | 빨강 1 failed |
+| 헤더 자리가 옛 문장 | 빨강 1 failed |
+| 기록에 버림 문장 안 실음 | 빨강 2 failed |
+
+```
+범위   crud · std_parser · directory_watcher 를 import 하는 시험 152 파일 -> 2936 passed, 42 skipped, 1 xfailed, 10390 warnings
+       client 픽스처 시험 전부 -> 705 passed, 1 xfailed
+```
+
+### 성능 — 분리 환경(assy_qa · 워처만) · lot_event · 표준 파서 · 선언 칸 다섯 + 선언 없는 칸 셋 · 10 만 행
+
+| 실행(시간순) | 코드 | 처리 s | 파싱 합 s | 쓰기(apply) 합 s | RSS 최고 MB |
+|---|---|---|---|---|---|
+| b3 | HEAD | 305.4 | 1.00 | 95.6 | 158.6 |
+| b4 | HEAD | 308.8 | 1.13 | 99.3 | 159.5 |
+| a1 | 새 코드 | 316.2 | 1.65 | 105.9 | 159.3 |
+| a2 | 새 코드 | 314.8 | 1.59 | 103.8 | 159.7 |
+| b5 | HEAD | 310.9 | 1.13 | 101.2 | 159.6 |
+
+```
+처리(시작 -> 성공 줄)   후 평균 315.5 s · 전 셋 평균 308.3 s (+2.3 %) · 마지막 대조 b5 대비 +1.5 %
+쓰기(apply)            후 평균 104.9 s · 전 셋 평균 98.7 s (+6.3 %) · b5 대비 +3.6 %
+파싱                   후 평균 1.62 s · 전 셋 평균 1.09 s (+49.1 %) — 🔴 이 칸이 5 % 를 넘음. 절대값은 10 만 행에 +0.53 s
+RSS 최고               후 평균 159.5 MB · 전 셋 평균 159.2 MB
+읽는 법   파싱이 느는 것은 제 변경의 몫 — 행마다 칸 셋을 더 싣고, 쓰기 고리가 그 칸마다 선언 칸 목록을 끝까지 훑음
+          쓰기(apply)는 crud 쓰기라 제 변경이 안 닿는 자리. 전 셋도 표가 커지며 95.6 -> 101.2 로 오름(실행마다 10 만 행 누적)
+          후 둘이 그 뒤의 b5 보다도 높은 것은 사실 — 원인은 안 쟀다(할당이 늘어 GC 가 apply 안에 떨어질 수 있다는 가설뿐)
+정리      PERF 행 지움 — lot_event rows 590043 -> 43 (PERF deleted 590000) | ledger tables in public 0
+```
+
+### 안 셋
+
+| 안 | 무엇 | 좋은 점 | 위험 | 크기 |
+|---|---|---|---|---|
+| ㄱ **추천** | 이대로 착지 | 처리 전체 +2.3 % 안쪽 · 도착지 그대로 | 파싱 칸은 5 % 를 넘은 채 | 0 (지어져 있음) |
+| ㄴ | 쓰기 고리의 칸 찾기를 파일마다 한 번 만든 사전으로(지금: 칸마다 선언 칸 목록을 훑음) 바꾸고 전·후를 다시 잼 | 파싱 칸을 되찾을 수 있음(안 쟀다) · 모든 파서 길이 이득 | 이 항목 밖의 손질 · 다시 재는 데 약 15 분 | 한 자리. 줄 수 안 쟀다 |
+| ㄷ | 표준 파서가 선언 없는 칸의 값 수를 스스로 세어 넘김 | 행에 칸을 안 실음 | 버림을 세는 자리가 둘(ㄱ 판정이 막은 모양) | 안 쟀다 |
+
+```
+여쭐 것   ㄱ(이대로) · ㄴ(칸 찾기 손질 후 다시 잼) 중 — 판정 전까지 착지 · 워처 재기동 안 함
+```
