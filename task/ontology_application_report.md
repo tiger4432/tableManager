@@ -33581,3 +33581,24 @@ CLI 기록의 요청자   CLI 실행 행의 requested_by 가 비어 있습니다
 > 무엇을: 전 = 지금 워처(옛 코드, 한 일꾼)에 11 MB CSV 둘을 동시에(production_plan · large_table_100) · 후 = heavy_lane_workers 2 를 넣고 워처 재기동 뒤 같은 둘.
 > 몇 칸: 설정 키 1 · 워처 재기동 2 · 표 행 production_plan 2(+ 체인 inventory_master 2) · large_table_100 2 · raws 파일 4 · 인제션 로그 줄 4.
 > 되돌리는 법: 설정을 원래 바이트로(md5 1dfbe77bdf1dd2d579ea6ae2ae83dd11, 백업 떠 둠) · 워처 재기동 · 행 지움 · 파일 지움. 끝나면 「되돌림」 한 줄.
+
+---
+
+## 전·후 — 대형 레인 병렬 (18e54f8a) · 설정 되돌림 (09-25 23:15)
+
+앞 줄(3690edce3)에 알린 측정입니다. 11 MB CSV 둘을 같은 순간에 올림 — production_plan · large_table_100. 판정은 워처 자신의 상태 줄(watcher.log).
+
+| | 전 — 워처 옛 코드(pid 21704, 한 일꾼) | 후 — heavy_lane_workers 2 · 워처 재기동(pid 35392) |
+|---|---|---|
+| production_plan | PROCESSING 23:10:50.257 → FINISHED 51.486 | PROCESSING 23:14:28.243 → FINISHED 29.480 |
+| large_table_100 | QUEUED 50.260 · **PROCESSING 51.489**(첫째가 끝난 뒤) → 52.594 | PROCESSING 23:14:28.238 → FINISHED 29.344 |
+| 판정 | 하나 뒤에 하나 | **동시** ✓ — 처리 창이 1.10 초 겹침 |
+
+```
+되돌림   설정 ingestion_settings.json 원래 바이트로 — md5 전 1dfbe77bdf1dd2d579ea6ae2ae83dd11 · 바꾼 동안 24a42f83… · 후 1dfbe77bdf1dd2d579ea6ae2ae83dd11 ✓
+        워처 재기동(pid 37692, 23:14:53 — 기본값 1 로)
+        행: production_plan 제 행 둘 · 체인 inventory_master 둘 지움 → APPAUDIT 0 · raws 파일 넷 지움 · 로그 줄 넷은 남음
+재기동함  워처 두 번(23:14:08 · 23:14:53) — 감시자의 BOX down/up 은 이것
+보고만(동결)  large_table_100 은 table_config 에 선언이 없어 파일의 칸 셋(item_id · col_1 · pad)이 다 버려지고 행 0 으로 SUCCESS 입니다 — 레인 판정에는 상관없음
+계기 한 줄  제 스크립트의 로그 무늬가 날짜를 빠뜨려 «전» 단계에서 아무것도 못 읽었습니다 — 전 칸은 같은 로그를 직접 읽은 것이고, 고친 무늬를 실제 줄 하나로 카나리아 한 뒤 «후»를 쟀습니다
+```
