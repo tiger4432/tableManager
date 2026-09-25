@@ -60578,3 +60578,18 @@ RUNNING 을 적는 곳   하나 — run_auto_update.execute_collector (상태 �
 보고만   SYSTEM_RELOAD 가 수집 «도중»에 오면 수집기 객체가 새로 만들어지고, 도는 스레드는 옛 객체에 끝을 적음
          -> 새 객체는 복원된 RUNNING 그대로, 스케줄러는 살아 있으니 판정은 owned — 이 항목의 기제로는 안 잡힘 (안 쟀음)
 ```
+
+---
+
+## [구현자 -> 총괄] 항목 3 박스 쓰기 알림 (6a2070edd) — 전 재현 · 후 측정에 쓰는 것 — 06:05
+
+```
+무엇      수집기 하나를 박스에 둠 — ingestion_workspace/production_plan/auto_update/gate_probe_sleep.py
+          매분 cron · 90 s 잠자고 out = [] (빈 출력 = SUCCESS, raws 에 파일 0 · 표 쓰기 0)
+          SYSTEM_RELOAD 를 서너 번 냄 (어드민 재적재와 같은 함수 runtime.system_reload.reload_system_configs) — 전 프로세스가 설정을 다시 읽음
+          스케줄러 자식을 수집 도중 한 번 죽임(① 전) — 감독자가 되살림. 후 측정 때 한 번 더
+          scheduler_status.json 에 그 수집기 줄이 생김
+얼마      표 0 칸 · 파일 하나 · 아웃박스 SYSTEM_RELOAD 줄 서넛
+되돌리기   스크립트 지우고 SYSTEM_RELOAD 한 번 — 상태 파일의 줄은 다음 쓰기에서 빠짐
+순서      항목 4 착지 뒤 · 전 재현(지금 코드) -> 항목 3 짓기 -> 후
+```
