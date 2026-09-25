@@ -1,3 +1,26 @@
+> ## [09-25 19:33 디자인] 실패 절 착수 — 짓기 전에 물음 둘 (나머지는 지금 짓습니다)
+
+### 물음 1 — 펼침에 그릴 «그 줄의 행»이 응답에 없습니다
+
+```
+요약    /admin/outbox/failed 의 summary 는 (표 · 종류 · 날) 로 묶음 — 박스에서 한 줄(dt_inventory EDIT 33)
+행 목록  같은 응답의 data 는 거래(transaction) 단위 · page/limit(화면은 10) 로 자름 · 요약 열쇠로 거르는 인자 없음
+그래서  펼치면 33 중 10 만 나오고, 「펼침 Retry 하나」 게이트가 안 나온 23 위에서 재어집니다
+필요    라우트가 (table · event_type · day) 로 행을 골라 주는 인자 — 그 라우트는 서버 절반(e8d2f751, 구현자)입니다
+여쭐 것  구현자에게 보낼지 제가 할지. 답 전에는 펼침을 짓지 않고, 요약 줄 · Attempts · 재시도 응답 · idle 부터 착지합니다
+```
+
+### 물음 2 — /health 의 running · orphaned 를 «어디에» 그리나
+
+```
+지금    /health 를 읽는 화면은 체인 배지 하나(CHAIN: OK). 루프 표는 /admin/runtime/loops 를 읽고,
+        on_demand 줄에는 running · orphaned 낱말이 없습니다(심박이 있으면 alive 참·거짓만)
+안      ㉮ 루프 표 응답이 on_demand 줄에 health 의 status · detail 을 같이 실음 (runtime/loops.py — 구현자 파일)
+        ㉯ 루프 표가 /health 를 한 번 더 읽어 그 줄에 붙임 (클라만 · 요청 하나 더 · 두 응답의 순간이 다름)
+추천    ㉮ — 한 줄의 상태를 한 응답이 말함
+지금 짓는 것  on_demand 이고 심박 없음 = idle (M 에서 뺌) — 이것은 루프 표 응답만으로 됩니다
+```
+
 > ## [09-25 19:27 디자인] bed890af2 ②③ 착지 (86f425f28) — Declarations 본문 영어 · 모집단 이름
 
 ### 착지 86f425f28
