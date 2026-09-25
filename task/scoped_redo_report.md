@@ -59694,3 +59694,55 @@ RUN.md    그 이름 0
 「지금 도는 것」 한 문 — 짓기 전 보고(도는 중 판정 자리 전수 · 수집기 실행이 보이는 자리 · 응답 모양)부터
 그 뒤 검수 빨간 칸(③ 답 오면 · ② · ①) -> 박스 설정 시험 셋 -> 관찰 다섯
 ```
+
+---
+
+## [구현자 -> 총괄] 「지금 도는 것」 한 문 (78ebdcfc0) — 짓기 전 보고
+
+### ① 지금 «도는 중»을 따로 판정하는 자리 — 서버 16 곳 · 7 파일 (AST, 카나리아: 판정 함수 정의 4/4)
+
+| 출처 | 판정하는 자리 | 밖에서 보이는 곳 |
+|---|---|---|
+| 체인 규칙 | activity.view (대기열 라우트 한 곳) | /admin/chain/queue 의 running — 맨 위 RUNNING 이 세는 유일한 것 |
+| 소급 | in_flight 4 곳(대기열 라우트 · 스케줄러 · 감독자 · 관문) · IN_FLIGHT_STATES 거름 2 · claim 의 running 확인 1 · retroactive_busy 2 | 대기열의 blocked_by — «스케줄러 줄이 기다릴 때만» 실림. 초인종을 집은 뒤엔 안 보임 |
+| 수집기 | 스케줄러 메모리의 _collectors_running 1 | 상태 파일의 last_status "RUNNING" -> /admin/auto-update/status |
+| 파일 인제션 | ingestion/activity 의 PROCESSING 1 | /admin/file-ingestion/active |
+| 프로세스(일 아님) | 감독자 STATE_RUNNING 2 · health 1 · 체인 루프 잠금 1 | — 이번 문 밖으로 봅니다 |
+
+클라에서 따로 가르는 자리 6 곳 — 맨 위 대기열(체인 규칙 수만) · Retroactive 탭(실행과 인제션을 «화면이» 합치고 moving 을 스스로 판정) · Auto Update 탭(RUNNING 배지).
+
+```
+⚠️ 목록에 없던 넷째 — 파일 인제션도 «도는 것»입니다. Retroactive 탭은 이미 그것을 같은 목록에 그립니다
+```
+
+### ② 수집기 실행이 도는 동안 보이나
+
+```
+보임     실행 시작에 상태 파일에 last_status=RUNNING · last_run(시작 시각)을 쓰고, 끝나면 SUCCESS/FAIL 로 다시 씀
+        Auto Update 탭이 그 파일을 읽어 RUNNING 배지를 그림
+없음     진행(행 수) · pid · 취소 문
+안 쟀다   스케줄러가 도중에 죽으면 파일이 RUNNING 으로 남는지 — 파일에 살아있음 표지가 없어 남을 것으로 읽힘(코드 읽기, 재지 않음)
+```
+
+### ③ 응답 모양 — 안 셋
+
+| 안 | 무엇 | 좋은 점 | 위험 |
+|---|---|---|---|
+| ㄱ (추천) | 서버 함수 하나 running_now 가 넷을 한 모양으로. 대기열 응답에 새 칸 now_running 으로 싣고, 옛 running(체인만)은 화면이 새 칸을 읽을 때까지 둠 | 클라가 옮기는 동안 안 깨짐 · attempts_this_round 때와 같은 길 | 한동안 칸이 둘 — 클라가 옮기면 같은 라운드에 옛 칸 은퇴 |
+| ㄴ | 옛 running 칸의 모양을 그 자리에서 바꿈 | 칸 하나 | 클라가 바뀌기 전까지 맨 위 대기열이 깨짐 — 두 레인이 한 커밋에 못 닿음 |
+| ㄷ | 화면이 네 라우트를 합침 (Retroactive 탭이 지금 하는 것) | 서버 변경 0 | 판정이 화면마다 — 지시의 「한 문」 이 아님 |
+
+```
+한 줄 모양(ㄱ)   now_running: [{what, where, pid, started_at, elapsed_seconds, progress: {processed, total} | null, cancel: {run_id} | null}]
+                where = chain_worker · own_process · scheduler · watcher (화면은 이 낱말로 «갈래를 안 틉니다» — 그대로 그림)
+                cancel 은 소급 등록부가 cancellable 이라고 하는 실행에만. 나머지는 null -> 버튼 없음
+문을 지나는 자리  대기열 라우트(새 칸) · 소급 목록 · 수집기 상태 · 인제션 목록의 «도는 중» 판정이 running_now 의 출처별 판정을 부름
+```
+
+### 여쭐 것
+
+```
+1  ㄱ 로 갈지
+2  파일 인제션을 넷째 출처로 넣을지 (추천: 넣음 — 이미 화면 하나가 «도는 것»으로 그립니다)
+3  수집기의 «죽었는데 RUNNING» 을 이번에 가를지 — 가르려면 스케줄러 심박과 겹쳐 봐야 합니다(안 쟀다)
+```
