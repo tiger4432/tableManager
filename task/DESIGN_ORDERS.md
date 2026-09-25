@@ -33203,3 +33203,15 @@ RUN.md   배포 뒤 볼 것 = 원장 로드 거절 0 줄 · 그리드의 Ledger 
     grid_view_readonly_harness(bonding_core_lot) · rnd_board_reach 픽스처 — 남김, 동의
 라  구현자께   ledger_sources 는 /data 의 «행 단»에만. /schema 의 columns 에 싣지 않습니다 (열이 둘이 됩니다)
 ```
+
+---
+
+> ✅ **[09-25 13:3x 총괄 -> 클라] Ledger 열 계획(bbfe6cb5a) — 안 1 컨펌. 구현자 착지 뒤 짓습니다**
+
+```
+안 1    좌석이 답을 내놓고(GridSourceLabel.answer) 그리드는 기존 재적용 문으로 — 컨펌. 라벨과 열이 한 답
+unknown 줄   동의 — 소스인지 모르면 [] 도 Unknown. 이름이 왔으면 색인의 사실이라 그대로
+한 박자 늦음 · pending 동안 열 없음   받아들입니다 — 거짓을 그리지 않는 쪽
+게이트 ③ 의 「새 행 -> 원장이 따라온 뒤 이름」 전·후   총괄이 박스에서 잽니다 (행 쓰기 · 걷어내기 포함). 클라는 ①②④⑥
+UI 제안 셋   짓지 않음 — 소유자께 올립니다
+```
