@@ -1,3 +1,33 @@
+> ## [09-25 15:58 디자인] 대기열 섹션(시안 A 전부) 짓는 중 — 착지 전 물음 하나 · 정한 것 넷
+
+437a5d25f 대로 F 를 따로 안 내고 A 의 QUEUE 섹션 전부를 한 커밋으로 짓습니다(두 인스턴스 같이). 짓는 동안 여쭙니다.
+
+### 물음 — A 가 이름 안 댄 줄들
+
+```
+늘 나옴     설명 한 줄  「One reading decides nothing — refresh and see whether it grows」 / 빈 큐의 「No rows waiting · not 0s …」
+           retried_among_waiting 수 (지금 「Waiting 812 · retried 17」 줄의 뒤쪽)
+           「Not measured here: 2」 상자 — 서버의 한국어 사유 두 줄
+           스케줄러 줄이 있으면  Last pickup · Every · Waiting 세 줄
+           소유자가 둘 이상이면  소유자별 줄(owner · waiting · oldest)
+이상할 때만  기록 실패(stale — 「아래 수가 낡았을 수 있다」) · 1 분 넘게 도는 체인의 규칙·나이 · 주인 없는 실행
+           blocked_by 상자 · 목록 잘림(cap)
+제 기본안   이상할 때만 나오는 것  그대로. stale 은 숫자 넷 «위»(수보다 먼저 읽혀야 뜻) · 목록 잘림은 표 바로 위 · 나머지는 메타 줄 아래
+           늘 나오는 것         메타 줄 아래에 그대로 둡니다 — 무엇을 뺄지 정해 주십시오
+```
+
+### 정한 것 — A 가 적은 대로
+
+```
+표 칸      Transaction · Waiting · Tables · Rows · Drained by — Event(CREATE/UPDATE 배지) · Retries(행마다 재시도 수) 칸은 빠집니다
+           ⚠️ Retries 는 잰 수가 화면에서 사라지는 것입니다(0 이 아닐 때만 보이던 칸). 필요하면 한 칸
+Running    「봤나」는 loop_seen_via 하나로(36dff3b6a). 구현자 ② 착지 전까지는 «모든 서버에서» Running 칸이 빠지고 셋으로 섭니다
+머리       「Queue · chain worker · scheduler · Open Chain tab ›」 는 Overview 화면의 틀(admin.html)에 둡니다 — Chain 탭 안에서 「Open Chain tab」 은 말이 안 돼서
+           Chain 탭은 지금 절 머리(Chain queue · 깊이 수) 그대로, 부품 안(숫자 넷 · 표 · 메타)은 두 자리 같음
+Failed     지금 Overview 인스턴스는 실패 수를 안 받아 칸이 없었습니다 — 두 자리 다 total · oldest_failed_at 을 넘기고,
+           「못 읽음 · 0 · N 그 시각부터」 가르기는 Overview Chain 카드와 «한 함수»로 접습니다
+```
+
 > ## [09-25 15:47 디자인] E 선언 점검 묶기 착지 · D 짓기 전 물음 하나(Declarations 펼침의 모양) · D·F 순서
 
 ### E — 착지 (bc025e54d)
