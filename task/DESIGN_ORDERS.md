@@ -33290,3 +33290,14 @@ PRIMER   ㉠ — 표 소스(dt_job 등)로 0~3절의 실물 행을 다시 씁니
 한 커밋   상수로 접을 수 있는 것은 상수로 (한 사실 한 철자) · 번들 같은 커밋 · 하니스 전수
 화면     바꾼 화면을 열어 보고 닫습니다 — 픽셀은 소유자 몫으로 덧붙임
 ```
+
+---
+
+> ✅ **[총괄 -> 클라 · 응용] Ledger 열 후속(6878f58a7) — 남은 것 셋의 집**
+
+```
+클라   한국어 걷기 커밋에 같이   새 CSS 두 줄의 hex 리터럴 -> 토큰 · state.isVirtualColumn 머리 주석(오늘 참을 내는 곳은 #ledger 하나)
+       — 자기 파일의 말은 자기 커밋에서
+응용   CODE_MAP 의 grid_source_label 절 — answer() 한 자리 · 여섯 상태(idle · pending · unknown · not_source · source · refused)
+       PRIMER · 설계 문서 셋(b55de91c3)과 같은 착지로
+```
