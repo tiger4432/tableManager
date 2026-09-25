@@ -59659,3 +59659,25 @@ CLI 다섯   자기 프로세스 · 어드민 실행과 같은 기록 · 관문 
             변이: 페이지 사이 읽기를 빼면 빨강
 한 줄 물음   17:30:24 감시자의 걷기 요청(/api/ledger/subgraph)이 연결 실패(000) — 그 시각 API 재기동했나. 그 뒤 총괄 재측정은 200 · 0.15 초
 ```
+
+---
+
+> 🔴 **[총괄 -> 구현자] via-events 는 연산으로 «안 넣음» — 은퇴. 원장 백필과 같은 일이라 문이 둘이 됨. 소유자 「ㅇㅇ」**
+
+님 물음(5cba73a79)의 답입니다. 총괄 판정이 틀렸습니다 — 넣으라던 b39604b58 을 뒤집습니다.
+
+```
+실측(코드 읽기)  run() -> _run_via_events 와 load_via_events 가 같은 일
+                 rows_missing_from_the_index 로 페이지 -> followup.enqueue(CREATE) -> 같은 프로세스에서 drain
+                 run() 쪽에만 속도 · 취소가 있음. S-76 조각 2 가 최초 적재 길로 낸 것을 조각 3 이 run() 안으로 옮긴 뒤 둘이 남음
+할 것   ① --via-events 옵션 · load_via_events 은퇴 — 옵션이 오면 이름 대어 거절(「원장 백필과 같은 일 — 옵션 없이 돌리십시오」)
+        ② load_via_events 에만 있던 것이 run() 에 없으면 run() 으로 옮김 — _loader_refusal(거절된 소스 거절)
+           apply 없이 페이지·행만 세던 것은 소급 count(rows_not_yet_translated)가 이미 하면 옮길 것 없음
+           잃는 성질 0 이 목표. 옮길 것이 없으면 「없음」과 센 명령을 보고
+        ③ 원장 백필 이름·설명의 「cursor」 — 커서는 은퇴(판정 163). 「아직 원장에 없는 행을 번역」으로 (label · what_is_missing)
+        ④ 약속을 든 자리 전수 — 주석 · 독스트링 · RUN.md · 시험(test_an_initial_load_goes_down_the_live_path 는 run() 이 지켜야 할 성질이면 run() 을 재게 옮김, 아니면 같이 은퇴)
+           runtime_v2 · CODE_MAP 의 이름 인용도
+담당표   via-events 줄 삭제 — 별도 프로세스 연산은 여섯(withdraw · enrichment_backfill · enrichment_confirm · ledger_backfill · ledger_rescope · resolve)
+         위 담당표 게이트의 「일곱 각각」 -> 「여섯 각각」
+게이트   --via-events 가 이름 대어 거절 · 원장 백필 카드 글자에 cursor 0 · git grep load_via_events 제품 코드 0(카나리아: def run 1) · 시험 · 변이는 옮긴 성질에
+```

@@ -33731,3 +33731,20 @@ Overview 에 옛 모양이 한 조각도 안 남는 것이 게이트 — 총괄�
 할 것   그 파일의 속도 이름·설명을 영어로 — ② 의 서버 문장과 같은 커밋이어도 됨. 이름이 «열쇠»로도 쓰이면(기록 · 시험) 열쇠는 그대로, 보이는 이름만
 게이트  Retroactive 탭 한글 0 (총괄이 같은 명령으로 잼)
 ```
+
+---
+
+> ✅ **[총괄 -> 클라] a42f8779a 받음(총괄이 API 재기동 뒤 소유자 크롬에서 엶) · 님 발견 — 모르는 종류는 문법이 이름 대어 거절. 소유자 「ㄱ으로」**
+
+```
+재검     Chain 탭 첫 칸 Kind — join 5(거절된 aaa 포함) · decide 2 · mapper 9, 그 순서 · 같은 종류 안 이름순
+         탭 줄에 Enrichment 없음 · Overview Enrichment Open › -> #chain · 재기동 전에는 Kind 가 전부 「—」 (옛 서버를 정직하게 그림)
+발견     derive.kind 가 문법 밖 낱말(banana)이면 거절 0 · 빈 규칙으로 섬
+할 것     expand_declaration 이 이름 대어 거절 — 「unknown derive kind 'banana' — one of join · decide · mapper」 같은 한 문장
+         허용 낱말은 한 자리(DECLARED_KINDS) — 거절 문장의 목록도 거기서 읽음. 새 목록 사본 금지
+         저장 관문과 로더가 같은 판정자(S-244)라 저장 순간 거절 · 이미 파일에 있는 줄은 목록에 사유와 함께(declared_only)
+         kind 를 안 적고 derive 칸 이름으로 정해지는 선언(from_declaration 의 정규화)은 그대로 통과
+짓기 전   박스 선언 중 여기에 걸리는 것 수 (명령 · 카나리아 같이) — 0 이 아니면 이름 대어 보고
+게이트   저장 거절 · 기동 뒤 목록 사유 · 정상 셋(join · decide · mapper) 무변 (박스 · 전·후) · 변이: 거절 줄을 빼면 빨강
+순서     909ea2052 넷 · 503b52049 과 겹치면 님 판단 — 작으면 먼저
+```
