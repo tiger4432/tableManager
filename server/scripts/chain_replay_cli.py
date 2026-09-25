@@ -216,7 +216,7 @@ def main(argv=None):
         elif args.cmd == "replay-all":
             out = replay.replay_all(
                 db, apply=args.apply, limit=args.limit, chunk_size=args.chunk_size, log=say,
-                run_rule=(lambda rule: written("chain_replay", {
+                run_one=(lambda rule: written("chain_replay", {
                     "rule": rule["name"], "limit": args.limit,
                     "chunk_size": args.chunk_size})) if args.apply else None)
             for s in out["rules"]:

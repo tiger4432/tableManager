@@ -603,7 +603,7 @@ def replay_rule(db, rule: dict, apply: bool = False, limit: int = None,
 
 def replay_all(db, apply: bool = False, limit: int = None,
                chunk_size: int = DEFAULT_CHUNK_SIZE, log=logger.info,
-               force: bool = False, run_rule=None) -> dict:
+               force: bool = False, run_one=None) -> dict:
     """[R1] Replay every enabled rule in dependency order, each EXACTLY ONCE.
 
     Replaying each rule once is the second half of the loop guard: cascading
@@ -614,7 +614,7 @@ def replay_all(db, apply: bool = False, limit: int = None,
     `process_chain_transaction_group` already drops those events, so a replay
     cannot make the running worker cascade either.
 
-    `run_rule(rule) -> stats` runs one rule instead of `replay_rule` - the CLI's write goes
+    `run_one(rule) -> stats` runs one rule instead of `replay_rule` - the CLI's write goes
     through the retroactive run record that way, one record per rule, in this order.
     A rule `replay_is_refused` names is not replayed whole here either (S-270's one predicate).
     """
@@ -627,7 +627,7 @@ def replay_all(db, apply: bool = False, limit: int = None,
     out = {"mode": "apply" if apply else "dry-run",
            "order": [r.get("name") for r in rules], "rules": []}
     for rule in rules:
-        out["rules"].append(run_rule(rule) if run_rule else replay_rule(
+        out["rules"].append(run_one(rule) if run_one else replay_rule(
             db, rule, apply=apply, limit=limit, chunk_size=chunk_size, log=log, force=force))
     return out
 
