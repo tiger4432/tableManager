@@ -134,6 +134,30 @@ def test_resolve_is_an_operation_the_admin_counts_and_a_cli_runs(retro_env):
     assert out["stats"]["table"] == "retro_test_target"
 
 
+def test_resolve_stops_between_its_own_page_commits(retro_env):
+    """총괄 7ed82bd78 — no checkpoint meant no resume, not no place to stop: each page
+    commits, so the boundary before the next page is where a screen cancel lands."""
+    from chain import replay
+    from tests.test_retroactive_admin import _seed
+
+    _seed(retro_env, "retro_test_target", [{"part_no": "P%d" % i, "note": "n"}
+                                           for i in range(3)])
+    asked = []
+
+    def stop_after_one_page(rows_so_far):
+        asked.append(rows_so_far)
+        return rows_so_far >= 1
+
+    s = replay.recompute_display_values(retro_env, "retro_test_target", apply=True,
+                                        chunk_size=1, checkpoint=stop_after_one_page,
+                                        log=lambda *_: None)
+    assert (s["pages"], s["rows_scanned"], s["stopped"]) == (1, 1, True)
+    assert asked == [0, 1]
+    whole = replay.recompute_display_values(retro_env, "retro_test_target", apply=True,
+                                            chunk_size=1, log=lambda *_: None)
+    assert (whole["rows_scanned"], whole["stopped"]) == (3, False), "a re-run starts over"
+
+
 def test_a_killed_one_is_nobodys_and_a_cancel_releases_it(retro_env, monkeypatch):
     """The CLI died without its ending: its heartbeat goes stale, and the gate says the
     cancel releases the lock rather than 「cannot be judged」."""

@@ -663,13 +663,10 @@ def _run_withdraw(db, params, log, control=None):
 
 
 def _run_resolve(db, params, log, control=None):
-    # 🔴 NO CHECKPOINT: `recompute_display_values` takes none, so no stop between pages is
-    #    offered (`cancellable: False`) rather than faked. It commits per page, so a killed run
-    #    loses at most the page in flight and a re-run finishes it.
     from chain import replay
 
     s = replay.recompute_display_values(db, params["table"], columns=params.get("columns"),
-                                        apply=True, log=log,
+                                        apply=True, log=log, checkpoint=_checkpoint(control),
                                         **_given(params, "limit", "chunk_size"))
     _final_progress(control, s.get("rows_scanned"), s)
     return {"cells_changed": s["cells_changed"], "cells_examined": s["cells_examined"],
@@ -832,9 +829,12 @@ OPERATIONS = {
         # deleted. Every moved cell gets an AuditLog row.
         "deletes": None,
         "reads_as": "number",
-        "cancellable": False,
+        "cancellable": True,
         "restartable": True,
-        "commit_granularity": "one commit per page of rows",
+        "commit_granularity": ("one commit per page of rows; a stop lands between pages and "
+                               "there is no resume - a re-run starts from the first page, "
+                               "and recomputing from stored layers twice gives the same "
+                               "answer"),
         "cli_only": ["--list-all (prints every moved cell)"],
     },
     "ledger_backfill": {

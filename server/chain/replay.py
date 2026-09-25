@@ -697,7 +697,7 @@ def recompute_display_values(db, table_name: str, columns: list = None,
                              row_ids: list = None, apply: bool = False,
                              chunk_size: int = DEFAULT_CHUNK_SIZE, limit: int = None,
                              max_report: int = DEFAULT_MAX_REPORT,
-                             log=logger.info) -> dict:
+                             log=logger.info, checkpoint=None) -> dict:
     """[R3] Re-run the resolution over stored layers and repair the materialised column.
 
     WHY THIS EXISTS AND WHY R1/R2 CANNOT DO IT
@@ -758,7 +758,7 @@ def recompute_display_values(db, table_name: str, columns: list = None,
              "rows_scanned": 0, "pages": 0, "cells_examined": 0,
              "pinned_examined": 0, "cells_changed": 0, "changed_by_tiebreak": 0,
              "changed_by_stale_materialisation": 0, "pinned_changed": 0,
-             "changes": [],
+             "changes": [], "stopped": False,
              # 정본 — 이 자리는 «예산 비트»만 안다. 몇 개가 빠졌는지는 모르므로 `omitted` 가
              # None 이고, 그것이 0 과 «다른» 사실이다.
              "truncated": {"changes": event_constants.truncated_note(False)}}
@@ -813,6 +813,14 @@ def recompute_display_values(db, table_name: str, columns: list = None,
     with crud.transaction_context(R3_AUDIT_SOURCE, tx_id, R1_SOURCE_NAME):
         for page in keyset_scan.iter_pages(db, model, condition=condition,
                                            chunk_size=chunk_size, limit=limit):
+            # The page boundary: every earlier page is committed, this one has not begun -
+            # the one place a stop is safe (`checkpoint` as in `replay_rule`). There is no
+            # position to resume from; a re-run starts over, and recomputing from the stored
+            # layers twice gives the same answer (총괄 7ed82bd78).
+            if checkpoint is not None and checkpoint(stats["rows_scanned"]):
+                stats["stopped"] = True
+                log(f"[recompute] stopped by request after {stats['rows_scanned']} rows")
+                break
             stats["pages"] += 1
             stats["rows_scanned"] += len(page)
             page_ids = [r.row_id for r in page]
