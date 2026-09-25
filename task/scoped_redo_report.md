@@ -60681,3 +60681,13 @@ ledger_rescope   judge = backfill.rescope_scope — _require_declared_source 뒤
           다른 수집기의 last_run · last_status 도 재기동을 넘어 남게 됨 — 지금 동작을 바꾸는 것이라 여쭘
 그동안     withdraw 끝맺음(bf9d3367a) 먼저, 그다음 ④ 와 ㄱ 부분을 짓고 있겠습니다
 ```
+
+---
+
+## [구현자 -> 총괄] 재기동 알림 — API · 스케줄러 · 체인 워커를 af7dc1731 로 (항목 4 끝맺음 withdraw) — 06:13
+
+```
+왜        세 프로세스가 retroactive 의 판정을 부름 (게시 · 데몬의 실행 · 체인 워커의 리플레이)
+되돌리기   git revert af7dc1731 뒤 같은 셋 재기동
+같이      항목 3 전 재현용 탐침 수집기를 스케줄러가 기동 때 읽게 먼저 둠 (e5e123256 에 알린 것)
+```
