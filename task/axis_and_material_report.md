@@ -1,3 +1,61 @@
+> ## [09-25 15:02 디자인] 화면의 한국어 ② 그리드 — 메인 그리드 화면이 영어 · 앞 보고의 화면 확인 한 줄을 바로잡습니다
+
+dd00d6dad 의 ②. 커밋 `49c3b78bd`.
+
+### 바로잡음 — ① 보고의 「화면」 줄은 틀렸습니다
+
+```
+「제 worktree 의 개발 서버로 R&D 보드를 열어 봄」 — 그 개발 서버는 «main 체크아웃»을 서빙합니다 (index.html 을 새로 받아 확인).
+그때 본 「None selected」 는 이미 main 에 있던 앞 라운드 글자였고, ① 의 증거가 아니었습니다
+① 은 착지(4a2751e0) 뒤 main 서버에서 다시 봤습니다 — 테마 버튼 라벨 「Switch to dark theme」, ui_words.js · 바뀐 absent.js 가 서빙됨
+그래서 이 도구로는 «병합 전»의 제 화면을 못 엽니다. 화면 확인은 착지 «뒤»에 main 서버로 합니다 (아래 물음)
+```
+
+### 한 것
+
+```
+그리드 화면 모듈 13 파일 + index.html — 렌더 한국어 196 -> 0 (JS 167 · HTML 29)
+   main 52 · timeline 40 · grid 15 · redo_banner 15 · clipboard 11 · websocket 8 · 붙여넣기 형식 창 6 · 참조뷰 6 · api 5 · ui 4 ·
+   chain_refresh_note 2 · source_rows 2 · state 1(표 옆 배지 「View — read-only」) · index.html 29(이력 필터 · 머리줄 · 메뉴 · 탭)
+   (셈 = 적용 전 AST 셈에서 파일마다, 합 196)
+숫자 형식 알림  세 쓰기 경로(편집 · 붙여넣기 · 채움)가 각자 적던 같은 문장 -> ui_words.notANumber 하나
+8c8f4e5d3      style.css — 경고색 두 줄이 없는 토큰 --warn 을 불러 hex 대체값이 늘 이겼습니다 -> var(--warning)
+               («못 읽음» 줄도 같은 병이라 같이 — 둘이 한 색이어야 합니다)
+               state.isVirtualColumn 머리 주석 — 「오늘 참을 내는 곳은 Ledger 열」
+```
+
+### 하니스 — 화면 글자를 단언하던 줄만
+
+```
+빨개진 10 -> 초록   chain_refresh_note 17 · disabled_reason 25 · history_paging 167 · ledger_receipt_timeline 22 · redo_banner 55 ·
+                   reference_view_head 69 · replay_rules 47 · source_rows_coverage 17 · wire_event_names 6 · ws_connect_watchdog 39
+변이 앵커   history_paging 변이 셋 · redo_banner 하나 · reference_view_head 하나 · ws_connect_watchdog 하나 · wire_event_names 셋 — 같은 뜻으로 옮김
+계약       ledger_receipt 의 클라 쪽이 같은 timeline 하니스를 돌려 같이 초록. 계약 12 갈라짐 없음
+```
+```
+⚠️ 뜻을 지키려고 «바꾼» 단언 둘 — 올립니다
+   chain_refresh_note B1  「바꿈·변경을 말하지 않는다」를 한국어 낱말로 쟀습니다. 영어 문장엔 그 낱말이 나올 수 없어 그대로면 늘 참(공허) —
+                         영어 낱말(change · edit)로 옮겼습니다
+   source_rows_coverage A5 「선택 수가 먼저」 — 한국어 「5칸 중 2칸」의 어순이었습니다. 영어는 「2 of 5 cells」 가 같은 뜻이라
+                         단언을 「덮은 수 of 선택 수」로 바꿨습니다. 막으려던 것(뒤바뀜)은 그대로 막습니다
+```
+
+### 게이트
+
+```
+npm run build (계약 + 하니스 전수) exit 0 · 번들 같은 커밋
+화면   착지 뒤 main 서버에서 그리드 화면을 열어 확인하고 한 줄로 올립니다
+```
+
+### 여쭐 것
+
+```
+1  «병합 전» 화면 확인 — 이 도구의 개발 서버 설정(.claude/launch.json, 추적 파일)이 main 체크아웃 기준이라 제 worktree 를 못 띄웁니다.
+   박스 CORS 는 5173 만 허락합니다. 착지 뒤 확인으로 가도 되나, 아니면 launch.json 에 제 worktree 설정 한 줄을 넣을지
+   (③ 어드민은 상설 「병합 전에 연다」 가 걸리고, 어드민은 토큰이 있어야 열려 저는 어차피 못 봅니다)
+남은 것  「1 rows」 같은 단수 — 수 뒤에 rows 를 붙인 자리가 몇 있습니다. 복수 처리는 안 넣었습니다
+```
+
 > ## [09-25 14:44 디자인] 화면의 한국어 ① 공유 — 여러 화면이 같이 쓰는 모듈 14 파일이 영어 · 낱말 상수 한 파일
 
 dd00d6dad 의 ①. 커밋 `4a2751e0d`.
