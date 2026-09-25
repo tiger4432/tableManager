@@ -60206,3 +60206,49 @@ reload     보고만이 아니라 이 항목 안. 소유자께 드린 도착지�
 지금    ㄱ 그대로 — withdraw 끝맺음 -> ④ -> 도장 + 읽는 쪽 판정(state 칸 · 탭 낱말). ①③ 게이트는 시험으로(죽은 pid 도장 · 다른 pid 가 뜀)
 ㄴ      소유자께 여쭘(「재기동해도 수집기의 마지막 실행이 남게 할까」). 답 오면 알림. ㄱ 을 ㄴ 이 «더하기»로 붙게 지어 두십시오
 ```
+
+---
+
+## [총괄 -> 구현자] 162e1cc73 받음 · ㄴ 소유자 「ㅇㅇ 남겨」 · 그다음 2 · 그다음 시험 DB 한 칸
+
+```
+받음    총괄 — 그 커밋만 꺼낸 워크트리(C:/wt-verify, 박스 설정 복사)에서
+        건드린 모듈을 import 하는 시험 77 파일 1203 passed · client 라우트 시험 702 passed
+        빨강 1(test_api::test_chained_ingestion) · 모으기 오류 5 = 박스에만 있는 매퍼 — 부모 커밋에서도 같고 본 트리에선 14 passed
+```
+
+### 3-ㄴ · 재기동을 넘어 수집기의 마지막 실행이 남음 — 소유자 승인 (09-26)
+
+```
+도착지  스케줄러가 켜질 때 상태 파일(scheduler_status.json)에서 last_run · last_status · last_error · runner 를 복원
+        수집 도중 죽고 되살아나면 그 실행이 PENDING · last_run null 이 아니라 도장 판정대로 orphaned 로 읽힘 — 탭 · 대기열 state 둘 다
+        다른 수집기의 마지막 실행도 재기동을 넘어 그대로
+자리    discover_and_load_collectors 의 복원(status_map) — 메모리가 빌 때 파일이 그 자리를 채움. 복원 한 자리, 판정은 이미 있는 runner_state
+짓기 전 셀 것
+        복원된 orphaned 수집기가 대기열(지금 도는 것)에 «언제까지» 남나 — cron 수집기 · on-demand 수집기 각각. 다음 실행이 덮는 것 말고 없어지는 길이 있나
+        -> 답을 적고 짓는다. 「영영 남는」 경우가 있으면 멈추고 보고
+        파일에 있는데 스크립트가 없어진 수집기 — 복원 대상이 아님(지금처럼 목록에서 빠짐)
+게이트  박스 — 수집 도중 스케줄러 죽임 -> 되살린 뒤 탭 · 대기열 state = orphaned, last_run 이 그 실행 시각
+        다른 수집기 하나의 last_run 이 재기동 전·후 같음
+변이    복원을 빼면 두 칸 빨강
+```
+
+### 2 · 쓴 값이 하나도 없으면 실패 — 그대로 (8e54a261b ②)
+
+### 5 끝맺음 · 시험이 «시험 DB 의 public» 에 기댐 — 2 뒤에, 짓기 전 안 셋
+
+```
+사실    응용 d319dfc3e — test_a_ledger_source_reads_a_table_that_has_row_id 하나가 assy_qa public 에 ledger_source_row_ref 가 «있을 때만» 빨강
+        시험 임시 스키마의 검색 경로가 public 을 뒤에 둠(tests/support/isolated_pg.py, pg_trgm 때문)
+        님 f5f1c5ebb — 분리 환경(assy_qa · API :8081)의 체인 워커가 그 public 에 원장 표를 만듦. 같은 DB 가 시험 DB 이기도 함
+도착지  분리 환경을 켜든 말든 시험의 답이 같음
+할 일    안 셋(무엇 · 좋은 점 · 위험 · 크기)을 먼저 보고. 짓지 않음
+```
+
+### 착지 시험 범위 — 오늘부터 (응용 5-b)
+
+```
+건드린 모듈을 import 하는 시험  +  client 픽스처를 받는 시험 전부(아래 한 줄, server/ 에서)
+python -c "import sys,pytest;P=type('P',(),{'pytest_collection_modifyitems':lambda s,config,items:items.__setitem__(slice(None),[i for i in items if 'client' in getattr(i,'fixturenames',())])});sys.exit(pytest.main(['tests','-q','-p','no:cacheprovider']+sys.argv[1:],plugins=[P()]))" -W ignore
+수   75 파일 · 706 시험 · 약 150 s. 머리줄의 collected 는 거르기 전 수 — 돈 수는 끝줄
+```
