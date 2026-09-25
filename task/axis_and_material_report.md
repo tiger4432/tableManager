@@ -1,3 +1,18 @@
+> ## [08:36 디자인] 수집기 상태 셋째 끝맺음 (b86d4f168) — 목록 배지 · 절 머리 수 · Overview 줄이 한 톤 자리를 지남
+
+```
+바꾼 곳   admin.js 절 머리 실패 수 · overview_status.js Overview 줄 실패 수 -> retry_verdict.isFailedStatus(톤 danger)
+         admin_rows.js 목록 배지 삼항 -> retry_verdict.statusBadgeClass(톤 -> 클래스)
+         서랍 둘의 배지도 같은 statusBadgeClass — 상태 -> 톤 -> 클래스가 한 벌
+게이트    git grep -n "last_status === " -- client2/src -> 0 · 카나리아 last_status 를 읽는 자리 6
+낱말 일곱  목록 배지 = 서랍 배지 (실제 목록 그리기로 잼) — SUCCESS 초록 · FAIL 빨강 · 나머지 다섯 노랑
+         Overview 줄 「failures 1」 = 서랍이 실패라 부르는 수 1 (실제 Overview 줄 만들기로 잼)
+시험      retry_verdict 56 (바닥 51 -> 56) · 변이 16/16 · 대조 2/2
+         H5 client2/src 134 파일을 읽어 철자 비교 0 — overview_status 에 철자를 하나 되돌려 보면 그 파일을 이름 대어 빨강
+         하니스 141 초록(기존 빨강 2) · 빌드 exit 0 · 번들 admin-DQVmqRL-.js
+여실 때    클라만. Auto Update 목록 배지 · 절 머리 수 · Overview Auto Update 줄(총괄)
+```
+
 > ## [08:03 디자인] 서랍 둘 착지 (34584806e) — 본문 글자색 · 수집기 서랍이 한 톤 자리를 지남
 
 ### 낱말 표 — 수집기 상태가 톤 자리(retryVerdict)에서 읽히던 것 · 이제
