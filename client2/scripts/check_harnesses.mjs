@@ -293,7 +293,8 @@ const FLOORS = new Map([
   // 152 -> 165 on 2026-09-25, mockup A: four numbers whose blind cells drop (Running asks
   // loop_seen_via alone), Failed from one function shared with the Overview card, five columns
   // with no inline widths, 「retry N」 badges, the local As of. 13 mutants, 13 caught.
-  ['chain_queue_panel_harness.mjs', 165],
+  // 165 -> 166 (a80361a63): seen and 0 is a plain 0 — 「Truly none」 under it is gone.
+  ['chain_queue_panel_harness.mjs', 166],
   ['outbox_queue_panel_harness.mjs', 54],
   ['company_roundtrip_harness.mjs', 84],
   ['coord_table_paste_harness.mjs', 52],
@@ -950,6 +951,8 @@ const FLOORS = new Map([
   // whole now and reads what the CARD says, so the assertions moved from letter-shape to
   // behaviour. Measured while converting: the old predicates all pass on a mutant that calls
   // `errorText` and then throws the answer away -- the exact defect the file exists to stop.
+  // Moved 2026-09-25 (mockup A): the cards are gone and the questions now score the File and
+  // Auto Update ROWS of `overview_status.js` — same fifteen, same six defects.
   ['health_card_absence_harness.mjs', 15],
   //
   // Scores the DONE-stats reader against a probe-loaded copy of the subject, and it drives its
@@ -1543,7 +1546,11 @@ const FLOORS = new Map([
   ['grid_ledger_column_harness.mjs', 36],
   // New 2026-09-25 (lead b73255fc5 E). The declaration check's problem lines, the same server reason
   // folded into one — scored on the real view module; which lines are problems is POPULATION_TONE's.
-  ['declaration_problem_groups_harness.mjs', 14],
+  // 14 -> 17 (b93cdf327): the domain joins the key, the biggest group first, no sentence carried.
+  ['declaration_problem_groups_harness.mjs', 17],
+  // New 2026-09-25 (mockup A · lead 5d157581e). The STATUS board: a closed four of words, one
+  // judge per row (File · Auto Update stay in health_card_absence), and the board part itself.
+  ['overview_board_harness.mjs', 48],
 ]);
 
 // ── the ceilings ────────────────────────────────────────────────────────────────

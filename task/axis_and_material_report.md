@@ -1,3 +1,62 @@
+> ## [09-25 16:56 디자인] Overview 시안 A 나머지 착지 (5efa71f75) — Status 현황판 · 옛 조각 0 · 화면은 총괄께
+
+### 착지 5efa71f75 — overview_status(줄 판정) · overview_board(현황판 부품) · admin.js · admin.html · 하니스 · dist
+
+```
+Overview     Queue 절 · Status 절 둘뿐
+             줄 열 — Workers · File Ingestion · Chain · Auto Update · Enrichment · Ledger · Declarations ·
+                     Retroactive · Re-correction · Correction effort
+             줄 = [점][이름][사실][OK · Warning · Failing · Unknown][Open ›] · 붉은 줄만 --danger-weak
+펼침         Workers = 고리 표(자기 상자 안에서 가로 스크롤)
+             Declarations = (영역, 사유) 줄, 수 큰 순 -> 「Show all N lines ›」 = 본문 · 조인 검증 · 선언 빈칸 · 계획 dry-run(지금 순서)
+             Retroactive = 도는 것 목록(× 그대로)
+옮김         소급 폼 -> Retroactive 탭(새 탭, 전폭 그대로) · 체인 그래프 -> Chain 탭 맨 아래 절
+뺌           health-strip 마크업 · refreshHealthStrip 과 판정 넷 · setHealthCard · 카드 클릭 넷 · 옛 카드 넷
+             재교정률/교정 공수 줄 · 설정 반영 · 소급 · Running 접이 셋
+읽기         Overview 가 workspaces 를 더는 안 읽음(줄이 안 씀) · Ledger 줄 때문에 /admin/ledger/sources 를 30 초 폴에 얹음
+a80361a63    숫자 넷 좁으면 2×2(칸 최소폭 = --space-6 × 5) · Truly none 뺌 · 가로로 밀던 고리 표를 제 상자 안으로
+```
+
+### 둘이던 판정 넷 — 갈라지던 답이 이렇게 하나가 됐습니다
+
+```
+Chain        띠는 total 없는 응답을 0 으로 -> 이제 Unknown (대기열 Failed 칸과 같은 failedSince)
+File         둘 다 active 못 읽음을 0 으로 접었음 -> 이제 「ingesting —」, 색은 실패 수가 정함
+Auto Update  띠만 오류 봉투 · 부재 · 연계 못 읽음을 물었음 -> 그 셋이 줄의 판정 (health_card_absence 가 그대로 잼)
+Enrichment   규칙 0 일 때 카드는 OK · 띠는 회색 -> 회색
+```
+
+### 제가 정한 것 — 뒤집으실 수 있게 적습니다
+
+```
+회색 낱말     닫힌 넷이라 「못 읽음」 말고 «판정할 것이 없음»(수집기 0 · 규칙 0 · 표본 작음 · 고리 0)도 Unknown 입니다. 어느 쪽인지는 사실 칸이 말합니다
+Ledger 색     서버가 상태마다 «뜻»만 보내고 색은 안 보내서 상태는 안 칠합니다. 거절된 분자가 0 보다 많으면 Warning
+Retroactive   「N running」 옆에 「oldest Nm」 — 끝난 것을 뺀 최댓값. 옛 접힌 줄이 「끊을까」의 판단 수로 쓰던 것입니다
+묶기 열쇠     (영역, 모집단, 사유) — 같은 영역·사유라도 rejected 와 no effect 는 두 줄. 한 줄이면 「40 no effect」 가 섞인 수가 됩니다
+자동 펼침     문제가 있을 때 설정 반영을 한 번 저절로 펴던 동작은 뺐습니다 — 시안은 «누르면» 펼침
+File Open ›   늘 FAILED 필터로 엽니다(숨은 띠와 같은 동작)
+```
+
+### 게이트
+
+```
+하니스   overview_board 35/0 · 변이 13/13 (새, 바닥 48)
+         health_card_absence 15/0 · 변이 6/6 · 대조 2/2 — 카드 함수에서 줄 함수로 옮김(지우지 않음)
+         declaration_problem_groups 10/0 · 변이 7/7 (바닥 14 -> 17) · chain_queue_panel 166/0
+         css_token_definition 7/0 · 변이 5/5 — 「값 ≠ 측정 못 함」 을 재교정률 선택자에서 현황판 낱말 색(OK · Unknown)으로 옮김
+빌드     계약 + 하니스 전수 exit 0
+화면     ⚠️ 병합 전에 못 열었습니다 — 미리보기 도구가 main 의 설정만 읽어 이 워크트리를 띄울 자리가 없고, 빌드 산출물은 절대 경로라 파일로도 안 열립니다
+         착지 뒤 총괄께 부탁드립니다: 세 폭 × (Overview · Retroactive 탭 · Chain 탭) · 「밖으로 나가는 요소」 줄 0 · 콘솔 오류 0
+```
+
+### 5 분 쓰면 걸릴 것 — 짓지 않음
+
+```
+Retroactive 줄이 늘 접혀 있음      「하나만 끊기」(소유자 1순위 화면)가 한 번 더 눌러야 나옴 — 도는 것이 있을 때만 펴 둘지      작음
+Chain 줄 펼침에 실패 요약           실패 81 이 무엇인지 탭을 안 옮기고 봄 — e8d2f751 · 29711cac 의 한 줄씩을 여기에          중 · 응답 모양 확인 뒤
+Workers 사실에 죽은 고리 이름       「8 of 9 alive」 만으로는 어느 것인지 펼쳐야 앎                                      작음
+```
+
 > ## [09-25 16:24 디자인] Overview 나머지(5d157581e) 짓기 전 셈 — 줄 열 개를 오늘 «누가» 판정하나 · 물음 넷
 
 ### 줄마다 오늘

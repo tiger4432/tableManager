@@ -678,6 +678,8 @@ console.log('\n[8] the owner split, and unknown is not chain');
   eq('C5 ...and the count of them is still drawn', ageless.value, '2');
   ok('C6 NEGATIVE CONTROL: an empty running list draws no 「longest」 either',
     !runOf({ running: [] }).sub.includes('longest'), runOf({ running: [] }).sub);
+  // lead a80361a63: seen and 0 is a plain 0 — no explaining word under it.
+  eq('C6b seen and nothing running is 0, with nothing under it', [runOf({ running: [] }).value, runOf({ running: [] }).sub], ['0', '']);
 
   // ── the lines: one per item OLDER THAN A MINUTE, and they carry the subject ──
   eq('C7 only the ones past a minute get a line', 1, three.runningOld.length);

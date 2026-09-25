@@ -376,11 +376,12 @@ export function buildConfigResolveView(report) {
 }
 
 /**
- * The problem lines of the report, the same reason folded into one (총괄 b73255fc5 E).
- * 「Problem」 is a population `POPULATION_TONE` colours warn or danger — the table the headline
- * reads, so its red and this list cannot disagree. What is counted is the server's reason
- * token; the sentence carried is the first line's `detail`, untouched. A line with no reason
- * token stands alone: two such lines may say different things.
+ * The problem lines of the report, one line per (domain, population, reason) (총괄 b73255fc5 E ·
+ * b93cdf327: 영역 × 사유 한 층, 수 큰 순). 「Problem」 is a population `POPULATION_TONE` colours
+ * warn or danger — the table the headline reads, so its red and this list cannot disagree. What
+ * is counted is the server's reason token. No sentence is carried: the first line's names ONE
+ * table and reads as if all of them were it — opening the group shows its lines. A line with no
+ * reason token stands alone: two such lines may say different things.
  */
 export function problemGroups(view) {
   const groups = [];
@@ -391,10 +392,11 @@ export function problemGroups(view) {
       if (tone !== 'warn' && tone !== 'danger') continue;
       for (const entry of population.entries || []) {
         const reason = entry.reason ? entry.reason.text : null;
-        const key = reason === null ? null : `${population.name}\u0000${reason}`;
+        const key = reason === null ? null : `${domain.name}\u0000${population.name}\u0000${reason}`;
         let group = key === null ? null : byKey.get(key);
         if (!group) {
-          group = { population: population.label, tone, reason: entry.reason, detail: entry.detail, lines: [] };
+          group = { domain: domain.title || { text: domain.name }, population: population.label, tone,
+                    reason: entry.reason, lines: [] };
           if (key !== null) byKey.set(key, group);
           groups.push(group);
         }
@@ -402,7 +404,9 @@ export function problemGroups(view) {
       }
     }
   }
-  return groups.map((group) => ({ ...group, count: count(group.lines.length) }));
+  // `sort` is stable: equal counts keep the report's order.
+  return groups.map((group) => ({ ...group, count: count(group.lines.length) }))
+    .sort((x, y) => y.lines.length - x.lines.length);
 }
 
 /** `GET /admin/enrichment/auto-confirm/dry-run` — the same discipline, one sentence long.
