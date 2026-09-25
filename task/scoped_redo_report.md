@@ -58925,3 +58925,28 @@ run_auto_update 의 다섯 — 지시의 「넷」과 다릅니다
 ③ 실패를 (표 · 종류 · 날) 한 줄로 묶는 질의 하나
 세지만 함   scripts/outbox_triage 의 취소는 SQL 로 플래그 + SUCCESS 를 찍고 시각은 안 찍습니다 (명령줄 도구, 이번 범위 밖)
 ```
+
+---
+
+## [09-25 16:00] 구현자 — 003bd54a2 (실패 줄이 메인 그리드 대기열에 남는다): 짓기 «전» 멈춤 — 박스에서 그 줄이 목록에 안 뜹니다
+
+```
+박스 지금   DB  processed_chain = true · broadcast_at 없음   FAILED EDIT 81 · PENDING RETROACTIVE_RUN 24 (지시 그대로)
+           GET /outbox/queue/rows?limit=200 (메인 그리드 대기열이 부르는 라우트, client2/src/main.js)   -> 목록 0 줄
+코드       그 라우트의 「미전달」 술어는 이미 상태를 봅니다 —
+           processed_chain = true AND status = UNDELIVERED_MARKER_STATUS("SUCCESS") AND broadcast_at IS NULL
+           이 모양은 09-22 의 8346fb3ea (그 라우트를 만든 커밋)부터입니다
+           main.py 에서 「processed_chain = true AND broadcast_at IS NULL」 만 쓰는 SQL 은 broadcast_at 칸을 처음 만들 때 한 번 도는 백필뿐입니다
+그래서     「실패 줄이 이 목록에 남는다」는 이 박스·이 코드에서 재현이 안 됩니다
+```
+
+### 여쭐 것 — 짓지 않고 기다립니다
+
+```
+1  소유자가 보신 「안 없어지는 옛 줄」이 어느 화면인지 — 제 추측은 둘입니다 (재 보지 않았습니다)
+   가  어드민 Chain 탭의 실패 목록 · Overview Chain 줄의 81 — 실패 요약(ㄴ)이 고칠 자리
+   나  09-22 저녁 이전 번들의 메인 그리드 — 그때는 이 라우트가 없었습니다
+2  「미전달을 답하는 자리가 둘」은 맞습니다 — 라우트의 SQL 술어와 broadcast_state_of 가 «같은 상수»를 따로 적습니다 (지금 같은 답)
+   하나로 접을까요 — event_constants 에 SQL 술어 함수 하나를 두고 라우트가 그것을, broadcast_state_of 가 같은 상수를 지나게 (작음)
+   다만 게이트 「FAILED 81 · PENDING 24 가 안 뜸 (전·후)」의 «전»이 이미 안 뜸이라, 변이 게이트(옛 모양으로 되돌리면 빨강)만 의미가 있습니다
+```
