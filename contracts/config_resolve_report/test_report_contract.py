@@ -191,6 +191,13 @@ def test_every_reason_has_exactly_one_name_and_the_response_carries_them():
     assert crr.resolve_report()["vocabulary"]["reason_names"] == dict(crr.REASON_NAMES)
 
 
+def test_every_population_has_exactly_one_name_and_the_response_carries_them():
+    """총괄 bed890af2 ③ — the same method as the reasons: 「40 ineffective」 was the token."""
+    assert dict(crr.POPULATION_NAMES) == VECTORS["vocabulary"]["population_names"]
+    assert set(crr.POPULATION_NAMES) == set(crr.POPULATIONS)
+    assert crr.resolve_report()["vocabulary"]["population_names"] == dict(crr.POPULATION_NAMES)
+
+
 #: The one report reason with no runtime twin, and the reason it has none. See the
 #: xfail below - it is a NAMED red, not an exemption.
 _AWAITING_RUNTIME = {"scope_unresolved"}

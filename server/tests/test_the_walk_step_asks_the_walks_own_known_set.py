@@ -75,7 +75,8 @@ def test_no_declared_entity_is_INEFFECTIVE_and_says_what_to_do(collectable):
     assert walk["counts"] == {"effective": 0, "ineffective": 1, "rejected": 0}
     only = walk["ineffective"][0]
     assert only["reason"] == crr.REASON_NOT_DECLARED
-    assert "⑤" in only["detail"], only["detail"]
+    ledger_step = next(s["name"] for s in crr.SETUP_STEPS if s["domain"] == crr.DOMAIN_LEDGER)
+    assert f"{ledger_step} step" in only["detail"], only["detail"]
 
 
 def test_a_declaration_that_will_not_read_is_a_file_refusal_carrying_its_reason(collectable):

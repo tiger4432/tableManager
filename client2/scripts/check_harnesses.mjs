@@ -1554,7 +1554,8 @@ const FLOORS = new Map([
   // folded into one — scored on the real view module; which lines are problems is POPULATION_TONE's.
   // 14 -> 17 (b93cdf327): the domain joins the key, the biggest group first, no sentence carried.
   // 17 -> 19 (lead 909ea2052 ②): a group draws the server's reason name — one check, one mutant.
-  ['declaration_problem_groups_harness.mjs', 19],
+  // 19 -> 21 (lead bed890af2 ③): and the population's name, the same way — one check, one mutant.
+  ['declaration_problem_groups_harness.mjs', 21],
   // New 2026-09-25 (mockup A · lead 5d157581e). The STATUS board: a closed four of words, one
   // judge per row (File · Auto Update stay in health_card_absence), and the board part itself.
   // 48 -> 49 (lead 909ea2052 ①): the Ledger row draws the server's state names.

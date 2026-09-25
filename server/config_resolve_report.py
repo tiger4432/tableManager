@@ -116,6 +116,9 @@ REASON_NAMES = {
 }
 
 POPULATIONS = ("effective", "ineffective", "rejected")
+#: What each population is CALLED on a screen, the way `REASON_NAMES` names the reasons
+#: (lead bed890af2 ③). Lower case: it is read after a count - 「40 no effect」.
+POPULATION_NAMES = {"effective": "fine", "ineffective": "no effect", "rejected": "rejected"}
 
 SCOPE_FILE = "file"
 SCOPE_SETTING = "setting"
@@ -245,15 +248,15 @@ def _resolve_chain() -> dict:
     read = worker.read_rules_document()
     sources = [source(
         "rules", read["path"],
-        "무엇이 무엇을 깨우는지의 선언입니다. 표가 여기 없으면 그 표는 «아무것도 파생시키지 "
-        "않습니다» — 비어 있는 것과 틀린 것은 아래에서 갈라집니다.",
+        "Declares what wakes what. A table not named here derives nothing - "
+        "empty and wrong are told apart below.",
         exists=read["exists"], degraded=bool(read["error"]))]
 
     if read["error"]:
         rejected.append(entry(
             SCOPE_FILE, os.path.basename(read["path"]),
-            "체인 규칙 파일을 읽지 못했습니다 (%s). 이 파일이 안 읽히면 «어떤» 표도 파생을 "
-            "일으키지 않습니다." % read["error"],
+            "The chain rules file could not be read (%s). While it cannot be read, no table "
+            "derives anything." % read["error"],
             reason=REASON_MAPPING_UNAVAILABLE))
         return build_domain(DOMAIN_CHAIN, DOMAIN_TITLES[DOMAIN_CHAIN], sources, [],
                             effective, ineffective, rejected)
@@ -276,7 +279,7 @@ def _resolve_chain() -> dict:
         if expand_refusal:
             rejected.append(entry(
                 SCOPE_RULE, name,
-                "`%s` 선언을 폼 수 없습니다 — %s" % (name, expand_refusal),
+                "`%s` cannot be expanded - %s" % (name, expand_refusal),
                 reason=REASON_MAPPING_UNAVAILABLE,
                 fields={"origin": ORIGIN_DECLARED}))
             continue
@@ -289,9 +292,9 @@ def _resolve_chain() -> dict:
                 first = issues[0]
                 rejected.append(entry(
                     SCOPE_RULE, name,
-                    "`%s` 규칙은 «돌 수 없습니다» — %s: %s%s"
+                    "Rule `%s` cannot run - %s: %s%s"
                     % (name, first.path, first.message,
-                       " (외 %d건)" % (len(issues) - 1) if len(issues) > 1 else ""),
+                       " (and %d more)" % (len(issues) - 1) if len(issues) > 1 else ""),
                     reason=REASON_MAPPING_UNAVAILABLE,
                     fields={"issues": [i.to_mapping() for i in issues],
                             "origin": ORIGIN_DECLARED}))
@@ -303,7 +306,7 @@ def _resolve_chain() -> dict:
             warnings = chain_bindings.rule_warnings(rule, path)
             effective.append(entry(
                 SCOPE_RULE, name,
-                "`%s` 가 `%s` 의 변화에 붙었습니다." % (name, trigger),
+                "`%s` runs on changes to `%s`." % (name, trigger),
                 fields={"origin": ORIGIN_DECLARED, "trigger_table": trigger,
                         "warnings": [w.to_mapping() for w in warnings]}))
 
@@ -325,8 +328,8 @@ def _resolve_chain() -> dict:
         # just ruled on: a correction above does not repair the sentence below.
         ineffective.append(entry(
             SCOPE_TABLE, table,
-            "`%s` 의 변화는 «아무것도 깨우지 않습니다» — 이 표를 `trigger_table` 로 적은 "
-            "규칙이 없습니다. 파생이 필요 없는 표라면 이것이 정상입니다." % table,
+            "Changes to `%s` wake nothing - no rule names this table as its `trigger_table`. "
+            "For a table that needs no derivation this is normal." % table,
             reason=REASON_NOT_DECLARED))
 
     return build_domain(DOMAIN_CHAIN, DOMAIN_TITLES[DOMAIN_CHAIN], sources, [],
@@ -361,21 +364,21 @@ def _view_report(rule: dict, view: dict) -> dict:
     parts = []
     if declared:
         pairs = ", ".join(f"{t} ← {c}" for t, c in sorted(declared.items()))
-        parts.append(f"후보 선언: {pairs}")
+        parts.append(f"Candidates declared: {pairs}")
     else:
-        parts.append("후보 선언 없음 (표시 전용)")
+        parts.append("No candidates declared (display only)")
     if narrow:
         if declared:
             warnings.append(REASON_SCOPE_UNRESOLVED)
-            tail = "같은 값이 서로 다른 {k}에 그대로 확정될 수 있습니다 — 켜기 전에 확인하세요."
+            tail = "The same value can be confirmed into different {k} - check before switching it on."
         else:
-            tail = ("여기에 candidate_for를 선언하면 같은 값이 서로 다른 {k}에 그대로 "
-                    "확정됩니다 — 후보 원천으로 쓰지 마세요.")
+            tail = ("Declaring candidate_for here would confirm the same value into "
+                    "different {k} - do not use it as a candidate source.")
         unbound_txt = _names(unbound, "/")
-        scope_txt = f"{_names(binds, '/')} 키만으로" if binds else "아무 키도 없이"
+        scope_txt = f"by {_names(binds, '/')} only" if binds else "with no key at all"
         parts.append(
-            f"⚠️ 이 뷰는 {scope_txt} 조회하므로 판단키 {unbound_txt}을(를) 구별하지 "
-            f"못합니다. " + tail.format(k=unbound_txt))
+            f"⚠️ This view looks up {scope_txt}, so it cannot tell the decision key "
+            f"{unbound_txt} apart. " + tail.format(k=unbound_txt))
     return {
         "label": label,
         "candidate_for": declared,
@@ -442,7 +445,7 @@ def _resolve_enrichment() -> dict:
         rejected.append(entry(
             r["scope"] if r["scope"] in SCOPES else SCOPE_RULE,
             r.get("subject"),
-            f"선언이 반영되지 않았습니다 — {r['detail']}",
+            f"The declaration did not take effect - {r['detail']}",
             reason=REASON_MAPPING_UNAVAILABLE))
 
     # --- 전역 스위치 + 캡 ---
@@ -458,38 +461,38 @@ def _resolve_enrichment() -> dict:
     cap_value = ec.max_keys_per_unit(raw_settings)
 
     if not settings_exists:
-        origin_note = "파일이 없어 기본값입니다"
+        origin_note = "the default, as there is no file"
     elif not switch_declared:
-        origin_note = "파일에 선언이 없어 기본값입니다"
+        origin_note = "the default, as the file does not declare it"
     else:
-        origin_note = "파일 선언값입니다"
+        origin_note = "as the file declares"
 
     settings = [
         setting(ec.GLOBAL_KILL_SWITCH_KEY, switch_on,
                 ORIGIN_FILE if (switch_declared and switch_valid) else ORIGIN_DEFAULT,
                 settings_path,
                 declared=switch_raw if switch_declared else None,
-                detail=(f"전역 스위치 = {'ON' if switch_on else 'OFF'} — "
-                        f"{origin_note}. OFF면 규칙별 노브와 무관하게 아무 것도 자동 "
-                        f"확정하지 않습니다.")),
+                detail=(f"Global switch = {'ON' if switch_on else 'OFF'} - "
+                        f"{origin_note}. While OFF nothing is auto-confirmed, whatever "
+                        f"each rule's knob says.")),
         setting(ec.MAX_KEYS_SETTINGS_KEY, cap_value,
                 ORIGIN_FILE if (cap_declared and cap_valid) else ORIGIN_DEFAULT,
                 settings_path,
                 declared=cap_raw if cap_declared else None,
-                detail=(f"작업 단위당 판단키 프로브 상한 = {cap_value}건. 넘는 키는 "
-                        f"확정되지 않고 워크리스트에 그대로 남습니다(유실 아님).")),
+                detail=(f"Decision-key probe cap per unit of work = {cap_value}. Keys past it "
+                        f"are not confirmed and stay on the worklist (nothing is lost).")),
     ]
     if switch_declared and not switch_valid:
         rejected.append(entry(
             SCOPE_SETTING, ec.GLOBAL_KILL_SWITCH_KEY,
-            f"'{ec.GLOBAL_KILL_SWITCH_KEY}' 값 {_as_json(switch_raw)}은(는) JSON boolean이 "
-            f"아니라 무시되었습니다 — 기본값 true(차단하지 않음)로 동작합니다.",
+            f"'{ec.GLOBAL_KILL_SWITCH_KEY}' value {_as_json(switch_raw)} is not a JSON boolean "
+            f"and was ignored - it runs as the default, true (does not block).",
             reason=REASON_MAPPING_UNAVAILABLE))
     if cap_declared and not cap_valid:
         rejected.append(entry(
             SCOPE_SETTING, ec.MAX_KEYS_SETTINGS_KEY,
-            f"'{ec.MAX_KEYS_SETTINGS_KEY}' 값 {_as_json(cap_raw)}은(는) 양의 정수가 아니라 "
-            f"무시되었습니다 — 기본값 {ec.DEFAULT_MAX_KEYS_PER_UNIT}로 동작합니다.",
+            f"'{ec.MAX_KEYS_SETTINGS_KEY}' value {_as_json(cap_raw)} is not a positive integer "
+            f"and was ignored - it runs as the default, {ec.DEFAULT_MAX_KEYS_PER_UNIT}.",
             reason=REASON_MAPPING_UNAVAILABLE))
 
     # --- 규칙별 ---
@@ -507,41 +510,41 @@ def _resolve_enrichment() -> dict:
         if knob_declared and not knob_valid:
             rejected.append(entry(
                 SCOPE_RULE, name,
-                f"'{ec.RULE_KNOB}' 값 {_as_json(raw_knob)}은(는) JSON boolean이 아니라 "
-                f"무시되었습니다 — 이 규칙은 기본값 OFF로 동작합니다.",
+                f"'{ec.RULE_KNOB}' value {_as_json(raw_knob)} is not a JSON boolean "
+                f"and was ignored - this rule runs as the default, OFF.",
                 reason=REASON_MAPPING_UNAVAILABLE, fields=fields))
             continue
         if not knob_declared or raw_knob is False:
             ineffective.append(entry(
                 SCOPE_RULE, name,
-                (f"'{ec.RULE_KNOB}' 선언이 없습니다 — 자동 확정을 하지 않습니다(기본값 OFF)."
+                (f"'{ec.RULE_KNOB}' is not declared - no auto-confirm (default OFF)."
                  if not knob_declared else
-                 f"'{ec.RULE_KNOB}': false — 자동 확정을 하지 않습니다."),
+                 f"'{ec.RULE_KNOB}': false - no auto-confirm."),
                 reason=REASON_NOT_DECLARED, warnings=warnings, fields=fields))
             continue
         if not switch_on:
             ineffective.append(entry(
                 SCOPE_RULE, name,
-                f"'{ec.RULE_KNOB}': true 이지만 전역 스위치 "
-                f"'{ec.GLOBAL_KILL_SWITCH_KEY}'가 false라 이 선언까지 도달하지 않습니다.",
+                f"'{ec.RULE_KNOB}': true, but the global switch "
+                f"'{ec.GLOBAL_KILL_SWITCH_KEY}' is false, so this declaration is not reached.",
                 reason=REASON_NOT_REACHED, warnings=warnings, fields=fields))
             continue
         if not declaring:
             ineffective.append(entry(
                 SCOPE_RULE, name,
-                f"'{ec.RULE_KNOB}': true 이지만 어떤 참조뷰도 'candidate_for'를 선언하지 "
-                f"않아 아무 효과가 없습니다. 자동 확정은 후보 컬럼을 추측하지 않습니다 — "
-                f"어느 뷰의 어느 결과 컬럼이 {_names(rule.get('target_fields'))}의 후보를 "
-                f"나르는지 선언해야 동작합니다.",
+                f"'{ec.RULE_KNOB}': true, but no reference view declares 'candidate_for', "
+                f"so it has no effect. Auto-confirm does not guess candidate columns - "
+                f"declare which result column of which view carries the candidates for "
+                f"{_names(rule.get('target_fields'))}.",
                 reason=REASON_NOT_DECLARED, warnings=warnings, fields=fields))
             continue
 
-        detail = (f"자동 확정 ON — {_names(sorted(declaring))} 필드를 "
-                  f"{sum(len(v) for v in fields['candidate_fields'].values())}개 뷰 선언으로 "
-                  f"해석합니다. 후보가 정확히 1개일 때만 쓰고, 이미 값/이력이 있는 셀은 "
-                  f"건드리지 않습니다.")
+        detail = (f"Auto-confirm ON - {_names(sorted(declaring))} resolved through "
+                  f"{sum(len(v) for v in fields['candidate_fields'].values())} view declarations. "
+                  f"It writes only when there is exactly one candidate, and never touches a "
+                  f"cell that already has a value or a history.")
         if warnings:
-            detail += " ⚠️ 아래 뷰 경고를 확인하세요."
+            detail += " ⚠️ See the view warnings below."
         effective.append(entry(SCOPE_RULE, name, detail,
                                warnings=warnings, fields=fields))
 
@@ -549,15 +552,15 @@ def _resolve_enrichment() -> dict:
     file_rejected = any(r["scope"] == SCOPE_FILE for r in rejections)
     sources = [
         source("rules", rules_path,
-               ("선언 파일이 없습니다 — enrichment 규칙이 하나도 없습니다."
+               ("No declaration file - there are no enrichment rules."
                 if not rules_exists else
-                ("선언 파일을 읽지 못했습니다 — 어떤 규칙도 반영되지 않았습니다."
+                ("The declaration file could not be read - no rule takes effect."
                  if file_rejected else
-                 f"규칙 {len(rules)}건을 읽었습니다.")),
+                 f"{len(rules)} rules read.")),
                exists=rules_exists, degraded=file_rejected),
         source("settings", settings_path,
-               ("파일이 없습니다 — 아래 설정은 전부 서버 기본값입니다."
-                if not settings_exists else "파일을 읽었습니다."),
+               ("No file - every setting below is the server default."
+                if not settings_exists else "File read."),
                exists=settings_exists),
     ]
     return build_domain(DOMAIN_ENRICHMENT, DOMAIN_TITLES[DOMAIN_ENRICHMENT],
@@ -599,14 +602,14 @@ _NOTATION_CODE_TO_REASON = {
 # 두 거부는 함께 돌아와야 한다(근거는 `notation_norm` 모듈 상단에 남겨 두었다).
 _NOTATION_CODE_LEAD = {
     "zero_pad_unimplemented":
-        "구현되지 않은 규칙이라 거부했습니다 ― 켜져 있는 것처럼 읽히고 아무 일도 하지 "
-        "않는 상태를 만들지 않기 위해, 조용히 무시하지 않고 이름을 붙여 거부합니다",
-    "unknown_rule": "알 수 없는 규칙 이름이라 무시했습니다",
-    "undeclared": "table_config.json에 선언되지 않은 테이블/컬럼이라 반영하지 않았습니다",
+        "Refused: the rule is not implemented - refused by name rather than ignored, so "
+        "nothing reads as switched on while doing nothing",
+    "unknown_rule": "Ignored: unknown rule name",
+    "undeclared": "Not applied: the table or column is not declared in table_config.json",
     "not_text":
-        "문자열 컬럼이 아니라 거부했습니다 ― 숫자에는 표기가 없습니다(그리고 'number'로 "
-        "선언된 컬럼은 정수 파싱이 이미 '01'과 '1'을 한 값으로 만듭니다)",
-    "shape": "선언의 모양이 올바르지 않아 반영하지 않았습니다",
+        "Refused: not a text column - numbers have no notation (and a column declared "
+        "'number' already parses '01' and '1' into one value)",
+    "shape": "Not applied: the declaration's shape is wrong",
 }
 
 
@@ -622,31 +625,30 @@ def notation_preview_detail(preview: dict) -> str:
     사라진 파생 컬럼이 눈으로 하던 확인이 바로 그것이었다.
     """
     if preview.get("error"):
-        return (f"{preview['table']}.{preview['column']}의 미리보기를 만들지 못했습니다 "
-                f"― {preview['error']}")
+        return (f"The preview of {preview['table']}.{preview['column']} could not be built "
+                f"- {preview['error']}")
     if not preview.get("declared"):
-        return (f"{preview['table']}.{preview['column']}은(는) 정규화 선언이 없습니다 "
-                f"― 비교는 원본 값 그대로 이루어집니다.")
+        return (f"{preview['table']}.{preview['column']} has no normalisation declared "
+                f"- comparisons use the raw values.")
     merges = preview.get("merge_groups") or []
-    head = (f"{preview['table']}.{preview['column']}: 원본 표기 "
-            f"{preview.get('distinct_raw', 0)}종이 {preview.get('distinct_folded', 0)}종으로 "
-            f"접힙니다.")
+    head = (f"{preview['table']}.{preview['column']}: "
+            f"{preview.get('distinct_raw', 0)} raw spellings fold into "
+            f"{preview.get('distinct_folded', 0)}.")
     if not merges:
-        body = ("합쳐진 그룹이 하나도 없습니다 ― 이 컬럼에서는 규칙이 아무것도 병합하지 "
-                "않습니다(조인 반대편이 지저분하다면 그쪽에서 효과가 납니다).")
+        body = ("No group was merged - the rules merge nothing in this column (if the "
+                "other side of a join is messy, the effect shows there).")
     else:
         worst = merges[0]
         variants = " | ".join(str(v["raw"]) for v in worst["variants"][:5])
-        body = (f"서로 다른 원본 표기가 한 값으로 합쳐진 그룹이 {len(merges)}개입니다. "
-                f"가장 큰 그룹은 '{worst['folded']}'이고 원본 {worst['raw_count']}종"
-                f"({variants})이 여기로 모입니다. 이 목록을 읽고 "
-                f"「이것들이 정말 같은 것인가」를 확인하세요 ― 하나라도 아니라면 "
-                f"notation_rules.json의 규칙을 고치면 됩니다(저장된 값은 원본 그대로라 "
-                f"되돌릴 것이 없습니다).")
+        body = (f"{len(merges)} groups merge different raw spellings into one value. "
+                f"The largest is '{worst['folded']}', gathering {worst['raw_count']} spellings "
+                f"({variants}). Read the list and check that they really are the same - "
+                f"if one is not, fix the rule in notation_rules.json (stored values stay "
+                f"raw, so there is nothing to undo).")
     tail = ""
     if preview.get("truncated"):
-        tail = (f" (주의) 표기 종류가 상한({preview.get('group_limit')})을 넘어 일부만 "
-                f"보여 줍니다.")
+        tail = (f" (Note) More spellings than the limit ({preview.get('group_limit')}) - "
+                f"only some are shown.")
     return f"{head} {body}{tail}"
 
 
@@ -671,7 +673,7 @@ def _resolve_notation() -> dict:
 
     for r in rejections:
         code = r.get("code", "shape")
-        lead = _NOTATION_CODE_LEAD.get(code, "선언을 반영하지 않았습니다")
+        lead = _NOTATION_CODE_LEAD.get(code, "Not applied")
         rejected.append(entry(
             SCOPE_FILE if r["scope"] == nn.SCOPE_FILE else SCOPE_RULE,
             r.get("subject"),
@@ -682,21 +684,21 @@ def _resolve_notation() -> dict:
         for column, spec in sorted(specs.items()):
             on = nn.enabled_rule_names(spec["rules"])
             if on:
-                effect = (f"이 컬럼이 조인 키로 쓰이면 **비교의 양쪽이 모두** 접힌 값으로 "
-                          f"비교됩니다 ― 반대편 컬럼에 선언이 없어도 그렇습니다(한쪽만 "
-                          f"접으면 이미 맞고 있던 매치를 조용히 잃기 때문입니다). "
-                          f"저장되는 값은 없습니다: 원본은 원본 그대로 남고, 규칙을 "
-                          f"고치면 다음 조회부터 바로 반영됩니다.")
+                effect = (f"When this column is a join key, both sides of the comparison "
+                          f"use the folded value - even if the other column declares "
+                          f"nothing (folding one side only would silently lose matches "
+                          f"that already held). Nothing is stored: raw values stay raw, "
+                          f"and a rule change applies from the next lookup.")
             else:
-                effect = ("적용할 규칙이 하나도 켜져 있지 않아 아무것도 접지 않습니다 "
-                          "― 선언은 유효하지만 비교는 원본 그대로입니다.")
+                effect = ("No rule is switched on, so nothing folds "
+                          "- the declaration is valid but comparisons stay raw.")
             effective.append(entry(
                 SCOPE_RULE, f"{table}.{column}",
-                f"{table}.{column}의 표기가 정규화된 것으로 선언됐습니다. "
-                f"적용 중인 규칙: {_names(on) if on else '없음'}. {effect} "
-                f"무엇이 무엇으로 합쳐지는지는 "
-                f"GET /admin/config/notation/preview?table={table}&column={column} 가 "
-                f"병합군으로 답합니다 ― 규칙을 켠 다음 그것부터 보세요.",
+                f"{table}.{column} is declared with normalised notation. "
+                f"Rules on: {_names(on) if on else 'none'}. {effect} "
+                f"What merges into what is answered as merge groups by "
+                f"GET /admin/config/notation/preview?table={table}&column={column} "
+                f"- look there first after switching a rule on.",
                 fields={"table": table, "column": column,
                         "rules": dict(spec["rules"])}))
 
@@ -705,39 +707,38 @@ def _resolve_notation() -> dict:
     n_decls = sum(len(v) for v in by_table.values())
     sources = [
         source("rules", rules_path,
-               ("선언 파일이 없습니다 ― 표기 정규화가 적용되는 컬럼이 하나도 없습니다."
+               ("No declaration file - no column has its notation normalised."
                 if not rules_exists else
-                ("선언 파일을 읽지 못했습니다 ― 어떤 컬럼도 정규화되지 않습니다."
+                ("The declaration file could not be read - no column is normalised."
                  if file_rejected else
-                 f"선언 {n_decls}건이 유효합니다.")),
+                 f"{n_decls} declarations are valid.")),
                exists=rules_exists, degraded=file_rejected),
     ]
     settings = [
         setting("implemented_rules", list(nn.IMPLEMENTED_RULES), ORIGIN_DEFAULT,
                 rules_path, declared=None,
-                detail=("실제로 적용할 수 있는 규칙입니다. separator는 '.', '_', '-', "
-                        "공백의 연속을 '-' 하나로 접습니다(맵 키를 잇는 문자인 '_'를 "
-                        "값에서 몰아내는 것이 목적입니다). case는 **ASCII a-z만** "
-                        "대문자로 접습니다 ― PostgreSQL의 upper()와 파이썬의 upper()가 "
-                        "비ASCII에서 서로 다른 답을 내기 때문에(측정: 'straße'), 두 "
-                        "엔진이 같은 답을 내는 범위로 좁혔습니다. zero_pad는 목록에 "
-                        "없습니다 ― true로 선언하면 거부됩니다.")),
+                detail=("The rules that can actually apply. separator folds runs of '.', "
+                        "'_', '-' and spaces into one '-' (to drive '_', the character that "
+                        "joins map keys, out of values). case upper-cases ASCII a-z only - "
+                        "PostgreSQL's upper() and Python's upper() disagree outside ASCII "
+                        "(measured: 'straße'), so it is narrowed to where both engines "
+                        "agree. zero_pad is not on the list - declaring it true is refused.")),
         setting("separator_target", nn.SEPARATOR_TARGET, ORIGIN_DEFAULT,
                 rules_path, declared=None,
-                detail=("구분자가 접히는 단일 형태입니다. '_'가 아닌 이유가 이 기능의 "
-                        "핵심입니다 ― '_'는 복합 맵 키를 잇는 문자라, '_'를 품은 값은 "
-                        "자기가 속한 키를 조각냅니다.")),
+                detail=("The one form separators fold into. Why it is not '_' is the point "
+                        "of this feature - '_' joins composite map keys, so a value holding "
+                        "'_' splits the key it belongs to.")),
         setting("stores_anything", False, ORIGIN_DEFAULT, rules_path,
                 declared=None,
-                detail=("이 기능은 아무것도 저장하지 않습니다. 파생 컬럼도, 쓰기 훅도, "
-                        "재파생 스크립트도 없습니다 ― 소비자가 조회 시점에 비교의 양쪽을 "
-                        "접습니다. 그래서 규칙을 고치면 되돌릴 것도, 채울 것도 없습니다.")),
+                detail=("This feature stores nothing - no derived column, no write hook, "
+                        "no re-derivation script. Consumers fold both sides at lookup time, "
+                        "so changing a rule leaves nothing to undo or fill in.")),
         setting("map_keys_unchanged", True, ORIGIN_DEFAULT, rules_path,
                 declared=None,
-                detail=("맵 키 분해·합성은 이 선언의 영향을 받지 않습니다. "
-                        "wafer_map_metadata가 **원본 신원**으로 등록돼 있어, 맵 키가 "
-                        "정규화 값을 읽는 순간 기존 map_id가 자기 메타 행과 어긋납니다. "
-                        "그것은 설정 스위치가 아니라 데이터 마이그레이션입니다.")),
+                detail=("Splitting and joining map keys is not affected by this declaration. "
+                        "wafer_map_metadata is registered under the raw identity, so the "
+                        "moment a map key read normalised values, existing map_ids would part "
+                        "from their meta rows. That is a data migration, not a setting.")),
     ]
     return build_domain(DOMAIN_NOTATION, DOMAIN_TITLES[DOMAIN_NOTATION],
                         sources, settings, effective, ineffective, rejected)
@@ -746,11 +747,11 @@ def _resolve_notation() -> dict:
 DOMAIN_BINDING = "binding"
 
 _BINDING_KEY_MEANING = {
-    "x": "맵의 가로 좌표 컬럼",
-    "y": "맵의 세로 좌표 컬럼",
-    "val": "셀 값 컬럼(범례·채점이 읽는 값)",
-    "index": "순번 컬럼 — 유도되지 않는다(이름 관례가 없다)",
-    "key_columns": "맵 하나를 지목하는 정체성 컬럼",
+    "x": "The map's horizontal coordinate column",
+    "y": "The map's vertical coordinate column",
+    "val": "The cell value column (what the legend and scoring read)",
+    "index": "The sequence column - never derived (there is no naming convention)",
+    "key_columns": "The identity columns that name one map",
 }
 
 
@@ -776,11 +777,11 @@ def _resolve_binding() -> dict:
     table_path = config_path("table_config.json")
     sources = [
         source("map_overlay_config", overlay_path,
-               "좌표 바인딩의 **예외 선언**이 사는 자리입니다. 여기 없는 키는 "
-               "table_config에서 상속됩니다 — 관례 이름으로 채우지 않습니다."),
+               "Where exceptions to the coordinate binding are declared. A key not here "
+               "is inherited from table_config - never filled from a naming convention."),
         source("table_config", table_path,
-               "바인딩의 **바탕**입니다. map_key_columns가 정체성의 정본이고, "
-               "x/y/값 컬럼도 여기서 유도됩니다."),
+               "The base of the binding. map_key_columns is the canonical identity, and "
+               "the x/y/value columns are derived here too."),
     ]
 
     candidates = map_overlay.resolve_value_column_candidates(cfg)
@@ -813,11 +814,11 @@ def _resolve_binding() -> dict:
             if origin == map_overlay.ORIGIN_REFUSED:
                 rejected.append(entry(
                     SCOPE_SETTING, subject,
-                    f"`{table}`의 {key} 선언({_as_json(value)})이 가리키는 컬럼이 "
-                    f"table_config에 없습니다 — 그래서 이 테이블의 바인딩 전체가 "
-                    f"거절됐습니다. **고치지 말고 지우십시오**: 선언은 유도를 이기므로 "
-                    f"틀린 철자는 편집으로 살아나지 않고, 키를 지우면 table_config에서 "
-                    f"상속됩니다. ({meaning})",
+                    f"`{table}` declares {key} as {_as_json(value)}, a column table_config "
+                    f"does not have - so this table's whole binding is refused. Delete it, "
+                    f"do not fix it: a declaration beats derivation, so a wrong spelling "
+                    f"does not come back by editing, and a deleted key is inherited from "
+                    f"table_config. ({meaning})",
                     reason=REASON_MAPPING_UNAVAILABLE,
                     fields={"table": table, "key": key, "declared": value}))
             elif origin == map_overlay.ORIGIN_DECLARED:
@@ -830,17 +831,17 @@ def _resolve_binding() -> dict:
                     # "delete it", not "you may delete it": the condition was
                     # checked here. The values are equal, so deleting the
                     # declaration cannot change one character on the screen.
-                    detail = (f"`{table}`의 {key} 선언 {_as_json(value)}은 "
-                              f"table_config에서 유도되는 값과 **같습니다** — 이 선언은 "
-                              f"아무것도 바꾸지 않습니다. 지우십시오: 진실의 사본 둘은 "
-                              f"언젠가 갈라지고, 중복 선언은 유도가 아직 도는지를 "
-                              f"가립니다. ({meaning})")
+                    detail = (f"`{table}` declares {key} as {_as_json(value)}, the same "
+                              f"value table_config derives - this declaration changes "
+                              f"nothing. Delete it: two copies of one truth part one day, "
+                              f"and a duplicate hides whether the derivation still runs. "
+                              f"({meaning})")
                 else:
-                    detail = (f"`{table}`의 {key}는 map_overlay_config가 선언한 "
-                              f"{_as_json(value)}입니다(선언이 유도를 이깁니다). "
-                              f"table_config는 " +
-                              (f"{_as_json(would_be)}(으)로 유도합니다"
-                               if would_be is not None else "이 키를 유도하지 못합니다") +
+                    detail = (f"`{table}` {key} is {_as_json(value)}, declared by "
+                              f"map_overlay_config (a declaration beats derivation). "
+                              f"table_config " +
+                              (f"derives {_as_json(would_be)}"
+                               if would_be is not None else "cannot derive this key") +
                               f". {meaning}.")
                     # An override without a stated reason is not a declaration, it
                     # is drift (R-2026-08-14-A F3). Scoped to the IDENTITY key on
@@ -857,35 +858,36 @@ def _resolve_binding() -> dict:
                         if stated_reason:
                             fields["override_reason"] = stated_reason
                         else:
-                            detail += (" ⚠️ 이 블록에 `__reason`이 없습니다 — 정체성을 "
-                                       "table_config와 다르게 선언하려면 무엇을 알기에 "
-                                       "다르게 부르는지 적어야 합니다. 이유 없는 "
-                                       "오버라이드는 선언이 아니라 드리프트입니다.")
+                            detail += (" ⚠️ This block has no `__reason` - an identity "
+                                       "declared differently from table_config must say "
+                                       "what is known that makes it different. An "
+                                       "override with no reason is drift, not a declaration.")
                 effective.append(entry(SCOPE_SETTING, subject, detail, fields=fields))
             elif origin == map_overlay.ORIGIN_INHERITED:
                 effective.append(entry(
                     SCOPE_SETTING, subject,
-                    f"`{table}`의 {key}는 table_config에서 상속한 {_as_json(value)}입니다 "
-                    f"— map_overlay_config에 선언이 없습니다. {meaning}. "
-                    f"table_config를 고치면 이 값이 따라 움직입니다.",
+                    f"`{table}` {key} is {_as_json(value)}, inherited from table_config "
+                    f"- map_overlay_config declares nothing. {meaning}. "
+                    f"Change table_config and this value follows.",
                     fields={"table": table, "key": key, "value": value,
                             "origin": origin}))
             else:
                 ineffective.append(entry(
                     SCOPE_SETTING, subject,
-                    f"`{table}`의 {key}를 아무도 말하지 않았습니다 — 선언도 없고 "
-                    f"table_config에서 유도되지도 않습니다. {meaning}. "
-                    f"관례 이름으로 채우지 않습니다: 없는 컬럼을 「선언됐다」로 내보내면 "
-                    f"그 축은 0건을 맞히고 화면은 그것을 「안 맞았다」로 읽습니다.",
+                    f"Nobody states `{table}` {key} - it is not declared and table_config "
+                    f"does not derive it. {meaning}. "
+                    f"It is not filled from a naming convention: a missing column sent as "
+                    f"declared would match 0 on that axis, and the screen would read that "
+                    f"as no match.",
                     reason=REASON_NOT_DECLARED,
                     fields={"table": table, "key": key}))
 
         if binding is None and not refused:
             rejected.append(entry(
                 SCOPE_RULE, table,
-                f"`{table}`은 맵으로 해석되지 않습니다 — x/y/val/key_columns 넷이 모두 "
-                f"있어야 하는데 일부를 아무도 말하지 않았습니다. 부분 답을 내보내는 대신 "
-                f"거절합니다(추측한 좌표는 0건을 정상처럼 보이게 만듭니다).",
+                f"`{table}` does not resolve as a map - x/y/val/key_columns must all be "
+                f"stated and some are not. Refused rather than answered in part (guessed "
+                f"coordinates make 0 matches look normal).",
                 reason=REASON_MAPPING_UNAVAILABLE, fields={"table": table}))
 
     return build_domain(DOMAIN_BINDING, DOMAIN_TITLES[DOMAIN_BINDING],
@@ -937,14 +939,14 @@ def _resolve_catalog() -> dict:
 
     sources = [source(
         CATALOG_SOURCE_KEY, crud.CONFIG_PATH,
-        "표 선언입니다. 이 파일이 안 읽히면 «그다음 다섯 걸음이 전부» 읽을 표를 잃습니다.",
+        "The table declarations. While this file cannot be read, every later step loses the tables it reads.",
         degraded=bool(load_error))]
 
     if load_error:
         rejected.append(entry(
             SCOPE_FILE, os.path.basename(crud.CONFIG_PATH),
-            "표 선언 파일을 읽지 못했습니다 (%s). 표가 없으면 파생·확정·조인·원장·걷기가 "
-            "가리킬 것이 없습니다." % load_error,
+            "The table declaration file could not be read (%s). Without tables, derivation, "
+            "confirmation, joins, the ledger and the walk have nothing to point at." % load_error,
             reason=REASON_MAPPING_UNAVAILABLE))
         return build_domain(DOMAIN_CATALOG, DOMAIN_TITLES[DOMAIN_CATALOG], sources, [],
                             effective, ineffective, rejected)
@@ -958,7 +960,7 @@ def _resolve_catalog() -> dict:
             # 🔴 사유는 «거절문 그대로»입니다. 여기서 다시 쓰면 거절문의 둘째 철자가 됩니다.
             rejected.append(entry(
                 SCOPE_RULE, name,
-                "`%s` 선언이 카탈로그 검증을 통과하지 못했습니다 — %s: %s"
+                "`%s` failed catalogue validation - %s: %s"
                 % (name, exc.path, exc.message),
                 reason=REASON_MAPPING_UNAVAILABLE,
                 fields=exc.to_mapping()))
@@ -968,14 +970,14 @@ def _resolve_catalog() -> dict:
         if relation is None:
             ineffective.append(entry(
                 SCOPE_RULE, name,
-                "`%s` 는 선언돼 있지만 `column_types` 가 비어 있어 카탈로그가 «읽지 않습니다». "
-                "컬럼을 적으면 이 표가 다음 걸음들의 대상이 됩니다." % name,
+                "`%s` is declared but its `column_types` is empty, so the catalogue does not "
+                "read it. Write its columns and the later steps can use this table." % name,
                 reason=REASON_NOT_DECLARED))
             continue
 
         effective.append(entry(
             SCOPE_RULE, name,
-            "`%s` 가 컬럼 %d개로 카탈로그에 섰습니다." % (name, len(relation.get("columns") or {})),
+            "`%s` stands in the catalogue with %d columns." % (name, len(relation.get("columns") or {})),
             fields={"columns": sorted(relation.get("columns") or {}),
                     "composite_key": list(relation.get("composite_key") or [])}))
 
@@ -1031,8 +1033,8 @@ def _resolve_ledger() -> dict:
     if load_error:
         rejected.append(entry(
             SCOPE_FILE, os.path.basename(sources_path),
-            f"소스 선언 파일을 읽지 못했습니다 ({load_error}). 이 파일이 안 읽히면 어떤 "
-            f"테이블도 원장으로 번역되지 않습니다.",
+            f"The source declaration file could not be read ({load_error}). While it "
+            f"cannot be read, no table is translated into the ledger.",
             reason=REASON_MAPPING_UNAVAILABLE))
     else:
         declared_sources = (document.get("sources") or {})
@@ -1046,7 +1048,7 @@ def _resolve_ledger() -> dict:
             except Exception as e:
                 rejected.append(entry(
                     SCOPE_RULE, name,
-                    f"`{name}` 소스 선언이 검증을 통과하지 못했습니다 — {e}",
+                    f"Source `{name}` failed validation - {e}",
                     reason=REASON_MAPPING_UNAVAILABLE,
                     fields={"source": name, "kind": kind}))
                 continue
@@ -1055,9 +1057,9 @@ def _resolve_ledger() -> dict:
                  "sources": {name: declaration}}, name)
             effective.append(entry(
                 SCOPE_RULE, name,
-                f"`{name}`은 {kind} 문법으로 번역됩니다. 이 선언이 찍는 출처 문자열은 "
-                f"{version}이고, 원자마다 그 값이 실리므로 어느 규칙이 만든 주장인지 "
-                f"되짚을 수 있습니다.",
+                f"`{name}` translates in the {kind} grammar. It stamps the provenance "
+                f"{version} on every atom, so each claim can be traced to the rule that "
+                f"made it.",
                 fields={"source": name, "kind": kind, "translator_ver": version,
                         "subject_types": list(declaration.get("subject_types") or [])}))
 
@@ -1069,8 +1071,8 @@ def _resolve_ledger() -> dict:
     if not declared_vocabulary:
         ineffective.append(entry(
             SCOPE_FILE, os.path.basename(sources_path),
-            "선언에 어휘가 없습니다 — 어떤 낱말도 발화될 수 없고, 원자는 전부 거절됩니다. "
-            "「아직 안 늘렸다」가 아니라 「게이트가 통과시킬 낱말이 하나도 없다」는 뜻입니다.",
+            "The declaration has no vocabulary - no predicate can be stated and every atom "
+            "is refused. Not 'not grown yet': the gate has no predicate to let through.",
             reason=REASON_NOT_DECLARED))
     else:
         emitters = _ledger_emitted_predicates(document)
@@ -1078,8 +1080,8 @@ def _resolve_ledger() -> dict:
             name = str(key).split("@", 1)[0]
             effective.append(entry(
                 SCOPE_RULE, name,
-                f"`{name}`이 선언에 실렸습니다. 게이트가 이 서명으로 원자를 검사하고, "
-                f"walk 의 `follow` 가 이 낱말을 받습니다.",
+                f"`{name}` is declared. The gate checks atoms against its signature, "
+                f"and the walk's `follow` accepts it.",
                 fields={"predicate": name, "origin": "declaration"}))
         # 「낱말은 실렸는데 아무도 발화하지 않는다」 — 선언은 섰지만 여정이 안 끝난 상태.
         # 조용히 두면 운영자는 술어를 등재해 놓고 원자가 안 생기는 이유를 어디서도 못 읽는다.
@@ -1087,9 +1089,9 @@ def _resolve_ledger() -> dict:
         if silent:
             ineffective.append(entry(
                 SCOPE_RULE, ", ".join(silent),
-                f"선언된 술어 {', '.join(silent)}을(를) 발화하는 번역기가 없습니다 — "
-                f"어휘에는 실렸고 게이트도 인정하지만, 어떤 소스 선언도 이 낱말로 "
-                f"원자를 만들지 않으므로 원장에는 아직 한 건도 생기지 않습니다.",
+                f"No translator states the declared predicates {', '.join(silent)} - "
+                f"they are in the vocabulary and the gate accepts them, but no source "
+                f"declaration makes atoms with them, so the ledger has none yet.",
                 reason=REASON_NOT_DECLARED,
                 fields={"predicates": silent}))
 
@@ -1098,17 +1100,17 @@ def _resolve_ledger() -> dict:
         setting("vocabulary.declared_words", len(document.get("vocabulary") or {}),
                 ORIGIN_FILE if document.get("vocabulary") else ORIGIN_DEFAULT,
                 sources_path,
-                detail="선언이 싣는 낱말 수 — 게이트와 walk 이 «이 수»만 인정합니다."),
+                detail="Predicates in the declaration - the gate and the walk accept only these."),
         setting("batch.molecules_per_transaction",
                 int((document.get("batch") or {}).get("molecules_per_transaction", 200)),
                 ORIGIN_FILE if (document.get("batch") or {}).get(
                     "molecules_per_transaction") else ORIGIN_DEFAULT,
                 sources_path,
-                detail="한 트랜잭션에 실리는 분자 수. 분자는 절대 쪼개지지 않습니다."),
+                detail="Molecules per transaction. A molecule is never split."),
     ]
     sources = [
         source("ledger_config", sources_path,
-               "소스 → 원장 번역 선언(컬럼 매핑·시각 컬럼·주어 타입·워터마크).",
+               "Source -> ledger translation declarations (column mapping, time column, subject types, watermark).",
                degraded=bool(load_error)),
     ]
     return build_domain(DOMAIN_LEDGER, DOMAIN_TITLES[DOMAIN_LEDGER],
@@ -1193,14 +1195,14 @@ def _resolve_walk() -> dict:
 
     sources = [source(
         "entities", "ledger_config.json (entities)",
-        "걷기 좌석이 «고를 수 있는 이름»은 원장 선언의 엔터티입니다. 이 걸음은 자기 파일이 "
-        "없고 ⑤ 가 선 만큼 섭니다.",
+        "The names a walk seat can pick are the ledger declaration's entities. This step "
+        "has no file of its own and stands as far as the Ledger step does.",
         exists=failure is None, degraded=bool(failure))]
 
     if failure:
         rejected.append(entry(
             SCOPE_FILE, "entities",
-            "선언을 읽지 못해 걷기가 «무엇을 고를 수 있는지» 말할 수 없습니다 — %s" % failure,
+            "The declaration could not be read, so the walk cannot say what it can pick - %s" % failure,
             reason=REASON_MAPPING_UNAVAILABLE))
         return build_domain(DOMAIN_WALK, DOMAIN_TITLES[DOMAIN_WALK], sources, [],
                             effective, ineffective, rejected)
@@ -1208,13 +1210,13 @@ def _resolve_walk() -> dict:
     for name in sorted(collectable):
         effective.append(entry(
             SCOPE_NODE_TYPE, name,
-            "`%s` 를 좌석의 `collect` 로 고를 수 있습니다." % name))
+            "`%s` can be picked as a seat's `collect`." % name))
 
     if not effective:
         ineffective.append(entry(
             SCOPE_FILE, "entities",
-            "선언된 엔터티가 «하나도 없습니다» — 좌석이 고를 이름이 없어 걷기가 아무것도 "
-            "묻지 못합니다. ⑤ 에 엔터티를 적으면 여기가 채워집니다.",
+            "No entity is declared - a seat has no name to pick, so the walk cannot ask "
+            "anything. Declare entities in the Ledger step and this fills in.",
             reason=REASON_NOT_DECLARED))
 
     return build_domain(DOMAIN_WALK, DOMAIN_TITLES[DOMAIN_WALK], sources, [],
@@ -1258,14 +1260,14 @@ _RESOLVERS = {
 #: 「파생 표를 쓴다면」 ②③ 에 기댑니다) — 그것은 «소스마다» 달라 이 리스트가 답할 수 없고,
 #: 계산하려면 선언을 읽어야 합니다. 별건입니다. 여기서 «추측»하지 않습니다.
 SETUP_STEPS = (
-    {"step": 1, "name": "표", "domain": DOMAIN_CATALOG, "after": None},
-    {"step": 2, "name": "파생", "domain": DOMAIN_CHAIN, "after": 1},
-    {"step": 3, "name": "확정", "domain": DOMAIN_ENRICHMENT, "after": 1},
+    {"step": 1, "name": "Tables", "domain": DOMAIN_CATALOG, "after": None},
+    {"step": 2, "name": "Derive", "domain": DOMAIN_CHAIN, "after": 1},
+    {"step": 3, "name": "Confirm", "domain": DOMAIN_ENRICHMENT, "after": 1},
     # ⚰️ [판정 652 3걸음] 「4 · 가상 조인」이 여기 있었습니다. 그 문법이 은퇴해 걸음이
     #    아니라 «없는 것»이 됐고, 뒤 둘을 «다시 번호 매깁니다» — 구멍 난 번호는 운영자가
     #    없는 걸음을 찾게 만듭니다. `after` 는 이 리스트가 정본이라 같이 옮겼습니다.
-    {"step": 4, "name": "원장", "domain": DOMAIN_LEDGER, "after": 1},
-    {"step": 5, "name": "걷기 좌석", "domain": DOMAIN_WALK, "after": 4},
+    {"step": 4, "name": "Ledger", "domain": DOMAIN_LEDGER, "after": 1},
+    {"step": 5, "name": "Walk seats", "domain": DOMAIN_WALK, "after": 4},
 )
 
 #: domain -> 그 걸음. 순서를 «두 번» 적지 않으려고 위에서 만듭니다.
@@ -1331,13 +1333,14 @@ def resolve_report(domains: list = None) -> dict:
             out.append(build_domain(
                 name, name, [], [], [], [],
                 [entry(SCOPE_FILE, None,
-                       f"이 도메인의 설정을 해석하지 못했습니다 ({e.__class__.__name__}).",
+                       f"This domain's settings could not be resolved ({e.__class__.__name__}).",
                        reason=REASON_MAPPING_UNAVAILABLE)]))
     return {
         "domains": _annotate_steps(out),
         # 클라이언트가 라벨/필터를 **하드코딩하지 않도록** 어휘를 함께 싣는다.
         "vocabulary": {"reasons": list(REASONS), "reason_names": dict(REASON_NAMES),
                        "populations": list(POPULATIONS),
+                       "population_names": dict(POPULATION_NAMES),
                        "scopes": list(SCOPES),
                        # 🔴 순서도 «어휘»입니다 — 화면이 걸음 이름을 자기가 적으면 이 리스트와
                        # 갈라지고, 갈라진 쪽은 오류를 안 냅니다.

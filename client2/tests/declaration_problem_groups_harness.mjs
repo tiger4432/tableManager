@@ -69,6 +69,13 @@ async function suite(mod) {
      groups.find((g) => g.reason && g.reason.text === 'mapping_unavailable').reasonName], ['Not declared', null]);
   eq('B7 the biggest group first, and equal counts keep the report\'s order',
     groups.map((g) => g.count.text), ['3', '2', '1', '1', '1', '1']);
+  // lead bed890af2 ③ — the population is drawn by the server's name, the way the reason is.
+  const named = mod.problemGroups(mod.buildConfigResolveView({ ...REPORT, vocabulary: {
+    ...REPORT.vocabulary, population_names: { ineffective: 'no effect' } } }));
+  const populationOf = (subject) => ((named.find((g) => g.lines[0].entry.subject.text === subject)
+    || { population: {} }).population.text);
+  eq('B9 a group draws the server\'s population name, and a population it was sent no name for draws its token',
+    [populationOf('t1'), populationOf('r1')], ['no effect', 'rejected']);
   return { ran, failures };
 }
 
@@ -92,6 +99,9 @@ const MUTANTS = [
     mutate: (s) => s.replace('count: count(group.lines.length)', 'count: count(1)') },
   { id: 'X8', what: 'the reason name never reaches the group', catches: ['B8'],
     mutate: (s) => s.replace('reasonName: entry.reasonName, lines: [] };', 'reasonName: null, lines: [] };') },
+  { id: 'X9', what: 'the population name is ignored, so the token is drawn', catches: ['B9'],
+    mutate: (s) => s.replace('label: srv(populationNames[population] != null ? populationNames[population] : population),\n        count: count(entries.length),',
+                             'label: srv(population),\n        count: count(entries.length),') },
   { id: 'X7', what: 'the groups stay in report order', catches: ['B7'],
     mutate: (s) => s.replace('.sort((x, y) => y.lines.length - x.lines.length)', '') },
 ];

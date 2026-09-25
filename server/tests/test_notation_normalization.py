@@ -511,7 +511,7 @@ def test_the_resolve_report_names_the_declaration_and_points_at_the_preview(
     assert domain["domain"] == crr.DOMAIN_NOTATION
     assert [e["subject"] for e in domain["effective"]] == ["notnorm_test_log.core_lot"]
     detail = domain["effective"][0]["detail"]
-    assert "양쪽" in detail, "the report must say BOTH sides of the comparison fold"
+    assert "both sides" in detail, "the report must say BOTH sides of the comparison fold"
     assert "notation/preview" in detail, (
         "the report must name where the false-merge check lives - it is the only thing "
         "left that answers the question the derived column used to answer by eye")

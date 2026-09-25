@@ -307,7 +307,7 @@ function stepIndex(vocabulary) {
 const LAST = Number.MAX_SAFE_INTEGER;
 const stepRank = (item) => (item && item.step != null ? Number(item.step) : LAST);
 
-function buildDomain(domain, populations, stepItem, reasonNames) {
+function buildDomain(domain, populations, stepItem, reasonNames, populationNames = {}) {
   const name = domain && domain.domain != null ? String(domain.domain) : '';
   const blocked = domain && domain.blocked_by != null ? domain.blocked_by : null;
   return {
@@ -330,7 +330,7 @@ function buildDomain(domain, populations, stepItem, reasonNames) {
       const entries = list(domain && domain[population]);
       return {
         name: population,
-        label: srv(population),
+        label: srv(populationNames[population] != null ? populationNames[population] : population),
         count: count(entries.length),
         tone: POPULATION_TONE[population] || '',
         entries: entries.map((e) => buildEntry(e, name, reasonNames)),
@@ -345,6 +345,8 @@ export function buildConfigResolveView(report) {
   const populations = list(vocabulary.populations).map(String);
   const names = vocabulary.reason_names;
   const reasonNames = names && typeof names === 'object' && !Array.isArray(names) ? names : {};
+  const popNames = vocabulary.population_names;
+  const populationNames = popNames && typeof popNames === 'object' && !Array.isArray(popNames) ? popNames : {};
   const steps = stepIndex(vocabulary);
   // C-87. 걸음 «순서»로 세웁니다. 서버가 보낸 순서가 아니라 서버가 «말한 순서»입니다 — 그리고
   // 번호가 없는 도메인은 뒤에, 받은 순서 그대로(`sort` 는 안정 정렬입니다).
@@ -353,7 +355,7 @@ export function buildConfigResolveView(report) {
             - stepRank(steps.get(String(b && b.domain))));
   const totals = populations.map((population) => ({
     name: population,
-    label: srv(population),
+    label: srv(populationNames[population] != null ? populationNames[population] : population),
     count: count(domains.reduce((sum, d) => sum + list(d && d[population]).length, 0)),
     tone: POPULATION_TONE[population] || '',
   }));
@@ -371,7 +373,7 @@ export function buildConfigResolveView(report) {
     totals,
     tone,
     titles: domains.map((d) => (d && d.title != null ? srv(d.title) : null)).filter(Boolean),
-    domains: domains.map((d) => buildDomain(d, populations, steps.get(String(d && d.domain)), reasonNames)),
+    domains: domains.map((d) => buildDomain(d, populations, steps.get(String(d && d.domain)), reasonNames, populationNames)),
     // 걸음 밖 무리가 «있을 때만» 그 이름이 있습니다. 비어 있는 구분선은 없는 무리를 있는 것처럼
     // 그립니다.
     unsteppedLabel: domains.some((d) => !steps.get(String(d && d.domain)))

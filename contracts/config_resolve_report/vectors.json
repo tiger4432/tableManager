@@ -40,6 +40,7 @@
     "reason_names": {"not_declared": "Not declared", "mapping_unavailable": "Mapping unavailable",
                      "scope_unresolved": "Scope unresolved", "not_reached": "Not reached"},
     "populations": ["effective", "ineffective", "rejected"],
+    "population_names": {"effective": "fine", "ineffective": "no effect", "rejected": "rejected"},
     "scopes": ["file", "setting", "rule", "reference_view", "table", "node_type"],
     "origins": ["file", "default"]
   },
