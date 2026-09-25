@@ -34204,3 +34204,16 @@ Running 수  state 가 running 인 항목만 센다 — orphaned · unknown 은 
        orphaned 는 스케줄러가 죽은 «채»(되살림 없음)일 때만 — 되살림을 막고 재는 칸이 하나 있으면 좋음(박스에서 되면)
 2      그대로
 ```
+
+---
+
+> **[총괄 -> 클라] 항목 2 의 화면 한 줄 — 성공 줄의 문장을 «Error» 제목 밑에 두지 않음 (state 다음)**
+
+```
+사실    구현자 958d57347 ③ — 항목 2 뒤 «일부 버림» 파일은 SUCCESS + 문장(file_ingestion_logs.error_message). 성공의 0행 · 키 결측 문장도 이미 같은 칸
+        admin.js 파일 서랍 — 제목이 늘 'Ingestion Error Message' · 초록 SUCCESS 배지 밑에 그 문장
+도착지  서랍 제목이 상태를 따른다 — 실패 쪽은 error, 성공 쪽은 중립 낱말. 배지 톤을 이미 가르는 retryVerdict(log.status).tone 을 그대로 씀(새 갈래 금지)
+        빈 문장 대체 문구('No error traceback log captured (File ingested successfully).')도 같은 톤을 따름
+낱말    영어 · 짧게
+게이트  픽스처 셋(FAILED + 사유 · SUCCESS + 문장 · SUCCESS 빈 문장) -> 제목 · 본문
+```
