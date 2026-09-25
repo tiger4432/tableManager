@@ -74,7 +74,7 @@ watchdog Observer는 모든 워크스페이스의 이벤트를 **단일 디스�
 | 순서 보존 | 같은 워크스페이스는 FIFO 유지 — ① heavy backlog 잔여 시 후속 파일은 크기 무관 큐 후미 ② 워크스페이스 직렬화 락(heavy/인라인/재처리 폴러 공용) ③ 인라인은 논블로킹 try-acquire 실패 시 큐 재라우팅 |
 | 스윕 경로 | 기동/주기 스윕도 동일 라우팅을 탐 — 재기동 캐치업이 대형 파일에 직렬 블로킹되지 않음 |
 | 진행 가시화 | watcher가 QUEUED/PROCESSING/FINISHED를 `POST /internal/events/ingestion-state`로 push → 웹서버 인메모리 레지스트리(`ingestion/activity.py`) → **`GET /admin/file-ingestion/active`**. admin File 탭에 진행 섹션(HEAVY 배지·진행률 바·경과)과 **재기동 경고 배너** 표시. WS 이벤트 계약은 무변경 |
-| 알려진 제약 | heavy 워커는 1개 — heavy 파일끼리는 직렬 처리(소형은 계속 비차단) |
+| heavy 워커 수 | 🆕 09-25 `18e54f8a` — 워커 **N**(`config/ingestion_settings.json` 의 `heavy_lane_workers`, 기본 1, 감시자가 뜰 때 읽음). 한 표(워크스페이스 키)는 한 워커가 차례대로, 다른 표끼리는 동시 — 박스 실측: 워커 2 에서 두 표의 11 MB 파일 처리 창이 1.10 초 겹침, 워커 1 에서는 하나 뒤에 하나. 소형은 계속 비차단 |
 
 ---
 
