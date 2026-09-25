@@ -19,6 +19,11 @@ re-finds every reference row's targets, which the target side already covers —
 about replaying a WHOLE table. The grid's banner always sends `row_ids`; with rows picked,
 re-deriving their targets is exactly what the live chain does when they move, and the
 target-side rule triggers on a table that grid cannot select.
+
+⚰️ [총괄 e91b96a28] `on` NOW NAMES THE SOURCE, so the owner's shape (`on` = the reference
+table) became THE shape and stands a `:target` companion. The only declaration left unsplit
+is one whose `on` and `into` are one table - `SOLE` below. The property is unchanged: the
+cell decides, never the shape or the name.
 """
 import os
 import sys
@@ -34,19 +39,18 @@ from chain import replay, rule_shape                                  # noqa: E4
 TARGET = "s270_log"
 REFERENCE = "s270_inventory"
 
-#: The owner's shape: `on.table` IS the reference table. Legal, sole, and what the old
-#: predicate called a half.
+#: One table is both sides, so the loader stands one rule - and the engine reads it as the
+#: source side (`trigger == right_table`), which is exactly the shape a guess called a half.
 SOLE = {
     "name": "s270_sole", "enabled": True,
-    "on": {"table": REFERENCE},
-    "derive": {"kind": "join", "join": {"right_table": REFERENCE,
-                                        "on": [{"left": "job", "right": "job"}],
+    "on": {"table": TARGET},
+    "derive": {"kind": "join", "join": {"on": [{"left": "job", "right": "job"}],
                                         "take": [{"column": "lot", "as": "lot_confirmed"}]}},
     "into": {"table": TARGET},
 }
 
-#: The canonical shape: `on.table` is the target, so the loader stands a companion too.
-SPLIT = dict(SOLE, name="s270_split", on={"table": TARGET})
+#: The canonical shape: `on` is the source, so the loader stands a `:target` companion too.
+SPLIT = dict(SOLE, name="s270_split", on={"table": REFERENCE})
 
 
 def _stood(declaration):
@@ -64,11 +68,11 @@ def test_a_sole_declaration_stands_one_rule_and_it_is_not_a_reference_side():
     stood = _stood(SOLE)
 
     assert len(stood) == 1, [r["name"] for r in stood]
-    assert stood[0]["trigger_table"] == REFERENCE
-    assert (stood[0].get("params") or {}).get("right_table") == REFERENCE
+    assert stood[0]["trigger_table"] == TARGET
+    assert (stood[0].get("params") or {}).get("right_table") == TARGET
     assert stood[0]["target_table"] == TARGET
-    assert replay.is_reference_side(stood[0]) is False, (
-        "the shape `trigger == right != target` is true of a SOLE declaration too")
+    assert replay.is_companion(stood[0]) is False, (
+        "`trigger == right_table` is true of a SOLE declaration too")
 
 
 def test_the_companion_carries_the_cell_and_the_primary_does_not():
@@ -78,17 +82,18 @@ def test_the_companion_carries_the_cell_and_the_primary_does_not():
 
     assert companion[rule_shape.COMPANION_CELL] == "s270_split"
     assert rule_shape.COMPANION_CELL not in primary
-    assert replay.is_reference_side(companion) is True
-    assert replay.is_reference_side(primary) is False
+    assert companion["trigger_table"] == TARGET and primary["trigger_table"] == REFERENCE
+    assert replay.is_companion(companion) is True
+    assert replay.is_companion(primary) is False
 
 
 def test_the_name_suffix_is_not_what_decides():
-    """⛔ A NAME IS SOMETHING AN OPERATOR MAY WRITE. Parsing `:reference` out of it would
+    """⛔ A NAME IS SOMETHING AN OPERATOR MAY WRITE. Parsing `:target` out of it would
     hand a meaning only the loader may assign to whoever types that suffix — the same
     mistake as reading the property off three other cells, one layer over."""
-    impostor = dict(_stood(SOLE)[0], name="s270_sole" + rule_shape.REFERENCE_SUFFIX)
+    impostor = dict(_stood(SOLE)[0], name="s270_sole" + rule_shape.COMPANION_SUFFIX)
 
-    assert replay.is_reference_side(impostor) is False
+    assert replay.is_companion(impostor) is False
 
 
 # ---------------------------------------------------------------------------
@@ -104,7 +109,7 @@ def test_a_companion_is_refused_whole_and_accepted_with_rows():
 
     with pytest.raises(replay.ReplayRefused) as raised:
         replay.find_rule(companion["name"], stood)
-    assert "follow-up half" in str(raised.value)
+    assert "second half of declaration 's270_split'" in str(raised.value)
     assert "pick the rows" in str(raised.value), (
         "the refusal must name the way out, not only the wall")
 

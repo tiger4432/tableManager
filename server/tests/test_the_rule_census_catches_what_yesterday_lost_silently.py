@@ -131,10 +131,9 @@ def test_the_derive_axis_is_read_off_a_rule_the_loader_actually_produces():
     from database import crud
 
     stood, refusal, _notes = rule_shape.expand_declaration(
-        {"name": "inv", "on": {"table": "dt_inventory"},
+        {"name": "inv", "on": {"table": "dt_job_attribution"},
          "derive": {"kind": "join",
-                    "join": {"right_table": "dt_job_attribution",
-                             "on": [{"left": "dt_job", "right": "dt_job"}],
+                    "join": {"on": [{"left": "dt_job", "right": "dt_job"}],
                              "take": ["dt_lot_confirmed"]}},
          "into": {"table": "dt_inventory"}},
         crud.TABLE_CONFIG)

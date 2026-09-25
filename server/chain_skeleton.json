@@ -298,14 +298,6 @@
               "kind": "record",
               "fields": [
                 {
-                  "key": "right_table",
-                  "required": false,
-                  "node": {
-                    "kind": "leaf",
-                    "hint": "free"
-                  }
-                },
-                {
                   "key": "on",
                   "required": false,
                   "node": {

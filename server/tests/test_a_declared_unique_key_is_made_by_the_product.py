@@ -28,11 +28,10 @@ from chain import unique_key                                  # noqa: E402
 
 DECLARATION = {
     "name": "s240_join", "enabled": True,
-    "on": {"table": "s240_left"}, "into": {"table": "s240_left"},
+    "on": {"table": "s240_right"}, "into": {"table": "s240_left"},
     "key": {"unique": True},
     "derive": {"kind": "join",
-               "join": {"right_table": "s240_right",
-                        "on": [{"left": "job", "right": "job"}],
+               "join": {"on": [{"left": "job", "right": "job"}],
                         "take": [{"from": "lot", "into": "lot_confirmed"}]}},
 }
 
@@ -258,7 +257,7 @@ def test_a_failure_to_build_an_index_does_not_stop_the_worker(monkeypatch, caplo
 # ---------------------------------------------------------------------------
 
 def test_one_declaration_stands_two_rules_and_asks_for_one_index(calls):
-    """⚠️ THE TARGET HALF AND ITS `:reference` COMPANION JOIN THE SAME TWO TABLES. Asking
+    """⚠️ THE DECLARATION'S RULE AND ITS `:target` COMPANION JOIN THE SAME TWO TABLES. Asking
     twice would probe `pg_index` twice at every reload and report one index as two."""
     from chain import rule_shape
 

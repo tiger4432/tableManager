@@ -80,7 +80,10 @@ def _pairs(spec: dict, left_table: str = "") -> list:
 #: The sub-cells of `derive.join` this product reads. Anything else is NAMED, never refused
 #: (판정 397 자세) - a cell the product does not know may be a live argument it has not
 #: learned yet, and refusing it would stop a rule that works.
-JOIN_CELLS = ("right_table", "on", "take")
+#: ⚰️ [총괄 e91b96a28] `right_table` left this list: the declaration's `on.table` names the source
+#:    and `rule_shape.as_chain_rule` fills the spec's `right_table` from it. The engine below still
+#:    reads `spec["right_table"]` - that is the internal spec, not a cell anyone writes.
+JOIN_CELLS = ("on", "take")
 
 #: The skeleton node of each join cell that is NOT one value - read by `_pairs` (`on`: a list
 #: of {left, right}) and `_takes` (`take`: a list of names). A cell missing here is a value.
@@ -316,11 +319,11 @@ def propose(db, rule: dict, row_ids=None):
     different way; the last step is simply not taken.
     """
 
-    # ⚠️ ONE KIND, TWO SIDES, AND THE RULE SAYS WHICH. A rule triggered on the LEFT table
-    # recomputes the rows that moved; a rule triggered on the RIGHT table recomputes the left
-    # rows whose key now resolves differently. The side is read from the declaration
-    # (`trigger_table` against `right_table`) rather than from which argument the caller
-    # passed, so a caller cannot put a rule on the wrong side by accident.
+    # ⚠️ ONE KIND, TWO SIDES, AND THE RULE SAYS WHICH. The declaration's own rule is triggered
+    # on the RIGHT (source) table and recomputes the left rows whose key now resolves
+    # differently; its `:target` companion is triggered on the LEFT table and recomputes the
+    # rows that moved. The side is read from the rule (`trigger_table` against the spec's
+    # `right_table`) rather than from which argument the caller passed.
     spec = join_spec(rule)
     left_table = str((rule or {}).get("target_table") or "")
     rows_in = list(row_ids or ())

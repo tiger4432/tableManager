@@ -649,6 +649,8 @@ def _unified_root():
     return _record(
         _field("name", _leaf("name"), required=True),
         _field("enabled", _leaf("enabled")),
+        # ⚠️ [총괄 e91b96a28] `on.table` IS ALREADY REQUIRED, and it is now a join's only source.
+        #   Marking `on` itself required too made the window say 「on」 where it said 「on.table」.
         _field("on", _record(_field("table", _leaf("trigger_table"), required=True),
                              _field("columns", _node_for("trigger_columns")))),
         _field("derive", {"kind": "oneOf", "hint": "choice",

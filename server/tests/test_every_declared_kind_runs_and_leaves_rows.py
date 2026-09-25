@@ -121,9 +121,9 @@ def _door(rule):
 
 def test_a_join_declaration_writes_the_taken_column(db):
     rules = rule_shape.expand_declaration(
-        {"name": "kinds_join", "on": {"table": SRC}, "into": {"table": SRC},
+        {"name": "kinds_join", "on": {"table": DST}, "into": {"table": SRC},
          "derive": {"kind": "join", "join": {
-             "right_table": DST, "on": [{"left": "job", "right": "job"}],
+             "on": [{"left": "job", "right": "job"}],
              "take": [{"from": "lot", "into": "lot_confirmed"}]}}},
         crud.TABLE_CONFIG)[0]
 

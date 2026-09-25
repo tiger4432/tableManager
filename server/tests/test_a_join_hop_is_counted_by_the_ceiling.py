@@ -53,10 +53,9 @@ TABLES = {
 
 DECLARATION = {
     "name": "s423_lot_from_attribution",
-    "on": {"table": LEFT},
+    "on": {"table": RIGHT},
     "derive": {"kind": "join",
-               "join": {"right_table": RIGHT,
-                        "on": [{"left": "job", "right": "job"}],
+               "join": {"on": [{"left": "job", "right": "job"}],
                         "take": [{"from": "lot", "into": "lot_confirmed"}]}},
     "into": {"table": LEFT},
 }

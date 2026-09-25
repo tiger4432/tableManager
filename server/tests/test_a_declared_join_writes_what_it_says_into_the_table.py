@@ -55,10 +55,9 @@ TABLES = {
 #: tables) and no `on.columns` (판정 398 - the shell derives it from the join key).
 DECLARATION = {
     "name": "s237_lot_from_attribution",
-    "on": {"table": LEFT},
+    "on": {"table": RIGHT},
     "derive": {"kind": "join",
-               "join": {"right_table": RIGHT,
-                        "on": [{"left": "job", "right": "job"}],
+               "join": {"on": [{"left": "job", "right": "job"}],
                         "take": [{"from": "lot", "into": "lot_confirmed"}]}},
     "into": {"table": LEFT},
 }
@@ -126,14 +125,18 @@ def test_one_declared_join_becomes_two_rules_that_watch_both_tables(load):
     mine = [r for r in kept if str(r.get("name") or "").startswith(DECLARATION["name"])]
 
     by_name = {r["name"]: r for r in mine}
-    reference = DECLARATION["name"] + rule_shape.REFERENCE_SUFFIX
-    assert sorted(by_name) == sorted([DECLARATION["name"], reference])
-    assert by_name[DECLARATION["name"]]["trigger_table"] == LEFT
-    assert by_name[reference]["trigger_table"] == RIGHT
+    # 🔴 [총괄 e91b96a28] `on` IS THE SOURCE: the declaration's own rule watches the table
+    #   whose value changes, and its `:target` companion watches the table it writes into.
+    target = DECLARATION["name"] + rule_shape.COMPANION_SUFFIX
+    assert sorted(by_name) == sorted([DECLARATION["name"], target])
+    assert by_name[DECLARATION["name"]]["trigger_table"] == RIGHT
+    assert by_name[target]["trigger_table"] == LEFT
     assert {r["target_table"] for r in mine} == {LEFT}
     assert {r["mapper"] for r in mine} == {join_into.JOIN_INTO_MAPPER}
-    assert by_name[DECLARATION["name"]]["params"] == by_name[reference]["params"], (
+    assert by_name[DECLARATION["name"]]["params"] == by_name[target]["params"], (
         "one spec, two triggers")
+    assert by_name[target]["params"]["right_table"] == RIGHT, (
+        "the engine's source side is filled from on.table")
     # 🔴 AND THE ORDER IS THE WALK'S ANSWER: producer before consumer. The reference
     # rule writes the table the target rule triggers on, so `rule_order` puts it first.
     #
@@ -144,8 +147,8 @@ def test_one_declared_join_becomes_two_rules_that_watch_both_tables(load):
     # halves are on the trigger path now: the edge FIRES, 「before」 means what it says,
     # and the walk orders them. Measured with the ordering walk on this shape: no cycle
     # is reported.
-    assert [r["name"] for r in mine] == [reference, DECLARATION["name"]], (
-        "the reference half writes what the target half triggers on, so it is ordered "
+    assert [r["name"] for r in mine] == [DECLARATION["name"], target], (
+        "the source-side rule writes what the target half triggers on, so it is ordered "
         "first - producer before consumer")
 
 
@@ -285,7 +288,7 @@ def test_a_matched_row_gets_the_right_tables_value(db):
     _push(db, LEFT, [{"log_key": "L1", "job": "J1"}])
     left_ids = [r.row_id for r in _rows(db, LEFT)]
 
-    result = run_join_and_write(db, _rule(), row_ids=left_ids)
+    result = run_join_and_write(db, _rule(trigger_table=LEFT), row_ids=left_ids)
 
     assert result["written"] == 1 and result["side"] == "target"
     assert [r.lot_confirmed for r in _rows(db, LEFT)] == ["LOT-1"]
@@ -303,7 +306,7 @@ def test_a_matched_null_is_written_as_null_and_an_unmatched_row_is_left_alone(db
                       "lot_confirmed": "KEEP"}])
     left_ids = [r.row_id for r in _rows(db, LEFT)]
 
-    result = run_join_and_write(db, _rule(), row_ids=left_ids)
+    result = run_join_and_write(db, _rule(trigger_table=LEFT), row_ids=left_ids)
 
     by_key = {r.log_key: r.lot_confirmed for r in _rows(db, LEFT)}
     assert result["written"] == 1, "only the matched row was written"
@@ -317,7 +320,7 @@ def test_the_reference_side_recomputes_the_left_rows_that_point_at_it(db):
     a rule on the wrong side by handing it the wrong argument."""
     _push(db, RIGHT, [{"job": "J1", "lot": "OLD"}])
     _push(db, LEFT, [{"log_key": "L1", "job": "J1"}, {"log_key": "L2", "job": "J2"}])
-    run_join_and_write(db, _rule(), row_ids=[r.row_id for r in _rows(db, LEFT)])
+    run_join_and_write(db, _rule(trigger_table=LEFT), row_ids=[r.row_id for r in _rows(db, LEFT)])
 
     right = _rows(db, RIGHT)[0]
     _push(db, RIGHT, [{"job": "J1", "lot": "NEW"}])
@@ -344,7 +347,7 @@ def test_the_written_layer_is_the_rules_own_name(db, monkeypatch):
     _push(db, RIGHT, [{"job": "J1", "lot": "LOT-1"}])
     _push(db, LEFT, [{"log_key": "L1", "job": "J1"}])
     seen.clear()
-    run_join_and_write(db, _rule(), row_ids=[r.row_id for r in _rows(db, LEFT)])
+    run_join_and_write(db, _rule(trigger_table=LEFT), row_ids=[r.row_id for r in _rows(db, LEFT)])
 
     # The LAYER is the chain's (so the wake filter treats this write like every other
     # chain write) and the AUTHOR is the rule's (so an operator can still see who wrote it).
@@ -357,7 +360,7 @@ def test_a_rule_that_cannot_run_says_why_rather_than_writing_nothing_quietly(db)
     NOTHING TO WRITE, which is the silence every refusal in this product exists to break."""
     _push(db, LEFT, [{"log_key": "L1", "job": "J1"}])
     ids = [r.row_id for r in _rows(db, LEFT)]
-    broken = _rule()
+    broken = _rule(trigger_table=LEFT)
     broken["params"] = dict(broken["params"], right_table="s237_no_such_table")
 
     result = run_join_and_write(db, broken, row_ids=ids)
@@ -392,7 +395,7 @@ def test_the_fold_is_computed_from_the_two_tables_and_never_authored(db, monkeyp
     _push(db, RIGHT, [{"job": "J1", "lot": "LOT-1"}])
     _push(db, LEFT, [{"log_key": "L1", "job": "J1"}])
 
-    run_join_and_write(db, _rule(), row_ids=[r.row_id for r in _rows(db, LEFT)])
+    run_join_and_write(db, _rule(trigger_table=LEFT), row_ids=[r.row_id for r in _rows(db, LEFT)])
 
     assert (LEFT, "job", RIGHT, "job") in asked, (
         "the fold was not asked for by TABLE and column - the join is authoring it")
@@ -419,7 +422,7 @@ def test_a_key_declared_normalized_on_one_side_folds_on_both(db, monkeypatch):
     _push(db, RIGHT, [{"job": "J-1", "lot": "LOT-1"}])
     _push(db, LEFT, [{"log_key": "L1", "job": "J_1"}])
 
-    result = run_join_and_write(db, _rule(), row_ids=[r.row_id for r in _rows(db, LEFT)])
+    result = run_join_and_write(db, _rule(trigger_table=LEFT), row_ids=[r.row_id for r in _rows(db, LEFT)])
 
     assert result["written"] == 1, "the two spellings of one key did not fold onto each other"
     assert [r.lot_confirmed for r in _rows(db, LEFT)] == ["LOT-1"]
@@ -430,17 +433,16 @@ def test_the_join_declares_no_fold_cell_at_all(db):
     this product reads, so an author writing one is told its name rather than being given a
     second, silently divergent way to spell the key."""
     assert "fold" not in join_into.JOIN_CELLS
-    assert join_into.unknown_cells({"right_table": RIGHT, "on": [], "fold": []}) == ["fold"]
+    assert join_into.unknown_cells({"on": [], "fold": []}) == ["fold"]
 
 
 # ---------------------------------------------------------------------------
 # 🔴 ⓓ — the join is written ONCE and the trigger follows it (판정 398)
 # ---------------------------------------------------------------------------
 
-def test_the_trigger_columns_are_derived_from_the_left_join_key(load):
-    """🔴 ONE VALUE, ONE PLACE. The left join key IS the trigger column - true by coincidence
-    in every virtual join declared today, and this grammar says it instead of leaving the next
-    author to rediscover it."""
+def test_the_trigger_columns_are_derived_from_the_join_key(load):
+    """🔴 ONE VALUE, ONE PLACE. Each side's own join key: the source side's `right`, the
+    `:target` side's `left` (총괄 e91b96a28)."""
     mine = [r for r in load([DECLARATION])
             if str(r.get("name") or "").startswith(DECLARATION["name"])]
 
@@ -451,7 +453,7 @@ def test_writing_the_trigger_columns_as_well_is_allowed_while_they_agree(load):
     """⚠️ SAYING ONE THING TWICE IS REDUNDANT, NOT WRONG. Refusing agreement would drop
     declarations that are correct."""
     agreeing = dict(DECLARATION, name="s237_agreeing",
-                    on={"table": LEFT, "columns": ["job"]})
+                    on={"table": RIGHT, "columns": ["job"]})
 
     assert [r["name"] for r in load([agreeing])
             if r["name"] == "s237_agreeing"] == ["s237_agreeing"]
@@ -464,7 +466,7 @@ def test_a_trigger_column_that_disagrees_with_the_join_is_refused_by_name(load, 
     import logging
 
     conflicting = dict(DECLARATION, name="s237_conflicting",
-                       on={"table": LEFT, "columns": ["note"]})
+                       on={"table": RIGHT, "columns": ["note"]})
     with caplog.at_level(logging.ERROR):
         kept = load([conflicting, dict(DECLARATION)])
 

@@ -963,18 +963,24 @@ def convert_chain_rule_grammar(name: str, to: str, dry_run: bool = True,
             "grammar_unreadable", "rules.%s" % name,
             "이 규칙의 문법을 읽지 못했습니다: %s. 추측해서 바꾸지 않습니다" % name)
 
-    if grammar == to:
+    # 🔴 [총괄 e91b96a28] AN OLD-SHAPE JOIN (`derive.join.right_table`) IS MODERNISED ON THIS
+    #    SAME DOOR - `on` becomes the source. Done before either direction, so 「to flat」 does
+    #    not read the old `on.table` (the table the join wrote) as the source.
+    source = rule_shape.modernize_join(stored) if grammar == "unified" else stored
+    if to == "unified":
+        converted = (source if grammar == "unified"
+                     else rule_shape.to_declaration(rule_shape.from_chain_rule(stored)))
+    else:
+        converted = (stored if grammar == "flat"
+                     else rule_shape.as_chain_rule(rule_shape.from_declaration(source)))
+
+    if converted == stored:
         # ⚠️ A FACT, NOT A REFUSAL (판정 548 규율 ③). Nothing was wrong with the request;
         #    there is simply nothing to do, and an error here would teach the operator to
         #    fear a button that is idempotent.
         return {"ok": True, "name": name, "from": grammar, "to": to,
                 "changed": False, "saved": False,
                 "why": "이 규칙은 이미 %s 문법입니다" % to}
-
-    if to == "unified":
-        converted = rule_shape.to_declaration(rule_shape.from_chain_rule(stored))
-    else:
-        converted = rule_shape.as_chain_rule(rule_shape.from_declaration(stored))
 
     answer = {"ok": True, "name": name, "from": grammar, "to": to,
               "changed": True, "declaration": converted,

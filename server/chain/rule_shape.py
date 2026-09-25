@@ -21,11 +21,6 @@ CHAIN_MODELLED = ("name", "enabled", "trigger_table", "trigger_columns",
                   "params", "group_by", "max_group_rows", "max_group_attempts",
                   "idempotent")
 
-#: 조인 문법에서 접히는 칸. `materialize` 는 «일부러» 여기 없다 — 8.5 ③ 의 판단 대기 항목이라
-#: 지금 접으면 아직 안 받은 판정을 코드가 «먼저» 내려 버린다.
-JOIN_MODELLED = ("left_table", "right_table", "left_columns", "right_columns",
-                 "right_folds")
-
 _LIMIT_KEYS = ("group_by", "max_group_rows", "max_group_attempts", "idempotent")
 
 
@@ -117,6 +112,32 @@ READ_TIME_RETIRED = (
     "→ 다음: 이 선언의 `into` 를 "
     "`{\"table\": \"<대상 표>\"}` 로 바꾸십시오")
 
+#: 🔴 [총괄 e91b96a28] `derive.join.right_table` IS RETIRED AND REFUSED BY NAME. `on.table` names
+#: the table whose value changes (소유자 「on 이 dt_inventory 여야지」), so a second cell that had
+#: to agree with it is a second author. The sentence names both cells to fix.
+JOIN_RIGHT_TABLE_RETIRED = (
+    "derive.join.right_table is retired - on names the table whose value changes. "
+    "Set on.table to \"%s\" and delete right_table (the Chain tab's convert does both)")
+
+#: A join has no other way to say where its value comes from.
+JOIN_NEEDS_SOURCE = "a join needs on.table - the table whose value changes"
+
+
+def modernize_join(declaration):
+    """An old-shape join (`derive.join.right_table`) -> the shape the loader accepts.
+
+    Anything else comes back unchanged, so the converter can end every conversion here. The
+    old `on.columns` go too: they named the columns of the table `on` used to mean.
+    """
+    derive = declaration.get("derive") if isinstance(declaration, dict) else None
+    join = derive.get("join") if isinstance(derive, dict) else None
+    if not isinstance(join, dict) or "right_table" not in join:
+        return declaration
+    out = dict(declaration, derive=dict(derive, join=dict(join)))
+    out["on"] = {"table": out["derive"]["join"].pop("right_table")}
+    return out
+
+
 #: The `into` kinds the grammar still RECOGNISES (to refuse by name) but no form may OFFER.
 #: One list, two readers: `expand_declaration` refuses them, `chain_bindings._unified_root`
 #: leaves them out of the declaration window's choices.
@@ -182,11 +203,15 @@ def as_chain_rule(internal: dict) -> dict:
         #   S-249 removed. The product owns this mapper, so the product declares how it is
         #   called; an operator should not have to know.
         out["is_batch"] = True
+        # 🔴 [총괄 e91b96a28, 소유자 「on 이 dt_inventory 여야지」] `on.table` IS THE TABLE WHOSE
+        #   VALUE CHANGES - the source. The engine still reads it as the spec's `right_table`,
+        #   so it is filled HERE and nowhere else: the declaration no longer has a second cell
+        #   that must agree with `on.table` (it is refused by name in `expand_declaration`).
         out["params"] = dict(derive.get("join") or {})
-        # 🔴 [판정 398] THE AUTHOR WRITES THE JOIN ONCE AND THE SHELL DERIVES THE TRIGGER.
-        # The left join key IS the trigger column - true by coincidence in every virtual join
-        # declared today, and the new grammar says it instead of leaving it to be rediscovered.
-        # A second place to write one value is a second place for it to be wrong.
+        if "table" in on:
+            out["params"]["right_table"] = on["table"]
+        # 🔴 [판정 398] THE AUTHOR WRITES THE JOIN ONCE AND THE SHELL DERIVES THE TRIGGER -
+        #   the source side's join key (see `join_trigger_columns`).
         derived = join_trigger_columns(derive.get("join") or {})
         if derived:
             out["trigger_columns"] = derived
@@ -335,9 +360,11 @@ def from_declaration(raw: dict, origin: str = "declared") -> dict:
     }
 
 
-#: What the reference-side companion's name is built from. One spelling, because the loader
-#: writes it and the census reads it.
-REFERENCE_SUFFIX = ":reference"
+#: What a join's companion's name is built from. One spelling, because the loader writes it
+#: and the census reads it. ⚰️ [총괄 e91b96a28] It was `:reference` while the companion stood
+#: on the reference table; `on` now names the source, so the companion stands on the table
+#: the join WRITES and its name says so - this name is on the queue, the log and set(N) line.
+COMPANION_SUFFIX = ":target"
 
 #: The cell a companion rule carries to say WHAT IT IS (S-270). The loader is the only
 #: thing that can know 「I made this as the second half of one declaration」, and until this
@@ -359,12 +386,13 @@ COMPANION_CELL = chain_bindings.COMPANION_CELL_NAME
 
 
 def companion_rules(internal: dict) -> list:
-    """The EXTRA chain rules one unified declaration implies. Today: a join's reference side.
+    """The EXTRA chain rules one unified declaration implies. Today: a join's target side.
 
-    🔴 ONE DECLARATION, TWO TRIGGERS (S-237 ㉢). A join has to be recomputed when a target row
-    moves AND when the row it points at moves, and those are two different `trigger_table`
-    values - the loader matches a rule to an event by that cell, so one rule cannot watch two
-    tables. What must NOT be duplicated is the SPEC, and it is not: both rules carry the same
+    🔴 ONE DECLARATION, TWO TRIGGERS (S-237 ㉢). A join has to be recomputed when the source
+    row moves (the declaration's own rule, on `on.table`) AND when a row it writes into
+    arrives or changes key - a `dt_log` row that lands after its `dt_inventory` row was
+    confirmed must still get the value. Those are two `trigger_table` values and one rule
+    watches one table. What is NOT duplicated is the SPEC: both rules carry the same
     `params`, and the mapper reads the side from `trigger_table`.
 
     ⚠️ EMPTY FOR EVERY OTHER KIND, and that is the point of a named function rather than a
@@ -373,24 +401,26 @@ def companion_rules(internal: dict) -> list:
     """
     derive = internal.get("derive") or {}
     into = internal.get("into") or {}
-    if derive.get("kind") != "join" or "table" not in into:
-        return []
-    spec = dict(derive.get("join") or {})
-    right_table = spec.get("right_table")
     name = internal.get("name")
-    if not right_table or not name:
+    if derive.get("kind") != "join" or "table" not in into or not name:
         return []
-    primary = as_chain_rule(internal)
-    if primary.get("trigger_table") == right_table:
-        # The declaration already watches the reference table; a second rule would be the
-        # same rule twice and the dispatcher would run the join twice per event.
+    source = (internal.get("on") or {}).get("table")
+    if not source or source == into["table"]:
+        # One table is both sides; a second rule would be the same rule twice and the
+        # dispatcher would run the join twice per event.
         return []
-    companion = dict(primary)
-    companion["name"] = str(name) + REFERENCE_SUFFIX
-    companion["trigger_table"] = right_table
+    companion = dict(as_chain_rule(internal))
+    companion["name"] = str(name) + COMPANION_SUFFIX
+    companion["trigger_table"] = into["table"]
+    # ⚠️ ITS OWN WAKE COLUMNS. Copying the source rule's would name source columns on the
+    #    target table; what wakes this side is its own join key (a new row, a changed key).
+    target_key = [str(pair["left"]) for pair in (derive.get("join") or {}).get("on") or ()
+                  if isinstance(pair, dict) and pair.get("left")]
+    companion.pop("trigger_columns", None)
+    if target_key:
+        companion["trigger_columns"] = target_key
     # 🔴 [S-270] IT SAYS WHAT IT IS, HERE, WHERE THAT IS KNOWN. Everything downstream that
-    # needs 「is this a half the loader made」 reads this cell; deriving it from the trigger
-    # and the right table is a guess that a sole declaration also satisfies.
+    # needs 「is this a half the loader made」 reads this cell, not the name or the shape.
     companion[COMPANION_CELL] = str(name)
     return [companion]
 
@@ -403,11 +433,16 @@ class JoinTriggerConflict(ValueError):
 
 
 def join_trigger_columns(spec: dict) -> list:
-    """The left key columns of a join spec, in declared order - the trigger columns."""
+    """The source-side key columns of a join spec, in declared order (총괄 e91b96a28).
+
+    ⚠️ MEASURED 2026-09-25: these do not gate a run today. The group step picks rules with
+    `fires`, which does not ask `rule_watches_changed_columns`; only the recorded outcome does.
+    So a `dt_lot`-only edit runs this rule whatever is written here.
+    """
     out = []
     for pair in (spec or {}).get("on") or ():
-        if isinstance(pair, dict) and pair.get("left"):
-            out.append(str(pair["left"]))
+        if isinstance(pair, dict) and pair.get("right"):
+            out.append(str(pair["right"]))
     return out
 
 
@@ -581,6 +616,12 @@ def expand_declaration(declaration, table_config=None,
     if ((internal.get("derive") or {}).get("kind") == "join"
             and any((internal.get("into") or {}).get(kind) for kind in RETIRED_INTO_KINDS)):
         return ([], "%s: %s" % (name, READ_TIME_RETIRED), [])
+    if (internal.get("derive") or {}).get("kind") == "join":
+        old_source = ((internal.get("derive") or {}).get("join") or {}).get("right_table")
+        if old_source is not None:
+            return ([], "%s: %s" % (name, JOIN_RIGHT_TABLE_RETIRED % old_source), [])
+        if not (internal.get("on") or {}).get("table"):
+            return ([], "%s: %s" % (name, JOIN_NEEDS_SOURCE), [])
 
     # ⚠️ [지시 0cae5199] `rejections`/`caps` 는 «선택»이고 기본은 None 이다 — 이 좌석의
     #    제품 호출자 열은 안 주므로 오늘 동작이 그대로다. 주는 쪽은 수집기를 «가진» 자리,

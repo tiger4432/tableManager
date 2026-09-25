@@ -51,10 +51,9 @@ TABLES = {
 
 DECLARATION = {
     "name": "s279_lot_from_attribution",
-    "on": {"table": LEFT},
+    "on": {"table": RIGHT},
     "derive": {"kind": "join",
-               "join": {"right_table": RIGHT,
-                        "on": [{"left": "job", "right": "job"}],
+               "join": {"on": [{"left": "job", "right": "job"}],
                         "take": [{"from": "lot", "into": "lot_confirmed"}]}},
     "into": {"table": LEFT},
 }
@@ -89,7 +88,9 @@ def _rows(db, table):
 
 
 def _join_rule():
-    return rule_shape.as_chain_rule(rule_shape.from_declaration(DECLARATION))
+    """The join's `:target` half - it is handed LEFT rows here, the rows the join writes.
+    (Since 총괄 e91b96a28 the declaration's own rule watches the source table.)"""
+    return rule_shape.companion_rules(rule_shape.from_declaration(DECLARATION))[0]
 
 
 @pytest.fixture(name="file_mapper")

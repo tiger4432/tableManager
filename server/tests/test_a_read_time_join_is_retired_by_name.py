@@ -107,7 +107,12 @@ def test_the_word_is_still_in_the_grammar_so_it_can_be_refused():
 def test_a_writing_join_still_stands_two_chain_rules(declared):
     """⚠️ THE CONTROL, and it is what production runs. `into.table` is the WRITE-time join
     and is untouched; the two are told apart by which `into` the declaration carries."""
-    writing = dict(UNIFIED, name="u_write", into={"table": "left_t"})
+    # ⚠️ [총괄 e91b96a28] in today's shape - `on` is the source, no `right_table`.
+    writing = dict(UNIFIED, name="u_write", on={"table": "right_t"},
+                   into={"table": "left_t"},
+                   derive={"kind": "join", "join": {
+                       key: value for key, value in UNIFIED["derive"]["join"].items()
+                       if key != "right_table"}})
 
     stood, refusal, _notes = rule_shape.expand_declaration(writing, KNOWN)
 

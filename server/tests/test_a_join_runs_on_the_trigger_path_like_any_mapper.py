@@ -32,9 +32,8 @@ RIGHT = "s278_inventory"
 #: The self-loop shape: `on.table` is the table the join also WRITES.
 SELF_LOOP = {
     "name": "s278_confirmed", "enabled": True,
-    "on": {"table": LEFT},
-    "derive": {"kind": "join", "join": {"right_table": RIGHT,
-                                        "on": [{"left": "job", "right": "job"}],
+    "on": {"table": RIGHT},
+    "derive": {"kind": "join", "join": {"on": [{"left": "job", "right": "job"}],
                                         "take": [{"column": "lot", "as": "lot_confirmed"}]}},
     "into": {"table": LEFT},
 }
@@ -61,8 +60,8 @@ def test_neither_half_of_a_join_stands_as_a_follow_up():
 
     assert not primary.get("follow_up"), primary
     assert not companion.get("follow_up"), companion
-    assert primary["trigger_table"] == LEFT
-    assert companion["trigger_table"] == RIGHT, "the reference half watches the right table"
+    assert primary["trigger_table"] == RIGHT, "the declaration's rule watches its source"
+    assert companion["trigger_table"] == LEFT, "the :target half watches the table it writes"
 
 
 def test_an_ordinary_write_to_the_trigger_table_reaches_both_halves():
@@ -70,18 +69,18 @@ def test_an_ordinary_write_to_the_trigger_table_reaches_both_halves():
     own predicate rather than by reading the cell back."""
     primary, companion = _stood(SELF_LOOP)
 
-    assert worker._rule_accepts_event(primary, _event("file_ingestion")) is True
-    assert worker._rule_accepts_event(companion, _event("file_ingestion", RIGHT)) is True
+    assert worker._rule_accepts_event(primary, _event("file_ingestion", RIGHT)) is True
+    assert worker._rule_accepts_event(companion, _event("file_ingestion")) is True
 
 
 # ---------------------------------------------------------------------------
 # ⛔ ⓑ — and its own writes do not wake it
 # ---------------------------------------------------------------------------
 
-@pytest.mark.parametrize("half", [0, 1], ids=["target-side", "reference-side"])
+@pytest.mark.parametrize("half", [0, 1], ids=["source-side", "target-side"])
 def test_a_joins_own_write_does_not_wake_it_again(half):
     """🔴 THE PING-PONG GATE, AND IT IS WHY THIS ROUND IS SAFE. `s278_confirmed` writes to
-    `s278_log`, the very table its target half watches, with
+    `s278_log`, the very table its `:target` half watches, with
     `source_name=chain_ingestion`. A chain-produced event reaches a rule ONLY if that rule
     declared `allow_chain_trigger`; a join declares none, so the loop closes here.
 
