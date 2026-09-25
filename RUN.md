@@ -1,5 +1,20 @@
 # 지금 돌리면 되는 것
 
+> ## 🔴 [09-26 아침 1] **스케줄러 재기동을 넘어 수집기의 마지막 실행이 남음 · 끊긴 실행은 FAIL + 사유 — 마이그레이션 «없음» · 재기동 스케줄러**
+>
+> ```
+> 재기동 뒤   Auto Update 탭의 last_run · last_status · last_error 가 재기동 전 그대로 (전: PENDING · last_run 없음)
+> 끊긴 실행   수집 도중 스케줄러가 죽고 되살아나면 그 수집기는 FAIL
+>            last_error = The scheduler running this collector stopped before it finished - run it again.
+>            last_run = 끊긴 실행의 시작 시각 · 대기열(지금 도는 것)에는 안 나옴
+> 로그       auto_update.log — [Collector] '<표>/<스크립트>' was RUNNING under scheduler/<host>/<pid>, which is gone - recorded as FAIL
+> 되살림 없이 스케줄러가 죽은 채면 지금처럼 탭 · 대기열 state 가 orphaned (그걸 적는 프로세스가 없음)
+> 도장 없는 옛 RUNNING   이 코드 전의 줄 — unknown 그대로, 다음 실행이 덮음
+> 되돌리기    git revert. 쓰는 것은 상태 파일 server/config/scheduler_status.json 뿐 (지금도 스케줄러가 쓰는 파일)
+> ```
+
+---
+
 > ## 🔴 [09-26 새벽 2] **수집기·소급의 «누가 돌리나» — 대기열 항목에 state · Auto Update 탭 낱말 · 재적재 도중 끝난 수집이 RUNNING 으로 안 남음 — 마이그레이션 «없음» · 재기동 API · 스케줄러 · 체인 워커**
 >
 > ```
@@ -10,7 +25,7 @@
 > 수집 도중  설정 재적재(SYSTEM_RELOAD)가 와도 끝나면 SUCCESS · FAIL — 전: 끝나도 RUNNING 으로 남음
 > 확인      상태 파일 server/config/scheduler_status.json 의 줄마다 "runner": scheduler/<host>/<pid>
 >           없으면 스케줄러가 옛 코드
-> 그대로    스케줄러 재기동은 수집기 상태를 PENDING · last_run 없음으로 되돌림 (끊긴 실행이 안 남음) — 소유자께 여쭙는 중
+> 재기동     스케줄러 재기동 뒤의 수집기 상태는 [09-26 아침 1]
 > 되돌리기  git revert. 쓰는 것은 상태 파일의 runner 칸뿐
 > ```
 

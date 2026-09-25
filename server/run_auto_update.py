@@ -21,6 +21,9 @@ import config_backup
 import event_constants
 logger = get_process_logger("Scheduler", "auto_update.log")
 
+#: `last_error` of a run whose scheduler died before it finished (총괄 bfcf2a7ba 3-ㄴ).
+COLLECTOR_CUT_OFF = "The scheduler running this collector stopped before it finished - run it again."
+
 
 def _apply_proxy_policy():
     """수집 스크립트가 볼 프록시 환경을 이 프로세스에서 확정한다.
@@ -431,6 +434,22 @@ class MultiDiscoveryScheduler:
                     "last_error": col.last_error,
                     "runner": col.runner,
                 }
+            if not self.collectors:
+                # 🔴 [총괄 bfcf2a7ba 3-ㄴ] A NEW PROCESS HAS NOTHING IN MEMORY - each collector's
+                #    last run is in the file the previous process wrote. Without this a restart
+                #    reset every collector to PENDING with no last run.
+                try:
+                    with open(self.status_file_path, encoding="utf-8") as fh:
+                        entries = json.load(fh).get("collectors") or []
+                except FileNotFoundError:
+                    entries = []
+                except (OSError, ValueError) as e:
+                    logger.warning(f"Could not read {self.status_file_path} - collectors start "
+                                   f"with no last run: {e}")
+                    entries = []
+                for entry in entries:
+                    status_map[(entry.get("table_name"), entry.get("script_name"))] = {
+                        k: entry.get(k) for k in ("last_run", "last_status", "last_error", "runner")}
 
             self.collectors = []
             if not os.path.exists(self.workspace_dir):
@@ -459,6 +478,14 @@ class MultiDiscoveryScheduler:
                     col.last_status = status_map[key]["last_status"]
                     col.last_error = status_map[key]["last_error"]
                     col.runner = status_map[key]["runner"]
+                    # 🔴 [3-ㄴ] A RUN WHOSE SCHEDULER IS GONE IS OVER, and the process restoring it
+                    #    knows that - left RUNNING it would sit in «what runs now» with nobody on
+                    #    it. Asked with the judgment the readers use; no stamp (unknown) stays.
+                    if (col.last_status == event_constants.COLLECTOR_STATUS_RUNNING
+                            and heartbeat.runner_state(col.runner) == "orphaned"):
+                        logger.warning(f"[Collector] '{key[0]}/{key[1]}' was RUNNING under "
+                                       f"{col.runner}, which is gone - recorded as FAIL")
+                        col.last_status, col.last_error = "FAIL", COLLECTOR_CUT_OFF
 
             self._write_status_file()
 
@@ -990,6 +1017,10 @@ class MultiDiscoveryScheduler:
         동시에 크론 스케줄 타이밍을 검사해 수집기들을 가동합니다.
         """
         logger.info("Initializing Ingestion Auto Discovery engine...")
+        # BEFORE the restore: it judges the last process's stamps against this heartbeat, and
+        # until this process beats, the heartbeat is the dead one's - fresh for 60 s, so
+        # a run it left behind would read as still owned.
+        heartbeat.beat("scheduler", force=True)
         self.discover_and_load_collectors()
         
         logger.info(f"Initialization complete. Active collectors: {len(self.collectors)}")

@@ -223,3 +223,67 @@ def test_a_run_that_outlives_a_reload_ends_on_the_collector_registered_now(tmp_p
 
     assert reloaded.last_status == "SUCCESS"
     assert [row["last_status"] for row in _status_file(tmp_path)] == ["SUCCESS"]
+
+
+# ---------------------------------------------------------------------------
+# 총괄 bfcf2a7ba 3-ㄴ — a restart restores each last run, and ends the run it cut off
+# ---------------------------------------------------------------------------
+
+_CUT_AT = "2026-09-26 07:00:00"
+_DEAD = "scheduler/HOST/999999"
+
+
+@pytest.mark.parametrize("before, after, queue", [
+    # its scheduler was killed a moment ago - that beat is still fresh on disk
+    (("RUNNING", _DEAD), ("FAIL", "cut off"), []),
+    # a run that finished before the restart
+    (("SUCCESS", _DEAD), ("SUCCESS", None), []),
+    # written before runs were stamped: unknown, and read as it is
+    (("RUNNING", None), ("RUNNING", None), ["unknown"]),
+])
+def test_a_restart_restores_the_last_run_and_ends_the_run_it_cut_off(
+        tmp_path, monkeypatch, before, after, queue):
+    import json
+
+    import run_auto_update
+    from runtime import running
+    from utils import auto_update_control as auc
+    from utils import heartbeat
+
+    beats = tmp_path / "heartbeats"
+    beats.mkdir()
+    monkeypatch.setattr(heartbeat, "heartbeat_dir", lambda: str(beats))
+    monkeypatch.setattr(heartbeat, "heartbeat_path",
+                        lambda name: os.path.join(str(beats), "%s.json" % name))
+    monkeypatch.setattr(heartbeat, "_own_name", heartbeat._own_name)
+    monkeypatch.setattr(auc, "SERVER_DIR", str(tmp_path))
+    (beats / "scheduler.json").write_text(json.dumps(
+        {"name": "scheduler", "pid": 999999, "ts": time.time(), "beats": 1,
+         "started_at": time.time(), "note": None, "work": {}, "laps": {}}), encoding="utf-8")
+    script = tmp_path / "ingestion_workspace" / "t_probe" / "auto_update" / "pull.py"
+    script.parent.mkdir(parents=True)
+    script.write_text("# schedule: 0 0 1 1 *\nout = []\n", encoding="utf-8")
+    (tmp_path / "config").mkdir()
+    (tmp_path / "config" / "scheduler_status.json").write_text(json.dumps({"collectors": [
+        {"table_name": "t_probe", "script_name": "pull.py", "last_run": _CUT_AT,
+         "last_status": before[0], "last_error": None, "runner": before[1]}]}),
+        encoding="utf-8")
+
+    class _Started(Exception):
+        pass
+
+    s = MultiDiscoveryScheduler(check_interval=5, server_dir=str(tmp_path))
+    restore = s.discover_and_load_collectors
+
+    def restore_then_stop():
+        restore()
+        raise _Started
+
+    monkeypatch.setattr(s, "discover_and_load_collectors", restore_then_stop)
+    with pytest.raises(_Started):
+        s.run()                                  # the way a restarted scheduler starts
+
+    [row] = _status_file(tmp_path)
+    reason = {"cut off": run_auto_update.COLLECTOR_CUT_OFF}.get(after[1], after[1])
+    assert (row["last_run"], row["last_status"], row["last_error"]) == (_CUT_AT, after[0], reason)
+    assert [i["state"] for i in running._collectors(None)] == queue
