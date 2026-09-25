@@ -58603,3 +58603,39 @@ check_rows_exist 가 관계마다 setup_bundle.reads_a_row_table(ledger.setup.li
    따로 한 라운드로 할까요
 ㉯ 영수증 줄(column_name = ledger_batch)의 is_row_deleted — 행 존재를 묻지 않게 할까요. 지금은 표 위 영수증도 「지워진 행」으로 나갑니다
 ```
+
+---
+
+## [09-25 14:33] 구현자 — 이력 500: 커밋 1 착지 `25b674b8a` · ㉮ 짓는 중 — 여섯 밖에서 같은 병을 더 쟀습니다 (물음 둘)
+
+```
+커밋 1   25b674b8a — check_rows_exist 가 reads_a_row_table 에 묻고 · 영수증 줄은 행 존재를 안 물음
+         (main._names_a_row — runtime_v2.RECEIPT_COLUMN 을 import, 철자를 다시 안 적음) · backfill 낡은 주석
+         영수증 줄의 is_row_deleted 는 false — 패널(timeline.js)은 참거짓만 보고, 응답 모델이 기본값 false 를 늘 실어서 「칸을 빼기」는 안 됩니다
+박스     API 재기동 뒤 /audit_logs/recent 200 (첫 번째 4.1 s 캐시 적재 · 그 뒤 38 ms)
+         100 그룹 = 영수증 51 (뷰 위 5) 전부 is_row_deleted false · 보통 줄 49 중 true 2
+패널     전 「Failed to load global history log」 -> 후 이력이 섬 (LEDGER · BATCH · DELETE · MANUAL · SYSTEM 줄)
+변이     넷 다 빨강 — 자리를 안 물음 · 모델에 hasattr 로 물음 · 영수증 조건 뺌 · 거래 상세 라우트만 옛 철자
+```
+
+### ㉮ 짓는 중 — 지시대로 여섯 + export
+
+### 여섯 밖 — 박스 실측 (뷰 bonding_core_die · ledger_events 로)
+
+```
+500  GET /tables/{뷰}/data?transaction_id=…  ·  /data/count?transaction_id=…     narrowed_table_query · get_table_data_count
+     패널이 이제 뷰 영수증을 보여 주니, 그 거래로 그리드를 거르면 이 500 입니다 (패널 버튼이 이 길을 부르는지는 안 쟀다)
+500  GET /tables/ledger_events/data?q=abc — 검색어만 넣어도
+     ledger_events 는 «id» 라는 선언 칸이 있고, 검색이 칸 이름 id 를 row_id 로 읽습니다 (apply_search_filter). 운영 그리드에도 닿습니다
+500  GET /tables/bonding_core_die/data?q=abc&cols=id — 같은 자리
+셈의 빈틈  get_table_data_count 의 자리는 제 census(56)가 못 셌습니다 — 판정 식이 그 모양을 못 봄
+```
+
+### 물음 — 답을 받기 전에는 넣지 않습니다
+
+```
+㉠ 거래 필터 (그리드 /data · /data/count) — 같은 자리 refuse_row_address 로 거절 (추천. narrowed_table_query 한 곳 + count 한 곳)
+㉡ 검색의 row_id · id — 「그 관계의 전순서 키(total_order_keys)를 찾는다」로 (추천)
+   표는 전순서 키가 곧 row_id 라 SQL 이 지금과 같습니다. ledger_events 는 그리드의 ID 칸 그 값(id)을 찾게 됩니다
+   거절이 아닌 이유 — 검색은 행을 «주소로» 부르는 게 아니라 값을 찾는 것이고, 그리드가 이미 뷰의 ID 를 전순서 키로 그립니다
+```
