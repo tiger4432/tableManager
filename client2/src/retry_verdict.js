@@ -92,3 +92,16 @@ export function outboxRetryMessage(body) {
   return { tone: 'warning', refused: false,
     text: `❔ Unknown reply${reply.status ? ` (${reply.status})` : ''}${said ? ` — ${said}` : ''}` };
 }
+
+/**
+ * The file drawer's title and body follow the badge's tone (lead 59fa66aaf): since item 2 a
+ * SUCCESS file can carry a sentence (rows it dropped), and it is not filed under «error»; an
+ * empty message on a file that did not succeed does not claim it succeeded.
+ */
+export function ingestionMessageView(status, message) {
+  const tone = retryVerdict(status).tone;
+  const said = typeof message === 'string' ? message.trim() : '';
+  const empty = tone === 'ok' ? 'No message — ingested successfully.'
+    : tone === 'danger' ? 'No error message captured.' : 'No message captured.';
+  return { tone, title: tone === 'danger' ? 'Ingestion error' : 'Ingestion message', body: said || empty };
+}

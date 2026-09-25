@@ -11,7 +11,7 @@ import { NONE, WAITING, REFUSED, unitText } from './ui_words.js';
 import { errorText } from './body_error.js';
 // 🔴 「원천이 «없다»」와 「있는데 «비었다」의 갈림. 오류와는 «다른 질문»이라 함수를 안 합칩니다.
 import { absentPath } from './absent_listing.js';
-import { retryVerdict, retryMessage, outboxRetryMessage } from './retry_verdict.js';
+import { retryMessage, outboxRetryMessage, ingestionMessageView } from './retry_verdict.js';
 import { initTheme, getTheme, THEME_CHANGE_EVENT } from './theme.js';
 // [전역 토스트] 자체 구현을 폐기하고 공용(utils.js)으로 일원화한다 —
 // 구 admin 구현도 setTimeout 단독 수명이라 백그라운드 탭에서 동일하게 누적됐다.
@@ -3683,16 +3683,18 @@ function selectFileRow(log, bodyEl = fileListBody) {
   txEventsSelectorBlock.style.display = 'none';
 
   diagnosticsTitle.textContent = '🔍 File Ingestion Diagnostics';
-  tracebackTitle.textContent = 'Ingestion Error Message';
+  // Title, badge and body follow ONE tone (lead 59fa66aaf) — a success sentence is not «error».
+  const drawer = ingestionMessageView(log.status, log.error_message);
+  tracebackTitle.textContent = drawer.title;
   // 🔴 「SUCCESS 아니면 danger」였습니다. 그러면 «대기»가 «실패»로 그려집니다 --
   //    운영자는 고칠 것이 있다고 읽고, 실제로는 워처를 기다리는 중입니다.
   tracebackSeverity.textContent = log.status || 'FAILED';
-  const severityTone = retryVerdict(log.status).tone;
+  const severityTone = drawer.tone;
   tracebackSeverity.className = 'badge badge-'
     + (severityTone === 'ok' ? 'success' : (severityTone === 'danger' ? 'danger' : 'warning'));
   tracebackSeverity.style.display = 'inline';
 
-  tracebackViewer.textContent = log.error_message || 'No error traceback log captured (File ingested successfully).';
+  tracebackViewer.textContent = drawer.body;
 
   // 관련 파서 스크립트 바로 열기 (수정 단계 딥링크 — 대상 테이블 워크스페이스의 커스텀 파서)
   const ws = workspaceData.find(w => w.table_name === log.table_name);

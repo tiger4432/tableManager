@@ -109,7 +109,8 @@ console.log('\n── D. THE SCREEN GOES THROUGH THIS PLACE, AND OWNS NO LIST �
   //    answering correctly until a state it never heard of arrives.
   const js = readFileSync(new URL('../src/admin.js', import.meta.url), 'utf8');
   ok('D1 the retry outcome goes through the verdict', js.includes('retryMessage('));
-  ok('D2 the severity badge goes through it too', js.includes('retryVerdict('));
+  // The badge's tone is the drawer's, and the drawer's is `retryVerdict`'s (F6 scores that).
+  ok('D2 the severity badge goes through it too', js.includes('const severityTone = drawer.tone;'));
   // 🔴 THE OLD PREDICATE IS GONE. This is the actual defect: 「still FAILED?」 read as
   //    「did it succeed?」. Leaving it anywhere in this file would leave the bug reachable.
   ok('D3 no site decides the outcome by one state\'s absence',
@@ -145,6 +146,30 @@ console.log('\n── D. THE SCREEN GOES THROUGH THIS PLACE, AND OWNS NO LIST �
   // 🔴 총괄 f063c948e — two sites call the outbox retry route; both read its reply.
   ok('D9 both outbox retry sites read the reply through the judge',
     (js.match(/outboxRetryMessage\(/g) || []).length === 2, (js.match(/outboxRetryMessage\(/g) || []).length);
+  // 🔴 총괄 59fa66aaf — the file drawer's title and body come from the one judge, not a fixed «Error».
+  ok('D10 the file drawer reads its title and body through the judge',
+    /ingestionMessageView\(log\.status, log\.error_message\)/.test(js) && !js.includes('Ingestion Error Message'),
+    'the drawer still writes its own title');
+}
+
+console.log('\n── F. THE FILE DRAWER — its title and body follow the badge\'s tone ───────');
+{
+  const failed = X.ingestionMessageView('FAILED', 'Parser raised KeyError: lot_id');
+  const kept = X.ingestionMessageView('SUCCESS', 'Dropped 3 rows without a key.');
+  const clean = X.ingestionMessageView('SUCCESS', '');
+  ok('F1 a failure is titled as an error, with its reason',
+    failed.title === 'Ingestion error' && failed.body === 'Parser raised KeyError: lot_id', failed);
+  ok('F2 a success that carries a sentence is not titled as an error — and shows the sentence',
+    kept.title !== failed.title && kept.body === 'Dropped 3 rows without a key.', kept);
+  ok('F3 a success with no sentence says it succeeded, under the same title',
+    clean.body === 'No message — ingested successfully.' && clean.title === kept.title, clean);
+  const blankFailure = X.ingestionMessageView('FAILED', '   ');
+  ok('F4 a failure with a blank sentence does not claim it succeeded', !/success/i.test(blankFailure.body), blankFailure);
+  const waiting = X.ingestionMessageView('PENDING_RETRY', null);
+  ok('F5 a waiting file with no sentence claims neither success nor error',
+    !/success/i.test(waiting.body) && waiting.title !== failed.title, waiting);
+  ok('F6 the drawer\'s tone is the badge\'s tone for every status',
+    ['SUCCESS', 'FAILED', 'PENDING_RETRY', 'QUARANTINED'].every((s) => X.ingestionMessageView(s, 'm').tone === X.retryVerdict(s).tone));
 }
 
 console.log('\n── E. THE OUTBOX RETRY REPLY — the server\'s status is the verdict ───────');
@@ -197,6 +222,12 @@ const DEFECTS = [
       "if (reply.status === 'refused') return { tone: 'success', refused: false,")],
   ['M9 the skips are ignored, so a partial reset reads as clean',
     swap('    return skipped > 0', '    return false')],
+  ['M10 the drawer title is «error» whatever the status (the defect 59fa66aaf names)',
+    swap("title: tone === 'danger' ? 'Ingestion error' : 'Ingestion message'", "title: 'Ingestion error'")],
+  ['M11 an empty message always claims the file succeeded',
+    swap("const empty = tone === 'ok' ?", 'const empty = true ?')],
+  ['M12 the server\'s sentence is dropped from the drawer',
+    swap('body: said || empty', 'body: empty')],
 ];
 
 const CONTROLS = [
@@ -219,7 +250,10 @@ function verdict(M) {
     || !M.retryMessage('PENDING_RETRY', 'Marked 3 logs').text.includes('Marked 3 logs')
     || /Unknown state/.test(M.retryMessage(null).text)
     || M.outboxRetryMessage({ status: 'refused', message: 'm' }).tone !== 'error'
-    || M.outboxRetryMessage({ status: 'success', message: 'm', reset: 1, skipped_reexpanded: 1 }).tone !== 'warning';
+    || M.outboxRetryMessage({ status: 'success', message: 'm', reset: 1, skipped_reexpanded: 1 }).tone !== 'warning'
+    || M.ingestionMessageView('SUCCESS', 'm').title === M.ingestionMessageView('FAILED', 'm').title
+    || /success/i.test(M.ingestionMessageView('FAILED', '').body)
+    || M.ingestionMessageView('SUCCESS', ' m ').body !== 'm';
 }
 
 if (verdict(BASELINE)) die('the scorer already fails on the UNMUTATED module — '
