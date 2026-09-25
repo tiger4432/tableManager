@@ -142,7 +142,8 @@ def test_every_column_this_route_already_had_is_still_there(client, db_session):
     body = _queue(client)
     # ⚠️ `log_filename` is the LOOP's file and has no key when no loop is seen (총괄
     #   3c3f2b1f2) - test_queue_says_which_log_to_open pins it; `loop_seen_*` are new.
-    for key in ("waiting", "running", "loop_in_this_process", "loop_seen_via",
+    #   `running` retired into `now_running` (총괄 c1dc16fdd).
+    for key in ("waiting", "now_running", "loop_in_this_process", "loop_seen_via",
                 "loop_seen_age_seconds",
                 "loop_uptime_seconds", "mapper_reload_age_seconds", "waiting_by_owner",
                 "oldest_waiting_seconds", "oldest_waiting_at", "retried_among_waiting",
