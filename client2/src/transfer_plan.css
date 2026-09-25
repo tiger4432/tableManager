@@ -930,7 +930,7 @@
 .glass-input.legend-desc-input {
   width: 100%;
   padding: var(--space-2) var(--space-3);
-  font-size: var(--fs-body);
+  font-size: var(--fs-button);
 }
 .glass-input.legend-desc-input {
   resize: none;

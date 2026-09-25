@@ -3253,7 +3253,7 @@ body.resizing-active .history-sidebar {
   border-radius: 10px;
   color: var(--text);
   font-family: var(--font-sans);
-  font-size: var(--fs-body);
+  font-size: var(--fs-button);
   font-weight: 500;
   cursor: pointer;
   transition: all 0.15s ease;

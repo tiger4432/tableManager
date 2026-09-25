@@ -30,6 +30,7 @@ body      "Barlow" 400 · 15px / 1.55
 mono      identifiers · JSON · keys   (--oe-font-mono)
 scale     h1 42 · h2 32 · h3 25 · h4 20 · h5 16 · h6 13 uppercase 0.08em
 parts     card title 17 · button 14 · label 12 · tag/refusal 11 · meta 10
+tokens    --fs-h1 … --fs-h6 · --fs-title · --fs-body · --fs-button · --fs-label · --fs-tag · --fs-meta (tokens.css — these twelve, no thirteenth)
 ```
 - Every face has a system fallback; sizes are px and land even if the webfont is blocked.
 - A part states its own size only from the `parts` row. A table header at h3 size is the defect the owner called 「고리 너무 커」.

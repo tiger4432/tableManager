@@ -188,7 +188,7 @@ export function showToast(message, type = 'info', opts = {}) {
   el.className = `toast toast-${type}`;
   const iconEl = document.createElement('span');
   iconEl.className = 'toast-icon';
-  iconEl.style.fontSize = '1.1rem';
+  iconEl.style.fontSize = 'var(--fs-title)';
   const bodyEl = document.createElement('span');
   bodyEl.className = 'toast-body';
   el.appendChild(iconEl);

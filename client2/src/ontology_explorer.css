@@ -87,7 +87,7 @@
   color: var(--oe-text);
   font-family: var(--oe-font-body);
   font-weight: 400;
-  font-size: 15px;
+  font-size: var(--fs-body);
   line-height: 1.55;
   width: 100%;
   height: 100%;
@@ -126,13 +126,13 @@
   line-height: 1.12;
   letter-spacing: -0.015em;
 }
-#ontology-explorer-root h1 { font-size: 42px; }
-#ontology-explorer-root h2 { font-size: 32px; }
-#ontology-explorer-root h3 { font-size: 25px; }
-#ontology-explorer-root h4 { font-size: 20px; }
-#ontology-explorer-root h5 { font-size: 16px; }
+#ontology-explorer-root h1 { font-size: var(--fs-h1); }
+#ontology-explorer-root h2 { font-size: var(--fs-h2); }
+#ontology-explorer-root h3 { font-size: var(--fs-h3); }
+#ontology-explorer-root h4 { font-size: var(--fs-h4); }
+#ontology-explorer-root h5 { font-size: var(--fs-h5); }
 #ontology-explorer-root h6 {
-  font-size: 13px; text-transform: uppercase; letter-spacing: 0.08em;
+  font-size: var(--fs-h6); text-transform: uppercase; letter-spacing: 0.08em;
 }
 
 /* Focus, which this screen did not have as a rule. `:focus` is silent; `:focus-visible` is
@@ -166,9 +166,9 @@
 }
 #ontology-explorer-root .oe-brand {
   min-width: max-content; font-family: var(--oe-font-head); font-weight: 600;
-  font-size: 16px; letter-spacing: -0.015em;
+  font-size: var(--fs-h5); letter-spacing: -0.015em;
 }
-#ontology-explorer-root .oe-snapshot { color: var(--oe-ok); font-size: 12px; white-space: nowrap; }
+#ontology-explorer-root .oe-snapshot { color: var(--oe-ok); font-size: var(--fs-label); white-space: nowrap; }
 /* The auto margin moved off the search and onto what follows it: the mockup's order is
    title, id, search, then everything else pushed right. */
 #ontology-explorer-root .oe-history-actions { display: flex; gap: 3.4px; margin-left: auto; }
@@ -195,7 +195,7 @@
   padding: 13.6px 10.2px;
 }
 #ontology-explorer-root .oe-tree-title {
-  color: var(--oe-ink-th); font-size: 11px; text-transform: uppercase;
+  color: var(--oe-ink-th); font-size: var(--fs-tag); text-transform: uppercase;
   letter-spacing: 0.08em; padding: 3.4px 6.8px 10.2px;
 }
 #ontology-explorer-root .oe-tree-group { margin-bottom: 10.2px; }
@@ -208,7 +208,7 @@
      "large text", so the bar is 4.5:1 and this failed it -- and it is the number the spine
      is navigated by. Text ink on the same chip measures well clear. */
   background: var(--oe-line); color: var(--oe-text);
-  font-family: var(--oe-font-head); font-weight: 600; font-size: 12px;
+  font-family: var(--oe-font-head); font-weight: 600; font-size: var(--fs-label);
 }
 #ontology-explorer-root .oe-step.is-here .oe-step-ord {
   background: var(--oe-accent); color: var(--oe-bg);
@@ -216,9 +216,9 @@
 /* 13px, not the 10px used for passive tallies: this is the number an operator navigates
    by, and one you have to squint at is worse than absent. */
 #ontology-explorer-root .oe-tally--remaining {
-  color: var(--oe-accent); font-size: 13px; font-style: normal; font-weight: 600;
+  color: var(--oe-accent); font-size: var(--fs-h6); font-style: normal; font-weight: 600;
 }
-#ontology-explorer-root .oe-tally--done { color: var(--oe-muted); font-size: 13px; font-style: normal; }
+#ontology-explorer-root .oe-tally--done { color: var(--oe-muted); font-size: var(--fs-h6); font-style: normal; }
 
 /* The blank-root offer. Prominent on purpose: with no config there is nothing else on
    the screen to do, and the operator arrived here to start. A card, so: transparent with
@@ -229,13 +229,13 @@
   border: 1px solid var(--oe-accent); background: transparent;
 }
 #ontology-explorer-root .oe-bootstrap b {
-  font-family: var(--oe-font-head); font-size: 17px; line-height: 1.2; font-weight: 600;
+  font-family: var(--oe-font-head); font-size: var(--fs-title); line-height: 1.2; font-weight: 600;
 }
-#ontology-explorer-root .oe-bootstrap small { font-size: 13px; color: var(--oe-muted); }
+#ontology-explorer-root .oe-bootstrap small { font-size: var(--fs-h6); color: var(--oe-muted); }
 
 #ontology-explorer-root .oe-keys { display: flex; flex-direction: column; gap: 6.8px; margin: 6.8px 0; }
 #ontology-explorer-root .oe-key-row { display: flex; gap: 6.8px; align-items: center; }
-#ontology-explorer-root .oe-key-none { color: var(--oe-muted); font-size: 13px; }
+#ontology-explorer-root .oe-key-none { color: var(--oe-muted); font-size: var(--fs-h6); }
 
 #ontology-explorer-root .oe-editor-action-danger {
   border-color: var(--oe-danger, #c0392b); color: var(--oe-danger, #c0392b);
@@ -248,21 +248,21 @@
   background: transparent;
 }
 #ontology-explorer-root .oe-tree-why code {
-  font-family: var(--oe-font-mono); font-size: 11px; color: var(--oe-muted);
+  font-family: var(--oe-font-mono); font-size: var(--fs-tag); color: var(--oe-muted);
   overflow-wrap: anywhere;
 }
-#ontology-explorer-root .oe-tree-why span { font-size: 13px; color: var(--oe-text); }
+#ontology-explorer-root .oe-tree-why span { font-size: var(--fs-h6); color: var(--oe-text); }
 
 #ontology-explorer-root .oe-tree-heading {
   display: flex; align-items: center; gap: 6.8px;
-  color: var(--oe-ink-th); font-size: 11px; text-transform: uppercase;
+  color: var(--oe-ink-th); font-size: var(--fs-tag); text-transform: uppercase;
   letter-spacing: 0.08em; padding: 6.8px;
 }
 #ontology-explorer-root .oe-tree-heading-text { flex: 1; }
 /* An empty section says so. A bare heading with nothing under it reads as a broken
    screen; reaching a layer before its members exist is normal, so it gets a word. */
 #ontology-explorer-root .oe-tree-none {
-  color: var(--oe-muted); font-size: 13px; padding: 3.4px 6.8px 6.8px 20.4px;
+  color: var(--oe-muted); font-size: var(--fs-h6); padding: 3.4px 6.8px 6.8px 20.4px;
 }
 #ontology-explorer-root .oe-new-declaration {
   display: flex; flex-direction: column; gap: 6.8px;
@@ -271,32 +271,32 @@
 }
 #ontology-explorer-root .oe-new-label { display: flex; flex-direction: column; gap: 3.4px; }
 #ontology-explorer-root .oe-new-caption {
-  color: var(--oe-ink-label); font-size: 12px; margin-bottom: 5px;
+  color: var(--oe-ink-label); font-size: var(--fs-label); margin-bottom: 5px;
 }
 #ontology-explorer-root .oe-new-actions { display: flex; gap: 6.8px; }
 #ontology-explorer-root .oe-tree-item {
   width: 100%; display: flex; align-items: center; border: 0;
   background: transparent; color: var(--oe-text); padding: 6.8px 6.8px 6.8px 20.4px;
   text-align: left; overflow-wrap: anywhere; cursor: pointer;
-  font-family: var(--oe-font-mono); font-size: 13px;
+  font-family: var(--oe-font-mono); font-size: var(--fs-h6);
 }
 #ontology-explorer-root .oe-change-label {
   margin-left: auto; color: var(--oe-ink-meta); font-family: var(--oe-font-body);
-  font-size: 11px; line-height: 1.2;
+  font-size: var(--fs-tag); line-height: 1.2;
 }
 /* S-39. 🔴 It reads as a WARNING, not as a status word: this row's source is losing rows.
    The change label keeps `margin-left: auto`, so this sits between the id and that label
    rather than pushing it — one row, three things, no new line. */
 #ontology-explorer-root .oe-refusal {
   margin-left: 8px; color: var(--oe-ink-warn, #b45309); font-family: var(--oe-font-body);
-  font-size: 11px; line-height: 1.2; white-space: nowrap; overflow: hidden;
+  font-size: var(--fs-tag); line-height: 1.2; white-space: nowrap; overflow: hidden;
   text-overflow: ellipsis; max-width: 45%;
 }
 /* 「이 프로세스가 뜬 뒤」 — quiet, because it is the frame the numbers are read in and not
    itself a number. Once, on the heading. */
 #ontology-explorer-root .oe-refusal-since {
   margin-left: 8px; color: var(--oe-ink-meta); font-family: var(--oe-font-body);
-  font-size: 10px; line-height: 1.2; font-weight: 400;
+  font-size: var(--fs-meta); line-height: 1.2; font-weight: 400;
 }
 #ontology-explorer-root .oe-has-popover { position: relative; }
 /* 🔴 THE ANNOTATION IS NOT PART OF THE TARGET. It hangs below its row and over the rows
@@ -317,9 +317,9 @@
 #ontology-explorer-root .oe-popover strong,
 #ontology-explorer-root .oe-popover span,
 #ontology-explorer-root .oe-popover code { display: block; overflow-wrap: anywhere; }
-#ontology-explorer-root .oe-popover span { margin: 3.4px 0; color: var(--oe-muted); font-size: 11px; }
+#ontology-explorer-root .oe-popover span { margin: 3.4px 0; color: var(--oe-muted); font-size: var(--fs-tag); }
 #ontology-explorer-root .oe-popover code {
-  color: var(--oe-accent); font-family: var(--oe-font-mono); font-size: 10px;
+  color: var(--oe-accent); font-family: var(--oe-font-mono); font-size: var(--fs-meta);
 }
 #ontology-explorer-root .oe-has-popover:hover > .oe-popover,
 #ontology-explorer-root .oe-has-popover:focus-visible > .oe-popover { display: block; }
@@ -345,13 +345,13 @@
 #ontology-explorer-root .oe-breadcrumb {
   display: flex; align-items: center; gap: 6.8px; flex-wrap: wrap; min-height: 43px;
   padding: 10.2px 13.6px; background: var(--oe-surface); border-bottom: 1px solid var(--oe-line);
-  color: var(--oe-muted); font-size: 12px;
+  color: var(--oe-muted); font-size: var(--fs-label);
 }
 #ontology-explorer-root .oe-path-count { margin-left: auto; color: var(--oe-ink-meta); }
 #ontology-explorer-root .oe-flow-area { padding: 13.6px 13.6px 10.2px; }
 #ontology-explorer-root .oe-section-heading { display: flex; justify-content: space-between; gap: 10.2px; margin-bottom: 10.2px; }
-#ontology-explorer-root .oe-section-heading h2 { font-size: 17px; line-height: 1.2; letter-spacing: -0.015em; }
-#ontology-explorer-root .oe-section-heading span { color: var(--oe-muted); font-size: 12px; }
+#ontology-explorer-root .oe-section-heading h2 { font-size: var(--fs-title); line-height: 1.2; letter-spacing: -0.015em; }
+#ontology-explorer-root .oe-section-heading span { color: var(--oe-muted); font-size: var(--fs-label); }
 /* 🔴 THE FLOW LIVES IN THE 330px COLUMN, SO IT STACKS. Side by side it needed horizontal
    scroll at this width; the mockup's right panel runs the same chain downward at 11px with
    8x10 boxes, and that -- not a smaller font on a row that still overflows -- is 「작게」. */
@@ -361,7 +361,7 @@
 }
 #ontology-explorer-root .oe-flow[data-current="true"] { border-left: 3px solid var(--oe-accent); padding-left: 6.8px; }
 #ontology-explorer-root .oe-flow-label {
-  flex: none; display: block; color: var(--oe-ink-meta); font-size: 11px;
+  flex: none; display: block; color: var(--oe-ink-meta); font-size: var(--fs-tag);
 }
 #ontology-explorer-root .oe-flow + .oe-flow { margin-top: 6.8px; }
 /* A card: transparent, one hairline, square. */
@@ -374,21 +374,21 @@
 /* 🔴 SCOPED TO THE FLOW. `.oe-node-name` and `.oe-node-kind` are the TREE's classes too --
    the flow node borrowed them. Sizing them unscoped would shrink every row of the tree,
    which is the collision that already cost a rename once on this screen. */
-:is(#ontology-explorer-root, .oe-skeleton-form) .oe-flow-node .oe-node-name { font-size: 11px; }
-#ontology-explorer-root .oe-flow-node .oe-node-kind { font-size: 9px; }
-:is(#ontology-explorer-root, .oe-skeleton-form) .oe-flow-node .oe-node-state { font-size: 10px; }
+:is(#ontology-explorer-root, .oe-skeleton-form) .oe-flow-node .oe-node-name { font-size: var(--fs-tag); }
+#ontology-explorer-root .oe-flow-node .oe-node-kind { font-size: var(--fs-meta); }
+:is(#ontology-explorer-root, .oe-skeleton-form) .oe-flow-node .oe-node-state { font-size: var(--fs-meta); }
 #ontology-explorer-root .oe-flow-node:hover { background: var(--oe-tint-hover); border-color: var(--oe-accent); }
 #ontology-explorer-root .oe-flow-node:active { background: var(--oe-tint-press); }
 #ontology-explorer-root .oe-flow-node[aria-pressed="true"] { border-color: var(--oe-accent); background: var(--oe-accent-soft); }
 /* The card's kicker line. */
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-kind {
-  color: var(--oe-accent); font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--oe-accent); font-size: var(--fs-meta); letter-spacing: 0.1em; text-transform: uppercase;
 }
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-name {
-  overflow-wrap: anywhere; font-family: var(--oe-font-mono); font-size: 13px;
+  overflow-wrap: anywhere; font-family: var(--oe-font-mono); font-size: var(--fs-h6);
 }
 #ontology-explorer-root .oe-arrow { display: grid; place-items: center; color: var(--oe-muted); min-width: 58px; }
-#ontology-explorer-root .oe-arrow small { font-size: 11px; text-align: center; overflow-wrap: anywhere; }
+#ontology-explorer-root .oe-arrow small { font-size: var(--fs-tag); text-align: center; overflow-wrap: anywhere; }
 /* One track, because there is one child. The second track existed for Integrity, which is
    6b's right-hand column now (`3259243`) -- leaving it declared parked a 267px empty
    column beside the tree: measured 516px of tree in a 936px middle column. The responsive
@@ -406,13 +406,13 @@
    thing being titled is an identifier. */
 #ontology-explorer-root .oe-title-block h1 {
   margin: 0 0 3.4px; font-family: var(--oe-font-mono);
-  font-size: 17px; line-height: 1.2; font-weight: 600; letter-spacing: normal;
+  font-size: var(--fs-title); line-height: 1.2; font-weight: 600; letter-spacing: normal;
   overflow-wrap: anywhere;
 }
-#ontology-explorer-root .oe-title-block p { margin: 0; color: var(--oe-ink-meta); font-size: 11px; overflow-wrap: anywhere; }
+#ontology-explorer-root .oe-title-block p { margin: 0; color: var(--oe-ink-meta); font-size: var(--fs-tag); overflow-wrap: anywhere; }
 #ontology-explorer-root .oe-head-actions { display: flex; align-items: center; gap: 10.2px; flex-wrap: wrap; justify-content: flex-end; }
 #ontology-explorer-root .oe-status {
-  font-family: var(--oe-font-head); font-size: 13px; white-space: nowrap;
+  font-family: var(--oe-font-head); font-size: var(--fs-h6); white-space: nowrap;
   font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em;
 }
 #ontology-explorer-root .oe-status--active { color: var(--oe-ok); }
@@ -427,39 +427,39 @@
 #ontology-explorer-root .oe-tab {
   border: 0; border-bottom: 2px solid transparent; background: transparent;
   color: var(--oe-muted); padding: 10.2px 3.4px 6.8px; cursor: pointer;
-  font-family: var(--oe-font-head); font-weight: 600; font-size: 14px; line-height: 1.2;
+  font-family: var(--oe-font-head); font-weight: 600; font-size: var(--fs-button); line-height: 1.2;
 }
 #ontology-explorer-root .oe-tab:hover { background: var(--oe-tint-accent-hover); color: var(--oe-accent); }
 #ontology-explorer-root .oe-tab:active { background: var(--oe-tint-accent-press); }
 #ontology-explorer-root .oe-tab[aria-selected="true"] { color: var(--oe-accent); border-bottom-color: var(--oe-accent); }
 #ontology-explorer-root .oe-tab-panel { padding: 13.6px; }
 #ontology-explorer-root .oe-signature { display: grid; grid-template-columns: 104px minmax(0, 1fr); gap: 10.2px 13.6px; }
-#ontology-explorer-root .oe-label { color: var(--oe-ink-label); font-size: 12px; }
-:is(#ontology-explorer-root, .oe-skeleton-form) .oe-value { min-width: 0; overflow-wrap: anywhere; font-size: 14px; }
+#ontology-explorer-root .oe-label { color: var(--oe-ink-label); font-size: var(--fs-label); }
+:is(#ontology-explorer-root, .oe-skeleton-form) .oe-value { min-width: 0; overflow-wrap: anywhere; font-size: var(--fs-button); }
 #ontology-explorer-root .oe-definition { display: grid; gap: 13.6px; }
 #ontology-explorer-root .oe-code {
   margin: 0; padding: 10.2px; background: var(--oe-surface-2);
   color: var(--oe-text); overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere;
-  font-family: var(--oe-font-mono); font-size: 12px; max-height: 360px;
+  font-family: var(--oe-font-mono); font-size: var(--fs-label); max-height: 360px;
 }
 #ontology-explorer-root .oe-side-body { padding: 10.2px 13.6px; }
 #ontology-explorer-root .oe-side-section + .oe-side-section { margin-top: 13.6px; padding-top: 13.6px; border-top: 1px solid var(--oe-line); }
 #ontology-explorer-root .oe-side-section h3 {
-  margin: 0 0 10.2px; font-size: 13px; text-transform: uppercase; letter-spacing: 0.08em;
+  margin: 0 0 10.2px; font-size: var(--fs-h6); text-transform: uppercase; letter-spacing: 0.08em;
 }
 #ontology-explorer-root .oe-usage-list,
 #ontology-explorer-root .oe-check-list,
 #ontology-explorer-root .oe-change-list { display: grid; gap: 6.8px; }
 #ontology-explorer-root .oe-usage {
   border: 1px solid transparent; background: transparent; color: var(--oe-accent);
-  padding: 3.4px; text-align: left; cursor: pointer; overflow-wrap: anywhere; font-size: 14px;
+  padding: 3.4px; text-align: left; cursor: pointer; overflow-wrap: anywhere; font-size: var(--fs-button);
 }
 #ontology-explorer-root .oe-usage:hover { background: var(--oe-tint-accent-hover); }
 #ontology-explorer-root .oe-usage:active { background: var(--oe-tint-accent-press); }
-#ontology-explorer-root .oe-usage small { display: block; color: var(--oe-ink-meta); margin-top: 3.4px; font-size: 11px; }
-#ontology-explorer-root .oe-change-row { overflow-wrap: anywhere; font-size: 13px; }
-#ontology-explorer-root .oe-change-row small { display: block; color: var(--oe-ink-meta); margin-top: 3.4px; font-size: 11px; }
-#ontology-explorer-root .oe-check { display: flex; gap: 6.8px; color: var(--oe-muted); font-size: 13px; }
+#ontology-explorer-root .oe-usage small { display: block; color: var(--oe-ink-meta); margin-top: 3.4px; font-size: var(--fs-tag); }
+#ontology-explorer-root .oe-change-row { overflow-wrap: anywhere; font-size: var(--fs-h6); }
+#ontology-explorer-root .oe-change-row small { display: block; color: var(--oe-ink-meta); margin-top: 3.4px; font-size: var(--fs-tag); }
+#ontology-explorer-root .oe-check { display: flex; gap: 6.8px; color: var(--oe-muted); font-size: var(--fs-h6); }
 #ontology-explorer-root .oe-check i { color: var(--oe-ok); }
 #ontology-explorer-root .oe-editor { display: grid; gap: 13.6px; }
 /* 🔴 ONE LINE, NOT A THREE-ROW TABLE -- 「항목 열면 트리가 위에 나오게」.
@@ -470,14 +470,14 @@
 #ontology-explorer-root .oe-editor-context {
   display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 10.2px; row-gap: 3.4px;
   padding: 5px 10.2px; background: transparent; border: 1px solid var(--oe-line);
-  font-size: 11px;
+  font-size: var(--fs-tag);
 }
-#ontology-explorer-root .oe-editor-context .oe-label { color: var(--oe-ink-meta); font-size: 10px; }
+#ontology-explorer-root .oe-editor-context .oe-label { color: var(--oe-ink-meta); font-size: var(--fs-meta); }
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-editor-context .oe-value {
-  margin-right: 6.8px; font-family: var(--oe-font-mono); font-size: 10.5px;
+  margin-right: 6.8px; font-family: var(--oe-font-mono); font-size: var(--fs-tag);
   overflow-wrap: anywhere;
 }
-#ontology-explorer-root .oe-editor-validation { white-space: pre-wrap; color: var(--oe-ok); font-size: 12px; }
+#ontology-explorer-root .oe-editor-validation { white-space: pre-wrap; color: var(--oe-ok); font-size: var(--fs-label); }
 #ontology-explorer-root .oe-editor-validation[data-valid="false"] { color: var(--oe-warn); }
 /* 🔴 SAVE IS REACHABLE FROM WHEREVER YOU ARE READING.
  *
@@ -501,7 +501,7 @@
 #ontology-explorer-root .oe-editor-blockers,
 #ontology-explorer-root .oe-editor-cost {
   align-self: center;
-  font-size: 12px;
+  font-size: var(--fs-label);
   color: var(--oe-muted);
   font-family: var(--oe-font-mono);
   overflow-wrap: anywhere;
@@ -513,9 +513,9 @@
   padding: 10.2px 0;
   background: var(--oe-bg); border-top: 1px solid var(--oe-line);
 }
-#ontology-explorer-root .oe-empty { color: var(--oe-muted); padding: 10.2px 6.8px; font-size: 13px; }
+#ontology-explorer-root .oe-empty { color: var(--oe-muted); padding: 10.2px 6.8px; font-size: var(--fs-h6); }
 #ontology-explorer-root .oe-error,
-#ontology-explorer-root .oe-warning { padding: 10.2px 13.6px; border-bottom: 1px solid var(--oe-line); font-size: 13px; }
+#ontology-explorer-root .oe-warning { padding: 10.2px 13.6px; border-bottom: 1px solid var(--oe-line); font-size: var(--fs-h6); }
 #ontology-explorer-root .oe-error { color: #fff; background: #9d2b32; }
 #ontology-explorer-root .oe-warning { color: var(--oe-warn); background: var(--oe-surface); }
 #ontology-explorer-root .oe-dirty-dialog-backdrop {
@@ -531,8 +531,8 @@
   background: var(--oe-bg); color: var(--oe-text); padding: 20.4px;
   box-shadow: 0 20px 55px rgb(0 0 0 / .28);
 }
-#ontology-explorer-root .oe-dirty-dialog h2 { margin: 0 0 6.8px; font-size: 20px; letter-spacing: -0.015em; }
-#ontology-explorer-root .oe-dirty-dialog p { margin: 0; color: var(--oe-muted); font-size: 14px; }
+#ontology-explorer-root .oe-dirty-dialog h2 { margin: 0 0 6.8px; font-size: var(--fs-h4); letter-spacing: -0.015em; }
+#ontology-explorer-root .oe-dirty-dialog p { margin: 0; color: var(--oe-muted); font-size: var(--fs-button); }
 #ontology-explorer-root .oe-dirty-dialog-actions {
   display: flex; justify-content: flex-end; gap: 6.8px; flex-wrap: wrap; margin-top: 20.4px;
 }
@@ -547,7 +547,7 @@
     border-right: 0; border-bottom: 1px solid var(--oe-line); padding: 6.8px 10.2px;
   }
   #ontology-explorer-root .oe-spine-head { flex-direction: row; align-items: baseline; gap: 6.8px; padding: 0 3.4px 0 0; }
-  #ontology-explorer-root .oe-spine-count { font-size: 13px; }
+  #ontology-explorer-root .oe-spine-count { font-size: var(--fs-h6); }
   #ontology-explorer-root .oe-step { border-color: var(--oe-line); }
   #ontology-explorer-root .oe-tree {
     max-height: 230px; border-right: 0; border-bottom: 1px solid var(--oe-line);
@@ -585,23 +585,23 @@
   padding: 6.8px 13.6px; border-bottom: 1px solid var(--oe-line);
 }
 #ontology-explorer-root .oe-spine-title {
-  font-size: 11px; color: var(--oe-ink-th); text-transform: uppercase; letter-spacing: 0.08em;
+  font-size: var(--fs-tag); color: var(--oe-ink-th); text-transform: uppercase; letter-spacing: 0.08em;
 }
 /* The one number read before the six: whether to look at all. */
 #ontology-explorer-root .oe-spine-count {
-  font-family: var(--oe-font-head); font-size: 16px; line-height: 1.12;
+  font-family: var(--oe-font-head); font-size: var(--fs-h5); line-height: 1.12;
   letter-spacing: -0.015em; color: var(--oe-text); font-weight: 600;
 }
 #ontology-explorer-root .oe-step {
   display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 3.4px 6.8px;
   align-items: baseline; min-width: 0;
   padding: 6.8px 13.6px; border: 0; border-left: 1px solid var(--oe-line);
-  font-size: 13px; background: transparent; color: var(--oe-muted);
+  font-size: var(--fs-h6); background: transparent; color: var(--oe-muted);
 }
 #ontology-explorer-root .oe-step:first-of-type { border-left: 0; }
 #ontology-explorer-root .oe-step .oe-step-tally { grid-column: 2; }
 #ontology-explorer-root .oe-step b {
-  color: var(--oe-text); font-family: var(--oe-font-head); font-weight: 600; font-size: 14px;
+  color: var(--oe-text); font-family: var(--oe-font-head); font-weight: 600; font-size: var(--fs-button);
 }
 #ontology-explorer-root .oe-step.is-here {
   background: var(--oe-accent-soft);
@@ -610,14 +610,14 @@
 #ontology-explorer-root .oe-step.is-blocked b { color: var(--oe-warn); }
 #ontology-explorer-root .oe-step.is-empty { opacity: 0.65; }
 #ontology-explorer-root .oe-step-tally { display: flex; gap: 6.8px; flex-wrap: wrap; }
-#ontology-explorer-root .oe-tally { font-style: normal; font-size: 11px; }
+#ontology-explorer-root .oe-tally { font-style: normal; font-size: var(--fs-tag); }
 #ontology-explorer-root .oe-tally--missing { color: var(--oe-warn); }
 #ontology-explorer-root .oe-tally--derived { color: var(--oe-ok); }
 
 #ontology-explorer-root .oe-authoring { display: grid; gap: 13.6px; min-width: 0; padding: 3.4px; }
 #ontology-explorer-root .oe-bucket { min-width: 0; }
 #ontology-explorer-root .oe-bucket h3 {
-  margin: 0 0 6.8px; font-size: 13px; letter-spacing: 0.08em;
+  margin: 0 0 6.8px; font-size: var(--fs-h6); letter-spacing: 0.08em;
   text-transform: uppercase; color: var(--oe-ink-th);
 }
 #ontology-explorer-root .oe-bucket--derived h3 { color: var(--oe-ok); }
@@ -635,31 +635,31 @@
   display: flex; align-items: baseline; gap: 6.8px; min-width: 0; flex-wrap: wrap;
 }
 #ontology-explorer-root .oe-field-head b {
-  font-family: var(--oe-font-head); font-weight: 600; font-size: 17px; line-height: 1.2;
+  font-family: var(--oe-font-head); font-weight: 600; font-size: var(--fs-title); line-height: 1.2;
 }
 #ontology-explorer-root .oe-field-path {
-  display: block; font-size: 11px; color: var(--oe-ink-meta);
+  display: block; font-size: var(--fs-tag); color: var(--oe-ink-meta);
   font-family: var(--oe-font-mono); overflow-wrap: anywhere;
 }
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-field .oe-value { display: flex; flex-wrap: wrap; gap: 3.4px; }
 #ontology-explorer-root .oe-ground {
   display: flex; align-items: baseline; gap: 6.8px; flex-wrap: wrap; min-width: 0;
   padding: 3.4px 6.8px; border-left: 1px solid var(--oe-accent);
-  background: var(--oe-accent-soft); font-size: 11px;
+  background: var(--oe-accent-soft); font-size: var(--fs-tag);
 }
 #ontology-explorer-root .oe-ground-text { color: var(--oe-text); font-weight: 600; }
 #ontology-explorer-root .oe-ground code {
-  font-family: var(--oe-font-mono); font-size: 10px; color: var(--oe-muted); overflow-wrap: anywhere;
+  font-family: var(--oe-font-mono); font-size: var(--fs-meta); color: var(--oe-muted); overflow-wrap: anywhere;
 }
 #ontology-explorer-root .oe-field-conflict {
   display: flex; gap: 6.8px; flex-wrap: wrap;
-  font-size: 11px; color: var(--oe-warn);
+  font-size: var(--fs-tag); color: var(--oe-warn);
 }
 #ontology-explorer-root .oe-candidates {
   display: flex; gap: 3.4px; flex-wrap: wrap; align-items: baseline;
   max-height: 132px; overflow: auto;
 }
-#ontology-explorer-root .oe-candidates small { color: var(--oe-ink-meta); font-size: 11px; }
+#ontology-explorer-root .oe-candidates small { color: var(--oe-ink-meta); font-size: var(--fs-tag); }
 /* Each picked value on its own line -- a row of `[box][x]` pairs wrapping in among the
    chips reads as one long run of controls, and the operator has to count brackets to see
    how many columns are in the list. */
@@ -670,11 +670,11 @@
   color: var(--oe-warn); text-decoration: line-through;
 }
 #ontology-explorer-root .oe-field-refusal {
-  display: flex; gap: 6.8px; flex-wrap: wrap; font-size: 11px;
+  display: flex; gap: 6.8px; flex-wrap: wrap; font-size: var(--fs-tag);
 }
 #ontology-explorer-root .oe-field-refusal b { color: var(--oe-warn); font-weight: 600; }
 #ontology-explorer-root .oe-field-note {
-  display: block; font-size: 11px; color: var(--oe-ink-meta);
+  display: block; font-size: var(--fs-tag); color: var(--oe-ink-meta);
 }
 @media (max-width: 720px) {
   #ontology-explorer-root .oe-steps { gap: 3.4px; padding: 6.8px 10.2px; }
@@ -682,10 +682,10 @@
 }
 #ontology-explorer-root .oe-field-act {
   display: flex; gap: 6.8px; flex-wrap: wrap; align-items: center;
-  font-size: 11px; color: var(--oe-ink-meta);
+  font-size: var(--fs-tag); color: var(--oe-ink-meta);
 }
 #ontology-explorer-root .oe-note {
-  padding: 6.8px 10.2px; font-size: 13px;
+  padding: 6.8px 10.2px; font-size: var(--fs-h6);
   background: transparent; border: 1px solid var(--oe-line);
   color: var(--oe-muted);
 }
@@ -735,17 +735,17 @@
 }
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-row .oe-node-badge { flex: none; white-space: nowrap; }
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-row .oe-node-name {
-  font-family: var(--oe-font-mono); font-size: 13px; color: var(--oe-text);
+  font-family: var(--oe-font-mono); font-size: var(--fs-h6); color: var(--oe-text);
 }
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-value { min-width: 0; overflow-wrap: anywhere; }
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-state {
-  display: flex; justify-content: flex-end; min-width: 0; font-size: 11px;
+  display: flex; justify-content: flex-end; min-width: 0; font-size: var(--fs-tag);
 }
 /* Node kind, said in the row rather than implied by indentation alone.
    Named `-badge`, not `-kind`: `.oe-node-kind` was already taken by the path popover
    (view.js:200), and styling it here would have restyled that too. */
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-badge {
-  font-size: 11px; letter-spacing: 0.02em; color: var(--oe-ink-th);
+  font-size: var(--fs-tag); letter-spacing: 0.02em; color: var(--oe-ink-th);
   font-style: normal; padding: 3px 6.8px; border: 1px solid var(--oe-line);
 }
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-row.is-branch { background: var(--oe-surface-2); }
@@ -762,7 +762,7 @@
 /* A fold states its count; both halves are buttons so it opens where it says it folded. */
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-fold,
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-folded {
-  border: 1px solid transparent; background: transparent; cursor: pointer; font-size: 11px;
+  border: 1px solid transparent; background: transparent; cursor: pointer; font-size: var(--fs-tag);
   color: var(--oe-muted); padding: 0 3.4px;
 }
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-folded { color: var(--oe-accent); }
@@ -787,11 +787,11 @@
 #ontology-explorer-root .oe-field-folded:hover { background: var(--oe-tint-hover); }
 #ontology-explorer-root .oe-field-folded:active { background: var(--oe-tint-press); }
 #ontology-explorer-root .oe-folded-value {
-  font-family: var(--oe-font-mono); font-size: 12px; color: var(--oe-text);
+  font-family: var(--oe-font-mono); font-size: var(--fs-label); color: var(--oe-text);
   overflow-wrap: anywhere; min-width: 0;
 }
-#ontology-explorer-root .oe-folded-why { font-style: normal; font-size: 11px; color: var(--oe-muted); }
-#ontology-explorer-root .oe-folded-ground { font-size: 11px; color: var(--oe-ink-meta); }
+#ontology-explorer-root .oe-folded-why { font-style: normal; font-size: var(--fs-tag); color: var(--oe-muted); }
+#ontology-explorer-root .oe-folded-ground { font-size: var(--fs-tag); color: var(--oe-ink-meta); }
 
 /* The declaration's own row. It is the tree's root, so it never folds and carries no fold
    control -- 「접기 대상은 노드가 아니라 자식」. Before this the root drew no row at all,
@@ -800,7 +800,7 @@
   background: var(--oe-surface-2); border-top: 1px solid var(--oe-line);
 }
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-row.is-root .oe-node-name {
-  font-weight: 600; font-size: 14px;
+  font-weight: 600; font-size: var(--fs-button);
 }
 #ontology-explorer-root .oe-side {
   overflow: auto; border-left: 1px solid var(--oe-line); background: var(--oe-surface);
@@ -808,7 +808,7 @@
 }
 #ontology-explorer-root .oe-side > .oe-panel { border: 0; background: transparent; }
 #ontology-explorer-root .oe-side .oe-flow-area { padding: 10.2px; }
-#ontology-explorer-root .oe-side .oe-section-heading h2 { font-size: 13px; }
+#ontology-explorer-root .oe-side .oe-section-heading h2 { font-size: var(--fs-h6); }
 
 /* ── The map ────────────────────────────────────────────────────────────────────────────
    The declaration's outline in the 330px column: one line a node, names only, nothing
@@ -829,7 +829,7 @@
 #ontology-explorer-root .oe-map-row {
   display: block; width: 100%; text-align: left; cursor: pointer;
   border: 0; border-left: 2px solid transparent; background: transparent;
-  color: var(--oe-muted); font-family: var(--oe-font-mono); font-size: 11px;
+  color: var(--oe-muted); font-family: var(--oe-font-mono); font-size: var(--fs-tag);
   line-height: 1.5; padding: 0 4px 0 calc(6px + var(--oe-depth, 0) * 10px);
   overflow-wrap: anywhere;
 }
@@ -865,7 +865,7 @@
 #ontology-explorer-root .oe-editor-action,
 #ontology-explorer-root .oe-dirty-dialog-actions button {
   display: inline-flex; align-items: center; justify-content: center; gap: 6px;
-  font-family: var(--oe-font-head); font-weight: 600; font-size: 14px; line-height: 1.2;
+  font-family: var(--oe-font-head); font-weight: 600; font-size: var(--fs-button); line-height: 1.2;
   padding: 6.8px 12.24px; border: 1px solid var(--oe-line); border-radius: 0;
   background: transparent; color: var(--oe-text); cursor: pointer; white-space: nowrap;
 }
@@ -891,7 +891,7 @@
 #ontology-explorer-root .oe-tree-add,
 #ontology-explorer-root .oe-key-add { color: var(--oe-accent); }
 #ontology-explorer-root .oe-key-add { align-self: flex-start; }
-#ontology-explorer-root .oe-mode-action { color: var(--oe-muted); font-size: 13px; padding: 3.4px 6.8px; }
+#ontology-explorer-root .oe-mode-action { color: var(--oe-muted); font-size: var(--fs-h6); padding: 3.4px 6.8px; }
 #ontology-explorer-root .oe-mode-action.is-current,
 #ontology-explorer-root .oe-mode-action[aria-pressed="true"] {
   border-color: var(--oe-accent); background: var(--oe-accent-soft); color: var(--oe-accent);
@@ -936,7 +936,7 @@
   width: 36px; height: 36px; padding: 0;
   border: 1px solid var(--oe-line); border-radius: 0;
   background: transparent; color: var(--oe-text); cursor: pointer;
-  font-family: var(--oe-font-head); font-weight: 600; font-size: 14px; line-height: 1.2;
+  font-family: var(--oe-font-head); font-weight: 600; font-size: var(--fs-button); line-height: 1.2;
 }
 #ontology-explorer-root .oe-icon-action:hover:not(:disabled) { background: var(--oe-tint-hover); }
 #ontology-explorer-root .oe-icon-action:active:not(:disabled) { background: var(--oe-tint-press); }
@@ -955,7 +955,7 @@
   border: 1px solid transparent; border-radius: 0; background: transparent;
   color: var(--oe-accent); cursor: pointer;
   padding-inline: 3.4px; padding-block: 0;
-  font-family: var(--oe-font-head); font-weight: 600; font-size: 13px; line-height: 1.2;
+  font-family: var(--oe-font-head); font-weight: 600; font-size: var(--fs-h6); line-height: 1.2;
   overflow-wrap: anywhere;
 }
 #ontology-explorer-root .oe-jump:hover,
@@ -977,7 +977,7 @@
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-fold:active,
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-folded:active { background: var(--oe-tint-accent-press); }
 #ontology-explorer-root .oe-crumb-button {
-  font-family: var(--oe-font-mono); font-weight: 400; font-size: 12px;
+  font-family: var(--oe-font-mono); font-weight: 400; font-size: var(--fs-label);
 }
 #ontology-explorer-root .oe-crumb-button[aria-current="page"] { color: var(--oe-text); font-weight: 600; }
 
@@ -995,7 +995,7 @@
 .oe-field-select,
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-form-new-id,
 #ontology-explorer-root .oe-editor-textarea {
-  width: 100%; min-height: 36px; padding: 6px 10px; font-size: 14px;
+  width: 100%; min-height: 36px; padding: 6px 10px; font-size: var(--fs-button);
   /* 🔴 글꼴을 «명시»합니다. 탐색기 안에서는 뿌리에서 상속돼 Barlow 였는데, 폼 컨트롤은
      밖에서 UA 글꼴(Arial)로 떨어집니다 — `font: inherit` 재설정도 뿌리 안에만 있어서
      어드민의 고르개가 «모양만 같고 글꼴이 달랐습니다»(실측). 값은 같으므로 탐색기의
@@ -1028,14 +1028,14 @@
   border-color: var(--oe-accent); outline-offset: 0;
 }
 #ontology-explorer-root .oe-editor-textarea {
-  display: block; min-height: 260px; resize: vertical; padding: 10.2px; font-size: 12px;
+  display: block; min-height: 260px; resize: vertical; padding: 10.2px; font-size: var(--fs-label);
 }
 /* 14px is the Industry input figure. This line had been overriding the input block back
    down to 13px, so the spec landed everywhere except the size a person reads. */
 #ontology-explorer-root .oe-key-input,
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-field-input,
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-field-select,
-.oe-field-select { font-size: 14px; }
+.oe-field-select { font-size: var(--fs-button); }
 
 /* 🔴 THE DECLARED KEY, AND WHAT THE DATA SAID ABOUT IT -- BESIDE THE DEFAULT IT JUDGES.
    The row's ground already says where the ordering default came from; this says whether
@@ -1050,7 +1050,7 @@
 #ontology-explorer-root .oe-uniqueness-row,
 #ontology-explorer-root .oe-uniqueness-pick {
   display: flex; flex-wrap: wrap; align-items: baseline; gap: 6.8px;
-  min-width: 0; font-size: 13px;
+  min-width: 0; font-size: var(--fs-h6);
 }
 #ontology-explorer-root .oe-uniqueness-detail { color: var(--oe-ink-meta); }
 #ontology-explorer-root .oe-uniqueness-row[data-state="unique"] .oe-uniqueness-verdict {
@@ -1073,14 +1073,14 @@
    does not jump when one field has a choice and its neighbour does not. */
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-field-onechoice {
   display: inline-block; min-width: 0; overflow-wrap: anywhere;
-  padding: 5.1px 0; font-size: 14px; color: var(--oe-text);
+  padding: 5.1px 0; font-size: var(--fs-button); color: var(--oe-text);
 }
 /* ⚠️ 「목록 · 모름」와 「선택지 없음」은 같은 픽셀이 아니다 — 앞은 질문이 살아 있고(다시 읽으면
    온다), 뒤는 서버가 내놓을 것이 없다. 색으로 가르고, 둘 다 문서가 든 값을 같이 든다. */
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-field-unread,
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-field-nochoice {
   display: inline-flex; align-items: baseline; flex-wrap: wrap; gap: 6.8px;
-  min-width: 0; padding: 5.1px 0; font-size: 14px;
+  min-width: 0; padding: 5.1px 0; font-size: var(--fs-button);
 }
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-field-unread small { color: var(--oe-ink-meta); }
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-field-nochoice small { color: var(--oe-warn); }
@@ -1094,7 +1094,7 @@
 /* TAG — 11px, 0.02em, 3 / 10, square. */
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-tier,
 #ontology-explorer-root .oe-chip {
-  font-style: normal; font-size: 11px; letter-spacing: 0.02em;
+  font-style: normal; font-size: var(--fs-tag); letter-spacing: 0.02em;
   padding: 3px 10px; border-radius: 0; border: 1px solid var(--oe-line);
   color: var(--oe-muted); background: transparent; white-space: nowrap;
 }
@@ -1181,7 +1181,7 @@
    14px/6x10 back -- measured: width and family took, size and padding did not. Same
    shape as the 13px override that had already swallowed the input spec once. */
 #ontology-explorer-root .oe-search {
-  font-family: var(--oe-font-mono); font-size: 11.5px; padding: 5px 9px; min-height: 0;
+  font-family: var(--oe-font-mono); font-size: var(--fs-tag); padding: 5px 9px; min-height: 0;
 }
 
 /* --- 시험 실행: 선언이 실제 행에서 무엇을 냈는가 -------------------------------- */
@@ -1207,25 +1207,25 @@
   display: flex; align-items: baseline; gap: 10.2px; flex-wrap: wrap;
 }
 #ontology-explorer-root .oe-testrun-title {
-  font-family: var(--oe-font-head); font-weight: 600; font-size: 14px;
+  font-family: var(--oe-font-head); font-weight: 600; font-size: var(--fs-button);
   text-transform: uppercase; letter-spacing: 0.08em;
 }
 #ontology-explorer-root .oe-testrun-count {
-  font-family: var(--oe-font-mono); font-size: 13px; color: var(--oe-text);
+  font-family: var(--oe-font-mono); font-size: var(--fs-h6); color: var(--oe-text);
 }
 #ontology-explorer-root .oe-testrun-relation,
 #ontology-explorer-root .oe-testrun-path {
-  font-family: var(--oe-font-mono); font-size: 11.5px; color: var(--oe-ink-meta);
+  font-family: var(--oe-font-mono); font-size: var(--fs-tag); color: var(--oe-ink-meta);
   overflow-wrap: anywhere;
 }
-#ontology-explorer-root .oe-testrun-note { font-size: 11px; color: var(--oe-ink-meta); }
+#ontology-explorer-root .oe-testrun-note { font-size: var(--fs-tag); color: var(--oe-ink-meta); }
 #ontology-explorer-root .oe-testrun-refusal {
   display: flex; flex-wrap: wrap; align-items: baseline; gap: 6.8px;
 }
 /* 수는 수로. 말을 붙이지 않습니다 — 서버의 문장이 바로 옆에 있습니다. */
 #ontology-explorer-root .oe-testrun-rows {
   font-family: var(--oe-font-mono);
-  font-size: 12px;
+  font-size: var(--fs-label);
   color: var(--oe-muted);
   overflow-wrap: anywhere;
 }
@@ -1233,18 +1233,18 @@
 /* 이슈의 코드. 주소(path) 앞에 서고, 번역되지 않습니다. */
 #ontology-explorer-root .oe-tree-why-code {
   font-family: var(--oe-font-mono);
-  font-size: 10.5px;
+  font-size: var(--fs-tag);
   color: var(--oe-muted);
   margin-right: 4px;
   overflow-wrap: anywhere;
 }
 
 #ontology-explorer-root .oe-testrun-why {
-  font-size: 13px; color: var(--oe-text); overflow-wrap: anywhere;
+  font-size: var(--fs-h6); color: var(--oe-text); overflow-wrap: anywhere;
 }
 #ontology-explorer-root .oe-testrun-goto {
   border: 0; background: transparent; padding: 0; cursor: pointer;
-  font-family: var(--oe-font-mono); font-size: 11.5px; color: var(--oe-accent);
+  font-family: var(--oe-font-mono); font-size: var(--fs-tag); color: var(--oe-accent);
   text-decoration: underline; overflow-wrap: anywhere; text-align: left;
 }
 /* One line per sentence: the name, what it utters, and how many it made. The count is
@@ -1259,14 +1259,14 @@
   gap: 10.2px; align-items: baseline; padding: 1.7px 0;
 }
 #ontology-explorer-root .oe-testrun-name {
-  font-family: var(--oe-font-mono); font-size: 12px; overflow-wrap: anywhere;
+  font-family: var(--oe-font-mono); font-size: var(--fs-label); overflow-wrap: anywhere;
 }
 #ontology-explorer-root .oe-testrun-predicate {
-  font-family: var(--oe-font-mono); font-size: 12px; color: var(--oe-accent);
+  font-family: var(--oe-font-mono); font-size: var(--fs-label); color: var(--oe-accent);
   overflow-wrap: anywhere;
 }
 #ontology-explorer-root .oe-testrun-atoms {
-  font-family: var(--oe-font-mono); font-size: 12px; font-weight: 600;
+  font-family: var(--oe-font-mono); font-size: var(--fs-label); font-weight: 600;
   text-align: right; font-variant-numeric: tabular-nums;
 }
 
@@ -1288,10 +1288,10 @@
    like a section, and the operator's question is answered by the numbers themselves. */
 #ontology-explorer-root .oe-backlog {
   display: flex; flex-wrap: wrap; gap: 14px; align-items: baseline;
-  padding: 4px 0 0; font-family: var(--oe-font-body); font-size: 11px;
+  padding: 4px 0 0; font-family: var(--oe-font-body); font-size: var(--fs-tag);
 }
 #ontology-explorer-root .oe-backlog-cell { display: inline-flex; gap: 5px; align-items: baseline; }
 /* The name is the SERVER'S key, so it is set as code -- a reader can match it against the
    response without wondering whether the screen renamed it. */
-#ontology-explorer-root .oe-backlog-name { color: var(--oe-ink-meta); font-size: 10px; }
+#ontology-explorer-root .oe-backlog-name { color: var(--oe-ink-meta); font-size: var(--fs-meta); }
 #ontology-explorer-root .oe-backlog-value { font-variant-numeric: tabular-nums; font-weight: 600; }

@@ -36,7 +36,7 @@ body {
 }
 
 .rb-page__title {
-  font-size: var(--fs-body);
+  font-size: var(--fs-title);
   font-weight: 600;
 }
 
@@ -86,7 +86,7 @@ body {
 }
 
 .rb-map__title {
-  font-size: var(--fs-body);
+  font-size: var(--fs-title);
   font-weight: 600;
 }
 
