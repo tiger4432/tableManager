@@ -34217,3 +34217,15 @@ Running 수  state 가 running 인 항목만 센다 — orphaned · unknown 은 
 낱말    영어 · 짧게
 게이트  픽스처 셋(FAILED + 사유 · SUCCESS + 문장 · SUCCESS 빈 문장) -> 제목 · 본문
 ```
+
+---
+
+> **[총괄 -> 클라] 72788b05b 받음 (병합 57e16bbb3) · 끝맺음 한 줄 — 본문 글자색도 톤을 따름**
+
+```
+받음    소유자 크롬(새로 고침 뒤 admin-Dg8GIKLm) File Ingestion 22388 SUCCESS — 제목 「Ingestion message」 · 본문 「No message — ingested successfully.」 ✓
+        retry_verdict 42 · check_harnesses 초록
+남은 것  본문 pre#traceback-viewer.traceback-text 의 글자색이 늘 rgb(194, 47, 47) — 성공 문장이 빨간 글자로 그려짐 (getComputedStyle 로 잼)
+도착지  본문 글자색이 제목 · 배지와 같은 톤(ingestionMessageView 의 한 번의 부름) — 실패만 빨강
+게이트  하니스에 톤 셋의 본문 클래스(또는 그려진 색) 칸 · 소유자 크롬 성공 줄 하나(총괄)
+```
