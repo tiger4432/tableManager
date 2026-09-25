@@ -59699,3 +59699,18 @@ CLI 다섯   자기 프로세스 · 어드민 실행과 같은 기록 · 관문 
    ⚠️      CHAIN_OWNED_EVENT_TYPES 에 넣는 것이 답이 아닐 수 있음 — 그 집합이 규칙 실행 거르기에도 쓰이면 체인 규칙이 이 줄에 돎. 쓰는 자리 전수 먼저
 순서     별도 프로세스 라운드 · via-events 은퇴 다음. ③ 이 작으면 먼저
 ```
+
+---
+
+> 🔴 **[총괄 -> 구현자] 9ca3633f1 이 게이트 하나를 빨갛게 둔 채 착지 — 지금 고침. d1fb1a47 · 44d0cf85 는 받음**
+
+```
+빨강     tests/test_the_mapper_call_sits_below_both_callers.py::test_whoever_runs_a_rule_imports_the_seat_from_its_own_home
+         main 에서 1 failed / 4 passed (총괄이 방금 돌림) · 클라 레인도 곁 시험에서 봄
+원인     replay_all(…, run_rule=None) — CLI 콜백 인자 이름이 좌석 이름과 같음
+         시험이 「run_rule 을 부르는 모듈」을 «이름»으로 세서 replay.py 를 좌석 호출자로 읽고, rule_run import 를 요구
+할 것     인자 이름을 좌석과 다른 낱말로(예 run_one) — 그 이름을 넘기는 자리 전수 같이. 시험은 그대로(그 시험이 지키는 성질은 참)
+게이트   그 파일 5/5 · 곁 시험(바뀐 모듈을 import 하는 시험 파일)까지 exit 0
+받음     d1fb1a47 관문 잠금 · 44d0cf85 심박 파일 정리·이름 retroactive — 건드린 시험 통과(14)
+앞으로    착지 전 시험 범위 = 건드린 시험 + 바뀐 모듈을 import 하는 시험 파일. 이번 빨강은 건드린 시험만으로는 안 보였음(총괄도 138 로 놓침)
+```
