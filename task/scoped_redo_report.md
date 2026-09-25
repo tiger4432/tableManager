@@ -58891,3 +58891,37 @@ run_auto_update 의 다섯 — 지시의 「넷」과 다릅니다
        클라 변경 한 줄: 「loop_in_this_process || loop_seen_via」 이면 봄
        Log 줄은 워커가 자기 로그 이름을 같은 lap 에 실어 그것을 냅니다 — 못 읽으면 log_filename 칸을 안 실음(줄 빠짐)
 ```
+
+---
+
+## [09-25 15:52] 구현자 — 대기열 ① 착지 `c28ab7ad9` — 스케줄러가 mark_processed 로 뺍니다 · 게이트 C 통과
+
+```
+착지   c28ab7ad9  6 파일, 64+, 51-
+       event_constants.mark_processed (chain_state_of 옆) · 워커는 거기서 import · 스케줄러 다섯 자리가 지남
+시험   단일 자리 게이트 — 추적 비시험 모듈(scripts 밖)의 processed_chain = True 대입 1 개, event_constants.mark_processed 안
+       test_retro_trigger_hol 이 「시작한 요청은 PENDING」을 단언하고 있었습니다 — 결함을 박아 둔 줄이라 SUCCESS + 시각으로 고침
+       스케줄러·mark_processed 를 부르는 시험 16 파일 308 통과 · 변이 셋 다 빨강 (맨 플래그로 되돌림 · 시각 뺌 · 실패 갈래 옛 모양)
+```
+
+### 게이트 C — 박스 (스케줄러 · 체인 워커를 새 코드로 재기동한 뒤)
+
+```
+종류마다 한 줄 넣음 (관리 라우트가 부르는 함수를 프로세스 안에서 — 토큰 게이트는 그대로)
+   행 편집 둘 (map_split_registry 설명 한 칸 · 되돌림)   EDIT               SUCCESS · 처리 시각 있음 · 넣은 초에 빠짐
+   설정 리로드                                        SYSTEM_RELOAD      SUCCESS · 시각 있음
+   소급 실행 (ledger_rescope, 없는 값 하나)              RETROACTIVE_RUN    SUCCESS · 시각 있음 · 4 s 뒤 빠짐   <- 전에는 PENDING · 시각 없음
+   지금 수집 (inventory_master · wafer_process)        SCHEDULER_RUN_NOW  SUCCESS · 시각 있음 · 4 s 뒤 빠짐   <- 전에는 PENDING
+대기열 목록 /outbox/queue/rows   넣자마자 두 줄 다 「waiting」으로 뜸 -> 처리 뒤 알림 표시(broadcast_at) 21 s 안에 찍힘 -> 목록에서 빠짐 (남은 줄 0)
+왜 전에는 안 빠졌나   알림 청소는 status SUCCESS 인 줄만 집습니다 — PENDING 으로 남던 소급 줄 27 중 25 가 한 번도 알림 표시를 못 받았습니다
+옛 24 줄   7일 청소로 사라짐 — 안 치웠습니다
+⚠️ 지금 수집은 실제로 수집기를 돌렸습니다 — inventory_master · wafer_process 에 CREATE 한 줄씩 (이 박스)
+```
+
+### 다음 — 같은 라운드
+
+```
+② 워커 상태를 heartbeat 로 (running 목록 · rule_outcomes · 재적재 · Log 이름) + loop_seen_via · loop_seen_age_seconds
+③ 실패를 (표 · 종류 · 날) 한 줄로 묶는 질의 하나
+세지만 함   scripts/outbox_triage 의 취소는 SQL 로 플래그 + SUCCESS 를 찍고 시각은 안 찍습니다 (명령줄 도구, 이번 범위 밖)
+```
