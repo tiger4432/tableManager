@@ -20,7 +20,7 @@
 >
 > ```
 > 무엇     /admin/chain/queue 가 now_running 을 싣는다 — 체인 규칙 · 소급 실행 · 수집기 · 파일 적재, 한 모양
->          옛 running(체인 규칙만)은 화면이 now_running 을 읽을 때까지 그대로
+>          옛 running(체인 규칙만)은 은퇴 — 화면이 now_running 을 읽음 (총괄 c1dc16fdd)
 > 확인     server 에서 (API 를 거치지 않고 같은 함수를 부름 — 파일 적재는 API 메모리에만 있어 여기선 안 보임)
 > ```
 > ```bash

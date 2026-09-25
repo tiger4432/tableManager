@@ -94,8 +94,9 @@ def test_a_worker_of_its_own_is_read_from_its_heartbeat_lap(db_session, beats):
     assert out["loop_seen_via"] == "chain_worker_heartbeat"
     assert out["loop_seen_age_seconds"] >= 2.0
     assert out["log_filename"] == "chain_worker.log", "the worker's file, not server.log"
-    assert [r["rule"] for r in out["running"]] == ["r1"]
-    assert out["running"][0]["running_seconds"] >= 90, "aged at read time, not at write"
+    chain = [item for item in out["now_running"] if item["where"] == "chain_worker"]
+    assert [item["what"] for item in chain] == ["r1"]
+    assert chain[0]["elapsed_seconds"] >= 90, "aged at read time, not at write"
     assert out["rule_outcomes"]["r1"]["last_outcome"] == "ran"
     assert 3500 < out["loop_uptime_seconds"] < 3700
     assert 50 < out["mapper_reload_age_seconds"] < 70
@@ -110,4 +111,5 @@ def test_a_stale_or_older_lap_is_not_sight(db_session, beats, lap, age):
     out = main.get_chain_queue_depth(db=db_session)
     assert out["loop_seen_via"] is None and out["loop_seen_age_seconds"] is None
     assert "log_filename" not in out
-    assert out["running"] == [] and out["rule_outcomes"] == {}
+    assert [item for item in out["now_running"] if item["where"] == "chain_worker"] == []
+    assert out["rule_outcomes"] == {}

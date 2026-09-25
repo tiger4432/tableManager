@@ -117,4 +117,4 @@ def test_the_queue_carries_the_seat(db_session, sources):
 
     assert sorted(item["where"] for item in out["now_running"]) == sorted(
         [running.WHERE_CHAIN_WORKER, running.WHERE_OWN_PROCESS])
-    assert [r["rule"] for r in out["running"]] == ["rule_probe"], "kept until the screen moves"
+    assert "running" not in out, "the chain-only field retired once the screen read the seat"
