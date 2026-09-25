@@ -60603,3 +60603,49 @@ RUNNING 을 적는 곳   하나 — run_auto_update.execute_collector (상태 �
 되돌리기   git revert 075174b41 뒤 같은 셋 재기동
 같이      항목 3 전 재현용 탐침 수집기를 스케줄러가 기동 때 읽게 먼저 둠 (e5e123256 에 알린 것)
 ```
+
+---
+
+## [구현자 -> 총괄] 09-26 항목 4 착지 — 표·원장 소급의 이름 판정 (8e54a261b ④ · 06bb8f474) — 075174b41
+
+```
+resolve          judge = replay.resolve_target — recompute_display_values 의 두 줄(모델 · 칸)을 한 함수로 빼서 실행과 judge 가 같이 부름
+ledger_backfill  judge = setup.require_source — 실행의 _require_declared_source 첫 단. 거절·은퇴 소스는 있는 이름이라 문에서 안 막음
+ledger_rescope   judge = backfill.rescope_scope — _require_declared_source 뒤 _scope_predicate. rescope 의 두 입구(미리보기 · 실행)도 이 함수를 지남
+세 문            run_here · execute · run_claimed 가 「표 설정 확인 + 모델 올림」을 validate «앞»에서
+                 -> 어젯밤 보고만 한 「빈 표 설정인데 rule … not declared」 가 닫힘: CLI · 데몬 모두 table_config.json is empty 먼저
+이제 judge 없는 연산 0 (일곱 다)
+```
+
+### 게이트
+
+| 칸 | 시험 | 변이 |
+|---|---|---|
+| 없는 이름 × 문 셋(게시 · 수 세기 · CLI) — 한 문장 · 기록 0 (연산 셋) | test_an_unknown_table_or_source_gets_one_refusal_at_every_door_and_no_record | resolve · ledger_backfill · ledger_rescope 의 judge 를 None 으로: 2 failed · 2 failed · 3 failed |
+| 있는 이름은 그대로 queued | test_a_known_table_or_source_is_still_queued | — |
+| 거절된 소스의 backfill 건수는 그대로 not_applicable | test_a_refused_source_is_a_name_that_exists_and_still_counts_as_before | — |
+| 거절된 소스의 rescope — 문 셋 한 문장 · 기록 0 | test_a_refused_sources_rescope_is_refused_by_name_before_its_scope_is_read | rescope_scope 가 범위부터 읽으면 2 failed |
+| 빈 표 설정이 먼저 (run_here · execute) | test_an_empty_table_config_is_said_before_any_name_is_judged | run_here · execute 가 판정을 먼저 하면 1 failed · 1 failed |
+| 모델이 판정 전에 올라옴 (CLI 문) | test_a_table_the_process_has_not_built_yet_is_built_before_it_is_judged | (위 run_here 변이에 같이 걸림) |
+
+```
+판정이 박스 설정을 읽게 된 시험 넷을 고침 — 그 시험들의 주어는 이름 판정이 아님
+   test_a_cli_option… (가짜 이름 r · s · t) · test_a_source_says_how_many… (박스에 없는 wafer_process)
+   가짜 setup 을 넘기는 rescope 시험 셋 — 이미 범위 판정을 대신 세우던 자리 옆에 선언 확인도 대신 세움
+범위   전체 시험 -> 1 failed, 6983 passed, 141 skipped, 3 xfailed, 12196 warnings — 실패 하나는 아래
+       그 하나 = test_a_ledger_source_reads_a_table_that_has_row_id … — 제 탓: 어젯밤 분리 환경의 체인 워커가 assy_qa 의 public 에
+       원장 표 셋을 만듦(셈 바퀴). assy_qa 는 PG 시험 DB 이기도 해서 「색인 표가 아직 없다」를 전제한 시험이 빨개짐
+       그 셋(행 0 · 0 · 커서 한 줄 dt_job — 제 드릴의 것)을 assy_qa 에서만 지움 -> 그 파일 6 passed
+       ⚠️ 분리 환경을 다시 켜면 또 생김 — 시험이 public 에 원장 표가 없기를 기대하는 것이 이 박스 상태에 기댐. 보고만
+```
+
+### 박스
+
+```
+재기동함  06:14:09 API · 스케줄러 · 체인 워커 (075174b41) — 알림 110727c7f
+전       거절된 소스(bonded_from)의 범위 판정 — (AttributeError) 'NoneType' object has no attribute 'preparation' (읽기만, 게시 queued 는 새로 안 만듦: 자식이 이미 새 코드를 읽어 재현이 안 됨)
+후       거절된 소스 — sources.bonded_from: source 'bonded_from' was refused by the loader, so it has no plan to run: bundle.sources.bonded_fro … · SAME SENTENCE: True · cli rc 2
+         없는 소스 — sources.no_such_source_gate: source 'no_such_source_gate' is not declared in ontology · SAME SENTENCE: True · cli rc 2
+         수 세기 400 머리 영어 — 거절된 True · 없는 True
+         실행 행 runs rows before 85 after 85
+```
