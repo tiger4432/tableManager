@@ -1,3 +1,41 @@
+> ## [09-25 15:47 디자인] E 선언 점검 묶기 착지 · D 짓기 전 물음 하나(Declarations 펼침의 모양) · D·F 순서
+
+### E — 착지 (bc025e54d)
+
+```
+함수    config_resolve_view.problemGroups(view) — 문제 줄 = POPULATION_TONE 이 warn · danger 로 칠하는 모집단의 줄
+        같은 (모집단, 사유 토큰)은 한 묶음 · 수는 묶인 줄 수 · 문장은 첫 줄의 서버 문장 그대로 · 사유 토큰 없는 줄은 혼자 섬
+박스 셈  서버의 resolve_report 를 읽기만 해서(박스 설정 파일 459 수정 시각 그대로) 진짜 view 모듈에:
+        지금 그리는 줄 192 (소스 9 · 설정 8 · 항목 175 — 총괄의 약 175 와 맞음)
+        항목 175 = effective 108 · ineffective 47 · rejected 20 -> 문제 줄 67 -> 묶음 2
+           47 × ineffective · not_declared   ·   20 × rejected · mapping_unavailable
+하니스   declaration_problem_groups 9/0 · 변이 5/5 · 빌드(계약 + 하니스 전수) exit 0
+⚠️ 묶음에 싣는 «첫 줄의 문장»은 표 하나를 이름 댑니다(예: 「bonding_core_die 의 변화는 …」) — 47 줄 전부가 그 표인 것처럼 읽힐 수 있어
+   그리는 쪽에서는 문장 대신 사유 토큰 + 펼침으로 두는 편이 맞다고 봅니다
+```
+
+### 물음 — Declarations 펼침은 무엇으로 묶나
+
+```
+b73255fc5 E   「같은 사유는 N × 사유 한 줄」                         -> 사유로 묶음 (위 problemGroups)
+3c3f2b1f2 A   「영역마다 한 줄 Ledger 15 rejected · 1 no effect + Show all」  -> 영역(도메인)으로 묶음
+괄호에 「E 의 묶기와 같은 셈」 이라 적혀 있지만 둘은 다르게 묶습니다
+제 안   층으로 — 영역 줄(시안 A) -> 누르면 그 영역의 사유 묶음(E) -> 누르면 줄. Show all 은 지금 전체 본문
+        두 지시가 이 층을 말하지는 않아서 여쭙니다. 답 전에는 Declarations 줄의 머리(수 셋)만 짓고 펼침은 비워 둡니다
+```
+
+### D · F 순서
+
+```
+F 먼저 한 커밋   chain_queue_panel 표 — px 폭 없음 · Drained by 배지 칸 · Log/Loop/Mapper/As of 는 표 아래 한 줄 · 시각은 localStamp
+D 그다음 한 커밋  현황판 부품 + admin.html(카드 넷 제거 · Retroactive 탭 · 그래프 -> Chain 탭) + 배선
+   줄마다 수·상태를 오늘 «누가» 짓나 먼저 셉니다 — File · Chain · Auto · Enrichment 는 오늘 두 자리(카드 넷 · Overview 카드)가 각자 판정합니다.
+   셋째 판정을 안 만들고 줄마다 순수 함수 하나로 접습니다. health_card_absence 하니스(못 읽음 ≠ 0)는 지우지 않고 그 함수로 옮깁니다
+구현자 뒤 칸     Loop · Mapper · Running(heartbeat) — loop_seen_via 하나로 묻고 없으면 칸째 뺌 · 실패 요약 줄 — 모양만, 묶기는 구현자 질의
+글자            캐논 그대로 (36dff3b6a) — 「12 미만 0」 은 안 짓습니다
+F 게이트        대기 줄은 픽스처로 진짜 부품에 · 세 폭 픽셀은 총괄·소유자 몫 (박스에 줄을 넣는 쓰기를 저는 안 합니다)
+```
+
 > ## [09-25 15:32 디자인] Overview 현황판(D) · 선언 점검(E) · 대기열 가독성(F) — 짓기 «전» 계획 · 안 셋 · 여쭐 것 둘
 
 b73255fc5 · 1b829bcbe ③ 의 클라 몫입니다. ③ 어드민은 착지했고(91fbbdf77), ④ 는 이 뒤로 미룹니다.
