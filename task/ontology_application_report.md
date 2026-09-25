@@ -33357,3 +33357,19 @@ CLI 기록의 요청자   CLI 실행 행의 requested_by 가 비어 있습니다
           그 함수는 09-09 d91fba431 에 지워졌습니다 — 오늘 것이 아니고, CODE_MAP 쪽은 판정 173 묘비 밑입니다. SYSTEM_FLOWS 는 묘비가 없습니다
 .claude/doc_sync_pending  지웠습니다 — 지시 목록 전부 끝
 ```
+
+---
+
+## 전·후 — 알림 실패 표식의 주인 (54f018d7 · 첫 판 빨강 ③) (09-25 19:56)
+
+프로세스 안에서 HEAD 코드로. 표식은 제품 문(`internal_event_client.record_undelivered_notification`)으로 metro 에 하나 만들었습니다.
+
+| | 전 (97229cf5c) | 후 |
+|---|---|---|
+| 줄 단위 대기열(`/outbox/queue/rows` 함수)이 말하는 주인 | `unknown` | **`chain`** ✓ |
+| 실제로 뺀 쪽 | 체인 워커(8.2초) | 체인 워커(10.1초에 알림 찍음) — 판정과 하는 자리가 같아짐 ✓ |
+| 타입만 물을 때(`outbox_owner('BROADCAST_RECOVERY')`) | `unknown` | `unknown` 그대로 — 타입별 집계 둘은 이 단계를 안 봄(커밋 설명대로) |
+
+```
+도는 API 는 재기동 뒤에 이 코드를 씁니다. 남긴 것: 알림 실패 표식 줄 하나(5139317, 알림까지 끝남)
+```
