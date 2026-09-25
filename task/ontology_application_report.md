@@ -33518,3 +33518,19 @@ CLI 기록의 요청자   CLI 실행 행의 requested_by 가 비어 있습니다
              커밋의 판정 자리는 chain_replay · enrichment 둘 · withdraw 보호 소스까지이고 원장 연산 둘은 안 들었습니다
              남긴 것: 그 failed 실행 줄 하나(run_id 2f3307babdb2)
 ```
+
+---
+
+## 전·후 — 거절된 원장 소스의 센서스 (519b0d75 · 둘째 판 관찰 「낡은 처방 문장」) (09-25 21:59)
+
+`GET /api/ledger/declaration`(토큰 없음)을 착지 뒤 10 초마다 읽었습니다. 쓰기 없음.
+
+| | 전 (c539062a2) | 후 |
+|---|---|---|
+| 거절된 소스 아홉의 census | 옛 값 — 둘은 「expose the base table's row_id column on '…': declare it in table_config as a view column …」(은퇴한 길), 넷은 거절 전의 셈(relation_rows · not_yet) | 아홉 다 **「the loader refused this source (bundle.sources.<id>.relation): source '<id>' reads '<relation>' …」** ✓ |
+| 찍힌 시각 | 09-25 13:2x~13:3x(거절 전) | 21:53:59 ~ 21:58:59 — 센서스 바퀴가 한 번 돌며 전부 ✓ |
+
+```
+계기 한 줄  제 첫 기다림은 「census 에 refused 키가 있나」로 셌는데, void_observation 은 «옛» 값에도 그 키가 있어 먼저 세였습니다 —
+           측정 시각(measured_at)으로 다시 기다려 21:58:59 에 바뀐 것을 확인했습니다
+```
