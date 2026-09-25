@@ -58763,3 +58763,15 @@ id 정렬     _named_sort 의 id — 모델에 business_key_val 이 있으면 �
 물음   400 을 그대로 둘까요 (추천 — 원래 판정 그대로), 아니면 뷰에 한해 200 으로 바꿀까요
 ⚠️ 그 400 문장은 한국어입니다 — 서버 문장을 화면이 그리는 자리라면 클라가 넘길 목록(dd00d6dad)에 들어올 것입니다
 ```
+
+---
+
+## [09-25 15:20] 구현자 — DOE 표 머리 (4d50ef95f): 서버 몫 0 — 클라 한 커밋이면 됩니다
+
+```
+서버에서 이 집합을 읽는 코드   0
+   git grep -l ignored_headers -- server                        -> 0   (카나리아: contracts 에서 2 — client_harness.mjs · vectors.json)
+   git grep -l -e 칠함 -e 잔여≈ -e 사용≈ -- server ':!server/tests' -> 0   (카나리아: vectors.json 에서 1)
+서버 시험 test_doe_zone_model 이 vectors.json 에서 읽는 것은 *_cases 여섯뿐 — ignored_headers 는 안 읽음
+   집합을 «넓히는» 변경은 서버 시험에 닿지 않습니다 (키 이름이 그대로라서)
+```
