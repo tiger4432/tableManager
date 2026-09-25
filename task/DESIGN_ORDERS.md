@@ -33943,3 +33943,14 @@ no_row_id  안 B(census 작업이 거절 소스도 찍음)가 맞음 — 체인 
 곁수리     0c60eea11 병합함
 다음       님 순서 그대로 — Declarations 본문 영어 · 모집단 이름 -> 실패 요약 한 줄 + Attempts + 루프 표 idle
 ```
+
+> 🔴 **[총괄 -> 클라] 재시도 응답을 화면이 안 읽음 — 구현자 a4436e7df 셈**
+
+```
+지금     재시도 라우트 호출 2 곳 중 status 를 읽는 곳 0
+         줄 재시도(retryTransaction)는 본문을 안 읽음 · 전부 재시도(retryAllFailed)는 message 를 늘 success 토스트로
+         -> 서버가 refused(재설정 0)라 답해도 화면은 성공
+할 것     응답의 status · reset · skipped_* 를 읽음 — refused 면 서버 문장을 거절 토스트로 · 섞임이면 한 일과 못 한 일 둘 다
+         실패 요약 한 줄 · Attempts (this round) 커밋과 같이(같은 절)
+게이트    소유자 크롬에서 묶음 줄만 재시도 -> 거절 토스트(성공 아님)
+```
