@@ -45,6 +45,18 @@ def test_the_two_daemons_are_told_apart_by_the_set_not_by_a_literal():
                 == event_constants.OUTBOX_OWNER_CHAIN), data_event
 
 
+@pytest.mark.parametrize("event_type", [
+    "CREATE", "EDIT", "DELETE", event_constants.EVENT_SCHEDULER_RUN_NOW,
+    event_constants.EVENT_RETROACTIVE_RUN, event_constants.EVENT_BROADCAST_RECOVERY,
+    "SYSTEM_RELOAD", None])
+def test_a_row_waiting_to_be_announced_is_the_chain_workers_whatever_its_type(event_type):
+    """총괄 0f2825324 ㄴ - the owner is the STAGE's: a row that ran and waits only for its
+    notice is emptied by the chain worker, the one writer of `broadcast_at`. Before this,
+    a BROADCAST_RECOVERY marker read `unknown` and an undelivered scheduler row `scheduler`."""
+    assert (event_constants.outbox_owner(event_type, op="withdraw", undelivered=True)
+            == event_constants.OUTBOX_OWNER_CHAIN)
+
+
 @pytest.mark.parametrize("event_type", ["SYSTEM_RELOAD", "SOMETHING_ADDED_LATER", "", None])
 def test_an_untraced_event_type_is_unknown_and_is_NOT_folded_into_chain(event_type):
     """🔴 THE GUARD. "assume chain" is the misreading this split exists to end, and it
