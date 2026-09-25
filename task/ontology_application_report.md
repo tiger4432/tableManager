@@ -32928,3 +32928,23 @@ transfer_event/die-transfer          dt_transfer_log 를 읽음       mat_id <- 
 ㉠ 샘플의 표 소스 하나(예: dt_job — register@1 로 dtjob@1 을 세움)로 0~3절의 실물을 다시 쓴다 — 크기 안 쟀음, 절 넷
 ㉡ 지금의 머리 주석으로 둔다
 ```
+
+---
+
+## PRIMER ㉠ · 설계 문서 — 착지 `c12140491` (09-25 14:16)
+
+지시 `b55de91c3`.
+
+```
+PRIMER    §0~§3 을 lot_slot_wafer 표 소스의 행 하나로 다시 씀
+          고른 까닭  샘플과 이 박스에 «같은 문장»으로 서 있고(has_wafer@1: lot_slot@1 -> wafer@1), 목적어가 개체라 §2 가 가르치는 것
+          이 박스에서 연 것 (읽기만 · 질의마다 60 초 제한)
+            행      row_id 01a05648-d135-7914-8467-90b41cebbf1b  (NAB123 · 01 · NAB123-W01 · split · 2026-01-01 13:00)
+            색인    그 행의 ledger_source_row_ref 1 줄
+            원자    그 색인 줄을 source_raw_ref 로 든 원자 1 (has_wafer). 같은 주어의 원자는 소스 전부 합쳐 6
+          데이터가 준 가르칠 거리 하나: 행의 event_type=split 을 문장이 «매지 않아» 원자에 없음 — 칸을 싣는 것은 bind 뿐
+          §3 의 observed 예시는 소스가 뷰라 오늘 거절 — «모양의 예»로만 읽는다는 주석
+설계 문서  LEDGER_SCHEMA_COMPLETENESS 두 줄 (함수 묘비 · 「row_id 없는 뷰」 경우 ⚰️) · RUNTIME_MAP 한 줄 (센서스 count(*) 는 이제 «추정 없는 표»만)
+```
+바로잡음: 앞 셈에서 BASIS 한 줄을 기제 줄로 셌습니다. 지난 라운드의 할 일 목록(「운영 뷰 소스 수」)을 적은 기록이라 남겼습니다.
+구현자 몫으로 보고만: `backfill.measure_and_store` 의 주석 「a view relation … is now the only one」이 낡았습니다(뷰 소스가 없어짐).
