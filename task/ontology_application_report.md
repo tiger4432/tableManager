@@ -32948,3 +32948,5 @@ PRIMER    §0~§3 을 lot_slot_wafer 표 소스의 행 하나로 다시 씀
 ```
 바로잡음: 앞 셈에서 BASIS 한 줄을 기제 줄로 셌습니다. 지난 라운드의 할 일 목록(「운영 뷰 소스 수」)을 적은 기록이라 남겼습니다.
 구현자 몫으로 보고만: `backfill.measure_and_store` 의 주석 「a view relation … is now the only one」이 낡았습니다(뷰 소스가 없어짐).
+
+> (09-25 14:18) Ledger 열 후속(`8c8f4e5d3`) — CODE_MAP 의 grid_source_label 절: `answer()` 한 자리 · 여섯 상태 · 답이 그리드로 건너가는 길(onAnswer -> state.ledgerAnswer -> grid.js -> ledgerColumnDef). `567dada7d` + 한 줄 바로잡음 `2fd9a366d` (처음엔 열 모듈이 state 를 직접 읽는다고 적었는데, git grep 으로 보니 grid.js 가 넘깁니다). PRIMER 착지 `c12140491` 과 «같은 착지»가 아니라 바로 뒤 커밋입니다.

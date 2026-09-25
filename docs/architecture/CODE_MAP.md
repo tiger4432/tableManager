@@ -5200,7 +5200,12 @@ export const COMPUTABLE_TOKENS = Object.freeze([DECLARED, ASSUMED, CONFIRMED]);
 - ⚠️ **`resolveCount` 안의 지역 `const count`(~143)가 ~28에서 import한 `count` 헬퍼를 가린다.** 오늘은 무해하지만(그 함수는 숫자를 포맷하지 않는다) 그 안에서 `count(...)`를 부르는 순간 조용히 틀린다.
 - **소비자**: `admin.js` — 🆕⑯ **15개 중 «11개»를 가져간다**(실측 import 목록: `buildOperationsView`·`buildCountView`·`buildRunView`·`buildConfirmLines`·`buildActionsView`·`resolveCount`·`paramEntries`·`paramsKey`·`RETRO_CHROME`·`buildRunsView`·`buildConfirmActions`). 🔴 **`elapsedMinutes`·`buildProgressCell` 은 «안» 가져간다** — `buildRunsView` 가 안에서 부르므로 화면이 다시 부를 일이 없다(그 둘이 화면에서 다시 불리기 시작하면 판정이 두 자리에 생긴 것이다). `RETRO_CHROME_STRINGS`와 재export된 `CHROME`은 안 쓴다(후자는 `config_resolve_view.js`에서 직접 받는다) — **하니스 전용 export**다(`client2/tests/retroactive_view_harness.mjs`, 🆕⑯ **886줄**).
 
-### 🆕⑯ `grid_source_label.js` (**149줄**, `e7b84e9b` 신설) — 「이 표가 원장 소스인가」를 그리드 머리에 한 줄
+### 🆕⑯ `grid_source_label.js` (**193줄** 09-25 실측 · 신설 때 149, `e7b84e9b` 신설) — 「이 표가 원장 소스인가」를 그리드 머리에 한 줄
+
+> 🆕 **[09-25 `2fbe12b3f`] 답은 `answer()` «한 자리» — 라벨과 그리드의 Ledger 열이 같이 읽는다.** `answer()` → `{relation, state, rows}`, state 는 여섯:
+> `idle`(표 안 고름) · `pending`(선언 읽는 중) · `unknown`(선언 못 읽음) · `not_source`(읽었고 목록에 없음) · `source` · `refused`(이 표를 읽는 소스가 «전부» 로더에 거절 — 하나라도 서 있으면 `source`, 총괄 `fb4dda078`).
+> `render()` 가 답이 «바뀔 때만» `deps.onAnswer(answer)` 로 내놓고, `main.js::initGridSourceLabel` 이 그것을 `state.ledgerAnswer` 에 둔 뒤 `applyFillTargetHeaders()` 로 열 정의만 다시 쓴다(행은 그대로).
+> 🔴 그리드(`grid_ledger_column.js`)는 「이 표가 원장 소스인가」를 «묻지 않는다» — 두 곳이 답하면 한쪽만 틀리는 날이 온다.
 
 > 🔴 **부재를 «셋»으로 말한다.** ① `sources` 에 이 relation 이 **있다**(`is-source` / `data-source-state="source"`) ② 선언을 **읽었고 목록에 없다**(`is-not-source` / `"not_source"`) ③ 선언 라우트가 **거절했다**(`is-unknown` / `"unknown"`). 🔴 **셋을 「라벨 없음」 하나로 접으면 「소스가 아님」과 「못 읽음」이 같아지고**, 그게 이 저장소가 반복해서 잡아 온 병이다 — **그래서 이 파일에 «빈 문자열»로 끝나는 갈래가 없다.**
 > 🔴 **넷째가 있고 그건 «주장이 아니다»**: 표를 아직 안 골랐을 때(`is-idle`) — 주어가 없는데 술어를 그리는 것이 지어내는 것이다.
@@ -5208,7 +5213,7 @@ export const COMPUTABLE_TOKENS = Object.freeze([DECLARED, ASSUMED, CONFIRMED]);
 > 🔴 **`this.sources = null` 과 `[]` 는 다른 사실이다** — 앞은 「아직/못 읽음」, 뒤는 「읽었는데 소스가 없음」.
 
 - 심볼: `rowFor(sources, relation)`(module-private) · **`class GridSourceLabel`** — `mount()`/`destroy()`/`async load()`/`setRelation(relation)`/`render()`. `emits` 는 **그대로** 쓰고 거르지 않는다(총괄 교차 검사 2026-08-31: emits 에 나오는데 선언에 없는 술어 «0»). 술어가 없는 소스는 빈 괄호가 아니라 `no predicate declared`.
-- **소비자**: `main.js`(`initGridSourceLabel`). **채점자**: `client2/tests/grid_source_label_harness.mjs`(**245줄**).
+- **소비자**: `main.js`(`initGridSourceLabel`) · 🆕 `answer()` 의 답은 `state.ledgerAnswer` 에 놓이고, `grid.js` 가 그것을 `grid_ledger_column.ledgerColumnDef(answer, table)` 에 넘긴다. **채점자**: `client2/tests/grid_source_label_harness.mjs`(**246줄** 09-25 실측).
 
 ### 🆕⑯ `rescope_handoff.js` (**52줄**, `f5d847c9` 신설) — 그리드 → 어드민 «범위 넘김»
 
