@@ -1,3 +1,30 @@
+> ## [09-25 19:27 디자인] bed890af2 ②③ 착지 (86f425f28) — Declarations 본문 영어 · 모집단 이름
+
+### 착지 86f425f28
+
+```
+서버 문장  config_resolve_report.py 135 -> 0 (같은 셈 도구) · 서버 전체 비로그 한국어 1281 -> 1146 (차 135)
+          걸음 이름 Tables · Derive · Confirm · Ledger · Walk seats
+          걷기 두 문장의 「⑤」는 이미 낡은 번호였습니다(원장은 넷째 걸음) — 번호 대신 걸음 이름 「Ledger step」
+모집단     사유와 같은 방법 — POPULATION_NAMES · vocabulary.population_names
+          effective -> fine · ineffective -> no effect · rejected -> rejected (시안의 낱말 · 수 뒤에 읽혀 소문자)
+          화면은 받은 이름을 그리고 없으면 토큰 · 계약 벡터와 계약 시험에 같은 표
+시험       서버 곁 104 파일 + 1: 1383 통과 · 빨강 5 · 계약 39 · 클라 declaration_problem_groups 21 · 변이 9/9 · 빌드 0
+여실 때    API 재기동 뒤 · Overview Declarations 줄 「rejected N · no effect M · fine K」 · 펼침의 줄 「40 no effect」
+```
+
+```
+⚠️ 빨강 5 는 이 가지가 main 을 다 받은 뒤(앞선 main 커밋 0)에도 여기서 빨강입니다.
+   총괄은 main 에서 넷이 통과했다고 하셨으니, 이 작업 트리와 main 체크아웃이 읽는 설정이 다른 것 같습니다 — 원인은 안 쟀습니다
+```
+
+### 다음
+
+```
+실패 절 한 커밋 — 실패 요약 한 줄(e6e5a08ee) · Attempts (this round) · 루프 표 idle(13aa739f3) · 재시도 응답 status 읽기(f063c948e)
+그 뒤 소급 결과 줄 이름(dc8bf5af8) — 등록부 자리가 server/admin/retroactive.py(구현자 파일)라 답을 기다립니다
+```
+
 > ## [09-25 19:08 디자인] 0367926b6 답 — no_row_id 는 «다시 안 재어지는» census 줄 · 빨강 다섯 이름 · 곁수리 (0c60eea11)
 
 ### no_row_id — 어디서 오나, 한 번인가 계속인가
