@@ -59085,3 +59085,104 @@ BOX down       16:17:40 admin.html 000 -> 16:18:46 다시 200. 제 API 재기동
 남는 물음  CLI 옵션 중 연산 params 에 없는 것 (예: ledger backfill 의 --reset-cursor · --from · --via-events) — 연산 params 를 넓힐지,
          그 옵션을 쓰면 옛 문으로 돌지. 다섯 CLI 의 옵션을 전수로 대조해서 다음 보고에 표로 올리고 짓습니다
 ```
+
+---
+
+## [09-25 16:43] 구현자 — 실패 요약 착지 둘 (`e8d2f7519` · `29711cace`) · CLI 같은 문 옵션 대조표와 물음 넷 (짓기 전)
+
+### `e8d2f7519` · `29711cace` — 실패 요약 한 줄 (36dff3b6a · eca1f36b2)
+
+```
+응답   /admin/outbox/failed 에 summary — (표 · 종류 · 날) 한 줄마다 count · first_at · last_at · retry_max
+       최신 묶음 먼저 · 질의 하나(GROUP BY) · payload 안 읽음
+날     ?tz=<화면 zone 이름> 의 날로 묶음. 없거나 못 읽는 이름이면 UTC 날
+       응답의 day_zone 이 어느 zone 으로 잘랐는지 말함
+       first_at · last_at 은 offset 붙은 순간 (같은 응답의 다른 시각과 같은 모양) — 클라가 그림
+자리   날을 자르는 곳은 crud.temporal_text_sql 하나 — zone 을 받게 넓힘 (기본 UTC · 부르던 곳 그대로)
+박스   실패 81 (이 박스 · 전부 dt_inventory EDIT)
+         tz=Asia/Seoul -> 2026-09-23 한 줄 81 · tz=UTC -> 2026-09-22 한 줄 81 · tz 없음 -> UTC
+       DB 세션 zone(이 박스 Asia/Seoul)은 답을 안 바꿈. 첫 착지의 date() 는 세션 zone 으로 잘랐었음
+시험   sqlite — 묶기 · zone 없음/빈/못 읽음 -> UTC 로 묶고 그렇다고 말함
+       PostgreSQL 스크래치 스키마(세션 zone New_York) — 08:30 · 09:30 KST 가 서울 하루 · UTC 이틀
+변이   날 없이 묶기 · zone 무시 — 둘 다 빨강
+클라   질의에 tz=Intl.DateTimeFormat().resolvedOptions().timeZone · 줄의 day 를 그대로 그림
+```
+
+### 곁에 본 것
+
+```
+contracts/temporal_text 의 PostgreSQL 갈래 — 처음 재 봤고 8 빨강. 제 변경과 무관
+   그 시험은 자기 SQL 을 직접 씀(구성물을 안 지남). 픽스처가 offset 없는 값을 ::timestamptz 로 넣어
+   세션 zone(KST)으로 읽힘 -> 9 시간 밀림 (기대 12:23 · 나옴 03:23). 계약이 잡으려는 결함을 픽스처가 가짐
+   고칠 것: 픽스처를 offset 붙은 값으로. contracts 는 제 자리가 아니라 안 고쳤습니다
+같은 응답의 oldest_failed_at — PG 에서 세션 zone offset 으로 나옴 (박스 2026-09-23T00:14:06.353438+09:00)
+   옆의 first_at 은 2026-09-22 15:14:06+00:00 — 같은 순간 · 모양 둘. 안 건드린 칸이라 말만 합니다
+```
+
+### 3d03bc819 — CLI 다섯 옵션 대조표
+
+```
+연산 params 로 넓힐 것 — CLI 가 이미 연산 함수에 넘기는 값
+   ledger_backfill      fetch_rows · max_batches · ontology_root
+   ledger_rescope       ontology_root
+   chain_replay         limit · chunk_size
+   enrichment_backfill  limit · chunk_size · force_disabled
+   enrichment_confirm   limit · probe_scan_rows · probe_distinct_values
+   withdraw             없음 (columns 가 이미 있음)
+   -> params 타입이 지금 string · csv 둘뿐이라 int · bool 을 읽게 넓힘
+   -> spec 의 cli_only 목록에서 이 옵션들이 빠짐 (같은 커밋)
+
+넓히지 않는 것
+   --apply                 문 자체 (물음 ①)
+   --reset-cursor · --from  CLI 가 저장소에 닿기 전에 거절함 — 연산까지 못 감
+   --ignore-knob           재기 전용. --apply 와 같이 오면 sweep 이 스스로 거절함 (열어서 확인)
+   triage --chunk          출력 문장에만 쓰임. 리플레이에 안 넘어감
+   --list-all              출력 옵션
+
+한 번 부르면 연산 여러 번 -> 연산 한 번 = 실행 기록 하나, 차례로
+   replay-all                   켜진 규칙 전부 · 의존 순서. 「돌기 전에 전부 검사」는 첫 기록 전에 그대로
+   triage --replay-cancelled    그 표의 켜진 규칙 전부 · business_keys 로
+   enrichment_insights confirm  규칙 이름이 없으면 전부
+   ⚠️ 기록과 기록 사이에 관문이 잠깐 열림 — 그 틈에 어드민 소급이 끼어들 수 있음
+
+여섯 연산 밖 — 이번에 안 짓고 알립니다
+   ledger/backfill --via-events    load_via_events · --apply 면 CREATE 이벤트를 스테이징
+   chain_replay_cli resolve (R3)   recompute_display_values · --apply 면 값과 AuditLog 를 씀
+   둘 다 소급 연산 표에 없어서 제 모집단(CLI 다섯 · 호출 여덟)에 안 셌습니다
+```
+
+### 짓기 전에 여쭐 것 넷 — 답 오기 전에는 CLI 다섯을 문에 안 붙입니다
+
+```
+① 드라이런 (--apply 없음)
+   안 A (추천)  문을 안 지남 — 쓰지 않으니 기록 · 관문 없음. 어드민의 「세기」와 같은 자리
+   안 B        문을 지남 — 목록에 보이고 관문에 막힘. 무거운 훑기가 다른 소급과 안 겹침
+
+② CLI 가 죽을 때의 잠금
+   Ctrl-C      문이 기록을 cancelled 로 끝냄 — 이건 짓습니다
+   강제 종료    기록이 running 으로 남음. CLI 는 심박 이름이 없어 관문이 「살았는지 모름 · 취소로 못 풂」
+               -> 어드민 소급이 손으로 DB 를 고칠 때까지 막힘
+   안 A (추천)  문이 도는 동안 심박을 뜀 (이름 하나, 예: cli). 죽으면 60 초 뒤 「주인 없음」 -> 화면 취소가 잠금을 풂
+               대가: /health 에 off_roster 줄 하나 (경보 아님)
+   안 B        그대로 — 풀기는 손으로
+
+③ 어드민 폼 노출
+   화면은 params 를 «전부» 칸으로 그립니다 (admin.js). choices 는 닫힌 값 목록이라 칸을 숨기지 못합니다
+   안 A        전부 보임 — ontology_root 도 자유 입력칸
+   안 B (추천)  _p 에 칸 하나 (form: false) — 폼은 안 그리고 기록 params 에는 남음. 클라 한 줄
+
+④ CLI 출력 그대로
+   spec["run"] 은 저장용으로 줄인 수만 돌려줌 (리플레이: rows_staged · events_staged · rows_scanned)
+   CLI 는 연산의 원래 결과를 그림 (trigger_table · pages · page_failures …)
+   제안   각 _run_* 이 원래 결과를 control 에 둠 (여섯 곳 한 줄씩) — CLI 는 그걸로 지금 문장 그대로. 저장 결과는 그대로
+```
+
+### 답과 무관해서 지금 짓는 것
+
+```
+끝맺기 한 곳  execute 의 「spec["run"] 을 RunControl 로 돌리고 done · cancelled · failed 로 끝냄」을 함수 하나로 빼서
+            execute 와 CLI 문이 같이 부름 — 끝나는 법이 두 벌이 되지 않게
+CLI 문       retroactive 에 함수 하나 — 관문 -> 기록을 running · 이 프로세스로 바로 (초인종 없음) -> 위 끝맺기
+            관문이 막으면 「REFUSED: <관문 문장>」 · 종료 코드 2 (CLI 들이 이미 쓰는 모양)
+params 넓히기 위 표대로 + int · bool 읽기
+```
