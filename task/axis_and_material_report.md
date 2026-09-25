@@ -1,3 +1,60 @@
+> ## [09-25 14:03 디자인] Ledger 열 착지 — 라벨의 답 «한 자리»를 열이 같이 씁니다 · 거절된 소스 표는 Refused · 맨 끝
+
+f3bc02f6e · 533a386c6 · cdf11b222 · fb4dda078 의 클라 몫. 커밋 `86540635b`.
+
+### 한 것
+
+```
+grid_source_label.js   answer() 한 자리 — idle · pending · unknown · not_source · source · refused
+                       refused 는 그 표를 읽는 소스가 «전부» planned: false 일 때만 · 라벨은 소스마다 한 줄, 거절 문장은 로더의 것 그대로
+                       onAnswer — 답이 «바뀔 때» 한 번
+grid_ledger_column.js  새 순수 모듈 — 열 정의 · 칸 글자. 답의 relation 이 «지금 표»일 때만 열
+grid.js · main.js · state.js   열은 목록 맨 끝 · 라벨 답 -> state.ledgerAnswer -> 기존 applyFillTargetHeaders 로 열 정의만 다시
+state.isVirtualColumn  #ledger 도 «저장 안 되는 열» — 쓰기 넷(1칸 채움 · 넓은 붙여넣기 · 지우기 · 일괄 채움)이 이 한 자리로 건너뜁니다
+                       (안 그러면 넓은 붙여넣기가 이 열까지 닿아 배치 전체가 400 으로 거절됩니다)
+absent.js              UNKNOWN 'Unknown' · UNPICKED 'None selected' — composition_panel 이 직접 적던 '대상 없음' 을 상수로
+인구조사 거절 갈래      남김 — 픽스처 no_row_id -> source_refused (로더 문장 그대로) · 모양 주석 한 줄
+style.css              거절 줄 경고색 · 이름 굵게 (기존 규칙 옆 두 줄)
+```
+
+### 칸 글자
+
+```
+답 \ ledger_sources   [이름…]        []         칸 없음
+source                이름 · 이름    Not yet    Unknown
+refused               이름 · 이름    Refused    Unknown
+unknown               이름 · 이름    Unknown    Unknown
+not_source · pending · idle   열 없음
+```
+
+### 게이트
+
+```
+①②④  grid_ledger_column_harness — 진짜 GridSourceLabel · 진짜 buildColumnDefs · 진짜 isVirtualColumn
+       25 / 0 · 변이 9 / 9  (못 읽은 행을 Not yet · [] 를 이름으로 · 다른 표의 답 · 하나 거절을 전부 거절로 ·
+                              planned 무시 · 렌더마다 알림 · 못 읽은 선언의 [] · 열을 맨 앞에 · 쓰기에 안 알림)
+       소스 둘 중 하나만 거절된 표 — B1 · C10 (둘 다 단언)
+③     박스 전선 — 박스 서버 8080 의 GET /api/ledger/declaration · /tables/{t}/data 를 진짜 라벨·열 모듈에 그대로
+       inspection_run          source      Ledger 열 · 500 행 전부 die_inspection
+       bonding_die_from_core   refused     라벨에 로더 문장 · 500 행 전부 Refused
+       dt_map                  not_source  열 없음
+       Not yet 은 이 박스에서 안 보입니다 — 서 있는 소스 중 인구조사 not_yet > 0 이 0 입니다. 행을 쓰는 전·후는 총괄 몫 그대로
+       소스 둘이 읽는 표도 이 박스에 0 — 그 칸은 하니스에서만 잽니다
+       센 법  scratchpad/box_ledger_gate.mjs <표…>
+⑥     npm run build (하니스 전수) exit 0 · 번들 같은 커밋
+대상이 바뀐 하니스   grid_source_label 18 · rnd_board_composition 42 (P1 · P-M1 새로) · source_backlog 32 ·
+                    ledger_sources_panel 86 · rnd_board 174 · rnd_board_reach 63 · rnd_board_walk_box 79 · grid_view_readonly 47 — 실패 0
+```
+
+### 남은 것
+
+```
+복사     범위 복사가 Ledger 칸을 «빈 글자»로 옮깁니다 (직사각형 모양은 지킴). 값까지 옮기려면 복사가 열의 값 함수를 불러야 합니다
+한국어   composition_panel 「불러오는 중」 · 「서버 거절」 · absent.subjectText 「주어」 · head_summary 「고정 씨앗」 — 이번 범위 밖
+응용     CODE_MAP 의 grid_source_label 절 — rowFor · 「부재를 셋으로」 서술이 이제 틀립니다
+화면     픽셀은 소유자 몫
+```
+
 > ## [09-25 13:44 디자인] Ledger 열 — 착지분(c193986a8)을 보니 계획에 없던 경우 하나: 로더가 «거절한» 소스. 물음 하나, 나머지는 짓는 중
 
 ```
