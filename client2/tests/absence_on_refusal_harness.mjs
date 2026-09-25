@@ -155,8 +155,7 @@ function adminSuite(probe) {
   ok(typeof markSectionUnread === 'function', 'C0 admin.js 가 import 되고 그 좌석에 닿는다');
   ok(JSON.stringify(Object.values(map || {}).sort()) === JSON.stringify(expected),
      `C1 모집단이 admin.html 과 «같다» (${Object.values(map || {}).length}/${expected.length})`);
-  ok((map || {})['enrichment-rule-count'] === 'enrichment-empty',
-     'C2 여덟째(enrichment)도 같은 좌석을 지난다 — 토큰이 필요 없다는 것은 못 읽을 일이 없다는 뜻이 아니다');
+  // ⚰️ C2 (여덟째 enrichment 가 같은 좌석을 지난다) 는 2026-09-25 Enrichment 탭과 같이 은퇴 — 그 자리가 없습니다.
 
   // 한 번 읽혀서 「없습니다」가 «뜬 뒤» 다음 갱신이 거절되는 순간을 만듭니다.
   doc.body.children.length = 0;
@@ -239,8 +238,8 @@ const VIEW_DEFECTS = [
 const ADMIN_DEFECTS = [
   ['M9 수만 거두고 「없습니다」는 세워 둔다 -> C 빈 상태/C4',
    (s) => s.replace("  if (el) el.style.display = 'none';", "  if (el) el.style.display = '';")],
-  ['M10 여덟째가 목록에서 빠진다 -> C1/C2',
-   (s) => s.replace("  'enrichment-rule-count': 'enrichment-empty',\n", '')],
+  ['M10 한 자리가 목록에서 빠진다 -> C1',
+   (s) => s.replace("  'autoupdate-linked-count': 'autoupdate-linked-empty',\n", '')],
   ['M11 「못 읽음」의 철자가 0 이 된다 -> C 수/C4',
    (s) => s.replace("const UNREAD = '—';", "const UNREAD = '0';")],
 ];

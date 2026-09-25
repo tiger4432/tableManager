@@ -147,6 +147,10 @@ RETIRED_INTO_KINDS = ("read",)
 #: translated to today's flat shape, so the word has to be read back off what it RUNS.
 DECLARED_KINDS = ("join", "decide", "mapper")
 
+#: The word for a declaration whose `derive` the grammar cannot read. Not one of the three and
+#: never guessed into one - a refused join drawn as 「mapper」 is a false row (lead 3b1a7a550).
+UNKNOWN_KIND = "unknown"
+
 
 def declared_kind(rule: dict) -> str:
     """A loaded chain rule -> the word its DECLARATION would use for it.
@@ -163,9 +167,21 @@ def declared_kind(rule: dict) -> str:
     # 🪦 [판정 498 ④] THIS COMPARED AGAINST TWO IMPORTED CONSTANTS AND ONE PREFIX PAIR.
     # It read like a reference and behaved like a hand-kept list - a kind registered tomorrow
     # was labelled 「mapper」 in silence. The seat answers now, off the registration.
+    # 🔴 [3b1a7a550] A DECLARATION THAT DID NOT STAND IS ASKED TOO - the rules route lists it as
+    #    its raw text, which runs nothing, so the registration fell back to 「mapper」 and a
+    #    refused join was drawn as a mapper. A raw declaration carries `derive`; the grammar's
+    #    own reading of it (`from_declaration`) answers, and a derive it cannot read is
+    #    UNKNOWN_KIND. A LOADED rule carries no `derive` (measured on the box: 15 of 15), so its
+    #    answer does not move.
+    rule = rule if isinstance(rule, dict) else {}
+    if "derive" in rule:
+        if not isinstance(rule["derive"], dict):
+            return UNKNOWN_KIND
+        kind = from_declaration(rule)["derive"]["kind"]
+        return kind if kind in DECLARED_KINDS else UNKNOWN_KIND
     from chain import rule_run
 
-    return rule_run.rule_label(rule if isinstance(rule, dict) else {})
+    return rule_run.rule_label(rule)
 
 
 def as_chain_rule(internal: dict) -> dict:
@@ -343,7 +359,7 @@ def from_declaration(raw: dict, origin: str = "declared") -> dict:
         "enabled": raw.get("enabled", True),
         "enabled_written": "enabled" in raw,
         "on": dict(raw.get("on") or {}),
-        "derive": dict(derive, kind=kind or "unknown"),
+        "derive": dict(derive, kind=kind or UNKNOWN_KIND),
         "into": dict(raw.get("into") or {}),
         # 🔴 [S-240] `key` WAS DROPPED ON THE FLOOR. The plan says 「선언이 key.unique 라고
         # 말하면 제품이 성립시킨다」 and RUN.md said the product builds the index - and for a

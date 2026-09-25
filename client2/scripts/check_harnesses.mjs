@@ -1491,7 +1491,9 @@ const FLOORS = new Map([
   // because a harness that only measured the suppression would give full marks to a screen
   // that hid everything. Measured on VISIBLE nodes, never `textContent`: that proxy is what
   // put a retracted headline into an audit the day before.
-  ['absence_on_refusal_harness.mjs', 39],
+  // 39 -> 36 on 2026-09-25: the Enrichment tab retired (lead 7085e2dc6) and its section seat with it —
+  // two per-seat checks (count · empty state) and C2, which named that seat. M10 re-aims at another seat.
+  ['absence_on_refusal_harness.mjs', 36],
   // New 2026-09-16 with C-120. 🔴 THE ASSERTION IS A PROPERTY, NOT A LIST OF SENTENCES:
   // if a screen has a dead control, that control says why IN ITS OWN PLACE. Counting the
   // sentences would leave the fifth control out the day it appears -- and "no reason at all"
