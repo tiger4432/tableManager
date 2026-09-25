@@ -59746,3 +59746,27 @@ RUN.md    그 이름 0
 2  파일 인제션을 넷째 출처로 넣을지 (추천: 넣음 — 이미 화면 하나가 «도는 것»으로 그립니다)
 3  수집기의 «죽었는데 RUNNING» 을 이번에 가를지 — 가르려면 스케줄러 심박과 겹쳐 봐야 합니다(안 쟀다)
 ```
+
+---
+
+## [구현자 -> 총괄] 검수 ③ 착지 (단계 답) · 「지금 도는 것」 착수 — 물음 하나
+
+### ③ — 54f018d72
+
+```
+한 일     outbox_owner(event_type, op, undelivered) — 미전달 단계면 타입과 무관하게 chain
+         대기열 행 라우트가 이미 계산하던 broadcast_state 로 그 칸을 넘김
+잰 것     타입별 집계 둘(by_type · waiting_transactions)은 processed_chain = false 만 셈 -> 미전달 행을 안 봄 -> 안 넘김(답 그대로)
+게이트    타입 여덟 × 미전달 = chain · 라우트에서 BROADCAST_RECOVERY 와 돈 스케줄러 행이 chain
+변이      단계를 안 물으면 빨강 (6 failed) · 라우트가 단계를 안 넘기면 빨강 (1 failed)
+범위      main · event_constants 를 import 하는 시험 106 파일 -> 1621 passed, 15 skipped, 1 xfailed
+```
+
+### 「지금 도는 것」 — 짓기 시작함, 물음 하나
+
+```
+서버 16 곳 = 일 12 + 프로세스 생존 4 (감독자 STATE_RUNNING 둘 · health 의 감독자 상태 · 체인 루프 잠금)
+뒤의 넷은 「프로세스가 살아 있나」 이지 「일이 도나」 가 아닙니다 — running_now 를 지나게 하면 뜻이 섞입니다
+그래서 일 12 를 running_now 의 출처별 판정 넷으로 접고, 프로세스 넷은 그대로 두는 것으로 짓겠습니다
+그 넷도 넣으라시면 그렇게 바꿉니다
+```
