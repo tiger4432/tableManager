@@ -114,9 +114,9 @@ const DEFECTS = [
     s => s.replace("event === 'batch_refresh_required'", "event === 'batch_refresh_requiredX'")],
   ['the terminal else is removed again',
     s => s.replace("    console.warn('[WebSocket] unhandled event', event);\n", '')
-          .replace(/    showToast\(`실시간 갱신 누락[^`]*`, 'warning',\n      \{ dedupeKey: 'ws-unhandled' \}\);\n/, '')],
+          .replace(/    showToast\(`Live update missed[^`]*`, 'warning',\n      \{ dedupeKey: 'ws-unhandled' \}\);\n/, '')],
   ['the unhandled report drops the event name',
-    s => s.replace('실시간 갱신 누락 · 알 수 없는 이벤트 «${event}»', '실시간 갱신 누락')],
+    s => s.replace('Live update missed · unknown event «${event}»', 'Live update missed')],
   ['the report fires for every table, not just this one',
     s => s.replace('  if (msg.table_name !== state.currentTable) return;',
                    '  if (false) return;')],
@@ -135,7 +135,7 @@ const CONTROLS = [
     .replace("  } else if (event === 'batch_refresh_required') {", "  } else if (evt === 'batch_refresh_required') {")
     .replace("    console.warn('[WebSocket] unhandled event', event);",
              "    console.warn('[WebSocket] unhandled event', evt);")
-    .replace('알 수 없는 이벤트 «${event}»', '알 수 없는 이벤트 «${evt}»')],
+    .replace('unknown event «${event}»', 'unknown event «${evt}»')],
   ['comments stripped', s => s.split('\n').filter(l => !/^\s*\/\//.test(l)).join('\n')],
 ];
 

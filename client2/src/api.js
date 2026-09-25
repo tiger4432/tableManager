@@ -1,6 +1,7 @@
 import { API_BASE, WS_URL, CURRENT_USER, pageLimit } from './config.js';
 import { narrowingParams as buildNarrowing } from './narrowing.js';
 import { state } from './state.js';
+import { notANumber } from './ui_words.js';
 import { refuseWrite, applyWriteGuards } from './write_guard.js';
 import { elements } from './dom.js';
 import { activateHistoryTab } from './history_tabs.js';
@@ -516,7 +517,7 @@ export async function handleCellEdit(event) {
     } else {
       const parsedVal = Number(newValue);
       if (isNaN(parsedVal)) {
-        alert(`컬럼 '${colId}'의 값 '${newValue}'은(는) 올바른 숫자 형식이 아닙니다.`);
+        alert(notANumber(colId, newValue));
         // Rollback grid value & overwrite status
         const latestNode = state.gridApi.getRowNode(rowId);
         const latestData = latestNode ? latestNode.data : data;
@@ -635,7 +636,7 @@ export async function handleCellEdit(event) {
     }
   } catch (err) {
     console.error('Cell update failed', err);
-    alert(`수정 사항 저장 실패: ${err.message}`);
+    alert(`Save failed: ${err.message}`);
     elements.performanceLog.textContent = '❌ Edit failed to save';
 
     // Rollback grid value & overwrite status
@@ -678,7 +679,7 @@ export async function addRows(count) {
   } catch (err) {
     console.error('Failed to create row(s)', err);
     // 서버에 «닿지 못한» 것은 서버가 낸 사유가 없는 자리라 이 문장이 화면의 것입니다.
-    refused = '행 추가 요청이 서버에 닿지 못했습니다 (네트워크).';
+    refused = 'Add-row request did not reach the server (network)';
   }
   setBadge(elements.performanceLog, refused);
   showToast(refused, 'error');

@@ -67,14 +67,14 @@
             <button
               id="folder-upload-btn"
               class="glass-btn"
-              title="폴더를 고르면 그 안의 파일이 전부 인제션됩니다"
+              title="Every file in the chosen folder is ingested"
             >
-              📁 폴더 업로드
+              📁 Upload folder
             </button>
             <button
               id="desktop-download-btn"
               class="glass-btn"
-              title="데스크톱 클라이언트 .zip · 풀어서 안의 실행 파일을 여십시오"
+              title="Desktop client .zip · unzip and run the executable inside"
             >
               💻 Desktop
             </button>
@@ -127,7 +127,7 @@
               class="filter-clear-all"
               style="display: none"
             >
-              전체 해제
+              Clear all
             </button>
           </div>
           <div
@@ -286,7 +286,7 @@
                    추가해」. 낱말은 소유자가 부른 그대로다 -- 그 화면 자기 h1 은 「좌표계 확정」
                    이지만 메뉴에서 찾는 사람은 「맵 정렬기」로 찾는다. -->
               <a href="/map_editor2.html" class="dropdown-item nav-link"
-                >📐 맵 정렬기</a
+                >📐 Map aligner</a
               >
               <!-- ⚰️ 2026-09-04  「Knowledge Graph」(/graph.html) 와 「추적」(/trace.html)
                    의 진입이 여기와 위 배너에 있었다. 소유자 판정 「저거 레거시 그래프
@@ -317,8 +317,8 @@
             class="theme-toggle-btn"
             data-theme-toggle
             type="button"
-            title="테마 전환"
-            aria-label="테마 전환"
+            title="Toggle theme"
+            aria-label="Toggle theme"
           >
             <svg
               class="icon-moon"
@@ -431,10 +431,10 @@
                  said what the tabs already say; the Sync button MOVED into the filter
                  strip below rather than being deleted. -->
             <div class="history-tabs history-tabs--wide">
-              <button id="tab-reference" class="tab-btn" style="display: none">참조 그리드 ⇲</button>
+              <button id="tab-reference" class="tab-btn" style="display: none">Reference grid ⇲</button>
               <button id="tab-global" class="tab-btn active">Global</button>
               <button id="tab-row" class="tab-btn">Row</button>
-              <button id="tab-queue" class="tab-btn">대기열</button>
+              <button id="tab-queue" class="tab-btn">Queue</button>
             </div>
           </div>
           <div class="sidebar-content">
@@ -447,17 +447,17 @@
                    only on the Global tab, via `.tab-global` on this container
                    (`.audit-table` is the LOOK and the queue table wears it too). -->
               <div class="audit-filter">
-                <span class="audit-filter-label">필터</span>
+                <span class="audit-filter-label">Filter</span>
                 <select id="audit-filter-user" class="audit-filter-pick">
-                  <option value="">사용자 전체</option>
+                  <option value="">All users</option>
                 </select>
                 <select id="audit-filter-kind" class="audit-filter-pick">
-                  <option value="">종류 전체</option>
+                  <option value="">All kinds</option>
                 </select>
                 <select id="audit-filter-when" class="audit-filter-pick">
-                  <option value="">전체 기간</option>
-                  <option value="today">오늘</option>
-                  <option value="7d">7일</option>
+                  <option value="">All time</option>
+                  <option value="today">Today</option>
+                  <option value="7d">7 days</option>
                 </select>
                 <span id="audit-filter-count" class="audit-filter-count"></span>
                 <button
@@ -469,22 +469,22 @@
                 </button>
               </div>
               <div class="audit-head">
-                <div class="audit-cell audit-time">시각</div>
-                <div class="audit-cell audit-user">사용자</div>
-                <div class="audit-cell audit-kind">종류</div>
-                <div class="audit-cell audit-target">대상 · 컬럼</div>
-                <div class="audit-cell audit-change">변경</div>
+                <div class="audit-cell audit-time">Time</div>
+                <div class="audit-cell audit-user">User</div>
+                <div class="audit-cell audit-kind">Kind</div>
+                <div class="audit-cell audit-target">Target · column</div>
+                <div class="audit-cell audit-change">Change</div>
                 <div class="audit-cell audit-tx">Tx</div>
               </div>
               <ul id="timeline" class="timeline">
                 <li class="timeline-empty">No history loaded.</li>
               </ul>
               <div class="audit-legend">
-                <span>행 클릭 → 그리드에서 해당 셀로 이동</span>
+                <span>Click a row → go to its cell</span>
                 <span class="audit-legend-dot">·</span>
-                <span>Tx 클릭 → 그 트랜잭션만 필터</span>
+                <span>Click Tx → only that transaction</span>
                 <span class="audit-legend-dot">·</span>
-                <span>▶ 클릭 → 일괄 내역 펼치기</span>
+                <span>Click ▶ → expand the batch</span>
               </div>
             </div>
             <div id="reference-view" class="reference-view" style="display: none">
@@ -492,8 +492,8 @@
               <!-- Bottom shortcut row, mockup 2b. It sits OUTSIDE `#reference-view-content`
                    because `render()` calls `replaceChildren()` on that node every refresh. -->
               <div class="reference-shortcuts">
-                <span><span class="kbd">Shift</span>+<span class="kbd">↑↓</span> 범위</span>
-                <span><span class="kbd">Ctrl</span><span class="kbd">Enter</span> 일괄</span>
+                <span><span class="kbd">Shift</span>+<span class="kbd">↑↓</span> Range</span>
+                <span><span class="kbd">Ctrl</span><span class="kbd">Enter</span> Bulk</span>
                 <span
                   ><span class="kbd">Ctrl</span><span class="kbd">Shift</span
                   ><span class="kbd">V</span> Smart Paste</span
@@ -604,12 +604,12 @@
         style="display: none; position: absolute; z-index: 1000"
       >
         <ul>
-          <li id="menu-sources">📚 데이터 원천(Sources) 관리</li>
-          <li id="menu-delete">🗑️ 선택된 행 삭제</li>
+          <li id="menu-sources">📚 Manage sources</li>
+          <li id="menu-delete">🗑️ Delete selected rows</li>
           <!-- 키를 라벨에 적어둔다: 평문 HTTP에서는 클릭만으로 클립보드를 읽을 수 없어
              이 항목은 다음 붙여넣기를 예약할 뿐이다. 단축키가 곧 본동선이다. -->
           <li id="menu-smart-paste">
-            📋 파서로 붙여넣기 (Smart Paste) &nbsp;<span style="opacity: 0.6"
+            📋 Smart Paste &nbsp;<span style="opacity: 0.6"
               >Ctrl+Shift+V</span
             >
           </li>
@@ -620,7 +620,7 @@
       <div id="sources-modal" class="modal-overlay" style="display: none">
         <div class="modal-content glass-panel">
           <div class="modal-header">
-            <h3>📚 데이터 원천(Sources) 관리</h3>
+            <h3>📚 Manage sources</h3>
             <button id="modal-close-btn" class="modal-close">&times;</button>
           </div>
           <div class="modal-body">

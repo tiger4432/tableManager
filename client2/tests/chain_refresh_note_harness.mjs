@@ -34,11 +34,11 @@ ok(ev({ change_count: 0 }) !== ev({}),
 
 console.log('\n-- the word is a COUNT, not a claim about change ----------------------');
 // ⛔ C-9 의 사실은 「쓴 행 수」입니다. 「바꿈」은 서버가 모르는 것입니다 (C-1 의 ran:changed 와 같은 이유).
-ok(!ev({ change_count: 3 }).includes('바꿈') && !ev({ change_count: 3 }).includes('변경'),
+ok(!/chang|edit/i.test(ev({ change_count: 3 })),
   'B1 the line does not claim anything CHANGED — the server only knows rows were written');
-ok(ev({ change_count: 3 }).includes('행'),
+ok(ev({ change_count: 3 }).includes('rows'),
   'B2 ...it says rows, which is the fact the server actually has');
-ok(ev({ change_count: 3 }).includes('체인'),
+ok(ev({ change_count: 3 }).includes('Chain'),
   'B3 and it names the actor, so the operator knows which writer this number is about');
 
 console.log('\n-- silence: what must draw nothing ------------------------------------');

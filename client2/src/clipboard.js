@@ -1,5 +1,6 @@
 import { API_BASE, CURRENT_USER, pageLimit } from './config.js';
 import { state, isVirtualColumn } from './state.js';
+import { notANumber } from './ui_words.js';
 // C-107. 「쓸 수 있나」를 묻는 자리가 «한 곳»입니다 — 두 줄씩 다섯 번 적혀 있던 것을 접었습니다.
 import { refuseWrite } from './write_guard.js';
 import { elements } from './dom.js';
@@ -75,7 +76,7 @@ function writeRangeReadout(startCell, endCell) {
   const maxCol = Math.max(startColIdx, endColIdx);
   const cols = Object.keys(state.visibleColIndexMap)
     .filter((colId, idx) => idx >= minCol && idx <= maxCol && colId !== '#').length;
-  readout.textContent = (rows > 1 || cols > 1) ? `범위 ${rows}행 × ${cols}열 선택` : '';
+  readout.textContent = (rows > 1 || cols > 1) ? `${rows} rows × ${cols} cols selected` : '';
 }
 
 export function refreshRange(api, startCell, endCell) {
@@ -464,7 +465,7 @@ export function setupClipboardHandlers() {
             } else {
               const parsedVal = Number(val);
               if (isNaN(parsedVal)) {
-                alert(`컬럼 '${colId}'의 값 '${val}'은(는) 올바른 숫자 형식이 아닙니다.`);
+                alert(notANumber(colId, val));
                 throw new Error(`Invalid number format`);
               }
               castedVal = parsedVal;
@@ -545,7 +546,7 @@ export function setupClipboardHandlers() {
               } else {
                 const parsedVal = Number(val);
                 if (isNaN(parsedVal)) {
-                  alert(`컬럼 '${colId}'의 값 '${val}'은(는) 올바른 숫자 형식이 아닙니다.`);
+                  alert(notANumber(colId, val));
                   throw new Error(`Invalid number format`);
                 }
                 castedVal = parsedVal;
@@ -658,7 +659,7 @@ export function setupClipboardHandlers() {
       }
     } catch (err) {
       console.error('Failed to paste updates', err);
-      alert(`붙여넣기 저장 실패: ${err.message}`);
+      alert(`Paste save failed: ${err.message}`);
       elements.performanceLog.textContent = '❌ Smart paste failed to save';
     }
   });
@@ -905,7 +906,7 @@ export async function clearSelectedCells() {
     }
   } catch (err) {
     console.error('Failed to clear cells', err);
-    alert(`셀 내용 비우기 실패: ${err.message}`);
+    alert(`Clear failed: ${err.message}`);
     elements.performanceLog.textContent = '❌ Cell clearing failed';
   }
 }

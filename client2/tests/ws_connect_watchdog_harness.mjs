@@ -460,7 +460,7 @@ async function runChecks(wsSrc, cfgSrc, { strict = true } = {}) {
     const refused = await drive(wsSrc, cfgSrc, {
       behaviour: () => ({ kind: 'refuse' }), horizonMs: 60000,
     });
-    const noResponse = s => /응답 없음/.test(s);
+    const noResponse = s => /no answer/.test(s);
     const disconnected = s => /DISCONNECTED/.test(s);
 
     r.hangSaysNoResponse = hung.badgeStates.filter(noResponse).length;
@@ -678,7 +678,7 @@ const MUTATIONS = [
   {
     name: 'W10 [HIGH] the badge stops distinguishing a hang from a server refusing',
     file: 'ws',
-    find: `    elements.wsStatus.textContent = \`WS: 응답 없음 \${state.wsWatchdogTrips}회\`;`,
+    find: `    elements.wsStatus.textContent = \`WS: no answer ×\${state.wsWatchdogTrips}\`;`,
     repl: `    elements.wsStatus.textContent = 'WS: DISCONNECTED';`,
     breaks: 'the badge names the failure the watchdog found',
   },

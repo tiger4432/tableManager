@@ -83,7 +83,7 @@ export function sourceRowAllHtml(sourceName, values, { isPinnedAll, cellCount, w
   //    numerator and inverts the sentence; the ratio cannot be read backwards because both
   //    numbers carry their unit. Reported to the lead as a wording call, not buried.
   if (selected !== null && covered > 0 && covered < selected) {
-    valText = `${valText} · ${selected}칸 중 ${covered}칸`;
+    valText = `${valText} · ${covered} of ${selected} cells`;
   }
   // C-84. 같은 규칙, 같은 이유 — 선택 여럿짜리 행도 뷰에서는 컨트롤을 안 그린다.
   const actions = writable

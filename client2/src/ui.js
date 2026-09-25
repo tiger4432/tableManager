@@ -22,7 +22,7 @@ export function setupBeforeUnloadWarning() {
   window.onbeforeunload = (e) => {
     if (state.txModeActive && Object.keys(state.pendingTxEdits).length > 0) {
       e.preventDefault();
-      e.returnValue = '저장되지 않은 변경 사항이 있습니다. 정말 페이지를 벗어나시겠습니까?';
+      e.returnValue = 'Unsaved changes · leave the page?';
       return e.returnValue;
     }
   };
@@ -52,7 +52,7 @@ export function updateSelectedCellUI() {
     <div><strong>Column:</strong> <span style="color:var(--color-primary)">${escapeHtml(String(state.selectedCell.colId).toUpperCase())}</span></div>
     <div><strong>Current Value:</strong> <code>${state.selectedCell.value !== null ? escapeHtml(String(state.selectedCell.value)) : 'NULL'}</code></div>
     ${isSystem ? '<div style="color:var(--text-dim);margin-top:4px;font-style:italic">Read-only System Column</div>' : ''}
-    ${virt ? `<div style="color:var(--text-dim);margin-top:4px;font-style:italic">읽기 전용 조인 컬럼 — 원본 '${escapeHtml(virt.right_table)}'</div>` : ''}
+    ${virt ? `<div style="color:var(--text-dim);margin-top:4px;font-style:italic">Read-only join column — source '${escapeHtml(virt.right_table)}'</div>` : ''}
   `;
 }
 
@@ -75,7 +75,7 @@ export function updateTxModeUI() {
     }
     if (elements.txPendingBadge) {
       elements.txPendingBadge.style.display = count > 0 ? '' : 'none';
-      elements.txPendingBadge.textContent = `⚡ 미저장 ${count}`;
+      elements.txPendingBadge.textContent = `⚡ Unsaved ${count}`;
     }
     if (elements.performanceLog) {
       elements.performanceLog.textContent = count > 0 
@@ -290,7 +290,7 @@ export async function applyValueToSelectedRange(newValue) {
     }
   } catch (err) {
     console.error('Bulk cell update failed', err);
-    alert(`범위 수정 사항 저장 실패: ${err.message}`);
+    alert(`Range save failed: ${err.message}`);
     elements.performanceLog.textContent = '❌ Range edit failed to save';
   }
 }

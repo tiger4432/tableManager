@@ -35,7 +35,7 @@ import { setDisabledReason } from './disabled_reason.js';
  *
  * ⛔ 설명을 붙이지 않습니다 — 「다음 행동」이 답이고, 그것은 한 동사입니다(상설).
  *    「행이 선택되지 않았습니다」는 «상태»를 다시 말하는 것이라 아무것도 더하지 않습니다. */
-const NEEDS_A_ROW = '행을 고르십시오';
+const NEEDS_A_ROW = 'Pick rows';
 
 /** 고른 행들이 이 컬럼에서 «실제로 들고 있는» 값. 없는 값은 지어내지 않고 «셉니다».
  *
@@ -267,7 +267,7 @@ export class RedoBanner {
     if (picked.length > this.warnAbove) {
       const big = doc.createElement('div');
       big.className = 'redo-panel__warn';
-      big.textContent = `선택 ${picked.length}행 · 권장 ${this.warnAbove}행 이하`;
+      big.textContent = `${picked.length} rows selected · keep it at ${this.warnAbove} or fewer`;
       box.appendChild(big);
     }
     // 🔴 토큰이 없으면 «문장으로» 말합니다. 조용히 회색으로 두면 운영자는 자기 선택이
@@ -276,7 +276,7 @@ export class RedoBanner {
     if (!runnable) {
       const why = doc.createElement('div');
       why.className = 'redo-panel__nogo';
-      why.textContent = '관리자 토큰 없음 · 어드민 한 번 열기';
+      why.textContent = 'No admin token · open the admin once';
       box.appendChild(why);
     }
 
@@ -323,7 +323,7 @@ export class RedoBanner {
     const go = doc.createElement('button');
     go.type = 'button';
     go.className = 'glass-btn redo-panel__go';
-    go.textContent = '어드민에서 열기';
+    go.textContent = 'Open in admin';
     go.addEventListener('click', () => {
       if (this.handOff) this.handOff(assembled.payload);
     });
@@ -332,11 +332,11 @@ export class RedoBanner {
   }
 
   ledgerPayload(rows, sourceRow) {
-    if (!sourceRow) return { note: '원장 소스 아님' };
+    if (!sourceRow) return { note: 'Not a ledger source' };
     const columns = Array.isArray(sourceRow.scope_columns) ? sourceRow.scope_columns : [];
-    if (!columns.length) return { note: '범위 컬럼 선언 없음' };
+    if (!columns.length) return { note: 'No scope column declared' };
     const { groups, dropped } = ledgerGroups(rows, columns, this.readValue);
-    if (!groups.length) return { note: '선택 행에 범위 값 없음' };
+    if (!groups.length) return { note: 'No scope value in the selected rows' };
     const lineRows = groups.map((g) => {
       const skipped = g.missing ? ` · ${g.missing} without a value` : '';
       const n = g.values.length;
@@ -352,7 +352,7 @@ export class RedoBanner {
     // 못 넘긴 컬럼도 «말합니다». 조용히 빼면 운영자는 그 컬럼을 기다립니다.
     // 돌릴 것이 없으므로 `params` 가 없고, 그래서 «누르는 줄이 아닙니다».
     dropped.forEach((column) => lineRows.push({
-      text: `${column} — 선택 행에 값 없음`, params: null,
+      text: `${column} — no value in the selected rows`, params: null,
     }));
     return {
       op: 'ledger_rescope',
@@ -377,7 +377,7 @@ export class RedoBanner {
     // ⛔ 둘 다 보내지 않습니다 — 서버가 «거절»합니다(한 물음에 두 답). 그리고 평키 표만
     //    다른 길을 타면 «그 표에서만» 나는 고장이 생깁니다(기준 ④).
     const { values, missing, firstMissing } = scopeValuesFor(rows, 'row_id', this.readValue);
-    if (!values.length) return { note: '선택 행에 row_id 없음' };
+    if (!values.length) return { note: 'No row_id in the selected rows' };
     // 🔴 셈은 «행 수»입니다(판정 407 ②) — row_id 는 중복이 없으므로 값의 수가 곧 행의 수입니다.
     //    종전의 「N keys from M rows」는 둘이 갈라질 수 있을 때의 문구였고, 이제 갈라지지 않습니다.
     const from = `${values.length} row${values.length === 1 ? '' : 's'}`;
@@ -389,7 +389,7 @@ export class RedoBanner {
     if (!Array.isArray(this.rules)) {
       return { op: 'chain_replay', payload, rows: [
         { text: from, params: null },
-        { text: '규칙 목록 못 읽음 · 어드민에서 선택', params: null },
+        { text: 'Rules unreadable · pick in admin', params: null },
       ] };
     }
     if (!this.rules.length) {
@@ -397,14 +397,14 @@ export class RedoBanner {
       //    뜻도 좁아졌습니다: 「서버에 규칙이 없다」가 아니라 「이 표가 트리거인 규칙이 없다」.
       return { op: 'chain_replay', payload, rows: [
         { text: from, params: null },
-        { text: '이 표를 트리거로 하는 규칙 없음', params: null },
+        { text: 'No rule triggers on this table', params: null },
       ] };
     }
     const keys = values.join(',');
     // 🔴 판정 407 ②. row_id 가 없는 행은 «조용히 빠지지» 않고 이름을 달고 섭니다 —
     //    그 행들은 다시 돌아가지 «않습니다», 그리고 그것이 화면에 없으면 운영자는 전부 돌았다고 읽습니다.
     const skipped = missing
-      ? [{ text: `row_id 없는 행 ${missing} — 다시 돌릴 수 없음`, params: null,
+      ? [{ text: `${missing} rows without row_id · cannot rerun`, params: null,
            // 🔴 C-114. 수만 보여 주면 운영자는 «어느 행인지»를 모릅니다 — 그 처음 행으로
            //    그리드를 보냅니다. 돌리는 줄이 아니므로 `params` 는 그대로 `null` 입니다.
            reveal: firstMissing }] : [];

@@ -110,7 +110,7 @@ function armConnectWatchdog(sock) {
     //    응답 자체를 삼킨 것은 전혀 다른 고장인데, 화면이 같은 글자를 보여 주면 진단이
     //    또 몇 시간 늦어진다 — 2026-08-04 사고가 정확히 그래서 길어졌다. 시도 횟수와
     //    같은 방식으로 무응답 횟수를 붙여, 재시도가 도는지도 같은 배지에서 읽히게 한다.
-    elements.wsStatus.textContent = `WS: 응답 없음 ${state.wsWatchdogTrips}회`;
+    elements.wsStatus.textContent = `WS: no answer ×${state.wsWatchdogTrips}`;
     elements.wsStatus.className = 'status-badge offline';
     const waitMs = scheduleReconnect();
     console.warn(`[WebSocket] connect watchdog trip ${state.wsWatchdogTrips} `
@@ -193,9 +193,9 @@ function installWakeSignals() {
   if (state.wsWakeSignalsInstalled) return;
   state.wsWakeSignalsInstalled = true;
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') wakeNow('페이지가 다시 표시됨');
+    if (document.visibilityState === 'visible') wakeNow('page visible again');
   });
-  window.addEventListener('online', () => wakeNow('네트워크가 복구됨'));
+  window.addEventListener('online', () => wakeNow('network back'));
 }
 
 // Initialize Real-time synchronization via WebSocket
@@ -237,7 +237,7 @@ export function initWebSocket() {
   //    끝까지 갈리지 않아 진단이 몇 시간 늦어졌다. 초기값과 **다른 문자열**이어야 하고,
   //    시도 횟수가 붙어야 재시도가 도는지 멈췄는지도 같은 배지에서 읽힌다.
   state.wsAttempts = (state.wsAttempts || 0) + 1;
-  elements.wsStatus.textContent = `WS: 연결 시도 ${state.wsAttempts}`;
+  elements.wsStatus.textContent = `WS: connecting ${state.wsAttempts}`;
   elements.wsStatus.className = 'status-badge';
   console.log(`[WebSocket] attempt ${state.wsAttempts} -> ${WS_URL}`);
 
@@ -304,7 +304,7 @@ export function initWebSocket() {
       //    failed read drawn as an absence, except here the absence is a missing UPDATE.
       // 🔵 `dedupeKey` collapses a burst into one line with a count; a malformed stream would
       //    otherwise paper the screen with toasts and bury what it is telling you.
-      showToast('\uc2e4\uc2dc\uac04 \uac31\uc2e0\uc744 \uc77d\uc9c0 \ubabb\ud588\uc2b5\ub2c8\ub2e4 \u2014 \uc0c8\ub85c\uace0\uce68\ud558\uba74 \ub9de\ucdb0\uc9d1\ub2c8\ub2e4', 'error',
+      showToast('Live update unreadable \u2014 refresh to catch up', 'error',
         { dedupeKey: 'ws-parse' });
     }
   };
@@ -366,7 +366,7 @@ export function handleWebSocketMessage(msg) {
 
   if (msg.event === 'file_ingestion_completed') {
     const status = msg.status || 'SUCCESS';
-    const message = msg.message || '파일 처리가 완료되었습니다.';
+    const message = msg.message || 'File processed';
     // 데모 수집기가 2~3분마다 도는 환경에서 이 알림이 가장 많이 쌓인다 →
     // **성공은 한 줄로 집계**하고(dedupeKey), 실패는 집계하지 않아 개별 사유가 남게 한다.
     showToast(
@@ -575,7 +575,7 @@ export function handleWebSocketMessage(msg) {
     // ⚠️ Reachable ONLY for the current table with a live grid: the two guards above return
     //    first, so this cannot fire for an event that was never meant for this screen.
     console.warn('[WebSocket] unhandled event', event);
-    showToast(`실시간 갱신 누락 · 알 수 없는 이벤트 «${event}»`, 'warning',
+    showToast(`Live update missed · unknown event «${event}»`, 'warning',
       { dedupeKey: 'ws-unhandled' });
   }
 }

@@ -19,7 +19,7 @@ function row(values, opts) {
   try { return sourceRowAllHtml('excel', values, opts); }
   catch (e) { return `<<threw: ${e && e.message}>>`; }
 }
-const RATIO = /칸 중 .*칸/;
+const RATIO = /\d+ of \d+ cells/;
 
 console.log('-- the round\'s sentence ----------------------------------------------');
 const partial = row(['a', 'b'], { isPinnedAll: false, cellCount: 5 });
@@ -35,8 +35,8 @@ ok(!RATIO.test(sameValuesCovered),
 // 🔴 A5 AS FIRST WRITTEN WAS BLIND TO A SWAP: 「both numbers appear」 stays true when the two
 //    are exchanged, and the swap mutant went green. What matters is the ORDER — the selection
 //    is the denominator and must sit before 중, or the row states the opposite of the truth.
-ok(/5칸 중 2칸/.test(partial),
-  'A5 the SELECTION comes first and the covered count second — a swap reads as its own opposite');
+ok(/2 of 5 cells/.test(partial),
+  'A5 it reads COVERED of SELECTION (2 of 5) — a swap reads as its own opposite');
 
 console.log('\n-- cells, not distinct values -----------------------------------------');
 // ⚠️ 같은 값을 든 두 칸은 «두 칸»입니다. 여기서 중복을 지우면 «덮고 있는 칸»을 적게 세어

@@ -190,7 +190,9 @@ export const state = {
 };
 
 /**
- * [Virtual join] Is this grid column id a join-attached column rather than a stored one?
+ * Is this grid column one the grid ADDS rather than one the table stores?
+ * Today that is the Ledger column (`#ledger`); join-attached columns were the first kind, and
+ * with read-time joins retired `currentVirtualColumns` arrives empty.
  *
  * WHY A PREDICATE AND NOT A LIST MEMBERSHIP TEST AT EACH SITE. Every write funnel in this
  * client answers "may I write this grid column?" with its own hardcoded system-name array
@@ -204,7 +206,6 @@ export const state = {
  * whole paste, not just the cell it could not have written anyway.
  */
 export function isVirtualColumn(colId) {
-  // 원장 열도 «저장되지 않는» 그리드 열입니다 — 붙여넣기·지우기·일괄 채움이 이 한 자리로 건너뜁니다.
   if (colId === LEDGER_COL_ID) return true;
   const list = state.currentVirtualColumns;
   if (!Array.isArray(list) || list.length === 0) return false;
@@ -225,7 +226,7 @@ export function tableIsView() {
 }
 
 /** 뷰에서 쓰기를 거절할 때 적는 «한 줄». 술어와 같이 살아서 자리마다 다르게 안 적힌다. */
-export const VIEW_READ_ONLY_NOTE = '뷰 — 읽기 전용';
+export const VIEW_READ_ONLY_NOTE = 'View — read-only';
 
 /**
  * [Virtual join] The `join_resolved_columns` entry for this grid column, or `null`.

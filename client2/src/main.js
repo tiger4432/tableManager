@@ -11,6 +11,7 @@ import { narrowingTail } from './narrowing.js';
 // 이 파일은 ag-grid 의 CSS 를 import 해서 node 가 못 읽습니다.
 import { sourceRowHtml, sourceRowAllHtml } from './source_rows.js';
 import { state } from './state.js';
+import { NONE } from './ui_words.js';
 import { writeRefusal } from './write_guard.js';
 import { elements } from './dom.js';
 import {
@@ -345,15 +346,15 @@ function setupEventListeners() {
       if (!state.gridApi) return;
       const selectedRows = state.gridApi.getSelectedRows();
       if (selectedRows.length === 0) {
-        showToast("동기화할 행을 선택해주세요.", 'warning');
+        showToast("Select rows to sync", 'warning');
         return;
       }
       
       const rowIds = selectedRows.map(r => r.row_id);
-      const confirmSync = confirm(`선택한 ${rowIds.length}개 행을 그래프 DB와 동기화하시겠습니까?`);
+      const confirmSync = confirm(`Sync ${rowIds.length} selected rows to the graph DB?`);
       if (!confirmSync) return;
       
-      showToast("그래프 DB 동기화 요청 중...", 'info');
+      showToast("Requesting graph DB sync…", 'info');
       try {
         const res = await fetch(`${API_BASE}/api/graph/sync`, {
           method: 'POST',
@@ -365,14 +366,14 @@ function setupEventListeners() {
         });
         const data = await res.json();
         if (res.ok && data.status === 'success') {
-          showToast(`동기화 완료! (모드: ${data.mode}, 성공: ${data.synced_count}건, 삭제: ${data.deleted_count || 0}건)`, 'success');
+          showToast(`Sync done (mode ${data.mode} · synced ${data.synced_count} · deleted ${data.deleted_count || 0})`, 'success');
           await fetchData(false);
         } else {
-          showToast(`동기화 실패: ${data.detail || '알 수 없는 오류'}`, 'error');
+          showToast(`Sync failed: ${data.detail || 'unknown error'}`, 'error');
         }
       } catch (err) {
         console.error(err);
-        showToast("네트워크 오류로 그래프 동기화에 실패했습니다.", 'error');
+        showToast("Graph sync failed · network error", 'error');
       }
     });
   }
@@ -403,12 +404,12 @@ function setupEventListeners() {
         const res = await fetch(url, { signal: probe.signal });
         probe.abort();
         if (!res.ok) {
-          showToast('데스크톱 빌드가 없습니다 · 서버에 zip 이 아직 없습니다.', 'error');
+          showToast('No desktop build · the server has no zip yet', 'error');
           return;
         }
       } catch (err) {
         console.error(err);
-        showToast('데스크톱 빌드를 확인하지 못했습니다 — 서버에 닿지 않습니다.', 'error');
+        showToast('Desktop build not checked · server unreachable', 'error');
         return;
       }
       window.location.href = url;
@@ -635,7 +636,7 @@ function setupEventListeners() {
       if (!state.txModeActive) {
         const pendingCount = Object.keys(state.pendingTxEdits).length;
         if (pendingCount > 0) {
-          const confirmApply = confirm(`대기 중인 수정사항이 ${pendingCount}건 있습니다. 적용하시겠습니까?\n\n'확인'을 누르면 수정 사항을 일괄 적용하고,\n'취소'를 누르면 수정 사항을 모두 취소(Discard)합니다.`);
+          const confirmApply = confirm(`${pendingCount} pending edits. Apply them?\n\nOK applies them all.\nCancel discards them all.`);
           if (confirmApply) {
             applyPendingTxEdits();
           } else {
@@ -668,7 +669,7 @@ function setupEventListeners() {
   window.addEventListener('beforeunload', (e) => {
     if (Object.keys(state.pendingTxEdits).length > 0) {
       e.preventDefault();
-      e.returnValue = '저장되지 않은 수정사항이 있습니다. 페이지를 벗어나시겠습니까?';
+      e.returnValue = 'Unsaved edits · leave the page?';
       return e.returnValue;
     }
   });
@@ -686,7 +687,7 @@ function setupEventListeners() {
       } else {
         fetchData(false);
       }
-      showToast('🔄 화면이 최신 데이터로 새로고침되었습니다.', 'success');
+      showToast('🔄 Refreshed with the latest data', 'success');
     });
   }
 
@@ -743,7 +744,7 @@ function setupEventListeners() {
         if (state.smartPasteArmedUntil === 0) return; // already consumed - the chord worked
         armSmartPaste(SMART_PASTE_ARM_TTL_MS);
         showToast(
-          `스마트 붙여넣기 대기 중 — 이어서 ${SMART_PASTE_FALLBACK_KEY_LABEL} 를 눌러 주세요. (취소: Esc)`,
+          `Smart paste armed · press ${SMART_PASTE_FALLBACK_KEY_LABEL} (Esc to cancel)`,
           'info',
           { ttl: SMART_PASTE_ARM_TTL_MS, dedupeKey: SMART_PASTE_ARM_TOAST_KEY }
         );
@@ -853,8 +854,8 @@ function setupEventListeners() {
 
     // 🔴 성공은 «한 번», 실패는 «묶어서 한 번». 전부 실패하면 「0개 완료」를 안 띄웁니다 --
     //    0 을 성공으로 그리는 것이 이 화면이 없애려는 오독입니다.
-    if (done) showToast(`📤 ${done}개 업로드 완료`, 'success');
-    if (failed) showToast(`❌ ${files.length}개 중 ${failed}개 실패`, 'error');
+    if (done) showToast(`📤 ${done} uploaded`, 'success');
+    if (failed) showToast(`❌ ${failed} of ${files.length} failed`, 'error');
     // 🔴 «불을 지른 input» 을 비웁니다. `toolbarFileInput` 을 고정으로 비우면 폴더 쪽은
     //    값이 남아 «같은 폴더를 두 번» 고를 때 change 가 안 옵니다.
     e.target.value = '';
@@ -1164,12 +1165,12 @@ function setupEventListeners() {
         const totalTime = (renderEndTime - startTime).toFixed(0);
 
         elements.performanceLog.textContent = `✅ Loaded ${accumulatedData.length} rows (Fetch Chunks: ${totalFetchTime}ms, Render: ${renderTime}ms | Total: ${totalTime}ms)`;
-        showToast(`📥 전체 ${accumulatedData.length}개 행 로드 완료!`, 'success');
+        showToast(`📥 Loaded all ${accumulatedData.length} rows`, 'success');
         state.isLoadingMore = false;
       } catch (err) {
         console.error('Failed to load all rows sequentially', err);
         elements.performanceLog.textContent = '❌ Failed to load all rows';
-        showToast('❌ 전체 데이터 로드 중 오류 발생', 'error');
+        showToast('❌ Load all failed', 'error');
         state.isLoadingMore = false;
       }
     });
@@ -1220,7 +1221,7 @@ function setupEventListeners() {
 
       let finalFilename = defaultFilename;
       if (!state.isDesktop && !useFileSystemAccess) {
-        const filenameInput = prompt('저장할 CSV 파일명을 입력해주세요:', defaultFilename);
+        const filenameInput = prompt('CSV file name:', defaultFilename);
         if (filenameInput === null) return; // Cancelled by user
 
         finalFilename = filenameInput.trim();
@@ -1247,7 +1248,7 @@ function setupEventListeners() {
         + `order_by=${sortLatest ? 'updated_at' : 'row_id'}&order_desc=${sortLatest}${narrowing}`;
 
       elements.performanceLog.textContent = 'Connecting...';
-      showToast('📄 CSV 다운로드를 시작합니다.', 'success');
+      showToast('📄 CSV download started', 'success');
 
       try {
         const response = await fetch(url);
@@ -1299,7 +1300,7 @@ function setupEventListeners() {
           await writableStream.close();
           const savedName = fileHandle.name;
           elements.performanceLog.textContent = `CSV Saved: ${savedName}`;
-          showToast(`📄 CSV 파일 저장 완료! (${savedName})`, 'success');
+          showToast(`📄 CSV saved (${savedName})`, 'success');
         } else {
           // Assemble chunks into a Blob
           const blob = new Blob(chunks, { type: 'text/csv;charset=utf-8;' });
@@ -1314,7 +1315,7 @@ function setupEventListeners() {
           URL.revokeObjectURL(blobUrl);
 
           elements.performanceLog.textContent = `CSV Downloaded: ${finalFilename}`;
-          showToast(`📄 CSV 파일 다운로드 완료! (${finalFilename})`, 'success');
+          showToast(`📄 CSV downloaded (${finalFilename})`, 'success');
         }
       } catch (err) {
         console.error('Failed to download CSV', err);
@@ -1322,7 +1323,7 @@ function setupEventListeners() {
           try { await writableStream.abort(); } catch (e) { }
         }
         elements.performanceLog.textContent = '❌ CSV Download Failed';
-        showToast('❌ CSV 다운로드 중 오류 발생', 'error');
+        showToast('❌ CSV download failed', 'error');
       }
     });
   }
@@ -1874,12 +1875,12 @@ function extForMime(mime) {
 // ingestion endpoint.
 async function uploadSmartPastePayload(selectedText, selectedType) {
   if (!state.currentTable) {
-    showToast('테이블이 선택되지 않아 스마트 붙여넣기를 보낼 수 없습니다.', 'error');
+    showToast('No table selected · smart paste not sent', 'error');
     return;
   }
   if (!selectedText || !selectedText.trim()) {
     elements.performanceLog.textContent = '📋 Smart paste: clipboard held no text';
-    showToast('클립보드가 비어 있습니다. 복사한 뒤 다시 시도해 주세요.', 'error');
+    showToast('Clipboard is empty · copy, then try again', 'error');
     return;
   }
 
@@ -1903,19 +1904,19 @@ async function uploadSmartPastePayload(selectedText, selectedType) {
       const savedPath = resData.path || '';
       const savedFilename = savedPath.split(/[/\\]/).pop() || file.name;
       elements.performanceLog.textContent = '📋 Clipboard uploaded to parser. Automatic reload will trigger soon.';
-      showToast(`스마트 붙여넣기 완료! (포맷: ${selectedType.split('/')[1].toUpperCase()}, 파일: ${savedFilename})`, 'success');
+      showToast(`Smart paste done (format ${selectedType.split('/')[1].toUpperCase()} · file ${savedFilename})`, 'success');
     } else {
       const detail = await res.text().catch(() => '');
       console.error('Smart paste upload rejected', res.status, detail);
       elements.performanceLog.textContent = `❌ Smart paste upload rejected (HTTP ${res.status})`;
-      showToast(`서버가 스마트 붙여넣기를 거부했습니다 (HTTP ${res.status}).`, 'error');
+      showToast(`Server refused the smart paste (HTTP ${res.status})`, 'error');
     }
   } catch (err) {
     // A transport failure, not a clipboard failure - say so, or the user reads it as the
     // clipboard bug again.
     console.error('Smart paste upload failed', err);
     elements.performanceLog.textContent = '❌ Smart paste upload failed to reach the server';
-    showToast('서버에 전송하지 못했습니다. 네트워크를 확인해 주세요.', 'error');
+    showToast('Not sent to the server · check the network', 'error');
   }
 }
 
@@ -1931,7 +1932,7 @@ async function smartPasteFromPasteEvent(e) {
   if (state.smartPasteArmedTable !== state.currentTable) {
     elements.performanceLog.textContent = '❌ Smart paste: table changed after arming';
     showToast(
-      `테이블이 [${state.smartPasteArmedTable}] → [${state.currentTable}] 로 바뀌어 취소했습니다. 다시 실행해 주세요.`,
+      `Cancelled · the table changed [${state.smartPasteArmedTable}] → [${state.currentTable}] · run it again`,
       'error'
     );
     return;
@@ -1940,7 +1941,7 @@ async function smartPasteFromPasteEvent(e) {
   const dt = e.clipboardData;
   if (!dt) {
     elements.performanceLog.textContent = '❌ Smart paste: paste event carried no clipboardData';
-    showToast('클립보드 데이터 없음 · 다시 시도', 'error');
+    showToast('No clipboard data · try again', 'error');
     return;
   }
 
@@ -1949,7 +1950,7 @@ async function smartPasteFromPasteEvent(e) {
   if (textTypes.length === 0) {
     elements.performanceLog.textContent = '❌ Smart paste: no text-bearing format on the clipboard';
     showToast(
-      `클립보드에 텍스트 형식이 없습니다. (감지된 형식: ${allTypes.length ? allTypes.join(', ') : '없음'})`,
+      `No text format on the clipboard (found: ${allTypes.length ? allTypes.join(', ') : NONE})`,
       'error'
     );
     return;
@@ -1994,7 +1995,7 @@ async function smartPasteViaIngestion() {
       const textTypes = pickTextTypes(allTypes);
       if (textTypes.length === 0) {
         showToast(
-          `클립보드에 텍스트 형식이 없습니다. (감지된 형식: ${allTypes.length ? allTypes.join(', ') : '없음'})`,
+          `No text format on the clipboard (found: ${allTypes.length ? allTypes.join(', ') : NONE})`,
           'error'
         );
         return;
@@ -2015,7 +2016,7 @@ async function smartPasteViaIngestion() {
         await uploadSmartPastePayload(await blob.text(), selectedType);
       } catch (err) {
         console.error('Clipboard blob read failed', err);
-        showToast(`클립보드의 ${selectedType} 형식을 읽지 못했습니다.`, 'error');
+        showToast(`Could not read ${selectedType} from the clipboard`, 'error');
       }
       return;
     }
@@ -2023,7 +2024,7 @@ async function smartPasteViaIngestion() {
     // The API exists but would not give us anything. Fall through to the key route rather
     // than dialling the same object again.
     armSmartPaste(SMART_PASTE_ARM_TTL_MS);
-    showToast(`브라우저가 클립보드 읽기를 거부했습니다. 이어서 ${SMART_PASTE_FALLBACK_KEY_LABEL} 를 눌러 주세요. (취소: Esc)`, 'info', { ttl: SMART_PASTE_ARM_TTL_MS, dedupeKey: SMART_PASTE_ARM_TOAST_KEY });
+    showToast(`The browser refused the clipboard read · press ${SMART_PASTE_FALLBACK_KEY_LABEL} (Esc to cancel)`, 'info', { ttl: SMART_PASTE_ARM_TTL_MS, dedupeKey: SMART_PASTE_ARM_TOAST_KEY });
     elements.performanceLog.textContent = `📋 Smart paste armed - press ${SMART_PASTE_FALLBACK_KEY_LABEL}`;
     return;
   }
@@ -2037,7 +2038,7 @@ async function smartPasteViaIngestion() {
     } catch (err) {
       console.warn('navigator.clipboard.readText() refused', err);
       armSmartPaste(SMART_PASTE_ARM_TTL_MS);
-      showToast(`브라우저가 클립보드 읽기를 거부했습니다. 이어서 ${SMART_PASTE_FALLBACK_KEY_LABEL} 를 눌러 주세요. (취소: Esc)`, 'info', { ttl: SMART_PASTE_ARM_TTL_MS, dedupeKey: SMART_PASTE_ARM_TOAST_KEY });
+      showToast(`The browser refused the clipboard read · press ${SMART_PASTE_FALLBACK_KEY_LABEL} (Esc to cancel)`, 'info', { ttl: SMART_PASTE_ARM_TTL_MS, dedupeKey: SMART_PASTE_ARM_TOAST_KEY });
     }
     return;
   }
@@ -2048,7 +2049,7 @@ async function smartPasteViaIngestion() {
   armSmartPaste(SMART_PASTE_ARM_TTL_MS);
   elements.performanceLog.textContent = `📋 Smart paste armed - press ${SMART_PASTE_FALLBACK_KEY_LABEL} (clipboard API unavailable on plain HTTP)`;
   showToast(
-    `이 환경(평문 HTTP)에서는 버튼이 클립보드를 읽을 수 없습니다. 지금 ${SMART_PASTE_FALLBACK_KEY_LABEL} 를 눌러 주세요. (취소: Esc)`,
+    `On plain HTTP the button cannot read the clipboard · press ${SMART_PASTE_FALLBACK_KEY_LABEL} now (Esc to cancel)`,
     'info',
     // The toast lives exactly as long as the latch: when the instruction disappears, the
     // arming really is gone. A prompt that outlives what it promises is its own defect.
@@ -2149,7 +2150,7 @@ async function applyPendingTxEdits() {
     }
   } catch (err) {
     console.error('Batch apply failed', err);
-    alert(`일괄 적용 실패: ${err.message}`);
+    alert(`Apply failed: ${err.message}`);
     elements.performanceLog.textContent = '❌ Batch apply failed';
   }
 }

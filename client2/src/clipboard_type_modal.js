@@ -23,9 +23,9 @@
  * ⚠️ 모르는 모양이 와도 «그립니다» — MIME 그대로. 빼면 붙일 수 있는 것을 못 고르게 됩니다.
  */
 export const CLIPBOARD_TYPE_LABELS = Object.freeze({
-  'text/plain': { label: 'Plain Text (일반 텍스트)', icon: '📋', accent: 'var(--accent)' },
-  'text/html': { label: 'HTML Table (엑셀 표 서식 포함)', icon: '🌐', accent: 'var(--success)' },
-  'text/rtf': { label: 'Rich Text Format (RTF 서식)', icon: '📝', accent: 'var(--warning)' },
+  'text/plain': { label: 'Plain Text', icon: '📋', accent: 'var(--accent)' },
+  'text/html': { label: 'HTML Table (with Excel formatting)', icon: '🌐', accent: 'var(--success)' },
+  'text/rtf': { label: 'Rich Text Format (RTF)', icon: '📝', accent: 'var(--warning)' },
   'text/csv': { label: 'Comma Separated (CSV)', icon: '📊', accent: 'var(--info)' },
   'application/json': { label: 'JSON Data Object', icon: '⚙️', accent: 'var(--accent-2)' },
 });
@@ -75,8 +75,8 @@ export class ClipboardTypeModal {
       const card = this._el('div', 'ctm-card');
       const head = this._el('div', 'ctm-head');
       head.append(
-        this._el('h3', 'ctm-title', '붙여넣기 형식 선택'),
-        this._el('p', 'ctm-sub', '클립보드에 여러 형식이 있습니다 · 하나를 고르십시오'));
+        this._el('h3', 'ctm-title', 'Paste format'),
+        this._el('p', 'ctm-sub', 'The clipboard holds several formats · pick one'));
       card.append(head);
 
       const list = this._el('div', 'ctm-list');
@@ -99,7 +99,7 @@ export class ClipboardTypeModal {
       }
       card.append(list);
 
-      const cancel = this._el('button', 'ctm-cancel', '취소');
+      const cancel = this._el('button', 'ctm-cancel', 'Cancel');
       cancel.type = 'button';
       cancel.setAttribute('data-action', 'cancel');
       if (cancel.addEventListener) cancel.addEventListener('click', () => close(null));

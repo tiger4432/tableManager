@@ -130,8 +130,8 @@ function redoSuite(RedoBanner) {
   ok(btns.length === 2 && btns.every((b) => b.disabled === true),
      'R1 행이 없으면 버튼 둘이 꺼진다', btns.map((b) => b.disabled));
   ok(mute(off).length === 0, 'R2 그리고 «말 없이» 꺼진 컨트롤이 하나도 없다', mute(off).length);
-  ok(btns.every((b) => titleOf(b) === '행을 고르십시오'),
-     'R3 사유는 「행을 고르십시오」 — 다음 행동 한 줄', btns.map(titleOf));
+  ok(btns.every((b) => titleOf(b) === 'Pick rows'),
+     'R3 사유는 「Pick rows」 — 다음 행동 한 줄', btns.map(titleOf));
   const on = seat([ROW]);
   const live = walk(on).filter((n) => String(n.className || '').includes('redo-banner__btn'));
   ok(live.every((b) => b.disabled === false && titleOf(b) === ''),

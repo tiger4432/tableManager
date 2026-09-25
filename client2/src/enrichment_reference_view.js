@@ -341,7 +341,7 @@ function installSelectionKeys() {
  *    주석이 그 둘을 구별한다고 적고 있었는데 코드가 안 그랬습니다(깔끔 ①: 이 줄이 참인가).
  */
 function rowCountText(rowCount) {
-  return isCount(rowCount) ? `${rowCount}행` : '';
+  return isCount(rowCount) ? `${rowCount} rows` : '';
 }
 
 // ── C-108 ② 표마다 «마지막 탭» ────────────────────────────────────────────────────────
@@ -459,7 +459,7 @@ function render(results) {
     const { view, payload, error } = entry;
     const section = document.createElement('section'); section.className = 'reference-view-section';
     if (error || !payload.rows?.length) {
-      const empty = document.createElement('div'); empty.className = 'reference-view-empty'; empty.textContent = error || '참조 행이 없습니다.'; section.appendChild(empty);
+      const empty = document.createElement('div'); empty.className = 'reference-view-empty'; empty.textContent = error || 'No reference rows'; section.appendChild(empty);
     } else {
       const table = document.createElement('table'); table.className = 'reference-view-table';
       table.dataset.view = String(index);
@@ -589,7 +589,7 @@ export async function showReferenceView() {
   if (!activeRule) return;
   activateReferenceTab();
   const row = selectedRow();
-  if (!row) { elements.referenceViewContent.textContent = '그리드에서 참조할 행을 먼저 선택하세요.'; return; }
+  if (!row) { elements.referenceViewContent.textContent = 'Select a row in the grid first'; return; }
   // 🔴 C-73. THE BIND IS EVERY COLUMN THE DERIVED TABLE DECLARES, NOT JUST THE DECISION KEY.
   //    S-163 widened the server: a reference view may bind any declared column, and a key it
   //    was not told about now comes back 400 BY NAME. Binding the decision key alone made
@@ -607,15 +607,15 @@ export async function showReferenceView() {
   // 🔴 THE EMPTINESS TEST STAYS ON THE DECISION KEY ALONE. Any other declared column is allowed
   //    to be blank -- that is what the view is being asked about -- and testing all of them
   //    would refuse to open the panel for exactly the rows an operator opens it for.
-  if ((activeRule.decision_key || []).some(column => String(valueOf(row, column)).trim() === '')) { elements.referenceViewContent.textContent = '선택 행의 결정 키가 비어 있어 참조뷰를 조회할 수 없습니다.'; return; }
+  if ((activeRule.decision_key || []).some(column => String(valueOf(row, column)).trim() === '')) { elements.referenceViewContent.textContent = 'The selected row has an empty decision key · no reference view'; return; }
   const sequence = ++requestSequence;
-  elements.referenceViewContent.textContent = '참조뷰 조회 중…';
+  elements.referenceViewContent.textContent = 'Loading reference views…';
   const results = await Promise.all((activeRule.reference_views || []).map(async (view, index) => {
     try {
       const res = await fetch(`${API_BASE}/enrichment/rules/${encodeURIComponent(activeRule.name)}/references/${index}?params=${encodeURIComponent(JSON.stringify(params))}`);
       const payload = await res.json();
       return res.ok ? { view, payload } : { view, error: payload.detail || `HTTP ${res.status}` };
-    } catch { return { view, error: '참조뷰 요청에 실패했습니다.' }; }
+    } catch { return { view, error: 'Reference view request failed' }; }
   }));
   if (sequence === requestSequence) render(results);
 }

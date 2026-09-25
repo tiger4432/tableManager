@@ -1,6 +1,7 @@
 import { createGrid } from 'ag-grid-community';
 import { pageLimit } from './config.js';
 import { state, updateVisibleColIndexMap, joinResolvedColumn, visibleRangeColIds } from './state.js';
+import { notANumber } from './ui_words.js';
 // C-107. 「쓸 수 있나」는 한 규칙이 답합니다 — 편집 진입도 쓰기의 문입니다.
 import { writeRefusal } from './write_guard.js';
 import { elements } from './dom.js';
@@ -394,8 +395,8 @@ export function updateOffscreenIndicator() {
     // Saying it is the whole point. A column that scrolled out of view with nothing on
     // screen to say so reads as a column that is GONE, and the next question is asked of
     // the table config rather than of the scrollbar.
-    badge.textContent = count > 0 ? `+${count}열 →` : '';
-    badge.title = count > 0 ? '가로 스크롤로 갈 수 있습니다' : '';
+    badge.textContent = count > 0 ? `+${count} cols →` : '';
+    badge.title = count > 0 ? 'Scroll right to reach them' : '';
     badge.style.display = count > 0 ? '' : 'none';
   }
   // 🔴 THE BAR IS NO LONGER TOGGLED HERE. It now also holds the Tx filter banner, whose
@@ -429,7 +430,7 @@ export function renderFilterBar() {
       // Phase 0: the banner's own close button, not a private one that looks like it.
       remove.className = 'clear-banner-btn';
       remove.textContent = '✕';
-      remove.title = `${colId.toUpperCase()} 필터 해제`;
+      remove.title = `Clear the ${colId.toUpperCase()} filter`;
       remove.addEventListener('click', () => {
         // `setColumnFilterModel` is async in AG-Grid 33+ and synchronous before it. Wrapping
         // in `Promise.resolve` means the refresh lands AFTER the model actually changed on
@@ -542,8 +543,8 @@ export function foldFilterChips() {
   //    entirely, and that filter can then only be cleared by clearing all of them. The label's
   //    ellipsis, already configured, does the rest once the chip is allowed to be narrow.
   if (chipsOpen && all.length) {
-    more.textContent = '접기';
-    more.title = '한 줄로 접기';
+    more.textContent = 'Fold';
+    more.title = 'Fold to one line';
     more.style.display = '';
     showChipsPanel(all, bar, more);
     return;
@@ -581,8 +582,8 @@ export function foldFilterChips() {
   hidden.forEach(chip => { chip.style.display = 'none'; });
   // Said, not swallowed: a filter that is hiding rows with nothing on screen to name it reads
   // as data that is GONE, and the next question gets asked of the table instead of the strip.
-  more.textContent = `+${hidden.length} 필터`;
-  more.title = '눌러서 펼치기';
+  more.textContent = `+${hidden.length} filters`;
+  more.title = 'Click to unfold';
   more.style.display = hidden.length ? '' : 'none';
 }
 
@@ -746,7 +747,7 @@ function joinResolvedFilterDef(entry, baseTooltip) {
     ? entry.unresolved_label : '';
   // Removing `Blank` without saying what replaced it just moves the dead end. This rides
   // the header tooltip that already exists on both paths rather than adding any control.
-  const hint = label ? `\n미해결 행 보기: 필터를 Equals로 두고 '${label}' 입력` : '';
+  const hint = label ? `\nUnresolved rows: filter Equals '${label}'` : '';
   return {
     filter: 'agTextColumnFilter',
     filterParams: { filterOptions: JOIN_RESOLVED_FILTER_OPTIONS },
@@ -859,7 +860,7 @@ export function buildColumnDefs() {
           } else {
             const parsed = Number(params.newValue);
             if (isNaN(parsed)) {
-              alert(`컬럼 '${col}'의 값 '${params.newValue}'은(는) 올바른 숫자 형식이 아닙니다.`);
+              alert(notANumber(col, params.newValue));
               return false;
             }
             finalVal = parsed;
@@ -978,8 +979,8 @@ export function buildColumnDefs() {
     const isTime = vc.type === 'datetime';
     const unresolved = typeof vc.unresolved_label === 'string' ? vc.unresolved_label : '';
     const rightTable = vc.right_table || '?';
-    const baseTooltip = `${col.toUpperCase()} — '${rightTable}' 조인 컬럼 (읽기 전용)\n`
-      + `값을 고치려면 '${rightTable}' 테이블에서 수정하세요. 선언: ${vc.rule || '?'}`;
+    const baseTooltip = `${col.toUpperCase()} — join column from '${rightTable}' (read-only)\n`
+      + `Edit the value in '${rightTable}'. Rule: ${vc.rule || '?'}`;
 
     // 🔴 KEYED OFF `join_resolved_columns`, NOT off `vc` — even though `vc` carries an
     // `unresolved_label` too and would have been the convenient read. The announcement is

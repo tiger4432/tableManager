@@ -112,7 +112,7 @@ console.log('\n[1] one view — the table has a title even with no tab strip');
   eq('the first table gets a band', 1, bands().length);
   ok('...carrying the view label verbatim', bandText(0).includes('후보'),
     bandText(0));
-  ok('...and the row count beside it', bandText(0).includes('3행'),
+  ok('...and the row count beside it', bandText(0).includes('3 rows'),
     bandText(0));
   // 🔴 THE POINT OF THE ROUND: with one panel the tab strip is hidden, so before this the
   //    name lived nowhere at all.
@@ -193,7 +193,7 @@ console.log('\n[4] the words are the response\'s, and a missing count is blank')
   //    왔다」인데, 종전 코드가 그 둘을 «같이» 비워 두고 바로 위 주석이 구별한다고 적고
   //    있었습니다. 지우지 «않고» 반대로 세웁니다 — 지우면 새 규칙이 안 재집니다.
   renderReferenceResults([primary('빈', 0)]);
-  ok('zero rows is a measurement and says so', bandText(0).includes('0행'),
+  ok('zero rows is a measurement and says so', bandText(0).includes('0 rows'),
     bandText(0));
   ok('...but the name is still there', bandText(0).includes('빈'),
     bandText(0));
@@ -382,15 +382,15 @@ function c108Suite(mod) {
 
   // ── ① 행 수 배지 ──────────────────────────────────────────────────────────────────
   say('T1 the tab says how many rows its own table has',
-    countOf(tabsOf()[0]) === '2행' && countOf(tabsOf()[2]) === '3행',
+    countOf(tabsOf()[0]) === '2 rows' && countOf(tabsOf()[2]) === '3 rows',
     tabsOf().map((b) => `${nameOf(b)}=${countOf(b)}`).join('|'));
-  say('T2 a measured zero is a number, not a blank', countOf(tabsOf()[1]) === '0행',
+  say('T2 a measured zero is a number, not a blank', countOf(tabsOf()[1]) === '0 rows',
     countOf(tabsOf()[1]));
   say('T3 a refused view counted nothing, and its tab says nothing',
     countOf(tabsOf()[3]) === '', countOf(tabsOf()[3]));
   // 🔴 한 수를 두 자리가 적으면 언젠가 갈라집니다. 같은 함수를 지나는 것이 그 답입니다.
   say('T4 the band over the table says the same number as the tab',
-    bandText(0).includes('2행') && bandText(1).includes('0행'),
+    bandText(0).includes('2 rows') && bandText(1).includes('0 rows'),
     `${bandText(0)} / ${bandText(1)}`);
 
   // ── ② 표마다 마지막 탭 ────────────────────────────────────────────────────────────
@@ -480,8 +480,8 @@ const C108_MUTANTS = [
   // 🔴 THE OLD BEHAVIOUR, PUT BACK: `0` and 「nothing came」 render identically again.
   { id: 'M5', what: 'a measured zero goes blank again',
     catches: 'T2 a measured zero is a number',
-    mutate: (text) => swap(text, '  return isCount(rowCount) ? `${rowCount}행` : \'\';',
-      '  return rowCount ? `${rowCount}행` : \'\';') },
+    mutate: (text) => swap(text, '  return isCount(rowCount) ? `${rowCount} rows` : \'\';',
+      '  return rowCount ? `${rowCount} rows` : \'\';') },
   { id: 'M6', what: 'the memory holds a POSITION instead of a name',
     catches: 'T8 ...even after the views are reordered',
     mutate: (text) => swap(
