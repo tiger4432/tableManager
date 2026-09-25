@@ -4291,19 +4291,6 @@ def retry_failed_outbox_events(event_id: int = None, transaction_id: str = None,
         skipped_uuids = {e.event_uuid for e in already_expanded}
         failed_events = [e for e in failed_events if e.event_uuid not in skipped_uuids]
 
-    if not failed_events:
-        msg = "No matching failed outbox events found."
-        if already_expanded:
-            msg = (
-                f"{len(already_expanded)} matching event(s) are collapsed chunks that "
-                f"were already re-expanded into per-row events; retry those children "
-                f"by their '<transaction_id>#row#' ids instead. Nothing was reset."
-            )
-        # A refusal is not a success: a screen reading "success" shows a success toast for a
-        # retry that reset nothing (총괄 e573a6edf ②).
-        return {"status": "refused" if already_expanded else "success", "message": msg,
-                "skipped_reexpanded": len(already_expanded)}
-
     import outbox_expand
 
     gone = []
@@ -4329,15 +4316,24 @@ def retry_failed_outbox_events(event_id: int = None, transaction_id: str = None,
             event.payload = payload_copy
             
     db.commit()
-    msg = f"Successfully reset {len(failed_events) - len(gone)} failed events to PENDING."
+    reset = len(failed_events) - len(gone)
+    said = []
+    if reset:
+        said.append(f"Reset {reset} failed event(s) to PENDING.")
     if already_expanded:
-        msg += (f" Skipped {len(already_expanded)} already-re-expanded collapsed "
-                f"chunk(s); their rows are queued individually.")
+        said.append(f"Skipped {len(already_expanded)} collapsed chunk(s) already re-expanded "
+                    f"into per-row events; retry those children by their "
+                    f"'<transaction_id>#row#' ids.")
     if gone:
-        msg += (f" Skipped {len(gone)} row event(s) whose row no longer exists "
-                f"(ids {gone[:5]}); there is nothing to retry them with.")
-    return {"status": "success", "message": msg,
-            "skipped_reexpanded": len(already_expanded)}
+        said.append(f"Skipped {len(gone)} row event(s) whose row no longer exists "
+                    f"(ids {gone[:5]}); there is nothing to retry them with.")
+    # 🔴 THE ONE PLACE THE STATUS IS DECIDED (총괄 e573a6edf ② · ec99f75a6): nothing reset is
+    #    not a success, whichever branch left it at zero - a screen reading "success" shows a
+    #    success toast. A mix says what it did and what it did not, and is a success.
+    return {"status": "success" if reset else "refused",
+            "message": " ".join(said) or "No matching failed outbox events found.",
+            "reset": reset, "skipped_reexpanded": len(already_expanded),
+            "skipped_missing_row": len(gone)}
 
 # 대기열 목록이 «훑는» 행 수의 상한. 목록은 진단용이고, 이 수를 넘겨 읽어야 답이 갈리는
 # 질문은 이 화면에 없다. 잘렸다는 사실은 응답의 `listed.capped` 로 «말한다».

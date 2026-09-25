@@ -108,7 +108,13 @@ def test_actual_snapshot_enumerates_every_registry_and_declaration(active_setup)
     assert by_kind["mapper"] == {
         f"{source_id}#mapper"
         for source_id in active_setup.snapshot.registries["mappers"]}
-    assert by_kind["source_plan"] == set(active_setup.snapshot.registries["sources"])
+    # A source the loader refused has no plan to show and is not a node; it is refused BY
+    # NAME in its plan (총괄 0367926b6 - since S-177 a view source is refused by design, which
+    # this box's declaration has nine of). Refused or not, every declared source is accounted.
+    plans = active_setup.snapshot.source_plans
+    assert by_kind["source_plan"] == {s for s, p in plans.items() if p.planned}
+    assert set(active_setup.snapshot.registries["sources"]) == set(plans)
+    assert all(dict(p.refusal or {}).get("message") for p in plans.values() if not p.planned)
     assert by_kind["verified_join"] == set(active_setup.snapshot.registries["verified_joins"])
     # WAS `== set(bundle["tables"])`. That section no longer exists -- the ledger stopped
     # keeping a copy of the physical schema -- so the subject of this assertion is now the
@@ -1718,7 +1724,7 @@ def test_deletion_preview_names_the_declaration_that_stops_being_read(
 # --------------------------------------------------------------------- authoring plan
 
 
-def test_derivations_rebuild_by_force_what_the_operator_typed_by_hand(active_setup):
+def test_derivations_rebuild_by_force_what_the_operator_typed_by_hand():
     """The acceptance question: does the screen produce the live artifact with less work?
 
     Every field the plan calls `derived` with `comparison == "equal"` is deleted from the
@@ -1729,12 +1735,14 @@ def test_derivations_rebuild_by_force_what_the_operator_typed_by_hand(active_set
     import copy
 
     from ledger.config_authoring import authoring_plan
-    from ledger.setup import live_physical_catalog
-    from ledger.setup_bundle import validate_bundle_errors
+    from ledger.setup_bundle import load_physical_catalog, validate_bundle_errors
+    from tests.support.ontology_explorer_sample import SAMPLE_CATALOG, SAMPLE_ROOT
 
-    catalog = live_physical_catalog()
-    original = json.loads(
-        (DEFAULT_ONTOLOGY_ROOT / "ledger_config.json").read_text(encoding="utf-8"))
+    # The tracked sample, not this box's gitignored declaration (총괄 0367926b6): what is
+    # measured is "these fields had no degrees of freedom", which is true of any declaration
+    # that validates - and the box's does not, by design, since its view sources are refused.
+    catalog = load_physical_catalog(SAMPLE_CATALOG)
+    original = json.loads((SAMPLE_ROOT / "ledger_config.json").read_text(encoding="utf-8"))
     assert not validate_bundle_errors(original, catalog=catalog)
 
     reduced = copy.deepcopy(original)

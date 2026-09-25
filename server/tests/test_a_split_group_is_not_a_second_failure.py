@@ -99,6 +99,31 @@ def test_a_leaf_whose_row_is_gone_is_left_and_named(retro_env):
     assert leaf.status == "FAILED" and "no longer exists" in out["message"]
 
 
+@pytest.mark.parametrize("case, status, reset", [
+    ("parents only", "refused", 0), ("row-less leaf only", "refused", 0),
+    ("mixed", "success", 1), ("nothing matches", "refused", 0)])
+def test_the_status_says_whether_anything_was_reset(retro_env, case, status, reset):
+    """총괄 ec99f75a6 - one place decides: nothing reset is refused, whichever branch left it
+    at zero; a mix says what it did and what it did not."""
+    parent = _event(retro_env, {"transaction_id": "txp", "row_ids": ["r1", "r2"],
+                                "error_log": {"reason": "boom", "reexpanded_into": 2}})
+    row, leaf = _leaf_of(retro_env, "bad")
+    retro_env.delete(row)
+    plain = _event(retro_env, {"transaction_id": "txq", "error_log": {"reason": "boom"}})
+    retro_env.flush()
+    target = {"parents only": dict(event_id=parent.id),
+              "row-less leaf only": dict(event_id=leaf.id),
+              "mixed": {}, "nothing matches": dict(event_id=10 ** 9)}[case]
+
+    out = main.retry_failed_outbox_events(db=retro_env, **target)
+
+    assert (out["status"], out["reset"]) == (status, reset), out["message"]
+    if case == "mixed":
+        assert plain.status == "PENDING"
+        assert (out["skipped_reexpanded"], out["skipped_missing_row"]) == (1, 1)
+        assert "Skipped" in out["message"] and "Reset 1" in out["message"]
+
+
 def test_attempts_are_named_for_the_round_they_count(retro_env):
     """총괄 bb6795759 ③ - the count a retry sets back to 0 is this round's attempts."""
     first = _event(retro_env, {"transaction_id": "tx5"})
