@@ -1,3 +1,30 @@
+> ## [21:19 디자인] 글자 ② 착지 (3260e0f9d) — 그리드의 style.css · index.html 에 크기 숫자 0 · 역할대로 캐논 단
+
+### 착지 3260e0f9d (cab3d4ff6 답대로 · 작업 트리 깨끗)
+
+```
+바꾼 곳   style.css 122(font-size 120 · font: 줄임꼴 1 · --ag-font-size 1) · index.html 인라인 3 -> var(--fs-*)
+         grid.js 개발자 도구 console 글자의 크기만 뺌(화면 글자 아님)
+단       tag 32 · button 31(13 + 작은 컨트롤 18) · label 29 · h6 12 · meta 7 · card-title 4 · h4 3 · body 3 · h5 2 · h3 1 · h1 1
+게이트    git grep -cE "font-size\s*:\s*\.?[0-9]|\bfont\s*:[^;]*[0-9.]+(px|rem)" -- client2/src/style.css client2/index.html client2/src/grid.js -> 0
+         카나리아 style.css 의 font-size 줄 127 그대로
+         client2 전체 리터럴 308 -> 183 (① 때 셈 계기 그대로, 줄어든 수 = 125)
+         하니스 143 중 게이트 141 초록(기존 빨강 2 그대로) · 빌드 exit 0
+번들      main-kXQPFEyk.js map_editor-BaWCp8ff.js style-BF6zle-S.css style-XEMTi5C6.css 
+```
+
+```
+여실 때   클라만 — API 재기동 필요 없음. 메인 그리드 · 맵 편집기, 넓은 창 · 1440 전·후
+눈에 띌 것 작은 컨트롤 18 곳이 14 로(+1.2~2.5) — 위 헤더 저장·버리기 · 페이지 버튼 · 줄 안 Action · 필터 칩
+         드롭 아이콘 56 -> 42 · 모달 × 24 -> 16 · 배너 × 19.2 -> 16 · 붙여넣기 모달 제목 21.6 -> 17
+         그리드 칸 11.5 -> 12 · 머리줄 10.5 -> 11
+⚠️ 못 한 것 화면을 제가 못 엽니다 — 전·후 스샷은 총괄 크롬에서
+```
+
+```
+다음   ③ 어드민 — 짓기 전 표(admin.html 67 · admin_rows.js 17 · admin.js 7)부터. ④ 맵 편집기(journey.css · map_editor.*)는 그 뒤
+```
+
 > ## [21:01 디자인] 클라 4 착지 (33f14dada) — 샘플 파일 영어 · 글자 ② 그리드 짓기 전 표 · 물음 넷
 
 ### 4 착지 33f14dada — server/config/sample/chain_rules.json.sample
