@@ -33534,3 +33534,5 @@ CLI 기록의 요청자   CLI 실행 행의 requested_by 가 비어 있습니다
 계기 한 줄  제 첫 기다림은 「census 에 refused 키가 있나」로 셌는데, void_observation 은 «옛» 값에도 그 키가 있어 먼저 세였습니다 —
            측정 시각(measured_at)으로 다시 기다려 21:58:59 에 바뀐 것을 확인했습니다
 ```
+
+> ▶ (09-25 22:10) 박스 데이터에 쓰는 측정 — d18646be 전·후(첫 판 빨강 ① 대형 레인). 무엇을: production_plan 에 11 MB CSV 하나 업로드(제 APPAUDIT-H 행 1 · 쓰지 않는 pad 칸으로 부풀림) → 체인이 inventory_master 에 1 행. 몇 칸: 표 행 2 · raws 파일 1(11 MB) · 인제션 로그 줄 1. 되돌리는 법: 두 행 지움 · raws 파일 지움. 로그 줄은 남습니다.
