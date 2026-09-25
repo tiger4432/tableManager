@@ -58775,3 +58775,89 @@ id 정렬     _named_sort 의 id — 모델에 business_key_val 이 있으면 �
 서버 시험 test_doe_zone_model 이 vectors.json 에서 읽는 것은 *_cases 여섯뿐 — ignored_headers 는 안 읽음
    집합을 «넓히는» 변경은 서버 시험에 닿지 않습니다 (키 이름이 그대로라서)
 ```
+
+---
+
+## [09-25 15:35] 구현자 — 대기열 (b73255fc5 · 1b829bcbe): 짓기 «전» 보고 — A 자리 · 상태 읽는 자리 · B 표 · ① 문 · ② 안 셋
+
+### A — 줄을 «빼는» 자리
+
+```
+센 것   추적 비시험 모듈 277 파일 AST — `<x>.processed_chain = …` 대입 8
+        chain/ingestion_worker.mark_processed 1 (정본) · main.retry_failed_outbox_events 1 (재시도 — False 로 되돌림, 뺌이 아님) ·
+        scripts/outbox_triage.cancel 1 (명령줄) · run_auto_update.py «5»
+run_auto_update 의 다섯 — 지시의 「넷」과 다릅니다
+   handle_retroactive_trigger   chain_replay 초인종 찍기      플래그만 (상태 · 시각 없음)
+                                소급 실행 시작                플래그만
+                                실패                        FAILED + 플래그 (시각 없음)
+   run (지금 수집)               성공                        플래그만
+                                실패                        FAILED + 플래그 (시각 없음)
+이 박스  «끝났는데 PENDING» 24 줄 = 전부 RETROACTIVE_RUN · processed_at 비어 있음 · 09-22 22:02 ~ 09-23 00:49
+        chain_state_of 가 「끝남 + unexpected_status:PENDING」으로 읽음. 7일 청소로 사라짐 — 안 치웁니다
+상태 칸을 읽어 «그리는» 자리  event_constants.chain_state_of 하나 — 부르는 곳 main 의 /outbox/queue/rows 하나
+   그 밖에 status 를 읽는 셋은 «거르는» 질의 (재시도 · 실패 목록 · 미전달 표식) — 그리지 않음
+```
+
+### A 의 물음 — mark_processed 를 스케줄러가 «어떻게» 지나나
+
+```
+사실   스케줄러(run_auto_update)는 chain.ingestion_worker 를 import 하지 않습니다. 하면 그 프로세스에 1.64 s + 워커 모듈 전체가 붙습니다
+㉮ 스케줄러가 ingestion_worker 를 import (지시 문장 그대로)        크기 — 다섯 자리 + import 한 줄. 위험 — 위의 무게
+㉯ mark_processed 를 chain_state_of 옆(event_constants)으로 옮기고 ingestion_worker 는 거기서 import (추천)
+   쓰는 자리와 읽는 자리가 같은 두 칸(status · processed_chain)을 한 모듈에서 다룹니다. 함수는 여전히 하나
+   크기 — 함수 이동 + 다섯 자리 + ingestion_worker 의 import 한 줄. 위험 — 지시가 이름 댄 위치와 다름 (그래서 여쭙니다)
+```
+
+### B — 대기열 패널(/admin/chain/queue)에서 회색으로 그리는 줄 전수
+
+```
+센 것   client2/admin.html 의 <style> 에서 --text-dim 인 chain-queue-* · outbox-queue-* 선택자 8 (다른 CSS 8 파일엔 0)
+박스    그 라우트 함수를 별도 프로세스에서 불러 응답을 봄 (토큰 게이트는 그대로 — 98c8d7fdf). 지금 대기 0 줄
+```
+
+| 줄 | 데이터 출처 | 언제 사라지나 | 영원히 남나 |
+|---|---|---|---|
+| headline-sub | outbox 대기 질의 (DB) | 새로 고칠 때마다 다시 계산 | 아니오 |
+| headline-running 「Running chains …」 | API 프로세스의 메모리 registry | 체인 워커가 따로 돌면 «안 바뀜» | 예 — 박스 재현: `loop_in_this_process false · running []` -> 「No loop in this process」 |
+| headline-log 「Log …」 | API 프로세스의 로그 파일 이름 | 안 바뀜 | 예 — 박스 재현: `server.log`. 체인 일은 워커 로그에 적히므로 «엉뚱한 파일»을 가리킵니다 |
+| headline-basis 「Every …」 | 스케줄러 대기의 수집 주기 | 스케줄러 줄이 대기할 때만 보임 | 그 동안은 상수라 참 — 지금 대기 0 이라 못 재현 |
+| headline-ahead | 스케줄러 대기 수 (waiting_count) | 대기가 빠지면 | 못 재현 |
+| blocked-fact | 도는 소급 실행 (retroactive.in_flight) | 실행이 끝나면 | 실행 행이 «돌기»로 남고 프로세스가 죽었으면 남을 수 있음 — 못 재현 |
+| row-owners | 대기 거래의 주인 | 줄이 빠지면 | 위 24 줄은 «대기»가 아니라 여기 안 뜸 — 못 재현 |
+| truncated | 훑은 줄 수가 상한(200)에 닿음 | 줄어들면 | 못 재현 |
+
+```
+회색은 아니지만 같은 병 — 「Loop Unknown · Mapper never reloaded」(headline-restart) · Chain 탭 규칙 16 개 「never_evaluated」
+   둘 다 API 의 메모리 registry — 박스 재현: loop_uptime · mapper_reload · purge 셋 다 null · rule_outcomes {}
+```
+
+### ① 워커가 자기 상태를 «프로세스 밖»에 내놓는 문 — 있습니다
+
+```
+문     utils/heartbeat — 워커마다 파일 하나 (beat · record_lap 의 laps). API 는 /health 에서 heartbeat.read_all 로 이미 읽음
+이미 건너오는 것   체인 워커 heartbeat 의 laps — chain(루프 한 바퀴 시각 · 초) · outbox_purge · replay_sweep · listen · ledger_followup · ledger_census
+안 건너오는 것     매퍼 재적재 시각 · running 목록 · rule_outcomes
+제안   Loop 와 purge 는 이미 있는 laps 로 채움 · 재적재 시각은 chain lap 에 한 칸 더 · running 은 수와 가장 오래된 나이만 lap 에
+      rule_outcomes(규칙마다 결과 + 사유 문장)는 파일이 커지므로 «안 그림»(눈먼 칸은 비움)을 추천 — 여쭙니다
+크기   안 쟀다 (API 쪽 읽기 한 곳 + 워커 lap 두 칸 정도로 봅니다)
+```
+
+### ② 이틀 지난 실패 81 — 소유자께 올릴 안 셋
+
+```
+ㄱ 기간으로 가름   「지금」은 최근 N 시간 실패만, 그 전은 「이전 실패 81」 한 줄로 접음
+   운영자  할 일 없음. 좋은 점 — 오래된 것이 붉게 안 섬. 위험 — N 을 정해야 함. 크기 — 안 쟀다 (질의 인자 + 화면)
+ㄴ 요약 한 줄      같은 (표 · 종류 · 날)을 한 줄로 — 「dt_inventory EDIT 81 · 09-23 00:27–00:39 · 재시도 1」
+   운영자  할 일 없음. 좋은 점 — 81 줄이 1 줄. 위험 — 없음에 가까움. 크기 — 안 쟀다 (묶는 질의 하나)
+ㄷ 치우기 버튼     운영자가 「확인함」을 누르면 목록에서 빠짐 (행에 확인 표시를 남김)
+   운영자  누름. 좋은 점 — 운영자가 끝을 정함. 위험 — 새 칸(기록) · 되돌리기 필요. 크기 — 가장 큼, 안 쟀다
+추천   ㄴ (+ 필요하면 ㄱ) — 데이터를 안 바꾸고 보이는 모양만 바꿉니다
+```
+
+### 여쭐 것 셋 — 답 받기 전에 안 짓습니다
+
+```
+1  A 의 ㉮ / ㉯
+2  ① rule_outcomes 를 heartbeat 로 건넬지, 비울지
+3  ② 는 소유자께 — ㄱ · ㄴ · ㄷ
+```
