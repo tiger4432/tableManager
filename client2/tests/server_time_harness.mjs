@@ -78,6 +78,13 @@ function suite(mod) {
   //    guard exists for, and it is why the parse returns null instead of a bad Date.
   ok('A5 no rendering ever contains the words Invalid Date',
     ![localStamp('x'), localMinute('x'), localShort('x')].some((s) => s.includes('Invalid')));
+
+  console.log(`${LF}-- what was sent but cannot be read is shown as sent --`);
+  const { localShortOrAsSent } = mod;
+  eq('S1 a readable stamp is the short local form', localShortOrAsSent(SERVED), localShort(SERVED));
+  eq('S2 an unreadable one is the server text', localShortOrAsSent('not a date'), 'not a date');
+  eq('S3 nothing sent is still no time', [null, undefined, ''].map(localShortOrAsSent).join(','),
+    [NO_TIME, NO_TIME, NO_TIME].join(','));
 }
 
 const first = await loadWithProbe(SRC, {});
@@ -113,6 +120,14 @@ const MUTANTS = [
     catches: 'O2 ...by exactly nine hours',
     from: '  const at = new Date(normalised);',
     to: '  const at = new Date(/[Z+]/.test(normalised) ? normalised.replace(/[+-]\\d{2}:?\\d{2}$/, \'Z\') : normalised);' },
+  { id: 'M6', what: 'an unreadable stamp that was sent becomes the no-time mark',
+    catches: 'S2 an unreadable one is the server text',
+    from: '  return local === NO_TIME && sent ? String(value) : local;',
+    to: '  return local;' },
+  { id: 'M7', what: 'nothing sent is drawn as the text of nothing',
+    catches: 'S3 nothing sent is still no time',
+    from: '  return local === NO_TIME && sent ? String(value) : local;',
+    to: '  return local === NO_TIME ? String(value) : local;' },
   { id: 'M5', what: 'CONTROL: a comment line is removed', control: true,
     from: '/** 「그릴 것이 없다」 — 이 파일이 짓는 유일한 글자. 값이 아니다. */',
     to: '/** */' },

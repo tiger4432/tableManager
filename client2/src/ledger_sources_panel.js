@@ -88,13 +88,8 @@ function unaccountedOf(s) {
 }
 
 import { backlogCells, censusRefusal } from './source_backlog.js';
-import { NO_TIME, localShort } from './server_time.js';
-
-/** 서버 시각 -> 보는 쪽 벽시계. census 의 `measured_at` 과 «같은 함수»입니다 — 한 사실에 시계 하나. */
-function localOrAsSent(value) {
-  const local = localShort(value);
-  return local === NO_TIME ? String(value) : local;
-}
+// 서버 시각 -> 보는 쪽 벽시계. census 의 `measured_at` 과 «같은 함수»입니다 — 한 사실에 시계 하나.
+import { localShortOrAsSent } from './server_time.js';
 
 /**
  * `translator_ver` — 「지우면 틀리게 읽나」: 예. 소스끼리 다른 선언으로 번역됐다는 것이 이 값뿐입니다.
@@ -191,7 +186,7 @@ export function sourcesView(payload, opts = {}, census = {}, names = {}) {
     //    (S-113: S-76 뒤 아무도 그 칸을 안 썼고, 화면은 얼어붙은 수를 현재형으로 말했습니다).
     //    빈 칸으로 두지 «않습니다» — 빈 칸은 「안 쟀다」이고, 이건 「이제 그런 수가 없다」입니다.
     moleculesRefused: localeCountText(s && s.molecules_refused),
-    updatedAt: (s && s.updated_at) ? localOrAsSent(s.updated_at) : ABSENT,
+    updatedAt: (s && s.updated_at) ? localShortOrAsSent(s.updated_at) : ABSENT,
     // 보조 줄 — 칸을 늘리지 않기 위해 행 안에 둡니다
     translatorVer: (s && s.translator_ver) ? shortVersion(String(s.translator_ver)) : ABSENT,
     translatorVerFull: (s && s.translator_ver) ? String(s.translator_ver) : '',

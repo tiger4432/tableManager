@@ -1006,11 +1006,13 @@ function renderInspector(state) {
     const refusal = censusRefusal(census, names);
     // 🔴 「셀 수가 없다」는 «빈 칸이 아닙니다». 문지기가 사유와 «고칠 자리»를 문장으로 줬고,
     //    그 문장은 여기서 다시 쓰지 않습니다 — 이미 무엇을 선언하면 되는지 말하고 있습니다.
-    //    사유의 «이름»은 서버의 이름표에서 옵니다 — 그 이름이 거절을 말하므로 「refused」 딱지를 따로 달지 않습니다.
+    //    사유의 «이름»은 서버의 이름표에서 옵니다. 「refused」 딱지는 남깁니다 — 이름표에 없는 코드는
+    //    키 그대로 나오고, 딱지가 없으면 그것이 수 옆의 칸 이름과 구별되지 않습니다.
     if (refusal) {
       const why = h('span', 'oe-backlog-cell');
       why.setAttribute('data-refused', refusal.reason);
-      why.append(h('span', 'oe-backlog-value', refusal.name));
+      why.append(h('code', 'oe-backlog-name', 'refused'),
+                 h('span', 'oe-backlog-value', refusal.name));
       if (refusal.remedy) why.title = refusal.remedy;
       line.append(why);
     }

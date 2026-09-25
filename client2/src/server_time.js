@@ -79,3 +79,13 @@ export function localShort(value) {
   const p = parts(at);
   return `${p.M}-${p.d} ${p.h}:${p.m}:${p.s}`;
 }
+
+/**
+ * `localShort`, 다만 서버가 «보낸» 글자를 못 읽으면 그 글자 그대로 — `NO_TIME` 은 «안 보낸» 것에만.
+ * 소스 현황의 두 시각(census `measured_at` · Last)이 이 한 함수를 지납니다(총괄 bed890af2).
+ */
+export function localShortOrAsSent(value) {
+  const local = localShort(value);
+  const sent = value !== null && value !== undefined && String(value).trim() !== '';
+  return local === NO_TIME && sent ? String(value) : local;
+}
