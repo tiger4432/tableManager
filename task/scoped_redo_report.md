@@ -60279,3 +60279,150 @@ run_here 한 곳에서 접으면 Ctrl-C 가 「취소」와 같은 말이 됨 �
 ```
 
 그동안 박스 설정 시험(시험 1 · 시험 2 를 추적 픽스처로)을 합니다.
+
+---
+
+## [구현자 -> 총괄] ㉤ 착지 — 거절 소스의 셈이 거절 문장으로 · 쉼은 스캔한 소스에만 (7426f76b0 · 3b3b6803f) — 519b0d751
+
+```
+거름 한 함수   backfill.census_sources -> (재는 소스, 은퇴한 소스). 셈 바퀴와 CLI 의 measure_every_source 가 같이 부름
+              재는 소스 = status active 전부(로더가 거절한 것 포함) · 건너뛰는 것 = 은퇴한 것만
+저장           거절 셈은 지문을 안 부르고 write_row_census(translator_ver=None) -> 있는 행만 UPDATE, 새 행 0
+쉼             바퀴가 셈의 답을 읽음 — 답이 거절이면 쉼 없이 다음 소스 (스캔 0)
+바퀴 줄         「refused by the loader (no scan): …」 · 「retired (content unvalidated): …」 는 은퇴한 것만
+```
+
+### 게이트
+
+| 칸 | 시험 | 변이 |
+|---|---|---|
+| 거절 소스를 잼 · 지문 없이 저장 · 은퇴만 건너뜀 | test_a_refused_source_is_measured_and_stored_without_a_fingerprint | 거름을 runs 로 되돌리면 2 failed · 지문을 부르면 1 failed |
+| 바퀴도 같은 답 · 쉼은 스캔 뒤에만 · 줄에 refused | test_the_worker_lap_measures_what_the_sweep_measures | 바퀴가 자기 거름을 쓰면 1 failed · 거절 소스도 쉬면 1 failed · 줄에 안 적으면 1 failed |
+| 있는 행만 갱신 · 새 행 0 · 지문 무변 (PostgreSQL) | test_a_refused_census_updates_the_row_a_source_has_and_creates_none | 삽입 갈래로 가면 1 failed (run_pg_tests) |
+
+```
+범위   셈·원장 저장·체인 워커를 부르는 시험 160 파일 -> 2604 passed, 31 skipped, 2952 warnings
+PG     run_pg_tests -k census -> 2 passed (변이 없이) (옛 census 시험이 카나리아)
+```
+
+### 박스 (알린 쓰기 — 셈 칸 9)
+
+```
+재기동함   2026-09-25 21:53:53 체인 워커 (새 코드 519b0d751)
+전         거절 9 중 no_row_id 4 · 거절 도장 없이 옛 수 5 · 바퀴 6 개 소스 360.078 s (2026-09-25 21:49:37) · 줄은 거절 소스를 retired 로 적음
+후         거절 도장(source_refused) 9 / 9 · 그 셈 시각이 재기동 뒤인 것 9 / 9
+           정상 6: 거절 도장 0 · 지문 바뀐 것 0 · 새 행 0
+           바퀴 15 개 소스 360.109 s (2026-09-25 21:59:59) · 줄에 「refused by the loader (no scan)」
+           재기동 뒤 「[LedgerCensus] … failed」 0 줄
+처방 문장   bonded_from — the loader refused this source (bundle.sources.bonded_from.relation): source 'bonded_from' reads 'bonding_die_from_core', which is not a table that ha …
+```
+
+### 검수 빨강 하나 (c579504eb) — 634f31aa4
+
+```
+test_a_declared_framework_column_is_not_built_twice.py 가 뷰 모델을 «헬퍼»로 거둠(두 싱글턴)
+증명  옛 pop 으로 되돌리면 좌석 시험 1 failed, 4 passed, 7 warnings in 1.45s · 지금 두 파일 초록
+```
+
+### 박스 설정 시험 (0367926b6 의 남은 둘) — ec09a46ab
+
+```
+시험 1 (스냅숏 열거) · 시험 2 (활성화)  박스 온톨로지 대신 «추적 표본»(config/sample 의 선언·카탈로그) + 로더가 거절하는 소스 하나
+          그 소스 = 표본 소스 하나를 복사해 relation 을 표본 카탈로그의 뷰(ledger_events)로 — 거절을 «이름·코드»로 단언
+시험 2 의 이빨  미리보기가 거절 소스를 안 넘기면 1 failed — 이제 박스 거절 소스에 안 기댐
+두 시험 공용 픽스처(copied_root · active_setup)는 그대로 — 그걸 쓰는 다른 시험이 많아 이번엔 안 건드림
+같은 부류(라이브 루트를 이름으로 드는 시험)  10 파일 37 줄 (git grep -c -E "DEFAULT_ONTOLOGY_ROOT|load_setup\(\)" -- tests/) — 정규식 줄 단위 상한, 고치지 않음
+```
+
+### 다음
+
+```
+대형 레인 원인(ㄱ, 짓는 중 — 전 측정 끝: 대형 파일이 대형 레인을 안 탐) -> 대형 레인 병렬
+```
+
+---
+
+## [구현자 -> 총괄] 대형 레인 원인 착지 — 업로드는 raws/ 옆에 다 쓴 뒤 옮김 (126ea5656 ㄱ) — d18646be8
+
+```
+자리     업로드 라우트의 쓰기 한 곳 — 표 작업공간 폴더(raws/ 의 부모, 같은 볼륨, 감시 안 됨)의 「.upload.<hex>」 에 쓰고 os.replace
+         실패하면 임시 파일을 지움. 감시자는 무변
+```
+
+### 게이트
+
+| 칸 | 시험 | 변이 |
+|---|---|---|
+| raws/ 에 «한 번 옮김»으로, 다 쓴 크기로, 그 전엔 raws/ 에 아무것도 없음 · 임시 파일 안 남음 | test_an_upload_appears_in_raws_only_whole (새 파일 — 업로드 라우트를 부르는 시험이 전에는 0) | 제자리 쓰기로 되돌리면 1 failed · 임시를 raws/ 안에 두면 1 failed |
+| 쓰다 실패할 때 임시를 지움 | 시험 없음 | — |
+
+```
+범위   전체 시험 (main 을 거의 모든 시험이 import) -> 6964 passed, 141 skipped, 3 xfailed, 12109 warnings
+```
+
+### 박스 (알린 대로 — 표 쓰기 0, FAILED 기록 한 줄씩)
+
+```
+줄 수는 watcher.log + watcher_stdout.log 합 (같은 줄이 두 파일에 한 번씩)
+파일     11010064 B (문턱 10485760 B) · 모든 행이 target_qty=abc
+전       user(gatebefore)_heavygate_d737524a.csv — 대형 레인 줄 0 · 그 파일을 적은 감시자 줄 10 (카나리아) · file_ingestion_logs 22376 FAILED · 표 행 10 -> 10
+재기동함  22:09:25 API (새 코드 d18646be8) · /health 200 at 22:09:32
+후       user(gateafter)_heavygate_b234ea2d.csv — 대형 레인 줄 2 · 그 파일을 적은 감시자 줄 12 · file_ingestion_logs 22377 FAILED · 표 행 10 -> 10
+         [Watcher.DirectoryWatcher] [2026-09-25 22:09:34,515] INFO - [production_plan] 🐘 Routed to heavy lane queue (size, 11,010,064B): user(gateafter)_heavygate_b234ea2d.csv
+```
+
+### 곁 — 짓지 않음 (읽은 것, 안 잰 것)
+
+```
+auto_update 가 raws/ «안»에 「<이름>.tmp」 로 복사한 뒤 옮김(run_auto_update.execute) — 감시자는 .tmp 의 생성도 이벤트로 받음
+그 .tmp 가 감시자의 1 s 쉼 뒤에도 남아 있으면(복사가 더 길면) 처리 길로 들어감 — 표준 파서는 .tmp 를 안 다룸(is_std_supported)
+그 뒤 무엇이 되는지는 안 쟀음. 같은 수리(raws/ 밖에 쓰고 옮김)가 그 자리에도 맞음
+```
+
+### 다음
+
+```
+대형 레인 병렬 (3f4ce1cc8) — 짓기 전 잼부터: 대형 파일 하나의 파싱 대 쓰기 (이 박스)
+```
+
+---
+
+## [구현자 -> 총괄] 대형 레인 병렬 — 짓기 전 잼과 안 셋 (3f4ce1cc8) — 22:19
+
+결론 먼저: **쓰기가 거의 전부**입니다 (파싱 1.1 % · 쓰기 97.3 %). 지시대로면 ㄱ(워커 N) 그대로 갑니다 — 다만 쓰기 안에 파이썬 연산 몫이 있어 N 배는 안 나올 수 있습니다(안 쟀음). 안 셋 중 하나를 골라 주십시오.
+
+### 잰 것 — 분리 환경(assy_qa, API :8081), 운영 DB 아님
+
+```
+파일     11010053 B · 325959 행 · inventory_master(칸 여섯, 이 표를 트리거로 하는 체인 규칙 없음) · 새 행만
+레인     대형 레인 줄 1 · 결과 SUCCESS · 업로드부터 369.3 s
+청크     326 개 · 합 361.9 s
+단계     apply(쓰기) 352.0 s · parse 4.1 s · commit 1.5 s · 이름 없음 4.2 s
+쓰기 안   side tables 188.6 s · row build 97.8 s · flush 53.8 s · prefetch 3.0 s
+표 행     15 -> 325974 (분리 DB)
+```
+
+```
+읽는 법  row build 는 파이썬 연산(행 모양 짓기) — 스레드끼리 GIL 을 나눔. side tables · flush 는 DB 왕복이 섞임
+        -> 워커 N 이면 DB 쪽은 겹치고 row build 몫은 덜 겹침. 몇 배인지는 N=1 대 N=4 게이트가 잼
+분리 DB  이 잼 전에 분리 DB 에 운영이 이미 가진 마이그레이션 하나(migrations/add_cell_source_origin_row.sql)를 걸었음
+        없던 칸 때문에 첫 시도가 UndefinedColumn 으로 실패 — 분리 DB 의 스냅숏이 그 마이그레이션보다 오래됨. 운영 DB 무변
+```
+
+### 안 셋
+
+| 안 | 무엇 | 좋은 점 | 위험 | 크기 |
+|---|---|---|---|---|
+| ㄱ | 워커 N 이 큐 하나를 같이 읽고, 표 순서는 지금의 작업공간 직렬 락에 맡김 | 가장 작음 | 같은 표 파일 셋이면 락을 기다리는 둘 중 누가 먼저 잡을지 정해지지 않음 -> 표 안 순서가 깨질 수 있음 · 락에서 기다리는 워커는 다른 표도 못 함 | 작음 |
+| ㄴ | 표마다 워커를 정해 둠(표 이름 해시 % N), 워커마다 자기 큐 | 표 안 순서 보장 · 단순 | 큰 표 둘이 같은 워커에 걸리면 줄 섬(동시가 안 됨) | 작음 |
+| ㄷ (추천) | 표마다 FIFO, 워커는 «지금 아무도 안 도는 표»의 가장 오래된 파일을 가져감 | 지시의 도착지 그대로(한 표 한 워커 · 표 안 순서 · 다른 표 동시) · 부딪힘 없음 | 레인 안에 표별 대기열·도는 표 집합을 둠(조건 변수 하나) | 작음~중간 — 안 쟀음 |
+
+```
+칸       ingestion_settings.json 에 워커 수 한 칸, 기본 1 (= 오늘). 레인이 워커를 띄울 때 읽음 -> 바꾸면 감시자 재기동
+         (핫 리로드는 안 지음 — 원하시면 말씀)
+게이트    지시 그대로 — 분리 환경에서
+         서로 다른 표 대형 파일 넷: N=1 과 N=4 의 전체 시간 · 체인 대기열 최고 나이 · 메모리 최고 (나란히)
+         같은 표 대형 파일 둘: 순서 그대로(뒤 파일 값이 이김)
+         변이: 「한 표 한 워커」를 빼면 순서 게이트 빨강
+여쭐 것   ㄷ 로 가도 되나 · 칸 이름(heavy_lane_workers)과 「재기동 때 읽음」이 괜찮은가
+```

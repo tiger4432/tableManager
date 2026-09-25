@@ -33534,3 +33534,21 @@ CLI 기록의 요청자   CLI 실행 행의 requested_by 가 비어 있습니다
 계기 한 줄  제 첫 기다림은 「census 에 refused 키가 있나」로 셌는데, void_observation 은 «옛» 값에도 그 키가 있어 먼저 세였습니다 —
            측정 시각(measured_at)으로 다시 기다려 21:58:59 에 바뀐 것을 확인했습니다
 ```
+
+> ▶ (09-25 22:10) 박스 데이터에 쓰는 측정 — d18646be 전·후(첫 판 빨강 ① 대형 레인). 무엇을: production_plan 에 11 MB CSV 하나 업로드(제 APPAUDIT-H 행 1 · 쓰지 않는 pad 칸으로 부풀림) → 체인이 inventory_master 에 1 행. 몇 칸: 표 행 2 · raws 파일 1(11 MB) · 인제션 로그 줄 1. 되돌리는 법: 두 행 지움 · raws 파일 지움. 로그 줄은 남습니다.
+
+---
+
+## 전·후 — 대형 레인 (d18646be · 첫 판 빨강 ①) · 되돌림 (09-25 22:10)
+
+앞 줄(59845df0c)에 알린 측정입니다. API 는 22:09:28 에 새 코드로 떠 있었습니다(커밋 22:09:15 뒤).
+
+| | 전 (97229cf5c) | 후 |
+|---|---|---|
+| 11,010,119 B CSV → production_plan | 감지 뒤 「Starting pipeline processing」 · 🐘 줄 «없음» | **「🐘 Routed to heavy lane queue (size, 11,010,119B)」** ✓ · 「Ingestion state: QUEUED lane=heavy」 → PROCESSING lane=heavy |
+| 행 도착 · 체인 | 1.6 초 · stock 20 | 1.6 초 · 체인 CREATE SUCCESS |
+
+```
+되돌림   제 production_plan 행 · 체인이 만든 inventory_master 행 지움 · raws 파일(11 MB) 지움 → APPAUDIT 0 · 0 · 파일 0
+        인제션 로그 줄 하나는 남습니다(알린 대로)
+```

@@ -3878,8 +3878,18 @@ async def upload_file(table_name: str, user: str = "Unknown",
     try:
         content = await file.read()
         os.makedirs(os.path.dirname(file_path), exist_ok=True)
-        with open(file_path, "wb") as f:
-            f.write(content)
+        # 🔴 [총괄 126ea5656] THE WATCHER MUST SEE A WHOLE FILE. It sizes a file ONCE, the
+        #    moment it appears in raws/, to pick its lane - written in place, an upload
+        #    appeared before its bytes did and a heavy file took the inline lane. Written
+        #    beside raws/ (same volume, not watched) and moved in whole.
+        temporary = os.path.join(os.path.dirname(target_dir), f".upload.{uuid.uuid4().hex}")
+        try:
+            with open(temporary, "wb") as f:
+                f.write(content)
+            os.replace(temporary, file_path)
+        finally:
+            if os.path.exists(temporary):
+                os.remove(temporary)
         return {"status": "success", "filename": file.filename, "path": file_path}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"File upload failed: {str(e)}")
