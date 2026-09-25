@@ -96,7 +96,9 @@ async function suite({ status: S, board: B }) {
   // ── T Retroactive ──
   eq('T1 N running, and the oldest is the MAX of the unfinished', said(r(S.retroactiveRow(RUNS()))),
     'ok|2 running · oldest 21m');
-  eq('T2 NEGATIVE CONTROL: nothing running says nothing', said(r(S.retroactiveRow(RUNS({ liveCount: 0, rows: [] })))), 'ok|');
+  // lead 909ea2052 ③: an empty cell read the same as an unread one.
+  eq('T2 nothing running says 0 running, not an empty cell', said(r(S.retroactiveRow(RUNS({ liveCount: 0, rows: [] })))),
+    'ok|0 running');
   eq('T3 a source that could not be read makes it grey', r(S.retroactiveRow(RUNS({ failedSources: ['run list'] }))).tone,
     'unknown');
 
