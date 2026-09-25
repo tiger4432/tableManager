@@ -60895,3 +60895,48 @@ on-demand 의 모양   BaseCollector 하위 클래스가 cron_expression 을 안
 그다음     끊긴 실행 칸(수집 도중 죽임)은 응용 레인이 97301b10d 대로 «후» — 제가 따로 죽이지 않음
 되돌리기   git revert 3be5a0dc9 뒤 스케줄러 재기동
 ```
+
+---
+
+## [구현자 -> 총괄] 3-ㄴ 착지 — 재기동을 넘어 마지막 실행이 남고, 끊긴 실행은 FAIL + 사유 (bfcf2a7ba) — 3be5a0dc9
+
+```
+복원       discover_and_load_collectors — 메모리가 비었으면(새 프로세스) 상태 파일이 status_map 을 채움. 복원 자리는 그대로 하나
+끝내기      복원된 RUNNING 중 heartbeat.runner_state(도장) == orphaned -> FAIL · last_error = COLLECTOR_CUT_OFF
+           「The scheduler running this collector stopped before it finished - run it again.」 · last_run 은 끊긴 실행의 시작 그대로
+           도장 없는 옛 RUNNING(unknown) 은 그대로. 쓰는 것은 스케줄러 하나
+로그       [Collector] '<표>/<스크립트>' was RUNNING under <도장>, which is gone - recorded as FAIL
+🔴 더한 한 줄  run() 이 복원 «앞»에서 심박을 한 번 찍음(force)
+           이유 — 전에는 복원이 첫 심박보다 먼저였고, 그 순간 심박 파일은 죽은 스케줄러의 것(60 초 신선)
+           감독자는 2~12 초 안에 되살리므로 판정이 owned -> 끊긴 실행을 못 끝냄. 이 한 줄 없이는 박스 게이트가 안 섬
+스크립트가 없어진 수집기   복원 대상 아님 — 복원은 불러온 수집기만 돎(지금처럼 목록에서 빠짐)
+```
+
+### 게이트 — 시험 (tests/test_collector_off_the_tick.py · 재기동된 스케줄러처럼 run() 으로 기동)
+
+| 칸 (상태 파일 → 되살린 뒤) | 결과 | 변이 |
+|---|---|---|
+| RUNNING · 죽은 도장(그 심박이 아직 신선) -> FAIL + 사유 · last_run 그대로 · 대기열 줄 없음 | 통과 | 끝내기를 빼면 빨강 1 failed · 심박을 복원 뒤로 옮기면 빨강 1 failed |
+| SUCCESS(끝난 줄) -> 그대로 · last_run 그대로 | 통과 | |
+| RUNNING · 도장 없음 -> RUNNING · 대기열 state unknown | 통과 | |
+| 세 칸의 last_run | 통과 | 복원을 빼면 빨강 3 failed |
+
+```
+범위   run_auto_update 를 import 하는 시험 13 파일 -> 277 passed, 367 warnings
+       client 픽스처 시험 전부 (8e331ca17 의 한 줄) -> 705 passed, 1 xfailed
+```
+
+### 박스
+
+```
+재기동함   pid 39864 죽임 07:20:49 -> pid 1432 07:21:01 (스케줄러 자식만 · 도는 수집기가 없을 때)
+제 잼      재기동 전·후 last_run — appaudit_quick 07:20:02 -> 07:20:02 같음 · appaudit_slow 07:12:01 -> 07:12:01 같음 (전 코드: 둘 다 None · PENDING, 응용 7787ec367)
+          나머지 10 줄은 전·후 둘 다 None (응용의 재기동이 이미 지운 것)
+기동 로그   Initialization complete. Active collectors: 12 · 오류 줄 없음 · recorded as FAIL 줄 없음(도는 수집기가 없었음)
+상태 파일   사본 + md5 cf5d5e73bea424838c3325095a9228c1 -> e1924bbce4e551bc920d33177137a0eb (스케줄러가 다시 씀)
+끊긴 실행   수집 도중 죽임 칸은 응용 레인 «후» (97301b10d) — 제가 따로 죽이지 않음
+```
+
+```
+다음   항목 2 짓기. 958d57347 의 물음(「선언된 칸이 빈칸이어도 쓴 것」) 답이 없으면 그 정의로 짓고, 답이 오면 맞춥니다
+```
