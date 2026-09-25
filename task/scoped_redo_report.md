@@ -60812,3 +60812,73 @@ on-demand 의 모양   BaseCollector 하위 클래스가 cron_expression 을 안
           아니면 ㄴ(복원 때 FAIL + 사유로 끝냄, 게이트의 대기열 칸이 바뀜) · ㄷ(풀기 문)
 기다리는 동안   3-ㄴ 은 안 짓고, 다음 순서인 항목 2 의 짓기 전 셈을 이어 갑니다. 답 오면 3-ㄴ 으로 돌아옵니다
 ```
+
+---
+
+## [구현자 -> 총괄] 항목 2 짓기 전 셈 (8e54a261b ②) — 다음은 3-ㄴ 짓기, 그다음 2 짓기 (bfcf2a7ba)
+
+### ① 버림을 세는 자리 — 파서 길 둘 · 호출자 둘이 한 자리를 지남
+
+```
+버림 집계   directory_watcher._send_to_upsert 의 청크 고리 (dropped_value_counts) — 한 자리
+파서 길     _resolve_rows 가 커스텀 파이프라인(scripts/*.py) -> 표준 파서 순으로 행을 내고, 둘 다 같은 _send_to_upsert 로
+           large_table_100 = 커스텀 (scripts/custom_parser.py, df 를 그대로 돌려줌 · «박스» 파일)
+호출자      _send_to_upsert 를 부르는 곳 = 파일 이벤트·스윕 처리 · 어드민 Retry — 둘 (git grep, 시험 밖)
+판정 자리   _send_to_upsert 끝, 마지막 청크 뒤 한 함수 -> 두 호출자가 같은 답
+```
+
+### ② 「쓴 값 0」 · 「버린 값 > 0」의 뜻 — 이렇게 짓겠습니다
+
+```
+쓴 값 0     쓰기로 보낸 행이 파일 전체에서 0 — 선언된 칸이 한 줄에도 없음 (재개된 앞부분이 있으면 쓴 것으로 셈)
+           선언된 칸이 «빈칸»이어도 그 행은 쓰기로 감 -> 쓴 것. 쓰기가 일어난 파일을 FAILED 로 적지 않기 위해
+버린 값 > 0  지금의 집계 그대로 — 선언 없는 칸의 «빈칸 아닌» 값 수
+판정       둘 다 참 -> 이름 있는 거절(문장이 곧 error_message) -> FAILED. 쓰기 전이라 되돌릴 행 없음
+일부 버림   SUCCESS 그대로 + 파일 기록(error_message)에 버린 칸 문장 — 로그 INFO 줄과 «같은 문장»
+문장       영어. 예: No column of this file is declared on 'large_table_100' - 3 value(s) in a, b, c were dropped
+           and nothing was written. Declare the columns on the table, or send the file to the table that declares them.
+```
+```
+⚠️ 버림 집계는 칸 이름을 64 개까지만 담음 — 그 뒤 칸의 값은 수에 안 들어감. 판정은 이 집계를 그대로 씀
+이름 있는 거절이 문장으로 남는 자리 — 두 except 가 지금 crud.CellRefused 하나만 문장으로, 나머지는 트레이스백
+   -> 새 거절 클래스를 두 자리가 같이 알아보게 함 (체인 워커의 같은 모양 한 자리는 이 거절이 닿지 않아 그대로)
+```
+
+### ③ 성공 줄의 문장 칸 — 코드로 읽음 (어드민을 못 엶: 토큰을 브라우저에 넣지 않음)
+
+```
+칸        file_ingestion_logs.error_message — 성공도 detail 을 여기 씀(지금: 0행 · 키 결측 스킵 · 재개 사유)
+어드민 목록  fileLogRowHtml — error_message 를 안 그림. 성공 배지만
+어드민 서랍  줄을 누르면 제목 "Ingestion Error Message" · 초록 SUCCESS 배지 · 본문 = 그 문장
+토스트      file_ingestion_completed 메시지에 detail 이 붙음. 성공 토스트는 한 줄로 합쳐짐(dedupeKey) — 실패는 따로
+-> 일부 버림은 «줄을 눌러야» 보이고, 성공인데 제목이 Error Message
+```
+
+### ④ 지금의 답 — 바꾸지 않음
+
+```
+행 0 인 파일      _send_to_upsert 를 안 부름 -> 판정이 안 닿음. SUCCESS + 0행 문장 그대로
+값이 전부 빈칸     선언된 칸이면 쓰기로 감(쓴 것) -> SUCCESS · 선언 없는 칸이면 버린 값 0 -> SUCCESS. 둘 다 그대로
+```
+
+### ⑤ 실패 파일이 재기동마다 다시 읽히나 — 보고만
+
+```
+내용이 유일한 실패 파일   아니오. 체크포인트 FAILED 가 종결이라 기동 스윕의 tier-1(경로 + mtime·크기)이 건너뜀
+같은 내용 실패 파일 둘 이상 🔴 예 — 워처 기동마다 «하나 빼고 전부» 다시 파싱 · FAILED 기록 +1
+   왜   체크포인트 한 줄이 «내용 서명» 하나에 걸리고, 그 줄의 경로는 마지막 실패 파일 것뿐
+        -> 다른 경로는 tier-1 을 놓침 -> 해시 -> tier-2 는 DONE 만 건너뜀(FAILED 는 다시 파싱) -> 또 실패 -> 줄의 경로가 옮겨감
+   박스  09-25 23:14 의 둘이 이것 — 같은 내용(heavygate 11 MB) 두 파일, 체크포인트 한 줄
+        워처 기동 23:14:11  13 candidate file(s) in raws/ - 12 already concluded (tier-1, batched), 1 dispatched.
+        워처 기동 23:14:56  13 candidate file(s) in raws/ - 12 already concluded (tier-1, batched), 1 dispatched.
+   한 프로세스 안   5 분 주기 스윕은 (경로 · mtime · 크기) 메모리 표로 다시 안 넣음 — 기동 때만
+이 항목과의 관계   같은 내용을 여러 이름으로 떨구는 수집기의 «전부 버림» 파일은 지금 SUCCESS(재기동 때 해시만 · DONE 이라 건너뜀)
+                 -> 후 FAILED 가 되면 재기동마다 N-1 개를 다시 파싱. 아카이브를 켠 설치는 err/ 로 옮겨져 해당 없음
+```
+
+```
+짓는 순서   3-ㄴ(bfcf2a7ba 그대로) -> 2. 둘 다 착지마다 보고 한 줄
+여쭐 것     ② 의 「선언된 칸이 빈칸이어도 쓴 것」 정의로 가도 되는지 — 아니면 「빈칸 아닌 선언 값 0」 이 쓴 값 0
+           (후자면 쓰기가 일어난 파일도 FAILED 가 될 수 있음)
+제안(짓지 않음)  서랍 제목을 상태에 따라(성공이면 note) · 목록 줄에 「문장 있음」 표시 · 0행·키 결측 문장이 한국어 -> 영어 — 클라·서버 몫
+```
