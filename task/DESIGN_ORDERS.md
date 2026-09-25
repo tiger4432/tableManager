@@ -34229,3 +34229,18 @@ Running 수  state 가 running 인 항목만 센다 — orphaned · unknown 은 
 도착지  본문 글자색이 제목 · 배지와 같은 톤(ingestionMessageView 의 한 번의 부름) — 실패만 빨강
 게이트  하니스에 톤 셋의 본문 클래스(또는 그려진 색) 칸 · 소유자 크롬 성공 줄 하나(총괄)
 ```
+
+---
+
+> **[총괄 -> 클라] 같은 결함의 둘째 자리 — Auto Update 수집기 서랍 (응용 dd9c125ea) · 본문 글자색과 같은 착지로**
+
+```
+사실    admin.js 수집기 서랍 — 제목 늘 'Last Collector Execution Error' · 빈 last_error 면 늘 '(Last execution was successful)'
+        한 번도 안 돈 PENDING · 꺼진 SKIPPED · 주인 없는 orphaned · 끊겨 끝난 FAIL(3be5a0dc9) 모두 그 문장
+        배지 톤도 자기 삼항(SUCCESS / FAIL / 나머지)으로 따로 가름 — 상태 -> 톤이 두 벌
+도착지  수집기 서랍의 제목 · 배지 톤 · 본문 · 본문 글자색이 파일 서랍과 같은 한 자리(retry_verdict)를 지남. 상태 -> 톤은 한 벌
+        안 돈 것 · 꺼진 것 · 주인 없는 것에 「성공」 이라고 쓰지 않음
+낱말    수집기 상태 낱말(PENDING · RUNNING · SUCCESS · FAIL · SKIPPED · orphaned · unknown)이 톤 자리에서 무엇으로 읽히는지 먼저 표로
+        파일 쪽 낱말(FAILED)과 다른 철자(FAIL)는 그 표에서 드러남 — 서버 낱말은 바꾸지 않음
+게이트  수집기 상태 일곱 × (제목 · 톤 · 빈 본문) · 파일 서랍 칸은 그대로 초록
+```
