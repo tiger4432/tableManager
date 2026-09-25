@@ -33906,3 +33906,14 @@ CLI       다섯 --apply 가 같은 기록 · 관문(동시에 둘이면 하나�
          같은 방법(서버가 이름을 싣고 화면은 받은 이름을 그림) — 연산 결과 칸의 이름은 소급 연산 등록부 한 자리에서
          원장 백필 카드 이름의 「cursor」 는 구현자 via-events 은퇴에 들어 있음 — 겹치지 말 것
 ```
+
+> 🔴 **[총괄 -> 클라] 구현자 7847a964c — 루프 표에 when(always · on_demand) · 실패 목록에 attempts_this_round. 화면이 읽어야 참**
+
+```
+구현자 셈   화면이 그리는 /health 줄은 체인 배지 하나 · 루프 표는 alive 를 yes / no / unknown 으로
+           -> 일감 없는 on_demand 줄(retroactive_run)은 alive 가 없으니 「unknown」 으로 보임 — 거짓(쉬는 중이지 모름이 아님)
+할 것      루프 표 · Overview Workers 줄이 when 을 읽음 — on_demand 이고 심박 없음 = 「idle」(회색 아님 · 「N of M alive」 의 M 에서 뺌)
+           /health 의 running · orphaned 낱말은 받은 그대로 · orphaned 면 다음 행동(Retroactive 에서 Cancel) 한 줄
+           실패 목록 Retries 칸 -> attempts_this_round 를 읽고 이름 「Attempts (this round)」 — 실패 요약 라운드와 한 커밋이어도 됨
+게이트      소유자 크롬 — 일감 없을 때 Workers 줄이 「N of N」 · 루프 표 retroactive_run 이 idle · 소급 도는 동안 running
+```
