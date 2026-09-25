@@ -438,16 +438,9 @@ class SourcePlan:
     binding_select_columns: tuple = ()
     #: The engine's `row_id` column WHEN THIS RELATION HAS ONE, else `None` (판정 136).
     #:
-    #: 🔴 THE CATALOGUE DECIDES, NOT THE ENGINE. 판정 135 said "always", measured against the
-    #: shipped sample where all 44 relations are TABLES and every one declares it. A source
-    #: may legitimately read a VIEW -- four do on the deployment this was found on -- and a
-    #: view has no `row_id`, so "always" turned their SELECT into `UndefinedColumn` on the
-    #: cursor path, on rescope and on the index backfill at once.
-    #:
-    #: ⚠️ THE ABSENCE IS CORRECT RATHER THAN TOLERATED. A view is not a table, so nothing
-    #: ever writes an outbox DELETE for it; there is no delete to follow and therefore
-    #: nothing the index could have done. What must not happen is the delete step going
-    #: quiet about it -- it names the source instead.
+    #: ⚰️ [총괄 f3bc02f6e] `None` MEANT 「A VIEW WITH NO row_id」 (판정 136). A view source is
+    #: refused at load now, so a PLANNED source always carries `row_id`; `None` is left only
+    #: on a source the loader refused (its `planned` is False and nothing reads with it).
     frame_row_id: str | None = None
     #: 🔴 FALSE MEANS 「THE LOADER COULD NOT PLAN THIS」, AND IT IS NOT `status` (S-177 ②).
     #: `status` is the OPERATOR'S word - active or retired, written by a person. This is the
@@ -1317,18 +1310,12 @@ def _declared_row_id(catalog, relation):
     would make the answer depend on which database the compiler happened to be near, and a
     snapshot compiled without one would differ from the same file compiled with one.
     """
+    from .setup_bundle import reads_a_row_table
     from .source_preparation import FRAME_ROW_ID_COLUMN
 
-    entry = (catalog or {}).get(relation) or {}
-    columns = entry.get("columns") if isinstance(entry, Mapping) else None
-    if isinstance(columns, Mapping):
-        names = set(columns)
-    elif isinstance(columns, (list, tuple)):
-        names = {item.get("name") if isinstance(item, Mapping) else item
-                 for item in columns}
-    else:
-        return None
-    return FRAME_ROW_ID_COLUMN if FRAME_ROW_ID_COLUMN in names else None
+    # 🔴 [총괄 f3bc02f6e] THE LOADER'S OWN QUESTION. A planned source has passed it, so this
+    #   is always `row_id` for one; asking anything else here would let the two disagree.
+    return FRAME_ROW_ID_COLUMN if reads_a_row_table(catalog, relation) else None
 
 
 def _compile_source_plans(

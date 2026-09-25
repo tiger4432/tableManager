@@ -74,6 +74,11 @@ def logical_catalog(*, source_name="input_rows", prefix=""):
                 # bindings) hit that wall separately and each took a detour. This is the
                 # one column their mutations can actually move.
                 prefix + "unselected_note": "string",
+                # ⚠️ [총괄 f3bc02f6e] THE ADAPTER PLANTS THIS ON EVERY TABLE
+                #   (`_adapt_physical_catalog`), and a ledger source may only read a table
+                #   that has it - so a hand-built table without it is one production cannot
+                #   hold, and the loader now refuses it.
+                "row_id": "string",
             },
             "business_key": record,
         },

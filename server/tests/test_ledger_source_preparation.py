@@ -99,7 +99,7 @@ DT_CHAIN_CATALOG = {
             "record_id": "string", "dt_job_id": "string",
             "event_at": "datetime", "core_wafer": "string",
             "core_x": "number", "core_y": "number",
-            "recorded_dt_lot": "string",
+            "recorded_dt_lot": "string", "row_id": "string",
         },
         "business_key": "record_id",
     },
@@ -109,7 +109,7 @@ DT_CHAIN_CATALOG = {
             "dt_offset_x": "number", "dt_offset_y": "number",
             "bond_wafer": "string", "bond_offset_x": "number",
             "bond_offset_y": "number", "bond_layer": "number",
-            "final_chip": "string",
+            "final_chip": "string", "row_id": "string",
         },
         "business_key": "dt_job_id",
         "indexes": [{"name": "uq_dt_inventory_job", "columns": ["dt_job_id"],
@@ -272,9 +272,9 @@ def test_existing_cursor_selects_only_base_physical_columns():
 
     columns = base_select_columns_of(compiled, "input_rows")
 
-    # 판정 136: this fixture catalogue declares no `row_id`, so the read asks for none --
-    # which is the view case, stated where it costs nothing to state.
-    assert columns == ("event_at", "event_key", "join_id", "record_id", "source_id")
+    # 🔴 [총괄 f3bc02f6e] every source reads `row_id` - a relation without one is a view,
+    #   and a view source is refused at load. (판정 136's 「asks for none」 was that view case.)
+    assert columns == ("event_at", "event_key", "join_id", "record_id", "row_id", "source_id")
     assert "target_id" not in columns
 
 
@@ -1005,4 +1005,4 @@ def test_a_source_binding_no_attribute_selects_exactly_what_it_always_did():
     """㉥ 무회귀 — 이 축은 «적은 선언에서만» 무언가를 한다."""
     plain = base_select_columns_of(snapshot(), "input_rows")
 
-    assert plain == ("event_at", "event_key", "join_id", "record_id", "source_id")
+    assert plain == ("event_at", "event_key", "join_id", "record_id", "row_id", "source_id")

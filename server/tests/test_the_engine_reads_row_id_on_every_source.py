@@ -63,55 +63,27 @@ def test_every_source_whose_relation_has_one_reads_the_row_id(snapshot):
     replaces was a mechanism that worked on four of fifteen, and any fixture drawn from the
     four would have agreed with it.
 
-    ⚠️ AND "EVERY" MEANS EVERY SOURCE WHOSE RELATION HAS ONE (판정 138). Ten of the
-    catalogue's relations are VIEWs and five of those carry no `row_id`; the four sources
-    reading them are NAMED here rather than counted, so a fifth appearing is a decision
-    somebody makes on purpose instead of a number quietly moving."""
+    Every source reads a table that has `row_id` (총괄 f3bc02f6e), so "every" is literal."""
     without = sorted(
         name for name, plan in snapshot.source_plans.items()
         if source_preparation.FRAME_ROW_ID_COLUMN not in
         source_preparation.base_select_columns(plan))
-    assert without == ["bonded_from", "bw_dt_seat", "lot_slot_move", "void_observation"]
-    assert all(snapshot.source_plans[name].frame_row_id is None for name in without)
-    assert len(snapshot.source_plans) == 15, (
+    assert without == []
+    assert len(snapshot.source_plans) == 6, (
         "the shipped sample changed size -- confirm the claim still covers all of it")
 
 
-def test_a_source_reading_a_relation_without_one_asks_for_none(document, catalog):
-    """🔴 판정 136. 판정 135 said "always", measured on a catalogue where every relation is a
-    TABLE. A source may legitimately read a VIEW, and a view has no `row_id` -- asking for it
-    turns that source's SELECT into `UndefinedColumn` on the cursor path, on rescope and on
-    the index backfill at once, which is what happened on the deployment this was found on.
-
-    ⚠️ THE ABSENCE IS CORRECT, NOT TOLERATED. Nothing writes an outbox DELETE for a view, so
-    there is no delete to follow and nothing the index could have done. What must not happen
-    is the delete step going quiet about it, and it names the source instead."""
-    # ⚠️ THE RELATION MOVED UNDER THIS CASE (S-100 ⓐ): `dt_job` reads `dt_job_rollup` now,
-    # so popping `dt_log`'s column would leave this asserting about a relation the source no
-    # longer reads - green, and measuring nothing.
-    without = json.loads(json.dumps(catalog))
-    without["dt_job_rollup"]["columns"].pop("row_id")
-    snapshot = compiled(document, without)
-    assert snapshot.source_plans["dt_job"].frame_row_id is None
-    assert source_preparation.FRAME_ROW_ID_COLUMN not in         source_preparation.base_select_columns(snapshot.source_plans["dt_job"])
-    # and its neighbours are untouched -- the answer is per RELATION, not per deployment
-    assert snapshot.source_plans["lot_event"].frame_row_id == "row_id"
-
-
 def test_the_declaration_says_nothing_about_it(document, catalog, snapshot):
-    """⚠️ ENGINE-OWNED MEANS THE DECLARATION DOES NOT CARRY IT. Eleven sources name `row_id`
-    nowhere in their `read`, `prepare` or `map`, and they read it anyway -- which is the
-    whole point of Ⓐ over Ⓒ (eleven declaration edits, eleven moved fingerprints)."""
+    """⚠️ ENGINE-OWNED MEANS THE DECLARATION DOES NOT CARRY IT. Three shipped sources name
+    `row_id` nowhere in their `read`, `prepare` or `map`, and they read it anyway -- which is
+    the whole point of Ⓐ over Ⓒ (a declaration edit and a moved fingerprint each)."""
     silent = [name for name, source in document["sources"].items()
               if "row_id" not in json.dumps(
                   {key: value for key, value in source.items() if key != "bind"})]
-    assert len(silent) >= 11, silent
+    assert len(silent) >= 3, silent
     for name in silent:
-        plan = snapshot.source_plans[name]
-        if plan.frame_row_id is None:
-            continue        # its relation is a VIEW that carries none -- 판정 138
         assert source_preparation.FRAME_ROW_ID_COLUMN in \
-            source_preparation.base_select_columns(plan)
+            source_preparation.base_select_columns(snapshot.source_plans[name])
 
 
 def test_the_name_is_scored_against_the_catalogue_and_not_against_itself(catalog,
@@ -120,21 +92,17 @@ def test_the_name_is_scored_against_the_catalogue_and_not_against_itself(catalog
     base_select_columns(...)` where the read was built by adding `X` is true for any
     spelling of X, so a typo in it would keep this whole file green while the read asked
     every table for a column none of them has -- and the SELECT would fail at runtime, on
-    all fifteen at once.
+    all of them at once.
 
-    The catalogue is what decides it, relation by relation (판정 138): a TABLE gets the
-    column planted by the loader and a VIEW gets whatever its SELECT lists."""
+    The catalogue is what decides it: a TABLE gets the column planted by the loader."""
     checked = 0
-    for relation in sorted({plan.relation for plan in snapshot.source_plans.values()
-                            if plan.frame_row_id}):
+    for relation in sorted({plan.relation for plan in snapshot.source_plans.values()}):
         declared = (catalog[relation] or {}).get("columns") or {}
         names = declared if isinstance(declared, dict) else {
             (item.get("name") if isinstance(item, dict) else item) for item in declared}
         assert source_preparation.FRAME_ROW_ID_COLUMN in names, relation
         checked += 1
-    assert checked == 11, (
-        "the eleven relations the fifteen sources read that carry a row_id -- fifteen "
-        "sources over fourteen relations, four of them on a view without one")
+    assert checked == 6, "the six relations the six shipped sources read"
 
 
 # ------------------------------------------------------- and it costs no cursor a restamp
@@ -153,7 +121,7 @@ def test_the_read_is_not_what_a_cursor_fingerprint_is_made_of(snapshot, monkeypa
                         lambda plan: calls.append(plan) or real(plan))
     fingerprints = {name: source_cursor_fingerprint(snapshot, name)
                     for name in snapshot.source_plans}
-    assert len(fingerprints) == 15 and calls == [], (
+    assert len(fingerprints) == 6 and calls == [], (
         "a cursor fingerprint read the SELECT list, so an engine-owned column would "
         "restamp every source")
     # 🔴 AND THE COMPILED ANSWER IS OUT OF THE MATERIAL TOO. `source_cursor_fingerprint`

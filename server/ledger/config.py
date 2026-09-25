@@ -119,8 +119,13 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 from collections.abc import Mapping
+
+logger = logging.getLogger("Ledger.Config")
+#: `(origin, declaration)` pairs already said to be NOT read, this process.
+_SAID_NOT_READ = set()
 
 CONFIG_FILENAME = "ledger_config.json"
 
@@ -419,7 +424,7 @@ def load(path: str = None, catalog=None) -> dict:
                 f"translator refuses to run rather than guess a time column.")
     with open(path, "r", encoding="utf-8") as handle:
         raw = json.load(handle)
-    _validate_for_version(raw, origin=path, catalog=catalog)
+    raw = _validate_for_version(raw, origin=path, catalog=catalog)
     raw["__origin__"] = path
     return raw
 
@@ -452,12 +457,31 @@ def _validate_for_version(raw: dict, origin: str, catalog=None):
         version = 0
     if version < 5:
         validate(raw, origin=origin)
-        return
+        return raw
     from . import setup as _setup
     from . import setup_bundle as _bundle
-    errors = _bundle.validate_bundle_errors(
-        raw, catalog=_setup.live_physical_catalog() if catalog is None else catalog)
+    physical = _setup.live_physical_catalog() if catalog is None else catalog
+    errors = _bundle.validate_bundle_errors(raw, catalog=physical)
     if errors:
+        # 🔴 [총괄 da3fa7493, 소유자 「이대로 해」] ONE BROKEN DECLARATION FALLS ALONE HERE TOO -
+        #   the fixpoint `load_setup` already runs (S-177 ②, `resolve_declarations`), so a
+        #   source is dropped by name whichever loader reads the file. The drops happen in a
+        #   COPY and this returns it; nothing here writes the file.
+        from .config_explorer import resolve_declarations
+
+        report = resolve_declarations(raw, catalog=physical)
+        if not report["config_level"] and report["invalid"] and (
+                report["document"].get("sources")):
+            for key, entry in sorted(report["invalid"].items()):
+                # ⚠️ ONCE PER PROCESS: trace reads this per request, and nine lines a request
+                #   is how a real warning stops being read.
+                if (origin, key) in _SAID_NOT_READ:
+                    continue
+                _SAID_NOT_READ.add((origin, key))
+                reason = (entry.get("reasons") or [{}])[0]
+                logger.error("[Ledger] %s is NOT read: %s %s", key,
+                             reason.get("path"), reason.get("message"))
+            return report["document"]
         # 🔴 THE ADDRESSES SURVIVE. Every one of these errors already carries
         # `(code, path, message)` - the path is the authoring box the operator has to open
         # - and this boundary used to flatten them into one sentence and keep only the
@@ -475,6 +499,7 @@ def _validate_for_version(raw: dict, origin: str, catalog=None):
             errors=[e.to_mapping() if hasattr(e, "to_mapping")
                     else {"code": "", "path": "", "message": str(e)}
                     for e in errors])
+    return raw
 
 
 def validate(cfg: dict, origin: str = "<memory>"):

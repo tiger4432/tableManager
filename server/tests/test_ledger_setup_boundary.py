@@ -188,6 +188,9 @@ def test_loaded_setup_carries_the_adaptation_of_the_live_table_config():
     # the translator would pass whatever the translator did.
     expected["columns"].setdefault("row_id", "string")
     expected.setdefault("indexes", []).append({"columns": ["row_id"], "unique": True})
+    # 🔴 [총괄 f3bc02f6e] AND ITS KIND - a view may pass `row_id` through, so a source's
+    #   「table that has row_id」 test has to be able to ask which one this is.
+    expected["kind"] = "table"
 
     assert dict(setup.catalog["lot_event"]) == expected
     # And it is the catalog the validation used, not one re-read afterwards.

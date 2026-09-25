@@ -97,7 +97,6 @@ def fixture_graph(monkeypatch):
     snapshot = type("S", (), {"source_plans": {"cg_source": _Plan()}})()
     monkeypatch.setattr("ledger.setup.load_setup",
                         lambda *a, **kw: type("Setup", (), {"snapshot": snapshot})())
-    monkeypatch.setattr("ledger.followup.base_tables_of", lambda e, r: (r,))
     return chain.graph.chain_graph(_FakeDb())
 
 

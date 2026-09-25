@@ -247,34 +247,26 @@ def _contested_tables(chain_rules, enrichment_rules):
 
 
 def _ledger_edges(db, setup):
-    """④ `ledger_config`: a source's relation feeds the ledger. A view feeds it through
-    its base tables, which `followup.base_tables_of` already knows how to find."""
-    from ledger import followup
+    """④ `ledger_config`: a source's relation feeds the ledger.
 
-    engine = db.get_bind()
+    ⚰️ [총괄 f3bc02f6e] A VIEW SOURCE WAS DRAWN FROM ITS BASE TABLES (`via_view`, through
+    `followup.base_tables_of`). A source reads a table that has `row_id` now - a view source
+    is refused at load and drawn here with its refusal - so the arrow starts at the relation.
+    """
     edges = []
     for source_id, plan in sorted(getattr(setup.snapshot, "source_plans", {}).items()):
         relation = plan.relation
         if not relation:
             continue
-        try:
-            bases = followup.base_tables_of(engine, relation) or (relation,)
-        except Exception:
-            bases = (relation,)
-        for base in bases:
-            edge = {
-                "kind": "ledger", "from": base, "to": LEDGER_NODE_ID,
-                "source": source_id,
-                "status": plan.status,
-                "planned": bool(getattr(plan, "planned", True)),
-            }
-            if base != relation:
-                # The source reads a VIEW; the arrow starts at what the view really reads,
-                # because that is the table whose event wakes the follow-up.
-                edge["via_view"] = relation
-            if not getattr(plan, "planned", True) and getattr(plan, "refusal", None):
-                edge["refusal"] = dict(plan.refusal)
-            edges.append(edge)
+        edge = {
+            "kind": "ledger", "from": relation, "to": LEDGER_NODE_ID,
+            "source": source_id,
+            "status": plan.status,
+            "planned": bool(getattr(plan, "planned", True)),
+        }
+        if not getattr(plan, "planned", True) and getattr(plan, "refusal", None):
+            edge["refusal"] = dict(plan.refusal)
+        edges.append(edge)
     return edges
 
 

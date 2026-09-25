@@ -63,10 +63,8 @@ SOURCE_ROW_EXCLUDED_COLUMN = "__source_row_excluded"
 #: given eleven sources a delete path that silently did nothing, and the first fixture the
 #: ruling named sits inside the lucky four, so measuring only there would have passed.
 #:
-#: 🔴 AND "ALWAYS" WAS TOO WIDE, WHICH THE SHIPPED SAMPLE COULD NOT SHOW (판정 136). All 44
-#: relations there are TABLES; a source may legitimately read a VIEW, and a view has no
-#: `row_id`. So the COMPILER asks the catalogue per relation and stores the answer on
-#: `SourcePlan.frame_row_id` -- see there for why the absence is correct rather than a gap.
+#: ⚰️ 판정 136 narrowed this to 「a source whose relation has one」, for view sources. Those are
+#: refused at load now (총괄 f3bc02f6e), so every planned source's relation has `row_id` again.
 #:
 #: ⚠️ IT GOES IN `base_select_columns` AND NOT IN `locked_select_columns`, deliberately. The
 #: second is what the authoring screen draws as pressed-and-locked chips, and this is not a
@@ -620,12 +618,9 @@ def base_select_columns(source_plan: SourcePlan) -> tuple[str, ...]:
     columns.update(driver.preparation.preparer.input_columns)
     columns.update(column for column in driver.mapper.input_columns
                    if column not in outputs)
-    # The engine's own column -- on every source whose RELATION HAS ONE. 판정 136 narrowed
-    # 판정 135's "always": the compiler asks the catalogue and a source reading a VIEW gets
-    # `None`, because a view has no `row_id` and asking for it turns the SELECT into
-    # `UndefinedColumn` on the cursor path, on rescope and on the index backfill at once.
-    if source_plan.frame_row_id:
-        columns.add(source_plan.frame_row_id)
+    # The engine's own column, on every planned source - each reads a table that has `row_id`
+    # (a view source is refused at load, 총괄 f3bc02f6e).
+    columns.add(source_plan.frame_row_id)
     # 판정 201. A column a role binding names is read BECAUSE it is bound, not because it
     # was repeated in `map.input_columns`. The compiler already intersected these with the
     # catalogue, so nothing here asks one.

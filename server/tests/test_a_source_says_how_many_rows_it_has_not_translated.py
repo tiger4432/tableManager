@@ -34,9 +34,12 @@ class _Plan:
     thing it stands in for is more permissive than production, and this one hid that the
     census has to know whether a source reads by ROW or by GROUP."""
 
-    def __init__(self, relation, frame_row_id, unit="row", group_by=()):
+    def __init__(self, relation, frame_row_id, unit="row", group_by=(), planned=True,
+                 refusal=None):
         self.relation = relation
         self.frame_row_id = frame_row_id
+        self.planned = planned
+        self.refusal = refusal
         self.driver = type("D", (), {"unit": unit, "group_by": tuple(group_by)})()
 
 
@@ -89,15 +92,17 @@ class _Engine:
         return self.connection
 
 
-def test_a_source_without_row_id_is_refused_rather_than_counted():
-    """⛔ NOT ZERO. Such a source writes no index rows, so `relation - indexed` is the whole
-    table -- the loudest possible wrong answer, in the confident direction."""
-    setup = _setup({"void_observation": _Plan("void_obs_observed", None)})
+def test_a_source_the_loader_refused_is_refused_rather_than_counted():
+    """⛔ NOT ZERO. A source the loader refused has no plan to count with, so a number would be
+    the loudest possible wrong answer, in the confident direction. (총괄 f3bc02f6e: this was
+    the view without `row_id`, which the loader now refuses before any of this.)"""
+    setup = _setup({"void_observation": _Plan("void_obs_observed", None, planned=False,
+                                              refusal={"path": "bundle.sources.void_observation.relation", "message": "not a table that has row_id"})})
     report = backfill.rows_not_yet_translated(object(), setup, "void_observation")
 
-    assert report["refused"] == "no_row_id"
+    assert report["refused"] == "source_refused"
     assert "not_yet" not in report, "a refusal must not also hand back a number"
-    assert "row_id" in report["remedy"], "the refusal must say what to declare"
+    assert "not a table that has row_id" in report["remedy"], "the loader's own reason"
 
 
 def test_the_answer_is_three_values_and_the_third_is_the_difference():

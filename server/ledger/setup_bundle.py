@@ -230,6 +230,24 @@ def catalog_kind(entry):
     return str((entry or {}).get("kind") or DEFAULT_CATALOG_KIND)
 
 
+def reads_a_row_table(catalog, relation) -> bool:
+    """Is `relation` a TABLE that has `row_id` - the only thing a ledger source may read?
+
+    🔴 [총괄 f3bc02f6e, 소유자 「운영에서는 뷰 안 써 · 걷어내기」] Views as ledger sources are
+    retired. `row_id` alone is not the test: five views here pass their base table's
+    `row_id` through. The loader's refusal and `setup_registry._declared_row_id` both ask
+    this, so the refused set and the planned set cannot disagree.
+    """
+    entry = (catalog or {}).get(relation)
+    if not isinstance(entry, Mapping) or catalog_kind(entry) != "table":
+        return False
+    columns = entry.get("columns")
+    names = (set(columns) if isinstance(columns, Mapping)
+             else {item.get("name") if isinstance(item, Mapping) else item
+                   for item in (columns or ())})
+    return "row_id" in names
+
+
 def load_physical_catalog(path: str | Path) -> Mapping[str, Any]:
     """`table_config.json` as the relation shape the cross-validators read.
 
@@ -395,6 +413,9 @@ def _adapt_physical_catalog(document: Mapping[str, Any]) -> Mapping[str, Any]:
             raise LedgerSetupValidationError(
                 "invalid_catalog", f"{table_id}.kind",
                 f"kind must be 'table' or 'view', not {declared.get('kind')!r}")
+        # 🔴 [총괄 f3bc02f6e] CARRIED, because a view may pass its base table's `row_id`
+        #   through and still be a view - `reads_a_row_table` below has to ask both.
+        relation["kind"] = kind
         if kind != "view":
             relation["columns"].setdefault("row_id", "string")
         # ⚠️ THE INDEX FOLLOWS THE COLUMN, NOT THE KIND. Wherever `row_id` is present it is
@@ -2167,6 +2188,20 @@ def _cross_validate(bundle: Mapping[str, Any], catalog: Mapping[str, Any],
     for source_id in sorted(unresolved_sources):
         _relation_columns(sources[source_id].get("relation"), (), tables,
                           f"bundle.sources.{source_id}.relation", problems)
+    # 🔴 [총괄 f3bc02f6e] A SOURCE READS A TABLE THAT HAS row_id, AND NOTHING ELSE. Refused on
+    #   the source's own path, so the loader drops THIS source and plans the rest (S-177 ②).
+    #   Skipped like an unresolved relation: every later complaint is downstream of this one.
+    for source_id, source in sorted(sources.items()):
+        relation = source.get("relation")
+        if (source_id in unresolved_sources or is_retired(source)
+                or reads_a_row_table(tables, relation)):
+            continue
+        unresolved_sources.add(source_id)
+        problems.add(
+            "relation_not_a_row_table", f"bundle.sources.{source_id}.relation",
+            f"source {source_id!r} reads {relation!r}, which is not a table that has row_id "
+            f"({catalog_kind(tables.get(relation))}); a ledger source must read a table that "
+            f"has row_id")
 
     for source_id, source in sources.items():
         if source_id in unresolved_sources or is_retired(source):

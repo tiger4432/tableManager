@@ -235,46 +235,38 @@ def test_the_grouping_and_the_join_are_the_orphan_sweeps(world):
     assert "_group_ref_identities(refs)" in body and "_join_identities(" in body
 
 
-def test_a_source_with_no_row_index_is_named_and_never_joined(world):
-    """🔴 판정 138 ㉣ — ONE ANSWER FOR BOTH ENDS. The delete step asks per RELATION and this
-    asks per SOURCE, and `sources_without_row_index` is where both ask. Two spellings would
-    disagree silently: this would join for a column the read cannot supply -- the
-    `UndefinedColumn` the whole round is about -- while the delete reported nothing owed."""
-    setup = SimpleNamespace(snapshot=SimpleNamespace(source_plans={
-        "dt_job": SimpleNamespace(relation=RELATION, frame_row_id=None)}))
+REFUSED = SimpleNamespace(relation=RELATION, frame_row_id=None, planned=False,
+                          refusal={"path": "bundle.sources.dt_job.relation",
+                                   "message": "not a table that has row_id"})
+
+
+def test_a_source_the_loader_refused_is_named_and_never_joined(world):
+    """🔴 [총괄 f3bc02f6e] A source typed by name that the loader REFUSED has no plan and no
+    `row_id` to join by. It is refused in the loader's own words, not joined. (This was 판정
+    138's 「no row index」 case - a view - which the loader now refuses before any of this.)"""
+    setup = SimpleNamespace(snapshot=SimpleNamespace(source_plans={"dt_job": REFUSED}))
     world["refs"] = [ref_for("J1")]
     world["table"] = {"J1": "RID-J1"}
     result = backfill.index_existing_refs(None, "dt_job", setup=setup, apply=True)
-    assert result["no_row_index"] == ["dt_job"]
+    assert result["refused"] == "source_refused"
+    assert "not a table that has row_id" in result["remedy"]
     assert world["joins"] == 0 and world["written"] == [], (
-        "a source with no row index must not be joined for one")
+        "a refused source must not be joined")
     assert result["would_index"] == 0 and result["refs_read"] == 0
 
 
-def test_the_delete_step_and_this_read_the_same_function():
-    """⛔ TWO PREDICATES FOR ONE QUESTION IS THE FAILURE ④ NAMES."""
-    import inspect
-
-    assert "sources_without_row_index(" in inspect.getsource(
-        backfill.withdraw_deleted_rows)
-    assert "sources_without_row_index(" in inspect.getsource(
-        backfill.index_existing_refs)
-
-
 def test_no_setup_loads_one_rather_than_answering_nothing(world, monkeypatch):
-    """🔴 S-61-c. `sources_without_row_index(None)` has no plans to look at, so it answers
-    `[]` -- "nothing lacks a row index", which reads exactly like a clean answer and then
-    dies on `UndefinedColumn` inside the join. The CLI is the caller that omits the setup,
+    """🔴 S-61-c. With no setup there are no plans to look at, and 「nothing to refuse」
+    reads exactly like a clean answer and then dies inside the join. The CLI is the caller that omits the setup,
     so the default root is loaded here, through the same function every other entry point
     uses. A vacuous answer that passes is worse than a refusal."""
     loaded = []
-    setup = SimpleNamespace(snapshot=SimpleNamespace(source_plans={
-        "dt_job": SimpleNamespace(relation=RELATION, frame_row_id=None)}))
+    setup = SimpleNamespace(snapshot=SimpleNamespace(source_plans={"dt_job": REFUSED}))
     monkeypatch.setattr("ledger.setup.load_setup",
                         lambda *a, **k: loaded.append(1) or setup)
     world["refs"] = [ref_for("J1")]
     world["table"] = {"J1": "RID-J1"}
     result = backfill.index_existing_refs(None, "dt_job", apply=True)
     assert loaded == [1], "the setup was never loaded, so the answer was vacuous"
-    assert result["no_row_index"] == ["dt_job"]
+    assert result["refused"] == "source_refused"
     assert world["joins"] == 0 and world["written"] == []

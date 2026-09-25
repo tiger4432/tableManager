@@ -99,7 +99,8 @@ SHIPMENT_SETUP = {
 SHIPMENT_CATALOG = {
     "shipment": {
         "columns": {"shipment_id": "string", "box": "string",
-                    "shipped_at": "datetime"},
+                    "shipped_at": "datetime",
+                    "row_id": "string"},   # the adapter plants it on every table
         "business_key": "shipment_id",
     },
 }

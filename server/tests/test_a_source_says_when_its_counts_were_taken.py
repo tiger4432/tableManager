@@ -34,7 +34,7 @@ class _Plan:
     cases are about the STAMP, and a source with no clause is asked nothing."""
 
     def __init__(self, relation, frame_row_id, unit="row", group_by=(), exclude_when=(),
-                 status="active", planned=True):
+                 status="active", planned=True, refusal=None):
         self.relation = relation
         self.frame_row_id = frame_row_id
         # S-103: the sweep asks this before it counts, so the fake carries it.
@@ -43,6 +43,7 @@ class _Plan:
         # refuse one. `runs` is the ONE predicate the sweep asks, and the double computes it
         # the way the real `SourcePlan` does rather than answering a constant.
         self.planned = planned
+        self.refusal = refusal
         self.driver = type("D", (), {
             "unit": unit, "group_by": tuple(group_by),
             "preparation": type("P", (), {"exclude_when": tuple(exclude_when)})()})()
@@ -150,10 +151,11 @@ def test_each_number_names_how_it_was_obtained():
 def test_a_source_that_cannot_be_counted_is_stamped_refused_and_not_zero():
     """⛔ THE WHOLE POINT OF THE REFUSAL IS THAT IT SURVIVES. Storing a 0 here would throw
     away 「cannot be counted」 one layer after `rows_not_yet_translated` earned it."""
-    setup = _setup({"void_observation": _Plan("void_obs_observed", None)})
+    setup = _setup({"void_observation": _Plan("void_obs_observed", None, planned=False,
+                                              refusal={"path": "bundle.sources.void_observation.relation", "message": "not a table that has row_id"})})
     census = backfill.measure_row_census(object(), setup, "void_observation")
 
-    assert census["refused"] == "no_row_id"
+    assert census["refused"] == "source_refused"
     assert "not_yet" not in census
     assert census["measured_at"], "even a refusal says when it was found"
 
@@ -190,13 +192,20 @@ def test_one_source_failing_does_not_silence_the_rest(monkeypatch):
         def raw_connection(self):
             raise RuntimeError("relation is gone")
 
-    setup = _setup({"a": _Plan("rel_a", None), "b": _Plan("rel_b", "row_id"),
-                    "c": _Plan("rel_c", None)})
+    setup = _setup({"a": _Plan("rel_a", "row_id"), "b": _Plan("rel_b", "row_id"),
+                    "c": _Plan("rel_c", "row_id")})
+    # ⚠️ [총괄 f3bc02f6e] `a` and `c` used to be sources without row_id, refused WITHOUT the
+    #   database; every planned source reads row_id now, so the census is stubbed and `b`'s
+    #   raises - the subject is still that one failure costs one source.
+    def census(engine, setup, source, now=None, *, exact_rows=True):
+        if source == "b":
+            raise RuntimeError("relation rel_b was dropped")
+        return {"source": source, "relation": "rel_" + source, "measured_at": "now"}
+
+    monkeypatch.setattr(backfill, "measure_row_census", census)
     store = _Store()
     done = backfill.measure_every_source(_Broken([]), setup, store=store)
 
-    # `a` and `c` carry no row_id, so they are refused WITHOUT touching the database and
-    # still get stamped; `b` would need the connection and fails. Two of three survive.
     assert done == ["a", "c"] and store.written == ["a", "c"]
 
 
@@ -257,9 +266,12 @@ def test_the_sweep_skips_a_retired_source_and_says_which(monkeypatch, caplog):
 
     monkeypatch.setattr(setup_registry, "cursor_translator_version",
                         lambda snapshot, source_id: f"ledger-v2:{source_id}")
-    setup = _setup({"a": _Plan("rel_a", None),
-                    "gone": _Plan("rel_gone", None, status="retired"),
-                    "c": _Plan("rel_c", None)})
+    setup = _setup({"a": _Plan("rel_a", "row_id"),
+                    "gone": _Plan("rel_gone", "row_id", status="retired"),
+                    "c": _Plan("rel_c", "row_id")})
+    monkeypatch.setattr(backfill, "measure_row_census",
+                        lambda engine, setup, source, now=None, *, exact_rows=True:
+                        {"source": source, "relation": "rel_" + source, "measured_at": "now"})
     store = _Store()
     with caplog.at_level(logging.INFO):
         done = backfill.measure_every_source(_Engine([]), setup, store=store)

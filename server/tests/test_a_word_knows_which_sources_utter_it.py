@@ -93,8 +93,9 @@ def test_it_answers_on_the_shipped_declaration_too():
     with io.open(SAMPLE, encoding="utf-8") as handle:
         shipped = json.load(handle)
 
-    utterers = ledger_config.sources_binding(shipped, "measures@1")
-    assert utterers, "the shipped declaration utters `measures@1` somewhere"
+    # ⚠️ [총괄 f3bc02f6e] `measures@1` was uttered only by the view sources the sample lost.
+    utterers = ledger_config.sources_binding(shipped, "has_wafer@1")
+    assert utterers, "the shipped declaration utters `has_wafer@1` somewhere"
     for name in utterers:
         assert not name.startswith("__")
 

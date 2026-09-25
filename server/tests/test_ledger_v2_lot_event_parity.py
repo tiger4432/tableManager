@@ -116,6 +116,7 @@ LOT_EVENT_CATALOG = {
             "lot": "string", "event_type": "string", "slots": "string",
             "wafers": "string", "parent_lot": "string", "child_lot": "string",
             "row_identity": "string", "event_time": "datetime",
+            "row_id": "string",   # the adapter plants it on every table (총괄 f3bc02f6e)
         },
         "business_key": "row_identity",
     },

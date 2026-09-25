@@ -31,9 +31,11 @@ from ledger.setup import LedgerSetupError                            # noqa: E40
 
 
 class _Plan:
-    def __init__(self, relation, frame_row_id):
+    def __init__(self, relation, frame_row_id, planned=True, refusal=None):
         self.relation = relation
         self.frame_row_id = frame_row_id
+        self.planned = planned
+        self.refusal = refusal
         self.driver = type("D", (), {"cursor_columns": ("row_id",),
                                      "identity": ("row_id",)})()
 
@@ -43,20 +45,12 @@ def _setup(plans):
         "Snap", (), {"source_plans": plans, "__hash__": None})()})()
 
 
-def test_a_source_without_row_id_is_refused_by_name(monkeypatch):
-    """⛔ NOT AN EMPTY LIST. A source whose frame has no row_id writes no index rows, so
-    "not in the index" is EVERY row forever -- and an empty answer would read as "nothing
-    left to do", which is the opposite."""
-    setup = _setup({"void_observation": _Plan("void_obs_observed", None)})
-    with pytest.raises(LedgerSetupError) as caught:
-        backfill.rows_missing_from_the_index(object(), setup, "void_observation", 10)
-    assert caught.value.code == "no_row_id"
-
-
 def test_the_loader_reports_the_refusal_rather_than_looping():
-    setup = _setup({"void_observation": _Plan("void_obs_observed", None)})
+    """A source the loader refused is refused here in its words (총괄 f3bc02f6e)."""
+    setup = _setup({"void_observation": _Plan("void_obs_observed", None, planned=False,
+                                              refusal={"path": "bundle.sources.void_observation.relation", "message": "not a table that has row_id"})})
     report = backfill.load_via_events(object(), setup, "void_observation", apply=True)
-    assert report["refused"] == "no_row_id"
+    assert report["refused"] == "source_refused"
     assert report["rows"] == 0
 
 

@@ -994,16 +994,19 @@ def test_a_scoped_redo_re_reads_the_row_so_a_humans_correction_reaches_the_ledge
         def connection(self):
             return _Connection()
 
+        def row_refs_for(self, relation, row_ids):
+            return []
+
     class _Engine:
         def raw_connection(self):
             return _Connection()
 
     class _Plan:
         """⚠️ `frame_row_id` IS READ DIRECTLY BY `rescope` SINCE S-101, so a plan double has
-        to answer it. `None` is the VIEW case - no `row_id` to index by - which keeps this
-        test on its own subject: the freshness of the read, not the aim of the withdrawal."""
+        to answer it. Every planned source reads a table that has `row_id` (총괄 f3bc02f6e)."""
 
-        frame_row_id = None
+        frame_row_id = "row_id"
+        relation = "src_table"
 
     class _Setup:
         snapshot = type("S", (), {"source_plans": {"src": _Plan()}})()
@@ -1012,7 +1015,7 @@ def test_a_scoped_redo_re_reads_the_row_so_a_humans_correction_reaches_the_ledge
         # The live read. It answers with the CORRECTED value, so a writer that used the
         # preview's rows instead would be visible as the stale one below.
         events.append("fetch")
-        return [{"core_wafer": "C1", "value": CORRECTED}]
+        return [{"row_id": "R1", "core_wafer": "C1", "value": CORRECTED}]
 
     def _preview(engine, setup, source, column, values):
         return {"source": source, "scope_column": column, "scope_values": len(values),
@@ -1031,7 +1034,9 @@ def test_a_scoped_redo_re_reads_the_row_so_a_humans_correction_reaches_the_ledge
         # with the write, so the double has to take it and report it back.
         written["withdraw_refs"] = withdraw_refs
         return type("R", (), {"store_result": {"attempted": 1, "inserted": 1,
-                                               "deduped": 0, "withdrawn": 1}})()
+                                               "deduped": 0, "withdrawn": 1},
+                              "preview": type("P", (), {"row_refs": [
+                                  ("src_table", "R1", "REF-1")]})()})()
 
     monkeypatch.setattr(ledger_backfill, "preview_rescope", _preview)
     monkeypatch.setattr(ledger_backfill, "_scope_predicate",

@@ -368,10 +368,9 @@ def _count_ledger_backfill(db, params, scan_limit):
     (판정 163): the index names the rows the ledger holds facts from, so the remainder is
     the relation's count minus the index's count and it is EXACT, every time.
 
-    ⚠️ A SOURCE THAT CANNOT BE COUNTED SAYS SO. A relation carrying no `row_id` writes
-    no index rows, so the subtraction would return the whole table and report a source
-    translated entirely by the live path as one that has never been touched. That is
-    `not_applicable` -- the number does not stand up in that place -- and NOT a zero.
+    ⚠️ A SOURCE THAT CANNOT BE COUNTED SAYS SO - one the loader refused has no plan to count
+    with. That is `not_applicable` -- the number does not stand up in that place -- and NOT a
+    zero. (It used to be a view without `row_id`; views are refused at load, 총괄 f3bc02f6e.)
     """
     from ledger import backfill
     from ledger.setup import load_setup
@@ -388,9 +387,8 @@ def _count_ledger_backfill(db, params, scan_limit):
             "scanned": 0,
             "scan_limit": None,
             "truncated": False,
-            "detail": (f"'{source}' cannot stand a row index, so how many are "
-                       f"left CANNOT BE COUNTED. That is UNKNOWN, not zero. "
-                       f"{census['remedy']}"),
+            "detail": (f"'{source}' cannot be counted - how many are left is UNKNOWN, "
+                       f"not zero. {census['remedy']}"),
             "extra": {"source": source, "refused": census["refused"]},
         }
 

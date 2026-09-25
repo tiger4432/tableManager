@@ -31,7 +31,6 @@ import logging
 import threading
 import time
 from collections import deque
-import weakref
 
 logger = logging.getLogger(__name__)
 
@@ -60,220 +59,11 @@ logger = logging.getLogger(__name__)
 FOLLOWED_EVENT_TYPES = ("CREATE", "EDIT", "DELETE")
 
 
-#: How many times the walk below may step from a view to what it reads before giving up.
-#:
-#: 🔴 A NAMED CONSTANT AND NOT A DECLARED FIELD (판정 155). The test is "could a user write
-#: this value?" -- and an operator has no reason to: it is an engine safety limit on a
-#: catalogue walk, not a fact about their domain. A declaration field for it would be a
-#: field nobody fills, which is the axis-with-no-consumer this repo keeps deleting.
-#:
-#: ⚠️ "VISIBLE AS A VALUE" IS THE REFUSAL'S JOB HERE. Exceeding it does not return an empty
-#: list -- a silent zero would read as "this view has no base table" -- it raises with the
-#: limit and the chain it walked, so the answer names itself.
-VIEW_DEPENDENCY_DEPTH_LIMIT = 4
-
-
-class ViewDependencyTooDeep(Exception):
-    """The walk from a view to real tables did not end within the limit."""
-
-    def __init__(self, chain, limit):
-        self.code = "view_dependency_too_deep"
-        self.chain = tuple(chain)
-        self.limit = limit
-        super().__init__(
-            f"{self.code}: {' -> '.join(self.chain)} is deeper than {limit} steps")
-
-
-#: One view's direct dependencies, from PostgreSQL's own catalogue.
-#:
-#: 🔴 THE CATALOGUE ALREADY KNOWS, so nothing is declared twice. `pg_rewrite` holds the
-#: view's rule and `pg_depend` says what that rule reads; `relkind` then says whether each
-#: is a real table or another view. An installation with different views gets its own answer
-#: with zero operator fields -- which is the whole reason this is derived rather than listed.
-_DEPENDS_ON = """
-SELECT DISTINCT s.relname, s.relkind
-  FROM pg_depend d
-  JOIN pg_rewrite r ON r.oid = d.objid
-  JOIN pg_class v   ON v.oid = r.ev_class
-  JOIN pg_class s   ON s.oid = d.refobjid
- WHERE d.classid = 'pg_rewrite'::regclass
-   AND d.refclassid = 'pg_class'::regclass
-   AND s.relname <> v.relname
-   AND v.relname = %s
- ORDER BY 1
-"""
-
-
-def base_tables_of(engine, relation, limit=VIEW_DEPENDENCY_DEPTH_LIMIT):
-    """The real tables a relation ultimately reads. A table answers with itself.
-
-    🔴 IT RECURSES, BECAUSE A VIEW OVER A VIEW IS NOT AN EXCEPTION. Measured on this box:
-    eight of the nine view-backed sources reach a table in one step, and the ninth
-    (`bonding_die_from_core`) reads `bonding_core_die`, which reads two tables. Stopping at
-    one step would have answered "no base table" for it -- a silent zero for the one case
-    that most needed an answer.
-
-    ⚠️ A RELATION THAT IS NOT A VIEW ANSWERS WITH ITSELF rather than with nothing, so a
-    caller does not need to know which kind it was holding.
-    """
-    seen, tables, chain = set(), [], []
-    frontier = [(str(relation), 0)]
-    while frontier:
-        name, depth = frontier.pop(0)
-        if name in seen:
-            continue
-        seen.add(name)
-        if depth > limit:
-            raise ViewDependencyTooDeep(chain + [name], limit)
-        chain.append(name)
-        connection = engine.raw_connection()
-        try:
-            with connection.cursor() as cursor:
-                cursor.execute(_DEPENDS_ON, (name,))
-                rows = cursor.fetchall()
-        finally:
-            connection.rollback()
-            connection.close()
-        if not rows:
-            # Nothing reads through it: either a real table, or a view over nothing this
-            # catalogue records. Both are the end of this branch.
-            if name not in tables:
-                tables.append(name)
-            continue
-        for child, kind in rows:
-            if kind in ("r", "p"):
-                if child not in tables:
-                    tables.append(child)
-            else:
-                frontier.append((str(child), depth + 1))
-    return tuple(tables)
-
-
-#: Derived once per setup snapshot: which view-backed sources a BASE TABLE's event wakes.
-#:
-#: 🔴 HELD BY IDENTITY, NOT BY HASH, AND THAT IS A REPAIR (판정 160). The first cut used a
-#: `WeakKeyDictionary`, which HASHES its key -- and `LedgerSetupSnapshot` is a frozen
-#: dataclass, so its generated `__hash__` hashes every field, including the dict ones. Every
-#: follow-up batch on the live setup raised `unhashable type: 'dict'` and the live path was
-#: broken for the table sources too. A test double that was hashable by identity hid it.
-#:
-#: One entry is enough: a process runs one setup at a time, and a new snapshot simply
-#: replaces it. The weak reference keeps the promise ruling 156 asked for -- the derivation
-#: dies with the snapshot it describes -- while `is` asks the only question that matters.
-_VIEW_INDEX = None
-
-
-def _has_column(engine, table, column):
-    connection = engine.raw_connection()
-    try:
-        with connection.cursor() as cursor:
-            cursor.execute(
-                "SELECT 1 FROM information_schema.columns "
-                " WHERE table_name = %s AND column_name = %s", (table, column))
-            return cursor.fetchone() is not None
-    finally:
-        connection.rollback()
-        connection.close()
-
-
-def view_followers_of(engine, setup, table):
-    """`(followers, cannot_follow)` for one base table's event.
-
-    🔴 THE HALF OF THE LIVE PATH THAT WAS MISSING. The outbox names base tables and never a
-    view, so the nine view-backed sources never reached the follow-up at all -- S-65 covered
-    six of fifteen. A base table's event now also wakes every source reading a view built on
-    it, scoped by the value of that view's page key read from the base row.
-
-    🔴 AND IT IS THE ONE SEAM (판정 158). Every question the drain asks about views goes
-    through this name, so a test whose subject is not views blocks it here rather than
-    teaching a fake to recognise catalogue SQL -- which would be sniffing the shape of a
-    query instead of the question being asked.
-
-    ⚠️ THE ONES IT CANNOT WAKE SAY SO. When the base table carries no column of that name --
-    measured here for `core_wafer_map` and `inspection_run` -- there is nothing to aim a
-    scope with, so the pair is reported as `cannot_follow`. A silent zero is indistinguishable
-    from "there was nothing to do".
-    """
-    global _VIEW_INDEX
-
-    snapshot = setup.snapshot
-    built = None
-    if _VIEW_INDEX is not None:
-        cached_ref, cached_built = _VIEW_INDEX
-        if cached_ref() is snapshot:
-            built = cached_built
-    if built is None:
-        follows, cannot = {}, {}
-        for source, plan in snapshot.source_plans.items():
-            # 🔴 A RETIRED SOURCE IS NOT FOLLOWED, AND AFTER S-177 ① IT CANNOT BE.
-            # `sources_for_table` below already filters by status, so a retired entry here
-            # only ever built an index nobody read - and its plan now carries no driver, so
-            # `scope_column` would raise while resolving a view chain for a table the
-            # declaration has stopped reading.
-            if not plan.runs:
-                continue
-            relation = plan.relation
-            key = scope_column(plan)
-            try:
-                bases = base_tables_of(engine, relation)
-            except ViewDependencyTooDeep as exc:
-                cannot.setdefault(relation, []).append(
-                    {"view": relation, "source": source, "reason": exc.code,
-                     "limit": exc.limit, "chain": list(exc.chain)})
-                continue
-            for base in bases:
-                if base == relation:
-                    # A source reading a real table: `sources_for_table` already wakes it,
-                    # and adding it here would translate the same molecule twice.
-                    continue
-                if _has_column(engine, base, key):
-                    follows.setdefault(base, []).append((source, key))
-                else:
-                    cannot.setdefault(base, []).append(
-                        {"view": relation, "source": source, "base": base,
-                         "missing_column": key})
-        built = (follows, cannot)
-        _VIEW_INDEX = (weakref.ref(snapshot), built)
-    follows, cannot = built
-    return list(follows.get(table, ())), list(cannot.get(table, ()))
-
-
-def _view_sources_on(setup, followers, cannot):
-    """Every view-backed source built on this table, whatever the page key said.
-
-    ⚠️ THE PAGE-KEY QUESTION IS NOT THE DELETE QUESTION. `view_followers_of` splits the
-    sources by whether the BASE carries the view's page key, which is what a rescope needs;
-    a deletion aims by `row_id` instead, so it has to see both halves.
-    """
-    seen, out = set(), []
-    for source, _key in followers:
-        if source not in seen:
-            seen.add(source)
-            out.append((source, setup.snapshot.source_plans[source].relation))
-    for entry in cannot:
-        source = entry.get("source")
-        if source and source not in seen:
-            seen.add(source)
-            out.append((source, entry.get("view")))
-    return out
-
-
-def _note_cannot_follow(done, cannot, table):
-    """Put the unfollowable pairs in the result AND in the log.
-
-    🔴 THE RESULT ALONE IS NOT VISIBLE (S-65-d). Only failures were logged, so a pair the
-    follow-up structurally cannot reach left no trace an operator could find -- which is the
-    silent zero this whole axis exists to remove.
-    """
-    if not cannot:
-        return
-    done["cannot_follow"] = cannot
-    logger.warning(
-        "[LedgerFollowUp] %s: %d view source(s) cannot be followed: %s",
-        table, len(cannot),
-        "; ".join(f"{item.get('source')} <- {item.get('view')}"
-                  f" ({item.get('reason') or 'missing ' + str(item.get('missing_column'))})"
-                  for item in cannot))
+# ⚰️ [총괄 f3bc02f6e, 소유자 「운영에서는 뷰 안 써 · 걷어내기」] THE VIEW FOLLOW STOOD HERE -
+#    `base_tables_of` (a `pg_depend` walk), `ViewDependencyTooDeep`, `view_followers_of` and the
+#    `cannot_follow` note. A ledger source now reads a table that has `row_id` (refused by name
+#    at load otherwise), so a base table's event reaches its sources through
+#    `sources_for_table` alone and there is no view to follow.
 
 
 #: The job name the pace is declared under, in `server/pacing.json`.
@@ -552,7 +342,6 @@ def drain_once(engine, setup):
             "chain_depth": chain_depth,
             "waited": time.time() - queued_at, "sources": {}}
     # 🔴 ASKED BEFORE THE DELETE BRANCH, because a deletion has view followers too (S-65-d).
-    view_followers, cannot_follow = view_followers_of(engine, setup, table)
     if event_type == "DELETE":
         # 🔴 A DIFFERENT INSTRUMENT, NOT A DIFFERENT SCOPE. The rows are gone, so there is
         # nothing to re-translate and nothing to build a ref from; `withdraw_deleted_rows`
@@ -564,39 +353,14 @@ def drain_once(engine, setup):
                                                        apply=True)
             done["sources"] = withdrawn["sources"]
             done["forgotten"] = withdrawn["forgotten"]
-            # 🔴 THE VIEWS ON THIS TABLE ARE A SECOND WITHDRAWAL, NOT THE SAME ONE (S-65-d).
-            # `withdraw_deleted_rows` asks by RELATION, and a view source's atoms carry the
-            # VIEW's name, so the base table's withdrawal never touches them.
-            #
-            # ⚠️ AND IT ONLY WORKS WHERE THE VIEW CARRIES `row_id`. The index is
-            # `(relation, row_id)`, so a view that does not pass row_id through wrote no
-            # index rows and there is nothing to aim with -- measured on this box for
-            # `void_obs_observed`. That is named, not silently skipped.
-            for source, relation in _view_sources_on(setup, view_followers,
-                                                     cannot_follow):
-                if not setup.snapshot.source_plans[source].frame_row_id:
-                    cannot_follow.append(
-                        {"view": relation, "source": source, "base": table,
-                         "reason": "no_row_id"})
-                    continue
-                view_withdrawn = backfill.withdraw_deleted_rows(
-                    engine, setup, relation, list(row_ids), apply=True)
-                done["sources"].update(view_withdrawn["sources"])
-                done["forgotten"] = (done.get("forgotten") or 0) + (
-                    view_withdrawn.get("forgotten") or 0)
         except Exception as exc:
             with _lock:
                 _failed += 1
             done["error"] = f"{type(exc).__name__}: {exc}"
             logger.warning("[LedgerFollowUp] delete on %s (%d rows) failed: %s",
                            table, len(row_ids), exc)
-        _note_cannot_follow(done, cannot_follow, table)
         return done
     table_sources = list(sources_for_table(setup, table))
-    # 🔴 A VIEW'S SOURCE IS WOKEN BY ITS BASE TABLE'S EVENT (S-65-c). The outbox never names
-    # a view, so without this the nine view-backed sources are unreachable by the live path.
-    # Each pair is (source, that view's page key), and the value is read from the BASE row.
-    _note_cannot_follow(done, cannot_follow, table)
     # ⚰️ THE "CAUGHT UP" GATE WENT WITH THE CURSOR (판정 171). It existed because a source
     # still walking its cursor would read a new row itself, so following it here too would
     # translate the same molecule twice. There is no cursor walk any more -- the initial load
@@ -607,11 +371,8 @@ def drain_once(engine, setup):
     # walking, so a source that had not already been marked would have had its new rows
     # skipped forever: a gate whose input is never produced fails closed, and silently.
     # The column itself is retired now (판정 173) -- `ledger/schema.py` says where it went.
-    # 🔴 ONE LOOP, TWO KINDS, ONE AIM. A table source's page key and a view source's page key
-    # are both read from THIS table -- the table source from its own relation, the view source
-    # from the base row the event named. Two loops would be two spellings of one read.
     targets = [(source, scope_column(setup.snapshot.source_plans[source]))
-               for source in table_sources] + view_followers
+               for source in table_sources]
     if not targets:
         return done
     for source, column in targets:

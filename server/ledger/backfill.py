@@ -319,18 +319,6 @@ def _run_via_events(engine, setup, source, page_rows=DEFAULT_FETCH_ROWS,
               "inserted": 0, "deduped": 0, "max_queue_depth": 0, "stopped": False,
               "translator_ver": cursor_translator_version(setup.snapshot, source),
               "page_rows": page_rows}
-    if not plan.frame_row_id:
-        # 🔴 A VIEW THAT DOES NOT CARRY row_id CANNOT BE INITIALLY LOADED, and the refusal
-        # says what to do about it rather than only that it happened (판정 171). Its LIVE
-        # path is unaffected -- a new base-table row reaches it through the page key -- so
-        # what is refused is the one-time load, not the source.
-        report["refused"] = "no_row_id"
-        report["remedy"] = (
-            f"expose the base table's row_id column on {plan.relation!r}: declare it in "
-            f"table_config as a view column of type string, and this load can then say "
-            f"which rows are already translated.")
-        return report
-
     pages_per_cycle, rest_seconds = resolve_pace(pace)
     started = time.perf_counter()
     after = None
@@ -389,8 +377,6 @@ def _drain_into(engine, setup, report):
     for value in (done.get("sources") or {}).values():
         report["inserted"] += value.get("inserted", 0) or 0
         report["deduped"] += value.get("deduped", 0) or 0
-    if done.get("cannot_follow"):
-        report.setdefault("cannot_follow", []).extend(done["cannot_follow"])
 
 
 def _no_join_reader():
@@ -646,13 +632,10 @@ def count_orphan_atoms(engine, source, scan_limit=ORPHAN_SCAN_LIMIT):
 def _scope_row_ids(plan, frame):
     """The physical row ids the scope read, in order, or `()`.
 
-    Empty for a source reading a VIEW, which has no `row_id` to index by - the same
-    structural absence `sources_without_row_index` reports, and the reason the caller says
-    so by name rather than reporting a quiet zero.
+    Every planned source reads a table that has `row_id` (총괄 f3bc02f6e), so the frame
+    carries the column.
     """
     column = plan.frame_row_id
-    if not column or column not in frame.columns:
-        return ()
     ids = []
     for value in frame[column].tolist():
         if value is None or value != value:            # NaN is not equal to itself
@@ -713,13 +696,6 @@ def rescope(engine, setup, source, scope_column, scope_values, apply=False,
     about. It also picks up a ref that MOVED: a corrected `order_by` value spells a new ref,
     and the atom under the old one was previously left behind.
 
-    ⚠️ AND ONLY WHERE THERE IS A ROW INDEX (판정 136). A source reading a VIEW has no
-    `row_id`, so there is nothing to ask the index with and the aim is the old one; the
-    return says `no_row_index` rather than reporting a quiet zero. For such a source
-    `remake == 0` with `rows_in_scope > 0` is still the declaration question it always was,
-    and widening it means deleting by something other than the scope - the unscoped act this
-    tool exists to avoid.
-
     Registrations are offered on the same basis the dry-run counted them on (`()` - nothing
     assumed already registered), so `remake` and `attempted` are the same question asked
     twice. Any register atom that is in fact still there collides with `uq_ledger_atom` and
@@ -761,25 +737,18 @@ def rescope(engine, setup, source, scope_column, scope_values, apply=False,
     if result.get("rows_in_scope") is None:
         result["rows_in_scope"] = len(frame)
     if frame.empty:
-        # 🔴 AN EMPTY SCOPE IS AN ANSWER, NOT A FAULT (S-81). A VIEW does not have to contain
-        # every row of the table it reads -- measured 2026-09-09, `dt_log_transferable`
-        # excludes 7,731 of `dt_log`'s 35,939 -- so a base-table event naming an excluded row
-        # scopes this source to nothing at all. Falling through handed an empty frame to the
-        # write boundary, which refused it as `scope.row_id: the batch does not carry
-        # 'row_id'`: a missing-column error for a frame that has no columns because it has no
-        # rows. It repeated every three seconds and the drain DROPPED each event.
+        # 🔴 AN EMPTY SCOPE IS AN ANSWER, NOT A FAULT (S-81) - the row can be gone by the
+        # time it is read. Falling through handed an empty frame to the write boundary, which
+        # refused it as `scope.row_id: the batch does not carry 'row_id'`; it repeated every
+        # three seconds and the drain DROPPED each event.
         result["scope_empty"] = True
         return result
     scope_row_ids = _scope_row_ids(plan, frame)
     aimed = refs
     if withdraw:
-        indexed = set()
-        if scope_row_ids:
-            indexed = {ref for who, ref
-                       in store.row_refs_for(plan.relation, scope_row_ids)
-                       if who == source}
-        else:
-            result["no_row_index"] = True
+        indexed = {ref for who, ref
+                   in store.row_refs_for(plan.relation, scope_row_ids)
+                   if who == source}
         result["indexed_refs"] = len(indexed)
         aimed = sorted(set(refs or ()) | indexed)
         if not aimed:
@@ -836,9 +805,8 @@ def rows_missing_from_the_index(engine, setup, source, limit, after=None):
     than about an ordering, so a load that dies halfway resumes by asking again and no
     position has to be trusted.
 
-    ⚠️ IT ONLY ANSWERS FOR A SOURCE THAT CARRIES `row_id`. A source whose frame has no
-    row_id writes no index rows at all, so this would offer every row forever; the caller
-    checks `frame_row_id` and refuses rather than looping.
+    ⚠️ IT ONLY ANSWERS FOR A PLANNED SOURCE - every one reads a table that has `row_id`
+    (총괄 f3bc02f6e). Both callers refuse a source the loader refused before asking.
     """
     from psycopg2 import sql
 
@@ -846,14 +814,6 @@ def rows_missing_from_the_index(engine, setup, source, limit, after=None):
     from .setup import LedgerSetupError
 
     plan = setup.snapshot.source_plans[source]
-    if not plan.frame_row_id:
-        # 🔴 REFUSE, DO NOT RETURN EMPTY. A source whose frame has no row_id writes no index
-        # rows, so "not in the index" is EVERY row, forever. An empty list would read as
-        # "nothing left to do", which is the opposite answer.
-        raise LedgerSetupError(
-            "no_row_id", f"sources.{source}.read",
-            f"reads {plan.relation!r}, which carries no row_id, so the row index cannot say "
-            f"what has been translated; this source cannot be loaded by the event path.")
     relation = sql.SQL(".").join(
         sql.Identifier(part) for part in str(plan.relation).split("."))
     query = sql.SQL(
@@ -882,10 +842,9 @@ def rows_not_yet_translated(engine, setup, source, *, exact_rows=True):
     "at least N" -- counting past a position means reading past it. The row index is a set of
     statements about ROWS, so the remainder is arithmetic, and it is EXACT.
 
-    ⚠️ IT REFUSES A SOURCE WITHOUT `row_id` RATHER THAN ANSWERING. Such a source
-    writes no index rows at all, so `relation - indexed` would be the whole table, and a
-    source whose rows all arrived by the live path would be reported as one that has never
-    been touched. "Cannot be counted" and "nothing has been done" are different sentences.
+    ⚠️ IT REFUSES A SOURCE THE LOADER REFUSED RATHER THAN ANSWERING. Such a source has no
+    plan to read with, and "cannot be counted" and "nothing has been done" are different
+    sentences. (It used to refuse a view without `row_id`; views are refused at load now.)
     """
     from psycopg2 import sql
 
@@ -893,12 +852,9 @@ def rows_not_yet_translated(engine, setup, source, *, exact_rows=True):
 
     plan = setup.snapshot.source_plans[source]
     report = {"source": source, "relation": plan.relation}
-    if not plan.frame_row_id:
-        report["refused"] = "no_row_id"
-        report["remedy"] = (
-            f"expose the base table's row_id column on {plan.relation!r}: declare it in "
-            f"table_config as a view column of type string, and this count can then say "
-            f"which rows are already translated.")
+    refused = _loader_refusal(plan)
+    if refused:
+        report.update(refused)
         return report
 
     relation = sql.SQL(".").join(
@@ -1194,8 +1150,9 @@ def load_via_events(engine, setup, source, page_rows=EVENT_LOAD_PAGE_ROWS,
     report = {"source": source, "relation": plan.relation, "pages": 0, "rows": 0,
               "inserted": 0, "deduped": 0, "max_queue_depth": 0, "applied": bool(apply),
               "page_rows": page_rows, "queue_limit": queue_limit}
-    if not plan.frame_row_id:
-        report["refused"] = "no_row_id"
+    refused = _loader_refusal(plan)
+    if refused:
+        report.update(refused)
         return report
 
     after, started = None, time.perf_counter()
@@ -1240,25 +1197,20 @@ INDEX_BACKFILL_CHUNK = 1000
 INDEX_BACKFILL_SAMPLE = 20
 
 
-def sources_without_row_index(setup, *, relation=None, source=None):
-    """Which sources this system can NEVER index or withdraw by row, and why. ONE answer.
+def _loader_refusal(plan):
+    """`{refused, remedy}` for a source the loader did not plan, else `None`.
 
-    🔴 BOTH ENDS ASK IT, SO BOTH ENDS MUST ASK IT HERE (판정 138 ㉣). The delete step asks
-    per RELATION -- that is what the outbox names -- and the retroactive index asks per
-    SOURCE. Two spellings of "does this one have a row index" is how they come to disagree,
-    and the disagreement would be silent: the backfill would try a column the read cannot
-    supply while the delete reported nothing owed.
-
-    A source's relation is a VIEW with no `row_id` (판정 138), so the absence is structural
-    rather than a gap: nothing writes an outbox DELETE for a view. It is NAMED because a
-    quiet zero and "there was nothing to withdraw" are the same pixel.
+    ⚰️ [총괄 f3bc02f6e] `sources_without_row_index` and the `if not plan.frame_row_id` refusals
+    stood here. A view source is refused at load now, so the only source without `row_id` is
+    one the loader REFUSED - and for a source typed by name those checks were the only thing
+    between it and a scan. This says the real reason, in the loader's own words.
     """
-    plans = getattr(getattr(setup, "snapshot", None), "source_plans", None) or {}
-    return sorted(
-        name for name, plan in plans.items()
-        if not getattr(plan, "frame_row_id", None)
-        and (relation is None or plan.relation == relation)
-        and (source is None or name == source))
+    if getattr(plan, "planned", True):
+        return None
+    refusal = dict(plan.refusal or {})
+    return {"refused": "source_refused",
+            "remedy": "the loader refused this source (%s): %s"
+                      % (refusal.get("path"), refusal.get("message"))}
 
 
 def index_existing_refs(engine, source, setup=None, apply=False, pace=None,
@@ -1293,11 +1245,7 @@ def index_existing_refs(engine, source, setup=None, apply=False, pace=None,
     result = {"source": source, "refs_total": 0, "refs_read": 0,
               "would_index": 0, "indexed": 0,
               "unreadable_refs": 0, "unindexable_refs": 0, "unindexable_sample": [],
-              "no_row_index": [], "applied": bool(apply), "pace": pace or "fast"}
-    # 🔴 THE SAME ANSWER THE DELETE STEP GETS (판정 138 ㉣). A source whose relation carries
-    # no `row_id` cannot be indexed by one, and joining for it would ask the read for a
-    # column it does not have -- which is the `UndefinedColumn` this whole round is about.
-    # It is named and skipped, not attempted and not silently zero.
+              "applied": bool(apply), "pace": pace or "fast"}
     if setup is None:
         # 🔴 `None` MUST NOT ANSWER `[]`. Without a setup this helper has no plans to look
         # at, so it says "nothing lacks a row index" -- a vacuous answer that reads exactly
@@ -1307,8 +1255,10 @@ def index_existing_refs(engine, source, setup=None, apply=False, pace=None,
         from .setup import load_setup
 
         setup = load_setup()
-    result["no_row_index"] = sources_without_row_index(setup, source=source)
-    if result["no_row_index"]:
+    plan = setup.snapshot.source_plans.get(source)
+    refused = _loader_refusal(plan) if plan is not None else None
+    if refused:
+        result.update(refused)
         return result
     connection = store.connection()
     try:
@@ -1418,13 +1368,7 @@ def withdraw_deleted_rows(engine, setup, relation, row_ids, apply=False):
     store = LedgerStore(engine)
     ids = [str(item) for item in (row_ids or ()) if item]
     result = {"relation": relation, "rows": len(ids), "applied": False,
-              "sources": {}, "forgotten": 0, "no_row_index": []}
-    # 🔴 A SOURCE WITH NO ROW INDEX IS NAMED, NOT PASSED OVER IN SILENCE (판정 136). A source
-    # reading a VIEW has no `row_id` to index by, so this step can do nothing for it -- and
-    # a quiet zero would be indistinguishable from "there was nothing to withdraw". The
-    # absence is structurally correct (nothing writes an outbox DELETE for a view), which is
-    # the reason to say it plainly rather than to treat it as a gap.
-    result["no_row_index"] = sources_without_row_index(setup, relation=relation)
+              "sources": {}, "forgotten": 0}
     if not ids:
         return result
     by_source: dict = {}
@@ -1695,8 +1639,8 @@ def count_excluded_but_indexed(engine, setup, source, fetch_rows=PREVIEW_FETCH_R
     `exact=False` with its method rather than the predicate being duplicated. Ruling of
     2026-09-09: ⓑ, with ⓐ (a scored SQL predicate) waiting for S-104.
 
-    Empty for a source that declares no clause, and for one with no row index - in both the
-    question has no subject, which is not the same as an answer of zero.
+    Empty for a source that declares no clause - the question has no subject, which is not
+    the same as an answer of zero.
     """
     from .source_preparation import is_blank_source_value
     from .store import LedgerStore
@@ -1705,7 +1649,7 @@ def count_excluded_but_indexed(engine, setup, source, fetch_rows=PREVIEW_FETCH_R
     columns = [clause.get("column")
                for clause in getattr(plan.driver.preparation, "exclude_when", ())
                if isinstance(clause, Mapping) and clause.get("column")]
-    if not columns or not plan.frame_row_id:
+    if not columns:
         return 0, 0
     read = engine.raw_connection()
     try:

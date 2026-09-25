@@ -840,6 +840,7 @@ def test_the_offered_scope_columns_are_exactly_the_ones_the_scope_reader_accepts
     assert "sources" in catalogue, "an absent key means 'could not find out', not 'none'"
     plans = load_setup().snapshot.source_plans
     assert {entry["source"] for entry in catalogue["sources"]} == set(plans)
+    assert any(plan.runs for plan in plans.values()), "CANARY: no running source to check"
 
     for entry in catalogue["sources"]:
         plan = plans[entry["source"]]
@@ -848,6 +849,10 @@ def test_the_offered_scope_columns_are_exactly_the_ones_the_scope_reader_accepts
         # source still holds its atoms, so dropping it from this list would read as the
         # declaration having lost it.
         assert entry["status"] == plan.status
+        if not plan.runs:
+            # retired or refused (S-177): omitted, not emptied
+            assert "scope_columns" not in entry
+            continue
         assert entry["scope_columns"] == list(base_select_columns(plan))
         # Both directions, on the live declaration: every offered column is accepted...
         for column in entry["scope_columns"]:

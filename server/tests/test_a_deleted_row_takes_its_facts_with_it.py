@@ -28,16 +28,6 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 from ledger import backfill, followup, runtime_v2, schema             # noqa: E402
 
 
-@pytest.fixture(autouse=True)
-def no_views(monkeypatch):
-    """🔴 VIEWS ARE NOT THIS FILE'S SUBJECT, AND THE SEAM IS ONE NAME (판정 158).
-
-    Since S-65-d a deletion also withdraws for the sources reading views on the deleted
-    row's table, and it asks in exactly one place. Blocking that name keeps these cases
-    about the base table's own index, which is what they were written to score.
-    """
-    monkeypatch.setattr(followup, "view_followers_of",
-                        lambda engine, setup, table: ([], []))
 from ledger.roleframe import SOURCE_ROW_REF_COLUMN                    # noqa: E402
 from ledger.source_preparation import FRAME_ROW_ID_COLUMN             # noqa: E402
 
@@ -224,21 +214,6 @@ def test_the_same_delete_twice_changes_nothing_the_second_time(store):
     store.forgotten.clear()
     again = backfill.withdraw_deleted_rows(None, None, RELATION, ["R1"], apply=True)
     assert store.withdrawn == [] and store.forgotten == [] and again["applied"] is False
-
-
-def test_a_source_with_no_row_index_is_named_rather_than_passed_over(store):
-    """🔴 판정 136. A source reading a VIEW has no `row_id` to index by, so this step can do
-    nothing for it -- and a quiet zero is indistinguishable from "there was nothing to
-    withdraw". The absence is structurally correct (nothing writes an outbox DELETE for a
-    view), which is the reason to say it plainly rather than treat it as a gap."""
-    setup = SimpleNamespace(snapshot=SimpleNamespace(source_plans={
-        "on_a_view": SimpleNamespace(relation=RELATION, frame_row_id=None),
-        "on_a_table": SimpleNamespace(relation=RELATION, frame_row_id="row_id"),
-        "elsewhere": SimpleNamespace(relation="other", frame_row_id=None),
-    }))
-    result = backfill.withdraw_deleted_rows(None, setup, RELATION, ["R1"], apply=True)
-    assert result["no_row_index"] == ["on_a_view"], (
-        "only the sources that read THIS relation and cannot be served")
 
 
 # ------------------------------------------------------------- and the queue routes it there

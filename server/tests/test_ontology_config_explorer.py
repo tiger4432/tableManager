@@ -181,28 +181,30 @@ def test_every_resolved_edge_has_symmetric_used_by_and_exact_pointer(active_setu
     # is no claim node; the mapping draws the same arrow one hop shorter, at the pointer
     # the author actually typed.
     split = next(edge for edge in index.edges if
-                 edge.from_key == "mapping|lot_slot_move#profile#mapping:seat-to-seat"
+                 edge.from_key == "mapping|lot_slot_wafer#profile#mapping:seat-holds-wafer"
                  and edge.reference_kind == "mapping_predicate")
-    assert split.to_key == "predicate|slot_map@1"
+    assert split.to_key == "predicate|has_wafer@1"
     assert split.json_pointer == (
-        "/sources/lot_slot_move/bind/mappings/seat-to-seat/predicate")
+        "/sources/lot_slot_wafer/bind/mappings/seat-holds-wafer/predicate")
 
 
 def test_actual_round_trip_source_profile_mapping_predicate(active_setup):
     index = build_explorer_index(active_setup)
     edges = {(edge.from_key, edge.to_key, edge.reference_kind) for edge in index.edges}
-    assert ("source_plan|lot_slot_move", "profile|lot_slot_move#profile", "source_profile") in edges
+    # ⚠️ [총괄 f3bc02f6e] `lot_slot_move` read a view and is refused now; `lot_slot_wafer` is the
+    #   table source with the same seat-shaped mapping.
+    assert ("source_plan|lot_slot_wafer", "profile|lot_slot_wafer#profile", "source_profile") in edges
     # The pair `mapping -> claim -> predicate` collapsed into one hop on 2026-08-21: the
     # claim node it went through was a position inside a section that no longer exists,
     # and it carried nothing the mapping does not already name.
     assert (
-        "mapping|lot_slot_move#profile#mapping:seat-to-seat",
-        "predicate|slot_map@1",
+        "mapping|lot_slot_wafer#profile#mapping:seat-holds-wafer",
+        "predicate|has_wafer@1",
         "mapping_predicate",
     ) in edges
     assert (
-        "mapping|lot_slot_move#profile#mapping:seat-to-seat",
-        "binding|lot_slot_move#profile#mapping:seat-to-seat#binding:subject",
+        "mapping|lot_slot_wafer#profile#mapping:seat-holds-wafer",
+        "binding|lot_slot_wafer#profile#mapping:seat-holds-wafer#binding:subject",
         "mapping_binding",
     ) in edges
 

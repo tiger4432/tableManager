@@ -769,6 +769,32 @@ class LedgerStore:
             if own:
                 connection.close()
 
+    def sources_by_row(self, relation, row_ids, connection=None):
+        """`{row_id: [source, ...]}` - which ledger sources this index names each row under.
+
+        🔴 [총괄 f3bc02f6e] THE GRID'S «Ledger» COLUMN, and the row-level form of 판정 173's
+        「relation rows - indexed rows」: the same table and the same `(relation, row_id)`
+        prefix of its key, so a row the count calls untranslated is a row this names nowhere.
+        A row with no index line is absent from the answer (the caller reads it as `[]`).
+        """
+        if not row_ids:
+            return {}
+        own = connection is None
+        connection = connection or self.connection()
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    f"SELECT DISTINCT row_id, source_who FROM {schema.ROW_REF_TABLE} "
+                    "WHERE relation = %s AND row_id = ANY(%s)",
+                    (str(relation), [str(item) for item in row_ids]))
+                out = {}
+                for row_id, source in cursor.fetchall():
+                    out.setdefault(row_id, []).append(source)
+                return {row_id: sorted(names) for row_id, names in out.items()}
+        finally:
+            if own:
+                connection.close()
+
     def forget_row_refs(self, relation, row_ids, connection=None, source=None):
         """Drop the index rows for physical rows the ledger no longer speaks for. How many.
 

@@ -2130,6 +2130,37 @@ def apply_search_filter(query, table_model, table_name, q, cols,
 SLOW_JSON_FALLBACKS: dict[str, int] = {}
 
 
+#: Tables whose ledger row index could not be read, said once per process and table.
+_LEDGER_SOURCES_UNREAD = set()
+
+
+def _attach_ledger_sources(db, table_name, rows):
+    """Each row's `ledger_sources` - the ledger sources that translated it (총괄 f3bc02f6e).
+
+    One query per page, through the ledger's own reader of its row index. `[]` is 「not yet」;
+    an index that cannot be read leaves the key OFF, which the screen draws as 「Unknown」 -
+    a `[]` there would say 「not yet」 about rows nobody looked at.
+    ⚠️ Whether this table IS a ledger source is not asked here - that answer has its own seat
+    (`/api/ledger/declaration`), and a second one would be free to disagree.
+    """
+    ids = [str(row["row_id"]) for row in rows if row.get("row_id") is not None]
+    if not ids:
+        return
+    try:
+        from ledger.store import LedgerStore
+
+        found = LedgerStore(db.get_bind()).sources_by_row(table_name, ids)
+    except Exception as exc:                                        # noqa: BLE001
+        if table_name not in _LEDGER_SOURCES_UNREAD:
+            _LEDGER_SOURCES_UNREAD.add(table_name)
+            logger.warning("[get_table_data] '%s': the ledger row index could not be read, "
+                           "so rows carry no ledger_sources (drawn as Unknown): %s: %s",
+                           table_name, type(exc).__name__, exc)
+        return
+    for row in rows:
+        row["ledger_sources"] = found.get(str(row.get("row_id")), [])
+
+
 def _table_data_response(payload, table_name: str):
     """Serialize the grid payload without FastAPI's `jsonable_encoder` pass.
 
@@ -2545,6 +2576,7 @@ def get_table_data(
         f"filters={_filtered_column_count(filters)}, "
         f"target={'set' if target_row_id else '-'}")
     
+    _attach_ledger_sources(db, table_name, data_list)
     return _table_data_response({
         "table_name": table_name, "total": total_count, "skip": skip, "limit": limit,
         "data": data_list, "calculated_skip": skip if target_row_id else None, "target_offset": actual_target_offset
