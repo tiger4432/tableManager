@@ -58383,3 +58383,39 @@ inventory_confirmed   착지 뒤 부팅에서 거절됩니다(지시대로 «맞
         그 한 칸을 실어서 _declared_row_id 자리가 「표이고 row_id 가 있나」를 같이 묻게 합니다
 ⛔ kind: "view" 의 (나) ledger_events 그리드 읽기는 안 건드립니다 — 원장 «소스» 판정에서만 거절
 ```
+
+---
+
+## 🔴 [09-25 13:3x] 구현자 — 뷰 소스 걷어내기: 착지 «전» 멈춤. 제 보고(25f1d9857)의 「가」가 한 경로에서 틀렸습니다
+
+```
+적었던 것   소스 하나가 거절되면 그 소스만 빠진다 (S-177 ②) -> 박스 원장은 선다
+맞는 것     ledger/setup.py::load_setup (원장 계획 · 번역 · 따라가기) — 그 소스만 빠지고 표 6 이 계획됩니다 (이 박스에서 잼)
+틀린 것     ledger/config.py::load 는 v5 검증기의 문제 «하나»에도 선언 «전체»를 거절합니다 (S-177 ② 가 여기엔 안 들어옴)
+            부르는 곳 15 — trace_router 11 · trace.py(선언된 추론 derivation) 1 · ledger/admin 2 · chain/enrichment/config 1
+            (git grep -n "_config.load()\|ledger_config.load(" -- server ':!server/tests')
+이 박스에서  라이브 설정의 뷰 소스 9 -> 이 로더가 통째로 거절 -> 시험 중 실측:
+            trace_router 「declaration unreadable」 · trace.ResolverConfigError(「class-N derivations cannot be honoured … Refusing」)
+            즉 박스의 원장 «추적·해석» 화면이 멈춥니다. 원장 계획·번역은 섭니다
+운영        소유자 말씀대로 운영에 뷰 소스가 없으면 이 로더는 오늘처럼 섭니다
+```
+
+### 여쭐 것 — 셋 중 하나
+
+```
+㉠ config.load 도 load_setup 과 «같은 기제»(S-177 ② 고정점: 문제가 가리키는 선언만 빼고 다시 검증)로 넓힌다 (추천)
+   한 문제 한 기제 — 소스 하나가 틀리면 그 소스만, 어느 로더로 읽든. 새 기제 없음, 이미 있는 resolve_declarations 를 부름
+   크기: config.load 한 곳 + 시험 한 줄(뷰 소스 하나 있는 선언이 나머지를 돌려줌). 안 쟀다 — 호출자 15 가 «줄어든 선언»을 받아도 되는지는
+        지어 보며 확인
+㉡ 그대로 착지 — 박스의 추적·해석 화면은 소유자가 라이브 설정에서 뷰 소스 9 를 빼실 때까지 멈춤 (소유자 config 라 저도 총괄도 안 고침)
+㉢ 이 거절을 config.load 가 보는 검증기에서 빼고 load_setup 에만 — ⛔ 비추천. 같은 선언에 로더마다 답이 둘이 됩니다
+```
+
+### 답을 기다리는 동안 — 답과 무관한 것만 합니다
+
+```
+시험 정리   손으로 만든 카탈로그(표인데 row_id 칸이 없음 — 운영 어댑터는 표에 row_id 를 반드시 심어 이 모양은 운영에 없음)를
+           쓰는 시험들 · 은퇴한 뷰 따라가기(view_followers_of · base_tables_of)를 재던 시험들
+⚠️ 착지 안 합니다. 워킹 트리의 제 미커밋 변경: ledger(setup_bundle · setup_registry · backfill · followup · source_preparation · store) ·
+   chain/graph · admin/retroactive · main · 샘플 둘 · 스크립트 6 삭제(평문 rm, 스테이지 안 함)
+```
