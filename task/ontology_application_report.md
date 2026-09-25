@@ -33554,3 +33554,25 @@ CLI 기록의 요청자   CLI 실행 행의 requested_by 가 비어 있습니다
 ```
 
 > ⏱ (09-25 22:53) 응용 남은 줄 — ① 대형 레인 표마다 일꾼(8a556feb0) 착지 뒤 전·후(표 둘에 업로드 · 먼저 알림) ② 23 시 뒤 마지막 한 판(대기열 · 도는 것 · 실패 목록 · 선언 · 그리드 화면). 문서는 오늘 착지분까지 끝 · 박스에 제 흔적 0.
+
+---
+
+## 23 시 뒤 마지막 한 판 — 오늘 착지분의 대기열 · 화면 (09-25 23:03)
+
+읽기만. 대기열 · 실패 · 소급은 라우트 함수(프로세스 안 HEAD 33fd403eb), 토큰 없는 길은 HTTP, 그리드는 내장 브라우저. 어드민 화면은 토큰이라 안 열었습니다(총괄 몫).
+
+| 칸 | 지금 |
+|---|---|
+| `/health` | ok · chain · scheduler · watcher ok (graph · ledger 는 off_roster) |
+| 체인 대기열 | waiting 0 · `now_running` 0 · loop_seen_via chain_worker_heartbeat · 옛 `running` 키 없음 ✓ |
+| 메인 그리드 대기열(`/outbox/queue/rows`) | 0 줄 |
+| 실패 목록 | 261 행(거래 묶음 36) — dt_inventory EDIT 09-25 228 · 09-23 33, 둘 다 attempts 1 · day_zone Asia/Seoul. 228 은 20:34 confirm 측정이 깨운 체인(총괄 a4cb623e0), 33 은 전부터 있던 소유자 것 |
+| 화면이 그리는 실패 수 | 요약 행의 합(261) — `failedSince` 가 요약을 합함, `total`(36)은 쪽넘김용 |
+| 소급 | 도는 것 0 · 최근 셋 ledger_backfill done · resolve cancelled · ledger_backfill failed(제 「없는 원장 소스」 관찰 줄) |
+| 원장 선언 | 소스 15 · 거절 9 · 아홉 다 센서스가 로더 거절 문장 ✓ |
+| 제 흔적 | metro · production_plan · inventory_master · cell_sources 의 APPAUDIT 0 |
+| 그리드 화면 | 콘솔 오류 0 · 영어 · `ledger_events` 는 「View — read-only」 · `lot_event` 1,000 행 294.9 ms · **Ledger 열이 맨 끝(updated_at 뒤)**, 줄마다 「lot_event」 · 머리 줄 「ledger source — lot_event · emits derived_from(4) · register(4)」 ✓ |
+
+```
+남은 것   대형 레인 표마다 일꾼(8a556feb0) — 착지하면 전·후(표 둘 업로드 · 먼저 알림)
+```
