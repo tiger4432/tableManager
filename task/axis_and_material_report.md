@@ -1,3 +1,18 @@
+> ## [07:35 디자인] 파일 서랍 제목 착지 (72788b05b) — 성공 줄의 문장을 «Error» 밑에 두지 않음
+
+```
+자리     retry_verdict.ingestionMessageView(상태, 문장) 하나 — 톤은 배지가 쓰는 retryVerdict(상태).tone 그대로(새 갈래 없음)
+         admin.js 서랍의 제목 · 배지 톤 · 본문이 이 한 번의 부름에서
+제목     실패(danger) -> Ingestion error · 그 밖 -> Ingestion message
+빈 문장   성공 -> No message — ingested successfully. · 실패 -> No error message captured. · 대기·모름 -> No message captured.
+         (예전 대체 문구는 실패한 파일에도 「File ingested successfully」 라고 적었음)
+시험     retry_verdict 42 (바닥 35 -> 42) — 픽스처 FAILED + 사유 · SUCCESS + 문장 · SUCCESS 빈 문장 · FAILED 빈 문장 · 대기 빈 문장 · 톤 같음
+         변이 12/12 잡힘(새 셋: 제목 늘 error · 빈 문장 늘 성공 · 문장 버림) · 대조 2/2
+         D2 는 배지가 서랍의 톤을 읽는 줄로 옮김(그 톤이 retryVerdict 의 것임은 F6 가 잼)
+         하니스 141 초록(기존 빨강 2) · 빌드 exit 0
+여실 때   클라만. File Ingestion 탭에서 SUCCESS + 문장인 행 하나(총괄)
+```
+
 > ## [07:18 디자인] 위 대기열 state 착지 (39ee66cdc) — 주인이 죽은 실행이 RUNNING 처럼 안 그려짐
 
 ### 착지 39ee66cdc (8e331ca17 대로 · 구현자 162e1cc73 의 state 칸)
