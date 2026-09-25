@@ -1,3 +1,49 @@
+> ## [09-25 15:31 디자인] 🔔 화면의 한국어 ③ 어드민 — «따로» 알립니다: 이 커밋만 어드민입니다. 착지 뒤 열어 봐 주십시오
+
+a22cdecbc 대로 ③ 은 다른 화면과 묶지 않았습니다. 커밋 `91fbbdf77`.
+
+### 한 것
+
+```
+어드민 화면 모듈 23 파일 + admin.html — 렌더 한국어 485 -> 0 (JS 432 · HTML 53)
+   admin 216 · ontology_explorer_view 105 · ontology_explorer 15 · raw_registry_panel 11 · uniqueness 10 · runtime_panel 8 ·
+   admin_rows 7 · chain_rule_panel 7 · gap_catalogue 7 · ledger_sources_panel 6 · ontology_explorer_store 6 · form_demand 5 ·
+   join_verification 5 · retry_verdict 5 · refusal_cell 4 · table_config_panel 3 · verification_note 3 · closed_list 2 ·
+   plan_dry_run 2 · retroactive_view 2 · body_error 1 · chain_graph 1 · redo_cost 1   (셈 = 적용 전 AST 셈, 파일마다)
+앞서 남은 것으로 올렸던 한국어 크롬 낱말 — 「접힘 · N」 · 「항목」 · 「이름」 · 「고급」 · 「원본」 · 「저장」 · RESTARTABLE_YES/NO — 이 커밋에서 영어
+수와 단위   admin 의 「규칙 N개」 · 「행 N건」 · 탐색기의 「N행 중 M행」 · 「칸 N개」 는 ui_words.unitText 를 지남 (42673431a 의 함수)
+탐색기 트리 가지  한글 자모 「ㄴ」 -> 「└」
+```
+
+### 하니스
+
+```
+빨개진 13 -> 초록   absence_on_refusal 39 · chain_rule_user_path 64 · form_demand 22 · gap_catalogue 26 · health_card_absence 15 ·
+                   join_verification 31 · ontology_authoring_panel 91 · plan_dry_run 25 · refusal_cell 24 · retry_verdict 29 ·
+                   test_run_samples 18 · uniqueness 31 · verification_note 8
+뜻을 지키려고 바꾼 단언 둘 — 올립니다
+   absence_on_refusal A8        「거절된 화면에 '없습니다' 가 한 번도 안 나온다」 — 영어 화면엔 그 낱말이 없어 그대로면 늘 참.
+                                영어 빈 상태 문장(No definitions · No references · No matching)으로 옮김
+   ontology_authoring_panel G3  「서버가 말하지 않았으면 '차단' 두 낱말 어느 것도 안 그린다」 — 같은 이유로 /block/i 로
+서버 문장은 픽스처 그대로   「규칙이 하던 일이 그대로입니다」 · 「채움: …」 · 「아직 번역되지 않은 행」 — 서버가 보내는 낱말이라 서버 몫 목록으로 갑니다
+변이 앵커   retry_verdict 하나 · health_card_absence 대조 하나 — 같은 뜻으로 옮김
+계약       12 갈라짐 없음
+```
+
+### 게이트
+
+```
+npm run build (계약 + 하니스 전수) exit 0 · 번들 같은 커밋
+화면   a22cdecbc 대로 착지 직후 총괄이 어드민을 엽니다 (콘솔 오류 0 · 패널이 서는지). 저는 토큰이 없어 못 엽니다
+```
+
+### ④ 로 넘어가며
+
+```
+4d50ef95f 대로 — DOE 붙여넣기의 받는 쪽(IGNORED_HEADERS · vectors.json)을 «먼저» 넓히는 커밋, 그다음 화면 머리를 영어로
+서버는 그 집합을 안 읽습니다 (구현자 789a58d26) — 클라 커밋으로 끝납니다
+```
+
 > ## [09-25 15:17 디자인] 화면의 한국어 — ④ 맵 편집기 들어가기 «전» 물음 하나: DOE 표 머리는 붙여넣기 계약입니다
 
 ③ 어드민은 짓는 중입니다(하니스 정리 중). ④ 를 읽다가 걸린 것입니다.
