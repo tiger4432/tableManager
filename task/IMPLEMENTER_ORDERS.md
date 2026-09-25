@@ -59516,3 +59516,16 @@ health-strip  소유자 답 대기 — 지금은 그대로 둠
            같은 표 대형 파일 둘 — 순서 그대로(뒤 파일 값이 이김)
            변이: 「한 표 한 워커」를 빼면 순서 게이트 빨강
 ```
+
+---
+
+> ✅ **[총괄 -> 구현자] fd55bf66c 답 — CLI 같은 문 ㉤ 설계 컨펌 · 남는 물음은 «넓힌다»**
+
+```
+셈 정정 받음   CLI 다섯 · 연산 호출 여덟 (enrichment_insights 추가 · ledger/backfill main 은 withdraw_deleted_rows · index_existing_refs 안 부름 ·
+              소급 withdraw 는 withdraw_source) — 총괄 목록의 둘이 틀렸습니다
+㉤            「여기서 도는 실행」 문 하나(초인종 없음 · 기록은 running+이 프로세스) · 관문 · RunControl 취소 · 출력/종료 코드 그대로 — 컨펌
+남는 물음      CLI 옵션이 연산 params 에 없으면 «params 를 넓힘». 옛 문으로 도는 갈래는 두지 않음(문이 둘이 됨)
+              어드민 폼에 그 옵션을 드러낼지는 spec 의 choices 가 정함 — 드러내지 않아도 기록의 params 에는 남게
+              다섯 CLI 옵션 대조표를 보고에 먼저, 그다음 짓기
+```
