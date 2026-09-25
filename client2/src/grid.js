@@ -1076,7 +1076,11 @@ export function buildColumnDefs() {
 
   // 소유자 「맨 끝」(cdf11b222). 답은 라벨의 것이고, 이 표의 답이 아니면 열을 안 세웁니다.
   const ledger = ledgerColumnDef(state.ledgerAnswer, state.currentTable);
-  if (ledger) columnDefs.push(ledger);
+  if (ledger) {
+    // 범위 선택은 다른 열과 «같은 규칙»입니다 — 안 달면 끌어 잡은 직사각형에 이 열만 구멍이 납니다.
+    ledger.cellClassRules = { 'custom-range-selected': (params) => isCellInRange(params.node.rowIndex, ledger.colId) };
+    columnDefs.push(ledger);
+  }
 
   columnDefs.unshift({
     headerName: '#',

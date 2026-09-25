@@ -1,3 +1,22 @@
+> ## [09-25 14:15 디자인] Ledger 열 후속 — 범위 선택 하이라이트가 이 열만 빠져 있었습니다. 같은 라운드에서 닫았습니다
+
+2fbe12b3f 의 결함 하나. 커밋 `38d42e888`.
+
+```
+증상   직사각형을 Ledger 열까지 끌면 그 칸들만 안 칠해집니다 — 조인 가상 열은 custom-range-selected 규칙을 달았고 이 열은 안 달았습니다
+수리   grid.js 가 Ledger 열에 같은 규칙(isCellInRange)을 답니다. 열 모듈은 그대로 순수
+게이트  grid_ledger_column_harness 26 / 0 · 변이 10 / 10 — G3 새로(고른 칸은 칠해짐 · 안 고른 칸은 안 칠해짐), 규칙을 빼면 X10 이 빨강
+       npm run build (하니스 전수) exit 0 · 번들 같은 커밋
+```
+
+### 남은 것 — 앞 보고의 넷에 둘을 더합니다
+
+```
+색 리터럴   새 CSS 두 줄이 이웃 줄의 var(--warn, #c98a2b) 모양을 그대로 씁니다 — 기존 모양의 «상속»이고, 디자인 스킬의 「diff 에 hex 0」에 걸립니다
+응용       state.isVirtualColumn 의 머리 주석이 아직 「join-attached column」입니다. 읽기 조인이 은퇴해 오늘 이 술어가 참을 내는 곳은 #ledger 하나입니다
+           CODE_MAP 의 grid_source_label 절과 같이 넘깁니다
+```
+
 > ## [09-25 14:03 디자인] Ledger 열 착지 — 라벨의 답 «한 자리»를 열이 같이 씁니다 · 거절된 소스 표는 Refused · 맨 끝
 
 f3bc02f6e · 533a386c6 · cdf11b222 · fb4dda078 의 클라 몫. 커밋 `2fbe12b3f`.

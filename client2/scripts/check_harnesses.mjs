@@ -1537,7 +1537,7 @@ const FLOORS = new Map([
   // New 2026-09-25 (lead f3bc02f6e, owner 「at the end」). The grid's Ledger column takes the source
   // label's ONE answer to 「is this table a ledger source」, scored through the real label, the real
   // buildColumnDefs and the write funnels' seat; a refused source and a half-refused table included.
-  ['grid_ledger_column_harness.mjs', 34],
+  ['grid_ledger_column_harness.mjs', 36],
 ]);
 
 // ── the ceilings ────────────────────────────────────────────────────────────────
