@@ -349,3 +349,37 @@ def test_a_search_on_id_finds_a_views_key_and_a_tables_sql_is_unchanged(grid_vie
     sql = str(main.apply_search_filter(db_session.query(view), view, GRID_VIEW,
                                        "x", "id").statement)
     assert "CAST(%s.id AS" % GRID_VIEW in sql.replace('"', ""), sql
+
+
+def test_the_id_header_sorts_a_view_by_its_key_and_a_table_by_its_key_column(grid_view,
+                                                                            db_session):
+    """총괄 01cad807c — the grid sends `order_by=<colId>`; `id` read `business_key_val`."""
+    import csv
+    import io as _io
+
+    from database import models
+
+    rows = grid_view.get("/tables/%s/data?order_by=id&order_desc=true" % GRID_VIEW)
+    assert rows.status_code == 200, rows.text
+    assert [row["row_id"] for row in rows.json()["data"]] == ["EV-2", "EV-1"]
+    export = grid_view.get("/tables/%s/export?order_by=id&order_desc=true" % GRID_VIEW)
+    assert export.status_code == 200, export.text
+    lines = list(csv.reader(_io.StringIO(export.content.decode("utf-8-sig"))))
+    assert [line[0] for line in lines[1:]] == ["EV-2", "EV-1"]
+
+    table = models.DYNAMIC_TABLES["raw_table_1"]
+    order = main._named_sort(table, "raw_table_1", "id", False)
+    assert "business_key_val" in str(order[0]), "a table keeps its key column, not row_id"
+
+
+def test_a_framework_column_a_view_lacks_is_unsearchable_by_name(grid_view):
+    alone = grid_view.get("/tables/%s/data?q=EV&cols=created_at" % GRID_VIEW)
+    assert alone.status_code == 400 and "created_at" in alone.json()["detail"], alone.text
+    beside = grid_view.get("/tables/%s/data?q=EV-1&cols=created_at,id" % GRID_VIEW)
+    assert beside.status_code == 200, beside.text
+    assert [row["row_id"] for row in beside.json()["data"]] == ["EV-1"]
+
+
+def test_the_dashboard_does_not_report_a_view_as_a_drifted_table(grid_view):
+    body = grid_view.get("/dashboard/summary").json()
+    assert GRID_VIEW not in [u["table_name"] for u in body["uncounted_tables"]]

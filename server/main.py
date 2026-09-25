@@ -1726,9 +1726,16 @@ def get_dashboard_summary(db: Session = Depends(get_db)):
     table_names = list(crud.TABLE_CONFIG.keys())
     uncounted = []
     
+    from ledger.setup_bundle import catalog_kind
+
     for name in table_names:
         table_model = models.DYNAMIC_TABLES.get(name)
         if not table_model:
+            continue
+        # ⚠️ A VIEW HAS NONE OF THE THREE COLUMNS THE PROBE ASKS FOR, by declaration - it
+        #   is not a drifted table, and reporting it as one was a false line per view
+        #   (총괄 01cad807c).
+        if catalog_kind(crud.TABLE_CONFIG.get(name)) == "view":
             continue
         # 🔴 EACH TABLE BUYS ITS OWN FAILURE. One declared table whose physical shape has
         # drifted (measured 2026-09-04: a table declared with `row_id` that the database
@@ -1948,7 +1955,11 @@ def _named_sort(table_model, table_name, order_by, order_desc):
         stamp = getattr(table_model, "updated_at", None)
         return pair(stamp) if stamp is not None else pair(None)
     if order_by == "id":
-        return pair(table_model.business_key_val)
+        # ⚠️ THE SAME SHAPE AS `updated_at` ABOVE (총괄 01cad807c): a view has no
+        #   `business_key_val`, so its ID header sorts by the total-order key. A table keeps
+        #   its 🔑 column - not `row_id`, which would re-order every table by UUID.
+        key = getattr(table_model, "business_key_val", None)
+        return pair(key) if key is not None else pair(None)
     if order_by == "row_id":
         # [판정 97] 종전 이 갈래는 `order_desc` 를 «안 봤고**, 그것은 A-6 과 «같은» 결함이었다 —
         # 머리글을 내림차순으로 눌러도 오름차순이 오고 기호만 내림차순이었다. 화면은 기본으로
@@ -2123,7 +2134,9 @@ def apply_search_filter(query, table_model, table_name, q, cols,
     conditions = []
     unsearchable = []
     for col in col_list:
-        if col in ["created_at", "updated_at"]:
+        # ⚠️ A framework column the model does not carry (a view: 총괄 01cad807c) falls
+        #   through to `unsearchable` below, like any other column the relation lacks.
+        if col in ["created_at", "updated_at"] and getattr(table_model, col, None) is not None:
             target_col = table_model.created_at if col == "created_at" else table_model.updated_at
             conditions.append(cast(target_col, String).ilike(f"%{safe_q}%", escape="\\"))
         elif col in ["row_id", "id"]:
@@ -2136,7 +2149,7 @@ def apply_search_filter(query, table_model, table_name, q, cols,
             for key in total_order_keys(table_model, table_name):
                 text_key = key if key is row_id else cast(key, String)
                 conditions.append(text_key.ilike(f"%{safe_q}%", escape="\\"))
-        elif col == "business_key_val":
+        elif col == "business_key_val" and getattr(table_model, col, None) is not None:
             conditions.append(table_model.business_key_val.ilike(f"%{safe_q}%", escape="\\"))
         elif hasattr(table_model, col):
             conditions.append(cast(getattr(table_model, col), String).ilike(f"%{safe_q}%", escape="\\"))
