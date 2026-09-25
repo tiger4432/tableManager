@@ -1,3 +1,57 @@
+> ## [09-25 19:08 디자인] 0367926b6 답 — no_row_id 는 «다시 안 재어지는» census 줄 · 빨강 다섯 이름 · 곁수리 (0c60eea11)
+
+### no_row_id — 어디서 오나, 한 번인가 계속인가
+
+```
+오는 곳   /api/ledger/declaration 의 sources[].census 중 거절 넷(bonded_from · bw_dt_seat · lot_slot_move · void_observation)
+         refused 값이 no_row_id — c193986a8(13:38) 에서 은퇴한 코드가 그 전에 찍은 줄입니다. census_names 에는 없습니다
+         지금 코드가 거절을 찍으면 source_refused(이름 있음) + 로더의 문장
+계속     census 작업(ingestion_worker.run_ledger_row_census)은 plan.runs(= active 이고 로더가 짠 것)인 소스만 잽니다
+         로더가 거절한 넷은 영영 다시 안 재어지고, 그 줄과 옛 처방(「뷰에 row_id 를 선언하라」 — 지금 로더가 거절하는 길)이 남습니다
+         backfill 의 거절 갈래(_loader_refusal)는 바로 이 경우를 위해 있는데, 작업의 거름이 거기까지 안 보냅니다 (코드로 읽음 · 돌려 보지 않음)
+```
+
+| 안 | 무엇 | 운영자가 보는 것 | 위험 | 크기 |
+|---|---|---|---|---|
+| A 이름표에 no_row_id 추가 | 말씀하신 같은 방법 | 이름은 나오나 옛 처방이 툴팁에 계속 | 은퇴한 코드에 이름을 줘 되살림 | 한 줄 |
+| B census 작업이 거절 소스도 찍음 | 거름을 runs 에서 «선언된 소스 전부»로. 거절이면 기존 갈래가 스캔 없이 거절을 찍음 | 다음 한 바퀴에 넷이 「Refused by the loader」 + 로더의 지금 문장 | 체인 워커 파일(구현자 자리) · 바퀴당 가벼운 호출 넷 | 작음 · 안 쟀다 |
+| C 안 도는 소스의 census 를 라우트가 안 실음 | 쓰는 이가 없는 수를 안 냄 | 넷의 줄이 사라지고, 패널은 왜 안 세는지 말 못함 | 패널이 라우트의 refusal 칸을 안 읽음 | 작음 |
+
+```
+추천  B — 기제가 이미 있고 막힌 곳이 거름 한 줄입니다. 운영의 다른 설치에서도 「거절됐다 -> 옛 census 가 굳는다」가 같은 모양입니다
+여쭐 것  B 를 구현자에게 보낼지 제가 할지 (ingestion_worker 는 체인 워커)
+```
+
+### 빨강 다섯 — 이름
+
+```
+tests/test_ontology_config_explorer.py::test_actual_snapshot_enumerates_every_registry_and_declaration
+tests/test_ontology_config_explorer.py::test_every_resolved_edge_has_symmetric_used_by_and_exact_pointer
+tests/test_ontology_config_explorer.py::test_actual_round_trip_source_profile_mapping_predicate
+tests/test_the_catalogue_says_which_types_are_static.py::test_the_static_types_match_what_the_walk_uses
+      「no static type is declared; the assertion above is vacuous」 — 박스 선언에 static 타입이 없음
+tests/test_ledger_source_contract.py::test_declared_contract_catches_a_signature_conflict_before_a_row_hits_that_rule
+      기대 issue 1 · 받은 것 2 (subject_signature_mismatch 둘) — source_contract.py 는 이 라운드에 안 건드렸습니다
+```
+
+### 곁수리 0c60eea11 (클라만 · 재기동 없음)
+
+```
+인스펙터  143aa76df 에서 제가 뺀 「refused」 딱지를 되살림 — 이름표에 없는 코드는 키 그대로라 딱지 없이는 칸 이름과 구별이 안 됐습니다
+시각      「못 읽으면 서버 글자 그대로」를 두 파일이 각자 적고 있던 것을 server_time.localShortOrAsSent 하나로
+시험      server_time 24 · 변이 7/7 · source_backlog 40 · 변이 16/16 · 빌드 0
+고침      앞 보고의 「곁 87 파일 1116 통과」는 note 시험을 고치기 전 판입니다. 고친 뒤 같은 87 파일: 1117 통과 · 빨강 5 (위 다섯)
+```
+
+### 다음 순서
+
+```
+1 Declarations 본문 영어 + 모집단 이름 (bed890af2 ②③)
+2 실패 요약 한 줄(e6e5a08ee) + Attempts (this round) · 루프 표 idle (13aa739f3) — 한 커밋
+3 소급 결과 줄 이름(dc8bf5af8) — 이름표 자리가 소급 연산 등록부(server/admin/retroactive.py, 구현자 파일)라 짓기 전에 여쭙니다:
+  제가 그 파일의 등록부 칸만 써도 되나요 (via-events 은퇴와 안 겹치게)
+```
+
 > ## [09-25 18:53 디자인] bed890af2 ① 착지 (143aa76df) — Explorer 탭 서버 문장 영어 · 소스 현황 안쪽 줄 서버 이름표 · 시각 하나 · 해시
 
 ### 착지 143aa76df (서버 + 클라 한 커밋)
