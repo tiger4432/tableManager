@@ -34098,3 +34098,62 @@ allow_replace_map · allow_retraction 을 넣으면  두 골격에 칸이 하나
             지시대로 상수로 지었고, 이쪽은 물음으로만 드립니다
 다음        표기 정규화(6c156492f + 시간 모양 5a87c794c) — 짓기 전 셈과 안을 먼저 이 채널에
 ```
+
+---
+
+## [응용 -> 총괄] 표기 정규화 (6c156492f · 451ac4f75 · 2a73863ca · 시간 5a87c794c) — 짓기 전 셈 · 안 셋 · 여쭐 것 (짓지 않았음) (09-26 17:40)
+
+### 셈 — 오늘 있는 것
+
+```
+접기 함수    notation_norm.fold_notation(파이썬 기준) · fold_sql_text(PG 철자 한 곳) — 규칙 separator · case(구현) · zero_pad(거절)
+            SQL 접기는 «함수 인덱스 식»에도 들어감(chain/join_key_index · join_into._folded) — PG 가 IMMUTABLE 만 받는 자리
+계약         contracts/notation_fold 43 벡터 × 규칙 조합 4 · PG 쪽은 ASSY_CONTRACT_PG_URL 있을 때만 돎 · declared_divergences 칸 있음
+선언         server/config/notation_rules.json — 이 박스에 «없음»(샘플만, columns 비어 있음) -> 지금 켜진 칸 0
+미리 보기     GET /admin/config/notation/preview -> merge_groups (notation_norm.fold_preview · SQL 로 접어 묶음)
+쓰기 깔때기   네 입구(그리드 PUT /tables/{t}/data/updates · 파일 _send_to_upsert · 체인 apply_chain_writes · API 같은 PUT) 전부
+            crud.apply_batch_updates -> _apply_batch_updates_once -> apply_row_update_internal -> cast_value_by_type
+            🔴 비즈니스 키는 cast «전»에 날 값으로 조립됨(_apply_batch_updates_once 의 assemble_composite_business_key · 파일 쪽 business_key_val)
+               -> 접는 자리는 _apply_batch_updates_once 머리(키 조립 전). 체인 key_gate.screen 은 그보다 «앞»에서 날 값으로 돎
+이력         칸별 AuditLog 는 source == "user" 일 때만. 파일 · 체인은 행 요약 ROW_UPDATE 한 줄 — 셋 중 둘의 입구에 «원래 철자를 달 칸별 이력»이 없음
+뒤집는 판정   notation_norm 모듈 docstring(2026-08-04): 「접힌 값을 어딘가 쓰게 되면 would_rewrite_raw · key_column 거절 둘이 함께 돌아와야 한다」
+            소유자 결정은 바로 그 둘이 막던 것(원본을 고쳐 씀 · 키 칸을 접음)이다 — 둘을 «안 되돌리는» 것으로 읽음(여쭐 것 ③)
+시간         utils/time_format.TS_FMT = "%Y-%m-%d %H:%M:%S" 이미 있음(부르는 곳 0) · collector_markers.DEFAULT_WINDOW_FORMAT 가 같은 글자의 둘째 사본
+            시간 글자 칸 11 (string 선언) — 그중 wafer_id_status.valid_from 은 합성 키의 일부
+별칭 표       값 -> 값 표는 없음. 닮은 것 maps/preset_routing 의 선언된 조회 {table, key_column, value_column}
+선례         박스 매퍼 core_usage_mapper 가 이미 fold_notation 값을 키 칸(core_usage_map.core_wafer)에 저장
+```
+
+### 안 셋 — 1 단계(접기 함수 · 선언 · 미리 보기)의 «두 엔진» 문제
+
+| 안 | 무엇 | 좋은 점 | 위험 | 크기 |
+|---|---|---|---|---|
+| ㄱ | 새 규칙 다섯(별칭 · join · pad_last_number · 정규식 바꾸기 · time) 전부 파이썬 + PG 두 엔진 | 지시 문장 그대로 「같은 규칙 같은 답」 | 별칭(표 조회)과 time(to_timestamp)은 IMMUTABLE 이 아니라 함수 인덱스 식에 못 들어감 — 인덱스 쪽만 다른 답이 됨 | 큼 · 안 쟀다 |
+| ㄴ **추천** | join · pad_last_number · 정규식 바꾸기는 두 엔진(전부 regexp_replace · lpad — IMMUTABLE) + 계약 벡터. 별칭 · time 은 «쓰기 입구 전용»(파이썬) — 계약의 declared_divergences 에 이름 대어 적음. 2 · 3 단계 뒤 저장값이 이미 대표 표기라 비교 쪽에 그 둘이 필요 없음 | 인덱스 식이 그대로 섬 · 두 엔진이 같은 답을 내는 범위가 «증명됨» | 소급(3 단계) 전 옛 행은 비교 때 별칭 · time 이 안 접힘(그 사이만) | 중간 · 안 쟀다 |
+| ㄷ | 새 규칙 전부 쓰기 입구 전용, 비교 접기는 오늘 둘(separator · case) 그대로 | 가장 작음 | join/pad 도 비교에서 안 접혀 소급 전 조인이 새 표기와 옛 표기를 가름 · 「같은 규칙 같은 답」에서 제일 멂 | 작음 |
+
+```
+1 단계에 같이 짓는 것(ㄴ 기준)
+  선언   칸마다 {"join": "-", "pad_last_number": 2} · {"replace": [[패턴, 바꿀 글], …]} · {"time": {"from": [모양, …]}} · 별칭은 켬/끔만
+         write: true 표시 — 비교만 할 칸과 저장할 때 바꿀 칸을 가름(지시의 「쓸 때 바꿈 표시」)
+  점검   join 글자가 맵 키 잇기 글자(compose_map_id 의 '_' · composite_key_separator)와 같고 그 칸이 맵 키에 들면 이름 대어 거절
+         zero_pad 는 지금처럼 거절 · pad_last_number 와 이름이 안 섞임
+         time 입력 모양이 strptime 으로 못 읽히면 거절 · 시간대가 붙은 값은 접지 않고 세어 이름 댐(지시)
+  별칭 표 제품 소유 표 하나(product_tables 방식) — 칸: 표 · 칸 · 원래 철자 · 대표 표기. 비어 있게 출하. 정확히 일치할 때만
+  순서   별칭 먼저 -> join -> pad_last_number -> 정규식 바꾸기 -> case (time 은 time 을 선언한 칸만, 그 칸에서는 유일한 규칙)
+  미리 보기 기존 preview 가 새 규칙으로 합쳐지는 묶음을 냄 — 별칭 · time 은 파이썬으로 접어 묶음(PG 에서 못 접으므로)
+  출력 모양 time 은 utils/time_format.TS_FMT 를 부름. collector_markers.DEFAULT_WINDOW_FORMAT 을 그것으로 바꾸는 한 줄은 구현자 파일(C) — 구현자가 대형 레인 뒤에 하거나 제가 C 가 닫힌 뒤에
+게이트 소유자 예(wafer.01 · wafer.1 · mylot.1 · wafer_01 · WAFER.1 · 끝이 숫자 아님 · 세 자리) × 두 엔진 · 별칭 한 줄 · 시간 모양 여섯 칸
+       변이 — 별칭을 규칙 뒤로 · join 을 separator 로 되돌림 · 계약 SQL 쪽 흔들기 -> 각각 빨강
+```
+
+### 2 단계 전에 답이 필요한 것 (여쭐 것)
+
+```
+① 자리  깔때기 머리(_apply_batch_updates_once, 키 조립 전) 하나로 두면 체인 key_gate.screen 이 그보다 앞에서 «날 값»으로 판정함
+        ㄱ 체인 쪽도 key_gate 전에 같은 함수를 부름(부르는 자리 둘 · 함수 하나)  ㄴ key_gate 가 접은 값으로 판정하게(판정 자리를 접기 뒤로)
+② 이력  파일 · 체인은 칸별 AuditLog 가 없음. 원래 철자를 «어디에»
+        ㄱ 정규화가 값을 바꾼 칸만 칸별 AuditLog 한 줄(모든 출처) — old_value = 원래 철자 · new_value = 대표 표기 · source_name = 원래 출처
+        ㄴ AuditLog 에 새 칸(written_as) — 스키마 바꿈 · 마이그레이션
+③ 거절 둘  docstring 의 「would_rewrite_raw · key_column 이 돌아와야」를 소유자 결정이 뒤집은 것으로 적고 안 되돌림 — 맞나
+```
