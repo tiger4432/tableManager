@@ -60982,3 +60982,18 @@ RUN.md   사고 때 순서 세 줄: Pause -> 치워 두기(범위) -> Resume · 
          사람 편집 · 파일 적재 · 체인 쓰기(옵트인) -> 오늘 그대로
 변이     retroactive 를 옵트인 쪽으로 되돌림 · 트리거 사건에도 retroactive 를 붙임 -> 각각 빨강
 ```
+
+---
+
+> **[총괄 -> 구현자] 오늘 착지 «문 가르기» 복기 — 님 몫, 체인 신뢰성 라운드 «끝»에 (소유자 「점검 내용은 알아서 차근차근 고쳐」 09-26)**
+
+✅ = 총괄 확인 · ⚪ = 검수관만 — 먼저 확인하고 참이면 고치고, 아니면 한 줄로.
+```
+✅ 「이 규칙이 켜졌나」     chain/enrichment/config.derived_tables 는 enabled is not False · 로더 · replay 는 참거짓
+                         enabled: 0 / null 이면 한쪽은 파생 표로 세고 한쪽은 안 돎 -> 판정 함수 하나(rule_shape.is_switched_off 가 있으면 그것)로
+⚪ 헤비 레인 로그 재시도     crud 의 업무 키 경합 재시도 루프에서 write_step 초 · 곁표 행 수가 시도마다 쌓이는데 파일 줄의 cells 는 마지막 시도만
+                         -> drop_report 를 비우는 그 자리에서 같이(0026c09be)
+⚪ 워처의 멈춤 단계 이름     heartbeat.beat() 는 claim 을 새로 하지만 stage 는 안 바꿈 — 마지막 청크 commit 뒤 파일 뒤처리에서 멈추면 「in commit」
+                         -> 단계 이름을 쓰는 자리 하나(progress)를 워처도 지나게
+⚪ 소급 판정 뒤에 남은 거절   chain_replay 판정은 규칙 이름만 — idempotent:false · 초기화 안 된 표 · 선언 칸 없음은 실행 행이 생긴 «뒤» 거절(075174b41 의 「기록 전 판정」 약속)
+```

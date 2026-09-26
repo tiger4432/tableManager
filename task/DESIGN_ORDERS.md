@@ -34666,3 +34666,46 @@ Backfill 버튼 다음. 구현자가 Pause/Resume 라우트 · 대기열 치워 
 Overview 와 Chain 탭에 Pause / Resume (지금 상태가 한눈에 — paused 면 그 낱말과 누가 언제) · Chain 탭에 Park queue 폼(범위 고르기 · 드라이런 수 · 실행)
 짓기는 구현자 라우트 착지 «뒤» — 지금은 Backfill 버튼만
 ```
+
+---
+
+> **[총괄 -> 응용] 오늘 착지 «문 가르기» 복기 — 님 몫 (소유자 「점검 내용은 알아서 차근차근 고쳐」 09-26)**
+
+검수관 넷이 오늘 착지 전부를 봤고, ✅ 는 총괄이 코드를 열거나 돌려서 확인한 것. ⚪ 는 검수관만 본 것 — «먼저 확인하고», 참이면 고치고, 아니면 한 줄로 아니라고.
+원칙 하나: 같은 물음에 답하는 자리는 «한 함수»를 부르게. 사본을 맞추는 수리는 수리가 아니다.
+
+순서: A(지금 · 작음) -> 층 접기(하던 것) -> B -> C -> 표기 2 단계
+```
+A ✅ 표기 replace 의 뒤참조   ["WF", "\1"] 이 _replace_pair_refusal 을 통과(None) · 파이썬은 쓸 때 re.error · SQL 은 regexp_replace(col,'WF','\1','g')
+                           (총괄 실측: 7eb168aa4 트리, 백슬래시는 chr(92) 로 넣음 — heredoc 은 한 겹 벗긴다)
+                           -> 선언 점검에서 거절(두 엔진이 같은 답을 못 내는 모양 셋과 같은 자리 · 같은 문장 결)
+B ✅ 수집기 스크립트 고침      run_auto_update 의 mtime 갈래가 schedule · filename_prefix 만 다시 읽음 — window · window_format · script_refusals 안 탐
+                           -> 로드와 «같은 문»(_load_collector_from_script 또는 그 판정)을 지나게. 가이드 §0 「재기동 불필요」가 그때 참이 된다
+  ✅ 스케줄러 설정 감시        워처 · 체인 워커는 start_config_watcher, 스케줄러는 init_models 한 번 — {{LIST:표.새칸}} 이 화면은 「됨」, 실행은 거절
+                           -> 같은 감시를 스케줄러에도
+  ✅ 날짜별 소급의 날짜        _run_collector_backfill 에서 collector.execute() 가 던지면 날짜 없이 끝남(적재 실패일 때만 날짜)
+                           -> 어떤 실패든 「<날짜> … start again from <날짜>」 같은 문장
+  ⚪ 크론 모양                스케줄러는 크론이 안 읽히면 스크립트로 안 싣는데 Declarations 는 「runs on …」 · 백필은 판정 통과 뒤 생성자에서 던짐 -> 판정이 크론도 봄
+  ⚪ 목록 칸 판정              collector_markers 판정은 «선언됐나»만, value_suggest 는 모델 · 물리 칸까지 -> 판정이 value_suggest 의 해석을 부름
+C ⚪ 파서 두 길의 빈 행        std_parser 는 선언 칸만으로 빈 행을 버림 · 사용자 파서 길은 세고 NothingWritten — 같은 파일에 다른 결말 · 공백 "  " 판정도 is_blank_value 를 안 거침
+  ⚪ 시간 글자 두 모양          time 규칙 출력(TS_FMT, 초 아래 있으면 .%f) vs crud TEMPORAL_TEXT_FORMAT(비교용 .000000) — 문자열 칸과 datetime 칸 조인이 빗나감
+  ⚪ 전각 시간대               notation_norm._ZONE_SUFFIX vs utils.time_format._TIME_OFFSET_RE — 전각 숫자 오프셋을 하나는 zoned, 하나는 unmatched
+  ⚪ min/max 의 빈 값          unique_concat 은 빈 값을 NULL 로 접는데 min/max 는 안 접음 — 그룹 {'', 'A'} 에 min 이 '' (소유자가 쓰려는 «시간 최솟값»)
+                           -> 같은 빈 값 판정(crud.blank_sql_condition)을 지나게
+  한계로 적기  COLUMN_BINDING_KEYS 는 출하 샘플 맵퍼가 읽는 이름을 손으로 적은 목록 — 운영 맵퍼가 다른 이름을 resolve_column 으로 읽으면 경고가 틀리고
+             그 맵퍼가 @mapper params 를 선언했으면 undeclared_param 으로 거절까지. 가이드 chain_rules §0 에 한 줄(지금 고치지 않음)
+```
+착지마다 보고에 «확인한 줄(✅/⚪ 가 참이었나)»을 먼저.
+
+---
+
+> **[총괄 -> 클라] 오늘 착지 «문 가르기» 복기 — 님 몫, Backfill 버튼 다음 (소유자 「점검 내용은 알아서 차근차근 고쳐」 09-26)**
+
+```
+✅ 건너뛴 파일 알림   목록 · 서랍은 SKIPPED(노랑)인데 토스트 · 끝 카드는 「…파일이 처리되었습니다」
+   원인           directory_watcher 의 건너뜀 갈래가 콜백에 "SUCCESS" 를 보냄 — event_constants 의 알림 문장이 SUCCESS / 그 밖(실패) 두 갈래라서
+   그리고          그 문장이 서버에서 «한국어»로 지어져 화면에 그려짐 — UI 영어 규칙 위반
+   도착지          서버는 «실제 상태»(SKIPPED)를 보냄 · 토스트 · 카드의 문장은 화면의 상태 판정 한 곳(retry_verdict)이 영어로
+                  게이트 픽스처의 상태 낱말에 SKIPPED 를 넣고(지금 다섯 낱말에 없음), 서버 어휘에 없는 PROCESSING 은 왜 있는지 확인
+순서             Backfill 버튼 -> 이것 -> 비상 정지 화면(구현자 라우트 착지 뒤)
+```
