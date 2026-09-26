@@ -34,8 +34,8 @@ export function fileLogRowHtml(log, { withStatus, timeStr }) {
   // Badge and button read the one seat (lead 65f2c808d) — a waiting file is not drawn as failed.
   const statusBadge = `<span class="${statusBadgeClass(log.status)}">${escapeHtml(log.status || 'FAILED')}</span>`;
   const retryBtnHtml = isDoneStatus(log.status)
-    ? `<button class="admin-btn btn-primary" style="padding: 4px 10px; font-size: var(--fs-button); opacity: 0.5; cursor: not-allowed;" disabled>Retry</button>`
-    : `<button class="admin-btn btn-primary btn-retry-file" data-id="${escapeHtml(log.id)}" style="padding: 4px 10px; font-size: var(--fs-button);">Retry</button>`;
+    ? `<button class="admin-btn btn-primary" disabled>Retry</button>`
+    : `<button class="admin-btn btn-primary btn-retry-file" data-id="${escapeHtml(log.id)}">Retry</button>`;
   // 감사 P2: 파일명은 상태와 무관한 중립색(모노) — 상태색은 배지에만
   const retryStyle = log.retry_count > 0
     ? 'color: var(--warning); font-weight: 600;'
@@ -112,7 +112,7 @@ export function mapperRowHtml(mapper) {
       <td style="font-family: var(--font-mono); font-size: var(--fs-button); color: var(--text-muted);">${escapeHtml(mapper.module_name)}</td>
       <td style="text-align: center; font-weight: bold; color: var(--color-warning);">${funcCount}</td>
       <td style="text-align: center;" onclick="event.stopPropagation()">
-        <button class="admin-btn btn-primary btn-edit-mapper" style="padding: 4px 10px; font-size: var(--fs-button);">🛠️ Edit</button>
+        <button class="admin-btn btn-primary btn-edit-mapper">🛠️ Edit</button>
       </td>
     `;
 }
@@ -137,7 +137,7 @@ export function backfillCellHtml(backfill) {
   const v = b.view || {};
   if (!v.show) return '';
   const controls = b.open
-    ? `<input class="oe-field-input au-backfill-start" placeholder="${BACKFILL_WORDS.placeholder}" value="${escapeHtml(b.value || '')}" aria-label="First day to backfill, KST">
+    ? `<input class="au-backfill-start" placeholder="${BACKFILL_WORDS.placeholder}" value="${escapeHtml(b.value || '')}" aria-label="First day to backfill, KST">
        <button class="admin-btn btn-primary btn-backfill-start"${b.busy ? ' disabled' : ''}>${BACKFILL_WORDS.start}</button>
        <button class="admin-btn btn-backfill-cancel">${BACKFILL_WORDS.cancel}</button>`
     : `<button class="admin-btn btn-primary btn-backfill" title="${escapeHtml(v.title || '')}">${BACKFILL_WORDS.button}</button>`;
@@ -167,7 +167,7 @@ export function autoUpdateRowHtml(col, { isActive, nextRunText, lastRunText, bac
       </td>
       <td class="au-live" style="text-align: center;" onclick="event.stopPropagation()">
         <button class="admin-btn btn-primary btn-run-now" data-table="${escapeHtml(col.table_name)}" data-script="${escapeHtml(col.script_name)}"
-          style="padding: 4px 10px; font-size: var(--fs-button);"
+         
           title="${isActive ? 'Collect once now' : 'An inactive collector can still be run by hand'}">Run Now</button>
       </td>
       <td class="au-backfill" onclick="event.stopPropagation()">${backfillCellHtml(backfill)}</td>

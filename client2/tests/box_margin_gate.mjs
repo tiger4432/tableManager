@@ -7,7 +7,7 @@
 // Run in the admin page (the built bundle):  (await import(<this file>)).boxMarginGate()
 //                                            (await import(<this file>)).boxMarginMutants()
 
-export const BODIES = '.section-body, .ov-section-body, .ov-row-body';
+export const BODIES = '.box-body, .section-body, .ov-section-body, .ov-row-body';
 const PAD = { t: 10.2, r: 13.6, b: 10.2, l: 13.6 };
 // Elements whose own padding sits between their edge and their text on purpose.
 const INNER = new Set(['TD', 'TH', 'BUTTON', 'INPUT', 'SELECT', 'TEXTAREA', 'SUMMARY', 'OPTION']);

@@ -61,21 +61,23 @@
 
   /* The mockup's two families. Mono is kept for identifiers and JSON -- the design file
      names two faces because it has no identifiers to show; this screen is made of them. */
-  --oe-font-head: "Barlow Condensed", system-ui, sans-serif;
-  --oe-font-body: "Barlow", system-ui, sans-serif;
+  /* The two families and the mixes now live in tokens.css, where the base layer reads them too
+     (lead de64fb0f9) — one home; these names stay for the explorer's rules. */
+  --oe-font-head: var(--font-head);
+  --oe-font-body: var(--font-body);
   --oe-font-mono: "Cascadia Code", Consolas, ui-monospace, monospace;
 
   /* 🔴 MIXES, NOT GREYS. Every hover and press below is a percentage of a token that is
      itself `light-dark()`, so both themes follow one declaration. */
-  --oe-tint-hover: color-mix(in srgb, var(--oe-text) 7%, transparent);
-  --oe-tint-press: color-mix(in srgb, var(--oe-text) 14%, transparent);
-  --oe-tint-row: color-mix(in srgb, var(--oe-text) 4%, transparent);
+  --oe-tint-hover: var(--tint-hover);
+  --oe-tint-press: var(--tint-press);
+  --oe-tint-row: var(--tint-row);
   --oe-tint-accent-hover: color-mix(in srgb, var(--oe-accent) 10%, transparent);
   --oe-tint-accent-press: color-mix(in srgb, var(--oe-accent) 18%, transparent);
-  --oe-line-hover: color-mix(in srgb, var(--oe-text) 45%, transparent);
-  --oe-ink-label: color-mix(in srgb, var(--oe-text) 70%, transparent);
-  --oe-ink-th: color-mix(in srgb, var(--oe-text) 60%, transparent);
-  --oe-ink-meta: color-mix(in srgb, var(--oe-text) 50%, transparent);
+  --oe-line-hover: var(--line-hover);
+  --oe-ink-label: var(--ink-label);
+  --oe-ink-th: var(--ink-th);
+  --oe-ink-meta: var(--ink-meta);
 
   color-scheme: light dark;
 }
@@ -213,7 +215,7 @@
 #ontology-explorer-root .oe-step.is-here .oe-step-ord {
   background: var(--oe-accent); color: var(--oe-bg);
 }
-/* 13px, not the 10px used for passive tallies: this is the number an operator navigates
+/* 13px, not the 12px meta size used for passive tallies: this is the number an operator navigates
    by, and one you have to squint at is worse than absent. */
 #ontology-explorer-root .oe-tally--remaining {
   color: var(--oe-accent); font-size: var(--fs-h6); font-style: normal; font-weight: 600;
@@ -989,11 +991,8 @@
 #ontology-explorer-root .oe-new-id,
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-field-input,
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-field-select,
-/* 🔴 어드민의 고르개가 «이 규칙에 닿게» 하려고 붙인 «맨» 선택자입니다.
-   탐색기의 선택자는 그대로 두었습니다 — 특이도가 안 바뀌므로 탐색기 «출력»도 안 바뀝니다.
-   두 번째 철자가 아니라 «같은 블록»에 선택자 하나를 더한 것입니다 (총괄 판정 5bd6858b). */
-.oe-field-select,
-.oe-field-input,
+/* The bare `.oe-field-select` (총괄 5bd6858b) that let the admin's pickers reach this rule is gone:
+   base.css now gives every select and input outside the explorer this look (lead de64fb0f9). */
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-form-new-id,
 #ontology-explorer-root .oe-editor-textarea {
   width: 100%; min-height: 36px; padding: 6px 10px; font-size: var(--fs-button);
@@ -1015,8 +1014,6 @@
 #ontology-explorer-root .oe-new-id:hover,
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-field-input:hover,
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-field-select:hover,
-.oe-field-select:hover,
-.oe-field-input:hover,
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-form-new-id:hover,
 #ontology-explorer-root .oe-editor-textarea:hover { border-color: var(--oe-line-hover); }
 #ontology-explorer-root .oe-search:focus-visible,
@@ -1024,8 +1021,6 @@
 #ontology-explorer-root .oe-new-id:focus-visible,
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-field-input:focus-visible,
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-field-select:focus-visible,
-.oe-field-select:focus-visible,
-.oe-field-input:focus-visible,
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-form-new-id:focus-visible,
 #ontology-explorer-root .oe-editor-textarea:focus-visible {
   border-color: var(--oe-accent); outline-offset: 0;
@@ -1037,8 +1032,7 @@
    down to 13px, so the spec landed everywhere except the size a person reads. */
 #ontology-explorer-root .oe-key-input,
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-field-input,
-:is(#ontology-explorer-root, .oe-skeleton-form) .oe-field-select,
-.oe-field-select { font-size: var(--fs-button); }
+:is(#ontology-explorer-root, .oe-skeleton-form) .oe-field-select { font-size: var(--fs-button); }
 
 /* 🔴 THE DECLARED KEY, AND WHAT THE DATA SAID ABOUT IT -- BESIDE THE DEFAULT IT JUDGES.
    The row's ground already says where the ordering default came from; this says whether

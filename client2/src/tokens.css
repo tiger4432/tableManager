@@ -159,6 +159,22 @@
 :root {
   --font-sans: 'Outfit', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   --font-mono: 'JetBrains Mono', Consolas, monospace;
+  /* The one sans family (owner 09-27 「ui 다 제안대로」, lead de64fb0f9) — base.css loads it.
+     --font-sans (Outfit) stays until the last screen follows the base layer. */
+  --font-head: "Barlow Condensed", system-ui, sans-serif;
+  --font-body: "Barlow", system-ui, sans-serif;
+
+  /* One control height — inputs, selects and buttons stand in one line (mockup ㄱ). */
+  --control-h: 36px;
+
+  /* State mixes of the text colour (canon §1) — both themes follow one declaration. */
+  --tint-hover: color-mix(in srgb, var(--text) 7%, transparent);
+  --tint-press: color-mix(in srgb, var(--text) 14%, transparent);
+  --tint-row: color-mix(in srgb, var(--text) 4%, transparent);
+  --line-hover: color-mix(in srgb, var(--text) 45%, transparent);
+  --ink-label: color-mix(in srgb, var(--text) 70%, transparent);
+  --ink-th: color-mix(in srgb, var(--text) 60%, transparent);
+  --ink-meta: color-mix(in srgb, var(--text) 50%, transparent);
   --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 
   /* ── 여백 «한 벌» — 3.4 그리드 (ui-design-system §3, 캐논 `ontology_explorer.css`) ──
@@ -190,7 +206,7 @@
   --fs-button: 14px;  /* 버튼 · 입력 · 표 칸 · 줄 */
   --fs-label: 12px;   /* 표·카드 라벨 (C-80. 값은 캐논의 label 12px — 어드민의 0.7rem 이 아니라) */
   --fs-tag: 11px;     /* 알약 · 배지 · 거절 코드 */
-  --fs-meta: 10px;    /* 부차 수치 · 각주 */
+  --fs-meta: 12px;    /* 부차 수치 · 각주 — 10 에서 12 로(소유자 09-27, 「작은 글씨는 없느니만 못하다」) */
 
   /* 그림 상자의 «높이 상한». 넘치면 그 상자 «안»에서 스크롤합니다 — 페이지가 안 늘어납니다.
      ⚠️ 값이 아니라 «성질»입니다: 노드가 몇이든 한 화면에서 다음 블록이 보여야 합니다. */
@@ -220,6 +236,10 @@
   --panel-bg: var(--bg-surface);
   --text-color: var(--text);
   --font-primary: var(--font-sans);
+}
+/* A phone's finger needs the taller control (mockup ㅂ). */
+@media (max-width: 480px) {
+  :root { --control-h: 44px; }
 }
 
 /* 테마 전환 시 부드러운 색 전이 */
@@ -343,6 +363,7 @@ body {
   color: var(--text-dim);
   font-size: var(--fs-h5);   /* ✕ 글리프 — 누르는 크기가 먼저 (총괄 9cfae3eaa) */
   line-height: 1;
+  height: auto;              /* not the base layer's control height — the toast keeps its size */
   padding: 2px 4px;
   cursor: pointer;
 }

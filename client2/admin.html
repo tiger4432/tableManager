@@ -26,10 +26,8 @@
       padding: 0;
     }
 
+    /* Font, size and colours are the base layer's (base.css). */
     body {
-      font-family: var(--font-sans);
-      background-color: var(--bg-app);
-      color: var(--text);
       height: 100vh;
       min-height: 100vh;
       display: flex;
@@ -79,29 +77,8 @@
       gap: 15px;
     }
 
-    /* 보조가 «기본»입니다 — 투명 + 1px 실선. 등급은 «채움 여부»로 말합니다. */
-/* 🔴 THIS PAGE'S BUTTON, AND THE NAME SAYS SO BECAUSE ONE NAME MEANT TWO BUTTONS.
-       `.glass-btn` drew a flat square condensed button here and a rounded, lifting, sans one
-       in `src/style.css` -- which index.html and map_editor.html wear. A part carried from
-       one page to the other changed SHAPE, not just colour, and that is the assembly rule
-       (「같은 화면에 둘을 놓아도 간섭 없음」) failing across pages instead of within one.
-
-       Split by NAME rather than unified by look: the two looks are the owner's screens to
-       decide, and this rename moves no pixel. Measured before renaming -- the admin CSS
-       bundle carried 0 `.glass-btn` rules and the index bundle 16, so the two were already
-       separate everywhere except in what they were called. The admin side was renamed
-       because it is both smaller (41 occurrences against 43) and provably contained: all
-       three files that spell it are reached only from this page.
-
-       The modifiers stay as they were -- `btn-primary`, `btn-danger`, `cfg-btn` and three
-       more are already declarations written beside it, which is why no part was extracted. */
-    /* 🔴 C-99 ④. 작은 버튼의 «한» 크기. 실측 2026-09-13: 세 자리가 각자 잰 `4px 12px /
-       0.78rem` 둘과 `2px 8px / 0.75rem` 하나가 JS 와 마크업에 흩어져 있었고, 세 수가 다른
-       이유가 없었습니다 — 그러면 넷째 버튼이 넷째 수를 갖습니다. 값은 토큰에서 옵니다. */
-    .admin-btn--sm {
-      padding: var(--space-1) var(--space-3);
-      font-size: var(--fs-label);
-    }
+    /* Buttons are the base layer's (base.css: default secondary · .btn-primary · .btn-danger ·
+       .btn-quiet). `.admin-btn` stays in the markup as a name the page's scripts select on. */
     /* 워크스페이스의 «사용자 파서» 한 줄. 목록 행이지 카드가 아니라, 아래 실선 하나뿐입니다. */
     .ws-script-row {
       display: flex;
@@ -116,29 +93,6 @@
       color: var(--text);
       font-family: var(--font-mono);
     }
-    .admin-btn {
-      background: transparent;
-      border: 1px solid var(--border-strong);
-      color: var(--text);
-      padding: 6.8px 12.24px;
-      border-radius: 0;
-      cursor: pointer;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      gap: 6.8px;
-      white-space: nowrap;
-      transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
-    }
-
-    .admin-btn:hover {
-      background: var(--oe-tint-hover);
-      border-color: var(--accent);
-      color: var(--accent);
-    }
-
-    .admin-btn:active { background: var(--oe-tint-press); }
-
     @media (max-width: 480px) {
       header {
         padding: 10px 12px;
@@ -153,44 +107,7 @@
         gap: 6px;
         flex-wrap: wrap;
       }
-      .header-actions .admin-btn {
-        max-width: 100%;
-        padding: 7px 9px;
-        font-size: var(--fs-button);
-        white-space: normal;
-      }
       main { padding: 8px; }
-    }
-
-    /* 🔴 주(主)는 «채움»입니다. 초록으로 등급을 말하던 것을 거둡니다 — 색은 «뜻»이
-       있을 때만 쓰고, 「주 버튼」은 뜻이 아니라 등급입니다 (총괄 판정 ③). */
-    .admin-btn.btn-primary {
-      background: var(--accent);
-      border-color: var(--accent);
-      color: var(--bg-surface);
-    }
-
-    .admin-btn.btn-primary:hover {
-      background: color-mix(in srgb, var(--accent) 88%, var(--text));
-      border-color: var(--accent);
-      color: var(--bg-surface);
-    }
-
-    .admin-btn.btn-primary:active {
-      background: color-mix(in srgb, var(--accent) 76%, var(--text));
-    }
-
-    .admin-btn.btn-danger {
-      background: var(--danger-weak);
-      border-color: var(--danger);
-      color: var(--danger);
-    }
-
-    /* ⚠️ 위험은 «뜻이 있는 색»이라 그대로 둡니다 (판정 ③의 예외). 그림자만 걷습니다. */
-    .admin-btn.btn-danger:hover {
-      background: color-mix(in srgb, var(--danger) 12%, transparent);
-      border-color: var(--danger);
-      color: var(--danger);
     }
 
     main {
@@ -360,11 +277,7 @@
     }
     /* px 고정 폭 없음 — Tables 칸이 남는 폭, 나머지는 내용 폭. */
     .chain-queue-table .table-header th,
-    .chain-queue-table .table-row td {
-      padding: var(--space-2);
-      white-space: nowrap;
-    }
-    .chain-queue-table .table-row td { font-size: var(--fs-button); }
+    .chain-queue-table .table-row td { white-space: nowrap; }
     .chain-queue-table [data-col="tables"] { width: 100%; white-space: normal; overflow-wrap: anywhere; }
     .chain-queue-table [data-col="rows"] { text-align: right; }
     /* 13 = 캐논 h6 (토큰 없음, 위와 같은 사정). */
@@ -427,6 +340,7 @@
     .ov-section-sub { font-size: var(--fs-label); color: var(--text-dim); }
     .ov-section-open {
       margin-left: auto;
+      height: auto;
       padding: 0;
       border: 0;
       background: none;
@@ -632,7 +546,6 @@
     /* 두 묶음의 머리. 묶음 이름은 «고를 수 없는 것»이라 값과 다르게 보입니다. */
     .chain-rule-form optgroup,
     .table-config-form optgroup {
-      font-family: var(--font-sans);
       font-size: var(--fs-tag);
       color: var(--text-dim);
       font-weight: 600;
@@ -785,28 +698,12 @@
       position: relative;
     }
 
-    /* Table Styling */
-    .table-container {
-      width: 100%;
-      border-collapse: collapse;
-    }
-
+    /* Tables — cells, header row and row hover are the base layer's (base.css). */
     .table-header {
       position: sticky;
       top: 0;
       z-index: 10;
-      background: var(--bg-header);
-    }
-
-    /* 🔴 표 머리는 탐색기에 «없습니다». 가장 가까운 값을 그대로 옮깁니다 —
-       `.oe-tree-title`: 대문자 · 11px · 0.08em · 글자색 60%. 굵기도 그쪽 값(400)입니다.
-       ⚠️ 토큰 이름이 `--oe-ink-th` 라는 것은 «의도»의 증거이지 「원래 표용」이라는
-          뜻이 아닙니다. 옮기는 것은 «지금 쓰는 값»입니다. */
-    .table-header th {
-      text-align: left;
-      color: var(--oe-ink-th);
-      padding: 6.8px 10.2px;
-      border-bottom: 1px solid var(--border);
+      background: var(--bg-surface);
     }
 
     .table-row {
@@ -814,24 +711,9 @@
       transition: background 0.15s ease;
     }
 
-    /* 🔴 줄무늬가 «없어집니다». 탐색기는 줄무늬를 안 쓰고 hover 틴트를 씁니다 —
-       한 규칙이 표 열 개 전부에 걸려 있었고, 한 줄로 사라집니다. */
-    .table-row:hover {
-      background: var(--oe-tint-row);
-    }
-
     .table-row.active {
       background: var(--accent-weak);
       border-left: 3px solid var(--accent);
-    }
-
-    /* 행 높이도 탐색기에 «없어» 3.4 격자의 배수로 갑니다. 목업의 7px/12px 은
-       «트리 행»의 것이라 안 씁니다. `tabular-nums` 는 이미 있던 관행이라 유지합니다. */
-    .table-row td {
-      padding: 6.8px 10.2px;
-      border-bottom: 1px solid var(--border);
-      vertical-align: middle;
-      font-variant-numeric: tabular-nums;
     }
 
     .badge {
@@ -877,7 +759,7 @@
        소유자가 지적한 것은 «폼이 빡빡하다»였지 이 붙음이 아니었습니다. */
     .chain-rule-mapper, .chain-flow-note { color: var(--text-muted); margin-top: 3.4px; }
     .chain-flow { display: flex; align-items: center; gap: 7px; font-weight: 500; }
-    .chain-flow-arrow { color: var(--accent); font-family: var(--font-sans); }
+    .chain-flow-arrow { color: var(--accent); }
     .chain-capabilities { display: flex; flex-wrap: wrap; gap: 5px; }
     .chain-capabilities .badge { padding: 3px 6px; font-size: var(--fs-tag); }
     .chain-state { display: flex; flex-direction: column; align-items: center; gap: 5px; }
@@ -969,41 +851,8 @@
     .chain-pause-controls { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-1); }
     .chain-pause-controls .chain-pause-reason { width: 16em; max-width: 100%; }
 
-/* 🔴 THE DROPDOWN'S SHAPE IS DECLARED ONCE, AND EVERY SELECT ON THIS PAGE DECLARES IT.
-       Three of them had been overriding height, padding and font-size INLINE, which beats
-       any stylesheet -- so the rule below was true and the screen still showed three
-       different dropdowns (30/28/28px tall, 0.8/0.8/0.78rem). That is the assembly rule
-       failing inside a single page: a control moved from one toolbar to another changed
-       size.
-
-       The values are the explorer's, reached by matching rather than by borrowing:
-       `#ontology-explorer-root .oe-field-select` is specificity (1,1,0) and its tokens are
-       scoped, so wearing that class out here would style nothing. Radius 0 / 1px solid /
-       14px / 6-10 padding / 36px is what it computes to.
-
-       ⚠️ The colour tokens are this page's own, unchanged. Which palette survives is a
-       separate ruling and it is still open; naming them here is what makes that a one-line
-       edit instead of a sweep. */
-    .glass-select {
-      background: var(--bg-surface) !important;
-      border: 1px solid var(--border-strong);
-      color: var(--text);
-      min-height: 36px;
-      padding: 6px 10px;
-      font-size: var(--fs-button);
-      border-radius: 0;
-      cursor: pointer;
-      outline: none;
-      transition: border-color 0.2s;
-    }
-    .glass-select:focus {
-      border-color: var(--accent);
-      box-shadow: 0 0 0 3px var(--focus-ring);
-    }
-    .glass-select option {
-      background: var(--bg-surface);
-      color: var(--text);
-    }
+    /* Selects are the base layer's (base.css). An INLINE height · padding · font-size on a select
+       beats any stylesheet — none is written in this page's markup or scripts. */
 
     /* ── 파이프라인 생애 단계 섹션 (탭 본문 = 스택형 섹션: 현황 → 오류 → 수정/실행) ── */
     .stage-section {
@@ -1041,29 +890,8 @@
        ⚠️ 안 재 본 값: `thead` 가 `position: sticky` 이라, 이제 그것이 붙는 상대는
           탭 래퍼가 아니라 «이 절»이 된다. 행이 많은 표를 세로로 굴릴 때 머리가
           화면 위에 남는지는 토큰이 있어야 보이고, 그건 소유자만 칩니다 ― 안 재음. */
-    .section-body {
-      overflow-x: auto;
-      /* 🔴 절 «본문»의 글꼴. 탐색기의 뿌리가 `--oe-font-body` 를 자기 안 전부에
-         물려주는 것과 «같은 자리»입니다. 이것 하나로 목록(대기열)과 폼(표 등록)의
-         컨테이너가 따라옵니다 — 그 둘이 통일에서 빠져 있던 이유가 «자기 글꼴을 안
-         정해서 body(Outfit) 를 상속»받았기 때문입니다. */
-      font-family: var(--oe-font-body);
-    }
-    /* 🔴 THE BOX OWNS ITS MARGIN (owner 09-26 「박스 기본 마진 아예 고정 스타일로 박아」, lead
-       482e9956f) — every box body, one rule. What sits in it writes no outer padding or margin;
-       its own inside spacing stays. Gate: tests/box_margin_gate.mjs, run in the page. */
-    /* The gap between its children is the box's too — `gap`, because a hidden child takes none
-       (a `* + *` margin counted the hidden warning above a table and doubled the top). */
-    .section-body,
-    .ov-section-body,
-    .ov-row-body {
-      display: flex;
-      flex-direction: column;
-      gap: var(--space-3);
-      padding: var(--space-3) var(--space-4);
-    }
-    /* The board opens and closes its row bodies with `hidden`; the rule above must not reopen them. */
-    .ov-row-body[hidden] { display: none; }
+    .section-body { overflow-x: auto; }
+    /* Box bodies (.section-body · .ov-section-body · .ov-row-body) take the one box rule in base.css. */
     .section-header:hover .section-chevron { color: var(--accent); }
     /* 🔴 절 안의 «유일한» 알약이자 «유일한» 700 이었습니다 — 두 축을 혼자 어겼습니다.
        탐색기의 태그(`.oe-node-badge`: 11px · 0.02em · 3px 6.8px · 모서리 0)로 옵니다.
@@ -1113,19 +941,6 @@
     }
     .stage-section.collapsed .section-chevron { transform: rotate(-90deg); }
     .stage-section.collapsed .section-body { display: none; }
-    /* 섹션 내부 빈 상태는 패널 전체를 차지하지 않도록 축소 */
-    /* 탐색기에 «답이 있습니다» — `.oe-empty` 는 한 줄입니다(왼쪽 정렬 · 13px · 아이콘 없음).
-       ⚠️ 절 «안»에서만 바꿉니다. 전역 `.empty-state` 는 이 페이지 밖에서도 쓰입니다. */
-    .stage-section .empty-state {
-      height: auto;
-      display: block;
-      text-align: left;
-      gap: 0;
-      padding: 0;
-      color: var(--text-muted);
-    }
-    .stage-section .empty-icon { display: none; }
-    .stage-section .empty-text { font-weight: 400; }
     .section-note {
       margin: 14px 20px 18px;
       padding: 12px 16px;
@@ -1375,19 +1190,11 @@
     /* 🔴 [687] 「안 물음」은 고장이 아니라 «묻지 않은 것»이라 경고색을 안 씁니다. 가르는 것은
        낱말이고(안 물음 / 진단 못 냄), 색은 「손댈 것 없음」을 같이 말합니다. */
     .join-verify-row[data-state="not_asked"] .join-verify-verdict { color: var(--text-dim); }
+    /* The input itself is the base layer's; what it holds is an identifier, so mono (as the canon's). */
     .retro-input {
       font-family: var(--font-mono);
-      font-size: var(--fs-button);
-      padding: 6px 10px;
       min-width: 260px;
-      color: var(--text);
-      background: var(--bg-surface);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      outline: none;
-      transition: border-color 0.15s ease;
     }
-    .retro-input:focus { border-color: var(--accent); }
     .retro-actions {
       display: flex;
       gap: 10px;
@@ -1397,7 +1204,6 @@
     /* 이 줄에는 **쓰기 촉발**이 있다. 위 드라이런 버튼보다 크게 둔다 — 누르기 전에 읽히는
        것이 이 표면의 요점이고, 작은 글씨는 없느니만 못하다. */
     .retro-actions .cfg-btn { padding: 6px 16px; font-size: var(--fs-button); }
-    .retro-actions .admin-btn:disabled { opacity: 0.45; cursor: not-allowed; }
 
     /* 🔴 이 화면의 목적은 「이 쓰기가 몇 행을 건드리며 그 수를 얼마나 믿을 수 있는가」다.
        그런데 앞선 판본은 그 **두 사실을 상자 안에서 가장 작은 글씨**로 뒀다 — 숫자가
@@ -1489,6 +1295,7 @@
     .ov-row[data-tone="unknown"] .ov-row-word { color: var(--text-dim); }
     .ov-row-open,
     .ov-show-all {
+      height: auto;
       padding: 0;
       border: 0;
       background: none;
@@ -1632,23 +1439,13 @@
     .table-config-saved {
       font-size: var(--fs-tag);
     }
-    /* ③ 표 머리 */
-    .table-header th {
-      font-family: var(--oe-font-body);
-      font-size: var(--fs-tag);
-      font-weight: 400;
-      text-transform: uppercase;
-      letter-spacing: 0.08em;
-    }
+    /* ③ 표 머리 — base.css 의 th (12 · 600 · 대문자). ④ 의 표 칸 · 빈 줄도 base.css */
     /* ④ 본문 */
-    .table-row td,
     .chain-queue-owner,
     .chain-queue-blocked-why,
     .chain-queue-blocked-recovery,
     .chain-rule-refusal-why,
-    .table-config-refusal-why,
-    .stage-section .empty-state,
-    .stage-section .empty-text {
+    .table-config-refusal-why {
       font-family: var(--oe-font-body);
       font-size: var(--fs-button);
     }
@@ -1669,56 +1466,9 @@
       font-weight: 600;
       letter-spacing: 0.02em;
     }
-    /* ⑦ 버튼 */
-    .admin-btn {
-      font-family: var(--oe-font-head);
-      font-size: var(--fs-button);
-      font-weight: 600;
-      line-height: 1.2;
-    }
+    /* ⑦ 버튼 — base.css */
 
-    /* Empty states */
-    .empty-state {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      height: 100%;
-      color: var(--text-muted);
-      text-align: center;
-      gap: 15px;
-      padding: 40px;
-    }
-
-    .empty-icon {
-      font-size: var(--fs-h1);
-      opacity: 0.4;
-    }
-
-    .empty-text {
-      font-size: var(--fs-h6);
-      font-weight: 400;
-    }
-
-    /* Tabs & Pill styles */
-    .tab-btn {
-      background: var(--bg-inset);
-      border: 1px solid var(--border);
-      color: var(--text-muted);
-      padding: 8px 16px;
-      border-radius: 8px;
-      font-family: var(--font-sans);
-      font-size: var(--fs-button);
-      font-weight: 500;
-      cursor: pointer;
-      transition: all 0.2s ease;
-    }
-
-    .tab-btn:hover {
-      background: var(--surface-hover);
-      color: var(--text);
-    }
-
+    /* Empty lines and tab buttons are the base layer's (base.css); a tab keeps its active state. */
     .tab-btn.active {
       background: var(--accent-weak);
       border-color: var(--accent);
@@ -1868,7 +1618,7 @@
     </div>
     <div class="header-actions">
       <button id="reload-configs-btn" class="admin-btn" style="border-color: var(--color-warning); color: var(--color-warning);">⚙️ Reload Configs & Code</button>
-      <a href="/" class="admin-btn">🏠 Return to Main</a>
+      <a href="/" class="btn">🏠 Return to Main</a>
       <button class="theme-toggle-btn" data-theme-toggle type="button" title="Toggle theme" aria-label="Toggle theme">
         <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
         <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
@@ -1892,7 +1642,7 @@
         </div>
         <div style="display: flex; gap: 10px; align-items: center;">
           <span id="last-refreshed" style="font-size: var(--fs-tag); color: var(--text-dim); font-family: var(--font-mono);"></span>
-          <button id="refresh-btn" class="admin-btn" style="padding: 6px 12px; font-size: var(--fs-button);">🔄 Refresh</button>
+          <button id="refresh-btn" class="admin-btn">🔄 Refresh</button>
         </div>
       </div>
 
@@ -2034,7 +1784,7 @@
                 <select id="status-filter" class="glass-select">
                   <option value="ALL" selected>All Status</option>
                 </select>
-                <button id="retry-all-file-btn" class="admin-btn btn-primary" style="padding: 5px 12px; font-size: var(--fs-button);">🔄 Retry All Failed</button>
+                <button id="retry-all-file-btn" class="admin-btn btn-primary">🔄 Retry All Failed</button>
               </span>
               <span class="section-chevron">▾</span>
             </div>
@@ -2131,7 +1881,7 @@
               <span class="section-count" id="chain-fail-count">—</span>
               <span class="section-summary"></span>
               <span class="section-actions">
-                <button id="retry-all-outbox-btn" class="admin-btn btn-primary" style="padding: 5px 12px; font-size: var(--fs-button);">🔄 Retry All Failed</button>
+                <button id="retry-all-outbox-btn" class="admin-btn btn-primary">🔄 Retry All Failed</button>
               </span>
               <span class="section-chevron">▾</span>
             </div>
@@ -2344,9 +2094,9 @@
           <div class="pagination-info" id="pagination-info" style="font-size: var(--fs-label); color: var(--text-muted);">Showing 1-10 of 25 items</div>
         </div>
         <div class="pagination-controls" style="display: flex; gap: 8px; align-items: center;">
-          <button id="prev-page-btn" class="admin-btn" style="padding: 4px 10px; font-size: var(--fs-button);">◀ Prev</button>
+          <button id="prev-page-btn" class="admin-btn">◀ Prev</button>
           <span id="page-indicator" style="font-size: var(--fs-label); font-weight: 500; min-width: 40px; text-align: center;">1 / 3</span>
-          <button id="next-page-btn" class="admin-btn" style="padding: 4px 10px; font-size: var(--fs-button);">Next ▶</button>
+          <button id="next-page-btn" class="admin-btn">Next ▶</button>
         </div>
       </div>
     </section>
@@ -2387,7 +2137,7 @@
           <div class="detail-block">
             <div class="detail-block-header">
               <span id="payload-title">Raw Event Payload / Details</span>
-              <button id="copy-payload-btn" class="admin-btn" style="padding: 2px 6px; font-size: var(--fs-button);">📋 Copy</button>
+              <button id="copy-payload-btn" class="admin-btn">📋 Copy</button>
             </div>
             <div class="detail-block-body">
               <pre id="payload-viewer" style="color: var(--success);"></pre>
@@ -2406,8 +2156,8 @@
                 <span id="editor-file-path" style="font-family: var(--font-mono); font-weight: bold; color: var(--color-primary); font-size: var(--fs-h6); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">Select a script file</span>
               </div>
               <div style="display: flex; gap: 8px;">
-                <button id="editor-back-btn" class="admin-btn" style="padding: 4px 12px; font-size: var(--fs-button); display: none;">🔙 Back to Details</button>
-                <button id="save-code-btn" class="admin-btn btn-primary" style="padding: 4px 12px; font-size: var(--fs-button); display: none;">💾 Save Code</button>
+                <button id="editor-back-btn" class="admin-btn" style="display: none;">🔙 Back to Details</button>
+                <button id="save-code-btn" class="admin-btn btn-primary" style="display: none;">💾 Save Code</button>
               </div>
             </div>
             <div class="detail-block-body" style="padding: 0; overflow: hidden; position: relative; height: 100%; flex: 1;">

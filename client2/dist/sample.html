@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Base elements</title>
+  <!-- The page places its boxes; every look below is the base layer's (src/base.css). -->
+  <style>
+    .sample-page { box-sizing: border-box; max-width: 1280px; margin: 0 auto; padding: var(--space-6); display: flex; flex-direction: column; gap: var(--space-5); }
+    .sample-head { display: flex; align-items: baseline; flex-wrap: wrap; gap: var(--space-4); }
+    .sample-head .sample-theme { margin-left: auto; }
+    .sample-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-5); }
+    .sample-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-3); }
+    .sample-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-4); }
+    .sample-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+    .sample-scroll { overflow-x: auto; }
+    @media (max-width: 480px) {
+      .sample-page { padding: var(--space-4); gap: var(--space-4); }
+      .sample-grid, .sample-fields { grid-template-columns: minmax(0, 1fr); }
+      .sample-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+  </style>
+  <script type="module" crossorigin src="/assets/sample-DV4V_tD4.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/tokens-WpktVp-L.js">
+  <link rel="stylesheet" crossorigin href="/assets/tokens-LWu-nFKH.css">
+  <link rel="stylesheet" crossorigin href="/assets/base-C36UpNKT.css">
+</head>
+<body>
+  <main class="sample-page">
+    <div class="sample-head">
+      <h3>Base elements</h3>
+      <span class="meta">One box rule · every screen composes from these</span>
+      <button type="button" class="btn-quiet sample-theme" id="sample-theme">Dark theme</button>
+    </div>
+
+    <section class="box">
+      <div class="box-head"><h2 class="box-title">Stat numbers</h2><span class="meta">chain queue · now</span></div>
+      <div class="box-body">
+        <div class="sample-stats">
+          <div class="stat"><span class="stat-label">Waiting</span><span class="stat-value">1,284</span><span class="stat-sub">oldest 4 min</span></div>
+          <div class="stat"><span class="stat-label">Running</span><span class="stat-value">2</span><span class="stat-sub">longest 38 s</span></div>
+          <div class="stat" data-tone="danger"><span class="stat-label">Failed</span><span class="stat-value">17</span><span class="stat-sub">3 tables</span></div>
+          <div class="stat" data-tone="warn"><span class="stat-label">Paused</span><span class="stat-value">—</span><span class="stat-sub">not read</span></div>
+        </div>
+      </div>
+    </section>
+
+    <div class="sample-grid">
+      <section class="box">
+        <div class="box-head"><h2 class="box-title">Table</h2><span class="tag">4</span></div>
+        <div class="box-body">
+          <div class="sample-scroll">
+            <table>
+              <thead><tr><th>Rule</th><th>Trigger</th><th class="num">Rows</th><th>State</th></tr></thead>
+              <tbody>
+                <tr><td>lot_slot_join</td><td>dt_lot → dt_wafer</td><td class="num">12,480</td><td><span class="tag" data-tone="ok">On</span></td></tr>
+                <tr><td>yield_mapper</td><td>dt_lot → dt_yield</td><td class="num">3,302</td><td><span class="tag" data-tone="warn">Opt-in</span></td></tr>
+                <tr><td>wafer_confirm</td><td>dt_wafer</td><td class="num">98</td><td><span class="tag" data-tone="danger">Off</span></td></tr>
+                <tr><td>bond_join</td><td>dt_bond → dt_lot</td><td class="num">0</td><td><span class="tag" data-tone="ok">On</span></td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="meta">Updated 21:03:12 (server time) · 4 of 4 rules</div>
+        </div>
+      </section>
+
+      <section class="box">
+        <div class="box-head"><h2 class="box-title">Form rows</h2></div>
+        <div class="box-body">
+          <div class="sample-fields">
+            <label class="form-row"><span class="form-label">Rule</span><select><option>lot_slot_join</option><option>yield_mapper</option></select><span class="form-hint">rules triggered by this table</span></label>
+            <label class="form-row"><span class="form-label">First day</span><input value="2026-09-20"><span class="form-hint">YYYY-MM-DD · KST</span></label>
+          </div>
+          <label class="form-row"><span class="form-label">Reason</span><input placeholder="Reason (optional)"></label>
+          <div class="sample-actions">
+            <button type="button" class="btn-primary">Run</button>
+            <button type="button">Count</button>
+            <button type="button" class="btn-danger">Pause chain</button>
+            <button type="button" class="btn-quiet">Cancel</button>
+            <button type="button" disabled title="Pick rows">Re-run</button>
+            <span class="meta">Re-run: pick rows</span>
+          </div>
+          <div class="refusal">Refused — 'rule' is required · pick a rule, then Count again</div>
+        </div>
+      </section>
+    </div>
+
+    <div class="sample-grid">
+      <section class="box">
+        <div class="box-head"><h2 class="box-title">Empty line</h2><span class="tag">0</span></div>
+        <div class="box-body">
+          <div class="empty-state"><div class="empty-icon">🔗</div><div class="empty-text">Nothing waiting</div></div>
+        </div>
+      </section>
+      <section class="box">
+        <div class="box-head"><h2 class="box-title">Meta lines</h2></div>
+        <div class="box-body">
+          <div class="meta">Updated 21:03:12 (server time) · next in 30 s</div>
+          <div class="meta">Paused by operator at 2026-09-26 21:03:12 (server time) · bad join</div>
+          <div class="meta" data-tone="warn">Worker: ok · not paused yet</div>
+        </div>
+      </section>
+    </div>
+  </main>
+</body>
+</html>

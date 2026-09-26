@@ -1,0 +1,195 @@
+/* BASE LAYER — the base elements, styled once (owner 09-27 「ui 다 제안대로」, lead de64fb0f9,
+   skill §0). A part with no CSS of its own already looks right here; sample.html shows each one.
+
+   🔴 ZERO SPECIFICITY (:where) — states too: `:hover` · `:first-child` go INSIDE it, or the rule
+      scores 0,1,0 and beats a part's `background: none` (review 09-27). Only `[hidden]` stays out.
+      A part's own rule still wins, so a screen follows the base by DELETING its overrides, never
+      by adding more — and a screen that has not followed yet does not move. Values are tokens only
+      (tokens.css); the rules are the canon's (ontology_explorer.css), with the mockup's one control
+      height (--control-h) and its greys (--text-muted · --text-dim, ≥ 4.5:1 in both themes).
+
+   Vocabulary a screen composes from:
+     elements   body · h1–h6 · button · input · select · textarea · table / th / td
+     box        .box (.box-head · .box-title · .box-body)
+     button     .btn-primary · .btn-danger · .btn-quiet            (default = secondary) · .btn (a link drawn as a button)
+     classes    .num (a right-aligned number cell) · .form-row (.form-label · .form-hint) · .stat (.stat-label · .stat-value · .stat-sub)
+                .empty-state (one line — its .empty-icon is not drawn) · .meta · .refusal · .tag
+     tone       data-tone="ok" | "warn" | "danger" on .stat · .tag · .meta */
+
+@import url("https://fonts.googleapis.com/css2?family=Barlow:ital,wght@0,400;0,500;0,600;1,400&family=Barlow+Condensed:wght@400;500;600&display=swap");
+
+:where(body) {
+  font-family: var(--font-body);
+  font-size: var(--fs-body);
+  line-height: 1.55;
+  color: var(--text);
+  background: var(--bg-app);
+}
+
+:where(h1, h2, h3, h4, h5, h6) {
+  margin: 0;
+  font-family: var(--font-head);
+  font-weight: 600;
+  line-height: 1.12;
+  letter-spacing: -0.015em;
+}
+:where(h1) { font-size: var(--fs-h1); }
+:where(h2) { font-size: var(--fs-h2); }
+:where(h3) { font-size: var(--fs-h3); }
+:where(h4) { font-size: var(--fs-h4); }
+:where(h5) { font-size: var(--fs-h5); }
+:where(h6) { font-size: var(--fs-h6); letter-spacing: 0.08em; text-transform: uppercase; }
+
+/* ── box — THE BOX OWNS ITS MARGIN (owner 09-26 「박스 기본 마진 아예 고정 스타일로 박아」,
+   lead 482e9956f). One rule for every box body: padding, and the gap between its children
+   (a hidden child takes none). What sits in it writes no outer space. The admin page's box
+   bodies are named here so the rule has one home. Gate: tests/box_margin_gate.mjs. */
+:where(.box) { background: var(--bg-surface); border: 1px solid var(--border); }
+:where(.box-head) {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  background: var(--bg-header);
+  border-bottom: 1px solid var(--border);
+}
+:where(.box-title) { font-size: var(--fs-h6); letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); }
+:where(.box-body, .section-body, .ov-section-body, .ov-row-body) {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+}
+/* `hidden` must keep closing a box body the rule above opens (the Overview board uses it). */
+:where(.box-body, .section-body, .ov-section-body, .ov-row-body)[hidden] { display: none; }
+
+/* ── button — secondary unless a variant says otherwise ─────────────────────────── */
+:where(button, input[type="button"], input[type="submit"], .btn) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  box-sizing: border-box;
+  height: var(--control-h);
+  padding: 0 var(--space-4);
+  font-family: var(--font-head);
+  font-weight: 600;
+  font-size: var(--fs-button);
+  letter-spacing: 0.02em;
+  line-height: 1;
+  white-space: nowrap;
+  text-decoration: none;
+  color: var(--text);
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 0;
+  cursor: pointer;
+}
+:where(:is(button, input[type="button"], input[type="submit"], .btn):hover:not(:disabled)) {
+  background: var(--tint-hover);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+:where(:is(button, input[type="button"], input[type="submit"], .btn):active:not(:disabled)) { background: var(--tint-press); }
+:where(:is(button, input[type="button"], input[type="submit"], .btn):disabled) { opacity: 0.5; cursor: not-allowed; }
+
+:where(.btn-primary) { background: var(--accent); border-color: var(--accent); color: var(--bg-surface); }
+:where(.btn-primary:hover:not(:disabled)) { background: color-mix(in srgb, var(--accent) 88%, var(--text)); color: var(--bg-surface); }
+:where(.btn-primary:active:not(:disabled)) { background: color-mix(in srgb, var(--accent) 76%, var(--text)); }
+:where(.btn-danger) { color: var(--danger); border-color: var(--danger); }
+:where(.btn-danger:hover:not(:disabled)) { background: var(--danger-weak); border-color: var(--danger); color: var(--danger); }
+:where(.btn-quiet) { padding: 0 var(--space-2); color: var(--accent); background: transparent; border-color: transparent; }
+:where(.btn-quiet:hover:not(:disabled)) { background: var(--tint-hover); border-color: transparent; }
+
+/* ── input · select · textarea ──────────────────────────────────────────────────── */
+/* Monaco's hidden input textarea (.inputarea) is the editor's own and is not a field. */
+:where(input:not([type="checkbox"], [type="radio"], [type="range"], [type="file"], [type="button"], [type="submit"], [type="color"]), select, textarea:not(.inputarea)) {
+  box-sizing: border-box;
+  min-height: var(--control-h);
+  padding: 0 var(--space-3);
+  font-family: var(--font-body);
+  font-size: var(--fs-button);
+  color: var(--text);
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 0;
+  caret-color: var(--accent);
+}
+:where(textarea) { padding: var(--space-2) var(--space-3); }
+:where(:is(input, select, textarea):hover:not(:disabled)) { border-color: var(--line-hover); }
+:where(:is(input, select, textarea):focus-visible) { border-color: var(--accent); outline: 2px solid var(--accent); outline-offset: 2px; }
+:where(:is(input, select, textarea):disabled) { opacity: 0.5; cursor: not-allowed; }
+:where(input, textarea)::placeholder { color: var(--text-dim); }
+
+/* ── table — the first and last cells sit on the box's text edge (mockup ㄴ) ─────── */
+:where(table) {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--fs-button);
+  font-variant-numeric: tabular-nums;
+}
+:where(th) {
+  padding: var(--space-2) var(--space-3);
+  text-align: left;
+  font-family: var(--font-body);
+  font-size: var(--fs-label);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  border-bottom: 1px solid var(--border-strong);
+}
+:where(td) { padding: var(--space-2) var(--space-3); border-bottom: 1px solid var(--border); }
+:where(th:first-child, td:first-child) { padding-left: 0; }
+:where(th:last-child, td:last-child) { padding-right: 0; }
+:where(tbody tr:last-child td) { border-bottom: 0; }
+:where(.num) { text-align: right; font-variant-numeric: tabular-nums; }
+:where(tbody tr:hover) { background: var(--tint-row); }
+
+/* ── form row — a label over its control, a hint under it ───────────────────────── */
+:where(.form-row) { display: flex; flex-direction: column; gap: var(--space-1); }
+:where(.form-label, .form-row > label) { font-size: var(--fs-label); font-weight: 600; color: var(--text-muted); }
+:where(.form-hint) { font-size: var(--fs-meta); color: var(--text-dim); }
+
+/* ── stat number ────────────────────────────────────────────────────────────────── */
+:where(.stat) { display: flex; flex-direction: column; gap: var(--space-1); padding: var(--space-3) var(--space-4); border: 1px solid var(--border); }
+:where(.stat-label) { font-size: var(--fs-label); letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-dim); }
+:where(.stat-value) { font-family: var(--font-head); font-weight: 600; font-size: var(--fs-h3); line-height: 1.12; font-variant-numeric: tabular-nums; }
+:where(.stat-sub) { font-size: var(--fs-meta); color: var(--text-dim); }
+:where(.stat[data-tone="danger"] .stat-value) { color: var(--danger); }
+:where(.stat[data-tone="warn"] .stat-value) { color: var(--warning); }
+
+/* ── empty line — one left line, no icon (mockup ㄷ) ────────────────────────────── */
+:where(.empty-state) {
+  display: block;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-start;
+  height: auto;
+  gap: 0;
+  padding: 0;
+  text-align: left;
+  font-size: var(--fs-button);
+  color: var(--text-dim);
+}
+:where(.empty-state .empty-icon) { display: none; }
+:where(.empty-state .empty-text) { font-size: inherit; font-weight: 400; }
+
+/* ── meta line · refusal line · tag ─────────────────────────────────────────────── */
+:where(.meta) { font-size: var(--fs-meta); color: var(--text-dim); font-variant-numeric: tabular-nums; }
+:where(.meta[data-tone="warn"]) { color: var(--warning); }
+:where(.refusal) { font-size: var(--fs-meta); color: var(--danger); }
+:where(.tag) {
+  display: inline-block;
+  padding: 1px var(--space-2);
+  font-size: var(--fs-tag);
+  line-height: 1;
+  white-space: nowrap;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+}
+:where(.tag[data-tone="ok"]) { color: var(--success); background: var(--success-weak); border-color: transparent; }
+:where(.tag[data-tone="warn"]) { color: var(--warning); background: var(--warning-weak); border-color: transparent; }
+:where(.tag[data-tone="danger"]) { color: var(--danger); background: var(--danger-weak); border-color: transparent; }

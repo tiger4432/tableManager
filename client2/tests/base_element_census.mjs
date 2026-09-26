@@ -18,19 +18,18 @@ function type(cs) {
 }
 const filled = (cs) => (/^(transparent|rgba\(0, 0, 0, 0\))$/.test(cs.backgroundColor) ? 'bare' : 'filled');
 
+// A cell's horizontal padding is left out: the first and last cells sit flush with the box's text
+// edge by design (mockup ㄴ), so they differ from the middle ones without being a second style.
+const cell = (el, win) => { const cs = win.getComputedStyle(el);
+  return `${type(cs)} ls ${cs.letterSpacing} · pad-v ${px(cs.paddingTop)}/${px(cs.paddingBottom)} · border-b ${px(cs.borderBottomWidth)}`; };
+
 const KINDS = {
-  table: {
-    pick: (doc) => doc.querySelectorAll('table'),
-    sign: (el, win) => {
-      const th = el.querySelector('th');
-      const td = el.querySelector('td');
-      return [`th ${th ? `${type(win.getComputedStyle(th))} ${box(win.getComputedStyle(th))}` : '-'}`,
-        `td ${td ? `${type(win.getComputedStyle(td))} ${box(win.getComputedStyle(td))}` : '-'}`].join(' | ');
-    },
-  },
+  tableHeader: { pick: (doc) => doc.querySelectorAll('th'), sign: cell },
+  tableCell: { pick: (doc) => doc.querySelectorAll('td'), sign: cell },
   input: {
     pick: (doc) => doc.querySelectorAll('input:not([type=checkbox]):not([type=radio]):not([type=hidden]):not([type=file]):not([type=range]), textarea, select'),
-    sign: (el, win) => { const cs = win.getComputedStyle(el); return `${el.tagName.toLowerCase()} ${type(cs)} ${box(cs)} · h ${px(el.getBoundingClientRect().height)} · ${filled(cs)}`; },
+    // Not the tag, not the rendered height (a hidden control has none) — the look.
+    sign: (el, win) => { const cs = win.getComputedStyle(el); return `${type(cs)} ${box(cs)} · min-h ${px(cs.minHeight)} · ${filled(cs)}`; },
   },
   button: {
     pick: (doc) => doc.querySelectorAll('button, [role=button]:not(tr):not(div), input[type=button], input[type=submit]'),
@@ -42,7 +41,8 @@ const KINDS = {
   },
   emptyLine: {
     pick: (doc) => doc.querySelectorAll('[class*="empty"]:not([class*="empty-icon"]):not([class*="empty-text"])'),
-    sign: (el, win) => { const cs = win.getComputedStyle(el); return `${type(cs)} ${box(cs)} · align ${cs.textAlign} · ${cs.display}`; },
+    // Not `display` — shown or hidden is a state; where the line sits is the look.
+    sign: (el, win) => { const cs = win.getComputedStyle(el); return `${type(cs)} ${box(cs)} · align ${cs.textAlign}/${cs.alignItems}`; },
   },
   formRow: {
     // A row that holds its own label and its own control.

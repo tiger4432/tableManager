@@ -41,7 +41,7 @@ heading   "Barlow Condensed" 600 · line-height 1.12 · letter-spacing -0.015em
 body      "Barlow" 400 · 15px / 1.55
 mono      identifiers · JSON · keys   (--oe-font-mono)
 scale     h1 42 · h2 32 · h3 25 · h4 20 · h5 16 · h6 13 uppercase 0.08em
-parts     card title 17 · button 14 · label 12 · tag/refusal 11 · meta 10
+parts     card title 17 · button 14 · label 12 · tag/refusal 11 · meta 12 (was 10 — owner 09-27)
 tokens    --fs-h1 … --fs-h6 · --fs-title · --fs-body · --fs-button · --fs-label · --fs-tag · --fs-meta (tokens.css — these twelve, no thirteenth)
 ```
 - Every face has a system fallback; sizes are px and land even if the webfont is blocked.
