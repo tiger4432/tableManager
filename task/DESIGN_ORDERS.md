@@ -34762,3 +34762,19 @@ C ⚪ 파서 두 길의 빈 행        std_parser 는 선언 칸만으로 빈 �
 아침 물음   「datetime 키를 시간대 없는 모양으로 그린다 — 어느 시간대로」로 고쳐 올림
 표기 2 단계 그대로 진행
 ```
+
+---
+
+> **[총괄 -> 클라] 비상 정지 화면 — 라우트 착지(312e8440a · 보고 b6eee4c3a) · 시작 (09-26 21:0x)**
+
+```
+라우트     POST /admin/chain/pause {reason} -> {paused: {by, at, reason, cancelled_pid}} · POST /admin/chain/resume -> {paused: null}
+           GET /admin/chain/pause -> {paused: {by, at, reason} | null}  (요청 상태)
+           /health checks.workers.chain.status = "paused"(degraded) — 워커가 실제로 멈췄는지(박동). 더 큰 판정(down · wedged)이 이김
+소급 탭    set_aside(tables · rules · transactions csv 하나 이상 · reason 필수 · downstream_note) · rerun_set_aside(같은 범위)
+           — 등록부 폼으로 그려지는지 먼저 확인(inventory). 안 그려지면 그 까닭을 보고
+화면       Overview 와 Chain 탭에 Pause / Resume — 지금 상태 한 줄(Paused by <누구> at <언제> · <사유>) · 요청 상태와 워커 상태가 다르면 둘 다
+           Pause 는 사유 입력 뒤 확인 한 번(되돌릴 수 있는 일이라 경고 문구는 짧게) · 영어
+게이트     하니스: 상태 줄 세 모양(null · paused · 요청은 paused 인데 워커는 아직 도는 중) · 버튼이 부르는 라우트 · 변이
+확인       병합 전 박스 어드민을 소유자 크롬에서 열어 봄 — 총괄이
+```
