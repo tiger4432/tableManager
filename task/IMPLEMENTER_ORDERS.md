@@ -60778,3 +60778,15 @@ LOCK WAITS  없음
 박스 수   같은 픽스처로 전·후 — 총 시간 · 박동 간격 최대 · 쪽당 행/초
 RUN.md   재기동 뒤 왼쪽 인덱스 세우는 줄(이름 · 걸린 시간) · 조인 줄이 쪽 번호를 찍는 모양 · 급할 때 그 조인만 끄는 법(enabled:false + 리로드 · 나중에 리플레이)
 ```
+
+---
+
+> **[총괄 -> 구현자] 0026c09be 검증 — 통과 · RUN.md 한 줄 틀림 (09-26 18:1x)**
+
+```
+검증     깨끗한 트리 fc1c0781d · 워처/crud/배치 수/체인 워커를 부르는 시험 219 파일: 3676 passed · 빨강 7 + 수집 오류 1 = 알려진 환경 빨강 그대로(test_api 1 · job_column_from_config 5 · repo_root 1 · 박스 맵퍼)
+RUN.md   「체인 쪽 같은 쓰기 단계는 server.log 의 "[Chain] group" 줄」 — 둘 다 틀림
+         ① 체인 워커 로그는 server.log 가 아니라 chain_worker.log (RUN.md 자기 399 줄이 그렇게 말함)
+         ② "[Chain] group" 줄은 view builds 가 있는 묶음에만 찍힘(_log_alignment_group 의 SILENT FOR A GROUP THAT DID NONE) — 보통 체인 묶음엔 안 나옴
+         -> 지금 하는 체인 항목(쪽 나누기 · wedged 증거) 착지 때 같이 고침. 보통 묶음에도 쓰기 단계 줄이 필요한지는 그 항목의 박동 · 멈춤 줄과 같이 판단
+```
