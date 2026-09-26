@@ -62634,3 +62634,113 @@ crud        _apply_batch_updates_once 가 transaction_context 로 출처를 «�
    -> 경로 칸이 «없는» 사건만 오늘의 source_name 으로 읽는 한 줄을 둘지(데이터를 지키는 가드). 두 번째 읽는 법이라 여쭘
 그동안     물음 없이 되는 부분(경로 칸 · 체인 문 · 게이트 픽스처)부터 짓고, 답이 오면 한 착지로 닫음
 ```
+
+---
+
+## [구현자 -> 총괄] ⓪ 착지 ac918a451 — 쓰기의 경로 칸 · 소급의 쓰기는 체인을 안 깨움 · 클릭 리플레이만 cascade (5676b8bc6 · f42b48591 · c2995cdd8 · 146b208cb · de813a889)
+
+### 지은 것
+
+```
+경로 칸      봉투에 channel — 깊이와 같은 모양(문이 세울 때만 칸이 있음). crud 의 트랜잭션 문맥은 «안 건드림» — 층(source_name)은 그대로
+문           chain  체인 묶음 쓰기 자리 · rule_run.chain_envelope · 원장 후속(삭제 행이 먹인 셀 철회)
+             api    HTTP 미들웨어 하나 (사람 · 다른 클라이언트)
+             file   워처의 두 작업 표시 자리(두 레인 · 재시도 폴러)
+             retroactive  소급 실행기 한 자리(_run_to_the_end) — 등록부의 모든 연산이 지남
+             없음    리플레이가 넣는 트리거 사건(제 규칙을 깨움) — 대신 replay 표식(스테이징 자리 하나가 씀)
+리플레이 표식  묶음이 「리플레이가 깨웠나」를 only_rule 로 읽지 않음 — only_rule 은 제한이고, 그것을 대리로 읽으면 나중에
+             한 규칙으로 좁히는 다른 문이 조용히 소급이 됨(「only_rule 을 묻는 자리는 fires 하나」 시험이 잡음)
+합치기       이웃 묶음 합치기(max_group_rows)가 리플레이 묶음과 보통 묶음을 안 합침 — 합치면 보통 쓰기의 하류가 조용해짐
+             「리플레이가 깨웠나 · 연쇄를 청했나」를 묻는 자리 하나(_replay_ask)를 묶음 본체와 합치기가 같이 지남
+한 독자      _rule_accepts_event — retroactive: 아무도 안 받음(cascade 면 체인처럼) · chain: 옵트인만 · 그 밖: 모두
+cascade      chain_replay 의 선택 파라미터(form=False · 기본 없음) — 트리거 사건에 실리고, 그것이 깨운 묶음의 쓰기에만 붙음(그 뒤 체인 홉엔 안 붙음)
+             CLI replay --cascade · 소급 탭 폼엔 안 드러냄(소유자 뜻: 탭 = 연쇄 없음, 그리드 클릭 = 연쇄)
+옛 사건 가드  경로 칸이 없고 source_name 이 chain_ingestion 인 사건만 오늘 방식으로 — 읽은 수를 체인 박동 note 에(은퇴 조건 같은 자리에 적음)
+미리보기      chain/graph 의 「이 표의 변경이 무엇을 깨우나」도 경로 칸으로 물음
+운영자 문장   inventory 의 downstream_note — 모든 연산 공통 한 줄 · 수집기 날짜별 소급만 제 문장
+판정 인용     chain_ingestion_guide §5.6 옆에 소유자 문장 · 날짜 (지우지 않음)
+걷어낸 것     84f2731e9 의 «연쇄 없음 표시» 배관 — de813a889 로 보류됐다가 c2995cdd8 로 흡수. 어드민 replay-all 은 안 지음
+```
+
+### 쓰는 자리 전수 — 명령 `git grep -n "apply_batch_updates(\|apply_retraction(\|purge_map_rows(\|delete_rows_batch(\|stage_collapsed_event(" -- server ':!server/tests' ':!server/mappers'`
+
+```
+server/chain/enrichment/backfill.py:440      소급 연산이면 retroactive(실행기 자리) · 체인 맵퍼 안이면 chain(rule_run 봉투)
+server/chain/enrichment/candidates.py:799    소급 연산이면 retroactive(실행기 자리) · 체인 맵퍼 안이면 chain(rule_run 봉투)
+server/chain/ingestion_worker.py:1410        chain — 묶음 쓰기 자리(쓰기 · 철회). 리플레이가 깨운 묶음이면 retroactive
+server/chain/ingestion_worker.py:1480        chain — 묶음 쓰기 자리(쓰기 · 철회). 리플레이가 깨운 묶음이면 retroactive
+server/chain/replay.py:531                   없음 + replay 표식 — 리플레이의 트리거 사건
+server/database/crud.py:3999                 부르는 쪽의 경로(삭제 · 맵 비우기는 crud 안의 문 — 경로를 안 세움)
+server/database/crud.py:4805                 부르는 쪽의 경로(삭제 · 맵 비우기는 crud 안의 문 — 경로를 안 세움)
+server/database/crud.py:5180                 부르는 쪽의 경로(삭제 · 맵 비우기는 crud 안의 문 — 경로를 안 세움)
+server/database/crud.py:5352                 부르는 쪽의 경로(삭제 · 맵 비우기는 crud 안의 문 — 경로를 안 세움)
+server/database/crud.py:5438                 부르는 쪽의 경로(삭제 · 맵 비우기는 crud 안의 문 — 경로를 안 세움)
+server/database/database.py:251              부르는 쪽의 경로(flush 훅 — 봉투를 읽음)
+server/main.py:2730                          api — HTTP 미들웨어
+server/maps/frame_confirmation.py:351        부르는 쪽의 경로 — 부르는 곳은 안 셈
+server/parsers/directory_watcher.py:3447     file — 워처의 작업 표시 자리
+server/scripts/dedupe_business_key_rows.py:263 없음 — 스크립트. 층 이름이 chain_ingestion 이 아니면 오늘처럼 모든 규칙을 깨움
+server/scripts/seed_* (24)                   없음 — 씨앗 스크립트. 오늘과 같음
+```
+
+### 게이트 · 변이
+
+```
+test_an_auto_confirm_write_asks_the_join_for_its_opt_in[False] PASSED
+test_an_auto_confirm_write_asks_the_join_for_its_opt_in[True] PASSED
+test_opted_in_the_ping_pong_climbs_to_the_ceiling_and_stops PASSED
+test_without_the_opt_in_the_ping_pong_takes_one_step PASSED
+test_a_person_and_a_file_wake_every_rule_as_before[api] PASSED
+test_a_person_and_a_file_wake_every_rule_as_before[file] PASSED
+test_an_event_queued_before_the_channel_is_read_by_its_source_name_and_counted PASSED
+test_a_retroactive_write_wakes_no_rule_unless_its_replay_cascades[False] PASSED
+test_a_retroactive_write_wakes_no_rule_unless_its_replay_cascades[True] PASSED
+test_a_replay_runs_its_rule_and_its_writes_wake_the_downstream_only_when_asked[False] PASSED
+test_a_replay_runs_its_rule_and_its_writes_wake_the_downstream_only_when_asked[True] PASSED
+test_a_replays_group_is_never_folded_into_an_ordinary_one PASSED
+test_the_form_says_what_a_run_does_to_the_chain PASSED
+test_every_operation_writes_on_the_retroactive_channel PASSED
+변이 (지시 다섯 + 제가 더한 여섯)
+baseline: 14 passed in 2.48s
+mutant: ordered - the reader goes back to the layer
+    8 failed, 6 passed in 3.30s
+mutant: ordered - the envelope's channel is the layer again
+    12 failed, 2 passed in 3.15s
+mutant: added - the group write seat sets no channel
+    8 failed, 6 passed in 3.19s
+mutant: ordered - retroactive goes back to the opt-in side
+    2 failed, 12 passed in 2.92s
+mutant: ordered - a trigger event carries the retroactive channel
+    2 failed, 12 passed in 2.78s
+mutant: ordered - cascade is not read
+    2 failed, 12 passed in 2.89s
+mutant: added - the guard for events queued before the channel goes
+    1 failed, 13 passed in 3.08s
+mutant: added - the executor seat sets no channel
+    1 failed, 13 passed in 3.13s
+mutant: added - a group a replay woke writes as the chain
+    3 failed, 11 passed in 3.07s
+mutant: added - the staging seat drops the replay mark
+    2 failed, 12 passed in 3.04s
+mutant: added - the merge folds across a replay
+    1 failed, 13 passed in 2.66s
+restored: 14 passed in 2.37s
+```
+
+```
+착지 시험   전체: 2 failed, 7149 passed, 151 skipped, 3 xfailed in 902.79s (0:15:02) — 둘 다 이 착지의 것이라 고침(키 게이트 시험의 「깨끗한 워커」 꾸밈에 경로 없는 사건 수를 비우는 한 줄 · only_rule 을 리플레이 표식으로 읽던 자리를 명시 표식으로). 고친 뒤 바뀐 자리를 지나는 시험 파일 전부를 다시 돌림 · PG 증명 전부: 7 failed, 108 passed, 7197 deselected in 131.90s (0:02:11) (알려진 일곱 그대로)
+공유 파일   admin/retroactive.py · chain/replay.py 는 응용 레인 미커밋(fold_file_layers)과 같은 파일 — 제 덩어리만 인덱스에 올려 커밋(덩어리 표식으로 가름 · 인덱스 차이 확인)
+RUN.md     [09-26 밤 3] — 경로의 뜻 · 재기동 뒤 자동 확정 스위치를 true 로 되돌려도 됨 · note 의 옛 사건 수 읽는 법
+```
+
+### 알고 남기는 것 · 여쭐 것
+
+```
+클라        그리드 배너의 클릭 리플레이(client2/src/main.js runRetroactive)가 cascade: true 를 보내야 연쇄함 — 클라 레인께. 그 전까지 클릭 리플레이도 연쇄 없음
+④ 깊이      자동 확정 쓰기는 묶음 쓰기 자리를 지나 깊이를 실음 — 게이트의 핑퐁 칸이 1..5 깊이와 천장 거절 하나를 셈(max 4)
+겹침(7823bc90f) event_constants.py — CHANNEL_* · CASCADE_KEY · REPLAY_KEY 와 읽는 함수 셋(channel_of · replay_of · cascade_of)을 깊이 칸 옆에 더함
+             directory_watcher.py — import event_constants 한 줄 · 두 작업 표시 자리에 channel(file)
+문서        data_model.md · event_driven_backend.md 에도 「source_name 이 chain_ingestion 이면」 문장이 남음 — 문서 정비(응용 세션) 몫으로 남김
+판정 복기    69aad666e 의 넷은 라운드 끝에
+다음        비상 정지(일시정지 · 치워 두기) -> ⑤ 기동 DDL -> 조인 쪽 나누기 -> 선언 + @mapper
+```
