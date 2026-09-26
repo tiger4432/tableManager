@@ -3075,6 +3075,17 @@ def export_table_csv(
     return StreamingResponse(generate(), media_type="text/csv", headers=headers)
 
 
+def _map_push_ok(table_name, config):
+    """Only the JSON boolean true unlocks; a value that is not a yes/no stays locked and says so
+    (총괄 872f6cb6b - silence was the defect, not the answer)."""
+    import validation
+
+    why = (validation.flag_refusal("map_push_ok", config["map_push_ok"])
+           if "map_push_ok" in config else None)
+    if why:
+        logger.warning("[Schema:%s] %s - map push stays blocked", table_name, why)
+    return config.get("map_push_ok") is True
+
 
 @app.get("/tables/{table_name}/schema")
 def get_table_schema(table_name: str, db: Session = Depends(get_db)):
@@ -3147,7 +3158,7 @@ def get_table_schema(table_name: str, db: Session = Depends(get_db)):
         # refusal to a one-shot loss-acknowledging confirm". Absent/false keeps the block.
         # Strict `is True`: a config typo ("true"/"false" strings, 1) must not unlock
         # destruction - only the JSON boolean true counts, same as the client's `=== true`.
-        "map_push_ok": config.get("map_push_ok") is True,
+        "map_push_ok": _map_push_ok(table_name, config),
         # Always present, `[]` when no verified join touches this table: a stable shape
         # is what lets a client read it without asking whether the key exists.
         "virtual_columns": virtual_columns,

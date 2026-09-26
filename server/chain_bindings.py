@@ -393,10 +393,13 @@ def rule_refusals(rule, path, *, mapper_resolvable, derived_tables, mapper_param
     # 🔴 [S-155, 판정 384] IDEMPOTENCE IS A YES OR A NO, and a string 「false」 is a YES
     # to every truth test in Python. The cell decides whether a failed group is fed to the
     # mapper a second time, so a value that cannot be read as a boolean must not be guessed at.
-    if IDEMPOTENT_KEY in candidate and not isinstance(candidate.get(IDEMPOTENT_KEY), bool):
+    # The sentence is every flag's (`validation.flag_refusal`); `flag_refusals` below judges
+    # the declaration first, and this seat is kept for callers that judge a rule directly.
+    why = (validation.flag_refusal(IDEMPOTENT_KEY, candidate.get(IDEMPOTENT_KEY))
+           if IDEMPOTENT_KEY in candidate else None)
+    if why:
         issues.append(validation.DeclarationValidationError(
-            "bad_idempotent", path + "." + IDEMPOTENT_KEY,
-            "idempotence must be true or false, got %r" % (candidate.get(IDEMPOTENT_KEY),)))
+            "bad_idempotent", path + "." + IDEMPOTENT_KEY, why))
 
     # 🔴 [S-154, 판정 381] A GROUP KEY NAMES COLUMNS OF THE TRIGGER TABLE. A name that is
     # not one matches nothing, so every row would key on the same absent value and the whole
@@ -569,6 +572,19 @@ def skeleton():
         # which one it is (`chain_rule_raw_view`'s `grammar`).
         "unified_root": _unified_root(),
     }
+
+
+def flag_refusals(declaration) -> list:
+    """The yes/no cells of one chain declaration that are not true or false - flat or unified,
+    read off `skeleton()`'s `hint: flag` leaves (총괄 872f6cb6b · 36b465139), so a flag cell
+    added to either root is judged the day it is added."""
+    import validation
+
+    if not isinstance(declaration, dict):
+        return []
+    shape = skeleton()
+    root = shape["unified_root"] if isinstance(declaration.get("derive"), dict) else shape["root"]
+    return validation.flag_refusals(declaration, root)
 
 
 def _field(key, node, required=False):

@@ -711,8 +711,9 @@ def _count_rerun_set_aside(db, params, scan_limit):
 
 def _run_rerun_set_aside(db, params, log, control=None):
     """Replay the rows the set-aside events named - every enabled rule on each table (or the
-    rules named), in the declaration's order, with `cascade`: it gives back what the chain
-    would have done, downstream included (총괄 2dbbfd1e5)."""
+    rules named), in the declaration's order, ONCE and without `cascade`: what those rules
+    write wakes no rule downstream. 총괄 2dbbfd1e5 had it cascade; the owner reversed that
+    (09-27 「큰 소급 치워둔거니 한번만」) - only the grid's click replay cascades."""
     from chain import replay, rule_shape, set_aside
 
     rows = set_aside.rows_set_aside(db, **_scope(params))
@@ -724,8 +725,8 @@ def _run_rerun_set_aside(db, params, log, control=None):
             if r.get("trigger_table") == table and not rule_shape.is_switched_off(r)
             and (not wanted or r.get("name") in wanted)])
         for rule in rules:
-            one = _run_chain_replay(db, {"rule": rule.get("name"), "row_ids": ids,
-                                         "cascade": True}, log, control)
+            one = _run_chain_replay(db, {"rule": rule.get("name"), "row_ids": ids},
+                                    log, control)
             staged += one["rows_staged"]
     return {"rows_staged": staged, "tables": len(rows)}
 
@@ -1240,8 +1241,8 @@ OPERATIONS = {
         "restartable": True,
         "commit_granularity": "chain_replay's own - one commit per staged page",
         "cli_only": [],
-        "downstream_note": ("It replays the rows those events named, and cascades like the "
-                            "chain would have"),
+        "downstream_note": ("It replays the rows those events named, each rule once - "
+                            "nothing downstream runs; replay a row from the grid to cascade"),
     },
     "resolve": {
         "label": "Recompute shown values from stored layers (R3)",

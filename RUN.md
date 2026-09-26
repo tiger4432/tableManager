@@ -1,5 +1,40 @@
 # 지금 돌리면 되는 것
 
+> ## 🔴 [09-27 아침 2] **예/아니오 칸은 true/false 만 — 체인 규칙 · 수집기 · 원장 묶음 · 표기 · 맵 · 자동 확정 — 마이그레이션 «없음» · 재기동 넷 다(API · 워처 · 체인 · 스케줄러)**
+>
+> ```
+> 재기동 «전»   운영 설정에 true/false 아닌 예/아니오 값이 있나 — 둘 다 저장소 루트에서
+>              conda run --no-capture-output -n assy_manager python -c "import sys; sys.path.insert(0,'server'); import chain_bindings; from chain import ingestion_worker as w; rules=w.read_rules_document()['rules']; bad=[(r.get('name'), f) for r in rules for f in chain_bindings.flag_refusals(r)]; [print(*b) for b in bad]; print('chain rules checked:', len(rules), '| not true/false:', len(bad))"
+>              conda run --no-capture-output -n assy_manager python -c "import sys; sys.path.insert(0,'server'); import map_overlay; from maps import preset_routing as p; c=map_overlay.load_overlay_config(); t=list(c.get('preset_routing') or {}); [p.resolve_routing_config(c,x) for x in t]; l=list(c.get('paint_lock') or {}); [map_overlay.get_paint_rules(c,x) for x in l]; print('map routing tables checked:', len(t), '| paint lock entries checked:', len(l))"
+>              뜻: 줄마다 「<규칙> <칸> must be true or false, got <값> - write true or false」 · 맵은 「… ignored: …」 경고 줄
+>              뜨면 그 칸을 true 또는 false 로 고친 뒤 재기동. 안 고치면 — 체인 규칙은 «안 섬»(오늘 1 · "true" 로 돌던 규칙도 멈춤),
+>              맵 라우팅 · 페인트 잠금 항목은 «안 씀»(오늘 0 · "false" 가 켜짐으로 읽히던 것)
+>              끝 줄의 checked 수가 0 이면 파일을 못 읽은 것 — 경로부터
+> 바뀌는 것     체인 규칙: 예/아니오 칸(enabled · is_batch · allow_* · idempotent · key.unique · decide 의 auto_confirm · alignment)이
+>              true/false 아니면 로드 · 저장에서 그 선언이 안 섬 — 전에는 "false" 글자가 켜짐(allow_retraction 이면 지우기가 켜짐)
+>              맵: 라우팅 · 페인트 잠금의 enabled 도 같음 — 그 항목을 안 쓰고 경고 한 줄
+>              나머지(수집기 · 원장 묶음 · 표기 · 자동 확정 · map_push_ok · 수집 설정 여섯 · std_parse)는 전에도 거절/기본값 — «문장»만 하나로
+> 재기동 뒤     chain_worker.log "[ChainRules] <규칙>: <칸> must be true or false, got …" — 그런 규칙마다 한 줄
+> 급할 때       스위치 없음. 그 칸을 true/false 로 고치면 다음 리로드부터 섬. 되돌리기는 git revert 뒤 넷 재기동
+> ```
+
+---
+
+> ## 🔴 [09-27 아침 1] **치워 둔 사건 다시 돌리기 — 규칙마다 한 번 · 연쇄 없음 — 마이그레이션 «없음» · 재기동 API · 스케줄러**
+>
+> ```
+> 무엇이 바뀌나  소급 탭 "Run set-aside events again" · outbox_triage.py --rerun-set-aside · --replay-cancelled
+>              치운 사건이 가리키던 행을 그 표의 규칙마다 «한 번» 리플레이 — 그 쓰기는 하류 규칙을 «안 깨움»(옵트인이어도)
+>              (전에는 체인처럼 연쇄 — 소유자 09-27 「큰 소급 치워둔거니 한번만」)
+> 그대로        그리드에서 행을 찍어 리플레이하면 오늘처럼 연쇄(옵트인 규칙만)
+> 확인          소급 탭 그 연산의 안내 줄 "It replays the rows those events named, each rule once - nothing downstream runs; …"
+>              옛 문장 "… cascades like the chain would have" 가 보이면 API 가 옛 코드 — 재기동
+> 뜻           다시 돌린 뒤 하류 표가 옛 값이면 정상 — 하류가 필요하면 하류 규칙을 소급 탭 "Replay chain rules over old data (R1)" 로 따로, 또는 그리드에서 행 리플레이
+> 급할 때       스위치 없음. 되돌리기는 git revert 뒤 API · 스케줄러 재기동
+> ```
+
+---
+
 > ## 🔴 [09-27 새벽 1] **@mapper 규칙도 지운다 — allow_retraction(잡마다) · allow_replace_map(맵마다) — 마이그레이션 «없음» · 재기동 체인 워커 · API**
 >
 > ```
@@ -109,7 +144,7 @@
 >               ② 치워 두기       소급 탭 "Set queued chain events aside" — 표 · 규칙 · 트랜잭션 중 하나 이상 + 사유. 드라이런이 사건 수 · 행 수를 먼저 보여 줌
 >                                 CLI: python server/scripts/outbox_triage.py --set-aside --tables 표 --reason "왜" (--apply 로 실제로)
 >               ③ Resume          POST /admin/chain/resume  ·  chain_pause_cli.py resume — 남은 대기열이 다시 흐름
->               ④ 나중에           소급 탭 "Run set-aside events again"(같은 범위) — 치운 사건이 가리키던 행을 리플레이, 체인이 했을 연쇄 그대로
+>               ④ 나중에           소급 탭 "Run set-aside events again"(같은 범위) — 치운 사건이 가리키던 행을 리플레이, 규칙마다 한 번 · 연쇄 없음(09-27 아침 1 절)
 >                                 CLI: outbox_triage.py --rerun-set-aside --tables 표 --apply
 > 확인          GET /admin/chain/pause 가 요청 상태 · /health 의 chain 이 paused(degraded) 면 워커가 멈춤을 지킴
 >               chain_worker.log "[Chain] paused - tx '...' was rewound at a stage boundary" — 되감긴 묶음마다

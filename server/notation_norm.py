@@ -137,6 +137,7 @@ import re
 logger = logging.getLogger("NotationNorm")
 
 import paths  # single override point (ASSY_DATA_ROOT)
+import validation
 
 NOTATION_RULES_PATH = paths.config_path("notation_rules.json")
 
@@ -809,10 +810,9 @@ def _normalize_rules(raw, subject, rejections=None) -> dict:
             elif on not in (None, False, 0, [], {}):
                 effective[name] = on
             continue
-        if not isinstance(on, bool):
-            _record(rejections, SCOPE_TABLE, subject,
-                    f"rule '{name}' must be true or false (got {on!r}); the "
-                    f"default is kept", CODE_SHAPE)
+        why = validation.flag_refusal(name, on)
+        if why:
+            _record(rejections, SCOPE_TABLE, subject, f"{why}; the default is kept", CODE_SHAPE)
             continue
         if on and name not in IMPLEMENTED_RULES:
             _record(rejections, SCOPE_TABLE, subject,
@@ -861,6 +861,10 @@ def _validate_column(table: str, column: str, spec, table_rules: dict,
         # 총괄 6c156492f: `write: true` - the column is STORED in its folded form (alias first,
         # then the rules, or `time`). Without it the column is folded for comparison only.
         write = spec.get("write") is True
+        why = validation.flag_refusal("write", spec["write"]) if "write" in spec else None
+        if why:
+            _record(rejections, SCOPE_COLUMN, subject,
+                    f"{why}; the column is folded for comparison only", CODE_SHAPE)
         if "derived" in spec:
             _record(rejections, SCOPE_COLUMN, subject,
                     "'derived' is no longer a thing: normalization does not "

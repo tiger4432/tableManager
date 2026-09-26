@@ -59,6 +59,7 @@
 | 🆕 오늘 붙인 **수집기**(`# window:` 를 선언한 것)에 **지난 날들의 데이터가 없다** | **`collector_backfill`**(09-26 `9c2ebe9a`) — 파라미터 `collector`(`<표>/<스크립트.py>`) · `start`(KST `YYYY-MM-DD`, 그날 00:00 · 또는 `YYYY-MM-DD HH:MM`). **하루(24 시간 창)씩** 스크립트를 그 날의 창으로 채워 돌리고, 그 날 파일이 적재 큐를 **지난 뒤** 다음 날로 간다. 한 날의 파일이 실패하면 **그 날 이름을 대고 멈춘다**. 결과는 `days`(창 안의 날 수) · `days_done`(모은 날 수) — 화면에서는 낱말로(`f6d64682`). 어드민 Retroactive 탭 또는 CLI `python -c "from admin import retroactive; retroactive.run_here('collector_backfill', {'collector': '<표>/<스크립트.py>', 'start': 'YYYY-MM-DD'})"` |
 
 | 🆕 칸마다 **파일 층이 여러 겹** 쌓여 있다(같은 행을 매시간 다시 가져오는 수집기) · 헤비 레인 청크 줄의 `prefetch` 가 크다 | **`fold_file_layers`**(09-26, 총괄 225b2c658) — 파라미터 `table` · `pace`. 칸마다 같은 부류 · 같은 값의 파일 층은 **가장 새 것 하나**만 남긴다(§2.6). 쓰기 쪽은 같은 날부터 **안 쌓는다**(§1.1) |
+| 🆕 사고 중 체인 대기열에 **지금 돌면 안 되는** 일이 쌓였다 / 그것을 나중에 돌린다 | **`set_aside`** · **`rerun_set_aside`**(09-26 · 09-27) — 치워 두기는 지우지 않음, 다시 돌리기는 규칙마다 한 번 · 연쇄 없음(§2.8) |
 | 🆕 표기 `write` 칸을 선언했는데 **그 전에 저장된 값**이 옛 철자다 | **`fold_written_notation`**(09-26, 총괄 2dc2c1baf) — 파라미터 `table` · `pace`. 층 값 · 보이는 값 · 키를 제자리에서 접는다(§2.7). 끝나면 `fold_file_layers` → VACUUM |
 
 🔴 **ⓒ와 ⓓ를 가르는 질문은 하나입니다 — 「파생 테이블에 그 행이 있습니까?」**
@@ -262,6 +263,19 @@ python -c "from admin import retroactive; retroactive.run_here('fold_written_not
 - **끝나면**: `fold_file_layers`(같은 표) → `python server/scripts/tune_layer_tables.py --table cell_sources --vacuum`.
 - 바뀐 행은 소급 경로(`retroactive`)의 사건을 내므로 체인 규칙은 안 깨고, 원장 후속 랩은 그 사건으로 다시 번역합니다.
 - 페이지마다 커밋 · 취소는 페이지 사이 · 다시 돌리면 남은 것만 접습니다.
+
+
+### 2.8 🆕 `set_aside` · `rerun_set_aside` — 체인 대기열 치워 두기와 다시 돌리기 (09-26 `312e8440a` · 09-27 `91d838682`)
+
+```bash
+python server/scripts/outbox_triage.py --set-aside --tables <표> --reason "<왜>" --apply
+python server/scripts/outbox_triage.py --rerun-set-aside --tables <표> --apply
+```
+어드민 **Retroactive** 탭에서는 `Set queued chain events aside` · `Run set-aside events again` — 파라미터 `tables` · `rules` · `transactions`(치워 두기는 `reason` 도).
+
+- **치워 두기**: 범위의 미처리 체인 사건에 `cancelled_by = operator` 와 사유를 남기고 안 돌립니다. **지우지 않습니다.** 표 · 규칙 · 트랜잭션 중 **하나 이상**을 적어야 합니다(「대기열 전체를 한 번에」는 거절).
+- **다시 돌리기**: 치운 사건이 가리키던 행을 리플레이합니다 — **규칙마다 한 번 · 연쇄 없음**(소유자 09-27 「큰 소급 치워둔거니 한번만」 — 전에는 체인처럼 연쇄). 그 쓰기는 아래 규칙을 깨우지 않습니다. 아래까지 돌려야 하면 **그리드에서 행을 찍어 리플레이**합니다(연쇄하는 것은 그 클릭뿐 — 옵트인 규칙만).
+- 비상 정지 순서(멈춤 → 치워 두기 → 다시 흐름 → 나중에 다시 돌리기)는 [RUN.md](../../RUN.md) 의 비상 정지 항목.
 
 ---
 

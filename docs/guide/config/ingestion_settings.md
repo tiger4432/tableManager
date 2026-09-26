@@ -59,7 +59,7 @@
   [<table>] 🐘 Routed to heavy lane queue (<사유>, <크기>B): <파일명>
   ```
 - **dedup**: 같은 파일을 다시 떨어뜨렸을 때 — `true`면 `GET /admin/file-ingestion/logs`에 `SKIPPED`(사유 포함)가 남고, `false`면 재적재됩니다. 스킵은 무음이 아닙니다.
-- **잘못된 값**: 워처 로그에 `Ignoring invalid 'heavy_file_mb' ...` / `Ignoring non-boolean ...` 경고(값당 1회)가 뜨면 설정이 무시되고 기본값으로 돌고 있다는 뜻입니다.
+- **잘못된 값**: 워처 로그에 `Ignoring invalid 'heavy_file_mb' ...` / `ingestion_settings.json: <칸> must be true or false, got <값> - write true or false - falling back to <기본값>.` 경고(값당 1회 — 예/아니오 칸의 문장은 09-27 `096d5ca31` 부터 `validation.flag_refusal` 하나)가 뜨면 설정이 무시되고 기본값으로 돌고 있다는 뜻입니다.
 - **외부 소스**: 워처 로그의 `Watching external read-only source: <경로> -> <테이블>` 두 줄(`inspection_run`, `void_obs`)을 확인합니다. 경로가 잠시 없으면 `External source unavailable`이 한 번 남고 300초 스윕이 계속 복구를 시도합니다.
 
 ## 4. 잘못됐을 때

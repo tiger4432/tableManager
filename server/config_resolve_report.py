@@ -56,6 +56,7 @@ import os
 #    ⚠️ 이 모듈을 «모듈 수준»에서 읽는 제품 코드는 없다(실측: `main.py` 셋 다 함수 안). 그래서
 #    이 import 들의 비용은 보고서를 «처음 부르는» 요청에 붙고, 기동 경로에는 붙지 않는다.
 import chain_bindings
+import validation
 from chain import ingestion_worker as worker
 import mapper_sdk
 from chain import rule_shape
@@ -456,7 +457,9 @@ def _resolve_enrichment() -> dict:
     # --- 전역 스위치 + 캡 ---
     switch_declared = ec.GLOBAL_KILL_SWITCH_KEY in raw_settings
     switch_raw = raw_settings.get(ec.GLOBAL_KILL_SWITCH_KEY)
-    switch_valid = (not switch_declared) or isinstance(switch_raw, bool)
+    switch_why = (validation.flag_refusal(ec.GLOBAL_KILL_SWITCH_KEY, switch_raw)
+                  if switch_declared else None)
+    switch_valid = switch_why is None
     switch_on = ec.global_auto_confirm_enabled(raw_settings)
 
     cap_declared = ec.MAX_KEYS_SETTINGS_KEY in raw_settings
@@ -490,8 +493,7 @@ def _resolve_enrichment() -> dict:
     if switch_declared and not switch_valid:
         rejected.append(entry(
             SCOPE_SETTING, ec.GLOBAL_KILL_SWITCH_KEY,
-            f"'{ec.GLOBAL_KILL_SWITCH_KEY}' value {_as_json(switch_raw)} is not a JSON boolean "
-            f"and was ignored - it runs as the default, true (does not block).",
+            f"{switch_why} - ignored, it runs as the default, true (does not block).",
             reason=REASON_MAPPING_UNAVAILABLE))
     if cap_declared and not cap_valid:
         rejected.append(entry(
@@ -504,7 +506,8 @@ def _resolve_enrichment() -> dict:
     for rule in rules:
         name = rule["name"]
         raw_knob = rule.get("auto_confirm", False)
-        knob_valid = isinstance(raw_knob, bool)
+        knob_why = validation.flag_refusal(ec.RULE_KNOB, raw_knob)
+        knob_valid = knob_why is None
         knob_declared = bool(rule.get("auto_confirm_declared"))
         knob_on = ec.rule_auto_confirm_enabled(rule, raw_settings)
         views = [_view_report(rule, v) for v in (rule.get("reference_views") or [])]
@@ -515,8 +518,7 @@ def _resolve_enrichment() -> dict:
         if knob_declared and not knob_valid:
             rejected.append(entry(
                 SCOPE_RULE, name,
-                f"'{ec.RULE_KNOB}' value {_as_json(raw_knob)} is not a JSON boolean "
-                f"and was ignored - this rule runs as the default, OFF.",
+                f"{knob_why} - ignored, this rule runs as the default, OFF.",
                 reason=REASON_MAPPING_UNAVAILABLE, fields=fields))
             continue
         if not knob_declared or raw_knob is False:

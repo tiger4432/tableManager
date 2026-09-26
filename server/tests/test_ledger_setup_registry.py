@@ -462,7 +462,7 @@ def test_virtual_join_change_changes_snapshot_hash():
         ({"trim": True}, "invalid_join", ".fold.trim",
          "unknown notation rule 'trim'; known rules are ['case', 'separator', 'zero_pad']"),
         ({"separator": "yes"}, "invalid_type", ".fold.separator",
-         "notation rule toggle must be boolean"),
+         'separator must be true or false, got "yes" - write true or false'),
         ({"zero_pad": True}, "invalid_join", ".fold.zero_pad",
          "notation rule 'zero_pad' is not implemented"),
     ],

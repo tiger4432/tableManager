@@ -84,6 +84,7 @@ def _db_error_brief(exc: BaseException) -> str:
 # 실제 총 로그 건수는 total_log_count로 별도 전달되어 웹서버 audit_cache의 total_count 표기에 쓰인다.
 from event_constants import MAX_NOTIFY_CREATED_LOGS
 import event_constants
+import validation
 
 
 # [P2] 오프셋 체크포인트 재개 + 파일 시그니처 dedup (설계 근거·해시 비용 실측은 모듈 docstring)
@@ -341,10 +342,8 @@ def warn_invalid_std_parse_once(source_key: str, value):
     if key in _invalid_field_warned:
         return
     _invalid_field_warned.add(key)
-    logger.warning(
-        f"Ignoring non-boolean 'std_parse' value {value!r} in {source_key} — "
-        f"expected JSON boolean true/false (string \"false\" is NOT an opt-out)."
-    )
+    logger.warning(f"{source_key}: {validation.flag_refusal('std_parse', value)} - ignored, "
+                   f"the next source decides")
 
 
 # ── [Heavy Lane P1] 대형 파일 인제션 격리 설정 ─────────────────────────────
@@ -709,8 +708,9 @@ def validate_external_source_specs(settings: dict, table_config: dict,
             errors.append(f"{where} must be a JSON object.")
             continue
         enabled = raw.get("enabled", True)
-        if not isinstance(enabled, bool):
-            errors.append(f"{where}.enabled must be a JSON boolean.")
+        why = validation.flag_refusal("enabled", enabled)
+        if why:
+            errors.append(f"{where}: {why}")
             continue
         if not enabled:
             continue
@@ -786,8 +786,9 @@ def validate_external_source_specs(settings: dict, table_config: dict,
                 f"{where}: parser 'voids_json' targets only 'void_obs' or "
                 f"'inspection_run', got {table_name!r}.")
             continue
-        if not isinstance(recursive, bool):
-            errors.append(f"{where}.recursive must be a JSON boolean.")
+        why = validation.flag_refusal("recursive", recursive)
+        if why:
+            errors.append(f"{where}: {why}")
             continue
         if not isinstance(options, dict):
             errors.append(f"{where}.options must be a JSON object.")
@@ -908,15 +909,14 @@ DEFAULT_RESUME_FROM_CHECKPOINT = True
 def _bool_setting(key: str, default: bool) -> bool:
     """ingestion_settings.json의 boolean 설정 1건 (bool 외 값은 1회 경고 후 기본값)."""
     val = load_ingestion_settings().get(key, default)
-    if isinstance(val, bool):
+    why = validation.flag_refusal(key, val)
+    if not why:
         return val
     warn_key = ("bool_setting", key, repr(val))
     if warn_key not in _invalid_field_warned:
         _invalid_field_warned.add(warn_key)
-        logger.warning(
-            f"Ignoring non-boolean '{key}' value {val!r} in ingestion_settings.json — "
-            f"expected JSON boolean true/false. Falling back to default {default}."
-        )
+        logger.warning(f"ingestion_settings.json: {why} - falling back to "
+                       f"{str(default).lower()}.")
     return default
 
 
@@ -1681,13 +1681,13 @@ class IngestionHandler(FileSystemEventHandler):
         [D6] bool 외 값은 무시(1회 경고) 후 하위 원천으로 폴백."""
         if isinstance(table_info, dict) and "std_parse" in table_info:
             val = table_info["std_parse"]
-            if isinstance(val, bool):
+            if not validation.flag_refusal("std_parse", val):
                 return val
             warn_invalid_std_parse_once(f"table_config.json entry '{t_name}'", val)
         legacy = self._load_legacy_config()
         if "std_parse" in legacy:
             lval = legacy["std_parse"]
-            if isinstance(lval, bool):
+            if not validation.flag_refusal("std_parse", lval):
                 return lval
             warn_invalid_std_parse_once(f"workspace config '{self.config_path}'", lval)
         return True

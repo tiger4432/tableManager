@@ -323,9 +323,10 @@ def test_the_form_says_what_a_run_does_to_the_chain():
     and the collector backfill - whose files the watcher ingests - says the chain runs."""
     notes = {entry["op"]: entry["downstream_note"] for entry in retroactive.inventory()}
     assert notes.pop("collector_backfill").startswith("The files it collects are ingested")
-    # The emergency stop's pair says its own: set aside does not run, run again cascades.
+    # The emergency stop's pair says its own: set aside does not run, run again runs each rule
+    # once and cascades nothing - the grid's click replay is the one that cascades (소유자 09-27).
     assert notes.pop("set_aside").startswith("Events set aside do not run")
-    assert notes.pop("rerun_set_aside").endswith("cascades like the chain would have")
+    assert "nothing downstream runs" in notes.pop("rerun_set_aside")
     assert notes and set(notes.values()) == {retroactive.DOWNSTREAM_NOTE}
 
 

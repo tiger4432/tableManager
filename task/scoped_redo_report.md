@@ -63444,3 +63444,361 @@ PG(제 작업트리)  7 failed, 115 passed, 7220 deselected, 6 errors in 164.98s
          후  jobs=5000 out_rows=50000 batches=5000 rows=50000 seconds=0.50
 게이트    같은 25 칸 초록 · 변이 여덟 다시 다 빨강 · mapper_sdk 를 지나는 시험 파일 전부 초록
 ```
+
+---
+
+## [구현자 -> 총괄] 8 · 6 착수 — 자리를 셌고 안 셋씩, 컨펌 뒤에 짓습니다 (de64fb0f9)
+
+### 8 다시 돌리기 — 문은 하나
+
+```
+문      admin/retroactive._run_rerun_set_aside 하나. 소급 탭과 CLI 두 명령(--rerun-set-aside · --replay-cancelled)이 다 이 함수를 지남
+        셈: git grep -n '"rerun_set_aside"' -- server/scripts server/admin -> 등록부 1 · outbox_triage 2
+그리드   클릭 리플레이는 다른 연산(chain_replay 의 cascade 칸, 클라가 보냄) — 안 건드림
+```
+
+**ㄱ (추천) 그 함수에서 cascade 를 뺀다**
+```
+무엇    "cascade": True 를 지움 -> 소급 경로의 쓰기라 어느 규칙도 안 깨움. 규칙마다 한 번
+문장    그 함수 독스트링(2dbbfd1e5 인용은 지우지 않고 「소유자 09-27 이 뒤집음」으로) · downstream_note
+        chain/set_aside.py 머리 · outbox_triage.replay_cancelled 독스트링
+        RUN.md 밤 4 ④ 제자리 고침 + 새 절 한 줄 · 시험 모듈 머리 한 줄
+가이드   chain_ingestion_guide.md 의 「소급 실행은 옵트인이어도 어느 규칙도 안 깨움 · 예외는 그리드 클릭 리플레이」가
+        이 착지로 다시 «참»이 됨 -> 「치워 둔 사건 다시 돌리기도 연쇄 없음(소유자 09-27)」 한 줄만 붙임
+시험    test_running_them_again_gives_the_cells_the_chain_would_have_written — 기대와 이름이 뒤집힘
+        새 기대(같은 픽스처): 다시 돌리기 + 비움 -> 뒤따르는 규칙(es_b_to_a)을 깨우는 사건 0 · 그 표 값 안 바뀜
+        연쇄 쪽 대조군은 이미 있음: test_a_chain_write_reads_as_the_chain_whatever_its_layer 의 cascade 매개 칸 — 새로 안 짓고 인용
+        같은 파일의 downstream_note 기대 문장도 바뀜
+        변이 True 로 되돌림 -> 새 기대 빨강
+운영자   할 일 없음. 다시 돌린 뒤 하류가 필요하면 하류를 따로 소급
+위험    다시 돌리기의 연쇄에 기대던 절차가 있으면 그 하류가 안 돎 — RUN.md 한 줄이 그것을 말함
+크기    함수 한 줄 + 위 문장 자리 + 시험 두 파일. 줄 수 안 셈
+```
+**ㄴ** 이 연산에 cascade 칸(기본 꺼짐)을 열어 CLI 가 고르게 — 지시에 없는 손잡이. 안 추천  
+**ㄷ** ㄱ + 결과에 「연쇄였다면 돌았을 규칙 이름」을 적음 — 하류를 따로 돌릴 때 무엇인지 보임. 지시 밖이라 제안만
+
+### 6 enabled — 셈 먼저
+
+| 선언 종류 | true/false 아닌 값, 오늘 |
+|---|---|
+| 체인 규칙 (평평 · 통합) | 거절 없음 · 0 · null 꺼짐 · 1 · "true" · "false" 켜짐 |
+| 수집기 (external_sources) | 거절 — 그 항목 안 섬 |
+| 원장 가상 조인 | 거절 (없음도 거절 — 필수 칸) |
+| 원장 조인 fold 켜기 | 거절 |
+| 표기 규칙 켜기 | 거절 — 기본값 유지 |
+| 맵 프리셋 라우팅 | 거절 없음 · `is False` 만 꺼짐 -> 0 · null · "false" 켜짐 |
+| 맵 페인트 잠금 | 거절 없음 · 없음 = 꺼짐 · "false" 켜짐 |
+
+```
+모집단   git grep -l -w enabled -- 'server/*.py' ':!server/tests' ':!server/scripts' -> 24 파일
+        종류 일곱은 그 24 를 «읽어서» 가름. grep 이 가른 것 아님
+        표기 · fold 둘은 칸 이름이 enabled 가 아님 — 켜기 스위치라 넣음
+원장 소스 enabled 칸 없음 (ledger/setup.py 머리가 「필요하면 sources.<id>.enabled 에」라고만 적음)
+전·후    오늘 거절 넷 · 안 거절 셋  ->  ㄱ 뒤 거절 다섯 · 안 거절 둘(맵 둘)
+```
+
+**지시 전제와 어긋난 것 하나** — 「켜짐을 읽는 자리는 is_switched_off 하나」
+```
+체인 규칙에서도 둘이 따로 읽음: ledger/admin.chain_rule_raw_view 의 "enabled" · save_chain_rule_raw 응답의 "enabled"
+둘 다 bool(get("enabled", True)) — 오늘 답은 판정자와 같음(둘 다 참거짓 읽기). 판정자를 지나게 할지 여쭘
+판정자를 부르는 자리: git grep -n "is_switched_off(" (시험 밖 · def 뺌) -> 20
+```
+
+**거절이 앉을 자리와 까닭**
+```
+rule_shape.expand_declaration 맨 앞 — 평평 규칙의 조기 반환과 is_switched_off 보다 «앞»
+  까닭  통합 선언은 0 · null 이면 거기서 「꺼짐」 메모로 빠져 rule_refusals 에 안 닿음 -> bad_idempotent 옆은 안 됨
+  이 함수를 부르는 자리 11 (git grep -n "expand_declaration(" 시험 밖 · def 뺌) — 11 을 다 열었음
+저장 관문은 한 번 더 — save_chain_rule_raw 가 판정 전에 enabled 를 True 로 덮음(끈 규칙도 켠 듯 판정하려고)
+  -> 덮기 «전»에 같은 함수. 함수 하나 · 부르는 자리 둘
+문장     화면에 그려지니 영어, 옆 거절 문장 모양대로 — 「enabled must be true or false, got 0 - write true or false」
+바꿔 싣는 자리 하나  config_resolve_report 가 expand 거절을 전부 「cannot be expanded」 · 사유 mapping_unavailable 로 실음
+  -> enabled 거절이 그 화면에 틀린 사유로 뜸. 문장 자체는 그대로 실림
+```
+
+**돌던 규칙이 멈춤**
+```
+오늘 1 · "true" 로 적혀 «도는» 규칙은 재기동 뒤 안 섬 — 이 제품에서 거절은 「규칙이 안 섬」
+선례    로더 주석 2026-09-14: 모르는 칸 거절이 돌던 규칙을 지워 사고 -> 그 칸만 「이름 대고 계속 돎」으로 바뀜
+        지시가 「거절」이라 «안 섬»으로 짓겠습니다. 다르면 말씀 주십시오
+셈      이 박스 설정 JSON 15 개의 enabled 24 개 중 true/false 아닌 것 0 (박스 수)
+        추적 JSON 의 enabled 16 개(true 15 · false 1) 전부 bool
+        운영 파일은 못 셉니다 -> RUN.md 에 재기동 «전» 셀 명령 한 줄
+```
+
+**ㄱ (추천) 체인 규칙만 — 소유자께 여쭌 물음이 그것**
+```
+무엇    rule_shape.enabled_refusal 하나(is_switched_off 옆) — 칸이 «있고»(null 포함) bool 이 아니면 문장, 없으면 오늘 뜻
+        expand_declaration 맨 앞 + 저장 관문 덮기 전
+운영자   재기동 전 RUN.md 명령으로 운영 파일 확인 · 뜨면 true/false 로 고침
+좋은 점  체인에서 「"false" 가 켜짐」이 없어짐 · 저장 때 바로 거절
+위험    위 「돌던 규칙이 멈춤」
+크기    함수 하나 + 부르는 자리 둘 + 시험 파일 하나. 줄 수 안 셈
+게이트   8 값 × 판정 함수 + 부르는 자리마다 한 칸(거절된 선언이 안 서고 그 자리의 말 — 로그 줄 · 보고 항목 · 저장 거절 — 에 이름이 남음)
+        8 × 11 을 다 돌리지는 않음 · 변이 "false" 를 통과시킴 -> 빨강
+```
+**ㄴ 선언 종류 전부를 한 함수로** — 이미 거절하는 넷도 그 함수를 부르게
+```
+좋은 점  켜기 스위치의 답과 문장이 제품 전체에서 하나
+위험    이미 도는 거절 넷의 문장이 바뀜 · 맵 라우팅은 오늘 0 이 켜짐이라 그런 선언이 멈춤 · 맵 설정은 요청마다 읽혀 「로드」가 없음
+크기    큼 · 안 셈
+```
+**ㄷ 체인 규칙 + 오늘 거절 없는 맵 둘**
+```
+좋은 점  조용히 뒤집히는 자리 0 · 이미 도는 문장 안 바뀜
+위험    같은 판정이 함수 하나 + 옛 넷으로 남음 — 문장 다섯
+크기    중간 · 안 셈
+```
+
+### 여쭐 것
+```
+8-1  ㄱ 로 가나
+6-1  범위 — ㄱ · ㄴ · ㄷ. 맵 둘을 넣나 빼나가 갈림
+6-2  거절 = 규칙이 안 섬 (1 · "true" 로 돌던 규칙도 멈춤) — 그대로 가나
+6-3  ledger/admin 의 bool 읽기 둘을 판정자로 지나게 하나
+6-4  config_resolve_report 의 사유 칸 — enabled 거절도 mapping_unavailable 로 두나
+6-5  게이트 모양(8 값 × 판정 + 자리마다 한 칸)이 「로더 전부」를 채우나
+순서  답 오면 8 착지 -> 6 착지. RUN.md 한 줄씩
+```
+
+---
+
+## [구현자 -> 총괄] 6 착수 전 정정 — 제 셈이 «이름»을 셌습니다 · 범위 한 번 더 여쭘 (33c08ad7a)
+
+```
+틀린 것   e78ea6272 의 「선언 종류 일곱」은 enabled 라는 «이름»으로 셌습니다(+ 우연히 본 켜기 둘)
+         「켜기 스위치 전부」는 «성질»이라, 이름이 다른 예/아니오 칸이 빠졌습니다
+다시 훑음  성질로 읽은 것 — 아래 표. 전수라고 말하지 못합니다(성질은 grep 이 못 가름)
+```
+
+| 칸 (enabled 말고) | 오늘 읽기 | `"false"` 글자면 |
+|---|---|---|
+| 체인 규칙 allow_retraction · allow_replace_map | 참거짓 | **지우기가 켜짐** |
+| 체인 규칙 allow_chain_trigger · allow_map_metadata_upsert | 참거짓 | 켜짐 |
+| 체인 규칙 is_batch | 참거짓 | 묶음으로 돎 |
+| 체인 규칙 idempotent | 거절 | — |
+| 규칙의 auto_confirm | 경고 한 번 · 꺼짐 | 꺼짐 |
+| 자동 확정 전역 스위치 (ingestion_settings) | 경고 한 번 · 켜짐 | 켜짐 |
+| 수집기 recursive | 거절 | — |
+| 표 map_push_ok · 표기 칸 write | `is True` 만 | 꺼짐 |
+| 원장 allow_null · accepts_verified_join_rules | 거절 | — |
+
+```
+셈 명령   체인 칸 이름: chain_bindings.RULE_ROUTING_* 목록 · 읽기: git grep -n "\"<칸>\"" -- 'server/*.py' ':!server/tests'
+          나머지는 그 모듈을 열어서 읽음
+```
+
+### 여쭐 것 — 6 의 범위
+```
+ㄱ  enabled 일곱(표기 · fold 켜기 포함) — 지난 판정 그대로. 위 표는 아침 보고로
+ㄴ  예/아니오 칸 전부 — 같은 판정자 · 같은 문장. 「"false" 가 지우기를 켬」이 같이 닫힘
+    크기: 안 쟀습니다. 체인 칸은 rule_refusals 한 자리(bad_idempotent 모양)로 모이고 읽는 자리는 안 바뀌나,
+    나머지(auto_confirm 둘 · map_push_ok · write)는 오늘 «경고하고 기본값» 이라 거절로 바꾸면 동작이 바뀜
+제 생각   allow_retraction 이 가장 위험합니다. 그래도 범위는 총괄 몫이라 여쭙니다
+```
+
+### 함수 자리 — 「is_switched_off 옆」이 아니라 validation.py 로 하려 합니다
+```
+까닭   판정을 부를 자리가 체인 밖(수집기 · 원장 · 표기 · 맵)까지 넓어짐. validation.py 는 머리에
+      「One refusal language for declaration files — 판정 300」 · 표준 라이브러리만 씀 · 체인과 원장이 이미 import
+      rule_shape 에 두면 수집기 · 맵이 체인 패키지를 import 해야 함
+켜짐을 «읽는» 판정자(is_switched_off)는 제자리 그대로
+다르면 말씀 주십시오
+```
+
+### 8 — 짓고 잰 것, 착지 직전
+```
+짓기   cascade 뺌 · 문장 자리 전부(조사 때 빠졌던 outbox_triage --rerun-set-aside 도움말 한 줄 포함)
+게이트  새 칸 초록 · 변이(True 되돌림) 빨강 「assert [10] == []」 — 하류 규칙을 깨우는 사건 하나
+       바뀐 다섯 파일 142 passed · 전체 · PG 도는 중. 끝나면 착지
+```
+
+---
+
+## [구현자 -> 총괄] 7 스키마 동기화 시한 — 안 셋, 그리고 「뜻」 한 줄이 거짓입니다 (3c26854c3)
+
+### 지금 모양
+```
+함수     models.sync_dynamic_tables_schema — 칸마다 engine.begin() 한 트랜잭션에 ALTER TABLE ... ADD COLUMN, 시한 없음
+        실패하면 로그 한 줄 · 다음 칸으로(예외 안 올림)
+부르는 자리 git grep -n "sync_dynamic_tables_schema(" -- server ':!server/tests' (def 뺌) -> 6
+        제품 넷: main.py 기동 · run_watcher.py · run_chain_worker.py import · config_watcher.py 설정 저장 리로드
+        스크립트 하나: scripts/dev_env/snapshot_db.py · 주석 하나: admin/schema_drift.py
+        시험 자리: 46 (같은 명령, server/tests)
+시한 선례 둘  원장 파티션 DDL(ledger/schema.py) — 트랜잭션 안 SET LOCAL, 끝나면 저절로 풀림
+            인덱스 DDL(chain/unique_key.py, 9e6335d8e) — autocommit 연결에 SET · RESET (CONCURRENTLY 는 트랜잭션 밖이라)
+55P03 판정  둘이 따로 적음: unique_key.waited_past_the_lock_timeout · ledger/schema.py 의 글자 검사
+```
+
+### 🔴 「뜻: 표 전체가 멈추는 대신 그 칸 하나가 늦어짐」이 참이 아닙니다
+```
+근거   admin/schema_drift.py 머리: 모델에 있는 칸이 표에 없으면 SQLAlchemy 가 «모든» SELECT · INSERT 에 그 칸을 적어
+       «표가 통째로» 떨어진다 — 2026-08-05 장애가 그 모양
+그래서  시한에 걸려 칸을 못 붙이면 그 표의 읽기 · 쓰기가 전부 「column ... does not exist」로 실패 — 칸 이름은 대지만 «표 전체»
+오늘    시한 없이 ALTER 가 기다리는 동안 그 표의 읽기 · 쓰기가 ALTER 뒤에 줄 서고(ACCESS EXCLUSIVE 대기), 기동이 거기서 멈춤 — 이것도 표 전체
+차이    시한이 있으면 프로세스는 살고 «다른 표»는 돎. 그 표는 조용히 멈추는 대신 «큰 소리로» 실패
+이 박스에서 아직 안 쟀습니다 — 게이트에서 PG 로 잽니다(ALTER 포기 뒤 그 표 읽기가 칸 이름을 대며 실패하는지)
+```
+
+### ㄱ (추천) 원장 파티션 DDL 모양 — 트랜잭션 안 SET LOCAL
+```
+무엇    칸마다 트랜잭션 첫 줄에 SET LOCAL lock_timeout = DDL_LOCK_TIMEOUT(20 s) — 새 상수 없음
+       트랜잭션이 끝나면(커밋 · 되돌림) 저절로 풀림 -> 「풀에 돌려줄 때 풀어 줌」이 구조로 참. RESET 자리가 없음
+       55P03 판정은 db_safety 로 옮겨 하나로(DDL_LOCK_TIMEOUT 옆) — unique_key 와 이 함수가 같이 부름
+       걸리면 한 줄: 표 · 칸 · 20 s · 「다음 기동 또는 설정 저장 때 다시」 · 「그동안 이 표의 읽기 · 쓰기는 이 칸 때문에 실패」
+       잡은 이 이름: 포기한 뒤에는 기다리던 쪽이 없어 db_waits 가 답할 것이 없음 -> 줄에 안 싣고 RUN.md 가 diagnose_db_health 를 가리킴
+운영자  뜨면 diagnose_db_health 로 잡은 pid 확인 · 그 트랜잭션을 끝낸 뒤 설정 저장(리로드가 다시 붙임)
+좋은 점 기동이 안 멈춤 · 풀 누수가 구조로 없음 · 선례와 같은 모양
+위험    위 🔴 — 그 표는 칸이 붙을 때까지 실패. 오늘보다 «나쁘지는» 않다고 봅니다(오늘도 그 표는 멈춤) — 판정은 여쭘
+크기    함수 안 두 줄 + 판정 옮김(unique_key 세 자리가 부름) + 시험 PG 한 파일. 줄 수 안 셈
+```
+
+### ㄴ 인덱스 DDL 모양 — autocommit 연결에 SET · RESET
+```
+무엇    unique_key 의 여닫기 둘을 db_safety 로 옮겨 같이 씀. 「9e6335d8e 와 같은 모양」을 글자 그대로
+좋은 점 DDL 시한을 거는 기제가 하나로 모임
+위험    RESET 실패 -> 연결 버림 갈래가 하나 더 생김 · ADD COLUMN 은 트랜잭션이 되는데 굳이 밖으로
+크기    ㄱ 보다 큼 · 안 셈
+```
+
+### ㄷ ㄱ + 못 붙인 칸을 모델에서 잠시 뺌
+```
+무엇    포기한 칸을 그 프로세스의 모델에서 빼 두어 표의 나머지는 돎 — 「그 칸 하나가 늦어짐」이 참이 됨
+위험    실행 중에 매핑을 바꿈 · 그 칸을 쓰는 쓰기는 이름 대어 거절해야 하는데 그 자리가 없음 · 리로드와 엉킬 수 있음
+크기    큼 · 안 셈. 제안으로만
+```
+
+### 여쭐 것
+```
+7-1  ㄱ 로 가나
+7-2  「뜻」 문장 — 「그 표는 칸이 붙을 때까지 실패(칸 이름을 댐) · 기동과 다른 표는 돎」으로 적나, ㄷ 을 보나
+7-3  55P03 판정을 db_safety 로 모을 때 ledger/schema.py 의 글자 검사도 같이 부르게 하나
+순서  6 착지 뒤에 짓습니다
+```
+
+### 8 — 착지 직전
+```
+전체 · PG 끝나는 대로 착지합니다(총괄 「8 착지하라」)
+```
+
+---
+
+## [구현자 -> 총괄] 8 착지 91d838682 · 6 크기 먼저 · 제 6-4 말 정정 (33c08ad7a · 872f6cb6b)
+
+### 8 착지
+```
+바꾼 것   admin/retroactive._run_rerun_set_aside 에서 "cascade": True 를 뺌 — 소급 탭 · CLI 두 명령이 다 이 함수
+문장     독스트링(2dbbfd1e5 인용은 남기고 「소유자 09-27 이 뒤집음」) · downstream_note(화면에 그대로)
+         chain/set_aside.py 머리 · outbox_triage.replay_cancelled 독스트링 · --rerun-set-aside 도움말(조사 때 빠졌던 자리)
+         chain_ingestion_guide.md 한 줄 · RUN.md 밤 4 ④ 제자리 + 새 절 「09-27 아침 1」
+시험     test_running_them_again_runs_each_rule_once_and_wakes_nothing_downstream (이름 · 기대 뒤집음)
+           다시 돌리기 + 비움 -> 하류 규칙을 깨우는 사건 0 · 하류 표 그대로 · 상류 표는 한 번 씀
+           같은 픽스처의 평소 체인은 하류를 깨움 — 칸이 공허하지 않다는 단언
+         연쇄 쪽 대조군은 인용만: test_a_chain_write_reads_as_the_chain_whatever_its_layer 의 cascade 매개 칸
+변이     "cascade": True 되돌림 -> 새 칸 빨강 「assert [10] == []」 · 되돌린 뒤 파일 같음
+main     바뀐 시험 네 파일 108 passed · 1 skipped (박스 설정이 있는 트리)
+전체     C:/wt-impl — 153 failed · 6994 passed · 26 errors. 🔴 그 worktree 에 gitignore 된 박스 설정 · server/mappers 가 없어서
+         A/B: 실패가 난 31 파일을 패치 없이 다시 — 실패 165 개가 «같은 목록»
+         나머지 오류 = 매퍼 시험 수집 여섯(server/mappers 없음) · 원장 설정 없는 셋업 — 같은 까닭
+PG       7 failed = 알려진 일곱 · 6 errors = 위 매퍼 시험 수집
+다음부터  6 의 전체는 박스 설정을 worktree 에 복사한 뒤 돌립니다
+```
+
+### 6-4 정정 — 제가 틀렸습니다
+```
+contracts/config_resolve_report/vectors.json 이 mapping_unavailable 을
+「the declaration failed to parse/validate and is not in effect」로 정의 — 예/아니오 칸 거절이 바로 그 뜻
+-> 사유 칸은 «참». 고칠 것 없음. 새 사유 낱말을 만들지 않습니다(닫힌 어휘 · 계약 벡터)
+```
+
+### 6 크기 — 짓기 전에 잰 것
+```
+판정자   validation.flag_refusal(칸 이름, 값) — true/false 면 None, 아니면 한 문장
+        「<칸> must be true or false, got <JSON 값> - write true or false」
+찾은 방법  골격이 선언한 flag 칸: chain_skeleton.json 18 · ledger_skeleton.json 6 (hint "flag" 를 걸어서 셈)
+          + 골격 밖은 읽어서: 수집기 · 표기 · 맵 둘 · map_push_ok · 자동 확정 전역 스위치. «전수» 아님
+새로 찾은 셋  체인 key.unique · decide 의 alignment · 원장 exclude_when.blank
+```
+
+| 자리 | 받은 뒤 하는 일 |
+|---|---|
+| 체인 선언 — expand_declaration 맨 앞 | 선언 안 섬 |
+| 체인 저장 관문 — enabled 덮기 전 | 저장 거절 |
+| rule_refusals 의 idempotent | 같은 함수로(시험이 직접 부름) |
+| 수집기 enabled · recursive | 그 항목 안 섬 |
+| 원장 조인 enabled · materialize · fold · allow_null · accepts_verified_join_rules · blank | 묶음 거절 |
+| 표기 규칙 켜기 | 기본값 유지 + 문장 |
+| 표기 칸 write · map_push_ok | 꺼짐 + 문장 |
+| 맵 라우팅 셋 · 페인트 잠금 | 그 항목 안 씀 + 경고 줄 |
+| 자동 확정 전역 · 규칙 | 기본값 + 문장 |
+| ledger/admin bool 읽기 둘 · 보고의 auto_confirm 읽기 · check_external_sources | 판정자로 |
+
+```
+체인 칸 목록은 손으로 적지 않음 — chain_bindings 의 골격 힌트("flag") · rule_shape 의 flag 모양을 읽음
+파일      제품 13 · 새 시험 파일 1 · 옛 문장을 단언하는 시험 2(원장 fold 문장 · 자동 확정 경고 문장)
+줄 수     안 쟀습니다
+시험      판정자 × 7 값(true · false · 0 · 1 · null · "false" · "true") + 위 자리마다 한 칸(그 자리의 말에 이름)
+          + 칸마다 「없음 = 오늘 기본값」 한 칸
+RUN.md    재기동 «전» 확인 명령 — 운영 설정 파일의 flag 칸 중 true/false 아닌 것을 이름 대어 찍는 한 줄
+```
+
+### 여쭐 것
+```
+6-A  이 크기로 한 커밋 — 가나
+6-B  표기 칸 선언 자체(true · false · {rules})는 «예/아니오 또는 객체»라 오늘 거절 문장을 그대로 둡니다 — 맞나
+```
+
+---
+
+## [구현자 -> 총괄] 6 착지 096d5ca31 — 예/아니오 칸은 true/false 만 · 판정 하나 · 문장 하나 (872f6cb6b · 36b465139)
+
+```
+판정자    validation.flag_refusal(칸, 값) — 「<칸> must be true or false, got <JSON 값> - write true or false」
+         validation.flag_refusals(값, 골격 노드) — 골격의 hint "flag" 잎을 걸음(record · map · oneOf)
+체인      chain_bindings.flag_refusals(선언) — chain_bindings.skeleton() 의 두 뿌리(평평 · 통합)에서 칸을 읽음. 손으로 적은 목록 없음
+         rule_shape.expand_declaration 맨 앞 · 저장 관문(save_chain_rule_raw)은 enabled 덮기 «전»
+         rule_refusals 의 bad_idempotent — 코드는 그대로, 문장만 판정자의 것
+         ledger/admin 의 bool(enabled) 둘 -> is_switched_off
+찾은 자리  이번에 더 찾은 것: 수집 설정 여섯(_bool_setting) · std_parse — 문서(guide/config)를 읽다가. «전수» 아님
+```
+
+**동작이 바뀌는 자리**
+```
+체인 규칙   true/false 아닌 예/아니오 칸 -> 선언이 안 섬 (전: "false" · "true" · 1 켜짐 · 0 · null 꺼짐)
+맵 라우팅 셋 · 페인트 잠금  -> 그 항목을 안 씀 + 경고 줄 (전: 라우팅은 0 · null · "false" 켜짐, 잠금은 "false" · 1 켜짐)
+표기 칸 write · map_push_ok  동작 같음(꺼짐) — 문장이 새로 생김
+```
+
+**문장이 달라지는 자리 — 전 -> 후** (후는 전부 위 한 문장 + 그 자리의 꼬리)
+```
+수집기      "<곳>.enabled must be a JSON boolean." · recursive 같음   -> "<곳>: <한 문장>"
+원장 묶음    enabled · allow_null · accepts_verified_join_rules "must be boolean" -> 한 문장
+           fold 켜기 "notation rule toggle must be boolean"            -> 한 문장
+           materialize 가 예/아니오가 아님: 전엔 「'materialize' is false … 은퇴」(거짓 문장) -> 한 문장
+           blank 가 예/아니오가 아님: 전엔 「the only supported condition is 'blank': true」 -> 한 문장 (false 는 옛 문장 그대로)
+표기 켜기    "rule 'x' must be true or false (got …); the default is kept" -> 한 문장 + "; the default is kept"
+체인 idempotent  "idempotence must be true or false, got …" -> 한 문장
+자동 확정 둘 · 수집 설정 여섯 · std_parse   "Ignoring non-boolean … expected JSON boolean …" -> 한 문장 + 기본값 꼬리
+보고(config resolve)  "… is not a JSON boolean and was ignored …" -> 한 문장 + 같은 꼬리 · 사유 칸 mapping_unavailable 그대로
+```
+
+```
+게이트    test_a_yes_no_cell_holds_true_or_false.py 76 칸 — 판정자 × 7 값 · 체인 칸 일곱(평평 셋 · 통합 넷) × 아닌 값 다섯 + true 대조
+         로더 로그 · 저장 거절 · 규칙 목록 사유 · 보고 · 수집기 · 원장 넷 + 둘 · 표기 · 라우팅 둘 · 잠금 · 자동 확정 · map_push_ok · 수집 설정 · std_parse
+         칸마다 「없음 = 오늘 뜻」 대조가 붙은 자리: 체인 enabled · 잠금 · 자동 확정 · map_push_ok
+변이      13 개 전부 빨강 — 판정자 무력화 58 · 체인 좌석 38 · oneOf 안 걸음 6 · 나머지 자리마다 1~2 · 되돌린 뒤 76 passed
+옛 문장 시험  셋 고침 — 원장 fold · 자동 확정 경고 · std_parse(전체에서 잡힘)
+main      건드린 시험 아홉 파일 284 passed (박스 설정 있는 트리)
+전체      C:/wt-impl(박스 설정 · server/mappers 복사) 6 failed · 7315 passed — 내 것 1(std_parse 옛 문장, 고침 · 22 passed)
+         나머지 다섯은 패치 없이도 같음: 샘플 CRLF 대조 넷(새 checkout 줄끝) · repo_root
+PG       7 failed = 알려진 일곱 · 오류 0. 🔴 첫 PG 는 제 A/B(패치 되돌리기)와 겹쳐 버리고 다시 돌린 수입니다
+RUN.md   「09-27 아침 2」 — 재기동 «전» 확인 두 줄(체인 규칙 · 맵) · 끝 줄에 읽은 수(0 이면 파일을 못 읽은 것)
+         이 박스: 체인 규칙 13 · 아닌 값 0 / 맵 라우팅 0 · 잠금 1 (박스 수)
+```
+
+**지나며 본 것 — 안 고침**
+```
+map_overlay.get_paint_rules 의 기본 message 가 한국어("이 셀은 잠금 값이라 …") — 화면에 그려지는 문자열. UI 영어 상설과 어긋남
+```
+
+**다음** 7 에 들어갑니다.

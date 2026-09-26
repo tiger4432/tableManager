@@ -125,6 +125,7 @@ except ImportError:  # imported without server/ on sys.path (same guard as crud.
     import paths
 
 import event_constants                                           # noqa: E402
+import validation                                                # noqa: E402
 
 # Provenance of an automatic confirmation. Deliberately NOT added to
 # crud.SOURCE_PRIORITY: unregistered -> 99 -> lowest, exactly like
@@ -273,13 +274,12 @@ def global_auto_confirm_enabled(settings: dict = None) -> bool:
     """Global kill switch (default True = do not block). Non-boolean warns once."""
     val = (settings if settings is not None else _load_ingestion_settings()).get(
         GLOBAL_KILL_SWITCH_KEY, True)
-    if isinstance(val, bool):
+    why = validation.flag_refusal(GLOBAL_KILL_SWITCH_KEY, val)
+    if not why:
         return val
-    _warn_once(
-        (GLOBAL_KILL_SWITCH_KEY, repr(val)),
-        "Ignoring non-boolean '%s' value %r in ingestion_settings.json - expected JSON "
-        "boolean true/false. Falling back to default True (per-rule opt-in still required).",
-        GLOBAL_KILL_SWITCH_KEY, val)
+    _warn_once((GLOBAL_KILL_SWITCH_KEY, repr(val)),
+               "ingestion_settings.json: %s - falling back to true (per-rule opt-in still "
+               "required)", why)
     return True
 
 
@@ -307,13 +307,12 @@ def rule_auto_confirm_enabled(rule: dict, settings: dict = None) -> bool:
     if not global_auto_confirm_enabled(settings):
         return False
     val = (rule or {}).get(RULE_KNOB, DEFAULT_ENABLED)
-    if isinstance(val, bool):
+    why = validation.flag_refusal(RULE_KNOB, val)
+    if not why:
         return val
-    _warn_once(
-        (RULE_KNOB, rule.get("name"), repr(val)),
-        "[Enrichment:%s] Ignoring non-boolean '%s' value %r in the rule's declaration - "
-        "expected JSON boolean true/false. Falling back to default %s.",
-        rule.get("name"), RULE_KNOB, val, DEFAULT_ENABLED)
+    _warn_once((RULE_KNOB, rule.get("name"), repr(val)),
+               "[Enrichment:%s] %s - falling back to %s", rule.get("name"), why,
+               str(DEFAULT_ENABLED).lower())
     return DEFAULT_ENABLED
 
 
