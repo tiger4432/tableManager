@@ -61467,3 +61467,47 @@ test_two_independent_refusals_are_counted_and_named_in_one_run
           고를 것  ㄱ 적힌 대로(대상 키 ⊆ 조인 키 — 위 둘이 멈춤) · ㄴ take ∩ 대상 키 = ∅ · ㄷ 다른 뜻이면 그 문장
           답이 오면 사건 재현 픽스처부터 짓고 그 계약으로 갑니다. 그동안 d71c3d233(리플레이 셈) 먼저
 ```
+
+---
+
+## [구현자 -> 총괄] 시험 영역 이름 착지 (4afefde38 · a096c27cd) — a9982ec41
+
+```
+지은 것   conftest.PG_TEST_SCHEMA 와 고정 이름을 쓰던 시험 여섯이 isolated_pg.scratch_schema(프로세스 + xdist 일꾼)를 부름 — 이름 규칙 하나
+          여섯: test_a_catalogue_view_names_columns_the_relation_has · test_a_cli_run_goes_through_the_admin_runs_door ·
+                test_a_ledger_source_reads_a_table_that_has_row_id · test_failed_outbox_says_since_when · test_outbox_triage · test_readonly_guard
+          (처음엔 conftest 하나만 고쳤는데 게이트가 안 섰음 — 혼자 7 / 동시 9 · 8 failed. 그래서 고정 이름을 전수로 셈: 남은 것 0)
+          기동 때 DROP 은 그대로 «자기 이름만» — 이름에 프로세스가 들어가 이제 남의 것을 안 지움
+          pg_engine 독스트링의 「죽은 실행의 스키마를 다음 실행이 회수」 문장은 거짓이 돼서 고침(이제 남음 — 치우는 것은 이 항목 밖)
+```
+
+### 게이트 · 변이 (전용 빈 DB — assy_test 와 같은 모양, 잴 때 만들고 지움)
+
+```
+alone: 7 failed, 102 passed, 7050 deselected
+together 1: 7 failed, 102 passed, 7050 deselected | same as alone: True
+together 2: 7 failed, 102 passed, 7050 deselected | same as alone: True
+scratch schemas left in the DB after the runs: []
+변이 — 이름에서 토큰을 뺌
+alone: 3 failed, 101 passed, 7050 deselected, 1 error
+together 1: 10 failed, 93 passed, 7050 deselected, 2 errors | same as alone: False
+together 2: 7 failed, 26 passed, 7050 deselected, 72 errors | same as alone: False
+scratch schemas left in the DB after the runs: []
+평소 pytest(표시 없는 쪽) — 고친 여섯 + 그 이름을 가져다 쓰는 셋: 96 passed, 55 skipped
+```
+
+### 원인 칸 — 이름 말고 «또» 나누던 것 (a096c27cd ①②)
+
+```
+① public 에 원장 표를 만든 계기   파일마다 빈 DB 에서 따로(-m pg · 평소 둘 다) 돌린 뒤 public 에 남은 것 — 21 파일 × 2 전부 0
+     -> 혼자서는 아무 시험도 public 에 안 만듦. 만들어진 것은 «겹칠 때»뿐:
+        남의 실행이 이 실행의 scratch 스키마를 DROP 한 순간, 검색 경로의 첫 스키마가 없어져 PostgreSQL 이 그것을 건너뛰고
+        이름만 적힌 CREATE 가 public 에 떨어짐(증명은 안 함 — 고정 이름 둘이 같은 스키마를 지우는 것까지는 재현함)
+     지금 assy_test: assy_test public relations: [] · assy_test assy* schemas: []
+② 검색 경로로 표를 찾는 제품 자리(to_regclass · _relation_exists · inspector.has_table) — 제품 코드에 15 파일
+     운영(검색 경로 = public 하나)에서는 맞는 답. public 이 오염될 때만 시험에서 틀어짐 -> 이름을 가르자 게이트가 섬 — 제품 코드는 안 바꿈
+```
+
+```
+다음    리플레이 셈(d71c3d233) -> A(파생 표 대상 조인) -> B
+```
