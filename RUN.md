@@ -7,7 +7,7 @@
 >               chain        체인이 쓴 것(자동 확정 포함) — 옵트인한 규칙만 깨움 · 깊이 상한이 셈
 >               api · file   사람 · 다른 클라이언트 · 파일 적재 — 오늘처럼 모든 규칙을 깨움
 >               retroactive  소급 탭 · CLI 의 모든 소급 실행이 쓴 것 — 옵트인이어도 «아무 규칙도» 안 깨움. 하류는 하류를 따로 소급
->               그리드 클릭 리플레이만 연쇄(cascade) — 옵트인 규칙만 깨움. ⚠️ 클라가 cascade: true 를 보내기 전까지는 클릭 리플레이도 연쇄 없음
+>               그리드 클릭 리플레이만 연쇄(cascade) — 옵트인 규칙만 깨움. 클라는 d3659ec09 부터 cascade: true 를 보냄(빌드 포함 — 브라우저 새로고침 뒤)
 > 재기동 뒤      server\config\ingestion_settings.json 의 "enrichment_auto_confirm_enabled" 를 true 로 되돌려도 됨 — 자동 확정 쓰기가 이제 옵트인을 지남
 > 확인          chain 박동 note 에 "N event(s) read by source name (no channel)" — 착지 전에 쌓인 체인 사건을 옛 방식(source_name)으로 읽은 수
 >               대기열이 비면 더 안 늘어남. 늘어나면 경로를 안 세우는 체인 쓰기가 남아 있다는 뜻 — 보고

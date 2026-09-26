@@ -157,7 +157,7 @@
 ```
 ① 쓰기        파일 인제션 · 그리드 편집 · 체인 자신
               crud.apply_batch_updates  ->  cell_sources 층 + database_outbox 행 «하나»
-              payload: columns · row_ids · source_name · transaction_id
+              payload: columns · row_ids · source_name · transaction_id · channel(리플레이의 트리거 사건이면 replay · 연쇄를 청한 쓰기면 cascade)
 
 ② 체인 워커   run_chain_worker.py — «자기 프로세스». API 도 아니고 커밋 경로도 «아니다»
               pending_chain_events   processed_chain=false · CONTROL 종류 제외
@@ -165,7 +165,7 @@
               관문 둘
                  rule_watches_changed_columns   trigger_columns ∩ payload.columns
                                                 («columns 없음»은 「모른다」라 통과)
-                 _rule_accepts_event            체인이 쓴 이벤트는 allow_chain_trigger 옵트인만
+                 _rule_accepts_event            경로(`channel`) 칸을 읽음 — `chain` 은 allow_chain_trigger 옵트인만 · `retroactive` 는 아무 규칙도(`cascade` 면 `chain` 처럼) · 경로 없는 옛 사건은 `source_name` 으로(은퇴할 갈래, 체인 박동 note 가 셈) — `ac918a451`
               -> 실행 (아래 표)
               그리고 «관문 위»에서 ledger_followup.enqueue — 모든 이벤트가 들어간다
 
@@ -193,7 +193,7 @@
       조인의 쓰기는 `source_name` 은 얻고(항목이 나른다) `chain_depth` 는 «못 얻는다»(응용 Q-1 ①, 판정 대기)
 📌 부류: 기준 ④ 「같은 기능에 두 경로」. 그리고 최악의 판이다 — 두 경로가 갈라져 있는데
    «오류를 안 낸다». 한쪽이 조용히 아무것도 안 할 뿐이다
-🔴 **아직 «한 칸»이 갈라져 있다 — 봉투의 `source`.** 좌석이 `chain_ingestion` 을 세워도 `crud:4564-4566` 이 «항목의 층 이름»으로 다시 세워, `auto_confirm` 의 쓰기는 «체인이 쓴 것»으로 안 읽힌다(옵트인 통과). 판정 425 = 「참이지만 쉬운 고침이 «층의 정체성»을 지불한다」 → S-280 (응용 Q-8)
+⚰️ **[09-26 `ac918a451`] 닫힘 — 판정이 층 이름이 아니라 봉투의 경로(`channel`) 칸을 읽는다. 자동 확정 쓰기는 `chain` 경로로 나가 옵트인을 지난다.** 아래는 그 전의 기록 — 🪦 **아직 «한 칸»이 갈라져 있다 — 봉투의 `source`.** 좌석이 `chain_ingestion` 을 세워도 `crud:4564-4566` 이 «항목의 층 이름»으로 다시 세워, `auto_confirm` 의 쓰기는 «체인이 쓴 것»으로 안 읽힌다(옵트인 통과). 판정 425 = 「참이지만 쉬운 고침이 «층의 정체성»을 지불한다」 → S-280 (응용 Q-8)
 ```
 
 ## 판별식 — 체인에 무엇을 더할 때
