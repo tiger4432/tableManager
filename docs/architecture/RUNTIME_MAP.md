@@ -84,6 +84,17 @@ INSIDE THE WRITE · row build T s / N cells changed · audit logs T s / N rows �
 - 세는 쪽이 터지면 «그 줄만» 조용해진다(`FILE … : not counted (<사유>)`) — 적재는 계속
 - 체인 그룹 줄의 INSIDE THE WRITE 도 같은 한 함수(`alignment_batch_counts.write_steps_text`)로 그린다
 
+- 🆕 09-26 `fdd8388ad`: 마지막 청크 뒤 워처가 박동 단계 `finish` 를 찍는다 — 파일 마무리(통계 · 보관)에서 멈추면 «마지막 청크의 커밋»이 아니라 `finish` 로 읽힘. 업무키 충돌 재시도는 `alignment_batch_counts.write_steps_rewind` 로 되감아, 청크 · 파일 줄의 곁표 행 수가 «커밋한 시도»의 것만
+
+### §1-ter-ter. 🆕 **체인 비상 정지** (09-26 `312e8440a` · 화면 `e4d28394c`)
+```
+Pause    POST /admin/chain/pause {reason} · chain_pause_cli.py · 어드민 Overview / Chain 탭 버튼
+         -> server/config/chain_control.json · 새 묶음 안 잡음 · 도는 묶음은 다음 단계 경계에서 되감김(실패 아님) · 도는 쿼리는 취소
+로그     chain_worker.log "[Chain] paused - tx '...' was rewound at a stage boundary"
+상태     GET /admin/chain/pause · /health 의 chain = paused(degraded)
+Resume   POST /admin/chain/resume — 남은 대기열이 다시 흐름. 멈춤은 재기동해도 유지
+```
+
 ### §1-ter-bis. 🆕 **멈춘 체인 묶음이 «무엇에 막혔나»를 말한다** (09-26 `7eb168aa4`)
 ```
 연결 이름   pg_stat_activity.application_name = assy_<프로세스>(server · watcher · chain · scheduler · retroactive · 스크립트 이름) · 멈춤을 묻는 짧은 연결 assy_chain_probe

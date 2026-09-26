@@ -28,7 +28,7 @@
 >              GET /admin/config/notation/preview?table=<표>&column=<칸> 의 folds_again 이 0 이 아니면 선언부터 고침(소급이 거기서 멈춤)
 > 별칭 표        notation_alias 라이브 설치는 총괄이 소유자께(1 단계 항목의 install_product_tables.py)
 > 스위치        그 칸의 "write": true 를 지우면 5 초 안에 다음 쓰기부터 안 접음. 이미 접혀 저장된 값은 그대로
-> 되돌리기       git log --oneline --grep "notation stage two" 의 커밋을 git revert 뒤 네 프로세스 재기동
+> 되돌리기       git log --oneline --grep "feat(notation): notation stage two" 의 커밋을 git revert 뒤 네 프로세스 재기동
 > ```
 
 ---
