@@ -34539,3 +34539,15 @@ R2      파일1 B · 파일3 A · 파일10 A 에서 파일10 철회 — 접기 �
                      빈 canonical 은 «빈 값 판정 한 함수»로 버리게(같은 착지) · 시험이 그 행을 넣고 판정이 안 바뀜을 봄
 time 이름         ㉯ ㄴ 그대로 — apply_batch_updates 에 out 인자 하나, 워처가 파일마다 모아 FILE 줄에 칸 하나(0 이면 안 씀)
 ```
+
+---
+
+## 🔴 제 실수 — server/database/crud.py 의 남의 미커밋 편집을 한 번 지웠다가 되살림 (09-26 21:06)
+
+```
+무엇     21:06 에 제 명령 끝에 붙은 `git checkout -- server/database/crud.py` 가 돌아 작업 트리의 crud.py 를 HEAD 로 되돌림
+         그 파일엔 다른 레인의 미커밋 편집(apply_batch_updates 의 write_steps_rewind — 되감기 세 줄 · 주석 · 호출)이 있었음
+되살림    21:04:54 에 떠 둔 사본으로 즉시 되돌림 -> 지금 crud.py 의 HEAD 대비 차이 = 그 편집 그대로(되감기 hunk 하나)
+모르는 것  21:04:54 ~ 21:06:38 사이에 그 레인이 crud.py 를 «더» 고쳤다면 그 부분은 사라졌습니다 — crud.py 를 고치던 레인께서 확인 부탁드립니다
+다른 파일  alignment_batch_counts · directory_watcher · replay · retroactive · 시험 둘은 안 건드림
+```
