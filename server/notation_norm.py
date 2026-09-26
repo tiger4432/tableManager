@@ -327,6 +327,9 @@ def _python_replacement(replacement: str) -> str:
 #: What a `replace` pattern may escape - the characters both engines read the same way after a
 #: backslash. `\d`, `\w`, `\s` and friends are not here: their classes differ between engines.
 _REPLACE_ESCAPES = set(".-_()[]{}+*?^$|\\/AZ")
+#: The refusal for an escape outside `_REPLACE_ESCAPES` - one sentence for both seats.
+_ESCAPE_REFUSAL = ("\\%s reads differently in the two engines - write the characters "
+                   "out, e.g. [0-9] for \\d (%r)")
 _ZONE_SUFFIX = re.compile(r"(Z|[+-][0-9]{2}:?[0-9]{2})\Z")
 
 
@@ -369,15 +372,15 @@ def _replace_pair_refusal(pair):
         if not text.isascii() or not text.isprintable() or "'" in text:
             return "texts must be printable ASCII without a quote (%r)" % text
     if "(?" in pattern:
-        return "(?...) constructs read differently in the two engines (%r)" % pattern
+        return "(?...) constructs read differently in the two engines - use a plain group " \
+               "(...) (%r)" % pattern
     # The pattern's structure: every escape and bracket expression read as one atom 'a'.
     skeleton, i = [], 0
     while i < len(pattern):
         ch = pattern[i]
         if ch == "\\":
             if pattern[i + 1:i + 2] not in _REPLACE_ESCAPES:
-                return "\\%s reads differently in the two engines (%r)" % (pattern[i + 1:i + 2],
-                                                                        pattern)
+                return _ESCAPE_REFUSAL % (pattern[i + 1:i + 2], pattern)
             skeleton.append("a")
             i += 2
             continue
@@ -386,11 +389,11 @@ def _replace_pair_refusal(pair):
             j += pattern[j:j + 1] == "]"
             while j < len(pattern) and pattern[j] != "]":
                 if pattern[j] == "[":
-                    return "a '[' inside [...] reads differently in the two engines (%r)" % pattern
+                    return "a '[' inside [...] reads differently in the two engines - list the " \
+                           "characters, e.g. [0-9] for [[:digit:]] (%r)" % pattern
                 if pattern[j] == "\\":
                     if pattern[j + 1:j + 2] not in _REPLACE_ESCAPES:
-                        return "\\%s reads differently in the two engines (%r)" % (
-                            pattern[j + 1:j + 2], pattern)
+                        return _ESCAPE_REFUSAL % (pattern[j + 1:j + 2], pattern)
                     j += 1
                 j += 1
             skeleton.append("a")
@@ -414,13 +417,13 @@ def _replace_pair_refusal(pair):
     # three disagreed (| 38 · quantified group 93 · lazy 328 of ~2,000); 3,317 without: 0.
     if "|" in skeleton:
         return "'|' picks a different match in the two engines - write one pair per " \
-               "alternative (%r)" % pattern
+               "alternative, e.g. [\"^WF\", ...] and [\"^WAF\", ...] for \"^(WF|WAF)\" (%r)" % pattern
     if re.search(r"\)[?*+}]", skeleton):
         return "a count after ')' picks a different match in the two engines - count single " \
-               "characters (%r)" % pattern
+               "characters, or write the optional part as its own pair (%r)" % pattern
     if re.search(r"[?*+}][?*+}]", skeleton):
         return "a count after a count (lazy or possessive) reads differently in the two " \
-               "engines (%r)" % pattern
+               "engines - keep one count, e.g. '*' for '*?' (%r)" % pattern
     if re.search(r"\\(?![1-9])", replacement):
         return "a replacement may only use \\1 to \\9 (%r)" % replacement
     try:
@@ -428,7 +431,8 @@ def _replace_pair_refusal(pair):
     except re.error as e:
         return "pattern does not compile: %s (%r)" % (e, pattern)
     if compiled.search("") is not None:
-        return "the pattern matches an empty value, so it would insert everywhere (%r)" % pattern
+        return "the pattern matches an empty value, so it would insert everywhere - make it " \
+               "match at least one character, e.g. 'a+' for 'a*' (%r)" % pattern
     return None
 
 
@@ -810,8 +814,13 @@ def _normalize_rules(raw, subject, rejections=None) -> dict:
     return effective
 
 
+def _said(raw) -> frozenset:
+    """The rule names a raw `rules` object writes - what the operator said, not the defaults."""
+    return frozenset(n for n in raw if n in KNOWN_RULES) if isinstance(raw, dict) else frozenset()
+
+
 def _validate_column(table: str, column: str, spec, table_rules: dict,
-                     table_cfg: dict, rejections=None):
+                     table_cfg: dict, rejections=None, table_said=frozenset()):
     """One "this column is normalized" declaration. Returns the spec, or None.
 
     Accepted forms:
@@ -878,6 +887,11 @@ def _validate_column(table: str, column: str, spec, table_rules: dict,
 
     rules = _normalize_rules(rules_raw, subject, rejections) if rules_raw is not None \
         else dict(table_rules)
+    if write:
+        # 총괄 47aba5d44 ①: a fold that changes a STORED value runs only when the operator wrote
+        # it - `separator`/`case` from DEFAULT_RULES do not reach a write column.
+        said = _said(rules_raw) if rules_raw is not None else table_said
+        rules = {n: (v if n in said else False) for n, v in rules.items()}
     if rules.get(RULE_TIME):
         if not write:
             _record(rejections, SCOPE_COLUMN, subject,
@@ -950,8 +964,10 @@ def validate_notation_rules(raw_config: dict, known_tables: dict = None,
                     "declaration must be an object {column: true}", CODE_SHAPE)
             continue
         table_rules = dict(file_rules)
+        table_said = _said(raw_config.get("rules"))
         if "rules" in decls:
             table_rules = _normalize_rules(decls.get("rules"), table, rejections)
+            table_said = _said(decls.get("rules"))
         table_cfg = None
         if known_tables is not None:
             table_cfg = known_tables.get(table)
@@ -964,7 +980,7 @@ def validate_notation_rules(raw_config: dict, known_tables: dict = None,
             if column == "rules" or column.startswith("_"):
                 continue
             normalized = _validate_column(table, column, spec, table_rules,
-                                          table_cfg, rejections)
+                                          table_cfg, rejections, table_said)
             if normalized is not None:
                 by_table.setdefault(table, {})[column] = normalized
     return by_table
@@ -1061,6 +1077,15 @@ def fold_for_write(table: str, column: str, value, aliases=None):
     if spec is None or not isinstance(value, str):
         return value, None
     return _write_fold(value, spec["rules"], (aliases or {}).get((table, column)) or {})
+
+
+def moves_again(stored, rules: dict, column_aliases: dict):
+    """What a second write fold makes of an already-stored value, or None when it stays -
+    the one count the preview shows and the backfill stops on (총괄 47aba5d44 ③)."""
+    if not isinstance(stored, str):
+        return None
+    again = _write_fold(stored, rules, column_aliases)[0]
+    return again if again != stored else None
 
 
 def _write_fold(value: str, rules: dict, column_aliases: dict):
@@ -1173,6 +1198,7 @@ def fold_preview(db, table: str, column: str, rules: dict = None,
         write = write_spec(table, column) is not None
 
     time_left = {}
+    folds_again = None
     if write:
         # 🔴 A WRITE COLUMN IS PREVIEWED WITH THE WRITE FOLD - the Python function that will
         # store the value (alias, `time`), not the SQL comparison fold, because what matters
@@ -1182,11 +1208,18 @@ def fold_preview(db, table: str, column: str, rules: dict = None,
                     .filter(col.isnot(None)).group_by(col)
                     .order_by(func.count().desc()).limit(limit + 1).all())
         rows = []
+        folds_again = {"values": 0, "rows": 0, "examples": []}
         for raw, n in raw_rows:
             stored, verdict = _write_fold(raw, rules, column_aliases) \
                 if isinstance(raw, str) else (raw, None)
             if verdict in ("unmatched", "zoned"):
                 time_left[verdict] = time_left.get(verdict, 0) + int(n)
+            again = moves_again(stored, rules, column_aliases)
+            if again is not None:
+                folds_again["values"] += 1
+                folds_again["rows"] += int(n)
+                if len(folds_again["examples"]) < PREVIEW_VARIANT_LIMIT:
+                    folds_again["examples"].append([raw, stored, again])
             rows.append((raw, stored, n))
     else:
         folded = fold_notation_sql(col, rules)
@@ -1217,6 +1250,9 @@ def fold_preview(db, table: str, column: str, rules: dict = None,
         "table": table, "column": column, "declared": True, "write": bool(write),
         # rows of a time column left as they are - no input shape matched, or a zone is written
         "time_left_as_is": time_left,
+        # stored values a SECOND fold would change (총괄 47aba5d44 ③) - the backfill folds stored
+        # values again, so these would move twice. None on a comparison-only column.
+        "folds_again": folds_again,
         "rules": dict(rules), "folds": folds_anything(rules),
         "distinct_raw": sum(len(g["variants"]) for g in groups),
         "distinct_folded": len(groups),

@@ -658,6 +658,12 @@ def notation_preview_detail(preview: dict) -> str:
     if left:
         tail += (f" The time rule leaves rows as written - no matching format: "
                  f"{left.get('unmatched', 0)}, time zone written: {left.get('zoned', 0)}.")
+    again = preview.get("folds_again") or {}
+    if again.get("values"):
+        raw, once, twice = again["examples"][0]
+        tail += (f" Values that change again when folded a second time: {again['values']} "
+                 f"({again['rows']} rows), e.g. '{raw}' -> '{once}' -> '{twice}' - a backfill "
+                 f"folds stored values again; fix the rule or the alias row first.")
     if preview.get("truncated"):
         tail = (f" (Note) More spellings than the limit ({preview.get('group_limit')}) - "
                 f"only some are shown.")

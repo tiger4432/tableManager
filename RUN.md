@@ -9,7 +9,9 @@
 >            rejected 에 "Refused: the join character is the one this column's key is joined with" 이면 그 칸의 join 을 다른 글자로
 >            GET /admin/config/notation/preview?table=<표>&column=<칸>  -> write 칸은 "write": true · time 칸은 time_left_as_is
 > 뜻         이 단계는 «저장하지 않음» — "write": true 는 미리 보기까지. 저장은 2 단계 착지부터
-> 되돌리기    git log --oneline -1 --grep "stage one of the written spelling" 의 커밋을 git revert 뒤 API 재기동
+>            write 칸은 «적은» 규칙만 돎(기본값 separator · case 안 옴) — {"join": "-", "pad_last_number": 2} 면 wafer.1 -> wafer-01
+>            미리 보기 folds_again 이 0 이 아니면 한 번 더 접을 때 또 바뀌는 값 — 소급 전에 규칙이나 별칭 행을 고침
+> 되돌리기    git log --oneline --grep "written spelling" --grep "written column runs only" 의 커밋을 새것부터 git revert 뒤 API 재기동
 >            쓰는 것 없음(notation_alias 표는 남음 — 비어 있음)
 > ```
 

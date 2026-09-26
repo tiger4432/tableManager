@@ -24,7 +24,8 @@ TABLES = {
                          "seen_at": "string", "note": "string"},
     },
 }
-OWNER = {"join": "-", "pad_last_number": 2, "case": False}
+#: 총괄 451ac4f75's example, as written - no `case` (총괄 47aba5d44 ①).
+OWNER = {"join": "-", "pad_last_number": 2}
 
 
 def _declare(tmp_path, monkeypatch, columns):
@@ -75,15 +76,25 @@ def test_the_owners_examples_are_what_a_write_column_stores(val_env, written, st
     assert nn.fold_for_write("notval_test_wafer", "wafer", got) == (got, None), "not idempotent"
 
 
-def test_today_a_column_rules_object_brings_back_case_true():
-    """⚠️ OPEN - asked of 총괄 at the stage-one landing: 451ac4f75's example omits `case` and
-    says 「대소문자 그대로」. Today a column `rules` object REPLACES the defaults WITH the
-    defaults (guide §2.1), so `case: true` comes back unless written false. This pins today's
-    answer so whichever way it is decided, the change is seen."""
-    specs, rejections = _refusals({"wafer": {"write": True,
-                                             "rules": {"join": "-", "pad_last_number": 2}}})
+def test_a_written_column_runs_only_the_rules_it_wrote():
+    """총괄 47aba5d44 ①: a fold that changes a STORED value runs only when the operator wrote it.
+    The defaults (`separator`, `case`) still fold a comparison-only column, as before."""
+    specs, rejections = _refusals({
+        "wafer": {"write": True, "rules": OWNER},
+        "lot": {"write": True, "rules": {"pad_last_number": 2}},
+        "note": {"rules": OWNER},
+    })
     assert not rejections
-    assert nn.fold_notation("wafer.1", specs["wafer"]["rules"]) == "WAFER-01"
+
+    def fold(column, value):
+        return nn.fold_notation(value, specs[column]["rules"])
+    assert fold("wafer", "wafer.1") == "wafer-01", "the owner's declaration, as written"
+    assert fold("lot", "mylot.1") == "mylot.01", "no join written, so the '.' stays"
+    assert fold("note", "wafer.1") == "WAFER-01", "comparison only: today's defaults"
+    specs, rejections = _refusals({"rules": {"join": "-", "case": True},
+                                   "wafer": {"write": True}})
+    assert not rejections
+    assert fold("wafer", "wafer.1") == "WAFER-1", "written at the table level: it runs"
 
 
 def test_a_column_not_declared_write_is_stored_as_written(val_env):
@@ -156,14 +167,15 @@ def test_the_smallest_stored_time_is_the_earliest():
     ({"join": "/"}, "rule 'join' must be one of"),
     ({"pad_last_number": 10}, "must be a width from 1 to 9"),
     ({"pad_last_number": True}, "must be a width from 1 to 9"),
-    ({"replace": [["W|WA", "wafer"]]}, "'|' picks a different match"),
-    ({"replace": [["a*(ab)?", "x"]]}, "a count after ')'"),
-    ({"replace": [["a+?b", "x"]]}, "a count after a count"),
+    ({"replace": [["W|WA", "wafer"]]}, "'|' picks a different match in the two engines - "
+                                       "write one pair per alternative"),
+    ({"replace": [["a*(ab)?", "x"]]}, "write the optional part as its own pair"),
+    ({"replace": [["a+?b", "x"]]}, "keep one count, e.g. '*' for '*?'"),
     ({"replace": [["WF$", "x"]]}, "use \\Z"),
-    ({"replace": [["\\d+", "x"]]}, "\\d reads differently"),
-    ({"replace": [["[[:digit:]]", "x"]]}, "a '[' inside [...]"),
+    ({"replace": [["\\d+", "x"]]}, "write the characters out, e.g. [0-9] for \\d"),
+    ({"replace": [["[[:digit:]]", "x"]]}, "list the characters, e.g. [0-9] for [[:digit:]]"),
     ({"replace": [["a{", "x"]]}, "'{' is a count"),
-    ({"replace": [["a*", "x"]]}, "matches an empty value"),
+    ({"replace": [["a*", "x"]]}, "make it match at least one character"),
     ({"replace": [["a", "\\n"]]}, "may only use \\1 to \\9"),
 ])
 def test_a_value_rule_outside_the_shared_language_is_refused_by_name(rules, says):
@@ -213,7 +225,7 @@ def test_one_join_takes_one_value_rule_from_both_sides(val_env, tmp_path, monkey
     with pytest.raises(ValueError, match="rule 'join' differs"):
         nn.join_pair_rules("notval_test_wafer", "wafer", "notval_test_wafer", "note")
     assert nn.join_pair_rules("notval_test_wafer", "wafer", "notval_test_wafer", "wafer") == \
-        {"zero_pad": False, "separator": True, "case": False, "join": "-",
+        {"zero_pad": False, "separator": True, "case": True, "join": "-",
          "pad_last_number": 2}
 
 
@@ -243,3 +255,26 @@ def test_the_write_preview_shows_what_would_be_stored(val_env):
     assert seen["time_left_as_is"] == {"unmatched": 1, "zoned": 1}
     assert "The time rule leaves rows as written - no matching format: 1, time zone " \
            "written: 1." in crr.notation_preview_detail(seen)
+
+
+def test_the_write_preview_counts_values_a_second_fold_would_move(val_env):
+    """총괄 47aba5d44 ③: the backfill folds STORED values again, so a declaration that is not
+    idempotent would move them twice. The preview counts them; the owner's rules move none."""
+    import config_resolve_report as crr
+    db = val_env
+    crud.apply_batch_updates(db, "notval_test_wafer", schemas.GeneralUpdateBatch(
+        updates=[schemas.GeneralUpdateItem(updates={"lot": lot, "wafer": w, "note": note},
+                                           source_name="user", updated_by="test")
+                 for lot, w, note in (("L1", "wafer.1", "ax"), ("L2", "wafer.2", "ax"),
+                                      ("L3", "wafer.3", "b"))], silent=True))
+    again = nn.fold_preview(db, "notval_test_wafer", "note",
+                            rules={"replace": [["x", "xx"]]}, write=True)["folds_again"]
+    assert again == {"values": 1, "rows": 2, "examples": [["ax", "axx", "axxxx"]]}
+    assert nn.fold_preview(db, "notval_test_wafer", "wafer")["folds_again"] == \
+        {"values": 0, "rows": 0, "examples": []}
+    assert nn.fold_preview(db, "notval_test_wafer", "note")["folds_again"] is None, \
+        "a comparison-only column stores nothing to fold again"
+    assert "Values that change again when folded a second time: 1 (2 rows), e.g. 'ax' -> " \
+           "'axx' -> 'axxxx'" in crr.notation_preview_detail(
+               nn.fold_preview(db, "notval_test_wafer", "note",
+                               rules={"replace": [["x", "xx"]]}, write=True))
