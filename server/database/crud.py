@@ -969,6 +969,22 @@ class CellRefused(ValueError):
             where, self.column, self.value, self.expected)
 
 
+class NothingWritten(ValueError):
+    """A file none of whose columns its table declares, so nothing of it was written - ONE
+    sentence whichever parser read it (총괄 8e54a261b ② · f0578f20a): the standard parser meets it
+    in the header, the file loader's write loop in the rows. Named by column, not by value count,
+    because the header does not know the values."""
+
+    def __init__(self, table, columns):
+        super().__init__(table, columns)
+        self.table, self.columns = table, sorted(columns)
+
+    def __str__(self):
+        return ("No column of this file is declared on '%s', so nothing was written - dropped %s. "
+                "Declare the columns on the table, or send the file to the table that declares "
+                "them." % (self.table, ", ".join(self.columns)))
+
+
 def cast_value_by_type(value: Any, col_type: str, col_name: str,
                        table_name: str = None) -> Any:
     """컬럼의 타입 스펙에 맞춰 데이터를 int, float 등으로 명시적으로 형변환합니다.

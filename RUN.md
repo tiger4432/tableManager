@@ -1,5 +1,20 @@
 # 지금 돌리면 되는 것
 
+> ## 🔴 [09-26 아침 2] **쓴 값이 하나도 없는 파일은 FAILED + 한 문장 · 일부만 버린 파일은 기록에 버린 칸 문장 — 파서 길 둘이 같은 답 · 마이그레이션 «없음» · 재기동 감시자(워처)**
+>
+> ```
+> 전부 버림   선언된 칸이 하나도 없는 파일 -> FAILED · 파일 기록(error_message) 한 줄:
+>            No column of this file is declared on '<표>', so nothing was written - dropped <칸들>. Declare the columns on the table, or send the file to the table that declares them.
+>            표준 파서(헤더에서) · 커스텀 파서(쓰기 고리에서) 같은 문장. 전: 커스텀은 SUCCESS · 기록 없음, 표준은 FAILED · 트레이스백
+> 일부 버림   SUCCESS 그대로 + 기록에 Dropped N undeclared column(s) over M row(s): <칸>=<값 수> ...
+>            전: 표준 파서 길은 기록 없음(표준 파서가 스스로 빼고 WARNING 만)
+> 로그       버린 칸은 워처의 한 자리가 적음 — 칸마다 처음 한 번 WARNING · 파일마다 INFO(기록과 같은 문장). 표준 파서의 "ignoring unknown column(s)" WARNING 은 없어짐
+> 아카이브 끔  FAILED 파일은 raws 에 남음. 내용이 같은 실패 파일이 둘 이상이면 워처 기동마다 하나 빼고 다시 읽혀 FAILED 기록이 늘어남(보고만 · 958d57347)
+> 되돌리기    git revert 뒤 워처 재기동. 쓰는 것 없음(파일 기록 · 체크포인트의 상태 낱말만 달라짐)
+> ```
+
+---
+
 > ## 🔴 [09-26 아침 1] **스케줄러 재기동을 넘어 수집기의 마지막 실행이 남음 · 끊긴 실행은 FAIL + 사유 — 마이그레이션 «없음» · 재기동 스케줄러**
 >
 > ```

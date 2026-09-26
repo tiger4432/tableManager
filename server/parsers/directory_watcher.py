@@ -202,8 +202,9 @@ def _announce_dropped_columns(t_name, dropped_value_counts, defined_cols, filena
     Dropping is often the CORRECT outcome - a file carrying fields of a superseded
     scheme should not grow the table. The problem this closes is narrower and real: a
     drop currently produces no record of any kind, so an operator cannot tell an
-    intended drop from a new or misspelled column silently going nowhere. Both look
-    like SUCCESS with an empty error_message.
+    intended drop from a new or misspelled column silently going nowhere. Both looked
+    like SUCCESS with an empty error_message - so the per-file sentence is RETURNED for
+    the file's record, and a file that wrote nothing at all is `_nothing_written`'s.
 
     Sized so the expected case stays quiet and the unexpected one stands out:
       - nothing at all per row or per cell (at 10M rows that buries every real event);
@@ -216,7 +217,7 @@ def _announce_dropped_columns(t_name, dropped_value_counts, defined_cols, filena
     ASCII only - this reaches a cp949 console.
     """
     if not dropped_value_counts:
-        return
+        return None
 
     announced = _dropped_column_announced.setdefault(t_name, set())
     first_seen = sorted(c for c in dropped_value_counts if c not in announced)
@@ -238,11 +239,21 @@ def _announce_dropped_columns(t_name, dropped_value_counts, defined_cols, filena
             f" [report cap {MAX_DROPPED_COLUMNS_REPORTED} reached - further dropped "
             f"column names are NOT listed]"
         )
-    logger.info(
-        f"[{t_name}] Dropped {len(dropped_value_counts)} undeclared column(s) over "
-        f"{row_count} row(s) of '{filename or '?'}': {named} (name=non-blank values "
-        f"discarded). Declared columns={list(defined_cols)}.{capped}"
-    )
+    # The file's record carries the same sentence as this line (총괄 8e54a261b ②).
+    sentence = (f"Dropped {len(dropped_value_counts)} undeclared column(s) over {row_count} "
+                f"row(s): {named} (name=non-blank values discarded).{capped}")
+    logger.info(f"[{t_name}] {sentence} File '{filename or '?'}'. "
+                f"Declared columns={list(defined_cols)}.")
+    return sentence
+
+
+def _nothing_written(t_name, dropped_value_counts, rows_sent):
+    """THE judgment for a file that wrote nothing: values were dropped for undeclared columns
+    and no row reached the write. Dropping PART of a file stays a success - see
+    `_announce_dropped_columns`. Returns the refusal, or None."""
+    if rows_sent or not sum(dropped_value_counts.values()):
+        return None
+    return crud.NothingWritten(t_name, dropped_value_counts)
 
 # [Std Ingestion] 워크스페이스 자동 생성에서 제외하는 시스템 내부 테이블.
 # (파일 드롭 인제션 대상이 아닌 메타데이터성 테이블 — 필요 시 여기에 추가)
@@ -2129,8 +2140,9 @@ class IngestionHandler(FileSystemEventHandler):
                 )
 
                 # 매칭 및 실행 성공 (빈 결과일 수도 있음)
+                dropped = None
                 if has_rows:
-                    self._send_to_upsert(
+                    dropped = self._send_to_upsert(
                         rows, uploader=uploader, filename=basename,
                         source_name=self._external_cell_source_name(abs_path, parse_meta),
                         total_rows=total_rows, t_name=t_name,
@@ -2147,7 +2159,7 @@ class IngestionHandler(FileSystemEventHandler):
                 # file_ingestion_completed 메시지 문자열에 덧붙는다(페이로드 구조 불변).
                 # [P2-A] 재개/재시작 사유도 같은 detail 슬롯으로 노출한다(조용한 폴백 금지).
                 detail = self._compose_detail(skipped_no_key, plan, has_rows,
-                                              self._grid_refusal())
+                                              self._grid_refusal(), dropped)
                 logger.info(
                     f"[{t_name}] ✅ Successfully processed and "
                     f"{'archived' if dest_path != abs_path else 'left in place'}: {basename}"
@@ -2163,7 +2175,8 @@ class IngestionHandler(FileSystemEventHandler):
             except Exception as e:
                 import traceback
                 # A named refusal is its sentence (총괄 bed890af2 ②); anything else keeps its trace.
-                error_msg = str(e) if isinstance(e, crud.CellRefused) else traceback.format_exc()
+                error_msg = (str(e) if isinstance(e, (crud.CellRefused, crud.NothingWritten))
+                             else traceback.format_exc())
                 logger.error(f"[{t_name}] ❌ Error processing file {os.path.basename(file_path)}: {error_msg}")
                 dest_path = self._move_to_err_folder(file_path)
                 if not dest_path:
@@ -2210,7 +2223,7 @@ class IngestionHandler(FileSystemEventHandler):
 
     @staticmethod
     def _compose_detail(skipped_no_key: int, plan, has_rows: bool = True,
-                        grid_refusal: str = None) -> str | None:
+                        grid_refusal: str = None, dropped: str = None) -> str | None:
         """완료 통지 detail 문자열 조립 — 키 결측 스킵(F1) + 재개/재시작 사유(P2)
         + **0행 파싱**(아래).
 
@@ -2233,6 +2246,8 @@ class IngestionHandler(FileSystemEventHandler):
                          "있음, 워처 로그 확인)")
         if skipped_no_key:
             parts.append(f"키 결측으로 {skipped_no_key}행 스킵")
+        if dropped:
+            parts.append(dropped)
         if plan is not None and plan.note:
             parts.append(plan.note)
         return " / ".join(parts) if parts else None
@@ -2696,8 +2711,9 @@ class IngestionHandler(FileSystemEventHandler):
                 # sweep re-hashes a file an operator just told us about.
                 file_stat=read_file_stat(os.path.abspath(filepath)),
             )
+            dropped = None
             if has_rows:
-                self._send_to_upsert(
+                dropped = self._send_to_upsert(
                     rows, uploader=uploader, filename=os.path.basename(filepath),
                     source_name=self._external_cell_source_name(filepath, parse_meta),
                     total_rows=total_rows, t_name=t_name,
@@ -2706,7 +2722,7 @@ class IngestionHandler(FileSystemEventHandler):
 
             # If successful, update the log entry to SUCCESS
             detail = self._compose_detail(skipped_no_key, plan, has_rows,
-                                          self._grid_refusal())  # [F1] + [P2] + 0행
+                                          self._grid_refusal(), dropped)  # [F1] + [P2] + 0행
             log_entry.status = "SUCCESS"
             log_entry.error_message = detail
             db.commit()
@@ -2715,7 +2731,8 @@ class IngestionHandler(FileSystemEventHandler):
             return True
         except Exception as e:
             import traceback
-            error_msg = str(e) if isinstance(e, crud.CellRefused) else traceback.format_exc()
+            error_msg = (str(e) if isinstance(e, (crud.CellRefused, crud.NothingWritten))
+                         else traceback.format_exc())
             logger.error(f"[{t_name}] ❌ Error retrying file {os.path.basename(filepath)}: {error_msg}")
             log_entry.status = "FAILED"
             log_entry.error_message = error_msg
@@ -3092,6 +3109,9 @@ class IngestionHandler(FileSystemEventHandler):
         [P2] checkpoint(CheckpointPlan): 재개 오프셋 + 진행 오프셋 기록 핸들. None이면
         기존(P1) 동작 그대로. 오프셋 기록은 청크 upsert와 **같은 트랜잭션**에서 수행되어
         "커밋된 행 수 == 기록된 오프셋"이 원자적으로 성립한다.
+
+        Returns the dropped-columns sentence for the file's record (None: nothing dropped);
+        raises `crud.NothingWritten` when every value was dropped (총괄 8e54a261b ②).
         """
         # 1-2. 대상 테이블 스냅샷 확보
         if t_name is None and table_info is None:
@@ -3109,7 +3129,12 @@ class IngestionHandler(FileSystemEventHandler):
         # and not the other landed through the API and was dropped here: the same file
         # loading a different column set depending on which door it came through.
         defined_cols = crud.loadable_columns(table_info)
-        
+        # Once per file, not once per cell (총괄 7e6585ec2): the first declared spelling wins,
+        # as the scan it replaces did.
+        declared_by_lower = {}
+        for d_col in defined_cols:
+            declared_by_lower.setdefault(d_col.lower(), d_col)
+
         # Determine source_name based on real original filename
         if source_name:
             real_source = source_name
@@ -3181,6 +3206,9 @@ class IngestionHandler(FileSystemEventHandler):
         # outcome; being unable to tell that outcome apart from a new or misspelled column
         # going nowhere is not. See _announce_dropped_columns for the reporting shape.
         dropped_value_counts = {}
+        # Rows handed to the write. A resumed prefix was committed through it - a chunk
+        # records progress only when it had items.
+        rows_sent = resume_from
 
         # [OUTBOX-4] THE ONE PLACE THAT OPTS INTO COLLAPSED OUTBOX EVENTS.
         # File ingestion is where the 10,000,000 rows are: per-row outbox events cost
@@ -3225,11 +3253,7 @@ class IngestionHandler(FileSystemEventHandler):
                             bk_val = None
                     
                             for key, val in row.items():
-                                target_key = None
-                                for d_col in defined_cols:
-                                    if key.lower() == d_col.lower():
-                                        target_key = d_col
-                                        break
+                                target_key = declared_by_lower.get(key.lower())
                                 if target_key is not None:
                                     normalized_row[target_key] = val
                                     if target_key.lower() == bk_col.lower():
@@ -3253,6 +3277,7 @@ class IngestionHandler(FileSystemEventHandler):
                     if not items:
                         processed_rows += len(chunk)
                         continue
+                    rows_sent += len(items)
 
                     # 1,000건 청크 단위로 DB 세션을 격리하여 트랜잭션 처리
                     db = SessionLocal()
@@ -3393,7 +3418,7 @@ class IngestionHandler(FileSystemEventHandler):
             _analyze_after_load(t_name, processed_rows)
 
             # [Drop visibility] Individual silence, named aggregate - one report per file.
-            _announce_dropped_columns(
+            dropped = _announce_dropped_columns(
                 t_name, dropped_value_counts, defined_cols, filename, processed_rows
             )
 
@@ -3410,6 +3435,10 @@ class IngestionHandler(FileSystemEventHandler):
             # [OUTBOX-4] Restore per_row for whatever this thread does next. A leaked
             # token would make the NEXT writer on this thread collapse silently.
             request_outbox_mode.reset(_outbox_token)
+        refused = _nothing_written(t_name, dropped_value_counts, rows_sent)
+        if refused is not None:
+            raise refused
+        return dropped
 
 class ExternalSourceEventHandler(FileSystemEventHandler):
     """Read-only watchdog adapter for one external root/table binding."""

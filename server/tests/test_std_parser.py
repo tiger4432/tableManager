@@ -28,6 +28,7 @@ if parsers_dir not in sys.path:
 import directory_watcher
 from directory_watcher import IngestionHandler, WorkspaceWatcher
 from std_parser import parse_std_file, is_std_supported
+from database import crud
 
 from isolated_data_root import assert_isolated, isolate_data_root
 
@@ -143,13 +144,13 @@ def test_txt_sniff_tab_and_comma(tmp_path):
     assert total == 1 and list(rows_iter)[0]["part_no"] == "P-2"
 
 
-def test_unknown_columns_ignored(tmp_path):
+def test_unknown_columns_ride_along_for_the_write_loop_to_drop(tmp_path):
+    """총괄 f0578f20a — the file loader's write loop drops and counts them, for every parser."""
     p = _write(tmp_path / "inv.csv", "part_no,MYSTERY_COL,category\nP-1,zzz,Cap\n")
     rows_iter, total, skipped = parse_std_file(p, INVENTORY_INFO, "inventory_master")
     rows = list(rows_iter)
     assert total == 1
-    assert "MYSTERY_COL" not in rows[0]
-    assert rows[0] == {"part_no": "P-1", "category": "Cap"}
+    assert rows[0] == {"part_no": "P-1", "category": "Cap", "MYSTERY_COL": "zzz"}
 
 
 def test_header_case_insensitive(tmp_path):
@@ -172,7 +173,7 @@ def test_reject_no_known_columns(tmp_path):
     p = _write(tmp_path / "inv.csv", "foo,bar\n1,2\n")
     with pytest.raises(ValueError) as excinfo:
         parse_std_file(p, INVENTORY_INFO, "inventory_master")
-    assert "no header column matches" in str(excinfo.value)
+    assert str(excinfo.value) == str(crud.NothingWritten("inventory_master", ["foo", "bar"]))
 
 
 def test_composite_key_accepts_sources_without_bk(tmp_path):

@@ -49,7 +49,8 @@ def _resolve_delimiter(ext: str, sample: str) -> str:
 def _build_header_map(header: list, table_info: dict, table_name: str, file_path: str) -> list:
     """파일 헤더를 테이블의 **적재 대상 컬럼**과 대조해 컬럼 매핑을 만든다.
 
-    - 알려진 컬럼만 채택(대소문자 무시 매칭), 미지 컬럼은 warning 후 무시(None 슬롯).
+    - 알려진 컬럼만 매핑(대소문자 무시 매칭), 미지 컬럼은 None 슬롯 — 값은 parse_std_file 이 그대로
+      실어 보내고 쓰기 고리가 버리며 센다. 알려진 컬럼이 하나도 없으면 crud.NothingWritten.
     - business_key 컬럼(또는 composite_key_source 전체)이 헤더에 없으면 ValueError로 처리 거부
       → 호출측(process_with_retry)에서 err/ 이동 + FileIngestionLog FAILED 기록.
     - [F5] 검증 기준은 적재 필터와 **동일 집합**이어야 한다. 다른 기준으로 검증하면 검증은
@@ -79,18 +80,11 @@ def _build_header_map(header: list, table_info: dict, table_name: str, file_path
         if col is None and key:
             unknown.append(key)
 
-    if unknown:
-        logger.warning(
-            f"[{table_name}] Std parser: ignoring unknown column(s) not loadable for "
-            f"table (적재 대상 컬럼 기준) '{basename}': {unknown}"
-        )
-
+    # Unknown columns are NOT dropped here: they ride along and the file loader's write loop
+    # drops and counts them - one place, whichever parser read the file (총괄 f0578f20a).
     known = {c for c in header_map if c is not None}
     if not known:
-        raise ValueError(
-            f"Std parser rejected '{basename}': no header column matches "
-            f"table '{table_name}' loadable columns {sorted(canonical.values())}."
-        )
+        raise crud.NothingWritten(table_name, unknown)
 
     bk_col = table_info.get("business_key")
     composite_src = table_info.get("composite_key_source")
@@ -132,8 +126,10 @@ def _row_has_key(row: dict, key_groups: list) -> bool:
     return any(all(row.get(c) is not None for c in grp) for grp in key_groups)
 
 
-def _map_record(record: list, header_map: list) -> dict | None:
-    """CSV 레코드 1건을 canonical 컬럼 dict로 매핑. 유효 값이 하나도 없으면 None(스킵)."""
+def _map_record(record: list, header_map: list, passthrough=()) -> dict | None:
+    """CSV 레코드 1건을 canonical 컬럼 dict로 매핑. 유효 값이 하나도 없으면 None(스킵).
+    `passthrough` = (index, header name) of undeclared columns: added after that judgment, so
+    whether a row is blank still reads the declared columns only."""
     row = {}
     has_value = False
     for idx, col in enumerate(header_map):
@@ -146,16 +142,23 @@ def _map_record(record: list, header_map: list) -> dict | None:
         if val is not None:
             has_value = True
         row[col] = val
-    return row if has_value else None
+    if not has_value:
+        return None
+    for idx, name in passthrough:
+        raw = record[idx] if idx < len(record) else None
+        val = raw.strip() if isinstance(raw, str) else raw
+        row[name] = None if val == "" else val
+    return row
 
 
-def _iter_rows(file_path: str, encoding: str, delimiter: str, header_map: list, key_groups: list):
+def _iter_rows(file_path: str, encoding: str, delimiter: str, header_map: list, key_groups: list,
+               passthrough=()):
     """데이터 행을 스트리밍으로 yield한다(전량 메모리 로드 없음). 키 결측 행은 1-pass와 동일 기준으로 스킵."""
     with open(file_path, "r", encoding=encoding, newline="") as f:
         reader = csv.reader(f, delimiter=delimiter)
         next(reader, None)  # 헤더 스킵
         for record in reader:
-            row = _map_record(record, header_map)
+            row = _map_record(record, header_map, passthrough)
             if row is not None and _row_has_key(row, key_groups):
                 yield row
 
@@ -194,6 +197,8 @@ def parse_std_file(file_path: str, table_info: dict, table_name: str):
 
                 header_map = _build_header_map(header, table_info, table_name, file_path)
                 key_groups = _resolve_key_groups(table_info, {c for c in header_map if c is not None})
+                passthrough = [(i, (h or "").strip()) for i, (h, col) in enumerate(zip(header, header_map))
+                               if col is None and (h or "").strip()]
 
                 # 1-pass: 유효 행 수 카운트(스트리밍). 이 패스가 파일 전체 디코딩 검증을 겸한다 —
                 # 본문 중간에서 인코딩이 깨지면 여기서 UnicodeDecodeError → 다음 후보 인코딩 재시도.
@@ -219,7 +224,8 @@ def parse_std_file(file_path: str, table_info: dict, table_name: str):
                     f"[{table_name}] Std parser: {skipped_no_key}행이 키 컬럼 공백/결측으로 스킵됨 "
                     f"(고아 행 방지): '{basename}'"
                 )
-            return _iter_rows(file_path, encoding, delimiter, header_map, key_groups), total_rows, skipped_no_key
+            return (_iter_rows(file_path, encoding, delimiter, header_map, key_groups, passthrough),
+                    total_rows, skipped_no_key)
         except UnicodeDecodeError as e:
             last_decode_error = e
             continue
