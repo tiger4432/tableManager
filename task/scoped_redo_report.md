@@ -63612,3 +63612,71 @@ rule_shape.expand_declaration 맨 앞 — 평평 규칙의 조기 반환과 is_s
 게이트  새 칸 초록 · 변이(True 되돌림) 빨강 「assert [10] == []」 — 하류 규칙을 깨우는 사건 하나
        바뀐 다섯 파일 142 passed · 전체 · PG 도는 중. 끝나면 착지
 ```
+
+---
+
+## [구현자 -> 총괄] 7 스키마 동기화 시한 — 안 셋, 그리고 「뜻」 한 줄이 거짓입니다 (3c26854c3)
+
+### 지금 모양
+```
+함수     models.sync_dynamic_tables_schema — 칸마다 engine.begin() 한 트랜잭션에 ALTER TABLE ... ADD COLUMN, 시한 없음
+        실패하면 로그 한 줄 · 다음 칸으로(예외 안 올림)
+부르는 자리 git grep -n "sync_dynamic_tables_schema(" -- server ':!server/tests' (def 뺌) -> 6
+        제품 넷: main.py 기동 · run_watcher.py · run_chain_worker.py import · config_watcher.py 설정 저장 리로드
+        스크립트 하나: scripts/dev_env/snapshot_db.py · 주석 하나: admin/schema_drift.py
+        시험 자리: 46 (같은 명령, server/tests)
+시한 선례 둘  원장 파티션 DDL(ledger/schema.py) — 트랜잭션 안 SET LOCAL, 끝나면 저절로 풀림
+            인덱스 DDL(chain/unique_key.py, 9e6335d8e) — autocommit 연결에 SET · RESET (CONCURRENTLY 는 트랜잭션 밖이라)
+55P03 판정  둘이 따로 적음: unique_key.waited_past_the_lock_timeout · ledger/schema.py 의 글자 검사
+```
+
+### 🔴 「뜻: 표 전체가 멈추는 대신 그 칸 하나가 늦어짐」이 참이 아닙니다
+```
+근거   admin/schema_drift.py 머리: 모델에 있는 칸이 표에 없으면 SQLAlchemy 가 «모든» SELECT · INSERT 에 그 칸을 적어
+       «표가 통째로» 떨어진다 — 2026-08-05 장애가 그 모양
+그래서  시한에 걸려 칸을 못 붙이면 그 표의 읽기 · 쓰기가 전부 「column ... does not exist」로 실패 — 칸 이름은 대지만 «표 전체»
+오늘    시한 없이 ALTER 가 기다리는 동안 그 표의 읽기 · 쓰기가 ALTER 뒤에 줄 서고(ACCESS EXCLUSIVE 대기), 기동이 거기서 멈춤 — 이것도 표 전체
+차이    시한이 있으면 프로세스는 살고 «다른 표»는 돎. 그 표는 조용히 멈추는 대신 «큰 소리로» 실패
+이 박스에서 아직 안 쟀습니다 — 게이트에서 PG 로 잽니다(ALTER 포기 뒤 그 표 읽기가 칸 이름을 대며 실패하는지)
+```
+
+### ㄱ (추천) 원장 파티션 DDL 모양 — 트랜잭션 안 SET LOCAL
+```
+무엇    칸마다 트랜잭션 첫 줄에 SET LOCAL lock_timeout = DDL_LOCK_TIMEOUT(20 s) — 새 상수 없음
+       트랜잭션이 끝나면(커밋 · 되돌림) 저절로 풀림 -> 「풀에 돌려줄 때 풀어 줌」이 구조로 참. RESET 자리가 없음
+       55P03 판정은 db_safety 로 옮겨 하나로(DDL_LOCK_TIMEOUT 옆) — unique_key 와 이 함수가 같이 부름
+       걸리면 한 줄: 표 · 칸 · 20 s · 「다음 기동 또는 설정 저장 때 다시」 · 「그동안 이 표의 읽기 · 쓰기는 이 칸 때문에 실패」
+       잡은 이 이름: 포기한 뒤에는 기다리던 쪽이 없어 db_waits 가 답할 것이 없음 -> 줄에 안 싣고 RUN.md 가 diagnose_db_health 를 가리킴
+운영자  뜨면 diagnose_db_health 로 잡은 pid 확인 · 그 트랜잭션을 끝낸 뒤 설정 저장(리로드가 다시 붙임)
+좋은 점 기동이 안 멈춤 · 풀 누수가 구조로 없음 · 선례와 같은 모양
+위험    위 🔴 — 그 표는 칸이 붙을 때까지 실패. 오늘보다 «나쁘지는» 않다고 봅니다(오늘도 그 표는 멈춤) — 판정은 여쭘
+크기    함수 안 두 줄 + 판정 옮김(unique_key 세 자리가 부름) + 시험 PG 한 파일. 줄 수 안 셈
+```
+
+### ㄴ 인덱스 DDL 모양 — autocommit 연결에 SET · RESET
+```
+무엇    unique_key 의 여닫기 둘을 db_safety 로 옮겨 같이 씀. 「9e6335d8e 와 같은 모양」을 글자 그대로
+좋은 점 DDL 시한을 거는 기제가 하나로 모임
+위험    RESET 실패 -> 연결 버림 갈래가 하나 더 생김 · ADD COLUMN 은 트랜잭션이 되는데 굳이 밖으로
+크기    ㄱ 보다 큼 · 안 셈
+```
+
+### ㄷ ㄱ + 못 붙인 칸을 모델에서 잠시 뺌
+```
+무엇    포기한 칸을 그 프로세스의 모델에서 빼 두어 표의 나머지는 돎 — 「그 칸 하나가 늦어짐」이 참이 됨
+위험    실행 중에 매핑을 바꿈 · 그 칸을 쓰는 쓰기는 이름 대어 거절해야 하는데 그 자리가 없음 · 리로드와 엉킬 수 있음
+크기    큼 · 안 셈. 제안으로만
+```
+
+### 여쭐 것
+```
+7-1  ㄱ 로 가나
+7-2  「뜻」 문장 — 「그 표는 칸이 붙을 때까지 실패(칸 이름을 댐) · 기동과 다른 표는 돎」으로 적나, ㄷ 을 보나
+7-3  55P03 판정을 db_safety 로 모을 때 ledger/schema.py 의 글자 검사도 같이 부르게 하나
+순서  6 착지 뒤에 짓습니다
+```
+
+### 8 — 착지 직전
+```
+전체 · PG 끝나는 대로 착지합니다(총괄 「8 착지하라」)
+```
