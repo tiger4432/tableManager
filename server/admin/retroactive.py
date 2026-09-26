@@ -782,6 +782,65 @@ def _run_fold_file_layers(db, params, log, control=None):
                                     "layers_after", "rows_scanned")}
 
 
+def _count_fold_written_notation(db, params, scan_limit):
+    from chain import replay
+
+    s = replay.fold_written_notation(db, params["table"], apply=False, limit=scan_limit,
+                                     log=lambda m: logger.debug(m))
+    truncated = s["rows_scanned"] >= scan_limit
+    affected = s["cells_folded"]
+    if not s["written_columns"]:
+        return {"affected": 0, "absence": ABSENCE_NOT_APPLICABLE,
+                "affected_label": "cells whose spelling changes",
+                "count_kind": COUNT_EXACT, "scanned": 0, "scan_limit": scan_limit,
+                "truncated": False,
+                "detail": (f"'{params['table']}' declares no \"write\" column in "
+                           f"notation_rules.json - nothing is folded."),
+                "extra": {}}
+    left = s["time_left"]
+    detail = (
+        f"{affected} cell(s) and {s['layers_folded']} stored layer(s) in {s['rows_scanned']} "
+        f"row(s) of '{params['table']}' take the declared spelling; {s['keys_changed']} row "
+        f"key(s) change. Cannot be undone - the spelling that was stored stays in each cell's "
+        f"history line.")
+    if s["rows_skipped"]:
+        detail += (f" {s['rows_skipped']} row(s) would take another row's key and are skipped "
+                   f"- fix the alias rows or the rule and run again.")
+    if s["moves_again"]:
+        detail += (f" {s['moves_again']} value(s) change again on a second fold - the run "
+                   f"stops there; fix the declaration first.")
+    if left:
+        detail += (f" The time rule leaves values as written - no matching format: "
+                   f"{left.get('unmatched', 0)}, time zone written: {left.get('zoned', 0)}.")
+    detail += (" Afterwards run Fold file layers on this table, then give the space back: "
+               "python server/scripts/tune_layer_tables.py --table cell_sources --vacuum")
+    return {
+        "affected": affected,
+        "absence": (ABSENCE_NOT_EXHAUSTIVE if truncated
+                    else ABSENCE_TRULY_NONE if not affected else None),
+        "affected_label": "cells whose spelling changes",
+        "count_kind": COUNT_SAMPLE if truncated else COUNT_EXACT,
+        "scanned": s["rows_scanned"],
+        "scan_limit": scan_limit,
+        "truncated": truncated,
+        "detail": detail,
+        "extra": {key: s[key] for key in ("layers_folded", "keys_changed", "rows_skipped",
+                                          "skipped", "moves_again", "again", "time_left")},
+    }
+
+
+def _run_fold_written_notation(db, params, log, control=None):
+    from chain import replay
+
+    s = replay.fold_written_notation(db, params["table"], apply=True, log=log,
+                                     checkpoint=_checkpoint(control),
+                                     **_given(params, "limit", "chunk_size", "pace"))
+    _final_progress(control, s.get("rows_scanned"), s)
+    return {key: s[key] for key in ("cells_folded", "layers_folded", "keys_changed",
+                                    "rows_skipped", "moves_again", "stopped_on_moves_again",
+                                    "rows_scanned")}
+
+
 def _run_resolve(db, params, log, control=None):
     from chain import replay
 
@@ -1210,6 +1269,32 @@ OPERATIONS = {
                                "and recomputing from stored layers twice gives the same "
                                "answer"),
         "cli_only": ["--list-all (prints every moved cell)"],
+    },
+    "fold_written_notation": {
+        "label": "Fold stored values into the declared spelling",
+        "what_is_missing": "a \"write\" column keeps the spellings stored before it was declared",
+        "params": [_p("table"),
+                   _pace_param(),
+                   _p("limit", required=False, kind="int", form=False,
+                      help="bound the rows scanned"),
+                   _p("chunk_size", required=False, kind="int", form=False,
+                      help="rows per page")],
+        "count": _count_fold_written_notation,
+        "run": _run_fold_written_notation,
+        "judge": _judge_table,
+        "cli": ("python -c \"from admin import retroactive; retroactive.run_here("
+                "'fold_written_notation', {'table': '<table>', 'pace': '<pace>', 'limit': N, "
+                "'chunk_size': N})\" - pace, limit and chunk_size optional"),
+        # 총괄 2dc2c1baf: in place - a layer's value, the shown value and the key move; no layer
+        # is created or deleted and no `ingested_at` moves. A row whose folded key another row
+        # holds is skipped; a value a second fold moves again stops the run.
+        "deletes": None,
+        "reads_as": "number",
+        "cancellable": True,
+        "restartable": True,
+        "commit_granularity": ("one commit per page of rows; a stop lands between pages and "
+                               "a re-run folds only what is left"),
+        "cli_only": [],
     },
     "fold_file_layers": {
         "label": "Fold file layers that repeat a newer one",

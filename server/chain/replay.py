@@ -766,6 +766,154 @@ def fold_file_layers(db, table_name: str, apply: bool = False,
     return stats
 
 
+#: The writer of the history line a notation backfill leaves on each cell it folds.
+NOTATION_BACKFILL_SOURCE = "notation_backfill"
+
+
+def fold_written_notation(db, table_name: str, apply: bool = False,
+                          chunk_size: int = DEFAULT_CHUNK_SIZE, limit: int = None,
+                          pace: str = None, max_report: int = DEFAULT_MAX_REPORT,
+                          log=logger.info, checkpoint=None) -> dict:
+    """Notation stage three (총괄 2dc2c1baf): what a `write` column stored before its declaration
+    is folded IN PLACE by the one write fold (`notation_norm.fold_for_write`) - every layer's
+    value, the shown value and the row's business key.
+
+    ⛔ NOT THROUGH THE WRITE DOOR: re-sending a stored layer moves its `ingested_at` ahead of a
+    newer layer of its class and changes the shown VALUE, not its spelling (measured, 0d9a69a63).
+    Here only a layer's `value` is updated.
+    A row whose folded key is another row's key is SKIPPED and named - joining them is a merge,
+    and a merge cannot be undone. A value a second fold would move again is counted by the dry
+    run and stops the run before the page holding it is written (47aba5d44 ③). One history line
+    per shown cell that changes; the rows' outbox events carry the change to the ledger. One
+    commit per page.
+    """
+    import notation_norm
+    from database import crud, models
+    from chain import keyset_scan
+
+    model, _col_types = resolve_target(table_name)
+    pages_per_cycle, rest_seconds = resolve_pace(pace)
+    written = notation_norm.written_columns(table_name)
+    config = crud.TABLE_CONFIG.get(table_name, {})
+    key_col = config.get("business_key")
+    composite_src = config.get("composite_key_source")
+    stats = {"mode": "apply" if apply else "dry-run", "table": table_name,
+             "written_columns": list(written), "rows_scanned": 0, "pages": 0,
+             "cells_folded": 0, "layers_folded": 0, "keys_changed": 0, "rows_skipped": 0,
+             "skipped": [], "moves_again": 0, "again": [], "time_left": {},
+             "stopped": False, "stopped_on_moves_again": False}
+    if not written:
+        log(f"[notation] '{table_name}' declares no \"write\" column - nothing to fold")
+        return stats
+    aliases = notation_norm.aliases_by_column(db)
+    claimed = set()
+    tx_id = f"{NOTATION_BACKFILL_SOURCE}_{uuid.uuid4().hex[:8]}"
+
+    def fold(column, value, again):
+        stored, verdict = notation_norm.fold_for_write(table_name, column, value, aliases)
+        if verdict in notation_norm.TIME_LEFT_AS_WRITTEN:
+            stats["time_left"][verdict] = stats["time_left"].get(verdict, 0) + 1
+        if stored != value:
+            moved = notation_norm.moves_again(
+                stored, notation_norm.write_spec(table_name, column)["rules"],
+                aliases.get((table_name, column)) or {})
+            if moved is not None:
+                again.append([column, value, stored, moved])
+        return stored
+
+    with crud.transaction_context(NOTATION_BACKFILL_SOURCE, tx_id, NOTATION_BACKFILL_SOURCE):
+        for page in keyset_scan.iter_pages(db, model, chunk_size=chunk_size, limit=limit):
+            if checkpoint is not None and checkpoint(stats["rows_scanned"]):
+                stats["stopped"] = True
+                log(f"[notation] stopped by request after {stats['rows_scanned']} rows")
+                break
+            stats["pages"] += 1
+            stats["rows_scanned"] += len(page)
+            again, plans = [], {}
+            for row in page:
+                cells = {}
+                for column in written:
+                    old = getattr(row, column, None)
+                    new = fold(column, old, again)
+                    if new != old:
+                        cells[column] = (old, new)
+                plans[row.row_id] = {"row": row, "cells": cells, "layers": [], "key": None}
+            for layer_id, row_id, column, value in (
+                    db.query(models.CellSource.id, models.CellSource.row_id,
+                             models.CellSource.column_name, models.CellSource.value)
+                    .filter(models.CellSource.table_name == table_name,
+                            models.CellSource.row_id.in_(list(plans)),
+                            models.CellSource.column_name.in_(written)).all()):
+                new = fold(column, value, again)
+                if new != value:
+                    plans[row_id]["layers"].append({"id": layer_id, "value": new})
+            for plan in plans.values():
+                row, cells = plan["row"], plan["cells"]
+                if composite_src:
+                    parts = [cells[c][1] if c in cells else getattr(row, c, None)
+                             for c in composite_src]
+                    key = (None if any(crud.is_blank_key_part(p) for p in parts)
+                           else crud.compose_business_key(table_name, parts))
+                elif key_col in written and isinstance(row.business_key_val, str):
+                    key = notation_norm.fold_for_write(table_name, key_col, row.business_key_val,
+                                                       aliases)[0]
+                else:
+                    key = None
+                if key and key != row.business_key_val:
+                    plan["key"] = key
+            wanted = {plan["key"] for plan in plans.values() if plan["key"]}
+            holders = dict(db.query(model.business_key_val, model.row_id)
+                           .filter(model.business_key_val.in_(list(wanted))).all()) \
+                if wanted else {}
+            for row_id, plan in list(plans.items()):
+                key = plan["key"]
+                if key and (key in claimed or holders.get(key, row_id) != row_id):
+                    stats["rows_skipped"] += 1
+                    if len(stats["skipped"]) < max_report:
+                        stats["skipped"].append({"row_id": row_id,
+                                                 "business_key_val": plan["row"].business_key_val,
+                                                 "folded_key": key,
+                                                 "held_by": holders.get(key)})
+                    del plans[row_id]
+                elif key:
+                    claimed.add(key)
+            stats["moves_again"] += len(again)
+            stats["again"].extend(again[:max(0, max_report - len(stats["again"]))])
+            if again and apply:
+                stats["stopped"] = stats["stopped_on_moves_again"] = True
+                log(f"[notation] '{table_name}' stopped before page {stats['pages']}: "
+                    f"{len(again)} value(s) change again on a second fold - fix the "
+                    f"declaration or the alias rows first")
+                break
+            changed = [plan for plan in plans.values()
+                       if plan["cells"] or plan["layers"] or plan["key"]]
+            stats["cells_folded"] += sum(len(plan["cells"]) for plan in changed)
+            stats["layers_folded"] += sum(len(plan["layers"]) for plan in changed)
+            stats["keys_changed"] += sum(1 for plan in changed if plan["key"])
+            if apply and changed:
+                for plan in changed:
+                    row = plan["row"]
+                    if plan["key"]:
+                        row.business_key_val = plan["key"]
+                    for column, (old, new) in plan["cells"].items():
+                        setattr(row, column, new)
+                        crud.create_audit_log(
+                            db, table_name, row.row_id, column, old, new,
+                            NOTATION_BACKFILL_SOURCE, NOTATION_BACKFILL_SOURCE,
+                            transaction_id=tx_id, business_key=row.business_key_val)
+                layers = [layer for plan in changed for layer in plan["layers"]]
+                if layers:
+                    db.bulk_update_mappings(models.CellSource, layers)
+                db.commit()
+            if pages_per_cycle and rest_seconds and stats["pages"] % pages_per_cycle == 0:
+                time.sleep(rest_seconds)
+    log(f"[notation] '{table_name}' {stats['mode']}: {stats['cells_folded']} cell(s) and "
+        f"{stats['layers_folded']} layer(s) folded in {stats['rows_scanned']} row(s), "
+        f"{stats['keys_changed']} key(s) changed, {stats['rows_skipped']} row(s) skipped "
+        f"(their folded key is another row's), {stats['moves_again']} value(s) change again")
+    return stats
+
+
 def recompute_display_values(db, table_name: str, columns: list = None,
                              row_ids: list = None, apply: bool = False,
                              chunk_size: int = DEFAULT_CHUNK_SIZE, limit: int = None,

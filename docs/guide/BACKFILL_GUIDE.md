@@ -59,6 +59,7 @@
 | 🆕 오늘 붙인 **수집기**(`# window:` 를 선언한 것)에 **지난 날들의 데이터가 없다** | **`collector_backfill`**(09-26 `9c2ebe9a`) — 파라미터 `collector`(`<표>/<스크립트.py>`) · `start`(KST `YYYY-MM-DD`, 그날 00:00 · 또는 `YYYY-MM-DD HH:MM`). **하루(24 시간 창)씩** 스크립트를 그 날의 창으로 채워 돌리고, 그 날 파일이 적재 큐를 **지난 뒤** 다음 날로 간다. 한 날의 파일이 실패하면 **그 날 이름을 대고 멈춘다**. 결과는 `days`(창 안의 날 수) · `days_done`(모은 날 수) — 화면에서는 낱말로(`f6d64682`). 어드민 Retroactive 탭 또는 CLI `python -c "from admin import retroactive; retroactive.run_here('collector_backfill', {'collector': '<표>/<스크립트.py>', 'start': 'YYYY-MM-DD'})"` |
 
 | 🆕 칸마다 **파일 층이 여러 겹** 쌓여 있다(같은 행을 매시간 다시 가져오는 수집기) · 헤비 레인 청크 줄의 `prefetch` 가 크다 | **`fold_file_layers`**(09-26, 총괄 225b2c658) — 파라미터 `table` · `pace`. 칸마다 같은 부류 · 같은 값의 파일 층은 **가장 새 것 하나**만 남긴다(§2.6). 쓰기 쪽은 같은 날부터 **안 쌓는다**(§1.1) |
+| 🆕 표기 `write` 칸을 선언했는데 **그 전에 저장된 값**이 옛 철자다 | **`fold_written_notation`**(09-26, 총괄 2dc2c1baf) — 파라미터 `table` · `pace`. 층 값 · 보이는 값 · 키를 제자리에서 접는다(§2.7). 끝나면 `fold_file_layers` → VACUUM |
 
 🔴 **ⓒ와 ⓓ를 가르는 질문은 하나입니다 — 「파생 테이블에 그 행이 있습니까?」**
 `ⓒ`는 **없던 파생 행을 만듭니다.** `ⓓ`는 **이미 있는 행의 빈 칸을 채웁니다.**
@@ -245,6 +246,22 @@ python -c "from admin import retroactive; retroactive.run_here('fold_file_layers
 - **끝나면**: `python server/scripts/tune_layer_tables.py --table cell_sources --vacuum` — 지운 자리를 돌려받습니다(VACUUM 은 트랜잭션 밖이라 이 연산이 하지 않습니다).
 - ⚠️ **R2(ⓑ)의 가장자리가 달라집니다**: 파일3 A · 파일10 A 에서 파일10 을 철회하면 접기 «전»엔 파일3 의 A 가 드러나고, 접은 «뒤»엔 그 아래 층이 드러납니다. 쓰기 쪽에서 «안 쓴» 경우(파일10 이 파일3 과 같아 층이 안 생김)도 같습니다 — 그 칸을 마지막으로 같은 값이라 말한 파일은 옛 파일로 남습니다.
 - 페이지(기본 1000 행)마다 커밋 · 취소는 페이지 사이 · 다시 돌리면 남은 것만 찾습니다.
+
+### 2.7 🆕 `fold_written_notation` — 선언 전에 저장된 값을 선언한 철자로 (**되돌릴 수 없습니다**)
+
+```bash
+python -c "from admin import retroactive; retroactive.run_here('fold_written_notation', {'table': '<표>'})"
+```
+어드민 **Retroactive** 탭에서는 `Fold stored values into the declared spelling` — 파라미터 `table` · `pace`(`limit` · `chunk_size` 는 CLI).
+
+- **하는 일**: `notation_rules.json` 의 `"write": true` 칸마다 모든 층 값 · 보이는 값 · 행의 키를 쓰기 문과 **같은 접기**로 접습니다. 층을 다시 쓰지 않고 **값만** 바꾸므로 층의 순서가 그대로이고 **이기는 층이 안 바뀝니다**(쓰기 문으로 다시 보내면 옛 층이 가장 새 층이 되어 보이는 «값»이 바뀝니다 — 실측).
+- **드라이런(Count)**: 「N cell(s) and M stored layer(s) … take the declared spelling; K row key(s) change」 + 건너뛸 행 · 또 바뀌는 값 · time 이 그대로 둔 값. `write` 칸이 없는 표는 「declares no "write" column」.
+- **건너뜀**: 접은 키를 다른 행이 이미 쥐고 있으면 그 행은 **한 칸도 안 접고** 이름을 댑니다(병합은 되돌릴 수 없음).
+- **멈춤**: 한 번 더 접으면 또 바뀌는 값이 든 페이지 «앞»에서 멈춥니다 — 선언이나 별칭 행을 먼저 고칩니다.
+- 🔴 **되돌릴 수 없습니다** — 저장돼 있던 철자는 칸마다 이력 줄(`notation_backfill`)의 옛 값으로 남습니다.
+- **끝나면**: `fold_file_layers`(같은 표) → `python server/scripts/tune_layer_tables.py --table cell_sources --vacuum`.
+- 바뀐 행은 소급 경로(`retroactive`)의 사건을 내므로 체인 규칙은 안 깨고, 원장 후속 랩은 그 사건으로 다시 번역합니다.
+- 페이지마다 커밋 · 취소는 페이지 사이 · 다시 돌리면 남은 것만 접습니다.
 
 ---
 

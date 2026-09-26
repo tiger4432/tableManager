@@ -28,6 +28,7 @@ import directory_watcher                                                   # noq
 import notation_norm as nn                                                 # noqa: E402
 from chain import ingestion_worker as worker                               # noqa: E402
 from chain import key_gate                                                 # noqa: E402
+from chain import replay                                                   # noqa: E402
 from conftest import retire_dynamic_model                                  # noqa: E402
 from database import crud, models, schemas                                 # noqa: E402
 from database.database import Base                                         # noqa: E402
@@ -338,3 +339,104 @@ def test_a_script_file_stores_the_folded_spelling(watcher):
     handler._send_to_upsert([{"k": "k.1", "v": "wafer.1"}], uploader="t", filename="s.csv",
                             t_name=PLAIN, table_info=TABLES[PLAIN])
     assert _stored(factory) == [("k-01", "wafer-01", None)]
+
+
+# --- stage three: what was stored before the declaration is folded in place (총괄 2dc2c1baf) ----
+
+def _stored_then_declared(db, tmp_path, monkeypatch, table, rows_by_source, declared=DECLARED):
+    _declare(tmp_path, monkeypatch, {})
+    for source, rows in rows_by_source:
+        _write(db, table, rows, source=source)
+    _declare(tmp_path, monkeypatch, declared)
+
+
+def _layers_of(db, table, column):
+    return sorted((s.source_name, s.value, s.ingested_at) for s in db.query(models.CellSource)
+                  .filter(models.CellSource.table_name == table,
+                          models.CellSource.column_name == column))
+
+
+def test_the_backfill_folds_every_layer_in_place_and_the_same_layer_still_wins(
+        env, tmp_path, monkeypatch):
+    """Through the write door f03 would jump ahead of f07 and show 'wafer-01' (0d9a69a63)."""
+    _stored_then_declared(env, tmp_path, monkeypatch, PLAIN,
+                          [("f03.csv", [{"k": "K-01", "v": "wafer.1"}]),
+                           ("f07.csv", [{"k": "K-01", "v": "W-2"}])])
+    before = _layers_of(env, PLAIN, "v")
+    dry = replay.fold_written_notation(env, PLAIN)
+    assert (dry["cells_folded"], dry["layers_folded"]) == (1, 2)
+    assert [r.v for r in _rows(env, PLAIN)] == ["W-2"], "a dry run writes nothing"
+
+    replay.fold_written_notation(env, PLAIN, apply=True)
+    assert [r.v for r in _rows(env, PLAIN)] == ["W-02"]
+    after = _layers_of(env, PLAIN, "v")
+    assert [(s, v) for s, v, _ in after] == [("f03.csv", "wafer-01"), ("f07.csv", "W-02")]
+    assert [at for _, _, at in after] == [at for _, _, at in before], "no layer's time moves"
+    assert _fold_lines(env, PLAIN, "v")[-1] == ("W-2", "W-02", replay.NOTATION_BACKFILL_SOURCE)
+
+
+@pytest.mark.parametrize("table, raw, folded_key", [
+    (PLAIN, {"k": "k.1", "v": "a"}, "k-01"),
+    (COMP, {"lot": "L.1", "wafer": "wafer.1", "x": "a"}, "L-1_wafer-01"),
+])
+def test_the_backfill_rekeys_a_row_stored_under_the_raw_spelling(env, tmp_path, monkeypatch,
+                                                                  table, raw, folded_key):
+    _stored_then_declared(env, tmp_path, monkeypatch, table, [("f01.csv", [raw])])
+    stats = replay.fold_written_notation(env, table, apply=True)
+    (row,) = _rows(env, table)
+    assert (stats["keys_changed"], row.business_key_val) == (1, folded_key)
+
+
+def test_a_row_whose_folded_key_another_row_holds_is_skipped_and_named(env, tmp_path, monkeypatch):
+    """총괄 2dc2c1baf ①: joining the two is a merge, and a merge cannot be undone."""
+    _stored_then_declared(env, tmp_path, monkeypatch, PLAIN,
+                          [("f01.csv", [{"k": "k-01", "v": "a"}, {"k": "k.1", "v": "wafer.1"},
+                                        {"k": "k_2", "v": "b"}, {"k": "k.2", "v": "c"}])])
+    stats = replay.fold_written_notation(env, PLAIN, apply=True)
+    assert stats["rows_skipped"] == 2
+    assert sorted(s["folded_key"] for s in stats["skipped"]) == ["k-01", "k-02"]
+    assert sorted((r.k, r.v) for r in _rows(env, PLAIN)) == [
+        ("k-01", "a"), ("k-02", "b"), ("k.1", "wafer.1"), ("k.2", "c")], \
+        "a skipped row keeps every cell as it was stored"
+
+
+def test_a_value_a_second_fold_moves_again_stops_the_run_before_it_is_written(
+        env, tmp_path, monkeypatch):
+    _stored_then_declared(env, tmp_path, monkeypatch, PLAIN,
+                          [("f01.csv", [{"k": "K-01", "v": "ax"}])],
+                          declared={PLAIN: {"v": {"write": True,
+                                                  "rules": {"replace": [["x", "xx"]]}}}})
+    assert replay.fold_written_notation(env, PLAIN)["moves_again"] == 2, "the cell and its layer"
+    stats = replay.fold_written_notation(env, PLAIN, apply=True)
+    assert stats["stopped_on_moves_again"] and stats["cells_folded"] == 0
+    assert [r.v for r in _rows(env, PLAIN)] == ["ax"]
+
+
+def test_the_folded_rows_go_out_as_retroactive_events_for_the_ledger(env, tmp_path, monkeypatch):
+    """총괄 2dc2c1baf ③: the ledger follows by the events - nothing else is built for it."""
+    import event_constants as ec
+    from database.context import channel
+    from utils.payload_helper import get_payload_dict
+
+    _stored_then_declared(env, tmp_path, monkeypatch, PLAIN,
+                          [("f01.csv", [{"k": "K-01", "v": "wafer.1"}])])
+    last = env.query(models.DatabaseOutbox.id).order_by(models.DatabaseOutbox.id.desc()).first()
+    with channel(ec.CHANNEL_RETROACTIVE):
+        replay.fold_written_notation(env, PLAIN, apply=True)
+    (row,) = _rows(env, PLAIN)
+    events = [get_payload_dict(e.payload) for e in env.query(models.DatabaseOutbox).filter(
+        models.DatabaseOutbox.table_name == PLAIN,
+        models.DatabaseOutbox.id > (last[0] if last else 0))]
+    assert events and all(ec.channel_of(p) == ec.CHANNEL_RETROACTIVE for p in events)
+    assert any(row.row_id in (p.get("row_ids") or [p.get("row_id")]) for p in events), events
+
+
+def test_the_dry_run_says_a_table_with_no_write_column_has_nothing_to_fold(
+        env, tmp_path, monkeypatch):
+    from admin import retroactive
+
+    _declare(tmp_path, monkeypatch, {PLAIN: DECLARED[PLAIN]})
+    out = retroactive.count(env, "fold_written_notation", {"table": COMP})
+    assert out["absence"] == retroactive.ABSENCE_NOT_APPLICABLE
+    assert out["detail"] == ("'notw_comp' declares no \"write\" column in notation_rules.json "
+                             "- nothing is folded.")
