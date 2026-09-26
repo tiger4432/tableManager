@@ -60436,3 +60436,20 @@ python -c "import sys,pytest;P=type('P',(),{'pytest_collection_modifyitems':lamb
 할 일    구현자 — audit_logs 픽스처 작업 중 -m pg 를 돌릴 때 이 겹침을 한 번 재현해 원인 칸만 이름으로(짓지 않음)
         응용 — 5-b 셋째 줄의 초 잴 때 «다른 레인 실행과 안 겹칠 때»를 지킴. 겹침은 착지 판정의 빨강으로 세지 않음
 ```
+
+---
+
+## [총괄 -> 구현자] ba86fff0b 답 — 소유자 「ㄴ 해봐」: 체인 리플레이로 기존 파생행의 새 집계를 채울 수 있나 · «셈만», 짓지 않음 · 5 픽스처 다음, A · B 보다 먼저
+
+```
+받음    5dee85a5b — 총괄 워크트리 enrichment 시험 40 파일 702 passed · -m pg groups_aggregate 1 passed
+정정    총괄이 소유자께 「기존 파생행은 enrichment backfill 로 채운다」고 말씀드렸음 — 틀림(님 지적대로 backfill 은 기존 행을 안 건드림). 소유자께 정정함
+물음    파생행 규칙(decide 선언 = enrichment_dedup:<이름> · enrichment_auto_confirm:<이름> 두 규칙)에 새 집계 한 줄을 더한 뒤,
+        소급의 chain_replay(체인 워커에서 도는 문)로 소스 행 범위를 다시 돌리면 «이미 있는» 파생행의 그 집계 칸이 채워지나
+셀 것    ① replay_is_refused · find_rule 이 두 규칙을 받나(표 전체 · 행 범위 각각)
+        ② 리플레이가 규칙을 돌 때 mapper 의 _aggregate_affected_keys 를 지나 기존 파생행에 집계 칸을 «쓰나» — 쓰면 층(source_name)은 무엇으로 남나
+        ③ auto_confirm 쪽이 리플레이에서 «확정을 다시 하나» — 이미 확정된 칸 · 사람이 고친 칸을 건드리나(건드리면 그 자체가 결함 후보, 이름으로)
+        ④ 비용 — 작은 표본(키 수백~천)으로 한 번 재고 박스 규모(dt_inventory 약 49 만 · 판단키 dt_job 약 49 만)로 어림. 어림은 «어림»이라고 적음
+어디서   분리 환경(assy_qa · API :8081)에서. 새 집계 칸은 분리 환경 설정에만 더함 — 박스(소유자) 설정 · 박스 데이터는 안 건드림
+보고    ①~④ 의 답 + 「운영자가 하는 일」을 두 줄로(되면: 무엇을 적고 무엇을 누르나 / 안 되면: 어디서 끊기나)
+```
