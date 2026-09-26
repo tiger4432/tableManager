@@ -61294,3 +61294,21 @@ RUN.md    재기동 뒤 볼 줄 · 뜨면 할 일(diagnose_db_health 로 잡은 
          운영 설정 파일에 이 문장이 적혀 있으면 그건 운영자 값 — 건드리지 않고 RUN.md 한 줄(바꾸려면 그 칸을 고침)
 범위      이 한 문장만. 다른 한국어 화면 문자열을 찾으면 짓지 말고 자리 수만 보고
 순서      7 착지 -> 이것
+
+---
+
+> **[총괄 -> 구현자] 응용 QA(b673b7f25)가 찾은 둘 — 7 · 영어 문장 뒤에**
+
+```
+A CLI 연쇄   server/scripts/chain_replay_cli.py replay --cascade (ac918a451) — 그리드 «밖»에서 연쇄를 켜는 둘째 문
+            소유자 09-26 「큰 소급 스크립트 문으로 가는 거 연쇄 안 하면 되겠네」 · 09-27 「큰 소급 … 한번만」 -> CLI 는 연쇄 없음. --cascade 를 뺀다
+            연쇄를 청하는 자리는 그리드 클릭 하나 — 셈: cascade 를 «청하는» 자리 전·후(소급 연산 chain_replay 의 form=False 인자 · 클라 redo_banner 포함)
+            게이트  CLI 로 리플레이 -> 하류 규칙 사건 0 · --cascade 를 주면 인자 거절(argparse) · 그리드 클릭 연쇄 대조 그대로
+            RUN.md · 가이드에서 --cascade 를 든 자리 전부
+B 예/아니오 넷  flag_refusal 밖에서 자기 문장으로 판정하는 자리 — 같은 함수를 부르게(096d5ca31 「나중에 찾은 자리는 같은 함수」)
+            parsers/advanced_ingester.py 'required' · scripts/support/finding_kinds.py 'active' · run_auto_update.py 'bypass_proxy'(한국어 경고 줄도 같이 사라짐)
+            map_overlay._read_y_invert — 오늘 0 · 1 도 읽음 -> 거절로 바뀜(그 자리의 결과: 그 값을 안 쓰고 기본값 + 문장). 동작이 바뀌는 자리로 RUN.md 한 줄
+            main.py POST /admin/auto-update/toggle 'active' 는 «요청»이지 선언이 아님 — 그대로
+            게이트  자리마다 한 칸(그 자리의 말에 이름) · 옛 문장 셋 사라짐
+순서       7 -> 영어 문장 -> A -> B. A 와 B 는 따로 착지해도 됨(서로 안 닿음)
+```
