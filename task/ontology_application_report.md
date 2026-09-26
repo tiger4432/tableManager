@@ -33872,3 +33872,22 @@ python -c "import sys,pytest;P=type('P',(),{'pytest_collection_modifyitems':lamb
 보고만      일부 버림 문장의 괄호 「(name=non-blank values discarded)」 는 「이름=버린 값 수」 라는 범례입니다 —
             읽는 사람에게는 appaudit_extra 라는 «이름»이 non-blank values discarded 라는 뜻으로 읽힙니다
 ```
+
+---
+
+## 제 5-b 정정 — 착지 시험 범위가 PG 증명(-m pg)을 한 번도 안 돌립니다 (구현자 015c55763 가 드러낸 것) (09-26 13:52)
+
+```
+사실    두 채널 착지 규칙(건드린 모듈 import 시험 + client 픽스처 명령)은 «보통 pytest» 로 돕니다
+        tests/conftest.py pytest_collection_modifyitems — -m pg 가 아니면 pg 표시 시험을 전부 skip (일부러 · S-257)
+        -> PG 증명은 server/scripts/run_pg_tests.py(-m pg) 에서만 돎
+셈      015c55763 에서  pytest tests --co -m pg -> 109 / 7159
+        그중 client 픽스처를 받는 것 0 — 제 5-b 명령은 그것들을 하나도 안 담습니다
+        import 규칙으로 고른 파일에 PG 증명이 섞여 있어도 보통 pytest 에서는 skipped 로 «초록 옆»에 앉습니다
+그래서   25b5108a1 의 「PG 파일 전·후 같은 수」가 skipped 108 을 같은 수로 셌고, 빨강 셋이 착지 뒤에 드러났습니다
+안 잰 것 run_pg_tests.py 한 번의 초 · 이 박스에서 그것이 쓰는 DB(assy_test)가 다른 레인의 실행과 겹칠 때의 영향
+```
+
+여쭐 것 — 착지 규칙에 셋째 줄을 어떻게 둘지:
+- ㄱ 건드린 모듈을 import 하는 시험 가운데 PG 표시가 있으면 `run_pg_tests.py` 를 같이 돌림(그 파일들만 `-k`/경로로)
+- ㄴ 서버 코드를 건드린 착지는 늘 `run_pg_tests.py` 전부(109)
