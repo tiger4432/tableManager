@@ -61319,3 +61319,74 @@ assy_qa 에서는   이름만 적힌 INSERT 가 검색 경로 끝의 public.audi
 여쭐 것   ㄱ 로 가도 되는지 — 짓고 나면 run_pg_tests.py 를 두 DB 에서 다시 돌려 «실패 이름 목록이 같음» 을 게이트로
 그동안    unique_concat(242dea225) 은 이어서 짓습니다 — 그 PG 비교 시험은 @pytest.mark.pg 를 달아야 돎을 이번에 알았음
 ```
+
+---
+
+## [구현자 -> 총괄] unique_concat 착지 (242dea225) — 5dee85a5b · 박스 게이트는 «설계상 안 섬» · 판정 부탁
+
+### 짓기 전 셈
+
+```
+_aggregate_affected_keys 부르는 곳   mapper(규칙의 선언 집계) · analysis(늘 count 하나 — __rows__) 둘. 둘 다 새 fn 을 받음(analysis 는 안 보냄)
+fn 을 묻는 자리      config 의 읽기 하나 + mapper 셋(SELECT 식 · 접기 · 없는 키의 기본값) — 기본값은 None 그대로(min/max 와 같음)
+골격                DECIDE_CELL_SHAPES["aggregations"] = _named("column", _value()) — 항목이 자유 값이라 raw 편집기가 {fn, column, separator} 를 넘김
+                    읽는 쪽(_parse_aggregation)이 separator 를 버리던 것을 이번에 받음
+```
+
+### 지은 것
+
+```
+어휘        AGGREGATION_FUNCTIONS 에 unique_concat · AGGREGATION_SEPARATOR_DEFAULTS = {"unique_concat": ", "}(기본값 한 자리 — mapper 도 여기서 읽음)
+거절        count · min · max 에 separator -> 이름 대고 거절 · separator 가 글자 아님 -> 거절
+계산        같은 쿼리의 SELECT 에 열 하나 — 그룹의 DISTINCT 값을 JSON 배열로(PG json_agg · SQLite json_group_array — @compiles 하나)
+            빈 값은 crud 의 공유 술어(blank_sql_condition · column_text_sql)로 NULL 이 됨
+            한 키의 NULL/'' 두 SQL 그룹은 «집합 합»으로 접고, 정렬(값 순서)과 잇기는 Python — 그래서 두 방언이 같은 글자
+빈 결과     값이 하나도 없으면 None(비움) — min/max 와 같음
+```
+
+### 게이트
+
+```
+통과 test_the_derived_row_joins_the_groups_distinct_values_and_a_late_row_adds_one
+통과 test_the_separator_is_the_declared_one
+통과 test_the_default_separator_is_written_into_the_declaration
+통과 test_a_separator_on_a_function_that_joins_nothing_is_refused_by_name[spec0]
+통과 test_a_separator_on_a_function_that_joins_nothing_is_refused_by_name[spec1]
+통과 test_a_separator_that_is_not_text_is_refused
+15 passed, 1 skipped, 24 warnings in 1.11s
+PG == SQLite   test_postgresql_and_sqlite_give_the_same_string — -m pg 로 1 passed, 15 deselected, 6 warnings (두 DB 에서 "W1, W2, w1")
+               ⚠️ 처음엔 @pytest.mark.pg 가 없어서 어디서도 안 돌았음 — 붙이고 돌림
+변이
+   the order is not the value order             2 failed, 13 passed, 1 skipped, 24 warnings
+   blanks are not filtered                      1 failed, 14 passed, 1 skipped, 24 warnings
+   duplicates are kept (both seats off)         2 failed, 13 passed, 1 skipped, 24 warnings
+   SQL DISTINCT alone off                       15 passed, 1 skipped, 24 warnings
+   set union alone off                          15 passed, 1 skipped, 24 warnings
+   중복 거르기는 자리가 둘이라 하나씩 끄면 초록: SQL DISTINCT(한 그룹 안 — 전송량을 줄임) · 집합 합(한 키의 NULL/'' 그룹 사이)
+   픽스처의 판단키(lot)에는 빈 성분이 없어 «그룹 사이» 자리는 이 시험이 따로 못 잼
+범위   enrichment 를 import 하는 시험 40 파일 -> 723 passed, 2 skipped, 2573 warnings · client 픽스처 시험 전부 -> 705 passed, 1 xfailed
+안 잰 것  숫자 · 날짜 칸의 글자 모양이 두 방언에서 같은지(글자 칸만 잼)
+```
+
+### 박스 게이트 — 쓰기 전에 멈춤
+
+```
+주문      한 규칙에 한 줄 더해 enrichment backfill 로 «기존» 파생행이 채워지는지
+코드      chain/enrichment/backfill.run_backfill — 「Pre-existing derived identity: value gaps are the queue's job - the backfill never touches these rows.」
+          -> backfill 은 없는 파생행만 만듦. 기존 행은 새 집계를 못 받음 — 박스에서 돌려도 «안 채워짐»이 답
+박스      파생 규칙 하나(enrich_in_chain_probe: dt_log -> dt_inventory, 판단키 dt_job)
+          dt_inventory 488,433 줄 · dt_log 535,559 줄 · dt_job 488,428 종류 · core_wafer_id 빈칸 아님 12,400 줄
+          dt_inventory 에 새 집계를 받을 빈 칸이 없음 -> 박스 게이트는 table_config 한 칸 추가(스키마 칸 추가)부터 필요
+          가장 긴 결과(SQL 로 미리 셈, dt_job 별 core_wafer_id 서로 다른 값): 한 키에 최대 1 개 · 길이 32 자
+```
+
+| 안 | 무엇 | 좋은 점 | 위험 | 크기 |
+|---|---|---|---|---|
+| ㄱ | 기존 파생행은 그 키에 새 소스 행이 올 때 채워짐 — 이대로 | 코드 0 · backfill 판정 그대로 | 조용한 키는 영영 빈칸 | 0 |
+| ㄴ | 규칙을 소스 행 범위로 다시 돌리는 문(체인 replay)으로 기존 키를 깨움 — 그 문이 이 규칙을 받는지는 안 쟀다 | 새 코드 없을 수 있음 | 488k 키 규모면 소급 비용 큼 · 확인 전 | 안 쟀다 |
+| ㄷ | backfill 이 기존 행의 «집계 칸만» 다시 계산 | 운영자 문 하나(backfill) | 위 독스트링의 판정을 뒤집음 — 소유자 · 총괄 판정 필요 | 안 쟀다 |
+
+```
+여쭐 것   ㄱ · ㄴ · ㄷ — 그리고 박스 게이트에 table_config 칸 추가(dt_inventory)까지 갈지
+그동안    5 픽스처(f8f9eaa46) -> A -> B 순서로 갑니다
+```
