@@ -718,6 +718,103 @@ def can_mean_emptied(source_name: str) -> bool:
     """
     return source_name in (USER_SOURCE, CHAIN_SOURCE)
 
+
+def merged_layer_name(name: str, tag: str) -> str:
+    """The name collision merge gives a layer it keeps from a merged row: the writer's name, the
+    merged row in brackets. ONE spelling - `layer_writer` reads it back."""
+    return "%s (%s)" % (name, tag)
+
+
+def layer_writer(source_name) -> str:
+    """Whose layer this is. A collision-merge copy (`merged_layer_name`) is its writer's."""
+    return str(source_name or "").split(" (", 1)[0]
+
+
+_MACHINE_LAYER_NAMES = []
+
+
+def machine_layer_names() -> frozenset:
+    """Every layer name the product itself writes - ASSEMBLED from the constants that define
+    them, never retyped (총괄 a7d2e90ec). Read lazily: two of them live in modules that
+    import this one."""
+    if not _MACHINE_LAYER_NAMES:
+        from chain.enrichment import backfill, candidates
+        _MACHINE_LAYER_NAMES.append(frozenset(SOURCE_PRIORITY) | {
+            USER_SOURCE, CHAIN_SOURCE, candidates.SOURCE_NAME,
+            candidates.SOURCE_NAME_PARTIAL_KEY, backfill.SOURCE_NAME})
+    return _MACHINE_LAYER_NAMES[0]
+
+
+def is_file_layer(source_name) -> bool:
+    """A layer a file wrote - any name outside `machine_layer_names`, because a file parser
+    writes under the ingested file name, an open set.
+
+    ⚠️ A hand-written mapper that writes under its own name reads as a file layer too. The
+    fold only removes a layer that a NEWER layer of the same class repeats, so the winning
+    value never moves; what goes is the record of which older writer said it first."""
+    return layer_writer(source_name) not in machine_layer_names()
+
+
+def value_key(value, col_type: str):
+    """What a value COMPARES as - the ONE equality the value layer, the layer no-op and the
+    file-layer fold share (총괄 a7d2e90ec): a number column compares numbers when the value
+    reads as one, anything else its text with the ends trimmed."""
+    if value is None:
+        return None
+    if col_type == "number":
+        try:
+            return ("n", float(value))
+        except (ValueError, TypeError):
+            pass
+    return ("s", str(value).strip())
+
+
+def values_differ(old, new, col_type: str) -> bool:
+    return value_key(old, col_type) != value_key(new, col_type)
+
+
+def file_layer_fold(col_srcs, source_name: str, value, col_type: str, table_name: str,
+                    pin=None):
+    """(repeat, folded) for a file layer about to be written into a cell (총괄 225b2c658 ·
+    f224477c1). Among the layers of its priority class:
+
+    repeat  the newest (as `compute_priority_value` ranks them) is a file layer holding the same
+            value - write nothing: that layer already wins the class with this value
+    folded  otherwise, the other file layers of the class holding the same value - the new layer
+            outranks them, so they can go without moving the winner. Never the pinned one.
+    """
+    rank = get_source_priority(source_name, table_name)
+    same_class = [s for s in col_srcs
+                  if get_source_priority(s.source_name, table_name) == rank]
+    if same_class:
+        _value, newest = compute_priority_value(
+            {s.source_name: {"value": s.value, "ingested_at": s.ingested_at}
+             for s in same_class}, None, table_name)
+        top = next(s for s in same_class if s.source_name == newest)
+        if is_file_layer(newest) and not values_differ(top.value, value, col_type):
+            return True, []
+    return False, [s for s in same_class
+                   if s.source_name not in (source_name, pin) and is_file_layer(s.source_name)
+                   and not values_differ(s.value, value, col_type)]
+
+
+def stacked_file_layers(layers: dict, col_type: str, table_name: str, pin=None) -> list:
+    """The file layers of one cell that repeat a newer one - what the fold over layers already
+    stacked removes (총괄 225b2c658). `layers` is `{source_name: {"value", "ingested_at"}}`, the
+    shape `compute_priority_value` reads. Per priority class and value the layer it ranks first
+    stays, and the pinned one; the cell's winner is first in its own group, so it stays."""
+    groups = {}
+    for name, entry in (layers or {}).items():
+        if is_file_layer(name):
+            groups.setdefault((get_source_priority(name, table_name),
+                               value_key((entry or {}).get("value"), col_type)), {})[name] = entry
+    out = []
+    for group in groups.values():
+        if len(group) > 1:
+            _value, keep = compute_priority_value(group, None, table_name)
+            out.extend(name for name in group if name not in (keep, pin))
+    return sorted(out)
+
 # Config location comes from the single override point (server/paths.py, ASSY_DATA_ROOT).
 # Same import guard as event_constants above: crud can be imported without server/ on sys.path.
 try:
@@ -2388,6 +2485,27 @@ def bulk_upsert_cell_overwrites(db: Session, mappings: list[dict], chunk_size: i
         )
         db.execute(stmt)
 
+def bulk_delete_cell_sources(db: Session, delete_keys, chunk_size: int = BULK_CHUNK_SIZE):
+    """Delete `(table, row_id, column, source_name)` layers - the file-layer fold's write.
+
+    One `row_id IN (...)` per (table, column, source): the planner reads that as one array. A
+    thousand keys OR'ed together - as a row-value IN too - spent 436 ms PLANNING each statement
+    against 20 ms running it (box, PostgreSQL 18.3)."""
+    if not delete_keys:
+        return
+    groups = {}
+    for t_name, r_id, col_name, src_name in delete_keys:
+        groups.setdefault((t_name, col_name, src_name), []).append(r_id)
+    for (t_name, col_name, src_name), row_ids in sorted(groups.items()):
+        for chunk in _chunks(sorted(row_ids), chunk_size):
+            db.query(models.CellSource).filter(
+                models.CellSource.table_name == t_name,
+                models.CellSource.column_name == col_name,
+                models.CellSource.source_name == src_name,
+                models.CellSource.row_id.in_(chunk)
+            ).delete(synchronize_session=False)
+
+
 def bulk_delete_cell_overwrites(db: Session, delete_keys: list[tuple[str, str, str]], chunk_size: int = BULK_CHUNK_SIZE):
     if not delete_keys:
         return
@@ -3091,7 +3209,10 @@ def apply_row_update_internal(
     # `batch_write_instant`. A VALUE here rather than a SQL expression is what keeps the row
     # UPDATE on its batched path; None keeps the expression, so every caller outside the
     # batch path writes exactly what it wrote before.
-    batch_now: Any = None
+    batch_now: Any = None,
+    # [file-layer fold] Per-batch accumulator of `(table, row, column, source)` layers a file
+    # write made redundant (`file_layer_fold`). None = do not fold.
+    cell_sources_to_delete: set = None
 ) -> tuple[Any, bool, list[str]]:
     """[통합 코어] row_id 또는 business_key 기반으로 행을 찾아 업데이트하고 메타데이터 테이블을 갱신합니다."""
     # The three graph-sync names left with their branch on 2026-08-31. They stay OUT of
@@ -3246,12 +3367,24 @@ def apply_row_update_internal(
         # defect class this column exists to close.
         source_unchanged = (
             src_obj is not None
-            and src_obj.value == clean_val
+            and not values_differ(src_obj.value, clean_val, col_type)
             and src_obj.updated_by == update_item.updated_by
             and getattr(src_obj, "origin_row_id", None) == update_item.origin_row_id
         )
+        # 🔴 [총괄 225b2c658 · f224477c1] WIDENED HERE, not beside it: a file layer that repeats
+        # the newest layer of its class writes nothing either - an hourly refetch of an
+        # unchanged row stacked one layer per file per cell (owner's production: nine deep,
+        # prefetch 32 s of a 60 s chunk). One that differs is written, and the older file
+        # layers of the class that say the same value go.
+        repeat, folded = False, ()
+        if (not source_unchanged and is_file_layer(update_item.source_name)
+                and (cell_sources_to_upsert is None or cell_sources_to_delete is not None)):
+            repeat, folded = file_layer_fold(
+                col_srcs, update_item.source_name, clean_val, col_type, table_name,
+                ow.manual_priority_source if ow else None)
+        source_unchanged = source_unchanged or repeat
 
-        if not src_obj:
+        if not src_obj and not repeat:
             if cell_sources_to_upsert is None:
                 # No bulk accumulator: this object IS the write, so it has to be the
                 # mapped one.
@@ -3283,6 +3416,14 @@ def apply_row_update_internal(
             src_obj.updated_by = update_item.updated_by
             src_obj.origin_row_id = update_item.origin_row_id
             src_obj.ingested_at = datetime.now()
+            for gone in folded:
+                col_srcs.remove(gone)
+                if cell_sources_to_upsert is None:
+                    db.delete(gone)
+                else:
+                    gone_key = (table_name, row.row_id, col_name, gone.source_name)
+                    cell_sources_to_upsert.pop(gone_key, None)
+                    cell_sources_to_delete.add(gone_key)
 
             if cell_sources_to_upsert is not None:
                 upsert_key = (table_name, row.row_id, col_name, update_item.source_name)
@@ -3402,21 +3543,7 @@ def apply_row_update_internal(
                 if overwrites_cache is not None:
                     overwrites_cache[key] = None
 
-        has_changed = False
-        if is_new:
-            has_changed = True
-        else:
-            if old_val is None and new_val is None:
-                has_changed = False
-            elif (old_val is None) != (new_val is None):
-                has_changed = True
-            elif col_type == "number":
-                try:
-                    has_changed = float(old_val) != float(new_val)
-                except (ValueError, TypeError):
-                    has_changed = str(old_val).strip() != str(new_val).strip()
-            else:
-                has_changed = str(old_val).strip() != str(new_val).strip()
+        has_changed = is_new or values_differ(old_val, new_val, col_type)
 
         if has_changed:
             setattr(row, col_name, new_val)
@@ -3649,7 +3776,7 @@ def apply_row_update_internal(
                                     old_by_to_backup = pending_user_data["updated_by"] if pending_user_data else (old_user_src.updated_by if old_user_src else "system")
                                     
                                     if old_val_to_backup is not None:
-                                        backup_src_name = f"user (old_exist_{row.row_id[:6]})"
+                                        backup_src_name = merged_layer_name(USER_SOURCE, f"old_exist_{row.row_id[:6]}")
                                         backup_key = (table_name, row.row_id, col_name, backup_src_name)
                                         cell_sources_to_upsert[backup_key] = {
                                             "table_name": table_name,
@@ -3678,8 +3805,8 @@ def apply_row_update_internal(
                                         effective_src_name = "user"
                                     else:
                                         r_id_6 = row_to_delete.row_id[:6] if row_to_delete.row_id else "merged"
-                                        suffix = f" ({row_to_delete.business_key_val}_{r_id_6})" if getattr(row_to_delete, "business_key_val", None) else f" ({r_id_6})"
-                                        effective_src_name = f"{effective_src_name}{suffix}"
+                                        tag = f"{row_to_delete.business_key_val}_{r_id_6}" if getattr(row_to_delete, "business_key_val", None) else r_id_6
+                                        effective_src_name = merged_layer_name(effective_src_name, tag)
                                         
                                     src_key = (table_name, row.row_id, col_name, effective_src_name)
                                     cell_sources_to_upsert[src_key] = {
@@ -4873,6 +5000,7 @@ def _apply_batch_updates_once(db: Session, table_name: str,
         cell_sources_to_upsert = {}
         cell_overwrites_to_upsert = {}
         cell_overwrites_to_delete = set()
+        cell_sources_to_delete = set()
         deleted_row_ids = []
 
         # [Version gate] Per-batch accumulator. Only allocated for a table that declares
@@ -4912,7 +5040,8 @@ def _apply_batch_updates_once(db: Session, table_name: str,
                         prefetched_row_ids=prefetched_row_ids,
                         probed_identity=probed_identity,
                         drop_stats=drop_stats,
-                        batch_now=batch_now
+                        batch_now=batch_now,
+                        cell_sources_to_delete=cell_sources_to_delete
                     )
                     prev_row, prev_is_new = unique_results.get(row.row_id, (None, False))
                     unique_results[row.row_id] = (row, is_new or prev_is_new)
@@ -5015,6 +5144,11 @@ def _apply_batch_updates_once(db: Session, table_name: str,
             deletes = list(cell_overwrites_to_delete)
             bulk_delete_cell_overwrites(db, deletes)
             count(len(deletes))
+        with alignment_batch_counts.write_step("folded layers") as count:
+            # A layer written again later in this batch stays - the write outranks the fold.
+            folded = [k for k in cell_sources_to_delete if k not in cell_sources_to_upsert]
+            bulk_delete_cell_sources(db, folded)
+            count(len(folded))
 
         # [scope diff] What disappeared, decided by SUBTRACTING what this write claimed
         # from what was in scope - never by asking the payload what to delete.
@@ -5750,7 +5884,7 @@ def set_cell_manual_priority_batch(db: Session, table_name: str, updates: list[d
                                 old_by_to_backup = old_user_src.updated_by if old_user_src else "system"
                                 
                                 if old_val_to_backup is not None:
-                                    backup_src_name = f"user (old_exist_{row.row_id[:6]})"
+                                    backup_src_name = merged_layer_name(USER_SOURCE, f"old_exist_{row.row_id[:6]}")
                                     # 중복 삽입 방지를 위한 선제 삭제
                                     db.query(CellSource).filter(
                                         CellSource.table_name == table_name,
@@ -5782,8 +5916,8 @@ def set_cell_manual_priority_batch(db: Session, table_name: str, updates: list[d
                                     effective_src_name = "user"
                                 else:
                                     r_id_6 = row_to_delete.row_id[:6] if row_to_delete.row_id else "merged"
-                                    suffix = f" ({row_to_delete.business_key_val}_{r_id_6})" if getattr(row_to_delete, "business_key_val", None) else f" ({r_id_6})"
-                                    effective_src_name = f"{effective_src_name}{suffix}"
+                                    tag = f"{row_to_delete.business_key_val}_{r_id_6}" if getattr(row_to_delete, "business_key_val", None) else r_id_6
+                                    effective_src_name = merged_layer_name(effective_src_name, tag)
 
                                 db.query(CellSource).filter(
                                     CellSource.table_name == table_name,

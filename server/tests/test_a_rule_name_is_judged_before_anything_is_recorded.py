@@ -97,6 +97,7 @@ def test_force_disabled_still_reaches_the_judgment(monkeypatch):
 
 NAME_OPS = {
     "resolve": ({"table": "no_such_table"}, {"table": "retro_test_target"}),
+    "fold_file_layers": ({"table": "no_such_table"}, {"table": "retro_test_target"}),
     "withdraw": ({"table": "no_such_table", "source": "retro_src"},
                  {"table": "retro_test_target", "source": "retro_src"}),
     "ledger_backfill": ({"source": "no_such_source"}, {"source": "dt_job"}),

@@ -1,5 +1,22 @@
 # 지금 돌리면 되는 것
 
+> ## 🔴 [09-26 밤 3] **같은 값의 파일 층 — 쓰기에서 안 쌓고, 쌓인 것은 소급 한 번 — 마이그레이션 «없음» · 재기동 워처 · 체인 워커 · API**
+>
+> ```
+> 보이는 것   헤비 레인 청크 줄 · 파일 줄의 INSIDE THE WRITE — cell sources <초> / N rows · folded layers <초> / N rows
+>            값이 그대로인 행을 다시 가져온 파일이면 cell sources 0 rows · folded layers 0 rows = 층이 안 쌓임
+>            값이 바뀐 파일이면 cell sources 는 바뀐 칸 수 · folded layers 는 그 값을 말했던 옛 파일 층 수
+> 쌓인 것     드라이런: 어드민 Retroactive -> "Fold file layers that repeat a newer one" -> table -> Count
+>            문장 "layers N -> M, the deepest cell A -> B" — N-M 이 지울 수
+>            (이 박스 1,000 행 x 5 칸 x 9 겹 픽스처: 46,000 -> 6,000 · 9 -> 1 · 1.2 s — 운영 규모는 안 쟀음)
+>            실행: 같은 화면 Run  또는  python -c "from admin import retroactive; retroactive.run_here('fold_file_layers', {'table': '<표>'})"
+>            끝나면: python server/scripts/tune_layer_tables.py --table cell_sources --vacuum
+> 뜻         되돌릴 수 없음 — 사라지는 것은 「같은 값을 말한 옛 파일 이름」 기록뿐. 칸 값 · 이력 · 이기는 층은 그대로
+> 되돌리기    코드: git log --oneline -1 --grep "file layer that repeats" 의 커밋을 git revert 뒤 워처 · 체인 워커 · API 재기동. 지운 층은 안 돌아옴
+> ```
+
+---
+
 > ## 🔴 [09-26 밤 2] **지금 운영 — 자동 확정이 옵트인을 건너뛰어 번지는 것을 멈추는 스위치 (코드 착지 전 · 재기동 «없음»)**
 >
 > ```

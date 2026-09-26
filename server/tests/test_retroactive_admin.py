@@ -205,10 +205,12 @@ class TestInventory:
         # test_the_retired_graph_sweep_is_not_offered_as_a_button below;
         # `ledger_rescope` and `ledger_backfill` joined on 2026-08-31 - the second because
         # the forward scan was the one the owner could only stop by restarting the server.
-        # `collector_backfill` joined on 2026-09-26 - a collector run one day at a time.
+        # `collector_backfill` joined on 2026-09-26 - a collector run one day at a time;
+        # `fold_file_layers` the same day - file layers that repeat a newer one (총괄 225b2c658).
         assert {o["op"] for o in body["operations"]} == {
             "chain_replay", "withdraw", "enrichment_backfill", "enrichment_confirm",
-            "ledger_rescope", "ledger_backfill", "resolve", "collector_backfill"}
+            "ledger_rescope", "ledger_backfill", "resolve", "collector_backfill",
+            "fold_file_layers"}
 
     def test_the_run_list_and_the_cancel_request_are_actually_reachable(self, client):
         """🔴 A CONVENTION WITH NO ROUTE IS A FUNCTION NOBODY CAN CALL.

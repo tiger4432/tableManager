@@ -693,6 +693,62 @@ def count_withdrawable(db, table_name: str, source_name: str, columns: list = No
 # R3 - re-materialise the resolution over cells that already have their layers
 # ---------------------------------------------------------------------------
 
+def fold_file_layers(db, table_name: str, apply: bool = False,
+                     chunk_size: int = DEFAULT_CHUNK_SIZE, limit: int = None, pace: str = None,
+                     log=logger.info, checkpoint=None) -> dict:
+    """The file-layer fold over what one table has already stacked (총괄 225b2c658) - the write
+    path stops the stacking, this removes what stacked before it.
+
+    Per cell, `crud.stacked_file_layers`: file layers of one priority class holding one value
+    keep the newest (and a pinned one). No row, shown value or history entry moves - only
+    `cell_sources` rows go, which is why the dry run says it cannot be undone. One commit per
+    page; a stop lands between pages and a re-run finds only what is left.
+    """
+    from database import crud
+
+    from chain import keyset_scan
+
+    model, col_types = resolve_target(table_name)
+    pages_per_cycle, rest_seconds = resolve_pace(pace)
+    stats = {"mode": "apply" if apply else "dry-run", "table": table_name,
+             "rows_scanned": 0, "pages": 0, "cells_folded": 0, "layers_deleted": 0,
+             "layers_before": 0, "layers_after": 0, "deepest_before": 0, "deepest_after": 0,
+             "stopped": False}
+    for page in keyset_scan.iter_pages(db, model, columns=[], chunk_size=chunk_size,
+                                       limit=limit):
+        if checkpoint is not None and checkpoint(stats["rows_scanned"]):
+            stats["stopped"] = True
+            log(f"[fold] stopped by request after {stats['rows_scanned']} rows")
+            break
+        stats["pages"] += 1
+        stats["rows_scanned"] += len(page)
+        cell_sources, pins = _load_cell_state(db, table_name, [r[0] for r in page])
+        gone = []
+        for (row_id, col), layers in cell_sources.items():
+            if col not in col_types:
+                continue
+            drop = crud.stacked_file_layers(layers, col_types[col], table_name,
+                                            pins.get((row_id, col)))
+            stats["layers_before"] += len(layers)
+            stats["layers_after"] += len(layers) - len(drop)
+            stats["deepest_before"] = max(stats["deepest_before"], len(layers))
+            stats["deepest_after"] = max(stats["deepest_after"], len(layers) - len(drop))
+            if drop:
+                stats["cells_folded"] += 1
+                gone.extend((table_name, row_id, col, name) for name in drop)
+        stats["layers_deleted"] += len(gone)
+        if apply and gone:
+            crud.bulk_delete_cell_sources(db, gone)
+            db.commit()
+        if pages_per_cycle and rest_seconds and stats["pages"] % pages_per_cycle == 0:
+            time.sleep(rest_seconds)
+    log(f"[fold] '{table_name}' {stats['mode']}: {stats['layers_deleted']} file layer(s) in "
+        f"{stats['cells_folded']} cell(s) repeat a newer one - layers {stats['layers_before']} "
+        f"-> {stats['layers_after']}, deepest cell {stats['deepest_before']} -> "
+        f"{stats['deepest_after']}")
+    return stats
+
+
 def recompute_display_values(db, table_name: str, columns: list = None,
                              row_ids: list = None, apply: bool = False,
                              chunk_size: int = DEFAULT_CHUNK_SIZE, limit: int = None,
