@@ -149,34 +149,30 @@ export function showProgressCard(decl) {
  *
  * @param {object} decl
  * @param {string} decl.key
- * @param {boolean} decl.ok            성공인가
- * @param {string} [decl.okTitle]      성공 제목
- * @param {string} [decl.okStats]      성공 아래 줄
- * @param {string} [decl.failTitle]    실패 제목
- * @param {string} [decl.failStats]    실패 아래 줄 (서버가 준 사유가 있으면 그것)
+ * @param {'ok'|'danger'|'warn'} decl.tone   the end's tone — a skipped file is neither loaded nor
+ *                                           failed (lead 69aad666e), so the card has three faces
+ * @param {string} [decl.title]
+ * @param {string} [decl.stats]              the line under it (the server's reason when there is one)
  */
+const FACE = Object.freeze({ ok: 'status-success', danger: 'status-error', warn: 'status-warning' });
+
 export function finishProgressCard(decl) {
-  const { key, ok, okTitle = '', okStats = '', failTitle = '', failStats = '' } = decl || {};
+  const { key, tone, title = '', stats: line = '' } = decl || {};
   if (!key) return;
   const card = document.getElementById(`progress-${key}`);
   if (!card || isDone(card)) return;
 
   card.classList.add('status-auto-dismiss');
+  card.classList.add(FACE[tone] || FACE.danger);
   const t = card.querySelector('.progress-title');
   const bar = card.querySelector('.progress-bar');
   const stats = card.querySelector('.progress-stats');
-  if (ok) {
-    card.classList.add('status-success');
-    if (t) t.textContent = okTitle;
+  if (t) t.textContent = title;
+  if (tone === 'ok') {
     const percent = card.querySelector('.progress-percent');
     if (percent) percent.textContent = '100%';
-    if (bar) bar.style.width = '100%';
-    if (stats) stats.textContent = okStats;
-  } else {
-    card.classList.add('status-error');
-    if (t) t.textContent = failTitle;
-    if (bar) bar.style.width = '100%';
-    if (stats) stats.textContent = failStats;
   }
+  if (bar) bar.style.width = '100%';
+  if (stats) stats.textContent = line;
   setTimeout(() => dismiss(card), 2500);
 }

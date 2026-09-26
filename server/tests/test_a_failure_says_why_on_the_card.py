@@ -56,16 +56,18 @@ def test_a_failure_with_no_reason_omits_the_field_rather_than_sending_a_blank():
     assert "error_msg" not in msg
 
 
-def test_the_sentence_still_says_it_too():
-    """No-regression: the toast reads `message`, and it carried the reason before this round.
-    Moving the field must not take the sentence away."""
+def test_the_payload_carries_no_sentence_the_screen_writes_it():
+    """🔴 총괄 69aad666e: the sentence was built here in Korean on two branches (SUCCESS /
+    anything else), which called a skipped file a failure. The screen now writes it in English
+    from the status (retry_verdict) - the payload carries the facts, not a sentence."""
     msg = built("FAILED", "cp949 codec")
-    assert "실패" in msg["message"] and "cp949 codec" in msg["message"]
+    assert "message" not in msg
+    assert msg["status"] == "FAILED" and msg["error_msg"] == "cp949 codec"
 
 
-def test_success_keeps_its_own_sentence():
-    msg = built("SUCCESS")
-    assert "처리되었습니다" in msg["message"] and msg["status"] == "SUCCESS"
+def test_the_status_is_carried_as_given_skipped_included():
+    for status in ("SUCCESS", "FAILED", "SKIPPED"):
+        assert built(status)["status"] == status
 
 
 def test_a_success_detail_is_carried_too_rather_than_dropped_here():
@@ -77,9 +79,9 @@ def test_a_success_detail_is_carried_too_rather_than_dropped_here():
 
 
 def test_the_field_is_capped_and_the_sentence_is_capped_shorter():
-    """🔴 TWO CAPS, ON PURPOSE. The sentence is a toast line; the field is what the card
-    trims to its own width. Pre-trimming the field on the server would make the card trim an
-    already-trimmed string and the operator would lose the tail twice."""
+    """The field is what the card trims to its own width (the toast line, now the screen's,
+    trims shorter). Pre-trimming the field to a toast's length on the server would make the
+    card trim an already-trimmed string and the operator would lose the tail twice."""
     long_reason = "x" * 900
     msg = built("FAILED", long_reason)
     assert len(msg["error_msg"]) == event_constants.MAX_INGESTION_ERROR_CHARS

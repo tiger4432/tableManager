@@ -338,23 +338,23 @@ export function showRetroactiveProgress(runId, op, progress, processedRows, tota
 export function finishRetroactiveProgress(runId, status) {
   finishProgressCard({
     key: retroactiveKey(runId),
-    ok: status === 'FINISHED',
-    okTitle: '✅ Retroactive apply done',
-    okStats: '',
+    tone: status === 'FINISHED' ? 'ok' : 'danger',
     // 취소는 «실패가 아닙니다». 다만 끝났고, 끝난 방식이 다릅니다 — 그 낱말이 서버의 것입니다.
-    failTitle: status === 'CANCELLED' ? '⏹️ Retroactive apply cancelled' : '❌ Retroactive apply stopped',
-    failStats: '',
+    title: status === 'FINISHED' ? '✅ Retroactive apply done'
+      : status === 'CANCELLED' ? '⏹️ Retroactive apply cancelled' : '❌ Retroactive apply stopped',
   });
 }
 
 export function finishIngestionProgress(tableName, filename, status, errorMsg = null) {
+  // Title and face are the status judge's (lead 69aad666e) — a skipped file is not a failure.
+  const end = fileEndView(status, filename, errorMsg);
   finishProgressCard({
     key: ingestionKey(tableName, filename),
-    ok: isDoneStatus(status),
-    okTitle: '\u2705 File loaded',
-    okStats: ingestionDoneStats(errorMsg),
-    failTitle: '\u274c File load failed',
-    failStats: errorMsg ? errorMsg.slice(0, 50) : 'Exception while processing',
+    tone: end.tone,
+    title: end.title,
+    stats: end.tone === 'ok' ? ingestionDoneStats(errorMsg)
+      : errorMsg ? errorMsg.slice(0, 50)
+      : end.tone === 'danger' ? 'Exception while processing' : '',
   });
 }
 
@@ -362,6 +362,6 @@ export function finishIngestionProgress(tableName, filename, status, errorMsg = 
 // 🔴 `typeof` 가드는 «브라우저에서 아무것도 바꾸지 않습니다» -- window 가 있으면 전과 같이
 //    붙습니다. window 가 «없는» 곳(node)에서 이 한 줄이 파일 전체를 import 불가로 만들고,
 import { showProgressCard, finishProgressCard } from './progress_card.js';
-import { isDoneStatus } from './retry_verdict.js';
+import { fileEndView } from './retry_verdict.js';
 //    그래서 utils.js 를 재던 하니스가 텍스트 잘라쓰기를 쓸 수밖에 없었습니다.
 if (typeof window !== 'undefined') window.showToast = showToast;
