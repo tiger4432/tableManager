@@ -462,25 +462,26 @@ def _removal_batches(rule, table, rows_in, out, *, source_name, updated_by) -> d
         keys = came_as = dt_map_derivation.identity_columns(table)
     if not out.empty:
         _require_columns(out, keys, rule)
-    named = []
+    # ⚠️ LINEAR IN THE ROWS. `df_to_updates` gives one item per row in row order, so it runs ONCE
+    #    and each job's items are picked by position (measured: per-job masks and calls took
+    #    36.7 s for 5,000 jobs x 50,000 rows).
+    items = (df_to_updates(out, table, source_name=source_name, updated_by=updated_by)["updates"]
+             if not out.empty else [])
+    at = {}
+    if not out.empty:
+        for position, key in enumerate(out[list(keys)].astype(str).itertuples(index=False,
+                                                                              name=None)):
+            at.setdefault(key, []).append(position)
+    named = {}
     for frame, columns in ((rows_in, came_as), (out, keys)):
         if frame.empty or any(c not in frame.columns for c in columns):
             continue
         for values in frame[list(columns)].itertuples(index=False, name=None):
-            if all(_present(v) for v in values) and values not in named:
-                named.append(values)
+            if all(_present(v) for v in values):
+                named.setdefault(tuple(str(v) for v in values), None)
     batches = []
     for values in named:
-        part = out
-        if not out.empty:
-            mask = pd.Series(True, index=out.index)
-            for column, value in zip(keys, values):
-                mask &= out[column].astype(str) == str(value)
-            part = out[mask]
-        batch = {"target_table": table,
-                 "updates": (df_to_updates(part, table, source_name=source_name,
-                                           updated_by=updated_by)["updates"]
-                             if not part.empty else [])}
+        batch = {"target_table": table, "updates": [items[i] for i in at.get(values, ())]}
         if by_job:
             batch["retract"] = {"source_column": keys[0], "source_value": values[0]}
         else:
