@@ -63047,3 +63047,72 @@ wt-verify  제 것으로 잘못 알고 21:3x 에 checkout 했습니다 — 총�
            제 패치를 지우고 2755bb543 깨끗이 두었고, 이제 C:/wt-impl 만 씁니다
 ① 아침 물음  enabled 에 bool 아닌 값(0 · null · "false")을 로드에서 이름 대고 거절할까요 — 지금은 조용히 꺼짐/켜짐("false" 문자열은 켜짐)
 ```
+
+---
+
+## [구현자 -> 총괄] ⑤ 기동 DDL 착지 9e6335d8e — 첫 박동 뒤 옆 작업 · 20 s 한 상수 · 리로드마다 (3ef5fe54f)
+
+```
+기동     첫 박동을 낸 «뒤» 인덱스 세우기 · 걷기를 옆 작업으로 띄움. 루프는 안 기다림
+시한     db_safety.DDL_LOCK_TIMEOUT = "20s" 하나 — 원장 파티션 DDL 과 인덱스 DDL 이 같은 이름을 읽음
+         인덱스 DDL 연결은 풀로 돌려줄 때 시한을 풀어 줌(다음 사용자는 시한을 청한 적 없음)
+미룸     시한에 걸리면 한 줄 — 무엇을 · 어느 표 · 다음 기동/리로드로 미룸 · 그동안의 뜻
+            세우기: 그 조인은 행 단위 그물만 · 걷기: 남은 인덱스가 23505 를 낼 수 있음(S-248)
+리로드   리로드마다 다시 돎 — 앞선 실행이 끝난 «뒤»에, 기억(프로세스 메모)을 비우고 다시 물음
+```
+
+### 🔴 짓다가 잰 것 — 미룬 인덱스가 «다음에도» 못 서던 자리 (고쳤습니다)
+```
+증상    시한에 걸린 CREATE INDEX CONCURRENTLY 는 같은 이름의 INVALID 잔해를 남김. 다음 실행이 그 잔해를
+        DROP INDEX CONCURRENTLY 로 지우는데, 그 DROP 이 «자기 세션»의 읽기(점검 GROUP BY 가 연 트랜잭션)를 기다림
+        -> 시한 전: 끝없이 기다림(첫 박동 앞이었으니 워커가 박동 못 냄) · 시한 뒤: 매번 미룸 — 영영 안 섬
+잰 것   PG 시험에서 막은 트랜잭션을 푼 뒤 다시 돌려도 또 미뤄짐 -> DDL 전에 그 세션의 읽기를 끝내자 섬
+고침    unique_key.ensure 가 DDL 을 열기 전에 자기 세션을 롤백(한 줄). 부르는 자리는 인덱스 작업 하나
+모름    운영에서 이 자리에 걸린 적이 있는지는 모릅니다 — INVALID 잔해가 있어야 걸림
+```
+
+### 게이트 · 변이
+```
+게이트  루프 — 인덱스 작업은 첫 박동 뒤 한 번, 그것이 막혀 있는 동안 루프가 돎
+        리로드 — 앞선 실행이 끝난 뒤에, 기억을 비우고 다시 물음 · 루프가 기동과 리로드 두 자리에서 띄움
+        상수 — 원장 DDL 이 같은 상수를 읽고 두 자리에 '20s' 글자 없음
+        PG — 세우기가 시한에 걸려 미룸 줄 · 막은 것을 풀면 다음 실행에 잔해를 지우고 섬
+             걷기가 시한에 걸려 미룸 줄(23505 뜻) · 인덱스는 남음 · 풀에 돌려준 연결은 시한 없음
+변이    baseline: ('4 passed, 3 skipped in 0.97s || 3 passed, 7361 deselected in 11.57s', [])
+변이    the DDL runs before the first beat again -> 빨강 1
+변이    the pool gets the time limit back -> 빨강 1
+변이    a lock wait reads as a failed build -> 빨강 1
+변이    a reload does not run it again -> 빨강 1
+변이    the ledger spells its own limit -> 빨강 1
+변이    the index DDL spells its own limit -> 빨강 4
+변이    a run answers from the last run's memory -> 빨강 1
+변이    the build waits on its own session's read -> 빨강 1
+변이    a reload's run does not wait for the one before -> 빨강 1
+변이    after restore: 4 passed, 3 skipped in 0.90s || 3 passed, 7370 deselected in 12.11s
+```
+
+### 착지 범위
+```
+전체(공용 트리)  3 failed, 7212 passed, 155 skipped, 3 xfailed in 821.56s (0:13:41)
+                빨강은 test_a_written_column_is_stored_folded.py 한 파일 — 응용 레인 3 단계가 트리에서 고쳐지던 중. 그 착지를 담은 812f334aa 위에서
+                제 작업트리로 다시: 제 변경 없이도 · 있어도 초록
+PG(제 작업트리)  7 failed, 112 passed, 7178 deselected, 6 errors in 162.61s (0:02:42)
+                빨강 7 = 알려진 일곱 밖 0 · errors 6 = 깨끗한 작업트리에 없는 박스 파일(매퍼 모듈 · table_config.json)
+관련 43 파일     새 origin + 제 변경 — 빨강은 원장 두 파일뿐이고 제 변경 없이도 같은 수(작업트리에 table_config.json 없음)
+```
+
+### 4 — import 때 스키마 동기화 (지으라 안 하셔서 안 지음 · 아침 물음 재료)
+```
+자리        run_chain_worker.py 가 import 때 models.sync_dynamic_tables_schema(engine) — 첫 박동은 물론 이벤트 루프보다도 앞
+            설정에 있는데 DB 에 없는 컬럼만 ALTER TABLE ... ADD COLUMN. 시한 없음
+기다리는 것  ACCESS EXCLUSIVE — 그 표를 건드린 «모든» 열린 트랜잭션(SELECT 하나까지)을 기다리고, 기다리는 동안 그 표의
+            새 읽기 · 쓰기가 전부 그 뒤에 줄을 섬. 새 컬럼이 없으면 DDL 0
+안 1 뒤로   첫 박동 뒤로 옮김 -> 컬럼이 서기 전에 그 컬럼을 쓰는 사건을 처리할 수 있음
+안 2 시한   시한을 검 -> 걸리면 기동 실패 -> 감독자 되살림 -> 같은 자리에서 또 실패의 반복
+```
+
+### 따로
+```
+사본 둘    migrations/add_ledger_source_events.py 에도 '20s' 가 두 번 — 일회성 이관 스크립트라 지시대로 두 자리만 묶었습니다
+public    unique_key 의 잔해 · 유일 인덱스 조회가 스키마 public 에 묶여 있어, PG 시험의 표는 운영처럼 public 에 만들었습니다
+```
