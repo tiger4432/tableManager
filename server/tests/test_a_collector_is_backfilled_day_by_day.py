@@ -193,3 +193,36 @@ def test_the_count_is_the_number_of_days(workspace):
                                                 retroactive.DEFAULT_SCAN_LIMIT)
     assert (got["affected"], got["affected_label"], got["count_kind"]) == (
         3, "days to collect", retroactive.COUNT_EXACT)
+
+
+def test_a_script_that_raises_stops_the_run_and_names_the_day(workspace, monkeypatch):
+    """총괄 69aad666e B: a collect that raised ended the run with no day - any failure names it."""
+    import run_auto_update
+    ingests(monkeypatch, [])
+    real, calls = run_auto_update.GenericScriptRunnerCollector.execute, []
+
+    def execute(self):
+        calls.append(1)
+        if len(calls) == 2:
+            raise RuntimeError("the source is down")
+        return real(self)
+    monkeypatch.setattr(run_auto_update.GenericScriptRunnerCollector, "execute", execute)
+    start = _two_days_ago()
+    second = cm.backfill_windows(cm.backfill_start(start))[1][0].strftime("%Y-%m-%d %H:%M")
+
+    with pytest.raises(retroactive.RetroactiveRefused) as refused:
+        _run(start, Control())
+
+    assert ("collecting %s (KST) failed (RuntimeError: the source is down)" % second
+            in str(refused.value))
+    assert "start again from %s" % second in str(refused.value)
+
+
+def test_a_schedule_the_scheduler_cannot_read_is_refused_before_anything_runs(workspace):
+    """총괄 69aad666e B: the judge passed it and the collector's constructor then raised."""
+    with open(os.path.join(str(workspace), "ingestion_workspace", TABLE, "auto_update",
+                           "bad.py"), "w", encoding="utf-8") as f:
+        f.write(SCRIPT.replace("# schedule: 0 * * * *", "# schedule: every hour"))
+    with pytest.raises(retroactive.RetroactiveRefused, match="is not a cron expression"):
+        retroactive._judge_collector_backfill({"collector": "%s/bad.py" % TABLE,
+                                               "start": "2026-09-24"})

@@ -546,7 +546,7 @@ def numeric_prefix_ranges(prefix: str):
 # The lookup
 # ---------------------------------------------------------------------------
 
-def _resolve_target(table: str, column: str):
+def resolve_target(table: str, column: str):
     """Declaration check (INV-F3-3) -> (Column, declared type).
 
     `table_config` is the authority, not the physical schema: a column that
@@ -558,11 +558,11 @@ def _resolve_target(table: str, column: str):
     column = (column or "").strip()
     cfg = crud.TABLE_CONFIG.get(table)
     if not isinstance(cfg, dict):
-        raise SuggestValidationError(404, f"선언되지 않은 테이블입니다: {table!r}")
+        raise SuggestValidationError(404, f"table {table!r} is not declared in table_config")
     col_types = cfg.get("column_types")
     if not isinstance(col_types, dict) or column not in col_types:
         raise SuggestValidationError(
-            400, f"'{table}'에 선언되지 않은 컬럼입니다: {column!r}")
+            400, f"{column!r} is not declared on '{table}' in table_config")
 
     # The DECLARED type decides before the physical schema does: a datetime
     # column is refused for being a datetime, not for happening to be missing.
@@ -571,15 +571,18 @@ def _resolve_target(table: str, column: str):
         # Refuse instead of inventing a datetime canonicalisation - that would
         # be the second normalisation INV-F3-4 exists to prevent.
         raise SuggestValidationError(
-            400, f"날짜/시간 컬럼은 값 제안을 지원하지 않습니다: {table}.{column}")
+            400, f"{table}.{column} is a date/time column - values are listed from a text or "
+                 f"number column")
 
     model = models.DYNAMIC_TABLES.get(table)
     if model is None:
-        raise SuggestValidationError(404, f"모델이 준비되지 않은 테이블입니다: {table!r}")
+        raise SuggestValidationError(404, f"table {table!r} has no model in this process yet - "
+                                          f"reload the configs")
     col = model.__table__.c.get(column)
     if col is None:
         raise SuggestValidationError(
-            400, f"'{table}' 물리 테이블에 아직 없는 컬럼입니다: {column!r} (스키마 동기화 필요)")
+            400, f"'{table}' has no physical column {column!r} yet - reload the configs so the "
+                 f"schema is synced")
     return col, declared
 
 
@@ -738,7 +741,7 @@ def suggest_values(db, table: str, column: str, prefix: str = "", limit=None,
     if settings is None:
         settings = resolve_settings(load_config())
 
-    col, declared = _resolve_target(table, column)
+    col, declared = resolve_target(table, column)
     prefix = "" if prefix is None else str(prefix)
 
     min_len = settings["min_prefix_length"]

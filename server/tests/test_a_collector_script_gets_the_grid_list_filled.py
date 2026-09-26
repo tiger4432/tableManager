@@ -148,7 +148,9 @@ def test_an_undeclared_column_refuses_by_name(tmp_path, grid):
     scheduler.execute_collector(collector)
 
     assert collector.last_status == "FAIL"
-    assert collector.last_error.startswith("{{LIST:list_marker_parts.nope}} is not a column")
+    assert collector.last_error.startswith(
+        "{{LIST:list_marker_parts.nope}} cannot be listed - 'nope' is not declared on "
+        "'list_marker_parts'")
 
 
 def test_an_unreadable_list_refuses_by_name(tmp_path, grid, monkeypatch):

@@ -27,6 +27,8 @@ logger = get_process_logger("Scheduler", "auto_update.log")
 
 #: `last_error` of a run whose scheduler died before it finished (총괄 bfcf2a7ba 3-ㄴ).
 COLLECTOR_CUT_OFF = "The scheduler running this collector stopped before it finished - run it again."
+#: What a collector keeps when it is loaded again - by a rescan or by an edit of its script.
+CARRIED_STATUS = ("last_run", "last_status", "last_error", "runner")
 
 
 def _apply_proxy_policy():
@@ -429,12 +431,7 @@ class MultiDiscoveryScheduler:
             status_map = {}
             for col in self.collectors:
                 key = (col.table_name, os.path.basename(col.script_path) if col.script_path else col.__class__.__name__)
-                status_map[key] = {
-                    "last_run": col.last_run,
-                    "last_status": col.last_status,
-                    "last_error": col.last_error,
-                    "runner": col.runner,
-                }
+                status_map[key] = {name: getattr(col, name) for name in CARRIED_STATUS}
             if not self.collectors:
                 # 🔴 [총괄 bfcf2a7ba 3-ㄴ] A NEW PROCESS HAS NOTHING IN MEMORY - each collector's
                 #    last run is in the file the previous process wrote. Without this a restart
@@ -450,7 +447,7 @@ class MultiDiscoveryScheduler:
                     entries = []
                 for entry in entries:
                     status_map[(entry.get("table_name"), entry.get("script_name"))] = {
-                        k: entry.get(k) for k in ("last_run", "last_status", "last_error", "runner")}
+                        k: entry.get(k) for k in CARRIED_STATUS}
 
             self.collectors = []
             if not os.path.exists(self.workspace_dir):
@@ -464,10 +461,8 @@ class MultiDiscoveryScheduler:
             for col in self.collectors:
                 key = (col.table_name, os.path.basename(col.script_path) if col.script_path else col.__class__.__name__)
                 if key in status_map:
-                    col.last_run = status_map[key]["last_run"]
-                    col.last_status = status_map[key]["last_status"]
-                    col.last_error = status_map[key]["last_error"]
-                    col.runner = status_map[key]["runner"]
+                    for name in CARRIED_STATUS:
+                        setattr(col, name, status_map[key][name])
                     # 🔴 [3-ㄴ] A RUN WHOSE SCHEDULER IS GONE IS OVER, and the process restoring it
                     #    knows that - left RUNNING it would sit in «what runs now» with nobody on
                     #    it. Asked with the judgment the readers use; no stamp (unknown) stays.
@@ -547,6 +542,23 @@ class MultiDiscoveryScheduler:
                 logger.warning(f"Script '{os.path.basename(script_path)}' lacks both valid BaseCollector class and # schedule: comments.")
         except Exception as e:
             logger.error(f"Failed to load script module '{script_path}': {e}")
+
+    def _reload_changed_script(self, collector):
+        """A script edited on disk goes through the load's own door (총괄 69aad666e B): dropped and
+        loaded again by `_load_collector_from_script` - the same header read and the same judge -
+        keeping its last run. One that no longer passes stays out, with the load's line; the
+        header's window, window format and list markers are read afresh."""
+        with self._lock:
+            self.collectors.remove(collector)
+            before = len(self.collectors)
+            self._load_collector_from_script(collector.table_name, collector.script_path)
+            for fresh in self.collectors[before:]:
+                for name in CARRIED_STATUS:
+                    setattr(fresh, name, getattr(collector, name))
+                logger.info("[Auto-Reload] '%s' changed - loaded again (cron %s)",
+                            os.path.basename(collector.script_path),
+                            getattr(fresh, "cron_expression", None))
+            self._write_status_file()
 
     def _collector_key(self, collector) -> str:
         """제어 파일 규격('<workspace>/<script.py>')과 일치하는 수집기 식별 키를 반환합니다."""
@@ -703,21 +715,13 @@ class MultiDiscoveryScheduler:
         """
         now = now or datetime.now()
         disabled_set = read_disabled_scripts(self.server_dir)
-        for collector in self.collectors:
+        for collector in list(self.collectors):
             # GenericScriptRunnerCollector 일 경우 파일 동적 변경 감지 수행
             if isinstance(collector, GenericScriptRunnerCollector):
                 try:
-                    current_mtime = os.path.getmtime(collector.script_path)
-                    if current_mtime > collector.last_mtime:
-                        collector.last_mtime = current_mtime
-                        comment_config = parse_script_comments(collector.script_path)
-                        if comment_config["schedule"] and comment_config["schedule"] != collector.cron_expression:
-                            old_cron = collector.cron_expression
-                            collector.cron_expression = comment_config["schedule"]
-                            collector.next_run = croniter(collector.cron_expression, datetime.now()).get_next(datetime)
-                            logger.info(f"[Auto-Reload] Detected schedule change in '{os.path.basename(collector.script_path)}'. Updated Cron: {old_cron} -> {collector.cron_expression} (Next Run: {collector.next_run})")
-                        if comment_config["filename_prefix"] != collector.filename_prefix:
-                            collector.filename_prefix = comment_config["filename_prefix"]
+                    if os.path.getmtime(collector.script_path) > collector.last_mtime:
+                        self._reload_changed_script(collector)
+                        continue
                 except Exception as file_err:
                     logger.warning(f"Failed to check file mtime for {collector.script_path}: {file_err}")
 
@@ -1172,8 +1176,26 @@ def init_models():
     models.init_dynamic_models(crud.TABLE_CONFIG)
 
 
-if __name__ == "__main__":
+def main():
+    """Models, the config watch the watcher and the chain worker start too (총괄 69aad666e B: a
+    `{{LIST:table.new_column}}` read an old catalogue until a restart), and the 5 s loop."""
     init_models()
-    # 5초 주기로 스케줄 타이밍 검사
-    scheduler = MultiDiscoveryScheduler(check_interval=5)
-    scheduler.run()
+    config_watcher = None
+    try:
+        from database.config_watcher import start_config_watcher
+        config_watcher = start_config_watcher(None)
+    except Exception as e:
+        logger.error(f"Failed to start config watcher: {e}")
+    try:
+        MultiDiscoveryScheduler(check_interval=5).run()
+    finally:
+        if config_watcher:
+            handler = getattr(config_watcher, "config_handler", None)
+            if handler is not None:
+                handler.cancel_pending()
+            config_watcher.stop()
+            config_watcher.join()
+
+
+if __name__ == "__main__":
+    main()

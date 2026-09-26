@@ -170,7 +170,7 @@ def test_datetime_column_is_refused_not_guessed(client, db_session):
     try:
         res = client.get("/tables/inventory_master/columns/due_at/values")
         assert res.status_code == 400
-        assert "날짜" in res.json()["detail"]
+        assert "is a date/time column" in res.json()["detail"]
     finally:
         crud.TABLE_CONFIG["inventory_master"]["column_types"].pop("due_at")
 

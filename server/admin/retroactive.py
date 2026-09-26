@@ -859,7 +859,11 @@ def _run_collector_backfill(db, params, log, control=None):
     for window in windows:
         day = window[0].strftime("%Y-%m-%d %H:%M")
         collector.run_window = window
-        written = collector.execute()
+        try:
+            written = collector.execute()
+        except Exception as e:                                      # noqa: BLE001
+            raise _day_refused(day, "collecting %s (KST) failed (%s: %s)"
+                               % (day, type(e).__name__, e)) from e
         if written and not _wait_until_ingested(db, table, written, day, hook, done,
                                                 len(windows)):
             break
@@ -871,6 +875,12 @@ def _run_collector_backfill(db, params, log, control=None):
     stats = {"days": len(windows), "days_done": done}
     _final_progress(control, done, stats)
     return stats
+
+
+def _day_refused(day, what):
+    """The one sentence a day-by-day backfill stops on, whatever failed: what, and the day to
+    start again from (총괄 69aad666e B - a script that raised used to end the run with no day)."""
+    return RetroactiveRefused("%s - fix it, then start again from %s" % (what, day))
 
 
 def _wait_until_ingested(db, table, written, day, hook, done, total) -> bool:
@@ -889,9 +899,8 @@ def _wait_until_ingested(db, table, written, day, hook, done, total) -> bool:
         db.rollback()                      # the next look reads what has committed since
         if status is not None:
             if status == checkpoint.STATUS_FAILED:
-                raise RetroactiveRefused(
-                    f"the file collected for {day} (KST) failed to ingest "
-                    f"({os.path.basename(written)}) - fix it, then start again from {day}")
+                raise _day_refused(day, "the file collected for %s (KST) failed to ingest (%s)"
+                                   % (day, os.path.basename(written)))
             return True
         if hook and hook(done, total):
             return False

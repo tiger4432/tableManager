@@ -64,10 +64,8 @@ def _list_literal(db, table: str, column: str) -> str:
     try:
         got = value_suggest.suggest_values(db, table, column, prefix="",
                                            limit=LIST_MARKER_CAP, settings=settings)
-    except value_suggest.SuggestValidationError:
-        raise CollectorRefused("%s is not a column the grid can list - declare '%s.%s' in "
-                               "table_config (text or number). The run did not start."
-                               % (marker, table, column))
+    except value_suggest.SuggestValidationError as refused:
+        raise CollectorRefused(_list_refusal(marker, refused) + ". The run did not start.")
     if got.get("unavailable_reason"):
         raise CollectorRefused("%s could not be read (%s). The run did not start."
                                % (marker, got["unavailable_reason"]))
@@ -78,6 +76,12 @@ def _list_literal(db, table: str, column: str) -> str:
         raise CollectorRefused("%s has no value in '%s'. The run did not start."
                                % (marker, table))
     return ",".join("'%s'" % str(value).replace("'", "''") for value in got["values"])
+
+
+def _list_refusal(marker: str, refused) -> str:
+    """Why a list marker cannot be read - `value_suggest.resolve_target`'s own sentence, so the
+    judge before a run and the run itself say the same thing (총괄 69aad666e B)."""
+    return "%s cannot be listed - %s" % (marker, refused.detail)
 
 
 def fill_markers(text: str, window: tuple = None, window_format: str = None,
@@ -163,18 +167,27 @@ def collector_scripts(root: str) -> list:
     return out
 
 
-def script_refusals(script_path: str, header: dict = None, catalogue: dict = None) -> list:
+def script_refusals(script_path: str, header: dict = None) -> list:
     """Why this collector script cannot run as written - [] when it can. The ONE judge the
-    scheduler's load and the Declarations report both ask.
+    scheduler's load, its reload of an edited script, the backfill and the Declarations report
+    all ask.
 
-    A window header and the window markers come as a pair; a list marker names a column
-    table_config declares and the grid can list (text or number).
+    The schedule reads as a cron; a window header and the window markers come as a pair; a list
+    marker names a column the grid can list - asked of `value_suggest.resolve_target`, the door
+    the run reads it through (총괄 69aad666e B).
     """
     header = header or parse_script_comments(script_path)
     with open(script_path, "r", encoding="utf-8") as f:
         text = f.read()
     name = os.path.basename(script_path)
     out = []
+    if header.get("schedule"):
+        from croniter import croniter
+        try:
+            croniter(header["schedule"])
+        except Exception:                                           # noqa: BLE001
+            out.append("'# schedule: %s' is not a cron expression - write five fields, e.g. "
+                       "'0 * * * *'" % header["schedule"])
     writes_window = WINDOW_START in text or WINDOW_END in text
     if header.get("window"):
         try:
@@ -188,18 +201,13 @@ def script_refusals(script_path: str, header: dict = None, catalogue: dict = Non
     elif writes_window:
         out.append("'%s' writes %s or %s but declares no '# window:' - add '# window: 1d' to "
                    "its header" % (name, WINDOW_START, WINDOW_END))
-    if catalogue is None:
-        from database import crud
-        catalogue = crud.TABLE_CONFIG
+    import value_suggest
+
     for match in LIST_MARKER.finditer(text):
-        table, column = match.groups()
-        types = (catalogue.get(table) or {}).get("column_types") or {}
-        if column not in types:
-            out.append("%s names a column table_config does not declare on '%s'"
-                       % (match.group(0), table))
-        elif types[column] == "datetime":
-            out.append("%s names a datetime column - a list takes a text or number column"
-                       % match.group(0))
+        try:
+            value_suggest.resolve_target(*match.groups())
+        except value_suggest.SuggestValidationError as refused:
+            out.append(_list_refusal(match.group(0), refused))
     return out
 
 
