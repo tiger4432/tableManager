@@ -61130,3 +61130,7 @@ RSS 최고     160.1 MB · 159.9 MB
 그다음     응용이 «후» 두 칸(표준 × 전부 · 커스텀 × 일부)
 되돌리기   git revert 749318c94 뒤 워처 재기동
 ```
+
+```
+재기동함  워처 pid 37692 죽임 09:13:15 -> pid 34320 09:13:15 · 기동 스윕: 10 candidate file(s) in raws/ - 10 already concluded (tier-1, batched), 0 dispatched. · 오류 줄 없음
+```
