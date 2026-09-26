@@ -124,6 +124,12 @@ DEFAULT_STALE_AFTER_SEC = 60.0
 # detection delay.
 DEFAULT_STALL_AFTER_SEC = 300.0
 
+#: How often a loop that is WAITING on its own work beats "alive" - the watcher's sweep
+#: loop between sweeps, the chain loop while a group runs on its thread. Derived from the
+#: staleness window so the two cannot drift apart: a beat every slice is three chances per
+#: window.
+HEARTBEAT_SLICE_SECONDS = max(1.0, DEFAULT_STALE_AFTER_SEC / 3.0)
+
 _state_lock = threading.Lock()
 _state = {}  # name -> {"beats": int, "last_write": float, "started_at": float, "errors": int}
 
@@ -204,14 +210,11 @@ def beat(name, note=None, force=False):
     _own_name = name
 
     now = time.time()
-    tid = threading.get_ident()
     with _state_lock:
         # Progress on this thread's own claims. Thread-affine on purpose: a
         # healthy heavy-lane job must not be able to refresh a wedged inline
         # job's claim just because both belong to the same worker.
-        for c in _claims.values():
-            if c["name"] == name and c["thread"] == tid:
-                c["last_progress"] = now
+        _refresh_mine_locked(now, name=name)
 
         st = _state.get(name)
         if st is None:
@@ -283,33 +286,79 @@ def _work_snapshot_locked(name):
         "oldest_progress_ts": oldest["last_progress"],
         "oldest_started_ts": oldest["started"],
         "oldest_what": oldest["what"],
+        "oldest_stage": oldest["stage"],
+        "oldest_facts": dict(oldest["facts"]),
+        "oldest_stalled_on": oldest["stalled_on"],
     }
 
 
+def _refresh_mine_locked(now, name=None, stage=None):
+    """The one place a claim is refreshed: this thread's claims (of `name`, or of any name)
+    made progress now. A refresh ends a stall episode, so what the last one was found
+    waiting on is dropped. Caller holds ``_state_lock``."""
+    tid = threading.get_ident()
+    for c in _claims.values():
+        if c["thread"] == tid and (name is None or c["name"] == name):
+            c["last_progress"] = now
+            c["stalled_on"] = None
+            if stage is not None:
+                c["stage"] = stage
+
+
+def progress(stage):
+    """This thread's work moved into `stage` - progress on its open claims, without a
+    beat: nothing is written and the beat count does not move. A loop that is waiting on
+    this work beats for it (`HEARTBEAT_SLICE_SECONDS`), and that beat carries the stage."""
+    with _state_lock:
+        _refresh_mine_locked(time.time(), stage=stage)
+
+
+def note_work(**facts):
+    """Facts about this thread's open claims (the database pid the work is running on).
+    Not progress - a note refreshes nothing."""
+    with _state_lock:
+        tid = threading.get_ident()
+        for c in _claims.values():
+            if c["thread"] == tid:
+                c["facts"].update(facts)
+
+
+def mark_stalled(claim_id, what_it_waits_on):
+    """What a stalled claim was found waiting on - once per episode, cleared by progress."""
+    with _state_lock:
+        claim = _claims.get(claim_id)
+        if claim is not None:
+            claim["stalled_on"] = str(what_it_waits_on)
+
+
 @contextmanager
-def work_claim(name, what):
+def work_claim(name, what, note=None):
     """Declare a unit of real work in progress for worker ``name``.
 
-    Wrap the whole unit (one file's ingestion), and call ``beat(name)`` from
-    inside it as it progresses - each beat on this thread refreshes the claim.
-    The claim is always released, including on the failure paths, because a claim
-    left open by a crashed job would look exactly like a stall forever.
+    Wrap the whole unit (one file's ingestion), and call ``beat(name)`` or
+    ``progress(stage)`` from inside it as it progresses - on this thread, either
+    refreshes the claim. The claim is always released, including on the failure paths,
+    because a claim left open by a crashed job would look exactly like a stall forever.
+
+    `note` is what the entry and exit beats carry; left out, they say start/done. A worker
+    whose note is a channel of its own (the chain's drop counts) passes that instead.
     """
     now = time.time()
     cid = next(_claim_seq)
     with _state_lock:
-        _claims[cid] = {"name": name, "what": str(what)[:200],
+        _claims[cid] = {"id": cid, "name": name, "what": str(what)[:200],
                         "thread": threading.get_ident(),
-                        "started": now, "last_progress": now}
+                        "started": now, "last_progress": now,
+                        "stage": None, "facts": {}, "stalled_on": None}
     # Beat on entry so the claim is visible in the heartbeat file immediately,
     # rather than only after the next poller tick.
-    beat(name, note=f"start: {what}", force=True)
+    beat(name, note=f"start: {what}" if note is None else note, force=True)
     try:
         yield
     finally:
         with _state_lock:
             _claims.pop(cid, None)
-        beat(name, note=f"done: {what}", force=True)
+        beat(name, note=f"done: {what}" if note is None else note, force=True)
 
 
 def open_claims():
@@ -373,6 +422,9 @@ def read_all(stale_after=DEFAULT_STALE_AFTER_SEC, now=None,
                 entry["work"] = {
                     "open": work.get("open"),
                     "what": work.get("oldest_what"),
+                    "stage": work.get("oldest_stage"),
+                    "facts": work.get("oldest_facts") or {},
+                    "stalled_on": work.get("oldest_stalled_on"),
                     "no_progress_seconds": round(max(0.0, since), 2),
                     "held_seconds": round(
                         max(0.0, now - float(work.get("oldest_started_ts") or now)), 2),

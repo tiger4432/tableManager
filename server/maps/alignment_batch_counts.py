@@ -25,6 +25,8 @@ import contextlib
 import contextvars
 import time
 
+from utils import heartbeat
+
 _COUNTS: contextvars.ContextVar = contextvars.ContextVar(
     "assy_manager.alignment_batch_counts", default=None)
 
@@ -127,6 +129,9 @@ def stage(name: str):
     if counts is None:
         yield
         return
+    # Entering a stage is progress on the work this thread claimed - the watcher's file,
+    # the chain's group - and the stage is what a stalled line names.
+    heartbeat.progress(name)
     started = time.monotonic()
     try:
         yield

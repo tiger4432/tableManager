@@ -1812,6 +1812,7 @@ def _process_chain_transaction_group_sync(tx_id, events, db, rules):
             #    decorator registry) no longer arrives as a pair of Nones.
             is_batch = rule.get("is_batch", False)
             _rule_name = rule.get("name") or "<unnamed rule>"
+            heartbeat.note_work(rule=_rule_name)
             rules_by_target[target_table].add(_rule_name)
             if rule.get("allow_map_metadata_upsert"):
                 rules_by_target[map_meta_registrar.META_TABLE].add(_rule_name)
@@ -1972,8 +1973,94 @@ async def process_chain_transaction_group(tx_id, events, db, rules):
     tests and one production caller address this function - what changed is which thread
     the work happens on. See `_process_chain_transaction_group_sync` for the measurement.
     """
-    return await asyncio.to_thread(
-        _process_chain_transaction_group_sync, tx_id, events, db, rules)
+    return await asyncio.to_thread(_claimed_group_sync, tx_id, events, db, rules)
+
+
+def _claimed_group_sync(tx_id, events, db, rules):
+    """The group under a work claim opened ON ITS OWN THREAD - the watcher's mechanism
+    (fc1c0781d ③). Stage entries on this thread are its progress; the loop that waits for
+    it beats «alive» from another thread and so cannot refresh it."""
+    rows = sum(len(get_payload_dict(e).get("row_ids") or ()) or 1 for e in events)
+    what = "tx %s · %d row(s) of %s" % (
+        tx_id, rows, ", ".join(sorted({str(e.table_name) for e in events})))
+    with heartbeat.work_claim("chain", what, note=_worker_note()):
+        # The batch's transaction was begun on the loop thread, before this claim - so the
+        # backend is read here once; a later transaction notes its own (database.py).
+        try:
+            heartbeat.note_work(
+                db_pid=db.connection().connection.dbapi_connection.get_backend_pid())
+        except Exception:                                   # noqa: BLE001 - SQLite has none
+            pass
+        return _process_chain_transaction_group_sync(tx_id, events, db, rules)
+
+
+#: How long the stalled line's own question may run. It reads two system views and takes
+#: no lock, so this bounds a database that cannot answer at all.
+STALL_PROBE_TIMEOUT_MS = 5000
+
+
+async def _await_group_beating(group, db):
+    """Wait for a group while beating «alive» every `HEARTBEAT_SLICE_SECONDS`, and say once
+    per episode what a group that stopped moving is waiting on (fc1c0781d ③④).
+
+    🔴 A LONG GROUP IS NOT A WEDGED LOOP. The beat used to come only from the loop head, so
+    any group over 60 s read `wedged` - moving or not. Now the loop says it is alive while
+    it waits, and whether the WORK moves is the claim's to say: no stage entered for
+    `DEFAULT_STALL_AFTER_SEC` is `stalled`, the watcher's number (총괄 255ce6c10)."""
+    task = asyncio.ensure_future(group)
+    while True:
+        done, _pending = await asyncio.wait({task}, timeout=heartbeat.HEARTBEAT_SLICE_SECONDS)
+        if done:
+            return task.result()
+        try:
+            await _say_what_a_stalled_group_waits_on(db)
+        except Exception as exc:                                   # noqa: BLE001
+            # The observer goes quiet, never the group it is watching.
+            logger.warning("[Chain] the stall check went quiet this slice: %s", exc)
+        heartbeat.beat("chain", note=_worker_note())
+
+
+async def _say_what_a_stalled_group_waits_on(db):
+    now = time.time()
+    for claim in heartbeat.open_claims():
+        since = now - claim["last_progress"]
+        if (claim["name"] != "chain" or claim["stalled_on"] is not None
+                or since <= heartbeat.DEFAULT_STALL_AFTER_SEC):
+            continue
+        facts = claim["facts"]
+        pid = facts.get("db_pid")
+        if pid is None:
+            said = "not probed (no database pid was noted for this group)"
+        else:
+            try:
+                said = await asyncio.to_thread(_what_a_backend_waits_on,
+                                               db.get_bind().url, pid)
+            except Exception as exc:                               # noqa: BLE001
+                # 🔴 THE PROBE ONLY GOES QUIET. Health keeps its verdict; this says which
+                # question went unanswered.
+                said = "not probed (%s: %s)" % (type(exc).__name__, exc)
+        line = "stalled %d s in %s (rule %s · db pid %s) - %s" % (
+            since, claim["stage"] or "no stage yet", facts.get("rule") or "none yet", pid,
+            said)
+        heartbeat.mark_stalled(claim["id"], line)
+        logger.warning("[Chain] %s: %s", claim["what"], line)
+
+
+def _what_a_backend_waits_on(bind_url, pid):
+    """`db_waits` over a connection of its own, outside the pool (S-167), read-only and
+    bounded - the group's own session is the one that is stuck."""
+    import db_safety
+    import db_waits
+    from database.database import connection_name
+    probe = db_safety.open_readonly_engine(
+        bind_url, application_name=connection_name() + "_probe",
+        statement_timeout_ms=STALL_PROBE_TIMEOUT_MS)
+    try:
+        with probe.connect() as conn:
+            rows = db_waits.backend_waits(conn.connection.dbapi_connection, pid)
+    finally:
+        probe.dispose()
+    return db_waits.wait_sentence(rows[0] if rows else None, pid)
 
 
 #: Follow-up rules for the `builtin:` dispatcher, held across drain batches.
@@ -2230,7 +2317,8 @@ async def process_pending_groups(db, group_order, groups, rules, db_session_fact
         # reaches nothing else - a concurrent group or a route in this process counts into
         # its own scope or into none.
         with alignment_batch_counts.counting_group() as alignment_summary:
-            success, error_reason, broadcast_messages = await process_chain_transaction_group(tx_id, events_in_tx, db, rules)
+            success, error_reason, broadcast_messages = await _await_group_beating(
+                process_chain_transaction_group(tx_id, events_in_tx, db, rules), db)
 
             # 🔴 UNREADABLE ROWS ARE DEFERRED, NOT FAILED (S-160, 판정 267). Measured: the
             # rows an event names become readable in UNDER 100 ms - the same session that
@@ -3488,8 +3576,60 @@ def pending_chain_events(db, limit: int = 200) -> list:
     ).order_by(DatabaseOutbox.id.asc()).limit(limit).all()
 
 
+#: When this module was imported - before any connection a chain process opens.
+_IMPORTED_AT = time.time()
+
+
+def _end_queries_a_gone_chain_worker_left_sync(db_session_factory):
+    """End the database backends a chain worker that is gone left running (총괄 948ee98b5 ⑥).
+
+    🔴 WHY THEY OUTLIVE IT. PostgreSQL learns that a client died only when it next writes
+    to it, so a query the killed worker started keeps running - and holds what it holds:
+    measured in production, the next worker's startup `DROP INDEX CONCURRENTLY` waited on
+    it before the first beat, and the heartbeat kept the dead pid (`foreign_beat`).
+
+    ⚠️ «NOT MINE» IS «NAMED LIKE ME AND OPENED BEFORE I WAS IMPORTED». Only this process's
+    name - so a retroactive child or a script is never touched - and only in the chain's
+    own process: a loop running inside the API would be naming the API's connections.
+    Skipped while another chain loop is alive (it is not gone)."""
+    from database.database import connection_name
+    from utils.logger import active_process_name
+    import db_waits
+    if active_process_name() != logger.name or another_chain_loop_is_running():
+        return
+    db = db_session_factory()
+    try:
+        bind = db.get_bind()
+    finally:
+        db.close()
+    if bind.dialect.name != "postgresql":
+        return
+    with bind.connect() as conn:
+        pids = [row[0] for row in conn.execute(text(
+            "SELECT pid FROM pg_stat_activity WHERE application_name = :name"
+            " AND datname = current_database() AND pid <> pg_backend_pid()"
+            " AND backend_start < to_timestamp(:before)"),
+            {"name": connection_name(), "before": _IMPORTED_AT})]
+        for pid in pids:
+            rows = db_waits.backend_waits(conn.connection.dbapi_connection, pid)
+            said = db_waits.wait_sentence(rows[0] if rows else None, pid)
+            ended = conn.execute(text("SELECT pg_terminate_backend(:pid)"),
+                                 {"pid": pid}).scalar()
+            logger.warning("[Chain] %s pid %s, left by a chain worker that is gone - %s",
+                           "ended" if ended else "could not end", pid, said)
+        conn.commit()
+
+
 async def start_chain_ingestion_worker(db_session_factory):
     logger.info("Initializing Chained Ingestion Worker Daemon...")
+
+    # First, before any startup work can queue behind them.
+    try:
+        await asyncio.to_thread(_end_queries_a_gone_chain_worker_left_sync,
+                                db_session_factory)
+    except Exception as exc:
+        logger.error("[Chain] could not look for database queries a gone chain worker left "
+                     "running, so startup may wait behind them: %s", exc)
 
     # 🔴 BEFORE ANY LEDGER LOOP STARTS (S-88). Both loops below write to the ledger, and
     # one of them was added the same day this gap was found.

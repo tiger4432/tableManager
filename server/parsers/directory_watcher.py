@@ -279,8 +279,9 @@ PERIODIC_SWEEP_INTERVAL_SECONDS = 300
 #: DERIVED from that threshold rather than chosen, so the two cannot drift apart: raising
 #: the staleness window widens this automatically, and lowering it narrows this.
 #: The split-mode watcher does the same thing with its 3 s poll (`run_watcher.py`); this
-#: is that shape fitted to a loop whose real work is 100x rarer.
-HEARTBEAT_SLICE_SECONDS = max(1.0, heartbeat.DEFAULT_STALE_AFTER_SEC / 3.0)
+#: is that shape fitted to a loop whose real work is 100x rarer. The number lives in
+#: `heartbeat` because the chain loop beats on the same slice while a group runs.
+HEARTBEAT_SLICE_SECONDS = heartbeat.HEARTBEAT_SLICE_SECONDS
 
 
 def load_global_table_config() -> dict:
@@ -417,23 +418,19 @@ class ChunkWaitSampler:
         conn = None
         try:
             import psycopg2
-            conn = psycopg2.connect(self._dsn)
+            import db_waits
+            from database.database import connection_name
+            conn = psycopg2.connect(self._dsn, application_name=connection_name())
             conn.set_isolation_level(0)
             while not self._stop.is_set():
                 try:
-                    with conn.cursor() as cur:
-                        cur.execute("SELECT wait_event_type, wait_event FROM pg_stat_activity"
-                                    " WHERE pid = %s", (self._pid,))
-                        row = cur.fetchone()
-                        key = "none" if not row or not row[0] else "%s:%s" % (row[0], row[1])
-                        self.counts[key] = self.counts.get(key, 0) + 1
-                        if row and row[0] == "Lock" and self.blocker is None:
-                            cur.execute("SELECT pid, left(query, 60) FROM pg_stat_activity"
-                                        " WHERE pid = ANY(pg_blocking_pids(%s)) LIMIT 1",
-                                        (self._pid,))
-                            b = cur.fetchone()
-                            if b:
-                                self.blocker = "pid %s: %s" % (b[0], (b[1] or "").strip())
+                    rows = db_waits.backend_waits(conn, self._pid)
+                    row = rows[0] if rows else None
+                    key = (row or {}).get("wait") or "none"
+                    self.counts[key] = self.counts.get(key, 0) + 1
+                    if (row and row["wait_type"] == "Lock" and row["blocker"]
+                            and self.blocker is None):
+                        self.blocker = db_waits.wait_sentence(row)
                 except Exception:
                     # A sampler that raises must never be the reason a chunk fails.
                     break
@@ -458,7 +455,7 @@ class ChunkWaitSampler:
             return ""
         parts = " · ".join("%s %d" % (k, v) for k, v in
                              sorted(self.counts.items(), key=lambda kv: -kv[1]))
-        return " | waits: " + parts + (" | blocked by %s" % self.blocker if self.blocker else "")
+        return " | waits: " + parts + (" | %s" % self.blocker if self.blocker else "")
 
 
 def _new_row_ids(table, results):

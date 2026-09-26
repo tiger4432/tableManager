@@ -1,5 +1,34 @@
 # 지금 돌리면 되는 것
 
+> ## 🔴 [09-26 밤 1] **체인 멈춤 증거 — 연결 이름 · 멈춤 줄 · 이전 체인 워커가 남긴 쿼리 끊기 — 마이그레이션 «없음» · 재기동 넷 다(API · 워처 · 체인 · 스케줄러 — 연결 이름은 프로세스를 새로 띄워야 붙음)**
+>
+> ```
+> 연결 이름    pg_stat_activity 의 application_name — assy_server · assy_watcher · assy_chain · assy_scheduler · assy_retroactive · 스크립트는 assy_<스크립트>
+>             체인이 멈춤을 물을 때 여는 짧은 연결은 assy_chain_probe
+> 찾기        Select-String -Path server\chain_worker.log -Pattern ": stalled \d+ s in "        <- 멈춘 묶음마다 한 번
+>             Select-String -Path server\chain_worker.log -Pattern "left by a chain worker"       <- 기동 때 끊은 남은 쿼리
+>             conda run --no-capture-output -n assy_manager python server/scripts/diagnose_db_health.py   <- §3 이 같은 문장
+> 멈춤 줄     [Chain] tx <id> · <행> row(s) of <표>: stalled <초> s in <단계> (rule <규칙> · db pid <pid>) - <그 pid 가 하고 있는 것>
+>             어드민 health 의 chain: 단계가 300 s 넘게 안 움직이면 stalled + 같은 문장. 움직이는 긴 묶음은 ok (예전엔 60 s 넘으면 wedged)
+> 문장의 뜻과 할 일
+>   waiting Lock:… on pid N (assy_watcher, active …)                   워처 청크가 같은 행을 쓰는 중 — 기다림(청크가 커밋하면 풀림)
+>   waiting Lock:… on pid N (assy_<무엇>, idle in transaction <긴 시간>)  그 프로세스가 트랜잭션을 연 채 멈춤 — 그 프로세스 재기동
+>   waiting Lock:… on pid N (assy_chain, …)                            체인 자기 프로세스의 리플레이 · 소급이 같은 행을 씀 — 청크 커밋마다 풀림. 안 풀리면 그 소급을 멈춤
+>   waiting Lock:… on pid N (assy_ 로 시작하지 않는 이름)                 사람 · 외부 도구의 연결
+>   its own query active <초> (no lock…): SELECT …                      그 쿼리 자체가 느림 — 오늘 운영의 조인 답 SELECT 가 이 모양. 급하면 그 규칙 enabled:false + 리로드, 나중에 리플레이
+>   idle in transaction <초> - the time is not in the database          DB 가 아니라 파이썬(맵퍼 계산)이 오래 걸림
+>   not probed (…)                                                      묻기가 실패 — diagnose_db_health 로 직접
+> 남은 쿼리    체인 워커가 기동할 때 «이미 없는» 이전 체인 워커의 연결(이름 assy_chain · 이 프로세스보다 먼저 열림)을 끊고 하나마다 한 줄
+>             assy_retroactive · 스크립트 · 다른 프로세스 이름은 안 건드림. 다른 체인 루프가 살아 있으면 아무것도 안 끊음
+>             ⚠️ 이 착지 «뒤 첫 재기동»에는 못 끊음 — 이전 코드의 연결은 이름이 없음(diagnose 의 app=-). 두 번째 재기동부터 스스로 풂
+> foreign_beat 박동 파일의 pid 가 감독자가 띄운 pid 가 아님 — 새 워커가 첫 박동 전에 막혀 있고(기동 인덱스 작업이 남은 쿼리 뒤에서 기다림) 파일엔 옛 pid 가 남은 것
+> 워처 청크 줄  " | blocked by pid N: …" 가 " | waiting Lock:… on pid N (<이름>, <state> <시간>): …" 로 바뀜 — 같은 함수의 문장
+> 스위치      없음(로그 · health 문장만). 멈춤 문턱은 워처와 같은 300 s
+> 되돌리기    git revert 뒤 네 프로세스 재기동
+> ```
+
+---
+
 > ## 🔴 [09-26 저녁 2] **표기 값 규칙 1 단계 — join · pad_last_number · replace · time 의 선언 점검과 미리 보기 — 마이그레이션 «없음» · 재기동 API (notation_rules.json 에 선언이 있을 때)**
 >
 > ```
@@ -22,7 +51,7 @@
 > ```
 > 찾기       Select-String -Path server\watcher.log -Pattern "\[Ingest\] .* FILE "            <- 파일이 끝날 때 한 줄 (두 레인 같은 줄)
 >            Select-String -Path server\watcher.log -Pattern "\[Ingest\] .* chunk \d+:"       <- 청크마다 한 줄
->            체인 쪽 같은 쓰기 단계는 server.log 의 "[Chain] group" 줄 INSIDE THE WRITE 에 같은 모양으로
+>            체인 쪽 같은 쓰기 단계는 chain_worker.log 의 "[Chain] group" 줄 INSIDE THE WRITE 에 같은 모양으로 — 그 줄은 뷰를 지은 묶음에만 찍힘(보통 묶음엔 안 나옴)
 > 파일 줄     <표> FILE <파일>: 행 수 · 걸린 초 · 분당 행 · <레인> · waited <초> (<무엇을 기다렸나>)
 >            · sent: new · changed · unchanged · cells changed · side-table rows · STAGES(parse · apply · commit) · INSIDE THE WRITE · DB wait samples (Lock)
 > 비교하는 법  같은 표의 느린 파일 줄과 안 느린 파일 줄을 위아래로 놓고 칸마다 견줌

@@ -164,6 +164,12 @@ def active_log_path():
     return _ACTIVE["path"]
 
 
+def active_process_name():
+    """The name the process's entry point gave its logger (Server, Chain, Watcher ...), or
+    None before any process logger is set up."""
+    return _ACTIVE["process_name"]
+
+
 def reset_active_log_for_test():
     """Forget the binding so a test can exercise the first-wins rule. Test-only: the
     handlers themselves are left alone, so this cannot half-rewire a running process."""

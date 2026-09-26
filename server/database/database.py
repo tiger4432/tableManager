@@ -1,4 +1,5 @@
 from sqlalchemy import create_engine, event
+from sqlalchemy.engine import Engine as _Engine
 from sqlalchemy.orm import (sessionmaker, declarative_base, Session,
                             SessionTransactionOrigin)
 import os
@@ -59,6 +60,28 @@ else:
 # test process never contacts a real database at all, not even to be turned away.
 _db_safety.install_test_database_guard(engine, production_url=DEFAULT_PG_URL)
 
+
+def connection_name():
+    """What this process's connections are called in `pg_stat_activity`: `assy_` + the name
+    its entry point gave its logger (server · watcher · chain · scheduler · retroactive), or
+    the script's own name when no process logger was set up. Read when a connection OPENS,
+    not at import - `main.py` imports this module before it names its logger."""
+    import sys as _sys
+    from utils.logger import active_process_name
+    name = active_process_name() or os.path.splitext(
+        os.path.basename(_sys.argv[0] if _sys.argv and _sys.argv[0] else "python"))[0]
+    return "assy_" + name.lower()
+
+
+# Every PostgreSQL connection a process opens carries that name - the pool above, a
+# script's own engine, a retroactive child's - so a stuck backend in `pg_stat_activity`
+# says whose it is. On the Engine CLASS for the same reason as the test guard; a name a
+# caller wrote itself (the read-only passes) is kept.
+@event.listens_for(_Engine, "do_connect")
+def _name_the_connection(dialect, conn_rec, cargs, cparams):
+    if dialect.name == "postgresql":
+        cparams.setdefault("application_name", connection_name())
+
 # [Notation normalization] SQLite has neither `regexp_replace` nor `translate`, so the
 # query-time notation fold has no SQL spelling there. Register it as a scalar function
 # instead, on the Engine CLASS - the suite and the contracts each build their own
@@ -74,6 +97,20 @@ except Exception as _e:  # pragma: no cover - never block boot on this
         "notation fold could not be registered for non-PostgreSQL dialects: %s", _e)
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+
+@event.listens_for(Session, "after_begin")
+def _note_the_backend(session, transaction, connection):
+    """The database pid a claimed unit of work is running on (a chain group, a watcher
+    file) - read off the driver, no query, and re-read on every transaction, so a commit
+    that hands the session another pooled connection keeps it true. A thread with no open
+    claim notes nothing."""
+    try:
+        pid = connection.connection.dbapi_connection.get_backend_pid()
+    except Exception:                                   # noqa: BLE001 - SQLite has none
+        return
+    from utils import heartbeat
+    heartbeat.note_work(db_pid=pid)
 
 Base = declarative_base()
 

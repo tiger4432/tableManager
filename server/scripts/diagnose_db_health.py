@@ -27,6 +27,7 @@ import sqlalchemy as sa                                          # noqa: E402
 #    report on production - which is precisely what happened on the first run of this script.
 #    `DB_URL_SOURCE` is printed below so the operator can see WHICH of the three answered.
 from database.database import SQLALCHEMY_DATABASE_URL, DB_URL_SOURCE   # noqa: E402
+import db_waits                                                  # noqa: E402
 
 # An open transaction older than this is worth a look. Not a threshold with authority -
 # a five-minute transaction on a busy system may be ordinary and a one-minute one may be a
@@ -137,19 +138,12 @@ with engine.connect() as conn:
 
     # 3. Is anything actually blocked ----------------------------------------
     print("\n3. LOCK WAITS")
-    rows = conn.execute(sa.text("""
-        SELECT w.pid AS waiter, b.pid AS blocker,
-               EXTRACT(EPOCH FROM (now() - w.query_start))::int AS wait_sec,
-               left(coalesce(w.query, ''), 70) AS q
-        FROM pg_stat_activity w
-        JOIN LATERAL unnest(pg_blocking_pids(w.pid)) AS b(pid) ON true
-        WHERE w.datname = current_database()
-    """)).fetchall()
+    rows = db_waits.backend_waits(conn.connection.dbapi_connection)
     if not rows:
         say("OK", "nothing is waiting on a lock")
     else:
-        for waiter, blocker, secs, q in rows:
-            print(f"  PID {waiter} waiting {secs}s on PID {blocker}: {q}")
+        for row in rows:
+            print(f"  PID {row['pid']} ({row['app']}) {db_waits.wait_sentence(row)}")
         say("BAD", f"{len(rows)} session(s) blocked on locks")
 
     # 4. Bloat - the mechanism that turns a stale transaction into slowness ---

@@ -389,7 +389,11 @@ def compute_health(db_result, heartbeats, supervisor_status, outbox_result,
                     f"worker '{hb_name}' is beating but its work has not "
                     f"progressed for {work.get('no_progress_seconds')}s "
                     f"(threshold {work.get('stall_after_seconds')}s): "
-                    f"{work.get('what')}")
+                    f"{work.get('what')}"
+                    # What the worker itself found it waiting on - the same sentence its
+                    # log carries - or, before it has asked, the stage it stopped in.
+                    + (f" - {work['stalled_on']}" if work.get("stalled_on") else
+                       f" in {work['stage']}" if work.get("stage") else ""))
         entry["stale_after_seconds"] = stale_after
         workers[hb_name] = entry
 
