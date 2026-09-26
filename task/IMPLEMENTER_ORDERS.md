@@ -61281,3 +61281,16 @@ RUN.md    재기동 뒤 볼 줄 · 뜨면 할 일(diagnose_db_health 로 잡은 
 6-4  정정 받음 — 사유는 참. 계약 벡터의 닫힌 어휘 그대로
 8    총괄 검증 도는 중(C:/wt-lead)
 ```
+
+---
+
+> **[총괄 -> 구현자] 7b76c16a2 받음 — 7 뒤에 한 줄 하나 (UI 영어 상설)**
+
+```
+6        착지 받음 · 총괄 검증 도는 중
+지나며 본 것  map_overlay.get_paint_rules 의 기본 message 한국어 — 화면에 그려지는 문자열이라 영어로(소유자 상설 「UI 에 한국어 쓰지 말라고」)
+         자리 둘: server/map_overlay.py 의 기본값 · server/config/sample/map_overlay_config.json.sample 의 같은 문장
+         문장 모양: 무엇 · 다음 행동 (예: 「This cell holds a locked value - it cannot be painted」)
+         운영 설정 파일에 이 문장이 적혀 있으면 그건 운영자 값 — 건드리지 않고 RUN.md 한 줄(바꾸려면 그 칸을 고침)
+범위      이 한 문장만. 다른 한국어 화면 문자열을 찾으면 짓지 말고 자리 수만 보고
+순서      7 착지 -> 이것
