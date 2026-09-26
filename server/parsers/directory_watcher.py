@@ -2458,6 +2458,8 @@ class IngestionHandler(FileSystemEventHandler):
         db = SessionLocal()
         try:
             done = ingestion.checkpoint.find_completed_ingestion(db, t_name, signature)
+            failed_here = done is None and ingestion.checkpoint.failed_here_unchanged(
+                db, t_name, signature, os.path.abspath(file_path), file_stat)
         except Exception as e:
             # dedup 조회 실패는 처리를 막지 않는다(가용성 우선) — 단, 조용히 넘어가지 않는다.
             logger.warning(f"[{t_name}] Dedup lookup failed (proceeding with ingestion): {e}")
@@ -2465,6 +2467,11 @@ class IngestionHandler(FileSystemEventHandler):
         finally:
             db.close()
 
+        if failed_here:
+            # Quiet like tier 1: the FAILED row written when it failed here is the record.
+            logger.debug(f"[{t_name}] ⏭️ [tier2] same content already FAILED at this path and "
+                         f"the file has not changed since - {basename}")
+            return True
         if done is None:
             return False
 

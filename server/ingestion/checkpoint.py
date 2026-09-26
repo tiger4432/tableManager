@@ -309,6 +309,28 @@ def find_completed_ingestion(db, table_name: str, file_signature: str):
     return None
 
 
+def failed_here_unchanged(db, table_name: str, file_signature: str, filepath: str,
+                          file_stat) -> bool:
+    """Tier 2 for FAILED content (총괄 b5b77495a, 소유자 ㄱ): this content ended FAILED AND this
+    path failed at or after the file's current mtime - it has not changed since it failed HERE.
+
+    The ledger row holds ONE path per content, so two failed copies pushed each other off tier 1
+    and each watcher start re-parsed one of them. A copy with no failure at its own path, or a
+    file saved again after it failed, still goes through - FAILED is a conclusion about that
+    file, not about the content (`find_completed_ingestion`)."""
+    if not file_stat or not filepath:
+        return False
+    row = find_checkpoint(db, table_name, file_signature)
+    if row is None or row.status != STATUS_FAILED:
+        return False
+    from sqlalchemy import func
+    from database.models import FileIngestionLog as Log
+
+    return db.query(Log.id).filter(
+        Log.table_name == table_name, Log.filepath == filepath, Log.status == STATUS_FAILED,
+        func.coalesce(Log.updated_at, Log.created_at) >= file_stat[0]).first() is not None
+
+
 def find_terminal_by_path_stat(db, table_name: str, filepath: str, file_stat):
     """**Tier 1** — 같은 경로·같은 (mtime, size)에 대해 이미 종결된 행. 없으면 None.
 
