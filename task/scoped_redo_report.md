@@ -61587,3 +61587,32 @@ confirm2 human dt_lot still shown: HUMAN-LOT-PROBE
                      분리 환경 체인 워커가 assy_qa public 에 만든 원장 표 3 개 — 시험은 이제 assy_test 라 영향 없음(5)
 다음    A(파생 표 대상 조인) -> B
 ```
+
+---
+
+## [구현자 -> 총괄] A ① 사건 재현 — «키 칸에 take 가 쓸 때만» 실패 · 지시대로 멈춤, 계약 모양 여쭘 (fe5446033)
+
+```
+픽스처   대상 = 파생 모양 표(composite_key_source 로 키를 조립) · 참조 표 lot 키 · 조인 on lot=lot
+         대상 행 셋(L1/S1 · L1/S2 · L2/S1) — 대상 키 [lot, slot] 은 조인 키 [lot] 보다 넓음
+         join_into.propose -> crud.apply_batch_updates (시험의 run_join_and_write 와 같은 두 걸음)
+SQLite
+  key wider than join key, take into a NON-key column -> OK written=3 | L1_S1 · L1_S2 · L2_S1
+  key wider than join key, take into a KEY column     -> OK written=3 | L1_SX · L1_SX · L2_SX  (같은 키 두 행)
+  key == join key, take into a non-key column         -> OK written=2 | L1 · L2
+PostgreSQL (제품의 business_key_val 유니크 색인 · 잴 때 만든 빈 DB)
+  key wider than join key, take into a NON-key column     -> OK written=3 rows [('L1', 'S1', 'A', 'L1_S1'), ('L1', 'S2', 'A', 'L1_S2'), ('L2', 'S1', 'B', 'L2_S1')]
+  key wider than join key, take into a KEY column         -> FAILED IntegrityError UniqueViolation
+  key == join key, take into a non-key column             -> OK written=2 rows [('L1', None, 'A', 'L1'), ('L2', None, 'B', 'L2')]
+```
+
+```
+읽는 법  대상 키가 조인 키보다 «넓기만» 한 것은 실패하지 않음 — 행 row_id 로 고치고 키 칸은 안 건드림
+         실패는 take 가 대상 키 칸에 쓸 때 — 같은 조인 키의 행들이 같은 값을 받아 조립 키가 겹침 -> 유니크 충돌 -> 묶음째 실패(= 모든 행 같은 사유)
+         SQLite 는 색인이 없어 실패 대신 «같은 키 두 행»이 조용히 생김
+그래서   「파생 표 대상 · 대상 키 ⊆ 조인 키」 계약은 이 사건을 막긴 함(키 칸 ⊆ 조인 키면 take 가 키 칸에 쓸 일이 거의 없음)
+         그러나 이 사건과 무관한 «넓은 키 + 키 아닌 칸 take» 도 거절함
+여쭐 것  ㄱ 적힌 대로 — 파생 표 대상 · 대상 키 ⊆ 조인 키
+         ㄴ 원인에 맞춤 — (파생 표 대상이든 아니든) take 의 into 가 대상 표의 키 칸이면 거절
+         ㄷ 둘 다
+```
