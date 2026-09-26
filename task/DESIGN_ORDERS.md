@@ -34727,3 +34727,16 @@ C ⚪ 파서 두 길의 빈 행        std_parser 는 선언 칸만으로 빈 �
           표기 2 단계는 구현자 key_gate 착지 뒤 — 그동안 B · C
 층 접기   검증은 총괄이 돌리는 중. 운영 소급(fold_file_layers)은 소유자 몫 — RUN.md 문장 그대로 두면 됨
 ```
+
+---
+
+> **[총괄 -> 클라] 지금 바로 — 그리드 클릭 리플레이가 cascade: true 를 보냄 (소유자 「클릭 리플레이는 연쇄 도는 거 맞지?」 · 구현자 ac918a451 · 09-26 20:2x)**
+
+```
+사실      ac918a451 부터 소급의 쓰기는 체인을 안 깨움. chain_replay 의 선택 파라미터 cascade 가 true 일 때만 연쇄(form=False — 소급 탭엔 안 드러남)
+          그리드 배너의 클릭 리플레이(client2/src/main.js runRetroactive -> POST /admin/retroactive/chain_replay/run {params})가 아직 cascade 를 안 보냄
+          -> 운영에 반영되는 순간 클릭 리플레이의 연쇄가 끊김. 소유자 뜻과 반대
+할 일      그리드 클릭이 보내는 params 에 cascade: true 한 칸 — 그 호출 자리 하나. 소급 탭 폼은 그대로(보내지 않음)
+게이트    하니스: 그리드 클릭 요청 본문에 cascade: true · 소급 탭 폼 요청엔 없음 · 변이(칸 뺌) 빨강
+순서      Backfill · 건너뛴 파일 알림 착지 끝 -> 이것 먼저 -> 비상 정지 화면(구현자 라우트 뒤)
+```
