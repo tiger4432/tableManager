@@ -61073,3 +61073,60 @@ RSS 최고               후 평균 159.5 MB · 전 셋 평균 159.2 MB
 ```
 여쭐 것   ㄱ(이대로) · ㄴ(칸 찾기 손질 후 다시 잼) 중 — 판정 전까지 착지 · 워처 재기동 안 함
 ```
+
+---
+
+## [구현자 -> 총괄] 항목 2 착지 — 쓴 값이 하나도 없으면 FAILED + 한 문장 · 두 파서 길이 같은 답 (8e54a261b ② · f0578f20a · 7e6585ec2) — 749318c94
+
+```
+착지 조건   처리 전체가 HEAD 대조 평균 대비 +1.3 % (+2 % 안) -> 착지
+더한 것    7e6585ec2 ㄴ — 쓰기 고리의 칸 찾기를 파일마다 한 번 만든 사전으로(첫 선언 철자가 이김 — 옛 훑기와 같음)
+나머지     0b5edaa96 의 「지은 것」 그대로
+```
+
+### 성능 — 분리 환경 · 워처만 · lot_event · 표준 파서 · 선언 칸 다섯 + 선언 없는 칸 셋 · 10 만 행 · H N H N H
+
+| 실행(시간순) | 코드 | 처리 s | 파싱 합 s | 쓰기(apply) 합 s | RSS 최고 MB |
+|---|---|---|---|---|---|
+| h1 | HEAD | 308.1 | 1.12 | 98.7 | 159.6 |
+| n1 | 새 코드 | 318.2 | 1.32 | 108.5 | 160.4 |
+| h2 | HEAD | 322.4 | 1.20 | 112.5 | 160.4 |
+| n2 | 새 코드 | 314.7 | 0.90 | 104.6 | 159.7 |
+| h3 | HEAD | 306.6 | 1.02 | 97.2 | 159.7 |
+
+```
+처리        새 코드 평균 316.4 s · HEAD 평균 312.4 s -> +1.3 %
+파싱        1.11 s · 1.11 s -> -0.3 % (0b5edaa96 의 +49 % 가 칸 찾기에서 왔음)
+쓰기(apply)  106.5 s · 102.8 s -> +3.6 % — HEAD 셋 사이만 97.2 ~ 112.5 s 벌어짐(표가 실행마다 10 만 행 커짐)
+RSS 최고     160.1 MB · 159.9 MB
+정리        lot_event rows 500043 -> 43 (PERF deleted 500000) | ledger tables in public 0
+```
+
+### 게이트 — 시험 (최종 코드)
+
+```
+통과 test_status_and_sentence[all-standard]
+통과 test_status_and_sentence[all-custom]
+통과 test_status_and_sentence[part-standard]
+통과 test_status_and_sentence[part-custom]
+통과 test_status_and_sentence[none-standard]
+통과 test_status_and_sentence[none-custom]
+통과 test_the_sentence_names_the_columns_and_the_next_step
+7 passed, 16 warnings in 1.45s
+변이   표준 파서가 다시 뺌 빨강 1 failed · 쓰기 고리가 판정 안 함 빨강 1 failed · 헤더 자리가 옛 문장 빨강 1 failed · 기록에 버림 문장 안 실음 빨강 2 failed
+범위   crud · std_parser · directory_watcher 를 import 하는 시험 153 파일 -> 2943 passed, 42 skipped, 1 xfailed, 10376 warnings
+       client 픽스처 시험 전부 -> 705 passed, 1 xfailed
+```
+
+```
+다음    박스 워처 재기동 — 알림을 먼저 올리고 합니다. 응용이 «후» 두 칸(표준 × 전부 · 커스텀 × 일부)
+```
+
+### 재기동 알림 — 박스 워처를 749318c94 로
+
+```
+하는 것    워처 자식 pid 하나만 죽임(명령줄 확인 뒤) -> 감독자가 새 코드로 되살림. 감독자 · API · 스케줄러 · 체인 워커는 안 건드림
+기동 때    raws 에 남은 파일은 tier-1 이 건너뜀(종결 기록이 있는 것) — 같은 내용의 실패 파일 둘 이상이면 하나가 다시 읽힘(958d57347)
+그다음     응용이 «후» 두 칸(표준 × 전부 · 커스텀 × 일부)
+되돌리기   git revert 749318c94 뒤 워처 재기동
+```
