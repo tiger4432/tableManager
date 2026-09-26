@@ -11,6 +11,18 @@ Owner (2026-09-11): 「제발 ui 만들 때 마진 좀 넣어」 · 「고리 �
 
 Read this before touching any screen. Then open the canon file for the exact rule you are about to apply — this page tells you WHICH rule exists; the file is the value.
 
+## 0. Quality comes from defaults, not diligence
+Owner (2026-09-26): 「ui 이렇게 글씨 마진없이 쓰지 말랬지. 박스 기본 마진 아예 고정 스타일로 박아」 · 「클라 세션이 만드는 ui 스타일이 기본적으로 너무 구려」.
+```
+box      the box owns the space inside it - one padding rule for every box body. A part writes no outer margin/padding
+base     table · input/select · button · stat number · empty line · form row · meta line are styled ONCE in the base layer.
+         A part with zero CSS already looks right; a part's CSS adds only what is its own
+sample   one sample page renders every base element. A screen is composed from it.
+         Need an element the sample lacks -> add it to the base layer and the sample FIRST, then use it
+```
+- A defect seen on one screen is fixed in the base layer, not on that screen - fixed on the screen, the next screen repeats it (the margin defect was fixed part by part and came back).
+- The Design System document is drawn FROM the sample page. Code is the source; the document is its picture, and the round that changes the base layer redraws it.
+
 ## 1. Colour — ten roles, zero literals
 ```
 --oe-bg        = var(--bg-inset)      --oe-surface   = var(--bg-surface)   --oe-surface-2 = var(--bg-header)
@@ -42,7 +54,7 @@ topbar    padding 10.2 13.6 · gap 10.2
 panel     padding 13.6 10.2
 row       padding 6.8 · gap 6.8 · list rows 7 12 (mockup figures, kept as stated)
 ```
-- Every part has space BETWEEN it and its neighbours and INSIDE it before its border. Nothing — table header, first/last column, SVG, card body — touches a line. Test: in a screenshot, if glyphs touch a border the part is not finished.
+- Every part has space BETWEEN it and its neighbours and INSIDE it before its border - the box gives it (§0), not the part. Nothing — table header, first/last column, SVG, card body — touches a line. Test: in a screenshot, if glyphs touch a border the part is not finished.
 - Pick a grid value; do not write another px. The scale lives in `tokens.css` as `--space-1..6` = 3.4 · 6.8 · 10.2 · 13.6 · 20.4 · 27.2 (landed C-80, 2026-09-11) — use the token, never the literal. ⚠️ The canon file still spells these as literals: it predates the tokens and is where the values came from, so a difference there is history, not a second scale.
 - Two more values landed with them, for the same reason (a number two places spell can diverge): `--fs-label` (table and card labels) and `--graph-max-height` (the cap a drawing's box enforces, §5).
 
@@ -64,7 +76,17 @@ row       padding 6.8 · gap 6.8 · list rows 7 12 (mockup figures, kept as stat
 - A part is a class with its own div, receives its mount and deps, holds no module state; two instances on one page must not interfere. Layout (grid placement, order) lives OUTSIDE the part in the page.
 
 ## How to apply — every UI round
-1. Open the canon file for the rule you need (grep the value); copy the RULE, not the number from memory.
-2. New value needed? First measure whether the canon already has it. If not, add ONE token to `tokens.css` (or the canon's `:root` block for `--oe-*`) and use it — never a local literal.
-3. Gate in the harness: bounding box of every table/SVG/card body is ≥ one grid step inside its container; font sizes in the part come from §2; no colour literal in the diff (`git grep -nE "#[0-9a-f]{3,6}|rgb\(" -- <changed files>` returns 0 new lines).
-4. The lead opens the screen and looks at the PICTURE, not the checklist, before the round closes.
+```
+1 mockup   a new screen or a layout change -> draw it first on the Design canvas (Artifact type "Design", the project's
+           Design System attached). Put the link in the report; the lead takes it to the owner; build after the OK.
+           A fix inside an existing layout -> no mockup
+2 build    compose from the base elements (§0). Values: open the canon for the rule (grep the value), copy the RULE.
+           A new value -> ONE token in tokens.css (or the canon's :root for --oe-*), never a local literal
+3 look     open the screen yourself at 1280 and 375 wide - the built bundle (check its hash). Shoot before and after
+4 review   hand the shots to the ui-designer agent for DEFECTS only: glyph on a line · double margin · off-scale size ·
+           edges out of line · crowding. Fix, shoot once more
+5 report   before/after side by side (+ the mockup when there was one), and the harness gate:
+           every table/SVG/card body >= one grid step inside its box · sizes from §2 ·
+           no colour literal in the diff (git grep -nE "#[0-9a-f]{3,6}|rgb\(" -- <changed files> -> 0 new lines)
+```
+The lead opens the screen and looks at the PICTURE, not the checklist, before the round closes.
