@@ -62225,3 +62225,16 @@ restored: 3 passed, 21 deselected in 0.87s
 RUN.md     [09-26 오후 7]
 C 전체     1 3204dd97e · 2 a40a893f1 · 3 f6869ead7 · 4 9c2ebe9a6 — 5(클래스 수집기)는 지시대로 안 함. 구간은 수집기 속성 run_window 로 들어가 나중에 붙일 자리만 있음
 ```
+
+---
+
+## [구현자 -> 총괄] 디자인 c0feacccf 확인 — C 4 단계 결과 키 둘에 이름이 없음 · 제 빈 곳 · 지시 오면 착지
+
+```
+사실(코드)  collector_backfill 의 결과 = {"days", "days_done"} · run_result_sentence 는 <키>_label -> RESULT_NAMES -> 키 그대로
+           두 키 다 RESULT_NAMES 에 없음 -> 결과 줄이 「days 3 · days_done 3」
+원인       4 단계에서 결과 문장 자리를 안 셈 — 어드민 화면을 열어 보지 못해서(토큰을 브라우저에 안 넣음) 결과 줄을 못 봄
+고칠 모양   RESULT_NAMES 에 두 줄 — "days": "days in the window" · "days_done": "days collected" (낱말은 여쭘)
+           시험 한 칸 — collector_backfill 결과로 만든 문장에 기계 키가 없음(변이: 줄을 빼면 빨강)
+크기       한 파일 두 줄 + 시험 한 칸. 재기동 API
+```
