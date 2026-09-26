@@ -198,3 +198,48 @@ def script_refusals(script_path: str, header: dict = None, catalogue: dict = Non
             out.append("%s names a datetime column - a list takes a text or number column"
                        % match.group(0))
     return out
+
+
+#: One backfill run of a script covers this much (소유자 2026-09-26 「하루 단위」 · 「24h 씩」).
+BACKFILL_SLICE = timedelta(days=1)
+
+
+def backfill_start(text: str) -> datetime:
+    """The operator's start, in KST - a bare date is that day's 00:00."""
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d"):
+        try:
+            return datetime.strptime(str(text or "").strip(), fmt).replace(tzinfo=WINDOW_ZONE)
+        except ValueError:
+            continue
+    raise CollectorRefused("start '%s' is not a date - write it as YYYY-MM-DD (KST), "
+                           "optionally with HH:MM" % (text,))
+
+
+def backfill_windows(start: datetime, now: datetime = None) -> list:
+    """24-hour windows from `start` to now, end to end - the last one cut at now, so there
+    is no gap and no overlap."""
+    now = (now or datetime.now(WINDOW_ZONE)).astimezone(WINDOW_ZONE)
+    out, cursor = [], start
+    while cursor < now:
+        out.append((cursor, min(cursor + BACKFILL_SLICE, now)))
+        cursor += BACKFILL_SLICE
+    return out
+
+
+def backfill_target(root: str, key: str) -> tuple:
+    """`<table>/<script>` -> (table, path, header) of a script collector that declares a
+    window and passes the judge. Anything else is refused by name."""
+    for table, path in collector_scripts(root):
+        if "%s/%s" % (table, os.path.basename(path)) != key:
+            continue
+        header = parse_script_comments(path)
+        if not header["schedule"]:
+            raise CollectorRefused("'%s' is not a script collector (no '# schedule:')" % key)
+        if not header["window"]:
+            raise CollectorRefused("'%s' declares no '# window:', so it has no time window "
+                                   "to backfill" % key)
+        why = script_refusals(path, header)
+        if why:
+            raise CollectorRefused("'%s' is not loaded - %s" % (key, why[0]))
+        return table, path, header
+    raise CollectorRefused("no collector '%s' - name it as <table>/<script.py>" % key)

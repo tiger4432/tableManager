@@ -134,7 +134,7 @@ def test_every_operation_is_judged_before_it_is_recorded():
     """Canary: no operation is left for its run to be the first to judge its names."""
     assert sorted(op for op, spec in retroactive.OPERATIONS.items()
                   if spec["judge"] is None) == []
-    assert set(NAME_OPS) | set(RULE_OPS) == set(retroactive.OPERATIONS)
+    assert set(NAME_OPS) | set(RULE_OPS) | set(COLLECTOR_OPS) == set(retroactive.OPERATIONS)
 
 
 @pytest.mark.parametrize("op", sorted(NAME_OPS))
@@ -170,6 +170,50 @@ def test_an_undeclared_column_gets_one_refusal_at_every_door_and_no_record(retro
     assert len(set(answers)) == 1, answers
     assert "no_such_col" in answers[0], answers[0]
     assert _recorded(retro_env) == (0, 0)
+
+
+#: The operations whose name is a collector script (`<table>/<script.py>`), judged the same way.
+COLLECTOR_OPS = ["collector_backfill"]
+
+
+@pytest.fixture(name="planted_collector")
+def fixture_planted_collector(tmp_path, monkeypatch):
+    """One collector that declares a window, in a workspace of its own."""
+    import os
+
+    import paths
+
+    folder = os.path.join(str(tmp_path), "ingestion_workspace", "retro_test_target", "auto_update")
+    os.makedirs(folder)
+    with open(os.path.join(folder, "probe.py"), "w", encoding="utf-8") as f:
+        f.write("# schedule: 0 * * * *\n# window: 1d\nout = ['{{WINDOW_START}}{{WINDOW_END}}']\n")
+    monkeypatch.setattr(paths, "DATA_ROOT", str(tmp_path))
+    return "retro_test_target/probe.py"
+
+
+def test_an_unknown_collector_gets_one_refusal_at_every_door_and_no_record(
+        retro_env, planted_collector):
+    unknown = {"collector": "no_such_table/probe.py", "start": "2026-09-24"}
+    answers = []
+    for ask in (lambda: retroactive.publish(retro_env, "collector_backfill", dict(unknown)),
+                lambda: retroactive.count(retro_env, "collector_backfill", dict(unknown)),
+                lambda: retroactive.run_here("collector_backfill", dict(unknown),
+                                             log=lambda *_: None)):
+        with pytest.raises(retroactive.RetroactiveRefused) as refused:
+            ask()
+        answers.append(str(refused.value))
+
+    assert len(set(answers)) == 1, answers
+    assert "no_such_" in answers[0], answers[0]
+    assert _recorded(retro_env) == (0, 0), "a refused name must leave no run and no event"
+
+
+def test_a_known_collector_is_still_queued(retro_env, planted_collector):
+    out = retroactive.publish(retro_env, "collector_backfill",
+                              {"collector": planted_collector, "start": "2026-09-24"})
+
+    assert out["status"] == "queued"
+    assert _recorded(retro_env)[0] == 1
 
 
 @pytest.mark.parametrize("op", sorted(NAME_OPS))

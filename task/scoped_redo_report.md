@@ -62146,3 +62146,82 @@ restored: 9 passed in 0.46s
 RUN.md     [09-26 오후 6]
 다음       4 단계 — 하루 단위 소급 연산
 ```
+
+---
+
+## [구현자 -> 총괄] C 4 단계 착지 9c2ebe9a6 — 하루 단위 소급 연산 (ffd5d42b7 ㄴ) · C 넷 끝
+
+```
+연산      OPERATIONS 여덟째 collector_backfill — 파라미터 collector(<표>/<스크립트.py>) · start(KST, 날짜면 00:00)
+          판정 · 셈은 API 프로세스에서 collector_markers 만 부름(run_auto_update import 없음) · 실행은 스케줄러의 자식 프로세스에서 수집기를 돌림
+구간      start 부터 24h 씩 이어 붙이고 마지막은 지금에서 자름 — 빈틈 · 겹침 없음(collector_markers.backfill_windows 한 자리)
+하루      그 날 구간을 run_window 로 넣고 수집기 실행 -> 쓴 파일이 대기열을 지날 때까지 기다림 -> 진행 N/M -> 다음 날
+          「지났나」 = 파일 체크포인트 원장(find_terminal_by_path_stat) — 수집기가 쓴 경로 · stat 으로. 보관 이동 뒤에도 원장은 그 경로를 들고 있음
+          쓴 파일이 없는 날(out 이 빔)은 기다리지 않고 다음 날
+멈춤      FAILED 면 run 실패 + 사유에 그 날(KST) · 「start again from <그 날>」. 그 날짜로 다시 걸면 거기서부터(restartable)
+취소      날 사이 · 파일을 기다리는 동안 둘 다(5 s 마다 물음)
+cli 줄    없는 스크립트를 지어내지 않고 CLI 들이 쓰는 문(retroactive.run_here) 을 부르는 명령으로 적음
+수집기 execute 가 쓴 파일 경로를 돌려줌(전에는 None) — 스케줄러는 그 값을 안 읽음
+⚠️ 한계    기다림에 시간 상한 없음 — 워처가 멈췄거나 체크포인트 기록이 실패한 파일(서명 없음 · 계획 실패)이면 그 날에서 계속 기다림. 취소로 끝냄
+          같은 수집기의 평소 크론이 소급 중에도 돎 — 파일 이름이 달라 둘 다 적재(같은 날 두 번 = ④ 의 답: 같은 내용은 건너뜀 · 다른 내용은 같은 출처 층 덮음)
+```
+
+### 게이트 · 변이
+
+```
+test_the_windows_are_24_hours_end_to_end_and_the_last_is_cut_at_now PASSED
+test_a_start_is_read_in_kst_and_a_date_is_its_midnight[2026-09-24-2026-09-24 00:00] PASSED
+test_a_start_is_read_in_kst_and_a_date_is_its_midnight[2026-09-24 13:30-2026-09-24 13:30] PASSED
+test_the_judge_refuses_by_name[params0-no collector 'nope/none.py'] PASSED
+test_the_judge_refuses_by_name[params1-start 'yesterday' is not a date] PASSED
+test_the_judge_refuses_by_name[params2-start '2999-01-01' is not in the past] PASSED
+test_a_collector_with_no_window_is_refused PASSED
+test_every_day_runs_in_order_and_waits_for_its_file PASSED
+test_a_failed_day_stops_the_run_and_names_the_day PASSED
+test_starting_again_from_the_failed_day_finishes_the_rest PASSED
+test_a_stop_lands_between_days PASSED
+test_a_stop_while_a_file_waits_ends_without_counting_that_day PASSED
+test_the_count_is_the_number_of_days PASSED
+변이
+baseline: 13 passed in 0.51s
+mutant: the last window is not cut at now
+    1 failed, 12 passed in 0.94s
+    red: test_the_windows_are_24_hours_end_to_end_and_the_last_is_cut_at_now
+mutant: a day does not wait for its file
+    5 failed, 8 passed in 0.96s
+    red: test_a_failed_day_stops_the_run_and_names_the_day
+    red: test_a_stop_lands_between_days
+    red: test_a_stop_while_a_file_waits_ends_without_counting_that_day
+    red: test_every_day_runs_in_order_and_waits_for_its_file
+    red: test_starting_again_from_the_failed_day_finishes_the_rest
+mutant: a failed file does not stop the run
+    1 failed, 12 passed in 0.98s
+    red: test_a_failed_day_stops_the_run_and_names_the_day
+mutant: no stop between days
+    1 failed, 12 passed in 0.94s
+    red: test_a_stop_lands_between_days
+mutant: a start in the future is not refused
+    1 failed, 12 passed in 0.76s
+    red: test_the_judge_refuses_by_name[params2-start '2999-01-01' is not in the past]
+mutant: every day gets the first day's window
+    1 failed, 12 passed in 0.91s
+    red: test_every_day_runs_in_order_and_waits_for_its_file
+restored: 13 passed in 0.53s
+baseline: 3 passed, 21 deselected in 0.82s
+mutant: the collector backfill has no judge
+    2 failed, 1 passed, 21 deselected in 1.31s
+    red: test_an_unknown_collector_gets_one_refusal_at_every_door_and_no_record
+    red: test_every_operation_is_judged_before_it_is_recorded
+restored: 3 passed, 21 deselected in 0.87s
+```
+
+```
+착지 시험   소급 · 수집기 · 선언 점검 모듈을 부르는 시험 + 새 시험: 837 passed, 2 skipped, 1 xfailed in 110.50s (0:01:50)
+           클라 픽스처: 710 passed, 1 xfailed in 136.98s (0:02:16)
+           PG 증명 전부: 7 failed, 102 passed, 7099 deselected in 116.60s (0:01:56) — 빨강 일곱이 알려진 일곱과 같음
+           ⚠️ 이 수는 공유 트리에서 잼 — 응용 레인이 고치는 중인 chain_bindings · rule_shape 등(미커밋)이 같이 있었음. 제 커밋엔 제 경로만
+           기존 시험 둘은 연산 목록을 «이름으로» 적어 둔 곳이라 새 이름을 더함(그 시험 주석이 그렇게 하라고 적어 둠)
+           — 그중 「이름을 아는 연산은 문 앞에서 판정」 캐나리아에는 수집기 이름 칸 둘(모르는 이름 = 세 문 한 거절 · 기록 0 / 아는 이름 = 줄에 오름)을 더함
+RUN.md     [09-26 오후 7]
+C 전체     1 3204dd97e · 2 a40a893f1 · 3 f6869ead7 · 4 9c2ebe9a6 — 5(클래스 수집기)는 지시대로 안 함. 구간은 수집기 속성 run_window 로 들어가 나중에 붙일 자리만 있음
+```

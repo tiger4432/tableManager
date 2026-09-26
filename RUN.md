@@ -1,5 +1,21 @@
 # 지금 돌리면 되는 것
 
+> ## 🔴 [09-26 오후 7] **수집기 하루 단위 소급 — 소급 연산 «Backfill a collector day by day» — 마이그레이션 «없음» · 재기동 API · 스케줄러**
+>
+> ```
+> 쓰는 법    Admin -> 소급 -> "Backfill a collector day by day" · collector = <표>/<스크립트.py> (# window: 를 적은 수집기) · start = YYYY-MM-DD (KST)
+>            CLI: python -c "from admin import retroactive; retroactive.run_here('collector_backfill', {'collector': '<표>/<스크립트.py>', 'start': 'YYYY-MM-DD'})"
+> 도는 모습   start(날짜면 그날 00:00 KST)부터 24h 씩, 마지막은 지금에서 자름 — 하루 = 스크립트 한 번(그 날 구간이 마커에 채워짐)
+>            그 날 파일이 적재 대기열을 지날 때까지(파일 체크포인트가 DONE) 기다린 뒤 다음 날. 진행 N/M 일 · 날 사이에서 취소
+> 멈춤       그 날 파일이 FAILED 면 run 이 실패로 끝나고 사유에 그 날짜 — "…failed to ingest (…) - fix it, then start again from <날짜>"
+>            고친 뒤 start 를 그 날짜로 다시 걸면 거기서부터 끝까지
+> ⚠️ 기다림   시간 상한 없음 — 워처가 멈췄거나 체크포인트 기록이 실패한 파일이면 그 날에서 계속 기다림(진행이 안 움직임). 취소로 끝냄
+> 확인       소급 목록에서 N/M 일 · 끝나면 done · days_done
+> 되돌리기    git revert 뒤 API · 스케줄러 재기동. 이미 적재된 날의 행은 남음(일반 적재와 같음)
+> ```
+
+---
+
 > ## 🔴 [09-26 오후 6] **수집기 선언 점검 — Declarations 에 collector 영역 · 짝이 안 맞는 스크립트는 로드 거절 — 마이그레이션 «없음» · 재기동 스케줄러 · API**
 >
 > ```

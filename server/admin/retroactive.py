@@ -752,6 +752,111 @@ def _enrichment_rule(name):
 # answers: a refusal, or a queued run that failed in the child.
 # ---------------------------------------------------------------------------
 
+#: How often a backfill asks whether the day's file has been ingested (and whether to stop).
+BACKFILL_POLL_SECONDS = 5
+
+
+def _backfill_target(params):
+    """(table, path, header, start) - read through the side-effect-free marker module, so the
+    judge and the count can run in the API process."""
+    import collector_markers
+    import paths
+
+    try:
+        table, path, header = collector_markers.backfill_target(paths.DATA_ROOT,
+                                                                params["collector"])
+        return table, path, header, collector_markers.backfill_start(params["start"])
+    except collector_markers.CollectorRefused as e:
+        raise RetroactiveRefused(str(e)) from None
+
+
+def _judge_collector_backfill(params):
+    import collector_markers
+
+    *_target, start = _backfill_target(params)
+    if not collector_markers.backfill_windows(start):
+        raise RetroactiveRefused("start '%s' is not in the past (KST) - there is no day to "
+                                 "collect" % params["start"])
+
+
+def _count_collector_backfill(db, params, scan_limit):
+    import collector_markers
+
+    table, _path, _header, start = _backfill_target(params)
+    days = len(collector_markers.backfill_windows(start))
+    return {
+        "affected": days,
+        "absence": ABSENCE_TRULY_NONE if not days else None,
+        "affected_label": "days to collect",
+        "count_kind": COUNT_EXACT,
+        "scanned": days,
+        "scan_limit": scan_limit,
+        "truncated": False,
+        "detail": (f"'{params['collector']}' runs once per 24 hours from "
+                   f"{start.strftime('%Y-%m-%d %H:%M')} (KST) to now, and each day's file is "
+                   f"ingested into '{table}' before the next day runs."),
+        "extra": {"table": table},
+    }
+
+
+def _run_collector_backfill(db, params, log, control=None):
+    """One day at a time: fill the script with that day's window, run it, wait until its
+    file has passed the ingestion queue, then the next day. A day whose file fails stops
+    the run and names the day; starting again from that day finishes it."""
+    import collector_markers
+    import paths
+    import run_auto_update
+
+    table, path, header, start = _backfill_target(params)
+    windows = collector_markers.backfill_windows(start)
+    collector = run_auto_update.GenericScriptRunnerCollector(
+        table_name=table, script_path=path, cron_expression=header["schedule"],
+        filename_prefix=header["filename_prefix"], server_dir=paths.DATA_ROOT,
+        window=header["window"], window_format=header["window_format"])
+    hook = _checkpoint(control)
+    done = 0
+    for window in windows:
+        day = window[0].strftime("%Y-%m-%d %H:%M")
+        collector.run_window = window
+        written = collector.execute()
+        if written and not _wait_until_ingested(db, table, written, day, hook, done,
+                                                len(windows)):
+            break
+        done += 1
+        log(f"[collector_backfill] {params['collector']} {day} (KST) - day {done} of "
+            f"{len(windows)} " + ("ingested" if written else "had nothing to collect"))
+        if hook and hook(done, len(windows)):
+            break
+    stats = {"days": len(windows), "days_done": done}
+    _final_progress(control, done, stats)
+    return stats
+
+
+def _wait_until_ingested(db, table, written, day, hook, done, total) -> bool:
+    """True once the file has passed the ingestion queue, False when a stop was asked while
+    waiting. A file that FAILED stops the run by name. Asked of the file checkpoint ledger,
+    by the path and stat the collector wrote."""
+    import os
+    import time
+
+    from ingestion import checkpoint
+
+    where, stat = os.path.abspath(written), checkpoint.read_file_stat(written)
+    while True:
+        row = checkpoint.find_terminal_by_path_stat(db, table, where, stat)
+        status = row.status if row is not None else None
+        db.rollback()                      # the next look reads what has committed since
+        if status is not None:
+            if status == checkpoint.STATUS_FAILED:
+                raise RetroactiveRefused(
+                    f"the file collected for {day} (KST) failed to ingest "
+                    f"({os.path.basename(written)}) - fix it, then start again from {day}")
+            return True
+        if hook and hook(done, total):
+            return False
+        time.sleep(BACKFILL_POLL_SECONDS)
+
+
 def _judge_chain_replay(params):
     from chain import replay
 
@@ -1030,6 +1135,28 @@ OPERATIONS = {
                                "page committed; a stop lands between pages"),
         "cli_only": ["--ignore-knob (measure a rule whose knob is off)",
                      "classify / propose subcommands", "all rules at once"],
+    },
+    "collector_backfill": {
+        "label": "Backfill a collector day by day",
+        "what_is_missing": "a source added today has no data for the days before it",
+        "params": [_p("collector", help="<table>/<script.py> of a collector that declares "
+                                         "'# window:'"),
+                   _p("start", help="first day, KST - YYYY-MM-DD (that day's 00:00) or "
+                                    "YYYY-MM-DD HH:MM")],
+        "count": _count_collector_backfill,
+        "run": _run_collector_backfill,
+        "judge": _judge_collector_backfill,
+        "cli": ("python -c \"from admin import retroactive; retroactive.run_here("
+                "'collector_backfill', {'collector': '<table>/<script.py>', "
+                "'start': 'YYYY-MM-DD'})\""),
+        "deletes": None,
+        "reads_as": "number",
+        "cancellable": True,
+        "restartable": True,
+        "commit_granularity": ("one day at a time - the day's file is ingested (the file "
+                               "checkpoint says DONE) before the next day runs; a stop lands "
+                               "between days, and a failed day stops the run and names it"),
+        "cli_only": [],
     },
 }
 
