@@ -1399,6 +1399,7 @@ FastAPI 웹서버. 모든 REST/WS의 단일 진입점. 워커·워처와는 outb
 > 🆕 🔴 **[신설] 「드롭된 컬럼」의 침묵이 없어졌다.** `display_columns` 필터는 **crud가 행을 보기 전에** 돌기 때문에 `crud._warn_undeclared_column_once`가 그 컬럼에 대해 **영원히 발화할 수 없다** — 드롭은 **아무 기록도 남기지 않고**, 파일은 `error_message`가 빈 채 SUCCESS로 보고된다. **드롭 자체가 옳은 경우가 훨씬 흔하다**(그래서 동작은 그대로다). 고칠 수 없었던 것은 그것을 **새로 생긴 컬럼이나 오타 난 컬럼이 아무 데도 안 가는 것과 구분할 수 없다**는 점이다.
 > - **`MAX_DROPPED_COLUMNS_REPORTED = 64`** — `crud._MAX_UNDECLARED_WARNED_PER_TABLE`을 그대로 비춘다. **`_dropped_column_announced`** — 🔴 **crud의 레지스트리를 재사용하지 않은 것이 의도다**: 관문이 다르고 config 키가 다르다(**파일당 `display_columns`** vs **셀당 `column_types`**).
 > - **`_announce_dropped_columns(t_name, dropped_value_counts, defined_cols, filename, row_count)`** — 크기 배분이 계약이다: **행·셀 단위로는 아무것도 찍지 않고**, (테이블, 컬럼)당 **프로세스 1회** 첫 목격에 WARNING, **파일당 1회** 이름과 건수를 INFO. 누적은 `_send_to_upsert` 안.
+> - 🆕 09-26 `749318c9` **`_nothing_written(t_name, dropped_value_counts, rows_sent)`** — 쓰기 고리 끝의 한 판정: 버린 값 > 0 이고 쓴 값 0 이면 **`crud.NothingWritten(표, 버린 칸)`**(`CellRefused` 옆, `ValueError` — 문장의 유일한 저자는 그 `__str__`). 표준 파서(`std_parser`)는 선언 칸이 헤더에 하나도 없으면 같은 클래스를 던지고, 선언 없는 칸은 더는 스스로 빼지 않고 실어 보낸다(빈 행 판정은 선언 칸만) — 그래서 버림을 세는 자리가 두 파서 길에 «하나». 일부 버림 문장은 로그 INFO 와 같은 문장이 파일 기록(`_compose_detail`)에도 실린다.
 > - 🆕 **`IngestionHandler._compose_detail(skipped_no_key, plan, has_rows=True)`, 호출)** — 세 번째 인자가 **0행 파싱의 같은 침묵**을 닫는다: 「한 셀도 저장되지 않음」과 「정상 처리」가 화면에서 구별되지 않았다.
 > - 테스트: 🆕 **`tests/test_ingestion_drop_visibility.py`(257줄)**.
 >
