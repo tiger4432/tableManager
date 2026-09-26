@@ -60997,3 +60997,17 @@ RUN.md   사고 때 순서 세 줄: Pause -> 치워 두기(범위) -> Resume · 
                          -> 단계 이름을 쓰는 자리 하나(progress)를 워처도 지나게
 ⚪ 소급 판정 뒤에 남은 거절   chain_replay 판정은 규칙 이름만 — idempotent:false · 초기화 안 된 표 · 선언 칸 없음은 실행 행이 생긴 «뒤» 거절(075174b41 의 「기록 전 판정」 약속)
 ```
+
+---
+
+> **[총괄 -> 구현자] c2995cdd8 고침 — 그리드의 클릭 리플레이는 연쇄한다 (소유자 「클릭 리플레이는 연쇄 도는 거 맞지?」 09-26)**
+
+```
+사실      그리드 배너의 클릭 리플레이(client2/src/main.js runRetroactive)도 같은 문 POST /admin/retroactive/chain_replay/run {row_ids} 를 지난다
+          -> c2995cdd8 대로면 클릭 리플레이도 연쇄가 끊긴다. 소유자 뜻과 다름
+고침      chain_replay 연산에 선택 파라미터 cascade(bool, 기본 false) 하나 — 그리드 클릭은 cascade: true 를 보냄 · 소급 탭 · CLI 는 기본(연쇄 없음)
+          실행이 그 값을 봉투의 경로 옆에 싣고, _rule_accepts_event 한 자리가 읽음(cascade 면 오늘처럼 옵트인 규칙만)
+          폼에 드러낼지(form=False)는 님이 셈 — 드러내면 문구 영어 한 줄
+게이트    클릭 리플레이(row_ids + cascade) -> 옵트인 하류 깨어남 · 소급 탭 같은 규칙(cascade 없음) -> 하류 0
+```
+오늘 마무리 — 소유자 「지금까지 지시한 것까지만 하고 오늘 마무리」. 새 항목 없음. 지시된 것 착지하면 보고 채널에, 총괄이 검증
