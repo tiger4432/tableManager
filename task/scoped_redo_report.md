@@ -61271,3 +61271,51 @@ Retry      process_archived_file_sync 는 _try_dedup_skip 을 안 지남(코드 
 ```
 재기동함  워처 pid 36676 죽임 13:35:56 -> pid 21680 13:35:59 · 기동 스윕: 10 candidate file(s) in raws/ - 10 already concluded (tier-1, batched), 0 dispatched. · 오류 줄 없음
 ```
+
+---
+
+## [구현자 -> 총괄] 🔴 정정 — 5 끝맺음(25b5108a1)의 게이트가 PG 증명(-m pg)을 안 쟀습니다 · 그것들 중 셋이 assy_test 에서 빨강 · 판정 부탁
+
+```
+틀린 문장   9e6c8425a 「PG 파일 21 개 전 175 passed 108 skipped -> 후 같음」 · 「읽는 시험 없음」
+사실       그 108 skipped 는 @pytest.mark.pg 증명 — 보통 pytest 에서는 건너뛰고 server/scripts/run_pg_tests.py(-m pg)에서만 돎
+           제 셈 · 전후 수는 그것들을 한 번도 안 돌렸음
+잰 것      run_pg_tests.py 두 번(지금 코드) — 되돌이를 ASSY_PG_TEST_DATABASE_URL 로 assy_qa 에 줄 때 · 기본(assy_test)
+           assy_qa   7 failed, 102 passed, 7050 deselected
+           assy_test 10 failed, 99 passed, 7050 deselected
+assy_test 에서만 빨강 셋 (test_ledger_l1_pg.py)
+  test_a_molecule_the_declaration_cannot_say_is_refused_counted_and_NAMED
+  test_a_second_run_reads_nothing_and_duplicates_no_atom
+  test_atoms_route_into_the_month_partition_they_belong_to
+둘 다 빨강 일곱 — 이 변경 전부터(보고만)
+  test_an_install_that_predates_attributes_is_widened_once
+  test_postgres_bundle_to_read_apis_is_one_compiler_and_one_transaction
+  test_postgres_gate_refusal_stops_before_store_transaction
+  test_postgres_missing_join_and_ambiguous_reader_leave_atom0
+  test_postgres_replay_dedupes_the_second_write_of_the_same_batch
+  test_the_live_door_writes_the_refusal_breakdown_to_the_registry_row
+  test_two_independent_refusals_are_counted_and_named_in_one_run
+```
+
+### 원인 — 읽기가 아니라 «쓰기»가 공용 public 으로 샜음
+
+```
+오류(assy_test)  ledger.followup 「dt_job <- dt_job_rollup (3 rows) failed: relation "audit_logs" does not exist」
+                 후속 적재가 제품 쓰기 길로 audit_logs 에 영수증을 씀 — 그 시험의 scratch 스키마에는 audit_logs 가 없음
+assy_qa 에서는   이름만 적힌 INSERT 가 검색 경로 끝의 public.audit_logs 로 떨어져 «성공» — 세 시험을 한 번 돌리면
+                 assy_qa public.audit_logs 에 3 줄이 들어감(pg_stat_user_tables · 카나리아 {'seq_scan': 1})
+                 움직인 public 표는 audit_logs 하나 — 스냅숏 표를 «읽는» 것은 없음
+-> 5 가 의존을 만든 것이 아니라 드러냈음. 다만 제 착지는 「PG 시험 전후 같은 수」 게이트를 깨뜨린 채 나감
+```
+
+### 안
+
+| 안 | 무엇 | 좋은 점 | 위험 | 크기 |
+|---|---|---|---|---|
+| ㄱ **추천** | test_ledger_l1_pg 의 pg 픽스처가 scratch 스키마에 audit_logs(models.AuditLog 의 표)를 같이 만듦 | 세 증명이 자기 스키마에만 씀 · assy_qa 에 줄이 안 쌓임 · 5 의 도착지 그대로 | 다른 -m pg 증명에 같은 새는 쓰기가 있는지는 이 셋 말고는 안 셌다 | 픽스처 한 자리 |
+| ㄴ | 5 를 되돌림 | 즉시 원래 수 | 공용 DB 의존이 그대로 · 세 증명이 assy_qa 에 계속 씀 | 되돌리기 |
+
+```
+여쭐 것   ㄱ 로 가도 되는지 — 짓고 나면 run_pg_tests.py 를 두 DB 에서 다시 돌려 «실패 이름 목록이 같음» 을 게이트로
+그동안    unique_concat(242dea225) 은 이어서 짓습니다 — 그 PG 비교 시험은 @pytest.mark.pg 를 달아야 돎을 이번에 알았음
+```
