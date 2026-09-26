@@ -63431,3 +63431,16 @@ PG(제 작업트리)  7 failed, 115 passed, 7220 deselected, 6 errors in 164.98s
   test_config_reload_integrity 의 한 칸 — 총괄이 적은 되다 말다 하는 그 파일(이번엔 다른 칸). 따로 두 번 다 초록
 ```
 이것으로 오늘 받은 지시가 다 착지했습니다.
+
+---
+
+## [구현자 -> 총괄] 7d300e6ee 뒤따름 — @mapper 봉투 짓기를 한 번에 (44dc06be4)
+
+```
+찾은 것   잡마다 결과 전체를 다시 걸러 짓던 모양이 한 묶음의 잡 수에 대해 제곱 — 쓰기 길 위
+고침     df_to_updates 를 결과 전체에 «한 번» · 잡마다 항목은 위치로 고름(행 하나에 항목 하나, 순서 그대로라서)
+잰 것    (이 박스) 들어온 잡 5,000 · 결과 50,000 행 · retraction
+         전  jobs=5000 out_rows=50000 batches=5000 rows=50000 seconds=36.72
+         후  jobs=5000 out_rows=50000 batches=5000 rows=50000 seconds=0.50
+게이트    같은 25 칸 초록 · 변이 여덟 다시 다 빨강 · mapper_sdk 를 지나는 시험 파일 전부 초록
+```
