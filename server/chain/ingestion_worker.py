@@ -1961,8 +1961,7 @@ def _log_alignment_group_work(tx_id, summary) -> None:
         "".join(" · %s %.3f s" % (name, seconds)
                 for name, seconds in sorted(phases.items())) or " (none named)",
         max(stages.get("mapper", summary["wall_seconds"]) - sum(phases.values()), 0.0),
-        "".join(" · %s %.3f s" % (name, seconds)
-                for name, seconds in sorted(write_steps.items())) or " (none named)",
+        alignment_batch_counts.write_steps_text(summary),
         max(write_total - sum(write_steps.values()), 0.0))
 
 
@@ -3233,7 +3232,8 @@ def _report_layer_table_health(db_session_factory):
 
     🔴 THE OWNER CANNOT ISSUE SQL (판정 276), so the product has to say this itself.
     Production ingestion spends 10 s of a chunk in prefetch where this box spends 0.03 s,
-    and 82 s in the side tables where this box spends 0.4 s - and the two questions that
+    and 82 s in the side tables where this box spends 0.4 s (a step that is four since
+    2026-09-26, each named with its rows) - and the two questions that
     would split those ("is the index there and is anything reading it", "is autovacuum
     behind") were only answerable by a person typing into psql.
 

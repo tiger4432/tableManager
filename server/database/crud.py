@@ -4894,7 +4894,7 @@ def _apply_batch_updates_once(db: Session, table_name: str,
         # item 2 then fills, and that row is not a phantom.
         rows_with_content = set()
 
-        with alignment_batch_counts.write_step("row build"):
+        with alignment_batch_counts.write_step("row build", unit="cells changed") as count:
             with db.no_autoflush:
                 for item in batch.updates:
                     row, is_new, changed_cols = apply_row_update_internal(
@@ -4922,6 +4922,7 @@ def _apply_batch_updates_once(db: Session, table_name: str,
 
                     for col in changed_cols:
                         total_changed_cells.append((row.row_id, col))
+            count(len(total_changed_cells))
 
         # [phantom row] A row that exists ONLY because we threw away what the caller sent
         # is a FABRICATED RECORD, and it is worse than a refusal: downstream now has a row
@@ -4994,13 +4995,26 @@ def _apply_batch_updates_once(db: Session, table_name: str,
                                 suppressed_row_ids,
                                 reported_only_for_drops=len(reported_only_for_drops))
 
-        # Execute Bulk Upserts, Bulk Inserts, and Deletes
-        with alignment_batch_counts.write_step("side tables"):
+        # Execute Bulk Upserts, Bulk Inserts, and Deletes - each its own step, so a chunk
+        # line says which of the four took the time and how many rows it wrote (소유자
+        # 2026-09-26 「헤비 레인 쓰기 속도 느린 거는 로그는 추가해 봐」). The counts are the
+        # lengths of the lists handed over; no query is added to count them.
+        with alignment_batch_counts.write_step("audit logs") as count:
             if logs_to_cache:
                 bulk_insert_audit_logs(db, logs_to_cache)
-            bulk_upsert_cell_sources(db, list(cell_sources_to_upsert.values()))
-            bulk_upsert_cell_overwrites(db, list(cell_overwrites_to_upsert.values()))
-            bulk_delete_cell_overwrites(db, list(cell_overwrites_to_delete))
+            count(len(logs_to_cache or ()))
+        with alignment_batch_counts.write_step("cell sources") as count:
+            sources = list(cell_sources_to_upsert.values())
+            bulk_upsert_cell_sources(db, sources)
+            count(len(sources))
+        with alignment_batch_counts.write_step("cell overwrites") as count:
+            overwrites = list(cell_overwrites_to_upsert.values())
+            bulk_upsert_cell_overwrites(db, overwrites)
+            count(len(overwrites))
+        with alignment_batch_counts.write_step("overwrite deletes") as count:
+            deletes = list(cell_overwrites_to_delete)
+            bulk_delete_cell_overwrites(db, deletes)
+            count(len(deletes))
 
         # [scope diff] What disappeared, decided by SUBTRACTING what this write claimed
         # from what was in scope - never by asking the payload what to delete.

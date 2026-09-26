@@ -4,6 +4,7 @@ import time
 import shutil
 import logging
 import threading
+import contextvars
 from datetime import datetime
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
@@ -384,7 +385,8 @@ class ChunkWaitSampler:
 
     🔴 THE OWNER CANNOT ISSUE SQL (판정 276), and the chunk line already says WHERE the
     time went - prefetch 10 s, side tables 82 s in production against 0.03 s and 0.4 s
-    here. What it cannot say is WHY, and "82 s of upsert" versus "82 s of waiting behind a
+    here (since 2026-09-26 that step is four: audit logs · cell sources · cell overwrites ·
+    overwrite deletes, each with its rows). What it cannot say is WHY, and "82 s of upsert" versus "82 s of waiting behind a
     lock" are different defects with different fixes. So the product samples its own
     `pg_stat_activity` row and reports the answer as counts.
 
@@ -457,6 +459,105 @@ class ChunkWaitSampler:
         parts = " · ".join("%s %d" % (k, v) for k, v in
                              sorted(self.counts.items(), key=lambda kv: -kv[1]))
         return " | waits: " + parts + (" | blocked by %s" % self.blocker if self.blocker else "")
+
+
+def _new_row_ids(table, results):
+    """The ids of the rows a chunk created - or None, which silences the file line and
+    nothing else. Read off each row's identity key, which the session holds: the rows are
+    expired by the write, so asking `row.row_id` would be one SELECT per new row."""
+    from sqlalchemy import inspect as _inspect
+    try:
+        return {_inspect(row).identity[0] for row, was_new in results if was_new}
+    except Exception as exc:                                        # noqa: BLE001
+        logger.warning("[Ingest] %s new rows of a chunk not read (%s: %s) - the ingestion is "
+                       "unaffected", table, type(exc).__name__, exc)
+        return None
+
+
+#: The lane ingesting on this thread and how long the file waited for its turn -
+#: `(lane, seconds or None)`, set by the lane around `process_with_retry`, read by the file
+#: line. Unset = no lane put the file here (a direct call).
+_INGEST_LANE = contextvars.ContextVar("assy_ingest_lane", default=None)
+
+
+class _FileTally:
+    """One file's totals over its chunks, for the ONE line a finished file writes - the same
+    line whichever lane ran it (소유자 2026-09-26 「헤비 레인 쓰기 속도 느린 거는 로그는 추가해
+    봐」: two files of one table, same columns, one slow - side by side, the line shows what
+    differs). Counted from what each chunk already holds; no query is added."""
+
+    def __init__(self):
+        self.started = time.monotonic()
+        self.rows = self.new = self.changed = self.unchanged = self.cells = 0
+        self.stages, self.steps, self.counts = {}, {}, {}
+        self.samples = self.lock_samples = 0
+        self.sampled = False
+        self.silenced = None          # why the line stopped counting, if it did
+
+    def add_chunk(self, table, summary, rows, sent, new_ids, changed_cells, sampler):
+        """🔴 AN OBSERVER DOES NOT KILL WHAT IT OBSERVES - a tally that raises silences the
+        file line, says so once, and the chunk goes on."""
+        if self.silenced is not None:
+            return
+        try:
+            self._add_chunk(summary, rows, sent, new_ids, changed_cells, sampler)
+        except Exception as exc:                                    # noqa: BLE001
+            self.silenced = "%s: %s" % (type(exc).__name__, exc)
+            logger.warning("[Ingest] %s file line stops counting (%s) - the ingestion is "
+                           "unaffected", table, self.silenced)
+
+    def log(self, table, filename):
+        try:
+            logger.info(self.line(table, filename) if self.silenced is None else
+                        "[Ingest] %s FILE %s: not counted (%s)" % (table, filename,
+                                                                   self.silenced))
+        except Exception as exc:                                    # noqa: BLE001
+            logger.warning("[Ingest] %s file line not written (%s: %s) - the ingestion is "
+                           "unaffected", table, type(exc).__name__, exc)
+
+    def _add_chunk(self, summary, rows, sent, new_ids, changed_cells, sampler):
+        if new_ids is None:
+            raise ValueError("the new rows of a chunk could not be read")
+        self.rows += rows
+        changed_ids = {row_id for row_id, _column in changed_cells} - new_ids
+        self.new += len(new_ids)
+        self.changed += len(changed_ids)
+        self.unchanged += sent - len(new_ids) - len(changed_ids)
+        self.cells += len(changed_cells)
+        for target, source in ((self.stages, "stages"), (self.steps, "write_steps")):
+            for name, seconds in (summary.get(source) or {}).items():
+                target[name] = target.get(name, 0.0) + seconds
+        for name, (n, unit) in (summary.get("write_counts") or {}).items():
+            self.counts.setdefault(name, [0, unit])[0] += n
+        if sampler is not None:
+            self.sampled = True
+            self.samples += sum(sampler.counts.values())
+            self.lock_samples += sum(n for key, n in sampler.counts.items()
+                                     if key.startswith("Lock:"))
+
+    #: What each lane's wait covers - the same word means a different span on each lane.
+    WAITED_SPANS = {"heavy": "queue + table lock", "normal": "table lock"}
+
+    def line(self, table, filename) -> str:
+        lane = _INGEST_LANE.get()
+        wall = time.monotonic() - self.started
+        waited = ("not measured" if lane is None or lane[1] is None
+                  else "%.3f s (%s)" % (lane[1], self.WAITED_SPANS[lane[0]]))
+        return (
+            "[Ingest] %s FILE %s: %d row(s) in %.3f s (%d rows/min) · %s · waited %s"
+            " · sent: new %d · changed %d · unchanged %d · cells changed %d"
+            " · side-table rows %d · STAGES%s · INSIDE THE WRITE%s · DB wait samples %s" % (
+                table, filename or "?", self.rows, wall,
+                int(self.rows * 60 / wall) if wall > 0 else 0,
+                "%s lane" % lane[0] if lane else "no lane", waited,
+                self.new, self.changed, self.unchanged, self.cells,
+                sum(n for n, unit in self.counts.values() if unit == "rows"),
+                "".join(" · %s %.3f s" % item for item in sorted(self.stages.items()))
+                or " (none named)",
+                alignment_batch_counts.write_steps_text(
+                    {"write_steps": self.steps, "write_counts": self.counts}),
+                "%d (Lock %d)" % (self.samples, self.lock_samples) if self.sampled
+                else "not taken"))
 
 
 def _naive_time_suffix() -> str:
@@ -1937,7 +2038,11 @@ class IngestionHandler(FileSystemEventHandler):
         큐 후미로 보낸다 — observer 디스패치 스레드의 HOL 차단 방지."""
         if self.heavy_lane is None:
             # 레인 미배선(재시도 임시 핸들러·레거시 직접 사용) — 기존 경로 그대로
-            self.process_with_retry(abs_path, uploader=uploader)
+            token = _INGEST_LANE.set(("normal", None))
+            try:
+                self.process_with_retry(abs_path, uploader=uploader)
+            finally:
+                _INGEST_LANE.reset(token)
             return False
 
         lane, size_bytes = self._classify_lane(abs_path)
@@ -1946,15 +2051,18 @@ class IngestionHandler(FileSystemEventHandler):
                 return True
             # 제출 실패(레인 정지 등) → 인라인 폴백 (아래 직렬화 락 경로)
 
+        waiting_since = time.monotonic()
         acquired = self._serial_lock.acquire(blocking=False)
         if not acquired:
             # 같은 워크스페이스에서 처리 진행 중 — 순서 보존을 위해 큐 후미로
             if self._submit_to_heavy_lane(abs_path, uploader, lane, size_bytes):
                 return True
             self._serial_lock.acquire()  # 최후 폴백: 블로킹 직렬화 (정합 우선)
+        token = _INGEST_LANE.set(("normal", time.monotonic() - waiting_since))
         try:
             self.process_with_retry(abs_path, uploader=uploader)
         finally:
+            _INGEST_LANE.reset(token)
             self._serial_lock.release()
         return False
 
@@ -1981,9 +2089,11 @@ class IngestionHandler(FileSystemEventHandler):
             "size_bytes": size_bytes,
             "queued_at": datetime.now().isoformat(timespec="seconds"),
         })
+        submitted = time.monotonic()
         try:
             self.heavy_lane.submit(
-                lambda: self._run_lane_job(abs_path, uploader, t_display, lane, size_bytes),
+                lambda: self._run_lane_job(abs_path, uploader, t_display, lane, size_bytes,
+                                           submitted),
                 workspace_key(self.workspace_path),
             )
         except Exception as e:
@@ -1997,7 +2107,8 @@ class IngestionHandler(FileSystemEventHandler):
             return False
         return True
 
-    def _run_lane_job(self, abs_path: str, uploader: str, t_display: str, lane: str, size_bytes: int):
+    def _run_lane_job(self, abs_path: str, uploader: str, t_display: str, lane: str, size_bytes: int,
+                      submitted: float = None):
         """heavy 워커 스레드에서 실행되는 처리 본체.
 
         아카이브/에러 이동·FileIngestionLog·완료/진행 콜백은 전부 process_with_retry
@@ -2013,7 +2124,13 @@ class IngestionHandler(FileSystemEventHandler):
                     "size_bytes": size_bytes,
                     "started_at": datetime.now().isoformat(timespec="seconds"),
                 })
-                self.process_with_retry(abs_path, uploader=uploader)
+                # Waited = from the submit to here, the lane's queue and the table's lock both.
+                token = _INGEST_LANE.set(
+                    ("heavy", time.monotonic() - submitted if submitted is not None else None))
+                try:
+                    self.process_with_retry(abs_path, uploader=uploader)
+                finally:
+                    _INGEST_LANE.reset(token)
         except Exception as e:
             # process_with_retry는 자체적으로 err 이동/로그를 수행 — 여기는 방어선
             logger.error(f"[{t_display}] Heavy lane job failed unexpectedly: {e}")
@@ -3231,6 +3348,7 @@ class IngestionHandler(FileSystemEventHandler):
         from database.context import request_outbox_mode
         from event_constants import OUTBOX_MODE_COLLAPSED
         _outbox_token = request_outbox_mode.set(OUTBOX_MODE_COLLAPSED)
+        file_tally = _FileTally()
 
         try:
             while True:
@@ -3327,6 +3445,10 @@ class IngestionHandler(FileSystemEventHandler):
                                 # The write names the chunk's row; the operator reads the file's.
                                 refused.row = item_rows[refused.row - 1] if refused.row else None
                                 raise
+                        # Read BEFORE the commit: the commit expires the rows and the session
+                        # closes, so asking a row its id afterwards is a refresh on a dead
+                        # session. The id is in memory here - no query.
+                        new_row_ids = _new_row_ids(t_name, results)
 
                         with alignment_batch_counts.stage("commit"):
                             db.commit()
@@ -3390,7 +3512,6 @@ class IngestionHandler(FileSystemEventHandler):
                             type(_plan_err).__name__, _plan_err)
                         _explained = True
                     _stages = _summary.get("stages") or {}
-                    _steps = _summary.get("write_steps") or {}
                     _wall = time.monotonic() - chunk_started
                     logger.info(
                         "[Ingest] %s chunk %d: %d row(s) in %.3f s · STAGES%s · unnamed %.3f s"
@@ -3399,8 +3520,7 @@ class IngestionHandler(FileSystemEventHandler):
                         "".join(" · %s %.3f s" % (k, v) for k, v in sorted(_stages.items()))
                         or " (none named)",
                         max(_wall - sum(_stages.values()), 0.0),
-                        "".join(" · %s %.3f s" % (k, v) for k, v in sorted(_steps.items()))
-                        or " (none named)",
+                        alignment_batch_counts.write_steps_text(_summary),
                         _sampler.summary() if _sampler is not None else "",
                         # S-182 ⓐ: a world time that arrived with no offset is READ BY
                         # THE SESSION TimeZone (SCHEMA_CANON R5 forbids exactly that value),
@@ -3415,6 +3535,8 @@ class IngestionHandler(FileSystemEventHandler):
                     heartbeat.record_lap(HEARTBEAT_NAME, "watcher", seconds=_wall,
                                          depth=len(chunk), table=t_name,
                                          chunk=chunk_index)
+                    file_tally.add_chunk(t_name, _summary, len(chunk), len(items), new_row_ids,
+                                         changed_cells, _sampler)
                     
             # 🔴 THE STATISTICS ARE PART OF THE LOAD (S-124 ②). After the last chunk
             # commits, this table's row count is one the planner has never seen, and the
@@ -3428,6 +3550,7 @@ class IngestionHandler(FileSystemEventHandler):
             dropped = _announce_dropped_columns(
                 t_name, dropped_value_counts, defined_cols, filename, processed_rows
             )
+            file_tally.log(t_name, filename)
 
             if self.on_refresh_callback and total_changed > 0:
                 self.on_refresh_callback(t_name, total_changed, all_created_logs, total_log_count)

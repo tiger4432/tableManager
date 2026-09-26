@@ -33,7 +33,7 @@ class _Counts:
     """One group's tally. Plain attributes: this is read once, by the line that prints it."""
 
     __slots__ = ("view_builds", "reference_resolutions", "maps", "started", "phases",
-                 "stages", "write_steps")
+                 "stages", "write_steps", "write_counts")
 
     def __init__(self):
         self.view_builds = 0
@@ -43,6 +43,7 @@ class _Counts:
         self.phases: dict = {}
         self.stages: dict = {}
         self.write_steps: dict = {}
+        self.write_counts: dict = {}      # write step -> [how many, of what]
 
     def summary(self) -> dict:
         return {
@@ -56,6 +57,8 @@ class _Counts:
                        for name, seconds in sorted(self.stages.items())},
             "write_steps": {name: round(seconds, 3)
                             for name, seconds in sorted(self.write_steps.items())},
+            "write_counts": {name: list(count)
+                             for name, count in sorted(self.write_counts.items())},
         }
 
 
@@ -132,7 +135,7 @@ def stage(name: str):
 
 
 @contextlib.contextmanager
-def write_step(name: str):
+def write_step(name: str, unit: str = "rows"):
     """Charge this block's WALL CLOCK to `name` INSIDE one `write:<table>` stage (S-151).
 
     🔴 A THIRD DICT, FOR THE REASON `stage` NEEDED A SECOND ONE. `stage("write:<table>")`
@@ -148,17 +151,39 @@ def write_step(name: str):
     ⛔ NOT A PROFILER, AND NOT PER ROW. A group writes a thousand rows through one call;
     a per-row charge here would cost more than the thing it measures and would answer a
     question - "which row" - that nobody is asking.
+
+    Yields `count(n)`: the block says how many `unit` it wrote, from a length it already
+    holds - no query is added to count it (소유자 2026-09-26 헤비 레인 쓰기 로그).
     """
     counts = _COUNTS.get()
     if counts is None:
-        yield
+        yield _not_counting
         return
     started = time.monotonic()
+
+    def count(n):
+        tally = counts.write_counts.setdefault(name, [0, unit])
+        tally[0] += int(n)
     try:
-        yield
+        yield count
     finally:
         counts.write_steps[name] = counts.write_steps.get(name, 0.0) + (
             time.monotonic() - started)
+
+
+def _not_counting(n):
+    """What a write step's `count` is when no scope is open - nothing to add to."""
+
+
+def write_steps_text(summary: dict) -> str:
+    """The INSIDE THE WRITE part of a line - one spelling for the watcher's chunk line and
+    the chain's group line: each step's seconds and, when it counted, how many of what."""
+    counts = summary.get("write_counts") or {}
+    return "".join(
+        " · %s %.3f s%s" % (name, seconds,
+                            " / %d %s" % tuple(counts[name]) if name in counts else "")
+        for name, seconds in sorted((summary.get("write_steps") or {}).items())
+    ) or " (none named)"
 
 
 def in_group() -> bool:

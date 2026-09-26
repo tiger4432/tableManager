@@ -1,5 +1,24 @@
 # 지금 돌리면 되는 것
 
+> ## 🔴 [09-26 저녁 1] **헤비 레인 쓰기 로그 — 청크 줄의 곁표 넷 · 파일마다 한 줄 — 마이그레이션 «없음» · 재기동 감시자(워처) · 체인 워커**
+>
+> ```
+> 찾기       Select-String -Path server\watcher.log -Pattern "\[Ingest\] .* FILE "            <- 파일이 끝날 때 한 줄 (두 레인 같은 줄)
+>            Select-String -Path server\watcher.log -Pattern "\[Ingest\] .* chunk \d+:"       <- 청크마다 한 줄
+>            체인 쪽 같은 쓰기 단계는 server.log 의 "[Chain] group" 줄 INSIDE THE WRITE 에 같은 모양으로
+> 파일 줄     <표> FILE <파일>: 행 수 · 걸린 초 · 분당 행 · <레인> · waited <초> (<무엇을 기다렸나>)
+>            · sent: new · changed · unchanged · cells changed · side-table rows · STAGES(parse · apply · commit) · INSIDE THE WRITE · DB wait samples (Lock)
+> 비교하는 법  같은 표의 느린 파일 줄과 안 느린 파일 줄을 위아래로 놓고 칸마다 견줌
+>            waited 가 크면 쓰기가 아니라 «차례»가 느린 것 — heavy 는 (queue + table lock) · normal 은 (table lock) · 레인 없이 들어온 파일은 not measured
+>            changed · cells changed 가 크면 고칠 게 많은 파일 — audit logs · cell sources 행 수가 같이 큼
+>            같은 행 수인데 한 쓰기의 초만 크면 그 곁표 쪽(색인 · 부풀음). Lock 표본이 있으면 다른 쓰기에 막힌 것
+> 청크 줄     side tables 한 덩어리가 넷 — audit logs · cell sources · cell overwrites · overwrite deletes, 각각 «초 / 행 수». row build 에 «바뀐 셀 수»
+> 스위치      이 두 줄을 끄는 칸은 없음. ingestion_settings 의 chunk_wait_sampling=false 는 DB 대기 표본(청크 줄 waits · 파일 줄 DB wait samples)만 끔
+> 되돌리기    git revert 뒤 워처 · 체인 워커 재기동. 쓰는 것 없음(로그만 — 새 질의 0)
+> ```
+
+---
+
 > ## 🔴 [09-26 오후 7] **수집기 하루 단위 소급 — 소급 연산 «Backfill a collector day by day» — 마이그레이션 «없음» · 재기동 API · 스케줄러**
 >
 > ```
