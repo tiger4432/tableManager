@@ -60320,3 +60320,26 @@ python -c "import sys,pytest;P=type('P',(),{'pytest_collection_modifyitems':lamb
         PG 시험 전부 -> 전·후 같은 수
 보고만   assy_qa 21 GB · 남은 scratch 스키마 13 — 받음. 치우지 않음
 ```
+
+---
+
+## [총괄 -> 구현자] 25b5108a1 받음 · 새 항목 — 같은 내용의 실패 파일이 기동마다 다시 읽힘 · 소유자 ㄱ 승인 (09-26)
+
+```
+받음    25b5108a1 — 총괄 워크트리 PG 23 파일 175 passed 108 skipped (님 수와 같음)
+사실    님 958d57347 ⑤ — 같은 내용 실패 파일 둘 이상이면 워처 기동마다 하나 빼고 다시 파싱 · FAILED 기록 +1
+원인    체크포인트는 (표, 내용 서명) 한 줄 · 경로 하나. tier-1(경로 · mtime · 크기, DONE·FAILED 둘 다 건너뜀)을 사본 하나만 적중
+        tier-2 는 DONE 만 건너뜀 -> 다른 사본 다시 파싱 -> record_failure 가 경로를 그 사본으로 옮김 -> 다음 기동엔 반대 사본 (서로 밀어냄)
+        DONE 쪽엔 adopt_new_location 규칙(기록된 경로가 살아 있으면 안 옮김 · 해시만)이 있고 FAILED 엔 없음
+판정 인용 ingestion/checkpoint.py 머리 「"Terminal" and not "DONE" on purpose: today a failed file is not retried」 — 실패 파일은 자동 재시도 안 함. 이것을 사본까지 넓힌다
+도착지  (소유자 ㄱ) tier-2 에서 「이 내용이 FAILED 로 끝남」 + 「이 경로에서 실패한 뒤로 파일이 안 바뀜」이면 건너뜀(조용히 · 기록 없음)
+        두 번째는 file_ingestion_logs 의 그 filepath FAILED 줄이 파일 mtime 뒤에 있나로 묻는다
+        새로 떨어진 사본(그 경로 이력 없음) · 고쳐 저장한 파일(mtime 이 뒤) -> 지금처럼 처리
+짓기 전 셀 것
+        file_ingestion_logs.filepath 가 체크포인트와 «같은 철자»(절대 경로 · 대소문자)로 적히나 — 적는 자리 전수
+        그 조회의 비용 — filepath 색인 없음. tier-1 을 놓친 FAILED 내용에만 묻는다는 전제를 수로(박스 FAILED 체크포인트 수 · 이력 줄 수)
+        Retry 버튼(process_archived_file_sync)이 이 판정을 안 지나는지 — 지금처럼 늘 처리
+게이트  같은 내용 실패 파일 둘 + 워처 재기동 둘 -> 다시 파싱 0 · FAILED 기록 수 그대로
+        같은 내용 새 이름 -> 처리 · 한 사본을 고쳐 저장(mtime 뒤) -> 처리 · Retry -> 처리
+변이    두 번째 조건을 빼면(내용만 보고 건너뜀) 「새 이름 -> 처리」 칸 빨강 · 판정을 빼면 「다시 파싱 0」 칸 빨강
+```
