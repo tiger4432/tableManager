@@ -1,5 +1,22 @@
 # 지금 돌리면 되는 것
 
+> ## 🔴 [09-27 새벽 1] **@mapper 규칙도 지운다 — allow_retraction(잡마다) · allow_replace_map(맵마다) — 마이그레이션 «없음» · 재기동 체인 워커 · API**
+>
+> ```
+> 무엇이 바뀌나  @mapper 맵퍼를 쓰는 규칙에 allow_retraction / allow_replace_map 이 적혀 있으면 착지 «뒤 첫 실행부터» 지움
+>              (전에는 그 칸이 아무 일도 안 했음 — 덮어쓰기만)
+> 재기동 뒤     chain_worker.log "[ChainRules] <규칙>: @mapper removes by job - …" 또는 "… map by map - …" — 그런 규칙마다 한 줄
+>              거절 "[ChainRules] <규칙> refused …: sdk_two_removals · sdk_removal_needs_batch · sdk_map_key_not_on_trigger · sdk_job_column"
+>              뜻: 그 규칙은 안 돎 — 문장이 다음 행동을 적음("is_batch": true 등)
+> 절반 가드     이번에 한 행도 안 낸 잡이 가진 행이 20 이상이면 "[DtMapRetraction] … DECLINED … Next, to remove them on purpose: …"
+>              뜻: 아무것도 안 지움. 정말 지우려면 그 줄이 적은 대로 그리드에서 그 잡의 행을 지움
+> replace_map   맵을 통째로 — 사람이 고친 값(CellOverwrite)도 같이 지움(소유자 판정). retract 는 살림
+> 급할 때       그 규칙의 allow_* 칸을 지우고 설정 저장(리로드) — 덮어쓰기만으로 돌아감
+> 되돌리기      git revert 뒤 체인 워커 · API 재기동
+> ```
+
+---
+
 > ## 🔴 [09-26 밤 8] **넓은 조인은 쪽으로 — 1,000 행씩 답하고 · 쓰고 · 커밋 · 왼쪽 조회 인덱스 · 두 칸 키가 만 개를 넘어도 섬 — 마이그레이션 «없음» · 재기동 체인 워커**
 >
 > ```

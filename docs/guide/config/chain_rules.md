@@ -47,7 +47,13 @@
 
 아래 규칙 이름·표 이름은 출하 샘플(`server/config/sample/chain_rules.json.sample`)의 것입니다.
 
-⚠️ `@mapper` 로 쓴 맵퍼는 DataFrame 을 돌려주고 «덮어쓰기(upsert)만» 합니다. ②·③ 의 지우는 봉투는 못 냅니다 — dict 를 돌려주면 `MapperContractError` 로 거절됩니다. 지워야 하는 맵퍼는 `(db, payloads, rule)` 모양으로 손으로 씁니다. 허락 칸은 어느 쪽이든 «규칙에» 적습니다 — 맵퍼가 대신 켜 주지 않습니다.
+`@mapper` 맵퍼를 쓰는 규칙에 `allow_retraction: true` 를 적으면, 그 출처(`target_job_column`)가 이번에 안 낸 셀이 지워집니다.
+`allow_replace_map: true` 를 적으면 맵 단위로 통째로 바뀝니다(맵 키는 `table_config` 의 `map_key_columns`).
+
+- 맵퍼는 DataFrame 만 돌려줍니다 — 잡마다 / 맵마다 봉투는 제품이 짓습니다. 잡과 맵은 «들어온 행»에서도 읽어서, 이번에 한 행도 안 낸 잡·맵에도 봉투가 나갑니다.
+- 로드에서 거절: `is_batch: true` 가 아님 · 두 칸 다 적음 · (`allow_replace_map`) 트리거 표에 대상의 맵 키 칸이 같은 이름으로 없음 · (`allow_retraction`) 잡 칸을 못 정함.
+- 실행 때 거절: 돌려준 DataFrame 에 그 잡 칸 / 맵 키 칸이 없음.
+- 손으로 쓴 `(db, payloads, rule)` 맵퍼는 그대로 봉투를 직접 돌려줍니다. 허락 칸은 어느 쪽이든 «규칙에» 적습니다 — 맵퍼가 대신 켜 주지 않습니다.
 
 **① 체인이 쓴 값에 이어서 돌게 하고 싶다 → `allow_chain_trigger`**
 
@@ -84,6 +90,8 @@ return {"batches": [{"target_table": "core_usage_map", "replace_map": True,
 
 - 봉투 없이 행만 돌려주면 덮어쓰기(upsert)만 됩니다 — 지난번에만 있던 셀이 남습니다.
 - 칸 없이 이 봉투를 내면 `rule '<이름>' returned scoped batches without allow_replace_map or allow_retraction` 으로 거절됩니다.
+- 사람이 고친 값(CellOverwrite)도 같이 지워집니다 — 맵이 통째로 바뀝니다. ③ `retract` 은 살립니다.
+- `@mapper` 판: 규칙에 `"allow_replace_map": true, "is_batch": true` 를 적고 맵퍼는 DataFrame 만 — 들어온 행의 맵마다 봉투 하나.
 
 **③ 맵 하나를 «여러 출처»가 채우고, 한 출처만 다시 계산한다 → `allow_retraction`**
 
@@ -101,6 +109,8 @@ return {"batches": [{"target_table": "dt_map",
 
 - 여기서 ②(`replace_map`)를 쓰면 둘째 잡이 첫째 잡의 셀을 지웁니다(2026-08-13 실측: 첫 파생에서 3 행 전부).
 - 사람이 고친 셀은 지우지 않습니다. 한 출처가 가진 행의 절반 넘게 지우게 되면 거절하고 그 사실을 로그에 남깁니다.
+  이번에 한 행도 안 낸 잡도 그 가드를 지납니다 — 가진 행이 20 이상이면 아무것도 안 지우고, 정말 지우려면 그리드에서 그 잡의 행을 지웁니다(로그 줄이 그 길을 적음).
+- `@mapper` 판: `"allow_retraction": true, "is_batch": true` (잡 칸은 `trigger_job_column` · `target_job_column`) — 들어온 행의 잡마다 봉투 하나.
 
 **④ 맵 셀과 함께 그 맵의 메타데이터도 고친다 → `allow_map_metadata_upsert`**
 
@@ -206,7 +216,7 @@ conda run -n assy_manager python server/scripts/backup_config.py restore chain_r
 | `is_batch` | 워커 · 리플레이 | `true` = DataFrame 배치 모드(트랜잭션 그룹 하나를 한 번에). 🔴 배치 맵퍼는 dict «하나»를 돌려준다 — 목록을 주면 오류 없이 `mapper_items: 0` |
 | `allow_chain_trigger` | 워커 | 체인이 만든 이벤트(`source_name: "chain_ingestion"`)를 «받겠다»는 옵트인. 없으면 지나감. 순환 검사가 보는 엣지는 «이 옵트인이 걸린 것»뿐. 깊이 상한은 5-A |
 | `allow_map_metadata_upsert` | 워커 · 리플레이 | 맵퍼가 «맵 메타 봉투»(`map_metadata_updates`)를 낼 수 있게. 🔴 그 쓰기는 `wafer_map_metadata` 에 착지하며 «자기 체인 이벤트를 낸다» = 둘째 엣지(2026-09-04). 2026-09-07 부터 «자동 등록»은 은퇴(S-38) — 등록된 메타만 갱신 |
-| `allow_replace_map` | 워커 · `dt_map_derivation` | 맵 단위 «전량 교체» 봉투 옵트인. 없이 내면 거부 |
+| `allow_replace_map` | 워커 · `dt_map_derivation` | 맵 단위 «전량 교체» 봉투 옵트인. 없이 내면 거부. 🔴 사람이 고친 값(CellOverwrite)도 같이 지워짐 · `retract` 는 살림(소유자 2026-09-26) |
 | `allow_retraction` | 워커 · `dt_map_derivation` | 출처 단위 «철회» 봉투 옵트인. 🔴 한 배치에 `replace_map` 과 `retract` 을 같이 실으면 거부(2026-08-13). 둘 중 무엇은 «그 맵의 생산자가 하나인가 여럿인가»가 정한다 |
 | `slow_warn_ms` | 워커 · 리플레이 (`event_constants.slow_warn_ms`) | 이 규칙의 맵퍼 실행·철회가 «느리다»고 경고할 문턱(ms). 양의 정수 아니면 경고 한 줄 뒤 기본값. 「느리다」는 이 선언이 정한다 — 캡 맞음 ≠ 느림 |
 | `reads` | `chain_bindings.READS_KEY` (순서 가드, C-3) | 위 표 키로 «표현 못 하는» 읽기 표 목록(예: `load_map_meta` 가 여는 `wafer_map_metadata`). 🔴 **목적마다 새 키를 만들지 않는다** — 새 읽기는 여기 «값»으로. 순서는 이 선언에서 «도출»된다(의존을 적지 않고 «읽는 표»를 적는다, 판정 61) |

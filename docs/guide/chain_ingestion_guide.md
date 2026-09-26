@@ -193,6 +193,11 @@ way out, so what is left in the file is the derivation. The worker still calls i
 where a hand-written one did. Without the decorator the same two steps are
 `mapper_sdk.payloads_to_df` and `mapper_sdk.df_to_updates`.
 
+When the rule sets `allow_retraction` or `allow_replace_map`, the way out builds the removal
+batches instead - one per job (`target_job_column`) or one per map (`map_key_columns`), with the
+jobs and maps read from the incoming rows as well, so one that produced nothing this time still
+gets its batch. The rule must be `is_batch: true`; see `config/chain_rules.md` §0-1.
+
 🔴 **`sql(db, ...)` reads on the session it is given, not on a new connection.** A mapper
 runs inside the worker's transaction; a helper that opened its own would read the database
 as it was *before* this batch — silently, and only under concurrency.

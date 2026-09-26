@@ -408,6 +408,88 @@ def ensure_discovered(package="mappers"):
         pass
 
 
+#: The mark the decorator leaves on the `run` it builds - read by `made_by_sdk` and nowhere else.
+_MADE_BY_SDK = "_assy_made_by_mapper_sdk"
+
+
+def made_by_sdk(fn) -> bool:
+    """Was this callable built by `@mapper`? The one reader of the mark (총괄 717f60124 ③)."""
+    return bool(getattr(fn, _MADE_BY_SDK, False))
+
+
+def _require_columns(out, columns, rule) -> None:
+    """The result must carry the columns its removal is named by - a job column and a map key
+    are refused alike, by name (총괄 717f60124 ④)."""
+    missing = [c for c in columns if c not in out.columns]
+    if missing:
+        raise MapperContractError(
+            "rule '%s' removes by %s, and the DataFrame its mapper returned has no %s - which "
+            "job or map a written row belongs to could not be told, so nothing is written. "
+            "Next: put %s in the DataFrame." % ((rule or {}).get("name") or "<unnamed rule>",
+                                                columns, missing, missing))
+
+
+def _present(value) -> bool:
+    """A value that names a job or a map - not None, not NaN, not blank."""
+    return value is not None and not (isinstance(value, float) and value != value) \
+        and bool(str(value).strip())
+
+
+def _removal_batches(rule, table, rows_in, out, *, source_name, updated_by) -> dict:
+    """The rule's removal flag as the scoped batches the seat reads (ed70c3970 ② · 717f60124).
+
+    소유자: 「@mapper 맵퍼를 쓰는 규칙에 allow_retraction: true 를 적으면, 그 출처(target_job_column)가
+    이번에 안 낸 셀이 지워진다」 · 「allow_replace_map: true 를 적으면 맵 단위로 통째로 바뀐다」.
+    One retract batch per job, or one replace_map batch per map. The jobs and maps are read from
+    the INCOMING rows as well as the result - one that produced nothing this time is still
+    named, and its old cells are what its batch removes (the half guard still judges that).
+    """
+    import chain_bindings
+    import dt_map_derivation
+
+    refusals = chain_bindings.sdk_mapper_refusals(rule)
+    if refusals:
+        raise MapperContractError(" ".join(why for _code, why in refusals))
+    out = out if out is not None else pd.DataFrame()
+    trigger = str(rule.get("trigger_table") or "")
+    by_job = bool(rule.get("allow_retraction"))
+    if by_job:
+        came_as = [chain_bindings.resolve_column(rule, "trigger_job_column", trigger,
+                                                 "the job of an incoming row")]
+        keys = [chain_bindings.resolve_column(rule, "target_job_column", table,
+                                              "the job a written cell carries")]
+    else:
+        keys = came_as = dt_map_derivation.identity_columns(table)
+    if not out.empty:
+        _require_columns(out, keys, rule)
+    named = []
+    for frame, columns in ((rows_in, came_as), (out, keys)):
+        if frame.empty or any(c not in frame.columns for c in columns):
+            continue
+        for values in frame[list(columns)].itertuples(index=False, name=None):
+            if all(_present(v) for v in values) and values not in named:
+                named.append(values)
+    batches = []
+    for values in named:
+        part = out
+        if not out.empty:
+            mask = pd.Series(True, index=out.index)
+            for column, value in zip(keys, values):
+                mask &= out[column].astype(str) == str(value)
+            part = out[mask]
+        batch = {"target_table": table,
+                 "updates": (df_to_updates(part, table, source_name=source_name,
+                                           updated_by=updated_by)["updates"]
+                             if not part.empty else [])}
+        if by_job:
+            batch["retract"] = {"source_column": keys[0], "source_value": values[0]}
+        else:
+            batch["replace_map"] = True
+            batch["scope"] = dict(zip(keys, values))
+        batches.append(batch)
+    return {"batches": batches}
+
+
 def mapper(target_table=None, *, source_name: str = "chain_ingestion",
            updated_by: str | None = None, params=(), name: str | None = None):
     """Wrap an author's `(df, db) -> df` so that ① and ③ leave their file. Step ③ of the
@@ -472,16 +554,21 @@ def mapper(target_table=None, *, source_name: str = "chain_ingestion",
                     f"'target_table' and the decorator was given none. The business key "
                     f"is decided from that table's declaration, so there is nothing to "
                     f"decide it from.")
-            out = fn(payloads_to_df(payloads), db)
-            if out is None:
-                return {"updates": []}
-            if not isinstance(out, pd.DataFrame):
+            rows_in = payloads_to_df(payloads)
+            out = fn(rows_in, db)
+            if out is not None and not isinstance(out, pd.DataFrame):
                 raise MapperContractError(
                     f"'{fn.__name__}' returned {type(out).__name__}; a decorated mapper "
                     f"returns a DataFrame and the envelope is built for it. Returning the "
                     f"envelope yourself means this decorator is not the thing you want.")
+            if (rule or {}).get("allow_retraction") or (rule or {}).get("allow_replace_map"):
+                return _removal_batches(rule, table, rows_in, out, source_name=source_name,
+                                        updated_by=updated_by or fn.__name__)
+            if out is None:
+                return {"updates": []}
             return df_to_updates(out, table, source_name=source_name,
                                  updated_by=updated_by or fn.__name__)
+        setattr(run, _MADE_BY_SDK, True)
         # 🔴 REGISTERED UNDER THE AUTHOR'S FUNCTION NAME unless one is given. The name a
         # rule writes has to be a name the author can see in their own file; a generated
         # one would be a third thing to keep in step. `params` is the argument names this

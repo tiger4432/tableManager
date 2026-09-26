@@ -560,6 +560,12 @@ def _resolvable_mapper(name):
     return rule_run.runnable(name)
 
 
+def _made_by_sdk(name):
+    """Was the mapper this name runs built by `@mapper`? Handed to `rule_refusals` by all three
+    of its callers - the one answer, read off the mark by `mapper_sdk.made_by_sdk`."""
+    return mapper_sdk.made_by_sdk(rule_run.runnable(name))
+
+
 def read_rules_document(path=None):
     """The chain rules FILE, read in ONE place. Absence is a VALUE, never an exception.
 
@@ -665,7 +671,7 @@ def load_chain_rules():
         # only where the verdict comes from moved.
         issues = chain_bindings.rule_refusals(
             rule, path, mapper_resolvable=_resolvable_mapper, derived_tables=derived,
-            mapper_params=mapper_sdk.MAPPER_PARAMS.get)
+            mapper_params=mapper_sdk.MAPPER_PARAMS.get, mapper_made_by_sdk=_made_by_sdk)
         one_cell, _module_name, _function_name = chain_bindings.mapper_cells(rule)
         # 🪦 [판정 498 ①] THIS PASSED `MAPPER_REGISTRY.get`, WHICH ANSWERS FOR ONE
         # TABLE OF TWO. A `builtin:` name is runnable and was reported unresolvable here,
@@ -695,6 +701,16 @@ def load_chain_rules():
                 (rule or {}).get("name") or path, len(unknown),
                 ", ".join(i.path.rsplit(".", 1)[-1] for i in unknown))
         kept.append(rule)
+        if one_cell and resolvable and _made_by_sdk(one_cell) and (
+                rule.get("allow_retraction") or rule.get("allow_replace_map")):
+            # 총괄 ed70c3970 ②: a @mapper rule's flag removes cells from its first run on - said
+            # once per load, with what it removes by.
+            logger.info("[ChainRules] %s: @mapper removes %s", rule.get("name"),
+                        "by job - %s the incoming rows carry, %s the written cells carry" % (
+                            rule.get("trigger_job_column") or "(the trigger table's map key)",
+                            rule.get("target_job_column") or "(the target table's map key)")
+                        if rule.get("allow_retraction") else
+                        "map by map - the target's map_key_columns")
 
         flat = [w.path.rsplit(".", 1)[-1] for w in chain_bindings.rule_warnings(rule)]
         if flat:
@@ -1530,7 +1546,10 @@ def apply_chain_writes(db, tx_id, rule, incoming_depth, rules_by_target,
                                     f"⚠️ [DtMapRetraction] Table: '{target_table}' | TX: "
                                     f"'{chain_tx_id}' | {source_column}='{source_value}' | "
                                     f"DECLINED: {plan['declined']['reason']}. Stale rows were "
-                                    f"LEFT IN PLACE; nothing was deleted.")
+                                    f"LEFT IN PLACE; nothing was deleted. Next, to remove them on "
+                                    f"purpose: in the grid, filter '{target_table}' by "
+                                    f"{source_column} = '{source_value}' and delete the rows "
+                                    f"(POST /tables/{target_table}/rows/batch_delete).")
                             elif plan.get("delete_row_ids"):
                                 n = dt_map_derivation.apply_retraction(db, plan)
                                 # The rows are gone from the database; a client that is not
