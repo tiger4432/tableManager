@@ -34011,3 +34011,44 @@ allow_replace_map · allow_retraction 을 넣으면  두 골격에 칸이 하나
 되돌리기   git revert <착지 해시> 뒤 체인 워커 · API 재기동
 표에 쓰는 것 0
 ```
+
+---
+
+## 착지 — 경고 고침 (fe020274d · b776cd459 ㄱ) — 263644e69 (09-26 17:15)
+
+```
+지은 것   chain_bindings  allow_replace_map · allow_retraction 을 RULE_ROUTING_OPTIONAL 에(flag) · routing_keys() 가 rule_shape.KEY_CELL 을 붙임
+                          rule_refusals 의 exact(optional=…) 가 RULE_ROUTING_OPTIONAL 대신 routing_keys() 를 지남
+                          골격 두 뿌리의 key 노드는 _key_node() 하나(rule_shape.KEY_CELLS 로)
+         chain/rule_shape KEY_CELL · axis_keys() 가 key 를 뺌(통합 골격의 자기 칸 — 두 번 안 그림)
+         chain_skeleton.json 재생성 — root 26 -> 29 · unified_root 20 -> 22 · key 중복 없음 · 두 뿌리의 key 노드 같음(columns · unique)
+         게이트 test_every_cell_read_off_a_chain_rule_is_in_the_list — 규칙 dict 를 호출과 로더 목록으로 따라가는 AST 셈(51 함수)
+         축 개수 시험 13 -> 15 · 가이드 §0 문장(「고치는 중」 -> 고침) · 코드맵 routing_keys 행
+```
+
+```
+🔴 정정 두 가지 (제 1f6b173ec)
+  ① 「옛 문법 규칙의 key 가 왕복에서 빠진다」는 틀렸습니다 — 재어 보니 extra 로 그대로 돌아옵니다(값 · {} · None · '' 넷 다)
+     그래서 as_chain_rule 의 join 갈래는 안 옮겼습니다. 통합 선언에서 그 key 가 key 칸이 아니라 extra 밑에 보이는 것은 그대로(이번 항목 밖)
+  ② 짓다가 한 자리 더 — 저장 관문 rule_refusals 의 exact() 가 목록을 «상수에서» 따로 조립하고 있어,
+     key 가 flat 에서 빠지자 「unknown_field」로 거절했습니다(시험 둘 빨강). 같은 목록(routing_keys)을 지나게 고침
+```
+
+| 게이트 (깨끗한 작업 트리 87dc0518a + 이 변경) | 결과 |
+|---|---|
+| 건드린 모듈을 import 하는 시험 44 파일 + 새 시험 | 498 passed |
+| client 픽스처 명령 | 710 passed, 1 xfailed (174 초) |
+| run_pg_tests.py 전부 (겹침 없음 확인) | 7 failed, 102 passed — 일곱 = 알려진 일곱, 이름까지 |
+| 골격을 읽는 클라 하니스 다섯 (chain_list_edit · chain_rule_form · chain_rule_panel · chain_rule_user_path · skeleton_oneof_descent) | 259 단언 0 실패 |
+| 변이 — 목록에서 key / allow_replace_map / allow_retraction 를 하나씩 뺌 | 셋 다 빨강 · 안 빼면 초록 |
+
+```
+박스      재기동함 17:14:04 — API · 체인 워커 자식만(pid 37644 · 39116 -> 21620 · 23748). 감독자 · 워처 · 스케줄러 그대로 · health 200
+전 (09:14 로드)   flat 줄 여덟 — inventory_confirmed · :target(key) · core_usage_map 둘(allow_replace_map) ·
+                 dt_inventory_to_standard_dt_map(allow_retraction + 셋) · 매퍼 인자 넷
+후 (17:14 로드)   flat 줄 넷 — dt_inventory_to_standard_dt_map 3 · dt_log_to_primary_core_frame 11 · dt_metadata_to_dt_inventory 1 · lot_event_to_lot_slot_wafer 6
+                 key · allow_replace_map · allow_retraction 줄 0 ✓ · 거절 줄 전 · 후 0
+되돌리기   git revert 263644e69 뒤 체인 워커 · API 재기동
+클라 화면  선언창 칸 둘(allow_replace_map · allow_retraction)과 옛 문법 폼의 key 는 총괄이 소유자 크롬에서
+다음      표기 정규화(6c156492f · 소유자 예 2a73863ca) — 짓기 전 셈과 안을 먼저 이 채널에
+```
