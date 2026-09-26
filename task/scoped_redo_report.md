@@ -63294,3 +63294,46 @@ rows_out   [ChainRule] 줄의 rows_out 은 첫 쪽만 셉니다. 나머지는 �
 읽는 때     한 방일 때는 묶음의 모든 쓰기 «전»에 답을 다 읽었습니다. 이제 둘째 쪽부터는 앞선 쓰기 «뒤»에 읽습니다
            같은 묶음의 앞 규칙이 조인의 오른쪽 표(원천)에 쓰면 뒤 쪽이 바뀐 값을 읽을 수 있음 — 운영 선언에서 그런 겹침이 있는지는 안 셈
 ```
+
+---
+
+## [구현자 -> 총괄] 선언 + @mapper 착수 — 잰 자리와 부딪힘 다섯 (ed70c3970 ② · replace_map ㄱ)
+
+### 잰 자리 — 8 (코드 함수 6 · 문서 2)
+```
+mapper_sdk          mapper() 의 run 감싸개 — 규칙 칸을 읽고 봉투를 지음 · @mapper 표지를 run 에 붙임
+                    df_to_updates 옆 봉투 짓기 — 오늘은 {"updates": [...]} 하나만 냄
+chain_bindings      rule_refusals — 로드 판정(아래 셋) · 표지를 읽는 callable 하나를 mapper_resolvable 처럼 받음(S-188 방향)
+그 호출자 셋         ingestion_worker.load_chain_rules · config_resolve_report · ledger/admin 저장 관문 — 같은 callable 을 넘김
+가이드 둘            chain_rules.md §0 「@mapper 는 upsert 만」 · 예시 ②③ · 칸 표 / chain_ingestion_guide.md 의 @mapper 반환 절
+리플레이             자리 아님 — 리플레이는 사건만 올리고 워커가 같은 run 을 부름
+```
+
+### 부딪힘 — 짓기 전에 판정이 필요합니다
+```
+1 0 행 출처 × 절반 가드
+  지시   「이번에 한 행도 안 낸 출처의 옛 셀도 지워져야 retract 의 뜻이 선다」
+  지시   「retract 의 사람 교정 보존 · 절반 넘게 지우면 거절 — 그대로 지난다」
+  코드   0 행 출처는 그 출처가 가진 행 «전부»가 지울 대상 = 100 % -> 가진 행이 20 이상이면 가드가 거절(경고 줄만)
+         dt_map_derivation: DEFAULT_MAX_RETRACT_FRACTION = 0.5 · DEFAULT_MIN_RETRACT_POPULATION = 20
+  -> 두 문장이 그 경우에 같이 참일 수 없습니다. 고르지 않고 여쭙니다
+2 allow_* 가 붙은 @mapper 규칙이 is_batch 가 아니면
+  행마다 부르는 갈래가 updates 만 읽어 봉투(batches)를 «조용히» 버림 — 지우기가 소리 없이 안 일어남
+  제안: 로드에서 이름 대어 거절(다음 행동: is_batch: true)
+3 판정 자리 (지시: 님이 고르고 보고)
+  제안: @mapper 감싸개가 run 에 표지를 붙이고, 로더가 그 표지를 callable 로 받아 rule_refusals 에서 판정
+  ㄱ(replace_map 0 행 맵)도 같은 자리 — 트리거 표가 대상 map_key_columns 를 같은 이름으로 다 가졌나(두 표 설정을 가진 곳이 로더)
+4 셀이 들고 있어야 할 잡 칸
+  retract 는 «쓴 셀마다» 출처 값이 있어야 지울 것을 가름 — DataFrame 에 target_job_column 이 없으면 못 가름
+  로드에서는 DataFrame 을 못 봄 -> 실행 때 이름 대어 거절(맵 키 칸 없음 거절과 같은 모양). 이렇게 가나
+  출처 값은 들어온 행에서 trigger_job_column 으로 잡음(0 행 출처를 잃지 않으려고) — 두 칸 다 선언된 라우팅 칸(chain_bindings)
+5 replace_map 의 두 사실 (지시가 보고하라 한 것)
+  예산 가드 없음 — 절반 가드는 retract 에만
+  purge_map_rows 가 그 맵 행의 «사람 교정»(CellOverwrite)도 같이 지움 — 「맵 단위로 통째로 바뀐다」면 사람 손댄 값도 사라짐
+```
+
+### 크기 · 오늘 밤
+```
+코드 여섯 자리 + 게이트 {없음 · retraction · replace_map · 둘 다} × {행 있음 · 0 행 출처 · 맵 키 칸 빠짐} × {워커 · 리플레이} + 가이드 둘
+몇 시간짜리입니다(줄 수는 안 셈). 오늘 밤 착지할지, 아침 첫 일로 둘지 — 총괄이 정해 주십시오
+```
