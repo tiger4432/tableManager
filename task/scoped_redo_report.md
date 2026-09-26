@@ -63747,3 +63747,58 @@ RUN.md    재기동 «전» 확인 명령 — 운영 설정 파일의 flag 칸 �
 6-A  이 크기로 한 커밋 — 가나
 6-B  표기 칸 선언 자체(true · false · {rules})는 «예/아니오 또는 객체»라 오늘 거절 문장을 그대로 둡니다 — 맞나
 ```
+
+---
+
+## [구현자 -> 총괄] 6 착지 096d5ca31 — 예/아니오 칸은 true/false 만 · 판정 하나 · 문장 하나 (872f6cb6b · 36b465139)
+
+```
+판정자    validation.flag_refusal(칸, 값) — 「<칸> must be true or false, got <JSON 값> - write true or false」
+         validation.flag_refusals(값, 골격 노드) — 골격의 hint "flag" 잎을 걸음(record · map · oneOf)
+체인      chain_bindings.flag_refusals(선언) — chain_bindings.skeleton() 의 두 뿌리(평평 · 통합)에서 칸을 읽음. 손으로 적은 목록 없음
+         rule_shape.expand_declaration 맨 앞 · 저장 관문(save_chain_rule_raw)은 enabled 덮기 «전»
+         rule_refusals 의 bad_idempotent — 코드는 그대로, 문장만 판정자의 것
+         ledger/admin 의 bool(enabled) 둘 -> is_switched_off
+찾은 자리  이번에 더 찾은 것: 수집 설정 여섯(_bool_setting) · std_parse — 문서(guide/config)를 읽다가. «전수» 아님
+```
+
+**동작이 바뀌는 자리**
+```
+체인 규칙   true/false 아닌 예/아니오 칸 -> 선언이 안 섬 (전: "false" · "true" · 1 켜짐 · 0 · null 꺼짐)
+맵 라우팅 셋 · 페인트 잠금  -> 그 항목을 안 씀 + 경고 줄 (전: 라우팅은 0 · null · "false" 켜짐, 잠금은 "false" · 1 켜짐)
+표기 칸 write · map_push_ok  동작 같음(꺼짐) — 문장이 새로 생김
+```
+
+**문장이 달라지는 자리 — 전 -> 후** (후는 전부 위 한 문장 + 그 자리의 꼬리)
+```
+수집기      "<곳>.enabled must be a JSON boolean." · recursive 같음   -> "<곳>: <한 문장>"
+원장 묶음    enabled · allow_null · accepts_verified_join_rules "must be boolean" -> 한 문장
+           fold 켜기 "notation rule toggle must be boolean"            -> 한 문장
+           materialize 가 예/아니오가 아님: 전엔 「'materialize' is false … 은퇴」(거짓 문장) -> 한 문장
+           blank 가 예/아니오가 아님: 전엔 「the only supported condition is 'blank': true」 -> 한 문장 (false 는 옛 문장 그대로)
+표기 켜기    "rule 'x' must be true or false (got …); the default is kept" -> 한 문장 + "; the default is kept"
+체인 idempotent  "idempotence must be true or false, got …" -> 한 문장
+자동 확정 둘 · 수집 설정 여섯 · std_parse   "Ignoring non-boolean … expected JSON boolean …" -> 한 문장 + 기본값 꼬리
+보고(config resolve)  "… is not a JSON boolean and was ignored …" -> 한 문장 + 같은 꼬리 · 사유 칸 mapping_unavailable 그대로
+```
+
+```
+게이트    test_a_yes_no_cell_holds_true_or_false.py 76 칸 — 판정자 × 7 값 · 체인 칸 일곱(평평 셋 · 통합 넷) × 아닌 값 다섯 + true 대조
+         로더 로그 · 저장 거절 · 규칙 목록 사유 · 보고 · 수집기 · 원장 넷 + 둘 · 표기 · 라우팅 둘 · 잠금 · 자동 확정 · map_push_ok · 수집 설정 · std_parse
+         칸마다 「없음 = 오늘 뜻」 대조가 붙은 자리: 체인 enabled · 잠금 · 자동 확정 · map_push_ok
+변이      13 개 전부 빨강 — 판정자 무력화 58 · 체인 좌석 38 · oneOf 안 걸음 6 · 나머지 자리마다 1~2 · 되돌린 뒤 76 passed
+옛 문장 시험  셋 고침 — 원장 fold · 자동 확정 경고 · std_parse(전체에서 잡힘)
+main      건드린 시험 아홉 파일 284 passed (박스 설정 있는 트리)
+전체      C:/wt-impl(박스 설정 · server/mappers 복사) 6 failed · 7315 passed — 내 것 1(std_parse 옛 문장, 고침 · 22 passed)
+         나머지 다섯은 패치 없이도 같음: 샘플 CRLF 대조 넷(새 checkout 줄끝) · repo_root
+PG       7 failed = 알려진 일곱 · 오류 0. 🔴 첫 PG 는 제 A/B(패치 되돌리기)와 겹쳐 버리고 다시 돌린 수입니다
+RUN.md   「09-27 아침 2」 — 재기동 «전» 확인 두 줄(체인 규칙 · 맵) · 끝 줄에 읽은 수(0 이면 파일을 못 읽은 것)
+         이 박스: 체인 규칙 13 · 아닌 값 0 / 맵 라우팅 0 · 잠금 1 (박스 수)
+```
+
+**지나며 본 것 — 안 고침**
+```
+map_overlay.get_paint_rules 의 기본 message 가 한국어("이 셀은 잠금 값이라 …") — 화면에 그려지는 문자열. UI 영어 상설과 어긋남
+```
+
+**다음** 7 에 들어갑니다.
