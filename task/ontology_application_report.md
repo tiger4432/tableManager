@@ -34052,3 +34052,12 @@ allow_replace_map · allow_retraction 을 넣으면  두 골격에 칸이 하나
 클라 화면  선언창 칸 둘(allow_replace_map · allow_retraction)과 옛 문법 폼의 key 는 총괄이 소유자 크롬에서
 다음      표기 정규화(6c156492f · 소유자 예 2a73863ca) — 짓기 전 셈과 안을 먼저 이 채널에
 ```
+
+---
+
+## 알림 — 잡 컬럼 칸 뒤따름(ed70c3970 ①) 착지 뒤 재기동 (09-26 17:21)
+
+```
+하는 것    040053994 와 같음 — 체인 워커 · API 자식만. 잴 것: flat 줄에서 dt_inventory_to_standard_dt_map(3) · dt_metadata_to_dt_inventory(1) 두 줄이 사라지고 나머지 둘(11 · 6)은 그대로
+되돌리기   git revert <착지 해시> 뒤 체인 워커 · API 재기동 · 표에 쓰는 것 0
+```
