@@ -29,6 +29,9 @@ server/ingestion_workspace/
   - 예: `# schedule: */5 * * * *` (5분마다 실행)
 * `# filename_prefix: <prefix>`: `raws/` 폴더에 생성될 최종 CSV 파일의 접두사를 지정합니다.
   - 예: `# filename_prefix: sensor_a_data` -> 최종 생성 파일: `sensor_a_data_YYYYMMDD_HHMMSS.csv`
+* 🆕 09-26 `3204dd97` `# window: <n>d` 또는 `<n>h`: 이 수집기의 시간 창 길이. 있으면 실행마다 스크립트 본문의 `{{WINDOW_START}}` · `{{WINDOW_END}}` 를 **「지금 − 길이 ~ 지금」(KST)** 으로 채워서 돌립니다(스케줄 실행 · 즉시 실행 두 길 다, 채우는 자리는 `fill_markers` 하나). 원본 파일은 안 바뀝니다 — 채운 사본으로 돕니다. 다른 모양의 길이는 이름 대어 거절합니다.
+  - 예: `# window: 1d` -> 어제 이 시각 ~ 지금
+* 🆕 `# window_format: <strftime>`: 채울 때의 글자 모양. 없으면 `%Y-%m-%d %H:%M:%S`.
 
 > [!NOTE]
 > 만약 `# schedule:` 설정 주석이 생략되거나 누락된 스크립트의 경우, 기본 주기(매시 정각 `"0 * * * *"`)와 기본 접두사(스크립트 파일명)로 안전하게 자동 폴백(Fallback) 지정됩니다.
