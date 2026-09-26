@@ -72,6 +72,17 @@ batch: broadcast dispatch T s · groups N                       <- 배치당 «�
 🔵 **이것이 운영에서 «읽혀서» S-168 이 됐다** — 운영 apply 19 s/1k = 선인출 10 · 행 만들기 1 · 부수 표 7
 (이 박스 0.03 · 0.37 · 0.42). 운영을 여기서 잴 수 없으므로 «계기를 보내고 값을 받는다»가 방법이다.
 
+🆕 **[09-26 `0026c09be`] 부수 표가 «넷»으로 갈리고 행 수를 단다 · 파일이 끝나면 «한 줄»** (두 레인 같은 줄)
+```
+INSIDE THE WRITE · row build T s / N cells changed · audit logs T s / N rows · cell sources … · cell overwrites … · overwrite deletes …
+[Ingest] <표> FILE <파일>: R row(s) in T s (N rows/min) · <heavy|normal> lane · waited T s (<무엇을>)
+         · sent: new · changed · unchanged · cells changed · side-table rows · STAGES · INSIDE THE WRITE · DB wait samples N (Lock N)
+```
+- 수는 넘겨받은 목록의 «길이» — 세려고 더한 질의 없음. 새 행 id 는 세션의 identity 키에서 읽음(`_new_row_ids`)
+- `waited` 의 뜻이 레인마다 다르다 — heavy 는 «큐 + 표 잠금», normal 은 «표 잠금»(`_FileTally.WAITED_SPANS`). 레인 없이 들어온 파일은 `not measured`
+- 세는 쪽이 터지면 «그 줄만» 조용해진다(`FILE … : not counted (<사유>)`) — 적재는 계속
+- 체인 그룹 줄의 INSIDE THE WRITE 도 같은 한 함수(`alignment_batch_counts.write_steps_text`)로 그린다
+
 ### §1-quater. 🔵 **이 표를 «화면»이 대신 읽는다 — `GET /runtime`** (S-176, 09-11)
 
 ```
