@@ -61163,3 +61163,55 @@ assy_qa       21 GB · public 표 106 · 남은 scratch 스키마 13 (죽은 실
 ```
 여쭐 것   ㄱ 로 가면 — 짓기 전에 PG 시험 전부에서 «public 의 스냅숏 표를 읽는 것»이 있는지 먼저 셉니다(있으면 멈추고 보고)
 ```
+
+---
+
+## [구현자 -> 총괄] 5 끝맺음 착지 — PG 시험은 자기 빈 DB assy_test 에서 (30e23c7ac) — 25b5108a1
+
+### 짓기 전 셈 — 시험이 assy_qa public 의 스냅숏 표를 읽나
+
+```
+술어     pytest 가 도는 동안 assy_qa 의 public 표 중 pg_stat_user_tables 의 seq_scan · idx_scan · n_tup_ins/upd/del 이 움직인 것
+카나리아  제가 public.lot_event 를 한 번 읽음 -> {'seq_scan': 1} (첫 시도는 연결이 풀에 남아 수가 늦게 적혀 0 — 계기를 NullPool 로 고치고 다시)
+A · PG 파일 21 개     175 passed, 108 skipped -> 움직인 public 표 0
+B · 시험 전부            7004 passed, 141 skipped, 3 xfailed -> 움직인 public 표 0
+그동안 assy_qa 의 다른 연결   시험 자신의 연결 하나씩뿐(질의가 시험의 DDL · 타입 조회)
+명령     scratchpad/census_public_reads.py <PG 파일 목록> — 목록은 git grep resolve_url|_resolve_pg_test_url|scratch_connect_args|isolated_pg|pg_engine
+-> 읽는 시험 없음 · 짓기로
+```
+
+### 지은 것
+
+```
+한 자리    tests/support/isolated_pg.PG_TEST_DATABASE = "assy_test"
+되돌이     resolve_url 의 마지막 = declared_test_database() — devenv 가 선언한 서버에 assy_test 가 없으면 만들고 pg_trgm 설치
+           CREATE DATABASE 는 postgres 관리 DB 에서(assy_qa 에 안 붙음). 두 연결 다 declared_as_test_database 로 그 블록만 선언
+           — 처음엔 assy_qa 로 붙였다가 시험 프로세스의 db_safety 가 거절(그게 맞음)해서 고침
+그대로     분리 환경은 assy_qa · ASSY_PG_TEST_DATABASE_URL 가 있으면 그것이 먼저 · 스크래치 스키마 방식 그대로
+말         skip 문장 · 두 시험 독스트링의 실행 예시가 assy_qa -> assy_test
+assy_test  시험이 처음 돌 때 생김 — 지금 public 표 0 · pg_trgm public 에
+```
+
+### 게이트
+
+```
+전(HEAD) | assy_qa public + ledger tables ['ledger_events', 'ledger_source_row_ref', 'ledger_translator_cursor']
+전(HEAD) | test WITH them: 1 failed, 6 warnings
+전(HEAD) | dropped them; ledger tables left in public: 0
+전(HEAD) | test WITHOUT them: 1 passed, 6 warnings
+후 | assy_qa public + ledger tables ['ledger_events', 'ledger_source_row_ref', 'ledger_translator_cursor']
+후 | test WITH them: 1 passed, 6 warnings
+후 | dropped them; ledger tables left in public: 0
+후 | test WITHOUT them: 1 passed, 6 warnings
+변이 — 되돌이를 assy_qa 로
+변이 | assy_qa public + ledger tables ['ledger_events', 'ledger_source_row_ref', 'ledger_translator_cursor']
+변이 | test WITH them: 1 failed, 6 warnings
+변이 | dropped them; ledger tables left in public: 0
+변이 | test WITHOUT them: 1 passed, 6 warnings
+PG 파일 21 개   전 175 passed, 108 skipped -> 후 175 passed, 108 skipped
+시험 전부          전 7004 passed, 141 skipped, 3 xfailed -> 후 7004 passed, 141 skipped, 3 xfailed
+```
+
+```
+보고만   assy_qa 의 남은 scratch 스키마 13 — 받으신 대로 안 치움
+```
