@@ -206,11 +206,12 @@ class TestInventory:
         # `ledger_rescope` and `ledger_backfill` joined on 2026-08-31 - the second because
         # the forward scan was the one the owner could only stop by restarting the server.
         # `collector_backfill` joined on 2026-09-26 - a collector run one day at a time;
-        # `fold_file_layers` the same day - file layers that repeat a newer one (총괄 225b2c658).
+        # `fold_file_layers` the same day - file layers that repeat a newer one (총괄 225b2c658);
+        # `set_aside` / `rerun_set_aside` the same evening - the emergency stop (3840af307).
         assert {o["op"] for o in body["operations"]} == {
             "chain_replay", "withdraw", "enrichment_backfill", "enrichment_confirm",
             "ledger_rescope", "ledger_backfill", "resolve", "collector_backfill",
-            "fold_file_layers"}
+            "fold_file_layers", "set_aside", "rerun_set_aside"}
 
     def test_the_run_list_and_the_cancel_request_are_actually_reachable(self, client):
         """🔴 A CONVENTION WITH NO ROUTE IS A FUNCTION NOBODY CAN CALL.

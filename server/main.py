@@ -4454,6 +4454,36 @@ def chain_dry_run(payload: dict = Body(...)):
     return result
 
 
+class ChainPauseRequest(BaseModel):
+    reason: str = ""
+
+
+@app.post("/admin/chain/pause", dependencies=[Depends(require_admin_token)])
+def pause_chain(body: ChainPauseRequest, request: Request, db: Session = Depends(get_db)):
+    """The emergency stop (총괄 3840af307 ㄱ): the chain takes no new group, a running one is
+    rewound at its next stage and its query cancelled now. Nothing queued is lost. Held
+    across restarts until Resume. -> `{paused: {by, at, reason, cancelled_pid}}`."""
+    from chain import control as chain_control
+    by = request.headers.get("X-User") or "operator"
+    return {"paused": chain_control.pause_now(db, by, body.reason)}
+
+
+@app.get("/admin/chain/pause", dependencies=[Depends(require_admin_token)])
+def get_chain_pause():
+    """Whether a pause is REQUESTED (the control file). Whether the worker honours it is the
+    chain's beat - `/health` says `paused` once it does."""
+    from chain import control as chain_control
+    return {"paused": chain_control.paused()}
+
+
+@app.post("/admin/chain/resume", dependencies=[Depends(require_admin_token)])
+def resume_chain():
+    """Lift the emergency stop; the chain takes its queue again on its next tick."""
+    from chain import control as chain_control
+    chain_control.resume()
+    return {"paused": None}
+
+
 @app.get("/admin/chain/queue", dependencies=[Depends(require_admin_token)])
 def get_chain_queue_depth(db: Session = Depends(get_db)):
     """「체인 요청이 몇 개 씹히는 것 같다」를 **수로 바꾼다.** 읽기 전용.

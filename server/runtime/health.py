@@ -394,6 +394,14 @@ def compute_health(db_result, heartbeats, supervisor_status, outbox_result,
                     # log carries - or, before it has asked, the stage it stopped in.
                     + (f" - {work['stalled_on']}" if work.get("stalled_on") else
                        f" in {work['stage']}" if work.get("stage") else ""))
+        # 🔴 PAUSED IS SAID BY THE WORKER, NOT BY THE CONTROL FILE (총괄 3840af307): the beat
+        #   carries it once the loop honours the pause. Its own word - a stop somebody chose -
+        #   and degraded rather than unhealthy; a bigger verdict (down/wedged) still wins.
+        if (hb or {}).get("state") == "paused" and entry["status"] in (STATUS_OK, "stalled"):
+            entry["status"] = "paused"
+            escalate(STATUS_DEGRADED)
+            problems.append(f"worker '{hb_name}' is paused - it takes no new work until "
+                            f"Resume; its queue waits")
         entry["stale_after_seconds"] = stale_after
         workers[hb_name] = entry
 

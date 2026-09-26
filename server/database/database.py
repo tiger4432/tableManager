@@ -61,14 +61,16 @@ else:
 _db_safety.install_test_database_guard(engine, production_url=DEFAULT_PG_URL)
 
 
-def connection_name():
+def connection_name(process_name=None):
     """What this process's connections are called in `pg_stat_activity`: `assy_` + the name
     its entry point gave its logger (server · watcher · chain · scheduler · retroactive), or
     the script's own name when no process logger was set up. Read when a connection OPENS,
-    not at import - `main.py` imports this module before it names its logger."""
+    not at import - `main.py` imports this module before it names its logger.
+    `process_name` asks what ANOTHER process's connections are called (the chain's, from the
+    pause route)."""
     import sys as _sys
     from utils.logger import active_process_name
-    name = active_process_name() or os.path.splitext(
+    name = process_name or active_process_name() or os.path.splitext(
         os.path.basename(_sys.argv[0] if _sys.argv and _sys.argv[0] else "python"))[0]
     return "assy_" + name.lower()
 

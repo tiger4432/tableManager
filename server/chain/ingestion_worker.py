@@ -74,6 +74,7 @@ from chain import rule_order
 # 🔴 [S-279, 판정 420 ㉡] The seat that runs a rule. This module no longer names either
 #    door: it hands the rule and its input over and reads one answer.
 from chain import rule_run
+from chain import control as chain_control
 import mapper_sdk
 import validation
 from ledger import followup as ledger_followup
@@ -2025,7 +2026,8 @@ def _claimed_group_sync(tx_id, events, db, rules):
     rows = sum(len(get_payload_dict(e).get("row_ids") or ()) or 1 for e in events)
     what = "tx %s · %d row(s) of %s" % (
         tx_id, rows, ", ".join(sorted({str(e.table_name) for e in events})))
-    with heartbeat.work_claim("chain", what, note=_worker_note()):
+    with heartbeat.work_claim("chain", what, note=_worker_note()), \
+            alignment_batch_counts.interrupt_at_stages(chain_control.raise_if_paused):
         # The batch's transaction was begun on the loop thread, before this claim - so the
         # backend is read here once; a later transaction notes its own (database.py).
         try:
@@ -2033,7 +2035,14 @@ def _claimed_group_sync(tx_id, events, db, rules):
                 db_pid=db.connection().connection.dbapi_connection.get_backend_pid())
         except Exception:                                   # noqa: BLE001 - SQLite has none
             pass
-        return _process_chain_transaction_group_sync(tx_id, events, db, rules)
+        try:
+            return _process_chain_transaction_group_sync(tx_id, events, db, rules)
+        except Exception as exc:                            # noqa: BLE001
+            # A stop the pause made - its stage boundary, or the query it cancelled - comes
+            # back as the group's answer, for `process_pending_groups` to rewind (3840af307).
+            if chain_control.paused() is None:
+                raise
+            return False, "paused: %s" % (str(exc).strip().splitlines() or [""])[0], []
 
 
 #: How long the stalled line's own question may run. It reads two system views and takes
@@ -2346,6 +2355,8 @@ async def process_pending_groups(db, group_order, groups, rules, db_session_fact
     pending_broadcasts = []
 
     for tx_id in group_order:
+        if chain_control.paused() is not None:
+            break                              # 🔴 the emergency stop: no new group
         events_in_tx = groups[tx_id]
         group_targets = _group_target_tables(events_in_tx, rules)
         # 🔴 «읽기»도 순서에 걸린다. 앞선 그룹이 실패한 표를 이 그룹이 «읽으면», 그 답은
@@ -2401,6 +2412,17 @@ async def process_pending_groups(db, group_order, groups, rules, db_session_fact
                 logger.warning(
                     "[Chain] tx '%s' was deferred %d time(s) and its rows are STILL not "
                     "readable - refusing it for real now, by name.", tx_id, deferrals)
+
+            # 🔴 [비상 정지 · 3840af307] A GROUP THE PAUSE STOPPED IS REWOUND, NOT FAILED - judged
+            #   before the failure path, so no retry is charged and no table is held: its events
+            #   stay queued exactly as they were, and Resume runs them.
+            if not success and chain_control.paused() is not None:
+                with alignment_batch_counts.stage("rollback"):
+                    db.rollback()
+                logger.warning("[Chain] paused - tx '%s' was rewound at a stage boundary; its "
+                               "%d event(s) stay queued until Resume",
+                               tx_id, len(events_in_tx))
+                break
 
             if success:
                 _ROWS_NOT_VISIBLE_DEFERS.pop(tx_id, None)
@@ -3863,7 +3885,13 @@ async def start_chain_ingestion_worker(db_session_factory):
         # [ChainKeyGate] The same argument applies verbatim to the rows the key gate
         # refused, and for the same reason they ride the same note rather than a new
         # channel - see `_worker_note`.
-        heartbeat.beat("chain", note=_worker_note())
+        held = chain_control.paused()
+        heartbeat.beat("chain", note=_worker_note(), state="paused" if held else None)
+        if held is not None:
+            # 🔴 THE EMERGENCY STOP (총괄 3840af307): take nothing, and wait like an idle tick
+            #   (S-252 - a tick that does nothing must still await).
+            await idle_wait()
+            continue
         try:
             db = db_session_factory()
             try:

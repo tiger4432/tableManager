@@ -18,6 +18,8 @@ from sqlalchemy import text                                          # noqa: E40
 
 from database.models import DatabaseOutbox                           # noqa: E402
 from scripts import outbox_triage                                    # noqa: E402
+import event_constants                                               # noqa: E402
+from chain import set_aside                                          # noqa: E402
 from utils.payload_helper import get_payload_dict                    # noqa: E402
 
 
@@ -26,8 +28,10 @@ def _per_row_event(db, table, i, reexpanded=True):
         event_uuid="triage-%s-%03d" % (table, i),
         event_type="EDIT",
         table_name=table,
+        # The product's per-row shape (`outbox_expand.synthesize_payload`): the row id at the
+        # top. It used to sit under `data` here, the shape of a query no real event matched.
         payload={"transaction_id": "chain_tx#row#%03d" % i,
-                 "data": {"row_id": "r%03d" % i},
+                 "row_id": "r%03d" % i, "data": {},
                  **({"reexpanded_from": "chunk-1"} if reexpanded else {})},
     )
     db.add(ev)
@@ -69,15 +73,15 @@ def test_cancel_skips_without_deleting_and_says_who(flooded):
 
     assert flooded.query(DatabaseOutbox).count() == before, "nothing may be deleted"
     skipped = [e for e in flooded.query(DatabaseOutbox).all()
-               if get_payload_dict(e).get(outbox_triage.CANCEL_MARK)]
+               if get_payload_dict(e).get(event_constants.CANCEL_MARK)]
     assert len(skipped) == 5, "only the per-row events"
     for e in skipped:
         assert e.processed_chain is True
         # 총괄 8a1f32f99 — through the one definition: SUCCESS and the time, not the flag alone
         assert e.status == "SUCCESS" and e.processed_at is not None
         p = get_payload_dict(e)
-        assert p[outbox_triage.CANCEL_MARK] == outbox_triage.OPERATOR
-        assert p[outbox_triage.CANCEL_REASON], "a skip with no reason is an unexplained gap"
+        assert p[event_constants.CANCEL_MARK] == set_aside.OPERATOR
+        assert p[event_constants.CANCEL_REASON],"a skip with no reason is an unexplained gap"
     # the collapsed event is untouched - it was never the problem
     coll = flooded.query(DatabaseOutbox).filter(
         DatabaseOutbox.event_uuid == "triage-collapsed").one()
@@ -89,7 +93,7 @@ def test_a_dry_run_changes_nothing(flooded):
     outbox_triage.cancel(flooded, "triage_tbl", apply=False)
 
     assert not [e for e in flooded.query(DatabaseOutbox).all()
-                if get_payload_dict(e).get(outbox_triage.CANCEL_MARK)]
+                if get_payload_dict(e).get(event_constants.CANCEL_MARK)]
 
 
 def test_cancel_refuses_without_the_blast_radius_written_down():
@@ -176,8 +180,8 @@ def test_the_set_based_cancel_writes_the_time_on_postgresql():
                 rows = db.query(DatabaseOutbox).filter(
                     DatabaseOutbox.table_name == "triage_pg").all()
                 assert [(e.status, e.processed_chain, e.processed_at is not None,
-                         get_payload_dict(e).get(outbox_triage.CANCEL_MARK)) for e in rows] \
-                    == [("SUCCESS", True, True, outbox_triage.OPERATOR)] * 3
+                         get_payload_dict(e).get(event_constants.CANCEL_MARK)) for e in rows] \
+                    == [("SUCCESS", True, True, set_aside.OPERATOR)] * 3
         finally:
             with maker.begin() as conn:
                 conn.execute(text('DROP SCHEMA IF EXISTS "%s" CASCADE' % scratch))

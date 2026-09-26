@@ -135,7 +135,8 @@ def test_every_operation_is_judged_before_it_is_recorded():
     """Canary: no operation is left for its run to be the first to judge its names."""
     assert sorted(op for op, spec in retroactive.OPERATIONS.items()
                   if spec["judge"] is None) == []
-    assert set(NAME_OPS) | set(RULE_OPS) | set(COLLECTOR_OPS) == set(retroactive.OPERATIONS)
+    assert (set(NAME_OPS) | set(RULE_OPS) | set(COLLECTOR_OPS) | set(SET_ASIDE_OPS)
+            == set(retroactive.OPERATIONS))
 
 
 @pytest.mark.parametrize("op", sorted(NAME_OPS))
@@ -175,6 +176,27 @@ def test_an_undeclared_column_gets_one_refusal_at_every_door_and_no_record(retro
 
 #: The operations whose name is a collector script (`<table>/<script.py>`), judged the same way.
 COLLECTOR_OPS = ["collector_backfill"]
+
+#: The emergency stop's pair - a scope of tables, rules or transactions; a rule is judged by name.
+SET_ASIDE_OPS = ["rerun_set_aside", "set_aside"]
+
+
+@pytest.mark.parametrize("op", SET_ASIDE_OPS)
+@pytest.mark.parametrize("params", [{"rules": "no_such_rule"}, {}])
+def test_a_set_aside_with_an_unknown_rule_or_no_scope_is_refused_once_and_leaves_nothing(
+        retro_env, op, params):
+    given = dict(params, **({"reason": "r"} if op == "set_aside" else {}))
+    answers = []
+    for ask in (lambda: retroactive.publish(retro_env, op, dict(given)),
+                lambda: retroactive.count(retro_env, op, dict(given)),
+                lambda: retroactive.run_here(op, dict(given), log=lambda *_: None)):
+        with pytest.raises(retroactive.RetroactiveRefused) as refused:
+            ask()
+        answers.append(str(refused.value))
+
+    assert len(set(answers)) == 1, answers
+    assert ("no_such_rule" if params else "at least one table") in answers[0], answers[0]
+    assert _recorded(retro_env) == (0, 0), "a refused set-aside must leave no run and no event"
 
 
 @pytest.fixture(name="planted_collector")

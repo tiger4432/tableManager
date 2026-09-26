@@ -1,5 +1,24 @@
 # 지금 돌리면 되는 것
 
+> ## 🔴 [09-26 밤 4] **비상 정지 — 체인 일시정지 · 대기열 치워 두기 · 다시 돌리기 — 마이그레이션 «없음» · 재기동 넷 다(API · 워처 · 체인 · 스케줄러)**
+>
+> ```
+> 사고 때 순서   ① Pause          어드민 POST /admin/chain/pause {reason}  ·  또는 conda run --no-capture-output -n assy_manager python server/scripts/chain_pause_cli.py pause --reason "왜"
+>                                 새 묶음을 안 잡고 · 도는 묶음은 다음 단계에서 되감고 · 도는 쿼리는 그 자리에서 끊음. 대기열은 그대로(잃는 것 0 · 재시도 횟수 안 올림)
+>               ② 치워 두기       소급 탭 "Set queued chain events aside" — 표 · 규칙 · 트랜잭션 중 하나 이상 + 사유. 드라이런이 사건 수 · 행 수를 먼저 보여 줌
+>                                 CLI: python server/scripts/outbox_triage.py --set-aside --tables 표 --reason "왜" (--apply 로 실제로)
+>               ③ Resume          POST /admin/chain/resume  ·  chain_pause_cli.py resume — 남은 대기열이 다시 흐름
+>               ④ 나중에           소급 탭 "Run set-aside events again"(같은 범위) — 치운 사건이 가리키던 행을 리플레이, 체인이 했을 연쇄 그대로
+>                                 CLI: outbox_triage.py --rerun-set-aside --tables 표 --apply
+> 확인          GET /admin/chain/pause 가 요청 상태 · /health 의 chain 이 paused(degraded) 면 워커가 멈춤을 지킴
+>               chain_worker.log "[Chain] paused - tx '...' was rewound at a stage boundary" — 되감긴 묶음마다
+> 재기동        멈춤은 재기동해도 유지 — 풀려면 Resume. 상태 파일: server\config\chain_control.json
+> 뜻           치운 사건은 지워지지 않음 — cancelled_by = operator · cancel_reason 이 사건에 남음
+> 스위치        이것 자체가 스위치. 되돌리기는 git revert 뒤 재기동 — 남은 상태 파일은 읽는 코드가 없어 아무 일도 안 함
+> ```
+
+---
+
 > ## 🔴 [09-26 밤 3] **쓰기의 경로(channel) — 자동 확정이 옵트인을 지나고 · 소급의 쓰기는 체인을 안 깨움 — 마이그레이션 «없음» · 재기동 넷 다(API · 워처 · 체인 · 스케줄러)**
 >
 > ```

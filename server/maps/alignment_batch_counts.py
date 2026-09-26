@@ -29,6 +29,21 @@ from utils import heartbeat
 
 _COUNTS: contextvars.ContextVar = contextvars.ContextVar(
     "assy_manager.alignment_batch_counts", default=None)
+#: What a stage boundary asks before it is entered - set by a chain group on ITS OWN THREAD
+#: (`interrupt_at_stages`), so the watcher's stages and the loop's commit/rollback never see
+#: it. The chain's pause is the one asker (총괄 3840af307).
+_INTERRUPT: contextvars.ContextVar = contextvars.ContextVar(
+    "assy_manager.stage_interrupt", default=None)
+
+
+@contextlib.contextmanager
+def interrupt_at_stages(check):
+    """`check()` runs at every stage this block enters, and may raise to stop it there."""
+    token = _INTERRUPT.set(check)
+    try:
+        yield
+    finally:
+        _INTERRUPT.reset(token)
 
 
 class _Counts:
@@ -132,6 +147,9 @@ def stage(name: str):
     # Entering a stage is progress on the work this thread claimed - the watcher's file,
     # the chain's group - and the stage is what a stalled line names.
     heartbeat.progress(name)
+    check = _INTERRUPT.get()
+    if check is not None:
+        check()
     started = time.monotonic()
     try:
         yield

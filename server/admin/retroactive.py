@@ -655,6 +655,81 @@ def _run_chain_replay(db, params, log, control=None):
             "rows_scanned": s["rows_scanned"]}
 
 
+def _scope(params):
+    """The three narrowing criteria a set-aside takes - every one given narrows."""
+    return {"tables": params.get("tables") or (), "rules": params.get("rules") or (),
+            "transactions": params.get("transactions") or ()}
+
+
+def _judge_set_aside(params):
+    from chain import replay
+
+    scope = _scope(params)
+    if not any(scope.values()):
+        raise RetroactiveRefused(
+            "name at least one table, rule or transaction - setting aside the whole queue "
+            "is not something a form should do in one click")
+    known = {r.get("name") for r in replay.load_rules()}
+    unknown = sorted(set(scope["rules"]) - known)
+    if unknown:
+        raise RetroactiveRefused(f"no chain rule is declared under {unknown}")
+
+
+def _count_set_aside(db, params, scan_limit):
+    from chain import set_aside
+
+    found = set_aside.set_aside(db, apply=False, **_scope(params))
+    return {"affected": found["events"],
+            "absence": ABSENCE_TRULY_NONE if not found["events"] else ABSENCE_NOT_APPLICABLE,
+            "affected_label": "waiting events to set aside (%d row(s))" % found["rows"],
+            "count_kind": COUNT_EXACT, "scanned": None, "scan_limit": None,
+            "truncated": False,
+            "detail": "by table: %s" % (found["by_table"] or "none")}
+
+
+def _run_set_aside(db, params, log, control=None):
+    from chain import set_aside
+
+    s = set_aside.set_aside(db, apply=True, reason=params["reason"],
+                            checkpoint=_checkpoint(control), **_scope(params))
+    _final_progress(control, s["events"], s)
+    return {"events_set_aside": s["events"], "rows": s["rows"]}
+
+
+def _count_rerun_set_aside(db, params, scan_limit):
+    from chain import set_aside
+
+    rows = set_aside.rows_set_aside(db, **_scope(params))
+    total = sum(len(ids) for ids in rows.values())
+    return {"affected": total,
+            "absence": ABSENCE_TRULY_NONE if not total else ABSENCE_NOT_APPLICABLE,
+            "affected_label": "rows named by set-aside events",
+            "count_kind": COUNT_EXACT, "scanned": None, "scan_limit": None,
+            "truncated": False,
+            "detail": "by table: %s" % ({t: len(ids) for t, ids in rows.items()} or "none")}
+
+
+def _run_rerun_set_aside(db, params, log, control=None):
+    """Replay the rows the set-aside events named - every enabled rule on each table (or the
+    rules named), in the declaration's order, with `cascade`: it gives back what the chain
+    would have done, downstream included (총괄 2dbbfd1e5)."""
+    from chain import replay, set_aside
+
+    rows = set_aside.rows_set_aside(db, **_scope(params))
+    wanted = set(_scope(params)["rules"])
+    staged = 0
+    for table, ids in sorted(rows.items()):
+        rules = replay.order_rules([
+            r for r in replay.load_rules()
+            if r.get("trigger_table") == table and r.get("enabled", True)
+            and (not wanted or r.get("name") in wanted)])
+        for rule in rules:
+            one = _run_chain_replay(db, {"rule": rule.get("name"), "row_ids": ids,
+                                         "cascade": True}, log, control)
+            staged += one["rows_staged"]
+    return {"rows_staged": staged, "tables": len(rows)}
+
+
 def _run_withdraw(db, params, log, control=None):
     from chain import replay
 
@@ -1060,6 +1135,53 @@ OPERATIONS = {
         "restartable": True,
         "commit_granularity": "explicit commit per row chunk",
         "cli_only": ["--columns is available here too; nothing else exists on this path"],
+    },
+    "set_aside": {
+        "label": "Set queued chain events aside",
+        "what_is_missing": "the chain queue holds work that must not run now",
+        "params": [_p("tables", required=False, kind="csv",
+                      help="only events on these tables"),
+                   _p("rules", required=False, kind="csv",
+                      help="only events these chain rules would run on"),
+                   _p("transactions", required=False, kind="csv",
+                      help="only events of these transaction ids"),
+                   _p("reason", help="why - written into each event set aside")],
+        "count": _count_set_aside,
+        "run": _run_set_aside,
+        "judge": _judge_set_aside,
+        "cli": ("server/scripts/outbox_triage.py --set-aside [--tables a,b] [--rules r] "
+                "[--transactions t] --reason <why> --apply"),
+        "deletes": None,
+        "reads_as": "number",
+        "cancellable": True,
+        "restartable": True,
+        "commit_granularity": "one commit per 1000 events; a cancel stops between them",
+        "cli_only": [],
+        "downstream_note": ("Events set aside do not run - put them back with "
+                            "'Run set-aside events again'"),
+    },
+    "rerun_set_aside": {
+        "label": "Run set-aside events again",
+        "what_is_missing": "events set aside during an incident never ran",
+        "params": [_p("tables", required=False, kind="csv",
+                      help="only events set aside on these tables"),
+                   _p("rules", required=False, kind="csv",
+                      help="only these chain rules"),
+                   _p("transactions", required=False, kind="csv",
+                      help="only events of these transaction ids")],
+        "count": _count_rerun_set_aside,
+        "run": _run_rerun_set_aside,
+        "judge": _judge_set_aside,
+        "cli": ("server/scripts/outbox_triage.py --rerun-set-aside [--tables a,b] "
+                "[--rules r] [--transactions t] --apply"),
+        "deletes": None,
+        "reads_as": "number",
+        "cancellable": True,
+        "restartable": True,
+        "commit_granularity": "chain_replay's own - one commit per staged page",
+        "cli_only": [],
+        "downstream_note": ("It replays the rows those events named, and cascades like the "
+                            "chain would have"),
     },
     "resolve": {
         "label": "Recompute shown values from stored layers (R3)",

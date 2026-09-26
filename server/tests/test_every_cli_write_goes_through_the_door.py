@@ -172,9 +172,9 @@ def test_triage_replays_the_cancelled_rows_through_the_door_by_row_id(seen, floo
 
     outbox_triage.cancel(flooded, "triage_tbl", apply=True)
     assert outbox_triage.replay_cancelled(flooded, "triage_tbl", apply=True) == 5
-    assert [op for op, _ in seen["door"]] == ["chain_replay", "chain_replay"]
-    assert [p["rule"] for _, p in seen["door"]] == ["r1", "r2"]
-    assert sorted(seen["door"][0][1]["row_ids"]) == ["r%03d" % i for i in range(5)]
+    # One door: the registry's `rerun_set_aside`, which replays each rule by row id with the
+    # chain's cascade (총괄 2dbbfd1e5) - its own gate measures the rules and the rows.
+    assert seen["door"] == [("rerun_set_aside", {"tables": "triage_tbl"})]
     assert seen["direct"] == []
 
 

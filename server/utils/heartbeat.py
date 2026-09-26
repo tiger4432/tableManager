@@ -199,7 +199,7 @@ def record_lap(name, loop, *, seconds=None, depth=None, at=None, **extra):
         _laps.setdefault(name, {})[loop] = lap
 
 
-def beat(name, note=None, force=False):
+def beat(name, note=None, force=False, state=None):
     """Record one unit of progress for worker ``name``.
 
     Call this from inside the worker's real work loop, once per iteration. Returns
@@ -231,6 +231,9 @@ def beat(name, note=None, force=False):
             "beats": st["beats"],
             "started_at": st["started_at"],
             "note": note,
+            # What the worker says it is doing on purpose - `paused` (the chain's emergency
+            # stop) - beside the beat that says it is alive. Absent when it says nothing.
+            **({"state": state} if state else {}),
             # Written by whichever thread beats next - which is the point. The
             # poller reports the ingestion thread's stall.
             "work": _work_snapshot_locked(name),
@@ -400,6 +403,7 @@ def read_all(stale_after=DEFAULT_STALE_AFTER_SEC, now=None,
                 "pid": data.get("pid"),
                 "beats": data.get("beats"),
                 "note": data.get("note"),
+                "state": data.get("state"),
                 "age_seconds": round(age, 2),
                 "stale": age > stale_after,
                 "stale_after_seconds": stale_after,

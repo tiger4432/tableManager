@@ -28,10 +28,6 @@ from sqlalchemy import text                                          # noqa: E40
 from admin import retroactive                                        # noqa: E402
 from database.database import SessionLocal                           # noqa: E402
 
-from event_constants import CANCEL_MARK, CANCEL_REASON              # noqa: E402
-
-OPERATOR = "operator"
-
 
 def _has_key_sql(db, column: str, key: str) -> str:
     """`payload ? 'k'` is the natural spelling and it is UNUSABLE here.
@@ -88,43 +84,18 @@ def count(db, table=None):
 
 
 def cancel(db, table, since=None, apply=False, reason="collapsed replay (S-172)"):
-    """Mark per-row pending events as handled-by-operator. Never deletes."""
-    where = ["processed_chain = false", "table_name = :t",
-             "NOT " + _has_key_sql(db, "payload", "row_ids")]
-    params = {"t": table}
-    if since:
-        where.append("created_at >= :since")
-        params["since"] = since
-    sql = " AND ".join(where)
-    n = db.execute(text("SELECT count(*) FROM database_outbox WHERE " + sql), params).scalar()
+    """Mark per-row pending events as handled-by-operator. Never deletes.
+    The body is `chain.set_aside`'s - the emergency stop's set-aside is the same act, widened
+    to collapsed events and to a rule or transaction scope (총괄 2dbbfd1e5)."""
+    from chain import set_aside
+
+    found = set_aside.set_aside(db, tables=[table], since=since, per_row_only=True,
+                                apply=apply, reason=reason)
+    n = found["events"]
     print("per-row pending events on %s%s: %d" % (table, " since %s" % since if since else "", n))
     if not apply:
         print("   dry run - nothing changed. Re-run with --apply to skip them.")
         return n
-    # ⚠️ SET-BASED ON POSTGRESQL, because production has ~660,000 of these and loading
-    # them through the ORM to edit a dict would be its own outage. Elsewhere (the suite's
-    # SQLite) the same edit is done row by row, so the LOGIC is exercised rather than
-    # skipped - a test that cannot reach this branch certifies nothing about it.
-    # 🔴 BOTH BRANCHES WRITE 「processed」 THROUGH ONE DEFINITION (총괄 8a1f32f99) - the flag,
-    #   SUCCESS and the database time; the set-based one used to leave the time out.
-    import event_constants
-    from database.models import DatabaseOutbox
-
-    if db.get_bind().dialect.name == "postgresql":
-        from sqlalchemy import func, update
-
-        db.execute(
-            update(DatabaseOutbox).where(text(sql)).values(
-                **event_constants.processed_columns("SUCCESS"),
-                payload=DatabaseOutbox.payload.op("||")(func.jsonb_build_object(
-                    CANCEL_MARK, OPERATOR, CANCEL_REASON, reason)))
-            .execution_options(synchronize_session=False), params)
-    else:
-        ids = [r[0] for r in db.execute(
-            text("SELECT id FROM database_outbox WHERE " + sql), params).fetchall()]
-        for event in db.query(DatabaseOutbox).filter(DatabaseOutbox.id.in_(ids)).all():
-            event_constants.mark_cancelled(event, OPERATOR, reason)
-    db.commit()
     print("   skipped %d event(s) - NOT deleted; each payload now says who and why." % n)
     return n
 
@@ -161,34 +132,35 @@ def finish_stranded(db, apply=False):
 
 
 def replay_cancelled(db, table, apply=False, chunk=1000):
-    """Re-fire the rows those cancelled events named, collapsed, through the replay path."""
-    ids = [r[0] for r in db.execute(text(
-        "SELECT DISTINCT payload->'data'->>'row_id' FROM database_outbox"
-        " WHERE table_name = :t AND payload->>:mark = :who"
-        "   AND payload->'data'->>'row_id' IS NOT NULL"), 
-        {"t": table, "mark": CANCEL_MARK, "who": OPERATOR}).fetchall()]
-    print("rows named by cancelled events on %s: %d  (-> %d collapsed group(s) of %d)"
-          % (table, len(ids), (len(ids) + chunk - 1) // chunk if ids else 0, chunk))
+    """Re-fire the rows the events set aside on `table` named - through the registry's
+    `rerun_set_aside`, which replays them with the chain's cascade (총괄 2dbbfd1e5)."""
+    from chain import set_aside
+
+    ids = set_aside.rows_set_aside(db, tables=[table]).get(table, [])
+    print("rows named by events set aside on %s: %d" % (table, len(ids)))
     if not ids:
         return 0
     if not apply:
         print("   dry run - nothing replayed. Re-run with --apply.")
         return len(ids)
-
-    from database import crud, models
-    models.init_dynamic_models(crud.TABLE_CONFIG)
-    from chain import replay
-
-    rules = [r for r in replay.load_rules()
-             if r.get("trigger_table") == table and r.get("enabled", True)]
-    for rule in replay.order_rules(rules):
-        # One run record per rule: the admin button's gate and cancel; the work stays here.
-        # By `row_ids` - the rows these events named, which is also what makes a join's
-        # companion half a legal subject (S-270); business keys would be refused for it.
-        retroactive.run_here("chain_replay", {"rule": rule.get("name"), "row_ids": ids},
-                             log=lambda *a, **k: None)
-        print("   replayed %s" % rule.get("name"))
+    retroactive.run_here("rerun_set_aside", {"tables": table}, log=lambda *a, **k: None)
+    print("   replayed through rerun_set_aside")
     return len(ids)
+
+
+def set_aside_scope(db, args):
+    """--set-aside / --rerun-set-aside: the registry's operations, the button's gate and record."""
+    params = {k: v for k, v in (("tables", args.tables), ("rules", args.rules),
+                                ("transactions", args.transactions)) if v}
+    op = "set_aside" if args.set_aside else "rerun_set_aside"
+    if op == "set_aside":
+        params["reason"] = args.reason
+    if not args.apply:
+        print(retroactive.count(db, op, params))
+        print("   dry run - nothing changed. Re-run with --apply.")
+        return 0
+    print(retroactive.run_here(op, params, log=print)["result"])
+    return 0
 
 
 def main(argv=None):
@@ -199,6 +171,15 @@ def main(argv=None):
                    help="re-fire the cancelled rows as collapsed groups")
     p.add_argument("--finish-stranded", action="store_true",
                    help="mark rows left processed-but-PENDING as SUCCESS")
+    p.add_argument("--set-aside", action="store_true",
+                   help="set waiting chain events aside (collapsed ones too) - the emergency "
+                        "stop; needs --tables, --rules or --transactions and --reason")
+    p.add_argument("--rerun-set-aside", action="store_true",
+                   help="replay the rows events set aside named, with the chain's cascade")
+    p.add_argument("--tables", help="comma-separated tables (with --set-aside / --rerun-set-aside)")
+    p.add_argument("--rules", help="comma-separated chain rules")
+    p.add_argument("--transactions", help="comma-separated transaction ids")
+    p.add_argument("--reason", help="why - written into each event set aside")
     p.add_argument("--table")
     p.add_argument("--per-row", action="store_true",
                    help="required with --cancel: says the target is the per-row events")
@@ -212,6 +193,12 @@ def main(argv=None):
         if args.finish_stranded:
             finish_stranded(db, args.apply)
             return 0
+        if args.set_aside or args.rerun_set_aside:
+            try:
+                return set_aside_scope(db, args)
+            except retroactive.RetroactiveRefused as e:
+                print(f"REFUSED: {e}")
+                return 2
         if args.count or not (args.cancel or args.replay_cancelled):
             count(db, args.table)
             return 0
