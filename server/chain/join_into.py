@@ -341,28 +341,50 @@ def propose(db, rule: dict, row_ids=None):
     reference_side = str((rule or {}).get("trigger_table") or "") == str(
         spec.get("right_table") or "")
     if reference_side:
-        where = _left_rows_for_reference(db, spec, left_model, right_model,
-                                         rows_in, left_table)
+        wheres = _left_rows_for_reference(db, spec, left_model, right_model,
+                                          rows_in, left_table)
     else:
-        where = left_model.row_id.in_(rows_in)
-    if where is None:
+        wheres = [left_model.row_id.in_(rows_in)]
+    if wheres is None:
         return {"updates": [],
                 "refusal": "기준 표의 이번 변경이 이 규칙의 왼쪽 행을 하나도 가리키지 않습니다"}
 
-    rows = _answer(db, spec, left_model, right_model, where, left_table)
-    updates = _update_items(db, left_table, rows, spec,
-                            str((rule or {}).get("name") or ""))
-    written = len(updates)
+    # 🔴 [총괄 e10c58e5e] PAGES OF LEFT ROWS. One source row can match hundreds of thousands of
+    #    left rows, and one SELECT and one write of all of them held the chain for minutes with
+    #    no beat. The left ids are read ONCE - asking the key filter again per page re-walks
+    #    the table from the cursor (measured: a page past the last match read 9,999 rows for 0)
+    #    - and each page answers only its own ids. The seat writes a page, then asks the next.
+    from sqlalchemy import select
+
+    left_ids = sorted({row[0] for where in wheres
+                       for row in db.execute(select(left_model.row_id).where(where))})
+    return _page(db, rule, spec, left_model, right_model, left_table, left_ids, 0,
+                 len(rows_in), "reference" if reference_side else "target")
+
+
+def _page(db, rule, spec, left_model, right_model, left_table, left_ids, start, handed, side):
+    """One page of left rows answered - and the call for the next one, if there is one."""
+    from chain import keyset_scan
+
+    size = keyset_scan.DEFAULT_CHUNK_SIZE
+    ids = left_ids[start:start + size]
+    rows = (_answer(db, spec, left_model, right_model, left_model.row_id.in_(ids), left_table)
+            if ids else [])
+    updates = _update_items(db, left_table, rows, spec, str((rule or {}).get("name") or ""))
+    more = start + size < len(left_ids)
     # ⚠️ TWO DIFFERENT ZEROS, AND THE OPERATOR FIXES THEM DIFFERENTLY: no match means the
     #    join key or the right table's data; a match that wrote nothing means the value was
     #    already there. Collapsing them sends half the readers to the wrong repair.
+    #    Said only by an answer that is ONE page: an empty first page says nothing of the rest.
     refusal = None
-    if not written:
-        refusal = ("오른쪽 표에서 짝을 찾은 행이 없습니다 (넘어온 %d 행)" % len(rows_in)
+    if not updates and not more and not start:
+        refusal = ("오른쪽 표에서 짝을 찾은 행이 없습니다 (넘어온 %d 행)" % handed
                    if not rows else
                    "짝은 찾았고 채울 값이 이미 같습니다 (%d 행)" % len(rows))
-    return {"updates": updates, "rows_in": len(rows_in), "refusal": refusal, "side":
-            "reference" if reference_side else "target"}
+    return {"updates": updates, "rows_in": handed, "refusal": refusal, "side": side,
+            "next_page": (lambda: _page(db, rule, spec, left_model, right_model, left_table,
+                                        left_ids, start + size, handed, side))
+            if more else None}
 
 
 def _left_rows_for_reference(db, spec, left_model, right_model, right_row_ids,
@@ -389,4 +411,12 @@ def _left_rows_for_reference(db, spec, left_model, right_model, right_row_ids,
     # row - a cross product wearing the shape of a filter. One spelling for one key and
     # several, because a second branch for the single-column case is a second answer to the
     # same question (verified on this SQLite/SQLAlchemy pair by S-229's paging).
-    return tuple_(*left_key).in_([tuple(row) for row in keys])
+    # 🔴 ONE FILTER PER PAGE OF KEYS (총괄 a4bc9af48). A two-column tuple IN of 10,000 keys is
+    #    a statement PostgreSQL refuses to plan (StatementTooComplex, measured) - and a group
+    #    carries up to 20,000 rows.
+    from chain import keyset_scan
+    from database import crud
+
+    distinct = list(dict.fromkeys(tuple(row) for row in keys))
+    return [tuple_(*left_key).in_(chunk)
+            for chunk in crud._chunks(distinct, keyset_scan.DEFAULT_CHUNK_SIZE)]

@@ -5,6 +5,7 @@ import os
 import logging
 import importlib
 import inspect
+import itertools
 import uuid
 import select
 import time
@@ -1256,6 +1257,57 @@ def _group_target_tables(events_in_tx, rules):
                 targets.add(tgt)
     return targets
 
+class _NextPage:
+    """A proposal's remaining pages, at its rule's place in a table's list (총괄 e10c58e5e)."""
+
+    __slots__ = ("more", "rule")
+
+    def __init__(self, more, rule):
+        self.more, self.rule = more, rule
+
+
+def _carry_next_pages(table_updates, table_contributors, target_table, rule, answer):
+    """A proposal that has more pages leaves a marker right after its first page - so the
+    rules after it still write after its last page, as the rule order says."""
+    for more in answer.get("next_page") or ():
+        table_updates[target_table].append(_NextPage(more, rule.get("name")))
+        if rule.get("name") not in table_contributors[target_table]:
+            table_contributors[target_table].append(rule.get("name"))
+
+
+def _in_rule_order(table_updates):
+    """Each table's write batches in rule order. 🔴 「같은 표 같은 칸이면 규칙 순서로 마지막이
+    이김」 holds on every row: the cells before a marker (earlier rules and the first page) are
+    one batch, each further page is its own batch - asked only when the one before it has been
+    written - and the cells after the marker come after the last page."""
+    for target, items in table_updates.items():
+        batch = []
+        for item in items:
+            if not isinstance(item, _NextPage):
+                batch.append(item)
+                continue
+            if batch:
+                yield (target, batch, False, None, None)
+            batch = []
+            more, page = item.more, 1
+            while more is not None:
+                page += 1
+                try:
+                    with alignment_batch_counts.stage("mapper"):
+                        result = without_missing(more()) or {}
+                except Exception as exc:
+                    raise RuntimeError("[rule=%s target=%s] page %d: %s: %s" % (
+                        item.rule, target, page, type(exc).__name__, exc)) from exc
+                updates = list(result.get("updates") or ())
+                logger.info("[Chain] %s -> %s: page %d, %d row(s)", item.rule, target, page,
+                            len(updates))
+                more = result.get("next_page")
+                if updates:
+                    yield (target, updates, False, None, None)
+        if batch:
+            yield (target, batch, False, None, None)
+
+
 def apply_chain_writes(db, tx_id, rule, incoming_depth, rules_by_target,
                        table_updates, map_metadata_updates, scoped_batches,
                        table_contributors, broadcast_messages, woken_by_a_replay=False,
@@ -1323,14 +1375,15 @@ def apply_chain_writes(db, tx_id, rule, incoming_depth, rules_by_target,
             if map_metadata_updates:
                 write_batches.append((map_meta_registrar.META_TABLE,
                                       map_metadata_updates, False, None, None))
-            write_batches.extend((target, updates, False, None, None)
-                                 for target, updates in table_updates.items())
             # `retract` batches carry replace_map=False: the removal happens AFTER the
             # write, against what the write actually keyed. A purge cannot be scoped to
             # one source, so there is nothing for the write path to do up front.
-            write_batches.extend((target, updates, scope is not None, scope, retract)
-                                 for target, updates, scope, retract in scoped_batches)
-            for target_table, updates_list, replace_map, scope, retract in write_batches:
+            scoped = [(target, updates, scope is not None, scope, retract)
+                      for target, updates, scope, retract in scoped_batches]
+            # The tables are read LAZILY: a paging proposal's next page is asked only after
+            # the page before it was written and committed (총괄 e10c58e5e).
+            for target_table, updates_list, replace_map, scope, retract in itertools.chain(
+                    write_batches, _in_rule_order(table_updates), scoped):
                 writing = target_table          # the target a failure below is about
                 batch_data = schemas.GeneralUpdateBatch(
                     updates=updates_list,
@@ -1899,6 +1952,9 @@ def _process_chain_transaction_group_sync(tx_id, events, db, rules):
                         table_updates[target_table].extend(target_payload.get("updates"))
                         if rule.get("name") not in table_contributors[target_table]:
                             table_contributors[target_table].append(rule.get("name"))
+                    # carried even when the first page proposed nothing - the rest may not
+                    _carry_next_pages(table_updates, table_contributors, target_table, rule,
+                                      target_payload)
                     if target_payload["map_metadata_updates"]:
                         if not rule.get("allow_map_metadata_upsert", False):
                             raise ValueError(
@@ -1944,6 +2000,8 @@ def _process_chain_transaction_group_sync(tx_id, events, db, rules):
                         table_updates[target_table].extend(target_payload["updates"])
                         if rule.get("name") not in table_contributors[target_table]:
                             table_contributors[target_table].append(rule.get("name"))
+                    _carry_next_pages(table_updates, table_contributors, target_table, rule,
+                                      target_payload)
             except Exception as e:
                 import traceback
                 error_msg = traceback.format_exc()
@@ -2251,6 +2309,7 @@ def _ensure_declared_indexes_sync(rules, db_session_factory):
         _index_db = db_session_factory()
         try:
             _report = synthesis.ensure_declared_unique_keys(_index_db, rules)
+            synthesis.ensure_declared_lookup_keys(_index_db, rules)
             _retracted = synthesis.retract_unrequired_indexes_once(_index_db)
         finally:
             _index_db.close()
@@ -2392,7 +2451,8 @@ async def process_pending_groups(db, group_order, groups, rules, db_session_fact
                 _hol_deferred[_t] = _hol_deferred.get(_t, 0) + 1
             continue
 
-        # Process transaction group atomically
+        # Process the transaction group - its writes commit table by table (a paging proposal
+        # page by page), not as one transaction
         t_mapper_start = time.monotonic()
         # 🔴 THE GROUP IS THE BOUNDARY, AND ONLY THIS LOOP KNOWS IT (S-94, 판정 235).
         # The scope is a `contextvars` one, so it reaches the sync body `to_thread` runs and
@@ -2481,8 +2541,9 @@ async def process_pending_groups(db, group_order, groups, rules, db_session_fact
                     }
                     pending_broadcasts.append((event_ids, broadcast_messages, timing))
             else:
-                # 실패 그룹의 매퍼 쓰기는 rollback으로 폐기되어 target에 커밋되지 않는다(유실/중복 없음).
-                # 앞선 성공 그룹은 이미 각자 commit되었으므로 rollback 영향 밖이다.
+                # 실패한 묶음이 «이미 쓴 표»는 남는다 — 표마다(쪽으로 나눈 제안은 쪽마다) 쓰기가 스스로
+                # 커밋한다(crud.apply_batch_updates). 이 롤백은 실패 자리의 남은 쓰기만 버린다.
+                # 재시도·리플레이가 안전한 것은 «같은 값 업서트는 헛쓰기»라서다(총괄 e10c58e5e).
                 with alignment_batch_counts.stage("rollback"):
                     db.rollback()
 

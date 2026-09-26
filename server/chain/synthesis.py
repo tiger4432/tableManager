@@ -202,23 +202,70 @@ def declared_unique_index_names(known_tables: dict = None) -> set:
     reading of the file would be a second answer to 「what does this declaration stand」,
     and this one has to agree with the seat that built the index.
     """
-    from chain import ingestion_worker, rule_shape
-    from database import crud
     from chain import join_key_index as vjc
 
-    catalogue = known_tables if known_tables is not None else crud.TABLE_CONFIG
     names = set()
+    for _name, table, columns, folds, skip, _kind in declared_unique_targets(
+            _live_stood_rules(known_tables)):
+        if skip:
+            continue
+        names.add(vjc.required_index_name(table, columns, folds))
+    return names
+
+
+def _live_stood_rules(known_tables: dict = None):
+    """The rules the live declarations stand, expanded by the loader's own judge (S-244)."""
+    from chain import ingestion_worker, rule_shape
+    from database import crud
+
+    catalogue = known_tables if known_tables is not None else crud.TABLE_CONFIG
     for raw in ingestion_worker.read_rules_document()["rules"] or ():
         stood, refusal, _notes = rule_shape.expand_declaration(raw, catalogue)
         if refusal:
             # ⚠️ The loader already says this out loud; saying it again here would put a
             # refusal on the read path every few seconds - the flood 2026-09-14 was.
             continue
-        for _name, table, columns, folds, skip, _kind in declared_unique_targets(stood):
-            if skip:
-                continue
-            names.add(vjc.required_index_name(table, columns, folds))
-    return names
+        yield from stood
+
+
+def declared_lookup_targets(rules):
+    """(left table, left columns, folds) of every switched-on join - the non-unique index its
+    left rows are selected by (총괄 8934fa36f ②). `enabled: false` asks nothing (판정 399)."""
+    from chain import join_into
+
+    for rule in rules or ():
+        if not isinstance(rule, dict) or rule.get("mapper") != join_into.JOIN_INTO_MAPPER:
+            continue
+        if rule_shape.is_switched_off(rule):
+            continue
+        on = join_into.pairs(rule)
+        table = str(rule.get("target_table") or "")
+        if table and on:
+            yield (table, [left for left, _right, _fold in on], [fold for _l, _r, fold in on])
+
+
+def declared_lookup_index_names(known_tables: dict = None) -> set:
+    """Every `ix_vjoin_*` name the live declarations require - kept by the retraction."""
+    from chain import join_key_index as vjc
+
+    return {vjc.required_index_name(table, columns, folds, vjc.LOOKUP_PREFIX)
+            for table, columns, folds in declared_lookup_targets(_live_stood_rules(known_tables))}
+
+
+def ensure_declared_lookup_keys(db, rules) -> dict:
+    """The left lookup index of every switched-on join, once per index (a declaration's rule
+    and its `:target` companion share one)."""
+    from chain import join_key_index as vjc
+    from chain import unique_key
+
+    report, seen = {"ensured": []}, set()
+    for table, columns, folds in declared_lookup_targets(rules):
+        name = vjc.required_index_name(table, columns, folds, vjc.LOOKUP_PREFIX)
+        if name in seen:
+            continue
+        seen.add(name)
+        report["ensured"].append((name, unique_key.ensure_lookup_once(db, table, columns, folds)))
+    return report
 
 
 def _approval_row(rule: dict, right_table, required_index, unique_index,
@@ -477,7 +524,8 @@ def retract_unrequired_indexes_once(db, known_tables: dict = None) -> dict:
     #    인덱스»를 걷는다(S-248 의 장애). 이제 `uq_vjoin_` 을 요구하는 문법이 하나라
     #    이 한 줄이 전수다.
     return unique_key.retract_unrequired_once(
-        db, declared_unique_index_names(known_tables=known_tables))
+        db, declared_unique_index_names(known_tables=known_tables)
+        | declared_lookup_index_names(known_tables=known_tables))
 
 
 

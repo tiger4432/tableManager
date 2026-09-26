@@ -270,9 +270,12 @@ def _uniform():
 
     ⚠️ `written` IS None, NOT 0, WHEN NOBODY COUNTED. 「안 셌다」 and 「0 이었다」 are different
     facts, and `chain.synthesis` already keeps them apart for the same reason.
+
+    `next_page` holds the calls a proposal left for its remaining pages (총괄 e10c58e5e) - this
+    seat only carries them; the write door asks them, at the rule's place in the order.
     """
     return {"updates": [], "map_metadata_updates": [], "batches": [],
-            "written": None, "refusal": None}
+            "written": None, "refusal": None, "next_page": []}
 
 
 #: How a resolved rule takes its input. The seat hands one or the other and nothing else
@@ -488,6 +491,10 @@ def run_rule(db, rule, payloads=None, row_ids=None, done=None, depth=None,
                 if result.get("written") is not None:
                     answer["written"] = ((answer["written"] or 0)
                                          + int(result["written"]))
+                # A proposal may say there is more: a call returning the next page in the same
+                # shape. Any proposal can carry it; nothing here asks which rule it came from.
+                if result.get("next_page") is not None:
+                    answer["next_page"].append(result["next_page"])
             # ⚠️ PROPOSED PLUS WRITTEN. A rule does one or the other, so this equals whichever
             #    it did - and a rule that did both is counted once for each, which is what
             #    「이 규칙이 낸 행」 means to the operator reading the queue.

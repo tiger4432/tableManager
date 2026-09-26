@@ -332,15 +332,17 @@ def product_indexes(db) -> list:
 
     # ⚠️ THE PREFIX IS NOT RE-SPELLED HERE. `join_key_index.INDEX_PREFIX` is what NAMES
     # these indexes; a second copy of the string would be a second answer to 「which are ours」.
-    from chain.join_key_index import INDEX_PREFIX
+    from chain.join_key_index import INDEX_PREFIX, LOOKUP_PREFIX
 
+    # ⚠️ AND THE LEFT SIDE'S LOOKUP INDEX (총괄 8934fa36f ②) - non-unique, its own prefix.
     rows = db.execute(text(
         "SELECT t.relname AS table_name, i.relname AS index_name "
         "FROM pg_index x "
         "JOIN pg_class i ON i.oid = x.indexrelid "
         "JOIN pg_class t ON t.oid = x.indrelid "
-        "WHERE x.indisunique AND i.relname LIKE :prefix"),
-        {"prefix": INDEX_PREFIX + "%"}).fetchall()
+        "WHERE (x.indisunique AND i.relname LIKE :prefix) "
+        "   OR (NOT x.indisunique AND i.relname LIKE :lookup)"),
+        {"prefix": INDEX_PREFIX + "%", "lookup": LOOKUP_PREFIX + "%"}).fetchall()
     return [(row[0], row[1]) for row in rows]
 
 
@@ -431,6 +433,86 @@ def retract_unrequired_once(db, required) -> dict:
 
     report = {"dropped": dropped, "kept": kept, "skipped": None}
     _RETRACTED[key] = report
+    return report
+
+
+def ensure_lookup_once(db, table: str, columns: list, folds=None) -> dict:
+    """The NON-unique index a join's LEFT rows are selected by (총괄 8934fa36f ②) - built the
+    way the unique one is: the same key expression, CONCURRENTLY, the DDL time limit, an
+    INVALID leftover of its name taken away first, and asked again when the index work runs.
+    Without it each page of keys is a full scan of the left table."""
+    import time
+
+    from sqlalchemy import text
+
+    from chain import join_key_index as vjc
+
+    name = vjc.required_index_name(table, columns, folds, vjc.LOOKUP_PREFIX)
+    memo = "lookup:" + name
+    if memo in _TRIED:
+        return _TRIED[memo]
+    report = {"index": name, "state": None, "created": None, "dropped": []}
+    switch = os.getenv("ASSY_VJOIN_AUTO_INDEX", "1").strip().lower()
+    if switch in ("0", "false", "off", "no"):
+        report["state"] = "skipped"
+        report["skipped"] = "ASSY_VJOIN_AUTO_INDEX=%s" % switch
+    elif vjc._dialect_of(db) != "postgresql":
+        report["state"] = "skipped"
+        report["skipped"] = "dialect=%s" % (vjc._dialect_of(db) or "unknown")
+    if report["state"]:
+        _TRIED[memo] = report
+        return report
+    try:
+        found = db.execute(text(
+            "SELECT x.indisvalid FROM pg_index x "
+            "JOIN pg_class i ON i.oid = x.indexrelid "
+            "JOIN pg_namespace n ON n.oid = i.relnamespace "
+            "WHERE i.relname = :n AND n.nspname = 'public'"), {"n": name}).first()
+        # the same reason `ensure` gives: this session's read must not hold the DDL beside it
+        db.rollback()
+    except Exception as probe_error:                                   # noqa: BLE001
+        db.rollback()
+        report["state"] = "probe_failed"
+        report["error"] = str(probe_error).strip().splitlines()[0]
+        _TRIED[memo] = report
+        logger.warning("[Join] 조회 인덱스 %s 점검 실패(체인은 계속): %s", name, report["error"])
+        return report
+    if found and found[0]:
+        report["state"] = "ok"
+        _TRIED[memo] = report
+        return report
+    started = time.monotonic()
+    try:
+        connection = _open_ddl_connection(db.get_bind())
+    except Exception as open_error:                                    # noqa: BLE001
+        report["state"] = "failed"
+        report["error"] = "autocommit connection unavailable: %s" % open_error
+        _TRIED[memo] = report
+        return report
+    try:
+        if found:
+            connection.execute(text('DROP INDEX CONCURRENTLY IF EXISTS "%s"' % name))
+            report["dropped"].append(name)
+        report["created"] = vjc.required_index_ddl(table, columns, folds, unique=False)
+        connection.execute(text(report["created"]))
+        report["state"] = "ok"
+    except Exception as create_error:                                  # noqa: BLE001
+        report["created"] = None
+        report["error"] = str(create_error).strip().splitlines()[0]
+        report["state"] = ("deferred" if waited_past_the_lock_timeout(create_error)
+                           else "failed")
+    finally:
+        _close_ddl_connection(connection)
+    _TRIED[memo] = report
+    if report["state"] == "ok":
+        logger.info("[Join] 조회 인덱스 %s 를 세웠습니다 (%.1f s)", name, time.monotonic() - started)
+    elif report["state"] == "deferred":
+        import db_safety
+        logger.warning("[Join] 조회 인덱스 %s 를 세우지 못했습니다 — 다른 세션이 표 %s 를 %s 넘게 "
+                       "잡고 있습니다. 다음 기동/리로드로 미룹니다. 그동안 이 조인은 왼쪽 행을 "
+                       "인덱스 없이 고릅니다(느림).", name, table, db_safety.DDL_LOCK_TIMEOUT)
+    else:
+        logger.warning("[Join] 조회 인덱스 %s 를 세우지 못했습니다: %s", name, report["error"])
     return report
 
 

@@ -35,6 +35,9 @@ import re
 
 
 INDEX_PREFIX = "uq_vjoin_"
+#: The NON-unique index a join's LEFT rows are selected by (총괄 8934fa36f ②) - its own prefix,
+#: so the retraction still takes back only what the product put there.
+LOOKUP_PREFIX = "ix_vjoin_"
 
 _MAX_IDENTIFIER = 63
 
@@ -44,7 +47,7 @@ def _folds_list(columns: list, folds) -> list:
         return [None] * len(columns)
     return [folds[i] if i < len(folds) else None for i in range(len(columns))]
 
-def required_index_name(table: str, columns: list, folds=None) -> str:
+def required_index_name(table: str, columns: list, folds=None, prefix: str = INDEX_PREFIX) -> str:
     """조인 키를 덮는 UNIQUE 인덱스의 권장 이름(63바이트 이내).
 
     표기 정규화가 걸린 조인 키는 **다른 인덱스**를 요구한다(컬럼이 아니라 접힌 식에 대한
@@ -57,12 +60,12 @@ def required_index_name(table: str, columns: list, folds=None) -> str:
     # 「already exists」 — leaving the operator to drop an index blind, on a live table,
     # to find out whether the new one even builds.
     suffix = ("_nf" if any(_folds_list(columns, folds)) else "") + "_ns"
-    base = "%s%s_%s%s" % (INDEX_PREFIX, table, "_".join(columns), suffix)
+    base = "%s%s_%s%s" % (prefix, table, "_".join(columns), suffix)
     if len(base.encode("utf-8")) <= _MAX_IDENTIFIER:
         return base
     digest = hashlib.sha1(base.encode("utf-8")).hexdigest()[:8]
-    keep = _MAX_IDENTIFIER - len(INDEX_PREFIX) - len(digest) - 1
-    return "%s%s_%s" % (INDEX_PREFIX,
+    keep = _MAX_IDENTIFIER - len(prefix) - len(digest) - 1
+    return "%s%s_%s" % (prefix,
                         ("%s_%s%s" % (table, "_".join(columns), suffix))[:keep], digest)
 
 def column_is_text(table: str, column: str) -> bool:
@@ -119,8 +122,8 @@ def index_key_expression(column: str, fold_rules=None, table: str = None) -> str
     return notation_norm.key_expression_text(
         '"%s"' % column, fold_rules, text_column=column_is_text(table, column))
 
-def required_index_ddl(table: str, columns: list, folds=None) -> str:
-    """운영자가 그대로 실행할 수 있는 DDL 한 줄.
+def required_index_ddl(table: str, columns: list, folds=None, unique: bool = True) -> str:
+    """운영자가 그대로 실행할 수 있는 DDL 한 줄. `unique=False` 는 조인 왼쪽의 조회 인덱스(같은 식).
 
     `CONCURRENTLY`인 이유: 운영 테이블에 쓰기를 잠그지 않기 위해서다. 대가는 이 문장이
     트랜잭션 블록 안에서 돌 수 없다는 것이고(psql에서 손으로 실행하는 형태라 문제가 아니다),
@@ -137,9 +140,10 @@ def required_index_ddl(table: str, columns: list, folds=None) -> str:
     붙여 넣을 수 있다(제어문자를 날것으로 싣지 않는 이유가 그것이다).
     """
     fl = _folds_list(columns, folds)
-    return 'CREATE UNIQUE INDEX CONCURRENTLY %s ON "%s" (%s);' % (
-        required_index_name(table, columns, folds), table,
-        ", ".join(index_key_expression(c, f, table) for c, f in zip(columns, fl)))
+    return 'CREATE %sINDEX CONCURRENTLY %s ON "%s" (%s);' % (
+        "UNIQUE " if unique else "",
+        required_index_name(table, columns, folds, INDEX_PREFIX if unique else LOOKUP_PREFIX),
+        table, ", ".join(index_key_expression(c, f, table) for c, f in zip(columns, fl)))
 
 def _dialect_of(db) -> str:
     try:
