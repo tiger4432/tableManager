@@ -62476,3 +62476,108 @@ RUN.md      956537d6b 가 짚은 "[Chain] group" 두 곳 — 이 착지에서 �
 쪽 크기  chain/keyset_scan.DEFAULT_CHUNK_SIZE (1000 · row_id 키셋) — 이름 그대로 이 일의 자리. 다른 1000 들(crud BULK · ledger)은 뜻이 다름
 순서     wedged 착지 -> 이 부딪힘을 세어 올림 -> 판정 -> 짓기
 ```
+
+---
+
+## [구현자 -> 총괄] 체인 신뢰성 ①②③④⑥ 착지 7eb168aa4 — 연결 이름 · 기다림 함수 · 단계 박동 · 멈춤 줄 · 남은 쿼리 끊기 (⑤ 기동 DDL 은 다음 착지)
+
+### 운영에서 볼 모양 — 사설 PostgreSQL 게이트에서 찍힌 그대로 (멈춤 문턱 1.5 s 로 줄여서)
+
+```
+[Chain] tx tx1 · 1 row(s) of stall_probe: stalled 1 s in write:stall_probe (rule none yet · db pid 1600) - waiting Lock:transactionid on pid 2356 (assy_watcher, idle in transaction 1 s): UPDATE stall_probe SET v = 'held' WHERE k = 1
+[Chain] tx tx1 · 1 row(s) of stall_probe: stalled 1 s in mapper (rule none yet · db pid 37268) - its own query active 1 s (no lock, Timeout:PgSleep): SELECT pg_sleep(4)
+[Chain] ended pid 29292, left by a chain worker that is gone - its own query active 0 s (no lock, Timeout:PgSleep): SELECT pg_sleep(60)
+```
+
+### 지은 것
+
+```
+① 연결 이름   엔진 «클래스»에 연결 시점 리스너 하나(database.py) — 이름은 연결이 «열릴 때» 프로세스 로거의 첫 이름에서
+             assy_server · assy_watcher · assy_chain · assy_scheduler · assy_retroactive · 로거 없는 스크립트는 assy_<스크립트>
+             이름을 스스로 적은 연결(읽기 전용 패스)은 그대로 · 워처 표본기의 전용 연결도 같은 이름
+② 한 함수     db_waits.backend_waits + wait_sentence — 문장 넷(잠금 대기 · 제 쿼리 도는 중 · idle in transaction · pid 없음)
+             지나는 곳 셋: 워처 표본기 · diagnose_db_health §3 · 체인 멈춤 줄 (+ ⑥ 의 끊기 줄)
+③ 단계 박동   묶음이 자기 스레드에서 작업 표시를 열고(워처와 같은 기제), 단계에 들어갈 때마다 진행 — 단계 이름을 재는 한 자리(stage)
+             루프는 묶음을 기다리는 동안 20 s 마다 «살아 있음» 박동 — 워처와 같은 수를 heartbeat 한 자리로 옮김
+             묶음의 DB pid: 시작 때 세션에서(질의 0) · 커밋 뒤 새 트랜잭션마다 다시(세션 리스너)
+④ 멈춤 줄     단계가 300 s 안 움직이면 체인 워커가 «에피소드당 한 번» 따로 연 짧은 읽기 전용 연결(시한 5 s)로 묻고
+             chain_worker.log 한 줄 + 박동 파일 -> health detail 에 같은 문장. 묻기가 실패하면 그 자리에 "not probed (<오류>)"
+⑥ 남은 쿼리   체인 프로세스가 기동하자마자(다른 기동 일보다 먼저) — 이름이 assy_chain 이고 이 프로세스보다 먼저 열린 연결을 끊고 하나마다 한 줄
+             다른 체인 루프가 살아 있으면 안 끊음 · 체인 루프가 API 안에서 돌면 안 끊음(그때 이름이 assy_server)
+```
+
+### 게이트 · 변이
+
+```
+test_a_group_held_by_a_lock_is_stalled_and_names_who_holds_it PASSED
+test_a_group_in_its_own_slow_query_says_so_with_no_lock PASSED
+test_the_chunk_sampler_says_it_through_the_one_function PASSED
+test_diagnose_db_health_names_the_holder PASSED
+test_a_new_chain_worker_ends_what_a_gone_one_left_and_nothing_else PASSED
+test_every_connection_carries_its_process_name_unless_it_named_itself PASSED
+test_a_long_group_whose_stages_move_is_neither_stalled_nor_wedged PASSED
+test_a_stall_check_that_raises_goes_quiet_and_the_group_finishes PASSED
+test_the_sentence_has_one_shape_per_thing_a_backend_can_be_doing PASSED
+변이 (지시 넷 + 제가 더한 여섯)
+baseline: 6 passed, 7272 deselected in 17.29s || 3 passed, 6 skipped in 4.17s
+mutant: ordered - connections carry no name
+    3 failed, 3 passed, 7272 deselected in 17.61s || 3 passed, 6 skipped in 4.27s
+    red: test_a_group_held_by_a_lock_is_stalled_and_names_who_holds_it
+    red: test_diagnose_db_health_names_the_holder
+    red: test_every_connection_carries_its_process_name_unless_it_named_itself
+mutant: ordered - the beat goes back to the loop head only
+    2 failed, 4 passed, 7272 deselected in 51.09s || 2 failed, 1 passed, 6 skipped in 4.67s
+    red: test_a_group_held_by_a_lock_is_stalled_and_names_who_holds_it
+    red: test_a_group_in_its_own_slow_query_says_so_with_no_lock
+    red: test_a_long_group_whose_stages_move_is_neither_stalled_nor_wedged
+    red: test_a_stall_check_that_raises_goes_quiet_and_the_group_finishes
+mutant: ordered - the sampler asks with its own copy
+    1 failed, 5 passed, 7272 deselected in 17.40s || 3 passed, 6 skipped in 4.14s
+    red: test_the_chunk_sampler_says_it_through_the_one_function
+mutant: ordered - ending leftovers does not filter by name
+    1 failed, 5 passed, 7272 deselected in 17.56s || 3 passed, 6 skipped in 4.30s
+    red: test_a_new_chain_worker_ends_what_a_gone_one_left_and_nothing_else
+mutant: added - entering a stage is not progress
+    2 failed, 4 passed, 7272 deselected in 18.76s || 1 failed, 2 passed, 6 skipped in 4.63s
+    red: test_a_group_held_by_a_lock_is_stalled_and_names_who_holds_it
+    red: test_a_group_in_its_own_slow_query_says_so_with_no_lock
+    red: test_a_long_group_whose_stages_move_is_neither_stalled_nor_wedged
+mutant: added - the group's pid is not read when it is claimed
+    1 failed, 5 passed, 7272 deselected in 17.53s || 3 passed, 6 skipped in 4.26s
+    red: test_a_group_held_by_a_lock_is_stalled_and_names_who_holds_it
+mutant: added - a stall is said on every slice
+    1 failed, 5 passed, 7272 deselected in 17.80s || 3 passed, 6 skipped in 4.24s
+    red: test_a_group_held_by_a_lock_is_stalled_and_names_who_holds_it
+mutant: added - health drops the sentence
+    1 failed, 5 passed, 7272 deselected in 18.04s || 3 passed, 6 skipped in 4.24s
+    red: test_a_group_held_by_a_lock_is_stalled_and_names_who_holds_it
+mutant: added - a stall check that raises is not caught
+    6 passed, 7272 deselected in 16.80s || 1 failed, 2 passed, 6 skipped in 4.65s
+    red: test_a_stall_check_that_raises_goes_quiet_and_the_group_finishes
+mutant: added - section 3 prints its own line
+    1 failed, 5 passed, 7272 deselected in 17.98s || 3 passed, 6 skipped in 4.14s
+    red: test_diagnose_db_health_names_the_holder
+restored: 6 passed, 7272 deselected in 15.90s || 3 passed, 6 skipped in 4.12s
+```
+
+```
+착지 시험   database.py 를 건드려 전체: 4 failed, 7120 passed, 151 skipped, 3 xfailed in 800.77s (0:13:20) · PG 증명 전부: 7 failed, 108 passed, 7174 deselected in 117.02s (0:01:57)
+           첫 전체 실행이 잡은 것 — 묶음을 기다리는 자리가 DB 주소를 «미리» 읽어 가짜 세션 시험 15 개가 터짐 -> 멈춤을 물을 때만 읽게 고침
+           (그 실행의 나머지 빨강은 제가 데이터 루트를 스크래치로 걸어 설정을 못 읽은 것 — 걷고 다시 돌림)
+RUN.md     [09-26 밤 1] — 멈춤 줄 찾는 명령 · 문장마다 뜻과 할 일 · foreign_beat 의 뜻 · 956537d6b 가 짚은 "[Chain] group" 줄 두 곳 고침
+```
+
+### 알고 남기는 것 · 여쭐 것
+
+```
+⑥ 첫 재기동   이 착지 «뒤 첫 재기동»은 이전 코드의 연결을 못 끊음 — 그 연결엔 이름이 없음. 두 번째 재기동부터 스스로 풂
+판정 276     지시의 「막은 pid -> pg_cancel_backend」는 소유자가 할 수 없는 단계(소유자는 SQL 을 못 냄)
+             지금 운영의 남은 조인 SELECT 를 끊을 «명령»이 제품에 없음 — 하나 지을지 여쭘(짓지 않았음)
+커밋        mark processed · commit 은 묶음 스레드가 아니라 루프 위에서 돔 — 커밋이 멈추면 루프가 멈춰 wedged 로 읽히고 멈춤 줄은 안 나옴
+기동 DDL    run_chain_worker.py 는 import 시점에 스키마 동기화(sync_dynamic_tables_schema)를 먼저 돌림 — ⑥ 보다도 앞. ⑤ 에서 같이 셈
+시계        ⑥ 의 「이 프로세스보다 먼저」는 DB 시계(backend_start)와 앱 시계(import 시각)를 견줌 — 같은 상자면 같은 시계. DB 가 다른 호스트면 시계 차만큼 어긋남
+워처        워처 청크의 단계(parse · apply · commit)도 같은 자리를 지나 작업 표시가 단계마다 움직이고, stalled detail 에 단계 이름이 붙음
+넷째 자리    diagnose_slow_after_ingest 도 pg_blocking_pids 를 묻지만 «전 세션 목록» — 안 접음
+순서        ⓪(5676b8bc6)이 왔을 때 이 다섯은 다 지어 시험 중이라 먼저 착지함
+다음        ⓪ 자동 확정 쓰기의 경로 -> ⑤ 기동 DDL(첫 박동 뒤 · lock_timeout 값 · 미룸의 뜻) -> 조인 쪽 나누기 부딪힘 셈 -> 선언 + @mapper
+```
