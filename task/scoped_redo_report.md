@@ -61390,3 +61390,56 @@ PG == SQLite   test_postgresql_and_sqlite_give_the_same_string — -m pg 로 1 p
 여쭐 것   ㄱ · ㄴ · ㄷ — 그리고 박스 게이트에 table_config 칸 추가(dt_inventory)까지 갈지
 그동안    5 픽스처(f8f9eaa46) -> A -> B 순서로 갑니다
 ```
+
+---
+
+## [구현자 -> 총괄] 5 픽스처 착지 (f8f9eaa46) — 026b8bfde · 겹침 원인 (5dfc1c16d)
+
+```
+지은 것   test_ledger_l1_pg 의 pg 픽스처가 scratch 스키마에 audit_logs 를 만듦 — models.AuditLog 의 표를 to_metadata 로(손 DDL 없음)
+게이트    run_pg_tests.py · 빈 시험 DB(assy_test 와 같은 모양: 빈 DB + pg_trgm · 제 전용 — 아래 겹침 때문)
+          전 10 failed, 99 passed, 7050 deselected
+          후 7 failed, 102 passed, 7050 deselected
+          남은 빨강 = 두 DB 모두 빨강이던 일곱과 이름까지 같음: 예
+          assy_qa public.audit_logs 줄 수  전 4607454 · 후 4607454
+          ⚠️ assy_test 에서 바로 잰 두 번은 다른 레인의 run_pg_tests 와 겹쳐 무너짐(71 errors) — 그 수는 쓰지 않음
+          전용 DB 는 잴 때 만들고 곧바로 지움 — 지금 서버의 assy DB: assy_manager · assy_qa · assy_test
+같은 새는 쓰기  -m pg 전부를 빈 DB 에서 돌린 실패 사유에 「relation … does not exist」 류가 남는지 — 후의 일곱 중 0 (아래 사유)
+```
+
+### 두 DB 모두 빨강인 일곱 — 보고만 (고치지 않음 · 언제부터는 안 쟀다)
+
+```
+test_an_install_that_predates_attributes_is_widened_once
+    psycopg2.errors.CheckViolation: …:  "ck_ledger_objectless_has_no_payload" … … …(… … "ledger_events_2026_09")… … … …
+test_postgres_bundle_to_read_apis_is_one_compiler_and_one_transaction
+    ledger.source_preparation.SourcePreparationError: source_batch.columns: base cursor batch is missing physical columns: ['row_id']
+test_postgres_gate_refusal_stops_before_store_transaction
+    ledger.source_preparation.SourcePreparationError: source_batch.columns: base cursor batch is missing physical columns: ['row_id']
+test_postgres_missing_join_and_ambiguous_reader_leave_atom0
+    AssertionError: assert 'source_prepa...on_incomplete' == 'source_preparation_missing'
+test_postgres_replay_dedupes_the_second_write_of_the_same_batch
+    ledger.source_preparation.SourcePreparationError: source_batch.columns: base cursor batch is missing physical columns: ['row_id']
+test_the_live_door_writes_the_refusal_breakdown_to_the_registry_row
+    ledger.setup.LedgerSetupError: sources.process_param_num_measure: source 'process_param_num_measure' is not declared in shipped_ledger_26xcl
+test_two_independent_refusals_are_counted_and_named_in_one_run
+    ledger.setup.LedgerSetupError: sources.process_param_num_measure: source 'process_param_num_measure' is not declared in shipped_ledger_26xcl
+```
+
+### 겹침 — 한 번 재현 · 원인 칸 (짓지 않음)
+
+```
+재현      빈 DB 하나에 run_pg_tests.py 두 개를 동시에
+          run 1: 6 failed, 32 passed, 7050 deselected, 6 warnings, 71 errors in 54.70s | psycopg2 errors: ['UndefinedTable', 'UndefinedTable) 오류'] | assy_pytest_pg gone: False
+          run 2: 8 failed, 101 passed, 7050 deselected, 6 warnings in 110.68s (0:01:50) | psycopg2 errors: ['CheckViolation', 'UniqueViolation', 'UniqueViolation) 오류'] | assy_pytest_pg gone: False
+원인      tests/conftest.py 의 PG_TEST_SCHEMA = "assy_pytest_pg" (+ xdist 일꾼 이름만) — 프로세스마다 같은 이름
+          pg_engine 이 기동 때 그 스키마를 DROP … CASCADE 후 다시 만들고(「남은 것 회수」) 끝날 때 DROP
+          -> 둘째 실행의 기동이 첫째의 표를 지움(UndefinedTable) · 끝날 때 서로의 스키마를 지움(InvalidSchemaName — 앞선 오염 실행에서 36 줄)
+          ledger 쪽 스위트는 isolated_pg.scratch_schema(pid 포함 RUN_TOKEN)라 안 겹침 — conftest 의 이름만 그 규칙 밖
+          그 이름을 가져다 쓰는 시험: test_pg_multirow_upsert · test_a_savepoint_is_opened_by_one_seat · test_an_autocommit_connection_never_goes_back_to_the_pool
+5 와의 관계  5 전에는 모두 assy_qa 에서 같은 이름으로 겹쳤음 — 새로 생긴 것이 아니라, 이제 모두가 run_pg_tests 를 돌려 드러난 것
+```
+
+```
+다음    A(조인 규칙의 키 계약) -> B(쪼개기 멈춤)
+```
