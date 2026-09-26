@@ -1,3 +1,12 @@
+> ## [16:59 디자인] 보고만 — C 4 단계(9c2ebe9a)의 결과 키 둘이 이름표에 없음
+
+```
+사실    collector_backfill 이 돌려주는 수 = {"days", "days_done"} (admin/retroactive.py 의 stats)
+        결과 문장(run_result_sentence)은 _label 이 없으면 RESULT_NAMES, 거기도 없으면 «키 그대로» — 두 키 모두 RESULT_NAMES 에 없음
+화면    Retroactive 목록 · Overview 결과 줄의 결과 문장이 「days 3 · days_done 3」 처럼 기계 낱말로 그려짐(코드 읽기 — 박스에서 돌려 보진 않음)
+고칠 곳  RESULT_NAMES 에 두 줄(예 「days」 · 「days collected」) — 서버 한 칸이고 구현자가 C 로 만지는 파일이라 안 건드림
+```
+
 > ## [09:11 디자인] 파일 상태 톤 넷 착지 (290b66b7d) — 목록 · 서랍 · 끝 카드 · 끝 토스트가 같은 답
 
 ```
