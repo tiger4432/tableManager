@@ -61951,3 +61951,63 @@ OPERATIONS  지금 7 개(chain_replay · withdraw · resolve · ledger_backfill 
         ㄷ 선언 점검 줄을 둘 영역 — 새 «수집기» 영역인가
         ㄹ ② 운영 스크립트 모양
 ```
+
+---
+
+## [구현자 -> 총괄] C 1 단계 착지 3204dd97e — 채우기 자리 · 머리 읽기 · KST 구간 · 스크립트 두 길 (ffd5d42b7)
+
+```
+머리      parse_script_comments 가 # window · # window_format 도 읽음. window 는 <n>d · <n>h, 그 밖은 이름 대고 거절(그 실행 FAIL)
+          window_format 이 없으면 %Y-%m-%d %H:%M:%S (상수 한 자리) — 제안서의 모양을 기본으로 둠
+구간      execute_collector 한 자리(크론 · 즉시 실행 공통) — KST(ZoneInfo 한 자리)에서 실행 시각 - window ~ 실행 시각
+채우기     fill_markers 한 자리 — exec 길은 읽은 글을, 자식 프로세스 길은 채운 사본(<스크립트>.<pid>.filled, 같은 폴더 · 끝나면 지움)을 봄
+          구간은 수집기 속성 run_window 로 들어가 — 클래스 수집기(5, 안 함)도 나중에 같은 속성으로 받을 수 있음
+그대로     # window: 가 없는 스크립트는 전과 같음(이 박스 수집기 10 개 전부)
+```
+
+### 게이트 · 변이
+
+```
+test_the_header_is_read_with_the_colons_of_its_format PASSED
+test_the_usual_window_is_the_last_day_ending_now_in_kst PASSED
+test_a_window_is_days_or_hours[1d-length0] PASSED
+test_a_window_is_days_or_hours[12h-length1] PASSED
+test_any_other_window_is_refused_by_name[1w] PASSED
+test_any_other_window_is_refused_by_name[0d] PASSED
+test_any_other_window_is_refused_by_name[] PASSED
+test_any_other_window_is_refused_by_name[day] PASSED
+test_both_run_paths_see_the_filled_window_and_the_original_stays[exec path] PASSED
+test_both_run_paths_see_the_filled_window_and_the_original_stays[stdout path] PASSED
+test_a_filled_copy_left_beside_the_script_is_not_a_collector PASSED
+test_a_scheduled_run_fills_the_last_24_hours PASSED
+test_a_script_that_declares_no_window_runs_as_it_did PASSED
+변이
+baseline: 13 passed in 0.65s
+mutant: the exec path is not filled
+    2 failed, 11 passed in 1.21s
+    red: test_a_scheduled_run_fills_the_last_24_hours
+    red: test_both_run_paths_see_the_filled_window_and_the_original_stays[exec
+mutant: the child runs the original file
+    1 failed, 12 passed in 1.06s
+    red: test_both_run_paths_see_the_filled_window_and_the_original_stays[stdout
+mutant: the filled copy is named *.py
+    1 failed, 12 passed in 1.05s
+    red: test_a_filled_copy_left_beside_the_script_is_not_a_collector
+mutant: the scheduler computes no window
+    1 failed, 12 passed in 1.19s
+    red: test_a_scheduled_run_fills_the_last_24_hours
+mutant: the window ends in the box's clock, not KST
+    1 failed, 12 passed in 1.07s
+    red: test_the_usual_window_is_the_last_day_ending_now_in_kst
+restored: 13 passed in 0.66s
+⚠️ 이 박스 시계가 KST 라 문자열만으로는 「KST」와 「박스 시계」가 구별 안 됨 — 구간이 KST 존을 들고 있는지를 따로 단언해서 잡음
+```
+
+```
+착지 시험   run_auto_update 를 부르는 시험 + 새 시험: 290 passed in 38.98s
+           클라 픽스처: 710 passed, 1 xfailed in 143.44s (0:02:23)
+           PG 증명 전부: 7 failed, 102 passed, 7068 deselected in 110.44s (0:01:50) — 빨강 일곱이 알려진 일곱과 같음(밖의 빨강 0)
+RUN.md     [09-26 오후 4]
+다음       2 단계 — 목록 마커. ⚠️ 문 value_suggest.suggest_values 가 limit 을 설정의 max_limit(기본 200)로 깎고 탐색 예산(400) · 시간(1.5 s)이 있음
+           그대로 1,000 으로 부르면 200 에서 잘려 거절됨 -> 그 문의 settings 인자로 이 호출만 max_limit 1,000 · 예산 1,001 로 부름(같은 문, 두 번째 읽기 아님)
+```
