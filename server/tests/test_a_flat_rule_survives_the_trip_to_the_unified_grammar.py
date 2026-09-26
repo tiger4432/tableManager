@@ -187,8 +187,9 @@ def test_the_axis_set_is_the_difference_between_the_two_lists():
     # ⚰️ 14 -> 13 (소유자 정본): `follow_up` left the chain grammar with the lap.
     # 13 -> 15 (총괄 fe020274d): `allow_replace_map` · `allow_retraction` joined the list.
     #   `key` joined it too but is the unified shape's own cell, so it is not an axis cell.
+    # 15 -> 22 (총괄 ed70c3970): the seven `chain_bindings.COLUMN_BINDING_KEYS`.
     axis = known - folded - {rule_shape.KEY_CELL}
     assert set(rule_shape.axis_keys()) == axis
-    assert len(axis) == 15, (
+    assert len(axis) == 22, (
         "the axis set moved to %d - a cell was added to one list and not the other: %s"
         % (len(axis), sorted(axis)))

@@ -234,12 +234,21 @@ COMPANION_CELL_NAME = "companion_of"
 #: `required` 와 `optional` 양쪽에 있으면 `exact(...)` 에게 두 말을 하는 것이고, 제 시험이
 #: 그 중복을 잡았다(조립으로 바꾼 첫 판이 24/22 였다). `target_table` 도 표 키라서 아래
 #: 글자 목록에서 «빠졌다».
+#: 총괄 ed70c3970. Cells a mapper has `resolve_column` / `resolve_decision_column` read off the
+#: rule's TOP LEVEL - under `params` they are not found. The names are the shipped mappers'
+#: (`mappers/*.py.sample`); `test_every_cell_read_off_a_chain_rule_is_in_the_list` reads those calls.
+COLUMN_BINDING_KEYS = (
+    "trigger_job_column", "source_job_column", "target_job_column", "inventory_job_column",
+    "job_column", "reference_job_column", "derivation_source_column",
+)
+
 RULE_ROUTING_OPTIONAL = tuple(
     key for key in RULE_TABLE_KEYS if key not in RULE_ROUTING_REQUIRED) + (
     "target_field", "trigger_columns", "enabled", "is_batch",
     "allow_chain_trigger", "allow_map_metadata_upsert",
     # 총괄 fe020274d: write permissions `dt_map_derivation` reads off the rule, not arguments.
     "allow_replace_map", "allow_retraction",
+    *COLUMN_BINDING_KEYS,
     "max_group_attempts", "max_group_rows", "group_by", "idempotent", "origin",
     # S-270: 로더가 «짝으로 세운» 규칙이 자기가 어느 선언의 둘째 반쪽인지 적는 칸.
     # `origin` 과 «같은 부류»다 — 문법이 받기는 하지만 쓰는 것은 로더다. 여기 없으면

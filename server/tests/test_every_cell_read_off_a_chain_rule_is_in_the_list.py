@@ -176,3 +176,45 @@ def test_every_cell_the_product_reads_off_a_chain_rule_is_in_the_list():
         "read off a chain rule's top level but not in chain_bindings.routing_keys() - the "
         "flat-cell warning tells the operator to move these under 'params': %s (functions "
         "holding a chain rule: %d)" % (missing, holders))
+
+
+#: `chain_bindings` functions that read `rule[key]` with the key handed in by a mapper - the
+#: census above follows literal keys and cannot see these (총괄 ed70c3970).
+RESOLVERS = ("resolve_table", "resolve_column", "resolve_decision_column")
+
+
+def resolver_keys():
+    """{key: sites} for every literal key a shipped mapper hands a resolver. The shipped mappers
+    are the tracked `mappers/*.py.sample`; an installation's own `mappers/*.py` is not in the
+    repository."""
+    found = {}
+    mappers_dir = os.path.join(server_dir, "mappers")
+    for name in sorted(os.listdir(mappers_dir)):
+        if not name.endswith(".py.sample"):
+            continue
+        with open(os.path.join(mappers_dir, name), encoding="utf-8") as handle:
+            tree = ast.parse(handle.read())
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call) and _callee(node) in RESOLVERS and len(node.args) > 1:
+                key = _literal(node.args[1])
+                if key:
+                    found.setdefault(key, set()).add("%s:%d" % (name, node.lineno))
+    return found
+
+
+def test_every_cell_a_mapper_has_a_resolver_read_is_in_the_list():
+    found = resolver_keys()
+    assert "target_job_column" in found, "the census found no resolver call at all"
+    listed = set(chain_bindings.routing_keys())
+    missing = {key: sorted(sites) for key, sites in found.items() if key not in listed}
+    assert not missing, (
+        "a resolver reads these off the rule's top level, and the flat-cell warning tells the "
+        "operator to move them under 'params': %s" % missing)
+
+
+def test_the_flat_warning_names_none_of_the_column_binding_cells():
+    """총괄's measurement on 263644e69, as a test: `target_job_column` beside `allow_retraction`
+    was still named as a mapper argument to move."""
+    rule = {"name": "r", "trigger_table": "t", "allow_retraction": True,
+            **{key: "dt_job" for key in chain_bindings.COLUMN_BINDING_KEYS}}
+    assert chain_bindings.flat_param_cells(rule) == ()
