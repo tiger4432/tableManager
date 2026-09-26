@@ -63680,3 +63680,70 @@ rule_shape.expand_declaration 맨 앞 — 평평 규칙의 조기 반환과 is_s
 ```
 전체 · PG 끝나는 대로 착지합니다(총괄 「8 착지하라」)
 ```
+
+---
+
+## [구현자 -> 총괄] 8 착지 91d838682 · 6 크기 먼저 · 제 6-4 말 정정 (33c08ad7a · 872f6cb6b)
+
+### 8 착지
+```
+바꾼 것   admin/retroactive._run_rerun_set_aside 에서 "cascade": True 를 뺌 — 소급 탭 · CLI 두 명령이 다 이 함수
+문장     독스트링(2dbbfd1e5 인용은 남기고 「소유자 09-27 이 뒤집음」) · downstream_note(화면에 그대로)
+         chain/set_aside.py 머리 · outbox_triage.replay_cancelled 독스트링 · --rerun-set-aside 도움말(조사 때 빠졌던 자리)
+         chain_ingestion_guide.md 한 줄 · RUN.md 밤 4 ④ 제자리 + 새 절 「09-27 아침 1」
+시험     test_running_them_again_runs_each_rule_once_and_wakes_nothing_downstream (이름 · 기대 뒤집음)
+           다시 돌리기 + 비움 -> 하류 규칙을 깨우는 사건 0 · 하류 표 그대로 · 상류 표는 한 번 씀
+           같은 픽스처의 평소 체인은 하류를 깨움 — 칸이 공허하지 않다는 단언
+         연쇄 쪽 대조군은 인용만: test_a_chain_write_reads_as_the_chain_whatever_its_layer 의 cascade 매개 칸
+변이     "cascade": True 되돌림 -> 새 칸 빨강 「assert [10] == []」 · 되돌린 뒤 파일 같음
+main     바뀐 시험 네 파일 108 passed · 1 skipped (박스 설정이 있는 트리)
+전체     C:/wt-impl — 153 failed · 6994 passed · 26 errors. 🔴 그 worktree 에 gitignore 된 박스 설정 · server/mappers 가 없어서
+         A/B: 실패가 난 31 파일을 패치 없이 다시 — 실패 165 개가 «같은 목록»
+         나머지 오류 = 매퍼 시험 수집 여섯(server/mappers 없음) · 원장 설정 없는 셋업 — 같은 까닭
+PG       7 failed = 알려진 일곱 · 6 errors = 위 매퍼 시험 수집
+다음부터  6 의 전체는 박스 설정을 worktree 에 복사한 뒤 돌립니다
+```
+
+### 6-4 정정 — 제가 틀렸습니다
+```
+contracts/config_resolve_report/vectors.json 이 mapping_unavailable 을
+「the declaration failed to parse/validate and is not in effect」로 정의 — 예/아니오 칸 거절이 바로 그 뜻
+-> 사유 칸은 «참». 고칠 것 없음. 새 사유 낱말을 만들지 않습니다(닫힌 어휘 · 계약 벡터)
+```
+
+### 6 크기 — 짓기 전에 잰 것
+```
+판정자   validation.flag_refusal(칸 이름, 값) — true/false 면 None, 아니면 한 문장
+        「<칸> must be true or false, got <JSON 값> - write true or false」
+찾은 방법  골격이 선언한 flag 칸: chain_skeleton.json 18 · ledger_skeleton.json 6 (hint "flag" 를 걸어서 셈)
+          + 골격 밖은 읽어서: 수집기 · 표기 · 맵 둘 · map_push_ok · 자동 확정 전역 스위치. «전수» 아님
+새로 찾은 셋  체인 key.unique · decide 의 alignment · 원장 exclude_when.blank
+```
+
+| 자리 | 받은 뒤 하는 일 |
+|---|---|
+| 체인 선언 — expand_declaration 맨 앞 | 선언 안 섬 |
+| 체인 저장 관문 — enabled 덮기 전 | 저장 거절 |
+| rule_refusals 의 idempotent | 같은 함수로(시험이 직접 부름) |
+| 수집기 enabled · recursive | 그 항목 안 섬 |
+| 원장 조인 enabled · materialize · fold · allow_null · accepts_verified_join_rules · blank | 묶음 거절 |
+| 표기 규칙 켜기 | 기본값 유지 + 문장 |
+| 표기 칸 write · map_push_ok | 꺼짐 + 문장 |
+| 맵 라우팅 셋 · 페인트 잠금 | 그 항목 안 씀 + 경고 줄 |
+| 자동 확정 전역 · 규칙 | 기본값 + 문장 |
+| ledger/admin bool 읽기 둘 · 보고의 auto_confirm 읽기 · check_external_sources | 판정자로 |
+
+```
+체인 칸 목록은 손으로 적지 않음 — chain_bindings 의 골격 힌트("flag") · rule_shape 의 flag 모양을 읽음
+파일      제품 13 · 새 시험 파일 1 · 옛 문장을 단언하는 시험 2(원장 fold 문장 · 자동 확정 경고 문장)
+줄 수     안 쟀습니다
+시험      판정자 × 7 값(true · false · 0 · 1 · null · "false" · "true") + 위 자리마다 한 칸(그 자리의 말에 이름)
+          + 칸마다 「없음 = 오늘 기본값」 한 칸
+RUN.md    재기동 «전» 확인 명령 — 운영 설정 파일의 flag 칸 중 true/false 아닌 것을 이름 대어 찍는 한 줄
+```
+
+### 여쭐 것
+```
+6-A  이 크기로 한 커밋 — 가나
+6-B  표기 칸 선언 자체(true · false · {rules})는 «예/아니오 또는 객체»라 오늘 거절 문장을 그대로 둡니다 — 맞나
+```
