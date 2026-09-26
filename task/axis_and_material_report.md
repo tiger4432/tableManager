@@ -1,3 +1,59 @@
+> ## [20:01 디자인] 건너뛴 파일 알림 착지 (28dfb44d1) — 서버는 상태를 보내고, 문장은 화면의 상태 판정 한 곳이 짓는다
+
+### 착지 28dfb44d1
+
+```
+서버     워처가 건너뛴 파일을 "SKIPPED" 로 보냄 — 옛 "SUCCESS" 우회를 뒤집음(총괄 69aad666e)
+         완료 알림 봉투에서 한국어 message 칸을 뺌 — SUCCESS / 그 밖 두 갈래 문장이 건너뜀을 「실패」라 불렀음
+         봉투는 사실만: event · table_name · filename · status · (있으면) error_msg
+화면     상태 판정 한 곳(retry_verdict)이 SKIPPED 를 자기 답으로 — 끝났음 · 주황 · 실패 아님
+         같은 곳에 fileEndView 하나 — 토스트 문장과 끝 카드 제목 · 색을 상태에서 영어로 지음
+            SUCCESS  ✅ File loaded       초록
+            FAILED   ❌ File load failed  빨강
+            SKIPPED  ⏭️ File skipped      주황
+            모르는 낱말 ❔ File ended <그 낱말>  주황
+         토스트  「<제목> — <파일명> (<서버 사유 100자>)」 · 성공만 한 줄 집계(오늘 그대로)
+         끝 카드  얼굴이 둘(성공/실패)에서 셋 — status-warning 을 더함(style.css, 색 토큰 --warning)
+                 소급 실행의 끝 카드는 같은 부품을 새 모양으로 부를 뿐 — 완료 초록 · 취소/중단 빨강 그대로
+         websocket 은 이제 봉투의 message 를 안 읽음
+```
+
+```
+PROCESSING 이 게이트 픽스처에 있던 이유  제 실수입니다
+   PROCESSING 은 «실행 중 등록부»의 낱말이지 파일 로그 상태가 아닙니다(file_ingestion_status.py 의 어휘: SUCCESS · FAILED · PENDING · PENDING_RETRY · SKIPPED)
+   픽스처를 그 다섯 + 서버에 없는 낱말 하나(QUARANTINED — 「모르는 낱말은 모른다고」를 재는 칸)로 바꿈
+```
+
+```
+옆 영향  retryVerdict 를 부르는 곳은 retry_verdict.js 안뿐(밖 0 — git grep, 정의 1 을 같이 셈)
+         SKIPPED 의 tone 은 전과 같은 warn → 배지 · 실패 수 · Retry 버튼 · 수집기 칸은 답이 안 바뀜
+         settled 를 읽는 곳 0(같은 셈) · 재시도 문장(retryMessage)도 SKIPPED 에 전과 같은 문장
+```
+
+```
+착지 규칙(서버를 건드림)
+  import 시험        두 모듈을 부르는 82 파일 — 1203 통과 · 2 실패: test_api::test_chained_ingestion(알려진 것) · test_one_place_decides_where_the_server_is::test_the_repo_root_is_one_above_it(워크트리에선 .git 이 폴더가 아니라 파일이라 실패 — 이 변경과 무관)
+  client 픽스처 명령   706 통과 · 1 실패(test_api::test_chained_ingestion — 알려진 것) · 박스 전용 매퍼 5 파일은 이름으로 뺌
+  run_pg_tests.py 전부  108 통과 · 7 실패 = 알려진 일곱(015c55763) 과 이름이 같음(diff 로 대조) · 5 오류 = 같은 박스 전용 매퍼 모으기
+하니스     retry_verdict 65 (61 에서 · 변이 22/22 · 대조 2/2) · 전체 게이트 초록 · 빌드 exit 0
+번들 admin-Yo8wmdrd.js · main-KnATUIGC.js · truncation-DURtR5Cb.js(끝 카드·토스트 문장이 사는 조각) · style-D2_P1wuy.css
+```
+
+```
+⚠️ 여실 때   워처 재기동이 먼저입니다 — 건너뜀을 SKIPPED 로 보내는 것은 새 코드의 워처입니다
+            API 재기동도 필요합니다 — 봉투를 짓는 곳이 API 입니다(재기동 전에는 옛 봉투의 한국어 message 가 오지만 화면은 이제 그것을 안 읽음)
+⚠️ 못 한 것   화면을 열어 보지 못했습니다 — 끝 카드 · 토스트는 파일 한 건이 끝나야 뜨고, 이 워크트리는 미리보기 서버를 못 띄웁니다. 소유자 크롬 확인은 총괄
+```
+
+### UX 제안표 — 「5 분 쓰면 무엇이 짜증나나」 (짓지 않음)
+
+| 항목 | 왜 | 크기 |
+|---|---|---|
+| 건너뛴 파일도 한 줄 집계 | 이미 들어간 파일 여럿을 한꺼번에 다시 넣으면 파일마다 토스트 한 장(되풀이 건너뜀은 워처가 조용히 둠 — 첫 한 번만) | 안 쟀다 |
+| 건너뛴 사유를 파일 목록 칸에서 바로 | 토스트는 사라지고, 사유는 서랍을 열어야 보임 | 안 쟀다 |
+
+다음 차례: 비상 정지 화면(구현자 라우트 착지 뒤).
+
 > ## [19:31 디자인] Auto Update Backfill 착지 (2e5ed8f8e) — 수집기 줄마다 소급 손잡이
 
 ### 착지 2e5ed8f8e
