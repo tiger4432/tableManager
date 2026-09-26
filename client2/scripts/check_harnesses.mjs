@@ -977,7 +977,7 @@ const FLOORS = new Map([
   //
   // The emergency stop's control (lead 668fa004c): the state line's shapes, the route each button
   // sends, Pause asking once, two instances and a re-read.
-  ['chain_pause_harness.mjs', 18],
+  ['chain_pause_harness.mjs', 19],
   //
   // Scores that the fields saying 「this list is a SAMPLE」 have a reader, and that the branch
   // the server relies on to compensate for a capped list is still handled. Verified

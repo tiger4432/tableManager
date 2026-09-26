@@ -147,6 +147,14 @@ console.log('\n── C. TWO INSTANCES · A RE-READ ─────────�
   a.render(X.chainPauseView(PAUSED, W('paused')));
   ok('C3 a new state reaches the instance it is given to only', find(a.root, 'chain-pause-line').textContent.startsWith('Paused')
     && find(b.root, 'chain-pause-line').textContent === 'Running');
+  // Asking, then someone else pauses and resumes: the question does not come back unasked.
+  const c = new X.ChainPauseControl(doc.createElement('div'), { doc, send: async () => ({ ok: true }) });
+  c.render(X.chainPauseView(RUNNING, null));
+  find(c.root, 'chain-pause-go').click();
+  c.render(X.chainPauseView(PAUSED, null));
+  c.render(X.chainPauseView(RUNNING, null));
+  ok('C4 a state change underneath drops a pending confirm', find(c.root, 'chain-pause-go') !== null
+    && find(c.root, 'chain-pause-ask') === null);
 }
 
 // ── mutants ─────────────────────────────────────────────────────────────────────────
@@ -171,6 +179,8 @@ const DEFECTS = [
     swap('if (key !== this.drawn) this._drawControls(key);', 'this._drawControls(key);')],
   ['M8 the time is drawn without saying whose clock it is',
     swap(' (server time)', '')],
+  ['M9 a pending confirm survives someone else pausing and resuming',
+    swap('if (this.view && this.view.action !== view.action) this.confirming = false;', '')],
 ];
 const CONTROLS = [
   ['a local rename', (src) => src.replace(/\bconfirming\b/g, 'asking')],
@@ -199,6 +209,9 @@ async function verdict(M) {
   find(part.root, 'chain-pause-go').click();
   await tick();
   if (sent.length !== 0) return true;
+  part.render(M.chainPauseView(PAUSED, null));
+  part.render(M.chainPauseView(RUNNING, null));
+  if (find(part.root, 'chain-pause-ask') !== null) return true;
   return false;
 }
 

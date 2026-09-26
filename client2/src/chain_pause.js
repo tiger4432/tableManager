@@ -91,6 +91,8 @@ export class ChainPauseControl {
   }
 
   render(view) {
+    // Someone else paused or resumed: a question asked of the old state is not asked of the new one.
+    if (this.view && this.view.action !== view.action) this.confirming = false;
     this.view = view;
     this.root.setAttribute('data-tone', view.tone || '');
     this.status.textContent = view.line;
