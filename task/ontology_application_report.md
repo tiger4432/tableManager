@@ -33999,3 +33999,15 @@ allow_replace_map · allow_retraction 을 넣으면  두 골격에 칸이 하나
 ② 「골격에서 얻음」을 이렇게 읽었습니다: key 의 저자는 rule_shape(골격의 key 칸도 rule_shape.KEY_CELLS 로 지음)이고
    routing_keys() 가 rule_shape 에서 가져옴 — 이 읽기가 맞나
 ```
+
+---
+
+## 알림 — 경고 고침 착지 뒤 재기동 (b776cd459) (09-26 17:10)
+
+```
+하는 것    착지 커밋 뒤 체인 워커 · API 자식 pid 만 죽임(명령줄 확인 뒤) -> 감독자가 새 코드로 되살림. 감독자 · 워처 · 스케줄러 안 건드림
+왜        flat 경고는 규칙을 읽을 때(체인 워커 기동 · 재적재) 찍히고, API 는 선언창 골격(chain_skeleton)을 새 칸으로 냄
+잴 것      chain_worker.log 의 「still written flat」 줄 — 재기동 전 · 후 (key · allow_replace_map · allow_retraction 0 · 매퍼 인자 6 · 11 · 3 · 1 그대로)
+되돌리기   git revert <착지 해시> 뒤 체인 워커 · API 재기동
+표에 쓰는 것 0
+```
