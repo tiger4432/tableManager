@@ -34375,3 +34375,32 @@ R2      파일1 B · 파일3 A · 파일10 A 에서 파일10 철회 — 접기 �
 겹침     crud · replay · retroactive 는 제가 먼저 착지. 구현자 자동 확정 경로(bca453425)가 crud 를 만지면 이 위에
 다음     표기 정규화 2 단계 — 구현자 key_gate 착지 뒤(판정 ㉮ ㄱ · ㉯ ㄴ 그대로)
 ```
+
+---
+
+## 착지 — 복기 B: 수집기 다섯 (69aad666e) — dfc9eeca9 (09-26 20:09)
+
+```
+확인한 줄
+  ✅ 스크립트 고침     참 — mtime 갈래가 schedule · filename_prefix 만 다시 읽음(window · window_format · 판정 안 탐)
+  ✅ 설정 감시         참 — 워처 · 체인 워커는 start_config_watcher, 스케줄러는 init_models 한 번
+  ✅ 날짜별 소급 날짜   참 — collector.execute() 가 던지면 날짜 없이 끝남(적재 실패만 날짜)
+  ⚪ 크론 모양         참(코드로) — script_refusals 가 크론을 안 봐서 Declarations 는 「runs on '<크론>'」, 스케줄러 로드는 croniter 에서 던지고
+                     클래스 수집기 갈래로 떨어짐, 소급은 판정 통과 뒤 생성자에서 던짐
+  ⚪ 목록 칸 판정       참(코드로) — 판정은 «선언됐나 · datetime 인가»만, value_suggest 는 모델 · 물리 칸까지 — 선언만 된 표는 판정 통과 · 실행 거절
+고친 것
+  고친 스크립트   떼어 내고 _load_collector_from_script 로 다시 올림(같은 머리 읽기 · 같은 판정). 마지막 실행 넷(CARRIED_STATUS)은 남김 —
+                 재스캔이 남기던 넷과 «한 목록»(재스캔 쪽 글자 넷을 그것으로). 판정 못 지나면 내려가고 로드와 같은 줄
+  설정 감시      run_auto_update.main() 이 start_config_watcher(None) — 워처 · 체인 워커와 같은 부름
+  소급 날짜      retroactive._day_refused(day, what) 한 문장 — 적재 실패 · 스크립트가 던짐 둘 다 「… - fix it, then start again from <날>」
+  크론          script_refusals 가 croniter 로 봄 — 「'# schedule: X' is not a cron expression - write five fields, e.g. '0 * * * *'」
+  목록 칸        script_refusals 가 value_suggest.resolve_target(실행이 읽는 그 문)을 부름. 실행 쪽 거절도 같은 문장(_list_refusal)
+                ⚠️ value_suggest 의 거절 다섯이 한국어였음 — 그리드 값 제안 API 가 화면에 내보내는 문장이라 영어로(UI 영어 규칙).
+                    이름 _resolve_target -> resolve_target(다른 모듈이 부르게 됨). 판정의 catalogue 인자는 부르는 곳 0 이라 뺌
+게이트  고친 스크립트(창을 더하면 다시 올라와 창을 읽고 마지막 실행 남음 · 마커를 깨면 내려가고 로드 줄) · 설정 감시(main 이 켜고 끔) ·
+        소급 둘째 날 스크립트가 던짐 -> 그 날 이름 · 판정 셀 둘 더함(모델 없는 표 · 크론 아님) · 기존 시험 넷 문장 갱신
+변이   다섯 다 빨강 — 옛 mtime 갈래 · 감시 안 켬 · 던짐을 안 잡음 · 크론 안 봄 · 목록을 선언만으로
+범위(깨끗한 작업 트리 bb90934b9 + 이 변경)  import 시험 37 파일(collector_markers · run_auto_update · value_suggest · retroactive) 616 passed ·
+          client 710 passed 1 xfailed · run_pg_tests 7 failed 108 passed(알려진 일곱 · 겹친 PG 실행 0)
+커밋      retroactive.py 에 구현자 미커밋 편집이 있어 제 덩어리만(날짜 문장 둘) 패치로 색인에 올려 커밋 — 그쪽 줄은 작업 파일에 그대로
+```
