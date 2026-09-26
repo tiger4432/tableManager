@@ -335,7 +335,7 @@ class GenericScriptRunnerCollector:
                 f.write(csv_content)
             os.replace(tmp_dest, final_dest)
             self.logger.info(f"Successfully wrote captured 'out' data to raw file '{filename}'.")
-            return
+            return final_dest
 
         if exec_error is None:
             # Normal path: this script print()s its output instead of setting 'out'.
@@ -389,6 +389,8 @@ class GenericScriptRunnerCollector:
                 
             os.replace(tmp_dest, final_dest)
             self.logger.info(f"Successfully collected stdout and generated raw file '{filename}'.")
+            # The file this run wrote - a backfill waits for exactly this one to be ingested.
+            return final_dest
             
         except Exception as e:
             self.logger.error(f"Fatal: Failed to execute script runner via subprocess: {e}")
