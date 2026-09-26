@@ -34061,3 +34061,40 @@ allow_replace_map · allow_retraction 을 넣으면  두 골격에 칸이 하나
 하는 것    040053994 와 같음 — 체인 워커 · API 자식만. 잴 것: flat 줄에서 dt_inventory_to_standard_dt_map(3) · dt_metadata_to_dt_inventory(1) 두 줄이 사라지고 나머지 둘(11 · 6)은 그대로
 되돌리기   git revert <착지 해시> 뒤 체인 워커 · API 재기동 · 표에 쓰는 것 0
 ```
+
+---
+
+## 착지 — 잡 컬럼 칸 뒤따름 (ed70c3970 ①) — a44888428 (09-26 17:30)
+
+```
+셈        rule[key] 를 «변수 key» 로 읽는 제품 함수 셋 — chain_bindings.resolve_table · resolve_column · resolve_decision_column
+          저장소 제품 코드의 호출 0 — 부르는 것은 전부 맵퍼(박스 mappers/*.py · 출하 mappers/*.py.sample)
+          resolve_column / resolve_decision_column 에 넘어가는 이름 = 일곱 (지시의 「여섯」과 둘 다름)
+            trigger_job_column · source_job_column · target_job_column · inventory_job_column · job_column
+            + reference_job_column (resolve_decision_column — dt_alignment_metadata_mapper)
+            + derivation_source_column (resolve_column — dt_map_mapper)
+          resolve_table 의 이름은 전부 표 칸 — 이미 목록에 있음
+지은 것   chain_bindings.COLUMN_BINDING_KEYS (일곱) — RULE_ROUTING_OPTIONAL 안 · 골격 재생성 root 36 · unified_root 29 · 축 22
+게이트    test_every_cell_read_off_a_chain_rule_is_in_the_list 에 둘 — 출하 맵퍼 표본의 resolver 호출을 세는 셈(상수와 따로) ·
+          총괄 실측을 그대로(flat_param_cells 가 일곱 중 아무것도 안 부름)
+변이      일곱을 하나씩 목록에서 뺌 -> 일곱 다 빨강 · 안 빼면 초록
+범위(깨끗한 작업 트리 819259a24 + 이 변경)  import 시험 44 파일 500 passed · client 명령 710 passed 1 xfailed ·
+          run_pg_tests 7 failed 102 passed(알려진 일곱) · 골격 하니스 다섯 0 실패
+```
+
+```
+박스      재기동함 17:28:48 — 체인 워커 · API 자식만 · health 200 · 거절 줄 0
+전 (17:14 로드)  flat 줄 넷 — dt_inventory_to_standard_dt_map 3 · dt_metadata_to_dt_inventory 1 · dt_log_to_primary_core_frame 11 · lot_event_to_lot_slot_wafer 6
+후 (17:28 로드)  flat 줄 둘 — dt_log_to_primary_core_frame 10 · lot_event_to_lot_slot_wafer 6
+🔴 제 알림(82044c993)의 「11 은 그대로」는 틀린 예측 — job_column 이 빠져 10 (core_alignment_mapper 가 resolve_column 으로 읽는 칸이라 맞는 결과)
+되돌리기  git revert a44888428 뒤 체인 워커 · API 재기동
+남는 것   lot_event_to_lot_slot_wafer 의 여섯과 primary_core_frame 의 열은 resolver 로 안 읽힘(출하 표본 기준) — 진짜 매퍼 인자로 봄
+          박스 전용 매퍼가 resolver 로 다른 이름을 읽으면 그것은 표본에 없어 이 게이트가 못 봄
+```
+
+```
+여쭐 것 하나  이 목록은 «출하 맵퍼가 쓰는 이름»이라 도메인 낱말이 제품 코드에 들어갔습니다(일곱).
+            다른 길: resolve_column 류가 rule[key] 가 없으면 params 에서도 찾게 하면, 이름 목록 없이 경고가 참이 됩니다(옮겨도 읽힘).
+            지시대로 상수로 지었고, 이쪽은 물음으로만 드립니다
+다음        표기 정규화(6c156492f + 시간 모양 5a87c794c) — 짓기 전 셈과 안을 먼저 이 채널에
+```
