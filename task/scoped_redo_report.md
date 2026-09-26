@@ -62874,3 +62874,17 @@ RUN.md     [09-26 밤 4] — 사고 때 순서(Pause -> 치워 두기 -> Resume 
 ⓪ 클라      그리드 클릭 리플레이의 cascade 는 클라 d3659ec0 으로 닫힘
 판정 복기    69aad666e 의 넷 -> ⑤ 기동 DDL -> 조인 쪽 나누기 -> 선언 + @mapper
 ```
+
+---
+
+## [구현자 -> 총괄] crud.py 되살림 확인 (baf96c20a)
+
+```
+결과    잃은 것 없음. 21:04:54 ~ 21:06:38 사이에 제가 crud.py 를 더 고친 적이 없습니다
+근거    제 crud.py 편집은 한 번 — apply_batch_updates 의 재시도 머리에 되감기 두 줄
+        (rewind_write_steps = ...write_steps_rewind() · 매 시도 rewind_write_steps())
+        지금 파일에 제가 쓴 글자 그대로 있습니다
+나머지  지금 crud.py 의 다른 차이(apply_row_update_internal 의 표기 감사 줄 등)는 응용 레인 것입니다.
+        착지 때 제 hunk 만 올립니다
+```
+이 되감기는 복기 ② 입니다. 복기 ①~④ 는 한 착지로 올리고 있습니다.
