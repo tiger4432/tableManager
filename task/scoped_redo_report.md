@@ -61868,3 +61868,86 @@ RUN.md     [09-26 오후 3] — 재기동 뒤 볼 로그 줄 · 그 줄이 나�
 B 스크래치(동결 · 안 지움)  scratchpad (C:\Users\kk980\AppData\Local\Temp\claude\C--Users-kk980-Developments-assyManager\bb9c475d-6f85-4fe4-bc97-76584eed703b\scratchpad) 의 probe_B_today.py · probe_B_common.py · probe_B_stop.py · probe_B_k.py · probe_B_k_out.txt
 다음       C(수집기 시간 구간) 셈 ①~⑤
 ```
+
+---
+
+## [구현자 -> 총괄] C 셈 — 수집기 시간 구간 · 목록 마커 · 하루 단위 소급 (8c901589c · 48cad0a6e · 6c35bd572) · 짓지 않음
+
+### ① 두 모양이 어떻게 도나 · 채우기 자리
+
+```
+공통    둘 다 스케줄러 프로세스(run_auto_update) 안의 스레드 — start_collector -> execute_collector(collector) -> collector.execute()
+        크론과 즉시 실행(run-now)이 같은 문 -> 구간을 «한 번» 계산할 자리 = execute_collector
+스크립트  GenericScriptRunnerCollector (머리 `# schedule:`) — 스크립트 원문을 읽어 같은 프로세스에서 exec, `out` 을 CSV 로
+        `out` 이 없으면 «원본 파일 경로»로 자식 프로세스(python 스크립트)를 다시 돌려 stdout 을 CSV 로
+        결과 raws/<prefix>_<YYYYmmdd_HHMMSS>.csv · 머리 읽기는 parse_script_comments(위 20 줄) — window · window_format 도 여기
+        -> 채운 글을 두 길이 다 봐야 함: exec 는 읽은 글에 채우면 되고, 자식 프로세스는 채운 «사본 파일»을 돌려야 함
+        ⚠️ 사본을 auto_update 폴더에 .py 로 두면 발견 스캔(auto_update/*.py)이 수집기로 또 잡음. 같은 폴더라야 옆 파일 import 가 됨 — 이름은 짓기 때
+클래스   BaseCollector 하위 — 발견 때 import 후 인자 없이 생성, collect() 가 파일 경로 목록을 돌려줌
+        마커가 없으니 구간은 속성으로(예: self.window_start · self.window_end). collect() 인자를 바꾸면 기존 하위 클래스가 깨짐
+```
+
+### ② 박스 수집기 (박스 상태 — 이 폴더는 저장소 추적 밖)
+
+```
+수집기 10 개 · 스크립트 모양 10 · 클래스 모양 0 · 날짜를 박은 줄 0
+  bonding_log/generate_bonding.py | schedule='*/2 * * * *' | 40 lines
+  bonding_map/fetch_data copy.py | schedule='*/60 * * * *' | 28 lines
+  bonding_map/fetch_data.py | schedule='*/60 * * * *' | 32 lines
+  core_defect_map/generate_core_defect.py | schedule='*/3 * * * *' | 162 lines
+  dt_log/generate_dt_log.py | schedule='*/3 * * * *' | 181 lines
+  dt_map/generate_dt_map.py | schedule='*/3 * * * *' | 118 lines
+  eds_fail_map/generate_eds_fail.py | schedule='*/3 * * * *' | 170 lines
+  inventory_master/fetch_inventory.py | schedule='* * * * *' | 34 lines
+  lot_event/generate_trace_fixture.py | schedule='0 */2 * * *' | 123 lines
+  wafer_process/generate_wafer_process.py | schedule='*/3 * * * *' | 139 lines
+-> 전부 가짜 데이터 생성기(지금 시각 · 무작위 오프셋). 외부 소스를 시간 구간으로 조회하는 스크립트가 이 박스에 없음
+   「날짜를 코드에 박은 운영 스크립트의 수와 모양」은 여기서 못 셈 — 소유자 운영 스크립트 한두 개의 머리 · 날짜 줄 모양을 받으면 셀 수 있음
+```
+
+### ③ 소급 연산 자리
+
+```
+OPERATIONS  지금 7 개(chain_replay · withdraw · resolve · ledger_backfill · ledger_rescope · enrichment_backfill · enrichment_confirm) — 칸: cancellable · cli · cli_only · commit_granularity · count · deletes · judge · label · params · reads_as · restartable · run · what_is_missing
+실행        스케줄러가 자식 프로세스(python -m admin.retroactive_run <run_id>)로 띄움 · 한 번에 한 소급(기존 claim · gate)
+하루 사이    _checkpoint(control) 훅 — 배치 경계에서 진행 보고 + 취소 물음. 하루 = 한 배치로 부르면 N/M 일 · 취소가 그대로 섬
+대기열 통과  기존 문: 파일 체크포인트 원장 — ingestion.checkpoint.find_terminal_by_path_stat(그 경로 · 그 파일에 DONE/FAILED)
+            · liveness(적재 중인가). 같은 내용이라 건너뛴 파일도 기존 DONE 행에 새 경로가 적혀(adopt_new_location) «지났다»로 답함 (코드로 읽음, 안 돌려 봄)
+```
+
+### ④ 같은 날 두 번 (코드로)
+
+```
+이름      결과 파일 이름에 실행 시각(초)이 들어가 늘 다름
+내용 같음  워처 2 단(tier-2) 내용 서명이 이미 DONE -> 다시 적재 안 함 (보관 켜짐: SKIPPED 기록 + 보관 폴더로 / 꺼짐: 조용히 건너뜀)
+내용 다름  새 서명이라 적재 -> 같은 business_key_val 행을 찾아 «같은 출처 층» 값을 덮음. 앞 파일에만 있던 행은 그대로(지우지 않음)
+```
+
+### ⑥ 그리드 값을 읽는 기존 문 · ⑦ 부를 수 있나
+
+```
+⑥  value_suggest.suggest_values(db, 표, 칸, prefix="", limit) — 그 칸에 저장된 값(그리드에 보이는 값)의 고유값
+    잘렸으면 truncated · 못 답하면 unavailable_reason · table_config 에 없는 표·칸은 400/404 거절 · 날짜 칸은 거절
+    ⚠️ 입력 제안용이라 상한(limit)과 탐색 예산이 있음 -> 목록이 잘리면 그 실행을 거절해야 함(부분 목록으로 돌면 값이 조용히 빠짐)
+⑦  소급 자식 — 실행 때 models.init_dynamic_models 를 부르므로 됨
+    스케줄러 프로세스 — 동적 모델 초기화가 없음(워처 · 체인 워커는 시작 때 부름) -> 지금은 그 문이 「모델이 준비되지 않은 테이블」로 거절
+    스케줄러 시작에 같은 초기화가 필요
+```
+
+### ⑤ 크기 · 짓는 순서 제안
+
+```
+크기    안 잼. 닿는 자리만 셈 — 머리 읽기 · 구간 계산(execute_collector) · 채우기 한 자리(시간 · 목록 마커 공통, 나중 {{SET}} 도 여기)
+        · 스크립트 수집기 두 길 · 클래스 수집기 속성 · 스케줄러 모델 초기화 · 소급 연산 하나 · 선언 점검
+        ⚠️ 선언 점검(Declarations)에 수집기 영역이 없음(지금 영역: binding · catalog · chain · enrichment · ledger · notation · walk)
+        KST: 제품 코드에 KST 상수 없음(원장 선언의 timezone 칸뿐) -> ZoneInfo("Asia/Seoul") 한 자리
+순서    1  채우기 자리 + 머리 읽기 + 구간 계산(KST, 지금-24h ~ 지금) + 스크립트 수집기 두 길 — 게이트: 채운 사본을 exec · 자식 둘 다 봄 · 원본 무변
+        2  목록 마커 — ⑥ 문 + 스케줄러 모델 초기화 + 빈 · 잘린 목록 거절(Auto Update 탭 사유) + 값 속 ' 를 ''
+        3  선언 점검 — window ↔ 마커 짝 · 목록 표·칸 선언 (로드 거절 + Declarations 줄)
+        4  소급 연산 — 하루씩 · 대기열 통과 확인 · 취소 · 재시작
+        5  클래스 수집기 속성 (박스엔 0 개)
+여쭐 것  ㄱ 목록 상한 — 입력 제안 상한을 그대로 쓰나, 목록 마커용을 따로 두나
+        ㄴ 소급 중 한 날이 FAILED 면 멈추나 다음 날로 가나
+        ㄷ 선언 점검 줄을 둘 영역 — 새 «수집기» 영역인가
+        ㄹ ② 운영 스크립트 모양
+```
