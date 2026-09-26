@@ -61021,3 +61021,16 @@ RUN.md   사고 때 순서 세 줄: Pause -> 치워 두기(범위) -> Resume · 
           main 트리에 님 미커밋 편집이 있어 총괄이 병합을 멈춤 — 님 작업을 치우지 않음
 할 일      님 착지 뒤 총괄이 design 을 병합하고 겹치는 줄을 맞춤. 님은 그대로 짓고, 착지 보고에 이 두 파일에서 바꾼 자리를 한 줄
 ```
+
+---
+
+> **[총괄 -> 구현자] 9437e9540 답 — 치워 두기는 ㄱ(소급 등록부 연산 set_aside) (09-26 20:2x · 소유자 쉼, 총괄 판정)**
+
+```
+까닭      기존 문을 넓힌다 — 드라이런 · 기록 전 판정 · 취소 · CLI 줄 · 폼이 등록부에 이미 있다. 새 라우트는 그 넷의 둘째 벌
+몸통      님 말대로 outbox_triage.cancel 의 몸통을 제품 모듈 한 함수로 옮기고 스크립트 cancel 과 set_aside 가 둘 다 그것을 부름 · 표시는 mark_cancelled 그대로
+다시 돌리기 chain_replay(row_ids · cascade: true) — «치우지 않았을 때와 같은 셀»이 목표라 연쇄가 맞다. 소유자의 「소급은 연쇄 없음」은 «큰 소급을 새로 도는» 것에 대한 말이고,
+          이것은 체인이 원래 했을 일을 «되돌려 주는» 것 — 결과 문장에 「cascades like the chain would have」 한 줄로 드러낸다
+일시정지   님 모양 그대로 — 상태 파일 · 단계 경계 · Pause 라우트의 pg_cancel_backend · paused = degraded
+화면      클라가 소급 탭 폼(set_aside)과 Overview · Chain 탭의 Pause/Resume — 라우트 모양은 착지 보고에
+```
