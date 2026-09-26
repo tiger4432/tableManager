@@ -59,6 +59,8 @@ def test_a_file_load_names_the_file_row_not_the_batch_row(monkeypatch):
     class _Crud:
         CellRefused = crud.CellRefused
         loadable_columns = staticmethod(crud.loadable_columns)
+        row_is_blank = staticmethod(crud.row_is_blank)
+        is_blank_value = staticmethod(crud.is_blank_value)
 
         @staticmethod
         def apply_batch_updates(_db, _table, batch):

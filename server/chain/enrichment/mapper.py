@@ -144,14 +144,15 @@ def _aggregate_affected_keys(db, source_table: str, decision_key: list,
             raise ValueError(
                 f"aggregation '{name}' reads column '{column}', which table "
                 f"'{source_table}' does not have")
+        # Blank is the shared predicate's answer (crud), turned to NULL so no aggregate
+        # counts it - `unique_concat` and, since 총괄 69aad666e C, min/max too: a group of
+        # {'', 'A'} had min ''. `_joined` drops the one NULL the array may then carry.
+        value = case((crud.blank_sql_condition(crud.column_text_sql(source_col)), None),
+                     else_=source_col)
         if fn == "unique_concat":
-            # Blank is the shared predicate's answer (crud), turned to NULL so no dialect
-            # counts it; `_joined` drops the one NULL the array may then carry.
-            exprs.append(_DistinctValuesJson(case(
-                (crud.blank_sql_condition(crud.column_text_sql(source_col)), None),
-                else_=source_col)))
+            exprs.append(_DistinctValuesJson(value))
             continue
-        exprs.append(func.min(source_col) if fn == "min" else func.max(source_col))
+        exprs.append(func.min(value) if fn == "min" else func.max(value))
 
     by_pattern = {}
     for clean_key, raw in key_raw_values.items():

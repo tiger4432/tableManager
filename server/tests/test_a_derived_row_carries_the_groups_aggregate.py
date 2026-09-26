@@ -325,3 +325,11 @@ def test_a_separator_that_is_not_text_is_refused():
     why = _refusal({"wafer_ids": {"fn": "unique_concat", "column": "wafer_id", "separator": 1}})
 
     assert "wafer_ids" in why and "separator" in why, why
+
+
+def test_min_and_max_do_not_take_a_blank_value(env):
+    """총괄 69aad666e C: unique_concat read '' as NULL and min/max did not - a group of
+    {'', 'W1', 'W2', 'w1'} had min ''. One blank answer for every aggregate."""
+    _insert(env, SPREAD)
+    assert _concat(env, {"fn": "min", "column": "wafer_id"}) == "W1"
+    assert _concat(env, {"fn": "max", "column": "wafer_id"}) == "w1"

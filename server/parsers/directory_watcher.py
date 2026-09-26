@@ -3285,6 +3285,16 @@ class IngestionHandler(FileSystemEventHandler):
         all_created_logs = []
         total_log_count = 0  # [C-5] 절단과 무관한 실제 총 감사 로그 건수
 
+        # 총괄 69aad666e C: a row whose declared cells are all blank is skipped - the standard
+        # parser's rule (its iterator already skipped them), asked of the same predicate, so one
+        # file counts and ends the same on either path. A row with NO declared cell is not
+        # blank: it is the file the standard parser refuses at its header (NothingWritten).
+        if isinstance(rows, list):
+            def _declared_blank(r):
+                cells = [v for k, v in r.items() if str(k).lower() in declared_by_lower]
+                return bool(cells) and crud.row_is_blank(cells)
+            rows = [r for r in rows if not _declared_blank(r)]
+
         # [확장성] list와 이터레이터 모두 지원 — 이터레이터(std parser)는 총 행 수를 인자로 받는다.
         if total_rows is None:
             total_rows = len(rows)
@@ -3387,12 +3397,12 @@ class IngestionHandler(FileSystemEventHandler):
                                     if target_key.lower() == bk_col.lower():
                                         bk_val = val
                                 elif key in dropped_value_counts:
-                                    if val is not None and val != "":
+                                    if not crud.is_blank_value(val):
                                         dropped_value_counts[key] += 1
                                 elif len(dropped_value_counts) < MAX_DROPPED_COLUMNS_REPORTED:
                                     # Seed at 0 so a column whose values are all blank is still
                                     # NAMED - the column was offered and refused either way.
-                                    dropped_value_counts[key] = 1 if (val is not None and val != "") else 0
+                                    dropped_value_counts[key] = 0 if crud.is_blank_value(val) else 1
                             if normalized_row:
                                 items.append(schemas.GeneralUpdateItem(
                                     business_key_val=str(bk_val) if bk_val is not None else None,

@@ -1202,6 +1202,13 @@ def is_blank_value(val: Any) -> bool:
     return clean_str_value(val) == ""
 
 
+def row_is_blank(values) -> bool:
+    """A file row with no value in its DECLARED cells - skipped, not written, by every parser
+    path (총괄 69aad666e C: the standard parser skipped it, a workspace parser's rows counted it).
+    `is_blank_value` per cell, so a cell of spaces is blank on both."""
+    return all(is_blank_value(v) for v in values)
+
+
 def blank_sql_condition(col_expr):
     """THE emptiness predicate, SQL side. Must answer exactly like `is_blank_value`.
 

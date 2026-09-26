@@ -24,6 +24,10 @@ FILES = {
     "all": "lot,qty\nL1,5\n",
     "part": "part_no,category,stock_qty,extra\nP-1,Cap,1,x\n",
     "none": "part_no,category,stock_qty\nP-1,Cap,1\n",
+    # 총괄 69aad666e C: a row blank in its declared cells is skipped on both paths before its
+    # undeclared value is counted, and a cell of spaces is blank on both.
+    "undeclared_only": "part_no,category,stock_qty,extra\nP-1,Cap,1,\n,,,x\n",
+    "spaces": "part_no,category,stock_qty,extra\nP-1,Cap,1,  \nP-2,Cap,2,  \n",
 }
 
 EXPECTED = {
@@ -31,11 +35,15 @@ EXPECTED = {
     "part": ("SUCCESS", "Dropped 1 undeclared column(s) over 1 row(s): extra=1 "
                         "(name=non-blank values discarded)."),
     "none": ("SUCCESS", None),
+    "undeclared_only": ("SUCCESS", "Dropped 1 undeclared column(s) over 1 row(s): extra=0 "
+                                   "(name=non-blank values discarded)."),
+    "spaces": ("SUCCESS", "Dropped 1 undeclared column(s) over 2 row(s): extra=0 "
+                          "(name=non-blank values discarded)."),
 }
 
 
 @pytest.mark.parametrize("path", ["standard", "custom"])
-@pytest.mark.parametrize("kind", ["all", "part", "none"])
+@pytest.mark.parametrize("kind", ["all", "part", "none", "undeclared_only", "spaces"])
 def test_status_and_sentence(p2_env, path, kind):
     ws, handler = p2_env["make_handler"]()
     if path == "custom":

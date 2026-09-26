@@ -55,7 +55,15 @@ _NAIVE_TIME_COUNTS = {}
 #: An ISO-8601 trailing offset (`Z`, `+09:00`, `-0500`) — the thing PostgreSQL reads to
 #: decide whether it must guess. Anchored to the END so a date like `2026-09-11` cannot
 #: match its own hyphens.
-_TIME_OFFSET_RE = re.compile(r"(?:Z|[+-]\d{2}:?\d{2})$")
+#: 🔴 [0-9], not \d: \d also reads fullwidth digits, and PostgreSQL refuses '+０９:００'
+#: ("invalid input syntax for type timestamp with time zone", measured 09-26).
+_TIME_OFFSET_RE = re.compile(r"(?:Z|[+-][0-9]{2}:?[0-9]{2})\Z")
+
+
+def has_time_offset(text) -> bool:
+    """Whether a time text ENDS in a zone offset - the one answer `time_is_naive` and the
+    notation `time` rule both ask (총괄 69aad666e C)."""
+    return bool(_TIME_OFFSET_RE.search(str(text)))
 
 
 def time_is_naive(value) -> bool:
@@ -82,7 +90,7 @@ def time_is_naive(value) -> bool:
     text = str(value).strip() if value is not None else ""
     if not text or len(text) < 10:
         return False
-    return not _TIME_OFFSET_RE.search(text)
+    return not has_time_offset(text)
 
 
 def fold_time_value(value, *, zone=None):

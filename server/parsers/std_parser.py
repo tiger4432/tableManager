@@ -130,20 +130,16 @@ def _map_record(record: list, header_map: list, passthrough=()) -> dict | None:
     """CSV 레코드 1건을 canonical 컬럼 dict로 매핑. 유효 값이 하나도 없으면 None(스킵).
     `passthrough` = (index, header name) of undeclared columns: added after that judgment, so
     whether a row is blank still reads the declared columns only."""
-    row = {}
-    has_value = False
-    for idx, col in enumerate(header_map):
-        if col is None:
-            continue
-        raw = record[idx] if idx < len(record) else None
-        val = raw.strip() if isinstance(raw, str) else raw
-        if val == "":
-            val = None
-        if val is not None:
-            has_value = True
-        row[col] = val
-    if not has_value:
+    from database import crud
+
+    declared = [(col, record[idx] if idx < len(record) else None)
+                for idx, col in enumerate(header_map) if col is not None]
+    if crud.row_is_blank(raw for _col, raw in declared):
         return None
+    row = {}
+    for col, raw in declared:
+        val = raw.strip() if isinstance(raw, str) else raw
+        row[col] = None if val == "" else val
     for idx, name in passthrough:
         raw = record[idx] if idx < len(record) else None
         val = raw.strip() if isinstance(raw, str) else raw

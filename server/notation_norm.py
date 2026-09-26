@@ -330,7 +330,6 @@ _REPLACE_ESCAPES = set(".-_()[]{}+*?^$|\\/AZ")
 #: The refusal for an escape outside `_REPLACE_ESCAPES` - one sentence for both seats.
 _ESCAPE_REFUSAL = ("\\%s reads differently in the two engines - write the characters "
                    "out, e.g. [0-9] for \\d (%r)")
-_ZONE_SUFFIX = re.compile(r"(Z|[+-][0-9]{2}:?[0-9]{2})\Z")
 
 
 def _value_rule_refusal(name, value):
@@ -464,7 +463,7 @@ def fold_time(text, spec: dict):
     that reads fractions keeps them (`TS_FMT` + `.%f`), so nothing below the second is dropped.
     """
     from datetime import datetime
-    from utils.time_format import TS_FMT
+    from utils.time_format import TS_FMT, has_time_offset
 
     if not isinstance(text, str) or not text.strip():
         return text, "blank"
@@ -475,7 +474,7 @@ def fold_time(text, spec: dict):
                 return text, "already"
         except ValueError:
             pass
-    if _ZONE_SUFFIX.search(s):
+    if has_time_offset(s):
         return text, "zoned"
     for fmt in (spec or {}).get("from") or ():
         try:

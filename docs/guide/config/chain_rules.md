@@ -16,7 +16,7 @@
 
 전부 규칙 dict 의 «맨 위»에 적습니다. 적지 않으면 아래 「안 적으면」 칸이 답입니다. 자세한 것은 §5-B · §5-B-bis.
 
-⚠️ `allow_replace_map` · `allow_retraction` · `key` 는 `params` 밑으로 옮기지 마십시오 — 옮기면 제품이 못 읽어 허락이 꺼지고 유일 인덱스가 안 섭니다. 잡 컬럼 칸(`trigger_job_column` · `source_job_column` · `target_job_column` · `inventory_job_column` · `job_column` · `reference_job_column` · `derivation_source_column`)도 같습니다 — 맵퍼가 `chain_bindings.resolve_column` 으로 규칙 «맨 위»에서 읽으므로, 옮기면 표 선언에서 유도하거나 이름 대어 거절됩니다. 로그 `[ChainRules] <규칙>: N cell(s) still written flat — move them under 'params'` 는 이제 이 칸들을 가리키지 않습니다(2026-09-26 고침 — 규칙 최상위 칸 목록 `chain_bindings.routing_keys()` 에 들어감). 그 경고가 남는 칸은 매퍼 인자뿐입니다.
+⚠️ `allow_replace_map` · `allow_retraction` · `key` 는 `params` 밑으로 옮기지 마십시오 — 옮기면 제품이 못 읽어 허락이 꺼지고 유일 인덱스가 안 섭니다. 잡 컬럼 칸(`trigger_job_column` · `source_job_column` · `target_job_column` · `inventory_job_column` · `job_column` · `reference_job_column` · `derivation_source_column`)도 같습니다 — 맵퍼가 `chain_bindings.resolve_column` 으로 규칙 «맨 위»에서 읽으므로, 옮기면 표 선언에서 유도하거나 이름 대어 거절됩니다. 로그 `[ChainRules] <규칙>: N cell(s) still written flat — move them under 'params'` 는 이제 이 칸들을 가리키지 않습니다(2026-09-26 고침 — 규칙 최상위 칸 목록 `chain_bindings.routing_keys()` 에 들어감). 그 경고가 남는 칸은 매퍼 인자뿐입니다. ⚠️ **한계**(총괄 69aad666e): 이 일곱은 «출하 표본 맵퍼»가 읽는 이름을 손으로 적은 목록(`chain_bindings.COLUMN_BINDING_KEYS`)입니다 — 운영 맵퍼가 다른 이름을 `resolve_column` 으로 읽으면 경고가 그 칸을 «옮기라»고 잘못 말하고, 그 맵퍼가 `@mapper` 의 `params` 를 선언했으면 `undeclared_param` 으로 거절까지 됩니다. 그런 이름은 지금 목록에 없습니다.
 
 **허락 칸** — 켜야 되는 일
 

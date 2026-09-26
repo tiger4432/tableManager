@@ -281,3 +281,15 @@ def test_the_write_preview_counts_values_a_second_fold_would_move(val_env):
            "'axx' -> 'axxxx'" in crr.notation_preview_detail(
                nn.fold_preview(db, "notval_test_wafer", "note",
                                rules={"replace": [["x", "xx"]]}, write=True))
+
+
+def test_one_zone_offset_answer_and_it_is_the_one_postgresql_reads():
+    """총괄 69aad666e C: the time rule said 'unmatched' and the write boundary said 'has a zone'
+    to a fullwidth offset. PostgreSQL refuses '+０９:００' (measured), so neither is a zone now -
+    the write boundary names it as naive instead of PostgreSQL failing on it."""
+    from utils import time_format
+    fullwidth = "2026-09-26 13:05:07+\uff10\uff19:\uff10\uff10"
+    assert nn.fold_time(fullwidth, {"from": ["%Y/%m/%d"]}) == (fullwidth, "unmatched")
+    assert time_format.time_is_naive(fullwidth) is True
+    assert time_format.has_time_offset("2026-09-26 13:05:07+09:00")
+    assert nn.fold_time("2026-09-26 13:05:07+09:00", {"from": ["%Y/%m/%d"]})[1] == "zoned"
