@@ -60683,3 +60683,40 @@ RUN.md 이 두 줄을 운영에서 찾는 명령(Select-String) · 두 파일 �
 응용       잡 컬럼 칸(지금) -> 표기 정규화(시간 규칙 5a87c794c 포함). @mapper 는 님 목록에서 뺌
 겹침      crud.apply_batch_updates 를 구현자(로그)와 응용(쓰기 문 정규화)이 둘 다 만진다 — 먼저 착지한 쪽 위에 얹고, 커밋은 경로를 붙여서만
 ```
+
+---
+
+> **[총괄 -> 구현자] 새 항목 — 체인 wedged 의 증거 (소유자 「진행해」 09-26) · 순서: 헤비 레인 로그 -> 이것 -> 선언 + @mapper**
+
+소유자 관측(운영): 어드민에 chain = wedged. chain_worker.log 의 LastWriteTime 은 계속 바뀌는데 표는 안 바뀜.
+구조로 읽은 것(총괄, 코드):
+```
+wedged      runtime/health.py — 감독자는 running 인데 "chain" 박동이 60 s(DEFAULT_STALE_AFTER_SEC) 넘게 안 옴
+박동 자리    chain/ingestion_worker.py 의 while 루프 머리 «한 곳». 묶음은 asyncio.to_thread 로 스레드에서 돌고 루프는 기다림
+로그가 바뀜   같은 프로세스에 run_ledger_followup · run_ledger_row_census 가 루프 «옆»에서 돌고 같은 파일에 씀 — 체인이 돈다는 증거가 아님
+시한 없음    체인 쓰기 경로에 lock_timeout · statement_timeout 없음(git grep: ledger/schema.py 와 main.py 두 라우트뿐) — 누가 행을 잡고 안 놓으면 끝없이 기다림
+연결 이름    application_name 은 읽기 전용 패스(db_safety.open_readonly_engine)에만 — API · 워처 · 체인 · 스케줄러 · 소급 자식의 연결은 pg_stat_activity 에서 «이름 없는 pid»
+기존 문      같은 물음(무엇을 기다리나 · 누가 막나)을 이미 묻는 자리 둘: 워처 ChunkWaitSampler(directory_watcher) · scripts/diagnose_db_health.py §3 LOCK WAITS
+```
+도착지 — 다음 wedged 때 화면과 로그에 «누가 무엇을 잡고 있나»가 한 줄로 나온다
+```
+① 연결에 이름   모든 프로세스의 엔진이 application_name = 역할(api · watcher · chain · scheduler · retro · cli …) — 엔진을 짓는 자리 «하나»에서
+② 한 함수       「이 pid 가 무엇을 기다리나 · 막은 pid · 그쪽 application_name · state · 트랜잭션 나이 · 쿼리 앞 60자」
+                ChunkWaitSampler 와 diagnose_db_health §3 이 «그 함수를 지난다» — 셋째 사본 금지
+③ 묶음 중 박동   체인 묶음이 단계(mapper -> write:<표> -> outbox)를 넘을 때마다 박동 + 작업 표시(워처의 work 칸과 «같은 기제»):
+                규칙 · 행 수 · 시작 시각 · 그 묶음의 DB backend pid
+                -> 오래 걸려도 단계가 움직이면 wedged 가 아니다
+④ 멈춤 판정     단계가 stall 문턱 넘게 안 움직이면 health 가 stalled + ② 를 그 pid 로 한 번 물어 detail 에 싣고, 같은 문장을 로그에 한 번(에피소드당)
+                예: "chain stalled 312 s in write:dt_x - waiting Lock:transactionid on pid 4411 (watcher, idle in transaction 12 min): UPDATE ..."
+                진단 질의가 터지면 health 는 그대로 — 무엇이 조용해졌는지 한 줄만(계측 상설)
+⛔ 시한(lock_timeout)은 이번에 안 건다 — ④ 로 원인을 본 뒤 소유자께 값을 여쭌다
+```
+```
+게이트   강제로 만든다 — 다른 연결이 대상 행을 UPDATE 하고 커밋 안 한 채 두고, 체인 묶음이 같은 행을 쓰게 함
+         -> health = stalled · detail 에 막은 pid 와 그 application_name · 풀면 묶음이 끝나고 ok
+         단계가 움직이는 긴 묶음(맵퍼가 오래 걸림) -> wedged 아님
+         diagnose_db_health 가 막은 쪽 application_name 을 찍음
+변이     application_name 을 뺌 · 박동을 루프 머리로 되돌림 · ② 를 사본으로 -> 각각 빨강
+RUN.md  새 줄의 뜻과 할 일 — 막은 쪽이 «idle in transaction» 이면 그 프로세스 재기동 · 막은 쪽이 워처 청크면 기다림 · 막은 쪽이 체인 자신이면 …(님이 셈)
+        그리고 지금 운영에서 바로 쓰는 명령: conda run --no-capture-output -n assy_manager python server/scripts/diagnose_db_health.py
+```
