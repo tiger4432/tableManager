@@ -428,7 +428,10 @@ export class RedoBanner {
           text: `${name}${path} — ${from}`,
           kind: (rule && rule.kind) || '',
           // 이름이 없는 규칙은 돌릴 수 없습니다(`rule` 은 필수) — 누르는 줄로 두지 않습니다.
-          params: name ? { rule: name, row_ids: keys } : null,
+          // `cascade`: a replay's writes wake no rule unless asked (ac918a451), and the owner's click
+          // replay cascades (lead ece405110). Only this click sends it — not the hand-off `payload`,
+          // which becomes the Retroactive tab's form, and that form does not cascade.
+          params: name ? { rule: name, row_ids: keys, cascade: true } : null,
         };
       })),
     };

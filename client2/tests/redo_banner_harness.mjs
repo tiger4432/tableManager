@@ -545,6 +545,31 @@ console.log('\n── I. THE CHAIN RULES: UNREAD IS NOT EMPTY ──────
     loaded.lines.map((n) => n.textContent));
 }
 
+console.log('\n── K. THE CLICK REPLAY CASCADES; THE HAND-OFF TO THE TAB DOES NOT (lead ece405110) ──');
+{
+  const doc = mkDoc();
+  const host = doc.createElement('div');
+  const calls = [];
+  let handed = null;
+  const part = new X.RedoBanner(host, { doc, sources: SOURCES,
+    getSelection: () => [envelope({ lot_id: 'L1' }), envelope({ lot_id: 'L2' })],
+    readValue: readEnvelope, businessKey: 'lot_id', handOff: (p) => { handed = p; },
+    hasToken: () => true, run: (op, params) => { calls.push({ op, params }); return Promise.resolve({ ok: true }); },
+    rules: [{ name: 'r_alpha', trigger_table: 'dt_log', target_table: 'dt_a', kind: 'join' }] });
+  part.setRelation('dt_log');
+  part.render();
+  buttons(host).find((b) => b.dataset.redo === 'chain').click();
+  const line = byClass(host, 'redo-panel__group')[0];
+  if (line) line.click();
+  ok('K1 pressing a rule line sends cascade true with the rule and rows',
+    calls.length === 1 && calls[0].op === 'chain_replay' && calls[0].params.cascade === true
+      && calls[0].params.rule === 'r_alpha' && typeof calls[0].params.row_ids === 'string', calls);
+  const go = byClass(host, 'redo-panel__go')[0];
+  if (go) go.click();
+  ok('K2 the hand-off to the Retroactive tab carries no cascade',
+    !!handed && handed.op === 'chain_replay' && !('cascade' in handed.params), handed);
+}
+
 // ── mutants ─────────────────────────────────────────────────────────────────────────
 const swap = (from, to) => (src) => {
   if (!src.includes(from)) die(`mutation anchor stopped matching: ${JSON.stringify(from)}. `
@@ -605,6 +630,10 @@ const DEFECTS = [
     swap('if (!seen.includes(value)) seen.push(value);', 'seen.push(value);')],
   ['M8 the line counts the whole selection instead of the rows that carry the value',
     swap('rows: (rows || []).length - missing', 'rows: (rows || []).length')],
+  ['M18 the click replay stops asking to cascade (the field lead ece405110 adds)',
+    swap('row_ids: keys, cascade: true }', 'row_ids: keys }')],
+  ['M19 the hand-off carries cascade into the Retroactive tab',
+    swap("params: { row_ids: values.join(',') } };", "params: { row_ids: values.join(','), cascade: true } };")],
 ];
 
 const CONTROLS = [
@@ -639,6 +668,7 @@ const CATCHES = {
   M16: 'R23', M17: 'R24',
   // C-120. M1 은 R1(꺼짐)이 잡고, M1b 는 R25(왜)가 잡습니다 — 실제 run 에서 읽었습니다.
   M1b: 'R25',
+  M18: 'R26', M19: 'R27',
 };
 /** `['M1 …', fn]` -> the shape `lib/mutation_scorer.mjs` scores. */
 const named = (list) => list.map(([name, mutate, where]) => ({
@@ -778,6 +808,22 @@ async function runMutant({ name, mutate, where }) {
         'redo-panel__group').map((n) => n.textContent).join('|');
       const unread = chainText(null);
       const declaredEmpty = chainText([]);
+      // the click replay's cascade (lead ece405110) — a pressed rule line; the hand-off is `handed`
+      const chainCalls = [];
+      {
+        const dd = mkDoc();
+        const p = new M.RedoBanner(dd.createElement('div'), {
+          doc: dd, sources: SOURCES, getSelection: () => rows, readValue: readEnvelope,
+          businessKey: 'lot_id', handOff: () => {}, hasToken: () => true,
+          run: (op, params) => { chainCalls.push({ op, params }); return Promise.resolve({ ok: true }); },
+          rules: [{ name: 'r_alpha', trigger_table: 'dt_log', target_table: 'dt_a' }] });
+        p.setRelation('dt_log');
+        p.render();
+        const opener = buttons(p.host).find((b) => b.dataset.redo === 'chain');
+        if (opener) opener.click();
+        const lineEl = byClass(p.host, 'redo-panel__group')[0];
+        if (lineEl) lineEl.click();
+      }
 
       // \ud83d\udd34 C-66 \u2461\u24d0. THIS WAS ONE ANONYMOUS DISJUNCTION \u2014 `bad = A || B || \u2026 `, twenty-four
       //    clauses, no names. It answered \u300csomething is wrong\u300d and could not answer \u300cWHAT\u300d, so
@@ -838,6 +884,11 @@ async function runMutant({ name, mutate, where }) {
         //    말 없이 끄는 코드가 만점을 받습니다 — 그것이 오늘 고친 결함의 모양이었습니다.
         ['R25 ...and a dead button says why, in its own place',
           () => buttons(empty.host).every((b) => b.getAttribute('title') === 'Pick rows')],
+        ['R26 pressing a rule line asks the replay to cascade (lead ece405110)',
+          () => chainCalls.length === 1 && chainCalls[0].op === 'chain_replay'
+            && chainCalls[0].params.cascade === true],
+        ['R27 ...and the hand-off to the Retroactive tab does not',
+          () => !!handed && !('cascade' in handed.params)],
       ];
       // Recorded once, so the 「unexercised」 line below is COMPUTED from the checks that
       // actually ran rather than typed out beside them -- a hand-written list of names drifts

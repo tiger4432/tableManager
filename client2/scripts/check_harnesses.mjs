@@ -1402,7 +1402,8 @@ const FLOORS = new Map([
   // how many matched, and the difference between 0 and unmeasured
   ['match_count_harness.mjs', 20],
   // the banner that offers a re-run, and what it refuses to offer one for
-  ['redo_banner_harness.mjs', 53],
+  // 53 -> 57 (lead ece405110): the click replay sends cascade, the hand-off to the tab does not.
+  ['redo_banner_harness.mjs', 57],
   // the board part: composition
   ['rnd_board_composition_harness.mjs', 42],
   // the board part: control trend
