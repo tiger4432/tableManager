@@ -34404,3 +34404,46 @@ R2      파일1 B · 파일3 A · 파일10 A 에서 파일10 철회 — 접기 �
           client 710 passed 1 xfailed · run_pg_tests 7 failed 108 passed(알려진 일곱 · 겹친 PG 실행 0)
 커밋      retroactive.py 에 구현자 미커밋 편집이 있어 제 덩어리만(날짜 문장 둘) 패치로 색인에 올려 커밋 — 그쪽 줄은 작업 파일에 그대로
 ```
+
+---
+
+## 착지 — 복기 C: 확인 넷 + 한계 한 줄 (69aad666e) — 4f004398f (09-26 20:42)
+
+```
+확인한 줄
+  ⚪ 파서 두 길의 빈 행   참(실측 — 같은 파일을 표준 · 사용자 파서 두 길로): 선언 칸이 빈 행에 안 선언 칸 값만 있으면
+                        표준 「extra=0 over 1 row(s)」 · 사용자 파서 「extra=1 over 2 row(s)」. 공백 칸도 사용자 길은 != "" 로 세어 «값»
+                        (빈 행 · 공백 행 자체의 결말 · 행 수는 두 길이 같았음)
+  ⚪ 시간 글자 두 모양    참(코드로) — 문자열 칸의 time 규칙 출력 '… 13:05:07' 과 datetime 칸의 비교 글자 '… 13:05:07.000000' 이 안 맞음
+                        고치는 쪽이 소유자 승인 모양이거나 조인 키 식이라 «물음»으로(아래) — 코드 안 고침
+  ⚪ 전각 시간대          참(실측) — '+０９:００' 을 notation 은 unmatched, time_format 은 «시간대 있음»(\d 가 전각 숫자도 읽음).
+                        PostgreSQL 은 그 글자를 거절(invalid input syntax for type timestamp with time zone)
+  ⚪ min/max 의 빈 값     참(코드로) — unique_concat 만 blank_sql_condition 으로 NULL 로 접고 min/max 는 원래 칸
+고친 것
+  빈 행    crud.row_is_blank(선언 칸 값들) 하나 — std_parser._map_record 와 워처가 사용자 파서 행 목록을 거를 때 부름
+           선언 칸이 «하나도 없는» 행은 빈 행이 아님(표준 길이 헤더에서 NothingWritten 으로 거절하는 파일 — 그 결말을 지킴)
+           버린 칸 세기 두 자리(처음 · 다음)도 is_blank_value
+  시간대   time_format.has_time_offset 하나([0-9] · \Z) — time_is_naive 와 notation fold_time 이 부름. notation 의 사본 삭제
+           바뀌는 것 하나: 전각 오프셋 시간은 쓰기 입구에서 «시간대 없음»으로 이름 대어 거절(전엔 통과시키고 PostgreSQL 에서 입력 오류)
+  min/max  unique_concat 과 같은 «빈 값 -> NULL» 식을 지남 — {'', 'A'} 의 min 이 'A'
+  한계     chain_rules 가이드 §0 에 COLUMN_BINDING_KEYS 한 줄(손으로 적은 목록 — 다른 이름을 읽는 운영 맵퍼는 경고가 틀리고 undeclared_param 거절까지)
+게이트    두 길 시험에 파일 둘(안 선언 칸만 있는 행 · 공백 칸 두 행) × 두 길 같은 문장 · 전각 오프셋 · min/max 빈 값
+변이      다섯 다 빨강 — 사용자 길이 빈 행을 남김 · 세기 두 자리 각각 != "" · 오프셋을 \d · min/max 가 원래 칸
+범위(깨끗한 작업 트리 9437e9540 + 이 변경)  server/tests 전부 7,136 passed · 22 failed
+          22 = 층 접기 때와 «같은 이름 14»(작업 트리 환경 — 이 변경 없이도 남) + 8(워처의 crud 를 갈아 끼우는 시험 둘의 가짜 crud 에 row_is_blank · is_blank_value 가 없었음)
+          -> 그 가짜 둘에 «진짜 함수»를 빌려 옴(loadable_columns 와 같은 모양) · 두 파일 14 passed. 제품 코드는 게이트를 돈 그대로
+          run_pg_tests 7 failed 108 passed(알려진 일곱 · 겹친 PG 실행 0)
+커밋      구현자 미커밋 편집이 여러 파일에 있어 «게이트를 돈 패치 + 가짜 둘»만 색인에 올려 커밋
+```
+
+### 여쭐 것 — C 의 시간 글자 두 모양
+
+```
+사실   time 규칙이 쓰는 글자 = TS_FMT '%Y-%m-%d %H:%M:%S'(초 아래가 있으면 .%f) — 소유자 승인(5a87c794c)
+       datetime 칸을 글자로 견줄 때 = crud.TEMPORAL_TEXT_FORMAT '%Y-%m-%d %H:%M:%S.%f'(늘 .000000) — 조인 키 식 · 필터가 씀
+       -> 문자열 시간 칸과 datetime 칸을 키로 조인하면 초 아래가 0 인 값도 안 맞음
+안     ㄱ time 규칙이 늘 .%f 로 씀 — 승인된 모양을 바꿈 · 화면에 .000000
+       ㄴ datetime 칸의 비교 글자가 초 아래 0 이면 떼게 — 모든 datetime 키 조인의 키 식 · 인덱스가 바뀜(다시 세움) · 큼 · 안 쟀다
+       ㄷ 코드 그대로, 가이드에 한 줄 — 「time 규칙 칸은 문자열 시간 칸끼리만 키로 조인」
+추천   ㄷ — 그런 조인이 선언돼 있는지는 안 셌습니다. 필요해지면 ㄴ 이 한 모양으로 가는 길
+```
