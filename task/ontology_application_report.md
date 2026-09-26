@@ -34447,3 +34447,54 @@ R2      파일1 B · 파일3 A · 파일10 A 에서 파일10 철회 — 접기 �
        ㄷ 코드 그대로, 가이드에 한 줄 — 「time 규칙 칸은 문자열 시간 칸끼리만 키로 조인」
 추천   ㄷ — 그런 조인이 선언돼 있는지는 안 셌습니다. 필요해지면 ㄴ 이 한 모양으로 가는 길
 ```
+
+---
+
+## ㄷ 가이드 줄 — 쓰기 전에 정정 하나 · 표기 2 단계 시작 (5be9be17f 답) — 09-26 20:49
+
+```
+정정   제 C 보고(3f4ecb5c2) 「여쭐 것」의 사실 둘째 줄이 «조인»에는 틀렸습니다
+   필터 · 격자 글자   crud.column_text_sql -> TEMPORAL_TEXT_FORMAT '… 13:05:07.000000'     여기까지는 맞음
+   조인 키 식        notation_norm.key_expression_sql -> datetime 칸은 «칸::text»(PostgreSQL 이 그림)
+                    datetime 칸은 timestamptz 라 글자에 «세션 시간대 꼬리»가 붙음
+                    이 박스(세션 Asia/Seoul) '2026-09-26 13:05:07+09' · 초 아래는 '.5'
+   time 규칙 출력    '2026-09-26 13:05:07' — 시간대 없음 · 초 아래는 '.500000'
+   -> 안 맞는 까닭은 .000000 이 아니라 «시간대 꼬리». 초 아래와 상관없이 «한 행도» 안 맞음
+      꼬리는 어느 설치에서나 붙음(UTC 세션이면 +00)
+   잰 것   key_expression_sql 을 PostgreSQL 방언으로 컴파일한 글자 · 리터럴 SELECT 셋(표는 안 읽음)
+```
+
+```
+센 수   설정 파일만 · 꺼진 선언도 켠 모양으로 세움
+                        time 규칙 칸     조인 선언    datetime 이 낀 on 쌍   time 칸 x datetime
+   출하 샘플(추적)          0             1(꺼짐)          0                  0
+   이 박스(gitignore)       0(파일 없음)   2                0                  0
+   방법     chain_rules 를 rule_shape.expand_declaration 으로 세우고, join_into.pairs 의 두 칸 타입을
+           table_config 에서, time 칸은 notation_norm.load_notation_rules 로(스크립트는 제 세션 스크래치)
+   카나리아 조인 선언 0 이 아님 — on 쌍은 선언마다 하나, 셋 다 문자열 = 문자열
+   못 센 것 맵퍼 안에서 키를 견주는 조회(gitignore 된 맵퍼) — 선언이 아니라 셀 자리가 없음
+```
+
+### 여쭐 것 — 가이드 문장
+
+```
+총괄 문장   「… datetime 칸과 조인하면 초 아래 .000000 때문에 안 맞음」 — 사유가 제 틀린 사실에서 왔습니다
+제 안      notation_rules_config §2.3(time 규칙)에 한 줄
+           「time 규칙 칸은 문자열 시간 칸끼리만 키로 조인합니다. datetime 칸과 조인하면 datetime 키가
+            시간대 꼬리를 단 글자('… 13:05:07+09')로 그려져 한 행도 맞지 않습니다.
+            09-26 에 센 선언 — 출하 샘플 0 · (박스) 0」
+ㄴ 도 같이  아침 보고의 소유자 물음은 「초 아래 0 을 뗀다」가 아니라
+           「datetime 키를 시간대 없는 모양으로 그린다 — 어느 시간대로 그릴지」가 됩니다(키 식 · 인덱스 다시 세움 · 안 쟀다)
+-> 이 문장으로 가도 되면 답 주십시오. 그때 넣습니다(코드 0 줄)
+```
+
+### 표기 2 단계 — 시작합니다
+
+```
+확인   ac918a451 는 chain/key_gate.py 를 안 바꿈(시험 파일 한 줄만)
+       2 단계가 고칠 제품 파일 넷 — database/crud.py · chain/key_gate.py · parsers/directory_watcher.py · notation_norm.py
+       지금 미커밋 편집 없음(git status). 구현자 미커밋 편집(ingestion_worker · retroactive 등)과 파일이 안 겹침
+모양   「표기 2 단계 착수 전」 절 그대로 + 판정 5ee9d3bd1 · 47aba5d44 · a7d2e90ec
+       값을 바꾸는 자리는 쓰기 깔때기 머리 하나 · key_gate 는 같은 함수로 «판정만»(규칙만, 별칭 없이) · time 이름은 워처 FILE 줄
+별칭   notation_alias 라이브 설치는 착지 때 소유자께(총괄 몫 그대로)
+```
