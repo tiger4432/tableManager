@@ -12,6 +12,121 @@
   mapper cache purge on reload: main.py reload-configs (mappers.* module cache)
 -->
 
+## 0. 한눈에 보기 — 규칙 «맨 위»에 적는 칸 (2026-09-26)
+
+전부 규칙 dict 의 «맨 위»에 적습니다. 적지 않으면 아래 「안 적으면」 칸이 답입니다. 자세한 것은 §5-B · §5-B-bis.
+
+⚠️ `allow_replace_map` · `allow_retraction` · `key` 는 `params` 밑으로 옮기지 마십시오 — 옮기면 제품이 못 읽어 허락이 꺼지고 유일 인덱스가 안 섭니다. 로그 `[ChainRules] <규칙>: N cell(s) still written flat — move them under 'params'` 가 이 칸들을 가리키는 것은 경고 쪽 결함이고, 고치는 중입니다(2026-09-26).
+
+**허락 칸** — 켜야 되는 일
+
+| 칸 | 켜면 | 안 적으면 |
+|---|---|---|
+| `allow_chain_trigger: true` | 다른 체인 규칙(조인 포함)이 쓴 행에도 깨어난다 — 체인 뒤에 체인 | 사람·파일·수집기가 바꾼 행에만 깨어난다. 체인이 쓴 행은 지나간다 |
+| `allow_replace_map: true` | 맵퍼가 맵 하나를 «통째로 갈아끼우는» 결과를 낼 수 있다 | 그런 결과는 이름 대어 거절 |
+| `allow_retraction: true` | 맵퍼가 «한 출처(출처 칸의 값 하나)가 전에 낸 행만» 거둬들이는 결과를 낼 수 있다 | 거절 |
+| `allow_map_metadata_upsert: true` | 맵퍼가 맵 메타데이터(`wafer_map_metadata`)도 고친다. 그 쓰기가 다시 체인을 깨운다 | 메타는 안 고친다 |
+
+- 둘 중 무엇을 쓸지는 «그 맵에 값을 내는 출처가 몇인가»가 정합니다. 하나면 `replace_map`(맵 단위로 지운다), 여럿이면 `retraction`(출처 단위로 지워 남의 값을 안 건드린다). 한 배치에 둘을 같이 내면 거절됩니다.
+- 체인이 체인을 깨우는 깊이는 파일 맨 위 `max_chain_depth`(기본 8)가 막습니다.
+
+**그 밖에 자주 쓰는 칸**
+
+| 칸 | 뜻 | 안 적으면 |
+|---|---|---|
+| `enabled: false` | 규칙을 끈다 | 켜짐 |
+| `is_batch: true` | 한 묶음의 행을 표(DataFrame) 하나로 맵퍼에 넘긴다. 맵퍼는 dict «하나»를 돌려준다 | 행마다 한 번 |
+| `trigger_columns: [칸, …]` | 이 칸들이 바뀐 변경에만 깨어난다 | 표의 어떤 변경에도 깨어난다 |
+| `group_by: [칸, …]` | 한 배치 안에서 이 칸 값이 같은 행끼리 맵퍼 한 번 | 쓴 쪽의 트랜잭션 하나가 한 묶음 |
+| `max_group_rows: N` | 같은 규칙의 묶음 여럿을 N 행까지 합쳐 맵퍼 한 번 | 안 합친다 |
+| `max_group_attempts: N` | 실패한 묶음을 N 번까지 다시 시도한 뒤 격리 | 파일 맨 위 값, 없으면 기본값 |
+| `idempotent: false` | 두 번 돌면 안 되는 맵퍼 — 한 번 실패하면 바로 격리, 리플레이도 `force` 없이는 안 돈다 | 다시 시도한다 |
+| `key: {unique: true}` (조인) | 원천 표(`on.table`)의 조인 키에 제품이 유일 인덱스를 세운다. 중복 값이 있으면 안 세우고 값·건수를 로그에 낸다 | 인덱스 없이 돈다. 답이 둘인 행만 건너뛴다 |
+
+### 0-1. 예시 — 어떨 때 무엇을 적나
+
+아래 규칙 이름·표 이름은 출하 샘플(`server/config/sample/chain_rules.json.sample`)의 것입니다.
+
+**① 체인이 쓴 값에 이어서 돌게 하고 싶다 → `allow_chain_trigger`**
+
+조인이 `dt_inventory` 에 확정 lot·slot 을 쓰고, 그 값이 들어오면 `dt_map` 을 다시 만들고 싶을 때. «이어서 도는 쪽» 규칙에 적습니다.
+
+```json
+{
+  "name": "dt_inventory_to_standard_dt_map",
+  "trigger_table": "dt_inventory",
+  "target_table": "dt_map",
+  "allow_chain_trigger": true
+}
+```
+
+- 안 적으면 사람이 `dt_inventory` 를 고칠 때만 돌고, 조인이 쓴 값에는 안 돕니다. 「이 규칙이 왜 안 도나」의 가장 흔한 답입니다.
+- 트리거 표와 타깃 표가 같은 규칙에는 켜지 않습니다 — 자기가 쓴 행에 다시 깨어납니다.
+- A → B → A 처럼 돌아오는 고리는 오류가 아니고, `max_chain_depth` 에서 끊깁니다.
+- ⚠️ 자동 확정(auto-confirm)이 쓴 행은 지금 이 칸 없이도 규칙을 깨웁니다 — 알려진 결함입니다(2026-09-26).
+
+**② 맵 하나를 이 규칙 «혼자» 채우고, 매번 통째로 다시 계산한다 → `allow_replace_map`**
+
+`core_usage_map` 처럼 한 맵을 이 규칙만 쓰고, 입력이 바뀌면 맵 전체를 다시 계산해 «이번에 안 나온 셀은 지워야» 할 때.
+
+```json
+{ "name": "dt_log_to_core_usage_map", "target_table": "core_usage_map", "allow_replace_map": true }
+```
+
+맵퍼는 맵 하나를 «범위»와 함께 돌려줍니다:
+
+```python
+return {"batches": [{"target_table": "core_usage_map", "replace_map": True,
+                     "scope": {"core_wafer": wafer}, "updates": cells}]}
+```
+
+- 봉투 없이 행만 돌려주면 덮어쓰기(upsert)만 됩니다 — 지난번에만 있던 셀이 남습니다.
+- 칸 없이 이 봉투를 내면 `rule '<이름>' returned scoped batches without allow_replace_map or allow_retraction` 으로 거절됩니다.
+
+**③ 맵 하나를 «여러 출처»가 채우고, 한 출처만 다시 계산한다 → `allow_retraction`**
+
+`dt_map` 한 장(lot, slot)을 잡(`dt_job`) 여럿이 채울 때. 잡 하나를 다시 계산하면 «그 잡이 전에 냈는데 이번에 안 나온 셀»만 지워야 합니다.
+
+```json
+{ "name": "dt_inventory_to_standard_dt_map", "target_table": "dt_map", "target_job_column": "dt_job", "allow_retraction": true }
+```
+
+```python
+return {"batches": [{"target_table": "dt_map",
+                     "retract": {"source_column": "dt_job", "source_value": job_id},
+                     "updates": cells}]}
+```
+
+- 여기서 ②(`replace_map`)를 쓰면 둘째 잡이 첫째 잡의 셀을 지웁니다(2026-08-13 실측: 첫 파생에서 3 행 전부).
+- 사람이 고친 셀은 지우지 않습니다. 한 출처가 가진 행의 절반 넘게 지우게 되면 거절하고 그 사실을 로그에 남깁니다.
+
+**④ 맵 셀과 함께 그 맵의 메타데이터도 고친다 → `allow_map_metadata_upsert`**
+
+맵퍼가 맵의 프레임·좌표식 같은 메타데이터(`wafer_map_metadata`)도 같이 내야 할 때. 맵퍼는 `map_metadata_updates` 를 함께 돌려줍니다.
+
+```json
+{ "name": "dt_inventory_to_standard_dt_map", "allow_map_metadata_upsert": true }
+```
+
+- 이미 등록된 맵의 메타만 고칩니다. 없는 메타를 새로 만들지는 않습니다.
+- 그 쓰기도 체인이 쓴 것이라, `wafer_map_metadata` 를 트리거로 하는 규칙은 ①의 `allow_chain_trigger` 가 있어야 이어서 돕니다.
+
+**⑤ 조인 원천이 키마다 값 하나여야 한다 → `key.unique`**
+
+`on.table` 의 조인 키(`join.on` 의 `right`)가 한 값에 한 행이어야 할 때. 유일 인덱스는 제품이 세웁니다 — 운영자는 DB 를 만지지 않습니다.
+
+```json
+{
+  "name": "sample_unified_join",
+  "on": { "table": "dt_job_attribution" },
+  "derive": { "kind": "join", "join": { "on": [{ "left": "dt_job", "right": "dt_job" }], "take": ["dt_lot_confirmed"] } },
+  "into": { "table": "dt_inventory" },
+  "key": { "unique": true }
+}
+```
+
+- 원천에 이미 중복이 있으면 인덱스를 안 세우고 그 값과 건수를 로그에 냅니다. 중복을 치운 뒤에는 앱을 다시 띄워야 다시 시도합니다 — 리로드만으로는 같은 프로세스가 지난 답을 기억합니다(`chain/unique_key.ensure_once`).
+
 ## 1. 언제 이 파일을 만지는가
 
 - **테이블 A의 변경이 테이블 B를 자동 갱신하게 만들 때** (trigger→target→mapper 체인)
