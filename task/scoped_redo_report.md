@@ -62888,3 +62888,95 @@ RUN.md     [09-26 밤 4] — 사고 때 순서(Pause -> 치워 두기 -> Resume 
         착지 때 제 hunk 만 올립니다
 ```
 이 되감기는 복기 ② 입니다. 복기 ①~④ 는 한 착지로 올리고 있습니다.
+
+---
+
+## [구현자 -> 총괄] 문 가르기 복기 넷 착지 fdd8388ad (69aad666e)
+
+넷 다 먼저 확인했고 넷 다 참이었습니다. 고쳐서 한 커밋으로 올렸습니다.
+
+### ① 「이 규칙이 켜졌나」 — 판정 함수 하나 `rule_shape.is_switched_off`
+```
+확인    참. 바꾸기 전 읽는 자리 20 (파일 11) — `is False` 로 읽는 4 · 참거짓으로 읽는 16
+        enabled 0 · null 이면 파생 표 집계는 «돈다»로 세고 워커는 «안 깨웠다»
+고침    판정 함수 자신 말고 나머지 자리가 전부 is_switched_off 를 부름. 남은 읽기는 선언 모양 사이의 복사와 명단 행 한 줄
+게이트  값 여섯(없음 · true · 1 · false · 0 · null) x 네 자리(판정 · fires · 파생 표 · 통합 선언) 같은 답
+        + AST: chain · 소급 · main 에서 판정 함수 밖의 enabled 읽기 0 (판정 함수 안 읽기 = 1 이 카나리아)
+```
+🔴 **제가 고른 것 하나 — 여쭙니다.** 0 · null 을 «꺼짐»으로 읽습니다. 워커가 읽어 온 그대로라서
+**도는 규칙은 하나도 안 바뀝니다.** 반대(적힌 false 만 꺼짐)로 하면 지금 워커가 안 깨우는 0 · null
+규칙이 켜져 돌기 시작합니다. 그쪽이면 판정 함수 본문 한 줄입니다.
+```
+이 선택으로 바뀌는 것
+   파생 표 집계   0 · null 규칙의 표를 안 셈 -> 그 표로 들어가는 조인에 파생 행 키 계약 검사가 안 걸림
+                 (그 규칙이 안 도니 그 표는 파생 표가 아님 — 함수 독스트링 「running derived-row rule」 그대로)
+   통합 선언      enabled 0 · null -> 규칙을 «안 세움» + 노트 (전: 꺼진 규칙으로 세움. 어느 쪽이든 안 돎)
+   시험 이름      「only a written false switches a declaration off」 -> 주장이 거짓이 돼서 이름을 바꾸고 0 · null 을 더함
+   문서          CODE_MAP 의 decide 종류 행 「is_switched_off = enabled_written and enabled is False — 적힌 false 만 OFF」
+                 가 이제 거짓입니다. 문서 정비 몫이라 손대지 않았습니다
+```
+
+### ② 헤비 레인 로그 재시도 — 되감긴 시도의 집계가 파일 줄에 쌓임
+```
+확인    참. FILE 줄의 cells changed 는 커밋된 시도의 반환값, 곁표 행 · row build 칸은 시도마다 누적
+고침    drop_report 를 비우는 그 자리에서 같이 되감음 — 이 호출이 시작할 때의 쓰기 단계 집계로
+        (같은 묶음의 다른 표 단계는 그대로)
+게이트  진짜 재시도: 넷째 곁표 쓰기에서 업무키 경합(SQLite 모양)을 한 번 -> BK Conflict Recovered 한 줄 ->
+        FILE 줄의 곁표 행 = 커밋된 시도 것 · row build 칸 = cells changed
+```
+⚠️ 초도 같이 되감깁니다. 되감긴 시도의 초는 그 쓰기 단계의 «이름 없는 나머지»로 갑니다 —
+나머지가 굵은 줄 위에는 `[BK Conflict Recovered]` 경고가 있고 그것이 이유입니다.
+
+### ③ 워처 마무리 단계 이름
+```
+확인    참. 마지막 청크 커밋 뒤(ANALYZE · 드롭 보고 · 파일 줄 · 보관)에 멈추면 박동이 「in commit」으로 읽힘
+고침    _analyze_after_load 바로 앞에 heartbeat.progress("finish")
+게이트  그 순간 워처 클레임의 단계 = ["finish"]
+```
+
+### ④ chain_replay 기록 전 판정
+```
+확인    참. 소급 판정은 규칙 이름만 물었고, 멱등 · 트리거 표 · 대상 표 · 데이터 칸 거절은 실행 행이 생긴 «뒤» 났음
+고침    replay.replay_refusal 하나 — 실행과 소급 판정이 같은 함수를 부름. replay_rule 의 사본 검사는 지움
+게이트  멱등 아닌 규칙 · 등록 안 된 트리거 표 -> 요청 자리에서 거절 + 실행 행 0
+```
+
+### 변이 — 여섯 다 빨강, 복원 뒤 초록
+```
+baseline: ('74 passed in 27.15s', [])
+1 derived tables read enabled their own way        3 failed, 71 passed in 27.45s
+      red: test_enabled_is_read_in_exactly_one_place
+      red: test_every_seat_reads_one_enabled_alike[0-False]
+      red: test_every_seat_reads_one_enabled_alike[None-False]
+1 the judge reads only a written false             3 failed, 71 passed in 27.59s
+      red: test_a_declaration_is_off_where_the_old_shell_reads_it_off
+      red: test_every_seat_reads_one_enabled_alike[0-False]
+      red: test_every_seat_reads_one_enabled_alike[None-False]
+1 fires spells enabled itself                      3 failed, 71 passed in 26.83s
+      red: test_enabled_is_read_in_exactly_one_place
+      red: test_every_seat_reads_one_enabled_alike[0-False]
+      red: test_every_seat_reads_one_enabled_alike[None-False]
+2 a retry keeps the rolled-back attempt's tallies  1 failed, 73 passed in 27.31s
+      red: test_a_retried_write_counts_only_the_attempt_that_committed
+3 the finishing work has no stage name             1 failed, 73 passed in 27.47s
+      red: test_the_work_after_the_last_chunk_has_its_own_stage_name
+4 the judge asks only the rule name                2 failed, 72 passed in 27.26s
+      red: test_a_replay_the_run_would_refuse_is_refused_before_it_is_recorded[shape0-idempotent]
+      red: test_a_replay_the_run_would_refuse_is_refused_before_it_is_recorded[shape1-is
+after restore: 74 passed in 27.03s
+```
+
+### 착지 범위
+```
+전체 시험  공용 트리(다른 레인 미커밋 포함) 41 failed, 7161 passed, 152 skipped, 3 xfailed in 895.99s (0:14:55)
+          그중 7 은 제 것 — 소급 판정이 멱등 · 표도 묻게 되자 가짜 규칙 {name} 만 주던 시험 둘이 거절됨.
+          시험 쪽을 고침(가짜 규칙은 「실행이 거절 안 하는 규칙」으로 · 텍스트 단언은 판정 함수 이름으로)
+          나머지 34 은 응용 레인 미커밋의 notation_report 인자를 옛 시험 가짜들이 안 받는 것
+          (그 시험 파일들을 응용 레인이 지금 고치는 중)
+          빨간 파일 11 개를 깨끗한 작업트리에서 다시 — HEAD: 216 passed in 21.22s · HEAD+제 커밋분: 216 passed in 21.17s
+          제 커밋분이 새로 빨갛게 한 것: none
+PG        7 failed, 109 passed, 7191 deselected, 5 errors in 152.12s (0:02:32) (깨끗한 작업트리)
+          빨강 7 = 알려진 일곱 밖 0 · errors 5 = 박스에만 있는(추적 안 되는) 매퍼 모듈의 수집 오류
+```
+crud.py 는 제 hunk 하나만 올렸습니다. 응용 레인의 미커밋(표기 감사 줄 등)은 트리에 그대로 있습니다.
+RUN.md 에 재기동 뒤 볼 줄을 적었습니다.
