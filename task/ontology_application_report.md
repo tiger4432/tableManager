@@ -34221,3 +34221,102 @@ allow_replace_map · allow_retraction 을 넣으면  두 골격에 칸이 하나
    추천 ㄴ — 둘째 자리가 같은 함수를 그대로 부르는 것(지시 ①)을 지키고, 운영자가 켜기 전에 봄
 겹침      2 단계의 key_gate 자리는 chain/ingestion_worker.py — 지금 구현자의 미커밋 편집이 있음. 구현자 착지 뒤 그 위에 짓습니다
 ```
+
+---
+
+## 착지 — 1 단계 판정 셋 반영 (47aba5d44) — 1526f6866 (09-26 18:59)
+
+```
+① write 칸은 «적힌» 규칙만 돎   적힌 자리 = 칸의 rules, 없으면 그 위 테이블 · 파일 rules. DEFAULT_RULES 로 채워진 것은 write 칸에 안 옴
+   판정 문장 「저장값을 바꾸는 접기는 운영자가 적은 것만」대로 지어서 case 뿐 아니라 separator 기본값도 write 칸엔 안 옵니다
+   -> {"pad_last_number": 2} 만 적은 write 칸은 wafer.1 -> wafer.01 ('.' 그대로). case 만으로 읽으셨으면 한 줄로 되돌립니다
+   비교만 하는 칸은 오늘 그대로 · 열린 물음으로 달았던 시험을 판정 시험으로 닫음(소유자 선언 그대로 wafer.1 -> wafer-01)
+② 거절 문장의 다음 행동   좁힘 셋 + 같은 함수의 두 엔진 거절 넷('\d' 류 · '[[:…:]]' · '(?…)' · 빈 값에 맞음)
+   '\X' 문장은 두 자리가 따로 적던 것을 상수 하나로
+③ 미리 보기 folds_again   write 칸의 저장될 값을 한 번 더 접어 또 바뀌는 값 수 · 행 수 · 예(원래 -> 한 번 -> 두 번). 보고서 문장에도
+   셈은 notation_norm.moves_again 하나 — 3 단계 소급이 멈출 때 같은 함수를 지나게 둠
+게이트    새 시험 둘 — write 칸 규칙(칸 · 테이블 수준 · 비교 칸 대조) · folds_again(x -> xx 로 2 행 · 소유자 규칙 0 · 비교 칸 None · 문장)
+          거절 열둘이 다음 행동 낱말을 봄
+변이      write 칸에 기본값 들임 -> 9 빨강 · 테이블 rules 를 안 적힌 것으로 -> 1 · 둘째 접기 안 셈 -> 1
+범위(깨끗한 작업 트리 58c0060d0 + 이 변경)  import 시험 16 파일(notation_norm · config_resolve_report) 260 passed · 계약 PG 축 19 passed ·
+          client 명령 710 passed 1 xfailed · run_pg_tests 7 failed 102 passed(알려진 일곱, 같은 이름 · 겹친 PG 실행 0)
+          RUN.md 는 남의 미커밋 편집이 있어 제 항목만 색인에 올려 커밋
+```
+
+## 표기 2 단계 착수 전 — 셈과 짓는 모양, 여쭐 것 둘 (순서: 파일 층 접기 다음)
+
+```
+셈(git grep, 시험 제외)
+   값 바꾸는 자리  crud._apply_batch_updates_once 머리 — 부르는 곳 1(apply_batch_updates 재시도 루프)
+                  행 코어 apply_row_update_internal 도 부르는 곳 1(그 깔때기)
+   판정 자리      chain/key_gate.screen — 판정은 crud.unfilled_key_columns(표, item) 하나(키 칸이 비었나)
+짓는 모양(판정 그대로)
+   깔때기 머리    write 칸이 있는 표만: 별칭은 배치마다 한 번 읽음 · item.updates 의 write 칸을 fold_for_write 로
+                 🔴 replace_map 의 batch.scope 에 든 write 칸도 같이 접음 — 날 값으로 범위를 잡으면 접혀 저장된 행을 못 찾아 지울 것을 못 지움
+                 derive_replace_map_scope 보다 «앞»
+   이력 줄        접기가 값을 바꾼 칸만 create_audit_log(표, row_id, 칸, 원래 철자, 저장값, 원래 출처) — 행을 안 뒤(row_id 를 알 때)
+                 원래 철자는 apply_row_update_internal 인자 하나로 나름(부르는 곳 1). logs_to_cache 에 들어가 0026c09be 의 audit logs 행 수에 세어짐
+   판정 자리      key_gate.screen 안에서 unfilled_key_columns 를 «접은 사본»으로 물음 · 넘기는 item 은 그대로(날 값)
+                 -> chain/ingestion_worker.py 를 안 건드림(구현자 편집과 안 겹침)
+   docstring     would_rewrite_raw · key_column 「돌아와야」 문장을 「소유자 결정(5ee9d3bd1 인용)으로 뒤집혔다」로 고쳐 씀 · 가이드 §1 「아무것도 저장하지 않는다」도 같이
+여쭐 것
+   ㉮ 판정 자리의 별칭  screen 에는 DB 세션이 없어 별칭 표를 못 읽음
+      ㄱ 판정은 별칭 없이 규칙만으로(별칭은 빈 값을 못 만듦 — canonical 이 빈 행은 읽을 때 버림. 판정이 바뀌는 것은 규칙이 값을 비울 때뿐)   크기 작음
+      ㄴ screen 에 db 인자 — 부르는 자리(ingestion_worker)를 구현자 착지 뒤 한 줄 고침                                              크기 작음 · 겹침 기다림
+      추천 ㄱ
+   ㉯ time 의 unmatched · zoned 를 «파일마다 한 번» 이름 대기(5a87c794c) — 깔때기는 파일을 모름(청크 = 배치)
+      ㄱ 깔때기가 배치마다 한 줄(표 · 칸 · 수) — 여러 청크 파일이면 여러 줄                        크기 작음
+      ㄴ 깔때기가 drop_report 처럼 out 인자에 싣고 워처 FILE 줄(0026c09be)에 칸 하나 — 파일마다 한 줄   워처는 구현자 파일 · 크기 안 쟀다
+      ㄷ 프로세스 누계를 Declarations 보고서에                                                   파일 단위가 아님
+      추천 ㄴ(파일마다 한 줄이 지시 문장) — 워처 쪽은 구현자 착지 뒤
+```
+
+## 같은 값의 파일 층 접기 (225b2c658) — 착수 전 셈과 여쭐 것
+
+```
+셈(코드를 열어서)
+   이기는 층     crud.compute_priority_value — 등록 우선순위 -> ingested_at 최신 -> 이름. 같은 부류 안에선 가장 새 층이 이김(지시 전제 맞음)
+   층 이름       사람 "user"(0) · collision_merge(1) · pipeline_parser(2) · custom_script(3) · 체인 "chain_ingestion"(4, join_into · replay 같은 이름)
+                자동 확정 "enrichment_auto_confirm" · "enrichment_auto_confirm_partial_key" · 백필 "enrichment_backfill" — 셋 다 미등록 99
+                파일 = 파일 이름(basename) 또는 "external:<파서>:<경로>" — 미등록 99, 열린 집합(crud 주석: 운영 10,750 가지)
+   🔴 «파일 층인가»를 가르는 자리 — 코드에 없음
+      있는 것은 반대쪽 둘뿐: can_mean_emptied(user · chain_ingestion) · cell_layer.PROTECTED_SOURCES(user)
+      그래서 우선순위만으로는 파일(99)과 자동 확정 · 백필(99)이 한 부류 — 지시의 「같은 우선순위 부류」가 둘을 못 가름
+   같은 값 비교  apply_row_update_internal 안의 has_changed 는 «함수가 아니라 줄»(None 짝 · 숫자면 float · 아니면 strip 문자열)
+                -> 함수 하나로 빼서 값 층 비교와 접기가 같이 부름(지시의 「둘째 비교 금지」)
+   앞으로 자리   새 층은 apply_row_update_internal 이 cell_sources_to_upsert 에 쌓고 _apply_batch_updates_once 가 곁표 쓰기로 씀
+                지울 판단은 prefetch 의 sources_cache(이미 든 것) · 지우기는 곁표 쓰기 하나 더(write_step 이름 · 행 수)
+                -> 청크 줄 · 파일 줄은 0026c09be 의 write_steps_text 가 그대로 그림 — 워처는 안 건드림
+```
+
+### «파일 층» 판별 — 안 셋
+
+| 안 | 무엇 | 운영자가 하는 일 | 좋은 점 | 위험 | 크기 |
+|---|---|---|---|---|---|
+| ㄱ **추천** | 제품이 쓰는 기계 층 이름을 crud 에 «한 목록»으로 모음(user · collision_merge · pipeline_parser · custom_script · chain_ingestion · 자동 확정 둘 · 백필). 파일 층 = 미등록(99)이면서 그 목록 밖. 흩어진 상수를 모아 부르는 것이지 새 모양 추론이 아님 | 없음 | 소급(옛 층)과 앞으로가 같은 판별 · 스키마 그대로 | 새 기계 쓰기가 목록에 안 들면 파일로 읽힘 — 그래도 지우는 것은 «같은 값 · 같은 부류의 옛 층»뿐이라 이기는 값은 안 바뀜, 사라지는 것은 옛 출처 이름 | 작음 · 안 쟀다 |
+| ㄴ | cell_sources 에 «쓴 문» 칸을 새로 두고 워처가 file 을 적음 | 마이그레이션 한 번 | 이름에 기대지 않음 | 옛 층은 칸이 비어 소급은 결국 ㄱ 목록이 필요 · 스키마 변경 | 큼 · 안 쟀다 |
+| ㄷ | 이름 모양으로 가름(확장자 · external: 접두) | 없음 | 목록 없음 | 모양 추론 = 새 판별. 확장자 없는 파일 이름에서 틀림 | 작음 |
+
+```
+f224477c1 (가장 새 층과 같으면 안 씀) — 셈
+   기존 no-op   apply_row_update_internal 의 [no-op write] — 같은 소스 이름 · 같은 값(src_obj.value == clean_val) · 같은 작성자 · 같은 원천 행
+                넓히는 자리 = 그 줄. 「같은 칸 · 같은 부류(파일 층)의 가장 새 층과 값이 같으면」을 같은 source_unchanged 판정에 더함
+   🔴 비교가 오늘 «둘»   층 no-op 은 «==»(캐스트 뒤 값), 값 층 has_changed 는 «float · strip» 비교 — 'A ' 와 'A' 를 앞은 다르다, 뒤는 같다
+                225b2c658 은 has_changed 쪽을, f224477c1 은 기존 no-op 자리를 가리킴
+   파일 층 판별  이 규칙도 「같은 부류」라서 위 ㄱ/ㄴ/ㄷ 판별을 그대로 씀(가장 새 «파일» 층과만 견줌)
+```
+
+```
+나머지는 지시 그대로 짓습니다
+   앞으로  파일 쓰기가 층을 쓸 때 sources_cache 에서 같은 칸 · 같은 값 · 파일 층 · 더 옛것을 지움(질의 0) · 사람이 고정한 출처는 안 지움
+   소급    소급 등록부 연산 하나 — 표 하나 · 페이싱 · 드라이런(칸 수 · 겹 전 -> 후) · 되돌릴 수 없음 문장 · 끝나면 VACUUM 한 줄
+   R2      파일3 A · 파일10 A 에서 파일10 철회 — 접기 전 파일3 이 드러나고 접은 뒤엔 그 아래가 드러남, 시험으로
+   게이트 · 변이 · 박스 9 겹 픽스처 전·후 — 지시 표 그대로
+   가장 새 층   같으면 쓰지도 지우지도 않음 · 다르면 쓰고 같은 값 옛 파일 층을 지움 — 매시간 같은 파일 픽스처로 둘째부터 cell sources 0 을 시험
+여쭐 것   ① 판별은 ㄱ 로 가도 되는지
+         ② 같은 값 비교 하나 — ㄱ has_changed 의 비교를 함수로 빼서 «층 no-op · 접기 · 값 층» 셋이 부름(기존 층 no-op 이 'A ' 와 'A' 를 같게 봄 — 행동 바뀜)
+                            ㄴ 층 쪽은 오늘의 «==» 그대로 두고 접기 · 새 no-op 도 «==»(값 층과 둘이 남음)
+            추천 ㄱ — 지시 225b2c658 문장 「둘째 비교 금지」대로. 바뀌는 것은 공백 · 숫자 표기만 다른 재전달이 새 층을 안 만드는 것
+         ③ VACUUM 을 제품이 돌릴지는 소급 드라이런 수를 보고 따로 제안드림
+겹침      crud._apply_batch_updates_once · apply_row_update_internal — 지금 다른 레인 미커밋 편집 없음(git status). 표기 2 단계와 같은 파일이라 이것 먼저 착지
+```
