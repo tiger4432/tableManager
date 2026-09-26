@@ -23,6 +23,11 @@ CHAIN_MODELLED = ("name", "enabled", "trigger_table", "trigger_columns",
 
 _LIMIT_KEYS = ("group_by", "max_group_rows", "max_group_attempts", "idempotent")
 
+#: The unified declaration's `key` cell (S-240). A translated join carries it beside `params`
+#: under this same name and `chain.synthesis` reads it off the rule, so the chain grammar's
+#: list takes the name from here (총괄 fe020274d) - it is not a mapper argument.
+KEY_CELL = "key"
+
 
 def axis_keys():
     """체인 문법이 «아는데» 통합이 안 접던 칸 — 열넷. 🔴 [판정 536 ①] 계산합니다, 안 적습니다.
@@ -40,8 +45,9 @@ def axis_keys():
     ⛔ AND THE NAMES DO NOT CHANGE. `chain_bindings` says it at `RULE_TABLE_KEYS`:
     「개명하지 않는다 — 운영자가 적는 키이고, 이름을 바꾸는 것은 조작자 표면이다」.
     """
+    # `KEY_CELL` is the unified shape's own cell: as an axis cell too, the form would draw it twice.
     return tuple(key for key in chain_bindings.routing_keys()
-                 if key not in CHAIN_MODELLED)
+                 if key not in CHAIN_MODELLED and key != KEY_CELL)
 
 
 def _present(raw: dict, keys) -> dict:
@@ -261,8 +267,8 @@ def as_chain_rule(internal: dict) -> dict:
         # The cell travels with the rule so the SHELL can read it at load time. It is not a
         # mapper argument - `join_into` never sees it - which is why it sits beside `params`
         # rather than inside it.
-        if internal.get("key"):
-            out["key"] = dict(internal["key"])
+        if internal.get(KEY_CELL):
+            out[KEY_CELL] = dict(internal[KEY_CELL])
     out.update(derive.get("mapper") or {})
     return with_declared_cells(out, internal)
 

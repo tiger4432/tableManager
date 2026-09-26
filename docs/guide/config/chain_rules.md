@@ -16,7 +16,7 @@
 
 전부 규칙 dict 의 «맨 위»에 적습니다. 적지 않으면 아래 「안 적으면」 칸이 답입니다. 자세한 것은 §5-B · §5-B-bis.
 
-⚠️ `allow_replace_map` · `allow_retraction` · `key` 는 `params` 밑으로 옮기지 마십시오 — 옮기면 제품이 못 읽어 허락이 꺼지고 유일 인덱스가 안 섭니다. 로그 `[ChainRules] <규칙>: N cell(s) still written flat — move them under 'params'` 가 이 칸들을 가리키는 것은 경고 쪽 결함이고, 고치는 중입니다(2026-09-26).
+⚠️ `allow_replace_map` · `allow_retraction` · `key` 는 `params` 밑으로 옮기지 마십시오 — 옮기면 제품이 못 읽어 허락이 꺼지고 유일 인덱스가 안 섭니다. 로그 `[ChainRules] <규칙>: N cell(s) still written flat — move them under 'params'` 는 이제 이 칸들을 가리키지 않습니다(2026-09-26 고침 — 세 칸이 규칙 최상위 칸 목록 `chain_bindings.routing_keys()` 에 들어감). 그 경고가 남는 칸은 매퍼 인자뿐입니다.
 
 **허락 칸** — 켜야 되는 일
 

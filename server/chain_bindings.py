@@ -238,6 +238,8 @@ RULE_ROUTING_OPTIONAL = tuple(
     key for key in RULE_TABLE_KEYS if key not in RULE_ROUTING_REQUIRED) + (
     "target_field", "trigger_columns", "enabled", "is_batch",
     "allow_chain_trigger", "allow_map_metadata_upsert",
+    # 총괄 fe020274d: write permissions `dt_map_derivation` reads off the rule, not arguments.
+    "allow_replace_map", "allow_retraction",
     "max_group_attempts", "max_group_rows", "group_by", "idempotent", "origin",
     # S-270: 로더가 «짝으로 세운» 규칙이 자기가 어느 선언의 둘째 반쪽인지 적는 칸.
     # `origin` 과 «같은 부류»다 — 문법이 받기는 하지만 쓰는 것은 로더다. 여기 없으면
@@ -346,9 +348,10 @@ def rule_refusals(rule, path, *, mapper_resolvable, derived_tables, mapper_param
 
     candidate = rule if isinstance(rule, dict) else {}
     problems = validation.Problems()
+    # The one list: what `flat_param_cells` stops ignoring must be what this allows.
     problems.exact(candidate, path,
                    required=RULE_ROUTING_REQUIRED,
-                   optional=RULE_ROUTING_OPTIONAL,
+                   optional=tuple(k for k in routing_keys() if k not in RULE_ROUTING_REQUIRED),
                    ignored=(flat_param_cells(candidate) + comment_cells(candidate)))
     issues = list(problems.finish())
 
@@ -498,6 +501,8 @@ _SKELETON_HINTS = {
     "is_batch": "flag",
     "allow_chain_trigger": "flag",
     "allow_map_metadata_upsert": "flag",
+    "allow_replace_map": "flag",
+    "allow_retraction": "flag",
     "max_group_attempts": "number",
     "max_group_rows": "number",
     "idempotent": "flag",
@@ -566,8 +571,11 @@ def _node_for(key):
     """The node one routing cell gets - in BOTH grammars. The flat root and the unified shape
     carry the same cell under two roots, and two spellings of its node is how the form comes to
     offer one shape where the loader takes another (the `_params_node` defect)."""
+    from chain import rule_shape
     if key == PARAMS_KEY:
         return _params_node()
+    if key == rule_shape.KEY_CELL:
+        return _key_node()
     if key == REFERENCE_BLOCK:
         # Tracked code reads only `reference.table` (`reference_tables`); the rest is the
         # owner's mapper's. The form writes by path into the raw document, so those survive.
@@ -577,6 +585,13 @@ def _node_for(key):
         return {"kind": "map", "keyed_by": "index", "member": member,
                 "of": {"kind": "leaf", "hint": hint}}
     return _leaf(key)
+
+
+def _key_node():
+    """`key`'s node, one spelling for both roots (`rule_shape.KEY_CELLS` names its cells)."""
+    from chain import rule_shape
+    return _record(*[_field(cell, rule_shape.KEY_CELL_SHAPES.get(cell) or _leaf(cell))
+                     for cell in rule_shape.KEY_CELLS])
 
 
 def _params_node():
@@ -683,8 +698,7 @@ def _unified_root():
                                      for kind in rule_shape.INTO_KINDS
                                      if kind not in rule_shape.RETIRED_INTO_KINDS}},
                required=True),
-        _field("key", _record(*[_field(cell, rule_shape.KEY_CELL_SHAPES.get(cell) or _leaf(cell))
-                                for cell in rule_shape.KEY_CELLS])),
+        _field(rule_shape.KEY_CELL, _key_node()),
         _field("limits", _record(*[_field(cell, _leaf(cell))
                                    for cell in rule_shape._LIMIT_KEYS])),
         # 🔴 [판정 536 ① · 546 ①] THE FOURTEEN THE UNIFIED SHAPE HAD NO ROOM FOR. Measured
@@ -707,7 +721,9 @@ def routing_keys():
     🔴 함수로 내는 이유는 「한 목록」이 두 벌이 되지 않게 하려는 것이다. 필수와 선택을 각자
     import 해 합치는 자리가 둘이면 그 둘이 갈릴 수 있고, 갈린 쪽이 «조용히» 덜 거절한다.
     """
-    return tuple(RULE_ROUTING_REQUIRED) + tuple(RULE_ROUTING_OPTIONAL)
+    # `key` has its author in `rule_shape` (총괄 fe020274d); imported here, not copied.
+    from chain import rule_shape
+    return tuple(RULE_ROUTING_REQUIRED) + tuple(RULE_ROUTING_OPTIONAL) + (rule_shape.KEY_CELL,)
 
 
 def reference_tables(rule):

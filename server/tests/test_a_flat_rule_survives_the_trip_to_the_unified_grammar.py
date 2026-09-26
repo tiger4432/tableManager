@@ -185,6 +185,10 @@ def test_the_axis_set_is_the_difference_between_the_two_lists():
     #    legitimate addition; the number going up means 「a cell was added and nobody decided
     #    where it lives」, which is the thing worth a red.
     # ⚰️ 14 -> 13 (소유자 정본): `follow_up` left the chain grammar with the lap.
-    assert len(known - folded) == 13, (
+    # 13 -> 15 (총괄 fe020274d): `allow_replace_map` · `allow_retraction` joined the list.
+    #   `key` joined it too but is the unified shape's own cell, so it is not an axis cell.
+    axis = known - folded - {rule_shape.KEY_CELL}
+    assert set(rule_shape.axis_keys()) == axis
+    assert len(axis) == 15, (
         "the axis set moved to %d - a cell was added to one list and not the other: %s"
-        % (len(known - folded), sorted(known - folded)))
+        % (len(axis), sorted(axis)))

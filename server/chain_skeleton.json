@@ -122,6 +122,22 @@
         }
       },
       {
+        "key": "allow_replace_map",
+        "required": false,
+        "node": {
+          "kind": "leaf",
+          "hint": "flag"
+        }
+      },
+      {
+        "key": "allow_retraction",
+        "required": false,
+        "node": {
+          "kind": "leaf",
+          "hint": "flag"
+        }
+      },
+      {
         "key": "max_group_attempts",
         "required": false,
         "node": {
@@ -231,6 +247,31 @@
               "node": {
                 "kind": "leaf",
                 "hint": "ref"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "key": "key",
+        "required": false,
+        "node": {
+          "kind": "record",
+          "fields": [
+            {
+              "key": "columns",
+              "required": false,
+              "node": {
+                "kind": "leaf",
+                "hint": "free"
+              }
+            },
+            {
+              "key": "unique",
+              "required": false,
+              "node": {
+                "kind": "leaf",
+                "hint": "flag"
               }
             }
           ]
@@ -678,6 +719,22 @@
       },
       {
         "key": "allow_map_metadata_upsert",
+        "required": false,
+        "node": {
+          "kind": "leaf",
+          "hint": "flag"
+        }
+      },
+      {
+        "key": "allow_replace_map",
+        "required": false,
+        "node": {
+          "kind": "leaf",
+          "hint": "flag"
+        }
+      },
+      {
+        "key": "allow_retraction",
         "required": false,
         "node": {
           "kind": "leaf",
