@@ -1108,5 +1108,29 @@
       "source_event_id": "string",
       "source_event_state": "string"
     }
+  },
+  "notation_alias": {
+    "__comment": "[제품 소유 저장소 — 이름·컬럼을 바꾸지 마라] Exact spellings mapped by hand to their written form, per column (총괄 6c156492f). A row reads: in `table_name`.`column_name`, a value written exactly `written` is stored as `canonical`. It is consulted first, before the column's notation rules, and only for a column that notation_rules.json declares `write: true` - a column not declared there is never touched. Ships EMPTY: the product fills no value, the operator does. The key separator is '|' because table and column names carry '_'.",
+    "business_key": "alias_key",
+    "composite_key_source": [
+      "table_name",
+      "column_name",
+      "written"
+    ],
+    "composite_key_separator": "|",
+    "column_types": {
+      "alias_key": "string",
+      "table_name": "string",
+      "column_name": "string",
+      "written": "string",
+      "canonical": "string"
+    },
+    "display_columns": [
+      "alias_key",
+      "table_name",
+      "column_name",
+      "written",
+      "canonical"
+    ]
   }
 }

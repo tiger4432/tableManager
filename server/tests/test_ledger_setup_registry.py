@@ -481,10 +481,12 @@ def test_join_fold_uses_closed_notation_rule_grammar(fold, code, suffix, message
 
 
 def test_join_fold_contract_matches_operational_notation_vocabulary():
+    # The on/off rules only - a value rule is stored by the write (notation_norm.VALUE_RULES).
+    value_rules = frozenset(notation_norm.VALUE_RULES)
     assert setup_bundle_module._JOIN_FOLD_RULES == frozenset(
-        notation_norm.KNOWN_RULES)
+        notation_norm.KNOWN_RULES) - value_rules
     assert setup_bundle_module._IMPLEMENTED_JOIN_FOLD_RULES == frozenset(
-        notation_norm.IMPLEMENTED_RULES)
+        notation_norm.IMPLEMENTED_RULES) - value_rules
 
 
 # RETIRED: test_dataflow_declaration_change_also_changes_snapshot_hash.

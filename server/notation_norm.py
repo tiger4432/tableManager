@@ -139,16 +139,47 @@ NOTATION_RULES_PATH = paths.config_path("notation_rules.json")
 RULE_SEPARATOR = "separator"
 RULE_CASE = "case"
 RULE_ZERO_PAD = "zero_pad"
+# 총괄 6c156492f · 451ac4f75 · 5a87c794c — rules that carry a value, not a flag.
+#   join             the separator run collapses to THIS one character (separator = join '-')
+#   pad_last_number  a trailing digit run shorter than n is zero-padded to n (longer: as is)
+#   replace          ordered [[pattern, replacement], ...] - the case the two above cannot say
+#   time             {"from": [input format, ...]} -> TS_FMT. WRITE ONLY: see `fold_time`
+RULE_JOIN = "join"
+RULE_PAD_LAST_NUMBER = "pad_last_number"
+RULE_REPLACE = "replace"
+RULE_TIME = "time"
 
-KNOWN_RULES = (RULE_SEPARATOR, RULE_CASE, RULE_ZERO_PAD)
+KNOWN_RULES = (RULE_SEPARATOR, RULE_CASE, RULE_ZERO_PAD,
+               RULE_JOIN, RULE_PAD_LAST_NUMBER, RULE_REPLACE, RULE_TIME)
+#: The rules that carry a value; the rest are on/off. A ledger join's `fold` takes only the
+#: on/off ones - the value rules are stored by the write (총괄 5ee9d3bd1), so its keys are folded.
+VALUE_RULES = (RULE_JOIN, RULE_PAD_LAST_NUMBER, RULE_REPLACE, RULE_TIME)
 
 # Rules this module can actually apply. `zero_pad` is deliberately absent - see
 # the module docstring. Membership here is what `_normalize_rules` checks, so
 # implementing it later is one tuple entry plus one branch in `fold_notation`,
 # one branch in `fold_sql_text`, and the refusal disappears on its own.
-IMPLEMENTED_RULES = (RULE_SEPARATOR, RULE_CASE)
+# ⚠️ `pad_last_number` is NOT `zero_pad`: it ADDS zeros to a short trailing number and never
+#    removes one ('WF010' stays 'WF010'), so it cannot merge 'WF010' with 'WF10'.
+IMPLEMENTED_RULES = (RULE_SEPARATOR, RULE_CASE,
+                     RULE_JOIN, RULE_PAD_LAST_NUMBER, RULE_REPLACE, RULE_TIME)
+
+#: Folded in BOTH engines (Python and `fold_sql_text`), scored by `contracts/notation_fold/`.
+#: `time` and the alias table are write-time only - a table lookup and `to_timestamp` cannot
+#: sit in a functional index expression (IMMUTABLE only), and after the write and the backfill
+#: the stored value is already the written one (총괄 5ee9d3bd1 ㄴ).
+BOTH_ENGINE_RULES = (RULE_SEPARATOR, RULE_CASE, RULE_JOIN, RULE_PAD_LAST_NUMBER, RULE_REPLACE)
 
 DEFAULT_RULES = {RULE_SEPARATOR: True, RULE_CASE: True, RULE_ZERO_PAD: False}
+
+#: The characters `join` may collapse a separator run to.
+JOIN_CHARACTERS = ("-", "_", ".", " ")
+#: `pad_last_number` range - a width, not a count of zeros.
+PAD_MAX = 9
+#: The trailing digit run of exactly k digits, after a non-digit or at the start. ONE string for
+#: both engines: PostgreSQL's ARE and Python's `re` both read `\Z` as 「end of string only」 -
+#: `$` is not used because Python's also matches before a final newline.
+PAD_RUN_PATTERN = "(^|[^0-9])([0-9]{%d})\\Z"
 
 # The one form every separator collapses to.
 SEPARATOR_TARGET = "-"
@@ -219,6 +250,8 @@ CODE_ZERO_PAD_UNIMPLEMENTED = "zero_pad_unimplemented"
 CODE_UNKNOWN_RULE = "unknown_rule"
 CODE_UNDECLARED = "undeclared"
 CODE_NOT_TEXT = "not_text"
+#: A written value would carry the character its row or map key is joined with.
+CODE_JOIN_SPLITS_KEY = "join_splits_key"
 
 SCOPE_FILE = "file"
 SCOPE_TABLE = "table"
@@ -264,11 +297,183 @@ def fold_notation(text, rules: dict):
     if not isinstance(text, str):
         return text
     out = text
-    if rules.get(RULE_SEPARATOR):
-        out = _SEPARATOR_RUN_RE.sub(SEPARATOR_TARGET, out)
+    target = _join_target(rules)
+    if target:
+        out = _SEPARATOR_RUN_RE.sub(target, out)
+    width = rules.get(RULE_PAD_LAST_NUMBER) or 0
+    for k in range(1, width):
+        out = re.sub(PAD_RUN_PATTERN % k,
+                     lambda m, zeros="0" * (width - k): m.group(1) + zeros + m.group(2), out)
+    for pattern, replacement in rules.get(RULE_REPLACE) or ():
+        # DOTALL: PostgreSQL's ARE lets '.' match a newline, Python's `re` does not by default.
+        out = re.sub(pattern, _python_replacement(replacement), out, flags=re.DOTALL)
     if rules.get(RULE_CASE):
         out = out.translate(_CASE_TABLE)
     return out
+
+
+def _join_target(rules: dict):
+    """The one character a separator run collapses to - `join`, else '-' when `separator`."""
+    return (rules or {}).get(RULE_JOIN) or (
+        SEPARATOR_TARGET if (rules or {}).get(RULE_SEPARATOR) else None)
+
+
+def _python_replacement(replacement: str) -> str:
+    """A declared replacement (group refs `\\1`..`\\9`, PostgreSQL's spelling) for `re.sub`,
+    where `\\1` followed by a digit would read as group 10."""
+    return re.sub(r"\\([1-9])", r"\\g<\1>", replacement)
+
+
+#: What a `replace` pattern may escape - the characters both engines read the same way after a
+#: backslash. `\d`, `\w`, `\s` and friends are not here: their classes differ between engines.
+_REPLACE_ESCAPES = set(".-_()[]{}+*?^$|\\/AZ")
+_ZONE_SUFFIX = re.compile(r"(Z|[+-][0-9]{2}:?[0-9]{2})\Z")
+
+
+def _value_rule_refusal(name, value):
+    """Why a value rule cannot stand as declared, or None. Off (None/false/0/empty) is valid."""
+    if value in (None, False, 0, [], {}):
+        return None
+    if name == RULE_JOIN:
+        return None if value in JOIN_CHARACTERS else (
+            "must be one of %s" % ", ".join(repr(c) for c in JOIN_CHARACTERS))
+    if name == RULE_PAD_LAST_NUMBER:
+        ok = isinstance(value, int) and not isinstance(value, bool) and 1 <= value <= PAD_MAX
+        return None if ok else "must be a width from 1 to %d" % PAD_MAX
+    if name == RULE_REPLACE:
+        if not isinstance(value, list):
+            return "must be a list of [pattern, replacement] pairs"
+        for pair in value:
+            why = _replace_pair_refusal(pair)
+            if why:
+                return why
+        return None
+    if name == RULE_TIME:
+        formats = value.get("from") if isinstance(value, dict) else None
+        if not isinstance(formats, list) or not formats:
+            return "must be {\"from\": [input format, ...]}"
+        for fmt in formats:
+            why = _time_format_refusal(fmt)
+            if why:
+                return why
+        return None
+    return "is not a value rule"
+
+
+def _replace_pair_refusal(pair):
+    """The pattern language both engines read alike - or why this pair is outside it."""
+    if not (isinstance(pair, list) and len(pair) == 2 and all(isinstance(s, str) for s in pair)):
+        return "needs [pattern, replacement] - two texts"
+    pattern, replacement = pair
+    for text in pair:
+        if not text.isascii() or not text.isprintable() or "'" in text:
+            return "texts must be printable ASCII without a quote (%r)" % text
+    if "(?" in pattern:
+        return "(?...) constructs read differently in the two engines (%r)" % pattern
+    # The pattern's structure: every escape and bracket expression read as one atom 'a'.
+    skeleton, i = [], 0
+    while i < len(pattern):
+        ch = pattern[i]
+        if ch == "\\":
+            if pattern[i + 1:i + 2] not in _REPLACE_ESCAPES:
+                return "\\%s reads differently in the two engines (%r)" % (pattern[i + 1:i + 2],
+                                                                        pattern)
+            skeleton.append("a")
+            i += 2
+            continue
+        if ch == "[":
+            j = i + 1 + (pattern[i + 1:i + 2] == "^")
+            j += pattern[j:j + 1] == "]"
+            while j < len(pattern) and pattern[j] != "]":
+                if pattern[j] == "[":
+                    return "a '[' inside [...] reads differently in the two engines (%r)" % pattern
+                if pattern[j] == "\\":
+                    if pattern[j + 1:j + 2] not in _REPLACE_ESCAPES:
+                        return "\\%s reads differently in the two engines (%r)" % (
+                            pattern[j + 1:j + 2], pattern)
+                    j += 1
+                j += 1
+            skeleton.append("a")
+            i = j + 1
+            continue
+        if ch == "$":
+            return "use \\Z for the end of the value, not $ (%r)" % pattern
+        if ch == "{":
+            brace = re.match(r"\{[0-9]+(,[0-9]*)?\}", pattern[i:])
+            if not brace:
+                return "'{' is a count {m}, {m,} or {m,n} - write \\{ for the character (%r)" % (
+                    pattern)
+            skeleton.append("}")
+            i += brace.end()
+            continue
+        skeleton.append(ch)
+        i += 1
+    skeleton = "".join(skeleton)
+    # Measured 2026-09-26 on PostgreSQL 18.3: where a value has more than one way to match,
+    # Python takes the first and PostgreSQL the longest. Random patterns WITH each of these
+    # three disagreed (| 38 · quantified group 93 · lazy 328 of ~2,000); 3,317 without: 0.
+    if "|" in skeleton:
+        return "'|' picks a different match in the two engines - write one pair per " \
+               "alternative (%r)" % pattern
+    if re.search(r"\)[?*+}]", skeleton):
+        return "a count after ')' picks a different match in the two engines - count single " \
+               "characters (%r)" % pattern
+    if re.search(r"[?*+}][?*+}]", skeleton):
+        return "a count after a count (lazy or possessive) reads differently in the two " \
+               "engines (%r)" % pattern
+    if re.search(r"\\(?![1-9])", replacement):
+        return "a replacement may only use \\1 to \\9 (%r)" % replacement
+    try:
+        compiled = re.compile(pattern, re.DOTALL)
+    except re.error as e:
+        return "pattern does not compile: %s (%r)" % (e, pattern)
+    if compiled.search("") is not None:
+        return "the pattern matches an empty value, so it would insert everywhere (%r)" % pattern
+    return None
+
+
+def _time_format_refusal(fmt):
+    from datetime import datetime
+    if not isinstance(fmt, str) or not fmt:
+        return "an input format must be text"
+    if "%z" in fmt or "%Z" in fmt:
+        return "reads a time zone (%r) - converting zones is not a notation fold" % fmt
+    sample = datetime(2026, 9, 26, 13, 5, 7, 123456)
+    try:
+        datetime.strptime(sample.strftime(fmt), fmt)
+    except ValueError as e:
+        return "input format %r does not read back what it writes: %s" % (fmt, e)
+    return None
+
+
+def fold_time(text, spec: dict):
+    """A time text in one of the declared input shapes -> `utils.time_format.TS_FMT`.
+
+    Returns (value, verdict): `already` · `folded` · `unmatched` · `zoned` · `blank`. Only
+    `folded` changes the value. The moment is never moved: no zone conversion, and a format
+    that reads fractions keeps them (`TS_FMT` + `.%f`), so nothing below the second is dropped.
+    """
+    from datetime import datetime
+    from utils.time_format import TS_FMT
+
+    if not isinstance(text, str) or not text.strip():
+        return text, "blank"
+    s = text.strip()
+    for shape in (TS_FMT, TS_FMT + ".%f"):
+        try:
+            if datetime.strptime(s, shape).strftime(shape) == s:
+                return text, "already"
+        except ValueError:
+            pass
+    if _ZONE_SUFFIX.search(s):
+        return text, "zoned"
+    for fmt in (spec or {}).get("from") or ():
+        try:
+            moment = datetime.strptime(s, fmt)
+        except ValueError:
+            continue
+        return moment.strftime(TS_FMT + (".%f" if "%f" in fmt else "")), "folded"
+    return text, "unmatched"
 
 
 def enabled_rule_names(rules: dict) -> list:
@@ -277,8 +482,8 @@ def enabled_rule_names(rules: dict) -> list:
 
 
 def folds_anything(rules: dict) -> bool:
-    """True when at least one implemented rule is on (i.e. the fold is not a no-op)."""
-    return bool(enabled_rule_names(rules))
+    """True when a rule BOTH engines apply is on - i.e. a comparison folds (`time` does not)."""
+    return any((rules or {}).get(n) for n in BOTH_ENGINE_RULES)
 
 
 # ---------------------------------------------------------------------------
@@ -307,11 +512,18 @@ def fold_sql_text(inner_sql: str, rules: dict) -> str:
     compiled column reference or a quoted identifier, never user input.
     """
     out = inner_sql
-    if rules.get(RULE_SEPARATOR):
+    target = _join_target(rules)
+    if target:
         # 'g' IS LOAD-BEARING - without it only the FIRST run is replaced
         # (measured: 'WF.A_B 01' -> 'WF-A_B 01'). See docstring item 3.
-        out = "regexp_replace(%s, '%s', '%s', 'g')" % (
-            out, SEPARATOR_PATTERN, SEPARATOR_TARGET)
+        out = "regexp_replace(%s, '%s', '%s', 'g')" % (out, SEPARATOR_PATTERN, target)
+    width = rules.get(RULE_PAD_LAST_NUMBER) or 0
+    for k in range(1, width):
+        # One call per short length, no 'g': the pattern is anchored at the end, so it can
+        # match once. `lpad` is not used - it TRUNCATES a run longer than the width.
+        out = "regexp_replace(%s, '%s', '\\1%s\\2')" % (out, PAD_RUN_PATTERN % k, "0" * (width - k))
+    for pattern, replacement in rules.get(RULE_REPLACE) or ():
+        out = "regexp_replace(%s, '%s', '%s', 'g')" % (out, pattern, replacement)
     if rules.get(RULE_CASE):
         # translate(), never upper() - see docstring item 2 for the measurement.
         out = "translate(%s, '%s', '%s')" % (
@@ -340,13 +552,12 @@ def _install_notation_fold_construct():
         # compile-cache hit; the expression is built per query, not per row.
         inherit_cache = False
 
-        def __init__(self, clause, separator: bool, case: bool):
-            self.separator = bool(separator)
-            self.case = bool(case)
+        def __init__(self, clause, rules: dict):
+            self.rules = {n: rules[n] for n in BOTH_ENGINE_RULES if rules.get(n)}
             super().__init__(clause)
 
         def _rules(self):
-            return {RULE_SEPARATOR: self.separator, RULE_CASE: self.case}
+            return dict(self.rules)
 
     @compiles(_NotationFold, "postgresql")
     def _pg(element, compiler, **kw):
@@ -367,9 +578,8 @@ def _install_notation_fold_construct():
         # The spelling is proven by `contracts/notation_fold/` against a real
         # PostgreSQL, and only there.
         inner = compiler.process(list(element.clauses)[0], **kw)
-        return "%s(%s, %d, %d)" % (SQL_FOLD_FUNCTION, inner,
-                                   1 if element.separator else 0,
-                                   1 if element.case else 0)
+        rules_json = json.dumps(element._rules(), sort_keys=True).replace("'", "''")
+        return "%s(%s, '%s')" % (SQL_FOLD_FUNCTION, inner, rules_json)
 
     return _NotationFold
 
@@ -393,8 +603,7 @@ def fold_notation_sql(text_expr, rules: dict):
     """
     if not folds_anything(rules):
         return text_expr
-    return _NotationFold(text_expr, bool(rules.get(RULE_SEPARATOR)),
-                         bool(rules.get(RULE_CASE)))
+    return _NotationFold(text_expr, rules)
 
 
 # ---------------------------------------------------------------------------
@@ -523,11 +732,10 @@ def install_sqlite_fold():
         create_function = getattr(dbapi_connection, "create_function", None)
         if create_function is None:
             return          # not a sqlite3 connection - nothing to register
-        def _fold(value, separator, case):
-            return fold_notation(value, {RULE_SEPARATOR: bool(separator),
-                                         RULE_CASE: bool(case)})
+        def _fold(value, rules_json):
+            return fold_notation(value, json.loads(rules_json))
         try:
-            create_function(SQL_FOLD_FUNCTION, 3, _fold)
+            create_function(SQL_FOLD_FUNCTION, 2, _fold)
         except Exception as e:      # pragma: no cover - defensive
             logger.warning("[NotationNorm] could not register %s on this "
                            "connection: %s", SQL_FOLD_FUNCTION, e)
@@ -575,6 +783,14 @@ def _normalize_rules(raw, subject, rejections=None) -> dict:
                     f"unknown rule '{name}'; known rules are "
                     f"{', '.join(KNOWN_RULES)}", CODE_UNKNOWN_RULE)
             continue
+        if name in VALUE_RULES:
+            why = _value_rule_refusal(name, on)
+            if why:
+                _record(rejections, SCOPE_TABLE, subject,
+                        f"rule '{name}' {why}; the rule is left off", CODE_SHAPE)
+            elif on not in (None, False, 0, [], {}):
+                effective[name] = on
+            continue
         if not isinstance(on, bool):
             _record(rejections, SCOPE_TABLE, subject,
                     f"rule '{name}' must be true or false (got {on!r}); the "
@@ -611,12 +827,16 @@ def _validate_column(table: str, column: str, spec, table_rules: dict,
     records what they were for and why they are vacuous rather than relaxed.
     """
     subject = f"{table}.{column}"
+    write = False
     if spec is False:
         return None                 # declared OFF - a decision, not an error
     if spec is True:
         rules_raw = None
     elif isinstance(spec, dict):
         rules_raw = spec.get("rules")
+        # 총괄 6c156492f: `write: true` - the column is STORED in its folded form (alias first,
+        # then the rules, or `time`). Without it the column is folded for comparison only.
+        write = spec.get("write") is True
         if "derived" in spec:
             _record(rejections, SCOPE_COLUMN, subject,
                     "'derived' is no longer a thing: normalization does not "
@@ -658,7 +878,43 @@ def _validate_column(table: str, column: str, spec, table_rules: dict,
 
     rules = _normalize_rules(rules_raw, subject, rejections) if rules_raw is not None \
         else dict(table_rules)
-    return {"table": table, "column": column, "rules": rules}
+    if rules.get(RULE_TIME):
+        if not write:
+            _record(rejections, SCOPE_COLUMN, subject,
+                    "'time' folds a value when it is written - declare \"write\": true "
+                    "on this column", CODE_SHAPE)
+            return None
+        said = [n for n in BOTH_ENGINE_RULES if (rules_raw or {}).get(n)]
+        if said:
+            _record(rejections, SCOPE_COLUMN, subject,
+                    "'time' is the only rule on a time column; remove %s"
+                    % ", ".join(said), CODE_SHAPE)
+            return None
+        rules = {n: (v if n in (RULE_TIME, RULE_ZERO_PAD) else False)
+                 for n, v in rules.items()}
+    if write and table_cfg is not None:
+        why = _join_splits_key(table_cfg, column, _join_target(rules))
+        if why:
+            _record(rejections, SCOPE_COLUMN, subject, why, CODE_JOIN_SPLITS_KEY)
+            return None
+    return {"table": table, "column": column, "rules": rules, "write": write}
+
+
+def _join_splits_key(table_cfg: dict, column: str, target):
+    """Why writing `target` into this column would split a key it belongs to, or None."""
+    if not target:
+        return None
+    from map_overlay import MAP_ID_JOINER
+    if column in (table_cfg.get("map_key_columns") or ()) and target == MAP_ID_JOINER:
+        return ("join %r is the map key joiner and '%s' is a map key column - the stored "
+                "value would split the map id; pick another join" % (target, column))
+    # The default matches `crud.compose_business_key`'s.
+    separator = table_cfg.get("composite_key_separator", "_")
+    if column in (table_cfg.get("composite_key_source") or ()) and target == separator:
+        return ("join %r is this table's composite key separator and '%s' is part of the "
+                "key - the stored value would split the row key; pick another join"
+                % (target, column))
+    return None
 
 
 def validate_notation_rules(raw_config: dict, known_tables: dict = None,
@@ -768,6 +1024,54 @@ def is_normalized(table: str, column: str) -> bool:
     return folds_anything(rules_for_column(table, column) or {})
 
 
+def write_spec(table: str, column: str):
+    """The declaration of `table.column` when it is folded AS IT IS WRITTEN, else None."""
+    spec = (normalized_by_table().get(table) or {}).get(column)
+    return spec if spec and spec.get("write") else None
+
+
+def aliases_by_column(db) -> dict:
+    """`{(table, column): {written: canonical}}` from the product alias table - exact spellings
+    the operator maps by hand, applied before any rule. Empty until the table has rows."""
+    from database import models
+    from product_tables import NOTATION_ALIAS_TABLE
+
+    model = models.DYNAMIC_TABLES.get(NOTATION_ALIAS_TABLE)
+    if model is None:
+        return {}
+    out = {}
+    for table, column, written, canonical in db.query(
+            model.table_name, model.column_name, model.written, model.canonical).all():
+        if table and column and written and canonical:
+            out.setdefault((table, column), {})[written] = canonical
+    return out
+
+
+def fold_for_write(table: str, column: str, value, aliases=None):
+    """(stored value, verdict) for a value written into `table.column` - THE write fold.
+
+    An alias (exact spelling) first, then the column's rules - or, on a time column, `fold_time`,
+    whose verdict says what happened (`unmatched` and `zoned` are left as they are). A column
+    not declared `write`, or a value that is not text, comes back unchanged with verdict None.
+    It runs at two seats (총괄 5ee9d3bd1 ①), so a second fold must not move a value: the
+    contract checks that for the rules; an alias row whose `canonical` is itself another row's
+    `written`, or folds to one, would break it - the preview shows the spellings that merge.
+    """
+    spec = write_spec(table, column)
+    if spec is None or not isinstance(value, str):
+        return value, None
+    return _write_fold(value, spec["rules"], (aliases or {}).get((table, column)) or {})
+
+
+def _write_fold(value: str, rules: dict, column_aliases: dict):
+    """(stored, verdict) - alias, then `time` or the rules. The one body `fold_for_write` and
+    the write preview share."""
+    out = column_aliases.get(value, value)
+    if rules.get(RULE_TIME):
+        return fold_time(out, rules[RULE_TIME])
+    return fold_notation(out, rules), None
+
+
 def join_pair_rules(left_table: str, left_column: str,
                     right_table: str, right_column: str):
     """The rule set BOTH sides of one join-key comparison must be folded with.
@@ -797,8 +1101,19 @@ def join_pair_rules(left_table: str, left_column: str,
     if left is None and right is None:
         return None
     merged = {}
-    for name in KNOWN_RULES:
-        merged[name] = bool((left or {}).get(name)) or bool((right or {}).get(name))
+    for name in (RULE_ZERO_PAD,) + BOTH_ENGINE_RULES:
+        said_left, said_right = (left or {}).get(name), (right or {}).get(name)
+        if name in (RULE_SEPARATOR, RULE_CASE, RULE_ZERO_PAD):
+            merged[name] = bool(said_left) or bool(said_right)
+        elif said_left and said_right and said_left != said_right:
+            # A value rule has no union: two joins or two widths cannot both hold.
+            raise ValueError(
+                "notation rule '%s' differs across one join - %s.%s says %r, %s.%s says %r; "
+                "declare the same value on both columns"
+                % (name, left_table, left_column, said_left,
+                   right_table, right_column, said_right))
+        elif said_left or said_right:
+            merged[name] = said_left or said_right
     return merged if folds_anything(merged) else None
 
 
@@ -816,7 +1131,7 @@ PREVIEW_VARIANT_LIMIT = 20
 
 
 def fold_preview(db, table: str, column: str, rules: dict = None,
-                 limit: int = PREVIEW_GROUP_LIMIT) -> dict:
+                 limit: int = PREVIEW_GROUP_LIMIT, write: bool = None) -> dict:
     """What this column's declared fold ACTUALLY does to the values in the table.
 
     [Why this exists - it is the payment for a column that used to be inspectable]
@@ -854,14 +1169,33 @@ def fold_preview(db, table: str, column: str, rules: dict = None,
         return {"table": table, "column": column, "declared": False, "rules": None,
                 "folds": False, "groups": [], "merge_groups": [],
                 "distinct_raw": 0, "distinct_folded": 0, "truncated": False}
+    if write is None:
+        write = write_spec(table, column) is not None
 
-    folded = fold_notation_sql(col, rules)
-    rows = (db.query(col.label("raw"), folded.label("folded"),
-                     func.count().label("n"))
-            .filter(col.isnot(None))
-            .group_by(col, folded)
-            .order_by(func.count().desc())
-            .limit(limit + 1).all())
+    time_left = {}
+    if write:
+        # 🔴 A WRITE COLUMN IS PREVIEWED WITH THE WRITE FOLD - the Python function that will
+        # store the value (alias, `time`), not the SQL comparison fold, because what matters
+        # before switching it on is which spellings become ONE stored value.
+        column_aliases = aliases_by_column(db).get((table, column)) or {}
+        raw_rows = (db.query(col.label("raw"), func.count().label("n"))
+                    .filter(col.isnot(None)).group_by(col)
+                    .order_by(func.count().desc()).limit(limit + 1).all())
+        rows = []
+        for raw, n in raw_rows:
+            stored, verdict = _write_fold(raw, rules, column_aliases) \
+                if isinstance(raw, str) else (raw, None)
+            if verdict in ("unmatched", "zoned"):
+                time_left[verdict] = time_left.get(verdict, 0) + int(n)
+            rows.append((raw, stored, n))
+    else:
+        folded = fold_notation_sql(col, rules)
+        rows = (db.query(col.label("raw"), folded.label("folded"),
+                         func.count().label("n"))
+                .filter(col.isnot(None))
+                .group_by(col, folded)
+                .order_by(func.count().desc())
+                .limit(limit + 1).all())
     truncated = len(rows) > limit
     rows = rows[:limit]
 
@@ -880,7 +1214,9 @@ def fold_preview(db, table: str, column: str, rules: dict = None,
         for g in groups if len(g["variants"]) > 1
     ]
     return {
-        "table": table, "column": column, "declared": True,
+        "table": table, "column": column, "declared": True, "write": bool(write),
+        # rows of a time column left as they are - no input shape matched, or a zone is written
+        "time_left_as_is": time_left,
         "rules": dict(rules), "folds": folds_anything(rules),
         "distinct_raw": sum(len(g["variants"]) for g in groups),
         "distinct_folded": len(groups),
@@ -906,7 +1242,8 @@ def declared_previews(db, limit: int = PREVIEW_GROUP_LIMIT) -> list:
     for table, specs in sorted(normalized_by_table().items()):
         for column, spec in sorted(specs.items()):
             try:
-                out.append(fold_preview(db, table, column, spec["rules"], limit))
+                out.append(fold_preview(db, table, column, spec["rules"], limit,
+                                        write=bool(spec.get("write"))))
             except Exception as e:
                 logger.error("[NotationNorm] preview failed for %s.%s: %s",
                              table, column, e)

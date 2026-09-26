@@ -9,7 +9,8 @@ Ownership line (see docs/guide/CONFIG_GUIDE.md 5.8-ter):
 
 Why a Python module and not a second JSON file: live ``server/config/*.json`` is
 gitignored (only ``config/sample/*.sample`` is tracked), so a canonical live JSON would not
-ship. This module is code, tracked, and imported by exactly two consumers:
+ship. This module is code, tracked, and imported by two consumers of the declarations
+(plus `notation_norm.aliases_by_column`, which only reads the alias table's name):
 
 1. ``server/scripts/install_product_tables.py``  — installs these entries into a
    site's live ``table_config.json``.
@@ -33,6 +34,9 @@ on ``sys.path`` in every entry point, so ``import product_tables`` resolves.
 # note, not as drift — otherwise every existing site would be flagged the moment
 # a comment is reworded.
 ANNOTATION_KEYS = ("__comment",)
+
+#: The notation alias table (`notation_norm.aliases_by_column` reads it by this name).
+NOTATION_ALIAS_TABLE = "notation_alias"
 
 # Order here is the order new entries are appended to a config file.
 PRODUCT_TABLES = {
@@ -140,6 +144,30 @@ PRODUCT_TABLES = {
         "map_key_columns": [
             "product",
             "type"
+        ]
+    },
+    NOTATION_ALIAS_TABLE: {
+        "__comment": "[제품 소유 저장소 — 이름·컬럼을 바꾸지 마라] Exact spellings mapped by hand to their written form, per column (총괄 6c156492f). A row reads: in `table_name`.`column_name`, a value written exactly `written` is stored as `canonical`. It is consulted first, before the column's notation rules, and only for a column that notation_rules.json declares `write: true` - a column not declared there is never touched. Ships EMPTY: the product fills no value, the operator does. The key separator is '|' because table and column names carry '_'.",
+        "business_key": "alias_key",
+        "composite_key_source": [
+            "table_name",
+            "column_name",
+            "written"
+        ],
+        "composite_key_separator": "|",
+        "column_types": {
+            "alias_key": "string",
+            "table_name": "string",
+            "column_name": "string",
+            "written": "string",
+            "canonical": "string"
+        },
+        "display_columns": [
+            "alias_key",
+            "table_name",
+            "column_name",
+            "written",
+            "canonical"
         ]
     },
 }

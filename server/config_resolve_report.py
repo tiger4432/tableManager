@@ -594,6 +594,7 @@ _NOTATION_CODE_TO_REASON = {
     "undeclared": REASON_NOT_DECLARED,
     "not_text": REASON_MAPPING_UNAVAILABLE,
     "shape": REASON_MAPPING_UNAVAILABLE,
+    "join_splits_key": REASON_MAPPING_UNAVAILABLE,
 }
 
 # 코드별 한국어 앞머리. 로더가 만든 영문 사유를 그대로 붙이지 않고, 운영자가 무엇을
@@ -614,6 +615,9 @@ _NOTATION_CODE_LEAD = {
         "Refused: not a text column - numbers have no notation (and a column declared "
         "'number' already parses '01' and '1' into one value)",
     "shape": "Not applied: the declaration's shape is wrong",
+    "join_splits_key":
+        "Refused: the join character is the one this column's key is joined with - a "
+        "stored value would split the key",
 }
 
 
@@ -650,6 +654,10 @@ def notation_preview_detail(preview: dict) -> str:
                 f"if one is not, fix the rule in notation_rules.json (stored values stay "
                 f"raw, so there is nothing to undo).")
     tail = ""
+    left = preview.get("time_left_as_is") or {}
+    if left:
+        tail += (f" The time rule leaves rows as written - no matching format: "
+                 f"{left.get('unmatched', 0)}, time zone written: {left.get('zoned', 0)}.")
     if preview.get("truncated"):
         tail = (f" (Note) More spellings than the limit ({preview.get('group_limit')}) - "
                 f"only some are shown.")

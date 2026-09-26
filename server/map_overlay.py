@@ -235,6 +235,11 @@ def canonical_role_value(src_cfg, role, value):
     return canonical_bind_value(src_cfg.get("table"), col, value)
 
 
+#: The character a map identity's components are joined with - a value that carries it shreds
+#: the key it is part of (`notation_norm` refuses a `join` to it on a map key column).
+MAP_ID_JOINER = "_"
+
+
 def compose_map_id(identity_cols, values, binding=None):
     """Join identity components with '_' into a map identity string.
 
@@ -251,7 +256,7 @@ def compose_map_id(identity_cols, values, binding=None):
             col = (binding.get("columns") or {}).get(k, k)
             v = canonical_bind_value(binding["table"], col, v)
         parts.append("" if v is None else str(v))
-    return "_".join(parts)
+    return MAP_ID_JOINER.join(parts)
 
 
 # ---------------------------------------------------------------------------

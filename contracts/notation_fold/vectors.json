@@ -19,7 +19,9 @@
     "fold_sql_text": "notation_norm.fold_sql_text",
     "separator_codepoints": "notation_norm.SEPARATOR_CODEPOINTS",
     "separator_pattern": "notation_norm.SEPARATOR_PATTERN",
-    "case_alphabets": "notation_norm.CASE_SOURCE_ALPHABET / CASE_TARGET_ALPHABET"
+    "case_alphabets": "notation_norm.CASE_SOURCE_ALPHABET / CASE_TARGET_ALPHABET",
+    "pad_run_pattern": "notation_norm.PAD_RUN_PATTERN",
+    "join_characters": "notation_norm.JOIN_CHARACTERS"
   },
   "measurements": {
     "$comment": "Taken 2026-08-04 against the live database, READ ONLY, scalar expressions only. These are the facts that shaped the implementation; each has a corpus case that goes red if it stops being true.",
@@ -63,6 +65,14 @@
         "python": "folds",
         "postgres": "unchanged (ctype-dependent)"
       }
+    },
+    "leftmost_first_vs_longest": {
+      "$why": "Where a value can be matched more than one way, Python's `re` takes the FIRST alternative and PostgreSQL the LONGEST. Measured 2026-09-26 on PostgreSQL 18.3 over random patterns: with '|' 38 disagreed, with a count after ')' 93, with a lazy count 328 (of about 2,000 each); without all three, 0 of 3,317. So `_replace_pair_refusal` refuses those three and nothing else.",
+      "pattern": "W|WA",
+      "replacement": "X",
+      "input": "WA",
+      "python": "XA",
+      "postgres": "X"
     }
   },
   "declared_divergences": {
@@ -72,6 +82,9 @@
     },
     "NULL": {
       "$why": "SQL NULL propagates through `regexp_replace` and `translate`, so a NULL column folds to NULL and a folded join key never matches on NULL -- identical to the unfolded `col = col` behaviour. Python's `None` is returned unchanged by the same statement. Scored below as its own test rather than as a corpus case, because a corpus case would have to carry a `null` input type that no other case uses."
+    },
+    "WRITE_ONLY_ALIAS_AND_TIME": {
+      "$why": "The alias table and the `time` rule fold a value WHEN IT IS WRITTEN, in Python only (`notation_norm.fold_for_write`). Neither can be an index expression - a table lookup and `to_timestamp` are not IMMUTABLE - so the SQL comparison fold does not apply them. Once the write and the backfill have run, the stored value already is the written one (총괄 5ee9d3bd1)."
     }
   },
   "corpus": {
@@ -2341,6 +2354,696 @@
             ]
           }
         }
+      }
+    ]
+  },
+  "rule_corpus": {
+    "$comment": "Cases for the rules that carry a value (join · pad_last_number · replace), each with its own rule set. Scored against BOTH engines like the corpus above. Expected answers were written from the owner's examples, not recorded from the code.",
+    "cases": [
+      {
+        "id": "owner_wafer_dot_01",
+        "rules": {
+          "join": "-",
+          "pad_last_number": 2
+        },
+        "input": {
+          "type": "text",
+          "cp": [
+            119,
+            97,
+            102,
+            101,
+            114,
+            46,
+            48,
+            49
+          ]
+        },
+        "expected": {
+          "type": "text",
+          "cp": [
+            119,
+            97,
+            102,
+            101,
+            114,
+            45,
+            48,
+            49
+          ]
+        },
+        "$why": "Owner's example: the dot becomes the join."
+      },
+      {
+        "id": "owner_wafer_dot_1",
+        "rules": {
+          "join": "-",
+          "pad_last_number": 2
+        },
+        "input": {
+          "type": "text",
+          "cp": [
+            119,
+            97,
+            102,
+            101,
+            114,
+            46,
+            49
+          ]
+        },
+        "expected": {
+          "type": "text",
+          "cp": [
+            119,
+            97,
+            102,
+            101,
+            114,
+            45,
+            48,
+            49
+          ]
+        },
+        "$why": "Owner's example: join, then the short trailing number is padded to two."
+      },
+      {
+        "id": "owner_lot_dot_1",
+        "rules": {
+          "join": "-",
+          "pad_last_number": 2
+        },
+        "input": {
+          "type": "text",
+          "cp": [
+            109,
+            121,
+            108,
+            111,
+            116,
+            46,
+            49
+          ]
+        },
+        "expected": {
+          "type": "text",
+          "cp": [
+            109,
+            121,
+            108,
+            111,
+            116,
+            45,
+            48,
+            49
+          ]
+        },
+        "$why": "Owner's example for a lot (2a73863ca: lots take '-' too)."
+      },
+      {
+        "id": "owner_underscore",
+        "rules": {
+          "join": "-",
+          "pad_last_number": 2
+        },
+        "input": {
+          "type": "text",
+          "cp": [
+            119,
+            97,
+            102,
+            101,
+            114,
+            95,
+            48,
+            49
+          ]
+        },
+        "expected": {
+          "type": "text",
+          "cp": [
+            119,
+            97,
+            102,
+            101,
+            114,
+            45,
+            48,
+            49
+          ]
+        },
+        "$why": "An underscore is a separator like the dot."
+      },
+      {
+        "id": "owner_case_kept",
+        "rules": {
+          "join": "-",
+          "pad_last_number": 2
+        },
+        "input": {
+          "type": "text",
+          "cp": [
+            87,
+            65,
+            70,
+            69,
+            82,
+            46,
+            49
+          ]
+        },
+        "expected": {
+          "type": "text",
+          "cp": [
+            87,
+            65,
+            70,
+            69,
+            82,
+            45,
+            48,
+            49
+          ]
+        },
+        "$why": "No case rule: upper case stays as written (451ac4f75)."
+      },
+      {
+        "id": "owner_not_a_number",
+        "rules": {
+          "join": "-",
+          "pad_last_number": 2
+        },
+        "input": {
+          "type": "text",
+          "cp": [
+            119,
+            97,
+            102,
+            101,
+            114,
+            46,
+            65
+          ]
+        },
+        "expected": {
+          "type": "text",
+          "cp": [
+            119,
+            97,
+            102,
+            101,
+            114,
+            45,
+            65
+          ]
+        },
+        "$why": "A value that does not end in a digit is only joined."
+      },
+      {
+        "id": "owner_three_digits",
+        "rules": {
+          "join": "-",
+          "pad_last_number": 2
+        },
+        "input": {
+          "type": "text",
+          "cp": [
+            119,
+            97,
+            102,
+            101,
+            114,
+            46,
+            49,
+            50,
+            51
+          ]
+        },
+        "expected": {
+          "type": "text",
+          "cp": [
+            119,
+            97,
+            102,
+            101,
+            114,
+            45,
+            49,
+            50,
+            51
+          ]
+        },
+        "$why": "Longer than the width: left as it is - an lpad would cut it to '12'."
+      },
+      {
+        "id": "owner_leading_zeros_kept",
+        "rules": {
+          "join": "-",
+          "pad_last_number": 2
+        },
+        "input": {
+          "type": "text",
+          "cp": [
+            119,
+            97,
+            102,
+            101,
+            114,
+            46,
+            48,
+            48,
+            49
+          ]
+        },
+        "expected": {
+          "type": "text",
+          "cp": [
+            119,
+            97,
+            102,
+            101,
+            114,
+            45,
+            48,
+            48,
+            49
+          ]
+        },
+        "$why": "Padding only ADDS zeros; it never removes one (this is not zero_pad)."
+      },
+      {
+        "id": "owner_digits_only",
+        "rules": {
+          "join": "-",
+          "pad_last_number": 2
+        },
+        "input": {
+          "type": "text",
+          "cp": [
+            55
+          ]
+        },
+        "expected": {
+          "type": "text",
+          "cp": [
+            48,
+            55
+          ]
+        },
+        "$why": "A trailing number at the very start of the value is padded too."
+      },
+      {
+        "id": "owner_space_run",
+        "rules": {
+          "join": "-",
+          "pad_last_number": 2
+        },
+        "input": {
+          "type": "text",
+          "cp": [
+            119,
+            97,
+            102,
+            101,
+            114,
+            32,
+            32,
+            46,
+            49
+          ]
+        },
+        "expected": {
+          "type": "text",
+          "cp": [
+            119,
+            97,
+            102,
+            101,
+            114,
+            45,
+            48,
+            49
+          ]
+        },
+        "$why": "A run of separators is one join."
+      },
+      {
+        "id": "owner_inner_number_untouched",
+        "rules": {
+          "join": "-",
+          "pad_last_number": 2
+        },
+        "input": {
+          "type": "text",
+          "cp": [
+            119,
+            49,
+            46,
+            50
+          ]
+        },
+        "expected": {
+          "type": "text",
+          "cp": [
+            119,
+            49,
+            45,
+            48,
+            50
+          ]
+        },
+        "$why": "Only the LAST number is padded."
+      },
+      {
+        "id": "owner_non_ascii_digit",
+        "rules": {
+          "join": "-",
+          "pad_last_number": 2
+        },
+        "input": {
+          "type": "text",
+          "cp": [
+            119,
+            97,
+            102,
+            101,
+            114,
+            46,
+            1633
+          ]
+        },
+        "expected": {
+          "type": "text",
+          "cp": [
+            119,
+            97,
+            102,
+            101,
+            114,
+            45,
+            1633
+          ]
+        },
+        "$why": "A non-ASCII digit is not a number to either engine: both read [0-9]."
+      },
+      {
+        "id": "join_underscore",
+        "rules": {
+          "join": "_"
+        },
+        "input": {
+          "type": "text",
+          "cp": [
+            119,
+            97,
+            102,
+            101,
+            114,
+            32,
+            45,
+            32,
+            48,
+            49
+          ]
+        },
+        "expected": {
+          "type": "text",
+          "cp": [
+            119,
+            97,
+            102,
+            101,
+            114,
+            95,
+            48,
+            49
+          ]
+        },
+        "$why": "join may be '_' (refused only where it would split a key)."
+      },
+      {
+        "id": "pad_three",
+        "rules": {
+          "pad_last_number": 3
+        },
+        "input": {
+          "type": "text",
+          "cp": [
+            76,
+            53
+          ]
+        },
+        "expected": {
+          "type": "text",
+          "cp": [
+            76,
+            48,
+            48,
+            53
+          ]
+        },
+        "$why": "Width three from one digit."
+      },
+      {
+        "id": "pad_three_from_two",
+        "rules": {
+          "pad_last_number": 3
+        },
+        "input": {
+          "type": "text",
+          "cp": [
+            76,
+            53,
+            53
+          ]
+        },
+        "expected": {
+          "type": "text",
+          "cp": [
+            76,
+            48,
+            53,
+            53
+          ]
+        },
+        "$why": "Width three from two digits."
+      },
+      {
+        "id": "pad_three_longer",
+        "rules": {
+          "pad_last_number": 3
+        },
+        "input": {
+          "type": "text",
+          "cp": [
+            76,
+            53,
+            53,
+            53,
+            53
+          ]
+        },
+        "expected": {
+          "type": "text",
+          "cp": [
+            76,
+            53,
+            53,
+            53,
+            53
+          ]
+        },
+        "$why": "Longer than the width stays."
+      },
+      {
+        "id": "replace_prefix",
+        "rules": {
+          "replace": [
+            [
+              "^WF",
+              "wafer"
+            ]
+          ]
+        },
+        "input": {
+          "type": "text",
+          "cp": [
+            87,
+            70,
+            45,
+            48,
+            49
+          ]
+        },
+        "expected": {
+          "type": "text",
+          "cp": [
+            119,
+            97,
+            102,
+            101,
+            114,
+            45,
+            48,
+            49
+          ]
+        },
+        "$why": "An anchored replacement."
+      },
+      {
+        "id": "replace_prefix_not_at_start",
+        "rules": {
+          "replace": [
+            [
+              "^WF",
+              "wafer"
+            ]
+          ]
+        },
+        "input": {
+          "type": "text",
+          "cp": [
+            88,
+            87,
+            70
+          ]
+        },
+        "expected": {
+          "type": "text",
+          "cp": [
+            88,
+            87,
+            70
+          ]
+        },
+        "$why": "^ is the start of the value in both engines."
+      },
+      {
+        "id": "replace_group",
+        "rules": {
+          "replace": [
+            [
+              "([A-Z]+)([0-9]+)\\Z",
+              "\\1-\\2"
+            ]
+          ]
+        },
+        "input": {
+          "type": "text",
+          "cp": [
+            76,
+            79,
+            84,
+            49,
+            50
+          ]
+        },
+        "expected": {
+          "type": "text",
+          "cp": [
+            76,
+            79,
+            84,
+            45,
+            49,
+            50
+          ]
+        },
+        "$why": "Group references \\1 \\2 in the replacement."
+      },
+      {
+        "id": "with_case",
+        "rules": {
+          "join": "-",
+          "pad_last_number": 2,
+          "case": true
+        },
+        "input": {
+          "type": "text",
+          "cp": [
+            119,
+            97,
+            102,
+            101,
+            114,
+            46,
+            49
+          ]
+        },
+        "expected": {
+          "type": "text",
+          "cp": [
+            87,
+            65,
+            70,
+            69,
+            82,
+            45,
+            48,
+            49
+          ]
+        },
+        "$why": "The case rule runs last."
+      },
+      {
+        "id": "order_pad_then_replace",
+        "rules": {
+          "pad_last_number": 2,
+          "replace": [
+            [
+              "-0",
+              "-"
+            ]
+          ]
+        },
+        "input": {
+          "type": "text",
+          "cp": [
+            97,
+            45,
+            49
+          ]
+        },
+        "expected": {
+          "type": "text",
+          "cp": [
+            97,
+            45,
+            49
+          ]
+        },
+        "$why": "Pad runs before replace: 'a-1' -> 'a-01' -> 'a-1'."
+      },
+      {
+        "id": "replace_every_match",
+        "rules": {
+          "replace": [
+            [
+              "[0-9]+",
+              "N"
+            ]
+          ]
+        },
+        "input": {
+          "type": "text",
+          "cp": [
+            97,
+            49,
+            50,
+            98,
+            51
+          ]
+        },
+        "expected": {
+          "type": "text",
+          "cp": [
+            97,
+            78,
+            98,
+            78
+          ]
+        },
+        "$why": "Every match is replaced, not the first - PostgreSQL needs the 'g' flag for it."
       }
     ]
   }

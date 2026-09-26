@@ -50,6 +50,7 @@ WHAT THIS FILE DOES NOT DO
 import json
 import os
 import pathlib
+import re
 import sys
 import unicodedata
 
@@ -122,6 +123,16 @@ def _corpus():
                {k: _decode(v) for k, v in case["expected"].items()})
 
 
+RULE_CASES = VECTORS["rule_corpus"]["cases"]
+
+
+def _rule_corpus():
+    """(id, rules, raw, expected) for every value-rule case, marking it consumed."""
+    for case in RULE_CASES:
+        _CONSUMED.add(case["id"])
+        yield case["id"], case["rules"], _decode(case["input"]), _decode(case["expected"])
+
+
 # ---------------------------------------------------------------------------
 # The Python half
 # ---------------------------------------------------------------------------
@@ -167,6 +178,32 @@ def test_the_fold_is_idempotent():
                 wrong.append(f"  {cid}[{combo}]: {_show(once)} -> {_show(twice)}")
     assert not wrong, ("the fold is not idempotent, so folding an already-clean join key "
                        "moves it:\n" + "\n".join(wrong))
+
+
+def test_python_rule_fold_matches_the_recorded_expectation():
+    """join · pad_last_number · replace - each case under its own rule set."""
+    wrong = [f"  {cid}: in={_show(raw)} recorded={_show(want)} python={_show(got)}"
+             for cid, rules, raw, want in _rule_corpus()
+             for got in [nn.fold_notation(raw, rules)] if got != want]
+    assert not wrong, "the Python fold no longer answers what rule_corpus records:\n" + \
+        "\n".join(wrong)
+
+
+def test_the_rule_fold_is_idempotent():
+    """The same value is folded at the chain key gate and again at the write (총괄 5ee9d3bd1
+    ①), so a second fold must not move it."""
+    wrong = [f"  {cid}: {_show(want)} -> {_show(twice)}"
+             for cid, rules, _raw, want in _rule_corpus()
+             for twice in [nn.fold_notation(want, rules)] if twice != want]
+    assert not wrong, "a rule fold is not idempotent:\n" + "\n".join(wrong)
+
+
+def test_every_rule_case_declares_rules_the_loader_accepts():
+    """A case under rules the declaration check refuses scores a fold no operator can get."""
+    for cid, rules, _raw, _want in _rule_corpus():
+        rejections = []
+        nn._normalize_rules(rules, cid, rejections)
+        assert not rejections, f"{cid}: {rejections}"
 
 
 # ---------------------------------------------------------------------------
@@ -348,6 +385,93 @@ def test_the_contract_goes_red_when_the_sql_side_is_perturbed():
         conn.close()
 
 
+def _rule_misses(cur, builder):
+    """The rule cases where `builder`'s SQL does not answer the recorded expectation."""
+    return [f"  {cid}: in={_show(raw)} recorded={_show(want)} postgres={_show(got)}"
+            for cid, rules, raw, want in _rule_corpus()
+            for got in [_pg_fold(cur, raw, builder, rules)] if got != want]
+
+
+def test_postgres_rule_fold_matches_the_recorded_expectation():
+    """join · pad_last_number · replace through `fold_sql_text` on PostgreSQL - the spelling
+    a functional index is built from, so it must be IMMUTABLE (asserted by building one)."""
+    conn = _pg_connect()
+    try:
+        cur = conn.cursor()
+        wrong = _rule_misses(cur, nn.fold_sql_text)
+        assert not wrong, "the SQL rule fold and the contract disagree:\n" + "\n".join(wrong)
+        rules = {nn.RULE_JOIN: "-", nn.RULE_PAD_LAST_NUMBER: 2,
+                 nn.RULE_REPLACE: [["^WF", "wafer"]], nn.RULE_CASE: True}
+        # An index expression refuses anything not IMMUTABLE. A temp table in a read-only
+        # session is still refused, so the check is on the expression's functions instead.
+        cur.execute("select count(*) from pg_proc where proname in ('regexp_replace', "
+                    "'translate') and provolatile <> 'i'")
+        assert cur.fetchone()[0] == 0, "regexp_replace/translate are no longer IMMUTABLE"
+        assert set(re.findall(r"([a-z_]+)\(", nn.fold_sql_text("COL", rules))) <= {
+            "regexp_replace", "translate"}
+    finally:
+        conn.close()
+
+
+def test_the_rule_contract_goes_red_when_the_sql_side_is_perturbed():
+    """Three wrong spellings a real author would write, each CAUGHT by a rule case:
+
+      UNGUARDED_PAD      the pad pattern without '(^|[^0-9])' - pads the tail of a longer number
+      REPLACE_WITHOUT_G  only the first match is replaced
+      REPLACE_FIRST      replace before pad - the declared order is join, pad, replace, case
+    """
+    def unguarded_pad(inner, rules):
+        width = rules.get(nn.RULE_PAD_LAST_NUMBER) or 0
+        sql = nn.fold_sql_text(inner, dict(rules, **{nn.RULE_PAD_LAST_NUMBER: 0,
+                                                     nn.RULE_REPLACE: None,
+                                                     nn.RULE_CASE: False}))
+        for k in range(1, width):
+            sql = "regexp_replace(%s, '([0-9]{%d})\\Z', '%s\\1')" % (sql, k, "0" * (width - k))
+        return nn.fold_sql_text(sql, {nn.RULE_REPLACE: rules.get(nn.RULE_REPLACE),
+                                      nn.RULE_CASE: rules.get(nn.RULE_CASE)})
+
+    def replace_without_g(inner, rules):
+        sql = nn.fold_sql_text(inner, dict(rules, **{nn.RULE_REPLACE: None,
+                                                     nn.RULE_CASE: False}))
+        for pattern, replacement in rules.get(nn.RULE_REPLACE) or ():
+            sql = "regexp_replace(%s, '%s', '%s')" % (sql, pattern, replacement)
+        return nn.fold_sql_text(sql, {nn.RULE_CASE: rules.get(nn.RULE_CASE)})
+
+    def replace_first(inner, rules):
+        sql = nn.fold_sql_text(inner, {nn.RULE_REPLACE: rules.get(nn.RULE_REPLACE)})
+        return nn.fold_sql_text(sql, dict(rules, **{nn.RULE_REPLACE: None}))
+
+    conn = _pg_connect()
+    try:
+        cur = conn.cursor()
+        assert not _rule_misses(cur, nn.fold_sql_text)
+        for label, builder in (("UNGUARDED_PAD", unguarded_pad),
+                               ("REPLACE_WITHOUT_G", replace_without_g),
+                               ("REPLACE_FIRST", replace_first)):
+            assert _rule_misses(cur, builder), (
+                f"perturbation {label} was NOT caught by any rule case - add the case "
+                f"before trusting a green run")
+    finally:
+        conn.close()
+
+
+def test_python_takes_the_first_match_and_postgres_the_longest():
+    """Re-derived, not trusted: `_replace_pair_refusal` refuses '|', a count after ')' and a
+    lazy count BECAUSE of this. If the engines ever agree here, revisit the refusal."""
+    m = VECTORS["measurements"]["leftmost_first_vs_longest"]
+    assert re.sub(m["pattern"], m["replacement"], m["input"]) == m["python"]
+    assert nn._replace_pair_refusal([m["pattern"], m["replacement"]]), (
+        "the pattern the two engines were measured to disagree on is accepted")
+    conn = _pg_connect()
+    try:
+        cur = conn.cursor()
+        cur.execute("select regexp_replace(%s::text, %s, %s, 'g')",
+                    (m["input"], m["pattern"], m["replacement"]))
+        assert cur.fetchone()[0] == m["postgres"]
+    finally:
+        conn.close()
+
+
 def test_null_propagates_identically_on_both_sides():
     """A NULL join key must not match, exactly as it did before this feature existed."""
     conn = _pg_connect()
@@ -392,7 +516,7 @@ def test_the_measurements_this_design_rests_on_still_hold():
 
 def test_every_contract_case_is_consumed():
     """A case nobody reads is a case that can be deleted without anything going red."""
-    declared = {c["id"] for c in CASES}
+    declared = {c["id"] for c in CASES} | {c["id"] for c in RULE_CASES}
     unused = sorted(declared - _CONSUMED)
     assert not unused, (
         "these corpus cases were never scored by any test in this file:\n  "
@@ -419,3 +543,9 @@ def test_the_corpus_covers_the_classes_the_brief_requires():
         "padded_zero",                                        # zero_pad is NOT implemented
     }
     assert required <= ids, f"the corpus lost required classes: {sorted(required - ids)}"
+    rule_ids = {c["id"] for c in RULE_CASES}
+    ordered = {                                                  # 총괄 451ac4f75 · 2a73863ca
+        "owner_wafer_dot_01", "owner_wafer_dot_1", "owner_lot_dot_1", "owner_underscore",
+        "owner_case_kept", "owner_not_a_number", "owner_three_digits",
+    }
+    assert ordered <= rule_ids, f"the rule corpus lost the ordered cases: {sorted(ordered - rule_ids)}"

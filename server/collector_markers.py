@@ -11,14 +11,17 @@ import re
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
+from utils.time_format import TS_FMT
+
 logger = logging.getLogger("Scheduler.Markers")
 
 
 #: The zone every collector window is computed in, whatever the box's clock says
 #: (소유자 2026-09-26 「KST」 - the dates an operator writes are KST too).
 WINDOW_ZONE = ZoneInfo("Asia/Seoul")
-#: How a window is written into a script whose header has no `# window_format:`.
-DEFAULT_WINDOW_FORMAT = "%Y-%m-%d %H:%M:%S"
+#: How a window is written into a script whose header has no `# window_format:` - the one time
+#: shape, also what `notation_norm`'s `time` rule writes (총괄 5a87c794c).
+DEFAULT_WINDOW_FORMAT = TS_FMT
 #: `{{LIST:table.column}}` - the grid's values of that column, as a quoted SQL list.
 LIST_MARKER = re.compile(r"\{\{LIST:([A-Za-z0-9_]+)\.([A-Za-z0-9_]+)\}\}")
 #: The most values a list marker carries. A longer list refuses the run rather than being cut.
