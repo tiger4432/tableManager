@@ -34551,3 +34551,49 @@ time 이름         ㉯ ㄴ 그대로 — apply_batch_updates 에 out 인자 하
 모르는 것  21:04:54 ~ 21:06:38 사이에 그 레인이 crud.py 를 «더» 고쳤다면 그 부분은 사라졌습니다 — crud.py 를 고치던 레인께서 확인 부탁드립니다
 다른 파일  alignment_batch_counts · directory_watcher · replay · retroactive · 시험 둘은 안 건드림
 ```
+
+---
+
+## 착지 — 표기 2 단계: "write": true 칸은 쓸 때 접혀 저장 (5ee9d3bd1 · 47aba5d44 · a7d2e90ec · 3eb161a9c) — 7fb778219 (09-26 21:57)
+
+```
+확인한 줄
+  ✅ 접는 자리 = 재시도 루프 앞 한 번     참 — 업무키 충돌 재시도를 강제하고 x -> xx 선언으로: 저장 'axx'(루프 안이면 'axxx'), 이력의 원래 철자 'ax'
+  ✅ 키 칸 write -> 옛 행을 못 찾음        참 — 대체 조회를 끄면 평키 · 복합 키 둘 다 두 행(변이로 봄)
+  ❌ 별칭 canonical 공백 -> 빈 키          거짓(제 f84c7fdd4 보고가 틀림) — 쓰기 문이 공백뿐인 canonical 을 NULL 로 저장(실측)하고
+                                        aliases_by_column 의 원래 조건이 이미 버림. 그래서 그 «고침»은 되돌림(코드 0 줄)
+                                        ㉮ ㄱ 의 전제는 원래 참이었고, 시험이 쓰기 문을 지나 그것을 봄(NULL 을 별칭으로 읽게 하는 변이에 빨강)
+  ✅ 매시간 같은 철자 재전송 -> 이력 0      참 — 층 접기로 안 쓰이는 칸은 줄 없음
+고친 것
+  깔때기 머리   crud._fold_written_notation — apply_batch_updates 의 재시도 루프 앞 한 번
+               항목의 write 칸 · 평키 business_key_val · replace_map 의 scope 를 접음. write 칸 없는 표는 아무것도 안 읽음(별칭 질의 0)
+               키가 접히면 날 철자를 판정 191 의 칸(_supplied_business_key_val)에 -> 옛 행을 찾고 그 행의 키가 접힌 키로 바뀜
+  한 몸        notation_norm.fold_item_for_write — 부르는 자리 둘: 깔때기(저장) · chain/key_gate(판정만, 규칙만, 넘기는 항목은 날 값)
+  이력         접기가 철자를 바꾼 칸이 «쓰일 때»(값이 바뀌거나 층이 쓰일 때) 칸마다 한 줄 — old = 들어온 철자 · new = 저장값 · 출처 = 보낸 쪽
+               사람 편집은 그 칸에 줄 둘(원래 철자 -> 저장값 · 옛 값 -> 저장값)
+               FILE 줄의 audit logs 행 수에 세어짐 — 시험: 줄의 수 = 그 표의 이력 행 수, 그 안에 접기 줄 셋
+  time 이름    apply_batch_updates(notation_report=) -> 워처가 파일마다 모아 FILE 줄 side-table rows 뒤에 한 칸(0 이면 칸 없음)
+               「· time rule left as written: no matching format N, time zone written M」
+  뒤집힌 문장   notation_norm 모듈 docstring(두 거절은 «돌아와야» -> 소유자 결정으로 뒤집힘, 인용) · crud 의 「THERE IS NOTHING HERE」 주석 ·
+               가이드 §1.1 · 로더 증거 주석 — 지우지 않고 ⚰️ 로
+  가이드       §2.3 저장 · 이력(원래 철자는 «처음 쓰일 때» 한 번) · 키 칸 · time 칸 문구 · config README · PRIMITIVES · RUNTIME_MAP · CODE_MAP
+  시험 가짜     워처를 대신하는 가짜 apply_batch_updates 15 자리(시험 파일 8 — 편집 스크립트의 치환 수로 셈)가 새 인자를 받게 — 스파이는 진짜에 넘김
+               1 단계 미리 보기 시험 하나는 씨앗을 «선언 전에» 쓰게(2 단계 뒤로는 선언된 칸이 쓰일 때 이미 접혀 병합군이 비어서)
+게이트    문 넷 × 갈래 — 파일(표준 · 스크립트) · 격자 PUT · 체인 apply_chain_writes × 값 규칙 · 별칭 · time 넷 · 규칙이 키를 비움(관문 거절) ·
+          재시도 · 평키 · 복합 키 조립 · 옛 행 재키(둘) · scope · 안 선언된 표 · 재전송 이력 0 · FILE 줄 칸 있음/없음 — 16
+변이      열 다 빨강 — 루프 안에서 접기 · 안 쓰인 칸도 이력 · 대체 조회 없음 · scope 안 접음 · NULL canonical 을 별칭으로 · 평키 안 접음 ·
+          관문이 날 항목으로 판정 · 관문이 접힌 항목을 넘김 · 워처가 보고를 안 넘김 · time 판정을 안 셈
+범위(깨끗한 작업 트리 1d332f5cc + 이 변경)  server/tests 전부 7,171 passed · 14 failed
+          14 = C · 층 접기 때와 같은 이름(작업 트리 환경 — publishing 7 · bench 2 · 서버 위치 1 · 라이브 맵퍼 3 · 표본 CRLF 1)
+          run_pg_tests 7 failed 109 passed — 이 변경을 뗀 같은 트리에서도 같은 일곱(원장 PG 시험) · 표기 계약 PG 20 passed
+          ⚠️ 첫 전체 실행은 제가 같은 트리에서 패치를 떼었다 붙이는 동안 돌아 기록에서 뺌 — 둘째 트리에서 처음부터 다시 돈 것이 위 수
+커밋      작업 트리의 제 파일 차이가 게이트를 돈 패치와 줄 단위로 같음을 대조한 뒤 경로를 붙여 커밋(다른 레인 미커밋 셋은 안 건드림)
+```
+
+```
+수(이 박스 · 운영 주장 아님)
+   접기 자체     1,000 항목 × write 칸 넷(전부 바뀜) 0.064 s(DB 없이, 다섯 번 중 최소)
+   이력 행       처음 쓰일 때 바뀐 칸마다 한 줄 — 1,000 행 × 칸 넷이면 4,000 행(처음 한 번). PostgreSQL 에서 그 삽입 시간은 안 쟀다
+운영 상태     이 박스엔 server/config/notation_rules.json 이 없음 -> 오늘 운영 쓰기에 바뀌는 것 없음. 선언부터 소유자 몫
+남은 것       notation_alias 라이브 설치(총괄 -> 소유자) · 3 단계 소급(같은 문, moves_again 칸에서 멈춤) — 다음 순서
+```
