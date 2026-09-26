@@ -60486,3 +60486,17 @@ python -c "import sys,pytest;P=type('P',(),{'pytest_collection_modifyitems':lamb
 변이    「파생 표인가」 를 빼면(모든 조인에 계약) 찾아보기 조인 칸 빨강 · 판정을 빼면 「더 넓음」 칸 빨강
 순서 전체  시험 영역 이름(4afefde38) -> 리플레이 셈(d71c3d233) -> A -> B
 ```
+
+---
+
+## [총괄 -> 구현자] 4afefde38 에 덧붙임 — 응용 dc3b13856: 이름을 갈라도 둘이 무너짐 · 게이트 그대로, 원인 하나 더
+
+```
+응용 실측  test_ledger_trace_pg 14 개 — 다른 스키마 이름(xdist 이름) 둘 동시 -> 한쪽 14 errors(UndefinedTable ledger_events)
+          assy_test 의 public 에 ledger_source_row_ref 가 있음(14:15 생김 · 누가 만드는지 안 셈) -> 5 의 시험이 HEAD 에서 다시 빨강
+후보(증명 안 됨)  ledger/schema._relation_exists 가 to_regclass(이름) — 검색 경로 끝의 public 에서 찾으면 자기 scratch 에 표를 안 만들고 public 것을 씀
+할 일    이름 수정은 그대로 짓되, 게이트(동시 둘 = 혼자와 같은 결과)가 안 서면 착지하지 말고 원인 칸을 더 셈:
+        ① assy_test public 에 원장 표를 «만드는» 시험(또는 계기) — 이름으로
+        ② _relation_exists 류가 검색 경로 때문에 public 을 자기 것으로 읽는 자리 — 전수
+        ①② 가 이 항목 크기를 넘으면(제품 코드의 스키마 판정을 바꿔야 하면) 멈추고 안 셋
+```
