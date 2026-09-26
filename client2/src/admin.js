@@ -33,6 +33,7 @@ import { queueQuery } from './enrichment_queue.js';
 // 「체인 요청이 몇 개 씹히는 것 같다」를 수로 바꾸는 계측기. 뷰 모델이 DOM 없는 자기 모듈에
 // 살아서 하니스가 import 로 채점한다 (`client2/tests/chain_queue_panel_harness.mjs`).
 import { ChainQueuePanel } from './chain_queue_panel.js';
+import { ChainPauseControl, chainPauseView } from './chain_pause.js';
 // 시안 A ② Status — 줄 판정은 `overview_status` 한 자리, 판은 그리기만 한다.
 import { OverviewBoard } from './overview_board.js';
 import {
@@ -926,6 +927,7 @@ async function fetchData(options = {}) {
           + `&table=${encodeURIComponent(outboxFilter.table)}&event_type=${encodeURIComponent(outboxFilter.event_type)}`
           + `&day=${encodeURIComponent(outboxFilter.day)}`).catch(() => null)
         : Promise.resolve(null);
+      const pauseReads = chainPauseReads();
       const [obRes, rulesRes, mapRes, queueRes, rowsRes] = await Promise.all([
         adminFetch(`${API_BASE}/admin/outbox/failed?page=1&limit=1&tz=${zone}`),
         adminFetch(`${API_BASE}/admin/chain/rules`),
@@ -953,6 +955,7 @@ async function fetchData(options = {}) {
       //    「밀린 것 없음」으로 읽힙니다. 못 읽었으면 null — 패널이 Failed 칸째 뺍니다 (0 이 아닙니다).
       queueOpts.failed = ob;
       renderChainQueue(queueBody, queueOpts);
+      renderChainPause(await chainPauseFrom(await pauseReads));
       if (queueOpts.unavailable) allRead = false;
       if (ob) {
         outboxData = (rowsOb && rowsOb.data) || [];
@@ -1438,6 +1441,59 @@ function renderChainQueue(payload, opts) {
   //    깊이는 카드였다가 이제 목록 위의 수가 됐다 — `view.depth` 는 읽지 못했을 때
   //    이미 «대시»로 돌아오므로 여기서 다시 가르지 않는다.
   if (count) count.textContent = view.depth;
+}
+
+// The emergency stop (lead 668fa004c) — like the queue: one read, both instances drawn from it.
+let chainPauseControls = null;
+let chainPauseLast = { requested: null, worker: null };
+function renderChainPause(next) {
+  if (next) chainPauseLast = { ...chainPauseLast, ...next };
+  if (!chainPauseControls) {
+    chainPauseControls = ['chain-pause-mount', 'overview-pause-mount']
+      .map((id) => byId(id)).filter(Boolean)
+      .map((mount) => new ChainPauseControl(mount, { send: sendChainPause }));
+  }
+  const view = chainPauseView(chainPauseLast.requested, chainPauseLast.worker);
+  chainPauseControls.forEach((control) => control.render(view));
+}
+
+/** The two reads, started beside the queue's. Each fails alone — a server without the route
+ *  (404) says so on the line and the tab still draws. */
+function chainPauseReads() {
+  return Promise.all([
+    adminFetch(`${API_BASE}/admin/chain/pause`).catch(() => null),
+    fetch(`${API_BASE}/health`).catch(() => null),
+  ]);
+}
+
+async function chainPauseFrom([pauseRes, healthRes]) {
+  let requested;
+  if (!pauseRes || !pauseRes.ok) {
+    requested = { read: false,
+      reason: fetchFailureLine(pauseRes ? failureFactOf(pauseRes) : null, 'Pause state read failed') };
+  } else {
+    const body = await pauseRes.json().catch(() => null);
+    requested = body && 'paused' in body ? { read: true, paused: body.paused || null }
+      : { read: false, reason: 'Pause state read failed' };
+  }
+  // /health answers 503 WITH its body — the worker's word is read either way (api.js checkChainHealth).
+  const health = healthRes ? await healthRes.json().catch(() => null) : null;
+  const worker = (((health || {}).checks || {}).workers || {}).chain || null;
+  return { requested, worker };
+}
+
+async function sendChainPause({ path, body }) {
+  let res;
+  try {
+    res = await adminFetch(`${API_BASE}${path}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  } catch (e) {
+    return { ok: false, error: fetchFailureLine(null, 'Refused') };
+  }
+  if (!res.ok) return { ok: false, error: await retroFailureLine(res, failureFactOf(res), 'Refused') };
+  const answer = await res.json().catch(() => null);
+  renderChainPause({ requested: { read: true, paused: (answer && answer.paused) || null } });
+  return { ok: true };
 }
 
 // 🔴 총괄 e573a6edf — the section folds to the summary's lines. The count is the rows the summary
@@ -2980,6 +3036,7 @@ function retroOperationEl(op) {
   card.appendChild(head);
   // 「무엇이 빠져 있는가」 — 이 문장이 없으면 버튼 다섯 개는 지시 대상 없는 동사 다섯 개다.
   if (op.whatIsMissing) card.appendChild(cfgEl('div', 'cfg-detail', cfgText(op.whatIsMissing)));
+  if (op.downstreamNote) card.appendChild(cfgEl('div', 'cfg-detail', cfgText(op.downstreamNote)));
 
   // 이 연산이 무엇을 지우고 어떤 단위로 커밋되는가 — 둘 다 서버 문자열이고 그대로 적는다.
   // 다섯 중 하나(고아 스윕)만 삭제이고 중단 시 통째로 롤백된다. 확인 문구 하나로 다섯을
@@ -3473,6 +3530,7 @@ async function fetchOverview(isStale) {
   //    Overview 에 자리만 놓으면 Chain 탭을 «들른 적 없는» 사람에게 빈 상자가 된다.
   // Ledger 줄은 소스 현황과 «같은» 읽기 — 본문 렌더를 기다리지 않는다(위의 설정 반영과 같은 이유).
   void refreshLedgerSources();
+  const pauseReads = chainPauseReads();
   const [failedRes, outboxRes, rulesRes, mappersRes, autoRes, activeRes, queueRes] = await Promise.all([
     adminFetch(`${API_BASE}/admin/file-ingestion/failed?page=1&limit=100`),
     adminFetch(`${API_BASE}/admin/outbox/failed?page=1&limit=3&tz=${encodeURIComponent(viewerZone())}`),
@@ -3508,6 +3566,7 @@ async function fetchOverview(isStale) {
     const queue = await chainQueueFrom(queueRes);
     // Failed 칸은 Chain 탭과 «같은» 응답에서 — 한쪽만 넘기면 두 판이 번갈아 칸을 잃는다.
     renderChainQueue(queue.body, { ...queue.opts, failed: outbox });
+    renderChainPause(await chainPauseFrom(await pauseReads));
   }
 
   // 전 소스 실패면 탭 에러 경로로 (개별 실패는 줄 단위 표기)

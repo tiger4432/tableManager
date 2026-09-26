@@ -974,6 +974,18 @@
     .au-backfill-line:empty { display: none; }
     .au-backfill-line.is-done { color: var(--text); }
     .au-backfill-line.is-danger { color: var(--danger); }
+    /* Emergency stop (lead 668fa004c) — the pause line and its controls, in both places. */
+    #chain-pause-mount { padding: var(--space-3) var(--space-4); border-bottom: 1px solid var(--border); }
+    #overview-pause-mount { margin-bottom: var(--space-3); }
+    .chain-pause { display: flex; flex-direction: column; gap: var(--space-1); }
+    .chain-pause-line { font-weight: 600; font-variant-numeric: tabular-nums; }
+    .chain-pause[data-tone="ok"] .chain-pause-line { color: var(--success); }
+    .chain-pause[data-tone="warn"] .chain-pause-line { color: var(--warning); }
+    .chain-pause-worker, .chain-pause-ask { font-size: var(--fs-label); color: var(--text-dim); }
+    .chain-pause-said { font-size: var(--fs-label); color: var(--danger); }
+    .chain-pause-worker:empty, .chain-pause-said:empty { display: none; }
+    .chain-pause-controls { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-1); }
+    .chain-pause-reason { width: 16em; max-width: 100%; }
 
 /* 🔴 THE DROPDOWN'S SHAPE IS DECLARED ONCE, AND EVERY SELECT ON THIS PAGE DECLARES IT.
        Three of them had been overriding height, padding and font-size INLINE, which beats
@@ -1904,7 +1916,7 @@
               <span class="ov-section-sub">chain worker · scheduler</span>
               <button type="button" class="ov-section-open" id="overview-queue-open">Open Chain tab ›</button>
             </div>
-            <div class="ov-section-body"><div id="overview-queue-mount"></div></div>
+            <div class="ov-section-body"><div id="overview-pause-mount"></div><div id="overview-queue-mount"></div></div>
           </section>
           <!-- 시안 A ② Status 절. 줄은 OverviewBoard 가 그리고 overview_status 가 판정한다. -->
           <section class="ov-section" id="overview-status">
@@ -2058,6 +2070,8 @@
 
         <!-- ═══ Chain 탭: 현황(Rules) → 오류/실행(Chain 실패 = Outbox + Retry) → 코드(Mappers) ═══ -->
         <div id="chain-tab-wrapper" style="flex: 1; overflow: auto; display: none;">
+          <!-- The emergency stop (lead 668fa004c) — the same part as the Overview's, one read. -->
+          <div id="chain-pause-mount"></div>
           <div class="stage-section" id="sec-chain-rules">
             <div class="section-header" data-section="sec-chain-rules">
               <span class="stage-chip">Status</span>

@@ -975,6 +975,10 @@ const FLOORS = new Map([
   // collector's latest run read through buildRunsView, and what the page keeps drawn and escaped.
   ['collector_backfill_harness.mjs', 19],
   //
+  // The emergency stop's control (lead 668fa004c): the state line's shapes, the route each button
+  // sends, Pause asking once, two instances and a re-read.
+  ['chain_pause_harness.mjs', 18],
+  //
   // Scores that the fields saying 「this list is a SAMPLE」 have a reader, and that the branch
   // the server relies on to compensate for a capped list is still handled. Verified
   // load-bearing: renaming `batch_refresh_required` out from under it drops it to 10/1.
@@ -1207,7 +1211,8 @@ const FLOORS = new Map([
   //    The 16th behaviour assertion is the roster named MEMBER BY MEMBER. A count would stay
   //    green while a member was swapped, and a member is exactly what protects a column.
   ['push_gate_harness.mjs', 34],
-  ['retroactive_view_harness.mjs', 345],
+  // 345 -> 347 (lead 668fa004c): the operation's downstream note reaches its card, as sent.
+  ['retroactive_view_harness.mjs', 347],
   // New with lead a274c90f0: one run is one line of five cells, its result a line under it.
   // Floor is the count it reports on the commit that introduces it.
   ['run_lines_harness.mjs', 19],

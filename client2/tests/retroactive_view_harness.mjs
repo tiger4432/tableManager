@@ -74,6 +74,7 @@ const INVENTORY = {
     {
       op: 'chain_replay', label: mark('label', 'chain_replay'),
       what_is_missing: mark('missing', 'chain_replay'),
+      downstream_note: mark('downstream', 'chain_replay'),
       params: [{ name: 'rule', required: true, type: 'string', help: mark('help', 'rule') }],
       cli: mark('cli', 'chain_replay'),
       cli_only: [mark('cli_only', 'chain_replay#0'), mark('cli_only', 'chain_replay#1')],
@@ -244,6 +245,9 @@ async function suite(source) {
   ok(ops.total.value === 3 && ops.total.text === '3', 'inventory: the headline counts what it lists');
   ok(!ops.empty, 'inventory: a populated payload is not reported as empty');
   ok(view.buildOperationsView({ operations: [] }).empty, 'inventory: an empty payload IS empty');
+  // ac918a451 · lead 668fa004c — what an operation's writes do to the chain reaches its card.
+  ok(opTexts.some((t) => t.text === mark('downstream', 'chain_replay')),
+    'inventory: the downstream note reaches the view, as sent');
 
   // ── H. A PARAMETER WITH A CLOSED SET ──────────────────────────────────────────────
   // 🔴 The declaration carries the set; the client holds NO fallback list. That is the whole
@@ -901,6 +905,8 @@ const swap = (from, to) => (src) => {
 };
 
 const DEFECTS = [
+  ['the downstream note is dropped',
+    swap('downstreamNote: text(spec && spec.downstream_note),', 'downstreamNote: null,')],
   ['bare number reaches the screen',
     swap('affected: affectedLabel ? integer(data.affected) : null,',
       'affected: integer(data.affected),')],

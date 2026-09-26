@@ -229,6 +229,7 @@ const CENSUS_TABLE = new Map([
   ['admin.js :: inputEl.disabled = false', ['BUSY', '응답 뒤 되돌아옴']],
   ['admin.js :: prevPageBtn.disabled = currentPage <= 1', ['END', '첫 쪽 — 총괄 판정']],
   ['admin.js :: nextPageBtn.disabled = currentPage >= maxPage', ['END', '끝 쪽 — 총괄 판정']],
+  ['chain_pause.js :: b.disabled = true', ['BUSY', 'Pause · Resume 보내는 중 — 그 버튼 글자가 Pausing… / Resuming…']],
   ['dom_patch.js :: live.disabled = next.disabled', ['PATCH', '결정이 아니라 복사']],
   ['grid.js :: elements.prevPageBtn.disabled = view.prevDisabled', ['END', '첫 쪽 — 총괄이 `‹ Prev` 로 «직접» 판정']],
   ['grid.js :: elements.nextPageBtn.disabled = view.nextDisabled', ['END', '끝 쪽']],
