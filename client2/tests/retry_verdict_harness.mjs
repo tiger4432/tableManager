@@ -268,13 +268,16 @@ console.log('\n── H. EVERY SEAT THAT READS A COLLECTOR STATUS GIVES THE DRAW
 
 console.log('\n── I. A FILE\'S STATUS READS THE SAME IN LIST, DRAWER, CARD AND TOAST (lead 65f2c808d) ──');
 {
-  const FILE = ['SUCCESS', 'FAILED', 'PENDING_RETRY', 'PROCESSING', 'QUARANTINED'];
+  // The server's file log words (file_ingestion_status.py) plus one it does not have (lead 69aad666e:
+  // SKIPPED was missing; PROCESSING was the active-registry word, not a log status).
+  const FILE = ['SUCCESS', 'FAILED', 'PENDING', 'PENDING_RETRY', 'SKIPPED', 'QUARANTINED'];
   const row = (s) => fileLogRowHtml({ id: 1, status: s, filename: 'f.csv', table_name: 't', retry_count: 0 },
     { withStatus: true, timeStr: '' });
   const badge = (s) => (row(s).match(/<span class="(badge [^"]+)">/) || [])[1];
   const drawerTone = (s) => X.ingestionMessageView(s, '').tone;
   ok('I1 the file list badge is the drawer\'s badge for every word — a waiting file is not red',
-    FILE.every((s) => badge(s) === X.ingestionMessageView(s, '').badgeClass) && badge('PENDING_RETRY') !== badge('FAILED'),
+    FILE.every((s) => badge(s) === X.ingestionMessageView(s, '').badgeClass) && badge('PENDING_RETRY') !== badge('FAILED')
+      && badge('SKIPPED') !== badge('FAILED'),
     FILE.map((s) => [s, badge(s)]));
   ok('I2 Retry is off exactly where the drawer says the file is done',
     FILE.every((s) => row(s).includes('btn-retry-file') === (drawerTone(s) !== 'ok')), FILE.map((s) => [s, row(s).includes('btn-retry-file')]));
@@ -284,8 +287,23 @@ console.log('\n── I. A FILE\'S STATUS READS THE SAME IN LIST, DRAWER, CARD A
     FILE.map((s) => [s, X.statusToastTone(s)]));
   const utils = readFileSync(new URL('../src/utils.js', import.meta.url), 'utf8');
   const ws = readFileSync(new URL('../src/websocket.js', import.meta.url), 'utf8');
-  ok('I5 the card and the toast read those judges', /ok: isDoneStatus\(status\)/.test(utils)
-    && /statusToastTone\(status\)/.test(ws) && /isDoneStatus\(status\) \? \{ dedupeKey/.test(ws), 'a seat still spells SUCCESS itself');
+  ok('I5 the card and the toast read those judges', /fileEndView\(status, filename, errorMsg\)/.test(utils)
+    && /tone: end\.tone,/.test(utils) && /title: end\.title,/.test(utils)
+    && /fileEndView\(status, msg\.filename, msg\.error_msg\)\.toast/.test(ws) && !/msg\.message/.test(ws)
+    && /statusToastTone\(status\)/.test(ws) && /isDoneStatus\(status\) \? \{ dedupeKey/.test(ws),
+  'a seat still spells a status or reads the payload\'s sentence itself');
+  const end = (s) => X.fileEndView(s, 'f.csv', 'already loaded');
+  ok('I6 the end card and toast take the drawer\'s tone for every word', FILE.every((s) => end(s).tone === drawerTone(s)),
+    FILE.map((s) => [s, end(s).tone]));
+  ok('I7 a skipped file is said as skipped — not loaded, not failed (lead 69aad666e)',
+    /skipped/i.test(end('SKIPPED').title) && !/fail|loaded/i.test(end('SKIPPED').title)
+      && new Set(['SUCCESS', 'FAILED', 'SKIPPED'].map((s) => end(s).title)).size === 3,
+    ['SUCCESS', 'FAILED', 'SKIPPED'].map((s) => end(s).title));
+  ok('I8 the toast names the file and the server\'s reason', end('SKIPPED').toast.includes('f.csv')
+    && end('SKIPPED').toast.includes('already loaded') && !X.fileEndView('SUCCESS', 'f.csv').toast.includes('('),
+    end('SKIPPED').toast);
+  ok('I9 a word this screen does not know is said as that word, not as loaded or failed',
+    /QUARANTINED/.test(end('QUARANTINED').title) && end('QUARANTINED').tone === 'warn', end('QUARANTINED'));
 }
 
 console.log('\n── E. THE OUTBOX RETRY REPLY — the server\'s status is the verdict ───────');
@@ -359,6 +377,14 @@ const DEFECTS = [
   ['M18 a waiting file\'s toast reads as a failure',
     swap("return tone === 'ok' ? 'success' : tone === 'danger' ? 'error' : 'warning';",
       "return tone === 'ok' ? 'success' : 'error';")],
+  ['M19 a skipped file is an unknown state again (lead 69aad666e)',
+    swap("  if (spelled === 'SKIPPED') return { state: 'skipped', tone: 'warn', settled: true };", '')],
+  ['M20 a skipped file\'s card and toast say it failed (the old sentence 69aad666e names)',
+    swap("skipped: '⏭️ File skipped'", "skipped: '❌ File load failed'")],
+  ['M21 the end card\'s face stops following the status',
+    swap('return { tone: v.tone, title,', "return { tone: 'danger', title,")],
+  ['M22 the server\'s reason is dropped from the toast',
+    swap('toast: said ? `${head} (${said.slice(0, 100)})` : head', 'toast: head')],
 ];
 
 const CONTROLS = [
@@ -391,7 +417,11 @@ function verdict(M) {
     || M.isFailedStatus('FAIL') !== true || M.isFailedStatus('SKIPPED') !== false
     || M.statusBadgeClass('FAIL') === M.statusBadgeClass('SUCCESS')
     || M.isDoneStatus('PENDING_RETRY') !== false || M.isDoneStatus('SUCCESS') !== true
-    || M.statusToastTone('PENDING_RETRY') !== 'warning';
+    || M.statusToastTone('PENDING_RETRY') !== 'warning'
+    || M.retryVerdict('SKIPPED').state !== 'skipped'
+    || /fail/i.test(M.fileEndView('SKIPPED', 'f').title)
+    || M.fileEndView('SKIPPED', 'f').tone !== 'warn' || M.fileEndView('FAILED', 'f').tone !== 'danger'
+    || !M.fileEndView('SKIPPED', 'f', 'dup').toast.includes('dup');
 }
 
 if (verdict(BASELINE)) die('the scorer already fails on the UNMUTATED module — '

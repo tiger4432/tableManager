@@ -32,7 +32,7 @@
 /**
  * 이 상태가 「무슨 일이 났나」.
  *
- * @returns {{state: 'done'|'failed'|'queued'|'unknown', tone: 'ok'|'danger'|'warn',
+ * @returns {{state: 'done'|'failed'|'queued'|'skipped'|'unknown', tone: 'ok'|'danger'|'warn',
  *            settled: boolean}}
  *   `settled` 는 「이 건이 «끝났나»」입니다 — 대기는 끝난 것이 아니고, 그 구분이 이 파일이
  *   존재하는 이유입니다.
@@ -45,6 +45,8 @@ export function retryVerdict(status) {
   // 🔴 대기는 «성공도 실패도 아닙니다». 워처가 집어 가야 결정됩니다 — 그때까지 이 건은
   //    「끝났다」고 말할 수 없고, 「실패했다」고 말할 수도 없습니다.
   if (spelled === 'PENDING_RETRY') return { state: 'queued', tone: 'warn', settled: false };
+  // Skipped is ended, and neither loaded nor failed (lead 69aad666e) — amber, like the badge.
+  if (spelled === 'SKIPPED') return { state: 'skipped', tone: 'warn', settled: true };
   return { state: 'unknown', tone: 'warn', settled: false };
 }
 
@@ -101,6 +103,21 @@ export const isFailedStatus = (status) => retryVerdict(status).tone === 'danger'
 /** 「Is it done?」 — the file card's ok face and the toast's one-line collapse (lead 65f2c808d),
  *  and the Retry button's off state: today's rule kept, anything not done can be retried. */
 export const isDoneStatus = (status) => retryVerdict(status).state === 'done';
+
+const FILE_END_TITLE = Object.freeze({
+  done: '✅ File loaded', skipped: '⏭️ File skipped', failed: '❌ File load failed',
+});
+
+/** A file's end as the toast and the end card say it (lead 69aad666e) — written here from the
+ *  status, in English; the server sends the status, not a sentence. */
+export function fileEndView(status, filename, reason) {
+  const v = retryVerdict(status);
+  const word = String(status == null ? '' : status).trim();
+  const title = FILE_END_TITLE[v.state] || `❔ File ended ${word || 'without a status'}`;
+  const said = reason == null ? '' : String(reason).trim();
+  const head = [title, filename ? String(filename) : ''].filter(Boolean).join(' — ');
+  return { tone: v.tone, title, toast: said ? `${head} (${said.slice(0, 100)})` : head };
+}
 
 /** The toast word for a status, from its tone — a file's end toast says what its badge says. */
 export function statusToastTone(status) {

@@ -2629,10 +2629,9 @@ class IngestionHandler(FileSystemEventHandler):
         dest_path = self._archive_file(file_path)
         self._log_ingestion_record(file_path, dest_path or file_path, t_name, "SKIPPED", reason)
         if self.on_file_processed_callback:
-            # 콜백 status는 "SUCCESS" — 수신부(main.py)가 SUCCESS 외 전부를 "처리 실패"
-            # 문구로 렌더링하므로, 실패가 아닌 스킵을 FAILED로 오표기하지 않기 위함이다.
-            # 스킵 사실은 detail 문자열과 FileIngestionLog status="SKIPPED"로 명시된다.
-            self.on_file_processed_callback(t_name, basename, "SUCCESS", reason)
+            # The real status (총괄 69aad666e, reversing the old "SUCCESS" here): the receiver no
+            # longer builds a SUCCESS / failure sentence - the screen reads SKIPPED as skipped.
+            self.on_file_processed_callback(t_name, basename, "SKIPPED", reason)
         return True
 
     def _plan_checkpoint(self, signature, basename, abs_path, t_name,

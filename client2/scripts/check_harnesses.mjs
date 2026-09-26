@@ -967,7 +967,9 @@ const FLOORS = new Map([
   // whether a failed row is retried or parked; a floor drop means fewer of its states are
   // separated, and the states that collapse first are the ones that look alike.
   // 29 -> 35 (lead f063c948e): the outbox retry reply is judged by its status - five checks, two mutants.
-  ['retry_verdict_harness.mjs', 61],
+  // 61 -> 65 (lead 69aad666e): SKIPPED is its own end - the file words gain SKIPPED and PENDING, and
+  // the card and toast sentence is judged here (four checks, four mutants).
+  ['retry_verdict_harness.mjs', 65],
   //
   // The Auto Update row's Backfill cell (lead 09f0be40f): the window's three states, this
   // collector's latest run read through buildRunsView, and what the page keeps drawn and escaped.

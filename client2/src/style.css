@@ -1751,6 +1751,17 @@ body.resizing-active .history-sidebar {
   background: var(--danger);
 }
 
+/* Skipped: ended, neither loaded nor failed */
+.progress-card.status-warning {
+  border-color: var(--warning);
+}
+.progress-card.status-warning .progress-title {
+  color: var(--warning);
+}
+.progress-card.status-warning .progress-bar {
+  background: var(--warning);
+}
+
 /* Column Selector Dropdown Styling */
 #column-selector-dropdown {
   padding: 12px;

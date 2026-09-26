@@ -9,7 +9,7 @@ import { checkServerHealth, loadTables, fetchData } from './api.js';
 import { showIngestionProgress, finishIngestionProgress, showRetroactiveProgress,
          finishRetroactiveProgress, showToast, getLocalTimeString } from './utils.js';
 import { updateSelectedCellUI, updatePageCacheOnUpsert, updatePageCacheOnDelete } from './ui.js';
-import { isDoneStatus, statusToastTone } from './retry_verdict.js';
+import { fileEndView, isDoneStatus, statusToastTone } from './retry_verdict.js';
 import { triggerHistoryReloadDebounced, appendHistoryLocally } from './timeline.js';
 import { updateGridSortState, updateLoadedCount, updatePaginationUI } from './grid.js';
 import { chainRefreshNote } from './chain_refresh_note.js';
@@ -368,7 +368,8 @@ export function handleWebSocketMessage(msg) {
 
   if (msg.event === 'file_ingestion_completed') {
     const status = msg.status || 'SUCCESS';
-    const message = msg.message || 'File processed';
+    // The sentence is the screen's, from the status (lead 69aad666e) — the payload has none.
+    const message = fileEndView(status, msg.filename, msg.error_msg).toast;
     // 데모 수집기가 2~3분마다 도는 환경에서 이 알림이 가장 많이 쌓인다 →
     // **성공은 한 줄로 집계**하고(dedupeKey), 실패는 집계하지 않아 개별 사유가 남게 한다.
     // The toast says what the file's badge says (retry_verdict, lead 65f2c808d).

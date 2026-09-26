@@ -487,7 +487,7 @@ def test_duplicate_signature_is_skipped_with_explicit_record(p2_env):
     # 1) 적재 자체가 일어나지 않았다
     assert applied == []
     # 2) 무음이 아니다 — 통지 detail + FileIngestionLog(status=SKIPPED)
-    assert notified[-1][1] == "SUCCESS"           # 실패가 아님을 수신부에 정확히 전달
+    assert notified[-1][1] == "SKIPPED"           # 실제 상태 그대로 (총괄 69aad666e — 옛 "SUCCESS" 우회를 뒤집음)
     assert "[dedup-skip]" in (notified[-1][2] or "")
     logs = _ingestion_logs(p2_env)
     assert logs[-1].status == "SKIPPED"
