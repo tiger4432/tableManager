@@ -33849,3 +33849,26 @@ python -c "import sys,pytest;P=type('P',(),{'pytest_collection_modifyitems':lamb
         (상태 -> 톤이 두 벌 — 34584806 · b86d4f16 이 수집기 쪽에서 닫은 것과 같은 모양)
 안 잰 것 목록에 PENDING_RETRY · PROCESSING 행이 실제로 오는지 · 끝 카드 · 토스트가 SUCCESS · FAILED 말고 다른 낱말을 받는지
 ```
+
+---
+
+## 후 — 2 (749318c94 · 워처 09:13:18 기동) · 전은 7787ec367 · 93b0318d3 (09-26 09:15)
+
+같은 파일 · 같은 명령. 파일 셋 × 파서 길 둘 중 박스에서 잰 넷:
+
+| 칸 | 전 | 후 |
+|---|---|---|
+| 커스텀 × 전부 (large_table_100) | SUCCESS · 문장 없음 | **FAILED** · 「No column of this file is declared on 'large_table_100', so nothing was written - dropped appaudit_extra, col_1, item_id. Declare the columns on the table, or send the file to the table that declares them.」 ✓ |
+| 표준 × 전부 (wafer_id_status) | FAILED · 트레이스백 16 줄 | **FAILED** · 한 줄 — 위와 같은 문장(표 · 칸 이름만 다름) ✓ |
+| 커스텀 × 일부 (production_plan) | SUCCESS · 문장 없음 | SUCCESS · 「Dropped 1 undeclared column(s) over 1 row(s): appaudit_extra=1 (name=non-blank values discarded).」 ✓ |
+| 표준 × 일부 (wafer_id_status) | SUCCESS · 문장 없음 | SUCCESS · 위와 같은 문장 ✓ |
+
+```
+같은 문자열  전부 두 길 — 표 이름과 칸 목록을 자리표시자로 바꾸면 글자가 같음(True)
+            일부 두 길 — 같은 칸 이름이라 글자까지 같음
+쓴 행       일부 두 칸은 전처럼 행 1 (production_plan 은 체인 inventory_master 1) · 선언 없는 칸은 표에 안 생김
+되돌림      제 행 셋(wafer_id_status · production_plan · inventory_master) 행 삭제 200 -> APPAUDIT 0 · 워크스페이스 제 파일 넷 지움
+            파일 기록 줄 넷(22389–22392)은 남음
+보고만      일부 버림 문장의 괄호 「(name=non-blank values discarded)」 는 「이름=버린 값 수」 라는 범례입니다 —
+            읽는 사람에게는 appaudit_extra 라는 «이름»이 non-blank values discarded 라는 뜻으로 읽힙니다
+```
