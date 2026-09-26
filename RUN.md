@@ -1,5 +1,20 @@
 # 지금 돌리면 되는 것
 
+> ## 🔴 [09-26 오후 6] **수집기 선언 점검 — Declarations 에 collector 영역 · 짝이 안 맞는 스크립트는 로드 거절 — 마이그레이션 «없음» · 재기동 스케줄러 · API**
+>
+> ```
+> 거절       # window: 는 있는데 {{WINDOW_START}} · {{WINDOW_END}} 가 없음 / 마커는 있는데 # window: 가 없음 / window 가 <n>d · <n>h 가 아님
+>            {{LIST:표.칸}} 의 칸이 table_config 에 없음 · 날짜 칸임
+>            -> 그 수집기는 스케줄러에 안 올라감(Auto Update 탭 목록에서 빠짐)
+> 볼 곳      스케줄러 로그  "[Collector] '<표>/<스크립트>' is not loaded - <문장>"
+>            Declarations -> "Auto update collectors (script markers)" 영역의 rejected — 같은 문장
+> 이 박스    착지 전 잼: 수집기 10 개 전부 fine · rejected 0 (마커를 쓰는 스크립트가 없음)
+> 줄이 나오면  스크립트 머리 · 마커를 짝으로 맞추거나, 목록 칸을 table_config 에 선언(글자 · 숫자 칸)
+> 되돌리기    git revert 뒤 스케줄러 · API 재기동. 쓰는 것 없음(판정만)
+> ```
+
+---
+
 > ## 🔴 [09-26 오후 5] **수집기 스크립트의 목록 마커 {{LIST:표.칸}} — 마이그레이션 «없음» · 재기동 스케줄러(run_auto_update)**
 >
 > ```

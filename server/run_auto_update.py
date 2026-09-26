@@ -8,8 +8,7 @@ import re
 import json
 import threading
 from abc import ABC, abstractmethod
-from datetime import datetime, timedelta
-from zoneinfo import ZoneInfo
+from datetime import datetime
 
 from croniter import croniter
 
@@ -20,6 +19,10 @@ from utils import heartbeat
 import paths  # single override point (ASSY_DATA_ROOT)
 import config_backup
 import event_constants
+from collector_markers import (
+    CollectorRefused, collector_scripts, fill_markers, filled_copy_path, parse_script_comments,
+    script_refusals, usual_window, window_length)
+
 logger = get_process_logger("Scheduler", "auto_update.log")
 
 #: `last_error` of a run whose scheduler died before it finished (총괄 bfcf2a7ba 3-ㄴ).
@@ -391,132 +394,6 @@ class GenericScriptRunnerCollector:
             self.logger.error(f"Fatal: Failed to execute script runner via subprocess: {e}")
             raise e
 
-#: The zone every collector window is computed in, whatever the box's clock says
-#: (소유자 2026-09-26 「KST」 - the dates an operator writes are KST too).
-WINDOW_ZONE = ZoneInfo("Asia/Seoul")
-#: How a window is written into a script whose header has no `# window_format:`.
-DEFAULT_WINDOW_FORMAT = "%Y-%m-%d %H:%M:%S"
-#: `{{LIST:table.column}}` - the grid's values of that column, as a quoted SQL list.
-LIST_MARKER = re.compile(r"\{\{LIST:([A-Za-z0-9_]+)\.([A-Za-z0-9_]+)\}\}")
-#: The most values a list marker carries. A longer list refuses the run rather than being cut.
-LIST_MARKER_CAP = 1000
-
-
-class CollectorRefused(ValueError):
-    """A run that must not start. Its message is the one sentence the Auto Update tab shows."""
-
-
-def window_length(declared: str) -> timedelta:
-    """`# window: 1d` -> its length. Days or hours; anything else is refused by name."""
-    match = re.fullmatch(r"\s*(\d+)\s*([dh])\s*", str(declared or ""))
-    if not match or int(match.group(1)) <= 0:
-        raise CollectorRefused("'# window: %s' is not a length - write it as <n>d or <n>h"
-                               % (declared,))
-    amount = int(match.group(1))
-    return timedelta(days=amount) if match.group(2) == "d" else timedelta(hours=amount)
-
-
-def usual_window(length: timedelta, now: datetime = None) -> tuple:
-    """The window a scheduled run fills: the `length` that ends now, in KST
-    (소유자 2026-09-26 「지금-24h ~ 지금」 for `# window: 1d`)."""
-    end = (now or datetime.now(WINDOW_ZONE)).astimezone(WINDOW_ZONE)
-    return end - length, end
-
-
-def _list_literal(db, table: str, column: str) -> str:
-    """The grid's values of `table.column` as `'a','b'` - read through the value door the
-    grid's own suggestions use, asked for up to LIST_MARKER_CAP values. Blank values are
-    not in it; an empty, cut or unreadable list refuses the run by name."""
-    import value_suggest
-
-    marker = "{{LIST:%s.%s}}" % (table, column)
-    settings = dict(value_suggest.resolve_settings(value_suggest.load_config()),
-                    max_limit=LIST_MARKER_CAP, min_prefix_length=0)
-    settings["max_probe_values"] = max(settings["max_probe_values"], LIST_MARKER_CAP + 1)
-    try:
-        got = value_suggest.suggest_values(db, table, column, prefix="",
-                                           limit=LIST_MARKER_CAP, settings=settings)
-    except value_suggest.SuggestValidationError:
-        raise CollectorRefused("%s is not a column the grid can list - declare '%s.%s' in "
-                               "table_config (text or number). The run did not start."
-                               % (marker, table, column))
-    if got.get("unavailable_reason"):
-        raise CollectorRefused("%s could not be read (%s). The run did not start."
-                               % (marker, got["unavailable_reason"]))
-    if got.get("truncated"):
-        raise CollectorRefused("%s has more than %d values, so the list would be cut. The run "
-                               "did not start." % (marker, LIST_MARKER_CAP))
-    if not got.get("values"):
-        raise CollectorRefused("%s has no value in '%s'. The run did not start."
-                               % (marker, table))
-    return ",".join("'%s'" % str(value).replace("'", "''") for value in got["values"])
-
-
-def fill_markers(text: str, window: tuple = None, window_format: str = None,
-                 session_factory=None) -> str:
-    """The ONE place a collector script's markers are filled - every marker kind goes
-    through here, so a script sees one set of values whichever path runs it."""
-    if window:
-        fmt = window_format or DEFAULT_WINDOW_FORMAT
-        start, end = window
-        text = (text.replace("{{WINDOW_START}}", start.strftime(fmt))
-                    .replace("{{WINDOW_END}}", end.strftime(fmt)))
-    if LIST_MARKER.search(text):
-        if session_factory is None:
-            from database.database import SessionLocal as session_factory
-        db = session_factory()
-        read = {}
-
-        def literal(match):
-            if match.group(0) not in read:        # the same marker twice is read once
-                read[match.group(0)] = _list_literal(db, match.group(1), match.group(2))
-            return read[match.group(0)]
-        try:
-            text = LIST_MARKER.sub(literal, text)
-        finally:
-            db.close()
-    return text
-
-
-def filled_copy_path(script_path: str) -> str:
-    """Where the stdout path runs its filled copy: beside the original, so the script's
-    sibling imports still resolve, and not `*.py`, so discovery never registers it."""
-    return "%s.%d.filled" % (script_path, os.getpid())
-
-
-def parse_script_comments(script_path: str) -> dict:
-    """
-    파이썬 파일의 상단 20줄을 스캔하여 주석에 적힌 크론 일정 및 파일명 접두사 설정값을 반환합니다.
-    """
-    config = {
-        "schedule": None,
-        "filename_prefix": os.path.basename(script_path)[:-3],
-        "window": None,
-        "window_format": None,
-    }
-    try:
-        with open(script_path, "r", encoding="utf-8") as f:
-            for _ in range(20):
-                line = f.readline()
-                if not line:
-                    break
-                line = line.strip()
-                if line.startswith("#"):
-                    content = line[1:].strip()
-                    if ":" in content:
-                        key, val = content.split(":", 1)
-                        key = key.strip().lower()
-                        val = val.strip()
-                        if key == "schedule":
-                            config["schedule"] = val
-                        elif key == "filename_prefix":
-                            config["filename_prefix"] = val
-                        elif key in ("window", "window_format"):
-                            config[key] = val
-    except Exception as e:
-        logger.warning(f"Failed to parse script comments for {script_path}: {e}")
-    return config
-
 class MultiDiscoveryScheduler:
     """
     ingestion_workspace/*/auto_update/*.py 디렉토리를 통합 모니터링하며,
@@ -578,19 +455,8 @@ class MultiDiscoveryScheduler:
                 logger.warning(f"Ingestion workspace directory not found at: {self.workspace_dir}")
                 return
 
-            for table_name in os.listdir(self.workspace_dir):
-                table_path = os.path.join(self.workspace_dir, table_name)
-                if not os.path.isdir(table_path):
-                    continue
-
-                auto_update_path = os.path.join(table_path, "auto_update")
-                if not os.path.exists(auto_update_path) or not os.path.isdir(auto_update_path):
-                    continue
-
-                for filename in os.listdir(auto_update_path):
-                    if filename.endswith(".py"):
-                        script_path = os.path.join(auto_update_path, filename)
-                        self._load_collector_from_script(table_name, script_path)
+            for table_name, script_path in collector_scripts(self.server_dir):
+                self._load_collector_from_script(table_name, script_path)
 
             # 복원
             for col in self.collectors:
@@ -617,8 +483,14 @@ class MultiDiscoveryScheduler:
         없으면 리플렉션을 통해 BaseCollector 클래스를 로드합니다.
         """
         comment_config = parse_script_comments(script_path)
-        
+
         if comment_config["schedule"]:
+            # The Declarations report asks this same judge and shows the same sentence.
+            refusals = script_refusals(script_path, comment_config)
+            if refusals:
+                logger.error("[Collector] '%s/%s' is not loaded - %s", table_name,
+                             os.path.basename(script_path), " | ".join(refusals))
+                return
             try:
                 cron_expr = comment_config["schedule"]
                 croniter(cron_expr)

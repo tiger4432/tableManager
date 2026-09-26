@@ -993,7 +993,10 @@ DOMAIN_LEDGER = "ledger"
 
 #: One English title per domain (lead 909ea2052 ②) — three domains are built in two places each,
 #: and a literal per call site is how two builds of one domain come to say two names.
+DOMAIN_COLLECTOR = "collector"
+
 DOMAIN_TITLES = {
+    DOMAIN_COLLECTOR: "Auto update collectors (script markers)",
     DOMAIN_CHAIN: "Derived (chain rules)",
     DOMAIN_ENRICHMENT: "Enrichment auto-confirm",
     DOMAIN_NOTATION: "Notation normalisation",
@@ -1227,6 +1230,43 @@ def _resolve_walk() -> dict:
                         effective, ineffective, rejected)
 
 
+def _resolve_collector() -> dict:
+    """수집기 — 스크립트가 적은 머리 · 마커가 «돌 수 있는 모양»인가.
+
+    🔴 판정은 `collector_markers.script_refusals` 하나입니다. 스케줄러가 로드 때 같은 함수를
+    불러 거절한 수집기를 안 올리므로, 이 줄과 스케줄러 로그가 같은 문장을 냅니다.
+    ⚠️ `run_auto_update` 를 import 하지 않습니다 — 그 모듈은 import 때 프로세스의 프록시
+    환경을 바꿉니다. 판정이 따로 사는 이유가 그것입니다.
+    """
+    import collector_markers
+    import paths
+
+    effective, rejected = [], []
+    workspace = os.path.join(paths.DATA_ROOT, "ingestion_workspace")
+    sources = [source("collectors", workspace,
+                      "Where collector scripts live - each auto_update/*.py under a table "
+                      "folder is one collector.")]
+    for table, path in collector_markers.collector_scripts(paths.DATA_ROOT):
+        name = "%s/%s" % (table, os.path.basename(path))
+        header = collector_markers.parse_script_comments(path)
+        if not header["schedule"]:
+            continue    # a class collector writes no marker - nothing here to judge
+        why = collector_markers.script_refusals(path, header)
+        if why:
+            rejected.append(entry(
+                SCOPE_FILE, name,
+                "Collector `%s` is not loaded - %s%s"
+                % (name, why[0], " (and %d more)" % (len(why) - 1) if len(why) > 1 else ""),
+                reason=REASON_MAPPING_UNAVAILABLE, fields={"issues": why}))
+            continue
+        effective.append(entry(
+            SCOPE_FILE, name, "`%s` runs on '%s'%s." % (
+                name, header["schedule"],
+                " and fills a %s window" % header["window"] if header["window"] else "")))
+    return build_domain(DOMAIN_COLLECTOR, DOMAIN_TITLES[DOMAIN_COLLECTOR], sources, [],
+                        effective, [], rejected)
+
+
 _RESOLVERS = {
     # ⓐ 셀업 순서의 첫 걸음. 이 dict 의 순서는 이제 대표를 고르지 않습니다(S-180 ⓐ-0).
     DOMAIN_CATALOG: _resolve_catalog,
@@ -1236,6 +1276,7 @@ _RESOLVERS = {
     DOMAIN_BINDING: _resolve_binding,
     DOMAIN_LEDGER: _resolve_ledger,
     DOMAIN_WALK: _resolve_walk,
+    DOMAIN_COLLECTOR: _resolve_collector,
 }
 
 

@@ -20,6 +20,7 @@ from sqlalchemy.pool import StaticPool
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
+import collector_markers as cm                                             # noqa: E402
 import run_auto_update as rau                                              # noqa: E402
 from conftest import retire_dynamic_model                                  # noqa: E402
 from database import crud, models, schemas                                 # noqa: E402
@@ -120,22 +121,22 @@ def test_an_empty_list_refuses_the_run_by_name(tmp_path, grid):
 
 def test_a_list_longer_than_the_cap_refuses_rather_than_cutting(tmp_path, grid):
     factory, write = grid
-    write(["P%05d" % i for i in range(rau.LIST_MARKER_CAP + 1)])
+    write(["P%05d" % i for i in range(cm.LIST_MARKER_CAP + 1)])
 
     said = _refused(tmp_path, factory)
 
-    assert "has more than %d values" % rau.LIST_MARKER_CAP in said
+    assert "has more than %d values" % cm.LIST_MARKER_CAP in said
 
 
 def test_a_list_of_exactly_the_cap_is_filled(tmp_path, grid):
     factory, write = grid
-    write(["P%05d" % i for i in range(rau.LIST_MARKER_CAP)])
+    write(["P%05d" % i for i in range(cm.LIST_MARKER_CAP)])
     collector = _collector(tmp_path, 'out = [{"parts": "%s"}]\n' % MARKER, factory)
 
     collector.execute()
 
     [row] = list(csv.DictReader(io.StringIO(_raw(collector))))
-    assert row["parts"].count(",") == rau.LIST_MARKER_CAP - 1
+    assert row["parts"].count(",") == cm.LIST_MARKER_CAP - 1
 
 
 def test_an_undeclared_column_refuses_by_name(tmp_path, grid):

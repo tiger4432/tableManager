@@ -19,6 +19,7 @@ import pytest
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
+import collector_markers as cm                                             # noqa: E402
 import run_auto_update as rau                                              # noqa: E402
 
 TABLE = "window_probe_tbl"
@@ -67,12 +68,12 @@ def test_the_header_is_read_with_the_colons_of_its_format(tmp_path):
 
 def test_the_usual_window_is_the_last_day_ending_now_in_kst():
     start, end = rau.usual_window(rau.window_length("1d"), now=NOW)
-    assert (start.strftime(rau.DEFAULT_WINDOW_FORMAT),
-            end.strftime(rau.DEFAULT_WINDOW_FORMAT)) == (FILLED["start"], FILLED["end"])
+    assert (start.strftime(cm.DEFAULT_WINDOW_FORMAT),
+            end.strftime(cm.DEFAULT_WINDOW_FORMAT)) == (FILLED["start"], FILLED["end"])
     assert end - start == timedelta(hours=24)
     # ⚠️ this box's own clock is KST, so the strings alone cannot tell KST from 「the box's
     #    zone」 - the zone the window carries is what says which one was asked
-    assert end.tzinfo == rau.WINDOW_ZONE
+    assert end.tzinfo == cm.WINDOW_ZONE
 
 
 @pytest.mark.parametrize("declared,length", [("1d", timedelta(days=1)),
@@ -122,18 +123,21 @@ def test_a_scheduled_run_fills_the_last_24_hours(tmp_path):
 
     assert collector.last_status == "SUCCESS", collector.last_error
     [row] = _rows(collector)
-    start, end = (datetime.strptime(row[k], rau.DEFAULT_WINDOW_FORMAT) for k in ("start", "end"))
+    start, end = (datetime.strptime(row[k], cm.DEFAULT_WINDOW_FORMAT) for k in ("start", "end"))
     assert end - start == timedelta(hours=24)
-    now_kst = datetime.now(rau.WINDOW_ZONE).replace(tzinfo=None)
+    now_kst = datetime.now(cm.WINDOW_ZONE).replace(tzinfo=None)
     assert timedelta(0) <= now_kst - end < timedelta(minutes=1)
 
 
-def test_a_script_that_declares_no_window_runs_as_it_did(tmp_path):
-    path = _plant(tmp_path, EXEC_BODY, header="# schedule: * * * * *\n")
+def test_a_script_with_no_window_and_no_markers_runs_as_it_did(tmp_path):
+    """Every collector on this box has this shape. (Markers WITHOUT the header are refused at
+    load since step 3 - `test_a_collector_script_is_judged_once`.)"""
+    _plant(tmp_path, 'out = [{"a": "1"}]\n', header="# schedule: * * * * *\n")
     scheduler = rau.MultiDiscoveryScheduler(server_dir=str(tmp_path))
     scheduler.discover_and_load_collectors()
     [collector] = scheduler.collectors
 
     scheduler.execute_collector(collector)
 
-    assert _rows(collector) == [{"start": "{{WINDOW_START}}", "end": "{{WINDOW_END}}"}]
+    assert collector.last_status == "SUCCESS", collector.last_error
+    assert _rows(collector) == [{"a": "1"}]
