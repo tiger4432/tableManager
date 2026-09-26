@@ -763,8 +763,10 @@ publish_parser(name, read_body, process_body, file=…, …)      «같은 프�
     "list_columns": ["chip_count", "lot_hint"],  // 선택: 워크리스트 표시 단서(배치 내 대표값)
     "aggregations": {                            // 선택(서버 전용): 그 키 그룹의 집계 — 영향 키 한정 재계산(멱등)
       "chip_count": "count",                     //   행을 센다 (컬럼 없음)
-      "bonding_time_min": {"fn": "min",          //   count | min | max (S-129, 2026-09-10)
-                           "column": "bonding_time"}   //   min/max 는 «소스» 컬럼을 읽는다
+      "bonding_time_min": {"fn": "min",          //   count | min | max | unique_concat (09-26 5dee85a5b)
+                           "column": "bonding_time"},  //   min/max/unique_concat 는 «소스» 컬럼을 읽는다
+      "wafer_ids": {"fn": "unique_concat",       //   빈 값 빼고 · 중복 없이 · 값 순서로 이어붙임
+                    "column": "wafer_id", "separator": ", "}   //   separator 는 선택(기본 ", "), unique_concat 만 받음
     },
     "reference_views": [
       { "label": "lot event",
