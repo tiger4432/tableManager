@@ -1,3 +1,79 @@
+> ## [21:40 디자인] 비상 정지 화면 착지 (e4d28394c + 42760b427) — Overview · Chain 탭에 Pause / Resume, 소급 탭의 치워 두기 둘 — 총괄 668fa004c
+
+### 착지 e4d28394c + 42760b427
+
+```
+42760b427 은 e4d28394c 의 결함 하나를 닫음 — 총괄이 먼저 병합해서 뒤따르는 커밋으로
+   묻는 중(Pause now / Cancel)에 다른 곳에서 멈추고 다시 풀면, 누르지도 않은 확인이 다시 떴음
+   상태(Pause ↔ Resume)가 바뀌면 묻던 것을 버림 · 하니스 C4 + 변이 M9
+```
+
+```
+자리       부품 하나(chain_pause.js ChainPauseControl) · 인스턴스 둘 — Overview 의 Queue 절 맨 위 · Chain 탭 맨 위
+          대기열 패널과 같은 모양: 새로 고칠 때마다 읽기 한 번 → 두 인스턴스에 같은 답
+읽기       GET /admin/chain/pause(요청 상태) + /health 의 checks.workers.chain(워커 낱말) — 대기열 읽기 옆에서 같이 시작
+          각자 따로 실패함: 라우트 없는 옛 서버(404)면 그 줄이 「Pause state unreadable — Old server build · restart it (HTTP 404)」, 탭은 그대로 뜸
+상태 줄    아무것도 요청 안 됨      Running (초록) · 버튼 Pause chain
+          요청 · 워커도 멈춤       Paused by <by> at <at> (server time) · <사유> (주황) · 버튼 Resume chain
+          요청했는데 워커는 도는 중  위 줄 + 「Worker: <health 의 낱말> · not paused yet」 — 낱말은 /health 것 그대로(ok · stalled · down · wedged …), detail 은 툴팁
+                               워커가 죽어 있으면 「Worker: down · not paused yet」 — 더 큰 판정이 이기는 그대로
+          풀었는데 워커가 아직 멈춤  Running + 「Worker: paused · takes the queue on its next tick」
+          상태를 못 읽음          「Pause state unreadable — <까닭>」 · Pause 는 그대로 누를 수 있음(멈추기는 어느 상태에서도 안전)
+Pause     사유 칸(선택) → Pause chain → 한 줄 확인 「Pause the chain? It takes no new work until Resume. Nothing queued is lost.」 → Pause now / Cancel
+Resume    한 번 누름 — 되돌릴 수 있는 일이라 확인 없음
+보냄       POST /admin/chain/pause {reason} · POST /admin/chain/resume — 성공하면 답의 paused 로 두 인스턴스를 바로 다시 그림
+          거절은 서버 문장 그대로 그 인스턴스의 줄에 남김(토큰 문제 · 404 등은 기존 분류기 한 자리)
+          자동 새로 고침(30 초)이 타이핑 중인 사유 칸을 안 지움 — 상태가 바뀔 때만 버튼 줄을 다시 그림
+```
+
+```
+소급 탭    set_aside · rerun_set_aside — 등록부 폼으로 그려짐을 확인
+             연산 목록을 이름으로 거르는 곳 없음(buildOperationsView 는 받은 목록 그대로) · csv 칸은 보통 입력 칸 · reason 은 「필수」 칩
+             「셋 중 하나 이상」은 서버가 판정 — count · run 둘 다 거절 문장을 그 카드에 올림(두 경로 다 retroFailureLine — 열어 봄)
+          🔴 빠져 있던 것 하나 — 연산마다 오는 downstream_note(ac918a451 에서 생김)를 화면이 «아무 데서도» 안 그리고 있었음
+             그래서 치워 두기 카드에 「Events set aside do not run - put them back with …」 가, 다시 돌리기 카드에 「… cascades like the chain would have」 가 없었음
+             카드의 «왜» 문장 바로 아래 한 줄로 그림 — 모든 연산 같은 자리, 이름 가르기 없음
+```
+
+```
+하니스     chain_pause 19 (새로 · 변이 9/9 · 대조 2/2)
+             A 상태 줄 일곱 모양(지시의 셋 + 반대 방향 · 못 읽음 · 워커 못 읽음 · 시각/사유 없음)
+             B 버튼마다 라우트 · Pause 는 묻고 나서만 보냄 · Cancel 은 안 보냄 · 거절 문장이 줄에 남음
+             C 두 인스턴스 간섭 없음 · 새로 고침이 사유 칸을 안 지움 · 상태가 바뀌면 묻던 확인을 버림
+             변이 M1 워커 줄 안 그림 · M2 멈춤에 Pause · M3 묻지 않고 보냄 · M4 사유 안 보냄 · M5 Resume 이 pause 로 · M6 못 읽음에 Pause 숨김 · M7 새로 고침이 칸을 지움 · M8 「server time」 빠짐 · M9 확인이 상태 변화를 넘어 남음
+           retroactive_view 347 (345 에서) — downstream_note 가 그대로 도착 · 변이(뺌) 잡힘
+           disabled_reason 25 — 끄는 자리가 하나 늘어 분류표에 한 줄(BUSY: 보내는 중 · 버튼 글자가 Pausing… / Resuming…)
+           전체 게이트 초록(143 게이트) · 빌드 exit 0
+서버       안 건드림
+번들 admin-CCuwHoPq.js · chain_queue_panel-BlTAQn9G.js · main-BQwy_PPY.js (e4d28394c 가 셋, 고친 커밋이 admin 하나를 다시)
+```
+
+```
+⚠️ 사실 둘 — 서버 쪽
+   누구   화면은 X-User 머리를 안 보냄(어드민 전체가 그렇다) → by 는 늘 「operator」. 사람 이름을 화면이 지어내지 않음
+   언제   at 은 서버가 time.strftime 으로 쓴 «영역 없는 서버 현지 시각» → 바꾸지 못해 그대로 적고 「(server time)」 을 붙임
+⚠️ 읽을 때   Pause 를 누른 «직후» 30 초(다음 자동 새로 고침까지)는 「Worker: ok · not paused yet」 이 워커가 받았든 아니든 뜸
+            누른 뒤 상태는 답으로 바로 그리지만 워커 낱말은 지난 읽기 것 — 「아직 안 받음」과 「화면이 아직 안 읽음」이 그동안 같아 보임
+            고치는 법: 보낸 뒤 몇 초 뒤 /health 를 한 번 더 읽기 — 안 지음(아래 제안표 첫 줄)
+⚠️ 여실 때   API 재기동(312e8440a) 뒤 번들 — 먼저 나가면 두 줄이 「Old server build · restart it」 을 띄울 뿐 탭은 뜸
+⚠️ 못 한 것   화면을 열어 보지 못했습니다(이 워크트리는 미리보기 서버를 못 띄움 · 누르면 박스 체인이 멈춤). 소유자 크롬 확인은 총괄
+```
+
+### 여쭐 것
+
+```
+사유 칸   지시는 「사유 입력 뒤 확인 한 번」 — 저는 비워도 Pause 되게 뒀습니다(서버 기본값 "" · 비상시 한 칸 더 막지 않으려고)
+          필수로 할까요
+```
+
+### UX 제안표 — 「5 분 쓰면 무엇이 짜증나나」 (짓지 않음)
+
+| 항목 | 왜 | 크기 |
+|---|---|---|
+| 누른 뒤 워커 줄이 30 초 남음 | Pause 직후 「not paused yet」 이 다음 자동 새로 고침까지 그대로 — 몇 초 뒤 한 번 더 읽으면 바로 풀림 | 안 쟀다 |
+| 누가 멈췄나 | by 가 늘 operator — 사람 이름이 필요하면 어드민이 X-User 를 보내야 함(토큰 모달에 이름 한 칸) | 안 쟀다 |
+| Chain 탭에서 치워 두기로 | 멈춘 뒤 다음 할 일이 대개 치워 두기인데 소급 탭에 있음 — Pause 줄에 「Set aside ›」 이동 버튼 하나 | 안 쟀다 |
+
 > ## [20:49 디자인] 그리드 클릭 리플레이가 cascade: true 를 보냄 (d3659ec09) — 총괄 ece405110
 
 ### 착지 d3659ec09
