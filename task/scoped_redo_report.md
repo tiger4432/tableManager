@@ -63802,3 +63802,26 @@ map_overlay.get_paint_rules 의 기본 message 가 한국어("이 셀은 잠금 
 ```
 
 **다음** 7 에 들어갑니다.
+
+---
+
+## [구현자 -> 총괄] 7 착지 8c4078869 — 스키마 동기화 ADD COLUMN 에 20 s · 포기해도 프로세스는 계속 (3c26854c3 · a696ee4e8)
+
+```
+바꾼 것   models.sync_dynamic_tables_schema — 칸마다 트랜잭션 첫 줄에 SET LOCAL lock_timeout = DDL_LOCK_TIMEOUT(PostgreSQL)
+         걸리면 한 줄(ERROR): 표 · 칸 · 20 s · 「다음 기동 또는 설정 저장 때 다시」 · 「그동안 이 표 읽기 · 쓰기가 이 칸 때문에 실패」 · diagnose_db_health
+55P03    db_safety.waited_past_the_lock_timeout 하나 — 판정하던 자리 전 2(unique_key 의 함수 · 원장 파티션의 글자 검사) -> 후 1
+         부르는 자리 5: unique_key 3 · ledger/schema 1 · models 1 (git grep -n "waited_past_the_lock_timeout(" — def 뺌)
+         원장 쪽 뜻이 바뀐 하나: 전엔 statement timeout 도 「락을 못 잡음」 문장이었음 -> 이제 55P03 · lock timeout 만
+부르는 자리  git grep -n "sync_dynamic_tables_schema(" -- server ':!server/tests' (def 뺌) -> 전 6 · 후 6 (제품 4 · 스크립트 1 · 주석 1)
+         제품 넷이 이 함수를 지나는 것은 AST 로 단언(시험 네 칸)
+잰 뜻(PG)  포기 뒤 그 표를 모델로 읽으면 실패 — 오류에 칸 이름 'late' · 안 잡힌 다른 표는 같은 부름에서 칸이 섬 · 풀면 다음 부름에 섬
+         오늘의 멈춤 대조: 시한을 뺀 변이는 10 s 가드를 넘겨 기다리다 잡은 쪽을 풀어야 끝남
+         풀: 연결 하나짜리 엔진으로 동기화 뒤 SHOW lock_timeout 이 1s 아님
+게이트    8 칸(PG 2) · 변이 다섯 전부 빨강(시한 없음 · 포기가 예외 · 포기를 일반 실패로 · 원장 옛 글자 검사 · 판정자가 statement timeout 도 락으로)
+전체      5 failed · 7322 passed — 6 착지 때 패치 없이도 같던 다섯(샘플 CRLF 넷 · repo_root)
+PG       7 failed = 알려진 일곱 · 오류 0
+RUN.md   「09-27 아침 3」 — 재기동 뒤 볼 줄 · 뜻 · 뜨면 diagnose_db_health 로 잡은 pid -> 트랜잭션 끝냄 -> 설정 저장
+```
+
+**다음** 페인트 잠금 기본 문장 영어 -> A(CLI 연쇄) -> B(예/아니오 넷).
