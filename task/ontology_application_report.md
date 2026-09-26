@@ -34157,3 +34157,67 @@ allow_replace_map · allow_retraction 을 넣으면  두 골격에 칸이 하나
         ㄴ AuditLog 에 새 칸(written_as) — 스키마 바꿈 · 마이그레이션
 ③ 거절 둘  docstring 의 「would_rewrite_raw · key_column 이 돌아와야」를 소유자 결정이 뒤집은 것으로 적고 안 되돌림 — 맞나
 ```
+
+---
+
+## 착지 — 표기 정규화 1 단계: 값 규칙 · 선언 점검 · 미리 보기 (5ee9d3bd1) — 00a882e67 (09-26 18:42)
+
+```
+지은 것   규칙 넷  join · pad_last_number · replace — 두 엔진(fold_notation · fold_sql_text, 전부 regexp_replace · translate = IMMUTABLE)
+                 time — 쓰기 때만(파이썬). 계약 declared_divergences 에 WRITE_ONLY_ALIAS_AND_TIME 로 이름 댐
+         별칭 표  product_tables.notation_alias (비어서 출하) · aliases_by_column · 표본 table_config.json.sample 재생성(설치기로)
+         쓰기 접기 fold_for_write(표, 칸, 값) -> (저장값, 판정) — 별칭 먼저, 그다음 규칙 또는 time. 선언 "write": true 칸만
+         선언 점검 join 이 키 잇기 글자와 같으면 거절(join_splits_key — 복합 키 구분자 · 맵 키 칸의 '_') · time 은 write 필수 · 그 칸 유일 규칙
+         미리 보기 write 칸은 «저장될 값»으로 병합군 · time 칸은 그대로 남을 행 수(형식 없음 · 시간대 적힘)
+         시간 상수 collector_markers.DEFAULT_WINDOW_FORMAT = utils.time_format.TS_FMT (같은 글자, 사본 하나 줄임)
+         map_overlay.MAP_ID_JOINER = "_" (compose_map_id 와 거절이 같은 상수를 읽음)
+원장      원장 v2 조인의 fold 는 켬/끔 규칙만 받는 «자기 목록»(setup_bundle._JOIN_FOLD_RULES)이고, 시험 하나가 그것을 KNOWN_RULES 와 같다고 못 박음 -> 빨강
+         값 규칙은 쓰기에서 저장되므로(소유자 결정) 원장 조인은 이미 접힌 키를 견줌 — 원장은 안 바꾸고 시험을 «켬/끔 규칙과 같다»로 고침
+         notation_norm.VALUE_RULES 로 값 규칙 넷에 이름을 붙이고 _normalize_rules 도 그것을 읽음
+지시와 다른 것 둘
+   pad   킥오프에 lpad 라 적었으나 lpad 는 긴 숫자를 «자름»('123' -> '12'). 짧은 길이마다 regexp_replace 한 번으로 지음
+   replace 패턴 말을 더 좁힘 — 아래 실측. 기존 _replace_pair_refusal 거절을 «넓힌» 것(새 기제 아님)
+실측(test DB assy_test, PostgreSQL 18.3, 스칼라 읽기만)
+   값을 여러 방식으로 맞출 수 있으면 파이썬은 «첫» 매치, PG 는 «가장 긴» 매치 — 'W|WA' 로 'WA' -> 파이썬 'XA' · PG 'X'
+   무작위 패턴 약 2,000 씩: '|' 있는 것 38 · ')' 뒤 횟수 93 · 게으른 횟수 328 이 두 엔진에서 다름. 셋 다 없는 것 3,317 중 0
+   -> 셋을 거절. 거절 뒤 받아들인 무작위 패턴 998 중 두 엔진 다름 0
+게이트    계약 notation_fold — rule_corpus 22 (소유자 예 일곱 포함 · 필수 id 로 못 박음) × 파이썬 · PG · 멱등 · 로더가 받는 규칙인지
+         PG 흔들기 셋 각각 잡힘 — 자리수 경계 없는 pad · 'g' 없는 replace · replace 를 pad 앞에
+         새 시험 test_a_written_column_takes_the_declared_spelling (38) — 소유자 예 · 거절 열둘 · time 판정 여섯 · min 이 가장 이른 시각 ·
+         별칭 순서 · 별칭 표 읽기 · join 키 거절 · 보고서 문장 · write 미리 보기
+변이      별칭을 규칙 뒤로 · '|' 받음 · pad 경계 뺌 · write 미리 보기를 비교 접기로 · 키 거절 끔 · 시간대 확인 뺌 -> 여섯 다 빨강
+범위(깨끗한 작업 트리 948ee98b5 + 이 변경)  import 시험 54 파일 1538 passed 4 skipped · client 명령 710 passed 1 xfailed ·
+          run_pg_tests 7 failed 102 passed(알려진 일곱, 같은 이름 · 겹친 PG 실행 0) · 계약 PG 축 19 passed(작업 트리의 notation_norm)
+          ⚠️ client · run_pg_tests 는 마지막 수정 셋(보고서 문장 · VALUE_RULES · 원장 시험) «전» 판으로 돎 — 수정 뒤엔 import 54 파일 · 계약만 다시 돌림
+          ⚠️ 첫 import 판은 원장 시험 하나 빨강(아래 「원장」) — 고친 뒤 위 수
+          RUN.md 는 남의 미커밋 한 줄이 있어 제 항목만 색인에 올려 커밋(그 줄은 작업 파일에 그대로)
+```
+
+```
+지금 사실인 것 하나 — 2 단계까지만
+   "write": true 는 받아들이고 미리 보기까지만 합니다. 저장하는 문은 아직 없습니다(2 단계). 가이드 §2.3 에 그렇게 적음
+총괄께 한 가지   라이브 table_config 에 notation_alias 설치 — 기록자가 총괄이라 제가 안 함
+   python server/scripts/install_product_tables.py --apply    (지금 dry run: 1 to add · 3 matching · 0 drifted)
+   표가 없어도 aliases_by_column 은 {} — 별칭만 안 쓰이고 나머지는 돎
+경계      server/config/sample/table_config.json.sample 은 설치기가 만든 출하 표본이라 같이 커밋(다른 레인도 기능 커밋에 표본을 같이 올림). 라이브 config 는 안 건드림
+박스      재기동 안 함 — 이 박스엔 notation_rules.json 이 없음(paths.config_path 가 가리키는 자리, 셸에서 잼) = 선언 0 이라 도는 것이 안 달라짐
+         선언을 적은 설치에서 새 규칙 · 미리 보기를 쓰려면 API · 체인 워커 재기동
+```
+
+### 여쭐 것 — 2 단계 전에
+
+```
+① case 기본값  451ac4f75 예시 {"join": "-", "pad_last_number": 2} 에는 case 가 없고 「대소문자 그대로」입니다.
+              오늘 칸의 rules 는 기본값을 «기본값으로» 대체해서(가이드 §2.1) case:true 가 돌아옵니다 — 그 선언이면 wafer.1 -> WAFER-01
+   ㄱ 문서대로 둠. 운영자가 "case": false 를 같이 적음(가이드 §2.3 에 적어 둠)          크기 0
+   ㄴ 값 규칙이 든 칸의 rules 는 case 를 기본으로 안 켬 — 이미 칸 rules 를 적은 선언의 비교 접기가 바뀌고, 그 칸의 함수 인덱스 식도 바뀜(다시 세움)
+   추천 ㄱ. 지금 시험은 오늘 답을 못 박아 두었고 이름을 「열린 물음」으로 달았습니다
+② replace 좁힘  위 실측 셋을 거절한 것 — 맞는지
+③ 두 번 접기   2 단계는 같은 값을 두 자리(체인 key_gate 앞 · 쓰기 깔때기 머리)에서 접습니다. 규칙 셋은 계약이 멱등을 봅니다만,
+              운영자가 적는 replace(예 a -> aa)와 별칭(canonical 이 다른 행의 written)은 멱등이 아닐 수 있고 선언 때 일반적으로 못 가립니다
+   ㄱ 둘째 자리는 첫째 자리가 접은 값을 표시받아 안 접음 — 부르는 자리 둘이 «하는 일»이 달라짐
+   ㄴ 미리 보기가 fold(fold(v)) != fold(v) 인 값을 세어 보여 줌 — 막지는 않음
+   ㄷ 선언 점검이 replace 결과가 자기 패턴에 다시 맞는지 표본 없이 볼 수 없으므로 막지 않고 문서로만
+   추천 ㄴ — 둘째 자리가 같은 함수를 그대로 부르는 것(지시 ①)을 지키고, 운영자가 켜기 전에 봄
+겹침      2 단계의 key_gate 자리는 chain/ingestion_worker.py — 지금 구현자의 미커밋 편집이 있음. 구현자 착지 뒤 그 위에 짓습니다
+```
