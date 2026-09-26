@@ -1,5 +1,20 @@
 # 지금 돌리면 되는 것
 
+> ## 🔴 [09-26 오후 3] **파생 표를 대상으로 한 조인은 그 표의 키를 조인 키 안에서 — 마이그레이션 «없음» · 재기동 API · 체인 워커**
+>
+> ```
+> 규칙       조인 대상이 «켜진 파생행 규칙»의 파생 표이면, 그 표의 composite_key_source(없으면 business_key) ⊆ 조인의 on[].left
+>            아니면 로드 거절 · 저장 400(code join_key_contract) · 선언 점검(Declarations) 거절 줄 — 세 곳이 한 문장
+>            문장은 파생행 키 계약 그대로, 키 이름만 조인 것: "derived table composite_key_source must be a subset of the join's on[].left columns (violation: [...])"
+> 그대로     파생 표가 아닌 표로 가는 조인(찾아보기 조인)은 키가 넓어도 섬 · 꺼진 파생행 규칙의 표는 파생 표로 안 셈
+> 확인       재기동 뒤 체인 워커 로그에 "[ChainRules] <이름> refused (1): join_key_contract" 줄이 없으면 이 박스는 영향 0
+>            (착지 전 잼: 켜진 조인 inventory_confirmed · test 둘 다 dt_log 대상, 파생 표는 dt_inventory 하나 -> 새로 거절 0)
+> 줄이 나오면  그 조인은 안 돎 — 파생 표의 키 칸을 조인의 on 에 더하거나, 파생 표의 composite_key_source 를 조인 키 안으로 줄임
+> 되돌리기    git revert 뒤 API · 체인 워커 재기동. 쓰는 것 없음(판정만)
+> ```
+
+---
+
 > ## 🔴 [09-26 오후 2] **파생행 집계에 unique_concat — 마이그레이션 «없음» · 재기동 체인 워커 · API**
 >
 > ```

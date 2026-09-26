@@ -304,7 +304,7 @@ def flat_param_cells(rule):
         and name not in routing))
 
 
-def rule_refusals(rule, path, *, mapper_resolvable, mapper_params=None):
+def rule_refusals(rule, path, *, mapper_resolvable, derived_tables, mapper_params=None):
     """Why this chain rule CANNOT RUN — the one spelling, for every reader (S-180 ⓑ-0).
 
     🔴 IT WAS SPELLED TWICE AND THE TWO HAD ALREADY DIVERGED. The loader
@@ -335,6 +335,12 @@ def rule_refusals(rule, path, *, mapper_resolvable, mapper_params=None):
     🔴 `mapper_params` IS A CALLABLE, for the same reason `mapper_resolvable` is: this module
     must not import `mapper_sdk` (S-188 set that direction), or 「what the rules file may
     say」 would depend on 「what this process happens to have imported」.
+
+    🔴 `derived_tables` IS REQUIRED, not defaulted: the tables a running derived-row rule
+    writes (`enrichment.config.derived_tables` over the whole set this caller judges). A
+    join into one of them must build that table's key from its `on` left columns - the
+    derived-row key contract, same function and sentence. A default would let a caller
+    that forgot the set pass every join silently.
     """
     import validation
 
@@ -401,6 +407,19 @@ def rule_refusals(rule, path, *, mapper_resolvable, mapper_params=None):
                     "'%s' is not a column of trigger table '%s' - a name that matches "
                     "nothing would put the whole table in one group"
                     % (missing, candidate.get("trigger_table"))))
+
+    target = str(candidate.get("target_table") or "")
+    if target in (derived_tables or ()):
+        from chain import join_into, rule_run
+        if rule_run.rule_label(candidate) == "join":
+            from chain.enrichment import config as enrichment_config
+            from database import crud
+            left = [column for column, _right, _fold in join_into.pairs(candidate)]
+            why = enrichment_config.key_contract_refusal(
+                crud.TABLE_CONFIG.get(target), left, key_name="the join's on[].left columns")
+            if why:
+                issues.append(validation.DeclarationValidationError(
+                    "join_key_contract", path + ".params.on", why))
 
     # 🔴 THE ONE BRANCH THIS ROUND ADDS. Only where a declaration exists, and only over the
     # cells the rule actually wrote - `params_of` reads the block with the flat cells beneath

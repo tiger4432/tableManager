@@ -653,6 +653,7 @@ def load_chain_rules():
 
     kept = []
     refused_here = []  # (이름, 코드) — 아래 census 가 「안 도는 것」으로 같이 말한다
+    derived = enrichment.config.derived_tables(rules)
     for index, rule in enumerate(rules):
         path = "rules[%d]" % index
         # 🔴 ONE JUDGE (S-180 ⓑ-0). This block WAS the grammar, and the explorer's chain draft
@@ -660,7 +661,7 @@ def load_chain_rules():
         # dry-run screen accepted what this loop drops. The sentences below are unchanged;
         # only where the verdict comes from moved.
         issues = chain_bindings.rule_refusals(
-            rule, path, mapper_resolvable=_resolvable_mapper,
+            rule, path, mapper_resolvable=_resolvable_mapper, derived_tables=derived,
             mapper_params=mapper_sdk.MAPPER_PARAMS.get)
         one_cell, _module_name, _function_name = chain_bindings.mapper_cells(rule)
         # 🪦 [판정 498 ①] THIS PASSED `MAPPER_REGISTRY.get`, WHICH ANSWERS FOR ONE

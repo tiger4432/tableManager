@@ -184,7 +184,7 @@ def _refusals(rule, monkeypatch, columns=("lot", "slot")):
     monkeypatch.setitem(crud.TABLE_CONFIG, TRIGGER,
                         {"column_types": {name: "string" for name in columns}})
     return [issue.code for issue in chain_bindings.rule_refusals(
-        rule, "rule", mapper_resolvable=lambda name: True)]
+        rule, "rule", mapper_resolvable=lambda name: True, derived_tables=())]
 
 
 def test_a_group_key_naming_a_column_the_table_does_not_have_is_refused(monkeypatch):
@@ -218,6 +218,6 @@ def test_a_table_the_catalogue_does_not_declare_is_not_judged(monkeypatch):
     rule = dict(BY_LOT, mapper="m", group_by=["anything_at_all"])
 
     codes = [issue.code for issue in chain_bindings.rule_refusals(
-        rule, "rule", mapper_resolvable=lambda name: True)]
+        rule, "rule", mapper_resolvable=lambda name: True, derived_tables=())]
 
     assert "unknown_group_column" not in codes

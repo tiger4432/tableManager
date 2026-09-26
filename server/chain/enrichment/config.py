@@ -708,20 +708,9 @@ def _validate_rule(name: str, raw: dict, known_tables: dict, rejections: list = 
                 f"aggregation(s) read column(s) missing in source table "
                 f"'{source_table}': {unreadable}")
         # 파생 테이블 키 계약: dedup mapper가 판단키로 business_key_val을 조립할 수 있어야 한다.
-        comp_src = drv_cfg.get("composite_key_source")
-        bk_col = drv_cfg.get("business_key")
-        if comp_src:
-            not_in_key = [c for c in comp_src if c not in decision_key]
-            if not_in_key:
-                return None, (
-                    f"derived table composite_key_source must be a subset of decision_key "
-                    f"(violation: {not_in_key})"
-                )
-        elif not (bk_col and bk_col in decision_key):
-            return None, (
-                "derived table must declare composite_key_source ⊆ decision_key "
-                "or business_key ∈ decision_key (dedup upsert key contract)"
-            )
+        key_refusal = key_contract_refusal(drv_cfg, decision_key)
+        if key_refusal:
+            return None, key_refusal
 
     reference_views = _normalize_reference_views(
         name, raw.get("reference_views"), decision_key, target_fields,
@@ -783,6 +772,39 @@ AUTO_CONFIRM_MAPPER = "declared:decide"
 #: still `decide` because that is the word the DECLARATION uses: an operator reading a
 #: list of rules for one table should not have to know which half they got.
 DEDUP_MAPPER = "declared:enrich"
+
+
+def derived_tables(rules) -> set:
+    """The tables a running derived-row rule writes - 「is this a derived table」 is asked here.
+
+    Read off the rules the loader stands, by the seat's label, so a flat and a unified
+    declaration answer alike. An OFF rule runs nothing (a unified one stands nothing, a flat
+    one stays listed OFF), so its table is not counted.
+    """
+    from chain import rule_run
+    return {str(rule["target_table"]) for rule in rules or ()
+            if isinstance(rule, dict) and rule_run.rule_label(rule) == "decide"
+            and rule.get("target_table") and rule.get("enabled", True) is not False}
+
+
+def key_contract_refusal(table_cfg, key, key_name: str = "decision_key"):
+    """Why a derived table's key cannot be built from `key` - None when it can.
+
+    One judge and one sentence for every rule that writes a derived table's rows by a key:
+    a derived-row rule by its `decision_key`, a join into the table by its `on` left columns
+    (소유자 2026-09-26 「비즈니스키가 조인키보다는 좁아야함」 · 「파생표가 조인대상」).
+    """
+    comp_src = (table_cfg or {}).get("composite_key_source")
+    bk_col = (table_cfg or {}).get("business_key")
+    if comp_src:
+        not_in_key = [c for c in comp_src if c not in key]
+        if not_in_key:
+            return (f"derived table composite_key_source must be a subset of {key_name} "
+                    f"(violation: {not_in_key})")
+    elif not (bk_col and bk_col in key):
+        return (f"derived table must declare composite_key_source ⊆ {key_name} "
+                f"or business_key ∈ {key_name} (dedup upsert key contract)")
+    return None
 
 #: The two names a synthesized rule can carry. Used by the collision check, so the
 #: refusal and the synthesis cannot drift into disagreeing about what a synthesized name

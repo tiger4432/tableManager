@@ -35,7 +35,7 @@ def _refusals(rule, *, declared=None, registered=True):
     return chain_bindings.rule_refusals(
         rule, "rule",
         mapper_resolvable=(lambda name: object() if registered else None),
-        mapper_params=(lambda name: declared))
+        derived_tables=(), mapper_params=(lambda name: declared))
 
 
 def _codes(issues):

@@ -820,6 +820,7 @@ def save_chain_rule_raw(name: str, declaration, base: str) -> dict:
     #
     # ⚠️ AN OLD FLAT RULE COMES BACK UNCHANGED from this call, so that path is byte for byte
     # what it was: no `derive`, no translation, one rule judged exactly as before.
+    from chain import enrichment
     from chain import ingestion_worker
     from chain import rule_shape
     from database import crud as _catalogue
@@ -844,13 +845,27 @@ def save_chain_rule_raw(name: str, declaration, base: str) -> dict:
     if expand_refusal:
         raise _table_config_refusal("declaration_refused", f"rules.{name}", expand_refusal)
 
+    # The merged document as the loader will read it next boot - the derived tables are
+    # asked of it, and the cycle check below reads it too.
+    expanded_set = []
+    for saved in rules:
+        # ⚠️ [판정 556] CARRIED, NOT JUDGED. An entry this file cannot read is not a
+        #    rule the loader will stand up either, so the cycle check has nothing to say
+        #    about it - and asking anyway would raise here and refuse an unrelated save.
+        if not isinstance(saved, dict):
+            continue
+        more, _why, _notes2 = rule_shape.expand_declaration(
+            saved, _catalogue.TABLE_CONFIG)
+        expanded_set.extend(more)
+    derived = enrichment.config.derived_tables(expanded_set)
+
     for candidate in stood:
         # 🔴 AND THE SAME RESOLVER THE LOADER USES. `MAPPER_REGISTRY.get` alone does not know
         # the `builtin:` kinds, so a translated rule naming `builtin:join_into` was refused
         # here while running there - two answers to 「can this run」 from one product.
         grammar = chain_bindings.rule_refusals(
             candidate, f"rules.{name}",
-            mapper_resolvable=ingestion_worker._resolvable_mapper,
+            mapper_resolvable=ingestion_worker._resolvable_mapper, derived_tables=derived,
             mapper_params=mapper_sdk.MAPPER_PARAMS.get)
         if grammar:
             first = grammar[0]
@@ -866,16 +881,6 @@ def save_chain_rule_raw(name: str, declaration, base: str) -> dict:
     # by mapper and back by join is INTENDED, and `max_chain_depth` is what makes it finite -
     # so refusing here refused a declaration that runs correctly, at the one door an operator
     # has. The validator says its line and the save goes through.
-    expanded_set = []
-    for saved in rules:
-        # ⚠️ [판정 556] CARRIED, NOT JUDGED. An entry this file cannot read is not a
-        #    rule the loader will stand up either, so the cycle check has nothing to say
-        #    about it - and asking anyway would raise here and refuse an unrelated save.
-        if not isinstance(saved, dict):
-            continue
-        more, _why, _notes2 = rule_shape.expand_declaration(
-            saved, _catalogue.TABLE_CONFIG)
-        expanded_set.extend(more)
     ingestion_worker._validate_chain_cascade_graph(expanded_set)
 
     backup = _atomic_write(path, merged)

@@ -86,12 +86,12 @@ def test_the_offered_names_are_exactly_the_ones_the_rule_save_judges_with(client
     for name in offered:
         issues = chain_bindings.rule_refusals(
             {"name": "r", "trigger_table": "t", "mapper": name}, "rule",
-            mapper_resolvable=mapper_sdk.MAPPER_REGISTRY.get)
+            mapper_resolvable=mapper_sdk.MAPPER_REGISTRY.get, derived_tables=())
         assert not issues, ("the list offers %r but the save refuses it" % name)
 
     refused = chain_bindings.rule_refusals(
         {"name": "r", "trigger_table": "t", "mapper": "never_registered_anywhere"}, "rule",
-        mapper_resolvable=mapper_sdk.MAPPER_REGISTRY.get)
+        mapper_resolvable=mapper_sdk.MAPPER_REGISTRY.get, derived_tables=())
     assert refused, "a name outside the registry must still be refused by the save"
 
 

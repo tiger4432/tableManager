@@ -263,6 +263,11 @@ def _resolve_chain() -> dict:
 
     triggered = set()
     from database import crud as _catalogue
+    from chain import enrichment
+    expanded = [rule_shape.expand_declaration(declared, _catalogue.TABLE_CONFIG)
+                for declared in (read["rules"] or ())]
+    derived = enrichment.config.derived_tables(
+        [rule for stood, _refusal, _notes in expanded for rule in stood])
     for index, declared in enumerate(read["rules"] or ()):
         path = "rules[%d]" % index
         # 🪦 [판정 498 ①] `MAPPER_REGISTRY.get` STOOD HERE AND IT KNOWS ONE TABLE OF TWO.
@@ -274,8 +279,7 @@ def _resolve_chain() -> dict:
         # `ledger/admin.save_chain_rule_raw` already does the two steps (expand, then judge
         # each candidate); this seat did only the second, on the wrong input.
         name = str((declared or {}).get("name") or path) if isinstance(declared, dict) else path
-        stood, expand_refusal, _notes = rule_shape.expand_declaration(
-            declared, _catalogue.TABLE_CONFIG)
+        stood, expand_refusal, _notes = expanded[index]
         if expand_refusal:
             rejected.append(entry(
                 SCOPE_RULE, name,
@@ -286,7 +290,7 @@ def _resolve_chain() -> dict:
         for rule in stood:
             name = str((rule or {}).get("name") or path) if isinstance(rule, dict) else path
             issues = chain_bindings.rule_refusals(
-                rule, path, mapper_resolvable=_runnable_name,
+                rule, path, mapper_resolvable=_runnable_name, derived_tables=derived,
                 mapper_params=mapper_sdk.MAPPER_PARAMS.get)
             if issues:
                 first = issues[0]
