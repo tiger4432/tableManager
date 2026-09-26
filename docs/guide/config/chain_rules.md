@@ -47,6 +47,8 @@
 
 아래 규칙 이름·표 이름은 출하 샘플(`server/config/sample/chain_rules.json.sample`)의 것입니다.
 
+⚠️ `@mapper` 로 쓴 맵퍼는 DataFrame 을 돌려주고 «덮어쓰기(upsert)만» 합니다. ②·③ 의 지우는 봉투는 못 냅니다 — dict 를 돌려주면 `MapperContractError` 로 거절됩니다. 지워야 하는 맵퍼는 `(db, payloads, rule)` 모양으로 손으로 씁니다. 허락 칸은 어느 쪽이든 «규칙에» 적습니다 — 맵퍼가 대신 켜 주지 않습니다.
+
 **① 체인이 쓴 값에 이어서 돌게 하고 싶다 → `allow_chain_trigger`**
 
 조인이 `dt_inventory` 에 확정 lot·slot 을 쓰고, 그 값이 들어오면 `dt_map` 을 다시 만들고 싶을 때. «이어서 도는 쪽» 규칙에 적습니다.
