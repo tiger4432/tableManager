@@ -61215,3 +61215,55 @@ PG 파일 21 개   전 175 passed, 108 skipped -> 후 175 passed, 108 skipped
 ```
 보고만   assy_qa 의 남은 scratch 스키마 13 — 받으신 대로 안 치움
 ```
+
+---
+
+## [구현자 -> 총괄] 새 항목 착지 — 같은 내용의 실패 파일이 기동마다 다시 읽히지 않음 (b5b77495a · 소유자 ㄱ) — bad57431f
+
+### 짓기 전 셈 (박스 · 읽기만)
+
+```
+철자       file_ingestion_logs.filepath 를 적는 자리 전수 = 둘(_log_ingestion_record · 그 줄임 기록) — 둘 다 os.path.abspath(archived_path)
+           박스 FAILED 체크포인트 12 줄 중 같은 filepath 문자열의 FAILED 기록이 있는 것 — 대소문자 구분 12 · 무시 12
+비용       filepath 색인 없음 — 그러나 조회는 status 색인을 탐(FAILED 기록 35 / 전체 22392 줄) · 실행 0.028 ms
+           묻는 때: tier-1 을 놓치고 그 내용의 체크포인트가 FAILED 일 때만(박스 FAILED 체크포인트 12 / 14009)
+Retry      process_archived_file_sync 는 _try_dedup_skip 을 안 지남(코드 · 독스트링) -> 늘 처리. 시험으로도 잼
+```
+
+### 지은 것
+
+```
+한 판정    ingestion.checkpoint.failed_here_unchanged — 그 내용의 체크포인트가 FAILED 이고
+           file_ingestion_logs 에 (표 · 이 경로 · FAILED) 줄이 파일의 지금 mtime 이후(coalesce(updated_at, created_at))에 있으면 참
+자리       tier-2(_try_dedup_skip) — find_completed_ingestion 옆에서 같은 세션으로. 참이면 조용히 건너뜀(DEBUG 한 줄 · 기록 · 통지 없음)
+그대로     find_completed_ingestion 의 「FAILED 는 그 파일의 결론이지 내용의 결론이 아님」 — 새 경로 사본은 읽음
+           force 토큰 · dedup_by_signature 끄기는 이것도 끔(같은 tier-2 문)
+```
+
+### 게이트 (아카이브 끔 · 실 sqlite · process_with_retry)
+
+```
+통과 test_two_failed_copies_are_not_read_again_on_restart
+통과 test_the_same_content_under_a_new_name_is_read
+통과 test_a_copy_saved_again_after_it_failed_is_read
+통과 test_retry_reads_it
+4 passed, 12 warnings in 1.09s
+변이   경로를 안 묻고 내용만 봄 빨강 3 failed · 판정을 안 씀 빨강 1 failed
+범위   checkpoint · directory_watcher 를 import 하는 시험 121 파일 -> 1822 passed, 4 skipped
+       client 픽스처 시험 전부 -> 705 passed, 1 xfailed
+```
+
+```
+보고만   import 시험 묶음을 다섯 번 돌린 중 한 번, 로그 오류 줄 여덟(no such table: file_ingestion_logs · 표 sweeptest_a · deep.csv)
+        — 시험 빨강 0. test_watcher_startup_sweep 의 안쪽 폴더 deep.csv 가 띄우는 트리 적재 스레드를 시험이 안 기다려서,
+        그 시험이 끝난 뒤 다음 시험의 DB 에 파일 기록을 쓰려다 난 것
+        새 코드 · 새 시험 파일 없이 0 · HEAD 0 · 두 파일만 두 번 0 · 같은 묶음 다시 0 — 이 변경과 묶이지 않음. 고치지 않음
+```
+
+### 재기동 알림 — 박스 워처를 bad57431f 로
+
+```
+하는 것    워처 자식 pid 하나만 죽임(명령줄 확인 뒤) -> 감독자가 되살림. 다른 프로세스 안 건드림
+볼 것      기동 스윕 줄 — raws 에 같은 내용 실패 파일만 남아 있으면 dispatched 0
+되돌리기   git revert bad57431f 뒤 워처 재기동
+```
