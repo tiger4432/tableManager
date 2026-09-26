@@ -61807,3 +61807,64 @@ k=6·7  지시 밖 추가 행 — 지시의 k=2..5 가 모두 ⑤ 에서 무고�
 짓기 때 잴 것   가족 성공 조회(같은 뿌리 id 접두의 SUCCESS 하나) 비용 — 실패 경계에서만 돎. 안 잼
 다음          총괄이 k 를 정하면 짓기(지시의 게이트 · 변이 포함). A 는 소유자 답 대기
 ```
+
+---
+
+## [구현자 -> 총괄] A 착지 d773be13e — 파생 표 대상 조인은 그 표의 키를 조인 키 안에서 (26f008386 · ㄱ)
+
+```
+판정 자리   chain_bindings.rule_refusals 하나 — 로더 · 저장 관문 · 선언 점검(Declarations)이 이미 부르는 세 호출자가 전부
+           평면으로 적힌 조인도 같은 자리에서 걸림(문법 되돌리기 라우트가 조인을 평면으로 쓸 수 있어서 펼침 쪽이 아니라 여기)
+「파생 표인가」 enrichment.config.derived_tables — 세 호출자가 자기가 판정하는 규칙 전체를 펼친 목록에서 한 번 얻어 «필수» 인자로 넘김
+           규칙의 종류는 좌석(rule_run.rule_label)에 물음 — 조인 = "join", 파생행 = "decide". 새 표시 칸 없음
+           (처음엔 mapper 상수와 직접 견줬다가 「종류를 묻는 자리는 한 좌석」 게이트가 빨개져서 좌석으로 옮김)
+계약 함수   enrichment.config.key_contract_refusal — 파생행 규칙과 조인이 같이 부름. 파생행 쪽 문장은 HEAD 와 글자까지 같음(두 문장 비교 True)
+           조인 문장: 키 이름만 "the join's on[].left columns"
+🔴 제가 고른 한 자리   «꺼진» 파생행 규칙의 표는 파생 표로 안 셈 — 통합 선언은 꺼지면 규칙이 안 서고, 평면은 OFF 로 남아 안 돎. 로더의 「안 도는 것」과 같은 답
+```
+
+### 게이트 — 한 픽스처, 세 문(로더 · 저장 400 · 선언 점검)이 같은 판정과 같은 문장
+
+```
+key inside the join key] PASSED [ 20%]
+key equal to the join key] PASSED [ 40%]
+key wider, take into a non-key column] PASSED [ 60%]
+key wider, take into a key column (the incident)] PASSED [ 80%]
+key wider, target is not a derived table (lookup join)] PASSED [100%]
+============================== 5 passed in 0.50s ==============================
+```
+
+### 변이 (지시 둘)
+
+```
+baseline: 5 passed in 0.46s
+mutant: the 'is it a derived table' question removed - every join held to the contract
+    1 failed, 4 passed in 0.79s
+    red: key wider, target is not a derived table (lookup join)
+mutant: the judgement removed - no join is ever refused
+    2 failed, 3 passed in 0.85s
+    red: key wider, take into a key column (the incident)
+    red: key wider, take into a non-key column
+restored: 5 passed in 0.48s
+```
+
+### 박스 영향 (읽기만 · 설정 md5 전후 같음)
+
+```
+file C:\Users\kk980\Developments\assyManager\server\config\chain_rules.json | declarations 13 | catalogue tables 45
+join rules stood 4 [('inventory_confirmed', 'dt_log', True), ('inventory_confirmed:target', 'dt_log', True), ('test', 'dt_log', True), ('test:target', 'dt_log', True)]
+derived tables (running derived-row rules) ['dt_inventory']
+rules newly refused by join_key_contract: 0 []
+report totals: effective 15 · rejected 0
+```
+
+```
+착지 시험   손댄 모듈을 부르는 시험 163 파일 + 새 시험: 2251 passed, 21 skipped, 1 xfailed in 229.89s (0:03:49)
+           클라 픽스처 전부: 710 passed, 1 xfailed in 112.74s (0:01:52)
+           rule_refusals 를 맨손으로 부르던 시험 다섯 파일(여덟 자리)에 derived_tables=() 를 명시 — 인자를 필수로 해서
+RUN.md     [09-26 오후 3] — 재기동 뒤 볼 로그 줄 · 그 줄이 나오면 고칠 것
+빈 곳 하나(짓지 않음)  파생행 선언을 «새로» 저장해 기존 조인의 대상이 파생 표가 되면, 그 저장은 통과하고 조인이 다음 로드에서 거절됨
+           저장 관문은 저장하는 선언만 판정해서. 막을지 여쭘
+B 스크래치(동결 · 안 지움)  scratchpad (C:\Users\kk980\AppData\Local\Temp\claude\C--Users-kk980-Developments-assyManager\bb9c475d-6f85-4fe4-bc97-76584eed703b\scratchpad) 의 probe_B_today.py · probe_B_common.py · probe_B_stop.py · probe_B_k.py · probe_B_k_out.txt
+다음       C(수집기 시간 구간) 셈 ①~⑤
+```
