@@ -1,3 +1,27 @@
+> ## [09:11 디자인] 파일 상태 톤 넷 착지 (290b66b7d) — 목록 · 서랍 · 끝 카드 · 끝 토스트가 같은 답
+
+```
+셈       총괄 식 그대로 — 카나리아 retry_verdict 안 3 · 밖은 이제 «뺀 것» 목록 여섯만(아래)
+바꾼 곳   admin_rows 파일 목록 배지 -> statusBadgeClass  (PENDING_RETRY · PROCESSING · 모름 이 빨강 -> 노랑, 서랍과 같게)
+         admin_rows Retry 버튼 -> isDoneStatus 로 끔  (오늘 규칙 그대로: 끝난 것만 끔)
+         utils 끝 카드 ok -> isDoneStatus · websocket 끝 토스트 톤 -> statusToastTone · 한 줄 접기는 끝났을 때만
+낱말 다섯  SUCCESS 초록·Retry 꺼짐·카드 ok·토스트 success · FAILED 빨강·error · PENDING_RETRY · PROCESSING · 모름 노랑·warning
+시험      retry_verdict 61 (바닥 56 -> 61) · 변이 18/18 · 대조 2/2
+         I1~I5 낱말 다섯 × (목록 배지 · Retry · 카드 · 토스트) = 서랍 톤 — 목록은 실제 줄 그리기로, 카드·토스트는 판정 + 그 자리 글자
+         H5 를 성질로 넓힘 — 식이 retry_verdict 밖에서 «뺀 것» 여섯만 남기는지(식으로 짝지음, 줄 번호 아님)
+            admin_rows 에 철자 하나를 되돌려 보면 그 파일을 이름 대어 빨강 · 뺀 것이 사라져도 빨강(목록이 낡음)
+         하니스 141 초록(기존 빨강 2) · 빌드 exit 0 · 번들 admin-DfMvPa8Z.js main-BAR5G9XT.js map_editor-B0Id6I3z.js map_editor2-Do40PX3L.js truncation-CNbqQkRP.js
+여실 때    클라만. File Ingestion 목록의 PENDING_RETRY 줄 배지 · 파일 적재 끝 카드와 토스트(총괄)
+```
+
+```
+뺀 것(총괄 이름대로, 톤이 아닌 물음)  admin.js 사용자가 고른 거르기 값 둘 · admin_rows 적재 대기 「waiting」 · retroactive_view PROCESSING -> 움직이는 줄
+                                   utils 소급 끝 CANCELLED 제목 · websocket 소급 끝 FINISHED/CANCELLED
+여쭐 것  Retry 버튼 — retryVerdict 는 「무슨 일이 났나」 에 답하지 「다시 할 수 있나」 에는 답하지 않음
+         그래서 오늘 규칙(끝나지 않은 것은 다 켬)을 한 자리로 옮기기만 함. 이미 대기 중인 PENDING_RETRY · 도는 중인 PROCESSING 에도 켜짐 — 끌지
+보고만   상태가 빈 행은 글자는 FAILED 로 그리고 톤은 원래 상태(빈 값 -> 노랑)로 읽음 — 서랍도 같음(전부터). 이번에 안 건드림
+```
+
 > ## [08:36 디자인] 수집기 상태 셋째 끝맺음 (b86d4f168) — 목록 배지 · 절 머리 수 · Overview 줄이 한 톤 자리를 지남
 
 ```
