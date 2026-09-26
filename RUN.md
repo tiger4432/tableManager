@@ -1,5 +1,16 @@
 # 지금 돌리면 되는 것
 
+> ## 🔴 [09-26 아침 3] **PG 시험은 자기 DB assy_test 에서 — 분리 환경(assy_qa)을 켜든 말든 같은 답 · 운영 무관 · 재기동 «없음»**
+>
+> ```
+> 무엇       시험의 PostgreSQL 되돌이가 assy_qa 가 아니라 같은 서버의 assy_test (빈 DB + pg_trgm). 이름은 tests/support/isolated_pg.PG_TEST_DATABASE 한 자리
+> 처음 한 번  시험이 postgres 관리 DB 에서 CREATE DATABASE assy_test · pg_trgm 설치. 사람이 할 일 없음
+> 그대로     분리 환경(devenv)은 assy_qa. ASSY_PG_TEST_DATABASE_URL 로 다른 DB 를 주면 그것이 먼저
+> 되돌리기   git revert. assy_test 는 남음 — 지울 때 DROP DATABASE assy_test (시험 말고 쓰는 것 없음)
+> ```
+
+---
+
 > ## 🔴 [09-26 아침 2] **쓴 값이 하나도 없는 파일은 FAILED + 한 문장 · 일부만 버린 파일은 기록에 버린 칸 문장 — 파서 길 둘이 같은 답 · 마이그레이션 «없음» · 재기동 감시자(워처)**
 >
 > ```

@@ -20,7 +20,7 @@ claim rather than trusting the file's title.
 SKIPPING, NOT FAILING, is the contract when no PostgreSQL is declared - see
 `conftest.PG_TEST_URL_ENV`. Run them with:
 
-    ASSY_PG_TEST_DATABASE_URL=postgresql://postgres:...@localhost:5432/assy_qa \
+    ASSY_PG_TEST_DATABASE_URL=postgresql://postgres:...@localhost:5432/assy_test \
         python -m pytest server/tests/test_pg_multirow_upsert.py
 """
 import contextlib

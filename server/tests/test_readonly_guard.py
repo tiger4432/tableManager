@@ -74,7 +74,7 @@ REPLACES THREE TESTS IN `test_business_key_unique_migration.py`
 SKIPPING, NOT FAILING, is the contract when no PostgreSQL is declared - the same
 `conftest.PG_TEST_URL_ENV` door `test_pg_multirow_upsert.py` uses:
 
-    ASSY_PG_TEST_DATABASE_URL=postgresql://postgres:...@localhost:5432/assy_qa \
+    ASSY_PG_TEST_DATABASE_URL=postgresql://postgres:...@localhost:5432/assy_test \
         python -m pytest server/tests/test_readonly_guard.py
 """
 import ast

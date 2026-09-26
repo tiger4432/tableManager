@@ -106,6 +106,45 @@ def declared_qa_database():
     return url if isinstance(url, str) and url.startswith("postgres") else None
 
 
+#: THE PG proofs' own database (총괄 30e23c7ac), on the server `devenv.py` declares - empty
+#: but for `pg_trgm`. Not `assy_qa`: that is the isolated environment's, whose chain worker
+#: creates tables in its `public`, and a proof's search path ends in `public`
+#: (`scratch_connect_args`) - a test that asserted a table was absent went red whenever it ran.
+PG_TEST_DATABASE = "assy_test"
+
+
+def declared_test_database():
+    """`PG_TEST_DATABASE` on the declared QA server, created with `pg_trgm` the first time.
+    `None` when that server is not declared. An unreachable server is left to the caller's
+    own "not reachable" skip."""
+    qa = declared_qa_database()
+    if not qa:
+        return None
+    from sqlalchemy import create_engine, text
+    from sqlalchemy.engine import make_url
+    from sqlalchemy.exc import DBAPIError
+    from sqlalchemy.pool import NullPool
+
+    url = make_url(qa).set(database=PG_TEST_DATABASE).render_as_string(hide_password=False)
+    # CREATE DATABASE is the server's, so it is asked from the maintenance database - never from
+    # `assy_qa`. Each connection is declared to `db_safety` for its own block only.
+    maintenance = make_url(qa).set(database="postgres").render_as_string(hide_password=False)
+    try:
+        with declared_as_test_database(maintenance), create_engine(
+                maintenance, poolclass=NullPool, isolation_level="AUTOCOMMIT").connect() as conn:
+            if not conn.execute(text("SELECT 1 FROM pg_database WHERE datname = :d"),
+                                {"d": PG_TEST_DATABASE}).first():
+                conn.execute(text('CREATE DATABASE "%s"' % PG_TEST_DATABASE))
+        with declared_as_test_database(url), create_engine(
+                url, poolclass=NullPool, isolation_level="AUTOCOMMIT").connect() as conn:
+            conn.execute(text("CREATE EXTENSION IF NOT EXISTS pg_trgm"))
+    except DBAPIError:
+        # Another process created it a moment ago, or the server is down - either way the
+        # URL is the answer, and a proof that cannot connect skips by its own sentence.
+        pass
+    return url
+
+
 def resolve_url():
     """`(url, None)` when these proofs may run, `(None, reason)` when they may not."""
     import db_safety
@@ -124,16 +163,16 @@ def resolve_url():
         # call in the retired v1 shape and a call to `ledger_trace.trace`, which does not
         # exist.
         #
-        # So the LAST resort is the database `scripts/dev_env/devenv.py` already declares
-        # for this purpose. It is named there, it is not production, and `db_safety` below
+        # So the LAST resort is this suite's own database on the server
+        # `scripts/dev_env/devenv.py` declares. It is not production, and `db_safety` below
         # still has to approve it - this only stops a suite from staying quiet when a test
-        # database exists and no one said so.
-        url = declared_qa_database()
+        # server exists and no one said so.
+        url = declared_test_database()
     if not url:
         return None, (
             f"no PostgreSQL test database declared. Set {PG_TEST_URL_ENV} to an "
             f"ISOLATED database, e.g. "
-            f"{PG_TEST_URL_ENV}=postgresql://postgres:...@localhost:5432/assy_qa")
+            f"{PG_TEST_URL_ENV}=postgresql://postgres:...@localhost:5432/{PG_TEST_DATABASE}")
 
     violations = db_safety.check_test_database(url, production_url=DEFAULT_PG_URL,
                                                opt_in=url)
