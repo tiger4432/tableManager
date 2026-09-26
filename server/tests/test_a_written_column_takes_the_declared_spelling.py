@@ -177,6 +177,9 @@ def test_the_smallest_stored_time_is_the_earliest():
     ({"replace": [["a{", "x"]]}, "'{' is a count"),
     ({"replace": [["a*", "x"]]}, "make it match at least one character"),
     ({"replace": [["a", "\\n"]]}, "may only use \\1 to \\9"),
+    # 총괄 69aad666e A: Python raised on write, PostgreSQL wrote '' - both engines refuse it now
+    ({"replace": [["WF", "\\1"]]}, "uses \\1 but the pattern has 0 group(s)"),
+    ({"replace": [["(W)F", "\\2"]]}, "uses \\2 but the pattern has 1 group(s)"),
 ])
 def test_a_value_rule_outside_the_shared_language_is_refused_by_name(rules, says):
     _specs, rejections = _refusals({"wafer": {"rules": rules}})

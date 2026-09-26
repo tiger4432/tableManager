@@ -430,6 +430,12 @@ def _replace_pair_refusal(pair):
         compiled = re.compile(pattern, re.DOTALL)
     except re.error as e:
         return "pattern does not compile: %s (%r)" % (e, pattern)
+    # 총괄 69aad666e A: a reference past the pattern's groups - Python raises when it writes,
+    # PostgreSQL puts an empty text there ('WF' -> '\1' made 'WF-01' '-01').
+    refs = [int(n) for n in re.findall(r"\\([1-9])", replacement)]
+    if refs and max(refs) > compiled.groups:
+        return "the replacement uses \\%d but the pattern has %d group(s) - add the ( ) it " \
+               "refers to, or drop the reference (%r)" % (max(refs), compiled.groups, replacement)
     if compiled.search("") is not None:
         return "the pattern matches an empty value, so it would insert everywhere - make it " \
                "match at least one character, e.g. 'a+' for 'a*' (%r)" % pattern
