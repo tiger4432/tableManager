@@ -1,3 +1,37 @@
+> ## [20:49 디자인] 그리드 클릭 리플레이가 cascade: true 를 보냄 (d3659ec09) — 총괄 ece405110
+
+### 착지 d3659ec09
+
+```
+자리       redo_banner.js 의 규칙 줄(누르는 줄) params 한 칸 — { rule, row_ids, cascade: true }
+          그 줄을 누르면 main.js runRetroactive 가 params 를 그대로 POST /admin/retroactive/chain_replay/run {params} 로 보냄
+안 보내는 곳  같은 배너의 「소급 탭으로 넘기기」 payload(그 params 가 소급 탭 폼에 앉음) — cascade 없음
+          소급 탭 폼 자체는 서버 목록에서 cascade 가 form=False 라 입력 칸이 없고, 폼 요청은 그려진 칸만 보냄 → 탭에서 들어갈 길 없음
+서버 읽기   kind bool — JSON true 를 True 로 받음(retroactive.validate 의 "true"/"false" 판정), 리플레이 실행이 cascade(params.get("cascade") is True) 로 읽음(retroactive.py, 열어 봄)
+```
+
+```
+하니스     redo_banner 57 (53 from, mutants 20/20, controls 3/3)
+             K1 규칙 줄을 누르면 chain_replay · rule · row_ids · cascade true
+             K2 소급 탭 넘기기 payload 에 cascade 없음
+             변이 M18(칸 뺌) → R26 이 잡음 · M19(넘기기에 칸 넣음) → R27 이 잡음
+           replay_rules 47 — 변이 N8(규칙 객체를 통째로 보냄)의 닻이 바뀐 줄을 인용하고 있어 «안 심김»으로 빨갛게 섬
+             닻만 새 줄로 옮김(결함 모양은 그대로) → 다시 잡힘(B5)
+           전체 게이트 green (142 gated) · 빌드 exit 0
+서버       안 건드림 — 착지 규칙의 서버 셋은 해당 없음
+번들 main-Bd4T27ZR.js (only this chunk changed)
+```
+
+```
+⚠️ 여실 때   🔴 순서: ac918a451 이 든 API 재기동이 «먼저», 이 번들은 그 뒤
+            옛 서버(ac918a451 이전)는 cascade 를 모름 — validate 가 모르는 파라미터를 «거절»합니다
+            (「unknown parameter(s) for 'chain_replay': ['cascade'] …」 가 그 줄에 뜨고 리플레이가 안 돎. 코드를 열어 봄, 돌려 보지는 않음)
+            반대 순서(서버 먼저, 번들 나중)면 그 사이 클릭 리플레이는 돌되 연쇄가 없음 — 총괄 지시문의 그 상태
+⚠️ 못 한 것   화면을 열어 보지 못했습니다 — 누르면 박스에 쓰기가 나갑니다. 소유자 크롬 확인은 총괄
+```
+
+다음 차례: 비상 정지 화면(구현자 라우트 착지 뒤 — 아직 main 에 없음).
+
 > ## [20:01 디자인] 건너뛴 파일 알림 착지 (28dfb44d1) — 서버는 상태를 보내고, 문장은 화면의 상태 판정 한 곳이 짓는다
 
 ### 착지 28dfb44d1
