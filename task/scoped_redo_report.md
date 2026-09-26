@@ -61267,3 +61267,7 @@ Retry      process_archived_file_sync 는 _try_dedup_skip 을 안 지남(코드 
 볼 것      기동 스윕 줄 — raws 에 같은 내용 실패 파일만 남아 있으면 dispatched 0
 되돌리기   git revert bad57431f 뒤 워처 재기동
 ```
+
+```
+재기동함  워처 pid 36676 죽임 13:35:56 -> pid 21680 13:35:59 · 기동 스윕: 10 candidate file(s) in raws/ - 10 already concluded (tier-1, batched), 0 dispatched. · 오류 줄 없음
+```
