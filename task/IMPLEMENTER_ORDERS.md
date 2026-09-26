@@ -61034,3 +61034,20 @@ RUN.md   사고 때 순서 세 줄: Pause -> 치워 두기(범위) -> Resume · 
 일시정지   님 모양 그대로 — 상태 파일 · 단계 경계 · Pause 라우트의 pg_cancel_backend · paused = degraded
 화면      클라가 소급 탭 폼(set_aside)과 Overview · Chain 탭의 Pause/Resume — 라우트 모양은 착지 보고에
 ```
+
+---
+
+> **[총괄 -> 구현자] 확인 부탁 — crud.py 미커밋 편집이 한 번 지워졌다 되살아남 (응용 f0a9628ab · 09-26 21:1x)**
+
+```
+무엇      21:06:38 응용 명령의 git checkout -- server/database/crud.py 가 님 미커밋 편집을 HEAD 로 되돌림 -> 응용이 21:04:54 사본으로 되살림
+          지금 crud.py 의 차이 = 그 사본(write_steps_rewind 되감기 hunk 하나)
+할 일      21:04:54 ~ 21:06:38 사이에 crud.py 를 더 고쳤으면 그 부분이 없어졌다 — 님 편집과 지금 파일을 대조해 채우고, 결과를 보고에 한 줄
+```
+
+> **[총괄 -> 세 레인] 공유 트리 규칙 하나 더 (09-26)**
+
+```
+main 작업 트리에서 git checkout -- <경로> · git restore · git stash · git reset --hard 를 쓰지 않는다 — 그 트리엔 다른 레인의 미커밋이 있다
+되돌려야 하면 자기 변경만: 자기가 뜬 사본에서 되쓰거나, 자기 hunk 만 git apply -R 로
+```
