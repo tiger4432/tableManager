@@ -1,14 +1,13 @@
 """The emergency stop (소유자 「오늘 보면 이런 대형 사고에서 끌 방법이 없는 게 문제였으」, 총괄
 3840af307 · 2dbbfd1e5): Pause stops the chain within seconds and loses nothing, and events can
-be set aside by table, rule or transaction and run again later with the result they would have
-had.
+be set aside by table, rule or transaction and run again later, each rule once.
 
   pause, Python-bound group   rewound at its next stage boundary · not charged · Resume runs it
   pause, a running query      cancelled by the pause itself, not waited out (PostgreSQL)
   pause survives a restart     a fresh process reads it
   health                      `paused`, its own word, degraded - a bigger verdict still wins
   set aside                   only the scope - collapsed events too - and nothing deleted
-  run again                   the rows those events named, cascading as the chain would have
+  run again                   the rows those events named, each rule once - nothing downstream
 """
 import asyncio
 import os
@@ -335,16 +334,17 @@ def test_a_rule_or_a_transaction_scope_narrows_it(db, monkeypatch):
     assert set_aside.set_aside(db, tables=[PA], transactions=[tx])["events"] == 0
 
 
-def test_running_them_again_gives_the_cells_the_chain_would_have_written(db, monkeypatch):
+def test_running_them_again_runs_each_rule_once_and_wakes_nothing_downstream(db, monkeypatch):
+    """소유자 09-27 「큰 소급 치워둔거니 한번만」. The grid's click replay still cascades - that
+    half is the parametrized replay cell in test_a_chain_write_reads_as_the_chain_whatever_its_layer."""
     rules = _bumpers()
+    downstream = rules[1]
     monkeypatch.setattr(replay, "load_rules", lambda: rules)
     _write(db, PA, [{"k": "K1", "n": "0"}])
     _write(db, PA, [{"k": "K2", "n": "0"}, {"k": "K3", "n": "0"}], collapsed=True)
     _drain(db, rules)
-    untouched = (_values(db, PA), _values(db, PB))
-    assert untouched[1] == [("K1", "1"), ("K2", "1"), ("K3", "1")]
-    assert untouched[0] == [("K1", "2"), ("K2", "2"), ("K3", "2")], \
-        "the fixture has no opted-in downstream, so a cascade would not show"
+    assert _values(db, PA) == [("K1", "2"), ("K2", "2"), ("K3", "2")], \
+        "the live chain wakes the opted-in b -> a here, or the cell below proves nothing"
 
     # The same writes on fresh rows, set aside instead of run, then run again.
     for name in TABLES:
@@ -357,9 +357,16 @@ def test_running_them_again_gives_the_cells_the_chain_would_have_written(db, mon
     assert out["status"] == "ok", out["error"]
     assert _pending(db) == []
 
+    before = db.query(models.DatabaseOutbox.id).order_by(models.DatabaseOutbox.id.desc()).first()[0]
     out = retroactive.execute({"run_id": "es2", "op": "rerun_set_aside",
                                "params": {"tables": PA}}, log=lambda m: None)
     assert out["status"] == "ok", out["error"]
     _drain(db, rules)
 
-    assert (_values(db, PA), _values(db, PB)) == untouched
+    wrote = (db.query(models.DatabaseOutbox)
+             .filter(models.DatabaseOutbox.id > before, models.DatabaseOutbox.table_name == PB)
+             .all())
+    assert wrote, "a -> b ran once and wrote b"
+    assert [e.id for e in wrote if worker.fires(downstream, e)] == []
+    assert _values(db, PB) == [("K1", "1"), ("K2", "1"), ("K3", "1")]
+    assert _values(db, PA) == [("K1", "0"), ("K2", "0"), ("K3", "0")]

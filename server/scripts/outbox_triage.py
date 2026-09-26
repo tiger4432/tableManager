@@ -133,7 +133,7 @@ def finish_stranded(db, apply=False):
 
 def replay_cancelled(db, table, apply=False, chunk=1000):
     """Re-fire the rows the events set aside on `table` named - through the registry's
-    `rerun_set_aside`, which replays them with the chain's cascade (총괄 2dbbfd1e5)."""
+    `rerun_set_aside`, which replays them once and cascades nothing (소유자 09-27)."""
     from chain import set_aside
 
     ids = set_aside.rows_set_aside(db, tables=[table]).get(table, [])
@@ -175,7 +175,8 @@ def main(argv=None):
                    help="set waiting chain events aside (collapsed ones too) - the emergency "
                         "stop; needs --tables, --rules or --transactions and --reason")
     p.add_argument("--rerun-set-aside", action="store_true",
-                   help="replay the rows events set aside named, with the chain's cascade")
+                   help="replay the rows events set aside named - each rule once, nothing "
+                        "downstream")
     p.add_argument("--tables", help="comma-separated tables (with --set-aside / --rerun-set-aside)")
     p.add_argument("--rules", help="comma-separated chain rules")
     p.add_argument("--transactions", help="comma-separated transaction ids")

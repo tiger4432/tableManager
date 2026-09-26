@@ -172,8 +172,8 @@ def test_triage_replays_the_cancelled_rows_through_the_door_by_row_id(seen, floo
 
     outbox_triage.cancel(flooded, "triage_tbl", apply=True)
     assert outbox_triage.replay_cancelled(flooded, "triage_tbl", apply=True) == 5
-    # One door: the registry's `rerun_set_aside`, which replays each rule by row id with the
-    # chain's cascade (총괄 2dbbfd1e5) - its own gate measures the rules and the rows.
+    # One door: the registry's `rerun_set_aside`, which replays each rule by row id, once and
+    # without cascade (소유자 09-27) - its own gate measures the rules and the rows.
     assert seen["door"] == [("rerun_set_aside", {"tables": "triage_tbl"})]
     assert seen["direct"] == []
 

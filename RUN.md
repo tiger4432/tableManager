@@ -1,5 +1,20 @@
 # 지금 돌리면 되는 것
 
+> ## 🔴 [09-27 아침 1] **치워 둔 사건 다시 돌리기 — 규칙마다 한 번 · 연쇄 없음 — 마이그레이션 «없음» · 재기동 API · 스케줄러**
+>
+> ```
+> 무엇이 바뀌나  소급 탭 "Run set-aside events again" · outbox_triage.py --rerun-set-aside · --replay-cancelled
+>              치운 사건이 가리키던 행을 그 표의 규칙마다 «한 번» 리플레이 — 그 쓰기는 하류 규칙을 «안 깨움»(옵트인이어도)
+>              (전에는 체인처럼 연쇄 — 소유자 09-27 「큰 소급 치워둔거니 한번만」)
+> 그대로        그리드에서 행을 찍어 리플레이하면 오늘처럼 연쇄(옵트인 규칙만)
+> 확인          소급 탭 그 연산의 안내 줄 "It replays the rows those events named, each rule once - nothing downstream runs; …"
+>              옛 문장 "… cascades like the chain would have" 가 보이면 API 가 옛 코드 — 재기동
+> 뜻           다시 돌린 뒤 하류 표가 옛 값이면 정상 — 하류가 필요하면 하류 규칙을 소급 탭 "Replay chain rules over old data (R1)" 로 따로, 또는 그리드에서 행 리플레이
+> 급할 때       스위치 없음. 되돌리기는 git revert 뒤 API · 스케줄러 재기동
+> ```
+
+---
+
 > ## 🔴 [09-27 새벽 1] **@mapper 규칙도 지운다 — allow_retraction(잡마다) · allow_replace_map(맵마다) — 마이그레이션 «없음» · 재기동 체인 워커 · API**
 >
 > ```
@@ -109,7 +124,7 @@
 >               ② 치워 두기       소급 탭 "Set queued chain events aside" — 표 · 규칙 · 트랜잭션 중 하나 이상 + 사유. 드라이런이 사건 수 · 행 수를 먼저 보여 줌
 >                                 CLI: python server/scripts/outbox_triage.py --set-aside --tables 표 --reason "왜" (--apply 로 실제로)
 >               ③ Resume          POST /admin/chain/resume  ·  chain_pause_cli.py resume — 남은 대기열이 다시 흐름
->               ④ 나중에           소급 탭 "Run set-aside events again"(같은 범위) — 치운 사건이 가리키던 행을 리플레이, 체인이 했을 연쇄 그대로
+>               ④ 나중에           소급 탭 "Run set-aside events again"(같은 범위) — 치운 사건이 가리키던 행을 리플레이, 규칙마다 한 번 · 연쇄 없음(09-27 아침 1 절)
 >                                 CLI: outbox_triage.py --rerun-set-aside --tables 표 --apply
 > 확인          GET /admin/chain/pause 가 요청 상태 · /health 의 chain 이 paused(degraded) 면 워커가 멈춤을 지킴
 >               chain_worker.log "[Chain] paused - tx '...' was rewound at a stage boundary" — 되감긴 묶음마다

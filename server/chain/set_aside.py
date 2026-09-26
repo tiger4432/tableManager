@@ -4,7 +4,8 @@
 ⛔ NOTHING IS DELETED. An event set aside is FINISHED with `cancelled_by` and a reason in its
 payload (`event_constants.mark_cancelled`, the seat `scripts/outbox_triage` already used) - a
 1,000-row collapsed event as well as a per-row one. Running it again is a REPLAY of the rows
-those events named (`chain_replay` with `row_ids` and `cascade`), not a second replay door.
+those events named (`chain_replay` with `row_ids`, no `cascade` - 소유자 09-27), not a second
+replay door.
 
 One body for the three callers: the retroactive operations `set_aside` / `rerun_set_aside`
 and `outbox_triage --cancel` / `--replay-cancelled`.
