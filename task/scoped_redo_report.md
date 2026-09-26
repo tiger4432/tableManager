@@ -63560,3 +63560,55 @@ rule_shape.expand_declaration 맨 앞 — 평평 규칙의 조기 반환과 is_s
 6-5  게이트 모양(8 값 × 판정 + 자리마다 한 칸)이 「로더 전부」를 채우나
 순서  답 오면 8 착지 -> 6 착지. RUN.md 한 줄씩
 ```
+
+---
+
+## [구현자 -> 총괄] 6 착수 전 정정 — 제 셈이 «이름»을 셌습니다 · 범위 한 번 더 여쭘 (33c08ad7a)
+
+```
+틀린 것   e78ea6272 의 「선언 종류 일곱」은 enabled 라는 «이름»으로 셌습니다(+ 우연히 본 켜기 둘)
+         「켜기 스위치 전부」는 «성질»이라, 이름이 다른 예/아니오 칸이 빠졌습니다
+다시 훑음  성질로 읽은 것 — 아래 표. 전수라고 말하지 못합니다(성질은 grep 이 못 가름)
+```
+
+| 칸 (enabled 말고) | 오늘 읽기 | `"false"` 글자면 |
+|---|---|---|
+| 체인 규칙 allow_retraction · allow_replace_map | 참거짓 | **지우기가 켜짐** |
+| 체인 규칙 allow_chain_trigger · allow_map_metadata_upsert | 참거짓 | 켜짐 |
+| 체인 규칙 is_batch | 참거짓 | 묶음으로 돎 |
+| 체인 규칙 idempotent | 거절 | — |
+| 규칙의 auto_confirm | 경고 한 번 · 꺼짐 | 꺼짐 |
+| 자동 확정 전역 스위치 (ingestion_settings) | 경고 한 번 · 켜짐 | 켜짐 |
+| 수집기 recursive | 거절 | — |
+| 표 map_push_ok · 표기 칸 write | `is True` 만 | 꺼짐 |
+| 원장 allow_null · accepts_verified_join_rules | 거절 | — |
+
+```
+셈 명령   체인 칸 이름: chain_bindings.RULE_ROUTING_* 목록 · 읽기: git grep -n "\"<칸>\"" -- 'server/*.py' ':!server/tests'
+          나머지는 그 모듈을 열어서 읽음
+```
+
+### 여쭐 것 — 6 의 범위
+```
+ㄱ  enabled 일곱(표기 · fold 켜기 포함) — 지난 판정 그대로. 위 표는 아침 보고로
+ㄴ  예/아니오 칸 전부 — 같은 판정자 · 같은 문장. 「"false" 가 지우기를 켬」이 같이 닫힘
+    크기: 안 쟀습니다. 체인 칸은 rule_refusals 한 자리(bad_idempotent 모양)로 모이고 읽는 자리는 안 바뀌나,
+    나머지(auto_confirm 둘 · map_push_ok · write)는 오늘 «경고하고 기본값» 이라 거절로 바꾸면 동작이 바뀜
+제 생각   allow_retraction 이 가장 위험합니다. 그래도 범위는 총괄 몫이라 여쭙니다
+```
+
+### 함수 자리 — 「is_switched_off 옆」이 아니라 validation.py 로 하려 합니다
+```
+까닭   판정을 부를 자리가 체인 밖(수집기 · 원장 · 표기 · 맵)까지 넓어짐. validation.py 는 머리에
+      「One refusal language for declaration files — 판정 300」 · 표준 라이브러리만 씀 · 체인과 원장이 이미 import
+      rule_shape 에 두면 수집기 · 맵이 체인 패키지를 import 해야 함
+켜짐을 «읽는» 판정자(is_switched_off)는 제자리 그대로
+다르면 말씀 주십시오
+```
+
+### 8 — 짓고 잰 것, 착지 직전
+```
+짓기   cascade 뺌 · 문장 자리 전부(조사 때 빠졌던 outbox_triage --rerun-set-aside 도움말 한 줄 포함)
+게이트  새 칸 초록 · 변이(True 되돌림) 빨강 「assert [10] == []」 — 하류 규칙을 깨우는 사건 하나
+       바뀐 다섯 파일 142 passed · 전체 · PG 도는 중. 끝나면 착지
+```
