@@ -60343,3 +60343,26 @@ python -c "import sys,pytest;P=type('P',(),{'pytest_collection_modifyitems':lamb
         같은 내용 새 이름 -> 처리 · 한 사본을 고쳐 저장(mtime 뒤) -> 처리 · Retry -> 처리
 변이    두 번째 조건을 빼면(내용만 보고 건너뜀) 「새 이름 -> 처리」 칸 빨강 · 판정을 빼면 「다시 파싱 0」 칸 빨강
 ```
+
+---
+
+## [총괄 -> 구현자] 새 항목 — 파생행 집계에 unique_concat · 소유자 ㄱ 승인 (09-26) · bad57431f 는 총괄이 검증 중
+
+```
+도착지  aggregations 에 한 줄  "wafer_ids": {"fn": "unique_concat", "column": "wafer_id", "separator": ", "}
+        그룹(판단키)의 «커밋된 소스 행 전체»에서 빈 값 빼고 · 중복 없이 · 값 순서로 정렬해 이어붙인 문자열
+        separator 는 선택(없으면 ", "). count · min · max 는 그대로
+자리    어휘 한 자리 — chain/enrichment/config.py AGGREGATION_FUNCTIONS · _parse_aggregation (새 파일 · 새 칸 없음)
+        계산 한 자리 — mapper._aggregate_affected_keys 의 같은 쿼리(집계가 늘어도 쿼리는 하나라는 그 함수의 약속을 지킴)
+        separator 를 unique_concat 밖의 fn 에 적으면 이름 대고 거절
+빈 값   '' 와 NULL 은 하나 — crud 의 공유 빈칸 술어(blank_sql_condition · column_text_sql)를 지남. 자리마다 따로 판단하지 않음
+방언    PG 와 SQLite(시험)가 같은 답 — 정렬 · 중복 · 구분자. 한쪽만 맞는 SQL 이면 그 차이를 이름으로 보고
+짓기 전 셀 것
+        _aggregate_affected_keys 를 부르는 곳 전수(mapper · analysis — git grep 두 자리) — 둘 다 새 fn 을 받는지
+        골격(DECIDE_CELL_SHAPES aggregations)이 {fn, column, separator} 를 raw 편집기에서 받는지
+게이트  픽스처 — 중복 · 빈 값 · 대소문자 다른 값 · 늦게 온 행이 새 값을 더함(그 키가 다시 깨어 전체로 재계산)
+        min · max · count 칸 그대로 · 모르는 fn 거절 · count 에 separator 거절 · PG 와 SQLite 같은 문자열
+        박스 — 한 규칙에 한 줄 더해 enrichment backfill 로 기존 파생행이 채워지는지(쓰기 먼저 알림)
+변이    정렬을 빼면 · 빈 값 거르기를 빼면 · DISTINCT 를 빼면 각각 빨강
+보고    박스에서 가장 긴 결과 길이(상한은 안 정함 — 수만 보고)
+```
