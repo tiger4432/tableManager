@@ -34670,3 +34670,45 @@ time 이름         ㉯ ㄴ 그대로 — apply_batch_updates 에 out 인자 하
           바뀐 행마다 UPDATE 하나(R3 와 같은 모양) · 이력 행 칸마다 하나. 규모는 소유자 말씀대로 안 셈 — 운영 실행은 소유자 몫
 오늘 순서  지시된 것 끝 — A · 층 접기 · B · C · 표기 1 · 2 · 3
 ```
+
+---
+
+## 문서 정비 + 적대 QA — 09-27 아침 착지 둘 (0f01b326d) — 08:29
+
+```
+고친 문서(23eb4b426 · b14c9c3b5)
+   CODE_MAP   is_switched_off 행 — 「false · 0 · null 이면 꺼짐」 옆에 ⚰️: 선언에서는 0 · null · "false" 가 거기 닿기 전
+              expand_declaration 머리와 저장 관문이 거절, 규칙이 안 섬(종전 "false" 켜짐 · 0 꺼짐)
+              set_aside 행 — 다시 돌리기는 규칙마다 한 번 · 연쇄 없음 · 문 하나(_run_rerun_set_aside) · 연쇄는 그리드 클릭뿐
+   BACKFILL_GUIDE  §2.8 신설 + §0 행 — 🔴 치워 두기 절이 «없었다»(지시는 있다고 전제). 치워 두기 = 지우지 않음 · 범위 하나 이상,
+              다시 돌리기 = 규칙마다 한 번 · 연쇄 없음, 아래까지는 그리드 클릭
+   guide/config  ingestion_settings — 워처 로그 인용 `Ignoring non-boolean ...` 이 낡음 -> 오늘 문장
+              「ingestion_settings.json: <칸> must be true or false, got <값> - write true or false - falling back to <기본값>.」
+              notation_rules_config §2.3 — write 가 true/false 가 아니면 이름 대고 비교만(동작은 전과 같음 · 문장만 하나로)
+   RUN.md     대조만 — 두 착지 다 구현자가 적은 것과 코드가 같음
+```
+
+```
+QA ①  「연쇄」를 말하는 자리 — 새 판정(다시 돌리기 한 번 · 연쇄 없음 / 그리드 클릭만 연쇄)과 같은가
+   셈   git grep -n -i "cascade" -- server client2/src ':!server/tests' ':!client2/dist' 에서 DROP … CASCADE · cascade_graph 류 제외
+        = 91 줄(카나리아 ^CASCADE_KEY 1). 리플레이 연쇄를 말하는 자리를 열어 읽음
+   같음  소급 탭 문장(set-aside 의 downstream_note · 다시 돌리기 docstring) · set_aside 머리 · outbox_triage · redo_banner(클릭만 cascade: true) ·
+        event_constants · ingestion_worker 판정 주석 · 가이드 §949 · RUN.md 세 항목
+   🔴 하나 다름 — CLI server/scripts/chain_replay_cli.py replay --cascade
+        help 「let what this replay writes wake the opted-in chain rules, as the chain does」 — 그리드 «밖»에서 연쇄를 켜는 둘째 문
+        (소급 연산 chain_replay 의 cascade 인자는 form=False 라 탭엔 없고, 그 help 는 「the grid's click replay sends it」)
+        -> 「그리드 클릭만 연쇄」가 CLI 에서는 참이 아님. 물음: CLI --cascade 를 두나(운영자 CLI 는 예외), 빼나
+QA ②  옛 문장 남은 수
+   「cascades like the chain would have」 류   0 — 셈: git grep -n -i "cascades like the chain\|cascade like the chain\|cascades as the chain"
+                                            (걸린 1 줄 ingestion_worker 「The grid's click replay … cascades as the chain does」 는 오늘도 참)
+   「must be a boolean」 류(예/아니오 칸을 한 판정 «밖»에서 자기 문장으로)   5 자리 — «성질»로 셈:
+        git grep -n -E "isinstance\([^)]*,\s*bool\)" -- server ':!server/tests' ':!server/validation.py' = 60(카나리아 flag_refusal( 호출 27)
+        그중 선언 · 설정의 예/아니오 칸을 flag_refusal 없이 판정하는 것
+        parsers/advanced_ingester.py   파일 이름 규칙 'required' — 「'required' must be a boolean (default false)」
+        scripts/support/finding_kinds.py  finding kind 'active' — 「declares `active` that is not boolean」
+        run_auto_update.py             auto_update_control.json 'bypass_proxy' — 한국어 경고 한 줄, 기본 true
+        map_overlay.py _read_y_invert  y_invert — true/false 외에 0 · 1 도 «읽음»(나머지 칸과 다른 규칙)
+        main.py POST /admin/auto-update/toggle  요청 본문 'active' — 「Invalid 'active' field. Expected a boolean.」(선언이 아니라 요청 — 셀지 말지 판단 필요)
+        제외한 것  원장 원천 준비 출력의 표지(행 데이터) · 숫자 해석에서 bool 을 먼저 거르는 자리(transfer_plan 등) · 표시 문장
+   -> 다섯은 제가 안 고침(구현자 코드 · 지시 범위 밖). 한 판정으로 모을지는 여쭐 것
+```
