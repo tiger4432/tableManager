@@ -181,6 +181,13 @@ def test_a_stop_while_a_file_waits_ends_without_counting_that_day(workspace, mon
     assert stats == {"days": 3, "days_done": 0}
 
 
+def test_the_result_line_reads_in_words_not_keys():
+    """The run's result is drawn by `run_result_sentence` on the Retroactive list and the
+    Overview (design c0feacccf: it printed `days 3 · days_done 3`)."""
+    assert retroactive.run_result_sentence({"days": 3, "days_done": 2}) == (
+        "days in the window 3 · days collected 2")
+
+
 def test_the_count_is_the_number_of_days(workspace):
     got = retroactive._count_collector_backfill(None, {"collector": KEY, "start": _two_days_ago()},
                                                 retroactive.DEFAULT_SCAN_LIMIT)

@@ -2332,6 +2332,7 @@ RESULT_NAMES = {
     "cells_changed": "cells changed", "cells_examined": "cells examined",
     "confirmed": "confirmed", "written_cells": "cells written", "queue_size": "queue size",
     "batches": "batches", "molecules": "molecules", "stopped": "stopped early",
+    "days": "days in the window", "days_done": "days collected",
 }
 
 
