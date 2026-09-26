@@ -34319,3 +34319,32 @@ Running 수  state 가 running 인 항목만 센다 — orphaned · unknown 은 
 할 일    구현자 — audit_logs 픽스처 작업 중 -m pg 를 돌릴 때 이 겹침을 한 번 재현해 원인 칸만 이름으로(짓지 않음)
         응용 — 5-b 셋째 줄의 초 잴 때 «다른 레인 실행과 안 겹칠 때»를 지킴. 겹침은 착지 판정의 빨강으로 세지 않음
 ```
+
+---
+
+> 🔴 **[총괄 -> 응용] 소유자 「구현자 일이 너무 많으니 응용이랑 나눠」 (09-26) — 응용이 «짓는» 항목 하나: 체인 규칙의 flat 경고가 틀리지 않게 + key 골격이 목록에 반영**
+
+```
+소유자 말   「경고 안틀리게하고 key 스켈레톤도 리스트 반영되게해줘」
+사실(총괄 코드 읽음)
+  경고     chain/ingestion_worker.py 「[ChainRules] %s: %d cell(s) still written flat — move them under 'params': %s」
+           = chain_bindings.flat_param_cells — 최상위 칸 중 routing_keys()(RULE_ROUTING_REQUIRED + RULE_ROUTING_OPTIONAL)에 없는 것
+  틀린 두 칸  key            통합 선언의 칸(rule_shape.to_declaration 의 on · derive · into · key · limits) — 조인이 번역될 때 params «옆»에 실림
+                             chain/synthesis 가 rule.get("key") 로 읽어 유일 인덱스를 요구 · 승인 — params 로 옮기면 선언이 사라짐
+            allow_replace_map  덮어쓰기 권한 — dt_map_derivation.require_scoped_batches_allowed 가 rule.get(...) 최상위로 읽음 · params 로 옮기면 쓰기 거절
+            (allow_retraction 도 같은 자리에서 읽힘)
+           비슷한 권한 allow_chain_trigger · allow_map_metadata_upsert 는 이미 목록에 있음
+  골격     chain_bindings.py 의 선언 골격에 key(columns · unique — rule_shape.KEY_CELLS · KEY_CELL_SHAPES)가 이미 있음 — 목록(routing_keys)이 그것을 모름
+도착지   경고가 부르는 목록이 «제품이 규칙 최상위에서 읽는 칸 전부»와 같음 — 목록의 저자 하나
+         골격이 선언한 최상위 칸(key 포함)은 목록이 «골격에서» 얻음(사본으로 다시 적지 않음)
+         경고는 매퍼 인자만 이름 댐 — 박스 로그의 key · allow_replace_map 경고가 사라지고, lot_event_to_lot_slot_wafer 의 넷은 남음(진짜 매퍼 인자)
+셀 것    제품 코드가 체인 규칙 dict 의 최상위를 읽는 자리 전수 — AST 로(rule.get("…") · rule["…"] · 다른 이름의 dict 도) · params_of 로 읽는 것은 빼고
+         그 이름 중 목록에 없는 것 — 이름으로
+게이트   드리프트 시험 하나: «코드가 최상위로 읽는 이름 ⊆ 목록» (AST 로 세는 시험 — 목록에서 하나 빼면 빨강)
+         박스 chain_rules 로 로드 -> 경고 줄 전·후(총괄 기대: key · allow_replace_map 줄 0 · 매퍼 인자 줄은 그대로)
+변이     목록에서 key 를 빼면 · allow_replace_map 을 빼면 각각 빨강
+충돌 피하기  구현자가 C 로 만지는 파일(run_auto_update.py · admin/retroactive.py · config_resolve_report.py · scheduler 쪽)은 건드리지 않음
+            커밋은 `git commit -F <파일> -- <경로들>` 로만, 끝나면 `git show --stat HEAD` 로 남의 파일이 안 딸렸는지
+            착지 규칙 셋(import 시험 · client 명령 · run_pg_tests 전부) 그대로
+재기동    체인 워커 · API(경고는 로드 때) — 알림 먼저
+```
