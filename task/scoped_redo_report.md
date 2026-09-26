@@ -62011,3 +62011,68 @@ RUN.md     [09-26 오후 4]
 다음       2 단계 — 목록 마커. ⚠️ 문 value_suggest.suggest_values 가 limit 을 설정의 max_limit(기본 200)로 깎고 탐색 예산(400) · 시간(1.5 s)이 있음
            그대로 1,000 으로 부르면 200 에서 잘려 거절됨 -> 그 문의 settings 인자로 이 호출만 max_limit 1,000 · 예산 1,001 로 부름(같은 문, 두 번째 읽기 아님)
 ```
+
+---
+
+## [구현자 -> 총괄] C 2 단계 착지 a40a893f1 — 목록 마커 · 스케줄러 모델 · 이름 붙은 거절 (ffd5d42b7 ㄱ)
+
+```
+읽기      value_suggest.suggest_values 그대로 — 그 문의 settings 인자로 이 호출만 max_limit 1,000 · 탐색 예산 1,001 (상수 LIST_MARKER_CAP 한 자리)
+          빈칸 뺌 · 한 번씩 · 값 순서는 그 문의 것. 값 속 ' 는 ''
+거절      빈 목록 · 1,000 초과(잘림) · 못 읽음 · 선언 안 된 표·칸 -> 그 실행을 «시작 안 함». 스크립트가 한 줄도 안 돎(시험이 확인)
+          Auto Update 탭 서랍에는 그 한 문장 — 이름 붙은 거절(CollectorRefused)은 트레이스백 대신 문장을 적음(체인 워커의 CellRefused 와 같은 모양)
+채우기 자리  1 단계의 한 자리 그대로 — 채우기를 두 길 «앞»으로 옮겨 한 번만 채우고, exec 길 · 자식 길이 같은 글을 봄
+스케줄러    시작(__main__)에 동적 모델 초기화 — 워처 · 체인 워커와 같은 한 줄. ⚠️ 진입점의 그 호출 자체는 시험 밖(프로세스를 띄워야 함), 초기화 함수는 시험 안
+```
+
+### 게이트 · 변이
+
+```
+test_the_exec_path_gets_the_grid_list_quoted PASSED
+test_the_stdout_path_gets_the_same_list PASSED
+test_an_empty_list_refuses_the_run_by_name PASSED
+test_a_list_longer_than_the_cap_refuses_rather_than_cutting PASSED
+test_a_list_of_exactly_the_cap_is_filled PASSED
+test_an_undeclared_column_refuses_by_name PASSED
+test_an_unreadable_list_refuses_by_name PASSED
+test_the_scheduler_builds_the_models_the_list_reads_through PASSED
+변이
+baseline: 8 passed in 3.50s
+mutant: a quote inside a value is not doubled
+    2 failed, 6 passed in 3.93s
+    red: test_the_exec_path_gets_the_grid_list_quoted
+    red: test_the_stdout_path_gets_the_same_list
+mutant: a cut list is not refused
+    1 failed, 7 passed in 3.84s
+    red: test_a_list_longer_than_the_cap_refuses_rather_than_cutting
+mutant: an empty list is not refused
+    1 failed, 7 passed in 3.98s
+    red: test_an_empty_list_refuses_the_run_by_name
+mutant: an unreadable list is not refused
+    1 failed, 7 passed in 3.89s
+    red: test_an_unreadable_list_refuses_by_name
+mutant: the door is asked with its own 200 cap
+    1 failed, 7 passed in 2.72s
+    red: test_a_list_of_exactly_the_cap_is_filled
+mutant: a named refusal is recorded as a traceback
+    4 failed, 4 passed in 3.93s
+    red: test_a_list_longer_than_the_cap_refuses_rather_than_cutting
+    red: test_an_empty_list_refuses_the_run_by_name
+    red: test_an_undeclared_column_refuses_by_name
+    red: test_an_unreadable_list_refuses_by_name
+mutant: the scheduler builds no models
+    1 failed, 7 passed in 3.93s
+    red: test_the_scheduler_builds_the_models_the_list_reads_through
+restored: 8 passed in 3.68s
+1 단계 변이도 새 코드에서 다시 돌림 — 다섯 다 빨강
+```
+
+```
+착지 시험   run_auto_update 를 부르는 시험 + 새 시험: 298 passed in 40.98s
+           클라 픽스처: 710 passed, 1 xfailed in 145.50s (0:02:25)
+           PG 증명 전부: 7 failed, 102 passed, 7076 deselected in 109.30s (0:01:49) — 빨강 일곱이 알려진 일곱과 같음
+RUN.md     [09-26 오후 5]
+다음       3 단계 — collector 영역. ⚠️ run_auto_update 는 import 때 그 프로세스의 프록시 환경 변수를 지우고 no_proxy=* 를 넣음
+           선언 점검(API 프로세스)이 그 모듈을 import 하면 API 의 프록시 환경이 바뀜 -> 머리 · 마커 판정을 import 부작용 없는 모듈로 옮겨
+           스케줄러(로드 거절)와 선언 점검이 같은 함수를 부르게 함. 옮기는 것 외에 동작 변화 없음
+```
