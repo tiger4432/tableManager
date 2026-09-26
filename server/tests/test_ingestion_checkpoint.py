@@ -210,11 +210,11 @@ def test_crash_mid_file_keeps_committed_offset_then_resumes(p2_env, monkeypatch)
     real_apply = crud.apply_batch_updates
     state = {"calls": 0}
 
-    def exploding_apply(db, table_name, batch_obj):
+    def exploding_apply(db, table_name, batch_obj, **kw):
         state["calls"] += 1
         if state["calls"] == 2:
             raise RuntimeError("simulated crash mid-file")
-        return real_apply(db, table_name, batch_obj)
+        return real_apply(db, table_name, batch_obj, **kw)
 
     monkeypatch.setattr(directory_watcher.crud, "apply_batch_updates", exploding_apply)
     handler.process_with_retry(p, delay=0.01)
@@ -236,9 +236,9 @@ def test_crash_mid_file_keeps_committed_offset_then_resumes(p2_env, monkeypatch)
     applied = []
     original = directory_watcher.crud.apply_batch_updates
 
-    def spy(db_, t, b):
+    def spy(db_, t, b, **kw):
         applied.append(len(b.updates))
-        return original(db_, t, b)
+        return original(db_, t, b, **kw)
 
     monkeypatch.setattr(directory_watcher.crud, "apply_batch_updates", spy)
     p2 = _write(ws / "raws" / "big_again.csv", content)
@@ -275,9 +275,9 @@ def test_resume_skips_already_committed_rows(p2_env):
     applied = []
     real_apply = crud.apply_batch_updates
 
-    def spy(db_, table_name, batch_obj):
+    def spy(db_, table_name, batch_obj, **kw):
         applied.extend([u.business_key_val for u in batch_obj.updates])
-        return real_apply(db_, table_name, batch_obj)
+        return real_apply(db_, table_name, batch_obj, **kw)
 
     import unittest.mock as _mock
     with _mock.patch.object(directory_watcher.crud, "apply_batch_updates", spy):
@@ -476,9 +476,9 @@ def test_duplicate_signature_is_skipped_with_explicit_record(p2_env):
     import unittest.mock as _mock
     real_apply = crud.apply_batch_updates
 
-    def spy(db_, t, b):
+    def spy(db_, t, b, **kw):
         applied.append(t)
-        return real_apply(db_, t, b)
+        return real_apply(db_, t, b, **kw)
 
     p2 = _write(ws / "raws" / "second.csv", content)   # 다른 이름, 같은 내용
     with _mock.patch.object(directory_watcher.crud, "apply_batch_updates", spy):
@@ -526,9 +526,9 @@ def test_force_token_in_filename_bypasses_dedup(p2_env):
     import unittest.mock as _mock
     real_apply = crud.apply_batch_updates
 
-    def spy(db_, t, b):
+    def spy(db_, t, b, **kw):
         applied.append(len(b.updates))
-        return real_apply(db_, t, b)
+        return real_apply(db_, t, b, **kw)
 
     with _mock.patch.object(directory_watcher.crud, "apply_batch_updates", spy):
         handler.process_with_retry(_write(ws / "raws" / "f1__force__.csv", content), delay=0.01)
@@ -547,9 +547,9 @@ def test_dedup_can_be_disabled_globally(p2_env):
     import unittest.mock as _mock
     real_apply = crud.apply_batch_updates
 
-    def spy(db_, t, b):
+    def spy(db_, t, b, **kw):
         applied.append(len(b.updates))
-        return real_apply(db_, t, b)
+        return real_apply(db_, t, b, **kw)
 
     with _mock.patch.object(directory_watcher.crud, "apply_batch_updates", spy):
         handler.process_with_retry(_write(ws / "raws" / "g2.csv", content), delay=0.01)
@@ -570,9 +570,9 @@ def test_admin_retry_path_bypasses_dedup_and_reingests(p2_env):
     import unittest.mock as _mock
     real_apply = crud.apply_batch_updates
 
-    def spy(db_, t, b):
+    def spy(db_, t, b, **kw):
         applied.append(len(b.updates))
-        return real_apply(db_, t, b)
+        return real_apply(db_, t, b, **kw)
 
     db = p2_env["SessionLocal"]()
     try:

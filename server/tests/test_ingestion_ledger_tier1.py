@@ -96,9 +96,9 @@ def env(tmp_path, monkeypatch):
         counter["hashes"] += 1
         return real_sig(p)
 
-    def counting_apply(db, t, b):
+    def counting_apply(db, t, b, **kw):
         counter["ingests"] += 1
-        return real_apply(db, t, b)
+        return real_apply(db, t, b, **kw)
 
     monkeypatch.setattr(directory_watcher, "compute_file_signature", counting_sig)
     monkeypatch.setattr(directory_watcher.crud, "apply_batch_updates", counting_apply)

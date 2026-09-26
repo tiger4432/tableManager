@@ -226,7 +226,7 @@ def test_watcher_created_logs_capped_at_500(db_session, monkeypatch):
         def close(self):
             pass
 
-    def fake_apply_batch_updates(db, table_name, batch_obj):
+    def fake_apply_batch_updates(db, table_name, batch_obj, notation_report=None):
         n = len(batch_obj.updates)
         logs = [{"row_id": f"r{i}", "table_name": table_name} for i in range(n)]
         changed = [(f"r{i}", "v") for i in range(n)]

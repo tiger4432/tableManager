@@ -83,7 +83,7 @@ class _FakeDB:
 
 
 def _install_fake_crud(monkeypatch, applied):
-    def fake_apply_batch_updates(db, table_name, batch_obj):
+    def fake_apply_batch_updates(db, table_name, batch_obj, notation_report=None):
         applied.append((table_name, batch_obj))
         n = len(batch_obj.updates)
         return [], [(f"r{i}", "c") for i in range(n)], [], []

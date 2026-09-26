@@ -28,6 +28,14 @@ TABLES = {
 OWNER = {"join": "-", "pad_last_number": 2}
 
 
+DECLARED = {
+    "wafer": {"write": True, "rules": OWNER},
+    "seen_at": {"write": True, "rules": {"time": {"from": ["%Y/%m/%d %H:%M:%S",
+                                                           "%d.%m.%Y %H:%M"]}}},
+    "note": {"rules": OWNER},
+}
+
+
 def _declare(tmp_path, monkeypatch, columns):
     path = tmp_path / "notation_rules.json"
     path.write_text(json.dumps({"columns": {"notval_test_wafer": columns}}), encoding="utf-8")
@@ -42,12 +50,7 @@ def val_env(db_session, tmp_path, monkeypatch):
     crud.TABLE_CONFIG.update(tables)
     from database.database import Base
     Base.metadata.create_all(bind=db_session.get_bind())
-    _declare(tmp_path, monkeypatch, {
-        "wafer": {"write": True, "rules": OWNER},
-        "seen_at": {"write": True, "rules": {"time": {"from": ["%Y/%m/%d %H:%M:%S",
-                                                               "%d.%m.%Y %H:%M"]}}},
-        "note": {"rules": OWNER},
-    })
+    _declare(tmp_path, monkeypatch, DECLARED)
     yield db_session
     nn.reset_cache()
     from conftest import retire_dynamic_model
@@ -234,15 +237,18 @@ def test_one_join_takes_one_value_rule_from_both_sides(val_env, tmp_path, monkey
 
 # --- the write preview ------------------------------------------------------------------------
 
-def test_the_write_preview_shows_what_would_be_stored(val_env):
+def test_the_write_preview_shows_what_would_be_stored(val_env, tmp_path, monkeypatch):
+    """What the preview reads is what was stored BEFORE the declaration - written raw."""
     import config_resolve_report as crr
     db = val_env
+    _declare(tmp_path, monkeypatch, {})
     rows = [("L1", "wafer.1", "2026/09/26 13:05:07"), ("L2", "wafer.1", "yesterday"),
             ("L3", "wafer-01", "2026-09-26T13:05:07Z"), ("L4", "W#9", "26.09.2026 13:05")]
     crud.apply_batch_updates(db, "notval_test_wafer", schemas.GeneralUpdateBatch(
         updates=[schemas.GeneralUpdateItem(updates={"lot": lot, "wafer": w, "seen_at": t},
                                            source_name="user", updated_by="test")
                  for lot, w, t in rows], silent=True))
+    _declare(tmp_path, monkeypatch, DECLARED)
     crud.apply_batch_updates(db, NOTATION_ALIAS_TABLE, schemas.GeneralUpdateBatch(
         updates=[schemas.GeneralUpdateItem(
             updates={"table_name": "notval_test_wafer", "column_name": "wafer",

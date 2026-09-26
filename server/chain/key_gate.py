@@ -161,6 +161,20 @@ def _record(table_name: str, rule_names, columns: dict, rows: int):
     return announce
 
 
+def _as_it_will_be_stored(table_name: str, item):
+    """`item` with its `write` columns folded - JUDGED here, never forwarded (총괄 47aba5d44 ③:
+    the write funnel is the one seat that changes a value). The rules alone: an alias cannot
+    make a key blank - the write door stores a canonical of spaces as NULL and
+    `notation_norm.aliases_by_column` skips it - so the gate needs no session (a7d2e90ec ㉮ ㄱ)."""
+    import notation_norm
+
+    updates, business_key_val, arrived, _left = notation_norm.fold_item_for_write(
+        table_name, item.updates or {}, item.business_key_val)
+    if not arrived and business_key_val == item.business_key_val:
+        return item
+    return item.model_copy(update={"updates": updates, "business_key_val": business_key_val})
+
+
 def screen(table_name: str, items, rule_names=(), transaction_id=None):
     """Split `items` into (kept, report). Refused items carry no resolvable identity.
 
@@ -192,7 +206,7 @@ def screen(table_name: str, items, rule_names=(), transaction_id=None):
     kept = []
     by_column = report["by_column"]
     for index, item in enumerate(items or ()):
-        unfilled = crud.unfilled_key_columns(table_name, item)
+        unfilled = crud.unfilled_key_columns(table_name, _as_it_will_be_stored(table_name, item))
         if not unfilled:
             kept.append(item)
             continue

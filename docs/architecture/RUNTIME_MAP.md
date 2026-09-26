@@ -78,6 +78,7 @@ INSIDE THE WRITE · row build T s / N cells changed · audit logs T s / N rows �
 [Ingest] <표> FILE <파일>: R row(s) in T s (N rows/min) · <heavy|normal> lane · waited T s (<무엇을>)
          · sent: new · changed · unchanged · cells changed · side-table rows · STAGES · INSIDE THE WRITE · DB wait samples N (Lock N)
 ```
+- 🆕 09-26 표기 2 단계: `side-table rows` 뒤에 `· time rule left as written: no matching format N, time zone written M` — `write` 칸의 `time` 규칙이 그대로 둔 값, 파일마다 한 번, 0 이면 칸이 없음(`crud.apply_batch_updates(notation_report=)` → `_FileTally.time_left`)
 - 수는 넘겨받은 목록의 «길이» — 세려고 더한 질의 없음. 새 행 id 는 세션의 identity 키에서 읽음(`_new_row_ids`)
 - `waited` 의 뜻이 레인마다 다르다 — heavy 는 «큐 + 표 잠금», normal 은 «표 잠금»(`_FileTally.WAITED_SPANS`). 레인 없이 들어온 파일은 `not measured`
 - 세는 쪽이 터지면 «그 줄만» 조용해진다(`FILE … : not counted (<사유>)`) — 적재는 계속

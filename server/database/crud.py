@@ -3565,6 +3565,19 @@ def apply_row_update_internal(
                 if logs_to_cache is not None:
                     logs_to_cache.append(log_dict)
 
+        # 총괄 5ee9d3bd1 ② · 3eb161a9c ①: a value the notation fold changed leaves one line per
+        # cell - the spelling that arrived, what is stored, under the writer that sent it - only
+        # when the cell is written. A re-sent spelling the no-op above kept writes nothing.
+        arrived = (update_item._written_spelling or {}).get(col_name)
+        if arrived is not None and (has_changed or not source_unchanged):
+            log_dict = create_audit_log(
+                db, table_name, row.row_id, col_name, arrived, clean_val,
+                update_item.source_name, (update_item.updated_by or "system"),
+                transaction_id=transaction_id, business_key=row.business_key_val,
+                add_to_cache=(logs_to_cache is None))
+            if logs_to_cache is not None:
+                logs_to_cache.append(log_dict)
+
     if changed_cols and update_item.source_name != "user":
         new_summary_parts = []
         for col in changed_cols:
@@ -3595,6 +3608,10 @@ def apply_row_update_internal(
         if logs_to_cache is not None:
             logs_to_cache.append(log_dict)
 
+    # ⚰️ [Notation normalization] REVERSED FOR `write` COLUMNS BY THE OWNER'S DECISION (총괄
+    # 5ee9d3bd1 ③): such a column is folded ONCE, ahead of this function, by
+    # `_fold_written_notation`, and the cell loop above writes its audit line. The paragraph
+    # below is the record of the compare-only model, which every other column still has.
     # [Notation normalization] THERE IS NOTHING HERE ANY MORE, and that is the design.
     # A derivation hook used to sit at this exact spot, refreshing a physical
     # `<col>_norm` column from the value that had just won the priority computation.
@@ -4559,8 +4576,13 @@ def _say_the_constraint_refused_this_batch(table_name, batch, exc) -> None:
 
 def apply_batch_updates(db: Session, table_name: str, batch: schemas.GeneralUpdateBatch,
                         replace_report: Optional[dict] = None,
-                        drop_report: Optional[dict] = None):
+                        drop_report: Optional[dict] = None,
+                        notation_report: Optional[dict] = None):
     """Batch write, with one recovery: losing a cross-process race on a business key.
+
+    notation_report: optional out-param (dict) - `{verdict: count}` of the time values a
+    `write` column's `time` rule left as written (`notation_norm.TIME_LEFT_AS_WRITTEN`), for
+    the watcher's file line (총괄 a7d2e90ec ㉯ ㄴ). Empty when nothing was left.
 
     drop_report: optional out-param (dict), the same shape of contract `replace_report`
     already has and for the same reason - the 4-tuple return is unpacked at ~10 production
@@ -4620,6 +4642,9 @@ def apply_batch_updates(db: Session, table_name: str, batch: schemas.GeneralUpda
     # deletion and the two source controls reach the relation without passing through, so
     # 「관문이 여기 하나」 was true of this function and false of the relation.
     refuse_write_to_view(table_name)
+    # Before the snapshot, so a retry restores the FOLDED key - and before the loop, so it
+    # folds once however many attempts there are.
+    _fold_written_notation(db, table_name, batch, notation_report)
 
     # [D3-F1] Captured BEFORE attempt 1, because by the time the conflict is raised the
     # payload has already been written into. See `_replay_sensitive_key_column`.
@@ -4705,6 +4730,50 @@ def apply_batch_updates(db: Session, table_name: str, batch: schemas.GeneralUpda
                 f"({exc.__class__.__name__}: "
                 f"{str(getattr(exc, 'orig', exc)).strip().splitlines()[0]})"
             )
+
+
+def _fold_written_notation(db, table_name: str, batch, notation_report=None):
+    """A `write` column's values are stored folded - THE seat that changes them (총괄 47aba5d44 ③).
+
+    Once per `apply_batch_updates` call, ahead of its retry loop: a retry re-runs the same
+    items, and a second fold would move again a value a non-idempotent declaration moves, and
+    would lose the spelling that arrived - which the audit line keeps (5ee9d3bd1 ②). The
+    replace_map scope is folded with the values, or it would scope the spelling no stored row
+    has any more. A table with no `write` column reads nothing.
+    """
+    import notation_norm
+
+    if not notation_norm.written_columns(table_name):
+        return
+    aliases = notation_norm.aliases_by_column(db)
+    composite_src = TABLE_CONFIG.get(table_name, {}).get("composite_key_source")
+    left = {}
+    for item in batch.updates:
+        raw_updates, raw_key = item.updates, item.business_key_val
+        item.updates, item.business_key_val, arrived, counts = \
+            notation_norm.fold_item_for_write(table_name, item.updates,
+                                              item.business_key_val, aliases)
+        if arrived:
+            item._written_spelling = arrived
+        for verdict, n in counts.items():
+            left[verdict] = left.get(verdict, 0) + n
+        # 총괄 3eb161a9c ②: a row stored under the raw spelling is found by it - the spelling
+        # moves aside the way a supplied key does (판정 191), and the write re-keys that row.
+        if composite_src:
+            raw_key = (compose_business_key(table_name,
+                                            [raw_updates.get(col) for col in composite_src])
+                       if any(col in arrived for col in composite_src)
+                       and not _unfilled_composite_parts(composite_src, raw_updates)
+                       else None)
+        elif raw_key == item.business_key_val:
+            raw_key = None
+        if raw_key and not item._supplied_business_key_val:
+            item._supplied_business_key_val = str(raw_key).strip()
+    if batch.scope:
+        batch.scope = notation_norm.fold_item_for_write(table_name, batch.scope, None,
+                                                        aliases)[0]
+    if notation_report is not None:
+        notation_report.update(left)
 
 
 def _apply_batch_updates_once(db: Session, table_name: str,

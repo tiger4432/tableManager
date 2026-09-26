@@ -172,7 +172,7 @@ def test_every_committed_chunk_beats(hb_dir, handler, monkeypatch):
     stops - not when some unrelated timer stops."""
     monkeypatch.setattr(directory_watcher, "SessionLocal", lambda: _FakeSession())
     monkeypatch.setattr(directory_watcher.crud, "apply_batch_updates",
-                        lambda db, t, batch: ([], [], [], []))
+                        lambda db, t, batch, notation_report=None: ([], [], [], []))
 
     rows = [{"item_id": str(i), "c1": "x"} for i in range(2500)]  # 3 chunks of 1000
     before = heartbeat._state.get("watcher", {}).get("beats", 0)
@@ -189,7 +189,7 @@ def test_a_chunk_loop_that_stops_stops_the_beats(hb_dir, handler, monkeypatch):
     committed progress would keep counting."""
     calls = {"n": 0}
 
-    def exploding(db, t, batch):
+    def exploding(db, t, batch, notation_report=None):
         calls["n"] += 1
         if calls["n"] >= 2:
             raise RuntimeError("database went away")

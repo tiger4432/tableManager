@@ -16,6 +16,23 @@
 
 ---
 
+> ## 🔴 [09-26 밤 5] **표기 2 단계 — "write": true 칸은 쓸 때 접혀 저장 — 마이그레이션 «없음» · 재기동 넷 다(API · 워처 · 체인 · 스케줄러)**
+>
+> ```
+> 무엇이 바뀌나  server\config\notation_rules.json 에서 "write": true 인 칸만 — 파일 · 격자 · 체인 쓰기가 접힌 값을 저장
+>              그 파일이 없거나 write 칸이 없으면 아무것도 안 바뀜
+>              키 칸을 write 로 선언해도 새 행 없음 — 옛 철자로 저장된 행을 찾아 그 행의 키를 접힌 키로 바꿈
+> 이력          접기가 철자를 바꾸고 그 칸이 쓰일 때 칸마다 한 줄(old = 들어온 철자, new = 저장값). 같은 철자를 다시 보낸 파일은 줄 없음
+> 확인          watcher.log "[Ingest] <표> FILE <파일>: ... · time rule left as written: no matching format N, time zone written M"
+>              time 칸이 그대로 둔 값의 수 — 0 이면 이 칸이 안 나옴. N 이 크면 그 칸의 "from" 모양을 더 적음
+>              GET /admin/config/notation/preview?table=<표>&column=<칸> 의 folds_again 이 0 이 아니면 선언부터 고침(소급이 거기서 멈춤)
+> 별칭 표        notation_alias 라이브 설치는 총괄이 소유자께(1 단계 항목의 install_product_tables.py)
+> 스위치        그 칸의 "write": true 를 지우면 5 초 안에 다음 쓰기부터 안 접음. 이미 접혀 저장된 값은 그대로
+> 되돌리기       git log --oneline --grep "notation stage two" 의 커밋을 git revert 뒤 네 프로세스 재기동
+> ```
+
+---
+
 > ## 🔴 [09-26 밤 4] **비상 정지 — 체인 일시정지 · 대기열 치워 두기 · 다시 돌리기 — 마이그레이션 «없음» · 재기동 넷 다(API · 워처 · 체인 · 스케줄러)**
 >
 > ```
@@ -120,7 +137,7 @@
 > 확인        GET /admin/config/resolve?domain=notation  -> 선언마다 effective / rejected
 >            rejected 에 "Refused: the join character is the one this column's key is joined with" 이면 그 칸의 join 을 다른 글자로
 >            GET /admin/config/notation/preview?table=<표>&column=<칸>  -> write 칸은 "write": true · time 칸은 time_left_as_is
-> 뜻         이 단계는 «저장하지 않음» — "write": true 는 미리 보기까지. 저장은 2 단계 착지부터
+> 뜻         저장은 2 단계([09-26 밤 5] 항목)부터 — 이 단계의 몫은 선언 점검과 미리 보기
 >            write 칸은 «적은» 규칙만 돎(기본값 separator · case 안 옴) — {"join": "-", "pad_last_number": 2} 면 wafer.1 -> wafer-01
 >            미리 보기 folds_again 이 0 이 아니면 한 번 더 접을 때 또 바뀌는 값 — 소급 전에 규칙이나 별칭 행을 고침
 > 되돌리기    git log --oneline --grep "written spelling" --grep "written column runs only" 의 커밋을 새것부터 git revert 뒤 API 재기동

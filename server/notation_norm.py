@@ -1,5 +1,6 @@
 """WF/lot/slot notation normalization - a DECLARATION about a column, applied at
-QUERY TIME to BOTH SIDES of a comparison. It stores nothing.
+QUERY TIME to BOTH SIDES of a comparison. It stores nothing - except on a `write`
+column, which the write funnel stores folded (stage 2, the owner's decision below).
 
 [What the declaration means]
     "columns": {"dt_log": {"core_lot": true}}
@@ -43,9 +44,14 @@ guarding a WRITE, and there is no longer a write:
     identity. Nothing is written now, so no identity can move. `business_key_val`
     is computed by `crud._update_row_business_key` from the STORED values and this
     module never touches storage.
-Both refusals are therefore vacuous, not relaxed. If a future round ever writes a
-folded value anywhere, both must come back, and this paragraph is the record of
-what they were for.
+Both refusals were therefore vacuous, not relaxed, and this paragraph said: if a future
+round ever writes a folded value anywhere, both must come back.
+⚰️ REVERSED BY THE OWNER'S DECISION, NOT FORGOTTEN (총괄 5ee9d3bd1 ③ - owner: 「접두랑 분기
+문자열, 원장에도 같은 게 키가 달라져서 크리티컬함. 아예 쓰기단에서 정규화 필요」). A `write`
+column IS stored folded, key columns included - the key is exactly what differed - so neither
+refusal returns. What each protected is carried instead: the spelling that arrived is kept as
+the `old_value` of the audit line the fold writes, and the backfill stops on a column whose
+stored values a second fold would move again (`moves_again`).
 
 [THE RULES - independently switchable, on purpose]
     separator   a RUN of '.', '_', '-' or whitespace  ->  a single '-'  (LOW risk)
@@ -171,6 +177,9 @@ IMPLEMENTED_RULES = (RULE_SEPARATOR, RULE_CASE,
 BOTH_ENGINE_RULES = (RULE_SEPARATOR, RULE_CASE, RULE_JOIN, RULE_PAD_LAST_NUMBER, RULE_REPLACE)
 
 DEFAULT_RULES = {RULE_SEPARATOR: True, RULE_CASE: True, RULE_ZERO_PAD: False}
+
+#: The `fold_time` verdicts that leave a value as it was written - counted, never changed.
+TIME_LEFT_AS_WRITTEN = ("unmatched", "zoned")
 
 #: The characters `join` may collapse a separator run to.
 JOIN_CHARACTERS = ("-", "_", ".", " ")
@@ -838,7 +847,8 @@ def _validate_column(table: str, column: str, spec, table_rules: dict,
     Note what is NOT here any more: there is no `derived` key, because there is no
     derived column. The two refusals that used to live in this function
     (`would_rewrite_raw`, `key_column`) both guarded a WRITE; the module docstring
-    records what they were for and why they are vacuous rather than relaxed.
+    records what they were for, and the owner's decision that keeps them retired now that
+    a `write` column is stored folded.
     """
     subject = f"{table}.{column}"
     write = False
@@ -1074,7 +1084,9 @@ def fold_for_write(table: str, column: str, value, aliases=None):
     An alias (exact spelling) first, then the column's rules - or, on a time column, `fold_time`,
     whose verdict says what happened (`unmatched` and `zoned` are left as they are). A column
     not declared `write`, or a value that is not text, comes back unchanged with verdict None.
-    It runs at two seats (총괄 5ee9d3bd1 ①), so a second fold must not move a value: the
+    It runs at two seats (총괄 5ee9d3bd1 ①) through `fold_item_for_write` - the write funnel
+    stores what it returns, the chain key gate only judges with it (47aba5d44 ③) - so a second
+    fold must not move a value: the
     contract checks that for the rules; an alias row whose `canonical` is itself another row's
     `written`, or folds to one, would break it - the preview shows the spellings that merge.
     """
@@ -1082,6 +1094,43 @@ def fold_for_write(table: str, column: str, value, aliases=None):
     if spec is None or not isinstance(value, str):
         return value, None
     return _write_fold(value, spec["rules"], (aliases or {}).get((table, column)) or {})
+
+
+def written_columns(table: str) -> list:
+    """The columns of `table` declared `write` - the ones a write stores folded."""
+    return [column for column, spec in (normalized_by_table().get(table) or {}).items()
+            if spec.get("write")]
+
+
+def fold_item_for_write(table: str, updates: dict, business_key_val=None, aliases=None):
+    """`(updates, business_key_val, arrived, left)` - one write item as it will be stored.
+
+    `arrived` is `{column: spelling that came}` for each value the fold changed, `left` counts
+    the time values left as written by verdict. The one body both seats call (총괄 5ee9d3bd1 ①):
+    the write funnel stores it, the chain key gate judges a copy and forwards the item as it came.
+    A plain business key column declared `write` folds the item's `business_key_val` too - that
+    is what the row is looked up by. A table with no `write` column returns its arguments.
+    """
+    written = written_columns(table)
+    out, arrived, left = updates, {}, {}
+    if not written:
+        return out, business_key_val, arrived, left
+    for column in (c for c in written if c in (updates or {})):
+        stored, verdict = fold_for_write(table, column, updates[column], aliases)
+        if verdict in TIME_LEFT_AS_WRITTEN:
+            left[verdict] = left.get(verdict, 0) + 1
+        if stored != updates[column]:
+            if out is updates:
+                out = dict(updates)
+            out[column] = stored
+            arrived[column] = updates[column]
+    if isinstance(business_key_val, str):
+        from database import crud
+        config = crud.TABLE_CONFIG.get(table) or {}
+        key_col = config.get("business_key")
+        if key_col and not config.get("composite_key_source"):
+            business_key_val = fold_for_write(table, key_col, business_key_val, aliases)[0]
+    return out, business_key_val, arrived, left
 
 
 def moves_again(stored, rules: dict, column_aliases: dict):
@@ -1217,7 +1266,7 @@ def fold_preview(db, table: str, column: str, rules: dict = None,
         for raw, n in raw_rows:
             stored, verdict = _write_fold(raw, rules, column_aliases) \
                 if isinstance(raw, str) else (raw, None)
-            if verdict in ("unmatched", "zoned"):
+            if verdict in TIME_LEFT_AS_WRITTEN:
                 time_left[verdict] = time_left.get(verdict, 0) + int(n)
             again = moves_again(stored, rules, column_aliases)
             if again is not None:

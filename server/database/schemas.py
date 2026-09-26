@@ -193,6 +193,9 @@ class GeneralUpdateItem(BaseModel):
     # named no row, so the identity ruling (188/190) stands and the rename keeps its
     # address (S-90).
     _supplied_business_key_val: Optional[Any] = PrivateAttr(default=None)
+    # {column: the spelling that arrived} for each value the write funnel's notation fold
+    # changed - the audit line's old_value (총괄 5ee9d3bd1 ②). Set by `crud`, never sent.
+    _written_spelling: Optional[dict] = PrivateAttr(default=None)
 
 
 class EffortReport(BaseModel):

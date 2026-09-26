@@ -491,14 +491,18 @@ class _FileTally:
         self.samples = self.lock_samples = 0
         self.sampled = False
         self.silenced = None          # why the line stopped counting, if it did
+        self.time_left = {}           # verdict -> values a `time` rule left as written
 
-    def add_chunk(self, table, summary, rows, sent, new_ids, changed_cells, sampler):
+    def add_chunk(self, table, summary, rows, sent, new_ids, changed_cells, sampler,
+                  time_left=None):
         """🔴 AN OBSERVER DOES NOT KILL WHAT IT OBSERVES - a tally that raises silences the
         file line, says so once, and the chunk goes on."""
         if self.silenced is not None:
             return
         try:
             self._add_chunk(summary, rows, sent, new_ids, changed_cells, sampler)
+            for verdict, n in (time_left or {}).items():
+                self.time_left[verdict] = self.time_left.get(verdict, 0) + n
         except Exception as exc:                                    # noqa: BLE001
             self.silenced = "%s: %s" % (type(exc).__name__, exc)
             logger.warning("[Ingest] %s file line stops counting (%s) - the ingestion is "
@@ -544,12 +548,16 @@ class _FileTally:
         return (
             "[Ingest] %s FILE %s: %d row(s) in %.3f s (%d rows/min) · %s · waited %s"
             " · sent: new %d · changed %d · unchanged %d · cells changed %d"
-            " · side-table rows %d · STAGES%s · INSIDE THE WRITE%s · DB wait samples %s" % (
+            " · side-table rows %d%s · STAGES%s · INSIDE THE WRITE%s · DB wait samples %s" % (
                 table, filename or "?", self.rows, wall,
                 int(self.rows * 60 / wall) if wall > 0 else 0,
                 "%s lane" % lane[0] if lane else "no lane", waited,
                 self.new, self.changed, self.unchanged, self.cells,
                 sum(n for n, unit in self.counts.values() if unit == "rows"),
+                # 총괄 a7d2e90ec ㉯ ㄴ - once per file, and only when something was left.
+                " · time rule left as written: no matching format %d, time zone written %d" % (
+                    self.time_left.get("unmatched", 0), self.time_left.get("zoned", 0))
+                if self.time_left else "",
                 "".join(" · %s %.3f s" % item for item in sorted(self.stages.items()))
                 or " (none named)",
                 alignment_batch_counts.write_steps_text(
@@ -3450,10 +3458,12 @@ class IngestionHandler(FileSystemEventHandler):
                         except Exception:
                             _sampler = None
 
+                        _time_left = {}
                         with alignment_batch_counts.stage("apply"):
                             try:
                                 results, changed_cells, created_logs, deleted_row_ids = \
-                                    crud.apply_batch_updates(db, t_name, batch_obj)
+                                    crud.apply_batch_updates(db, t_name, batch_obj,
+                                                             notation_report=_time_left)
                             except crud.CellRefused as refused:
                                 # The write names the chunk's row; the operator reads the file's.
                                 refused.row = item_rows[refused.row - 1] if refused.row else None
@@ -3549,7 +3559,7 @@ class IngestionHandler(FileSystemEventHandler):
                                          depth=len(chunk), table=t_name,
                                          chunk=chunk_index)
                     file_tally.add_chunk(t_name, _summary, len(chunk), len(items), new_row_ids,
-                                         changed_cells, _sampler)
+                                         changed_cells, _sampler, _time_left)
                     
             # 🔴 THE STATISTICS ARE PART OF THE LOAD (S-124 ②). After the last chunk
             # commits, this table's row count is one the planner has never seen, and the
