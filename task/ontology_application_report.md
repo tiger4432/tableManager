@@ -33891,3 +33891,32 @@ python -c "import sys,pytest;P=type('P',(),{'pytest_collection_modifyitems':lamb
 여쭐 것 — 착지 규칙에 셋째 줄을 어떻게 둘지:
 - ㄱ 건드린 모듈을 import 하는 시험 가운데 PG 표시가 있으면 `run_pg_tests.py` 를 같이 돌림(그 파일들만 `-k`/경로로)
 - ㄴ 서버 코드를 건드린 착지는 늘 `run_pg_tests.py` 전부(109)
+
+---
+
+## 🔴 PG 겹침 — 고정 스키마 이름만으로는 게이트에 안 닿습니다 (4afefde38 에 앞서) · 5 의 빨강이 assy_test 에서 돌아옴 (09-26 14:16)
+
+시험 DB assy_test · 깨끗한 작업 트리 f8f9eaa46 · 다른 레인 pytest 없는 창(30 초 확인 뒤) · `run_pg_tests.py -k test_ledger_trace_pg`(14 시험)
+
+| 실행 | 결과 |
+|---|---|
+| 혼자 | 14 passed |
+| 둘 동시 · 같은 스키마 이름 | 하나 14 passed · 다른 하나 **14 errors** (UndefinedTable ledger_events) |
+| 둘 동시 · **다른** 스키마 이름(`PYTEST_XDIST_WORKER=appA` / `appB` — conftest 가 이름 뒤에 붙임) | 하나 **14 errors** · 다른 하나 14 passed |
+| 같은 조건 다시 (3 초 어긋나게) | 둘 다 1 failed(`ValueError: not enough values to unpack (expected 1, got 0)`) · 하나는 + 1 error(UndefinedTable ledger_events) |
+
+```
+뜻      이름을 갈라도 둘이 무너집니다 -> 4afefde38 의 게이트 「동시 둘 = 혼자와 같은 결과」는 이름 고치기만으로는 안 섭니다
+        두 실행이 이름 말고 «또» 나누는 것이 있습니다
+후보    (증명 안 됨) ledger/schema._relation_exists 가 to_regclass(name) — 검색 경로로 찾고, 그 경로 끝에 public 이 있음(scratch_connect_args)
+        기동 때 public 에 원장 표가 있으면 그 실행은 자기 표를 안 만들고 public 의 것을 씀 -> 한쪽의 TRUNCATE · DROP 이 다른 쪽에 닿음
+근거    지금 assy_test 의 public 에 표 하나 — ledger_source_row_ref (14:15 · 누가 만드는지 안 셈)
+        그래서 5 의 시험이 HEAD 70de3d53e 에서 다시 빨강: test_a_ledger_source_reads_a_table_that_has_row_id -> 1 failed
+        「'ledger_sources' not in {'ledger_sources': [], 'row_id': 'R1'}」 — 25b5108a 가 가른 것은 «분리 환경 ↔ 시험», «시험 ↔ 시험»은 아님
+안 셈   겹친 동안 public 에 ledger_events 가 있었는지 · public 에 원장 표를 쓰는 시험이 무엇인지
+```
+
+```
+초 (착지 셋째 줄)   13:57–13:59 전체 130 초(pytest 122 초) — 🔴 총괄 5dfc1c16d 의 둘째 실행과 겹친 것으로 봅니다(그 결과 10 failed · 4 errors 는 깨끗하지 않음)
+                   조용한 창에서 다시 잽니다 — 지금 HEAD 로
+```
