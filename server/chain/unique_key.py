@@ -31,6 +31,43 @@ import os
 #    `join_key_index.INDEX_PREFIX`: it is an identifier written into live databases.
 logger = logging.getLogger("Join.UniqueKey")
 
+
+def _open_ddl_connection(bind):
+    """An autocommit connection (`CONCURRENTLY` cannot run in a transaction) that waits at
+    most `db_safety.DDL_LOCK_TIMEOUT` for a lock - the same value the ledger's DDL reads.
+    ⑤ (총괄 948ee98b5): an index waiting on a session that never ends held the worker's
+    first beat, and the chain showed foreign_beat."""
+    import db_safety
+    from sqlalchemy import text as sa_text
+
+    connection = bind.connect().execution_options(isolation_level="AUTOCOMMIT")
+    try:
+        connection.execute(sa_text("SET lock_timeout = '%s'" % db_safety.DDL_LOCK_TIMEOUT))
+    except Exception:
+        connection.close()
+        raise
+    return connection
+
+
+def _close_ddl_connection(connection):
+    """Back to the pool WITHOUT the time limit - a session setting outlives `close()`, and
+    the next user of this connection did not ask for it. If it cannot be reset, it is
+    thrown away rather than handed back."""
+    from sqlalchemy import text as sa_text
+
+    try:
+        connection.execute(sa_text("RESET lock_timeout"))
+    except Exception:                                                  # noqa: BLE001
+        connection.invalidate()
+    connection.close()
+
+
+def waited_past_the_lock_timeout(error) -> bool:
+    """Did this DDL give up on a lock (SQLSTATE 55P03), rather than fail on the data?"""
+    return (getattr(getattr(error, "orig", None), "pgcode", None) == "55P03"
+            or "lock timeout" in str(error))
+
+
 #: 보고에 싣는 중복 키의 최대 건수. 수만 건이면 목록이 진단이 아니라 소음이 된다.
 MAX_REPORTED_DUPLICATES = 20
 
@@ -179,9 +216,13 @@ def ensure(db, table: str, columns: list, folds=None, apply: bool = True) -> dic
     from chain import join_key_index as vjc
     from sqlalchemy import text as sa_text
 
-    engine = db.get_bind()
+    # 🔴 END THIS SESSION'S READ FIRST. `inspect` read the table here and the transaction stays
+    # open; `DROP INDEX CONCURRENTLY` on an INVALID leftover waits for every transaction that
+    # touched the table - this one too, on the connection beside it. Without the time limit
+    # that wait never ended; with it, a deferred build could never be retried (⑤, measured).
+    db.rollback()
     try:
-        connection = engine.execution_options(isolation_level="AUTOCOMMIT").connect()
+        connection = _open_ddl_connection(db.get_bind())
     except Exception as open_error:
         report["error"] = "autocommit connection unavailable: %s" % open_error
         return report
@@ -200,13 +241,17 @@ def ensure(db, table: str, columns: list, folds=None, apply: bool = True) -> dic
         # 여기서 실패하면 대개 «중복»이다. PostgreSQL 이 어떤 키인지까지 말해 주므로
         # 우리 진단으로 덮어쓰지 않고 그 문장을 그대로 나른다.
         report["error"] = str(create_error).strip().splitlines()[0]
+        if waited_past_the_lock_timeout(create_error):
+            # Not the data: another session held the table past the time limit (⑤).
+            report["state"] = "deferred"
+            return report
         if not report.get("duplicates"):
             report["duplicates"], report["blank_keys"] = duplicate_keys(
                 db, table, columns, folds)
         report["state"] = "duplicates" if report["duplicates"] else "failed"
     finally:
         try:
-            connection.close()
+            _close_ddl_connection(connection)
         except Exception:
             pass
     return report
@@ -258,6 +303,12 @@ def ensure_once(db, rule_name: str, table: str, columns: list, folds=None) -> di
                        (" (INVALID 잔해 %s 제거)" % ", ".join(report.get("dropped") or ())
                         if report.get("dropped") else ""),
                        report["created"])
+    elif report.get("state") == "deferred":
+        import db_safety
+        logger.warning("[Join:%s] 유일 인덱스를 세우지 못했습니다 — 다른 세션이 표 %s 를 %s 넘게 "
+                       "잡고 있습니다. 다음 기동/리로드로 미룹니다. 그동안 이 조인은 행 단위 그물만으로 "
+                       "오른쪽 행이 둘인 왼쪽 행을 거절합니다.",
+                       rule_name, table, db_safety.DDL_LOCK_TIMEOUT)
     elif report.get("state") != "ok":
         logger.warning("[Join:%s] %s", rule_name,
                        describe(table, columns, report))
@@ -354,12 +405,22 @@ def retract_unrequired_once(db, required) -> dict:
         # running query is a reason to leave THAT one and go on.
         statement = 'DROP INDEX CONCURRENTLY IF EXISTS "%s"' % index_name
         try:
-            with bind.connect().execution_options(
-                    isolation_level="AUTOCOMMIT") as connection:
+            connection = _open_ddl_connection(bind)
+            try:
                 connection.execute(text(statement))
+            finally:
+                _close_ddl_connection(connection)
         except Exception as drop_error:                                # noqa: BLE001
-            logger.warning("[Join] 인덱스 %s 를 걷어내지 못했습니다: %s",
-                           index_name, str(drop_error).strip().splitlines()[0])
+            if waited_past_the_lock_timeout(drop_error):
+                import db_safety
+                logger.warning(
+                    "[Join] 인덱스 %s 를 걷지 못했습니다 — 다른 세션이 표 %s 를 %s 넘게 잡고 "
+                    "있습니다. 다음 기동/리로드로 미룹니다. 그동안 이 인덱스가 그 표의 쓰기에 "
+                    "23505 를 낼 수 있습니다(S-248).",
+                    index_name, table, db_safety.DDL_LOCK_TIMEOUT)
+            else:
+                logger.warning("[Join] 인덱스 %s 를 걷어내지 못했습니다: %s",
+                               index_name, str(drop_error).strip().splitlines()[0])
             continue
         dropped.append(index_name)
         logger.warning(

@@ -2191,40 +2191,6 @@ def warmup_worker(rules, db_session_factory=None):
     except Exception as e:
         logger.error("[Warmup] Mapper discovery failed entirely: %s", e)
 
-    # 0-bis) 🔴 [S-240] THE UNIQUE KEY A UNIFIED JOIN DECLARED, MADE AT LOAD TIME.
-    #    This is the seat because it is where 「the rules were just (re)read」 meets 「there is
-    #    a database」 - `load_chain_rules()` has no session, and the read path is exactly
-    #    where §0-ter ① forbids new SQL. It runs at boot AND after every reload, which is
-    #    when a declaration can have changed.
-    #    ⛔ CONTAINED. An index that cannot be built is a named line, never a worker that
-    #    will not start: the join still refuses a fanned-out left row by itself.
-    if db_session_factory is not None:
-        try:
-            from chain import synthesis
-
-            _index_db = db_session_factory()
-            try:
-                _report = synthesis.ensure_declared_unique_keys(_index_db, rules)
-                # 🔴 [S-248, 판정 652] MADE AND TAKEN BACK BY THE SAME SEAT. The retraction
-                # used to sit inside the read-time join loader, which is being retired; left
-                # there, the REAL join's index would have nobody to take it back when its
-                # declaration goes. 「지을 때」 와 「걷을 때」 가 한 자리여야 그 둘이 갈라지지
-                # 않는다 - and this is the only place that has both the rules and a session.
-                _retracted = synthesis.retract_unrequired_indexes_once(_index_db)
-            finally:
-                _index_db.close()
-            for _name, _why in _report.get("skipped") or ():
-                # ⚠️ [판정 683] 「건너뜀」은 「하라고 한 것을 안 했다」는 말이고, 이 목록의 한 부류는
-                #    「하라고 한 적이 없습니다」 - 선언이 `key.unique` 를 안 적었으면 건너뛸 일이
-                #    없다. 머리를 중립으로 두면 뒤에 붙는 사유가 줄 전체를 참으로 만든다.
-                logger.info("[Warmup] 유일 키 설치 없음: %s (%s)", _name, _why)
-            for _dropped in (_retracted or {}).get("dropped") or ():
-                logger.info("[Warmup] 아무 선언도 요구하지 않아 제품 인덱스를 걷었습니다: %s",
-                            _dropped)
-        except Exception as _key_error:                                # noqa: BLE001
-            logger.error("[Warmup] 선언된 유일 키를 세우지 못했습니다"
-                         "(체인은 계속): %s", _key_error)
-
     # 1) 활성 규칙의 매퍼 모듈 선(先)import — importlib 캐시를 덥힌다(기동 + 리로드 재웜업 공통).
     for rule in rules:
         if rule_shape.is_switched_off(rule):
@@ -2258,6 +2224,58 @@ def warmup_worker(rules, db_session_factory=None):
         f"[Warmup] mappers={(t1 - t0) * 1000.0:.0f}ms db={(t2 - t1) * 1000.0:.0f}ms "
         f"total={(t3 - t0) * 1000.0:.0f}ms"
     )
+
+def _ensure_declared_indexes_sync(rules, db_session_factory):
+    """🔴 [S-240] THE UNIQUE KEY A UNIFIED JOIN DECLARED, MADE - AND [S-248] TAKEN BACK - AT
+    LOAD TIME. This is the seat because it is where 「the rules were just (re)read」 meets
+    「there is a database」: `load_chain_rules()` has no session, and the read path is where
+    §0-ter ① forbids new SQL. 「지을 때」 와 「걷을 때」 가 한 자리여야 그 둘이 갈라지지 않는다.
+
+    🔴 ⑤ BESIDE THE LOOP, AFTER ITS FIRST BEAT, AT START AND AFTER EVERY RELOAD (총괄 948ee98b5 ·
+    3ef5fe54f). It ran inside the warmup, before the first beat and with no time limit, so a
+    `DROP INDEX CONCURRENTLY` waiting on a query nobody would end held the new worker's first
+    beat - foreign_beat, and a queue that did not drain. Each DDL now gives up after
+    `db_safety.DDL_LOCK_TIMEOUT` and says so, and the next start or reload tries again.
+
+    ⚠️ ASKED AGAIN EACH TIME. The per-process memos are cleared first, so a changed declaration
+    and a deferred index are both asked again - without that, a reload answered from memory.
+
+    ⛔ CONTAINED. An index that cannot be built is a named line, never a worker that will not
+    start: the join still refuses a fanned-out left row by itself.
+    """
+    from chain import synthesis, unique_key
+
+    unique_key.forget()
+    unique_key.forget_retractions()
+    try:
+        _index_db = db_session_factory()
+        try:
+            _report = synthesis.ensure_declared_unique_keys(_index_db, rules)
+            _retracted = synthesis.retract_unrequired_indexes_once(_index_db)
+        finally:
+            _index_db.close()
+        for _name, _why in _report.get("skipped") or ():
+            # ⚠️ [판정 683] 「건너뜀」은 「하라고 한 것을 안 했다」는 말이고, 이 목록의 한 부류는
+            #    「하라고 한 적이 없습니다」 - 선언이 `key.unique` 를 안 적었으면 건너뛸 일이
+            #    없다. 머리를 중립으로 두면 뒤에 붙는 사유가 줄 전체를 참으로 만든다.
+            logger.info("[Warmup] 유일 키 설치 없음: %s (%s)", _name, _why)
+        for _dropped in (_retracted or {}).get("dropped") or ():
+            logger.info("[Warmup] 아무 선언도 요구하지 않아 제품 인덱스를 걷었습니다: %s",
+                        _dropped)
+    except Exception as _key_error:                                    # noqa: BLE001
+        logger.error("[Warmup] 선언된 유일 키를 세우지 못했습니다"
+                     "(체인은 계속): %s", _key_error)
+
+
+def _start_index_work(rules, db_session_factory, after=None):
+    """The index work as a task beside the loop - after `after` (the previous start's or
+    reload's), so two never build the same index at once."""
+    async def run():
+        if after is not None and not after.done():
+            await asyncio.wait({after})
+        await asyncio.to_thread(_ensure_declared_indexes_sync, rules, db_session_factory)
+    return asyncio.create_task(run())
+
 
 def _rules_for_group(events_in_tx, rules):
     """The enabled rules this transaction group would wake, as a stable signature."""
@@ -3868,6 +3886,7 @@ async def start_chain_ingestion_worker(db_session_factory):
     # loop share one pace, and these two want opposite ones: the follow-up is latency
     # (a row is waiting), the census is politeness (nothing waits for it).
     asyncio.create_task(run_ledger_row_census(db_session_factory))
+    index_work = None
 
     while True:
         # [B1/B2] Progress beat, emitted from the work loop itself. Idle
@@ -3888,6 +3907,9 @@ async def start_chain_ingestion_worker(db_session_factory):
         # channel - see `_worker_note`.
         held = chain_control.paused()
         heartbeat.beat("chain", note=_worker_note(), state="paused" if held else None)
+        if index_work is None:
+            # ⑤ The index work starts only once the first beat is out, beside the loop.
+            index_work = _start_index_work(rules, db_session_factory)
         if held is not None:
             # 🔴 THE EMERGENCY STOP (총괄 3840af307): take nothing, and wait like an idle tick
             #   (S-252 - a tick that does nothing must still await).
@@ -3934,6 +3956,8 @@ async def start_chain_ingestion_worker(db_session_factory):
                     # 3. [Warmup] 캐시 무효화로 콜드 스타트가 재발하지 않도록 매퍼를 즉시 재웜업.
                     #    (DB 풀은 리로드에도 유지되므로 프라임 생략 — db_session_factory=None)
                     warmup_worker(rules)
+                    # 4. ⑤ The index work again - the comment on its seat promises 「every reload」.
+                    index_work = _start_index_work(rules, db_session_factory, after=index_work)
                     
                     # Mark the trigger event as SUCCESS in this tx if it is not processed yet
                     # (This event only serves as IPC notify signal, does not execute mappers)

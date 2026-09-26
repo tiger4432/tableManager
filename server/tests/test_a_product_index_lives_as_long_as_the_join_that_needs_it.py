@@ -44,7 +44,16 @@ class _Connection:
         return False
 
     def execute(self, statement, *_a, **_k):
-        self.sink.append(str(statement))
+        # The DDL only - the time limit set around it is scored in
+        # test_the_chain_beats_before_its_startup_index_work.py.
+        if not str(statement).startswith(("SET lock_timeout", "RESET lock_timeout")):
+            self.sink.append(str(statement))
+
+    def close(self):
+        pass
+
+    def invalidate(self):
+        pass
 
 
 class _Bind:
@@ -173,7 +182,9 @@ def test_one_index_that_cannot_be_dropped_does_not_stop_the_rest():
                                 ("t2", INDEX_PREFIX + "two")])
     first = {"n": 0}
 
-    def flaky(statement, *_a, **_k):
+    def flaky(_self, statement, *_a, **_k):
+        if not str(statement).startswith("DROP"):
+            return
         first["n"] += 1
         if first["n"] == 1:
             raise RuntimeError("index is in use")
@@ -182,7 +193,8 @@ def test_one_index_that_cannot_be_dropped_does_not_stop_the_rest():
     db.get_bind().connect = lambda: type(
         "C", (), {"execution_options": lambda _s, **_k: _s,
                   "__enter__": lambda _s: _s, "__exit__": lambda *_a: False,
-                  "execute": flaky})()
+                  "execute": flaky, "close": lambda _s: None,
+                  "invalidate": lambda _s: None})()
 
     report = unique_key.retract_unrequired_once(db, set())
 

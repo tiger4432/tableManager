@@ -223,16 +223,20 @@ def test_a_join_with_no_right_key_is_skipped_by_name(calls):
 # ⚠️ ⓒ — the seat is load time, and it cannot stop the worker
 # ---------------------------------------------------------------------------
 
-def test_the_seat_is_the_warmup_which_has_both_the_rules_and_a_session():
+def test_the_seat_is_the_index_work_which_has_both_the_rules_and_a_session():
     """🔴 `load_chain_rules()` HAS NO SESSION and the read path is where §0-ter ① forbids new
     SQL, so the seat is the one place where 「the rules were just read」 meets 「there is a
-    database」 - and it runs after every reload, which is when a declaration can change."""
+    database」 - and it runs after every reload, which is when a declaration can change.
+    ⑤ (총괄 3ef5fe54f): that place left the warmup - it runs beside the loop, after its first
+    beat - and the warmup no longer builds anything."""
     import inspect
 
-    body = inspect.getsource(worker_warmup())
+    from chain import ingestion_worker as worker
 
-    assert "ensure_declared_unique_keys" in body
-    assert "db_session_factory is not None" in body
+    body = inspect.getsource(worker._ensure_declared_indexes_sync)
+
+    assert "ensure_declared_unique_keys" in body and "retract_unrequired_indexes_once" in body
+    assert "ensure_declared_unique_keys" not in inspect.getsource(worker_warmup())
 
 
 def test_a_failure_to_build_an_index_does_not_stop_the_worker(monkeypatch, caplog):
@@ -244,10 +248,9 @@ def test_a_failure_to_build_an_index_does_not_stop_the_worker(monkeypatch, caplo
 
     monkeypatch.setattr(unique_key, "ensure_once",
                         lambda *a, **k: (_ for _ in ()).throw(RuntimeError("no pg_index")))
-    monkeypatch.setattr(worker.mapper_sdk, "discover", lambda: ({}, {}))
 
     with caplog.at_level(logging.ERROR):
-        worker.warmup_worker([_rule()], db_session_factory=lambda: _FakeSession())
+        worker._ensure_declared_indexes_sync([_rule()], lambda: _FakeSession())
 
     assert "no pg_index" in " ".join(r.getMessage() for r in caplog.records)
 

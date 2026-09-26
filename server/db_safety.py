@@ -299,6 +299,12 @@ PER_TRANSACTION = "per_transaction"
 #: The base connect-time options. `client_encoding` matches
 #: `database/database.py` so a script does not read text differently from the app.
 #:
+#: How long a product DDL waits for a lock before it fails and says so - one value for every
+#: seat that sets it: the ledger's partition DDL and the chain's unique index work (총괄
+#: 3ef5fe54f). Waiting longer is the danger: a DDL queued on a table makes an ALTER queue
+#: behind it, and every writer of that table behind the ALTER.
+DDL_LOCK_TIMEOUT = "20s"
+
 #: WHAT IS DELIBERATELY NOT IN HERE: `lock_timeout` and
 #: `idle_in_transaction_session_timeout`, which `scripts/diagnose_wal_headroom.py`
 #: also pins. Adding a timeout to a pass that does a full GROUP BY over every

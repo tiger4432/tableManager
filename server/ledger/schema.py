@@ -53,6 +53,8 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timedelta, timezone
 
+import db_safety
+
 logger = logging.getLogger("Ledger.Schema")
 
 LEDGER_TABLE = "ledger_events"
@@ -647,7 +649,7 @@ def ensure_partition(connection, when: datetime, known=None):
             # message that says what it was waiting for, rather than hang. A hung
             # process gives an operator nothing to diagnose (an instrument that goes
             # blind under its own fault is this project's own 2026-08-11 lesson).
-            cursor.execute("SET LOCAL lock_timeout = '20s'")
+            cursor.execute("SET LOCAL lock_timeout = '%s'" % db_safety.DDL_LOCK_TIMEOUT)
             if not _relation_exists(cursor, name):
                 cursor.execute(create_partition_sql(when))
                 logger.info("[Ledger] created partition %s for %s", name,
