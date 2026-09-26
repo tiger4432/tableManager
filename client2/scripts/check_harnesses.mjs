@@ -969,6 +969,10 @@ const FLOORS = new Map([
   // 29 -> 35 (lead f063c948e): the outbox retry reply is judged by its status - five checks, two mutants.
   ['retry_verdict_harness.mjs', 61],
   //
+  // The Auto Update row's Backfill cell (lead 09f0be40f): the window's three states, this
+  // collector's latest run read through buildRunsView, and what the page keeps drawn and escaped.
+  ['collector_backfill_harness.mjs', 19],
+  //
   // Scores that the fields saying 「this list is a SAMPLE」 have a reader, and that the branch
   // the server relies on to compensate for a capped list is still handled. Verified
   // load-bearing: renaming `batch_refresh_required` out from under it drops it to 10/1.

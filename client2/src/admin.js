@@ -20,6 +20,7 @@ import { showToast, escapeHtml } from './utils.js';
 // 삽니다 — 이 파일은 `tokens.css` 를 import 해서 node 가 못 읽습니다.
 import {
   fileLogRowHtml, activeIngestionRowHtml, workspaceRowHtml, mapperRowHtml, autoUpdateRowHtml,
+  backfillLineClass,
 } from './admin_rows.js';
 // 🔴 C-122. 전송과 게이트 판정은 이제 «그 파일»이 소유합니다. 여기 남은 것은 이 페이지만
 //    아는 둘입니다 — 모달로 «묻는 법»과, 503 문장을 «어디에 세우나».
@@ -83,6 +84,8 @@ import {
   buildConfirmActions, groupExtras,
 } from './retroactive_view.js';
 import { RunLines } from './run_lines.js';
+import { collectorBackfillView, BACKFILL_OP } from './collector_backfill.js';
+import { setDisabledReason } from './disabled_reason.js';
 // [원장 선언] 구조 맵을 admin이 호스트한다(브리프 §6-1 + 소유자 판정). 이 파일은 배선만
 // 한다 — 지도의 리더도, 편집기도 자기 모듈이 소유한다.
 import { initOntologyExplorer, refreshOntologyExplorer } from './ontology_explorer.js';
@@ -968,16 +971,20 @@ async function fetchData(options = {}) {
       if (maps) { mapperData = maps.data || []; renderMapperTable(); markSectionAbsent('mapper-count', absentPath(maps)); }
       else { markSectionUnread('mapper-count'); allRead = false; }
     } else if (tab === 'autoupdate') {
-      const [stRes, failRes, wsRes] = await Promise.all([
+      const [stRes, failRes, wsRes, runsRes] = await Promise.all([
         adminFetch(`${API_BASE}/admin/auto-update/status`),
         adminFetch(`${API_BASE}/admin/file-ingestion/failed?page=1&limit=100`),
-        adminFetch(`${API_BASE}/admin/file-ingestion/workspaces`)
+        adminFetch(`${API_BASE}/admin/file-ingestion/workspaces`),
+        // The Backfill cells' runs — the same list the Overview reads (lead 09f0be40f).
+        adminFetch(`${API_BASE}/admin/retroactive/runs?limit=50`).catch(() => null),
       ]);
       const st = stRes.ok ? await stRes.json().catch(() => null) : null;
       const fails = failRes.ok ? await failRes.json().catch(() => null) : null;
       const ws = wsRes.ok ? await wsRes.json().catch(() => null) : null;
+      const runsBody = runsRes && runsRes.ok ? await runsRes.json().catch(() => null) : null;
       if (isStale()) return false;
       if (ws) workspaceData = ws.data || [];
+      if (runsBody) backfillRuns = runsBody;
       // 🔴 같은 봉투, 같은 병 (main.py:5732).
       const stFailure = errorText(st);
       if (st && !stFailure) { autoUpdateData = st.data || []; renderAutoUpdateTable(); markSectionAbsent('autoupdate-count', absentPath(st)); }
@@ -1893,11 +1900,15 @@ function renderAutoUpdateTable() {
     row.dataset.script = col.script_name;
     row.dataset.table = col.table_name;
 
+    const backfillView = collectorBackfillView(col, backfillRuns);
+    const backfill = { view: backfillView, ...(backfillState.get(backfillView.key) || {}) };
     row.innerHTML = autoUpdateRowHtml(col, {
       isActive,
       nextRunText: formatTimestamp(col.next_run),
       lastRunText: formatTimestamp(col.last_run),
+      backfill,
     });
+    wireBackfillCell(row, col, backfillView);
 
     row.addEventListener('click', () => {
       selectAutoUpdateRow(col);
@@ -1925,6 +1936,92 @@ function renderAutoUpdateTable() {
     } else {
       clearDiagnostics();
     }
+  }
+}
+
+// ── Backfill (lead 09f0be40f) — the collector_backfill operation from its own row ──
+/** Wire one row's Backfill cell. The off reason goes through the one seat that says it. */
+function wireBackfillCell(row, col, view) {
+  if (!view.show) return;
+  const key = view.key;
+  const state = () => backfillState.get(key) || {};
+  const open = row.querySelector('.btn-backfill');
+  if (open) {
+    setDisabledReason(open, view.offReason);
+    open.addEventListener('click', () => {
+      backfillState.set(key, { ...state(), open: true, failure: null });
+      renderAutoUpdateTable();
+      const line = autoUpdateListBody.querySelector(`.au-backfill-line[data-backfill-key="${CSS.escape(key)}"]`);
+      const input = line && line.closest('td') ? line.closest('td').querySelector('.au-backfill-start') : null;
+      if (input) input.focus();
+    });
+  }
+  const input = row.querySelector('.au-backfill-start');
+  if (input) {
+    // Kept in the state so a poll's re-render does not lose what was typed.
+    input.addEventListener('input', () => backfillState.set(key, { ...state(), value: input.value }));
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') startCollectorBackfill(key);
+      if (e.key === 'Escape') closeBackfill(key);
+    });
+  }
+  const start = row.querySelector('.btn-backfill-start');
+  if (start) start.addEventListener('click', () => startCollectorBackfill(key));
+  const cancel = row.querySelector('.btn-backfill-cancel');
+  if (cancel) cancel.addEventListener('click', () => closeBackfill(key));
+}
+
+function closeBackfill(key) {
+  backfillState.delete(key);
+  renderAutoUpdateTable();
+}
+
+/** Queue the backfill through the existing run route — the retroactive form's envelope and its
+ *  one refusal line (the server's sentence), kept on the row: the toast goes, the row stays. */
+async function startCollectorBackfill(key) {
+  const state = backfillState.get(key) || {};
+  if (state.busy) return;
+  const start = String(state.value || '').trim();
+  backfillState.set(key, { ...state, value: start, busy: true, failure: null });
+  renderAutoUpdateTable();
+  let failureText = null;
+  let failure = null;
+  try {
+    const res = await adminFetch(`${API_BASE}/admin/retroactive/${encodeURIComponent(BACKFILL_OP)}/run`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ params: { collector: key, start } }),
+    });
+    failure = failureFactOf(res);
+    if (!res.ok) {
+      failureText = await retroFailureLine(res, failure, RETRO_CHROME.RUN_FAILED);
+      // 503 is toasted by `adminFetch` already — the same sentence twice was measured once.
+      if (res.status !== 503) showToast(failureText, 'error', { ttl: 12000 });
+    } else {
+      const run = buildRunView(await res.json());
+      showToast(`${cfgText(run.queuedLabel)} — ${cfgText(run.runIdLabel)} ${cfgText(run.runId)}`, 'success');
+    }
+  } catch (e) {
+    console.error('[Backfill] run request failed', key, failure, e);
+    failureText = fetchFailureLine(failure, RETRO_CHROME.RUN_FAILED);
+    showToast(failureText, 'error', { ttl: 12000 });
+  }
+  if (failureText) backfillState.set(key, { open: true, value: start, busy: false, failure: failureText });
+  else backfillState.delete(key);
+  renderAutoUpdateTable();
+  if (!failureText) refreshRunning().then(scheduleRunsPoll, scheduleRunsPoll);
+}
+
+/** A poll rewrites only the run lines — an open date entry keeps its focus and its text. */
+function updateBackfillLines() {
+  if (!autoUpdateListBody) return;
+  for (const col of autoUpdateData) {
+    const view = collectorBackfillView(col, backfillRuns);
+    if (!view.show) continue;
+    const line = autoUpdateListBody.querySelector(`.au-backfill-line[data-backfill-key="${CSS.escape(view.key)}"]`);
+    if (!line) continue;
+    line.textContent = view.line ? view.line.text : '';
+    line.className = backfillLineClass(view.line);
   }
 }
 
@@ -2602,6 +2699,11 @@ function retroState(op) {
 
 let runsView = null;
 let runsInFlight = false;
+// The last `/admin/retroactive/runs` body — the Overview list and the Auto Update Backfill
+// cells both read it (one fetch, two consumers). null = not read yet.
+let backfillRuns = null;
+// Per collector key: { open, value, busy, failure } — survives the table's re-render.
+const backfillState = new Map();
 
 /** 두 출처를 «같이» 읽습니다. 한쪽이 실패해도 다른 쪽은 그립니다 -- 부분이 전부보다 낫습니다. */
 // C-74 — 한 번 만들고 재사용합니다. 패널이 «자기 div» 를 소유하므로 mount 를 안 비웁니다.
@@ -2645,6 +2747,11 @@ async function refreshRunning() {
     ]);
     const runs = runsRes && runsRes.ok ? (await runsRes.json().catch(() => null)) : null;
     const ingest = ingestRes && ingestRes.ok ? (await ingestRes.json().catch(() => null)) : null;
+    // The Auto Update Backfill cells read the same body (one fetch, two consumers).
+    if (runs) {
+      backfillRuns = runs;
+      if (currentTab === 'autoupdate') updateBackfillLines();
+    }
     renderRuntime(runtimeRes && runtimeRes.ok
       ? (await runtimeRes.json().catch(() => null)) : null);
     // 🔴 «못 읽은 것»과 «없는 것»을 가릅니다. 실패를 빈 배열로 접으면 화면이
@@ -2684,7 +2791,8 @@ function scheduleRunsPoll() {
   runsTimer = setTimeout(() => {
     // 숨은 탭·다른 탭에서는 쉽니다 -- 옆의 공용 자동 갱신이 지키는 것과 같은 규칙입니다.
     // 그리고 다시 돌아왔을 때를 위해 «타이머는 계속 돕니다».
-    const p = (!document.hidden && currentTab === 'overview')
+    // The Auto Update tab rides the same poll for its Backfill lines (lead 09f0be40f) — one timer.
+    const p = (!document.hidden && (currentTab === 'overview' || currentTab === 'autoupdate'))
       ? refreshRunning() : Promise.resolve();
     p.then(scheduleRunsPoll, scheduleRunsPoll);
   }, busy ? RUNS_POLL_BUSY_MS : RUNS_POLL_IDLE_MS);

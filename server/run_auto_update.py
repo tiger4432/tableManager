@@ -576,7 +576,10 @@ class MultiDiscoveryScheduler:
                         "last_status": col.last_status,
                         "last_error": col.last_error,
                         "runner": col.runner,
-                        "active": self._collector_key(col) not in disabled_set
+                        "active": self._collector_key(col) not in disabled_set,
+                        # The header's `# window:` as declared (None = none declared, or a
+                        # class collector) - the Auto Update tab's Backfill reads it.
+                        "window": getattr(col, "window_length", None) or None,
                     })
             
             config_dir = os.path.dirname(self.status_file_path)

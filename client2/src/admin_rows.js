@@ -27,6 +27,7 @@
 import { escapeHtml } from './utils.js';
 import { localeCountText, isCount } from './absent.js';
 import { statusBadgeClass, isDoneStatus } from './retry_verdict.js';
+import { BACKFILL_WORDS } from './collector_backfill.js';
 
 /** File Ingestion 로그 행. `withStatus` 는 Auto Update 탭 실패 목록과 공용이라 남습니다. */
 export function fileLogRowHtml(log, { withStatus, timeStr }) {
@@ -122,7 +123,31 @@ export function mapperRowHtml(mapper) {
  *    따옴표가 안 감싸지면 값이 속성을 닫고 나옵니다. 지난 회차에 사본 셋 중 하나가 정확히
  *    그 문자를 놔두고 있었고, 그래서 이름이 같은데 안전하지 않았습니다.
  */
-export function autoUpdateRowHtml(col, { isActive, nextRunText, lastRunText }) {
+/**
+ * The Backfill cell (lead 09f0be40f). `backfill` = { view: collectorBackfillView(...), open,
+ * value, busy, failure } — the page keeps open / typed / failure per collector, this draws it.
+ * The button is drawn ON with its own title; the page turns it off through `setDisabledReason`.
+ * The run line carries `data-backfill-key` so a poll can rewrite it without the input.
+ */
+/** The run line's class — the cell draws it and a poll rewrites it, one spelling for both. */
+export const backfillLineClass = (line) => `au-backfill-line${line && line.tone ? ` is-${line.tone}` : ''}`;
+
+export function backfillCellHtml(backfill) {
+  const b = backfill || {};
+  const v = b.view || {};
+  if (!v.show) return '';
+  const controls = b.open
+    ? `<input class="glass-input au-backfill-start" placeholder="${BACKFILL_WORDS.placeholder}" value="${escapeHtml(b.value || '')}" aria-label="First day to backfill, KST">
+       <button class="admin-btn btn-primary btn-backfill-start"${b.busy ? ' disabled' : ''}>${BACKFILL_WORDS.start}</button>
+       <button class="admin-btn btn-backfill-cancel">${BACKFILL_WORDS.cancel}</button>`
+    : `<button class="admin-btn btn-primary btn-backfill" title="${escapeHtml(v.title || '')}">${BACKFILL_WORDS.button}</button>`;
+  const line = v.line || { text: '', tone: '' };
+  return `<div class="au-backfill-controls">${controls}</div>
+    <div class="${backfillLineClass(line)}" data-backfill-key="${escapeHtml(v.key || '')}">${escapeHtml(line.text)}</div>
+    ${b.failure ? `<div class="au-backfill-line is-danger au-backfill-refusal">${escapeHtml(b.failure)}</div>` : ''}`;
+}
+
+export function autoUpdateRowHtml(col, { isActive, nextRunText, lastRunText, backfill }) {
   // The badge's class is the drawer's (retry_verdict, lead 457b34131) — no status ternary here.
   const statusBadge = `<span class="${statusBadgeClass(col.last_status)}">${escapeHtml(col.last_status || 'PENDING')}</span>`;
   const inactiveBadge = isActive ? '' :
@@ -145,5 +170,6 @@ export function autoUpdateRowHtml(col, { isActive, nextRunText, lastRunText }) {
           style="padding: 4px 10px; font-size: var(--fs-button);"
           title="${isActive ? 'Collect once now' : 'An inactive collector can still be run by hand'}">Run Now</button>
       </td>
+      <td class="au-backfill" onclick="event.stopPropagation()">${backfillCellHtml(backfill)}</td>
     `;
 }

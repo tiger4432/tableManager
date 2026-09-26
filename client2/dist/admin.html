@@ -957,10 +957,23 @@
       outline-offset: 2px;
     }
 
-    /* 비활성 수집기 행 시각 강등 — 토글·Run Now 셀은 조작 가능성 유지 위해 제외 */
-    .table-row.row-inactive td:not(.au-live) {
+    /* 비활성 수집기 행 시각 강등 — 토글·Run Now·Backfill 셀은 조작 가능성 유지 위해 제외 */
+    .table-row.row-inactive td:not(.au-live):not(.au-backfill) {
       opacity: 0.5;
     }
+    /* Backfill (lead 09f0be40f) — the button or the date entry, then this collector's latest run. */
+    .au-backfill-controls { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-1); }
+    .au-backfill-start { width: 7.5em; }
+    .au-backfill-line {
+      margin-top: var(--space-1);
+      font-size: var(--fs-label);
+      color: var(--text-dim);
+      font-variant-numeric: tabular-nums;
+      overflow-wrap: anywhere;
+    }
+    .au-backfill-line:empty { display: none; }
+    .au-backfill-line.is-done { color: var(--text); }
+    .au-backfill-line.is-danger { color: var(--danger); }
 
 /* 🔴 THE DROPDOWN'S SHAPE IS DECLARED ONCE, AND EVERY SELECT ON THIS PAGE DECLARES IT.
        Three of them had been overriding height, padding and font-size INLINE, which beats
@@ -1838,7 +1851,7 @@
     .retro-group.is-chosen { border-color: var(--accent); color: var(--accent); }
 
   </style>
-  <script type="module" crossorigin src="/assets/admin-DfMvPa8Z.js"></script>
+  <script type="module" crossorigin src="/assets/admin-DaXXkxgI.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/absent-DIRVWxJT.js">
   <link rel="modulepreload" crossorigin href="/assets/disabled_reason-Cd0wapM5.js">
   <link rel="modulepreload" crossorigin href="/assets/server_time-DJnqmuOO.js">
@@ -2212,6 +2225,7 @@
                     <th style="width: 100px; text-align: center;">Status</th>
                     <th style="width: 70px; text-align: center;" title="Schedule on/off (Run Now works even when off)">Active</th>
                     <th style="width: 120px; text-align: center;">Actions</th>
+                    <th style="width: 220px;" title="Run the collector once per day from a start day (KST)">Backfill</th>
                   </tr>
                 </thead>
                 <tbody id="autoupdate-list-body"></tbody>
