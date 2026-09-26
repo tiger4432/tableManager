@@ -63380,3 +63380,54 @@ PG(제 작업트리)  7 failed, 115 passed, 7195 deselected, 6 errors in 167.01s
           총괄이 이 착지 전(a4bc9af48)에도 되다 말다 한다고 적은 그것. 그 파일만 다시: 32 passed in 34.75s
 ```
 다음 — 선언 + @mapper (2 · 3 · 4 + 소유자 답 1 · 5 를 한 커밋으로).
+
+---
+
+## [구현자 -> 총괄] 선언 + @mapper 착지 7d300e6ee (ed70c3970 ② · 717f60124 · 7489221e2)
+
+```
+하는 일    @mapper 감싸개가 규칙 칸을 읽고 봉투를 지음 — allow_retraction 은 잡마다 retract 봉투 · allow_replace_map 은 맵마다 replace_map 봉투
+          잡 · 맵은 «들어온 행»에서도 읽음 — 이번에 한 행도 안 낸 잡 · 맵도 봉투가 나감(들어온 행은 트리거 행의 모든 칸을 실음)
+판정 하나   chain_bindings.sdk_mapper_refusals — 로드에서는 rule_refusals 가(표지가 @mapper 라 할 때), 실행에서는 감싸개가 부름
+          로드 거절: 둘 다 · is_batch 아님 · 트리거 표에 맵 키 칸이 같은 이름으로 없음(ㄱ) · 잡 칸을 못 정함
+표지       감싸개가 run 에 표지 · 읽는 자리 1 곳 (mapper_sdk.made_by_sdk) · 세 호출자가 같은 callable(ingestion_worker._made_by_sdk)을 넘김
+실행 거절   결과 DataFrame 에 잡 칸 / 맵 키 칸이 없으면 이름 대어 — 같은 함수(_require_columns)
+소유자 1 ㄱ  절반 가드 그대로 — DECLINED 줄에 다음 행동: 그리드에서 그 표를 그 잡으로 걸러 행 삭제(POST /tables/<표>/rows/batch_delete)
+          그 문은 이미 있음(그리드 행 삭제) — 새 문 안 지음
+소유자 5 ㄴ  replace_map 은 사람 교정도 같이 지움 — 오늘 동작 그대로 · chain_rules.md 의 replace_map 줄과 예시 ② 에 한 줄
+로드 알림   그런 규칙마다 한 줄 「[ChainRules] <규칙>: @mapper removes by job - … / map by map - …」
+가이드      chain_rules.md §0-1 「@mapper 는 upsert 만」 -> 소유자 두 줄 + 거절 조건 · 예시 ②③ 에 @mapper 판 한 줄 · chain_ingestion_guide 한 절
+```
+
+### 게이트 · 변이
+```
+게이트  봉투 {없음 · retraction · replace_map · 둘 다} x {행 있음 · 0 행 출처 · 잡/맵 키 칸 빠짐} — 열두 칸 다 단언(없음 x 칸 빠짐 = 오늘의 키 거절 그대로)
+        로드 거절 다섯(둘 다 · batch 아님 · 트리거에 맵 키 없음 · 깨끗한 둘) + 손으로 쓴 맵퍼는 이 판정 밖
+        DB — 0 행 잡이 옛 셀을 잃음: {retraction · replace_map} x {워커 · 리플레이}
+             절반 가드(25 행 잡) — 지운 행 0 · DECLINED 한 줄 · 다음 행동 문구: {워커 · 리플레이}
+             replace_map 이 사람 교정까지 지움
+변이    baseline: ('25 passed in 1.53s', [])
+변이    a zero-row source is taken from the result only -> 빨강 9
+변이    the scope is derived from what was written -> 빨강 4
+변이    both flags are allowed -> 빨강 4
+변이    a flag without is_batch is allowed -> 빨강 1
+변이    the load does not ask the judge -> 빨강 3
+변이    a map key the trigger lacks is allowed -> 빨강 1
+변이    a result without the key column is not refused -> 빨강 2
+변이    the guard's refusal names no next action -> 빨강 2
+변이    after restore: 25 passed in 1.61s
+```
+
+### 착지 범위
+```
+전체(공용 트리)  2 failed, 7246 passed, 158 skipped, 3 xfailed in 825.91s (0:13:45)
+                빨강: tests\test_chain_key_gate.py::test_the_refusal_count_reaches_another_process_through_the_heartbeat, tests\test_config_reload_integrity.py::test_h3_cross_directory_replace_applies_physical_alter
+PG(제 작업트리)  7 failed, 115 passed, 7220 deselected, 6 errors in 164.98s (0:02:44)
+                빨강 7 = 알려진 일곱 밖 0 · errors 6 = 깨끗한 작업트리에 없는 박스 파일
+빨강 둘의 정체
+  test_chain_key_gate 의 「깨끗한 워커 박동」 칸 — 제 새 시험 탓이었습니다. 제 대상 표가 키 칸(cell_key)을 선언 안 해
+    워커의 프로세스 전역 「선언 안 된 칸 버림」 셈에 들어갔고, 같은 프로세스에서 그 칸이 그것을 읽음
+    -> 선언을 넣어 고침 · 두 파일을 같은 프로세스로: 고친 뒤 초록 / 선언을 다시 빼면 그 칸만 빨강(대조)
+  test_config_reload_integrity 의 한 칸 — 총괄이 적은 되다 말다 하는 그 파일(이번엔 다른 칸). 따로 두 번 다 초록
+```
+이것으로 오늘 받은 지시가 다 착지했습니다.
