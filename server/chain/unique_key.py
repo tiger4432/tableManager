@@ -21,6 +21,8 @@ from __future__ import annotations
 import logging
 import os
 
+import db_safety
+
 # 🔴 [S-283, AND THIS IS THAT ROUND] THE LOGGER NAME MOVED. S-283 left it alone and
 # said why: an operator greps their logs for what they saw yesterday, so a channel that
 # renames itself mid-retirement makes the old lines unfindable and the new ones
@@ -37,7 +39,6 @@ def _open_ddl_connection(bind):
     most `db_safety.DDL_LOCK_TIMEOUT` for a lock - the same value the ledger's DDL reads.
     ⑤ (총괄 948ee98b5): an index waiting on a session that never ends held the worker's
     first beat, and the chain showed foreign_beat."""
-    import db_safety
     from sqlalchemy import text as sa_text
 
     connection = bind.connect().execution_options(isolation_level="AUTOCOMMIT")
@@ -60,12 +61,6 @@ def _close_ddl_connection(connection):
     except Exception:                                                  # noqa: BLE001
         connection.invalidate()
     connection.close()
-
-
-def waited_past_the_lock_timeout(error) -> bool:
-    """Did this DDL give up on a lock (SQLSTATE 55P03), rather than fail on the data?"""
-    return (getattr(getattr(error, "orig", None), "pgcode", None) == "55P03"
-            or "lock timeout" in str(error))
 
 
 #: 보고에 싣는 중복 키의 최대 건수. 수만 건이면 목록이 진단이 아니라 소음이 된다.
@@ -241,7 +236,7 @@ def ensure(db, table: str, columns: list, folds=None, apply: bool = True) -> dic
         # 여기서 실패하면 대개 «중복»이다. PostgreSQL 이 어떤 키인지까지 말해 주므로
         # 우리 진단으로 덮어쓰지 않고 그 문장을 그대로 나른다.
         report["error"] = str(create_error).strip().splitlines()[0]
-        if waited_past_the_lock_timeout(create_error):
+        if db_safety.waited_past_the_lock_timeout(create_error):
             # Not the data: another session held the table past the time limit (⑤).
             report["state"] = "deferred"
             return report
@@ -304,7 +299,6 @@ def ensure_once(db, rule_name: str, table: str, columns: list, folds=None) -> di
                         if report.get("dropped") else ""),
                        report["created"])
     elif report.get("state") == "deferred":
-        import db_safety
         logger.warning("[Join:%s] 유일 인덱스를 세우지 못했습니다 — 다른 세션이 표 %s 를 %s 넘게 "
                        "잡고 있습니다. 다음 기동/리로드로 미룹니다. 그동안 이 조인은 행 단위 그물만으로 "
                        "오른쪽 행이 둘인 왼쪽 행을 거절합니다.",
@@ -413,8 +407,7 @@ def retract_unrequired_once(db, required) -> dict:
             finally:
                 _close_ddl_connection(connection)
         except Exception as drop_error:                                # noqa: BLE001
-            if waited_past_the_lock_timeout(drop_error):
-                import db_safety
+            if db_safety.waited_past_the_lock_timeout(drop_error):
                 logger.warning(
                     "[Join] 인덱스 %s 를 걷지 못했습니다 — 다른 세션이 표 %s 를 %s 넘게 잡고 "
                     "있습니다. 다음 기동/리로드로 미룹니다. 그동안 이 인덱스가 그 표의 쓰기에 "
@@ -499,7 +492,7 @@ def ensure_lookup_once(db, table: str, columns: list, folds=None) -> dict:
     except Exception as create_error:                                  # noqa: BLE001
         report["created"] = None
         report["error"] = str(create_error).strip().splitlines()[0]
-        report["state"] = ("deferred" if waited_past_the_lock_timeout(create_error)
+        report["state"] = ("deferred" if db_safety.waited_past_the_lock_timeout(create_error)
                            else "failed")
     finally:
         _close_ddl_connection(connection)
@@ -507,7 +500,6 @@ def ensure_lookup_once(db, table: str, columns: list, folds=None) -> dict:
     if report["state"] == "ok":
         logger.info("[Join] 조회 인덱스 %s 를 세웠습니다 (%.1f s)", name, time.monotonic() - started)
     elif report["state"] == "deferred":
-        import db_safety
         logger.warning("[Join] 조회 인덱스 %s 를 세우지 못했습니다 — 다른 세션이 표 %s 를 %s 넘게 "
                        "잡고 있습니다. 다음 기동/리로드로 미룹니다. 그동안 이 조인은 왼쪽 행을 "
                        "인덱스 없이 고릅니다(느림).", name, table, db_safety.DDL_LOCK_TIMEOUT)

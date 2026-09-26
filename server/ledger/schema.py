@@ -664,7 +664,7 @@ def ensure_partition(connection, when: datetime, known=None):
         connection.rollback()
         with connection.cursor() as cursor:
             if not _relation_exists(cursor, name):
-                if "lock_timeout" in str(exc) or "canceling statement" in str(exc):
+                if db_safety.waited_past_the_lock_timeout(exc):
                     raise RuntimeError(
                         f"could not create partition {name}: another session (possibly "
                         f"this process's own reader) holds a lock on "

@@ -1,5 +1,20 @@
 # 지금 돌리면 되는 것
 
+> ## 🔴 [09-27 아침 3] **표에 새 칸을 붙이는 스키마 동기화 — 20 s 넘게 막히면 포기하고 프로세스는 계속 — 마이그레이션 «없음» · 재기동 API · 워처 · 체인**
+>
+> ```
+> 무엇이 바뀌나  선언에 새 칸이 생겨 기동 · 설정 저장 때 ALTER TABLE ... ADD COLUMN 을 걸 때, 그 표를 잡은 세션이 있으면 20 s 뒤 포기
+>              (전: 끝없이 기다림 — 기동이 거기서 멈추고, 그 표의 읽기 · 쓰기가 ALTER 뒤에 줄 섬)
+> 재기동 뒤     각 프로세스 로그 "[Schema Sync] column '<칸>' was not added to '<표>' - another session held the table past 20s. …"
+> 뜻           그 표는 칸이 붙을 때까지 읽기 · 쓰기가 실패(「column "<칸>" does not exist」) · 기동과 다른 표는 돎
+> 뜨면         conda run --no-capture-output -n assy_manager python server/scripts/diagnose_db_health.py — 그 표를 잡은 pid 확인
+>              그 트랜잭션을 끝낸 뒤 설정 저장(리로드가 다시 붙임) 또는 재기동
+> 같이 바뀜     원장 파티션 DDL 의 「락을 못 잡음」 판정이 같은 함수 — statement timeout 은 더 이상 「락」이라 말하지 않음
+> 급할 때       스위치 없음. 되돌리기는 git revert 뒤 셋 재기동
+> ```
+
+---
+
 > ## 🔴 [09-27 아침 2] **예/아니오 칸은 true/false 만 — 체인 규칙 · 수집기 · 원장 묶음 · 표기 · 맵 · 자동 확정 — 마이그레이션 «없음» · 재기동 넷 다(API · 워처 · 체인 · 스케줄러)**
 >
 > ```
