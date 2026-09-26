@@ -128,6 +128,16 @@ SKIP_NOT_ASKED = "not_asked"   #: 지금 승인을 «묻지 않는다» — key.
 SKIP_UNMET = "unmet"           #: 물었는데 «성립 못 한다» — 오른쪽 키 없음 · key.columns 불일치
 
 
+def _declared_joins(rules):
+    """(rule, switched off) for every rule the declared join runs - the ONE place a walk here
+    picks joins (총괄 529fc7ce8 ③): a condition added here reaches every walk at once."""
+    from chain import join_into
+
+    for rule in rules or ():
+        if isinstance(rule, dict) and rule.get("mapper") == join_into.JOIN_INTO_MAPPER:
+            yield rule, rule_shape.is_switched_off(rule)
+
+
 def declared_unique_targets(rules):
     """(name, right table, columns, folds, skip reason, skip kind) per unified join.
 
@@ -143,13 +153,9 @@ def declared_unique_targets(rules):
     """
     from chain import join_into
 
-    for rule in rules or ():
-        if not isinstance(rule, dict):
-            continue
-        if rule.get("mapper") != join_into.JOIN_INTO_MAPPER:
-            continue
+    for rule, off in _declared_joins(rules):
         name = rule.get("name")
-        if rule_shape.is_switched_off(rule):
+        if off:
             # ⚠️ OFF IS NOT WRONG (판정 399). An operator who switched something off did
             #    not make a mistake, so this is 「asks nothing right now」 and NOT a refusal.
             yield (name, None, None, None, "enabled=false", SKIP_NOT_ASKED)
@@ -233,10 +239,8 @@ def declared_lookup_targets(rules):
     left rows are selected by (총괄 8934fa36f ②). `enabled: false` asks nothing (판정 399)."""
     from chain import join_into
 
-    for rule in rules or ():
-        if not isinstance(rule, dict) or rule.get("mapper") != join_into.JOIN_INTO_MAPPER:
-            continue
-        if rule_shape.is_switched_off(rule):
+    for rule, off in _declared_joins(rules):
+        if off:
             continue
         on = join_into.pairs(rule)
         table = str(rule.get("target_table") or "")

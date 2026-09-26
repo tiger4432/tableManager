@@ -212,30 +212,51 @@ def _missing(spec: dict, left_table: str, left_model, right_model) -> str:
     return ""
 
 
-def _answer(db, spec, left_model, right_model, where, left_table=""):
-    """One SELECT: the left rows in scope, LEFT JOINed to their right row.
+class _Answer:
+    """One row the LEFT JOIN used to return - a left row and its right row, or none."""
 
-    🔴 LEFT JOIN, NOT A SECOND QUERY FOR THE UNMATCHED. `matched` is 「the right row exists」,
-    and it has to be a fact the database states - deciding it from 「the value came back NULL」
-    would make a matched row whose value is legitimately NULL indistinguishable from a row
-    that matched nothing, and those two get OPPOSITE treatment below.
+    __slots__ = ("_mapping", "matched")
+
+    def __init__(self, row_id, origin_row_id, values):
+        self._mapping = {"row_id": row_id, "origin_row_id": origin_row_id}
+        self._mapping.update(("take_%d" % index, value) for index, value in enumerate(values))
+        # 🔴 `matched` is 「the right row exists」, never 「the value came back NULL」: a matched
+        #    row whose value is legitimately NULL and a row that matched nothing get OPPOSITE
+        #    treatment in `_update_items`.
+        self.matched = origin_row_id is not None
+
+
+def _read_once(db, spec, left_model, right_model, wheres, left_table=""):
+    """Everything the answer depends on, read ONCE: -> (sorted [(left row_id, key)],
+    {key: [(right row_id, take values)]}).
+
+    🔴 [총괄 529fc7ce8 ②] BEFORE ANY WRITE, BECAUSE THE PAGES ARE WRITTEN IN BETWEEN. The seat
+    writes a page before it asks the next, and a rule before this one in the group may already
+    have written the right value or the left key - measured, pages two on then read what that
+    rule wrote while one write had read what was there before it. A page only slices this.
+    The key is the folded expression on both sides (S-181), compared here instead of in an ON.
     """
-    from sqlalchemy import and_, select
+    from sqlalchemy import select, tuple_
 
-    onclause = and_(*[_folded(getattr(left_model, left_col), fold)
-                      == _folded(getattr(right_model, right_col), fold)
-                      for left_col, right_col, fold in _pairs(spec, left_table)])
-    columns = [left_model.row_id.label("row_id"),
-               (right_model.row_id.isnot(None)).label("matched"),
-               # 🔴 [S-280 · 판정 434] THE ROW THAT ANSWERED. `matched` above is already
-               # computed FROM this column, so the join reads it either way; naming it
-               # keeps the note a retraction aims with instead of collapsing it to a bool.
-               right_model.row_id.label("origin_row_id")]
-    columns.extend(getattr(right_model, right_col).label("take_%d" % index)
-                   for index, (right_col, _into) in enumerate(_takes(spec)))
-    stmt = select(*columns).select_from(
-        left_model.__table__.outerjoin(right_model.__table__, onclause)).where(where)
-    return db.execute(stmt).fetchall()
+    from chain import keyset_scan
+    from database import crud
+
+    pairs = _pairs(spec, left_table)
+    left_key = [_folded(getattr(left_model, left_col), fold) for left_col, _r, fold in pairs]
+    left = {}
+    for where in wheres:
+        for row in db.execute(select(left_model.row_id, *left_key).where(where)):
+            left[row[0]] = tuple(row[1:])
+    right_key = [_folded(getattr(right_model, right_col), fold) for _l, right_col, fold in pairs]
+    takes = [getattr(right_model, right_col) for right_col, _into in _takes(spec)]
+    answers = {}
+    width = len(right_key)
+    for chunk in crud._chunks(sorted(set(left.values())), keyset_scan.DEFAULT_CHUNK_SIZE):
+        for row in db.execute(select(right_model.row_id, *right_key, *takes)
+                              .where(tuple_(*right_key).in_(chunk))):
+            answers.setdefault(tuple(row[1:1 + width]), []).append(
+                (row[0], tuple(row[1 + width:])))
+    return sorted(left.items()), answers
 
 
 def _update_items(db, left_table: str, rows, spec, source_name: str):
@@ -351,27 +372,25 @@ def propose(db, rule: dict, row_ids=None):
 
     # 🔴 [총괄 e10c58e5e] PAGES OF LEFT ROWS. One source row can match hundreds of thousands of
     #    left rows, and one SELECT and one write of all of them held the chain for minutes with
-    #    no beat. The left ids are read ONCE - asking the key filter again per page re-walks
+    #    no beat. The left rows are read ONCE - asking the key filter again per page re-walks
     #    the table from the cursor (measured: a page past the last match read 9,999 rows for 0)
-    #    - and each page answers only its own ids. The seat writes a page, then asks the next.
-    from sqlalchemy import select
-
-    left_ids = sorted({row[0] for where in wheres
-                       for row in db.execute(select(left_model.row_id).where(where))})
-    return _page(db, rule, spec, left_model, right_model, left_table, left_ids, 0,
-                 len(rows_in), "reference" if reference_side else "target")
+    #    - and each page answers only its own rows. The seat writes a page, then asks the next.
+    left_rows, answers = _read_once(db, spec, left_model, right_model, wheres, left_table)
+    return _page(db, rule, spec, left_table, left_rows, answers, 0, len(rows_in),
+                 "reference" if reference_side else "target")
 
 
-def _page(db, rule, spec, left_model, right_model, left_table, left_ids, start, handed, side):
-    """One page of left rows answered - and the call for the next one, if there is one."""
+def _page(db, rule, spec, left_table, left_rows, answers, start, handed, side):
+    """One page of left rows answered from what was read once - and the call for the next."""
     from chain import keyset_scan
 
     size = keyset_scan.DEFAULT_CHUNK_SIZE
-    ids = left_ids[start:start + size]
-    rows = (_answer(db, spec, left_model, right_model, left_model.row_id.in_(ids), left_table)
-            if ids else [])
+    blank = (None,) * len(_takes(spec))
+    rows = [_Answer(row_id, origin, values)
+            for row_id, key in left_rows[start:start + size]
+            for origin, values in (answers.get(key) or [(None, blank)])]
     updates = _update_items(db, left_table, rows, spec, str((rule or {}).get("name") or ""))
-    more = start + size < len(left_ids)
+    more = start + size < len(left_rows)
     # ⚠️ TWO DIFFERENT ZEROS, AND THE OPERATOR FIXES THEM DIFFERENTLY: no match means the
     #    join key or the right table's data; a match that wrote nothing means the value was
     #    already there. Collapsing them sends half the readers to the wrong repair.
@@ -381,10 +400,15 @@ def _page(db, rule, spec, left_model, right_model, left_table, left_ids, start, 
         refusal = ("오른쪽 표에서 짝을 찾은 행이 없습니다 (넘어온 %d 행)" % handed
                    if not rows else
                    "짝은 찾았고 채울 값이 이미 같습니다 (%d 행)" % len(rows))
-    return {"updates": updates, "rows_in": handed, "refusal": refusal, "side": side,
-            "next_page": (lambda: _page(db, rule, spec, left_model, right_model, left_table,
-                                        left_ids, start + size, handed, side))
-            if more else None}
+    answer = {"updates": updates, "rows_in": handed, "refusal": refusal, "side": side,
+              "next_page": (lambda: _page(db, rule, spec, left_table, left_rows, answers,
+                                          start + size, handed, side))
+              if more else None}
+    if not start:
+        # 🔴 [총괄 529fc7ce8 ①] THE COUNT IS ALL THE PAGES', read off what was read once: a row
+        #    with exactly one right answer is one proposed row, on whichever page it lands.
+        answer["rows_total"] = sum(1 for _id, key in left_rows if len(answers.get(key) or ()) == 1)
+    return answer
 
 
 def _left_rows_for_reference(db, spec, left_model, right_model, right_row_ids,
