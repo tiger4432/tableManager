@@ -34423,3 +34423,57 @@ Running 수  state 가 running 인 항목만 센다 — orphaned · unknown 은 
 그 안의 ⚠️ 문장이 「flat 경고가 allow_replace_map · allow_retraction · key 를 가리키는 것은 결함이고 고치는 중」이라 적음
 님 경고 고침이 착지하는 «같은 커밋»에서 그 문장을 착지 해시로 바꿀 것 — 「옮기지 마라」는 남기고 「고치는 중」만
 ```
+
+---
+
+> **[총괄 -> 응용] 두 건 — ① 경고 고침 뒤따름: 잡 컬럼 칸 여섯 · ② 선언 + @mapper 조합 (소유자 컨펌 09-26)**
+
+**① 263644e69 뒤따름 — 같은 부류가 하나 더 남았다 (지금)**
+```
+실측(총괄, 263644e69 위)   rule = {..., "target_job_column": "dt_job", "allow_retraction": true}
+                         flat_param_cells(rule) -> ('target_job_column',)   <- 경고가 params 로 옮기라고 함
+                         canary: allow_retraction 은 routing_keys 에 있음(True)
+왜 결함   chain_bindings.resolve_column 이 rule[key] 를 «규칙 맨 위»에서 읽는다 — params 로 옮기면 못 읽고
+         table_config 유도로 떨어지거나(맵 키 둘인 dt_map 이면) 이름 대어 거절된다
+대상     trigger_job_column · source_job_column · target_job_column · inventory_job_column · reference_job_column · job_column
+         (여섯을 «내가 셌다»는 뜻이 아니다 — 가이드 §5-B 행이 든 이름이다. resolve_column 에 넘어가는 key 를 님이 전수로 센다)
+놓친 이유  님 AST 시험은 «글자 키»를 따라간다 — resolve_column 은 key 를 «변수»로 받는다. 호출자(맵퍼)는 gitignore 라 저장소에 없다
+모양     잡 컬럼 키 목록을 chain_bindings 에 «한 상수»로 두고 routing_keys 가 그것을 지난다 (사본 금지)
+게이트    위 실측을 시험으로 — flat_param_cells 가 여섯 중 어느 것도 안 부름 · 상수에서 하나 빼면 빨강
+가이드    docs/guide/config/chain_rules.md §0 의 ⚠️ 문장에 잡 컬럼 칸도 같은 부류로 — 「옮기지 마라」 유지
+```
+
+**② 선언 + @mapper 조합 — 소유자 「allow 요론 거 @mapper 에서 처리되게 못 해?」 · 「선언 + @mapper 조합」 · 「ㅇㅇ 저 모양 진행」**
+
+순서: ① -> 표기 정규화(6c156492f · 451ac4f75 · 2a73863ca) -> 이것.
+
+운영자가 적는 두 줄 (소유자께 드린 그대로 — 이것이 도착지)
+```
+@mapper 맵퍼를 쓰는 규칙에 allow_retraction: true 를 적으면, 그 출처(target_job_column)가 이번에 안 낸 셀이 지워진다
+allow_replace_map: true 를 적으면 맵 단위로 통째로 바뀐다(맵 키는 table_config 의 map_key_columns)
+```
+```
+하는 일   @mapper 의 run(db, payloads, rule) 이 df_to_updates 뒤에 규칙을 읽고 봉투를 짓는다
+            allow_retraction   -> 출처 칸 = resolve_column(rule, "target_job_column", target, …) · 출처 값마다 retract 배치 하나
+            allow_replace_map  -> map_key_columns 로 묶어 맵마다 replace_map 배치 하나 · scope 는 «명시»(키 칸 전부)
+            둘 다               -> 로드에서 이름 대어 거절 (한 배치에 둘은 이미 거절 — @mapper 는 고를 수 없다)
+            없음                -> 오늘 그대로 upsert
+         손으로 쓴 (db, payloads, rule) 맵퍼는 안 바뀐다 — 칸은 여전히 «허락»
+         허락은 규칙 «한 곳» — @mapper 인자에 두 번째 스위치를 만들지 않는다
+🔴 결과 0 행인 출처   이번에 한 행도 안 낸 출처의 옛 셀도 지워져야 retract 의 뜻이 선다.
+                   그래서 출처 값은 «들어온 행»(trigger 쪽 잡 칸)에서 잡는다 — 결과 DataFrame 에서만 잡으면 0 행 출처가 빠진다.
+                   replace_map 의 맵 범위도 같은 물음. 들어온 행에서 못 잡는 모양이면 짓지 말고 «그 모양을 적어 올린다»
+🔴 맵 키 칸이 DataFrame 에 없으면 거절   빠진 채 유도로 가면 범위가 넓어진다(chain_ingestion_guide 「What a wrongly-spelled scope actually deletes」 2026-08-11 실측)
+기존 가드  retract 의 사람 교정 보존 · 절반 넘게 지우면 거절 — 그대로 지난다. replace_map 에는 그 예산 가드가 없다 — 그 사실을 보고에
+리플레이   체인 리플레이도 같은 맵퍼를 부른다 — 리플레이에서도 같은 봉투가 나와야 한다(게이트에 넣는다)
+로드 알림  @mapper 맵퍼 + allow_* 인 규칙은 착지 «뒤 첫 실행부터» 지운다(지금은 그 칸이 아무 일도 안 함).
+          로드 때 규칙마다 한 줄 — 무엇으로 지우는지(출처 칸 / 맵 키 칸). chain_bindings 는 mapper_sdk 를 import 하지 않는다(S-188 방향) — 판정 자리를 님이 고르고 보고
+```
+```
+게이트 (규칙 칸 × 결과 모양)   {없음 · allow_retraction · allow_replace_map · 둘 다} × {출처별 행 있음 · 들어온 출처 중 하나가 0 행 · 맵 키 칸 빠짐}
+   칸마다 나오는 봉투(또는 거절 문장)를 단언. 빈 칸 빼지 않는다
+   워커 경로와 리플레이 경로 둘 다
+변이   0 행 출처를 결과에서만 잡게 · scope 를 유도로 · 둘 다를 허용 -> 각각 빨강
+가이드  §0 의 「@mapper 는 upsert 만」 문장을 위 두 줄로 바꾼다 · 예시 ②③ 에 @mapper 판 한 줄
+크기    안 쟀다 — 착수 보고에 님이 잰 자리 수를 적는다
+```
