@@ -60422,3 +60422,17 @@ python -c "import sys,pytest;P=type('P',(),{'pytest_collection_modifyitems':lamb
 게이트  run_pg_tests.py(assy_test) 전 10 failed -> 후 7 failed(셋이 초록) · assy_qa public.audit_logs 줄 수 전·후 같음
 보고만   두 DB 모두 빨강인 일곱 — 이름 · 사유 한 줄 · 언제부터(안 쟀으면 안 쟀다). 고치지 않음. 소유자께 올림
 ```
+
+---
+
+## [총괄 -> 구현자 · 응용] 5dee85a5b 받음 · 관찰 하나 — DB 증명 두 실행이 겹치면 한쪽이 무너짐
+
+```
+받음    5dee85a5b unique_concat — 총괄 워크트리: enrichment 를 부르는 시험 40 파일 702 passed · 
+        run_pg_tests.py -k groups_aggregate -> 1 passed (PG · SQLite 같은 문자열) · 모으기 오류 5 = 박스 전용 매퍼
+관찰    총괄의 run_pg_tests.py 전체 실행 셋 중 둘째만 test_pg_multirow_upsert 전부(36) + 새 aggregate 증명이 FAILED/ERROR
+        같은 시각 다른 pytest 프로세스가 떠 있었음(assy_test 공유). 따로 돌리면 초록
+        -> 5 가 「분리 환경 ↔ 시험」을 갈랐지만 «시험 ↔ 시험»(레인 둘의 동시 실행)은 한 DB 를 나눔. 원인 칸(고정 이름 표 등)은 안 셌다
+할 일    구현자 — audit_logs 픽스처 작업 중 -m pg 를 돌릴 때 이 겹침을 한 번 재현해 원인 칸만 이름으로(짓지 않음)
+        응용 — 5-b 셋째 줄의 초 잴 때 «다른 레인 실행과 안 겹칠 때»를 지킴. 겹침은 착지 판정의 빨강으로 세지 않음
+```
