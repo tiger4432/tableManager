@@ -1,5 +1,25 @@
 # 지금 돌리면 되는 것
 
+> ## 🔴 [09-27 아침 2] **예/아니오 칸은 true/false 만 — 체인 규칙 · 수집기 · 원장 묶음 · 표기 · 맵 · 자동 확정 — 마이그레이션 «없음» · 재기동 넷 다(API · 워처 · 체인 · 스케줄러)**
+>
+> ```
+> 재기동 «전»   운영 설정에 true/false 아닌 예/아니오 값이 있나 — 둘 다 저장소 루트에서
+>              conda run --no-capture-output -n assy_manager python -c "import sys; sys.path.insert(0,'server'); import chain_bindings; from chain import ingestion_worker as w; rules=w.read_rules_document()['rules']; bad=[(r.get('name'), f) for r in rules for f in chain_bindings.flag_refusals(r)]; [print(*b) for b in bad]; print('chain rules checked:', len(rules), '| not true/false:', len(bad))"
+>              conda run --no-capture-output -n assy_manager python -c "import sys; sys.path.insert(0,'server'); import map_overlay; from maps import preset_routing as p; c=map_overlay.load_overlay_config(); t=list(c.get('preset_routing') or {}); [p.resolve_routing_config(c,x) for x in t]; l=list(c.get('paint_lock') or {}); [map_overlay.get_paint_rules(c,x) for x in l]; print('map routing tables checked:', len(t), '| paint lock entries checked:', len(l))"
+>              뜻: 줄마다 「<규칙> <칸> must be true or false, got <값> - write true or false」 · 맵은 「… ignored: …」 경고 줄
+>              뜨면 그 칸을 true 또는 false 로 고친 뒤 재기동. 안 고치면 — 체인 규칙은 «안 섬»(오늘 1 · "true" 로 돌던 규칙도 멈춤),
+>              맵 라우팅 · 페인트 잠금 항목은 «안 씀»(오늘 0 · "false" 가 켜짐으로 읽히던 것)
+>              끝 줄의 checked 수가 0 이면 파일을 못 읽은 것 — 경로부터
+> 바뀌는 것     체인 규칙: 예/아니오 칸(enabled · is_batch · allow_* · idempotent · key.unique · decide 의 auto_confirm · alignment)이
+>              true/false 아니면 로드 · 저장에서 그 선언이 안 섬 — 전에는 "false" 글자가 켜짐(allow_retraction 이면 지우기가 켜짐)
+>              맵: 라우팅 · 페인트 잠금의 enabled 도 같음 — 그 항목을 안 쓰고 경고 한 줄
+>              나머지(수집기 · 원장 묶음 · 표기 · 자동 확정 · map_push_ok · 수집 설정 여섯 · std_parse)는 전에도 거절/기본값 — «문장»만 하나로
+> 재기동 뒤     chain_worker.log "[ChainRules] <규칙>: <칸> must be true or false, got …" — 그런 규칙마다 한 줄
+> 급할 때       스위치 없음. 그 칸을 true/false 로 고치면 다음 리로드부터 섬. 되돌리기는 git revert 뒤 넷 재기동
+> ```
+
+---
+
 > ## 🔴 [09-27 아침 1] **치워 둔 사건 다시 돌리기 — 규칙마다 한 번 · 연쇄 없음 — 마이그레이션 «없음» · 재기동 API · 스케줄러**
 >
 > ```

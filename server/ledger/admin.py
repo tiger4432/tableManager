@@ -675,11 +675,13 @@ def chain_rule_raw_view(name: str = None) -> dict:
         out["name"] = name
         out["declaration"] = named.get(name)
         out["raw"] = json.dumps(named.get(name), ensure_ascii=False, indent=2)
-        out["enabled"] = bool((named.get(name) or {}).get("enabled", True))
+        from chain import rule_shape
+
+        # The switch's one judge (총괄 872f6cb6b 6-3), not a second truth test beside it.
+        out["enabled"] = not rule_shape.is_switched_off(named.get(name) or {})
         # 🔴 [총괄 6ef4ab1f2] AN OLD-SHAPE JOIN IS SAID HERE, so the screen offers the one
         #   conversion that stands its `:target` half (`to=unified`) instead of guessing from
         #   the cells. The judgement is `modernize_join`'s, the same the conversion runs.
-        from chain import rule_shape
 
         declared = named.get(name)
         out["join_needs_new_shape"] = rule_shape.modernize_join(declared) is not declared
@@ -838,6 +840,12 @@ def save_chain_rule_raw(name: str, declaration, base: str) -> dict:
     #    it were on」 and nothing more.
     # ⛔ NOT FIXED IN `expand_declaration`. The loader needs that short circuit: an off
     #    rule must not stand, and calling it refused would report a choice as a mistake.
+    # 🔴 [총괄 872f6cb6b] BUT THE SWITCH ITSELF IS JUDGED FIRST - the copy below overwrites it,
+    #    and `enabled: "false"` must be refused at the moment of saving, not after the restart.
+    flags = chain_bindings.flag_refusals(entry)
+    if flags:
+        raise _table_config_refusal("declaration_refused", f"rules.{name}",
+                                    "%s: %s" % (name, "; ".join(flags)))
     judged = dict(entry)
     judged["enabled"] = True
     stood, expand_refusal, _notes = rule_shape.expand_declaration(
@@ -891,7 +899,7 @@ def save_chain_rule_raw(name: str, declaration, base: str) -> dict:
             "backup": backup,
             "rules": sum(1 for rule in rules if isinstance(rule, dict)),
             # The value an operator needs next, never a sentence: a new rule is saved off.
-            "enabled": bool(entry.get("enabled", True)),
+            "enabled": not rule_shape.is_switched_off(entry),
             "created": existing is None}
 
 

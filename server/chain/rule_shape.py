@@ -624,7 +624,14 @@ def expand_declaration(declaration, table_config=None,
     🔴 THREE OUTCOMES, AND 「OFF」 IS NOT A REFUSAL (판정 399). A disabled declaration stands
     no rule and says so in `notes`; a refusal list is for declarations that are WRONG, and an
     operator who turned something off did not make a mistake.
+
+    🔴 [총괄 872f6cb6b] A YES/NO CELL THAT IS NOT TRUE OR FALSE IS REFUSED FIRST - before the
+    flat return and before the off switch, or `enabled: 0` would leave as 「off」 and
+    `allow_retraction: "false"` would stand a rule that removes.
     """
+    flags = chain_bindings.flag_refusals(declaration)
+    if flags:
+        return ([], "%s: %s" % (declaration.get("name"), "; ".join(flags)), [])
     if not isinstance(declaration, dict) or not isinstance(declaration.get("derive"), dict):
         return ([declaration], None, [])
 

@@ -417,7 +417,8 @@ def test_non_boolean_knob_warns_and_falls_back_to_off(cand_env, caplog):
     with caplog.at_level("WARNING"):
         assert enrichment.candidates.rule_auto_confirm_enabled(
             {"name": "r", "auto_confirm": "true"}) is False
-    assert any("expected JSON boolean" in rec.getMessage() for rec in caplog.records), \
+    assert any("auto_confirm must be true or false" in rec.getMessage()
+               for rec in caplog.records), \
         "a non-boolean knob must SAY it is being ignored, not fail silently"
 
 

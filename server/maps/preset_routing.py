@@ -84,6 +84,7 @@ import re
 logger = logging.getLogger(__name__)
 
 import map_overlay
+import validation
 
 # --- answer statuses -------------------------------------------------------
 STATUS_OK = "ok"                      # a preset was resolved
@@ -138,6 +139,10 @@ def _normalize_lookup(table: str, raw):
     if not isinstance(raw, dict):
         logger.warning("[PresetRouting:%s] 'product_lookup' must be an object; ignored", table)
         return None
+    why = validation.flag_refusal("enabled", raw["enabled"]) if "enabled" in raw else None
+    if why:
+        logger.warning("[PresetRouting:%s] 'product_lookup' ignored: %s", table, why)
+        return None
     if raw.get("enabled", True) is False:
         return None
     lookup_table = _norm_str(raw.get("table"))
@@ -172,6 +177,10 @@ def _normalize_rules(table: str, raw_rules) -> list:
     for i, raw in enumerate(raw_rules[:MAX_RULES]):
         if not isinstance(raw, dict):
             logger.warning("[PresetRouting:%s] rule #%d dropped: must be an object", table, i)
+            continue
+        why = validation.flag_refusal("enabled", raw["enabled"]) if "enabled" in raw else None
+        if why:
+            logger.warning("[PresetRouting:%s] rule #%d dropped: %s", table, i, why)
             continue
         if raw.get("enabled", True) is False:
             continue
@@ -214,7 +223,8 @@ def resolve_routing_config(cfg: dict, table: str):
     """Normalized routing declaration for `table`, or None when there is none.
 
     None is the answer for: no `preset_routing` block, no entry for this table,
-    `enabled: false`, and a declaration that normalises to nothing usable. All
+    `enabled: false` (or not true/false, said in a warning), and a declaration that
+    normalises to nothing usable. All
     four mean the same thing to the caller — no routing — so they collapse here
     instead of leaking four shapes into the resolver.
     """
@@ -223,6 +233,10 @@ def resolve_routing_config(cfg: dict, table: str):
         return None
     raw = routing.get(table)
     if not isinstance(raw, dict):
+        return None
+    why = validation.flag_refusal("enabled", raw["enabled"]) if "enabled" in raw else None
+    if why:
+        logger.warning("[PresetRouting:%s] routing ignored: %s", table, why)
         return None
     if raw.get("enabled", True) is False:
         return None

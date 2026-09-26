@@ -34,6 +34,7 @@ def main() -> int:
         load_ingestion_settings,
         validate_external_source_specs,
     )
+    import validation
 
     settings = load_ingestion_settings()
     declared = settings.get("external_sources") or []
@@ -49,7 +50,9 @@ def main() -> int:
         if not isinstance(raw, dict):
             print(f"  [{index}] (객체가 아님)")
             continue
-        state = "enabled" if raw.get("enabled", True) else "disabled - 스윕 대상 아님"
+        enabled = raw.get("enabled", True)
+        state = ("refused - see the errors below" if validation.flag_refusal("enabled", enabled)
+                 else "enabled" if enabled else "disabled - 스윕 대상 아님")
         print(f"  [{index}] {raw.get('table_name')!r} ← {raw.get('path')!r}  ({state})")
         path = raw.get("path")
         if isinstance(path, str) and path.strip():

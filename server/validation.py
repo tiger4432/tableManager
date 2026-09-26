@@ -23,6 +23,7 @@ Behaviour is unchanged: same codes, same paths, same messages, same ordering.
 from __future__ import annotations
 
 import difflib
+import json
 from collections.abc import Iterable, Mapping, Sequence
 from typing import Any
 
@@ -105,6 +106,46 @@ def did_you_mean(wanted: Any, declared: Iterable[Any], label: str) -> str:
     if len(names) > CANDIDATE_LIMIT:
         listed += f", +{len(names) - CANDIDATE_LIMIT} more"
     return f"; declared {label}: {listed}"
+
+
+def flag_refusal(name: str, value: Any):
+    """A yes/no cell holds true or false and nothing else - None, or the ONE sentence (총괄
+    de64fb0f9 · 872f6cb6b). `"false"` is truthy and `0` is not, so every reader that guessed
+    read one of them wrong; a chain rule's `allow_retraction: "false"` turned removal ON.
+    ⚠️ Absent is not judged here: what absence means is each seat's own default. What a seat
+    does with the sentence is its own too - a declaration stops standing, a setting falls back."""
+    if isinstance(value, bool):
+        return None
+    try:
+        shown = json.dumps(value, ensure_ascii=False)
+    except (TypeError, ValueError):
+        shown = repr(value)
+    return f"{name} must be true or false, got {shown} - write true or false"
+
+
+def flag_refusals(value: Any, node: Mapping, path: str = "") -> list:
+    """Every flag leaf a skeleton node declares, judged where `value` holds it - the cells
+    come from the skeleton (`hint: flag`), never from a list written beside it. `oneOf` keeps
+    each branch's node under the branch key, which is also the cell's name."""
+    kind = node.get("kind") if isinstance(node, Mapping) else None
+    out = []
+    if kind == "leaf":
+        why = flag_refusal(path, value) if node.get("hint") == "flag" else None
+        out.extend([why] if why else [])
+    elif kind == "record" and isinstance(value, Mapping):
+        for field in node.get("fields") or ():
+            if field.get("key") in value:
+                out.extend(flag_refusals(value[field["key"]], field.get("node") or {},
+                                         path_of(path, field["key"])))
+    elif kind == "map" and isinstance(value, (Mapping, list)):
+        pairs = value.items() if isinstance(value, Mapping) else enumerate(value)
+        for key, item in pairs:
+            out.extend(flag_refusals(item, node.get("of") or {}, f"{path}[{key}]"))
+    elif kind == "oneOf" and isinstance(value, Mapping):
+        for key, branch in (node.get("branches") or {}).items():
+            if key in value:
+                out.extend(flag_refusals(value[key], branch, path_of(path, key)))
+    return out
 
 
 class Problems:

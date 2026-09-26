@@ -1192,7 +1192,13 @@ def _validate_virtual_joins(section: Mapping[str, Any], problems: _Problems) -> 
         # 🔴 AND THE SENTENCE IS 446's, IMPORTED. 「field is required」 would send an operator
         # to add a key; the truth is that a capability was retired and the join has to MOVE
         # (판정 474: the same judgement spelled two ways points at opposite repairs).
-        if rule.get("materialize") is not True:
+        # A value that is not a yes/no at all gets the flag sentence first - 「is false」
+        # would be a false sentence about "true" written as text.
+        why = (validation.flag_refusal("materialize", rule["materialize"])
+               if "materialize" in rule else None)
+        if why:
+            problems.add("invalid_type", f"{path}.materialize", why)
+        elif rule.get("materialize") is not True:
             problems.add("invalid_join", f"{path}.materialize",
                          validation.READ_TIME_RETIRED_DETAIL)
         # ⚠️ SHAPE ONLY. Whether a ceiling is REQUIRED, and whether the one written is the
@@ -1221,8 +1227,9 @@ def _validate_virtual_joins(section: Mapping[str, Any], problems: _Problems) -> 
             problems.add(
                 "invalid_join", f"{path}.join_cardinality",
                 "Ledger v2 requires join_cardinality 'one'")
-        if not isinstance(rule.get("enabled"), bool):
-            problems.add("invalid_type", f"{path}.enabled", "must be boolean")
+        why = validation.flag_refusal("enabled", rule["enabled"]) if "enabled" in rule else None
+        if why:
+            problems.add("invalid_type", f"{path}.enabled", why)
         if "fold" in rule:
             _validate_join_fold(rule.get("fold"), f"{path}.fold", problems)
 
@@ -1243,8 +1250,9 @@ def _validate_join_fold(value: Any, path: str, problems: _Problems) -> None:
                 f"{sorted(_JOIN_FOLD_RULES)}")
             continue
         enabled = value[name]
-        if not isinstance(enabled, bool):
-            problems.add("invalid_type", rule_path, "notation rule toggle must be boolean")
+        why = validation.flag_refusal(str(name), enabled)
+        if why:
+            problems.add("invalid_type", rule_path, why)
         elif enabled and name not in _IMPLEMENTED_JOIN_FOLD_RULES:
             problems.add(
                 "invalid_join", rule_path,
@@ -1478,8 +1486,10 @@ def _validate_entities(section: Mapping[str, Any], problems: _Problems) -> None:
                             f"{attribute_name!r} is not in this entity's `attributes`. "
                             f"Cardinality says how many values a DECLARED attribute holds; "
                             f"a name only written here would carry no values at all.")
-        if "allow_null" in item and not isinstance(item["allow_null"], bool):
-            problems.add("invalid_type", f"{path}.allow_null", "must be boolean")
+        why = (validation.flag_refusal("allow_null", item["allow_null"])
+               if "allow_null" in item else None)
+        if why:
+            problems.add("invalid_type", f"{path}.allow_null", why)
         # 🔴 THE SAME RULE AS A RETIRED SOURCE (S-177 ①). `references` is the ONE entity
         # clause whose truth depends on something OUTSIDE this entity -- it names another
         # declaration, which an operator is free to delete once nothing active points at
@@ -1602,7 +1612,10 @@ def _validate_exclude_when(value: Any, path: str, problems: _Problems) -> None:
         if not isinstance(column, str) or not column.strip():
             problems.add("invalid_type", f"{spot}.column",
                          "must name a column of this source's relation")
-        if clause.get("blank") is not True:
+        why = validation.flag_refusal("blank", clause["blank"]) if "blank" in clause else None
+        if why:
+            problems.add("invalid_type", f"{spot}.blank", why)
+        elif clause.get("blank") is not True:
             problems.add("invalid_type", f"{spot}.blank",
                          "the only supported condition is 'blank': true")
 
@@ -1639,9 +1652,11 @@ def _validate_preparation(item: Any, path: str, problems: _Problems) -> None:
             problems.add(
                 "output_column_collision", f"{path}.output_columns.{column}",
                 "preparer output must not overwrite an input column")
-    if not isinstance(item.get("accepts_verified_join_rules"), bool):
-        problems.add("invalid_type", f"{path}.accepts_verified_join_rules",
-                     "must be boolean")
+    why = (validation.flag_refusal("accepts_verified_join_rules",
+                                   item["accepts_verified_join_rules"])
+           if "accepts_verified_join_rules" in item else None)
+    if why:
+        problems.add("invalid_type", f"{path}.accepts_verified_join_rules", why)
 
 
 def _validate_mapper(item: Any, path: str, problems: _Problems) -> None:

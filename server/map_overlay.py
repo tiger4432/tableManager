@@ -70,6 +70,7 @@ import re
 logger = logging.getLogger(__name__)
 
 import paths  # single override point (ASSY_DATA_ROOT)
+import validation
 CONFIG_PATH = paths.config_path("map_overlay_config.json")
 
 MAX_OVERLAY_CELLS = 20_000     # 오버레이 1종당 셀 상한 (초과 시 truncated 표기)
@@ -2907,8 +2908,12 @@ def get_paint_rules(cfg: dict, table: str = None) -> dict:
     specific = rules.get(table) if table and isinstance(rules.get(table), dict) else {}
     merged = dict(default)
     merged.update(specific)
+    why = validation.flag_refusal("enabled", merged["enabled"]) if "enabled" in merged else None
+    if why:
+        # Not used rather than guessed (총괄 872f6cb6b): `bool("false")` locked the map.
+        logger.warning("[PaintLock:%s] lock ignored: %s", table or "*", why)
     return {
-        "enabled": bool(merged.get("enabled", False)),
+        "enabled": merged.get("enabled", False) is True,
         "blocking_values": [str(v) for v in (merged.get("blocking_values") or [])],
         "from_overlay": [str(v) for v in (merged.get("from_overlay") or [])],
         "message": merged.get("message") or "이 셀은 잠금 값이라 페인팅할 수 없습니다.",

@@ -518,5 +518,6 @@ def test_string_false_std_parse_warns_and_stays_enabled(tmp_path, monkeypatch, c
         assert handler.std_parse_enabled is True  # 무효 값 → 기본 활성 유지
         assert handler.std_parse_enabled is True  # 반복 접근에도 경고 1회
 
-    warns = [r for r in caplog.records if "non-boolean 'std_parse'" in r.getMessage()]
+    warns = [r for r in caplog.records
+             if 'std_parse must be true or false, got "false"' in r.getMessage()]
     assert len(warns) == 1
