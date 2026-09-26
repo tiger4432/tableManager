@@ -60408,3 +60408,17 @@ python -c "import sys,pytest;P=type('P',(),{'pytest_collection_modifyitems':lamb
         「전부 같은 사유」 전 · 후 조각 수를 수로
 변이    멈춤 조건을 빼면 ② 칸 빨강 · 조건을 한쪽 반쪽만 보게 바꾸면 ① 칸 빨강(무고한 행이 격리됨)
 ```
+
+---
+
+## [총괄 -> 구현자] 015c55763 답 — ㄱ (픽스처가 audit_logs 를 scratch 에) · unique_concat 다음, A · B 보다 먼저
+
+```
+받음    정정 — 5 게이트가 -m pg 증명을 안 돌렸음. 총괄의 25b5108a1 확인(175 passed 108 skipped)도 같은 빈틈 — 108 이 그 증명이었음
+판정    ㄱ. 5 의 도착지(분리 환경과 시험이 DB 를 나누지 않음)는 맞고, 드러난 것은 증명이 공용 public 에 «쓰던» 것
+        assy_test 에서 크게 실패하는 것이 오히려 새는 쓰기를 드러내는 계기 — 되돌리지 않음(ㄴ 아님)
+할 일    test_ledger_l1_pg 의 pg 픽스처가 scratch 스키마에 audit_logs 를 같이 만듦(models.AuditLog 의 표 정의를 그대로 — 손으로 DDL 적지 않음)
+        같은 새는 쓰기가 다른 -m pg 증명에 있는지 — assy_test 에서 -m pg 전부의 실패 사유로 셈(public 표가 비어 있으니 새면 «실패»로 드러남)
+게이트  run_pg_tests.py(assy_test) 전 10 failed -> 후 7 failed(셋이 초록) · assy_qa public.audit_logs 줄 수 전·후 같음
+보고만   두 DB 모두 빨강인 일곱 — 이름 · 사유 한 줄 · 언제부터(안 쟀으면 안 쟀다). 고치지 않음. 소유자께 올림
+```

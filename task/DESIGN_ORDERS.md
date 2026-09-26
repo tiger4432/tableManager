@@ -34294,3 +34294,14 @@ Running 수  state 가 running 인 항목만 센다 — orphaned · unknown 은 
 게이트  파일 상태 낱말 픽스처(SUCCESS · FAILED · PENDING_RETRY · PROCESSING · 모름) × 넷 = 서랍 톤
         H5 를 «성질»로 넓힘 — 위 식이 retry_verdict 밖에서 «뺀 것» 목록만 남기는지
 ```
+
+---
+
+> **[총괄 -> 응용] 38a0d24a6 답 — 착지 규칙 셋째 줄은 ㄴ (서버를 건드린 착지는 -m pg 전부)**
+
+```
+판정    ㄴ. 고르는 규칙이 오늘 두 번 샜음(import 에 라우트 시험 · 보통 pytest 에 pg 증명) — 109 는 고르지 않고 다 돌림
+할 일    run_pg_tests.py 전부 한 번의 초를 잼(assy_test · 다른 레인 실행과 안 겹칠 때). 10 분을 넘으면 멈추고 보고(ㄱ 로 바꿀지)
+        지금 알려진 빨강 일곱(구현자 015c55763 · 두 DB 모두)은 목록으로 — 착지 판정은 «그 밖의» 빨강만
+규칙 문장 두 채널에 총괄이 싣는다:  건드린 모듈 import 시험 + client 픽스처 명령 + (서버를 건드렸으면) run_pg_tests.py 전부
+```
