@@ -86,6 +86,8 @@ INSIDE THE WRITE · row build T s / N cells changed · audit logs T s / N rows �
 
 - 🆕 09-26 `fdd8388ad`: 마지막 청크 뒤 워처가 박동 단계 `finish` 를 찍는다 — 파일 마무리(통계 · 보관)에서 멈추면 «마지막 청크의 커밋»이 아니라 `finish` 로 읽힘. 업무키 충돌 재시도는 `alignment_batch_counts.write_steps_rewind` 로 되감아, 청크 · 파일 줄의 곁표 행 수가 «커밋한 시도»의 것만
 
+- 🆕 09-26 `d11d5427`: 넓은 조인은 페이지마다 chain_worker.log `[Chain] <규칙> -> <표>: page N, M row(s)` — 페이지마다 쓰고 커밋하고 박동이 간다(박스: 원천 1,000 행 · 왼쪽 200,000 행에서 박동 사이 최장 109.2 s -> 0.89 s, 전체 118.6 s -> 154.8 s)
+
 ### §1-ter-ter. 🆕 **체인 비상 정지** (09-26 `312e8440a` · 화면 `e4d28394c`)
 ```
 Pause    POST /admin/chain/pause {reason} · chain_pause_cli.py · 어드민 Overview / Chain 탭 버튼
