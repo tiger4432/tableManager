@@ -26,12 +26,13 @@
 //    attributes — `data-table="${…}"` is the position where the quote-only drift was unsafe.
 import { escapeHtml } from './utils.js';
 import { localeCountText, isCount } from './absent.js';
-import { statusBadgeClass } from './retry_verdict.js';
+import { statusBadgeClass, isDoneStatus } from './retry_verdict.js';
 
 /** File Ingestion 로그 행. `withStatus` 는 Auto Update 탭 실패 목록과 공용이라 남습니다. */
 export function fileLogRowHtml(log, { withStatus, timeStr }) {
-  const statusBadge = `<span class="badge ${log.status === 'SUCCESS' ? 'badge-success' : 'badge-danger'}">${escapeHtml(log.status || 'FAILED')}</span>`;
-  const retryBtnHtml = log.status === 'SUCCESS'
+  // Badge and button read the one seat (lead 65f2c808d) — a waiting file is not drawn as failed.
+  const statusBadge = `<span class="${statusBadgeClass(log.status)}">${escapeHtml(log.status || 'FAILED')}</span>`;
+  const retryBtnHtml = isDoneStatus(log.status)
     ? `<button class="admin-btn btn-primary" style="padding: 4px 10px; font-size: var(--fs-button); opacity: 0.5; cursor: not-allowed;" disabled>Retry</button>`
     : `<button class="admin-btn btn-primary btn-retry-file" data-id="${escapeHtml(log.id)}" style="padding: 4px 10px; font-size: var(--fs-button);">Retry</button>`;
   // 감사 P2: 파일명은 상태와 무관한 중립색(모노) — 상태색은 배지에만

@@ -967,7 +967,7 @@ const FLOORS = new Map([
   // whether a failed row is retried or parked; a floor drop means fewer of its states are
   // separated, and the states that collapse first are the ones that look alike.
   // 29 -> 35 (lead f063c948e): the outbox retry reply is judged by its status - five checks, two mutants.
-  ['retry_verdict_harness.mjs', 56],
+  ['retry_verdict_harness.mjs', 61],
   //
   // Scores that the fields saying 「this list is a SAMPLE」 have a reader, and that the branch
   // the server relies on to compensate for a capped list is still handled. Verified
