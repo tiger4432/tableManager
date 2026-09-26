@@ -303,7 +303,7 @@ def _outbox_envelope():
     event that lost either would be read as a foreign transaction, or would loop).
     """
     from .context import (request_user, request_transaction_id, request_source,
-                          request_chain_depth)
+                          request_chain_depth, request_channel, request_cascade)
     return (
         request_transaction_id.get() or str(uuid.uuid4()),
         request_user.get(),
@@ -312,11 +312,14 @@ def _outbox_envelope():
         # [DEPTH] `None` for every write that is not the chain's. Staged as an ABSENT key
         # rather than a zero - see `request_chain_depth`.
         request_chain_depth.get(),
+        # [CHANNEL] · [CASCADE] the same way: absent unless a door set them.
+        request_channel.get(),
+        request_cascade.get(),
     )
 
 
 def stage_collapsed_event(session, event_type, table_name, row_ids, columns=None,
-                          only_rule=None):
+                          only_rule=None, replay=False):
     """[OUTBOX-4] Stage ONE outbox event naming `row_ids` instead of N events.
 
     🔴 THE TRANSACTIONAL-OUTBOX GUARANTEE IS PRESERVED, AND HERE IS WHY IT SURVIVES
@@ -345,13 +348,17 @@ def stage_collapsed_event(session, event_type, table_name, row_ids, columns=None
     from .models import DatabaseOutbox
     try:
         from event_constants import (OUTBOX_COLLAPSE_CHUNK_ROWS, CHAIN_DEPTH_KEY,
-                                     ONLY_RULE_KEY)
+                                     ONLY_RULE_KEY, CHANNEL_KEY, CASCADE_KEY,
+                                     REPLAY_KEY)
     except ImportError:  # pragma: no cover
         OUTBOX_COLLAPSE_CHUNK_ROWS = 1000
         CHAIN_DEPTH_KEY = "chain_depth"
         ONLY_RULE_KEY = "only_rule"
+        CHANNEL_KEY = "channel"
+        CASCADE_KEY = "cascade"
+        REPLAY_KEY = "replay"
 
-    tx_id, user, source, ts, chain_depth = _outbox_envelope()
+    tx_id, user, source, ts, chain_depth, channel, cascade = _outbox_envelope()
 
     # Split a huge flush into 1,000-id chunks: bounds the JSONB payload (~40 KB),
     # keeps the project's chunking discipline, and bounds the failure path (a
@@ -392,6 +399,11 @@ def stage_collapsed_event(session, event_type, table_name, row_ids, columns=None
         # facts and the reader has to be able to tell them apart.
         if chain_depth is not None:
             chunk_event.payload[CHAIN_DEPTH_KEY] = chain_depth
+        # [CHANNEL] · [CASCADE] Same rule as the depth: present only when a door set them.
+        if channel is not None:
+            chunk_event.payload[CHANNEL_KEY] = channel
+        if cascade:
+            chunk_event.payload[CASCADE_KEY] = True
         # [ONLY-RULE] Same rule as the depth above, for the same reason: the key is ABSENT
         # unless a caller named a rule, because the reader defines absence as 「no limit」
         # (`event_constants.only_rule_of`). Writing `None` would make a limit that reads as
@@ -404,6 +416,9 @@ def stage_collapsed_event(session, event_type, table_name, row_ids, columns=None
         # keep itself to one rule. This parameter is that missing half, not a new axis.
         if only_rule:
             chunk_event.payload[ONLY_RULE_KEY] = only_rule
+        # [REPLAY] Same rule: present only when the replay's staging seat says so.
+        if replay:
+            chunk_event.payload[REPLAY_KEY] = True
         session.add(chunk_event)
 
 
@@ -412,13 +427,15 @@ def stage_event(session, event_type, table_name, data_row):
     from .models import DatabaseOutbox
     try:
         from event_constants import (OUTBOX_PAYLOAD_EXCLUDED_COLUMNS as _EXCLUDED,
-                                     CHAIN_DEPTH_KEY)
+                                     CHAIN_DEPTH_KEY, CHANNEL_KEY, CASCADE_KEY)
     except ImportError:  # pragma: no cover
         CHAIN_DEPTH_KEY = "chain_depth"
+        CHANNEL_KEY = "channel"
+        CASCADE_KEY = "cascade"
         _EXCLUDED = frozenset({"row_id", "business_key_val", "created_at", "updated_at",
                                "is_graph_synced", "needs_graph_rollback", "graph_synced_at"})
 
-    tx_id, user, source, ts, chain_depth = _outbox_envelope()
+    tx_id, user, source, ts, chain_depth, channel, cascade = _outbox_envelope()
 
     data_dict = {}
     for col in data_row.__table__.columns:
@@ -456,6 +473,10 @@ def stage_event(session, event_type, table_name, data_row):
     # [DEPTH] Same rule as the collapsed stager: present only when the chain wrote it.
     if chain_depth is not None:
         event_obj.payload[CHAIN_DEPTH_KEY] = chain_depth
+    if channel is not None:
+        event_obj.payload[CHANNEL_KEY] = channel
+    if cascade:
+        event_obj.payload[CASCADE_KEY] = True
     session.add(event_obj)
 
 

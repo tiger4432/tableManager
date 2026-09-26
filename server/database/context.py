@@ -37,6 +37,42 @@ request_source = sys._context_vars_cache["request_source"]
 request_outbox_mode = sys._context_vars_cache["request_outbox_mode"]
 #: [DEPTH] Set by the chain worker for the span of its writes; read by `_outbox_envelope`.
 request_chain_depth = sys._context_vars_cache["request_chain_depth"]
+#: [CHANNEL] Who caused the write - one of `event_constants.CHANNEL_*`, set by the door (the
+#: chain, the HTTP door, the watcher, a retroactive run). `None` = no door said. Beside the
+#: depth and for the same reason: `crud.transaction_context` re-sets `request_source` to the
+#: item's LAYER, and never touches this (총괄 5676b8bc6 ⓪, 판정 425 · S-280).
+request_channel = sys._context_vars_cache.setdefault(
+    "request_channel", contextvars.ContextVar("request_channel", default=None))
+#: [CASCADE] True while a replay that asked to cascade stages its trigger events, and while the
+#: chain writes what those woke (총괄 146b208cb).
+request_cascade = sys._context_vars_cache.setdefault(
+    "request_cascade", contextvars.ContextVar("request_cascade", default=False))
+
+
+def _for_the_block(var, value):
+    import contextlib
+
+    @contextlib.contextmanager
+    def _cm():
+        token = var.set(value)
+        try:
+            yield
+        finally:
+            var.reset(token)
+
+    return _cm()
+
+
+def channel(value: str):
+    """Context manager: the writes inside go out on channel `value` - the door's word for
+    who caused them. Same shape as `outbox_mode`, and like it untouched by
+    `crud.transaction_context`."""
+    return _for_the_block(request_channel, value)
+
+
+def cascade(value: bool):
+    """Context manager: the writes inside say their replay asked to cascade."""
+    return _for_the_block(request_cascade, bool(value))
 
 
 def outbox_mode(mode: str):

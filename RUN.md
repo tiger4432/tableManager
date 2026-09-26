@@ -1,5 +1,23 @@
 # 지금 돌리면 되는 것
 
+> ## 🔴 [09-26 밤 3] **쓰기의 경로(channel) — 자동 확정이 옵트인을 지나고 · 소급의 쓰기는 체인을 안 깨움 — 마이그레이션 «없음» · 재기동 넷 다(API · 워처 · 체인 · 스케줄러)**
+>
+> ```
+> 무엇이 바뀌나   outbox 사건에 경로 칸 — chain · api · file · retroactive. 층 이름(source_name)은 그대로
+>               chain        체인이 쓴 것(자동 확정 포함) — 옵트인한 규칙만 깨움 · 깊이 상한이 셈
+>               api · file   사람 · 다른 클라이언트 · 파일 적재 — 오늘처럼 모든 규칙을 깨움
+>               retroactive  소급 탭 · CLI 의 모든 소급 실행이 쓴 것 — 옵트인이어도 «아무 규칙도» 안 깨움. 하류는 하류를 따로 소급
+>               그리드 클릭 리플레이만 연쇄(cascade) — 옵트인 규칙만 깨움. ⚠️ 클라가 cascade: true 를 보내기 전까지는 클릭 리플레이도 연쇄 없음
+> 재기동 뒤      server\config\ingestion_settings.json 의 "enrichment_auto_confirm_enabled" 를 true 로 되돌려도 됨 — 자동 확정 쓰기가 이제 옵트인을 지남
+> 확인          chain 박동 note 에 "N event(s) read by source name (no channel)" — 착지 전에 쌓인 체인 사건을 옛 방식(source_name)으로 읽은 수
+>               대기열이 비면 더 안 늘어남. 늘어나면 경로를 안 세우는 체인 쓰기가 남아 있다는 뜻 — 보고
+> 소급 폼        모든 연산에 "Downstream chain rules are not triggered by a retroactive run - run them too if they read what this changed"
+>               수집기 날짜별 소급만 "The files it collects are ingested as usual, and the chain runs on them"
+> 스위치        없음. 되돌리기는 git revert 뒤 네 프로세스 재기동(경로 칸이 없는 사건은 옛 방식으로 읽히므로 섞여도 안전)
+> ```
+
+---
+
 > ## 🔴 [09-26 밤 3] **같은 값의 파일 층 — 쓰기에서 안 쌓고, 쌓인 것은 소급 한 번 — 마이그레이션 «없음» · 재기동 워처 · 체인 워커 · API**
 >
 > ```

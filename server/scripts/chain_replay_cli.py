@@ -144,6 +144,9 @@ def main(argv=None):
                    help="fast (default, unchanged) | slow | trickle - yield between pages "
                         "so the database stays free for everything else. Declared in "
                         "server/pacing.json")
+    p.add_argument("--cascade", action="store_true",
+                   help="let what this replay writes wake the opted-in chain rules, as the "
+                        "chain does. Without it a replay's writes wake no rule")
 
     p = sub.add_parser("replay-all")
     p.add_argument("--apply", action="store_true")
@@ -209,7 +212,8 @@ def main(argv=None):
             rule = replay.find_rule(args.rule_name, row_scoped=bool(rows))
             print(_report_replay(written("chain_replay", {
                 "rule": rule["name"], "business_keys": selected, "row_ids": rows,
-                "pace": args.pace, "limit": args.limit, "chunk_size": args.chunk_size})
+                "pace": args.pace, "limit": args.limit, "chunk_size": args.chunk_size,
+                "cascade": args.cascade or None})
                 if args.apply else replay.replay_rule(
                     db, rule, apply=False, limit=args.limit, chunk_size=args.chunk_size,
                     business_keys=selected, row_ids=rows, pace=args.pace, log=say)))

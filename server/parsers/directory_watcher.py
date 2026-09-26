@@ -83,6 +83,7 @@ def _db_error_brief(exc: BaseException) -> str:
 # 체인 워커(chain_ingestion_worker.py)와 공유하는 공용 상수로 승격됨 — 정의·근거는 event_constants 참조.
 # 실제 총 로그 건수는 total_log_count로 별도 전달되어 웹서버 audit_cache의 total_count 표기에 쓰인다.
 from event_constants import MAX_NOTIFY_CREATED_LOGS
+import event_constants
 
 
 # [P2] 오프셋 체크포인트 재개 + 파일 시그니처 dedup (설계 근거·해시 비용 실측은 모듈 docstring)
@@ -2163,8 +2164,12 @@ class IngestionHandler(FileSystemEventHandler):
         covers both; claims are thread-affine, so a healthy heavy-lane job cannot
         refresh a wedged inline job's claim.
         """
+        from database.context import channel
+        # [⓪] What a file writes goes out on the file channel - on this thread, so both
+        # lanes carry it (a lane thread starts with an empty context).
         with heartbeat.work_claim(HEARTBEAT_NAME,
-                                  f"ingest {os.path.basename(file_path)}"):
+                                  f"ingest {os.path.basename(file_path)}"), \
+                channel(event_constants.CHANNEL_FILE):
             return self._process_with_retry(file_path, uploader, retries, delay)
 
     def _process_with_retry(self, file_path: str, uploader: str = "system", retries: int = 3, delay: float = 1.0):
@@ -2803,8 +2808,10 @@ class IngestionHandler(FileSystemEventHandler):
         # poller thread, not an observer or the heavy lane), so it needs its own
         # claim. Without it a retry that wedges is invisible: the poller thread
         # is the very thread that would otherwise keep beating.
+        from database.context import channel
         with heartbeat.work_claim(HEARTBEAT_NAME,
-                                  f"retry-ingest {os.path.basename(filepath or '?')}"):
+                                  f"retry-ingest {os.path.basename(filepath or '?')}"), \
+                channel(event_constants.CHANNEL_FILE):
             return self._process_archived_file_sync(log_entry, db, uploader,
                                                     filepath, t_name, table_info)
 

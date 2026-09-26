@@ -919,9 +919,36 @@ def _rule_accepts_event(rule, event) -> bool:
     # ⚰️ [소유자 정본] THE FIRST LINE HERE ASKED `picked_up_by_the_group_step(rule)`, which
     #   answered 「is this rule NOT deferred」. There is no deferred path, so it answered 「yes」
     #   to everything and the question is gone with it.
-    if get_payload_dict(event).get("source_name") != "chain_ingestion":
+    # 🔴 [⓪ · 총괄 5676b8bc6] IT READS THE CHANNEL, NOT THE LAYER. `source_name` is what the
+    #   item wrote under, and crud's batch door copies it onto the envelope - an auto-confirm
+    #   write left as `enrichment_auto_confirm`, read as 「not the chain」, and woke every rule
+    #   on its table with no opt-in asked (판정 425 · S-280; production ping-pong 09-26).
+    payload = get_payload_dict(event)
+    channel = event_constants.channel_of(payload)
+    if channel == event_constants.CHANNEL_RETROACTIVE:
+        # 🔴 A retroactive run's write wakes nothing, opt-in or not (소유자 09-26, 총괄
+        #   c2995cdd8 - chain_ingestion_guide §5.6 narrowed). Its downstream is run by running
+        #   it too; its own trigger events carry no channel and still wake their rule.
+        #   The grid's click replay asks to cascade, and cascades as the chain does (146b208cb).
+        if not event_constants.cascade_of(payload):
+            return False
+        channel = event_constants.CHANNEL_CHAIN
+    if channel is None and payload.get("source_name") == rule_run.CHAIN_SOURCE:
+        # 🔴 A DATA GUARD, AND IT RETIRES (총괄 f42b48591 3). An event queued before the
+        #   channel existed says the chain only by its source name; reading it as 「not the
+        #   chain」 would wake every rule on the backlog at the landing. RETIRE THIS BRANCH when
+        #   no unprocessed event lacks `channel` - the chain beat's note counts what it reads.
+        if getattr(event, "id", None) is not None:
+            _READ_BY_SOURCE_NAME.add(event.id)
+        channel = event_constants.CHANNEL_CHAIN
+    if channel != event_constants.CHANNEL_CHAIN:
         return True
     return bool(rule.get("allow_chain_trigger"))
+
+
+#: Events `_rule_accepts_event` read by their source name because they carry no channel. Ids,
+#: so the several asks per event count once; bounded by the backlog the landing met.
+_READ_BY_SOURCE_NAME = set()
 
 
 def _is_trigger_event(event) -> bool:
@@ -1229,7 +1256,8 @@ def _group_target_tables(events_in_tx, rules):
 
 def apply_chain_writes(db, tx_id, rule, incoming_depth, rules_by_target,
                        table_updates, map_metadata_updates, scoped_batches,
-                       table_contributors, broadcast_messages):
+                       table_contributors, broadcast_messages, woken_by_a_replay=False,
+                       cascade=False):
     """The chain's WRITE, as a door. -> `(True, None)` or `(False, error_msg)`.
 
     🔴 [판정 603 · 604 ㉠] 소유자 v2: 「… 맵퍼 실행 -> «쓰기 문» -> 쓰기 -> 아웃박스 -> 반복」.
@@ -1256,7 +1284,8 @@ def apply_chain_writes(db, tx_id, rule, incoming_depth, rules_by_target,
     if table_updates or map_metadata_updates or scoped_batches:
         from database import schemas, crud
         from database.context import (request_user, request_transaction_id, request_source,
-                                      request_chain_depth, outbox_mode)
+                                      request_chain_depth, request_channel,
+                                      request_cascade, outbox_mode)
 
         chain_tx_id = f"chain_{tx_id}"
         writing = None
@@ -1270,6 +1299,10 @@ def apply_chain_writes(db, tx_id, rule, incoming_depth, rules_by_target,
         # a try/finally that must also run on the error return below.
         token_src = request_source.set(rule_run.CHAIN_SOURCE)
         token_depth = request_chain_depth.set(rule_run.outgoing_depth(incoming_depth))
+        # The channel is the seat's too - `crud` re-sets the source to the item's layer and
+        # never this, which is what lets an auto-confirm write read as the chain (⓪).
+        token_channel = request_channel.set(rule_run.outgoing_channel(woken_by_a_replay))
+        token_cascade = request_cascade.set(bool(cascade))
 
         # 🔴 [판정 423] THE SAME ENVELOPE THE SEAT PUTS ON A BUILTIN'S OWN WRITE. `source`,
         # `chain_depth` and the collapsed outbox mode were spelled here, and a builtin's write
@@ -1633,6 +1666,8 @@ def apply_chain_writes(db, tx_id, rule, incoming_depth, rules_by_target,
             # Reset with the others: a depth left set would stamp the NEXT write, and the
             # next write may not be the chain's at all.
             request_chain_depth.reset(token_depth)
+            request_cascade.reset(token_cascade)
+            request_channel.reset(token_channel)
     return True, None
 
 
@@ -1795,6 +1830,9 @@ def _process_chain_transaction_group_sync(tx_id, events, db, rules):
     incoming_depth = max(
         [d for d in (event_constants.chain_depth_of(get_payload_dict(e))
                      for e in events) if d is not None] or [0])
+    # What a group writes because a replay's trigger events woke it is the replay's write
+    # (총괄 c2995cdd8) - asked of the replay's own mark, not of `only_rule`.
+    woken_by_a_replay, cascade = _replay_ask(events)
 
     for table_name in trigger_tables_in_order(valid_events):
         matched_rules = [
@@ -1852,7 +1890,9 @@ def _process_chain_transaction_group_sync(tx_id, events, db, rules):
                     # is not a batch rule, and picks `row_ids` when the rule is a builtin.
                     target_payload = rule_run.run_rule(db, rule, payloads=payloads,
                                                       row_ids=row_ids,
-                                                      depth=incoming_depth)
+                                                      depth=incoming_depth,
+                                                      woken_by_a_replay=woken_by_a_replay,
+                                                      cascade=cascade)
                     if target_payload["updates"]:
                         table_updates[target_table].extend(target_payload.get("updates"))
                         if rule.get("name") not in table_contributors[target_table]:
@@ -1895,7 +1935,9 @@ def _process_chain_transaction_group_sync(tx_id, events, db, rules):
                     # expansion and the seat makes the same N calls.
                     target_payload = rule_run.run_rule(db, rule, payloads=payloads,
                                                       row_ids=row_ids,
-                                                      depth=incoming_depth)
+                                                      depth=incoming_depth,
+                                                      woken_by_a_replay=woken_by_a_replay,
+                                                      cascade=cascade)
                     if target_payload.get("updates"):
                         table_updates[target_table].extend(target_payload["updates"])
                         if rule.get("name") not in table_contributors[target_table]:
@@ -1919,7 +1961,7 @@ def _process_chain_transaction_group_sync(tx_id, events, db, rules):
     written_ok, write_error = apply_chain_writes(
         db, tx_id, rule, incoming_depth, rules_by_target, table_updates,
         map_metadata_updates, scoped_batches, table_contributors,
-        broadcast_messages)
+        broadcast_messages, woken_by_a_replay=woken_by_a_replay, cascade=cascade)
     if not written_ok:
         return False, write_error, []
 
@@ -2215,6 +2257,15 @@ def _rules_for_group(events_in_tx, rules):
         if any(fires(r, e) for e in events_in_tx)))
 
 
+def _replay_ask(events):
+    """(woken by a replay's trigger events, that replay asked to cascade) - one answer for the
+    group body, which writes by it, and the merge, which must not fold across it: a replay's
+    group folded into an ordinary one would silence the ordinary writes' downstream."""
+    woken = any(event_constants.replay_of(get_payload_dict(e)) for e in events)
+    return woken, woken and any(event_constants.cascade_of(get_payload_dict(e))
+                                for e in events)
+
+
 def merge_consecutive_groups(group_order, groups, rules):
     """Fold CONSECUTIVE groups that wake the same rules into one, up to their ceiling.
 
@@ -2254,7 +2305,8 @@ def merge_consecutive_groups(group_order, groups, rules):
         #    depends on the SENTINEL'S VALUE rather than on its meaning, and the next person
         #    to give 「do not merge」 a different number would turn merging on by accident.
         if (ceiling != NO_GROUP_MERGE and signature and signature == previous_signature
-                and len(merged[previous_id]) + len(events) <= ceiling):
+                and len(merged[previous_id]) + len(events) <= ceiling
+                and _replay_ask(events) == _replay_ask(merged[previous_id])):
             merged[previous_id].extend(events)
             continue
         merged_order.append(tx_id)
@@ -2679,7 +2731,10 @@ def _worker_note():
     `None` when both are clean, so a healthy deployment's heartbeat file is unchanged.
     """
     parts = [p for p in (_undeclared_drop_note(), key_gate.note(),
-                         ledger_followup.note()) if p]
+                         ledger_followup.note(),
+                         "%d event(s) read by source name (no channel)"
+                         % len(_READ_BY_SOURCE_NAME) if _READ_BY_SOURCE_NAME else None)
+             if p]
     return " | ".join(parts) or None
 
 
@@ -2828,9 +2883,13 @@ def _retract_what_those_rows_fed(db, table, row_ids):
     already succeeded, nor propagate into the drain loop.
     """
     from chain import cell_layer
+    from database.context import channel
 
     try:
-        stats = cell_layer.withdraw_by_origin(db, row_ids, apply=True)
+        # The follow-up lap is the chain's own write - said, so it does not lean on the
+        # source name the way events queued before the channel do.
+        with channel(event_constants.CHANNEL_CHAIN):
+            stats = cell_layer.withdraw_by_origin(db, row_ids, apply=True)
         logger.info("[ChainRetract] table=%s deleted_rows=%d groups=%d cells_withdrawn=%d "
                     "protected_skipped=%d", table, len(row_ids), stats.get("groups", 0),
                     stats.get("cells_withdrawn", 0), stats.get("protected_skipped", 0))

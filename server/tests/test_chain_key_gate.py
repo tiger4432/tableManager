@@ -472,6 +472,7 @@ def test_the_refusal_count_reaches_another_process_through_the_heartbeat(db, mon
     # filter made one more write produce one more event; the leak predates it.
     from ledger import followup as _followup
     _followup._queue.clear()
+    worker._READ_BY_SOURCE_NAME.clear()       # the note's count of events with no channel
 
     assert worker._worker_note() is None, "a clean worker's beat must stay byte-identical"
 

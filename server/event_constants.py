@@ -433,6 +433,48 @@ DEFAULT_MAX_CHAIN_DEPTH = 8
 ONLY_RULE_KEY = "only_rule"
 
 
+#: [CHANNEL] WHO CAUSED A WRITE, apart from the layer it wrote under (총괄 5676b8bc6 ⓪).
+#: `source_name` on the envelope is the item's LAYER on the batch door, so a chain write whose
+#: layer is `enrichment_auto_confirm` read as 「not the chain」 and skipped every opt-in -
+#: 판정 425's one variable carrying two facts (S-280). ABSENT = no door said (an event queued
+#: before the key existed, or a writer that sets none).
+CHANNEL_KEY = "channel"
+CHANNEL_CHAIN = "chain"
+CHANNEL_API = "api"
+CHANNEL_FILE = "file"
+CHANNEL_RETROACTIVE = "retroactive"
+#: What a retroactive run writes wakes NO rule, opt-in or not (소유자 09-26 「그냥 뭐든 큰
+#: 소급으로 한 거 체인 연쇄 안 되게 하는 거 해」, 총괄 c2995cdd8) - the run's downstream is run
+#: by running it too. A replay's own trigger events carry no channel: they wake their rule.
+#: [CASCADE] The one exception: a replay run with `cascade` - the grid's click replay - writes
+#: with this key, and its writes wake the opted-in rules the way the chain's do (소유자
+#: 「클릭 리플레이는 연쇄 도는 거 맞지?」, 총괄 146b208cb). Absent = no cascade.
+CASCADE_KEY = "cascade"
+#: [REPLAY] A replay's trigger event says so - written by the replay's staging seat alone. What
+#: the group it wakes writes is the replay's write (retroactive). Its own key, not `only_rule`:
+#: that one is a restriction, and reading it as 「a replay staged this」 would make any future
+#: door that narrows to one rule silently retroactive.
+REPLAY_KEY = "replay"
+
+
+def channel_of(payload):
+    """The channel an event says it came through, or `None` when it says none."""
+    if not isinstance(payload, dict):
+        return None
+    value = payload.get(CHANNEL_KEY)
+    return value if isinstance(value, str) and value else None
+
+
+def replay_of(payload) -> bool:
+    """Was this event staged by a replay run to wake its rule?"""
+    return isinstance(payload, dict) and payload.get(REPLAY_KEY) is True
+
+
+def cascade_of(payload) -> bool:
+    """Did the replay that caused this event ask to cascade?"""
+    return isinstance(payload, dict) and payload.get(CASCADE_KEY) is True
+
+
 def only_rule_of(payload):
     """이 사건이 «한 규칙만» 원하나 — 규칙 이름, 아니면 `None`.
 

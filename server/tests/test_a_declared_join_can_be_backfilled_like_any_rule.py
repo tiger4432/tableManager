@@ -252,12 +252,13 @@ def test_a_page_that_throws_costs_that_page_and_the_session_survives(db, monkeyp
     #   the worker's to isolate, on the group, where every live change already meets them.
     real_stage = db_module.stage_collapsed_event
 
-    def flaky(session, event_type, table_name, row_ids, columns=None, only_rule=None):
+    def flaky(session, event_type, table_name, row_ids, columns=None, only_rule=None,
+              replay=False):
         calls["n"] += 1
         if calls["n"] == 1:
             raise RuntimeError("psycopg2.errors.UniqueViolation: duplicate key")
         return real_stage(session, event_type, table_name, row_ids,
-                          columns=columns, only_rule=only_rule)
+                          columns=columns, only_rule=only_rule, replay=replay)
 
     monkeypatch.setattr(db_module, "stage_collapsed_event", flaky)
     rolled = []

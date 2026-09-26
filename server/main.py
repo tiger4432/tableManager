@@ -136,6 +136,7 @@ app = FastAPI(title="AssyManager Table Server")
 
 # --- ContextVars Middleware config ---
 from database.context import (request_user, request_transaction_id, request_source,
+                              request_channel,
                               outbox_mode)
 
 @app.middleware("http")
@@ -147,11 +148,15 @@ async def db_context_middleware(request: Request, call_next):
     token_user = request_user.set(user)
     token_tx = request_transaction_id.set(tx_id)
     token_src = request_source.set(source)
+    # [⓪] Every write that enters over HTTP - a person's grid edit or another client - is
+    # one channel: what the opt-in asks is only 「did the chain cause it」 (총괄 f42b48591 1).
+    token_channel = request_channel.set(event_constants.CHANNEL_API)
     
     try:
         response = await call_next(request)
         return response
     finally:
+        request_channel.reset(token_channel)
         request_user.reset(token_user)
         request_transaction_id.reset(token_tx)
         request_source.reset(token_src)

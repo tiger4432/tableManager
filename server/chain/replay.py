@@ -524,9 +524,13 @@ def replay_rule(db, rule: dict, apply: bool = False, limit: int = None,
                     # ⚠️ NO `columns` KEY: absent means 「모른다」 and every rule runs. The
                     #   narrowing is `only_rule`'s job - two axes doing it would make the answer
                     #   depend on which one the reader asked.
-                    database.stage_collapsed_event(
-                        db, "EDIT", trigger_table, [row.row_id for row in page],
-                        only_rule=rule.get("name"))
+                    # 🔴 NO CHANNEL on a trigger event (총괄 c2995cdd8): it has to wake the rule
+                    #   it names, and the run around it is on the retroactive channel.
+                    from database.context import channel
+                    with channel(None):
+                        database.stage_collapsed_event(
+                            db, "EDIT", trigger_table, [row.row_id for row in page],
+                            only_rule=rule.get("name"), replay=True)
                     db.commit()
                     stats["events_staged"] += 1
                     stats["rows_staged"] += len(page)

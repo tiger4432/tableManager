@@ -633,12 +633,15 @@ def _run_chain_replay(db, params, log, control=None):
     # operator has picked the rows, so re-deriving their targets is what the live chain does
     # when they move. Reading it twice from one dict is what keeps them from disagreeing.
     rule = replay.find_rule(params["rule"], row_scoped=bool(params.get("row_ids")))
-    s = replay.replay_rule(db, rule, apply=True, log=log,
-                                 checkpoint=_checkpoint(control),
-                                 business_keys=params.get("business_keys"),
-                                 row_ids=params.get("row_ids"),
-                                 pace=params.get("pace"),
-                                 **_given(params, "limit", "chunk_size"))
+    # [146b208cb] The trigger events carry the ask, and what they wake writes with it.
+    from database.context import cascade
+    with cascade(params.get("cascade") is True):
+        s = replay.replay_rule(db, rule, apply=True, log=log,
+                               checkpoint=_checkpoint(control),
+                               business_keys=params.get("business_keys"),
+                               row_ids=params.get("row_ids"),
+                               pace=params.get("pace"),
+                               **_given(params, "limit", "chunk_size"))
     _final_progress(control, s.get("rows_scanned"), s)
     # 🔴 THIS RUN NO LONGER WRITES, SO IT MUST NOT REPORT WRITES. It hands the rows to the
     #    worker as ordinary trigger events and the worker writes them, later, in its own
@@ -1019,13 +1022,16 @@ OPERATIONS = {
                    _p("limit", required=False, kind="int", form=False,
                       help="bound the source rows scanned"),
                    _p("chunk_size", required=False, kind="int", form=False,
-                      help="rows per write chunk")],
+                      help="rows per write chunk"),
+                   _p("cascade", required=False, kind="bool", form=False,
+                      help="let what this replay writes wake the opted-in chain rules, "
+                           "as the chain does - the grid's click replay sends it")],
         "count": _count_chain_replay,
         "run": _run_chain_replay,
         "judge": _judge_chain_replay,
         "cli": ("server/scripts/chain_replay_cli.py replay <rule> "
                 "[--business-keys a,b,c] [--row-ids r1,r2] [--pace slow] "
-                "[--limit N] [--chunk-size N] --apply"),
+                "[--limit N] [--chunk-size N] [--cascade] --apply"),
         "deletes": None,
         "reads_as": "number",
         "cancellable": True,
@@ -1215,6 +1221,8 @@ OPERATIONS = {
     "collector_backfill": {
         "label": "Backfill a collector day by day",
         "what_is_missing": "a source added today has no data for the days before it",
+        "downstream_note": ("The files it collects are ingested as usual, and the chain runs "
+                            "on them"),
         "params": [_p("collector", help="<table>/<script.py> of a collector that declares "
                                          "'# window:'"),
                    _p("start", help="first day, KST - YYYY-MM-DD (that day's 00:00) or "
@@ -1753,6 +1761,13 @@ def operation(op: str) -> dict:
     return spec
 
 
+#: What a run's writes do to the chain - true of every operation, because they all run through
+#: `_run_to_the_end`'s retroactive channel (소유자 09-26, 총괄 c2995cdd8). An operation whose
+#: writes happen somewhere else says its own sentence (`downstream_note` in its spec).
+DOWNSTREAM_NOTE = ("Downstream chain rules are not triggered by a retroactive run - run them "
+                   "too if they read what this changed")
+
+
 def inventory() -> list:
     """The operations, their parameters, and where the CLI equivalent is.
 
@@ -1763,6 +1778,7 @@ def inventory() -> list:
     """
     return [
         {"op": op, "label": s["label"], "what_is_missing": s["what_is_missing"],
+         "downstream_note": s.get("downstream_note", DOWNSTREAM_NOTE),
          "params": [dict(p, choices=_resolved_choices(p)) for p in s["params"] if p["form"]],
          "cli": s["cli"], "cli_only": s["cli_only"],
          "deletes": s["deletes"], "restartable": s["restartable"],
@@ -2310,7 +2326,12 @@ def _run_to_the_end(run_id, op, spec, params, log, control, raise_failure=False)
     db = SessionLocal()
     try:
         log(f"[Retroactive] run_id={run_id} op={op} params={params} START")
-        out["result"] = spec["run"](db, params, log, control)
+        # 🔴 [소유자 09-26 · 총괄 c2995cdd8] EVERY OPERATION'S WRITES go out on the retroactive
+        #   channel, which wakes no rule - one seat, because every run ends here. A collector
+        #   backfill writes files; the watcher ingests them on its own channel.
+        from database.context import channel
+        with channel(ec.CHANNEL_RETROACTIVE):
+            out["result"] = spec["run"](db, params, log, control)
         # 🔴 STOPPED AND FINISHED ARE DIFFERENT OUTCOMES. A cancelled run has committed
         # everything it wrote and has more left to do; reporting it as `done` would tell
         # an operator the operation had covered the whole table.

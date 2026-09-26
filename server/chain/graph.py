@@ -278,15 +278,20 @@ def _wakes(worker, rules, table):
     opted in with `allow_chain_trigger`. That opt-in is most of what makes the web a web,
     so it is a value here rather than something a reader infers from the edges.
     """
-    def _ask(source_name):
+    import event_constants
+
+    def _ask(channel):
+        # Asked by CHANNEL, the cell the worker reads (⓪) - not by a source name, which
+        # would only exercise the reader's guard for events queued before the channel.
         event = type("Event", (), {
             "table_name": table, "event_type": "CREATE",
-            "payload": {"source_name": source_name}})()
+            "payload": {event_constants.CHANNEL_KEY: channel}})()
         return sorted(
             r.get("name") for r in worker._group_triggered_rules([event], rules)
             if r.get("name"))
 
-    return {"user": _ask("user"), "chain": _ask("chain_ingestion")}
+    return {"user": _ask(event_constants.CHANNEL_API),
+            "chain": _ask(event_constants.CHANNEL_CHAIN)}
 
 
 #: 🔴 [S-284] ONE SEAT ASKS 「WHICH KIND OF ANSWER WAS THAT」, FOR EVERY QUARTER.
