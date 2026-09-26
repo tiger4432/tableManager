@@ -1,5 +1,16 @@
 # 지금 돌리면 되는 것
 
+> ## [09-27 아침 4] **페인트 잠금 기본 문장 영어 — 마이그레이션 «없음» · 재기동 API**
+>
+> ```
+> 무엇이 바뀌나  map_overlay_config.json 의 paint_lock 에 message 를 안 적은 표 -> 화면 문장이 "This cell holds a locked value - it cannot be painted"
+> 운영 설정     paint_lock 의 message 칸에 문장을 적어 두었으면 그건 운영자 값 — 그대로 그려짐. 바꾸려면 그 칸을 고침(저장하면 다음 요청부터)
+>              찾기: findstr /n "message" server\config\map_overlay_config.json
+> 되돌리기      git revert 뒤 API 재기동
+> ```
+
+---
+
 > ## 🔴 [09-27 아침 3] **표에 새 칸을 붙이는 스키마 동기화 — 20 s 넘게 막히면 포기하고 프로세스는 계속 — 마이그레이션 «없음» · 재기동 API · 워처 · 체인**
 >
 > ```
