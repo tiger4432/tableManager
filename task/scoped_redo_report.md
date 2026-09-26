@@ -63337,3 +63337,46 @@ chain_bindings      rule_refusals — 로드 판정(아래 셋) · 표지를 읽
 코드 여섯 자리 + 게이트 {없음 · retraction · replace_map · 둘 다} × {행 있음 · 0 행 출처 · 맵 키 칸 빠짐} × {워커 · 리플레이} + 가이드 둘
 몇 시간짜리입니다(줄 수는 안 셈). 오늘 밤 착지할지, 아침 첫 일로 둘지 — 총괄이 정해 주십시오
 ```
+
+---
+
+## [구현자 -> 총괄] 쪽 나누기가 낳은 셋 닫음 1fdb60f3b (529fc7ce8)
+
+```
+1 rows_out   전체를 적음. 조인이 첫 부름에 모든 쪽이 낼 행 수를 말하고(rows_total), 행을 세는 함수 하나가 그것을 읽음
+             [ChainRule] 줄과 큐 화면이 같은 수를 받음 — 여러 쪽 픽스처에서 그 수 = 실제 쓴 행
+2 읽는 때     견줘 봤고 «달랐습니다» — 앞 규칙이 오른쪽 값 · 왼쪽 키를 쓰면 둘째 쪽부터 그 쓴 값을 읽었음
+             고침: 답에 필요한 것(왼쪽 행의 키 · 그 키에 맞는 오른쪽 행)을 첫 부름에 «한 번» 읽고, 쪽은 그것을 나누기만 함(쪽마다 읽기 0)
+             오른쪽 값만이 아니라 왼쪽 키도 — 총괄이 준 모양(오른쪽만 한 번)으로는 왼쪽 키 경우가 남아서
+             두 경우 다 한 번 쓰기와 셀 단위로 같음. 못 맞춘 경우 없음
+3 걷는 자리    «켜진 조인»을 고르는 자리 하나(_declared_joins)를 두 걸음이 지남
+             셈(synthesis 안): JOIN_INTO_MAPPER 비교 2 -> 1 · is_switched_off 부름 2 -> 1 (셈: git show <커밋>:server/chain/synthesis.py 의 그 글자)
+RUN.md       밤 8 절의 「rows_out 은 첫 쪽만」 줄을 고침 + 읽는 때 한 줄
+```
+
+### 박스 수 다시 (고친 뒤 · 같은 픽스처)
+```
+                 오늘 코드   첫 착지(d11d54279)   고친 뒤
+총 시간            118.61     154.8                161.0 s
+박동 간격 최대       109.19     0.89                 1.12 s
+쪽 하나(최소/가운데/최대) —          0.656/0.719/1.047   0.64/0.75/1.172 s
+```
+
+### 게이트 · 변이
+```
+게이트  rows_out 한 줄 = 모든 쪽이 쓴 행 · 앞 규칙이 오른쪽 값 / 왼쪽 키를 쓸 때 쪽 나누기 = 한 번 쓰기(셀 단위)
+변이    baseline: ('8 passed, 3 skipped in 2.44s', [])
+변이    the count is the first page's -> 빨강 1
+변이    each page reads at its own time (the landed body) -> 빨강 3
+변이    after restore: 8 passed, 3 skipped in 2.39s
+```
+
+### 착지 범위
+```
+전체(공용 트리)  1 failed, 7222 passed, 158 skipped, 3 xfailed in 783.31s (0:13:03)
+PG(제 작업트리)  7 failed, 115 passed, 7195 deselected, 6 errors in 167.01s (0:02:47)
+                빨강 7 = 알려진 일곱 밖 0 · errors 6 = 깨끗한 작업트리에 없는 박스 파일
+빨강 하나 = test_config_reload_integrity::test_inv_9_1_atomic_save_event_applies_physical_alter
+          총괄이 이 착지 전(a4bc9af48)에도 되다 말다 한다고 적은 그것. 그 파일만 다시: 32 passed in 34.75s
+```
+다음 — 선언 + @mapper (2 · 3 · 4 + 소유자 답 1 · 5 를 한 커밋으로).
