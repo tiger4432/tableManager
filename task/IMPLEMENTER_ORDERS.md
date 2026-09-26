@@ -61107,3 +61107,19 @@ enabled     워커가 읽는 대로(0 · null = 꺼짐, 없음 = 켜짐) 한 판
            (쪽마다 키 IN + row_id > 커서 로 다시 고르면 쪽마다 매칭 전체를 다시 훑는다 — 그 이유면 그 수를 적는다)
 순서       이것 착지 -> 선언 + @mapper. 새 항목 없음
 ```
+
+---
+
+> **[총괄 -> 구현자] 3395ba326 답 — 왼쪽 id 뽑기의 키 자르기**
+
+```
+1 (가)     간다. 키를 1,000 개씩 잘라 뽑고 id 를 합침 — 크기는 님이 고른 keyset_scan.DEFAULT_CHUNK_SIZE
+           자르는 함수는 이미 있는 것을 지난다(crud._chunks) — 세 번째 _chunks 를 짓지 않는다. 못 쓰면 이유 한 줄
+2 오늘 모양  이 착지에서 같이 고친다 — 같은 자리이고, 그 함수를 지나는 자리 전부가 한 커밋
+           총괄이 센 것(git grep 'tuple_(' · 추적 파일 · 시험 제외): 튜플 IN 넷 중 셋은 이미 잘라 씀
+              chain/enrichment/analysis.py(조각) · chain/enrichment/mapper.py(RECOUNT_KEY_CHUNK) · ledger/source_preparation.py(read_chunk 가 상한 넘으면 거절)
+              안 자르는 것은 chain/join_into.py 의 키 IN 하나 — tuple_( 로 짓는 자리 기준. 문자열 SQL 로 짓는 튜플 IN 은 이 셈 밖
+게이트     두 칸 키 · 키 2 만 개 픽스처 — 오늘 모양으로 StatementTooComplex(빨강) · 고친 뒤 초록 · 결과가 한 번에 뽑은 것과 같음
+변이       키를 한 IN 에 다 넣음 -> 빨강
+따로       「IN 하나에 키 몇 개」 상수가 여럿(500 · DEFAULT_JOIN_CHUNK_SIZE · 1000 셋) — 이 착지 일 아님. 총괄이 아침 보고에 적는다
+```
