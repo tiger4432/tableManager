@@ -350,7 +350,7 @@ export function finishRetroactiveProgress(runId, status) {
 export function finishIngestionProgress(tableName, filename, status, errorMsg = null) {
   finishProgressCard({
     key: ingestionKey(tableName, filename),
-    ok: status === 'SUCCESS',
+    ok: isDoneStatus(status),
     okTitle: '\u2705 File loaded',
     okStats: ingestionDoneStats(errorMsg),
     failTitle: '\u274c File load failed',
@@ -362,5 +362,6 @@ export function finishIngestionProgress(tableName, filename, status, errorMsg = 
 // 🔴 `typeof` 가드는 «브라우저에서 아무것도 바꾸지 않습니다» -- window 가 있으면 전과 같이
 //    붙습니다. window 가 «없는» 곳(node)에서 이 한 줄이 파일 전체를 import 불가로 만들고,
 import { showProgressCard, finishProgressCard } from './progress_card.js';
+import { isDoneStatus } from './retry_verdict.js';
 //    그래서 utils.js 를 재던 하니스가 텍스트 잘라쓰기를 쓸 수밖에 없었습니다.
 if (typeof window !== 'undefined') window.showToast = showToast;

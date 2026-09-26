@@ -18,7 +18,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { loadWithProbe } from './lib/probe.mjs';
 import * as BASELINE from '../src/retry_verdict.js';
-import { autoUpdateRowHtml } from '../src/admin_rows.js';
+import { autoUpdateRowHtml, fileLogRowHtml } from '../src/admin_rows.js';
 import { autoRow } from '../src/overview_status.js';
 
 const SRC_PATH = fileURLToPath(new URL('../src/retry_verdict.js', import.meta.url));
@@ -240,13 +240,52 @@ console.log('\n── H. EVERY SEAT THAT READS A COLLECTOR STATUS GIVES THE DRAW
   const js = readFileSync(new URL('../src/admin.js', import.meta.url), 'utf8');
   ok('H4 the Auto Update section count goes through that judge',
     /autoUpdateData\.filter\(c => isFailedStatus\(c\.last_status\)\)/.test(js), 'the section count spells a status itself');
-  // 🔴 the order's gate: no seat compares the spelling but this module. Text is the subject.
+  // 🔴 the order's gate, as the PROPERTY (lead 65f2c808d: 「a status word compared outside this
+  //    module」, not the word `last_status`). Text is the subject. What may remain outside is the
+  //    lead's named list of OTHER questions — each by its expression, so a line move does not rot it,
+  //    and a named entry that disappears reddens too (the list would be stale).
   const dir = new URL('../src/', import.meta.url);
   const files = readdirSync(dir, { recursive: true }).map(String).filter((f) => f.endsWith('.js'));
-  const spelling = files.filter((f) => !f.endsWith('retry_verdict.js')
-    && /last_status ===/.test(readFileSync(new URL(f.replace(/\\/g, '/'), dir), 'utf8')));
-  ok('H5 no file in client2/src but retry_verdict compares last_status by spelling (files read from the folder)',
-    files.length > 20 && spelling.length === 0, { files: files.length, spelling });
+  const WORD = /[!=]== ?'(SUCCESS|FAIL|FAILED|PENDING|PENDING_RETRY|PROCESSING|RUNNING|SKIPPED|QUEUED|DONE|CANCELLED)'/;
+  const OTHER_QUESTIONS = [
+    ['admin.js', "statusFilterVal === 'SUCCESS'"], ['admin.js', "statusFilterVal === 'FAILED'"],
+    ['admin_rows.js', "item.status === 'QUEUED'"],
+    ['retroactive_view.js', "String(job.status || '') === 'PROCESSING'"],
+    ['utils.js', "status === 'CANCELLED' ? '"], ['websocket.js', "msg.status === 'CANCELLED'"],
+  ];
+  const base = (f) => f.replace(/\\/g, '/').split('/').pop();
+  const hits = [];
+  for (const f of files.filter((f) => base(f) !== 'retry_verdict.js')) {
+    readFileSync(new URL(f.replace(/\\/g, '/'), dir), 'utf8').split('\n').forEach((line) => {
+      if (WORD.test(line) || /last_status ===/.test(line)) hits.push([base(f), line.trim()]);
+    });
+  }
+  const stray = hits.filter(([f, line]) => !OTHER_QUESTIONS.some(([of, key]) => of === f && line.includes(key)));
+  const stale = OTHER_QUESTIONS.filter(([of, key]) => !hits.some(([f, line]) => f === of && line.includes(key)));
+  ok('H5 outside retry_verdict a status word is compared only for the other questions the lead named (files read from the folder)',
+    files.length > 20 && stray.length === 0 && stale.length === 0, { files: files.length, stray, stale });
+}
+
+console.log('\n── I. A FILE\'S STATUS READS THE SAME IN LIST, DRAWER, CARD AND TOAST (lead 65f2c808d) ──');
+{
+  const FILE = ['SUCCESS', 'FAILED', 'PENDING_RETRY', 'PROCESSING', 'QUARANTINED'];
+  const row = (s) => fileLogRowHtml({ id: 1, status: s, filename: 'f.csv', table_name: 't', retry_count: 0 },
+    { withStatus: true, timeStr: '' });
+  const badge = (s) => (row(s).match(/<span class="(badge [^"]+)">/) || [])[1];
+  const drawerTone = (s) => X.ingestionMessageView(s, '').tone;
+  ok('I1 the file list badge is the drawer\'s badge for every word — a waiting file is not red',
+    FILE.every((s) => badge(s) === X.ingestionMessageView(s, '').badgeClass) && badge('PENDING_RETRY') !== badge('FAILED'),
+    FILE.map((s) => [s, badge(s)]));
+  ok('I2 Retry is off exactly where the drawer says the file is done',
+    FILE.every((s) => row(s).includes('btn-retry-file') === (drawerTone(s) !== 'ok')), FILE.map((s) => [s, row(s).includes('btn-retry-file')]));
+  ok('I3 the end card\'s ok face is the drawer\'s ok tone', FILE.every((s) => X.isDoneStatus(s) === (drawerTone(s) === 'ok')));
+  const TOAST = { ok: 'success', danger: 'error', warn: 'warning' };
+  ok('I4 the end toast\'s word is the drawer\'s tone', FILE.every((s) => X.statusToastTone(s) === TOAST[drawerTone(s)]),
+    FILE.map((s) => [s, X.statusToastTone(s)]));
+  const utils = readFileSync(new URL('../src/utils.js', import.meta.url), 'utf8');
+  const ws = readFileSync(new URL('../src/websocket.js', import.meta.url), 'utf8');
+  ok('I5 the card and the toast read those judges', /ok: isDoneStatus\(status\)/.test(utils)
+    && /statusToastTone\(status\)/.test(ws) && /isDoneStatus\(status\) \? \{ dedupeKey/.test(ws), 'a seat still spells SUCCESS itself');
 }
 
 console.log('\n── E. THE OUTBOX RETRY REPLY — the server\'s status is the verdict ───────');
@@ -314,6 +353,12 @@ const DEFECTS = [
   ['M16 nothing is counted as a failure (the count 457b34131 moves here)',
     swap("export const isFailedStatus = (status) => retryVerdict(status).tone === 'danger';",
       'export const isFailedStatus = (status) => false;')],
+  ['M17 a file that is not done reads as done (card, toast collapse and Retry)',
+    swap("export const isDoneStatus = (status) => retryVerdict(status).state === 'done';",
+      'export const isDoneStatus = (status) => true;')],
+  ['M18 a waiting file\'s toast reads as a failure',
+    swap("return tone === 'ok' ? 'success' : tone === 'danger' ? 'error' : 'warning';",
+      "return tone === 'ok' ? 'success' : 'error';")],
 ];
 
 const CONTROLS = [
@@ -344,7 +389,9 @@ function verdict(M) {
     || M.ingestionMessageView('SUCCESS', 'm').bodyClass === M.ingestionMessageView('FAILED', 'm').bodyClass
     || M.collectorMessageView('FAIL', 'm').badgeClass === M.collectorMessageView('SUCCESS', 'm').badgeClass
     || M.isFailedStatus('FAIL') !== true || M.isFailedStatus('SKIPPED') !== false
-    || M.statusBadgeClass('FAIL') === M.statusBadgeClass('SUCCESS');
+    || M.statusBadgeClass('FAIL') === M.statusBadgeClass('SUCCESS')
+    || M.isDoneStatus('PENDING_RETRY') !== false || M.isDoneStatus('SUCCESS') !== true
+    || M.statusToastTone('PENDING_RETRY') !== 'warning';
 }
 
 if (verdict(BASELINE)) die('the scorer already fails on the UNMUTATED module — '

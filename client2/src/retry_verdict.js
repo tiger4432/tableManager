@@ -98,8 +98,18 @@ export function outboxRetryMessage(body) {
  *  compared in this file only). */
 export const isFailedStatus = (status) => retryVerdict(status).tone === 'danger';
 
-/** A status badge's class from its tone — the collector list, the file drawer and the collector
- *  drawer all read this one. */
+/** 「Is it done?」 — the file card's ok face and the toast's one-line collapse (lead 65f2c808d),
+ *  and the Retry button's off state: today's rule kept, anything not done can be retried. */
+export const isDoneStatus = (status) => retryVerdict(status).state === 'done';
+
+/** The toast word for a status, from its tone — a file's end toast says what its badge says. */
+export function statusToastTone(status) {
+  const tone = retryVerdict(status).tone;
+  return tone === 'ok' ? 'success' : tone === 'danger' ? 'error' : 'warning';
+}
+
+/** A status badge's class from its tone — the collector list, the file list, the file drawer
+ *  and the collector drawer all read this one. */
 export function statusBadgeClass(status) {
   const tone = retryVerdict(status).tone;
   return `badge badge-${tone === 'ok' ? 'success' : tone === 'danger' ? 'danger' : 'warning'}`;
