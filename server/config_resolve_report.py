@@ -291,7 +291,8 @@ def _resolve_chain() -> dict:
             name = str((rule or {}).get("name") or path) if isinstance(rule, dict) else path
             issues = chain_bindings.rule_refusals(
                 rule, path, mapper_resolvable=_runnable_name, derived_tables=derived,
-                mapper_params=mapper_sdk.MAPPER_PARAMS.get)
+                mapper_params=mapper_sdk.MAPPER_PARAMS.get,
+                mapper_made_by_sdk=worker._made_by_sdk)
             if issues:
                 first = issues[0]
                 rejected.append(entry(

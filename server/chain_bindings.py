@@ -315,7 +315,8 @@ def flat_param_cells(rule):
         and name not in routing))
 
 
-def rule_refusals(rule, path, *, mapper_resolvable, derived_tables, mapper_params=None):
+def rule_refusals(rule, path, *, mapper_resolvable, derived_tables, mapper_params=None,
+                  mapper_made_by_sdk=None):
     """Why this chain rule CANNOT RUN — the one spelling, for every reader (S-180 ⓑ-0).
 
     🔴 IT WAS SPELLED TWICE AND THE TWO HAD ALREADY DIVERGED. The loader
@@ -436,6 +437,12 @@ def rule_refusals(rule, path, *, mapper_resolvable, derived_tables, mapper_param
     # 🔴 THE ONE BRANCH THIS ROUND ADDS. Only where a declaration exists, and only over the
     # cells the rule actually wrote - `params_of` reads the block with the flat cells beneath
     # it, which is the same view the mapper will be handed.
+    # 🔴 [총괄 717f60124 ③] A @mapper rule's removal flags, judged at load. The mark is read by a
+    #    callable the caller hands in - this module does not import mapper_sdk (S-188).
+    if mapper_made_by_sdk and resolvable and one_cell and mapper_made_by_sdk(one_cell):
+        for code, why in sdk_mapper_refusals(candidate):
+            issues.append(validation.DeclarationValidationError(code, path, why))
+
     declared = mapper_params(one_cell) if (mapper_params and resolvable and one_cell) else None
     if declared is not None:
         for name in sorted(set(params_of(candidate)) - set(declared)):
@@ -842,6 +849,62 @@ def resolve_column(rule, key: str, table: str, purpose: str) -> str:
     logger.debug("[ChainBinding] %s.%s = '%s' (%s, for %s)",
                  rule_name, key, name, origin_or_why, purpose)
     return name
+
+
+def sdk_mapper_refusals(rule) -> list:
+    """Why a rule whose mapper `@mapper` made cannot remove what its flag asks -> [(code, why)].
+
+    🔴 ONE JUDGE, ASKED TWICE (총괄 717f60124 ②③④): at load by `rule_refusals`, when the mark
+    says the mapper is the decorator's, and at run by the decorator's own wrapper - so a rule
+    that names its mapper by module path is judged too. Nothing here reads the mark.
+    """
+    rule = rule or {}
+    name = rule.get("name") or "<unnamed rule>"
+    retract = bool(rule.get("allow_retraction"))
+    replace = bool(rule.get("allow_replace_map"))
+    if not (retract or replace):
+        return []
+    if retract and replace:
+        return [("sdk_two_removals",
+                 "rule '%s' allows both allow_retraction and allow_replace_map - a @mapper rule "
+                 "removes one way: by job (allow_retraction) or by map (allow_replace_map). "
+                 "Next: keep one." % name)]
+    why = []
+    if not rule.get("is_batch"):
+        why.append(("sdk_removal_needs_batch",
+                    "rule '%s' allows %s but is not a batch rule - a rule called row by row has "
+                    "its removal dropped, so nothing would be removed. Next: set "
+                    "\"is_batch\": true." % (name, "allow_retraction" if retract else
+                                             "allow_replace_map")))
+    trigger = str(rule.get("trigger_table") or "")
+    target = str(rule.get("target_table") or "")
+    if retract:
+        for key, table, purpose in (("trigger_job_column", trigger, "the job of an incoming row"),
+                                    ("target_job_column", target, "the job a written cell carries")):
+            try:
+                resolve_column(rule, key, table, purpose)
+            except ColumnBindingRefused as refused:
+                why.append(("sdk_job_column", str(refused)))
+    else:
+        try:
+            keys = dt_map_derivation.identity_columns(target)
+        except dt_map_derivation.DerivationRefused as refused:
+            why.append(("sdk_map_key", str(refused)))
+        else:
+            known = declared_columns(trigger)
+            missing = [k for k in keys if known is None or k not in known]
+            if missing:
+                # 소유자 「allow_replace_map: true 를 적으면 맵 단위로 통째로 바뀐다」 - a map
+                # that produced nothing this time must still be named, and only the incoming
+                # rows can name it (replace_map ㄱ).
+                why.append(("sdk_map_key_not_on_trigger",
+                            "rule '%s' replaces map by map, and '%s' names a map by %s - trigger "
+                            "table '%s' has no %s under those names, so a map that produced "
+                            "nothing this time could not be named and would be left standing. "
+                            "Next: return replace_map batches from a hand-written (db, payloads, "
+                            "rule) mapper, or ask the owner for a cell that maps the names."
+                            % (name, target, keys, trigger or "?", missing)))
+    return why
 
 
 def resolve_decision_column(rule, key: str, decision_key, purpose: str) -> str:
