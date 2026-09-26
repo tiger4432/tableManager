@@ -61511,3 +61511,79 @@ scratch schemas left in the DB after the runs: []
 ```
 다음    리플레이 셈(d71c3d233) -> A(파생 표 대상 조인) -> B
 ```
+
+---
+
+## [구현자 -> 총괄] 리플레이 셈 (d71c3d233) — 체인 리플레이로 기존 파생행의 새 집계가 «채워짐» · 짓지 않음
+
+```
+어디    분리 환경(assy_qa · API :8081 · 체인 워커) — 설정은 dev_env 에만: 박스의 enrich_in_chain_probe 를 옮겨 적고
+        aggregations 한 줄 {"dt_eqps": unique_concat(dt_eqp)} · dt_inventory 에 칸 dt_eqps (core_wafer_id 는 assy_qa 에서 전부 빈칸이라 dt_eqp 로)
+        박스 설정 md5 전·후 같음 · 끝나고 dev_env 설정을 사본으로 되돌림(md5 가 사본과 같음) · 분리 환경 내림
+표본    dt_log 116,149 줄 · 판단키(dt_job) 150 · 기존 파생행 dt_inventory 150 줄 — dt_eqps 전: 채워진 줄 0
+```
+
+### ① 두 규칙을 받나
+
+```
+enrichment_dedup:enrich_in_chain_probe           whole      accepted
+enrichment_dedup:enrich_in_chain_probe           row-scoped accepted
+enrichment_auto_confirm:enrich_in_chain_probe    whole      accepted
+enrichment_auto_confirm:enrich_in_chain_probe    row-scoped accepted
+-> 동반 규칙 표시가 없어 둘 다 표 전체 · 행 범위 모두 받음
+```
+
+### ② 기존 파생행에 집계 칸을 쓰나 · 층은
+
+```
+seeded a human dt_lot on BLKEQP01_20260811000_T01
+staged {'rows_scanned': 116149, 'pages': 117, 'events_staged': 117, 'rows_staged': 116149, 'pages_failed': 0} in 1.0 s
+drained in 14.0 s (pending left 0)
+dt_inventory dt_eqps non-null rows 142, longest 9
+longest samples [('DT-EQP-01_20260511T0000_T14', 'DT-EQP-01'), ('DT-EQP-01_20260511T0000_T13', 'DT-EQP-01')]
+dt_eqps layer [('chain_ingestion', 'chain_worker', 150)]
+cell changes by (column, layer, kind) [(('dt_eqps', 'chain_ingestion', 'new'), 150), (('dt_job', 'chain_ingestion', 'new'), 150)]
+human dt_lot still shown: HUMAN-LOT-PROBE
+-> 씀. 리플레이는 소스 행의 편집 이벤트를 only_rule 로 아웃박스에 넣고, 체인 워커가 같은 맵퍼로 돎 —
+   _aggregate_affected_keys 가 그 키들의 커밋된 소스 행 전체로 다시 계산해 기존 행에도 upsert
+   층 chain_ingestion · 쓴이 chain_worker. dt_eqps 말고 새로 생긴 칸은 판단키 칸(dt_job, 같은 층)뿐
+```
+
+### ③ auto_confirm 이 확정을 다시 하나 · 확정 칸 · 사람 칸을 건드리나
+
+```
+심은 것   dt_inventory 한 줄의 dt_lot 에 사람 값(source user) — 리플레이 전
+confirm1 drained in 2.0 s (pending left 0)
+confirm1 cell changes by (column, layer, kind) []
+confirm1 human dt_lot still shown: HUMAN-LOT-PROBE
+confirm2 drained in 2.0 s (pending left 0)
+confirm2 cell changes by (column, layer, kind) []
+confirm2 human dt_lot still shown: HUMAN-LOT-PROBE
+코드      chain/enrichment/candidates — 대상 칸에 CellSource 가 «어느 쓴이든» 있으면 거절(cell_has_provenance)
+          -> 이미 확정된 칸 · 사람이 고친 칸은 다시 확정하지 않음. 이 데이터에서는 확정할 칸이 0 이라 «이미 확정된 칸»은 관찰 못 함(코드로 답)
+덤        dedup 리플레이의 쓰기가 auto_confirm 을 깨움(같은 워커 로그: rows_in 122 · 6) — 따로 안 눌러도 따라 돎
+```
+
+### ④ 비용
+
+```
+잼        리플레이 1.0 s · 워커가 비우기까지 14.0 s (116,149 소스 행 · 150 키)
+어림      박스 dt_log 535,559 줄 · dt_job 488,428 — 키가 소스 행과 거의 같은 수라 분리 환경(키 150)과 모양이 다름
+          소스 행 몫: 분리 환경 비율(워커 14.0 s / 116,149 줄)로 약 65 s
+          키 몫(파생행 upsert 488,428): 이 표본으로는 못 잼 — 항목 2 의 분리 환경 쓰기 속도(apply 약 1 ms/행)를 빌리면 약 8 분
+          -> 어림 합 약 9 분 — «어림»이고, 키 몫은 다른 표의 수를 빌림
+```
+
+### 운영자가 하는 일 (두 줄)
+
+```
+되면   규칙의 aggregations 에 한 줄 + 파생 표(table_config)에 그 이름의 칸 한 줄 -> Admin 의 소급 «Replay chain rules» 에서 enrichment_dedup:<규칙> 을 표 전체로 실행
+       -> 기존 파생행에 값이 채워짐(뒤따라 auto_confirm 이 돌지만 값 있는 칸은 안 건드림)
+안 되는 곳  없음 — 다만 dedup 리플레이는 판단키 칸에도 chain_ingestion 층을 새로 적음(값은 같음)
+```
+
+```
+분리 환경에 남은 것   assy_qa.dt_inventory 의 dt_eqps 칸(API 기동 때 스키마 동기화가 추가) · 사람 값 심은 한 칸 · 
+                     분리 환경 체인 워커가 assy_qa public 에 만든 원장 표 3 개 — 시험은 이제 assy_test 라 영향 없음(5)
+다음    A(파생 표 대상 조인) -> B
+```
