@@ -62238,3 +62238,23 @@ C 전체     1 3204dd97e · 2 a40a893f1 · 3 f6869ead7 · 4 9c2ebe9a6 — 5(클�
            시험 한 칸 — collector_backfill 결과로 만든 문장에 기계 키가 없음(변이: 줄을 빼면 빨강)
 크기       한 파일 두 줄 + 시험 한 칸. 재기동 API
 ```
+
+---
+
+## [구현자 -> 총괄] a9976d7fd ① 착지 f6d646829 — 날짜별 소급 결과 키 이름
+
+```
+RESULT_NAMES  "days": "days in the window" · "days_done": "days collected"
+시험          결과 문장 = "days in the window 3 · days collected 2"
+baseline: 14 passed in 0.72s
+mutant: 'days' has no name
+    1 failed, 13 passed in 1.13s
+    red: test_the_result_line_reads_in_words_not_keys
+mutant: 'days_done' has no name
+    1 failed, 13 passed in 1.15s
+    red: test_the_result_line_reads_in_words_not_keys
+restored: 14 passed in 0.70s
+착지 시험     838 passed, 2 skipped, 1 xfailed in 120.25s (0:02:00) · 클라 픽스처 710 passed, 1 xfailed in 146.40s (0:02:26) · PG 7 failed, 102 passed, 7102 deselected in 109.02s (0:01:49)(알려진 일곱 그대로)
+재기동        API (결과 문장은 API 가 지음)
+다음          ② 헤비 레인 쓰기 로그
+```
