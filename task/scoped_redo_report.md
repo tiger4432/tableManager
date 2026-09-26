@@ -61616,3 +61616,111 @@ PostgreSQL (제품의 business_key_val 유니크 색인 · 잴 때 만든 빈 DB
          ㄴ 원인에 맞춤 — (파생 표 대상이든 아니든) take 의 into 가 대상 표의 키 칸이면 거절
          ㄷ 둘 다
 ```
+
+---
+
+## [구현자 -> 총괄] B 짓기 전 셈 — 멈춤 조건 「이미 만든 자손」에 걸림 · 안 셋 · 짓지 않음 (3ca44630c)
+
+```
+A      d99d329e7 에서 멈춘 채 계약 모양 답을 기다림. 그동안 B 는 «셈만» 함 — 제품 코드 변경 0
+잰 틀   워커의 실제 자리(group_events -> merge_consecutive_groups -> process_pending_groups -> reexpand_collapsed_event)를 그대로 돌리고
+       맵퍼(어느 행이 무슨 사유로 실패하나)와 아웃박스 저장만 가짜 · 1,000 행 묶음 하나
+조건   시도 상한 1(선언 없음) · 묶음 합치기(max_group_rows) 선언 없음 · 워커 하나
+       박스 상태: chain_rules 규칙 13 개 중 max_group_rows 또는 max_group_attempts 를 적은 규칙 0 개 — 박스도 이 조건
+```
+
+### 오늘 (전)
+
+```
+① one bad row (r0700) | batches 12 | fragments created 21 | failed-list groups 1 | failed rows 1 ['r0700']
+   at an 'a' half's boundary, sibling states: ["('PENDING', False)"]
+   at a  'b' half's boundary, sibling states: ["('SUCCESS', False)"]
+   distinct reasons recorded at boundaries: 1
+② every row, one reason text | batches 2999 | fragments created 2998 | failed-list groups 1000 | failed rows 1000 
+   at an 'a' half's boundary, sibling states: ["('PENDING', False)"]
+   at a  'b' half's boundary, sibling states: ["('FAILED', True)"]
+   distinct reasons recorded at boundaries: 1
+② every row, reason names the row | batches 2999 | fragments created 2998 | failed-list groups 1000 | failed rows 1000 
+   at an 'a' half's boundary, sibling states: ["('PENDING', False)"]
+   at a  'b' half's boundary, sibling states: ["('FAILED', True)"]
+   distinct reasons recorded at boundaries: 1000
+③ r0100 reason A, r0800 reason B | batches 23 | fragments created 40 | failed-list groups 2 | failed rows 2 ['r0100', 'r0800']
+   at an 'a' half's boundary, sibling states: ["('PENDING', False)"]
+   at a  'b' half's boundary, sibling states: ["('FAILED', True)", "('SUCCESS', False)"]
+   distinct reasons recorded at boundaries: 2
+```
+
+### 사실 셋
+
+```
+① 앞 반쪽(a)이 판정되는 순간 형제(b)는 한 번도 안 돈 상태 — 잰 a 경계 전부에서 PENDING (위 줄)
+   두 반쪽이 같은 대상 표라 a 가 실패하면 그 배치에서 b 는 보류(순서 보존), 다음 배치도 id 가 작은 a 가 먼저
+   -> 「반쪽 둘 다 같은 사유」는 뒤 반쪽(b)에서만 판정됨. 그때 a 는 이미 둘로 쪼개져 있음(잰 b 경계 전부에서 FAILED·쪼갬)
+   => 지시의 멈춤 조건 「이미 만든 자손」에 걸림
+   묶음 합치기가 선언된 설치에서는 두 반쪽이 한 실패 판정 안에 들어가 형제 상태를 판정 «도중»에 읽게 됨 — 그 경우는 안 셈
+② 워커가 적는 사유 = "[rule=… target=…] " + 트레이스백 전문. A 재현에서 뽑은 PG 유니크 충돌 문장:
+   | (psycopg2.errors.UniqueViolation) ����:  �ߺ��� Ű ���� "uq_bk_a_repro_derived" ���� ���� ������ ������
+   | DETAIL:  (business_key_val)=(L1_SX) Ű�� �̹� �ֽ��ϴ�.
+   | [SQL: UPDATE a_repro_derived SET business_key_val=%(business_key_val)s, updated_at=%(updated_at)s, slot=%(slot)s WHERE a_repro_derived.row_id = %(a_repro_derived_row_id)s …
+   | [parameters: [{'business_key_val': 'L1_SX', 'updated_at': datetime.datetime(2026, 9, 26, 14, 59, 29, 502688, tzinfo=datetime.timezone(datetime.timedelta(seconds=32400))), …
+   | (Background on this error at: https://sqlalche.me/e/20/gkpj)
+   키 값 · 행 id · updated_at 시각이 문장에 들어감 -> 같은 원인이어도 조각마다(같은 조각을 다시 돌려도) 문장이 다름
+   이 박스 PG 는 한국어로 답함(위 깨진 글자) -> 영어 낱말을 기준으로 값을 지우는 방식은 여기서 안 맞음
+   마지막 줄(failure_cause 가 고르는 줄)은 IntegrityError 면 전부 같은 링크 줄
+③ 「같은 원인」을 굵게 읽으면 «같은 원인의 문제 행이 양쪽 반쪽에 하나씩»과 «전부 실패»가 첫 단계에서 구별 안 됨 (아래 ④ 줄)
+```
+
+### 안 ㄱ 규칙을 스크래치로 덧대 잰 것 (후)
+
+```
+규칙   조각이 실패 경계에서 «형제 또는 부모의 형제»가 같은 원인으로 이미 FAILED 면 쪼개지 않고 통째 FAILED
+=== sameness: exact text
+① one bad row (r0700) | batches 12 | fragments created 21 | failed-list groups 1 | failed rows 1 ['r0700']
+② every row, one reason text | batches 5 | fragments created 4 | failed-list groups 3 | failed rows 1000 
+② every row, reason names the row | batches 2999 | fragments created 2998 | failed-list groups 1000 | failed rows 1000 
+③ r0100 reason A, r0800 reason B | batches 23 | fragments created 40 | failed-list groups 2 | failed rows 2 ['r0100', 'r0800']
+④ r0100 and r0800, same cause, row named | batches 23 | fragments created 40 | failed-list groups 2 | failed rows 2 ['r0100', 'r0800']
+=== sameness: cause class
+① one bad row (r0700) | batches 12 | fragments created 21 | failed-list groups 1 | failed rows 1 ['r0700']
+② every row, one reason text | batches 5 | fragments created 4 | failed-list groups 3 | failed rows 1000 
+② every row, reason names the row | batches 5 | fragments created 4 | failed-list groups 3 | failed rows 1000 
+③ r0100 reason A, r0800 reason B | batches 23 | fragments created 40 | failed-list groups 2 | failed rows 2 ['r0100', 'r0800']
+④ r0100 and r0800, same cause, row named | batches 5 | fragments created 4 | failed-list groups 2 | failed rows 750 
+읽는 법  문장 그대로 견주면 소유자 사건 모양(문장이 행을 이름 댐)의 ② 를 못 봄 — 오늘과 같은 수
+        원인 종류(':' 앞)로 견주면 ② 가 작은 상수에서 멈춤. 대신 ④ 에서 문제 행 둘이 격리되지 않고 무고한 행과 함께 FAILED 로 남음(failed rows)
+```
+
+### 안 셋
+
+```
+ㄱ  형제와 부모의 형제를 봄 · 이미 만든 행은 안 건드림 (위에서 잰 규칙)
+    ② 결과   위 잰 줄. 남은 조각마다 트랜잭션 id 가 달라 실패 목록에 따로 보이고 Retry 도 줄마다(또는 전체 Retry)
+    좋은 점  남의 행 · 성공 경로 안 건드림
+    위험    지시의 「목록에 묶음으로 · Retry 한 번」이 안 됨
+    크기    outbox_expand 한 곳 + 실패 경계에서 두 행 조회. 줄 수 안 잼
+ㄴ  ㄱ + 멈춘 조각이 뿌리 트랜잭션 id 를 받음
+    멈추는 순간 워커가 어차피 다시 쓰는 «자기» 페이로드에서만 바꿈 — 남의 행은 안 건드림
+    ② 결과   조각 수는 ㄱ 과 같음(표시만 다름). 목록은 «구성상» 뿌리 id 아래 한 묶음 — Retry(transaction_id) 한 번에 모두 PENDING, 같은 id 라 한 그룹으로 함께 돎 (안 잼)
+    좋은 점  지시의 ② 모양에 가장 가까움
+    위험    「쪼갠 조각은 저마다 트랜잭션 id」 규칙(다시 한 그룹으로 묶여 함께 실패하는 것을 막는 규칙)을 멈춘 조각에 한해 뒤집음 — 여기선 함께 도는 것이 의도
+           사유 문장은 조각마다 따로 남음. 한 묶음을 목록이 어떻게 그리는지는 클라(어드민 실패 목록) 몫 — 「사유 한 줄」은 약속 못 함
+    크기    ㄱ + 워커의 격리 자리 한 곳. 안 잼
+ㄷ  앞 반쪽을 쪼개지 않고 형제를 기다리게 함
+    형제가 안 돈 채 경계에 온 a 는 쪼개지 않고 대기 -> b 가 끝나면 결정
+    좋은 점  ② 조각이 가장 적을 것(안 잼)
+    위험    b 가 «성공»했을 때 a 를 깨울 자리가 성공 경로에 생김 — 「비용은 깨진 곳에서만」에 걸림. ③ 에서도 깨워야 함
+    크기    가장 큼. 안 잼
+```
+
+### 추천 · 여쭐 것
+
+```
+추천   ㄴ — 단 아래 2 의 답에 달림(세 안 모두 같은 「같은 원인」 정의를 씀)
+여쭐 것
+1  ㄱ · ㄴ · ㄷ
+2  「같은 원인」의 정의 — 판단 재료(자식의 reexpanded_from.reason)가 문장 그대로는 소유자 사건에서 조각마다 다름
+   후보  예외 종류 이름 + 규칙·대상 머리 (예: UniqueViolation · rule=X target=Y) — 로캘과 무관
+   그 정의에서 ④(같은 원인의 문제 행이 몇 개뿐)는 «멈춤»이 맞나 «좁힘»이 맞나
+     멈춤  그 몇 행이 격리되지 않고 무고한 행과 함께 FAILED 로 남음 — 원인이 선언이 아니라 데이터면 Retry 해도 다시 멈춤
+     좁힘  첫 단계의 형제 둘만으로는 ② 와 구별 안 됨 — 더 깊은 증거가 필요하고 조각이 그만큼 늚(안 잼)
+```
