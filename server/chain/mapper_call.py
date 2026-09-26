@@ -71,7 +71,10 @@ def result_row_count(result):
     """
     if not isinstance(result, dict):
         return 0
-    total = len(result.get("updates") or ())
+    # A proposal that pages states the rows of ALL its pages; its `updates` are the first
+    # page's only (총괄 529fc7ce8 ①).
+    total = (int(result["rows_total"]) if result.get("rows_total") is not None
+             else len(result.get("updates") or ()))
     for batch in result.get("batches") or ():
         if isinstance(batch, dict):
             total += len(batch.get("updates") or ())

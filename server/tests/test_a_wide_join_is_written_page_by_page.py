@@ -131,6 +131,27 @@ def test_a_wide_fan_out_is_written_page_by_page_and_ends_as_one_write_would(monk
     assert after_first.count("mapper") == 3, "pages two to four were read without a beat"
 
 
+def test_the_rule_line_counts_every_page(monkeypatch, caplog):
+    """총괄 529fc7ce8 ①: the [ChainRule] line - and the queue view, which is handed the same
+    count - says the rows of all the pages, not the first page's."""
+    import logging
+    import re
+
+    from chain import rule_run
+
+    monkeypatch.setattr(keyset_scan, "DEFAULT_CHUNK_SIZE", PAGE)
+    db = _db()
+    _seed_wide(db)
+    with caplog.at_level(logging.INFO):
+        ok, writes, _stages = _run(db, _rules(), RIGHT, monkeypatch)
+
+    assert ok and len(writes) == 4
+    tag = "[%s] rule=%s " % (rule_run.RULE_LOG_TAG, DECLARATION["name"])
+    said = [r.getMessage() for r in caplog.records if tag in r.getMessage()]
+    assert len(said) == 1, said
+    assert re.search(r"rows_out=(\d+)", said[0]).group(1) == str(sum(writes)), said[0]
+
+
 def test_a_first_page_with_nothing_to_write_does_not_drop_the_rest(monkeypatch):
     """The `:target` side: the first page's rows have no right row, the rest do."""
     monkeypatch.setattr(keyset_scan, "DEFAULT_CHUNK_SIZE", PAGE)
@@ -175,6 +196,46 @@ def test_the_later_rule_still_writes_last_on_every_page(monkeypatch, join_first)
     assert ok and len(writes) >= 4, writes
     expected = "OTHER" if join_first else "LOT-W"
     assert set(_cells(db).values()) == {expected}, _cells(db)
+
+
+def _writes_right_value(db, payloads, rule=None):
+    """An earlier rule in the same group writing the value the join TAKES (the right table)."""
+    right = models.DYNAMIC_TABLES[RIGHT]
+    return {"updates": [{"row_id": r.row_id, "updates": {"lot": "LOT-CHANGED"},
+                         "source_name": join_into.CHAIN_LAYER, "updated_by": "wide_before"}
+                        for r in db.query(right).all()]}
+
+
+def _writes_left_key(db, payloads, rule=None):
+    """An earlier rule in the same group writing the key the join MATCHES ON (the left table)."""
+    left = models.DYNAMIC_TABLES[LEFT]
+    return {"updates": [{"row_id": r.row_id, "updates": {"job": "J-X"},
+                         "source_name": join_into.CHAIN_LAYER, "updated_by": "wide_before"}
+                        for r in db.query(left).all()]}
+
+
+@pytest.mark.parametrize("writer, target", [(_writes_right_value, RIGHT),
+                                            (_writes_left_key, LEFT)])
+def test_every_page_reads_what_one_write_would_have_read(monkeypatch, writer, target):
+    """총괄 529fc7ce8 ②: a rule BEFORE the join in the same group writes what the join reads.
+    One write read everything before any write; every page must end in that same state."""
+    monkeypatch.setitem(mapper_sdk.MAPPER_REGISTRY, "wide_before", writer)
+    before = {"name": "wide_before", "enabled": True, "trigger_table": RIGHT,
+              "target_table": target, "mapper": "wide_before", "is_batch": True}
+    ends = {}
+    for size in (PAGE, 1000):
+        monkeypatch.setattr(keyset_scan, "DEFAULT_CHUNK_SIZE", size)
+        db = _db()
+        _seed_wide(db)
+        _push(db, RIGHT, [{"job": "J-X", "lot": "LOT-X"}])
+        ok, _writes, _stages = _run(db, [before, _rules()[0]], RIGHT, monkeypatch)
+        assert ok
+        ends[size] = _cells(db)
+        db.close()
+
+    assert ends[PAGE] == ends[1000], {
+        key: (ends[PAGE][key], ends[1000][key]) for key in ends[1000]
+        if ends[PAGE][key] != ends[1000][key]}
 
 
 def test_a_group_that_fails_between_pages_runs_again_to_the_same_cells(monkeypatch):
