@@ -83,6 +83,15 @@ INSIDE THE WRITE · row build T s / N cells changed · audit logs T s / N rows �
 - 세는 쪽이 터지면 «그 줄만» 조용해진다(`FILE … : not counted (<사유>)`) — 적재는 계속
 - 체인 그룹 줄의 INSIDE THE WRITE 도 같은 한 함수(`alignment_batch_counts.write_steps_text`)로 그린다
 
+### §1-ter-bis. 🆕 **멈춘 체인 묶음이 «무엇에 막혔나»를 말한다** (09-26 `7eb168aa4`)
+```
+연결 이름   pg_stat_activity.application_name = assy_<프로세스>(server · watcher · chain · scheduler · retroactive · 스크립트 이름) · 멈춤을 묻는 짧은 연결 assy_chain_probe
+멈춤 줄     [Chain] tx <id> · <행> row(s) of <표>: stalled <초> s in <단계> (rule <규칙> · db pid <pid>) - <그 pid 가 하는 것>
+기준        단계가 300 s 안 움직이면 stalled(health 도 같은 문장). 움직이는 긴 묶음은 ok
+남은 쿼리    체인 워커가 기동할 때 «이미 없는» 이전 체인 워커(assy_chain)의 연결을 끊고 한 줄씩 — 다른 이름은 안 건드림
+```
+- 문장은 `server/db_waits.py` «한 함수»(`backend_waits` · `wait_sentence`)가 짓는다 — `diagnose_db_health` §3 도 같은 문장. 문장별 뜻과 할 일은 RUN.md 09-26 밤 1.
+
 ### §1-quater. 🔵 **이 표를 «화면»이 대신 읽는다 — `GET /runtime`** (S-176, 09-11)
 
 ```
