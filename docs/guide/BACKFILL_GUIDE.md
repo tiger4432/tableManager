@@ -56,6 +56,7 @@
 | 칸에 **여러 소스가 쌓여 있는데 옛 층이 표시되고 있다**. 소스 목록을 열면 새 값이 **저장은 돼 있다** | **ⓕ R3** `chain_replay_cli.py resolve <테이블>` |
 | **원장**에 이 소스의 원자가 없거나 도중에 멈춰 있다. 새 소스를 선언했는데 아무것도 안 걸린다 | **ⓖ** `python -m ledger.backfill --source <소스>` — 아직 원장에 없는 행(행 색인에 이름이 없는 행)을 번역한다. ⚰️ `--via-events` 는 은퇴 — 같은 일이라 이름 대어 거절된다(09-25 `a36ec7d3`: 「--via-events is the same job as the ledger backfill; run without it」) |
 | 원장 **해석을 고쳤는데** 이미 적재된 원자는 옛 해석 그대로다. 전부 다시 돌리기는 너무 크다 | **ⓗ** 같은 명령에 `--scope-column <컬럼> --scope-values a,b,c` — **그 범위만 회수 + 재생성**. 🔴 **`--apply` 를 안 붙이면 드라이런이고 한 줄도 안 씁니다** |
+| 🆕 오늘 붙인 **수집기**(`# window:` 를 선언한 것)에 **지난 날들의 데이터가 없다** | **`collector_backfill`**(09-26 `9c2ebe9a`) — 파라미터 `collector`(`<표>/<스크립트.py>`) · `start`(KST `YYYY-MM-DD`, 그날 00:00 · 또는 `YYYY-MM-DD HH:MM`). **하루(24 시간 창)씩** 스크립트를 그 날의 창으로 채워 돌리고, 그 날 파일이 적재 큐를 **지난 뒤** 다음 날로 간다. 한 날의 파일이 실패하면 **그 날 이름을 대고 멈춘다**. 결과는 `days`(창 안의 날 수) · `days_done`(모은 날 수) — 화면에서는 낱말로(`f6d64682`). 어드민 Retroactive 탭 또는 CLI `python -c "from admin import retroactive; retroactive.run_here('collector_backfill', {'collector': '<표>/<스크립트.py>', 'start': 'YYYY-MM-DD'})"` |
 
 🔴 **ⓒ와 ⓓ를 가르는 질문은 하나입니다 — 「파생 테이블에 그 행이 있습니까?」**
 `ⓒ`는 **없던 파생 행을 만듭니다.** `ⓓ`는 **이미 있는 행의 빈 칸을 채웁니다.**
