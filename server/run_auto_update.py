@@ -8,7 +8,8 @@ import re
 import json
 import threading
 from abc import ABC, abstractmethod
-from datetime import datetime
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 
 from croniter import croniter
 
@@ -145,11 +146,17 @@ class GenericScriptRunnerCollector:
     임의의 독립 스크립트를 주석에 기재된 크론 일정에 맞춰 기동하고,
     그 표준 출력(stdout)을 CSV 파일로 가공하여 raws/ 폴더에 원자적 적재하는 범용 래퍼 컬렉터입니다.
     """
-    def __init__(self, table_name: str, script_path: str, cron_expression: str, filename_prefix: str, server_dir: str = None):
+    def __init__(self, table_name: str, script_path: str, cron_expression: str, filename_prefix: str, server_dir: str = None,
+                 window: str = None, window_format: str = None):
         self.table_name = table_name
         self.script_path = script_path
         self.cron_expression = cron_expression
         self.filename_prefix = filename_prefix
+        # The header's `# window:` / `# window_format:`, and the (start, end) this run fills -
+        # set by whoever starts the run (`execute_collector`), read by both run paths below.
+        self.window_length = window
+        self.window_format = window_format
+        self.run_window = None
         self.logger = logging.getLogger(f"Scheduler.ScriptRunner.{table_name}.{os.path.basename(script_path)}")
         self.last_run = None
         self.last_status = "PENDING"
@@ -225,6 +232,8 @@ class GenericScriptRunnerCollector:
 
             with open(self.script_path, "r", encoding="utf-8") as f:
                 code_content = f.read()
+            if self.run_window:
+                code_content = fill_markers(code_content, self.run_window, self.window_format)
 
             # [REQUIRED] Pass ONE dict for both globals and locals. Two distinct
             # dicts make exec() run the file with class-body scoping: module-level
@@ -327,16 +336,28 @@ class GenericScriptRunnerCollector:
             )
 
         # 2. [폴백 모드] subprocess 표준 출력(stdout, print) 캡처 기동
+        # A windowed run gives the child the filled copy; the original file is never written.
+        run_path = self.script_path
         try:
+            if self.run_window:
+                with open(self.script_path, "r", encoding="utf-8") as f:
+                    filled = fill_markers(f.read(), self.run_window, self.window_format)
+                run_path = filled_copy_path(self.script_path)
+                with open(run_path, "w", encoding="utf-8") as f:
+                    f.write(filled)
             python_exe = sys.executable
-            result = subprocess.run(
-                [python_exe, self.script_path],
-                capture_output=True,
-                text=True,
-                encoding="utf-8",
-                errors="ignore"
-            )
-            
+            try:
+                result = subprocess.run(
+                    [python_exe, run_path],
+                    capture_output=True,
+                    text=True,
+                    encoding="utf-8",
+                    errors="ignore"
+                )
+            finally:
+                if run_path != self.script_path and os.path.exists(run_path):
+                    os.remove(run_path)
+
             if result.returncode != 0:
                 err_msg = f"Script process exited with error code {result.returncode}. stderr: {result.stderr.strip()}"
                 self.logger.error(err_msg)
@@ -366,13 +387,54 @@ class GenericScriptRunnerCollector:
             self.logger.error(f"Fatal: Failed to execute script runner via subprocess: {e}")
             raise e
 
+#: The zone every collector window is computed in, whatever the box's clock says
+#: (소유자 2026-09-26 「KST」 - the dates an operator writes are KST too).
+WINDOW_ZONE = ZoneInfo("Asia/Seoul")
+#: How a window is written into a script whose header has no `# window_format:`.
+DEFAULT_WINDOW_FORMAT = "%Y-%m-%d %H:%M:%S"
+
+
+def window_length(declared: str) -> timedelta:
+    """`# window: 1d` -> its length. Days or hours; anything else is refused by name."""
+    match = re.fullmatch(r"\s*(\d+)\s*([dh])\s*", str(declared or ""))
+    if not match or int(match.group(1)) <= 0:
+        raise ValueError("'# window: %s' is not a length - write it as <n>d or <n>h"
+                         % (declared,))
+    amount = int(match.group(1))
+    return timedelta(days=amount) if match.group(2) == "d" else timedelta(hours=amount)
+
+
+def usual_window(length: timedelta, now: datetime = None) -> tuple:
+    """The window a scheduled run fills: the `length` that ends now, in KST
+    (소유자 2026-09-26 「지금-24h ~ 지금」 for `# window: 1d`)."""
+    end = (now or datetime.now(WINDOW_ZONE)).astimezone(WINDOW_ZONE)
+    return end - length, end
+
+
+def fill_markers(text: str, window: tuple, window_format: str = None) -> str:
+    """The ONE place a collector script's markers are filled - every marker kind goes
+    through here, so a script sees one set of values whichever path runs it."""
+    fmt = window_format or DEFAULT_WINDOW_FORMAT
+    start, end = window
+    return (text.replace("{{WINDOW_START}}", start.strftime(fmt))
+                .replace("{{WINDOW_END}}", end.strftime(fmt)))
+
+
+def filled_copy_path(script_path: str) -> str:
+    """Where the stdout path runs its filled copy: beside the original, so the script's
+    sibling imports still resolve, and not `*.py`, so discovery never registers it."""
+    return "%s.%d.filled" % (script_path, os.getpid())
+
+
 def parse_script_comments(script_path: str) -> dict:
     """
     파이썬 파일의 상단 20줄을 스캔하여 주석에 적힌 크론 일정 및 파일명 접두사 설정값을 반환합니다.
     """
     config = {
         "schedule": None,
-        "filename_prefix": os.path.basename(script_path)[:-3]
+        "filename_prefix": os.path.basename(script_path)[:-3],
+        "window": None,
+        "window_format": None,
     }
     try:
         with open(script_path, "r", encoding="utf-8") as f:
@@ -391,6 +453,8 @@ def parse_script_comments(script_path: str) -> dict:
                             config["schedule"] = val
                         elif key == "filename_prefix":
                             config["filename_prefix"] = val
+                        elif key in ("window", "window_format"):
+                            config[key] = val
     except Exception as e:
         logger.warning(f"Failed to parse script comments for {script_path}: {e}")
     return config
@@ -506,7 +570,9 @@ class MultiDiscoveryScheduler:
                     script_path=script_path,
                     cron_expression=cron_expr,
                     filename_prefix=comment_config["filename_prefix"],
-                    server_dir=self.server_dir
+                    server_dir=self.server_dir,
+                    window=comment_config["window"],
+                    window_format=comment_config["window_format"],
                 )
                 self.collectors.append(collector_inst)
                 logger.info(f"Registered Comment-Driven Script Runner: '{os.path.basename(script_path)}' for table '{table_name}' (Cron: {cron_expr}, Next Run: {collector_inst.next_run})")
@@ -668,6 +734,9 @@ class MultiDiscoveryScheduler:
         self._write_status_file()
         
         try:
+            # 🔴 THE WINDOW IS COMPUTED HERE, ONCE, for the cron and the run-now door alike.
+            if getattr(collector, "window_length", None):
+                collector.run_window = usual_window(window_length(collector.window_length))
             collector.execute()
             collector.last_status = "SUCCESS"
         except Exception as err:
