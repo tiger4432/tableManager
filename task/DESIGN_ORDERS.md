@@ -34634,3 +34634,25 @@ RUN.md   소급 실행 방법 · 드라이런에서 볼 수 · 끝난 뒤 VACUUM
 ㉮ 판정 자리의 별칭   ㄱ — 판정은 규칙만(별칭은 빈 값을 못 만들므로 키 칸 «비었나» 판정을 못 바꿈). 그 근거를 시험으로
 ㉯ time 이름 대기     ㄴ — 파일마다 한 줄(워처 FILE 줄에 칸 하나). 워처 쪽은 구현자 착지 뒤
 ```
+
+---
+
+> **[총괄 -> 클라] 새 항목 — Auto Update 탭의 수집기 줄마다 Backfill (소유자 「오토 업데이트 소급 손잡이 … 오토 업데이트 탭에」 · 「ㄱ ㅇㅇ」 09-26)**
+
+지금 그 손잡이는 소급 탭의 연산 «Backfill a collector day by day»(`collector_backfill`, 9c2ebe9a6)에만 있다. 소유자가 고른 모양:
+```
+ㄱ  Auto Update 탭의 수집기 줄마다 Backfill 버튼
+    `# window:` 를 적은 수집기만 켜짐 · 누르면 시작 날짜(YYYY-MM-DD, KST) 하나를 받아 소급을 건다
+    진행(N/M days)과 끝(done / failed + 그 날짜 사유)이 «그 줄»에 보인다
+```
+```
+기존 문    실행   POST /admin/retroactive/collector_backfill/run  {collector: "<표>/<스크립트.py>", start}
+                  — 그리드 배너가 이미 이 라우트를 다른 화면에서 부른다(main.js). 새 라우트 · 새 연산 만들지 않음
+          진행   GET /admin/retroactive/runs — 이 수집기의 실행을 고르는 법을 님이 셈(params 가 목록에 실리는지 열어 봄)
+          거절   판정(_judge_collector_backfill)의 문장을 그대로 그린다 — 화면이 사유를 새로 짓지 않음
+빈 곳      GET /admin/auto-update/status 의 수집기 항목에 «창 길이»가 없다(run_auto_update 의 상태 기록에 window 칸 없음)
+          -> 서버 상태 기록에 선언된 `# window:` 값 한 칸(없으면 null). 버튼 켜짐은 이 칸으로. C 는 닫혀서 님이 만져도 됨 · 시험 한 칸
+문구       UI 는 영어 — 버튼 "Backfill" · 날짜 칸 placeholder "YYYY-MM-DD" · 진행 "3/7 days" · 창 없는 줄은 버튼을 끄고 title "Declare # window: to backfill"
+확인       소유자 크롬에서 열어 봄(토큰은 소유자 것) — 병합 전 스샷
+UX 제안표  「5 분 쓰면 무엇이 짜증나나」 — 짓지 말고 표로
+```
