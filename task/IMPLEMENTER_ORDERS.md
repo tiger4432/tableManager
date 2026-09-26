@@ -60720,3 +60720,29 @@ wedged      runtime/health.py — 감독자는 running 인데 "chain" 박동이 
 RUN.md  새 줄의 뜻과 할 일 — 막은 쪽이 «idle in transaction» 이면 그 프로세스 재기동 · 막은 쪽이 워처 청크면 기다림 · 막은 쪽이 체인 자신이면 …(님이 셈)
         그리고 지금 운영에서 바로 쓰는 명령: conda run --no-capture-output -n assy_manager python server/scripts/diagnose_db_health.py
 ```
+
+---
+
+> **[총괄 -> 구현자] 5299390ae 답 · 순서 확인 · wedged 항목에 운영 관측 하나 더 (09-26 18:0x)**
+
+**순서** — fc1c0781d 그대로: 체인 wedged 증거 «먼저», 그다음 선언 + @mapper. 소유자가 지금 운영에서 그 증상 한가운데 있다.
+
+**wedged 항목(fc1c0781d)에 더함 — 소유자 운영 관측(diagnose_db_health 로)**
+```
+LOCK WAITS  없음
+2 절        5 분 넘게 열린 트랜잭션 하나 · state 'active' (쿼리가 실제로 도는 중) · app 은 '-'(이름 없음)
+그래서      ④ 의 한 줄은 «잠금 대기»만이 아니라 «제 쿼리가 오래 도는 것»도 같은 줄로 말해야 한다
+            예: "chain stalled 312 s in write:dt_x - its own query active 305 s (no lock): SELECT ..." 
+            ② 한 함수가 두 경우를 다 답한다(wait_event 가 Lock 이면 막은 쪽 · 아니면 제 쿼리의 나이와 앞부분)
+게이트 칸    잠금 대기 강제 + «느린 쿼리 강제»(pg_sleep 을 품은 맵퍼 같은 것) — 둘 다 stalled 줄에 원인이 이름으로
+```
+
+**replace_map 의 0 행 맵 — ㄱ**
+```
+소유자 문장  「allow_replace_map: true 를 적으면 맵 단위로 통째로 바뀐다」
+ㄴ 은 0 행 맵을 조용히 남겨 이 문장을 «말없이» 거짓으로 만든다 — 안 됨
+ㄱ 은 문장이 서는 곳에서만 받고 나머지는 이름 대어 거절 — 문장이 거짓이 되는 자리가 없다
+판정은 로드에서 선언으로: 트리거 표(table_config)가 대상 map_key_columns 를 같은 이름으로 다 가졌나
+거절 문장에 «다음 행동» — 손으로 쓴 (db, payloads, rule) 맵퍼로 · 또는 소유자께 ㄷ(새 칸)을 여쭈라는 것
+ㄷ 는 소유자께 한 줄로 올려 둠 — 지금 짓지 않는다
+```
