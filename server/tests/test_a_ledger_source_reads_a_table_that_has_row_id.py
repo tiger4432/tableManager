@@ -132,7 +132,7 @@ def test_nothing_in_the_ledger_tests_frame_row_id_for_absence():
 
 def test_a_row_says_which_sources_translated_it_and_a_new_row_says_none():
     from conftest import _declared_as_test_database, _resolve_pg_test_url
-    from tests.support.isolated_pg import scratch_connect_args
+    from tests.support.isolated_pg import scratch_connect_args, scratch_schema
 
     url, reason = _resolve_pg_test_url()
     if url is None:
@@ -144,7 +144,7 @@ def test_a_row_says_which_sources_translated_it_and_a_new_row_says_none():
     import main
     from ledger import schema, store as ledger_store
 
-    scratch = "assy_pytest_f3bc02f6e"
+    scratch = scratch_schema("assy_pytest_f3bc02f6e")
     with _declared_as_test_database(url):
         engine = create_engine(url, poolclass=NullPool,
                                connect_args=scratch_connect_args(scratch))

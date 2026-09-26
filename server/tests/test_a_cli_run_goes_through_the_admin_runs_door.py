@@ -214,12 +214,12 @@ def test_two_claims_at_once_leave_one_running(monkeypatch):
     from sqlalchemy.orm import sessionmaker
     from sqlalchemy.pool import NullPool
 
-    from tests.support.isolated_pg import scratch_connect_args
+    from tests.support.isolated_pg import scratch_connect_args, scratch_schema
 
     url, reason = _resolve_pg_test_url()
     if url is None:
         pytest.skip(reason)
-    scratch = "assy_pytest_gate_lock_f453"
+    scratch = scratch_schema("assy_pytest_gate_lock_f453")
     with _declared_as_test_database(url):
         maker = create_engine(url, poolclass=NullPool)
         try:

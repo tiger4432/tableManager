@@ -87,6 +87,7 @@ import sqlalchemy as sa
 from sqlalchemy import text
 
 from conftest import _declared_as_test_database, _resolve_pg_test_url
+from tests.support.isolated_pg import scratch_schema
 
 import db_safety
 import migrations.add_business_key_unique_index as mig
@@ -164,7 +165,7 @@ CONSOLIDATED = [
     pytest.param(canon, id="audit_schema_canon"),
 ]
 
-SCHEMA = "roguard_pytest"
+SCHEMA = scratch_schema("roguard_pytest")
 
 
 # ===========================================================================

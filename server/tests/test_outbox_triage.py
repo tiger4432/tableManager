@@ -145,7 +145,7 @@ def test_the_set_based_cancel_writes_the_time_on_postgresql():
     """The PostgreSQL branch is a set-based UPDATE (production had ~660,000 rows); sqlite
     runs the other branch, so this one is measured on a scratch schema."""
     from conftest import _declared_as_test_database, _resolve_pg_test_url
-    from tests.support.isolated_pg import scratch_connect_args
+    from tests.support.isolated_pg import scratch_connect_args, scratch_schema
 
     url, reason = _resolve_pg_test_url()
     if url is None:
@@ -155,7 +155,7 @@ def test_the_set_based_cancel_writes_the_time_on_postgresql():
     from sqlalchemy.orm import Session
     from sqlalchemy.pool import NullPool
 
-    scratch = "assy_pytest_triage_8a1f"
+    scratch = scratch_schema("assy_pytest_triage_8a1f")
     with _declared_as_test_database(url):
         maker = create_engine(url, poolclass=NullPool)
         try:

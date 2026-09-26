@@ -428,13 +428,13 @@ from tests.support.isolated_pg import (       # noqa: E402
     install_trigram,
     resolve_url as _resolve_pg_test_url,
     scratch_connect_args,
+    scratch_schema,
 )
 
-#: All DDL lands here, never in `public`. Suffixed with the xdist worker id
-#: when there is one, so parallel workers cannot drop each other's schema.
-PG_TEST_SCHEMA = "assy_pytest_pg" + (
-    "_" + os.environ["PYTEST_XDIST_WORKER"]
-    if os.environ.get("PYTEST_XDIST_WORKER") else "")
+#: All DDL lands here, never in `public`. Named by the ONE scratch rule (process + xdist
+#: worker, `isolated_pg.scratch_schema`) - a name shared by processes let two runs on one
+#: database drop each other's tables (총괄 4afefde38; the ledger suites were already on it).
+PG_TEST_SCHEMA = scratch_schema("assy_pytest_pg")
 
 #: Dynamic tables this fixture needs. Registered into the SHARED
 #: `models.DYNAMIC_TABLES` / `Base.metadata` singletons (there is no other
@@ -497,8 +497,9 @@ def pg_engine():
     CLEANS UP AFTER ITSELF, at both ends. Teardown drops the schema and then
     ASKS THE CATALOGUE whether it is gone (a reviewer reported a dropped
     schema on 2026-08-12 and left 92 objects behind); setup drops a leftover
-    of the same name first, so a run killed mid-suite is reclaimed by the next
-    one instead of accumulating.
+    of its OWN name only. The name carries the process, so a run killed
+    mid-suite leaves its schema behind rather than having another run drop
+    tables under it - clearing those is not this fixture's job.
     """
     url, reason = _resolve_pg_test_url()
     if url is None:

@@ -128,7 +128,7 @@ def test_the_day_is_the_viewers_day_not_the_session_zone():
     """총괄 eca1f36b2 — 08:30 and 09:30 KST are one Seoul day and two UTC days, and the
     PostgreSQL session's own zone decides neither. sqlite has no zones: a scratch schema."""
     from conftest import _declared_as_test_database, _resolve_pg_test_url
-    from tests.support.isolated_pg import scratch_connect_args
+    from tests.support.isolated_pg import scratch_connect_args, scratch_schema
 
     url, reason = _resolve_pg_test_url()
     if url is None:
@@ -138,7 +138,7 @@ def test_the_day_is_the_viewers_day_not_the_session_zone():
     from sqlalchemy.orm import Session
     from sqlalchemy.pool import NullPool
 
-    scratch = "assy_pytest_failed_day_36df"
+    scratch = scratch_schema("assy_pytest_failed_day_36df")
     with _declared_as_test_database(url):
         maker = create_engine(url, poolclass=NullPool)
         try:
