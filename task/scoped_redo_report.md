@@ -62258,3 +62258,121 @@ restored: 14 passed in 0.70s
 재기동        API (결과 문장은 API 가 지음)
 다음          ② 헤비 레인 쓰기 로그
 ```
+
+---
+
+## [구현자 -> 총괄] a9976d7fd ② 착지 0026c09be — 헤비 레인 쓰기 로그 (청크 줄 곁표 넷 · 파일마다 한 줄)
+
+### 운영에서 볼 모양 — 사설 PostgreSQL 에서 실제로 찍힌 그대로 (5,000 행 · 열 10 · 레인 없이 넣어서 lane 은 no lane)
+
+```
+FILE  (new rows)  [Ingest] hl_probe FILE probe_new_dcda288a.csv: 5000 row(s) in 5.594 s (53628 rows/min) · no lane · waited not measured · sent: new 5000 · changed 0 · unchanged 0 · cells changed 50000 · side-table rows 55000 · STAGES · apply 5.407 s · commit 0.030 s · parse 0.079 s · INSIDE THE WRITE · audit logs 0.406 s / 5000 rows · cell overwrites 0.000 s / 0 rows · cell sources 2.296 s / 50000 rows · flush 0.891 s · overwrite deletes 0.000 s / 0 rows · prefetch 0.048 s · row build 1.609 s / 50000 cells changed · DB wait samples 20 (Lock 0)
+FILE  (changed)   [Ingest] hl_probe FILE probe_changed_dcda4188.csv: 5000 row(s) in 7.468 s (40171 rows/min) · no lane · waited not measured · sent: new 0 · changed 5000 · unchanged 0 · cells changed 45000 · side-table rows 55000 · STAGES · apply 7.311 s · commit 0.000 s · parse 0.016 s · INSIDE THE WRITE · audit logs 0.438 s / 5000 rows · cell overwrites 0.000 s / 0 rows · cell sources 2.641 s / 50000 rows · flush 1.655 s · overwrite deletes 0.000 s / 0 rows · prefetch 0.907 s · row build 1.529 s / 45000 cells changed · DB wait samples 28 (Lock 0)
+CHUNK (changed)   [Ingest] hl_probe chunk 1: 1000 row(s) in 1.531 s · STAGES · apply 1.515 s · commit 0.000 s · parse 0.000 s · unnamed 0.016 s · INSIDE THE WRITE · audit logs 0.094 s / 1000 rows · cell overwrites 0.000 s / 0 rows · cell sources 0.547 s / 10000 rows · flush 0.328 s · overwrite deletes 0.000 s / 0 rows · prefetch 0.203 s · row build 0.312 s / 9000 cells changed | waits: Client:ClientRead 3 · none 3
+CHUNK before this landing, same file:  [Ingest] hl_probe chunk 1: 1000 row(s) in 1.421 s · STAGES · apply 1.421 s · commit 0.000 s · parse 0.000 s · unnamed 0.000 s · INSIDE THE WRITE · flush 0.313 s · prefetch 0.203 s · row build 0.265 s · side tables 0.625 s | waits: none 3 · Client:ClientRead 2
+```
+
+```
+읽는 법 한 줄  고친 파일: 바뀐 셀 45,000 인데 cell sources 는 50,000 행 — 값이 안 바뀐 키 칸의 출처 행도 씀. 이 로그가 처음 보여 준 사실(해석은 안 함)
+```
+
+### 지은 것
+
+```
+청크 줄    write_step 이 «초»와 함께 «쓴 행 수»를 받음 — 넘기는 목록의 길이, 새 질의 0
+          side tables -> audit logs · cell sources · cell overwrites · overwrite deletes (각각 초 / 행) · row build 에 «cells changed»
+          서식 함수 하나(write_steps_text)를 워처 청크 줄과 체인 그룹 줄이 같이 부름 — 체인 줄도 같은 모양으로 바뀜(같은 기제의 결과)
+파일 줄    _send_to_upsert 끝에서 한 줄 — 두 레인이 같은 자리를 지나므로 같은 줄
+          레인은 레인이 스레드에 걸어 둔 값: heavy = 제출부터 시작까지(queue + table lock) · normal = 표 락 대기(table lock) · 레인 없이 들어온 파일 = not measured
+          새/고침/그대로 = 청크가 이미 든 값(돌려받은 (행, 새것) · 바뀐 셀 목록)에서 셈
+새 질의 0  처음엔 새 행 id 를 row.row_id 로 읽었는데, 쓰기가 행을 만료시켜 새 행마다 SELECT 한 번이 나감(게이트가 문장 수로 잡음)
+          -> 세션의 식별 키(inspect(row).identity)로 읽음 — 문장 0. 동적 표의 기본 키가 row_id 인 것 확인
+관찰기     첫 판은 커밋 «뒤» 행을 읽다 DetachedInstanceError 로 «파일을 실패시킴»(기존 시험이 잡음). 지금은 커밋 전에 읽고,
+          집계가 터지면 그 줄만 "not counted (…)" 로 남고 적재는 그대로(억지로 터뜨리는 칸이 게이트에 있음)
+```
+
+### 게이트 · 변이
+
+```
+test_one_file_line_counts_what_the_file_did[heavy-all changed] PASSED
+test_one_file_line_counts_what_the_file_did[heavy-all new] PASSED
+test_one_file_line_counts_what_the_file_did[heavy-all unchanged] PASSED
+test_one_file_line_counts_what_the_file_did[heavy-mixed] PASSED
+test_one_file_line_counts_what_the_file_did[normal-all changed] PASSED
+test_one_file_line_counts_what_the_file_did[normal-all new] PASSED
+test_one_file_line_counts_what_the_file_did[normal-all unchanged] PASSED
+test_one_file_line_counts_what_the_file_did[normal-mixed] PASSED
+test_reading_the_new_rows_asks_the_database_nothing PASSED
+test_a_tally_that_breaks_silences_the_line_and_not_the_file PASSED
+test_the_chunk_line_names_the_four_side_writes_apart PASSED
+변이 (지시 셋 + 제가 더한 셋)
+baseline: 11 passed in 18.27s
+mutant: ordered - one count is 0 (cell sources)
+    7 failed, 4 passed in 18.76s
+    red: test_one_file_line_counts_what_the_file_did[heavy-all changed]
+    red: test_one_file_line_counts_what_the_file_did[heavy-all new]
+    red: test_one_file_line_counts_what_the_file_did[heavy-mixed]
+    red: test_one_file_line_counts_what_the_file_did[normal-all changed]
+    red: test_one_file_line_counts_what_the_file_did[normal-all new]
+    red: test_one_file_line_counts_what_the_file_did[normal-mixed]
+    red: test_the_chunk_line_names_the_four_side_writes_apart
+mutant: ordered - the file line is written on the heavy lane only
+    5 failed, 6 passed in 18.74s
+    red: test_a_tally_that_breaks_silences_the_line_and_not_the_file
+    red: test_one_file_line_counts_what_the_file_did[normal-all changed]
+    red: test_one_file_line_counts_what_the_file_did[normal-all new]
+    red: test_one_file_line_counts_what_the_file_did[normal-all unchanged]
+    red: test_one_file_line_counts_what_the_file_did[normal-mixed]
+mutant: ordered - cell sources goes back to side tables
+    9 failed, 2 passed in 18.96s
+    red: test_one_file_line_counts_what_the_file_did[heavy-all changed]
+    red: test_one_file_line_counts_what_the_file_did[heavy-all new]
+    red: test_one_file_line_counts_what_the_file_did[heavy-all unchanged]
+    red: test_one_file_line_counts_what_the_file_did[heavy-mixed]
+    red: test_one_file_line_counts_what_the_file_did[normal-all changed]
+    red: test_one_file_line_counts_what_the_file_did[normal-all new]
+    red: test_one_file_line_counts_what_the_file_did[normal-all unchanged]
+    red: test_one_file_line_counts_what_the_file_did[normal-mixed]
+    red: test_the_chunk_line_names_the_four_side_writes_apart
+mutant: added - a new row's id is read off the row
+    1 failed, 10 passed in 18.66s
+    red: test_reading_the_new_rows_asks_the_database_nothing
+mutant: added - the normal lane does not measure its wait
+    4 failed, 7 passed in 18.51s
+    red: test_one_file_line_counts_what_the_file_did[normal-all changed]
+    red: test_one_file_line_counts_what_the_file_did[normal-all new]
+    red: test_one_file_line_counts_what_the_file_did[normal-all unchanged]
+    red: test_one_file_line_counts_what_the_file_did[normal-mixed]
+mutant: added - a tally that raises is not caught
+    1 failed, 10 passed in 18.68s
+    red: test_a_tally_that_breaks_silences_the_line_and_not_the_file
+restored: 11 passed in 18.30s
+```
+
+### 박스 — 로그가 쓰기를 느리게 하나 (사설 PG · 같은 5,000 행 파일 · HEAD 와 새 코드를 세 번씩 번갈아)
+
+```
+new      rows · HEAD code: chunks 15 · median 1.141 s · mean 1.179 s
+new      rows · new  code: chunks 15 · median 1.140 s · mean 1.132 s
+changed  rows · HEAD code: chunks 15 · median 1.484 s · mean 1.478 s
+changed  rows · new  code: chunks 15 · median 1.484 s · mean 1.480 s
+```
+
+### side tables 를 부르는 자리 (전수)
+
+```
+명령   git grep -n -i "side tables" -- server docs   ->  12 자리
+       단계 이름으로 쓰던 코드 1 (crud) -> 넷으로 바꿈
+       단계 이름을 인용한 주석 2 (워처 · 체인 워커의 지난 운영 측정) -> 「이제 넷」 한 마디 덧붙임
+       총괄 문서 결함 대기열 2 줄(S-151 · S-168 지난 측정) -> 안 건드림
+       다른 뜻의 낱말 나머지(bonding_plan · snapshot_db · 시험 둘 · 보관 문서)
+```
+
+```
+착지 시험   crud 를 건드려 전체: 7079 passed, 142 skipped, 3 xfailed in 699.92s (0:11:39) · PG 증명 전부: 7 failed, 102 passed, 7115 deselected in 101.92s (0:01:41)(알려진 일곱 그대로)
+RUN.md     [09-26 저녁 1] — 찾는 명령(Select-String) · 두 파일 줄 견주는 법 · 스위치
+사실       파일 줄은 «성공한» 파일만(실패한 파일은 그 오류 줄) · 이어받은 파일은 이번에 읽은 행만 · 한 청크에 같은 키 두 번이면 뒤의 것은 «그대로»로 셈
+           apply_batch_updates 의 다른 프로세스와의 경합 재시도가 나면 그 청크의 행 수 · 초가 두 번 더해짐(드묾)
+           이 두 줄을 끄는 스위치는 없음 — chunk_wait_sampling=false 는 DB 대기 표본만 끔
+다음       선언 + @mapper 조합 (a6c1e1394)
+```
