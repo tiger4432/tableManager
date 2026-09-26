@@ -62378,3 +62378,50 @@ RUN.md     [09-26 저녁 1] — 찾는 명령(Select-String) · 두 파일 줄 �
 ```
 
 > 정정(구현자, 바로 위 보고) — 「side tables」 12 자리는 착지 «뒤»에 센 수: 코드 0 · 주석 2 · 결함 대기열 2 · 다른 뜻 7 · 새 시험의 단언 1(「청크 줄에 side tables 가 없다」). 착지 «전»은 11(코드 1 포함).
+
+---
+
+## [구현자 -> 총괄] 선언 + @mapper 조합 착수 보고 (a6c1e1394 · ed70c3970 ②) — 잰 자리 · 판정 자리 · replace_map 의 모양 하나 여쭘
+
+### 있는 것 (코드로)
+
+```
+봉투      매퍼가 {"batches": [...]} 를 돌려주면 워커 · 체인 리플레이가 둘 다 dt_map_derivation.normalize_scoped_batch 한 독자로 받음
+          retract 배치  {"updates": [...], "retract": {"source_column": c, "source_value": v}}
+          replace_map  {"updates": [...], "replace_map": true, "scope": {맵 키 칸: 값}}
+          한 배치에 둘 다 = 거절(이미) · 봉투를 여는 허락 = allow_replace_map 또는 allow_retraction(규칙 칸)
+@mapper   mapper_sdk.mapper 의 run(db, payloads, rule) 이 df_to_updates 로 upsert 봉투만 지음 — batches 를 짓는 자리 0
+박스      @mapper 맵퍼 1(update_dt_transform · 규칙 dt_transform_update · allow 칸 없음)
+          allow 칸을 적은 규칙 3 은 전부 손으로 쓴 맵퍼(mapper_module/function) -> 이번 일로 동작이 안 바뀜
+```
+
+### 지을 자리 (셈)
+
+```
+1  mapper_sdk.mapper 의 run — df_to_updates 뒤에 규칙을 읽고 봉투를 짓는 함수 하나(허락 없음 = 오늘 그대로)
+   retract     출처 칸 = resolve_column(rule, "target_job_column", 대상) · 출처 값 = 들어온 행(trigger 쪽 잡 칸)의 값 ∪ 결과 행의 값
+               값마다 retract 배치 하나 — 결과 0 행인 출처는 빈 updates 로 들어가 그 출처의 옛 셀이 지워짐
+   replace_map 맵 키 = table_config map_key_columns · 결과 행을 맵마다 묶어 배치 하나 · scope 는 키 칸 전부(명시)
+               결과 DataFrame 에 맵 키 칸이 없으면 거절
+2  로드 판정 + 알림 — 판정 자리는 chain_bindings.rule_refusals(로더 · 저장 관문 · 선언 점검이 부르는 한 자리)에
+   mapper_sdk 쪽 물음을 «콜러블»로 하나 더 넘김(mapper_params 가 이미 그 모양 — S-188 방향 그대로)
+   -> @mapper + 둘 다 = 이름 대어 거절 · @mapper + 하나 = 로드 때 규칙마다 한 줄(무엇으로 지우나)
+   부르는 곳 = 제품 3 · 시험 8 (A 때 센 그대로 — derived_tables 처럼 «필수» 인자)
+3  가이드 docs/guide/config/chain_rules.md §0 문장 · 예시 ②③ 한 줄씩
+4  게이트 {없음 · retract · replace_map · 둘 다} × {출처별 행 있음 · 들어온 출처 하나가 0 행 · 맵 키 칸 빠짐} × {워커 · 리플레이}
+크기       코드 자리 2 · 부르는 곳 11 · 문서 1 — 줄 수는 안 잼
+```
+
+### 여쭐 것 — replace_map 에서 «이번에 0 행을 낸 맵»
+
+```
+retract 는 문제없음 — 출처 값을 들어온 행의 잡 칸(resolve_column 으로 이미 읽히는 칸)에서 잡음
+replace_map 은 0 행 맵의 «키 값»을 들어온 행에서 읽어야 함. 들어온 행이 대상 표의 map_key_columns 를 «같은 이름으로» 들고 있을 때만 읽힘
+   예 트리거 dt_inventory -> 대상 dt_map(맵 키 여럿)이면 들어온 행에 그 칸들이 없을 수 있음 — 그때 0 행 맵은 옛 셀이 남음
+지시대로 이 모양은 짓지 않고 올립니다:
+ㄱ 들어온 행이 맵 키 칸을 다 들고 있을 때만 replace_map 을 받고, 아니면 로드에서 이름 대어 거절 (조용한 구멍 없음 · 안 되는 규칙은 손으로 쓴 맵퍼로)
+ㄴ 들어온 행이 못 드는 맵은 결과에 있는 맵만 교체 — 0 행 맵은 남음. 로드 알림 줄에 그 한계를 적음
+ㄷ 규칙에 «들어온 행 쪽 맵 키 칸 이름» 칸을 새로 둠 — 새 선언 칸
+추천   ㄱ
+그동안  retract 쪽부터 짓지 않음 — 한 항목이라 판정 오면 같이 착지
+```
