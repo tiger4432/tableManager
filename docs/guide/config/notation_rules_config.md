@@ -151,7 +151,7 @@ None                 ->  None         (문자열이 아니면 그대로 통과)
 
 - **순서**: 별칭 표 → `join` → `pad_last_number` → `replace` → `case`.
 - 🔴 **`write` 칸에서는 적은 규칙만 돕니다**(총괄 47aba5d44) — 기본값 `separator`·`case`는 비교만 하는 칸에만 들어옵니다. 저장값을 바꾸는 접기는 운영자가 적은 것만(칸이나 그 위 테이블·파일 `rules`에). 그래서 위 선언은 `wafer.1` → `wafer-01`(대소문자 그대로), `{"pad_last_number": 2}`만 적은 칸은 `wafer.1` → `wafer.01`.
-- **`write: true`** — 그 칸의 값을 접힌 모양으로 **저장**합니다. 없으면 비교 때만 접습니다. 파일 · 격자 · 체인 — 모든 쓰기 문이 같은 자리에서 접어 저장합니다.
+- **`write: true`** — 그 칸의 값을 접힌 모양으로 **저장**합니다. 없으면 비교 때만 접습니다. `true`/`false` 가 아닌 값(`"true"` · `1`)은 해석 보고서에 「write must be true or false, … the column is folded for comparison only」로 이름 대고 비교만 접습니다. 파일 · 격자 · 체인 — 모든 쓰기 문이 같은 자리에서 접어 저장합니다.
 - **별칭 표 `notation_alias`**(제품 표, 비어서 출하): 한 행 = 「`table_name`.`column_name`에 정확히 `written`으로 온 값은 `canonical`로」. 규칙보다 먼저, `write` 칸에만.
 - **`replace` 패턴은 두 엔진이 같게 읽는 것만** 받습니다. 거절: `|` · `)` 뒤의 횟수 · 게으른 횟수(`*?`) · `$`(대신 `\Z`) · `\d` `\w` `\s` · `(?…)` · `[...]` 안의 `[` · 빈 값에 맞는 패턴 · 패턴에 없는 그룹을 가리키는 `\N`(`["WF", "\1"]` — 파이썬은 쓸 때 오류, PostgreSQL 은 빈 글자로 바꿈). 앞의 셋은 실측입니다 — 파이썬은 **첫** 매치, PostgreSQL은 **가장 긴** 매치를 고릅니다(`W|WA`로 `WA`를 바꾸면 파이썬 `XA`, PG `X`).
 - **`time` 판정**: `already`(이미 그 모양) · `folded` · `unmatched`(맞는 모양 없음) · `zoned`(시간대가 적힘) · `blank`. `unmatched`·`zoned`는 **바꾸지 않고 그대로** 씁니다. 시간대 변환은 없고, 소수 초를 읽는 모양이면 소수를 남깁니다.
