@@ -35,6 +35,8 @@ from __future__ import annotations
 
 import time
 
+from chain import rule_shape
+
 #: The two node kinds. A table is a catalogue name; the ledger is ONE node, because a
 #: ledger source's atoms all land in the same place and drawing fifteen ledger nodes would
 #: invent a distinction the declaration does not make.
@@ -91,7 +93,7 @@ def _mapper_edges(rules):
         common = {
             "kind": "mapper",
             "rule": rule.get("name"),
-            "enabled": bool(rule.get("enabled", True)),
+            "enabled": not rule_shape.is_switched_off(rule),
             "allow_chain_trigger": bool(rule.get("allow_chain_trigger")),
             "max_group_attempts": rule.get("max_group_attempts"),
             # 🔴 WHICH FILE THIS CAME FROM, AS A CELL (판정 293-b). The graph used to keep a
@@ -169,7 +171,7 @@ def _enrich_edges(rules):
                 edges.append({
                     "kind": "enrich", "from": table, "to": derived,
                     "rule": rule.get("name"),
-                    "enabled": bool(rule.get("enabled", True)),
+                    "enabled": not rule_shape.is_switched_off(rule),
                     "via_reference_view": view.get("label"),
                     # These come from the declaration's own reference views, not from a
                     # chain rule — the reads relation has no chain rule behind it

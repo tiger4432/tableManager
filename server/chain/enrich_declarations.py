@@ -93,7 +93,7 @@ def declarations(known_tables: dict = None, chain_rules_path: str = None,
         name = raw.get("name")
         if not name or name in seen:
             continue
-        if include_disabled and raw.get("enabled") is False:
+        if include_disabled and rule_shape.is_switched_off(raw):
             raw = {**raw, "enabled": True}
         # 🔴 [지시 0cae5199] `rejections` 가 «내려갑니다». 이 좌석이 수집기를 가진 유일한
         #    자리이고, 아래 :refusal 블록은 «규칙 하나가 통째로 안 선» 사실만 실었습니다.

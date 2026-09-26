@@ -13,6 +13,8 @@ import os
 import sys
 import types
 
+import pytest
+
 SERVER_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if SERVER_DIR not in sys.path:
     sys.path.insert(0, SERVER_DIR)
@@ -164,3 +166,72 @@ def test_the_restriction_is_asked_in_exactly_one_place():
         "제한을 묻는 자리가 %d 곳이다 — `fires` 하나여야 한다: %d" % (len(asked), len(asked)))
     assert "only_rule_of(" in inspect.getsource(worker.fires), \
         "`fires` 가 제한을 안 묻는다 — 좌석이 옮겨갔다"
+
+
+# ---------------------------------------------------------------------------
+# 「켜졌나」 — 판정 함수 하나 (총괄 69aad666e ①)
+# ---------------------------------------------------------------------------
+
+#: `enabled` 의 값 -> 켜졌나. 워커가 읽어 온 그대로 — 없음·참은 켜짐, false·0·null 은 꺼짐
+ENABLED = [("absent", True), (True, True), (1, True), (False, False), (0, False), (None, False)]
+
+
+@pytest.mark.parametrize("value, on", ENABLED)
+def test_every_seat_reads_one_enabled_alike(value, on):
+    """🔴 `enabled: 0`·`null` 이 파생 표로는 «세지고» 워커는 «안 깨웠다» — 한쪽은 `is False`,
+    한쪽은 참거짓으로 읽었다. 같은 값을 판정·술어·파생 표·통합 선언이 같게 읽는다."""
+    from chain import enrichment, rule_shape
+
+    rule = dict(RULE, mapper=enrichment.config.DEDUP_MAPPER)
+    unified = {"name": "r", "derive": {"kind": "decide"}}
+    if value == "absent":
+        rule.pop("enabled")
+    else:
+        rule["enabled"] = unified["enabled"] = value
+
+    assert rule_shape.is_switched_off(rule) is (not on)
+    assert worker.fires(rule, ev()) is on
+    assert (rule["target_table"] in enrichment.config.derived_tables([rule])) is on
+    assert rule_shape.is_switched_off(rule_shape.from_declaration(unified)) is (not on)
+
+
+def test_enabled_is_read_in_exactly_one_place():
+    """🔴 「이 규칙이 켜졌나」를 열아홉 자리가 사본으로 읽었고 둘이 다르게 읽었다. 규칙의
+    `enabled` 를 «읽는» 자리는 `rule_shape.is_switched_off` 하나 — 나머지는 선언 모양 사이의
+    «복사»와, 이미 판정된 명단 행을 읽는 한 줄뿐이다.
+
+    ⚠️ 텍스트가 «주어»인 단언이다(잘라쓰기 아님) — AST 로 센다.
+    """
+    import ast
+    import pathlib
+
+    allowed = {("chain/rule_shape.py", name) for name in (
+        "from_chain_rule", "from_declaration", "with_declared_cells", "to_declaration",
+        "is_switched_off")}
+    allowed.add(("chain/ingestion_worker.py", "load_chain_rules"))   # rule_census 의 행
+    root = pathlib.Path(SERVER_DIR)
+    files = sorted(root.glob("chain/**/*.py")) + [root / "admin" / "retroactive.py",
+                                                  root / "main.py"]
+    stray, judged = [], 0
+    for path in files:
+        rel = path.relative_to(root).as_posix()
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        parents = {child: node for node in ast.walk(tree) for child in ast.iter_child_nodes(node)}
+        for node in ast.walk(tree):
+            reads = (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                     and node.func.attr == "get" and node.args
+                     and isinstance(node.args[0], ast.Constant)
+                     and node.args[0].value == "enabled") or (
+                isinstance(node, ast.Subscript) and isinstance(node.ctx, ast.Load)
+                and isinstance(node.slice, ast.Constant) and node.slice.value == "enabled")
+            if not reads:
+                continue
+            up = node
+            while up in parents and not isinstance(up, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                up = parents[up]
+            where = (rel, getattr(up, "name", "<module>"))
+            judged += where == ("chain/rule_shape.py", "is_switched_off")
+            if where not in allowed:
+                stray.append("%s:%d %s" % (rel, node.lineno, where[1]))
+    assert judged == 1, "판정 함수 안의 읽기를 못 찾았다 — 계기가 고장이다 (%d)" % judged
+    assert stray == [], "`enabled` 를 판정 함수 밖에서 읽는 자리: %r" % stray

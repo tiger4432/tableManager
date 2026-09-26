@@ -156,7 +156,8 @@ def load_rules() -> list:
     worker sees - including enrichment. There is no second rule-loading path.
     """
     from chain.ingestion_worker import load_chain_rules
-    return [r for r in load_chain_rules() if r.get("enabled", True)]
+    from chain import rule_shape
+    return [r for r in load_chain_rules() if not rule_shape.is_switched_off(r)]
 
 
 def find_rule(rule_name: str, rules: list = None, row_scoped: bool = False) -> dict:
@@ -318,6 +319,32 @@ def _refuse_unless_idempotent(rule, force):
             % ((rule or {}).get("name"),))
 
 
+def replay_refusal(rule: dict, force: bool = False):
+    """Everything a replay refuses before it reads a row, or `(trigger model, columns)`.
+
+    Asked by the run and by the registry's judge, so a refusal arrives BEFORE a run row is
+    written - the 「기록 전 판정」 075174b41 promised (총괄 69aad666e ④).
+    """
+    _refuse_unless_idempotent(rule, force)
+    from database import models
+
+    trigger_table = rule.get("trigger_table")
+    target_table = rule.get("target_table")
+    if not trigger_table or not target_table:
+        raise ReplayRefused(f"rule '{rule.get('name')}' declares no trigger_table/target_table")
+    trg_model = models.DYNAMIC_TABLES.get(trigger_table)
+    if trg_model is None:
+        raise ReplayRefused(
+            f"trigger table model '{trigger_table}' is not initialized "
+            f"(is it registered in table_config.json?)")
+    if models.DYNAMIC_TABLES.get(target_table) is None:
+        raise ReplayRefused(f"target table model '{target_table}' is not initialized")
+    columns = _payload_columns(rule, trg_model)
+    if not columns:
+        raise ReplayRefused(f"trigger table '{trigger_table}' has no declared data columns")
+    return trg_model, columns
+
+
 def replay_rule(db, rule: dict, apply: bool = False, limit: int = None,
                 chunk_size: int = DEFAULT_CHUNK_SIZE, log=logger.info,
                 checkpoint=None, business_keys=None, row_ids=None, pace=None,
@@ -329,7 +356,7 @@ def replay_rule(db, rule: dict, apply: bool = False, limit: int = None,
     candidates). Apply commits per write chunk, so a large replay is restartable
     and idempotent - re-running recomputes the same values.
     """
-    _refuse_unless_idempotent(rule, force)
+    trg_model, columns = replay_refusal(rule, force)
 
     from database import crud, database, models, schemas
     import map_meta_registrar
@@ -339,20 +366,6 @@ def replay_rule(db, rule: dict, apply: bool = False, limit: int = None,
 
     trigger_table = rule.get("trigger_table")
     target_table = rule.get("target_table")
-    if not trigger_table or not target_table:
-        raise ReplayRefused(f"rule '{rule.get('name')}' declares no trigger_table/target_table")
-
-    trg_model = models.DYNAMIC_TABLES.get(trigger_table)
-    if trg_model is None:
-        raise ReplayRefused(
-            f"trigger table model '{trigger_table}' is not initialized "
-            f"(is it registered in table_config.json?)")
-    if models.DYNAMIC_TABLES.get(target_table) is None:
-        raise ReplayRefused(f"target table model '{target_table}' is not initialized")
-
-    columns = _payload_columns(rule, trg_model)
-    if not columns:
-        raise ReplayRefused(f"trigger table '{trigger_table}' has no declared data columns")
 
     # SELF-WRITE GUARD (mandatory, not optional): rule 'inv' has
     # trigger_table == target_table, so without a snapshot bound the scan would

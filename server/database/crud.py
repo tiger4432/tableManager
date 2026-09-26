@@ -4628,14 +4628,17 @@ def apply_batch_updates(db: Session, table_name: str, batch: schemas.GeneralUpda
                         if replay_key_col else None)
     # The row a refusal names is the CALLER's - taken before anything below filters the batch.
     positions = {id(item): index for index, item in enumerate(batch.updates, start=1)}
+    rewind_write_steps = alignment_batch_counts.write_steps_rewind()
 
     for attempt in range(BK_CONFLICT_MAX_RETRIES + 1):
         if attempt and pristine_payload is not None:
             _restore_payload_identity(pristine_payload, replay_key_col)
+        # A rolled-back attempt wrote nothing, so its drops - and the write steps' seconds
+        # and rows the chunk and group lines print - describe a transaction that never
+        # happened. Only the committing attempt may be reported.
         if drop_report is not None:
-            # A rolled-back attempt wrote nothing, so its drops describe a transaction
-            # that never happened. Only the committing attempt may be reported.
             drop_report.clear()
+        rewind_write_steps()
         try:
             return _apply_batch_updates_once(db, table_name, batch, replace_report,
                                              drop_report)

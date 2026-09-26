@@ -15,6 +15,7 @@ sides import it, the same prescription `chain/mapper_call.py` got (S-214, 판정
 invisible here, exactly as it is to every other declaration-driven guard - 「선언으로 표현할 수
 없는 교차 테이블 의존」 stays the sanctioned blind spot it is written down as.
 """
+from chain import rule_shape
 
 
 #: Cycles already announced in this process, by trail. The drain re-reads the rules file
@@ -143,7 +144,7 @@ def order_rules(rules: list, on_cycle=None) -> list:
             # Yes, it did. Now the walk asks what the trigger path asks.
             # ⚰️ [소유자 정본] THIS ASKED `producer.get("follow_up")` — 「is this producer on
             #   the trigger path」. Every producer is, so the question is gone with the cell.
-            if not producer.get("enabled", True):
+            if rule_shape.is_switched_off(producer):
                 continue  # not on the trigger path: it fires nothing, it orders nothing
             if (producer.get("trigger_table") == trigger
                     and rule.get("target_table") == trigger):

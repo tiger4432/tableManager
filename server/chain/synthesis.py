@@ -20,6 +20,8 @@ from __future__ import annotations
 
 import logging
 
+from chain import rule_shape
+
 logger = logging.getLogger("Chain.Builtins")
 
 
@@ -147,7 +149,7 @@ def declared_unique_targets(rules):
         if rule.get("mapper") != join_into.JOIN_INTO_MAPPER:
             continue
         name = rule.get("name")
-        if not rule.get("enabled", True):
+        if rule_shape.is_switched_off(rule):
             # ⚠️ OFF IS NOT WRONG (판정 399). An operator who switched something off did
             #    not make a mistake, so this is 「asks nothing right now」 and NOT a refusal.
             yield (name, None, None, None, "enabled=false", SKIP_NOT_ASKED)

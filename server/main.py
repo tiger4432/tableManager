@@ -4799,7 +4799,7 @@ def get_outbox_queue_rows(limit: int = 50, cursor: int = None,
     """
     from sqlalchemy import and_, or_
 
-    from chain import ingestion_worker as worker
+    from chain import ingestion_worker as worker, rule_shape
 
     outbox = models.DatabaseOutbox
     asked = int(limit or 50)
@@ -4895,7 +4895,7 @@ def get_outbox_queue_rows(limit: int = 50, cursor: int = None,
                 entry = {"name": rule.get("name"), "will_fire": will_fire}
                 if not will_fire:
                     entry["why_not"] = ("declaration is switched off (`enabled: false`)"
-                                        if not rule.get("enabled", True) else
+                                        if rule_shape.is_switched_off(rule) else
                                         "chain-produced event; this rule does not declare "
                                         "`allow_chain_trigger`")
                 matched.append(entry)

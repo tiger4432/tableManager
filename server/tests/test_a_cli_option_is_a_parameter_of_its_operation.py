@@ -39,8 +39,10 @@ REQUIRED = {
 @pytest.fixture(autouse=True)
 def _rule_r_is_found(monkeypatch):
     """`validate` asks each operation's own lookup (총괄 d34247b3d ㉠). This file measures the
-    options, so `r` is found - and the box's own rules file is never read."""
+    options, so `r` is found and the run would not refuse it - and the box's own rules file is
+    never read."""
     monkeypatch.setattr(replay, "find_rule", lambda name, row_scoped=False: {"name": name})
+    monkeypatch.setattr(replay, "replay_refusal", lambda rule, force=False: (None, []))
     monkeypatch.setattr(enrichment_backfill, "load_rule", lambda name, *a, **k: {"name": name})
     monkeypatch.setattr(retroactive, "_enrichment_rule", lambda name: {"name": name})
     monkeypatch.setattr(cell_layer, "resolve_target", lambda *a, **k: (None, {}))

@@ -47,6 +47,7 @@ import re
 logger = logging.getLogger("EnrichmentConfig")
 
 from paths import CONFIG_DIR  # single override point (ASSY_DATA_ROOT)
+from chain import rule_shape
 QUERY_REF_DIR = os.path.join(CONFIG_DIR, "enrichment_queries")
 
 # ---------------------------------------------------------------------------
@@ -612,7 +613,7 @@ def _validate_rule(name: str, raw: dict, known_tables: dict, rejections: list = 
     """규칙 1건을 검증·정규화한다. 반환: (normalized|None, 실패사유|None)."""
     if not isinstance(raw, dict):
         return None, "rule must be an object"
-    if raw.get("enabled", True) is False:
+    if rule_shape.is_switched_off(raw):
         return None, None  # 비활성 — 오류 아님, 조용히 제외
     source_table = raw.get("source_table")
     derived_table = raw.get("derived_table")
@@ -784,7 +785,7 @@ def derived_tables(rules) -> set:
     from chain import rule_run
     return {str(rule["target_table"]) for rule in rules or ()
             if isinstance(rule, dict) and rule_run.rule_label(rule) == "decide"
-            and rule.get("target_table") and rule.get("enabled", True) is not False}
+            and rule.get("target_table") and not rule_shape.is_switched_off(rule)}
 
 
 def key_contract_refusal(table_cfg, key, key_name: str = "decision_key"):
@@ -890,7 +891,7 @@ def chain_rules_for(rule: dict) -> list:
     """
     chain_rules = []
     params = dict(rule)
-    enabled = bool(rule.get("enabled", True))
+    enabled = not rule_shape.is_switched_off(rule)
     dedup_name, confirm_name = synthesized_rule_names(rule["name"])
     # The cell that lets ONE loader answer per-file counts (판정 293-b). The graph used
     # to keep a second reader so it could tell written rules from synthesized ones;

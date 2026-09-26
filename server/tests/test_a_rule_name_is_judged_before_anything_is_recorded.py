@@ -52,6 +52,32 @@ def test_the_publish_the_count_and_a_cli_give_one_refusal_and_record_nothing(
     assert _recorded(retro_env) == (0, 0), "a refused name must leave no run and no event"
 
 
+@pytest.mark.parametrize("shape, words", [
+    ({"idempotent": False}, "idempotent"),
+    ({"trigger_table": "not_a_registered_table"}, "is not initialized"),
+])
+def test_a_replay_the_run_would_refuse_is_refused_before_it_is_recorded(
+        retro_env, monkeypatch, shape, words):
+    """총괄 69aad666e ④: what `replay_rule` refuses before its first page is the judge's too,
+    so the refusal arrives before a run row is written (075174b41's promise)."""
+    from chain import replay
+
+    rule = dict(RULE_MIXED, **shape)
+    monkeypatch.setattr(replay, "load_rules", lambda: [rule])
+    answers = []
+    for ask in (lambda: retroactive.publish(retro_env, "chain_replay", {"rule": rule["name"]}),
+                lambda: retroactive.count(retro_env, "chain_replay", {"rule": rule["name"]}),
+                lambda: retroactive.run_here("chain_replay", {"rule": rule["name"]},
+                                             log=lambda *_: None)):
+        with pytest.raises(retroactive.RetroactiveRefused) as refused:
+            ask()
+        answers.append(str(refused.value))
+
+    assert len(set(answers)) == 1, answers
+    assert words in answers[0], answers[0]
+    assert _recorded(retro_env) == (0, 0), "a refused replay must leave no run and no event"
+
+
 def test_a_rule_it_can_find_is_still_queued(retro_env):
     """The control: the judgment refuses what the run would refuse, nothing more."""
     out = retroactive.publish(retro_env, "chain_replay", {"rule": RULE_MIXED["name"]})
@@ -63,6 +89,13 @@ def test_a_rule_it_can_find_is_still_queued(retro_env):
 def test_picked_rows_still_make_a_companion_a_legal_subject(monkeypatch):
     """S-270: the rows travel into the judgment - without them the grid's replay of a join's
     second half would be refused at the door it used to pass."""
+    # The judge now asks what the run asks before its first page - the tables' models among
+    # it (69aad666e ④) - so the two tables are registered as the run would find them.
+    from database import crud
+    from tests.test_a_declared_join_can_be_backfilled_like_any_rule import TABLES
+    models.init_dynamic_models(TABLES)
+    for name, cfg in TABLES.items():
+        monkeypatch.setitem(crud.TABLE_CONFIG, name, cfg)
     rules = _rules()
     monkeypatch.setattr(replay, "load_rules", lambda: rules)
     companion = rules[1]["name"]

@@ -132,6 +132,64 @@ def test_one_file_line_counts_what_the_file_did(env, lane, shape, monkeypatch, c
         assert int(got["changed"]) == 0
 
 
+def test_the_work_after_the_last_chunk_has_its_own_stage_name(env, monkeypatch):
+    """총괄 69aad666e ③: a stall after the last chunk's commit - ANALYZE, the drop report,
+    the file line, the archive - reads as the file's finishing work, not as 「in commit」."""
+    from utils import heartbeat
+
+    tmp_path, _written = env
+    workspace = str(tmp_path / "ws")
+    for sub in ("raws", "archives", "err"):
+        os.makedirs(os.path.join(workspace, sub))
+    handler = IngestionHandler(workspace, None, os.path.join(workspace, "archives"),
+                               default_table_name=TABLE, heavy_lane=FakeLane())
+    seen = []
+    monkeypatch.setattr(directory_watcher, "_analyze_after_load", lambda *a: seen.append(
+        [c["stage"] for c in heartbeat.open_claims() if c["name"] == "watcher"]))
+
+    _drop(handler, workspace, FILE_NAME, SEED, "normal", monkeypatch)
+
+    assert seen == [["finish"]], seen
+
+
+def test_a_retried_write_counts_only_the_attempt_that_committed(env, monkeypatch, caplog):
+    """총괄 69aad666e ②: a business-key race rolls one attempt back and writes again - the
+    line's side-table rows and row-build cells are the committing attempt's, as its cells are."""
+    from sqlalchemy.exc import IntegrityError
+
+    tmp_path, written = env
+    workspace = str(tmp_path / "ws")
+    for sub in ("raws", "archives", "err"):
+        os.makedirs(os.path.join(workspace, sub))
+    handler = IngestionHandler(workspace, None, os.path.join(workspace, "archives"),
+                               default_table_name=TABLE, heavy_lane=FakeLane())
+    lost, real = {}, crud.bulk_delete_cell_overwrites
+
+    def race_once(db, rows):
+        if not lost:
+            lost.update(written)
+            raise IntegrityError("INSERT ...", {}, Exception(
+                "UNIQUE constraint failed: %s.business_key_val" % TABLE))
+        return real(db, rows)
+    monkeypatch.setattr(crud, "bulk_delete_cell_overwrites", race_once)
+
+    with caplog.at_level("INFO"):
+        _drop(handler, workspace, FILE_NAME, SEED, "normal", monkeypatch)
+
+    messages = [r.getMessage() for r in caplog.records]
+    assert sum("BK Conflict Recovered" in m for m in messages) == 1, "the race was retried"
+    assert sum(lost.values()) > 0, "the rolled-back attempt wrote side-table rows"
+    [line] = [m for m in messages if " FILE %s:" % FILE_NAME in m]
+    got = LINE.search(line)
+    assert got, line
+    for name, n in written.items():
+        assert "/ %d rows" % (n - lost[name]) in got["write"].split(
+            " %s " % name, 1)[1].split(" · ", 1)[0], (name, n, lost[name], got["write"])
+    assert int(got["side"]) == sum(written.values()) - sum(lost.values())
+    assert re.search(r" · row build [\d.]+ s / %s cells changed" % got["cells"],
+                     got["write"]), got["write"]
+
+
 def test_reading_the_new_rows_asks_the_database_nothing(env):
     """「새 질의 0」, counted: the ids are read from rows still in memory after the write."""
     from sqlalchemy import event

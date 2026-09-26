@@ -3557,6 +3557,9 @@ class IngestionHandler(FileSystemEventHandler):
             # 440,000-row load, 0.7 s spent choosing a page of ids over an index that was
             # there all along. Run here rather than left in a runbook: 「사람이 기억해야 하는
             # 절차는 구멍이다」.
+            # After the last chunk: a stall from here on reads as the file's finishing work, not
+            # as the last chunk's commit (총괄 69aad666e ③).
+            heartbeat.progress("finish")
             _analyze_after_load(t_name, processed_rows)
 
             # [Drop visibility] Individual silence, named aggregate - one report per file.

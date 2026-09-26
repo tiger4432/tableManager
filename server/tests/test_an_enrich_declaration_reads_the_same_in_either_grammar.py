@@ -178,11 +178,15 @@ def fixture_load(tmp_path, monkeypatch):
     return run
 
 
-def test_only_a_written_false_switches_a_declaration_off():
-    """🔴 「OFF」 IS `false`, NOT 「not exactly true」. The old shell reads `bool(enabled)`, so a
-    declaration written `enabled: 1` is ON there - and a switch that read it as OFF would turn
-    off a rule that has been running, which is the loudest possible way to be wrong about a
-    switch. Absent is ON too: 「안 적음」 and 「false」 are different declarations.
+def test_a_declaration_is_off_where_the_old_shell_reads_it_off():
+    """🔴 「OFF」 IS WHAT `bool(enabled)` SAYS, NOT 「not exactly true」. The old shell reads
+    `bool(enabled)`, so a declaration written `enabled: 1` is ON there - and a switch that read
+    it as OFF would turn off a rule that has been running, which is the loudest possible way to
+    be wrong about a switch. Absent is ON too: 「안 적음」 and 「false」 are different declarations.
+
+    🔴 [총괄 69aad666e ①] AND `0` · `null` ARE OFF, as the worker has always read them. This
+    cell used to say 「only a written `false`」, and the derived-table set agreed with it while
+    the worker did not - one value, two answers.
 
     ⚠️ SCORED ON THE PREDICATE, because the loader cannot show the difference: both readings
     stand the rule for every value this file's other cases use."""
@@ -190,6 +194,8 @@ def test_only_a_written_false_switches_a_declaration_off():
         return rule_shape.is_switched_off(rule_shape.from_declaration(raw))
 
     assert off({**UNIFIED, "enabled": False}) is True
+    assert off({**UNIFIED, "enabled": 0}) is True
+    assert off({**UNIFIED, "enabled": None}) is True
     assert not off(UNIFIED), "absent means ON"
     assert not off({**UNIFIED, "enabled": True})
     assert not off({**UNIFIED, "enabled": 1}), "truthy is ON, as the old shell reads it"

@@ -55,6 +55,7 @@ from chain import enrichment
 # rather than in each mapper, because `server/mappers/*.py` is gitignored and a guard
 # written there does not deploy.
 from chain import key_gate
+from chain import rule_shape
 
 # [Retraction] Removing what ONE SOURCE owns, for a map fed by several. `replace_map`
 # removes by map and cannot express it - see the retract branch in the write loop.
@@ -833,7 +834,7 @@ def _refuse_names_claimed_twice(rules, written_in):
     """
     files_by_name = {}
     for rule, where in zip(rules, written_in):
-        if not (rule or {}).get("enabled", True):
+        if rule_shape.is_switched_off(rule or {}):
             continue
         files_by_name.setdefault((rule or {}).get("name"), []).append(where)
     twice = sorted(((name, files) for name, files in files_by_name.items()
@@ -885,7 +886,7 @@ def watches_table(rule, table_name) -> bool:
     switch on that path, which is 「같은 기능에 두 경로」 in its quietest form.
     """
     rule = rule or {}
-    return bool(rule.get("enabled", True)) and rule.get("trigger_table") == table_name
+    return not rule_shape.is_switched_off(rule) and rule.get("trigger_table") == table_name
 
 
 # ⚰️ [소유자 정본, 2026-09-17 18:2x] THE ROLL CALL WENT WITH THE SECOND PATH.
@@ -985,7 +986,7 @@ def fires(rule, event) -> bool:
     only = event_constants.only_rule_of(get_payload_dict(event))
     if only is not None and rule.get("name") != only:
         return False
-    return (rule.get("enabled", True)
+    return (not rule_shape.is_switched_off(rule)
             and rule.get("trigger_table") == event.table_name
             and _rule_accepts_event(rule, event))
 
@@ -1036,7 +1037,7 @@ def _validate_chain_cascade_graph(rules) -> list:
     """
     graph = defaultdict(set)
     for rule in rules:
-        if not rule.get("enabled", True) or not rule.get("allow_chain_trigger"):
+        if rule_shape.is_switched_off(rule) or not rule.get("allow_chain_trigger"):
             continue
         src = rule.get("trigger_table")
         if not src:
@@ -1146,7 +1147,7 @@ def _rule_outcome_before_running(rule, events):
        둘 다 `_rule_accepts_event` 와 `enabled` «같은 것»을 지난다.
     ⚠️ 꺼짐이 안 걸림을 «이긴다». 둘 다 참일 때 운영자가 고칠 수 있는 쪽이 그것이다.
     """
-    if not rule.get("enabled", True):
+    if rule_shape.is_switched_off(rule):
         return event_constants.RULE_OUTCOME_SKIPPED_DISABLED, "rule declares enabled: false"
     refused_chain = False
     for e in events:
@@ -2226,7 +2227,7 @@ def warmup_worker(rules, db_session_factory=None):
 
     # 1) 활성 규칙의 매퍼 모듈 선(先)import — importlib 캐시를 덥힌다(기동 + 리로드 재웜업 공통).
     for rule in rules:
-        if not rule.get("enabled", True):
+        if rule_shape.is_switched_off(rule):
             continue
         module_name = rule.get("mapper_module")
         if not module_name:

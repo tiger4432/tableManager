@@ -21,6 +21,8 @@
 """
 from __future__ import annotations
 
+from chain import rule_shape
+
 
 #: 사진 한 장의 칸. 바뀌면 그것이 «보고할 차이»다.
 CENSUS_FIELDS = ("name", "enabled", "tables", "trigger_columns", "derive", "origin")
@@ -74,7 +76,7 @@ def rule_row(rule: dict, position: int, origin: str = "declared") -> dict:
     columns = rule.get("trigger_columns")
     return {
         "name": rule.get("name"),
-        "enabled": bool(rule.get("enabled", True)),
+        "enabled": not rule_shape.is_switched_off(rule),
         # 선언이 «든» 표 칸만. 없는 칸을 None 으로 채우면 「배선이 생겼다」와 구별이 안 된다
         "tables": {key: rule[key] for key in table_keys() if key in rule},
         # 정렬해 담는다 — 선언이 적은 «순서»는 이 축의 사실이 아니다

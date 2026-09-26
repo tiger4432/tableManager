@@ -198,6 +198,31 @@ def _not_counting(n):
     """What a write step's `count` is when no scope is open - nothing to add to."""
 
 
+def write_steps_rewind():
+    """A callable that puts this scope's write steps back to what they are NOW.
+
+    A write that rolls back and tries again calls it before each attempt, so the seconds
+    and rows a line prints are the committing attempt's - what the rolled-back attempt
+    wrote never happened (총괄 69aad666e ②). Other tables' steps in the scope are kept.
+    """
+    counts = _COUNTS.get()
+    if counts is None:
+        return _not_rewinding
+    steps = dict(counts.write_steps)
+    tallies = {name: list(tally) for name, tally in counts.write_counts.items()}
+
+    def rewind():
+        counts.write_steps.clear()
+        counts.write_steps.update(steps)
+        counts.write_counts.clear()
+        counts.write_counts.update({name: list(tally) for name, tally in tallies.items()})
+    return rewind
+
+
+def _not_rewinding():
+    """What `write_steps_rewind` hands back when no scope is open - nothing to put back."""
+
+
 def write_steps_text(summary: dict) -> str:
     """The INSIDE THE WRITE part of a line - one spelling for the watcher's chunk line and
     the chain's group line: each step's seconds and, when it counted, how many of what."""

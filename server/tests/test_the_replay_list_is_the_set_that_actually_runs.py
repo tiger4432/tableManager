@@ -111,7 +111,7 @@ def test_a_switched_off_declaration_never_reaches_the_list(loaded):
     import inspect
 
     assert _stood(dict(JOIN, enabled=False)) == [], "an off declaration stands no rule"
-    assert 'get("enabled"' in inspect.getsource(replay.load_rules)
+    assert "is_switched_off(" in inspect.getsource(replay.load_rules)
 
 
 def test_a_synthesized_enrichment_rule_is_on_its_trigger_tables_list(loaded):

@@ -713,7 +713,7 @@ def _run_rerun_set_aside(db, params, log, control=None):
     """Replay the rows the set-aside events named - every enabled rule on each table (or the
     rules named), in the declaration's order, with `cascade`: it gives back what the chain
     would have done, downstream included (총괄 2dbbfd1e5)."""
-    from chain import replay, set_aside
+    from chain import replay, rule_shape, set_aside
 
     rows = set_aside.rows_set_aside(db, **_scope(params))
     wanted = set(_scope(params)["rules"])
@@ -721,7 +721,7 @@ def _run_rerun_set_aside(db, params, log, control=None):
     for table, ids in sorted(rows.items()):
         rules = replay.order_rules([
             r for r in replay.load_rules()
-            if r.get("trigger_table") == table and r.get("enabled", True)
+            if r.get("trigger_table") == table and not rule_shape.is_switched_off(r)
             and (not wanted or r.get("name") in wanted)])
         for rule in rules:
             one = _run_chain_replay(db, {"rule": rule.get("name"), "row_ids": ids,
@@ -989,7 +989,8 @@ def _judge_chain_replay(params):
     from chain import replay
 
     try:
-        replay.find_rule(params["rule"], row_scoped=bool(params.get("row_ids")))
+        replay.replay_refusal(replay.find_rule(params["rule"],
+                                               row_scoped=bool(params.get("row_ids"))))
     except replay.ReplayRefused as e:
         raise RetroactiveRefused(str(e)) from None
 

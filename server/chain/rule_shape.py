@@ -572,7 +572,7 @@ def decide_rules(internal: dict, known_tables: dict = None,
         cells[_DECIDE_TO_ENRICHMENT.get(key, key)] = value
     return enrichment_config.chain_rules_from_cells(
         internal.get("name"), bool(internal.get("enabled_written")),
-        bool(internal.get("enabled", True)),
+        not is_switched_off(internal),
         (internal.get("on") or {}).get("table"),
         (internal.get("into") or {}).get("table"),
         cells, known_tables, rejections=rejections, caps=caps)
@@ -587,8 +587,14 @@ def unknown_decide_cells(internal: dict) -> list:
                   if key not in DECIDE_CELLS)
 
 
-def is_switched_off(internal: dict) -> bool:
-    """⛔ [판정 399, ③′] `enabled: false` IS THE ONE OFF SWITCH A UNIFIED DECLARATION HAS.
+def is_switched_off(rule: dict) -> bool:
+    """⛔ [판정 399, ③′] `enabled` IS THE ONE OFF SWITCH A RULE HAS - and this is its one judge.
+
+    🔴 [총괄 69aad666e ①] ONE READING FOR EVERY SEAT. A flat rule, a stood rule and a unified
+    declaration's internal shape all carry `enabled`, and it is read the way the worker has
+    always read it: absent or truthy is ON, `false` · `0` · `null` is OFF. The loader, the
+    derived-table set and the worker used to read `0`/`null` two ways - counted as a running
+    derived table on one side, never woken on the other.
 
     So OFF has to mean what §0-ter demands of a switch: the loader touches no database and
     stands no rule - not 「stands it and filters it later」, which is the shape that let an
@@ -599,7 +605,7 @@ def is_switched_off(internal: dict) -> bool:
     file wrote it - so `enabled: false` in the file a rule was written in is the one off
     switch for one rule, and `ASSY_CHAIN_WORKER=0` is the one for all of them.
     """
-    return internal.get("enabled_written") and internal.get("enabled") is False
+    return not rule.get("enabled", True)
 
 
 def expand_declaration(declaration, table_config=None,
