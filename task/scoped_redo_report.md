@@ -62779,3 +62779,98 @@ health      박동의 paused 를 따로 읽어 status = paused · degraded(의�
 규칙 범위     사건마다 fires(규칙, 사건) — 규칙의 트리거 표로 먼저 좁히고 셈(운영 대기열 66 만 행 크기에서의 시간은 안 잼)
 그동안       일시정지부터 짓고, 답이 오면 치워 두기를 같은 착지로
 ```
+
+---
+
+## [구현자 -> 총괄] 비상 정지 착지 312e8440a — 일시정지 · 치워 두기 · 다시 돌리기 (3840af307 · 2dbbfd1e5)
+
+### 라우트 모양 — 클라께 (Overview · Chain 탭 · 소급 탭)
+
+```
+POST /admin/chain/pause   {reason}  -> {paused: {by, at, reason, cancelled_pid}}   (by = X-User 머리, 없으면 operator)
+POST /admin/chain/resume            -> {paused: null}
+GET  /admin/chain/pause             -> {paused: {by, at, reason} | null}   요청 상태(제어 파일)
+/health 의 checks.workers.chain.status = "paused"(degraded)                워커가 멈춤을 지키는지 — 박동이 말함
+소급 탭    set_aside         params tables · rules · transactions(csv, 하나 이상) · reason(필수)   downstream_note 있음
+          rerun_set_aside   params tables · rules · transactions                               결과 문장 "... cascades like the chain would have"
+```
+
+### 지은 것
+
+```
+일시정지      제어 파일 하나(config/chain_control.json · 원자적 쓰기 · 매번 읽음 · 재기동해도 유지) — chain/control.py
+             루프 머리: 새 묶음 안 잡음 · 박동에 state=paused · 빈 틱처럼 기다림
+             배치 안: 다음 묶음 안 잡음 · 멈춤으로 실패한 묶음은 실패 갈래보다 «먼저» 되감음(재시도 안 올림 · 표 안 막음)
+             도는 묶음: 단계 경계 — 묶음 스레드에서만 보이는 가로채기 한 칸(alignment_batch_counts.interrupt_at_stages). 워처 · 루프 위 commit/rollback 은 안 봄
+             도는 쿼리: pause 가 박동의 db pid 로 pg_cancel_backend — 그 pid 가 아직 체인 연결일 때만(이름으로 확인). pid 는 최대 한 박동 묵은 값
+             묶음 입구 한 자리가 「멈춤 중에 난 예외」를 묶음의 답(실패)으로 돌려줌 — 원장 대기열 · 트리거 거름 단계의 예외도 새지 않게
+health       박동의 state 를 읽어 paused · degraded. 더 큰 판정(down · wedged)이 이김
+치워 두기     몸통은 chain/set_aside.py 하나 — 소급 연산 set_aside · outbox_triage --cancel 이 같이 부름. 표시는 mark_cancelled 그대로(1,000 행 묶음 사건 포함)
+             범위: 준 것 전부가 좁힘(AND). 규칙은 워커의 fires 로 물음(규칙 이름은 기록 전 판정)
+다시 돌리기   rerun_set_aside — 치운 사건의 행(묶음 row_ids + 행 사건 row_id)을 표마다 · 규칙마다 chain_replay(row_ids · cascade)로
+             outbox_triage --replay-cancelled 도 이 연산을 부름
+```
+
+### 게이트 · 변이
+
+```
+test_a_paused_group_is_rewound_at_a_stage_and_not_charged PASSED
+test_while_paused_no_group_is_taken PASSED
+test_a_pause_is_still_there_after_a_restart PASSED
+test_health_says_paused_in_its_own_word_and_a_wedge_still_wins PASSED
+test_set_aside_takes_only_its_scope_collapsed_events_too_and_deletes_nothing PASSED
+test_a_rule_or_a_transaction_scope_narrows_it PASSED
+test_running_them_again_gives_the_cells_the_chain_would_have_written PASSED
+test_a_pause_cancels_the_query_a_group_is_waiting_on PASSED
+변이 (지시 셋 + 제가 더한 다섯)
+baseline: 7 passed, 1 skipped in 1.92s || 1 passed, 7329 deselected in 22.25s
+mutant: ordered - a stage boundary does not read the pause
+    1 failed, 6 passed, 1 skipped in 5.11s || 1 passed, 7329 deselected in 23.01s
+    red: test_a_paused_group_is_rewound_at_a_stage_and_not_charged
+mutant: added - a paused group is charged as a failure
+    1 failed, 6 passed, 1 skipped in 2.39s || 1 failed, 7329 deselected in 24.18s
+    red: test_a_pause_cancels_the_query_a_group_is_waiting_on
+    red: test_a_paused_group_is_rewound_at_a_stage_and_not_charged
+mutant: ordered - setting aside goes beyond its scope
+    2 failed, 5 passed, 1 skipped in 2.48s || 1 passed, 7329 deselected in 22.13s
+    red: test_a_rule_or_a_transaction_scope_narrows_it
+    red: test_set_aside_takes_only_its_scope_collapsed_events_too_and_deletes_nothing
+mutant: ordered - running them again misses a collapsed event's rows
+    2 failed, 5 passed, 1 skipped in 2.46s || 1 passed, 7329 deselected in 21.65s
+    red: test_running_them_again_gives_the_cells_the_chain_would_have_written
+    red: test_set_aside_takes_only_its_scope_collapsed_events_too_and_deletes_nothing
+mutant: added - a pause is not written down
+    3 failed, 4 passed, 1 skipped in 5.14s || 1 failed, 7329 deselected in 22.79s
+    red: test_a_pause_cancels_the_query_a_group_is_waiting_on
+    red: test_a_pause_is_still_there_after_a_restart
+    red: test_a_paused_group_is_rewound_at_a_stage_and_not_charged
+    red: test_while_paused_no_group_is_taken
+mutant: added - health has no word for paused
+    1 failed, 6 passed, 1 skipped in 2.33s || 1 passed, 7329 deselected in 21.79s
+    red: test_health_says_paused_in_its_own_word_and_a_wedge_still_wins
+mutant: added - a paused batch still takes its next group
+    1 failed, 6 passed, 1 skipped in 2.39s || 1 passed, 7329 deselected in 22.16s
+    red: test_while_paused_no_group_is_taken
+mutant: added - the pause does not cancel the running query
+    7 passed, 1 skipped in 1.92s || 1 failed, 7329 deselected in 33.56s
+    red: test_a_pause_cancels_the_query_a_group_is_waiting_on
+restored: 7 passed, 1 skipped in 1.84s || 1 passed, 7329 deselected in 21.18s
+```
+
+```
+착지 시험   전체: 10 failed, 7165 passed, 152 skipped, 3 xfailed in 881.94s (0:14:41) — 둘은 제 것이라 고침(set_aside 도 취소를 받게 · 양식 문장 칸이 새 두 연산을 모름). 나머지 여덟(ingestion_drop_visibility 일곱 · value_a_column 하나)은 그 파일들만 다시 돌리니 통과 — 실행 도중 응용 레인 4f004398 착지. 고친 뒤 바뀐 자리를 지나는 파일 아홉을 다시 돌려 167 통과 · PG 증명 전부: 7 failed, 109 passed, 7214 deselected in 120.89s (0:02:00) (알려진 일곱 그대로)
+RUN.md     [09-26 밤 4] — 사고 때 순서(Pause -> 치워 두기 -> Resume -> 나중에 다시 돌리기) · 명령 · 확인하는 법
+```
+
+### 알고 남기는 것
+
+```
+옛 결함      outbox_triage --replay-cancelled 는 payload->'data'->>'row_id' 로 행을 찾았는데, 제품의 행 사건은 row_id 를 «맨 위»에 둠(data 에는 없음)
+            -> 운영에서 늘 0 행을 찾았을 것. 시험 픽스처가 그 질의 모양으로 지어져 초록이었음 — 픽스처를 제품 모양으로 고침
+다시 돌리기   체인이 원래 했을 연쇄를 되살림(cascade) — 게이트가 옵트인 하류를 두고 「안 치웠을 때와 셀이 같다」를 잼
+            치운 사건에 「다시 돌렸음」 표시는 없음 — 두 번 누르면 두 번 리플레이(값이 같아 쓰기는 헛쓰기)
+멈춤 로그     규칙 안에서 멈추면(맵퍼 단계) 그 규칙의 실패 줄이 한 번 찍힘 — 되감기 줄이 뒤따름
+재기동       Pause 는 재기동해도 유지 — 운영자가 Resume 을 잊으면 체인이 계속 멈춰 있음(health 가 paused 로 말함)
+⓪ 클라      그리드 클릭 리플레이의 cascade 는 클라 d3659ec0 으로 닫힘
+판정 복기    69aad666e 의 넷 -> ⑤ 기동 DDL -> 조인 쪽 나누기 -> 선언 + @mapper
+```
