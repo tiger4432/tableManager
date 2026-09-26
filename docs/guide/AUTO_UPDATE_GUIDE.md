@@ -6,6 +6,51 @@
 
 ---
 
+## 0. 한눈에 보기 — 수집기 하나 만들기 (2026-09-26)
+
+**① 자리** — `server/ingestion_workspace/<표 이름>/auto_update/<이름>.py` 에 파일을 둡니다. 스케줄러가 알아서 찾습니다(재기동 불필요, §4).
+
+**② 스크립트** — 머리 20줄 안의 주석이 설정이고, 끝에서 `out` 에 행을 담으면 `raws/` 에 CSV 가 생겨 적재됩니다.
+
+```python
+# schedule: 0 * * * *
+# filename_prefix: wf_part
+# window: 1d
+# window_format: %Y-%m-%d %H:%M:%S
+
+sql = """
+SELECT a.waferid, b.part, a.event_time
+FROM a JOIN b ON substr(b.wafer, 1, 6) = substr(a.waferid, 1, 6)
+WHERE b.part IN ({{LIST:part_list.partid}})
+  AND a.event_time >= '{{WINDOW_START}}' AND a.event_time < '{{WINDOW_END}}'
+"""
+
+rows = run_query(sql)   # 운영자의 DB 연결 코드 — 제품은 이 줄을 모른다
+out = rows              # list[dict] · DataFrame · CSV 문자열. 없으면 out = [] (None 은 실패)
+```
+
+| 적는 것 | 실행마다 무엇이 되나 |
+|---|---|
+| `# schedule:` | 크론 주기. 없으면 매시 정각 |
+| `# filename_prefix:` | `raws/<접두>_YYYYMMDD_HHMMSS.csv`. 없으면 스크립트 이름 |
+| `# window: 1d` (또는 `6h`) | `{{WINDOW_START}}` · `{{WINDOW_END}}` 가 「지금 − 길이 ~ 지금」(KST)으로 채워짐. 원본 파일은 안 바뀜 |
+| `# window_format:` | 채울 글자 모양. 없으면 `%Y-%m-%d %H:%M:%S` |
+| `{{LIST:표.칸}}` | 그리드에 있는 그 칸의 값들이 `'a','b'` 모양으로 채워짐(빈 값 뺌). 비었거나 1,000개를 넘거나 못 읽으면 실행 안 하고 FAIL |
+
+**③ 확인** — 어드민에서
+- **Declarations → collector 영역**: 헤더와 마커가 안 맞는 스크립트가 이름과 사유로 뜹니다(`# window:` 없이 창 마커를 씀, 반대, 길이 모양 틀림, 없는 칸을 `{{LIST}}` 에 씀). 이런 스크립트는 **적재되지 않습니다.**
+- **Auto Update 탭**: 수집기별 Active 스위치(§5) · 즉시 실행(Run now — Active 와 무관하게 돔) · 마지막 결과(SUCCESS / FAIL / SKIPPED 와 사유)
+
+**④ 지난 날짜 채우기** — `# window:` 를 적은 수집기만
+- 어드민 → 소급 → **Backfill a collector day by day** · `collector` = `<표>/<스크립트.py>` · `start` = `YYYY-MM-DD`(그날 00:00 KST) 또는 `YYYY-MM-DD HH:MM`
+- start 부터 **24시간씩** 한 번씩 돌리고(마지막 날은 지금에서 자름), 그날 파일이 적재를 마칠 때까지 기다렸다가 다음 날로 갑니다. 진행은 N/M 일, 날 사이에서 취소할 수 있습니다.
+- 어느 날이 실패하면 그 날짜를 대고 멈춥니다 — 고친 뒤 `start` 를 그 날짜로 다시 걸면 거기서부터 끝까지
+- CLI: `python -c "from admin import retroactive; retroactive.run_here('collector_backfill', {'collector': '<표>/<스크립트.py>', 'start': 'YYYY-MM-DD'})"`
+
+**⚠️ 창과 주기** — 창이 주기보다 길면(예: 매시간 1d) 같은 행을 여러 번 다시 가져옵니다. 지금은 가져올 때마다 칸마다 값 출처가 한 겹씩 쌓여 적재가 점점 느려집니다 — 「같은 값이면 안 씀」을 짓는 중입니다(2026-09-26 지시). 그전까지는 늦게 오는 데이터가 없는 표라면 창을 주기보다 조금만 길게(예: 매시간이면 `2h`) 두는 편이 가볍습니다.
+
+---
+
 ## 🚀 1. 디렉토리 설계 구조
 각 테이블 하위에 `auto_update` 폴더를 생성하고, 파일 수집용 파이썬 스크립트(`*.py`)들을 배치하면 중앙 스케줄러(`server/run_auto_update.py`)가 이를 자동 감지(Auto-Discovery)하여 통합 기동합니다.
 
