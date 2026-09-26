@@ -246,6 +246,9 @@ function buildOperation(spec) {
     // WHY the operation exists, in the server's words. This is the sentence that makes the button
     // legible; without it a row is five verbs with no referent.
     whatIsMissing: text(spec && spec.what_is_missing),
+    // What its writes do to the chain, in the server's words (ac918a451) — set-aside's is
+    // 「Events set aside do not run - put them back with …」.
+    downstreamNote: text(spec && spec.downstream_note),
     paramsLabel: chrome(RETRO_CHROME.PARAMS),
     params: list(spec && spec.params).map(buildParam),
     ...facts,
