@@ -62581,3 +62581,56 @@ RUN.md     [09-26 밤 1] — 멈춤 줄 찾는 명령 · 문장마다 뜻과 할
 순서        ⓪(5676b8bc6)이 왔을 때 이 다섯은 다 지어 시험 중이라 먼저 착지함
 다음        ⓪ 자동 확정 쓰기의 경로 -> ⑤ 기동 DDL(첫 박동 뒤 · lock_timeout 값 · 미룸의 뜻) -> 조인 쪽 나누기 부딪힘 셈 -> 선언 + @mapper
 ```
+
+---
+
+## [구현자 -> 총괄] ⓪ 자동 확정 쓰기의 경로 (5676b8bc6) 착수 — 센 자리 · 물음 셋 · 지금 운영 스위치는 RUN.md 에
+
+### 7977d1ec7 에 한 줄 덧붙임
+
+```
+전체 시험의 빨강 4 = test_the_delete_door_is_visible_to_the_outbox 넷 — crud 원문을 읽어 재는 시험이, 실행 도중 응용 레인의 crud.py 착지로 줄 번호가 어긋난 것. 혼자 돌리면 4 통과
+```
+
+### 기제 (코드로 확인)
+
+```
+체인 묶음    쓰기 전에 출처=chain_ingestion · 깊이=n 을 세움 (ingestion_worker 의 묶음 쓰기 자리 · rule_run.chain_envelope)
+crud        _apply_batch_updates_once 가 transaction_context 로 출처를 «첫 항목의 층 이름»으로 다시 세움 -> 봉투의 source_name
+            깊이는 안 건드림 — 그래서 자동 확정 쓰기도 «깊이는 싣고» 나감(④ 는 이미 참 · 깊이 상한은 셈)
+옵트인      _rule_accepts_event 가 source_name == chain_ingestion 만 체인으로 읽음 -> 층 이름이 다르면 옵트인을 안 물음
+범위        자동 확정만이 아님 — 출처 이름을 따로 적는 체인 맵퍼 전부(mapper_sdk.mapper(source_name=…) · 손으로 쓴 맵퍼의 SOURCE_NAME)가 같은 문을 지남
+코드의 말    cell_layer · replay 가 이미 「outbox 의 source_name 은 순환 필터의 CHANNEL 이지 출처 기록이 아니다」라고 적음 — 둘을 섞는 자리는 crud 배치 쓰기 «한 곳»
+```
+
+### 센 자리 — 명령 `git grep -n "request_source.set(\|transaction_context(" -- server ':!server/tests'`
+
+```
+출처(=경로)를 세우는 자리 8
+  API 미들웨어 (X-Source 머리 또는 "user")
+  crud 배치 쓰기 (첫 항목의 층 이름 — 섞는 자리) · batch_create · batch_delete
+  체인 묶음 쓰기 · rule_run.chain_envelope (chain_ingestion)
+  소급 R2 (cell_layer 철회) · R3 (replay 재계산) — 일부러 chain_ingestion (옵트인을 지나게)
+  + 아무도 안 세우는 쓰기(워처 · 리플레이가 넣는 트리거 사건)는 기본값 "user" 또는 배치 복사로 파일 이름
+「체인이 썼나」를 묻는 자리  _rule_accepts_event 하나 (fires 가 열한 곳에서 부름 · 큐 화면 포함) + chain/graph.py 의 미리보기가 가짜 사건에 source_name 을 적어 물음
+```
+
+### 지을 모양 (지시 그대로)
+
+```
+① 봉투에 경로 칸 — 새 컨텍스트 변수 하나, crud 는 «안 건드림». 층 이름(source_name)은 그대로
+② _rule_accepts_event 가 경로를 읽음 · graph 미리보기도 경로로
+③ 문마다 경로: 체인 묶음 · chain_envelope = chain · R2 · R3 = retroactive · 워처 = file · API = (물음 1)
+게이트 · 변이 · RUN.md 는 지시대로
+```
+
+### 여쭐 것
+
+```
+1  사람 과 API — HTTP 미들웨어는 사람의 격자 편집과 다른 클라이언트를 가를 수 없음(둘 다 같은 문). 경로 값 하나("api")로 둘지
+2  소급 — R2 · R3 는 오늘 «체인처럼» 읽혀 옵트인을 지남(코드가 일부러 그렇게 둠). 경로 retroactive 를 옵트인 쪽으로 읽어 오늘 동작을 지킬지(추천)
+   리플레이가 넣는 «트리거 사건»(only_rule)은 사람 편집처럼 경로 없이 둠 — 옵트인 쪽이면 리플레이가 제 규칙을 못 깨움
+3  착지 순간 이미 대기열에 있는 사건 — 경로 칸이 없음. 경로만 읽으면 옛 체인 사건이 «체인 아님»으로 읽혀 모든 규칙을 깨움
+   -> 경로 칸이 «없는» 사건만 오늘의 source_name 으로 읽는 한 줄을 둘지(데이터를 지키는 가드). 두 번째 읽는 법이라 여쭘
+그동안     물음 없이 되는 부분(경로 칸 · 체인 문 · 게이트 픽스처)부터 짓고, 답이 오면 한 착지로 닫음
+```
