@@ -27,6 +27,51 @@ logger = logging.getLogger("Chain.enrichment_dedup")
 RECOUNT_KEY_CHUNK = 500
 
 
+def _install_distinct_values_json():
+    """`unique_concat`'s SQL: a group's DISTINCT values as a JSON array, as TEXT (총괄 242dea225).
+
+    Values, not a joined string - the NULL/'' groups of one key are merged as SETS in
+    `_fold`, and the order and the join happen in Python, so PostgreSQL and SQLite hand back
+    the same text. `@compiles` like `crud._TemporalText`: the expression outlives any
+    connection that could say its dialect."""
+    from sqlalchemy import String
+    from sqlalchemy.ext.compiler import compiles
+    from sqlalchemy.sql.functions import FunctionElement
+
+    class _DistinctValuesJson(FunctionElement):
+        type = String()
+        name = "distinct_values_json"
+        inherit_cache = True
+
+    @compiles(_DistinctValuesJson)
+    def _default(element, compiler, **kw):
+        # SQLite: DISTINCT takes one argument here, which is all this needs.
+        return "json_group_array(DISTINCT %s)" % compiler.process(
+            list(element.clauses)[0], **kw)
+
+    @compiles(_DistinctValuesJson, "postgresql")
+    def _postgresql(element, compiler, **kw):
+        return "CAST(json_agg(DISTINCT %s) AS TEXT)" % compiler.process(
+            list(element.clauses)[0], **kw)
+
+    return _DistinctValuesJson
+
+
+_DistinctValuesJson = _install_distinct_values_json()
+
+
+def _joined(spec, values):
+    """A folded `unique_concat` set -> its cell: sorted by value, rendered by
+    `crud.clean_str_value`, joined. No value at all is absence (None), as for min/max."""
+    from chain.enrichment.config import AGGREGATION_SEPARATOR_DEFAULTS
+    from database import crud
+
+    texts = [crud.clean_str_value(value)
+             for value in sorted(values or (), key=lambda v: (isinstance(v, str), v))]
+    separator = spec.get("separator", AGGREGATION_SEPARATOR_DEFAULTS[spec["fn"]])
+    return separator.join(texts) if texts else None
+
+
 def _cell_value(data: dict, col: str):
     """outbox payload의 data[col] 셀(dict 또는 스칼라)에서 실제 값을 꺼낸다."""
     cell = data.get(col)
@@ -74,7 +119,7 @@ def _aggregate_affected_keys(db, source_table: str, decision_key: list,
     인덱스를 타는 `IN`이고, 공백 술어는 그 위의 필터로만 얹힌다(공백 술어 자체는
     CASE라 단독으론 인덱스를 못 탄다).
     """
-    from sqlalchemy import and_, func, tuple_
+    from sqlalchemy import and_, case, func, tuple_
     from database import crud, models
 
     model = models.DYNAMIC_TABLES.get(source_table)
@@ -99,6 +144,13 @@ def _aggregate_affected_keys(db, source_table: str, decision_key: list,
             raise ValueError(
                 f"aggregation '{name}' reads column '{column}', which table "
                 f"'{source_table}' does not have")
+        if fn == "unique_concat":
+            # Blank is the shared predicate's answer (crud), turned to NULL so no dialect
+            # counts it; `_joined` drops the one NULL the array may then carry.
+            exprs.append(_DistinctValuesJson(case(
+                (crud.blank_sql_condition(crud.column_text_sql(source_col)), None),
+                else_=source_col)))
+            continue
         exprs.append(func.min(source_col) if fn == "min" else func.max(source_col))
 
     by_pattern = {}
@@ -137,6 +189,12 @@ def _aggregate_affected_keys(db, source_table: str, decision_key: list,
                 bucket = results.setdefault(key, {})
                 for name, value in zip(names, row[len(cols):]):
                     bucket[name] = _fold(aggregations[name], bucket.get(name), value)
+    # A set is only a set until every storage of the key is folded - then it is the cell.
+    joins = [n for n in names
+             if isinstance(aggregations[n], dict) and aggregations[n]["fn"] == "unique_concat"]
+    for bucket in results.values():
+        for name in joins:
+            bucket[name] = _joined(aggregations[name], bucket.get(name))
     return results
 
 
@@ -145,6 +203,10 @@ def _fold(spec, running, value):
     fn = spec["fn"] if isinstance(spec, dict) else spec
     if fn == "count":
         return int(running or 0) + int(value or 0)
+    if fn == "unique_concat":
+        import json
+
+        return (running or set()) | {v for v in json.loads(value or "[]") if v is not None}
     if value is None:
         return running
     if running is None:
@@ -309,7 +371,7 @@ def map_enrichment_dedup(db, payloads, rule=None):
                 upd_cols[col] = v
         for col, spec in aggregations.items():
             if col in derived_cols and col not in target_fields:
-                # ⚠️ count 가 없으면 «0», min/max 가 없으면 «None». 0 은 「그 키의
+                # ⚠️ count 가 없으면 «0», 값 집계(min/max/unique_concat)가 없으면 «None». 0 은 「그 키의
                 # 행이 없다」는 참인 답이지만, 값 집계에서 0 은 지어낸 값이다.
                 fn = spec["fn"] if isinstance(spec, dict) else spec
                 default = 0 if fn == "count" else None

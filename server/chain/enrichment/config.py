@@ -15,6 +15,8 @@
     list_columns                               선택: 워크리스트 표시 단서
     aggregations                               선택(서버 전용): 파생행에 두는 그룹 집계
         {"chip_count": "count", "t_min": {"fn": "min", "column": "t"}}   count | min | max
+        {"wafer_ids": {"fn": "unique_concat", "column": "wafer_id", "separator": ", "}}
+            빈 값 빼고 · 중복 없이 · 값 순서로 이어붙임. separator 는 선택(기본 ", ")
         이 이름들은 참조뷰에서 `:이름` 으로 바인드할 수 있다 (판단키와 같이)
     enabled                                    선택 (기본 true)
     reference_views                            선택: 쿼리는 서버에만, 클라엔 label 만 노출
@@ -268,9 +270,11 @@ def _resolve_view_query(view: dict) -> tuple:
 
 
 #: 집계로 쓸 수 있는 함수. `count` 는 행을 세므로 «컬럼이 없어도» 되고, 나머지는 «있어야» 한다.
-AGGREGATION_FUNCTIONS = ("count", "min", "max")
+AGGREGATION_FUNCTIONS = ("count", "min", "max", "unique_concat")
 #: 컬럼 없이 설 수 있는 유일한 함수 — 세는 대상이 「행」이라서다.
 AGGREGATIONS_WITHOUT_COLUMN = ("count",)
+#: `separator` 를 받는 함수와 그 기본값 (총괄 242dea225).
+AGGREGATION_SEPARATOR_DEFAULTS = {"unique_concat": ", "}
 
 
 def _parse_aggregation(name: str, spec):
@@ -295,6 +299,15 @@ def _parse_aggregation(name: str, spec):
         return None, (f"aggregation '{name}' declares fn={fn!r}; supported: "
                       f"{', '.join(AGGREGATION_FUNCTIONS)}")
 
+    separator = spec.get("separator")
+    if "separator" in spec and fn not in AGGREGATION_SEPARATOR_DEFAULTS:
+        return None, (f"aggregation '{name}': fn={fn!r} takes no 'separator' (got "
+                      f"{separator!r}) - only {', '.join(AGGREGATION_SEPARATOR_DEFAULTS)} "
+                      f"joins values")
+    if "separator" in spec and not isinstance(separator, str):
+        return None, (f"aggregation '{name}': 'separator' must be text, not "
+                      f"{type(separator).__name__}")
+
     column = spec.get("column")
     if fn in AGGREGATIONS_WITHOUT_COLUMN:
         # `{"fn": "count", "column": "x"}` 은 「x 가 빈 행은 안 센다」로 읽힐 수 있는데
@@ -307,6 +320,10 @@ def _parse_aggregation(name: str, spec):
     if not isinstance(column, str) or not column.strip():
         return None, (f"aggregation '{name}': fn={fn!r} needs a source 'column' to "
                       f"aggregate - it has no meaning over rows alone")
+    if fn in AGGREGATION_SEPARATOR_DEFAULTS:
+        return {"fn": fn, "column": column.strip(),
+                "separator": AGGREGATION_SEPARATOR_DEFAULTS[fn] if separator is None
+                else separator}, None
     return {"fn": fn, "column": column.strip()}, None
 
 

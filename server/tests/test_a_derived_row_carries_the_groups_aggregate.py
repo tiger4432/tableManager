@@ -40,7 +40,7 @@ TABLES = {
         "composite_key_source": ["lot"],
         "column_types": {"lot": "string", "bonding_time_min": "string",
                          "bonding_time_max": "string", "bond_count": "number",
-                         "wafer_id": "string"},
+                         "wafer_id": "string", "wafer_ids": "string"},
     },
 }
 
@@ -54,6 +54,7 @@ RULE = {
             "bonding_time_min": {"fn": "min", "column": "bonding_time"},
             "bonding_time_max": {"fn": "max", "column": "bonding_time"},
             "bond_count": "count",
+            "wafer_ids": {"fn": "unique_concat", "column": "wafer_id"},
         },
         "reference_views": [{
             "label": "bonds at the group's first time",
@@ -238,3 +239,89 @@ def test_the_old_string_form_still_loads_unchanged():
 
     assert rule is not None, why
     assert rule["aggregations"] == {"bond_count": {"fn": "count", "column": None}}
+
+
+# ── 총괄 242dea225 — unique_concat: a group's values, blanks out, once each, in value order ──
+
+SPREAD = [("B1", "W2"), ("B2", "W1"), ("B3", "W2"), ("B4", ""), ("B5", None), ("B6", "w1")]
+
+
+def test_the_derived_row_joins_the_groups_distinct_values_and_a_late_row_adds_one(env):
+    """Duplicates once, blank ('' and NULL) out, case-different values both kept, sorted by
+    value; a later transaction wakes the key and the whole group is read again."""
+    _seed(env, [{"bond_id": b, "lot": "LOT-A", "bonding_time": "2026-09-10T12:00:00",
+                 **({} if w is None else {"wafer_id": w})} for b, w in SPREAD], "tx-uc-1")
+    _run_chain(env, "tx-uc-1")
+    assert [r.wafer_ids for r in _derived(env)] == ["W1, W2, w1"]
+
+    _seed(env, [{"bond_id": "B7", "lot": "LOT-A", "bonding_time": "2026-09-10T13:00:00",
+                 "wafer_id": "W0"}], "tx-uc-2")
+    _run_chain(env, "tx-uc-2")
+
+    rows = _derived(env)
+    assert [r.wafer_ids for r in rows] == ["W0, W1, W2, w1"]
+    assert rows[0].bond_count == 7 and rows[0].bonding_time_min == "2026-09-10T12:00:00"
+
+
+def _insert(db, rows):
+    model = models.DYNAMIC_TABLES["s129_bond_src"]
+    for bond_id, wafer_id in rows:
+        db.add(model(row_id="r-" + bond_id, business_key_val=bond_id, bond_id=bond_id,
+                     lot="LOT-A", wafer_id=wafer_id))
+    db.flush()
+
+
+def _concat(db, spec):
+    from chain.enrichment.mapper import _aggregate_affected_keys
+
+    return _aggregate_affected_keys(db, "s129_bond_src", ["lot"], {("LOT-A",): ("LOT-A",)},
+                                    {"x": spec})[("LOT-A",)]["x"]
+
+
+def test_the_separator_is_the_declared_one(env):
+    _insert(env, SPREAD)
+
+    assert _concat(env, {"fn": "unique_concat", "column": "wafer_id",
+                         "separator": " | "}) == "W1 | W2 | w1"
+
+
+@pytest.mark.pg
+def test_postgresql_and_sqlite_give_the_same_string(env, pg_session):
+    """The order and the join are Python's; each dialect only hands back its distinct values."""
+    table = models.DYNAMIC_TABLES["s129_bond_src"].__table__
+    table.create(bind=pg_session.get_bind(), checkfirst=True)
+    try:
+        _insert(pg_session, SPREAD)
+        _insert(env, SPREAD)
+        spec = {"fn": "unique_concat", "column": "wafer_id", "separator": ", "}
+
+        assert (_concat(pg_session, spec), _concat(env, spec)) == ("W1, W2, w1",) * 2
+    finally:
+        pg_session.rollback()
+        table.drop(bind=pg_session.get_bind(), checkfirst=True)
+
+
+def test_the_default_separator_is_written_into_the_declaration():
+    raw = {"source_table": "s129_bond_src", "derived_table": "s129_bond_derived",
+           "decision_key": ["lot"], "target_fields": ["wafer_id"],
+           "aggregations": {"wafer_ids": {"fn": "unique_concat", "column": "wafer_id"}}}
+
+    rule, why = enrichment.config._validate_rule("r", raw, TABLES)
+
+    assert rule is not None, why
+    assert rule["aggregations"] == {
+        "wafer_ids": {"fn": "unique_concat", "column": "wafer_id", "separator": ", "}}
+
+
+@pytest.mark.parametrize("spec", [{"fn": "count", "separator": ";"},
+                                  {"fn": "min", "column": "bonding_time", "separator": ";"}])
+def test_a_separator_on_a_function_that_joins_nothing_is_refused_by_name(spec):
+    why = _refusal({"agg": spec})
+
+    assert "agg" in why and spec["fn"] in why and "separator" in why, why
+
+
+def test_a_separator_that_is_not_text_is_refused():
+    why = _refusal({"wafer_ids": {"fn": "unique_concat", "column": "wafer_id", "separator": 1}})
+
+    assert "wafer_ids" in why and "separator" in why, why
