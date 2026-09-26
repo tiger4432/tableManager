@@ -147,7 +147,7 @@ class GenericScriptRunnerCollector:
     그 표준 출력(stdout)을 CSV 파일로 가공하여 raws/ 폴더에 원자적 적재하는 범용 래퍼 컬렉터입니다.
     """
     def __init__(self, table_name: str, script_path: str, cron_expression: str, filename_prefix: str, server_dir: str = None,
-                 window: str = None, window_format: str = None):
+                 window: str = None, window_format: str = None, session_factory=None):
         self.table_name = table_name
         self.script_path = script_path
         self.cron_expression = cron_expression
@@ -157,6 +157,8 @@ class GenericScriptRunnerCollector:
         self.window_length = window
         self.window_format = window_format
         self.run_window = None
+        # Where a list marker reads the grid (None = the product's database).
+        self.session_factory = session_factory
         self.logger = logging.getLogger(f"Scheduler.ScriptRunner.{table_name}.{os.path.basename(script_path)}")
         self.last_run = None
         self.last_status = "PENDING"
@@ -203,6 +205,13 @@ class GenericScriptRunnerCollector:
 
         self.logger.info(f"Triggering execution of script '{os.path.basename(self.script_path)}'...")
 
+        # Filled ONCE, before either path runs: a list that refuses stops the run before the
+        # script starts, and both paths below see this same text.
+        with open(self.script_path, "r", encoding="utf-8") as f:
+            original = f.read()
+        filled = fill_markers(original, self.run_window, self.window_format,
+                              self.session_factory)
+
         # 1. exec()를 통한 인스턴스 전역 변수 'out' 가로채기 감지 시도
         #
         # [Contract] This block keeps THREE outcomes strictly separate:
@@ -230,10 +239,7 @@ class GenericScriptRunnerCollector:
             if script_dir not in sys.path:
                 sys.path.insert(0, script_dir)
 
-            with open(self.script_path, "r", encoding="utf-8") as f:
-                code_content = f.read()
-            if self.run_window:
-                code_content = fill_markers(code_content, self.run_window, self.window_format)
+            code_content = filled
 
             # [REQUIRED] Pass ONE dict for both globals and locals. Two distinct
             # dicts make exec() run the file with class-body scoping: module-level
@@ -336,12 +342,10 @@ class GenericScriptRunnerCollector:
             )
 
         # 2. [폴백 모드] subprocess 표준 출력(stdout, print) 캡처 기동
-        # A windowed run gives the child the filled copy; the original file is never written.
+        # A filled script gives the child the filled copy; the original file is never written.
         run_path = self.script_path
         try:
-            if self.run_window:
-                with open(self.script_path, "r", encoding="utf-8") as f:
-                    filled = fill_markers(f.read(), self.run_window, self.window_format)
+            if filled != original:
                 run_path = filled_copy_path(self.script_path)
                 with open(run_path, "w", encoding="utf-8") as f:
                     f.write(filled)
@@ -392,14 +396,22 @@ class GenericScriptRunnerCollector:
 WINDOW_ZONE = ZoneInfo("Asia/Seoul")
 #: How a window is written into a script whose header has no `# window_format:`.
 DEFAULT_WINDOW_FORMAT = "%Y-%m-%d %H:%M:%S"
+#: `{{LIST:table.column}}` - the grid's values of that column, as a quoted SQL list.
+LIST_MARKER = re.compile(r"\{\{LIST:([A-Za-z0-9_]+)\.([A-Za-z0-9_]+)\}\}")
+#: The most values a list marker carries. A longer list refuses the run rather than being cut.
+LIST_MARKER_CAP = 1000
+
+
+class CollectorRefused(ValueError):
+    """A run that must not start. Its message is the one sentence the Auto Update tab shows."""
 
 
 def window_length(declared: str) -> timedelta:
     """`# window: 1d` -> its length. Days or hours; anything else is refused by name."""
     match = re.fullmatch(r"\s*(\d+)\s*([dh])\s*", str(declared or ""))
     if not match or int(match.group(1)) <= 0:
-        raise ValueError("'# window: %s' is not a length - write it as <n>d or <n>h"
-                         % (declared,))
+        raise CollectorRefused("'# window: %s' is not a length - write it as <n>d or <n>h"
+                               % (declared,))
     amount = int(match.group(1))
     return timedelta(days=amount) if match.group(2) == "d" else timedelta(hours=amount)
 
@@ -411,13 +423,59 @@ def usual_window(length: timedelta, now: datetime = None) -> tuple:
     return end - length, end
 
 
-def fill_markers(text: str, window: tuple, window_format: str = None) -> str:
+def _list_literal(db, table: str, column: str) -> str:
+    """The grid's values of `table.column` as `'a','b'` - read through the value door the
+    grid's own suggestions use, asked for up to LIST_MARKER_CAP values. Blank values are
+    not in it; an empty, cut or unreadable list refuses the run by name."""
+    import value_suggest
+
+    marker = "{{LIST:%s.%s}}" % (table, column)
+    settings = dict(value_suggest.resolve_settings(value_suggest.load_config()),
+                    max_limit=LIST_MARKER_CAP, min_prefix_length=0)
+    settings["max_probe_values"] = max(settings["max_probe_values"], LIST_MARKER_CAP + 1)
+    try:
+        got = value_suggest.suggest_values(db, table, column, prefix="",
+                                           limit=LIST_MARKER_CAP, settings=settings)
+    except value_suggest.SuggestValidationError:
+        raise CollectorRefused("%s is not a column the grid can list - declare '%s.%s' in "
+                               "table_config (text or number). The run did not start."
+                               % (marker, table, column))
+    if got.get("unavailable_reason"):
+        raise CollectorRefused("%s could not be read (%s). The run did not start."
+                               % (marker, got["unavailable_reason"]))
+    if got.get("truncated"):
+        raise CollectorRefused("%s has more than %d values, so the list would be cut. The run "
+                               "did not start." % (marker, LIST_MARKER_CAP))
+    if not got.get("values"):
+        raise CollectorRefused("%s has no value in '%s'. The run did not start."
+                               % (marker, table))
+    return ",".join("'%s'" % str(value).replace("'", "''") for value in got["values"])
+
+
+def fill_markers(text: str, window: tuple = None, window_format: str = None,
+                 session_factory=None) -> str:
     """The ONE place a collector script's markers are filled - every marker kind goes
     through here, so a script sees one set of values whichever path runs it."""
-    fmt = window_format or DEFAULT_WINDOW_FORMAT
-    start, end = window
-    return (text.replace("{{WINDOW_START}}", start.strftime(fmt))
-                .replace("{{WINDOW_END}}", end.strftime(fmt)))
+    if window:
+        fmt = window_format or DEFAULT_WINDOW_FORMAT
+        start, end = window
+        text = (text.replace("{{WINDOW_START}}", start.strftime(fmt))
+                    .replace("{{WINDOW_END}}", end.strftime(fmt)))
+    if LIST_MARKER.search(text):
+        if session_factory is None:
+            from database.database import SessionLocal as session_factory
+        db = session_factory()
+        read = {}
+
+        def literal(match):
+            if match.group(0) not in read:        # the same marker twice is read once
+                read[match.group(0)] = _list_literal(db, match.group(1), match.group(2))
+            return read[match.group(0)]
+        try:
+            text = LIST_MARKER.sub(literal, text)
+        finally:
+            db.close()
+    return text
 
 
 def filled_copy_path(script_path: str) -> str:
@@ -742,7 +800,9 @@ class MultiDiscoveryScheduler:
         except Exception as err:
             import traceback
             collector.last_status = "FAIL"
-            collector.last_error = traceback.format_exc()
+            # A named refusal is its one sentence on the Auto Update tab, not a traceback.
+            collector.last_error = (str(err) if isinstance(err, CollectorRefused)
+                                    else traceback.format_exc())
             logger.error(f"Collector Execution Failed for table '{collector.table_name}': {err}")
         finally:
             # 🔴 [총괄 c44a7d2e4 ④] A RELOAD MID-RUN REPLACES THE REGISTERED OBJECT, and the file
@@ -1228,7 +1288,15 @@ class MultiDiscoveryScheduler:
         except KeyboardInterrupt:
             logger.info("Auto Update Scheduler daemon terminated gracefully.")
 
+def init_models():
+    """The dynamic models a list marker reads the grid through - the watcher and the chain
+    worker build them at start too. Without them the value door refuses every table."""
+    from database import crud, models
+    models.init_dynamic_models(crud.TABLE_CONFIG)
+
+
 if __name__ == "__main__":
+    init_models()
     # 5초 주기로 스케줄 타이밍 검사
     scheduler = MultiDiscoveryScheduler(check_interval=5)
     scheduler.run()
