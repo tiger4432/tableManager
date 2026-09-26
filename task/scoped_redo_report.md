@@ -61134,3 +61134,32 @@ RSS 최고     160.1 MB · 159.9 MB
 ```
 재기동함  워처 pid 37692 죽임 09:13:15 -> pid 34320 09:13:15 · 기동 스윕: 10 candidate file(s) in raws/ - 10 already concluded (tier-1, batched), 0 dispatched. · 오류 줄 없음
 ```
+
+---
+
+## [구현자 -> 총괄] 5 끝맺음 — 시험이 시험 DB 의 public 에 기댐 · 안 셋 (8e331ca17) — 짓지 않음
+
+### 셈
+
+```
+빨강의 자리   test_a_ledger_source_reads_a_table_that_has_row_id::test_a_row_says_which_sources_translated_it_and_a_new_row_says_none
+             첫 단언 「색인 표가 아직 없을 때 ledger_sources 키가 없다」 — main._attach_ledger_sources -> LedgerStore.sources_by_row 가
+             이름만으로(스키마 없이) 표를 읽음 -> 연결의 검색 경로 scratch,public 에서 public 의 ledger_source_row_ref 를 찾음 -> 키가 [] 로 붙음
+검색 경로     tests/support/isolated_pg.scratch_connect_args — public 을 뒤에 둠. 이유는 그 독스트링: pg_trgm 은 DB 에 하나뿐이고 public 에 있을 수 있음
+             -> 시험 쪽에서 public 을 못 뺌(빼면 gin_trgm_ops 가 UndefinedObject — 측정 기록이 독스트링에 있음)
+같은 DB 인 까닭  isolated_pg.resolve_url 의 되돌이 = declared_qa_database() = devenv.py 의 QA_DB_URL — 분리 환경의 DB 가 곧 시험 DB
+시험이 DB 에서 쓰는 것  제 scratch 스키마를 만들고 지움 + public 의 pg_trgm 만 읽음 (이 파일 기준. 전 PG 시험을 다 연 것은 아님)
+assy_qa       21 GB · public 표 106 · 남은 scratch 스키마 13 (죽은 실행이 남긴 것으로 보임 — 보고만)
+```
+
+### 안 셋
+
+| 안 | 무엇 · 운영자가 하는 일 | 좋은 점 | 위험 | 크기 |
+|---|---|---|---|---|
+| ㄱ **추천** | 시험 전용 «빈» DB. resolve_url 의 되돌이가 그 DB 를 가리키고, 없으면 시험이 한 번 만듦(pg_trgm 설치 포함). 분리 환경은 assy_qa 그대로. 사람이 할 일 없음 | 두 쓰임이 갈라짐 — 분리 환경이 무엇을 만들든 시험이 못 봄. 복사 비용 0 | PG 시험 중 assy_qa public 의 스냅숏 데이터에 기대는 것이 있으면 빨강(안 셌다) · CREATE DATABASE 권한 필요 | 선언 한 자리 + 만드는 한 자리. 줄 수 안 쟀다 |
+| ㄴ | 분리 환경 프로세스의 검색 경로를 자기 스키마 먼저로(devenv 가 DATABASE_URL 에 싣음) — 분리 환경이 «새로 만드는» 표가 그 스키마로 | devenv 한 자리 | 비시험 코드 17 파일이 'public' 을 박아 둠(예: chain/join_key_index.py · chain/unique_key.py 의 nspname = 'public') -> 분리 환경이 운영과 다르게 돎. 분리 환경이 public 의 «기존» 표에 쓰는 행은 여전히 시험 DB 에 | 한 줄. 영향은 안 쟀다 |
+| ㄷ | 그 시험 하나 — 「표가 아직 없을 때」 칸만 scratch 만 보는 연결로 잼 | 가장 작음 | 같은 DB 를 두 쓰임이 나누는 원인은 남음 — 다른 「없음」 단언이 같은 식으로 깨질 수 있음(그런 단언 수는 안 셌다) | 시험 한 파일 |
+
+```
+여쭐 것   ㄱ 로 가면 — 짓기 전에 PG 시험 전부에서 «public 의 스냅숏 표를 읽는 것»이 있는지 먼저 셉니다(있으면 멈추고 보고)
+```
