@@ -33935,3 +33935,67 @@ python -c "import sys,pytest;P=type('P',(),{'pytest_collection_modifyitems':lamb
         제 결과는 알려진 일곱 그대로라 안 무너졌지만, 그쪽 실행은 무너졌을 수 있습니다(dc3b13856 의 표 — 한쪽만 무너짐)
         13:57 의 130 초는 총괄 실행과 겹친 것이라 버립니다
 ```
+
+---
+
+## [응용 -> 총괄] fe020274d 받음 — 짓기 전 셈 · 안 셋 · 여쭐 것 둘 (짓지 않았음) (09-26 16:35)
+
+### 박스 경고 — 지금 (chain_worker.log 09-26 09:14)
+
+```
+key                 inventory_confirmed · inventory_confirmed:target
+allow_replace_map   dt_log_to_core_usage_map · dt_inventory_to_core_usage_map
+allow_retraction    dt_inventory_to_standard_dt_map (+ 매퍼 인자 셋: source_job_column · target_job_column · trigger_job_column)
+매퍼 인자만        lot_event_to_lot_slot_wafer 6 (지시의 「넷」 아님) · dt_log_to_primary_core_frame 11 · dt_metadata_to_dt_inventory 1
+```
+
+### 셈 — 제품이 체인 규칙 최상위에서 읽는데 목록에 없는 이름 = 셋
+
+```
+key                 chain/synthesis.py (rule.get("key") 둘) · 쓰는 곳 chain/rule_shape.py as_chain_rule
+allow_replace_map   dt_map_derivation.require_scoped_batches_allowed(rule)
+allow_retraction    같은 함수 + 그 아래 한 자리 — ingestion_worker 가 자기 체인 규칙을 그대로 넘김
+매퍼가 params 로 셋 중 하나를 읽는 곳   0 (제품 · 박스 매퍼 grep) -> 목록에 넣어 params_of 에서 빠져도 매퍼 입력 무변
+```
+
+```
+세는 법이 곧 게이트라 먼저 적습니다
+   변수 이름 rule 로 세면  43 이름 — 원장 · 인리치 · 파서 · 맵 규칙도 rule 이라 부름(자리를 셈)
+   체인 전용 칸(trigger_columns · mapper_module · is_batch …)을 읽는 dict 로만 세면  dt_map_derivation 을 놓침(그 함수는 그 칸을 안 읽음)
+   -> «호출을 따라가는» AST: 체인 전용 칸을 읽는 dict + 그 dict 를 인자로 받는 함수의 매개변수(모듈 너머 한 단계 이상)
+      다른 두 문법의 칸은 기존 시험 test_a_chain_rules_top_level_cells_have_one_list 의 BELONGING_TO_ANOTHER_GRAMMAR 를 부름
+```
+
+### 부작용 — 목록이 «골격 둘»을 짓습니다
+
+```
+routing_keys()  -> 옛 문법 골격 root(26 칸) 그대로
+                -> 통합 골격 unified_root = 자기 칸 7 + axis 13 (axis = routing − rule_shape.CHAIN_MODELLED)
+key 를 목록에만 넣으면  unified_root 에 key 가 «두 번»(자기 칸 + axis)
+   -> key 는 CHAIN_MODELLED 로 접어야 함(from_chain_rule 이 key 를 접음)
+   -> as_chain_rule 이 key 를 join 갈래 «안»에서만 씀 — 옛 문법 규칙의 key 는 왕복에서 빠짐 -> 갈래 밖으로
+allow_replace_map · allow_retraction 을 넣으면  두 골격에 칸이 하나씩 — 체인 선언창에 두 칸이 새로 그려짐
+   (allow_chain_trigger 와 같은 자리) · chain_skeleton.json 재생성 · 클라 하니스
+```
+
+### 안 셋
+
+| 안 | 무엇 | 좋은 점 | 위험 | 크기 |
+|---|---|---|---|---|
+| ㄱ **추천** | 권한 둘은 RULE_ROUTING_OPTIONAL 에(allow_chain_trigger 옆). key 는 rule_shape 가 저자인 「번역된 규칙이 params 옆에 싣는 선언 칸」(오늘 key 하나) — as_chain_rule 이 그것으로 쓰고 · CHAIN_MODELLED 에 들고 · routing_keys() 가 늦은 import 로 붙임. 게이트 = 호출을 따라가는 AST 시험 | 목록 저자 하나 · 골격이 스스로 앎 | 선언창에 칸 둘 생김 · 골격 JSON 바뀜 | 안 쟀다 — 파일 chain_bindings.py · chain/rule_shape.py · chain_skeleton.json · 새 시험 하나 · 기존 시험 몇 줄 |
+| ㄴ | 이름(rule) + 체인 전용 칸으로 세는 AST 시험 | 짓기 쉬움 | 위 실측 — 43 이름 · dt_map_derivation 놓침. 자리를 셈 | 작음 |
+| ㄷ | 경고만 — flat_param_cells 가 셋을 빼는 따로 목록 | 가장 작음 | 목록 둘(지시가 금함) · 골격은 여전히 권한을 모름 | 가장 작음 |
+
+```
+박스 후 기대(ㄱ)  key · allow_replace_map · allow_retraction 줄 0 · 매퍼 인자 줄 그대로(6 · 11 · 3 · 1)
+안 건드림         구현자 C 의 파일(run_auto_update.py · admin/retroactive.py · config_resolve_report.py · 스케줄러 쪽)
+재기동            체인 워커 · API — 알림 먼저
+```
+
+### 여쭐 것
+
+```
+① 체인 선언창에 allow_replace_map · allow_retraction 두 칸이 새로 보이는 것(allow_chain_trigger 처럼) — 그대로 가도 되나
+② 「골격에서 얻음」을 이렇게 읽었습니다: key 의 저자는 rule_shape(골격의 key 칸도 rule_shape.KEY_CELLS 로 지음)이고
+   routing_keys() 가 rule_shape 에서 가져옴 — 이 읽기가 맞나
+```
