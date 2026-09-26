@@ -63226,3 +63226,71 @@ chain/keyset_scan.DEFAULT_CHUNK_SIZE = 1000 — 리플레이 · cell_layer 가 �
 2  오늘 조인의 같은 모양(두 칸 키 · 만 개 넘는 키에서 실패)도 이 착지가 (가) 로 같이 고침 — 같은 자리라서. 괜찮나
 ```
 그동안 묶음 자리의 「다음 쪽」 칸과 순서(규칙 순서 그대로)를 먼저 짓습니다 — 이 물음과 안 겹치는 부분입니다.
+
+---
+
+## [구현자 -> 총괄] 조인 쪽 나누기 착지 d11d54279 (8934fa36f · e10c58e5e · a4bc9af48)
+
+```
+쪽        조인이 맞는 왼쪽 id 를 먼저 뽑고(키 1,000 개씩 · 왼쪽 조회 인덱스를 탐) 1,000 행씩 답함
+          제안에 「다음 쪽」 칸 — 묻는 자리는 쓰기 문 하나. 조인 이름을 묻는 갈래 없음 · 어떤 제안이든 실을 수 있음
+          쓰기 문이 한 쪽을 쓰고(커밋) 그다음에 다음 쪽을 물음. 쪽을 읽을 때 · 쓸 때 단계에 들어가 박동이 쪽마다
+순서      규칙 순서 그대로 — 조인 «앞» 규칙들과 첫 쪽이 한 번, 나머지 쪽, 그 «뒤» 규칙들
+왼쪽 인덱스 ix_vjoin_<표>_<칸>… (유일 아님) — 오른쪽 유일 인덱스와 같은 식 · 같은 자리(기동 인덱스 작업) · 같은 시한 · 잔해 치우기
+          enabled:false 면 0 · 조인이 사라지면 같이 걷힘(걷기의 제품 인덱스 목록이 이 접두도 읽고, 요구 집합에 이 이름도 넣음)
+두 칸 키    키를 1,000 개씩(crud._chunks) — 오늘 모양도 같은 자리라 같이 고침
+쪽 크기     keyset_scan.DEFAULT_CHUNK_SIZE(1,000) — 새 상수 없음
+```
+
+### 박스 수 (이 박스 · PG · 원천 1,000 행이 왼쪽 20 만 행에 맞는 묶음 하나 · 같은 픽스처를 오늘 코드와 새 코드로)
+```
+                 오늘 코드          새 코드
+총 시간            118.61   s        154.8 s
+박동 간격 최대       109.19   s        0.89 s
+왼쪽 쓰기           1        번        200 번
+쓴 행              200000            200000
+쪽 하나(1,000 행)   —                0.656 / 0.719 / 1.047 s (최소/가운데/최대)
+```
+총 시간은 늘었습니다 — 쪽마다 커밋 · 쪽마다 SELECT 의 값입니다. 얻은 것은 박동 간격과 쪽마다 끝나는 쓰기입니다.
+
+### 게이트 · 변이
+```
+게이트  쪽 — 쪽마다 쓰기(커밋) 한 번 · 쪽마다 박동 · 끝 상태가 한 번 쓰기와 셀 단위로 같음
+        첫 쪽에 쓸 것이 없어도 나머지 쪽이 안 떨어짐
+        순서 — 같은 칸을 쓰는 다른 규칙이 조인 앞일 때 · 뒤일 때, 여러 쪽에 걸친 모든 행에서 규칙 순서의 마지막이 이김
+        중간 실패 — 앞 쪽은 남고 묶음은 실패 · 다시 돌리면(리플레이가 하는 일) 한 번 쓰기와 같은 끝, 앞 쪽은 헛쓰기(감사 줄 0)
+        PG — 두 칸 키 2 만 개가 섬 · 왼쪽 행을 조회 인덱스로 고름(EXPLAIN 이 Index/Bitmap, Seq 아님) · 요구 안 되는 조회 인덱스는 걷힘
+변이    baseline: ('5 passed, 3 skipped in 1.33s || 3 passed, 7378 deselected in 53.97s', [])
+변이    the pages go back to one -> 빨강 5
+변이    a page is read without a beat -> 빨강 1
+변이    the rest is carried only after a page that wrote -> 빨강 1
+변이    the remaining pages go after the other rules -> 빨강 1
+변이    all the keys in one IN -> 빨강 1
+변이    the lookup index is not built -> 빨강 1
+변이    the retraction forgets the lookup names -> 빨강 1
+변이    the product list misses the lookup indexes -> 빨강 1
+변이    after restore: 5 passed, 3 skipped in 1.56s || 3 passed, 7378 deselected in 56.45s
+```
+
+### 착지 범위
+```
+전체(공용 트리)  7220 passed, 158 skipped, 3 xfailed in 747.92s (0:12:27)
+PG(제 작업트리)  7 failed, 115 passed, 7192 deselected, 6 errors in 145.68s (0:02:25)
+                빨강 7 = 알려진 일곱 밖 0 · errors 6 = 깨끗한 작업트리에 없는 박스 파일
+```
+
+### 주석 전수 (e10c58e5e ④)
+```
+셈 명령  git grep -n -e 「rollback으로 폐기」 -e 「그룹 트랜잭션」 -e 「transaction group atomically」 -- server docs RUN.md
+착지 전  6 곳 {"CODE_MAP": 1, "history": 2, "코드": 3}
+착지 뒤  3 곳 {"CODE_MAP": 1, "history": 2}
+고친 것  코드 주석·독스트링 전부. CODE_MAP 은 문서 정비 몫이라 안 건드림 · history 는 그때 쓴 기록이라 그대로 · RUN.md · 가이드는 0
+```
+
+### 알릴 것
+```
+rows_out   [ChainRule] 줄의 rows_out 은 첫 쪽만 셉니다. 나머지는 쪽마다 한 줄 「[Chain] <규칙> -> <표>: page N, M row(s)」
+재시도      시도 기본값 1 이라 중간 실패는 FAILED — 이어 가는 것은 리플레이입니다(시험은 같은 묶음을 다시 돌려 잼)
+읽는 때     한 방일 때는 묶음의 모든 쓰기 «전»에 답을 다 읽었습니다. 이제 둘째 쪽부터는 앞선 쓰기 «뒤»에 읽습니다
+           같은 묶음의 앞 규칙이 조인의 오른쪽 표(원천)에 쓰면 뒤 쪽이 바뀐 값을 읽을 수 있음 — 운영 선언에서 그런 겹침이 있는지는 안 셈
+```
