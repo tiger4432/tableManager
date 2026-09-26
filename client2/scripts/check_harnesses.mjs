@@ -101,6 +101,10 @@ const NOT_A_HARNESS = new Map([
     'an in-page gate (lead 482e9956f): a margin is a rendered fact and there is no headless '
     + 'browser here, so it runs in the admin page, not under node. Run it in the page: '
     + "(await import('/tests/box_margin_gate.mjs')).boxMarginGate() — and .boxMarginMutants()"],
+  ['base_element_census.mjs',
+    'an in-page census (lead a5e732537 ①): how many looks each base element has, from computed '
+    + 'styles, so it runs in a page. It asserts nothing. Run it in the page: '
+    + "(await import('/tests/base_element_census.mjs')).baseElementCensus()"],
 ]);
 
 const KNOWN_RED = new Map([
