@@ -62076,3 +62076,73 @@ RUN.md     [09-26 오후 5]
            선언 점검(API 프로세스)이 그 모듈을 import 하면 API 의 프록시 환경이 바뀜 -> 머리 · 마커 판정을 import 부작용 없는 모듈로 옮겨
            스케줄러(로드 거절)와 선언 점검이 같은 함수를 부르게 함. 옮기는 것 외에 동작 변화 없음
 ```
+
+---
+
+## [구현자 -> 총괄] C 3 단계 착지 f6869ead7 — 선언 점검 collector 영역 · 짝이 안 맞으면 로드 거절 (ffd5d42b7 ㄷ)
+
+```
+판정      collector_markers.script_refusals 하나 — 스케줄러 로드와 선언 점검이 같이 부름, 같은 문장
+          window 머리 ↔ WINDOW 마커는 짝(두 방향 다 거절) · window 는 <n>d · <n>h · LIST 칸은 table_config 에 선언된 글자 · 숫자 칸
+로드      거절된 스크립트는 스케줄러에 안 올라감 + 로그 "[Collector] '<표>/<스크립트>' is not loaded - <문장>"
+선언 점검  영역을 넓힘 — 새 영역 collector("Auto update collectors (script markers)"), 셋업 걸음 밖(step 없음)
+          어휘는 기존 닫힌 낱말만: 범위 file · 사유 mapping_unavailable(「선언이 검증을 못 넘어 안 섬」). 클라는 받은 영역을 그대로 그림(코드 변경 없음)
+옮김      머리 · 마커 지식을 run_auto_update 에서 collector_markers 로 — run_auto_update 는 import 때 프로세스 프록시 환경을 바꿔서
+          API 프로세스(선언 점검)가 그것을 import 하면 안 됨. 옮긴 것 외에 동작 변화 없음(1 · 2 단계 게이트 · 변이 그대로 통과)
+1 단계 칸 하나 바뀜  「window 머리 없이 마커만 있으면 그대로 둔다」 -> 이제 로드 거절(이 단계의 계약). 그 칸은 「머리도 마커도 없으면 전과 같다」로 바꿈
+```
+
+### 게이트 · 변이
+
+```
+test_the_scheduler_and_the_report_give_one_verdict[header and markers] PASSED
+test_the_scheduler_and_the_report_give_one_verdict[no header and no markers] PASSED
+test_the_scheduler_and_the_report_give_one_verdict[a window header with no markers] PASSED
+test_the_scheduler_and_the_report_give_one_verdict[markers with no window header] PASSED
+test_the_scheduler_and_the_report_give_one_verdict[a window that is not a length] PASSED
+test_the_scheduler_and_the_report_give_one_verdict[a list of a declared text column] PASSED
+test_the_scheduler_and_the_report_give_one_verdict[a list of an undeclared column] PASSED
+test_the_scheduler_and_the_report_give_one_verdict[a list of a datetime column] PASSED
+test_the_report_lists_the_collector_area PASSED
+변이
+baseline: 9 passed in 0.48s
+mutant: a window header with no markers is not refused
+    1 failed, 8 passed in 0.74s
+    red: test_the_scheduler_and_the_report_give_one_verdict[a window header with no markers]
+mutant: markers with no window header are not refused
+    1 failed, 8 passed in 0.77s
+    red: test_the_scheduler_and_the_report_give_one_verdict[markers with no window header]
+mutant: an undeclared list column is not refused
+    1 failed, 8 passed in 0.73s
+    red: test_the_scheduler_and_the_report_give_one_verdict[a list of an undeclared column]
+mutant: a datetime list column is not refused
+    1 failed, 8 passed in 0.77s
+    red: test_the_scheduler_and_the_report_give_one_verdict[a list of a datetime column]
+mutant: the scheduler does not ask the judge
+    5 failed, 4 passed in 0.93s
+    red: test_the_scheduler_and_the_report_give_one_verdict[a list of a datetime column]
+    red: test_the_scheduler_and_the_report_give_one_verdict[a list of an undeclared column]
+    red: test_the_scheduler_and_the_report_give_one_verdict[a window header with no markers]
+    red: test_the_scheduler_and_the_report_give_one_verdict[a window that is not a length]
+    red: test_the_scheduler_and_the_report_give_one_verdict[markers with no window header]
+mutant: the report does not ask the judge
+    5 failed, 4 passed in 0.77s
+    red: test_the_scheduler_and_the_report_give_one_verdict[a list of a datetime column]
+    red: test_the_scheduler_and_the_report_give_one_verdict[a list of an undeclared column]
+    red: test_the_scheduler_and_the_report_give_one_verdict[a window header with no markers]
+    red: test_the_scheduler_and_the_report_give_one_verdict[a window that is not a length]
+    red: test_the_scheduler_and_the_report_give_one_verdict[markers with no window header]
+mutant: the collector area is not in the report
+    1 failed, 8 passed in 0.87s
+    red: test_the_report_lists_the_collector_area
+restored: 9 passed in 0.46s
+```
+
+```
+박스 영향   collector scripts 10 | script collectors judged 10 | newly refused at load: 0 [] | Declarations collector area: effective 10 · rejected 0
+착지 시험   run_auto_update · config_resolve_report · collector_markers 를 부르는 시험 + 새 시험: 538 passed, 2 skipped, 1 xfailed in 62.71s (0:01:02)
+           클라 픽스처: 710 passed, 1 xfailed in 124.65s (0:02:04)
+           PG 증명 전부: 7 failed, 102 passed, 7085 deselected in 103.64s (0:01:43) — 빨강 일곱이 알려진 일곱과 같음
+RUN.md     [09-26 오후 6]
+다음       4 단계 — 하루 단위 소급 연산
+```
