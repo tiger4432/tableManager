@@ -1516,7 +1516,10 @@ function renderFailureSummary(ob) {
   failureSummary.render(view, { openKey: outboxFilter ? outboxFilter.key : null, rowsBody: rowsBox });
   if (!outboxFilter && rowsBox) byId('outbox-rows-holder').appendChild(rowsBox);
   setSectionCount('chain-fail-count', view.rows, view.rows > 0 ? 'danger' : 'ok');
-  outboxEmptyState.style.display = view.read && view.lines.length === 0 ? 'flex' : 'none';
+  const none = view.read && view.lines.length === 0;
+  outboxEmptyState.style.display = none ? 'flex' : 'none';
+  // Nothing to list: the summary takes no place in the box, so the empty line stands at its top.
+  mount.hidden = none;
 }
 
 function renderOutboxTable() {

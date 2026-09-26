@@ -993,6 +993,7 @@
    탐색기의 선택자는 그대로 두었습니다 — 특이도가 안 바뀌므로 탐색기 «출력»도 안 바뀝니다.
    두 번째 철자가 아니라 «같은 블록»에 선택자 하나를 더한 것입니다 (총괄 판정 5bd6858b). */
 .oe-field-select,
+.oe-field-input,
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-form-new-id,
 #ontology-explorer-root .oe-editor-textarea {
   width: 100%; min-height: 36px; padding: 6px 10px; font-size: var(--fs-button);
@@ -1015,6 +1016,7 @@
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-field-input:hover,
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-field-select:hover,
 .oe-field-select:hover,
+.oe-field-input:hover,
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-form-new-id:hover,
 #ontology-explorer-root .oe-editor-textarea:hover { border-color: var(--oe-line-hover); }
 #ontology-explorer-root .oe-search:focus-visible,
@@ -1023,6 +1025,7 @@
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-field-input:focus-visible,
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-field-select:focus-visible,
 .oe-field-select:focus-visible,
+.oe-field-input:focus-visible,
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-form-new-id:focus-visible,
 #ontology-explorer-root .oe-editor-textarea:focus-visible {
   border-color: var(--oe-accent); outline-offset: 0;

@@ -97,6 +97,10 @@ const NOT_A_HARNESS = new Map([
     'a manual diagnostic: it takes two JSON file paths on argv (cells, frames) and PRINTS '
     + 'the regime table. It asserts nothing, so there is no verdict for a runner to collect. '
     + 'Run it by hand: node client2/tests/reposition_regime_probe.mjs <cells.json> <frames.json>'],
+  ['box_margin_gate.mjs',
+    'an in-page gate (lead 482e9956f): a margin is a rendered fact and there is no headless '
+    + 'browser here, so it runs in the admin page, not under node. Run it in the page: '
+    + "(await import('/tests/box_margin_gate.mjs')).boxMarginGate() — and .boxMarginMutants()"],
 ]);
 
 const KNOWN_RED = new Map([

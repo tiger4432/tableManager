@@ -203,7 +203,6 @@
     }
 
     /* C-75 체인 그래프 — 네 선언이 한 그림. 종류는 «선 모양»으로 갈립니다. */
-    .chain-graph-panel { padding: var(--space-2); }
     /* 🔴 그림의 «상자». 높이 상한이 여기 있고, 넘치면 «이 안»에서 스크롤한다 — 페이지가
        늘어나지 않는다. 그림 자체는 1 단위 = 1 px 로 그려지므로 라벨이 11px 로 남는다
        (상한에 맞춰 축소하면 45 노드에서 라벨이 5px 가 되고, 그건 없느니만 못하다). */
@@ -249,7 +248,7 @@
     .chain-graph-wakes { padding: var(--space-1) var(--space-2); }
     .chain-graph-wakes-head { font-weight: 600; color: var(--text); }
     .chain-graph-wake { color: var(--text-dim); font-family: var(--font-mono); }
-    .chain-graph-unread { padding: var(--space-3); color: var(--text-dim); }
+    .chain-graph-unread { color: var(--text-dim); }
     /* 카탈로그에 없는 표 — 「모른다」가 아니라 「선언이 없다」입니다. */
     .cg-node.is-undeclared circle { stroke-dasharray: 3 2; }
     .cg-node.is-ledger circle { fill: var(--text-dim); }
@@ -288,7 +287,6 @@
     }
 
     /* C-74 런타임 — 아홉 고리의 값 표. 수는 자릿수를 맞춰야 세로로 읽힙니다(가독성=기능). */
-    .runtime-panel { padding: var(--space-2); }
     .runtime-table {
       width: 100%;
       border-collapse: collapse;
@@ -422,7 +420,7 @@
       display: flex;
       align-items: baseline;
       gap: var(--space-3);
-      padding: var(--space-2) var(--space-3);
+      padding: var(--space-2) var(--space-4);
       background: var(--bg-header);
       border-bottom: 1px solid var(--border);
     }
@@ -439,7 +437,6 @@
     }
     .ov-section-open:focus { outline: none; }
     .ov-section-open:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-    .ov-section-body { padding: var(--space-3) var(--space-4); }
     /* 누가 비우나 — 머리 줄 아래의 한 줄씩. 세로로 쌓입니다(가로로 늘어놓지 않습니다). */
     /* 표 머리의 한 줄. 단락이 아니고 상자도 아닙니다 — 수가 무엇의 수인지만 말합니다. */
     .ledger-sources-note {
@@ -449,11 +446,12 @@
       color: var(--text-dim);
       font-size: var(--fs-label);
     }
+    /* The panel's own lines stand apart by one step (its line · its strip · its tables). */
+    .ledger-sources-panel { display: flex; flex-direction: column; gap: var(--space-3); }
     .ledger-sources-states {
       display: flex;
       flex-direction: column;
       gap: 2px;
-      margin: 0 0 10px;
     }
     /* 🔴 색이 없습니다. 네 상태 중 무엇이 «나쁜지» 를 서버가 말하지 않았고,
        화면이 그걸 정하면 서버가 안 한 판단을 지어내는 것입니다. */
@@ -462,21 +460,6 @@
       font-size: var(--fs-button);
       font-variant-numeric: tabular-nums;
     }
-    /* 🔴 고르개의 «모양»은 이제 `.oe-field-select` 가 줍니다 (탐색기와 «같은 규칙»).
-       여기 남은 것은 «배치»뿐입니다 — 베낀 타이포는 지웠습니다. */
-    /* 🔴 소유자: 「너무 꽉차게 있어 마진좀」. 격자는 그대로 두고 «한 단계»씩 올립니다
-       (6.8 -> 10.2). 탐색기가 같은 성격의 자리에서 쓰는 단계입니다. */
-    /* 🔴 «바깥» 여백. 폼이 절의 벽에 «붙어» 있었습니다 — 실측으로 좌·우가 «0» 이었고,
-       그래서 안쪽 블록 사이를 3.4px 넓혀도 「그대로」로 보였습니다 (총괄 정정 4703fbdf).
-       ⚠️ `.section-body` 에 주지 «않습니다». 그 규칙은 열두 절이 «전부» 쓰고, 표를 담은
-          열 절에서는 표 머리 글자가 지금 10.2 에서 시작해 절 머리의 13.6 과 «거의 맞는데»,
-          본문에 13.6 을 주면 23.8 로 밀려 그 맞음이 깨집니다 (실측). 그래서 «폼 컨테이너»에만.
-       좌·우 13.6 은 절 머리의 왼쪽 여백과 «같은 수»라 폼의 왼쪽 변이 머리와 한 줄에 섭니다. */
-    .table-config-panel,
-    .chain-rule-panel {
-      padding: 10.2px 13.6px 13.6px;
-    }
-
     /* 🔴 C-95 ①⑤. 카드의 «머리 한 줄» — 고르개 · 추가/취소 · 상태 · 저장. 실측(2026-09-13,
        토큰 우회 보기 전용 앱 1440px): 저장 버튼이 원문 상자 «아래»에 있어 스크롤 없이는 안
        보였고, 폼 상자가 자기 스크롤을 가져 스크롤이 «삼중»이었습니다. 저장은 카드를 여는
@@ -963,7 +946,7 @@
     }
     /* Backfill (lead 09f0be40f) — the button or the date entry, then this collector's latest run. */
     .au-backfill-controls { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-1); }
-    .au-backfill-start { width: 7.5em; }
+    .au-backfill-controls .au-backfill-start { width: 7.5em; }
     .au-backfill-line {
       margin-top: var(--space-1);
       font-size: var(--fs-label);
@@ -976,7 +959,6 @@
     .au-backfill-line.is-danger { color: var(--danger); }
     /* Emergency stop (lead 668fa004c) — the pause line and its controls, in both places. */
     #chain-pause-mount { padding: var(--space-3) var(--space-4); border-bottom: 1px solid var(--border); }
-    #overview-pause-mount { margin-bottom: var(--space-3); }
     .chain-pause { display: flex; flex-direction: column; gap: var(--space-1); }
     .chain-pause-line { font-weight: 600; font-variant-numeric: tabular-nums; }
     .chain-pause[data-tone="ok"] .chain-pause-line { color: var(--success); }
@@ -985,7 +967,7 @@
     .chain-pause-said { font-size: var(--fs-label); color: var(--danger); }
     .chain-pause-worker:empty, .chain-pause-said:empty { display: none; }
     .chain-pause-controls { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-1); }
-    .chain-pause-reason { width: 16em; max-width: 100%; }
+    .chain-pause-controls .chain-pause-reason { width: 16em; max-width: 100%; }
 
 /* 🔴 THE DROPDOWN'S SHAPE IS DECLARED ONCE, AND EVERY SELECT ON THIS PAGE DECLARES IT.
        Three of them had been overriding height, padding and font-size INLINE, which beats
@@ -1067,6 +1049,21 @@
          정해서 body(Outfit) 를 상속»받았기 때문입니다. */
       font-family: var(--oe-font-body);
     }
+    /* 🔴 THE BOX OWNS ITS MARGIN (owner 09-26 「박스 기본 마진 아예 고정 스타일로 박아」, lead
+       482e9956f) — every box body, one rule. What sits in it writes no outer padding or margin;
+       its own inside spacing stays. Gate: tests/box_margin_gate.mjs, run in the page. */
+    /* The gap between its children is the box's too — `gap`, because a hidden child takes none
+       (a `* + *` margin counted the hidden warning above a table and doubled the top). */
+    .section-body,
+    .ov-section-body,
+    .ov-row-body {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-3);
+      padding: var(--space-3) var(--space-4);
+    }
+    /* The board opens and closes its row bodies with `hidden`; the rule above must not reopen them. */
+    .ov-row-body[hidden] { display: none; }
     .section-header:hover .section-chevron { color: var(--accent); }
     /* 🔴 절 안의 «유일한» 알약이자 «유일한» 700 이었습니다 — 두 축을 혼자 어겼습니다.
        탐색기의 태그(`.oe-node-badge`: 11px · 0.02em · 3px 6.8px · 모서리 0)로 옵니다.
@@ -1124,7 +1121,7 @@
       display: block;
       text-align: left;
       gap: 0;
-      padding: 10.2px;
+      padding: 0;
       color: var(--text-muted);
     }
     .stage-section .empty-icon { display: none; }
@@ -1177,7 +1174,6 @@
       display: flex;
       flex-direction: column;
       gap: 16px;
-      padding: 6px 20px 4px;
     }
     .cfg-domain {
       background: var(--bg-inset);
@@ -1507,10 +1503,7 @@
     .ov-row-open:focus-visible,
     .ov-show-all:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
     .ov-show-all { margin-top: var(--space-2); }
-    .ov-row-body {
-      padding: var(--space-3) var(--space-4);
-      border-bottom: 1px solid var(--border);
-    }
+    .ov-row-body { border-bottom: 1px solid var(--border); }
     .ov-scroll { overflow-x: auto; }
     .declaration-group {
       display: block;
@@ -1863,7 +1856,7 @@
     .retro-group.is-chosen { border-color: var(--accent); color: var(--accent); }
 
   </style>
-  <script type="module" crossorigin src="/assets/admin-CCuwHoPq.js"></script>
+  <script type="module" crossorigin src="/assets/admin-i44NcXaQ.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/absent-DIRVWxJT.js">
   <link rel="modulepreload" crossorigin href="/assets/disabled_reason-Cd0wapM5.js">
   <link rel="modulepreload" crossorigin href="/assets/server_time-DJnqmuOO.js">
@@ -1873,7 +1866,7 @@
   <link rel="modulepreload" crossorigin href="/assets/truncation-DURtR5Cb.js">
   <link rel="modulepreload" crossorigin href="/assets/table_part-BcSxFUkN.js">
   <link rel="stylesheet" crossorigin href="/assets/absent-BMl-M7Ru.css">
-  <link rel="stylesheet" crossorigin href="/assets/admin-DhLtZCVf.css">
+  <link rel="stylesheet" crossorigin href="/assets/admin-BaP0ksYP.css">
 </head>
 <body>
   <header>
@@ -1989,7 +1982,7 @@
               <span class="section-chevron">▾</span>
             </div>
             <div class="section-body">
-              <div id="active-ingestion-warning" style="display: none; margin: 0 0 10px; padding: 8px 12px; border: 1px solid var(--warning); border-radius: 8px; background: var(--warning-weak); color: var(--warning); font-size: var(--fs-h6); font-weight: 600;"></div>
+              <div id="active-ingestion-warning" style="display: none; padding: 8px 12px; border: 1px solid var(--warning); border-radius: 8px; background: var(--warning-weak); color: var(--warning); font-size: var(--fs-h6); font-weight: 600;"></div>
               <table class="table-container">
                 <thead class="table-header">
                   <tr>

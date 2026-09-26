@@ -117,7 +117,7 @@ export class ChainPauseControl {
       return;
     }
     const input = this.doc.createElement('input');
-    input.className = 'glass-input chain-pause-reason';
+    input.className = 'oe-field-input chain-pause-reason';
     input.placeholder = PAUSE_WORDS.reason;
     input.setAttribute('aria-label', PAUSE_WORDS.reason);
     input.value = this.reason;

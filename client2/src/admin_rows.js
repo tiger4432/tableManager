@@ -137,7 +137,7 @@ export function backfillCellHtml(backfill) {
   const v = b.view || {};
   if (!v.show) return '';
   const controls = b.open
-    ? `<input class="glass-input au-backfill-start" placeholder="${BACKFILL_WORDS.placeholder}" value="${escapeHtml(b.value || '')}" aria-label="First day to backfill, KST">
+    ? `<input class="oe-field-input au-backfill-start" placeholder="${BACKFILL_WORDS.placeholder}" value="${escapeHtml(b.value || '')}" aria-label="First day to backfill, KST">
        <button class="admin-btn btn-primary btn-backfill-start"${b.busy ? ' disabled' : ''}>${BACKFILL_WORDS.start}</button>
        <button class="admin-btn btn-backfill-cancel">${BACKFILL_WORDS.cancel}</button>`
     : `<button class="admin-btn btn-primary btn-backfill" title="${escapeHtml(v.title || '')}">${BACKFILL_WORDS.button}</button>`;
