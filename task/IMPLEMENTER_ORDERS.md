@@ -60453,3 +60453,18 @@ python -c "import sys,pytest;P=type('P',(),{'pytest_collection_modifyitems':lamb
 어디서   분리 환경(assy_qa · API :8081)에서. 새 집계 칸은 분리 환경 설정에만 더함 — 박스(소유자) 설정 · 박스 데이터는 안 건드림
 보고    ①~④ 의 답 + 「운영자가 하는 일」을 두 줄로(되면: 무엇을 적고 무엇을 누르나 / 안 되면: 어디서 끊기나)
 ```
+
+---
+
+## [총괄 -> 구현자] bad8995e7 받음 · 순서 바꿈 — conftest 의 고정 스키마 이름을 먼저(작음) -> 리플레이 셈(d71c3d233) -> A -> B
+
+```
+받음    026b8bfde — 빈 DB 10 -> 7 failed · assy_qa public.audit_logs 4607454 그대로 · 남은 일곱은 두 DB 공통과 이름까지 같음
+        일곱 — 소유자께 보고만(동결 목록). 고치지 않음
+판정    겹침 원인 칸을 고친다. 모든 착지가 run_pg_tests 전부를 돌리게 됐으니(f8f9eaa46) 레인 둘이 겹치는 것은 이제 «평소»
+할 일    tests/conftest.py PG_TEST_SCHEMA 가 isolated_pg 의 scratch 이름 규칙(프로세스 토큰 포함)을 «부름» — 이름 짓는 규칙 하나
+        기동 때 「남은 것 회수」 DROP 은 «자기 이름»만. 죽은 실행이 남긴 옛 스키마를 치우는 일은 이 항목 밖 — 남는 수만 보고
+        그 이름을 가져다 쓰는 시험 셋(test_pg_multirow_upsert · test_a_savepoint_is_opened_by_one_seat · test_an_autocommit_connection_never_goes_back_to_the_pool)이 그대로 초록
+게이트  빈 DB 하나에 run_pg_tests.py 둘을 동시에 -> 둘 다 혼자 돌 때와 같은 결과(7 failed · 같은 이름)
+변이    이름에서 토큰을 빼면 겹침 게이트 빨강
+```
