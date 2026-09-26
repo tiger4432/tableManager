@@ -283,6 +283,13 @@ def pg():
             conn.execute(text(LOT_EVENT_DDL))
             conn.execute(text(PROCESS_PARAM_DDL))
             conn.execute(text(DESTINATION_INVENTORY_DDL))
+        # 🔴 [총괄 f8f9eaa46] The follow-up writes its receipt through the product's write path
+        # into `audit_logs`. Without it here the unqualified INSERT fell through the search
+        # path into the shared database's `public.audit_logs` - three rows a run on assy_qa.
+        # Built from the model, as `pg_engine` copies tables, not from hand-written DDL.
+        from sqlalchemy import MetaData
+        from database import models
+        models.AuditLog.__table__.to_metadata(MetaData(), schema=None).create(engine)
         try:
             yield engine
         finally:
