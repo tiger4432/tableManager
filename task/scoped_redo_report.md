@@ -63825,3 +63825,36 @@ RUN.md   「09-27 아침 3」 — 재기동 뒤 볼 줄 · 뜻 · 뜨면 diagnos
 ```
 
 **다음** 페인트 잠금 기본 문장 영어 -> A(CLI 연쇄) -> B(예/아니오 넷).
+
+---
+
+## [구현자 -> 총괄] 영어 문장 착지 811a5c639 · A 짓다가 부딪힘 하나 — 여쭘 (360c9e40e · 5057d030b)
+
+### 영어 문장 — 착지 811a5c639
+```
+문장     "This cell holds a locked value - it cannot be painted"
+자리     넷 — map_overlay.get_paint_rules 기본값 · config/sample 의 샘플 · 가이드의 샘플 사본 둘(guide/config/map_overlay_config.md 예시 · guide/config_reference)
+         지시는 둘이었는데 가이드 둘이 샘플의 사본이라 같이 바꿨습니다. 셈: git grep -n "이 셀은 잠금 값이라" (task · history · _archive 뺌) 전 4 · 후 0
+운영 설정  이 박스의 map_overlay_config.json 에도 그 한국어 문장이 적혀 있음(박스) — 운영자 값이라 안 건드림 · RUN.md 「09-27 아침 4」
+시험      샘플 · 잠금을 읽는 시험 155 passed. 문장 자체를 재는 칸은 안 만듦(지시에 없음)
+지나며 본 것  클라 map_editor.js 의 잠금 문장 대체값이 한국어('이 좌표는 잠금 규칙에 의해 칠할 수 없습니다.') — 자리 1, 안 고침
+```
+
+### A — CLI --cascade 뺌: 지었고, 시험 하나가 막음
+```
+지은 것   chain_replay_cli.py 의 --cascade 와 그 값 전달 뺌 -> `replay r --cascade --apply` 는 argparse 가 거절(코드 2) · 문 부름 0
+         소급 연산 chain_replay 의 cli 줄에서 [--cascade] 지움 · cascade 인자 도움말 「그리드 클릭만 · CLI 엔 없음」
+청하는 자리  전 2(CLI 플래그 · 클라 redo_banner 의 그리드 클릭) -> 후 1(그리드 클릭). 받는 자리(소급 연산의 cascade 인자, form=False)는 그대로
+막은 시험  test_retroactive_admin::test_every_parameter_a_button_takes_is_findable_in_the_cli_line_it_promises
+         규칙: 연산의 인자는 전부 cli 줄이나 cli_only 에 있어야 함(「cli 는 약속」) -> chain_replay.cascade 가 이제 걸림
+         cli_only 는 「CLI 에만 있고 버튼엔 없는 것」을 적는 칸이라 여기 적으면 그 줄이 거짓
+```
+
+### 여쭐 것 — A-1
+```
+ㄱ  인자에 「CLI 에 없음」을 선언하는 칸 하나(_p(..., cli=False)) — 시험은 그 칸이 선 인자를 건너뜀. 칸이 «이유»를 적는 자리
+ㄴ  연산에 button_only 목록 칸(cli_only 의 짝) — 시험은 cli 줄 · cli_only · button_only 중 하나
+ㄷ  시험에서 chain_replay.cascade 하나를 이름으로 뺌 — 가장 작지만 규칙 밖 예외가 코드 밖(시험)에 삶
+제 생각   ㄱ — 인자가 스스로 말하고, 다음에 같은 경우가 와도 한 칸
+B 는 그동안 짓습니다(서로 안 닿음). A 는 답 오면 같이 착지
+```
