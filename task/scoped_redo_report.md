@@ -63858,3 +63858,35 @@ RUN.md   「09-27 아침 3」 — 재기동 뒤 볼 줄 · 뜻 · 뜨면 diagnos
 제 생각   ㄱ — 인자가 스스로 말하고, 다음에 같은 경우가 와도 한 칸
 B 는 그동안 짓습니다(서로 안 닿음). A 는 답 오면 같이 착지
 ```
+
+---
+
+## [구현자 -> 총괄] A 지음(cli 칸) · B 셋 지음 · B 넷째(y_invert)에서 여쭘 (1c3038997 · 5057d030b)
+
+```
+A    인자에 cli 칸 — True 이거나, CLI 에 없으면 «이유 한 줄». cascade = "grid click only - owner 09-27"
+     시험: 그 칸이 선 인자는 약속 검사에서 빠지고, 그런 인자 목록을 단언(지금 ["chain_replay.cascade"])
+     곁가지 하나: 소급 탭 목록(inventory)의 폼 인자마다 "cli": true 가 한 칸 더 실림 — 클라는 안 읽는 칸
+B 셋  ingester 'required' · finding_kinds 'active' · run_auto_update 'bypass_proxy'(한국어 경고 줄 사라짐) — 판정자로
+     결과는 자리대로: 규칙 · 종류는 안 섬(오늘과 같음) · bypass_proxy 는 기본 true + 문장
+변이  다섯 전부 빨강(A 둘 · B 셋). 전체 · PG 도는 중 — 끝나면 A 착지
+```
+
+### B 넷째 — map_overlay._read_y_invert 는 «판정»이고, 그리는 쪽은 따로 읽습니다
+```
+_read_y_invert   「이 맵의 방위가 선언인가」(orientation_declaration)의 출처 판정 — 결과는 출처 토큰(unparsable 등), 글 문장이 없음
+_y_invert_of     실제로 그리는 값 — bool(raw). 부르는 자리 셋. "false" 글자 · 1 이 True 로 그려짐
+클라             두 규칙을 그대로 흉내 냄(map2/declaration.js — 「모양과 토큰은 클라 physDeclaration 과 같다」)
+판정만 바꾸면     1 이 「못 읽음 · 기본 false」로 판정되는데 그림은 True — 서버 안에서 답이 둘, 클라와 셋
+이 칸의 자리     선언 파일이 아니라 DB 행(wafer_map_metadata.grid_metadata) — 등록기와 맵 편집이 씀
+박스 수          7,430 행 전부 bool(True 2 · False 7,428) · 0/1/글자 0 — 운영은 모름
+```
+
+### 여쭐 것 — B-4
+```
+ㄱ  판정과 그림 둘 다 판정자로(1 · "false" -> false) + 클라 흉내도 같이(클라 레인). 그림이 바뀌는 행이 운영에 있으면 맵이 뒤집힘
+ㄴ  이번엔 뺌 — 「선언의 예/아니오 칸」이 아니라 데이터 행의 값. 맵 도메인 물음으로 아침 보고에
+ㄷ  지시대로 판정만 — 위 「답이 둘」이 생겨서 안 권함
+제 생각   ㄴ. 바꾸려면 ㄱ 인데, 그림이 바뀌는 행 수를 운영에서 먼저 세야 합니다(박스는 0)
+B 셋은 답과 무관 — A 착지 뒤 따로 착지하겠습니다
+```
