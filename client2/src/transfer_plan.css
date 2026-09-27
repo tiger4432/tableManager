@@ -50,7 +50,7 @@
      같은 레일 + 같은 gap + 같은 template = 머리글자가 자기 입력 바로 위에 선다.
      --tp-line 은 한 줄의 높이다. 구역 칸에서 겹쳐 있는 칩 그림과 실제 textarea가
      같은 y에 앉게 하는 기준값이다 (ⓓ 정렬 불일치). */
-  --tp-ctl-h: 30px;
+  --tp-ctl-h: var(--control-h);   /* the base layer's one height — its fields take no less (base.css) */
   --tp-fs-body: 0.8125rem;   /* 13px — 본문·데이터·입력 */
   --tp-fs-label: 0.75rem;    /* 12px — 열 이름·칩·각주 */
   --tp-gap: 5px;

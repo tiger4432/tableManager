@@ -1151,7 +1151,7 @@ function headerLabelWidth(label) {
   const canvas = headerLabelWidth.canvas || (headerLabelWidth.canvas = document.createElement('canvas'));
   const context = canvas.getContext('2d');
   if (!context) return 0;
-  const family = getComputedStyle(document.body).getPropertyValue('--font-sans').trim() || 'sans-serif';
+  const family = getComputedStyle(document.body).getPropertyValue('--font-body').trim() || 'sans-serif';
   // Matches `#myGrid .ag-header-cell-text` in style.css. Uppercase because the header is
   // transformed there, and the transform changes the measured width.
   context.font = `600 10.5px ${family}`;

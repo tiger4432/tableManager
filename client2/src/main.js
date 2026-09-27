@@ -3,6 +3,7 @@ import 'ag-grid-community/styles/ag-grid.css';
 import 'ag-grid-community/styles/ag-theme-quartz.css';
 import './tokens.css';
 import './style.css';
+import './base.css';
 import { initTheme } from './theme.js';
 import { ClipboardTypeModal } from './clipboard_type_modal.js';
 import { API_BASE, CURRENT_USER, pageLimit } from './config.js';

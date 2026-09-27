@@ -18,6 +18,10 @@
 
 @import url("https://fonts.googleapis.com/css2?family=Barlow:ital,wght@0,400;0,500;0,600;1,400&family=Barlow+Condensed:wght@400;500;600&display=swap");
 
+/* The reset lives here, first: a screen's own `*` reset ties at specificity 0 and the build may
+   emit that screen's stylesheet AFTER this one (the grid's does), which would erase every padding below. */
+:where(*) { box-sizing: border-box; margin: 0; padding: 0; }
+
 :where(body) {
   font-family: var(--font-body);
   font-size: var(--fs-body);
@@ -64,7 +68,8 @@
 :where(.box-body, .section-body, .ov-section-body, .ov-row-body)[hidden] { display: none; }
 
 /* ── button — secondary unless a variant says otherwise ─────────────────────────── */
-:where(button, input[type="button"], input[type="submit"], .btn) {
+/* Buttons and fields stop at AG-Grid's parts (class ag-*): its theme draws them. */
+:where(:is(button, input[type="button"], input[type="submit"], .btn):not(:is([class^="ag-"], [class*=" ag-"]) *)) {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -85,13 +90,13 @@
   border-radius: 0;
   cursor: pointer;
 }
-:where(:is(button, input[type="button"], input[type="submit"], .btn):hover:not(:disabled)) {
+:where(:is(button, input[type="button"], input[type="submit"], .btn):not(:is([class^="ag-"], [class*=" ag-"]) *):hover:not(:disabled)) {
   background: var(--tint-hover);
   border-color: var(--accent);
   color: var(--accent);
 }
-:where(:is(button, input[type="button"], input[type="submit"], .btn):active:not(:disabled)) { background: var(--tint-press); }
-:where(:is(button, input[type="button"], input[type="submit"], .btn):disabled) { opacity: 0.5; cursor: not-allowed; }
+:where(:is(button, input[type="button"], input[type="submit"], .btn):not(:is([class^="ag-"], [class*=" ag-"]) *):active:not(:disabled)) { background: var(--tint-press); }
+:where(:is(button, input[type="button"], input[type="submit"], .btn):not(:is([class^="ag-"], [class*=" ag-"]) *):disabled) { opacity: 0.5; cursor: not-allowed; }
 
 :where(.btn-primary) { background: var(--accent); border-color: var(--accent); color: var(--bg-surface); }
 :where(.btn-primary:hover:not(:disabled)) { background: color-mix(in srgb, var(--accent) 88%, var(--text)); color: var(--bg-surface); }
@@ -103,7 +108,7 @@
 
 /* ── input · select · textarea ──────────────────────────────────────────────────── */
 /* Monaco's hidden input textarea (.inputarea) is the editor's own and is not a field. */
-:where(input:not([type="checkbox"], [type="radio"], [type="range"], [type="file"], [type="button"], [type="submit"], [type="color"]), select, textarea:not(.inputarea)) {
+:where(:is(input:not([type="checkbox"], [type="radio"], [type="range"], [type="file"], [type="button"], [type="submit"], [type="color"]), select, textarea:not(.inputarea)):not(:is([class^="ag-"], [class*=" ag-"]) *)) {
   box-sizing: border-box;
   min-height: var(--control-h);
   padding: 0 var(--space-3);
@@ -115,11 +120,11 @@
   border-radius: 0;
   caret-color: var(--accent);
 }
-:where(textarea) { padding: var(--space-2) var(--space-3); }
-:where(:is(input, select, textarea):hover:not(:disabled)) { border-color: var(--line-hover); }
-:where(:is(input, select, textarea):focus-visible) { border-color: var(--accent); outline: 2px solid var(--accent); outline-offset: 2px; }
-:where(:is(input, select, textarea):disabled) { opacity: 0.5; cursor: not-allowed; }
-:where(input, textarea)::placeholder { color: var(--text-dim); }
+:where(textarea:not(:is([class^="ag-"], [class*=" ag-"]) *)) { padding: var(--space-2) var(--space-3); }
+:where(:is(input, select, textarea):not(:is([class^="ag-"], [class*=" ag-"]) *):hover:not(:disabled)) { border-color: var(--line-hover); }
+:where(:is(input, select, textarea):not(:is([class^="ag-"], [class*=" ag-"]) *):focus-visible) { border-color: var(--accent); outline: 2px solid var(--accent); outline-offset: 2px; }
+:where(:is(input, select, textarea):not(:is([class^="ag-"], [class*=" ag-"]) *):disabled) { opacity: 0.5; cursor: not-allowed; }
+:where(:is(input, textarea):not(:is([class^="ag-"], [class*=" ag-"]) *))::placeholder { color: var(--text-dim); }
 
 /* ── table — the first and last cells sit on the box's text edge (mockup ㄴ) ─────── */
 :where(table) {

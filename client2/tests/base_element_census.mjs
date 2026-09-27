@@ -59,7 +59,24 @@ const KINDS = {
     pick: (doc) => doc.querySelectorAll('[class*="meta"], [class*="-note"], [class*="-sub"], [class*="hint"], [class*="caption"]'),
     sign: (el, win) => { const cs = win.getComputedStyle(el); return `${type(cs)} ${box(cs)}`; },
   },
+  // A block that draws its own edge — a hairline on two sides or more, or a shadow (lead dc0580087
+  // 「셈에 «틀»을 넣는다」). Cells, controls and inline chips are counted above, not here.
+  frame: {
+    pick: (doc) => [...doc.querySelectorAll('body *')].filter((el) => {
+      if (/^(TABLE|THEAD|TBODY|TR|TD|TH|BUTTON|INPUT|SELECT|TEXTAREA|OPTION|LABEL|SVG|IMG|CANVAS)$/i.test(el.tagName)) return false;
+      const cs = doc.defaultView.getComputedStyle(el);
+      if (/^(inline|table|none|contents)/.test(cs.display)) return false;
+      const sides = ['Top', 'Right', 'Bottom', 'Left'].filter((s) => parseFloat(cs[`border${s}Width`]) > 0).length;
+      return sides >= 2 || cs.boxShadow !== 'none';
+    }),
+    sign: (el, win) => { const cs = win.getComputedStyle(el);
+      return `radius ${px(cs.borderTopLeftRadius)} · border ${px(cs.borderTopWidth)}/${px(cs.borderRightWidth)}/${px(cs.borderBottomWidth)}/${px(cs.borderLeftWidth)}`
+        + ` · ${cs.boxShadow === 'none' ? 'flat' : 'shadow'} · ${filled(cs)}`; },
+  },
 };
+
+// AG-Grid draws its own theme; its parts are not the product's looks (counted apart by the caller).
+const inGrid = (el) => !!el.closest('[class^="ag-"], [class*=" ag-"]');
 
 const nameOf = (el) => `${el.tagName.toLowerCase()}${el.id ? `#${el.id}` : ''}${el.classList.length ? `.${[...el.classList].slice(0, 2).join('.')}` : ''}`;
 
@@ -68,6 +85,7 @@ export function baseElementCensus(doc = document, win = window, examples = 2, li
   for (const [kind, spec] of Object.entries(KINDS)) {
     const groups = new Map();
     for (const el of spec.pick(doc)) {
+      if (inGrid(el)) continue;
       const sig = spec.sign(el, win);
       if (!groups.has(sig)) groups.set(sig, []);
       groups.get(sig).push(el);

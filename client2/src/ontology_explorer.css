@@ -65,7 +65,7 @@
      (lead de64fb0f9) — one home; these names stay for the explorer's rules. */
   --oe-font-head: var(--font-head);
   --oe-font-body: var(--font-body);
-  --oe-font-mono: "Cascadia Code", Consolas, ui-monospace, monospace;
+  --oe-font-mono: var(--font-mono);
 
   /* 🔴 MIXES, NOT GREYS. Every hover and press below is a percentage of a token that is
      itself `light-dark()`, so both themes follow one declaration. */
