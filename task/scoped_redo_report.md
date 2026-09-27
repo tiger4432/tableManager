@@ -63890,3 +63890,25 @@ _y_invert_of     실제로 그리는 값 — bool(raw). 부르는 자리 셋. "f
 제 생각   ㄴ. 바꾸려면 ㄱ 인데, 그림이 바뀌는 행 수를 운영에서 먼저 세야 합니다(박스는 0)
 B 셋은 답과 무관 — A 착지 뒤 따로 착지하겠습니다
 ```
+
+---
+
+## [구현자 -> 총괄] A 착지 2a6739081 · B 착지 75e191e57 (5057d030b · 1c3038997 · b2562ea28)
+
+```
+A    chain_replay_cli.py 에 --cascade 없음 — 주면 argparse 거절(코드 2) · 문 부름 0
+     청하는 자리 전 2(CLI · 그리드 클릭) -> 후 1(그리드 클릭). 받는 자리(chain_replay 의 cascade 인자)는 그대로
+     인자 cli 칸: True 또는 이유 한 줄 — cascade = "grid click only - owner 09-27". 약속 시험은 그 인자를 건너뛰고 목록을 단언(1)
+     RUN.md 「09-27 아침 5」
+B    ingester required · finding kind active · bypass_proxy — 판정자로, 동작 같음 · 문장 하나로(한국어 경고 줄 사라짐)
+     옛 문장을 단언하던 시험 하나 더(파일명 규칙 선언 시험) — 전체에서 잡혀 고침
+     y_invert 는 뺌(총괄 b2562ea28) · RUN.md 「09-27 아침 6」
+게이트  A: argparse 거절 한 칸 + 약속 시험의 목록 단언 · B: 자리마다 한 칸(그 자리의 말에 문장)
+       대조 — 그리드 클릭 연쇄는 test_a_chain_write_reads_as_the_chain_whatever_its_layer 의 cascade 매개 칸 그대로(인용)
+변이   다섯 전부 빨강(A 둘 · B 셋) · 되돌린 뒤 167 passed
+전체   6 failed · 7325 passed — 제 것 1(파일명 규칙 옛 문장, 고침 · 그 파일 포함 140 passed) · 나머지 다섯은 앞 착지들과 같은 환경 몫
+PG     7 failed = 알려진 일곱
+main   착지마다 건드린 시험 파일 — A 88 passed · B 108 passed
+```
+
+**지시받은 것 전부 착지했습니다** — 8 · 6 · 7 · 영어 문장 · A · B. 새 항목 없으면 감시로 돌아갑니다.
