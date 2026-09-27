@@ -1,5 +1,16 @@
 # 지금 돌리면 되는 것
 
+> ## [09-27 아침 6] **예/아니오 칸 셋 더 — 파일명 규칙 required · finding kind active · bypass_proxy — 동작 같음, 문장만 하나로 · 재기동 워처 · 스케줄러**
+>
+> ```
+> 무엇이 바뀌나  세 칸 다 오늘도 true/false 아니면 거절(규칙 · 종류) 또는 기본 true(bypass_proxy) — 로그 문장만
+>              「<칸> must be true or false, got <값> - write true or false」로 (bypass_proxy 의 한국어 경고 줄은 사라짐)
+> 재기동 뒤     scheduler 로그 "auto_update_control.json: bypass_proxy must be true or false, got … - falling back to true" — 뜨면 그 칸을 true/false 로
+> 되돌리기      git revert
+> ```
+
+---
+
 > ## [09-27 아침 5] **스크립트 리플레이는 연쇄를 청하지 못함 — chain_replay_cli.py 의 --cascade 없음 — 마이그레이션 «없음» · 재기동 없음(CLI) · API(소급 탭 안내 줄)**
 >
 > ```

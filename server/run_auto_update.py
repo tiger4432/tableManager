@@ -50,18 +50,19 @@ def _apply_proxy_policy():
     깨졌을 때 조용히 반대로 도는 것이 더 나쁘다.
     """
     import json
+
+    import validation
     from utils.auto_update_control import get_control_path
 
     bypass = True
     try:
         with open(get_control_path(), "r", encoding="utf-8") as f:
             val = json.load(f).get("bypass_proxy", True)
-        if isinstance(val, bool):
+        why = validation.flag_refusal("bypass_proxy", val)
+        if not why:
             bypass = val
         else:
-            logger.warning(
-                "auto_update_control.json 의 'bypass_proxy' 가 boolean 이 아닙니다(%r). "
-                "기본값 true(직결)로 진행합니다.", val)
+            logger.warning("auto_update_control.json: %s - falling back to true", why)
     except FileNotFoundError:
         pass
     except Exception as e:

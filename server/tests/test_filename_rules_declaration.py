@@ -263,7 +263,8 @@ def test_regex_without_a_capture_group_is_a_load_error_not_an_indexerror(tmp_pat
     ({"column": "c"}, "'regex' must be a non-empty string"),
     ({"column": "c", "regex": r"([unclosed"}, "does not compile"),
     ({"column": "c", "regex": r"(x)", "type": "date"}, "unknown type 'date'"),
-    ({"column": "c", "regex": r"(x)", "required": "yes"}, "'required' must be a boolean"),
+    ({"column": "c", "regex": r"(x)", "required": "yes"},
+     'required must be true or false, got "yes"'),
 ])
 def test_each_malformed_declaration_names_its_reason(tmp_path, rule, needle):
     with pytest.raises(RuleDeclarationError) as e:

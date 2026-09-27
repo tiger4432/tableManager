@@ -4,6 +4,8 @@ import logging
 import os
 from typing import Dict, Any, List, Optional, Tuple
 
+import validation
+
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
@@ -128,8 +130,9 @@ def _validate_rules(raw_rules, where: str) -> Tuple[List[Dict[str, Any]], List[s
             continue
 
         required = raw.get("required", False)
-        if not isinstance(required, bool):
-            errors.append(f"{at}: 'required' must be a boolean (default false)")
+        why = validation.flag_refusal("required", required)
+        if why:
+            errors.append(f"{at}: {why}")
             continue
 
         seen_columns.add(column)

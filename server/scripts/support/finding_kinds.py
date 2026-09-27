@@ -62,6 +62,8 @@ import json
 import os
 import threading
 
+import validation
+
 #: The kind a caller gets when it does not name one. 🔴 This is the ONE permitted
 #: appearance of a kind name as a literal in code - the ruling calls out "기본값이지
 #: 특례가 아니다" - and it is a default parameter value, not a condition.
@@ -163,9 +165,9 @@ def load(force_reload: bool = False) -> dict:
                     raise FindingKindError(f"{CONFIG_FILENAME}.{name} must be an object")
                 merged.setdefault(name, {}).update(spec)
         for name, spec in merged.items():
-            if "active" in spec and not isinstance(spec["active"], bool):
-                raise FindingKindError(
-                    f"finding kind {name!r} declares `active` that is not boolean")
+            why = validation.flag_refusal("active", spec["active"]) if "active" in spec else None
+            if why:
+                raise FindingKindError(f"finding kind {name!r}: {why}")
             for field in ("label", "observation_table", "extent_columns"):
                 if not spec.get(field):
                     raise FindingKindError(
