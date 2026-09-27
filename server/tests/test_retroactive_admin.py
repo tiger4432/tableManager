@@ -1441,12 +1441,19 @@ def test_every_parameter_a_button_takes_is_findable_in_the_cli_line_it_promises(
 
     # Every DECLARED parameter, not only the form's: a CLI option the button hides
     # (`form=False`) is still a promise of the cli line.
-    missing = []
+    # A parameter that says it has no command line (`cli` holds the reason) is outside the
+    # promise - and how many do is pinned, so the exemption cannot grow unseen (총괄 1c3038997).
+    missing, no_cli = [], []
     for op, spec in sorted(retroactive.OPERATIONS.items()):
         haystack = " ".join([spec["cli"]] + list(spec["cli_only"]))
         for param in spec["params"]:
+            if param["cli"] is not True:
+                assert isinstance(param["cli"], str) and param["cli"].strip(), param
+                no_cli.append(f"{op}.{param['name']}")
+                continue
             if not any(word in haystack for word in spellings(param["name"])):
                 missing.append(f"{op}.{param['name']}")
+    assert no_cli == ["chain_replay.cascade"]
     assert not missing, (
         "these parameters exist on the operation but appear nowhere in its cli line or "
         f"cli_only, so the promise is false for them: {missing}")

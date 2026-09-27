@@ -144,9 +144,9 @@ def main(argv=None):
                    help="fast (default, unchanged) | slow | trickle - yield between pages "
                         "so the database stays free for everything else. Declared in "
                         "server/pacing.json")
-    p.add_argument("--cascade", action="store_true",
-                   help="let what this replay writes wake the opted-in chain rules, as the "
-                        "chain does. Without it a replay's writes wake no rule")
+    # 🪦 `--cascade` (ac918a451) is gone: a script replay cascades nothing - the owner's
+    #    「큰 소급 스크립트 문으로 가는 거 연쇄 안 하면 되겠네」 (09-26) · 「한번만」 (09-27).
+    #    The grid's click replay is the one seat that asks for it (총괄 5057d030b).
 
     p = sub.add_parser("replay-all")
     p.add_argument("--apply", action="store_true")
@@ -212,8 +212,7 @@ def main(argv=None):
             rule = replay.find_rule(args.rule_name, row_scoped=bool(rows))
             print(_report_replay(written("chain_replay", {
                 "rule": rule["name"], "business_keys": selected, "row_ids": rows,
-                "pace": args.pace, "limit": args.limit, "chunk_size": args.chunk_size,
-                "cascade": args.cascade or None})
+                "pace": args.pace, "limit": args.limit, "chunk_size": args.chunk_size})
                 if args.apply else replay.replay_rule(
                     db, rule, apply=False, limit=args.limit, chunk_size=args.chunk_size,
                     business_keys=selected, row_ids=rows, pace=args.pace, log=say)))

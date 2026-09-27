@@ -89,7 +89,7 @@ class RetroactiveRefused(Exception):
 # Parameter declaration
 # ---------------------------------------------------------------------------
 
-def _p(name, required=True, kind="string", help="", choices=None, form=True):
+def _p(name, required=True, kind="string", help="", choices=None, form=True, cli=True):
     """One parameter's declaration.
 
     🔴 `choices` IS FOR ANY PARAMETER WITH A CLOSED SET, not for pace. Only one uses it
@@ -108,9 +108,11 @@ def _p(name, required=True, kind="string", help="", choices=None, form=True):
 
     `form=False` keeps a parameter off the admin form (`inventory`) and still accepts it
     into the run record - a CLI option the button does not offer (총괄 45410384c ③).
+    `cli` is the other side of that: True, or - for a parameter no command line offers - the
+    reason, one line (총괄 1c3038997). The `cli` line's promise does not cover it.
     """
     return {"name": name, "required": required, "type": kind, "help": help,
-            "choices": choices, "form": form}
+            "choices": choices, "form": form, "cli": cli}
 
 
 def _resolved_choices(param):
@@ -1160,14 +1162,15 @@ OPERATIONS = {
                    _p("chunk_size", required=False, kind="int", form=False,
                       help="rows per write chunk"),
                    _p("cascade", required=False, kind="bool", form=False,
+                      cli="grid click only - owner 09-27",
                       help="let what this replay writes wake the opted-in chain rules, "
-                           "as the chain does - the grid's click replay sends it")],
+                           "as the chain does - only the grid's click replay sends it")],
         "count": _count_chain_replay,
         "run": _run_chain_replay,
         "judge": _judge_chain_replay,
         "cli": ("server/scripts/chain_replay_cli.py replay <rule> "
                 "[--business-keys a,b,c] [--row-ids r1,r2] [--pace slow] "
-                "[--limit N] [--chunk-size N] [--cascade] --apply"),
+                "[--limit N] [--chunk-size N] --apply"),
         "deletes": None,
         "reads_as": "number",
         "cancellable": True,

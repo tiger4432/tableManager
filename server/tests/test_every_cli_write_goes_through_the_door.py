@@ -139,6 +139,15 @@ def test_the_cli_writes_through_the_door_and_dry_runs_do_not(seen, monkeypatch, 
     assert seen["direct"] == direct
 
 
+def test_a_script_replay_cannot_ask_for_a_cascade(seen):
+    """소유자 09-26 · 09-27: a replay from a script cascades nothing. The grid's click is the one
+    seat that asks - its cell is the cascade parameter in
+    test_a_chain_write_reads_as_the_chain_whatever_its_layer (총괄 5057d030b)."""
+    with pytest.raises(SystemExit) as refused:
+        _chain_replay_cli(["replay", "r", "--cascade", "--apply"])
+    assert refused.value.code == 2 and seen["door"] == []
+
+
 def test_replay_all_does_not_replay_a_companion_whole(seen, monkeypatch):
     """S-270's one predicate: the door refuses a join's companion half replayed whole, so
     replay-all must not list it - or it would stop midway, after the rules before it ran."""

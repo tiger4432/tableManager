@@ -1,5 +1,16 @@
 # 지금 돌리면 되는 것
 
+> ## [09-27 아침 5] **스크립트 리플레이는 연쇄를 청하지 못함 — chain_replay_cli.py 의 --cascade 없음 — 마이그레이션 «없음» · 재기동 없음(CLI) · API(소급 탭 안내 줄)**
+>
+> ```
+> 무엇이 바뀌나  python server/scripts/chain_replay_cli.py replay <규칙> ... --cascade  ->  "unrecognized arguments: --cascade" 로 거절(아무것도 안 돎)
+>              --cascade 없이 돌리면 오늘과 같음 — 리플레이의 쓰기는 하류 규칙을 안 깨움
+> 연쇄가 필요하면  그리드에서 행을 찍어 리플레이(그 클릭만 연쇄를 청함 — 옵트인 규칙만)
+> 되돌리기      git revert
+> ```
+
+---
+
 > ## [09-27 아침 4] **페인트 잠금 기본 문장 영어 — 마이그레이션 «없음» · 재기동 API**
 >
 > ```
