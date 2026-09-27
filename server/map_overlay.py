@@ -2916,5 +2916,5 @@ def get_paint_rules(cfg: dict, table: str = None) -> dict:
         "enabled": merged.get("enabled", False) is True,
         "blocking_values": [str(v) for v in (merged.get("blocking_values") or [])],
         "from_overlay": [str(v) for v in (merged.get("from_overlay") or [])],
-        "message": merged.get("message") or "이 셀은 잠금 값이라 페인팅할 수 없습니다.",
+        "message": merged.get("message") or "This cell holds a locked value - it cannot be painted",
     }

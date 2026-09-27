@@ -46,7 +46,7 @@
 
    ```json
    "paint_lock": {
-     "*": { "enabled": true, "blocking_values": ["F"], "from_overlay": [], "message": "이 셀은 잠금 값이라 페인팅할 수 없습니다." },
+     "*": { "enabled": true, "blocking_values": ["F"], "from_overlay": [], "message": "This cell holds a locked value - it cannot be painted" },
      "bonding_map": {
        "enabled": true, "blocking_values": ["F"],
        "from_overlay": ["core_defect_map", "eds_fail_map"],

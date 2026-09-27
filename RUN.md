@@ -1,5 +1,53 @@
 # 지금 돌리면 되는 것
 
+> ## [09-27 아침 6] **예/아니오 칸 셋 더 — 파일명 규칙 required · finding kind active · bypass_proxy — 동작 같음, 문장만 하나로 · 재기동 워처 · 스케줄러**
+>
+> ```
+> 무엇이 바뀌나  세 칸 다 오늘도 true/false 아니면 거절(규칙 · 종류) 또는 기본 true(bypass_proxy) — 로그 문장만
+>              「<칸> must be true or false, got <값> - write true or false」로 (bypass_proxy 의 한국어 경고 줄은 사라짐)
+> 재기동 뒤     scheduler 로그 "auto_update_control.json: bypass_proxy must be true or false, got … - falling back to true" — 뜨면 그 칸을 true/false 로
+> 되돌리기      git revert
+> ```
+
+---
+
+> ## [09-27 아침 5] **스크립트 리플레이는 연쇄를 청하지 못함 — chain_replay_cli.py 의 --cascade 없음 — 마이그레이션 «없음» · 재기동 없음(CLI) · API(소급 탭 안내 줄)**
+>
+> ```
+> 무엇이 바뀌나  python server/scripts/chain_replay_cli.py replay <규칙> ... --cascade  ->  "unrecognized arguments: --cascade" 로 거절(아무것도 안 돎)
+>              --cascade 없이 돌리면 오늘과 같음 — 리플레이의 쓰기는 하류 규칙을 안 깨움
+> 연쇄가 필요하면  그리드에서 행을 찍어 리플레이(그 클릭만 연쇄를 청함 — 옵트인 규칙만)
+> 되돌리기      git revert
+> ```
+
+---
+
+> ## [09-27 아침 4] **페인트 잠금 기본 문장 영어 — 마이그레이션 «없음» · 재기동 API**
+>
+> ```
+> 무엇이 바뀌나  map_overlay_config.json 의 paint_lock 에 message 를 안 적은 표 -> 화면 문장이 "This cell holds a locked value - it cannot be painted"
+> 운영 설정     paint_lock 의 message 칸에 문장을 적어 두었으면 그건 운영자 값 — 그대로 그려짐. 바꾸려면 그 칸을 고침(저장하면 다음 요청부터)
+>              찾기: findstr /n "message" server\config\map_overlay_config.json
+> 되돌리기      git revert 뒤 API 재기동
+> ```
+
+---
+
+> ## 🔴 [09-27 아침 3] **표에 새 칸을 붙이는 스키마 동기화 — 20 s 넘게 막히면 포기하고 프로세스는 계속 — 마이그레이션 «없음» · 재기동 API · 워처 · 체인**
+>
+> ```
+> 무엇이 바뀌나  선언에 새 칸이 생겨 기동 · 설정 저장 때 ALTER TABLE ... ADD COLUMN 을 걸 때, 그 표를 잡은 세션이 있으면 20 s 뒤 포기
+>              (전: 끝없이 기다림 — 기동이 거기서 멈추고, 그 표의 읽기 · 쓰기가 ALTER 뒤에 줄 섬)
+> 재기동 뒤     각 프로세스 로그 "[Schema Sync] column '<칸>' was not added to '<표>' - another session held the table past 20s. …"
+> 뜻           그 표는 칸이 붙을 때까지 읽기 · 쓰기가 실패(「column "<칸>" does not exist」) · 기동과 다른 표는 돎
+> 뜨면         conda run --no-capture-output -n assy_manager python server/scripts/diagnose_db_health.py — 그 표를 잡은 pid 확인
+>              그 트랜잭션을 끝낸 뒤 설정 저장(리로드가 다시 붙임) 또는 재기동
+> 같이 바뀜     원장 파티션 DDL 의 「락을 못 잡음」 판정이 같은 함수 — statement timeout 은 더 이상 「락」이라 말하지 않음
+> 급할 때       스위치 없음. 되돌리기는 git revert 뒤 셋 재기동
+> ```
+
+---
+
 > ## 🔴 [09-27 아침 2] **예/아니오 칸은 true/false 만 — 체인 규칙 · 수집기 · 원장 묶음 · 표기 · 맵 · 자동 확정 — 마이그레이션 «없음» · 재기동 넷 다(API · 워처 · 체인 · 스케줄러)**
 >
 > ```

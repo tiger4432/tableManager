@@ -63802,3 +63802,113 @@ map_overlay.get_paint_rules 의 기본 message 가 한국어("이 셀은 잠금 
 ```
 
 **다음** 7 에 들어갑니다.
+
+---
+
+## [구현자 -> 총괄] 7 착지 8c4078869 — 스키마 동기화 ADD COLUMN 에 20 s · 포기해도 프로세스는 계속 (3c26854c3 · a696ee4e8)
+
+```
+바꾼 것   models.sync_dynamic_tables_schema — 칸마다 트랜잭션 첫 줄에 SET LOCAL lock_timeout = DDL_LOCK_TIMEOUT(PostgreSQL)
+         걸리면 한 줄(ERROR): 표 · 칸 · 20 s · 「다음 기동 또는 설정 저장 때 다시」 · 「그동안 이 표 읽기 · 쓰기가 이 칸 때문에 실패」 · diagnose_db_health
+55P03    db_safety.waited_past_the_lock_timeout 하나 — 판정하던 자리 전 2(unique_key 의 함수 · 원장 파티션의 글자 검사) -> 후 1
+         부르는 자리 5: unique_key 3 · ledger/schema 1 · models 1 (git grep -n "waited_past_the_lock_timeout(" — def 뺌)
+         원장 쪽 뜻이 바뀐 하나: 전엔 statement timeout 도 「락을 못 잡음」 문장이었음 -> 이제 55P03 · lock timeout 만
+부르는 자리  git grep -n "sync_dynamic_tables_schema(" -- server ':!server/tests' (def 뺌) -> 전 6 · 후 6 (제품 4 · 스크립트 1 · 주석 1)
+         제품 넷이 이 함수를 지나는 것은 AST 로 단언(시험 네 칸)
+잰 뜻(PG)  포기 뒤 그 표를 모델로 읽으면 실패 — 오류에 칸 이름 'late' · 안 잡힌 다른 표는 같은 부름에서 칸이 섬 · 풀면 다음 부름에 섬
+         오늘의 멈춤 대조: 시한을 뺀 변이는 10 s 가드를 넘겨 기다리다 잡은 쪽을 풀어야 끝남
+         풀: 연결 하나짜리 엔진으로 동기화 뒤 SHOW lock_timeout 이 1s 아님
+게이트    8 칸(PG 2) · 변이 다섯 전부 빨강(시한 없음 · 포기가 예외 · 포기를 일반 실패로 · 원장 옛 글자 검사 · 판정자가 statement timeout 도 락으로)
+전체      5 failed · 7322 passed — 6 착지 때 패치 없이도 같던 다섯(샘플 CRLF 넷 · repo_root)
+PG       7 failed = 알려진 일곱 · 오류 0
+RUN.md   「09-27 아침 3」 — 재기동 뒤 볼 줄 · 뜻 · 뜨면 diagnose_db_health 로 잡은 pid -> 트랜잭션 끝냄 -> 설정 저장
+```
+
+**다음** 페인트 잠금 기본 문장 영어 -> A(CLI 연쇄) -> B(예/아니오 넷).
+
+---
+
+## [구현자 -> 총괄] 영어 문장 착지 811a5c639 · A 짓다가 부딪힘 하나 — 여쭘 (360c9e40e · 5057d030b)
+
+### 영어 문장 — 착지 811a5c639
+```
+문장     "This cell holds a locked value - it cannot be painted"
+자리     넷 — map_overlay.get_paint_rules 기본값 · config/sample 의 샘플 · 가이드의 샘플 사본 둘(guide/config/map_overlay_config.md 예시 · guide/config_reference)
+         지시는 둘이었는데 가이드 둘이 샘플의 사본이라 같이 바꿨습니다. 셈: git grep -n "이 셀은 잠금 값이라" (task · history · _archive 뺌) 전 4 · 후 0
+운영 설정  이 박스의 map_overlay_config.json 에도 그 한국어 문장이 적혀 있음(박스) — 운영자 값이라 안 건드림 · RUN.md 「09-27 아침 4」
+시험      샘플 · 잠금을 읽는 시험 155 passed. 문장 자체를 재는 칸은 안 만듦(지시에 없음)
+지나며 본 것  클라 map_editor.js 의 잠금 문장 대체값이 한국어('이 좌표는 잠금 규칙에 의해 칠할 수 없습니다.') — 자리 1, 안 고침
+```
+
+### A — CLI --cascade 뺌: 지었고, 시험 하나가 막음
+```
+지은 것   chain_replay_cli.py 의 --cascade 와 그 값 전달 뺌 -> `replay r --cascade --apply` 는 argparse 가 거절(코드 2) · 문 부름 0
+         소급 연산 chain_replay 의 cli 줄에서 [--cascade] 지움 · cascade 인자 도움말 「그리드 클릭만 · CLI 엔 없음」
+청하는 자리  전 2(CLI 플래그 · 클라 redo_banner 의 그리드 클릭) -> 후 1(그리드 클릭). 받는 자리(소급 연산의 cascade 인자, form=False)는 그대로
+막은 시험  test_retroactive_admin::test_every_parameter_a_button_takes_is_findable_in_the_cli_line_it_promises
+         규칙: 연산의 인자는 전부 cli 줄이나 cli_only 에 있어야 함(「cli 는 약속」) -> chain_replay.cascade 가 이제 걸림
+         cli_only 는 「CLI 에만 있고 버튼엔 없는 것」을 적는 칸이라 여기 적으면 그 줄이 거짓
+```
+
+### 여쭐 것 — A-1
+```
+ㄱ  인자에 「CLI 에 없음」을 선언하는 칸 하나(_p(..., cli=False)) — 시험은 그 칸이 선 인자를 건너뜀. 칸이 «이유»를 적는 자리
+ㄴ  연산에 button_only 목록 칸(cli_only 의 짝) — 시험은 cli 줄 · cli_only · button_only 중 하나
+ㄷ  시험에서 chain_replay.cascade 하나를 이름으로 뺌 — 가장 작지만 규칙 밖 예외가 코드 밖(시험)에 삶
+제 생각   ㄱ — 인자가 스스로 말하고, 다음에 같은 경우가 와도 한 칸
+B 는 그동안 짓습니다(서로 안 닿음). A 는 답 오면 같이 착지
+```
+
+---
+
+## [구현자 -> 총괄] A 지음(cli 칸) · B 셋 지음 · B 넷째(y_invert)에서 여쭘 (1c3038997 · 5057d030b)
+
+```
+A    인자에 cli 칸 — True 이거나, CLI 에 없으면 «이유 한 줄». cascade = "grid click only - owner 09-27"
+     시험: 그 칸이 선 인자는 약속 검사에서 빠지고, 그런 인자 목록을 단언(지금 ["chain_replay.cascade"])
+     곁가지 하나: 소급 탭 목록(inventory)의 폼 인자마다 "cli": true 가 한 칸 더 실림 — 클라는 안 읽는 칸
+B 셋  ingester 'required' · finding_kinds 'active' · run_auto_update 'bypass_proxy'(한국어 경고 줄 사라짐) — 판정자로
+     결과는 자리대로: 규칙 · 종류는 안 섬(오늘과 같음) · bypass_proxy 는 기본 true + 문장
+변이  다섯 전부 빨강(A 둘 · B 셋). 전체 · PG 도는 중 — 끝나면 A 착지
+```
+
+### B 넷째 — map_overlay._read_y_invert 는 «판정»이고, 그리는 쪽은 따로 읽습니다
+```
+_read_y_invert   「이 맵의 방위가 선언인가」(orientation_declaration)의 출처 판정 — 결과는 출처 토큰(unparsable 등), 글 문장이 없음
+_y_invert_of     실제로 그리는 값 — bool(raw). 부르는 자리 셋. "false" 글자 · 1 이 True 로 그려짐
+클라             두 규칙을 그대로 흉내 냄(map2/declaration.js — 「모양과 토큰은 클라 physDeclaration 과 같다」)
+판정만 바꾸면     1 이 「못 읽음 · 기본 false」로 판정되는데 그림은 True — 서버 안에서 답이 둘, 클라와 셋
+이 칸의 자리     선언 파일이 아니라 DB 행(wafer_map_metadata.grid_metadata) — 등록기와 맵 편집이 씀
+박스 수          7,430 행 전부 bool(True 2 · False 7,428) · 0/1/글자 0 — 운영은 모름
+```
+
+### 여쭐 것 — B-4
+```
+ㄱ  판정과 그림 둘 다 판정자로(1 · "false" -> false) + 클라 흉내도 같이(클라 레인). 그림이 바뀌는 행이 운영에 있으면 맵이 뒤집힘
+ㄴ  이번엔 뺌 — 「선언의 예/아니오 칸」이 아니라 데이터 행의 값. 맵 도메인 물음으로 아침 보고에
+ㄷ  지시대로 판정만 — 위 「답이 둘」이 생겨서 안 권함
+제 생각   ㄴ. 바꾸려면 ㄱ 인데, 그림이 바뀌는 행 수를 운영에서 먼저 세야 합니다(박스는 0)
+B 셋은 답과 무관 — A 착지 뒤 따로 착지하겠습니다
+```
+
+---
+
+## [구현자 -> 총괄] A 착지 2a6739081 · B 착지 75e191e57 (5057d030b · 1c3038997 · b2562ea28)
+
+```
+A    chain_replay_cli.py 에 --cascade 없음 — 주면 argparse 거절(코드 2) · 문 부름 0
+     청하는 자리 전 2(CLI · 그리드 클릭) -> 후 1(그리드 클릭). 받는 자리(chain_replay 의 cascade 인자)는 그대로
+     인자 cli 칸: True 또는 이유 한 줄 — cascade = "grid click only - owner 09-27". 약속 시험은 그 인자를 건너뛰고 목록을 단언(1)
+     RUN.md 「09-27 아침 5」
+B    ingester required · finding kind active · bypass_proxy — 판정자로, 동작 같음 · 문장 하나로(한국어 경고 줄 사라짐)
+     옛 문장을 단언하던 시험 하나 더(파일명 규칙 선언 시험) — 전체에서 잡혀 고침
+     y_invert 는 뺌(총괄 b2562ea28) · RUN.md 「09-27 아침 6」
+게이트  A: argparse 거절 한 칸 + 약속 시험의 목록 단언 · B: 자리마다 한 칸(그 자리의 말에 문장)
+       대조 — 그리드 클릭 연쇄는 test_a_chain_write_reads_as_the_chain_whatever_its_layer 의 cascade 매개 칸 그대로(인용)
+변이   다섯 전부 빨강(A 둘 · B 셋) · 되돌린 뒤 167 passed
+전체   6 failed · 7325 passed — 제 것 1(파일명 규칙 옛 문장, 고침 · 그 파일 포함 140 passed) · 나머지 다섯은 앞 착지들과 같은 환경 몫
+PG     7 failed = 알려진 일곱
+main   착지마다 건드린 시험 파일 — A 88 passed · B 108 passed
+```
+
+**지시받은 것 전부 착지했습니다** — 8 · 6 · 7 · 영어 문장 · A · B. 새 항목 없으면 감시로 돌아갑니다.

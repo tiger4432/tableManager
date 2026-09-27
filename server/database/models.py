@@ -1215,7 +1215,9 @@ def sync_dynamic_tables_schema(engine):
     """
     from sqlalchemy import inspect, text
     from sqlalchemy.schema import CreateColumn
-    
+
+    import db_safety
+
     inspector = inspect(engine)
     dialect = engine.dialect
 
@@ -1274,10 +1276,26 @@ def sync_dynamic_tables_schema(engine):
                 # 각 컬럼 추가 DDL을 개별 독립 트랜잭션으로 격리하여, 한 곳의 실패가 전체 세션을 오염시키는 문제를 영구 방지
                 try:
                     with engine.begin() as conn:
+                        if dialect.name == "postgresql":
+                            # 🔴 [총괄 a696ee4e8] The one DDL time limit, for THIS transaction:
+                            #    it ends with it, so no pooled connection is handed on with it.
+                            conn.execute(text("SET LOCAL lock_timeout = '%s'"
+                                              % db_safety.DDL_LOCK_TIMEOUT))
                         conn.execute(text(alter_query))
                     logger.info("[Schema Sync] added column '%s' to '%s'",
                                 col_name, table_name)
                 except Exception as err:
+                    if db_safety.waited_past_the_lock_timeout(err):
+                        # Waited out, not wrong: the process goes on and the next start or
+                        # config save adds it. Until then the table itself fails - every SELECT
+                        # and INSERT the model builds names the column (admin/schema_drift).
+                        logger.error(
+                            "[Schema Sync] column '%s' was not added to '%s' - another session "
+                            "held the table past %s. Retried at the next start or config save; "
+                            "until then every read and write of '%s' fails on this column. Find "
+                            "the holder: python server/scripts/diagnose_db_health.py",
+                            col_name, table_name, db_safety.DDL_LOCK_TIMEOUT, table_name)
+                        continue
                     # 🔴 A LOGGER, NOT A print. This is the REPAIR: the one thing that
                     # closes a gap between what the declaration says a table has and what
                     # the database gives it. Measured 2026-09-04, it had been failing on

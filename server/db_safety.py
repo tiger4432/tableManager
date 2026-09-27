@@ -300,10 +300,20 @@ PER_TRANSACTION = "per_transaction"
 #: `database/database.py` so a script does not read text differently from the app.
 #:
 #: How long a product DDL waits for a lock before it fails and says so - one value for every
-#: seat that sets it: the ledger's partition DDL and the chain's unique index work (총괄
-#: 3ef5fe54f). Waiting longer is the danger: a DDL queued on a table makes an ALTER queue
-#: behind it, and every writer of that table behind the ALTER.
+#: seat that sets it: the ledger's partition DDL, the chain's unique index work (총괄
+#: 3ef5fe54f) and the schema sync's ADD COLUMN (총괄 a696ee4e8). Waiting longer is the danger:
+#: a DDL queued on a table makes an ALTER queue behind it, and every writer of that table
+#: behind the ALTER.
 DDL_LOCK_TIMEOUT = "20s"
+
+
+def waited_past_the_lock_timeout(error) -> bool:
+    """Did this DDL give up on a lock (SQLSTATE 55P03) rather than fail on the data - the one
+    judge for every seat that sets `DDL_LOCK_TIMEOUT` (총괄 a696ee4e8 7-3). A driver error
+    carries `pgcode` itself; SQLAlchemy wraps it in `.orig`. ⚠️ Not 「canceling statement」:
+    a statement timeout says that too, and it is not a lock."""
+    code = getattr(error, "pgcode", None) or getattr(getattr(error, "orig", None), "pgcode", None)
+    return code == "55P03" or "lock timeout" in str(error)
 
 #: WHAT IS DELIBERATELY NOT IN HERE: `lock_timeout` and
 #: `idle_in_transaction_session_timeout`, which `scripts/diagnose_wal_headroom.py`

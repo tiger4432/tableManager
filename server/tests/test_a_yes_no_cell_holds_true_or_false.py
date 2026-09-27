@@ -333,3 +333,42 @@ def test_std_parse_says_the_one_sentence(monkeypatch, caplog):
         directory_watcher.warn_invalid_std_parse_once("table_config.json entry 't'", "false")
     assert any(validation.flag_refusal("std_parse", "false") in r.getMessage()
                for r in caplog.records)
+
+
+# ------------------------------------------- found after the landing (총괄 5057d030b B)
+
+def test_a_filename_rule_whose_required_is_not_a_yes_no_does_not_stand():
+    from parsers import advanced_ingester
+
+    rules, errors = advanced_ingester._validate_rules(
+        [{"column": "lot", "regex": "(L\\d+)", "required": "false"}], "rules")
+    assert rules == []
+    assert errors == ["rules[0]: " + validation.flag_refusal("required", "false")]
+
+
+def test_a_finding_kind_whose_active_is_not_a_yes_no_is_refused(tmp_path, monkeypatch):
+    from scripts.support import finding_kinds
+
+    path = tmp_path / "finding_kinds.json"
+    path.write_text(json.dumps({"yn_kind": {"active": "true"}}), encoding="utf-8")
+    monkeypatch.setattr(finding_kinds, "_config_path", lambda: str(path))
+    with pytest.raises(finding_kinds.FindingKindError) as refused:
+        finding_kinds.load(force_reload=True)
+    assert str(refused.value) == "finding kind 'yn_kind': " + validation.flag_refusal(
+        "active", "true")
+
+
+def test_bypass_proxy_that_is_not_a_yes_no_falls_back_to_true_and_says_why(
+        tmp_path, monkeypatch, caplog):
+    import run_auto_update
+    from utils import auto_update_control
+
+    path = tmp_path / "auto_update_control.json"
+    path.write_text(json.dumps({"bypass_proxy": "false"}), encoding="utf-8")
+    monkeypatch.setattr(auto_update_control, "get_control_path", lambda: str(path))
+    monkeypatch.setenv("HTTP_PROXY", "http://proxy.invalid:1")
+    with caplog.at_level(logging.WARNING):
+        run_auto_update._apply_proxy_policy()
+    assert "HTTP_PROXY" not in os.environ, "the fallback is true: the proxy is bypassed"
+    assert any(validation.flag_refusal("bypass_proxy", "false") in r.getMessage()
+               for r in caplog.records)
