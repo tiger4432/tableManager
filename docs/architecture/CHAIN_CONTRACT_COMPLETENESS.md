@@ -30,7 +30,7 @@
 | 칸 | 표시 | 근거 (심볼) | 비고 |
 |---|---|---|---|
 | 트리거 표 | ① | `rule.trigger_table` — 워커가 outbox 사건의 표와 맞춘다 | 샘플 규칙 10 개가 전부 선언 |
-| 깨우는 «컬럼» | ① | `rule.trigger_columns` + `rule_watches_changed_columns()` (S-140) | 없으면 «표 단위»가 기본값(②의 성질). ⚠️ **[09-28 실측 — `3aec8eaa9` 가 적음] 이 칸은 실행을 «거르지 않는다»** — 실행을 정하는 `fires` 가 이것을 안 묻고, 「건너뜀」 기록(`[Chain] rule … skipped: none of … changed`)만 읽는다 |
+| 깨우는 «컬럼» | ① | `rule.trigger_columns` + `rule_watches_changed_columns()` (S-140) | 없으면 «표 단위»가 기본값(②의 성질). ⚰️ ~~[09-28 실측] 이 칸은 실행을 거르지 않는다 — `fires` 가 안 묻는다~~ — **[09-29 `66b5fcbe7`] 닫힘: 이제 거른다.** 판정 좌석 «하나» `fire_refusal(rule, event)`(발화면 None, 아니면 까닭) — `fires` 는 그 예/아니오, 실행 전 결과 기록은 그 까닭을 읽음(칸 판정과 체인 판정이 한 함수에서). 깨우는 칸 = `wake_columns(rule)`(`trigger_columns` 다음 `require`), 로드 때 `[ChainRules] <규칙> wakes only on: [..]` 한 줄. 칸 목록이 없는 사건은 여전히 돈다. 조인의 값 쪽 깨우는 칸은 키 «와» take 칸 |
 | 🆕 넘겨받는 «행» | ① | `require`(평면) = 통합 `on.require`(`chain_bindings.REQUIRE_KEY`) — `rule_run.held_back` (09-28 `3aec8eaa9`) | 목록의 칸이 하나라도 빈 행(`crud.is_blank_value`)은 규칙에 안 넘김 · 그룹마다 한 줄 `[Chain] <규칙>: N row(s) not handed over - required column(s) empty: …`. 트리거 표에 없는 이름은 `unknown_require_column`, 목록이 아니면 `bad_require` 로 규칙 거절(로더 · 저장 관문 같음). 선언이 `on.table` 에 세우는 규칙(맵퍼 · 조인의 값 표 쪽 · decide 의 dedup 반쪽)에 실림. ⚰️ ~~조인의 `:target` 반쪽은 이 좌석 밖에서 값 표 행을 찾아 require 가 막을 행에서도 복사함~~ — **[09-28 `29c590044`] 닫힘**: 조인의 값 표 답 읽기가 require 칸이 빈 행을 뺀다(SQL 쌍둥이 `crud.not_blank_sql_condition`) — 두 반쪽 다 그런 행에서 값을 안 가져감. 목록은 조인 스펙의 `right_table` 옆에 실리고, 값 표에 없는 이름은 `join_into._missing` 이 이름 대어 거절. 🆕 막혀서 넘길 행이 0 이 된 배치는 맵퍼를 «안» 부름(처음부터 아무것도 안 준 그룹은 전처럼 부름). 인리치 소급(`enrichment.backfill.run_backfill`)도 쪽마다 `rule_run.held_back` 을 지남 |
 | 선언 안 된 컬럼을 적었을 때 | ① | `_report_unwatchable_trigger_columns(rules)` 가 로드 때 «이름을 댄다» | 조용히 안 깨는 것을 막는 자리 |
 | 접힌 페이로드 | ② | `outbox_expand` 가 행을 «합성»한다 — 제외 컬럼은 `OUTBOX_PAYLOAD_EXCLUDED_COLUMNS` «한 상수» | 칸이 아니라 «한 자리»가 정한다 |
@@ -166,7 +166,7 @@
               관문 둘
                  rule_watches_changed_columns   (trigger_columns ∪ require) ∩ payload.columns — 🆕 require 는 3aec8eaa9
                                                 («columns 없음»은 「모른다」라 통과)
-                                                ⚠️ 실행을 거르지 «않는다» — fires 가 안 물음. 「건너뜀」 기록만 읽음(09-28 실측)
+                                                ⚰️ ~~실행을 거르지 않는다~~ — 09-29 66b5fcbe7 부터 fire_refusal 이 물음(fires 가 그 예/아니오)
                  _rule_accepts_event            경로(`channel`) 칸을 읽음 — `chain` 은 allow_chain_trigger 옵트인만 · `retroactive` 는 아무 규칙도(`cascade` 면 `chain` 처럼) · 경로 없는 옛 사건은 `source_name` 으로(은퇴할 갈래, 체인 박동 note 가 셈) — `ac918a451`. 그리고 🆕 09-28 `5ad90d16d`: 사건을 쓴 선언(`written_by`)이 «전부» 그 규칙 자신의 선언(`rule_shape.declaration_of` — 동반 규칙은 자기 선언 이름)이면 안 깨움. 남의 선언이 같이 쓴 사건은 깨움
               -> 실행 (아래 표)
               그리고 «관문 위»에서 ledger_followup.enqueue — 모든 이벤트가 들어간다
