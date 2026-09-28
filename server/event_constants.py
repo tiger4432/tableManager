@@ -455,6 +455,11 @@ CASCADE_KEY = "cascade"
 #: that one is a restriction, and reading it as 「a replay staged this」 would make any future
 #: door that narrows to one rule silently retroactive.
 REPLAY_KEY = "replay"
+#: [WRITTEN-BY] The declarations whose rules wrote what this event names - stamped by the chain's
+#: two write seats (a rule's own write in `rule_run.chain_envelope`, the proposals' write in
+#: `apply_chain_writes`). A declaration is not woken by its own writes (소유자 09-28, 총괄
+#: ebefd20e8). Absent = a door that is not the chain's, or an event queued before the key.
+WRITTEN_BY_KEY = "written_by"
 
 
 def channel_of(payload):
@@ -473,6 +478,12 @@ def replay_of(payload) -> bool:
 def cascade_of(payload) -> bool:
     """Did the replay that caused this event ask to cascade?"""
     return isinstance(payload, dict) and payload.get(CASCADE_KEY) is True
+
+
+def written_by_of(payload) -> frozenset:
+    """The declarations that wrote what this event names - empty when it does not say."""
+    value = payload.get(WRITTEN_BY_KEY) if isinstance(payload, dict) else None
+    return frozenset(str(v) for v in value if v) if isinstance(value, list) else frozenset()
 
 
 def only_rule_of(payload):

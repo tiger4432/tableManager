@@ -376,7 +376,7 @@ def approval_report(db, known_tables: dict = None) -> dict:
             # ⚠️ 동반 반쪽(`:target`)은 같은 선언의 반쪽이라 한 행으로 접는다.
             # 🔴 [총괄 e91b96a28 ①] THE CELL, NOT THE NAME. This cut the name at `:reference`;
             #    the suffix is a label and the loader stamps the fact (S-270).
-            base = rule.get(rule_shape.COMPANION_CELL) or name or ""
+            base = rule_shape.declaration_of(rule) or name or ""
             if base in seen:
                 continue
             seen.add(base)

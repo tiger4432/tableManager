@@ -47,6 +47,9 @@ request_channel = sys._context_vars_cache.setdefault(
 #: chain writes what those woke (총괄 146b208cb).
 request_cascade = sys._context_vars_cache.setdefault(
     "request_cascade", contextvars.ContextVar("request_cascade", default=False))
+#: [WRITTEN-BY] The declarations whose rules are writing, while the chain writes (총괄 ebefd20e8).
+request_written_by = sys._context_vars_cache.setdefault(
+    "request_written_by", contextvars.ContextVar("request_written_by", default=None))
 
 
 def _for_the_block(var, value):
@@ -73,6 +76,11 @@ def channel(value: str):
 def cascade(value: bool):
     """Context manager: the writes inside say their replay asked to cascade."""
     return _for_the_block(request_cascade, bool(value))
+
+
+def written_by(declarations):
+    """Context manager: the writes inside say which declarations made them (총괄 ebefd20e8)."""
+    return _for_the_block(request_written_by, tuple(sorted(declarations)) or None)
 
 
 def outbox_mode(mode: str):

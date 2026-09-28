@@ -417,6 +417,15 @@ COMPANION_SUFFIX = ":target"
 COMPANION_CELL = chain_bindings.COMPANION_CELL_NAME
 
 
+def declaration_of(rule: dict) -> str:
+    """The declaration this rule stands for - a companion names its own (the cell above), any
+    other rule is its own declaration. A declaration is not woken by its own writes (총괄
+    ebefd20e8); ⚠️ `decide`'s two halves are two rules on purpose - its confirm half is woken
+    by its dedup half's write, and that is how auto-confirm runs at all."""
+    rule = rule or {}
+    return str(rule.get(COMPANION_CELL) or rule.get("name") or "")
+
+
 def companion_rules(internal: dict) -> list:
     """The EXTRA chain rules one unified declaration implies. Today: a join's target side.
 
