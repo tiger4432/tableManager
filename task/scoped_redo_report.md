@@ -64170,3 +64170,65 @@ PG       7 failed, 117 passed, 7403 deselected in 164.49s (0:02:44) — 실패 7
 ```
 
 지시대로 착지하고 멈춥니다. 감시는 켜 둡니다(소유자 「감시켜」).
+
+---
+
+## [구현자 -> 총괄] 걷기 확인 둘 — 잰 것만 (7a05ecd2e · 짓지 않음)
+
+### 1. collect 가 걸렀을 때 엣지 — «의도»입니다. 소유자 판정이 있습니다
+```
+재현(박스 127.0.0.1:8080 · 씨앗 wafer 50 · hops 4)   B = /api/ledger/subgraph?seed_type=wafer&seed_limit=50&hops=4
+  B                                  노드 148 (wafer 50 · lot_slot 98) · 엣지 98 (전부 has_wafer) · 끝 없는 엣지 0 · ready
+  B&collect=die                      노드 0 · 엣지 98 · 끝 없는 엣지 98 · ready
+  B&collect=wafer                    노드 50 · 엣지 98 · 끝 없는 엣지 98 · ready   <- 찾은 게 있어도 같음
+  B&collect=lot                      노드 0 · 엣지 98 · 끝 없는 엣지 98 · ready
+  B&collect=die&follow=inspected     노드 0 · 엣지 0 · empty                      <- 판정이 든 «맞는 짝»은 깨끗함
+  B&follow=inspected&follow=observed 노드 50(씨앗) · 엣지 0 · empty
+  ⚠️ follow=inspected,observed(쉼표 한 칸)는 422 「선언에 없는 술어입니다: inspected,observed」 — follow 는 칸을 되풀이해 적음
+     님이 적은 「노드 1」은 제 명령으로는 안 나왔습니다(씨앗 50 이 노드로 남음)
+끝 없는 엣지  collect 가 «닿은 타입을 하나라도 뺄 때마다» 납니다 — 「아무것도 못 찾을 때」만이 아닙니다
+```
+```
+판정     SERVER_DEFECT_QUEUE.md 「⚰️ 엣지 정책 철회 — 판정할 것이 없습니다 (소유자 2026-09-06 21:1x)」
+         소유자: 「collect 에 맞는 follow 를 주면 되지 뭔 쓸데없는 소리야」
+         그 절의 결론: 허공 엣지는 «안 맞는 짝»(collect 만 좁히고 길은 전부)에서 나온 것이지 설계가 아니다 ·
+         결함을 원하면 collect=defect 이고 엣지는 «안 물은 것» · 짝짓기는 부르는 쪽의 일
+엔진     ledger_api/ledger_subgraph.subgraph 독스트링 「EDGES ARE NOT FILTERED THIS ROUND ... deciding that is a
+         separate ruling」 — 그 «별도 판정»이 위의 철회입니다. 거르는 자리는 응답 조립의 노드 목록 «하나»
+WALK.md  §4 「collect 는 «짐»만 거르고 순위는 내부에서 전부 본다」
+계약     contracts/walk_* 셋(walk_aggregate · walk_columns · walk_node_shape)에 collect 가 엣지에 대해 말하는 칸 없음
+클라     collect 를 싣는 화면은 걷기 화면(client2/src/walk/main.js) 하나 — 걷기 상자는 안 싣는다고 자기 주석이 적음
+         그 화면은 엣지를 선으로 «안 그립니다». 엣지는 표의 행(노드)에 수식어를 붙이는 데만 쓰이고(table_view.qualifiersByNode),
+         행이 없는 끝을 향한 엣지는 아무것도 안 붙입니다. 보이는 것은 카운트 줄 「노드 N (collect: X) · 엣지 M (전부)」 뿐
+         — 그 줄 옆 주석(walk/main.js 의 카운트 줄)이 「collect 는 노드를 거르고 엣지는 안 거릅니다」라고 적음
+```
+```
+state    ⚠️ 판정이 «말하지 않은» 칸입니다. 엔진이 state 를 collect «전»의 닿은 모집단으로 짓습니다
+         (found = 씨앗 밖에 닿았나 또는 엣지가 있나) — 그래서 collect 가 0 을 남겨도 ready
+읽는 자리  state 를 읽는 클라: rnd_board 의 candidate_list_panel · rank_list_panel — 둘 다 collect 를 «안» 싣는 보드 좌석
+         collect 를 싣는 걷기 화면은 state 를 «안» 읽습니다(실패일 때 message 만)
+         => 오늘 「collect 가 0 인데 ready」를 읽고 틀리는 화면은 0. 서버 밖 소비자(rows TSV 등)는 못 셌습니다
+```
+| 안 | 무엇을 하나 | 좋은 점 | 위험 | 크기 |
+|---|---|---|---|---|
+| ㄱ (추천) | 그대로 둔다 — 09-06 판정대로. state 도 「닿았나」의 뜻 그대로 | 판정을 안 뒤집음 · 변경 0 | collect 만 건 호출은 계속 끝 없는 엣지를 받음(판정이 말하는 «안 맞는 짝») | 0 |
+| ㄴ | state 만 collect «뒤»로 — 실어 온 노드가 0 이면 empty | 「0 인데 ready」가 사라짐 | state 의 뜻이 「닿았나」에서 「실어 온 게 있나」로 바뀜 · 오늘 그 차이를 읽는 화면 0 | 엔진 한 줄 + 게이트 한 칸. 안 쟀다: 서버 밖 소비자 |
+| ㄷ | 엣지도 collect 뒤로 — 양 끝이 다 실린 엣지만 | 응답이 스스로 닫힘 | 🔴 09-06 소유자 판정(「철회」)을 뒤집음 · 엔진 독스트링의 사유(「왜 이 노드가 답에 있나」의 길이 가려짐) · 카운트 줄 「(전부)」와 WALK.md 가 거짓이 됨 | 엔진 한 줄 + 화면 문구 + 문서. 판정부터 |
+
+소유자께 여쭐 것: ㄴ 을 할지 — state 가 「닿았나」여야 하는지 「실어 온 게 있나」여야 하는지.
+
+### 2. 이 라우트가 내보내는 한국어 문장 — 수만
+```
+셈       파일마다 (저장소 루트에서, <파일> 자리에 경로):
+         python -c "import ast,re,sys;t=ast.parse(open(sys.argv[1],encoding='utf-8').read());d={id(n.body[0].value) for n in ast.walk(t) if isinstance(n,(ast.Module,ast.FunctionDef,ast.AsyncFunctionDef,ast.ClassDef)) and n.body and isinstance(n.body[0],ast.Expr)};k={id(w.value) for w in ast.walk(t) if isinstance(w,ast.keyword) and w.arg=='description'};h=[n for n in ast.walk(t) if isinstance(n,ast.Constant) and isinstance(n.value,str) and id(n) not in d and re.search('[가-힣]',n.value)];print(len(h),sum(1 for n in h if id(n) in k),len({n.lineno for n in h if id(n) not in k}))" <파일>
+         찍는 셋 = 한글 문자열 수 · 그중 Query description 수 · description 밖의 줄 수. docstring 은 빼고 주석은 AST 에 없음
+         (같은 트리를 문자열마다 행선지를 적는 두 번째 스크립트로도 셌고 수가 같았음)
+server/ledger/trace_router.py         한글 문자열 37 = 응답 message 16 문장(17 조각 — 757 줄 한 문장이 두 조각)
+                                                     + Query description 20 (API 문서 화면 /docs 에만 · 걷기 화면엔 안 감)
+server/ledger_api/ledger_subgraph.py  3 — /subgraph 응답으로 나감: 빈 응답 message 1 · 순위 블록 message 1 · 노드 label 1
+합       화면에 닿을 수 있는 문장 19 (라우트 16 + 엔진 3)
+         이 중 걷기 화면이 «그대로» 그리는 것은 실패 message — 예: 422 「선언에 없는 노드 타입입니다: banana」
+곁에서 본 것  걷기 화면 자기 문구도 한국어입니다(예: 「날리기」 · 「선언에 엔터티 없음」). 안 셌습니다
+```
+
+지시대로 재서 보고만 하고 멈춥니다. 감시는 켜 둡니다.
