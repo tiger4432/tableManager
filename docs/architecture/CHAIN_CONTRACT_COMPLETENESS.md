@@ -165,7 +165,7 @@
               관문 둘
                  rule_watches_changed_columns   trigger_columns ∩ payload.columns
                                                 («columns 없음»은 「모른다」라 통과)
-                 _rule_accepts_event            경로(`channel`) 칸을 읽음 — `chain` 은 allow_chain_trigger 옵트인만 · `retroactive` 는 아무 규칙도(`cascade` 면 `chain` 처럼) · 경로 없는 옛 사건은 `source_name` 으로(은퇴할 갈래, 체인 박동 note 가 셈) — `ac918a451`
+                 _rule_accepts_event            경로(`channel`) 칸을 읽음 — `chain` 은 allow_chain_trigger 옵트인만 · `retroactive` 는 아무 규칙도(`cascade` 면 `chain` 처럼) · 경로 없는 옛 사건은 `source_name` 으로(은퇴할 갈래, 체인 박동 note 가 셈) — `ac918a451`. 그리고 🆕 09-28 `5ad90d16d`: 사건을 쓴 선언(`written_by`)이 «전부» 그 규칙 자신의 선언(`rule_shape.declaration_of` — 동반 규칙은 자기 선언 이름)이면 안 깨움. 남의 선언이 같이 쓴 사건은 깨움
               -> 실행 (아래 표)
               그리고 «관문 위»에서 ledger_followup.enqueue — 모든 이벤트가 들어간다
 
