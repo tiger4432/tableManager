@@ -1,3 +1,19 @@
+> ## [22:23 디자인] Save changed cells 박스 실측 — 총괄 요청(서버 켬)
+
+```
+맵        dt_map · SYN-MAP20 / 1 (20x20 · 400 행 · 행 둘인 셀 0 · 사람 교정 0 — 교정 보존은 이 맵에서 못 잼)
+바꿈      (2, 2) value 42.0 -> 21.0, 칠하고 Save changed cells — 확인창 「1 edited · 0 new · 0 cleared」 · PUT 1 번 200
+다시 GET   400 행 중 바뀐 행 1 — 그 행의 value 만(42.0 -> 21.0, 사람 값으로 표시: priority user · pin · kk980)
+          dt_job · dt_x · dt_y · 맵 키 그대로 · 나머지 399 행 그대로 · 사라진 행 0 · 새 행 0
+되돌림    같은 버튼으로 42.0 칠하고 저장(확인창 1 edited) -> 처음 GET 과 비교해 value 같음, 달라진 행 0 — 단 그 셀의 출처는
+          «사람 값»으로 남음(priority user · pin · updated_by kk980 · updated_at). 그리드에서 고쳤다 되돌려도 같은 자국
+Push      dt_map 은 게이트 4 가 거절하지 않는 표 — Clean Replace 확인창까지 가고 「아니오」, 쓰기 0
+          core_wafer_map(CL-2601-001 / 01)에서 Push -> 게이트 4 거절 그대로(「로그형 · 계약 밖 컬럼 2개: wafer_id, event_time」) · 쓰기 0
+          같은 맵에서 Save changed cells 는 거절 없이 「No changed cells in c_bn.」
+못 잰 것   새 칠 · 지움 한 칸씩(하니스만) · 사람 교정 보존(이 맵에 교정 0)
+뒷정리    미리보기 끔 · 메인 launch.json 원상 · 박스 데이터: 위 한 칸만(값 되돌림 · 출처 자국 남음)
+```
+
 > ## [21:14 디자인] 맵 편집기 「고른 칸만 고쳐 쓰기」 — Save changed cells (de356e889) — 총괄 40bae1219
 
 ### 먼저 잰 것
