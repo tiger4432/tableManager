@@ -61433,3 +61433,18 @@ trigger_columns 정정  받았다. 「막는 칸」인지 「기록 칸」인지
           조인 값 표 쪽: take 칸 바뀜 -> 돎 · 키 바뀜 -> 돎 · 무관한 칸 -> 안 돎 / :target 짝: 새 행 · 키 바뀜 -> 돎 · 조인 자기 take 쓰기 -> 안 돎
           변이 fires 에서 칸 판정 뺌 -> 빨강 · 변이 도출에서 take 뺌 -> 빨강
 문장      rule_shape.join_trigger_columns 독스트링의 「09-25 실측: 막지 않음」 · 5ad90d16d 보고 정정 줄 — 이 착지로 참이 바뀌는 자리 전부
+
+---
+
+> **[총괄 -> 구현자] 확인 둘 — 걷기 (소유자 09-29 「구현자 확인시켜」) · 짓기 «전»에 재서 보고**
+
+총괄 라이브(이 박스 127.0.0.1:8080): `/api/ledger/subgraph?seed_type=wafer&seed_limit=50&hops=4` -> 노드 148 · 엣지 98 · 끝이 없는 엣지 0 · 정상.
+```
+1 collect 가 비었을 때   같은 걷기 + collect=die (이 박스엔 닿는 die 0) -> nodes 0 · edges 98 · 그 98 전부 끝 노드가 응답에 없음 · state "ready"
+                       비교: follow=inspected,observed 로 좁혀 비면 nodes 1 · state "empty"
+   물음    collect 가 «짐만 거른다»(WALK.md §1)일 때 엣지는 무엇을 돌려주기로 돼 있나 — 판정 · 계약(contracts/walk_*) · 클라 읽는 자리를 찾아 인용
+          의도면 그 근거와 클라가 끝 없는 엣지를 어떻게 그리는지 · 의도가 아니면 무엇이 맞는 모양인지(엣지를 걸러낼지 · state 를 empty 로) 안과 크기
+          재현 명령과 수를 같이
+2 거절 문장 한국어       collect=banana -> 422 detail.message 「선언에 없는 노드 타입입니다: banana」 — 화면이 서버 문장을 그대로 그림(UI 영어 상설)
+   물음    이 라우트(ledger_trace_router)가 화면으로 내보내는 한국어 문장 자리 수 — 셈 명령과 수. 짓지 말고 수만
+보고 뒤    소유자께 올려 판정받고 짓는다
