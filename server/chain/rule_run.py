@@ -83,7 +83,7 @@ def outgoing_channel(woken_by_a_replay=False):
 
 
 @contextlib.contextmanager
-def chain_envelope(depth=None, woken_by_a_replay=False, cascade=False):
+def chain_envelope(depth=None, woken_by_a_replay=False, cascade=False, written_by=()):
     """The envelope a chain-caused write goes out in: source, hop, collapsed events.
 
     🔴 [S-279, 판정 423] THE THREE CELLS HAD FOUR DIFFERENT ANSWERS. Measured 2026-09-16
@@ -126,10 +126,12 @@ def chain_envelope(depth=None, woken_by_a_replay=False, cascade=False):
     to the rule - the group step's `chain_<tx>` is its own identity and replay's is another.
     """
     from database.context import (outbox_mode, request_cascade, request_chain_depth,
-                                  request_channel, request_source)
+                                  request_channel, request_source, request_written_by)
     import event_constants
 
     token_source = request_source.set(CHAIN_SOURCE)
+    # Whose write this is - the declaration's, so none of its rules is woken by it (ebefd20e8).
+    token_written_by = request_written_by.set(tuple(written_by) or None)
     token_depth = request_chain_depth.set(outgoing_depth(depth))
     # [⓪] The channel beside the source: crud re-sets the source to the item's layer and
     # never this, so a write whose layer is not `chain_ingestion` still reads as the chain.
@@ -144,6 +146,7 @@ def chain_envelope(depth=None, woken_by_a_replay=False, cascade=False):
         request_cascade.reset(token_cascade)
         request_channel.reset(token_channel)
         request_chain_depth.reset(token_depth)
+        request_written_by.reset(token_written_by)
         request_source.reset(token_source)
 
 
@@ -424,7 +427,9 @@ def run_rule(db, rule, payloads=None, row_ids=None, done=None, depth=None,
     #   판정 402's ceiling exists to bound.
     # ⚠️ IT DOES NOT NEST. A proposing rule's rows are written by the CALLER, after this
     #   returns, in the caller's own envelope - nothing enters two.
-    envelope = chain_envelope(depth, woken_by_a_replay, cascade)
+    from chain import rule_shape
+    envelope = chain_envelope(depth, woken_by_a_replay, cascade,
+                              written_by=(rule_shape.declaration_of(rule),))
     # 🔴 THE LINE IS IN `finally`, SO A RULE THAT THREW STILL SAYS SO (판정 498 ③).
     # ⚰️ LEVELLING THE TWO VOCABULARIES DOWN WOULD HAVE LOST A SENTENCE THE OWNER ASKED FOR.
     #    The mapper door wrote START/END/RAISED; the builtin door wrote one line and NOTHING on

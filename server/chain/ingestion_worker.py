@@ -962,6 +962,14 @@ def _rule_accepts_event(rule, event) -> bool:
         channel = event_constants.CHANNEL_CHAIN
     if channel != event_constants.CHANNEL_CHAIN:
         return True
+    # 🔴 [소유자 09-28, 총괄 ebefd20e8] A DECLARATION IS NOT WOKEN BY ITS OWN WRITES, opt-in or
+    #   not - `allow_chain_trigger` means 「take what OTHER rules wrote」. Asked HERE because this
+    #   is where that opt-in is read; a second seat would be a second answer to one question.
+    #   Only when every declaration that wrote this is the rule's own: a write several shared
+    #   also carries another's change, and skipping it would drop that.
+    wrote = event_constants.written_by_of(payload)
+    if wrote and wrote == {rule_shape.declaration_of(rule)}:
+        return False
     return bool(rule.get("allow_chain_trigger"))
 
 
@@ -1327,7 +1335,7 @@ def _in_rule_order(table_updates):
 def apply_chain_writes(db, tx_id, rule, incoming_depth, rules_by_target,
                        table_updates, map_metadata_updates, scoped_batches,
                        table_contributors, broadcast_messages, woken_by_a_replay=False,
-                       cascade=False):
+                       cascade=False, declarations_by_target=None):
     """The chain's WRITE, as a door. -> `(True, None)` or `(False, error_msg)`.
 
     🔴 [판정 603 · 604 ㉠] 소유자 v2: 「… 맵퍼 실행 -> «쓰기 문» -> 쓰기 -> 아웃박스 -> 반복」.
@@ -1355,7 +1363,7 @@ def apply_chain_writes(db, tx_id, rule, incoming_depth, rules_by_target,
         from database import schemas, crud
         from database.context import (request_user, request_transaction_id, request_source,
                                       request_chain_depth, request_channel,
-                                      request_cascade, outbox_mode)
+                                      request_cascade, outbox_mode, written_by)
 
         chain_tx_id = f"chain_{tx_id}"
         writing = None
@@ -1477,7 +1485,8 @@ def apply_chain_writes(db, tx_id, rule, incoming_depth, rules_by_target,
                 # say WHICH one it waited on - one number for "the writes" would leave the
                 # next question unanswerable without another round of measuring.
                 with (alignment_batch_counts.stage("write:%s" % target_table),
-                      outbox_mode(event_constants.OUTBOX_MODE_COLLAPSED)):
+                      outbox_mode(event_constants.OUTBOX_MODE_COLLAPSED),
+                      written_by((declarations_by_target or {}).get(target_table, ()))):
                     results, changed_cells, created_logs, deleted_row_ids = crud.apply_batch_updates(
                         db, target_table, batch_data, drop_report=drop_report)
 
@@ -1885,6 +1894,9 @@ def _process_chain_transaction_group_sync(tx_id, events, db, rules):
     # tag its items. `table_updates` aggregates several rules onto one target, so this
     # cannot be recovered after the fact.
     rules_by_target = defaultdict(set)
+    # The declarations writing each target - stamped on what that write stages, so none of
+    # their rules is woken by it (총괄 ebefd20e8). Filled at the same place, from the rule.
+    declarations_by_target = defaultdict(set)
 
     # 3. Evaluate rules for this transaction
     # To support batch rules, we group rules by trigger table to execute them efficiently.
@@ -1926,8 +1938,11 @@ def _process_chain_transaction_group_sync(tx_id, events, db, rules):
             _rule_name = rule.get("name") or "<unnamed rule>"
             heartbeat.note_work(rule=_rule_name)
             rules_by_target[target_table].add(_rule_name)
+            declarations_by_target[target_table].add(rule_shape.declaration_of(rule))
             if rule.get("allow_map_metadata_upsert"):
                 rules_by_target[map_meta_registrar.META_TABLE].add(_rule_name)
+                declarations_by_target[map_meta_registrar.META_TABLE].add(
+                    rule_shape.declaration_of(rule))
 
             try:
                 trigger_events = [e for e in valid_events
@@ -2040,7 +2055,8 @@ def _process_chain_transaction_group_sync(tx_id, events, db, rules):
     written_ok, write_error = apply_chain_writes(
         db, tx_id, rule, incoming_depth, rules_by_target, table_updates,
         map_metadata_updates, scoped_batches, table_contributors,
-        broadcast_messages, woken_by_a_replay=woken_by_a_replay, cascade=cascade)
+        broadcast_messages, woken_by_a_replay=woken_by_a_replay, cascade=cascade,
+        declarations_by_target=declarations_by_target)
     if not written_ok:
         return False, write_error, []
 
