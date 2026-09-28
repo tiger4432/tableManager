@@ -64232,3 +64232,95 @@ server/ledger_api/ledger_subgraph.py  3 — /subgraph 응답으로 나감: 빈 �
 ```
 
 지시대로 재서 보고만 하고 멈춥니다. 감시는 켜 둡니다.
+
+---
+
+## [구현자 -> 총괄] 착지 18733d3b2 — 걷기 라우트 화면 문장 19 를 영어로 (ab4856566)
+
+```
+바꾼 것     ledger/trace_router.py 16 문장 · ledger_api/ledger_subgraph.py 3 문장 — message 와 노드 label 만
+           거절은 「무엇 - 다음 행동」 (예: "Not a declared node type: banana - pick one from 'declared'")
+           알림(빈 걷기 · 순위 블록 · 조치 라벨)은 「무엇」만 — 할 일이 정해지지 않은 사실이라 행동을 지어 붙이지 않음
+안 바꾼 것   reason 낱말 · 나머지 detail 칸(unknown · declared · type · state · relation · missing) · HTTP 코드
+           Query description 20 (/docs 에만)
+게이트      셈 명령 그대로 다시(2311216f4 보고의 한 줄):
+             server/ledger/trace_router.py          한글 문자열 20 · 그중 description 20 · description 밖의 줄 0
+             server/ledger_api/ledger_subgraph.py   한글 문자열 0 · 그중 description 0 · description 밖의 줄 0
+           걷기 시험 — trace_router · ledger_subgraph · 걷기 라우트를 부르는 서버 시험 파일 26: 1 failed, 303 passed, 16 skipped in 9.55s — 실패: test_the_repo_root_is_one_above_it
+           클라 client2/tests/walk_wire_harness.mjs RESULT: 94 passed, 0 failed · MUTANTS 18/18 caught, 0 wrong
+시험 둘 고침  server/tests/test_the_walk_step_asks_the_walks_own_known_set.py — 503 스텁의 문장(단언은 "boom" 만이라 결과 무변)
+           client2/tests/walk_wire_harness.mjs 4-ter — 「서버의 말을 그대로 나른다」 칸의 스텁이 서버 문장과 같게
+안 고친 것   client2/tests/grid_source_label_harness.mjs 의 '선언을 읽지 못했습니다 (503)' — 클라 실패 문구 흉내이고 서버 문장을 주장하지 않음
+           client2/tests/ledger_sources_panel_harness.mjs 의 한국어 — 다른 화면의 문장
+전체       5 failed, 7356 passed, 163 skipped, 3 xfailed in 653.17s (0:10:53) — 실패 5 는 이 작업 트리의 알려진 환경 실패(샘플 CRLF 4 · 저장소 루트 1)
+PG         7 failed, 117 passed, 7403 deselected in 164.56s (0:02:44) — 실패 7 은 알려진 일곱과 이름이 같음(새 실패 0)
+재기동      서버(라우트). 마이그레이션 없음
+```
+
+지시대로 착지하고 멈춥니다. 감시는 켜 둡니다.
+
+---
+
+## [구현자 -> 총괄] 엣지(술어) 부류 — ①②③ 잰 것, 결정 하나가 필요해 «짓지 않았습니다» (e6dd72526)
+
+### ① 선언된 술어 — class 칸은 빈칸
+박스 라이브 선언 14 · 저장소 샘플 16. 제안 열은 안 채웠습니다 — 이름으로 부류를 추정하지 않습니다(부류는 소유자가 적음).
+
+| 술어 | 주어 | 목적어 | 어디 | class |
+|---|---|---|---|---|
+| measures | wafer | entity_ref (quantity) | 박스 · 샘플 | (빈칸) |
+| leads_to | quantity | entity_ref (quantity, defect_kind) | 박스 · 샘플 | (빈칸) |
+| has_netdie | dtjob | value | 박스 · 샘플 | (빈칸) |
+| register | lot, wafer, dtjob | none | 박스 · 샘플 | (빈칸) |
+| has_wafer | lot_slot | entity_ref (wafer) | 박스 · 샘플 | (빈칸) |
+| derived_from | lot | entity_ref (lot) | 박스 · 샘플 | (빈칸) |
+| slot_map | lot_slot | entity_ref (lot_slot) | 박스 · 샘플 | (빈칸) |
+| transfer | die | entity_ref (die) | 박스 · 샘플 | (빈칸) |
+| inspected | wafer | entity_ref (die) | 박스 · 샘플 | (빈칸) |
+| of_kind | defect | entity_ref (defect_kind) | 박스 · 샘플 | (빈칸) |
+| observed | die | entity_ref (defect) | 박스 · 샘플 | (빈칸) |
+| processed_with | wafer | entity_ref (recipe) | 박스 · 샘플 | (빈칸) |
+| bonded_from | die | entity_ref (die) | 박스 · 샘플 | (빈칸) |
+| in_container | die | entity_ref (wafer) | 박스 · 샘플 | (빈칸) |
+| split_from | lot | entity_ref (lot) | 샘플만 | (빈칸) |
+| merged_into | lot | entity_ref (lot) | 샘플만 | (빈칸) |
+
+### ② 선언 파일이 어디 있나
+```
+박스 라이브   server/config/ontology/ledger_config.json — gitignore(박스 파일). 운영에서는 운영이 제 파일을 가짐
+저장소 샘플   server/config/sample/ledger_config.json.sample — 추적 파일, 술어 16
+칸 넣는 자리  값은 어느 파일에도 안 넣음 — 「없으면 부류 없음」이 엔터티 class 의 「없으면 dynamic」과 같은 규율
+            넣는 것은 «문법» — 스켈레톤(server/ledger/ledger_skeleton.json)의 술어 레코드 · 검증기(setup_bundle._validate_vocabulary)
+```
+
+### ③ 선언창이 새 칸을 그리는 길이 이 칸에 닿나 — 닿습니다. 막는 자리 둘
+```
+폼          스켈레톤대로 그림. 「자유 낱말의 목록」(map · keyed_by index · of leaf free)은 이미 여러 자리에 있어 그려지는 모양
+            (엔터티 keys 등 — 스켈레톤의 index map of free leaf 를 세어 본 것이지 화면을 연 것은 아님)
+저장 관문    🔴 오늘은 막힘 — _validate_vocabulary 가 술어의 칸을 required(status · subjects · object) + optional(cardinality ·
+            absence_confirmed_by) 로만 받아 class 는 「모르는 칸」으로 거절. 문법에 넣으면 풀림
+걷기        🔴 follow 파서(trace_router._split_follow)는 첫 콜론으로 「술어:키」를 가름 — class:x 는 오늘 「술어 class 의 키 제약 x」로 읽힘
+            class: 를 그 앞에서 가려야 함. 이름이 class 인 술어는 박스 · 샘플에 0
+싣는 곳      /api/ledger/declaration 술어 항목 · config resolve 보고서 — 둘 다 오늘 class 를 안 실음
+```
+
+### 🔴 결정이 필요한 것 — class 의 «모양»
+지시문 두 문장이 서로 다른 모양을 말합니다:
+「술어마다 class(낱말 목록 · 여럿 가능 · 비면 부류 없음)」 와
+「엔터티의 class: static 과 «같은 자리 · 같은 모양»으로(두 문법 금지)」.
+엔터티 class 는 오늘 «낱말 하나»입니다(스켈레톤 leaf free · 검증기가 static|dynamic 만 받음).
+```
+엔터티 class 를 읽는 자리  서버 4 (trace_router 의 정적 타입 둘 · 선언 라우트 1 · 검증기 1) · 클라 1 (walk/derive.js)
+                        셈: git grep -n -E "get\(.class.\)|\[.class.\]" -- 'server/*.py' ':!server/tests' 에서 방출 규칙의 다른 class(ledger/config.py 2)·마이그레이션 뺌
+                        + git grep -n "\.class\b" -- client2/src 에서 classList · className 뺌
+```
+| 안 | 무엇 | 좋은 점 | 위험 | 크기 |
+|---|---|---|---|---|
+| ㄱ | 둘 다 「낱말 하나 또는 낱말 목록」을 받는다 — 엔터티 class 도 목록을 받게 넓힘 | 한 이름 한 문법 · 술어는 여럿 가능 | 엔터티 쪽 읽는 자리 5 를 같이 고침 · 엔터티에 목록이 들어오면 static 이 「목록 안의 낱말」이 됨(오늘 걷기가 아는 유일한 낱말) | 술어 쪽 + 엔터티 읽는 자리 5. 안 쟀다: 시험 수 |
+| ㄴ | 술어는 목록, 엔터티는 그대로 낱말 하나 | 엔터티 무변 | 🔴 같은 이름 class 에 모양 둘 — 지시의 「두 문법 금지」에 어긋남 | 술어 쪽만 |
+| ㄷ | 술어도 낱말 하나 — 엔터티와 같은 모양 | 한 문법 · 가장 작음 | 🔴 「여럿 가능」이 빠짐 — 한 술어가 두 부류일 수 없음 | 술어 쪽만 |
+
+제 추천: ㄱ — 소유자 문장 「확장가능하게」와 지시의 「여럿 가능」·「두 문법 금지」를 셋 다 설명하는 안은 ㄱ 뿐입니다.
+여쭐 것: ㄱ · ㄴ · ㄷ 중 무엇인지. 답을 받기 전에는 짓지 않습니다.
+
+멈춥니다. 감시는 켜 둡니다.
