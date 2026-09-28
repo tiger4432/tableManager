@@ -64052,3 +64052,60 @@ PG       7 failed, 117 passed, 7396 deselected in 191.00s (0:03:10) — 실패 7
 ```
 
 지시대로 착지하고 멈춥니다. 감시는 켜 둡니다(소유자 「감시켜」).
+
+---
+
+## [구현자 -> 총괄] 착지 29c590044 — require 를 조인 양쪽 · 전부 막힌 묶음 · 보강 백필까지 (2276e38cf)
+
+### 조인 ㄱ
+```
+답 읽기    join_into._read_once 의 값 표 SELECT 에 require 칸마다 「비지 않음」 조건
+          판정 = crud.not_blank_sql_condition(crud.column_text_sql(칸)) — blank_sql_condition 의 부정 쌍, 보강 맵퍼가 쓰는 모양
+목록이 오는 길  on.require 를 조인 명세(params)에 실음 — on.table 을 명세의 right_table 로 채우는 그 자리(rule_shape.as_chain_rule)
+          짝은 명세를 그대로 물려받으므로 두 반쪽이 같은 목록을 읽음
+셈        require 를 묻는 자리 2 — 좌석(rule_run.held_back) · 조인 답 읽기. 판정 쌍 1 (is_blank_value · 그 SQL 쌍)
+게이트     님이 적은 그대로: 값 표 B 의 slot 빔 · 채워지는 표에 B 생김 -> v 안 옮김 · slot 채움 -> 옮김
+변이      SQL 거르기 뺌 -> 1 빨강
+더한 것 하나  명세의 require 이름이 값 표에 없으면 짝이 돌 때 이름 대어 거절(join_into._missing, 다른 명세 칸과 같은 자리)
+          이유: 손으로 고친 파일의 오타면 값 표 쪽 규칙은 로드에서 빠지고 짝만 남는데, 이 착지 뒤로 그 짝은 없는 칸을 읽다 터짐
+          (getattr — 코드로 읽었고 따로 재지 않음). 거절이면 그 짝만 아무것도 안 씀. 게이트 칸 있음
+          지시에 없던 줄이라 적어 둡니다. 빼라시면 뺍니다
+```
+
+### ② 전부 막힌 묶음은 맵퍼를 안 부름
+```
+자리      rule_run.run_rule — 넘길 행이 있었는데 전부 막혔으면 batch 부름 0. 처음부터 행이 없던 묶음은 오늘처럼 빈 목록으로 부름
+로그      막힌 수 한 줄은 남음. 이 줄을 held_back 안으로 옮김 — 백필도 같은 문장을 쓰게
+게이트     전부 막힘 -> 부름 0 · 처음부터 빔 -> 부름 1(빈 목록)
+변이      막기를 뺌(늘 부름) -> 1 빨강
+```
+
+### ③ 보강 백필이 좌석을 지남
+```
+거르기     run_backfill 이 쪽마다 rule_run.held_back 으로 거른 뒤 map_enrichment_dedup. 전부 막힌 쪽은 부르지 않음
+목록이 오는 길  백필이 받는 규칙은 dedup 반쪽의 params 뿐이라 require 가 없었음
+          -> enrich_declarations.declarations() 가 선 규칙(stood[0])의 require 를 돌려주는 선언에 실음
+          이 자리를 부르는 줄 16 · 파일 9 (셈: git grep -n "enrich_declarations\.\(declarations\|find\)(" -- server ':!server/tests' 에서 주석 줄 1 뺌)
+          require 를 적은 선언에만 키가 더해지고, 적지 않은 선언의 반환값은 그대로
+          백필이 읽는 칸 목록에 require 칸을 더함(원천 표에 있는 것만)
+게이트     원천 두 행 중 lot_hint 빈 행 -> 파생행 안 생김 · 찬 행 -> 생김
+변이      백필 거르기 뺌 -> 1 빨강 · 펼침이 require 를 안 실음 -> 백필 칸도 빨강(선 규칙에서 읽으므로)
+```
+
+### 말
+```
+가이드     chain_rules.md 의 require 줄 — 「조인은 값 표 쪽만」을 지우고 「조인은 양쪽 다 · 전부 막히면 안 부름 · 백필도 같은 판정」
+RUN.md    새 절 [밤 3] 하나 · 앞 절 [밤 2] 의 「조인은 값 표 쪽만」 줄 하나를 지움(이제 거짓)
+trigger_columns  안 건드림 — 지시대로
+```
+
+### 시험
+```
+게이트   server/tests/test_a_rule_is_handed_only_rows_its_require_fills.py 17 passed in 0.98s (main 에서 다시 돌림)
+변이     여섯 모두 빨강 — 좌석 거르기 뺌 6 · 깨우기 합집합 1 · 펼침 2 · 조인 SQL 1 · 빈 부름 1 · 백필 1
+전체     5 failed, 7353 passed, 163 skipped, 3 xfailed in 651.72s (0:10:51) — 실패 5 는 이 작업 트리의 알려진 환경 실패(샘플 CRLF 4 · 저장소 루트 1)
+PG       7 failed, 117 passed, 7400 deselected in 165.48s (0:02:45) — 실패 7 은 알려진 일곱과 이름이 같음(새 실패 0)
+재기동   서버(보강 백필 어드민 · 저장 게이트) · 체인 워커(조인 · 좌석). 마이그레이션 없음
+```
+
+지시대로 착지하고 멈춥니다. 감시는 켜 둡니다(소유자 「감시켜」).
