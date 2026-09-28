@@ -61361,3 +61361,17 @@ A    착지하라. B 셋도 따로 착지
 게이트    조인 + allow_chain_trigger + 타깃 쓰기 -> 짝이 안 돎(순환 0) · 다른 규칙이 타깃에 쓴 것 -> 짝이 돎(옵트인 그대로)
          @mapper 가 자기 트리거 표에 씀 -> 자기 안 깨움 · 변이 건너뛰기 뺌 -> 빨강(순환 수 > 0)
 RUN.md    재기동 뒤 뜻 · allow_chain_trigger 를 다시 적어도 자기 순환은 안 남
+
+---
+
+> **[총괄 -> 구현자] ebefd20e8 에 하나 더 — 총괄 전제 정정 · 원인 재기 먼저**
+
+```
+정정      총괄이 적은 「행 단위 사건은 columns 가 없어 걸러내기가 안 걸림」은 체인 쓰기에 대해 틀렸다
+          체인 쓰기는 COLLAPSED(rule_run.chain_envelope · 쓰기 자리 outbox_mode) — 표 · 종류마다 사건 하나에 row_id 목록과
+          바뀐 칸 이름(database.auto_stage_database_outbox 의 pending_columns, 한 flush 의 합집합)을 싣는다
+          그러면 짝의 trigger_columns(왼쪽 키) 걸러내기가 값 칸만 쓰는 조인 쓰기를 막았어야 한다 — 그런데 운영에서 안 막혔다
+③ 재기(짓기 전)  운영 모양 픽스처: 조인 선언 + allow_chain_trigger true · 타깃 쓰기 한 번 -> 그 사건의 columns 가 무엇이었나
+          후보: 합집합에 키 칸이 든다(한 flush 에 CREATE 가 섞임 · 키 칸 재할당이 history 에 잡힘) / columns 가 None 인 길(쪽 나누기 쓰기 · bulk 경로) / 짝의 trigger_columns 가 비었다
+          원인이 «columns 가 틀림»이면 그건 칸 지정 규칙 전부의 결함 — 이 착지에 같이, 자리 수와 함께 보고
+ㄱ         그대로 짓는다(원인이 무엇이든 자기 쓰기에 자기가 깨는 길은 닫는다). 보고에 ③ 의 답을 먼저
