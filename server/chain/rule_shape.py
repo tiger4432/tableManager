@@ -255,6 +255,9 @@ def as_chain_rule(internal: dict) -> dict:
         # 🔴 [판정 398] THE AUTHOR WRITES THE JOIN ONCE AND THE SHELL DERIVES THE TRIGGER -
         #   the source side's join key (see `join_trigger_columns`).
         derived = join_trigger_columns(derive.get("join") or {})
+        # 🔴 [총괄 2a1be19e9] AND THE TAKE COLUMNS, now that `trigger_columns` gates a run: a
+        #   value that changes on the value table is what the join exists to carry across.
+        derived += [right for right, _into in join_into.takes(out) if right not in derived]
         if derived:
             out["trigger_columns"] = derived
         # 🔴 [S-278, 소유자 2026-09-16] A JOIN RUNS LIKE ANY OTHER CHAIN RULE — ON THE
@@ -495,9 +498,10 @@ class JoinTriggerConflict(ValueError):
 def join_trigger_columns(spec: dict) -> list:
     """The source-side key columns of a join spec, in declared order (총괄 e91b96a28).
 
-    ⚠️ MEASURED 2026-09-25: these do not gate a run today. The group step picks rules with
-    `fires`, which does not ask `rule_watches_changed_columns`; only the recorded outcome does.
-    So a `dt_lot`-only edit runs this rule whatever is written here.
+    ⚠️ THE KEY ONLY - what `on.columns` may repeat without a conflict. The stood rule wakes on
+    these AND the take columns (`as_chain_rule`), and since 총괄 2a1be19e9 that gates a run:
+    `fires` asks it. Keeping the conflict on the key leaves a declaration that wrote its key
+    in `on.columns` loading as it did.
     """
     out = []
     for pair in (spec or {}).get("on") or ():

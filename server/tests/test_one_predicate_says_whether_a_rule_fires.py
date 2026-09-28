@@ -163,9 +163,11 @@ def test_the_restriction_is_asked_in_exactly_one_place():
     source = inspect.getsource(worker)
     asked = re.findall(r"only_rule_of\(", source)
     assert len(asked) == 1, (
-        "제한을 묻는 자리가 %d 곳이다 — `fires` 하나여야 한다: %d" % (len(asked), len(asked)))
-    assert "only_rule_of(" in inspect.getsource(worker.fires), \
-        "`fires` 가 제한을 안 묻는다 — 좌석이 옮겨갔다"
+        "제한을 묻는 자리가 %d 곳이다 — `fire_refusal` 하나여야 한다: %d" % (len(asked), len(asked)))
+    # [총괄 2a1be19e9] `fires` 는 `fire_refusal` 의 참/거짓이다 — 좌석은 그 안에 있다.
+    assert "only_rule_of(" in inspect.getsource(worker.fire_refusal), \
+        "`fire_refusal` 이 제한을 안 묻는다 — 좌석이 옮겨갔다"
+    assert "fire_refusal(" in inspect.getsource(worker.fires)
 
 
 # ---------------------------------------------------------------------------

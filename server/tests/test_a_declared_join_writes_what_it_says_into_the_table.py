@@ -442,11 +442,12 @@ def test_the_join_declares_no_fold_cell_at_all(db):
 
 def test_the_trigger_columns_are_derived_from_the_join_key(load):
     """🔴 ONE VALUE, ONE PLACE. Each side's own join key: the source side's `right`, the
-    `:target` side's `left` (총괄 e91b96a28)."""
+    `:target` side's `left` (총괄 e91b96a28) - and the source side's take columns too, since
+    the wake columns gate a run (총괄 2a1be19e9): a value change is what the join carries."""
     mine = [r for r in load([DECLARATION])
             if str(r.get("name") or "").startswith(DECLARATION["name"])]
 
-    assert [r.get("trigger_columns") for r in mine] == [["job"], ["job"]]
+    assert [r.get("trigger_columns") for r in mine] == [["job", "lot"], ["job"]]
 
 
 def test_writing_the_trigger_columns_as_well_is_allowed_while_they_agree(load):

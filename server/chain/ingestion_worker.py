@@ -817,6 +817,11 @@ def load_chain_rules():
     #   said nothing - see its tombstone above `watches_table`.
     _validate_chain_cascade_graph(rules)
     _report_unwatchable_trigger_columns(rules)
+    # [총괄 2a1be19e9] A column-scoped rule no longer runs on other changes - say which, once.
+    for rule in rules:
+        if wake_columns(rule):
+            logger.info("[ChainRules] %s wakes only on: %s",
+                        rule.get("name") or rule.get("target_table"), wake_columns(rule))
     # 🔴 선언된 규칙을 «값»으로 세운다 — 처리 루프가 결과를 덮어쓰고, 한 번도 안 걸린 규칙은
     #    「아직 평가 안 됨」으로 «말해진다». 부재는 「옛 서버」 하나만 뜻해야 한다.
     #    로더 «안»이라 호출자가 둘이어도 저자는 하나다.
@@ -871,17 +876,28 @@ def rule_watches_changed_columns(rule, event) -> bool:
     five different zeros render the same.
 
     ⚠️ A rule with no `trigger_columns` is table-scoped as it has always been.
+    🔴 [총괄 2a1be19e9, 소유자 09-29 「ㄱ」] ASKED ONLY BY `fire_refusal`, so a 「no」 here is a
+       rule that does not run - not a line in the log beside a rule that ran anyway.
     """
-    wanted = rule.get("trigger_columns")
+    wanted = wake_columns(rule)
     if not wanted:
         return True
     changed = get_payload_dict(event).get("columns")
     if changed is None:
         return True
-    # 🔴 [총괄 49052cbdd] A `require` column filled later has to wake the rule, or a row held
-    #   back for it would wait forever - so filling one counts as the rule's column changing.
-    required = rule.get(chain_bindings.REQUIRE_KEY) or ()
-    return bool((set(wanted) | set(required)) & set(changed))
+    return bool(set(wanted) & set(changed))
+
+
+def wake_columns(rule) -> list:
+    """The columns whose change wakes this rule, or `[]` for a table-scoped rule.
+
+    🔴 [총괄 49052cbdd] A `require` column filled later has to wake the rule, or a row held back
+    for it would wait forever - so filling one counts as the rule's column changing.
+    """
+    wanted = list(rule.get("trigger_columns") or ())
+    if not wanted:
+        return []
+    return wanted + [c for c in rule.get(chain_bindings.REQUIRE_KEY) or () if c not in wanted]
 
 
 #: 🔴 [판정 500] EVERY SEAT THAT PICKS UP A RULE WHEN A TABLE CHANGES, AND EACH ANSWERS FOR
@@ -1008,15 +1024,36 @@ def fires(rule, event) -> bool:
     ⛔ 이 비교를 열한 호출 자리에 «따로» 적지 않는다. 그러면 열두째 자리가 빠지고,
        빠진 자리는 「제한 없음」으로 읽혀 그 표의 «모든» 규칙이 깨어난다 — 조용하게.
     """
+    return fire_refusal(rule, event) is None
+
+
+def fire_refusal(rule, event):
+    """`None` when the rule fires on the event, else WHY not - the one seat `fires` reads.
+
+    🔴 [총괄 2a1be19e9] THE PRE-RUN OUTCOME ASKS THIS TOO, so 「why it did not run」 and 「does
+       it run」 cannot drift: it used to ask the column and chain predicates on its own, which
+       is how a 「skipped」 line came to stand beside a rule that ran.
+    """
     # ⚠️ `event` 를 넘긴다(`event.payload` 아님) — 이 헬퍼는 둘 다 받지만, 사건을 넘겨야
     #    `_parsed_payload`/`safe_payload` 캐시를 탄다. `fires` 는 규칙마다 불리므로
     #    페이로드를 규칙 수만큼 다시 파싱하게 된다. :454 도 같은 모양으로 부른다.
     only = event_constants.only_rule_of(get_payload_dict(event))
     if only is not None and rule.get("name") != only:
-        return False
-    return (not rule_shape.is_switched_off(rule)
-            and rule.get("trigger_table") == event.table_name
-            and _rule_accepts_event(rule, event))
+        return "another rule's replay"
+    if rule_shape.is_switched_off(rule):
+        return "switched off"
+    if rule.get("trigger_table") != event.table_name:
+        return "another table"
+    if not rule_watches_changed_columns(rule, event):
+        return FIRE_REFUSED_COLUMNS
+    if not _rule_accepts_event(rule, event):
+        return FIRE_REFUSED_CHAIN
+    return None
+
+
+#: The two answers of `fire_refusal` the pre-run outcome tells apart.
+FIRE_REFUSED_COLUMNS = "none of its wake columns changed"
+FIRE_REFUSED_CHAIN = "chain-produced event; this rule does not declare allow_chain_trigger"
 
 
 def _report_unwatchable_trigger_columns(rules):
@@ -1172,30 +1209,25 @@ def _rule_outcome_before_running(rule, events):
 
     🔴 판정이 여기 «한 자리»다. 아래 `valid_events` 가 같은 술어를 쓰지만 그것은 「이 그룹에
        할 일이 있나」를 묻고 이것은 「이 «규칙»이 왜 안 도나」를 묻는다 — 답이 갈리면 안 되므로
-       둘 다 `_rule_accepts_event` 와 `enabled` «같은 것»을 지난다.
+       둘 다 `fire_refusal` «하나»를 지난다(총괄 2a1be19e9).
     ⚠️ 꺼짐이 안 걸림을 «이긴다». 둘 다 참일 때 운영자가 고칠 수 있는 쪽이 그것이다.
     """
     if rule_shape.is_switched_off(rule):
         return event_constants.RULE_OUTCOME_SKIPPED_DISABLED, "rule declares enabled: false"
-    refused_chain = False
+    refused = set()
     for e in events:
         if not _is_trigger_event(e):
             continue
-        if rule.get("trigger_table") != e.table_name:
-            continue
-        if not rule_watches_changed_columns(rule, e):
-            # 한 줄로 말한다 — 「안 돌았다」가 「고장났다」처럼 읽히지 않게.
-            logger.info(
-                "[Chain] rule %s skipped: none of %s changed",
-                rule.get("name") or rule.get("target_table"),
-                sorted(rule.get("trigger_columns") or ()))
-            continue
-        if _rule_accepts_event(rule, e):
+        why = fire_refusal(rule, e)
+        if why is None:
             return None, None
-        refused_chain = True
-    if refused_chain:
-        return (event_constants.RULE_OUTCOME_SKIPPED_NOT_TRIGGERED,
-                "chain-produced event; this rule does not declare allow_chain_trigger")
+        refused.add(why)
+    if FIRE_REFUSED_CHAIN in refused:
+        return event_constants.RULE_OUTCOME_SKIPPED_NOT_TRIGGERED, FIRE_REFUSED_CHAIN
+    if FIRE_REFUSED_COLUMNS in refused:
+        # 한 줄로 말한다 — 「안 돌았다」가 「고장났다」처럼 읽히지 않게. 묶음마다 한 번, 실제로 안 돌 때만.
+        logger.info("[Chain] rule %s skipped: none of %s changed",
+                    rule.get("name") or rule.get("target_table"), sorted(wake_columns(rule)))
     return event_constants.RULE_OUTCOME_SKIPPED_NOT_TRIGGERED, None
 
 

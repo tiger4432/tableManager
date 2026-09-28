@@ -272,10 +272,8 @@ def test_a_row_waits_until_its_keys_are_filled_then_it_is_copied(db, caplog):
     named = [set(get_payload_dict(e).get("columns") or ()) - {"updated_at"} for e in staged]
     assert named == [{"slot"}], \
         "the fill must name its column, or this cell is not asking the wake judgement"
-    # ⚠️ `trigger_columns` does not gate a run today (`fires` does not ask it - measured
-    #   09-25, `rule_shape.join_trigger_columns`), so the copy below happens either way. What
-    #   the wake judgement decides is the recorded outcome: without `require` in it, this
-    #   fill logs 「skipped」 for a rule that then runs.
+    # `trigger_columns` gates a run (총괄 2a1be19e9): without `require` among the wake
+    #   columns this fill would log 「skipped」 and the row would never be copied.
     caplog.clear()
     with caplog.at_level(logging.INFO):
         _drain(db, [COPY])

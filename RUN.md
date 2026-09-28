@@ -1,5 +1,23 @@
 # 지금 돌리면 되는 것
 
+> ## 🔴 [09-29 아침] **trigger_columns 가 «막는 칸» — 적힌 칸 밖의 변경에 규칙이 안 돎 — 마이그레이션 «없음» · 재기동 체인 워커 · 서버**
+>
+> ```
+> 재기동 «전»   pull 한 뒤 이 목록을 소유자께 — 적힌 칸 밖의 변경에 이제 안 도는 규칙들
+>              conda run --no-capture-output -n assy_manager python -c "import sys; sys.path.insert(0,'server'); from chain import ingestion_worker as w; [print('WAKES', r.get('name'), w.wake_columns(r)) for r in w.load_chain_rules() if w.wake_columns(r)]"
+>              WAKES 로 시작하는 줄 하나 = 규칙 하나와 그 규칙을 깨우는 칸. 넓히려면 그 규칙의 trigger_columns(통합 선언은 on.columns)에 칸을 더함
+>              조인과 그 :target 짝은 스스로 적으므로 손댈 것 없음
+> 무엇이 바뀌나  trigger_columns(∪ require)와 겹치지 않는 사건에 규칙이 안 돎
+>              칸 목록이 없는 사건(행 하나씩 쓴 변경 · 옛 사건 · 리플레이)에는 오늘처럼 돎
+>              조인 값 표 쪽의 깨우는 칸에 take 칸이 더해짐(전에는 키만) — 값만 바뀌어도 조인이 돎
+> 재기동 뒤      로드 때 규칙마다 한 줄   [ChainRules] <규칙> wakes only on: [..]
+>              안 돈 묶음마다 한 줄     [Chain] rule <규칙> skipped: none of [..] changed   <- 이제 참: 그 규칙은 실제로 안 돎
+> 뜻           값이 안 옮겨지고 skipped 줄이 찍히면 — 그 값을 바꾸는 칸이 깨우는 칸에 없음. 그 칸을 trigger_columns 에 더함
+> 급할 때       스위치 없음 — 그 규칙의 trigger_columns 를 지우면 표의 어떤 변경에도 다시 돎
+> ```
+
+---
+
 > ## 🔴 [09-28 밤 3] **require 가 조인 양쪽 · 전부 막힌 묶음 · 보강 백필까지 — 마이그레이션 «없음» · 재기동 서버 · 체인 워커**
 >
 > ```
