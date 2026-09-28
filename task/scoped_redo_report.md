@@ -63967,3 +63967,88 @@ RUN.md   「09-28 밤 1」 — 뜻 · 재기동 전 쌓인 사건은 옛 규칙 
 ```
 
 지시대로 이것만 하고 멈춥니다. 감시는 켜 둡니다(소유자 「감시켜」).
+
+---
+
+## [구현자 -> 총괄] 착지 3aec8eaa9 — 규칙의 require (49052cbdd)
+
+### 먼저 — 조인은 «값 표 쪽»만 걸러집니다. 「join 한 칸」이 온전히 참이 아닙니다
+```
+잰 것       조인 선언 on = 값 표(require job · slot) · into = 채워지는 표 (박스 · SQLite 프로브)
+           값 표 행 B 의 slot 이 빈 채로, 채워지는 표에 B 가 생김 -> :target 짝이 값 표를 찾아 읽어 v="b" 를 옮김
+이유        좌석(run_rule)이 거르는 것은 규칙이 «넘겨받은» 행. 짝이 넘겨받는 것은 채워지는 표의 행이고,
+           값 표 행은 짝이 «찾아 읽는다» — 그 읽기는 좌석 밖
+덮이는 것    맵퍼 전부 · decide(dedup 반쪽) · 조인의 값 표 쪽 변경
+소유자 사례  dt_log -> 정답맵 «복사»는 맵퍼 모양이라 온전히 덮입니다
+여쭐 것     ㄱ 짝이 값 표 행을 찾아 읽는 자리에 같은 빈 값 판정을 건다 (자리가 둘이 됨 — 판정 함수는 하나)
+           ㄴ 정하실 때까지 조인 선언의 require 는 로드 거절
+           ㄷ 「조인은 값 표 쪽만 거른다」로 둔다 — 지금 착지가 ㄷ 이고, 가이드 · RUN.md 에 그렇게 적었습니다
+```
+
+### 정정 — 5ad90d16d 보고의 한 줄이 틀렸습니다
+```
+그때 적은 것  「짝의 trigger_columns ['job'] 걸러내기가 막음 -> 짝 안 돎 · 2 바퀴에 멎음」
+오늘 잰 것    trigger_columns 는 실행을 «안 막습니다». 그룹 경로가 규칙을 고르는 fires 가 rule_watches_changed_columns 를 안 묻습니다
+             (rule_shape.join_trigger_columns 독스트링에 09-25 실측으로 적혀 있고, 오늘 코드를 읽고 게이트로 다시 잼)
+그 칸이 하는 일  기록뿐 — 칸이 안 겹치면 「[Chain] rule X skipped: none of [..] changed」를 찍고, 규칙은 그대로 돕니다
+그래서       그 픽스처가 2 바퀴에 멎은 이유는 걸러내기가 아닙니다. 다시 안 쟀습니다
+             후보: 같은 값 쓰기는 사건을 안 만든다(같은 착지의 시험 칸 test_a_same_value_write_stages_no_event)
+③ 에 닿는 것  「짝의 trigger_columns 가 막았어야 하는데 운영에서 안 막혔다」의 답이 이것입니다 — 막는 기제가 아니었습니다
+가이드        chain_rules.md 의 trigger_columns 줄 「이 칸들이 바뀐 변경에만 깨어난다」도 오늘 참이 아닙니다. 이번엔 안 고쳤습니다
+```
+
+### 깨우기 — 그래서 합집합이 바꾸는 것은 «기록»입니다
+```
+「나중에 채움 -> 깨어나 복사」   합집합 없이도 참(위 정정 때문). 게이트가 잼
+합집합(trigger_columns ∪ require)  채움 쓰기에 거짓 「skipped」 줄이 안 찍히게 함
+변이                            합집합에서 require 뺌 -> 1 빨강, 사유 = 그 skipped 줄
+```
+
+### 지은 것
+```
+칸        평평 require = 통합 on.require (chain_bindings.REQUIRE_KEY)
+          이유: 둘 다 «트리거 행»에 대한 말이라 trigger_columns 옆, 통합 문법은 on 밑
+          스켈레톤에 넣음 -> 체인 탭 폼이 on 밑에 그림 (폼 렌더는 박스가 꺼져 있어 «안 열어 봤습니다»)
+펼침       선언이 on.table 위에 세우는 규칙에만 실림 — 맵퍼 · 조인 값 표 쪽 · decide dedup 반쪽
+          다른 표 위 규칙(조인 :target · decide 확정 반쪽)엔 안 실림
+좌석       rule_run.run_rule 한 자리(held_back). 빈 값 판정 = crud.is_blank_value — 0 은 찬 값
+          그 좌석을 부르는 자리 2 (ingestion_worker 의 batch · 행마다). 리플레이는 아웃박스를 지나 같은 두 자리로 옴
+          셈: git grep -n "run_rule(" -- server ':!server/tests'
+로그       묶음마다 한 줄 — [Chain] <규칙>: <N> row(s) not handed over - required column(s) empty: <칸>=<N>. 막힌 행 없으면 줄 없음
+로드 거절   unknown_require_column · bad_require. 로더와 저장 게이트가 같은 rule_refusals 를 «펼쳐진 규칙마다» 부름
+거둠 없음   이미 쓴 행은 칸이 다시 비어도 그대로 — 게이트 칸 있음
+```
+
+### 로드 거절 — 제가 읽은 뜻
+```
+거절     그 규칙 하나가 로드에서 빠집니다(파일 전체 아님). 저장 화면도 같은 문장으로 거절
+다름     본뜬 trigger_columns 알림은 규칙을 «살려 둔 채» 이름만 냅니다
+        require 를 살려 두면 행이 영영 안 넘어가거나(없는 칸은 안 차니까) 빈 칸 행이 넘어가서, 빼는 쪽으로 읽었습니다
+⚠️ 조인  통합 조인의 on.require 오타는 값 표 쪽 규칙만 빠지고 :target 짝은 로드됩니다 — 반쪽 조인
+        저장 화면에선 선언째 거절되므로, 파일을 손으로 고친 경우에만 남습니다. 게이트 칸이 이 상태를 그대로 단언합니다
+```
+
+### 여쭐 것 (위 조인 ㄱ ㄴ ㄷ 말고)
+```
+①  소유자 사례는 복사 규칙에 allow_chain_trigger: true 가 있어야 깨어납니다
+   키를 채우는 inventory 조인의 쓰기가 체인 쓰기라서(_rule_accepts_event). RUN.md 예시에 넣었습니다. 소유자께 같이 말씀드릴지
+②  묶음의 행이 전부 막히면 batch 맵퍼는 빈 목록으로 한 번 불립니다 — 기존 계약(rule_run 「빈 batch 도 부른다」)
+   builtin 셋(join · decide 확정 · decide dedup)은 빈 목록에 아무것도 안 씀(읽어 확인). 운영 맵퍼는 제가 못 봅니다
+   박스 사본 15 파일(gitignore)에서 payload[0] 모양 0 · iloc[0] 2(묶음 안) — 빈 목록에서 거기 닿는지는 안 읽었습니다
+   「넘길 행이 있었는데 전부 막혔으면 부르지 않음」으로 바꿀지
+③  보강 백필은 좌석을 안 지납니다 — chain/enrichment/backfill.py 의 run_backfill 이 map_enrichment_dedup 을 직접 부름
+   자리 1, 들어오는 문 2(어드민 소급 enrichment_backfill · scripts/backfill_enrichment.py). decide 에 require 를 적어도 백필은 안 거릅니다
+```
+
+### 시험
+```
+게이트   server/tests/test_a_rule_is_handed_only_rows_its_require_fills.py 13 passed in 0.94s (main 에서 다시 돌림)
+변이     거르기 뺌 -> 5 빨강 · 깨우기 합집합에서 require 뺌 -> 1 빨강 · 펼침이 안 실음 -> 1 빨강
+        마지막이 1 인 이유: 조인 · 맵퍼는 평평 번역(as_chain_rule)에서 이미 실리고, decide dedup 반쪽만 with_declared_cells 로 실림
+전체     5 failed, 7349 passed, 163 skipped, 3 xfailed in 780.61s (0:13:00) — 실패 5 는 이 작업 트리의 알려진 환경 실패(샘플 CRLF 4 · 저장소 루트 1)
+PG       7 failed, 117 passed, 7396 deselected in 191.00s (0:03:10) — 실패 7 은 알려진 일곱과 이름이 같음(새 실패 0)
+⚠️      전체 · PG 는 로더 거절 칸과 가이드의 :target 줄을 넣기 «전» 트리에서 돌았습니다. 그 뒤 바뀐 것은 이 시험 파일과 가이드 한 줄뿐이고, 게이트는 main 에서 다시 돌렸습니다
+재기동   서버(저장 게이트 · 폼 스켈레톤) · 체인 워커(거르기 · 로그 · 로드 거절). 마이그레이션 없음
+```
+
+지시대로 착지하고 멈춥니다. 감시는 켜 둡니다(소유자 「감시켜」).
