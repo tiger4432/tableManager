@@ -1,5 +1,18 @@
 # 지금 돌리면 되는 것
 
+> ## 🔴 [09-29 오전] **걷기 라우트의 화면 문장이 영어 — reason 낱말은 그대로 — 마이그레이션 «없음» · 재기동 서버**
+>
+> ```
+> 무엇이 바뀌나  /api/ledger/subgraph · key-values · gaps · declaration 의 거절과 빈 응답 message 가 영어. 문장 모양은 「무엇 - 다음 행동」
+>              detail.reason 과 나머지 칸(unknown · declared · state …)은 그대로
+> 확인          curl -s "http://127.0.0.1:8080/api/ledger/subgraph?seed_type=wafer&seed_limit=1&collect=banana"
+>              -> 422 · reason node_type_not_declared · message "Not a declared node type: banana - pick one from 'declared'"
+> 뜻           message 는 사람이 읽는 문장이라 바뀜. 코드로 가르는 쪽은 reason 을 읽을 것 — reason 은 안 바뀜
+> 급할 때       스위치 없음
+> ```
+
+---
+
 > ## 🔴 [09-29 아침] **trigger_columns 가 «막는 칸» — 적힌 칸 밖의 변경에 규칙이 안 돎 — 마이그레이션 «없음» · 재기동 체인 워커 · 서버**
 >
 > ```

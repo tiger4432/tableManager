@@ -88,7 +88,7 @@ def test_a_declaration_that_will_not_read_is_a_file_refusal_carrying_its_reason(
 
     walk = collectable(set(), boom=HTTPException(
         status_code=503, detail={"reason": "declaration_unreadable",
-                                 "message": "선언을 읽지 못했습니다: boom"}))
+                                 "message": "The declaration could not be read: boom"}))
 
     assert walk["counts"]["rejected"] == 1
     refusal = walk["rejected"][0]

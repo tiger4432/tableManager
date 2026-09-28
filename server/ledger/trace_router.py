@@ -164,7 +164,7 @@ def evidence_subgraph(
     if wants not in ("json", "rows"):
         raise HTTPException(status_code=422, detail={
             "reason": "format_unknown", "argument": "format", "value": response_format,
-            "message": f"format 은 json 또는 rows 여야 합니다: {response_format}"})
+            "message": f"Unknown format: {response_format} - use json or rows"})
     # 🔴 AN UNDECLARED PREDICATE IS REFUSED, NOT ANSWERED WITH AN EMPTY GRAPH. A filter that
     # can never match returns exactly what "there is nothing here" returns, and the caller
     # cannot tell a typo from a fact -- the shape this repo spent a night removing from four
@@ -184,7 +184,8 @@ def evidence_subgraph(
             raise HTTPException(status_code=422, detail={
                 "reason": "node_type_not_declared", "unknown": unknown,
                 "declared": sorted(collectable),
-                "message": "선언에 없는 노드 타입입니다: " + ", ".join(unknown),
+                "message": ("Not a declared node type: " + ", ".join(unknown)
+                            + " - pick one from 'declared'"),
             })
     follow, follow_keys = _split_follow(follow)
     if follow:
@@ -197,7 +198,8 @@ def evidence_subgraph(
             raise HTTPException(status_code=422, detail={
                 "reason": "predicate_not_declared", "unknown": unknown,
                 "declared": sorted(followable),
-                "message": "선언에 없는 술어입니다: " + ", ".join(unknown),
+                "message": ("Not a declared predicate: " + ", ".join(unknown)
+                            + " - pick one from 'declared'"),
             })
     interval = {}
     for name, raw in (("since", since), ("until", until)):
@@ -216,10 +218,11 @@ def evidence_subgraph(
             # they would read that as 「there is nothing outside my window」.
             raise HTTPException(status_code=422, detail={
                 "reason": "interval_not_iso8601", "argument": name, "value": raw,
-                "message": f"{name} 는 ISO 8601 시각이어야 합니다: {raw}"})
+                "message": f"{name} is not an ISO 8601 time: {raw} - write it like 2026-09-29T08:00:00"})
     if len(interval) == 2 and interval["since"] >= interval["until"]:
         raise HTTPException(status_code=422, detail={
-            "reason": "interval_empty", "message": "since 는 until 보다 앞서야 합니다"})
+            "reason": "interval_empty",
+            "message": "since must be before until - swap them or widen the window"})
     # \u26d4 A FORMAT WE DO NOT ANSWER IS REFUSED BY NAME. Falling back to JSON would hand a
     # caller who asked for rows a body they cannot parse, and they would read the failure as
     # 「the walk found nothing」 - the shape this route already refuses for an unparsable
@@ -235,8 +238,8 @@ def evidence_subgraph(
     if described and listed:
         raise HTTPException(status_code=422, detail={
             "reason": "seeds_defined_twice",
-            "message": "`id` 와 `seed_type` 은 같이 줄 수 없습니다 — 씨앗을 «열거»하거나 "
-                       "«서술»하거나 둘 중 하나입니다"})
+            "message": "`id` and `seed_type` cannot both be given - list the seeds with `id` "
+                       "or describe them with `seed_type`"})
     # 🔴 `id` STOPPED BEING REQUIRED SO A DESCRIPTION COULD ARRIVE, AND THAT MADE 「neither」
     # REACHABLE. FastAPI used to refuse an absent `id` before this handler ran; now the
     # three states are ours to say, and 「씨앗을 안 말했다」 must be named rather than walked
@@ -244,8 +247,8 @@ def evidence_subgraph(
     if not described and not listed:
         raise HTTPException(status_code=422, detail={
             "reason": "seeds_not_defined",
-            "message": "씨앗을 말해야 합니다 — `id` 로 «열거»하거나 `seed_type` 으로 "
-                       "«서술»하십시오"})
+            "message": "No seeds given - list them with `id` or describe them with "
+                       "`seed_type`"})
     try:
         payload = _evidence_graph(
             db.connection(), node_id=_signed_start(node_id, positive, negative),
@@ -527,7 +530,7 @@ def _evidence_graph(connection, *, node_id, hops, direction,
         raise HTTPException(status_code=503, detail={
             "reason": "source_event_projection_not_deployed",
             "state": "not_deployed", "missing": missing,
-            "message": ("Source Event 그래프 마이그레이션이 필요합니다: "
+            "message": ("The Source Event graph is not migrated - run "
                         "server/migrations/add_ledger_source_events.py --apply"),
         })
     return ledger_subgraph.subgraph(
@@ -597,7 +600,8 @@ def ledger_key_values(
         raise HTTPException(status_code=422, detail={
             "reason": "node_type_not_declared", "unknown": [wanted_type],
             "declared": sorted(collectable),
-            "message": "선언에 없는 노드 타입입니다: " + wanted_type})
+            "message": "Not a declared node type: " + wanted_type
+                       + " - pick one from 'declared'"})
 
     declared_keys = _declared_keys(wanted_type)
     # 🔴 [판정 524] SIBLING OF THE SEAT 521 FOLDED, IN THIS SAME FILE. Folding one seat and
@@ -609,7 +613,8 @@ def ledger_key_values(
         raise HTTPException(status_code=422, detail={
             "reason": "key_not_declared", "unknown": [key],
             "declared": sorted(declared_keys), "type": wanted_type,
-            "message": "'%s' 가 선언하지 않은 키입니다: %s" % (wanted_type, key)})
+            "message": "'%s' does not declare the key %s - pick one from 'declared'"
+                       % (wanted_type, key)})
 
     connection = db.connection()
     if not trace.relation_exists(connection, LEDGER_RELATION):
@@ -626,7 +631,8 @@ def ledger_key_values(
     if not grouping:
         raise HTTPException(status_code=422, detail={
             "reason": "type_declares_no_keys", "type": wanted_type,
-            "message": "'%s' 가 키를 선언하지 않아 주어를 셀 수 없습니다" % wanted_type})
+            "message": "'%s' declares no keys, so its subjects cannot be counted - "
+                       "declare its keys" % wanted_type})
 
     params = {"type_prefix": wanted_type + "%",
               "scan": KEY_VALUE_SCAN_ROWS + 1, "limit": limit + 1}
@@ -695,7 +701,7 @@ def _declared_keys(bare_type: str) -> set:
         logger.error("declaration unreadable while resolving keys: %s", exc)
         raise HTTPException(status_code=503, detail={
             "reason": "declaration_unreadable",
-            "message": f"선언을 읽지 못했습니다: {exc}"})
+            "message": f"The declaration could not be read: {exc} - fix the declaration and reload"})
     for name, spec in declared.items():
         if str(name).split("@", 1)[0] == bare_type:
             return {str(k) for k in ((spec or {}).get("keys") or [])}
@@ -720,7 +726,7 @@ def _collectable_types():
         logger.error("declaration unreadable while resolving collect: %s", exc)
         raise HTTPException(status_code=503, detail={
             "reason": "declaration_unreadable",
-            "message": f"선언을 읽지 못했습니다: {exc}"})
+            "message": f"The declaration could not be read: {exc} - fix the declaration and reload"})
     return {str(name).split("@", 1)[0] for name in declared}
 
 
@@ -754,8 +760,8 @@ def _relation_absent() -> HTTPException:
         "reason": trace.REASON_RELATION_ABSENT,
         "state": "absent",
         "relation": LEDGER_RELATION,
-        "message": (f"원장 테이블 {LEDGER_RELATION} 없음 — 마이그레이션 미실행 "
-                    f"(server/migrations/add_ledger_events.py)"),
+        "message": (f"Ledger table {LEDGER_RELATION} is missing - run "
+                    f"server/migrations/add_ledger_events.py"),
     })
 
 
@@ -800,7 +806,7 @@ def ledger_gap_catalogue(name: str = Query(None)):
         logger.error("declaration unreadable: %s", exc)
         raise HTTPException(status_code=503, detail={
             "reason": "declaration_unreadable",
-            "message": f"선언을 읽지 못했습니다: {exc}"})
+            "message": f"The declaration could not be read: {exc} - fix the declaration and reload"})
 
     try:
         # 🔴 [판정 521] SAME SEAT SHAPE, SAME FOLD. `?name=` is `''` here too, and this
@@ -876,7 +882,7 @@ def ledger_declaration_catalog():
         logger.error("declaration unreadable: %s", exc)
         raise HTTPException(status_code=503, detail={
             "reason": "declaration_unreadable",
-            "message": f"선언을 읽지 못했습니다: {exc}"})
+            "message": f"The declaration could not be read: {exc} - fix the declaration and reload"})
 
     # 🔴 `class` IS CARRIED, NOT DECIDED HERE. The walk refuses a step from a static type
     # to a dynamic one (`_static_step_predicates`), and a client deriving paths from the

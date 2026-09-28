@@ -255,14 +255,14 @@ console.log('\n[4-ter] an empty answer is an answer, not a failure');
 {
   const r = recorder({ ok: true, json: async () => ({
     state: 'empty', nodes: [], edges: [],
-    message: '선택한 노드에 연결된 원장 증거가 없습니다' }) });
+    message: 'No ledger evidence is connected to the selected node' }) });
   const res = await createWalkBoxWalk({ apiBase: '', fetchImpl: r.fetchImpl })(FULL);
   eq('the walk succeeded', res.ok, true);
   eq('and it says it is empty', res.state, 'empty');
   // 🔴 사유를 «서버의 말»로 나릅니다. 화면이 자기 문장을 지으면 같은 부재가 두 화면에서
   //    다르게 읽히고, 그때 「없음」과 「못 물어봄」이 같은 픽셀이 됩니다.
   eq('...with the server sentence, not one the screen invented',
-    res.message, '선택한 노드에 연결된 원장 증거가 없습니다');
+    res.message, 'No ledger evidence is connected to the selected node');
 }
 
 // ═══ ⑤ 실패는 «사유»를 들고 온다 — 빈 화면 금지 ═════════════════════════════════════

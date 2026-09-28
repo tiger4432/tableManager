@@ -1421,7 +1421,7 @@ def _propagation(nodes, edges, seed_signs, complete, static_types=()):
     } for node in nodes.values()
         if node["id"] not in seed_signs and node["id"] in reach]
     if not collected:
-        block["message"] = "이 걷기가 씨앗 밖의 노드에 닿지 않았습니다"
+        block["message"] = "This walk reached no node beyond its seeds"
         return block
     layers = _rank_layers(collected)
     block["state"] = "ranked"
@@ -1505,7 +1505,7 @@ def _seed_node(seed_id, seed_ref, action_lookup):
             seed_node = {
                 "id": seed_id, "type": "Enrich Action", "node_kind": "action",
                 "schema_kind": "enrich_action_projection",
-                "label": f"{seed_ref['rule_name']} · 현재 상태 확인 불가",
+                "label": f"{seed_ref['rule_name']} · current state unavailable",
                 "keys": {
                     "rule": seed_ref["rule_name"],
                     "contract_version": seed_ref["version"],
@@ -2419,7 +2419,7 @@ def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
             **({} if getattr(lookup, "interval_excluded", None) is None
                else {"interval_excluded": lookup.interval_excluded}),
         },
-        "message": None if found else "선택한 노드에 연결된 원장 증거가 없습니다",
+        "message": None if found else "No ledger evidence is connected to the selected node",
     }
     if rows:
         # Folded at the END, from this walk's own structures (S-183). No second route, no
