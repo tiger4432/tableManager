@@ -64109,3 +64109,64 @@ PG       7 failed, 117 passed, 7400 deselected in 165.48s (0:02:45) — 실패 7
 ```
 
 지시대로 착지하고 멈춥니다. 감시는 켜 둡니다(소유자 「감시켜」).
+
+---
+
+## [구현자 -> 총괄] 착지 66b5fcbe7 — trigger_columns 는 «막는 칸» (2a1be19e9)
+
+### 먼저 잰 것 — 도출하는 깨우기 칸이 값이 바뀌는 칸을 드나
+```
+조인 값 표 쪽    키 칸만 들었음(rule_shape.join_trigger_columns = on 의 right 칸). take 칸 빠짐
+               -> 게이트만 켜면 값 표의 값 변경에 조인이 안 깨어나 값이 안 옮겨짐. 도출에 take 칸을 더함(같은 커밋)
+조인 :target 짝  자기 키(on 의 left). 새 행 · 키 바뀜에 깨어나고 조인 자기 take 쓰기엔 안 깨어남 — 바꿀 것 없음
+decide         도출하는 깨우기 칸 없음. 두 반쪽 다 표 전체라 게이트가 바꾸는 것 없음
+mapper         도출 없음 — 운영자가 적은 trigger_columns(통합은 on.columns)만
+리플레이         사건에 칸 목록을 안 실음 -> 「모른다」라 늘 돎. 막히지 않음
+```
+
+### 지은 것
+```
+좌석       fire_refusal(규칙, 사건) — 돌면 None, 아니면 까닭. fires 는 그 참/거짓이고, 돌기 전 결과 기록도 이것을 읽음
+          칸 판정 · 체인 옵트인을 묻는 줄: 전 3줄 · 함수 2(fires · 돌기 전 결과) -> 후 2줄 · 함수 1(fire_refusal)
+          셈: git grep -n -E "(rule_watches_changed_columns|_rule_accepts_event)\(" -- 'server/*.py' ':!server/tests' 에서 def · 주석 줄 뺌
+fires 부르는 줄  11 (ingestion_worker 9 · set_aside 1 · main 대기열 화면 1). 모두 「이 규칙이 이 사건에 도나」를 묻는 자리라 같은 답을 받음
+깨우는 칸    wake_columns(규칙) = trigger_columns, 그다음 require. 판정과 로드 줄이 같은 함수를 읽음
+조인 도출    값 표 쪽 = 키 + take. on.columns 를 «키로» 적은 선언은 지금처럼 통과 — 충돌 검사는 그대로 키와 견줌
+          (박스 규칙 13 중 on.columns 를 적은 것 0. 운영은 못 봄 — 넓히면 키만 적은 운영 선언이 로드에서 빠질 수 있어 안 넓힘)
+로그       skipped 줄 — 묶음마다 한 번, 그 규칙이 그 묶음에서 실제로 안 돌 때만. 칸 목록에 require 칸도 보임
+          로드 때 [ChainRules] <규칙> wakes only on: [..] — 깨우는 칸이 있는 규칙만
+곁에 바뀐 것  다른 규칙만 겨눈 리플레이 묶음에서 같은 표의 다른 규칙이 남기는 「안 돎」 기록의 까닭이
+          「체인 사건 · allow_chain_trigger 없음」에서 까닭 없음으로 바뀜 — 좌석이 리플레이 겨눔을 먼저 물어서. 전 까닭이 틀린 말이었음
+```
+
+### 운영 — 재기동 «전»
+```
+RUN.md 새 절에 목록 한 줄: 깨우는 칸이 있는 규칙을 「WAKES <규칙> [칸]」으로 찍음 (pull 뒤, 재기동 전)
+박스에서 돌린 결과 4 줄 — inventory_confirmed · test 두 조인과 그 짝. 박스 수이지 운영 수가 아님
+소유자가 목록을 보고 넓힐 규칙을 고름 — 넓히는 법: 그 규칙의 trigger_columns(통합은 on.columns)에 칸을 더함
+```
+
+### 말
+```
+rule_shape.join_trigger_columns 독스트링  「09-25 실측: 막지 않음」을 지우고 「키만 — on.columns 가 되풀이해도 되는 것, 깨우기는 키+take」로
+7237b5219 보고의 정정 줄  「trigger_columns 는 실행을 안 막는다 · 기록뿐」은 이 착지로 참이 아님 — 이제 막음
+가이드      chain_rules.md 의 trigger_columns 줄이 이제 참. 칸 목록 없는 사건 · 조인 도출 · 로드 줄을 한 줄에 더함
+시험 셋     옛 참을 박은 칸을 고침 — 조인 도출 [["job"],["job"]] -> [["job","lot"],["job"]] · 「제한은 fires 안에서 묻는다」 -> fire_refusal 안 ·
+          require 시험의 「막지 않음」 주석
+```
+
+### 시험
+```
+게이트   server/tests/test_a_rule_runs_only_when_its_wake_columns_change.py 3 passed in 0.85s (main 에서 다시 돌림)
+        [a] 규칙: b 바뀜 -> 안 돎(줄 1) · a 바뀜 -> 돎 · 칸 목록 없는 사건 -> 돎 · require 칸 채움 -> 돎
+        조인 값 표 쪽: take 바뀜 -> 돎 · 키 바뀜 -> 돎 · 무관한 칸 -> 안 돎(줄 1) / :target: 새 행 · 키 바뀜 -> 돎 · 무관한 칸 -> 안 돎(줄 1) ·
+        조인 자기 take 쓰기 -> 좌석이 「칸 안 겹침」으로 거절 · 로드 줄 셋
+변이     fires 에서 칸 판정 뺌 -> 2 빨강 · 도출에서 take 뺌 -> 2 빨강
+전체     6 failed, 7355 passed, 163 skipped, 3 xfailed in 652.27s (0:10:52) — 실패 6 = 이 작업 트리의 알려진 환경 실패 5(샘플 CRLF 4 · 저장소 루트 1) + 간헐 1
+        간헐: test_config_reload_integrity::test_h3_cross_directory_replace_applies_physical_alter — 파일 감시기 디바운스 타이머를 기다리는 칸, 체인 코드를 안 지남
+        따로 3번 통과 · 파일째 3번 중 2번 통과. origin/main 으로 A/B 는 안 함
+PG       7 failed, 117 passed, 7403 deselected in 164.49s (0:02:44) — 실패 7 은 알려진 일곱과 이름이 같음(새 실패 0)
+재기동   체인 워커(좌석) · 서버(대기열 화면이 같은 좌석을 읽음). 마이그레이션 없음
+```
+
+지시대로 착지하고 멈춥니다. 감시는 켜 둡니다(소유자 「감시켜」).
