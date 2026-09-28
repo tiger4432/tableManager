@@ -242,9 +242,14 @@ COLUMN_BINDING_KEYS = (
     "job_column", "reference_job_column", "derivation_source_column",
 )
 
+#: 총괄 49052cbdd (소유자 「특정 칼럼 집합이 다 찬 행만 복사」): trigger-table columns a row must
+#: have filled to be handed to the rule at all. Beside `trigger_columns` - both are words about
+#: the trigger rows, and the unified grammar keeps them under `on` (`on.require`).
+REQUIRE_KEY = "require"
+
 RULE_ROUTING_OPTIONAL = tuple(
     key for key in RULE_TABLE_KEYS if key not in RULE_ROUTING_REQUIRED) + (
-    "target_field", "trigger_columns", "enabled", "is_batch",
+    "target_field", "trigger_columns", REQUIRE_KEY, "enabled", "is_batch",
     "allow_chain_trigger", "allow_map_metadata_upsert",
     # 총괄 fe020274d: write permissions `dt_map_derivation` reads off the rule, not arguments.
     "allow_replace_map", "allow_retraction",
@@ -424,6 +429,27 @@ def rule_refusals(rule, path, *, mapper_resolvable, derived_tables, mapper_param
                     "nothing would put the whole table in one group"
                     % (missing, candidate.get("trigger_table"))))
 
+    # 총괄 49052cbdd: `require` names trigger-table columns a row must have filled. A name the
+    # table does not have is never filled, so the rule would never receive a row - refused by
+    # name, the way an unknown `trigger_columns` entry is named.
+    if REQUIRE_KEY in candidate:
+        written = candidate.get(REQUIRE_KEY)
+        names = (written if isinstance(written, list) and written
+                 and all(isinstance(n, str) and n.strip() for n in written) else None)
+        if names is None:
+            issues.append(validation.DeclarationValidationError(
+                "bad_require", path + "." + REQUIRE_KEY,
+                "require must be a list of column names, got %r" % (written,)))
+        else:
+            known = declared_columns(str(candidate.get("trigger_table") or ""))
+            unknown = sorted(set(names) - known) if known is not None else []
+            if unknown:
+                issues.append(validation.DeclarationValidationError(
+                    "unknown_require_column", path + "." + REQUIRE_KEY,
+                    "rule %s requires %s that '%s' does not have; no row could ever be handed "
+                    "to it. Fix the names or remove the cell."
+                    % (candidate.get("name"), unknown, candidate.get("trigger_table"))))
+
     target = str(candidate.get("target_table") or "")
     if target in (derived_tables or ()):
         from chain import join_into, rule_run
@@ -537,7 +563,8 @@ _SKELETON_HINTS = {
 
 #: Routing cells whose value is a LIST of names -> (member, item hint). `trigger_columns` is
 #: read as a list by `chain.graph` and `chain.rule_census`; `reads` by `rule_tables` below.
-_LIST_CELLS = {"trigger_columns": ("column", "free"), READS_KEY: ("table", "ref")}
+_LIST_CELLS = {"trigger_columns": ("column", "free"), REQUIRE_KEY: ("column", "free"),
+               READS_KEY: ("table", "ref")}
 
 
 def skeleton():
@@ -718,7 +745,8 @@ def _unified_root():
         # ⚠️ [총괄 e91b96a28] `on.table` IS ALREADY REQUIRED, and it is now a join's only source.
         #   Marking `on` itself required too made the window say 「on」 where it said 「on.table」.
         _field("on", _record(_field("table", _leaf("trigger_table"), required=True),
-                             _field("columns", _node_for("trigger_columns")))),
+                             _field("columns", _node_for("trigger_columns")),
+                             _field(REQUIRE_KEY, _node_for(REQUIRE_KEY)))),
         _field("derive", {"kind": "oneOf", "hint": "choice",
                           "branches": {kind: derive_branches[kind]
                                        for kind in rule_shape.DECLARED_KINDS}},

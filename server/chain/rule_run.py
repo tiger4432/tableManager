@@ -385,6 +385,33 @@ def rows_counted(value):
     return 1 if value else 0
 
 
+def held_back(rule, handed) -> tuple:
+    """-> (the rows handed to the rule, {column: rows held back because it was empty}).
+
+    🔴 [총괄 49052cbdd, 소유자 「특정 칼럼 집합이 다 찬 행만 복사」] A rule's `require` names
+    trigger-table columns a row must have filled; a row with any of them empty is not handed
+    over at all - before the mapper, so it never has to guard against them. 「Empty」 is the
+    product's one judgement (`crud.is_blank_value`). Asked HERE because every kind and every
+    replay hands its rows through this seat."""
+    import chain_bindings
+
+    wanted = list((rule or {}).get(chain_bindings.REQUIRE_KEY) or ())
+    if not wanted:
+        return handed, {}
+    from database import crud
+
+    kept, empty = [], collections.Counter()
+    for payload in handed:
+        data = payload.get("data") if isinstance(payload, dict) else None
+        blank = [column for column in wanted
+                 if crud.is_blank_value(((data or {}).get(column) or {}).get("value"))]
+        if blank:
+            empty.update(blank)
+        else:
+            kept.append(payload)
+    return kept, dict(empty)
+
+
 def run_rule(db, rule, payloads=None, row_ids=None, done=None, depth=None,
              woken_by_a_replay=False, cascade=False):
     """Run ONE chain rule over the input it was handed, whichever way it names its code.
@@ -418,6 +445,12 @@ def run_rule(db, rule, payloads=None, row_ids=None, done=None, depth=None,
     #   its `row_ids` from exactly that cell. Two shapes of hand was the calling half of
     #   the two doors.
     handed = list(payloads or ()) or [{"row_id": rid} for rid in (row_ids or ())]
+    offered = len(handed)
+    handed, empty = held_back(rule, handed)
+    if empty:
+        logger.info("[Chain] %s: %d row(s) not handed over - required column(s) empty: %s",
+                    name, offered - len(handed),
+                    ", ".join("%s=%d" % pair for pair in sorted(empty.items())))
     # 🔴 [판정 562] THE ENVELOPE IS ALWAYS OPEN NOW, and that is a deliberate widening.
     #   It used to open only for a rule REGISTERED as self-writing, because only a
     #   `builtin:` kind could write during its own call. Any mapper receives `db` and may

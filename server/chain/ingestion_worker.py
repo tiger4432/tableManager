@@ -878,7 +878,10 @@ def rule_watches_changed_columns(rule, event) -> bool:
     changed = get_payload_dict(event).get("columns")
     if changed is None:
         return True
-    return bool(set(wanted) & set(changed))
+    # 🔴 [총괄 49052cbdd] A `require` column filled later has to wake the rule, or a row held
+    #   back for it would wait forever - so filling one counts as the rule's column changing.
+    required = rule.get(chain_bindings.REQUIRE_KEY) or ()
+    return bool((set(wanted) | set(required)) & set(changed))
 
 
 #: 🔴 [판정 500] EVERY SEAT THAT PICKS UP A RULE WHEN A TABLE CHANGES, AND EACH ANSWERS FOR

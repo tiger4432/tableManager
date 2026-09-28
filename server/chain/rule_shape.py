@@ -17,6 +17,7 @@ from chain import join_into
 
 #: 체인 문법에서 «모양으로 접히는» 칸. 나머지는 전부 `extra` 로 간다.
 CHAIN_MODELLED = ("name", "enabled", "trigger_table", "trigger_columns",
+                  chain_bindings.REQUIRE_KEY,
                   "target_table", "mapper", "mapper_module", "mapper_function",
                   "params", "group_by", "max_group_rows", "max_group_attempts",
                   "idempotent")
@@ -65,8 +66,10 @@ def from_chain_rule(raw: dict, origin: str = "declared") -> dict:
         # ⚠️ 「안 적음」과 「true 라고 적음」은 «다른 선언»이다. 값만 들고 있으면 왕복이
         #    원본에 없던 칸을 만들어 내고, 그러면 census 가 매 적재마다 「바뀜」이라 말한다.
         "enabled_written": "enabled" in raw,
-        "on": _rename(_present(raw, ("trigger_table", "trigger_columns")),
-                      {"trigger_table": "table", "trigger_columns": "columns"}),
+        "on": _rename(_present(raw, ("trigger_table", "trigger_columns",
+                                     chain_bindings.REQUIRE_KEY)),
+                      {"trigger_table": "table", "trigger_columns": "columns",
+                       chain_bindings.REQUIRE_KEY: chain_bindings.REQUIRE_KEY}),
         "derive": {"kind": "mapper", "mapper": mapper},
         "into": ({"table": raw["target_table"]} if "target_table" in raw else {}),
         "limits": _present(raw, _LIMIT_KEYS),
@@ -210,6 +213,8 @@ def as_chain_rule(internal: dict) -> dict:
         out["trigger_table"] = on["table"]
     if "columns" in on:
         out["trigger_columns"] = on["columns"]
+    if chain_bindings.REQUIRE_KEY in on:
+        out[chain_bindings.REQUIRE_KEY] = on[chain_bindings.REQUIRE_KEY]
     into = internal.get("into") or {}
     if "table" in into:
         out["target_table"] = into["table"]
@@ -308,6 +313,13 @@ def with_declared_cells(rule: dict, internal: dict) -> dict:
     #   Whether the conflict should be REFUSED by name rather than resolved here is a bigger
     #   question (판정 543 의 선) and it is queued, not answered.
     rule.update(internal.get("axis") or {})
+    # 🔴 [총괄 49052cbdd] `on.require` names the TRIGGER rows' columns, so every rule this
+    #   declaration stands on `on.table` carries it - a mapper, a join's source side,
+    #   decide's dedup half - and a rule on another table (the `:target` half, decide's
+    #   confirm half) does not.
+    on = internal.get("on") or {}
+    if chain_bindings.REQUIRE_KEY in on and rule.get("trigger_table") == on.get("table"):
+        rule[chain_bindings.REQUIRE_KEY] = list(on[chain_bindings.REQUIRE_KEY])
     # `enabled` 는 «생략된 것»과 «적힌 것»이 다른 문장이므로 «적혀 있었을 때만» 되돌린다
     if internal.get("enabled_written"):
         rule["enabled"] = internal.get("enabled")
@@ -458,6 +470,8 @@ def companion_rules(internal: dict) -> list:
     target_key = [str(pair["left"]) for pair in (derive.get("join") or {}).get("on") or ()
                   if isinstance(pair, dict) and pair.get("left")]
     companion.pop("trigger_columns", None)
+    # `on.require` is about the SOURCE rows this half never receives (총괄 49052cbdd).
+    companion.pop(chain_bindings.REQUIRE_KEY, None)
     if target_key:
         companion["trigger_columns"] = target_key
     # 🔴 [S-270] IT SAYS WHAT IT IS, HERE, WHERE THAT IS KNOWN. Everything downstream that

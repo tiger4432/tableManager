@@ -90,6 +90,19 @@
         }
       },
       {
+        "key": "require",
+        "required": false,
+        "node": {
+          "kind": "map",
+          "keyed_by": "index",
+          "member": "column",
+          "of": {
+            "kind": "leaf",
+            "hint": "free"
+          }
+        }
+      },
+      {
         "key": "enabled",
         "required": false,
         "node": {
@@ -370,6 +383,19 @@
             },
             {
               "key": "columns",
+              "required": false,
+              "node": {
+                "kind": "map",
+                "keyed_by": "index",
+                "member": "column",
+                "of": {
+                  "kind": "leaf",
+                  "hint": "free"
+                }
+              }
+            },
+            {
+              "key": "require",
               "required": false,
               "node": {
                 "kind": "map",
