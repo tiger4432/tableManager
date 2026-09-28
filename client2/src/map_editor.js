@@ -45,6 +45,7 @@ import {
   ROUTES, startSession, installGlobalListeners, installNavLinkCounting, countNav,
   snapshot as effortSnapshot, commitIfRecorded as effortCommitIfRecorded
 } from './effort_meter.js';
+import { coordKey as storedCoordKey, planColumnSave, paintIsSafe } from './column_save.js';
 // [7b] THE ONE map-identity canonicaliser (client2/src/map_key.js). It used to live in this
 // file; it is a pure leaf that calls nothing here, and the server half
 // (`map_overlay.canonical_key_value` / `compose_map_id` / `build_key_filters`) is scored
@@ -521,6 +522,8 @@ export function initDOMElements() {
   el.btnPushMap = document.getElementById('btn-push-map');
   // [2] 규격만 저장. Push의 이웃이지 대체가 아니다 — 셀을 쓰지 않는 쪽이다.
   el.btnSaveMapSpec = document.getElementById('btn-save-map-spec');
+  el.btnSaveColumn = document.getElementById('btn-save-column');
+  el.saveColumnLine = document.getElementById('save-column-line');
 
   el.presetSelect = document.getElementById('preset-select');
   el.btnSavePreset = document.getElementById('btn-save-preset');
@@ -759,6 +762,7 @@ export function initDOMElements() {
   el.btnFillGrid.addEventListener('click', fillGrid);
   el.btnPushMap.addEventListener('click', pushMapData);
   if (el.btnSaveMapSpec) el.btnSaveMapSpec.addEventListener('click', saveMapSpecOnly);
+  if (el.btnSaveColumn) el.btnSaveColumn.addEventListener('click', saveColumnChanges);
   if (el.btnCopyExcel) el.btnCopyExcel.addEventListener('click', copyGridToExcel);
   // [F1ⓑ] 되붙이기. 새 버튼도 새 메뉴 항목도 아니다 — 클립보드는 네이티브 `paste` 이벤트에서만
   // 읽을 수 있으므로(운영은 평문 HTTP = `navigator.clipboard` 부재) 동선은 Ctrl+V 하나뿐이다.
@@ -4055,7 +4059,7 @@ let draftBase = null;   // { table, mapKey, registryFp, cellsFp } | null
 //    현재 물리 규격의 마스크를 벗어난 경우(서버에 있다). 좌표만 보면 둘은 구별되지 않고,
 //    ②를 지운 뒤 Push하면 `replace_map`이 그 행들을 **서버에서 삭제한다**(불변식 ④, H2와
 //    같은 계급의 파괴). 그래서 정리는 "서버가 보낸 적 없다"가 증명된 키에만 허용한다.
-let serverCellKeys = null;   // { table, mapKey, keys: Set<string> } | null
+let serverCellKeys = null;   // { table, mapKey, keys: Set<string>, read? } | null
 
 // 지금 화면의 맵에 대해 서버 셀 집합을 신뢰할 수 있는가. 정체는 `loadedIdentity`가 지고
 // 있으므로(프레임 스택이 스냅샷으로 함께 옮긴다) 여기서 다시 만들지 않고 대조만 한다.
@@ -5197,6 +5201,7 @@ export async function loadExistingMap(opts = {}) {
 
     // Reset local cache & loaded F cells protection set
     gridData = {};
+    const loadedValues = new Map();   // stored x|y -> the value read now: the column save's baseline
     loadedFCells.clear();
     // [F2b] 서버 셀 집합도 함께 버린다. 이 로드가 예외로 끝나면 기록은 null로 남고, null이면
     // 정리는 제공되지 않는다 — 앞 맵의 집합으로 이 맵의 셀을 "서버에 없다"고 판정하는 것이
@@ -5385,6 +5390,7 @@ export async function loadExistingMap(opts = {}) {
             const physical = getDieIndex(null, c, r, cols, rows, rotation, side);
             const gridKey = `${physical.x}_${physical.y}`;
             gridData[gridKey] = strVal;
+            loadedValues.set(`${xNum}|${yNum}`, strVal);   // storedCoordKey's spelling of a parsed pair
 
             // 잠금 판정은 config 관문(isLockedValue)만 사용 — 값 하드코딩 금지
             if (isLockedValue(strVal)) {
@@ -5413,6 +5419,10 @@ export async function loadExistingMap(opts = {}) {
         table: selectedTable,
         mapKey: loadedMapKey || getCurrentMapKey(),
         keys: new Set(Object.keys(gridData)),
+        // What this read found, and under which key, column and frame — the column save's baseline
+        // (column_save.js). A cut read carries none, so that save has nothing to compare against.
+        read: { filterModel, xCol, yCol, valCol, values: loadedValues, validDie,
+          frame: JSON.stringify({ cols, rows, startX, startY, invertY, rotation, side }) },
       };
     }
 
@@ -10005,6 +10015,105 @@ async function saveMapSpecOnly() {
     // 무해하지만, 컨트롤러를 재사용하는 다음 편집에서는 남의 요청을 끊는다.
     if (timeoutTimer !== null) clearTimeout(timeoutTimer);
     if (btn) { btn.disabled = false; btn.textContent = label; }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SAVE CHANGED CELLS — owner 09-28 「고른 칸만 고쳐쓰기」 (lead 40bae1219). Push's neighbour, not its
+// replacement: only the chosen value column's changed cells, through the grid's write door, no
+// `replace_map`. What is compared and written is decided in `column_save.js`; this reads the
+// screen, re-reads the map, asks once, writes once. Refuses when the load it compares against is
+// not the map, column or frame on screen now.
+async function saveColumnChanges() {
+  const s = serverCellKeys;
+  const b = s && s.read;
+  const say = (t, tone) => {
+    if (el.saveColumnLine) { el.saveColumnLine.style.display = ""; el.saveColumnLine.textContent = t; el.saveColumnLine.title = t; }
+    if (tone) showToast(t, tone);
+  };
+  if (!b || !loadedIdentity || s.table !== loadedIdentity.table || s.mapKey !== loadedIdentity.mapKey) {
+    return say('Load the map first — nothing to compare against.', 'warning');
+  }
+  if (currentIdentityMismatch()) return say('Another map key is on screen than the one loaded — load it again.', 'warning');
+  if (el.colMapVal.value !== b.valCol) {
+    return say(`Value column changed since the load (${b.valCol} → ${el.colMapVal.value}) — load again.`, 'warning');
+  }
+  const f = currentFrame();
+  const frameNow = JSON.stringify({ cols: f.cols, rows: f.rows, startX: f.startX, startY: f.startY,
+    invertY: f.invertY, rotation: f.rotation, side: f.side });
+  if (frameNow !== b.frame || validDie !== b.validDie) {
+    return say('The frame changed since the load — load again, or use Push.', 'warning');
+  }
+
+  // The screen now, spelled the way `eachSavableCell` spells it, empties included.
+  const current = new Map();
+  const physicalOf = new Map();
+  Object.keys(gridCells2D || {}).forEach((r) => Object.keys(gridCells2D[r] || {}).forEach((c) => {
+    const co = gridCells2D[r][c];
+    if (!co || !co.inside) return;
+    const k = storedCoordKey(co.x, co.y);
+    current.set(k, gridData[co.key] || '');
+    physicalOf.set(k, co.key);
+  }));
+
+  let rows;
+  try {
+    const res = await fetch(`${API_BASE}/tables/${s.table}/data?${cellQuery(b.filterModel)}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    rows = ((await res.json()) || {}).data || [];
+  } catch (err) {
+    return say(`Could not read the map again (${err.message}) — nothing written.`, 'error');
+  }
+  if (isCellsTruncated(rows)) return say(`The map has more than ${MAIN_CELL_LIMIT} rows — nothing written.`, 'error');
+
+  const types = (tableSchema && tableSchema.column_types) || {};
+  const keyValues = {};
+  Object.entries(b.filterModel).forEach(([col, f]) => {
+    keyValues[col] = types[col] === 'number' ? Number(f.filter) : f.filter;
+  });
+  const plan = planColumnSave({
+    baseline: b.values, current, rows, xCol: b.xCol, yCol: b.yCol, valCol: b.valCol, types, keyValues,
+    paintAllowed: paintIsSafe(tableSchema, b.xCol, b.yCol), author: CURRENT_USER,
+  });
+  const named = (cells) => `${cells.slice(0, 3).join(', ')}${cells.length > 3 ? ` +${cells.length - 3}` : ''}`;
+  if (plan.refusal === 'doubled') {
+    return say(`Two rows on ${plan.cells.length} cell(s) (${named(plan.cells)}) — fix them in the grid first. Nothing written.`, 'error');
+  }
+  if (plan.refusal === 'paint') {
+    return say(`${s.table}'s row key does not include ${b.xCol} and ${b.yCol}: ${plan.cells.length} new cell(s) would land on one row. `
+      + 'Use Push. Nothing written.', 'error');
+  }
+  const skipped = plan.conflicts.length ? ` · ${plan.conflicts.length} skipped (changed since the load: ${named(plan.conflicts)})` : '';
+  if (plan.updates.length === 0) return say(`No changed cells in ${b.valCol}${skipped}.`);
+  if (!confirm(`Write ${plan.updates.length} cell(s) of ${b.valCol} to ${s.table} · ${s.mapKey}?\n\n`
+    + `${plan.edited} edited · ${plan.painted} new · ${plan.cleared} cleared${skipped}\n`
+    + 'Other columns and other cells are not written.')) return;
+
+  say(`Writing ${plan.updates.length} cell(s)…`);
+  if (el.btnSaveColumn) el.btnSaveColumn.disabled = true;
+  try {
+    const res = await fetch(`${API_BASE}/tables/${s.table}/data/updates`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ updates: plan.updates, silent: false, effort: effortSnapshot() }),
+    });
+    if (!res.ok) {
+      const detail = await res.json().then((j) => j.detail).catch(() => res.statusText);
+      return say(`Save failed: ${detail}`, 'error');
+    }
+    effortCommitIfRecorded(await res.json());
+    // What was written is the stored value now; a new row joins the server's cell set.
+    plan.written.forEach((k) => {
+      b.values.set(k, current.get(k));
+      if (physicalOf.has(k)) s.keys.add(physicalOf.get(k));
+    });
+    const parts = [[plan.edited, 'edited'], [plan.painted, 'new'], [plan.cleared, 'cleared']]
+      .filter(([n]) => n > 0).map(([n, w]) => ` · ${n} ${w}`).join('');
+    say(`${b.valCol}: ${plan.updates.length} written${parts}${skipped}`, plan.conflicts.length ? 'warning' : 'success');
+  } catch (err) {
+    say(`Save failed: ${err.message}`, 'error');
+  } finally {
+    if (el.btnSaveColumn) el.btnSaveColumn.disabled = false;
   }
 }
 

@@ -1591,6 +1591,9 @@ const FLOORS = new Map([
   // 48 -> 49 (lead 909ea2052 ①): the Ledger row draws the server's state names.
   // 49 -> 51 (lead 13aa739f3): an idle on-demand process leaves 「N of M」 - one check, one mutant.
   ['overview_board_harness.mjs', 51],
+  // New 2026-09-28 (lead 40bae1219). The map editor's column save: changed cells only, one column,
+  // no overwrite of a cell changed since the load, and the «send every cell» mutant.
+  ['column_save_harness.mjs', 18],
 ]);
 
 // ── the ceilings ────────────────────────────────────────────────────────────────

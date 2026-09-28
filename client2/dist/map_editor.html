@@ -17,7 +17,7 @@
        파일을 텍스트로 잘라 재는 수밖에 없습니다 (map_editor2.html 이 이미 이 모양입니다).
        ⚠️ 순서가 계약입니다 -- tokens -> transfer_plan -> style -> base. style.css 가 부품 중 «마지막»이고,
           base.css 는 특이도 0 이라 부품 규칙을 못 이깁니다 — 뒤에 서서 style.css 의 `*` 리셋과의 동점만 가져갑니다. -->
-  <script type="module" crossorigin src="/assets/map_editor-DE9M9oBP.js"></script>
+  <script type="module" crossorigin src="/assets/map_editor-CdFCS1Sk.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/tokens-CS1D3gm8.js">
   <link rel="modulepreload" crossorigin href="/assets/absent-CbZu_zSZ.js">
   <link rel="modulepreload" crossorigin href="/assets/config-BUp4smhE.js">
@@ -27,7 +27,7 @@
   <link rel="stylesheet" crossorigin href="/assets/tokens-BtEHrHeH.css">
   <link rel="stylesheet" crossorigin href="/assets/map_editor-Cp9Re5iX.css">
   <link rel="stylesheet" crossorigin href="/assets/base-JCUfMAXO.css">
-  <link rel="stylesheet" crossorigin href="/assets/style-BG03PORS.css">
+  <link rel="stylesheet" crossorigin href="/assets/style-DM7QaSXN.css">
 </head>
 
 <body>
@@ -345,6 +345,8 @@
                  표기다(컨트롤이 아니다 — 누를 것도 고를 것도 없다). 피치를 지어내면 화면은
                  완벽히 정렬되는데 값이 전부 틀리므로, 지어내는 대신 모른다고 말한다. -->
             <span id="cell-aspect-note" class="glass-log-badge" style="display: none;"></span>
+            <!-- The last «Save changed cells»: what it wrote or why it wrote nothing. -->
+            <span id="save-column-line" class="glass-log-badge" role="status" style="display: none;"></span>
 
             <!-- Contextual Selection Actions -->
             <div id="selection-actions-container"
@@ -406,6 +408,8 @@
             <button id="btn-save-map-spec" class="glass-btn"
               style="border-color: var(--color-secondary); color: var(--color-secondary);"
               title="규격만 기록 — 셀은 하나도 쓰지 않습니다">📐 규격만 저장</button>
+            <!-- Owner 09-28 「고른 칸만 고쳐쓰기」: only the chosen value column's changed cells (column_save.js). -->
+            <button id="btn-save-column" class="glass-btn">Save changed cells</button>
           </div>
         </div>
 

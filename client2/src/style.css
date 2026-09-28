@@ -1752,6 +1752,15 @@ body.resizing-active .history-sidebar {
   flex: 0 1 auto;
   min-width: 0;
 }
+/* The column save's line takes what the row has left — a zero width contributes nothing, so a long
+   line cannot widen the page column (review 09-28: +123px). Cut lines keep the whole text in the title. */
+.map-editor-toolbar__status > #save-column-line {
+  flex: 1 1 0;
+  width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
 .map-editor-toolbar__status > .side-indicator,
 .map-editor-toolbar__status > .plock-chip,
