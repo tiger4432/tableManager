@@ -209,7 +209,18 @@ def _missing(spec: dict, left_table: str, left_model, right_model) -> str:
                 right_col, spec.get("right_table"))
         if not hasattr(left_model, into_col):
             return "target column %r does not exist on %r" % (into_col, left_table)
+    for required in _required(spec):
+        if not hasattr(right_model, required):
+            return "require column %r does not exist on %r" % (
+                required, spec.get("right_table"))
     return ""
+
+
+def _required(spec: dict) -> list:
+    """The value-table columns an answer row must have filled (`on.require`)."""
+    import chain_bindings
+
+    return [str(column) for column in spec.get(chain_bindings.REQUIRE_KEY) or ()]
 
 
 class _Answer:
@@ -249,11 +260,15 @@ def _read_once(db, spec, left_model, right_model, wheres, left_table=""):
             left[row[0]] = tuple(row[1:])
     right_key = [_folded(getattr(right_model, right_col), fold) for _l, right_col, fold in pairs]
     takes = [getattr(right_model, right_col) for right_col, _into in _takes(spec)]
+    # 🔴 [총괄 2276e38cf] A value row with an empty `require` column is not an answer, from
+    #   whichever side the join woke - the SQL twin of the seat's `crud.is_blank_value`.
+    filled = [crud.not_blank_sql_condition(crud.column_text_sql(getattr(right_model, column)))
+              for column in _required(spec)]
     answers = {}
     width = len(right_key)
     for chunk in crud._chunks(sorted(set(left.values())), keyset_scan.DEFAULT_CHUNK_SIZE):
         for row in db.execute(select(right_model.row_id, *right_key, *takes)
-                              .where(tuple_(*right_key).in_(chunk))):
+                              .where(tuple_(*right_key).in_(chunk), *filled)):
             answers.setdefault(tuple(row[1:1 + width]), []).append(
                 (row[0], tuple(row[1 + width:])))
     return sorted(left.items()), answers

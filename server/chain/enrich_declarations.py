@@ -72,6 +72,7 @@ def declarations(known_tables: dict = None, chain_rules_path: str = None,
     file before that file was retired. Everyone else leaves it False, so OFF still stands
     no rule (판정 399).
     """
+    import chain_bindings
     from chain import ingestion_worker, rule_shape
 
     seen, out = set(), []
@@ -117,6 +118,11 @@ def declarations(known_tables: dict = None, chain_rules_path: str = None,
                                    "detail": str(refusal)})
             continue
         declared = (stood[0].get("params") or {})
+        # 🔴 [총괄 2276e38cf ③] `on.require` stands on the RULE, not in `params`, and the
+        #   backfill reads only this - so it is carried here, from the rule the loader stands.
+        if stood[0].get(chain_bindings.REQUIRE_KEY):
+            declared = {**declared,
+                        chain_bindings.REQUIRE_KEY: list(stood[0][chain_bindings.REQUIRE_KEY])}
         if declared.get("name"):
             seen.add(name)
             out.append(declared)

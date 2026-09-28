@@ -247,6 +247,11 @@ def as_chain_rule(internal: dict) -> dict:
         out["params"] = dict(derive.get("join") or {})
         if "table" in on:
             out["params"]["right_table"] = on["table"]
+        # 🔴 [총괄 2276e38cf, 소유자 「조인, 파생, 맵퍼 다」] `on.require` rides in the spec for
+        #   the same reason: BOTH halves read the value table through the spec, and the
+        #   `:target` half is never handed a value row the seat could hold back.
+        if chain_bindings.REQUIRE_KEY in on:
+            out["params"][chain_bindings.REQUIRE_KEY] = list(on[chain_bindings.REQUIRE_KEY])
         # 🔴 [판정 398] THE AUTHOR WRITES THE JOIN ONCE AND THE SHELL DERIVES THE TRIGGER -
         #   the source side's join key (see `join_trigger_columns`).
         derived = join_trigger_columns(derive.get("join") or {})

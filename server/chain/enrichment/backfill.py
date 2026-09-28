@@ -260,8 +260,9 @@ def run_backfill(db, rule: dict, apply: bool = False, limit: int = None,
       new meaning.
     """
     from database import crud, models, schemas
+    import chain_bindings
     from chain.enrichment.mapper import map_enrichment_dedup
-    from chain import enrichment
+    from chain import enrichment, rule_run
 
     if limit is not None and limit <= 0:
         raise BackfillRefused(f"--limit must be a positive integer (got {limit})")
@@ -295,8 +296,10 @@ def run_backfill(db, rule: dict, apply: bool = False, limit: int = None,
         raise BackfillRefused(
             f"decision_key column(s) missing on source table model: {missing_keys}"
         )
+    # `require` columns ride along so the seat below can judge them (총괄 2276e38cf ③).
     payload_cols = list(dict.fromkeys(
         decision_key + [c for c in rule.get("list_columns", []) if c in src_cols]
+        + [c for c in rule.get(chain_bindings.REQUIRE_KEY) or () if c in src_cols]
     ))
 
     # `scan_limit` picks the resolver, not a preference: it is exactly the signal
@@ -387,6 +390,11 @@ def run_backfill(db, rule: dict, apply: bool = False, limit: int = None,
         payloads = [{"data": {col: {"value": val}
                               for col, val in zip(payload_cols, r[1:])}}
                     for r in rows]
+        # 🔴 [총괄 2276e38cf ③] NOT A SECOND SPELLING: this is the live chain's own seat, so a
+        #   backfill and a live run answer `require` alike (the warning above is about a copy).
+        payloads, _held = rule_run.held_back(rule, payloads)
+        if not payloads:
+            continue
 
         result = map_enrichment_dedup(db, payloads, rule=mapper_rule)
         items = result.get("updates") or []

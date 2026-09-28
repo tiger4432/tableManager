@@ -392,7 +392,9 @@ def held_back(rule, handed) -> tuple:
     trigger-table columns a row must have filled; a row with any of them empty is not handed
     over at all - before the mapper, so it never has to guard against them. 「Empty」 is the
     product's one judgement (`crud.is_blank_value`). Asked HERE because every kind and every
-    replay hands its rows through this seat."""
+    replay hands its rows through this seat - and the enrichment backfill calls it too
+    (총괄 2276e38cf ③), so the live chain and the backfill cannot answer `require` apart.
+    The line is said here for the same reason: one event, one sentence, whoever asked."""
     import chain_bindings
 
     wanted = list((rule or {}).get(chain_bindings.REQUIRE_KEY) or ())
@@ -409,6 +411,10 @@ def held_back(rule, handed) -> tuple:
             empty.update(blank)
         else:
             kept.append(payload)
+    if empty:
+        logger.info("[Chain] %s: %d row(s) not handed over - required column(s) empty: %s",
+                    (rule or {}).get("name") or "<unnamed rule>", len(handed) - len(kept),
+                    ", ".join("%s=%d" % pair for pair in sorted(empty.items())))
     return kept, dict(empty)
 
 
@@ -446,11 +452,7 @@ def run_rule(db, rule, payloads=None, row_ids=None, done=None, depth=None,
     #   the two doors.
     handed = list(payloads or ()) or [{"row_id": rid} for rid in (row_ids or ())]
     offered = len(handed)
-    handed, empty = held_back(rule, handed)
-    if empty:
-        logger.info("[Chain] %s: %d row(s) not handed over - required column(s) empty: %s",
-                    name, offered - len(handed),
-                    ", ".join("%s=%d" % pair for pair in sorted(empty.items())))
+    handed, _empty = held_back(rule, handed)
     # 🔴 [판정 562] THE ENVELOPE IS ALWAYS OPEN NOW, and that is a deliberate widening.
     #   It used to open only for a rule REGISTERED as self-writing, because only a
     #   `builtin:` kind could write during its own call. Any mapper receives `db` and may
@@ -494,8 +496,10 @@ def run_rule(db, rule, payloads=None, row_ids=None, done=None, depth=None,
             # per row - the same fan-out both live callers already do. An empty batch still
             # calls, because a batch mapper is entitled to be told its group was empty; an
             # empty per-row list is zero calls, because there is no row to speak about.
+            # ⚠️ [총괄 2276e38cf ②, 소유자 「맵퍼 에러 방지」] EXCEPT A GROUP `require` EMPTIED:
+            #   rows were offered and every one was held back, so there is nothing to tell.
             batched = (rule or {}).get("is_batch", False)
-            handed_out = [without_missing(handed)] if batched else [
+            handed_out = [without_missing(handed)] if batched and (handed or not offered) else [
                 without_missing(one) for one in handed]
             results = []
             with stage_timing():
