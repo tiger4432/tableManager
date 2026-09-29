@@ -334,7 +334,7 @@ def test_the_left_rows_are_selected_through_the_lookup_index(pg_engine, monkeypa
         db.execute(text("ANALYZE %s" % LEFT))
         spec = join_into.join_spec(rules[0])
         left_model, right_model = join_into._models(spec, LEFT)
-        wheres = join_into._left_rows_for_reference(
+        wheres, _empty = join_into._left_rows_for_reference(
             db, spec, left_model, right_model, ["R%04d" % i for i in range(100)], LEFT)
         from sqlalchemy.dialects import postgresql
         sql = str(select(left_model.row_id).where(wheres[0]).compile(
