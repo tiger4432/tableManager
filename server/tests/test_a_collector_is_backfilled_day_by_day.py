@@ -133,7 +133,7 @@ def test_every_day_runs_in_order_and_waits_for_its_file(workspace, monkeypatch):
     stats = _run(start, control)
 
     assert seen == expected and len(expected) == 3
-    assert stats == {"days": 3, "days_done": 3}
+    assert stats == {"days": 3, "days_done": 3, "done_until": seen[-1][1]}
     assert not control.stopped
 
 
@@ -157,17 +157,19 @@ def test_starting_again_from_the_failed_day_finishes_the_rest(workspace, monkeyp
 
     stats = _run(second, Control())
 
-    assert stats == {"days": 2, "days_done": 2}
+    assert stats == {"days": 2, "days_done": 2, "done_until": seen[-1][1]}
     assert seen[0][0] == second + ":00"
 
 
 def test_a_stop_lands_between_days(workspace, monkeypatch):
     seen = ingests(monkeypatch, [])
     control = Control(stop_after_days=1)
+    start = _two_days_ago()
 
-    stats = _run(_two_days_ago(), control)
+    stats = _run(start, control)
 
-    assert stats == {"days": 3, "days_done": 1}
+    assert stats == {"days": 3, "days_done": 1, "done_until": cm.backfill_text(
+        cm.backfill_start(start) + cm.BACKFILL_SLICE)}
     assert control.stopped and len(seen) == 1
 
 
@@ -176,9 +178,11 @@ def test_a_stop_while_a_file_waits_ends_without_counting_that_day(workspace, mon
     control = Control()
     control.stopped = True                        # asked before the first file was read
 
-    stats = _run(_two_days_ago(), control)
+    start = _two_days_ago()
 
-    assert stats == {"days": 3, "days_done": 0}
+    stats = _run(start, control)
+
+    assert stats == {"days": 3, "days_done": 0, "done_until": start}
 
 
 def test_the_result_line_reads_in_words_not_keys():
