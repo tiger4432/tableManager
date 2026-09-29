@@ -714,13 +714,19 @@ class ConnectionManager:
         logger.info(f"Client connected. Total clients: {len(self.active_connections)}")
 
     def disconnect(self, websocket: WebSocket):
+        # 🔴 [총괄 f10905f33, 소유자 09-29 「list.remove(x) x not in list」] A broadcast's failed
+        #    send and /ws's WebSocketDisconnect can both take the same connection out; the
+        #    second is a no-op, not a ValueError that ends the outbox broadcast loop.
+        if websocket not in self.active_connections:
+            return
         self.active_connections.remove(websocket)
         logger.info(f"Client disconnected. Total clients: {len(self.active_connections)}")
 
     async def broadcast(self, message: str):
         logger.info(f"Broadcasting to {len(self.active_connections)} clients: {message[:100]}...")
         failed_connections = []
-        for connection in self.active_connections:
+        # A copy: a client leaving during an await must not make this skip the next one.
+        for connection in list(self.active_connections):
             try:
                 await connection.send_text(message)
             except Exception as e:
