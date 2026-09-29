@@ -100,12 +100,12 @@
 :where(:is(button, input[type="button"], input[type="submit"], .btn):not(:is([class^="ag-"], [class*=" ag-"]) *):disabled) { opacity: 0.5; cursor: not-allowed; }
 
 /* ── menu row — a row in a dropdown, whatever its tag ───────────────────────────── */
-/* 🔴 A row that is a <button> took the button's `nowrap` and `line-height: 1` from the rule
-   above, so a long name ran out of its menu -- only for people with a token, whose rows are
-   buttons (order 6273a7deb, owner 「리플레이 체인 드롭다운에서도 글씨 삐져나가는거」). A menu
-   row WRAPS: rule names differ at their ends, and a cut end hides the difference. The menu
-   never grows past the screen. */
-:where(.dropdown-item) { white-space: normal; overflow-wrap: anywhere; line-height: 1.5; min-width: 0; }
+/* 🔴 A row that is a <button> took the button's `nowrap` from the rule above, so a long name
+   ran out of its menu -- only for people with a token, whose rows are buttons (order
+   6273a7deb, owner 「리플레이 체인 드롭다운에서도 글씨 삐져나가는거」). A menu row WRAPS: rule
+   names differ at their ends, and a cut end hides the difference. Its text may shrink (`> *`,
+   a flex item's `min-width: auto` would not). The menu never grows past the screen. */
+:where(.dropdown-item) { white-space: normal; overflow-wrap: anywhere; }
 :where(.dropdown-item > *) { min-width: 0; }
 :where(.glass-dropdown-panel) { max-width: calc(100vw - 2 * var(--space-4)); }
 
