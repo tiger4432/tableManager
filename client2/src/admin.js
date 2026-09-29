@@ -1159,16 +1159,23 @@ async function refreshChainRule(name, extra = {}) {
   if (count) count.textContent = view.count;
 }
 
-async function saveChainRule({ name, base, raw }) {
+async function saveChainRule({ name, base, raw, forNew = false }) {
+  // 🔴 A REFUSED NEW RULE IS STILL NEW (order c93637fc5). Re-reading its unsaved name gets no
+  //    grammar -- the route does not guess one for a name the file lacks (판정 542·543) -- and no
+  //    grammar is no form: the owner was left with the text box alone. It re-reads the way
+  //    [+ add] does, with no name, which answers the new-rule grammar (판정 516).
+  const refused = (refusal) => (forNew
+    ? refreshChainRule('', { refusal, forNew: true })
+    : refreshChainRule(name, { refusal }));
   // 표 등록과 같은 길입니다 — 운영자가 쓴 것이 JSON 이 아니면 «서버까지 가기 전»에
   // 걸리고, `code` 는 «비웁니다». 서버의 코드를 다른 조건에 찍지 않습니다.
   let declaration = null;
   try {
     declaration = JSON.parse(raw);
   } catch (e) {
-    await refreshChainRule(name, { refusal: {
+    await refused({
       code: '', path: `rules.${name}`,
-      message: String(e && e.message ? e.message : e) } });
+      message: String(e && e.message ? e.message : e) });
     return;
   }
   try {
@@ -1179,15 +1186,14 @@ async function saveChainRule({ name, base, raw }) {
     });
     const answer = await res.json().catch(() => null);
     if (!res.ok) {
-      await refreshChainRule(name, { refusal: (answer && answer.detail) || answer || {} });
+      await refused((answer && answer.detail) || answer || {});
       return;
     }
     // 🔴 저장 답이 `enabled` 를 실어 옵니다 — 새 규칙이면 `false` 입니다.
     //    그것을 그대로 넘기면 패널이 «방금 쓴 값»을 보여 줍니다.
     await refreshChainRule(name, { saved: answer || {} });
   } catch (e) {                                              // noqa
-    await refreshChainRule(name, { refusal: {
-      code: '', path: '', message: 'Save request did not reach the server (network)' } });
+    await refused({ code: '', path: '', message: 'Save request did not reach the server (network)' });
   }
 }
 

@@ -724,7 +724,9 @@ export class RawRegistryPanel {
         const short = missingRequired(root, held, this._defs);
         if (short.length) this._markShort(this._formBox, view, short);
       }
-      this.onSave({ [spec.nameKey]: named, base: view.base, raw: area.value });
+      // `forNew`: a refused save of a rule that is still new must be re-read as [+ add] reads
+      // it (no name), or the answer carries no grammar and the form goes (order c93637fc5).
+      this.onSave({ [spec.nameKey]: named, base: view.base, raw: area.value, forNew: this.newMode });
     };
     this._saveNow = (picked || !root) ? runSave : null;
     if (save.addEventListener && this.onSave) save.addEventListener('click', runSave);

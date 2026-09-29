@@ -637,6 +637,52 @@ async function suite(probe) {
   ok(modernise.length === 1 && modernise[0].body.to === 'unified' && modernise[0].body.dry_run === true,
      `N ...and pressing it asks the server for to=unified, the dry run first `
      + `(${modernise.map((c) => JSON.stringify(c.body)).join(' ') || 'no call'})`);
+
+  // ── O. a refused NEW rule keeps its form (order c93637fc5) ──────────────────────────────
+  // 🔴 THE OWNER: a new rule refused (JoinTriggerConflict) left the text box alone. The refusal
+  //    below is the route's own shape (`_table_config_refusal`: the path names the RULE, the
+  //    field is only inside the sentence), and `rawView` answers an unsaved name with no
+  //    grammar, as the route does (판정 542·543).
+  const REFUSED = { code: 'declaration_refused', path: 'rules.new_join',
+    message: "join_trigger_conflict: 'new_join' writes on.columns ['a'] while the join wakes on ['b']" };
+  answer = (call) => (call.url.includes('/admin/mappers/list') ? { status: 200, body: MAPPERS }
+    : isCatalogue(call) ? { status: 200, body: { tables: TABLES } }
+      : call.method === 'POST' ? { status: 400, body: { detail: REFUSED } }
+        : { status: 200, body: rawView(askedName(call)) });
+  await refreshChainRule(RULE.name);
+  await flush();
+  if (!byAttr('data-action', 'add-chain-rule')) press('cancel-chain-rule');
+  await flush();
+  press('add-chain-rule');
+  await flush();
+  type('name', 'new_join');
+  await flush();
+  calls.length = 0;
+  press('save-chain-rule');
+  for (let i = 0; i < 4; i += 1) await flush();
+  const reread = calls.filter((c) => c.method === 'GET' && c.url.includes('/admin/chain/rules/raw'));
+  ok(Boolean(byCls('chain-rule-form')) && boxAt('name') && boxAt('name').value === 'new_join',
+     `O a refused new rule keeps its form, holding what was typed (${boxAt('name') ? boxAt('name').value : 'no form'})`);
+  ok(Boolean(byCls('chain-rule-refusal-why'))
+     && byCls('chain-rule-refusal-why').textContent === REFUSED.message,
+     "O ...with the server's sentence at the head, verbatim");
+  ok(Boolean(byCls('chain-rule-raw')), 'O ...and the text box beside it, not instead of it');
+  ok(reread.length === 1 && askedName(reread[0]) === '',
+     `O the re-read after the refusal names no rule, as [+ add] does (${reread.map(askedName).map((x) => JSON.stringify(x)).join(',') || 'no read'})`);
+  // The other half of the table: a rule the file HAS keeps its grammar on the re-read, so it
+  // kept its form before this order too -- scored so the two halves cannot drift apart.
+  press('cancel-chain-rule');
+  await flush();
+  await refreshChainRule(RULE.name);
+  await flush();
+  type('target_table', 'refused_target');
+  await flush();
+  calls.length = 0;
+  press('save-chain-rule');
+  for (let i = 0; i < 4; i += 1) await flush();
+  ok(Boolean(byCls('chain-rule-form')) && boxAt('target_table')
+     && boxAt('target_table').value === 'refused_target',
+     `O a refused EXISTING rule keeps its form and the edit (${boxAt('target_table') ? boxAt('target_table').value : 'no form'})`);
   return { pass: pass - before.pass, fail: fail - before.fail };
 }
 
@@ -693,6 +739,10 @@ const DEFECTS = [
   ['after saving, the screen forgets which rule it saved',
     s => s.replace('    await refreshChainRule(name, { saved: answer || {} });',
                    '    await refreshChainRule(undefined, { saved: answer || {} });')],
+  // 🔴 The owner's 「새선언 에러나면 그냥 텍스트AREA만 있음」, put back: a refused new rule is
+  //    re-read by its unsaved name, which has no grammar, so no form.
+  ['a refused new rule is re-read by its unsaved name',
+    s => s.replace('  const refused = (refusal) => (forNew\n', '  const refused = (refusal) => (false\n')],
 ];
 
 // Controls must ESCAPE: a change that alters no behaviour must not redden anything, or the

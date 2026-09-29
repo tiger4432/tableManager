@@ -908,7 +908,7 @@ const FLOORS = new Map([
   //    inside the load's own try/catch, so the error was swallowed into the failure state.
   //    What separates them is whether the open ENDED IN AN ERROR STATE. Four of the eight
   //    redden against the shipped bundle.
-  ['explorer_open_path_harness.mjs', 8],
+  ['explorer_open_path_harness.mjs', 14],
   // New 2026-09-10 with C-55 (S-117's screen half). Floor is the count it reports on the
   // commit that introduces it. 🔴 THE FIXTURE IS THE CONTRACT VECTOR, captured off the live
   // route: the receipt has TWO envelopes and the failed one carries no counts at all, so a
@@ -1338,7 +1338,7 @@ const FLOORS = new Map([
   //    real routing key beside them is the failure.
   ['chain_rule_form_harness.mjs', 89],
   ['clipboard_type_modal_harness.mjs', 21],
-  ['chain_rule_user_path_harness.mjs', 64],
+  ['chain_rule_user_path_harness.mjs', 69],
   // a value carrying markup does not come back out as markup, and the backlog has a ceiling
   ['escaping_harness.mjs', 56],
   // clicking a derived route fills follow, and a later-hop predicate stays visible

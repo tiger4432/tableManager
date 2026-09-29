@@ -1185,7 +1185,10 @@ No effect`;
         });
         dispatch({ type: 'DRAFT_CLOSED' });
         dispatch({ type: 'AUTHORING_INVALIDATED' });
-        showToast('Saved', 'success');
+        // The file is written either way; whether the product LOADS it is the save's answer.
+        const unapplied = Array.isArray(record.validation_errors) ? record.validation_errors : [];
+        dispatch({ type: 'SAVE_NOT_APPLIED', key: targetKey, errors: unapplied });
+        if (!unapplied.length) showToast('Saved', 'success');
         await readMirror({ draft: null, selection: null, viewMode: 'active' });
         // 🔴 STAY ON WHAT YOU WERE EDITING. 「저장하고 계속 편집하던거 떠있게」 --
         // building a setup up is MANY saves, and losing your place at each one makes that

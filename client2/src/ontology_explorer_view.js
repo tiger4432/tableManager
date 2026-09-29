@@ -480,6 +480,11 @@ function renderBreadcrumb(state) {
   return trail;
 }
 
+/** One validation reason as a line -- the raw tab and the 「not applied」 head share it. */
+function reasonText(e) {
+  return `[${e.reference_status || e.code}] ${e.json_pointer || e.path}: ${e.message}`;
+}
+
 function keyValue(label, value) {
   const frag = document.createDocumentFragment();
   frag.append(h('div', 'oe-label', label));
@@ -698,7 +703,7 @@ function renderRaw(state) {
     validation.dataset.valid = String(Boolean(state.draft.preview_valid));
     const errors = state.draft.validation_errors || [];
     validation.textContent = errors.length
-      ? errors.map((e) => `[${e.reference_status || e.code}] ${e.json_pointer || e.path}: ${e.message}`).join('\n')
+      ? errors.map(reasonText).join('\n')
       : (state.draft.preview_valid ? '✓ Draft verified by the same compiler' : DRAFT_UNVERIFIED);
     // 🔴 ONE SAVE, AND THE LIFECYCLE BRANCH IS GONE -- IT WAS THE FLICKER.
     //
@@ -2460,6 +2465,15 @@ function renderAuthoring(state) {
       return names.length ? { ...row, candidates: names } : row;
     },
   };
+  // 🔴 SAVED BUT NOT APPLIED (order af991aae5): the file holds it and the loader left it out.
+  //    Said at the head of the form it concerns, with the save's own reasons.
+  const shownKey = state.draft?.target_key || state.selection?.key;
+  if (state.notApplied && state.notApplied.key === shownKey) {
+    const line = h('div', 'oe-warning oe-not-applied');
+    line.append(h('b', '', 'Saved but not applied'));
+    for (const e of state.notApplied.errors) line.append(h('div', '', reasonText(e)));
+    wrap.append(line);
+  }
   if (bodyNode && draftRaw) {
     const body = h('section', 'oe-bucket oe-bucket--form');
     const form = renderSkeletonForm(context, bodyNode, '', draftRaw, 0,

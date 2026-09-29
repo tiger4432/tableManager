@@ -168,6 +168,123 @@ console.log('\n[3] the retired route is not asked for');
     !seen.some((u) => u.includes('ontology-explorer/refusals')), seen.join(' | '));
 }
 
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+// [4] order af991aae5 — a save that reaches the file but does not LOAD says so.
+//
+// 🔴 THE OWNER: a declaration with a grammar error said 「Saved」 and then was not there. The
+//    save writes the file either way (owner's ruling); the PUT's own `draft.validation_errors`
+//    (config_drafts.py) says whether it will load, and the window never read it.
+// 🔴 DRIVEN THROUGH THE CONTROLLER'S OWN CLICKS -- create-draft, then save-draft -- because the
+//    decision lives in the save handler, not in a function a test could call around it.
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+console.log('\n[4] saved but not applied');
+const KEY = 'entity|quantity@1';
+const REASON = { code: 'invalid_entity_ref', path: 'bundle.entities.quantity@1.class',
+  message: 'must be one word or a list of words' };
+const DRAFT = { draft_id: 'd1', target_key: KEY, target_kind: 'entity', target_id: 'quantity@1',
+  revision: 1, raw: { class: 3, keys: ['quantity'] }, lifecycle_status: 'draft',
+  validation_errors: [] };
+const SELECTED = { ...COMPILE,
+  selection: { key: KEY, canonical_id: 'quantity@1', kind: 'entity', context_token: 'ctx:1',
+               raw: DRAFT.raw },
+  items: [{ key: KEY, canonical_id: 'quantity@1', kind: 'entity', context_token: 'ctx:1' }] };
+const walkAll = (n, out = []) => { out.push(n); for (const c of n.children || []) walkAll(c, out); return out; };
+
+async function saveWalk(create) {
+  const clicks = [];
+  const root = element('div');
+  root.addEventListener = (type, fn) => { if (type === 'click') clicks.push(fn); };
+  const click = async (action) => {
+    const target = { dataset: { action }, disabled: false };
+    target.closest = () => target;
+    for (const fn of clicks) await fn({ target });
+  };
+  const toasts = [];
+  let reasons = [];
+  const fetchOf = async (url, init = {}) => {
+    const u = String(url);
+    const method = init.method || 'GET';
+    let body = u.includes('draft_id=d1')
+      ? { ...SELECTED, draft: { ...DRAFT, context_token: 'ctx:1' } } : SELECTED;
+    if (u.includes('/authoring')) body = AUTHORING;
+    else if (/\/drafts$/.test(u.split('?')[0]) && method === 'POST') body = DRAFT;
+    else if (u.includes('/drafts/d1/activate')) body = { ok: true };
+    else if (u.includes('/drafts/d1') && method === 'PUT') {
+      body = { draft: { ...DRAFT, revision: 2, validation_errors: reasons } };
+    }
+    return { ok: true, status: 200, json: async () => body };
+  };
+  const controller = create({ root, apiBase: '', adminFetch: fetchOf,
+                              showToast: (text) => toasts.push(String(text)) });
+  await controller.refresh();
+  await click('create-draft');
+  const out = {};
+  reasons = [REASON];
+  await click('save-draft');
+  for (let i = 0; i < 20; i += 1) await new Promise((r) => setImmediate(r));
+  const headOf = () => walkAll(root).find((n) => n._classes?.includes('oe-not-applied'));
+  out.bad = { toasts: [...toasts], notApplied: controller.getState().notApplied,
+              head: headOf()?.textContent || '', reopened: Boolean(controller.getState().draft) };
+  toasts.length = 0;
+  reasons = [];
+  await click('save-draft');
+  for (let i = 0; i < 20; i += 1) await new Promise((r) => setImmediate(r));
+  out.clean = { toasts: [...toasts], notApplied: controller.getState().notApplied,
+                head: headOf()?.textContent || '' };
+  return out;
+}
+
+function saveSuite(seen4) {
+  const names = [];
+  const failures = [];
+  const say = (name, cond, detail) => {
+    names.push(name);
+    if (cond) { console.log(`  PASS ${name}`); return; }
+    failures.push(detail ? `${name} — ${detail}` : name);
+    console.log(`  FAIL ${name}${detail ? ' — ' + detail : ''}`);
+  };
+  const { bad, clean } = seen4;
+  say('S1 a save the loader will not load does not say "Saved"', !bad.toasts.includes('Saved'),
+    bad.toasts.join(' | '));
+  say('S2 ...it says saved but not applied, with the reason, at the head of the form',
+    bad.head.startsWith('Saved but not applied') && bad.head.includes(REASON.path)
+      && bad.head.includes(REASON.message), bad.head);
+  say('S3 ...and the declaration is open again to be fixed', bad.reopened);
+  say('S4 a clean save still says "Saved", and the line is gone',
+    clean.toasts.includes('Saved') && clean.notApplied === null && clean.head === '',
+    `${clean.toasts.join(' | ')} · ${JSON.stringify(clean.notApplied)} · ${clean.head}`);
+  return { ran: names.length, names, failures };
+}
+
+const saveBase = saveSuite(await saveWalk(createOntologyExplorerController));
+ran += saveBase.ran;
+failed += saveBase.failures.length;
+
+{
+  const { loadWithProbe } = await import('./lib/probe.mjs');
+  const { scoreMutants } = await import('./lib/mutation_scorer.mjs');
+  const SUBJECT = join(HERE, '..', 'src', 'ontology_explorer.js');
+  const swap = (text, from, to) => {
+    if (!text.includes(from)) throw new Error(`mutation anchor is GONE: ${from.slice(0, 60)}`);
+    return text.split(from).join(to);
+  };
+  const MUTANTS = [
+    { id: 'M1', what: 'the save ignores validation_errors and says "Saved"', catches: 'S1 a save the loader',
+      mutate: (text) => swap(text, "        if (!unapplied.length) showToast('Saved', 'success');",
+                             "        showToast('Saved', 'success');") },
+    { id: 'M2', what: 'the not-applied line is never recorded', catches: 'S2 ...it says saved',
+      mutate: (text) => swap(text,
+        "        dispatch({ type: 'SAVE_NOT_APPLIED', key: targetKey, errors: unapplied });\n", '') },
+  ];
+  const run = async (m) => saveSuite(await saveWalk(
+    (await loadWithProbe(SUBJECT, { mutate: m.mutate })).module.createOntologyExplorerController));
+  const scored = await scoreMutants(MUTANTS, run,
+    { baselineRan: saveBase.ran, baselineNames: saveBase.names,
+      title: '\n  [4] mutants — each must be caught by the check it names.' });
+  ran += MUTANTS.length;
+  failed += scored.wrong;
+}
+
 console.log(`\n════ RESULT: ${ran - failed} passed, ${failed} failed ════`);
 console.log(`ASSERTIONS ${ran} ${failed}`);
 process.exit(failed === 0 ? 0 : 1);
