@@ -177,7 +177,9 @@ export const CHAIN_RULE_REGISTRY = Object.freeze({
   addLabel: 'Add rule',
   // After a save, whether the chain worker has read that file (lead 460f202d3) — the page hands
   // the queue's rules_base to `workerRead`.
-  pickup: Object.freeze({ waiting: 'Saved · waiting for the chain worker', loaded: 'Loaded by chain worker' }),
+  pickup: Object.freeze({ waiting: 'Saved · waiting for the chain worker', loaded: 'Loaded by chain worker',
+    // The server's fact (loop_seen_via null), not a guess — waiting would read as if it were coming.
+    unseen: 'Saved · chain worker not seen' }),
   // C-86 ②. 칸 이름·종류는 «서버가 실어 준» 스켈레톤에서 나옵니다(S-204). 이 파일도 칸 이름을
   // 적지 않습니다 — `chain_bindings.routing_keys()` 가 유일한 저자입니다.
   // 🔴 C-111 (S-241). 문법이 «둘»이 됐고(평면 · 통합), 서버가 몸소 둘을 다 실어

@@ -1444,7 +1444,8 @@ function renderChainQueue(payload, opts) {
   }
   // Both queue reads pass here — the chain rule form learns which rules file the worker holds.
   if (chainRulePanel && payload) {
-    chainRulePanel.workerRead({ base: payload.rules_base, ageSeconds: payload.rules_loaded_age_seconds });
+    chainRulePanel.workerRead({ base: payload.rules_base, ageSeconds: payload.rules_loaded_age_seconds,
+      seen: 'loop_seen_via' in payload ? payload.loop_seen_via != null : undefined });
   }
   if (!chainQueuePanels.length) return;
   const [view] = chainQueuePanels.map((panel) => panel.render(payload, opts));

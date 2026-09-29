@@ -461,10 +461,19 @@ async function suite(probe) {
   const pickupText = () => (byCls('chain-rule-pickup') ? byCls('chain-rule-pickup').textContent : 'none');
   ok(pickupText() === 'Saved · waiting for the chain worker',
      `Q the save puts the waiting line in the form head (${pickupText()})`);
-  if (typeof renderChainQueue === 'function') renderChainQueue({ rules_base: 'fp-1', rules_loaded_age_seconds: 2 });
+  if (typeof renderChainQueue === 'function') {
+    renderChainQueue({ loop_seen_via: null, rules_base: null, rules_loaded_age_seconds: null });
+  }
+  ok(pickupText() === 'Saved · chain worker not seen',
+     `Q the server says it cannot see the worker: the line says so (${pickupText()})`);
+  if (typeof renderChainQueue === 'function') {
+    renderChainQueue({ loop_seen_via: 'chain_worker_heartbeat', rules_base: 'fp-1', rules_loaded_age_seconds: 2 });
+  }
   ok(pickupText() === 'Saved · waiting for the chain worker',
      `Q a queue read of the OLD file leaves it waiting (${pickupText()})`);
-  if (typeof renderChainQueue === 'function') renderChainQueue({ rules_base: 'fp-2', rules_loaded_age_seconds: 2 });
+  if (typeof renderChainQueue === 'function') {
+    renderChainQueue({ loop_seen_via: 'chain_worker_heartbeat', rules_base: 'fp-2', rules_loaded_age_seconds: 2 });
+  }
   ok(/^Loaded by chain worker \d\d:\d\d:\d\d$/.test(pickupText()),
      `Q the queue read of the saved file says loaded, with its time (${pickupText()})`);
 
@@ -753,7 +762,10 @@ const DEFECTS = [
     s => s.replace('  const view = chainRulePanel.render(body, opts);',
                    '  const view = chainRulePanel.render(null, opts);')],
   ['the queue read never reaches the chain rule form, so a save stays 「waiting」 forever',
-    s => s.replace('    chainRulePanel.workerRead({ base: payload.rules_base, ageSeconds: payload.rules_loaded_age_seconds });\n', '')],
+    s => s.replace("    chainRulePanel.workerRead({ base: payload.rules_base, ageSeconds: payload.rules_loaded_age_seconds,\n"
+      + "      seen: 'loop_seen_via' in payload ? payload.loop_seen_via != null : undefined });\n", '')],
+  ['the page drops the server\'s 「not seen」, so a worker nobody can see reads as coming',
+    s => s.replace("seen: 'loop_seen_via' in payload ? payload.loop_seen_via != null : undefined", 'seen: undefined')],
   ['the save forgets the base fingerprint, so a concurrent edit is overwritten in silence',
     s => s.replace('      body: JSON.stringify({ name, declaration, base }),',
                    '      body: JSON.stringify({ name, declaration }),')],

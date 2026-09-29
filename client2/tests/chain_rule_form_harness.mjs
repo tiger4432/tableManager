@@ -861,7 +861,7 @@ function suite(M) {
   //    Fingerprints decide; the clock only prints when. NOW is fixed, so the printed time is exact.
   {
     const NOW = new Date(2026, 8, 29, 14, 30, 10).getTime();
-    const WSPEC = { ...SPEC, pickup: { waiting: 'Saved · waiting', loaded: 'Loaded' } };
+    const WSPEC = { ...SPEC, pickup: { waiting: 'Saved · waiting', loaded: 'Loaded', unseen: 'Saved · not seen' } };
     const w = makePanel(M, WSPEC, { now: () => NOW });
     const DECL = { name: 'alpha', trigger_table: 't' };
     w.panel.render(payloadFor(SKELETON, DECL), { saved: { name: 'alpha', rules: ['alpha'], backup: 'b.json', base: 'fp-2' } });
@@ -883,6 +883,18 @@ function suite(M) {
     r.panel.render(payloadFor(SKELETON, DECL), { refusal: { code: 'stale_base', path: 'base', message: 'x' } });
     r.panel.workerRead({ base: 'fp-2', ageSeconds: 5 });
     ok(!byCls(r.host, 'chain-rule-pickup').length, 'W6 a refused save draws no line');
+    // The server saying it cannot see the worker is a fact, not a wait (lead, after 370684bd0).
+    const u = makePanel(M, WSPEC, { now: () => NOW });
+    u.panel.render(payloadFor(SKELETON, DECL), { saved: { name: 'alpha', rules: ['alpha'], backup: 'b.json', base: 'fp-2' } });
+    const uSaid = () => {
+      const l = byCls(u.host, 'chain-rule-pickup')[0];
+      return l ? `${l.textContent}|${l.attrs['data-pickup']}` : 'none';
+    };
+    u.panel.workerRead({ base: null, ageSeconds: null, seen: false });
+    const unseen = uSaid();
+    u.panel.workerRead({ base: 'fp-2', ageSeconds: 5, seen: true });
+    ok(unseen === 'Saved · not seen|unseen' && uSaid() === 'Loaded 14:30:05|loaded',
+      `W7 not seen says so, and the saved file read later still turns it loaded [${unseen} -> ${uSaid()}]`);
   }
 
   return { pass: pass - before.pass, fail: fail - before.fail };
@@ -1035,6 +1047,8 @@ const DEFECTS = [
     (s) => s.replace('(this.open || (this.newMode && this._awaitingNew))', 'this.open')],
   ['the guard keys on newMode alone, so a failed answer strands the panel',
     (s) => s.replace('(this.open || (this.newMode && this._awaitingNew))', '(this.open || this.newMode)')],
+  ['a worker the server cannot see is drawn as a wait',
+    (s) => s.replace("(this._workerUnseen && this.spec.pickup.unseen ? 'unseen' : 'waiting')", "'waiting'")],
   ['the pickup line ignores the fingerprint - any worker report reads as loaded',
     (s) => s.replace('w && w.base === this._pickup.base) this._pickup.at', 'w && true) this._pickup.at')],
   ['the pickup line guesses from time - a recent read of any file counts',

@@ -1345,10 +1345,12 @@ const FLOORS = new Map([
   // 89 -> 92 (N0-N2): the field clicked next keeps its node and its typing across the redraw.
   // 92 -> 97 (B4a-e): from the list, only [+ add]'s own answer draws the new form.
   // 97 -> 103 (W1-W6, lead 460f202d3): after a save, loaded only when the worker holds that base.
-  ['chain_rule_form_harness.mjs', 103],
+  // 103 -> 104 (W7): the server's 「not seen」 is said, not drawn as a wait.
+  ['chain_rule_form_harness.mjs', 104],
   ['clipboard_type_modal_harness.mjs', 21],
   // 72 -> 75 (Q, lead 460f202d3): after a save, the page's queue seat hands the worker's base to the form.
-  ['chain_rule_user_path_harness.mjs', 75],
+  // 75 -> 76 (Q): a queue body with loop_seen_via null says 「not seen」.
+  ['chain_rule_user_path_harness.mjs', 76],
   // a value carrying markup does not come back out as markup, and the backlog has a ceiling
   ['escaping_harness.mjs', 56],
   // clicking a derived route fills follow, and a later-hop predicate stays visible

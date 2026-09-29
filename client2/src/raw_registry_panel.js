@@ -297,6 +297,7 @@ export class RawRegistryPanel {
     this._pickup = null;
     this._pickupLine = null;
     this._worker = null;
+    this._workerUnseen = false;
     // 🔴 [판정 548] 문법을 «바꾸라고 시키는» 자리. 변환은 «서버»가 합니다 — 화면이 변환하면
     //    저자가 둘이 되고, 539 의 왕복 게이트가 «운영자가 안 지나는 길»을 재게 됩니다.
     this.onConvert = deps.onConvert || null;
@@ -1012,6 +1013,8 @@ export class RawRegistryPanel {
     const base = read && typeof read.base === 'string' ? read.base : '';
     const age = read && read.ageSeconds != null ? Number(read.ageSeconds) : NaN;
     this._worker = base && Number.isFinite(age) ? { base, at: this.now() - age * 1000 } : null;
+    // false = the server says it cannot see the consumer; undefined = it did not say.
+    this._workerUnseen = Boolean(read) && read.seen === false;
     this._pickupMatch();
     this._pickupDraw();
   }
@@ -1024,10 +1027,10 @@ export class RawRegistryPanel {
   _pickupDraw() {
     const line = this._pickupLine;
     if (!line || !this._pickup) return;
-    const loaded = Boolean(this._pickup.at);
-    line.textContent = loaded
-      ? `${this.spec.pickup.loaded} ${localClock(new Date(this._pickup.at))}` : this.spec.pickup.waiting;
-    line.setAttribute('data-pickup', loaded ? 'loaded' : 'waiting');
+    const state = this._pickup.at ? 'loaded' : (this._workerUnseen && this.spec.pickup.unseen ? 'unseen' : 'waiting');
+    line.textContent = state === 'loaded'
+      ? `${this.spec.pickup.loaded} ${localClock(new Date(this._pickup.at))}` : this.spec.pickup[state];
+    line.setAttribute('data-pickup', state);
   }
 
   /** 자기 자신을 다시 그립니다 — «사람이 누른» 것이라 배경 갱신이 «아닙니다». 세 자리가 각자
