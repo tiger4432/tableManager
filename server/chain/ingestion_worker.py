@@ -313,8 +313,8 @@ def max_rows_not_visible_defers() -> int:
     🔴 A DEFERRAL IS NOT AN ATTEMPT. `retry_count` counts times the work was TRIED and
     broke; this counts times it was not tried at all because its input could not be read.
     Charging these to the retry budget would quarantine a perfectly good chunk for a
-    condition measured to clear in under 100 ms - and quarantine means per-row
-    re-expansion, so a sub-second wait would turn 1,000 rows into 1,000 events.
+    condition measured to clear in under 100 ms - and quarantine takes the whole chunk,
+    so a sub-second wait would leave 1,000 rows FAILED.
 
     ⚠️ IT IS STILL BOUNDED. A genuinely unreadable event must not be deferred forever, or
     it becomes the silent loss this whole round exists to remove - just quietly, in the
@@ -399,10 +399,10 @@ def group_key(rule, payload):
     🔴 WITHIN ONE BATCH. Rows for one key that arrive in LATER batches form their own group;
     waiting for them would need a 「how long」 cell, which is a different feature (판정 381 ㈚).
 
-    ⛔ A RE-EXPANDED EVENT IS NEVER RE-GROUPED. `outbox_expand` splits a failed chunk into
+    ⛔ A RE-EXPANDED EVENT IS NEVER RE-GROUPED. `outbox_expand` split a failed chunk into
     per-row events ON PURPOSE, and a key that folded them back together would rebuild the group
     that just failed - quarantine undone, silently. `root_transaction_id` is the mark that says
-    「this one was split」.
+    「this one was split」. ⚠️ Nothing splits since 총괄 c9ee06b34; a queue may still hold them.
 
     ⛔ AND A COLLAPSED EVENT CARRIES NO VALUES. Its payload holds `row_ids` and a count, not
     cells, so there is nothing to key on without reading the rows back; it keeps the writer's
@@ -540,6 +540,59 @@ def failure_cause(error_reason) -> str:
     """
     lines = [line.strip() for line in str(error_reason or "").splitlines() if line.strip()]
     return lines[-1] if lines else "(no reason recorded)"
+
+
+class NamedFailure(str):
+    """A failure reason that also carries whose it is - `rules` / `tables`, None when unknown."""
+    rules = None
+    tables = None
+
+
+def named_failure(rules, tables, text) -> NamedFailure:
+    """🔴 [총괄 45f5da3f5] THE ONE AUTHOR OF 「WHICH RULE FAILED」. The seat that fails writes the
+    `[rules=.. target=..]` head and hands the same names to the quarantine record, so the two
+    cannot disagree. A seat that does not know says so: the record reads None, never the
+    rules the group woke."""
+    rules = [str(n) for n in rules or () if n] or None
+    tables = [str(n) for n in tables or () if n] or None
+    failure = NamedFailure("[rules=%s target=%s] %s" % (
+        ", ".join(rules or ()) or "(unknown)", ", ".join(tables or ()) or "(unknown)", text))
+    failure.rules, failure.tables = rules, tables
+    return failure
+
+
+#: What the failure LOG LINE says when the error names none of the group's rows.
+ROW_NOT_GIVEN = "not given by the error"
+
+
+def _failure_record(events, error_reason, tx_id, attempts_cap) -> dict:
+    """What a quarantined group says about itself - one record, the same on each of its events.
+
+    🔴 [총괄 ba0860575, 소유자 「차라리 에러를 잘남기는게 나음」] THE CHUNK IS NOT SPLIT TO FIND ITS
+    BAD ROW, so the record carries what the failure knows: the rules and tables its seat named
+    (`named_failure`), how many rows the group carried, the error as raised, and the row ids
+    the error itself names - None when it names none (총괄 45f5da3f5).
+    ⛔ NOTHING IS RE-RUN TO FIND THE ROW - that is the split under another name.
+    """
+    from datetime import datetime
+    row_ids = []
+    for event in events:
+        payload = get_payload_dict(event) or {}
+        if event_constants.is_collapsed_payload(payload):
+            row_ids.extend(str(rid) for rid in payload.get("row_ids") or ())
+        elif payload.get("row_id"):
+            row_ids.append(str(payload["row_id"]))
+    text = str(error_reason or "")
+    named = [rid for rid in dict.fromkeys(row_ids) if rid in text][:10]
+    return {
+        "failed_at": datetime.now().isoformat(),
+        "reason": str(error_reason or ("Mapper execution failed in tx group %s after %d "
+                                       "attempt(s)." % (tx_id, attempts_cap))),
+        "rules": getattr(error_reason, "rules", None),
+        "tables": getattr(error_reason, "tables", None),
+        "rows": len(row_ids),
+        "row": named or None,
+    }
 
 
 def _resolvable_mapper(name):
@@ -1767,15 +1820,14 @@ def apply_chain_writes(db, tx_id, rule, incoming_depth, rules_by_target,
             error_msg = (str(e) if isinstance(e, crud.CellRefused)
                          else traceback.format_exc())
             if writing is not None:
-                _who = ", ".join(n for n in table_contributors.get(writing, ()) if n) \
-                    or "(unknown)"
-                _tbls = writing
+                error_msg = named_failure(table_contributors.get(writing, ()), [writing],
+                                          error_msg)
             else:
-                _who = ", ".join(n for ns in table_contributors.values() for n in ns if n) \
-                    or "(unknown)"
-                _tbls = ", ".join(sorted(table_contributors)) or "(unknown)"
-            error_msg = "[rules=%s target=%s] %s" % (_who, _tbls, error_msg)
-            log_failure_folded(logger, _who, _tbls, error_msg)
+                error_msg = named_failure(
+                    [n for ns in table_contributors.values() for n in ns],
+                    sorted(table_contributors), error_msg)
+            log_failure_folded(logger, ", ".join(error_msg.rules or ()) or "(unknown)",
+                               ", ".join(error_msg.tables or ()) or "(unknown)", error_msg)
             return False, error_msg
         finally:
             request_user.reset(token_user)
@@ -2078,8 +2130,8 @@ def _process_chain_transaction_group_sync(tx_id, events, db, rules):
                 # This string becomes the quarantine `reason` and every downstream FAILED
                 # log, and those said only a transaction id - so an operator staring at
                 # thousands of failures could not tell WHICH declaration to switch off.
-                error_msg = "[rule=%s target=%s] %s" % (
-                    rule.get("name"), rule.get("target_table"), error_msg)
+                error_msg = named_failure([rule.get("name")], [rule.get("target_table")],
+                                          error_msg)
                 log_failure_folded(logger, rule.get("name"), rule.get("target_table"),
                                    error_msg)
                 return False, error_msg, []
@@ -2537,8 +2589,8 @@ async def process_pending_groups(db, group_order, groups, rules, db_session_fact
             # saw none sees all of them on the next look. So this group was never tried;
             # its input was not there yet. Routing it through the failure path would charge
             # `retry_count` for work that never ran and, at a cap of 1, quarantine it at
-            # once - and quarantine re-expands the chunk, turning 1,000 rows into 1,000
-            # events to wait out a sub-second window.
+            # once - and quarantine takes the whole chunk, leaving 1,000 rows FAILED to
+            # wait out a sub-second window.
             #
             # ⛔ AND IT DOES NOT SLEEP. The deferral is this batch's, like the HOL guard's
             # above: the worker's own loop paces the next sweep (<= 2 s), so waiting here
@@ -2631,7 +2683,6 @@ async def process_pending_groups(db, group_order, groups, rules, db_session_fact
                          if str(r.get("name") or "") in _woke]
                 attempts_cap = min(_caps) if _caps else max_group_attempts(None, _RULES_DOCUMENT)
 
-                reexpanded_rows = 0
                 # 🔴 [S-227] THE UNIT'S ATTEMPTS ARE ITS MEMBERS' MAX, AND THE VERDICT IS THE
                 #    UNIT'S. Counting per event made the number depend on WHO IS IN THE GROUP:
                 #    under `group_by` (S-154) a row committed later joins a group that has
@@ -2653,54 +2704,19 @@ async def process_pending_groups(db, group_order, groups, rules, db_session_fact
                     max_retry_num = max(max_retry_num, event.retry_count)
 
                 isolate_group = max_retry_num >= attempts_cap
+                # 🔴 [총괄 c9ee06b34, 소유자 「체인 에러나면 쪼개는게 빼자 그냥」] WHOLE, AND NOTHING NEW.
+                #   A chunk at its limit goes FAILED as it is - it used to be halved into two new
+                #   events here, each half failed and was halved again, and one failing chunk
+                #   wrote about 2N events. What the split was for (finding the bad row) is now
+                #   the record's job: `_failure_record` says what the group knows, the same on
+                #   each of its events, and the log says it once.
+                failure = (_failure_record(events_in_tx, error_reason, tx_id, attempts_cap)
+                           if isolate_group else None)
                 for event in events_in_tx:
                     if isolate_group:
-                        pay_dict = get_payload_dict(event)
-                        payload_copy = dict(pay_dict) if pay_dict else {}
-                        reason = error_reason or (
-                            f"Mapper execution failed in tx group {tx_id} after "
-                            f"{attempts_cap} attempt(s).")
-
-                        # [OUTBOX-4] COARSE ON THE HAPPY PATH, FINE ON THE FAILURE PATH.
-                        # A collapsed event covers up to 1,000 rows, so quarantining it
-                        # whole would take 999 innocent rows with the poison one. At the
-                        # quarantine boundary - and only here, after the cheap chunk-level
-                        # retries are exhausted - it is NARROWED instead, so the next
-                        # passes reach the row that actually breaks. Never quarantine a
-                        # chunk without having tried to narrow it first.
-                        #
-                        # 🔴 NARROWED BY HALVING SINCE S-173, not by writing one event per
-                        # row. The per-row shape was correct about WHERE to be fine-grained
-                        # and wrong about the price: a production queue reached ~660,000
-                        # pending per-row events. `reexpand_collapsed_event` owns that
-                        # rule; nothing here had to change for it, which is why this
-                        # comment is the only edit on this side.
-                        if event_constants.is_collapsed_payload(pay_dict):
-                            try:
-                                n = outbox_expand.reexpand_collapsed_event(db, event, pay_dict, reason)
-                            except Exception as rx_err:
-                                n = 0
-                                logger.error(
-                                    f"[OUTBOX-4] re-expansion of collapsed event {event.event_uuid} "
-                                    f"failed; falling back to whole-chunk quarantine: {rx_err}",
-                                    exc_info=True)
-                            if n:
-                                reexpanded_rows += n
-                                payload_copy["error_log"] = {
-                                    "failed_at": datetime.now().isoformat(),
-                                    "reason": reason,
-                                    "reexpanded_into": n,
-                                }
-                                mark_processed(event, "FAILED")
-                                event.payload = payload_copy
-                                failed_permanently_count += 1
-                                continue
-
+                        payload_copy = dict(get_payload_dict(event) or {})
+                        payload_copy["error_log"] = dict(failure)
                         mark_processed(event, "FAILED")   # Quarantine from worker queries
-                        payload_copy["error_log"] = {
-                            "failed_at": datetime.now().isoformat(),
-                            "reason": reason
-                        }
                         event.payload = payload_copy
                         failed_permanently_count += 1
                     else:
@@ -2710,19 +2726,15 @@ async def process_pending_groups(db, group_order, groups, rules, db_session_fact
                 with alignment_batch_counts.stage("commit"):
                     db.commit()
 
-                if reexpanded_rows:
-                    logger.warning(
-                        f"Transaction {tx_id}: {reexpanded_rows} retry event(s) written "
-                        # No em dash: the production console is Korean Windows (cp949)
-                        # and one unencodable character deletes the whole log line.
-                        f"from failed collapsed chunk(s). Since S-173 a chunk is HALVED "
-                        f"rather than written out one event per row, so this number is "
-                        f"two per narrowing step until a single row is reached."
-                    )
                 if failed_permanently_count > 0:
                     logger.error(
-                        "Transaction %s permanently failed: %d event(s) -> FAILED. 원인: %s",
-                        tx_id, failed_permanently_count, failure_cause(error_reason))
+                        "Transaction %s permanently failed: %d event(s), %d row(s) -> FAILED "
+                        "[rules=%s tables=%s row=%s]. 원인: %s",
+                        tx_id, failed_permanently_count, failure["rows"],
+                        ",".join(failure["rules"] or ()) or "(unknown)",
+                        ",".join(failure["tables"] or ()) or "(unknown)",
+                        ",".join(failure["row"] or ()) or ROW_NOT_GIVEN,
+                        failure_cause(error_reason))
                 if retrying_count > 0:
                     logger.warning(f"Transaction {tx_id} marked for retry: {retrying_count} events set to RETRYING status ({max_retry_num}/{attempts_cap}).")
 

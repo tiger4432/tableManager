@@ -1,5 +1,30 @@
 # 지금 돌리면 되는 것
 
+> ## 🔴 [09-29 낮] **체인 묶음이 실패하면 «쪼개지 않음» — 재시도 한도에서 통째 FAILED · 새 사건 0 — 마이그레이션 «없음» · 재기동 체인 워커**
+>
+> ```
+> 무엇이 바뀌나  재시도 한도(max_group_attempts, 기본 1)에 닿은 묶음은 반으로 나뉘지 않고 통째로 FAILED. 새 사건을 안 만듦
+>              그 묶음의 사건마다 error_log = failed_at · reason(원문 그대로) · rules · tables · rows · row
+>              rules · tables = 사유 머리 [rules=.. target=..] 를 쓴 «실패한 자리»의 값. 그 자리가 모르면 null — 그룹이 깨운 규칙으로 안 채움
+>              row = 오류 문장이 대는 행 id(최대 10). 안 대면 null — 행을 찾으려고 다시 돌리지 않음
+>              맵퍼 실패의 사유 머리가 [rule=X target=Y] 에서 [rules=X target=Y] 로 — 쓰기 실패와 같은 모양
+> 돌릴 명령     python server/scripts/outbox_triage.py --count      큐를 모양·원인별로 셈 (드라이런, 아무것도 안 바꿈)
+> 확인          재기동 뒤 실패 줄이 묶음마다 «한 줄»:
+>              Transaction <tx> permanently failed: <n> event(s), <m> row(s) -> FAILED [rules=<규칙> tables=<표> row=<...>]. 원인: <마지막 줄>
+>              그 뒤 같은 tx 에 #half# 가 붙은 사건이 새로 생기지 않아야 함
+>              rules=(unknown) 이면 실패한 자리가 규칙을 모름(예: 행이 안 읽혀 규칙이 돌기 전에 거절). row=not given by the error 는 로그 줄에만
+> 뜻           한 행이 틀려도 그 묶음 전부(최대 1,000 행)가 FAILED — 의도된 답. 어느 행인지는 사유 원문(어드민 실패 목록의 traceback)
+>             재시도 버튼 = 그 묶음을 한 번 다시 PENDING · 새 사건 0
+>             이미 큐에 있던 #half# 사건도 한도에 닿으면 통째 FAILED 로 끝남(더 안 나뉨)
+> 급할 때       어드민 체인 Pause -> 체인 워커 로그 「under tx 'chain_replay_<run>'」 에서 그 리플레이의 <run> 을 봄
+>             -> python server/scripts/outbox_triage.py --set-aside --transactions replay_<run>,chain_replay_<run> --reason "<왜>"
+>                (드라이런, 수만 봄) -> 같은 명령에 --apply -> Resume
+>             ⚠️ 한 홉 더 번진 사건은 tx 앞에 chain_ 이 하나씩 더 붙음(chain_chain_replay_<run>) — 그 이름을 같이 적거나 --tables <표>
+>                --rules <규칙> 은 «그 규칙이 깨울» 대기 사건을 고름 — 리플레이 것만이 아님
+> ```
+
+---
+
 > ## 🔴 [09-29 오전 4] **조인의 on.columns 를 «키 + take» 와 집합으로 견줌 — 마이그레이션 «없음» · 재기동 체인 워커 · 서버**
 >
 > ```

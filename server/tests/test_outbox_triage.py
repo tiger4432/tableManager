@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """The operator's way out of a re-expansion flood (S-172).
 
-🔴 WHAT THIS GUARDS. A quarantined chunk re-expands into 1,000 per-row events so the
-poison row can be narrowed. When many chunks quarantine, that arithmetic inverts: ~660,000
+🔴 WHAT THIS GUARDS. A quarantined chunk USED TO re-expand into 1,000 per-row events so the
+poison row could be narrowed (retired, 총괄 c9ee06b34 - a queue may still hold them). When many chunks quarantine, that arithmetic inverts: ~660,000
 per-row events at a group's plumbing cost is DAYS for rows that take ~2 hours collapsed.
 The script turns the queue back into collapsed work, and the two properties that make it
 safe to run on a production queue are pinned here: nothing is deleted, and every skipped

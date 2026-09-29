@@ -253,6 +253,8 @@ def undelivered_clause(outbox):
 #: children, and they are what fail or pass. Counting the parent too counted one edit twice
 #: (box 2026-09-25: 51 of 84 FAILED rows were split parents), and left it FAILED with no way
 #: out - retry and re-split both refuse it, and its children's success never moved it.
+#: ⚠️ [총괄 c9ee06b34] NOTHING WRITES THIS KEY ANY MORE - the split retired, a failed chunk goes
+#:    FAILED whole. It is still READ, because a queue may hold parents split before then.
 SPLIT_INTO_KEY = "reexpanded_into"
 
 
@@ -739,7 +741,7 @@ OUTBOX_MODE_COLLAPSED = "collapsed"
 
 #: Max row_ids carried by ONE collapsed event. Also the project-wide 1,000-row
 #: chunking discipline. Keeps the payload ~40 KB, and bounds the blast radius of
-#: the failure path: a poison row re-expands at most this many per-row retries.
+#: the failure path: a poison row takes at most this many rows FAILED with it.
 OUTBOX_COLLAPSE_CHUNK_ROWS = 1000
 
 #: Max INGESTED ROWS a chain/graph worker pulls into one processing batch.

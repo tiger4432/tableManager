@@ -64458,3 +64458,173 @@ PG       7 failed, 117 passed, 7438 deselected in 208.81s (0:03:28) — 실패 7
 ```
 
 지시대로 착지하고 멈춥니다. 감시는 켜 둡니다.
+
+## [구현자 -> 총괄] 착지 5fa5b1d83 — 체인 묶음이 실패하면 «쪼개지 않고» 통째 FAILED · 실패는 기록 하나와 로그 한 줄로 (c9ee06b34 · ba0860575)
+
+```
+도착지     재시도 한도(max_group_attempts, 기본 1)에 닿은 묶음 -> 통째 FAILED · 새 사건 0
+기록       그 묶음의 사건마다 같은 error_log — failed_at · reason(원문, 안 자름) · rules · tables · rows · row
+          row = 오류 문장이 대는 행 id(최대 10). 안 대면 "not given by the error". 행 찾으려고 다시 돌리지 않음
+로그       묶음마다 한 줄 — Transaction <tx> permanently failed: <n> event(s), <m> row(s) -> FAILED
+          [rules=<..> tables=<..> row=<..>]. 원인: <마지막 줄>
+재시도     FAILED 묶음 retry = 그 묶음을 한 번 PENDING · 새 사건 0 (라우트 코드는 안 바꿈 — 오늘 묶음은 원래 이 길)
+큐에 남은 옛 반쪽  #half# 사건도 묶음이라 한도에서 통째 FAILED 로 끝남 · 더 안 나뉨 (시험 한 칸으로 잼)
+```
+
+### 먼저 잰 것 — 바꾸기 «전» 실패 기록 셋 (박스에서 열어 봄)
+
+| 자리 | 규칙 | 쓰려던 표 | 행 수 | 사유 원문 | 행 |
+|---|---|---|---|---|---|
+| 로그 줄 | 없음 | 없음 | 없음(사건 수만) | 마지막 한 줄로 잘림 | 없음 |
+| error_log | 사유 머리에만 | 사유 머리에만 | 없음 | 전문(traceback) | 없음 |
+| 어드민 실패 목록 ※ | 표 이름으로 짐작 | 없음 | 없음 | 전문 | 없음 |
+
+```
+박스 실측   chain_worker.log 의 permanently failed 줄 395 중 #half# 가 든 줄 212
+           FAILED 사건 339 의 error_log 칸: failed_at 339 · reason 339 · reexpanded_into 78
+           가장 최근 것의 reason 머리 = "[rules=(unknown) target=(unknown)]" — 그 길(보강 스윕)에선 사유 머리도 규칙을 모름
+※ 어드민 화면은 «열지 않았습니다»(토큰 제약) — admin.js showEventDiagnostics 와 GET /admin/outbox/failed 를 코드로 읽음
+   traceback 칸에 reason 만 그림 · 페이로드 칸에서 error_log 를 지움. 규칙은 «표 이름이 맞는 첫 규칙»으로 짐작
+   라우트는 payload 를 통째로(error_log 포함) 넘김
+```
+
+### 바꾼 «뒤»
+
+| 자리 | 규칙 | 쓰려던 표 | 행 수 | 사유 원문 | 행 |
+|---|---|---|---|---|---|
+| 로그 줄 | 있음 | 있음 | 있음 | 마지막 줄(전과 같음) | 있음(오류가 대면) |
+| error_log | 있음 | 있음 | 있음 | 전문 | 있음(오류가 대면) |
+| 어드민 실패 목록 | 안 바뀜 | 안 바뀜 | 안 바뀜 | 전문 | 안 바뀜 |
+
+### 은퇴 전수 표 — AST 로 셈 (추적 파일 .py, 카나리아 expand_events 사용 7)
+
+| 자리 | 전 (제품 · 시험) | 뒤 (제품 · 시험) | 처리 |
+|---|---|---|---|
+| reexpand_collapsed_event | 1 · 5 | 0 · 0 | 은퇴(쓰는 쪽) |
+| _split_collapsed_event | 1 · 0 | 0 · 0 | 은퇴(쓰는 쪽) |
+| MAX_REEXPANSION_DEPTH | 2 · 2 | 0 · 0 | 은퇴(쓰는 쪽) |
+| is_split_leaf | 1 · 0 | 1 · 0 | 남김 — 재시도가 옛 잎을 읽음 |
+| refreshed_leaf_payload | 1 · 0 | 1 · 0 | 남김 — 재시도가 옛 잎을 새로 읽음 |
+| SPLIT_INTO_KEY | 2 · 0 | 2 · 0 | 남김 — 쪼갠 부모를 실패로 안 셈 |
+| counts_as_failure | 1 · 1 | 1 · 2 | 남김 — 같은 것 |
+| failure_clause | 2 · 1 | 2 · 1 | 남김 — 실패 목록이 같은 것으로 거름 |
+| expand_events | 1 · 6 | 1 · 6 | 카나리아(쪼개기 아님) |
+| reexpanded_into | 3 · 11 | 1 · 7 | 남김(읽기만) — 쓰는 자리 0 |
+| reexpanded_from | 7 · 16 | 4 · 5 | 남김(읽기만) — 쓰는 자리 0 |
+| #half# | 1 · 5 | 0 · 2 | 은퇴(쓰는 쪽) |
+| root_transaction_id | 4 · 2 | 1 · 3 | 남김 — 그룹 키가 옛 잎을 안 묶음 |
+
+```
+쓰는 쪽(축)은 죽이고 읽는 쪽(값)은 남김 — 큐에 옛 반쪽 · 잎 · 쪼갠 부모가 남아 있을 수 있어서
+   남김  is_split_leaf · refreshed_leaf_payload(재시도 라우트가 옛 잎을 새로 읽음) · SPLIT_INTO_KEY · counts_as_failure · failure_clause
+        (쪼갠 부모를 실패로 안 셈) · 워커 그룹 키의 root_transaction_id(옛 잎을 다시 묶지 않음) · outbox_triage.py · 클라 skipped_reexpanded
+   묘비  outbox_expand.py 끝 · 워커 실패 갈래 — 대조군 시험 이름을 적음
+약속을 든 자리(주석·독스트링)  고침 — 워커 · database.py · event_constants · main.py · outbox_triage.py · 시험 독스트링
+   가이드 chain_rules.md 의 max_group_attempts 줄 · RUN.md 새 절
+시험      은퇴 — test_a_poison_row_is_found_by_halving.py 통째(12 칸, 전부 쪼개는 쪽을 잼)
+               test_outbox_collapse.py :: test_reexpansion_adds_nothing_when_it_cannot_finish
+               test_outbox_collapse.py :: test_reexpansion_gives_every_child_its_own_group
+               test_outbox_collapse.py :: test_reexpansion_refuses_to_run_twice
+               test_outbox_collapse.py :: test_third_failure_reexpands_instead_of_quarantining_the_chunk
+               test_a_group_is_isolated_after_the_declared_attempts.py :: test_the_row_expansion_at_the_quarantine_boundary_is_untouched
+          공허해진 단언(「reexpanded_from 인 사건이 없다」)은 「사건 수가 그대로」로 바꿈 — 미룸 시험 · 싼 재시도 시험
+```
+
+### 게이트 — tests/test_a_failed_chunk_goes_failed_whole.py
+
+| 칸 | 입력 | 답 |
+|---|---|---|
+| 모든 행 실패 | 묶음 1,000 행 | 사건 수 그대로 · FAILED · 기록 여섯 칸 · 로그 1 줄 |
+| 모든 행 실패 | 행별 사건 3 개 한 그룹 | 셋 다 FAILED · 같은 기록 · 로그 «1» 줄 |
+| 모든 행 실패 | 큐에 남은 옛 반쪽(#half#) | 통째 FAILED · 사건 수 그대로 |
+| 한 행만 실패(대조군) | 묶음 4 행 | 묶음 통째 FAILED · row = 그 행 id |
+| 성공 | 묶음 4 행 | SUCCESS · error_log 없음 · 줄 0 |
+| 재시도 | FAILED 묶음 | PENDING · 사건 수 그대로 · reset 1 |
+
+```
+통과     78 passed in 10.63s
+변이     쪼개기 되살림(옛 outbox_expand + 실패 갈래에서 호출) -> 3 failed, 3 passed in 2.33s — collapsed-1000 · old_half-4 · test_one_poison_row_takes_its_chunk_failed_with_it
+         행별 · 성공 · 재시도가 초록인 것은 맞는 답 — 원래 안 쪼개는 칸
+         기록에서 rules 칸 뺌 -> 5 failed, 1 passed in 2.69s — collapsed-1000 · per_row-3 · old_half-4 · test_one_poison_row_takes_its_chunk_failed_with_it · test_retry_puts_the_failed_chunk_back_once_and_writes_nothing_new
+         로그 줄을 사건마다 -> 1 failed, 5 passed in 2.20s — per_row-3
+전체     5 failed, 7380 passed, 163 skipped, 3 xfailed in 768.11s (0:12:48)
+PG       7 failed, 117 passed, 7427 deselected in 168.35s (0:02:48)
+재기동   체인 워커. 마이그레이션 없음 (서버 쪽은 주석만 바뀜)
+```
+
+### 먼저 잴 것 ① ②
+
+```
+① 박스 조인 리플레이  chain_replay_cli.py replay inventory_confirmed --row-ids <한 행> --apply — 그 줄 원문:
+                     [ChainRule] rule=inventory_confirmed kind=declared:join target=dt_log rows_in=1 rows_out=72 written=None refusal=None error=None elapsed=0.016s
+                     박스에선 리플레이가 오류를 안 냄 — 따로 올릴 결함 없음. 운영의 오류는 못 봄
+② set(22) 후보        줄 원문 「[ChainRules] set(N): <규칙마다 이름[출처,도출] 표=..>」 — N = 불러온 규칙 수
+                     load_chain_rules 가 불릴 때마다 찍음. 박스 로그에 나온 N: set(1) · set(2) · set(4) · set(11) · set(12) · set(13) · set(15) · set(16) · set(17) · set(19)
+                     (이 로그는 시험 실행도 같이 씀 — 작은 N 은 시험 픽스처일 수 있음)
+   되풀이해 부르는 자리  서버 대기열 행 라우트(get_outbox_queue_rows) — 그리드 대기열 탭이 체인 방송마다 다시 부름
+                     -> 사건이 늘면 방송이 늘고 그만큼 줄이 뜸. 쪼개기가 사건을 늘렸으니 이 길이 유력 후보
+                     그 밖: 체인 규칙 라우트 · 리플레이(① 을 돌린 11:28~11:29 에 박스 로그의 set 줄 4, 다른 프로세스 것 포함) ·
+                     워커의 리로드 사건 · DELETE 그룹마다 · 우측 키 캐시(프로세스당 한 번)
+                     운영 확인 아님 — 줄 원문을 여쭐지는 총괄 몫
+```
+
+### 여쭐 것
+
+```
+1 기록의 rules · tables 는 «그룹이 깨운 규칙 · 쓰려던 표 전부»입니다. «실제로 터진» 표와 규칙은 사유 머리([rules=.. target=..])에 따로 있음
+  -> 같은 물음(어느 규칙이 실패했나)에 저자가 둘. 하나로 하려면 그룹 함수가 터진 표를 돌려줘야 함(반환 모양이 바뀜). 짓지 않았습니다
+2 어드민 실패 목록 화면은 새 칸을 안 그립니다(reason 만 · error_log 는 지움). 클라 몫이라 손대지 않았습니다
+3 아키텍처 문서의 쪼개기 문장 — CODE_MAP · RUNTIME_MAP · event_driven_backend · FEATURE_CHECKLIST · PRIMITIVES. 제 몫이 아니라 안 고쳤습니다
+4 error_log.row 가 두 모양 — 행 id 목록, 또는 문자열 "not given by the error". 제가 골랐습니다
+  이유: 빈 목록은 「가리킬 행이 없다」로도 읽혀서 «모른다»를 문장으로. 화면이 그리면 모양으로 갈라야 함 — [] 로 정하시면 한 줄
+5 RUN.md 의 급할 때 — 리플레이 사건은 tx 이름(replay_<run> · chain_replay_<run>)으로 치움. --rules 는 «그 규칙이 깨울» 사건을 골라
+  리플레이 것만이 아님(chain/set_aside._in_scope 가 워커의 fires 로 거름). 한 홉 더 번지면 tx 앞에 chain_ 이 하나씩 붙음
+```
+
+지시대로 착지하고 멈춥니다. 감시는 켜 둡니다.
+
+## [구현자 -> 총괄] 착지 4ee01686e — 실패 기록의 규칙 · 표는 «실패한 자리» 하나가 · row 는 id 목록 또는 null (45f5da3f5)
+
+```
+저자 하나   named_failure(rules, tables, text) — 사유 머리 [rules=.. target=..] 와 기록의 rules · tables 를 «같이» 짓는 함수 하나
+           부르는 자리 둘: 맵퍼 실패(그 규칙 · 그 target) · 쓰기 실패(그 표에 쓴 규칙들 · 쓰던 표)
+           이름은 사유 값에 실려(str 의 하위형 NamedFailure) _failure_record 까지 감
+           그룹 함수의 3-튜플 모양은 그대로 — 그 이름을 든 파일(부르는 곳 · 주석 포함) 42 개는 안 바뀜
+           고른 것: 반환 모양을 바꿔도 된다 하셨지만 튜플은 두고 사유 값에 실음
+           위험: 실패 자리와 기록 사이에서 누가 사유 글자를 다시 지으면(.strip() · 머리 덧붙임) 이름이 조용히 null 이 됨
+           잡는 것: 게이트의 진짜 자리 칸이 rules == [규칙] 을 단언 — 떨어지면 빨강
+모름       그 자리가 이름을 안 대면 rules · tables = null. 깨운 목록은 기록에 없음 — woke 칸은 「필요하면」이라 안 만듦
+           이름 없는 사유(예: 행이 안 읽혀 규칙이 돌기 전에 거절)는 그대로 null
+row        오류가 대는 행 id 목록, 안 대면 null. "not given by the error" 는 로그 줄에만
+말         맵퍼 실패의 머리 [rule=X target=Y] -> [rules=X target=Y] — 쓰기 실패와 한 모양
+           옛 머리 [rule= 를 읽는 곳(워커 밖 추적 파일 · task/history/archive 제외): 코드·시험 0 · RUN.md 1 은 이 변경을 알리는 인용 (카나리아 [rules= 든 시험 파일 2)
+           ⚠️ 워커 안 쪽 넘김 실패 문장에 [rule=X target=Y] page N 이 하나 남음 — 머리가 아니라 본문이고 쓰기 자리가 [rules= 머리를 씌움
+           로그 줄: 모르면 rules=(unknown) tables=(unknown) — 사유 머리와 같은 낱말
+           RUN.md 는 09-29 낮 절을 고침(같은 재기동이라 새 절 아님) · 가이드 max_group_attempts 줄
+```
+
+| 칸 | 입력 | 답 |
+|---|---|---|
+| 모든 행 실패 — 묶음 1,000 · 행별 3 · 옛 반쪽 | 진짜 맵퍼 자리가 raise | rules [규칙] · tables [표] · row null · 사유에 머리 · 로그 1 줄 |
+| 쓰기 실패 | 진짜 쓰기 자리가 raise | rules [규칙] · tables [쓰던 표] |
+| 이름 없는 실패 | 행이 안 읽혀 규칙 전에 거절 · 그룹은 규칙을 깨웠음 | rules · tables · row 모두 null · 로그 (unknown) |
+| 대조군 · 성공 · 재시도 | 전과 같음 | 전과 같음 |
+
+```
+통과     (main 에서 게이트 + 사유 문장 · 묶음 시험) 32 passed in 6.01s
+변이     깨운 목록으로 대신 채움 -> 1 failed, 7 passed in 2.10s — test_a_failure_whose_seat_names_no_rule_leaves_the_record_unknown
+         row 를 문자열로 -> 4 failed, 4 passed in 2.29s — collapsed-1000 · per_row-3 · old_half-4 · test_a_failure_whose_seat_names_no_rule_leaves_the_record_unknown
+         (지난 셋) 쪼개기 되살림 -> 3 failed, 5 passed in 2.23s — collapsed-1000 · old_half-4 · test_one_poison_row_takes_its_chunk_failed_with_it
+                  기록에서 rules 칸 뺌 -> 7 failed, 1 passed in 3.01s — collapsed-1000 · per_row-3 · old_half-4 · test_a_failed_write_names_the_table_it_was_writing · test_a_failure_whose_seat_names_no_rule_leaves_the_record_unknown · test_one_poison_row_takes_its_chunk_failed_with_it · test_retry_puts_the_failed_chunk_back_once_and_writes_nothing_new
+                  로그 줄을 사건마다 -> 1 failed, 7 passed in 2.08s — per_row-3
+전체     5 failed, 7382 passed, 163 skipped, 3 xfailed in 728.73s (0:12:08)
+PG       7 failed, 117 passed, 7429 deselected in 182.53s (0:03:02)
+재기동   체인 워커. 마이그레이션 없음
+```
+
+```
+옛 기록  이미 FAILED 인 사건은 칸 자체가 없음 — 박스 FAILED 339 의 error_log 칸: failed_at 339 · reason 339 · reexpanded_into 78
+        rules · tables · row 가 «없는» 기록을 화면이 null 로 읽어야 함 — 클라 지시에 한 줄 필요
+```
+
+지시대로 착지하고 멈춥니다. 감시는 켜 둡니다.

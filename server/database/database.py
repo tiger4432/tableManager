@@ -368,7 +368,7 @@ def stage_collapsed_event(session, event_type, table_name, row_ids, columns=None
 
     # Split a huge flush into 1,000-id chunks: bounds the JSONB payload (~40 KB),
     # keeps the project's chunking discipline, and bounds the failure path (a
-    # poison row re-expands at most one chunk into per-row retries).
+    # poison row takes at most one chunk FAILED with it).
     for i in range(0, len(row_ids), OUTBOX_COLLAPSE_CHUNK_ROWS):
         id_chunk = row_ids[i:i + OUTBOX_COLLAPSE_CHUNK_ROWS]
         chunk_event = DatabaseOutbox(
