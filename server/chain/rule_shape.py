@@ -718,6 +718,9 @@ def expand_declaration(declaration, table_config=None,
             return ([], "%s: %s" % (name, JOIN_RIGHT_TABLE_RETIRED % old_source), [])
         if not (internal.get("on") or {}).get("table"):
             return ([], "%s: %s" % (name, JOIN_NEEDS_SOURCE), [])
+        blank = join_into.blank_refusal((internal.get("derive") or {}).get("join") or {})
+        if blank:
+            return ([], "%s: %s" % (name, blank), [])
 
     # ⚠️ [지시 0cae5199] `rejections`/`caps` 는 «선택»이고 기본은 None 이다 — 이 좌석의
     #    제품 호출자 열은 안 주므로 오늘 동작이 그대로다. 주는 쪽은 수집기를 «가진» 자리,

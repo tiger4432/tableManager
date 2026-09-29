@@ -1,5 +1,25 @@
 # 지금 돌리면 되는 것
 
+> ## 🔴 [09-29 밤 2] **조인 선언 한 칸 `derive.join.blank: "skip"` — 짝이 된 빈 값은 안 씀(파일 값이 섬) — 마이그레이션 «없음» · 재기동 서버**
+>
+> ```
+> 무엇이 바뀌나  적은 조인: 짝이 된 원천 행의 take 값이 비면 그 칸을 안 씀 — 층 없음, 파일 값이 그대로 보임
+>              값이 있는 take 는 전처럼 덮음 · 안 적은 조인은 전처럼 빈 값을 씀
+>              "skip" 말고 다른 낱말은 저장·로드에서 거절: 「derive.join.blank 'yes' - one of skip」
+> 확인          서버 로그 「<규칙>: N blank answer(s) not written (blank: skip) - core_wafer_id=<n>」 (한 번 돌 때 한 줄)
+> 뜻           이 칸을 켜도 그 조인이 «전에» 쓴 빈 층은 남아 파일 값을 계속 가림 — 아래로 걷음
+> 이미 덮인 것  ① 수만 보기   python server/scripts/chain_replay_cli.py withdraw dt_log chain_ingestion --columns core_wafer_id
+>             ② 걷기       같은 줄 끝에 --apply
+>             ③ 다시 쓰기   python server/scripts/chain_replay_cli.py replay <조인 이름>:target   (수만 · 끝에 --apply 로 씀)
+>             ⚠️ chain_ingestion 층은 칸당 «하나» — ② 는 빈 층만이 아니라 그 칸에 체인이 쓴 값 «전부»를 걷음
+>                같은 칸을 쓰는 다른 규칙이 있으면 ③ 을 그 규칙들에도. ③ 이 끝날 때까지 그 칸은 파일 값(없으면 빈 칸)
+>             같은 ①~③ 이 [09-29 밤] 의 것도 걷음 — 조인 키가 모두 빈 행끼리 전에 짝지어 쓴 값은 남아 있는데,
+>                ② 가 그 칸의 체인 값을 걷고 ③ 은 이제 그 행을 짝짓지 않으므로 다시 안 씀. 칸은 그 조인의 take 칸들(--columns a,b)
+> 급할 때       선언에서 blank 칸을 지우면 전처럼(빈 값을 씀)
+> ```
+
+---
+
 > ## 🔴 [09-29 밤] **조인 키 칸이 «모두» 빈 행은 짝이 아님 — «일부»만 비면 그대로 — 마이그레이션 «없음» · 재기동 서버**
 >
 > ```

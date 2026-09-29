@@ -462,6 +462,14 @@
                       "hint": "free"
                     }
                   }
+                },
+                {
+                  "key": "blank",
+                  "required": false,
+                  "node": {
+                    "kind": "leaf",
+                    "hint": "free"
+                  }
                 }
               ]
             },

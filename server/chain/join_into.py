@@ -83,7 +83,17 @@ def _pairs(spec: dict, left_table: str = "") -> list:
 #: ⚰️ [총괄 e91b96a28] `right_table` left this list: the declaration's `on.table` names the source
 #:    and `rule_shape.as_chain_rule` fills the spec's `right_table` from it. The engine below still
 #:    reads `spec["right_table"]` - that is the internal spec, not a cell anyone writes.
-JOIN_CELLS = ("on", "take")
+JOIN_CELLS = ("on", "take", "blank")
+
+#: 🔴 [총괄 14c75ff43, 소유자 09-29 ㄱ] The one word `derive.join.blank` says: a matched value
+#:    row's BLANK take value is not written - no layer, 「not known yet」 like a file's empty
+#:    cell - while a filled one still overwrites. Without the cell a matched blank is written
+#:    as empty (판정 f3c04dee). THE JOIN DOES NOT SAY IT rather than `crud.can_mean_emptied`
+#:    learning it: that seat answers per layer name, and every chain write carries the one
+#:    `CHAIN_LAYER`, so it cannot tell this join from another - a value never handed over
+#:    leaves its answer single.
+BLANK_SKIP = "skip"
+BLANK_WORDS = (BLANK_SKIP,)
 
 #: The skeleton node of each join cell that is NOT one value - read by `_pairs` (`on`: a list
 #: of {left, right}) and `_takes` (`take`: a list of names). A cell missing here is a value.
@@ -101,6 +111,25 @@ JOIN_CELL_SHAPES = {
 
 def unknown_cells(spec: dict) -> list:
     return sorted(str(key) for key in (spec or {}) if key not in JOIN_CELLS)
+
+
+def blank_refusal(join: dict):
+    """`derive.join.blank` that is not one of BLANK_WORDS, by name. An empty cell is absent."""
+    from database import crud
+
+    said = (join or {}).get("blank")
+    if crud.is_blank_value(said) or said in BLANK_WORDS:
+        return None
+    return "derive.join.blank %r - one of %s" % (said, " · ".join(BLANK_WORDS))
+
+
+def _unsaid(spec: dict, values: dict) -> list:
+    """The take columns a `blank: skip` join does not write - their answer is blank."""
+    from database import crud
+
+    if spec.get("blank") != BLANK_SKIP:
+        return []
+    return [column for column, value in values.items() if crud.is_blank_value(value)]
 
 
 def pairs(rule: dict) -> list:
@@ -337,10 +366,15 @@ def _update_items(db, left_table: str, rows, spec, source_name: str):
         if not row.matched or seen.get(row._mapping["row_id"], 0) > 1:
             continue
         mapping = row._mapping
+        values = {into_col: mapping["take_%d" % index]
+                  for index, (_right, into_col) in enumerate(takes)}
+        for column in _unsaid(spec, values):
+            del values[column]
+        if takes and not values:
+            continue
         updates.append(schemas.GeneralUpdateItem(
             row_id=mapping["row_id"],
-            updates={into_col: mapping["take_%d" % index]
-                     for index, (_right, into_col) in enumerate(takes)},
+            updates=values,
             # 🔴 [S-280 · 판정 434] Only matched rows reach here (the `continue` above), so
             # this is never the id of a row that did not answer.
             origin_row_id=mapping["origin_row_id"],
@@ -428,6 +462,25 @@ def _page(db, rule, spec, left_table, left_rows, answers, start, handed, side):
             for origin, values in (answers.get(key) or [(None, blank)])]
     updates = _update_items(db, left_table, rows, spec, str((rule or {}).get("name") or ""))
     more = start + size < len(left_rows)
+    unsaid, total = {}, 0
+    if not start:
+        # 🔴 [총괄 529fc7ce8 ①] THE COUNT IS ALL THE PAGES', read off what was read once: a row
+        #    with exactly one right answer is one proposed row, on whichever page it lands -
+        #    unless a `blank: skip` join has nothing left to say for it (14c75ff43).
+        intos = [into for _right, into in _takes(spec)]
+        for _id, key in left_rows:
+            found = answers.get(key) or ()
+            if len(found) != 1:
+                continue
+            values = dict(zip(intos, found[0][1]))
+            blank_takes = _unsaid(spec, values)
+            for column in blank_takes:
+                unsaid[column] = unsaid.get(column, 0) + 1
+            total += not values or len(blank_takes) < len(values)
+        if unsaid:
+            logger.info("%s: %d blank answer(s) not written (blank: skip) - %s",
+                        (rule or {}).get("name") or "join", sum(unsaid.values()),
+                        ", ".join("%s=%d" % pair for pair in sorted(unsaid.items())))
     # ⚠️ TWO DIFFERENT ZEROS, AND THE OPERATOR FIXES THEM DIFFERENTLY: no match means the
     #    join key or the right table's data; a match that wrote nothing means the value was
     #    already there. Collapsing them sends half the readers to the wrong repair.
@@ -436,15 +489,16 @@ def _page(db, rule, spec, left_table, left_rows, answers, start, handed, side):
     if not updates and not more and not start:
         refusal = ("오른쪽 표에서 짝을 찾은 행이 없습니다 (넘어온 %d 행)" % handed
                    if not rows else
+                   "matched %d row(s) and wrote nothing - %d blank answer(s) not written "
+                   "(blank: skip), the rest already held" % (len(rows), sum(unsaid.values()))
+                   if unsaid else
                    "짝은 찾았고 채울 값이 이미 같습니다 (%d 행)" % len(rows))
     answer = {"updates": updates, "rows_in": handed, "refusal": refusal, "side": side,
               "next_page": (lambda: _page(db, rule, spec, left_table, left_rows, answers,
                                           start + size, handed, side))
               if more else None}
     if not start:
-        # 🔴 [총괄 529fc7ce8 ①] THE COUNT IS ALL THE PAGES', read off what was read once: a row
-        #    with exactly one right answer is one proposed row, on whichever page it lands.
-        answer["rows_total"] = sum(1 for _id, key in left_rows if len(answers.get(key) or ()) == 1)
+        answer["rows_total"] = total
     return answer
 
 
