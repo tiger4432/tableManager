@@ -61699,3 +61699,20 @@ RUN.md               돌릴 명령 · 재기동(체인 워커) · 급할 때: Pa
 다음       착지하면 총괄이 클라에 넘김(폴더 고르기 + 먼저 보기 수 + 한꺼번에 버튼)
 ```
 순서: ① -> ② (② 가 도는 길이 ① 이라서)
+
+---
+
+> **[총괄 -> 구현자] 🔴 급함(운영) — WebSocket 연결 목록 이중 제거 (소유자 09-29 「서버에서 갑자기 asgi exception 뜨면서 list.remove(x) x not in list, error sending client 에러」 -> 「넘겨」)**
+
+```
+길(총괄이 코드로 읽음)  main.py ConnectionManager — 끊긴 연결을 빼는 자리 둘: broadcast 의 보내기 실패(「Error sending to a client」) · /ws 의 WebSocketDisconnect
+                     같은 연결을 둘이 빼거나, 동시에 도는 broadcast 둘이 같은 죽은 연결을 모으면 둘째 remove 가 ValueError
+                     broadcast 는 await 사이에 self.active_connections 를 그대로 돈다
+영향                  데이터 무관. _outbox_queue_broadcast_loop 는 CancelledError 만 받음 -> 이 ValueError 면 루프가 끝나 재기동까지 대기열 방송 멈춤
+                     그 broadcast 의 나머지 죽은 연결은 안 빠짐 · 부른 라우트(/internal/events/broadcast 등)는 500
+소유자 판정           두 줄: disconnect 는 이미 빠진 연결이면 조용히 넘어감 · broadcast 는 목록의 «사본»을 돈다
+짓지 않음             루프 보호(except Exception 계속) — 뿌리를 고친다. 다만 루프가 «다른» 예외로도 끝날 수 있는지 한 줄 보고
+게이트               죽은 연결 하나 + 동시 broadcast 둘 -> 예외 0 · 그 연결 한 번만 빠짐 · broadcast 가 뺀 뒤 /ws 끊김 -> 예외 0 ·
+                     대기열 방송 루프가 그 뒤에도 돔 · 변이(remove 되살림 · 사본 없이 돎) -> 빨강
+RUN.md               재기동 서버 · 확인할 줄(「Client disconnected. Total clients: N」 이 에러 없이)
+```
