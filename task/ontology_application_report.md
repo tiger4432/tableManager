@@ -34792,3 +34792,33 @@ S-222 = 합쳐진 그룹(max_group_rows)이 실패하면 원래 그룹으로 되
           「깨진 선언이 혼자 떨어진다」(S-177 ②③) 문장 셋 — CODE_MAP ISOLATION_ROOTS 행 · LEDGER_SCHEMA_COMPLETENESS §8-0 · ledger_declaration_by_example
                      열어 읽음: 셋 다 «원천이 계획에서 빠진다»를 말하고 «엔티티 · 술어가 화면에 안 닿는다»를 말하지 않음 -> 오늘도 참, 안 고침
 ```
+
+## 총괄 부탁 — 새 가이드 CHAIN_COPY_WHEN_FILLED_GUIDE(881d2b2b5) 등록 + 적대 검수 — 1bbf88a99
+
+```
+등록   docs/README §4 운영 & 셋업 표(BACKFILL_GUIDE 위) · DOC_OWNERSHIP 「체인 인제션」 행 리빙 문서 칸
+```
+대조 — 코드를 열어 읽음
+```
+「통합 선언이면 on.require」                 참   rule_shape 가 on.require 를 규칙의 require 로(맵퍼 · 조인 반쪽 둘 다)
+「trigger_columns 를 적어도 require 가 깨움」  참   ingestion_worker.wake_columns = trigger_columns 다음 require
+                                                  (trigger_columns 를 안 적으면 표 단위라 어느 칸이든 깨움)
+「묶음이 전부 걸러지면 맵퍼 안 부름」          참   rule_run.run_rule — 배치는 handed 가 비고 offered>0 이면 0 번, 행별은 원래 0 번
+로그 첫 줄(넘기지 않음)                       참   rule_run.held_back 의 logger.info 그대로
+allow_chain_trigger 뜻 · 자기 쓰기 안 깨움    참   _rule_accepts_event — chain 채널만 옵트인을 묻고, 쓴 선언이 자기 하나면 안 깨움
+평면 규칙 최상위 require · allow_chain_trigger  참   RULE_ROUTING_OPTIONAL — 「params 로 옮기라」 경고 안 붙음
+「Reload Configs & Code」                     참   admin.html 버튼 글자 그대로
+```
+고친 것 셋
+```
+① 로드 거절 두 줄 — 가이드는 문장만 적었음. 실제 줄은 [ChainRules] <규칙> refused (<N>): <코드> rules[<번호>].require: <문장>,
+   칸 목록은 파이썬 목록 모양 ['<칸>', ...]. 로그를 grep 할 사람이 찾는 모양으로 바꿈
+② bad_require — 빈 목록 [] 도 같은 문장으로 거절(chain_bindings: 목록이고 «비지 않고» 이름뿐이어야). 표에 적음
+③ 빈 칸 — 0 · false 는 찬 값(is_blank_value 는 None · 공백 문자열만). 한 줄 더함
++ 체인 탭 저장도 같은 문장으로 막힘(ledger/admin 이 같은 rule_refusals) — 한 줄
+```
+안 고친 것 — 조언으로 둔 한 줄
+```
+「트리거 표 = 타깃 표 규칙엔 allow_chain_trigger 를 켜지 않는다」 — 로더가 막지는 않음(순환은 경고 한 줄, 깊이 상한이 끊음).
+자기 쓰기는 09-28 부터 어차피 안 깨움. 조언으로 참이라 둠
+```
