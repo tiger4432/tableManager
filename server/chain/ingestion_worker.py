@@ -542,17 +542,36 @@ def failure_cause(error_reason) -> str:
     return lines[-1] if lines else "(no reason recorded)"
 
 
-#: What a quarantine record says when the error names none of the group's rows.
+class NamedFailure(str):
+    """A failure reason that also carries whose it is - `rules` / `tables`, None when unknown."""
+    rules = None
+    tables = None
+
+
+def named_failure(rules, tables, text) -> NamedFailure:
+    """🔴 [총괄 45f5da3f5] THE ONE AUTHOR OF 「WHICH RULE FAILED」. The seat that fails writes the
+    `[rules=.. target=..]` head and hands the same names to the quarantine record, so the two
+    cannot disagree. A seat that does not know says so: the record reads None, never the
+    rules the group woke."""
+    rules = [str(n) for n in rules or () if n] or None
+    tables = [str(n) for n in tables or () if n] or None
+    failure = NamedFailure("[rules=%s target=%s] %s" % (
+        ", ".join(rules or ()) or "(unknown)", ", ".join(tables or ()) or "(unknown)", text))
+    failure.rules, failure.tables = rules, tables
+    return failure
+
+
+#: What the failure LOG LINE says when the error names none of the group's rows.
 ROW_NOT_GIVEN = "not given by the error"
 
 
-def _failure_record(events, error_reason, tx_id, attempts_cap, rules, tables) -> dict:
+def _failure_record(events, error_reason, tx_id, attempts_cap) -> dict:
     """What a quarantined group says about itself - one record, the same on each of its events.
 
     🔴 [총괄 ba0860575, 소유자 「차라리 에러를 잘남기는게 나음」] THE CHUNK IS NOT SPLIT TO FIND ITS
-    BAD ROW, so the record carries what the group knows: the rules it woke, the tables it was
-    writing, how many rows it carried and the error as raised. A row id the error itself names
-    is carried; when it names none, the record says so instead of leaving the cell empty.
+    BAD ROW, so the record carries what the failure knows: the rules and tables its seat named
+    (`named_failure`), how many rows the group carried, the error as raised, and the row ids
+    the error itself names - None when it names none (총괄 45f5da3f5).
     ⛔ NOTHING IS RE-RUN TO FIND THE ROW - that is the split under another name.
     """
     from datetime import datetime
@@ -567,12 +586,12 @@ def _failure_record(events, error_reason, tx_id, attempts_cap, rules, tables) ->
     named = [rid for rid in dict.fromkeys(row_ids) if rid in text][:10]
     return {
         "failed_at": datetime.now().isoformat(),
-        "reason": error_reason or ("Mapper execution failed in tx group %s after %d attempt(s)."
-                                   % (tx_id, attempts_cap)),
-        "rules": sorted(str(name) for name in rules or ()),
-        "tables": sorted(str(name) for name in tables or ()),
+        "reason": str(error_reason or ("Mapper execution failed in tx group %s after %d "
+                                       "attempt(s)." % (tx_id, attempts_cap))),
+        "rules": getattr(error_reason, "rules", None),
+        "tables": getattr(error_reason, "tables", None),
         "rows": len(row_ids),
-        "row": named or ROW_NOT_GIVEN,
+        "row": named or None,
     }
 
 
@@ -1801,15 +1820,14 @@ def apply_chain_writes(db, tx_id, rule, incoming_depth, rules_by_target,
             error_msg = (str(e) if isinstance(e, crud.CellRefused)
                          else traceback.format_exc())
             if writing is not None:
-                _who = ", ".join(n for n in table_contributors.get(writing, ()) if n) \
-                    or "(unknown)"
-                _tbls = writing
+                error_msg = named_failure(table_contributors.get(writing, ()), [writing],
+                                          error_msg)
             else:
-                _who = ", ".join(n for ns in table_contributors.values() for n in ns if n) \
-                    or "(unknown)"
-                _tbls = ", ".join(sorted(table_contributors)) or "(unknown)"
-            error_msg = "[rules=%s target=%s] %s" % (_who, _tbls, error_msg)
-            log_failure_folded(logger, _who, _tbls, error_msg)
+                error_msg = named_failure(
+                    [n for ns in table_contributors.values() for n in ns],
+                    sorted(table_contributors), error_msg)
+            log_failure_folded(logger, ", ".join(error_msg.rules or ()) or "(unknown)",
+                               ", ".join(error_msg.tables or ()) or "(unknown)", error_msg)
             return False, error_msg
         finally:
             request_user.reset(token_user)
@@ -2112,8 +2130,8 @@ def _process_chain_transaction_group_sync(tx_id, events, db, rules):
                 # This string becomes the quarantine `reason` and every downstream FAILED
                 # log, and those said only a transaction id - so an operator staring at
                 # thousands of failures could not tell WHICH declaration to switch off.
-                error_msg = "[rule=%s target=%s] %s" % (
-                    rule.get("name"), rule.get("target_table"), error_msg)
+                error_msg = named_failure([rule.get("name")], [rule.get("target_table")],
+                                          error_msg)
                 log_failure_folded(logger, rule.get("name"), rule.get("target_table"),
                                    error_msg)
                 return False, error_msg, []
@@ -2692,8 +2710,7 @@ async def process_pending_groups(db, group_order, groups, rules, db_session_fact
                 #   wrote about 2N events. What the split was for (finding the bad row) is now
                 #   the record's job: `_failure_record` says what the group knows, the same on
                 #   each of its events, and the log says it once.
-                failure = (_failure_record(events_in_tx, error_reason, tx_id, attempts_cap,
-                                           _woke, group_targets)
+                failure = (_failure_record(events_in_tx, error_reason, tx_id, attempts_cap)
                            if isolate_group else None)
                 for event in events_in_tx:
                     if isolate_group:
@@ -2714,9 +2731,9 @@ async def process_pending_groups(db, group_order, groups, rules, db_session_fact
                         "Transaction %s permanently failed: %d event(s), %d row(s) -> FAILED "
                         "[rules=%s tables=%s row=%s]. 원인: %s",
                         tx_id, failed_permanently_count, failure["rows"],
-                        ",".join(failure["rules"]) or "-", ",".join(failure["tables"]) or "-",
-                        failure["row"] if isinstance(failure["row"], str)
-                        else ",".join(failure["row"]),
+                        ",".join(failure["rules"] or ()) or "(unknown)",
+                        ",".join(failure["tables"] or ()) or "(unknown)",
+                        ",".join(failure["row"] or ()) or ROW_NOT_GIVEN,
                         failure_cause(error_reason))
                 if retrying_count > 0:
                     logger.warning(f"Transaction {tx_id} marked for retry: {retrying_count} events set to RETRYING status ({max_retry_num}/{attempts_cap}).")

@@ -4,9 +4,12 @@
 🔴 [총괄 c9ee06b34 · ba0860575] 소유자 09-29 「체인 에러나면 쪼개는게 빼자 그냥」 ·
 「차라리 에러를 잘남기는게 나음」. A failed chunk used to be halved into two new events, each
 half failed and was halved again - one failing chunk wrote about 2N events, and an error on
-every row walked every half to the end. Now the group's own events carry one record
-(rules · tables · rows · reason as raised · the row when the error names one) and the log
-says it in one line.
+every row walked every half to the end. Now the group's own events carry one record and the
+log says it in one line.
+
+🔴 [총괄 45f5da3f5] THE RECORD'S RULES AND TABLES ARE THE FAILING SEAT'S - the one that writes
+the reason's `[rules=.. target=..]` head. A seat that names none leaves them None; the rules
+the group woke never stand in. `row` is the ids the error names, or None.
 
 ⚠️ THE CONTROL IS THE OLD SYMPTOM, KEPT AS THE ANSWER: one poison row takes its whole chunk
 FAILED with it (`test_one_poison_row_takes_its_chunk_failed_with_it`).
@@ -17,6 +20,7 @@ import logging
 import pytest
 
 import event_constants
+import mapper_sdk
 from chain import ingestion_worker as ciw
 from database import crud, models, schemas
 from database.context import outbox_mode
@@ -25,14 +29,15 @@ from utils.payload_helper import get_payload_dict
 
 COLLAPSED = event_constants.OUTBOX_MODE_COLLAPSED
 SRC, DST = "obxwhole_src", "obxwhole_dst"
-RULE = "obxwhole_rule"
+RULE, MAPPER = "obxwhole_rule", "obxwhole_mapper"
 TABLES = {
     name: {"business_key": "key_id",
            "column_types": {"key_id": "string", "lot": "string", "qty": "number"}}
     for name in (SRC, DST)
 }
-RULES = [{"name": RULE, "trigger_table": SRC, "target_table": DST, "enabled": True}]
-REASON = "[rule=%s target=%s] mapper raised: every row broke" % (RULE, DST)
+RULES = [{"name": RULE, "trigger_table": SRC, "target_table": DST, "mapper": MAPPER,
+          "is_batch": True, "enabled": True}]
+HEAD = "[rules=%s target=%s] " % (RULE, DST)
 
 
 @pytest.fixture()
@@ -64,17 +69,26 @@ def _all(db):
     return db.query(DatabaseOutbox).order_by(DatabaseOutbox.id.asc()).all()
 
 
-def _fail_with(monkeypatch, reason_for):
-    async def group(tx_id, events, db_, rules):
-        reason = reason_for(events)
-        return (reason is None), reason, []
-    monkeypatch.setattr(ciw, "process_chain_transaction_group", group)
+def _mapper(monkeypatch, answer):
+    """The rule's mapper, where the product looks for one - the real group runs around it."""
+    monkeypatch.setitem(mapper_sdk.MAPPER_REGISTRY, MAPPER,
+                        lambda _db, payloads, rule=None: answer(payloads))
+
+
+def _raises(text):
+    def answer(_payloads):
+        raise ValueError(text)
+    return answer
 
 
 async def _run(db, tx_id, events, caplog):
     with caplog.at_level(logging.WARNING):
         await ciw.process_pending_groups(db, [tx_id], {tx_id: events}, RULES, None)
     return [r.getMessage() for r in caplog.records if "permanently failed" in r.getMessage()]
+
+
+def _record(event):
+    return get_payload_dict(event)["error_log"]
 
 
 def _old_half(db, events):
@@ -102,22 +116,73 @@ async def test_a_group_where_every_row_fails_goes_failed_whole_and_writes_nothin
     if shape == "old_half":
         tx_id, events = _old_half(db, events)
     assert len(events) == (rows if shape == "per_row" else 1)
-    _fail_with(monkeypatch, lambda evs: REASON)
+    _mapper(monkeypatch, _raises("every row broke"))
     before = len(_all(db))
 
     lines = await _run(db, tx_id, events, caplog)
 
     assert len(_all(db)) == before, "a failed group writes no new event"
     assert [(e.status, e.processed_chain) for e in events] == [("FAILED", True)] * len(events)
-    records = [get_payload_dict(e)["error_log"] for e in events]
+    records = [_record(e) for e in events]
     record = records[0]
     assert all({k: v for k, v in r.items() if k != "failed_at"}
                == {k: v for k, v in record.items() if k != "failed_at"} for r in records)
-    assert (record["rules"], record["tables"], record["rows"], record["reason"], record["row"]) \
-        == ([RULE], [DST], rows, REASON, ciw.ROW_NOT_GIVEN)
+    assert (record["rules"], record["tables"], record["rows"], record["row"]) \
+        == ([RULE], [DST], rows, None)
+    assert record["reason"].startswith(HEAD) and "ValueError: every row broke" in record["reason"]
     assert event_constants.counts_as_failure(get_payload_dict(events[0]))
     assert len(lines) == 1, "one line per group, not one per event: %r" % lines
-    assert "%d row(s)" % rows in lines[0] and RULE in lines[0] and DST in lines[0], lines[0]
+    assert ("%d row(s)" % rows in lines[0] and "rules=%s tables=%s" % (RULE, DST) in lines[0]
+            and "row=" + ciw.ROW_NOT_GIVEN in lines[0]), lines[0]
+
+
+@pytest.mark.anyio
+async def test_a_failed_write_names_the_table_it_was_writing(db, monkeypatch, caplog):
+    """The other seat that writes the head - the write door, not the mapper."""
+    events = _seed(db, 4, "tx-write")
+    _mapper(monkeypatch, lambda payloads: {"updates": [
+        {"business_key_val": "D%d" % i, "updates": {"key_id": "D%d" % i, "qty": 1.0},
+         "source_name": "chain_ingestion"} for i in range(len(payloads))]})
+    real = crud.apply_batch_updates
+
+    def broken(db_, table_name, *args, **kwargs):
+        if table_name == DST:
+            raise RuntimeError("disk full on %s" % table_name)
+        return real(db_, table_name, *args, **kwargs)
+
+    monkeypatch.setattr(crud, "apply_batch_updates", broken)
+
+    lines = await _run(db, "tx-write", events, caplog)
+
+    record = _record(events[0])
+    assert (events[0].status, record["rules"], record["tables"]) == ("FAILED", [RULE], [DST])
+    assert record["reason"].startswith(HEAD) and "disk full on %s" % DST in record["reason"]
+    assert len(lines) == 1 and "rules=%s tables=%s" % (RULE, DST) in lines[0], lines
+
+
+@pytest.mark.anyio
+async def test_a_failure_whose_seat_names_no_rule_leaves_the_record_unknown(
+        db, monkeypatch, caplog):
+    """🔴 NOT THE RULES THE GROUP WOKE. Rows the event names cannot be read, so the group is
+    refused before any rule runs - it woke `RULE`, and nothing says `RULE` failed."""
+    monkeypatch.setattr(ciw, "_RULES_DOCUMENT", {"max_rows_not_visible_defers": 1})
+    ciw._ROWS_NOT_VISIBLE_DEFERS.clear()
+    events = _seed(db, 3, "tx-blind")
+    named = list(get_payload_dict(events[0])["row_ids"])
+    model = models.DYNAMIC_TABLES[SRC]
+    with outbox_mode(COLLAPSED):
+        for row in db.query(model).filter(model.row_id.in_(named)).all():
+            db.delete(row)
+        db.commit()
+    assert ciw._rules_for_group(events, RULES) == (RULE,), "the group did wake the rule"
+
+    lines = await _run(db, "tx-blind", events, caplog)
+
+    record = _record(events[0])
+    assert events[0].status == "FAILED"
+    assert (record["rules"], record["tables"], record["row"]) == (None, None, None)
+    assert record["reason"].startswith(ciw.ROWS_NOT_VISIBLE), record["reason"]
+    assert len(lines) == 1 and "rules=(unknown) tables=(unknown)" in lines[0], lines
 
 
 @pytest.mark.anyio
@@ -125,22 +190,27 @@ async def test_one_poison_row_takes_its_chunk_failed_with_it(db, monkeypatch, ca
     """⚠️ THE CONTROL - the symptom the split existed for, now the intended answer."""
     events = _seed(db, 4, "tx-poison")
     poison = get_payload_dict(events[0])["row_ids"][2]
-    _fail_with(monkeypatch, lambda evs: ("row %s: qty is not a number" % poison)
-               if poison in json.dumps([get_payload_dict(e) for e in evs]) else None)
+
+    def answer(payloads):
+        if poison in json.dumps(payloads, default=str):
+            raise ValueError("row %s: qty is not a number" % poison)
+        return {"updates": []}
+
+    _mapper(monkeypatch, answer)
     before = len(_all(db))
 
     lines = await _run(db, "tx-poison", events, caplog)
 
     assert len(_all(db)) == before
-    record = get_payload_dict(events[0])["error_log"]
+    record = _record(events[0])
     assert (events[0].status, record["rows"], record["row"]) == ("FAILED", 4, [poison])
-    assert len(lines) == 1 and poison in lines[0], lines
+    assert len(lines) == 1 and "row=" + poison in lines[0], lines
 
 
 @pytest.mark.anyio
 async def test_a_chunk_that_succeeds_is_left_as_it_is(db, monkeypatch, caplog):
     events = _seed(db, 4, "tx-fine")
-    _fail_with(monkeypatch, lambda evs: None)
+    _mapper(monkeypatch, lambda payloads: {"updates": []})
     before = len(_all(db))
 
     lines = await _run(db, "tx-fine", events, caplog)
@@ -154,7 +224,7 @@ async def test_a_chunk_that_succeeds_is_left_as_it_is(db, monkeypatch, caplog):
 async def test_retry_puts_the_failed_chunk_back_once_and_writes_nothing_new(
         db, client, monkeypatch, caplog):
     events = _seed(db, 4, "tx-again")
-    _fail_with(monkeypatch, lambda evs: REASON)
+    _mapper(monkeypatch, _raises("every row broke"))
     await _run(db, "tx-again", events, caplog)
     assert events[0].status == "FAILED"
     before = len(_all(db))
