@@ -3458,9 +3458,10 @@ note_naive_time(...)      셈 · `naive_time_counts()` · `naive_time_note()` �
 > ```
 > emit rule 의 class     server/ledger/config.py     "observation" | "inference"   원자의 «계급»(설계 §6 의 2/3)
 >                        EMIT_CLASSES · _validate_emit_rule  — 기본값 «없음», 안 적으면 거절
-> entity 의 class        server/ledger/setup_bundle.py  "static" | "dynamic"       걷기의 «이름 대 사건»
->                        _validate_entities            — 선택, 없으면 dynamic
->                        🆕 09-29 fdda4ebf6: 낱말 하나 «또는 목록»(static | dynamic 중 하나는 그대로) — class_words(spec) · has_class(spec, word) 가 한 번 읽음
+> entity 의 class        server/ledger/setup_bundle.py  운영자가 짓는 낱말 하나 또는 목록   걷기의 «이름 대 사건»
+>                        _validate_entities            — 선택. 코드가 읽는 낱말은 static 하나(has_class(spec, "static"))
+>                        🆕 09-29 45e363a05: 닫힌 static|dynamic 검사 은퇴 — _validate_class 는 «모양»만(낱말 하나 · 낱말 목록, 빈 낱말은 부재)
+>                        (fdda4ebf6 의 닫힌 검사는 로더가 같은 검증을 지나 ["static","probe"] 엔티티를 «저장됨» 뒤에 떨궜다)
 > 🆕 predicate 의 class  setup_bundle.py (09-29 fdda4ebf6)  운영자가 이름 붙인 낱말 하나 또는 목록   follow=class:<낱말> 로 걷는 묶음
 >                        저장 관문이 «이제 받음»(전엔 거절) · 두 모양 다 검사
 > ```
