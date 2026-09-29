@@ -45,7 +45,7 @@ out = rows              # list[dict] · DataFrame · CSV 문자열. 없으면 ou
 - 어드민 → 소급 → **Backfill a collector day by day** · `collector` = `<표>/<스크립트.py>` · `start` = `YYYY-MM-DD`(그날 00:00 KST) 또는 `YYYY-MM-DD HH:MM`
 - start 부터 **24시간씩** 한 번씩 돌리고(마지막 날은 지금에서 자름), 그날 파일이 적재를 마칠 때까지 기다렸다가 다음 날로 갑니다. 진행은 N/M 일, 날 사이에서 취소할 수 있습니다.
 - 어느 날이 실패하면 그 날짜를 대고 멈춥니다 — 고친 뒤 `start` 를 그 날짜로 다시 걸면 거기서부터 끝까지
-- 🆕 다시 걸 `start` 는 서버가 줍니다(09-29 `efa60fd9c`) — 소급 목록의 그 실행 줄 `next_start`: 끝까지 · 취소했으면 모은 끝, 실패했으면 그 날, 도는 중이면 비어 있음. 그대로 넣으면 틈도 겹침도 없습니다. 화면이 Start 칸을 이것으로 채우는 것은 뒤따를 클라 착지입니다
+- 🆕 다시 걸 `start` 는 서버가 줍니다(09-29 `efa60fd9c`) — 소급 목록의 그 실행 줄 `next_start`: 끝까지 · 취소했으면 모은 끝, 실패했으면 그 날, 도는 중이면 비어 있음. 그대로 넣으면 틈도 겹침도 없습니다. 🆕 Auto Update 탭의 Backfill Start 칸은 그 수집기의 마지막 실행 `next_start` 로 열립니다(09-29 `9eb859e47` — 화면은 날짜를 셈하지 않음). 고쳐 쓴 값은 목록이 다시 읽혀도 덮이지 않고, Start · Enter 는 칸에 보이는 값을 보냅니다. 도는 중 · 옛 기록 · 실행 없음이면 칸이 비어 있습니다
 - CLI: `python -c "from admin import retroactive; retroactive.run_here('collector_backfill', {'collector': '<표>/<스크립트.py>', 'start': 'YYYY-MM-DD'})"`
 - 🆕 **Auto Update 탭의 수집기 행마다 Backfill**(09-26 `2e5ed8f8e`) — `# window:` 를 적은 수집기만 켜지고(아니면 꺼진 채 「Declare # window: to backfill」), 그 행에서 시작 날을 적어 돌리며 그 수집기의 마지막 소급(상태 · N/M 일 · 실패한 날)이 행에 보입니다.
 
