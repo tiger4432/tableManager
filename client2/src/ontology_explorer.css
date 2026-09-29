@@ -709,13 +709,15 @@
 /* 🔴 THE STATE COLUMN HOLDS ITS WIDEST WORD (order da59efbb7, owner 「require 뱃지랑 input ui
    겹치는거」). At 92px five of the thirteen words it can carry did not fit -- `Required ·
    unknown` 118.6, `constrained_input` 112.8, `No shape · broken` 109.8, `Single candidate`
-   104.5, `Plan · unknown` 95.2 (measured, this sheet) -- and a right-aligned chip spills LEFT,
-   over the input. 122.4 is the next grid step above 118.6; still one width for every row, so
-   value and state keep their one vertical line. */
+   104.5, `Plan · unknown` 95.2 (measured, this sheet, in Barlow) -- and a right-aligned chip
+   spills LEFT, over the input. In the fallback faces (the webfont can be blocked on the box)
+   `Required · unknown` needs ~126 (system-ui) and ~132 (sans-serif) with its border, so the
+   column is 132.6, the grid step above both. One width for every row, so value and state
+   keep their one vertical line. */
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-row {
   display: grid;
   grid-template-columns:
-    calc(288px - 16px * var(--oe-depth, 0)) minmax(0, 1fr) 122.4px;
+    calc(288px - 16px * var(--oe-depth, 0)) minmax(0, 1fr) 132.6px;
   gap: 10px; align-items: baseline; min-width: 0;
   /* The indent is padding, and the label column loses exactly what the padding gains --
      so `value` starts at the same x at every depth. Measured before this line existed:
