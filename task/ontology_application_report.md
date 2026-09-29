@@ -34712,3 +34712,27 @@ QA ②  옛 문장 남은 수
         제외한 것  원장 원천 준비 출력의 표지(행 데이터) · 숫자 해석에서 bool 을 먼저 거르는 자리(transfer_plan 등) · 표시 문장
    -> 다섯은 제가 안 고침(구현자 코드 · 지시 범위 밖). 한 판정으로 모을지는 여쭐 것
 ```
+
+## 문서 정비 — 09-29 오전 착지 여덟 (e81f6e253 · a15e0e6a4 · fa3560fcd · b684d1831 · 19a429435 · 181fe6f8c · 594db7611) — 12:13
+
+```
+착지                              문서
+a5746efc1 계획 행 asList            CODE_MAP explorer_view · skeleton 행
+45e363a05 엔티티 class 열림          CODE_MAP class 표 · LEDGER_SCHEMA_COMPLETENESS class 행
+512b0575b 조인 on.columns 집합 비교   CODE_MAP rule_shape · CHAIN_CONTRACT 깨우는 칸 행
+a937d209d · 3da6a2a09 참조 탭        CODE_MAP 참조뷰 절 · grid export · FEATURE_CHECKLIST
+7fc52efef · 3a8f35296 저장 안 적용   CODE_MAP explorer · store · view · raw_registry_panel 행
+42b9465c6 상태 칸 폭                 CODE_MAP ontology_explorer.css 행(빈 칸이었음)
+5fa5b1d83 청크 쪼개기 은퇴            CODE_MAP 8 자리 · RUNTIME_MAP ③-c · PRIMITIVES · event_driven_backend · FEATURE_CHECKLIST
+   셈  git grep -n -E 'reexpand_collapsed_event|_split_collapsed_event|MAX_REEXPANSION_DEPTH|halving|재전개|재확장|re-expan'
+       -- docs/architecture docs/guide docs/qa docs/spec  (카나리아 def _failure_record 1)
+       은퇴 «전» 판정 문장은 지우지 않고 ⚰️ 표시 + 줄 머리에 은퇴 한 줄. docs/_archive · docs/process(판정 · 결함 큐)는 안 건드림
+```
+
+물음 하나 — S-222 가 «열린 것»으로 남아 있습니다
+```
+CHAIN_CONTRACT_COMPLETENESS.md 머리  「열린 것: S-226 · S-218 · S-222(실패한 병합 다시 쪼개기)」
+S-222 = 합쳐진 그룹(max_group_rows)이 실패하면 원래 그룹으로 되돌려 하나씩
+소유자 09-29 「체인 에러나면 쪼개는게 빼자 그냥」 — 5fa5b1d83 이 청크 쪼개기를 은퇴시켰고, S-222 는 그 보고·지시에 안 나옴
+-> S-222 를 같은 판정으로 닫을지(열린 것에서 뺌), 따로 둘지 여쭙니다. 제가 문서에서 빼지 않았습니다
+```
