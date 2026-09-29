@@ -34778,3 +34778,17 @@ S-222 = 합쳐진 그룹(max_group_rows)이 실패하면 원래 그룹으로 되
        (기록은 이제 «터진 자리»의 규칙이고 깨운 규칙이 «아님»)
 물음   화면 낱말을 로그와 같은 「unknown」으로 맞출지 — 클라 레인 일이라 제가 안 고쳤습니다
 ```
+
+## 지시 ef6d01cba [총괄 -> 응용] 7f3bf293b 문서 — 착지 641ca8565 + 이 커밋
+
+```
+놓친 것   CODE_MAP §5-H 탐색기 서비스 메서드 목록이 지운 _knocked_out_reasons 를 들고 있었음(641ca8565 에서 못 봄)
+          -> ⚰️ 줄긋기 + 「모듈 함수 config_explorer.left_out_reasons 로」
+셈 ①      지운 이름   git grep -n _knocked_out_reasons -- docs RUN.md CLAUDE.md .claude/skills task ':!docs/history' ':!docs/_archive'
+                     = 3 줄: CODE_MAP 1(고침) · IMPLEMENTER_ORDERS 1 · scoped_redo_report 1(둘 다 이 일을 적은 지시·보고 — 둠)
+                     카나리아 def left_out_reasons 1 · 코드 안 옛 이름 0
+셈 ②      LedgerSetup.left_out 문장   git grep -n LedgerSetup -- docs/architecture docs/guide docs/spec RUN.md | grep -i -E 'left_out|refused|거절|원천|source'
+                     = CODE_MAP setup.py 행 1(641ca8565 가 이미 「원천만 -> 보고 전체」로 적음)
+          「깨진 선언이 혼자 떨어진다」(S-177 ②③) 문장 셋 — CODE_MAP ISOLATION_ROOTS 행 · LEDGER_SCHEMA_COMPLETENESS §8-0 · ledger_declaration_by_example
+                     열어 읽음: 셋 다 «원천이 계획에서 빠진다»를 말하고 «엔티티 · 술어가 화면에 안 닿는다»를 말하지 않음 -> 오늘도 참, 안 고침
+```
