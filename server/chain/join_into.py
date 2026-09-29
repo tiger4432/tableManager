@@ -237,9 +237,25 @@ class _Answer:
         self.matched = origin_row_id is not None
 
 
+def _every_part_blank(key) -> bool:
+    """🔴 [총괄 534f375f8, 소유자 「키가 여러 컬럼이면 모든 칼럼 null이면 무시, 일부 null은 허용」]
+    A join key whose EVERY part is blank matches nothing - a target row seeks no answer and a
+    value row is none. One blank part among filled ones still matches (blank equals blank,
+    S-181). Blank is crud's one judgement; the parts arrive folded, blank as `''`."""
+    from database import crud
+
+    return all(crud.is_blank_key_part(part) for part in key)
+
+
+def _say_empty_keys(rule, side: str, count: int) -> None:
+    if count:
+        logger.info("%s: %d row(s) with every join key empty - not matched (%s side)",
+                    (rule or {}).get("name") or "join", count, side)
+
+
 def _read_once(db, spec, left_model, right_model, wheres, left_table=""):
     """Everything the answer depends on, read ONCE: -> (sorted [(left row_id, key)],
-    {key: [(right row_id, take values)]}).
+    {key: [(right row_id, take values)]}, left rows whose every key part is blank - left out).
 
     🔴 [총괄 529fc7ce8 ②] BEFORE ANY WRITE, BECAUSE THE PAGES ARE WRITTEN IN BETWEEN. The seat
     writes a page before it asks the next, and a rule before this one in the group may already
@@ -258,6 +274,9 @@ def _read_once(db, spec, left_model, right_model, wheres, left_table=""):
     for where in wheres:
         for row in db.execute(select(left_model.row_id, *left_key).where(where)):
             left[row[0]] = tuple(row[1:])
+    empty = [row_id for row_id, key in left.items() if _every_part_blank(key)]
+    for row_id in empty:
+        del left[row_id]
     right_key = [_folded(getattr(right_model, right_col), fold) for _l, right_col, fold in pairs]
     takes = [getattr(right_model, right_col) for right_col, _into in _takes(spec)]
     # 🔴 [총괄 2276e38cf] A value row with an empty `require` column is not an answer, from
@@ -271,7 +290,7 @@ def _read_once(db, spec, left_model, right_model, wheres, left_table=""):
                               .where(tuple_(*right_key).in_(chunk), *filled)):
             answers.setdefault(tuple(row[1:1 + width]), []).append(
                 (row[0], tuple(row[1 + width:])))
-    return sorted(left.items()), answers
+    return sorted(left.items()), answers, len(empty)
 
 
 def _update_items(db, left_table: str, rows, spec, source_name: str):
@@ -377,8 +396,9 @@ def propose(db, rule: dict, row_ids=None):
     reference_side = str((rule or {}).get("trigger_table") or "") == str(
         spec.get("right_table") or "")
     if reference_side:
-        wheres = _left_rows_for_reference(db, spec, left_model, right_model,
-                                          rows_in, left_table)
+        wheres, empty = _left_rows_for_reference(db, spec, left_model, right_model,
+                                                 rows_in, left_table)
+        _say_empty_keys(rule, "value", empty)
     else:
         wheres = [left_model.row_id.in_(rows_in)]
     if wheres is None:
@@ -390,7 +410,9 @@ def propose(db, rule: dict, row_ids=None):
     #    no beat. The left rows are read ONCE - asking the key filter again per page re-walks
     #    the table from the cursor (measured: a page past the last match read 9,999 rows for 0)
     #    - and each page answers only its own rows. The seat writes a page, then asks the next.
-    left_rows, answers = _read_once(db, spec, left_model, right_model, wheres, left_table)
+    left_rows, answers, empty = _read_once(db, spec, left_model, right_model, wheres,
+                                           left_table)
+    _say_empty_keys(rule, "target", empty)
     return _page(db, rule, spec, left_table, left_rows, answers, 0, len(rows_in),
                  "reference" if reference_side else "target")
 
@@ -428,7 +450,8 @@ def _page(db, rule, spec, left_table, left_rows, answers, start, handed, side):
 
 def _left_rows_for_reference(db, spec, left_model, right_model, right_row_ids,
                             left_table=""):
-    """The left rows whose key matches the right rows that just moved.
+    """The left rows whose key matches the right rows that just moved -> (wheres or None,
+    right rows whose every key part is blank - answer nobody).
 
     🔴 ONLY THE WHERE CLAUSE DIFFERS between the two sides, which is the whole reason this is
     one kind and not two. The key expression comes from the same `_folded`, so a fold declared
@@ -442,7 +465,7 @@ def _left_rows_for_reference(db, spec, left_model, right_model, right_row_ids,
                  for index, (_left, right_col, fold) in enumerate(pairs)])
         .where(right_model.row_id.in_(list(right_row_ids)))).fetchall()
     if not keys:
-        return None
+        return None, 0
     left_key = [_folded(getattr(left_model, left_col), fold)
                 for left_col, _right, fold in pairs]
     # ⚠️ A TUPLE `IN`, NOT A COLUMN-WISE `IN` PER PART. Matching each part independently
@@ -456,6 +479,8 @@ def _left_rows_for_reference(db, spec, left_model, right_model, right_row_ids,
     from chain import keyset_scan
     from database import crud
 
-    distinct = list(dict.fromkeys(tuple(row) for row in keys))
-    return [tuple_(*left_key).in_(chunk)
-            for chunk in crud._chunks(distinct, keyset_scan.DEFAULT_CHUNK_SIZE)]
+    filled = [tuple(row) for row in keys if not _every_part_blank(tuple(row))]
+    distinct = list(dict.fromkeys(filled))
+    wheres = [tuple_(*left_key).in_(chunk)
+              for chunk in crud._chunks(distinct, keyset_scan.DEFAULT_CHUNK_SIZE)]
+    return wheres or None, len(keys) - len(filled)
