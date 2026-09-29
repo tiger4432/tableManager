@@ -12,6 +12,7 @@
 | 문서 | 내용 |
 |---|---|
 | 🟢 **[overview/SYSTEM_OVERVIEW.md](./overview/SYSTEM_OVERVIEW.md)** | **SSOT** — 현재 시스템의 전체 아키텍처. 무엇이든 여기서 시작 |
+| 🟢 [overview/exec_deck.html](./overview/exec_deck.html) | **경영진 발표 자료** 한 파일(2026-09-30 `02a50d72b`) — 브라우저로 열고 화살표로 넘김 · F 전체 화면 · N 발표자 노트. 설명의 정본은 위 SYSTEM_OVERVIEW |
 | 🟢 **[process/FORK_SESSION_BRIEF.md](./process/FORK_SESSION_BRIEF.md)** | **현재 인수인계 정본** — Ledger V2·Explorer 상태, 파일 소유권, 실행법, 금지 경계, 다음 작업 절차 |
 | 🟢 **[architecture/PRIMITIVES.md](./architecture/PRIMITIVES.md)** | **만들기 전에 여기부터** — 이 시스템이 이미 할 줄 아는 연산·패턴 카탈로그. "이건 무엇과 구조적으로 같은가"에 답하지 못하면 아직 설계할 준비가 안 된 것 |
 | 🟢 [process/PROJECT_STATUS.md](./process/PROJECT_STATUS.md) | **「지금 무엇이 열려 있나」 단일 보드** — 다음 할 일과 살아 있는 결함. 🔴 **2026-08-01에 679줄에서 쪼갰다**(낡은 한 줄이 총괄의 위험 판정을 반대로 뒤집은 사고가 실제로 났다). 아래 셋이 그 분가다 |
