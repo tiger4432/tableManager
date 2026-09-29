@@ -216,16 +216,19 @@ def test_a_successful_request_is_not_marked_failed(db_session):
 # ------------------------------------------------- ⚠️ the class, and where it does NOT apply
 
 def test_the_reload_watchers_are_a_different_shape_and_are_left_alone():
-    """⛔ THE COUNT THAT KEPT THIS FROM BEING FOUR EDITS. Both `SYSTEM_RELOAD` watchers
-    select `id.desc()` behind an in-memory high-water mark, so a failure neither re-picks
-    the row nor blocks a FIFO head. Marking them FAILED would be repairing a defect they
-    do not have."""
+    """⛔ THE COUNT THAT KEPT THIS FROM BEING FOUR EDITS. The `SYSTEM_RELOAD` watchers read
+    behind an in-memory high-water mark, so a failure neither re-picks the row nor blocks a
+    FIFO head. Marking them FAILED would be repairing a defect they do not have.
+    ⚠️ [총괄 76aa4b6ed] The mark's reader is `system_reload.reloads_after` now (every row past
+    it, so a scoped row cannot hide a button press) - it was `id.desc().first()` in each."""
     import inspect
 
     from chain import ingestion_worker
     import run_auto_update
+    import run_watcher
 
     for source in (inspect.getsource(run_auto_update.MultiDiscoveryScheduler.run),
-                   inspect.getsource(ingestion_worker.start_chain_ingestion_worker)):
-        head = source.split('"SYSTEM_RELOAD"', 1)[1][:400]
-        assert "id.desc()" in head, "a reload watcher started reading oldest-first"
+                   inspect.getsource(ingestion_worker.start_chain_ingestion_worker),
+                   inspect.getsource(run_watcher)):
+        assert "system_reload.reloads_after(db, last_reload_event_id)" in source, (
+            "a reload watcher stopped reading behind its high-water mark")

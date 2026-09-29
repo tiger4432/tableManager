@@ -40,18 +40,30 @@ _db_safety.install_global_test_database_guard(production_url=DEFAULT_PG_URL)
 is_sqlite = "sqlite" in SQLALCHEMY_DATABASE_URL
 
 # 엔진 설정 (PostgreSQL용 커넥션 풀링 최적화 포함)
-if is_sqlite:
-    engine = create_engine(
-        SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False}
-    )
-else:
-    engine = create_engine(
-        SQLALCHEMY_DATABASE_URL,
+def build_engine(url):
+    """The engine for one URL - the module's own, and what a test asks about a URL.
+
+    🔴 [총괄 76aa4b6ed ①] AN IN-MEMORY SQLITE DATABASE SHARES ONE CONNECTION (StaticPool). Its
+    default pool keeps a connection PER THREAD and closes an arbitrary one past five; each
+    connection is its own empty database, so a request thread could close the one that held
+    the schema and the next test found its tables gone (measured, file order bisected).
+    PostgreSQL and a file sqlite build exactly what they built before."""
+    if "sqlite" in url:
+        extra = {}
+        if ":memory:" in url:
+            from sqlalchemy.pool import StaticPool
+            extra["poolclass"] = StaticPool
+        return create_engine(url, connect_args={"check_same_thread": False}, **extra)
+    return create_engine(
+        url,
         pool_size=20,           # 커넥션 풀 크기 (1,000만 행 동시 접속 대응)
         max_overflow=10,        # 피크 시 추가 허용 커넥션
         pool_recycle=3600,      # 커넥션 재사용 시간
         connect_args={"options": "-c client_encoding=utf8"} # [핵심] DB 연결 시 UTF-8 강제
     )
+
+
+engine = build_engine(SQLALCHEMY_DATABASE_URL)
 
 # [#16a] This is the one engine in the process built from the RESOLVED url - i.e.
 # the only one that can be pointed at production by an ambient environment

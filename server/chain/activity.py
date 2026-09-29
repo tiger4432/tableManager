@@ -42,6 +42,8 @@ class ChainActivityRegistry:
         self._purged_at = None
         self._purged_rows = None
         self._purge_capped = None
+        self._rules_loaded_at = None
+        self._rules_base = None
         self._seq = 0
 
     def attach(self):
@@ -66,6 +68,13 @@ class ChainActivityRegistry:
         """
         with self._lock:
             self._reloaded_at = time.time()
+
+    def note_rules_loaded(self, base):
+        """This process read the chain rules file whose content fingerprint is `base`
+        (`ledger.admin.content_fingerprint`, the save's `base`) - 총괄 76aa4b6ed."""
+        with self._lock:
+            self._rules_loaded_at = time.time()
+            self._rules_base = base
 
     def note_outbox_purge(self, deleted, capped):
         """The last outbox retention purge in this process: how many rows went, and
@@ -161,6 +170,8 @@ class ChainActivityRegistry:
                 "purged_at": self._purged_at,
                 "purged_rows": self._purged_rows,
                 "purge_capped": self._purge_capped,
+                "rules_loaded_at": self._rules_loaded_at,
+                "rules_base": self._rules_base,
                 "running": [dict(e) for e in sorted(self._running.values(),
                                                     key=lambda e: e["started"])],
                 "outcomes": {name: dict(e) for name, e in self._outcomes.items()},
@@ -183,6 +194,8 @@ class ChainActivityRegistry:
             self._purged_at = None
             self._purged_rows = None
             self._purge_capped = None
+            self._rules_loaded_at = None
+            self._rules_base = None
             self._seq = 0
 
 
@@ -193,7 +206,8 @@ registry = ChainActivityRegistry()
 #: per-cycle cap with more expired rows waiting, False = drained everything expired, None =
 #: never ran, or the last cycle raised before it could tell.
 AGE_KEYS = ("loop_uptime_seconds", "mapper_reload_age_seconds", "outbox_purge_age_seconds",
-            "outbox_purge_deleted", "outbox_purge_capped")
+            "outbox_purge_deleted", "outbox_purge_capped", "rules_loaded_age_seconds",
+            "rules_base")
 
 
 def view(instants, now=None) -> dict:
@@ -224,6 +238,9 @@ def view(instants, now=None) -> dict:
         "outbox_purge_age_seconds": age(instants.get("purged_at")),
         "outbox_purge_deleted": instants.get("purged_rows"),
         "outbox_purge_capped": instants.get("purge_capped"),
+        # Which chain rules file the loop runs (a save's `base`), and how long ago it read it.
+        "rules_loaded_age_seconds": age(instants.get("rules_loaded_at")),
+        "rules_base": instants.get("rules_base"),
     }
 
 

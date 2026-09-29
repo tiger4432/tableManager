@@ -1064,13 +1064,15 @@ class MultiDiscoveryScheduler:
                     from database.models import DatabaseOutbox
                     db = SessionLocal()
                     
-                    # 1-1. SYSTEM_RELOAD 감시
-                    latest_reload = db.query(DatabaseOutbox).filter(
-                        DatabaseOutbox.event_type == "SYSTEM_RELOAD"
-                    ).order_by(DatabaseOutbox.id.desc()).first()
-                    
-                    if latest_reload and latest_reload.id > last_reload_event_id:
+                    # 1-1. SYSTEM_RELOAD 감시 — 체인 규칙 저장의 행은 체인 워커 몫이라 지나간다(총괄 76aa4b6ed)
+                    from runtime import system_reload
+                    new_reloads = system_reload.reloads_after(db, last_reload_event_id)
+                    latest_reload = new_reloads[-1] if new_reloads else None
+                    if latest_reload is not None:
                         last_reload_event_id = latest_reload.id
+
+                    if system_reload.reload_for(system_reload.SCHEDULER,
+                                                new_reloads) == system_reload.FULL:
                         logger.info(f"[Reload] Auto Update Scheduler detected SYSTEM_RELOAD trigger (Event ID: {latest_reload.id}). Re-scanning workspace...")
                         
                         # 모듈 캐시 초기화

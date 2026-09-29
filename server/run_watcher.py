@@ -340,14 +340,15 @@ def poll_pending_retries():
         heartbeat.beat("watcher")
         db = SessionLocal()
         try:
-            # Check for SYSTEM_RELOAD outbox event to reload modules
-            from database.models import DatabaseOutbox
-            latest_reload = db.query(DatabaseOutbox).filter(
-                DatabaseOutbox.event_type == "SYSTEM_RELOAD"
-            ).order_by(DatabaseOutbox.id.desc()).first()
-            
-            if latest_reload and latest_reload.id > last_reload_event_id:
+            # Check for SYSTEM_RELOAD outbox event to reload modules - a chain-rules save's row
+            # is the chain worker's alone (총괄 76aa4b6ed), and passes here.
+            from runtime import system_reload
+            new_reloads = system_reload.reloads_after(db, last_reload_event_id)
+            latest_reload = new_reloads[-1] if new_reloads else None
+            if latest_reload is not None:
                 last_reload_event_id = latest_reload.id
+
+            if system_reload.reload_for(system_reload.WATCHER, new_reloads) == system_reload.FULL:
                 logger.info(f"[Reload] SYSTEM_RELOAD trigger detected (Event ID: {latest_reload.id}). Reloading scripts...")
                 reload_watcher_cache()
                 # [이슈 #7] config 재로드 + 신규 테이블 ORM 등록 + 물리 CREATE 보충

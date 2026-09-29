@@ -29,6 +29,64 @@ logger = logging.getLogger("Server")
 #: the workspace sync below is skipped exactly as it was when the watcher was absent.
 active_watcher = None
 
+#: 🔴 [총괄 76aa4b6ed, 소유자 09-29 ㄱ] The scope a chain-rules save puts on its SYSTEM_RELOAD:
+#:    the chain worker re-reads its rules and nothing else - no mapper re-import, no table
+#:    shapes - and every other reader lets the row pass. A row without a scope is the whole
+#:    reload (the Reload button, the code editor), unchanged.
+SCOPE_CHAIN_RULES = "chain_rules"
+#: What a reader does for a row without a scope, or with one this build does not know.
+FULL = "full"
+#: The readers of SYSTEM_RELOAD, by their heartbeat names.
+CHAIN_WORKER, WATCHER, SCHEDULER = "chain", "watcher", "scheduler"
+
+
+def publish_reload(db: Session, scope=None, **said):
+    """Write one SYSTEM_RELOAD row - the daemons read it and reload."""
+    import uuid
+    from datetime import datetime
+
+    from database.context import request_transaction_id
+
+    payload = {"transaction_id": request_transaction_id.get() or f"reload_{str(uuid.uuid4())[:8]}",
+               "timestamp": datetime.now().isoformat(), **said}
+    if scope:
+        payload["scope"] = scope
+    event = models.DatabaseOutbox(event_uuid=str(uuid.uuid4()), event_type="SYSTEM_RELOAD",
+                                  table_name="system", payload=payload, status="PENDING")
+    db.add(event)
+    db.commit()
+    return event
+
+
+def reloads_after(db: Session, after_id: int) -> list:
+    """The SYSTEM_RELOAD rows past a reader's high-water mark, oldest first. Every one, not
+    the newest only: a scoped row landing right after a button press must not hide it."""
+    return (db.query(models.DatabaseOutbox)
+            .filter(models.DatabaseOutbox.event_type == "SYSTEM_RELOAD",
+                    models.DatabaseOutbox.id > after_id)
+            .order_by(models.DatabaseOutbox.id.asc()).all())
+
+
+def reload_for(reader: str, rows) -> str:
+    """What `reader` does for these rows: FULL, SCOPE_CHAIN_RULES, or None. The one seat that
+    asks a row's scope."""
+    import json
+
+    scopes = set()
+    for row in rows or ():
+        payload = row.payload
+        if isinstance(payload, str):
+            try:
+                payload = json.loads(payload)
+            except ValueError:
+                payload = None
+        scopes.add(payload.get("scope") if isinstance(payload, dict) else None)
+    if not scopes:
+        return None
+    if scopes - {SCOPE_CHAIN_RULES}:
+        return FULL
+    return SCOPE_CHAIN_RULES if reader == CHAIN_WORKER else None
+
 
 def reload_local_process_cache():
     """웹 서버 프로세스의 table_config 캐시 및 동적 모듈 캐시(mappers, pipeline plugins)를 명시적으로 무효화합니다.
@@ -157,9 +215,6 @@ def reload_local_process_cache():
 
 def reload_system_configs(db: Session):
     """시스템 전역의 설정 및 파이썬 모듈 캐시를 리로드하는 이벤트를 Outbox에 적재하여 모든 워커에 전파합니다."""
-    import uuid
-    from datetime import datetime
-    
     # 1. 웹 서버 자체 메모리 캐시 갱신
     reload_local_process_cache()
 
@@ -172,24 +227,7 @@ def reload_system_configs(db: Session):
         except Exception as e:
             logger.error(f"[Reload] Embedded watcher workspace sync failed: {e}")
 
-    # 2. SYSTEM_RELOAD Outbox 이벤트 적재 (데몬 프로세스들로 전파)
-    from database.models import DatabaseOutbox
-    from database.context import request_transaction_id
-    
-    tx_id = request_transaction_id.get() or f"reload_{str(uuid.uuid4())[:8]}"
-    
-    reload_event = DatabaseOutbox(
-        event_uuid=str(uuid.uuid4()),
-        event_type="SYSTEM_RELOAD",
-        table_name="system",
-        payload={
-            "transaction_id": tx_id,
-            "timestamp": datetime.now().isoformat(),
-            "msg": "Reload configs and custom scripts modules"
-        },
-        status="PENDING"
-    )
-    db.add(reload_event)
-    db.commit()
+    # 2. SYSTEM_RELOAD Outbox 이벤트 적재 (데몬 프로세스들로 전파) — 범위 없음 = 전부
+    publish_reload(db, msg="Reload configs and custom scripts modules")
 
     return {"status": "success", "message": "System configurations and custom scripts modules successfully reloaded."}

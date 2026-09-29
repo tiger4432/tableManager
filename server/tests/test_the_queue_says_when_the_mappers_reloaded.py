@@ -79,7 +79,9 @@ def test_clear_forgets_both():
                                               "mapper_reload_age_seconds": None,
                                               "outbox_purge_age_seconds": None,
                                               "outbox_purge_deleted": None,
-                                              "outbox_purge_capped": None}
+                                              "outbox_purge_capped": None,
+                                              "rules_loaded_age_seconds": None,
+                                              "rules_base": None}
 
 
 # ------------------------------------------------------------------- the seam, both ways
@@ -112,4 +114,6 @@ def test_the_route_publishes_both_names():
                                                    "mapper_reload_age_seconds",
                                                    "outbox_purge_age_seconds",
                                                    "outbox_purge_deleted",
-                                                   "outbox_purge_capped"}
+                                                   "outbox_purge_capped",
+                                                   "rules_loaded_age_seconds",
+                                                   "rules_base"}

@@ -643,24 +643,31 @@ def read_rules_document(path=None):
     `try` exactly as it did (`data.get` on a list), so the same file that logged
     「Failed to load chain rules」 yesterday logs it today, with the same words.
 
-    Returns `{document, rules, path, exists, error}` — `exists=False` is the answer for a
+    Returns `{document, rules, path, exists, error, base}` — `exists=False` is the answer for a
     file that is not there, which is what lets the route keep saying `absent` rather than
     `empty`.
     """
+    from ledger import admin as ledger_admin
+
     target = path or RULES_PATH
     if not os.path.exists(target):
-        return {"document": {}, "rules": [], "path": target, "exists": False, "error": None}
+        return {"document": {}, "rules": [], "path": target, "exists": False, "error": None,
+                "base": ledger_admin.ABSENT_FINGERPRINT}
 
-    document, rules, error = {}, [], None
+    document, rules, error, base = {}, [], None, None
     try:
-        with open(target, "r", encoding="utf-8") as handle:
-            data = json.load(handle)
-            rules = data.get("rules", [])
-            document = data if isinstance(data, dict) else {}
+        with open(target, "rb") as handle:
+            raw = handle.read()
+        # `base` is the fingerprint of the bytes parsed below - the save's `base` names the
+        # same thing, so a screen can say whether THIS read saw that save (총괄 76aa4b6ed).
+        base = ledger_admin.content_fingerprint(raw)
+        data = json.loads(raw.decode("utf-8"))
+        rules = data.get("rules", [])
+        document = data if isinstance(data, dict) else {}
     except Exception as exc:
         document, rules, error = {}, [], str(exc)
     return {"document": document, "rules": rules, "path": target,
-            "exists": True, "error": error}
+            "exists": True, "error": error, "base": base}
 
 
 def load_chain_rules():
@@ -887,8 +894,32 @@ def load_chain_rules():
     #    로더 «안»이라 호출자가 둘이어도 저자는 하나다.
     activity.registry.seed_rules(
         (r or {}).get("name") or "<unnamed rule>" for r in (rules or ()))
+    # Which file this process now runs, and when - the queue view carries it so a screen can
+    # match it against a save's `base` (총괄 76aa4b6ed).
+    activity.registry.note_rules_loaded(read.get("base"))
     _LOADED_RULES = copy.deepcopy(rules)
     return rules
+
+
+def reread_rules_only():
+    """[총괄 76aa4b6ed, 소유자 09-29 ㄱ] A saved chain declaration: the rules again, nothing
+    else - no mapper re-import, no table shapes, no warmup. A name the registry does not hold
+    walks the mapper package once (a file added since this process looked); still unknown,
+    the loader refuses it as it always has."""
+    mapper_sdk.look_again_on_a_miss()
+    rules = load_chain_rules()
+    _reset_right_keys()
+    return rules
+
+
+def _reset_right_keys():
+    """[판정 667] The worker re-read its declarations: its right-key answer expires."""
+    try:
+        from chain import synthesis as _synthesis_for_keys
+
+        _synthesis_for_keys.reset_right_key_cache()
+    except Exception as _reset_error:                                  # noqa: BLE001
+        logger.warning("[Warmup] 오른쪽 키 캐시를 못 비웠습니다(계속): %s", _reset_error)
 
 
 def loaded_chain_rules():
@@ -2371,13 +2402,9 @@ def warmup_worker(rules, db_session_factory=None):
     #    That answer used to expire on a 5-second clock because the web server's reload hook
     #    is the only one that existed and workers never reach it. Keyed to loading instead,
     #    every process invalidates where it actually re-reads - and this is that seat for the
-    #    chain worker, which runs on boot AND on SYSTEM_RELOAD.
-    try:
-        from chain import synthesis as _synthesis_for_keys
-
-        _synthesis_for_keys.reset_right_key_cache()
-    except Exception as _reset_error:                                  # noqa: BLE001
-        logger.warning("[Warmup] 오른쪽 키 캐시를 못 비웠습니다(계속): %s", _reset_error)
+    #    chain worker, which runs on boot AND on SYSTEM_RELOAD (the rules-only reload has its
+    #    own line in `reread_rules_only`, which does not warm up).
+    _reset_right_keys()
 
     # 0) 🔴 맵퍼 패키지 «전체»를 import 해 데코레이터가 등록되게 한다 (S-188 ⓒ, 판정 300).
     #    아래 ①은 «규칙이 이름 댄» 모듈만 덥히므로 「어떤 맵퍼가 있나」에 답하지 못한다 —
@@ -3886,6 +3913,8 @@ def _end_queries_a_gone_chain_worker_left_sync(db_session_factory):
 
 
 async def start_chain_ingestion_worker(db_session_factory):
+    from runtime import system_reload
+
     logger.info("Initializing Chained Ingestion Worker Daemon...")
 
     # First, before any startup work can queue behind them.
@@ -4089,17 +4118,21 @@ async def start_chain_ingestion_worker(db_session_factory):
 
                 # Check for SYSTEM_RELOAD outbox event to reload configs and code on-demand (throttled)
                 now_ts = time.monotonic()
+                new_reloads = []
                 if now_ts - last_reload_check_ts >= RELOAD_CHECK_INTERVAL:
                     last_reload_check_ts = now_ts
-                    latest_reload = db.query(DatabaseOutbox).filter(
-                        DatabaseOutbox.event_type == "SYSTEM_RELOAD"
-                    ).order_by(DatabaseOutbox.id.desc()).first()
-                else:
-                    latest_reload = None
-
-                if latest_reload and latest_reload.id > last_reload_event_id:
-                    # Sync tracker id
+                    new_reloads = system_reload.reloads_after(db, last_reload_event_id)
+                latest_reload = new_reloads[-1] if new_reloads else None
+                if latest_reload is not None:
                     last_reload_event_id = latest_reload.id
+                reload_work = system_reload.reload_for(system_reload.CHAIN_WORKER, new_reloads)
+
+                if reload_work == system_reload.SCOPE_CHAIN_RULES:
+                    logger.info("[Reload] SYSTEM_RELOAD chain_rules (Event ID: %s) - re-reading "
+                                "the chain rules only", latest_reload.id)
+                    rules = reread_rules_only()
+                    logger.info(f"[Reload] Loaded {len(rules)} active chain ingestion rules.")
+                elif reload_work == system_reload.FULL:
                     logger.info(f"[Reload] SYSTEM_RELOAD trigger detected (Event ID: {latest_reload.id}). Reloading configurations...")
                     # 1. Reload dynamic modules cache
                     reload_worker_process_cache()
@@ -4121,9 +4154,12 @@ async def start_chain_ingestion_worker(db_session_factory):
                     # 3. [Warmup] 캐시 무효화로 콜드 스타트가 재발하지 않도록 매퍼를 즉시 재웜업.
                     #    (DB 풀은 리로드에도 유지되므로 프라임 생략 — db_session_factory=None)
                     warmup_worker(rules)
-                    # 4. ⑤ The index work again - the comment on its seat promises 「every reload」.
+
+                if reload_work:
+                    # 4. ⑤ The index work again - the comment on its seat promises 「every reload」,
+                    #    the rules-only one too: a join saved with `key.unique` gets its index now,
+                    #    not at the next restart (총괄 76aa4b6ed ②).
                     index_work = _start_index_work(rules, db_session_factory, after=index_work)
-                    
                     # Mark the trigger event as SUCCESS in this tx if it is not processed yet
                     # (This event only serves as IPC notify signal, does not execute mappers)
                     if latest_reload.processed_chain == False:

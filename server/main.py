@@ -6416,7 +6416,7 @@ def get_chain_rule_raw(name: str = None):
 
 
 @app.post("/admin/chain/rules/raw", dependencies=[Depends(require_admin_token)])
-def post_chain_rule_raw(payload: dict = Body(...)):
+def post_chain_rule_raw(payload: dict = Body(...), db: Session = Depends(get_db)):
     """규칙 «하나»를 저장한다. 🔴 «새» 규칙은 «켜지지 않은 채로» 저장된다.
 
     표 저장은 등록일 뿐 아무것도 돌지 않지만, 규칙 저장은 다음 SYSTEM_RELOAD 가 읽어
@@ -6428,11 +6428,11 @@ def post_chain_rule_raw(payload: dict = Body(...)):
     from ledger import admin
     return admin.save_chain_rule_raw(
         str(payload.get("name") or ""), payload.get("declaration"),
-        str(payload.get("base") or ""))
+        str(payload.get("base") or ""), db=db)
 
 
 @app.post("/admin/chain/rules/grammar", dependencies=[Depends(require_admin_token)])
-def post_chain_rule_grammar(payload: dict = Body(...)):
+def post_chain_rule_grammar(payload: dict = Body(...), db: Session = Depends(get_db)):
     """규칙 «하나»를 통합 문법으로 «저장»하거나, 평면으로 «되돌린다».
 
     🔴 [판정 548] 변환의 저자는 «서버 하나»입니다. 화면은 시킬 뿐입니다 — 화면이 변환하면
@@ -6447,7 +6447,7 @@ def post_chain_rule_grammar(payload: dict = Body(...)):
         str(payload.get("name") or ""),
         payload.get("to"),
         bool(payload.get("dry_run", True)),
-        payload.get("base"))
+        payload.get("base"), db=db)
 
 
 @app.get("/admin/ledger/relations", dependencies=[Depends(require_admin_token)])

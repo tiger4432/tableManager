@@ -376,9 +376,19 @@ def file_fingerprint(path: str) -> str:
     which is exactly why this cannot be left to「operators will coordinate」.
     """
     if not os.path.exists(path):
-        return "sha256:absent"
+        return ABSENT_FINGERPRINT
     with open(path, "rb") as handle:
-        return "sha256:" + hashlib.sha256(handle.read()).hexdigest()
+        return content_fingerprint(handle.read())
+
+
+#: The fingerprint of a file that is not there.
+ABSENT_FINGERPRINT = "sha256:absent"
+
+
+def content_fingerprint(data: bytes) -> str:
+    """`file_fingerprint` of these bytes - for a reader that must name the bytes it READ, not
+    the file as it stands a moment later (the chain worker, 총괄 76aa4b6ed)."""
+    return "sha256:" + hashlib.sha256(data).hexdigest()
 
 
 def source_raw_view(source: str = None) -> dict:
@@ -739,7 +749,7 @@ def rule_index_named(rules, name):
     return found[0] if found else None
 
 
-def save_chain_rule_raw(name: str, declaration, base: str) -> dict:
+def save_chain_rule_raw(name: str, declaration, base: str, db=None) -> dict:
     """Write ONE chain rule. 🔴 A NEW RULE IS SAVED ARMED BUT NOT FIRING.
 
     A saved table registers something and nothing runs; a saved rule is re-read by
@@ -894,6 +904,28 @@ def save_chain_rule_raw(name: str, declaration, base: str) -> dict:
 
     backup = _atomic_write(path, merged)
     ingestion_worker.forget_loaded_chain_rules()     # this process reads the saved file next
+    # 🔴 [총괄 76aa4b6ed, 소유자 09-29 「체인 선언 저장후 무슨 반응이라도 나오게」] And the chain
+    #    worker re-reads its rules - a SYSTEM_RELOAD scoped to them, not the whole reload.
+    #    Until this, a save ran nowhere until someone pressed Reload.
+    # ⚠️ The file is already written: a row that cannot be written is a line, never a refused
+    #    save - refusing would send the operator back with a base that is now stale.
+    # ⚠️ Through the caller's session when it has one (the routes do) - the request's own.
+    try:
+        from runtime import system_reload
+
+        own = db is None
+        if own:
+            from database.database import SessionLocal
+            db = SessionLocal()
+        try:
+            system_reload.publish_reload(db, scope=system_reload.SCOPE_CHAIN_RULES, rule=name)
+        finally:
+            if own:
+                db.close()
+    except Exception as exc:                                        # noqa: BLE001
+        logger.error("[ChainRules] %s saved, but the chain worker was NOT told - it reads the "
+                     "rules at the next Reload or restart: %s: %s",
+                     name, type(exc).__name__, exc)
     return {"ok": True, "name": name, "base": file_fingerprint(path),
             # ⚠️ STILL THE NUMBER OF RULES, not of entries: carrying an unreadable entry
             #    must not change a number the screen already draws (판정 556).
@@ -934,7 +966,7 @@ def _rerun_report(before, after):
 
 
 def convert_chain_rule_grammar(name: str, to: str, dry_run: bool = True,
-                               base: str = None) -> dict:
+                               base: str = None, db=None) -> dict:
     """규칙 «하나»의 문법을 바꾼다 — 통합으로, 또는 평면으로 «되돌려».
 
     🔴 [판정 548] THE SERVER CONVERTS AND THE SCREEN ASKS. A screen that did its own
@@ -1029,7 +1061,7 @@ def convert_chain_rule_grammar(name: str, to: str, dry_run: bool = True,
             "Reopen this rule and save again - without its fingerprint the product cannot "
             "tell whether the file changed after you opened it, so nothing was saved")
 
-    saved = save_chain_rule_raw(name, converted, base)
+    saved = save_chain_rule_raw(name, converted, base, db=db)
     answer["saved"] = True
     answer["base"] = saved.get("base")
     answer["backup"] = saved.get("backup")

@@ -375,6 +375,14 @@ def discover(package="mappers"):
     return tuple(sorted(MAPPER_REGISTRY)), refusals
 
 
+def look_again_on_a_miss():
+    """The next name `rule_run.runnable` cannot find walks the package once more. Additive -
+    nothing is cleared - and nothing is walked unless a name misses (총괄 76aa4b6ed ①: a saved
+    rule may name a mapper file added since this process last looked)."""
+    global _DISCOVERY_ATTEMPTED
+    _DISCOVERY_ATTEMPTED = False
+
+
 def ensure_discovered(package="mappers"):
     """Walk the mapper package if nobody has yet, so 「that name is not registered」
     cannot be this process's way of saying 「I have not looked」.
