@@ -64582,3 +64582,49 @@ PG       7 failed, 117 passed, 7427 deselected in 168.35s (0:02:48)
 ```
 
 지시대로 착지하고 멈춥니다. 감시는 켜 둡니다.
+
+## [구현자 -> 총괄] 착지 4ee01686e — 실패 기록의 규칙 · 표는 «실패한 자리» 하나가 · row 는 id 목록 또는 null (45f5da3f5)
+
+```
+저자 하나   named_failure(rules, tables, text) — 사유 머리 [rules=.. target=..] 와 기록의 rules · tables 를 «같이» 짓는 함수 하나
+           부르는 자리 둘: 맵퍼 실패(그 규칙 · 그 target) · 쓰기 실패(그 표에 쓴 규칙들 · 쓰던 표)
+           이름은 사유 값에 실려(str 의 하위형 NamedFailure) _failure_record 까지 감
+           그룹 함수의 3-튜플 모양은 그대로 — 그 이름을 든 파일(부르는 곳 · 주석 포함) 42 개는 안 바뀜
+           고른 것: 반환 모양을 바꿔도 된다 하셨지만 튜플은 두고 사유 값에 실음
+           위험: 실패 자리와 기록 사이에서 누가 사유 글자를 다시 지으면(.strip() · 머리 덧붙임) 이름이 조용히 null 이 됨
+           잡는 것: 게이트의 진짜 자리 칸이 rules == [규칙] 을 단언 — 떨어지면 빨강
+모름       그 자리가 이름을 안 대면 rules · tables = null. 깨운 목록은 기록에 없음 — woke 칸은 「필요하면」이라 안 만듦
+           이름 없는 사유(예: 행이 안 읽혀 규칙이 돌기 전에 거절)는 그대로 null
+row        오류가 대는 행 id 목록, 안 대면 null. "not given by the error" 는 로그 줄에만
+말         맵퍼 실패의 머리 [rule=X target=Y] -> [rules=X target=Y] — 쓰기 실패와 한 모양
+           옛 머리 [rule= 를 읽는 곳(워커 밖 추적 파일 · task/history/archive 제외): 코드·시험 0 · RUN.md 1 은 이 변경을 알리는 인용 (카나리아 [rules= 든 시험 파일 2)
+           ⚠️ 워커 안 쪽 넘김 실패 문장에 [rule=X target=Y] page N 이 하나 남음 — 머리가 아니라 본문이고 쓰기 자리가 [rules= 머리를 씌움
+           로그 줄: 모르면 rules=(unknown) tables=(unknown) — 사유 머리와 같은 낱말
+           RUN.md 는 09-29 낮 절을 고침(같은 재기동이라 새 절 아님) · 가이드 max_group_attempts 줄
+```
+
+| 칸 | 입력 | 답 |
+|---|---|---|
+| 모든 행 실패 — 묶음 1,000 · 행별 3 · 옛 반쪽 | 진짜 맵퍼 자리가 raise | rules [규칙] · tables [표] · row null · 사유에 머리 · 로그 1 줄 |
+| 쓰기 실패 | 진짜 쓰기 자리가 raise | rules [규칙] · tables [쓰던 표] |
+| 이름 없는 실패 | 행이 안 읽혀 규칙 전에 거절 · 그룹은 규칙을 깨웠음 | rules · tables · row 모두 null · 로그 (unknown) |
+| 대조군 · 성공 · 재시도 | 전과 같음 | 전과 같음 |
+
+```
+통과     (main 에서 게이트 + 사유 문장 · 묶음 시험) 32 passed in 6.01s
+변이     깨운 목록으로 대신 채움 -> 1 failed, 7 passed in 2.10s — test_a_failure_whose_seat_names_no_rule_leaves_the_record_unknown
+         row 를 문자열로 -> 4 failed, 4 passed in 2.29s — collapsed-1000 · per_row-3 · old_half-4 · test_a_failure_whose_seat_names_no_rule_leaves_the_record_unknown
+         (지난 셋) 쪼개기 되살림 -> 3 failed, 5 passed in 2.23s — collapsed-1000 · old_half-4 · test_one_poison_row_takes_its_chunk_failed_with_it
+                  기록에서 rules 칸 뺌 -> 7 failed, 1 passed in 3.01s — collapsed-1000 · per_row-3 · old_half-4 · test_a_failed_write_names_the_table_it_was_writing · test_a_failure_whose_seat_names_no_rule_leaves_the_record_unknown · test_one_poison_row_takes_its_chunk_failed_with_it · test_retry_puts_the_failed_chunk_back_once_and_writes_nothing_new
+                  로그 줄을 사건마다 -> 1 failed, 7 passed in 2.08s — per_row-3
+전체     5 failed, 7382 passed, 163 skipped, 3 xfailed in 728.73s (0:12:08)
+PG       7 failed, 117 passed, 7429 deselected in 182.53s (0:03:02)
+재기동   체인 워커. 마이그레이션 없음
+```
+
+```
+옛 기록  이미 FAILED 인 사건은 칸 자체가 없음 — 박스 FAILED 339 의 error_log 칸: failed_at 339 · reason 339 · reexpanded_into 78
+        rules · tables · row 가 «없는» 기록을 화면이 null 로 읽어야 함 — 클라 지시에 한 줄 필요
+```
+
+지시대로 착지하고 멈춥니다. 감시는 켜 둡니다.
