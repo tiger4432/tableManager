@@ -61788,3 +61788,30 @@ RUN.md               재기동 서버 · 확인할 줄(「Client disconnected. T
                  새 맵퍼 이름 규칙 저장 -> 맵퍼 찾아 돎 · 버튼 Reload 는 전과 같음 · 변이(범위 무시 = 무거운 길) -> 빨강
 덤(문서)          RUN.md 09-29 밤 · 밤2 · 밤3 의 「재기동 서버」 — 조인은 «체인 워커»에서 돎. run_app.bat 전체 재기동이 아니면 체인 워커도 재기동이라고 고침
 ```
+
+---
+
+> **[총괄 -> 구현자] 새 항목 — 대조 묶음 저장: 표 둘 + 체인 선언 하나 (소유자 09-30 「대조 묶음 저장 테이블 선언하고 거기에 체인 선언 해도 되겠는데 그냥」 · 「일단 대조 저장 쪽만 만들어서 푸시해 확인해볼게」)**
+
+```
+왜          액션 발급 설계(보드 PROJECT_STATUS 맨 위 «액션» 절)의 1단. 양불 대조 결과는 지금 화면에서 보고 사라진다
+            -> 표로 남겨 AI 입력 · 액션 근거의 신원을 만든다. 이 라운드는 «저장»만 — 발급 함수 · 후보 · 닫힘은 짓지 않는다
+표          contrast_run     요청 한 줄 — run_id(키) · positive(불량 씨앗들) · negative(양품 씨앗들) · since · as_of(= until) ·
+                             걷기 인자(hops · follow · direction · node_limit 류, 걷기 라우트와 같은 이름) · note · 저장한 사람
+            contrast_factor  결과 — run_id · 인자 노드 id (둘이 키) · 종류 · 이름 · 불량 닿음 · 불량 분모 · 양품 닿음 · 양품 분모 ·
+                             잰 것/모델에만 · 순위층 · 동률 · 비교 불가 · 걸은 길 · contrast(contrasted|unexamined) · complete
+            칸 이름은 걷기 응답(propagation.ranked · top_set)의 이름을 따른다 — 새 낱말을 짓지 않는다
+체인        contrast_run -> 맵퍼 -> contrast_factor (기존 선언 문법 그대로, 파생 행)
+맵퍼        걷기 라우트가 쓰는 순위 «그 함수»를 부른다 (ledger_subgraph 의 _propagation · _rank_layers — 좌석 하나). 순위를 다시 짜지 않는다
+            as_of 까지로 걷기를 묶는다 — 리플레이해도 같은 답. 제품 맵퍼(도메인 낱말 없음) · 추적 파일
+모름은 값    양품 없음 -> unexamined · 잘린 걸음 -> complete false ·
+            후보 0 과 «아직 안 돎»을 가를 자리 — run 쪽에 계산 시각 · 후보 수를 남기는 길을 제안해 달라(선언으로 되면 선언으로)
+표본        table_config · chain_rules 표본에 둘 다 + 가이드 두 줄:
+            「보드에서 저장하면 contrast_run 에 행이 들어가고, 체인이 대조를 계산해 contrast_factor 를 채웁니다」
+게이트       run 한 줄 -> factor 행 수 = 같은 인자로 부른 걷기 라우트의 ranked 수 · 두 수와 분모 · 순위층이 같음 ·
+            양품 없음 -> unexamined · 잘린 걸음 -> complete false · 같은 run 리플레이 -> 같은 행 · 두 번 저장 -> run 둘 ·
+            변이(순위 함수 대신 다른 계산 · as_of 무시) -> 빨강
+박스        박스 원장에서 불량 · 양품 씨앗을 골라 한 번 돌리고 행 수 · 걸린 시간을 보고
+RUN.md      돌릴 명령 · 그 답의 뜻 · 끄는 스위치(이 체인 규칙 enabled false) · 재기동 뒤 볼 로그 줄
+순서        클라(보드 «Save contrast»)가 이 표에 쓴다 — 표 · 칸 이름을 먼저 푸시하고 채널로 알려 달라
+```
