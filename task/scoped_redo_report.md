@@ -64324,3 +64324,57 @@ PG         7 failed, 117 passed, 7403 deselected in 164.56s (0:02:44) — 실패
 여쭐 것: ㄱ · ㄴ · ㄷ 중 무엇인지. 답을 받기 전에는 짓지 않습니다.
 
 멈춥니다. 감시는 켜 둡니다.
+
+---
+
+## [구현자 -> 총괄] 착지 fdda4ebf6 — class = 낱말 하나 또는 목록 (엔터티 · 술어) · follow=class:<낱말> · 선언창 (e6dd72526 · 07889c83d)
+
+### 🔴 먼저 — 선언창의 회귀 하나 (클라 몫)
+```
+무엇       스켈레톤에는 「낱말 하나 또는 목록」을 말할 노드가 없어(record · map · leaf 셋뿐) 두 class 칸 모두 «낱말 목록» 노드로 그림
+          그러면 엔터티 class 를 낱말 하나로 적은 선언은 창에서 그 값을 «보여만» 주고 편집 칸을 안 냄(valueFits · 소유자 09-22 규칙)
+          오늘은 편집됐던 칸이라 «회귀»입니다
+몇        이 박스 3 · 저장소 샘플 3(quantity · defect_kind · recipe) · transfer 샘플 0 · 운영은 못 봄
+안 한 것    파일의 "static" 을 ["static"] 로 고쳐 피하지 않음 · 창에 넘기는 값을 목록으로 바꿔 보여 주지 않음(파일에 없는 모양을 보이게 됨)
+닫는 길     창이 목록 노드에 든 낱말 하나를 「한 칸짜리 목록」으로 그리기 — 클라 몫
+파일 쪽     읽기는 그대로 맞음 — 낱말 하나는 한 칸짜리 목록과 같은 뜻(게이트 칸)
+```
+
+### 읽는 자리 — 한 함수 (전 · 후)
+```
+함수       setup_bundle.class_words(spec) — 없음 · None · '' 는 부류 없음, 낱말은 한 칸짜리, 목록은 그대로 · has_class(spec, 낱말)
+전         class 를 직접 읽는 서버 자리 4 (server/ledger/setup_bundle.py:1413 · server/ledger/trace_router.py:446 · server/ledger/trace_router.py:476 · server/ledger/trace_router.py:907) + 클라 1 (walk/derive.js)
+후         직접 읽는 자리 2 (server/ledger/setup_bundle.py:1269 · server/ledger/setup_bundle.py:1289 — 그 함수와 모양 검사) · 그 함수를 부르는 자리 7 (server/config_resolve_report.py:1108 · server/ledger/setup_bundle.py:1279 · server/ledger/trace_router.py:348 · server/ledger/trace_router.py:503 · server/ledger/trace_router.py:535 · server/ledger/trace_router.py:970 · server/ledger/trace_router.py:990)
+          클라는 서버가 준 목록에 static 이 있나만 봄 — 모양을 다시 해석하지 않음
+셈         git grep -n -E "get\(.class.\)|\[.class.\]" -- 'server/*.py' ':!server/tests' ':!server/migrations' ':!server/ledger/config.py'
+          (ledger/config.py 의 class 는 방출 규칙의 다른 뜻) · 부르는 자리는 has_class\(|class_words\( 로
+```
+
+### 지은 것
+```
+문법       엔터티 · 술어 모두 class = 낱말 하나 또는 낱말 목록. 저장 관문이 술어의 class 칸을 받음(오늘까지 거절)
+낱말       술어 — 운영자의 낱말, 코드는 하나도 모름 · 엔터티 — 걷기가 읽는 static · dynamic 중 하나(둘을 같이 적으면 거절). 전과 같은 값 규칙
+걷기       follow=class:<낱말> = 그 낱말을 든 술어 전부. 이름 follow 와 섞어 적어도 됨
+          모르는 낱말 -> 422 predicate_class_not_declared · unknown · declared — node_type_not_declared 와 같은 모양
+          ⚠️ 이름이 class 인 술어는 이제 이름으로 못 따라감(class: 가 먼저 풀림) — 박스 · 샘플에 0. 막는 칸은 안 지음
+선언 라우트  entities[].class · predicates[].class 가 «목록»(없으면 null). 🔴 엔터티 class 의 모양이 "static" -> ["static"] 로 바뀜
+          읽던 클라 자리 1(walk/derive.js)은 같이 고침 · 서버 밖 소비자는 못 셈
+해석 보고서  선언된 술어 항목의 fields 에 class(적힌 것만)
+선언창      스켈레톤 — 엔터티 class 노드를 낱말 목록으로, 술어 레코드에 class 칸(같은 모양). 라벨 영어
+          게이트: 창의 초안 저장 -> 검토 -> 활성화 -> 파일에 ["lineage","model"] 그대로 · 다시 열면 그대로 · 낱말 하나로 적힌 엔터티 class 는 안 건드림
+값         어느 파일에도 안 넣음 — 부류는 소유자가 적음
+말         WALK.md §1 에 follow=class:<낱말> 과 한 문법 · §6 의 「클라가 class === 'static' 을 그대로 씀」을 목록 판정으로
+```
+
+### 시험
+```
+게이트   server/tests/test_a_declared_thing_carries_classes.py 22 passed in 0.70s (main 과 같은 내용의 작업 트리에서 다시 돌림)
+변이     follow 부류 풀기 뺌 -> 2 빨강 · 저장 관문에서 class 뺌 -> 2 빨강 · 정적 판정을 옛 낱말 비교로 -> 1 빨강 · 라우트가 날값을 실음 -> 1 빨강
+고친 시험 test_the_catalogue_says_which_types_are_static.py — 라우트 class 기대값을 낱말에서 목록으로 · 스켈레톤 칸의 free 가 목록 안으로
+클라     하니스 7 — 「통과 실패」: walk_route_fill_harness 71 0 (exit 0) · walk_wire_harness 94 0 (exit 0) · rnd_board_reach_harness 63 0 (exit 0) · rnd_board_control_trend_harness 59 0 (exit 0) · walk_table_harness 15 0 (exit 0) · declaration_attribute_seats_harness 21 0 (exit 0) · ontology_authoring_panel_harness 91 0 (exit 0)
+전체     5 failed, 7378 passed, 163 skipped, 3 xfailed in 648.38s (0:10:48) — 실패 5 는 이 작업 트리의 알려진 환경 실패(샘플 CRLF 4 · 저장소 루트 1)
+PG       7 failed, 117 passed, 7425 deselected in 164.51s (0:02:44) — 실패 7 은 알려진 일곱과 이름이 같음(새 실패 0)
+재기동   서버(라우트 · 저장 관문 · 스켈레톤). 마이그레이션 없음
+```
+
+지시대로 착지하고 멈춥니다. 감시는 켜 둡니다.
