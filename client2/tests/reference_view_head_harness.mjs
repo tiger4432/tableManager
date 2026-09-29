@@ -306,12 +306,9 @@ const MUTANTS = [
     catches: 'C73-6 a virtual join column is left out',
     from: '    .filter(column => !isVirtualColumn(column) && Object.prototype.hasOwnProperty.call(row.data || {}, column));',
     to: '    .filter(column => Object.prototype.hasOwnProperty.call(row.data || {}, column));' },
-  // 🔴 A WIDER EMPTINESS TEST CLOSES THE PANEL FOR THE ROWS IT EXISTS FOR. `note` is declared
-  //    and blank on purpose, so this mutant makes the screen refuse instead of asking.
-  { id: 'M3', what: 'the emptiness test widens to every bound column',
-    catches: 'C73-1 the request is made at all',
-    from: "  if ((activeRule.decision_key || []).some(column => String(valueOf(row, column)).trim() === '')) {",
-    to: "  if (Object.values(params).some(value => String(value).trim() === '')) {" },
+  // ⚰️ M3 (「the emptiness test widens to every bound column」) retired with the client's
+  //    emptiness test itself (order 8421e0ace): the server judges a blank key per view. That the
+  //    request is still made with `note` blank stays scored by C73-1 · C73-5; [7] K scores the rest.
 ];
 
 /**
@@ -539,6 +536,149 @@ const controls108 = await scoreMutants(C108_CONTROLS, runC108,
     title: '\n  C-108 controls — behaviour unchanged, so nothing may wake.' });
 ran += C108_CONTROLS.length;
 failed += controls108.wrong;
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+// [7] order 8421e0ace — the tab «sometimes» vanished (owner 09-29 「어쩔땐 안나옴. 아예 탭이 없음」).
+//
+// 🔴 THE CAUSE: the rule list was read once per page and a failure was kept as `[]`, so a page
+//    opened while the server was busy never showed the tab again. Scored on a FRESH module per
+//    run (the memory is module state), with a fetch that fails, then answers, then fails.
+// 🔴 K: a blank decision key is the SERVER's to judge per view. The stub answers as the server
+//    does (`missing_binds` -> 400 `missing required bind param(s): [...]`, `str(e)` as detail).
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+console.log('\n[7] the rule list — only an answer is remembered; a blank key is judged per view');
+
+const RULE2 = {
+  name: 'r2', derived_table: 'dt_x', decision_key: ['lot', 'slot'], target_fields: ['dt_lot', 'dt_slot'],
+  reference_views: [{ label: 'by lot', candidate_for: { dt_lot: 'lot' } }, { label: 'by slot' }],
+};
+const REFUSAL = "missing required bind param(s): ['lot']";
+const tabButton = () => globalThis.document.getElementById('tab-reference');
+
+async function ruleSuite(mod) {
+  const names = [];
+  const failures = [];
+  const say = (name, cond, detail) => {
+    names.push(name);
+    if (cond) { console.log(`  PASS ${name}`); return; }
+    failures.push(detail ? `${name} — ${detail}` : name);
+    console.log(`  FAIL ${name}${detail ? ' — ' + detail : ''}`);
+  };
+  armState();
+  state.activeHistoryTab = 'global';
+  tabButton().style.display = 'none';
+  let ruleCalls = 0;
+  let ruleMode = 'http500';
+  let blankLot = false;
+  globalThis.fetch = async (url) => {
+    const u = String(url);
+    if (u.endsWith('/enrichment/rules')) {
+      ruleCalls += 1;
+      if (ruleMode === 'http500') return { ok: false, status: 500, json: async () => ({}) };
+      return { ok: true, status: 200, json: async () => ({ rules: [RULE2] }) };
+    }
+    const index = Number(u.split('/references/')[1].split('?')[0]);
+    if (blankLot && index === 0) {
+      return { ok: false, status: 400, json: async () => ({ detail: REFUSAL }) };
+    }
+    return { ok: true, status: 200, json: async () => ({ columns: ['a'], rows: [{ a: index }] }) };
+  };
+
+  await mod.syncReferenceViewRule();
+  say('R1 a rule list that could not be read keeps the tab', tabButton().style.display === '',
+    JSON.stringify(tabButton().style.display));
+  await mod.showReferenceView();
+  say('R2 ...and the tab says why', host.textContent === 'Reference views could not be read — HTTP 500',
+    host.textContent);
+
+  ruleMode = 'ok';
+  let asked = 0;
+  let pending = null;
+  mod.refreshReferenceForSelection(() => { asked += 1; pending = mod.syncReferenceViewRule(); return pending; });
+  await pending;
+  say('R3 the next row pick asks again', asked === 1 && ruleCalls === 2, `asked ${asked} · reads ${ruleCalls}`);
+  say('R4 ...and the answer brings the rule', tabButton().style.display === ''
+    && mod.fillTargetOrdinals().size === 2, `ordinals ${mod.fillTargetOrdinals().size}`);
+
+  ruleMode = 'http500';
+  await mod.syncReferenceViewRule();
+  mod.refreshReferenceForSelection(() => { asked += 1; });
+  say('R5 once answered, a later sync or pick does not ask again and the rule stays',
+    ruleCalls === 2 && asked === 1 && mod.fillTargetOrdinals().size === 2,
+    `reads ${ruleCalls} · asked ${asked} · ordinals ${mod.fillTargetOrdinals().size}`);
+
+  blankLot = true;
+  ROW.data.lot.value = '';
+  state.activeHistoryTab = 'reference';
+  await mod.showReferenceView();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  ROW.data.lot.value = 'L-1';
+  const empties = byClass(host, 'reference-view-empty').map((n) => n.textContent);
+  say('K1 a row with a blank key still asks every view', byClass(host, 'reference-view-table').length === 1,
+    host.textContent.slice(0, 80));
+  say("K2 ...the view that binds the blank key shows the server's sentence verbatim",
+    empties.length === 1 && empties[0] === REFUSAL, JSON.stringify(empties));
+
+  state.currentTable = 'dt_other';
+  await mod.syncReferenceViewRule();
+  say('R6 a table the answer gives no rule hides the tab', tabButton().style.display === 'none',
+    JSON.stringify(tabButton().style.display));
+  state.currentTable = 'dt_x';
+  return { ran: names.length, names, failures };
+}
+
+async function networkSuite(mod) {
+  armState();
+  state.activeHistoryTab = 'global';
+  globalThis.fetch = async () => { throw new TypeError('Failed to fetch'); };
+  await mod.syncReferenceViewRule();
+  await mod.showReferenceView();
+  return host.textContent;
+}
+
+const ruleBase = await ruleSuite((await loadWithProbe(SUBJECT, { tag: 'rules' })).module);
+ran += ruleBase.ran;
+failed += ruleBase.failures.length;
+eq('R7 a request that never answers says so', 'Reference views could not be read — request failed',
+  await networkSuite((await loadWithProbe(SUBJECT, { tag: 'net' })).module));
+
+const RULE_MUTANTS = [
+  // 🔴 THE DEFECT ITSELF, put back: a failed read is remembered as «no rules».
+  { id: 'M12', what: 'a failed read is remembered as no rules', catches: 'R1 a rule list',
+    mutate: (text) => swap(text,
+      "        if (!res.ok) { rulesFailure = `Reference views could not be read — HTTP ${res.status}`; return; }",
+      '        if (!res.ok) { rulesAnswer = []; return; }') },
+  { id: 'M13', what: 'an unread list hides the tab', catches: 'R1 a rule list',
+    mutate: (text) => swap(text, '  const shown = activeRule || !rulesAnswer;', '  const shown = activeRule;') },
+  { id: 'M14', what: 'the tab opens on nothing', catches: 'R2 ...and the tab says why',
+    mutate: (text) => swap(text, '    elements.referenceViewContent.textContent = rulesFailure;\n', '') },
+  { id: 'M15', what: 'a row pick does not ask again', catches: 'R3 the next row pick',
+    mutate: (text) => swap(text, '  if (!rulesAnswer) { resync?.(); return; }\n', '') },
+  { id: 'M16', what: 'an answer is asked again on every sync', catches: 'R5 once answered',
+    mutate: (text) => swap(text, '  if (rulesAnswer) return Promise.resolve(rulesAnswer);\n', '') },
+  // 🔴 The second judge, put back: the screen refuses the panel before asking the server.
+  { id: 'M17', what: 'the screen judges a blank key before the server', catches: 'K1 a row with a blank key',
+    mutate: (text) => swap(text, '  const sequence = ++requestSequence;\n  elements.referenceViewContent.textContent',
+      "  if ((activeRule.decision_key || []).some(column => String(valueOf(row, column)).trim() === '')) "
+      + "{ elements.referenceViewContent.textContent = 'The selected row has an empty decision key · no reference view'; return; }\n"
+      + '  const sequence = ++requestSequence;\n  elements.referenceViewContent.textContent') },
+];
+const RULE_CONTROLS = [
+  { id: 'C3', what: 'the in-flight slot is renamed',
+    mutate: (text) => swap(text, 'let rulesInFlight = null;', 'let rulesPending = null;')
+      .split('rulesInFlight').join('rulesPending') },
+];
+const runRules = async (m) => ruleSuite((await loadWithProbe(SUBJECT, { mutate: m.mutate })).module);
+const scoredRules = await scoreMutants(RULE_MUTANTS, runRules,
+  { baselineRan: ruleBase.ran, baselineNames: ruleBase.names,
+    title: '\n  [7] mutants — each must be caught by the check it names.' });
+ran += RULE_MUTANTS.length;
+failed += scoredRules.wrong;
+const controlsRules = await scoreMutants(RULE_CONTROLS, runRules,
+  { mustCatch: false, baselineRan: ruleBase.ran, baselineNames: ruleBase.names,
+    title: '\n  [7] controls — behaviour unchanged, so nothing may wake.' });
+ran += RULE_CONTROLS.length;
+failed += controlsRules.wrong;
 
 console.log(`\n════ RESULT: ${ran - failed} passed, ${failed} failed ════`);
 console.log(`ASSERTIONS ${ran} ${failed}`);

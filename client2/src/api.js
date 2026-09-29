@@ -7,7 +7,7 @@ import { elements } from './dom.js';
 import { activateHistoryTab } from './history_tabs.js';
 import { clearRangeSelection } from './clipboard.js';
 import { updateSelectedCellUI, updateTxModeUI } from './ui.js';
-import { renderGrid, updateGridSortState, updateLoadedCount, updatePaginationUI, ensureCellObject, markCellOverwritten, applyFillTargetHeaders, sortQueryTail } from './grid.js';
+import { renderGrid, updateGridSortState, updateLoadedCount, updatePaginationUI, ensureCellObject, markCellOverwritten, syncReferenceRule, sortQueryTail } from './grid.js';
 // 「Matches:」를 쓰는 자리는 다섯입니다. 철자와 «세는 중» 판정은 한 곳에 삽니다.
 import { setMatchCount } from './match_count.js';
 import { loadHistory } from './timeline.js';
@@ -16,7 +16,6 @@ import { getLocalTimeString, showToast } from './utils.js';
 import { failureFactOf, fetchFailureLine } from './config_resolve_view.js';
 import { resetSuggestLearning } from './value_suggest.js';
 import { snapshot, commitIfRecorded } from './effort_meter.js';
-import { syncReferenceViewRule } from './enrichment_reference_view.js';
 
 /**
  * Write a status badge WITHOUT trusting the handle to exist.
@@ -255,9 +254,8 @@ export async function switchTable(tableName) {
 
   // Enrichment 결손 배지: fire-and-forget (테이블 전환을 블로킹하지 않음, 실패 무음)
   // The headers get their ①② here, not in `renderGrid` above: the rule is still in flight
-  // at that point. `.catch` keeps the stated fire-and-forget contract -- adding a `.then`
-  // to a bare call would otherwise turn a silent failure into an unhandled rejection.
-  syncReferenceViewRule().then(applyFillTargetHeaders).catch(() => {});
+  // at that point. The pairing and its `.catch` live in `syncReferenceRule`.
+  syncReferenceRule();
 
 }
 

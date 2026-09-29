@@ -20,7 +20,7 @@ import {
 } from './clipboard.js';
 import { applyValueToSelectedRange, updateSelectedCellUI } from './ui.js';
 import { SuggestCellEditor, handleEditorKey, isSuggestEditorActive } from './value_suggest.js';
-import { refreshReferenceForSelection, fillTargetOrdinals } from './enrichment_reference_view.js';
+import { refreshReferenceForSelection, fillTargetOrdinals, syncReferenceViewRule } from './enrichment_reference_view.js';
 import { ledgerColumnDef } from './grid_ledger_column.js';
 import { localStamp, NO_TIME } from './server_time.js';
 
@@ -768,6 +768,13 @@ export function applyFillTargetHeaders() {
   state.gridApi.setGridOption('columnDefs', buildColumnDefs());
 }
 
+/** Read the table's reference rule, then give the headers their ①② -- the ONE pairing of the
+ *  two. A table load and a row pick after an unread rule list both come through here.
+ *  Fire-and-forget: `.catch` keeps a failed read from becoming an unhandled rejection. */
+export function syncReferenceRule() {
+  return syncReferenceViewRule().then(applyFillTargetHeaders).catch(() => {});
+}
+
 let selectionListener = null;
 
 /** 선택이 바뀔 때 불릴 함수 하나. 화면이 자기 부품을 연결합니다. */
@@ -1337,7 +1344,7 @@ export function renderGrid(initialRows) {
 
       state.selectedCell = { rowId, colId, value: val, rowIndex: event.rowIndex };
       updateSelectedCellUI();
-      refreshReferenceForSelection();
+      refreshReferenceForSelection(syncReferenceRule);
       if (state.activeHistoryTab !== 'global') {
         loadHistory();
       }

@@ -11,7 +11,12 @@ import { serializeTsv } from './tsv.js';
 // 아닙니다 — 그 구별이 없으면 「0 행」과 「안 왔다」가 화면에서 같은 모양입니다.
 import { isCount } from './absent.js';
 
-let rulesPromise = null;
+// 🔴 ONLY AN ANSWER IS REMEMBERED (owner 09-29 「어쩔땐 페이지에 나오고 어쩔땐 안나옴」). A failed
+//    read used to be kept as `[]` for the life of the page, so a page opened while the server
+//    was busy never showed the tab again. A failure is now said on the tab and asked again.
+let rulesAnswer = null;      // the last rule list the server returned
+let rulesFailure = '';       // why there is no list yet
+let rulesInFlight = null;
 let activeRule = null;
 let requestSequence = 0;
 let keyboardIsolationInstalled = false;
@@ -32,20 +37,34 @@ function activateReferenceTab() {
   showHistoryPane(elements.referenceView);
 }
 
-export function refreshReferenceForSelection() {
+/** A row pick. `resync` is the caller's rule read (with its ①② headers), used while the rule
+ *  list is still unknown -- a pick is the next chance to ask again. */
+export function refreshReferenceForSelection(resync) {
+  if (!rulesAnswer) { resync?.(); return; }
   // A row change only refreshes this sidebar when the operator is actually
   // looking at it. Normal Audit History navigation stays silent and unchanged.
   if (state.activeHistoryTab === 'reference') showReferenceView();
 }
 
-export async function syncReferenceViewRule() {
-  if (!rulesPromise) {
-    rulesPromise = fetch(`${API_BASE}/enrichment/rules`)
-      .then(res => res.ok ? res.json() : { rules: [] })
-      .then(data => Array.isArray(data.rules) ? data.rules : [])
-      .catch(() => []);
+function readRules() {
+  if (rulesAnswer) return Promise.resolve(rulesAnswer);
+  if (!rulesInFlight) {
+    rulesInFlight = fetch(`${API_BASE}/enrichment/rules`)
+      .then(async res => {
+        if (!res.ok) { rulesFailure = `Reference views could not be read — HTTP ${res.status}`; return; }
+        const data = await res.json();
+        if (!Array.isArray(data?.rules)) throw new Error('no rule list');
+        rulesAnswer = data.rules;
+        rulesFailure = '';
+      })
+      .catch(() => { rulesFailure = 'Reference views could not be read — request failed'; })
+      .finally(() => { rulesInFlight = null; });
   }
-  const rules = await rulesPromise;
+  return rulesInFlight.then(() => rulesAnswer);
+}
+
+export async function syncReferenceViewRule() {
+  const rules = (await readRules()) || [];
 
   // Which of this table's rules the panel binds to.
   //
@@ -72,7 +91,9 @@ export async function syncReferenceViewRule() {
   activeRule = forTable.find(declaresAFillTarget) || forTable[0] || null;
 
   requestSequence++;
-  if (elements.tabReferenceBtn) elements.tabReferenceBtn.style.display = activeRule ? '' : 'none';
+  // Not knowing is not «no rule»: an unread list keeps the tab, and the tab says why.
+  const shown = activeRule || !rulesAnswer;
+  if (elements.tabReferenceBtn) elements.tabReferenceBtn.style.display = shown ? '' : 'none';
   // On a table that declares a reference rule this is the tab the work happens in, so
   // revealing it is not enough — it is SELECTED. Offering a tab and leaving the operator on
   // Global is the screen knowing which surface the job needs and not saying so.
@@ -587,7 +608,12 @@ function render(results) {
 }
 
 export async function showReferenceView() {
-  if (!activeRule) return;
+  if (!activeRule) {
+    if (rulesAnswer) return;
+    activateReferenceTab();
+    elements.referenceViewContent.textContent = rulesFailure;
+    return;
+  }
   activateReferenceTab();
   const row = selectedRow();
   if (!row) { elements.referenceViewContent.textContent = 'Select a row in the grid first'; return; }
@@ -605,10 +631,10 @@ export async function showReferenceView() {
   const declared = Object.keys(state.currentColumnTypes || {})
     .filter(column => !isVirtualColumn(column) && Object.prototype.hasOwnProperty.call(row.data || {}, column));
   const params = Object.fromEntries(declared.map(column => [column, valueOf(row, column)]));
-  // 🔴 THE EMPTINESS TEST STAYS ON THE DECISION KEY ALONE. Any other declared column is allowed
-  //    to be blank -- that is what the view is being asked about -- and testing all of them
-  //    would refuse to open the panel for exactly the rows an operator opens it for.
-  if ((activeRule.decision_key || []).some(column => String(valueOf(row, column)).trim() === '')) { elements.referenceViewContent.textContent = 'The selected row has an empty decision key · no reference view'; return; }
+  // 🔴 NO EMPTINESS TEST HERE. A blank key is the SERVER's to judge, per view, by the binds that
+  //    view uses (`missing_binds` · `blank_is_missing`): a view that does not bind the blank
+  //    column still answers, and one that does comes back with the server's own sentence.
+  //    The screen used to refuse the whole panel first -- a second judge that knew less.
   const sequence = ++requestSequence;
   elements.referenceViewContent.textContent = 'Loading reference views…';
   const results = await Promise.all((activeRule.reference_views || []).map(async (view, index) => {
