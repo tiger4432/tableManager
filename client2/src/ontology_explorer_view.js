@@ -2217,7 +2217,12 @@ function renderAuthoring(state) {
     // only derived disposition that means "nothing fixed this; widen it if you like".
     // Everything else derived keeps its value and its ground and offers no box.
     if (row.state === 'derived' && row.disposition !== 'default_overridable') return null;
-    const current = getAtPath(draftRaw, splitBundlePath(row.path).slice(2));
+    // The skeleton form's reading, not a second one: one word in a list of words is that
+    // list's one member (`asList`), so a press appends to the word instead of replacing it.
+    // The node is asked of the row's own path -- the buckets pass none.
+    const steps = splitBundlePath(row.path).slice(2);
+    const current = asList(bodyNode && shapeAt(bodyNode, steps, skeleton.defs),
+                           getAtPath(draftRaw, steps));
     const closed = closedListFor(row.candidates);
     const candidates = Array.isArray(row.candidates) ? row.candidates : [];
     if (typeof current === 'string') {

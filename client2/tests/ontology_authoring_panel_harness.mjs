@@ -584,6 +584,32 @@ const renderDraft = (plan) => {
         && chip.dataset.action === 'pick-candidate'
         && chip.dataset.locked === undefined),
     `${chips3.length} chips: ${chips3.map((c) => `${c.tagName}:${c.dataset.locked}`).join(',')}`);
+
+  // 🔴 ONE WORD IN A LIST OF WORDS IS A ONE-ITEM LIST ON THE PLAN ROW TOO (order 8c0a2eeed).
+  // The skeleton form already reads it so (`asList`); the plan row used to take the word as
+  // a string and draw no picker, so the same cell had two shapes on one screen.
+  const worded = element('div');
+  renderOntologyExplorer(worded, {
+    ...stateWith(PLAN),
+    draft: { target_kind: 'source_plan', target_id: 'dt_job' },
+    editorText: JSON.stringify({ ...DOCUMENT, map: { input_columns: 'dt_index' } }),
+    expandedFields: Object.fromEntries(
+      (PLAN.fields || []).map((row) => [row.path, true])),
+  });
+  const wordRow = byClass(worded, 'oe-node').filter(
+    (node) => node.dataset.path === 'map.input_columns');
+  const wordChips = byClass(at(wordRow, 0), 'oe-pick');
+  const chipFor = (name) => wordChips.find((chip) => chip.textContent === name);
+  check('H15 a word held at a list of words draws the same toggles, that word pressed',
+    wordChips.length === CANDIDATES.length
+      && chipFor('dt_index')?.getAttribute('aria-pressed') === 'true'
+      && chipFor('dt_cell_key')?.getAttribute('aria-pressed') === 'false',
+    wordChips.map((c) => `${c.textContent}:${c.getAttribute('aria-pressed')}`).join(','));
+  // What bites: before, the row took the word as a string, so a press REPLACED it.
+  check('H16 pressing another toggle keeps the word and writes a list; pressing the word leaves []',
+    chipFor('dt_cell_key')?.dataset.pick === JSON.stringify(['dt_index', 'dt_cell_key'])
+      && chipFor('dt_index')?.dataset.pick === JSON.stringify([]),
+    `${chipFor('dt_cell_key')?.dataset.pick} / ${chipFor('dt_index')?.dataset.pick}`);
 }
 
 // ── D. the counts bite: delete the rows and the numbers must move ─────────────────
