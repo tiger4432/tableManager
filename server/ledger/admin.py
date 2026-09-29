@@ -893,6 +893,7 @@ def save_chain_rule_raw(name: str, declaration, base: str) -> dict:
     ingestion_worker._validate_chain_cascade_graph(expanded_set)
 
     backup = _atomic_write(path, merged)
+    ingestion_worker.forget_loaded_chain_rules()     # this process reads the saved file next
     return {"ok": True, "name": name, "base": file_fingerprint(path),
             # ⚠️ STILL THE NUMBER OF RULES, not of entries: carrying an unreadable entry
             #    must not change a number the screen already draws (판정 556).

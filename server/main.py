@@ -4841,7 +4841,7 @@ def get_outbox_queue_rows(limit: int = 50, cursor: int = None,
     #    조건이다. (변이로 빼 보면 쪽이 비고, 커서 게이트가 자기 전제부터 못 세운다)
     #    ⚠️ 제어 행은 «남는다». 그 행에는 규칙이 없지만 «그 행 자체가 일»이고, 스케줄러가
     #       집어서 돈다. 「안 돌 것」이 아니다.
-    rules = worker.load_chain_rules()
+    rules = worker.loaded_chain_rules()
     watched = {rule.get("trigger_table") for rule in rules if rule.get("trigger_table")}
     could_run = or_(outbox.table_name.in_(watched),
                     outbox.event_type.in_(event_constants.CONTROL_EVENT_TYPES))
@@ -6022,7 +6022,7 @@ def get_chain_rules():
         print(f"Error reading chain rules: {read['error']}")
         return {"status": "error", "message": read["error"], "data": []}
 
-    standing = worker.load_chain_rules()
+    standing = worker.loaded_chain_rules()
     listed = [dict(rule, rule_state=event_constants.RULE_STATE_RUNNING)
               for rule in standing]
     standing_names = {rule.get("name") for rule in standing}

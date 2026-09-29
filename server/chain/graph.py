@@ -66,7 +66,7 @@ def _chain_rules():
     # declares nothing」 and 「the file could not be read」 the same answer, one layer below the
     # place that publishes the number. The catch is now at `_quarter`, which is the seat that
     # can tell the picture WHICH of the two happened.
-    return worker.load_chain_rules() or []
+    return worker.loaded_chain_rules() or []
 
 
 def _enrich_declarations():
@@ -367,7 +367,7 @@ def chain_graph(db):
     # only the hand-written file would answer 「nothing wakes」 for a table the chain
     # demonstrably picks up.
     try:
-        live_rules = worker.load_chain_rules() or []
+        live_rules = worker.loaded_chain_rules() or []
     except Exception:
         live_rules = chain_rules
 

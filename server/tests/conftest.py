@@ -69,6 +69,24 @@ TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engin
 
 
 # ===========================================================================
+# The chain rules as last loaded are forgotten  [총괄 57ae5c2da]
+# ===========================================================================
+
+@pytest.fixture(autouse=True)
+def _the_loaded_chain_rules_are_forgotten():
+    """A rule set one test loaded must not answer for the next, whose fake `load_chain_rules`
+    would otherwise never be asked. Only when the module is already imported - forgetting
+    must not import it."""
+    worker = sys.modules.get("chain.ingestion_worker")
+    if worker is not None:
+        worker.forget_loaded_chain_rules()
+    yield
+    worker = sys.modules.get("chain.ingestion_worker")
+    if worker is not None:
+        worker.forget_loaded_chain_rules()
+
+
+# ===========================================================================
 # The two model registries come back  [S-200, 판정 309]
 # ===========================================================================
 
