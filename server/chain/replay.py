@@ -149,15 +149,15 @@ def resolve_pace(name, paces=None):
 # ---------------------------------------------------------------------------
 
 def load_rules() -> list:
-    """All chain rules via the REAL loader (`chain_ingestion_worker.load_chain_rules`).
+    """All chain rules via the REAL loader, as it last loaded them (`loaded_chain_rules`).
 
     That loader stands the enrichment rules from their `derive.decide`
     declarations like any other, so replay sees exactly the rule set the live
     worker sees - including enrichment. There is no second rule-loading path.
     """
-    from chain.ingestion_worker import load_chain_rules
+    from chain.ingestion_worker import loaded_chain_rules
     from chain import rule_shape
-    return [r for r in load_chain_rules() if not rule_shape.is_switched_off(r)]
+    return [r for r in loaded_chain_rules() if not rule_shape.is_switched_off(r)]
 
 
 def find_rule(rule_name: str, rules: list = None, row_scoped: bool = False) -> dict:

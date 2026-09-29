@@ -468,7 +468,7 @@ def right_keys_for(db, table_name: str) -> list:
         try:
             by_table, seen = {}, set()
             for name, table, columns, folds, skip, _kind in declared_unique_targets(
-                    ingestion_worker.load_chain_rules()):
+                    ingestion_worker.loaded_chain_rules()):
                 if skip or not table or not columns:
                     continue
                 # ⚠️ ONE UNIQUENESS, ONE ENTRY. A join and its `:target` companion declare

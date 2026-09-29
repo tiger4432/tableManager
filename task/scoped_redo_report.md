@@ -64628,3 +64628,63 @@ PG       7 failed, 117 passed, 7429 deselected in 182.53s (0:03:02)
 ```
 
 지시대로 착지하고 멈춥니다. 감시는 켜 둡니다.
+
+## [구현자 -> 총괄] 착지 790511099 — 체인 규칙은 «바뀔 때만» 읽음 · 대기열 새로고침이 규칙을 다시 읽지 않음 (57ae5c2da ①)
+
+### 먼저 잰 것 — 규칙을 읽는 자리 전수 (AST, 추적 파일, 시험 제외)
+
+```
+바꾸기 전  load_chain_rules 직접 호출 10 곳
+바꾼 뒤    직접 4 곳(워커 부팅 · 워커 리로드 · 새 함수 안 · 일회성 스크립트) · 읽어 둔 것 7 곳
+```
+
+| 자리 | 프로세스 | 언제 불리나 | 저장 직후 새 규칙이 보여야 하나 | 뒤 |
+|---|---|---|---|---|
+| 대기열 행 (GET /outbox/queue/rows) | 서버 | 대기열 탭이 체인 방송마다 | 예 | 읽어 둔 것 |
+| 체인 규칙 목록 (GET /admin/chain/rules) | 서버 | 화면이 부를 때 | 예 | 읽어 둔 것 |
+| 체인 그림 (GET /chain/graph) 두 곳 | 서버 | 화면이 부를 때 | 예 | 읽어 둔 것 |
+| replay.load_rules — 리플레이 가능 목록 · 소급 폼 · 치워 두기 · 리플레이 CLI | 서버 · CLI | 요청 · 실행마다 | 예 | 읽어 둔 것 (CLI 는 실행마다 새 프로세스라 한 번) |
+| 가상 조인 우측 키 (synthesis.right_keys_for) | 쓰는 프로세스 | 그 캐시가 빌 때만 | 예 | 읽어 둔 것 |
+| 워커 DELETE 그룹마다 (_retract_what_those_rows_fed) | 워커 | DELETE 그룹마다 | 워커는 리로드 때만 바뀜 | 읽어 둔 것 |
+| 워커 부팅 · SYSTEM_RELOAD | 워커 | 그때만 | — | 그대로 읽음(여기서 새로 채움) |
+
+```
+기존 문     서버에는 «읽어 둔 규칙» 자리가 «없었음» — 요청마다 파일을 읽었음
+           바뀜을 아는 문은 있었음 — 서버의 reload 자리 reload_local_process_cache
+              (Reload Configs · 온톨로지 탐색기 activate/delete 가 부름. 우측 키 캐시를 이미 여기서 비움)
+           규칙 파일을 쓰는 서버 자리는 save_chain_rule_raw 하나(문법 바꾸기도 그것을 지남). 탐색기는 이 파일을 안 씀
+지은 것     _RULES_DOCUMENT 옆에 _LOADED_RULES — 로더가 적재할 때 채움 · loaded_chain_rules() 가 읽음(사본)
+           forget_loaded_chain_rules() 를 부르는 곳 둘: 서버 reload 자리 · save_chain_rule_raw 쓰기 직후
+           새 기제 없음 — 파일 시각을 엿보지 않음. 우측 키 캐시와 같은 모양(「적재가 만료」, 판정 667)
+맞바꾼 것   서버를 안 거친 파일 수정(손 편집 · 스크립트 · 복원)은 Reload Configs 뒤에 서버 화면에 보임
+           전에는 요청마다 읽어 바로 보였음. 워커는 원래 Reload 때만 읽음 — 시험 한 칸으로 박아 둠
+시험 격리   conftest 에 시험마다 읽어 둔 규칙을 비우는 autouse 한 벌 — 로더를 가짜로 바꿔 끼우는 시험 파일이 여럿이라
+           앞 시험이 읽어 둔 규칙이 뒤 시험의 가짜를 가리면 안 됨. 모듈이 이미 import 됐을 때만 비움
+```
+
+| 칸 | 입력 | 답 |
+|---|---|---|
+| 새로고침 | 대기열 라우트 100 번 | set 줄 1 · 매번 규칙이 보임 |
+| 저장 | save_chain_rule_raw 로 새 규칙 | 다음 요청에 보임 · set 줄 한 번 더 |
+| 손 편집 | 파일을 직접 고침 | Reload 전엔 안 보임 · Reload 뒤 보임 · set 줄 한 번 더 |
+
+```
+통과     74 passed in 6.40s
+변이     대기열이 요청마다 다시 읽음 -> 3 failed in 1.73s — test_a_hundred_queue_refreshes_read_the_rules_once · test_a_saved_rule_is_read_by_the_next_request_and_only_once · test_a_file_the_server_did_not_write_is_read_after_reload
+         저장이 안 잊음 -> 1 failed, 2 passed in 1.70s — test_a_saved_rule_is_read_by_the_next_request_and_only_once
+         reload 자리가 안 잊음 -> 1 failed, 2 passed in 1.62s — test_a_file_the_server_did_not_write_is_read_after_reload
+전체     5 failed, 7385 passed, 163 skipped, 3 xfailed in 755.83s (0:12:35)
+PG       7 failed, 117 passed, 7432 deselected in 176.09s (0:02:56)
+재기동   서버 · 체인 워커. 마이그레이션 없음 — RUN.md 새 절
+```
+
+### 여쭐 것
+
+```
+1 우측 키 캐시는 규칙 «저장» 때 안 비웁니다(전과 같음 — Reload 때만). 조인 키를 raw 편집기로 바꾸면 서버의 쓰기 관문은
+  Reload 전까지 옛 키로 거릅니다. 규칙 캐시와 같이 저장 때 비울지 — 짓지 않았습니다
+2 코드 편집기 저장(매퍼 파일)은 SYSTEM_RELOAD 만 적재하고 서버 reload 자리는 안 부릅니다(전과 같음). 서버의 매퍼 등록부도
+  그때 안 바뀌므로 규칙 판정이 옛 등록부를 봅니다 — 이번 일 밖이라 손대지 않았습니다
+```
+
+이어서 57ae5c2da ② 로 들어갑니다. 감시는 켜 둡니다.

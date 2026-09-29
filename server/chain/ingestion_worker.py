@@ -1,4 +1,5 @@
 import asyncio
+import copy
 import json
 import math
 import os
@@ -283,6 +284,12 @@ async def _dispatch_broadcasts(pending_broadcasts, db_session_factory):
 #: fourth cleanliness rule. `load_chain_rules` refreshes it on every load and on every
 #: SYSTEM_RELOAD, so the loop reads whatever the last load saw and never the disk.
 _RULES_DOCUMENT = {}
+
+#: The rule set as last LOADED (총괄 57ae5c2da, 소유자 「set(22) 이거 계속떠」). Same promise as
+#: `_RULES_DOCUMENT`: `load_chain_rules` refreshes it, so `[ChainRules] set(N)` counts real
+#: reads. Request paths read `loaded_chain_rules()`; a process forgets it where it learns the
+#: rules changed - the web server's reload seat and the one rule writer.
+_LOADED_RULES = None
 
 
 #: 한 그룹이 «몇 번» 시도되고 격리되나 (S-139, 소유자 09-10 21:35 「3회 없애, 1회면 끝」).
@@ -657,7 +664,7 @@ def read_rules_document(path=None):
 
 
 def load_chain_rules():
-    global _RULES_DOCUMENT
+    global _RULES_DOCUMENT, _LOADED_RULES
     # 🔴 ONE READER (S-180 ⓑ). The sentences below are unchanged; only where the bytes come
     # from moved, so the registrar can ask the same question without opening the file again.
     read = read_rules_document()
@@ -880,7 +887,22 @@ def load_chain_rules():
     #    로더 «안»이라 호출자가 둘이어도 저자는 하나다.
     activity.registry.seed_rules(
         (r or {}).get("name") or "<unnamed rule>" for r in (rules or ()))
+    _LOADED_RULES = copy.deepcopy(rules)
     return rules
+
+
+def loaded_chain_rules():
+    """The rules as last loaded; loads once if this process has not. A copy - a caller that
+    edits a rule must not edit every later caller's."""
+    if _LOADED_RULES is None:
+        return load_chain_rules()
+    return copy.deepcopy(_LOADED_RULES)
+
+
+def forget_loaded_chain_rules():
+    """The rules changed: the next `loaded_chain_rules()` reads them again."""
+    global _LOADED_RULES
+    _LOADED_RULES = None
 
 
 def _refuse_names_claimed_twice(rules, written_in):
@@ -3080,7 +3102,7 @@ def _retract_what_those_rows_fed(db, table, row_ids):
         # ⚰️ [소유자 정본] THIS WALKED `_rules_for_the_follow_up_pass()`, the deferred set.
         #   There is one set now, so it walks the loader's - and that is WIDER, which is
         #   right: a rule that cannot be reverted is worth naming whichever path runs it.
-        for rule in load_chain_rules():
+        for rule in loaded_chain_rules():
             if not watches_table(rule, table):
                 continue
             refusal = rule_run.retraction_refusal(rule)

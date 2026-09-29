@@ -169,7 +169,7 @@ return {"batches": [{"target_table": "dt_map",
      "enabled": true
    }
    ```
-5. 저장 후 **리로드가 필수**입니다 — 워커는 기동 시 + SYSTEM_RELOAD 시에만 룰을 다시 읽습니다:
+5. 저장 후 **리로드가 필수**입니다 — 워커는 기동 시 + SYSTEM_RELOAD 시에만 룰을 다시 읽습니다. 서버 화면(대기열 · 체인 탭 · 그래프)도 규칙을 한 번 읽어 두고 씁니다 — 체인 탭에서 저장하면 바로 다시 읽지만, 파일을 손으로 고쳤으면 리로드 전까지 옛 규칙이 보입니다(09-29 `790511099`):
 
    ```bash
    curl -X POST "http://<host>:8080/admin/reload-configs" -H "X-Admin-Token: <토큰>"

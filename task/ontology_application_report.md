@@ -34761,3 +34761,20 @@ S-222 = 합쳐진 그룹(max_group_rows)이 실패하면 원래 그룹으로 되
    청취 자체는 여전히 필요해 보이나(체인 워커의 파생 쓰기도 워커 쪽에서 사건을 낳음) 제가 재지 않았습니다. 까닭 문장만 낡음
 물음         S-222 는 위 보고의 물음 그대로
 ```
+
+## 문서 정비 + 적대 QA — 실패 기록 화면(29de5321c) × 기록 모양(4ee01686e)
+
+```
+문서   CODE_MAP failure_summary 절 · base.css 행 · ontology_explorer.css 행(132.6px) · FEATURE_CHECKLIST Chain 줄
+```
+🔴 하나 — 같은 사실을 화면과 로그가 «다른 낱말»로 말합니다
+```
+사실   4ee01686e 부터 rules · tables 가 null = 「터진 자리가 이름을 안 댔다」(모름). 깨운 규칙으로 안 채움
+로그   ingestion_worker 실패 줄   [rules=(unknown) tables=(unknown) ...]
+화면   failure_summary.failureRecordCells   null -> 「none」   (키가 있고 목록이 아니면 'none')
+       「none」은 「규칙이 없다」로 읽힙니다. 모름은 「없음」이 아닙니다
+잰 것  코드를 읽음 — names(key): has(key) 이고 Array.isArray 아님 -> 'none'. 박스 화면은 안 열었음
+더     같은 파일 failureRecordCells 독스트링 「the record now names the rules that woke」 — 4ee01686e 가 뒤집은 문장
+       (기록은 이제 «터진 자리»의 규칙이고 깨운 규칙이 «아님»)
+물음   화면 낱말을 로그와 같은 「unknown」으로 맞출지 — 클라 레인 일이라 제가 안 고쳤습니다
+```
