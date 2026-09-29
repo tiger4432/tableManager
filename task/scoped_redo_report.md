@@ -64733,3 +64733,29 @@ PG       7 failed, 117 passed, 7435 deselected in 179.88s (0:02:59)
 ```
 
 지시대로 착지하고 멈춥니다. 감시는 켜 둡니다.
+
+## [구현자 -> 총괄] 착지 003790274 — 목록 줄도 같은 문장 · reload 의 forget 실패는 한 줄로 말함 (ef6d01cba)
+
+```
+1 목록 줄     못 읽은 선언을 목록에 되살리는 자리(탐색기 view)가 description 을 원문 사유 첫 줄로 채웠음 — 서버 몫
+             그 줄이 태그와 같은 사유(left_out_reasons 를 지난 것)를 읽게 함. 클라 팝오버가 그것을 그림 — 클라 손 안 댐
+             사유가 없을 때의 대체 문장 「읽을 수 없음」 -> "Not read" (화면 글이라)
+2 forget     runtime/system_reload 의 except — pass 대신
+             「[Reload] chain rules NOT forgotten - this process keeps the set it read until restart: <오류>」 한 줄. reload 는 계속
+```
+
+| 칸 | 입력 | 답 |
+|---|---|---|
+| 한 문장 | quantity@1 class 3 저장 | 같이 빠진 두 술어의 목록 줄 = 태그 = 저장 답 = "entity quantity@1 left out" |
+| forget 실패 | forget 이 터지게 만들어 reload | 그 줄 정확히 1 · 오류 문장 포함 |
+
+```
+통과     64 passed in 9.13s
+변이     목록 줄을 원문 사유로 되돌림 -> 1 failed, 3 passed in 1.84s — test_the_row_the_tag_and_the_save_answer_say_one_sentence
+         forget 줄을 pass 로 되돌림 -> 1 failed, 3 passed in 1.90s — test_a_reload_that_cannot_forget_says_so
+전체     5 failed, 7390 passed, 163 skipped, 3 xfailed in 778.43s (0:12:58)
+PG       7 failed, 117 passed, 7437 deselected in 198.96s (0:03:18)
+재기동   서버. 마이그레이션 없음 — RUN.md [09-29 오후] 절 급할 때에 그 줄의 뜻과 대처(서버 재기동) 한 줄
+```
+
+지시대로 착지하고 멈춥니다. 감시는 켜 둡니다.
