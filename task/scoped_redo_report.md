@@ -64759,3 +64759,50 @@ PG       7 failed, 117 passed, 7437 deselected in 198.96s (0:03:18)
 ```
 
 지시대로 착지하고 멈춥니다. 감시는 켜 둡니다.
+
+## [구현자 -> 총괄] 착지 efa60fd9c — 수집기 백필의 «다음 시작일»을 지난 실행에서 서버 한 함수로 (3a1446982)
+
+```
+함수 하나  admin/retroactive._collector_backfill_next_start(run) — 연산 명세에 next_start 로 선언
+          runs() 가 그 연산의 함수를 불러 실행마다 next_start 를 실음(연산 이름으로 가르지 않음, 없는 연산은 null)
+답         끝까지 돔 -> 결과의 done_until = 마지막 창이 잘린 그 시각(예 2026-09-29 13:05:42)
+          취소 -> done_until = 끝낸 마지막 창의 끝(셋째 날 00:00) · 실패 -> start + 끝낸 날 수(실패한 날, processed_rows 는 날마다 적힘)
+          도는 중 · 대기 · 취소 요청 -> null · 하루도 못 끝냄 -> start 그대로
+모양       collector_markers.backfill_text — backfill_start 가 받는 모양(자정이면 날짜만, 아니면 초까지)
+          backfill_windows 가 「지금」을 초 단위로 자름 — 안 자르면 이어 돌 때 1초 미만이 겹침(변이로 잼)
+결과 문장  done_until 이 결과에 실려 화면의 결과 줄에 「collected up to (KST) <날짜>」 가 붙음(낱말표 한 줄)
+옛 기록     이 착지 «전» 끝까지 돈 실행은 잘린 자리가 안 적혀 null — 추측(start + 일수)하지 않음
+          옛 취소 · 실패 기록은 날 수로 답함. 소유자가 겪은 「처음부터 다시」의 옛 실행이 끝까지 돈 것이면 이번엔 null
+```
+
+| 칸 | 입력 (시작 2026-09-25, 지금 09-29 13:05:42.654 KST, 창 다섯) | 답 |
+|---|---|---|
+| 끝까지 | 다섯 창 모두 | "2026-09-29 13:05:42" · 거기서 다시 돌리면 겹침 0 · 빈틈 0 |
+| 취소 | 둘째 날 뒤 | "2026-09-27" · 이어서 겹침 0 · 빈틈 0 |
+| 실패 | 셋째 날 파일 실패 | "2026-09-27" · 이어서 겹침 0 · 빈틈 0 |
+| 0 일 | 첫날 실패 | "2026-09-25" (start 그대로) |
+| 도는 중 | queued · running · cancel_requested | null |
+| 옛 기록 | done 인데 done_until 없음 | null |
+| 목록 | runs() | 실패 실행 · 끝난 실행은 값, 다른 연산은 null |
+
+```
+통과     94 passed in 7.00s
+변이     start + 일수 로만 -> 3 failed, 6 passed in 0.80s — test_a_run_that_reached_the_end_picks_up_where_its_last_window_was_cut · test_a_finished_record_from_before_done_until_does_not_guess · test_the_runs_list_carries_it
+         실패 실행 null -> 3 failed, 6 passed in 0.84s — test_a_run_that_failed_on_the_third_day_picks_up_at_that_day · test_no_day_done_picks_up_at_the_start_as_written · test_the_runs_list_carries_it
+         「지금」을 초 단위로 안 자름 -> 3 failed, 6 passed in 0.87s — test_a_run_that_reached_the_end_picks_up_where_its_last_window_was_cut · test_a_run_cancelled_after_two_days_picks_up_at_the_third_days_midnight · test_a_run_that_failed_on_the_third_day_picks_up_at_that_day
+전체     5 failed, 7400 passed, 163 skipped, 3 xfailed in 659.89s (0:10:59)
+PG       7 failed, 117 passed, 7447 deselected in 164.88s (0:02:44)
+재기동   서버(목록) · 스케줄러(auto update) · 체인 워커(소급 실행을 집어 결과를 씀). 마이그레이션 없음 — RUN.md 새 절
+선례 시험  test_a_collector_is_backfilled_day_by_day 의 결과 모양 넷에 done_until 을 더함(그 실행이 실제로 쓴 창에서)
+```
+
+### 여쭐 것
+
+```
+1 자리 — 수집기 줄이 아니라 «실행» 줄에 실었습니다. 화면이 이미 그 목록에서 이 수집기의 최신 실행을 골라 줄을 짓고,
+  값이 그 옆에 붙습니다. 실행 기록이 없는 수집기는 줄이 없으니 채울 것도 없음(= null)
+  ⚠️ 목록은 최근 50 개 — 이 수집기의 최신 백필이 그보다 오래되면 줄과 값이 같이 안 보임(줄은 전과 같음)
+  50 과 무관하게 수집기마다 싣으려면 /admin/auto-update/status 가 DB 를 읽어야 함(지금은 파일만 읽음) — 원하시면 그쪽으로
+```
+
+지시대로 착지하고 멈춥니다. 감시는 켜 둡니다.

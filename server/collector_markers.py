@@ -226,10 +226,20 @@ def backfill_start(text: str) -> datetime:
                            "optionally with HH:MM" % (text,))
 
 
+def backfill_text(moment: datetime) -> str:
+    """`moment` in the shape `backfill_start` reads - a midnight as its date, anything else
+    to the second - so a run's next start goes back in as written (총괄 3a1446982)."""
+    moment = moment.astimezone(WINDOW_ZONE)
+    if (moment.hour, moment.minute, moment.second) == (0, 0, 0):
+        return moment.strftime("%Y-%m-%d")
+    return moment.strftime("%Y-%m-%d %H:%M:%S")
+
+
 def backfill_windows(start: datetime, now: datetime = None) -> list:
     """24-hour windows from `start` to now, end to end - the last one cut at now, so there
-    is no gap and no overlap."""
-    now = (now or datetime.now(WINDOW_ZONE)).astimezone(WINDOW_ZONE)
+    is no gap and no overlap. Now is taken to the whole second: the cut is where the next
+    run picks up, written to the second (`backfill_text`)."""
+    now = (now or datetime.now(WINDOW_ZONE)).astimezone(WINDOW_ZONE).replace(microsecond=0)
     out, cursor = [], start
     while cursor < now:
         out.append((cursor, min(cursor + BACKFILL_SLICE, now)))

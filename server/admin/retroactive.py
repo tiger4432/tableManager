@@ -1012,9 +1012,40 @@ def _run_collector_backfill(db, params, log, control=None):
             f"{len(windows)} " + ("ingested" if written else "had nothing to collect"))
         if hook and hook(done, len(windows)):
             break
-    stats = {"days": len(windows), "days_done": done}
+    # 🔴 [총괄 3a1446982] WHERE THE NEXT RUN PICKS UP: the end of the last finished window -
+    #    for a run that reached the end that is the moment its last window was cut at, which
+    #    start + days cannot give.
+    stats = {"days": len(windows), "days_done": done,
+             "done_until": collector_markers.backfill_text(
+                 windows[done - 1][1] if done else start)}
     _final_progress(control, done, stats)
     return stats
+
+
+def _collector_backfill_next_start(run: dict):
+    """Where this collector's backfill picks up after `run`, in the shape `backfill_start`
+    reads (총괄 3a1446982, 소유자 「다시 돌리니 처음부터 다시 도네」). The screen prefills Start
+    with it; the operator may change it. None while the run is still going.
+
+    DONE and CANCELLED wrote `done_until`. FAILED writes no result, so its finished days -
+    `processed_rows`, one per day - name the failed day's own start. A DONE record from
+    before `done_until` does not say where its last window was cut, so it says nothing.
+    """
+    import collector_markers
+
+    if run.get("state") not in (RUN_DONE, RUN_CANCELLED, RUN_FAILED):
+        return None
+    done_until = (run.get("result") or {}).get("done_until")
+    if done_until:
+        return done_until
+    if run.get("state") == RUN_DONE:
+        return None
+    try:
+        start = collector_markers.backfill_start((run.get("params") or {}).get("start"))
+    except collector_markers.CollectorRefused:
+        return None
+    return collector_markers.backfill_text(
+        start + collector_markers.BACKFILL_SLICE * int(run.get("processed_rows") or 0))
 
 
 def _day_refused(day, what):
@@ -1442,6 +1473,7 @@ OPERATIONS = {
         "count": _count_collector_backfill,
         "run": _run_collector_backfill,
         "judge": _judge_collector_backfill,
+        "next_start": _collector_backfill_next_start,
         "cli": ("python -c \"from admin import retroactive; retroactive.run_here("
                 "'collector_backfill', {'collector': '<table>/<script.py>', "
                 "'start': 'YYYY-MM-DD'})\""),
@@ -1940,7 +1972,7 @@ def runs(db, limit: int = 50) -> list:
     rows = (db.query(models.RetroactiveRun)
             .order_by(models.RetroactiveRun.queued_at.desc())
             .limit(max(1, min(int(limit or 50), 500))).all())
-    return [{
+    listed = [{
         "run_id": row.run_id,
         # 🔴 화면이 `result` 를 «해석하지 않습니다». 연산마다 키가 다르고
         #    선언이 그 모양을 안 고정하므로, 「이 수를 이 이름으로」를 화면이
@@ -1962,6 +1994,12 @@ def runs(db, limit: int = 50) -> list:
                              if row.last_progress_at else None),
         "finished_at": row.finished_at.isoformat() if row.finished_at else None,
     } for row in rows]
+    # Where a run picks up next, from the operation that knows (총괄 3a1446982) - null for an
+    # operation with no such idea, and for a run still going.
+    for run in listed:
+        next_start = (OPERATIONS.get(run["op"]) or {}).get("next_start")
+        run["next_start"] = next_start(run) if next_start else None
+    return listed
 
 
 def operation(op: str) -> dict:
@@ -2642,6 +2680,7 @@ RESULT_NAMES = {
     "confirmed": "confirmed", "written_cells": "cells written", "queue_size": "queue size",
     "batches": "batches", "molecules": "molecules", "stopped": "stopped early",
     "days": "days in the window", "days_done": "days collected",
+    "done_until": "collected up to (KST)",
 }
 
 
