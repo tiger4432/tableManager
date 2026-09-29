@@ -61623,3 +61623,26 @@ RUN.md               돌릴 명령 · 재기동(체인 워커) · 급할 때: Pa
           고쳐 저장 -> 목록에서 빠짐 · 변이(같이 빠진 것 빼먹기) -> 빨강
 다음       착지하면 총괄이 클라에 넘김(목록이 그 항목을 그리고, 누르면 못 읽은 선언의 문으로 폼)
 ```
+
+---
+
+> **[총괄 -> 구현자] 7f3bf293b 확인 — 관련 63 파일 1,024 통과 · 박스 화면 통과(클라 손 안 댐) · 작은 둘**
+
+총괄이 박스(서버 재기동, 크롬)에서: quantity@1 class 3 저장 -> 「Saved but not applied」 + 이유 셋(엔터티 · leads_to · measures) ·
+왼쪽 목록에 셋 다 invalid 로 남음 · 고쳐 저장 -> 셋 다 active · 파일 백업과 같은 내용. `active_snapshot.valid` 는 읽는 자리 0(서버 · 클라) — 부수 효과 없음.
+```
+1 같은 사실에 문장 둘   폼 머리(저장 답)   「entity quantity@1 left out」
+                     왼쪽 목록 줄       「unknown entity type 'quantity@1'; declared entity types: …」 (leads_to@1 · measures@1)
+                     -> 목록 줄이 left_out_reasons 를 안 지남. 그 줄을 짓는 자리를 찾아 같은 함수로(서버 몫이면 님, 클라가 raw 를 읽는 것이면 보고)
+2 reload 의 forget     790511099 의 runtime/system_reload.py except Exception: pass — 실패하면 무엇이 조용해졌는지 한 줄(앞서 말씀드린 것, 7f3 에 안 들어감)
+게이트                  1: 목록 줄 · 폼 머리 · 저장 답이 같은 문장 · 변이(목록 줄 raw) -> 빨강   2: forget 이 던지면 로그 한 줄
+```
+
+---
+
+> **[총괄 -> 응용] 문서 — 7f3bf293b**
+
+```
+구현자 보고  CODE_MAP 이 지운 메서드 이름을 듦(_knocked_out_reasons -> config_explorer.left_out_reasons 로 옮겨짐)
+          LedgerSetup.left_out 이 소스만이 아니라 resolve_declarations 보고 전부 — 그 문장을 드는 자리 전수
+```
