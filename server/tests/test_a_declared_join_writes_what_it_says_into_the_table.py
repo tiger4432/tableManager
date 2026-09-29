@@ -460,6 +460,31 @@ def test_writing_the_trigger_columns_as_well_is_allowed_while_they_agree(load):
             if r["name"] == "s237_agreeing"] == ["s237_agreeing"]
 
 
+@pytest.mark.parametrize("columns,verdict", [
+    (["lot", "job"], "loads"), (["job", "lot"], "loads"), (None, "loads"),
+    (["job"], "loads with a note"), (["job", "lot", "note"], "refused"), (["note"], "refused")])
+def test_on_columns_agrees_with_the_columns_the_join_wakes_on(load, caplog, columns, verdict):
+    """🔴 [총괄 a73196eec] ONE ANSWER TO 「WHAT WAKES THIS JOIN」: its key AND its take columns
+    (`join_wake_columns`, the derivation the rule itself reads), compared as a set. The key alone
+    is the old shape - it loads and is named, because the rule wakes on the derived columns
+    whatever this cell says. Anything else is refused with the columns expected, to copy."""
+    import logging
+
+    on = {"table": RIGHT} if columns is None else {"table": RIGHT, "columns": columns}
+    with caplog.at_level(logging.WARNING):
+        kept = load([dict(DECLARATION, name="s237_columns", on=on)])
+    names = [r.get("name") for r in kept]
+    said = " ".join(record.getMessage() for record in caplog.records)
+    if verdict == "refused":
+        assert "s237_columns" not in names
+        assert "join_trigger_conflict" in said and "['job', 'lot']" in said, said
+        return
+    assert "s237_columns" in names
+    rule = next(r for r in kept if r.get("name") == "s237_columns")
+    assert rule["trigger_columns"] == ["job", "lot"]
+    assert ("the join key only" in said) is (verdict == "loads with a note"), said
+
+
 def test_a_trigger_column_that_disagrees_with_the_join_is_refused_by_name(load, caplog):
     """⛔ TWO ANSWERS TO 「WHICH COLUMNS WAKE THIS JOIN」. Picking one silently is how a join
     comes to watch a column nobody asked it to watch - and the OTHER declarations in the file

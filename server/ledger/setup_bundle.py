@@ -1279,24 +1279,21 @@ def has_class(spec: Any, word: str) -> bool:
     return word in class_words(spec)
 
 
-def _validate_class(item: Mapping[str, Any], path: str, problems: _Problems, code: str,
-                    closed: tuple = None) -> None:
-    """`class` is one word or a list of words (총괄 07889c83d). `closed` names the only words
-    an entity may use - `static`/`dynamic` are words the walk reads; a predicate's words are
-    the operator's and the code knows none of them."""
+def _validate_class(item: Mapping[str, Any], path: str, problems: _Problems, code: str) -> None:
+    """`class` is one word or a list of words (총괄 07889c83d) - the SHAPE, and only the shape.
+
+    🔴 [총괄 022dcf17a] THE WORDS ARE THE OPERATOR'S, ON AN ENTITY TOO. This closed an entity to
+    `static`/`dynamic`, and a class saved as ["static", "probe"] was written - activation writes
+    what does not compile, by the owner's ruling - and then dropped by the loader, so the type
+    left the declaration after a 「Saved」. `static` is still the one word the walk reads.
+    A blank word is absence, the way `class_words` folds it.
+    """
     if "class" not in item:
         return
     value = item["class"]
     words = [value] if isinstance(value, str) else value
-    if (not isinstance(words, list)
-            or not all(isinstance(word, str) and word.strip() for word in words)):
+    if not isinstance(words, list) or not all(isinstance(word, str) for word in words):
         problems.add(code, f"{path}.class", "must be one word or a list of words")
-        return
-    if closed is not None:
-        stray = sorted(set(words) - set(closed))
-        if stray or len(set(words)) > 1:
-            problems.add(code, f"{path}.class",
-                         f"must be one of {list(closed)} (got {words})")
 
 
 def _validate_vocabulary(section: Mapping[str, Any], problems: _Problems) -> None:
@@ -1451,7 +1448,7 @@ def _validate_entities(section: Mapping[str, Any], problems: _Problems) -> None:
                 optional=("allow_null", "references", "class",
                           "attributes", "attribute_cardinality", "status")):
             continue
-        _validate_class(item, path, problems, "invalid_entity_ref", closed=("static", "dynamic"))
+        _validate_class(item, path, problems, "invalid_entity_ref")
         # 🔴 THE SAME TWO WORDS THE PREDICATE USES. Retiring a type used to mean DELETING
         # its declaration, which also removes the name every stored atom points at -- the
         # 「투영은 지워도 기록은 안 된다」 line, applied to the grammar. Optional, because

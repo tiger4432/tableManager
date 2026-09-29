@@ -4,8 +4,9 @@
   one grammar   one word reads as a one-word list; absent, None and '' are no class
   one reader    `setup_bundle.class_words` - the static judgement, the catalogue, the resolve
                 report and `follow=class:<word>` all go through it
-  words         a predicate's words are the operator's - the code knows none of them; an
-                entity's are the walk's (`static` / `dynamic`), one of them
+  words         the operator's, on an entity and a predicate alike (총괄 022dcf17a); the one
+                word the code reads is an entity's `static`
+  one answer    the save's verdict and the loader agree on every input (the table below)
   walk          `follow=class:<word>` = every predicate carrying the word; an unknown word is
                 refused by name, like an undeclared predicate
   form          written in the declaration window, saved to the file as written, read back
@@ -65,21 +66,43 @@ def test_the_save_gate_takes_a_predicate_class_as_a_word_or_a_list():
     assert not {p for p, _c in _issues(_classed()) if p.endswith(".class")}
 
 
-@pytest.mark.parametrize("value", [[""], [3], {"a": 1}])
+@pytest.mark.parametrize("value", [[3], ["a", 3], {"a": 1}])
 def test_a_predicate_class_that_is_not_words_is_refused(value):
     document = _sample()
     document["vocabulary"]["measures@1"]["class"] = value
     assert ("bundle.vocabulary.measures@1.class", "invalid_predicate") in _issues(document)
 
 
-@pytest.mark.parametrize("value,refused", [
-    ("static", False), (["static"], False), (["dynamic"], False),
-    ("banana", True), (["static", "dynamic"], True)])
-def test_an_entity_class_keeps_the_walks_two_words(value, refused):
+#: (the entity's `class`, whether the grammar refuses it). 🔴 [총괄 022dcf17a] An entity's words
+#: are the operator's too - ["static", "probe"] used to pass the draft save as 「Saved」 and then
+#: drop quantity@1 from the loaded declaration.
+ENTITY_CLASSES = [
+    ("static", False), (["static"], False), (["static", "probe"], False), ("probe", False),
+    (["static", "dynamic"], False), ([""], False), ([" "], False),
+    (3, True), (["a", 3], True), ({"a": 1}, True)]
+
+
+@pytest.mark.parametrize("value,refused", ENTITY_CLASSES)
+def test_the_save_verdict_and_the_loader_give_one_answer(value, refused, tmp_path):
+    """The table: the same input through the save's verdict and through the loader. An entity
+    the grammar accepts stays in what the loader returns; one it refuses is the one it drops."""
     document = _sample()
     document["entities"]["quantity@1"]["class"] = value
-    got = ("bundle.entities.quantity@1.class", "invalid_entity_ref") in _issues(document)
-    assert got is refused
+    saved_refuses = ("bundle.entities.quantity@1.class", "invalid_entity_ref") in _issues(document)
+    path = tmp_path / "ledger_config.json"
+    path.write_text(json.dumps(document), encoding="utf-8")
+    loaded = ledger_config.load(str(path), catalog=_catalog())
+    loader_drops = "quantity@1" not in (loaded.get("entities") or {})
+    assert (saved_refuses, loader_drops) == (refused, refused)
+
+
+def test_an_operator_word_beside_static_keeps_the_type_static(monkeypatch):
+    document = _sample()
+    document["entities"]["quantity@1"]["class"] = ["static", "probe"]
+    monkeypatch.setattr(ledger_config, "load", lambda: document)
+    assert "quantity" in trace_router._static_types()
+    types = {item["type"]: item["class"] for item in trace_router.ledger_declaration_catalog()["entities"]}
+    assert types["quantity@1"] == ["static", "probe"]
 
 
 # ---------------------------------------------------------------------------------- walk
@@ -179,3 +202,34 @@ def test_the_window_writes_a_predicate_class_and_reads_it_back(tmp_path):
     reopened = again.create_draft(target_key="predicate|derived_from@1",
                                   base_snapshot_hash=index.snapshot_hash)
     assert reopened["raw"]["class"] == ["lineage", "model"]
+
+
+def test_an_entity_saved_with_an_operator_word_stays_in_the_declaration(tmp_path, monkeypatch):
+    """🔴 [총괄 022dcf17a] THE WINDOW'S OWN ORDER - save, then activate with no review - and the
+    type must still be in what the loader serves, with the words as written."""
+    root = tmp_path / "ontology"
+    root.mkdir()
+    (root / "ledger_config.json").write_text(json.dumps(_sample()), encoding="utf-8")
+    catalog = _catalog()
+    service = OntologyExplorerService(
+        config_root=root, draft_root=tmp_path / "drafts",
+        setup_loader=lambda where: load_setup(where, catalog=catalog),
+        catalog_loader=lambda: catalog,
+        convergence_probe=lambda expected: {
+            "ontology-explorer-api": expected, "ledger-persistent-reader": expected})
+    _, index, _ = service.active()
+    draft = service.create_draft(target_key="entity|quantity@1",
+                                 base_snapshot_hash=index.snapshot_hash)
+    raw = dict(draft["raw"])
+    raw["class"] = ["static", "probe"]
+    saved = service.save_draft(draft["draft_id"], expected_revision=0, raw=json.dumps(raw))
+    assert saved["preview_valid"] is True, saved.get("validation_errors")
+    service.activate_draft(draft["draft_id"], expected_revision=1, reload_callback=lambda: None)
+
+    path = str(root / "ledger_config.json")
+    real_load = ledger_config.load
+    monkeypatch.setattr(ledger_config, "load", lambda: real_load(path, catalog=catalog))
+    served = {item["type"]: item["class"]
+              for item in trace_router.ledger_declaration_catalog()["entities"]}
+    assert served["quantity@1"] == ["static", "probe"]
+    assert "quantity" in trace_router._static_types()
