@@ -64688,3 +64688,48 @@ PG       7 failed, 117 passed, 7432 deselected in 176.09s (0:02:56)
 ```
 
 이어서 57ae5c2da ② 로 들어갑니다. 감시는 켜 둡니다.
+
+## [구현자 -> 총괄] 착지 7f3bf293b — 저장 뒤 로드에서 빠진 선언이 탐색기 목록에 남음 · 같이 빠진 것까지 · 저장 답도 댐 (57ae5c2da ②)
+
+```
+원인      탐색기 서비스(_resolution)는 로더가 «던질» 때만 invalid 를 채웠음. 로더는 S-177 ② 뒤로 빼고 읽으며 «성공»하므로 목록이 비었음
+          로더는 빠진 것 전부를 이미 알았음 — resolve_declarations 의 invalid(키 · 바퀴 · 사유 · 원문). 소스만 컴파일러에 넘기고 나머지는 버렸음
+넓힌 것    새 목록 없음. 로더가 그 보고를 버리지 않고 LedgerSetup.left_out 에 실음
+          스냅숏: 로드가 성공해도 left_out 을 씀 — «로더가 던질 때 쓰던 그 목록»과 같은 모양(같은 함수가 지음)
+          저장 답: 초안 미리보기가 오류일 때 같은 좌석(resolve_declarations)을 불러 같이 빠진 것을 validation_errors 에 붙임
+판정 자리  「빠졌나」 = resolve_declarations 하나. 로더 · 스냅숏 · 저장 답이 그것을 부르거나 그 결과를 받음
+문장      같이 빠진 것의 사유를 짓는 함수 하나(left_out_reasons) — 스냅숏과 저장 답이 같이 부름
+          "entity <x> left out" / "predicate <x> left out" · 코드 blocked_by_unread_declaration · 경로는 그 선언의 칸
+          전에는 탐색기 안의 한국어 문장(「…이(가) 아직 안 읽혀서 함께 보류됨」) — 화면에 그려지는 글이라 영어로
+부수 효과  빠진 것이 있으면 스냅숏 active_snapshot.valid = false (전에는 로드가 성공하면 true)
+          로드가 빼고 성공한 설치에서, 삭제 미리보기의 unread_after 가 «이미 못 읽힌 것»을 새로 못 읽힐 것으로 세지 않음
+          (전에는 빈 목록과 견줘 이미 빠진 것까지 셌음)
+```
+
+| 칸 | 입력 (창의 순서: 저장 → 활성화) | 답 |
+|---|---|---|
+| 술어 class 3 | derived_from@1 | 목록에 그 술어(스스로 탓 · 사유 경로 …class) + 같이 빠진 소스 lot_event("predicate derived_from@1 left out") |
+| 엔터티 class 3 | quantity@1 | 목록에 엔터티 + 같이 빠진 술어 둘 leads_to@1 · measures@1("entity quantity@1 left out") |
+| 저장 답 | 같은 저장 | validation_errors 에 엔터티 오류 + 두 술어의 "entity quantity@1 left out" |
+| 고쳐 저장 | 목록 줄의 원문으로 새 선언 초안(화면이 여는 문) | 목록이 빔 |
+
+```
+통과     101 passed in 8.35s
+변이     탐색기가 로더의 left_out 을 무시(오늘 모양) -> 3 failed in 1.09s — test_a_predicate_saved_unreadable_stays_on_the_list_with_its_reason · test_an_entity_saved_unreadable_takes_the_predicates_that_name_it_onto_the_list · test_fixing_it_takes_it_off_the_list
+         로더가 같이 빠진 것을 빼먹음 -> 2 failed, 1 passed in 1.47s — test_a_predicate_saved_unreadable_stays_on_the_list_with_its_reason · test_an_entity_saved_unreadable_takes_the_predicates_that_name_it_onto_the_list
+         저장 답이 같이 빠진 것을 빼먹음 -> 1 failed, 2 passed in 1.56s — test_an_entity_saved_unreadable_takes_the_predicates_that_name_it_onto_the_list
+전체     6 failed, 7387 passed, 163 skipped, 3 xfailed in 754.67s (0:12:34)
+         알려진 다섯 밖 하나 = test_ontology_config_explorer::test_deletion_preview_names_the_declaration_that_stops_being_read
+         이 시험은 이 박스의 설정 사본을 씀 — 고른 짝의 소스가 이 박스에서 이미 빠져 있었음(뷰를 읽는 소스)
+         전에는 로드가 성공하면 못 읽힌 목록이 비어서 그것이 「삭제하면 새로 못 읽힘」에 섞여 나왔고, 시험이 그 섞임에 기대고 있었음
+         짝을 «지금 읽히는» 소스에서 고르게 고침 — 그 파일을 다시 돌린 것이 위 통과 줄
+PG       7 failed, 117 passed, 7435 deselected in 179.88s (0:02:59)
+재기동   서버. 마이그레이션 없음 — RUN.md 새 절
+```
+
+```
+문서      docs/architecture/CODE_MAP.md 가 지운 메서드 _knocked_out_reasons 를 이름으로 듦 — 응용 몫
+클라      목록 줄 · 누르면 여는 문은 이미 있음(edit-unread -> drafts/new). 새 사유 문장을 그대로 그리면 됨 — 착지 뒤 클라에 넘기실 것
+```
+
+지시대로 착지하고 멈춥니다. 감시는 켜 둡니다.

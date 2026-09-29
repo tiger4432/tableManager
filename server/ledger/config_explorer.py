@@ -1364,6 +1364,31 @@ def resolve_declarations(document: Mapping[str, Any], *,
     }
 
 
+def left_out_reasons(invalid: Mapping[str, Any], key: str) -> list[dict[str, Any]]:
+    """Why `key` fell in a later round: something it names was left out first.
+
+    🔴 [총괄 57ae5c2da ②] ITS OWN ROUND'S TEXT IS NOT SHOWN. It says 「unknown entity type
+    'x'」 about an `x` sitting in the file - removed from a WORKING COPY - so the path is kept
+    and the sentence names what fell first. The culprit is taken only from `invalid`, so
+    this can name only something genuinely left out; unmatched, it names nothing.
+    """
+    record = invalid[key]
+    first = [other.partition("|") for other, entry in invalid.items()
+             if other != key and entry["round"] < record["round"]]
+    out = []
+    for reason in record["reasons"]:
+        culprit = next((f"{kind} {name}" for kind, _, name in first
+                        if name in reason.get("message", "")
+                        or name in reason.get("path", "")), None)
+        out.append({
+            "code": "blocked_by_unread_declaration",
+            "path": reason["path"],
+            "message": (f"{culprit} left out" if culprit
+                        else "a declaration it names was left out"),
+        })
+    return out
+
+
 def document_hash(document: Mapping[str, Any]) -> str:
     """The hash of what the operator WROTE, independent of whether it compiles.
 
