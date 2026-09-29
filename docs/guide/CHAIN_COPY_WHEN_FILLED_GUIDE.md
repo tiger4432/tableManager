@@ -67,14 +67,16 @@
 | 언제 | 줄 |
 |---|---|
 | 덜 찬 행을 넘기지 않았을 때 | `[Chain] <규칙>: <N> row(s) not handed over - required column(s) empty: <칸>=<건수>, ...` |
-| `require` 에 `dt_log` 에 없는 칸을 적었을 때 (로드 거절) | `rule <규칙> requires [<칸>] that 'dt_log' does not have; no row could ever be handed to it. Fix the names or remove the cell.` |
-| `require` 가 칸 이름 목록이 아닐 때 (로드 거절) | `require must be a list of column names, got <값>` |
+| `require` 에 `dt_log` 에 없는 칸을 적었을 때 (로드 거절) | `[ChainRules] <규칙> refused (<N>): unknown_require_column rules[<번호>].require: rule <규칙> requires ['<칸>', ...] that 'dt_log' does not have; no row could ever be handed to it. Fix the names or remove the cell.` |
+| `require` 가 칸 이름 목록이 아닐 때 — 빈 목록 `[]` 도 (로드 거절) | `[ChainRules] <규칙> refused (<N>): bad_require rules[<번호>].require: require must be a list of column names, got <값>` |
+
+거절 둘은 체인 탭에서 저장할 때도 같은 문장으로 막힌다. 거절된 규칙은 돌지 않는다.
 
 ---
 
 ## 4. 알아 둘 것
 
-- **「빈 칸」** = 값 없음 · 빈 문자열 · 공백만 있는 문자열. 판정은 한 함수(`crud.is_blank_value`)다.
+- **「빈 칸」** = 값 없음 · 빈 문자열 · 공백만 있는 문자열. `0` · `false` 는 «찬» 값이다. 판정은 한 함수(`crud.is_blank_value`)다.
 - **한 묶음이 전부 걸러지면 맵퍼를 부르지 않는다.** 덜 찬 행 때문에 맵퍼가 에러 나는 길이 막힌다.
 - **이미 복사된 행은 지우지 않는다.** 나중에 `dt_log` 의 그 칸이 다시 비어도 정답맵 행은 남는다.
 - **규칙은 자기가 쓴 것에 깨어나지 않는다**(09-28). 복사 규칙이 정답맵에 쓴 것이 복사 규칙을 다시 부르지 않는다.
