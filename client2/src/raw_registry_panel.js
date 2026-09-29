@@ -31,6 +31,7 @@ import {
   writeShapeAtPath, deleteAtPath, splitBundlePath, getAtPath, addMember,
 } from './ontology_path.js';
 import { reduceFieldFold } from './ontology_explorer_store.js';
+import { commitTree } from './dom_patch.js';
 
 /**
  * 고르개가 «새 이름을 짓는 중»일 때 입는 말. 🔴 철자가 «하나»입니다 — 그리는 쪽과 비교하는
@@ -763,19 +764,21 @@ export class RawRegistryPanel {
       // 저장이 «필수 빈 칸»을 그 칸 옆에 답니다. 상자는 이 블록의 것이라 손잡이를 둡니다.
       this._formBox = box;
       const draw = (value) => {
-        box.textContent = '';
         const form = renderSkeletonForm(
           formContext(payload.skeleton, this.lists, spec, value, this._formFold.expandedFields),
           root, '', value, 0, this.newMode ? NEW_NAME : view.name);
-        if (form) {
-          this._partition(form, root, value);
-          box.appendChild(form);
-        }
+        if (!form) { box.textContent = ''; return; }
+        this._partition(form, root, value);
         // ④ 서버가 «주소를 대어» 거절하면 그 칸 «옆»에 붙입니다 (S-204 ③).
-        markRefusedField(box, view, spec);
+        markRefusedField(form, view, spec);
         // 🔴 C-106 ⑥. 목록 «밖»의 줄들은 그 목록을 먹이는 칸 «바로 밑»에 섭니다 — 폼 아래에
         //    두면 「내 파일이 왜 안 보이나」의 답이 물음에서 한 화면 떨어져 있습니다.
-        this._notesUnder(box);
+        this._notesUnder(form);
+        // 🔴 COMMITTED, NOT REPLACED (order 57ae5c2da). A field's `change` fires while focus is
+        //    moving to the field just clicked, and a wholesale replace detached that field: focus
+        //    fell to BODY and what was typed went nowhere. `commitTree` is the explorer's own
+        //    reconciler -- it keeps the live controls, their focus and their half-typed values.
+        commitTree(box, form, doc.activeElement);
       };
       draw(held);
       // 폼이 낸 편집을 문서에 «적습니다». 컨트롤의 낱말(`edit-shape`)은 탐색기의 것입니다.

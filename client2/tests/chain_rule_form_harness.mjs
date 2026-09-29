@@ -848,7 +848,7 @@ const DEFECTS = [
                    + '            updated = written;',
                    '            writeShapeAtPath(updated, at, val);')],
   ['the refused field is not marked',
-    s => s.replace('        markRefusedField(box, view, spec);\n', '')],
+    s => s.replace('        markRefusedField(form, view, spec);\n', '')],
   ['the mark carries a sentence instead of the code',
     s => s.replace('  tag.textContent = refusal.code || \'\';',
                    '  tag.textContent = refusal.message || \'\';')],
