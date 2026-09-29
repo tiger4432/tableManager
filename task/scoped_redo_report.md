@@ -65059,3 +65059,48 @@ f36abbb1a 의 ② (빈 판정 하나로)        다음 작은 착지로 갑니�
 ```
 
 이어서 빈 판정 접기(unique_key._is_blank -> crud.is_blank_key_part)로 들어갑니다. 감시는 켜 둡니다.
+
+## [구현자 -> 총괄] 착지 326344fde — 빈 키 판정 하나로 접음 (f36abbb1a ②)
+
+```
+접은 것   unique_key._is_blank 가 crud.is_blank_key_part 를 부름 — 조인이 「키가 모두 빈 행」을 거르는 그 판정
+```
+
+**접기 전 — 둘이 갈리는 값 (잰 표, 값 19 개)**
+
+| 값 | 인덱스 보고 (옛) | crud.is_blank_key_part |
+|---|---|---|
+| `None` | True | True |
+| `''` | True | True |
+| `' '` | True | True |
+| `'\t'` | True | True |
+| `'\u3000'` | True | True |
+| `nan` | False | True ← 갈림 |
+| `inf` | False | True ← 갈림 |
+| `-inf` | False | True ← 갈림 |
+| `0` | False | False |
+| `0.0` | False | False |
+| `False` | False | False |
+| `'0'` | False | False |
+| `'nan'` | False | False |
+| `'NaN'` | False | False |
+| `'None'` | False | False |
+| `'null'` | False | False |
+| `'Infinity'` | False | False |
+| `'inf'` | False | False |
+| `'x'` | False | False |
+
+```
+갈린 것   nan · inf · -inf — 셋 다 옛 판정은 «안 빔», crud 는 «빔»
+보고 문장  안 바뀜 — 인덱스 보고에 들어오는 것은 값이 아니라 키 «식»(텍스트로 캐스트, coalesce(...,''))
+          PostgreSQL 에서 잰 칸: 숫자 키 NaN 두 행 -> 'NaN' 로 와서 «중복» · NULL 두 행 -> '' 로 와서 «부재» (접은 뒤)
+          그래서 nan · inf 가 실수로 그 자리에 닿는 길이 PostgreSQL 에는 없음 — 갈리던 세 값이 보고에 안 닿음
+통과     38 passed, 1 skipped in 1.47s
+PG 칸    1 passed, 7615 deselected in 15.80s
+변이     옛 판정을 되돌림 -> 4 failed, 13 passed, 1 skipped in 0.87s — test_the_index_report_and_the_join_answer_blank_alike[nan] · test_the_index_report_and_the_join_answer_blank_alike[inf] · test_the_index_report_and_the_join_answer_blank_alike[-inf] · test_a_non_finite_number_is_blank_to_both
+전체     6 failed, 7443 passed, 164 skipped, 3 xfailed in 752.77s (0:12:32) — 실패 여섯 = 알려진 다섯 + 간헐 inv_9_1 (따로 다시 돌려 1 passed in 2.46s)
+PG       7 failed, 118 passed, 7491 deselected in 183.02s (0:03:03) — 실패는 알려진 일곱과 이름이 같음
+재기동   서버. 마이그레이션 없음 — RUN.md 새 절
+```
+
+착지 보고 후 멈춥니다. 감시는 켜 둡니다.
