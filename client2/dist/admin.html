@@ -817,6 +817,12 @@
     .table-row.row-inactive td:not(.au-live):not(.au-backfill) {
       opacity: 0.5;
     }
+    /* Retry under a folder (lead f0e668bb8) — its own row of controls; the rest is the base layer's. */
+    .folder-retry-controls { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); }
+    /* The field takes the free space of a wide row; a button that wraps onto its own line fills it. */
+    .folder-retry-controls > * { flex: 1 1 auto; }
+    .folder-retry-controls .folder-retry-folder { flex: 999 1 auto; min-width: 0; }
+    .folder-retry-said, .folder-retry-by { overflow-wrap: anywhere; }
     /* Backfill (lead 09f0be40f) — the button or the date entry, then this collector's latest run. */
     .au-backfill-controls { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-1); }
     .au-backfill-controls .au-backfill-start { width: 7.5em; }
@@ -1587,7 +1593,7 @@
     .retro-group.is-chosen { border-color: var(--accent); color: var(--accent); }
 
   </style>
-  <script type="module" crossorigin src="/assets/admin-vbqipuT_.js"></script>
+  <script type="module" crossorigin src="/assets/admin-CRNvSjTL.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/tokens-C9Rjx7_P.js">
   <link rel="modulepreload" crossorigin href="/assets/absent-CbZu_zSZ.js">
   <link rel="modulepreload" crossorigin href="/assets/disabled_reason-Cd0wapM5.js">
@@ -1783,6 +1789,8 @@
               <span class="section-chevron">▾</span>
             </div>
             <div class="section-body">
+              <!-- Retry the failed files under one folder (lead f0e668bb8) — folder_retry.js owns it. -->
+              <div id="file-folder-retry-mount"></div>
               <table class="table-container">
                 <thead class="table-header">
                   <tr>

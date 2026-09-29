@@ -87,6 +87,7 @@ import {
 } from './retroactive_view.js';
 import { RunLines } from './run_lines.js';
 import { collectorBackfillView, BACKFILL_OP } from './collector_backfill.js';
+import { FolderRetryPanel } from './folder_retry.js';
 import { setDisabledReason } from './disabled_reason.js';
 // [원장 선언] 구조 맵을 admin이 호스트한다(브리프 §6-1 + 소유자 판정). 이 파일은 배선만
 // 한다 — 지도의 리더도, 편집기도 자기 모듈이 소유한다.
@@ -905,6 +906,7 @@ async function fetchData(options = {}) {
       //    «안 읽은 것»이 «없는 것»으로 보였다. 이제 못 읽으면 그 절만 «—» 다.
       const active = (activeRes && activeRes.ok) ? await activeRes.json().catch(() => null) : null;
       if (isStale()) return false;
+      seatFolderRetry();
       if (logs) { fileData = logs.data || []; fileTotal = logs.total || 0; renderFileTable(); }
       else { markSectionUnread('file-log-count'); allRead = false; }
       if (ws) { workspaceData = ws.data || []; renderWorkspaceTable(); markSectionAbsent('workspace-count', absentPath(ws)); }
@@ -4142,6 +4144,34 @@ async function retryFileIngestion(logId) {
     console.error('Failed to retry file ingestion', logId, err);
     showToast('❌ File ingestion retry request failed', 'error');
   }
+}
+
+// ── Retry the failed files under one folder (lead f0e668bb8) — the part is folder_retry.js ──
+let folderRetryPanel = null;
+function seatFolderRetry() {
+  const mount = byId('file-folder-retry-mount');
+  if (!mount || folderRetryPanel) return;
+  folderRetryPanel = new FolderRetryPanel(mount, {
+    doc: document,
+    paths: () => fileData.map((f) => f.filepath).filter(Boolean),
+    preview: (folder) => folderRetryCall(folder, true),
+    retry: (folder) => folderRetryCall(folder, false),
+    onRetried: () => fetchData({ silent: true }),
+  });
+}
+/** One route, two asks: `preview` writes nothing and counts; without it the same selection runs. */
+async function folderRetryCall(folder, preview) {
+  let res = null;
+  try {
+    res = await adminFetch(`${API_BASE}/admin/file-ingestion/retry-failed?folder=${encodeURIComponent(folder)}`
+      + (preview ? '&preview=true' : ''), { method: 'POST' });
+  } catch (err) {
+    console.error('[FolderRetry] request failed', folder, preview, err);
+  }
+  if (!res || !res.ok) {
+    return { ok: false, text: fetchFailureLine(res ? failureFactOf(res) : null, preview ? 'Preview failed' : 'Retry failed') };
+  }
+  return { ok: true, body: await res.json().catch(() => ({})) };
 }
 
 // API Call: Retry all failed items (kind: 'outbox' | 'file' — 섹션 헤더 버튼이 명시)
