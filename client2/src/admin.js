@@ -2027,12 +2027,12 @@ function wireBackfillCell(row, col, view) {
     // Kept in the state so a poll's re-render does not lose what was typed.
     input.addEventListener('input', () => backfillState.set(key, { ...state(), value: input.value }));
     input.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') startCollectorBackfill(key);
+      if (e.key === 'Enter') startCollectorBackfill(key, input.value);
       if (e.key === 'Escape') closeBackfill(key);
     });
   }
   const start = row.querySelector('.btn-backfill-start');
-  if (start) start.addEventListener('click', () => startCollectorBackfill(key));
+  if (start) start.addEventListener('click', () => startCollectorBackfill(key, input ? input.value : ''));
   const cancel = row.querySelector('.btn-backfill-cancel');
   if (cancel) cancel.addEventListener('click', () => closeBackfill(key));
 }
@@ -2043,11 +2043,12 @@ function closeBackfill(key) {
 }
 
 /** Queue the backfill through the existing run route — the retroactive form's envelope and its
- *  one refusal line (the server's sentence), kept on the row: the toast goes, the row stays. */
-async function startCollectorBackfill(key) {
+ *  one refusal line (the server's sentence), kept on the row: the toast goes, the row stays.
+ *  `shown` is the date field's value: what is sent is what the field says, prefilled or typed. */
+async function startCollectorBackfill(key, shown) {
   const state = backfillState.get(key) || {};
   if (state.busy) return;
-  const start = String(state.value || '').trim();
+  const start = String(shown || '').trim();
   backfillState.set(key, { ...state, value: start, busy: true, failure: null });
   renderAutoUpdateTable();
   let failureText = null;
