@@ -14,6 +14,8 @@
  *   N  a named `+` on a name-keyed map adds the member under the name typed
  *   A  the shared writer refuses to write over a value that is not a list -- the explorer's `+`
  *      used to replace `"on": "lot_event"` with `[<empty>]`
+ *   W  one word in a list of WORDS is its one member: `+` keeps it, edit writes `["new"]`,
+ *      `-` leaves `[]`
  *
  * CONSOLE OUTPUT IS ASCII ONLY (cp949-safe).
  */
@@ -143,12 +145,30 @@ function suite(M) {
 function suitePaths(P) {
   const before = { pass, fail };
   const LIST = { kind: 'map', keyed_by: 'index', member: 'item', of: { kind: 'leaf', hint: 'free' } };
+  // `derive.join.on` is a list of PAIRS; a word held there is not one of its members.
+  const PAIRS = { kind: 'map', keyed_by: 'index', member: 'pair',
+    of: { kind: 'record', fields: [{ key: 'left', node: { kind: 'leaf', hint: 'free' } }] } };
   const held = { derive: { join: { on: 'lot_event' } } };
-  ok(P.addMember(held, 'derive.join.on', LIST, {}) === null && held.derive.join.on === 'lot_event',
-    'A1 the shared writer refuses to write a list over a string held there');
+  ok(P.addMember(held, 'derive.join.on', PAIRS, {}) === null && held.derive.join.on === 'lot_event',
+    'A1 the shared writer refuses to write a list of pairs over a string held there');
   const grown = P.addMember({ a: ['x'] }, 'a', LIST, {});
   ok(grown && JSON.stringify(grown.document.a) === '["x",""]' && grown.born === 'a[1]',
     'A2 ...and appends to a list that is one');
+
+  // W -- one word in a list of words is its one member: `+`, edit and `-` keep that reading
+  const word = { class: 'Lot' };
+  const added = P.addMember(word, 'class', LIST, {});
+  ok(added && JSON.stringify(added.document.class) === '["Lot",""]' && added.born === 'class[1]',
+    `W1 "+" on a one-word list keeps the word and appends [${added && JSON.stringify(added.document.class)}]`);
+  const edited = P.writeShapeAtPath(word, 'class[0]', 'Wafer');
+  ok(edited && JSON.stringify(edited.class) === '["Wafer"]',
+    `W2 editing the one member writes a one-item list [${edited && JSON.stringify(edited.class)}]`);
+  const removed = P.deleteAtPath(word, P.splitBundlePath('class[0]'));
+  ok(removed && JSON.stringify(removed.class) === '[]' && word.class === 'Lot',
+    `W3 "-" on the one member leaves an empty list; the input is untouched [${removed && JSON.stringify(removed.class)}]`);
+  const listed = P.writeShapeAtPath({ class: ['a', 'b', 'c'] }, 'class[1]', 'B');
+  ok(listed && JSON.stringify(listed.class) === '["a","B","c"]',
+    'W4 a list that is one is written in place, not lifted');
   return { pass: pass - before.pass, fail: fail - before.fail };
 }
 
@@ -172,6 +192,10 @@ const DEFECTS = [
                      '    if (false) {')],
   [PATHS, suitePaths, 'the shared writer writes over a value that is not a list',
     (s) => s.replace('  if (!valueFits(node, held)) return null;\n', '')],
+  [PATHS, suitePaths, '"+" reads the held word as no list, so the word is lost',
+    (s) => s.replace('const held = asList(node, getAtPath(', 'const held = ((n, v) => v)(node, getAtPath(')],
+  [PATHS, suitePaths, 'an index step into a word is not lifted, so edit and "-" do nothing',
+    (s) => s.replace('    next = setAtPath(next, steps.slice(0, depth), [held]) || next;\n', '')],
 ];
 const CONTROLS = [
   [PANEL, suite, 'a local rename', (s) => s.replace(/\bheld3\b/g, 'parsed3')],

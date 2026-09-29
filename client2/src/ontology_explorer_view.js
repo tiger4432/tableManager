@@ -5,7 +5,7 @@ import { isDraftRevisionEditable, declarationIdFor, fieldOpensByDefault }
 import { commitTree } from './dom_patch.js';
 import { splitBundlePath, getAtPath } from './ontology_path.js';
 import {
-  declarationShape, fieldApplies, memberPath, membersOf, shapeAt, valueFits,
+  asList, declarationShape, fieldApplies, memberPath, membersOf, shapeAt, valueFits,
 } from './ontology_skeleton.js';
 import { closedListChoice, renderClosedList } from './closed_list.js';
 // 🔴 C-121. 이 화면이 보내는 수 옆에 «그 0 이 무엇인지»를 붙이는 정본. 새 어휘가 아니라서
@@ -1732,9 +1732,10 @@ export function renderSkeletonForm(context, node, path, value, depth = 0, label 
     return renderSkeletonOneOf(context, shape, path, value, depth, label, required);
   }
   // 🔴 A BRANCH HOLDING THE WRONG SHAPE IS DRAWN AS ITS VALUE, NOT AS AN EMPTY BRANCH.
-  //    `membersOf` answers [] for a string where the skeleton says list, so the map drew
-  //    only its `+` door and the value on file vanished -- the owner's `aaa` holds
-  //    `"on": "lot_event"`. The leaf row shows it (see `renderSkeletonLeaf`).
+  //    `membersOf` answers [] for a string where the skeleton says a list of records, so the
+  //    map drew only its `+` door and the value on file vanished -- the owner's `aaa` holds
+  //    `"on": "lot_event"`. The leaf row shows it (see `renderSkeletonLeaf`). A word in a
+  //    list of WORDS fits: it is that list's one member (`asList`).
   if (!valueFits(shape, value)) {
     return renderTreeLeaf(context, shape, path, value, depth, label, required);
   }
@@ -1960,7 +1961,7 @@ function renderSkeletonMap(context, node, path, value, depth) {
     const at = memberPath(path, key, node.keyed_by);
     const drawn = renderSkeletonForm(
       context, node.of, at,
-      node.keyed_by === 'index' ? (value || [])[key] : (value || {})[key],
+      node.keyed_by === 'index' ? (asList(node, value) || [])[key] : (value || {})[key],
       depth + 1, String(key));
     if (!drawn) continue;
     const slot = drawn.querySelector('.oe-node-label');

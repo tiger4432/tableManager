@@ -16,7 +16,7 @@
 // sides is the property being kept here; being right about dotted ids is a separate fix and
 // belongs in the server first.
 
-import { emptyOf, valueFits } from './ontology_skeleton.js';
+import { asList, emptyOf, valueFits } from './ontology_skeleton.js';
 
 const PATH_STEP = /([^.[\]]+)|\[(\d+)\]/g;
 
@@ -77,7 +77,7 @@ export function setAtPath(document, steps, value) {
 export function writeShapeAtPath(document, relative, value) {
   const steps = splitBundlePath(relative);
   if (!steps.length) return null;
-  let raw = document;
+  let raw = liftLoneValues(document, steps);
   for (let depth = 1; depth < steps.length; depth += 1) {
     const branch = steps.slice(0, depth);
     if (getAtPath(raw, branch) !== undefined) continue;
@@ -93,6 +93,20 @@ export function writeShapeAtPath(document, relative, value) {
     if (value.trim() !== '' && Number.isFinite(asNumber)) written = asNumber;
   }
   return setAtPath(raw, steps, written);
+}
+
+// `class[0]` on a file holding `"class": "Lot"`: the form drew that word as a one-item list
+// (`asList`), so an index step landing on a single value lifts it into its list first. The
+// file keeps the word until somebody edits the list; from then on it holds the list.
+function liftLoneValues(document, steps) {
+  let next = document;
+  for (let depth = 1; depth < steps.length; depth += 1) {
+    if (typeof steps[depth] !== 'number') continue;
+    const held = getAtPath(next, steps.slice(0, depth));
+    if (held === undefined || held === null || held === '' || typeof held === 'object') continue;
+    next = setAtPath(next, steps.slice(0, depth), [held]) || next;
+  }
+  return next;
 }
 
 /** Read the leaf at `steps`, or `undefined` when the path does not resolve. */
@@ -115,7 +129,7 @@ export function getAtPath(document, steps) {
  */
 export function deleteAtPath(document, steps) {
   if (!steps.length) return null;
-  const next = JSON.parse(JSON.stringify(document));
+  const next = JSON.parse(JSON.stringify(liftLoneValues(document, steps)));
   let cursor = next;
   for (const step of steps.slice(0, -1)) {
     if (cursor === null || typeof cursor !== 'object') return null;
@@ -151,7 +165,7 @@ export function deleteAtPath(document, steps) {
  */
 export function addMember(document, relative, node, defs, name = '') {
   if (!node || node.kind !== 'map') return null;
-  const held = getAtPath(document, splitBundlePath(relative));
+  const held = asList(node, getAtPath(document, splitBundlePath(relative)));
   if (!valueFits(node, held)) return null;
   const seed = emptyOf(node.of, defs);
   if (node.keyed_by === 'index') {

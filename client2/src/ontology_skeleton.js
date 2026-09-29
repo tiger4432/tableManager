@@ -236,11 +236,27 @@ export function memberPath(path, key, keyedBy) {
   return keyedBy === 'index' ? `${path}[${key}]` : `${path}.${key}`;
 }
 
+/** A list node's value read as a list: one word where a list of words is declared
+ *  (`"class": "Lot"`) is that list's one member. Anything else comes back as held.
+ *
+ *  🔴 ONE READER -- members, each member's value, `valueFits` and `addMember` all ask here.
+ *  A member row that indexed the word itself read `"Lot"[0]` = `"L"`. A list of RECORDS is
+ *  not widened: `"on": "lot_event"` is still shown raw (see `valueFits`).
+ */
+export function asList(node, value) {
+  const lone = node && node.kind === 'map' && node.keyed_by === 'index'
+    && node.of && node.of.kind === 'leaf'
+    && value !== undefined && value !== null && value !== '' && !Array.isArray(value)
+    && valueFits(node.of, value);
+  return lone ? [value] : value;
+}
+
 /** The members a map currently holds, in the order they should be drawn. */
 export function membersOf(node, value) {
   if (!node || node.kind !== 'map') return [];
   if (node.keyed_by === 'index') {
-    return Array.isArray(value) ? value.map((_, index) => index) : [];
+    const list = asList(node, value);
+    return Array.isArray(list) ? list.map((_, index) => index) : [];
   }
   return value && typeof value === 'object' && !Array.isArray(value)
     ? Object.keys(value) : [];
@@ -262,7 +278,7 @@ export function valueFits(node, value) {
     return node.hint === 'flag' ? typeof value === 'boolean'
       : typeof value === 'string' || typeof value === 'number';
   }
-  if (node.kind === 'map' && node.keyed_by === 'index') return Array.isArray(value);
+  if (node.kind === 'map' && node.keyed_by === 'index') return Array.isArray(asList(node, value));
   if (node.kind === 'map' || node.kind === 'record') {
     return typeof value === 'object' && !Array.isArray(value);
   }

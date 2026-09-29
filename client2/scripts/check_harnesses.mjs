@@ -1570,12 +1570,12 @@ const FLOORS = new Map([
   // control whose first keystroke would overwrite it. P3 is the Lead's census run through the
   // real chain panel on the shipped skeleton: 9 blank cells before, 0 now, and it is written so
   // it stays true when the skeleton learns lists.
-  ['skeleton_value_fit_harness.mjs', 18],
+  ['skeleton_value_fit_harness.mjs', 22],
   // New 2026-09-24 with the list skeleton (90b9f443). In the owner's Chrome the chain window's lists
   // folded shut and did not open, and `+ pair` did nothing: the renderer draws a fold toggle, `+`,
   // a named `+` and `-` on every map, and only the explorer received them. Scored through the real
   // panel on the shipped skeleton, by the click path, with the writer both screens now share.
-  ['chain_list_edit_harness.mjs', 16],
+  ['chain_list_edit_harness.mjs', 20],
   // New 2026-09-25 (lead f3bc02f6e, owner 「at the end」). The grid's Ledger column takes the source
   // label's ONE answer to 「is this table a ledger source」, scored through the real label, the real
   // buildColumnDefs and the write funnels' seat; a refused source and a half-refused table included.

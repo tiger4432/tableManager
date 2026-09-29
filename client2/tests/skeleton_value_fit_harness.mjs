@@ -15,6 +15,7 @@
  *   N  ⛔ NOT INFERRED: a list at a leaf is not drawn as a list. The skeleton says what a cell
  *      is; the value is only checked against it
  *   K  what already fit is drawn exactly as before (input, checkbox, members + door)
+ *   W  a word in a list of WORDS is that list's one member: a box holding it, its `-`, the door
  *   R  read mode spells a list and a record as their JSON, not `a,b` / `[object Object]`
  *   P  the real chain panel with the SHIPPED skeleton: no cell that holds a value is drawn
  *      blank. It says nothing about which shape the server declares, so it holds before and
@@ -48,17 +49,23 @@ function ok(cond, name) {
 // A skeleton whose names exist nowhere in the product: the form must be reading the node.
 const LEAF = { kind: 'leaf', hint: 'free' };
 const LIST = { kind: 'map', keyed_by: 'index', member: 'item', of: LEAF };
+// The owner's `"on": "lot_event"` sits in a list of PAIRS -- a word there is still a misfit.
+const PAIRS = { kind: 'map', keyed_by: 'index', member: 'pair',
+  of: { kind: 'record', fields: [{ key: 'x', node: LEAF }] } };
 const FIXTURE = {
   kind: 'record',
   fields: [
     { key: 'decoy_text', node: LEAF },
     { key: 'decoy_flag', node: { kind: 'leaf', hint: 'flag' } },
     { key: 'decoy_pick', node: { kind: 'leaf', hint: 'choice', list: 'decoys' } },
-    { key: 'decoy_list', node: LIST },
+    { key: 'decoy_list', node: PAIRS },
     { key: 'decoy_rec', node: { kind: 'record', fields: [{ key: 'x', node: LEAF }] } },
     { key: 'fit_text', node: LEAF },
     { key: 'fit_flag', node: { kind: 'leaf', hint: 'flag' } },
     { key: 'fit_list', node: LIST },
+    { key: 'word_list', node: LIST },
+    { key: 'three_list', node: LIST },
+    { key: 'empty_list', node: LIST },
   ],
 };
 const HELD = {
@@ -70,6 +77,9 @@ const HELD = {
   fit_text: 'ok',
   fit_flag: true,
   fit_list: ['p', 'q'],
+  word_list: 'Lot',
+  three_list: ['a', 'b', 'c'],
+  empty_list: [],
 };
 const UNFIT = ['decoy_text', 'decoy_flag', 'decoy_pick', 'decoy_list', 'decoy_rec'];
 
@@ -111,7 +121,7 @@ function suite(M) {
 
   // M -- a branch holding the wrong shape shows the value instead of an empty branch
   ok(shownIn(at('decoy_list')) === 'lot_event' && doorsIn(at('decoy_list')).length === 0,
-    `M1 a string where the skeleton says list is shown, and no "+ item" door hides it `
+    `M1 a string where the skeleton says list of records is shown, and no "+ pair" door hides it `
     + `[${shownIn(at('decoy_list'))}, doors=${doorsIn(at('decoy_list')).length}]`);
   ok(shownIn(at('decoy_rec')) === 'zzz' && nestedIn(at('decoy_rec')).length === 0,
     `M2 a string where the skeleton says record is shown, and no empty fields are drawn over it`);
@@ -137,6 +147,22 @@ function suite(M) {
      && doorsIn(boxAt(blankForm, 'fit_list') || makeNode(doc, 'div')).length === 1,
     "K4 '' at a flag is an unticked box and '' at a list is its empty door -- absence, not a misfit");
 
+  // W -- one word in a list of words is that list's one member (owner: 「선언창도 다 지원하게해」)
+  const removesIn = (box) => walk(box).filter((n) => cls(n).includes('oe-form-remove'));
+  const inputAt = (p) => controlsIn(boxAt(form, p) || makeNode(doc, 'div'))[0];
+  ok(inputAt('word_list[0]') && inputAt('word_list[0]').value === 'Lot'
+     && !boxAt(form, 'word_list[1]') && removesIn(at('word_list')).length === 1
+     && doorsIn(at('word_list')).length === 1,
+    `W1 a word at a list of words draws ONE member holding the word, its "-" and the "+" door `
+    + `[${inputAt('word_list[0]') && inputAt('word_list[0]').value}]`);
+  ok(['a', 'b', 'c'].every((word, i) => inputAt(`three_list[${i}]`)
+       && inputAt(`three_list[${i}]`).value === word)
+     && !boxAt(form, 'three_list[3]') && removesIn(at('three_list')).length === 3,
+    'W2 a list of three draws three members, each holding its own word');
+  ok(!boxAt(form, 'empty_list[0]') && controlsIn(at('empty_list')).length === 0
+     && doorsIn(at('empty_list')).length === 1,
+    'W3 an empty list draws no member and no box -- only its "+" door');
+
   // every unfit path together: nothing typeable over a value the form cannot hold
   const typeable = UNFIT.flatMap((p) => controlsIn(at(p)));
   ok(typeable.length === 0, `U5 no control is offered over any of the ${UNFIT.length} unfit values`);
@@ -149,7 +175,9 @@ function suite(M) {
   ok(shownIn(rAt('decoy_pick')) === '{"k":1}',
     `R2 read mode spells a record as JSON, not [object Object] [${shownIn(rAt('decoy_pick'))}]`);
   ok(shownIn(rAt('decoy_list')) === 'lot_event',
-    'R3 read mode shows a string held where the skeleton says list');
+    'R3 read mode shows a string held where the skeleton says list of records');
+  ok(shownIn(rAt('word_list[0]')) === 'Lot' && !boxAt(read, 'word_list[1]'),
+    `R4 read mode shows a word in a list of words as its one member [${shownIn(rAt('word_list[0]'))}]`);
 
   return { pass: pass - before.pass, fail: fail - before.fail };
 }
@@ -229,6 +257,8 @@ const DEFECTS = [
                      "    return h('span', 'oe-value', String(value));")],
   ['an unfit value is spelled with String(), so a record reads [object Object]',
     (s) => s.replace('  return JSON.stringify(value);', '  return String(value);')],
+  ['a member row indexes the word itself, so "Lot" reads "L"',
+    (s) => s.replace('(asList(node, value) || [])[key]', '(value || [])[key]')],
 ];
 const CONTROLS = [
   ['a local rename', (s) => s.replace(/\bspelledValue\b/g, 'heldAsText')],
