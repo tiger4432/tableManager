@@ -123,8 +123,11 @@ def duplicate_keys(db, table: str, columns: list, folds=None,
 
 
 def _is_blank(value) -> bool:
-    """None · 빈 문자열 · 공백만 — 상설이 셋을 «같은 부재»로 접는다."""
-    return value is None or not str(value).strip()
+    """🔴 [총괄 f36abbb1a ②] 판정은 crud 하나(`is_blank_key_part`) — 조인이 「키가 빈 행」을
+    거르는 그 판정이라 인덱스 보고와 조인이 «빈 키»에 다르게 답하지 않는다."""
+    from database import crud
+
+    return crud.is_blank_key_part(value)
 
 
 def inspect(db, table: str, columns: list, folds=None) -> dict:
