@@ -984,6 +984,10 @@ const FLOORS = new Map([
   // 19 -> 24 (lead 75bac3964, D1-D5): Start is the latest run's next_start, verbatim, until typed.
   ['collector_backfill_harness.mjs', 24],
   //
+  // New with lead f0e668bb8: File Ingestion's retry under a folder. The number on Retry is the
+  // server's preview count, a changed folder needs a new preview, 0 is off with the server's words.
+  ['folder_retry_harness.mjs', 17],
+  //
   // The emergency stop's control (lead 668fa004c): the state line's shapes, the route each button
   // sends, Pause asking once, two instances and a re-read.
   ['chain_pause_harness.mjs', 19],
