@@ -1,10 +1,24 @@
 # 지금 돌리면 되는 것
 
+> ## 🔴 [09-29 오전 3] **엔터티 class 도 운영자의 낱말 — ["static","probe"] 저장 뒤 엔터티가 선언에서 빠지던 결함 — 마이그레이션 «없음» · 재기동 서버**
+>
+> ```
+> 무엇이 바뀌나  엔터티 class 에 static · dynamic 밖의 낱말을 적어도 받음(술어와 같음). 빈 낱말은 「없음」으로 접힘
+>              코드가 읽는 낱말은 여전히 엔터티 static 하나 — probe 같은 낱말은 행동 없음
+> 확인          선언창에서 엔터티 class 에 낱말 하나를 더해 저장 -> GET /api/ledger/declaration 의 entities 에 그 엔터티가 그대로 있고
+>              class 가 적은 목록 그대로. 서버 로그에 「[Ledger] entity|… is NOT read」 줄이 없어야 함
+> 뜻           「Saved」 뒤 엔터티가 사라지면 그 엔터티의 선언이 문법에서 떨어진 것 — 서버 로그의 NOT read 줄에 칸 이름이 있음
+>              (저장은 문법이 틀려도 파일에 씀 — 소유자 판정 「지금은 안읽히면 저장도 안하네」. 읽는 쪽이 그 선언만 뺌)
+> 급할 때       스위치 없음 — 그 class 칸을 지우거나 낱말 하나로 되돌리면 오늘 그대로
+> ```
+
+---
+
 > ## 🔴 [09-29 오전 2] **class = 낱말 하나 또는 목록 (엔터티 · 술어) · follow=class:<낱말> — 마이그레이션 «없음» · 재기동 서버**
 >
 > ```
 > 선언 예      "vocabulary": {"measures@1": {..., "class": ["model"]}, "inspected@1": {..., "class": "context"}}
->             엔터티는 "class": "static" 도 ["static"] 도 됨 — 낱말은 static 또는 dynamic 하나. 술어의 낱말은 운영자가 지음
+>             엔터티는 "class": "static" 도 ["static"] 도 됨. 낱말은 엔터티든 술어든 운영자가 지음 — 코드가 읽는 것은 엔터티 static 하나(위 [09-29 오전 3])
 > 걷기         /api/ledger/subgraph?...&follow=class:model   -> 부류 model 을 든 술어 전부를 밟음
 >             모르는 낱말 -> 422 · reason predicate_class_not_declared · unknown · declared(선언에 쓰인 낱말)
 > 선언 라우트   /api/ledger/declaration 의 entities[].class · predicates[].class 가 «목록»(없으면 null)

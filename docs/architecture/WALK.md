@@ -17,8 +17,8 @@ follow   어느 «길»을 밟나   술어 목록. `이름:키1,키2` 로 «목�
 collect  무엇을 «가져오나»  도메인 «노드 타입»(선언된 엔터티 이름).            없으면 «전부»
 ```
 🔵 **`class` 는 엔터티와 술어가 같은 문법이다 — 낱말 하나 또는 낱말 목록**(총괄 07889c83d). 읽는 함수는
-`setup_bundle.class_words` 하나이고, 술어의 낱말은 운영자가 짓는다(코드는 하나도 모른다). 엔터티의 낱말은
-걷기가 읽는 `static`·`dynamic` 중 하나다. `/api/ledger/declaration` 은 엔터티·술어 모두 `class` 를 «목록»(없으면 `null`)으로 싣는다.
+`setup_bundle.class_words` 하나이고, 낱말은 엔터티든 술어든 운영자가 짓는다(총괄 022dcf17a). 코드가 읽는 낱말은
+엔터티의 `static` 하나뿐이다. `/api/ledger/declaration` 은 엔터티·술어 모두 `class` 를 «목록»(없으면 `null`)으로 싣는다.
 🔵 **`follow` 는 길이고 `collect` 는 짐이다.** 웨이퍼에서 결함에 닿으려면 다이를 «지나야»
 하지만, 지나는 것과 «실어 오는 것»은 다르다.
 ⚠️ **짝짓기는 부르는 쪽의 일이다** — 다이 맵이면 `collect=die` · `follow=inspected`.
