@@ -1132,5 +1132,85 @@
       "written",
       "canonical"
     ]
+  },
+  "contrast_run": {
+    "__comment": "3a262cc76 - one saved contrast: the walk route's own arguments (GET /api/ledger/subgraph). positive/negative/follow are JSON lists.",
+    "business_key": "run_id",
+    "column_types": {
+      "run_id": "string",
+      "positive": "string",
+      "negative": "string",
+      "since": "datetime",
+      "until": "datetime",
+      "hops": "number",
+      "direction": "string",
+      "node_limit": "number",
+      "edge_limit": "number",
+      "follow": "string",
+      "backbone_hops": "number",
+      "include_superseded": "string",
+      "seed_type": "string",
+      "seed_limit": "number",
+      "note": "string"
+    },
+    "display_columns": [
+      "run_id",
+      "positive",
+      "negative",
+      "since",
+      "until",
+      "hops",
+      "direction",
+      "node_limit",
+      "edge_limit",
+      "follow",
+      "backbone_hops",
+      "include_superseded",
+      "seed_type",
+      "seed_limit",
+      "note"
+    ]
+  },
+  "contrast_factor": {
+    "__comment": "3a262cc76 - one ranked candidate of a contrast run, named as the walk's propagation.ranked item (reach/reachable split into their positive and negative halves). Written by the chain from contrast_run.",
+    "composite_key_source": [
+      "run_id",
+      "id"
+    ],
+    "composite_key_separator": "|",
+    "column_types": {
+      "run_id": "string",
+      "id": "string",
+      "type": "string",
+      "label": "string",
+      "reach_positive": "number",
+      "reach_negative": "number",
+      "reachable_positive": "number",
+      "reachable_negative": "number",
+      "rank": "number",
+      "top": "string",
+      "tied": "string",
+      "incomparable": "string",
+      "evidence": "string",
+      "contrast": "string",
+      "complete": "string"
+    },
+    "display_columns": [
+      "run_id",
+      "id",
+      "type",
+      "label",
+      "reach_positive",
+      "reach_negative",
+      "reachable_positive",
+      "reachable_negative",
+      "rank",
+      "top",
+      "tied",
+      "incomparable",
+      "evidence",
+      "contrast",
+      "complete"
+    ]
   }
 }
