@@ -296,6 +296,8 @@ export class RawRegistryPanel {
     // 🔴 «새 이름»을 짓는 중인가. 패널의 상태이지 서버의 상태가 아니라서 여기 삽니다 —
     //    서버는 「이 이름이 파일에 있었나」만 알고, 그 답은 저장할 때 나옵니다.
     this.newMode = false;
+    // [+ add] asked for its answer and it has not come back. Only that answer clears this.
+    this._awaitingNew = false;
     // 🔴 접힘은 «사람이 둔 자리»입니다 — 응답의 성질이 아니라서 여기 삽니다. 다시 그릴 때
     //    이 둘이 그대로라야 편집 한 번이 화면을 접어 버리지 않습니다.
     this.moreOpen = false;
@@ -472,7 +474,12 @@ export class RawRegistryPanel {
     //    (소유자 2026-09-13 「지혼자 새로고침되서 초기화되는데?」).
     // ✅ 그래서 표시는 `opts.forNew` — 버튼이 «자기 요청에» 실어 보낸 것이고, 타이머의 응답에는
     //    «없습니다». 가드는 그대로이고 예외는 그 요청 하나에만 붙습니다.
-    if (opts.background && this.open && !opts.forNew) {
+    // 🔴 [lead 09-29] Between [+ add] and its answer nothing is «open», so a stray no-name read
+    //    (startup · a socket event · the timer) drew the new form early and the answer then redrew
+    //    it under the operator's typing. Until that answer lands, only it draws. Not `newMode`
+    //    alone: a FAILED answer leaves nothing open, and the next read must still draw the form.
+    if (opts.forNew) this._awaitingNew = false;
+    if (opts.background && (this.open || (this.newMode && this._awaitingNew)) && !opts.forNew) {
       const names = view.available ? view.names.join('\u0000') : null;
       if (names !== null && names !== this._names) this._options(this._picker, view, this.open);
       return view;
@@ -589,6 +596,7 @@ export class RawRegistryPanel {
           //    「보고 있던 것으로 돌아갑니다」가 그날부터 거짓이 됩니다.
           if (this.newMode && this.onOpen) {
             this._backTo = { payload: this._payload, opts: this._opts };
+            this._awaitingNew = true;
             this.onOpen('', { forNew: true });
           } else {
             if (this._backTo) { this._payload = this._backTo.payload; this._opts = this._backTo.opts; }

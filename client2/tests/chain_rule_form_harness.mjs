@@ -205,6 +205,49 @@ function suite(M) {
       `B3e ... and the button's own answer still gets through afterwards`
       + ` [${newName ? JSON.stringify(newName.value) : 'no box'}]`);
   }
+  // 🔴 [lead 09-29] THE SAME RACE FROM THE LIST, where nothing is open. B3 keys on the open
+  //    document; from the list there is none, so a stray nameless read drew the new form early
+  //    and the button's answer then redrew it under the typing (reproduced on a page). The
+  //    answer order is the test's: the stray first, then the button's.
+  {
+    const LIST = { ...payloadFor(SKELETON, null), name: null, raw: '', enabled: null };
+    const nameIn = (host) => walk(host).find(
+      (n2) => n2.attrs && n2.attrs['data-value'] === 'name' && n2.tagName === 'INPUT');
+    const asked4 = [];
+    const w = makePanel(M, SPEC, { onOpen: (n2, x2) => asked4.push(x2) });
+    w.panel.render(LIST, { background: true });
+    const add4 = byCls(w.host, 'chain-rule-add')[0];
+    if (add4) add4.dispatch('click', {});
+    w.panel.render(LIST, { background: true });
+    const early = nameIn(w.host);
+    ok(!early, `B4a a stray read landing before the button's answer does not draw the new form`
+      + ` [${early ? 'drawn' : 'none'}]`);
+    // what an operator does with a form on screen: types into it
+    if (early) { doc.activeElement = early; early.value = 'r_race'; }
+    w.panel.render(LIST, { ...(asked4[0] || {}), background: true });
+    const drawn = nameIn(w.host);
+    ok(Boolean(drawn), 'B4b the button\'s own answer draws the new form');
+    ok(!early || (drawn === early && drawn.value === 'r_race'),
+      `B4c what was typed into a form on screen keeps its node and its text through that answer`
+      + ` [${drawn ? JSON.stringify(drawn.value) : 'none'}]`);
+    if (drawn) { doc.activeElement = drawn; drawn.value = 'r_new'; }
+    w.panel.render(LIST, { background: true });
+    const later = nameIn(w.host);
+    ok(Boolean(drawn) && later === drawn && later.value === 'r_new',
+      `B4d ... and a read landing after it leaves the form being typed in alone`
+      + ` [${later ? JSON.stringify(later.value) : 'none'}]`);
+    doc.activeElement = undefined;
+    // A FAILED answer leaves nothing open. The next read must still draw the form -- a guard on
+    // `newMode` alone would refuse every read from then on, with no button on screen to leave by.
+    const asked5 = [];
+    const s = makePanel(M, SPEC, { onOpen: (n2, x2) => asked5.push(x2) });
+    s.panel.render(LIST, { background: true });
+    const add5 = byCls(s.host, 'chain-rule-add')[0];
+    if (add5) add5.dispatch('click', {});
+    s.panel.render(null, { ...(asked5[0] || {}), background: true, unavailable: 'read failed' });
+    s.panel.render(LIST, { background: true });
+    ok(Boolean(nameIn(s.host)), 'B4e a failed answer does not strand the panel: the next read draws the new form');
+  }
 
   // ── C: add a rule that did not exist ──────────────────────────────────────────────
   const saves = [];
@@ -895,7 +938,8 @@ const DEFECTS = [
     s => s.replace("    this.lists = deps.lists || {};", "    this.lists = deps.lists || { mappers: [] };")],
   // 🔴 C-101 ①. Four ways this screen reset itself while somebody was typing.
   ['a background read is drawn over the document being edited',
-    s => s.replace('if (opts.background && this.open && !opts.forNew) {', 'if (false) {')],
+    s => s.replace('if (opts.background && (this.open || (this.newMode && this._awaitingNew)) && !opts.forNew) {',
+      'if (false) {')],
   ['the unsaved document is dropped, so any redraw rebuilds from the response',
     s => s.replace('let drafted = this.draft !== null && this.draftOf === key ? this.draft : null;',
                    'let drafted = null;')],
@@ -959,6 +1003,10 @@ const DEFECTS = [
     (s) => s.replace('        if (short.length) this._markShort(this._formBox, view, short);', '')],
   ['the save presses stack their marks, so a second press doubles every cell',
     (s) => s.replace('      if (tag.parentNode) tag.parentNode.removeChild(tag);', '')],
+  ['a stray read draws the new form before the button\'s answer, which then redraws it under the typing',
+    (s) => s.replace('(this.open || (this.newMode && this._awaitingNew))', 'this.open')],
+  ['the guard keys on newMode alone, so a failed answer strands the panel',
+    (s) => s.replace('(this.open || (this.newMode && this._awaitingNew))', '(this.open || this.newMode)')],
   ['the form redraw replaces the field clicked next again, so its focus and typing are lost',
     (s) => s.replace('        commitTree(box, form, doc.activeElement);\n',
       "        box.textContent = '';\n        box.appendChild(form);\n")],
