@@ -65224,3 +65224,95 @@ PG       7 failed, 118 passed, 7507 deselected in 174.01s (0:02:54) — 실패�
 ```
 
 착지 보고 후 멈춥니다. 감시는 켜 둡니다.
+
+## [구현자 -> 총괄] 착지 2005c0649 — 대조 저장: contrast_run -> 체인 -> contrast_factor (3a262cc76)
+
+```
+표 · 칸     먼저 푸시 cd069102e · 정정 824d7e62e (factor 의 id -> node_id — 쓰기 문이 id 칸을 안 씀, 행이 한 줄로 뭉쳤음)
+           contrast_run    run_id · positive · negative · since · until · hops · direction · node_limit · edge_limit · follow ·
+                           backbone_hops · include_superseded · seed_type · seed_limit · note — 걷기 라우트 인자 이름
+           contrast_factor run_id · node_id (키) · type · label · reach_positive · reach_negative · reachable_positive ·
+                           reachable_negative · rank · top · tied · incomparable · evidence · contrast · complete — ranked 의 이름
+           저장한 사람은 칸 없이 층의 updated_by · class 칸 없음 (총괄 답)
+맵퍼        server/mappers/contrast_walk.py 의 contrast_walk — 소유자 맵퍼와 같은 모양(총괄 판정): discover 가 import,
+           폼 후보는 kind function(모듈 · 함수), 선언은 derive: {kind: "mapper", mapper: {mapper_module: "mappers.contrast_walk",
+           mapper_function: "contrast_walk"}} (표본 contrast_factor_from_run, 켜진 채 + 이유). 새 kind · 새 접두 없음
+           공개 함수는 contrast_walk 하나 — 도우미는 전부 _ (폼이 두 인자 이상 공개 함수를 전부 후보로 내놓아서)
+순위        좌석 하나 — 걷기 라우트의 함수(trace_router.evidence_subgraph, 그 안의 _propagation · _rank_layers)를 run 의 인자로 부름
+           빈 칸은 라우트 서명의 기본값을 읽어 채움(기본값의 저자도 하나). 맵퍼는 순위를 안 짬
+as_of       run 의 until 이 걷기를 묶음 — until 뒤 원자는 안 읽음 · until 이 빈 run 은 이름 대어 거절(안 씀)
+참/거짓     top · tied · incomparable · complete 는 글 "true"/"false" (응답 JSON 낱말)
+걸은 길     evidence = 응답의 trail 그대로 + 첫 홉 뒤 홉마다 predicates(그 홉과 앞 홉을 잇는 엣지의 술어, 방향 무관 —
+           보드가 짝짓는 방식 그대로). 라우트의 trail 은 안 바꿈
+```
+
+**총괄 조건 셋**
+```
+1 498 좁힘     chain/dynamic_mappers.py 머리 — 「server/mappers 의 제품 코드는 추적 예외로만, .gitignore 에 사유 — ledger_v2_* · contrast_walk.
+              선언에서 만드는 기본틀은 파일로 두면 선언과 어긋나는 산출물이라 프로세스에만」. 지우지 않고 좁힘
+              .gitignore 예외 줄 !server/mappers/contrast_walk.py — ledger_v2 줄과 같은 결로 사유 주석
+2 도장         어디서 찍나 먼저 엶: 기본틀의 «몸»이 반환 항목에 넣음(join_into._update_items 의 origin_row_id) — 좌석은 안 찍음
+              그래서 contrast_walk 몸도 똑같이 넣음(갈래 없음). 잰 것: factor 칸의 도장 = run 행 id, 그 도장으로 걷기(삭제 경로의
+              withdraw_by_origin)하면 칸이 전부(행 수 × 칸 수 — 게이트가 단언) 걷히고 행은 남음(칸 빔, 키 R1|<노드> 만)
+              이미 있던 갈라짐 하나(안 고침): 삭제 때 좌석이 규칙마다 찍는 설명 줄(rule_run.retraction_refusal)은 «등록된 종류»로
+              판단 — 모듈 · 함수로 적힌 규칙은 이름표가 없어 「파일 맵퍼는 … 적는지는 제품이 모릅니다 — 도장이 없으면 … 철회되지
+              않습니다」를 찍음. 실제로는 도장이 있어 걷힘 — 그 줄은 가정형이라 거짓은 아니지만 이 규칙엔 헛말. RUN.md 에 사실로 적음
+3 import       discover 가 mappers 를 전부 import 해도 라우트 모듈을 안 끌어옴 — contrast_walk 의 모듈 머리는 inspect · json · logging 뿐,
+              trace_router 는 run 을 걸을 때 함수 안에서 import. 새 인터프리터에서 discover() 뒤 ledger.trace_router 가 sys.modules 에
+              없음을 게이트로 잼(변이: 머리에서 import -> 빨강). 순환 없음(모듈 머리가 제품 모듈을 안 부름). 그 파일이 앉은 채로 전체 · PG
+```
+
+| 칸 | 입력 | 답 |
+|---|---|---|
+| 순위 그대로 | run 한 줄(양성 둘 · 대조 하나, until 로 묶음) | 쓰기 문 «뒤» 표에서 센 factor 행 수 = 같은 인자로 부른 라우트의 ranked 수 · reach · reachable · rank · type · label · 참거짓 같음 |
+| until | until 뒤 원자 하나(LATE) | 행에 없음 — until 을 안 준 라우트엔 있음(원장에 그 원자가 실제로 있다는 대조) |
+| 양품 없음 | negative 비움 | contrast = unexamined |
+| 잘린 걸음 | node_limit 10 | complete = false |
+| 리플레이 | 같은 run 두 번 | 같은 행 · 같은 값 |
+| 두 번 저장 | run 둘 | 행 묶음 둘 (run_id 로 갈림) |
+| 걸은 길 | 저장된 evidence | 첫 홉 뒤 홉마다 predicates = ["derived_from"] |
+| until 없음 | until 빈 run | 거절 문장 · 행 없음 |
+| 도장 | run 하나 체인 뒤 그 run 으로 걷기 | 도장 = run 행 · 걷힌 칸 = 행 수 × 칸 수 · 행은 남고 칸 빔 |
+| 폼 · 관문 | mapper_candidates("mappers") · save_chain_rule_raw(표본 선언) | 그 모듈에서 후보는 contrast_walk 하나(kind function) · 저장 통과 |
+| import | 새 인터프리터에서 discover() | contrast_walk 는 import 됨 · 라우트 모듈은 안 됨 |
+| 길 | 위 전부 rule_run.run_rule(좌석)로 | 표본 선언이 세운 규칙 · import 경로로 풀린 맵퍼 · 좌석이 모은 updates 를 씀 |
+
+```
+행 수 단언  쓰기 문을 «지나서» 센 수 — _factors 가 apply_batch_updates 뒤 표를 조회. 17 -> 1 뭉침을 잡은 것이 이 단언(실패 문 「1 = len({None: …})」)
+통과     84 passed, 1 skipped in 24.37s
+변이     순위를 자체 계산(rank=1) -> 1 failed, 7 passed in 4.39s — test_the_rows_are_the_route_ranked_candidates_bound_by_until
+         until 을 걷기에 안 넘김 -> 1 failed, 7 passed in 3.95s — test_the_rows_are_the_route_ranked_candidates_bound_by_until
+         걸은 길에 술어 안 실음 -> 1 failed, 7 passed in 3.91s — test_the_stored_trail_names_the_predicates_it_crossed
+         until 없는 run 도 걸음 -> 1 failed, 7 passed in 3.95s — test_a_run_without_until_is_refused_by_name
+         모듈에 공개 함수 하나 더 -> 1 failed, 7 passed in 4.47s — test_the_form_offers_it_as_the_one_mapper_of_its_module_and_the_save_gate_takes_it
+         라우트를 모듈 머리에서 import -> 1 failed, 7 passed in 4.74s — test_the_package_walk_at_start_does_not_import_the_route
+         도장 안 찍음 -> 1 failed, 7 passed in 4.01s — test_the_rows_carry_the_run_rows_stamp_so_deleting_the_run_empties_them
+전체     5 failed, 7468 passed, 164 skipped, 3 xfailed in 788.76s (0:13:08) — 실패는 알려진 다섯과 이름이 같음
+PG       7 failed, 118 passed, 7515 deselected in 207.55s (0:03:27) — 실패는 알려진 일곱과 이름이 같음
+재기동   서버 · 체인 워커. 마이그레이션 없음 — RUN.md 새 절(선언할 것 · 볼 줄 · 뜻 · run 을 지우면 · 끄는 스위치)
+```
+
+**박스 (이 박스, 운영 주장 아님)**
+```
+씨앗     양성 = die 결함이 가장 많은 웨이퍼 셋 ['SYN-BW-103-11', 'SYN-BW-103-04', 'SYN-BW-103-24'] · 대조 = 검사됐고 결함 없는 웨이퍼 셋 ['ZZ-DOE-BW-03', 'ZZ-DOE-BW-04', 'ZZ-DOE-BW-05']
+인자     until = 지금, 나머지는 라우트 기본값 (hops 12 · node_limit 400 · edge_limit 1200)
+걷기     1.14 초 · 짝짓기 0.140 초
+행       394 (= ranked) · top_set 394 · contrast contrasted · complete False
+원인     nodes 400 · edges 430 — node_limit 에서 잘림 -> 모든 행 complete=false
+evidence 글 전체 193217 바이트
+잰 때     맵퍼 몸이 아직 chain/contrast.py 에 있을 때(옮기기 전) — 몸은 그대로 옮겼음
+안 잰 것   factor 행 쓰기 비용 — 박스 DB 에 contrast 표가 없어 걷기 · 짝짓기까지만 쟀습니다
+          PG 에서 쓰기 문으로 until(datetime) 을 넣는 길 — 게이트는 sqlite 라 run 행을 모델로 넣었습니다
+          (sqlite 의 DateTime 칸은 쓰기 문이 주는 두 모양을 다 못 받음. PG 는 ISO 글을 받음 — 이번에 안 잼)
+```
+
+**후보 0 과 «아직 안 돎»을 가를 자리 — 제안 (안 지음)**
+```
+① 선언만 — decide 의 aggregations(count)로 contrast_factor 수를 contrast_run 에 셈
+   후보가 하나 이상일 때만 칸이 참 — 0 이면 비어 «아직 안 돎»과 같아 보임. 이것만으로는 못 가름
+② 맵퍼가 같은 호출에서 run 행에도 씀(계산 시각 · 후보 수 · state) — 걷기 한 번
+   좌석이 오늘은 한 규칙의 쓰기를 그 규칙의 target 에 묶음(ingestion_worker 의 normalize_scoped_batch) — 좌석 한 곳을 넓혀야 함  ← 추천
+③ 규칙 하나 더(contrast_run -> contrast_run, 같은 맵퍼가 상태만 씀) — 좌석 무변, 대신 걷기가 두 번(박스 한 번 1.14 초)
+```
+
+착지 보고 후 멈춥니다. 감시는 켜 둡니다.
