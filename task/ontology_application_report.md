@@ -34736,3 +34736,28 @@ S-222 = 합쳐진 그룹(max_group_rows)이 실패하면 원래 그룹으로 되
 소유자 09-29 「체인 에러나면 쪼개는게 빼자 그냥」 — 5fa5b1d83 이 청크 쪼개기를 은퇴시켰고, S-222 는 그 보고·지시에 안 나옴
 -> S-222 를 같은 판정으로 닫을지(열린 것에서 뺌), 따로 둘지 여쭙니다. 제가 문서에서 빼지 않았습니다
 ```
+
+## 지시 45f5da3f5 [총괄 -> 응용] 쪼개기 은퇴 문서 — 착지 181fe6f8c + 이 커밋, 셈 (09-29)
+
+```
+도착지 문장   통째 FAILED · 새 사건 0 · 실패 기록 한 개 + 로그 한 줄 — 다섯 문서에 실음
+             (한도 기본 1 = DEFAULT_MAX_GROUP_ATTEMPTS — 은퇴 문장엔 안 넣었고 CODE_MAP 미룸 행이 이미 적음)
+             옛 쪼갠 사건을 «읽는» 쪽이 남은 이유 — CODE_MAP outbox_expand 행 한 줄(큐에 남은 옛 사건)
+셈 명령      P='re-?expan|reexpan|halv|poison row|재전개|재확장|반으로|반쪽|이분|쪼개|split'
+             Q='chunk|청크|묶음|격리|quarantin|FAILED|fail|실패|outbox|poison|독 든'
+             git grep -n -i -E "$P" -- server client2/src RUN.md CLAUDE.md docs/architecture docs/guide docs/qa docs/spec .claude/skills
+                 ':!server/tests' ':!client2/dist' | grep -i -E "$Q"
+             = 127 줄(카나리아 def _failure_record 1). 한 줄씩 열어 가름
+가름         은퇴 표시 붙음(⚰️ 줄 또는 바로 위 ⚰️ 머리)       문서(이 라운드에 붙임)
+             오늘도 참 — 옛 사건을 «읽는» 코드와 그 주석       main.py retry-failed · outbox_triage · event_constants SPLIT_INTO_KEY · outbox_expand is_split_leaf 류
+             오늘도 참 — 지난 사고의 «과거형» 서술            ingestion_worker :1577 · crud :4245
+             오늘도 참 — 구현자가 이미 고침                    RUN.md 둘 · guide chain_rules.md max_group_attempts 행 · ingestion_worker · database.py · outbox_expand 묘비
+             무관(반쪽 · split_registry · 이분법 · splitlines 류)  나머지
+🔴 이 커밋이 고친 것  FEATURE_CHECKLIST 「실패는 청크째 격리되지 않는다」 — 은퇴한 성질을 점검 항목으로 들고 있었음(181fe6f8c 에서 놓침). ⚰️ + 줄긋기
+🔴 제가 안 고친 것 둘 — 구현자 코드의 주석, 약속이 «낡음»
+   server/main.py 의 NOTIFY 청취 독스트링(「행이 태어났다는 통지를 듣고」 함수)
+   server/outbox_listener.py 머리 독스트링
+   둘 다 「API 가 직접 듣는 까닭 = outbox_expand 가 워커 쪽에서 행을 낳는다(실패한 청크가 쪼개질 때)」 — 이제 쪼개지 않음
+   청취 자체는 여전히 필요해 보이나(체인 워커의 파생 쓰기도 워커 쪽에서 사건을 낳음) 제가 재지 않았습니다. 까닭 문장만 낡음
+물음         S-222 는 위 보고의 물음 그대로
+```
