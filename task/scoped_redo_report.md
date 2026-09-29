@@ -64987,3 +64987,75 @@ PG       7 failed, 117 passed, 7465 deselected in 179.13s (0:02:59) — 실패 �
 ```
 
 이어서 14c75ff43(조인 선언 한 칸: 빈 답은 쓰지 않음)으로 들어갑니다. 감시는 켜 둡니다.
+
+## [구현자 -> 총괄] 착지 880043afb — 조인 선언 한 칸 `derive.join.blank: "skip"` (14c75ff43)
+
+```
+한 답       조인이 빈 take 를 «말하지 않음»으로 골랐습니다
+           이유: can_mean_emptied 는 층 이름으로 답하는데 체인의 쓰기는 전부 chain_ingestion 한 이름이라 이 조인과 다른 조인을 못 가림
+           — 조인이 넘기지 않은 값은 쓰기 자리에 안 닿으므로 「빈 값이 비웠다는 뜻인가」의 답은 여전히 can_mean_emptied 하나
+판정 하나   join_into._unsaid(spec, values) = blank 가 "skip" 이고 값이 crud.is_blank_value 인 take 칸
+           두 반쪽(:target · 값 쪽)이 같은 _update_items 에서 그 칸을 빼고, 다 빠진 행은 제안하지 않음
+문법        JOIN_CELLS 에 blank — 스켈레톤이 JOIN_CELLS 에서 만들므로 선언창 폼에 그 칸이 뜸(빈 글상자)
+           "skip" 말고 다른 낱말은 rule_shape.expand_declaration(로더 · 저장 라우트가 같이 부름)이 거절
+           「<이름>: derive.join.blank 'yes' - one of skip」 — 규칙 둘 다 안 섬
+           ⚠️ 빈 칸("" · null)은 «안 적은 것»으로 읽음(길이 0 인 문자열은 NULL) — 거절하지 않음
+말         한 번 돌 때 한 줄 「<규칙>: N blank answer(s) not written (blank: skip) - <칸>=<n>, …」
+           rows_total(규칙 줄의 수)에서 쓸 것이 없는 행을 뺌
+           쓴 것 0 일 때의 거절 문장 「짝은 찾았고 채울 값이 이미 같습니다」 가 거짓이 되므로
+           빈 답이 있으면 「matched N row(s) and wrote nothing - M blank answer(s) not written (blank: skip), the rest already held」
+           ⚠️ 새 문장은 UI 규칙대로 영어라 옆의 한국어 문장 둘과 말이 섞였습니다
+```
+
+| 칸 | 입력 | 답 |
+|---|---|---|
+| skip · 빈 답 | 값 행 val · val2 빔, 대상 got=FILE · got2=FILE2 | 그대로 FILE · FILE2 · 체인 층 0 · 줄 「2 blank … got=1, got2=1」 |
+| skip · 한 칸 값 있음 | val 빔 · val2=JOIN2 | got=FILE 그대로 · got2=JOIN2 · 줄 「1 blank … got=1」 |
+| skip · 파일 값 없음 | 둘 다 빔 | 빈 채 · 층 없음 |
+| 칸 없음 | val 빔 · val2=JOIN2 | got 은 NULL 로 덮임(오늘 그대로) · 줄 없음 |
+| 낱말 | "yes" / "skip" · "" · null | 거절 문장 / 규칙 둘이 섬 |
+| 반쪽 | 위 칸들을 :target 과 값 쪽 둘 다 | 같음 |
+
+```
+통과     58 passed in 4.30s
+변이     칸 무시 -> 5 failed, 4 passed in 1.56s — test_a_blank_answer_is_not_written_and_the_file_value_stands[target] · test_a_blank_answer_is_not_written_and_the_file_value_stands[value] · test_a_filled_answer_still_overwrites_and_a_blank_one_beside_it_does_not[target] · test_a_filled_answer_still_overwrites_and_a_blank_one_beside_it_does_not[value] · test_no_file_value_and_a_blank_answer_stays_empty
+         아무 낱말이나 섬 -> 1 failed, 8 passed in 1.32s — test_a_word_other_than_skip_is_refused_by_name_and_an_empty_cell_is_absent
+전체     6 failed, 7426 passed, 163 skipped, 3 xfailed in 771.15s (0:12:51) — 실패 여섯 = 알려진 다섯 + 아래 하나
+         그 한 판에서 알려진 다섯 밖의 하나는 test_chain_skeleton 의 드리프트 게이트 — 생성 파일 chain_skeleton.json 에 blank 칸이 없었음
+         -> 그 파일을 코드에서 다시 만들어 이 착지에 넣음(바뀐 것은 join 의 blank 칸 하나)
+         -> 그 파일을 읽는 서버 시험 18 passed in 0.76s · 클라 하니스 6 개 exit 0 · 실패 단언 0 (chain_list_edit_harness 20 · chain_rule_form_harness 97 · chain_rule_panel_harness 67 · chain_rule_user_path_harness 72 · skeleton_oneof_descent_harness 23 · skeleton_value_fit_harness 22)
+         (전체 스위트는 다시 돌리지 않았습니다 — 바뀐 것은 생성 파일 하나이고 그 파일의 읽는 쪽을 전부 돌렸습니다)
+PG       7 failed, 117 passed, 7474 deselected in 197.98s (0:03:17) — 실패는 알려진 일곱과 이름이 같음
+재기동   서버. 마이그레이션 없음 — RUN.md 새 절(걷는 절차 포함)
+```
+
+**이미 덮인 층 — 잰 것 (이 박스, 운영 주장 아님)**
+```
+dt_log.core_wafer_id chain_ingestion layers by author: none
+dt_log.dt_lot chain_ingestion layers by author: [('inventory_confirmed', 1943, 77, 576), ('inventory_confirmed:reference', 3, 159, 2), ('test', 0, 26519, 0)]
+dt_log.dt_slot chain_ingestion layers by author: [('inventory_confirmed', 1947, 26592, 576), ('inventory_confirmed:reference', 1, 161, 0)]
+   (지은이, 빈 층, 값 층, 그중 아래에 값이 있는 빈 층)
+뜻       chain_ingestion 층은 (행, 칸)마다 하나이고 지은이(updated_by)는 마지막에 쓴 규칙
+         그래서 R2 withdraw <표> chain_ingestion --columns <칸> 은 그 칸에 체인이 쓴 값 «전부»를 걷음 — 빈 층만이 아님
+         이 박스엔 dt_log.core_wafer_id 를 쓰는 조인이 없어 그 칸의 체인 층은 0 — 모양은 dt_lot 으로 봅니다
+         R1 을 그 칸을 쓰는 규칙 «전부»에 다시 돌려야 원래대로 섬 — 그 사이엔 파일 값(없으면 빈 칸)이 보임
+count_absent_null_layers  체인 층은 «안 셉니다» — can_mean_emptied 가 참인 지은이(user · chain_ingestion)를 건너뜀
+         그래서 이 일의 수를 그 스크립트로는 못 냄(위 수는 따로 잰 것)
+더 좁은 길  함수 cell_layer.withdraw_source 는 row_ids 를 받음 — 빈 체인 층이 있는 행만 골라 걷을 수 있음
+         그런데 CLI(chain_replay_cli withdraw) · 어드민 withdraw 는 --columns 까지만 받음 — 「빈 층만」은 없음
+```
+
+**여쭐 것**
+```
+① 운영 절차를 「빈 층만 걷기」로 좁힐지 — withdraw 에 «빈 층만» 인자 하나를 여는 일입니다. 지시가 없어 안 지었습니다
+② 빈 칸(""·null)을 «안 적은 것»으로 읽은 것 — 거절하길 원하시면 한 줄입니다
+③ 이 칸을 켠 뒤 원천의 값이 «나중에» 비면 전에 조인이 쓴 값이 남아 섭니다(파일의 빈 칸과 같은 「아직 모름」)
+   소유자 조건(쓰레기 값 교정)과 맞는지 확인 부탁드립니다
+```
+
+```
+f36abbb1a 의 ① (전에 빈 키로 쓴 값)   RUN.md 이 절의 걷기 ①~③ 에 같이 적었습니다 — ② 가 걷고 ③ 이 그 행을 다시 짝짓지 않음
+f36abbb1a 의 ② (빈 판정 하나로)        다음 작은 착지로 갑니다
+```
+
+이어서 빈 판정 접기(unique_key._is_blank -> crud.is_blank_key_part)로 들어갑니다. 감시는 켜 둡니다.
