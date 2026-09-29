@@ -64806,3 +64806,61 @@ PG       7 failed, 117 passed, 7447 deselected in 164.88s (0:02:44)
 ```
 
 지시대로 착지하고 멈춥니다. 감시는 켜 둡니다.
+
+## [구현자 -> 총괄] 착지 5b20d9d1b — 실패한 외부 경로 파일의 재시도가 워처의 «그 표 처리기»로 (fab40ed69 ①)
+
+### 먼저 잰 것
+
+```
+박스       외부 경로 선언 하나(void, voids_json) — enabled: false. 박스에서 실제 외부 파일 재시도를 하려면 그것을 켜야 해서
+          실제 클래스(WorkspaceWatcher · IngestionHandler · voids_json 파서 · 인입 기록)로 시험에서 잼
+«전»      재시도를 옛 방식(새 처리기)으로 되돌린 변이에서, 외부 파일 재시도가 다시 FAILED —
+          「No custom pipeline parser matched the file 'voids.json' format, and the standard parser fallback was not applicable.」
+          -> 말씀대로 외부 맥락이 없음. 그 결과 «외부 맥락 없이 들어감»이 아니라 파서를 못 찾아 «통째로 실패»
+처리기 목록  재처리 폴러와 같은 프로세스(run_watcher)의 모듈 변수 workspace_watcher 가 쥠 — handlers_by_raw_path[raws 경로]
+          외부 경로도 바로 그 처리기에 등록됨(_register_external_sources)
+          ⚠️ 폴러 스레드가 워처보다 «먼저» 시작함 -> 워처가 서기 전엔 처리기가 없음
+순서       평소 인입(옵저버 · heavy 레인 · 스윕)은 처리기의 _serial_lock = get_workspace_serial_lock(워크스페이스)를 잡음
+          재시도도 같은 락을 잡으므로 같은 표에서 엉키지 않음. 재시도 본문은 처리 중 집합 · 강제 해시 표시를 안 건드림
+관리 raws/  재시도 본문(process_archived_file_sync)은 파일을 옮기지 않고 heavy 레인도 안 씀 — 같은 처리기로 가도 archives · err 동작 같음
+          다른 점 둘: 콜백이 워처의 것(폴러가 넘기던 것과 같은 trigger_ws_* + 진행 상태 하나 더 — 재시도 본문은 안 부름)
+          · 옛 워크스페이스 config.json 은 처리기가 캐시한 것을 읽음(처음 인입과 같은 것)
+```
+
+### 바꾼 것
+
+```
+한 자리     WorkspaceWatcher.raws_root_for(표) — 표의 처리기를 찾는 열쇠. 외부 경로 등록과 재시도가 같이 부름
+재시도      run_watcher.retry_one(db, log) — 집은 행 하나를 handlers_by_raw_path[raws_root_for(표)] 로, 같은 워크스페이스 락 안에서
+           처리기가 없으면 「the watcher runs no handler for table '<표>' (<raws 경로>) - nothing to retry it with」 로 FAILED
+기다림      run_watcher.pending_retries(db) — 워처가 서기 전엔 빈 목록(집지 않음 -> 다음 바퀴)
+새로 안 만듦  폴러가 처리기를 만들던 몸통을 지움 · IngestionHandler import 도
+```
+
+| 칸 | 입력 | 답 |
+|---|---|---|
+| 외부 파일 | unit 없는 voids.json -> FAILED -> options.unit 으로 고치고 워처 재기동 -> 재시도 | SUCCESS · 행의 웨이퍼 WF-001 · unit um · source external:voids_json:<경로> · 원본 제자리 |
+| 관리 raws/ | 숫자 틀린 CSV -> FAILED -> 그 자리 파일을 고침 -> 재시도 | SUCCESS · 파일 제자리 |
+| 처리기 없음 | 워처가 안 도는 표의 기록 | FAILED · 표 이름을 댐 |
+| 준비 전 | 워처 없음 -> 있음 | 빈 목록 -> 그 행 |
+
+```
+통과     83 passed in 4.37s
+변이     새 처리기로 되돌림 -> 2 failed, 2 passed in 1.36s — test_an_external_file_fixed_by_its_options_goes_in_on_retry_with_its_folder · test_a_table_the_watcher_does_not_run_fails_by_name
+         (관리 raws/ 칸은 변이에서도 초록 — 관리 파일은 전과 같다는 대조)
+전체     6 failed, 7403 passed, 163 skipped, 3 xfailed in 713.00s (0:11:53)
+         알려진 다섯 밖 하나 = test_config_reload_integrity::test_inv_9_1_atomic_save_event_applies_physical_alter(원래 가끔 실패) — 혼자 다시 돌려 1 passed in 2.46s
+PG       7 failed, 117 passed, 7451 deselected in 167.49s (0:02:47)
+재기동   워처. 마이그레이션 없음 — RUN.md 새 절
+```
+
+### 여쭐 것
+
+```
+1 프로세스를 나누지 않는 모드(DECOUPLED 가 아닐 때)의 재시도 라우트는 API 프로세스에서 새 처리기를 만들어 곧장 돌립니다(직렬화 락도 안 잡음)
+  같은 결함이 그 모드에 남아 있음. 박스는 분리 모드라 이번엔 안 건드렸습니다 — 임베디드 워처(system_reload.active_watcher)의
+  처리기로 바꿀지 여쭙니다
+2 options 를 고친 뒤 워처를 재기동하지 않으면 처리기는 옛 options 를 들고 있어 재시도도 옛 options 로 읽습니다(외부 경로는 재기동해야 바뀜 — 전과 같음)
+```
+
+이어서 ② 로 들어갑니다. 감시는 켜 둡니다.
