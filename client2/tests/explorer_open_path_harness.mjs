@@ -190,7 +190,10 @@ const SELECTED = { ...COMPILE,
   items: [{ key: KEY, canonical_id: 'quantity@1', kind: 'entity', context_token: 'ctx:1' }] };
 const walkAll = (n, out = []) => { out.push(n); for (const c of n.children || []) walkAll(c, out); return out; };
 
-async function saveWalk(create) {
+// `dropped`: the owner's case (order d763cb9f3). The loader leaves the saved declaration OUT,
+// so after activation the snapshot has no such key: the mirror omits it and opening a draft
+// by key answers `unknown_selection` -- the server's own refusal, spelled as it spells it.
+async function saveWalk(create, { dropped = false } = {}) {
   const clicks = [];
   const root = element('div');
   root.addEventListener = (type, fn) => { if (type === 'click') clicks.push(fn); };
@@ -200,17 +203,33 @@ async function saveWalk(create) {
     for (const fn of clicks) await fn({ target });
   };
   const toasts = [];
+  const opened = [];
   let reasons = [];
+  let gone = false;
   const fetchOf = async (url, init = {}) => {
     const u = String(url);
+    const path = u.split('?')[0];
     const method = init.method || 'GET';
-    let body = u.includes('draft_id=d1')
-      ? { ...SELECTED, draft: { ...DRAFT, context_token: 'ctx:1' } } : SELECTED;
+    const id = (path.match(/\/drafts\/(d\d)/) || [])[1];
+    const asked = (u.match(/draft_id=(d\d)/) || [])[1];
+    const mirror = gone ? COMPILE : SELECTED;
+    let body = asked ? { ...mirror, draft: { ...DRAFT, draft_id: asked, context_token: 'ctx:1' } } : mirror;
     if (u.includes('/authoring')) body = AUTHORING;
-    else if (/\/drafts$/.test(u.split('?')[0]) && method === 'POST') body = DRAFT;
-    else if (u.includes('/drafts/d1/activate')) body = { ok: true };
-    else if (u.includes('/drafts/d1') && method === 'PUT') {
-      body = { draft: { ...DRAFT, revision: 2, validation_errors: reasons } };
+    else if (/\/drafts$/.test(path) && method === 'POST') {
+      if (gone) {
+        return { ok: false, status: 404, json: async () => ({ detail: { code: 'unknown_selection',
+          path: 'selection', message: `selection '${KEY}' does not exist in this snapshot` } }) };
+      }
+      body = DRAFT;
+    } else if (/\/drafts\/new$/.test(path)) {
+      opened.push(JSON.parse(init.body));
+      body = { ...DRAFT, draft_id: 'd2', creates_declaration: true, raw: {} };
+    } else if (id && path.endsWith('/activate')) {
+      gone = dropped && reasons.length > 0;
+      body = { ok: true };
+    } else if (id && method === 'PUT') {
+      body = { draft: { ...DRAFT, draft_id: id, revision: 2,
+                        raw: JSON.parse(JSON.parse(init.body).raw), validation_errors: reasons } };
     }
     return { ok: true, status: 200, json: async () => body };
   };
@@ -223,11 +242,15 @@ async function saveWalk(create) {
   await click('save-draft');
   for (let i = 0; i < 20; i += 1) await new Promise((r) => setImmediate(r));
   const headOf = () => walkAll(root).find((n) => n._classes?.includes('oe-not-applied'));
+  const typed = () => { try { return JSON.parse(controller.getState().editorText); } catch (e) { return null; } };
   out.bad = { toasts: [...toasts], notApplied: controller.getState().notApplied,
-              head: headOf()?.textContent || '', reopened: Boolean(controller.getState().draft) };
+              head: headOf()?.textContent || '', reopened: Boolean(controller.getState().draft),
+              opened: [...opened], typed: typed() };
   toasts.length = 0;
   reasons = [];
-  await click('save-draft');
+  // Nothing open means nothing to save -- a mutant that loses the draft must FAIL the walk,
+  // not throw it (a thrown run is scored as a hole, not a catch).
+  if (controller.getState().draft) await click('save-draft');
   for (let i = 0; i < 20; i += 1) await new Promise((r) => setImmediate(r));
   out.clean = { toasts: [...toasts], notApplied: controller.getState().notApplied,
                 head: headOf()?.textContent || '' };
@@ -256,9 +279,38 @@ function saveSuite(seen4) {
   return { ran: names.length, names, failures };
 }
 
+function droppedSuite(seen4) {
+  const names = [];
+  const failures = [];
+  const say = (name, cond, detail) => {
+    names.push(name);
+    if (cond) { console.log(`  PASS ${name}`); return; }
+    failures.push(detail ? `${name} — ${detail}` : name);
+    console.log(`  FAIL ${name}${detail ? ' — ' + detail : ''}`);
+  };
+  const { bad, clean } = seen4;
+  say('D1 a save the load leaves OUT says neither "Saved" nor unknown_selection',
+    !bad.toasts.includes('Saved') && !bad.toasts.some((t) => t.includes('unknown_selection')),
+    bad.toasts.join(' | '));
+  say('D2 ...it opens again on the text just saved, as the declaration it is',
+    bad.opened.length === 1 && bad.opened[0].kind === 'entity'
+      && bad.opened[0].canonical_id === 'quantity@1'
+      && JSON.stringify(bad.typed) === JSON.stringify(DRAFT.raw),
+    `${JSON.stringify(bad.opened)} · ${JSON.stringify(bad.typed)}`);
+  say('D3 ...with "Saved but not applied" and the reason at the head of its form',
+    bad.head.startsWith('Saved but not applied') && bad.head.includes(REASON.message), bad.head);
+  say('D4 fixed and saved, it says "Saved"', clean.toasts.includes('Saved') && clean.notApplied === null,
+    `${clean.toasts.join(' | ')} · ${JSON.stringify(clean.notApplied)}`);
+  return { ran: names.length, names, failures };
+}
+
 const saveBase = saveSuite(await saveWalk(createOntologyExplorerController));
 ran += saveBase.ran;
 failed += saveBase.failures.length;
+console.log('\n[4b] saved, and the load left it out');
+const droppedBase = droppedSuite(await saveWalk(createOntologyExplorerController, { dropped: true }));
+ran += droppedBase.ran;
+failed += droppedBase.failures.length;
 
 {
   const { loadWithProbe } = await import('./lib/probe.mjs');
@@ -283,6 +335,21 @@ failed += saveBase.failures.length;
       title: '\n  [4] mutants — each must be caught by the check it names.' });
   ran += MUTANTS.length;
   failed += scored.wrong;
+  // 🔴 The owner's case, put back: the refused reopen is only a toast again.
+  const DROPPED = [
+    { id: 'M3', what: 'a save the load left out is reopened by key, and only a toast remains',
+      catches: ['D1 a save the load leaves OUT', 'D2 ...it opens again'],
+      mutate: (text) => swap(text, "      if (error?.detail?.code === 'unknown_selection' && savedRaw !== undefined) {",
+                             '      if (false) {') },
+  ];
+  const runDropped = async (m) => droppedSuite(await saveWalk(
+    (await loadWithProbe(SUBJECT, { mutate: m.mutate })).module.createOntologyExplorerController,
+    { dropped: true }));
+  const scoredDropped = await scoreMutants(DROPPED, runDropped,
+    { baselineRan: droppedBase.ran, baselineNames: droppedBase.names,
+      title: '\n  [4b] mutants — each must be caught by the check it names.' });
+  ran += DROPPED.length;
+  failed += scoredDropped.wrong;
 }
 
 console.log(`\n════ RESULT: ${ran - failed} passed, ${failed} failed ════`);

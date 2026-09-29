@@ -495,7 +495,7 @@ No effect`;
   // Which door depends on what the save produced: a declaration that now resolves is in
   // the snapshot and takes the ordinary edit path; one that still cannot be read is not in
   // the snapshot at all, and takes the same door the tree row uses.
-  const reopenForEditing = async (targetKey, kind, canonicalId) => {
+  const reopenForEditing = async (targetKey, kind, canonicalId, savedRaw) => {
     try {
       if (state.invalid?.[targetKey]) {
         const item = state.items.find((row) => row.key === targetKey);
@@ -513,6 +513,15 @@ No effect`;
       await load({ selection: targetKey, draft: reopened.draft || reopened,
                    viewMode: 'active', allowContextSwitch: true });
     } catch (error) {
+      // 🔴 SAVED, THEN LEFT OUT OF THE LOAD (order d763cb9f3). The loader drops a declaration
+      //    it cannot read without refusing the file, so the snapshot has no such key and the
+      //    open by key answers `unknown_selection` -- the owner got that toast and the
+      //    declaration vanished from the list. It is still in the file: it opens on the text
+      //    just saved, through the door an unread declaration uses.
+      if (error?.detail?.code === 'unknown_selection' && savedRaw !== undefined) {
+        await openUnread({ key: targetKey, kind, canonical_id: canonicalId, raw: savedRaw });
+        return;
+      }
       // The save itself succeeded; failing to re-open is not a reason to say it did not.
       showToast(errorMessage(error), 'warning');
     }
@@ -1202,7 +1211,7 @@ No effect`;
         // The re-read above happens FIRST so the new draft is based on the snapshot hash
         // the write just produced. A draft opened on the pre-write hash is refused by the
         // compare-and-swap, which is exactly this morning's 409.
-        await reopenForEditing(targetKey, targetKind, targetId);
+        await reopenForEditing(targetKey, targetKind, targetId, record.raw);
         // 🔴 WAIT FOR THE ROWS, THEN PUT THEM BACK WHERE THEY WERE. `load` fires the
         // authoring plan and does not wait for it (`void loadAuthoring`), so at the moment
         // the reopen returns the panel is still the short one -- restoring there would be
