@@ -64932,3 +64932,58 @@ PG       7 failed, 117 passed, 7460 deselected in 168.05s (0:02:48)
 ```
 
 이어서 534f375f8(조인 키가 모두 빈 행) 으로 들어갑니다. 감시는 켜 둡니다.
+
+## [구현자 -> 총괄] 착지 f36abbb1a — 조인 키 칸이 «모두» 빈 행은 짝이 아님 (534f375f8)
+
+```
+판정 하나   join_into._every_part_blank(key) = 키의 모든 칸이 crud.is_blank_key_part — 새 술어 없음
+           칸 하나짜리 키는 「모두 = 그 하나」
+대상 쪽     _read_once 가 대상 행을 읽은 뒤 키가 모두 빈 행을 빼고 셈 — 그 행으로 값 행을 묻지 않음
+값 쪽       _left_rows_for_reference 가 깨어난 값 행 중 키가 모두 빈 행을 빼고 셈 — 대상 행을 가리키지 않음
+           (대상 쪽에서 모두 빈 키를 먼저 뺐으므로 값 쪽 빈 키 행은 대상 쪽이 깨어나도 답으로 안 옴)
+일부 빈     그대로 — 빈 칸끼리 같음(S-181)
+말         쪽마다 한 번 돌 때 한 줄, 0 이면 없음
+           「<규칙>: N row(s) with every join key empty - not matched (target side)」 · 「(value side)」
+fan-out    키가 모두 빈 값 행 둘은 이제 답이 아니라 「둘 이상과 맞아 건너뜁니다」 줄에 안 섞임(게이트 칸)
+범위        조인만 — 판단키 · 비즈니스 키 찾기 · 컴포짓 키 안 건드림
+```
+
+**인덱스 — 잰 것(코드로 읽음)**
+```
+조인 식     안 바뀜 — 키 식은 notation_norm.key_expression_sql 그대로, 빼는 것은 읽은 뒤 파이썬에서
+           그래서 유일 인덱스를 쓰는 질의 모양이 그대로 — PG 의 EXPLAIN 시험
+           (test_a_wide_join_is_written_page_by_page, 값 쪽 where 가 Index Scan) 가 PG 스위트에서 통과
+부분 인덱스  안 만듦 — join_key_index.unique_index_covering 이 indpred IS NULL 인 인덱스만 받아 부분 인덱스는 «없는 것»으로 읽힘
+           그리고 PG 는 질의의 where 가 부분 인덱스의 조건을 함축할 때만 그것을 씀 — 지금 질의엔 그 조건이 없음
+blank_keys  보고 안 바뀜 — unique_key.duplicate_keys 가 모두 빈 키 묶음을 중복이 아니라 부재로 따로 셈
+           원천에 키가 모두 빈 행이 둘 이상이면 유일 인덱스는 여전히 안 섬(식 coalesce(...,'') 가 같은 값이 됨)
+           ⚠️ 이 보고의 빈 판정은 unique_key._is_blank(None · 빈 · 공백) — crud 의 판정과 따로 있는 둘째 자리. 이번 범위 밖이라 안 건드림
+```
+
+| 칸 | 입력 | 답 |
+|---|---|---|
+| 키 하나 · 대상 빈 키 | 대상 a='' · 값 a=NULL | 안 씀 · target side 1 줄 |
+| 키 하나 · 값 쪽 빈 키 | 값 a='' 가 깨어남 | 누구의 답도 아님 · value side 1 줄 |
+| 키 둘 · 일부 빈 | 대상 (x,'') ↔ 값 (x,NULL) | 짝 — 씀 · 줄 없음 |
+| 키 둘 · 모두 빈 (대상 쪽) | 대상 ('','') ↔ 값 ('',NULL) · (NULL,NULL) | 짝 아님 · 옆의 정상 행 (x,y) 는 씀 · target side 1 · fan-out 경고 없음 |
+| 키 둘 · 모두 빈 (값 쪽) | 같은 값 행 셋이 깨어남 | 정상 행만 씀 · value side 2 · fan-out 경고 없음 |
+
+```
+통과     39 passed, 3 skipped in 4.77s
+변이     모두-빈 판정 뺌 -> 4 failed, 1 passed in 1.13s — test_one_key_a_target_row_whose_key_is_empty_seeks_no_answer · test_one_key_a_value_row_whose_key_is_empty_answers_nobody · test_two_keys_every_part_empty_matches_nothing_from_either_side[s534_left_log] · test_two_keys_every_part_empty_matches_nothing_from_either_side[s534_right_values]
+         any 로 (일부 빈도 버림) -> 1 failed, 4 passed in 1.08s — test_two_keys_one_empty_part_still_matches_empty_to_empty
+전체     5 failed, 7418 passed, 163 skipped, 3 xfailed in 729.58s (0:12:09) — 실패 다섯은 알려진 다섯과 이름이 같음
+PG       7 failed, 117 passed, 7465 deselected in 179.13s (0:02:59) — 실패 일곱은 알려진 일곱과 이름이 같음 · 인덱스 시험 셋은 따로 -k 로 돌려 통과
+박스     이 박스(운영 주장 아님) 선언된 조인 3 개 중 셀 수 있던 2 개 — inventory_confirmed dt_log<-dt_inventory 대상 535559 행 중 모두 빈 키 0 · 원천 488433 행 중 0 · test dt_log<-dt_inventory 대상 535559 행 중 모두 빈 키 0 · 원천 488433 행 중 0
+재기동   서버. 마이그레이션 없음 — RUN.md 새 절
+```
+
+**남는 것 — 여쭙니다**
+```
+① 전에 빈 키끼리 짝지어 쓴 값은 남습니다 — 조인이 이제 그 행에 대해 말하지 않으므로 지우지 않습니다
+   걷어야 하면 다음 항목(빈 답은 쓰지 않음)의 R2 withdraw 절차와 같은 자리입니다. 이번엔 안 걷습니다
+② 빈 판정이 둘입니다 — crud.is_blank_key_part(조인이 씀) · unique_key._is_blank(인덱스 보고가 씀)
+   저자가 둘입니다(crud 쪽은 clean_str_value · 비유한 실수, unique_key 쪽은 None · strip). 둘이 어느 값에서 갈리는지는 안 쟀습니다. 하나로 접을지 여쭙니다
+```
+
+이어서 14c75ff43(조인 선언 한 칸: 빈 답은 쓰지 않음)으로 들어갑니다. 감시는 켜 둡니다.
