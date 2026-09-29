@@ -65104,3 +65104,123 @@ PG       7 failed, 118 passed, 7491 deselected in 183.02s (0:03:03) — 실패�
 ```
 
 착지 보고 후 멈춥니다. 감시는 켜 둡니다.
+
+## [구현자 -> 총괄] 착지 31ae7ce4b — 체인 규칙 저장 -> 체인 워커가 «규칙만» 다시 읽음 (76aa4b6ed)
+
+```
+넓힌 것     새 사건 종류 없음 — 이미 있는 SYSTEM_RELOAD 행의 payload 에 scope = "chain_rules"
+한 좌석     runtime/system_reload 에 셋: publish_reload(행 쓰기, 버튼도 이걸 부름) · reloads_after(표시 뒤 행 전부) ·
+           reload_for(읽는 이, 행들) — 범위를 «묻는» 자리는 이 함수 하나
+           체인 워커  chain_rules 행 -> 규칙만 · 범위 없는 행 -> 전처럼 전부
+           워처 · 스케줄러  chain_rules 행 -> 지나감 · 범위 없는 행 -> 전처럼
+           모르는 범위 · 문자열 payload(코드 편집기) -> 모두에게 전부(안전한 쪽)
+저장        save_chain_rule_raw(Chain 탭 저장 · 문법 변환 둘 다 지나는 한 자리)가 쓰기 뒤 행 하나
+           행을 못 쓰면 저장은 그대로 성공 + 서버 로그 한 줄(「saved, but the chain worker was NOT told」)
+           행은 «요청의 세션»으로 씀 — 두 라우트(저장 · 문법 변환)가 자기 db 를 넘김. 안 넘긴 호출만 SessionLocal
+           (이것만으로는 아래 시험 DB 문제가 안 풀렸음 — 뿌리는 풀이었고 ① 로 고침)
+규칙만      reread_rules_only = 맵퍼 다시 찾기 허락 + load_chain_rules
+           안 함: 매퍼 모듈 비우기 · refresh_dynamic_models · 웜업
+           함: 선언된 인덱스 일(_start_index_work — ② 아래) · 오른쪽 키 캐시 비우기(아래)
+증거        워커가 읽은 «바이트»의 지문(저장 답의 base 와 같은 함수) · 시각을 대기열 응답에
+           GET /admin/chain/queue -> rules_base · rules_loaded_age_seconds (이미 있는 activity 칸 길, 새 라우트 없음)
+```
+
+**먼저 잰 것**
+```
+① 새 맵퍼 이름   rule_run.runnable 이 못 찾으면 ensure_discovered 를 부르는데, 그것은 프로세스당 «한 번»만 훑음
+                -> 부팅 뒤 새 파일의 맵퍼는 규칙만 읽어선 「unresolvable」 로 거절됐을 것
+                고침: 규칙만 읽기 전에 mapper_sdk.look_again_on_a_miss() — 못 찾는 이름이 있을 «때만» 한 번 더 훑음(더하기만, 안 비움)
+                남는 것: 이미 불러온 파일에 «새로 적은 함수»는 못 찾음(import 캐시) -> Reload 버튼. RUN.md 에 적음
+② 인덱스 일      필요함 — 없으면 key.unique 를 적은 새 조인이 다음 재기동까지 인덱스 없이 돎(맞게는 돌되 원천 조회가 인덱스를 못 탐)
+                _ensure_declared_indexes_sync 는 기억을 비우고 규칙마다 카탈로그를 다시 물어, 세울 것은 세우고
+                아무 선언도 요구하지 않는 제품 인덱스는 걷음 · 루프 옆 태스크라 루프를 안 막음 · 버튼 Reload 가 하던 그 일
+                그래서 가벼운 길에도 넣음. 비용은 이 박스에서 안 쟀습니다(박스 DB 에 DDL 을 돌리게 돼서)
+③ 저장에서 돌기까지  워커는 SYSTEM_RELOAD 를 1.0 초 간격으로 봄(RELOAD_CHECK_INTERVAL) · 아웃박스 행은 커밋 때 NOTIFY 로 쉬는 루프를 깨움
+                -> 보통 1 초 안, 길어도 3 초(NOTIFY 를 놓치면 쉬는 대기 2 초 + 간격 1 초). 코드로 읽은 수 — 운영에서 안 쟀습니다
+```
+
+**번지는 것 — 같이 고친 것**
+```
+워처 · 스케줄러   범위를 모르면 저장마다 워처가 파서를 다시 불러오고 refresh_dynamic_models(표 모양 맞추기)를 돌림 —
+                소유자 문장 「표 모양 맞추기는 안 함」 밖. 그래서 둘도 같은 좌석으로 읽고 chain_rules 행은 지나감
+표시 뒤 «전부»   셋 다 「가장 새 행 하나」만 봤음 -> 버튼 직후 1 초 안에 저장이 오면 새 행(범위 있음)만 보여 버튼이 묻힘
+                reloads_after 로 표시 뒤 행 전부를 보고 하나라도 범위 없으면 전부. 이 박스 행 수: 23 행 (2026-09-23 ~ 2026-09-29, 보관 7 일)
+오른쪽 키 캐시   「선언을 다시 읽는 곳에서 만료」(판정 667) — 웜업(전부)은 그대로 비우고, reread_rules_only(규칙만)도 비움
+                load_chain_rules 안으로 옮기면 웹 프로세스까지 규칙을 읽을 때마다 비워 다음 쓰기가 다시 캐 보게 되어 옮기지 않음
+시험 둘         test_the_queue_says_when_the_mappers_reloaded 의 키 목록에 두 칸 · test_a_thrown_trigger 의 「id.desc()」 글자 핀을
+                「reloads_after(db, last_reload_event_id) 로 읽음」 으로 (그 시험이 지키던 성질 — 표시 뒤에서 읽어 다시 안 집음 — 은 그대로)
+인덱스 일 한 자리  두 갈래가 따로 부르면 「기동 + 리로드 = 두 자리」 글자 핀이 셋이 됨 — 갈래 «뒤» 한 곳에서 부르게 모아 그대로 둘
+```
+
+**시험 DB 의 풀 — 총괄 판정 ① (sqlite :memory: 일 때만 StaticPool)**
+```
+무엇     database.build_engine(url) — 모듈의 엔진과 시험이 같은 함수를 부름
+        :memory: -> StaticPool(한 연결을 모든 스레드가 나눔) · check_same_thread=False 그대로
+        PostgreSQL · 파일 sqlite -> 전과 같은 인자, 같은 풀
+왜      기본 풀(SingletonThreadPool, 크기 5)은 스레드마다 연결 하나 — :memory: 에선 그 하나하나가 따로인 빈 DB 이고
+        다섯을 넘으면 아무거나 닫음. 저장이 이제 행을 쓰므로 get_db 를 안 덮은 시험(TestClient) 셋이 요청 스레드마다
+        연결을 만들고, 스키마를 든 연결이 닫히면 다음 시험(test_api)이 표를 잃음. 어느 게 닫히느냐는 메모리 배치라
+        시험 파일 하나를 더 모으기만 해도 뒤집혔음
+게이트   PG URL · 파일 sqlite URL -> 풀 종류가 옛 인자로 만든 것과 같음(PG 는 크기 20 · 넘침 10 도) ·
+        :memory: -> 여덟 스레드가 한 DB 를 봄(옛 풀의 다섯을 넘겨서)
+변이     StaticPool 뺌 -> 1 failed, 2 passed in 0.64s — test_in_memory_every_thread_sees_the_one_database
+         check_same_thread 뺌 -> 1 failed, 2 passed in 0.54s — test_in_memory_every_thread_sees_the_one_database
+         ⚠️ 파일 sqlite 칸은 check_same_thread 를 못 봄 — 파일 DB 는 SQLAlchemy 가 스스로 끔(뺀 채로 초록이었음). 잡는 것은 :memory: 칸
+```
+
+**재현과 이분 — pytest 모으는 순서 그대로, test_api 앞 파일 158 개 + test_api 그 시험 하나**
+
+| 판 | 넣은 것 | test_api |
+|---|---|---|
+| 1 | origin/main | 통과 (1 failed, 1809 passed, 32 skipped in 152.65s (0:02:32)) |
+| 2 | 제 변경 전부 + 게이트 | 실패 (2 failed, 1821 passed, 32 skipped in 157.91s (0:02:37)) |
+| 3 | 제 변경, 게이트 파일 뺌 | 통과 (1 failed, 1809 passed, 32 skipped in 151.67s (0:02:31)) |
+| 4 | 제 변경 + 게이트 모으기만(시험 전부 뺌) | 실패 (2 failed, 1808 passed, 32 skipped, 13 deselected in 150.65s (0:02:30)) |
+| 5 | 제 변경 + 같은 이름의 빈 시험 파일 | 실패 (2 failed, 1809 passed, 32 skipped in 151.91s (0:02:31)) |
+| 6 | origin/main + 같은 이름의 빈 시험 파일 | 통과 (1 failed, 1810 passed, 32 skipped in 152.80s (0:02:32)) |
+| 7 | origin/main + 활동 칸 · 범위 좌석 · 맵퍼 · 워처 · 스케줄러 + 빈 파일 | 통과 (2 failed, 1809 passed, 32 skipped in 151.63s (0:02:31)) |
+| 8 | 7 + 저장이 행을 씀(admin) · 라우트가 db 받음(main) | 실패 (2 failed, 1809 passed, 32 skipped in 154.44s (0:02:34)) |
+| 9 | 제 변경 전부 + 게이트 + StaticPool | 통과 (1 failed, 1822 passed, 32 skipped in 156.84s (0:02:36)) |
+
+```
+괄호 속 실패 하나는 알려진 test_a_sentence…(늘 실패) · 7 의 둘째 실패는 워커를 안 넣어 생긴 test_a_thrown(예상)
+읽는 법  4·5 가 실패 -> 게이트 «내용»이 아니라 «한 파일 더»가 뒤집음(배치) · 6 이 통과 -> 그 배치 혼자선 안 뒤집힘
+        7 통과 · 8 실패 -> 뒤집을 «재료»는 저장이 행을 쓰는 것 · 9 통과 -> 뿌리(풀)를 고치자 사라짐
+틀린 가설 둘(기록)  게이트의 루프 시험이 원장 태스크로 스레드를 늘림 · 오른쪽 키 캐시 비우기 자리 — 둘 다 고쳐도 그대로 실패였음
+```
+
+| 칸 | 입력 | 답 |
+|---|---|---|
+| 읽는 이 × 행 | 없음 / 버튼 / 저장 / 버튼+저장 / 저장+버튼 / 모르는 범위 / 문자열 payload | 워커·워처·스케줄러 각각 (없음 · 전부 · 규칙만/지나감 · 전부 · 전부 · 전부 · 전부) |
+| 표시 뒤 | 행 셋, 표시 0 / 첫째 / 셋째 | 셋 · 둘 · 없음 (오래된 것부터) |
+| 저장 | save_chain_rule_raw 한 번 | 범위 행 하나(규칙 이름 실림) · 규칙만 읽은 뒤 rules_base == 저장 답의 base |
+| 요청 세션 | 라우트처럼 db 를 넘긴 저장 | 그 세션으로 씀 · SessionLocal 안 엶 |
+| 새 맵퍼 | 부팅이 이미 훑은 뒤: 있는 이름 / 새 이름 / 어디에도 없는 이름 | 훑기 0 · 1 · 그대로 1 (거절) |
+| 진짜 루프 | 저장 10 번(세 번에 나눠 옴) | refresh 0 · 매퍼 비우기 0 · 웜업 1(부팅) · 규칙 읽기 1+3 · 루프가 새 규칙으로 인덱스 일 |
+| 진짜 루프 | 버튼 + 저장이 한 번에 | 전부(refresh 1 · 비우기 1 · 웜업 2) |
+
+```
+통과     44 passed, 3 skipped in 7.98s
+재현     통과 (1 failed, 1822 passed, 32 skipped in 156.84s (0:02:36)) (위 표 9)
+변이     범위 무시(행마다 전부) -> 2 failed, 11 passed in 5.73s — test_each_reader_does_what_its_row_asks[a chain rules save] · test_ten_saves_reread_the_rules_and_never_the_heavy_path
+         새 맵퍼를 다시 안 찾음 -> 1 failed, 12 passed in 5.72s — test_a_new_mapper_name_walks_the_package_once_and_a_known_one_never
+         읽은 파일을 안 알림 -> 1 failed, 12 passed in 5.79s — test_a_save_writes_one_scoped_row_and_the_reread_names_the_saved_base
+         저장이 워커에 안 알림 -> 2 failed, 11 passed in 5.77s — test_a_save_writes_one_scoped_row_and_the_reread_names_the_saved_base · test_a_save_given_the_request_session_writes_through_it
+전체     6 failed, 7459 passed, 164 skipped, 3 xfailed in 670.15s (0:11:10) — 실패 여섯 = 알려진 다섯 + test_map_alignment_single_key 하나(아래 「남는 것」 — 초 경계 흔들림)
+PG       7 failed, 118 passed, 7507 deselected in 174.01s (0:02:54) — 실패는 알려진 일곱과 이름이 같음
+재기동   run_app.bat 전체(서버 · 체인 워커 · 워처 · 스케줄러) — RUN.md 새 절
+덤       RUN.md 09-29 밤 · 밤2 · 밤3 머리의 「재기동 서버」 -> 「재기동 체인 워커 · 서버 (run_app.bat 로 전체를 다시 띄우면 둘 다 됨)」
+```
+
+**남는 것**
+```
+코드 편집기 저장(main.py)은 SYSTEM_RELOAD 행을 «따로» 씀(payload 가 문자열) — 범위가 없어 전부로 읽히므로 동작은 맞음
+   publish_reload 로 접을지는 이번 지시 밖이라 안 건드렸습니다
+화면의 「Loaded by chain worker HH:MM:SS」 는 클라 몫 — 재료는 저장 답 base · 대기열 rules_base · rules_loaded_age_seconds · generated_at
+「빈 층만 걷기」 닫힘(소유자가 운영에서 손으로 지움) · 부분 인덱스 그대로 — 둘 다 짓지 않았습니다
+마지막 전체 판의 test_map_alignment_single_key::test_search_and_sort_hold_on_a_single_key_column 은 이 변경과 무관한 시각 경계 흔들림으로 봅니다
+   기본 정렬이 MAX(updated_at) 내림차순이고 sqlite 의 CURRENT_TIMESTAMP 는 초 단위 — ALPHA · BETA 를 심는 사이에 초가 넘어가면 BETA 가 앞
+   그 시험은 conftest 의 db_session(따로 엔진)을 써서 이번에 바꾼 엔진을 안 지남 · 혼자 돌리면 통과. 고치는 것은 이 지시 밖이라 안 건드림
+```
+
+착지 보고 후 멈춥니다. 감시는 켜 둡니다.
