@@ -254,10 +254,7 @@ def as_chain_rule(internal: dict) -> dict:
             out["params"][chain_bindings.REQUIRE_KEY] = list(on[chain_bindings.REQUIRE_KEY])
         # 🔴 [판정 398] THE AUTHOR WRITES THE JOIN ONCE AND THE SHELL DERIVES THE TRIGGER -
         #   the source side's join key (see `join_trigger_columns`).
-        derived = join_trigger_columns(derive.get("join") or {})
-        # 🔴 [총괄 2a1be19e9] AND THE TAKE COLUMNS, now that `trigger_columns` gates a run: a
-        #   value that changes on the value table is what the join exists to carry across.
-        derived += [right for right, _into in join_into.takes(out) if right not in derived]
+        derived = join_wake_columns(derive.get("join") or {})
         if derived:
             out["trigger_columns"] = derived
         # 🔴 [S-278, 소유자 2026-09-16] A JOIN RUNS LIKE ANY OTHER CHAIN RULE — ON THE
@@ -496,13 +493,7 @@ class JoinTriggerConflict(ValueError):
 
 
 def join_trigger_columns(spec: dict) -> list:
-    """The source-side key columns of a join spec, in declared order (총괄 e91b96a28).
-
-    ⚠️ THE KEY ONLY - what `on.columns` may repeat without a conflict. The stood rule wakes on
-    these AND the take columns (`as_chain_rule`), and since 총괄 2a1be19e9 that gates a run:
-    `fires` asks it. Keeping the conflict on the key leaves a declaration that wrote its key
-    in `on.columns` loading as it did.
-    """
+    """The source-side key columns of a join spec, in declared order (총괄 e91b96a28)."""
     out = []
     for pair in (spec or {}).get("on") or ():
         if isinstance(pair, dict) and pair.get("right"):
@@ -510,24 +501,46 @@ def join_trigger_columns(spec: dict) -> list:
     return out
 
 
-def refuse_join_trigger_conflict(internal: dict) -> None:
-    """Raise when the author wrote `on.columns` AND it differs from the derived ones.
+def join_wake_columns(spec: dict) -> list:
+    """The columns that wake a join's value-side rule: its key, then its take columns.
 
-    ⚠️ AGREEING IS NOT AN ERROR. An author who writes both has said one thing twice, which is
-    redundant rather than wrong, and refusing it would break declarations that are correct.
+    🔴 [총괄 a73196eec, 소유자 「조인키랑 take 같이 트리거 컬럼이지」] ONE DERIVATION, READ BY THE
+    RULE (`as_chain_rule`) AND BY THE CONFLICT CHECK, so 「what wakes this join」 has one answer.
+    A value that changes on the value table is what the join carries across (총괄 2a1be19e9).
+    """
+    keys = join_trigger_columns(spec)
+    return keys + [right for right, _into in join_into.takes({"params": dict(spec or {})})
+                   if right not in keys]
+
+
+def refuse_join_trigger_conflict(internal: dict) -> str | None:
+    """Raise when the author wrote `on.columns` naming other columns than the join wakes on.
+
+    ⚠️ AGREEING IS NOT AN ERROR (판정 398). An author who writes both has said one thing twice,
+    which is redundant rather than wrong. Agreeing is a SET: the order is not a meaning.
+    ⚠️ THE KEY ALONE IS THE OLD SHAPE and passes with a note returned here - it was the whole of
+    what agreed before the take columns woke the join, and refusing it would drop both halves of
+    a join at load for a sentence that changes nothing: the rule wakes on the derived columns
+    whatever `on.columns` says.
     """
     derive = internal.get("derive") or {}
     if derive.get("kind") != "join":
-        return
+        return None
     written = (internal.get("on") or {}).get("columns")
     if written is None:
-        return
-    derived = join_trigger_columns(derive.get("join") or {})
-    if list(written) != derived:
-        raise JoinTriggerConflict(
-            "%r writes on.columns %r while derive.join.on implies %r; "
-            "write the join once and let the trigger follow it"
-            % (internal.get("name"), list(written), derived))
+        return None
+    spec = derive.get("join") or {}
+    wakes = join_wake_columns(spec)
+    if set(written) == set(wakes):
+        return None
+    if set(written) == set(join_trigger_columns(spec)):
+        return ("%r writes on.columns %r - the join key only; the join wakes on %r (its key and "
+                "take columns). The rule runs on those; write them or delete on.columns"
+                % (internal.get("name"), list(written), wakes))
+    raise JoinTriggerConflict(
+        "%r writes on.columns %r while the join wakes on %r (its key and take columns); write "
+        "exactly those, in any order, or delete on.columns"
+        % (internal.get("name"), list(written), wakes))
 
 
 def unknown_join_cells(internal: dict) -> list:
@@ -720,11 +733,11 @@ def expand_declaration(declaration, table_config=None,
                  for cell in unknown_decide_cells(internal)]
     else:
         try:
-            refuse_join_trigger_conflict(internal)
+            old_shape = refuse_join_trigger_conflict(internal)
         except JoinTriggerConflict as conflict:
             return ([], "join_trigger_conflict: %s" % conflict, [])
 
-        notes = []
+        notes = [old_shape] if old_shape else []
         unknown = unknown_join_cells(internal)
         if unknown:
             notes.append(
