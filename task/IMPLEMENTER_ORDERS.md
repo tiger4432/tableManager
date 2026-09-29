@@ -61646,3 +61646,24 @@ RUN.md               돌릴 명령 · 재기동(체인 워커) · 급할 때: Pa
 구현자 보고  CODE_MAP 이 지운 메서드 이름을 듦(_knocked_out_reasons -> config_explorer.left_out_reasons 로 옮겨짐)
           LedgerSetup.left_out 이 소스만이 아니라 resolve_declarations 보고 전부 — 그 문장을 드는 자리 전수
 ```
+
+---
+
+> **[총괄 -> 구현자] 새 항목 — 수집기 백필의 «다음 시작일»을 지난 실행에서 짓는다 (소유자 09-29 「오토 업데이트 백필 커서가 없는듯? 다시 돌리니 처음부터 다시 도네」 -> 세 안 중 ㄱ)**
+
+```
+지금       collector_backfill 의 인자는 collector · start 둘 — 매번 start 부터 오늘까지 하루씩(backfill_windows)
+          실패는 「fix it, then start again from <day>」 로 날을 대고, 취소는 processed_rows(끝낸 날 수)만 남김
+          -> 같은 start 로 다시 누르면 이미 한 날도 다시 수집 · 다시 인입. 「restartable」 은 「다시 돌려도 안전」이지 이어 돌기가 아님
+소유자 판정  ㄱ = 지난 실행이 멈춘 자리를 Start 칸에 «미리 채움». 운영자가 고칠 수 있음. 새 저장 칸·새 표 없음
+도착지      수집기마다 「다음 시작일」(KST) 이 서버 «한 함수»에서 나오고, 어드민이 읽는 응답에 실림. 화면은 계산 안 함
+            done / cancelled / failed 셋 다 답이 있음 · 실행 기록이 없으면 null · 지금 도는 실행이면 null(이어 누를 것이 없음)
+짓는 법(님이 고름) 실행 기록에 이미 있는 것(params.start · processed_rows · result)으로 — 끝까지 돈 실행의 마지막 창은 「그때의 지금」에서
+            잘리므로 start + 일수 로는 틀림(내일 00:00 이 나와 judge 가 「not in the past」로 거절). 그 경우를 정확히 하려고
+            result 에 마지막으로 끝낸 창의 끝(done_until)을 싣는 것은 괜찮음. 실패 실행은 result 가 없음 — processed_rows 로
+날짜 계산   collector_markers 의 SLICE · WINDOW_ZONE 을 지남(백필 창과 같은 자리). 화면이 넣을 모양 = backfill_start 가 받는 모양
+게이트      5 일 중 끝까지 -> 마지막 창의 끝 · 2 일 뒤 취소 -> 셋째 날 00:00 · 셋째 날 실패 -> 셋째 날 · 0 일 -> start 그대로(아무것도 안 함)
+            기록 없음 -> null · 도는 중 -> null · 그 값을 start 로 다시 돌리면 창이 겹침 0 · 빈틈 0
+            변이(start + 일수 로만 계산 · 실패 실행 null) -> 빨강
+다음        착지하면 총괄이 클라에 넘김(Start 칸에 그 값)
+```
