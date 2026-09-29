@@ -61766,3 +61766,25 @@ RUN.md               재기동 서버 · 확인할 줄(「Client disconnected. T
            칸 없음 -> 오늘 그대로(NULL 씀) · 잘못된 값("yes") -> 거절 문장 · :target 반쪽도 같음 · 변이(칸 무시) -> 빨강
 순서       534f375f8(키 모두 빔) 다음
 ```
+
+---
+
+> **[총괄 -> 구현자] 새 항목 — 체인 선언을 저장하면 체인 워커가 «규칙만» 다시 읽는다 (소유자 09-29 「체인 선언 저장후 무슨 반응이라도 나오게 … 자동 리로드 하든가」 -> ㄱ)**
+
+```
+지금(총괄이 읽음)  save_chain_rule_raw 는 파일만 씀 — 워커는 SYSTEM_RELOAD(Reload Configs & Code) 때만 다시 읽음
+                 -> 소유자가 저장한 require · blank 가 워커에선 안 돌았음(운영에서 「해도 안됨」의 유력한 까닭)
+                 워커의 SYSTEM_RELOAD 는 무거움: reload_worker_process_cache · refresh_dynamic_models · load_chain_rules · warmup_worker · _start_index_work
+판정(ㄱ)          저장 -> 워커가 «규칙만» 다시 읽음. 맵퍼 다시 불러오기 · 표 모양 맞추기는 안 함
+넓힌다            새 사건 종류 말고 «이미 있는» SYSTEM_RELOAD 에 범위(예: scope = chain_rules)를 실음 — 워커의 한 자리가 범위를 보고 가벼운 길로
+                 범위 없는 SYSTEM_RELOAD(버튼)는 지금 그대로 무거운 길
+먼저 잴 것        ① 규칙이 «새 맵퍼 이름»을 가리키면 규칙만 읽어선 못 돎 — 그 판단(rule_run.runnable) 하나로: 못 찾는 이름이 있으면 그때만 맵퍼 찾기
+                    (ensure_discovered 류)까지 · 그래도 없으면 로드 거절 문장 그대로
+                 ② 조인의 key.unique 인덱스 준비(_start_index_work) — 규칙만 읽을 때 필요한가(새 조인 저장 직후 인덱스 없이 도나)
+                 ③ 워커가 사건을 집는 간격(RELOAD_CHECK_INTERVAL) — 저장에서 돌기까지 몇 초
+«읽었다»의 증거    워커가 «읽은 규칙 파일의 지문 · 시각»을 이미 있는 자리(하트비트 · 대기열 응답 류)에 싣고, 저장 답의 base 지문과 견줄 수 있게
+                 — 화면(클라, 다음 지시)이 「Saved」 뒤 「Loaded by chain worker HH:MM:SS」 를 그릴 재료. 새 라우트는 필요할 때만, 보고에 이유
+게이트            저장 -> N 초 안에 워커가 새 규칙으로 돎(블랭크 칸 켠 조인이 빈 답을 안 씀) · 저장 반복 10 번 -> refresh_dynamic_models 호출 0 ·
+                 새 맵퍼 이름 규칙 저장 -> 맵퍼 찾아 돎 · 버튼 Reload 는 전과 같음 · 변이(범위 무시 = 무거운 길) -> 빨강
+덤(문서)          RUN.md 09-29 밤 · 밤2 · 밤3 의 「재기동 서버」 — 조인은 «체인 워커»에서 돎. run_app.bat 전체 재기동이 아니면 체인 워커도 재기동이라고 고침
+```
