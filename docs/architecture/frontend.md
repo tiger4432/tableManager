@@ -257,6 +257,7 @@ null    Matches: …      «아직 모른다» -- 세는 중 (+ 원소에 `is-co
 | ⚠️ `--space-6` | 27.2px | `tokens.css:172` | **0** |
 | `--fs-label` | 12px | `tokens.css:178` | **2** — `client2/admin.html` |
 | `--graph-max-height` | 420px | `tokens.css:182` | **1** — `client2/admin.html` |
+| 🆕 `--menu-max-height` | 50vh | `tokens.css:217` | **1** — `client2/src/style.css`(`.redo-panel__rows`, 09-29 `e99b496f5`) |
 
 🔴 **`--space-5`·`--space-6` 은 «선언돼 있고 아무도 안 읽습니다»** — 사다리를 여섯 칸으로 선언하고
 네 칸만 밟고 있습니다. 이것은 결함이 아니라 «측정»이고, 다음 화면이 그 둘을 밟거나 아니면 둘이

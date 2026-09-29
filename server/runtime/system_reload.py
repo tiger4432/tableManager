@@ -67,8 +67,10 @@ def reload_local_process_cache():
     try:
         from chain import ingestion_worker
         ingestion_worker.forget_loaded_chain_rules()
-    except Exception:
-        pass
+    except Exception as exc:                                   # noqa: BLE001
+        # The reload goes on; what went quiet is said once (총괄 790511099 뒤).
+        logger.error("[Reload] chain rules NOT forgotten - this process keeps the set it read "
+                     "until restart: %s: %s", type(exc).__name__, exc)
 
     # [Notation normalization] Same shape and same reason as the line above: the
     # declaration carries a TTL for the worker processes, but one edited in the
