@@ -17,7 +17,7 @@ logger = get_process_logger("Watcher", "watcher.log")
 # Now we can import database, models, and directory_watcher
 from database.database import SessionLocal, engine
 from database import models
-from directory_watcher import WorkspaceWatcher, IngestionHandler
+from directory_watcher import WorkspaceWatcher
 
 # Initialize dynamic database models
 try:
@@ -275,6 +275,52 @@ def reclaim_stranded_claims(db):
     return reclaimed, skipped
 
 
+def pending_retries(db):
+    """PENDING_RETRY rows, oldest first - none before the watcher holds its handlers
+    (총괄 fab40ed69): this thread starts first, and a retry runs on the table's own handler."""
+    if workspace_watcher is None:
+        return []
+    return (db.query(models.FileIngestionLog)
+            .filter(models.FileIngestionLog.status == "PENDING_RETRY")
+            .order_by(models.FileIngestionLog.id.asc()).all())
+
+
+def retry_one(db, log):
+    """Run one claimed PENDING_RETRY row through the watcher's own handler for its table.
+
+    🔴 [총괄 fab40ed69, 소유자 「ㄱ」] THE HANDLER THAT READ IT THE FIRST TIME. A handler built
+    here knew no external source, so an external file's retry read without its folder's
+    wafer and time, its parser options and its `external:` source name. The watcher's
+    handler holds them, and takes the same workspace lock its own ingestion takes.
+
+    🔴 EVERYTHING IS INSIDE THE TRY. The row was claimed (PENDING) before this runs, which the
+    poller's own query cannot see again, so any exception here must still end it FAILED by
+    name. A process DEATH is the reclaim sweep's half.
+    """
+    table_name = log.table_name or "unknown"
+    try:
+        from directory_watcher import get_workspace_serial_lock
+        handler = workspace_watcher.handlers_by_raw_path.get(
+            workspace_watcher.raws_root_for(table_name))
+        if handler is None:
+            raise RuntimeError(
+                "the watcher runs no handler for table %r (%s) - nothing to retry it with"
+                % (table_name, workspace_watcher.raws_root_for(table_name)))
+        with get_workspace_serial_lock(handler.workspace_path):
+            res = handler.process_archived_file_sync(log, db)
+        if res:
+            logger.info(f"Retry succeeded for log ID #{log.id}.")
+        else:
+            logger.warning(f"Retry failed for log ID #{log.id}.")
+    except Exception as e:
+        import traceback
+        logger.error(f"Exception during retry: {e}\n{traceback.format_exc()}")
+        log.status = "FAILED"
+        log.error_message = traceback.format_exc()
+        db.commit()
+        trigger_ws_file_processed(table_name, log.filename, "FAILED", str(e))
+
+
 def poll_pending_retries():
     logger.info("Background retry poller thread started.")
     last_reload_event_id = 0
@@ -324,83 +370,15 @@ def poll_pending_retries():
             # in this same cycle rather than waiting a whole extra one.
             reclaim_stranded_claims(db)
 
-            # Query for logs in PENDING_RETRY status
-            pending_logs = db.query(models.FileIngestionLog).filter(
-                models.FileIngestionLog.status == "PENDING_RETRY"
-            ).order_by(models.FileIngestionLog.id.asc()).all()
-            
+            pending_logs = pending_retries(db)
+
             for log in pending_logs:
                 logger.info(f"Detected PENDING_RETRY log ID #{log.id} ({log.filename}). Processing...")
-                
+
                 # Update status to processing (PENDING) to prevent concurrent runs
                 log.status = "PENDING"
                 db.commit()
-
-                # 🔴 EVERYTHING FROM HERE IS INSIDE THE TRY, AND THAT IS THE REPAIR.
-                # The claim above is committed BEFORE any work, so from this line until the
-                # row reaches a terminal status it exists in a state the poller's own query
-                # cannot see again (`status == "PENDING_RETRY"` selects it, and the claim
-                # just made it "PENDING"). Setup used to sit OUTSIDE the try -- workspace
-                # resolution, two imports, `os.listdir`, and the handler construction -- so
-                # an ordinary exception there escaped to the loop's outer handler, which
-                # logs "Error in retry poller loop" and does not touch `log.status`. The row
-                # then sat PENDING for ever with nothing naming it.
-                #
-                # ⚠️ NOT ONLY A CRASH. The measurement that opened this said "if the watcher
-                # DIES in that window"; a plain exception in setup was enough, and setup is
-                # where an alias workspace lookup or a config directory permission fails.
-                #
-                # ⛔ This does not close the window that a process DEATH opens -- nothing in
-                # this process can. That is the reclaim sweep's half, and it is separate.
-                # Bound BEFORE the try, like the payload in the scheduler's twin: the
-                # failure branch names the table, and an unbound name there would replace
-                # the reason with a NameError.
-                table_name = log.table_name or "unknown"
-                try:
-                    # [D3] workspace_name 별칭 역조회 — 별칭 워크스페이스의 재시도가
-                    # ingestion_workspace/<table_name> 허공 경로로 오배송되지 않게 한다.
-                    from directory_watcher import resolve_workspace_root, load_global_table_config
-                    import paths
-                    workspace_root = resolve_workspace_root(
-                        paths.WORKSPACE_DIR, table_name, load_global_table_config()
-                    )
-
-                    config_path = os.path.join(workspace_root, "config", "config.json")
-                    if not os.path.exists(config_path) and os.path.exists(os.path.join(workspace_root, "config")):
-                        json_files = [f for f in os.listdir(os.path.join(workspace_root, "config")) if f.endswith('.json')]
-                        if json_files:
-                            config_path = os.path.join(workspace_root, "config", json_files[0])
-                        
-                    archives_path = os.path.join(workspace_root, "archives")
-                
-                    handler = IngestionHandler(
-                        workspace_path=workspace_root,
-                        config_path=config_path if os.path.exists(config_path) else None,
-                        archives_path=archives_path,
-                        default_table_name=table_name,
-                        on_refresh_callback=trigger_ws_refresh,
-                        on_file_processed_callback=trigger_ws_file_processed,
-                        on_progress_callback=trigger_ws_progress
-                    )
-                
-                    # [QA F3] 재처리 폴러는 heavy 워커·observer와 같은 프로세스 —
-                    # 워크스페이스 직렬화 락을 잡아 heavy/normal 레인 처리와 재처리
-                    # 업서트가 같은 테이블에서 인터리빙되지 않게 한다(순서 계약 편입).
-                    # heavy 7분 처리 중이면 폴러가 그만큼 대기하지만 백그라운드 스레드라 무해.
-                    from directory_watcher import get_workspace_serial_lock
-                    with get_workspace_serial_lock(workspace_root):
-                        res = handler.process_archived_file_sync(log, db)
-                    if res:
-                        logger.info(f"Retry succeeded for log ID #{log.id}.")
-                    else:
-                        logger.warning(f"Retry failed for log ID #{log.id}.")
-                except Exception as e:
-                    import traceback
-                    logger.error(f"Exception during retry: {e}\n{traceback.format_exc()}")
-                    log.status = "FAILED"
-                    log.error_message = traceback.format_exc()
-                    db.commit()
-                    trigger_ws_file_processed(table_name, log.filename, "FAILED", str(e))
+                retry_one(db, log)
                     
         except Exception as e:
             logger.error(f"Error in retry poller loop: {e}")

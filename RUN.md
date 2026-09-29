@@ -1,5 +1,21 @@
 # 지금 돌리면 되는 것
 
+> ## 🔴 [09-29 저녁] **외부 경로 파일의 재시도가 워처의 «그 표 처리기»로 돔 — 폴더의 웨이퍼·시각·options 그대로 — 마이그레이션 «없음» · 재기동 워처**
+>
+> ```
+> 무엇이 바뀌나  Retry(파일 인제션) -> PENDING_RETRY -> 워처의 재처리 폴러가 «그 표를 감시하는 처리기»로 다시 읽음
+>              전에는 새 처리기를 만들어 외부 경로를 몰랐음 -> 외부 파일 재시도가 「No custom pipeline parser matched」로 다시 실패
+>              워처가 처리기를 다 세우기 전엔 PENDING_RETRY 를 집지 않음(다음 바퀴에 집음)
+>              워처가 감시하지 않는 표의 기록은 「the watcher runs no handler for table …」 로 FAILED
+> 확인          외부 파일 하나가 FAILED 면 원인(예: unit 없음)을 external_sources[].options 로 고치고 워처 재기동 -> Retry
+>              -> 인입 기록 SUCCESS · 행에 폴더의 웨이퍼 · cell source 이름 external:<parser>:<경로>
+> 뜻           관리 raws/ 파일 재시도는 전과 같음(파일을 옮기지 않고 그 자리에서 읽음)
+>             options 를 바꾼 것은 워처 재기동 뒤에만 처리기에 실림 — 재기동 없이 Retry 하면 옛 options 로 읽음
+> 급할 때       스위치 없음
+> ```
+
+---
+
 > ## 🔴 [09-29 오후 3] **수집기 백필이 «다음 시작일»을 말함 — 지난 실행이 멈춘 자리 — 마이그레이션 «없음» · 재기동 서버 · 스케줄러(auto update) · 체인 워커**
 >
 > ```

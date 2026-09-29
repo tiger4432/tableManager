@@ -562,7 +562,7 @@ def test_retry_pattern_waits_for_heavy_via_workspace_serial_lock(tmp_path, monke
         handler._handle_event(os.path.join(ws, "raws", "heavy.csv"))
         assert heavy_started.wait(5)
 
-        # run_watcher poll_pending_retries와 동일 패턴: 별도 핸들러 인스턴스 + 공용 락
+        # run_watcher.retry_one 과 같은 공용 락(그 표의 워크스페이스 직렬화 락)
         def retry_worker():
             with directory_watcher.get_workspace_serial_lock(ws):
                 order.append(("retry", "archived.csv"))

@@ -3716,6 +3716,14 @@ class WorkspaceWatcher:
             logger.info(f"External source recovered: {root} -> {spec['table_name']}")
         return True
 
+    def raws_root_for(self, table_name: str, table_config: dict | None = None) -> str:
+        """The raws/ this watcher watches for `table_name` - the key of `handlers_by_raw_path`,
+        so an external source and a retry find the same handler (총괄 fab40ed69)."""
+        if table_config is None:
+            table_config = load_global_table_config()
+        return os.path.abspath(os.path.join(
+            resolve_workspace_root(self.base_dir, table_name, table_config), "raws"))
+
     def _register_external_sources(self, table_config: dict):
         settings = load_ingestion_settings()
         specs, errors = validate_external_source_specs(
@@ -3745,9 +3753,7 @@ class WorkspaceWatcher:
                         f"binding is unchanged. Restart the watcher to apply it.")
                 continue
             try:
-                workspace = resolve_workspace_root(
-                    self.base_dir, spec["table_name"], table_config)
-                raws_root = os.path.abspath(os.path.join(workspace, "raws"))
+                raws_root = self.raws_root_for(spec["table_name"], table_config)
                 handler = self.handlers_by_raw_path.get(raws_root)
                 if handler is None:
                     raise ValueError(
