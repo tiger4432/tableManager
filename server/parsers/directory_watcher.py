@@ -672,12 +672,15 @@ def _safe_relative_path(path: str, root: str) -> str | None:
 
     External trees can contain junctions/symlinks owned by another system.  An
     ``abspath`` prefix check is not a containment check there, so both sides are
-    resolved before the relative path is accepted.
+    resolved before the relative path is accepted.  Compared as the filesystem does
+    (``normcase``): a path stored or typed in another case is still under its folder -
+    the retry-by-folder asks this same question (총괄 fab40ed69 ②).
     """
     try:
         real_path = os.path.realpath(os.path.abspath(path))
         real_root = os.path.realpath(os.path.abspath(root))
-        if os.path.commonpath((real_path, real_root)) != real_root:
+        if (os.path.normcase(os.path.commonpath((real_path, real_root)))
+                != os.path.normcase(real_root)):
             return None
         rel = os.path.relpath(real_path, real_root)
     except (OSError, TypeError, ValueError):

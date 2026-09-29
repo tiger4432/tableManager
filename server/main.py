@@ -6804,20 +6804,53 @@ def cancel_retroactive_run(run_id: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail=f"취소 요청을 적지 못했습니다: {e}")
 
 
+def _failed_under_folder(logs, folder):
+    """`(log, path below folder)` for each log whose file lies under `folder` - by folder
+    boundary (`C:\\a\\A` never takes `C:\\a\\AB`), case and separators as the filesystem
+    reads them: the external-root judgement, `_safe_relative_path` (총괄 fab40ed69 ②)."""
+    from directory_watcher import _safe_relative_path
+
+    picked = []
+    for log in logs:
+        rel = _safe_relative_path(log.filepath, folder) if log.filepath else None
+        if rel is not None:
+            picked.append((log, rel))
+    return picked
+
+
 @app.post("/admin/file-ingestion/retry-failed", dependencies=[Depends(require_admin_token)])
-async def retry_failed_file_ingestion(log_id: int = None, db: Session = Depends(get_db)):
-    """실패(FAILED) 상태인 File Ingestion 로그를 다시 재처리합니다."""
+async def retry_failed_file_ingestion(log_id: int = None, folder: str = None,
+                                      preview: bool = False, db: Session = Depends(get_db)):
+    """실패(FAILED) 상태인 File Ingestion 로그를 다시 재처리합니다.
+
+    `folder` 면 그 폴더 «아래» FAILED 전부 · `preview` 면 쓰지 않고 몇 개인지와 바로 아래 폴더별 수만."""
     import os
     import asyncio
     import json
-    
+
     query = db.query(models.FileIngestionLog).filter(
         models.FileIngestionLog.status == "FAILED"
     )
     if log_id is not None:
         query = query.filter(models.FileIngestionLog.id == log_id)
-        
+
     failed_logs = query.all()
+    # 🔴 [총괄 fab40ed69 ②, 소유자 「폴더 아래 선택해서 한꺼번에」] ONE SELECTION FOR THE PREVIEW AND
+    #    THE RETRY, so the number the screen shows is the number that runs.
+    picked = None
+    if log_id is None and not crud.is_blank_value(folder):
+        picked = _failed_under_folder(failed_logs, folder)
+        failed_logs = [log for log, _rel in picked]
+    if preview or (picked is not None and not picked):      # a preview never writes
+        by_folder = {}
+        for _log, rel in picked or ():
+            head = rel.split("/", 1)[0] if "/" in rel else "."
+            by_folder[head] = by_folder.get(head, 0) + 1
+        where = f" under {folder}" if picked is not None else ""
+        return {"status": "preview" if preview else "success", "folder": folder,
+                "count": len(failed_logs), "by_folder": dict(sorted(by_folder.items())),
+                "message": (f"{len(failed_logs)} failed file(s){where}" if failed_logs
+                            else f"No failed file{where}")}
     if not failed_logs:
         return {"status": "success", "message": "No failed file ingestion logs found."}
         
