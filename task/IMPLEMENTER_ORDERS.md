@@ -61495,3 +61495,20 @@ trigger_columns 정정  받았다. 「막는 칸」인지 「기록 칸」인지
 ③ 저장 관문  술어의 class 칸을 거절하는 오늘 관문도 이 착지에 — 선언창에서 적고 저장까지가 도착지(소유자 「선언창도 다 지원」)
 나머지      e6dd72526 그대로 — follow=class:<낱말> · 모르는 낱말 422 · 코드는 부류 낱말을 모름 · 값은 비워 둠
 ```
+
+---
+
+> **[총괄 -> 구현자] 🔴 결함 — 엔터티 class 를 목록으로 저장하면 그 엔터티가 선언에서 «조용히» 빠진다 (fdda4ebf6 뒤 · 총괄 박스 실측 09-29)**
+
+```
+재현(이 박스, 새 코드로 재기동한 서버 · 소유자 Chrome 선언창)
+   quantity@1 -> Edit draft -> + Class -> 「probe」 -> Save  => 토스트 「Saved」 + 경고 「selection 'entity|quantity@1' does not exist in this snapshot: unknown_selection」
+   파일    config/ontology/ledger_config.json 의 quantity@1 = {"class": ["static","probe"], "keys": ["quantity"]} (저장은 됨)
+   라우트   GET /api/ledger/declaration -> 엔터티 8 — quantity@1 «없음» (defect_kind · recipe 는 ["static"] 로 있음)
+   화면    엔터티 목록에서 quantity@1 사라짐
+   되돌림   총괄이 파일을 저장 전 백업으로 복원 -> 엔터티 9 복귀(md5 59be74d5…). 박스는 원상
+물음      목록 두 낱말 때문인지 · 엔진이 모르는 낱말(probe) 때문인지 · 엔터티 쪽 검사가 여전히 낱말 하나를 요구하는지 — 재서 원인 한 줄
+도착지    「낱말 하나 또는 목록」이 엔터티에서도 참 · 코드가 모르는 낱말도 받음(부류 낱말은 운영자 것) · 그래도 거절할 것이면 «저장에서 이름 대어 거절»
+          저장은 「Saved」인데 로드에서 빠지는 길이 있으면 그것 자체가 결함(저장 관문과 로더가 다른 답) — 같은 판정을 지나게
+게이트    엔터티 class ["static","probe"] 저장 -> 라우트에 그 엔터티 있음 · class 그대로 · 걷기의 static 판정 그대로(probe 는 행동 없음)
+          저장 관문과 로더가 같은 입력에 같은 답(표로) · 변이 로더만 옛 검사 -> 빨강
