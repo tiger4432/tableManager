@@ -111,6 +111,10 @@ class LedgerSetup:
     #: most of all -- describes the SAME catalog the validation used. Re-reading it later
     #: would let a screen disagree with the refusal an operator just saw.
     catalog: Mapping[str, Any] = MappingProxyType({})
+    #: Every declaration the load LEFT OUT, as `resolve_declarations` reports it
+    #: (`key -> {round, reasons, raw}`) - entities, predicates and what fell with them,
+    #: not only the sources the compiler is told about (총괄 57ae5c2da ②).
+    left_out: Mapping[str, Any] = MappingProxyType({})
 
     @property
     def source_ids(self) -> tuple[str, ...]:
@@ -279,9 +283,9 @@ def _refused_sources(invalid: Mapping[str, Any]) -> dict[str, Any]:
     """The resolver's report, narrowed to SOURCES and shaped for the compiler.
 
     The resolver blames every kind of declaration; only sources have a plan to be absent
-    from, so a refused predicate or entity reaches the screens through the source it took
-    down with it. `reasons[0]` is the root one -- `resolve_declarations` appends in the
-    round it fell, and the first is the one the operator has to fix.
+    from. The whole report rides on `LedgerSetup.left_out` for the screens. `reasons[0]` is
+    the root one -- `resolve_declarations` appends in the round it fell, and the first is
+    the one the operator has to fix.
     """
     out: dict[str, Any] = {}
     for key, entry in (invalid or {}).items():
@@ -295,7 +299,7 @@ def _refused_sources(invalid: Mapping[str, Any]) -> dict[str, Any]:
 
 def _resolve_refused_declarations(root_path: Path, catalog: Mapping[str, Any],
                                   first: LedgerSetupValidationError):
-    """`(bundle, refused_sources)` for a config one declaration has broken (S-177 ②).
+    """`(bundle, refused_sources, left_out)` for a config one declaration has broken (S-177 ②).
 
     🔴 THE MECHANISM IS NOT NEW AND MUST NOT BE WRITTEN TWICE. `resolve_declarations`
     already computes this, as a FIXPOINT over the validator we have: drop whatever a
@@ -347,7 +351,7 @@ def _resolve_refused_declarations(root_path: Path, catalog: Mapping[str, Any],
     for source_id, entry in sorted(refused.items()):
         logger.error("[Ledger] source %s is NOT planned: %s %s", source_id,
                      entry["refusal"].get("path"), entry["refusal"].get("message"))
-    return bundle, refused
+    return bundle, refused, report["invalid"]
 
 
 def load_setup(
@@ -372,11 +376,12 @@ def load_setup(
     resolved_catalog = (
         dict(live_physical_catalog()) if catalog is None else dict(catalog))
     refused: Mapping[str, Any] = {}
+    left_out: Mapping[str, Any] = {}
     try:
         bundle = require_ready_bundle(
             load_setup_bundle(root_path, catalog=resolved_catalog))
     except LedgerSetupValidationError as first:
-        bundle, refused = _resolve_refused_declarations(
+        bundle, refused, left_out = _resolve_refused_declarations(
             root_path, resolved_catalog, first)
     _announce_dead_cells(_dead_time_cells(bundle.section("sources")))
     _announce_unscored_bindings(
@@ -391,6 +396,7 @@ def load_setup(
         preparers=source_preparer_registry(),
         mappers=role_mapper_registry(),
         catalog=MappingProxyType(resolved_catalog),
+        left_out=MappingProxyType(dict(left_out)),
     )
 
 

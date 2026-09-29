@@ -1745,18 +1745,24 @@ def test_deletion_preview_names_the_declaration_that_stops_being_read(
     The pair is DERIVED from the config rather than spelled out, so an owner hand-edit does
     not rename this test's subject out from under it; if no mapping names a declared
     predicate the lookup raises rather than passing on an empty search.
+
+    ⚠️ [총괄 57ae5c2da ②] THE READER MUST BE READ NOW. A source the load already leaves
+    out does not stop being read, and since the unread list holds what the loader left
+    out, the preview no longer names it - so the pair is taken from a planned source.
     """
     document = json.loads(
         (copied_root / "ledger_config.json").read_text(encoding="utf-8"))
+    service = OntologyExplorerService(
+        config_root=copied_root, draft_root=tmp_path / "drafts")
+    setup, _, _ = service.active()
     predicate, reader_key = next(
         (mapping["predicate"], node_key("source_plan", source_id))
         for source_id, source in document["sources"].items()
+        if source_id in setup.snapshot.source_plans
+        and setup.snapshot.source_plans[source_id].planned
         for mapping in source["bind"]["mappings"].values()
         if mapping["predicate"] in document["vocabulary"])
 
-    service = OntologyExplorerService(
-        config_root=copied_root, draft_root=tmp_path / "drafts")
-    service.active()
     plan = service.deletion_preview(targets=[node_key("predicate", predicate)])
 
     assert reader_key in {row["key"] for row in plan["unread_after"]}

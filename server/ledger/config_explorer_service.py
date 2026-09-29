@@ -21,6 +21,7 @@ from .config_explorer import (
     authorable_bundle_path,
     build_explorer_index,
     document_hash,
+    left_out_reasons,
     load_resolved_setup,
     resolve_declarations,
     definition_diff,
@@ -199,7 +200,9 @@ class OntologyExplorerService:
 
         try:
             setup = self._setup_loader(self.config_root)
-            invalid: dict[str, Any] = {}
+            # 🔴 [총괄 57ae5c2da ②] A LOAD THAT SUCCEEDED MAY STILL HAVE LEFT THINGS OUT - the
+            #    loader drops a broken declaration and what fell with it, and says which here.
+            invalid: dict[str, Any] = dict(getattr(setup, "left_out", None) or {})
             config_level: list[Any] = []
         except Exception:
             if document is None:
@@ -220,31 +223,6 @@ class OntologyExplorerService:
             "invalid": invalid,
             "config_level": config_level,
         }
-
-    def _knocked_out_reasons(self, key: str, record: Mapping[str, Any]) -> list[dict[str, Any]]:
-        """Say what actually happened to a declaration that was dropped for someone else.
-
-        The blamed id is only ever taken from `self._invalid`, so this can name something
-        that is genuinely unread and can never invent a name. When nothing matches, the
-        sentence stays unnamed rather than guessing -- an unnamed cause is a smaller
-        failure than a wrong one.
-        """
-        dropped_first = [
-            other.partition("|")[2] for other, entry in self._invalid.items()
-            if other != key and entry["round"] < record["round"]
-        ]
-        out = []
-        for reason in record["reasons"]:
-            culprit = next(
-                (name for name in dropped_first if name in reason.get("message", "")
-                 or name in reason.get("path", "")), None)
-            out.append({
-                "code": "blocked_by_unread_declaration",
-                "path": reason["path"],
-                "message": (f"`{culprit}`이(가) 아직 안 읽혀서 함께 보류됨"
-                            if culprit else "참조하는 선언이 아직 안 읽혀서 함께 보류됨"),
-            })
-        return out
 
     def active(self, *, force: bool = False) -> tuple[Any, ExplorerIndex, str]:
         with self._lock:
@@ -406,7 +384,7 @@ class OntologyExplorerService:
                 "blames_itself": record["round"] == 1,
                 "reasons": (
                     record["reasons"] if record["round"] == 1
-                    else self._knocked_out_reasons(key, record)),
+                    else left_out_reasons(self._invalid, key)),
             }
             for key, record in sorted(self._invalid.items())
         }

@@ -28,7 +28,9 @@ from .config_explorer import (
     build_explorer_index,
     definition_diff,
     document_hash,
+    left_out_reasons,
     node_key,
+    resolve_declarations,
 )
 from .implementations import trusted_implementations
 from .setup_bundle import (
@@ -232,9 +234,17 @@ def compile_draft_preview(active_setup: Any, node: ExplorerNode, raw: Mapping[st
     catalog = active_setup.catalog
     issues = validate_bundle_errors(logical, catalog=catalog)
     if issues:
+        # 🔴 [총괄 57ae5c2da ②] AND WHAT FALLS WITH THEM, FROM THE LOADER'S OWN SEAT. One pass
+        #    names only the broken declaration; what names it falls in the next round, and
+        #    only the resolver's fixpoint sees that.
+        report = resolve_declarations(logical, catalog=catalog)
+        with_them = [reason for key in sorted(report["invalid"])
+                     if report["invalid"][key]["round"] > 1
+                     for reason in left_out_reasons(report["invalid"], key)]
         return DraftPreview(
             False, None, None,
-            tuple(_decorate_issue(issue.to_mapping()) for issue in issues),
+            tuple(_decorate_issue(issue) for issue in
+                  [*(issue.to_mapping() for issue in issues), *with_them]),
         )
     try:
         bundle = require_ready_bundle(validate_bundle(logical, catalog=catalog))
