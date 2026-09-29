@@ -701,15 +701,21 @@
 
    --- 6b: the tree ------------------------------------------------------------------
    🔴 THE INDENT MOVES THE LABEL COLUMN ONLY. Depth shortens the first column by 16px a
-   level while the value column absorbs the difference and the state column stays 92px, so
+   level while the value column absorbs the difference and the state column keeps one width, so
    value and state stand on ONE vertical line at every depth. Indenting the whole row --
    the obvious way -- steps all three columns sideways, and a five-deep binding then reads
    as five different tables. Owner: 「배치 정렬 저 목업이랑 똑같이해 잘 정돈되게해」.
    These figures are the 6b card's own and are deliberately NOT on the 3.4px grid. */
+/* 🔴 THE STATE COLUMN HOLDS ITS WIDEST WORD (order da59efbb7, owner 「require 뱃지랑 input ui
+   겹치는거」). At 92px five of the thirteen words it can carry did not fit -- `Required ·
+   unknown` 118.6, `constrained_input` 112.8, `No shape · broken` 109.8, `Single candidate`
+   104.5, `Plan · unknown` 95.2 (measured, this sheet) -- and a right-aligned chip spills LEFT,
+   over the input. 122.4 is the next grid step above 118.6; still one width for every row, so
+   value and state keep their one vertical line. */
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-row {
   display: grid;
   grid-template-columns:
-    calc(288px - 16px * var(--oe-depth, 0)) minmax(0, 1fr) 92px;
+    calc(288px - 16px * var(--oe-depth, 0)) minmax(0, 1fr) 122.4px;
   gap: 10px; align-items: baseline; min-width: 0;
   /* The indent is padding, and the label column loses exactly what the padding gains --
      so `value` starts at the same x at every depth. Measured before this line existed:
@@ -742,6 +748,24 @@
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-value { min-width: 0; overflow-wrap: anywhere; }
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-state {
   display: flex; justify-content: flex-end; min-width: 0; font-size: var(--fs-tag);
+}
+/* A word longer than the column is cut with «…» inside its own cell, never drawn over the
+   input beside it -- the box keeps its parts. */
+:is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-row > .oe-node-state > * {
+  min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis;
+}
+/* Narrow: the label column alone is 288px, so at 375 the input had ~22px (measured 09-29).
+   The row stacks -- name and state, then the value across the whole row. */
+@media (max-width: 700px) {
+  :is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas: "label state" "value value";
+    row-gap: 3.4px;
+  }
+  :is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-row > .oe-node-label { grid-area: label; }
+  :is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-row > .oe-node-value { grid-area: value; }
+  :is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-row > .oe-node-state { grid-area: state; }
+  :is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-row > .oe-node-value:empty { display: none; }
 }
 /* Node kind, said in the row rather than implied by indentation alone.
    Named `-badge`, not `-kind`: `.oe-node-kind` was already taken by the path popover
