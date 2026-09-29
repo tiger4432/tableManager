@@ -1,5 +1,25 @@
 # 지금 돌리면 되는 것
 
+> ## 🔴 [09-30 아침] **대조 저장 — contrast_run 한 줄 -> 체인 -> contrast_factor (걷기의 순위 그대로) — 마이그레이션 «없음» · 재기동 서버 · 체인 워커 (run_app.bat 로 전체를 다시 띄우면 둘 다 됨)**
+>
+> ```
+> 준비          표 둘: server/config/sample/table_config.json.sample 끝의 contrast_run · contrast_factor 를 운영 table_config 에 (표 편집기 저장)
+>              규칙 하나: server/config/sample/chain_rules.json.sample 끝의 contrast_factor_from_run 을 운영 chain_rules 에 (Chain 탭 저장)
+>              맵퍼는 추적 파일 server/mappers/contrast_walk.py — Chain 탭 맵퍼 고르개에 소유자 맵퍼와 같이 «mappers.contrast_walk / contrast_walk» 로 뜸
+> 무엇이 바뀌나  contrast_run 에 행이 들어오면 체인이 그 행의 인자로 걷기 라우트(GET /api/ledger/subgraph)를 부르고
+>              propagation.ranked 를 contrast_factor 행으로 씀 — 키 run_id + node_id. until 이 걷기를 묶음
+> 확인          체인 워커 로그 「[ChainRule] rule=contrast_factor_from_run kind=mappers.contrast_walk.contrast_walk target=contrast_factor rows_in=1 rows_out=<N> …」
+>              같은 인자로 부른 걷기의 propagation.ranked 수 = <N> = contrast_factor 에서 그 run_id 의 행 수
+> 뜻           contrast=unexamined -> 양품(negative) 씨앗이 없었음 · complete=false -> 걷기가 잘림(node_limit) — 순위는 잠정
+>             「[ContrastWalk] … until is empty - …」 -> until 이 빈 run 이라 안 씀 (걷기를 묶을 수 없어서)
+>             행 0 -> 후보 0 이거나 아직 안 돎 — 둘을 가를 자리는 아직 없음(보고의 제안)
+>             contrast_run 행을 지우면 -> 그 run 의 factor 행은 «남고» 칸이 전부 비워짐(맵퍼가 찍은 도장으로 걷힘, 키 R1|<노드> 만 남음)
+>             그때 「[ChainRetract] … 파일 맵퍼는 … 적는지는 제품이 모릅니다」 줄이 나와도 이 규칙엔 해당 없음 — 이 맵퍼는 도장을 찍음
+> 급할 때       Chain 탭에서 contrast_factor_from_run 의 enabled 를 false 로 저장
+> ```
+
+---
+
 > ## 🔴 [09-29 밤 4] **체인 규칙을 저장하면 체인 워커가 «규칙만» 다시 읽음 — 마이그레이션 «없음» · 재기동 run_app.bat 전체(서버 · 체인 워커 · 워처 · 스케줄러)**
 >
 > ```

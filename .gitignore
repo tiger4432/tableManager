@@ -80,6 +80,11 @@ server/mappers/*
 # boundary that decides what executes therefore decides what is tracked.
 # Two were force-added before this line existed; the third would have been too.
 !server/mappers/ledger_v2_*.py
+# A contrast walk is not an operator's local script either. It is a fixed product function no
+# declaration builds (lead 3a262cc76): the chain form offers it from this package beside the
+# owner's mappers, and a declaration names it by module and function - so a checkout without
+# it holds a sample rule that names nothing.
+!server/mappers/contrast_walk.py
 # void 파이프라인 파서 하나만 예외로 둔다 — 그 스크립트가 voids.json 인제션의 실제
 # 구현이고, 운영과 개발이 같은 것을 봐야 한다.
 # 🔴 `server/ingestion_workspace/`처럼 디렉터리를 통째로 무시하면 git이 그 안으로 내려가지

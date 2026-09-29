@@ -303,6 +303,25 @@
           ]
         }
       }
+    },
+    {
+      "__comment": "3a262cc76 - a saved contrast: a contrast_run row -> the walk's ranked candidates as contrast_factor rows, by the tracked mapper server/mappers/contrast_walk.py. The ranking is the walk route's own (GET /api/ledger/subgraph with the run's arguments); until binds the walk, so a replay writes the same rows. enabled: false switches it off.",
+      "name": "contrast_factor_from_run",
+      "__why_enabled": "SHIPS ENABLED because the R&D board's Save contrast writes contrast_run and reads contrast_factor (3a262cc76, owner 09-30): off, a saved contrast is a row nothing computes. It runs only when a contrast_run row is written.",
+      "enabled": true,
+      "on": {
+        "table": "contrast_run"
+      },
+      "into": {
+        "table": "contrast_factor"
+      },
+      "derive": {
+        "kind": "mapper",
+        "mapper": {
+          "mapper_module": "mappers.contrast_walk",
+          "mapper_function": "contrast_walk"
+        }
+      }
     }
   ]
 }

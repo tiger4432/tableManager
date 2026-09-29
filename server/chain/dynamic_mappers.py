@@ -23,8 +23,11 @@ TABLE, which no longer exists - a name that points at a retired mechanism tells 
 that mechanism is there. ⚰️ 652 3걸음: `declared:virtual_join` went the same way, and for
 the same reason - the family that name spoke for has no declaration file any more.
 
-⛔ NOT A FILE. `server/mappers/` is the owner's (gitignored, 판정 498), and writing product
-code there is forbidden; writing a generated file anywhere else would make a build artifact
+⛔ NOT A FILE. `server/mappers/` is the owner's (gitignored, 판정 498); product code sits there
+only as a TRACKED EXCEPTION with its reason in .gitignore - `ledger_v2_*` (the half of a ledger
+declaration config cannot write) and `contrast_walk` (총괄 3a262cc76: a fixed function no
+declaration builds, offered by the chain form like the owner's). The templates here are built
+FROM a declaration, so a file for them - there or anywhere else - would be a build artifact
 that can go stale against the declaration it came from. These live only in this process.
 
 ⚠️ ONE TEMPLATE PER KIND, NOT ONE FUNCTION PER RULE. The rule travels to the mapper at call
