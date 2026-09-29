@@ -1,3 +1,10 @@
+> ## [22:20 디자인] 저장 줄 — 워커를 못 보면(loop_seen_via null) 「Saved · chain worker not seen」 — 총괄 370684bd0 박스 뒤 · 640421b64
+
+```
+한 것   서버가 못 본다고 할 때(null)만 이 문장 · 키가 없는 옛 서버면 기다림 그대로 · 이미 Loaded 면 유지 · 번들 admin-DVx--htS.js
+게이트  chain_rule_form W7 · chain_rule_user_path Q(진짜 admin.js, loop_seen_via null 인 대기열 본문) · 변이 둘(못 봄을 기다림으로 · 페이지가 그 사실을 버림) 빨강 · 러너 147 중 145 게이트 초록
+```
+
 > ## [22:02 디자인] 체인 선언 저장 뒤 폼 머리 한 줄 — Saved · waiting -> Loaded by chain worker HH:MM:SS (지문 비교만) — 총괄 460f202d3 · 370684bd0
 
 ```
