@@ -61740,3 +61740,29 @@ RUN.md               재기동 서버 · 확인할 줄(「Client disconnected. T
 문서         config/chain_rules.md 의 join 키 줄 · CHAIN_COPY_WHEN_FILLED_GUIDE 는 응용 몫(총괄이 넘김)
 순서         급함 f10905f33(웹소켓) 다음, 폴더 재시도 ② 앞
 ```
+
+---
+
+> **[총괄 -> 구현자] 새 항목 — 조인 선언 한 칸: 「빈 답은 쓰지 않음」 (소유자 09-29 ㄱ)**
+
+소유자가 운영에서 본 것: inventory -> dt_log 조인이 dt_log.core_wafer_id 를 NULL 로 계속 덮음. 파일이 가져온 값이 가려짐.
+소유자 조건: take 에서 못 뺌(파일에 있을 때도 없을 때도 있음) · 층 순위도 못 바꿈(파일에 쓰레기 값이 오는 데가 있어 조인 값이 이겨야 함).
+```
+지금       판정 405 · f3c04dee — 빈 값으로 셀을 «비웠다»고 말할 수 있는 쓰기는 사람(user)과 체인(chain_ingestion) 둘(crud.can_mean_emptied)
+          짝이 된 값 행의 칸이 비면 조인은 NULL 을 쓰고, 순위 4 라 파일(99) 을 가림
+판정       조인 선언에 한 칸(이름 제안: derive.join.blank = "skip") — 적은 조인은 짝이 된 값 행의 «빈» take 값을 쓰지 않는다
+          = 파일의 빈 칸처럼 「아직 모름」, 층을 안 만듦. «값이 있는» take 는 지금처럼 쓴다(쓰레기 교정)
+          안 적은 조인은 오늘 그대로(f3c04dee). 전역 판정은 안 바꿈
+          빔 = crud 의 한 판정(is_blank_value) — 새 술어 금지
+한 답       「이 빈 값이 비웠다는 뜻인가」의 답이 둘이 되면 안 됨 — can_mean_emptied 한 자리를 넓히든, 조인이 빈 take 를 «말하지 않든»
+          님이 고르고 이유 한 줄. 두 자리가 따로 판단하는 모양 금지
+자리       조인의 두 반쪽(값 쪽 · :target) 이 같은 선언을 읽음 · 로더 문법(unknown_join_cells · 스켈레톤)에 칸 등록 — 선언창 폼에 그 칸이 뜸
+          "skip" 말고 다른 값은 이름 대어 거절(판정 칸의 모양 규칙대로)
+말         한 번 돌 때 한 줄: 「<규칙>: N blank answer(s) not written (blank: skip) - <칸>=<n>, …」
+이미 덮인 것  RUN.md 에 운영 절차: 이 칸을 켠 뒤 그 조인이 이미 쓴 NULL 층을 어떻게 걷나 — 제안: R2 withdraw(dt_log · chain_ingestion · core_wafer_id)
+          뒤 R1 리플레이로 조인을 다시 돌려 «값 있는» 답만 다시 쓰기. ⚠️ chain_ingestion 층은 규칙마다가 아니라 칸당 하나라
+          같은 칸을 쓰는 다른 규칙의 값도 같이 걷힘 — 그 셈(박스)과 더 좁은 길(빈 층만 걷기, count_absent_null_layers 가 이미 세는 것)이 있나 보고
+게이트      blank: skip — 값 행 칸 빈 값 -> 대상 파일 값 그대로(층 없음) · 값 있음 -> 조인 값이 씀 · 대상에 파일 값 없고 답 빔 -> 빈 채
+           칸 없음 -> 오늘 그대로(NULL 씀) · 잘못된 값("yes") -> 거절 문장 · :target 반쪽도 같음 · 변이(칸 무시) -> 빨강
+순서       534f375f8(키 모두 빔) 다음
+```
