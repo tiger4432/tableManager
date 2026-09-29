@@ -4153,7 +4153,7 @@ function seatFolderRetry() {
   if (!mount || folderRetryPanel) return;
   folderRetryPanel = new FolderRetryPanel(mount, {
     doc: document,
-    paths: () => fileData.map((f) => f.filepath).filter(Boolean),
+    rows: () => fileData,
     preview: (folder) => folderRetryCall(folder, true),
     retry: (folder) => folderRetryCall(folder, false),
     onRetried: () => fetchData({ silent: true }),

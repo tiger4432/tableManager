@@ -7,6 +7,7 @@
 // sends the folder that was previewed — change the folder and it is off until previewed again.
 // ═══════════════════════════════════════════════════════════════════════════════
 import { setDisabledReason } from './disabled_reason.js';
+import { isFailedStatus } from './retry_verdict.js';
 
 export const FOLDER_RETRY_WORDS = Object.freeze({
   label: 'Retry failed files under a folder',
@@ -36,13 +37,14 @@ export function folderCandidates(paths) {
 export class FolderRetryPanel {
   /**
    * @param mount  the part's host; it owns one div inside it
-   * @param deps   { doc, paths: () => string[], preview(folder), retry(folder), onRetried() }
+   * @param deps   { doc, rows: () => the log rows the page lists, preview(folder), retry(folder), onRetried() }
+   *   The suggestions are the FAILED rows' folders (lead a30c55a13 — 「실패 목록」).
    *   preview / retry resolve to { ok: true, body } or { ok: false, text } — the page reads
    *   the route and says its own refusal; this part draws what it is handed.
    */
   constructor(mount, deps = {}) {
     this.doc = deps.doc || (mount && mount.ownerDocument);
-    this.paths = deps.paths || (() => []);
+    this.rows = deps.rows || (() => []);
     this.preview = deps.preview;
     this.retry = deps.retry;
     this.onRetried = deps.onRetried || null;
@@ -93,7 +95,8 @@ export class FolderRetryPanel {
 
   suggest() {
     this.list.textContent = '';
-    for (const folder of folderCandidates(this.paths())) {
+    const failed = (this.rows() || []).filter((r) => r && isFailedStatus(r.status)).map((r) => r.filepath);
+    for (const folder of folderCandidates(failed)) {
       const o = this.doc.createElement('option');
       o.value = folder;
       this.list.appendChild(o);

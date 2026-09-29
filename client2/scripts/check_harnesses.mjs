@@ -986,7 +986,8 @@ const FLOORS = new Map([
   //
   // New with lead f0e668bb8: File Ingestion's retry under a folder. The number on Retry is the
   // server's preview count, a changed folder needs a new preview, 0 is off with the server's words.
-  ['folder_retry_harness.mjs', 17],
+  // 17 -> 18 (E3, lead a30c55a13): the suggested folders are the FAILED rows' only.
+  ['folder_retry_harness.mjs', 18],
   //
   // The emergency stop's control (lead 668fa004c): the state line's shapes, the route each button
   // sends, Pause asking once, two instances and a re-read.

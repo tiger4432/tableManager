@@ -19,7 +19,11 @@ function ok(cond, name) {
 
 const LOT = 'C:\\ws\\lot';
 const EMPTY = 'C:\\ws\\empty';
-const PATHS = [`${LOT}\\a\\1.csv`, `${LOT}\\a\\2.csv`, `${LOT}\\3.csv`, `${LOT}\\b\\4.csv`, `${LOT}\\b\\5.csv`];
+const FAILED = [`${LOT}\\a\\1.csv`, `${LOT}\\a\\2.csv`, `${LOT}\\3.csv`, `${LOT}\\b\\4.csv`, `${LOT}\\b\\5.csv`];
+// The page's rows: the failed ones, and one that loaded in a folder no failed file is under.
+const OK_FOLDER = 'D:\\done\\in';
+const ROWS = FAILED.map((filepath, i) => ({ id: i + 1, status: 'FAILED', filepath }))
+  .concat([{ id: 9, status: 'SUCCESS', filepath: `${OK_FOLDER}\\ok.csv` }]);
 const SERVER = {
   [LOT]: { status: 'preview', folder: LOT, count: 3, by_folder: { '.': 1, a: 2 }, message: `3 failed file(s) under ${LOT}` },
   [EMPTY]: { status: 'preview', folder: EMPTY, count: 0, by_folder: {}, message: `No failed file under ${EMPTY}` },
@@ -32,7 +36,7 @@ function seat(M, answers = {}) {
   doc.body.appendChild(mount);
   const part = new M.FolderRetryPanel(mount, {
     doc,
-    paths: () => PATHS,
+    rows: () => ROWS,
     preview: async (folder) => {
       calls.preview.push(folder);
       if (answers.previewFails) return { ok: false, text: 'Preview failed · 503' };
@@ -123,6 +127,7 @@ async function suite(M) {
     s.part.input.dispatch('focus', {});
     const options = walk(s.part.list).filter((n) => n.tagName === 'OPTION').map((n) => n.value);
     ok(options.includes(LOT) && options.includes(`${LOT}\\a`), `E2 the field offers them when it is focused [${options.length}]`);
+    ok(!options.some((o) => o.startsWith('D:')), `E3 ... from the FAILED rows only — a loaded file's folders are not offered [${options}]`);
   }
 
   return { pass: pass - before.pass, fail: fail - before.fail };
@@ -138,7 +143,9 @@ const DEFECTS = [
     (s) => s.replace(": !seen ? FOLDER_RETRY_WORDS.previewFirst", ": !seen ? ''")
       .replace('    const seen = this.current();\n    if (!seen', '    const seen = this.current() || { folder: this.folder(), count: 1 };\n    if (!seen')],
   ['the screen counts the files itself',
-    (s) => s.replace('count: body.count,', 'count: this.paths().filter((p) => p.startsWith(folder)).length,')],
+    (s) => s.replace('count: body.count,', 'count: this.rows().filter((r) => String(r.filepath).startsWith(folder)).length,')],
+  ['the suggestions take every row, not the failed ones',
+    (s) => s.replace('.filter((r) => r && isFailedStatus(r.status))', '.filter((r) => r)')],
   ['a changed folder keeps the old preview',
     (s) => s.replace('return this.seen && this.seen.folder === this.folder() ? this.seen : null;', 'return this.seen;')],
   ['0 failed leaves Retry on',
