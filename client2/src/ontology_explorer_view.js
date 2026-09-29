@@ -2219,7 +2219,8 @@ function renderAuthoring(state) {
     if (row.state === 'derived' && row.disposition !== 'default_overridable') return null;
     // The skeleton form's reading, not a second one: one word in a list of words is that
     // list's one member (`asList`), so a press appends to the word instead of replacing it.
-    // The node is asked of the row's own path -- the buckets pass none.
+    // The HELD value's node is asked of the row's own path (the buckets pass none); the
+    // absent-value branch below still takes the caller's `node`.
     const steps = splitBundlePath(row.path).slice(2);
     const current = asList(bodyNode && shapeAt(bodyNode, steps, skeleton.defs),
                            getAtPath(draftRaw, steps));

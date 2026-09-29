@@ -610,6 +610,18 @@ const renderDraft = (plan) => {
     chipFor('dt_cell_key')?.dataset.pick === JSON.stringify(['dt_index', 'dt_cell_key'])
       && chipFor('dt_index')?.dataset.pick === JSON.stringify([]),
     `${chipFor('dt_cell_key')?.dataset.pick} / ${chipFor('dt_index')?.dataset.pick}`);
+  // What the row holds besides the chips. Before, the word drew a single text box AND the
+  // skeleton's member row `[0]` under the picker -- the same list twice, two ways to edit it.
+  const everyNode = (n) => [n, ...(n.children || []).flatMap(everyNode)];
+  const wordActions = everyNode(at(wordRow, 0)).map((n) => n.dataset && n.dataset.action)
+    .filter(Boolean);
+  const countOf = (name) => wordActions.filter((a) => a === name).length;
+  check('H17 ...and the row is the list-held row: one list box with its x and +, no text box, no [0] row',
+    everyNode(worded).every((n) => !n.dataset || n.dataset.path !== 'map.input_columns[0]')
+      && countOf('edit-field') === 0 && countOf('edit-shape') === 0
+      && countOf('edit-field-item') === 1 && countOf('remove-field-item') === 1
+      && countOf('add-field-item') === 1,
+    wordActions.join(','));
 }
 
 // ── D. the counts bite: delete the rows and the numbers must move ─────────────────
