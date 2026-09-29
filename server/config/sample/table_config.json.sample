@@ -1175,12 +1175,12 @@
     "__comment": "3a262cc76 - one ranked candidate of a contrast run, named as the walk's propagation.ranked item (reach/reachable split into their positive and negative halves). Written by the chain from contrast_run.",
     "composite_key_source": [
       "run_id",
-      "id"
+      "node_id"
     ],
     "composite_key_separator": "|",
     "column_types": {
       "run_id": "string",
-      "id": "string",
+      "node_id": "string",
       "type": "string",
       "label": "string",
       "reach_positive": "number",
@@ -1197,7 +1197,7 @@
     },
     "display_columns": [
       "run_id",
-      "id",
+      "node_id",
       "type",
       "label",
       "reach_positive",
