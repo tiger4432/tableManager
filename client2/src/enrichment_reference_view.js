@@ -101,7 +101,17 @@ export async function syncReferenceViewRule() {
   // Where there is no rule the previous behaviour is unchanged: hide it and stay on Global,
   // which `loadTable` has already activated by the time this runs.
   if (activeRule) showReferenceView();
-  else hideReferenceView();
+  // 🔴 ONLY THE REFERENCE PANE IS THIS FUNCTION'S TO TAKE DOWN. A row pick re-reads an unknown
+  //    list, and a second failure here used to swap the pane to the timeline under whatever
+  //    tab was highlighted (ui-designer review, 09-29: under Reference and under Queue).
+  else if (state.activeHistoryTab === 'reference') {
+    if (!rulesAnswer) showReferenceView();              // still unknown: its line again
+    else {                                              // known, and no rule here: Global
+      activateHistoryTab(elements.tabGlobalBtn);
+      state.activeHistoryTab = 'global';
+      hideReferenceView();
+    }
+  } else if (elements.referenceView?.style.display !== 'none') hideReferenceView();
 }
 
 export function hideReferenceView() {

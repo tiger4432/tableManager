@@ -591,21 +591,46 @@ async function ruleSuite(mod) {
   say('R2 ...and the tab says why', host.textContent === 'Reference views could not be read — HTTP 500',
     host.textContent);
 
+  // A pick while it is still unreadable: the re-read fails again. The pane under the
+  // highlighted tab must stay that tab's pane (ui-designer review 09-29).
+  const shownPane = (id) => globalThis.document.getElementById(id).style.display;
+  let again = null;
+  mod.refreshReferenceForSelection(() => { again = mod.syncReferenceViewRule(); return again; });
+  await again;
+  say('R8 a pick that fails again keeps the reference pane and its line',
+    shownPane('reference-view') === '' && shownPane('timeline-container') === 'none'
+      && host.textContent === 'Reference views could not be read — HTTP 500',
+    `reference ${shownPane('reference-view')} · timeline ${shownPane('timeline-container')} · ${host.textContent}`);
+  state.activeHistoryTab = 'queue';
+  for (const [id, shown] of [['queue-view', ''], ['reference-view', 'none'], ['timeline-container', 'none']]) {
+    globalThis.document.getElementById(id).style.display = shown;
+  }
+  again = null;
+  mod.refreshReferenceForSelection(() => { again = mod.syncReferenceViewRule(); return again; });
+  await again;
+  say('R9 ...and under another tab it moves no pane',
+    shownPane('queue-view') === '' && shownPane('timeline-container') === 'none',
+    `queue ${shownPane('queue-view')} · timeline ${shownPane('timeline-container')}`);
+  state.activeHistoryTab = 'global';
+
   ruleMode = 'ok';
   let asked = 0;
   let pending = null;
+  const readsBefore = ruleCalls;
   mod.refreshReferenceForSelection(() => { asked += 1; pending = mod.syncReferenceViewRule(); return pending; });
   await pending;
-  say('R3 the next row pick asks again', asked === 1 && ruleCalls === 2, `asked ${asked} · reads ${ruleCalls}`);
+  say('R3 the next row pick asks again', asked === 1 && ruleCalls === readsBefore + 1,
+    `asked ${asked} · reads ${ruleCalls - readsBefore}`);
   say('R4 ...and the answer brings the rule', tabButton().style.display === ''
     && mod.fillTargetOrdinals().size === 2, `ordinals ${mod.fillTargetOrdinals().size}`);
 
   ruleMode = 'http500';
+  const readsAnswered = ruleCalls;
   await mod.syncReferenceViewRule();
   mod.refreshReferenceForSelection(() => { asked += 1; });
   say('R5 once answered, a later sync or pick does not ask again and the rule stays',
-    ruleCalls === 2 && asked === 1 && mod.fillTargetOrdinals().size === 2,
-    `reads ${ruleCalls} · asked ${asked} · ordinals ${mod.fillTargetOrdinals().size}`);
+    ruleCalls === readsAnswered && asked === 1 && mod.fillTargetOrdinals().size === 2,
+    `reads ${ruleCalls - readsAnswered} · asked ${asked} · ordinals ${mod.fillTargetOrdinals().size}`);
 
   blankLot = true;
   ROW.data.lot.value = '';
@@ -654,6 +679,14 @@ const RULE_MUTANTS = [
     mutate: (text) => swap(text, '    elements.referenceViewContent.textContent = rulesFailure;\n', '') },
   { id: 'M15', what: 'a row pick does not ask again', catches: 'R3 the next row pick',
     mutate: (text) => swap(text, '  if (!rulesAnswer) { resync?.(); return; }\n', '') },
+  // 🔴 The review's defect, put back: a failed re-read swaps the pane under any tab.
+  { id: 'M18', what: 'a failed re-read swaps the pane under the highlighted tab',
+    catches: ['R8 a pick that fails again', 'R9 ...and under another tab'],
+    mutate: (text) => swap(text,
+      "  } else if (elements.referenceView?.style.display !== 'none') hideReferenceView();",
+      '  } else hideReferenceView();')
+      .split("  else if (state.activeHistoryTab === 'reference') {\n    if (!rulesAnswer) showReferenceView();")
+      .join("  else if (state.activeHistoryTab === 'reference') {\n    if (!rulesAnswer) hideReferenceView();") },
   { id: 'M16', what: 'an answer is asked again on every sync', catches: 'R5 once answered',
     mutate: (text) => swap(text, '  if (rulesAnswer) return Promise.resolve(rulesAnswer);\n', '') },
   // 🔴 The second judge, put back: the screen refuses the panel before asking the server.

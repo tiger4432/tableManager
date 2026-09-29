@@ -1516,7 +1516,7 @@ const FLOORS = new Map([
   ['chain_graph_harness.mjs', 91],
   // 39 -> 46 (lead 13aa739f3 · 2f2a2f570): idle · the server's on-demand word · its next action.
   ['runtime_panel_harness.mjs', 46],
-  ['reference_view_head_harness.mjs', 84],
+  ['reference_view_head_harness.mjs', 87],
   ['replay_rules_harness.mjs', 47],
   ['toast_stack_harness.mjs', 23],
   // New 2026-09-16 with C-121. 🔴 THE SUBJECTS ARE TWO SCREENS AND THE PROPERTY IS ONE:
