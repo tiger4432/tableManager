@@ -64895,3 +64895,40 @@ PG       7 failed, 117 passed, 7455 deselected in 169.07s (0:02:49)
 ```
 
 이어서 fab40ed69 ② 로 들어갑니다. 감시는 켜 둡니다.
+
+## [구현자 -> 총괄] 착지 207cb0bf1 — 실패한 파일을 폴더째 재시도 · 먼저 보기 (fab40ed69 ②)
+
+```
+순서       534f375f8 이 「② 앞」이라 했는데, ② 는 그 지시가 오기 전에 짓고 변이까지 끝나 스위트가 돌던 중이라 먼저 착지했습니다
+넓힌 것     새 라우트 없음 — POST /admin/file-ingestion/retry-failed 에 folder · preview 인자
+판정 하나   main._failed_under_folder(logs, folder) — 먼저 보기와 재시도가 같이 부름
+           경계는 directory_watcher._safe_relative_path(외부 루트를 가리는 그 함수) — 실제 경로로 풀고 폴더 경계로만
+           그 함수를 파일 시스템의 대소문자 규칙(normcase)으로 넓힘 — 저장된 경로나 화면이 보낸 폴더의 대소문자가 달라도 같은 폴더
+           ⚠️ 그래서 외부 경로 판정도 Windows 에서 대소문자를 안 가림(전에는 realpath 가 고쳐 주는 만큼만)
+먼저 보기   preview=true -> {status: preview, count, by_folder: 바로 아래 폴더별 수(폴더에 바로 있는 파일은 "."), message}
+           쓰지 않음. 폴더 없이 preview 해도 쓰지 않음(전체 FAILED 수만)
+           by_folder 를 «바로 아래 한 단계»로 고른 것은 제 선택 — 한 단계씩 좁혀 고르기 좋게. 더 깊게 원하시면 한 줄
+0 개        count 0 · 「No failed file under <폴더>」 · 쓴 것 없음
+FAILED 만   도는 중(PENDING) · 성공은 안 건드림
+```
+
+| 칸 | 입력 (A 아래 FAILED 3 + 성공 1 + 처리 중 1, B 2, AB 1) | 답 |
+|---|---|---|
+| 먼저 보기 A | preview | count 3 · by_folder {".": 1, "x": 2} · 쓴 것 없음 |
+| 재시도 A | folder=A | 그 셋만 PENDING_RETRY · AB · B · 성공 · 처리 중 그대로 · 먼저 보기 수 = 실제 수 |
+| 다른 표기 | A 를 대문자 · / 로 · 끝에 / | count 3 (Windows) |
+| 빈 폴더 | folder=C | count 0 · 사유 한 줄 · 쓴 것 없음 |
+| 폴더 없는 먼저 보기 | preview 만 | 쓴 것 없음 · 전체 FAILED 수 |
+
+```
+통과     33 passed in 2.49s
+변이     접두 문자열 비교 -> 3 failed, 2 passed in 1.12s — test_the_preview_counts_what_is_under_the_folder_and_writes_nothing · test_retry_takes_exactly_the_failed_files_under_the_folder · test_a_folder_in_another_case_or_separator_is_the_same_folder
+         대소문자를 realpath 에만 맡김 -> 1 failed, 4 passed in 1.10s — test_a_folder_in_another_case_or_separator_is_the_same_folder
+         폴더 없는 먼저 보기가 씀 -> 1 failed, 4 passed in 1.15s — test_a_preview_without_a_folder_writes_nothing
+전체     5 failed, 7413 passed, 163 skipped, 3 xfailed in 665.26s (0:11:05)
+PG       7 failed, 117 passed, 7460 deselected in 168.05s (0:02:48)
+재기동   서버. 마이그레이션 없음 — RUN.md 새 절
+다음     클라에 넘기실 것(폴더 고르기 + 먼저 보기 수 + 한꺼번에 버튼)
+```
+
+이어서 534f375f8(조인 키가 모두 빈 행) 으로 들어갑니다. 감시는 켜 둡니다.
