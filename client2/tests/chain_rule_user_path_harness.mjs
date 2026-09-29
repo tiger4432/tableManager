@@ -242,7 +242,7 @@ const loadAdmin = (tag, mutate) => {
     doc.body.appendChild(drawer[key]);
   }
   return loadWithProbe(ADMIN, {
-    tag, mutate, expose: ['refreshChainRule', 'saveChainRule', 'showEventDiagnostics'],
+    tag, mutate, expose: ['refreshChainRule', 'saveChainRule', 'showEventDiagnostics', 'renderChainQueue'],
     state: ['chainData'],
   });
 };
@@ -420,7 +420,7 @@ async function suite(probe) {
   answer = (call) => {
     if (call.url.includes('/admin/mappers/list')) return { status: 200, body: MAPPERS };
     if (isCatalogue(call)) return { status: 200, body: { tables: TABLES } };
-    if (call.method === 'POST') { saved = call; return { status: 200, body: { name: call.body.name, rules: NAMES, backup: '/box/bak', enabled: true } }; }
+    if (call.method === 'POST') { saved = call; return { status: 200, body: { name: call.body.name, rules: NAMES, backup: '/box/bak', enabled: true, base: 'fp-2' } }; }
     return { status: 200, body: rawView(askedName(call)) };
   };
   calls.length = 0;
@@ -454,6 +454,19 @@ async function suite(probe) {
      `F the save reads back the rule it saved (${readBack.map(askedName).map((x) => JSON.stringify(x)).join(',') || 'no read'})`);
   ok(Boolean(byCls('chain-rule-saved')),
      'F and the screen says the write happened -- a save nobody can see is a save nobody trusts');
+
+  // ── Q. the queue's rules_base decides the head line after the save (lead 460f202d3) ─────
+  //    Through the page's own queue seat: the same body the Chain tab and the Overview read.
+  const renderChainQueue = probe.probe.renderChainQueue;
+  const pickupText = () => (byCls('chain-rule-pickup') ? byCls('chain-rule-pickup').textContent : 'none');
+  ok(pickupText() === 'Saved · waiting for the chain worker',
+     `Q the save puts the waiting line in the form head (${pickupText()})`);
+  if (typeof renderChainQueue === 'function') renderChainQueue({ rules_base: 'fp-1', rules_loaded_age_seconds: 2 });
+  ok(pickupText() === 'Saved · waiting for the chain worker',
+     `Q a queue read of the OLD file leaves it waiting (${pickupText()})`);
+  if (typeof renderChainQueue === 'function') renderChainQueue({ rules_base: 'fp-2', rules_loaded_age_seconds: 2 });
+  ok(/^Loaded by chain worker \d\d:\d\d:\d\d$/.test(pickupText()),
+     `Q the queue read of the saved file says loaded, with its time (${pickupText()})`);
 
   // ── G. the new name lives in ONE place, and the save carries it ─────────────────────────
   press('add-chain-rule');
@@ -739,6 +752,8 @@ const DEFECTS = [
   ['the response is dropped and the panel is drawn from nothing',
     s => s.replace('  const view = chainRulePanel.render(body, opts);',
                    '  const view = chainRulePanel.render(null, opts);')],
+  ['the queue read never reaches the chain rule form, so a save stays 「waiting」 forever',
+    s => s.replace('    chainRulePanel.workerRead({ base: payload.rules_base, ageSeconds: payload.rules_loaded_age_seconds });\n', '')],
   ['the save forgets the base fingerprint, so a concurrent edit is overwritten in silence',
     s => s.replace('      body: JSON.stringify({ name, declaration, base }),',
                    '      body: JSON.stringify({ name, declaration }),')],

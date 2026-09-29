@@ -857,6 +857,34 @@ function suite(M) {
     `N2 ... and what was typed into it stays [${nextNow && nextNow.value}]`);
   doc.activeElement = undefined;
 
+  // ── W: after a save, has the worker read THAT file (lead 460f202d3) ─────────────────────
+  //    Fingerprints decide; the clock only prints when. NOW is fixed, so the printed time is exact.
+  {
+    const NOW = new Date(2026, 8, 29, 14, 30, 10).getTime();
+    const WSPEC = { ...SPEC, pickup: { waiting: 'Saved · waiting', loaded: 'Loaded' } };
+    const w = makePanel(M, WSPEC, { now: () => NOW });
+    const DECL = { name: 'alpha', trigger_table: 't' };
+    w.panel.render(payloadFor(SKELETON, DECL), { saved: { name: 'alpha', rules: ['alpha'], backup: 'b.json', base: 'fp-2' } });
+    const pickup = () => byCls(w.host, 'chain-rule-pickup')[0] || null;
+    const said = () => (pickup() ? `${pickup().textContent}|${pickup().attrs['data-pickup']}` : 'none');
+    ok(said() === 'Saved · waiting|waiting' && String(pickup().parentNode.className).includes('chain-rule-head'),
+      `W1 a save draws the waiting line in the form head [${said()}]`);
+    const nameBefore = walk(w.host).find((n) => n.attrs && n.attrs['data-value'] === 'name' && n.tagName === 'INPUT');
+    w.panel.workerRead({ base: 'fp-1', ageSeconds: 3 });
+    w.panel.workerRead({ base: null, ageSeconds: null });
+    ok(said() === 'Saved · waiting|waiting', `W2 another base, or no worker seen, leaves it waiting [${said()}]`);
+    w.panel.workerRead({ base: 'fp-2', ageSeconds: 5 });
+    ok(said() === 'Loaded 14:30:05|loaded', `W3 the saved base read by the worker: loaded, at now - its age [${said()}]`);
+    w.panel.workerRead({ base: 'fp-3', ageSeconds: 1 });
+    ok(said() === 'Loaded 14:30:05|loaded', `W4 ... and a later file does not unsay it [${said()}]`);
+    const nameAfter = walk(w.host).find((n) => n.attrs && n.attrs['data-value'] === 'name' && n.tagName === 'INPUT');
+    ok(Boolean(nameBefore) && nameAfter === nameBefore, 'W5 a worker report changes that line only, not the form');
+    const r = makePanel(M, WSPEC, { now: () => NOW });
+    r.panel.render(payloadFor(SKELETON, DECL), { refusal: { code: 'stale_base', path: 'base', message: 'x' } });
+    r.panel.workerRead({ base: 'fp-2', ageSeconds: 5 });
+    ok(!byCls(r.host, 'chain-rule-pickup').length, 'W6 a refused save draws no line');
+  }
+
   return { pass: pass - before.pass, fail: fail - before.fail };
 }
 
@@ -1007,6 +1035,11 @@ const DEFECTS = [
     (s) => s.replace('(this.open || (this.newMode && this._awaitingNew))', 'this.open')],
   ['the guard keys on newMode alone, so a failed answer strands the panel',
     (s) => s.replace('(this.open || (this.newMode && this._awaitingNew))', '(this.open || this.newMode)')],
+  ['the pickup line ignores the fingerprint - any worker report reads as loaded',
+    (s) => s.replace('w && w.base === this._pickup.base) this._pickup.at', 'w && true) this._pickup.at')],
+  ['the pickup line guesses from time - a recent read of any file counts',
+    (s) => s.replace('w && w.base === this._pickup.base) this._pickup.at',
+      'w && (w.base === this._pickup.base || this.now() - w.at < 10000)) this._pickup.at')],
   ['the form redraw replaces the field clicked next again, so its focus and typing are lost',
     (s) => s.replace('        commitTree(box, form, doc.activeElement);\n',
       "        box.textContent = '';\n        box.appendChild(form);\n")],

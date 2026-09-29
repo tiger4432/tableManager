@@ -32,6 +32,7 @@ import {
 } from './ontology_path.js';
 import { reduceFieldFold } from './ontology_explorer_store.js';
 import { commitTree } from './dom_patch.js';
+import { localClock } from './server_time.js';
 
 /**
  * 고르개가 «새 이름을 짓는 중»일 때 입는 말. 🔴 철자가 «하나»입니다 — 그리는 쪽과 비교하는
@@ -155,7 +156,8 @@ export function registryView(payload, opts, spec) {
     saved: opts.saved && typeof opts.saved === 'object'
       ? Object.freeze({ name: String(opts.saved[spec.nameKey] || ''),
                         count: countText(opts.saved[spec.listKey]),
-                        backup: String(opts.saved.backup || '') })
+                        backup: String(opts.saved.backup || ''),
+                        base: String(opts.saved.base || '') })
       : null,
   });
 }
@@ -290,6 +292,11 @@ export class RawRegistryPanel {
     if (!this.doc) throw new Error('RawRegistryPanel needs a document (deps.doc or mount.ownerDocument)');
     this.onOpen = deps.onOpen || null;
     this.onSave = deps.onSave || null;
+    this.now = deps.now || (() => Date.now());
+    // The last save's base, and when the consumer was seen holding THAT base (spec.pickup).
+    this._pickup = null;
+    this._pickupLine = null;
+    this._worker = null;
     // 🔴 [판정 548] 문법을 «바꾸라고 시키는» 자리. 변환은 «서버»가 합니다 — 화면이 변환하면
     //    저자가 둘이 되고, 539 의 왕복 게이트가 «운영자가 안 지나는 길»을 재게 됩니다.
     this.onConvert = deps.onConvert || null;
@@ -632,6 +639,18 @@ export class RawRegistryPanel {
       const line = this._line(`${spec.cls}-state`, status.text);
       if (status.value != null) line.setAttribute('data-state', String(status.value));
       head.appendChild(line);
+    }
+    // 🔴 [lead 460f202d3, owner 「저장후 무슨 반응이라도」] After a save: has the consumer read THAT
+    //    file? The save's base against the base the consumer reports (`workerRead`) - fingerprints
+    //    only, no clock decides it. A refused save has no `saved`, so no line.
+    const savedBase = view.saved && view.saved.base && spec.pickup ? view.saved.base : '';
+    if (!this._pickup || this._pickup.base !== savedBase) this._pickup = savedBase ? { base: savedBase, at: null } : null;
+    this._pickupLine = null;
+    if (this._pickup) {
+      this._pickupMatch();
+      this._pickupLine = this._line(`${spec.cls}-pickup`, '');
+      this._pickupDraw();
+      head.appendChild(this._pickupLine);
     }
     // 🔴 C-111 (계획 §9.3 ③). «어느 문법인가» 한 낱말. 이행 중에는 두 문법이 다
     //    열려 있어서, 이 낱말이 없으면 같은 화면이 규칙마다 다른 칸을 내미는 이유가
@@ -985,6 +1004,30 @@ export class RawRegistryPanel {
     else if (!open) opt(PICK_NAME, true);
     for (const name of view.names) opt(name, name === open);
     this._names = view.names.join('\u0000');
+  }
+
+  /** What the consumer reports it holds — the chain worker: the queue's `rules_base` and how long
+   *  ago it read it. Only the pickup line changes; a report of another base changes nothing. */
+  workerRead(read) {
+    const base = read && typeof read.base === 'string' ? read.base : '';
+    const age = read && read.ageSeconds != null ? Number(read.ageSeconds) : NaN;
+    this._worker = base && Number.isFinite(age) ? { base, at: this.now() - age * 1000 } : null;
+    this._pickupMatch();
+    this._pickupDraw();
+  }
+
+  _pickupMatch() {
+    const w = this._worker;
+    if (this._pickup && !this._pickup.at && w && w.base === this._pickup.base) this._pickup.at = w.at;
+  }
+
+  _pickupDraw() {
+    const line = this._pickupLine;
+    if (!line || !this._pickup) return;
+    const loaded = Boolean(this._pickup.at);
+    line.textContent = loaded
+      ? `${this.spec.pickup.loaded} ${localClock(new Date(this._pickup.at))}` : this.spec.pickup.waiting;
+    line.setAttribute('data-pickup', loaded ? 'loaded' : 'waiting');
   }
 
   /** 자기 자신을 다시 그립니다 — «사람이 누른» 것이라 배경 갱신이 «아닙니다». 세 자리가 각자

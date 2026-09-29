@@ -484,6 +484,14 @@
       color: var(--text-dim);
     }
     .chain-rule-state[data-state="false"] { color: var(--warning); font-weight: 600; }
+    /* After a save (lead 460f202d3): waiting for the chain worker, then loaded. Its own last row of the
+       head: beside the other badges it ran into them (the head's gap is under one glyph), and moving
+       between rows as it changed shifted the picker. */
+    .chain-rule-pickup {
+      flex-basis: 100%; order: 1; margin: 0;
+      font-family: var(--font-mono); font-size: var(--fs-label); color: var(--warning);
+    }
+    .chain-rule-pickup[data-pickup="loaded"] { color: var(--success); }
     /* 🔴 [판정 536 ④] 머리에 서는 «수»들 — 「평면 N」·「문법 모름 N」·「모르는 칸 N · 보존」.
        상태 배지와 «같은 모양»입니다(등폭 · 라벨 크기 · 값 하나 · 문장 없음). 한 사실에 한 모양.
        ⚠️ 아직 옮길 것이 남았다(평면 > 0)는 «주의»이지 «고장»이 아니라 경고색을 안 씁니다 —
@@ -1593,12 +1601,12 @@
     .retro-group.is-chosen { border-color: var(--accent); color: var(--accent); }
 
   </style>
-  <script type="module" crossorigin src="/assets/admin-BgvMjQLT.js"></script>
+  <script type="module" crossorigin src="/assets/admin-YfxBJlDi.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/tokens-C9Rjx7_P.js">
   <link rel="modulepreload" crossorigin href="/assets/absent-CbZu_zSZ.js">
   <link rel="modulepreload" crossorigin href="/assets/disabled_reason-Cd0wapM5.js">
-  <link rel="modulepreload" crossorigin href="/assets/server_time-DJnqmuOO.js">
-  <link rel="modulepreload" crossorigin href="/assets/chain_queue_panel-YOZiTbuT.js">
+  <link rel="modulepreload" crossorigin href="/assets/server_time-B1desKzu.js">
+  <link rel="modulepreload" crossorigin href="/assets/chain_queue_panel-CZJoX3bb.js">
   <link rel="modulepreload" crossorigin href="/assets/config-BUp4smhE.js">
   <link rel="modulepreload" crossorigin href="/assets/effort_meter-CUYmTmql.js">
   <link rel="modulepreload" crossorigin href="/assets/truncation-CTTNppWu.js">

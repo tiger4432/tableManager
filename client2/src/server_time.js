@@ -66,6 +66,14 @@ export function localMinute(value) {
   return `${p.y}-${p.M}-${p.d} ${p.h}:${p.m}`;
 }
 
+/** `HH:MM:SS` — an instant of today on one line (lead 460f202d3: 「Loaded by chain worker HH:MM:SS」). */
+export function localClock(value) {
+  const at = parseServerInstant(value);
+  if (!at) return NO_TIME;
+  const p = parts(at);
+  return `${p.h}:${p.m}:${p.s}`;
+}
+
 /**
  * `MM-DD HH:MM:SS` — 좁은 칸.
  *

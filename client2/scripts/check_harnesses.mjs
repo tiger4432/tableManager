@@ -1344,9 +1344,11 @@ const FLOORS = new Map([
   //    real routing key beside them is the failure.
   // 89 -> 92 (N0-N2): the field clicked next keeps its node and its typing across the redraw.
   // 92 -> 97 (B4a-e): from the list, only [+ add]'s own answer draws the new form.
-  ['chain_rule_form_harness.mjs', 97],
+  // 97 -> 103 (W1-W6, lead 460f202d3): after a save, loaded only when the worker holds that base.
+  ['chain_rule_form_harness.mjs', 103],
   ['clipboard_type_modal_harness.mjs', 21],
-  ['chain_rule_user_path_harness.mjs', 72],
+  // 72 -> 75 (Q, lead 460f202d3): after a save, the page's queue seat hands the worker's base to the form.
+  ['chain_rule_user_path_harness.mjs', 75],
   // a value carrying markup does not come back out as markup, and the backlog has a ceiling
   ['escaping_harness.mjs', 56],
   // clicking a derived route fills follow, and a later-hop predicate stays visible

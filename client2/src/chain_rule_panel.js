@@ -175,6 +175,9 @@ export const CHAIN_RULE_REGISTRY = Object.freeze({
   // C-86 ①. 소유자: 「규칙 등록 영역에 규칙을 추가할 수가 없어」. 서버는 «이미» 새 이름을
   // 받습니다 — 새 규칙은 `enabled: false` 로 «장전»까지만 저장됩니다(위 절 참조).
   addLabel: 'Add rule',
+  // After a save, whether the chain worker has read that file (lead 460f202d3) — the page hands
+  // the queue's rules_base to `workerRead`.
+  pickup: Object.freeze({ waiting: 'Saved · waiting for the chain worker', loaded: 'Loaded by chain worker' }),
   // C-86 ②. 칸 이름·종류는 «서버가 실어 준» 스켈레톤에서 나옵니다(S-204). 이 파일도 칸 이름을
   // 적지 않습니다 — `chain_bindings.routing_keys()` 가 유일한 저자입니다.
   // 🔴 C-111 (S-241). 문법이 «둘»이 됐고(평면 · 통합), 서버가 몸소 둘을 다 실어

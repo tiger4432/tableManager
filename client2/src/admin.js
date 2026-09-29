@@ -1442,6 +1442,10 @@ function renderChainQueue(payload, opts) {
       .map((id) => byId(id)).filter(Boolean)
       .map((mount) => new ChainQueuePanel(mount, { onCancel: (id) => requestRunCancel(id) }));
   }
+  // Both queue reads pass here — the chain rule form learns which rules file the worker holds.
+  if (chainRulePanel && payload) {
+    chainRulePanel.workerRead({ base: payload.rules_base, ageSeconds: payload.rules_loaded_age_seconds });
+  }
   if (!chainQueuePanels.length) return;
   const [view] = chainQueuePanels.map((panel) => panel.render(payload, opts));
   const count = byId('chain-queue-count');
