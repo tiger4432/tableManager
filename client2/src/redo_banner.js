@@ -141,6 +141,7 @@ export class RedoBanner {
   /** 한 줄을 돌립니다. 누른 «그 줄»이 답을 답니다 -- 토스트는 사라지고, 사라지면 다시 누릅니다. */
   fire(index, op, params) {
     if (!this.run || this.said[index] === 'running…') return;
+    this.firedAt = index;
     this.said[index] = 'running…';
     this.render();
     Promise.resolve(this.run(op, params)).then(
@@ -181,6 +182,9 @@ export class RedoBanner {
   render() {
     const doc = this.doc;
     if (!doc || !this.host) return;
+    // A redraw (a pressed row's answer, a new selection) keeps the rows where they were scrolled,
+    // or the row just pressed scrolls away with its answer.
+    const scrolled = this.list && this.listFor === this.open ? this.list.scrollTop : 0;
     this.host.textContent = '';
     const rows = this.getSelection() || [];
     const row = this.sourceRow();
@@ -197,6 +201,10 @@ export class RedoBanner {
       const box = this.panel(rows, row);
       this.host.appendChild(box);
       this.place(box, bar);
+      if (scrolled && this.list) this.list.scrollTop = scrolled;
+      // The answer lengthens the pressed row; its last line is where the answer is.
+      const fired = this.list && this.said[this.firedAt] !== undefined ? this.list.children[this.firedAt] : null;
+      if (fired && fired.scrollIntoView) fired.scrollIntoView({ block: 'nearest' });
     }
   }
 
@@ -250,6 +258,7 @@ export class RedoBanner {
     // 🔴 이 화면에 «이미 있는» 드롭다운 껍데기입니다. 세로도 간격도 그림자도 거기서 옵니다.
     box.className = 'glass-dropdown-panel redo-panel';
     box.dataset.redoPanel = this.open;
+    this.list = null;
 
     const assembled = this.open === 'ledger'
       ? this.ledgerPayload(rows, sourceRow)
@@ -282,6 +291,12 @@ export class RedoBanner {
       box.appendChild(why);
     }
 
+    // 🔴 43fc32479 (owner 「리플레이 스크롤 넣어」). The rows scroll in their own box; the lines
+    //    above it and Open in admin below it stay on screen whatever the rule count.
+    const list = doc.createElement('div');
+    list.className = 'redo-panel__rows';
+    this.list = list;
+    this.listFor = this.open;
     assembled.rows.forEach((entry, index) => {
       const pressable = runnable && !!entry.params;
       // 🔴 C-114. «돌리는 줄»과 «보여 주는 줄»은 다릅니다. 둘째는 토큰과 무관하고
@@ -317,8 +332,9 @@ export class RedoBanner {
         kind.textContent = entry.kind;
         line.appendChild(kind);
       }
-      box.appendChild(line);
+      list.appendChild(line);
     });
+    box.appendChild(list);
 
     // 「Open in admin」은 «남깁니다» -- 세어 보거나 규칙을 고르려면 그 자리이고, 여기서 지우면
     // rescope_handoff.js 와 admin.js 의 adoptRescopeHandoff 가 «가리키는 곳 없는» 코드가 됩니다.

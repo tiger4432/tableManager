@@ -1,0 +1,1 @@
+import"./tokens-C9Rjx7_P.js";/* empty css             */var e=document.documentElement,t=document.getElementById(`sample-theme`),n=()=>{t.textContent=e.dataset.theme===`dark`?`Light theme`:`Dark theme`};t.addEventListener(`click`,()=>{e.dataset.theme=e.dataset.theme===`dark`?`light`:`dark`,n()}),e.dataset.theme||(e.dataset.theme=`light`),n();

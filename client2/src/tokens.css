@@ -212,6 +212,9 @@
   /* 그림 상자의 «높이 상한». 넘치면 그 상자 «안»에서 스크롤합니다 — 페이지가 안 늘어납니다.
      ⚠️ 값이 아니라 «성질»입니다: 노드가 몇이든 한 화면에서 다음 블록이 보여야 합니다. */
   --graph-max-height: 420px;
+  /* A menu's rows stop here and scroll inside it (43fc32479). Half the screen: the menu's lines
+     above and below its rows stay on screen from a phone (812) to a 900-high window. */
+  --menu-max-height: 50vh;
 
   /* ── 레거시 별칭 (기존 변수명 → 시맨틱 토큰 브리지) ──
      인라인 style="" 등 잔존 참조가 테마를 따라오도록 유지. 신규 코드는 시맨틱 토큰 직접 참조. */

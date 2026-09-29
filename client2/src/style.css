@@ -2815,7 +2815,9 @@ body.resizing-active .history-sidebar {
 }
 .app-header .glass-input { padding: 0 10px; font-family: var(--font-mono); font-size: var(--fs-button); }
 .app-header .glass-btn-group { overflow: hidden; padding: 0; }
-.app-header .glass-btn-group button { height: calc(var(--control-h) - 2px); border-radius: 0; font-size: var(--fs-button); }
+/* The group's own buttons, not every <button> under it: the Replay menu hangs inside this group and
+   its rows are buttons, so `button` pinned a wrapped row at this height (order 0c38ae45e). */
+.app-header .glass-btn-group .glass-btn { height: calc(var(--control-h) - 2px); border-radius: 0; font-size: var(--fs-button); }
 .app-header .control-group > label {
   font: 600 var(--fs-meta) var(--font-body);
   letter-spacing: .6px;
@@ -3046,6 +3048,11 @@ body.resizing-active .history-sidebar {
   padding: 0 var(--space-1);
 }
 .redo-panel__go { margin-top: 4px; width: 100%; }
+/* The rows' own box: capped, scrolling inside; spaced like the shell it sits in. */
+.redo-panel__rows {
+  display: flex; flex-direction: column; gap: inherit;
+  max-height: var(--menu-max-height); overflow-y: auto;
+}
 
 
 /* 🔴 세는 중인 수는 «아직 쓸 수 없는» 수입니다. 글자로도(…) 구별되지만
