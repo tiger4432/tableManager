@@ -413,6 +413,9 @@ class OntologyExplorerService:
             if key in listed:
                 continue
             kind, _, canonical_id = key.partition("|")
+            # 🔴 [총괄 ef6d01cba] THE ROW SAYS WHAT THE TAG SAYS - the same reasons, not the
+            #    working copy's raw text for a declaration that fell with another.
+            said = payload["invalid"][key]["reasons"]
             payload["items"].append({
                 "key": key,
                 "canonical_id": canonical_id,
@@ -421,8 +424,7 @@ class OntologyExplorerService:
                 "config_path": CONFIG_FILENAME,
                 "change_status": "invalid",
                 "compile_status": "invalid",
-                "description": (record["reasons"][0]["message"]
-                                if record["reasons"] else "읽을 수 없음"),
+                "description": said[0]["message"] if said else "Not read",
                 # The text as written. An unread declaration is opened to be FINISHED, and
                 # the editor has to start from what is in the file, not from `{}`.
                 "raw": record.get("raw"),

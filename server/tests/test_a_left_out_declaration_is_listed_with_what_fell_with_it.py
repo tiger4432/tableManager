@@ -91,6 +91,20 @@ def test_an_entity_saved_unreadable_takes_the_predicates_that_name_it_onto_the_l
     assert sorted({p.split(".")[2] for p in fell_said}) == ["leads_to@1", "measures@1"], said
 
 
+def test_the_row_the_tag_and_the_save_answer_say_one_sentence(service):
+    """[총괄 ef6d01cba] One fact, one sentence: the list row (its popover text), the tag under
+    it and the form's head (the save answer) - never the working copy's raw text."""
+    saved = _save(service, "entity|quantity@1", lambda raw: raw.__setitem__("class", 3))
+    payload = service.view(limit=500)
+    rows = {item["key"]: item["description"] for item in payload["items"]}
+    answer = {error["path"].split(".")[2]: error["message"] for error in saved["validation_errors"]
+              if error["message"].endswith("left out")}
+
+    for key in LEFT_WITH_QUANTITY:
+        tag = payload["invalid"][key]["reasons"][0]["message"]
+        assert rows[key] == tag == answer[key.partition("|")[2]] == "entity quantity@1 left out"
+
+
 def test_fixing_it_takes_it_off_the_list(service):
     """Through the unread row's own door - a new-declaration draft with the row's text -
     because an unread declaration is not in the index to be selected."""

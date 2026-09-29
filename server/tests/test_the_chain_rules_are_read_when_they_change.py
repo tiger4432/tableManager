@@ -77,3 +77,18 @@ def test_a_file_the_server_did_not_write_is_read_after_reload(rules_file, client
     assert "rr_hand" in _known(client)
     _known(client)
     assert _reads(caplog) == 2
+
+
+def test_a_reload_that_cannot_forget_says_so(rules_file, client, caplog, monkeypatch):
+    """The reload goes on, and the old set staying is said - not left silent."""
+    caplog.set_level(logging.INFO)
+    _known(client)
+
+    def broken():
+        raise RuntimeError("forget broke")
+
+    monkeypatch.setattr(worker, "forget_loaded_chain_rules", broken)
+    system_reload.reload_local_process_cache()
+
+    said = [r.getMessage() for r in caplog.records if "chain rules NOT forgotten" in r.getMessage()]
+    assert len(said) == 1 and "forget broke" in said[0], said
