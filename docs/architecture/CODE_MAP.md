@@ -861,7 +861,7 @@ FastAPI 웹서버. 모든 REST/WS의 단일 진입점. 워커·워처와는 outb
 | ├ `trigger_ws_file_processed(table_name, filename, status, error_msg)` | (내부) 파일 처리 상태 → WS 통지 콜백 |
 | └ `trigger_ingestion_state(state)` | [P1] 비-DECOUPLED 시 HTTP 없이 `ingestion_activity_registry`에 직접 반영, file-processed 시 제거 |
 | `shutdown_event()` | 종료 정리 |
-| `class ConnectionManager` — `connect/disconnect/broadcast` | WS 연결 풀 + 전체 브로드캐스트 |
+| `class ConnectionManager` — `connect/disconnect/broadcast` | WS 연결 풀 + 전체 브로드캐스트. 🆕 **[09-29 `7098bc42d`] 연결은 목록에서 «한 번» 빠진다** — 이미 빠진 연결의 `disconnect` 는 조용히 지나감(브로드캐스트의 실패 전송과 `/ws` 의 끊김이 같은 연결을 둘 다 빼려 할 때 `list.remove` ValueError 가 아웃박스 방송 루프를 재기동까지 멈췄다). `broadcast` 는 목록의 «사본»을 돈다 — await 중에 떠난 클라가 다음 클라를 건너뛰게 하지 않음 |
 | `invalidate_table_cache(table_name)` | 테이블 count 캐시 무효화 (`TABLE_COUNT_CACHE` |
 | `inject_system_columns(row)` | 응답 행에 시스템 컬럼 주입 |
 | `fetch_and_merge_metadata(db, table_name, rows, user_cols, include_sources=True) -> list` | 행들에 CellSource/Overwrite 메타 병합 → 셀 객체 `{value,is_overwrite,priority_source}` 생성 (조회 응답의 핵심). 🆕🆕🆕🆕 **[`347de78`] `cell_sources` SELECT가 `.ingested_at`도 뽑고 `.order_by(source_name.asc())`가 붙었다** — `col_srcs`(`{source: value}`, 클라 계약이라 타임스탬프를 못 나른다) 옆에 `ingested_map`을 따로 조립해 `crud.compute_priority_value(col_srcs, manual_pin, table_name, ingested_at_by_source=ingested_map.get(key))`로 넘긴다. **안 넘기면 이 조회 경로가 알파벳순으로, 쓰기 경로가 최신순으로 갈려** 화면의 `priority_source` 배지가 실제로 저장된 값과 다른 레이어를 가리킬 수 있었다(응답 셀 모양 자체는 무변경) |
