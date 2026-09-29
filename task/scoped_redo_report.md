@@ -64378,3 +64378,55 @@ PG       7 failed, 117 passed, 7425 deselected in 164.51s (0:02:44) — 실패 7
 ```
 
 지시대로 착지하고 멈춥니다. 감시는 켜 둡니다.
+
+---
+
+## [구현자 -> 총괄] 착지 45e363a05 — 엔터티 class 를 목록으로 저장하면 엔터티가 선언에서 빠지던 결함 (022dcf17a)
+
+### 원인 — 한 줄
+제가 fdda4ebf6 에서 엔터티 class 의 낱말을 static · dynamic 으로 «닫아» 두었습니다. probe 가 든 선언은 문법에서 떨어지는데,
+창의 저장은 문법이 틀려도 파일에 쓰고(소유자 판정), 로더는 같은 검사로 그 엔터티만 빼서 「Saved」 뒤 사라졌습니다.
+```
+재현(프로세스 안 · 저장소 샘플)   초안 save -> lifecycle invalid · preview_valid False · invalid_entity_ref bundle.entities.quantity@1.class
+                              창의 순서(save 뒤 검토 없이 activate) -> 파일에 ["static","probe"] 가 써짐
+                              로더(ledger.config.load)는 같은 validate_bundle_errors 로 판정하고 그 선언만 뺀 문서를 돌려줌
+물음 셋의 답      목록 두 낱말 탓 아님(["static"] 은 통과) · 엔진이 모르는 낱말(probe) 탓 · 엔터티 쪽 검사가 낱말을 닫고 있었음
+저장 관문 vs 로더  «다른 판정이 아니었습니다» — 둘 다 setup_bundle.validate_bundle_errors 를 지남. 갈린 것은 「틀려도 쓴다」(활성화)와
+                「틀리면 뺀다」(로더)의 설계이고, 그 설계는 소유자 판정입니다(config_drafts.activate 의 주석이 「지금은 안읽히면 저장도 안하네」를 인용)
+```
+
+### 고친 것
+```
+setup_bundle._validate_class   모양만 봄 — 낱말 하나 또는 낱말 목록. 낱말은 엔터티든 술어든 운영자 것. 빈 낱말은 「없음」(class_words 와 같게)
+                              전: 엔터티는 static · dynamic 중 하나만(둘을 같이 적어도 거절) · 후: 모든 문자열 낱말
+코드가 읽는 낱말              엔터티 static 하나 — 그대로. probe 는 행동 없음(게이트 칸)
+말                            WALK.md §1 · 앞 RUN.md 절 · 시험 머리말의 「static · dynamic 중 하나」를 고침
+                              fdda4ebf6 보고의 「엔터티 낱말은 static · dynamic 중 하나」는 이 착지로 참이 아님
+```
+
+### 게이트 — 저장 판정과 로더를 같은 입력에 «표로»
+```
+입력(엔터티 class)            저장 판정    로더
+"static" · ["static"] · ["static","probe"] · "probe" · ["static","dynamic"] · [""] · [" "]   받음   남김
+3 · ["a", 3] · {"a": 1}                                                                      거절   뺌
+창의 순서(save -> activate)로 ["static","probe"] -> /declaration 에 quantity@1 · class ["static","probe"] · static 판정 그대로
+변이     문법에 옛 닫힌 검사 되돌림 -> 3 빨강 · 로더에만 옛 닫힌 검사 -> 3 빨강
+게이트   server/tests/test_a_declared_thing_carries_classes.py 29 passed in 1.84s (main 에서 다시 돌림)
+전체     5 failed, 7385 passed, 163 skipped, 3 xfailed in 741.68s (0:12:21) — 실패 5 는 이 작업 트리의 알려진 환경 실패(샘플 CRLF 4 · 저장소 루트 1)
+PG       7 failed, 117 passed, 7432 deselected in 189.61s (0:03:09) — 실패 7 은 알려진 일곱과 이름이 같음(새 실패 0)
+재기동   서버. 마이그레이션 없음
+```
+
+### 여쭐 것 — 「Saved 뒤 사라짐」은 class 밖에서도 남습니다
+```
+길        창은 초안을 저장하고 곧바로 활성화 — 활성화는 문법이 틀린 초안도 파일에 씀(소유자 판정) · 로더는 그 선언만 뺌 · 창은 「Saved」
+class 로는  이제 문자열이 아닌 낱말(3 · {"a":1})을 원문 편집기에 손으로 적을 때만 — 폼의 낱말 칸은 문자열만 씀
+그 밖      모든 문법 오류가 같은 길을 탐(엔터티든 술어든 소스든)
+번지는 것   엔터티 하나가 빠지면 그 엔터티를 가리키는 술어도 같이 빠짐 — 샘플에서 quantity@1 을 떨어뜨리면 leads_to · measures 도
+          「is NOT read」(프로세스 안 실측). 총괄 화면의 「엔터티 8」 때 술어도 빠졌을 수 있음 — 못 봄
+안        ㄱ 그대로 — 판정대로. 로그의 「is NOT read」 줄이 사유를 말함
+          ㄴ 창이 저장 응답의 validation_errors 를 「Saved」 대신 보여 줌(클라) — 저장은 그대로 씀
+          ㄷ 문법 오류만 저장에서 이름 대어 거절 — 「아직 없는 참조」는 판정대로 씀. 🔴 판정의 범위를 좁히는 일이라 소유자께
+```
+
+지시대로 착지하고 멈춥니다. 감시는 켜 둡니다.
