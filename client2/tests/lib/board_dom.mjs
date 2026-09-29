@@ -38,6 +38,17 @@ function querySelectorIn(root, sel) {
   return null;
 }
 
+// An element's text as the one text node `childNodes` shows -- the same object every time, or
+// the reconciler reads each call as a new node and moves it forever.
+function textNodeOf(el) {
+  if (!el._textNode) {
+    el._textNode = { nodeType: 3, parentNode: el,
+      get nodeValue() { return el._text; }, set nodeValue(v) { el._text = String(v); },
+      get textContent() { return el._text; } };
+  }
+  return el._textNode;
+}
+
 export function makeNode(doc, tag) {
   const node = {
     tagName: String(tag).toUpperCase(),
@@ -75,6 +86,7 @@ export function makeNode(doc, tag) {
     //    and any comparison of it is a comparison of nothing.
     append(...cs) { for (const c of cs) this.appendChild(c); },
     removeChild(c) {
+      if (c && c.nodeType === 3) { this._text = ''; return c; }
       const i = this.children.indexOf(c);
       if (i >= 0) this.children.splice(i, 1);
       c.parentNode = null;
@@ -92,6 +104,21 @@ export function makeNode(doc, tag) {
     replaceChildren(...cs) {
       for (const c of [...this.children]) this.removeChild(c);
       for (const c of cs) this.appendChild(c);
+    },
+    // 🔴 ADDED 2026-09-29 (lead, after 57ae5c2da). `commitTree` reconciles only a node that says
+    //    what it is; without `nodeType` it replaced every tree here, so a redraw that drops the
+    //    focused field scored the same as one that keeps it. Text lives in `_text`, so
+    //    `childNodes` shows it as ONE text node ahead of the elements -- the order `textContent`
+    //    reads -- and `children` stays elements only, as in a browser.
+    nodeType: 1,
+    get childNodes() { return (this._text ? [textNodeOf(this)] : []).concat(this.children); },
+    insertBefore(c, ref) {
+      if (c && c.nodeType === 3) { this._text = String(c.nodeValue); return c; }
+      if (c.parentNode && typeof c.parentNode.removeChild === 'function') c.parentNode.removeChild(c);
+      const at = ref && ref.nodeType === 3 ? 0 : this.children.indexOf(ref);
+      if (at < 0) this.children.push(c); else this.children.splice(at, 0, c);
+      c.parentNode = this;
+      return c;
     },
     setAttribute(k, v) {
       this.attrs[String(k)] = String(v);

@@ -787,6 +787,33 @@ function suite(M) {
     && derive.kind === 'mapper',
     `U11 picking a branch leaves exactly that branch [${JSON.stringify(derive)}]`);
 
+  // ── N: the field clicked next (lead, after 57ae5c2da) ──────────────────────────────────
+  //    A field's `change` fires once focus has moved to the field just clicked. A redraw that
+  //    swaps that field out sends focus to BODY and the typing nowhere (measured on the box).
+  //    Focus sits on a NODE, so what is scored is the node and the text typed into it.
+  const nx = makePanel(M, SPEC);
+  nx.panel.render(payloadFor(SKELETON, { name: 'alpha', trigger_table: 't' }));
+  const inputAt = (p) => {
+    const b = attrOf(nx.host, 'data-path').find((n) => n.attrs['data-path'] === p);
+    return b ? walk(b).find((n) => n.tagName === 'INPUT') : null;
+  };
+  const nameIn = inputAt('name');
+  const nextIn = inputAt('trigger_table');
+  if (nameIn && nextIn) {
+    doc.activeElement = nextIn;
+    nextIn.value = 'dt_';
+    nameIn.value = 'alpha2';
+    nameIn.dispatch('change', {});
+  }
+  const nxRaw = byCls(nx.host, 'chain-rule-raw')[0];
+  ok(Boolean(nxRaw) && /"alpha2"/.test(nxRaw.value || ''),
+    'N0 the neighbour\'s change wrote the document, so the form was redrawn');
+  const nextNow = inputAt('trigger_table');
+  ok(Boolean(nextIn) && nextNow === nextIn, 'N1 the field clicked next is the same node after that redraw');
+  ok(Boolean(nextNow) && nextNow.value === 'dt_',
+    `N2 ... and what was typed into it stays [${nextNow && nextNow.value}]`);
+  doc.activeElement = undefined;
+
   return { pass: pass - before.pass, fail: fail - before.fail };
 }
 
@@ -932,6 +959,9 @@ const DEFECTS = [
     (s) => s.replace('        if (short.length) this._markShort(this._formBox, view, short);', '')],
   ['the save presses stack their marks, so a second press doubles every cell',
     (s) => s.replace('      if (tag.parentNode) tag.parentNode.removeChild(tag);', '')],
+  ['the form redraw replaces the field clicked next again, so its focus and typing are lost',
+    (s) => s.replace('        commitTree(box, form, doc.activeElement);\n',
+      "        box.textContent = '';\n        box.appendChild(form);\n")],
 ];
 const CONTROLS = [
   ['a local rename', s => s.replace(/\bconst held2\b/g, 'const parsedDoc')

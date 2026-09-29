@@ -99,9 +99,8 @@ function suite(M) {
   ok(flag && flag.type === 'checkbox' && flag.checked === true, 'C4 key.unique is a ticked checkbox');
 
   // D -- editing one item keeps a list a list
-  // The input AS IT STANDS ON SCREEN now, not the one grabbed before `take` opened: this stub
-  // has no nodeType, so the form's reconciler (dom_patch) replaces here where a browser keeps
-  // the node -- and a reference held across a redraw scores the stub, not the write.
+  // The input AS IT STANDS ON SCREEN now, not the one grabbed before `take` opened: D scores the
+  // write. Whether a redraw keeps that node is `chain_rule_form` N1's question, not this one's.
   const l0now = p.inputAt('derive.join.on[0].left');
   if (l0now) { l0now.value = 'c9'; l0now.dispatch('change'); }
   ok(Array.isArray(on()) && on().length === 1 && on()[0].left === 'c9' && on()[0].right === 'c2',
