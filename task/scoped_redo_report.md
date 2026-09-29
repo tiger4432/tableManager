@@ -64864,3 +64864,34 @@ PG       7 failed, 117 passed, 7451 deselected in 167.49s (0:02:47)
 ```
 
 이어서 ② 로 들어갑니다. 감시는 켜 둡니다.
+
+## [구현자 -> 총괄] 착지 7098bc42d — 🔴 웹소켓 연결 이중 제거 (f10905f33)
+
+```
+바꾼 것    소유자 판정 두 줄 그대로
+          disconnect — 이미 빠진 연결이면 조용히 넘어감(「Client disconnected」 줄도 안 찍음 — 실제로 뺄 때만)
+          broadcast — list(self.active_connections) 사본을 돎
+짓지 않음  루프 보호(except Exception 계속) — 뿌리를 고침
+다른 예외   대기열 방송 루프가 다른 예외로도 끝날 수 있나 — 코드로 읽은 범위에서 남은 길 없음
+          OutboxListener.wait 는 자기 예외를 잡아 False 로 답하고, broadcast 는 보내기 예외를 잡음. 빠져나가던 것은 disconnect 의 ValueError 하나
+          잰 것은 아님 — asyncio.to_thread 자체의 실패 같은 것은 모름
+```
+
+| 칸 | 입력 | 답 |
+|---|---|---|
+| 동시 방송 둘 | 죽은 연결 하나 + 산 연결 하나, broadcast 둘을 한꺼번에 | 예외 0 · 죽은 것 한 번만 빠짐(줄 1) · 산 것은 둘 다 받음 |
+| 방송 뒤 /ws 끊김 | 방송이 뺀 뒤 WebSocketDisconnect | 예외 0 · 줄 1 |
+| 도중에 나감 | 방송 중 한 명이 나감 | 다음 사람이 건너뛰어지지 않음 |
+| 방송 루프 | /ws 가 빼는 사이 그 연결의 보내기가 실패 -> 방송이 또 뺌 | 루프가 그 뒤에도 돎 · 알림 둘 다 산 연결에 닿음 |
+
+```
+통과     31 passed in 2.98s
+변이     remove 되살림(guard 제거) -> 3 failed, 1 passed in 1.16s — test_two_broadcasts_that_find_the_same_dead_connection_take_it_out_once · test_ws_leaving_after_a_broadcast_took_it_out_is_quiet · test_the_outbox_broadcast_loop_keeps_going
+         사본 없이 돎 -> 2 failed, 2 passed in 0.67s — test_a_client_leaving_mid_broadcast_does_not_make_it_skip_another · test_the_outbox_broadcast_loop_keeps_going
+         W1 에서 방송 루프 칸이 빨개짐 = 소유자가 본 「루프가 멈춤」이 그 자리에서 재현됨
+전체     5 failed, 7408 passed, 163 skipped, 3 xfailed in 664.51s (0:11:04)
+PG       7 failed, 117 passed, 7455 deselected in 169.07s (0:02:49)
+재기동   서버. 마이그레이션 없음 — RUN.md 새 절(확인할 줄 「Client disconnected. Total clients: N」 이 에러 없이)
+```
+
+이어서 fab40ed69 ② 로 들어갑니다. 감시는 켜 둡니다.
