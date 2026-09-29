@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """Triage a flooded outbox: see what is queued, skip per-row events, re-fire them collapsed.
 
-🔴 WHY THIS EXISTS (S-172). A quarantined 1,000-row chunk re-expands into 1,000 per-row
-events so the poison row can be found. That is right when ONE chunk fails and ruinous when
+🔴 WHY THIS EXISTS (S-172). A quarantined 1,000-row chunk USED TO re-expand into per-row
+events so the poison row could be found (retired, 총괄 c9ee06b34 - a queue may still hold them). That is right when ONE chunk fails and ruinous when
 many do: production reached ~660,000 per-row pending events, and at the plumbing cost of a
 group (~1.7 s) that queue is DAYS of work for rows that would take ~2 hours collapsed.
 The owner cannot issue SQL, so the remedy has to be a command rather than a statement.

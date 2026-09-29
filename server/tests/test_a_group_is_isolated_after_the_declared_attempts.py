@@ -251,15 +251,3 @@ async def test_a_group_that_woke_no_rule_still_gets_a_number(monkeypatch):
                                         lambda: FakeDB())
 
     assert (event.retry_count, event.status) == (1, "FAILED")
-
-
-def test_the_row_expansion_at_the_quarantine_boundary_is_untouched():
-    """⚠️ OUTBOX-4 STAYS. A collapsed event covers up to 1,000 rows, so the boundary
-    re-expands into per-row events to narrow the poison - that now happens on the FIRST
-    failure, which makes it more useful rather than less."""
-    import inspect
-
-    body = inspect.getsource(worker.process_pending_groups)
-
-    assert "is_collapsed_payload" in body
-    assert "OUTBOX-4" in body

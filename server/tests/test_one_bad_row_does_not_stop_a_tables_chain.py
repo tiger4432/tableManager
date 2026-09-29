@@ -312,8 +312,8 @@ def test_a_collision_with_a_stored_row_is_refused_by_name_too(db):
 # ---------------------------------------------------------------------------
 
 def test_the_chain_group_succeeds_and_names_the_refusal(db, monkeypatch, caplog):
-    """🔴 THE WHOLE POINT OF ②. A failed group is quarantined, re-expanded per row, and
-    held by the HOL guard; a SUCCESS group is none of those. So the one assertion that
+    """🔴 THE WHOLE POINT OF ②. A failed group is quarantined whole and held by the HOL
+    guard; a SUCCESS group is neither. So the one assertion that
     matters is that the group comes back SUCCESS with the bad pair skipped."""
     caplog.set_level("WARNING")
     ok, error, _messages = _run_chain(

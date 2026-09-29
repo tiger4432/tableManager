@@ -160,8 +160,8 @@ def test_events_per_ingested_row(obx):
 def test_chunk_cap_splits_a_huge_flush(obx, monkeypatch):
     """One event per 1,000 rows, not one event per flush however large.
 
-    Bounds the JSONB payload AND the failure path: a poison row can never
-    re-expand more than one chunk's worth of per-row retries.
+    Bounds the JSONB payload AND the failure path: a poison row can never take
+    more than one chunk FAILED with it.
     """
     db = obx
     import database.database as ddb
@@ -338,50 +338,8 @@ def test_a_collapsed_event_that_loads_no_rows_is_refused_not_succeeded(obx):
 
 
 # ---------------------------------------------------------------------------
-# 3) The failure path: coarse on the happy path, fine where something broke
+# 3) The failure path: a chunk fails whole (test_a_failed_chunk_goes_failed_whole)
 # ---------------------------------------------------------------------------
-
-def test_reexpansion_gives_every_child_its_own_group(obx):
-    """A failed chunk is narrowed, and each child is its own transaction group.
-
-    Distinct transaction_ids are the whole point: the worker's unit of failure is
-    the GROUP, so narrowing under the original id would put the rows back in one
-    group where they would fail together again and the narrowing would have bought
-    nothing.
-
-    ⚰️ THE COUNT MOVED WITH S-173 AND THE INVARIANT DID NOT. This asserted four
-    per-row children; a chunk is now HALVED, because one event per row reached
-    ~660,000 pending events in production. What is scored here -- own group, own
-    prefix, PENDING, no inherited retry count -- is what it always was.
-    """
-    db = obx
-    _seed(db, "obxcol_src", [_row(i) for i in range(4)], "tx-poison", mode=COLLAPSED)
-    ev = _events(db, "obxcol_src", "tx-poison")[0]
-    payload = get_payload_dict(ev)
-
-    n = outbox_expand.reexpand_collapsed_event(db, ev, payload, "boom")
-    db.commit()
-    assert n == 2, "a chunk is halved, not written out one event per row"
-
-    children = [e for e in _events(db, "obxcol_src")
-                if get_payload_dict(e).get("reexpanded_from")]
-    assert len(children) == 2
-    tx_ids = {get_payload_dict(c)["transaction_id"] for c in children}
-    assert len(tx_ids) == 2, "each half must be its own group"
-    assert all(t.startswith("tx-poison#half#") for t in tx_ids)
-    covered = []
-    for c in children:
-        p = get_payload_dict(c)
-        assert c.status == "PENDING" and c.processed_chain in (False, None)
-        assert c.retry_count in (0, None)
-        covered.extend(p["row_ids"])
-        # A half is still collapsed -- that is what makes the innocent side cost one
-        # chunk instead of five hundred groups -- and it carries how far it has come.
-        assert event_constants.is_collapsed_payload(p)
-        assert p["reexpanded_from"]["depth"] == 1
-    assert sorted(covered) == sorted(payload["row_ids"]), (
-        "no row may be lost or duplicated by the split")
-
 
 @pytest.mark.anyio
 async def test_unreadable_rows_are_deferred_without_charging_a_retry(obx, monkeypatch):
@@ -390,8 +348,7 @@ async def test_unreadable_rows_are_deferred_without_charging_a_retry(obx, monkey
     Measured: rows an event names become readable in under 100 ms - the same session that
     saw none sees all of them on the next look. So a group refused for `rows_not_visible`
     was never TRIED; charging `retry_count` for it would quarantine a good chunk at the
-    default cap of 1, and quarantine re-expands - turning 1,000 rows into 1,000 events to
-    wait out a sub-second window.
+    default cap of 1 - leaving 1,000 rows FAILED to wait out a sub-second window.
 
     ⚠️ THE CAP IS THE OTHER HALF. "Defer forever" is the same silent loss one room over,
     just in the queue instead of the ledger, so this also pins that the patience ENDS.
@@ -412,6 +369,7 @@ async def test_unreadable_rows_are_deferred_without_charging_a_retry(obx, monkey
 
     rules = [{"name": "obxcol_blind", "trigger_table": "obxcol_src",
               "target_table": "obxcol_mirror", "enabled": True}]
+    before = len(_events(db, "obxcol_src"))
 
     for expected in (1, 2):
         await ciw.process_pending_groups(db, ["tx-defer"], {"tx-defer": [ev]}, rules, None)
@@ -419,8 +377,7 @@ async def test_unreadable_rows_are_deferred_without_charging_a_retry(obx, monkey
         assert (ev.retry_count or 0) == 0, "a deferral must not be charged as an attempt"
         assert ciw._ROWS_NOT_VISIBLE_DEFERS.get("tx-defer") == expected
 
-    assert not [e for e in _events(db, "obxcol_src")
-                if get_payload_dict(e).get("reexpanded_from")],         "a deferral must not re-expand the chunk"
+    assert len(_events(db, "obxcol_src")) == before, "a deferral writes no new event"
 
     # ⚠️ THE CAP: the third pass stops deferring and refuses for real.
     await ciw.process_pending_groups(db, ["tx-defer"], {"tx-defer": [ev]}, rules, None)
@@ -429,68 +386,11 @@ async def test_unreadable_rows_are_deferred_without_charging_a_retry(obx, monkey
 
 
 @pytest.mark.anyio
-async def test_third_failure_reexpands_instead_of_quarantining_the_chunk(obx, monkeypatch):
-    """The ruling, end to end, through the real `process_pending_groups`.
-
-    The control arm is the same code on a PER-ROW event: it must still quarantine
-    exactly as it always did, so the new branch is proven to be the collapsed one
-    and not a change to everyone's retry semantics.
-    """
-    from chain import ingestion_worker as ciw
-    db = obx
-
-    async def always_fails(tx_id, events, db_, rules):
-        return False, f"boom:{tx_id}", []
-
-    monkeypatch.setattr(ciw, "process_chain_transaction_group", always_fails)
-    # ⚠️ THESE MEASURE RETRY/HOL MECHANICS, NOT THE DEFAULT (S-139). The cap moved
-    # to 1, so the declaration keeps this test's SUBJECT intact - and doubles as
-    # the ruling's gate that 「3 을 적으면 옛 동작」 is literally true.
-    from chain import ingestion_worker as _ciw
-    monkeypatch.setattr(_ciw, "_RULES_DOCUMENT", {"max_group_attempts": 3})
-
-    # --- control: a per-row event still quarantines, unchanged ---
-    _seed(db, "obxcol_mirror", [_row(9)], "tx-ctl")
-    ctl = _events(db, "obxcol_mirror", "tx-ctl")[0]
-    ctl.retry_count = 2
-    db.commit()
-    await ciw.process_pending_groups(db, ["tx-ctl"], {"tx-ctl": [ctl]}, [], None)
-    assert ctl.status == "FAILED" and ctl.processed_chain is True
-    assert not [e for e in _events(db, "obxcol_mirror")
-                if get_payload_dict(e).get("reexpanded_from")]
-
-    # --- collapsed: the chunk narrows instead of taking 4 rows down with it ---
-    # ⚰️ S-173: narrowing is HALVING, so the first round writes two children rather
-    # than one per row. The branch under test is unchanged -- that a COLLAPSED event
-    # narrows where a per-row one quarantines -- which is why the control arm above
-    # still reads exactly as it did.
-    _seed(db, "obxcol_src", [_row(i) for i in range(4)], "tx-chunk", mode=COLLAPSED)
-    ev = _events(db, "obxcol_src", "tx-chunk")[0]
-    ev.retry_count = 2  # cheap chunk-level retries already spent
-    db.commit()
-
-    await ciw.process_pending_groups(db, ["tx-chunk"], {"tx-chunk": [ev]}, [], None)
-
-    assert ev.status == "FAILED" and ev.processed_chain is True
-    err = get_payload_dict(ev)["error_log"]
-    assert err["reexpanded_into"] == 2
-    children = [e for e in _events(db, "obxcol_src")
-                if get_payload_dict(e).get("reexpanded_from")]
-    assert len(children) == 2
-    assert all(e.processed_chain in (False, None) for e in children)
-    # Between them the halves still name every row the parent did -- narrowing is not
-    # allowed to lose one, and that is the property a smaller count could hide.
-    assert sorted(r for c in children for r in get_payload_dict(c)["row_ids"]) == sorted(
-        get_payload_dict(ev)["row_ids"])
-
-
-@pytest.mark.anyio
 async def test_cheap_retries_come_first(obx, monkeypatch):
-    """Re-expansion happens at the QUARANTINE boundary, not at the first failure.
+    """Quarantine happens at the declared cap, not at the first failure.
 
-    A transient failure (a dead connection, a lock) must recover at chunk cost.
-    Paying 1,000 per-row writes for a blip would spend the failure budget on the
-    case the fine granularity does not exist for.
+    A transient failure (a dead connection, a lock) must recover at chunk cost,
+    not take 1,000 rows FAILED for a blip.
     """
     from chain import ingestion_worker as ciw
     db = obx
@@ -506,12 +406,12 @@ async def test_cheap_retries_come_first(obx, monkeypatch):
     monkeypatch.setattr(_ciw, "_RULES_DOCUMENT", {"max_group_attempts": 3})
     _seed(db, "obxcol_src", [_row(i) for i in range(3)], "tx-blip", mode=COLLAPSED)
     ev = _events(db, "obxcol_src", "tx-blip")[0]
+    before = len(_events(db, "obxcol_src"))
 
     await ciw.process_pending_groups(db, ["tx-blip"], {"tx-blip": [ev]}, [], None)
 
     assert ev.retry_count == 1 and ev.status == "RETRYING"
-    assert not [e for e in _events(db, "obxcol_src")
-                if get_payload_dict(e).get("reexpanded_from")]
+    assert len(_events(db, "obxcol_src")) == before, "a retry writes no new event"
 
 
 # ---------------------------------------------------------------------------
@@ -545,29 +445,9 @@ def test_batch_budget_is_charged_in_rows_not_events():
     assert event_constants.trim_events_to_row_budget(huge, 20000) == huge
 
 
-def test_reexpansion_refuses_to_run_twice(obx):
-    """The retry button must not multiply the outbox by 1,000 per press."""
-    db = obx
-    _seed(db, "obxcol_src", [_row(i) for i in range(3)], "tx-idem", mode=COLLAPSED)
-    ev = _events(db, "obxcol_src", "tx-idem")[0]
-
-    first = outbox_expand.reexpand_collapsed_event(db, ev, get_payload_dict(ev), "boom")
-    db.commit()
-    assert first == 2, "S-173: three rows are halved into 1 + 2, not written out one by one"
-
-    # The parent as the worker leaves it: error_log records what it expanded into.
-    parent_payload = dict(get_payload_dict(ev))
-    parent_payload["error_log"] = {"reason": "boom", "reexpanded_into": first}
-    again = outbox_expand.reexpand_collapsed_event(db, ev, parent_payload, "boom")
-    assert again == 0, "a chunk that already re-expanded must refuse to do it again"
-
-    children = [e for e in _events(db, "obxcol_src")
-                if get_payload_dict(e).get("reexpanded_from")]
-    assert len(children) == 2, "no second generation"
-
-
 def test_retry_failed_skips_an_already_reexpanded_chunk(obx, client):
-    """The route half of the same guard — and it SAYS it skipped, it does not lie."""
+    """A chunk split BEFORE the split retired (총괄 c9ee06b34) is not requeued as a chunk -
+    and the route SAYS it skipped, it does not lie. A queue may still hold one."""
     db = obx
     _seed(db, "obxcol_src", [_row(i) for i in range(2)], "tx-btn", mode=COLLAPSED)
     ev = _events(db, "obxcol_src", "tx-btn")[0]
@@ -587,40 +467,6 @@ def test_retry_failed_skips_an_already_reexpanded_chunk(obx, client):
     db.expire_all()
     assert ev.status == "FAILED", "the parent must NOT be requeued as a chunk"
     assert ev.processed_chain is True
-
-
-def test_reexpansion_adds_nothing_when_it_cannot_finish(obx, monkeypatch):
-    """All-or-nothing: a failure partway must leave no orphan children behind.
-
-    Before the fix, `db.add` ran inside the build loop, so a raise at row N left
-    N-1 children in the session — and the caller commits regardless (it has a
-    quarantine to persist), so they were written next to a parent whose error_log
-    claimed a plain whole-chunk quarantine.
-    """
-    db = obx
-    # ⚰️ S-173 MOVED THIS TO THE LEAF, and the argument is unchanged. A SPLIT reads no
-    # rows and synthesizes nothing, so the partway failure this pins can only happen
-    # where payloads are still built: a chunk that has been narrowed to one row. Seeded
-    # as a single-row collapsed chunk for that reason, not to make the test smaller.
-    _seed(db, "obxcol_src", [_row(0)], "tx-partial", mode=COLLAPSED)
-    ev = _events(db, "obxcol_src", "tx-partial")[0]
-
-    calls = {"n": 0}
-    real = outbox_expand._synthesize_payload
-
-    def explode(row, columns, envelope):
-        calls["n"] += 1
-        raise RuntimeError("synthetic failure partway through")
-
-    monkeypatch.setattr(outbox_expand, "_synthesize_payload", explode)
-
-    with pytest.raises(RuntimeError):
-        outbox_expand.reexpand_collapsed_event(db, ev, get_payload_dict(ev), "boom")
-    db.commit()   # the caller commits regardless — that is the point
-
-    children = [e for e in _events(db, "obxcol_src")
-                if get_payload_dict(e).get("reexpanded_from")]
-    assert children == [], "a partial re-expansion must write nothing at all"
 
 
 def test_expansion_key_survives_a_reshaped_event_list(obx):

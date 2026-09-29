@@ -4302,13 +4302,11 @@ def retry_failed_outbox_events(event_id: int = None, transaction_id: str = None,
         ]
         
     # [OUTBOX-4] A collapsed chunk that already re-expanded is NOT retryable as a
-    # chunk. Its rows are already back in the queue as per-row children under
-    # `<tx>#row#<row_id>` transaction ids; resetting the parent would send the same
-    # 1,000 rows through the mapper a second time, and - without the idempotence
-    # guard in `outbox_expand.reexpand_collapsed_event` - would have multiplied
-    # outbox rows by 1,000 on every press of this button. It is skipped, and the
-    # response SAYS SO with where its rows went, rather than reporting a reset that
-    # would have been a no-op at best.
+    # chunk. Its rows are already back in the queue as its children; resetting the parent
+    # would send the same rows through the mapper a second time. It is skipped, and the
+    # response SAYS SO with where its rows went.
+    # ⚠️ [총괄 c9ee06b34] ONLY CHUNKS SPLIT BEFORE THE SPLIT RETIRED - nothing splits now, so a
+    #    retry of today's FAILED chunk is that chunk PENDING once more and no new event.
     already_expanded = [
         e for e in failed_events
         if not event_constants.counts_as_failure(get_payload_dict(e))
