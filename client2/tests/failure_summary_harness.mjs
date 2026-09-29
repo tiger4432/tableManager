@@ -38,6 +38,21 @@ async function suite(mod) {
   const view = mod.failureSummaryView(BODY, 'Asia/Seoul');
   eq('A1 a line is table kind count · span · attempts', view.lines[0].text,
     `dt_inventory EDIT 33 · ${localSpan(FIRST, LAST)} · attempts 1`);
+  // R -- one failure's RECORD, read (order 45f5da3f5). The worker's shape (_failure_record).
+  const cells = (log) => Object.fromEntries(mod.failureRecordCells(log));
+  eq('R1 a record says rule · table · rows · row · reason as written',
+    cells({ rules: ['r_join'], tables: ['dt_map', 'dt_x'], rows: 3, row: ['row-7'], reason: 'boom\nline 2' }),
+    { Rule: 'r_join', Table: 'dt_map, dt_x', Rows: '3', Row: 'row-7', Reason: 'boom\nline 2' });
+  eq('R2 a row the error did not name says so, whether null, empty or the worker\'s sentence',
+    [null, [], 'not given by the error'].map((row) => cells({ rules: [], tables: [], rows: 1, row, reason: 'x' }).Row),
+    ['not given by the error', 'not given by the error', 'not given by the error']);
+  eq('R3 a record from before the cells existed says "not recorded", never a guess',
+    cells({ reason: 'old failure' }),
+    { Rule: 'not recorded', Table: 'not recorded', Rows: 'not recorded', Row: 'not recorded', Reason: 'old failure' });
+  eq('R4 no record at all is "not recorded" in every cell',
+    Object.values(cells(undefined)), Array(5).fill('not recorded'));
+  eq('R5 a record that names no rule says none, not "not recorded"',
+    cells({ rules: [], tables: ['t'], rows: 0, row: null, reason: 'x' }).Rule, 'none');
   eq('A2 each line keeps its own numbers', view.lines.map((l) => l.count), [33, 2]);
   eq('A3 a line carries the key the unfold asks by', view.lines[0].filter,
     { table: 'dt_inventory', event_type: 'EDIT', day: '2026-09-23' });
@@ -89,6 +104,10 @@ const MUTANTS = [
     mutate: (s) => s.replace('this.onToggle(open ? null : line)', 'this.onToggle(line)') },
   { id: 'Y6', what: 'no summary reads as an empty one', catches: ['E1'],
     mutate: (s) => s.replace("if (!lines) return { read: false, lines: [], rows: 0 };", "if (!lines) return { read: true, lines: [], rows: 0 };") },
+  { id: 'Y7', what: 'a cell an old record lacks is filled instead of said', catches: ['R3', 'R4'],
+    mutate: (s) => s.replace("  const names = (key) => (!has(key) ? NOT_RECORDED\n", "  const names = (key) => (!has(key) ? 'none'\n") },
+  { id: 'Y8', what: 'a null row is drawn as the text "null"', catches: ['R2'],
+    mutate: (s) => s.replace("    : log.row === null || (Array.isArray(log.row) && !log.row.length) ? ROW_NOT_GIVEN\n", "    : Array.isArray(log.row) && !log.row.length ? ROW_NOT_GIVEN\n") },
 ];
 console.log('');
 console.log('-- defect mutants (each must be CAUGHT by its named line) -----------');

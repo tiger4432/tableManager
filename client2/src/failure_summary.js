@@ -15,6 +15,34 @@
 // ═══════════════════════════════════════════════════════════════════════════════
 import { localSpan } from './server_time.js';
 
+export const NOT_RECORDED = 'not recorded';
+export const ROW_NOT_GIVEN = 'not given by the error';
+
+/**
+ * One quarantined group's record (`payload.error_log`) as its five cells — READ, never guessed
+ * (order 45f5da3f5, owner 「차라리 에러를 잘남기는게 나음」). The screen used to name the first rule
+ * whose table matched; the record now names the rules that woke. A record written before a cell
+ * existed says 「not recorded」 for it; a row the error did not name says so (null, an empty list,
+ * or the worker's own sentence).
+ * @returns {Array<[string, string]>}
+ */
+export function failureRecordCells(errorLog) {
+  const log = errorLog && typeof errorLog === 'object' ? errorLog : {};
+  const has = (key) => Object.prototype.hasOwnProperty.call(log, key);
+  const names = (key) => (!has(key) ? NOT_RECORDED
+    : Array.isArray(log[key]) && log[key].length ? log[key].map(String).join(', ') : 'none');
+  const row = !has('row') ? NOT_RECORDED
+    : log.row === null || (Array.isArray(log.row) && !log.row.length) ? ROW_NOT_GIVEN
+      : Array.isArray(log.row) ? log.row.map(String).join(', ') : String(log.row);
+  return [
+    ['Rule', names('rules')],
+    ['Table', names('tables')],
+    ['Rows', has('rows') ? String(log.rows) : NOT_RECORDED],
+    ['Row', row],
+    ['Reason', log.reason ? String(log.reason) : NOT_RECORDED],
+  ];
+}
+
 /** The key of one line — what the unfold asks the route for. */
 export function lineKey(line) {
   const l = line || {};

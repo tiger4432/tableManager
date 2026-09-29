@@ -47,7 +47,7 @@ import { RuntimePanel } from './runtime_panel.js';
 import { ChainGraphPanel } from './chain_graph.js';
 // 🔴 C-77. 서버 시각은 offset 단 ISO 다 — 자르지 말고 «순간»으로 읽는다.
 import { localShort, NO_TIME, viewerZone } from './server_time.js';
-import { FailureSummary, failureSummaryView } from './failure_summary.js';
+import { FailureSummary, failureRecordCells, failureSummaryView } from './failure_summary.js';
 // C-1. 판정은 자기 모듈에 삽니다 — `admin.js` 는 `tokens.css` 를 import 해서 node 가
 // 못 읽고, 그러면 이 판정을 재려고 화면을 통째로 세워야 합니다.
 import { ruleOutcomeView } from './rule_outcome.js';
@@ -4017,16 +4017,21 @@ function selectMapperRow(mapper) {
 // Render error log traceback and payloads of Outbox Event (+ mapper 편집 딥링크)
 function showEventDiagnostics(ev) {
   const errLog = ev.payload?.error_log || {};
-  const reason = errLog.reason || 'No error traceback log captured.';
+  // The record's five cells, read (failureRecordCells); the reason last because it runs long.
+  const cells = failureRecordCells(ev.payload?.error_log);
+  const width = Math.max(...cells.map(([label]) => label.length));
   tracebackViewer.className = DRAWER_BODY_CLASS;
-  tracebackViewer.textContent = reason;
+  tracebackViewer.textContent = cells.map(([label, value]) => `${label.padEnd(width)}  ${value}`).join('\n');
 
+  // The record is drawn above, so the payload below is the event's own.
   const cleanPayload = { ...ev.payload };
   delete cleanPayload.error_log;
   payloadViewer.textContent = JSON.stringify(cleanPayload, null, 2);
 
-  // Chain 룰 연결: 이벤트 테이블과 매칭되는 룰의 mapper를 바로 연다 (수정 단계 딥링크)
-  const rule = chainData.find(r => r.trigger_table === ev.table_name || r.target_table === ev.table_name);
+  // 🔴 THE RULE IS THE RECORD'S, NOT A GUESS (order 45f5da3f5). This used to open the first rule
+  //    whose table matched the event's. The mapper link stands only when the record names ONE rule.
+  const named = Array.isArray(errLog.rules) && errLog.rules.length === 1 ? String(errLog.rules[0]) : '';
+  const rule = named ? chainData.find(r => r.name === named) : null;
   if (rule && rule.mapper_module) {
     payloadTitle.innerHTML = `Raw Event Payload / Details
       <button id="tx-edit-mapper-btn" class="admin-btn btn-primary" style="margin-left: 8px;" title="rule: ${rule.name}">🛠️ Edit Mapper</button>`;

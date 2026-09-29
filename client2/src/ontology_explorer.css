@@ -520,6 +520,9 @@
 #ontology-explorer-root .oe-warning { padding: 10.2px 13.6px; border-bottom: 1px solid var(--oe-line); font-size: var(--fs-h6); }
 #ontology-explorer-root .oe-error { color: #fff; background: #9d2b32; }
 #ontology-explorer-root .oe-warning { color: var(--oe-warn); background: var(--oe-surface); }
+/* A refusal SENTENCE is body size -- the same token the reference view's 「could not be read」
+   line inherits (lead 09-29: the two were 13 and 15). */
+#ontology-explorer-root .oe-not-applied { font-size: var(--fs-body); }
 #ontology-explorer-root .oe-dirty-dialog-backdrop {
   position: absolute; inset: 0; z-index: 80; display: grid; place-items: center;
   padding: 20.4px; background: rgb(12 18 24 / .52);

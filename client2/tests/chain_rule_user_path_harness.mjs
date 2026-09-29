@@ -231,9 +231,21 @@ const type = (at, value) => {
  *    bridge CLAUDE.md allows. Nothing is cut, and `probe.mjs`'s byte-prefix assertion is the
  *    evidence of that.
  */
-const loadAdmin = (tag, mutate) => loadWithProbe(ADMIN, {
-  tag, mutate, expose: ['refreshChainRule', 'saveChainRule'],
-});
+// The failure drawer's three nodes (P). `admin.js` takes them by id when it LOADS, so they are
+// seated before every load; the handles are what section P reads.
+const drawer = {};
+const loadAdmin = (tag, mutate) => {
+  for (const [key, id, tagName] of [['trace', 'traceback-viewer', 'pre'],
+    ['title', 'payload-title', 'span'], ['payload', 'payload-viewer', 'pre']]) {
+    drawer[key] = doc.createElement(tagName);
+    drawer[key].setAttribute('id', id);
+    doc.body.appendChild(drawer[key]);
+  }
+  return loadWithProbe(ADMIN, {
+    tag, mutate, expose: ['refreshChainRule', 'saveChainRule', 'showEventDiagnostics'],
+    state: ['chainData'],
+  });
+};
 
 /** The tree `admin.js` seats into. Rebuilt per run: one run's panel must not answer for the next. */
 function freshPage() {
@@ -683,6 +695,28 @@ async function suite(probe) {
   ok(Boolean(byCls('chain-rule-form')) && boxAt('target_table')
      && boxAt('target_table').value === 'refused_target',
      `O a refused EXISTING rule keeps its form and the edit (${boxAt('target_table') ? boxAt('target_table').value : 'no form'})`);
+
+  // ── P. the failed list draws the failure RECORD, and names the rule the record names ─────
+  // 🔴 order 45f5da3f5. Two rules on the event's table; the record names the SECOND. The drawer
+  //    used to open the first rule whose table matched -- a guess the record now makes needless.
+  const show = probe.probe.showEventDiagnostics;
+  probe.probe.chainData = [
+    { name: 'r_first', trigger_table: 'dt_log', target_table: 'dt_map', mapper_module: 'mappers.first' },
+    { name: 'r_named', trigger_table: 'dt_log', target_table: 'dt_map', mapper_module: 'mappers.named' },
+  ];
+  show({ table_name: 'dt_log', payload: { row_id: 'r-1', error_log: {
+    rules: ['r_named'], tables: ['dt_map'], rows: 3, row: 'not given by the error', reason: 'boom' } } });
+  const traced = String(drawer.trace.textContent || '').split('\n');
+  ok(traced.join(' | ') === ['Rule    r_named', 'Table   dt_map', 'Rows    3',
+    'Row     not given by the error', 'Reason  boom'].join(' | '),
+     `P the drawer draws the record's five cells (${traced.join(' | ')})`);
+  const titled = String(drawer.title.innerHTML || drawer.title.textContent || '');
+  ok(titled.includes('rule: r_named') && !titled.includes('r_first'),
+     `P ...and its mapper link is the rule the record names, not the first on the table (${titled.replace(/\s+/g, ' ').slice(0, 120)})`);
+  show({ table_name: 'dt_log', payload: { row_id: 'r-1', error_log: { reason: 'old failure' } } });
+  ok(String(drawer.trace.textContent).startsWith('Rule    not recorded')
+     && String(drawer.title.textContent) === 'Raw Event Payload / Details',
+     'P an old record says "not recorded" and offers no mapper it would have to guess');
   return { pass: pass - before.pass, fail: fail - before.fail };
 }
 
@@ -743,6 +777,10 @@ const DEFECTS = [
   //    re-read by its unsaved name, which has no grammar, so no form.
   ['a refused new rule is re-read by its unsaved name',
     s => s.replace('  const refused = (refusal) => (forNew\n', '  const refused = (refusal) => (false\n')],
+  // 🔴 order 45f5da3f5's mutant: the guess put back.
+  ['the failed drawer guesses the rule from the table again',
+    s => s.replace('  const rule = named ? chainData.find(r => r.name === named) : null;',
+                   '  const rule = chainData.find(r => r.trigger_table === ev.table_name || r.target_table === ev.table_name);')],
 ];
 
 // Controls must ESCAPE: a change that alters no behaviour must not redden anything, or the
