@@ -26,22 +26,26 @@ export const collectorKey = (col) => `${(col || {}).table_name}/${(col || {}).sc
 /**
  * @param col       one `/admin/auto-update/status` collector entry
  * @param runsBody  the `/admin/retroactive/runs` body (`{runs, state_names}`), or null unread
- * @returns {{show: boolean, title: string, offReason: string, key: string,
+ * @returns {{show: boolean, title: string, offReason: string, key: string, nextStart: string,
  *            line: null | {text: string, tone: 'live'|'done'|'danger'}}}
+ *   `nextStart` is the latest run's `next_start` as the server wrote it (lead 75bac3964) — the
+ *   Start field's value until the operator types. The screen computes no date: null (still
+ *   running, an older record, no such run in the list) is ''.
  *   `offReason` goes through `setDisabledReason` (the one seat that turns a control off with
  *   its reason); '' means on, and `title` is the button's own words then.
  */
 export function collectorBackfillView(col, runsBody) {
   const c = col || {};
   const key = collectorKey(c);
-  if (!('window' in c)) return { show: false, title: '', offReason: '', key, line: null };
+  if (!('window' in c)) return { show: false, title: '', offReason: '', key, nextStart: '', line: null };
   const declared = typeof c.window === 'string' ? c.window.trim() : '';
   const title = declared ? `Backfill day by day (# window: ${declared})` : '';
   const offReason = declared ? '' : BACKFILL_WORDS.offTitle;
   const runs = runsBody && Array.isArray(runsBody.runs) ? runsBody.runs : [];
   // The list is newest first (server `queued_at` desc) - the first of this collector's is its latest.
   const latest = runs.find((r) => r && r.op === BACKFILL_OP && r.params && r.params.collector === key);
-  if (!latest) return { show: true, title, offReason, key, line: null };
+  if (!latest) return { show: true, title, offReason, key, nextStart: '', line: null };
+  const nextStart = typeof latest.next_start === 'string' ? latest.next_start : '';
   const row = buildRunsView({ runs: [latest], state_names: runsBody.state_names || {} }, Date.now(), {}, {}).rows[0];
   const word = row.stateName && row.stateName.text ? row.stateName.text : '';
   const total = Number(latest.total_rows);
@@ -51,7 +55,7 @@ export function collectorBackfillView(col, runsBody) {
   const summary = row.summary && row.summary.text ? row.summary.text : '';
   const said = row.finished ? (reason || summary) : '';
   return {
-    show: true, title, offReason, key,
+    show: true, title, offReason, key, nextStart,
     line: {
       text: [word, days, said].filter(Boolean).join(' · '),
       tone: reason ? 'danger' : row.finished ? 'done' : 'live',

@@ -981,7 +981,8 @@ const FLOORS = new Map([
   //
   // The Auto Update row's Backfill cell (lead 09f0be40f): the window's three states, this
   // collector's latest run read through buildRunsView, and what the page keeps drawn and escaped.
-  ['collector_backfill_harness.mjs', 19],
+  // 19 -> 24 (lead 75bac3964, D1-D5): Start is the latest run's next_start, verbatim, until typed.
+  ['collector_backfill_harness.mjs', 24],
   //
   // The emergency stop's control (lead 668fa004c): the state line's shapes, the route each button
   // sends, Pause asking once, two instances and a re-read.
