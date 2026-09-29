@@ -64430,3 +64430,31 @@ class 로는  이제 문자열이 아닌 낱말(3 · {"a":1})을 원문 편집�
 ```
 
 지시대로 착지하고 멈춥니다. 감시는 켜 둡니다.
+
+---
+
+## [구현자 -> 총괄] 착지 512b0575b — 조인 트리거 충돌 검사를 «실제로 깨우는 칸»(키 + take · 집합)과 맞춤 (a73196eec)
+
+```
+도출 하나    rule_shape.join_wake_columns(spec) = 키, 그다음 take 칸. 규칙의 trigger_columns(as_chain_rule)와 충돌 검사가 같이 부름
+검사        on.columns 를 적었으면 그 집합 = join_wake_columns 의 집합 -> 통과(순서 무관) · 판정 398 「같을 때만 적어도 된다」 그대로
+거절 문장    "... writes on.columns [..] while the join wakes on ['job', 'lot'] (its key and take columns); write exactly those,
+            in any order, or delete on.columns" — 기대하는 칸 목록을 그대로 보여 복사해 적을 수 있게
+키만 적은 옛 모양  제 추천대로 «통과시키고 한 줄로 이름» — 로드 때 경고 한 줄(the join key only ...)
+            이유: 거절하면 그 조인의 두 반쪽이 로드에서 통째로 빠짐(데이터 흐름이 멎음). 그런데 그 칸은 깨우는 칸을 바꾸지 않음 —
+            규칙은 on.columns 가 뭐라 하든 도출된 칸으로 깸. 운영 파일은 제가 못 봐서 멎는 쪽을 고르지 않았습니다
+셈          키만 적은 조인 선언 — 박스 chain_rules.json 0 · 저장소 샘플 chain_rules.json.sample 0 (둘 다 on.columns 를 적은 조인 0). 운영은 못 봄
+말          가이드 chain_rules.md 의 on.columns 줄 · RUN.md 새 절
+```
+```
+게이트   tests/test_a_declared_join_writes_what_it_says_into_the_table.py 의 표 한 칸(여섯 입력)
+         ["lot","job"] 통과 · ["job","lot"] 통과 · 안 적음 통과 · ["job"] 통과 + 이름 줄 · ["job","lot","note"] 거절 · ["note"] 거절(문장에 ['job', 'lot'])
+         통과한 셋의 trigger_columns 는 모두 ["job", "lot"]
+         26 passed in 2.22s (main 에서 다시 돌림)
+변이     순서로 견줌 -> 1 빨강 · 옛 답(키만)과 견줌 -> 5 빨강 · 도출에서 take 뺌 -> 9 빨강
+전체     5 failed, 7391 passed, 163 skipped, 3 xfailed in 743.14s (0:12:23) — 실패 5 는 이 작업 트리의 알려진 환경 실패(샘플 CRLF 4 · 저장소 루트 1)
+PG       7 failed, 117 passed, 7438 deselected in 208.81s (0:03:28) — 실패 7 은 알려진 일곱과 이름이 같음(새 실패 0)
+재기동   체인 워커 · 서버(저장 관문이 같은 펼침을 부름). 마이그레이션 없음
+```
+
+지시대로 착지하고 멈춥니다. 감시는 켜 둡니다.
