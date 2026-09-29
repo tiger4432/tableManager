@@ -169,7 +169,7 @@ return {"batches": [{"target_table": "dt_map",
      "enabled": true
    }
    ```
-5. 🆕 **체인 탭에서 저장하면 리로드가 필요 없습니다**(09-29 `31ae7ce4b`) — 저장이 «체인 규칙만» 다시 읽으라는 SYSTEM_RELOAD 한 줄을 쓰고, 체인 워커는 규칙만 다시 읽습니다(맵퍼 · 표 모양 · 워밍업은 안 건드림). 서버 화면(대기열 · 체인 탭 · 그래프)도 바로 다시 읽습니다. 워커가 지금 어느 규칙 파일로 도는지는 `/admin/chain/queue` 의 `rules_base`(그 파일 바이트의 지문 = 저장의 base) · `rules_loaded_age_seconds` 가 말합니다. **파일을 손으로 고쳤으면(스크립트 · 복원 포함) 전처럼 리로드가 필수입니다** — 그건 전체 리로드이고 워커 · 워처 · 스케줄러가 다 다시 읽습니다:
+5. 🆕 **체인 탭에서 저장하면 리로드가 필요 없습니다**(09-29 `31ae7ce4b`) — 저장이 «체인 규칙만» 다시 읽으라는 SYSTEM_RELOAD 한 줄을 쓰고, 체인 워커는 규칙만 다시 읽습니다(맵퍼 · 표 모양 · 워밍업은 안 건드림). 서버 화면(대기열 · 체인 탭 · 그래프)도 바로 다시 읽습니다. 워커가 지금 어느 규칙 파일로 도는지는 `/admin/chain/queue` 의 `rules_base`(그 파일 바이트의 지문 = 저장의 base) · `rules_loaded_age_seconds` 가 말하고, 체인 탭 폼 머리가 그것을 보여 줍니다 — 저장 직후 「Saved · waiting for the chain worker」, 워커가 «그 파일»을 쥐면 「Loaded by chain worker HH:MM:SS」(`370684bd0`). 계속 waiting 이면 워커가 안 돌거나 아직 안 읽은 것입니다. **파일을 손으로 고쳤으면(스크립트 · 복원 포함) 전처럼 리로드가 필수입니다** — 그건 전체 리로드이고 워커 · 워처 · 스케줄러가 다 다시 읽습니다:
 
    ```bash
    curl -X POST "http://<host>:8080/admin/reload-configs" -H "X-Admin-Token: <토큰>"
