@@ -1099,14 +1099,19 @@ def _resolve_ledger() -> dict:
             "is refused. Not 'not grown yet': the gate has no predicate to let through.",
             reason=REASON_NOT_DECLARED))
     else:
+        from ledger import setup_bundle
+
         emitters = _ledger_emitted_predicates(document)
         for key in sorted(declared_vocabulary):
             name = str(key).split("@", 1)[0]
+            # [총괄 e6dd72526] the classes it was given, read by the one reader - only when written
+            classes = list(setup_bundle.class_words(declared_vocabulary[key]))
             effective.append(entry(
                 SCOPE_RULE, name,
                 f"`{name}` is declared. The gate checks atoms against its signature, "
                 f"and the walk's `follow` accepts it.",
-                fields={"predicate": name, "origin": "declaration"}))
+                fields={"predicate": name, "origin": "declaration",
+                        **({"class": classes} if classes else {})}))
         # 「낱말은 실렸는데 아무도 발화하지 않는다」 — 선언은 섰지만 여정이 안 끝난 상태.
         # 조용히 두면 운영자는 술어를 등재해 놓고 원자가 안 생기는 이유를 어디서도 못 읽는다.
         silent = sorted({str(k).split("@", 1)[0] for k in declared_vocabulary} - emitters)

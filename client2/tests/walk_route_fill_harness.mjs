@@ -38,10 +38,11 @@ const ROUTE_3HOP = ['measures', 'leads_to', 'of_kind'];
 
 // 🔴 The served declaration's own shape, measured 2026-09-06: three entities carry
 //    `class: "static"` and the other six carry NO class field at all. The absence is the point,
-//    so it is written as absence rather than as `class: null`.
+//    so it is written as absence rather than as `class: null`. The route serves the words as a
+//    list since lead 07889c83d (`["static"]`).
 const ENTITIES = [
-  { type: 'defect_kind@1' , class: 'static' }, { type: 'quantity@1', class: 'static' },
-  { type: 'recipe@1', class: 'static' },
+  { type: 'defect_kind@1' , class: ['static'] }, { type: 'quantity@1', class: ['static'] },
+  { type: 'recipe@1', class: ['static'] },
   { type: 'defect@1' }, { type: 'die@1' }, { type: 'dtjob@1' },
   { type: 'lot@1' }, { type: 'lot_slot@1' }, { type: 'wafer@1' },
 ];
@@ -438,8 +439,8 @@ const DEFECTS = [
   ['the refused routes are offered again',
     (s) => s.replace('      if (statics.has(here) && !statics.has(next)) return false;', '')],
   ['a type with no class counts as static, so the corrected rule is undone',
-    (s) => s.replace(".filter((e) => e && e.class === 'static')",
-      ".filter((e) => !e || e.class !== 'dynamic')")],
+    (s) => s.replace(".filter((e) => e && Array.isArray(e.class) && e.class.includes('static'))",
+      ".filter((e) => !e || !(Array.isArray(e.class) && e.class.includes('dynamic')))")],
   ['the filter drops any route that TOUCHES a static type, killing the mechanism chain',
     (s) => s.replace('      if (statics.has(here) && !statics.has(next)) return false;',
       '      if (statics.has(here) || statics.has(next)) return false;')],

@@ -187,6 +187,7 @@ def evidence_subgraph(
                 "message": ("Not a declared node type: " + ", ".join(unknown)
                             + " - pick one from 'declared'"),
             })
+    follow = _follow_classes(follow)
     follow, follow_keys = _split_follow(follow)
     if follow:
         followable = _followable_predicates()
@@ -298,8 +299,62 @@ def _signed_start(node_id, positive, negative):
             "negative": list(negative or [])}
 
 
+#: `follow=class:<word>` names every predicate whose `class` holds the word (총괄 e6dd72526).
+FOLLOW_CLASS_PREFIX = "class:"
+
+
+def _follow_classes(follow):
+    """`class:<word>` entries -> the declared predicates of that class; other entries untouched.
+
+    Refused by name when no predicate declares the word - the same door as an undeclared
+    predicate or node type: a class nobody declared can never match, and an empty walk would
+    read as 「nothing is there」.
+    """
+    if not isinstance(follow, (list, tuple, set)):
+        return follow
+    entries = [str(entry) for entry in follow]
+    wanted = [entry[len(FOLLOW_CLASS_PREFIX):].strip() for entry in entries
+              if entry.startswith(FOLLOW_CLASS_PREFIX)]
+    if not wanted:
+        return list(follow)
+    by_class = _predicate_classes()
+    unknown = sorted(set(wanted) - set(by_class))
+    if unknown:
+        raise HTTPException(status_code=422, detail={
+            "reason": "predicate_class_not_declared", "unknown": unknown,
+            "declared": sorted(by_class),
+            "message": ("Not a declared predicate class: " + ", ".join(unknown)
+                        + " - pick one from 'declared'")})
+    out = [entry for entry in entries if not entry.startswith(FOLLOW_CLASS_PREFIX)]
+    for word in wanted:
+        out.extend(name for name in by_class[word] if name not in out)
+    return out
+
+
+def _predicate_classes() -> dict:
+    """{class word: the bare names of the predicates that carry it}, read from the declaration."""
+    try:
+        from ledger import config as _config
+        vocabulary = (_config.load() or {}).get("vocabulary") or {}
+    except Exception as exc:                       # noqa: BLE001 - same backstop as /kinds
+        logger.error("declaration unreadable while resolving follow classes: %s", exc)
+        raise HTTPException(status_code=503, detail={
+            "reason": "declaration_unreadable",
+            "message": f"The declaration could not be read: {exc} - fix the declaration and reload"})
+    from ledger import setup_bundle
+
+    out = {}
+    for key, spec in vocabulary.items():
+        for word in setup_bundle.class_words(spec):
+            out.setdefault(word, set()).add(str(key).split("@", 1)[0])
+    return {word: sorted(names) for word, names in out.items()}
+
+
 def _split_follow(follow):
     """`follow=inspected:x,y` -> the bare name the walk filters on, and the keys it binds.
+
+    ⚠️ `class:<word>` entries never reach here - `_follow_classes` expands them first, so a
+    predicate literally named `class` cannot be followed by name (0 in the box and the sample).
 
     🔴 THE COLON IS OPTIONAL AND ITS ABSENCE IS NOT A DEFAULT — it is the whole of today's
     behaviour. `follow=slot_map` yields no keys for that predicate, which yields no
@@ -442,8 +497,10 @@ def _static_types():
         declared = (_config.load() or {}).get("entities") or {}
     except Exception:
         return set()
+    from ledger import setup_bundle
+
     return {str(key).split("@", 1)[0] for key, rule in declared.items()
-            if (rule or {}).get("class") == "static"}
+            if setup_bundle.has_class(rule, "static")}
 
 
 def _static_step_predicates():
@@ -471,9 +528,11 @@ def _static_step_predicates():
         declared = _config.load() or {}
     except Exception:
         return set()
+    from ledger import setup_bundle
+
     entities = declared.get("entities") or {}
     static = {str(key).split("@", 1)[0] for key, rule in entities.items()
-              if (rule or {}).get("class") == "static"}
+              if setup_bundle.has_class(rule, "static")}
     names = set()
     for key, rule in (declared.get("vocabulary") or {}).items():
         subjects = [str(item).split("@", 1)[0] for item in ((rule or {}).get("subjects") or [])]
@@ -901,10 +960,14 @@ def ledger_declaration_catalog():
     # operator adds one, and then quietly short. ABSENT rather than empty when the type
     # declares none, so a reader can tell "this type carries no values" from "this
     # deployment predates the axis".
+    # 🔴 [총괄 07889c83d] `class` IS A LIST ON THE WIRE, read by `setup_bundle.class_words` -
+    #   the one reader of 「one word or a list」 - so no screen interprets the shape again.
+    from ledger import setup_bundle
+
     entities = []
     for name, spec in sorted((declared.get("entities") or {}).items()):
         item = {"type": name, "keys": list((spec or {}).get("keys") or []),
-                "class": (spec or {}).get("class")}
+                "class": list(setup_bundle.class_words(spec)) or None}
         attributes = (spec or {}).get("attributes")
         if attributes:
             item["attributes"] = [str(entry) for entry in attributes]
@@ -923,7 +986,8 @@ def ledger_declaration_catalog():
         item = {"name": name,
                 "subjects": list((spec or {}).get("subjects") or []),
                 "object": (spec or {}).get("object") or {},
-                "origin": "vocabulary"}
+                "origin": "vocabulary",
+                "class": list(setup_bundle.class_words(spec)) or None}
         confirmer = (spec or {}).get("absence_confirmed_by")
         if confirmer:
             item["absence_confirmed_by"] = str(confirmer)

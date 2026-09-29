@@ -280,8 +280,10 @@ export function cutBudgets(axes, limits) {
 /**
  * The types the walk treats as static, read off the declaration rather than decided here.
  *
- * 🔴 THE PREDICATE IS `class === 'static'` AND NOTHING ELSE, because that is the server's:
+ * 🔴 THE PREDICATE IS 「its classes hold 'static'」 AND NOTHING ELSE, because that is the server's:
  *    `_static_types()` collects exactly that, so a type with NO class is dynamic to the walk.
+ *    `class` arrives as a list (or null) - the server's `class_words` read the declaration's
+ *    「one word or a list」 once (lead 07889c83d), so this reads membership, never the shape.
  *    Measured 2026-09-06 on the served declaration: three carry it (defect_kind, quantity,
  *    recipe) and six carry nothing at all - and treating those six as "unknown, so leave them
  *    alone" is what leaves refused routes on the screen.
@@ -290,7 +292,7 @@ export function cutBudgets(axes, limits) {
  */
 export function staticTypes(entities) {
   return new Set((entities || [])
-    .filter((e) => e && e.class === 'static')
+    .filter((e) => e && Array.isArray(e.class) && e.class.includes('static'))
     .map((e) => bareName(e.type)));
 }
 

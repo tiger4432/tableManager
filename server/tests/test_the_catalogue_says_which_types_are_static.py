@@ -41,7 +41,7 @@ def test_the_static_types_match_what_the_walk_uses():
     """🔴 GATE ②, THE REAL ONE. Not "three" - the same three the walk itself reads. A
     count would pass while the two lists named different types."""
     published = {item["type"].split("@", 1)[0]
-                 for item in catalogue()["entities"] if item["class"] == "static"}
+                 for item in catalogue()["entities"] if "static" in (item["class"] or ())}
     assert published == trace_router._static_types()
     assert published, "no static type is declared; the assertion above is vacuous"
 
@@ -56,7 +56,7 @@ def test_an_entity_without_a_class_publishes_none_rather_than_dynamic(monkeypatc
                      "untold@1": {"keys": ["k"]}},
         "vocabulary": {}})
     by_type = {item["type"]: item["class"] for item in catalogue()["entities"]}
-    assert by_type["told@1"] == "static"
+    assert by_type["told@1"] == ["static"], "one word reads as a one-word list"
     assert by_type["untold@1"] is None, "a blank class was filled in"
 
 
@@ -68,12 +68,12 @@ def test_the_value_follows_the_declaration(monkeypatch):
     monkeypatch.setattr(_config, "load", lambda: {
         "entities": {"wafer@1": {"keys": ["w"], "class": "dynamic"}},
         "vocabulary": {}})
-    assert catalogue()["entities"][0]["class"] == "dynamic"
+    assert catalogue()["entities"][0]["class"] == ["dynamic"]
 
     monkeypatch.setattr(_config, "load", lambda: {
         "entities": {"wafer@1": {"keys": ["w"], "class": "static"}},
         "vocabulary": {}})
-    assert catalogue()["entities"][0]["class"] == "static"
+    assert catalogue()["entities"][0]["class"] == ["static"]
 
 
 def test_nothing_in_this_route_decides_the_class():
@@ -136,7 +136,8 @@ def test_the_class_field_label_names_the_value_the_code_reads():
     assert "static" in field["label"], \
         "the label does not name the one value the walk actually reads"
     # ⛔ Still open, deliberately: showing the value must not become closing the list.
-    assert field["node"]["hint"] == "free"
+    #    A list of free words since lead 07889c83d - one word or several.
+    assert field["node"]["kind"] == "map" and field["node"]["of"]["hint"] == "free"
 
 
 # --------------------------------------------- the key list: which values may seed a walk

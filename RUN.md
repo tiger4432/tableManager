@@ -1,5 +1,23 @@
 # 지금 돌리면 되는 것
 
+> ## 🔴 [09-29 오전 2] **class = 낱말 하나 또는 목록 (엔터티 · 술어) · follow=class:<낱말> — 마이그레이션 «없음» · 재기동 서버**
+>
+> ```
+> 선언 예      "vocabulary": {"measures@1": {..., "class": ["model"]}, "inspected@1": {..., "class": "context"}}
+>             엔터티는 "class": "static" 도 ["static"] 도 됨 — 낱말은 static 또는 dynamic 하나. 술어의 낱말은 운영자가 지음
+> 걷기         /api/ledger/subgraph?...&follow=class:model   -> 부류 model 을 든 술어 전부를 밟음
+>             모르는 낱말 -> 422 · reason predicate_class_not_declared · unknown · declared(선언에 쓰인 낱말)
+> 선언 라우트   /api/ledger/declaration 의 entities[].class · predicates[].class 가 «목록»(없으면 null)
+>             전에는 엔터티 class 가 낱말 하나("static")였음 — 이 칸을 읽는 서버 밖 소비자가 있으면 모양이 바뀜
+> 선언창       술어마다 class 칸(낱말 목록) — 적고 저장하면 파일에 목록 그대로, 다시 열면 그대로
+>             ⚠️ 엔터티 class 를 낱말 하나로 적은 선언(이 박스 3 · 샘플 3)은 창에서 그 값을 «보여만» 주고 편집 칸을 안 냄
+>                파일은 그대로 맞게 읽힘 — 창에서 고치려면 지우고 목록으로 다시 적음. 창이 낱말 하나를 목록으로 그리는 것은 클라 몫
+> 뜻           class 는 운영자가 붙이는 낱말. 제품 동작이 부류 이름으로 갈리지 않음 — 엔터티 static 만 걷기가 읽음(전과 같음)
+> 급할 때       스위치 없음 — class 칸을 지우면 오늘 그대로
+> ```
+
+---
+
 > ## 🔴 [09-29 오전] **걷기 라우트의 화면 문장이 영어 — reason 낱말은 그대로 — 마이그레이션 «없음» · 재기동 서버**
 >
 > ```

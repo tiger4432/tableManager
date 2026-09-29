@@ -215,10 +215,15 @@
               {
                 "key": "class",
                 "required": false,
-                "label": "Node class - static means a walk leaves this type only to static types (blank = no limit)",
+                "label": "Classes - one word or a list; static means a walk leaves this type only to static types (blank = no class)",
                 "node": {
-                  "kind": "leaf",
-                  "hint": "free"
+                  "kind": "map",
+                  "keyed_by": "index",
+                  "member": "Class",
+                  "of": {
+                    "kind": "leaf",
+                    "hint": "free"
+                  }
                 }
               },
               {
@@ -374,6 +379,20 @@
                   "kind": "leaf",
                   "hint": "ref",
                   "section": "vocabulary"
+                }
+              },
+              {
+                "key": "class",
+                "required": false,
+                "label": "Classes - words you choose to group predicates; follow=class:<word> walks every predicate that has it (blank = no class)",
+                "node": {
+                  "kind": "map",
+                  "keyed_by": "index",
+                  "member": "Class",
+                  "of": {
+                    "kind": "leaf",
+                    "hint": "free"
+                  }
                 }
               }
             ]

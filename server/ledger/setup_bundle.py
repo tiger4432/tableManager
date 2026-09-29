@@ -1259,6 +1259,46 @@ def _validate_join_fold(value: Any, path: str, problems: _Problems) -> None:
                 f"notation rule {name!r} is not implemented")
 
 
+def class_words(spec: Any) -> tuple:
+    """The `class` words a declared entity or predicate carries - the ONE reader.
+
+    🔴 [총괄 07889c83d, 소유자 「DOM 느낌」] ONE GRAMMAR FOR BOTH: one word or a list of words.
+    A word written alone reads as a one-word list, so every declaration written before the
+    list existed means what it meant. Absent, `None` and `''` are no class at all.
+    """
+    value = spec.get("class") if isinstance(spec, Mapping) else None
+    if isinstance(value, str):
+        value = [value]
+    if not isinstance(value, (list, tuple)):
+        return ()
+    return tuple(word.strip() for word in value if isinstance(word, str) and word.strip())
+
+
+def has_class(spec: Any, word: str) -> bool:
+    """Does this declared entity or predicate carry the class `word`?"""
+    return word in class_words(spec)
+
+
+def _validate_class(item: Mapping[str, Any], path: str, problems: _Problems, code: str,
+                    closed: tuple = None) -> None:
+    """`class` is one word or a list of words (총괄 07889c83d). `closed` names the only words
+    an entity may use - `static`/`dynamic` are words the walk reads; a predicate's words are
+    the operator's and the code knows none of them."""
+    if "class" not in item:
+        return
+    value = item["class"]
+    words = [value] if isinstance(value, str) else value
+    if (not isinstance(words, list)
+            or not all(isinstance(word, str) and word.strip() for word in words)):
+        problems.add(code, f"{path}.class", "must be one word or a list of words")
+        return
+    if closed is not None:
+        stray = sorted(set(words) - set(closed))
+        if stray or len(set(words)) > 1:
+            problems.add(code, f"{path}.class",
+                         f"must be one of {list(closed)} (got {words})")
+
+
 def _validate_vocabulary(section: Mapping[str, Any], problems: _Problems) -> None:
     for predicate_id in sorted(section, key=str):
         path = f"bundle.vocabulary.{predicate_id}"
@@ -1276,8 +1316,9 @@ def _validate_vocabulary(section: Mapping[str, Any], problems: _Problems) -> Non
         #: word from quietly reading as a live rule.
         if not problems.exact(
                 item, path, required=("status", "subjects", "object"),
-                optional=("cardinality", "absence_confirmed_by")):
+                optional=("cardinality", "absence_confirmed_by", "class")):
             continue
+        _validate_class(item, path, problems, "invalid_predicate")
         status = item.get("status")
         if not isinstance(status, str) or status not in LIFECYCLE_STATES:
             problems.add("invalid_predicate", f"{path}.status",
@@ -1410,9 +1451,7 @@ def _validate_entities(section: Mapping[str, Any], problems: _Problems) -> None:
                 optional=("allow_null", "references", "class",
                           "attributes", "attribute_cardinality", "status")):
             continue
-        if "class" in item and item["class"] not in ("static", "dynamic"):
-            problems.add("invalid_entity_ref", f"{path}.class",
-                         "must be static or dynamic")
+        _validate_class(item, path, problems, "invalid_entity_ref", closed=("static", "dynamic"))
         # 🔴 THE SAME TWO WORDS THE PREDICATE USES. Retiring a type used to mean DELETING
         # its declaration, which also removes the name every stored atom points at -- the
         # 「투영은 지워도 기록은 안 된다」 line, applied to the grammar. Optional, because
