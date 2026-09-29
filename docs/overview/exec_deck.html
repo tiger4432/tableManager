@@ -1,0 +1,974 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>R&D 온톨로지 DB 임원 보고</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@500;700&display=swap">
+<style>
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:#0E131B;overflow:hidden}
+#stage{position:absolute;left:50%;top:50%;width:1920px;height:1080px;transform-origin:0 0}
+#stage>section{position:absolute;inset:0;width:1920px;height:1080px;overflow:hidden}
+#stage>section:not(.on){display:none!important}
+section h1,section h2,section h3,section p,section ul,section ol,section table{margin:0}
+section h1{font-size:96px;font-weight:600;line-height:1.1}
+section h2{font-size:64px;font-weight:600;line-height:1.15}
+section h3{font-size:44px;font-weight:600;line-height:1.2}
+section p{font-size:32px;line-height:1.4}
+section ul,section ol{padding-left:1.15em}
+section div:not([style*="display"]){display:flex;flex-direction:column}
+section hr{border:0;margin:0;width:100%}
+section table{border-collapse:collapse;width:100%}
+section th,section td{padding:.35em .6em;border-bottom:1px solid rgba(120,130,145,.35);text-align:left;vertical-align:top}
+section th{font-weight:700}
+section aside{display:none}
+.xc{position:absolute;left:0;top:0;overflow:visible;pointer-events:none}
+.xf{flex:none;overflow:visible}
+#notes{position:fixed;left:0;right:0;bottom:0;max-height:34vh;overflow:auto;padding:16px 24px;background:rgba(14,19,27,.94);color:#E6E8EC;font:18px/1.6 'IBM Plex Sans KR',Arial,sans-serif;display:none}
+#notes.on{display:block}
+#hint{position:fixed;right:12px;bottom:8px;color:#5E6977;font:13px Arial,sans-serif}
+</style>
+</head>
+<body>
+<div id="stage">
+<section id="cover" data-transition="fade" style="background:#1A2230; color:#F2F1EC; font-family:'IBM Plex Sans KR', Arial, sans-serif; padding:128px; display:flex; flex-direction:column; justify-content:center; gap:28px">
+<svg aria-label="웨이퍼 위에서 표시된 다이들을 잇는 걷기 경로" width="640" height="640" viewBox="0 0 640 640" style="position:absolute; left:1152px; top:220px"><defs><pattern id="die" width="40" height="40" patternUnits="userSpaceOnUse"><rect x="3" y="3" width="34" height="34" rx="3" fill="#2B3647"/></pattern><clipPath id="wafer"><circle cx="320" cy="320" r="300"/></clipPath></defs><circle cx="320" cy="320" r="306" fill="#222C3B"/><rect x="0" y="0" width="640" height="640" fill="url(#die)" clip-path="url(#wafer)"/><circle cx="320" cy="626" r="14" fill="#1A2230"/><g fill="#9C4F1F"><rect x="163" y="203" width="34" height="34" rx="3"/><rect x="243" y="283" width="34" height="34" rx="3"/><rect x="363" y="283" width="34" height="34" rx="3"/><rect x="443" y="403" width="34" height="34" rx="3"/><rect x="283" y="443" width="34" height="34" rx="3"/></g><polyline points="180,220 260,300 380,300 460,420" fill="none" stroke="#E3A574" stroke-width="4"/><line x1="260" y1="300" x2="300" y2="460" stroke="#E3A574" stroke-width="4"/><g fill="#E3A574"><circle cx="180" cy="220" r="8"/><circle cx="260" cy="300" r="8"/><circle cx="380" cy="300" r="8"/><circle cx="460" cy="420" r="8"/><circle cx="300" cy="460" r="8"/></g></svg>
+<p style="font-size:28px; font-weight:600; color:#E3A574; letter-spacing:2px">R&amp;D 데이터 플랫폼 보고</p>
+<p style="font-size:48px; font-weight:500; color:#F2F1EC; width:960px">AI 활용 · 추론을 위한</p>
+<h1 style="font-family:'Noto Serif KR', Georgia, serif; font-size:104px; font-weight:700; line-height:1.15; width:960px">R&amp;D 온톨로지 백본 DB</h1>
+<p style="font-size:40px; font-weight:600; color:#E3A574; line-height:1.4; width:960px">데이터로 일을 하게 만드는 플랫폼</p>
+<p style="font-size:32px; color:#C3CBD6; line-height:1.4; width:960px">일을 시키고 · 결과를 모으고 · 의미를 만드는 장치 — 목표 적재율 100%</p>
+<p style="position:absolute; left:128px; bottom:96px; width:960px; font-size:28px; color:#C3CBD6">[부서] · [보고자] · [2026.&#160;&#160;.&#160;&#160;]</p>
+<aside>오늘 보고드릴 주제는 AI가 R&amp;D 데이터를 믿고 쓸 수 있게 하는 백본 DB입니다. 순서는 이렇습니다. AI가 R&amp;D 데이터를 쓰려면 무엇이 필요한지 말씀드리고, 이 시스템을 한 문장으로, 일을 시키고 결과를 모으고 의미를 만드는 장치로 설명드린 뒤, 모은다, 의미를 만든다, 시킨다 순으로, 그리고 AI로 넓히는 이야기와 현황, 요청 순으로 말씀드리겠습니다. 오른쪽 그림은 웨이퍼 위에서 표시한 다이들을 잇는 걷기 경로를 형상화한 것입니다.</aside>
+</section>
+<section id="summary" data-transition="fade" style="background:#F5F4EF; color:#1A2230; font-family:'IBM Plex Sans KR', Arial, sans-serif; padding:128px 128px 160px; display:flex; flex-direction:column; gap:40px">
+<div style="display:flex; flex-direction:column; gap:12px">
+<p style="font-size:26px; font-weight:600; color:#9C4F1F">요약</p>
+<h2 style="font-size:64px; font-weight:600; line-height:1.15; color:#1A2230">한 장 요약</h2>
+</div>
+<table style="font-size:28px; color:#1A2230; font-family:'IBM Plex Sans KR', Arial, sans-serif">
+<tr><td style="width:18%; padding:18px"><b>한 줄</b></td><td style="width:82%"><b>데이터로 일을 하게 만드는 플랫폼</b> — 일을 시키고, 결과를 모으고, 의미를 만든다</td></tr>
+<tr><td><b>목표</b></td><td>AI가 R&amp;D 데이터를 믿고 쓰도록, 현장 데이터를 적재율 100%로 온톨로지 백본 DB에 쌓는다</td></tr>
+<tr><td><b>어떻게</b></td><td>모은다 — 적재율 100%, 각자 채워도 그래프가 전체를 잇는다<br>의미를 만든다 — 걷기: 모델을 따라 원인 인자를 짚는다<br>시킨다 — 액션(핵심): 일감을 만들고, 결과는 측정으로 돌아온다<br>넓힌다 — 에이전틱 AI가 설명서를 읽고 선언을 넓힌다</td></tr>
+<tr><td><b>방법</b></td><td>핵심 가치 다섯(최소 공수 교정 · 온톨로지 · 실시간 전파 · 레이어링 · 이력)으로 모든 기능을 판단해 개발했다</td></tr>
+<tr><td><b>현재</b></td><td>적재율 <span style="color:#9C4F1F">[&#160;&#160;&#160;]%</span> · 선언된 개체 <span style="color:#9C4F1F">[&#160;&#160;&#160;]종</span> · 관계 <span style="color:#9C4F1F">[&#160;&#160;&#160;]종</span> · 자동 규칙 <span style="color:#9C4F1F">[&#160;&#160;&#160;]개</span></td></tr>
+<tr><td><b>요청</b></td><td><span style="color:#9C4F1F">[요청 사항]</span></td></tr>
+</table>
+<p style="position:absolute; left:128px; bottom:64px; width:900px; font-size:24px; color:#5E6977">AI 활용 · 추론을 위한 R&amp;D 온톨로지 백본 DB</p>
+<p style="position:absolute; right:128px; bottom:64px; width:200px; font-size:24px; color:#5E6977; text-align:right">02</p>
+<aside>한 장으로 먼저 말씀드립니다. 이 시스템은 데이터로 일을 하게 만드는 플랫폼입니다. 일을 시키고, 그 결과를 모으고, 의미를 만듭니다. 목표는 AI가 R&amp;D 데이터를 믿고 쓸 수 있게 하는 것이고, 그 조건이 적재율 100%입니다. 모으는 쪽에서는 적재율 100%를 위해 핵심 가치 다섯을 세웠고, 여러 주체가 각자 채워도 그래프가 전체를 이어 줍니다. 의미를 만드는 쪽에서는 걷기가 모델을 따라 원인 인자를 짚어 냅니다. 시키는 쪽의 핵심은 액션으로, 시스템이 일감을 만들고 결과는 측정으로 돌아옵니다. 그리고 에이전틱 AI를 붙이면 설명서를 읽고 선언을 스스로 넓혀 갑니다. 현재 수치와 요청은 뒤에서 말씀드립니다.</aside>
+</section>
+<section id="need" data-transition="fade" style="background:#E8EBEE; color:#1A2230; font-family:'IBM Plex Sans KR', Arial, sans-serif; padding:128px 128px 160px; display:flex; flex-direction:column; gap:48px">
+<div style="display:flex; flex-direction:column; gap:12px">
+<p style="font-size:26px; font-weight:600; color:#9C4F1F">왜</p>
+<h2 style="font-size:64px; font-weight:600; line-height:1.15; color:#1A2230">AI가 R&amp;D 데이터를 쓰려면 세 가지가 필요합니다</h2>
+</div>
+<div style="display:flex; gap:32px">
+<div style="flex:1; display:flex; flex-direction:column; gap:20px; background:#F7F7F4; padding:40px; border:1px solid #CDD3D9; border-radius:12px">
+<x-icon name="Database" style="color:#2A5F99; width:56px; height:56px"></x-icon>
+<h3 style="font-size:36px; font-weight:700; line-height:1.2; color:#2A5F99">빠짐없는 데이터</h3>
+<p style="font-size:26px; font-weight:600; color:#5E6977">지금은</p>
+<p style="font-size:30px; line-height:1.45; color:#3F4A58">장비와 공정마다 형식이 달라 일부만 쌓입니다.</p>
+</div>
+<div style="flex:1; display:flex; flex-direction:column; gap:20px; background:#F7F7F4; padding:40px; border:1px solid #CDD3D9; border-radius:12px">
+<x-icon name="Link" style="color:#2A5F99; width:56px; height:56px"></x-icon>
+<h3 style="font-size:36px; font-weight:700; line-height:1.2; color:#2A5F99">뜻이 적힌 연결</h3>
+<p style="font-size:26px; font-weight:600; color:#5E6977">지금은</p>
+<p style="font-size:30px; line-height:1.45; color:#3F4A58">랏 · 웨이퍼 · 다이의 연결이 사람 머리와 엑셀에 있습니다.</p>
+</div>
+<div style="flex:1; display:flex; flex-direction:column; gap:20px; background:#F7F7F4; padding:40px; border:1px solid #CDD3D9; border-radius:12px">
+<x-icon name="Verified" style="color:#2A5F99; width:56px; height:56px"></x-icon>
+<h3 style="font-size:36px; font-weight:700; line-height:1.2; color:#2A5F99">믿을 수 있는 근거</h3>
+<p style="font-size:26px; font-weight:600; color:#5E6977">지금은</p>
+<p style="font-size:30px; line-height:1.45; color:#3F4A58">값이 어디서 왔고 언제 바뀌었는지 알기 어렵습니다.</p>
+</div>
+</div>
+<p style="font-size:32px; font-weight:600; color:#1A2230">빠진 데이터를 AI는 «없음»으로 읽습니다. 적재가 불완전하면 추론이 틀립니다.</p>
+<p style="position:absolute; left:128px; bottom:64px; width:900px; font-size:24px; color:#5E6977">AI 활용 · 추론을 위한 R&amp;D 온톨로지 백본 DB</p>
+<p style="position:absolute; right:128px; bottom:64px; width:200px; font-size:24px; color:#5E6977; text-align:right">03</p>
+<aside>AI를 R&amp;D에 쓰려면 모델보다 먼저 데이터가 준비돼야 합니다. 세 가지가 필요합니다. 빠짐없는 데이터, 뜻이 적힌 연결, 믿을 수 있는 근거입니다. 지금 현장은 셋 다 부족합니다. 특히 첫째가 중요합니다. 빠진 데이터를 AI는 없는 것으로 읽기 때문에, 적재가 불완전하면 그 위의 추론이 조용히 틀립니다. 그래서 목표를 적재율 100%로 잡았습니다.</aside>
+</section>
+<section id="spine" data-transition="fade" style="background:#F5F4EF; color:#1A2230; font-family:'IBM Plex Sans KR', Arial, sans-serif; padding:128px 128px 160px; display:flex; flex-direction:column; gap:32px">
+<div style="display:flex; flex-direction:column; gap:12px">
+<p style="font-size:26px; font-weight:600; color:#9C4F1F">한 문장</p>
+<h2 style="font-size:64px; font-weight:600; line-height:1.15; color:#1A2230">일을 시키고, 결과를 모으고, 의미를 만듭니다</h2>
+</div>
+<div style="display:flex; gap:56px">
+<div style="width:960px; display:flex; flex-direction:column; gap:12px">
+<div style="position:relative; width:960px; height:560px">
+<div style="position:absolute; left:330px; top:205px; width:300px; height:150px; background:#1A2230; border-radius:16px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px"><p style="font-size:30px; font-weight:700; color:#F2F1EC">온톨로지</p><p style="font-size:24px; color:#C3CBD6">공유 그래프 · 설명서</p><p style="font-size:24px; font-weight:700; color:#E3A574">의미를 만든다</p></div>
+<div style="position:absolute; left:0px; top:20px; width:200px; height:70px; background:#FCFBF8; border:2px solid #5E6977; border-radius:10px; display:flex; align-items:center; justify-content:center"><p style="font-size:26px; font-weight:600">공정팀</p></div>
+<div style="position:absolute; left:0px; top:245px; width:200px; height:70px; background:#FCFBF8; border:2px solid #5E6977; border-radius:10px; display:flex; align-items:center; justify-content:center"><p style="font-size:26px; font-weight:600">계측팀</p></div>
+<div style="position:absolute; left:0px; top:470px; width:200px; height:70px; background:#FCFBF8; border:2px solid #5E6977; border-radius:10px; display:flex; align-items:center; justify-content:center"><p style="font-size:26px; font-weight:600">설비</p></div>
+<div style="position:absolute; left:760px; top:80px; width:200px; height:70px; background:#FCFBF8; border:2px solid #5E6977; border-radius:10px; display:flex; align-items:center; justify-content:center"><p style="font-size:26px; font-weight:600">분석팀</p></div>
+<div style="position:absolute; left:760px; top:410px; width:200px; height:70px; background:#FCFBF8; border:2px solid #5E6977; border-radius:10px; display:flex; align-items:center; justify-content:center"><p style="font-size:26px; font-weight:600">AI 에이전트</p></div>
+<x-connector x1="326" y1="230" x2="204" y2="48" head="end" style="color:#9C4F1F; border-width:3px"></x-connector>
+<x-connector x1="326" y1="272" x2="204" y2="272" head="end" style="color:#9C4F1F; border-width:3px"></x-connector>
+<x-connector x1="326" y1="330" x2="204" y2="498" head="end" style="color:#9C4F1F; border-width:3px"></x-connector>
+<x-connector x1="634" y1="240" x2="756" y2="108" head="end" style="color:#9C4F1F; border-width:3px"></x-connector>
+<x-connector x1="634" y1="320" x2="756" y2="438" head="end" style="color:#9C4F1F; border-width:3px"></x-connector>
+<x-connector x1="204" y1="66" x2="326" y2="246" head="end" style="color:#2A5F99; border-width:3px"></x-connector>
+<x-connector x1="204" y1="292" x2="326" y2="292" head="end" style="color:#2A5F99; border-width:3px"></x-connector>
+<x-connector x1="204" y1="516" x2="326" y2="346" head="end" style="color:#2A5F99; border-width:3px"></x-connector>
+<x-connector x1="756" y1="126" x2="634" y2="258" head="end" style="color:#2A5F99; border-width:3px"></x-connector>
+<x-connector x1="756" y1="456" x2="634" y2="338" head="end" style="color:#2A5F99; border-width:3px"></x-connector>
+</div>
+<p style="font-size:24px; color:#5E6977"><span style="color:#9C4F1F"><b>주황</b></span> 시킨다 — 일감이 나간다 · <span style="color:#2A5F99"><b>파랑</b></span> 모은다 — 결과가 돌아온다 · 가운데에서 의미를 만든다</p>
+</div>
+<div style="flex:1; display:flex; flex-direction:column; gap:20px">
+<div style="display:flex; flex-direction:column; gap:4px">
+<p style="font-size:28px; font-weight:700; color:#9C4F1F">시킨다 — 액션</p>
+<p style="font-size:26px; line-height:1.4; color:#3F4A58">시스템이 일감을 만들어 각 주체에게 건다</p>
+</div>
+<div style="display:flex; flex-direction:column; gap:4px">
+<p style="font-size:28px; font-weight:700; color:#2A5F99">모은다 — 측정</p>
+<p style="font-size:26px; line-height:1.4; color:#3F4A58">결과가 돌아오고, 각자 채운 조각을 그래프가 잇는다</p>
+</div>
+<div style="display:flex; flex-direction:column; gap:4px">
+<p style="font-size:28px; font-weight:700; color:#1A2230">의미를 만든다 — 걷기 · 모델</p>
+<p style="font-size:26px; line-height:1.4; color:#3F4A58">원인을 짚고, 빗나가면 모델이 고쳐진다</p>
+</div>
+<hr style="border-top:1px solid #CDD3D9">
+<p style="font-size:28px; font-weight:700; line-height:1.4; color:#1A2230">각자는 자기 몫만 하고, 전체는 그래프가 잇습니다.</p>
+<p style="font-size:24px; line-height:1.45; color:#5E6977">누구도 전체를 볼 필요가 없고, 한 팀이 병목이 되지 않습니다.</p>
+</div>
+</div>
+<p style="position:absolute; left:128px; bottom:64px; width:900px; font-size:24px; color:#5E6977">AI 활용 · 추론을 위한 R&amp;D 온톨로지 백본 DB</p>
+<p style="position:absolute; right:128px; bottom:64px; width:200px; font-size:24px; color:#5E6977; text-align:right">04</p>
+<aside>이 시스템을 한 문장으로 말씀드리면, 일을 시키고, 그 일의 결과를 모으고, 의미를 만드는 장치입니다. 가운데에 온톨로지가 있습니다. 모두가 함께 쓰는 그래프이자, 데이터가 일에 어떻게 꽂히는지 적은 설명서입니다. 시스템은 여기서 일감을 만들어 공정팀, 계측팀, 설비, 분석팀, AI 에이전트에게 겁니다. 이것이 시킨다, 액션입니다. 각 주체가 한 일의 결과는 측정으로 다시 가운데로 돌아옵니다. 이것이 모은다입니다. 그리고 가운데에서 걷기와 모델로 원인을 짚고, 예측이 빗나가면 모델을 고칩니다. 이것이 의미를 만든다입니다. 중요한 것은 분산입니다. 각 주체는 전체를 볼 필요 없이 자기 몫만 합니다. 공통 개체의 신원이 하나라서, 각자 채운 조각을 그래프가 저절로 전체로 이어 줍니다. 그래서 한 팀이 병목이 되지 않습니다. 이후 발표는 이 세 가지, 모은다, 의미를 만든다, 시킨다의 순서로 말씀드리고, 마지막에 AI로 어떻게 넓히는지 말씀드리겠습니다.</aside>
+</section>
+<section id="ontology" data-transition="fade" style="background:#E8EBEE; color:#1A2230; font-family:'IBM Plex Sans KR', Arial, sans-serif; padding:128px 128px 160px; display:flex; flex-direction:column; gap:48px">
+<div style="display:flex; flex-direction:column; gap:12px">
+<p style="font-size:26px; font-weight:600; color:#9C4F1F">한 문장 — 설명서</p>
+<h2 style="font-size:64px; font-weight:600; line-height:1.15; color:#1A2230">온톨로지는 데이터가 일에 꽂히는 설명서입니다</h2>
+</div>
+<div style="display:flex; gap:64px">
+<div style="width:1000px; display:flex; flex-direction:column; gap:16px">
+<div style="position:relative; width:1000px; height:440px">
+<div style="position:absolute; left:0px; top:60px; width:180px; height:80px; background:#FCFBF8; border:2px solid #1A2230; border-radius:12px; display:flex; align-items:center; justify-content:center"><p style="font-size:30px; font-weight:600">랏</p></div>
+<div style="position:absolute; left:270px; top:60px; width:180px; height:80px; background:#FCFBF8; border:2px solid #1A2230; border-radius:12px; display:flex; align-items:center; justify-content:center"><p style="font-size:30px; font-weight:600">웨이퍼</p></div>
+<div style="position:absolute; left:540px; top:60px; width:180px; height:80px; background:#FCFBF8; border:2px solid #1A2230; border-radius:12px; display:flex; align-items:center; justify-content:center"><p style="font-size:30px; font-weight:600">다이</p></div>
+<div style="position:absolute; left:810px; top:60px; width:180px; height:80px; background:#FCFBF8; border:2px solid #1A2230; border-radius:12px; display:flex; align-items:center; justify-content:center"><p style="font-size:30px; font-weight:600">결함</p></div>
+<div style="position:absolute; left:270px; top:300px; width:180px; height:80px; background:#FCFBF8; border:2px solid #1A2230; border-radius:12px; display:flex; align-items:center; justify-content:center"><p style="font-size:30px; font-weight:600">공정 이력</p></div>
+<div style="position:absolute; left:540px; top:300px; width:180px; height:80px; background:#FCFBF8; border:2px solid #1A2230; border-radius:12px; display:flex; align-items:center; justify-content:center"><p style="font-size:30px; font-weight:600">장비</p></div>
+<x-connector x1="184" y1="100" x2="266" y2="100" head="end" style="color:#5E6977; border-width:3px"></x-connector>
+<x-connector x1="454" y1="100" x2="536" y2="100" head="end" style="color:#5E6977; border-width:3px"></x-connector>
+<x-connector x1="724" y1="100" x2="806" y2="100" head="end" style="color:#5E6977; border-width:3px"></x-connector>
+<x-connector x1="360" y1="144" x2="360" y2="296" head="end" style="color:#5E6977; border-width:3px"></x-connector>
+<x-connector x1="454" y1="340" x2="536" y2="340" head="end" style="color:#5E6977; border-width:3px"></x-connector>
+<p style="position:absolute; left:192px; top:50px; width:72px; font-size:24px; color:#5E6977; text-align:center">포함</p>
+<p style="position:absolute; left:462px; top:50px; width:72px; font-size:24px; color:#5E6977; text-align:center">포함</p>
+<p style="position:absolute; left:732px; top:50px; width:72px; font-size:24px; color:#5E6977; text-align:center">발견</p>
+<p style="position:absolute; left:376px; top:200px; width:80px; font-size:24px; color:#5E6977">거침</p>
+<p style="position:absolute; left:462px; top:290px; width:72px; font-size:24px; color:#5E6977; text-align:center">사용</p>
+</div>
+<p style="font-size:24px; color:#5E6977">예시 — 실제 개체와 관계는 현장이 선언합니다</p>
+</div>
+<div style="flex:1; display:flex; flex-direction:column; gap:24px">
+<div style="display:flex; flex-direction:column; gap:6px">
+<h3 style="font-size:36px; font-weight:700; color:#1A2230">개체</h3>
+<p style="font-size:28px; line-height:1.45; color:#3F4A58">무엇이 있나 — 현장이 이름 붙인 노드</p>
+</div>
+<div style="display:flex; flex-direction:column; gap:6px">
+<h3 style="font-size:36px; font-weight:700; color:#1A2230">관계</h3>
+<p style="font-size:28px; line-height:1.45; color:#3F4A58">어떻게 이어지나 — 선언된 낱말</p>
+</div>
+<div style="display:flex; flex-direction:column; gap:6px">
+<h3 style="font-size:36px; font-weight:700; color:#1A2230">걷기</h3>
+<p style="font-size:28px; line-height:1.45; color:#3F4A58">어떻게 답하나 — 모델을 따라 추적</p>
+</div>
+<div style="display:flex; flex-direction:column; gap:6px">
+<h3 style="font-size:36px; font-weight:700; color:#1A2230">액션</h3>
+<p style="font-size:28px; line-height:1.45; color:#3F4A58">무엇을 하나 — 일감을 만든다 (핵심)</p>
+</div>
+<p style="font-size:28px; font-weight:600; line-height:1.45; color:#2A5F99">사람도 AI도 이 설명서를 읽고 일합니다</p>
+</div>
+</div>
+<p style="position:absolute; left:128px; bottom:64px; width:900px; font-size:24px; color:#5E6977">AI 활용 · 추론을 위한 R&amp;D 온톨로지 백본 DB</p>
+<p style="position:absolute; right:128px; bottom:64px; width:200px; font-size:24px; color:#5E6977; text-align:right">05</p>
+<aside>온톨로지를 한마디로 하면, 데이터가 어떻게 일에 꽂히는지를 적은 설명서입니다. 네 가지를 적습니다. 무엇이 있나가 개체이고, 랏, 웨이퍼, 다이, 결함처럼 현장이 이름을 붙입니다. 어떻게 이어지나가 관계입니다. 어떻게 답하나가 걷기이고, 관계와 모델을 따라가며 원인을 짚어 냅니다. 무엇을 하나가 액션이고, 이것이 핵심입니다. 시스템이 일감을 만들어 현장에 작용을 걸고, 그 결과가 측정으로 다시 들어옵니다. 그림은 예시이고 실제 내용은 현장이 직접 선언합니다. 중요한 점은 사람과 AI가 같은 설명서를 읽는다는 것입니다. AI는 표 이름을 추측하지 않고, 이 설명서를 따라 일합니다.</aside>
+</section>
+<section id="goal" data-transition="fade" style="background:#1A2230; color:#F2F1EC; font-family:'IBM Plex Sans KR', Arial, sans-serif; padding:128px 128px 160px; display:flex; flex-direction:column; gap:36px">
+<p style="font-size:26px; font-weight:600; color:#E3A574">모은다 — 목표</p>
+<h1 style="font-family:'Noto Serif KR', Georgia, serif; font-size:160px; font-weight:700; line-height:1.05; color:#E3A574">적재율 100%</h1>
+<p style="font-size:36px; line-height:1.45; color:#F2F1EC; width:1400px">현장에서 생긴 데이터가 빠짐없이, 연결된 채로, 출처와 함께 쌓인 비율</p>
+<div style="display:flex; gap:48px">
+<div style="flex:1; display:flex; flex-direction:column; gap:12px">
+<h3 style="font-size:36px; font-weight:700; color:#F2F1EC">빠짐없이</h3>
+<p style="font-size:28px; line-height:1.45; color:#C3CBD6">AI가 없는 것을 «없음»으로 오해하지 않도록</p>
+</div>
+<div style="flex:1; display:flex; flex-direction:column; gap:12px">
+<h3 style="font-size:36px; font-weight:700; color:#F2F1EC">연결된 채로</h3>
+<p style="font-size:28px; line-height:1.45; color:#C3CBD6">AI가 관계를 따라 추론할 수 있도록</p>
+</div>
+<div style="flex:1; display:flex; flex-direction:column; gap:12px">
+<h3 style="font-size:36px; font-weight:700; color:#F2F1EC">출처와 함께</h3>
+<p style="font-size:28px; line-height:1.45; color:#C3CBD6">AI의 답에 근거를 붙일 수 있도록</p>
+</div>
+</div>
+<p style="font-size:32px; color:#C3CBD6">현재 <span style="color:#E3A574">[&#160;&#160;&#160;]%</span> → 목표 100%</p>
+<p style="position:absolute; left:128px; bottom:64px; width:900px; font-size:24px; color:#8C97A6">AI 활용 · 추론을 위한 R&amp;D 온톨로지 백본 DB</p>
+<p style="position:absolute; right:128px; bottom:64px; width:200px; font-size:24px; color:#8C97A6; text-align:right">06</p>
+<aside>목표는 적재율 100%입니다. 여기서 적재율은 단순히 파일이 들어왔느냐가 아니라, 데이터가 빠짐없이, 서로 연결된 채로, 출처와 함께 쌓였느냐입니다. 세 조건은 각각 AI에게 필요한 것과 짝이 됩니다. 현재 수치는 채워 주십시오.</aside>
+</section>
+<section id="values" data-transition="fade" style="background:#F5F4EF; color:#1A2230; font-family:'IBM Plex Sans KR', Arial, sans-serif; padding:128px 128px 160px; display:flex; flex-direction:column; gap:40px">
+<div style="display:flex; flex-direction:column; gap:12px">
+<p style="font-size:26px; font-weight:600; color:#9C4F1F">모은다 — 핵심 가치</p>
+<h2 style="font-size:64px; font-weight:600; line-height:1.15; color:#1A2230">적재율 100%를 위해 핵심 가치 다섯을 세웠습니다</h2>
+</div>
+<table style="font-size:26px; color:#1A2230; font-family:'IBM Plex Sans KR', Arial, sans-serif">
+<tr style="background:#E8EBEE"><th style="width:22%; padding:14px; text-align:left">가치</th><th style="width:46%; text-align:left">만든 것</th><th style="width:32%; text-align:left">AI에게 주는 것</th></tr>
+<tr><td><b>1 최소 공수 교정</b></td><td>엑셀처럼 고치는 그리드 · 웨이퍼 맵 에디터 · 사람의 손을 재는 공수 점수</td><td>사람이 확인한 정답이 빠르게 쌓인다</td></tr>
+<tr><td><b>2 온톨로지</b></td><td>개체 · 관계 선언 · 표에서 원장으로 가는 한 가지 적재 경로 · 온톨로지 탐색기</td><td>추측 없이 읽는 설명서</td></tr>
+<tr><td><b>3 실시간 전파</b></td><td>체인(조인 · 파생 행 · 자동 확정) · 대기열과 실패 기록 · 리플레이</td><td>교정과 판단이 연결된 곳에 바로 반영된다</td></tr>
+<tr><td><b>4 레이어링</b></td><td>칸마다 출처별 값을 겹쳐 보관 · 사람이 고친 값이 우선 · 표마다 출처 순위</td><td>값마다 출처 — 답에 근거를 붙인다</td></tr>
+<tr><td><b>5 이력</b></td><td>감사 로그 · 로그에서 그 행으로 바로 추적 · 바뀐 것만 다시 도는 소급 실행</td><td>언제 무엇이 왜 바뀌었는지 되짚는다</td></tr>
+</table>
+<p style="position:absolute; left:128px; bottom:64px; width:900px; font-size:24px; color:#5E6977">AI 활용 · 추론을 위한 R&amp;D 온톨로지 백본 DB</p>
+<p style="position:absolute; right:128px; bottom:64px; width:200px; font-size:24px; color:#5E6977; text-align:right">07</p>
+<aside>AI가 믿고 쓰려면 데이터가 믿을 만해야 합니다. 그래서 개발 전에 핵심 가치 다섯을 우선순위대로 세우고, 모든 기능을 이 기준으로 판단했습니다. 첫째 최소 공수 교정, 사람이 고치는 손을 가장 적게 합니다. 공수는 키 1점, 클릭 3점, 화면 이동 5점으로 실제로 잽니다. 둘째 온톨로지, 셋째 실시간 전파, 넷째 레이어링, 칸마다 출처별 값을 겹쳐 두고 사람이 고친 값이 이깁니다. 다섯째 이력입니다. 오른쪽 칸은 각 가치가 AI에게 무엇을 주는지입니다.</aside>
+</section>
+<section id="loading" data-transition="fade" style="background:#E8EBEE; color:#1A2230; font-family:'IBM Plex Sans KR', Arial, sans-serif; padding:128px 128px 160px; display:flex; flex-direction:column; gap:48px">
+<div style="display:flex; flex-direction:column; gap:12px">
+<p style="font-size:26px; font-weight:600; color:#9C4F1F">모은다 — 새는 곳 막기</p>
+<h2 style="font-size:64px; font-weight:600; line-height:1.15; color:#1A2230">데이터가 지나는 길마다 새는 곳을 막았습니다</h2>
+</div>
+<div style="display:flex; gap:24px">
+<div style="flex:1; display:flex; flex-direction:column; gap:16px; background:#F7F7F4; padding:36px; border:1px solid #CDD3D9; border-radius:12px">
+<p style="font-size:26px; font-weight:700; color:#9C4F1F">1</p>
+<h3 style="font-size:34px; font-weight:700; line-height:1.2">들어올 때</h3>
+<ul style="font-size:26px; line-height:1.45; color:#3F4A58">
+<li>파일 감시와 파서</li>
+<li>같은 값 다른 철자를 하나로</li>
+<li>빈 값은 «없음» 하나로</li>
+</ul>
+</div>
+<div style="flex:1; display:flex; flex-direction:column; gap:16px; background:#F7F7F4; padding:36px; border:1px solid #CDD3D9; border-radius:12px">
+<p style="font-size:26px; font-weight:700; color:#9C4F1F">2</p>
+<h3 style="font-size:34px; font-weight:700; line-height:1.2">실패할 때</h3>
+<ul style="font-size:26px; line-height:1.45; color:#3F4A58">
+<li>실패 파일 목록과 폴더째 재시도</li>
+<li>선언에 없어 버린 칸을 보고</li>
+<li>실패 묶음을 통째로 기록</li>
+</ul>
+</div>
+<div style="flex:1; display:flex; flex-direction:column; gap:16px; background:#F7F7F4; padding:36px; border:1px solid #CDD3D9; border-radius:12px">
+<p style="font-size:26px; font-weight:700; color:#9C4F1F">3</p>
+<h3 style="font-size:34px; font-weight:700; line-height:1.2">연결할 때</h3>
+<ul style="font-size:26px; line-height:1.45; color:#3F4A58">
+<li>체인이 다음 표를 채움</li>
+<li>키가 모두 빈 행은 잇지 않음</li>
+<li>대기열과 리플레이</li>
+</ul>
+</div>
+<div style="flex:1; display:flex; flex-direction:column; gap:16px; background:#F7F7F4; padding:36px; border:1px solid #CDD3D9; border-radius:12px">
+<p style="font-size:26px; font-weight:700; color:#9C4F1F">4</p>
+<h3 style="font-size:34px; font-weight:700; line-height:1.2">고칠 때</h3>
+<ul style="font-size:26px; line-height:1.45; color:#3F4A58">
+<li>엑셀형 그리드와 맵 에디터</li>
+<li>칸마다 출처와 사람 우선</li>
+<li>감사 로그와 소급 실행</li>
+</ul>
+</div>
+</div>
+<p style="font-size:30px; color:#3F4A58">새는 곳을 «막는» 것만큼 «보이게» 하는 것이 목표입니다 — 조용히 빠지는 데이터가 AI에게 가장 위험합니다.</p>
+<p style="position:absolute; left:128px; bottom:64px; width:900px; font-size:24px; color:#5E6977">AI 활용 · 추론을 위한 R&amp;D 온톨로지 백본 DB</p>
+<p style="position:absolute; right:128px; bottom:64px; width:200px; font-size:24px; color:#5E6977; text-align:right">08</p>
+<aside>핵심 가치를 적재율로 옮기면, 데이터가 지나는 네 지점마다 새는 곳을 막는 일이 됩니다. 들어올 때는 파서가 형식을 맞추고, 같은 값의 다른 철자를 하나로 접고, 빈 값은 없음 하나로 다룹니다. 실패할 때는 실패한 파일이 목록에 남아 폴더째 다시 돌릴 수 있고, 선언에 없어 버린 칸은 보고됩니다. 연결할 때는 체인이 다음 표를 채우고, 키가 모두 빈 행끼리 잘못 이어지지 않게 막습니다. 고칠 때는 엑셀처럼 고치고, 출처와 이력이 남습니다. 막는 것만큼 중요한 것이 보이게 하는 것입니다. 에러 없이 조용히 빠지는 데이터가 AI에게 가장 위험하기 때문입니다.</aside>
+</section>
+<section id="local" data-transition="fade" style="background:#F5F4EF; color:#1A2230; font-family:'IBM Plex Sans KR', Arial, sans-serif; padding:128px 128px 160px; display:flex; flex-direction:column; gap:32px">
+<div style="display:flex; flex-direction:column; gap:12px">
+<p style="font-size:26px; font-weight:600; color:#9C4F1F">모은다 — 분산</p>
+<h2 style="font-size:64px; font-weight:600; line-height:1.15; color:#1A2230">각자 국소적으로 채워도, 그래프가 전체를 잇습니다</h2>
+</div>
+<div style="display:flex; gap:64px">
+<div style="width:900px; display:flex; flex-direction:column; gap:12px">
+<div style="position:relative; width:900px; height:520px">
+<div style="position:absolute; left:0px; top:0px; width:300px; height:200px; background:#EEF2F7; border:2px dashed #8DA6C4; border-radius:14px; padding:14px 20px"><p style="font-size:24px; font-weight:700; color:#2A5F99">공정팀</p></div>
+<div style="position:absolute; left:600px; top:0px; width:300px; height:200px; background:#EEF2F7; border:2px dashed #8DA6C4; border-radius:14px; padding:14px 20px"><p style="font-size:24px; font-weight:700; color:#2A5F99">계측팀</p></div>
+<div style="position:absolute; left:0px; top:320px; width:300px; height:200px; background:#EEF2F7; border:2px dashed #8DA6C4; border-radius:14px; padding:14px 20px"><p style="font-size:24px; font-weight:700; color:#2A5F99">설비팀</p></div>
+<div style="position:absolute; left:600px; top:320px; width:300px; height:200px; background:#EEF2F7; border:2px dashed #8DA6C4; border-radius:14px; padding:14px 20px"><p style="font-size:24px; font-weight:700; color:#2A5F99">분석팀 · AI</p></div>
+<div style="position:absolute; left:40px; top:80px; width:220px; height:64px; background:#FCFBF8; border:2px solid #2A5F99; border-radius:10px; display:flex; align-items:center; justify-content:center"><p style="font-size:26px; font-weight:600">공정 이력</p></div>
+<div style="position:absolute; left:640px; top:80px; width:220px; height:64px; background:#FCFBF8; border:2px solid #2A5F99; border-radius:10px; display:flex; align-items:center; justify-content:center"><p style="font-size:26px; font-weight:600">계측값</p></div>
+<div style="position:absolute; left:40px; top:400px; width:220px; height:64px; background:#FCFBF8; border:2px solid #2A5F99; border-radius:10px; display:flex; align-items:center; justify-content:center"><p style="font-size:26px; font-weight:600">설비 · PM</p></div>
+<div style="position:absolute; left:640px; top:400px; width:220px; height:64px; background:#FCFBF8; border:2px solid #2A5F99; border-radius:10px; display:flex; align-items:center; justify-content:center"><p style="font-size:26px; font-weight:600">결함 · 모델</p></div>
+<div style="position:absolute; left:360px; top:40px; width:180px; height:72px; background:#1A2230; border-radius:10px; display:flex; align-items:center; justify-content:center"><p style="font-size:28px; font-weight:700; color:#F2F1EC">랏</p></div>
+<div style="position:absolute; left:360px; top:200px; width:180px; height:72px; background:#1A2230; border-radius:10px; display:flex; align-items:center; justify-content:center"><p style="font-size:28px; font-weight:700; color:#F2F1EC">웨이퍼</p></div>
+<div style="position:absolute; left:360px; top:380px; width:180px; height:72px; background:#1A2230; border-radius:10px; display:flex; align-items:center; justify-content:center"><p style="font-size:28px; font-weight:700; color:#F2F1EC">다이</p></div>
+<x-connector x1="450" y1="116" x2="450" y2="196" head="none" style="color:#1A2230; border-width:4px"></x-connector>
+<x-connector x1="450" y1="276" x2="450" y2="376" head="none" style="color:#1A2230; border-width:4px"></x-connector>
+<x-connector x1="264" y1="112" x2="356" y2="228" head="none" style="color:#9C4F1F; border-width:4px"></x-connector>
+<x-connector x1="636" y1="112" x2="544" y2="228" head="none" style="color:#9C4F1F; border-width:4px"></x-connector>
+<x-connector x1="264" y1="432" x2="356" y2="248" head="none" style="color:#9C4F1F; border-width:4px"></x-connector>
+<x-connector x1="636" y1="432" x2="544" y2="416" head="none" style="color:#9C4F1F; border-width:4px"></x-connector>
+</div>
+<p style="font-size:24px; color:#5E6977">가운데 = 모두가 공유하는 개체 (신원 하나) · 점선 = 각 주체가 채우는 자기 부분 (예시)</p>
+</div>
+<div style="flex:1; display:flex; flex-direction:column; gap:18px">
+<div style="display:flex; flex-direction:column; gap:4px">
+<p style="font-size:28px; font-weight:700; color:#1A2230">누구도 전체를 볼 필요가 없다</p>
+<p style="font-size:26px; line-height:1.4; color:#3F4A58">각 팀과 에이전트는 자기 데이터 · 자기 선언 · 자기 모델만 채운다</p>
+</div>
+<div style="display:flex; flex-direction:column; gap:4px">
+<p style="font-size:28px; font-weight:700; color:#1A2230">그래프가 전체를 잇는다</p>
+<p style="font-size:26px; line-height:1.4; color:#3F4A58">공통 개체의 신원이 하나라, 각자 채운 조각이 저절로 이어진다</p>
+</div>
+<div style="display:flex; flex-direction:column; gap:4px">
+<p style="font-size:28px; font-weight:700; color:#1A2230">걷기는 경계를 넘는다</p>
+<p style="font-size:26px; line-height:1.4; color:#3F4A58">공정팀이 채운 값이 분석팀 질문의 답이 된다</p>
+</div>
+<hr style="border-top:1px solid #CDD3D9">
+<p style="font-size:24px; line-height:1.45; color:#5E6977">조건 하나 — 공통 개체의 신원과 낱말은 한 곳에서 선언한다. 같은 웨이퍼를 다른 이름으로 부르면 이어지지 않는다.</p>
+<p style="font-size:24px; line-height:1.45; color:#5E6977">전체 스키마를 먼저 설계하는 방식과 달리, 한 팀이 병목이 되지 않는다.</p>
+</div>
+</div>
+<p style="position:absolute; left:128px; bottom:64px; width:900px; font-size:24px; color:#5E6977">AI 활용 · 추론을 위한 R&amp;D 온톨로지 백본 DB</p>
+<p style="position:absolute; right:128px; bottom:64px; width:200px; font-size:24px; color:#5E6977; text-align:right">09</p>
+<aside>온톨로지를 해야 하는 이유가 하나 더 있습니다. 분산입니다. 공정팀, 계측팀, 설비팀, 분석팀, 그리고 AI 에이전트까지, 누구도 전체를 보지 않고 자기 부분만 연구하고, 자기 데이터를 채우고, 자기 지식을 업데이트해도 됩니다. 랏, 웨이퍼, 다이 같은 공통 개체의 신원이 하나이기 때문에, 각자 채운 조각이 그래프를 따라 저절로 전체로 이어집니다. 그래서 걷기는 팀의 경계를 넘습니다. 공정팀이 채운 값이 분석팀 질문의 답이 되고, 설비팀의 PM 이력이 결함 분석으로 이어집니다. 전체 스키마를 먼저 한 팀이 설계해야 하는 방식과 달리, 한 팀이 병목이 되지 않습니다. 조건은 하나입니다. 공통 개체의 신원과 낱말은 한 곳에서 선언해야 합니다. 같은 웨이퍼를 다른 이름으로 부르면 이어지지 않습니다. 이 구조는 앞서 말씀드린 조직과도 닮았습니다. 각 주체가 자기 몫을 책임지고, 전체는 네트워크로 이어집니다.</aside>
+</section>
+<section id="walk" data-transition="fade" style="background:#E8EBEE; color:#1A2230; font-family:'IBM Plex Sans KR', Arial, sans-serif; padding:128px 128px 160px; display:flex; flex-direction:column; gap:40px">
+<div style="display:flex; flex-direction:column; gap:12px">
+<p style="font-size:26px; font-weight:600; color:#9C4F1F">의미를 만든다 — 걷기 (모델 추적)</p>
+<h2 style="font-size:64px; font-weight:600; line-height:1.15; color:#1A2230">걷기는 모델을 따라 원인을 짚어 냅니다</h2>
+</div>
+<div style="display:flex; gap:64px">
+<div style="width:960px; display:flex; flex-direction:column; gap:12px">
+<div style="display:flex">
+<p style="width:400px; font-size:24px; font-weight:600; color:#5E6977">원인 인자 — 이 웨이퍼가 잰 값</p>
+<p style="width:360px; font-size:24px; font-weight:600; color:#5E6977">메커니즘 (보이드 모델)</p>
+<p style="width:200px; font-size:24px; font-weight:600; color:#5E6977">결함</p>
+</div>
+<div style="position:relative; width:960px; height:480px">
+<div style="position:absolute; left:0px; top:0px; width:300px; height:84px; background:#DCE7F3; border:2px solid #2A5F99; border-radius:10px; padding:8px 16px; display:flex; flex-direction:column; justify-content:center"><p style="font-size:26px; font-weight:700">본딩 압력</p><p style="font-size:24px; color:#2A5F99">○○ MPa · 장비</p></div>
+<div style="position:absolute; left:0px; top:130px; width:300px; height:84px; background:#DCE7F3; border:2px solid #2A5F99; border-radius:10px; padding:8px 16px; display:flex; flex-direction:column; justify-content:center"><p style="font-size:26px; font-weight:700">본딩 온도</p><p style="font-size:24px; color:#2A5F99">○○ °C · 장비</p></div>
+<div style="position:absolute; left:0px; top:260px; width:300px; height:84px; background:#DCE7F3; border:2px solid #2A5F99; border-radius:10px; padding:8px 16px; display:flex; flex-direction:column; justify-content:center"><p style="font-size:26px; font-weight:700">본딩 전 대기 시간</p><p style="font-size:24px; color:#2A5F99">○○ 시간</p></div>
+<div style="position:absolute; left:0px; top:390px; width:300px; height:84px; background:#F6E6DA; border:2px dashed #9C4F1F; border-radius:10px; padding:8px 16px; display:flex; flex-direction:column; justify-content:center"><p style="font-size:26px; font-weight:700">습도</p><p style="font-size:24px; color:#9C4F1F">잰 값 없음 = 부족</p></div>
+<div style="position:absolute; left:400px; top:0px; width:220px; height:84px; background:#FCFBF8; border:2px solid #5E6977; border-radius:10px; display:flex; align-items:center; justify-content:center"><p style="font-size:26px; font-weight:600">계면 미충진</p></div>
+<div style="position:absolute; left:400px; top:130px; width:220px; height:84px; background:#FCFBF8; border:2px solid #5E6977; border-radius:10px; display:flex; align-items:center; justify-content:center"><p style="font-size:26px; font-weight:600">젖음 부족</p></div>
+<div style="position:absolute; left:400px; top:260px; width:220px; height:84px; background:#FCFBF8; border:2px solid #5E6977; border-radius:10px; display:flex; align-items:center; justify-content:center"><p style="font-size:26px; font-weight:600">표면 산화</p></div>
+<div style="position:absolute; left:400px; top:390px; width:220px; height:84px; background:#FCFBF8; border:2px solid #5E6977; border-radius:10px; display:flex; align-items:center; justify-content:center"><p style="font-size:26px; font-weight:600">수분 · 가스 방출</p></div>
+<div style="position:absolute; left:760px; top:180px; width:200px; height:84px; background:#F6E6DA; border:4px solid #9C4F1F; border-radius:10px; display:flex; flex-direction:column; align-items:center; justify-content:center"><p style="font-size:30px; font-weight:700">보이드</p><p style="font-size:24px; font-weight:700; color:#9C4F1F">시작</p></div>
+<x-connector x1="304" y1="42" x2="396" y2="42" head="end" style="color:#5E6977; border-width:3px"></x-connector>
+<x-connector x1="304" y1="172" x2="396" y2="172" head="end" style="color:#5E6977; border-width:3px"></x-connector>
+<x-connector x1="304" y1="302" x2="396" y2="302" head="end" style="color:#5E6977; border-width:3px"></x-connector>
+<x-connector x1="304" y1="432" x2="396" y2="432" head="end" style="color:#5E6977; border-width:3px"></x-connector>
+<x-connector x1="624" y1="42" x2="756" y2="196" head="end" style="color:#5E6977; border-width:3px"></x-connector>
+<x-connector x1="624" y1="172" x2="756" y2="214" head="end" style="color:#5E6977; border-width:3px"></x-connector>
+<x-connector x1="510" y1="258" x2="510" y2="218" head="end" style="color:#5E6977; border-width:3px"></x-connector>
+<x-connector x1="624" y1="432" x2="756" y2="250" head="end" style="color:#5E6977; border-width:3px"></x-connector>
+</div>
+<p style="font-size:24px; color:#5E6977">화살표 = 선언된 보이드 모델의 원인 방향 · 파란 칸 = 걷기가 가져온 이 웨이퍼의 값 (예시)</p>
+</div>
+<div style="flex:1; display:flex; flex-direction:column; gap:22px">
+<div style="display:flex; flex-direction:column; gap:4px">
+<p style="font-size:28px; font-weight:700; color:#9C4F1F">1 · 시작</p>
+<p style="font-size:26px; line-height:1.4; color:#3F4A58">보이드가 난 웨이퍼 하나</p>
+</div>
+<div style="display:flex; flex-direction:column; gap:4px">
+<p style="font-size:28px; font-weight:700; color:#1A2230">2 · 모델을 거슬러 오른다</p>
+<p style="font-size:26px; line-height:1.4; color:#3F4A58">선언된 보이드 모델의 원인 방향으로</p>
+</div>
+<div style="display:flex; flex-direction:column; gap:4px">
+<p style="font-size:28px; font-weight:700; color:#2A5F99">3 · 이 웨이퍼의 값만 가져온다</p>
+<p style="font-size:26px; line-height:1.4; color:#3F4A58">모델이 말하는 인자만, 장비와 함께</p>
+</div>
+<div style="display:flex; flex-direction:column; gap:4px">
+<p style="font-size:28px; font-weight:700; color:#9C4F1F">4 · 없는 것도 보인다</p>
+<p style="font-size:26px; line-height:1.4; color:#3F4A58">잰 값이 없는 인자 → 채울 부족 (액션)</p>
+</div>
+<hr style="border-top:1px solid #AEB6C0">
+<p style="font-size:28px; font-weight:700; line-height:1.45; color:#1A2230">조인은 표를 통째로 붙이고, 걷기는 모델이 말하는 인자만 핀포인트로 가져옵니다.</p>
+<p style="font-size:24px; line-height:1.45; color:#5E6977">공정 · 계측 · 분석이 각자 채운 조각이 한 걷기에서 만납니다. 사실과 모델의 추론은 섞지 않습니다.</p>
+</div>
+</div>
+<p style="position:absolute; left:128px; bottom:64px; width:900px; font-size:24px; color:#5E6977">AI 활용 · 추론을 위한 R&amp;D 온톨로지 백본 DB</p>
+<p style="position:absolute; right:128px; bottom:64px; width:200px; font-size:24px; color:#5E6977; text-align:right">10</p>
+<aside>걷기는 단순한 조인이 아닙니다. 모델을 따라가는 추적입니다. 보이드를 예로 들겠습니다. 보이드가 난 웨이퍼 하나에서 시작합니다. 보이드가 왜 생기는지는 보이드 모델로 선언되어 있습니다. 본딩 압력이 낮으면 계면이 덜 채워지고, 본딩 온도가 낮으면 젖음이 부족해지고, 본딩 전 대기가 길면 표면이 산화되어 젖음이 부족해지고, 습도가 높으면 수분이 들어가 가스가 나오고, 그것들이 보이드로 이어진다는 원인의 방향입니다. 걷기는 보이드에서 이 모델을 거슬러 올라가, 모델이 말하는 원인 인자만 골라서 이 웨이퍼가 실제로 잰 값을 장비와 함께 가져옵니다. 수백 개 칸을 통째로 붙이는 조인과 달리, 봐야 할 인자만 핀포인트로 나옵니다. 그리고 모델에는 있는데 이 웨이퍼에 잰 값이 없는 인자, 예를 들어 습도는 잰 값 없음으로 따로 보입니다. 그것이 바로 채워야 할 부족이고, 뒤에서 말씀드릴 액션으로 이어집니다. 또 하나, 실제로 관측된 사실과 모델이 말하는 추론을 섞지 않고, 어느 길로 왔는지가 보입니다. 그림의 수치는 예시입니다.</aside>
+</section>
+<section id="rag" data-transition="fade" style="background:#F5F4EF; color:#1A2230; font-family:'IBM Plex Sans KR', Arial, sans-serif; padding:128px 128px 160px; display:flex; flex-direction:column; gap:36px">
+<div style="display:flex; flex-direction:column; gap:12px">
+<p style="font-size:26px; font-weight:600; color:#9C4F1F">의미를 만든다 — 비교</p>
+<h2 style="font-size:64px; font-weight:600; line-height:1.15; color:#1A2230">RAG와 테이블 질의는 잇는 법을 추측합니다</h2>
+</div>
+<table style="font-size:24px; color:#1A2230; font-family:'IBM Plex Sans KR', Arial, sans-serif">
+<tr style="background:#D5D9DE"><th style="width:16%; padding:12px; text-align:left">일의 단계</th><th style="width:26%; text-align:left">일반 RAG</th><th style="width:29%; text-align:left">LLM 테이블 질의</th><th style="width:29%; text-align:left; color:#2A5F99">온톨로지 백본</th></tr>
+<tr><td><b>근거 모으기</b></td><td>비슷한 글을 검색</td><td>LLM이 표 잇는 법을 추측</td><td>모델과 관계를 따라 걷기</td></tr>
+<tr><td><b>칸의 뜻</b></td><td>글에서 짐작</td><td>칸 이름에서 짐작</td><td>설명서(선언)로 읽음</td></tr>
+<tr><td><b>빈칸</b></td><td>AI가 채워 넣을 수 있음</td><td>빈 결과 — 없음인지 안 쌓임인지 모름</td><td>«없음»으로 판정</td></tr>
+<tr><td><b>근거 표시</b></td><td>어느 문서 조각인지</td><td>보이는 값만</td><td>값마다 출처와 이력</td></tr>
+<tr><td><b>같은 질문</b></td><td>검색 결과에 따라 다름</td><td>쿼리마다 잇는 법이 다를 수 있음</td><td>한 번 적은 길 — 늘 같은 답</td></tr>
+<tr><td><b>조치 · 다음 일</b></td><td>답으로 끝</td><td>답으로 끝</td><td>작용하고 측정으로 돌아옴</td></tr>
+</table>
+<div style="display:flex; flex-direction:column; gap:12px">
+<p style="font-size:30px; font-weight:600; color:#1A2230">LLM도 표를 질의합니다. 다만 «어떻게 이을지»를 매번 추측합니다.</p>
+<p style="font-size:26px; line-height:1.45; color:#3F4A58">온톨로지는 그것을 한 번 적어 둡니다. 백본 위에서 LLM은 SQL 대신 걷기를 부릅니다 (계획). 그래프 RAG의 그래프는 AI가 글에서 뽑은 추정이고, 이 백본은 현장이 선언한 것입니다.</p>
+</div>
+<p style="position:absolute; left:128px; bottom:64px; width:900px; font-size:24px; color:#5E6977">AI 활용 · 추론을 위한 R&amp;D 온톨로지 백본 DB</p>
+<p style="position:absolute; right:128px; bottom:64px; width:200px; font-size:24px; color:#5E6977; text-align:right">11</p>
+<aside>AI에 데이터를 붙이는 흔한 방법 두 가지와 비교했습니다. RAG는 문서를 조각내 두고 질문과 비슷해 보이는 조각을 찾아 AI에게 넘깁니다. 보고서나 매뉴얼 같은 글에는 잘 맞습니다. LLM 테이블 질의는 LLM이 SQL을 직접 써서 표를 조회하는 방식이고, 숫자를 정확히 다룬다는 장점이 있습니다. 그런데 LLM은 어느 표의 어느 칸이 어느 칸과 이어지는지를 칸 이름을 보고 매번 추측합니다. R&amp;D 데이터처럼 키가 지저분하면 잘못 이어도 에러 없이 틀린 답이 나오고, 같은 질문에도 쿼리마다 답이 달라질 수 있습니다. 빈 결과가 나오면 정말 없는 건지, 아직 안 쌓인 건지도 모릅니다. 온톨로지는 무엇을 어떻게 이을지를 한 번 적어 둡니다. 그래서 늘 같은 길로 같은 답이 나오고, 없는 것은 없음으로 판정되며, 값마다 출처가 붙고, 답에서 끝나지 않고 액션이 다음 일을 이어받습니다. 앞으로 AI 질의 단계에서는 LLM이 SQL을 쓰는 대신 이 걷기를 부르게 할 계획입니다. 그래프 RAG의 그래프는 AI가 글에서 뽑아낸 추정이라는 점도 다릅니다.</aside>
+</section>
+<section id="action" data-transition="fade" style="background:#E8EBEE; color:#1A2230; font-family:'IBM Plex Sans KR', Arial, sans-serif; padding:128px 128px 160px; display:flex; flex-direction:column; gap:32px">
+<div style="display:flex; flex-direction:column; gap:12px">
+<p style="font-size:26px; font-weight:600; color:#9C4F1F">시킨다 — 액션 (핵심)</p>
+<h2 style="font-size:64px; font-weight:600; line-height:1.15; color:#1A2230">액션 — 시스템이 일감을 만들어 냅니다</h2>
+</div>
+<div style="display:flex; gap:56px">
+<div style="position:relative; width:640px; height:556px">
+<div style="position:absolute; left:0px; top:230px; width:240px; height:96px; background:#1A2230; border-radius:12px; display:flex; flex-direction:column; align-items:center; justify-content:center"><p style="font-size:26px; font-weight:700; color:#F2F1EC">온톨로지</p><p style="font-size:24px; color:#C3CBD6">지금 상태</p></div>
+<div style="position:absolute; left:200px; top:0px; width:240px; height:96px; background:#FCFBF8; border:2px solid #5E6977; border-radius:12px; display:flex; flex-direction:column; align-items:center; justify-content:center"><p style="font-size:26px; font-weight:700">목표 상태</p><p style="font-size:24px; color:#5E6977">와의 차이</p></div>
+<div style="position:absolute; left:400px; top:230px; width:240px; height:96px; background:#F6E6DA; border:3px solid #9C4F1F; border-radius:12px; display:flex; flex-direction:column; align-items:center; justify-content:center"><p style="font-size:26px; font-weight:700; color:#9C4F1F">액션</p><p style="font-size:24px; color:#1A2230">환경에 작용</p></div>
+<div style="position:absolute; left:200px; top:460px; width:240px; height:96px; background:#DCE7F3; border:3px solid #2A5F99; border-radius:12px; display:flex; flex-direction:column; align-items:center; justify-content:center"><p style="font-size:26px; font-weight:700; color:#2A5F99">측정</p><p style="font-size:24px; color:#1A2230">결과가 돌아온다</p></div>
+<x-connector x1="120" y1="226" x2="196" y2="48" route="vh" head="end" style="color:#5E6977; border-width:4px"></x-connector>
+<x-connector x1="444" y1="48" x2="520" y2="226" route="hv" head="end" style="color:#5E6977; border-width:4px"></x-connector>
+<x-connector x1="520" y1="330" x2="444" y2="508" route="vh" head="end" style="color:#5E6977; border-width:4px"></x-connector>
+<x-connector x1="196" y1="508" x2="120" y2="330" route="hv" head="end" style="color:#5E6977; border-width:4px"></x-connector>
+<p style="position:absolute; left:240px; top:258px; width:160px; font-size:26px; font-weight:700; color:#5E6977; text-align:center">계속 갱신</p>
+</div>
+<div style="flex:1; display:flex; flex-direction:column; gap:20px">
+<h3 style="font-size:30px; font-weight:700; color:#1A2230">작용과 돌아오는 측정</h3>
+<table style="font-size:26px; color:#1A2230; font-family:'IBM Plex Sans KR', Arial, sans-serif">
+<tr style="background:#D5D9DE"><th style="width:50%; padding:12px; text-align:left; color:#9C4F1F">환경에 거는 작용</th><th style="width:50%; text-align:left; color:#2A5F99">온톨로지로 돌아오는 측정</th></tr>
+<tr><td>랏 홀드</td><td>홀드 상태</td></tr>
+<tr><td>신규 계측 (예: 표면 산화)</td><td>새 계측값</td></tr>
+<tr><td>조건 변경 (예: 대기 시간 단축)</td><td>바뀐 조건과 그 뒤의 결과</td></tr>
+<tr><td>설비 PM 요청</td><td>PM 이력 · 설비 상태</td></tr>
+<tr><td>사람 · 다른 AI 에이전트에게 요청</td><td>그들이 낸 결과</td></tr>
+</table>
+<p style="font-size:28px; line-height:1.45; color:#1A2230">액션은 데이터가 일에 꽂히는 핵심입니다. 시스템이 일감을 만들어 현장을 움직이고, 그 결과는 측정으로 돌아와 온톨로지가 갱신됩니다.</p>
+<p style="font-size:24px; line-height:1.45; color:#5E6977">일감은 사람 · 설비 · 에이전트에게 흩어져 가고, 결과는 한 그래프로 모입니다. 돌아오는 길은 지금 있고, 작용을 거는 길은 계획입니다.</p>
+</div>
+</div>
+<p style="position:absolute; left:128px; bottom:64px; width:900px; font-size:24px; color:#5E6977">AI 활용 · 추론을 위한 R&amp;D 온톨로지 백본 DB</p>
+<p style="position:absolute; right:128px; bottom:64px; width:200px; font-size:24px; color:#5E6977; text-align:right">12</p>
+<aside>액션은 데이터가 일에 꽂히는 핵심입니다. 시스템이 일감을 만들어 내는 자리이기 때문입니다. 액션은 목표 상태를 달성하기 위해 능동적으로 환경에 작용을 걸어 바꾸는 행위입니다. 온톨로지가 지금 상태를 들고 있고, 목표 상태와의 차이를 봅니다. 그 차이를 줄이려고 현장에 작용을 겁니다. 랏을 홀드하거나, 새로 계측하거나, 조건을 바꾸거나, 설비 PM을 요청하거나, 사람이나 다른 AI 에이전트에게 요청합니다. 그 작용의 결과는 측정으로 다시 온톨로지에 들어옵니다. 홀드하면 홀드 상태가, 계측하면 새 계측값이, 조건을 바꾸면 바뀐 조건과 그 뒤의 결과가, PM을 요청하면 PM 이력과 설비 상태가, 사람이나 다른 에이전트에게 요청하면 그들이 낸 결과가 들어옵니다. 그러면 온톨로지가 갱신되고, 다시 목표와의 차이를 보고, 다음 작용을 겁니다. 이 루프가 멈추지 않고 돕니다. 측정이 적재되어 온톨로지로 돌아오는 길은 지금 있고, 작용을 거는 길은 계획입니다. 표의 빈칸을 다른 표에서 옮겨 채우는 체인은 액션이 아니라 이 루프를 받치는 부품입니다. 다음 장에서 이 루프가 한 바퀴 도는 모습을 보이드 하나로 보여 드리겠습니다.</aside>
+</section>
+<section id="issue" data-transition="fade" style="background:#F5F4EF; color:#1A2230; font-family:'IBM Plex Sans KR', Arial, sans-serif; padding:128px 128px 160px; display:flex; flex-direction:column; gap:28px">
+<div style="display:flex; flex-direction:column; gap:12px">
+<p style="font-size:26px; font-weight:600; color:#9C4F1F">시킨다 — 예시와 발급</p>
+<h2 style="font-size:64px; font-weight:600; line-height:1.15; color:#1A2230">불량 하나에서 «재 보자»가 나오기까지</h2>
+</div>
+<table style="font-size:26px; color:#1A2230; font-family:'IBM Plex Sans KR', Arial, sans-serif">
+<tr style="background:#D5D9DE"><th style="width:36%; padding:12px; text-align:left">발급 규칙</th><th style="width:64%; text-align:left">예시 — 보이드</th></tr>
+<tr><td><b>1</b> 불량이 났다</td><td>보이드가 난 웨이퍼들</td></tr>
+<tr><td><b>2</b> 모델에서 결정적 인자를 본다</td><td>보이드 모델 — 본딩 압력 · 본딩 온도 · 젖음 부족 · 표면 산화 …</td></tr>
+<tr><td><b>3</b> 안 잰 인자를 찾는다</td><td>표면 산화 — 잰 값이 없다</td></tr>
+<tr><td><b>4</b> 그 인자를 결정하는 모델을 따라간다</td><td>본딩 전 대기 시간 → 표면 산화 → 젖음 부족 → 보이드</td></tr>
+<tr><td><b>5</b> 그 공정에서 유의차를 본다</td><td>불량 쪽의 본딩 전 대기 시간이 양품 쪽보다 길다 (예시)</td></tr>
+<tr><td><b>6</b> 환경에 작용을 건다</td><td>본딩 전 대기 뒤 표면 산화를 신규 계측한다 — 근거를 붙여서</td></tr>
+<tr><td><b>7</b> 측정이 온톨로지로 돌아온다</td><td>새 계측값이 모델의 빈칸을 채우고, 루프가 다시 돈다</td></tr>
+</table>
+<div style="display:flex; border:1px solid #CDD3D9; border-radius:12px; background:#F7F7F4">
+<div style="flex:1.3; display:flex; flex-direction:column; gap:4px; padding:16px 24px"><p style="font-size:24px; font-weight:700; color:#9C4F1F">찾는 경로</p><p style="font-size:24px; line-height:1.4; color:#1A2230">걷기(원인에 적힌 처방) · 대조(불량/양품 유의차)</p></div>
+<div style="flex:1; display:flex; flex-direction:column; gap:4px; padding:16px 24px; border-left:1px solid #CDD3D9"><p style="font-size:24px; font-weight:700; color:#9C4F1F">모호하면</p><p style="font-size:24px; line-height:1.4; color:#1A2230">DOE로 가린다</p></div>
+<div style="flex:1.3; display:flex; flex-direction:column; gap:4px; padding:16px 24px; border-left:1px solid #CDD3D9"><p style="font-size:24px; font-weight:700; color:#9C4F1F">발급 (계획)</p><p style="font-size:24px; line-height:1.4; color:#1A2230">사람이 보드에서 분석하다 눌러서 — 근거와 함께</p></div>
+</div>
+<p style="position:absolute; left:128px; bottom:64px; width:900px; font-size:24px; color:#5E6977">AI 활용 · 추론을 위한 R&amp;D 온톨로지 백본 DB</p>
+<p style="position:absolute; right:128px; bottom:64px; width:200px; font-size:24px; color:#5E6977; text-align:right">13</p>
+<aside>액션이 어떻게 나오는지 보이드 하나로 보여 드리겠습니다. 보이드가 난 웨이퍼들이 있습니다. 보이드 모델을 보면 결정적인 인자로 본딩 압력, 본딩 온도, 젖음 부족, 표면 산화 같은 것들이 있습니다. 그중 표면 산화는 잰 값이 없습니다. 그러면 표면 산화를 결정하는 모델을 따라 올라갑니다. 모델은 본딩 전 대기 시간이 길면 표면이 산화되고, 그것이 젖음 부족을 거쳐 보이드로 이어진다고 말합니다. 그 공정에서 불량 쪽과 양품 쪽을 비교해 보니, 예를 들어 불량 쪽의 대기 시간이 유의하게 깁니다. 그래서 나오는 것이 액션입니다. 본딩 전 대기 뒤에 표면 산화를 재 보자. 그리고 이 액션에는 어떤 모델을 따라 어느 길을 걸었고 어떤 차이를 봤는지가 근거로 붙습니다. 새 계측값이 측정으로 온톨로지에 들어오면 모델의 빈칸이 채워지고, 다시 목표와의 차이를 보는 루프가 돕니다. 표의 빈칸을 옮겨 채우는 것은 시스템의 부품일 뿐이고, 액션은 이렇게 근거로 다음에 할 일을 내는 것입니다. 지금 있는 것은 모델 걷기와 불량 양품 마킹, 원인 후보 목록이고, 유의차 판정과 액션 발급은 계획입니다. 예시의 수치와 결과는 설명을 위한 것입니다. 액션 후보는 두 경로로 찾습니다. 모델이 닿은 원인에 적힌 처방을 따르는 걷기와, 불량과 양품의 유의차를 보는 대조입니다. 둘이 같은 곳을 가리키면 바로 작용하고, 갈리거나 모호하면 DOE로 가립니다. 발급은 사람이 보드에서 분석하다가 후보를 눌러 근거와 함께 내는 방식으로 계획하고 있습니다. 자세한 기준은 부록에 있습니다.</aside>
+</section>
+<section id="extend" data-transition="fade" style="background:#1A2230; color:#F2F1EC; font-family:'IBM Plex Sans KR', Arial, sans-serif; padding:128px 128px 160px; display:flex; flex-direction:column; gap:28px">
+<div style="display:flex; flex-direction:column; gap:12px">
+<p style="font-size:26px; font-weight:600; color:#E3A574">넓힌다 — 에이전틱 AI</p>
+<h2 style="font-size:64px; font-weight:600; line-height:1.15; color:#F2F1EC">에이전틱 AI를 붙이면, 선언을 스스로 넓힙니다</h2>
+</div>
+<div style="display:flex; gap:12px; align-items:center">
+<div style="flex:1; display:flex; flex-direction:column; gap:8px; background:#243044; padding:28px; border:1px solid #3A475C; border-radius:12px">
+<p style="font-size:26px; font-weight:700; color:#E3A574">1</p>
+<p style="font-size:30px; font-weight:700; line-height:1.3; color:#F2F1EC">읽는다</p>
+<p style="font-size:24px; line-height:1.4; color:#C3CBD6">개체 · 관계 · 모델 · 액션의 선언</p>
+</div>
+<x-connector head="end" style="width:40px; color:#8DB6E6; border-width:3px"></x-connector>
+<div style="flex:1; display:flex; flex-direction:column; gap:8px; background:#243044; padding:28px; border:1px solid #3A475C; border-radius:12px">
+<p style="font-size:26px; font-weight:700; color:#E3A574">2</p>
+<p style="font-size:30px; font-weight:700; line-height:1.3; color:#F2F1EC">찾는다</p>
+<p style="font-size:24px; line-height:1.4; color:#C3CBD6">어디에도 안 꽂힌 데이터 · 반복되는 손 교정 · 잴 칸 없는 인자</p>
+</div>
+<x-connector head="end" style="width:40px; color:#8DB6E6; border-width:3px"></x-connector>
+<div style="flex:1; display:flex; flex-direction:column; gap:8px; background:#243044; padding:28px; border:1px solid #3A475C; border-radius:12px">
+<p style="font-size:26px; font-weight:700; color:#E3A574">3</p>
+<p style="font-size:30px; font-weight:700; line-height:1.3; color:#F2F1EC">넓힌다</p>
+<p style="font-size:24px; line-height:1.4; color:#C3CBD6">새 관계 · 모델 연결 · 액션을 선언으로</p>
+</div>
+<x-connector head="end" style="width:40px; color:#8DB6E6; border-width:3px"></x-connector>
+<div style="flex:1; display:flex; flex-direction:column; gap:8px; background:#243044; padding:28px; border:1px solid #3A475C; border-radius:12px">
+<p style="font-size:26px; font-weight:700; color:#E3A574">4</p>
+<p style="font-size:30px; font-weight:700; line-height:1.3; color:#F2F1EC">따른다</p>
+<p style="font-size:24px; line-height:1.4; color:#C3CBD6">걷기와 액션이 새 선언을 따른다 → 다시 1로</p>
+</div>
+</div>
+<div style="display:flex; gap:24px">
+<div style="flex:1; display:flex; flex-direction:column; gap:12px; background:#243044; padding:24px 28px; border:1px solid #3A475C; border-radius:12px">
+<h3 style="font-size:30px; font-weight:700; color:#E3A574">왜 바로 되나 — 이미 있는 것</h3>
+<ul style="font-size:26px; line-height:1.45; color:#F2F1EC">
+<li>한 문법의 선언 — 개체 · 관계 · 모델 · 액션</li>
+<li>빈틈 신호 — 버려진 칸 보고 · 재교정률 · «없음» 판정</li>
+<li>저장 관문 — 틀린 선언은 거절된다</li>
+<li>이 보고서도 AI가 선언을 읽고 빈틈(습도)을 찾아 만들었다</li>
+</ul>
+</div>
+<div style="flex:1; display:flex; flex-direction:column; gap:12px; background:#243044; padding:24px 28px; border:1px solid #3A475C; border-radius:12px">
+<h3 style="font-size:30px; font-weight:700; color:#8DB6E6">넓히는 예</h3>
+<ul style="font-size:26px; line-height:1.45; color:#F2F1EC">
+<li>같은 칸을 매번 손으로 고친다 → 그 교정을 규칙으로</li>
+<li>모델엔 있는데 재는 칸이 없다 → «이 칸이 습도를 잰다»</li>
+<li>새 로그가 어디에도 안 꽂힌다 → 개체와 관계를</li>
+</ul>
+</div>
+</div>
+<p style="font-size:26px; line-height:1.45; color:#C3CBD6">여러 에이전트가 각자 자기 몫만 넓혀도 그래프가 전체를 잇습니다.</p>
+<p style="position:absolute; left:128px; bottom:64px; width:900px; font-size:24px; color:#8C97A6">AI 활용 · 추론을 위한 R&amp;D 온톨로지 백본 DB</p>
+<p style="position:absolute; right:128px; bottom:64px; width:200px; font-size:24px; color:#8C97A6; text-align:right">14</p>
+<aside>이 설명서가 있으면 AI가 할 수 있는 일이 달라집니다. 이것은 먼 계획이 아닙니다. 에이전틱 AI를 도입하면 바로 되는 일입니다. 에이전틱 AI는 스스로 깨어나서 도구를 쓰는 AI입니다. 이 백본에는 그 AI가 일할 자리가 이미 있습니다. 개체, 관계, 모델, 액션이 전부 한 문법의 선언이라 AI가 읽을 수 있고, 제품이 이미 빈틈 신호를 남깁니다. 선언에 없어 버려진 칸이 보고되고, 사람이 같은 칸을 두 번 고치는 비율이 재지고, 걷기가 없는 것을 없음으로 판정합니다. 그리고 틀린 선언은 저장 관문이 거절합니다. 그래서 AI가 설명서를 읽고, 빈틈을 찾고, 새 관계나 모델 연결이나 액션을 선언으로 넓히면, 걷기와 액션이 그것을 따릅니다. 실제로 이 보고서도 AI가 선언 파일을 읽고, 보이드 모델에 있는데 재는 칸이 없는 습도라는 빈틈을 찾아서 만든 것입니다. 거기서 한 걸음 더 가면 그 빈틈을 메우는 선언을 쓰는 것이고, 그 한 걸음을 스스로 하게 하는 것이 에이전틱 AI 도입입니다. 과거에도 본딩 후 대기 시간은 재는 칸이 생긴 날 코드 한 줄 없이 선언 한 줄로 모델에 연결된 적이 있습니다. 그리고 여러 에이전트가 각자 자기 몫만 넓혀도 그래프가 전체를 이어 주고, 에이전트는 사람과 같은 문으로 들어옵니다.</aside>
+</section>
+<section id="status" data-transition="fade" style="background:#F5F4EF; color:#1A2230; font-family:'IBM Plex Sans KR', Arial, sans-serif; padding:128px 128px 160px; display:flex; flex-direction:column; gap:48px">
+<div style="display:flex; flex-direction:column; gap:12px">
+<p style="font-size:26px; font-weight:600; color:#9C4F1F">현황</p>
+<h2 style="font-size:64px; font-weight:600; line-height:1.15; color:#1A2230">운영 현황</h2>
+</div>
+<div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:24px">
+<div style="display:flex; flex-direction:column; gap:12px; background:#FCFBF8; padding:36px; border:1px solid #CDD3D9; border-radius:12px">
+<p style="font-size:28px; color:#5E6977">적재율</p>
+<p style="font-size:72px; font-weight:700; line-height:1.1; color:#9C4F1F">[&#160;&#160;&#160;]%</p>
+</div>
+<div style="display:flex; flex-direction:column; gap:12px; background:#FCFBF8; padding:36px; border:1px solid #CDD3D9; border-radius:12px">
+<p style="font-size:28px; color:#5E6977">연결된 데이터 소스</p>
+<p style="font-size:72px; font-weight:700; line-height:1.1; color:#9C4F1F">[&#160;&#160;&#160;]개</p>
+</div>
+<div style="display:flex; flex-direction:column; gap:12px; background:#FCFBF8; padding:36px; border:1px solid #CDD3D9; border-radius:12px">
+<p style="font-size:28px; color:#5E6977">선언된 개체 · 관계 (종)</p>
+<p style="font-size:72px; font-weight:700; line-height:1.1; color:#9C4F1F">[&#160;&#160;] · [&#160;&#160;]</p>
+</div>
+<div style="display:flex; flex-direction:column; gap:12px; background:#FCFBF8; padding:36px; border:1px solid #CDD3D9; border-radius:12px">
+<p style="font-size:28px; color:#5E6977">연결 기록(원장)</p>
+<p style="font-size:72px; font-weight:700; line-height:1.1; color:#9C4F1F">[&#160;&#160;&#160;]만 건</p>
+</div>
+<div style="display:flex; flex-direction:column; gap:12px; background:#FCFBF8; padding:36px; border:1px solid #CDD3D9; border-radius:12px">
+<p style="font-size:28px; color:#5E6977">자동 규칙(체인)</p>
+<p style="font-size:72px; font-weight:700; line-height:1.1; color:#9C4F1F">[&#160;&#160;&#160;]개</p>
+</div>
+<div style="display:flex; flex-direction:column; gap:12px; background:#FCFBF8; padding:36px; border:1px solid #CDD3D9; border-radius:12px">
+<p style="font-size:28px; color:#5E6977">교정 공수 점수 (낮을수록 좋음)</p>
+<p style="font-size:72px; font-weight:700; line-height:1.1; color:#9C4F1F">[&#160;&#160;&#160;]</p>
+</div>
+</div>
+<p style="font-size:28px; color:#5E6977">기준일 <span style="color:#9C4F1F">[2026.&#160;&#160;.&#160;&#160;]</span></p>
+<p style="position:absolute; left:128px; bottom:64px; width:900px; font-size:24px; color:#5E6977">AI 활용 · 추론을 위한 R&amp;D 온톨로지 백본 DB</p>
+<p style="position:absolute; right:128px; bottom:64px; width:200px; font-size:24px; color:#5E6977; text-align:right">15</p>
+<aside>운영 현황입니다. 수치는 기준일과 함께 채워 주십시오. 적재율, 연결된 데이터 소스 수, 선언된 개체와 관계의 종류 수, 원장에 쌓인 연결 기록 수, 자동 규칙 수, 그리고 교정 공수 점수입니다. 교정 공수 점수는 사람이 한 건을 고치는 데 쓴 키보드, 클릭, 화면 이동을 점수로 낸 것이라 낮을수록 좋습니다.</aside>
+</section>
+<section id="roadmap" data-transition="fade" style="background:#E8EBEE; color:#1A2230; font-family:'IBM Plex Sans KR', Arial, sans-serif; padding:128px 128px 160px; display:flex; flex-direction:column; gap:48px">
+<div style="display:flex; flex-direction:column; gap:12px">
+<p style="font-size:26px; font-weight:600; color:#9C4F1F">다음 단계</p>
+<h2 style="font-size:64px; font-weight:600; line-height:1.15; color:#1A2230">AI 활용은 다섯 단계로 갑니다 (안)</h2>
+</div>
+<div style="display:flex; gap:12px; align-items:stretch">
+<div style="flex:1; display:flex; flex-direction:column; gap:14px; background:#1A2230; padding:28px; border-radius:12px">
+<p style="font-size:26px; font-weight:700; color:#E3A574">1 · 진행 중</p>
+<h3 style="font-size:34px; font-weight:700; line-height:1.2; color:#F2F1EC">백본 구축</h3>
+<p style="font-size:26px; line-height:1.45; color:#C3CBD6">적재율 100% · 개체와 관계 선언 · 걷기와 액션</p>
+</div>
+<div style="flex:1; display:flex; flex-direction:column; gap:14px; background:#243044; padding:28px; border-radius:12px">
+<p style="font-size:26px; font-weight:700; color:#8DB6E6">2 · 도입 즉시</p>
+<h3 style="font-size:34px; font-weight:700; line-height:1.2; color:#F2F1EC">AI 확장</h3>
+<p style="font-size:26px; line-height:1.45; color:#C3CBD6">에이전틱 AI가 읽기 → 초안 → 스스로 순으로 선언을 넓혀 간다</p>
+</div>
+<div style="flex:1; display:flex; flex-direction:column; gap:14px; background:#F7F7F4; padding:28px; border:1px solid #CDD3D9; border-radius:12px">
+<p style="font-size:26px; font-weight:700; color:#2A5F99">3 · 계획 <span style="color:#9C4F1F">[시기]</span></p>
+<h3 style="font-size:34px; font-weight:700; line-height:1.2">AI 질의</h3>
+<p style="font-size:26px; line-height:1.45; color:#3F4A58">말로 묻는 질문을 걷기로 바꿔 근거와 함께 답한다</p>
+</div>
+<div style="flex:1; display:flex; flex-direction:column; gap:14px; background:#F7F7F4; padding:28px; border:1px solid #CDD3D9; border-radius:12px">
+<p style="font-size:26px; font-weight:700; color:#2A5F99">4 · 계획 <span style="color:#9C4F1F">[시기]</span></p>
+<h3 style="font-size:34px; font-weight:700; line-height:1.2">AI 추론</h3>
+<p style="font-size:26px; line-height:1.45; color:#3F4A58">인과 뼈대를 따라 결함의 원인 후보를 좁힌다</p>
+</div>
+<div style="flex:1; display:flex; flex-direction:column; gap:14px; background:#F7F7F4; padding:28px; border:1px solid #CDD3D9; border-radius:12px">
+<p style="font-size:26px; font-weight:700; color:#2A5F99">5 · 계획 <span style="color:#9C4F1F">[시기]</span></p>
+<h3 style="font-size:34px; font-weight:700; line-height:1.2">AI 액션</h3>
+<p style="font-size:26px; line-height:1.45; color:#3F4A58">목표를 향해 계측 · 홀드 같은 작용을 걸고 결과를 다시 받는다</p>
+</div>
+</div>
+<p style="font-size:30px; color:#3F4A58">모든 단계가 같은 백본 위에 섭니다 — 단계마다 새로 만드는 것은 선언입니다.</p>
+<p style="position:absolute; left:128px; bottom:64px; width:900px; font-size:24px; color:#5E6977">AI 활용 · 추론을 위한 R&amp;D 온톨로지 백본 DB</p>
+<p style="position:absolute; right:128px; bottom:64px; width:200px; font-size:24px; color:#5E6977; text-align:right">16</p>
+<aside>AI 활용은 다섯 단계로 봅니다. 이 장은 초안이니 시기와 내용을 맞춰 고쳐 주십시오. 지금은 1단계 백본 구축을 하고 있습니다. 2단계 AI 확장은 에이전틱 AI를 도입하면 바로 되는 일입니다. 에이전틱 AI가 설명서를 읽고 선언을 스스로 넓혀 갑니다. 3단계는 말로 묻는 질문을 걷기로 바꿔 근거와 함께 답하는 AI 질의, 4단계는 인과 뼈대를 따라 결함 원인 후보를 좁히는 AI 추론, 5단계는 목표를 향해 계측이나 홀드 같은 작용을 걸고 그 결과를 측정으로 다시 받는 AI 액션입니다. 다섯 단계 모두 같은 백본 위에 서기 때문에, 단계마다 새로 만드는 것은 시스템이 아니라 선언입니다.</aside>
+</section>
+<section id="ask" data-transition="fade" style="background:#F5F4EF; color:#1A2230; font-family:'IBM Plex Sans KR', Arial, sans-serif; padding:128px 128px 160px; display:flex; flex-direction:column; gap:48px">
+<div style="display:flex; flex-direction:column; gap:12px">
+<p style="font-size:26px; font-weight:600; color:#9C4F1F">요청</p>
+<h2 style="font-size:64px; font-weight:600; line-height:1.15; color:#1A2230">100%까지 남은 일과 요청드릴 것</h2>
+</div>
+<div style="display:flex; gap:48px">
+<div style="flex:1; display:flex; flex-direction:column; gap:16px">
+<h3 style="font-size:36px; font-weight:700; color:#1A2230">남은 일</h3>
+<ul style="font-size:30px; line-height:1.6; color:#3F4A58">
+<li><span style="color:#9C4F1F">[남은 일 1]</span> — 예: 아직 연결되지 않은 데이터 소스 [&#160;&#160;]종</li>
+<li><span style="color:#9C4F1F">[남은 일 2]</span></li>
+<li><span style="color:#9C4F1F">[남은 일 3]</span></li>
+</ul>
+</div>
+<div style="flex:1; display:flex; flex-direction:column; gap:16px">
+<h3 style="font-size:36px; font-weight:700; color:#1A2230">요청 사항</h3>
+<ul style="font-size:30px; line-height:1.6; color:#3F4A58">
+<li><span style="color:#9C4F1F">[요청 1]</span> — 예: 현장 사용 확대 대상 [&#160;&#160;]팀</li>
+<li><span style="color:#9C4F1F">[요청 2]</span></li>
+<li><span style="color:#9C4F1F">[요청 3]</span></li>
+</ul>
+</div>
+</div>
+<p style="font-family:'Noto Serif KR', Georgia, serif; font-size:44px; font-weight:700; line-height:1.3; color:#1A2230">일을 시키고, 결과를 모으고, 의미를 만드는 장치 — 그 바탕은 적재율 100%입니다.</p>
+<p style="position:absolute; left:128px; bottom:64px; width:900px; font-size:24px; color:#5E6977">AI 활용 · 추론을 위한 R&amp;D 온톨로지 백본 DB</p>
+<p style="position:absolute; right:128px; bottom:64px; width:200px; font-size:24px; color:#5E6977; text-align:right">17</p>
+<aside>마지막으로 적재율 100%까지 남은 일과 요청 사항입니다. 이 장은 채워 주십시오. 맺음말은 처음과 같습니다. 이 시스템은 데이터로 일을 하게 만드는 플랫폼이고, 그 바탕은 적재율 100%입니다. 감사합니다.</aside>
+</section>
+<section id="appendix" data-transition="fade" style="background:#1A2230; color:#F2F1EC; font-family:'IBM Plex Sans KR', Arial, sans-serif; padding:128px 128px 160px; display:flex; flex-direction:column; justify-content:center; gap:32px">
+<p style="font-size:26px; font-weight:600; color:#E3A574">부록</p>
+<h1 style="font-family:'Noto Serif KR', Georgia, serif; font-size:96px; font-weight:700; line-height:1.15; color:#F2F1EC">부록</h1>
+<p style="font-size:32px; line-height:1.5; color:#C3CBD6; width:1400px">백본의 자리 · 일의 관점 · 액션 발급 상세 · 에이전틱 AI 연결 계획 · 개발 원칙 · 액션의 원칙 · 정리</p>
+<p style="position:absolute; left:128px; bottom:64px; width:900px; font-size:24px; color:#8C97A6">AI 활용 · 추론을 위한 R&amp;D 온톨로지 백본 DB</p>
+<p style="position:absolute; right:128px; bottom:64px; width:200px; font-size:24px; color:#8C97A6; text-align:right">18</p>
+<aside>여기부터는 부록입니다. 질문이 나오면 해당 장으로 넘어가 설명하시면 됩니다.</aside>
+</section>
+<section id="backbone" data-transition="fade" style="background:#F5F4EF; color:#1A2230; font-family:'IBM Plex Sans KR', Arial, sans-serif; padding:128px 128px 160px; display:flex; flex-direction:column; gap:48px">
+<div style="display:flex; flex-direction:column; gap:12px">
+<p style="font-size:26px; font-weight:600; color:#9C4F1F">부록 — 백본의 자리</p>
+<h2 style="font-size:64px; font-weight:600; line-height:1.15; color:#1A2230">데이터와 AI 사이에 온톨로지 백본을 둡니다</h2>
+</div>
+<div style="display:flex; gap:20px; align-items:center">
+<div style="flex:1; display:flex; flex-direction:column; gap:16px; background:#F7F7F4; padding:40px; border:1px solid #CDD3D9; border-radius:12px">
+<h3 style="font-size:36px; font-weight:700; line-height:1.2">현장 데이터</h3>
+<ul style="font-size:28px; line-height:1.6; color:#3F4A58">
+<li>장비 · 공정 로그</li>
+<li>검사 · 계측 결과</li>
+<li>엑셀 · 수기 기록</li>
+<li>사람의 교정</li>
+</ul>
+</div>
+<x-connector head="end" style="width:56px; color:#5E6977; border-width:4px"></x-connector>
+<div style="flex:1.4; display:flex; flex-direction:column; gap:16px; background:#1A2230; padding:40px; border-radius:12px">
+<h3 style="font-size:36px; font-weight:700; line-height:1.2; color:#F2F1EC">온톨로지 백본 DB</h3>
+<ul style="font-size:28px; line-height:1.6; color:#C3CBD6">
+<li>개체 — 랏 · 웨이퍼 · 다이 · 결함</li>
+<li>관계 — 개체를 잇는 선언된 낱말</li>
+<li>출처 — 값마다 어디서 왔는지</li>
+<li>이력 — 언제 무엇이 왜 바뀌었는지</li>
+</ul>
+</div>
+<x-connector head="end" style="width:56px; color:#5E6977; border-width:4px"></x-connector>
+<div style="flex:1; display:flex; flex-direction:column; gap:16px; background:#F7F7F4; padding:40px; border:1px solid #CDD3D9; border-radius:12px">
+<h3 style="font-size:36px; font-weight:700; line-height:1.2; color:#2A5F99">AI</h3>
+<p style="font-size:28px; line-height:1.5; color:#3F4A58">질의 · 추론 · 자동 조치</p>
+<hr style="border-top:1px solid #CDD3D9">
+<h3 style="font-size:36px; font-weight:700; line-height:1.2">사람</h3>
+<p style="font-size:28px; line-height:1.5; color:#3F4A58">그리드 · 웨이퍼 맵 · 분석 보드</p>
+</div>
+</div>
+<p style="font-size:32px; font-weight:600; color:#1A2230">사람과 AI가 같은 백본을 읽고, 같은 길로 고칩니다.</p>
+<p style="position:absolute; left:128px; bottom:64px; width:900px; font-size:24px; color:#5E6977">AI 활용 · 추론을 위한 R&amp;D 온톨로지 백본 DB</p>
+<p style="position:absolute; right:128px; bottom:64px; width:200px; font-size:24px; color:#5E6977; text-align:right">19</p>
+<aside>그래서 만든 것이 온톨로지 백본 DB입니다. 현장 데이터와 AI 사이에 한 층을 둡니다. 이 층은 표를 그냥 모아 두는 곳이 아니라, 개체와 관계, 값의 출처, 변경 이력을 함께 가진 층입니다. AI도 사람도 이 백본 하나를 읽습니다. 사람이 그리드에서 고친 것이 AI가 읽는 데이터가 되고, AI의 판단도 같은 길로 데이터에 돌아옵니다.</aside>
+</section>
+<section id="work" data-transition="fade" style="background:#F5F4EF; color:#1A2230; font-family:'IBM Plex Sans KR', Arial, sans-serif; padding:128px 128px 160px; display:flex; flex-direction:column; gap:40px">
+<div style="display:flex; flex-direction:column; gap:12px">
+<p style="font-size:26px; font-weight:600; color:#9C4F1F">부록 — 일의 관점</p>
+<h2 style="font-size:64px; font-weight:600; line-height:1.15; color:#1A2230">답은 일의 중간일 뿐입니다</h2>
+</div>
+<div style="display:flex; flex-direction:column; gap:16px">
+<div style="display:flex; gap:12px; align-items:center">
+<div style="flex:1; display:flex; flex-direction:column; gap:8px; background:#FCFBF8; padding:24px; border:1px solid #CDD3D9; border-radius:12px">
+<p style="font-size:26px; font-weight:700; color:#9C4F1F">1</p>
+<p style="font-size:30px; font-weight:700; line-height:1.3">질문</p>
+<p style="font-size:24px; line-height:1.4; color:#5E6977">예: 이 불량은 왜?</p>
+</div>
+<x-connector head="end" style="width:40px; color:#5E6977; border-width:3px"></x-connector>
+<div style="flex:1; display:flex; flex-direction:column; gap:8px; background:#FCFBF8; padding:24px; border:1px solid #CDD3D9; border-radius:12px">
+<p style="font-size:26px; font-weight:700; color:#9C4F1F">2</p>
+<p style="font-size:30px; font-weight:700; line-height:1.3">근거 모으기</p>
+<p style="font-size:24px; line-height:1.4; color:#5E6977">연결된 사실</p>
+</div>
+<x-connector head="end" style="width:40px; color:#5E6977; border-width:3px"></x-connector>
+<div style="flex:1; display:flex; flex-direction:column; gap:8px; background:#FCFBF8; padding:24px; border:1px solid #CDD3D9; border-radius:12px">
+<p style="font-size:26px; font-weight:700; color:#9C4F1F">3</p>
+<p style="font-size:30px; font-weight:700; line-height:1.3">판단</p>
+<p style="font-size:24px; line-height:1.4; color:#5E6977">원인 후보</p>
+</div>
+<x-connector head="end" style="width:40px; color:#5E6977; border-width:3px"></x-connector>
+<div style="flex:1; display:flex; flex-direction:column; gap:8px; background:#FCFBF8; padding:24px; border:1px solid #CDD3D9; border-radius:12px">
+<p style="font-size:26px; font-weight:700; color:#9C4F1F">4</p>
+<p style="font-size:30px; font-weight:700; line-height:1.3">조치</p>
+<p style="font-size:24px; line-height:1.4; color:#5E6977">환경에 작용을 건다</p>
+</div>
+<x-connector head="end" style="width:40px; color:#5E6977; border-width:3px"></x-connector>
+<div style="flex:1; display:flex; flex-direction:column; gap:8px; background:#FCFBF8; padding:24px; border:1px solid #CDD3D9; border-radius:12px">
+<p style="font-size:26px; font-weight:700; color:#9C4F1F">5</p>
+<p style="font-size:30px; font-weight:700; line-height:1.3">측정</p>
+<p style="font-size:24px; line-height:1.4; color:#5E6977">결과가 온톨로지로 돌아온다</p>
+</div>
+</div>
+<div style="display:flex; flex-direction:column; gap:12px">
+<div style="width:973px; background:#D5D9DE; padding:16px 24px; border-radius:8px"><p style="font-size:26px; font-weight:600; color:#1A2230">RAG · LLM 테이블 질의 — 답까지</p></div>
+<div style="background:#2A5F99; padding:16px 24px; border-radius:8px"><p style="font-size:26px; font-weight:600; color:#F2F1EC">온톨로지 — 조치가 측정으로 돌아와 다음 판단으로 이어질 때까지</p></div>
+</div>
+</div>
+<div style="display:flex; gap:40px">
+<div style="flex:1; display:flex; flex-direction:column; gap:8px">
+<h3 style="font-size:32px; font-weight:700; color:#1A2230">잇는 법을 매번 추측하지 않는다</h3>
+<p style="font-size:26px; line-height:1.45; color:#3F4A58">한 번 적은 설명서로, 사람도 AI도 같은 길에서 같은 답을 얻습니다.</p>
+</div>
+<div style="flex:1; display:flex; flex-direction:column; gap:8px">
+<h3 style="font-size:32px; font-weight:700; color:#1A2230">답이 일로 이어진다</h3>
+<p style="font-size:26px; line-height:1.45; color:#3F4A58">판단이 현장에 작용하고, 그 결과가 측정으로 돌아옵니다.</p>
+</div>
+<div style="flex:1; display:flex; flex-direction:column; gap:8px">
+<h3 style="font-size:32px; font-weight:700; color:#1A2230">일이 쌓인다</h3>
+<p style="font-size:26px; line-height:1.45; color:#3F4A58">한 번 한 연결과 교정이 남아, 다음 사람의 일이 짧아집니다.</p>
+</div>
+</div>
+<p style="position:absolute; left:128px; bottom:64px; width:900px; font-size:24px; color:#5E6977">AI 활용 · 추론을 위한 R&amp;D 온톨로지 백본 DB</p>
+<p style="position:absolute; right:128px; bottom:64px; width:200px; font-size:24px; color:#5E6977; text-align:right">20</p>
+<aside>왜 굳이 온톨로지여야 하는지, 일의 관점에서 말씀드리겠습니다. 현장의 일은 질문에서 시작해 근거를 모으고, 판단하고, 조치하고, 그 결과가 다음 일로 이어지는 고리입니다. 답은 그 고리의 중간일 뿐입니다. RAG나 LLM의 테이블 질의는 답까지를 돕습니다. 온톨로지는 데이터가 어떻게 일에 꽂히는지를 적어 두기 때문에, 조치가 데이터가 되고 다음 일로 이어질 때까지 고리를 잇습니다. 해야만 하는 이유는 세 가지입니다. 첫째, 무엇을 어떻게 이을지를 매번 추측하지 않고 한 번 적어 두니 사람도 AI도 같은 답을 얻습니다. 둘째, 답이 일로 이어집니다. 셋째, 한 번 한 연결과 교정이 남아서 일이 쌓이고, 다음 사람의 일이 짧아집니다. AI의 판단을 이 고리에 직접 꽂는 것은 계획 단계입니다.</aside>
+</section>
+<section id="routes" data-transition="fade" style="background:#F5F4EF; color:#1A2230; font-family:'IBM Plex Sans KR', Arial, sans-serif; padding:128px 128px 160px; display:flex; flex-direction:column; gap:28px">
+<div style="display:flex; flex-direction:column; gap:12px">
+<p style="font-size:26px; font-weight:600; color:#9C4F1F">부록 — 액션 발급 상세 (계획)</p>
+<h2 style="font-size:64px; font-weight:600; line-height:1.15; color:#1A2230">두 경로로 찾고, 모호하면 DOE로 가립니다</h2>
+</div>
+<div style="display:flex; gap:24px">
+<div style="flex:1; display:flex; flex-direction:column; gap:8px; background:#FCFBF8; padding:24px 32px; border:1px solid #CDD3D9; border-radius:12px">
+<h3 style="font-size:32px; font-weight:700; color:#2A5F99">걷기로</h3>
+<p style="font-size:26px; line-height:1.4; color:#1A2230">모델이 닿은 원인에 적힌 처방</p>
+<p style="font-size:24px; line-height:1.4; color:#5E6977">예: 보이드 → … → 설비 내 오염 → PM 요청</p>
+</div>
+<div style="flex:1; display:flex; flex-direction:column; gap:8px; background:#FCFBF8; padding:24px 32px; border:1px solid #CDD3D9; border-radius:12px">
+<h3 style="font-size:32px; font-weight:700; color:#9C4F1F">대조로</h3>
+<p style="font-size:26px; line-height:1.4; color:#1A2230">불량 쪽과 양품 쪽의 유의차</p>
+<p style="font-size:24px; line-height:1.4; color:#5E6977">예: 대기 시간 차이 → 표면 산화 계측</p>
+</div>
+</div>
+<div style="display:flex; border:1px solid #CDD3D9; border-radius:12px; background:#FCFBF8">
+<div style="flex:1; display:flex; flex-direction:column; gap:4px; padding:16px 24px">
+<p style="font-size:24px; font-weight:700; color:#5E6977">둘이 같은 곳을 가리키면</p>
+<p style="font-size:26px; font-weight:700; color:#1A2230">바로 작용</p>
+</div>
+<div style="flex:1; display:flex; flex-direction:column; gap:4px; padding:16px 24px; border-left:1px solid #CDD3D9">
+<p style="font-size:24px; font-weight:700; color:#5E6977">갈리거나 모호하면</p>
+<p style="font-size:26px; font-weight:700; color:#1A2230">DOE</p>
+</div>
+<div style="flex:1.4; display:flex; flex-direction:column; gap:4px; padding:16px 24px; border-left:1px solid #CDD3D9">
+<p style="font-size:24px; font-weight:700; color:#5E6977">나머지는 유의차 없고, 모호한 인자가 거의 하나면</p>
+<p style="font-size:26px; font-weight:700; color:#1A2230">그 인자로 DOE</p>
+</div>
+</div>
+<div style="display:flex; gap:24px">
+<div style="flex:1; display:flex; flex-direction:column; gap:10px; background:#E8EBEE; padding:24px 32px; border-radius:12px">
+<h3 style="font-size:28px; font-weight:700; color:#1A2230">유의하다의 기준</h3>
+<p style="font-size:24px; line-height:1.45; color:#3F4A58">차이가 산포의 몇 배인가 + 최소 표본 수. 두 값은 현장이 적는 칸입니다. 표본이 모자라면 «유의차 없음»이 아니라 «판단 보류» → 더 재 보자.</p>
+</div>
+<div style="flex:1; display:flex; flex-direction:column; gap:10px; background:#E8EBEE; padding:24px 32px; border-radius:12px">
+<h3 style="font-size:28px; font-weight:700; color:#1A2230">발급</h3>
+<p style="font-size:24px; line-height:1.45; color:#3F4A58">사람이 보드에서 분석하다 액션 후보가 튀어나오고, 누르면 근거와 함께 발급됩니다. 에이전트도 같은 자리에 후보를 냅니다.</p>
+</div>
+</div>
+<p style="position:absolute; left:128px; bottom:64px; width:900px; font-size:24px; color:#5E6977">AI 활용 · 추론을 위한 R&amp;D 온톨로지 백본 DB</p>
+<p style="position:absolute; right:128px; bottom:64px; width:200px; font-size:24px; color:#5E6977; text-align:right">21</p>
+<aside>액션은 두 경로로 찾습니다. 하나는 걷기입니다. 모델을 따라 걸어서 닿은 원인에 처방이 적혀 있으면 그 처방이 액션 후보가 됩니다. 예를 들어 보이드에서 모델을 따라가 설비 내 오염에 닿으면, 오염의 처방인 PM 요청이 나옵니다. 다른 하나는 대조입니다. 불량 쪽과 양품 쪽을 비교해 유의한 차이가 있는 곳에서 액션이 나옵니다. 예를 들어 대기 시간에 차이가 있으면 표면 산화를 재 보자는 액션입니다. 두 경로가 같은 곳을 가리키면 바로 작용하고, 갈리거나 모호하면 DOE로 가립니다. 특히 나머지 인자는 유의차가 없고 모호한 인자가 거의 하나만 남으면 그 인자로 DOE를 합니다. 상관은 인과가 아니고, 인과는 실험이 세우기 때문입니다. 유의하다의 기준은 차이가 산포의 몇 배인지와 최소 표본 수로 보고, 두 값은 현장이 적는 칸으로 둡니다. 표본이 모자라면 유의차 없음이 아니라 판단 보류이고, 그것이 곧 더 재 보자는 액션이 됩니다. 발급은 사람이 보드에서 분석하다가 액션 후보가 튀어나오면 눌러서 근거와 함께 발급하는 방식입니다. 나중에 에이전트를 붙여도 같은 자리에 후보를 냅니다. 이 장은 계획입니다.</aside>
+</section>
+<section id="connect" data-transition="fade" style="background:#F5F4EF; color:#1A2230; font-family:'IBM Plex Sans KR', Arial, sans-serif; padding:128px 128px 160px; display:flex; flex-direction:column; gap:36px">
+<div style="display:flex; flex-direction:column; gap:12px">
+<p style="font-size:26px; font-weight:600; color:#9C4F1F">부록 — 에이전틱 AI 연결 계획 (안)</p>
+<h2 style="font-size:64px; font-weight:600; line-height:1.15; color:#1A2230">에이전틱 AI는 사람과 같은 문으로 들어옵니다</h2>
+</div>
+<div style="display:flex; gap:12px; align-items:center">
+<div style="flex:1; display:flex; flex-direction:column; gap:12px; background:#1A2230; padding:28px; border-radius:12px">
+<h3 style="font-size:32px; font-weight:700; color:#F2F1EC">에이전틱 AI</h3>
+<p style="font-size:26px; line-height:1.45; color:#C3CBD6">읽는다 · 찾는다 · 넓힌다</p>
+</div>
+<x-connector head="both" style="width:48px; color:#5E6977; border-width:3px"></x-connector>
+<div style="flex:1; display:flex; flex-direction:column; gap:12px; background:#DCE7F3; padding:28px; border:2px dashed #2A5F99; border-radius:12px">
+<h3 style="font-size:32px; font-weight:700; color:#2A5F99">도구 층 — 새로 짓는다</h3>
+<p style="font-size:26px; line-height:1.45; color:#1A2230">문을 부르는 얇은 층 · 에이전트 이름표</p>
+</div>
+<x-connector head="both" style="width:48px; color:#5E6977; border-width:3px"></x-connector>
+<div style="flex:1.4; display:flex; flex-direction:column; gap:12px; background:#FCFBF8; padding:28px; border:1px solid #CDD3D9; border-radius:12px">
+<h3 style="font-size:32px; font-weight:700; color:#1A2230">백본의 문 — 이미 있다</h3>
+<ul style="font-size:26px; line-height:1.45; color:#3F4A58">
+<li>설명서 읽기 · 걷기</li>
+<li>빈틈 신호 — 버려진 칸 · 재교정률 · «없음»</li>
+<li>선언 초안 → 시험 → 검토 → 활성화</li>
+<li>액션 규칙 저장 관문 — 틀리면 거절</li>
+</ul>
+</div>
+</div>
+<div style="display:flex; gap:24px">
+<div style="flex:1; display:flex; flex-direction:column; gap:8px; background:#FCFBF8; padding:24px 28px; border:1px solid #CDD3D9; border-radius:12px">
+<p style="font-size:26px; font-weight:700; color:#9C4F1F">먼저 · 읽기만</p>
+<p style="font-size:26px; line-height:1.4; color:#3F4A58">설명서와 빈틈을 읽고 보고한다</p>
+</div>
+<div style="flex:1; display:flex; flex-direction:column; gap:8px; background:#FCFBF8; padding:24px 28px; border:1px solid #CDD3D9; border-radius:12px">
+<p style="font-size:26px; font-weight:700; color:#9C4F1F">다음 · 초안까지</p>
+<p style="font-size:26px; line-height:1.4; color:#3F4A58">선언 초안까지 쓴다. 활성화는 사람</p>
+</div>
+<div style="flex:1; display:flex; flex-direction:column; gap:8px; background:#FCFBF8; padding:24px 28px; border:1px solid #CDD3D9; border-radius:12px">
+<p style="font-size:26px; font-weight:700; color:#9C4F1F">그다음 · 스스로</p>
+<p style="font-size:26px; line-height:1.4; color:#3F4A58">다시 도는 행 수가 상한 안이면 스스로, 넘으면 사람에게</p>
+</div>
+</div>
+<p style="font-size:28px; line-height:1.45; color:#3F4A58">AI 전용 쓰기 문을 만들지 않습니다. 사람이 지나는 관문을 AI도 지나고, AI가 넓힌 것은 이름표를 달아 되돌릴 수 있게 합니다.</p>
+<p style="position:absolute; left:128px; bottom:64px; width:900px; font-size:24px; color:#5E6977">AI 활용 · 추론을 위한 R&amp;D 온톨로지 백본 DB</p>
+<p style="position:absolute; right:128px; bottom:64px; width:200px; font-size:24px; color:#5E6977; text-align:right">22</p>
+<aside>그러면 에이전틱 AI를 어떻게 연결하느냐입니다. 원칙은 하나입니다. AI는 사람과 같은 문으로 들어옵니다. 백본에는 이미 문이 있습니다. 설명서를 읽고 걷는 문, 버려진 칸이나 재교정률, 없음 판정 같은 빈틈 신호, 선언을 초안으로 쓰고 시험하고 검토하고 활성화하는 문, 그리고 틀린 액션 규칙을 거절하는 저장 관문입니다. 새로 지을 것은 AI와 이 문 사이의 얇은 도구 층과, AI가 한 일에 붙는 이름표입니다. 도입 순서는 셋입니다. 먼저 읽기만 해서 설명서와 빈틈을 보고하고, 다음으로 선언 초안까지 쓰고 활성화는 사람이 하고, 그다음에는 다시 도는 행 수가 정해 둔 상한 안이면 스스로 적용하고 넘으면 사람에게 넘깁니다. 선언 한 줄이 수천 행을 다시 돌릴 수 있기 때문에 그 상한이 안전장치입니다. AI 전용 쓰기 문은 만들지 않습니다. 사람이 지나는 관문을 AI도 지나고, AI가 넓힌 것은 이름표를 달아 되돌릴 수 있게 합니다. 이 계획은 안이고, 개발 계획은 프로젝트 보드에 올려 두었습니다.</aside>
+</section>
+<section id="principle" data-transition="fade" style="background:#F5F4EF; color:#1A2230; font-family:'IBM Plex Sans KR', Arial, sans-serif; padding:128px 128px 160px; display:flex; flex-direction:column; gap:56px">
+<div style="display:flex; flex-direction:column; gap:12px">
+<p style="font-size:26px; font-weight:600; color:#9C4F1F">부록 — 개발 원칙</p>
+<h2 style="font-size:64px; font-weight:600; line-height:1.15; color:#1A2230">현장이 적고, 시스템은 적을 자리를 만듭니다</h2>
+</div>
+<div style="display:flex; flex-direction:column; gap:0px">
+<div style="display:flex; gap:40px; align-items:center; padding:32px 0px; border-top:1px solid #CDD3D9">
+<x-icon name="Code" style="color:#9C4F1F; width:56px; height:56px"></x-icon>
+<p style="font-size:34px; font-weight:700; width:560px">코드에 공정 · 장비 이름이 없다</p>
+<p style="font-size:30px; line-height:1.45; color:#3F4A58; flex:1">현장의 낱말은 모두 선언에 삽니다. 현장이 직접 바꿀 수 있습니다.</p>
+</div>
+<div style="display:flex; gap:40px; align-items:center; padding:32px 0px; border-top:1px solid #CDD3D9">
+<x-icon name="Check" style="color:#9C4F1F; width:56px; height:56px"></x-icon>
+<p style="font-size:34px; font-weight:700; width:560px">완성의 기준은 «두 줄»</p>
+<p style="font-size:30px; line-height:1.45; color:#3F4A58; flex:1">「이 표에 이 칸을 적으면 됩니다」로 설명되지 않으면 완성이 아닙니다.</p>
+</div>
+<div style="display:flex; gap:40px; align-items:center; padding:32px 0px; border-top:1px solid #CDD3D9; border-bottom:1px solid #CDD3D9">
+<x-icon name="Users" style="color:#9C4F1F; width:56px; height:56px"></x-icon>
+<p style="font-size:34px; font-weight:700; width:560px">사람과 AI가 같은 선언을 읽는다</p>
+<p style="font-size:30px; line-height:1.45; color:#3F4A58; flex:1">목표는 새 장비 · 새 로그가 와도 개발 없이 선언으로 늘어나는 것입니다.</p>
+</div>
+</div>
+<p style="position:absolute; left:128px; bottom:64px; width:900px; font-size:24px; color:#5E6977">AI 활용 · 추론을 위한 R&amp;D 온톨로지 백본 DB</p>
+<p style="position:absolute; right:128px; bottom:64px; width:200px; font-size:24px; color:#5E6977; text-align:right">23</p>
+<aside>개발 원칙은 한 문장입니다. 도메인 지식은 현장에 있고, 시스템이 만드는 것은 지식이 아니라 그 지식을 적을 자리라는 것입니다. 그래서 코드에는 공정이나 장비 이름이 없고, 현장의 낱말은 전부 선언에 삽니다. 어떤 기능이 완성됐다고 말하려면, 이 표에 이 칸을 적으면 된다고 두 줄로 설명할 수 있어야 합니다. 그리고 사람과 AI가 같은 선언을 읽습니다. 목표는 새 장비나 새 로그가 와도 개발 없이 선언으로 늘어나는 것입니다.</aside>
+</section>
+<section id="avalues" data-transition="fade" style="background:#E8EBEE; color:#1A2230; font-family:'IBM Plex Sans KR', Arial, sans-serif; padding:128px 128px 160px; display:flex; flex-direction:column; gap:28px">
+<div style="display:flex; flex-direction:column; gap:12px">
+<p style="font-size:26px; font-weight:600; color:#9C4F1F">부록 — 액션의 원칙</p>
+<h2 style="font-size:64px; font-weight:600; line-height:1.15; color:#1A2230">액션은 아홉 가지 원칙으로 만듭니다</h2>
+</div>
+<div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px">
+<div style="display:flex; flex-direction:column; gap:6px; background:#F7F7F4; padding:20px 24px; border:1px solid #CDD3D9; border-radius:12px"><p style="font-size:28px; font-weight:700; color:#1A2230">1 목표에서 나온다</p><p style="font-size:24px; line-height:1.4; color:#3F4A58">목표 상태와의 차이를 줄이려고만 난다</p></div>
+<div style="display:flex; flex-direction:column; gap:6px; background:#F7F7F4; padding:20px 24px; border:1px solid #CDD3D9; border-radius:12px"><p style="font-size:28px; font-weight:700; color:#1A2230">2 개체로 발급된다</p><p style="font-size:24px; line-height:1.4; color:#3F4A58">«액션 #123»처럼 이름이 있고, 대상 · 근거 · 해제를 든다</p></div>
+<div style="display:flex; flex-direction:column; gap:6px; background:#F7F7F4; padding:20px 24px; border:1px solid #CDD3D9; border-radius:12px"><p style="font-size:28px; font-weight:700; color:#1A2230">3 근거를 달고 나간다</p><p style="font-size:24px; line-height:1.4; color:#3F4A58">걸은 길 · 모델 · 대조. 근거가 뒤집히면 스스로 의심 목록에</p></div>
+<div style="display:flex; flex-direction:column; gap:6px; background:#F7F7F4; padding:20px 24px; border:1px solid #CDD3D9; border-radius:12px"><p style="font-size:28px; font-weight:700; color:#1A2230">4 측정으로 닫힌다</p><p style="font-size:24px; line-height:1.4; color:#3F4A58">무엇이 돌아오면 닫히는지 정하고 낸다</p></div>
+<div style="display:flex; flex-direction:column; gap:6px; background:#F7F7F4; padding:20px 24px; border:1px solid #CDD3D9; border-radius:12px"><p style="font-size:28px; font-weight:700; color:#1A2230">5 알아보는 작용이 먼저</p><p style="font-size:24px; line-height:1.4; color:#3F4A58">계측 · 관찰 · DOE가 먼저. 되돌리기 어려울수록 근거를 두껍게</p></div>
+<div style="display:flex; flex-direction:column; gap:6px; background:#F7F7F4; padding:20px 24px; border:1px solid #CDD3D9; border-radius:12px"><p style="font-size:28px; font-weight:700; color:#1A2230">6 모름은 액션이다</p><p style="font-size:24px; line-height:1.4; color:#3F4A58">«안 쟀다»는 «없다»가 아니다. 모르면 재러 간다</p></div>
+<div style="display:flex; flex-direction:column; gap:6px; background:#F7F7F4; padding:20px 24px; border:1px solid #CDD3D9; border-radius:12px"><p style="font-size:28px; font-weight:700; color:#1A2230">7 처방도 선언이다</p><p style="font-size:24px; line-height:1.4; color:#3F4A58">«이 원인이면 이 작용»은 현장이 적는다</p></div>
+<div style="display:flex; flex-direction:column; gap:6px; background:#F7F7F4; padding:20px 24px; border:1px solid #CDD3D9; border-radius:12px"><p style="font-size:28px; font-weight:700; color:#1A2230">8 받는 쪽이 달라도 모양은 하나</p><p style="font-size:24px; line-height:1.4; color:#3F4A58">설비 · 사람 · 에이전트 모두 같은 모양. 누가 냈고 받았고 닫았는지(R&amp;R)가 남는다</p></div>
+<div style="display:flex; flex-direction:column; gap:6px; background:#F7F7F4; padding:20px 24px; border:1px solid #CDD3D9; border-radius:12px"><p style="font-size:28px; font-weight:700; color:#1A2230">9 두 루프를 돈다</p><p style="font-size:24px; line-height:1.4; color:#3F4A58">세상을 고치고, 보는 눈(모델 · 선언)도 고친다</p></div>
+</div>
+<p style="font-size:26px; line-height:1.45; color:#3F4A58">체인(조인 · 복사 · 파생)은 액션이 아니라 이 루프를 받치는 부품입니다.</p>
+<p style="position:absolute; left:128px; bottom:64px; width:900px; font-size:24px; color:#5E6977">AI 활용 · 추론을 위한 R&amp;D 온톨로지 백본 DB</p>
+<p style="position:absolute; right:128px; bottom:64px; width:200px; font-size:24px; color:#5E6977; text-align:right">24</p>
+<aside>액션을 만들 때 지키는 가치관 아홉 가지입니다. 첫째, 액션은 목표에서 나옵니다. 목표 상태와의 차이를 줄이려고만 냅니다. 둘째, 액션은 이름이 있는 개체로 발급되어 대상과 근거와 해제를 함께 듭니다. 셋째, 걸은 길과 모델과 대조 결과를 근거로 달고 나가고, 근거가 뒤집히면 그 액션이 스스로 의심 목록에 뜹니다. 넷째, 무엇이 돌아오면 닫히는지 정하고 냅니다. 다섯째, 계측이나 관찰이나 DOE처럼 알아보는 작용이 먼저이고, 되돌리기 어려운 작용일수록 근거가 두꺼워야 합니다. 여섯째, 안 쟀다는 없다가 아닙니다. 모르면 재러 가는 것이 액션입니다. 일곱째, 이 원인이면 이 작용이라는 처방은 현장이 선언으로 적습니다. 여덟째, 설비든 사람이든 다른 에이전트든 같은 모양으로 요청하고, 누가 냈고 받았고 닫았는지가 남습니다. 이것이 R&amp;R이 됩니다. 아홉째, 액션은 세상을 고치고, 동시에 세상을 보는 눈인 모델과 선언도 고칩니다. 예측이 빗나가면 모델이 고쳐집니다. 그리고 표의 빈칸을 옮겨 채우는 체인은 액션이 아니라 이 루프를 받치는 부품입니다.</aside>
+</section>
+<section id="thesis" data-transition="fade" style="background:#1A2230; color:#F2F1EC; font-family:'IBM Plex Sans KR', Arial, sans-serif; padding:128px 128px 160px; display:flex; flex-direction:column; justify-content:center; gap:40px">
+<p style="font-size:26px; font-weight:600; color:#E3A574">부록 — 정리</p>
+<h1 style="font-family:'Noto Serif KR', Georgia, serif; font-size:88px; font-weight:700; line-height:1.2; color:#F2F1EC; width:1500px">결국, 일을 시키고 · 결과를 모으고 · 의미를 만드는 장치</h1>
+<p style="font-size:36px; line-height:1.4; color:#E3A574">데이터로 일을 하게 만드는 플랫폼 — 온톨로지는 그 설명서, 액션은 그 핵심</p>
+<div style="display:flex; gap:48px">
+<div style="flex:1; display:flex; flex-direction:column; gap:10px">
+<h3 style="font-size:36px; font-weight:700; color:#F2F1EC">시킨다</h3>
+<p style="font-size:28px; line-height:1.45; color:#C3CBD6">액션 — 시스템이 일감을 만들어 사람 · 설비 · 에이전트에게 건다</p>
+</div>
+<div style="flex:1; display:flex; flex-direction:column; gap:10px">
+<h3 style="font-size:36px; font-weight:700; color:#F2F1EC">모은다</h3>
+<p style="font-size:28px; line-height:1.45; color:#C3CBD6">측정 — 결과가 돌아오고, 각자 채운 조각을 그래프가 잇는다</p>
+</div>
+<div style="flex:1; display:flex; flex-direction:column; gap:10px">
+<h3 style="font-size:36px; font-weight:700; color:#F2F1EC">의미를 만든다</h3>
+<p style="font-size:28px; line-height:1.45; color:#C3CBD6">걷기 · 모델 — 원인을 짚고, 빗나가면 모델이 고쳐지고, AI가 선언을 넓힌다</p>
+</div>
+</div>
+<p style="position:absolute; left:128px; bottom:64px; width:900px; font-size:24px; color:#8C97A6">AI 활용 · 추론을 위한 R&amp;D 온톨로지 백본 DB</p>
+<p style="position:absolute; right:128px; bottom:64px; width:200px; font-size:24px; color:#8C97A6; text-align:right">25</p>
+<aside>정리하겠습니다. 이 시스템은 결국 일을 시키고, 그 일의 결과를 모으고, 의미를 만드는 장치입니다. 시키는 것은 액션입니다. 시스템이 일감을 만들어 사람과 설비와 에이전트에게 겁니다. 모으는 것은 측정입니다. 일의 결과가 측정으로 돌아오고, 여러 주체가 각자 국소적으로 채운 조각을 그래프가 전체로 이어 줍니다. 의미를 만드는 것은 걷기와 모델입니다. 모델을 따라 원인을 짚고, 예측이 빗나가면 모델이 고쳐지고, AI가 설명서인 선언을 넓혀 갑니다. 그래서 데이터로 일을 하게 만드는 플랫폼이고, 온톨로지는 그 설명서, 액션은 그 핵심입니다.</aside>
+</section>
+</div>
+<div id="notes"></div>
+<div id="hint">← → slides · F full screen · N speaker notes</div>
+<script>
+const ICONS={
+ Check:'<polyline points="20 6 9 17 4 12"/>',
+ Code:'<polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>',
+ Database:'<ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/><path d="M3 12c0 1.66 4 3 9 3s9-1.34 9-3"/>',
+ Link:'<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>',
+ Users:'<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>',
+ Verified:'<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10"/>'
+};
+const NS='http://www.w3.org/2000/svg';
+let uid=0;
+function marker(svg,color,sw){
+  const id='m'+(uid++),s=Math.max(10,sw*3.2);
+  const defs=document.createElementNS(NS,'defs');
+  defs.innerHTML=`<marker id="${id}" markerUnits="userSpaceOnUse" markerWidth="${s}" markerHeight="${s}" viewBox="0 0 10 10" refX="9" refY="5" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="${color}"/></marker>`;
+  svg.appendChild(defs);return id;
+}
+function stroke(svg,d,color,sw,head,dash){
+  const p=document.createElementNS(NS,'path');
+  p.setAttribute('d',d);p.setAttribute('fill','none');p.setAttribute('stroke',color);
+  p.setAttribute('stroke-width',sw);p.setAttribute('stroke-linejoin','round');
+  if(dash==='dashed')p.setAttribute('stroke-dasharray',`${sw*3} ${sw*2}`);
+  if(dash==='dotted')p.setAttribute('stroke-dasharray',`${sw} ${sw*1.5}`);
+  if(head==='end'||head==='both'){const m=marker(svg,color,sw);p.setAttribute('marker-end',`url(#${m})`);if(head==='both')p.setAttribute('marker-start',`url(#${m})`);}
+  svg.appendChild(p);
+}
+document.querySelectorAll('x-connector').forEach(el=>{
+  const color=el.style.color||'#000',sw=parseFloat(el.style.borderWidth)||2,head=el.getAttribute('head')||'end',dash=el.style.borderStyle;
+  const svg=document.createElementNS(NS,'svg');
+  if(el.hasAttribute('x1')){
+    const [x1,y1,x2,y2]=['x1','y1','x2','y2'].map(k=>parseFloat(el.getAttribute(k)));
+    const r=el.getAttribute('route')||'straight';let d;
+    if(r==='hv')d=`M${x1} ${y1}H${x2}V${y2}`;
+    else if(r==='vh')d=`M${x1} ${y1}V${y2}H${x2}`;
+    else if(r==='elbow'){const mx=(x1+x2)/2;d=`M${x1} ${y1}H${mx}V${y2}H${x2}`;}
+    else d=`M${x1} ${y1}L${x2} ${y2}`;
+    svg.setAttribute('class','xc');svg.setAttribute('width','1');svg.setAttribute('height','1');
+    stroke(svg,d,color,sw,head,dash);
+  }else{
+    const w=parseFloat(el.style.width)||96,h=Math.max(24,sw*6);
+    svg.setAttribute('class','xf');svg.setAttribute('width',w);svg.setAttribute('height',h);
+    const pad=head==='both'?sw:0;
+    stroke(svg,`M${pad} ${h/2}H${w-sw}`,color,sw,head,dash);
+  }
+  el.replaceWith(svg);
+});
+document.querySelectorAll('x-icon').forEach(el=>{
+  const svg=document.createElementNS(NS,'svg');
+  svg.setAttribute('viewBox','0 0 24 24');svg.setAttribute('fill','none');svg.setAttribute('stroke',el.style.color||'currentColor');
+  svg.setAttribute('stroke-width','2');svg.setAttribute('stroke-linecap','round');svg.setAttribute('stroke-linejoin','round');
+  svg.setAttribute('width',parseFloat(el.style.width)||48);svg.setAttribute('height',parseFloat(el.style.height)||48);
+  svg.style.flex='none';svg.innerHTML=ICONS[el.getAttribute('name')]||'';
+  el.replaceWith(svg);
+});
+document.querySelectorAll('section table').forEach(t=>{
+  const c=[...t.querySelectorAll('th,td')].find(x=>x.style.padding);
+  if(c)t.querySelectorAll('th,td').forEach(x=>x.style.padding=c.style.padding);
+});
+const stage=document.getElementById('stage'),slides=[...stage.children],notes=document.getElementById('notes');
+let cur=0;
+function fit(){const s=Math.min(innerWidth/1920,innerHeight/1080);stage.style.transform=`scale(${s}) translate(-50%,-50%)`;}
+function show(i){
+  cur=Math.max(0,Math.min(slides.length-1,i));
+  slides.forEach((s,k)=>s.classList.toggle('on',k===cur));
+  const a=slides[cur].querySelector('aside');notes.textContent=a?a.textContent:'';
+  history.replaceState(null,'','#'+(cur+1));
+}
+addEventListener('resize',fit);
+addEventListener('keydown',e=>{
+  if(['ArrowRight','ArrowDown','PageDown',' ','Enter'].includes(e.key)){show(cur+1);e.preventDefault();}
+  else if(['ArrowLeft','ArrowUp','PageUp','Backspace'].includes(e.key)){show(cur-1);e.preventDefault();}
+  else if(e.key==='Home')show(0);else if(e.key==='End')show(slides.length-1);
+  else if(e.key==='n'||e.key==='N')notes.classList.toggle('on');
+  else if(e.key==='f'||e.key==='F'){document.fullscreenElement?document.exitFullscreen():document.documentElement.requestFullscreen();}
+});
+addEventListener('click',e=>{if(e.target.closest('#notes'))return;show(cur+(e.clientX>innerWidth/2?1:-1));});
+fit();show((parseInt(location.hash.slice(1),10)||1)-1);
+</script>
+</body>
+</html>
