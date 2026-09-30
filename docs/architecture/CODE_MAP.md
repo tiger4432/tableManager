@@ -1528,7 +1528,7 @@ FastAPI 웹서버. 모든 REST/WS의 단일 진입점. 워커·워처와는 outb
 
 ### 🆕 3-ter. `server/parsers/html_topology_parser.py` (🆕 **845줄** @`499d89de4` · 768줄, `ed9cfdb` 638에서 +130) — HTML 표 → 그래프/행렬
 
-🆕 **[09-30 `499d89de4`] `extract_semantic_tuples` 가 값을 «조용히» 잃지 않는다** — ① 답이 헤더 경로를 열쇠로 해서, 한 경로의 둘째 값 칸이 첫째를 덮었다(12 칸 -> 8). 이제 한 경로에 값 칸이 둘 이상이면 `ValueError` — 경로 · 몇 칸 · 좌표 한 쌍 · 공유 경로 수 · 다음 행동(행을 가르는 칸을 `is_header_fn` 으로 헤더 표시). ② 넓은 머리칸은 값 칸의 열 범위와 «겹칠 때만» 그 칸의 절 머리다 — 네 열 위 두 칸짜리 묶음 A · B 가 둘 다 너비 시험을 지나 B 가 A 의 칸을 이끌었다. 위아래로 쌓인 표는 제품이 경계를 추측하지 않는다 — 읽는 쪽이 블록 첫 행에서 잘라 블록마다 파싱(가이드 3.1-bis 의 예 `split_blocks`). 이 함수를 부르는 추적 코드는 0 곳(`bonding_map_parser` 는 모듈의 `HTMLMatrixTableParser` 를 씀)
+🆕 **[09-30 `499d89de4`] `extract_semantic_tuples` 가 값을 «조용히» 잃지 않는다** — ① 답이 헤더 경로를 열쇠로 해서, 한 경로의 둘째 값 칸이 첫째를 덮었다(12 칸 -> 8). 이제 한 경로에 값 칸이 둘 이상이면 `ValueError` — 🆕 `c4faced98`: «다음 행동을 맨 앞»(`Next: ...` — 행을 가르는 칸을 `is_header_fn` 으로 헤더 표시), 몇 칸 · 좌표 한 쌍 · 공유 경로 수, «경로는 맨 끝» — 파일 상태 칸이 사유 마지막 줄의 500 자만 두어 긴 경로가 다음 행동을 밀어냈다. ② 넓은 머리칸은 값 칸의 열 범위와 «겹칠 때만» 그 칸의 절 머리다 — 네 열 위 두 칸짜리 묶음 A · B 가 둘 다 너비 시험을 지나 B 가 A 의 칸을 이끌었다. 위아래로 쌓인 표는 제품이 경계를 추측하지 않는다 — 읽는 쪽이 블록 첫 행에서 잘라 블록마다 파싱(가이드 3.1-bis 의 예 `split_blocks`). 이 함수를 부르는 추적 코드는 0 곳(`bonding_map_parser` 는 모듈의 `HTMLMatrixTableParser` 를 씀)
 
 **모듈 레벨 심볼은 하나도 안 움직였다**: `class TableNode`(**7**) · `class TableEdge`(**43**) · `class HTMLTableGraphParser`(**73**) · `class HTMLMatrixTableParser`(**516**) · `parse_matrix_to_records`(**524**). **+130 전부가 `parse_matrix_to_records` 본체 안**이다.
 
