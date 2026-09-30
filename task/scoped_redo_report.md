@@ -65565,3 +65565,39 @@ PG     7 failed, 118 passed, 7526 deselected in 240.76s (0:04:00) — 실패는 
 ```
 다음      2 핫스왑 뒤 컴파일 캐시 비우기
 ```
+
+## [구현자 -> 총괄] 착지 c15b186cb — 791c0f45e 2: 칸을 더한 Reload 뒤 그리드가 재기동 없이 그 칸을 읽음
+
+```
+자리     models.init_dynamic_models(config, engine=None) — 핫스왑 갈래가 칸을 더했을 때만 engine.clear_compiled_cache()
+         엔진을 넘기는 자리 둘: 서버 파일 감시(config_watcher._reload) · refresh_dynamic_models(Reload 버튼 · 워처 · 체인 워커)
+         부팅 때 부르는 곳들은 새 프로세스라 캐시가 비어 있음 — 엔진을 안 넘김
+칸 안 바뀐 Reload  비우지 않음 — 게이트가 잼(그래서 그 경우 비용 0). 칸을 더한 경우의 다시 컴파일 비용은 안 잼
+```
+
+| 칸 | 입력 | 답 |
+|---|---|---|
+| 서버 파일 감시 | 그리드 페이지 질의를 저장 «전»에 한 번 · 표 편집기 저장 · 파일 행 | 그리드가 표에 든 값을 보임 · 비우기 한 번 |
+| 워커 Reload | 같은 순서, 물리 칸은 서버가 더한 뒤 refresh_dynamic_models | 같음 |
+| 칸 안 바뀐 Reload | refresh_dynamic_models | 비우기 0 |
+
+```
+통과   3 passed, 7651 deselected in 12.38s
+변이   비우기 뺌 -> 2 failed, 1 passed, 7651 deselected in 13.39s — test_a_column_added_by_reload_is_read_without_a_restart[server_file_watch] · test_a_column_added_by_reload_is_read_without_a_restart[worker_reload]
+       서버 파일 감시가 엔진을 안 넘김 -> 1 failed, 2 passed, 7651 deselected in 13.05s — test_a_column_added_by_reload_is_read_without_a_restart[server_file_watch]
+       워커 Reload 가 엔진을 안 넘김 -> 1 failed, 2 passed, 7651 deselected in 13.24s — test_a_column_added_by_reload_is_read_without_a_restart[worker_reload]
+       Reload 마다 비움 -> 1 failed, 2 passed, 7651 deselected in 13.23s — test_a_reload_that_adds_no_column_keeps_the_cache
+전체   5 failed, 7479 passed, 167 skipped, 3 xfailed in 854.89s (0:14:14) — 실패는 알려진 다섯과 이름이 같음
+PG     7 failed, 121 passed, 7526 deselected in 247.53s (0:04:07) — 실패는 알려진 일곱과 이름이 같음
+재기동 서버 · 워처 · 체인 워커 — 떠 있는 프로세스는 옛 코드라 한 번은 필요. 마이그레이션 없음 — RUN.md 새 절
+```
+
+```
+PG 첫 판  이 시험의 Reload 가 스크래치 스키마에 «등록된 모델 전부»의 없는 표를 만들어(create_missing_dynamic_tables)
+          ledger_events 가 글 칸으로 먼저 생겼고 뒤 원장 PG 시험 29 개가 ERROR — 시험이 그동안 자기 표만 등록하게 고침
+          그 함수가 뷰로 선언된 관계도 없으면 표로 만든다는 것은 제품 쪽 사실 — 운영에선 관계가 이미 있어 건너뜀(안 잼)
+```
+
+```
+다음   3 쓰기 문이 모델이 모르는 칸을 버린 칸으로 셈
+```
