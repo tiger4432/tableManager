@@ -66797,3 +66797,17 @@ PG    7 failed, 143 passed, 7554 deselected, 41 warnings in 236.04s (0:03:56) �
 ㉤ --world 와 --ontology-root — 인자 하나로(--ontology-root 를 세상 이름 함수의 답으로 대신)
 ㉥ 이름 스펠링 접기(관계 3 · 커서 2 · 파일 5 · 뿌리 4)를 이 일에 넣나 — 안 넣으면 세상 함수가 여섯째 스펠링
 ```
+
+## [구현자 -> 총괄] d4a949a8c ① 착지 95248fee8 — nokey 칸이 아예 없는 파일이 헤더에서 거절되던 것 (가지보다 먼저)
+
+```
+쌍둥이 확인  같은 일 맞음 — 「파일이 가져와야 할 키 칸」을 _build_header_map 은 business_key/composite 전부로,
+            _resolve_key_groups 는 안쪽 required() 로(nokey 뺌) 답했다. 앞이 먼저 돌아 뒤의 답이 쓰일 틈이 없었다
+접기        안쪽 required() 를 모듈 함수 _required_key_columns(table, columns) 로 올리고 두 자리가 그것을 부름. 거절 문장의 목록도 그 답
+새 함수·새 if  새 함수 0 (안쪽 함수를 올림 — 같은 일 하나가 둘을 대신) · 새 if 0
+게이트      composite [lot, slot] · slot nokey · 헤더 [lot, v] -> 두 행 적재, slot 둘 다 nokey_… , 파일 줄 「2 row(s) keyed nokey_... (slot)」
+            선언 안 한 표 · 같은 헤더 -> 전처럼 required key column 거절
+변이        헤더 검사를 composite 전부로 되돌림 -> 1 failed, 6 passed (새 게이트 하나가 빨강)
+스위트      전체 6 failed, 7508 passed, 191 skipped, 3 xfailed in 820.89s (0:13:40) — 알려진 다섯 + test_ensure_schema_carries_the_drop 하나. 그 하나는 같은 트리의 «가지 작업»(미착지 schema.py)이 ensure_schema 글자를 바꿔서 — 이 착지 경로 밖, 가지 착지에서 고침 · PG 7 failed, 145 passed, 7556 deselected, 43 warnings in 315.04s (0:05:15) — 실패 이름이 알려진 일곱과 같음: True
+재기동      워처만(표준 파서를 부르는 곳이 directory_watcher 하나 — git grep parse_std_file)
+```
