@@ -1467,7 +1467,8 @@ const FLOORS = new Map([
   // two instances on one screen, the real chain's run rows through the real route (J), and the
   // lists walking what Save saves (L). 54 -> 58 (lead 2dd93d4a9).
   // 58 -> 60 (G5-G6, lead d4a949a8c ㉮): a refused save keeps a named reason and a list refusal.
-  ['rnd_board_contrast_save_harness.mjs', 60],
+  // 60 -> 61 (C7, ㉲): a blank id is not counted, as the chain's walk drops it.
+  ['rnd_board_contrast_save_harness.mjs', 61],
   // the board part: the walk itself
   ['rnd_board_walk_harness.mjs', 32],
   // 🔴 the walk REQUEST, not the walk return. `createWalkBoxWalk` accepted `spec.hops` and
