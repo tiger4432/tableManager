@@ -4,7 +4,7 @@
  * (fixtures/authoring_skeleton.json) and the server's plan for the sample's `dt_job`
  * (fixtures/authoring_inherited_plan.json, both captured by the scripts beside them), every branch open.
  *
- *   I  where the plan says a role inherits: the server's sentence for it, the source path the value comes from, in the
+ *   I  where the plan says a role inherits: in the value column the server's sentence and the source path, in the
  *      declaration's own words, then one step under it each inherited member drawn read-only - no control in it -
  *      while the map's add row (the override) stays and its own row is not drawn twice
  *   C  the same form without that row draws no block; the plan's list-valued shape rows draw none
@@ -68,10 +68,12 @@ function suite(view) {
   const form = draw(PLAN.fields);
   const map = nodeAt(form, ROLE);
   const row = INHERITED.find((r) => r.path === `${PLAN.base}.${ROLE}`);
-  const header = map ? rowsLabelled(map, row.ground.text) : [];
-  eq('I1 the server\'s sentence names it, and the path it comes from is in the declaration\'s words',
-    header.length ? (walk(header[0]).find((n) => cls(n, 'oe-planned-from')) || {})._text : '(no row named by the server\'s text)',
-    'bind › entities › dtjob@1 › attributes');
+  const header = map ? walk(map).filter((n) => cls(n, 'oe-node-row') && blocksIn(n) === 1) : [];
+  const textOf = (el, c) => ((el && walk(el).find((n) => cls(n, c))) || {})._text;
+  eq('I1 in the value column: the server\'s sentence, then the path in the declaration\'s words; the name column empty',
+    header.length ? [textOf(header[0], 'oe-ground-text'), textOf(header[0], 'oe-planned-from'),
+      JSON.stringify(textOf(header[0], 'oe-node-name'))].join(' | ') : '(no block)',
+    [row.ground.text, 'bind › entities › dtjob@1 › attributes', '""'].join(' | '));
   const members = Object.keys(row.value).map((key) => nodeAt(form, `${ROLE}.${key}`));
   eq('I2 each inherited member is drawn with its value', members.map((n) => (n ? n.textContent.includes(
     row.value[n.dataset.path.split('.').pop()].column) : false)).join(','), Object.keys(row.value).map(() => 'true').join(','));
@@ -103,7 +105,9 @@ const MUTANTS = [
   { name: 'the-live-context-draws-it', catches: ['I3'],
     from: '  const read = readContext(context.schema, context.expanded);\n', to: '  const read = context;\n' },
   { name: 'the-screen-names-it', catches: ['I1'],
-    from: "  const rows = [treeRow(depth + 1, row.ground?.text || '', [],", to: "  const rows = [treeRow(depth + 1, 'Inherited from', []," },
+    from: "h('span', 'oe-ground-text', row.ground?.text || '')", to: "h('span', 'oe-ground-text', 'Inherited from')" },
+  { name: 'the-sentence-clipped-in-the-name-column', catches: ['I1'],
+    from: "  const rows = [treeRow(depth + 1, '', [], ground,", to: "  const rows = [treeRow(depth + 1, row.ground?.text || '', [], ground," },
   { name: 'own-row-drawn-too', catches: ['I4'],
     from: '  if (given) box.append(...renderPlannedValue(context, node, path, given, depth));\n  else {\n',
     to: '  if (given) box.append(...renderPlannedValue(context, node, path, given, depth));\n  {\n' },

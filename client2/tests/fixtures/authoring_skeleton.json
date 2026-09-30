@@ -1,6 +1,6 @@
 {
  "captured_by": "client2/tests/fixtures/capture_authoring_skeleton.py",
- "server_at": "4366c5254a21851551935f69e097995539ef5902",
+ "server_at": "60e1a675ad5f2c2b9aacdf909a18b7fd67f19025",
  "authorable_kinds": [
   {
    "id": "entity",
@@ -73,6 +73,10 @@
       "when": {
        "field": "kind",
        "is": "column"
+      },
+      "node": {
+       "kind": "leaf",
+       "hint": "free"
       }
      },
      {

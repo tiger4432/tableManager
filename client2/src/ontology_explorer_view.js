@@ -1921,7 +1921,12 @@ function renderPlannedValue(context, node, path, row, depth) {
   const [section, id] = splitBundlePath(row.path);
   const trail = steps[0] === section && steps[1] === id ? steps.slice(2) : steps;
   const fold = foldDecision(row, context.expanded);
-  const rows = [treeRow(depth + 1, row.ground?.text || '', [], h('code', 'oe-planned-from', trail.join(' › ')),
+  // In the value column, where every derived row's ground sits, so the sentence wraps rather
+  // than being clipped to the name column's width.
+  const ground = h('div', 'oe-ground');
+  ground.append(h('span', 'oe-ground-text', row.ground?.text || ''),
+                h('code', 'oe-planned-from', trail.join(' › ')));
+  const rows = [treeRow(depth + 1, '', [], ground,
                         h('i', 'oe-tier oe-tier--' + row.tier, fold.open ? row.tier : fold.reason))];
   // One step under that line, so they read as what it brings -- not as the map's own members.
   const read = readContext(context.schema, context.expanded);
