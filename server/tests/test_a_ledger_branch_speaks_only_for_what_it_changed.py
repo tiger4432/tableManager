@@ -281,6 +281,30 @@ def test_a_whole_source_refresh_takes_the_atoms_of_a_row_the_source_lost(world):
         assert (said["gone_rows"], said["gone_atoms"]) == (0, 0), (name, said)
 
 
+def _refuse(path, source):
+    """`source` read by an order that is not a column: the loader leaves it out alone."""
+    with open(path, encoding="utf-8") as fh:
+        document = json.load(fh)
+    document["sources"][source]["read"]["order_by"] = ["no_such_column"]
+    with open(path, "w", encoding="utf-8") as fh:
+        json.dump(document, fh)
+
+
+def test_a_source_refused_on_both_sides_is_the_defaults_and_on_one_side_the_branchs(world):
+    """총괄 (10-01) 가: refused on both sides, the branch has nothing new to say about a source,
+    so its view keeps the default's atoms (it spoke of LESS than the default before);
+    refused on one side only, the two declarations differ."""
+    names = _branch_translated(world)
+    default = schema.world_names()
+    _refuse(names.declaration_path, KEPT)
+    assert KEPT in schema.changed_sources(names)                  # one side: changed
+    _refuse(default.declaration_path, KEPT)
+    assert schema.changed_sources(names) == {CHANGED}             # both sides: not
+    backfill.refresh_world_view(world["engine"], WORLD)
+    legs = set(_rows(world, names.read_relation, "source_who", "world_leg"))
+    assert (KEPT, "default") in legs, legs
+
+
 def test_deleting_the_branch_leaves_no_schema_and_no_file(world):
     names = _branch_translated(world)
     preview = schema.world_deletion(world["engine"], WORLD)

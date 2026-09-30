@@ -760,9 +760,10 @@ def changed_sources(names) -> frozenset:
     """The sources a branch speaks for because its declaration differs from its base's
     (총괄 60d7e8e42 1) - no new judge: each source's cursor fingerprint (the material that
     can change ITS atoms) compared by `LedgerStore.restamp_decision`, the one seat that says
-    two fingerprints are the same. A source on one side only, or one a loader refused, has
-    no fingerprint there and so differs. A world with no base - the default - has nothing to
-    differ from."""
+    two fingerprints are the same. A source on one side only, or one a loader refused on one
+    side, has no fingerprint there and so differs; refused on BOTH, the branch has nothing new
+    to say and the default's atoms stay in its view (총괄 10-01). A world with no base - the
+    default - has nothing to differ from."""
     if names.base_root is None:
         return frozenset()
     from .setup import load_setup
@@ -781,8 +782,10 @@ def changed_sources(names) -> frozenset:
         return out
 
     base, this = versions(names.base_root), versions(names.declaration_root)
+    refused_on_both = {source_id for source_id in set(base) & set(this)
+                       if base[source_id] is None and this[source_id] is None}
     return frozenset(
-        source_id for source_id in set(base) | set(this)
+        source_id for source_id in (set(base) | set(this)) - refused_on_both
         if LedgerStore.restamp_decision(base.get(source_id), this.get(source_id))[0]
         != "already")
 
