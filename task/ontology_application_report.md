@@ -34822,3 +34822,35 @@ allow_chain_trigger 뜻 · 자기 쓰기 안 깨움    참   _rule_accepts_event
 「트리거 표 = 타깃 표 규칙엔 allow_chain_trigger 를 켜지 않는다」 — 로더가 막지는 않음(순환은 경고 한 줄, 깊이 상한이 끊음).
 자기 쓰기는 09-28 부터 어차피 안 깨움. 조언으로 참이라 둠
 ```
+
+---
+
+## [C 응용] 10-01 문서 동기화 — 원장 폼 라운드(33b41ed37) · row 소스 group_by(c83fe086a) — `a9bf1ee65`
+
+고친 자리
+```
+CODE_MAP  ontology_explorer_view.js  접힌 한-값 칸은 값만 한 줄 · 상태 낱말 하나(foldDecision word) · This slot 은퇴 ·
+                                     renderGround 가 선언 낱말로 · Refusals remain 줄 은퇴 · one-of Required 색
+          ontology_explorer.css      가로 한 줄 · 상자 = 누를 수 있는 것 · --oe-muted · 못 누르는 칩 테두리 투명
+          path_bar.js                지금 걸음은 span · 폼 막대의 map-goto 는 explorer_open_path_harness [7] 이 잰다
+          ontology_skeleton.js       fieldApplies 의 든 값 = !isBlank(held), 호출자 넷(센 것: view 둘 · missingRequired · 씨앗)
+          setup_bundle.py            read_group_by 한 자리 · 검증기는 group 에게만 묻고 번들을 안 채움
+          setup_registry · config_authoring · ledger_skeleton.json  읽기 자리 · 파생 행 은퇴 · 줄 수
+가이드    ledger_declaration_by_example.md  row 예시 둘에서 "group_by": [] 뺌 + 한 줄(옛 파일의 [] 는 읽히고 저장 때 빠짐)
+줄 수     전부 git show c87072271 에서 셈
+```
+적대 검수 — c83fe086a
+```
+read.group_by 를 날 키로 읽는 자리(서버, 시험 · 체인 밖)   1 = read_group_by 자신   [카나리아 def read_group_by = 1]
+  명령  git grep -n -E "\[.group_by.\]|get\(.group_by." -- 'server/*.py' ':!server/tests' ':!server/chain*'
+  나머지는 컴파일된 driver.group_by(source_preparation · backfill) — 무해
+generate_source_rows.py:192   read.get(field) or ()  — 없음에 안전
+클라 fieldApplies 호출자 넷   씨앗(skeleton:219)은 든 값 없이 부름 -> unit: row 면 group_by 를 identity 로 안 채움
+은퇴한 낱말 「Filled: unit=row -> no group_by」 가 남은 곳   docs(history 밖) 0 · 코드 0 (RUN.md · 시험 독스트링 · task/ 만)
+```
+여쭐 것 하나
+```
+샘플에서 row 소스의 group_by: [] 는 빠졌는데, 같은 부류(파생되고 파일에 있으면 삼킴)인 read.cursor 는
+샘플 6 줄(git grep -c '"cursor"') · by-example 가이드 예시 둘에 남아 있습니다 (setup_bundle: cursor 는 order_by 에서 파생, ignored=("cursor",)).
+같은 정리 대상인지요 — 제가 가이드만 먼저 고치면 샘플과 어긋나므로 손대지 않았습니다.
+```
