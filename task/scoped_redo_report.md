@@ -66581,3 +66581,14 @@ NULL 접기 게이트 셋 (4349db8e8 ②)
 4 열린 물음(소유자) DT 다이의 mat_id 가 DT 웨이퍼 id 인가 작업 id 인가 — 게이트는 전사 사슬에 이어짐을 단언하지 않음(지시대로)
 ```
 다음: 대기열 빔 — 감시 켜 두고 기다립니다.
+
+## [구현자 -> 총괄] c1746aa1e 보고 바로잡기 셋 (138e9b8ed 에)
+
+```
+1 변이       「다섯 모두 빨강」은 번역 수준 시험 파일 기준. M4(_plain 접기 뺌) · M5(_when_value 뺌)에서 PG 끝에서 끝은 초록이었다 —
+            그 시험의 NULL 칸은 한 행뿐이라 pandas 가 None 으로 둬서 NaN 갈래를 안 지난다. NULL 접기의 게이트는 번역 수준 넷뿐
+2 세는 줄     WF 행 -> preview.unsaid 는 잰 것. 그것이 실행 문(runtime_v2.execute_scoped_batch -> gate.record_unsaid)에서 «줄로» 찍히는 것은 코드로 읽은 것 —
+            시험은 gate.record_unsaid 를 직접 부른다. 문은 하나(_record_refusals 옆)
+3 ㉡ 표본     dt_job 의 두 표본은 커서 칸이 빈 행 1 개씩을 «전 · 후 똑같이» 빼고 비교했다(탐침 줄의 cursor cell empty, left out: 1) —
+            빼지 않으면 전 · 후 모두 「cursor number must be finite」로 멈춘다(여쭐 것 1)
+```
