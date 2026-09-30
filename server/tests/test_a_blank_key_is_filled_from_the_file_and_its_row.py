@@ -51,7 +51,8 @@ def fixture_load(pg_engine, monkeypatch, tmp_path):
     path = tmp_path / "nokey.csv"
     path.write_text(CSV, encoding="utf-8")
 
-    def load(config, signature="sha256:1:aa", with_signature=True):
+    def load(config, signature="sha256:1:aa", with_signature=True, csv=CSV):
+        path.write_text(csv, encoding="utf-8")
         crud.TABLE_CONFIG[T] = config
         rows, total, _skipped = parse_std_file(str(path), config, T)
         plan = None
@@ -92,6 +93,24 @@ def test_three_keyless_rows_get_three_keys_and_a_retry_finds_them(load):
     assert all(slot.startswith("nokey_") and len(slot.rsplit("_", 1)[1]) == 6 for slot in slots)
     assert "3 row(s) keyed nokey_... (slot)" in line, line
     assert again == first                           # no new row, the same keys
+
+
+@pytest.mark.pg
+def test_a_file_with_no_nokey_column_at_all_is_loaded_and_filled(load):
+    """총괄 d4a949a8c ①: the owner's first case is a file that does not HAVE the column. The
+    header check used to require every composite column while the row check already let the
+    nokey one go - two answers to 「which key columns must the file bring」."""
+    table, line = load(DECLARED, csv="lot,v\nL1,a\nL1,b\n")
+
+    assert [(lot, v) for lot, _slot, v in table] == [("L1", "a"), ("L1", "b")]
+    assert all(slot.startswith("nokey_") for _lot, slot, _v in table), table
+    assert "2 row(s) keyed nokey_... (slot)" in line, line
+
+
+@pytest.mark.pg
+def test_an_undeclared_table_still_refuses_a_header_without_its_key(load):
+    with pytest.raises(ValueError, match="required key column"):
+        load(UNDECLARED, csv="lot,v\nL1,a\n")
 
 
 @pytest.mark.pg
