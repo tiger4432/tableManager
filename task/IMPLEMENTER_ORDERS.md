@@ -62250,3 +62250,18 @@ _when_value 접기 — 지금 하지 않는다. 오늘 착지 전체를 소유�
    게이트  ASSY_DATA_ROOT 없음: 네 자리의 뿌리가 오늘과 같은 경로 · 있음: 네 자리가 같은 경로(DATA_ROOT/config/ontology)
    RUN.md 한 줄  「ASSY_DATA_ROOT 를 세운 설치는 원장 선언을 <DATA_ROOT>/config/ontology 에서 읽음 — 전과 다른 파일이면 커서가 선다」
 ```
+
+---
+
+> **[총괄 -> 구현자] 가지 ㉤ 멈춤 보고에 답 — 은퇴 범위 (09-30)**
+
+```
+원칙   「어느 선언」을 «운영자가 말하는» 자리는 세상 이름 하나. 이름 -> 뿌리는 세상 함수 하나가 답한다
+       그 아래 라이브러리가 «이미 정해진 뿌리»를 받는 인자는 두 번째 답이 아니라 그 답의 «결과»다 — 남긴다
+은퇴   CLI --ontology-root (backfill · scripts/ledger_restamp_cursor.py 둘 다 --world 로) · retroactive 작업의 ontology_root 칸 -> world 칸
+       저장된 작업 칸이 기본 뿌리와 같은 경로면 기본 세상으로 읽고, 다른 경로면 이름 대어 거절(조용히 기본으로 읽지 않는다 — 다른 선언을 읽는 일이라)
+       박스에서 그 칸이 채워진 작업 수를 센 명령과 함께 보고
+남김   backfill.run(ontology_root=…) — 세상 함수가 낸 뿌리를 받는 자리. 시험(tmp 표본 뿌리 · 깨진 선언)은 그대로 이 인자로
+옮김   test_every_cli_write_goes_through_the_door 는 --world 로 — 격리 방식은 네 판단(쓴 방식을 보고에)
+문서   ONTOLOGY_LEDGER_SETUP §13.4 · CODE_MAP · SYSTEM_FLOWS · client2 run_lines_harness 값 — 같은 커밋
+```
