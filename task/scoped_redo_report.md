@@ -66943,3 +66943,45 @@ clean_str_value 를 고치면 정체성 합성 넷도 바뀜: compose_business_k
     C  정본은 그대로, NaN 을 «표 경계»에서 한 함수로 접음(원장 소스 프레임 · 파서 · 맵퍼 — 뒤 둘은 이미 접음). 원장 쪽 _is_missing 둘·_when_value 의 NaN 몫이 빠짐
 여쭐 것  NUM1(쓰기 관문의 NaN 거절)이 서 있나 — 서 있으면 B 나 C, 아니면 A. 제 추천은 C(판정 안 뒤집고, 이미 있는 접기 두 개와 같은 모양), 크기 안 쟀다
 ```
+
+## [구현자 -> 총괄] row 소스 group_by 착지 c83fe086a — 482288b12 · 3a109bfd9 ① (A, 접근자 하나)
+
+```
+폼       unit=row 소스엔 group_by 칸 없음(스켈레톤 when {field: unit, is: group}) · derived 행(「Filled: unit=row -> no group_by」) 삭제
+저장     row 소스 파일에서 "group_by": [] 가 빠짐 · 번들엔 채우지 않음(_derived_cursor 는 커서만, 이름 그대로)
+접근자   setup_bundle.read_group_by(read) — 없으면 () · 부르는 자리: 검증기 셋(목록 검사·row/group/identity 검사 한 변수 · 컬럼 존재 · group_by 맵퍼)
+         · 컴파일 setup_registry · 작성 계획 config_authoring 셋. 「없음 = 빈 목록」 을 적는 곳은 이 함수 하나
+검증기   group_by 필수는 unit=group 일 때만(exact 의 required 에) — 값 읽기는 접근자
+표본     추적 ledger_config.json.sample 의 row 다섯(dt_job · transfer_event · die_inspection · wafer_process_recipe · lot_slot_wafer)에서 뺌
+클라 픽스처  client2/tests/fixtures/authoring_inherited_plan.json 을 캡처 스크립트로 다시 뜸 — derived 행 빠짐 + 앞선 착지분 세 줄(dtwafer@1 둘 · step_phase, 지난 캡처 666f738d 이후) · explorer_inherited_attributes_harness ASSERTIONS 8 통과 · 0 실패
+         🔴 클라가 design 에 main 을 합칠 때 이 픽스처가 바뀜
+```
+**게이트** (추적 표본 · 「[] 를 든 파일」 = 표본 row 다섯에 [] 를 도로 넣은 것 = 운영 파일 모양)
+```
+row 번들·초안    번들(초안 raw 가 잘려 나오는 곳)에 group_by 없음 · 컴파일 driver.group_by = () · group 은 선언 그대로
+row 저장        [] 든 파일 저장 -> 파일에 없음 · 드롭 목록에 그 경로(운영자가 든 값이 실제로 빠짐) · 번들 검증 0 건 · 표본 자체 0 건
+               표본(키 없음)에서 연 초안 저장 -> dropped_fields 에 group_by 없음 (test_a_switched_off_field_is_dropped_by_the_save 넷 초록)
+지문           소스 여섯 전부 — [] 든 파일 · 저장한 파일 · 표본 셋이 같음
+group 소스      저장 뒤 group_by 그대로 · 계획의 group_by 행은 group 소스만 · 키 빼면 missing_field
+클라 when       origin 의 fieldApplies(92ad06716 뒤): row + 키 없음 -> 안 그림 · row + [] -> 안 그림 · group -> 그림 / 서버 _gate row -> False
+변이 일곱 — 각각 되돌림
+G1 the accessor answers None for an absent key       빨강  (7 failed, 5 passed)
+G2 the validator asks group_by of every unit         빨강  (7 failed, 5 passed)
+G3 the validator asks group_by of no unit            빨강  (1 failed, 11 passed)
+G4 the compiler reads the key itself                 빨강  (2 failed, 6 passed, 4 errors)
+G5 the skeleton draws group_by for every unit        빨강  (1 failed, 11 passed)
+G6 the plan's row derived row comes back             빨강  (2 failed, 10 passed)
+G7 the bundle fills [] for a row source again        빨강  (5 failed, 7 passed)
+```
+**새 함수 · 새 if 중 기존 것과 같은 일** (cdeb5ea10)
+```
+새 함수   read_group_by 하나 — 「없음 = 빈 목록」 을 적던 자리 둘(검증기 교차검사의 driver.get(field, []) · not driver.get("group_by"))과
+          컴파일의 driver["group_by"](없음을 모름)·작성 계획 셋의 driver.get 을 이것으로 접음
+새 if     검증기의 grouped(unit == group 이면 group_by 필수) 하나 — 지운 derived 행이 row 쪽에서 같은 물음을 따로 답하던 둘째 길
+          스켈레톤 test_skeleton_and_validator_name_the_same_fields 가 exact 인자를 AST 로 읽어서, ("group_by",) 를 지역 이름 group_field 로 둠
+```
+**스위트** (C:/wt-impl, 착지 트리)
+```
+전체  5 failed, 7517 passed, 194 skipped, 3 xfailed in 817.94s (0:13:37) — 실패 5 개, 파일::이름으로 알려진 다섯과 같음: True
+PG    7 failed, 148 passed, 7564 deselected, 49 warnings in 285.48s (0:04:45) — 실패 이름이 알려진 일곱과 같음: True
+```
