@@ -1,5 +1,18 @@
 # 지금 돌리면 되는 것
 
+> ## 🔴 [09-30 저녁] **원장 선언 폼 — column 바인딩의 Time zone 칸이 글자 상자로 · 마이그레이션 «없음» · 재기동 «없음» (리로드 한 번)**
+>
+> ```
+> 무엇이 바뀌나  원장 선언 폼에서 Binding 이 column 인 칸마다 뜨던 「Time zone … No shape · broken」 줄이 글자 상자로 뜸
+>              값은 시간대 이름(예 Asia/Seoul) — 목록에서 고르는 칸이 아니라 적는 칸 (read.occurred_at 의 Time zone 과 같은 모양)
+> 할 일         curl -X POST "http://<host>:8080/admin/reload-configs" -H "X-Admin-Token: <토큰>"   (스켈레톤 캐시를 비움 — 서버 재기동 불필요)
+> 확인          원장 선언 폼 · 어느 소스의 bind · column 바인딩 하나 → Time zone 칸이 상자, 「No shape · broken」 없음
+> 뜻           리로드 뒤에도 그 줄이 남으면 화면이 옛 응답을 들고 있는 것 — 폼 새로고침
+> 급할 때       끄는 스위치 없음 — 커밋 되돌리기
+> ```
+
+---
+
 > ## 🔴 [09-30 저녁] **nokey 값의 시각이 마이크로초까지 — 마이그레이션 «없음» · 재기동 서버 · 워처 (run_app.bat 로 전체)**
 >
 > ```

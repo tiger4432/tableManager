@@ -53,6 +53,10 @@
           "when": {
             "field": "kind",
             "is": "column"
+          },
+          "node": {
+            "kind": "leaf",
+            "hint": "free"
           }
         },
         {
