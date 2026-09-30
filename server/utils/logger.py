@@ -283,3 +283,20 @@ def get_process_logger(process_name: str, log_filename: str) -> logging.Logger:
     _ACTIVE["path"] = log_path
 
     return _configured_logger(process_name)
+
+
+#: When a count says so in a log line: at 1, 10, 100 ... 10**18 - past any count one process
+#: reaches, so silence after a line means the count STOPPED (총괄 5c39aa10c · 5deda97cf).
+ANNOUNCE_AT = tuple(10 ** i for i in range(19))
+
+
+def announce_crossed(before: int, total: int) -> bool:
+    """True when a count going from `before` to `total` passed a mark of `ANNOUNCE_AT` - one
+    step or a whole batch, which can step over several marks at once. An allocation-free
+    loop of at most 19 comparisons: crud's drop path calls it once per dropped cell."""
+    last = 0
+    for mark in ANNOUNCE_AT:
+        if mark > total:
+            break
+        last = mark
+    return last > before

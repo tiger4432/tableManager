@@ -78,6 +78,8 @@ import datetime as _dt
 import logging
 import threading
 
+from utils.logger import announce_crossed
+
 from . import envelope
 
 logger = logging.getLogger("Ledger.Gate")
@@ -226,7 +228,6 @@ REFUSAL_REASON_NAMES = {
 # data, so a malformed feed must not be able to grow the report without limit. Same
 # discipline as `chain_key_gate.MAX_REFUSAL_ROWS`.
 MAX_REFUSAL_SAMPLES = 20
-_ANNOUNCE_AT = frozenset([1, 10, 100, 1000, 10000, 100000, 1000000])
 _NOTE_TOP_N = 5
 
 # (source, reason) -> molecules refused, for the life of this process.
@@ -417,7 +418,7 @@ def record_unsaid(source: str, unsaid) -> None:
     for key, units in (unsaid or {}).items():
         before = _unsaid.get((source, key), 0)
         total = _unsaid[(source, key)] = before + int(units)
-        if any(before < t <= total for t in _ANNOUNCE_AT):
+        if announce_crossed(before, total):
             logger.warning(
                 "[Ledger] Next: correct the value in the table it comes from, or declare a "
                 "sentence whose when names it. %s: %s said no sentence - every sentence's "
@@ -449,7 +450,7 @@ def _record(source: str, reason: str, atoms: int, detail: str, rows: int = 1,
                                        if isinstance(a, Mapping)]})
     # Announce on the 1st, 10th, 100th ... occurrence so a fixed deployment and a
     # broken one do not produce identical logs.
-    if total in _ANNOUNCE_AT:
+    if announce_crossed(before, total):
         logger.warning(
             "[LedgerGate] source=%s REFUSED a source event at the door | reason=%s | "
             "%d source row(s) produced nothing; %d atom(s) had already been built and "

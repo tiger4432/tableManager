@@ -29,6 +29,7 @@ from datetime import datetime, date, timezone
 # The one render/fold module for world time (S-182). Stdlib-only by design, so importing
 # it here cannot pull an application module into the write path.
 from utils import time_format
+from utils.logger import announce_crossed
 import event_constants
 from maps import alignment_batch_counts
 
@@ -95,11 +96,6 @@ _undeclared_column_drops = {}
 # attributable to a specific column. Bounded by the number of tables, which is config.
 _undeclared_column_drops_over_budget = {}
 
-# Membership test for the re-announce thresholds. A frozenset of ints so the check on
-# the drop path is an O(1) hash lookup that allocates nothing; 10**18 is past any
-# plausible drop count for one process.
-_DROP_ANNOUNCE_AT = frozenset(10 ** i for i in range(1, 19))
-
 # Per-table budget. For a correct caller the registry is bounded by schema size, but
 # the keys come from the payload, so junk column names (a malformed header row, a
 # parser emitting values as headers) could otherwise grow it without limit. On
@@ -153,7 +149,7 @@ def _warn_undeclared_column_once(table_name: str, col_name: str):
     key = (table_name, col_name)
     count = _undeclared_column_drops.get(key, 0) + 1
     _undeclared_column_drops[key] = count
-    if count != 1 and count not in _DROP_ANNOUNCE_AT:
+    if not announce_crossed(count - 1, count):
         return
     warned.add(col_name)
     logger.warning(
