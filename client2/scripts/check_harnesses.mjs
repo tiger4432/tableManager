@@ -1465,7 +1465,8 @@ const FLOORS = new Map([
   ['redo_banner_harness.mjs', 57],
   // the board part: composition
   // 42 -> 44 (lead 09-30, H10): the head's marking 1 place says the board's question.
-  ['rnd_board_composition_harness.mjs', 44],
+  // -> 46 (lead dcd159739, T6): a cell holding only spaces is absent, by the screen's one blank rule.
+  ['rnd_board_composition_harness.mjs', 46],
   // the board part: control trend
   ['rnd_board_control_trend_harness.mjs', 59],
   // the board shell that seats the parts above
@@ -1482,7 +1483,8 @@ const FLOORS = new Map([
   // lists walking what Save saves (L). 54 -> 58 (lead 2dd93d4a9).
   // 58 -> 60 (G5-G6, lead d4a949a8c ㉮): a refused save keeps a named reason and a list refusal.
   // 60 -> 61 (C7, ㉲): a blank id is not counted, as the chain's walk drops it.
-  ['rnd_board_contrast_save_harness.mjs', 61],
+  // 61 -> 62 (lead dcd159739, C8): an object or a list of blanks holds no id; unreadable text is unknown.
+  ['rnd_board_contrast_save_harness.mjs', 62],
   // the board part: the walk itself. 32 -> 34 (D5 and its mutant X11, lead d4a949a8c ㉱): the two
   // lists walk through one prelude.
   ['rnd_board_walk_harness.mjs', 34],

@@ -263,7 +263,15 @@ async function suite(mods) {
     truthy('T5 an absent cell says so instead of printing nothing',
       walk(hostT2).some((n) => n.getAttribute && n.getAttribute('data-col') === 'seen'
         && n.textContent === '-' && String(n.className).includes('is-absent')));
-    t1.destroy(); t2.destroy();
+    // A cell holding only spaces is absent too: the screen's one blank rule (lead dcd159739).
+    const hostT3 = doc.createElement('div');
+    const t3 = new TablePart(hostT3, { doc, markings: store2, reads: 'm:3', writes: 'm:3',
+      rowKey: 'id', columns: [{ key: 'seen', label: 'seen' }], rows: [{ id: 'W1', seen: '   ' }] });
+    t3.mount();
+    truthy('T6 a cell holding only spaces says it is absent, as an empty one does',
+      walk(hostT3).some((n) => n.getAttribute && n.getAttribute('data-col') === 'seen'
+        && n.textContent === '-' && String(n.className).includes('is-absent')));
+    t1.destroy(); t2.destroy(); t3.destroy();
   }
 
   // ── L. 펼친 층 — «찍은 층»만 펼칩니다 ─────────────────────────────────────────
@@ -375,8 +383,8 @@ const MUTANTS = [
   { id: 'T-M2', what: 'an absent cell is drawn as an empty string, so 「없음」 and 「빈 값」 look alike',
     catches: 'T5',
     mutate: { 'table_part.js': (s) => s.replace(
-      "  return value === null || value === undefined || value === '';",
-      '  return false;') } },
+      '    const text = isBlank(value) ? ABSENT : String(value);',
+      "    const text = isBlank(value) ? '' : String(value);") } },
   // 🔴 THE ANCHOR MOVED WHEN THE SELECTION MODEL LANDED. A plain click no longer goes through
   //    `toggle`, so hardcoding the name THERE stopped being reachable and this mutant sailed
   //    through green -- the assertion was fine, the mutation had stopped biting. It now sits on
@@ -399,6 +407,9 @@ const MUTANTS = [
   { id: 'M5', what: 'a defaulted window is drawn with the refusal styling', catches: 'E1',
     mutate: { 'head_summary_panel.js': (s) => s.replace(
       "'기간', `기본값 적용", "'기간', 'refused', `기본값 적용") } },
+  { id: 'M7', what: 'a table cell keeps its own absence judge, blind to a blank string', catches: 'T6',
+    mutate: { 'table_part.js': (s) => s.replace('    const text = isBlank(value) ? ABSENT : String(value);',
+      "    const text = (value === null || value === undefined || value === '') ? ABSENT : String(value);") } },
   { id: 'M6', what: 'the write name is ignored so a read-only part can still write', catches: 'B1',
     mutate: { 'panel.js': (s) => s.replace('if (!this.writes || !this.markings) return SIGN.ABSENT;',
       "if (!this.markings) return SIGN.ABSENT; if (!this.writes) this.writes = 'marking:1';") } },

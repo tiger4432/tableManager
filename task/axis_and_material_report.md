@@ -1,3 +1,26 @@
+> ## [02:56 디자인] 안 접은 둘도 접음 — 공백뿐인 표 칸은 «-», id 없는 목록은 0 — 총괄 dcd159739 · ada1c281a
+
+| 자리 | 한 것 |
+|---|---|
+| rnd_board/table_part | isAbsent 를 지우고 absent.js isBlank 를 부름. 「null · undefined · '' 만 부재」 주석도 같이 지움 |
+| rnd_board/api | blank 를 지움. idCount 는 비지 않은 글자를 먼저 JSON 으로 읽고, 읽은 것에 isBlank 를 물음. 갈래 수는 그대로. computedAt 도 isBlank. 주석은 「목록으로 못 읽는 글자는 모름」으로 고침 |
+
+게이트(지시의 넷)
+
+| 입력 | 결과 | 잰 자리 |
+|---|---|---|
+| table_part 칸 '   ' | «-» (is-absent) | rnd_board_composition T6 |
+| rnd_board 목록 '{}' | 0 | rnd_board_contrast_save C8 |
+| rnd_board 목록 '[""]' | 0 | C8 |
+| rnd_board 목록 'abc' | 모름(—) | C8 |
+
+- 네 자리(skeleton · excel_io · api · table_part)가 표의 15개 입력 전부에서 같은 답을 냅니다(모듈째 불러 같은 입력을 먹인 셈). blank_rule S1 은 네 자리가 같은 함수를 부르는지 잽니다.
+- 이번에 답이 바뀐 입력 — api: `{}` · `U+001F` · `U+FEFF` · table_part: `'  '` · `'\t\n'` · `[]` · `['']` · `{}` · `U+001F`
+
+새 함수 · 새 if 중 기존 것과 같은 일: 새 함수 0 — 두 사본을 지우고 규칙을 부름. 새 if 0 — idCount 의 if 둘은 순서만 바꿈(글자 풀기 → 빈 값).
+
+게이트: rnd_board_contrast_save 62/0 · rnd_board_composition 46/0 · blank_rule 4/0 · 변이 전부 빨강(contrast 22 · composition 13 · blank_rule 4) · 러너 154 중 152 게이트 초록 · 계약 12 개 어긋남 0
+
 > ## [02:28 디자인] unanswered 는 Optional · 빈 값 판정을 규칙 하나로 — 총괄 a5720d9d8 · 0ccecafe6
 
 **unanswered = Optional.** 뼈대(form_demand)가 같은 상태에 이미 쓰는 낱말입니다. Not answered 를 거뒀고, 6b 판정의 「Optional → 비움(Empty)」을 이것으로 뒤집습니다. 근거는 총괄 a5720d9d8 입니다: 값 칸이 이미 빈 것을 보여 주니 Empty 는 같은 말을 두 번 하고, Optional 은 «비워 둬도 된다»를 말합니다. 나머지 줄(Refused · Differs · Missing · Default)과 순서는 그대로입니다.

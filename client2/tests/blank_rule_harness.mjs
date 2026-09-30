@@ -66,10 +66,12 @@ const main = async () => {
   console.log('\n-- S. the seats that fold into it --');
   // The probe copy imports ../absent.js from the real file, so the rule is the very same function object.
   const seat = async (rel) => (await loadWithProbe(path.join(SRC, rel), { expose: ['isBlank'] })).probe.isBlank;
-  const skeleton = await seat('ontology_skeleton.js');
-  const excel = await seat(path.join('map2', 'excel_io.js'));
-  ok('S1 ontology_skeleton and map2/excel_io ask the one rule (the same function, not a copy)',
-    skeleton === absent.isBlank && excel === absent.isBlank, `skeleton ${skeleton === absent.isBlank}, excel_io ${excel === absent.isBlank}`);
+  const SEATS = ['ontology_skeleton.js', path.join('map2', 'excel_io.js'), path.join('rnd_board', 'api.js'),
+    path.join('rnd_board', 'table_part.js')];
+  const asks = [];
+  for (const rel of SEATS) asks.push((await seat(rel)) === absent.isBlank);
+  ok('S1 the four seats ask the one rule (the same function, not a copy): skeleton, excel_io, rnd_board api, table_part',
+    asks.length === 4 && asks.every(Boolean), SEATS.map((s, i) => `${s} ${asks[i]}`).join(', '));
   base.ran = ran;
   base.failed = failedList.slice();
   const BASE_NAMES = NAMES.filter((n) => !n.startsWith('S1'));

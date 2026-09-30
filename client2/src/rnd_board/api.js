@@ -45,7 +45,7 @@
 //    들고 있었는데 `api.js` 한 줄만 그 문을 안 지났고, 개인 로더 여섯이 같은 줄을 각자 들고
 //    있었습니다. 이제 일곱이 «한 문»(`moduleUrl`)을 지납니다.
 import { declaredKeys } from '../walk/derive.js';
-import { UNPICKED } from '../absent.js';
+import { UNPICKED, isBlank } from '../absent.js';
 import { SERVER_REFUSED } from '../ui_words.js';
 
 export const ROUTES = Object.freeze({
@@ -2142,17 +2142,16 @@ const contrastCell = (row, col) => {
   const cell = row && row.data ? row.data[col] : undefined;
   return cell && typeof cell === 'object' && !Array.isArray(cell) && 'value' in cell ? cell.value : cell;
 };
-// The server's `is_blank_value`: absent, or text that is empty once trimmed. `0` and `false` are values.
-const blank = (value) => value === null || value === undefined || String(value).trim() === '';
-// How many ids a stored list holds - blank ids dropped, as the chain's walk drops them. A list the
-// screen cannot read is unknown (null), not 0.
+// How many ids a stored list holds - blank ids dropped, as the chain's walk drops them (absent.js isBlank,
+// the screen's one blank rule). Text that cannot be read as a list is unknown (null), not 0; a list or
+// object holding no id is 0 (lead dcd159739).
 const idCount = (value) => {
-  if (blank(value)) return 0;
   let ids = value;
-  if (!Array.isArray(ids)) {
-    try { ids = JSON.parse(String(value)); } catch (e) { return null; }
+  if (typeof ids === 'string' && !isBlank(ids)) {
+    try { ids = JSON.parse(ids); } catch (e) { return null; }
   }
-  return Array.isArray(ids) ? ids.filter((id) => !blank(id)).length : null;
+  if (isBlank(ids)) return 0;
+  return Array.isArray(ids) ? ids.filter((id) => !isBlank(id)).length : null;
 };
 // `complete` is a string column: the chain's false arrives as 'false'.
 const saysFalse = (value) => value === false || String(value).trim().toLowerCase() === 'false';
@@ -2163,7 +2162,7 @@ export function contrastListModel(body) {
   const rows = body && Array.isArray(body.data) ? body.data : [];
   return rows.map((row) => {
     const at = contrastCell(row, CONTRAST.computedAt);
-    const computedAt = blank(at) ? null : at;
+    const computedAt = isBlank(at) ? null : at;
     const found = contrastCell(row, CONTRAST.candidates);
     return {
       runId: String(contrastCell(row, CONTRAST.runId) ?? ''),
