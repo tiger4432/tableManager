@@ -67081,3 +67081,28 @@ B2 a source refused on one side is not changed       빨강  (1 failed, 7721 des
 전체  5 failed, 7518 passed, 196 skipped, 3 xfailed in 851.50s (0:14:11) — 실패 5 개, 파일::이름으로 알려진 다섯과 같음: True
 PG    7 failed, 150 passed, 7565 deselected, 53 warnings in 290.56s (0:04:50) — 실패 이름이 알려진 일곱과 같음: True
 ```
+
+## [구현자 -> 총괄] d4a949a8c ④ 착지 4c02fafe4 — 「되쓰기인가」를 한 곳이 답함
+
+```
+쌍둥이 확인  dt_map_derivation.normalize_scoped_batch 가 되쓰기를 판정하고 돌려줌 -> ingestion_worker 가 batch[0] == target_table 로 «다시» 물어 권한 검사
+            normalize_scoped_batch 를 부르는 곳 하나(ingestion_worker) · require_scoped_batches_allowed 를 부르는 곳 하나(같은 자리) — git grep, 시험 밖
+접기        독자가 되쓰기 갈래를 돌려준 «뒤»에 require_scoped_batches_allowed(rule) — 워커의 if 삭제
+다름 하나    권한도 없고 봉투도 틀린 배치: 전엔 봉투 거절 문장, 이젠 권한 문장이 먼저(둘 다 격리 사유). 둘 다 맞는 배치 · 되쓰기는 전과 같음
+게이트       권한 없는 규칙의 대상 배치 -> 독자가 거절 · 권한 없는 규칙의 되쓰기 -> 통과 · 소비자 코드에 권한 검사 이름 없음
+변이 둘 — 각각 되돌림
+E1 nobody asks the envelope's permission             빨강  (1 failed, 19 passed, 4 skipped)
+E2 a write-back is asked the permission too          빨강  (2 failed, 18 passed, 4 skipped)
+```
+**새 함수 · 새 if 중 기존 것과 같은 일** (cdeb5ea10)
+```
+새 함수 0 · 새 if 0 — 워커의 if 하나 지움
+```
+**스위트** (C:/wt-impl, 착지 트리)
+```
+전체  6 failed, 7517 passed, 196 skipped, 3 xfailed in 709.40s (0:11:49) — 실패 6 개, 파일::이름으로 알려진 다섯과 같음: False · 다른 것: ['tests/test_config_reload_integrity.py::test_inv_9_1_atomic_save_event_applies_physical_alter']
+      알려진 다섯 밖 하나 test_config_reload_integrity::test_inv_9_1_atomic_save_event_applies_physical_alter — 따로 세 번 돌려 셋 다 초록.
+      그 시험은 설정 처리기에 파일 이동 사건을 보내고 디바운스 리로드 -> 물리 칸 추가를 기다림(시간 시험).
+      이 착지가 바꾼 두 자리(normalize_scoped_batch · 워커의 봉투 검사)를 지나지 않음
+PG    7 failed, 150 passed, 7565 deselected, 53 warnings in 273.55s (0:04:33) — 실패 이름이 알려진 일곱과 같음: True
+```
