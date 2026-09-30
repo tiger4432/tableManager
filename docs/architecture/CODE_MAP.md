@@ -5561,6 +5561,7 @@ Excel 클립보드 왕복의 공용 저층 — export `parseTsv`/`serializeTsv`/
 | `reach_panel.js` | **181** | 「닿는 곳」 — 마킹에서 어느 술어로 무엇에 닿는가 |
 | `expanded_layer_panel.js` | **208** | 펼친 층 |
 | `declaration_panel.js` | **150** | 선언 패널 |
+| 🆕 `contrast_save_panel.js` | **140** @`e352d71a3` | **대조 저장(Save contrast)** — 저장 한 번 = `contrast_run` 한 행(`PUT /tables/contrast_run/data/updates`, `api.js` 의 `CONTRAST` — run_id · positive/negative(JSON 글) · `until` = 지금 · 질문이 싣는 걷기 인자 · 참/거짓은 글). 누가 저장했는지는 쓰기 문의 `updated_by`. 목록 = `contrast_run` 최신 10 + run 마다 `contrast_factor` 한 번 읽기(「factors N」, 실패는 대시). 🔴 후보 목록 · 순위표 · 저장이 «한 질문»(`main.js` 의 `LIST_QUESTION` — 후보 질문 + 그 시작 = 마킹 1, 비면 선언된 `otherwise`)을 읽어 저장되는 것이 목록이 그린 걷기다. 계산은 체인(`mappers/contrast_walk.py`, `2005c0649`). `panel.js` 에 `onStartChanged`(시작 마킹이 바뀌면 — 기본 아무것도 안 함) |
 
 **하니스 7 (3,535줄) + 픽스처 3** — `rnd_board_harness.mjs` **1,268** · `rnd_board_walk_box_harness.mjs` **464** · `rnd_board_reach_harness.mjs` **423** · `rnd_board_control_trend_harness.mjs` **422** · `rnd_board_composition_harness.mjs` **414** · `rnd_board_walk_harness.mjs` **329** · `rnd_board_intersection_harness.mjs` **215**. 픽스처 — `rnd_board_reach.json` · `rnd_board_lot_map_slot03.json`(13,281 B) · `rnd_board_lot_map_slot07.json`(13,123 B). ⚠️ **이 패스는 하니스를 열지 않았다** — 존재·크기만.
 
