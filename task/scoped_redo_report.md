@@ -66644,3 +66644,52 @@ NULL 접기 게이트 셋 (4349db8e8 ②)
 스위트  전체·PG 도는 중. 결과는 착지 보고에
 여쭐 것  ㄱ 로 가도 되나
 ```
+
+## [구현자 -> 총괄] 4b5964ab2 ①+② 착지 2b295dea6 — 빈 커서 칸 행이 든 분자는 no_raw_ref 로 거절 1 건, 배치는 계속 · S-41 ② 커서 몫 닫힘
+
+```
+① 셈 줄   시험이 실행 문(execute_scoped_batch)을 지나 그 문이 쓴 로그 한 줄을 단언 — 문의 record_unsaid 를 지우면 빨강(M7)
+② 한 규칙  「빈 커서 칸 행이 든 분자를 거절 1 건 — rows = 분자 행 수 · 주소 = 빈 칸 · no_raw_ref」
+   자리    source_preparation._refuse_molecule — 신원·시간 빈 칸을 이미 분자로 거절하던 곳(116). 단위 종류를 묻는 자리 0
+           _validate_base_frame 의 페이지 거절에서 order_by(= 커서, setup_bundle._derived_cursor)를 뺌. identity · group_by 는 그대로 페이지
+           커서 값은 커서 칸이 찬 행 중 마지막(last_cursor, 세 자리가 한 함수) · _cursor_value 도 그 행들만 후보로
+           시간이자 커서인 칸(lot_event 의 event_time)은 커서를 먼저 물어 no_raw_ref — 지시 문장 그대로
+   은퇴    5c7e54f19 에 올린 «행 하나만 떼는» 모양(부분 분자)은 이 착지에 없음
+```
+잰 것 — 박스 라이브 선언·데이터, 읽기만
+```
+dt_job 페이지(행 216 · 빈 커서 144)  전 배치 예외 「cursor number must be finite」
+                                        후 거절 3 건(작업마다 1) · 거절 행 144 · 나머지 작업 원자 2
+72 행 작업에서 한 행만 비움        분자 0 · 원자 0 · 거절 rows 72 — has_netdie 71 이 안 생김
+```
+잰 것 — PG, 시험 밖 탐침(선언만 order_by [row_id, step] 로 바꿔 표본 wafer_process_recipe 로)
+```
+편집으로 커서 칸을 비움  따라가기 withdrawn 1 · inserted 0 · 거절 no_raw_ref(주소 …read.order_by.step) — 그 행 원자가 걷힘
+다시 채움              inserted 1 — 돌아옴
+= 판정 199 의 길(번역이 멈춘 행은 지워진 행과 같은 길). 전에는 페이지 예외라 옛 원자가 남았을 것 — 코드로 읽음, 옛 트리에서 이 탐침은 안 돌렸다
+```
+변이 — 각각 되돌림, 시험 파일 셋
+```
+M1 the molecule check does not ask the cursor        빨강 4
+M2 the cursor is a page refusal again                빨강 4
+M3 the cursor check reads every row                  빨강 3
+M4 the cursor is the plain last row                  빨강 2
+M5 the refusal counts one row                        빨강 1
+M6 the refusal carries no address                    빨강 3
+M7 the execute door does not write the unsaid line   빨강 1
+```
+거짓이 된 말 — 착지 때 다시 셈 (git grep: identity/order/cursor · blank.*cursor · cursor.*blank · where the PAGE · cursor value is missing · cursor number must be finite)
+```
+고침   source_preparation 페이지 거절 주석 · 그 거절 문장 「identity/order/cursor/time」 -> 「identity/group_by」
+       test_ledger_source_preparation 의 _time_is_not_the_order_column docstring
+       test_a_blank_ORDER_column_is_still_a_page_refusal -> 분자 전체 거절 게이트로 (묶음 픽스처, rows 2)
+       test_a_row_that_stopped_being_this_sources_row… docstring · RUN.md 줄
+       test_ledger_l1_pg param_id 주석 둘 — param_id 는 identity 라 «여전히» 페이지(참). 인용한 문장만 새 문장으로
+안 고침 task/ 두 파일의 넷 줄(옛 보고·지시서) — 이력
+RUN.md 제 c1746aa1e 절 머리 「재기동 «없음»」이 틀렸습니다 — 번역 코드 ①② 는 서버·체인 워커 재기동이 있어야 켜짐. 고쳤습니다
+```
+스위트 (C:/wt-impl, 착지 트리)
+```
+전체  5 failed, 7507 passed, 189 skipped, 3 xfailed in 732.16s (0:12:12) — 실패 5 개, 파일::이름으로 알려진 다섯과 같음: True
+PG    7 failed, 143 passed, 7554 deselected, 41 warnings in 236.04s (0:03:56) — 실패 이름이 알려진 일곱과 같음: True
+```
