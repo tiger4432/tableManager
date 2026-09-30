@@ -1,3 +1,20 @@
+> ## [18:02 디자인] 물려받음 (나) — 이름 칸 비우고 값 칸의 근거 상자에 «서버 문장 · 경로» + 뼈대 픽스처 다시 뜨기 — 총괄 1d3c04e21 · df2e7b1b7
+
+```
+한 것     이름 칸 ''. 값 칸 = .oe-ground 상자(다른 derived 행의 근거 자리와 같은 상자): ground.text 다음 from_paths 를 › 로
+          잘림 없음(1280: 문장이 상자 안에서 줄바꿈 · 375 다크: 가로 넘침 없음)
+          .oe-planned-from 자기 규칙은 은퇴 — 상자 안에서는 정본 .oe-ground code 가 입힘
+픽스처    authoring_skeleton.json 을 capture_authoring_skeleton.py 로 다시 뜸 — 바뀐 것 server_at + defs.binding.timezone 의 node(leaf · free)
+          펼친 물려받음 멤버의 Time zone 이 «No shape · broken» 대신 «None · Optional»
+```
+
+| 게이트 | 결과 |
+|---|---|
+| explorer_inherited_attributes — I1 값 칸에 서버 문장·경로, 이름 칸 빔 | 8/0 · 변이 6 전부 빨강 |
+| 러너(새 픽스처로 경로 막대 하니스 포함) | 152 중 150 게이트 초록 |
+
+알릴 것: 1d3c04e21 ①(라벨 = ground.text)은 지시 글이 닿기 전에 30ffc1d98 로 먼저 들어갔고, 이 커밋이 (나)와 ②입니다.
+
 > ## [17:51 디자인] 물려받음 블록의 이름을 서버 ground.text 로 — 화면이 지은 낱말 0 · 총괄 2dcf6be37 뒤 · 30ffc1d98
 
 ```
