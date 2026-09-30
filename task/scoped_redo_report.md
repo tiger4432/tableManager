@@ -65642,3 +65642,43 @@ PG     7 failed, 124 passed, 7526 deselected in 257.01s (0:04:17) — 실패는 
 ```
 다음   4 조인이 시각 칸 값을 옮기면 묶음째 TypeError
 ```
+
+## [구현자 -> 총괄] 착지 0ba95c23a — 791c0f45e 4: 조인이 시각 칸 값을 옮겨도 쓰기가 안 깨짐
+
+```
+자리     crud.cast_value_by_type 의 datetime 갈래 — 쓰기 문 경계. 층 값은 이 함수가 낸 값이라 층을 만드는 한 자리
+         naive 세기 뒤 crud.sanitize_to_utf8(«crud 의 JSON 변환») 를 지남 — 시각 객체는 시간대 꼬리 있는 ISO 글, 글은 그대로
+         새 직렬화 함수 없음
+왜 temporal_text_value 가 아닌가
+         그것은 UTC 를 꼬리 없이 씀 -> PG 가 세션 시간대로 읽어 표 값이 옮겨짐. 이 박스(Asia/Seoul)에서 잼:
+         층 글 '2026-09-27 23:00:00.000000' -> 다시 읽은 층 datetime.datetime(2026, 9, 27, 23, 0) · 표 datetime.datetime(2026, 9, 27, 23, 0, tzinfo=datetime.timezone(datetime.timedelta(seconds=32400)))
+         그래서 변이로 남김(빨강)
+판정 289 ⓐ  그 갈래 머리의 「값을 바꾸지 않는다」는 글 입력에 대해 그대로 참 — 한 글자도 안 바뀜. 전에 TypeError 로 죽던
+         시각 «객체»만 철자가 생김. 순간은 안 바뀜(게이트)
+행 방송   동결 09-29 의 행 방송 TypeError 는 안 건드렸고 저절로 고쳐지지도 않음 — 방송은 커밋 뒤 표에서 다시 읽은 시각을 실음(코드 읽기)
+```
+
+| 칸 | 입력 | 답 |
+|---|---|---|
+| 빈 답 씀 | 원천 R1 에 시각 · R2 는 빈 칸 · 조인(blank 칸 없음) | L1: 층 · 표 · 원천이 같은 순간 · L2: 체인 NULL 층 · 표 NULL |
+| blank: skip | 같음, blank: skip | L1 같음 · L2 층 없음 · 파일 값 그대로 |
+
+```
+고치기 전  2 failed, 7657 deselected in 13.81s — TypeError: Object of type datetime is not JSON serializable
+통과     2 passed, 7657 deselected in 11.87s
+변이     시각 객체를 그대로 -> 2 failed, 7657 deselected in 12.53s — test_a_join_moves_a_time_and_every_copy_is_the_same_instant[blank_written] · test_a_join_moves_a_time_and_every_copy_is_the_same_instant[blank_skip]
+         temporal_text_value 로 -> 2 failed, 7657 deselected in 12.04s — test_a_join_moves_a_time_and_every_copy_is_the_same_instant[blank_written] · test_a_join_moves_a_time_and_every_copy_is_the_same_instant[blank_skip]
+전체     6 failed, 7478 passed, 172 skipped, 3 xfailed in 814.09s (0:13:34) — ⚠️ 알려진 다섯과 다름: ['test_inv_9_1_atomic_save_event_applies_physical_alter', 'test_live_mapper_and_tracked_sample_are_byte_identical', 'test_live_mapper_and_tracked_sample_are_byte_identical', 'test_live_mapper_matches_tracked_sample', 'test_the_repo_root_is_one_above_it', 'test_the_sample_is_written_in_the_one_format_both_writers_use']
+PG       7 failed, 126 passed, 7526 deselected in 229.91s (0:03:49) — 실패는 알려진 일곱과 이름이 같음
+         전체의 여섯째(test_inv_9_1_atomic_save_event_applies_physical_alter)는 알려진 들쭉 — 따로 세 번: 2 passed, 30 deselected in 5.64s / 2 passed, 30 deselected in 5.50s / 2 passed, 30 deselected in 5.68s
+재기동    서버 · 체인 워커. 마이그레이션 없음 — RUN.md 새 절
+```
+
+**남는 것 (안 지음 · 여쭐 것)**
+```
+같은 순간을 다시 옮기면 표 칸을 매번 다시 씀 — 잼(같은 조인 세 번): 1회차 바뀐 칸 1 · 2회차 바뀐 칸 1 · 3회차 바뀐 칸 1
+  값 비교(value_key)가 글자라 ISO 의 'T' 와 표 시각의 공백 철자가 «다름» — 그 칸 ROW_UPDATE 사건이 매번 남음
+  파일에서 오는 시각 글도 같은 부류(R3 의 철자 번짐과 같은 뿌리). 시각 칸은 «순간»으로 견줄지 — 소유자께 여쭐 것
+```
+
+대조 PG 측정(세워 둔 것)으로 돌아갑니다.
