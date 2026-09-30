@@ -34904,7 +34904,7 @@ fa41a6f25   소스 전부 새로 고침이 잃은 행의 원자를 거둠 — BA
 ```
 candidate_list_panel.js  measured.textContent = c.measured ? 'Measured' : '-'   · 같은 카드 mdl.textContent = c.model || '-'
 absent.js                ABSENT = '—' (「없음」의 철자 한 곳, PRIMITIVES 「여섯 번째 철자」 경고)
-관찰  카드의 '-' 둘은 absent.js 밖의 두 번째 철자입니다. 다만 measured 의 '-' 는 «없음»이 아니라 «실측 아님»이라는 판정이라
+관찰  카드의 '-' «셋»(rank · model · measured — 첫 판에 둘로 적었다가 센 명령으로 고침, @2b20ed983)은 absent.js 밖의 두 번째 철자입니다. 다만 measured 의 '-' 는 «없음»이 아니라 «실측 아님»이라는 판정이라
       ABSENT 로 바꾸는 것이 맞는지는 제가 판정하지 않았습니다 — 보드 문자열 라운드(919ccc065)가 이 줄을 지나므로 여기 올립니다
 센 명령  git show HEAD:client2/src/rnd_board/candidate_list_panel.js | grep -n "'-'"
 ```
