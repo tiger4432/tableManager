@@ -47,7 +47,7 @@ Link type    inspected  Wafer -> Die                              backing datase
     "wafer_master": {
       "relation": "wafer_master",
       "read": {
-        "unit": "row", "identity": ["wafer_id"], "group_by": [], "order_by": ["wafer_id"],
+        "unit": "row", "identity": ["wafer_id"], "order_by": ["wafer_id"],
         "cursor": { "columns": ["wafer_id"] },
         "occurred_at": { "column": "updated_at", "timezone": "Asia/Seoul" }
       },
@@ -77,7 +77,7 @@ Link type    inspected  Wafer -> Die                              backing datase
     "inspection_rows": {
       "relation": "inspection_rows",
       "read": {
-        "unit": "row", "identity": ["row_id"], "group_by": [], "order_by": ["row_id"],
+        "unit": "row", "identity": ["row_id"], "order_by": ["row_id"],
         "cursor": { "columns": ["row_id"] },
         "occurred_at": { "column": "inspected_at", "timezone": "Asia/Seoul" }
       },
@@ -125,6 +125,7 @@ Link type    inspected  Wafer -> Die                              backing datase
 ## 3. 이 예시가 «안» 보여 주는 것 (일부러)
 ```
 · 그룹 소스(한 이벤트 = 여러 행, `read.unit: "group"` + `group_by`) — 출하 샘플 lot_event 참고
+  row 소스는 `group_by` 를 적지 않습니다 — 폼도 안 그립니다. 옛 파일의 `"group_by": []` 는 그대로 읽히고 저장 때 빠집니다(10-01 `c83fe086a`)
 · 준비기가 «산출»하는 컬럼(`prepare.output_columns`) — 출하 샘플 참고
 · 검증된 가상 조인(`accepts_verified_join_rules`) — `docs/guide/config/` 의 그 문서
 · 그룹 «집계»(`aggregations`) — 🔴 원장 선언의 칸이 «아닙니다». 인리치먼트 규칙의 것이고,
