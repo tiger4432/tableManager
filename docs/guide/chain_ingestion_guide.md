@@ -359,7 +359,10 @@ plain updates only, no permission cell, no `replace_map` or `retract` there
 (09-30 `247c0aba6`; a saved contrast marks its own run row that way). Any other table
 is refused by name: `rule '<name>' cannot redirect a scoped batch to '<table>' -
 a rule writes its target, and besides it only the rule's trigger table`. The
-reader for every batch envelope is `dt_map_derivation.normalize_scoped_batch`. One envelope entry becomes one `GeneralUpdateBatch`, so
+reader for every batch envelope is `dt_map_derivation.normalize_scoped_batch`, and it is also
+the one that asks the permission of a batch that is not a write-back (10-01 `4c02fafe4` - the worker
+no longer asks a second time). A batch that is both unpermitted and malformed is refused for the
+permission first: `rule '<name>' returned scoped batches without allow_replace_map or allow_retraction`. One envelope entry becomes one `GeneralUpdateBatch`, so
 two maps cannot be combined.
 
 #### 제거 전략은 **둘**이고, 하나만 고르는 것이 아니라 **맵의 생산자 수가 고른다**
