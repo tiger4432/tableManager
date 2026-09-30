@@ -2074,7 +2074,6 @@ def _process_chain_transaction_group_sync(tx_id, events, db, rules):
             # 🪦 `module_name` / `func_name` were read here and carried to the door. The seat
             #    reads them off the rule, so a rule naming its mapper in the ONE cell (the
             #    decorator registry) no longer arrives as a pair of Nones.
-            is_batch = rule.get("is_batch", False)
             _rule_name = rule.get("name") or "<unnamed rule>"
             heartbeat.note_work(rule=_rule_name)
             rules_by_target[target_table].add(_rule_name)
@@ -2114,74 +2113,61 @@ def _process_chain_transaction_group_sync(tx_id, events, db, rules):
                 # file mapper never looks at it. Projected rather than branched on, so this
                 # caller stops knowing which door the rule takes.
                 row_ids = [p.get("row_id") for p in payloads if p.get("row_id")]
-                if is_batch:
-                    # The whole group in one call; the seat fans out per row when the rule
-                    # is not a batch rule, and picks `row_ids` when the rule is a builtin.
-                    target_payload = rule_run.run_rule(db, rule, payloads=payloads,
-                                                      row_ids=row_ids,
-                                                      depth=incoming_depth,
-                                                      woken_by_a_replay=woken_by_a_replay,
-                                                      cascade=cascade)
-                    if target_payload["updates"]:
-                        table_updates[target_table].extend(target_payload.get("updates"))
-                        if rule.get("name") not in table_contributors[target_table]:
-                            table_contributors[target_table].append(rule.get("name"))
-                    # carried even when the first page proposed nothing - the rest may not
-                    _carry_next_pages(table_updates, table_contributors, target_table, rule,
-                                      target_payload)
-                    if target_payload["map_metadata_updates"]:
-                        if not rule.get("allow_map_metadata_upsert", False):
+                # 🔴 [총괄 12cc7dd1f ③] ONE READING, WHATEVER THE RULE'S SHAPE. The seat hands a
+                #   batch rule its group in one call and a per-row rule one call per row, and
+                #   MERGES `updates` · `map_metadata_updates` · `batches` either way; this read
+                #   the last two only for a batch rule, so a per-row rule's envelope was dropped
+                #   in silence (247c0aba6 보고). A builtin kind picks `row_ids`.
+                target_payload = rule_run.run_rule(db, rule, payloads=payloads,
+                                                  row_ids=row_ids,
+                                                  depth=incoming_depth,
+                                                  woken_by_a_replay=woken_by_a_replay,
+                                                  cascade=cascade)
+                if target_payload["updates"]:
+                    table_updates[target_table].extend(target_payload.get("updates"))
+                    if rule.get("name") not in table_contributors[target_table]:
+                        table_contributors[target_table].append(rule.get("name"))
+                # carried even when the first page proposed nothing - the rest may not
+                _carry_next_pages(table_updates, table_contributors, target_table, rule,
+                                  target_payload)
+                if target_payload["map_metadata_updates"]:
+                    if not rule.get("allow_map_metadata_upsert", False):
+                        raise ValueError(
+                            f"rule '{rule.get('name')}' returned map metadata without allow_map_metadata_upsert")
+                    for requested in target_payload.get("map_metadata_updates") or []:
+                        updates = requested.get("updates") if isinstance(requested, dict) else None
+                        if not isinstance(updates, dict):
+                            raise ValueError("chain map metadata update requires an updates object")
+                        if updates.get("target_table") != target_table:
                             raise ValueError(
-                                f"rule '{rule.get('name')}' returned map metadata without allow_map_metadata_upsert")
-                        for requested in target_payload.get("map_metadata_updates") or []:
-                            updates = requested.get("updates") if isinstance(requested, dict) else None
-                            if not isinstance(updates, dict):
-                                raise ValueError("chain map metadata update requires an updates object")
-                            if updates.get("target_table") != target_table:
-                                raise ValueError(
-                                    f"rule '{rule.get('name')}' cannot register metadata for '{updates.get('target_table')}'")
-                            if not isinstance(updates.get("map_id"), str) or not updates["map_id"]:
-                                raise ValueError("chain map metadata update requires a non-empty map_id")
-                            map_metadata_updates.append(requested)
-                    if target_payload["batches"]:
-                        # Either permission opens the envelope; the per-batch checks below
-                        # then require the one that matches the strategy the batch actually
-                        # asked for. A retract-only rule must not have to grant itself
-                        # `allow_replace_map` to be heard - that would leave a purge
-                        # permission standing for a rule that never purges.
-                        # 🔴 [C-15] 봉투 검증은 «한 독자»가 한다. 이 여섯 규칙이 여기와
-                        #    `chain_replay` 에 «두 사본»으로 있었고, 그 옆 주석이 「손으로
-                        #    맞춘다」고 적어 두었다 — 형제(retract 봉투)는 이미 한 독자였다.
-                        for requested in target_payload.get("batches") or []:
-                            batch = dt_map_derivation.normalize_scoped_batch(
-                                requested, rule, target_table)
-                            if batch[0] == target_table:
-                                dt_map_derivation.require_scoped_batches_allowed(rule)
-                            scoped_batches.append(batch)
-                            # A scoped batch writes its table - this target, or the trigger
-                            # table written back (총괄 2dd93d4a9 1) - so a failure in it names
-                            # this rule (총괄 a4cb623e0 ②) and its write carries this
-                            # declaration, which is what keeps the rule from waking on it.
-                            rules_by_target[batch[0]].add(_rule_name)
-                            declarations_by_target[batch[0]].add(
-                                rule_shape.declaration_of(rule))
-                            if rule.get("name") not in table_contributors[batch[0]]:
-                                table_contributors[batch[0]].append(rule.get("name"))
-                else:
-                    # Single event execution - one call per ROW. The fan-out moved INTO the
-                    # seat with the door it belongs to, so this hands over the whole
-                    # expansion and the seat makes the same N calls.
-                    target_payload = rule_run.run_rule(db, rule, payloads=payloads,
-                                                      row_ids=row_ids,
-                                                      depth=incoming_depth,
-                                                      woken_by_a_replay=woken_by_a_replay,
-                                                      cascade=cascade)
-                    if target_payload.get("updates"):
-                        table_updates[target_table].extend(target_payload["updates"])
-                        if rule.get("name") not in table_contributors[target_table]:
-                            table_contributors[target_table].append(rule.get("name"))
-                    _carry_next_pages(table_updates, table_contributors, target_table, rule,
-                                      target_payload)
+                                f"rule '{rule.get('name')}' cannot register metadata for '{updates.get('target_table')}'")
+                        if not isinstance(updates.get("map_id"), str) or not updates["map_id"]:
+                            raise ValueError("chain map metadata update requires a non-empty map_id")
+                        map_metadata_updates.append(requested)
+                if target_payload["batches"]:
+                    # Either permission opens the envelope; the per-batch checks below
+                    # then require the one that matches the strategy the batch actually
+                    # asked for. A retract-only rule must not have to grant itself
+                    # `allow_replace_map` to be heard - that would leave a purge
+                    # permission standing for a rule that never purges.
+                    # 🔴 [C-15] 봉투 검증은 «한 독자»가 한다. 이 여섯 규칙이 여기와
+                    #    `chain_replay` 에 «두 사본»으로 있었고, 그 옆 주석이 「손으로
+                    #    맞춘다」고 적어 두었다 — 형제(retract 봉투)는 이미 한 독자였다.
+                    for requested in target_payload.get("batches") or []:
+                        batch = dt_map_derivation.normalize_scoped_batch(
+                            requested, rule, target_table)
+                        if batch[0] == target_table:
+                            dt_map_derivation.require_scoped_batches_allowed(rule)
+                        scoped_batches.append(batch)
+                        # A scoped batch writes its table - this target, or the trigger
+                        # table written back (총괄 2dd93d4a9 1) - so a failure in it names
+                        # this rule (총괄 a4cb623e0 ②) and its write carries this
+                        # declaration, which is what keeps the rule from waking on it.
+                        rules_by_target[batch[0]].add(_rule_name)
+                        declarations_by_target[batch[0]].add(
+                            rule_shape.declaration_of(rule))
+                        if rule.get("name") not in table_contributors[batch[0]]:
+                            table_contributors[batch[0]].append(rule.get("name"))
             except Exception as e:
                 import traceback
                 error_msg = traceback.format_exc()

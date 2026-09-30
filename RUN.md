@@ -1,5 +1,19 @@
 # 지금 돌리면 되는 것
 
+> ## 🔴 [09-30 오후] **행마다 부르는 체인 규칙의 batches · 맵 메타데이터도 씀 — 마이그레이션 «없음» · 재기동 체인 워커 (run_app.bat 로 전체)**
+>
+> ```
+> 무엇이 바뀌나  "is_batch" 가 없는(행마다 부르는) 규칙이 돌려준 batches · map_metadata_updates 를 워커가 버리던 것을 이제 읽음 — 배치 규칙과 같은 한 길
+>              허락 칸 검사도 같음: 맵 메타데이터는 allow_map_metadata_upsert, 봉투는 그 규칙의 허락 · trigger 표 되쓰기는 덮어쓰기만
+> 이 박스 · 표본  불러오는 규칙이 전부 "is_batch": true 라 동작이 바뀌는 규칙 0 (박스 15 · 표본 11)
+> 확인          행마다 규칙이 되쓰기 · 봉투를 돌려주면 그 표에 써짐 · 허락 없는 맵 메타데이터는 이름 대어 실패
+> 뜻           @mapper 규칙의 allow_retraction · allow_replace_map 은 여전히 "is_batch": true 가 필요 — 문장이 바뀜:
+>             「called row by row, each row's call removes what the other rows of its job or map made」
+> 급할 때       끄는 스위치 없음 — 커밋 되돌리기
+> ```
+
+---
+
 > ## 🔴 [09-30 오후] **키 칸이 빈 파일 행을 nokey_… 로 채움 — 선언한 표만 · 마이그레이션 «없음» · 재기동 서버 · 워처 (run_app.bat 로 전체)**
 >
 > ```
