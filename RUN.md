@@ -1,5 +1,20 @@
 # 지금 돌리면 되는 것
 
+> ## 🔴 [09-30 오전 3] **설정엔 있는데 떠 있는 프로세스의 모델이 모르는 칸은 층도 표도 안 씀 — 버린 칸으로 세고 파일 줄에 이름 — 마이그레이션 «없음» · 재기동 서버 · 워처 · 체인 워커 (run_app.bat 로 전체)**
+>
+> ```
+> 무엇이 바뀌나  Reload 실패 · 설정과 모델이 갈리는 순간 · 모델이 건너뛰는 칸 이름(is_graph_synced · needs_graph_rollback ·
+>              graph_synced_at) — 전에는 층엔 값을 쓰고 표 값은 조용히 안 써서 「층엔 값 · 표엔 빈칸」이 됐음
+>              이제 그 칸은 층도 표도 안 쓰고 버린 칸(unmapped_column)으로 셈 — 층과 표가 어긋나지 않음
+> 확인          파일 처리 줄(워처 로그 · 파일 기록)의 「Not written (unmapped_column): <칸>=<값 수> over N row(s) - declared, but this
+>              process's model does not hold the column; reload or restart, then Retry the file.」
+> 뜻           그 줄이 뜨면 그 칸 값은 «어디에도» 안 들어감 — Reload(안 되면 재기동) 뒤 그 파일을 Retry 하면 들어감
+>             칸 이름이 위 셋 중 하나면 Reload · 재기동으로도 안 됨 — 표 편집기에서 칸 이름을 바꿔야 함
+> 급할 때       스위치 없음
+> ```
+
+---
+
 > ## 🔴 [09-30 오전 2] **기존 표에 칸을 더하고 저장 · Reload 만 해도 그리드가 그 칸을 보여 줌 (재기동 없이) — 마이그레이션 «없음» · 재기동 서버 · 워처 · 체인 워커 (run_app.bat 로 전체)**
 >
 > ```

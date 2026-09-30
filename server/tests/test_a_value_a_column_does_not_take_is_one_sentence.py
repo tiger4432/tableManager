@@ -59,6 +59,7 @@ def test_a_file_load_names_the_file_row_not_the_batch_row(monkeypatch):
     class _Crud:
         CellRefused = crud.CellRefused
         loadable_columns = staticmethod(crud.loadable_columns)
+        unmapped_columns = staticmethod(crud.unmapped_columns)
         row_is_blank = staticmethod(crud.row_is_blank)
         is_blank_value = staticmethod(crud.is_blank_value)
 

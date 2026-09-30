@@ -67,6 +67,7 @@ class _StubCrud:
     # loadable axis - free to agree with the assertions while the product disagreed.
     from database import crud as _real_crud
     loadable_columns = staticmethod(_real_crud.loadable_columns)
+    unmapped_columns = staticmethod(_real_crud.unmapped_columns)
     # The same for which row and which cell are blank (총괄 69aad666e C).
     row_is_blank = staticmethod(_real_crud.row_is_blank)
     is_blank_value = staticmethod(_real_crud.is_blank_value)

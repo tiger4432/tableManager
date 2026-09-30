@@ -203,6 +203,11 @@ DROP_SYSTEM_COLUMN = "system_column"
 #: COUNTED rather than warned about. Without a name in this report, a file whose column
 #: went blank would look exactly like a file that never named the column at all.
 DROP_ABSENT_NOT_WRITTEN = "absent_not_written"
+#: [총괄 791c0f45e 3] Declared, but THIS PROCESS'S model does not hold the column - a reload
+#: that failed half-way, the moment between a config swap and the model, or a declared name
+#: the model build skips. It was written to the layer and silently not to the table
+#: (0a7c46615 ㉠); now it is neither, and counted.
+DROP_UNMAPPED_COLUMN = "unmapped_column"
 
 # Both caps exist for the same reason the undeclared-column registry has a budget: every
 # name and every row id in this report comes from the PAYLOAD, so a malformed file must
@@ -1734,6 +1739,15 @@ def resolve_search_columns(table_name: str, known_columns=None) -> tuple:
     known = set(known_columns) | {"row_id", "business_key_val"}
     unknown = tuple(c for c in columns if c not in known)
     return tuple(c for c in columns if c in known) or search_scope_default(table_info),         unknown
+
+def unmapped_columns(table_name: str, columns) -> list:
+    """The `columns` this process's model of `table_name` does not hold - the one answer the
+    write door and the file watcher's filter share (총괄 791c0f45e 3)."""
+    model = models.DYNAMIC_TABLES.get(table_name)
+    if model is None:
+        return []           # no model at all: the door refuses the table by name
+    return [column for column in columns if column not in model.__table__.columns]
+
 
 def loadable_columns(table_info: dict) -> tuple:
     """The columns a write may land in this table, in declaration order (S-119, 판정 12:20).
@@ -3304,6 +3318,12 @@ def apply_row_update_internal(
             if drop_stats is not None:
                 _record_dropped_cell(drop_stats, row.row_id, update_item.business_key_val,
                                      col_name, DROP_UNDECLARED_COLUMN)
+            continue
+
+        if unmapped_columns(table_name, (col_name,)):
+            if drop_stats is not None:
+                _record_dropped_cell(drop_stats, row.row_id, update_item.business_key_val,
+                                     col_name, DROP_UNMAPPED_COLUMN)
             continue
 
         key = (row.row_id, col_name)

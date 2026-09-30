@@ -3272,6 +3272,10 @@ class IngestionHandler(FileSystemEventHandler):
         declared_by_lower = {}
         for d_col in defined_cols:
             declared_by_lower.setdefault(d_col.lower(), d_col)
+        # 🔴 [총괄 791c0f45e 3] Declared, but this process's model cannot hold it - the door
+        #    would drop it anyway; here it is named on the file's line with its values.
+        unmapped = set(crud.unmapped_columns(t_name, defined_cols))
+        unmapped_value_counts = {}
 
         # Determine source_name based on real original filename
         if source_name:
@@ -3403,7 +3407,11 @@ class IngestionHandler(FileSystemEventHandler):
                     
                             for key, val in row.items():
                                 target_key = declared_by_lower.get(key.lower())
-                                if target_key is not None:
+                                if target_key in unmapped:
+                                    unmapped_value_counts[target_key] = (
+                                        unmapped_value_counts.get(target_key, 0)
+                                        + (0 if crud.is_blank_value(val) else 1))
+                                elif target_key is not None:
                                     normalized_row[target_key] = val
                                     if target_key.lower() == bk_col.lower():
                                         bk_val = val
@@ -3579,6 +3587,14 @@ class IngestionHandler(FileSystemEventHandler):
             dropped = _announce_dropped_columns(
                 t_name, dropped_value_counts, defined_cols, filename, processed_rows
             )
+            if unmapped_value_counts:
+                named = ", ".join(f"{col}={count}"
+                                  for col, count in sorted(unmapped_value_counts.items()))
+                note = (f"Not written ({crud.DROP_UNMAPPED_COLUMN}): {named} over "
+                        f"{processed_rows} row(s) - declared, but this process's model does "
+                        f"not hold the column; reload or restart, then Retry the file.")
+                logger.warning(f"[{t_name}] {note} File '{filename or '?'}'.")
+                dropped = f"{dropped} {note}" if dropped else note
             file_tally.log(t_name, filename)
 
             if self.on_refresh_callback and total_changed > 0:
