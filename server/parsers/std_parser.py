@@ -88,18 +88,31 @@ def _build_header_map(header: list, table_info: dict, table_name: str, file_path
 
     bk_col = table_info.get("business_key")
     composite_src = table_info.get("composite_key_source")
-    bk_ok = bool(bk_col) and bk_col in known
-    composite_ok = bool(composite_src) and all(c in known for c in composite_src)
+    bk_ok = bool(bk_col) and all(c in known for c in _required_key_columns(table_name, (bk_col,)))
+    composite_ok = bool(composite_src) and all(
+        c in known for c in _required_key_columns(table_name, composite_src))
     if not (bk_ok or composite_ok):
         requirement = f"business_key column '{bk_col}'"
         if composite_src:
-            requirement += f" or all composite_key_source columns {list(composite_src)}"
+            requirement += (f" or all composite_key_source columns "
+                            f"{list(_required_key_columns(table_name, composite_src))}")
         raise ValueError(
             f"Std parser rejected '{basename}': required key column(s) missing from header — "
             f"expected {requirement}, but header only matched {sorted(known)}."
         )
 
     return header_map
+
+
+def _required_key_columns(table_name: str, columns) -> tuple:
+    """The key columns a FILE must bring: a column declared `nokey` is filled by the write
+    door, so neither the header nor a row needs it (총괄 4311a51ed · d4a949a8c ①) - asked of
+    the one policy reader. The header check and the row check both ask this, so a file with
+    no nokey column at all is not refused before the door that fills it."""
+    from database import crud
+
+    return tuple(c for c in columns
+                 if crud.key_null_policy(table_name, c) != crud.KEY_NULL_NOKEY)
 
 
 def _resolve_key_groups(table_info: dict, known: set, table_name: str = None) -> list:
@@ -111,21 +124,13 @@ def _resolve_key_groups(table_info: dict, known: set, table_name: str = None) ->
       - (business_key,) — 단일 bk 직접 제공
       - tuple(composite_key_source) — crud가 키를 조립할 수 있는 소스 전체
     """
-    from database import crud
-
-    def required(columns):
-        # 총괄 4311a51ed: a column declared `nokey` is filled by the write door, so a row
-        # need not bring it - asked of the one policy reader, not re-read here.
-        return tuple(c for c in columns
-                     if crud.key_null_policy(table_name, c) != crud.KEY_NULL_NOKEY)
-
     groups = []
     bk_col = table_info.get("business_key")
     composite_src = table_info.get("composite_key_source")
-    if bk_col and all(c in known for c in required((bk_col,))):
-        groups.append(required((bk_col,)))
-    if composite_src and all(c in known for c in required(composite_src)):
-        groups.append(required(composite_src))
+    if bk_col and all(c in known for c in _required_key_columns(table_name, (bk_col,))):
+        groups.append(_required_key_columns(table_name, (bk_col,)))
+    if composite_src and all(c in known for c in _required_key_columns(table_name, composite_src)):
+        groups.append(_required_key_columns(table_name, composite_src))
     return groups
 
 

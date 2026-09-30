@@ -62292,3 +62292,20 @@ _when_value 접기 — 지금 하지 않는다. 오늘 착지 전체를 소유�
 보고만 instant_key 와 crud.temporal_text_value 가 naive 시각을 달리 읽음(세션 시간대 vs UTC) — 동결 목록 항목(시간대). 수만 보고, 고치지 않음
 게이트 공통  항목마다 전/후 같은 픽스처가 같은 답 · 접힌 쪽 삭제 · 변이 빨강 · 보고에 「새 함수·새 if 중 기존 것과 같은 일」 한 줄
 ```
+
+---
+
+> **[총괄 -> 구현자] 선언 폼 — 쓰이지 않는 칸을 그리지 않게 (소유자 09-30 「ㅇㅇ 같이 넣어」, 클라 폼 정리 라운드와 한 짝 · 가지 착지 다음)**
+
+```
+증상   unit=row 소스의 group_by 가 9 줄로 그려진다 — 「Filled: unit=row -> no group_by」 · 「With unit=row this square does not exist.」
+       · 「Refusals remain · removability not measured」. 소유자가 무슨 뜻인지 물었다. 뜻은 「해당 없음」 한마디
+원인   ledger_skeleton.json 의 group_by 에 when 이 없다(required: true 만) — 그래서 config_authoring 이 unit=row 일 때
+       «해당 없음»을 말하려고 derived 행을 따로 짓는다(:1786~). 「이 선택일 때만 쓰이는 칸」은 스켈레톤 when 이 답하는 물음이고
+       그 판정자는 이미 하나다(서버 _gate · 클라 fieldApplies — 검수에서 11 개 when 전부 같은 답)
+할 것  group_by 에 when {field: unit, is: group} — 스켈레톤 한 줄. unit=row 의 derived 행 짓기는 지운다(같은 일의 두 번째 길)
+짓기 전에 채널로  when 을 달면 저장의 _gate 가 unit=row 소스의 group_by 를 파일에서 뺀다 — 문법(검증기·컴파일)이 unit=row 소스에
+       group_by 키 없음을 받나. 추적 표본의 row 소스는 "group_by": [] 를 적고 있다. 안 받으면 그 사실과 안(문법을 넓히나 / 파일엔 두고 안 그리나)
+게이트 unit=row -> 계획에 group_by 행 없음 · unit=group -> 지금과 같음 · 저장 전후 번들 검증 같은 답 · 변이 빨강
+       보고에 「새 함수·새 if 중 기존 것과 같은 일」
+```
