@@ -6,7 +6,7 @@
  *   P  the REAL paste listener (clipboard.js): armed + a paste in the box reaches the smart paste
  *      reader and spends the arming; in a field it does not; unarmed it does not
  *   M  main.js (cannot be imported, it wires the page — this reads its text): the three no-read
- *      branches open the box, both ends of an arming close it
+ *      branches open the box, both ends of an arming close it, Ctrl+Shift+V takes the button's entry
  */
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
@@ -129,6 +129,10 @@ async function suite(PasteBox, mainText) {
   eq('M2 both ends of an arming close the box (cancel · the paste)',
     `${body('cancelSmartPasteArm').includes('closeSmartPasteBox();')}|${body('smartPasteFromPasteEvent').includes('closeSmartPasteBox();')}`,
     'true|true');
+  const chordAt = mainText.indexOf("(e.key === 'v' || e.key === 'V')) {");
+  const chord = chordAt < 0 ? '' : mainText.slice(chordAt, mainText.indexOf('\n    }\n', chordAt));
+  eq('M3 Ctrl+Shift+V takes the button\'s entry and stops the browser\'s plain-only paste (lead 5793b49fb)',
+    `${chord.includes('e.preventDefault();')}|${chord.includes('smartPasteViaIngestion();')}`, 'true|true');
   return { ran, failed: failedList.slice() };
 }
 
@@ -147,6 +151,8 @@ const MUTANTS = [
   { name: 'open-stacks-a-second-box', catches: ['B5a'], from: '  open({ onCancel, keyLabel }) {\n    this.close();\n', to: '  open({ onCancel, keyLabel }) {\n' },
   { name: 'main-cancel-leaves-the-box', catches: ['M2'], main: true,
     from: '  closeSmartPasteBox();\n  if (logText)', to: '  if (logText)' },
+  { name: 'main-chord-lets-the-plain-paste-through', catches: ['M3'], main: true,
+    from: '      e.preventDefault();\n      // The box is already open', to: '      // The box is already open' },
 ];
 
 const main = async () => {

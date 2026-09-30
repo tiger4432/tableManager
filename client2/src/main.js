@@ -70,7 +70,6 @@ import {
 } from './grid.js';
 import {
   showToast,
-  dismissToasts,
   showIngestionProgress,
   finishIngestionProgress,
   getLocalTimeString
@@ -724,41 +723,20 @@ function setupEventListeners() {
       activeEl.hasAttribute('contenteditable') || activeEl.classList.contains('ag-input-field-input')
     );
 
-    // Smart paste: Ctrl+Shift+V.
-    //   * Ctrl+V is already the grid's cell-range paste (clipboard.js), so smart paste needs
-    //     its own modifier; Ctrl+Shift+V is "paste special" in every spreadsheet an operator
-    //     here has used, and nothing in this client binds it.
-    //   * It is deliberately NOT scoped to #myGrid the way Delete/Ctrl+A are. After closing
-    //     the context menu focus sits on <body>, and a shortcut that quietly does nothing
-    //     there would reproduce the very complaint this fixes.
-    //   * NOTHING is preventDefault()ed. The browser's own paste command is what produces the
-    //     `paste` event carrying `e.clipboardData` - the only readable clipboard on plain
-    //     HTTP. Swallowing the keydown would swallow the read.
+    // Smart paste: Ctrl+Shift+V - the button's entry (smartPasteViaIngestion). Ctrl+V is the
+    // grid's cell paste; this is not scoped to #myGrid, since after the context menu focus is
+    // on <body>. The browser's own Ctrl+Shift+V is stopped: in Chrome it is "paste as plain
+    // text" and its paste event carries text/plain only. Where the clipboard cannot be read,
+    // the entry opens the paste box, whose plain Ctrl+V carries every format.
     if (!isTextField && e.shiftKey && (e.ctrlKey || e.metaKey) && (e.key === 'v' || e.key === 'V')) {
-      // The paste box holds the arming until it closes. Re-arming here would shorten it, and a
-      // later Ctrl+V in the box would fall into the grid's cell paste.
+      e.preventDefault();
+      // The box is already open: its Ctrl+V is the way in.
       if (smartPasteBox && smartPasteBox.root) return;
-      armSmartPaste(SMART_PASTE_KEY_TTL_MS);
-      elements.performanceLog.textContent = `📋 Smart paste (${SMART_PASTE_KEY_LABEL}): waiting for the paste event`;
-      // Whether a browser turns Ctrl+Shift+V into a paste command is the browser's business,
-      // not ours, and it differs between Chrome, Edge and Firefox. So do not BET on it: if no
-      // paste event lands, hold the latch open and name the chord that is guaranteed to
-      // produce one. One keystroke when the shortcut works, two when it does not, and never
-      // the silent nothing that sent this bug to support in the first place.
-      clearTimeout(smartPasteEscalationTimer);
-      smartPasteEscalationTimer = setTimeout(() => {
-        if (state.smartPasteArmedUntil === 0) return; // already consumed - the chord worked
-        armSmartPaste(SMART_PASTE_ARM_TTL_MS);
-        showToast(
-          `Smart paste armed · press ${SMART_PASTE_FALLBACK_KEY_LABEL} (Esc to cancel)`,
-          'info',
-          { ttl: SMART_PASTE_ARM_TTL_MS, dedupeKey: SMART_PASTE_ARM_TOAST_KEY }
-        );
-      }, SMART_PASTE_ESCALATE_MS);
+      smartPasteViaIngestion();
       return;
     }
 
-    // Escape retracts an armed paste, so the promise made by the toast stays true.
+    // Escape closes the paste box and its arming.
     if (e.key === 'Escape' && state.smartPasteArmedUntil > Date.now()) {
       cancelSmartPasteArm('Smart paste cancelled');
     }
@@ -1816,12 +1794,8 @@ async function refreshSourcesList() {
 // button cannot open that door, because `document.execCommand('paste')` is blocked in web
 // content. This is a browser constraint, not a design choice, and the flow below accepts it:
 //
-//   * Ctrl+Shift+V              - the direct route: it arms and the browser's own paste
-//                                 command lands in the same breath, so it is one keystroke
-//                                 WHEN the browser honours the chord. When it does not, the
-//                                 arming holds and the user is told to press Ctrl+V.
-//   * Button / context menu     - cannot read at all; they open the paste box (paste_box.js),
-//                                 which takes Ctrl+V while it holds the arming.
+//   * Button / context menu / Ctrl+Shift+V - cannot read at all; they open the paste box
+//                                 (paste_box.js), which takes Ctrl+V while it holds the arming.
 //   * navigator.clipboard.read  - still PREFERRED where it genuinely exists (localhost dev is
 //                                 a secure context) because a click can drive it.
 //
@@ -1829,18 +1803,7 @@ async function refreshSourcesList() {
 // `navigator.clipboard` being absent that then calls `navigator.clipboard`. Every branch below
 // is guarded on the exact method it is about to call.
 
-const SMART_PASTE_KEY_LABEL = 'Ctrl+Shift+V';
 const SMART_PASTE_FALLBACK_KEY_LABEL = 'Ctrl+V';
-// The keystroke and the paste event it triggers are one user action; the latch only has to
-// survive the browser's command dispatch.
-const SMART_PASTE_KEY_TTL_MS = 1500;
-// A click has to wait for the operator to read the toast and reach for the keyboard.
-const SMART_PASTE_ARM_TTL_MS = 15000;
-// Real paste-event latency after a keydown is single-digit milliseconds. If nothing has
-// arrived by here, this browser did not translate the chord into a paste command at all.
-const SMART_PASTE_ESCALATE_MS = 600;
-
-let smartPasteEscalationTimer = null;
 
 function armSmartPaste(ttlMs) {
   state.smartPasteArmedUntil = Date.now() + ttlMs;
@@ -1850,14 +1813,8 @@ function armSmartPaste(ttlMs) {
   state.smartPasteArmedTable = state.currentTable;
 }
 
-// Every arming toast carries this key so it can be retracted the instant the arming ends.
-const SMART_PASTE_ARM_TOAST_KEY = 'smart-paste-arm';
-
 function cancelSmartPasteArm(logText) {
   state.smartPasteArmedUntil = 0;
-  clearTimeout(smartPasteEscalationTimer);
-  smartPasteEscalationTimer = null;
-  dismissToasts(SMART_PASTE_ARM_TOAST_KEY);
   closeSmartPasteBox();
   if (logText) elements.performanceLog.textContent = logText;
 }
@@ -1951,11 +1908,7 @@ async function uploadSmartPastePayload(selectedText, selectedType, byOrder = fal
 // THE production reader. Runs inside the `paste` event dispatch, where `e.clipboardData` is
 // the only clipboard that exists on plain HTTP.
 async function smartPasteFromPasteEvent(e) {
-  // The latch has just been spent, so retire the "press Ctrl+V" instruction and the pending
-  // escalation with it. A prompt that outlives what it asked for reads as "it did nothing".
-  clearTimeout(smartPasteEscalationTimer);
-  smartPasteEscalationTimer = null;
-  dismissToasts(SMART_PASTE_ARM_TOAST_KEY);
+  // The latch has just been spent; the box that held it goes with it.
   closeSmartPasteBox();
 
   if (state.smartPasteArmedTable !== state.currentTable) {
