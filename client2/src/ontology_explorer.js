@@ -146,14 +146,8 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
       || formNode(state.mapCursor) || formNode('');
     return at ? nodeTrail(at, trailHead()) : [];
   };
-  const pathBar = new PathBar(null, {
-    doc: document,
-    onPick: (path) => {
-      const node = formNode(path);
-      const row = node && node.firstElementChild;
-      if (row && row.scrollIntoView) row.scrollIntoView({ block: 'start' });
-    },
-  });
+  // A picked step is the map's own door (`map-goto`): cursor, ancestors opened, row centred (㉰).
+  const pathBar = new PathBar(null, { doc: document, action: 'map-goto' });
   // The section the field being edited sits in — its parent node, found in the drawn tree.
   const markFormCursor = () => {
     for (const node of root.querySelectorAll('.oe-node.is-editing-parent')) {

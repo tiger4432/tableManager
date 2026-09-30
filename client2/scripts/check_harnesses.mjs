@@ -915,7 +915,8 @@ const FLOORS = new Map([
   // New with lead 619befe8c: where an edit sits in the ledger form — a guide per ancestor on every
   // row of the real skeleton's form, the trail as the declaration path's own words, the path bar
   // part, and no skeleton word in the bar's code.
-  ['explorer_path_bar_harness.mjs', 17],
+  // 17 -> 19 (B1-B2, lead d4a949a8c ㉯): the declaration trail is the same widget.
+  ['explorer_path_bar_harness.mjs', 19],
   // New with lead 619befe8c (implementer 37c714205): a role's inherited attributes, read-only,
   // on the server's plan for the sample's dt_job.
   ['explorer_inherited_attributes_harness.mjs', 8],
