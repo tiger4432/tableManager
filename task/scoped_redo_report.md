@@ -66693,3 +66693,79 @@ RUN.md 제 c1746aa1e 절 머리 「재기동 «없음»」이 틀렸습니다 �
 전체  5 failed, 7507 passed, 189 skipped, 3 xfailed in 732.16s (0:12:12) — 실패 5 개, 파일::이름으로 알려진 다섯과 같음: True
 PG    7 failed, 143 passed, 7554 deselected, 41 warnings in 236.04s (0:03:56) — 실패 이름이 알려진 일곱과 같음: True
 ```
+
+## [구현자 -> 총괄] 60d7e8e42 + fb7ece9a3 짓기 전 확인 1~8 (안 지음)
+
+**결론 먼저 — 짓기 전에 여쭐 것 넷**
+```
+㉠ 뷰 모양   「기본 다리에 source_who 거르기」 뷰는 박스에서 걷기가 색인을 잃는다(775.025 ms, seq 9)
+            다리 표지 칸 + 거르기를 UNION «밖»에 두면 같은 색인(0.415 ms, 기본 표 0.430 ms) — 이 모양으로 짓겠습니다
+㉡ 소스 하나를 «처음부터» 다시 번역하는 길이 없다 — 병합 뒤 기본 · 가지 새로 고침 둘 다 이것이 필요
+            안: 기존 rescope 문에 범위 «소스 전부» 한 형태(인자). 가도 되나
+㉢ 가지 «지우기» · «목록»의 기존 문이 없다 — 「새 라우트 0」과 부딪힘. 어느 문의 뜻을 넓힐지
+㉣ scripts · migrations 는 기본 원장 이름을 직접 든다(운영 경로 밖) — 기본 전용으로 둬도 되나
+```
+
+**1 달라진 소스** — 기존 소스 지문(`source_cursor_fingerprint` = 커서 지문)이 판정자. 새 판정자·넓히기 불필요
+```
+표본에서 잼 (scratchpad/probe_world_changed_sources.py, 추적 표본)
+  wafer_process_recipe bind edit                             -> 움직인 소스 ['wafer_process_recipe']
+  entity attribute: wafer@1 gains attribute diameter         -> 움직인 소스 ['dt_job', 'lot_event']
+  entity attribute: recipe@1 (reached only as an object type) gains one -> 움직인 소스 []
+  entity attribute: lot@1 gains one                          -> 움직인 소스 ['dt_job', 'lot_event']
+  vocabulary: processed_with@1 optional qualifier += tool    -> 움직인 소스 ['wafer_process_recipe']
+  vocabulary: a predicate no source names, added             -> 움직인 소스 []
+  entity: one no source reaches, added                       -> 움직인 소스 []
+  setup_version bumped                                       -> declaration refused: bundle.setup_version: supported setup_version is 5
+  source removed: lot_slot_wafer                             -> 움직인 소스 ['lot_slot_wafer']
+  source added: copy of dt_job as zz_dt_job                  -> 움직인 소스 ['zz_dt_job']
+엔티티 속성 — 엔티티 해시는 키 · null 허용 · status 뿐, 속성은 «청구(claim)»를 거쳐서만 원자에 닿는다
+             그래서 속성에서 수식어를 받는 목적어 없는 술어(register@1)를 쓰는 소스만 움직이고, wafer@1 을 bind 만 하는 셋은 안 움직임 — 그 셋의 원자에 속성이 닿는 길이 청구뿐이라 맞다고 봄(코드로 읽음, 원자로는 안 잼)
+             attribute_cardinality 는 번역이 안 읽음(grep) — 지문 밖이 맞음
+엔티티 키 — 그것을 bind 하는 소스를 같이 안 고치면 선언이 거절됨 -> 소스 편집으로 움직임
+```
+**2 뷰** — 박스 EXPLAIN ANALYZE, 한 트랜잭션 롤백(남은 스키마 0), 가지 = lot_event 원자 15542 복사, 걷기 SQL 은 제품 것(SqlEvidenceLookup)
+```
+모양                                   나가는 걷기 1회     색인 스캔 · seq
+기본 표 그대로                            0.430 ms      8 · 0
+가지 UNION ALL 기본(기본 다리에 거르기)       775.025 ms      0 · 9
+다리 표지 칸 + 거르기를 UNION 밖            0.415 ms      9 · 0
+뒤 모양 · 들어오는 0.256 ms · 바뀐 소스 주체 0.170 ms · id 50 개 0.553 ms · 주체 목록 21.987 ms (기본 표 0.113 · 0.115 · 0.428 · 19.684)
+뒤 모양에서 lot_event 행은 가지 다리에서만: [('b', 15542)]
+```
+```
+원인  UNION ALL 다리에 WHERE 가 붙은 분할 표는 평평해지지 않아(Subquery Scan) 조인 조건이 색인으로 못 내려감
+걸리는 자리 둘  ledger_subgraph 관계 검사(_IDENTIFIER)가 맨 이름만 받음 -> schema.name 을 받게
+             subjects_of_type 이 relation 인자를 안 쓰고 상수 LEDGER_TABLE 을 읽음 -> 가지에서 틀린 답. relation 으로
+```
+**3 다시 번역** — 없다
+```
+있는 것  rescope(--scope-column/--scope-values --apply) — 고른 값의 행만 걷고(row_ref 색인 ∪ 새 번역) 다시 만듦, 페이지마다 한 커밋
+        평이한 적재(run)는 색인이 이름 안 댄 행만 — 이미 번역된 행은 다시 안 함
+        rename_ledger_for_rebuild 는 원장 «전체»를 옆으로
+필요한 곳  병합 뒤 기본 · 가지 새로 고침(가지는 안 따라가니 원천 행이 바뀌면 낡는데, 평이한 적재로는 안 고쳐짐)
+안        rescope 에 범위 «소스 전부» — 페이지마다 걷고 다시 만듦(옛 원자 0), 지워진 행 몫은 기존 지워진 행 걷기
+비용      박스 추정 wafer_process_recipe 478,718 행 x 7.2 ms/분자 ≈ 57 분 위쪽 (둘 다 3add4a6ca 에서 잰 수)
+```
+**4 명령** — `python -m ledger.backfill --source <소스> --world <가지> [범위] --apply` (기존 `--ontology-root` 옆 인자)
+```
+원천 표 공유 전제 맞음  소스 relation 전부 맨 이름(표본 6 · 박스 라이브 15) · 원장 표를 읽는 소스 0
+                    -> 가지 스키마엔 원장 표 셋 + 뷰만. 원장 이름은 스키마로 한정 -> search_path 안 바꿈 -> 소스는 public 을 읽음
+⚠️ 체인 규칙(조인 등)은 가지에 없다 — 가지가 시험하는 것은 원장 선언뿐
+```
+**5 contrast_run** — 지금 world 칸 없음(칸 19). 표 선언에 world 한 칸 + contrast_walk 가 그 칸으로 관계 이름을 고름. 저장 버튼(클라)도 world 를 보내야 — 클라 레인
+
+**6 크기** — 오늘 원장 이름을 드는 운영 자리(독스트링 뺌): 88 · 파일 22 (scratchpad/census_world_seats.py)
+```
+기본만 (따라가기 · 체인 · census · 감시 · envelope)   10 · 파일 6 — 함수의 기본 답을 부름, 동작 무변
+세상을 받는 자리                                    78 · 파일 16 — store 19 · schema 8 · backfill 7 · config_explorer_service 7 · trace_router 7 · setup 6 · …
+새로 생기는 것  세상 -> 이름 함수 1 · 가지 스키마·뷰 DDL(ensure_schema 가 이름을 받음) · 달라진 소스 셈(기존 지문 비교)
+              --world(backfill) · world 인자(retroactive 두 작업 · 걷기·보드 라우트 · 탐색기·저장 관문) · contrast_run.world · ㉡
+```
+**7 라우트** — 지금 130 (APIRoute 124 · Route 4 · WebSocket 1 · Mount 1, 경로 122) (명령 scratchpad/count_routes.py = main.app.routes). 이 그림으로 느는 라우트 0 — ㉢ 이 답해지면
+
+**8 세상을 묻는 자리** — 지금 0(세상 개념 없음). 지은 뒤 함수 밖 0 으로:
+```
+뷰의 유무(기본은 뷰 없음)도 함수가 «이름 · DDL»로 답하고 ensure_schema 는 받은 것을 돌리기만 — 갈래가 함수 밖으로 안 나감
+0 이 안 되는 자리  scripts · migrations 의 원장 이름 상수 (㉣)
+```
