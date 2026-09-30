@@ -66144,3 +66144,21 @@ README    server/admin/dev_bench.py(두 곳) · python server/scripts/try_core.p
 재기동    없음
 ```
 다음: eed8b37de(HTML 토폴로지 파서 — 같은 헤더 경로 값 잃음) -> d8b1e7cfb -> ④.
+
+## [구현자 -> 총괄] 착지 7aad503cb — 2a2cafc1e: 원장 선언 폼 column 바인딩의 Time zone 칸에 모양
+
+```
+고침      server/ledger/ledger_skeleton.json defs.binding.timezone 에 node {"kind": "leaf", "hint": "free"}
+          같은 스켈레톤의 다른 Time zone 칸(sources.*.read.occurred_at.timezone)이 이미 든 모양 그대로
+          시간대 이름 닫힌 목록은 없음(closed_lists 에 없음) — 새로 안 지음. 목록으로 고르게 하려면 그건 따로 여쭐 일
+전수      원장 스켈레톤 칸 83 개 중 node 없는 칸 — 고치기 전 1 (defs.binding.timezone) · 고친 뒤 0
+          체인 스켈레톤 칸 101 개 중 node 없는 칸 — 전후 0 · 0  (같은 스크립트, 모든 값을 걸어 셈)
+시험      test_ledger_skeleton.py 에 test_every_field_carries_a_node 한 칸
+변이      timezone node 를 다시 빼면 — 빨강 test_every_field_carries_a_node (1 failed, 3 passed in 0.95s) · 그 파일의 기존 세 칸은 그 상태에서도 초록이었음
+전체      5 failed, 7493 passed, 187 skipped, 3 xfailed in 846.82s (0:14:06) · 실패 5 개 = 알려진 것: test_the_sample_is_written_in_the_one_format_both_writers_use · test_live_mapper_and_tracked_sample_are_byte_identical · test_live_mapper_and_tracked_sample_are_byte_identical · test_live_mapper_matches_tracked_sample · test_the_repo_root_is_one_above_it
+하는 일    node 를 읽는 자리(빈 값 채우기 · 끈 칸 버리기 · flag 거절 · 클라 채우기)는 필수 칸이나 flag 잎만 다뤄서, 이 선택 칸의 일은 그대로 — 바인딩에 timezone 칸이 새로 적히지 않음
+반영      reload-configs 가 스켈레톤 캐시를 비움(runtime/system_reload.py) — 재기동 없음. RUN.md 맨 위
+남은 것    client2/tests/fixtures/authoring_skeleton.json 은 옛 스켈레톤을 뜬 사본이라 그 칸이 아직 node 없이 있음 — 클라 레인 파일이라 안 건드림
+          (다시 뜨는 스크립트 capture_authoring_skeleton.py 가 옆에 있음)
+```
+다음: eed8b37de ①(가 — 이름 대어 거절)+② 한 커밋 + 가이드 「쌓인 표는 먼저 나눠 읽기」 절 -> d8b1e7cfb 설계 보고 -> ④ dc4ca3e7c.
