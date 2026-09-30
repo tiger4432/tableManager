@@ -1,5 +1,19 @@
 # 지금 돌리면 되는 것
 
+> ## 🔴 [10-01 아침] **어느 문장도 안 말한 행 — 배치마다 경고 대신 값마다 세어 하트비트 노트 · 1·10·100… 단위에서 한 줄 · 마이그레이션 «없음» · 재기동 서버 · 체인 워커 (run_app.bat 로 전체)**
+>
+> ```
+> 무엇이 바뀌나  전: 배치마다 「[Ledger] <소스>: N unit(s) said no sentence - mat_type='WF' (N). Next: …」
+>              후: 하트비트 ledger 노트에 「units no sentence said: units=N | <소스>:mat_type='WF'=N, …」(상위 5 + (+k more))
+>                  값 하나가 1 · 10 · 100 … 단위에 닿을 때만 「[Ledger] Next: correct the value … <소스>: mat_type='WF' said no sentence … | units so far in this process: N」
+> 돌릴 명령     없음
+> 뜻           노트의 수가 늘면 = 그 값의 행이 계속 아무 문장도 안 말함 -> 그 값을 표에서 고치거나 그 값을 when 에 적은 문장을 선언
+>              수는 프로세스 집계 — 재기동이면 0 부터
+> 급할 때       커밋 되돌리기
+> ```
+
+---
+
 > ## 🔴 [10-01 아침] **작성 화면 — 저장 전 계획이 저장과 같은 입력으로 채움 · 초안 없는 POST 는 draft_required · 설정 파일 없음/못 읽음은 500 대신 이름 붙은 거절 · 마이그레이션 «없음» · 재기동 서버 (run_app.bat 로 전체)**
 >
 > ```
@@ -102,7 +116,7 @@
 >              그래서 when 비교(_when_value) · 정본 JSON 의 NaN 갈래가 빠짐. 번역 결과는 같아야 함(NULL 이 든 글자 칸 = 빈 칸으로 견줌)
 > 돌릴 명령     없음. 재기동 뒤 따라가기가 평소처럼 도는지만
 > 뜻           로그 「value is not deterministic JSON ... NaN」 으로 배치가 거절되면 = 어딘가 프레임이 아직 NaN 을 만듦(원장 밖에서 지은 프레임) -> 그 소스 이름과 보고
->             「said no sentence - mat_type='nan'」 처럼 nan 글자가 보이면 = 같은 원인
+>             「mat_type='nan' said no sentence」 처럼 nan 글자가 보이면 = 같은 원인
 > 급할 때       커밋 되돌리기
 > ```
 
@@ -181,7 +195,7 @@
 > ## 🔴 [09-30 밤] **DT 스텝 뒤 공정 행은 dtwafer 로 — 표본 선언 셋을 라이브에 옮기면 켜짐 · 마이그레이션 «없음» · 재기동 서버 · 체인 워커(번역 ①②) · 선언 ③ 은 리로드 + 커서 지문**
 >
 > ```
-> 무엇이 바뀌나  ① 원장 번역: 어느 문장의 when 에도 안 맞은 행을 세어 한 줄 — 「[Ledger] <소스>: N unit(s) said no sentence - mat_type='WF' (N). Next: …」
+> 무엇이 바뀌나  ① 원장 번역: 어느 문장의 when 에도 안 맞은 행을 값마다 세어 — 「[Ledger] Next: … <소스>: mat_type='WF' said no sentence …」 (10-01 부터 1·10·100… 단위에서 한 줄, 수는 하트비트 노트)
 >              ② 원장 번역: 문자열 칸의 NULL(pandas 3 에선 NaN)이 배치 전체를 멈추던 것이 멈추지 않음 — 09-10 박스 로그의 「not deterministic JSON … nan」
 >              ③ 표본 선언(추적 파일)에 스텝 가르기 — 라이브 선언에는 «운영자가 옮길 때» 켜짐. 옮기기 전엔 동작 그대로
 > 옮기기        표본 server/config/sample 의 세 파일에서 그대로:
@@ -194,7 +208,7 @@
 > 운영자 두 줄   「운영에서는 step_phase 표에 DT 스텝을 한 줄씩 적으면 됩니다(스텝 · DT).」
 >              「결함 계측 표에도 같은 조인 한 줄, 다이 문장을 when 으로 둘(빈 칸 -> mat_type Wafer · DT -> DT).」
 > 확인          DT 스텝을 적으면 그 스텝의 공정 행 mat_type 이 DT 가 되고, 원장의 그 행 원자가 wafer -> dtwafer 로 옮겨감(옛 원자는 지워짐)
-> 뜻           「said no sentence - mat_type='WF'」 = 단계표에 DT 가 아닌 값(WF · 오타)을 적은 스텝 — 그 행은 원장에 안 감. 그 칸을 비우거나 DT 로
+> 뜻           「mat_type='WF' said no sentence」 = 단계표에 DT 가 아닌 값(WF · 오타)을 적은 스텝 — 그 행은 원장에 안 감. 그 칸을 비우거나 DT 로
 >             스텝을 빼려면 단계표 행을 지우지 말고 mat_type 칸을 비울 것 — 지운 행은 채웠던 공정 행에 닿지 않아 DT 가 남음(잰 것)
 >             「cursor number must be finite」 = 이제 안 남 — 바로 위 절(커서 칸이 빈 행)
 > 놓친 따라가기  원장 따라가기 줄은 메모리라 워커가 죽으면 잃음 — 그때만: python -m ledger.backfill --source wafer_process_recipe --scope-column mat_type --scope-values DT --apply (server/ 에서)
