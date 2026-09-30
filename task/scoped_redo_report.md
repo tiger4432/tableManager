@@ -65997,3 +65997,18 @@ config/ontology/worlds/<세상>/ledger_config.json   그 밖의 세상
 ```
 
 다음: dc4ca3e7c(엔티티 속성 — 객체 표) 설계 보고.
+
+## [구현자 -> 총괄] 착지 5c67b2473 — 12cc7dd1f ⓪: 표 스키마 응답에 smart_paste
+
+```
+자리     GET /tables/{t}/schema 에 "smart_paste": config.get("smart_paste") — 선언 그대로 · 안 적었으면 null(빈 목록과 다른 사실)
+         그 응답의 키 집합을 박아 둔 시험(test_the_catalogue_kind_reaches_the_wire)에 새 키를 적음
+게이트   5 passed in 1.24s — 안 적음 -> null · 적음 -> 목록 그대로
+변이 S1 키 뺌              2 failed in 1.09s — test_an_undeclared_order_is_null · test_a_declared_order_passes_through_as_written
+     S2 안 적음을 [] 로     1 failed, 1 passed in 1.07s — test_an_undeclared_order_is_null
+스키마 경로를 부르는 시험 파일 전부(10)  1 failed, 217 passed in 43.25s — 빨강 test_h3_cross_directory_replace_applies_physical_alter
+         그 하나는 워처 타이밍 시험, 따로 세 번: 1 passed, 31 deselected in 2.66s / 1 passed, 31 deselected in 2.64s / 1 passed, 31 deselected in 2.55s
+전체 · PG 안 돌림 — 고친 것은 응답 키 하나, 그 경로를 부르는 파일을 다 돌림
+재기동   서버 — RUN.md 새 절
+```
+다음: ① 역할 칸 «물려받음» 계획 행 — 행 모양은 착지 전에 채널로.
