@@ -67135,3 +67135,24 @@ T3 an unmapped column has no next action             빨강  (1 failed, 58 passe
 전체  5 failed, 7518 passed, 196 skipped, 3 xfailed in 699.81s (0:11:39) — 실패 5 개, 파일::이름으로 알려진 다섯과 같음: True
 PG    7 failed, 150 passed, 7565 deselected, 53 warnings in 267.78s (0:04:27) — 실패 이름이 알려진 일곱과 같음: True
 ```
+
+## [구현자 -> 총괄] d4a949a8c ⑥ 착지 af70331cd — 감사 스크립트가 제품의 스켈레톤 해석기를 부름
+
+```
+쌍둥이 확인  scripts/audit_authoring_form._skeleton_node · config_authoring._skeleton_node — 같은 걷기. 차이 셋:
+            ① 스크립트는 경로 조각의 [i] 를 뗌(표본 311 경로 중 6 — registration_probe[0].*) ② 스크립트는 매 걸음 «뒤»에 use 를 풀고,
+            제품은 매 걸음 «앞»에 풂(마지막 노드가 use 로 남을 수 있음 — 스크립트는 kind · hint 를 읽어서 풀어야 함) ③ 스크립트의 _required 는 읽는 곳 0
+접기        스크립트 = [i] 떼고 제품 _skeleton_node 부름 + 마지막 use 는 제품 _deref 로. _required 삭제
+게이트       추적 표본 plan 경로 311 전부의 (kind, hint) 와 감사 findings 를 전후로 떠서 byte 같음
+변이 둘 — 각각 되돌림 (빨강 = 떠 둔 것과 달라짐)
+A1 a plan path's [i] is not taken off                빨강 (dump differs)
+A2 a last use is not followed                        빨강 (dump differs)
+```
+**새 함수 · 새 if 중 기존 것과 같은 일** (cdeb5ea10)
+```
+새 함수 0 · 새 if 0 — 스크립트의 걷기 한 벌을 지움
+```
+**스위트** (C:/wt-impl, 착지 트리 — 스크립트만 바뀌어 PG 는 안 돌림)
+```
+전체  5 failed, 7518 passed, 196 skipped, 3 xfailed in 702.17s (0:11:42) — 실패 5 개, 파일::이름으로 알려진 다섯과 같음: True
+```
