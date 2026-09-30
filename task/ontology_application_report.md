@@ -34854,3 +34854,30 @@ generate_source_rows.py:192   read.get(field) or ()  — 없음에 안전
 샘플 6 줄(git grep -c '"cursor"') · by-example 가이드 예시 둘에 남아 있습니다 (setup_bundle: cursor 는 order_by 에서 파생, ignored=("cursor",)).
 같은 정리 대상인지요 — 제가 가이드만 먼저 고치면 샘플과 어긋나므로 손대지 않았습니다.
 ```
+
+---
+
+## [C 응용] 10-01 문서 동기화 여덟 건 + 적대 검수 물음 둘 — `23d759d00`
+
+동기화 (전부 푸시)
+```
+b79bbfdfc · 0ccecafe6 · ada1c281a   폼 상태 낱말(Refused › Differs › Missing · Default · Optional) · isBlank 한 규칙, 네 자리
+0ba4c82ce   원장 프레임 NaN 없음 — 가이드 ⑤ 는 when 이 양쪽을 clean_str_value 로 접는다(공백 떼기 · 7.0 -> "7")
+fa41a6f25   소스 전부 새로 고침이 잃은 행의 원자를 거둠 — BACKFILL_GUIDE · 완전성 표 삭제 겨눔 줄
+08d2f8189   양쪽 다 거절한 소스는 가지가 바꾼 것 아님 — CODE_MAP schema 줄
+4c02fafe4   봉투 권한은 읽는 함수 하나가 묻는다 — 체인 적재 가이드(거절 문장 그대로임을 코드로 확인)
+64f5b0411   안 쓴 칸 한 셈 · 한 문장 — CODE_MAP 드롭 사유 줄 · 워처 알림 줄
+```
+물음 둘 — 64f5b0411 (문장이 바뀐 자리를 옛 코드와 대조)
+```
+① 첫 목격 WARNING 이 «다음 행동»을 잃었습니다
+   옛  「... if the column is new or misspelled, declare it in config/table_config.json. Repeats are reported at INFO」
+   새  「... If the drop is intended (a field of a superseded scheme) this is the expected state. Repeats ...」
+   Next: 는 파일당 INFO 줄과 파일 기록에만 있습니다. 로그에서 튀는 줄은 WARNING 하나입니다
+② unmapped_column 이 두 번째 파일부터 INFO 로 내려갔습니다
+   옛  unmapped 칸이 든 파일마다 logger.warning (그 note 줄)
+   새  (사유, 칸) 첫 목격만 WARNING, 그 뒤 파일은 INFO
+   unmapped 는 «언제나 고장»(선언됐는데 이 프로세스 모델이 못 받음 — 리로드가 답)이고, undeclared 는 «흔히 의도»입니다.
+   한 셈으로 합치면서 고장 쪽 반복이 조용해졌습니다. 파일 기록(상태 칸)에는 여전히 남습니다
+   의도하신 것인지요. 아니면 WARNING/INFO 를 사유로 가르는 것이 «문»인지 판정이 필요합니다
+```
