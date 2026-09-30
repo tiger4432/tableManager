@@ -33,7 +33,8 @@ from .setup import (
     DEFAULT_ONTOLOGY_ROOT, live_physical_catalog, load_setup, setup_from_document,
 )
 from .setup_bundle import (
-    CONFIG_FILENAME, LOGICAL_SECTIONS, SETUP_VERSION, validate_bundle_errors,
+    CONFIG_FILENAME, LOGICAL_SECTIONS, SETUP_VERSION, LedgerSetupValidationError,
+    validate_bundle_errors,
 )
 
 
@@ -140,6 +141,15 @@ def _refused_column(path: Any) -> str:
     return column
 
 
+def required_draft_id(draft_id: str | None) -> str:
+    """The draft a draft-scoped read names, or the one refusal when it names none - `view`'s
+    draft preview and the unsaved plan (총괄 d4a949a8c ⑨)."""
+    if draft_id is None:
+        raise ConfigExplorerError(
+            "draft_required", "draft_id", "draft_preview mode requires a draft id")
+    return draft_id
+
+
 class OntologyExplorerService:
     def __init__(
         self,
@@ -232,7 +242,14 @@ class OntologyExplorerService:
         with self._lock:
             stamp = self._file_stamp()
             if force or self._setup is None or stamp != self._stamp:
-                resolved = self._resolution()
+                try:
+                    resolved = self._resolution()
+                except LedgerSetupValidationError as exc:
+                    # The file is not there or not one object - every route that asked
+                    # refuses by name, not with a 500 (총괄 d4a949a8c ⑨).
+                    raise ConfigExplorerError(exc.code, exc.path, (
+                        f"Next: restore or fix {CONFIG_FILENAME}, or start one with Create "
+                        f"starting file. {exc}")) from exc
                 self._setup = resolved["setup"]
                 self._index = resolved["index"]
                 self._invalid = resolved["invalid"]
@@ -263,11 +280,8 @@ class OntologyExplorerService:
                 "invalid_view_mode", "view_mode",
                 "view mode must be active or draft_preview",
             )
-        if view_mode == "draft_preview" and draft_id is None:
-            raise ConfigExplorerError(
-                "draft_required", "draft_id",
-                "draft_preview mode requires a draft id",
-            )
+        if view_mode == "draft_preview":
+            required_draft_id(draft_id)
         setup, active_index, compiled_at = self.active()
         active_token = f"active:{active_index.snapshot_hash}"
         context = {
@@ -960,11 +974,13 @@ class OntologyExplorerService:
                   raw: Any = None) -> dict[str, Any]:
         """What is filled by force, what is missing, and what is still a real question.
 
-        🔴 THIS DELIBERATELY DOES NOT GO THROUGH `active()`.  A compiled snapshot exists
+        🔴 WITHOUT A DRAFT THIS DOES NOT GO THROUGH `active()`.  A compiled snapshot exists
         only for a bundle that already validates, and the authoring screen is needed
-        exactly when it does not -- a half-written source, or a blank root that makes
-        `/view` answer 500.  So the plan reads the authoring FILE, tolerates any shape it
-        finds, and lets `authoring_plan` name the deficits instead of raising.
+        exactly when it does not -- a half-written source, or a blank root that `/view`
+        refuses.  So the plan reads the authoring FILE, tolerates any shape it finds, and
+        lets `authoring_plan` name the deficits instead of raising.  A draft's plan does go
+        through it: the draft is an edit of the active setup, filled as its save fills it
+        (총괄 d4a949a8c ⑦ ⑨).
         """
         path = self.config_root / CONFIG_FILENAME
         if not path.is_file():
@@ -988,9 +1004,9 @@ class OntologyExplorerService:
         if draft_id is not None:
             # 🔴 THE EDITOR'S BODY, UNSAVED (총괄 791c0f45e 1ㄴ) - a picked entity type
             #    lays out its key squares before anything is written.
-            _, index, _ = self.active()
+            setup, index, _ = self.active()
             bundle, dropped = with_unsaved_body(
-                bundle, catalog, self.draft_store.get(draft_id), index, raw)
+                bundle, setup, self.draft_store.get(draft_id), index, raw)
         payload = authoring_plan(bundle, catalog, selection_prefix=selection_prefix)
         payload["config_source"] = source
         payload["dropped_fields"] = dropped
