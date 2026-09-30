@@ -309,7 +309,7 @@ null    Matches: …      «아직 모른다» -- 세는 중 (+ 원소에 `is-co
 | `main_trend_panel.js` | 420 | 트렌드 |
 | `walk_box_panel.js` | 352 | 걷기 검색창 — NODE TYPE · KEY · FOLLOW. 🔴 **`COLLECT` 는 2026-08-28 에 라우트에서 빠졌다** — 화면에 그 칸이 남아 있으면 결함이다. `goto(id)` 가 마킹 저장소에 쓰는 «유일한» 자리이고, 이력은 «잘리지 않는 트리»다 |
 | `head_summary_panel.js` · `control_bar_panel.js` | 324 · 255 | 머리 요약 · 컨트롤 바 |
-| `candidate_list_panel.js` · `rank_list_panel.js` | 272 · 225 | 후보 · 순위표 |
+| `candidate_list_panel.js` · `rank_list_panel.js` | 220 · 189 @`919ccc065`(구 272 · 225) | 후보 · 순위표 |
 | `composition_panel.js` · `expanded_layer_panel.js` | 270 · 169 | 구성 · 펼친 층 |
 | `reach_panel.js` | 181 | 「여기서 어디로 갈 수 있나」 — 한 홉, 술어당 한 행 |
 | `declaration_panel.js` · `marking_status_panel.js` | 150 · 98 | 선언 · 마킹 상태 |

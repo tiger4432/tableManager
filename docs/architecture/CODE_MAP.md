@@ -5567,7 +5567,7 @@ Excel 클립보드 왕복의 공용 저층 — export `parseTsv`/`serializeTsv`/
 | `main_trend_panel.js` | **430** | 기본 트렌드 좌석 |
 | `head_summary_panel.js` | **347** | 머리 요약 |
 | `composition_panel.js` | **293** | 자재 구성 |
-| `candidate_list_panel.js` | **272** | 후보 목록 |
+| `candidate_list_panel.js` | 🆕 **220** @`919ccc065` · 272 | 후보 목록. 🆕 [10-01 `2b20ed983`] 카드의 실측 줄은 걷기의 판정 `c.measured`(걸음의 술어) 그대로 — `Measured` 또는 `-`. `_firstMeasuredRef` 은퇴: 값 걸음의 ref 를 읽었는데 모든 노드가 엔티티가 된 뒤로 값 걸음이 안 와 실측 카드가 늘 「실측 -」였다 |
 | `control_bar_panel.js` | **260** | 제어 막대 — 축 선택을 `axis:y` 마킹에 «쓴다» |
 | `rank_list_panel.js` | **225** | 순위표 |
 | `reach_panel.js` | **181** | 「닿는 곳」 — 마킹에서 어느 술어로 무엇에 닿는가 |
