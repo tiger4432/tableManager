@@ -67156,3 +67156,32 @@ A2 a last use is not followed                        빨강 (dump differs)
 ```
 전체  5 failed, 7518 passed, 196 skipped, 3 xfailed in 702.17s (0:11:42) — 실패 5 개, 파일::이름으로 알려진 다섯과 같음: True
 ```
+
+## [구현자 -> 총괄] d4a949a8c ⑤ 착지 0f609ed41 — contrast_walk 셋 (가 · A · D)
+
+```
+(가) _flag           -> crud.boolean_text_value(응답의 top/tied/incomparable/complete 는 bool·None 이라 답 같음)
+(나) 참거짓 글 읽기    crud.boolean_text_read — boolean_text_value 의 읽기 짝: "true"/"false"(대소문자·앞뒤 빈칸 무시) · bool 은 그대로 · 빈 값 None · 그 밖 ValueError
+                    부름: contrast_walk include_superseded · retroactive validate 의 bool 인자. 거절 문장은 읽기가 validation.flag_refusal(name, raw) 로 지어 ValueError 에 실음
+                    — 맵퍼가 validation 을 import 하면 test_the_names_an_operator_imports_are_a_promise 가 막음(OPERATOR_IMPORT_NAMES 밖) · 약속 목록은 안 늘림
+                    동작 바뀜: include_superseded "1" 은 전엔 참 — 이제 거절(그 run). advanced_ingester 는 파서 형 변환이라 그대로
+(다) 홉 술어          ledger_subgraph._evidence 가 홉마다 predicates(_predicates_between — 응답 edges 중 두 노드 사이 전부, 양방향, 걷기마다 한 번)
+                    맵퍼 _with_predicates 삭제 — 저장은 라우트 길 그대로. 전후 표: 대조 시험 픽스처(run 둘, 홉 78)의 저장 evidence 가 byte 같음
+응답 모양 한 줄       propagation.ranked[].evidence[].hops[i] (i ≥ 1) 에 "predicates": [정렬된 술어 이름] — hops[0] 엔 없음 (클라 ㉳ 가 읽을 자리)
+변이 넷 — 각각 되돌림
+F1 the route carries no predicates on its hops       빨강  (1 failed, 13 passed, 4 skipped)
+F2 the reader takes yes as true                      빨강  (2 failed, 12 passed, 4 skipped)
+F3 the mapper reads the cell its own way             빨강  (1 failed, 13 passed, 4 skipped)
+F4 complete is stored as a bool                      빨강  (1 failed, 13 passed, 4 skipped)
+```
+**새 함수 · 새 if 중 기존 것과 같은 일** (cdeb5ea10)
+```
+새 함수   crud.boolean_text_read — 자리 안 식 둘(contrast_walk · retroactive)을 접은 자리 · ledger_subgraph._predicates_between — 맵퍼 _with_predicates 를 옮김(맵퍼 쪽 삭제)
+새 if     같은 일을 가르는 새 갈래 0 — boolean_text_read 안의 갈래는 옛 자리 안 식 둘이 하던 판정.
+          지운 것: _flag · _with_predicates · 자리 안 참거짓 식 둘
+```
+**스위트** (C:/wt-impl, 착지 트리)
+```
+전체  5 failed, 7520 passed, 196 skipped, 3 xfailed in 692.62s (0:11:32) — 실패 5 개, 파일::이름으로 알려진 다섯과 같음: True
+PG    7 failed, 150 passed, 7567 deselected, 53 warnings in 264.08s (0:04:24) — 실패 이름이 알려진 일곱과 같음: True
+```
