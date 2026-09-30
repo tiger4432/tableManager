@@ -1,0 +1,11 @@
+{
+ "made_by": "subgraphModel with measuredFromHops__untilServerServesIt (pairing hop ids against edges), before lead 9dd1e378b retired it",
+ "measured": {
+  "ledger-quantity:v1:forward": true,
+  "ledger-quantity:v1:backward": true,
+  "ledger-quantity:v1:named": false,
+  "ledger-quantity:v1:second_hop": true,
+  "ledger-quantity:v1:both": true,
+  "ledger-quantity:v1:outside": false
+ }
+}

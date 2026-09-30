@@ -473,72 +473,6 @@ export async function fetchSubgraph(params) {
            body: await res.json().catch(() => null) };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// ⚠️ TEMPORARY BOUNDARY ADAPTER -- DELETE THIS FUNCTION WHEN THE SERVER SERVES THE FIELD.
-//
-// Lead PM ruling 2026-08-23: the derivation is ADOPTED because 「가서 볼 수 있는 것」 and
-// 「모델이 붙인 이름」 must be told apart or the rank table means nothing -- but a client
-// INTERPRETING ontology meaning is temporary, and the same ruling already applies to the map
-// cell's `node_id` placeholder. It is collected here, in ONE function, so the day
-// `/api/ledger/subgraph` serves the distinction itself, this function disappears and NO PART
-// IS TOUCHED.
-//
-// What it decides: a hop of kind `value` or `claim` reaches something an engineer can go and
-// look at. Hops that are all `quantity` are a name `mechanism_models.json` declares.
-//
-// ⚠️ It counts WALKS, not declarations. The order said 3 of 25; this says 4 of 25, and the
-//    Lead PM ruled the 4 correct -- their 3 counted rows with a model binding, which is a
-//    different question. `post_bond_queue_h · void_observation_bias` is the extra: it reaches
-//    a claim atom (`mes_queue:SYN-BW-103-11`) and a value hop.
-// ═══════════════════════════════════════════════════════════════════════════════
-export function measuredFromHops__untilServerServesIt(row, edges) {
-  // 🔴 THE QUESTION HAS NEVER CHANGED: 「이 후보는 «가서 볼 수 있는 것»에 닿았나」. What keeps
-  // changing is the name the walk gives that thing, and this is its third. The two earlier
-  // names stay written down because deleting them would make this read like a rule that was
-  // always wrong, and it was not -- each was true when it was written:
-  //
-  //    ~2026-08-25  `claim || value`, both node kinds. TRUE then.
-  //     2026-08-25  a claim became an EDGE, so the `claim` arm could never fire again and only
-  //                 `value` survived. Still a real rule, and dropping `claim` was the fix
-  //                 rather than a loss: MEASURED on the old code, seed `SYN-CX-BW-001`, 21 of
-  //                 21 candidates had a claim hop and 0 of 21 a value hop, so the arm that
-  //                 died was the one that had been answering "yes" to everything.
-  //     2026-08-28  revision 6 landed and every node the walk returns became a declared
-  //                 ENTITY -- measured `{ entity: 507 }` on that same seed. `node_kind ===
-  //                 'value'` stopped being a rule that can answer 「없다」 and became one that
-  //                 cannot answer at all: permanently false, with no error and no log.
-  //
-  // 🔴 SO THE ANSWER MOVED FROM THE NODE TO THE EDGE, because that is where the ledger put it.
-  // `measures@1` (wafer@1 -> quantity@1, 80,322 atoms) landed the same day and carries the
-  // reading in its qualifiers. A trail that crosses one has touched something an engineer can
-  // go and look at; a trail that only crosses `leads_to` is a name the declaration asserts.
-  //
-  // 🔴 NO NEW FIELD AND NO DECODER. The predicate is not on a hop and does not need to be: the
-  // response already carries `edges[].{source,target,predicate}` (`ledger_subgraph.py:854`),
-  // so a pair of consecutive hop ids IS the lookup key. The Lead PM cancelled the server-side
-  // "put predicate on the hop" order once this was measured.
-  //
-  // ⚠️ UNDIRECTED ON PURPOSE. A hop pair is one step along the parent chain, and the chain
-  // crosses the edge in whichever direction reached the node. Testing a single orientation
-  // would answer 「없다」 for every trail that arrived from the quantity side.
-  const crossings = new Set();
-  for (const edge of edges || []) {
-    if (!edge || edge.predicate !== 'measures') continue;
-    crossings.add(`${edge.source} -> ${edge.target}`);
-    crossings.add(`${edge.target} -> ${edge.source}`);
-  }
-  if (crossings.size === 0) return false;
-  for (const ev of row.evidence || []) {
-    const hops = ev.hops || [];
-    for (let i = 1; i < hops.length; i += 1) {
-      const from = hops[i - 1] && hops[i - 1].id;
-      const to = hops[i] && hops[i].id;
-      if (from && to && crossings.has(`${from} -> ${to}`)) return true;
-    }
-  }
-  return false;
-}
-
 /**
  * The view model both parts read. NO DOM.
  *
@@ -648,7 +582,10 @@ export function subgraphModel(result) {
       top: row.top === true,
       tied: row.tied === true,
       incomparable: row.incomparable === true,
-      measured: measuredFromHops__untilServerServesIt(row, body.edges),
+      // A trail that crossed a `measures` edge touched something an engineer can go and look at; one that
+      // only crossed `leads_to` is a name the declaration asserts. Each hop after the first carries every
+      // predicate between it and the hop before, either direction (the route's `predicates`, lead 9dd1e378b).
+      measured: (row.evidence || []).some((ev) => (ev.hops || []).some((h) => (h.predicates || []).includes('measures'))),
       hopCount: (row.evidence || []).reduce((n, ev) => Math.max(n, (ev.hops || []).length), 0),
       evidence: (row.evidence || []).map((ev) => ({
         // 🔴 C-45. Added to the record, not instead of it.

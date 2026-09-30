@@ -73,7 +73,7 @@ const bodyWith = (patch) => {
 async function loadModules(mutate = {}) {
   const board = await loadBoardModules(mutate);
   return { cand: board.parts.cand, rank: board.parts.rank,
-    store: board.store, sources: board.sources };
+    store: board.store, sources: board.sources, api: board.api };
 }
 
 function makeNode(doc, tag) {
@@ -243,10 +243,27 @@ async function suite(mods) {
     ['seed', 'mount', 'onStartChanged', 'load'].map((k) => cand.CandidateListPanel.prototype[k] === rank.RankListPanel.prototype[k]),
     [true, true, true, true]);
 
+  // ── H. measured reads the hops' predicates (lead 9dd1e378b) ──────────────────────
+  // The fixture's evidence is the server's own (capture_rnd_board_measured.py); the before file is
+  // what the retired pairing function answered on it (hop ids paired against edges).
+  const measuredBody = JSON.parse(readFileSync(path.join(HERE, 'fixtures', 'rnd_board_measured.json'), 'utf8'));
+  const before = JSON.parse(readFileSync(path.join(HERE, 'fixtures', 'rnd_board_measured.before.json'), 'utf8')).measured;
+  const now = Object.fromEntries(mods.api.subgraphModel({ ok: true, status: 200, body: measuredBody }).candidates
+    .map((c) => [c.id, c.measured]));
+  eq('H0 the fixture holds both answers (else H1 proves nothing)',
+    [Object.values(before).includes(true), Object.values(before).includes(false)], [true, true]);
+  eq('H1 on the same fixture, measured is what the pairing function answered before it retired', now, before);
+  eq('H2 the pairing function is gone', 'measuredFromHops__untilServerServesIt' in mods.api, false);
+
   return { ran, failures };
 }
 
 const MUTANTS = [
+  { id: 'X12', what: 'only the first predicate of a hop is read, so a pair the walk crossed by leads_to hides its measures edge',
+    catches: 'H1',
+    mutate: { 'api.js': (s) => s.replace("(h.predicates || []).includes('measures')", "(h.predicates || [])[0] === 'measures'") } },
+  { id: 'X13', what: 'any predicate counts, so a name-only candidate reads as measured', catches: 'H1',
+    mutate: { 'api.js': (s) => s.replace("(h.predicates || []).includes('measures')", '(h.predicates || []).length > 0') } },
   { id: 'X11', what: 'one list gets its own load again - a second copy of the prelude', catches: 'D5',
     mutate: { 'rank_list_panel.js': (s) => s.replace(
       '  render() {', '  async load() { return super.load(); }\n\n  render() {') } },
