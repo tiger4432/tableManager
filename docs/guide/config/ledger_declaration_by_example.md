@@ -231,7 +231,7 @@ retired 로 적어도 계속 번역합니다」라고 적혀 있었고, 오늘�
 "dtwafer-processed-with-recipe": { "predicate": "processed_with@1", "when": {"mat_type": "DT"}, "bind": { "subject": { "entity_type": "dtwafer@1", ... } } }
 ```
 `mat_type` 은 체인 조인이 단계 표(`step_phase` — DT 단계만 적음)에서 채웁니다. 조인이 안 닿은 행은 빈 값이라 전처럼 `wafer@1` 로 말합니다.
-- **빈 칸은 `""` 입니다** — 값이 없거나(NULL) 텍스트 칸의 NULL 이 판다스에서 NaN 으로 와도 `when` 은 `""` 로 견줍니다(전엔 `"nan"` 이 돼 어느 문장도 안 맞았다).
+- **빈 칸은 `""` 입니다** — 값이 없는(NULL) 칸은 `""` 로 견줍니다(09-30 전엔 `"nan"` 이 돼 어느 문장도 안 맞았다). 견줄 때 칸 값과 적은 값을 «둘 다» 같은 글자로 접습니다 — 앞뒤 공백을 떼고, `7.0` 같은 정수 실수는 `"7"`(10-01 `0ba4c82ce`, `clean_str_value`).
 - **어느 문장도 안 고른 행은 «세고 이름 댑니다»** — 모든 문장이 `when` 을 들고 그 어느 것도 안 맞으면 그 행은 아무것도 말하지 않고, 배치마다 한 줄:
   `[Ledger] <소스>: N unit(s) said no sentence - mat_type='WF' (N). Next: every sentence's when passed them over; correct the value in the table it comes from, or declare a sentence whose when names it.`
   미리보기와 배치 영수증에도 `unsaid` 로 실립니다. `when` 없는 문장이 하나라도 있으면 모든 행이 그것을 말하므로 이 줄은 안 납니다.
