@@ -11,7 +11,8 @@
 /**
  * @param {string[]} textTypes the text-bearing formats on the clipboard, as the reader found them
  * @param {string[]|null} order the table's declared order, or null when it declares none
- * @param {(types: string[]) => Promise<string|null>} ask the dialog; resolves null when cancelled
+ * @param {(types: string[], outsideOrder: boolean) => Promise<string|null>} ask the dialog; resolves
+ *   null when cancelled. `outsideOrder`: none of the declared order is on the clipboard
  * @returns {Promise<{type: string|null, byOrder: boolean}>} `type` null = nothing to send
  */
 export async function chooseClipboardType(textTypes, order, ask) {
@@ -21,6 +22,7 @@ export async function chooseClipboardType(textTypes, order, ask) {
     const hit = order.find((type) => types.includes(type));
     if (hit) return { type: hit, byOrder: true };
   }
-  if (types.length > 1 || (declared && types.length > 0)) return { type: (await ask(types)) || null, byOrder: false };
+  // `ask`'s second argument: it asks because the order is declared and none of it is here.
+  if (types.length > 1 || (declared && types.length > 0)) return { type: (await ask(types, declared)) || null, byOrder: false };
   return { type: types[0] || null, byOrder: false };
 }

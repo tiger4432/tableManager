@@ -61,9 +61,10 @@ export class ClipboardTypeModal {
   /**
    * 하나 고를 때까지 기다립니다.
    * @param {string[]} types  브라우저가 내놓은 MIME 들
+   * @param {string} [sub]  왜 묻는지 한 줄 — 부르는 자리가 안 주면 기본 문장
    * @returns {Promise<string|null>} 고른 모양, 또는 취소면 `null`
    */
-  open(types) {
+  open(types, sub = 'The clipboard holds several formats · pick one') {
     return new Promise((resolve) => {
       const doc = this.doc;
       const overlay = this._el('div', 'ctm-overlay');
@@ -76,7 +77,7 @@ export class ClipboardTypeModal {
       const head = this._el('div', 'ctm-head');
       head.append(
         this._el('h3', 'ctm-title', 'Paste format'),
-        this._el('p', 'ctm-sub', 'The clipboard holds several formats · pick one'));
+        this._el('p', 'ctm-sub', sub));
       card.append(head);
 
       const list = this._el('div', 'ctm-list');
