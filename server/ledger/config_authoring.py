@@ -71,7 +71,7 @@ from .implementations import (
     preparer_output_columns,
     source_preparer_declarations,
 )
-from .setup_registry import OCCURRED_AT_BASIS_COLUMNS
+from .setup_registry import OCCURRED_AT_BASIS_COLUMNS, with_source_attributes
 from .source_preparation import locked_select_columns
 from .setup_bundle import (
     _profile_binding_columns as _setup_bundle_profile_binding_columns,
@@ -1385,6 +1385,7 @@ def _profile_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
             yield from _mapping_fields(
                 base, sentence, mapping, vocabulary, entities, available,
                 time_basis=time_basis, source_id=source_id)
+            yield from _inherited_attribute_fields(base, sentence, mapping, bound_entities)
 
 
 def _mapping_fields(base: str, sentence: str, mapping: Mapping[str, Any],
@@ -1545,6 +1546,35 @@ def _mapping_fields(base: str, sentence: str, mapping: Mapping[str, Any],
                     "message": f"role {role_id!r} is not declared by Claim"},),
                 note="A role Claim does not declare.",
             )
+
+
+def _inherited_attribute_fields(base: str, sentence: str, mapping: Any,
+                                by_type: Any) -> Iterable[Field]:
+    """One read-only row per role that inherits the source's attributes (총괄 12cc7dd1f ①).
+
+    🔴 THE RULE IS THE COMPILER'S, CALLED - NOT RESTATED. `with_source_attributes` is what
+    translation binds; a role it changed inherits, and its value is what translation uses.
+    `shape`, so the fill never writes it into the role - a role that carries attributes
+    OVERRIDES the source's, and a copy there would stop following the source."""
+    bind = mapping.get("bind") if isinstance(mapping, Mapping) else None
+    if not isinstance(bind, Mapping) or not isinstance(by_type, Mapping):
+        return
+    compiled = with_source_attributes(bind, by_type)
+    for role_id in sorted(bind, key=str):
+        if compiled.get(role_id) == bind.get(role_id):
+            continue
+        entity_type = bind[role_id].get("entity_type")
+        inherited = compiled[role_id].get("attributes")
+        yield Field(
+            path=f"{base}.mappings.{sentence}.bind.{role_id}.attributes", step="sources",
+            label="Attributes (inherited)", state="derived", tier=TIER_STRUCTURAL,
+            value=inherited,
+            ground=Ground(
+                "inherited_from_source",
+                f"Inherited: this source's attributes of {entity_type}",
+                (f"{base}.entities.{entity_type}.attributes",), inherited),
+            disposition="shape",
+        )
 
 
 def _entity_binding_fields(path: str, binding: Mapping[str, Any],

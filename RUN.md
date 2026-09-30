@@ -1,5 +1,19 @@
 # 지금 돌리면 되는 것
 
+> ## 🔴 [09-30 오후] **원장 선언 계획에 «물려받은 속성» 행 — 마이그레이션 «없음» · 재기동 서버 (run_app.bat 로 전체)**
+>
+> ```
+> 무엇이 바뀌나  역할이 entity 이고 자기 attributes 를 안 적었으면, 계획(GET/POST /admin/ontology-explorer/authoring/plan)에
+>              그 역할의 attributes 자리에 읽기 전용 행 하나 — 값 = 번역이 묶는 속성 · ground.rule "inherited_from_source" ·
+>              근거 = 그 소스의 bind.entities.<타입>.attributes
+>              저장은 그 행을 역할에 «안 씀»(쓰면 역할이 덮어써서 소스 쪽 고침이 안 따라감)
+> 확인          속성을 소스에 적은 소스의 계획에서 그 타입을 쓰는 역할마다 그 행
+> 뜻           역할이 자기 attributes 를 적었으면 그 행이 없음 — 그 역할은 소스 것을 안 씀
+> 급할 때       끄는 스위치 없음 — 커밋 되돌리기
+> ```
+
+---
+
 > ## 🔴 [09-30 오후] **표 스키마 응답에 smart_paste — 마이그레이션 «없음» · 재기동 서버 (run_app.bat 로 전체)**
 >
 > ```

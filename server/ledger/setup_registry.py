@@ -1148,7 +1148,7 @@ def _compile_mappers(section: Mapping[str, Any]) -> MapperRegistry:
     return builder.seal()
 
 
-def _with_source_attributes(bind: Mapping[str, Any],
+def with_source_attributes(bind: Mapping[str, Any],
                             by_type: Mapping[str, Any]) -> Mapping[str, Any]:
     """One sentence's role bindings, with the source's attributes inherited.
 
@@ -1189,7 +1189,7 @@ def _compile_profiles(section: Mapping[str, Any]) -> ProfileRegistry:
         mappings = MappingProxyType({
             sentence: ProfileMappingDescriptor(
                 predicate_id=mapping["predicate"],
-                bindings=_freeze(_with_source_attributes(mapping["bind"], by_type)),
+                bindings=_freeze(with_source_attributes(mapping["bind"], by_type)),
                 config_path=f"{path}.mappings.{sentence}",
                 when=_freeze(mapping.get("when") or {}),
             )
