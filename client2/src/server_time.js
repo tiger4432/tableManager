@@ -66,6 +66,14 @@ export function localMinute(value) {
   return `${p.y}-${p.M}-${p.d} ${p.h}:${p.m}`;
 }
 
+/** `HH:MM` — when a run was computed (lead 2dd93d4a9: 「factors N · computed HH:MM」). */
+export function localHourMinute(value) {
+  const at = parseServerInstant(value);
+  if (!at) return NO_TIME;
+  const p = parts(at);
+  return `${p.h}:${p.m}`;
+}
+
 /** `HH:MM:SS` — an instant of today on one line (lead 460f202d3: 「Loaded by chain worker HH:MM:SS」). */
 export function localClock(value) {
   const at = parseServerInstant(value);

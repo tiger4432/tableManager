@@ -1445,9 +1445,10 @@ const FLOORS = new Map([
   // the board part: the walk box
   ['rnd_board_walk_box_harness.mjs', 79],
   // the board part: Save contrast (lead 3a262cc76) — one contrast_run row per save, the list
-  // with the factor rows read per run (factors N, 0 said as 0), two instances on one screen,
-  // the real chain's rows through the real route (J), and the lists walking what Save saves (L).
-  ['rnd_board_contrast_save_harness.mjs', 54],
+  // with the run row's own computed facts (Not computed yet / factors N · computed HH:MM, one read),
+  // two instances on one screen, the real chain's run rows through the real route (J), and the
+  // lists walking what Save saves (L). 54 -> 58 (lead 2dd93d4a9).
+  ['rnd_board_contrast_save_harness.mjs', 58],
   // the board part: the walk itself
   ['rnd_board_walk_harness.mjs', 32],
   // 🔴 the walk REQUEST, not the walk return. `createWalkBoxWalk` accepted `spec.hops` and

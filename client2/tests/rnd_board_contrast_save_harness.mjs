@@ -1,13 +1,13 @@
 /**
  * rnd_board — Save contrast (lead 3a262cc76). The part is driven against a fake of the tables'
- * own routes: contrast_run takes the PUT and answers the list, contrast_factor answers one
- * filtered read per run the way the chain would have filled it.
+ * own routes: contrast_run takes the PUT and answers the list, its rows stamped the way the chain
+ * stamps a run it computed (lead 2dd93d4a9). Nothing else is read.
  *
  *   A  one save is ONE row: the marking's defects and controls, until = now, the walk arguments
  *      the candidate question carries and nothing else
  *   B  the saved run shows in the list, read with a sort the route accepts
- *   C  the chain's rows fill the count: factors N is what was read now (0 is 0); a failed read is unknown
- *   D  the factor rows' flags: unexamined, and incomplete from a STRING 'false'
+ *   C  the run row says what the chain computed: Not computed yet / factors N · computed HH:MM (0 is 0)
+ *   D  the run row's flags: unexamined, and incomplete from a STRING 'false'
  *   E  nothing to save from -> off, with the reason
  *   F  no controls -> the fact beside the button
  *   G  refusals are said
@@ -44,9 +44,13 @@ const CASES = ['w:case-1', 'w:case-2'];
 const CONTROL = 'w:good-1';
 const QUESTION = { legacyRoute: 'candidate', direction: 'outgoing', node_limit: 1000 };
 
-/** The tables' routes, as far as this part touches them. `factors` is what the chain wrote. */
+/** The tables' routes, as far as this part touches them. `compute` is what the chain writes on a run. */
 function fakeTables({ refuseSave, refuseList } = {}) {
-  const server = { runs: [], factors: {}, puts: [], gets: [] };
+  const server = { runs: [], puts: [], gets: [] };
+  server.compute = (runId, cells) => {
+    const row = server.runs.find((r) => r.data.run_id && r.data.run_id.value === runId);
+    for (const [k, v] of Object.entries(cells)) row.data[k] = { value: v };
+  };
   server.fetch = async (url, init) => {
     const u = new URL(url, 'http://box');
     const reply = (status, body) => ({ ok: status < 400, status, json: async () => body });
@@ -68,19 +72,15 @@ function fakeTables({ refuseSave, refuseList } = {}) {
       }
       return reply(200, { data: server.runs.slice(0, Number(u.searchParams.get('limit'))), total: server.runs.length });
     }
-    if (u.pathname === '/tables/contrast_factor/data') {
-      const f = JSON.parse(u.searchParams.get('filters') || '{}').run_id || {};
-      if (server.factors[f.filter] === 'refuse') return reply(500, { detail: 'boom' });
-      const rows = f.type === 'equals' ? (server.factors[f.filter] || []) : [];
-      return reply(200, { data: rows.slice(0, Number(u.searchParams.get('limit'))), total: rows.length });
-    }
     return reply(404, { detail: 'Not Found' });
   };
   return server;
 }
-const factorRow = (runId, i, extra = {}) => ({ row_id: `f${i}`, data: {
-  run_id: { value: runId }, node_id: { value: `n:${i}` }, contrast: { value: 'contrasted' },
-  complete: { value: 'true' }, ...Object.fromEntries(Object.entries(extra).map(([k, v]) => [k, { value: v }])) } });
+const runRow = (id, cells) => ({ row_id: `x-${id}`, data: Object.fromEntries(
+  Object.entries({ run_id: id, until: '2026-09-30T00:00:00Z', ...cells }).map(([k, v]) => [k, { value: v }])) });
+// The viewer's wall clock of an instant, worked out here rather than by the formatter under test.
+const hm = (iso) => { const d = new Date(iso); return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; };
+const AT = '2026-09-30T01:05:00Z';
 
 async function suite(mods) {
   const { MarkingStore, SIGN } = mods.store;
@@ -153,55 +153,69 @@ async function suite(mods) {
     `${(listReads[1] || new URL('http://x')).searchParams.get('order_by')}|${(listReads[1] || new URL('http://x')).searchParams.get('order_desc')}`,
     'updated_at|true');
   eq('B3 the run is one row of the list', rowsOf(a.host).length, 1);
-  eq('B4 its counts are the row\'s own; no factor row read yet is said as 0', countsOf(a.host, 'run-fixed'),
-    'defects 2 · controls 1 · factors 0');
+  eq('B4 a saved run the chain has not computed says so', countsOf(a.host, 'run-fixed'),
+    `defects 2 · controls 1 · ${CONTRAST_WORDS.notComputed}`);
 
-  console.log(`${LF}-- C. the chain's rows fill the candidate count --`);
-  server.factors['run-fixed'] = [0, 1, 2].map((i) => factorRow('run-fixed', i));
+  console.log(`${LF}-- C. the run row says what the chain computed --`);
+  server.compute('run-fixed', { computed_at: AT, candidates: 3, contrast: 'contrasted', complete: 'true' });
+  server.runs.unshift(runRow('run-zero', { positive: '["a"]', negative: '["b"]', computed_at: AT, candidates: 0,
+    contrast: 'contrasted', complete: 'true' }));
+  server.runs.unshift(runRow('run-blank', { positive: '["a"]', negative: '[]', computed_at: AT, candidates: '' }));
+  server.runs.unshift(runRow('run-new', { positive: '["a"]', negative: '["b"]' }));
   server.gets.length = 0;
   refreshBtn(a.host).dispatch('click');
   await settle();
-  eq('C1 three factor rows -> factors 3', countsOf(a.host, 'run-fixed'), 'defects 2 · controls 1 · factors 3');
-  const factorReads = server.gets.filter((u) => u.pathname === '/tables/contrast_factor/data');
-  eq('C2 one factor read per listed run', factorReads.length, rowsOf(a.host).length);
-  const filt = factorReads[0] ? JSON.parse(factorReads[0].searchParams.get('filters')) : {};
-  eq('C3 the read asks for THIS run only', `${filt.run_id && filt.run_id.type}|${filt.run_id && filt.run_id.filter}`, 'equals|run-fixed');
-  eq('C4 and carries one row, not the run\'s candidates', factorReads[0] && factorReads[0].searchParams.get('limit'), '1');
-  eq('C5 a contrasted, complete run carries no tag', tagsOf(a.host, 'run-fixed'), '');
-  server.factors['run-fixed'] = 'refuse';
-  refreshBtn(a.host).dispatch('click');
-  await settle();
-  eq('C6 a failed factor read is unknown, not 0', countsOf(a.host, 'run-fixed'), 'defects 2 · controls 1 · factors —');
-  server.factors['run-fixed'] = [0, 1, 2].map((i) => factorRow('run-fixed', i));
+  eq('C1 computed with three: factors 3 · computed HH:MM', countsOf(a.host, 'run-fixed'),
+    `defects 2 · controls 1 · factors 3 · computed ${hm(AT)}`);
+  eq('C2 the list is ONE read of the run table — no factor read', server.gets.map((u) => u.pathname).join(','),
+    '/tables/contrast_run/data');
+  eq('C3 a contrasted, complete run carries no tag', tagsOf(a.host, 'run-fixed'), '');
+  eq('C4 computed with none: factors 0, an answer', countsOf(a.host, 'run-zero'),
+    `defects 1 · controls 1 · factors 0 · computed ${hm(AT)}`);
+  eq('C5 a computed run whose count is blank is unknown, not 0', countsOf(a.host, 'run-blank'),
+    `defects 1 · controls 0 · factors — · computed ${hm(AT)}`);
+  const lastOf = (r) => countsOf(a.host, r).split(' · ').slice(2).join(' · ');
+  eq('C6 not computed, computed 0 and computed N are three different lines',
+    new Set(['run-new', 'run-zero', 'run-fixed'].map(lastOf)).size, 3);
 
-  console.log(`${LF}-- D. the factor rows' flags --`);
-  server.runs.unshift({ row_id: 'x1', data: { run_id: { value: 'run-cut' }, positive: { value: '["a"]' },
-    negative: { value: '[]' }, until: { value: '2026-09-30T00:00:00Z' } } });
-  server.factors['run-cut'] = [factorRow('run-cut', 7, { contrast: 'unexamined', complete: 'false' })];
+  console.log(`${LF}-- D. the run row's flags --`);
+  server.runs.unshift(runRow('run-cut', { positive: '["a"]', negative: '[]', computed_at: AT, candidates: 5,
+    contrast: 'unexamined', complete: 'false' }));
   refreshBtn(a.host).dispatch('click');
   await settle();
   eq('D1 unexamined and incomplete, from the chain\'s own words', tagsOf(a.host, 'run-cut'),
     `${CONTRAST_WORDS.unexamined},${CONTRAST_WORDS.incomplete}`);
   eq('D2 the other run keeps no tag', tagsOf(a.host, 'run-fixed'), '');
+  eq('D3 a run not computed yet carries no tag', tagsOf(a.host, 'run-new'), '');
 
-  console.log(`${LF}-- J. what the real chain wrote, as the real route answers it --`);
+  console.log(`${LF}-- J. what the real chain wrote on its runs, as the real route answers it --`);
   {
+    const gets = [];
     const chainFetch = async (url) => {
       const u = new URL(url, 'http://box');
-      const reply = (b) => ({ ok: true, status: 200, json: async () => b });
-      if (u.pathname === '/tables/contrast_run/data') return reply(CHAIN.run_list);
-      const f = JSON.parse(u.searchParams.get('filters') || '{}').run_id || {};
-      return reply(CHAIN.factor_reads[f.filter] || { data: [], total: 0 });
+      gets.push(u.pathname);
+      return { ok: true, status: 200, json: async () => CHAIN.run_list };
     };
     const j = seat({ fetch: chainFetch });
     await settle();
     const w = CHAIN.written;
-    ok('J1 the chain wrote rows for each of the three runs (else the rest proves nothing)',
-      ['R_SEEN', 'R_OPEN', 'R_CUT'].every((r) => w[r] > 0), JSON.stringify(w));
-    const said = (r) => `${countsOf(j.host, r).split(' · ').pop()}|${tagsOf(j.host, r)}`;
-    eq('J2 a run with controls: the rows the chain wrote, no tag', said('R_SEEN'), `factors ${w.R_SEEN}|`);
-    eq('J3 a run without controls: its rows, unexamined', said('R_OPEN'), `factors ${w.R_OPEN}|${CONTRAST_WORDS.unexamined}`);
-    eq('J4 a cut walk: its rows, incomplete', said('R_CUT'), `factors ${w.R_CUT}|${CONTRAST_WORDS.incomplete}`);
+    const at = (r) => {
+      const row = (CHAIN.run_list.data || []).find((x) => x.data.run_id.value === r);
+      return row && row.data.computed_at ? row.data.computed_at.value : null;
+    };
+    ok('J1 the chain wrote factor rows for the three walked runs and none for the empty one (else the rest proves nothing)',
+      w.R_SEEN > 0 && w.R_OPEN > 0 && w.R_CUT > 0 && w.R_EMPTY === 0 && Boolean(at('R_EMPTY')) && !at('R_WAITING'),
+      JSON.stringify(w));
+    const said = (r) => `${countsOf(j.host, r).split(' · ').slice(2).join(' · ')}|${tagsOf(j.host, r)}`;
+    eq('J2 a run with controls: the rows the chain wrote, no tag', said('R_SEEN'), `factors ${w.R_SEEN} · computed ${hm(at('R_SEEN'))}|`);
+    eq('J3 a run without controls: its rows, unexamined', said('R_OPEN'),
+      `factors ${w.R_OPEN} · computed ${hm(at('R_OPEN'))}|${CONTRAST_WORDS.unexamined}`);
+    eq('J4 a cut walk: its rows, incomplete', said('R_CUT'),
+      `factors ${w.R_CUT} · computed ${hm(at('R_CUT'))}|${CONTRAST_WORDS.incomplete}`);
+    eq('J5 a walk that reached nothing: factors 0, computed', said('R_EMPTY').split('|')[0],
+      `factors 0 · computed ${hm(at('R_EMPTY'))}`);
+    eq('J6 a run the chain has not walked yet', said('R_WAITING'), `${CONTRAST_WORDS.notComputed}|`);
+    eq('J7 one read of the run table', gets.join(','), '/tables/contrast_run/data');
   }
 
   console.log(`${LF}-- E. nothing to save from -> off, with the reason --`);
@@ -229,7 +243,8 @@ async function suite(mods) {
   saveBtn(f.host).dispatch('click');
   await settle();
   eq('F3 and the save still goes, with no controls', fServer.puts[0] && fServer.puts[0].body.updates[0].updates.negative, '[]');
-  eq('F4 an empty stored list is 0 controls', countsOf(f.host, 'run-fixed'), 'defects 1 · controls 0 · factors 0');
+  eq('F4 an empty stored list is 0 controls', countsOf(f.host, 'run-fixed'),
+    `defects 1 · controls 0 · ${CONTRAST_WORDS.notComputed}`);
 
   console.log(`${LF}-- G. refusals are said --`);
   const gServer = fakeTables({ refuseSave: "Table 'contrast_run' not found" });
@@ -370,12 +385,15 @@ const MUTANTS = [
   { name: 'a-string-false-reads-as-complete', catches: ['D1'], file: 'api.js',
     from: "const saysFalse = (value) => value === false || String(value).trim().toLowerCase() === 'false';",
     to: 'const saysFalse = (value) => value === false;' },
-  { name: 'the-count-is-the-rows-on-the-page', catches: ['J2', 'J3', 'J4'], file: 'api.js',
-    from: '  const total = body && Number.isFinite(Number(body.total)) ? Number(body.total) : null;',
-    to: '  const total = body && Array.isArray(body.data) ? body.data.length : null;' },
-  { name: 'a-read-0-is-drawn-as-unknown', catches: ['B4', 'F4'], file: 'api.js',
-    from: '    factors: total,',
-    to: '    factors: total ? total : null,' },
+  { name: 'the-count-is-not-the-runs-own', catches: ['C1', 'J2', 'J3', 'J4'], file: 'api.js',
+    from: '        && Number.isFinite(Number(found)) ? Number(found) : null,',
+    to: '        && Number.isFinite(Number(found)) ? 1 : null,' },
+  { name: 'zero-candidates-read-as-unknown', catches: ['C4', 'J5'], file: 'api.js',
+    from: '        && Number.isFinite(Number(found)) ? Number(found) : null,',
+    to: '        && Number(found) ? Number(found) : null,' },
+  { name: 'a-run-is-always-computed', catches: ['B4', 'C6', 'J6'], file: 'api.js',
+    from: "    const computedAt = at === null || at === undefined || String(at).trim() === '' ? null : at;",
+    to: "    const computedAt = at || 'soon';" },
   { name: 'the-list-sorts-by-a-name-the-table-lacks', catches: ['B2', 'B3'], file: 'api.js',
     from: '&order_by=updated_at&order_desc=true',
     to: '&order_by=as_of&order_desc=true' },
@@ -385,7 +403,7 @@ const MUTANTS = [
   { name: 'the-button-is-on-without-defects', catches: ['E1', 'E2'],
     from: "(seeds ? '' : CONTRAST_WORDS.needDefects)",
     to: "''" },
-  { name: 'unknown-is-drawn-as-0', catches: ['C6'],
+  { name: 'unknown-is-drawn-as-0', catches: ['C5'],
     from: "    const count = (n) => (n === null || n === undefined ? '—' : String(n));",
     to: '    const count = (n) => String(n ?? 0);' },
   { name: 'an-empty-marking-means-nothing', catches: ['L1', 'L2'], file: 'panel.js',
