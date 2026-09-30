@@ -194,7 +194,7 @@ async function suite(mods) {
   h.mount(); await flush(); await flush();
   const chips = byClass(hostH, 'rb-chip');
   const absent = chips.filter((c) => c.classList.contains('rb-chip--absent'));
-  truthy('E1 the defaulted window is drawn as an absence', absent.some((c) => c.textContent.includes('기본값 적용')));
+  truthy('E1 the defaulted window is drawn as an absence', absent.some((c) => c.textContent.includes('never chosen')));
   truthy('E2 cardinality stays the word the ledger chose', absent.some((c) => c.textContent.includes('variable')));
   eq('E3 no absence is drawn with the refusal class', byClass(hostH, 'rb-head-note--refused').length, 0);
   // 🔴 THE CLAIM IS UNCHANGED, THE ADDRESS MOVED. 목업 2a puts 「어떻게 정해졌나」 beside the
@@ -302,7 +302,7 @@ async function suite(mods) {
       && !/INGOT_RELEASE/.test(hostL.textContent), hostL.textContent.slice(0, 80));
     // claims 는 «표 부품»이고, 오늘은 경계가 events 를 안 실어 비어 있습니다 -- 그 이유를 말합니다.
     truthy('L3 the claims table says WHY it is empty rather than showing an empty box',
-      /claim 이 없습니다/.test(hostL.textContent), hostL.textContent.slice(-80));
+      /No claim in this response/.test(hostL.textContent), hostL.textContent.slice(-80));
     l.destroy();
   }
 
@@ -314,7 +314,7 @@ async function suite(mods) {
     f.mount();
     await flush(); await flush();
     truthy('H9 a fixed chip seed says it does not follow the marking',
-      /고정 씨앗/.test(hostF.textContent), hostF.textContent.slice(0, 90));
+      /Fixed seed/.test(hostF.textContent), hostF.textContent.slice(0, 90));
     f.destroy();
   }
 
@@ -367,8 +367,8 @@ const MUTANTS = [
   { id: 'H-M1', what: 'the head hides that its chip is a fixed seed while the maps follow the marking',
     catches: 'H9',
     mutate: { 'head_summary_panel.js': (s) => s.replace(
-      "        '칩', '고정 씨앗 — 마킹을 안 따릅니다 (웨이퍼→칩 엣지 대기)', 'absent'));",
-      "        '칩', '', 'absent'));") } },
+      "        'Chip', 'Fixed seed — does not follow the marking (awaiting the wafer→chip edge)', 'absent'));",
+      "        'Chip', '', 'absent'));") } },
   // 🔴 마킹을 안 보고 «첫 층»을 펼치면, 아무것도 안 찍은 화면이 「이 층이 답」이라고 말합니다.
   { id: 'L-M1', what: 'the expanded layer opens the first component instead of the marked one',
     catches: 'L1',
@@ -406,7 +406,7 @@ const MUTANTS = [
       'v.textContent = String(value || 0);') } },
   { id: 'M5', what: 'a defaulted window is drawn with the refusal styling', catches: 'E1',
     mutate: { 'head_summary_panel.js': (s) => s.replace(
-      "'기간', `기본값 적용", "'기간', 'refused', `기본값 적용") } },
+      "'Window', `Default · ", "'Window', 'refused', `Default · ") } },
   { id: 'M7', what: 'a table cell keeps its own absence judge, blind to a blank string', catches: 'T6',
     mutate: { 'table_part.js': (s) => s.replace('    const text = isBlank(value) ? ABSENT : String(value);',
       "    const text = (value === null || value === undefined || value === '') ? ABSENT : String(value);") } },

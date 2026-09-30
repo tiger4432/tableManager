@@ -24,6 +24,7 @@ import { SIGN } from './marking_store.js';
 import { TablePart } from './table_part.js';
 // 🔴 C-77. 서버 시각은 offset 단 ISO — 순간으로 읽고 보는 쪽 zone 으로 그린다.
 import { localMinute } from '../server_time.js';
+import { LOADING } from '../ui_words.js';
 
 export class ReachPanel extends Panel {
   constructor(host, deps) {
@@ -113,12 +114,12 @@ export class ReachPanel extends Panel {
       rowKey: 'predicate',
       emptyText: this._emptyText(),
       columns: [
-        { key: 'predicate', label: '술어', width: 'minmax(0, 1fr)', kind: 'mono' },
-        { key: 'count', label: '닿는 수', width: '5rem', align: 'right', kind: 'number' },
-        { key: 'kindText', label: '어디로', width: 'minmax(0, 1fr)' },
+        { key: 'predicate', label: 'Predicate', width: 'minmax(0, 1fr)', kind: 'mono' },
+        { key: 'count', label: 'Reached', width: '5rem', align: 'right', kind: 'number' },
+        { key: 'kindText', label: 'To', width: 'minmax(0, 1fr)' },
         // 🔴 순서가 «우연이 아니라는 것»이 화면에 있어야 합니다. 아래 목록은 시간 순으로
         //    마킹되는데, 그 근거가 안 보이면 읽는 사람에게는 여전히 임의의 순서입니다.
-        { key: 'whenText', label: '언제', width: 'minmax(0, 1fr)', kind: 'mono' },
+        { key: 'whenText', label: 'When', width: 'minmax(0, 1fr)', kind: 'mono' },
       ],
       rows: rows.map((r) => ({
         predicate: r.predicate,
@@ -127,7 +128,7 @@ export class ReachPanel extends Panel {
         //    읽는 사람이 「왜 두 번 적었나」를 먼저 묻게 됩니다. 다를 때는 그게 답입니다 --
         //    `binding` 은 엣지 10 이 노드 4 로 갑니다.
         kindText: r.kinds.map((k) => `${k.type} ${k.count}`).join(' · ')
-          + (r.edges !== r.count ? ` · 엣지 ${r.edges}` : ''),
+          + (r.edges !== r.count ? ` · edges ${r.edges}` : ''),
         // 🔴 시각이 «없는» 술어는 `null` 을 넘깁니다 -- 표가 「-」 로 그리고 is-absent 를 답니다.
         //    빈 문자열이나 0 을 쓰면 「시각이 없다」와 「시각이 0 이다」가 같은 픽셀이 됩니다.
         //    파생 엣지(`binding` 같은)가 그 자리입니다: 실측 10 엣지 전부 occurred_at 이 없습니다.
@@ -163,11 +164,11 @@ export class ReachPanel extends Panel {
     const m = this.model;
     const parts = [];
     if (this.loadState === 'ready' && m) {
-      parts.push(`${m.seedLabel || m.seedId || '씨앗'} · 한 홉`);
-      parts.push(`노드 ${m.nodes} · 엣지 ${m.edges}`);
+      parts.push(`${m.seedLabel || m.seedId || 'Seed'} · one hop`);
+      parts.push(`Nodes ${m.nodes} · edges ${m.edges}`);
       // 🔴 depth 는 «질문»이라 여기 안 뜹니다. 이 셋만 「답이 실제로 모자라다」는 뜻입니다.
-      if (m.cut && m.cut.length) parts.push(`잘림 ${m.cut.join('·')}`);
-      if (this.opened) parts.push(`펼침 ${this.opened}`);
+      if (m.cut && m.cut.length) parts.push(`Truncated ${m.cut.join('·')}`);
+      if (this.opened) parts.push(`Open ${this.opened}`);
     } else if (this.loadState === 'no-marking') {
       parts.push(subjectText(this.reads));
     }
@@ -179,8 +180,8 @@ export class ReachPanel extends Panel {
    *  ⚠️ 넷이 여전히 넷입니다 — 접은 것은 「아직 안 골랐다」의 «문장»이지 그 상태가 아닙니다. */
   _emptyText() {
     if (this.loadState === 'no-marking') return UNPICKED;
-    if (this.loadState === 'loading') return '읽는 중…';
-    if (this.loadState === 'refused') return (this.model && this.model.message) || '걸어 보지 못했습니다';
-    return '이 노드에서 나가는 엣지가 없습니다';
+    if (this.loadState === 'loading') return LOADING;
+    if (this.loadState === 'refused') return (this.model && this.model.message) || 'Not walked';
+    return 'No edge out of this node';
   }
 }

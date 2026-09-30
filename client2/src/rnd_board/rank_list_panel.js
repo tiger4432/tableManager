@@ -19,6 +19,8 @@
 import { WalkedListPanel, markingIntent } from './panel.js';
 import { SIGN } from './marking_store.js';
 import { TablePart } from './table_part.js';
+import { WALKING, SERVER_REFUSED } from '../ui_words.js';
+import { UNPICKED } from '../absent.js';
 
 export class RankListPanel extends WalkedListPanel {
   constructor(host, deps) {
@@ -63,7 +65,7 @@ export class RankListPanel extends WalkedListPanel {
     const caption = doc.createElement('div');
     caption.className = 'rb-rank-caption';
     // Said on the panel, not only in a comment. The screen must not read as a verdict.
-    caption.textContent = '판정 아님 · 점수·확률 없음';
+    caption.textContent = 'Not a verdict · no score or probability';
     root.appendChild(caption);
 
 
@@ -71,9 +73,9 @@ export class RankListPanel extends WalkedListPanel {
       const note = doc.createElement('div');
       note.className = this.loadState === 'refused'
         ? 'rb-rank-note rb-rank-note--refused' : 'rb-rank-note rb-rank-note--absent';
-      note.textContent = this.loadState === 'no-seed' ? '씨앗 없음'
-        : this.loadState === 'loading' ? '걷는 중'
-        : (this.model && this.model.message) || '서버가 거절했습니다';
+      note.textContent = this.loadState === 'no-seed' ? UNPICKED
+        : this.loadState === 'loading' ? WALKING
+        : (this.model && this.model.message) || SERVER_REFUSED;
       root.appendChild(note);
       place(root);
       return;
@@ -85,14 +87,14 @@ export class RankListPanel extends WalkedListPanel {
     if (Array.isArray(m.truncated) && m.truncated.length) {
       const cut = doc.createElement('div');
       cut.className = 'rb-rank-note rb-rank-note--absent';
-      cut.textContent = `${m.truncated.join(' · ')} 에서 잘림 — 더 있을 수 있습니다`;
+      cut.textContent = `Truncated at ${m.truncated.join(' · ')} · may be more`;
       root.appendChild(cut);
     }
     if (m.state === 'empty') {
       const note = doc.createElement('div');
       note.className = 'rb-rank-note rb-rank-note--absent';
       // Same correction: state what the walk DID reach beside what it did not find.
-      note.textContent = `노드 ${m.graph.nodes} · 엣지 ${m.graph.edges} — 원인 후보는 없습니다`;
+      note.textContent = `Nodes ${m.graph.nodes} · edges ${m.graph.edges} — no cause candidate`;
       root.appendChild(note);
       place(root);
       return;
@@ -108,13 +110,13 @@ export class RankListPanel extends WalkedListPanel {
       reads: this.reads,
       writes: this.writes,
       rowKey: 'nodeId',
-      emptyText: '응답에 후보가 없습니다',
+      emptyText: 'No candidate in the response',
       columns: [
-        { key: 'rank', label: '순위', width: '2.5rem', kind: 'rank' },
-        { key: 'quantity', label: '물리량 · 모델', kind: 'two_line', subKey: 'model' },
-        { key: 'hops', label: '홉', width: '2rem', kind: 'number' },
-        { key: 'measured', label: '실측', width: '3rem' },
-        { key: 'state', label: '상태', width: '8rem', kind: 'badge' },
+        { key: 'rank', label: 'Rank', width: '2.5rem', kind: 'rank' },
+        { key: 'quantity', label: 'Quantity · Model', kind: 'two_line', subKey: 'model' },
+        { key: 'hops', label: 'Hops', width: '2rem', kind: 'number' },
+        { key: 'measured', label: 'Measured', width: '3rem' },
+        { key: 'state', label: 'State', width: '8rem', kind: 'badge' },
       ],
       rows: m.candidates.map((c) => this._rankRow(c, m)),
       // 펼침의 «내용»은 이 패널의 것입니다. 표는 자리만 내줍니다.
@@ -143,19 +145,19 @@ export class RankListPanel extends WalkedListPanel {
       quantity: c.quantity,
       model: c.model || null,
       hops: c.hopCount ? String(c.hopCount) : null,
-      measured: c.measured ? '있음' : null,
+      measured: c.measured ? 'Yes' : null,
       state: this._stateWords(c, m).join(' · ') || null,
     };
   }
   /** Every word here is an absence or a position -- never a fault. */
   _stateWords(c, m) {
     const words = [];
-    if (c.top) words.push('최상위');
-    if (c.tied) words.push('동률');
-    if (c.incomparable) words.push('종류 다름');
+    if (c.top) words.push('Top');
+    if (c.tied) words.push('Tied');
+    if (c.incomparable) words.push('Incomparable');
     // `complete:false` means the budget cut the walk short: what is below is UNEXAMINED, and
     // that is a different sentence from 「없다」.
-    if (m.complete === false) words.push('미검사');
+    if (m.complete === false) words.push('Unexamined');
     return words;
   }
 

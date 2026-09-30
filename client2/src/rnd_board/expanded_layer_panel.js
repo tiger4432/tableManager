@@ -18,6 +18,7 @@ import { Panel } from './panel.js';
 import { SIGN } from './marking_store.js';
 import { TablePart } from './table_part.js';
 import { UNPICKED } from '../absent.js';
+import { LOADING } from '../ui_words.js';
 
 export class ExpandedLayerPanel extends Panel {
   constructor(host, deps) {
@@ -111,12 +112,12 @@ export class ExpandedLayerPanel extends Panel {
       //    여기에 머무는데, 종전 문장은 「구성을 못 읽었습니다」였습니다 -- 이 파일 머리가
       //    「아직 안 골랐다 ≠ 없다」라고 적어 두고 정작 그 자리에서 «고장»으로 그렸습니다.
       note.textContent = this.loadState === 'idle' ? UNPICKED
-        : this.loadState === 'loading' ? '읽는 중…'
+        : this.loadState === 'loading' ? LOADING
         : (this.loadState === 'ready'
           ? (((this.model && this.model.components) || []).length
             ? UNPICKED
-            : '이 웨이퍼는 구성 기록이 없습니다 — 펼칠 층이 없습니다')
-          : (this.model && this.model.message) || '구성을 못 읽었습니다');
+            : 'No composition for this wafer — no layer to expand')
+          : (this.model && this.model.message) || 'Composition unreadable');
       root.appendChild(note);
       this.host.appendChild(root);
       return;
@@ -124,7 +125,7 @@ export class ExpandedLayerPanel extends Panel {
 
     const head = doc.createElement('div');
     head.className = 'rb-layer-head';
-    head.textContent = `${this._layerLabel(marked.id)} · ${(marked.core && marked.core.wafer) || '코어 웨이퍼 없음'}`;
+    head.textContent = `${this._layerLabel(marked.id)} · ${(marked.core && marked.core.wafer) || 'No core wafer'}`;
     root.appendChild(head);
 
     root.appendChild(this._steps(marked));
@@ -137,7 +138,7 @@ export class ExpandedLayerPanel extends Panel {
       markings: this.markings,
       reads: this.reads,
       writes: null,
-      emptyText: '이 응답에 claim 이 없습니다 — 원장에는 있고 경계가 아직 안 싣습니다',
+      emptyText: 'No claim in this response — in the ledger, not served yet',
       columns: [
         { key: 'claim', label: 'claims_present', width: 'minmax(0, 1fr)', kind: 'mono' },
         { key: 'actual', label: 'actual', width: '5rem', align: 'right' },
@@ -160,7 +161,7 @@ export class ExpandedLayerPanel extends Panel {
     if (!steps.length) {
       const none = doc.createElement('span');
       none.className = 'rb-layer-step is-absent';
-      none.textContent = '스텝이 응답에 없습니다';
+      none.textContent = 'No steps in the response';
       box.appendChild(none);
       return box;
     }
@@ -202,7 +203,7 @@ export class ExpandedLayerPanel extends Panel {
 
   /** 「SYN-CX-CHIP-001:L04」 -> 「L04」. 칩 id 는 제목에 이미 있습니다. */
   _layerLabel(id) {
-    if (!id) return '층 없음';
+    if (!id) return 'No layer';
     const at = String(id).lastIndexOf(':');
     return at >= 0 ? String(id).slice(at + 1) : String(id);
   }

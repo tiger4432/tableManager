@@ -32,12 +32,13 @@
 import { Panel, markingIntent } from './panel.js';
 import { SIGN } from './marking_store.js';
 import { createWalk, AGGREGATIONS, qualifiersFromDeclaration, qualifierTypesFromWalk } from './api.js';
+import { LOADING, NO_VALUE } from '../ui_words.js';
 
 /**
  * The peer axes the mockup names, as a FALLBACK for a screen that declares none. Counts never
  * come from here -- a pill with no route behind it keeps 「—」.
  */
-const PEER_AXES = ['같은 레그', '같은 랏', '레시피', '설비', '7d'];
+const PEER_AXES = ['Same leg', 'Same lot', 'Recipe', 'Equipment', '7d'];
 
 export class ControlBarPanel extends Panel {
   constructor(host, deps) {
@@ -193,13 +194,13 @@ export class ControlBarPanel extends Panel {
       root.appendChild(cap);
     }
 
-    root.appendChild(this._group('①', 'Group by', '또래', this._peerPills()));
-    root.appendChild(this._group('②', 'Y value', '수식어', this._valuePills(), this._numericNote()));
-    root.appendChild(this._group('③', '집계', '어떻게 재나', this._aggregationPills()));
+    root.appendChild(this._group('①', 'Group by', 'Peers', this._peerPills()));
+    root.appendChild(this._group('②', 'Y value', 'Qualifier', this._valuePills(), this._numericNote()));
+    root.appendChild(this._group('③', 'Aggregate', 'Method', this._aggregationPills()));
 
     const grammar = doc.createElement('div');
     grammar.className = 'rb-control-grammar';
-    grammar.textContent = 'Group by → Y value → 트렌드에서 씨앗 찍기 → 마킹 → 후보';
+    grammar.textContent = 'Group by → Y value → pick a seed on the trend → marking → candidates';
     root.appendChild(grammar);
 
     this.host.appendChild(root);
@@ -233,23 +234,23 @@ export class ControlBarPanel extends Panel {
     const note = doc.createElement('div');
     note.className = 'rb-control-note';
     if (this.declarationState === 'refused') {
-      note.textContent = `선언을 못 읽었습니다 — ${this.declarationMessage || ''}`;
+      note.textContent = `Declaration unreadable — ${this.declarationMessage || ''}`;
     } else if (this.declarationState === 'absent') {
-      note.textContent = '선언을 받지 못했습니다 — 수식어 목록은 선언에서 옵니다';
+      note.textContent = 'No declaration — the qualifier list comes from it';
     } else if (!this.numericReads) {
-      note.textContent = '수식어는 선언에서 옵니다 · 수치인지는 이 부품이 재지 않습니다';
+      note.textContent = 'Qualifiers from the declaration · numeric not measured here';
     } else if (this.qualifierTypes === null) {
       // 🔴 판정 361 ①. 사유는 «낱말»로 남고 문장은 안 남습니다. 「마킹 없음」이 왜 못 쟀는지이고,
       //    목록이 그대로 서 있는 까닭(수식어는 선언에서 온다)은 화면이 «보여 주고» 있습니다 —
       //    목록이 눈앞에 있는데 그것을 문장으로 또 말하면 그게 상설이 막는 주저리입니다.
       // ⚠️ 게이트 ② 가 이 자리를 단언합니다. 재는 것은 「목록이 서 있고 못 잰 이유가 보인다」이지
       //    이 낱말들이 아니어서, 하니스는 상태로 채점하고 문구는 여기 하나입니다.
-      note.textContent = `마킹 없음 · ${this.numericReads}`;
+      note.textContent = `No marking · ${this.numericReads}`;
     } else {
       const carried = this.qualifiers
         .filter((q) => (this.qualifierTypes[q.name] || {}).seen).length;
-      note.textContent = `${this.numericReads} 에서 쟀습니다`
-        + ` · 값이 실려 온 수식어 ${carried}/${this.qualifiers.length}`;
+      note.textContent = `Measured on ${this.numericReads}`
+        + ` · qualifiers with values ${carried}/${this.qualifiers.length}`;
     }
     return note;
   }
@@ -273,9 +274,9 @@ export class ControlBarPanel extends Panel {
       dim: agg.numericOnly && nonNumeric,
       title: agg.numericOnly
         ? (nonNumeric
-          ? `${chosen.qualifier} 는 이 마킹에서 수치가 아니었습니다`
-          : '수치인 값만 셉니다 — 건너뛴 수는 차트가 말합니다')
-        : '값의 종류를 가리지 않습니다',
+          ? `${chosen.qualifier} is not numeric in this marking`
+          : 'Numeric values only — the chart says how many were skipped')
+        : 'Any kind of value',
       onPick: () => this._writePair(agg.id, this._chosenPair().qualifier),
     }));
   }
@@ -297,7 +298,7 @@ export class ControlBarPanel extends Panel {
       if (straddled) {
         return this._pill({
           id: this._axisId('peer', peer.label),
-          text: `${peer.label} · 대조 0 · 걸침 ${got.straddling === null ? got.subjects : got.straddling}`,
+          text: `${peer.label} · contrast 0 · straddling ${got.straddling === null ? got.subjects : got.straddling}`,
           count: undefined,
           unsourced: true,
           title: [got.message || got.straddleMessage, this._peerTitle(got)]
@@ -331,7 +332,7 @@ export class ControlBarPanel extends Panel {
     for (const q of this.qualifiers) {
       const got = this.qualifierTypes ? (this.qualifierTypes[q.name] || { seen: 0, numeric: 0 }) : null;
       const words = got
-        ? (got.seen ? `수치 ${got.numeric}/${got.seen}` : '이 마킹에는 값이 없습니다')
+        ? (got.seen ? `numeric ${got.numeric}/${got.seen}` : 'no value in this marking')
         : null;
       pills.push(this._pill({
         id: this._axisId('qualifier', q.name),
@@ -339,7 +340,7 @@ export class ControlBarPanel extends Panel {
         count: undefined,
         chosen: chosen.qualifier === q.name,
         // 어느 술어가 이 수식어를 «싣는지»는 선언이 이미 압니다. 지어내지 않습니다.
-        title: `${q.predicates.join(' · ')} 이 싣습니다`,
+        title: `Carried by ${q.predicates.join(' · ')}`,
         onPick: () => this._writePair(this._chosenPair().aggregation, q.name),
       }));
     }
@@ -353,14 +354,14 @@ export class ControlBarPanel extends Panel {
       if (walk.counts && walk.counts.nameOnly > 0) {
         // The folded rest, stated as what it is: declared names with nothing measured under them.
         pills.push(this._pill({
-          id: null, text: '값 없음', count: walk.counts.nameOnly, unsourced: false, dim: true,
+          id: null, text: NO_VALUE, count: walk.counts.nameOnly, unsourced: false, dim: true,
         }));
       }
     }
     if (!pills.length) {
       pills.push(this._pill({
         id: null,
-        text: this.loadState === 'loading' ? '선언을 읽는 중…' : '축 없음 — 아직 못 읽었습니다',
+        text: this.loadState === 'loading' ? LOADING : 'No axis — not read yet',
         count: null, dim: true,
       }));
     }
@@ -371,8 +372,8 @@ export class ControlBarPanel extends Panel {
   _peerTitle(got) {
     if (!got) return null;
     const parts = [];
-    if (typeof got.units === 'number') parts.push(`유닛 ${got.units}`);
-    if (got.relation) parts.push(`${got.relation}${got.column ? `.${got.column}` : ''} 기준`);
+    if (typeof got.units === 'number') parts.push(`units ${got.units}`);
+    if (got.relation) parts.push(`by ${got.relation}${got.column ? `.${got.column}` : ''}`);
     return parts.length ? parts.join(' · ') : null;
   }
 

@@ -161,7 +161,7 @@ async function suite(mods) {
   eq('B3 recipe@1 offers nothing -- it is an object, never a subject', panel.followOptions().length, 0);
   const recipeText = textOf(host);
   ok('B4 and the screen SAYS so rather than drawing an empty list',
-    recipeText.includes('나가는 술어가 없습니다'), recipeText.slice(0, 90));
+    recipeText.includes('No predicate out of'), recipeText.slice(0, 90));
   ok('B5 the sentence names the type it is talking about', recipeText.includes('recipe@1'));
   eq('B6 no follow checkbox is drawn', byAttr(host, 'data-follow').length, 0);
 
@@ -355,7 +355,7 @@ async function suite(mods) {
     await pt.run();
     await settle();
     const cutText = textOf(hostT);
-    ok('T1 a truncated walk says so', cutText.includes('예산에서 끊겼습니다'), cutText.slice(-100));
+    ok('T1 a truncated walk says so', cutText.includes('Cut at budget'), cutText.slice(-100));
     ok('T2 and it names what the server named', cutText.includes('nodes, edges, claims, actions'));
     // 🔴 THE ROWS ARE STILL THERE. 「끊겼다」 is not 「없다」 -- a cut answer still answers.
     eq('T3 the rows it did get are still drawn', rowsOf(hostT).length, 2);
@@ -375,10 +375,10 @@ async function suite(mods) {
     pq.setType('die@1');
     await pq.run();
     await settle();
-    ok('T4 a walk that was NOT cut stays silent', !textOf(hostQ).includes('예산에서 끊겼습니다'),
+    ok('T4 a walk that was NOT cut stays silent', !textOf(hostQ).includes('Cut at budget'),
       textOf(hostQ).slice(-80));
     ok('T4b and a walk with no truncated key at all stays silent too',
-      !textOf(host).includes('예산에서 끊겼습니다'));
+      !textOf(host).includes('Cut at budget'));
   }
 
   console.log(`${LF}-- E. three absences, three sentences --`);
@@ -393,7 +393,7 @@ async function suite(mods) {
   await settle();
   const noDecl = textOf(hostR);
   ok('E1 no declaration says the SERVER cannot answer yet',
-    noDecl.includes('서버가 아직 선언을 못 줍니다'), noDecl.slice(0, 90));
+    noDecl.includes('The server serves no declaration yet'), noDecl.slice(0, 90));
   eq('E2 and it draws no controls to click', byAttr(hostR, 'data-field').length, 0);
 
   // ① chosen nothing yet, ③ walked and found nothing -- on the SAME panel, different sentences.
@@ -412,7 +412,7 @@ async function suite(mods) {
   await pn.run();
   await settle();
   const after = textOf(hostN);
-  ok('E4 walked-and-empty is a DIFFERENT sentence', after.includes('걸었는데 닿은 것이 없습니다'),
+  ok('E4 walked-and-empty is a DIFFERENT sentence', after.includes('Walked, reached nothing'),
     after.slice(-90));
   ok('E5 and it is not the not-chosen one', !after.includes(UNPICKED));
 
@@ -430,7 +430,7 @@ async function suite(mods) {
   const refused = textOf(hostF);
   ok('E6 a refused walk carries the server sentence', refused.includes('HTTP 503'), refused.slice(-90));
   ok('E7 which is neither of the other two',
-    !refused.includes('걸었는데 닿은 것이 없습니다') && !refused.includes(UNPICKED));
+    !refused.includes('Walked, reached nothing') && !refused.includes(UNPICKED));
 
   // ── W: the reader hands the node ON, it does not re-author it ────────────────────────
   // 🔴 THE DEFECT THIS CLOSES HAPPENED TWICE IN THREE DAYS, in the same line. `createWalkBoxWalk`
@@ -591,15 +591,15 @@ async function suite(mods) {
     };
     const textOf = (h) => h.textContent;
     ok('X1 a measured zero is SAID — 「물었고 제외된 게 없다」 is an answer',
-      /구간 밖 0/.test(textOf(await drawWith({ intervalExcluded: 0 }))));
-    ok('X2 a real count is said', /구간 밖 37/.test(textOf(await drawWith({ intervalExcluded: 37 }))));
+      /Outside the interval 0/.test(textOf(await drawWith({ intervalExcluded: 0 }))));
+    ok('X2 a real count is said', /Outside the interval 37/.test(textOf(await drawWith({ intervalExcluded: 37 }))));
     // 🔴 THE DISCRIMINANT: no interval asked -> the line is NOT DRAWN. Without this, X1 is
     //    satisfied by a panel that prints the line unconditionally.
     ok('X3 an unasked interval draws NO line at all',
-      !/구간 밖/.test(textOf(await drawWith({ intervalExcluded: null }))),
+      !/Outside the interval/.test(textOf(await drawWith({ intervalExcluded: null }))),
       textOf(await drawWith({ intervalExcluded: null })).slice(0, 80));
     ok('X4 ...and neither does a walk that never carried the field',
-      !/구간 밖/.test(textOf(await drawWith({}))));
+      !/Outside the interval/.test(textOf(await drawWith({}))));
   }
 
   return { ran, failed: failedList.slice() };
@@ -666,7 +666,7 @@ const MUTANTS = [
     from: "    if (cut) box.appendChild(this._note(",
     to: "    if (this.result && this.result.truncated) box.appendChild(this._note(" },
   { name: 'every-absence-shares-one-sentence', catches: ['E4', 'E6'],
-    from: "    if (this.walkState === 'ready') return '걸었는데 닿은 것이 없습니다';",
+    from: "    if (this.walkState === 'ready') return 'Walked, reached nothing';",
     to: "    if (this.walkState === 'ready') return UNPICKED;" },
   { name: 'a-missing-route-reads-as-an-empty-result', catches: ['E1'],
     from: "    if (this.declState !== 'ready') {",

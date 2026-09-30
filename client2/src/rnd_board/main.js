@@ -159,7 +159,7 @@ export const BOARD = Object.freeze({
       // 🔴 제목에 씨앗을 박지 않습니다. 이 패널은 marking:1 을 «따라가는데» 제목만 선언된
       //    문자열이라, 총괄이 클릭 뒤에 「머리가 안 따라온다」로 읽었습니다 -- 몸통은
       //    「씨앗 웨이퍼 …」로 바뀌고 있었고 «제목만» 옛 이름이었습니다.
-      title: '머리 요약',
+      title: 'Summary',
       at: { column: 1, row: 1, columnSpan: 3 },
       reads: 'marking:1',
       writes: null,
@@ -197,14 +197,14 @@ export const BOARD = Object.freeze({
       // 있다는 사실이 곧 마킹으로 거르는 패널이 빈 이유이기 때문입니다.
       id: 'marking-status',
       part: 'markingStatus',
-      title: '마킹',
+      title: 'Marking',
       at: { column: 4, row: 1 },
       reads: null,
       writes: null,
       options: {
         names: [
-          { name: 'marking:1', label: '씨앗 · 마킹 1' },
-          { name: 'marking:2', label: '후보 · 마킹 2' },
+          { name: 'marking:1', label: 'Seed · marking 1' },
+          { name: 'marking:2', label: 'Candidates · marking 2' },
         ],
       },
     },
@@ -221,7 +221,7 @@ export const BOARD = Object.freeze({
       //    보입니다. 오늘은 종류가 하나뿐이라 목록이 같지만, 둘째가 오는 날 갈립니다.
       direction: 'outgoing',
       part: 'controlBar',
-      title: '제어 · 축 선택',
+      title: 'Controls · axis',
       at: { column: 1, row: 2, columnSpan: 4 },
       reads: 'axis:y',
       writes: 'axis:y',
@@ -242,10 +242,10 @@ export const BOARD = Object.freeze({
         //    axes; choosing is a declaration, not a derivation. `7d` has no scope -- it is a
         //    window, not a peer axis -- so it stays 「—」 until it is given one.
         peers: [
-          { label: '같은 레그', scope: 'leg:HBM-B_LOW-P' },
-          { label: '같은 랏', scope: 'bond_lot:SYN-K1-201' },
-          { label: '레시피', scope: 'scan_recipe:SYN_VOID_R1' },
-          { label: '설비', scope: 'bond_eqp:SYN-BD-02' },
+          { label: 'Same leg', scope: 'leg:HBM-B_LOW-P' },
+          { label: 'Same lot', scope: 'bond_lot:SYN-K1-201' },
+          { label: 'Recipe', scope: 'scan_recipe:SYN_VOID_R1' },
+          { label: 'Equipment', scope: 'bond_eqp:SYN-BD-02' },
           { label: '7d', scope: null },
         ],
       },
@@ -256,7 +256,7 @@ export const BOARD = Object.freeze({
       // kinds of thing and folding them into one name makes each panel's count a riddle.
       id: 'main-trend',
       part: 'mainTrend',
-      title: '메인 트렌드',
+      title: 'Main trend',
       at: { column: 1, row: 3, columnSpan: 3 },
       // 🔴 트렌드에서 찍은 점이 «마킹 1» 입니다. 이 한 줄이 없어서 맵이 트렌드를 «안 따라왔습니다».
       reads: 'marking:1',
@@ -329,7 +329,7 @@ export const BOARD = Object.freeze({
       //    않았습니다. 이 자리는 선언에 follow 도 direction 도 없어서 목록에 안 떴습니다.
       direction: 'outgoing',
       part: 'declaration',
-      title: '축',
+      title: 'Axis',
       at: { column: 4, row: 3 },
       reads: null,
       writes: null,
@@ -339,7 +339,7 @@ export const BOARD = Object.freeze({
           { label: 'Y value', writes: 'axis:y', options: 'y' },
           // 목업의 X value. 지금 트렌드의 x 는 «계측 시각»이고 가로 눈금이 자재입니다 --
           // 고를 수 있는 목록이 아직 없어서 «지금 무엇인지»를 말합니다. 지어내지 않습니다.
-          { label: 'X value', text: '계측 시각 · 가로 눈금은 자재' },
+          { label: 'X value', text: 'Measured at · x ticks are material' },
           { label: 'Group by', writes: 'axis:group', options: 'group' },
           { label: 'Color by', text: '(None)' },
           { label: 'Shape by', text: '(None)' },
@@ -354,7 +354,7 @@ export const BOARD = Object.freeze({
       //    조립식이라는 말이 거짓이 됩니다.
       id: 'candidate-trend',
       part: 'mainTrend',
-      title: '마킹한 후보 트렌드 · 마킹 2',
+      title: 'Marked candidate trend · marking 2',
       at: { column: 1, row: 4, columnSpan: 3 },
       reads: 'marking:2',
       writes: 'marking:2',
@@ -420,7 +420,7 @@ export const BOARD = Object.freeze({
       //    «남의 웨이퍼»로 새고 그 예산으로 절단이 납니다 -- 실측은 보고서의 표에.
       //    일괄로 바꾼 것이 «아닙니다»: 부품마다 두 방향을 각각 걸어 네 수를 비교했습니다.
       direction: 'outgoing',
-      title: '구성 · SYN-CX-CHIP-001',
+      title: 'Composition · SYN-CX-CHIP-001',
       at: { column: 1, row: 5, columnSpan: 2 },
       reads: 'marking:1',
       writes: 'marking:1',
@@ -449,7 +449,7 @@ export const BOARD = Object.freeze({
       //    «남의 웨이퍼»로 새고 그 예산으로 절단이 납니다 -- 실측은 보고서의 표에.
       //    일괄로 바꾼 것이 «아닙니다»: 부품마다 두 방향을 각각 걸어 네 수를 비교했습니다.
       direction: 'outgoing',
-      title: '본딩 맵',
+      title: 'Bonding map',
       at: { column: 1, row: 6 },
       reads: 'marking:1',
       writes: 'marking:1',
@@ -489,7 +489,7 @@ export const BOARD = Object.freeze({
       //    맵이 다른 자재를 그리게 되는 날 바뀌는 것은 코드가 아니라 이 세 줄입니다.
       cells: { type: 'die' },
       marks: { scanned: 'inspected', found: 'observed' },
-      title: '칩 확대 · 마킹 1',
+      title: 'Chip zoom · marking 1',
       at: { column: 4, row: 4 },
       reads: 'marking:1',
       writes: 'marking:1',
@@ -541,7 +541,7 @@ export const BOARD = Object.freeze({
       //    않았습니다. 이 자리는 선언에 follow 도 direction 도 없어서 목록에 안 떴습니다.
       direction: 'outgoing',
       part: 'declaration',
-      title: '축 · 구성',
+      title: 'Axis · composition',
       at: { column: 4, row: 5 },
       reads: null,
       writes: null,
@@ -559,7 +559,7 @@ export const BOARD = Object.freeze({
       //    «찍은 층»을 펼칩니다. 그래서 marking:1 을 읽고 그 외에는 선언이 없습니다.
       id: 'expanded-layer',
       part: 'expandedLayer',
-      title: '펼친 층',
+      title: 'Expanded layers',
       at: { column: 3, row: 5 },
       reads: 'marking:1',
       writes: null,
@@ -600,7 +600,7 @@ export const BOARD = Object.freeze({
       //    «남의 웨이퍼»로 새고 그 예산으로 절단이 납니다 -- 실측은 보고서의 표에.
       //    일괄로 바꾼 것이 «아닙니다»: 부품마다 두 방향을 각각 걸어 네 수를 비교했습니다.
       direction: 'outgoing',
-      title: '코어 맵 · 마킹 2',
+      title: 'Core map · marking 2',
       at: { column: 2, row: 6 },
       reads: 'marking:2',
       writes: 'marking:2',
@@ -658,7 +658,7 @@ export const BOARD = Object.freeze({
       part: 'reach',
       start: { marking: 'marking:1', groupby: 'wafer' },
       legacyRoute: 'reach',
-      title: '닿는 곳 · 마킹 1 에서 한 홉',
+      title: 'Reach · one hop from marking 1',
       at: { column: 1, row: 7, columnSpan: 2 },
       reads: 'marking:1',
       writes: 'marking:2',
@@ -683,7 +683,7 @@ export const BOARD = Object.freeze({
       //    찍으면 마킹 2 에 «쓰므로», 손으로 시작한 걸음도 체인에 들어옵니다.
       id: 'walkBox',
       part: 'walkBox',
-      title: '걷기 -- 타입 · 키 · 따라갈 술어 · 모을 것',
+      title: 'Walk -- type · key · predicates · collect',
       at: { column: 1, row: 8, columnSpan: 2 },
       reads: null,
       writes: 'marking:2',
@@ -789,7 +789,7 @@ export function bindLoaders(layout, deps) {
               }),
             ]).then(([trends, candidates]) => {
               const out = (trends.kinds || []).map((k) => ({
-                id: `axis:ratio:${k.id}`, label: `${k.label} 비율`,
+                id: `axis:ratio:${k.id}`, label: `${k.label} ratio`,
               }));
               for (const c of (candidates.ok ? candidates.candidates : []) || []) {
                 if (!c.measured) continue;
@@ -801,10 +801,10 @@ export function bindLoaders(layout, deps) {
           }
           if (key === 'group') {
             return Promise.resolve([
-              { id: 'peer:leg', label: '같은 레그' },
-              { id: 'peer:lot', label: '같은 랏' },
-              { id: 'peer:recipe', label: '레시피' },
-              { id: 'peer:eqp', label: '설비' },
+              { id: 'peer:leg', label: 'Same leg' },
+              { id: 'peer:lot', label: 'Same lot' },
+              { id: 'peer:recipe', label: 'Recipe' },
+              { id: 'peer:eqp', label: 'Equipment' },
             ]);
           }
           return Promise.resolve([]);
@@ -847,7 +847,7 @@ export function bindLoaders(layout, deps) {
           if (!eqp) {
             return Promise.resolve({
               subjects: null, units: null, relation: null, column: null,
-              analysis: null, straddling: null, message: '원장에 없음',
+              analysis: null, straddling: null, message: 'Not in the ledger',
             });
           }
           return walkHere({
@@ -860,7 +860,7 @@ export function bindLoaders(layout, deps) {
             //    없다» 입니다. 실측: 보드 씨앗으로 follow=measures 가 200 에 엣지 «0» —
             //    참인데 화면에서는 앞의 셋과 «같은 대시»였습니다.
             if (got && got.units === 0) {
-              return { ...got, message: '이 씨앗에는 측정이 없습니다' };
+              return { ...got, message: 'No measurement for this seed' };
             }
             return got;
           });

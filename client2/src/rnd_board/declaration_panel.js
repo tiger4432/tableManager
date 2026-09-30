@@ -21,6 +21,7 @@
 
 import { Panel } from './panel.js';
 import { SIGN } from './marking_store.js';
+import { LOADING } from '../ui_words.js';
 
 export class DeclarationPanel extends Panel {
   constructor(host, deps) {
@@ -109,7 +110,7 @@ export class DeclarationPanel extends Panel {
     if (!list) {
       const wait = doc.createElement('div');
       wait.className = 'rb-decl-val';
-      wait.textContent = '읽는 중…';
+      wait.textContent = LOADING;
       return wait;
     }
     if (!list.length) {
@@ -117,7 +118,7 @@ export class DeclarationPanel extends Panel {
       none.className = 'rb-decl-val is-absent';
       // Not an empty dropdown: an empty control reads as 「고를 게 없다」 when the truth is that
       // nobody served the list.
-      none.textContent = `${field.options} 목록이 안 왔습니다`;
+      none.textContent = `${field.options} list not served`;
       return none;
     }
     const sel = doc.createElement('select');

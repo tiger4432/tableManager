@@ -384,7 +384,7 @@ async function suite(mods) {
     markings.set('marking:2', 'ledger-quantity:v1:not-a-cell-of-any-map', SIGN.CASE);
     const badgeB = walk(elOf('b')).find((n) => n.getAttribute('data-reads') === 'marking:2');
     ok('C32 the badge counts this maps own cells',
-      /표시 0$/.test(String(badgeB && badgeB.textContent)),
+      /shown 0$/.test(String(badgeB && badgeB.textContent)),
       String(badgeB && badgeB.textContent));
     markings.set('marking:2', 'ledger-quantity:v1:not-a-cell-of-any-map', SIGN.ABSENT);
 
@@ -395,7 +395,7 @@ async function suite(mods) {
     //    수로 안 보입니다 -- 이 화면에서 제일 자주 묻는 수입니다.
     const headCounts = byClass(elOf('a'), 'rb-map__counts')[0];
     ok('C34 the map head carries the marking count beside the cell counts',
-      Boolean(headCounts) && /^마킹 1 · /.test(headCounts.textContent),
+      Boolean(headCounts) && /^Marked 1 · /.test(headCounts.textContent),
       String(headCounts && headCounts.textContent).slice(0, 60));
 
     // A click at a coordinate resolves to the cell under it.
@@ -418,7 +418,7 @@ async function suite(mods) {
     eq('C17 ... and nothing was written under that id',
       markings.signOf('marking:1', cell.nodeId), SIGN.ABSENT);
     ok('C18 ... and the panel says why',
-      /노드가 없습니다/.test(String(byClass(elOf('a'), 'rb-map__note')[0]
+      /No node here yet/.test(String(byClass(elOf('a'), 'rb-map__note')[0]
         && byClass(elOf('a'), 'rb-map__note')[0].textContent)),
       String(byClass(elOf('a'), 'rb-map__note')[0]
         && byClass(elOf('a'), 'rb-map__note')[0].textContent));
@@ -694,7 +694,7 @@ async function suite(mods) {
     await flush(); await flush();
     const badge = walk(followHost).find((n) => n.getAttribute && n.getAttribute('data-follows'));
     ok('F15 the badge names what the page follows, not only what it reads and writes',
-      Boolean(badge) && /따라감 subject:wafer/.test(badge.textContent),
+      Boolean(badge) && /follows subject:wafer/.test(badge.textContent),
       String(badge && badge.textContent));
     follower.destroy();
 
@@ -710,7 +710,7 @@ async function suite(mods) {
     await flush(); await flush();
     eq('F17 a map whose marking is empty does not ask', askedZoom, 0);
     ok('F17b ... and says it is waiting, not that the server refused',
-      zoomHost2.textContent.includes(UNPICKED) && !/거절/.test(zoomHost2.textContent),
+      zoomHost2.textContent.includes(UNPICKED) && !/[Rr]efused/.test(zoomHost2.textContent),
       zoomHost2.textContent.slice(0, 80));
     zoom3.destroy();
   }
@@ -843,14 +843,14 @@ const MUTANTS = [
   { id: 'M08', what: 'the map head drops the marking count, leaving it only in the badge',
     catches: 'C34',
     mutate: { 'map_panel.js': (s) => s.replace(
-      '        ? `마킹 ${markedHere} · ${cellsHere.length}칸',
-      '        ? `${cellsHere.length}칸') } },
+      "        ? `Marked ${markedHere} · ${unitText(cellsHere.length, 'cell')}",
+      "        ? `${unitText(cellsHere.length, 'cell')}") } },
   // 🔴 배지가 «선언한 이름 전부»를 말해야 합니다. 둘만 말하면, 세 번째 이름을 따라 움직인
   //    패널이 「선언과 다르게 도는 것」으로 읽힙니다 -- 총괄이 실제로 그렇게 읽었습니다.
   { id: 'M07', what: 'the badge hides the name the page follows, so the panel looks like it lies',
     catches: 'F15',
     mutate: { 'map_panel.js': (s) => s.replace(
-      "      + (this.pageFollows ? ` · 따라감 ${this.pageFollows}` : '');", "      + '';") } },
+      "      + (this.pageFollows ? ` · follows ${this.pageFollows}` : '');", "      + '';") } },
   // 🔴 「아직 안 왔다」를 「없다」로 접는 변이. 화면은 조용히 「그런 건 없습니다」라고 말합니다.
   { id: 'M06', what: 'a placement that has not arrived is folded into "this point is nowhere"',
     catches: 'F8c',

@@ -42,6 +42,7 @@ import { SIGN } from './marking_store.js';
 import { projectionModel, mapModel } from './api.js';
 import { layoutFor, paintSeating, createCanvasSurface } from '../map2/painter.js';
 import { computeSeating, visualExtent } from '../map2/seating.js';
+import { LOADING, unitText } from '../ui_words.js';
 
 //: Transcribed from `tokens.css`. Keyed by the role string the cell carries.
 const ROLES = {
@@ -66,9 +67,9 @@ const ROLES = {
 const DIM_ALPHA = '40';
 
 const CHROME = Object.freeze({
-  LOADING: '읽는 중…',
-  FAILED: '맵을 읽지 못했습니다',
-  NO_BOX: '자리 없음',
+  LOADING: LOADING,
+  FAILED: 'Map unreadable',
+  NO_BOX: 'No room',
 });
 
 function el(doc, tag, className, text) {
@@ -625,8 +626,8 @@ export class MapPanel extends Panel {
       n.sub.textContent = CHROME.LOADING;
       n.counts.textContent = '';
     } else if (this.status === 'unspaced') {
-      n.sub.textContent = '좌표계 선언 없음';
-      n.counts.textContent = 'space 를 선언하십시오 — die:base · die:core · die:dt · inchip';
+      n.sub.textContent = 'No coordinate space declared';
+      n.counts.textContent = 'Declare space — die:base · die:core · die:dt · inchip';
     } else if (this.status === 'awaiting') {
       // C-99 ③. 같은 두 값, 같은 철자 — 트렌드·목록과 한 벌입니다.
       n.sub.textContent = subjectText(this.start.marking);
@@ -654,13 +655,13 @@ export class MapPanel extends Panel {
       const markedHere = cellsHere.reduce(
         (sum, c) => sum + (this.signOf(c.nodeId) !== SIGN.ABSENT ? 1 : 0), 0);
       n.counts.textContent = cellsHere.length
-        ? `마킹 ${markedHere} · ${cellsHere.length}칸 · 발견 ${m.found} · 검사 ${m.scanned}`
-          + (source ? ` · ${source} 기준` : '')
+        ? `Marked ${markedHere} · ${unitText(cellsHere.length, 'cell')} · found ${m.found} · scanned ${m.scanned}`
+          + (source ? ` · by ${source}` : '')
         : '';
       if (cellsHere.length && !m.ledgerBacked) {
         // A count read off source tables is not a ledger claim, and the difference is the whole
         // reason this board exists.
-        n.counts.setAttribute('title', '원장이 아니라 소스 표에서 센 값입니다');
+        n.counts.setAttribute('title', 'Counted from the source table, not the ledger');
       }
     }
     // 🔴 THE TWO NAMES ARE ON SCREEN. Two panels reading different markings look identical
@@ -683,8 +684,8 @@ export class MapPanel extends Panel {
     //    「읽기 marking:2」라고 적힌 패널이 따라 움직였고, 배지만 보면 «거짓말»로 보입니다 --
     //    실제로는 페이지가 «세 번째 이름»(pageFollows)을 따라간 것입니다. 선언한 이름은
     //    전부 말합니다.
-    n.badge.textContent = `읽기 ${read} · 쓰기 ${write} · 표시 ${marked}`
-      + (this.pageFollows ? ` · 따라감 ${this.pageFollows}` : '');
+    n.badge.textContent = `read ${read} · write ${write} · shown ${marked}`
+      + (this.pageFollows ? ` · follows ${this.pageFollows}` : '');
     n.badge.setAttribute('data-reads', read);
     n.badge.setAttribute('data-writes', write);
     if (this.pageFollows) n.badge.setAttribute('data-follows', this.pageFollows);
@@ -703,21 +704,21 @@ export class MapPanel extends Panel {
     if (!un && awaiting) {
       // 「아직 안 왔다」 -- 배관의 상태이지 데이터의 상태가 아닙니다.
       n.outside.className = 'rb-map__outside is-unknown';
-      n.outside.textContent = `좌표 계약 대기 · ${awaiting}`;
+      n.outside.textContent = `Awaiting coordinate contract · ${awaiting}`;
     } else if (!un && offSpace) {
       n.outside.className = 'rb-map__outside is-measured';
-      n.outside.textContent = `이 좌표계에 자리 없음 · ${offSpace}`;
+      n.outside.textContent = `No cell in this space · ${offSpace}`;
     } else if (!un) {
       n.outside.textContent = '';
       n.outside.className = 'rb-map__outside';
     } else if (un.state === 'measured') {
       n.outside.className = 'rb-map__outside is-measured';
-      n.outside.textContent = `맵 밖 · 검사 ${un.scanned === null ? '-' : un.scanned}`
-        + ` · 발견 ${un.found === null ? '-' : un.found}`;
+      n.outside.textContent = `Off map · scanned ${un.scanned === null ? '-' : un.scanned}`
+        + ` · found ${un.found === null ? '-' : un.found}`;
       if (un.message) n.outside.setAttribute('title', un.message);
     } else {
       n.outside.className = 'rb-map__outside is-unknown';
-      n.outside.textContent = `맵 밖 · 귀속 불가${un.message ? ` — ${un.message}` : ''}`;
+      n.outside.textContent = `Off map · unattributable${un.message ? ` — ${un.message}` : ''}`;
     }
 
     // A refusal we can still draw is a CAVEAT, not a blank panel: the sentence stays, the
@@ -763,8 +764,8 @@ export class MapPanel extends Panel {
     const wafer = this.model && this.model.frame && this.model.frame.wafer;
     // 🔴 A PAGE PICKED BY WAFER HAS NO SLOT NUMBER, and 「- / 25」 would imply it is page nothing
     //    of twenty-five. It names the wafer alone, which is how it was chosen.
-    label.textContent = (this.slot ? `${this.slot} / ${this.pages.length}` : '씨앗')
-      + (loading ? ' · 읽는 중…' : (wafer ? ` · ${wafer}` : ''));
+    label.textContent = (this.slot ? `${this.slot} / ${this.pages.length}` : 'Seed')
+      + (loading ? ` · ${LOADING}` : (wafer ? ` · ${wafer}` : ''));
     const next = doc.createElement('span');
     next.className = at >= 0 && at < this.pages.length - 1
       ? 'rb-map__page-step' : 'rb-map__page-step is-end';
@@ -785,7 +786,7 @@ export class MapPanel extends Panel {
     if (!this.bases.length) return;
     const label = doc.createElement('span');
     label.className = 'rb-map__basis-label';
-    label.textContent = '기반';
+    label.textContent = 'Base';
     host.appendChild(label);
     for (const b of this.bases) {
       const pill = doc.createElement('span');
@@ -1056,7 +1057,7 @@ export class MapPanel extends Panel {
     //    two apart, so it is the gate. The day the route ships the id, this opens by itself
     //    and no line here changes.
     if (cell.nodeIdResolved !== true) {
-      this.unmarkable = '이 자리는 아직 노드가 없습니다 — 서버가 id 를 실으면 마킹됩니다';
+      this.unmarkable = 'No node here yet — markable once the server serves an id';
       this._writeHead();
       return null;
     }

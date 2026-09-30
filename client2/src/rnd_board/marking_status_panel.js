@@ -78,7 +78,7 @@ export class MarkingStatusPanel extends Panel {
       if (counts.control > 0) {
         const ctrl = doc.createElement('span');
         ctrl.className = 'rb-status-control';
-        ctrl.textContent = `컨트롤 ${counts.control}`;
+        ctrl.textContent = `Control ${counts.control}`;
         el.appendChild(ctrl);
       }
       root.appendChild(el);

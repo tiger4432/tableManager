@@ -29,6 +29,7 @@ import { localMinute } from '../server_time.js';
 //    오늘 거짓입니다 — 바로 위 줄이 이미 바깥 import 이고, C-93 이 공용 로더의 재작성을 한
 //    자리로 모은 뒤로 여덟 하니스가 그것을 따라옵니다. 낡은 문장은 같이 지웁니다.
 import { UNPICKED, subjectText } from '../absent.js';
+import { LOADING, SERVER_REFUSED, unitText } from '../ui_words.js';
 
 /**
  * 🔴 이 점이 «어느 노드»인가 — 찍는 키는 한 곳에서 정합니다 (소유자 판정 2026-08-24:
@@ -254,13 +255,13 @@ export class MainTrendPanel extends Panel {
       note.textContent = this.loadState === 'awaiting'
         ? UNPICKED
         : (this.loadState === 'undeclared'
-          ? '이 좌석이 «무엇을 모을지» 선언하지 않았습니다 — 그래서 걷지 않았습니다'
-          : (this.loadState === 'loading' ? '읽는 중…'
+          ? 'This seat declares no collect — not walked'
+          : (this.loadState === 'loading' ? LOADING
             // 🔴 C-90 ② / 판정 341. 거절은 «서버의 낱말»입니다 — 이름이 있으면 그 이름을
             //    먼저 그립니다(`measure_needs_numbers` 같은 코드). 문장은 서버의 것이고,
             //    둘 다 없을 때만 이 화면이 「거절했습니다」라고 말합니다.
             : ((this.model && (this.model.reason || this.model.message))
-              || '서버가 거절했습니다')));
+              || SERVER_REFUSED)));
       root.appendChild(note);
       this.host.appendChild(root);
       return;
@@ -273,8 +274,8 @@ export class MainTrendPanel extends Panel {
       // The id stays checkable in the title; the sentence says the KIND, because a raw node id
       // in a sentence is a string nobody reads.
       note.setAttribute('title', String(this.axisChosen));
-      note.textContent = '고른 축은 «물리량»입니다 — 이 차트는 «비율»만 그립니다'
-        + ' (걷기에서 고른 축은 후보·순위가 씁니다)';
+      note.textContent = 'The chosen axis is a quantity — this chart draws ratios only'
+        + ' (an axis picked from the walk is for candidates and rank)';
       root.appendChild(note);
       this.host.appendChild(root);
       return;
@@ -302,8 +303,8 @@ export class MainTrendPanel extends Panel {
       // ⚠️ 셋째(「안 실었습니다」)는 거절이 아니라 «값 없음»입니다 — 봉투가 그 measure 에
       //    답하지 않은 것이고, 그때 점은 그려지되 값이 없습니다. 그것도 지어낼 문장이 아닙니다.
       note.textContent = m.points.length
-        ? `점 ${m.points.length}개`
-        : (m.reason || m.message || '이 창에 점이 없습니다');
+        ? unitText(m.points.length, 'point')
+        : (m.reason || m.message || 'No point in this window');
       root.appendChild(note);
       this.host.appendChild(root);
       return;
@@ -381,18 +382,18 @@ export class MainTrendPanel extends Panel {
           ...(this.grain.context_fields || [])].join(' · ')})`
         : null;
       const seen = p.denominator === null ? '—' : p.denominator;
-      const hit = typeof p.found === 'number' ? p.found : '— (경계가 아직 안 싣습니다)';
+      const hit = typeof p.found === 'number' ? p.found : '— (not served yet)';
       // 🔴 집계 축은 «칩»을 세지 않습니다 -- 「검사한 칩」이라 적으면 값의 개수를 칩 수로
       //    읽게 됩니다. 무엇으로 만든 수인지는 축마다 다른 문장이어야 합니다.
       const body = m.valueKind === 'aggregate' && m.axis
         ? ` · ${m.axis.aggregation}(${m.axis.qualifier}) ${formatValue(m, valueOf(p))}`
-          + ` · 값 ${seen}개 · 쓴 값 ${hit}개`
-        : ` · 검사한 칩 ${seen} · 보이드 난 칩 ${hit}`
-          + ` · 비율 ${formatValue(m, valueOf(p))}`;
+          + ` · values ${seen} · used ${hit}`
+        : ` · chips inspected ${seen} · chips with a void ${hit}`
+          + ` · ratio ${formatValue(m, valueOf(p))}`;
       dot.setAttribute('title',
-        `${p.wafer || '(웨이퍼 없음)'}`
+        `${p.wafer || '(no wafer)'}`
         + body
-        + (grainWord ? ` · ${grainWord} 기준` : '')
+        + (grainWord ? ` · by ${grainWord}` : '')
         + (p.state ? ` · ${p.state}` : ''));
       if (markIdOf(p)) {
         dot.addEventListener('click', (event) => {
@@ -433,7 +434,7 @@ export class MainTrendPanel extends Panel {
     //    middle of that material's points -- one label per material, not one per point.
     const groups = new Map();
     points.forEach((p, i) => {
-      const key = p.wafer || '(이름 없음)';
+      const key = p.wafer || '(unnamed)';
       const at = this.flatTime
         ? (points.length > 1 ? (i / (points.length - 1)) * 100 : 50)
         : ((Date.parse(p.at) - minTime) / spanTime) * 100;
@@ -448,7 +449,7 @@ export class MainTrendPanel extends Panel {
       tick.className = marked ? 'rb-trend-xtick is-subject' : 'rb-trend-xtick';
       tick.style.left = `${g.sum / g.n}%`;
       tick.textContent = g.key;
-      tick.setAttribute('title', `${g.key} · ${g.n}점`);
+      tick.setAttribute('title', `${g.key} · ${unitText(g.n, 'point')}`);
       plot.appendChild(tick);
     }
 
@@ -456,7 +457,7 @@ export class MainTrendPanel extends Panel {
     const xLeft = doc.createElement('div');
     xLeft.className = 'rb-trend-xlabel is-left';
     xLeft.textContent = this.flatTime
-      ? `${stamp(points[0].at)} · 한 시각`
+      ? `${stamp(points[0].at)} · one time`
       : `${stamp(points[0].at)} → ${stamp(points[points.length - 1].at)}`;
     plot.appendChild(xLeft);
     plot.append(yTop, yBottom);
@@ -476,7 +477,7 @@ export class MainTrendPanel extends Panel {
     const el = doc.createElement('div');
     el.className = 'rb-trend-legend';
     const one = doc.createElement('span');
-    one.textContent = `점 하나 = 웨이퍼 하나 · ${points.length}개`;
+    one.textContent = `one point = one wafer · ${points.length}`;
     el.appendChild(one);
     // 🔴 목업의 「접는 단위」 줄 (A4). 이 차트가 «무엇을 한 점으로 접는지»는 선언에 있습니다 --
     //    grain 의 subject_type 이 그것이고, 지어낼 필요가 없습니다. 단위별 «행수»는 이 라우트가
@@ -485,9 +486,9 @@ export class MainTrendPanel extends Panel {
       const fold = doc.createElement('span');
       fold.className = 'rb-trend-fold';
       const keys = (this.grain.identity_fields || []).join(' · ');
-      fold.textContent = `접는 단위 ${this.grain.subject_type}`
+      fold.textContent = `Grain ${this.grain.subject_type}`
         + (keys ? ` (${keys})` : '')
-        + ' · 단위별 행수는 이 응답에 없습니다';
+        + ' · rows per grain not in this response';
       el.appendChild(fold);
     }
     // 🔴 집계 축은 «자기 문장»을 씁니다 (라운드 ①-a). 비율의 분자·분모 문장을 그대로 쓰면
@@ -497,9 +498,9 @@ export class MainTrendPanel extends Panel {
       ax.className = 'rb-trend-prov';
       const carried = points.reduce((n, p) => n + (p.denominator || 0), 0);
       ax.textContent = `y = ${m.axis.aggregation}(${m.axis.qualifier})`
-        + ` · 값 ${carried}개`
+        + ` · values ${carried}`
         + (m.provenance && m.provenance.predicates
-          ? ` · ${m.provenance.predicates.join(' · ')} 에서` : '');
+          ? ` · from ${m.provenance.predicates.join(' · ')}` : '');
       el.appendChild(ax);
       // 🔴 C-90 ②: 「건너뜀 N」은 «아무도 안 세는 수»가 되어 사라졌습니다(판정 341 이 ㉡ 기각).
       //    그 자리에 오는 것은 «절단 표지»입니다 — 잘린 위에서 센 수도 수이고, 그것이 잘렸다는
@@ -508,7 +509,7 @@ export class MainTrendPanel extends Panel {
       if (m.cut) {
         const cut = doc.createElement('span');
         cut.className = 'rb-trend-absent';
-        cut.textContent = '잘림';
+        cut.textContent = 'Truncated';
         el.appendChild(cut);
       }
     }
@@ -516,8 +517,8 @@ export class MainTrendPanel extends Panel {
       const prov = doc.createElement('span');
       prov.className = 'rb-trend-prov';
       // 🔴 THE DENOMINATOR, ON SCREEN. Printed from `provenance`, never from a memory of it.
-      prov.textContent = `y = 비율 (분자 ${m.provenance.numerator || '?'}`
-        + ` · 분모 ${m.provenance.denominator || '?'}`
+      prov.textContent = `y = ratio (numerator ${m.provenance.numerator || '?'}`
+        + ` · denominator ${m.provenance.denominator || '?'}`
         + ` · absence_is_zero ${m.provenance.absenceIsZero ? 'true' : 'false'})`;
       el.appendChild(prov);
     }
@@ -527,10 +528,10 @@ export class MainTrendPanel extends Panel {
       const flat = doc.createElement('span');
       flat.className = 'rb-trend-absent';
       const parts = [];
-      if (this.flatRate) parts.push('값이 전부 같습니다');
+      if (this.flatRate) parts.push('All values equal');
       // The axis now names the materials and the moment, so the old wording («차례») would
       // contradict what the reader can see on it.
-      if (this.flatTime) parts.push('가로는 «자재»입니다 · 시각은 하나뿐입니다');
+      if (this.flatTime) parts.push('x is material · one time only');
       flat.textContent = parts.join(' · ');
       el.appendChild(flat);
     }
@@ -540,8 +541,8 @@ export class MainTrendPanel extends Panel {
       gap.className = 'rb-trend-absent';
       // Not dropped silently: a point without a value is a wafer nobody measured.
       gap.textContent = m.valueKind === 'aggregate' && m.axis
-        ? `값 없음 ${unplotted} — 이 자재에는 ${m.axis.qualifier} 가 안 실렸습니다`
-        : `비율 없음 ${unplotted} — 안 쟀습니다`;
+        ? `No value ${unplotted} — ${m.axis.qualifier} not carried on this material`
+        : `No ratio ${unplotted} — not measured`;
       el.appendChild(gap);
     }
     return el;
