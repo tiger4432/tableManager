@@ -78,6 +78,8 @@ import datetime as _dt
 import logging
 import threading
 
+from utils.logger import announce_crossed
+
 from . import envelope
 
 logger = logging.getLogger("Ledger.Gate")
@@ -226,7 +228,6 @@ REFUSAL_REASON_NAMES = {
 # data, so a malformed feed must not be able to grow the report without limit. Same
 # discipline as `chain_key_gate.MAX_REFUSAL_ROWS`.
 MAX_REFUSAL_SAMPLES = 20
-_ANNOUNCE_AT = frozenset([1, 10, 100, 1000, 10000, 100000, 1000000])
 _NOTE_TOP_N = 5
 
 # (source, reason) -> molecules refused, for the life of this process.
@@ -247,6 +248,9 @@ _rows_refused: dict = {}
 # the atoms are true - but it is the number that explains a chain with a hole in it, so
 # it rides in the same heartbeat.
 _incomplete: dict = {}
+# (source, ((column, value), ...)) -> units no sentence said (총괄 d4a949a8c ⑧). NOT a
+# refusal either; it rides the same heartbeat, in the refusals' shape.
+_unsaid: dict = {}
 _samples: list = []
 #: 🔴 [S-39] 이 수들이 «언제부터»인가. 프로세스 집계라 재기동이면 0 이고, `since` 가 없으면
 #: 「거절이 없었다」와 「방금 떠서 아직 모른다」가 «같은 응답»이 된다 — 그 둘은 운영자에게
@@ -308,6 +312,7 @@ def reset_counters():
     _atoms_lost.clear()
     _rows_refused.clear()
     _incomplete.clear()
+    _unsaid.clear()
     del _samples[:]
 
 
@@ -331,7 +336,7 @@ def captured():
     """
     with _capture_lock:
         saved = (dict(_refusals), dict(_atoms_lost), dict(_rows_refused),
-                 dict(_incomplete), list(_samples))
+                 dict(_incomplete), list(_samples), dict(_unsaid))
         reset_counters()
         handle = {}
         try:
@@ -343,6 +348,7 @@ def captured():
             handle["atoms_lost"] = dict(_atoms_lost)
             handle["rows_refused"] = dict(_rows_refused)
             handle["incomplete"] = dict(_incomplete)
+            handle["unsaid"] = dict(_unsaid)
             handle["samples"] = list(_samples)
             reset_counters()
             _refusals.update(saved[0])
@@ -350,6 +356,7 @@ def captured():
             _rows_refused.update(saved[2])
             _incomplete.update(saved[3])
             _samples.extend(saved[4])
+            _unsaid.update(saved[5])
 
 
 def note():
@@ -359,21 +366,35 @@ def note():
     `chain_key_gate.note()`: a healthy deployment's heartbeat stays quiet, so a line
     appearing in it is itself the signal.
     """
-    if not _refusals and not _incomplete:
+    if not _refusals and not _incomplete and not _unsaid:
         return None
     parts = []
     if _refusals:
-        top = sorted(_refusals.items(), key=lambda kv: -kv[1])[:_NOTE_TOP_N]
-        detail = ", ".join(f"{src}:{reason}={n}" for (src, reason), n in top)
-        if len(_refusals) > len(top):
-            detail += f" (+{len(_refusals) - len(top)} more)"
         parts.append(f"ledger gate refusals: molecules={sum(_refusals.values())} "
                      f"source_rows={sum(_rows_refused.values())} "
-                     f"built_atoms_discarded={sum(_atoms_lost.values())} | {detail}")
+                     f"built_atoms_discarded={sum(_atoms_lost.values())} | "
+                     f"{_top(_refusals, str)}")
     if _incomplete:
         parts.append("incomplete source molecules: " + ", ".join(
             f"{src}={n}" for src, n in sorted(_incomplete.items())))
+    if _unsaid:
+        parts.append(f"units no sentence said: units={sum(_unsaid.values())} | "
+                     f"{_top(_unsaid, _unsaid_name)}")
     return " || ".join(parts)
+
+
+def _top(counts, name) -> str:
+    """`{(source, what): n}` as `source:<name(what)>=n`, the largest `_NOTE_TOP_N` and
+    `(+k more)` - one shape for every part of the note that names what it counts."""
+    top = sorted(counts.items(), key=lambda kv: -kv[1])[:_NOTE_TOP_N]
+    detail = ", ".join(f"{src}:{name(what)}={n}" for (src, what), n in top)
+    if len(counts) > len(top):
+        detail += f" (+{len(counts) - len(top)} more)"
+    return detail
+
+
+def _unsaid_name(key) -> str:
+    return " ".join("%s=%r" % pair for pair in key)
 
 
 def record_incomplete(source: str, count: int = 1):
@@ -391,17 +412,18 @@ def record_incomplete(source: str, count: int = 1):
 def record_unsaid(source: str, unsaid) -> None:
     """Units no sentence said - every sentence's `when` passed over them (총괄 363db7dfa).
 
-    NOT a refusal either: such a unit simply says nothing, and before this line it said so
-    nowhere. One line per batch, `{((column, value), ...): units}` named by value."""
-    if not unsaid:
-        return
-    named = " · ".join(
-        "%s (%d)" % (" ".join("%s=%r" % pair for pair in key), units)
-        for key, units in sorted(unsaid.items(), key=lambda item: (-item[1], item[0])))
-    logger.warning(
-        "[Ledger] %s: %d unit(s) said no sentence - %s. Next: every sentence's when passed "
-        "them over; correct the value in the table it comes from, or declare a sentence whose "
-        "when names it.", source, sum(unsaid.values()), named)
+    NOT a refusal either: such a unit simply says nothing. `{((column, value), ...): units}`
+    is counted per value into the gate note, and a value says so in one line at the
+    refusals' thresholds (총괄 d4a949a8c ⑧)."""
+    for key, units in (unsaid or {}).items():
+        before = _unsaid.get((source, key), 0)
+        total = _unsaid[(source, key)] = before + int(units)
+        if announce_crossed(before, total):
+            logger.warning(
+                "[Ledger] Next: correct the value in the table it comes from, or declare a "
+                "sentence whose when names it. %s: %s said no sentence - every sentence's "
+                "when passed it over | units so far in this process: %d",
+                source, _unsaid_name(key), total)
 
 
 def _record(source: str, reason: str, atoms: int, detail: str, rows: int = 1,
@@ -428,7 +450,7 @@ def _record(source: str, reason: str, atoms: int, detail: str, rows: int = 1,
                                        if isinstance(a, Mapping)]})
     # Announce on the 1st, 10th, 100th ... occurrence so a fixed deployment and a
     # broken one do not produce identical logs.
-    if total in _ANNOUNCE_AT:
+    if announce_crossed(before, total):
         logger.warning(
             "[LedgerGate] source=%s REFUSED a source event at the door | reason=%s | "
             "%d source row(s) produced nothing; %d atom(s) had already been built and "

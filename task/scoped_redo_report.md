@@ -67265,3 +67265,154 @@ N2 active() lets the setup error through         빨강  (1 failed, 7 passed)
 ```
 전체  5 failed, 7524 passed, 196 skipped, 3 xfailed in 830.45s (0:13:50) — 실패 5 개, 파일::이름으로 알려진 다섯과 같음: True
 ```
+
+## [구현자 -> 총괄] d4a949a8c ⑧ 착지 7328bed80 — 안 말한 단위는 gate 노트로 · 문턱 한 줄 (ㄱ · ㄴ · ㄷ)
+
+**전후** (같은 순서를 gate.record_unsaid 에: 한 소스, WF 1 단위 배치 12 번 뒤 XX 3 단위 배치 한 번. 전 = 1997f54b8 사본, 후 = 착지 트리)
+```
+전  배치 13 · 단위 15 -> 줄 13
+      WARNING [Ledger] wafer_process_recipe: 1 unit(s) said no sentence - mat_type='WF' (1). Next: every sentence's when passed them over; correct the value in the table it comes from, or declare a sentence whose when names it.
+      (같은 모양 12 줄 더)
+    note: None
+후  배치 13 · 단위 15 -> 줄 3
+      WARNING [Ledger] Next: correct the value in the table it comes from, or declare a sentence whose when names it. wafer_process_recipe: mat_type='WF' said no sentence - every sentence's when passed it over | units so far in this process: 1
+      WARNING [Ledger] Next: correct the value in the table it comes from, or declare a sentence whose when names it. wafer_process_recipe: mat_type='WF' said no sentence - every sentence's when passed it over | units so far in this process: 10
+      WARNING [Ledger] Next: correct the value in the table it comes from, or declare a sentence whose when names it. wafer_process_recipe: mat_type='XX' said no sentence - every sentence's when passed it over | units so far in this process: 3
+    note: units no sentence said: units=15 | wafer_process_recipe:mat_type='WF'=12, wafer_process_recipe:mat_type='XX'=3
+```
+```
+(ㄱ) note 한 부분   거절 부분과 같은 모양 — 둘 다 _top(상위 _NOTE_TOP_N + (+k more))을 지남. 키도 거절처럼 (소스, 무엇)
+(ㄴ) Next          note 엔 없음. 줄은 (소스, 값)마다 단위가 1·10·100… 을 넘을 때 한 번 — Next 먼저. 배치마다 줄은 지움
+(ㄷ) captured()    incomplete 와 같이 저장 · handle["unsaid"] · 복원. reset_counters 도 비움
+문장을 든 자리     안내서(ledger_declaration_by_example) · CODE_MAP 한 줄 · RUN.md 옛 절의 인용 셋 — 같은 커밋에서 새 줄 모양으로
+```
+변이 다섯 — 각각 되돌림
+```
+G1 a line every batch again                          빨강  (1 failed, 82 passed)
+G2 the note leaves the unsaid part out               빨강  (1 failed, 82 passed)
+G3 a capture does not give back the process's units  빨강  (1 failed, 82 passed)
+G4 a capture does not hand its units back            빨강  (1 failed, 82 passed)
+G5 the line leads with the value, not Next           빨강  (1 failed, 82 passed)
+```
+**새 함수 · 새 if 중 기존 것과 같은 일** (cdeb5ea10)
+```
+새 함수   gate._top — note 거절 부분의 식을 옮긴 자리(거절 · 안 말함 두 부분이 부름) · gate._unsaid_name — record_unsaid 의 이름 짓기 식을 옮김(note 와 줄이 부름)
+새 if     note 의 `if _unsaid:` — incomplete 부분과 같은 모양의 한 부분 · 문턱 `any(before < t <= total …)` — 한 번에 여러 단위가 느는 수라 거절의 `total in` 대신
+          key_gate · void_sat_format 이 이미 쓰는 넘김 판정
+찾은 것   알림 문턱 (`git grep -n ANNOUNCE_AT -- server`, 시험 빼고)
+          정의 4: server/chain/key_gate.py:97 · server/database/crud.py:101 · server/ledger/gate.py:229 · server/parsers/void_sat_format.py:316
+          판정 5: server/chain/key_gate.py:159 · server/database/crud.py:156 · server/ledger/gate.py:420 · server/ledger/gate.py:452 · server/parsers/void_sat_format.py:389
+          이번엔 안 접음 — 접을지 여쭙니다
+```
+**스위트** (C:/wt-impl, 착지 트리)
+```
+전체  5 failed, 7524 passed, 196 skipped, 3 xfailed in 847.70s (0:14:07) — 실패 5 개, 파일::이름으로 알려진 다섯과 같음: True
+PG    7 failed, 150 passed, 7571 deselected, 53 warnings in 297.15s (0:04:57) — 실패 이름이 알려진 일곱과 같음: True
+```
+
+## [구현자 -> 총괄] d4a949a8c ⑨ 후속 착지 c21edb793 — 설정 파일 읽기 하나 · 못 읽음은 한 낱말 · draft_required 문장 ((나) · (ㄱ))
+
+**네 읽는 자리 — 전후** (같은 상자, 라우트별. 전 = 1997f54b8 사본, 후 = 착지 트리)
+```
+broken json: GET plan                  400 unreadable_config at ledger_config.json -> 400 invalid_json at ledger_config
+broken json: GET view                  400 invalid_json at ledger_config        -> 400 invalid_json at ledger_config
+broken json: GET deletion-preview      400 invalid_json at ledger_config        -> 400 invalid_json at ledger_config
+broken json: GET authoring/schema      200 (200)                                -> 200 (200)
+root is a list: GET plan               400 unreadable_config at ledger_config.json -> 400 invalid_type at ledger_config
+root is a list: GET view               400 invalid_type at bundle               -> 400 invalid_type at ledger_config
+root is a list: GET deletion-preview   400 invalid_type at bundle               -> 400 invalid_type at ledger_config
+root is a list: GET authoring/schema   200 (200)                                -> 200 (200)
+repeated key: GET plan                 200 (200)                                -> 200 (200)
+repeated key: GET view                 200 (200)                                -> 200 (200)
+repeated key: GET deletion-preview     200 (200)                                -> 200 (200)
+repeated key: GET authoring/schema     200 (200)                                -> 200 (200)
+```
+**draft_required 문장 — 전후**
+```
+POST plan, no draft_id                 draft_preview mode requires a draft id
+                                       -> Next: open a draft first - this request needs a draft id
+GET view draft_preview, no draft_id    draft_preview mode requires a draft id
+                                       -> Next: open a draft first - this request needs a draft id
+```
+```
+읽기 하나     config_explorer_service.read_config_document — json.loads(너그러움)로 읽고, 객체가 아니면 로더의 엄격 읽기(_read_json)를 불러
+              그 코드·문장으로 올림. 부르는 자리: 4 — _resolution · deletion_preview · authoring_schema · authoring
+              docstring 한 줄: 탐색기는 로더가 거절하는 반쯤 쓴 파일을 보여 주므로 너그럽고, 원장 적재 로더는 원자를 쓰므로 엄격
+거절 하나     _setup_refusal — active() 와 작성 계획이 부름. unreadable_config 은퇴 — 서버 코드(시험 빼고)에 남은 것: 0
+뿌리가 목록   전엔 부분 로드로 넘어가 invalid_type at bundle, 이제 엄격 읽기의 invalid_type at ledger_config — 계획·view 같음
+deletion_preview 의 [] -> None
+              같은 함수가 읽기 «전»에 active() 를 부름(그 함수 안 순서: active() 다음에 읽기). 뿌리가 목록이면 active() 가 먼저 400 이라 그 읽기에 안 닿음 — 위 표의 deletion-preview 줄이 전후 둘 다 active() 의 거절
+              닿는다면 [] 는 document.values() 에서 AttributeError(500), None 은 빈 unread_after — None 쪽이 이름대로 다룸
+남긴 읽기     seed_root 의 설정 한 자리 — 새 가지가 시작하는 «기본 세상의» 파일이라 운영자가 쓰는 이 파일이 아님
+```
+변이 다섯 — 각각 되돌림
+```
+R1 _resolution reads the file its own way again      빨강  (1 failed, 76 passed)
+R2 the plan reads the file its own way again         빨강  (4 failed, 73 passed)
+R3 the explorer reads strictly                       빨강  (1 failed, 76 passed)
+R4 the plan words its refusal itself                 빨강  (2 failed, 75 passed)
+R5 draft_required says the draft-preview sentence again 빨강  (1 failed, 76 passed)
+```
+**새 함수 · 새 if 중 기존 것과 같은 일** (cdeb5ea10)
+```
+새 함수   read_config_document — 서비스 안 같은 읽기 넷을 접은 자리 · _setup_refusal — active() 안 식을 옮김(active() · 작성 계획이 부름)
+새 if     read_config_document 의 `isinstance(document, Mapping)` — 옛 네 자리가 각자 하던 판정(작성 계획 · authoring_schema)을 한 자리로
+지운 것   작성 계획의 unreadable_config 두 갈래 · 네 자리의 json.loads(read_text) · authoring_schema 의 isinstance 갈래
+```
+**스위트** (C:/wt-impl, 착지 트리)
+```
+전체  5 failed, 7527 passed, 196 skipped, 3 xfailed in 821.59s (0:13:41) — 실패 5 개, 파일::이름으로 알려진 다섯과 같음: True
+```
+
+## [구현자 -> 총괄] 5c39aa10c 알림 문턱 — 짓기 전 표 · 까닭 인용 · 여쭐 것
+
+**다섯 자리 · 같은 입력 (before -> total) — 오늘 vs 상수 하나** (각 자리의 오늘 상수·판정 모양을 import 해서 잼. 한 번에 하나씩 세는 자리 — gate._record · crud — 는 total = before + 1 만)
+```
+후보 A   1 과 10^1..10^18 (crud 의 범위)      후보 B   1..10^6 (나머지 셋의 범위)
+seat                   before -> total      today  A      B     
+key_gate               9999999 -> 10000000  -      line   -        <- A
+key_gate               10000000 -> 100000000 -      line   -        <- A
+key_gate               999999999999999999 -> 1000000000000000000 -      line   -        <- A
+void_sat_format        9999999 -> 10000000  -      line   -        <- A
+void_sat_format        10000000 -> 100000000 -      line   -        <- A
+void_sat_format        999999999999999999 -> 1000000000000000000 -      line   -        <- A
+gate.record_unsaid     9999999 -> 10000000  -      line   -        <- A
+gate.record_unsaid     10000000 -> 100000000 -      line   -        <- A
+gate.record_unsaid     999999999999999999 -> 1000000000000000000 -      line   -        <- A
+gate._record           9999999 -> 10000000  -      line   -        <- A
+gate._record           999999999999999999 -> 1000000000000000000 -      line   -        <- A
+crud drop              9999999 -> 10000000  line   line   -        <- B
+crud drop              999999999999999999 -> 1000000000000000000 line   line   -        <- B
+changed under A: 11 ['gate._record', 'gate.record_unsaid', 'key_gate', 'void_sat_format']
+changed under B: 2 ['crud drop']
+```
+전체 표(자리마다 key_gate 13 · void_sat_format 13 · gate.record_unsaid 13 · gate._record 9 · crud 9 입력)는 스크래치 `announce_table.txt` — 바뀌는 칸만 위에 적었습니다.
+
+**다르게 둔 까닭 — 주석·기록에 있는 것 (인용)**
+```
+① 범위   crud 경고 문장 「this warning repeats at each power of ten, so silence after this line means the drops STOPPED」
+          -> B 로 접으면 10^6 뒤 침묵이 「멈췄다」가 아니게 됨. A 는 이 약속을 지킴
+② 모양   crud 주석 「A frozenset of ints so the check on the drop path is an O(1) hash lookup that allocates nothing」
+          PRIMITIVES.md 한 줄 「드롭 경로의 멤버십 검사가 할당 없는 O(1)이어야 한다」
+          -> 다른 셋의 넘김 판정 any(before < t <= total …) 은 할당(제너레이터)이 있음
+```
+**잰 것 — 한 번 판정의 값** (이 박스, timeit 최솟값, µs/호출)
+```
+crud today (count != 1 and count not in D)           0.074
+any() crossing, as key_gate/void_sat/record_unsaid   2.552
+early-exit loop, step 1                              0.326
+early-exit loop, batch                               0.324
+```
+```
+제안   상수 하나 = A(1 · 10^1 · … · 10^18, 정렬된 튜플) + 함수 하나 announce_crossed(before, total) — 작은 것부터 보다가 total 을 넘으면 멈추는 고리
+       할당 없음 · 갈래 하나(한 걸음·배치 가르지 않음) · 넘김 판정과 답이 같음(위 66 쌍) · 드롭 경로 값은 오늘의 약 4 배
+       자리: utils/logger.py (로그 줄을 «언제» 찍나는 로깅의 일, 네 모듈이 순환 없이 import 가능한 기존 모듈)
+       다섯 자리가 부름 — crud 의 `count != 1 and count not in` 모양과 gate._record 의 `total in` 도 이 함수로
+바뀌는 답  A 면 crud 0 칸, 나머지 넷은 10^6 을 넘는 수에서 줄이 더 나옴(위 표) · B 면 crud 가 10^6 뒤 침묵
+```
+**여쭐 것**
+```
+1  범위 A 로 가도 되나 (넷이 10^7 이상에서도 줄을 냄)
+2  드롭 경로의 「O(1) 해시·할당 없음」 — 고리(할당 없음 · 최대 19 비교 · 잰 값 위) 로 바꿔도 되나, 아니면 그 한 자리는 해시 조회로 남기고
+   상수만 같은 것을 쓰나 (그러면 판정 자리가 둘 — 문)
+```

@@ -34,7 +34,7 @@ from .setup import (
 )
 from .setup_bundle import (
     CONFIG_FILENAME, LOGICAL_SECTIONS, SETUP_VERSION, LedgerSetupValidationError,
-    validate_bundle_errors,
+    _read_json, _resolve_config_path, validate_bundle_errors,
 )
 
 
@@ -146,8 +146,32 @@ def required_draft_id(draft_id: str | None) -> str:
     draft preview and the unsaved plan (총괄 d4a949a8c ⑨)."""
     if draft_id is None:
         raise ConfigExplorerError(
-            "draft_required", "draft_id", "draft_preview mode requires a draft id")
+            "draft_required", "draft_id",
+            "Next: open a draft first - this request needs a draft id")
     return draft_id
+
+
+def read_config_document(config_root: str | Path) -> Mapping[str, Any]:
+    """`ledger_config.json` as the explorer reads it - leniently, because the explorer shows
+    a half-written file the ledger's loader (which writes atoms) refuses; what cannot be read
+    at all is raised in that strict reader's code and words (총괄 d4a949a8c ⑨)."""
+    try:
+        document = json.loads(
+            (Path(config_root) / CONFIG_FILENAME).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        document = None
+    if isinstance(document, Mapping):
+        return document
+    return _read_json(_resolve_config_path(
+        Path(config_root).resolve(), CONFIG_FILENAME, "config_root", require_json=True),
+        "ledger_config")
+
+
+def _setup_refusal(exc: LedgerSetupValidationError) -> ConfigExplorerError:
+    """A config the explorer cannot use, refused by name, the next action first."""
+    return ConfigExplorerError(exc.code, exc.path, (
+        f"Next: restore or fix {CONFIG_FILENAME}, or start one with Create starting file. "
+        f"{exc}"))
 
 
 class OntologyExplorerService:
@@ -205,11 +229,9 @@ class OntologyExplorerService:
         operator wrote; it exists whether or not anything compiles, which is precisely why
         a compile-derived basis cannot be the one a half-written setup is saved against.
         """
-        document = None
         try:
-            document = json.loads(
-                (self.config_root / CONFIG_FILENAME).read_text(encoding="utf-8"))
-        except Exception:
+            document = read_config_document(self.config_root)
+        except LedgerSetupValidationError:
             document = None                      # injected loader, or no file to read yet
 
         try:
@@ -247,9 +269,7 @@ class OntologyExplorerService:
                 except LedgerSetupValidationError as exc:
                     # The file is not there or not one object - every route that asked
                     # refuses by name, not with a 500 (총괄 d4a949a8c ⑨).
-                    raise ConfigExplorerError(exc.code, exc.path, (
-                        f"Next: restore or fix {CONFIG_FILENAME}, or start one with Create "
-                        f"starting file. {exc}")) from exc
+                    raise _setup_refusal(exc) from exc
                 self._setup = resolved["setup"]
                 self._index = resolved["index"]
                 self._invalid = resolved["invalid"]
@@ -559,9 +579,8 @@ class OntologyExplorerService:
         # reaches for no file at all. With no document there is nothing to drop, so
         # nothing falls, and the honest answer is the empty list.
         try:
-            document = json.loads(
-                (self.config_root / CONFIG_FILENAME).read_text(encoding="utf-8"))
-        except Exception:
+            document = read_config_document(self.config_root)
+        except LedgerSetupValidationError:
             document = None                  # injected loader, or no file to read yet
         unread_after: list[dict[str, str]] = []
         if document is not None:
@@ -943,10 +962,8 @@ class OntologyExplorerService:
         blank the form that would fix it.
         """
         try:
-            document = json.loads(
-                (self.config_root / CONFIG_FILENAME).read_text(encoding="utf-8"))
-            sources = document.get("sources") if isinstance(document, Mapping) else None
-        except Exception:
+            sources = read_config_document(self.config_root).get("sources")
+        except LedgerSetupValidationError:
             sources = None
         return closed_lists(sources)
 
@@ -989,15 +1006,9 @@ class OntologyExplorerService:
             source = {"file": str(path), "state": "absent"}
         else:
             try:
-                bundle = json.loads(path.read_text(encoding="utf-8"))
-            except (OSError, ValueError) as exc:
-                raise ConfigExplorerError(
-                    "unreadable_config", CONFIG_FILENAME,
-                    f"{path} could not be read as JSON: {exc}") from exc
-            if not isinstance(bundle, Mapping):
-                raise ConfigExplorerError(
-                    "unreadable_config", CONFIG_FILENAME,
-                    f"{path} must contain a JSON object")
+                bundle = read_config_document(self.config_root)
+            except LedgerSetupValidationError as exc:
+                raise _setup_refusal(exc) from exc
             source = {"file": str(path), "state": "present"}
         catalog = self._catalog_loader()
         dropped: list = []

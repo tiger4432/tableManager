@@ -54,6 +54,7 @@ import logging
 import math
 import re
 import event_constants
+from utils.logger import announce_crossed
 
 logger = logging.getLogger(__name__)
 
@@ -313,8 +314,6 @@ REFUSAL_NON_INTEGRAL_GATE = "non_integral_gate"
 MAX_REFUSAL_ROWS = 20
 MAX_REFUSAL_DETAILS = 64
 
-_ANNOUNCE_AT = frozenset([1, 10, 100, 1000, 10000, 100000, 1000000])
-
 # (table, reason) -> count, for the life of this process. COUNTS are never
 # capped; only the named DETAIL is - every detail here comes from a payload, so
 # a malformed source must not be able to grow the report without limit.
@@ -383,10 +382,7 @@ def _record(table_name: str, reason_counts: dict, rows: int):
         before = _refusals.get(key, 0)
         total = before + n
         _refusals[key] = total
-        # Crossing a threshold inside this batch, not landing exactly on one: a
-        # 1,000-row file would otherwise step over every threshold at once and
-        # say nothing.
-        if any(before < t <= total for t in _ANNOUNCE_AT):
+        if announce_crossed(before, total):
             announce.append((reason, total))
     return announce
 

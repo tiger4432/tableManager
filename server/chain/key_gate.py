@@ -80,6 +80,7 @@ from __future__ import annotations
 
 import logging
 import event_constants
+from utils.logger import announce_crossed
 
 logger = logging.getLogger(__name__)
 
@@ -93,8 +94,6 @@ REFUSAL_UNKEYED_ROW = "unkeyed_row"
 # without limit. COUNTS are never capped - only the named detail is.
 MAX_REFUSAL_ROWS = 20
 MAX_REFUSAL_COLUMNS = 64
-
-_ANNOUNCE_AT = frozenset([1, 10, 100, 1000, 10000, 100000, 1000000])
 
 # (table, column) -> count, for the life of this process. Bounded by the DECLARED key
 # columns of the tables this process writes, so it needs no budget of its own.
@@ -153,10 +152,7 @@ def _record(table_name: str, rule_names, columns: dict, rows: int):
         before = _refusals.get(key, 0)
         total = before + n
         _refusals[key] = total
-        # Crossing an announce threshold inside this batch, not landing exactly on one:
-        # a 1,000-row batch would otherwise step over every threshold at once and say
-        # nothing.
-        if any(before < t <= total for t in _ANNOUNCE_AT):
+        if announce_crossed(before, total):
             announce.append((col, total))
     return announce
 

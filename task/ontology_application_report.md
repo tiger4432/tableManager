@@ -34896,3 +34896,15 @@ fa41a6f25   소스 전부 새로 고침이 잃은 행의 원자를 거둠 — BA
       공백만 든 "  " 는 두 자리 다 invalid_draft_id (라우트의 or None 도 못 접음)
 여쭐 것  접기를 required_draft_id 안으로 옮길지(crud.is_blank_value 로) — 제가 짓지 않았습니다. 재지는 않았고 코드 읽기입니다
 ```
+
+---
+
+## [C 응용] 10-01 2b20ed983 문서 동기화 + 919ccc065(보드 영어 라운드)에 얹을 관찰 하나 — `289248adc`
+
+```
+candidate_list_panel.js  measured.textContent = c.measured ? 'Measured' : '-'   · 같은 카드 mdl.textContent = c.model || '-'
+absent.js                ABSENT = '—' (「없음」의 철자 한 곳, PRIMITIVES 「여섯 번째 철자」 경고)
+관찰  카드의 '-' «셋»(rank · model · measured — 첫 판에 둘로 적었다가 센 명령으로 고침, @2b20ed983)은 absent.js 밖의 두 번째 철자입니다. 다만 measured 의 '-' 는 «없음»이 아니라 «실측 아님»이라는 판정이라
+      ABSENT 로 바꾸는 것이 맞는지는 제가 판정하지 않았습니다 — 보드 문자열 라운드(919ccc065)가 이 줄을 지나므로 여기 올립니다
+센 명령  git show HEAD:client2/src/rnd_board/candidate_list_panel.js | grep -n "'-'"
+```

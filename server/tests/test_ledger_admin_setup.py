@@ -235,13 +235,17 @@ def test_a_preview_does_not_move_the_processs_refusal_counters():
     """
     gate.reset_counters()
     gate.refuse("live_source", gate.REFUSE_NO_IDENTITY, "a real refusal")
-    before = gate.refusals()
+    gate.record_unsaid("live_source", {(("mat_type", "WF"),): 1})
+    before, note_before = gate.refusals(), gate.note()
 
     with gate.captured() as captured:
         gate.refuse("preview_source", gate.REFUSE_NOT_TRUE_ALONE, "a previewed refusal")
+        gate.record_unsaid("preview_source", {(("mat_type", "WF"),): 2})
 
     assert gate.refusals() == before, "the preview's refusal leaked into the process"
+    assert gate.note() == note_before, "the preview's unsaid units moved the process's note"
     assert captured["refusals"] == {("preview_source", "not_true_alone"): 1}
+    assert captured["unsaid"] == {("preview_source", (("mat_type", "WF"),)): 2}
     assert ("preview_source", "not_true_alone") not in gate.refusals()
     gate.reset_counters()
 

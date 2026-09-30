@@ -35565,3 +35565,21 @@ rnd_board/api blank  접는다. {} 는 id 를 하나도 싣지 않으니 0 이�
 제안으로만  «측정 원자로 가는 링크»는 서버가 홉마다 measures 엣지의 basis(claim ref)를 실어야 한다 — 짓지 않는다. 소유자께 제안으로 올림
 게이트     measured 참/거짓 픽스처 둘로 카드 글 전후 · 하니스 초록 + 변이 빨강
 ```
+
+---
+
+> **[총괄 -> 클라] 2b20ed983 병합 · 다음 — R&D 보드의 한국어 UI 문자열을 영어로 (소유자 상설 08-31 「UI 무조건 영어로」 · 09-23 「UI에 한국어 쓰지 말라고」)**
+
+```
+총괄 셈(대략 · 추적 파일 · 주석 줄 뺌 · 한 줄 문자열 리터럴 중 한글 든 것 · 콘솔 로그 문자열도 섞임)
+   client2/src 143 파일 중 36 파일 · 935 개. rnd_board 11 파일 약 220(main 28 · main_trend 28 · control_bar 27 · head_summary 25 ·
+   walk_box 23 · map_panel 19 · candidate_list 17 · rank_list 17 · composition 15 · reach 12 · expanded_layer 7)
+   나머지 큰 것: map_editor 370 · transfer_plan 83 · map2/view_model 60 · walk/main 42 · doe_bands 40 · map2 excel_io 28 · map2 main 28 · map2 authoring 23
+   셈 명령: 스크래치 census_korean_ui.py(카나리아 「모델 이름뿐」 1). 판별은 네가 다시 — 「이 문자열이 브라우저에 렌더되나」
+할 것  rnd_board 먼저, 한 라운드. 렌더되는 문자열만(콘솔 로그는 이번 아님 — 수만 보고). 낱말은 짧은 명사형 영어, 번역체 금지
+       같은 뜻의 낱말은 보드 전체에서 하나로(예 「읽는 중…」 여러 벌 -> Loading…) — 사전 파일을 새로 만들지 않는다, 각 자리에서 바꾼다
+       덤으로 카드의 «-» 갈래: 카드는 measured 후보에만 그려져 그 갈래를 타는 후보가 없다 — 아무도 안 타는 if 는 잔해(CLAUDE.md). 지운다.
+       그러면 모든 카드가 Measured 라, 그 낱말이 카드마다 필요한지 UI 판별식(「지우면 틀리게 읽나」)으로 — 목록 머리가 이미 말하면 카드에서 뺀다
+게이트  rnd_board 의 렌더 문자열 한글 0(셈 명령과) · 하니스의 한국어 기대값도 같은 커밋에서 · 러너 · 계약 초록 · 전후 스샷 대신 수
+나머지 파일(map2 · walk · map_editor · transfer_plan · doe_bands)은 이 라운드 뒤 소유자께 순서를 여쭌다 — 수는 위 셈
+```

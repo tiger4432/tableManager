@@ -1892,7 +1892,7 @@ def test_authoring_answers_on_a_blank_root_where_the_compiled_view_cannot(tmp_pa
     (empty / "ledger_config.json").write_text("{ not json", encoding="utf-8")
     with pytest.raises(ConfigExplorerError) as broken:
         service.authoring()
-    assert broken.value.code == "unreadable_config"
+    assert broken.value.code == "invalid_json"
 
 
 def test_closed_lists_come_from_the_validators_own_constants():
@@ -2119,7 +2119,7 @@ def test_bootstrap_never_overwrites_a_file_that_merely_fails_to_parse(tmp_path):
     # And the operator is told what is wrong with it rather than left guessing.
     with pytest.raises(ConfigExplorerError) as unreadable:
         service.authoring()
-    assert unreadable.value.to_mapping()["code"] == "unreadable_config"
+    assert unreadable.value.to_mapping()["code"] == "invalid_json"
 
     # A valid file is refused for the same reason, by the same code.
     (root / CONFIG_FILENAME).write_text('{"setup_version": 3}', encoding="utf-8")

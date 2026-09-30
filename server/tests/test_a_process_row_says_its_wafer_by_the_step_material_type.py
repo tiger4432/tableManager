@@ -13,6 +13,7 @@ import pytest
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
+from ledger import gate                                                 # noqa: E402
 from ledger.backfill import _v2_frame                                   # noqa: E402
 from ledger.implementations import (role_mapper_registry,                # noqa: E402
                                     source_preparer_registry,
@@ -89,16 +90,22 @@ def test_a_row_no_sentence_says_is_counted_by_its_value_and_named(snapshot, capl
     assert dict(_preview(snapshot, _rows()).unsaid) == {(("mat_type", "WF"),): 1}
     frame = _v2_frame(_rows())
     store = _Store()
+    gate.reset_counters()
     with caplog.at_level(logging.WARNING, logger="Ledger.Gate"):
-        executed = execute_scoped_batch(
-            snapshot, SOURCE, frame, ("row_id", tuple(frame["row_id"])), _NoJoin(),
-            source_preparer_registry(), role_mapper_registry(), store, known_registrations=())
-    assert len(store.written) == 1 and len(store.written[0]) == 3
+        for _batch in range(2):
+            executed = execute_scoped_batch(
+                snapshot, SOURCE, frame, ("row_id", tuple(frame["row_id"])), _NoJoin(),
+                source_preparer_registry(), role_mapper_registry(), store,
+                known_registrations=())
+    assert len(store.written) == 2 and len(store.written[0]) == 3
     assert dict(executed.preview.unsaid) == {(("mat_type", "WF"),): 1}
     lines = [r.getMessage() for r in caplog.records if "said no sentence" in r.getMessage()]
+    # 총괄 d4a949a8c ⑧: the first sighting says so; the second batch crosses no threshold
     assert len(lines) == 1, lines
-    assert "%s: 1 unit(s) said no sentence - mat_type='WF' (1)" % SOURCE in lines[0], lines
-    assert "Next:" in lines[0], lines
+    assert lines[0].startswith("[Ledger] Next: "), lines
+    assert "%s: mat_type='WF' said no sentence" % SOURCE in lines[0], lines
+    assert gate.note() == "units no sentence said: units=2 | %s:mat_type='WF'=2" % SOURCE
+    gate.reset_counters()
 
 
 def test_every_row_said_leaves_nothing_to_count(snapshot):
