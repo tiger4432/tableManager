@@ -1,0 +1,1442 @@
+{
+ "captured_by": "client2/tests/fixtures/capture_authoring_inherited_plan.py",
+ "server_at": "666f738d3201c7e643883b81ea039729db08708f",
+ "base": "bundle.sources.dt_job",
+ "fields": [
+  {
+   "path": "bundle.sources.dt_job.prepare.implementation_id",
+   "step": "sources",
+   "label": "Preparer implementation",
+   "state": "answered",
+   "tier": "constrained_input",
+   "value": "direct-join",
+   "declared": "direct-join",
+   "has_declared": true,
+   "conflicts": false,
+   "ground": null,
+   "candidates": [
+    "direct-join",
+    "lot-event-live-frame"
+   ],
+   "universe": null,
+   "universe_note": "",
+   "locked": [],
+   "comparison": "equal",
+   "reshapes": true,
+   "disposition": "",
+   "forbidden": [],
+   "note": "New implementation: write mappers/ledger_v2_*.py in /admin/scripts/code · listed after a server restart",
+   "refusals": [],
+   "remaining": false
+  },
+  {
+   "path": "bundle.sources.dt_job.prepare.implementation_version",
+   "step": "sources",
+   "label": "Preparer implementation version",
+   "state": "derived",
+   "tier": "structural",
+   "value": 1,
+   "declared": 1,
+   "has_declared": true,
+   "conflicts": false,
+   "ground": {
+    "rule": "implementation_version_from_registered_id",
+    "text": "Filled: registered direct-join@1",
+    "from_paths": [
+     "bundle.sources.dt_job.prepare.implementation_id"
+    ],
+    "from_keys": [
+     "source_plan|dt_job"
+    ],
+    "from_value": 1
+   },
+   "candidates": null,
+   "universe": null,
+   "universe_note": "",
+   "locked": [],
+   "comparison": "equal",
+   "reshapes": false,
+   "disposition": "grammar_requires_it",
+   "forbidden": [],
+   "note": "",
+   "refusals": [],
+   "remaining": false
+  },
+  {
+   "path": "bundle.sources.dt_job.prepare.input_columns",
+   "step": "sources",
+   "label": "Preparer input_columns",
+   "state": "derived",
+   "tier": "derivation",
+   "value": [
+    "dt_eqp",
+    "event_time",
+    "netdie_count",
+    "row_id"
+   ],
+   "declared": null,
+   "has_declared": false,
+   "conflicts": false,
+   "ground": {
+    "rule": "preparer_inputs_from_relation_minus_locked",
+    "text": "Default: the 5 columns of relation dt_job_rollup minus the 1 that read already reads",
+    "from_paths": [
+     "table_config.json:dt_job_rollup"
+    ],
+    "from_keys": [],
+    "from_value": [
+     "dt_eqp",
+     "event_time",
+     "netdie_count",
+     "row_id"
+    ]
+   },
+   "candidates": [
+    "dt_eqp",
+    "dt_job",
+    "event_time",
+    "netdie_count",
+    "row_id"
+   ],
+   "universe": "RELATION",
+   "universe_note": "Table columns",
+   "locked": [
+    "dt_job"
+   ],
+   "comparison": "equal",
+   "reshapes": false,
+   "disposition": "default_overridable",
+   "forbidden": [],
+   "note": "Locked = columns read already reads · the rest toggle",
+   "refusals": [],
+   "remaining": false
+  },
+  {
+   "path": "bundle.sources.dt_job.prepare.output_columns",
+   "step": "sources",
+   "label": "Preparer output_columns",
+   "state": "unanswered",
+   "tier": "constrained_input",
+   "value": [],
+   "declared": null,
+   "has_declared": false,
+   "conflicts": false,
+   "ground": {
+    "rule": "preparer_output_collision_from_relation",
+    "text": "Limit: no name may repeat one of the 5 columns of relation dt_job_rollup",
+    "from_paths": [
+     "table_config.json:dt_job_rollup"
+    ],
+    "from_keys": [],
+    "from_value": [
+     "dt_eqp",
+     "dt_job",
+     "event_time",
+     "netdie_count",
+     "row_id"
+    ]
+   },
+   "candidates": null,
+   "universe": null,
+   "universe_note": "",
+   "locked": [],
+   "comparison": "equal",
+   "reshapes": false,
+   "disposition": "",
+   "forbidden": [
+    "dt_eqp",
+    "dt_job",
+    "event_time",
+    "netdie_count",
+    "row_id"
+   ],
+   "note": "Names of the columns the preparer adds. A name the table already has is not allowed.",
+   "refusals": [],
+   "remaining": false
+  },
+  {
+   "path": "bundle.sources.dt_job.prepare.accepts_verified_join_rules",
+   "step": "sources",
+   "label": "accepts_verified_join_rules",
+   "state": "derived",
+   "tier": "derivation",
+   "value": false,
+   "declared": false,
+   "has_declared": true,
+   "conflicts": false,
+   "ground": {
+    "rule": "accepts_join_rules_from_inheritance",
+    "text": "Default: source dt_job inherits no join rule -> false",
+    "from_paths": [
+     "bundle.sources.dt_job.prepare.inherit_virtual_join_rules"
+    ],
+    "from_keys": [
+     "source_plan|dt_job"
+    ],
+    "from_value": false
+   },
+   "candidates": null,
+   "universe": null,
+   "universe_note": "",
+   "locked": [],
+   "comparison": "equal",
+   "reshapes": false,
+   "disposition": "grammar_requires_it",
+   "forbidden": [],
+   "note": "",
+   "refusals": [],
+   "remaining": false
+  },
+  {
+   "path": "bundle.sources.dt_job.map.implementation_id",
+   "step": "sources",
+   "label": "Mapper implementation",
+   "state": "answered",
+   "tier": "constrained_input",
+   "value": "declarative-role",
+   "declared": "declarative-role",
+   "has_declared": true,
+   "conflicts": false,
+   "ground": null,
+   "candidates": [
+    "declarative-role",
+    "dt-job-role",
+    "lot-event-role"
+   ],
+   "universe": null,
+   "universe_note": "",
+   "locked": [],
+   "comparison": "equal",
+   "reshapes": true,
+   "disposition": "",
+   "forbidden": [],
+   "note": "The first one runs on the declaration alone, with no code · New implementation: write mappers/ledger_v2_*.py in /admin/scripts/code · listed after a server restart",
+   "refusals": [],
+   "remaining": false
+  },
+  {
+   "path": "bundle.sources.dt_job.map.implementation_version",
+   "step": "sources",
+   "label": "Mapper implementation version",
+   "state": "derived",
+   "tier": "structural",
+   "value": 1,
+   "declared": 1,
+   "has_declared": true,
+   "conflicts": false,
+   "ground": {
+    "rule": "implementation_version_from_registered_id",
+    "text": "Filled: registered declarative-role@1",
+    "from_paths": [
+     "bundle.sources.dt_job.map.implementation_id"
+    ],
+    "from_keys": [
+     "source_plan|dt_job"
+    ],
+    "from_value": 1
+   },
+   "candidates": null,
+   "universe": null,
+   "universe_note": "",
+   "locked": [],
+   "comparison": "equal",
+   "reshapes": false,
+   "disposition": "grammar_requires_it",
+   "forbidden": [],
+   "note": "",
+   "refusals": [],
+   "remaining": false
+  },
+  {
+   "path": "bundle.sources.dt_job.map.input_columns",
+   "step": "sources",
+   "label": "Mapper input_columns",
+   "state": "answered",
+   "tier": "derivation",
+   "value": [
+    "dt_job",
+    "netdie_count",
+    "dt_eqp",
+    "event_time"
+   ],
+   "declared": [
+    "dt_job",
+    "netdie_count",
+    "dt_eqp",
+    "event_time"
+   ],
+   "has_declared": true,
+   "conflicts": false,
+   "ground": null,
+   "candidates": [
+    "dt_eqp",
+    "dt_job",
+    "event_time",
+    "netdie_count",
+    "row_id"
+   ],
+   "universe": "PREPARED",
+   "universe_note": "Table columns + preparer outputs",
+   "locked": [
+    "dt_job"
+   ],
+   "comparison": "equal",
+   "reshapes": false,
+   "disposition": "",
+   "forbidden": [],
+   "note": "Locked = columns read already reads · the rest toggle",
+   "refusals": [],
+   "remaining": false
+  },
+  {
+   "path": "bundle.sources.dt_job.map.unit.kind",
+   "step": "sources",
+   "label": "Mapper unit",
+   "state": "answered",
+   "tier": "constrained_input",
+   "value": "row",
+   "declared": "row",
+   "has_declared": true,
+   "conflicts": false,
+   "ground": null,
+   "candidates": [
+    "event",
+    "group_by",
+    "row"
+   ],
+   "universe": null,
+   "universe_note": "",
+   "locked": [],
+   "comparison": "equal",
+   "reshapes": true,
+   "disposition": "",
+   "forbidden": [],
+   "note": "",
+   "refusals": [],
+   "remaining": false
+  },
+  {
+   "path": "bundle.sources.dt_job.bind.entities.dtjob@1.attributes",
+   "step": "sources",
+   "label": "Attributes",
+   "state": "derived",
+   "tier": "structural",
+   "value": [
+    "dt_eqp"
+   ],
+   "declared": null,
+   "has_declared": false,
+   "conflicts": false,
+   "ground": {
+    "rule": "entity_binding_attributes_from_entity",
+    "text": "Filled: the attributes of dtjob@1",
+    "from_paths": [
+     "bundle.entities.dtjob@1.attributes"
+    ],
+    "from_keys": [
+     "entity|dtjob@1"
+    ],
+    "from_value": [
+     "dt_eqp"
+    ]
+   },
+   "candidates": null,
+   "universe": null,
+   "universe_note": "",
+   "locked": [],
+   "comparison": "equal",
+   "reshapes": false,
+   "disposition": "shape",
+   "forbidden": [],
+   "note": "",
+   "refusals": [],
+   "remaining": false
+  },
+  {
+   "path": "bundle.sources.dt_job.bind.entities.dtjob@1.attributes.dt_eqp",
+   "step": "sources",
+   "label": "Attribute dt_eqp",
+   "state": "answered",
+   "tier": "constrained_input",
+   "value": {
+    "kind": "column",
+    "column": "dt_eqp"
+   },
+   "declared": {
+    "kind": "column",
+    "column": "dt_eqp"
+   },
+   "has_declared": true,
+   "conflicts": false,
+   "ground": null,
+   "candidates": null,
+   "universe": null,
+   "universe_note": "",
+   "locked": [],
+   "comparison": "equal",
+   "reshapes": false,
+   "disposition": "",
+   "forbidden": [],
+   "note": "",
+   "refusals": [],
+   "remaining": false
+  },
+  {
+   "path": "bundle.sources.dt_job.bind.mappings",
+   "step": "sources",
+   "label": "Sentences",
+   "state": "answered",
+   "tier": "constrained_input",
+   "value": [
+    "counted",
+    "register"
+   ],
+   "declared": [
+    "counted",
+    "register"
+   ],
+   "has_declared": true,
+   "conflicts": false,
+   "ground": null,
+   "candidates": null,
+   "universe": null,
+   "universe_note": "",
+   "locked": [],
+   "comparison": "equal",
+   "reshapes": false,
+   "disposition": "",
+   "forbidden": [],
+   "note": "Add one or more sentences with + Mapping below",
+   "refusals": [],
+   "remaining": false
+  },
+  {
+   "path": "bundle.sources.dt_job.bind.mappings.counted.predicate",
+   "step": "sources",
+   "label": "Predicate",
+   "state": "answered",
+   "tier": "constrained_input",
+   "value": "has_netdie@1",
+   "declared": "has_netdie@1",
+   "has_declared": true,
+   "conflicts": false,
+   "ground": null,
+   "candidates": [
+    "bonded_from@1",
+    "derived_from@1",
+    "has_netdie@1",
+    "has_wafer@1",
+    "in_container@1",
+    "inspected@1",
+    "leads_to@1",
+    "measures@1",
+    "merged_into@1",
+    "observed@1",
+    "of_kind@1",
+    "processed_with@1",
+    "register@1",
+    "slot_map@1",
+    "split_from@1",
+    "transfer@1"
+   ],
+   "universe": null,
+   "universe_note": "",
+   "locked": [],
+   "comparison": "equal",
+   "reshapes": true,
+   "disposition": "",
+   "forbidden": [],
+   "note": "Retired predicates are not candidates.",
+   "refusals": [],
+   "remaining": false
+  },
+  {
+   "path": "bundle.sources.dt_job.bind.mappings.counted.bind",
+   "step": "sources",
+   "label": "Roles to bind",
+   "state": "derived",
+   "tier": "derivation",
+   "value": [
+    "occurred_at",
+    "subject",
+    "value"
+   ],
+   "declared": null,
+   "has_declared": false,
+   "conflicts": false,
+   "ground": {
+    "rule": "bind_rows_from_predicate",
+    "text": "Filled: the 3 roles predicate has_netdie@1 requires",
+    "from_paths": [
+     "bundle.vocabulary.has_netdie@1"
+    ],
+    "from_keys": [
+     "predicate|has_netdie@1"
+    ],
+    "from_value": [
+     "occurred_at",
+     "subject",
+     "value"
+    ]
+   },
+   "candidates": null,
+   "universe": null,
+   "universe_note": "",
+   "locked": [],
+   "comparison": "equal",
+   "reshapes": false,
+   "disposition": "shape",
+   "forbidden": [],
+   "note": "",
+   "refusals": [],
+   "remaining": false
+  },
+  {
+   "path": "bundle.sources.dt_job.bind.mappings.counted.bind.occurred_at",
+   "step": "sources",
+   "label": "Role occurred_at",
+   "state": "derived",
+   "tier": "derivation",
+   "value": "ingested",
+   "declared": null,
+   "has_declared": false,
+   "conflicts": false,
+   "ground": {
+    "rule": "time_from_source_basis",
+    "text": "Filled: this source's time is set by read.occurred_at.basis='ingested'",
+    "from_paths": [
+     "bundle.sources.dt_job.read.occurred_at"
+    ],
+    "from_keys": [
+     "source_plan|dt_job"
+    ],
+    "from_value": "ingested"
+   },
+   "candidates": null,
+   "universe": null,
+   "universe_note": "",
+   "locked": [],
+   "comparison": "equal",
+   "reshapes": false,
+   "disposition": "shape",
+   "forbidden": [],
+   "note": "This square is not read - the 'event_time' written here is ignored too",
+   "refusals": [],
+   "remaining": false
+  },
+  {
+   "path": "bundle.sources.dt_job.bind.mappings.counted.bind.subject.kind",
+   "step": "sources",
+   "label": "Role subject binding kind",
+   "state": "answered",
+   "tier": "constrained_input",
+   "value": "entity",
+   "declared": "entity",
+   "has_declared": true,
+   "conflicts": false,
+   "ground": null,
+   "candidates": [
+    "entity"
+   ],
+   "universe": null,
+   "universe_note": "",
+   "locked": [],
+   "comparison": "equal",
+   "reshapes": true,
+   "disposition": "",
+   "forbidden": [],
+   "note": "",
+   "refusals": [],
+   "remaining": false
+  },
+  {
+   "path": "bundle.sources.dt_job.bind.mappings.counted.bind.subject.entity_type",
+   "step": "sources",
+   "label": "Entity type",
+   "state": "answered",
+   "tier": "constrained_input",
+   "value": "dtjob@1",
+   "declared": "dtjob@1",
+   "has_declared": true,
+   "conflicts": false,
+   "ground": null,
+   "candidates": [
+    "defect@1",
+    "defect_kind@1",
+    "die@1",
+    "dtjob@1",
+    "lot@1",
+    "lot_slot@1",
+    "quantity@1",
+    "recipe@1",
+    "wafer@1"
+   ],
+   "universe": null,
+   "universe_note": "",
+   "locked": [],
+   "comparison": "equal",
+   "reshapes": true,
+   "disposition": "",
+   "forbidden": [],
+   "note": "",
+   "refusals": [],
+   "remaining": false
+  },
+  {
+   "path": "bundle.sources.dt_job.bind.mappings.counted.bind.subject.keys",
+   "step": "sources",
+   "label": "Identity key names",
+   "state": "derived",
+   "tier": "structural",
+   "value": [
+    "dt_job"
+   ],
+   "declared": [
+    "dt_job"
+   ],
+   "has_declared": true,
+   "conflicts": false,
+   "ground": {
+    "rule": "entity_binding_keys_from_entity",
+    "text": "Filled: the identity keys of dtjob@1",
+    "from_paths": [
+     "bundle.entities.dtjob@1.keys"
+    ],
+    "from_keys": [
+     "entity|dtjob@1"
+    ],
+    "from_value": [
+     "dt_job"
+    ]
+   },
+   "candidates": null,
+   "universe": null,
+   "universe_note": "",
+   "locked": [],
+   "comparison": "equal",
+   "reshapes": false,
+   "disposition": "shape",
+   "forbidden": [],
+   "note": "Pick only which column feeds each key below",
+   "refusals": [],
+   "remaining": false
+  },
+  {
+   "path": "bundle.sources.dt_job.bind.mappings.counted.bind.subject.keys.dt_job.column",
+   "step": "sources",
+   "label": "Key dt_job column",
+   "state": "answered",
+   "tier": "constrained_input",
+   "value": "dt_job",
+   "declared": "dt_job",
+   "has_declared": true,
+   "conflicts": false,
+   "ground": null,
+   "candidates": [
+    "dt_eqp",
+    "dt_job",
+    "event_time",
+    "netdie_count",
+    "row_id"
+   ],
+   "universe": "PREPARED",
+   "universe_note": "Table columns + preparer outputs",
+   "locked": [],
+   "comparison": "equal",
+   "reshapes": false,
+   "disposition": "",
+   "forbidden": [],
+   "note": "",
+   "refusals": [],
+   "remaining": false
+  },
+  {
+   "path": "bundle.sources.dt_job.bind.mappings.counted.bind.value.kind",
+   "step": "sources",
+   "label": "Role value binding kind",
+   "state": "answered",
+   "tier": "constrained_input",
+   "value": "column",
+   "declared": "column",
+   "has_declared": true,
+   "conflicts": false,
+   "ground": null,
+   "candidates": [
+    "column",
+    "constant"
+   ],
+   "universe": null,
+   "universe_note": "",
+   "locked": [],
+   "comparison": "equal",
+   "reshapes": true,
+   "disposition": "",
+   "forbidden": [],
+   "note": "",
+   "refusals": [],
+   "remaining": false
+  },
+  {
+   "path": "bundle.sources.dt_job.bind.mappings.counted.bind.value.column",
+   "step": "sources",
+   "label": "Role value column",
+   "state": "answered",
+   "tier": "constrained_input",
+   "value": "netdie_count",
+   "declared": "netdie_count",
+   "has_declared": true,
+   "conflicts": false,
+   "ground": null,
+   "candidates": [
+    "dt_eqp",
+    "dt_job",
+    "event_time",
+    "netdie_count",
+    "row_id"
+   ],
+   "universe": "PREPARED",
+   "universe_note": "Table columns + preparer outputs",
+   "locked": [],
+   "comparison": "equal",
+   "reshapes": false,
+   "disposition": "",
+   "forbidden": [],
+   "note": "",
+   "refusals": [],
+   "remaining": false
+  },
+  {
+   "path": "bundle.sources.dt_job.bind.mappings.counted.bind.subject.attributes",
+   "step": "sources",
+   "label": "Attributes (inherited)",
+   "state": "derived",
+   "tier": "structural",
+   "value": {
+    "dt_eqp": {
+     "kind": "column",
+     "column": "dt_eqp"
+    }
+   },
+   "declared": null,
+   "has_declared": false,
+   "conflicts": false,
+   "ground": {
+    "rule": "inherited_from_source",
+    "text": "Inherited: this source's attributes of dtjob@1",
+    "from_paths": [
+     "bundle.sources.dt_job.bind.entities.dtjob@1.attributes"
+    ],
+    "from_keys": [
+     "source_plan|dt_job"
+    ],
+    "from_value": {
+     "dt_eqp": {
+      "kind": "column",
+      "column": "dt_eqp"
+     }
+    }
+   },
+   "candidates": null,
+   "universe": null,
+   "universe_note": "",
+   "locked": [],
+   "comparison": "equal",
+   "reshapes": false,
+   "disposition": "shape",
+   "forbidden": [],
+   "note": "",
+   "refusals": [],
+   "remaining": false
+  },
+  {
+   "path": "bundle.sources.dt_job.bind.mappings.register.predicate",
+   "step": "sources",
+   "label": "Predicate",
+   "state": "answered",
+   "tier": "constrained_input",
+   "value": "register@1",
+   "declared": "register@1",
+   "has_declared": true,
+   "conflicts": false,
+   "ground": null,
+   "candidates": [
+    "bonded_from@1",
+    "derived_from@1",
+    "has_netdie@1",
+    "has_wafer@1",
+    "in_container@1",
+    "inspected@1",
+    "leads_to@1",
+    "measures@1",
+    "merged_into@1",
+    "observed@1",
+    "of_kind@1",
+    "processed_with@1",
+    "register@1",
+    "slot_map@1",
+    "split_from@1",
+    "transfer@1"
+   ],
+   "universe": null,
+   "universe_note": "",
+   "locked": [],
+   "comparison": "equal",
+   "reshapes": true,
+   "disposition": "",
+   "forbidden": [],
+   "note": "Retired predicates are not candidates.",
+   "refusals": [],
+   "remaining": false
+  },
+  {
+   "path": "bundle.sources.dt_job.bind.mappings.register.bind",
+   "step": "sources",
+   "label": "Roles to bind",
+   "state": "derived",
+   "tier": "derivation",
+   "value": [
+    "dt_eqp",
+    "occurred_at",
+    "subject"
+   ],
+   "declared": null,
+   "has_declared": false,
+   "conflicts": false,
+   "ground": {
+    "rule": "bind_rows_from_predicate",
+    "text": "Filled: the 3 roles predicate register@1 requires",
+    "from_paths": [
+     "bundle.vocabulary.register@1"
+    ],
+    "from_keys": [
+     "predicate|register@1"
+    ],
+    "from_value": [
+     "dt_eqp",
+     "occurred_at",
+     "subject"
+    ]
+   },
+   "candidates": null,
+   "universe": null,
+   "universe_note": "",
+   "locked": [],
+   "comparison": "equal",
+   "reshapes": false,
+   "disposition": "shape",
+   "forbidden": [],
+   "note": "",
+   "refusals": [],
+   "remaining": false
+  },
+  {
+   "path": "bundle.sources.dt_job.bind.mappings.register.bind.dt_eqp",
+   "step": "sources",
+   "label": "Role dt_eqp",
+   "state": "unanswered",
+   "tier": "constrained_input",
+   "value": null,
+   "declared": null,
+   "has_declared": false,
+   "conflicts": false,
+   "ground": null,
+   "candidates": [
+    "column",
+    "constant"
+   ],
+   "universe": null,
+   "universe_note": "",
+   "locked": [],
+   "comparison": "equal",
+   "reshapes": true,
+   "disposition": "",
+   "forbidden": [],
+   "note": "kind=attribute",
+   "refusals": [],
+   "remaining": false
+  },
+  {
+   "path": "bundle.sources.dt_job.bind.mappings.register.bind.occurred_at",
+   "step": "sources",
+   "label": "Role occurred_at",
+   "state": "derived",
+   "tier": "derivation",
+   "value": "ingested",
+   "declared": null,
+   "has_declared": false,
+   "conflicts": false,
+   "ground": {
+    "rule": "time_from_source_basis",
+    "text": "Filled: this source's time is set by read.occurred_at.basis='ingested'",
+    "from_paths": [
+     "bundle.sources.dt_job.read.occurred_at"
+    ],
+    "from_keys": [
+     "source_plan|dt_job"
+    ],
+    "from_value": "ingested"
+   },
+   "candidates": null,
+   "universe": null,
+   "universe_note": "",
+   "locked": [],
+   "comparison": "equal",
+   "reshapes": false,
+   "disposition": "shape",
+   "forbidden": [],
+   "note": "This square is not read - the 'event_time' written here is ignored too",
+   "refusals": [],
+   "remaining": false
+  },
+  {
+   "path": "bundle.sources.dt_job.bind.mappings.register.bind.subject.kind",
+   "step": "sources",
+   "label": "Role subject binding kind",
+   "state": "answered",
+   "tier": "constrained_input",
+   "value": "entity",
+   "declared": "entity",
+   "has_declared": true,
+   "conflicts": false,
+   "ground": null,
+   "candidates": [
+    "entity"
+   ],
+   "universe": null,
+   "universe_note": "",
+   "locked": [],
+   "comparison": "equal",
+   "reshapes": true,
+   "disposition": "",
+   "forbidden": [],
+   "note": "",
+   "refusals": [],
+   "remaining": false
+  },
+  {
+   "path": "bundle.sources.dt_job.bind.mappings.register.bind.subject.entity_type",
+   "step": "sources",
+   "label": "Entity type",
+   "state": "answered",
+   "tier": "constrained_input",
+   "value": "dtjob@1",
+   "declared": "dtjob@1",
+   "has_declared": true,
+   "conflicts": false,
+   "ground": null,
+   "candidates": [
+    "defect@1",
+    "defect_kind@1",
+    "die@1",
+    "dtjob@1",
+    "lot@1",
+    "lot_slot@1",
+    "quantity@1",
+    "recipe@1",
+    "wafer@1"
+   ],
+   "universe": null,
+   "universe_note": "",
+   "locked": [],
+   "comparison": "equal",
+   "reshapes": true,
+   "disposition": "",
+   "forbidden": [],
+   "note": "",
+   "refusals": [],
+   "remaining": false
+  },
+  {
+   "path": "bundle.sources.dt_job.bind.mappings.register.bind.subject.keys",
+   "step": "sources",
+   "label": "Identity key names",
+   "state": "derived",
+   "tier": "structural",
+   "value": [
+    "dt_job"
+   ],
+   "declared": [
+    "dt_job"
+   ],
+   "has_declared": true,
+   "conflicts": false,
+   "ground": {
+    "rule": "entity_binding_keys_from_entity",
+    "text": "Filled: the identity keys of dtjob@1",
+    "from_paths": [
+     "bundle.entities.dtjob@1.keys"
+    ],
+    "from_keys": [
+     "entity|dtjob@1"
+    ],
+    "from_value": [
+     "dt_job"
+    ]
+   },
+   "candidates": null,
+   "universe": null,
+   "universe_note": "",
+   "locked": [],
+   "comparison": "equal",
+   "reshapes": false,
+   "disposition": "shape",
+   "forbidden": [],
+   "note": "Pick only which column feeds each key below",
+   "refusals": [],
+   "remaining": false
+  },
+  {
+   "path": "bundle.sources.dt_job.bind.mappings.register.bind.subject.keys.dt_job.column",
+   "step": "sources",
+   "label": "Key dt_job column",
+   "state": "answered",
+   "tier": "constrained_input",
+   "value": "dt_job",
+   "declared": "dt_job",
+   "has_declared": true,
+   "conflicts": false,
+   "ground": null,
+   "candidates": [
+    "dt_eqp",
+    "dt_job",
+    "event_time",
+    "netdie_count",
+    "row_id"
+   ],
+   "universe": "PREPARED",
+   "universe_note": "Table columns + preparer outputs",
+   "locked": [],
+   "comparison": "equal",
+   "reshapes": false,
+   "disposition": "",
+   "forbidden": [],
+   "note": "",
+   "refusals": [],
+   "remaining": false
+  },
+  {
+   "path": "bundle.sources.dt_job.bind.mappings.register.bind.subject.attributes",
+   "step": "sources",
+   "label": "Attributes (inherited)",
+   "state": "derived",
+   "tier": "structural",
+   "value": {
+    "dt_eqp": {
+     "kind": "column",
+     "column": "dt_eqp"
+    }
+   },
+   "declared": null,
+   "has_declared": false,
+   "conflicts": false,
+   "ground": {
+    "rule": "inherited_from_source",
+    "text": "Inherited: this source's attributes of dtjob@1",
+    "from_paths": [
+     "bundle.sources.dt_job.bind.entities.dtjob@1.attributes"
+    ],
+    "from_keys": [
+     "source_plan|dt_job"
+    ],
+    "from_value": {
+     "dt_eqp": {
+      "kind": "column",
+      "column": "dt_eqp"
+     }
+    }
+   },
+   "candidates": null,
+   "universe": null,
+   "universe_note": "",
+   "locked": [],
+   "comparison": "equal",
+   "reshapes": false,
+   "disposition": "shape",
+   "forbidden": [],
+   "note": "",
+   "refusals": [],
+   "remaining": false
+  },
+  {
+   "path": "bundle.sources.dt_job.relation",
+   "step": "sources",
+   "label": "relation",
+   "state": "answered",
+   "tier": "constrained_input",
+   "value": "dt_job_rollup",
+   "declared": "dt_job_rollup",
+   "has_declared": true,
+   "conflicts": false,
+   "ground": null,
+   "candidates": [
+    "bonding_inventory",
+    "bonding_log",
+    "bonding_map",
+    "contrast_factor",
+    "contrast_run",
+    "core_usage_map",
+    "core_wafer_map",
+    "defect",
+    "delam_obs",
+    "dt_core_view",
+    "dt_inventory",
+    "dt_job_attribution",
+    "dt_job_rollup",
+    "dt_log",
+    "dt_map",
+    "dt_transfer_log",
+    "entity_comment",
+    "eqp_event",
+    "inspection_run",
+    "inventory_master",
+    "ledger_events",
+    "lot_event",
+    "lot_slot_wafer",
+    "map_split_registry",
+    "mechanism_edge",
+    "metro",
+    "notation_alias",
+    "process_event",
+    "process_param",
+    "production_plan",
+    "slot_trace_for_bonding",
+    "slot_trace_for_dt",
+    "step_defect_obs",
+    "step_inspection_run",
+    "valid_die_ref",
+    "void_obs",
+    "wafer_id_status",
+    "wafer_map_metadata",
+    "wafer_process"
+   ],
+   "universe": null,
+   "universe_note": "",
+   "locked": [],
+   "comparison": "equal",
+   "reshapes": true,
+   "disposition": "",
+   "forbidden": [],
+   "note": "Candidates come from table_config.json. Declare a missing one there first.",
+   "refusals": [],
+   "remaining": false
+  },
+  {
+   "path": "bundle.sources.dt_job.read.unit",
+   "step": "sources",
+   "label": "Unit",
+   "state": "answered",
+   "tier": "constrained_input",
+   "value": "row",
+   "declared": "row",
+   "has_declared": true,
+   "conflicts": false,
+   "ground": null,
+   "candidates": [
+    "group",
+    "row"
+   ],
+   "universe": null,
+   "universe_note": "",
+   "locked": [],
+   "comparison": "equal",
+   "reshapes": false,
+   "disposition": "",
+   "forbidden": [],
+   "note": "",
+   "refusals": [],
+   "remaining": false
+  },
+  {
+   "path": "bundle.sources.dt_job.read.identity",
+   "step": "sources",
+   "label": "identity",
+   "state": "answered",
+   "tier": "constrained_input",
+   "value": [
+    "dt_job"
+   ],
+   "declared": [
+    "dt_job"
+   ],
+   "has_declared": true,
+   "conflicts": false,
+   "ground": null,
+   "candidates": [
+    "dt_eqp",
+    "dt_job",
+    "event_time",
+    "netdie_count",
+    "row_id"
+   ],
+   "universe": "PREPARED",
+   "universe_note": "Table columns + preparer outputs",
+   "locked": [],
+   "comparison": "equal",
+   "reshapes": false,
+   "disposition": "",
+   "forbidden": [],
+   "note": "",
+   "refusals": [],
+   "remaining": false
+  },
+  {
+   "path": "bundle.sources.dt_job.read.group_by",
+   "step": "sources",
+   "label": "group_by",
+   "state": "derived",
+   "tier": "structural",
+   "value": [],
+   "declared": [],
+   "has_declared": true,
+   "conflicts": false,
+   "ground": {
+    "rule": "group_by_absent_for_row_unit",
+    "text": "Filled: unit=row -> no group_by",
+    "from_paths": [
+     "bundle.sources.dt_job.read.unit"
+    ],
+    "from_keys": [
+     "source_plan|dt_job"
+    ],
+    "from_value": "row"
+   },
+   "candidates": null,
+   "universe": null,
+   "universe_note": "",
+   "locked": [],
+   "comparison": "equal",
+   "reshapes": false,
+   "disposition": "grammar_requires_it",
+   "forbidden": [],
+   "note": "With unit=row this square does not exist.",
+   "refusals": [],
+   "remaining": false
+  },
+  {
+   "path": "bundle.sources.dt_job.read.order_by",
+   "step": "sources",
+   "label": "order_by",
+   "state": "answered",
+   "tier": "derivation",
+   "value": [
+    "dt_job"
+   ],
+   "declared": [
+    "dt_job"
+   ],
+   "has_declared": true,
+   "conflicts": false,
+   "ground": null,
+   "candidates": [
+    "dt_eqp",
+    "dt_job",
+    "event_time",
+    "netdie_count",
+    "row_id"
+   ],
+   "universe": "RELATION",
+   "universe_note": "Table columns",
+   "locked": [],
+   "comparison": "superset",
+   "reshapes": false,
+   "disposition": "",
+   "forbidden": [],
+   "note": "Default dt_job · pick to change",
+   "refusals": [],
+   "remaining": false
+  },
+  {
+   "path": "bundle.sources.dt_job.read.occurred_at",
+   "step": "sources",
+   "label": "Time",
+   "state": "answered",
+   "tier": "constrained_input",
+   "value": {
+    "basis": "ingested",
+    "timezone": "Asia/Seoul"
+   },
+   "declared": {
+    "basis": "ingested",
+    "timezone": "Asia/Seoul"
+   },
+   "has_declared": true,
+   "conflicts": false,
+   "ground": {
+    "rule": "occurred_at_candidates_from_column_types",
+    "text": "Candidates: 4 columns of dt_job_rollup readable as a time + basis",
+    "from_paths": [
+     "table_config.json:dt_job_rollup"
+    ],
+    "from_keys": [],
+    "from_value": [
+     "dt_eqp",
+     "dt_job",
+     "event_time",
+     "row_id"
+    ]
+   },
+   "candidates": [
+    {
+     "column": "dt_eqp",
+     "timezone": "Asia/Seoul"
+    },
+    {
+     "column": "dt_job",
+     "timezone": "Asia/Seoul"
+    },
+    {
+     "column": "event_time",
+     "timezone": "Asia/Seoul"
+    },
+    {
+     "column": "row_id",
+     "timezone": "Asia/Seoul"
+    },
+    {
+     "basis": "ingested",
+     "timezone": "Asia/Seoul"
+    }
+   ],
+   "universe": "RELATION",
+   "universe_note": "Table columns",
+   "locked": [],
+   "comparison": "equal",
+   "reshapes": true,
+   "disposition": "",
+   "forbidden": [],
+   "note": "Pick one of column · basis",
+   "refusals": [],
+   "remaining": false
+  },
+  {
+   "path": "bundle.sources.dt_job.read.occurred_at.timezone",
+   "step": "sources",
+   "label": "Time zone",
+   "state": "answered",
+   "tier": "constrained_input",
+   "value": "Asia/Seoul",
+   "declared": "Asia/Seoul",
+   "has_declared": true,
+   "conflicts": false,
+   "ground": null,
+   "candidates": [
+    "Asia/Seoul"
+   ],
+   "universe": null,
+   "universe_note": "",
+   "locked": [],
+   "comparison": "equal",
+   "reshapes": false,
+   "disposition": "",
+   "forbidden": [],
+   "note": "Filled with the time · type another if it differs",
+   "refusals": [],
+   "remaining": false
+  },
+  {
+   "path": "bundle.sources.dt_job.read.registration_probe",
+   "step": "sources",
+   "label": "Registration probe",
+   "state": "answered",
+   "tier": "constrained_input",
+   "value": [
+    {
+     "entity_type": "dtjob@1",
+     "columns": [
+      "dt_job"
+     ]
+    }
+   ],
+   "declared": [
+    {
+     "entity_type": "dtjob@1",
+     "columns": [
+      "dt_job"
+     ]
+    }
+   ],
+   "has_declared": true,
+   "conflicts": false,
+   "ground": {
+    "rule": "registration_probe_required_by_register_sentences",
+    "text": "Needed: this source has 1 register sentences (register)",
+    "from_paths": [
+     "bundle.sources.dt_job.bind.mappings.register"
+    ],
+    "from_keys": [
+     "source_plan|dt_job"
+    ],
+    "from_value": null
+   },
+   "candidates": null,
+   "universe": null,
+   "universe_note": "",
+   "locked": [],
+   "comparison": "equal",
+   "reshapes": false,
+   "disposition": "",
+   "forbidden": [],
+   "note": "Required when there is a register sentence · without it the whole backfill is refused",
+   "refusals": [],
+   "remaining": false
+  },
+  {
+   "path": "bundle.sources.dt_job.read.registration_probe[0].entity_type",
+   "step": "sources",
+   "label": "Registration probe entity",
+   "state": "answered",
+   "tier": "constrained_input",
+   "value": "dtjob@1",
+   "declared": "dtjob@1",
+   "has_declared": true,
+   "conflicts": false,
+   "ground": null,
+   "candidates": [
+    "dtjob@1"
+   ],
+   "universe": null,
+   "universe_note": "",
+   "locked": [],
+   "comparison": "equal",
+   "reshapes": false,
+   "disposition": "",
+   "forbidden": [],
+   "note": "The entity a register sentence registers · one identity key",
+   "refusals": [],
+   "remaining": false
+  },
+  {
+   "path": "bundle.sources.dt_job.read.registration_probe[0].columns",
+   "step": "sources",
+   "label": "Registration probe columns",
+   "state": "answered",
+   "tier": "constrained_input",
+   "value": [
+    "dt_job"
+   ],
+   "declared": [
+    "dt_job"
+   ],
+   "has_declared": true,
+   "conflicts": false,
+   "ground": null,
+   "candidates": [
+    "dt_eqp",
+    "dt_job",
+    "event_time",
+    "netdie_count",
+    "row_id"
+   ],
+   "universe": "RELATION",
+   "universe_note": "Table columns",
+   "locked": [],
+   "comparison": "equal",
+   "reshapes": false,
+   "disposition": "",
+   "forbidden": [],
+   "note": "Asked before preparation, so table columns only",
+   "refusals": [],
+   "remaining": false
+  }
+ ]
+}

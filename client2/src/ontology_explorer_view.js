@@ -512,8 +512,16 @@ function renderReadTree(state) {
   // its own names; this tree is the declaration, so it reads what the operator wrote.
   const document_ = state.selection?.raw;
   if (!node || !document_ || typeof document_ !== 'object') return null;
-  const context = {
-    schema: state.authoringSchema || {},
+  return renderSkeletonForm(readContext(state.authoringSchema, state.expandedFields), node, '',
+                            document_, 0, state.selection.canonical_id);
+}
+
+/** The context a READ draws with: the skeleton's shape, and "no" to everything editable. One
+ *  literal, called by the read tree and by the form's read-only values (`renderPlannedValue`). */
+function readContext(schema, expanded) {
+  const defs = schema?.skeleton?.defs || {};
+  return {
+    schema: schema || {},
     readOnly: true,
     planRow: () => null,
     // The read-only tree has no plan, so no path has planned members.  Every other
@@ -522,18 +530,16 @@ function renderReadTree(state) {
     // source -- so opening an item threw before it drew anything.
     plannedMembers: () => [],
     covering: () => null,
-    deref: (item) => (item && item.use ? (skeleton.defs || {})[item.use] : item),
+    deref: (item) => (item && item.use ? defs[item.use] : item),
     declared: () => [],
     rolesNear: () => [],
     usedElsewhere: () => [],
     renderRow: () => null,
     suggest: (row) => row,
     hot: [],
-    expanded: state.expandedFields || {},
+    expanded: expanded || {},
     absolute: (at) => at,
   };
-  return renderSkeletonForm(context, node, '', document_, 0,
-                            state.selection.canonical_id);
 }
 
 function renderDefinition(state) {
@@ -1897,6 +1903,36 @@ function branchOwnRow(context, path, depth) {
                  context.renderRow(own, null, true), state, cls);
 }
 
+/** A derived `shape` row whose value is a MAPPING: the plan's value for a map the document
+ *  leaves empty, drawn read-only (`plannedMembers` reads the other shape, a list of names to
+ *  fill). One emitter today: `_inherited_attribute_fields`, a role inheriting its source's
+ *  attributes (lead 619befe8c). The server decides it; the screen compares nothing. */
+function plannedValue(context, path) {
+  const row = context.planRow(path);
+  return row && row.state === 'derived' && row.disposition === 'shape' && row.value
+    && typeof row.value === 'object' && !Array.isArray(row.value) ? row : null;
+}
+
+/** Where the value comes from (the ground's path, in the declaration's own words), then each
+ *  member drawn by the read tree's renderer. The map's add row below stays: it is the override. */
+function renderPlannedValue(context, node, path, row, depth) {
+  const [from] = row.ground?.from_paths || [];
+  const steps = from ? splitBundlePath(from) : [];
+  const [section, id] = splitBundlePath(row.path);
+  const trail = steps[0] === section && steps[1] === id ? steps.slice(2) : steps;
+  const fold = foldDecision(row, context.expanded);
+  const rows = [treeRow(depth + 1, 'Inherited from', [], h('code', 'oe-planned-from', trail.join(' › ')),
+                        h('i', 'oe-tier oe-tier--' + row.tier, fold.open ? row.tier : fold.reason))];
+  // One step under that line, so they read as what it brings -- not as the map's own members.
+  const read = readContext(context.schema, context.expanded);
+  for (const key of Object.keys(row.value)) {
+    const drawn = renderSkeletonForm(read, node.of, memberPath(path, key, node.keyed_by),
+                                     row.value[key], depth + 2, key);
+    if (drawn) rows.push(drawn);
+  }
+  return rows;
+}
+
 /**
  * 「셋 중 하나」 — 고르개 하나와 «고른 가지만».
  *
@@ -1980,8 +2016,12 @@ function renderSkeletonMap(context, node, path, value, depth) {
   const box = h('div', 'oe-node-children');
   // A plan row ABOUT the map itself says what the grammar expects OF it -- which qualifier
   // slots a predicate opens, for instance. It stays at the top of the block.
-  const own = branchOwnRow(context, path, depth);
-  if (own) box.append(own);
+  const given = plannedValue(context, path);
+  if (given) box.append(...renderPlannedValue(context, node, path, given, depth));
+  else {
+    const own = branchOwnRow(context, path, depth);
+    if (own) box.append(own);
+  }
   // 🔴 THE MEMBERS THE PLAN NAMES ARE DRAWN TOO, NOT ONLY THE ONES THE DOCUMENT HOLDS
   // (owner, 2026-08-21: 「packs 제거 후 소스에는 문장id - vocab - vocab 정의 따른 하위 항목별
   // binding 템플릿 이런 형태가 되어야 함」).
