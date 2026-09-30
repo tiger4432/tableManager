@@ -19,6 +19,7 @@
 import { Panel } from './panel.js';
 import { createWalk } from './api.js';
 import { UNPICKED } from '../absent.js';
+import { LOADING, SERVER_REFUSED, unitText } from '../ui_words.js';
 
 export class HeadSummaryPanel extends Panel {
   /**
@@ -131,12 +132,12 @@ export class HeadSummaryPanel extends Panel {
     el.className = 'rb-head-steps';
     const key = doc.createElement('span');
     key.className = 'rb-head-steps-key';
-    key.textContent = steps.length ? `이 웨이퍼 자신의 스텝 ${steps.length}` : '이 웨이퍼 자신의 스텝';
+    key.textContent = steps.length ? `Steps of this wafer · ${steps.length}` : 'Steps of this wafer';
     el.appendChild(key);
     if (!steps.length) {
       const none = doc.createElement('span');
       none.className = 'rb-head-steps-absent';
-      none.textContent = '응답에 스텝이 없습니다 — 구성이 없는 웨이퍼입니다';
+      none.textContent = 'No steps in the response — a wafer with no composition';
       el.appendChild(none);
       return el;
     }
@@ -169,18 +170,18 @@ export class HeadSummaryPanel extends Panel {
       n.textContent = text;
       el.appendChild(n);
     };
-    if (first.wafer) put(`씨앗 웨이퍼 ${first.wafer}`, 'rb-head-wafer-subject');
-    if (first.lot) put(`랏 ${first.lot}`);
-    if (typeof first.cells === 'number') put(`${first.cells}칸`);
+    if (first.wafer) put(`Seed wafer ${first.wafer}`, 'rb-head-wafer-subject');
+    if (first.lot) put(`Lot ${first.lot}`);
+    if (typeof first.cells === 'number') put(unitText(first.cells, 'cell'));
     for (const kind of kinds) {
       const f = this.waferFacts[kind];
       if (typeof f.found !== 'number') continue;
       put(`${kind} ${f.found}`, 'rb-head-wafer-kind');
     }
-    if (typeof first.scanned === 'number') put(`검사 ${first.scanned}`);
+    if (typeof first.scanned === 'number') put(`Scanned ${first.scanned}`);
     // The kinds still in flight are named, so a missing one reads as 「아직」 rather than 「없음」.
     const pending = this.waferKinds.filter((k) => !this.waferFacts[k]);
-    if (pending.length) put(`${pending.join(' · ')} 읽는 중…`, 'rb-head-wafer-pending');
+    if (pending.length) put(`${pending.join(' · ')} · ${LOADING}`, 'rb-head-wafer-pending');
     // 🔴 목업이 머리에 다는 마킹 행수. 이 수는 «맵의 수와 다른 것»입니다 -- 맵은 그 그림에
     //    그려진 칸을, 이건 «지금 찍혀 있는 행»을 셉니다. 그래서 같은 줄에 나란히 둡니다.
     // The board's question (lead 09-30): its own counts, not marking 1's rows.
@@ -190,7 +191,7 @@ export class HeadSummaryPanel extends Panel {
     }
     for (const name of this.markingRows) {
       const n = this.markings ? this.markings.count(name) : 0;
-      put(`${name} · ${n}행`, n > 0 ? 'rb-head-wafer-mark is-live' : 'rb-head-wafer-mark');
+      put(`${name} · ${unitText(n, 'row')}`, n > 0 ? 'rb-head-wafer-mark is-live' : 'rb-head-wafer-mark');
     }
     return el;
   }
@@ -245,14 +246,14 @@ export class HeadSummaryPanel extends Panel {
       return;
     }
     if (this.loadState === 'loading') {
-      root.appendChild(this._note('불러오는 중', this.finalChipId, 'idle'));
+      root.appendChild(this._note(LOADING, this.finalChipId, 'idle'));
       this.host.appendChild(root);
       return;
     }
     if (!this.model || !this.model.ok) {
       // A REFUSAL, said as a refusal. This is the one state that may look like a problem,
       // because it is one -- the server answered and said no.
-      root.appendChild(this._note('서버 거절', (this.model && this.model.message) || '', 'refused'));
+      root.appendChild(this._note(SERVER_REFUSED, (this.model && this.model.message) || '', 'refused'));
       this.host.appendChild(root);
       return;
     }
@@ -263,7 +264,7 @@ export class HeadSummaryPanel extends Panel {
 
     const subject = doc.createElement('span');
     subject.className = 'rb-head-subject';
-    subject.textContent = m.subject.finalChipId || '(이름 없음)';
+    subject.textContent = m.subject.finalChipId || '(unnamed)';
     line.appendChild(subject);
 
     // The wafer, or the fact that there isn't one. `resolution.state` names WHICH absence.
@@ -271,12 +272,12 @@ export class HeadSummaryPanel extends Panel {
       // 🔴 이 칩이 «앉은» 웨이퍼입니다 -- 아래 줄의 「씨앗 웨이퍼」와 «다른 대상»일 수 있고,
       //    실제로 지금 다릅니다(칩 계열과 목업 웨이퍼는 서로 다른 자재입니다). 둘 다 「웨이퍼」로
       //    적으면 두 대상의 수가 «한 대상»의 것으로 읽힙니다.
-      line.appendChild(this._chip('칩이 앉은 웨이퍼', m.wafer.id, 'fact'));
+      line.appendChild(this._chip('Wafer under the chip', m.wafer.id, 'fact'));
     } else {
-      line.appendChild(this._chip('칩이 앉은 웨이퍼', `해결 안 됨 · ${m.resolution.state}`, 'absent'));
+      line.appendChild(this._chip('Wafer under the chip', `Unresolved · ${m.resolution.state}`, 'absent'));
     }
 
-    line.appendChild(this._chip('상태', m.state, 'fact'));
+    line.appendChild(this._chip('State', m.state, 'fact'));
     // 🔴 THE BASIS AND THE CANDIDATE COUNT MOVED TO 구성 (목업 2a). They belong beside the layers
     //    they explain, and having them in both bands is the same fact said twice on one screen.
 
@@ -297,25 +298,25 @@ export class HeadSummaryPanel extends Panel {
     //       말하면서 둘 다 사실인 «척» 하는 것이 지금 제일 나쁩니다. 요청 0개입니다.
     if (this.finalChipId) {
       absences.appendChild(this._chip(
-        '칩', '고정 씨앗 — 마킹을 안 따릅니다 (웨이퍼→칩 엣지 대기)', 'absent'));
+        'Chip', 'Fixed seed · awaiting wafer→chip edge', 'absent'));
     }
 
     if (m.window.defaulted) {
       // 「기간을 안 골랐다」 ≠ 「기간이 없다」. The server applied its own; say whose it is.
       absences.appendChild(this._chip(
-        '기간', `기본값 적용 · ${m.window.spec || '?'} — 고른 적 없음`, 'absent'));
+        'Window', `Default · ${m.window.spec || '?'}`, 'absent'));
     } else if (m.window.spec) {
-      absences.appendChild(this._chip('기간', m.window.spec, 'fact'));
+      absences.appendChild(this._chip('Window', m.window.spec, 'fact'));
     }
 
     // `variable` stays the word the ledger chose.
     if (m.cardinality.components) {
       absences.appendChild(this._chip(
-        '개수', `${m.cardinality.components} — 상수가 아님`, 'absent'));
+        'Components', `${m.cardinality.components} · measured`, 'absent'));
     }
 
     if (!m.provenance.ledgerBacked) {
-      absences.appendChild(this._chip('출처', '원장 근거 없음', 'absent'));
+      absences.appendChild(this._chip('Source', 'No ledger basis', 'absent'));
     }
 
     if (absences.children.length) root.appendChild(absences);

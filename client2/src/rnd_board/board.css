@@ -228,7 +228,6 @@ body {
 .rb-cand-tag--absent { color: var(--text-muted); background: var(--bg-inset); border-style: dashed; }
 .rb-cand-quantity { font-family: var(--font-mono); font-size: var(--fs-label); font-weight: 600; color: var(--text); }
 .rb-cand-model { font-size: var(--fs-tag); color: var(--text-muted); }
-.rb-cand-measured { font-family: var(--font-mono); font-size: var(--fs-tag); color: var(--text-muted); }
 
 .rb-rank { display: flex; flex-direction: column; gap: 6px; padding: 8px 10px; min-height: 0; overflow: auto; }
 .rb-rank-caption { font-size: var(--fs-tag); color: var(--text-muted); }

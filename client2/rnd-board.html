@@ -6,7 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <!-- FOUC 방지: CSS 로드 전에 저장된 테마를 <html data-theme>에 스탬프 (theme.js와 동일 키) -->
   <script>(function(){try{var t=localStorage.getItem('theme');document.documentElement.setAttribute('data-theme',t==='dark'?'dark':'light');}catch(e){document.documentElement.setAttribute('data-theme','light');}})();</script>
-  <title>AssyManager - R&D 진단 보드</title>
+  <title>AssyManager - R&D board</title>
   <link rel="icon" type="image/svg+xml"
     href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🧭</text></svg>" />
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -23,10 +23,10 @@
 <body>
   <div class="rb-page">
     <header class="rb-page__head">
-      <span class="rb-page__title">R&D 진단 보드</span>
+      <span class="rb-page__title">R&D board</span>
       <!-- 🔴 판정 361 ②. 안내가 필요해도 «문장»은 안 씁니다 — 상설 「기호·짧은 영어·명사형」.
            누르는 것과 그 결과를 등호로 잇는 것이 이 사실의 전부이고, 그 밖은 설명입니다. -->
-      <span class="rb-page__note">클릭 = 마킹 · Shift+클릭 = 컨트롤(−)</span>
+      <span class="rb-page__note">Click = mark · Shift+click = control (−)</span>
     </header>
     <!-- 배치는 이 페이지에 없다. 셸이 선언(main.js 의 BOARD)을 읽어 격자에 앉힌다. -->
     <div id="rb-board"></div>

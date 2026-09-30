@@ -20,6 +20,7 @@ import { SIGN } from './marking_store.js';
 import { createWalk } from './api.js';
 import { TablePart } from './table_part.js';
 import { UNPICKED } from '../absent.js';
+import { LOADING, SERVER_REFUSED } from '../ui_words.js';
 
 export class CompositionPanel extends Panel {
   constructor(host, deps) {
@@ -112,8 +113,8 @@ export class CompositionPanel extends Panel {
 
     if (this.loadState === 'no-subject' || this.loadState === 'loading' || !this.model || !this.model.ok) {
       const state = this.loadState === 'no-subject' ? UNPICKED
-        : this.loadState === 'loading' ? '불러오는 중'
-        : '서버 거절';
+        : this.loadState === 'loading' ? LOADING
+        : SERVER_REFUSED;
       const detail = this.loadState === 'refused' && this.model ? this.model.message : (this.finalChipId || '');
       const note = doc.createElement('div');
       note.className = this.loadState === 'refused'
@@ -141,7 +142,7 @@ export class CompositionPanel extends Panel {
     if (m.cardinality.components) {
       const card = doc.createElement('div');
       card.className = 'rb-comp-cardinality';
-      card.textContent = `cardinality 는 ${m.cardinality.components} — 이 칩의 실측이고 상수가 아닙니다`;
+      card.textContent = `Components ${m.cardinality.components} · measured on this chip`;
       root.appendChild(card);
     }
 
@@ -154,7 +155,7 @@ export class CompositionPanel extends Panel {
       box.className = 'rb-comp-resolution';
       const head = doc.createElement('div');
       head.className = 'rb-comp-resolution-head';
-      head.textContent = '어떻게 정해졌나';
+      head.textContent = 'How it was resolved';
       box.appendChild(head);
       const put = (k, v, absent) => {
         const row = doc.createElement('div');
@@ -170,7 +171,7 @@ export class CompositionPanel extends Panel {
       };
       put('state', m.resolution.state || '-', !m.resolution.state);
       // `basis` is a path into the ledger; it is printed verbatim so it can be checked.
-      put('basis', m.resolution.basis || '응답에 근거가 없습니다', !m.resolution.basis);
+      put('basis', m.resolution.basis || 'No basis in the response', !m.resolution.basis);
       put('candidates',
         typeof m.resolution.candidateCount === 'number' ? String(m.resolution.candidateCount) : '-',
         typeof m.resolution.candidateCount !== 'number');
@@ -189,15 +190,15 @@ export class CompositionPanel extends Panel {
       reads: this.reads,
       writes: this.writes,
       rowKey: 'nodeId',
-      emptyText: '이 웨이퍼는 구성 기록이 없습니다 — 구성은 본딩된 «칩»에만 있습니다',
+      emptyText: 'No composition · not a bonded chip',
       columns: [
-        { key: 'layer', label: '층', width: '4rem', kind: 'mono' },
-        { key: 'wafer', label: '코어 웨이퍼', width: 'minmax(11rem, 16rem)', kind: 'mono' },
-        { key: 'lot', label: '랏', width: 'minmax(9rem, 13rem)', kind: 'mono' },
-        { key: 'slot', label: '슬롯', width: '3rem' },
-        { key: 'branch', label: '브랜치', width: '4rem' },
-        { key: 'events', label: '이력', width: '4rem', kind: 'number' },
-        { key: 'state', label: '상태', width: '7rem', kind: 'badge' },
+        { key: 'layer', label: 'Layer', width: '4rem', kind: 'mono' },
+        { key: 'wafer', label: 'Core wafer', width: 'minmax(11rem, 16rem)', kind: 'mono' },
+        { key: 'lot', label: 'Lot', width: 'minmax(9rem, 13rem)', kind: 'mono' },
+        { key: 'slot', label: 'Slot', width: '3rem' },
+        { key: 'branch', label: 'Branch', width: '4rem' },
+        { key: 'events', label: 'Events', width: '4rem', kind: 'number' },
+        { key: 'state', label: 'State', width: '7rem', kind: 'badge' },
       ],
       rows: m.components.map((c) => this._layerRow(c)),
     });
@@ -224,13 +225,13 @@ export class CompositionPanel extends Panel {
     head.className = 'rb-comp-steps-head';
     const wafer = (c.core && c.core.wafer) || c.id;
     const steps = c.steps || [];
-    head.textContent = `${wafer} 의 스텝 ${steps.length}`;
+    head.textContent = `${wafer} · steps ${steps.length}`;
     box.appendChild(head);
     if (!steps.length) {
       const none = doc.createElement('span');
       none.className = 'rb-comp-steps-absent';
       // Not 「공정이 없다」: the response carried no upstream process for this layer.
-      none.textContent = '응답에 공정 이력이 없습니다';
+      none.textContent = 'No process history in the response';
       box.appendChild(none);
       return box;
     }

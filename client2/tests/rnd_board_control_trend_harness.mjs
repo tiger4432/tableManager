@@ -302,16 +302,16 @@ async function suite(mods) {
       .find((p) => p.textContent.includes('같은 레그'));
     // 🔴 수를 쓰면 «어디서 왔는지»도 씁니다. 맵은 이미 그러고 있었고 알약만 안 그랬습니다.
     ok('A7 a peer count names the relation it was counted from',
-      Boolean(straddlePill) && /bonding_log\.leg 기준/.test(straddlePill.getAttribute('title') || ''),
+      Boolean(straddlePill) && /by bonding_log\.leg/.test(straddlePill.getAttribute('title') || ''),
       String(straddlePill && straddlePill.getAttribute('title')));
     ok('A6 a straddled peer says so instead of printing a comparable number',
-      Boolean(straddlePill) && straddlePill.textContent.includes('대조 0')
-      && straddlePill.textContent.includes('걸침 6'), straddlePill && straddlePill.textContent);
+      Boolean(straddlePill) && straddlePill.textContent.includes('no contrast')
+      && straddlePill.textContent.includes('both sides 6'), straddlePill && straddlePill.textContent);
 
     // 🔴 A COUNT NOBODY SERVES IS 「—」. Zero would say 「또래가 없다」, which nobody measured.
-    const peer = pills.find((p) => p.textContent.includes('같은 랏'));
+    const peer = pills.find((p) => p.textContent.includes('Same lot'));
     ok('A5 a peer axis nobody counted shows an em dash, not a zero',
-      Boolean(peer) && peer.textContent.includes('—') && !/같은 랏0/.test(peer.textContent),
+      Boolean(peer) && peer.textContent.includes('—') && !/Same lot0/.test(peer.textContent),
       peer && peer.textContent);
 
     // ── B. CHOOSING WRITES THE DECLARED NAME, AND THE AXIS IS A PAIR ───────────
@@ -360,7 +360,7 @@ async function suite(mods) {
     // 🔴 THE POINT WITH NO RATE IS NOT DRAWN AT ZERO. `absence_is_zero` is false upstream.
     eq('C1 only points that carry a rate are plotted', dots.length, 2);
     ok('C2 the unplotted point is counted and named, not dropped',
-      byClass(host, 'rb-trend-absent').some((n) => n.textContent.includes('비율 없음 1')),
+      byClass(host, 'rb-trend-absent').some((n) => n.textContent.includes('No ratio 1')),
       byClass(host, 'rb-trend-absent').map((n) => n.textContent).join(' | '));
     dots[0].click({});
     eq('C3 a click marks the points OWN mark_key', markings.signOf('marking:0', 'mk-1'), SIGN.CASE);
@@ -377,15 +377,15 @@ async function suite(mods) {
     //    트렌드는 0%」 같은 어긋남을 못 봅니다 -- 오늘 실제로 못 봤습니다.
     const dot0 = byClass(host, 'rb-trend-dot')[0];
     ok('C8 a trend point annotates the counts its ratio was made of',
-      Boolean(dot0) && /검사한 칩 \d+/.test(dot0.getAttribute('title') || '')
-      && /보이드 난 칩/.test(dot0.getAttribute('title') || ''),
+      Boolean(dot0) && /chips inspected \d+/.test(dot0.getAttribute('title') || '')
+      && /chips with a void/.test(dot0.getAttribute('title') || ''),
       String(dot0 && dot0.getAttribute('title')));
     // 🔴 128 과 64 는 «모순이 아니라 알갱이 둘»입니다. 화면이 그 낱말을 말해야 가릴 수 있습니다.
     ok('C9 a point says which grain its counts were taken at',
       /WaferLeg\(wafer\)/.test(dot0.getAttribute('title') || ''),
       String(dot0 && dot0.getAttribute('title')));
     ok('C7 the chart says what it folds a point out of',
-      /접는 단위 WaferLeg/.test(legend.textContent), legend.textContent.slice(0, 90));
+      /Grain WaferLeg/.test(legend.textContent), legend.textContent.slice(0, 90));
   }
 
   // ── D. A DEGENERATE AXIS IS SAID, NOT DRAWN AROUND ───────────────────────────
@@ -401,12 +401,12 @@ async function suite(mods) {
     t.mount();
     await flush(); await flush();
     const text = host.textContent;
-    ok('D1 a flat value axis is stated', text.includes('값이 전부 같습니다'), text.slice(0, 160));
+    ok('D1 a flat value axis is stated', text.includes('All values equal'), text.slice(0, 160));
     // 🔴 THE CLAIM MOVED WITH THE AXIS. It used to be 「가로는 차례」 because the axis said
     //    nothing; the axis now names the materials and prints the one timestamp, so what must
     //    be scored is that BOTH are said -- the material ticks and the moment.
     ok('D2 a single timestamp is said, and the axis names its materials',
-      text.includes('한 시각') && text.includes('가로는 «자재»입니다'), text.slice(0, 200));
+      text.includes('single timestamp') && text.includes('x is material'), text.slice(0, 200));
     ok('D4 each material gets one tick, not one per point',
       byClass(host, 'rb-trend-xtick').length === 2,
       String(byClass(host, 'rb-trend-xtick').map((n) => n.textContent)));
@@ -444,7 +444,7 @@ async function suite(mods) {
     await flush(); await flush();
     eq('E2 a seat that declared no collect is not walked for one', asked, 0);
     ok('E3 ... and the panel SAYS that, rather than drawing a refusal',
-      bareHost.textContent.includes('선언하지 않았습니다')
+      bareHost.textContent.includes('No collect declared')
       && byClass(bareHost, 'rb-trend-note--refused').length === 0,
       bareHost.textContent.slice(0, 140));
   }
@@ -571,17 +571,17 @@ const MUTANTS = [
   { id: 'M13', what: 'a point states counts without the grain they were taken at',
     catches: 'C9',
     mutate: { 'main_trend_panel.js': (s) => s.replace(
-      "        + (grainWord ? ` · ${grainWord} 기준` : '')", "        + ''") } },
+      "        + (grainWord ? ` · by ${grainWord}` : '')", "        + ''") } },
   // 🔴 앵커가 «옮겨졌습니다» (라운드 ①-a): 제목이 축마다 다른 문장을 쓰게 되면서 이 줄이
   //    삼항의 «비율 쪽 가지»가 됐습니다. 재는 것은 그대로입니다 -- 점이 만들어진 두 수.
   { id: 'M12', what: 'a trend point shows only its ratio, hiding the two counts it was made of',
     catches: 'C8',
     mutate: { 'main_trend_panel.js': (s) => s.replace(
-      "        : ` · 검사한 칩 ${seen} · 보이드 난 칩 ${hit}`", "        : ''") } },
+      "        : ` · chips inspected ${seen} · chips with a void ${hit}`", "        : ''") } },
   { id: 'M11', what: 'a peer count is shown without saying which relation it came from',
     catches: 'A7',
     mutate: { 'control_bar_panel.js': (s) => s.replace(
-      "    if (got.relation) parts.push(`${got.relation}${got.column ? `.${got.column}` : ''} 기준`);",
+      "    if (got.relation) parts.push(`by ${got.relation}${got.column ? `.${got.column}` : ''}`);",
       '    if (false) parts.push();') } },
   { id: 'M10', what: 'the chart hides what it folds a point out of',
     catches: 'C7',
@@ -599,8 +599,8 @@ const MUTANTS = [
   { id: 'M14', what: 'an empty marking is reported as an absence, folding two absences into one',
     catches: 'A8',
     mutate: { 'control_bar_panel.js': (s) => s.replace(
-      "      note.textContent = `마킹 없음 · ${this.numericReads}`;",
-      "      note.textContent = '값 없음';") } },
+      "      note.textContent = `No marking · ${this.numericReads}`;",
+      "      note.textContent = 'No value';") } },
   // 🔴 집계는 «데이터가 필요 없습니다». 데이터를 기다리게 하면 빈 마킹에서 축이 통째로 사라집니다.
   { id: 'M15', what: 'the aggregations wait for data, so an empty marking has no axis at all',
     catches: 'A9',
@@ -685,8 +685,8 @@ const MUTANTS = [
   { id: 'M8', what: 'the legend drops the denominator, leaving a rate nobody can check',
     catches: 'C5',
     mutate: { 'main_trend_panel.js': (s) => s.replace(
-      "      prov.textContent = `y = 비율 (분자 ${m.provenance.numerator || '?'}`",
-      "      prov.textContent = `y = 비율 (`") } },
+      "      prov.textContent = `y = ratio (numerator ${m.provenance.numerator || '?'}`",
+      "      prov.textContent = `y = ratio (`") } },
 ];
 
 const result = await suite(await loadModules());

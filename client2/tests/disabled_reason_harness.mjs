@@ -163,7 +163,7 @@ async function walkBoxSuite(WalkBoxPanel) {
   const off = await seat(null);
   const go = walk(off).find((n) => String(n.className || '').includes('rb-walkbox-go'));
   ok(Boolean(go) && go.disabled === true, 'W1 타입이 없으면 「걷기」가 꺼진다', go && go.disabled);
-  ok(Boolean(go) && titleOf(go) === '시작 타입을 고르십시오',
+  ok(Boolean(go) && titleOf(go) === 'Choose a start type',
      'W2 그리고 «자기 자리»에서 무엇이 필요한지 말한다', go && titleOf(go));
   ok(mute(off).length === 0, 'W3 말 없이 꺼진 컨트롤이 하나도 없다',
      mute(off).map((n) => n.className));

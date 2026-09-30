@@ -331,7 +331,7 @@ async function suite(mods) {
   pn.mount();
   await settle();
   const noneText = textOf(hostN);
-  ok('E5 no outgoing edges is its own sentence', noneText.includes('나가는 엣지가 없습니다'), noneText.slice(0, 60));
+  ok('E5 no outgoing edges is its own sentence', noneText.includes('No edge out of this node'), noneText.slice(0, 60));
   ok('E6 and that is not the not-chosen state', !noneText.includes(UNPICKED));
 
   return { ran, failed: failedList.slice() };
@@ -376,7 +376,7 @@ const MUTANTS = [
     from: '    if (!this.walkFn || !start) {',
     to: '    if (!this.walkFn) {' },
   { name: 'every-absence-shares-one-sentence', target: 'reach_panel.js', wakes: 'E3',
-    from: "    if (this.loadState === 'refused') return (this.model && this.model.message) || '걸어 보지 못했습니다';",
+    from: "    if (this.loadState === 'refused') return (this.model && this.model.message) || SERVER_REFUSED;",
     to: "    if (this.loadState === 'refused') return UNPICKED;" },
   // 🔴 `writes: null` ON THE TABLE IS NOT SCORED, AND THAT IS SAID OUT LOUD RATHER THAN
   //    FAKED. A mutant that hands the table this part's write name ESCAPES: the table would

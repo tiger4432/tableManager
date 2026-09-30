@@ -40,9 +40,10 @@ import { UNPICKED } from '../absent.js';
 // 🔴 C-120. 「꺼짐 + 왜」의 좌석 하나. 이 부품의 「걷기」가 그 넷 중 «간접»이었습니다 —
 //    사유를 옆 패널에서 읽어야 했습니다.
 import { setDisabledReason } from '../disabled_reason.js';
+import { LOADING, WALKING, CHOOSE, SERVER_REFUSED, unitText } from '../ui_words.js';
 
 /** 시작 타입이 없을 때의 «한 문장». 이 부품이 두 자리에서 같은 말을 하므로 상수입니다. */
-const PICK_START_TYPE = '시작 타입을 고르십시오';
+const PICK_START_TYPE = 'Choose a start type';
 // 🔴 C-70. 구획과 컬럼을 «걷기 페이지와 같은 함수»에서 받습니다. 이 파일이 컬럼 셋을 자기
 //    소스에 적고 있던 동안 두 걷기 표는 «갈라질 수» 있었고, 갈라져도 오류가 안 납니다.
 import { sectionsByType, sectionHeading, tableColumns, cellSource, pluralAttributes, COLUMNS }
@@ -270,12 +271,12 @@ export class WalkBoxPanel extends Panel {
 
     if (this.declState !== 'ready') {
       root.appendChild(this._note(this.declState === 'loading'
-        ? '선언을 읽는 중…'
+        ? LOADING
         : (this.declState === 'refused'
           // ② -- 라우트 부재도 여기입니다.
           ? ((this.declaration && this.declaration.message)
-            || '서버가 아직 선언을 못 줍니다 — 걷기 상자는 그 답 위에 섭니다')
-          : '선언을 받지 못했습니다')));
+            || SERVER_REFUSED)
+          : 'No declaration')));
       this.host.appendChild(root);
       return;
     }
@@ -307,7 +308,7 @@ export class WalkBoxPanel extends Panel {
     if (!this.historyName() || !this.nodes.size) return box;
     const head = doc.createElement('div');
     head.className = 'rb-walkbox-history-head';
-    head.textContent = `탐색 이력 ${this.nodes.size} · ${this.historyName()}`;
+    head.textContent = `History ${this.nodes.size} · ${this.historyName()}`;
     box.appendChild(head);
     const depthOf = (id) => {
       let n = 0;
@@ -322,7 +323,7 @@ export class WalkBoxPanel extends Panel {
       row.setAttribute('type', 'button');
       // 값을 «세어서» 보여 줍니다 -- 노드 id 는 길고, 읽는 사람이 아는 것은 「몇 개를 들고 있나」입니다.
       const marks = node.value.length;
-      row.textContent = `${'· '.repeat(depthOf(id))}${marks}개${id === this.current ? ' ←' : ''}`;
+      row.textContent = `${'· '.repeat(depthOf(id))}${unitText(marks, 'value')}${id === this.current ? ' ←' : ''}`;
       row.addEventListener('click', () => this.goto(id));
       box.appendChild(row);
     }
@@ -340,7 +341,7 @@ export class WalkBoxPanel extends Panel {
    */
   _destinationRow() {
     const doc = this.doc;
-    const box = this._field('무엇을 볼까 (도착 타입)');
+    const box = this._field('DESTINATION');
     const from = bareTypeName(this.nodeType);
     if (!from) {
       box.appendChild(this._note(PICK_START_TYPE));
@@ -350,7 +351,7 @@ export class WalkBoxPanel extends Panel {
     select.className = 'rb-walkbox-select';
     const none = doc.createElement('option');
     none.setAttribute('value', '');
-    none.textContent = '— 술어를 직접 고릅니다 —';
+    none.textContent = '— choose predicates —';
     select.appendChild(none);
     for (const type of this.declaredTypes()) {
       if (type === from) continue;
@@ -371,7 +372,7 @@ export class WalkBoxPanel extends Panel {
     if (!routes.length) {
       // 🔴 「없다」와 「못 봤다」를 가릅니다 -- 이건 데이터가 아니라 «선언»의 사실입니다.
       box.appendChild(this._note(
-        `${from} 과 ${this.destination} 은 «선언상» 안 이어집니다`, 'is-absent'));
+        `${from} and ${this.destination} are not joined in the declaration`, 'is-absent'));
       return box;
     }
     routes.forEach((route, index) => {
@@ -384,9 +385,9 @@ export class WalkBoxPanel extends Panel {
       //    지금은 «한 번»으로 걷고, 그것이 «기본값임을 말합니다» -- 말 안 하면 화면이
       //    「한 대 위까지만 봤다」를 「그게 전부다」로 내놓습니다. 오늘의 부재 규율 그대로입니다.
       const loops = route.chain.filter((t, i) => i && t === route.chain[i - 1]).length;
-      row.textContent = `경로 ${String.fromCharCode(65 + index)} · ${route.hops}홉 · `
+      row.textContent = `Route ${String.fromCharCode(65 + index)} · ${unitText(route.hops, 'hop')} · `
         + `${route.chain.join(' → ')}`
-        + (loops ? ` · 같은 타입 되짚기 «1회»가 기본값입니다` : '');
+        + (loops ? ` · one revisit of a type by default` : '');
       row.addEventListener('click', () => this.useRoute(index));
       box.appendChild(row);
     });
@@ -440,7 +441,7 @@ export class WalkBoxPanel extends Panel {
     for (const t of ['', ...this.types()]) {
       const opt = doc.createElement('option');
       opt.setAttribute('value', t);
-      opt.textContent = t || '— 고르십시오 —';
+      opt.textContent = t || CHOOSE;
       if (t === this.nodeType) opt.setAttribute('selected', 'selected');
       sel.appendChild(opt);
     }
@@ -479,8 +480,8 @@ export class WalkBoxPanel extends Panel {
     const doc = this.doc;
     const box = this._field('KEY');
     const keys = this.keysOf();
-    if (!this.nodeType) { box.appendChild(this._note('타입을 고르면 그 타입의 키가 나옵니다')); return box; }
-    if (!keys.length) { box.appendChild(this._note('이 타입은 선언에 키가 없습니다')); return box; }
+    if (!this.nodeType) { box.appendChild(this._note(PICK_START_TYPE)); return box; }
+    if (!keys.length) { box.appendChild(this._note('No key declared for this type')); return box; }
     for (const k of keys) {
       const wrap = doc.createElement('div');
       wrap.className = 'rb-walkbox-key';
@@ -504,8 +505,8 @@ export class WalkBoxPanel extends Panel {
     if (!options.length) {
       // 🔴 시금석. 「없다」를 «문장»으로 -- 빈 목록은 고장과 구별이 안 됩니다.
       box.appendChild(this._note(this.nodeType
-        ? `${this.nodeType} 에서 나가는 술어가 없습니다 — 이 타입은 목적어로만 나옵니다`
-        : '선언에 술어가 없습니다', 'is-absent'));
+        ? `No predicate out of ${this.nodeType} — this type is only an object`
+        : 'No predicate declared', 'is-absent'));
       return box;
     }
     for (const name of options) {
@@ -521,7 +522,7 @@ export class WalkBoxPanel extends Panel {
       wrap.append(cb, text);
       box.appendChild(wrap);
     }
-    box.appendChild(this._note('안 고르면 서버 기본값 — 전부 따릅니다'));
+    box.appendChild(this._note('None = all (server default)'));
     return box;
   }
 
@@ -532,7 +533,7 @@ export class WalkBoxPanel extends Panel {
     const btn = doc.createElement('button');
     btn.className = 'rb-walkbox-go';
     btn.setAttribute('data-action', 'walk');
-    btn.textContent = '걷기';
+    btn.textContent = 'Walk';
     // 🔴 C-120. 전에는 «꺼지기만» 했습니다. 사유는 옆 패널의 「마킹 1 · 0 marked」에서
     //    «간접으로» 읽어야 했고, 그것은 이 버튼의 자리가 아닙니다. 철자는 이 부품이 이미
     //    쓰던 것(`PICK_START_TYPE`)이라 두 낱말이 갈라질 자리가 없습니다.
@@ -561,7 +562,7 @@ export class WalkBoxPanel extends Panel {
     // 🔴 문장은 표 «밖»에 답니다. `TablePart.render()` 가 첫 줄에서 자기 host 를 비우므로,
     //    같은 상자에 붙이면 표가 그려지는 순간 «조용히 지워집니다» -- 오류도 안 나고 픽셀만
     //    사라집니다. 하니스 T1 이 그것을 잡았습니다.
-    if (cut) box.appendChild(this._note(`예산에서 끊겼습니다 — ${cut}. 이게 전부가 아닙니다`, 'is-cut'));
+    if (cut) box.appendChild(this._note(`Truncated at ${cut} · may be more`, 'is-cut'));
     // 🔴 C-51. 「구간 밖이라 안 가져온 수」 — «값 옆 한 줄». 판정은 `createWalkBoxWalk` 가
     //    이미 했습니다(`intervalExcluded`); 여기서 응답을 다시 읽으면 네 번째 사본입니다.
     // 🔴 키가 «없으면» 안 그립니다(구간을 안 물었다). `0` 은 «그립니다» — 「물었고 제외된 게
@@ -569,7 +570,7 @@ export class WalkBoxPanel extends Panel {
     const excluded = this.walkState === 'ready' && this.result
       ? this.result.intervalExcluded : null;
     if (excluded !== null && excluded !== undefined) {
-      box.appendChild(this._note(`구간 밖 ${excluded}`, 'is-interval'));
+      box.appendChild(this._note(`Outside the interval ${excluded}`, 'is-interval'));
     }
     // 🔴 C-70. 걷기 결과는 «한 타입이 아닙니다» — 이 부품은 `collect` 를 안 싣고 서버 기본값은
     //    「닿은 것 전부」입니다. 타입마다 선언된 키가 다르므로 «구획»이 컬럼을 선언에서 가져올
@@ -616,13 +617,13 @@ export class WalkBoxPanel extends Panel {
 
   /** 부재 셋, 문장 셋. */
   _emptyText() {
-    if (this.walkState === 'loading') return '걷는 중…';
+    if (this.walkState === 'loading') return WALKING;
     // ② 서버가 못 준다 -- 거절과 라우트 부재가 같은 자리입니다.
     if (this.walkState === 'refused') {
-      return (this.result && this.result.message) || '서버가 걷기에 답하지 않았습니다';
+      return (this.result && this.result.message) || SERVER_REFUSED;
     }
     // ③ 걸었는데 없다.
-    if (this.walkState === 'ready') return '걸었는데 닿은 것이 없습니다';
+    if (this.walkState === 'ready') return 'Walked, reached nothing';
     // ① 아직 안 골랐다 / 안 걸었다.
     // C-99 ③. 두 문장이 한 값으로. 다음 행동은 «누를 수 있는 버튼»이 이미 말합니다.
     return UNPICKED;

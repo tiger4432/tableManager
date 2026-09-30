@@ -87,7 +87,7 @@ export class GridShell {
       const PartClass = this.parts[decl.part];
       if (!PartClass) {
         el.setAttribute('data-panel-state', 'unknown-part');
-        el.textContent = `미등록 부품: ${decl.part}`;
+        el.textContent = `Unregistered part: ${decl.part}`;
         this.panels.set(decl.id, { el, part: null, disconnect: () => {} });
         continue;
       }

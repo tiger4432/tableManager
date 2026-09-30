@@ -150,13 +150,13 @@ async function suite(mods) {
   const c = mk(cand.CandidateListPanel, hostC, { doc, markings, reads: 'marking:1', writes: 'marking:1' });
   c.mount(); await flush(); await flush();
   const candText = hostC.textContent;
-  truthy('Z1 contrast:unexamined says nobody measured, not that it was clean', candText.includes('또래를 안 쟀'));
+  truthy('Z1 contrast:unexamined says nobody measured, not that it was clean', candText.includes('No controls'));
   eq('Z1b and it is not drawn with the refusal class', byClass(hostC, 'rb-cand-line--refused').length, 0);
 
   const hostD = doc.createElement('div');
   const d = mk(cand.CandidateListPanel, hostD, { doc, markings, reads: 'marking:1', writes: null }, bodyWith({ complete: false }));
   d.mount(); await flush(); await flush();
-  truthy('Z2 complete:false says UNEXAMINED, not absent', hostD.textContent.includes('미검사'));
+  truthy('Z2 complete:false says UNEXAMINED, not absent', hostD.textContent.includes('not walked'));
 
   const hostE = doc.createElement('div');
   const e = mk(cand.CandidateListPanel, hostE, { doc, markings, reads: 'marking:1', writes: null }, bodyWith({ state: 'empty', ranked: [] }));
@@ -165,9 +165,9 @@ async function suite(mods) {
   // 「연결 없음」 -- the same die seed answers 2 under `collect=entity`, and 4 nodes / 3 edges
   // were there all along. A part that prints only the absence has denied a transfer.
   truthy('Z3 state:empty still states what the walk DID reach',
-    hostE.textContent.includes('노드 4') && hostE.textContent.includes('엣지 3'));
+    hostE.textContent.includes('Nodes 4') && hostE.textContent.includes('edges 3'));
   truthy('Z3c and says the absence is of CANDIDATES, not of connections',
-    hostE.textContent.includes('원인 후보는 없습니다'));
+    hostE.textContent.includes('no cause candidate'));
   eq('Z3b and it is not a refusal', byClass(hostE, 'rb-cand-line--refused').length, 0);
 
   const hostR = doc.createElement('div');
@@ -181,23 +181,23 @@ async function suite(mods) {
   //       레인 파일이라 여기서 안 고쳤고 보고했습니다). 배선만 먼저 깔고 단언은 모델에 겁니다.
   // 🔴 목업의 다섯 부류 중 «안 오는 셋»을 이름으로 말합니다 -- 자리를 비우면 「없다」로 읽힙니다.
   truthy('Z11 the categories this walk does not carry are named, not omitted',
-    /공정 split · 사고 · 코멘트/.test(hostC.textContent), hostC.textContent.slice(0, 80));
+    /Process split · incidents · comments/.test(hostC.textContent), hostC.textContent.slice(0, 80));
   truthy('Z9 nothing is said about truncation while the walk was not truncated',
-    !/잘림/.test(hostR.textContent));
+    !/Truncated/.test(hostR.textContent));
   r.model.truncated = ['depth'];
   r.render();
   truthy('Z10 a truncated walk says so, in the words the server used',
-    /depth 에서 잘림/.test(hostR.textContent), hostR.textContent.slice(0, 120));
+    /Truncated at depth/.test(hostR.textContent), hostR.textContent.slice(0, 120));
   // 상태 칸은 이제 공유 표의 `badge` 컬럼입니다 -- 마지막 셀. 표기가 한 곳으로 모였습니다.
   const stateCells = byClass(hostR, 'rb-table-cell--badge').map((n) => n.textContent);
-  truthy('Z4 tied is a word in the state column', stateCells.some((s) => s.includes('동률')));
-  truthy('Z5 incomparable is a DIFFERENT word', stateCells.some((s) => s.includes('종류 다름')));
+  truthy('Z4 tied is a word in the state column', stateCells.some((s) => s.includes('Tied')));
+  truthy('Z5 incomparable is a DIFFERENT word', stateCells.some((s) => s.includes('Incomparable')));
   // 🔴 The collapse test: if a part drew tied and incomparable the same way, this fails.
   truthy('Z6 tied and incomparable are not the same string',
-    stateCells.some((s) => s.includes('동률') && !s.includes('종류 다름')));
+    stateCells.some((s) => s.includes('Tied') && !s.includes('Incomparable')));
 
   // ── R. rank is not a verdict ──────────────────────────────────────────────────
-  truthy('R1 the panel says so on itself', hostR.textContent.includes('판정 아님'));
+  truthy('R1 the panel says so on itself', hostR.textContent.includes('Not a verdict'));
   const ranks = byClass(hostR, 'rb-table-cell--rank').map((n) => n.textContent);
   // The header cells carry no `rb-rank-n`, so this is the data rows only. 2 appears TWICE:
   // that is the tie surviving, and X4 (renumbering) dies right here.
@@ -254,14 +254,15 @@ async function suite(mods) {
     [Object.values(before).includes(true), Object.values(before).includes(false)], [true, true]);
   eq('H1 on the same fixture, measured is what the pairing function answered before it retired', now, before);
   eq('H2 the pairing function is gone', 'measuredFromHops__untilServerServesIt' in mods.api, false);
-  // The card says the judgment itself; the name-only ones fold into one card (lead 1b1d90d61).
+  // Only the measured ones get a card, the name-only ones fold into one, and a card carries no
+  // measured line of its own - the head says Measured N (lead 919ccc065).
   const hostH = doc.createElement('div');
   const h = mk(cand.CandidateListPanel, hostH, { doc, markings, reads: 'marking:1', writes: 'marking:1' }, measuredBody);
   h.mount(); await flush(); await flush();
-  eq('H3 a measured card says Measured, and the name-only candidates fold into one card',
-    [byClass(hostH, 'rb-cand-measured').map((n) => n.textContent),
-      byClass(hostH, 'rb-cand-card--folded').length],
-    [Object.values(before).filter(Boolean).map(() => 'Measured'), 1]);
+  eq('H3 the measured candidates get a card each, the name-only fold into one, no per-card measured line',
+    [byClass(hostH, 'rb-cand-card').filter((n) => !String(n.className).includes('--folded')).length,
+      byClass(hostH, 'rb-cand-card--folded').length, byClass(hostH, 'rb-cand-measured').length],
+    [Object.values(before).filter(Boolean).length, 1, 0]);
 
   return { ran, failures };
 }
@@ -272,15 +273,16 @@ const MUTANTS = [
     mutate: { 'api.js': (s) => s.replace("(h.predicates || []).includes('measures')", "(h.predicates || [])[0] === 'measures'") } },
   { id: 'X13', what: 'any predicate counts, so a name-only candidate reads as measured', catches: 'H1',
     mutate: { 'api.js': (s) => s.replace("(h.predicates || []).includes('measures')", '(h.predicates || []).length > 0') } },
-  { id: 'X14', what: 'a measured card draws the dash again, the line that read as not measured', catches: 'H3',
-    mutate: { 'candidate_list_panel.js': (s) => s.replace("measured.textContent = c.measured ? 'Measured' : '-';", "measured.textContent = '-';") } },
+  { id: 'X14', what: 'a name-only candidate gets a card of its own', catches: 'H3',
+    mutate: { 'candidate_list_panel.js': (s) => s.replace('      if (!c.measured) continue;\n      grid.appendChild(this._card(c));',
+      '      grid.appendChild(this._card(c));') } },
   { id: 'X11', what: 'one list gets its own load again - a second copy of the prelude', catches: 'D5',
     mutate: { 'rank_list_panel.js': (s) => s.replace(
       '  render() {', '  async load() { return super.load(); }\n\n  render() {') } },
   { id: 'X10', what: 'the unserved candidate categories are omitted, so they read as absent',
     catches: 'Z11',
     mutate: { 'candidate_list_panel.js': (s) => s.replace(
-      "    head.appendChild(this._stat('공정 split · 사고 · 코멘트 — 이 walk 이 안 싣습니다', 'absent'));",
+      "    head.appendChild(this._stat('Process split · incidents · comments — not in this walk', 'absent'));",
       '    if (false) head.appendChild(null);') } },
   // 🔴 잘린 것을 안 말하면 「지금까지 본 것 중 1위」가 「1위」로 읽힙니다.
   { id: 'X9', what: 'a truncated walk says nothing, so a partial ranking reads as the whole one',
@@ -290,14 +292,14 @@ const MUTANTS = [
       '    if (false) {') } },
   { id: 'X1', what: 'contrast:unexamined is drawn as a refusal', catches: 'Z1b',
     mutate: { 'candidate_list_panel.js': (s) => s.replace(
-      "head.appendChild(this._stat('대조군 없음 — 또래를 안 쟀습니다', 'absent'));",
-      "root.appendChild(this._line('대조군 없음 — 또래를 안 쟀습니다', 'refused'));") } },
+      "head.appendChild(this._stat('No controls · unexamined', 'absent'));",
+      "root.appendChild(this._line('No controls · unexamined', 'refused'));") } },
   { id: 'X2', what: 'state:empty is reported as "no cause"', catches: 'Z3c',
     mutate: { 'candidate_list_panel.js': (s) => s.replace(
-      '원인 후보는 없습니다', '원인 없음') } },
+      '— no cause candidate`', '— no cause`') } },
   { id: 'X3', what: 'incomparable is collapsed into tied', catches: 'Z5',
     mutate: { 'rank_list_panel.js': (s) => s.replace(
-      "if (c.incomparable) words.push('종류 다름');", '') } },
+      "if (c.incomparable) words.push('Incomparable');", '') } },
   { id: 'X4', what: 'ties are renumbered so the order looks total', catches: 'R2',
     mutate: { 'rank_list_panel.js': (s) => s.replace(
       '      rank: c.rank === null ? null : String(c.rank),',
@@ -314,7 +316,7 @@ const MUTANTS = [
       `      quantity: String(row.label || ''),`) } },
   { id: 'X0', what: 'the empty state denies the transfer by printing only the absence', catches: 'Z3 state:empty',
     mutate: { 'candidate_list_panel.js': (s) => s.replace(
-      '${reached} — 원인 후보는 없습니다', '연결 없음') } },
+      '${reached} — no cause candidate', 'no connection') } },
   { id: 'X7', what: 'all evidence is expanded by default', catches: 'E1',
     mutate: { 'rank_list_panel.js': (s) => s.replace(
       "      detailFor: (row) => (row.nodeId && this.opened.has(row.nodeId)",
