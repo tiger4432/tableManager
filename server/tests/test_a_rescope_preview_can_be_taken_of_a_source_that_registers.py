@@ -96,7 +96,7 @@ def no_database(monkeypatch):
     import ledger.store as store_module
 
     monkeypatch.setattr(store_module, "LedgerStore",
-                        lambda engine: SimpleNamespace(connection=FakeConnection))
+                        lambda engine, **_: SimpleNamespace(connection=FakeConnection))
     return FakeEngine()
 
 

@@ -41,7 +41,7 @@ def client(monkeypatch):
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
 
-    monkeypatch.setattr(_config, "load", lambda: {"entities": {"wafer@1": {"keys": ["wid"]}},
+    monkeypatch.setattr(_config, "load", lambda *_args, **_kwargs: {"entities": {"wafer@1": {"keys": ["wid"]}},
                                                    "vocabulary": {}})
     app = FastAPI()
     app.include_router(trace_router.router)

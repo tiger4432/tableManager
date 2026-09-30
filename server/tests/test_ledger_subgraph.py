@@ -298,13 +298,16 @@ def test_entity_label_takes_its_key_order_from_the_live_declaration():
     to payload insertion order — which for `die` leads with x and y and pushes the only
     key that names the material out of a two-value label."""
     keys = {"x": 1.0, "y": 10.0, "mat_id": "SYN-XFER-CORE-W07", "mat_type": "Wafer"}
-    saved = ledger_subgraph._entity_key_order
+    # A declaration of this test's own, bound the way a walk binds its world's file.
+    fake = "test:die-key-order"
+    token = ledger_subgraph._WALK_DECLARATION.set(fake)
     try:
         # Declaration read, and this type is not in it: the label stays what it was.
-        ledger_subgraph._entity_key_order = {}
+        ledger_subgraph._declaration_facts[fake] = ({}, {}, {})
         assert ledger_subgraph._entity_node("die", keys)["label"] == "1.0 / 10.0"
         # Declared: the order is the declaration's and the material name leads.
-        ledger_subgraph._entity_key_order = {"die": ["mat_id", "x", "y", "mat_type"]}
+        ledger_subgraph._declaration_facts[fake] = (
+            {"die": ["mat_id", "x", "y", "mat_type"]}, {}, {})
         assert (ledger_subgraph._entity_node("die", keys)["label"]
                 == "SYN-XFER-CORE-W07 / 1.0")
         # A type the declaration does not name is untouched, declared in v1 or not.
@@ -314,7 +317,8 @@ def test_entity_label_takes_its_key_order_from_the_live_declaration():
         assert node["node_kind"] == "entity" and node["keys"] == keys
         assert node["id"] == explorer.entity_id("die", keys)
     finally:
-        ledger_subgraph._entity_key_order = saved
+        ledger_subgraph._declaration_facts.pop(fake, None)
+        ledger_subgraph._WALK_DECLARATION.reset(token)
 
 
 # The live ledger's own census, MEASURED 2026-08-23 against `ledger_events`.  Not a

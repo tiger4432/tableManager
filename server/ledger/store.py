@@ -132,9 +132,12 @@ class LedgerStore:
     a pure cache of a catalogue fact and is safe to lose.
     """
 
-    def __init__(self, engine, who: str = "ledger"):
+    def __init__(self, engine, who: str = "ledger", world: str | None = None):
         self.engine = engine
         self.who = who
+        #: Every table this store reads and writes, for ONE ledger world (the default when
+        #: `world` is None). Answered by the one seat, `schema.world_names`.
+        self.names = schema.world_names(world)
         self._known_partitions = set()
 
     # ------------------------------------------------------------------ connections
@@ -145,14 +148,15 @@ class LedgerStore:
     def ensure_schema(self):
         connection = self.connection()
         try:
-            schema.ensure_schema(connection)
+            schema.ensure_schema(connection, self.names)
         finally:
             connection.close()
 
     # ------------------------------------------------------------------------ writes
     def ensure_partitions(self, connection, occurred_ats):
         for when in occurred_ats:
-            schema.ensure_partition(connection, when, known=self._known_partitions)
+            schema.ensure_partition(connection, when, known=self._known_partitions,
+                                    names=self.names)
 
     def existing_registrations(self, connection, subjects):
         """Which of `subjects` already have a `register` atom.
@@ -174,7 +178,7 @@ class LedgerStore:
             for start in range(0, len(wanted), INSERT_PAGE_SIZE):
                 chunk = wanted[start:start + INSERT_PAGE_SIZE]
                 cursor.execute(
-                    f"SELECT subject_type, subject_keys FROM {schema.LEDGER_TABLE} "
+                    f"SELECT subject_type, subject_keys FROM {self.names.ledger} "
                     f"WHERE predicate = 'register' "
                     f"  AND (subject_type, subject_keys) IN %s",
                     (tuple((t, _json(json.loads(k))) for t, k in chunk),))
@@ -210,7 +214,7 @@ class LedgerStore:
                 cursor.execute(
                     f"SELECT DISTINCT ON (subject_type, subject_keys) "
                     f"       subject_type, subject_keys, id "
-                    f"FROM {schema.LEDGER_TABLE} "
+                    f"FROM {self.names.ledger} "
                     f"WHERE predicate = %s "
                     f"  AND (subject_type, subject_keys) IN %s "
                     f"ORDER BY subject_type, subject_keys, occurred_at DESC, id DESC",
@@ -259,7 +263,7 @@ class LedgerStore:
                 chunk = rows[start:start + INSERT_PAGE_SIZE]
                 execute_values(
                     cursor,
-                    f"INSERT INTO {schema.LEDGER_TABLE} ({', '.join(ROW_COLUMNS)}) "
+                    f"INSERT INTO {self.names.ledger} ({', '.join(ROW_COLUMNS)}) "
                     f"VALUES %s ON CONFLICT DO NOTHING",
                     chunk, page_size=INSERT_PAGE_SIZE)
                 inserted += cursor.rowcount if cursor.rowcount and cursor.rowcount > 0 else 0
@@ -273,7 +277,7 @@ class LedgerStore:
                 f"       atoms_deduped, molecules_refused, incomplete_molecules, "
                 f"       source_head, head_probed_at, updated_at, refusal_reasons, "
                 f"       {schema.ROW_CENSUS_COLUMN} "
-                f"FROM {schema.CURSOR_TABLE} WHERE source = %s", (source,))
+                f"FROM {self.names.cursor} WHERE source = %s", (source,))
             row = cursor.fetchone()
         if row is None:
             return None
@@ -326,14 +330,14 @@ class LedgerStore:
             with connection.cursor() as cursor:
                 if translator_ver is None:
                     cursor.execute(
-                        f"UPDATE {schema.CURSOR_TABLE} "
+                        f"UPDATE {self.names.cursor} "
                         f"   SET {schema.ROW_CENSUS_COLUMN} = %s::jsonb, updated_at = now() "
                         f" WHERE source = %s",
                         (_json.dumps(census), source))
                     connection.commit()
                     return
                 cursor.execute(
-                    f"INSERT INTO {schema.CURSOR_TABLE} "
+                    f"INSERT INTO {self.names.cursor} "
                     f"       (source, translator_ver, cursor_value, "
                     f"        {schema.ROW_CENSUS_COLUMN}) "
                     f"VALUES (%s, %s, 'null'::jsonb, %s::jsonb) "
@@ -377,7 +381,7 @@ class LedgerStore:
         Bounded by the size of `gate.REFUSAL_REASONS` (a closed vocabulary), so this is
         arithmetic over at most a dozen keys no matter how large the ledger grows.
         """
-        table = schema.CURSOR_TABLE
+        table = self.names.cursor
         return f"""
         (SELECT coalesce(jsonb_object_agg(k, jsonb_build_object(
                     'count', c, 'last_at', l)), '{{}}'::jsonb)
@@ -409,11 +413,11 @@ class LedgerStore:
         version_guard = ""
         if enforce_translator_version:
             version_guard = (
-                f" WHERE {schema.CURSOR_TABLE}.translator_ver = EXCLUDED.translator_ver"
+                f" WHERE {self.names.cursor}.translator_ver = EXCLUDED.translator_ver"
                 " RETURNING source")
         with connection.cursor() as cursor:
             cursor.execute(f"""
-                INSERT INTO {schema.CURSOR_TABLE} (
+                INSERT INTO {self.names.cursor} (
                     source, translator_ver, cursor_value, molecules_done, atoms_written,
                     atoms_deduped, molecules_refused, incomplete_molecules,
                     {schema.REFUSAL_REASONS_COLUMN}, updated_at)
@@ -421,15 +425,15 @@ class LedgerStore:
                 ON CONFLICT (source) DO UPDATE SET
                     translator_ver       = EXCLUDED.translator_ver,
                     cursor_value         = EXCLUDED.cursor_value,
-                    molecules_done       = {schema.CURSOR_TABLE}.molecules_done
+                    molecules_done       = {self.names.cursor}.molecules_done
                                            + EXCLUDED.molecules_done,
-                    atoms_written        = {schema.CURSOR_TABLE}.atoms_written
+                    atoms_written        = {self.names.cursor}.atoms_written
                                            + EXCLUDED.atoms_written,
-                    atoms_deduped        = {schema.CURSOR_TABLE}.atoms_deduped
+                    atoms_deduped        = {self.names.cursor}.atoms_deduped
                                            + EXCLUDED.atoms_deduped,
-                    molecules_refused    = {schema.CURSOR_TABLE}.molecules_refused
+                    molecules_refused    = {self.names.cursor}.molecules_refused
                                            + EXCLUDED.molecules_refused,
-                    incomplete_molecules = {schema.CURSOR_TABLE}.incomplete_molecules
+                    incomplete_molecules = {self.names.cursor}.incomplete_molecules
                                            + EXCLUDED.incomplete_molecules,
                     {schema.REFUSAL_REASONS_COLUMN} = {self._merge_reasons_sql()},
                     updated_at           = now()
@@ -471,7 +475,7 @@ class LedgerStore:
             # keeps NULL meaning "never broken down" for a row no writer has owned - the
             # three-state distinction `ledger_admin` draws.
             return
-        table = schema.CURSOR_TABLE
+        table = self.names.cursor
         with connection.cursor() as cursor:
             cursor.execute(f"""
                 INSERT INTO {table} (
@@ -598,11 +602,11 @@ class LedgerStore:
         try:
             with connection.cursor() as cursor:
                 cursor.execute(
-                    f"UPDATE {schema.CURSOR_TABLE} "
+                    f"UPDATE {self.names.cursor} "
                     f"   SET {schema.ROWS_INDEXED_COLUMN} = %s "
                     f" WHERE source = %s "
                     f"RETURNING (SELECT {schema.ROWS_INDEXED_COLUMN} "
-                    f"             FROM {schema.CURSOR_TABLE} c2 WHERE c2.source = %s)",
+                    f"             FROM {self.names.cursor} c2 WHERE c2.source = %s)",
                     (int(counted), source, source))
                 row = cursor.fetchone()
             connection.commit()
@@ -638,7 +642,7 @@ class LedgerStore:
             return 0
         with connection.cursor() as cursor:
             cursor.execute(
-                f"DELETE FROM {schema.LEDGER_TABLE} "
+                f"DELETE FROM {self.names.ledger} "
                 "WHERE source_who = %s AND source_raw_ref = ANY(%s)",
                 (source, list(refs)))
             return int(cursor.rowcount or 0)
@@ -675,7 +679,7 @@ class LedgerStore:
             # so it is an index lookup of at most one page's worth and never a scan.
             for relation, row_ids in sorted(touched.items()):
                 cursor.execute(
-                    f"SELECT count(DISTINCT row_id) FROM {schema.ROW_REF_TABLE} "
+                    f"SELECT count(DISTINCT row_id) FROM {self.names.row_ref} "
                     " WHERE relation = %s AND source_who = %s AND row_id = ANY(%s)",
                     (relation, source, sorted(row_ids)))
                 gained += len(row_ids) - int(cursor.fetchone()[0] or 0)
@@ -686,12 +690,12 @@ class LedgerStore:
             # withdrew. Same commit, so the index cannot be seen mid-replacement.
             for relation, row_ids in sorted(touched.items()):
                 cursor.execute(
-                    f"DELETE FROM {schema.ROW_REF_TABLE} "
+                    f"DELETE FROM {self.names.row_ref} "
                     "WHERE relation = %s AND source_who = %s AND row_id = ANY(%s)",
                     (relation, source, sorted(row_ids)))
             execute_values(
                 cursor,
-                f"INSERT INTO {schema.ROW_REF_TABLE} "
+                f"INSERT INTO {self.names.row_ref} "
                 "(relation, row_id, source_who, source_raw_ref) VALUES %s "
                 "ON CONFLICT DO NOTHING",
                 rows)
@@ -701,7 +705,7 @@ class LedgerStore:
             # and turns an unplanted source into one that claims three rows.
             if gained:
                 cursor.execute(
-                    f"UPDATE {schema.CURSOR_TABLE} "
+                    f"UPDATE {self.names.cursor} "
                     f"   SET {schema.ROWS_INDEXED_COLUMN} = "
                     f"       {schema.ROWS_INDEXED_COLUMN} + %s "
                     f" WHERE source = %s AND {schema.ROWS_INDEXED_COLUMN} IS NOT NULL",
@@ -749,7 +753,7 @@ class LedgerStore:
         try:
             with connection.cursor() as cursor:
                 cursor.execute(
-                    f"SELECT source_who, source_raw_ref FROM {schema.ROW_REF_TABLE} "
+                    f"SELECT source_who, source_raw_ref FROM {self.names.row_ref} "
                     "WHERE relation = %s AND row_id = ANY(%s)",
                     (str(relation), [str(item) for item in row_ids]))
                 return [(row[0], row[1]) for row in cursor.fetchall()]
@@ -772,7 +776,7 @@ class LedgerStore:
         try:
             with connection.cursor() as cursor:
                 cursor.execute(
-                    f"SELECT DISTINCT row_id FROM {schema.ROW_REF_TABLE} "
+                    f"SELECT DISTINCT row_id FROM {self.names.row_ref} "
                     "WHERE relation = %s AND source_who = %s AND row_id = ANY(%s)",
                     (str(relation), str(source),
                      [str(item) for item in row_ids]))
@@ -796,7 +800,7 @@ class LedgerStore:
         try:
             with connection.cursor() as cursor:
                 cursor.execute(
-                    f"SELECT DISTINCT row_id, source_who FROM {schema.ROW_REF_TABLE} "
+                    f"SELECT DISTINCT row_id, source_who FROM {self.names.row_ref} "
                     "WHERE relation = %s AND row_id = ANY(%s)",
                     (str(relation), [str(item) for item in row_ids]))
                 out = {}
@@ -838,13 +842,13 @@ class LedgerStore:
                 if source is None:
                     cursor.execute(
                         f"SELECT source_who, count(DISTINCT row_id) "
-                        f"  FROM {schema.ROW_REF_TABLE} "
+                        f"  FROM {self.names.row_ref} "
                         " WHERE relation = %s AND row_id = ANY(%s) "
                         " GROUP BY source_who", (str(relation), wanted))
                 else:
                     cursor.execute(
                         f"SELECT source_who, count(DISTINCT row_id) "
-                        f"  FROM {schema.ROW_REF_TABLE} "
+                        f"  FROM {self.names.row_ref} "
                         " WHERE relation = %s AND source_who = %s AND row_id = ANY(%s) "
                         " GROUP BY source_who",
                         (str(relation), str(source), wanted))
@@ -852,12 +856,12 @@ class LedgerStore:
 
                 if source is None:
                     cursor.execute(
-                        f"DELETE FROM {schema.ROW_REF_TABLE} "
+                        f"DELETE FROM {self.names.row_ref} "
                         "WHERE relation = %s AND row_id = ANY(%s)",
                         (str(relation), wanted))
                 else:
                     cursor.execute(
-                        f"DELETE FROM {schema.ROW_REF_TABLE} "
+                        f"DELETE FROM {self.names.row_ref} "
                         "WHERE relation = %s AND source_who = %s AND row_id = ANY(%s)",
                         (str(relation), str(source), wanted))
                 removed = int(cursor.rowcount or 0)
@@ -866,7 +870,7 @@ class LedgerStore:
                 for who, rows_lost in losing:
                     if rows_lost:
                         cursor.execute(
-                            f"UPDATE {schema.CURSOR_TABLE} "
+                            f"UPDATE {self.names.cursor} "
                             f"   SET {schema.ROWS_INDEXED_COLUMN} = "
                             f"       GREATEST({schema.ROWS_INDEXED_COLUMN} - %s, 0) "
                             f" WHERE source = %s "
@@ -933,7 +937,7 @@ class LedgerStore:
         try:
             with connection.cursor() as cursor:
                 cursor.execute(
-                    f"UPDATE {schema.CURSOR_TABLE} SET translator_ver = %s "
+                    f"UPDATE {self.names.cursor} SET translator_ver = %s "
                     f"WHERE source = %s AND translator_ver = %s RETURNING source",
                     (translator_ver, source, expect))
                 moved = cursor.fetchone() is not None
@@ -951,7 +955,7 @@ class LedgerStore:
         connection = connection or self.connection()
         try:
             with connection.cursor() as cursor:
-                cursor.execute(f"SELECT count(*) FROM {schema.LEDGER_TABLE}")
+                cursor.execute(f"SELECT count(*) FROM {self.names.ledger}")
                 return cursor.fetchone()[0]
         finally:
             if own:
@@ -964,7 +968,7 @@ class LedgerStore:
         try:
             with connection.cursor() as cursor:
                 cursor.execute(
-                    f"SELECT predicate, count(*) FROM {schema.LEDGER_TABLE} "
+                    f"SELECT predicate, count(*) FROM {self.names.ledger} "
                     f"GROUP BY 1 ORDER BY 1")
                 return dict(cursor.fetchall())
         finally:
@@ -978,7 +982,7 @@ class LedgerStore:
         try:
             with connection.cursor() as cursor:
                 cursor.execute(
-                    f"UPDATE {schema.CURSOR_TABLE} SET source_head = %s, "
+                    f"UPDATE {self.names.cursor} SET source_head = %s, "
                     f"head_probed_at = now() WHERE source = %s",
                     (_json(head_value), source))
             connection.commit()

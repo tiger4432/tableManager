@@ -310,7 +310,7 @@ def _take():
         return _queue.popleft() if _queue else None
 
 
-def drain_once(engine, setup):
+def drain_once(engine, setup, world=None):
     """Follow ONE queued event: all of its rows, one `rescope` per source. Or `None`.
 
     🔴 ONE BATCH IS ONE EVENT, NOT ONE ROW (ruling 129 ㉥). A collapsed event names up to
@@ -396,7 +396,8 @@ def drain_once(engine, setup):
             with following(transaction_id):
                 result = backfill.rescope(engine, setup, source, column, values,
                                           apply=True,
-                                          withdraw=(event_type != "CREATE"))
+                                          withdraw=(event_type != "CREATE"),
+                                          world=world)
             done["sources"][source] = {
                 "scope_values": len(values),
                 "withdrawn": result.get("withdrawn", 0),

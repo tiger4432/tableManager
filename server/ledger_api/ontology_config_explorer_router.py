@@ -15,13 +15,56 @@ from ledger.setup import DEFAULT_ONTOLOGY_ROOT
 
 
 router = APIRouter(prefix="/admin/ontology-explorer", tags=["ontology-explorer"])
-_service = OntologyExplorerService(config_root=DEFAULT_ONTOLOGY_ROOT)
+#: One explorer per ledger world, built from the world seat's names (총괄 60d7e8e42): its
+#: declaration root, its drafts, and the declaration a new branch starts from. Key None is
+#: the default world.
+_services = {None: OntologyExplorerService(config_root=DEFAULT_ONTOLOGY_ROOT)}
 
 
-def configure_service(service: OntologyExplorerService) -> None:
-    """Test seam; production owns exactly one process-local immutable index cache."""
-    global _service
-    _service = service
+def configure_service(service: OntologyExplorerService, world: str | None = None) -> None:
+    """Put `service` in front of one world's routes (the default when `world` is None)."""
+    _services[world] = service
+
+
+def _service_for(world) -> OntologyExplorerService:
+    """The explorer of the world a request named - None, blank or FastAPI's `Query` sentinel
+    (a direct call) is the default. A branch not made yet is served too: its bootstrap is
+    how it is made. A name that is not a world name is refused by name."""
+    from ledger import schema
+
+    try:
+        names = schema.world_names(
+            world if isinstance(world, str) and world.strip() else None)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail={
+            "reason": "world_unknown", "world": world, "message": str(exc)})
+    if names.world not in _services:
+        _services[names.world] = OntologyExplorerService(
+            config_root=names.declaration_root, draft_root=names.draft_root,
+            seed_root=names.base_root)
+    return _services[names.world]
+
+
+@router.delete("/worlds/{world}", dependencies=[Depends(require_admin_token_strict)])
+def delete_world(world: str, confirm_atoms: int | None = Query(default=None)):
+    """A ledger branch goes whole - its schema and its files (총괄 8d10633ae ㉢). Without
+    `confirm_atoms` this answers what would go and deletes nothing; with the atom count that
+    answer showed, it deletes. A DROP is not undone, so the answer always comes first."""
+    from database.database import engine
+    from ledger import schema
+
+    try:
+        if confirm_atoms is None:
+            return schema.world_deletion(engine, world)
+        deleted = schema.drop_world(engine, world, confirm_atoms)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail={
+            "reason": "world_unknown", "world": world, "message": str(exc)})
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail={
+            "reason": "world_not_deleted", "world": world, "message": str(exc)})
+    _services.pop(world, None)
+    return deleted
 
 
 def _refusal(exc: ConfigExplorerError | ColumnStatsError) -> HTTPException:
@@ -49,9 +92,9 @@ def explorer_view(
     # second connection here would be the quiet kind of cost 「성능 마진 넉넉하게」 forbids;
     # this is the Session FastAPI already holds for this request.
     db: Session = Depends(get_db),
-):
+    world: str | None = Query(default=None)):
     try:
-        return _service.view(
+        return _service_for(world).view(
             selection=selection, query=q, page=page, limit=limit,
             reference_limit=reference_limit, expected_context_token=context_token,
             draft_id=draft_id, revision=revision, view_mode=view_mode, db=db)
@@ -81,7 +124,7 @@ def column_picker(
     relation: str = Query(...),
     combination: list[str] | None = Query(default=None),
     db: Session = Depends(get_db),
-):
+    world: str | None = Query(default=None)):
     """Candidate columns for `relation`, each with how many rows actually carry a value.
 
     A read, and an EXPENSIVE one by design: the population counts are exact and cost one
@@ -92,43 +135,45 @@ def column_picker(
     call -- the question that is otherwise answered mid-backfill.
     """
     try:
-        return _service.column_picker(
+        return _service_for(world).column_picker(
             db, relation=relation, combination=combination or [])
     except (ColumnStatsError, ConfigExplorerError) as exc:
         raise _refusal(exc) from exc
 
 
 @router.get("/authoring/schema", dependencies=[Depends(require_admin_token)])
-def authoring_schema():
+def authoring_schema(world: str | None = Query(default=None)):
     """Every closed list the authoring screen offers, from the validator's own constants.
 
     The screen owns no copy.  This is what keeps "고를 수 있는 것" correct on the day a
     declaration is added instead of the day somebody notices the dropdown is short.
     """
-    return _service.authoring_schema()
+    return _service_for(world).authoring_schema()
 
 
 @router.get("/authoring/plan", dependencies=[Depends(require_admin_token)])
-def authoring_plan_view(selection: str | None = Query(default=None)):
+def authoring_plan_view(selection: str | None = Query(default=None),
+                        world: str | None = Query(default=None)):
     """What one declaration forces (filled, WITH its ground), and what is still asked.
 
     A read of the authoring FILE, not of the compiled snapshot -- so it answers on a
     blank or half-written root, which is exactly when `/view` cannot.
     """
     try:
-        return _service.authoring(
-            selection_prefix=_service.authoring_prefix(selection))
+        return _service_for(world).authoring(
+            selection_prefix=_service_for(world).authoring_prefix(selection))
     except ConfigExplorerError as exc:
         raise _refusal(exc) from exc
 
 
 @router.post("/authoring/plan", dependencies=[Depends(require_admin_token)])
-def authoring_plan_for_draft(payload: dict[str, Any] = Body(...)):
+def authoring_plan_for_draft(payload: dict[str, Any] = Body(...),
+                             world: str | None = Query(default=None)):
     """The same plan over the draft's UNSAVED body - `{selection, draft_id, raw}`, raw being
     the editor's text. Writes nothing (총괄 791c0f45e 1ㄴ)."""
     try:
-        return _service.authoring(
-            selection_prefix=_service.authoring_prefix(payload.get("selection")),
+        return _service_for(world).authoring(
+            selection_prefix=_service_for(world).authoring_prefix(payload.get("selection")),
             draft_id=str(payload.get("draft_id") or ""), raw=payload.get("raw"))
     except ConfigExplorerError as exc:
         raise _refusal(exc) from exc
@@ -138,21 +183,21 @@ def authoring_plan_for_draft(payload: dict[str, Any] = Body(...)):
 def deletion_preview(
     targets: list[str] | None = Query(default=None),
     context_token: str | None = Query(default=None),
-):
+    world: str | None = Query(default=None)):
     """Name every declaration a deletion would take, BEFORE the author confirms.
 
     A read: nothing is written and no draft is created, which is why it sits behind the
     same token as `/view` rather than the strict one.
     """
     try:
-        return _service.deletion_preview(
+        return _service_for(world).deletion_preview(
             targets=targets or [], expected_context_token=context_token)
     except ConfigExplorerError as exc:
         raise _refusal(exc) from exc
 
 
 @router.post("/test-run", dependencies=[Depends(require_admin_token)])
-def test_run(payload: dict[str, Any] = Body(...)):
+def test_run(payload: dict[str, Any] = Body(...), world: str | None = Query(default=None)):
     """Run ONE real batch for a declared source and report what it produced.
 
     🔴 WRITES NOTHING AND MOVES NO CURSOR -- it stops one step before the gate, so no atom
@@ -172,10 +217,10 @@ def test_run(payload: dict[str, Any] = Body(...)):
         # Clamped in the service, so a caller cannot ask for a page-sized "sample".
         try:
             sample_rows = int(payload.get("sample_rows",
-                                          _service.DEFAULT_SAMPLE_ROWS))
+                                          _service_for(world).DEFAULT_SAMPLE_ROWS))
         except (TypeError, ValueError):
-            sample_rows = _service.DEFAULT_SAMPLE_ROWS
-        return _service.test_run(
+            sample_rows = _service_for(world).DEFAULT_SAMPLE_ROWS
+        return _service_for(world).test_run(
             engine, source_id=str(payload.get("source_id", "")),
             sample_rows=sample_rows)
     except ConfigExplorerError as exc:
@@ -183,9 +228,9 @@ def test_run(payload: dict[str, Any] = Body(...)):
 
 
 @router.post("/drafts", dependencies=[Depends(require_admin_token_strict)])
-def create_draft(payload: dict[str, Any] = Body(...)):
+def create_draft(payload: dict[str, Any] = Body(...), world: str | None = Query(default=None)):
     try:
-        return _service.create_draft(
+        return _service_for(world).create_draft(
             target_key=str(payload.get("target_key", "")),
             base_snapshot_hash=str(payload.get("base_snapshot_hash", "")),
         )
@@ -194,7 +239,7 @@ def create_draft(payload: dict[str, Any] = Body(...)):
 
 
 @router.post("/bootstrap", dependencies=[Depends(require_admin_token_strict)])
-def bootstrap_config():
+def bootstrap_config(world: str | None = Query(default=None)):
     """Create the smallest config that validates, so a setup can start from nothing.
 
     A write, and the only one this screen performs without a draft -- so it is a POST the
@@ -203,13 +248,14 @@ def bootstrap_config():
     parse: an unreadable config is somebody's work with a bad comma in it, not an absence.
     """
     try:
-        return _service.bootstrap_config()
+        return _service_for(world).bootstrap_config()
     except ConfigExplorerError as exc:
         raise _refusal(exc) from exc
 
 
 @router.post("/drafts/new", dependencies=[Depends(require_admin_token_strict)])
-def create_declaration_draft(payload: dict[str, Any] = Body(...)):
+def create_declaration_draft(payload: dict[str, Any] = Body(...),
+                             world: str | None = Query(default=None)):
     """Author a declaration the snapshot has never seen.
 
     The last hole in the write path: this screen could edit a declaration and could not
@@ -218,7 +264,7 @@ def create_declaration_draft(payload: dict[str, Any] = Body(...)):
     cannot write that section).
     """
     try:
-        return _service.create_declaration_draft(
+        return _service_for(world).create_declaration_draft(
             kind=str(payload.get("kind", "")),
             canonical_id=str(payload.get("canonical_id", "")),
             base_snapshot_hash=str(payload.get("base_snapshot_hash", "")),
@@ -228,9 +274,10 @@ def create_declaration_draft(payload: dict[str, Any] = Body(...)):
 
 
 @router.put("/drafts/{draft_id}", dependencies=[Depends(require_admin_token_strict)])
-def save_draft(draft_id: str, payload: dict[str, Any] = Body(...)):
+def save_draft(draft_id: str, payload: dict[str, Any] = Body(...),
+               world: str | None = Query(default=None)):
     try:
-        return _service.save_draft(
+        return _service_for(world).save_draft(
             draft_id,
             expected_revision=payload.get("expected_revision"),
             raw=payload.get("raw"),
@@ -241,9 +288,10 @@ def save_draft(draft_id: str, payload: dict[str, Any] = Body(...)):
 
 @router.post("/drafts/{draft_id}/review",
              dependencies=[Depends(require_admin_token_strict)])
-def review_draft(draft_id: str, payload: dict[str, Any] = Body(...)):
+def review_draft(draft_id: str, payload: dict[str, Any] = Body(...),
+                 world: str | None = Query(default=None)):
     try:
-        return _service.review_draft(
+        return _service_for(world).review_draft(
             draft_id, expected_revision=payload.get("expected_revision"))
     except ConfigExplorerError as exc:
         raise _refusal(exc) from exc
@@ -251,9 +299,10 @@ def review_draft(draft_id: str, payload: dict[str, Any] = Body(...)):
 
 @router.post("/drafts/{draft_id}/revise",
              dependencies=[Depends(require_admin_token_strict)])
-def revise_draft(draft_id: str, payload: dict[str, Any] = Body(...)):
+def revise_draft(draft_id: str, payload: dict[str, Any] = Body(...),
+                 world: str | None = Query(default=None)):
     try:
-        return _service.revise_draft(
+        return _service_for(world).revise_draft(
             draft_id, expected_revision=payload.get("expected_revision"))
     except ConfigExplorerError as exc:
         raise _refusal(exc) from exc
@@ -264,9 +313,9 @@ def revise_draft(draft_id: str, payload: dict[str, Any] = Body(...)):
 def discard_draft(
     draft_id: str,
     expected_revision: int = Query(...),
-):
+    world: str | None = Query(default=None)):
     try:
-        return _service.discard_draft(
+        return _service_for(world).discard_draft(
             draft_id, expected_revision=expected_revision)
     except ConfigExplorerError as exc:
         raise _refusal(exc) from exc
@@ -278,10 +327,10 @@ def delete_declaration(
     target_key: str,
     base_snapshot_hash: str,
     db: Session = Depends(get_db),
-):
+    world: str | None = Query(default=None)):
     try:
         from runtime import system_reload
-        return _service.delete_declaration(
+        return _service_for(world).delete_declaration(
             target_key, base_snapshot_hash=base_snapshot_hash,
             reload_callback=lambda: system_reload.reload_system_configs(db))
     except ConfigExplorerError as exc:
@@ -294,11 +343,11 @@ def activate_draft(
     draft_id: str,
     payload: dict[str, Any] = Body(...),
     db: Session = Depends(get_db),
-):
+    world: str | None = Query(default=None)):
     try:
         # Import at the write boundary, as the sibling handler does.
         from runtime import system_reload
-        return _service.activate_draft(
+        return _service_for(world).activate_draft(
             draft_id,
             expected_revision=payload.get("expected_revision"),
             reload_callback=lambda: system_reload.reload_system_configs(db),

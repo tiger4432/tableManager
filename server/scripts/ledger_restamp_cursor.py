@@ -40,10 +40,8 @@ if SERVER not in sys.path:
 def main(argv=None):
     from database.database import engine
     from ledger.config_explorer import load_resolved_setup
-    from ledger.setup import (
-        DEFAULT_ONTOLOGY_ROOT, live_physical_catalog, load_setup,
-        setup_from_document,
-    )
+    from ledger import schema
+    from ledger.setup import live_physical_catalog, load_setup, setup_from_document
     from ledger.setup_registry import cursor_translator_version
     from ledger.store import LedgerStore
 
@@ -52,7 +50,8 @@ def main(argv=None):
                         help="one source id; default is every declared source")
     parser.add_argument("--apply", action="store_true",
                         help="write the new fingerprint (otherwise report only)")
-    parser.add_argument("--ontology-root", default=str(DEFAULT_ONTOLOGY_ROOT))
+    parser.add_argument("--world", default=None,
+                        help="a ledger world (branch) by name; none = the default")
     args = parser.parse_args(argv)
 
     # 🔴 A HALF-BUILT SOURCE MUST NOT BLOCK AN OPERATIONAL COMMAND.  `load_setup` refuses
@@ -68,7 +67,9 @@ def main(argv=None):
     # has no plan, therefore no fingerprint to want, and in practice no cursor either --
     # nothing has ever run it.  It is named on stdout rather than skipped, because an
     # operator reading "2 sources" needs to know whether that was 2 of 2 or 2 of 3.
-    root = args.ontology_root
+    # 총괄 3b6dacd2f: the operator names a world; the one seat answers where its declaration
+    # and its cursors are.
+    root = schema.require_world(args.world).declaration_root
     try:
         setup = load_setup(root)
         dropped = {}
@@ -96,7 +97,7 @@ def main(argv=None):
         print(f"{', '.join(unknown)}: REFUSED -- not among the sources that compiled; "
               f"finish the declaration first")
         return 1
-    store = LedgerStore(engine)
+    store = LedgerStore(engine, world=args.world)
     read = store.connection()
     try:
         rows = {source: store.read_cursor(read, source) for source in sources}

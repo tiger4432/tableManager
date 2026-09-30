@@ -1892,9 +1892,10 @@ conda run -n assy_manager python -m ledger.backfill --source lot_event --max-bat
 공개 CLI의 `--reset-cursor`와 `--from` replay는 `destructive_approval_required`로 선행
 차단된다. 이 가이드만 보고 우회하거나 lower-level helper를 직접 호출하지 않는다.
 
-CLI가 받는 나머지 플래그는 `--source`, `--fetch-rows`, `--max-batches`, 그리고 config root를
-가리키는 `--ontology-root`(기본값 `server/config/ontology`)뿐이다. **실행 경로는 하나이고
-`--legacy`나 `--config` 같은 갈래는 없다.**
+CLI가 받는 나머지 플래그는 `--source`, `--fetch-rows`, `--max-batches`, 그리고 원장 세상(가지)을
+이름으로 고르는 `--world`(없으면 기본 세상 — 선언은 `server/config/ontology`)뿐이다. 선언이
+어디 있는지는 세상 이름이 정한다 — 경로를 넘기는 `--ontology-root`는 2026-09-30 에 은퇴했다.
+**실행 경로는 하나이고 `--legacy`나 `--config` 같은 갈래는 없다.**
 
 ---
 
@@ -1968,7 +1969,7 @@ PostgreSQL E2E는 `ASSY_PG_TEST_DATABASE_URL`이 안전한 격리 DB를 가리�
 | `unknown_field` (`packs`/`source_preparers`/`mappers`/`profiles`) | 넷이 최상위 section이던 세대의 파일 | §2.4의 마이그레이션 |
 | `unknown_field` (`bind.mappings.<문장>.use`) | `use`가 `predicate`가 되기 전 세대 | §2.4의 v5 마이그레이션 |
 | 안 켠 소스가 돌았다 | `sources`에 적는 것이 곧 켜는 것 | §8. 준비 전이면 `sources`에서 뺀다 |
-| `--legacy`/`--config`가 없다 | 실행 경로가 하나가 됨 | `--ontology-root`로 config root를 지정한다(§13.4) |
+| `--legacy`/`--config`가 없다 | 실행 경로가 하나가 됨 | `--world <가지>`로 세상을 고른다(§13.4) |
 | reset/from이 거절됨 | 파괴적 replay 선행 gate | 우회하지 말고 별도 사용자 승인과 작업 범위 확정 |
 
 ---

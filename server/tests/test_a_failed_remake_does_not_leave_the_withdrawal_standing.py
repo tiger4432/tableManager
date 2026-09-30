@@ -134,7 +134,7 @@ def run_rescope(setup, monkeypatch, store, rows):
         "withdraw": 2, "remake": 2, "refs": list(REFS)})
     monkeypatch.setattr(backfill, "_fetch_v2_lineage_rows",
                         lambda *a, **k: rows)
-    monkeypatch.setattr("ledger.store.LedgerStore", lambda engine: store)
+    monkeypatch.setattr("ledger.store.LedgerStore", lambda engine, **_: store)
     engine = SimpleNamespace(raw_connection=lambda: SpyConnection(statements))
     return backfill.rescope(
         engine, setup, "dt_job", "dt_job", list(JOBS), apply=True), statements
@@ -196,7 +196,7 @@ def test_nothing_is_withdrawn_when_neither_the_preview_nor_the_index_names_a_ref
     monkeypatch.setattr(backfill, "_preview_frame", lambda *a, **k: {
         "withdraw": 0, "remake": 0, "refs": []})
     monkeypatch.setattr(backfill, "_fetch_v2_lineage_rows", lambda *a, **k: dt_log_rows(3))
-    monkeypatch.setattr("ledger.store.LedgerStore", lambda engine: store)
+    monkeypatch.setattr("ledger.store.LedgerStore", lambda engine, **_: store)
     result = backfill.rescope(
         SimpleNamespace(raw_connection=lambda: SpyConnection(statements)),
         setup, "dt_job", "dt_job", list(JOBS), apply=True)
@@ -214,6 +214,7 @@ def test_the_withdrawal_is_one_statement_scoped_to_this_source():
     quietly withdraw another's work."""
     log = []
     store = LedgerStore.__new__(LedgerStore)
+    store.names = schema.world_names()          # the default world's tables, as __init__ sets
     assert store._withdraw_refs(SpyConnection(log), "dt_job", []) == 0
     assert log == [], "no refs means no statement, not a DELETE matching nothing"
 

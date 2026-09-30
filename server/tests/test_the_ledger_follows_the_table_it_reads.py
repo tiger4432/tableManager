@@ -116,7 +116,7 @@ def one_source_on(table, cursor_columns=("dt_job",), identity=("dt_job",)):
 def calls_to_rescope(monkeypatch, result=None):
     seen = []
 
-    def fake(engine, setup, source, column, values, apply=False, withdraw=True):
+    def fake(engine, setup, source, column, values, apply=False, withdraw=True, world=None):
         # `withdraw` arrived with 판정 166: a CREATE has nothing to withdraw, so it is
         # translated ONCE. Recording it here is what lets a case assert which kind of event
         # it was following.

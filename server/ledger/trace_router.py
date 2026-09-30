@@ -29,22 +29,20 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/ledger", tags=["ledger"])
 
-#: The relation the walk reads. Named here rather than inline because it is the
-#: seam: pointing the screen at a materialised projection (week 2, slot-level
-#: lineage — 780x inline vs materialised, measured) is this one string plus a
-#: lookup class, and touches no resolver code.
-LEDGER_RELATION = "ledger_events"
+def _world(world):
+    """The names of the ledger world a request asked for (총괄 60d7e8e42) - the relation the
+    walk reads, the tables it counts, the declaration it reads. None, blank or FastAPI's `Query`
+    sentinel (a direct call) is the default. An unknown world is refused by name with the list,
+    never answered from the default: the same posture as an undeclared predicate."""
+    from ledger import schema
 
-#: The translator's cursor table — the ledger's own registry of who has written
-#: into it, and what `GET /coverage` reports as `sources`. Named beside the
-#: relation above because the two move together: both are created by
-#: `server/migrations/add_ledger_events.py` and both are seams a materialised
-#: projection would repoint. (`server/ledger/schema.py` holds the single DDL
-#: spelling; these two constants are the READ side's, kept here rather than
-#: imported so that including this router does not drag the translator package
-#: into the web server's boot — see the runbook §6 note that nothing imports
-#: `server/ledger` at boot.)
-LEDGER_CURSOR_RELATION = "ledger_translator_cursor"
+    try:
+        return schema.require_world(
+            world if isinstance(world, str) and world.strip() else None)
+    except (LookupError, ValueError) as exc:
+        raise HTTPException(status_code=404, detail={
+            "reason": "world_unknown", "world": world, "worlds": schema.worlds(),
+            "message": f"{exc} - pick one from 'worlds'"})
 
 
 
@@ -62,7 +60,7 @@ LEDGER_CURSOR_RELATION = "ledger_translator_cursor"
 # go alone while `trace`, `explore` and `structure` wait for a client round.
 
 
-def _subgraph_contract_state(connection):
+def _subgraph_contract_state(connection, relation):
     """Name missing deployment pieces before the evidence query can scan slowly."""
     rows = trace._fetch(connection, """
         SELECT
@@ -76,7 +74,7 @@ def _subgraph_contract_state(connection):
                     AND attnum > 0 AND NOT attisdropped),
           to_regclass('idx_ledger_source_event') IS NOT NULL,
           to_regclass('idx_ledger_object_entity') IS NOT NULL
-    """, {"relation": LEDGER_RELATION})
+    """, {"relation": relation})
     names = ("source_event_id", "source_event_state",
              "idx_ledger_source_event", "idx_ledger_object_entity")
     return [name for name, present in zip(names, rows[0]) if not present]
@@ -86,6 +84,8 @@ def _subgraph_contract_state(connection):
 def evidence_subgraph(
     node_id: str | None = Query(None, alias="id",
                          description="Entity/Event/Claim/Collection/Point/Value/Action의 불투명 id"),
+    world: str | None = Query(
+        None, description="A ledger world (branch) to walk; none = the default"),
     hops: int = Query(12, ge=1, le=40, description="증거 그래프 탐색 깊이"),
     direction: str = Query("both", pattern="^(outgoing|incoming|both)$",
                            description="Entity 주장 방향; 구조 엣지는 항상 양쪽 보존"),
@@ -177,7 +177,7 @@ def evidence_subgraph(
     # match, so answering it with an empty graph hands back exactly what "there is nothing
     # here" hands back and the caller cannot tell a typo from a fact.
     if collect:
-        collectable = _collectable_types()
+        collectable = _collectable_types(world)
         unknown = sorted({str(name).split("@", 1)[0] for name in collect
                           if str(name).strip()} - collectable)
         if unknown:
@@ -187,10 +187,10 @@ def evidence_subgraph(
                 "message": ("Not a declared node type: " + ", ".join(unknown)
                             + " - pick one from 'declared'"),
             })
-    follow = _follow_classes(follow)
+    follow = _follow_classes(follow, world)
     follow, follow_keys = _split_follow(follow)
     if follow:
-        followable = _followable_predicates()
+        followable = _followable_predicates(world)
         # 🔴 THE BARE HALF IS WHAT IS CHECKED. `inspected:x,y` is the declared predicate
         # `inspected` with a constraint on it, so refusing the whole string would make every
         # keyed request a 422 for a predicate that is in fact declared.
@@ -252,7 +252,7 @@ def evidence_subgraph(
                        "`seed_type`"})
     try:
         payload = _evidence_graph(
-            db.connection(), node_id=_signed_start(node_id, positive, negative),
+            db.connection(), node_id=_signed_start(node_id, positive, negative), world=world,
             hops=hops, direction=direction,
             node_limit=node_limit, edge_limit=edge_limit, follow=follow,
             follow_keys=follow_keys, backbone_hops=backbone_hops,
@@ -281,7 +281,7 @@ def evidence_subgraph(
         raise
     except Exception as exc:                       # noqa: BLE001 - DDL race backstop
         if _is_undefined_table(exc):
-            raise _relation_absent()
+            raise _relation_absent(_world(world).read_relation)
         raise
 
 
@@ -303,7 +303,7 @@ def _signed_start(node_id, positive, negative):
 FOLLOW_CLASS_PREFIX = "class:"
 
 
-def _follow_classes(follow):
+def _follow_classes(follow, world=None):
     """`class:<word>` entries -> the declared predicates of that class; other entries untouched.
 
     Refused by name when no predicate declares the word - the same door as an undeclared
@@ -317,7 +317,7 @@ def _follow_classes(follow):
               if entry.startswith(FOLLOW_CLASS_PREFIX)]
     if not wanted:
         return list(follow)
-    by_class = _predicate_classes()
+    by_class = _predicate_classes(world)
     unknown = sorted(set(wanted) - set(by_class))
     if unknown:
         raise HTTPException(status_code=422, detail={
@@ -331,11 +331,11 @@ def _follow_classes(follow):
     return out
 
 
-def _predicate_classes() -> dict:
+def _predicate_classes(world=None) -> dict:
     """{class word: the bare names of the predicates that carry it}, read from the declaration."""
     try:
         from ledger import config as _config
-        vocabulary = (_config.load() or {}).get("vocabulary") or {}
+        vocabulary = (_config.load(_world(world).declaration_path) or {}).get("vocabulary") or {}
     except Exception as exc:                       # noqa: BLE001 - same backstop as /kinds
         logger.error("declaration unreadable while resolving follow classes: %s", exc)
         raise HTTPException(status_code=503, detail={
@@ -382,7 +382,7 @@ def _split_follow(follow):
     return names, keys
 
 
-def _predicate_cardinalities() -> dict:
+def _predicate_cardinalities(world=None) -> dict:
     """`{predicate name: "one"|"many"}` from the declaration (S-133 ④, 판정 256).
 
     🔴 THE SCREEN HAS TO BE ABLE TO SAY 「하나」. A `one` predicate means a subject carries
@@ -397,7 +397,7 @@ def _predicate_cardinalities() -> dict:
     try:
         from ledger import config as _config
 
-        declared = _config.load() or {}
+        declared = _config.load(_world(world).declaration_path) or {}
     except Exception:                                                  # noqa: BLE001
         # A walk must answer even when the declaration cannot be read; it simply says
         # nothing about cardinality rather than refusing to draw the graph.
@@ -410,7 +410,7 @@ def _predicate_cardinalities() -> dict:
     return cardinalities
 
 
-def _self_describing_predicates():
+def _self_describing_predicates(world=None):
     """Predicates the declaration gives NO OBJECT -- the ones that describe their subject.
 
     🔴 THE WALK USED TO SPELL THIS `follow=["register"]`, A DOMAIN WORD IN THE CODE
@@ -436,7 +436,7 @@ def _self_describing_predicates():
     try:
         from ledger import config as _config
 
-        declared = _config.load() or {}
+        declared = _config.load(_world(world).declaration_path) or {}
     except Exception:                                                  # noqa: BLE001
         return set()
     names = set()
@@ -446,7 +446,7 @@ def _self_describing_predicates():
     return names
 
 
-def _followable_predicates():
+def _followable_predicates(world=None):
     """Every predicate a caller may name in `follow` -- read from the DECLARATION, only.
 
     🔴 THIS USED TO BE A UNION with a code-held word list, and the union is what the v1
@@ -473,14 +473,14 @@ def _followable_predicates():
     names = set()
     try:
         from ledger import config as _config
-        declared = (_config.load() or {}).get("vocabulary") or {}
+        declared = (_config.load(_world(world).declaration_path) or {}).get("vocabulary") or {}
         names |= {str(key).split("@", 1)[0] for key in declared}
     except Exception:      # an unreadable declaration refuses everything rather than guessing
         return set()
     return names
 
 
-def _static_types():
+def _static_types(world=None):
     """Entity types the declaration marks `class: "static"` -- names, not happenings.
 
     🔴 SAME SHAPE AS `_followable_predicates`, and for the
@@ -494,7 +494,7 @@ def _static_types():
     """
     try:
         from ledger import config as _config
-        declared = (_config.load() or {}).get("entities") or {}
+        declared = (_config.load(_world(world).declaration_path) or {}).get("entities") or {}
     except Exception:
         return set()
     from ledger import setup_bundle
@@ -503,7 +503,7 @@ def _static_types():
             if setup_bundle.has_class(rule, "static")}
 
 
-def _static_step_predicates():
+def _static_step_predicates(world=None):
     """Predicates whose BOTH ends are declared static -- the only ones a static node may be
     expanded along.
 
@@ -525,7 +525,7 @@ def _static_step_predicates():
     """
     try:
         from ledger import config as _config
-        declared = _config.load() or {}
+        declared = _config.load(_world(world).declaration_path) or {}
     except Exception:
         return set()
     from ledger import setup_bundle
@@ -558,7 +558,7 @@ def _instant_arg(raw):
     return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
 
 
-def _declared_entities():
+def _declared_entities(world=None):
     """The entity declarations, read the way every other handler here reads them.
 
     ⛔ NOT A NEW LOADER. `/declaration` already publishes these (keys and attributes)
@@ -570,10 +570,10 @@ def _declared_entities():
     """
     from ledger import config as _config
 
-    return (_config.load() or {}).get("entities") or {}
+    return (_config.load(_world(world).declaration_path) or {}).get("entities") or {}
 
 
-def _evidence_graph(connection, *, node_id, hops, direction,
+def _evidence_graph(connection, *, node_id, hops, direction, world=None,
                     node_limit, edge_limit, follow=None, follow_keys=None,
                     backbone_hops=ledger_subgraph.DEFAULT_BACKBONE_HOPS,
         # [S-141] 기본은 «안 그림». true 면 대체된 원자도 그리되 엣지에
@@ -582,9 +582,10 @@ def _evidence_graph(connection, *, node_id, hops, direction,
                     collect=None, since=None, until=None, rows=False,
                     group_by=None, measure=None,
                     seed_type=None, seed_limit=ledger_subgraph.DEFAULT_SEED_LIMIT):
-    if not trace.relation_exists(connection, LEDGER_RELATION):
-        raise _relation_absent()
-    missing = _subgraph_contract_state(connection)
+    names = _world(world)
+    if not trace.relation_exists(connection, names.read_relation):
+        raise _relation_absent(names.read_relation)
+    missing = _subgraph_contract_state(connection, names.read_relation)
     if missing:
         raise HTTPException(status_code=503, detail={
             "reason": "source_event_projection_not_deployed",
@@ -594,23 +595,25 @@ def _evidence_graph(connection, *, node_id, hops, direction,
         })
     return ledger_subgraph.subgraph(
         node_id, ledger_subgraph.SqlEvidenceLookup(
-        connection, relation=LEDGER_RELATION, since=since, until=until),
+        connection, relation=names.read_relation, since=since, until=until),
         hops=hops, direction=direction,
         node_limit=node_limit, edge_limit=edge_limit, follow=follow,
         follow_keys=follow_keys,
-        backbone_hops=backbone_hops, static_types=_static_types(),
-        static_follow=_static_step_predicates(), collect=collect,
-        registration_follow=_self_describing_predicates(),
-        cardinalities=_predicate_cardinalities(),
+        backbone_hops=backbone_hops, static_types=_static_types(world),
+        static_follow=_static_step_predicates(world), collect=collect,
+        registration_follow=_self_describing_predicates(world),
+        cardinalities=_predicate_cardinalities(world),
         include_superseded=include_superseded,
         # The declaration is the ONLY authority for which columns exist — the same source
         # the client reads through /declaration, so a key added to a declaration reaches
         # both the screen and the TSV with no edit in either (S-183).
-        rows=rows, entities=_declared_entities() if rows else None,
+        rows=rows, entities=_declared_entities(world) if rows else None,
         # S-146. The fold rides the SAME walk - no second query, no second budget.
         group_by=group_by, measure=measure,
         # S-148-a. The description resolves INSIDE the walk, on the same connection.
-        seed_type=seed_type, seed_limit=seed_limit)
+        seed_type=seed_type, seed_limit=seed_limit,
+        # the world's own declaration, for the walk's key order and plural names
+        declaration_path=names.declaration_path)
 
 
 #: How many ledger rows one key-values answer may READ. The scan is bounded, not the
@@ -632,6 +635,8 @@ def ledger_key_values(
                            "답한다. 복합 키 타입에서 축 하나의 값은 «단독으로 씨앗이 안 될 "
                            "수» 있고, 응답의 `seedable` 이 그것을 말한다")),
     limit: int = Query(KEY_VALUE_DEFAULT_LIMIT, ge=1, le=KEY_VALUE_MAX_LIMIT),
+    world: str | None = Query(
+        None, description="A ledger world (branch); none = the default"),
     db: Session = Depends(get_db),
 ):
     """이 타입의 이 키에 «오늘 원장에 있는» 값들. 씨앗을 고르기 위한 목록이다.
@@ -662,7 +667,7 @@ def ledger_key_values(
             "message": "Not a declared node type: " + wanted_type
                        + " - pick one from 'declared'"})
 
-    declared_keys = _declared_keys(wanted_type)
+    declared_keys = _declared_keys(wanted_type, world)
     # 🔴 [판정 524] SIBLING OF THE SEAT 521 FOLDED, IN THIS SAME FILE. Folding one seat and
     #   not the other is what makes a file read as 「already fixed」. `?key=` used to answer
     #   422 「'' 가 선언하지 않은 키입니다」 instead of 「every key」.
@@ -676,8 +681,9 @@ def ledger_key_values(
                        % (wanted_type, key)})
 
     connection = db.connection()
-    if not trace.relation_exists(connection, LEDGER_RELATION):
-        raise _relation_absent()
+    relation = _world(world).read_relation
+    if not trace.relation_exists(connection, relation):
+        raise _relation_absent(relation)
 
     # 🔴 THE GROUPING KEYS ARE THE SUBJECT, NOT ONE AXIS OF IT. Asked per key, a composite
     # type answers with one list per axis, and a screen that pairs them offers the CROSS
@@ -717,7 +723,7 @@ def ledger_key_values(
         # The window is taken FIRST and grouped after, so the work is bounded by
         # `KEY_VALUE_SCAN_ROWS` rather than by how many rows the type has.
         "SELECT " + columns + ", count(*) AS n FROM ("
-        "  SELECT " + ", ".join(selected) + " FROM " + LEDGER_RELATION +
+        "  SELECT " + ", ".join(selected) + " FROM " + relation +
         "  WHERE subject_type LIKE %(type_prefix)s AND " + present +
         "  LIMIT %(scan)s"
         ") w WHERE " + not_null + " GROUP BY " + columns +
@@ -747,7 +753,7 @@ def ledger_key_values(
     }
 
 
-def _declared_keys(bare_type: str) -> set:
+def _declared_keys(bare_type: str, world=None) -> set:
     """The keys THIS type declares -- the same list `/declaration` publishes.
 
     🔴 Read, never restated: a key list held here would answer differently from the
@@ -755,7 +761,7 @@ def _declared_keys(bare_type: str) -> set:
     """
     try:
         from ledger import config as _config
-        declared = (_config.load() or {}).get("entities") or {}
+        declared = (_config.load(_world(world).declaration_path) or {}).get("entities") or {}
     except Exception as exc:                       # noqa: BLE001 - same backstop as /kinds
         logger.error("declaration unreadable while resolving keys: %s", exc)
         raise HTTPException(status_code=503, detail={
@@ -767,7 +773,7 @@ def _declared_keys(bare_type: str) -> set:
     return set()
 
 
-def _collectable_types():
+def _collectable_types(world=None):
     """Every node type a caller may name in `collect` -- read from the DECLARATION, only.
 
     🔴 THE SAME AUTHORITY `/declaration` PUBLISHES, not a second copy. That route already
@@ -780,7 +786,7 @@ def _collectable_types():
     """
     try:
         from ledger import config as _config
-        declared = (_config.load() or {}).get("entities") or {}
+        declared = (_config.load(_world(world).declaration_path) or {}).get("entities") or {}
     except Exception as exc:                       # noqa: BLE001 - same backstop as /kinds
         logger.error("declaration unreadable while resolving collect: %s", exc)
         raise HTTPException(status_code=503, detail={
@@ -804,7 +810,7 @@ def _is_undefined_table(exc) -> bool:
     return False
 
 
-def _relation_absent() -> HTTPException:
+def _relation_absent(relation) -> HTTPException:
     """The absent-relation refusal, in ONE spelling for both raisers.
 
     🔴 THE BODY IS STRUCTURED, NOT PROSE. Ruling R-2026-08-13-C: `reason` is
@@ -814,12 +820,12 @@ def _relation_absent() -> HTTPException:
     "no such lot". `state` repeats `GET /coverage`'s vocabulary on purpose — one
     word means one thing across both endpoints.
     """
-    logger.warning("ledger relation missing: %s", LEDGER_RELATION)
+    logger.warning("ledger relation missing: %s", relation)
     return HTTPException(status_code=503, detail={
         "reason": trace.REASON_RELATION_ABSENT,
         "state": "absent",
-        "relation": LEDGER_RELATION,
-        "message": (f"Ledger table {LEDGER_RELATION} is missing - run "
+        "relation": relation,
+        "message": (f"Ledger table {relation} is missing - run "
                     f"server/migrations/add_ledger_events.py"),
     })
 
@@ -837,7 +843,9 @@ def _relation_absent() -> HTTPException:
 
 
 @router.get("/gaps")
-def ledger_gap_catalogue(name: str = Query(None)):
+def ledger_gap_catalogue(name: str = Query(None),
+                         world: str | None = Query(
+                             None, description="A ledger world (branch); none = the default")):
     """선언이 「있어야 한다」고 말한 자리 중 원장이 «비어 있는» 곳.
 
     🔴 라우트는 «하나»이고 인자가 둘로 가릅니다 — 새 라우트가 아니라 «같은 질문의 두 배율»입니다.
@@ -860,7 +868,7 @@ def ledger_gap_catalogue(name: str = Query(None)):
     from ledger import gaps as _gaps
 
     try:
-        declared = _config.load() or {}
+        declared = _config.load(_world(world).declaration_path) or {}
     except Exception as exc:                       # noqa: BLE001
         logger.error("declaration unreadable: %s", exc)
         raise HTTPException(status_code=503, detail={
@@ -878,7 +886,8 @@ def ledger_gap_catalogue(name: str = Query(None)):
             return {"mode": "names", "count": len(asked), "gaps": asked}
         from database.database import engine
         return {"mode": "measured", "count": 1,
-                "gaps": _gaps.measure(engine, declared, only=name)}
+                "gaps": _gaps.measure(engine, declared, only=name,
+                                      relation=_world(world).read_relation)}
     except _gaps.GapQuestionUnknown as exc:
         raise HTTPException(status_code=404, detail=str(exc))
     except _gaps.GapTableMismatch as exc:
@@ -888,7 +897,7 @@ def ledger_gap_catalogue(name: str = Query(None)):
             "reason": "gap_table_mismatch", "message": str(exc)})
 
 
-def _row_census_by_source():
+def _row_census_by_source(world=None):
     """Every source's stored census, by source id. ONE query, no counting.
 
     ⚠️ FAILURE HERE COSTS THE CENSUS AND NOT THE CATALOGUE. The declaration answers from the
@@ -905,7 +914,7 @@ def _row_census_by_source():
             with connection.cursor() as cursor:
                 cursor.execute(
                     f"SELECT source, {schema.ROW_CENSUS_COLUMN} "
-                    f"  FROM {schema.CURSOR_TABLE} "
+                    f"  FROM {_world(world).cursor} "
                     f" WHERE {schema.ROW_CENSUS_COLUMN} IS NOT NULL")
                 return {row[0]: row[1] for row in cursor.fetchall()}
         finally:
@@ -917,7 +926,9 @@ def _row_census_by_source():
 
 
 @router.get("/declaration")
-def ledger_declaration_catalog():
+def ledger_declaration_catalog(
+        world: str | None = Query(
+            None, description="A ledger world (branch); none = the default")):
     """무엇을 물을 수 있나 — 노드 타입 · 그 타입의 키 · 따라갈 술어 · 모을 노드 종류.
 
     🔴 데이터 라우트가 «아니다». 원장을 한 줄도 읽지 않는다 — 답은 «선언»이고, 그래서
@@ -936,7 +947,7 @@ def ledger_declaration_catalog():
     """
     try:
         from ledger import config as _config
-        declared = _config.load() or {}
+        declared = _config.load(_world(world).declaration_path) or {}
     except Exception as exc:                       # noqa: BLE001 - same backstop as /kinds
         logger.error("declaration unreadable: %s", exc)
         raise HTTPException(status_code=503, detail={
@@ -946,7 +957,7 @@ def ledger_declaration_catalog():
     # 🔴 `class` IS CARRIED, NOT DECIDED HERE. The walk refuses a step from a static type
     # to a dynamic one (`_static_step_predicates`), and a client deriving paths from the
     # type graph alone cannot know that - so the route list offers walks that come back
-    # with the seed and nothing else. The value published is the one `_static_types()`
+    # with the seed and nothing else. The value published is the one `_static_types(world)`
     # already reads, so declaring a type static changes both at once and neither can
     # drift from the other.
     #
@@ -1026,7 +1037,7 @@ def ledger_declaration_catalog():
         from ledger.setup import load_setup
         from ledger.source_preparation import base_select_columns
 
-        plans = load_setup().snapshot.source_plans
+        plans = load_setup(_world(world).declaration_root).snapshot.source_plans
         declared_sources = declared.get("sources") or {}
         # 🔴 READ, NEVER COUNT (D5, 판정 180). 「표 행 N · 색인 M · 남은 N−M」 is two scans --
         # `count(*)` on a relation that may hold ten million rows and
@@ -1039,7 +1050,7 @@ def ledger_declaration_catalog():
         # there would tell an operator their table is empty. The key is omitted rather than
         # filled, which is the same three-state discipline the `sources` key itself uses
         # eight lines up.
-        census = _row_census_by_source()
+        census = _row_census_by_source(world)
         catalogue["sources"] = [
             {
                 "source": source_id,
@@ -1080,6 +1091,10 @@ def ledger_declaration_catalog():
         ]
     except Exception as exc:                       # noqa: BLE001 - see the note above
         logger.error("declaration sources unavailable: %s", exc)
+    # 총괄 8d10633ae ㉢: the worlds there are ride the response the screen already reads.
+    from ledger import schema
+
+    catalogue["worlds"] = schema.worlds()
     return catalogue
 
 

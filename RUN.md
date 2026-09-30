@@ -1,5 +1,30 @@
 # 지금 돌리면 되는 것
 
+> ## 🔴 [09-30 밤] **원장 가지 — 선언을 바꿔 시험하는 세상 · 가지 없는 설치는 그대로 · 마이그레이션 «없음» · 재기동 서버 · 체인 워커 (run_app.bat 로 전체)**
+>
+> ```
+> 무엇이 바뀌나  가지 <이름> = 선언 파일 하나(config/ontology_worlds/<이름>/ledger_config.json) + PG 스키마 하나(w_<이름>)
+>              가지에는 «기본과 선언이 다른 소스»의 원자만. 걷기는 가지 뷰 = 가지 원자 + 기본 원자(그 소스 빼고)
+>              따라가기(체인)는 기본만 — 가지는 사람이 명령으로 다시 번역
+> 만들기        탐색기 Bootstrap 에 world=<이름> — 기본 선언을 복사해 시작. 그 세상의 선언을 탐색기에서 고침(요청마다 world=<이름>)
+> 번역          python -m ledger.backfill --source <바꾼 소스> --world <이름> --whole-source --apply   (server/ 에서 · 가지 스키마·표·뷰도 이 명령이 만듦)
+> 걷기 · 보드    /api/ledger/subgraph · /key-values · /gaps · /declaration 에 world=<이름> · /declaration 의 worlds 칸 = 가지 목록
+>              대조 저장 행(contrast_run)의 world 칸 — 라이브 table_config 의 contrast_run 에 "world": "string" 한 줄(표본대로. 저장하면 감시가 칸을 더함)
+> 병합          탐색기 기본 세상(world 없음)에서 그 소스 선언을 가지 것으로 저장·활성화
+>              → python server/scripts/ledger_restamp_cursor.py --apply
+>              → python -m ledger.backfill --source <소스> --whole-source --apply   (옛 선언 원자는 페이지마다 걷히고 새로 씀 · 한 페이지 한 커밋)
+>              → 가지 지움
+> 지우기        DELETE /admin/ontology-explorer/worlds/<이름> → 미리보기(스키마 · 원자 수 · 파일). 같은 요청에 ?confirm_atoms=<그 수> → 지움(되돌릴 수 없음)
+> 은퇴          backfill · ledger_restamp_cursor 의 --ontology-root → --world. 저장된 작업의 ontology_root 칸: 기본 뿌리면 기본으로, 다른 경로면 이름 대어 거절
+> ASSY_DATA_ROOT 세운 설치는 원장 선언을 <DATA_ROOT>/config/ontology 에서 읽음 — 전과 다른 파일이면 커서가 선다(위 restamp)
+> 뜻           404 「world_unknown」 = 그 이름의 가지 선언 파일이 없음. 503 「ledger_relation_absent」 relation w_<이름>.ledger_view = 가지를 아직 번역 안 함(위 번역)
+>             가지 선언을 손으로 고치면 «가지가 말하는 소스»는 다음 --world 번역 때 다시 정해짐(그 전까지 뷰는 전 번역 기준)
+>             기본 원천 행이 지워져도 가지 원자는 남음(가지엔 지운 행 걷기가 없음) — 가지를 --whole-source 로 다시 번역
+> 급할 때       가지만 끄기 = 가지 지우기. 가지 없는 설치는 이름 · 원장 · 커서가 전과 byte 같음. 코드는 커밋 되돌리기
+> ```
+
+---
+
 > ## 🔴 [09-30 밤] **nokey 로 적은 키 칸이 «아예 없는» 파일도 적재 — 마이그레이션 «없음» · 재기동 워처 (run_app.bat 로 전체)**
 >
 > ```

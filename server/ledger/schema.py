@@ -51,14 +51,100 @@ signature accepts `{}` as a payload, so it can never collide with a real one.
 from __future__ import annotations
 
 import logging
+import os
+import re
+import shutil
+from dataclasses import dataclass
+from pathlib import Path
 from datetime import datetime, timedelta, timezone
 
 import db_safety
+import paths
 
 logger = logging.getLogger("Ledger.Schema")
 
-LEDGER_TABLE = "ledger_events"
-CURSOR_TABLE = "ledger_translator_cursor"
+
+@dataclass(frozen=True)
+class WorldNames:
+    """Every name one ledger world is read and written under."""
+    world: str | None               # None: the default
+    schema: str | None              # None: the default's own, through `search_path`
+    ledger: str
+    cursor: str
+    row_ref: str
+    view: str | None                # the branch's walk relation; the default has none
+    read_relation: str              # what the walk reads
+    declaration_root: str
+    draft_root: str                 # the explorer's drafts of THIS world's declaration
+    base_root: str | None           # the declaration a branch is compared with; None: none
+    space_statements: tuple         # what makes the world's own namespace; () for the default
+
+    @property
+    def declaration_path(self) -> str:
+        from .setup_bundle import CONFIG_FILENAME
+
+        return os.path.join(self.declaration_root, CONFIG_FILENAME)
+
+
+#: What an operator types after `--world`. Lower case, so the schema name needs no quoting.
+_WORLD_NAME = re.compile(r"^[a-z][a-z0-9_]{0,40}$")
+
+#: Where the branches' declaration roots live, one folder each, in the config directory.
+_BRANCH_ROOTS = "ontology_worlds"
+
+
+def world_names(world: str | None = None) -> WorldNames:
+    """🔴 THE ONE SEAT FOR 「WHICH WORLD -> WHICH NAMES」 (총괄 60d7e8e42 · fb7ece9a3). Every
+    other seat asks this; one that tests which world it is in anywhere else is a second door.
+
+    The default is the ledger as it always was - bare names through `search_path` - so an
+    install with no branch issues the statements it always did (the drift oracle in
+    `test_a_ledger_world_is_a_set_of_names`). A branch `w_<name>` is its own schema holding
+    only the sources whose declaration differs from the default's, and the walk reads its
+    view: the branch's atoms and the default's, minus the default's atoms of those sources
+    (`ensure_view`). A branch name that is not a name is refused, never folded to the default.
+    """
+    root = paths.config_path("ontology")
+    if not world:
+        return WorldNames(None, None, "ledger_events", "ledger_translator_cursor",
+                          "ledger_source_row_ref", None, "ledger_events", root,
+                          paths.config_path("backup", "ontology_drafts"), None, ())
+    if not _WORLD_NAME.match(str(world)):
+        raise ValueError(
+            f"a ledger world is named by lower-case letters, digits and _: {world!r}")
+    space = f"w_{world}"
+    # 🔴 BESIDE THE DEFAULT'S ROOT, NEVER INSIDE IT, and the drafts beside the default's
+    # drafts: a declaration root holds ONE json (`setup_bundle.load_setup_bundle` refuses any
+    # other it finds by recursion), so a branch or its drafts inside `ontology/` would make
+    # the default itself unloadable.
+    return WorldNames(world, space, f"{space}.ledger_events",
+                      f"{space}.ledger_translator_cursor", f"{space}.ledger_source_row_ref",
+                      f"{space}.ledger_view", f"{space}.ledger_view",
+                      paths.config_path(_BRANCH_ROOTS, world),
+                      paths.config_path("backup", "ontology_world_drafts", world),
+                      root, (f"CREATE SCHEMA IF NOT EXISTS {space}",))
+
+
+def require_world(world: str | None = None) -> WorldNames:
+    """`world_names` for a world that EXISTS - what every read door asks. A branch nobody
+    declared is refused by name with the list; it is never read as the default, and never as
+    the shipped sample (`ledger.config.load` falls back to the sample for a missing file)."""
+    names = world_names(world)
+    if names.base_root is not None and world not in worlds():
+        raise LookupError(f"no ledger world {world!r}; declared: {worlds() or 'none'}")
+    return names
+
+
+def worlds() -> list[str]:
+    """The branches there are: a declaration file under `<config>/ontology_worlds/<name>/`."""
+    base = paths.config_path(_BRANCH_ROOTS)
+    return [name for name in (sorted(os.listdir(base)) if os.path.isdir(base) else ())
+            if _WORLD_NAME.match(name) and os.path.isfile(world_names(name).declaration_path)]
+
+
+_DEFAULT = world_names()
+LEDGER_TABLE = _DEFAULT.ledger
+CURSOR_TABLE = _DEFAULT.cursor
 
 #: Which PHYSICAL ROW each translated fact came from (S-54-b).
 #:
@@ -75,7 +161,7 @@ CURSOR_TABLE = "ledger_translator_cursor"
 #: does not know the ledger's sources -- teaching it would be the layer violation ruling 132
 #: refused. `source_who` is what comes BACK, so one deleted row can withdraw the atoms of
 #: every source that reads that table.
-ROW_REF_TABLE = "ledger_source_row_ref"
+ROW_REF_TABLE = _DEFAULT.row_ref
 
 #: The seven columns the unique index compares. Named once, used by the DDL and by the
 #: writer's `ON CONFLICT` reasoning, so "what makes two atoms the same claim" has one
@@ -142,8 +228,9 @@ RETIRED_OBJECTLESS_CONSTRAINT = "ck_ledger_objectless_has_no_payload"
 #: dropped a constraint」, exactly as `RETIRED_OBJECTLESS_CONSTRAINT` is.
 RETIRED_REGISTER_OBJECT_CONSTRAINT = "ck_ledger_register_has_no_object"
 
-CREATE_LEDGER = f"""
-CREATE TABLE IF NOT EXISTS {LEDGER_TABLE} (
+def create_ledger_sql(names: WorldNames) -> str:
+    return f"""
+CREATE TABLE IF NOT EXISTS {names.ledger} (
     id                    UUID        NOT NULL,
     subject_type          TEXT        NOT NULL,
     subject_keys          JSONB       NOT NULL,
@@ -173,8 +260,12 @@ CREATE TABLE IF NOT EXISTS {LEDGER_TABLE} (
 ) PARTITION BY RANGE (occurred_at)
 """
 
-CREATE_ROW_REF = f"""
-CREATE TABLE IF NOT EXISTS {ROW_REF_TABLE} (
+
+CREATE_LEDGER = create_ledger_sql(_DEFAULT)
+
+def create_row_ref_sql(names: WorldNames) -> str:
+    return f"""
+CREATE TABLE IF NOT EXISTS {names.row_ref} (
     relation       TEXT NOT NULL,
     row_id         TEXT NOT NULL,
     source_who     TEXT NOT NULL,
@@ -187,8 +278,12 @@ CREATE TABLE IF NOT EXISTS {ROW_REF_TABLE} (
 )
 """
 
-CREATE_CURSOR = f"""
-CREATE TABLE IF NOT EXISTS {CURSOR_TABLE} (
+
+CREATE_ROW_REF = create_row_ref_sql(_DEFAULT)
+
+def create_cursor_sql(names: WorldNames) -> str:
+    return f"""
+CREATE TABLE IF NOT EXISTS {names.cursor} (
     source               TEXT        PRIMARY KEY,
     translator_ver       TEXT        NOT NULL,
     cursor_value         JSONB       NOT NULL,
@@ -206,6 +301,9 @@ CREATE TABLE IF NOT EXISTS {CURSOR_TABLE} (
     updated_at           TIMESTAMPTZ NOT NULL DEFAULT now()
 )
 """
+
+
+CREATE_CURSOR = create_cursor_sql(_DEFAULT)
 
 #: `refusal_reasons` in one sentence, so the shape is not learned from the writer's SQL:
 #: `{reason: {"count": <bigint>, "last_at": "<UTC ISO-8601>"}}`, one entry per
@@ -236,12 +334,20 @@ REGISTER_SEARCH_INDEX = "idx_ledger_register_search"
 SUBJECT_ENTITY_INDEX = "idx_ledger_subject_entity"
 SOURCE_EVENT_INDEX = "idx_ledger_source_event"
 OBJECT_ENTITY_INDEX = "idx_ledger_object_entity"
-REGISTER_SEARCH_INDEX_SQL = (
-    f"CREATE INDEX IF NOT EXISTS {REGISTER_SEARCH_INDEX} ON {LEDGER_TABLE} "
-    f"USING gin ((subject_keys::text) gin_trgm_ops) WHERE predicate = 'register'")
-SUBJECT_ENTITY_INDEX_SQL = (
-    f"CREATE INDEX IF NOT EXISTS {SUBJECT_ENTITY_INDEX} ON {LEDGER_TABLE} "
-    f"(subject_type, subject_keys)")
+
+
+def register_search_index_sql(names: WorldNames) -> str:
+    return (f"CREATE INDEX IF NOT EXISTS {REGISTER_SEARCH_INDEX} ON {names.ledger} "
+            f"USING gin ((subject_keys::text) gin_trgm_ops) WHERE predicate = 'register'")
+
+
+def subject_entity_index_sql(names: WorldNames) -> str:
+    return (f"CREATE INDEX IF NOT EXISTS {SUBJECT_ENTITY_INDEX} ON {names.ledger} "
+            f"(subject_type, subject_keys)")
+
+
+REGISTER_SEARCH_INDEX_SQL = register_search_index_sql(_DEFAULT)
+SUBJECT_ENTITY_INDEX_SQL = subject_entity_index_sql(_DEFAULT)
 SOURCE_EVENT_INDEX_SPECS = (
     (SOURCE_EVENT_INDEX, "(source_event_id, occurred_at, id)",
      "WHERE source_event_id IS NOT NULL"),
@@ -249,22 +355,34 @@ SOURCE_EVENT_INDEX_SPECS = (
      "((object_payload->>'type'), (object_payload->'keys'))",
      "WHERE object_kind = 'entity_ref'"),
 )
-SOURCE_EVENT_INDEX_SQL = (
-    f"CREATE INDEX IF NOT EXISTS {SOURCE_EVENT_INDEX} ON {LEDGER_TABLE} "
-    f"{SOURCE_EVENT_INDEX_SPECS[0][1]} {SOURCE_EVENT_INDEX_SPECS[0][2]}")
-OBJECT_ENTITY_INDEX_SQL = (
-    f"CREATE INDEX IF NOT EXISTS {OBJECT_ENTITY_INDEX} ON {LEDGER_TABLE} "
-    f"{SOURCE_EVENT_INDEX_SPECS[1][1]} {SOURCE_EVENT_INDEX_SPECS[1][2]}")
+
+
+def source_event_index_sql(names: WorldNames) -> str:
+    return (f"CREATE INDEX IF NOT EXISTS {SOURCE_EVENT_INDEX} ON {names.ledger} "
+            f"{SOURCE_EVENT_INDEX_SPECS[0][1]} {SOURCE_EVENT_INDEX_SPECS[0][2]}")
+
+
+def object_entity_index_sql(names: WorldNames) -> str:
+    return (f"CREATE INDEX IF NOT EXISTS {OBJECT_ENTITY_INDEX} ON {names.ledger} "
+            f"{SOURCE_EVENT_INDEX_SPECS[1][1]} {SOURCE_EVENT_INDEX_SPECS[1][2]}")
+
+
+SOURCE_EVENT_INDEX_SQL = source_event_index_sql(_DEFAULT)
+OBJECT_ENTITY_INDEX_SQL = object_entity_index_sql(_DEFAULT)
 
 # Existing ledgers receive only nullable columns during ordinary startup.  That is a
 # metadata-only additive change; the bounded operator migration owns the historical
 # backfill and constraint validation.  New writes always populate both columns.
-LEDGER_ADDITIONS = (
-    ("source_event_id",
-     f"ALTER TABLE {LEDGER_TABLE} ADD COLUMN source_event_id UUID"),
-    ("source_event_state",
-     f"ALTER TABLE {LEDGER_TABLE} ADD COLUMN source_event_state TEXT"),
-)
+def ledger_additions(names: WorldNames) -> tuple:
+    return (
+        ("source_event_id",
+         f"ALTER TABLE {names.ledger} ADD COLUMN source_event_id UUID"),
+        ("source_event_state",
+         f"ALTER TABLE {names.ledger} ADD COLUMN source_event_state TEXT"),
+    )
+
+
+LEDGER_ADDITIONS = ledger_additions(_DEFAULT)
 
 #: Columns added to an EXISTING cursor table. `ensure_schema` applies them, so a
 #: translator can never meet a table it cannot write into - the ordering hazard that
@@ -312,14 +430,18 @@ ROW_CENSUS_COLUMN = "row_census"
 #: decrement counts rows losing their LAST.
 ROWS_INDEXED_COLUMN = "rows_indexed"
 
-CURSOR_ADDITIONS = (
-    (REFUSAL_REASONS_COLUMN,
-     f"ALTER TABLE {CURSOR_TABLE} ADD COLUMN {REFUSAL_REASONS_COLUMN} JSONB"),
-    (ROW_CENSUS_COLUMN,
-     f"ALTER TABLE {CURSOR_TABLE} ADD COLUMN {ROW_CENSUS_COLUMN} JSONB"),
-    (ROWS_INDEXED_COLUMN,
-     f"ALTER TABLE {CURSOR_TABLE} ADD COLUMN {ROWS_INDEXED_COLUMN} BIGINT"),
-)
+def cursor_additions(names: WorldNames) -> tuple:
+    return (
+        (REFUSAL_REASONS_COLUMN,
+         f"ALTER TABLE {names.cursor} ADD COLUMN {REFUSAL_REASONS_COLUMN} JSONB"),
+        (ROW_CENSUS_COLUMN,
+         f"ALTER TABLE {names.cursor} ADD COLUMN {ROW_CENSUS_COLUMN} JSONB"),
+        (ROWS_INDEXED_COLUMN,
+         f"ALTER TABLE {names.cursor} ADD COLUMN {ROWS_INDEXED_COLUMN} BIGINT"),
+    )
+
+
+CURSOR_ADDITIONS = cursor_additions(_DEFAULT)
 
 # 🔴 EVERY INDEX BELOW HAS A NAMED CONSUMER, AND THAT IS THE ADMISSION RULE.
 #
@@ -344,51 +466,59 @@ CURSOR_ADDITIONS = (
 #       Redundant. The primary key is (id, occurred_at) with `id` LEADING, so the
 #       watermark scan `WHERE id > :cursor ORDER BY id` already has an index per
 #       partition and a MergeAppend across them.
-INDEXES = (
-    # CONSUMER: idempotency - `store.insert_atoms`'s `ON CONFLICT DO NOTHING`, proven by
-    # `test_the_unique_index_holds_when_the_cursor_is_reset`. Risk 1 of the brief. The
-    # cursor is the FIRST answer (a re-run reads nothing); this is the one that still
-    # holds when somebody resets the cursor.
-    # PRICE: 284.6 B/atom, the single largest line in the bill, because it carries
-    # `source_raw_ref` plus both jsonb columns. That is the cost of schema-enforced
-    # idempotency and it is stated so the trade can be re-decided rather than rediscovered.
-    f"CREATE UNIQUE INDEX IF NOT EXISTS uq_ledger_atom ON {LEDGER_TABLE} "
-    f"({', '.join(DEDUPE_COLUMNS)})",
+def indexes(names: WorldNames) -> tuple:
+    return (
+        # CONSUMER: idempotency - `store.insert_atoms`'s `ON CONFLICT DO NOTHING`, proven by
+        # `test_the_unique_index_holds_when_the_cursor_is_reset`. Risk 1 of the brief. The
+        # cursor is the FIRST answer (a re-run reads nothing); this is the one that still
+        # holds when somebody resets the cursor.
+        # PRICE: 284.6 B/atom, the single largest line in the bill, because it carries
+        # `source_raw_ref` plus both jsonb columns. That is the cost of schema-enforced
+        # idempotency and it is stated so the trade can be re-decided rather than rediscovered.
+        f"CREATE UNIQUE INDEX IF NOT EXISTS uq_ledger_atom ON {names.ledger} "
+        f"({', '.join(DEDUPE_COLUMNS)})",
 
-    # CONSUMER: `server/ledger_trace.py`'s recursive lineage walk (the slice's other
-    # lane), which asks `subject_keys->>'lot' = :lot AND predicate = ANY(...)`.
-    # 🔴 Its shape is dictated by a property of that query rather than by taste: the walk
-    # carries NO `occurred_at` predicate, because "everything about this lot" has no time
-    # bound - so partition pruning can never help it and every partition is visited on
-    # every hop. Declared on the parent so PostgreSQL cascades it to partitions that do
-    # not exist yet, which is what makes a monthly partition created next year still fast.
-    f"CREATE INDEX IF NOT EXISTS idx_ledger_subject_lot ON {LEDGER_TABLE} "
-    f"((subject_keys->>'lot'), predicate)",
+        # CONSUMER: `server/ledger_trace.py`'s recursive lineage walk (the slice's other
+        # lane), which asks `subject_keys->>'lot' = :lot AND predicate = ANY(...)`.
+        # 🔴 Its shape is dictated by a property of that query rather than by taste: the walk
+        # carries NO `occurred_at` predicate, because "everything about this lot" has no time
+        # bound - so partition pruning can never help it and every partition is visited on
+        # every hop. Declared on the parent so PostgreSQL cascades it to partitions that do
+        # not exist yet, which is what makes a monthly partition created next year still fast.
+        f"CREATE INDEX IF NOT EXISTS idx_ledger_subject_lot ON {names.ledger} "
+        f"((subject_keys->>'lot'), predicate)",
 
-    # CONSUMER: `store.existing_registrations`, once per page rather than once per row -
-    # a per-entity lookup is what makes a ten-million row backfill quadratic. PARTIAL,
-    # because registers are O(entities) while the table is O(atoms), so this index stops
-    # growing long before the table does. PRICE: 16.6 B/atom and falling.
-    f"CREATE INDEX IF NOT EXISTS idx_ledger_register ON {LEDGER_TABLE} "
-    f"(subject_type, subject_keys) WHERE predicate = 'register'",
+        # CONSUMER: `store.existing_registrations`, once per page rather than once per row -
+        # a per-entity lookup is what makes a ten-million row backfill quadratic. PARTIAL,
+        # because registers are O(entities) while the table is O(atoms), so this index stops
+        # growing long before the table does. PRICE: 16.6 B/atom and falling.
+        f"CREATE INDEX IF NOT EXISTS idx_ledger_register ON {names.ledger} "
+        f"(subject_type, subject_keys) WHERE predicate = 'register'",
 
-    # CONSUMER: `GET /api/ledger/entities?q=...`. Partial trigram over structured
-    # identities: a contains search is useful in the picker, but casting every ledger
-    # atom to text at request time is forbidden. `pg_trgm` is a database bootstrap
-    # prerequisite (`setup/init_db.py`); the migration names its absence rather than
-    # silently running the slow query.
-    REGISTER_SEARCH_INDEX_SQL,
+        # CONSUMER: `GET /api/ledger/entities?q=...`. Partial trigram over structured
+        # identities: a contains search is useful in the picker, but casting every ledger
+        # atom to text at request time is forbidden. `pg_trgm` is a database bootstrap
+        # prerequisite (`setup/init_db.py`); the migration names its absence rather than
+        # silently running the slow query.
+        register_search_index_sql(names),
 
-    # CONSUMER: the generic entity-centred graph. Exact (type, structured keys) probes
-    # occur once per bounded frontier and can use this B-tree on every partition.
-    SUBJECT_ENTITY_INDEX_SQL,
-)
+        # CONSUMER: the generic entity-centred graph. Exact (type, structured keys) probes
+        # occur once per bounded frontier and can use this B-tree on every partition.
+        subject_entity_index_sql(names),
+    )
+
+
+INDEXES = indexes(_DEFAULT)
 
 # Built inline only for a brand-new empty ledger.  On an existing ledger these are
 # intentionally owned by `add_ledger_source_events.py`, which uses CONCURRENTLY.  Letting
 # ordinary writer startup build them synchronously would turn a read feature deployment
 # into an unbounded write-path lock.
-SOURCE_EVENT_INDEXES = (SOURCE_EVENT_INDEX_SQL, OBJECT_ENTITY_INDEX_SQL)
+def source_event_indexes(names: WorldNames) -> tuple:
+    return (source_event_index_sql(names), object_entity_index_sql(names))
+
+
+SOURCE_EVENT_INDEXES = source_event_indexes(_DEFAULT)
 
 
 def month_bounds(when: datetime):
@@ -406,8 +536,8 @@ def month_bounds(when: datetime):
     return start, end, f"{start.year:04d}_{start.month:02d}"
 
 
-def partition_name(when: datetime) -> str:
-    return f"{LEDGER_TABLE}_{month_bounds(when)[2]}"
+def partition_name(when: datetime, names: WorldNames = _DEFAULT) -> str:
+    return f"{names.ledger}_{month_bounds(when)[2]}"
 
 
 #: The relations this module creates and owns, by name. One spelling, because two lists of
@@ -433,10 +563,10 @@ def owns_table(name: str) -> bool:
     return name in FIXED_TABLES or name.startswith(PARTITION_PREFIX)
 
 
-def create_partition_sql(when: datetime):
+def create_partition_sql(when: datetime, names: WorldNames = _DEFAULT):
     start, end, _ = month_bounds(when)
-    name = partition_name(when)
-    return (f"CREATE TABLE IF NOT EXISTS {name} PARTITION OF {LEDGER_TABLE} "
+    name = partition_name(when, names)
+    return (f"CREATE TABLE IF NOT EXISTS {name} PARTITION OF {names.ledger} "
             f"FOR VALUES FROM ('{start.isoformat()}') TO ('{end.isoformat()}')")
 
 
@@ -459,7 +589,8 @@ def constraint_exists(cursor, table: str, name: str) -> bool:
     return cursor.fetchone() is not None
 
 
-def ensure_register_object_constraint_dropped(cursor) -> bool:
+def ensure_register_object_constraint_dropped(cursor,
+                                              names: WorldNames = _DEFAULT) -> bool:
     """Drop S-77's retired constraint on an install that predates the removal.
 
     Returns whether it did anything. Idempotent: a fresh install never creates it, so the
@@ -475,16 +606,16 @@ def ensure_register_object_constraint_dropped(cursor) -> bool:
     one is structural -- an objectless atom carries qualifiers and nothing else -- and it
     names no predicate, so it stays true whatever any declaration says.
     """
-    if not constraint_exists(cursor, LEDGER_TABLE, RETIRED_REGISTER_OBJECT_CONSTRAINT):
+    if not constraint_exists(cursor, names.ledger, RETIRED_REGISTER_OBJECT_CONSTRAINT):
         return False
     logger.info("[Ledger] dropping %s (S-77: the storage layer stops naming a predicate)",
                 RETIRED_REGISTER_OBJECT_CONSTRAINT)
-    cursor.execute(f"ALTER TABLE {LEDGER_TABLE} "
+    cursor.execute(f"ALTER TABLE {names.ledger} "
                    f"DROP CONSTRAINT {RETIRED_REGISTER_OBJECT_CONSTRAINT}")
     return True
 
 
-def ensure_objectless_payload_constraint(cursor) -> bool:
+def ensure_objectless_payload_constraint(cursor, names: WorldNames = _DEFAULT) -> bool:
     """Widen the objectless-payload rule on an install that predates attributes.
 
     Returns whether it did anything, so a caller can say so. Idempotent: an install that
@@ -509,15 +640,15 @@ def ensure_objectless_payload_constraint(cursor) -> bool:
     ⚠️ DROP AND ADD RIDE IN THE CALLER'S TRANSACTION, so there is no window in which the
     table carries neither rule. Both are catalogue-only.
     """
-    if constraint_exists(cursor, LEDGER_TABLE, OBJECTLESS_PAYLOAD_CONSTRAINT):
+    if constraint_exists(cursor, names.ledger, OBJECTLESS_PAYLOAD_CONSTRAINT):
         return False
     logger.info("[Ledger] widening %s to %s", RETIRED_OBJECTLESS_CONSTRAINT,
                 OBJECTLESS_PAYLOAD_CONSTRAINT)
-    if constraint_exists(cursor, LEDGER_TABLE, RETIRED_OBJECTLESS_CONSTRAINT):
-        cursor.execute(f"ALTER TABLE {LEDGER_TABLE} "
+    if constraint_exists(cursor, names.ledger, RETIRED_OBJECTLESS_CONSTRAINT):
+        cursor.execute(f"ALTER TABLE {names.ledger} "
                        f"DROP CONSTRAINT {RETIRED_OBJECTLESS_CONSTRAINT}")
     cursor.execute(
-        f"ALTER TABLE {LEDGER_TABLE} ADD CONSTRAINT {OBJECTLESS_PAYLOAD_CONSTRAINT} "
+        f"ALTER TABLE {names.ledger} ADD CONSTRAINT {OBJECTLESS_PAYLOAD_CONSTRAINT} "
         f"CHECK {OBJECTLESS_PAYLOAD_CHECK} NOT VALID")
     return True
 
@@ -570,17 +701,17 @@ def _ensure_trigram(cursor):
             % exc) from exc
 
 
-def ensure_row_ref_table(cursor):
+def ensure_row_ref_table(cursor, names: WorldNames = _DEFAULT):
     """Make the row index exist. Idempotent, and the ONLY spelling of its DDL.
 
     Called from `ensure_schema` and from the index backfill, because an install that has
     not run a translation since this table was added has no table for the backfill to write
     into -- and `UndefinedTable` from inside a paced job is a worse answer than making it.
     """
-    cursor.execute(CREATE_ROW_REF)
+    cursor.execute(create_row_ref_sql(names))
 
 
-def ensure_schema(connection):
+def ensure_schema(connection, names: WorldNames = _DEFAULT):
     """Create the ledger, the cursor table and the indexes. Idempotent, additive only.
 
     No DROP, and the only ALTER is `CURSOR_ADDITIONS` - columns ADDED to the cursor
@@ -595,35 +726,166 @@ def ensure_schema(connection):
     spelling of the DDL (the rule `add_ledger_events.py` states).
     """
     with connection.cursor() as cursor:
-        ledger_existed = _relation_exists(cursor, LEDGER_TABLE)
-        cursor.execute(CREATE_LEDGER)
+        for statement in names.space_statements:
+            cursor.execute(statement)
+        ledger_existed = _relation_exists(cursor, names.ledger)
+        cursor.execute(create_ledger_sql(names))
         # An install that predates attributes still carries the narrow rule, and the
         # translator is about to write an atom the narrow rule refuses. See the function.
-        ensure_objectless_payload_constraint(cursor)
-        ensure_register_object_constraint_dropped(cursor)
-        cursor.execute(CREATE_CURSOR)
-        ensure_row_ref_table(cursor)
-        for column, statement in LEDGER_ADDITIONS:
-            if not column_exists(cursor, LEDGER_TABLE, column):
-                logger.info("[Ledger] adding %s.%s", LEDGER_TABLE, column)
+        ensure_objectless_payload_constraint(cursor, names)
+        ensure_register_object_constraint_dropped(cursor, names)
+        cursor.execute(create_cursor_sql(names))
+        ensure_row_ref_table(cursor, names)
+        for column, statement in ledger_additions(names):
+            if not column_exists(cursor, names.ledger, column):
+                logger.info("[Ledger] adding %s.%s", names.ledger, column)
                 cursor.execute(statement)
-        for column, statement in CURSOR_ADDITIONS:
+        for column, statement in cursor_additions(names):
             # Gated rather than `ADD COLUMN IF NOT EXISTS`: that spelling still takes
             # ACCESS EXCLUSIVE on the table to decide it has nothing to do, and this runs
             # at every chain-daemon start and every `backfill.run` (S-88).
-            if not column_exists(cursor, CURSOR_TABLE, column):
-                logger.info("[Ledger] adding %s.%s", CURSOR_TABLE, column)
+            if not column_exists(cursor, names.cursor, column):
+                logger.info("[Ledger] adding %s.%s", names.cursor, column)
                 cursor.execute(statement)
         _ensure_trigram(cursor)
-        for statement in INDEXES:
+        for statement in indexes(names):
             cursor.execute(statement)
         if not ledger_existed:
-            for statement in SOURCE_EVENT_INDEXES:
+            for statement in source_event_indexes(names):
                 cursor.execute(statement)
     connection.commit()
 
 
-def ensure_partition(connection, when: datetime, known=None):
+def changed_sources(names) -> frozenset:
+    """The sources a branch speaks for because its declaration differs from its base's
+    (총괄 60d7e8e42 1) - no new judge: each source's cursor fingerprint (the material that
+    can change ITS atoms) compared by `LedgerStore.restamp_decision`, the one seat that says
+    two fingerprints are the same. A source on one side only, or one a loader refused, has
+    no fingerprint there and so differs. A world with no base - the default - has nothing to
+    differ from."""
+    if names.base_root is None:
+        return frozenset()
+    from .setup import load_setup
+    from .setup_bundle import LedgerSetupValidationError
+    from .setup_registry import cursor_translator_version
+    from .store import LedgerStore
+
+    def versions(root):
+        snapshot = load_setup(root).snapshot
+        out = {}
+        for source_id in snapshot.source_plans:
+            try:
+                out[source_id] = cursor_translator_version(snapshot, source_id)
+            except LedgerSetupValidationError:
+                out[source_id] = None
+        return out
+
+    base, this = versions(names.base_root), versions(names.declaration_root)
+    return frozenset(
+        source_id for source_id in set(base) | set(this)
+        if LedgerStore.restamp_decision(base.get(source_id), this.get(source_id))[0]
+        != "already")
+
+
+def world_deletion(engine, world: str) -> dict:
+    """What deleting a ledger branch takes - its schema, with every atom, cursor and index row
+    in it, and its declaration and draft files. READ ONLY. The default is no branch and is
+    never deleted (총괄 8d10633ae ㉢: the preview comes first because a DROP is not undone)."""
+    names = require_world(world)
+    if names.base_root is None:
+        raise ValueError("the default ledger world is not a branch and is never deleted")
+    connection = engine.raw_connection()
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT to_regclass(%s) IS NOT NULL", (names.ledger,))
+            atoms = 0
+            if cursor.fetchone()[0]:
+                cursor.execute(f"SELECT count(*) FROM {names.ledger}")
+                atoms = int(cursor.fetchone()[0])
+    finally:
+        connection.rollback()
+        connection.close()
+    files = sorted(str(path) for root in (names.declaration_root, names.draft_root)
+                   if os.path.isdir(root) for path in Path(root).rglob("*") if path.is_file())
+    return {"world": names.world, "schema": names.schema, "atoms": atoms, "files": files}
+
+
+def drop_world(engine, world: str, expect_atoms: int) -> dict:
+    """Delete a ledger branch: its schema, CASCADE, and its two folders - only when the caller
+    confirms the atom count its preview showed, so a branch that moved since is not taken."""
+    preview = world_deletion(engine, world)
+    if int(expect_atoms) != preview["atoms"]:
+        raise ValueError(f"branch {world!r} now holds {preview['atoms']} atom(s), not "
+                         f"{expect_atoms} - preview it again")
+    names = world_names(world)
+    connection = engine.raw_connection()
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(f"DROP SCHEMA IF EXISTS {names.schema} CASCADE")
+        connection.commit()
+    finally:
+        connection.close()
+    for root in (names.declaration_root, names.draft_root):
+        if os.path.isdir(root):
+            shutil.rmtree(root)
+    return {**preview, "deleted": True}
+
+
+def ensure_world(engine, names: WorldNames) -> None:
+    """A branch's own schema and tables, before its translation reads or writes them. The
+    default has no namespace of its own to make, and its tables are the daemon's and the
+    CLI's to ensure (S-88) - so a library call on the default does nothing here."""
+    if not names.space_statements:
+        return
+    connection = engine.raw_connection()
+    try:
+        ensure_schema(connection, names)
+    finally:
+        connection.close()
+
+
+def ensure_view(engine, names: WorldNames, changed) -> None:
+    """A branch's walk relation: its own atoms and the default's, minus the default's atoms
+    of every source the branch speaks for - `changed` (its declaration differs) and any
+    source the branch has written, so translating an unchanged source there cannot double
+    it. The default has no view.
+
+    🔴 THE FILTER SITS OUTSIDE THE UNION, ON A LEG MARKER. Box EXPLAIN 09-30: a `WHERE` on
+    the partitioned default's leg keeps the planner from flattening the union, and every
+    walk read seq-scanned every partition (0.43 ms -> 775 ms); outside, both legs keep their
+    indexes. The columns are named - the default's own, in its order - because two tables
+    grown by different histories of `ALTER` need not agree on `*`. Dropped and made again in
+    one commit: a view's column list is fixed when it is created.
+    """
+    if not names.view:
+        return
+    connection = engine.raw_connection()
+    try:
+        _write_view(connection, names, changed)
+    finally:
+        connection.close()
+
+
+def _write_view(connection, names: WorldNames, changed) -> None:
+    with connection.cursor() as cursor:
+        cursor.execute(f"SELECT DISTINCT source_who FROM {names.ledger}")
+        excluded = set(changed) | {row[0] for row in cursor.fetchall()}
+        cursor.execute(
+            "SELECT attname FROM pg_attribute WHERE attrelid = to_regclass(%s) "
+            "AND attnum > 0 AND NOT attisdropped ORDER BY attnum", (_DEFAULT.ledger,))
+        columns = ", ".join('"%s"' % row[0] for row in cursor.fetchall())
+        cursor.execute(f"DROP VIEW IF EXISTS {names.view}")
+        cursor.execute(
+            f"CREATE VIEW {names.view} AS SELECT * FROM ("
+            f"SELECT 'branch'::text AS world_leg, {columns} FROM {names.ledger} "
+            f"UNION ALL SELECT 'default'::text, {columns} FROM {_DEFAULT.ledger}) legs "
+            f"WHERE NOT (world_leg = 'default' AND source_who = ANY (%s::text[]))",
+            (sorted(excluded),))
+    connection.commit()
+
+
+def ensure_partition(connection, when: datetime, known=None,
+                     names: WorldNames = _DEFAULT):
     """Make sure the month containing `when` exists. Returns the partition name.
 
     Runs in its OWN transaction and commits before returning. That is deliberate: if
@@ -634,7 +896,7 @@ def ensure_partition(connection, when: datetime, known=None):
     `known` is an optional set the caller keeps across calls, so a backfill that stays
     inside one month issues one catalogue query instead of one per batch.
     """
-    name = partition_name(when)
+    name = partition_name(when, names)
     if known is not None and name in known:
         return name
     try:
@@ -651,7 +913,7 @@ def ensure_partition(connection, when: datetime, known=None):
             # blind under its own fault is this project's own 2026-08-11 lesson).
             cursor.execute("SET LOCAL lock_timeout = '%s'" % db_safety.DDL_LOCK_TIMEOUT)
             if not _relation_exists(cursor, name):
-                cursor.execute(create_partition_sql(when))
+                cursor.execute(create_partition_sql(when, names))
                 logger.info("[Ledger] created partition %s for %s", name,
                             when.astimezone(timezone.utc).date())
         connection.commit()
@@ -668,7 +930,7 @@ def ensure_partition(connection, when: datetime, known=None):
                     raise RuntimeError(
                         f"could not create partition {name}: another session (possibly "
                         f"this process's own reader) holds a lock on "
-                        f"{LEDGER_TABLE}. Partition DDL needs ACCESS EXCLUSIVE on the "
+                        f"{names.ledger}. Partition DDL needs ACCESS EXCLUSIVE on the "
                         f"parent table. Original error: {exc}") from exc
                 raise
         connection.commit()
@@ -688,7 +950,7 @@ def ensure_partitions_for_range(connection, first: datetime, last: datetime):
     return names
 
 
-def partitions(connection):
+def partitions(connection, names: WorldNames = _DEFAULT):
     """The ledger's partitions, by name. For the report and for a health check."""
     with connection.cursor() as cursor:
         cursor.execute("""
@@ -698,5 +960,5 @@ def partitions(connection):
             JOIN pg_class c ON c.oid = inh.inhrelid
             WHERE parent.oid = to_regclass(%s)
             ORDER BY c.relname
-        """, (LEDGER_TABLE,))
+        """, (names.ledger,))
         return [(name, bound) for name, bound in cursor.fetchall()]

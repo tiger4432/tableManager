@@ -26,9 +26,6 @@ from declaration_names import bare_name as _bare_name
 
 logger = logging.getLogger(__name__)
 
-CONFIG_FILENAME = "ledger_config.json"
-CONFIG_SUBDIR = "ontology"
-
 _cache = None
 #: The identity keys of every declared entity, from the SAME parse as `_cache`. The
 #: declaration is the only place that knows them, and two readers of one file would be two
@@ -38,13 +35,10 @@ _lock = threading.Lock()
 
 
 def _config_path():
-    try:
-        import paths
-        base = os.path.join(paths.CONFIG_DIR, CONFIG_SUBDIR)
-    except Exception:                                            # pragma: no cover
-        server_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        base = os.path.join(server_dir, "config", CONFIG_SUBDIR)
-    return os.path.join(base, CONFIG_FILENAME)
+    """The default world's declaration, from the one seat (총괄 e61194b1a ㉥)."""
+    from ledger.schema import world_names
+
+    return world_names().declaration_path
 
 
 def load(force_reload=False):

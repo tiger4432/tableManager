@@ -7,7 +7,7 @@ from types import MappingProxyType
 
 import pytest
 
-from ledger import gate
+from ledger import gate, schema
 from ledger.runtime_v2 import (
     LedgerV2RuntimeError,
     execute_scoped_batch,
@@ -267,6 +267,7 @@ class CursorOnlyStore(LedgerStore):
     def __init__(self, connection):
         self.engine = object()
         self.who = "test"
+        self.names = schema.world_names()
         self._known_partitions = set()
         self._connection = connection
 

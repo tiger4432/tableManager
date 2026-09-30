@@ -27,6 +27,7 @@ All database probes are exact indexed batches and every response has hard budget
 from __future__ import annotations
 
 import base64
+import contextvars
 import bisect
 import json
 import re
@@ -311,8 +312,9 @@ EVENT_STATES = {"source_molecule", "source_record", "legacy_atom"}
 #: A projection that emits ONE kind needs no roster of kinds, and the two retired
 #: names existed only so `collect` could refuse them by name. `collect` went too.
 
-#: A SQL identifier, so a caller-named relation cannot smuggle anything else in.
-_IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+#: A SQL identifier, so a caller-named relation cannot smuggle anything else in - the one
+#: guard, `trace`'s, which also admits a ledger world's `w_<name>.<table>`.
+_IDENTIFIER = trace._IDENTIFIER
 
 
 def _canonical(value):
@@ -616,13 +618,12 @@ class SqlEvidenceLookup:
         ⚠️ ONE ROW PAST THE BUDGET, so 「there were more」 is a fact rather than an inference
         from a full page.
         """
-        from ledger import schema
         from ledger.config_authoring import REGISTER_PREDICATE
 
         bare = str(entity_type or "").split("@", 1)[0]
         rows = self._execute(
             f"SELECT DISTINCT subject_type, subject_keys "
-            f"FROM {schema.LEDGER_TABLE} "
+            f"FROM {self.relation} "
             f"WHERE predicate = %(predicate)s AND subject_type = %(subject_type)s "
             f"ORDER BY subject_type, subject_keys "
             f"LIMIT %(fetch)s",
@@ -725,20 +726,17 @@ class InMemoryEvidenceLookup:
         ], limit)
 
 
-#: Key order per entity type, read once from the live ontology declaration.  `None`
-#: until the first entity node asks for it.
-_entity_key_order = None
+#: {declaration file: (key order per entity type, plural attributes per bare entity type
+#: (S-144), absence confirmers (S-149))} - three facts from ONE read of one file, so they can
+#: never come from different revisions. The confirmers: 「이 술어가 안 보이는 것이 무슨 뜻인가」
+#: — bare finding predicate -> (bare examination predicate, whether that examination is itself
+#: declared); the population of `node["absence"]` is THAT MAP, not the data.
+_declaration_facts = {}
 
-#: Which attribute names hold SEVERAL values, per bare entity type (S-144). Filled by the
-#: same read as the line above, so the two can never come from different revisions.
-_entity_plural_attributes = {}
-
-#: 🔴 「이 술어가 안 보이는 것이 무슨 뜻인가」 — bare finding predicate -> (bare examination
-#: predicate, whether that examination is itself declared). Filled by the same read as the two
-#: above (S-149). The population of `node["absence"]` is THIS MAP, not the data: a predicate
-#: that did not appear has no row in `predicates[]`, and that is exactly where a `false`
-#: verdict has to live.
-_absence_confirmers = {}
+#: The declaration the walk in progress reads - its world's file, bound by `subgraph` for the
+#: length of ONE walk (총괄 60d7e8e42). A context value, not a global swapped per walk: two
+#: walks on two worlds may run at once on the server's threads. Unbound: the default world.
+_WALK_DECLARATION = contextvars.ContextVar("ledger_walk_declaration", default=None)
 
 
 def _declared_key_order(entity_type):
@@ -755,8 +753,7 @@ def _declared_key_order(entity_type):
     declaration leaves every label exactly as it is today rather than taking the walk down
     with it.  The `@version` suffix is stripped the way `ledger/roleframe.py` strips it.
     """
-    _read_entity_declaration()
-    return _entity_key_order.get(str(entity_type))
+    return _read_entity_declaration()[0].get(str(entity_type))
 
 
 def _read_entity_declaration():
@@ -771,16 +768,16 @@ def _read_entity_declaration():
     as they are today rather than taking the walk down with it. The `@version` suffix is
     stripped the way `ledger/roleframe.py` strips it.
     """
-    global _entity_key_order, _entity_plural_attributes, _absence_confirmers
-    if _entity_key_order is not None:
-        return
+    from ledger.schema import world_names
     from ledger.setup_bundle import ATTRIBUTE_CARDINALITY_MANY
 
+    path = _WALK_DECLARATION.get() or world_names().declaration_path
+    facts = _declaration_facts.get(path)
+    if facts is not None:
+        return facts
     order, plural_by_type, confirmers = {}, {}, {}
     try:
-        import paths
-        with open(paths.config_path("ontology", "ledger_config.json"),
-                  "r", encoding="utf-8") as handle:
+        with open(path, "r", encoding="utf-8") as handle:
             document = json.load(handle) or {}
         declared = document.get("entities") or {}
         # 🔴 THE THIRD FACT, ON THE SAME READ AND THE SAME SENTINEL (S-149). A separate
@@ -807,8 +804,8 @@ def _read_entity_declaration():
                     plural_by_type[bare] = plural
     except Exception:
         order, plural_by_type, confirmers = {}, {}, {}
-    _entity_key_order, _entity_plural_attributes = order, plural_by_type
-    _absence_confirmers = confirmers
+    facts = _declaration_facts[path] = (order, plural_by_type, confirmers)
+    return facts
 
 
 def reset_declaration_cache():
@@ -826,9 +823,7 @@ def reset_declaration_cache():
     sentinel would leave the plural map from the previous revision standing while the key
     order came from the new one - the split this module's 「one read」 note exists to stop.
     """
-    global _entity_key_order, _entity_plural_attributes, _absence_confirmers
-    _entity_key_order, _entity_plural_attributes = None, {}
-    _absence_confirmers = {}
+    _declaration_facts.clear()
 
 
 def _declared_entity_facts_names():
@@ -837,14 +832,12 @@ def _declared_entity_facts_names():
     ⚠️ EMPTY MEANS 「cannot say」, NOT 「none are declared」 — the caller must not turn an
     unreadable declaration into a refusal of every type.
     """
-    _read_entity_declaration()
-    return frozenset(_entity_key_order or ())
+    return frozenset(_read_entity_declaration()[0])
 
 
 def _declared_plural_attributes(entity_type):
     """Which of this type's attribute names hold SEVERAL values (S-144, 판정 327)."""
-    _read_entity_declaration()
-    return _entity_plural_attributes.get(_bare(str(entity_type))) or frozenset()
+    return _read_entity_declaration()[1].get(_bare(str(entity_type))) or frozenset()
 
 
 
@@ -886,8 +879,7 @@ def _absence_verdicts(nodes, complete, cut_reason):
     confirmer yet, so this map is `{}` until an operator writes one. That is the cell
     filling up, not the cell failing.
     """
-    _read_entity_declaration()
-    confirmers = _absence_confirmers
+    confirmers = _read_entity_declaration()[2]
     if not confirmers:
         return
     for node in nodes.values():
@@ -1395,7 +1387,7 @@ def _propagation(nodes, edges, seed_signs, complete, static_types=()):
         # be two different questions about one candidate, and picking between them here would
         # make this function the author of the answer -- so that falls back to the type,
         # which is the answer that shipped.
-        confirmable = sorted((arrived_by.get(node_id) or set()) & set(_absence_confirmers))
+        confirmable = sorted((arrived_by.get(node_id) or set()) & set(_read_entity_declaration()[2]))
         if len(confirmable) == 1:
             predicate = confirmable[0]
             pair = [0, 0]
@@ -1704,7 +1696,18 @@ def rows_projection(payload, nodes, edges, seed_signs, entities,
     return "\n".join(lines) + "\n"
 
 
-def subgraph(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
+def subgraph(seed_id, lookup, *, declaration_path=None, **arguments):
+    """`_walk` over the declaration of the world it walks (`declaration_path`; None: the
+    default's) - bound for this walk alone, so a concurrent walk of another world reads its
+    own file."""
+    token = _WALK_DECLARATION.set(declaration_path)
+    try:
+        return _walk(seed_id, lookup, **arguments)
+    finally:
+        _WALK_DECLARATION.reset(token)
+
+
+def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
              node_limit=DEFAULT_NODE_LIMIT, edge_limit=DEFAULT_EDGE_LIMIT,
              action_lookup=None, follow=None,
              backbone_hops=DEFAULT_BACKBONE_HOPS, static_types=None,

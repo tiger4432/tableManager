@@ -161,9 +161,15 @@ def test_replay_all_does_not_replay_a_companion_whole(seen, monkeypatch):
     assert seen["direct"] == ["replay_rule"], "the dry run lists the same set"
 
 
-def test_the_ledger_cli_hands_its_config_root_to_the_run(seen, monkeypatch):
-    assert _ledger(["--source", "s", "--ontology-root", "/elsewhere"], monkeypatch) == 0
-    assert seen["door"][-1][1]["ontology_root"] == "/elsewhere"
+def test_the_ledger_cli_hands_its_world_to_the_run(seen, monkeypatch):
+    """총괄 3b6dacd2f: the operator names a declaration by world only. Isolated by the seat's
+    own list - `w1` is declared for this test and nothing on disk is read for it."""
+    import ledger.schema as ledger_schema
+
+    monkeypatch.setattr(ledger_schema, "worlds", lambda: ["w1"])
+    assert _ledger(["--source", "s", "--world", "w1"], monkeypatch) == 0
+    assert seen["door"][-1][1]["world"] == "w1"
+    assert "ontology_root" not in seen["door"][-1][1]
 
 
 def test_ignore_knob_with_apply_is_still_refused_and_nothing_enters_the_door(seen,

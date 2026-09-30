@@ -35,7 +35,7 @@ def _catalog():
     return setup_bundle.load_physical_catalog(SHIPPED / "table_config.json.sample")
 
 
-def _classed() -> dict:
+def _classed(*_args, **_kwargs) -> dict:
     """The shipped declaration with two predicates in `model` and one in `context`."""
     document = _sample()
     vocabulary = document["vocabulary"]
@@ -99,7 +99,7 @@ def test_the_save_verdict_and_the_loader_give_one_answer(value, refused, tmp_pat
 def test_an_operator_word_beside_static_keeps_the_type_static(monkeypatch):
     document = _sample()
     document["entities"]["quantity@1"]["class"] = ["static", "probe"]
-    monkeypatch.setattr(ledger_config, "load", lambda: document)
+    monkeypatch.setattr(ledger_config, "load", lambda *_args, **_kwargs: document)
     assert "quantity" in trace_router._static_types()
     types = {item["type"]: item["class"] for item in trace_router.ledger_declaration_catalog()["entities"]}
     assert types["quantity@1"] == ["static", "probe"]
@@ -113,7 +113,7 @@ class _Db:
 
 
 def _walk(monkeypatch, document, follow):
-    monkeypatch.setattr(ledger_config, "load", lambda: document)
+    monkeypatch.setattr(ledger_config, "load", lambda *_args, **_kwargs: document)
     seen = {}
     monkeypatch.setattr(trace_router, "_evidence_graph",
                         lambda *a, **kw: seen.update(kw) or {"nodes": [], "edges": []})
@@ -161,7 +161,7 @@ def test_the_catalogue_carries_the_words_as_a_list(monkeypatch):
 def test_the_static_judgement_still_reads_a_single_word(monkeypatch):
     document = _sample()
     document["entities"]["recipe@1"]["class"] = ["static"]
-    monkeypatch.setattr(ledger_config, "load", lambda: document)
+    monkeypatch.setattr(ledger_config, "load", lambda *_args, **_kwargs: document)
     assert trace_router._static_types() == {"quantity", "defect_kind", "recipe"}
 
 
@@ -228,7 +228,7 @@ def test_an_entity_saved_with_an_operator_word_stays_in_the_declaration(tmp_path
 
     path = str(root / "ledger_config.json")
     real_load = ledger_config.load
-    monkeypatch.setattr(ledger_config, "load", lambda: real_load(path, catalog=catalog))
+    monkeypatch.setattr(ledger_config, "load", lambda *_args, **_kwargs: real_load(path, catalog=catalog))
     served = {item["type"]: item["class"]
               for item in trace_router.ledger_declaration_catalog()["entities"]}
     assert served["quantity@1"] == ["static", "probe"]

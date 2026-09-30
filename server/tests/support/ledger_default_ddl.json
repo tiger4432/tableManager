@@ -1,0 +1,267 @@
+{
+ "fresh": [
+  [
+   "SELECT to_regclass(%s) IS NOT NULL",
+   [
+    "ledger_events"
+   ]
+  ],
+  [
+   "\nCREATE TABLE IF NOT EXISTS ledger_events (\n    id                    UUID        NOT NULL,\n    subject_type          TEXT        NOT NULL,\n    subject_keys          JSONB       NOT NULL,\n    predicate             TEXT        NOT NULL,\n    object_kind           TEXT,\n    object_payload        JSONB,\n    occurred_at           TIMESTAMPTZ NOT NULL,\n    occurred_at_basis     TEXT,\n    source_who            TEXT        NOT NULL,\n    source_translator_ver TEXT        NOT NULL,\n    source_raw_ref        TEXT        NOT NULL,\n    supersedes            UUID,\n    source_event_id       UUID        NOT NULL,\n    source_event_state    TEXT        NOT NULL,\n    CONSTRAINT ck_ledger_object_kind CHECK (\n        object_kind IS NULL OR object_kind IN ('value', 'entity_ref', 'event_ref')),\n    CONSTRAINT ck_ledger_objectless_carries_only_qualifiers CHECK (\n        object_kind IS NOT NULL\n        OR object_payload IS NULL\n        OR (jsonb_typeof(object_payload) = 'object'\n            AND object_payload <> '{}'::jsonb\n            AND object_payload - 'qualifiers' = '{}'::jsonb)),\n    CONSTRAINT ck_ledger_subject_keys_is_object CHECK (\n        jsonb_typeof(subject_keys) = 'object'),\n    CONSTRAINT ck_ledger_no_self_supersede CHECK (\n        supersedes IS NULL OR supersedes <> id),\n    CONSTRAINT ck_ledger_source_event_state CHECK (\n        source_event_state IN ('source_molecule', 'source_record', 'legacy_atom')),\n    CONSTRAINT ck_ledger_occurred_at_basis CHECK (\n        occurred_at_basis IS NULL OR occurred_at_basis IN ('ingested')),\n    PRIMARY KEY (id, occurred_at)\n) PARTITION BY RANGE (occurred_at)\n",
+   null
+  ],
+  [
+   "SELECT 1 FROM pg_constraint con JOIN pg_class rel ON rel.oid = con.conrelid WHERE rel.oid = to_regclass(%s) AND con.conname = %s",
+   [
+    "ledger_events",
+    "ck_ledger_objectless_carries_only_qualifiers"
+   ]
+  ],
+  [
+   "SELECT 1 FROM pg_constraint con JOIN pg_class rel ON rel.oid = con.conrelid WHERE rel.oid = to_regclass(%s) AND con.conname = %s",
+   [
+    "ledger_events",
+    "ck_ledger_objectless_has_no_payload"
+   ]
+  ],
+  [
+   "ALTER TABLE ledger_events ADD CONSTRAINT ck_ledger_objectless_carries_only_qualifiers CHECK (\n        object_kind IS NOT NULL\n        OR object_payload IS NULL\n        OR (jsonb_typeof(object_payload) = 'object'\n            AND object_payload <> '{}'::jsonb\n            AND object_payload - 'qualifiers' = '{}'::jsonb)) NOT VALID",
+   null
+  ],
+  [
+   "SELECT 1 FROM pg_constraint con JOIN pg_class rel ON rel.oid = con.conrelid WHERE rel.oid = to_regclass(%s) AND con.conname = %s",
+   [
+    "ledger_events",
+    "ck_ledger_register_has_no_object"
+   ]
+  ],
+  [
+   "\nCREATE TABLE IF NOT EXISTS ledger_translator_cursor (\n    source               TEXT        PRIMARY KEY,\n    translator_ver       TEXT        NOT NULL,\n    cursor_value         JSONB       NOT NULL,\n    molecules_done       BIGINT      NOT NULL DEFAULT 0,\n    atoms_written        BIGINT      NOT NULL DEFAULT 0,\n    atoms_deduped        BIGINT      NOT NULL DEFAULT 0,\n    molecules_refused    BIGINT      NOT NULL DEFAULT 0,\n    incomplete_molecules BIGINT      NOT NULL DEFAULT 0,\n    refusal_reasons      JSONB,\n    source_head          JSONB,\n    head_probed_at       TIMESTAMPTZ,\n    row_census           JSONB,\n    rows_indexed         BIGINT,\n    started_at           TIMESTAMPTZ NOT NULL DEFAULT now(),\n    updated_at           TIMESTAMPTZ NOT NULL DEFAULT now()\n)\n",
+   null
+  ],
+  [
+   "\nCREATE TABLE IF NOT EXISTS ledger_source_row_ref (\n    relation       TEXT NOT NULL,\n    row_id         TEXT NOT NULL,\n    source_who     TEXT NOT NULL,\n    source_raw_ref TEXT NOT NULL,\n    -- 🔴 THE REF IS IN THE KEY. One physical row can appear under SEVERAL claim refs: one\n    -- event may emit several sentences over different subsets of its rows, and each\n    -- subset produces its own `source_raw_ref`. Keyed without it, the second sentence\n    -- would overwrite the first and its atoms would survive the row's deletion.\n    PRIMARY KEY (relation, row_id, source_who, source_raw_ref)\n)\n",
+   null
+  ],
+  [
+   "SELECT EXISTS (SELECT 1 FROM pg_attribute WHERE attrelid = to_regclass(%s) AND attname = %s AND attnum > 0 AND NOT attisdropped)",
+   [
+    "ledger_events",
+    "source_event_id"
+   ]
+  ],
+  [
+   "ALTER TABLE ledger_events ADD COLUMN source_event_id UUID",
+   null
+  ],
+  [
+   "SELECT EXISTS (SELECT 1 FROM pg_attribute WHERE attrelid = to_regclass(%s) AND attname = %s AND attnum > 0 AND NOT attisdropped)",
+   [
+    "ledger_events",
+    "source_event_state"
+   ]
+  ],
+  [
+   "ALTER TABLE ledger_events ADD COLUMN source_event_state TEXT",
+   null
+  ],
+  [
+   "SELECT EXISTS (SELECT 1 FROM pg_attribute WHERE attrelid = to_regclass(%s) AND attname = %s AND attnum > 0 AND NOT attisdropped)",
+   [
+    "ledger_translator_cursor",
+    "refusal_reasons"
+   ]
+  ],
+  [
+   "ALTER TABLE ledger_translator_cursor ADD COLUMN refusal_reasons JSONB",
+   null
+  ],
+  [
+   "SELECT EXISTS (SELECT 1 FROM pg_attribute WHERE attrelid = to_regclass(%s) AND attname = %s AND attnum > 0 AND NOT attisdropped)",
+   [
+    "ledger_translator_cursor",
+    "row_census"
+   ]
+  ],
+  [
+   "ALTER TABLE ledger_translator_cursor ADD COLUMN row_census JSONB",
+   null
+  ],
+  [
+   "SELECT EXISTS (SELECT 1 FROM pg_attribute WHERE attrelid = to_regclass(%s) AND attname = %s AND attnum > 0 AND NOT attisdropped)",
+   [
+    "ledger_translator_cursor",
+    "rows_indexed"
+   ]
+  ],
+  [
+   "ALTER TABLE ledger_translator_cursor ADD COLUMN rows_indexed BIGINT",
+   null
+  ],
+  [
+   "CREATE EXTENSION IF NOT EXISTS pg_trgm",
+   null
+  ],
+  [
+   "CREATE UNIQUE INDEX IF NOT EXISTS uq_ledger_atom ON ledger_events (occurred_at, predicate, subject_type, md5(subject_keys::text), md5(coalesce(object_payload, '{}'::jsonb)::text), source_translator_ver, md5(source_raw_ref))",
+   null
+  ],
+  [
+   "CREATE INDEX IF NOT EXISTS idx_ledger_subject_lot ON ledger_events ((subject_keys->>'lot'), predicate)",
+   null
+  ],
+  [
+   "CREATE INDEX IF NOT EXISTS idx_ledger_register ON ledger_events (subject_type, subject_keys) WHERE predicate = 'register'",
+   null
+  ],
+  [
+   "CREATE INDEX IF NOT EXISTS idx_ledger_register_search ON ledger_events USING gin ((subject_keys::text) gin_trgm_ops) WHERE predicate = 'register'",
+   null
+  ],
+  [
+   "CREATE INDEX IF NOT EXISTS idx_ledger_subject_entity ON ledger_events (subject_type, subject_keys)",
+   null
+  ],
+  [
+   "CREATE INDEX IF NOT EXISTS idx_ledger_source_event ON ledger_events (source_event_id, occurred_at, id) WHERE source_event_id IS NOT NULL",
+   null
+  ],
+  [
+   "CREATE INDEX IF NOT EXISTS idx_ledger_object_entity ON ledger_events ((object_payload->>'type'), (object_payload->'keys')) WHERE object_kind = 'entity_ref'",
+   null
+  ],
+  [
+   "COMMIT",
+   null
+  ],
+  [
+   "SET LOCAL lock_timeout = '20s'",
+   null
+  ],
+  [
+   "SELECT to_regclass(%s) IS NOT NULL",
+   [
+    "ledger_events_2026_09"
+   ]
+  ],
+  [
+   "CREATE TABLE IF NOT EXISTS ledger_events_2026_09 PARTITION OF ledger_events FOR VALUES FROM ('2026-09-01T00:00:00+00:00') TO ('2026-10-01T00:00:00+00:00')",
+   null
+  ],
+  [
+   "COMMIT",
+   null
+  ]
+ ],
+ "current": [
+  [
+   "SELECT to_regclass(%s) IS NOT NULL",
+   [
+    "ledger_events"
+   ]
+  ],
+  [
+   "\nCREATE TABLE IF NOT EXISTS ledger_events (\n    id                    UUID        NOT NULL,\n    subject_type          TEXT        NOT NULL,\n    subject_keys          JSONB       NOT NULL,\n    predicate             TEXT        NOT NULL,\n    object_kind           TEXT,\n    object_payload        JSONB,\n    occurred_at           TIMESTAMPTZ NOT NULL,\n    occurred_at_basis     TEXT,\n    source_who            TEXT        NOT NULL,\n    source_translator_ver TEXT        NOT NULL,\n    source_raw_ref        TEXT        NOT NULL,\n    supersedes            UUID,\n    source_event_id       UUID        NOT NULL,\n    source_event_state    TEXT        NOT NULL,\n    CONSTRAINT ck_ledger_object_kind CHECK (\n        object_kind IS NULL OR object_kind IN ('value', 'entity_ref', 'event_ref')),\n    CONSTRAINT ck_ledger_objectless_carries_only_qualifiers CHECK (\n        object_kind IS NOT NULL\n        OR object_payload IS NULL\n        OR (jsonb_typeof(object_payload) = 'object'\n            AND object_payload <> '{}'::jsonb\n            AND object_payload - 'qualifiers' = '{}'::jsonb)),\n    CONSTRAINT ck_ledger_subject_keys_is_object CHECK (\n        jsonb_typeof(subject_keys) = 'object'),\n    CONSTRAINT ck_ledger_no_self_supersede CHECK (\n        supersedes IS NULL OR supersedes <> id),\n    CONSTRAINT ck_ledger_source_event_state CHECK (\n        source_event_state IN ('source_molecule', 'source_record', 'legacy_atom')),\n    CONSTRAINT ck_ledger_occurred_at_basis CHECK (\n        occurred_at_basis IS NULL OR occurred_at_basis IN ('ingested')),\n    PRIMARY KEY (id, occurred_at)\n) PARTITION BY RANGE (occurred_at)\n",
+   null
+  ],
+  [
+   "SELECT 1 FROM pg_constraint con JOIN pg_class rel ON rel.oid = con.conrelid WHERE rel.oid = to_regclass(%s) AND con.conname = %s",
+   [
+    "ledger_events",
+    "ck_ledger_objectless_carries_only_qualifiers"
+   ]
+  ],
+  [
+   "SELECT 1 FROM pg_constraint con JOIN pg_class rel ON rel.oid = con.conrelid WHERE rel.oid = to_regclass(%s) AND con.conname = %s",
+   [
+    "ledger_events",
+    "ck_ledger_register_has_no_object"
+   ]
+  ],
+  [
+   "\nCREATE TABLE IF NOT EXISTS ledger_translator_cursor (\n    source               TEXT        PRIMARY KEY,\n    translator_ver       TEXT        NOT NULL,\n    cursor_value         JSONB       NOT NULL,\n    molecules_done       BIGINT      NOT NULL DEFAULT 0,\n    atoms_written        BIGINT      NOT NULL DEFAULT 0,\n    atoms_deduped        BIGINT      NOT NULL DEFAULT 0,\n    molecules_refused    BIGINT      NOT NULL DEFAULT 0,\n    incomplete_molecules BIGINT      NOT NULL DEFAULT 0,\n    refusal_reasons      JSONB,\n    source_head          JSONB,\n    head_probed_at       TIMESTAMPTZ,\n    row_census           JSONB,\n    rows_indexed         BIGINT,\n    started_at           TIMESTAMPTZ NOT NULL DEFAULT now(),\n    updated_at           TIMESTAMPTZ NOT NULL DEFAULT now()\n)\n",
+   null
+  ],
+  [
+   "\nCREATE TABLE IF NOT EXISTS ledger_source_row_ref (\n    relation       TEXT NOT NULL,\n    row_id         TEXT NOT NULL,\n    source_who     TEXT NOT NULL,\n    source_raw_ref TEXT NOT NULL,\n    -- 🔴 THE REF IS IN THE KEY. One physical row can appear under SEVERAL claim refs: one\n    -- event may emit several sentences over different subsets of its rows, and each\n    -- subset produces its own `source_raw_ref`. Keyed without it, the second sentence\n    -- would overwrite the first and its atoms would survive the row's deletion.\n    PRIMARY KEY (relation, row_id, source_who, source_raw_ref)\n)\n",
+   null
+  ],
+  [
+   "SELECT EXISTS (SELECT 1 FROM pg_attribute WHERE attrelid = to_regclass(%s) AND attname = %s AND attnum > 0 AND NOT attisdropped)",
+   [
+    "ledger_events",
+    "source_event_id"
+   ]
+  ],
+  [
+   "SELECT EXISTS (SELECT 1 FROM pg_attribute WHERE attrelid = to_regclass(%s) AND attname = %s AND attnum > 0 AND NOT attisdropped)",
+   [
+    "ledger_events",
+    "source_event_state"
+   ]
+  ],
+  [
+   "SELECT EXISTS (SELECT 1 FROM pg_attribute WHERE attrelid = to_regclass(%s) AND attname = %s AND attnum > 0 AND NOT attisdropped)",
+   [
+    "ledger_translator_cursor",
+    "refusal_reasons"
+   ]
+  ],
+  [
+   "SELECT EXISTS (SELECT 1 FROM pg_attribute WHERE attrelid = to_regclass(%s) AND attname = %s AND attnum > 0 AND NOT attisdropped)",
+   [
+    "ledger_translator_cursor",
+    "row_census"
+   ]
+  ],
+  [
+   "SELECT EXISTS (SELECT 1 FROM pg_attribute WHERE attrelid = to_regclass(%s) AND attname = %s AND attnum > 0 AND NOT attisdropped)",
+   [
+    "ledger_translator_cursor",
+    "rows_indexed"
+   ]
+  ],
+  [
+   "CREATE EXTENSION IF NOT EXISTS pg_trgm",
+   null
+  ],
+  [
+   "CREATE UNIQUE INDEX IF NOT EXISTS uq_ledger_atom ON ledger_events (occurred_at, predicate, subject_type, md5(subject_keys::text), md5(coalesce(object_payload, '{}'::jsonb)::text), source_translator_ver, md5(source_raw_ref))",
+   null
+  ],
+  [
+   "CREATE INDEX IF NOT EXISTS idx_ledger_subject_lot ON ledger_events ((subject_keys->>'lot'), predicate)",
+   null
+  ],
+  [
+   "CREATE INDEX IF NOT EXISTS idx_ledger_register ON ledger_events (subject_type, subject_keys) WHERE predicate = 'register'",
+   null
+  ],
+  [
+   "CREATE INDEX IF NOT EXISTS idx_ledger_register_search ON ledger_events USING gin ((subject_keys::text) gin_trgm_ops) WHERE predicate = 'register'",
+   null
+  ],
+  [
+   "CREATE INDEX IF NOT EXISTS idx_ledger_subject_entity ON ledger_events (subject_type, subject_keys)",
+   null
+  ],
+  [
+   "COMMIT",
+   null
+  ],
+  [
+   "SET LOCAL lock_timeout = '20s'",
+   null
+  ],
+  [
+   "SELECT to_regclass(%s) IS NOT NULL",
+   [
+    "ledger_events_2026_09"
+   ]
+  ],
+  [
+   "COMMIT",
+   null
+  ]
+ ]
+}

@@ -232,7 +232,7 @@ def _cut_on_group_boundary(rows, page_limit, key="event_time"):
 def run(engine, source="lot_event", fetch_rows=DEFAULT_FETCH_ROWS,
         reset_cursor=False, start_from=None, max_batches=None,
         ontology_root=None, retranslate=None, checkpoint=None, pace=None,
-        catalog=None):
+        catalog=None, world=None):
     """Translate every row this source has not translated yet, down the LIVE path.
 
     🔴 ONE EXECUTION PATH (owner ruling, 2026-08-18: "remove legacy")
@@ -255,9 +255,8 @@ def run(engine, source="lot_event", fetch_rows=DEFAULT_FETCH_ROWS,
     refusal because it was never an operator's word: nothing passed it and nothing read
     it, so a refusal would have announced a retirement no caller could have noticed.
     """
-    from .setup import (
-        DEFAULT_ONTOLOGY_ROOT, LedgerSetupError, _require_declared_source,
-        load_setup)
+    from . import schema
+    from .setup import LedgerSetupError, _require_declared_source, load_setup
 
     # 🔴 Positional guard, not a type nicety. `run()` used to be `run(engine, cfg, source=…)`
     # and the second POSITION now means `source`. Without this, a caller written against
@@ -275,8 +274,11 @@ def run(engine, source="lot_event", fetch_rows=DEFAULT_FETCH_ROWS,
     # Same reason `ledger.config.load` grew one (판정 212) - a proof that drives the SHIPPED
     # declaration must be checked against the SHIPPED catalogue, or it is measuring whether
     # this box happens to have adopted it.
+    # `ontology_root` is the ROOT A WORLD RESOLVED TO (총괄 3b6dacd2f) - a test hands one in
+    # directly; an operator names the world, and the one seat answers where it is.
     cutover = load_setup(
-        DEFAULT_ONTOLOGY_ROOT if ontology_root is None else ontology_root,
+        schema.require_world(world).declaration_root if ontology_root is None
+        else ontology_root,
         **({} if catalog is None else {"catalog": catalog}))
     # 🔴 Checked HERE and not left to the write boundary. `execute_selected_scoped_batch`
     # does re-check, but only once a batch exists: an empty source would then return a
@@ -284,6 +286,7 @@ def run(engine, source="lot_event", fetch_rows=DEFAULT_FETCH_ROWS,
     # source with nothing to do. A refusal that only fires when there is work is not a
     # refusal. Reuses the cutover module's own predicate so there is one spelling of it.
     _require_declared_source(cutover, source)
+    schema.ensure_world(engine, schema.world_names(world))
     # ⚰️ THE `source_retired` REFUSAL MOVED INTO `_require_declared_source` (S-177 ①), one
     # line up, WORD FOR WORD. It was here and nowhere else, so the preview and execute
     # entries -- which ask the same question through the same helper -- did not refuse at
@@ -299,13 +302,15 @@ def run(engine, source="lot_event", fetch_rows=DEFAULT_FETCH_ROWS,
                 "retired_cursor_argument", f"run().{name}",
                 f"{name!r} named a position in the cursor path, which no longer reads "
                 f"anything (판정 163). Use `rescope` to redo a named set of rows.")
-    return _run_via_events(
+    report = _run_via_events(
         engine, cutover, source=source, page_rows=fetch_rows,
-        max_pages=max_batches, checkpoint=checkpoint, pace=pace)
+        max_pages=max_batches, checkpoint=checkpoint, pace=pace, world=world)
+    refresh_world_view(engine, world)
+    return report
 
 
 def _run_via_events(engine, setup, source, page_rows=DEFAULT_FETCH_ROWS,
-                    max_pages=None, checkpoint=None, pace=None):
+                    max_pages=None, checkpoint=None, pace=None, world=None):
     """`run()`'s body since 판정 171: the load goes down the live path.
 
     🔴 THE SAME KEYS, AND THE MEANINGS SAID OUT LOUD. Callers read `rows_read`, `batches`,
@@ -328,7 +333,8 @@ def _run_via_events(engine, setup, source, page_rows=DEFAULT_FETCH_ROWS,
     started = time.perf_counter()
     after = None
     while max_pages is None or report["batches"] < max_pages:
-        page = rows_missing_from_the_index(engine, setup, source, page_rows, after)
+        page = rows_missing_from_the_index(engine, setup, source, page_rows, after,
+                                           world=world)
         if not page:
             break
         after = page[-1]
@@ -338,7 +344,7 @@ def _run_via_events(engine, setup, source, page_rows=DEFAULT_FETCH_ROWS,
         report["max_queue_depth"] = max(report["max_queue_depth"],
                                         followup.queue_depth())
         while followup.queue_depth() >= EVENT_LOAD_QUEUE_LIMIT:
-            _drain_into(engine, setup, report)
+            _drain_into(engine, setup, report, world=world)
         if pages_per_cycle and rest_seconds and (
                 report["batches"] % pages_per_cycle == 0):
             time.sleep(rest_seconds)
@@ -347,7 +353,7 @@ def _run_via_events(engine, setup, source, page_rows=DEFAULT_FETCH_ROWS,
             logger.info("[Ledger] stopped by request after %d rows", report["rows_read"])
             break
     while followup.queue_depth():
-        _drain_into(engine, setup, report)
+        _drain_into(engine, setup, report, world=world)
     # 🔴 THE REFUSAL COUNTS COME WITH THE KEYS (판정 171: keep the names).
     # These three were published by the cursor driver and were LOST when the load
     # moved here, silently -- the only test of them inspected that driver's source, so
@@ -366,16 +372,16 @@ def _run_via_events(engine, setup, source, page_rows=DEFAULT_FETCH_ROWS,
     # a second time, and a caller that stubs this function out would find the CLI still
     # doing work behind it. One read, one place, and every reader of the result gets it.
     report.update({key: value for key, value in
-                   rows_not_yet_translated(engine, setup, source).items()
+                   rows_not_yet_translated(engine, setup, source, world=world).items()
                    if key in CENSUS_KEYS_A_RUN_CARRIES})
     report["seconds"] = round(time.perf_counter() - started, 3)
     return report
 
 
-def _drain_into(engine, setup, report):
+def _drain_into(engine, setup, report, world=None):
     from . import followup
 
-    done = followup.drain_once(engine, setup)
+    done = followup.drain_once(engine, setup, world=world)
     if done is None:
         return
     for value in (done.get("sources") or {}).values():
@@ -405,7 +411,7 @@ def _no_join_reader():
     return NoJoinReader()
 
 
-def preview_rescope(engine, setup, source, scope_column, scope_values):
+def preview_rescope(engine, setup, source, scope_column, scope_values, world=None):
     """What a scoped redo would withdraw and what it would put back. WRITES NOTHING.
 
     🔴 THE TWO NUMBERS ARE NOT THE SAME QUESTION, so they are counted separately:
@@ -442,11 +448,12 @@ def preview_rescope(engine, setup, source, scope_column, scope_values):
               "scope_values": len(scoped[1]), "rows_in_scope": len(rows),
               "withdraw": 0, "remake": 0, "refs": []}
     if rows:
-        result.update(_preview_frame(engine, setup, source, plan, _v2_frame(rows)))
+        result.update(_preview_frame(engine, setup, source, plan, _v2_frame(rows),
+                                     world=world))
     return result
 
 
-def _preview_frame(engine, setup, source, plan, frame):
+def _preview_frame(engine, setup, source, plan, frame, world=None):
     """`preview_rescope`'s three numbers for rows already read - a whole scope, or one page
     of a paged `rescope` (총괄 8d8abfb5d)."""
     from . import schema
@@ -478,12 +485,12 @@ def _preview_frame(engine, setup, source, plan, frame):
     result["remake"] = len(atoms)
     result["refs"] = refs
 
-    store = LedgerStore(engine)
+    store = LedgerStore(engine, world=world)
     connection = store.connection()
     try:
         with connection.cursor() as cursor:
             cursor.execute(
-                f"SELECT count(*) FROM {schema.LEDGER_TABLE} "
+                f"SELECT count(*) FROM {schema.world_names(world).ledger} "
                 "WHERE source_who = %s AND source_raw_ref = ANY(%s)",
                 (source, refs))
             result["withdraw"] = int(cursor.fetchone()[0])
@@ -570,7 +577,7 @@ def _join_identities(cursor, relation, names, identities, extra_columns=()):
     return out
 
 
-def count_orphan_atoms(engine, source, scan_limit=ORPHAN_SCAN_LIMIT):
+def count_orphan_atoms(engine, source, scan_limit=ORPHAN_SCAN_LIMIT, world=None):
     """Atoms this source wrote whose SOURCE ROW no longer exists. READ ONLY.
 
     🔴 THIS IS ABOUT THE SOURCE, NOT ABOUT ANY SCOPE, and the two must not be added
@@ -592,7 +599,7 @@ def count_orphan_atoms(engine, source, scan_limit=ORPHAN_SCAN_LIMIT):
     from . import schema
     from .store import LedgerStore
 
-    store = LedgerStore(engine)
+    store = LedgerStore(engine, world=world)
     connection = store.connection()
     result = {"source": source, "refs_total": 0, "refs_scanned": 0,
               "count_kind": "exact", "truncated": False, "rows_gone": 0,
@@ -600,11 +607,11 @@ def count_orphan_atoms(engine, source, scan_limit=ORPHAN_SCAN_LIMIT):
     try:
         with connection.cursor() as cursor:
             cursor.execute(
-                f"SELECT count(DISTINCT source_raw_ref) FROM {schema.LEDGER_TABLE} "
+                f"SELECT count(DISTINCT source_raw_ref) FROM {schema.world_names(world).ledger} "
                 "WHERE source_who = %s", (source,))
             result["refs_total"] = int(cursor.fetchone()[0])
             cursor.execute(
-                f"SELECT DISTINCT source_raw_ref FROM {schema.LEDGER_TABLE} "
+                f"SELECT DISTINCT source_raw_ref FROM {schema.world_names(world).ledger} "
                 "WHERE source_who = %s LIMIT %s", (source, scan_limit))
             refs = [row[0] for row in cursor.fetchall()]
             result["refs_scanned"] = len(refs)
@@ -625,7 +632,7 @@ def count_orphan_atoms(engine, source, scan_limit=ORPHAN_SCAN_LIMIT):
             result["refs_gone"] = len(gone_refs)
             if gone_refs:
                 cursor.execute(
-                    f"SELECT count(*) FROM {schema.LEDGER_TABLE} "
+                    f"SELECT count(*) FROM {schema.world_names(world).ledger} "
                     "WHERE source_who = %s AND source_raw_ref = ANY(%s)",
                     (source, sorted(gone_refs)))
                 result["atoms"] = int(cursor.fetchone()[0])
@@ -653,7 +660,8 @@ def _scope_row_ids(plan, frame):
 
 
 def rescope(engine, setup, source, scope_column, scope_values, apply=False,
-            withdraw=True, page_rows=None, checkpoint=None):
+            withdraw=True, page_rows=None, checkpoint=None, whole_source=False,
+            world=None):
     """Redo exactly the part of a source the named rows touched. Withdraw, then remake.
 
     `apply=False` is `preview_rescope` and writes nothing; the numbers it reports are the
@@ -723,16 +731,22 @@ def rescope(engine, setup, source, scope_column, scope_values, apply=False,
              "attempted": 0, "inserted": 0, "deduped": 0}
     if not apply:
         if withdraw:
-            result = preview_rescope(engine, setup, source, scope_column, scope_values)
+            result = preview_rescope(engine, setup, source, scope_column, scope_values,
+                                     world=world)
             result.pop("refs", None)
         else:
             result = {"rows_in_scope": None, "previewed": False}
         result.update(zeros)
         return result
 
-    plan, scoped = rescope_scope(setup, source, scope_column, scope_values)
-    store = LedgerStore(engine)
-    result = ({"source": source, "scope_column": scoped[0], "scope_values": len(scoped[1]),
+    plan, scoped = rescope_scope(setup, source, scope_column, scope_values,
+                                 whole_source=whole_source)
+    from . import schema
+
+    schema.ensure_world(engine, schema.world_names(world))
+    store = LedgerStore(engine, world=world)
+    whole = scoped or (None, ())
+    result = ({"source": source, "scope_column": whole[0], "scope_values": len(whole[1]),
                "withdraw": 0, "remake": 0, "indexed_refs": 0} if withdraw
               else {"previewed": False})
     result.update(zeros, rows_in_scope=0, pages=0)
@@ -747,7 +761,7 @@ def rescope(engine, setup, source, scope_column, scope_values, apply=False,
         scope_row_ids = _scope_row_ids(plan, frame)
         aimed = None
         if withdraw:
-            previewed = _preview_frame(engine, setup, source, plan, frame)
+            previewed = _preview_frame(engine, setup, source, plan, frame, world=world)
             result["withdraw"] += previewed["withdraw"]
             result["remake"] += previewed["remake"]
             indexed = {ref for who, ref
@@ -759,8 +773,11 @@ def rescope(engine, setup, source, scope_column, scope_values, apply=False,
         # is nothing to withdraw and nothing to put in its place.
         if aimed is None or aimed:
             subjects = _v2_registration_subjects(plan, frame)
+            # a whole source names each page by its own rows - the door proves a batch
+            # is exactly what was named, page by page
             executed = execute_selected_scoped_batch(
-                setup, source, frame, scoped, _no_join_reader(), store,
+                setup, source, frame, scoped or (plan.frame_row_id, scope_row_ids),
+                _no_join_reader(), store,
                 known_registrations=None if subjects is None else (),
                 withdraw_refs=aimed)
             written = executed.store_result
@@ -790,7 +807,17 @@ def rescope(engine, setup, source, scope_column, scope_values, apply=False,
         # refused it as `scope.row_id: the batch does not carry 'row_id'`; it repeated every
         # three seconds and the drain DROPPED each event.
         result["scope_empty"] = True
+    refresh_world_view(engine, world)
     return result
+
+
+def refresh_world_view(engine, world):
+    """Make the branch's walk view again after its atoms moved - the sources it speaks for
+    may have changed. The default has no view, and nothing to compare with."""
+    from . import schema
+
+    names = schema.world_names(world)
+    schema.ensure_view(engine, names, schema.changed_sources(names))
 
 
 #: Scope rows one page of an operator's rescope reads - a stop lands between two of them.
@@ -840,7 +867,7 @@ def _scope_pages(engine, plan, scoped, page_rows):
 EVENT_LOAD_QUEUE_LIMIT = 4
 
 
-def rows_missing_from_the_index(engine, setup, source, limit, after=None):
+def rows_missing_from_the_index(engine, setup, source, limit, after=None, world=None):
     """The relation's rows that the row index does not yet name, oldest id first.
 
     🔴 THIS IS THE PROGRESS MARKER, AND IT IS NOT A WATERMARK. A cursor says "I read up to
@@ -867,7 +894,7 @@ def rows_missing_from_the_index(engine, setup, source, limit, after=None):
         "                      AND x.row_id = r.row_id) "
         "   AND (%s IS NULL OR r.row_id > %s) "
         " ORDER BY r.row_id LIMIT %s"
-    ).format(relation=relation, refs=sql.Identifier(schema.ROW_REF_TABLE))
+    ).format(relation=relation, refs=sql.SQL(schema.world_names(world).row_ref))
     connection = engine.raw_connection()
     try:
         with connection.cursor() as cursor:
@@ -878,7 +905,7 @@ def rows_missing_from_the_index(engine, setup, source, limit, after=None):
         connection.close()
 
 
-def rows_not_yet_translated(engine, setup, source, *, exact_rows=True):
+def rows_not_yet_translated(engine, setup, source, *, exact_rows=True, world=None):
     """Three values: the relation's rows, the rows the index names, and the difference.
 
     🔴 THIS IS THE LINE S-69 ASKED FOR, AND A CURSOR COULD NOT SAY IT.
@@ -961,7 +988,7 @@ def rows_not_yet_translated(engine, setup, source, *, exact_rows=True):
                 cursor.execute(
                     sql.SQL("SELECT {column} FROM {cursor_table} WHERE source = %s").format(
                         column=sql.Identifier(schema.ROWS_INDEXED_COLUMN),
-                        cursor_table=sql.Identifier(schema.CURSOR_TABLE)),
+                        cursor_table=sql.SQL(schema.world_names(world).cursor)),
                     (source,))
                 row = cursor.fetchone()
                 indexed = None if row is None else row[0]
@@ -969,7 +996,7 @@ def rows_not_yet_translated(engine, setup, source, *, exact_rows=True):
                 cursor.execute(
                     sql.SQL("SELECT count(DISTINCT row_id) FROM {refs} "
                             " WHERE relation = %s AND source_who = %s").format(
-                                refs=sql.Identifier(schema.ROW_REF_TABLE)),
+                                refs=sql.SQL(schema.world_names(world).row_ref)),
                     (plan.relation, source))
                 indexed = cursor.fetchone()[0]
                 counted_now = True
@@ -1746,7 +1773,7 @@ def _fetch_v2_lineage_group(connection, plan, page_value):
         connection, plan, group_value=page_value, limit=None)
 
 
-def rescope_scope(setup, source, scope_column, scope_values):
+def rescope_scope(setup, source, scope_column, scope_values, whole_source=False):
     """-> (plan, scoped): the one declared-source check, THEN the scope (총괄 06bb8f474).
 
     Both rescope entries and the admin's params judgment call this, so they refuse in one
@@ -1757,7 +1784,10 @@ def rescope_scope(setup, source, scope_column, scope_values):
 
     _require_declared_source(setup, source)
     plan = setup.snapshot.source_plans[source]
-    return plan, _scope_predicate(plan, (scope_column, scope_values))
+    # 총괄 8d10633ae ㉡: every row of the source is the scope `_scope_predicate` already
+    # reads as «no scope»; the flag says it out loud, so a column with no values is still
+    # refused rather than silently widened to everything.
+    return plan, _scope_predicate(plan, None if whole_source else (scope_column, scope_values))
 
 
 def _scope_predicate(plan, scope):
@@ -1943,7 +1973,8 @@ def main(argv=None):
     # themselves under two spellings (`load_setup` and `_load_setup`), which is the
     # 「same thing, two names」 shape -- and a function-local import binds only on the
     # branch that runs, so reading the name anywhere else is an UnboundLocalError.
-    from .setup import DEFAULT_ONTOLOGY_ROOT, LedgerSetupError, load_setup
+    from . import schema
+    from .setup import LedgerSetupError, load_setup
 
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--source", default="lot_event")
@@ -1956,8 +1987,9 @@ def main(argv=None):
     parser.add_argument("--fetch-rows", type=int, default=DEFAULT_FETCH_ROWS)
     parser.add_argument("--max-batches", type=int, default=None)
     parser.add_argument(
-        "--ontology-root", default=str(DEFAULT_ONTOLOGY_ROOT),
-        help="the Ledger config root (the only operator path)")
+        "--world", default=None,
+        help="a ledger world (branch) to translate into, by name; none = the default. "
+             "The one seat answers where its declaration and tables are")
     parser.add_argument("--pace", default=None,
                         help="fast (default, unchanged) | slow | trickle - yield between "
                              "pages so the database stays free for everything else. "
@@ -1970,6 +2002,9 @@ def main(argv=None):
     parser.add_argument(
         "--via-events", action="store_true",
         help="retired - the same job as the plain load; run without it")
+    parser.add_argument("--whole-source", action="store_true",
+                        help="rescope EVERY row of --source (with --apply): the redo a changed "
+                             "declaration needs - after a merge, or to refresh a branch")
     parser.add_argument("--apply", action="store_true",
                         help="with --scope-column: withdraw and remake for real. Without "
                              "it the scope is a dry-run and writes nothing")
@@ -2003,7 +2038,24 @@ def main(argv=None):
     # one query and takes no lock.
     from .store import LedgerStore
 
-    LedgerStore(engine).ensure_schema()
+    names = schema.require_world(args.world)
+    LedgerStore(engine, world=args.world).ensure_schema()
+
+    if args.whole_source:
+        # 총괄 8d10633ae ㉡: every row of the source, page by page. Not with a scope - two
+        # definitions of one redo's rows - and not as a dry run, which would translate the
+        # whole source once only to say how much it would translate.
+        if args.scope_column or args.scope_values or not args.apply:
+            raise LedgerSetupError(
+                "whole_source_alone", "whole_source",
+                "--whole-source is every row of --source: give it with --apply and "
+                "without --scope-column/--scope-values")
+        scoped = _written("ledger_rescope", {
+            "source": args.source, "whole_source": True, "world": args.world})
+        if scoped is None:
+            return 2
+        logger.info("[Ledger] %s", scoped)
+        return 0
 
     if args.scope_column or args.scope_values:
         # A SCOPE IS NOT THE FORWARD SCAN AND DOES NOT SHARE ITS ARGUMENTS. Paging,
@@ -2020,13 +2072,13 @@ def main(argv=None):
         if args.apply:
             scoped = _written("ledger_rescope", {
                 "source": args.source, "scope_column": args.scope_column,
-                "scope_values": values, "ontology_root": args.ontology_root})
+                "scope_values": values, "world": args.world})
             if scoped is None:
                 return 2
         else:
-            setup = load_setup(args.ontology_root)
+            setup = load_setup(names.declaration_root)
             scoped = rescope(engine, setup, args.source, args.scope_column, values,
-                             apply=False)
+                             apply=False, world=args.world)
         logger.info("[Ledger] %s", scoped)
         if not args.apply:
             logger.info("[Ledger] dry-run: nothing was written. Re-run with --apply.")
@@ -2035,7 +2087,7 @@ def main(argv=None):
     # `reset_cursor` / `start_from` never reach here - refused above, before any store access.
     result = _written("ledger_backfill", {
         "source": args.source, "fetch_rows": args.fetch_rows, "pace": args.pace,
-        "max_batches": args.max_batches, "ontology_root": args.ontology_root})
+        "max_batches": args.max_batches, "world": args.world})
     if result is None:
         return 2
     beat(result)
