@@ -1,1 +1,0 @@
-import{t as e}from"./config-BUp4smhE.js";export{e as API_BASE};

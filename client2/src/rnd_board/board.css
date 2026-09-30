@@ -644,3 +644,24 @@ body {
 .rb-head-steps-sep { color: var(--text-muted); }
 /* 목업의 「접는 단위」 줄 — 이 차트가 무엇을 한 점으로 접는지. */
 .rb-trend-fold { color: var(--text-muted); font-family: var(--font-mono); font-size: var(--fs-meta); }
+/* Save contrast (lead 3a262cc76) — a button row, a fact line when there are no controls, and the
+   saved runs. Lines and tags reuse the candidate list's (.rb-cand-line, .rb-cand-stat). */
+.rb-contrast { display: flex; flex-direction: column; gap: var(--space-2);
+  padding: 0 var(--space-3) var(--space-3); min-height: 0; overflow: auto; }
+.rb-contrast-controls { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.rb-contrast-save, .rb-contrast-refresh {
+  height: var(--control-h); padding: 0 var(--space-4); border: 1px solid var(--border);
+  background: var(--bg-surface); color: var(--text); font: inherit; font-size: var(--fs-button); font-weight: 600;
+  cursor: pointer; }
+.rb-contrast-save { background: var(--accent); border-color: var(--accent); color: var(--accent-contrast); }
+.rb-contrast-save:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 88%, var(--text)); }
+.rb-contrast-save:active:not(:disabled) { background: color-mix(in srgb, var(--accent) 76%, var(--text)); }
+.rb-contrast-refresh:hover:not(:disabled) { background: var(--tint-hover); border-color: var(--accent); color: var(--accent); }
+.rb-contrast-refresh:active:not(:disabled) { background: var(--tint-press); }
+.rb-contrast-save:disabled, .rb-contrast-refresh:disabled { opacity: 0.5; cursor: not-allowed; }
+.rb-contrast-list { display: flex; flex-direction: column; gap: var(--space-3); }
+/* A narrow seat wraps a row: its own lines sit closer than the rows do. */
+.rb-contrast-row { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-1) var(--space-2);
+  font-size: var(--fs-label); font-variant-numeric: tabular-nums; }
+.rb-contrast-when { font-family: var(--font-mono); color: var(--text-muted); }
+.rb-contrast-counts { color: var(--text); }

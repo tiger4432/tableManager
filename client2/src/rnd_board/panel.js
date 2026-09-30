@@ -70,6 +70,11 @@ export class Panel {
     if (this.reads && this.markings) {
       this._unsubscribe = this.markings.subscribe(this.reads, () => this.onMarkingChanged());
     }
+    // A start marking this part does not READ is still its question: a change to it is a new one.
+    const asked = this.start && this.start.marking;
+    if (asked && asked !== this.reads && this.markings) {
+      this._startOff = this.markings.subscribe(asked, () => this.onStartChanged());
+    }
     this.render();
   }
 
@@ -85,6 +90,8 @@ export class Panel {
   destroy() {
     if (this._unsubscribe) this._unsubscribe();
     this._unsubscribe = null;
+    if (this._startOff) this._startOff();
+    this._startOff = null;
     if (this.host) this.host.textContent = '';
   }
 
@@ -109,6 +116,13 @@ export class Panel {
     const decl = given || this.start || null;
     if (!decl || !decl.marking || !this.markings) return decl;
     const entries = this.markings.entries(decl.marking);
+    // 🔴 AN EMPTY MARKING MAY NAME WHAT IT MEANS (lead 09-30): a start that declares `otherwise`
+    //    asks about that node — one defect, no controls — until something is marked. Controls
+    //    alone are still no question.
+    if (!entries.length && decl.otherwise) {
+      const value = decl.otherwise.value;
+      return { ...decl, value, positive: [value], negative: [], fallback: true };
+    }
     const positive = entries.filter((e) => e[1] === SIGN.CASE).map((e) => e[0]);
     const negative = entries.filter((e) => e[1] === SIGN.CONTROL).map((e) => e[0]);
     if (!positive.length) return null;
@@ -152,6 +166,9 @@ export class Panel {
 
   /** The marking this part reads changed. Default: redraw. */
   onMarkingChanged() { this.render(); }
+
+  /** Its start marking changed, when that is not the one it reads. Default: nothing. */
+  onStartChanged() {}
 
   /** The box changed. Default: redraw. */
   onResize() { this.render(); }

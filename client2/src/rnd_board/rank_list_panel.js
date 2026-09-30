@@ -41,21 +41,38 @@ export class RankListPanel extends Panel {
     this.legacyRoute = options.legacyRoute || 'candidate';
     this.fetchImpl = options.fetchImpl || null;
     this.model = null;
-    this.loadState = this.seedNodeId ? 'idle' : 'no-seed';
+    this.loadState = this.seed() ? 'idle' : 'no-seed';
     // Per-instance, so two rank tables can stand side by side with different rows open.
     this.opened = new Set();
   }
 
-  mount() {
-    super.mount();
-    if (this.seedNodeId) this.load();
+  /** The walk's start: the seat's question (its marking, or what it names while that is empty),
+   *  or a fixed seed when the part stands alone. */
+  seed() {
+    if (this.start && this.start.marking) return this.startFor();
+    return this.start || (this.seedNodeId ? { groupby: 'wafer', value: this.seedNodeId } : null);
   }
 
+  mount() {
+    super.mount();
+    if (this.seed()) this.load();
+  }
+
+  /** The question moved: walk again. */
+  onStartChanged() { this.load(); }
+
   async load() {
+    const start = this.seed();
+    if (!start) {
+      this.model = null;
+      this.loadState = 'no-seed';
+      this.render();
+      return;
+    }
     this.loadState = 'loading';
     this.render();
     this.model = await this.walk({
-      start: this.start || { groupby: 'wafer', value: this.seedNodeId },
+      start,
       legacyRoute: this.legacyRoute,
       ...(this.nodeLimit ? { node_limit: this.nodeLimit } : {}),
     });

@@ -118,6 +118,7 @@ export async function loadBoardModules(mutate = {}) {
     //    Every part `main.js` imports has to be here.
     .replaceAll("'./reach_panel.js'", `'${partUrl('reach_panel.js')}'`)
     .replaceAll("'./walk_box_panel.js'", `'${partUrl('walk_box_panel.js')}'`)
+    .replaceAll("'./contrast_save_panel.js'", `'${partUrl('contrast_save_panel.js')}'`)
     .replaceAll("'./api.js'", `'${apiUrl}'`));
   // 🔴 C-93 (판정 345). THE PARTS COME BACK BY NAME, because six harnesses used to build this
   //    same graph each in their own copy of three lines -- and the day `api.js` gained an import,
@@ -125,7 +126,7 @@ export async function loadBoardModules(mutate = {}) {
   // ⚠️ Every harness now pays for the whole board's load. That is the price of one loader, and
   //    it is small: `main.js` imports every part anyway, so nothing new is being evaluated.
   const [store, api, panel, map, shell, main, table, inter, derive,
-    head, comp, cand, rank, control, trend, status, decl, layer, reach, box] =
+    head, comp, cand, rank, control, trend, status, decl, layer, reach, box, contrast] =
     await Promise.all([
       import(storeUrl), import(apiUrl), import(panelUrl),
       import(mapUrl), import(shellUrl), import(mainUrl),
@@ -134,8 +135,9 @@ export async function loadBoardModules(mutate = {}) {
       import(ctlUrl), import(trendUrl), import(statusUrl), import(declUrl),
       import(partUrl('expanded_layer_panel.js')),
       import(partUrl('reach_panel.js')), import(partUrl('walk_box_panel.js')),
+      import(partUrl('contrast_save_panel.js')),
     ]);
   return { store, api, panel, map, shell, main, sources,
     parts: { table, inter, derive, head, comp, cand, rank,
-      control, trend, status, decl, layer, reach, box } };
+      control, trend, status, decl, layer, reach, box, contrast } };
 }

@@ -1,3 +1,50 @@
+> ## [09:23 디자인] R&D 보드 «Save contrast» — 후보 · 순위 목록과 저장이 «질문 하나»를 읽음, 저장한 대조 목록은 체인이 쓴 factor 수 — 총괄 3a262cc76 · 09-30 답 (가)(나)③ · e352d71a3
+
+```
+질문 하나   main.js 의 LIST_QUESTION = 후보 질문의 인자(direction · node_limit) + 씨앗(마킹 1)
+           마킹 1 이 비면 기본 웨이퍼 SYN-CX-BW-001 (불량 하나 · 양품 없음) — 처음 열면 전과 같은 목록
+           후보 목록 · 순위 목록 · Contrast · 머리 요약이 «같은 객체»를 읽음. 부품 밖 저장소 = 이 선언 + 마킹 저장소
+           두 목록은 마킹 1 이 바뀌면 다시 걸음 — Panel 에 «읽지 않는 씨앗 마킹»을 구독하는 자리 하나(보드에 그런 좌석이 전에는 없었음)
+           양품만 찍힘 = 질문 없음 -> 목록은 빈 상태 문장, Save 꺼짐 + 사유. 「비었으면」만 기본 웨이퍼로 읽었습니다
+           목록 제목은 웨이퍼를 뺌: Candidates · Rank
+저장        PUT /tables/contrast_run/data/updates 한 줄 — run_id · positive · negative(JSON 글) · until(= 지금) · 질문이 든 걷기 인자
+           참/거짓은 "true"/"false" 글 · 저장한 사람 = 쓰기 문의 updated_by
+           아무것도 안 찍혔으면 버튼 옆 «Nothing marked — default SYN-CX-BW-001» · 양품 없으면 «No controls — saved as unexamined»
+목록        contrast_run 최근 10 + 줄마다 contrast_factor 한 번(run_id 같음, limit 1)
+           «factors N» = 지금 읽은 수(0 은 0, 읽기 실패만 «—») · 그 행의 contrast / complete -> unexamined · incomplete
+           저장 뒤 한 번 다시 읽고, 그 뒤는 Refresh (새 주기 없음)
+머리 요약   «marking:1 · N행» 자리 -> 질문의 «defects N · controls M». 나머지 줄은 맵이 보는 웨이퍼라 그대로
+```
+
+| 게이트 | 결과 |
+|---|---|
+| rnd_board_contrast_save — 한 줄 · 목록 · factors N · 거절 · 두 인스턴스 · I4 질문 객체 하나 · L 목록이 걸은 것 = 저장한 것 (빈 마킹 = 기본 웨이퍼 · 마킹이 바뀌면 두 목록이 한 번씩 · 양품만 = 안 걸음 · Save 꺼짐) | 54/0 · 변이 17 전부 빨강 |
+| J 진짜 체인 — 구현자 게이트의 원장·표·규칙으로 체인 규칙을 좌석(rule_run)으로 돌리고, 진짜 표 라우트가 보드의 두 질의에 답한 몸통을 그대로 먹임 (capture_rnd_board_contrast_chain.py · 서버 e3691044f) | 체인이 쓴 행 R_SEEN 17 · R_OPEN 18 · R_CUT 8 -> 목록 «factors N» 셋 다 같음 · 양품 없는 run unexamined · 잘린 run incomplete |
+| rnd_board_composition H10 — 머리가 질문을 말함 | 44/0 · 변이 빨강 |
+| 러너 | 148 중 146 게이트 초록 |
+
+| 화면 | 결과 |
+|---|---|
+| 1280 · 375 — 진짜 보드 (번들 rnd_board-BjTQ59Mq.js) | 처음 열면 전과 같은 후보 목록 · Contrast 는 Save 켜짐 + 기본 웨이퍼 줄 + 양품 없음 줄 · 375 가로 스크롤 없음, 칸 안에 머묾 |
+| 스크래치 (진짜 부품 · CSS, 표 답만 가짜) | 목록 · 거절 · 빈 목록 · 기본 웨이퍼 상태 |
+| 검수 (ui-designer, 결함만) | 이 부품 것 넷 중 셋 고침 — hover · press 없음 · Refresh 굵기 · 좁은 칸에서 줄 묶음 안 보임(161 px 에서 제 줄이 윗줄보다 한 격자 칸 가깝게 잼). 넷째(제목 띠가 테두리보다 0.2 px 모자람)는 안 보여서 둠 |
+| 색 리터럴 | 0 |
+
+알릴 것
+1. 요청 수 — 처음 열 때 후보 걷기가 하나 늘었습니다(이 박스 네트워크 기록). 두 목록은 한 요청을 같이 쓰지만, 제어 막대(Y축 고르개)가 고정 웨이퍼로 따로 걷는 요청과는 이제 안 합쳐집니다.
+2. 머리 요약의 «씨앗 웨이퍼 X» — 트렌드에서 마지막으로 누른 웨이퍼(Shift+클릭한 양품 포함)를 따르고 맵이 그 웨이퍼를 봅니다. 말씀대로 «맵이 보는 웨이퍼» 줄이라 안 건드렸지만, 낱말 «씨앗»은 목록의 씨앗과 다를 수 있습니다.
+3. 박스 — 이 박스 표 설정에 contrast_run 이 없어 저장 · 목록은 거절 줄입니다. 보드 PUT 의 until 이 쓰기 문을 통과하는지는 못 쟀습니다(J 는 구현자 게이트처럼 run 행을 모델로 넣어 쓰기 문을 안 지남).
+4. 보드 전역 결함 셋(검수가 찾음, 이 부품이 빌려 쓰는 클래스) — .rb-cand-line · .rb-cand-stat 의 둥근 모서리 · 손으로 적은 px 여백 · .rb-part-title 아래 격자 밖 틈. 후보 목록도 같이 바뀌는 일이라 안 고쳤습니다.
+
+⏳ 총괄께(박스): 두 표 + 체인 규칙이 박스 설정에 들어간 뒤 — 보드 열기 -> Save contrast -> 목록 한 줄 -> 체인 뒤 Refresh -> factors N
+
+| 제안 (안 지음) | 왜 | 크기 |
+|---|---|---|
+| 저장한 대조를 눌러 그 마킹을 다시 불러오기 | 저장 뒤에는 수만 보이고 무엇을 저장했는지 못 봄 | 안 쟀다 |
+| note 입력 | 표에 note 칸이 있는데 적을 자리가 없음 — 대조를 시각으로만 구분 | 안 쟀다 |
+| 한 대조의 후보 펼치기 | factors 수만 보이고 무엇인지 모름 | 안 쟀다 |
+| Save 가 꺼진 사유를 화면에 | 사유가 툴팁뿐이라 폰에서 안 보임(검수 지적, 저장소 공통 disabled_reason) | 안 쟀다 |
+
 > ## [22:20 디자인] 저장 줄 — 워커를 못 보면(loop_seen_via null) 「Saved · chain worker not seen」 — 총괄 370684bd0 박스 뒤 · 640421b64
 
 ```
