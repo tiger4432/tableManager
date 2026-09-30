@@ -45,29 +45,12 @@ DECLARING = ("config_authoring.py", "setup_bundle.py", "config_explorer.py",
 
 
 def _skeleton_node(skeleton, segments):
-    """Resolve a plan path to the skeleton node that DRAWS it.
-
-    A `map` node's members are named by the operator, so any segment matches one and
-    the walk descends into `of`.  Returns None when the skeleton draws no such path
-    -- that is a finding, not an error.
-    """
-    node = dict(skeleton.get("root") or {})
-    for raw_segment in segments:
-        segment = raw_segment.split("[")[0]
-        kind = node.get("kind")
-        if kind == "record":
-            found = next((f for f in node.get("fields", ())
-                          if f.get("key") == segment), None)
-            if found is None:
-                return None
-            node = dict(found.get("node") or {}, _required=found.get("required", False))
-        elif kind == "map":
-            node = dict(node.get("of") or {}, _required=False)
-        else:
-            return None
-        if node.get("use"):
-            node = dict((skeleton.get("defs") or {}).get(node["use"], node))
-    return node
+    """Resolve a plan path to the skeleton node that DRAWS it - the product's own resolver
+    (`config_authoring._skeleton_node`, 총괄 d4a949a8c ⑥), a plan path's `[i]` taken off and a
+    last `use` followed, because this reads the drawn node's `kind` and `hint`. Returns None
+    when the skeleton draws no such path -- that is a finding, not an error."""
+    node = config_authoring._skeleton_node(skeleton, [s.split("[")[0] for s in segments])
+    return config_authoring._deref(node, skeleton.get("defs") or {}, frozenset())
 
 
 def _reader_counts(keys):
