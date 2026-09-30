@@ -34908,3 +34908,18 @@ absent.js                ABSENT = '—' (「없음」의 철자 한 곳, PRIMITI
       ABSENT 로 바꾸는 것이 맞는지는 제가 판정하지 않았습니다 — 보드 문자열 라운드(919ccc065)가 이 줄을 지나므로 여기 올립니다
 센 명령  git show HEAD:client2/src/rnd_board/candidate_list_panel.js | grep -n "'-'"
 ```
+
+---
+
+## [C 응용] 10-01 918f49ccc ① 을 운영자 가이드 셋에 «지금 안 됨»으로 적었습니다 — `c23d702f9`
+
+```
+구현 실측(재기만)  cardinality one 의 supersede 표지 0 · 한 배치 목적어 둘 거절 0
+코드로 확인        runtime_v2._one_cardinality_predicates = snapshot.vocabulary 의 키(processed_with@1 — 샘플 :198 도 @1)
+                   원자 술어 = roleframe._runtime_id -> versioned_id.rsplit("@", 1)[0] (버전 뗌)
+                   _stamp_supersedes · _conflicting_subjects 둘 다 `atom.predicate in one_predicates` -> 버전 붙은 키를 쓰는 선언에선 늘 거짓
+약속하던 가이드 셋  ledger_declaration_by_example ② 「세 가지 일」의 ①② · ONTOLOGY_LEDGER_SETUP cardinality 행 · SETUP_ORDER 거절 줄
+한 일              셋에 ⚠️ 한 줄 — 「운영 모양에서 안 일어난다, 까닭, 수리 전」. ③(엣지가 cardinality 를 실음)은 맞다고 남김
+                   코드 · 시험은 안 건드림. 수리가 착지하면 이 줄들을 걷습니다
+여쭐 것            없음 — 수리 지시는 총괄 몫. 구현 보고의 「시험이 holds@1(버전 붙음)로 지어 초록」도 같은 까닭입니다
+```
