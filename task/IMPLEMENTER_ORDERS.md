@@ -62027,3 +62027,17 @@ RUN.md      돌릴 명령 · 그 답의 뜻 · 끄는 스위치(이 체인 규�
 게이트    같은 초에 시작한 두 파일(구간 겹치게 만든 픽스처) -> 안 합쳐짐 · 마이크로초로 줄인 뒤의 확률을 보고에
 재 올 것  자라는 파일 7 행 — 평소 워처 오프셋 이어 읽기에서도 나나, Retry · 강제 재적재에서만인가(소유자께 올릴 물음의 전제)
 ```
+
+---
+
+> **[총괄 -> 구현자] 새 항목 · 지금 하는 것 «바로 다음» — 워크벤치 노트북 첫 셀이 깨져 있다 (소유자 09-30 「ㅇㅇ 고치고」)**
+
+```
+증상     server/notebooks/mapper_workbench.ipynb · parser_workbench.ipynb 첫 코드 셀이 (p / "server" / "dev_bench.py") 로 뿌리를 찾고 import dev_bench 를 한다
+         aa77a2fe3(09-13, 평면 모듈 -> 도메인 패키지)가 dev_bench 를 server/admin/dev_bench.py 로 옮긴 뒤로 StopIteration / ModuleNotFoundError — 총괄 실측
+         test_the_workbench_notebooks_call_production.py 는 17 통과 — 셀 «글자 · 태그»만 보고 첫 셀을 «실행»하지 않아서 못 잡았다
+할 것     두 노트북 첫 셀을 지금 자리로(뿌리 찾기 · import) · server/notebooks/README.md 의 경로 둘(server/dev_bench.py · scripts/try_core.py -> server/scripts/try_core.py)
+         시험이 두 노트북의 부트스트랩 셀을 «실제로 실행»해 import 가 되는지 잰다(DB 없는 셀까지만). 변이: 옛 경로로 되돌리면 빨강
+같이     docs/guide/HTML_TOPOLOGY_PARSER_GUIDE.md 2절이 from parsers.html_topology_parser import … 이고 4절은 from html_topology_parser import … —
+         두 모양은 같은 모듈을 «두 번» 로드해 다른 클래스 객체가 된다(총괄 실측). 파서 파일 · 노트북에 맞는 것은 4절(짧은 이름, 운영 워처 · prepare_plugin_imports 와 같음) — 2절을 4절 모양으로
+```
