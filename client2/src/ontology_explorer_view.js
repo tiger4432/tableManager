@@ -2512,6 +2512,17 @@ function renderAuthoring(state) {
     for (const e of state.notApplied.errors) line.append(h('div', '', reasonText(e)));
     wrap.append(line);
   }
+  // The fields the server took out because this declaration's own choice switched them off
+  // (lead 8771e43ac) — in the declaration's path words, with the value that went.
+  if (state.droppedFields && state.droppedFields.key === shownKey) {
+    const line = h('div', 'oe-note oe-dropped');
+    line.append(h('b', '', state.droppedFields.saved ? 'Dropped' : 'Dropped on save'));
+    for (const f of state.droppedFields.fields) {
+      line.append(h('div', 'oe-dropped-field',
+        `${splitBundlePath(f.path).join(' › ')} = ${JSON.stringify(f.value)}`));
+    }
+    wrap.append(line);
+  }
   if (bodyNode && draftRaw) {
     const body = h('section', 'oe-bucket oe-bucket--form');
     // ㄱ The path bar's seat (lead 619befe8c): the bar is its own part, seated here by the controller.

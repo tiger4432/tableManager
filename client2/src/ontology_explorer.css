@@ -525,6 +525,14 @@
 /* A refusal SENTENCE is body size -- the same token the reference view's 「could not be read」
    line inherits (lead 09-29: the two were 13 and 15). */
 #ontology-explorer-root .oe-not-applied { font-size: var(--fs-body); }
+/* What the server dropped on save (lead 8771e43ac): a note, not a warning -- it did what the
+   declaration chose. The path is the declaration's own words, so it is set like one. */
+#ontology-explorer-root .oe-dropped b { font-weight: 600; }
+/* A wrapped path hangs under its own first line, so the next field is where a line starts flush. */
+#ontology-explorer-root .oe-dropped-field {
+  font-family: var(--oe-font-mono); overflow-wrap: anywhere;
+  padding-left: var(--space-3); text-indent: calc(-1 * var(--space-3));
+}
 #ontology-explorer-root .oe-dirty-dialog-backdrop {
   position: absolute; inset: 0; z-index: 80; display: grid; place-items: center;
   padding: 20.4px; background: rgb(12 18 24 / .52);

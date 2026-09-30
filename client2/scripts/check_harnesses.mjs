@@ -910,7 +910,8 @@ const FLOORS = new Map([
   //    redden against the shipped bundle.
   // 19 -> 39 (lead 791c0f45e, [5]): a leaf the plan marks `reshapes` asks for the draft's form
   // once per committed change — never per keystroke — and its fields take the plan's place.
-  ['explorer_open_path_harness.mjs', 39],
+  // 39 -> 45 (lead 8771e43ac 2, [6]): what the server dropped is said, from the plan and from the save.
+  ['explorer_open_path_harness.mjs', 45],
   // New with lead 619befe8c: where an edit sits in the ledger form — a guide per ancestor on every
   // row of the real skeleton's form, the trail as the declaration path's own words, the path bar
   // part, and no skeleton word in the bar's code.

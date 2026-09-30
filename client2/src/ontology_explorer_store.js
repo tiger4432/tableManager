@@ -37,6 +37,9 @@ export const initialExplorerState = Object.freeze({
   draft: null,
   // The last save that reached the file but did not load: `{ key, errors }`, or null.
   notApplied: null,
+  // The fields the server dropped because the declaration's own choice switched them off
+  // (lead 8771e43ac): `{ key, fields: [{path, value}], saved }` — `saved` false is the unsaved plan's answer.
+  droppedFields: null,
   viewPreference: 'active',
   editorText: '',
   dirty: false,
@@ -319,6 +322,10 @@ export function reduceExplorerState(state = initialExplorerState, action) {
     case 'SAVE_NOT_APPLIED':
       return { ...state,
                notApplied: action.errors.length ? { key: action.key, errors: action.errors } : null };
+    case 'FIELDS_DROPPED':
+      return { ...state,
+               droppedFields: Array.isArray(action.fields) && action.fields.length
+                 ? { key: action.key, fields: action.fields, saved: Boolean(action.saved) } : null };
     // 시험 실행. Three states and no fourth: asking, an answer, or a request that never
     // reached the server. A run that came back REFUSED is an answer and lands in
     // `testRun` like any other -- only a transport failure is an error, because only that
