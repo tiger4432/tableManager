@@ -35389,3 +35389,16 @@ UI 문자열  영어
           읽기 API 가 되는 곳(localhost · HTTPS)은 지금처럼 바로 읽는다
 게이트     읽기 API 없음 -> 칸 뜸 · 칸에 paste(html+plain) -> 선언 순서대로 올라감 · Esc -> 아무것도 안 올라감 · 문자열 영어 · 1280 스샷
 ```
+
+---
+
+> **[총괄 -> 클라] 4311a51ed «Paste here» 칸에 더함 — Ctrl+Shift+V 가 평문만 받는다 (소유자 09-30 「ctrl shift v는 플레인만 되는데」)**
+
+```
+원인     크롬에서 Ctrl+Shift+V 는 «서식 없이 붙여넣기» — 그 키가 낳는 paste 이벤트엔 text/plain 만 실린다. 지금 스마트 페이스트 단축키가 그 이벤트를 받아 HTML 이 처음부터 없다
+할 것     클립보드 읽기 API 가 «없는» 곳(일반 HTTP): Ctrl+Shift+V 도 버튼과 같이 «Paste here (Ctrl+V)» 칸을 연다(그 키의 기본 붙여넣기는 막는다). 칸 안의 보통 Ctrl+V 가 모든 형식을 싣는다
+         읽기 API 가 «있는» 곳(HTTPS · localhost): keydown 에서 기본 동작을 막고 navigator.clipboard.read() 로 바로 — 한 번에 모든 형식
+         고르기는 지금의 chooseClipboardType 하나(표 선언 순서) 그대로
+게이트    일반 HTTP 흉내: Ctrl+Shift+V -> 칸 · 칸에 html+plain -> 선언 순서 · 읽기 API 흉내: Ctrl+Shift+V -> 칸 없이 html · 문자열 영어
+순서     이것 + Paste here 칸 + 「선언 형식 없음 -> 창」 을 한 착지로, 물려받음 행보다 먼저
+```

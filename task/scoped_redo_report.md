@@ -66030,3 +66030,56 @@ config/ontology/worlds/<세상>/ledger_config.json   그 밖의 세상
 재기동    서버 — RUN.md 새 절
 ```
 다음: ② nokey (null_policy 를 넓힘).
+
+## [구현자 -> 총괄] 착지 a02701d3a — 12cc7dd1f ② (4311a51ed): 키 칸이 빈 파일 행을 nokey_… 로
+
+```
+칸        null_policy: {<키 칸>: "nokey"} — skip 과 같은 물음의 셋째 답. KEY_NULL_SKIP 주석에 판정 286 을 이 값에 한해 넘어선다고 소유자 문장과 함께 적음
+값        nokey_<그 파일의 첫 적재 시각 UTC — 20260930T051503Z>_<6 hex>
+          6 hex = (sha256(내용 시그니처) + 행 번호) mod 16^6 — 무작위 없음. 같은 파일 · 같은 행이면 같은 값
+첫 적재 시각 file_ingestion_checkpoints 의 (표, 시그니처) 행 started_at — Retry · 강제 재적재 때 그 행을 다시 쓰지 지우지 않아 그대로(CheckpointPlan 이 실어 옴)
+자리      crud.fill_nokey_keys — 문의 키 조립 바로 앞 한 곳. 파일 정체(시그니처 · started_at)는 워처가 배치에, 행 번호는 항목에(요청으로 못 싣는 사설 칸)
+          평문 업무 키면 business_key_val 도 채움 · 제 신원(row_id · 업무 키 값)이 있는 항목은 안 건드림
+표준 파서   [F1] 키 빈 행 버리기가 같은 정책을 물음 — nokey 칸은 문이 채우니 행이 안 가져와도 됨
+파일 없는 쓰기 그리드 입력 · 체인 쓰기는 안 채움(파일 행 번호가 없음) — 오늘처럼 키 없이
+시그니처 없음 안 채움 + 파일 줄 「N row(s) not keyed nokey (<칸>) - the file has no content signature to make the key from.」
+파일 줄    「N row(s) keyed nokey_... (<칸>).」
+```
+
+**6 자리 충돌**
+```
+한 파일 안   0 — (해시 + 행 번호) 는 행 번호가 다르면 다름(16,777,216 행까지). 해시만 쓰면 1만 행 파일에 겹침 기대값이 몇 개
+다른 파일끼리 같은 초에 처음 적재됐고 (해시A + i) = (해시B + j) mod 16^6 일 때만 — 그러면 둘째 파일의 행이 첫째의 행을 «고쳐 씀»(합쳐짐)
+            그 확률은 행 쌍마다 1/16^6 × (같은 초일 확률) — 안 막았습니다(막으려면 값이 길어짐). 여쭐 것
+```
+
+**자라는 파일 — 잰 것(안 고침)**
+```
+행 셋 파일을 올리고 한 행 이어쓴 뒤 다시 올림 — 시그니처 바뀜 예 · 표 행 3 -> 7 · 값별 행 수 {"a": 2, "b": 2, "c": 2, "d": 1}
+뜻  내용이 바뀌면 시그니처가 바뀌어 앞 행들이 새 nokey 를 받음 -> 옛 행은 옛 키로 남고 같은 행이 둘. 이어쓰는 로그에는 맞지 않는 신원
+    고칠 모양 후보(안 지음): 신원을 «파일 경로 + 행 번호»로(내용 아님) — 소유자가 내용 dedup 을 골랐으니 여쭐 것
+```
+
+| 칸 | 입력 | 답 |
+|---|---|---|
+| 셋 | 표준 파서 CSV, slot 빈 행 셋 · 선언 nokey | 행 셋 · slot 셋 다 다른 nokey_…_6hex · 파일 줄 |
+| Retry | 같은 파일 다시 | 새 행 0 · 같은 값 |
+| 다른 파일 | 같은 행들, 다른 시그니처 | 행 여섯 · 값 여섯 다 다름 |
+| 선언 안 함 | 같은 파일, null_policy 없음 | 파서가 전처럼 버림 · nokey 줄 없음 |
+| 시그니처 없음 | 체크포인트 없이 | 안 채움 · 「not keyed nokey」 줄 |
+| 값 | 같은 입력 · 2만 행 | 같은 값 · 2만 개 다 다름 |
+
+```
+게이트 PG  4 passed, 7679 deselected in 10.93s
+단위       1 passed, 4 deselected in 0.49s
+변이 K1 무작위 값                  1 failed, 3 passed, 7679 deselected in 11.06s — test_three_keyless_rows_get_three_keys_and_a_retry_finds_them
+     K2 행 번호 뺌                 2 failed, 2 passed, 7679 deselected in 10.93s — test_three_keyless_rows_get_three_keys_and_a_retry_finds_them · test_the_same_row_of_another_file_gets_another_key
+     K3 표준 파서가 그대로 버림       3 failed, 1 passed, 7679 deselected in 9.89s — test_three_keyless_rows_get_three_keys_and_a_retry_finds_them · test_the_same_row_of_another_file_gets_another_key · test_a_file_without_a_signature_is_not_filled_and_says_why
+     K4 문이 안 채움                3 failed, 1 passed, 7679 deselected in 10.76s — test_three_keyless_rows_get_three_keys_and_a_retry_finds_them · test_the_same_row_of_another_file_gets_another_key · test_a_file_without_a_signature_is_not_filled_and_says_why
+전체       5 failed, 7490 passed, 185 skipped, 3 xfailed in 805.96s (0:13:25) — 실패는 알려진 다섯과 이름이 같음
+           첫 판은 7 failed, 7488 passed, 185 skipped, 3 xfailed in 806.74s (0:13:26) — 알려진 다섯 + test_process_with_retry_skip_count_in_completion_detail · test_process_with_retry_std_success_archives_file — plan_ingestion 이 새 행을 db.refresh 로 다시 읽었고 시험의 가짜 DB 에 refresh 가 없었음
+           -> started_at 을 행을 만들 때 적음(읽어 오기 없음) -> test_std_parser 38 초록 -> 전체 다시 돌린 것이 위 줄
+PG         7 failed, 139 passed, 7537 deselected in 250.52s (0:04:10) — 실패는 알려진 일곱과 이름이 같음
+재기동     서버 · 워처 — RUN.md 새 절 (표 편집기의 null_policy 칸은 클라 몫)
+```
+다음: ③ 행 단위 체인 갈래가 batches · map_metadata_updates 를 읽게.

@@ -16,6 +16,7 @@ def transaction_context(user: str, tx_id: str, source: str):
         request_user.reset(token_user)
         request_transaction_id.reset(token_tx)
         request_source.reset(token_src)
+import hashlib
 import uuid
 import uuid6
 import codecs
@@ -2830,16 +2831,22 @@ def assemble_composite_business_key(table_name: str, update_item: schemas.Genera
     return True
 
 
-#: The one value `null_policy` may carry (판정 286: `placeholder` was removed — an operator
+#: A value `null_policy` may carry (판정 286: `placeholder` was removed — an operator
 #: who means 「deliberately empty」 writes a VALUE in the data, such as 「없음」, and that is
 #: not a product cell). Absent means 「today's behaviour」, which is why the regression gate
 #: reads 「a table with no cell is not one character different」.
+#: 🔴 [총괄 12cc7dd1f ②] 286 IS OVERRIDDEN FOR ONE VALUE, `nokey`: the owner chose a product
+#: fill on 09-30 - 「특정 키컬럼들 없으면 해당키들 배치 일괄로 nokey_입력시간_uuid6자리 로
+#: 채울수 있어?」 · 「ㅇㅇ 너제안대로」. It answers the same question as `skip`, so it is the
+#: same cell's third answer.
 KEY_NULL_SKIP = "skip"
+#: A blank declared key column of a row read from a FILE is filled with `nokey_value`.
+KEY_NULL_NOKEY = "nokey"
 
 
 def key_null_policy(table_name: str, column: str):
-    """`"skip"` or `None`, declared beside `column_types` as
-    `null_policy: {<key column>: "skip"}` (S-181).
+    """`"skip"`, `"nokey"` or `None`, declared beside `column_types` as
+    `null_policy: {<key column>: "skip" | "nokey"}` (S-181 · 총괄 4311a51ed).
 
     ⚠️ ABSENT IS NOT A POLICY. It means every seat keeps the behaviour it has today, which
     is what makes this cell safe to add to a live deployment: the default changes nothing,
@@ -2848,7 +2855,60 @@ def key_null_policy(table_name: str, column: str):
     """
     policy = (TABLE_CONFIG.get(table_name) or {}).get("null_policy") or {}
     value = policy.get(column)
-    return value if value == KEY_NULL_SKIP else None
+    return value if value in (KEY_NULL_SKIP, KEY_NULL_NOKEY) else None
+
+
+#: The row part of a `nokey` value is `(hash of the file) + (row number)` in a ring of this
+#: size, so two rows of one file never share it below this many rows - a hash of the pair
+#: alone would, at ten thousand rows, expect a few collisions (birthday).
+NOKEY_RING = 16 ** 6
+
+
+def nokey_value(file_signature: str, first_ingested_at, file_row: int) -> str:
+    """`nokey_<first ingestion, UTC>_<6 hex>` for one data row of one file (총괄 4311a51ed).
+
+    NOTHING RANDOM: the same file (its content signature, the dedup's own identity) and the
+    same row give the same value, so a Retry finds the rows the first load made."""
+    moment = first_ingested_at.astimezone(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    offset = int(hashlib.sha256(str(file_signature).encode("utf-8")).hexdigest(), 16)
+    return "nokey_%s_%06x" % (moment, (offset + int(file_row)) % NOKEY_RING)
+
+
+def fill_nokey_keys(table_name: str, batch) -> None:
+    """Fill each item's blank key columns declared `nokey`, from the batch's file origin and the
+    item's row (총괄 4311a51ed) - the one seat, ahead of the key assembly. An item with an
+    identity of its own, or not read from a file, is not touched. Writes `batch._nokey`:
+    `{"filled" | "unfilled": {"rows": n, "columns": {col: n}}}` - unfilled = a file row whose
+    file has no content signature to make the value from."""
+    config = TABLE_CONFIG.get(table_name) or {}
+    key_col = config.get("business_key")
+    columns = [c for c in (config.get("composite_key_source") or [key_col]) if c]
+    nokey_columns = [c for c in columns if key_null_policy(table_name, c) == KEY_NULL_NOKEY]
+    if not nokey_columns:
+        return
+    origin = getattr(batch, "_file_origin", None)
+    counts = {kind: {"rows": 0, "columns": {}} for kind in ("filled", "unfilled")}
+    for item in batch.updates:
+        if item._file_row is None or item.row_id:
+            continue
+        kinds = set()
+        for column in nokey_columns:
+            if not is_blank_key_part(item.updates.get(column)):
+                continue
+            if column == key_col and not is_blank_key_part(item.business_key_val):
+                continue
+            kind = "filled" if origin is not None else "unfilled"
+            kinds.add(kind)
+            counts[kind]["columns"][column] = counts[kind]["columns"].get(column, 0) + 1
+            if origin is None:
+                continue
+            value = nokey_value(origin[0], origin[1], item._file_row)
+            item.updates[column] = value
+            if column == key_col:
+                item.business_key_val = value
+        for kind in kinds:
+            counts[kind]["rows"] += 1
+    batch._nokey = counts
 
 
 def fold_key_value(table_name: str, column: str, value):
@@ -4957,6 +5017,7 @@ def _apply_batch_updates_once(db: Session, table_name: str,
         # row - the business key column included. Hoisting this above the purge would turn
         # "delete this map" into "delete this one die". Here, the resolver sees exactly
         # the payload it saw before.
+        fill_nokey_keys(table_name, batch)
         for item in batch.updates:
             assemble_composite_business_key(table_name, item)
 

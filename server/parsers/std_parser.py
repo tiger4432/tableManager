@@ -102,7 +102,7 @@ def _build_header_map(header: list, table_info: dict, table_name: str, file_path
     return header_map
 
 
-def _resolve_key_groups(table_info: dict, known: set) -> list:
+def _resolve_key_groups(table_info: dict, known: set, table_name: str = None) -> list:
     """행 단위 키 존재 검사에 쓸 키 컬럼 그룹 목록을 만든다.
 
     [F1] 키 셀이 공백인 행이 무음 적재되면 `_get_or_create_row`가
@@ -111,13 +111,21 @@ def _resolve_key_groups(table_info: dict, known: set) -> list:
       - (business_key,) — 단일 bk 직접 제공
       - tuple(composite_key_source) — crud가 키를 조립할 수 있는 소스 전체
     """
+    from database import crud
+
+    def required(columns):
+        # 총괄 4311a51ed: a column declared `nokey` is filled by the write door, so a row
+        # need not bring it - asked of the one policy reader, not re-read here.
+        return tuple(c for c in columns
+                     if crud.key_null_policy(table_name, c) != crud.KEY_NULL_NOKEY)
+
     groups = []
     bk_col = table_info.get("business_key")
     composite_src = table_info.get("composite_key_source")
-    if bk_col and bk_col in known:
-        groups.append((bk_col,))
-    if composite_src and all(c in known for c in composite_src):
-        groups.append(tuple(composite_src))
+    if bk_col and all(c in known for c in required((bk_col,))):
+        groups.append(required((bk_col,)))
+    if composite_src and all(c in known for c in required(composite_src)):
+        groups.append(required(composite_src))
     return groups
 
 
@@ -192,7 +200,8 @@ def parse_std_file(file_path: str, table_info: dict, table_name: str):
                     return iter(()), 0, 0
 
                 header_map = _build_header_map(header, table_info, table_name, file_path)
-                key_groups = _resolve_key_groups(table_info, {c for c in header_map if c is not None})
+                key_groups = _resolve_key_groups(table_info, {c for c in header_map if c is not None},
+                                                 table_name)
                 passthrough = [(i, (h or "").strip()) for i, (h, col) in enumerate(zip(header, header_map))
                                if col is None and (h or "").strip()]
 
