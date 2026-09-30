@@ -1316,7 +1316,8 @@ function foldDecision(row, expanded = {}) {
   // list. Folding by "is anything still owed here" instead of by tier is what turns a
   // complete config into a short page, which is the state it should read as.
   if (row.state === 'answered') return { open: false, reason: 'Declared', word: 'Declared' };
-  if (row.state === 'unanswered') return { open: false, reason: 'Not answered', word: 'Not answered' };
+  // The skeleton's word for the same state: the server defines unanswered as optional and absent (lead a5720d9d8).
+  if (row.state === 'unanswered') return { open: false, reason: 'Optional', word: 'Optional' };
   return { open: true, reason: '', word: row.disposition === 'default_overridable' ? 'Default' : '' };
 }
 

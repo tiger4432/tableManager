@@ -20,6 +20,8 @@
 // a binding holds bindings under its identity keys, and a document that cannot say so
 // would have to stop one level in and call that the grammar.
 
+import { isBlank } from './absent.js';
+
 /** Follow `{use}` until a real node. */
 function deref(node, defs) {
   let cursor = node;
@@ -96,15 +98,6 @@ export function fieldApplies(field, siblings, held) {
   const actual = siblings && typeof siblings === 'object'
     ? siblings[field.when.field] : undefined;
   return actual === field.when.is;
-}
-
-/** 「비었다」 — undefined · null · 빈 글자 · 빈 레코드 · 빈 목록. `false` 와 `0` 은 «값»이다. */
-function isBlank(value) {
-  if (value === undefined || value === null) return true;
-  if (typeof value === 'string') return value.trim() === '';
-  if (Array.isArray(value)) return value.length === 0;
-  if (typeof value === 'object') return Object.keys(value).length === 0;
-  return false;
 }
 
 /** 문서가 «안 채운» 필수 칸의 주소들. 뼈대가 답하고 창은 그 답을 쓴다.

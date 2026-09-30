@@ -163,15 +163,15 @@ function suite(view, css, skel) {
     planRow: (p) => (p === at ? { ...LEAF, candidates: [], remaining: false, refusals: [], conflicts: false, ...facts } : liveContext(view, {}).planRow(p)) },
   declarationShape(SKELETON.skeleton, SECTION), '', RAW, 0, 'dt_job'));
   const refusal = { code: 'x', path: LEAF.path, message: 'refused' };
-  eq('W9 a row somebody owes says which fact: missing · refused · differs · not answered · default, and a fact with no word stays blank',
+  eq('W9 a row somebody owes says which fact: missing · refused · differs · optional · default, and a fact with no word stays blank',
     [{ state: 'missing', remaining: true }, { state: 'answered', remaining: true, refusals: [refusal] },
       { state: 'derived', conflicts: true }, { state: 'unanswered' },
       { state: 'derived', disposition: 'default_overridable', candidates: ['a', 'b'] }, { state: 'nobody_named_this' }]
-      .map(said).join('|'), 'Missing|Refused|Differs|Not answered|Default|');
+      .map(said).join('|'), 'Missing|Refused|Differs|Optional|Default|');
   const field = { key: 'group_by', when: { field: 'unit', is: 'group' } };
-  eq('W8 the predicate the form asks: an empty list or string holds nothing, a list or 0 holds a value',
-    ['[]', '"  "', '["lot"]', '0'].map((v) => skel.fieldApplies(field, { unit: 'row' }, JSON.parse(v))).join('|'),
-    'false|false|true|true');
+  eq('W8 the predicate the form asks (the one blank rule of the screen): an empty list, a blank string or a list of blanks holds nothing, a list or 0 holds a value',
+    ['[]', '"  "', '[""]', '["lot"]', '0'].map((v) => skel.fieldApplies(field, { unit: 'row' }, JSON.parse(v))).join('|'),
+    'false|false|false|true|true');
   return { ran, failed: failedList.slice() };
 }
 
@@ -180,7 +180,7 @@ const cssText = (mutate) => {
   return mutate ? mutate(text) : text;
 };
 const loadFrom = async (file, mutate, expose) => {
-  const got = await loadWithProbe(file, { ...(mutate ? { mutate: (t) => mutate(t.replace(/\r\n/g, '\n')) } : {}), ...(expose ? { expose } : {}) });
+  const got = await loadWithProbe(file, { ...(mutate ? { mutate } : {}), ...(expose ? { expose } : {}) });
   return { ...got.module, ...got.probe };
 };
 const load = (mutate) => loadFrom(VIEW, mutate, ['renderDeclarationMap']);
@@ -222,8 +222,8 @@ const MUTANTS = [
   { name: 'an-owed-row-says-nothing', catches: ['W9'], file: VIEW,
     from: "    const word = row.refusals?.length ? 'Refused' : row.conflicts ? 'Differs' : row.state === 'missing' ? 'Missing' : '';",
     to: "    const word = '';" },
-  { name: 'not-answered-is-empty-again', catches: ['W9'], file: VIEW,
-    from: "reason: 'Not answered', word: 'Not answered' }", to: "reason: 'Empty', word: 'Empty' }" },
+  { name: 'optional-is-empty-again', catches: ['W9'], file: VIEW,
+    from: "reason: 'Optional', word: 'Optional' }", to: "reason: 'Empty', word: 'Empty' }" },
   { name: 'the-default-says-nothing', catches: ['W9'], file: VIEW,
     from: "word: row.disposition === 'default_overridable' ? 'Default' : '' };", to: "word: '' };" },
   { name: 'the-here-row-is-a-link-again', catches: ['P7'], file: CSS,
