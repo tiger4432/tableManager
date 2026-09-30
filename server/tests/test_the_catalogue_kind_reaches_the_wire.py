@@ -109,4 +109,4 @@ def test_the_schema_route_moved_nothing_else(client):
 
     name = next(iter(crud.TABLE_CONFIG))
     assert set(client.get(f"/tables/{name}/schema").json()) == (
-        SCHEMA_KEYS_BEFORE | {"kind"})
+        SCHEMA_KEYS_BEFORE | {"kind", "smart_paste"})       # smart_paste: 총괄 12cc7dd1f ⓪
