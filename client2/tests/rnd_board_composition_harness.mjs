@@ -310,6 +310,22 @@ async function suite(mods) {
     f.destroy();
   }
 
+  // ── H10. 머리의 마킹 1 자리는 «보드의 질문»을 말합니다 (lead 09-30) ────────────────
+  {
+    const asked = new store.MarkingStore();
+    asked.replace('marking:1', [['w:1', store.SIGN.CASE], ['w:2', store.SIGN.CASE], ['w:3', store.SIGN.CONTROL]]);
+    const hostQ = doc.createElement('div');
+    const q = new head.HeadSummaryPanel(hostQ, { doc, markings: asked, reads: 'marking:1', writes: null,
+      apiBase: '', finalChipId: 'CHIP-A', fetchImpl: okFetch(), markingRows: ['marking:2'],
+      question: { start: { marking: 'marking:1', groupby: 'wafer' } },
+      waferKinds: ['void'], loadWaferFacts: () => Promise.resolve({ wafer: 'W-1', found: 2 }) });
+    q.mount();
+    await flush(); await flush();
+    truthy('H10 the head says the question: its defects and controls, not marking 1\'s rows',
+      hostQ.textContent.includes('defects 2 · controls 1') && !hostQ.textContent.includes('marking:1 ·'));
+    q.destroy();
+  }
+
   // ── P. 주어가 없는 구성 부품 — 「안 골랐다」는 absent.js 의 한 글자 ──────────────────
   {
     const hostN = doc.createElement('div');
@@ -327,6 +343,13 @@ async function suite(mods) {
 
 // ── the mutation corpus ────────────────────────────────────────────────────────────
 const MUTANTS = [
+  // 🔴 The head's marking 1 count is not the board's question once an empty marking means the
+  //    default wafer (lead 09-30). Counting rows again is the line that would say a different one.
+  { id: 'H-M10', what: 'the head counts marking 1 rows instead of reading the board question',
+    catches: 'H10',
+    mutate: { 'head_summary_panel.js': (s) => s.replace(
+      "    const asked = this.question && this.question.start ? this.startFor(this.question.start) : null;",
+      "    const asked = null; this.markingRows.unshift('marking:1');") } },
   { id: 'P-M1', what: 'the composition part spells its own not-chosen word instead of UNPICKED',
     catches: 'P1',
     mutate: { 'composition_panel.js': (s) => s.replace(

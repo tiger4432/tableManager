@@ -1430,7 +1430,8 @@ const FLOORS = new Map([
   // 53 -> 57 (lead ece405110): the click replay sends cascade, the hand-off to the tab does not.
   ['redo_banner_harness.mjs', 57],
   // the board part: composition
-  ['rnd_board_composition_harness.mjs', 42],
+  // 42 -> 44 (lead 09-30, H10): the head's marking 1 place says the board's question.
+  ['rnd_board_composition_harness.mjs', 44],
   // the board part: control trend
   ['rnd_board_control_trend_harness.mjs', 59],
   // the board shell that seats the parts above
@@ -1441,6 +1442,10 @@ const FLOORS = new Map([
   ['rnd_board_reach_harness.mjs', 63],
   // the board part: the walk box
   ['rnd_board_walk_box_harness.mjs', 79],
+  // the board part: Save contrast (lead 3a262cc76) — one contrast_run row per save, the list
+  // with the factor rows read per run (factors N, 0 said as 0), two instances on one screen,
+  // the real chain's rows through the real route (J), and the lists walking what Save saves (L).
+  ['rnd_board_contrast_save_harness.mjs', 54],
   // the board part: the walk itself
   ['rnd_board_walk_harness.mjs', 32],
   // 🔴 the walk REQUEST, not the walk return. `createWalkBoxWalk` accepted `spec.hops` and

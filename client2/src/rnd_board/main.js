@@ -43,6 +43,7 @@ import { DeclarationPanel } from './declaration_panel.js';
 import { ExpandedLayerPanel } from './expanded_layer_panel.js';
 import { ReachPanel } from './reach_panel.js';
 import { WalkBoxPanel } from './walk_box_panel.js';
+import { ContrastSavePanel } from './contrast_save_panel.js';
 import { fetchTrends, trendsModel, fetchSubgraph, subgraphModel,
   createWalk,
   fetchLotMap, fetchComposition, basisCountsFromComposition,
@@ -68,7 +69,7 @@ export const PARTS = { map: MapPanel, headSummary: HeadSummaryPanel, composition
   candidateList: CandidateListPanel, rankList: RankListPanel, controlBar: ControlBarPanel,
   mainTrend: MainTrendPanel, markingStatus: MarkingStatusPanel,
   declaration: DeclarationPanel, expandedLayer: ExpandedLayerPanel, reach: ReachPanel,
-  walkBox: WalkBoxPanel };
+  walkBox: WalkBoxPanel, contrastSave: ContrastSavePanel };
 
 /**
  * THE SCREEN. Six seats: the mockup 2a arrangement -- full-width bands on top, then the
@@ -112,6 +113,14 @@ export const PARTS = { map: MapPanel, headSummary: HeadSummaryPanel, composition
 //            옵니다. 컨트롤이 아니라 «선언»입니다 -- 버튼도 자동 재시도도 없습니다.
 // ═══════════════════════════════════════════════════════════════════════════════
 const CANDIDATE_QUESTION = { legacyRoute: 'candidate', direction: 'outgoing', node_limit: 1000 };
+// 🔴 THE BOARD'S ONE QUESTION (lead 09-30): the candidate list, the rank list and Save contrast read
+//    it, so what is saved is the walk the lists drew. Marking 1's defects and controls; while it is
+//    empty, the default wafer (one defect, no controls).
+const LIST_QUESTION = Object.freeze({
+  ...CANDIDATE_QUESTION,
+  start: Object.freeze({ marking: 'marking:1', groupby: 'wafer',
+    otherwise: Object.freeze({ value: 'ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1DWC1CVy0wMDEifV0', label: 'SYN-CX-BW-001' }) }),
+});
 
 export const BOARD = Object.freeze({
   // 목업 2a: 전폭 단 둘이 위에, 그 아래 3열 띠 (맵 899 / 후보 508 / 순위 509).
@@ -177,8 +186,9 @@ export const BOARD = Object.freeze({
         //    주어를 웨이퍼로 옮기면 인과 패널 절반이 설 자리를 잃습니다.
         waferQuestion: { row: 'SYN-CX-BW-001', by: 'wafer' },
         waferKinds: ['void', 'delam'],
-        // 목업이 머리에 다는 「마킹 1 · N행」 · 「마킹 2 · N행」. 이름은 여기서만 압니다.
-        markingRows: ['marking:1', 'marking:2'],
+        // 목업이 머리에 다는 「마킹 2 · N행」. 마킹 1 자리는 보드의 질문이 말합니다(lead 09-30).
+        markingRows: ['marking:2'],
+        question: LIST_QUESTION,
         subjectReads: 'subject:wafer',
       },
     },
@@ -619,30 +629,22 @@ export const BOARD = Object.freeze({
       //    그것이 「마킹은 부품 밖에 산다」가 화면에서 보이는 자리다.
       id: 'candidate-list',
       part: 'candidateList',
-      start: { groupby: 'wafer', value: 'ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1DWC1CVy0wMDEifV0' },
-      // 후보 질문 «통째로». 위 CANDIDATE_QUESTION 이 이 셋의 «유일한» 출처입니다.
-      ...CANDIDATE_QUESTION,
-      title: '원인 후보 · SYN-CX-BW-001',
+      // The board's one question, whole — its start and its walk arguments.
+      ...LIST_QUESTION,
+      title: 'Candidates',
       at: { column: 3, row: 6 },
       reads: 'marking:2',
       writes: 'marking:2',
-      options: {
-        seedNodeId: 'ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1DWC1CVy0wMDEifV0',
-      },
     },
     {
       id: 'rank-list',
       part: 'rankList',
-      start: { groupby: 'wafer', value: 'ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1DWC1CVy0wMDEifV0' },
-      // 후보 질문 «통째로». 위 CANDIDATE_QUESTION 이 이 셋의 «유일한» 출처입니다.
-      ...CANDIDATE_QUESTION,
-      title: '순위 · SYN-CX-BW-001',
+      // The board's one question, whole — the same walk as the candidate list beside it.
+      ...LIST_QUESTION,
+      title: 'Rank',
       at: { column: 4, row: 6 },
       reads: 'marking:2',
       writes: 'marking:2',
-      options: {
-        seedNodeId: 'ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1DWC1CVy0wMDEifV0',
-      },
     },
     {
       // 🔴 「어느 것들로 닿을 수 있는지」 (소유자 2026-08-25). 마킹 1 을 주어로 «한 홉» 걷고,
@@ -660,6 +662,16 @@ export const BOARD = Object.freeze({
       at: { column: 1, row: 7, columnSpan: 2 },
       reads: 'marking:1',
       writes: 'marking:2',
+    },
+    {
+      // Save contrast (lead 3a262cc76): the lists' question as one row of the contrast run table.
+      // Under the candidate and rank lists.
+      id: 'contrast-save',
+      part: 'contrastSave',
+      title: 'Contrast',
+      at: { column: 3, row: 7, columnSpan: 2 },
+      reads: 'marking:1',
+      options: { candidateQuestion: LIST_QUESTION },
     },
     {
       // 🔴 「걷기 API 사용 위한 검색창」 (소유자 2026-08-26). 다른 부품이 «선언»으로 들고
@@ -684,7 +696,7 @@ export const BOARD = Object.freeze({
  * mocked answer with a real route is a change here, never in a part.
  */
 export function bindLoaders(layout, deps) {
-  const { apiBase, fetchImpl, dpr } = deps || {};
+  const { apiBase, fetchImpl, dpr, user } = deps || {};
   // 🔴 ONE WALK FOR THE WHOLE SCREEN, and that is not a performance note: 후보 트렌드와 후보
   //    맵은 «같은 walk»(⑦)을 먹습니다. 인스턴스가 하나여야 둘째 부품이 첫째의 진행 중인 요청에
   //    «합류»합니다 -- 인스턴스를 부품마다 만들면 같은 질문을 두 번 보내게 됩니다.
@@ -728,7 +740,7 @@ export function bindLoaders(layout, deps) {
       // 🔴 THE ADDRESS IS INJECTED, NEVER DECLARED. `apiBase` is a fact about where this page
       //    is running, so it is known HERE and nowhere in the layout data -- which is what
       //    keeps that data serialisable the day a screen is saved or dragged.
-      const bound = { ...options, walk: walkHere, apiBase, fetchImpl, dpr: dpr || 1 };
+      const bound = { ...options, walk: walkHere, apiBase, fetchImpl, dpr: dpr || 1, user };
       // 🔴 걷기 검색창은 «다른 모양의 walk» 을 받습니다. 이 부품의 `collect` 는 화면이 선언한
       //    질문 이름이 아니라 «서버의 노드 종류»이고, 씨앗도 마킹이 아니라 사람이 넣은 키에서
       //    만들어집니다. 같은 이름이 두 뜻이라 섞으면 오류 없이 «빈 답»이 나옵니다.
@@ -977,6 +989,7 @@ export function boot(doc, host, deps) {
     apiBase: options.apiBase || '',
     fetchImpl: options.fetchImpl,
     dpr: options.dpr || 1,
+    user: options.user,
   }));
   // Installed AFTER the seats, so a part that reads a derived name gets its first value from
   // the same first computation as everyone else.
@@ -987,9 +1000,10 @@ export function boot(doc, host, deps) {
 if (typeof document !== 'undefined') {
   const host = document.getElementById('rb-board');
   if (host) {
-    import('../config.js').then(({ API_BASE }) => {
+    import('../config.js').then(({ API_BASE, CURRENT_USER }) => {
       boot(document, host, {
         apiBase: API_BASE,
+        user: CURRENT_USER,
         dpr: (typeof window !== 'undefined' && window.devicePixelRatio) || 1,
       });
     });

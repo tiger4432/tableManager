@@ -50,6 +50,7 @@ export class HeadSummaryPanel extends Panel {
     // 🔴 목업이 머리에 다는 「마킹 1 · 34행」 · 「마킹 2 · 1행」. 이름은 «선언»입니다 -- 이 부품은
     //    1 과 2 가 무엇인지 모르고, 화면이 세 번째를 더해도 여기는 안 바뀝니다.
     this.markingRows = Array.isArray(options.markingRows) ? options.markingRows.slice() : [];
+    this.question = options.question || null;
     this._rowOffs = [];
     this.waferFacts = Object.create(null);
     // 🔴 THE WAFER LINE FOLLOWS THE MARKING. 「마킹 -> 머리요약」 (owner): picking a point in the
@@ -182,6 +183,11 @@ export class HeadSummaryPanel extends Panel {
     if (pending.length) put(`${pending.join(' · ')} 읽는 중…`, 'rb-head-wafer-pending');
     // 🔴 목업이 머리에 다는 마킹 행수. 이 수는 «맵의 수와 다른 것»입니다 -- 맵은 그 그림에
     //    그려진 칸을, 이건 «지금 찍혀 있는 행»을 셉니다. 그래서 같은 줄에 나란히 둡니다.
+    // The board's question (lead 09-30): its own counts, not marking 1's rows.
+    const asked = this.question && this.question.start ? this.startFor(this.question.start) : null;
+    if (asked) {
+      put(`defects ${asked.positive.length} · controls ${asked.negative.length}`, 'rb-head-wafer-mark is-live');
+    }
     for (const name of this.markingRows) {
       const n = this.markings ? this.markings.count(name) : 0;
       put(`${name} · ${n}행`, n > 0 ? 'rb-head-wafer-mark is-live' : 'rb-head-wafer-mark');

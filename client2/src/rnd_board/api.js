@@ -2091,3 +2091,136 @@ export function createWalkBoxWalk(deps) {
     }
   };
 }
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// CONTRAST (lead 3a262cc76, owner 09-30) — the board saves its defect-versus-good question as ONE
+// row of contrast_run through the tables' own write door, and lists what was saved with each run's
+// candidate count from contrast_factor (the chain writes those rows).
+// 🔴 THE NAMES ARE THE IMPLEMENTER'S (cd069102e · 824d7e62e). This object is the only place the
+//    board spells either table or a column of them.
+//   as_of is `until` — the lead's order: 「as_of(= until)」. Lists are JSON text, true/false is
+//   "true"/"false" text (the declaration and the lead's correction).
+// ═══════════════════════════════════════════════════════════════════════════════
+export const CONTRAST = Object.freeze({
+  runTable: 'contrast_run', factorTable: 'contrast_factor',
+  runId: 'run_id', positive: 'positive', negative: 'negative', asOf: 'until',
+  // contrast_run's walk-argument columns — the walk route's own names. Copied only when carried.
+  args: Object.freeze(['since', 'hops', 'direction', 'node_limit', 'edge_limit', 'follow',
+    'backbone_hops', 'include_superseded', 'seed_type', 'seed_limit']),
+  contrast: 'contrast', unexamined: 'unexamined', complete: 'complete',
+});
+
+/** A run id: when it was asked, and a tail so two saves in one second are two runs. */
+export function newContrastRunId(nowMs) {
+  const stamp = new Date(nowMs).toISOString().replace(/[-:.TZ]/g, '').slice(0, 14);
+  return `run-${stamp}-${Math.random().toString(36).slice(2, 6)}`;
+}
+
+// List and true/false columns are declared string: ids travel as JSON text, a flag as "true"/"false".
+const cellText = (value) => (Array.isArray(value) ? JSON.stringify(value)
+  : typeof value === 'boolean' ? String(value) : value);
+
+/** One save, as the row it writes — only the walk arguments the question carries, none invented. */
+export function contrastRunRow(run) {
+  const r = run || {};
+  const row = {
+    [CONTRAST.runId]: r.runId,
+    [CONTRAST.positive]: cellText(r.positive || []),
+    [CONTRAST.negative]: cellText(r.negative || []),
+    [CONTRAST.asOf]: r.asOf,
+  };
+  for (const key of CONTRAST.args) {
+    const value = r.question ? r.question[key] : undefined;
+    if (value !== undefined && value !== null) row[key] = cellText(value);
+  }
+  return row;
+}
+
+const contrastCell = (row, col) => {
+  const cell = row && row.data ? row.data[col] : undefined;
+  return cell && typeof cell === 'object' && !Array.isArray(cell) && 'value' in cell ? cell.value : cell;
+};
+// How many ids a stored list holds. A list the screen cannot read is unknown (null), not 0.
+const idCount = (value) => {
+  if (Array.isArray(value)) return value.length;
+  if (value === null || value === undefined || value === '') return 0;
+  try { const parsed = JSON.parse(String(value)); return Array.isArray(parsed) ? parsed.length : null; } catch (e) { return null; }
+};
+// `complete` is a string column: the chain's false arrives as 'false'.
+const saysFalse = (value) => value === false || String(value).trim().toLowerCase() === 'false';
+
+/** The saved runs, newest first, as the list draws them. Factors are filled by `factorModel`. */
+export function contrastListModel(body) {
+  const rows = body && Array.isArray(body.data) ? body.data : [];
+  return rows.map((row) => ({
+    runId: String(contrastCell(row, CONTRAST.runId) ?? ''),
+    asOf: contrastCell(row, CONTRAST.asOf) ?? null,
+    positive: idCount(contrastCell(row, CONTRAST.positive)),
+    negative: idCount(contrastCell(row, CONTRAST.negative)),
+    factors: null, unexamined: false, incomplete: false,
+  }));
+}
+
+/** One run's factor read (limit 1): `total` is how many factor rows were read NOW; its row carries
+ *  the run's flags. 0 is said as 0 and never as "none" — until the run records that the chain
+ *  computed it, 0 and not yet computed are the same read (lead: 「factors: N」 as the count read). */
+export function factorModel(body) {
+  const total = body && Number.isFinite(Number(body.total)) ? Number(body.total) : null;
+  const first = body && Array.isArray(body.data) ? body.data[0] : undefined;
+  return {
+    factors: total,
+    unexamined: contrastCell(first, CONTRAST.contrast) === CONTRAST.unexamined,
+    incomplete: first ? saysFalse(contrastCell(first, CONTRAST.complete)) : false,
+  };
+}
+
+/** Save and list, against the tables' own routes. Both answer { ok, ... } or { ok: false, message }. */
+export function createContrastStore(deps) {
+  const { apiBase, fetchImpl, user } = deps || {};
+  const doFetch = fetchImpl || ((...args) => fetch(...args));
+  const table = (name) => `${apiBase || ''}/tables/${name}`;
+  const refused = async (res, what) => {
+    const body = await res.json().catch(() => null);
+    const detail = body && body.detail;
+    const said = typeof detail === 'string' ? detail : (detail && detail.message) || '';
+    return { ok: false, message: said ? `${what} — ${said}` : `${what} (${res.status})` };
+  };
+  // A run whose factor read fails keeps its factors unknown; the list still stands.
+  const factorsOf = async (run) => {
+    const filters = encodeURIComponent(JSON.stringify(
+      { [CONTRAST.runId]: { filterType: 'text', type: 'equals', filter: run.runId } }));
+    try {
+      const res = await doFetch(`${table(CONTRAST.factorTable)}/data?limit=1&filters=${filters}`);
+      return res.ok ? { ...run, ...factorModel(await res.json().catch(() => null)) } : run;
+    } catch (err) {
+      return run;
+    }
+  };
+  return {
+    async save(run) {
+      const row = contrastRunRow(run);
+      try {
+        const res = await doFetch(`${table(CONTRAST.runTable)}/data/updates`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ updates: [{ business_key_val: row[CONTRAST.runId], updates: row,
+            source_name: 'rnd_board', ...(user ? { updated_by: user } : {}) }] }),
+        });
+        if (!res.ok) return refused(res, 'Save refused');
+        return { ok: true, runId: row[CONTRAST.runId] };
+      } catch (err) {
+        return { ok: false, message: `Save unreachable — ${err && err.message}` };
+      }
+    },
+    async list(limit) {
+      try {
+        const res = await doFetch(`${table(CONTRAST.runTable)}/data?limit=${limit || 10}&order_by=updated_at&order_desc=true`);
+        if (!res.ok) return refused(res, 'Saved contrasts unreadable');
+        const runs = contrastListModel(await res.json().catch(() => null));
+        return { ok: true, runs: await Promise.all(runs.map(factorsOf)) };
+      } catch (err) {
+        return { ok: false, message: `Saved contrasts unreachable — ${err && err.message}` };
+      }
+    },
+  };
+}
