@@ -65860,3 +65860,63 @@ task/evidence/void_ingestion_table_config.json | tables 2 | with a datetime colu
 **알림 (안 고침)** 버전 게이트 parse_version_key 는 꼬리 없는 시각을 UTC 로 읽음(_naive_utc). PG 는 세션 시간대로 읽으니 이 박스(Asia/Seoul)에서는 9 시간 어긋나게 견줌.
 
 다음: b30fbd38c(꺼진 갈래의 칸 걷기) -> 2dd93d4a9 항목 3 -> dc4ca3e7c.
+
+## [구현자 -> 총괄] 착지 ee918c6b3 — b30fbd38c: 원장 선언 저장이 꺼진 갈래의 칸을 걷음
+
+```
+자리 하나  config_authoring.filled_declaration — 저장(DraftStore.save)과 POST /authoring/plan(with_unsaved_body)이 이미 지나던 채움
+          채우기 «전»에 스켈레톤의 when 을 레코드에 물어, 레코드가 «다르게 고른» 칸을 걷음
+when 읽기  _gate 하나 — 해당 · 다르게 고름 · 아직 안 고름. 빈 값 씨앗(empty_value)도 이것을 물음(답은 전과 같음)
+안 고름    kind 가 없는(빈) 바인딩은 아무것도 안 걷음 — 저장이 이름 대어 거절. 지시에 없던 갈래라 이렇게 정했습니다
+응답 이름  dropped_fields: [{path, value}] — path 는 계획 행과 같은 말(bundle.sources.<소스>. …). 저장 응답과 계획 응답 둘 다
+          저장된 초안에는 걷은 뒤의 몸만 남음(적용하면 그것이 파일로)
+고치기 전  column -> constant 저장이 invalid · unknown_field (남은 column 경로) — 소유자 증상 그대로
+```
+
+| 칸 | 보낸 바인딩(step 역할) | 답 |
+|---|---|---|
+| column -> constant | kind constant · value · column "" | saved · 걷음 [column ""] · 계획도 같은 목록 · 몸은 보낸 것에서 그 칸만 빠짐 |
+| constant -> column | kind column · column · value | saved · 걷음 [value] |
+| entity -> column | kind column · column · attributes · entity_type · keys | saved · 걷음 [attributes, entity_type, keys] |
+| 안 고름 | column · value, kind 없음 | 걷음 [] · 몸 그대로 · invalid(이름 대어 거절) |
+
+```
+게이트   4 passed in 2.39s
+변이 B1 채움이 아무것도 안 걷음       3 failed, 1 passed in 1.36s — test_a_switch_saves_with_the_switched_off_fields_dropped_and_named[column_to_constant] · test_a_switch_saves_with_the_switched_off_fields_dropped_and_named[constant_to_column] · test_a_switch_saves_with_the_switched_off_fields_dropped_and_named[entity_to_column]
+     B2 안 고른 바인딩도 걷음         1 failed, 3 passed in 2.23s — test_a_binding_that_has_not_chosen_keeps_what_it_holds
+전체     5 failed, 7484 passed, 181 skipped, 3 xfailed in 805.46s (0:13:25) — 실패는 알려진 다섯과 이름이 같음
+PG       10 failed, 132 passed, 7531 deselected in 233.31s (0:03:53) — 알려진 일곱 + trace 셋(29b14dc21 보고의 모조 ledger_events, main 에서도 같음)
+재기동   서버. 마이그레이션 없음 — RUN.md 새 절
+```
+
+**전수 — 「바꾸고 나면 흔적이 남아 오류가 나는」 자리 (표본 선언에서 하나씩 바꾸고, 가리키는 곳은 그대로 두고 검증기에 물음)**
+```
+명령   python scratchpad/census_b30f_leftovers.py   (저장소 scratchpad/, 추적 밖 · 표본 ledger_config · table_config)
+       검증 = setup_bundle.validate_bundle_errors(초안 미리보기가 묻는 그것) · 걷은 뒤 = 그 소스를 filled_declaration 에 한 번 통과
+열: 바꾼 것 | 오류 수 | 오류 코드 | 앞 두 경로 | 걷은 칸 수 -> 걷은 뒤 오류 수
+CANARY base errors: 0 | sources 6 | entities 9 | vocabulary 16
+| binding kind switched column -> constant, column left | 1 | unknown_field | bundle.sources.wafer_process_recipe.bind.mappings.wafer-processed-with-recipe.bind.step.column | dropped 1 -> errors 0 |
+| entity renamed recipe@1 -> recipe2@1 | 2 | unknown_entity_type | bundle.sources.wafer_process_recipe.bind.mappings.wafer-processed-with-recipe.bind.target.entity_type; bundle.vocabulary.processed_with@1.object.types[0] | dropped 0 -> errors 2 |
+| entity removed recipe@1 | 2 | unknown_entity_type | bundle.sources.wafer_process_recipe.bind.mappings.wafer-processed-with-recipe.bind.target.entity_type; bundle.vocabulary.processed_with@1.object.types[0] | dropped 0 -> errors 2 |
+| entity key renamed recipe -> recipe_code | 1 | invalid_entity_ref | bundle.sources.wafer_process_recipe.bind.mappings.wafer-processed-with-recipe.bind.target.keys | dropped 0 -> errors 1 |
+| entity attribute removed dtjob@1.dt_eqp | 1 | unknown_entity_attribute | bundle.sources.dt_job.bind.entities.dtjob@1.attributes.dt_eqp | dropped 0 -> errors 1 |
+| entity attribute renamed dt_eqp -> dt_tool | 1 | unknown_entity_attribute | bundle.sources.dt_job.bind.entities.dtjob@1.attributes.dt_eqp | dropped 0 -> errors 1 |
+| predicate renamed processed_with@1 -> processed_with2@1 | 1 | unknown_predicate | bundle.sources.wafer_process_recipe.bind.mappings.wafer-processed-with-recipe.predicate | dropped 0 -> errors 1 |
+| predicate removed processed_with@1 | 1 | unknown_predicate | bundle.sources.wafer_process_recipe.bind.mappings.wafer-processed-with-recipe.predicate | dropped 0 -> errors 1 |
+| qualifier removed step | 1 | unknown_role | bundle.sources.wafer_process_recipe.bind.mappings.wafer-processed-with-recipe.bind.step | dropped 0 -> errors 1 |
+| qualifier renamed step -> stage | 1 | unknown_role | bundle.sources.wafer_process_recipe.bind.mappings.wafer-processed-with-recipe.bind.step | dropped 0 -> errors 1 |
+| sentence renamed | 0 |  |  | dropped 0 -> errors 0 |
+| source renamed | 0 |  |  | dropped 0 -> errors 0 |
+| relation column removed step | 3 | unknown_column | bundle.sources.wafer_process_recipe.bind.mappings.wafer-processed-with-recipe.bind.step.column; bundle.sources.wafer_process_recipe.map.input_columns | dropped 0 -> errors 3 |
+```
+```
+ㄱ 로 닫힘     kind 를 바꾼 뒤 남은 칸 — 걷은 뒤 오류 0
+안 닫힘(안 지음) 엔티티 이름 바꿈·지움 · 키 이름 · 속성 지움·이름 · 술어 이름·지움 · 한정어 지움·이름 · 컬럼 지움 —
+              전부 «이름 대어» 거절(unknown_* · invalid_entity_ref). 조용한 것은 없었음. 걷으면 사용자의 값을 지우는 것이라 ㄱ 과 성질이 다름
+              (고칠 모양 후보: 이름 바꾸기를 «가리키는 곳까지» 한 번에 바꾸는 편집 — 안 지음)
+오류 0         문장 이름 · 소스 이름 바꿈 — 선언 안에 가리키는 곳이 없음
+안 잰 것       소스 · 문장 이름을 바꾸면 선언 «밖»에 옛 이름으로 남는 상태(번역 커서 · 원자의 source_who 등)가 다시 번역되는지
+```
+화면: dropped_fields 를 보여 주는 것과, 저장 뒤 받은 raw 로 폼을 다시 그리는 것은 클라 몫(서버는 걷은 몸을 돌려줌).
+
+다음: 2dd93d4a9 항목 3(원장 세상 설계 보고) -> dc4ca3e7c.
