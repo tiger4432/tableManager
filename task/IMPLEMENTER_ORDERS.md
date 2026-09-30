@@ -61837,3 +61837,36 @@ RUN.md      돌릴 명령 · 그 답의 뜻 · 끄는 스위치(이 체인 규�
 보고        자리 × 조건 표 · NULL 을 만드는 자리(PG 재현 명령과 함께) · 원장이 막히는 모양 · 고칠 안 셋(각 안: 무엇 · 운영자가 하는 일 · 위험 · 크기)
             그리고 «이미 NULL 이 된 칸»을 되살리는 길(층에서 다시 채우기 — R3 는 datetime 을 글자로 견줘 철자만 다른 칸도 다시 써 체인이 번질 위험이 있다고 총괄이 09-29 에 적음)
 ```
+
+---
+
+> **[총괄 -> 구현자] 새 항목 넷 · 소유자 09-30 「ㅇㅇ 의견대로해」 — 순서대로, 항목마다 한 커밋 · 착지마다 채널 보고**
+
+```
+1 원장 선언 창 500 + 「저장 안 해도 하위 목록」 (소유자 「바인드에서 엔티티 선택후 저장해서 키 리스트 받아와야 하는데 500」 · 「저장안해도 하위 리스트 불러오는건 안되나」)
+  원인(총괄이 박스에서 재현 · 트레이스백): PUT /admin/ontology-explorer/drafts/<id> -> config_drafts.save -> filled_declaration ->
+     authoring_plan -> _implementation_fields -> setup_bundle._profile_binding_columns -> _binding_columns 의 binding["keys"] KeyError
+     재현: 소스 die_inspection · mappings.die-inspected 에 역할 하나 더 · Binding=entity · entity_type=die@1 · 키 없음 · Save
+  ㄱ _binding_columns 를 반쪽 바인딩에 견디게 — 부르는 _profile_binding_columns 가 S-196 에 이미 그렇게 됐다(docstring 의 측정 방식 그대로:
+     살아 있는 번들 전 소스에서 엄격 / 관대 순회가 갈리는 수 0 을 재고 합침). kind 없음 · column 없음 · keys 없음/모양 틀림 · 키 항목이 dict 아님
+  ㄴ 엔티티를 고르는 순간 «저장 없이» 그 초안의 폼 모양(키 칸 포함)을 서버가 답하는 길 — 지금 /authoring/plan 은 «저장된 파일»을 읽는다.
+     새 라우트 짓기 전에 기존 문부터: save_draft 가 이미 preview 를 계산한다 · C-82(클라 「초안이 계획을 이긴다」)가 같은 벽을 넘은 자리다.
+     있는 문을 넓히는 게 안 되면 plan 에 «초안 본문»을 받는 읽기(쓰기 0)로 넓힌다. 어느 쪽인지 착지 «전» 채널로 한 줄 — 클라가 그 모양에 붙는다
+  게이트  위 재현 순서로 500 없음 · 저장 없이 답한 폼에 die@1 의 선언 키가 칸으로 뜸 · 저장 뒤 답과 같음 · 변이(KeyError 복귀) 빨강
+  덤으로 볼 것(읽기만, 안 지음)  총괄이 박스에서 본 것 — 「Saved but not applied」 (signature_mismatch: bind.entities.die@1.attributes 비어 있음)인데
+     그 줄이 살아 있는 ledger_config.json 에 들어가 있었다(총괄이 백업으로 되돌림). 그 파일에 틀린 줄이 남은 채 재기동하면 원장이 어떻게 읽나 — 보고만
+
+2 칸을 더한 Reload 뒤 그리드 목록이 그 칸을 칸째 비움 (74101b158) — 추천 ① 핫스왑 뒤 컴파일 캐시 비우기
+  게이트  PG: 칸 추가 · 저장 · Reload(재기동 없음) · 파일 행 -> 목록에 값 · 변이(비우기 뺌) 빨강. 칸이 «안» 바뀐 Reload 에서 비용이 생기면 수를 적는다
+
+3 Reload 실패 · 설정과 모델 사이 · 예약 칸 이름 — 층만 쓰고 표 값은 조용히 안 씀 (0a7c46615 ㉠) — 추천 ① 쓰기 문이 «모델이 모르는 칸»을
+  층도 안 쓰고 버린 칸으로 셈(사유 하나 더). 「쓸 수 있는 칸」 판정 «한 자리»에서. 파일 줄의 버린 칸 보고에 그 사유가 뜸
+  게이트  0a7c46615 의 probe_s7b · probe_s12 가 «층·표 어긋남 0 + 버린 칸 N» 으로 뒤집힘 · 변이 빨강
+
+4 조인이 시각 칸 값을 옮기면 묶음째 TypeError (0a7c46615 덤) — 층 JSON 이 파이썬 datetime 을 못 씀
+  고칠 자리는 «층 값을 JSON 으로 만드는 한 자리» — 새 직렬화 함수를 짓지 말고 제품에 이미 있는 것(crud 의 JSON 변환 · temporal_text_value)을 지나게
+  ⚠️ 같은 부류의 «행 방송 datetime TypeError»(동결 09-29)는 소유자가 동결한 것 — 이번에 같이 고치지 않는다. 같은 함수를 지나서 «저절로» 고쳐지면 그 사실만 보고
+  게이트  PG: blank=None · skip 둘 다 값 있는 datetime take 가 써짐 · 층 값 · 표 값 · 다시 읽은 값이 같은 순간
+
+그다음 대조 PG 측정(세워 둔 것)으로 돌아간다. RUN.md 는 착지마다
+```
