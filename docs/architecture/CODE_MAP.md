@@ -1526,7 +1526,9 @@ FastAPI 웹서버. 모든 REST/WS의 단일 진입점. 워커·워처와는 outb
 | 🔴 **`_merge_row(header_metadata, filename_data, row_data)`** | **서열은 판정(ruling)이고 dict 순서의 부산물이 아니다** — 사용자 결정 2026-07-30 「파일이 정본」: **`filename_data < header_metadata < row_data`.** 경로는 셋 중 **가장 약하다**(파일 안에 쓰인 값은 그 파일 자신의 주장이고, 폴더명은 누가 파일을 옮기면 바뀌는 외부 문맥이다). 그리고 **원천은 실제로 값을 나를 때만 이긴다** — 평범한 `{**a, **b, **c}`는 그 컬럼에 **침묵한** 행의 `None`이 경로/헤더 값을 덮어써 판정의 fill 절반이 아예 일어나지 않는다. 그래서 `_fill_merge_cols`만 도는 fill 패스가 **내림차순 서열**로 메꾼다(헤더 → 경로). ⚠️ **이 셋의 순서를 새 판정 없이 바꾸지 말 것** — `filename_data`를 `header_metadata` 뒤로 옮기면 파일의 **보관 위치**가 파일 **내용**을 덮는다. `test_merge_order_is_the_declared_ruling`이 양방향으로 고정 | ~364 |
 | **`process_file(file_path, rel_path=None, issues=None)`** | 파일 1건 → 행 리스트. **`rel_path`가 트리 인제션의 운반체**이고 생략하면 `basename(file_path)` 폴백이라 **기존 호출자는 무변경**이다. `refusal`이면 0행 + 경고. `_header_overlap`에서 헤더가 경로 값을 눌렀으면 `REASON_PATH_VALUE_DISCARDED`로 **센다**(헤더가 이기는 것은 판정 자체라 경고할 일이 아니지만, 운영자가 선언한 폴더 규칙이 값을 만들고도 **효과가 없었다**는 사실은 침묵하면 "규칙이 매치 안 됐다"로 읽힌다). `_row_overlap` 불일치는 행마다 기록하지 않고 **컬럼당 카운트**해 메모리를 O(overlap)으로 묶는다 | ~416 |
 
-### 🆕 3-ter. `server/parsers/html_topology_parser.py` (**768줄**, `ed9cfdb` 638에서 **+130**) — HTML 표 → 그래프/행렬
+### 🆕 3-ter. `server/parsers/html_topology_parser.py` (🆕 **845줄** @`499d89de4` · 768줄, `ed9cfdb` 638에서 +130) — HTML 표 → 그래프/행렬
+
+🆕 **[09-30 `499d89de4`] `extract_semantic_tuples` 가 값을 «조용히» 잃지 않는다** — ① 답이 헤더 경로를 열쇠로 해서, 한 경로의 둘째 값 칸이 첫째를 덮었다(12 칸 -> 8). 이제 한 경로에 값 칸이 둘 이상이면 `ValueError` — 경로 · 몇 칸 · 좌표 한 쌍 · 공유 경로 수 · 다음 행동(행을 가르는 칸을 `is_header_fn` 으로 헤더 표시). ② 넓은 머리칸은 값 칸의 열 범위와 «겹칠 때만» 그 칸의 절 머리다 — 네 열 위 두 칸짜리 묶음 A · B 가 둘 다 너비 시험을 지나 B 가 A 의 칸을 이끌었다. 위아래로 쌓인 표는 제품이 경계를 추측하지 않는다 — 읽는 쪽이 블록 첫 행에서 잘라 블록마다 파싱(가이드 3.1-bis 의 예 `split_blocks`). 이 함수를 부르는 추적 코드는 0 곳(`bonding_map_parser` 는 모듈의 `HTMLMatrixTableParser` 를 씀)
 
 **모듈 레벨 심볼은 하나도 안 움직였다**: `class TableNode`(**7**) · `class TableEdge`(**43**) · `class HTMLTableGraphParser`(**73**) · `class HTMLMatrixTableParser`(**516**) · `parse_matrix_to_records`(**524**). **+130 전부가 `parse_matrix_to_records` 본체 안**이다.
 
