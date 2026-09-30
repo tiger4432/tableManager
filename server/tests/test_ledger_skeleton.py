@@ -327,6 +327,30 @@ def test_every_choice_names_a_list_the_server_publishes():
     assert not copied, f"a closed list is copied into the skeleton: {copied}"
 
 
+def test_every_field_carries_a_node():
+    """총괄 2a2cafc1e — a field with no `node` is drawn 「No shape · broken」
+    (client `form_demand.SHAPE_MISSING`): the form knows the field is there, not what it
+    holds. `defs.binding.timezone` was that field, on every column binding. Walked through
+    every value rather than record/map only, so a field under any node kind is counted."""
+    fields, shapeless = [], []
+
+    def walk(node, where):
+        if isinstance(node, dict):
+            for field in node.get("fields") or ():
+                fields.append(f"{where}.{field['key']}")
+                if "node" not in field:
+                    shapeless.append(f"{where}.{field['key']}")
+            for key, value in node.items():
+                walk(value, where if key == "fields" else f"{where}.{key}")
+        elif isinstance(node, list):
+            for value in node:
+                walk(value, f"{where}.{value.get('key')}" if isinstance(value, dict) else where)
+
+    walk(skeleton(), "skeleton")
+    assert "skeleton.defs.binding.timezone" in fields, "the walker stopped short"
+    assert not shapeless, shapeless
+
+
 def test_every_kind_specific_field_of_a_binding_is_locked_to_its_kind():
     """S-52-d — 「폼이 그리는데 서버가 거절한다」를 «부류로» 막는다.
 
