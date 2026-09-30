@@ -4,6 +4,9 @@
 import { saysTruncated } from './truncation.js';
 
 export const initialExplorerState = Object.freeze({
+  // The ledger world this screen reads (null = the default) and the branches there are (lead 64c380aeb).
+  world: null,
+  worlds: [],
   activeSnapshot: null,
   viewContext: null,
   selection: null,
@@ -153,7 +156,8 @@ export function reduceExplorerState(state = initialExplorerState, action) {
     //    `/api/ledger/declaration` is NOT admin-token gated, so it answers where the refusal
     //    report may not — and a failure here must leave the counts absent rather than empty.
     case 'CENSUS_RECEIVED':
-      return { ...state, census: action.bySource || {}, censusNames: action.names || {} };
+      return { ...state, census: action.bySource || {}, censusNames: action.names || {},
+        worlds: action.worlds || [] };
     case 'REQUEST_FAILED':
       if (action.generation !== state.requestGeneration) return state;
       if (action.code === 'unknown_selection' || action.code === 'context_mismatch') {

@@ -173,6 +173,11 @@
   font-size: var(--fs-h5); letter-spacing: -0.015em;
 }
 #ontology-explorer-root .oe-snapshot { color: var(--oe-ok); font-size: var(--fs-label); white-space: nowrap; }
+/* The branch this screen reads (lead 64c380aeb): a label, its list, and the two branch actions. */
+#ontology-explorer-root .branch-picker { display: flex; align-items: center; gap: var(--space-2); }
+#ontology-explorer-root .branch-picker__label { display: flex; align-items: center; gap: var(--space-1);
+  font-size: var(--fs-label); color: var(--oe-muted); white-space: nowrap; }
+#ontology-explorer-root .branch-picker__name { width: 9rem; }
 /* The auto margin moved off the search and onto what follows it: the mockup's order is
    title, id, search, then everything else pushed right. */
 #ontology-explorer-root .oe-history-actions { display: flex; gap: 3.4px; margin-left: auto; }

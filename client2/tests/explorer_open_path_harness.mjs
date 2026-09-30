@@ -20,6 +20,7 @@
 import { register } from 'node:module';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { dirname, join } from 'node:path';
+import { readFileSync } from 'node:fs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 register(pathToFileURL(join(HERE, 'lib', 'css_loader.mjs')).href);
@@ -38,7 +39,7 @@ const eq = (name, expected, actual) => ok(name, actual === expected,
 function element(tag) {
   const node = {
     tagName: String(tag).toUpperCase(), children: [], attrs: Object.create(null),
-    _text: '', _classes: [], dataset: Object.create(null), title: '', value: '',
+    _text: '', _classes: [], dataset: Object.create(null), title: '', value: '', _on: Object.create(null),
     style: { setProperty() {} },
     get className() { return this._classes.join(' '); },
     set className(v) { this._classes = String(v).split(/\s+/).filter(Boolean); },
@@ -57,7 +58,9 @@ function element(tag) {
     getAttribute(k) { return Object.prototype.hasOwnProperty.call(this.attrs, String(k)) ? this.attrs[String(k)] : null; },
     querySelector() { return null; },
     querySelectorAll() { return []; },
-    addEventListener() {}, removeEventListener() {}, focus() {}, scrollIntoView() {},
+    // Listeners are kept so a walk can fire a part's own control (the branch picker, [8]).
+    addEventListener(type, fn) { (this._on[type] ||= []).push(fn); },
+    removeEventListener() {}, focus() {}, scrollIntoView() {},
     closest() { return null; }, contains() { return false; },
     set textContent(v) { this._text = String(v); this.children = []; },
     get textContent() { return this._text + this.children.map((c) => c.textContent).join(''); },
@@ -492,7 +495,7 @@ failed += reshapeBase.failures.length;
                              '      void error;') },
   ];
   const run = async (m) => reshapeRun(
-    (await loadWithProbe(SUBJECT, { mutate: (t) => m.mutate(t.replace(/\r\n/g, '\n')) })).module.createOntologyExplorerController);
+    (await loadWithProbe(SUBJECT, { mutate: (t) => m.mutate(t) })).module.createOntologyExplorerController);
   const scored = await scoreMutants(MUTANTS, run,
     { baselineRan: reshapeBase.ran, baselineNames: reshapeBase.names,
       title: '\n  [5] mutants — each must be caught by the check it names.' });
@@ -528,7 +531,7 @@ failed += reshapeBase.failures.length;
       mutate: (text) => swap(text, '      !== JSON.stringify(row.value ?? null));', "      !== 'x');") },
   ];
   const scoredRule = await scoreMutants(RULE_MUTANTS, async (m) => ruleSuite(
-    (await loadWithProbe(STORE, { mutate: (t) => m.mutate(t.replace(/\r\n/g, '\n')) })).module.draftReshapesPlan),
+    (await loadWithProbe(STORE, { mutate: (t) => m.mutate(t) })).module.draftReshapesPlan),
     { baselineRan: ruleBase.ran, baselineNames: ruleBase.names,
       title: '\n  [5] rule mutants — each must be caught by the check it names.' });
   ran += RULE_MUTANTS.length;
@@ -633,7 +636,7 @@ failed += fieldDropBase.failures.length;
       mutate: (text) => swap(text, "fields: plan.dropped_fields, saved: false", "fields: [], saved: false") },
   ];
   const scored = await scoreMutants(MUTANTS, async (m) => fieldDropSuite(await fieldDropWalk(
-    (await loadWithProbe(SUBJECT, { mutate: (t) => m.mutate(t.replace(/\r\n/g, '\n')) })).module.createOntologyExplorerController)),
+    (await loadWithProbe(SUBJECT, { mutate: (t) => m.mutate(t) })).module.createOntologyExplorerController)),
     { baselineRan: fieldDropBase.ran, baselineNames: fieldDropBase.names,
       title: '\n  [6] mutants — each must be caught by the check it names.' });
   ran += MUTANTS.length;
@@ -715,9 +718,288 @@ failed += pathBarBase.failures.length;
         "new PathBar(null, { doc: document, action: 'select' })") },
   ];
   const scored = await scoreMutants(MUTANTS, async (m) => pathBarSuite(await pathBarWalk(
-    (await loadWithProbe(SUBJECT, { mutate: (t) => m.mutate(t.replace(/\r\n/g, '\n')) })).module.createOntologyExplorerController)),
+    (await loadWithProbe(SUBJECT, { mutate: (t) => m.mutate(t) })).module.createOntologyExplorerController)),
     { baselineRan: pathBarBase.ran, baselineNames: pathBarBase.names,
       title: '\n  [7] mutants — each must be caught by the check it names.' });
+  ran += MUTANTS.length;
+  failed += scored.wrong;
+}
+
+// ═════════════════════════════════════════════════════════════════
+// [8] lead 64c380aeb — the branch the screen reads.
+//
+// 🔴 ONE SEAT, EVERY REQUEST. `state.world` is the screen's world and every request goes through the two
+//    wrappers built on it; one that goes round them reads the default beside a branch's picture and
+//    nothing errors. So the walk records EVERY URL, admin and public, and the gate is 「all of them」.
+// ⚠️ Default is the day before: the same walk (open, then one create-draft) against the source before the
+//    round, captured in fixtures/explorer_requests.before.json.
+// ═════════════════════════════════════════════════════════════════
+console.log('\n[8] the branch the screen reads');
+const REQUESTS_BEFORE = JSON.parse(readFileSync(join(HERE, 'fixtures', 'explorer_requests.before.json'), 'utf8'));
+const PREVIEW = { world: 'w2', schema: 'ledger_w2', atoms: 7, files: ['a.json', 'b.json'] };
+async function branchWalk(create, { confirmDelete = true, typed = null } = {}) {
+  const urls = [];
+  const clicks = [];
+  const inputs = [];
+  const root = element('div');
+  root.addEventListener = (type, fn) => { if (type === 'click') clicks.push(fn); if (type === 'input') inputs.push(fn); };
+  const mount = element('div');
+  root.querySelector = (sel) => (sel === '.oe-branch-mount' ? mount : null);
+  const click = async (action) => {
+    const target = { dataset: { action }, disabled: false };
+    target.closest = () => target;
+    for (const fn of clicks) await fn({ target });
+  };
+  const fire = (node, type) => { for (const fn of (node && node._on[type]) || []) fn({ target: node }); };
+  const part = (cls) => walkAll(mount).find((n) => n._classes.includes(cls)) || null;
+  const settle = async () => { for (let i = 0; i < 20; i += 1) await new Promise((r) => setImmediate(r)); };
+  const reply = (body) => ({ ok: true, status: 200, json: async () => body });
+  const adminOf = async (url, init = {}) => {
+    const u = String(url);
+    const method = init.method || 'GET';
+    urls.push(`admin ${method} ${u}`);
+    const path = u.split('?')[0];
+    const asked = (u.match(/draft_id=(d\d)/) || [])[1];
+    if (u.includes('/authoring')) return reply(AUTHORING);
+    if (/\/drafts$/.test(path) && method === 'POST') return reply(DRAFT);
+    if (path.endsWith('/bootstrap')) return reply({ created: 'ledger_config.json' });
+    if (path.includes('/worlds/')) return reply(u.includes('confirm_atoms=') ? { deleted: 'w2' } : PREVIEW);
+    return reply(asked ? { ...SELECTED, draft: { ...DRAFT, draft_id: asked, context_token: 'ctx:1' } } : SELECTED);
+  };
+  const confirms = [];
+  const keepFetch = globalThis.fetch;
+  const keepConfirm = globalThis.window.confirm;
+  globalThis.fetch = async (url, init = {}) => {
+    urls.push(`public ${init.method || 'GET'} ${String(url)}`);
+    return reply({ ...DECLARATION, worlds: ['w1'] });
+  };
+  globalThis.window.confirm = (text) => { confirms.push(String(text)); return confirmDelete; };
+  try {
+    const controller = create({ root, apiBase: '', adminFetch: adminOf, showToast: () => {} });
+    await controller.refresh();
+    await settle();
+    await click('create-draft');
+    await settle();
+    const out = { onDefault: urls.splice(0).sort() };
+    const opened = controller.getState();
+    out.open = `${Boolean(opened.selection)}|${Boolean(opened.draft)}`;
+    out.listed = walkAll(mount).filter((n) => n.tagName === 'OPTION').map((n) => n.value || '(default)');
+    if (typed) {
+      // Unsaved typing, then a pick: the one dirty dialog, answered with `typed`.
+      for (const fn of inputs) fn({ target: { dataset: { action: 'edit-raw' }, value: '{"class": 4}' } });
+      const pick = part('branch-picker__select');
+      if (pick) { pick.value = 'w1'; fire(pick, 'change'); }
+      const backdrop = walkAll(root).find((n) => n._classes.includes('oe-dirty-dialog-backdrop')) || null;
+      if (backdrop) backdrop.remove = () => {};
+      const answer = backdrop && walkAll(backdrop).find((n) => n.dataset.dirtyChoice === typed);
+      if (answer) fire(answer, 'click');
+      await settle();
+      const s = controller.getState();
+      out.typed = { asked: Boolean(answer), world: s.world, draft: Boolean(s.draft), dirty: s.dirty, urls: urls.splice(0) };
+      return out;
+    }
+    const select = part('branch-picker__select');
+    if (select) { select.value = 'w1'; fire(select, 'change'); }
+    // Read before the branch answers: what the pick itself left of the screen.
+    const picked = controller.getState();
+    out.picked = `${picked.world}|${Boolean(picked.selection)}|${Boolean(picked.draft)}`;
+    await settle();
+    await click('create-draft');
+    await settle();
+    out.onBranch = urls.splice(0);
+    const name = part('branch-picker__name');
+    const make = part('branch-picker__create');
+    if (name && make) { name.value = 'w2'; fire(name, 'input'); fire(make, 'click'); }
+    await settle();
+    out.made = { world: controller.getState().world, urls: urls.splice(0) };
+    const drop = part('branch-picker__delete');
+    if (drop) fire(drop, 'click');
+    await settle();
+    out.dropped = { world: controller.getState().world, urls: urls.splice(0), confirms };
+    return out;
+  } finally {
+    globalThis.fetch = keepFetch;
+    globalThis.window.confirm = keepConfirm;
+  }
+}
+const branchSeen = async (create) => ({ yes: await branchWalk(create),
+  no: await branchWalk(create, { confirmDelete: false }),
+  discard: (await branchWalk(create, { typed: 'discard' })).typed,
+  stay: (await branchWalk(create, { typed: 'cancel' })).typed,
+  keep: (await branchWalk(create, { typed: 'keep' })).typed });
+function branchSuite({ yes, no, discard, stay, keep }) {
+  const names = [];
+  const failures = [];
+  const say = (name, cond, detail) => {
+    names.push(name);
+    if (cond) { console.log(`  PASS ${name}`); return; }
+    failures.push(detail ? `${name} — ${detail}` : name);
+    console.log(`  FAIL ${name}${detail ? ' — ' + detail : ''}`);
+  };
+  say('Z1 Default: the screen asks what it asked before the round, byte for byte',
+    JSON.stringify(yes.onDefault) === JSON.stringify(REQUESTS_BEFORE.urls), yes.onDefault.join(' | '));
+  say('Z2 the picker lists Default and the declaration\'s branches', yes.listed.join(',') === '(default),w1',
+    yes.listed.join(','));
+  say('Z3 a pick starts the screen over on the branch: nothing selected, no draft open',
+    yes.open === 'true|true' && yes.picked === 'w1|false|false', `${yes.open} -> ${yes.picked}`);
+  const lacking = yes.onBranch.filter((u) => !u.includes('world=w1'));
+  const kinds = ['admin ', 'public '].every((k) => yes.onBranch.some((u) => u.startsWith(k)));
+  say('Z4 on the branch every request carries it, admin and public alike',
+    yes.onBranch.length > 0 && kinds && lacking.length === 0, lacking.join(' | ') || yes.onBranch.join(' | '));
+  const view = yes.onBranch.find((u) => u.startsWith('admin GET /admin/ontology-explorer/view?')) || '';
+  say('Z5 ...and the view the pick asks for names no selection and no draft',
+    Boolean(view) && !view.includes('selection=') && !view.includes('draft_id='), view);
+  say('Z6 a new branch is made by the bootstrap, sent on its name, and the screen reads it',
+    yes.made.world === 'w2' && yes.made.urls[0] === 'admin POST /admin/ontology-explorer/bootstrap?world=w2'
+      && yes.made.urls.length > 1 && yes.made.urls.every((u) => u.includes('world=w2')), yes.made.urls.join(' | '));
+  const after = yes.dropped.urls.slice(2);
+  say('Z7 delete: the preview, its count confirmed, the delete with that count; then Default',
+    yes.dropped.urls[0] === 'admin DELETE /admin/ontology-explorer/worlds/w2?world=w2'
+      && yes.dropped.urls[1] === 'admin DELETE /admin/ontology-explorer/worlds/w2?confirm_atoms=7&world=w2'
+      && yes.dropped.confirms.length === 1 && yes.dropped.confirms[0].includes('7 atoms')
+      && yes.dropped.confirms[0].includes('2 files') && yes.dropped.world === null
+      && after.length > 0 && after.every((u) => !u.includes('world=')),
+    `${yes.dropped.urls.join(' | ')} :: ${yes.dropped.confirms.join(' | ')}`);
+  say('Z8 declined, nothing is deleted and the branch stays',
+    no.dropped.urls.filter((u) => u.startsWith('admin DELETE')).length === 1 && no.dropped.world === 'w2',
+    `${no.dropped.urls.join(' | ')} :: ${no.dropped.world}`);
+  const opened = discard.urls.slice(1);
+  say('Z9 unsaved typing asks first; Discard deletes the draft where it was typed, then the branch opens',
+    discard.asked && discard.urls[0] === 'admin DELETE /admin/ontology-explorer/drafts/d1?expected_revision=1'
+      && discard.world === 'w1' && !discard.draft && opened.length > 0 && opened.every((u) => u.includes('world=w1')),
+    `${discard.asked} ${discard.world} ${discard.urls.join(' | ')}`);
+  say('Z10 Stay and Keep send nothing: the screen stays on its world with the typing',
+    [stay, keep].every((t) => t.asked && t.urls.length === 0 && t.world === null && t.draft && t.dirty),
+    [stay, keep].map((t) => `${t.asked} ${t.world} ${t.draft} ${t.dirty} ${t.urls.join(' | ')}`).join(' :: '));
+  return { ran: names.length, names, failures };
+}
+const branchBase = branchSuite(await branchSeen(createOntologyExplorerController));
+ran += branchBase.ran;
+failed += branchBase.failures.length;
+{
+  const { loadWithProbe } = await import('./lib/probe.mjs');
+  const { scoreMutants } = await import('./lib/mutation_scorer.mjs');
+  const SUBJECT = join(HERE, '..', 'src', 'ontology_explorer.js');
+  const WORLD = join(HERE, '..', 'src', 'world.js');
+  const swap = (text, from, to) => {
+    if (!text.includes(from)) throw new Error(`mutation anchor is GONE: ${from.slice(0, 60)}`);
+    return text.split(from).join(to);
+  };
+  const MUTANTS = [
+    { id: 'M14', what: 'the screen\'s requests go round the seat', catches: 'Z4',
+      mutate: (text) => swap(text, "    const response = await ask(`${apiBase}/admin/ontology-explorer${path}`, init);",
+        "    const response = await adminFetch(`${apiBase}/admin/ontology-explorer${path}`, init);") },
+    { id: 'M15', what: 'the census goes round the seat', catches: 'Z4',
+      mutate: (text) => swap(text, "      const res = await askPublic(`${apiBase}/api/ledger/declaration`);",
+        "      const res = await fetch(`${apiBase}/api/ledger/declaration`);") },
+    { id: 'M16', what: 'a new branch is bootstrapped on the default', catches: 'Z6',
+      mutate: (text) => swap(text, "      const res = await ask(`${apiBase}/admin/ontology-explorer/bootstrap`, {",
+        "      const res = await adminFetch(`${apiBase}/admin/ontology-explorer/bootstrap`, {") },
+    { id: 'M17', what: 'a pick keeps the selection and the draft', catches: 'Z3',
+      mutate: (text) => swap(text,
+        '    state = { ...initialExplorerState, navigation: { back: [], forward: [] }, world: next, worlds: state.worlds };',
+        '    state = { ...state, world: next };') },
+    { id: 'M18', what: 'a branch is deleted without asking', catches: 'Z8',
+      mutate: (text) => swap(text, 'if (!window.confirm(', 'if (void window.confirm(') },
+    { id: 'M19', what: 'the seat sends a world on Default too', catches: 'Z1 Default',
+      load: async () => {
+        const loud = (await loadWithProbe(WORLD, { mutate: (t) => swap(t, '    if (!world) return fetchImpl(url, init);\n', '') }))
+          .module.withWorld;
+        return (await loadWithProbe(SUBJECT, { stubs: { './world.js': { withWorld: loud } } })).module.createOntologyExplorerController;
+      } },
+    { id: 'M20', what: 'Stay and Keep do not stay', catches: 'Z10',
+      mutate: (text) => swap(text, "    if (state.dirty && decision !== 'discard') { render(); return; }\n", '') },
+    { id: 'M21', what: 'Discard leaves the draft in the world it was typed in', catches: 'Z9',
+      mutate: (text) => swap(text, "    if (state.dirty && decision !== 'discard') { render(); return; }\n"
+        + '    if (decision === \'discard\' && state.draft && !(await discardDraft({ ask: false }))) return;\n',
+        "    if (state.dirty && decision !== 'discard') { render(); return; }\n") },
+  ];
+  const loadOf = async (m) => (m.load ? m.load()
+    : (await loadWithProbe(SUBJECT, { mutate: m.mutate })).module.createOntologyExplorerController);
+  const scored = await scoreMutants(MUTANTS, async (m) => branchSuite(await branchSeen(await loadOf(m))),
+    { baselineRan: branchBase.ran, baselineNames: branchBase.names,
+      title: '\n  [8] mutants — each must be caught by the check it names.' });
+  ran += MUTANTS.length;
+  failed += scored.wrong;
+}
+
+// The picker's own name field, the part alone: a blank name must make nothing - on the declaration
+// screen it would bootstrap the DEFAULT world - and Default has nothing to delete.
+async function pickerWalk(Picker) {
+  const made = [];
+  const dropped = [];
+  const mount = element('div');
+  const picker = new Picker(mount, { doc: document, onPick: () => {}, onCreate: (n) => made.push(n),
+    onDelete: (n) => dropped.push(n) });
+  picker.show({ worlds: ['w1'], current: null });
+  const part = (cls) => walkAll(mount).find((n) => n._classes.includes(cls)) || null;
+  const fire = (node, type) => { for (const fn of (node && node._on[type]) || []) fn({ target: node }); };
+  const name = part('branch-picker__name');
+  const make = part('branch-picker__create');
+  const out = { fresh: `${make && make.disabled}|${make && make.getAttribute('title')}`, typed: [] };
+  for (const typed of ['   ', '  w3 ']) {
+    if (!name || !make) break;
+    name.value = typed;
+    fire(name, 'input');
+    out.typed.push(String(make.disabled));
+    fire(make, 'click');
+  }
+  out.made = made;
+  out.deletable = Boolean(part('branch-picker__delete'));
+  // The page redraws the part on its own renders: a made name is gone, a name being typed stays.
+  picker.show({ worlds: ['w1'], current: null });
+  out.afterMade = (part('branch-picker__name') || {}).value;
+  const typing = part('branch-picker__name');
+  if (typing) { typing.value = 'w4'; fire(typing, 'input'); }
+  picker.show({ worlds: ['w1'], current: null });
+  out.kept = `${(part('branch-picker__name') || {}).value}|${(part('branch-picker__create') || {}).disabled}`;
+  return out;
+}
+function pickerSuite(seen) {
+  const names = [];
+  const failures = [];
+  const say = (name, cond, detail) => {
+    names.push(name);
+    if (cond) { console.log(`  PASS ${name}`); return; }
+    failures.push(detail ? `${name} — ${detail}` : name);
+    console.log(`  FAIL ${name}${detail ? ' — ' + detail : ''}`);
+  };
+  say('Z11 a blank name makes nothing: Create is off with the reason; a name goes trimmed',
+    seen.fresh === 'true|Name the branch first' && seen.typed.join(',') === 'true,false'
+      && JSON.stringify(seen.made) === '["w3"]', `${seen.fresh} ${seen.typed.join(',')} ${JSON.stringify(seen.made)}`);
+  say('Z12 Default offers nothing to delete', seen.deletable === false, String(seen.deletable));
+  say('Z13 a redraw keeps a name being typed; a made branch clears it',
+    seen.afterMade === '' && seen.kept === 'w4|false', `${JSON.stringify(seen.afterMade)} ${seen.kept}`);
+  return { ran: names.length, names, failures };
+}
+const { BranchPicker } = await import('../src/branch_picker.js');
+const pickerBase = pickerSuite(await pickerWalk(BranchPicker));
+ran += pickerBase.ran;
+failed += pickerBase.failures.length;
+{
+  const { loadWithProbe } = await import('./lib/probe.mjs');
+  const { scoreMutants } = await import('./lib/mutation_scorer.mjs');
+  const PICKER = join(HERE, '..', 'src', 'branch_picker.js');
+  const swap = (text, from, to) => {
+    if (!text.includes(from)) throw new Error(`mutation anchor is GONE: ${from.slice(0, 60)}`);
+    return text.split(from).join(to);
+  };
+  const MUTANTS = [
+    { id: 'M22', what: 'a blank name is sent (the screen would bootstrap the default)', catches: 'Z11',
+      mutate: (text) => swap(text, 'if (!isBlank(name.value)) {', 'if (true) {') },
+    { id: 'M23', what: 'Create is on with no name', catches: 'Z11',
+      mutate: (text) => swap(text, "isBlank(name.value) ? NAME_FIRST : ''", "''") },
+    { id: 'M24', what: 'Default offers a delete', catches: 'Z12',
+      mutate: (text) => swap(text, 'if (this.onDelete && this.current) {', 'if (this.onDelete) {') },
+    { id: 'M25', what: 'a redraw drops the name being typed', catches: 'Z13',
+      mutate: (text) => swap(text, '      name.value = this.typed;\n', '') },
+    { id: 'M26', what: 'a made branch leaves its name in the field', catches: 'Z13',
+      mutate: (text) => swap(text, "{ this.typed = ''; this.onCreate(", '{ this.onCreate(') },
+  ];
+  const scored = await scoreMutants(MUTANTS, async (m) => pickerSuite(await pickerWalk(
+    (await loadWithProbe(PICKER, { mutate: m.mutate })).module.BranchPicker)),
+    { baselineRan: pickerBase.ran, baselineNames: pickerBase.names,
+      title: '\n  [8] picker mutants — each must be caught by the check it names.' });
   ran += MUTANTS.length;
   failed += scored.wrong;
 }

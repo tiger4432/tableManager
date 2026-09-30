@@ -1,3 +1,60 @@
+> ## [08:47 디자인] 가지 선택기 — 선언 화면 · R&D 보드. 화면마다 좌석 하나, 모든 요청이 그 좌석을 지남, 기본은 오늘 요청 그대로 — 총괄 64c380aeb · ccf374d48
+
+**여쭐 것 둘**
+1. 기본 가지의 대조 저장 목록 — 지시의 두 문장이 부딪힙니다. 「기본은 world 없이 오늘 요청 그대로」와 「저장 목록은 고른 가지의 run」. 지금은 앞 문장을 따라 기본 목록에 거르기를 안 붙였고, 그래서 가지에서 저장한 run 도 기본 목록에 섞여 보입니다(가지 목록은 `world = <가지>` 로 그 가지 것만). 기본을 「world 가 빈 run」으로 거르면 기본 목록 요청 한 줄이 바뀝니다. 서버의 표 거르기가 빈 칸 조건을 받는지는 안 쟀습니다. 어느 쪽으로 할까요.
+2. 쓰다 만 초안이 있을 때 가지를 고르면 공용 대화상자(Keep draft · Discard draft · Stay)가 뜹니다. 초안은 그 가지에 속하니 여기서 Keep 은 Stay 로 돕니다 — 단추 이름이 참이 아닙니다. 가지 고르기에서는 Keep 을 뺄까요(대화상자에 선택지 인자 하나), 이대로 둘까요.
+
+**박스 — 다음 행동에 걸림**: 이 박스에 떠 있는 API 의 `GET /api/ledger/declaration` 응답에 `worlds` 가 없습니다(키 다섯: census_names · entities · predicates · sources · state). 소스에는 070a4558b(10-01 00:05)부터 있습니다. 그 뒤 소스로 재기동하기 전까지 선택기에는 Default 만 보이고, 임시 가지로 여는 계획도 재기동이 먼저입니다.
+
+**게이트** — 기본 요청 목록은 64c380aeb 소스(git archive)로 떠서 고정값으로 두었습니다.
+
+| 게이트 | 보드 | 선언 화면 |
+|---|---|---|
+| 기본은 world 없음, 전후 같음 | M1 부팅 + 저장 한 번의 요청 전부 | Z1 열기 + 초안 한 번의 요청 전부 |
+| 가지면 모든 요청에 world | M3 전부 · M4 전역 fetch 로 샌 것 0 | Z4 admin · public 둘 다 |
+| 가지 바꾸면 비움 | 고르면 페이지를 그 가지로 다시 엶(M7). 마킹은 메모리에만 있어 새 페이지에 없음 | Z3 고른 직후 선택 · 초안 없음 · Z5 가지에 묻는 view 에 selection · draft_id 없음 |
+| 대조 저장 run 에 world | M5 행에 world, 기본 행은 오늘 칸 그대로 · M6 저장 목록이 그 가지로 거름 | — |
+| 만들기 · 지우기 | — | Z6 새 가지는 기존 부트스트랩이 그 이름으로 · Z7 미리보기 → 확인 → 미리보기의 원자 수로 삭제 → Default · Z8 취소하면 안 지움 |
+| 더 잰 것 | M8 주소의 빈 가지는 Default | Z9 쓰다 만 초안 + Discard 는 그 가지에서 초안을 지우고 넘어감 · Z10 Stay · Keep 은 아무것도 안 보냄 · Z11 빈 이름은 아무것도 안 만듦(만들면 기본 가지를 부트스트랩) · Z12 Default 에는 삭제 없음 · Z13 다시 그려도 치던 이름이 남음 |
+
+- 하니스: rnd_board_contrast_save 70 · explorer_open_path 74 · 이번 변이 보드 7 · 선언 화면 13, 전부 이름 붙인 줄에서 빨강 · 러너 154 중 152 초록 · 알려진 빨강 2 · 막힘 0 · 계약 12 개 어긋남 0
+- 러너가 한 번 빨갛던 것: probe_mechanism P1(자체 줄바꿈 정규화 파일 수, 천장 37)이 38 이 됐습니다. explorer_open_path 가 fixture 를 읽으려 readFileSync 를 들이자 세어진 것 — 그 파일의 정규화 네 자리는 프로브가 이미 LF 로 넘겨서 하는 일이 없어 지웠고, 37 로 돌아왔습니다.
+- 화면(미리보기, 쓰기 요청은 막음 · 막힌 것 0): 보드 기본 요청 9 개 중 world 0 · `?world=w1` 이면 9 개 전부 world=w1, 저장 목록에 거르기 · 선택기에서 Default 를 고르면 `/rnd-board.html` 로 다시 열리고 world 0. 선언 화면 기본 요청 4 개 world 0(토큰을 안 넣어 admin 은 401). 치던 가지 이름이 검색 한 번의 다시 그리기에 지워지던 것을 고쳤고(Z13), 고친 번들에서 남는 것을 다시 쟀습니다.
+
+**요청 자리 셈(「간다」, git grep)**: 선언 화면 요청 자리 6 — ask 5 · askPublic 1. 맨 adminFetch( 호출 0, 맨 fetch( 는 askPublic 의 정의 안 1. 이 화면이 가져오는 모듈 8 개에 fetch 0. 보드의 맨 fetch( 는 1 — 저장 부품을 fetchImpl 없이 따로 쓸 때의 대체이고, 보드는 늘 boot 의 fetchImpl 을 넘깁니다. 걸어 본 것(「돈다」) 밖: 새 선언 만들기(drafts/new 두 자리) · 보드가 lot_map 등을 부르는 상태.
+
+**보드 경로 × 서버가 world 를 읽나**
+
+| 경로 | 읽나 |
+|---|---|
+| subgraph · key-values · declaration | 읽음 |
+| 표 읽기 · 쓰기(contrast_run) | 안 읽음 — 대신 행의 world 칸, 목록은 그 칸으로 거름 |
+| 격자(wafer_map_metadata) | 안 읽음 — 공용 표 |
+| lot_map · composition · trends · siblings | 서버에 그런 경로가 없음 |
+
+- 마지막 줄: trace_router 가 선언하는 경로는 넷(subgraph · key-values · gaps · declaration)이고, 넷은 2cb9a8b97 「eight routes go」에서 나갔습니다. 보드 api.js 의 ROUTES 는 아직 부릅니다. 이번 일 밖이라 사실만 적습니다. trace_router 머리 주석도 아직 「ten of them」입니다.
+- 선언 화면 라우터의 경로 17 개는 전부 world 를 받습니다(삭제는 경로 칸으로).
+
+**사실(안 고침)**
+- 지워진 가지가 주소에 남은 보드: trace 경로가 404 world_unknown 과 가지 목록을 돌려줍니다. 보드는 그것으로 다시 고르게 하지 않습니다. 화면에 무엇이 뜨는지는 안 쟀습니다.
+- 새 가지 만들기에서 부트스트랩이 실패하면 화면은 그 새 이름에 남고, 실패 문장은 부트스트랩 제안 자리에 뜹니다.
+- 새 가지를 만든 직후 그 이름의 선언 읽기가 서버 가지 목록에 곧 잡히는지는 안 쟀습니다.
+- 빈 값: 주소의 `?world=` 와 새 가지 이름은 isBlank 를 지납니다. 선언 화면 pickWorld 의 `name || null` 은 두었습니다 — 공백만 든 값이 거기 닿는 길이 없습니다(선택지 값은 서버 이름이거나 빈 값, 만들기는 isBlank 가 막음).
+
+**새 함수 · 새 if 중 기존 것과 같은 일**
+- 새 함수: withWorld(지시 · 다른 `?`/`&` 붙이기 도우미 0, world.js 가 카나리아) · BranchPicker(지시 · 한 부품 두 자리 · 내보낸 Picker/Select 부품 0, BranchPicker 가 카나리아) · pickWorld · deleteWorld · 보드 페이지의 고르기 람다.
+- 같은 모양 하나: deleteWorld 는 deleteDeclaration 과 「미리보기 → 확인 → 삭제 → 토스트 → 다시 읽기」가 같습니다. 대상과 미리보기 낱말이 달라 접지 않았습니다.
+- 새 if: withWorld 의 기본 갈래 · api.js 삼항 둘(저장 행 칸 · 목록 거르기 — 다른 전선 칸, 같은 world 참거짓) · 보드 `if (options.branchMount)` · 페이지 람다의 set/delete · 선택기 가드(마운트 없음 · onPick · onCreate · onDelete 와 current · 빈 이름) · pickWorld 가드(같은 가지 · 쓰다 만 초안 · 만들기/읽기).
+- 기존 자리를 부른 것: 쓰다 만 초안은 chooseDirtyNavigation 과 dirtyNavigationDecision, Discard 줄은 select 의 줄 그대로(discardDraft), 만들기는 bootstrapConfig, 읽기는 load, 빈 값은 isBlank, 꺼짐 사유는 setDisabledReason.
+
+**제안(짓지 않음) — 이 화면을 5분 쓰면**
+
+| 항목 | 막히는 때 | 크기 |
+|---|---|---|
+| 지워진 가지가 주소에 남은 보드 | 404 문장만 보이고 목록으로 못 돌아감 — Default 로 돌리거나 가지 목록을 보여 줌 | 안 쟀다 |
+| 가지 이름 규칙 | 서버가 거절할 이름을 치면 부트스트랩 거절 문장으로만 앎 | 안 쟀다 |
+| 치는 중 포커스 | 열자마자 선언 읽기 답이 오면 선택기를 다시 그려 이름 칸의 포커스가 풀림(값은 남음) — 코드로 읽음 | 안 쟀다 |
+
 > ## [07:24 디자인] 보드 꼬리 둘 — 빈 칸은 공용 ABSENT · 원본 페이지 lang="en" — 총괄 50c8d9469 · 43e793ce4
 
 - 빈 칸: 보드 문자열 리터럴 중 «-» 하나뿐인 것 10 → 1. 남은 1 은 api.js 의 base64 치환(표시 아님). 바꾼 자리는 모두 absent.js 의 ABSENT(«—»)를 부릅니다 — table_part 의 자체 상수를 지웠습니다. 새 표시 없음.

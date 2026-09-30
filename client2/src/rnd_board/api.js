@@ -1808,7 +1808,7 @@ export async function fetchDeclaration(params) {
         || `Declaration unreadable (${res.status})` };
     }
     return { ok: true, entities: body.entities || [], predicates: body.predicates || [],
-             collect: body.collect || [] };
+             collect: body.collect || [], worlds: body.worlds || [] };
   } catch (err) {
     return { ok: false, message: `Declaration unreachable — ${err && err.message}` };
   }
@@ -2118,7 +2118,7 @@ export function contrastListModel(body) {
 
 /** Save and list, against the tables' own routes. Both answer { ok, ... } or { ok: false, message }. */
 export function createContrastStore(deps) {
-  const { apiBase, fetchImpl, user } = deps || {};
+  const { apiBase, fetchImpl, user, world } = deps || {};
   const doFetch = fetchImpl || ((...args) => fetch(...args));
   const table = (name) => `${apiBase || ''}/tables/${name}`;
   // The server's reason in every shape it sends ({message}, {reason, argument, value}, a list) -
@@ -2129,7 +2129,8 @@ export function createContrastStore(deps) {
   };
   return {
     async save(run) {
-      const row = contrastRunRow(run);
+      // A run walked on a branch says which (lead 64c380aeb); the default's row is today's.
+      const row = { ...contrastRunRow(run), ...(world ? { world } : {}) };
       try {
         const res = await doFetch(`${table(CONTRAST.runTable)}/data/updates`, {
           method: 'PUT',
@@ -2145,7 +2146,9 @@ export function createContrastStore(deps) {
     },
     async list(limit) {
       try {
-        const res = await doFetch(`${table(CONTRAST.runTable)}/data?limit=${limit || 10}&order_by=updated_at&order_desc=true`);
+        const onBranch = world
+          ? `&filters=${encodeURIComponent(JSON.stringify({ world: { filterType: 'text', type: 'equals', filter: world } }))}` : '';
+        const res = await doFetch(`${table(CONTRAST.runTable)}/data?limit=${limit || 10}&order_by=updated_at&order_desc=true${onBranch}`);
         if (!res.ok) return refused(res, 'Saved contrasts unreadable');
         return { ok: true, runs: contrastListModel(await res.json().catch(() => null)) };
       } catch (err) {

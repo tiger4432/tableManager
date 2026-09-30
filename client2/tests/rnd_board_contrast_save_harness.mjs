@@ -16,6 +16,8 @@
  *   J  what the real chain wrote, as the real route answers it (fixtures/rnd_board_contrast_chain.json,
  *      captured by the script beside it from the implementer's gate)
  *   L  the board's one question: the lists walk what Save saves; nothing marked is the default wafer
+ *   M  the branch (lead 64c380aeb): Default asks what it asked before; on a branch every request, the run
+ *      row and the saved list carry it (fixtures/rnd_board_requests.before.json)
  *
  * CONSOLE OUTPUT IS ASCII ONLY (cp949-safe) except for the sentences it quotes.
  */
@@ -387,6 +389,71 @@ async function suite(mods) {
     shell.destroy();
   }
 
+  console.log(`${LF}-- M. the branch the board reads (lead 64c380aeb): one seat, every request --`);
+  {
+    // 🔴 EVERY REQUEST, NOT THIS ONE. The whole BOARD booted on a recording fetch AND a recording global
+    //    fetch, then one Save. On the default the list is the one captured before the round; on a branch
+    //    every one of them carries it - a request round the seat reads the default beside a branch's
+    //    picture and nothing errors.
+    const BEFORE = JSON.parse(readFileSync(new URL('./fixtures/rnd_board_requests.before.json', import.meta.url), 'utf8'));
+    const drain = async () => { for (let i = 0; i < 40; i += 1) await new Promise((r) => setTimeout(r, 0)); };
+    const boardOn = async (world) => {
+      const urls = [];
+      const picked = [];
+      let row = null;
+      const reply = (status, body) => ({ ok: status < 400, status, json: async () => body });
+      const record = (via) => async (url, init) => {
+        urls.push(`${via} ${(init && init.method) || 'GET'} ${String(url)}`);
+        if (init && init.method === 'PUT') row = JSON.parse(init.body).updates[0].updates;
+        const u = new URL(String(url), 'http://box');
+        if (u.pathname.endsWith('/api/ledger/declaration')) return reply(200, { sources: [], worlds: ['w1'] });
+        return reply(200, { data: [], total: 0 });
+      };
+      const keep = globalThis.fetch;
+      globalThis.fetch = record('global');
+      try {
+        const bdoc = makeDoc();
+        const bhost = bdoc.createElement('div');
+        const mount = bdoc.createElement('span');
+        bdoc.body.appendChild(bhost);
+        bdoc.body.appendChild(mount);
+        const shell = mods.main.boot(bdoc, bhost, { markings: new MarkingStore(), fetchImpl: record('injected'),
+          user: 'u', observeSize: () => () => {}, world, branchMount: mount, pickWorld: (name) => picked.push(name) });
+        await drain();
+        await shell.partOf('contrast-save').save();
+        await drain();
+        const listed = walk(mount).filter((n) => n.tagName === 'OPTION').map((n) => n.value || '(default)');
+        const select = byClass(mount, 'branch-picker__select')[0];
+        if (select) {
+          for (const value of ['w1', '']) { select.value = value; select.dispatch('change'); }
+        }
+        shell.destroy();
+        return { urls: urls.sort(), row, listed, picked };
+      } finally {
+        globalThis.fetch = keep;
+      }
+    };
+    const onDefault = await boardOn(null);
+    const onBranch = await boardOn('w1');
+    const onBlank = await boardOn('  ');
+    const rowKeys = (r) => (r ? Object.keys(r).sort().join(',') : '(no save)');
+    eq('M1 Default: the whole board asks what it asked before the round, byte for byte',
+      JSON.stringify(onDefault.urls) === JSON.stringify(BEFORE.urls) && rowKeys(onDefault.row) === BEFORE.saveRowKeys.join(','),
+      true);
+    eq('M2 the picker lists Default and the declaration\'s branches', onDefault.listed.join(','), '(default),w1');
+    const lacking = onBranch.urls.filter((u) => !u.includes('world=w1'));
+    eq('M3 on a branch every request of the board carries it',
+      `${onBranch.urls.length}|${lacking.length}`, `${BEFORE.urls.length}|0`);
+    eq('M4 ...and none goes round the page\'s fetch', onBranch.urls.filter((u) => u.startsWith('global')).length, 0);
+    eq('M5 the saved run says its branch; Default\'s row is the day before\'s',
+      `${onBranch.row && onBranch.row.world}|${rowKeys(onDefault.row)}`, `w1|${BEFORE.saveRowKeys.join(',')}`);
+    const listUrl = onBranch.urls.find((u) => u.includes(' GET ') && u.includes('/tables/contrast_run/data?')) || '';
+    const filters = new URL(listUrl.split(' ').pop() || 'http://box', 'http://box').searchParams.get('filters');
+    eq('M6 the saved list reads that branch\'s runs', filters, JSON.stringify({ world: { filterType: 'text', type: 'equals', filter: 'w1' } }));
+    eq('M7 a pick hands the page the name; Default hands it none', JSON.stringify(onDefault.picked), JSON.stringify(['w1', null]));
+    eq('M8 a blank branch in the address is Default', JSON.stringify(onBlank.urls) === JSON.stringify(BEFORE.urls), true);
+  }
+
   return { ran, failed: failedList.slice() };
 }
 
@@ -456,6 +523,22 @@ const MUTANTS = [
   { name: 'no-controls-is-not-said', catches: ['F2'],
     from: '    if (seeds && !(seeds.negative || []).length) {',
     to: '    if (false) {' },
+  { name: 'the-board-sends-round-its-branch', catches: ['M3'], file: 'main.js',
+    from: '  const fetchImpl = withWorld(options.fetchImpl || ((url, init) => globalThis.fetch(url, init)), () => world);',
+    to: '  const fetchImpl = options.fetchImpl || ((url, init) => globalThis.fetch(url, init));' },
+  { name: 'the-saved-run-forgets-its-branch', catches: ['M5'], file: 'api.js',
+    from: '      const row = { ...contrastRunRow(run), ...(world ? { world } : {}) };',
+    to: '      const row = { ...contrastRunRow(run) };' },
+  { name: 'the-saved-list-reads-every-branch', catches: ['M6'], file: 'api.js',
+    from: '&order_desc=true${onBranch}`', to: '&order_desc=true`' },
+  { name: 'the-save-part-is-not-told-the-branch', catches: ['M5', 'M6'],
+    from: ',\n        world: options.world });', to: ' });' },
+  { name: 'the-picker-lists-no-branch', catches: ['M2'], file: 'api.js',
+    from: 'collect: body.collect || [], worlds: body.worlds || [] };', to: 'collect: body.collect || [], worlds: [] };' },
+  { name: 'a-blank-branch-is-sent', catches: ['M8'], file: 'main.js',
+    from: '  const world = isBlank(options.world) ? null : options.world;', to: '  const world = options.world || null;' },
+  { name: 'a-pick-goes-nowhere', catches: ['M7'], file: 'main.js',
+    from: '{ doc, onPick: options.pickWorld }', to: '{ doc, onPick: null }' },
 ];
 
 const main = async () => {

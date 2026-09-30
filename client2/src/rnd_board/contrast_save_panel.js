@@ -31,7 +31,8 @@ export class ContrastSavePanel extends Panel {
     super(host, deps);
     const options = deps || {};
     this.store = options.contrastStore
-      || createContrastStore({ apiBase: options.apiBase, fetchImpl: options.fetchImpl, user: options.user });
+      || createContrastStore({ apiBase: options.apiBase, fetchImpl: options.fetchImpl, user: options.user,
+        world: options.world });
     // The candidate question, whole, as the seat hands it. Only walk arguments reach the row.
     this.question = options.candidateQuestion || {};
     this.now = options.now || (() => Date.now());

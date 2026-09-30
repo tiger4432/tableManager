@@ -29,6 +29,9 @@
 // `API_BASE` still has exactly one definition; this file just does not ask for it until there
 // is a document to ask on behalf of.
 import { MarkingStore } from './marking_store.js';
+import { withWorld } from '../world.js';
+import { isBlank } from '../absent.js';
+import { BranchPicker } from '../branch_picker.js';
 import { intersectMarkings } from './marking_intersection.js';
 import { GridShell } from './grid_shell.js';
 import { MapPanel } from './map_panel.js';
@@ -696,7 +699,7 @@ export const BOARD = Object.freeze({
  * mocked answer with a real route is a change here, never in a part.
  */
 export function bindLoaders(layout, deps) {
-  const { apiBase, fetchImpl, dpr, user } = deps || {};
+  const { apiBase, fetchImpl, dpr, user, world } = deps || {};
   // 🔴 ONE WALK FOR THE WHOLE SCREEN, and that is not a performance note: 후보 트렌드와 후보
   //    맵은 «같은 walk»(⑦)을 먹습니다. 인스턴스가 하나여야 둘째 부품이 첫째의 진행 중인 요청에
   //    «합류»합니다 -- 인스턴스를 부품마다 만들면 같은 질문을 두 번 보내게 됩니다.
@@ -740,7 +743,7 @@ export function bindLoaders(layout, deps) {
       // 🔴 THE ADDRESS IS INJECTED, NEVER DECLARED. `apiBase` is a fact about where this page
       //    is running, so it is known HERE and nowhere in the layout data -- which is what
       //    keeps that data serialisable the day a screen is saved or dragged.
-      const bound = { ...options, walk: walkHere, apiBase, fetchImpl, dpr: dpr || 1, user };
+      const bound = { ...options, walk: walkHere, apiBase, fetchImpl, dpr: dpr || 1, user, world };
       // 🔴 걷기 검색창은 «다른 모양의 walk» 을 받습니다. 이 부품의 `collect` 는 화면이 선언한
       //    질문 이름이 아니라 «서버의 노드 종류»이고, 씨앗도 마킹이 아니라 사람이 넣은 키에서
       //    만들어집니다. 같은 이름이 두 뜻이라 섞으면 오류 없이 «빈 답»이 나옵니다.
@@ -971,6 +974,8 @@ export function bindLoaders(layout, deps) {
         },
       };
     }),
+    // The one declaration read, handed back so the page's branch picker lists `worlds` from it.
+    loadDeclaration: loadDeclarationOnce,
   };
 }
 
@@ -985,12 +990,23 @@ export function boot(doc, host, deps) {
     observeSize: options.observeSize,
   });
   const layout = options.layout || BOARD;
-  shell.render(bindLoaders(layout, {
+  // THE BOARD'S ONE WORLD SEAT (lead 64c380aeb): the page names it and every request of the board goes
+  // through the one fetch built here. The default sends today's requests.
+  const world = isBlank(options.world) ? null : options.world;
+  const fetchImpl = withWorld(options.fetchImpl || ((url, init) => globalThis.fetch(url, init)), () => world);
+  const bound = bindLoaders(layout, {
     apiBase: options.apiBase || '',
-    fetchImpl: options.fetchImpl,
+    fetchImpl,
     dpr: options.dpr || 1,
     user: options.user,
-  }));
+    world,
+  });
+  shell.render(bound);
+  if (options.branchMount) {
+    const picker = new BranchPicker(options.branchMount, { doc, onPick: options.pickWorld });
+    picker.show({ current: world });
+    bound.loadDeclaration().then((got) => picker.show({ worlds: (got && got.worlds) || [], current: world }));
+  }
   // Installed AFTER the seats, so a part that reads a derived name gets its first value from
   // the same first computation as everyone else.
   shell.intersections = (layout.intersections || []).map((spec) => intersectMarkings(markings, spec));
@@ -1001,10 +1017,19 @@ if (typeof document !== 'undefined') {
   const host = document.getElementById('rb-board');
   if (host) {
     import('../config.js').then(({ API_BASE, CURRENT_USER }) => {
+      // A branch is a page: picking one loads the board again on it, so no marking crosses worlds.
+      const page = new URL(location.href);
       boot(document, host, {
         apiBase: API_BASE,
         user: CURRENT_USER,
         dpr: (typeof window !== 'undefined' && window.devicePixelRatio) || 1,
+        world: page.searchParams.get('world'),
+        branchMount: document.getElementById('rb-branch'),
+        pickWorld: (name) => {
+          if (name) page.searchParams.set('world', name);
+          else page.searchParams.delete('world');
+          location.assign(page.toString());
+        },
       });
     });
   }
