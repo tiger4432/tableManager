@@ -1357,7 +1357,7 @@ function renderUniqueness(row, stats) {
   return box;
 }
 
-function renderAuthoringRow(row, expanded = [], editable = null, bare = false,
+export function renderAuthoringRow(row, expanded = [], editable = null, bare = false,
                             stats = null) {
   const fold = foldDecision(row, expanded);
   const card = h('div', `oe-field is-${row.state}${fold.open ? '' : ' is-folded'}`
@@ -1384,8 +1384,9 @@ function renderAuthoringRow(row, expanded = [], editable = null, bare = false,
     // a second flag. The GROUND line is untouched -- it says why the value is what it is,
     // which the state column never says.
     if (!bare) line.append(h('i', 'oe-folded-why', fold.reason));
-    const why = row.ground?.text;
-    if (why) line.append(h('small', 'oe-folded-ground', why));
+    // The folded line is the value only (lead 8fd2f185d, owner 「세로 여백이 너무 많고」): the ground
+    // is the open card's (`renderGround`), one press away. This overturns 「the ground goes NEXT TO
+    // the value」 for the folded line only - the owner read those sentences as noise (482288b12).
     card.append(line);
     return card;
   }

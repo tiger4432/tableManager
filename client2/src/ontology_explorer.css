@@ -871,15 +871,21 @@
 }
 #ontology-explorer-root .oe-field.is-bare .oe-field-head { margin: 0; }
 #ontology-explorer-root .oe-field.is-bare .oe-field-path { display: none; }
+/* A folded one-value field in a tree row is ONE line: its head and its value side by side on the
+   row's baseline (lead 8fd2f185d). Open, or outside the tree, the card still stacks. */
+#ontology-explorer-root .oe-field.is-bare.is-folded { flex-direction: row; flex-wrap: wrap; align-items: baseline; }
 
 /* 🔴 A FOLDED LINE IS SEVERAL FACTS, AND WITHOUT A GAP IT IS ONE WORD. Measured at 0px
    apart, `["dt_cell_key"]` and its ground ran together into a single run of text. The
    button is the line, so the line carries the spacing unit: 6.8px between parts, and it
    wraps rather than pushing the state column sideways. */
 #ontology-explorer-root .oe-field-folded {
-  display: flex; align-items: baseline; flex-wrap: wrap; gap: 6.8px;
-  width: 100%; min-width: 0; text-align: left;
-  border: 1px solid transparent; background: transparent; padding: 0 3.4px;
+  display: flex; align-items: baseline; flex-wrap: wrap; gap: var(--space-2);
+  flex: 1 1 0%; min-width: 0; text-align: left;
+  /* The global button rule centres, makes a 36px box and never wraps; a value is read from the left,
+     one line high, and a long one wraps under its own first line. */
+  justify-content: flex-start; height: auto; min-height: 0; white-space: normal;
+  border: 1px solid transparent; background: transparent; padding: 0 var(--space-1);
   color: var(--oe-text); cursor: pointer;
 }
 #ontology-explorer-root .oe-field-folded:hover { background: var(--oe-tint-hover); }
@@ -889,7 +895,6 @@
   overflow-wrap: anywhere; min-width: 0;
 }
 #ontology-explorer-root .oe-folded-why { font-style: normal; font-size: var(--fs-tag); color: var(--oe-muted); }
-#ontology-explorer-root .oe-folded-ground { font-size: var(--fs-tag); color: var(--oe-ink-meta); }
 
 /* The declaration's own row. It is the tree's root, so it never folds and carries no fold
    control -- 「접기 대상은 노드가 아니라 자식」. Before this the root drew no row at all,

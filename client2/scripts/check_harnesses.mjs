@@ -920,6 +920,8 @@ const FLOORS = new Map([
   // New with lead 619befe8c (implementer 37c714205): a role's inherited attributes, read-only,
   // on the server's plan for the sample's dt_job.
   ['explorer_inherited_attributes_harness.mjs', 8],
+  // New with lead 8fd2f185d: the ledger form's grammar - a folded one-value field is one line (L).
+  ['explorer_form_grammar_harness.mjs', 5],
   // New 2026-09-10 with C-55 (S-117's screen half). Floor is the count it reports on the
   // commit that introduces it. 🔴 THE FIXTURE IS THE CONTRACT VECTOR, captured off the live
   // route: the receipt has TWO envelopes and the failed one carries no counts at all, so a
