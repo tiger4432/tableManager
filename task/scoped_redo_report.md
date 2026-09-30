@@ -67461,3 +67461,29 @@ A6 the one constant stops at 10^6                  빨강  (13 failed, 45 passed
 전체  5 failed, 7585 passed, 196 skipped, 3 xfailed in 816.56s (0:13:36) — 실패 5 개, 파일::이름으로 알려진 다섯과 같음: True
 PG    7 failed, 150 passed, 7632 deselected, 53 warnings in 316.84s (0:05:16) — 실패 이름이 알려진 일곱과 같음: True
 ```
+
+## [구현자 -> 총괄] d4a949a8c 보고만 — naive 시각을 읽는 자리 (수만, 코드 안 고침)
+
+(AST, 서버 코드 285 파일 · 시험 빼고 · 트리 1f0369216)
+```
+읽는 자리          naive 를 무엇으로           부르는 곳
+instant_key        세션 시간대(모르면 벽시계)   value_key 1 (database/crud.py 1) <- values_differ 10 (chain/cell_layer.py 1 · database/crud.py 9) + stacked_file_layers 1 (value_key 직접)
+temporal_text_value UTC                        resolved_text_value 1 (database/crud.py 1) <- comparison_text_value 1 (database/crud.py 1) <- column_filter 1
+_naive_utc         UTC                         2 (database/crud.py 2) (판 문자열 읽기)
+to_local_str       UTC                         29 (chain/ingestion_worker.py 2 · main.py 23 · scripts/archive/profile_fetch.py 4)
+```
+같은 값 하나 — 세션 시간대 Asia/Seoul 로 둔 «예»(이 박스 값 아님)
+```
+값                  2026-09-30 10:00:00 (naive)
+instant_key         ('t', datetime.datetime(2026, 9, 30, 1, 0, tzinfo=datetime.timezone.utc))
+temporal_text_value 2026-09-30 10:00:00.000000
+_naive_utc          2026-09-30 10:00:00
+to_local_str        2026-09-30 10:00:00+00:00
+차이                세션 시간대의 오프셋만큼 (예에선 9 시간)
+```
+```
+읽어서 본 것(잰 것 아님)  DateTime/TIMESTAMP 선언 21 개 모두 timezone=True(AST, 다른 것 0) — PostgreSQL 이 돌려주는 값은 aware 라 UTC 로 읽는 셋에 naive 가
+                        닿는 길은 docstring 이 적은 SQLite 와 _naive_utc 의 판 «문자열». instant_key 는 들어오는 칸 «글자»를 읽음
+                        -> 같은 naive 판 글자를 판 비교(_naive_utc, UTC)와 바뀜 판정(instant_key, 세션 시간대)이 다른 순간으로 읽을 수 있음
+덤                      to_local_str docstring 의 「31 call sites in four modules」 — 지금 29 · 파일 3
+```
