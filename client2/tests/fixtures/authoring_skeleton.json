@@ -1,0 +1,987 @@
+{
+ "captured_by": "client2/tests/fixtures/capture_authoring_skeleton.py",
+ "server_at": "4366c5254a21851551935f69e097995539ef5902",
+ "authorable_kinds": [
+  {
+   "id": "entity",
+   "section": "entities",
+   "versioned": true
+  },
+  {
+   "id": "predicate",
+   "section": "vocabulary",
+   "versioned": true
+  },
+  {
+   "id": "source_plan",
+   "section": "sources",
+   "versioned": false
+  }
+ ],
+ "skeleton": {
+  "skeleton_version": 1,
+  "note": "The shape of a ledger config, as a document. The form is generated from this; the validator still decides what is good. server/tests/test_ledger_skeleton.py counts the drift between the two and both counts must be 0.",
+  "defs": {
+   "binding": {
+    "kind": "record",
+    "fields": [
+     {
+      "key": "attributes",
+      "required": false,
+      "label": "Attributes (this role only)",
+      "help": "Only when one sentence uses the same type in two roles. Otherwise the source's are inherited.",
+      "when": {
+       "field": "kind",
+       "is": "entity"
+      },
+      "node": {
+       "kind": "map",
+       "keyed_by": "name",
+       "member": "Attribute",
+       "of": {
+        "use": "binding"
+       }
+      }
+     },
+     {
+      "key": "kind",
+      "required": true,
+      "label": "Binding",
+      "node": {
+       "kind": "leaf",
+       "hint": "choice",
+       "list": "binding_kinds"
+      }
+     },
+     {
+      "key": "column",
+      "required": true,
+      "when": {
+       "field": "kind",
+       "is": "column"
+      },
+      "node": {
+       "kind": "leaf",
+       "hint": "free"
+      }
+     },
+     {
+      "key": "timezone",
+      "required": false,
+      "label": "Time zone (for timestamp values)",
+      "help": "Which time zone a naive reading of this column is in. An offset in the text wins. Required for a role whose value type is timestamp - without it every atom is refused in translation. e.g. Asia/Seoul",
+      "when": {
+       "field": "kind",
+       "is": "column"
+      }
+     },
+     {
+      "key": "value",
+      "required": true,
+      "when": {
+       "field": "kind",
+       "is": "constant"
+      },
+      "node": {
+       "kind": "leaf",
+       "hint": "free"
+      }
+     },
+     {
+      "key": "entity_type",
+      "required": true,
+      "when": {
+       "field": "kind",
+       "is": "entity"
+      },
+      "node": {
+       "kind": "leaf",
+       "hint": "ref",
+       "section": "entities"
+      }
+     },
+     {
+      "key": "keys",
+      "required": true,
+      "when": {
+       "field": "kind",
+       "is": "entity"
+      },
+      "node": {
+       "kind": "map",
+       "keyed_by": "name",
+       "member": "Identity key",
+       "of": {
+        "use": "identity_binding"
+       }
+      }
+     }
+    ]
+   },
+   "identity_binding": {
+    "kind": "record",
+    "note": "An entity's identity key. The same record as `binding` with the `entity` kind removed -- `_validate_binding` refuses a nested entity there, so offering it recommends a value that can only be refused. Still ONE layer, and still a binding record.",
+    "fields": [
+     {
+      "key": "kind",
+      "required": true,
+      "label": "Binding",
+      "node": {
+       "kind": "leaf",
+       "hint": "choice",
+       "list": "identity_binding_kinds"
+      }
+     },
+     {
+      "key": "column",
+      "required": true,
+      "when": {
+       "field": "kind",
+       "is": "column"
+      },
+      "node": {
+       "kind": "leaf",
+       "hint": "free"
+      }
+     },
+     {
+      "key": "value",
+      "required": true,
+      "when": {
+       "field": "kind",
+       "is": "constant"
+      },
+      "node": {
+       "kind": "leaf",
+       "hint": "free"
+      }
+     }
+    ]
+   }
+  },
+  "root": {
+   "kind": "record",
+   "fields": [
+    {
+     "key": "setup_version",
+     "required": true,
+     "node": {
+      "kind": "leaf",
+      "hint": "number"
+     }
+    },
+    {
+     "key": "entities",
+     "required": true,
+     "node": {
+      "kind": "map",
+      "keyed_by": "name",
+      "member": "Entity id · e.g. Lot@1",
+      "of": {
+       "kind": "record",
+       "fields": [
+        {
+         "key": "keys",
+         "required": true,
+         "label": "Identity keys",
+         "node": {
+          "kind": "map",
+          "keyed_by": "index",
+          "member": "Column",
+          "of": {
+           "kind": "leaf",
+           "hint": "free"
+          }
+         }
+        },
+        {
+         "key": "attributes",
+         "required": false,
+         "label": "Attributes",
+         "help": "Names of the values this entity carries. Must not repeat an identity key.",
+         "node": {
+          "kind": "map",
+          "keyed_by": "index",
+          "member": "Name",
+          "of": {
+           "kind": "leaf",
+           "hint": "free"
+          }
+         }
+        },
+        {
+         "key": "attribute_cardinality",
+         "required": false,
+         "label": "Values per attribute - only for an attribute that holds several (blank = one)",
+         "node": {
+          "kind": "map",
+          "keyed_by": "name",
+          "member": "Attribute",
+          "of": {
+           "kind": "leaf",
+           "hint": "choice",
+           "list": "attribute_cardinalities"
+          }
+         }
+        },
+        {
+         "key": "allow_null",
+         "required": false,
+         "node": {
+          "kind": "leaf",
+          "hint": "flag"
+         }
+        },
+        {
+         "key": "class",
+         "required": false,
+         "label": "Classes - one word or a list; static means a walk leaves this type only to static types (blank = no class)",
+         "node": {
+          "kind": "map",
+          "keyed_by": "index",
+          "member": "Class",
+          "of": {
+           "kind": "leaf",
+           "hint": "free"
+          }
+         }
+        },
+        {
+         "key": "status",
+         "required": false,
+         "label": "Status",
+         "node": {
+          "kind": "leaf",
+          "hint": "choice",
+          "list": "lifecycle_status"
+         }
+        }
+       ]
+      }
+     }
+    },
+    {
+     "key": "vocabulary",
+     "required": true,
+     "node": {
+      "kind": "map",
+      "keyed_by": "name",
+      "member": "Predicate id · e.g. register@1",
+      "of": {
+       "kind": "record",
+       "fields": [
+        {
+         "key": "status",
+         "required": true,
+         "node": {
+          "kind": "leaf",
+          "hint": "choice",
+          "list": "lifecycle_status"
+         }
+        },
+        {
+         "key": "subjects",
+         "required": true,
+         "label": "Subject types",
+         "node": {
+          "kind": "map",
+          "keyed_by": "index",
+          "member": "Entity",
+          "of": {
+           "kind": "leaf",
+           "hint": "ref",
+           "section": "entities"
+          }
+         }
+        },
+        {
+         "key": "object",
+         "required": true,
+         "label": "Object",
+         "node": {
+          "kind": "record",
+          "fields": [
+           {
+            "key": "kind",
+            "required": true,
+            "label": "Kind",
+            "node": {
+             "kind": "leaf",
+             "hint": "choice",
+             "list": "object_kind"
+            }
+           },
+           {
+            "key": "types",
+            "required": false,
+            "label": "Object entities",
+            "when": {
+             "field": "kind",
+             "is": "entity_ref"
+            },
+            "node": {
+             "kind": "map",
+             "keyed_by": "index",
+             "member": "Entity",
+             "of": {
+              "kind": "leaf",
+              "hint": "ref",
+              "section": "entities"
+             }
+            }
+           },
+           {
+            "key": "qualifiers",
+            "label": "Qualifiers",
+            "required": true,
+            "node": {
+             "kind": "record",
+             "fields": [
+              {
+               "key": "required",
+               "label": "Required",
+               "required": true,
+               "node": {
+                "kind": "map",
+                "keyed_by": "index",
+                "member": "Qualifier name",
+                "of": {
+                 "kind": "leaf",
+                 "hint": "free"
+                }
+               }
+              },
+              {
+               "key": "optional",
+               "label": "Optional",
+               "required": true,
+               "node": {
+                "kind": "map",
+                "keyed_by": "index",
+                "member": "Qualifier name",
+                "of": {
+                 "kind": "leaf",
+                 "hint": "free"
+                }
+               }
+              }
+             ]
+            }
+           },
+           {
+            "key": "value_type",
+            "required": false,
+            "label": "Value type",
+            "node": {
+             "kind": "leaf",
+             "hint": "choice",
+             "list": "value_type"
+            }
+           }
+          ]
+         }
+        },
+        {
+         "key": "cardinality",
+         "required": false,
+         "label": "Per subject",
+         "node": {
+          "kind": "leaf",
+          "hint": "choice",
+          "list": "cardinality"
+         }
+        },
+        {
+         "key": "absence_confirmed_by",
+         "required": false,
+         "label": "Absence confirmed by - present without this predicate reads as seen and absent (blank = unknown)",
+         "node": {
+          "kind": "leaf",
+          "hint": "ref",
+          "section": "vocabulary"
+         }
+        },
+        {
+         "key": "class",
+         "required": false,
+         "label": "Classes - words you choose to group predicates; follow=class:<word> walks every predicate that has it (blank = no class)",
+         "node": {
+          "kind": "map",
+          "keyed_by": "index",
+          "member": "Class",
+          "of": {
+           "kind": "leaf",
+           "hint": "free"
+          }
+         }
+        }
+       ]
+      }
+     }
+    },
+    {
+     "key": "sources",
+     "required": true,
+     "node": {
+      "kind": "map",
+      "keyed_by": "name",
+      "member": "Source id",
+      "of": {
+       "kind": "record",
+       "fields": [
+        {
+         "key": "relation",
+         "required": true,
+         "node": {
+          "kind": "leaf",
+          "hint": "free"
+         }
+        },
+        {
+         "key": "read",
+         "required": true,
+         "label": "Read",
+         "node": {
+          "kind": "record",
+          "fields": [
+           {
+            "key": "unit",
+            "required": true,
+            "label": "Unit",
+            "node": {
+             "kind": "leaf",
+             "hint": "choice",
+             "list": "source_unit"
+            }
+           },
+           {
+            "key": "identity",
+            "required": true,
+            "node": {
+             "kind": "map",
+             "keyed_by": "index",
+             "member": "Column",
+             "of": {
+              "kind": "leaf",
+              "hint": "free"
+             }
+            }
+           },
+           {
+            "key": "group_by",
+            "required": true,
+            "node": {
+             "kind": "map",
+             "keyed_by": "index",
+             "member": "Column",
+             "of": {
+              "kind": "leaf",
+              "hint": "free"
+             }
+            }
+           },
+           {
+            "key": "order_by",
+            "required": true,
+            "node": {
+             "kind": "map",
+             "keyed_by": "index",
+             "member": "Column",
+             "of": {
+              "kind": "leaf",
+              "hint": "free"
+             }
+            }
+           },
+           {
+            "key": "occurred_at",
+            "required": true,
+            "label": "Time",
+            "node": {
+             "kind": "record",
+             "fields": [
+              {
+               "key": "timezone",
+               "required": true,
+               "node": {
+                "kind": "leaf",
+                "hint": "free"
+               }
+              },
+              {
+               "key": "column",
+               "required": false,
+               "node": {
+                "kind": "leaf",
+                "hint": "free"
+               }
+              },
+              {
+               "key": "basis",
+               "required": false,
+               "node": {
+                "kind": "leaf",
+                "hint": "choice",
+                "list": "occurred_at_basis"
+               }
+              }
+             ]
+            }
+           },
+           {
+            "key": "registration_probe",
+            "required": false,
+            "node": {
+             "kind": "map",
+             "keyed_by": "index",
+             "member": "Probe",
+             "of": {
+              "kind": "record",
+              "fields": [
+               {
+                "key": "entity_type",
+                "required": true,
+                "node": {
+                 "kind": "leaf",
+                 "hint": "ref",
+                 "section": "entities"
+                }
+               },
+               {
+                "key": "columns",
+                "required": true,
+                "node": {
+                 "kind": "map",
+                 "keyed_by": "index",
+                 "member": "Column",
+                 "of": {
+                  "kind": "leaf",
+                  "hint": "free"
+                 }
+                }
+               },
+               {
+                "key": "list_separator",
+                "required": false,
+                "node": {
+                 "kind": "leaf",
+                 "hint": "free"
+                }
+               }
+              ]
+             }
+            }
+           }
+          ]
+         }
+        },
+        {
+         "key": "prepare",
+         "required": true,
+         "node": {
+          "kind": "record",
+          "fields": [
+           {
+            "key": "implementation_id",
+            "required": true,
+            "node": {
+             "kind": "leaf",
+             "hint": "choice",
+             "list": "prepare_implementation"
+            }
+           },
+           {
+            "key": "implementation_version",
+            "required": true,
+            "node": {
+             "kind": "leaf",
+             "hint": "number"
+            }
+           },
+           {
+            "key": "input_columns",
+            "required": true,
+            "node": {
+             "kind": "map",
+             "keyed_by": "index",
+             "member": "Column",
+             "of": {
+              "kind": "leaf",
+              "hint": "free"
+             }
+            }
+           },
+           {
+            "key": "output_columns",
+            "required": true,
+            "node": {
+             "kind": "map",
+             "keyed_by": "name",
+             "member": "Column",
+             "of": {
+              "kind": "leaf",
+              "hint": "free"
+             }
+            }
+           },
+           {
+            "key": "accepts_verified_join_rules",
+            "required": true,
+            "node": {
+             "kind": "leaf",
+             "hint": "flag"
+            }
+           },
+           {
+            "key": "inherit_virtual_join_rules",
+            "required": true,
+            "node": {
+             "kind": "map",
+             "keyed_by": "index",
+             "member": "Rule",
+             "of": {
+              "kind": "leaf",
+              "hint": "ref",
+              "section": "virtual_joins"
+             }
+            }
+           },
+           {
+            "key": "exclude_when",
+            "required": false,
+            "label": "Exclude when",
+            "node": {
+             "kind": "map",
+             "keyed_by": "index",
+             "member": "Condition",
+             "of": {
+              "kind": "record",
+              "fields": [
+               {
+                "key": "column",
+                "required": true,
+                "node": {
+                 "kind": "leaf",
+                 "hint": "free"
+                }
+               },
+               {
+                "key": "blank",
+                "required": true,
+                "node": {
+                 "kind": "leaf",
+                 "hint": "flag"
+                }
+               }
+              ]
+             }
+            }
+           }
+          ]
+         },
+         "label": "Prepare"
+        },
+        {
+         "key": "map",
+         "required": true,
+         "label": "Map",
+         "node": {
+          "kind": "record",
+          "fields": [
+           {
+            "key": "implementation_id",
+            "required": true,
+            "node": {
+             "kind": "leaf",
+             "hint": "choice",
+             "list": "map_implementation"
+            }
+           },
+           {
+            "key": "implementation_version",
+            "required": true,
+            "node": {
+             "kind": "leaf",
+             "hint": "number"
+            }
+           },
+           {
+            "key": "unit",
+            "required": true,
+            "label": "Unit",
+            "node": {
+             "kind": "record",
+             "fields": [
+              {
+               "key": "kind",
+               "required": true,
+               "label": "Kind",
+               "node": {
+                "kind": "leaf",
+                "hint": "choice",
+                "list": "mapper_unit"
+               }
+              },
+              {
+               "key": "columns",
+               "required": false,
+               "when": {
+                "field": "kind",
+                "is": "group_by"
+               },
+               "node": {
+                "kind": "map",
+                "keyed_by": "index",
+                "member": "Column",
+                "of": {
+                 "kind": "leaf",
+                 "hint": "free"
+                }
+               }
+              }
+             ]
+            }
+           },
+           {
+            "key": "input_columns",
+            "required": true,
+            "node": {
+             "kind": "map",
+             "keyed_by": "index",
+             "member": "Column",
+             "of": {
+              "kind": "leaf",
+              "hint": "free"
+             }
+            }
+           }
+          ]
+         }
+        },
+        {
+         "key": "bind",
+         "required": true,
+         "label": "Bind",
+         "node": {
+          "kind": "record",
+          "fields": [
+           {
+            "key": "entities",
+            "required": false,
+            "label": "Entity attributes",
+            "help": "The values this source gives that entity. Once per entity.",
+            "node": {
+             "kind": "map",
+             "keyed_by": "name",
+             "member": "Entity",
+             "of": {
+              "kind": "record",
+              "fields": [
+               {
+                "key": "attributes",
+                "required": true,
+                "label": "Attributes",
+                "node": {
+                 "kind": "map",
+                 "keyed_by": "name",
+                 "member": "Attribute",
+                 "of": {
+                  "use": "binding"
+                 }
+                }
+               }
+              ]
+             }
+            }
+           },
+           {
+            "key": "mappings",
+            "required": true,
+            "node": {
+             "kind": "map",
+             "keyed_by": "name",
+             "member": "Mapping",
+             "of": {
+              "kind": "record",
+              "fields": [
+               {
+                "key": "predicate",
+                "required": true,
+                "label": "Predicate",
+                "node": {
+                 "kind": "leaf",
+                 "hint": "ref",
+                 "section": "vocabulary"
+                }
+               },
+               {
+                "key": "bind",
+                "required": true,
+                "label": "Role bindings",
+                "node": {
+                 "kind": "map",
+                 "keyed_by": "name",
+                 "member": "Role",
+                 "of": {
+                  "use": "binding"
+                 }
+                }
+               },
+               {
+                "key": "when",
+                "required": false,
+                "label": "Row condition",
+                "node": {
+                 "kind": "map",
+                 "keyed_by": "name",
+                 "member": "Column",
+                 "of": {
+                  "kind": "leaf",
+                  "hint": "free"
+                 }
+                }
+               }
+              ]
+             }
+            }
+           }
+          ]
+         }
+        },
+        {
+         "key": "status",
+         "required": false,
+         "label": "Status",
+         "node": {
+          "kind": "leaf",
+          "hint": "choice",
+          "list": "lifecycle_status"
+         }
+        }
+       ]
+      }
+     }
+    },
+    {
+     "key": "virtual_joins",
+     "required": false,
+     "node": {
+      "kind": "map",
+      "keyed_by": "name",
+      "member": "Join rule id",
+      "of": {
+       "kind": "record",
+       "fields": [
+        {
+         "key": "left_table",
+         "required": true,
+         "node": {
+          "kind": "leaf",
+          "hint": "free"
+         }
+        },
+        {
+         "key": "right_table",
+         "required": true,
+         "node": {
+          "kind": "leaf",
+          "hint": "free"
+         }
+        },
+        {
+         "key": "join_key",
+         "required": true,
+         "node": {
+          "kind": "map",
+          "keyed_by": "index",
+          "member": "Key pair",
+          "of": {
+           "kind": "record",
+           "fields": [
+            {
+             "key": "left",
+             "required": true,
+             "node": {
+              "kind": "leaf",
+              "hint": "free"
+             }
+            },
+            {
+             "key": "right",
+             "required": true,
+             "node": {
+              "kind": "leaf",
+              "hint": "free"
+             }
+            }
+           ]
+          }
+         }
+        },
+        {
+         "key": "expose",
+         "required": true,
+         "node": {
+          "kind": "map",
+          "keyed_by": "index",
+          "member": "Column",
+          "of": {
+           "kind": "leaf",
+           "hint": "free"
+          }
+         }
+        },
+        {
+         "key": "join_cardinality",
+         "required": true,
+         "node": {
+          "kind": "leaf",
+          "hint": "free"
+         }
+        },
+        {
+         "key": "enabled",
+         "required": true,
+         "node": {
+          "kind": "leaf",
+          "hint": "flag"
+         }
+        },
+        {
+         "key": "materialize",
+         "required": true,
+         "node": {
+          "kind": "leaf",
+          "hint": "flag",
+          "const": true
+         }
+        },
+        {
+         "key": "max_rewrite_rows",
+         "required": false,
+         "node": {
+          "kind": "leaf",
+          "hint": "number"
+         }
+        },
+        {
+         "key": "fold",
+         "required": false,
+         "node": {
+          "kind": "map",
+          "keyed_by": "name",
+          "member": "Rule",
+          "of": {
+           "kind": "leaf",
+           "hint": "flag"
+          }
+         }
+        }
+       ]
+      }
+     }
+    }
+   ]
+  }
+ }
+}

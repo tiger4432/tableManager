@@ -1689,6 +1689,41 @@ function needsAttention(hot, absolute) {
     || item.startsWith(absolute + '.') || item.startsWith(absolute + '['));
 }
 
+/** One guide per ancestor (lead 619befe8c), placed by the stylesheet from `--oe-guide`. Out of
+ *  flow, so the label's own layout is untouched. */
+function depthGuides(depth) {
+  const box = h('span', 'oe-node-guides');
+  box.setAttribute('aria-hidden', 'true');
+  for (let i = 0; i < depth; i += 1) {
+    const line = h('span', 'oe-node-guide');
+    line.style.setProperty('--oe-guide', String(i));
+    box.append(line);
+  }
+  return box;
+}
+
+/**
+ * The path to a form node in the DECLARATION's own words, root first (lead 619befe8c, owner's
+ * choice): `head` (the section and the declaration id) and then every step of the node's path, as
+ * the plan's rows already carry it. Each step goes to the deepest drawn node at or above it, so a
+ * step with no row of its own (a one-of's branch) still lands. This screen names no word.
+ */
+export function nodeTrail(el, head = []) {
+  const drawn = [];
+  for (let node = el; node; node = node.parentNode) if (isFormNode(node)) drawn.unshift(node);
+  if (!drawn.length) return [];
+  const stepsOf = (node) => splitBundlePath(node.dataset.path).length;
+  const landing = (count) => drawn.filter((node) => stepsOf(node) <= count).pop() || drawn[0];
+  return [
+    ...head.map((word) => ({ path: drawn[0].dataset.path, label: String(word) })),
+    ...splitBundlePath(drawn[drawn.length - 1].dataset.path)
+      .map((step, i) => ({ path: landing(i + 1).dataset.path, label: String(step) })),
+  ];
+}
+
+const isFormNode = (node) => node.nodeType === 1 && ` ${node.className || ''} `.includes(' oe-node ')
+  && node.dataset && node.dataset.path !== undefined;
+
 function treeRow(depth, label, extras, valueEl, stateEl, cls) {
   const row = h('div', 'oe-node-row' + (cls ? ' ' + cls : ''));
   // Depth is DATA; the formula turning it into a width lives in the stylesheet.
@@ -1699,6 +1734,7 @@ function treeRow(depth, label, extras, valueEl, stateEl, cls) {
   nameText.title = String(label);
   name.append(nameText);
   for (const extra of extras || []) name.append(extra);
+  if (depth > 0) name.append(depthGuides(depth));
   row.append(name);
   const value = h('div', 'oe-node-value');
   if (valueEl) value.append(valueEl);
@@ -1885,7 +1921,9 @@ function renderSkeletonOneOf(context, node, path, value, depth, label, required)
   const box = h('div', 'oe-node');
   box.dataset.path = path;
   const head = h('div', 'oe-node-head');
+  head.style.setProperty('--oe-depth', String(depth));
   head.appendChild(h('span', 'oe-node-label', label === null ? path : label));
+  if (depth > 0) head.appendChild(depthGuides(depth));
   if (required) head.appendChild(h('i', 'oe-node-badge', 'Required'));
   head.appendChild(renderClosedList(
     closedListChoice(names, chosen, { loaded: true, name: path }),
@@ -2476,6 +2514,9 @@ function renderAuthoring(state) {
   }
   if (bodyNode && draftRaw) {
     const body = h('section', 'oe-bucket oe-bucket--form');
+    // ㄱ The path bar's seat (lead 619befe8c): the bar is its own part, seated here by the controller.
+    //   Inside the form's own block, so it stays on screen for as long as the form does.
+    body.append(h('div', 'oe-path-mount'));
     const form = renderSkeletonForm(context, bodyNode, '', draftRaw, 0,
                                    state.draft.target_id);
     if (form) body.append(form);

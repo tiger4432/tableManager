@@ -8,7 +8,8 @@ import {
   // 791c0f45e: whether the draft moved a leaf the plan marks as shaping the form.
   draftReshapesPlan,
 } from './ontology_explorer_store.js';
-import { renderOntologyExplorer } from './ontology_explorer_view.js';
+import { renderOntologyExplorer, nodeTrail } from './ontology_explorer_view.js';
+import { PathBar } from './path_bar.js';
 import {
   splitBundlePath, setAtPath, getAtPath, deleteAtPath, writeShapeAtPath, addMember,
 } from './ontology_path.js';
@@ -127,9 +128,51 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
   let generation = 0;
   let searchTimer = null;
 
+  // ㄱ ㄴ (lead 619befe8c) — where the hand is in the form. The bar is its own part; the view only
+  //    leaves it a seat, which every render rebuilds, so every render seats it again (`render`).
+  let hoverPath = null;
+  const formNodes = () => root.querySelectorAll('.oe-bucket--form .oe-node[data-path]');
+  const formNode = (path) => [...formNodes()].find((node) => node.dataset.path === path) || null;
+  const handInForm = () => Boolean(document.activeElement && document.activeElement.closest
+    && document.activeElement.closest('.oe-bucket--form'));
+  // The declaration's own head words: its section and its id, as the plan's paths begin.
+  const trailHead = () => {
+    const kinds = state.authoringSchema?.authorable_kinds || [];
+    const section = kinds.find((row) => row.id === state.draft?.target_kind)?.section;
+    return section && state.draft?.target_id ? [section, state.draft.target_id] : [];
+  };
+  const trailNow = () => {
+    const at = (handInForm() && formNode(state.mapCursor)) || formNode(hoverPath)
+      || formNode(state.mapCursor) || formNode('');
+    return at ? nodeTrail(at, trailHead()) : [];
+  };
+  const pathBar = new PathBar(null, {
+    doc: document,
+    onPick: (path) => {
+      const node = formNode(path);
+      const row = node && node.firstElementChild;
+      if (row && row.scrollIntoView) row.scrollIntoView({ block: 'start' });
+    },
+  });
+  // The section the field being edited sits in — its parent node, found in the drawn tree.
+  const markFormCursor = () => {
+    for (const node of root.querySelectorAll('.oe-node.is-editing-parent')) {
+      node.classList.remove('is-editing-parent');
+    }
+    const node = state.mapCursor ? formNode(state.mapCursor) : null;
+    const parent = node && node.parentElement ? node.parentElement.closest('.oe-node[data-path]') : null;
+    if (parent) parent.classList.add('is-editing-parent');
+  };
+  const render = () => {
+    renderOntologyExplorer(root, state);
+    pathBar.attach(root.querySelector('.oe-bucket--form .oe-path-mount'));
+    pathBar.show(trailNow());
+    markFormCursor();
+  };
+
   const dispatch = (action) => {
     state = reduceExplorerState(state, action);
-    renderOntologyExplorer(root, state);
+    render();
     // 🔴 ONE HOOK, NOT ONE PER WRITER. Every row, list and text edit ends in
     //    `EDITOR_CHANGED` (there are five writers), so the derivation hangs here —
     //    adding it at each writer is how the fifth one gets forgotten.
@@ -147,7 +190,7 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
   // name next to the collections that mirror what the server actually has.
   const dispatchNaming = (action) => {
     state = reduceNewDeclaration(state, action);
-    renderOntologyExplorer(root, state);
+    render();
     return state;
   };
 
@@ -339,7 +382,7 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
         // Kept on the offer, not floated as a toast: the next move is to read it and act.
         state = { ...state, authoring: { ...(state.authoring || {}),
           bootstrapError: detail?.message || `HTTP ${res.status}` } };
-        renderOntologyExplorer(root, state);
+        render();
         return;
       }
       showToast?.(`${body.created} created`);
@@ -350,7 +393,7 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
     } catch (error) {
       state = { ...state, authoring: { ...(state.authoring || {}),
         bootstrapError: errorMessage(error) } };
-      renderOntologyExplorer(root, state);
+      render();
     }
   };
 
@@ -628,6 +671,15 @@ No effect`;
     if (state.mapCursor === path) return;
     state = { ...state, mapCursor: path };
     markMapCursor(path);
+    markFormCursor();
+    pathBar.show(trailNow());
+  });
+  // With nothing being edited, the bar follows the pointer instead.
+  root.addEventListener('mouseover', (event) => {
+    const node = event.target.closest?.('.oe-bucket--form .oe-node[data-path]');
+    if (!node || node.dataset.path === hoverPath) return;
+    hoverPath = node.dataset.path;
+    if (!handInForm()) pathBar.show(nodeTrail(node, trailHead()));
   });
 
   const jsonRequest = async (path, init) => {
@@ -718,7 +770,7 @@ No effect`;
       void loadCensus();
       if (editorCheckpoint) {
         state = restoreDirtyEditorCheckpoint(state, editorCheckpoint);
-        renderOntologyExplorer(root, state);
+        render();
       }
     } catch (error) {
       dispatch({
@@ -1034,7 +1086,7 @@ No effect`;
         state = reduceFieldFold(state, {
           type: 'FIELD_TOGGLED', open: true, paths: seededPaths(empty, born, [path]),
         });
-        renderOntologyExplorer(root, state);
+        render();
       }
     }
     else if (action === 'add-draft-item') {
@@ -1080,7 +1132,7 @@ No effect`;
       state = reduceFieldFold(state, {
         type: 'FIELD_TOGGLED', open: true, paths: ancestorPaths(path),
       });
-      renderOntologyExplorer(root, state);
+      render();
       // 🔴 NOW, NOT IN A `requestAnimationFrame`. The render is synchronous, so the row is
       // already in the document, and `scrollIntoView` forces the layout it needs by itself.
       // Deferring it to a frame made the jump depend on frames being SERVED -- measured on a
@@ -1102,7 +1154,7 @@ No effect`;
         path: target.dataset.value,
         open: target.getAttribute('aria-expanded') !== 'true',
       });
-      renderOntologyExplorer(root, state);
+      render();
     }
     else if (action === 'delete-declaration') {
       await deleteDeclaration(target.dataset.value);
