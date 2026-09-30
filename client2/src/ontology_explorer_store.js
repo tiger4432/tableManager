@@ -454,6 +454,19 @@ export function draftValueAt(state, path, pathTools) {
 }
 
 /**
+ * 초안이 «폼을 바꾸는 잎»을 계획이 계산된 값에서 옮겼나 (lead 791c0f45e).
+ *
+ * 🔴 어느 잎이 폼을 바꾸는지는 서버 계획이 행마다 `reshapes` 로 말합니다 — 화면은 경로를 모릅니다.
+ *    비교 기준도 계획 자신의 `value`(그 계획을 계산한 값)라, 저자는 서버 하나입니다.
+ */
+export function draftReshapesPlan(state, plan, pathTools) {
+  if (!state || !state.draft) return false;
+  return ((plan && plan.fields) || []).some((row) => row && row.reshapes === true
+    && JSON.stringify(draftValueAt(state, row.path, pathTools) ?? null)
+      !== JSON.stringify(row.value ?? null));
+}
+
+/**
  * 열 목록이 «따르는» relation — 선택지의 주어를 정하는 «한 곳».
  *
  * 🔴 초안이 열려 있으면 «초안의 지금 값»이고, 아니면 저장본 계획의 값입니다. 저장 뒤 계획이
