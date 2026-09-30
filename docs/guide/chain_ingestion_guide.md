@@ -352,8 +352,14 @@ return {"batches": [{"target_table": "core_usage_map", "replace_map": True,
 ```
 
 The worker accepts it only when the matching rule declares
-`allow_replace_map: true`; target redirection, empty scope, and non-replace
-batches are refused. One envelope entry becomes one `GeneralUpdateBatch`, so
+`allow_replace_map: true`; empty scope, and a batch for the target that is
+neither `replace_map` nor `retract`, are refused. A batch may name one other
+table - the rule's own **trigger** table - as a write-back of the rows it read:
+plain updates only, no permission cell, no `replace_map` or `retract` there
+(09-30 `247c0aba6`; a saved contrast marks its own run row that way). Any other table
+is refused by name: `rule '<name>' cannot redirect a scoped batch to '<table>' -
+a rule writes its target, and besides it only the rule's trigger table`. The
+reader for every batch envelope is `dt_map_derivation.normalize_scoped_batch`. One envelope entry becomes one `GeneralUpdateBatch`, so
 two maps cannot be combined.
 
 #### 제거 전략은 **둘**이고, 하나만 고르는 것이 아니라 **맵의 생산자 수가 고른다**
