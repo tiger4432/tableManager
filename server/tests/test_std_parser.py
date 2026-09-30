@@ -173,7 +173,8 @@ def test_reject_no_known_columns(tmp_path):
     p = _write(tmp_path / "inv.csv", "foo,bar\n1,2\n")
     with pytest.raises(ValueError) as excinfo:
         parse_std_file(p, INVENTORY_INFO, "inventory_master")
-    assert str(excinfo.value) == str(crud.NothingWritten("inventory_master", ["foo", "bar"]))
+    assert str(excinfo.value) == str(crud.NothingWritten(
+        "inventory_master", {crud.DROP_UNDECLARED_COLUMN: ["foo", "bar"]}))
 
 
 def test_composite_key_accepts_sources_without_bk(tmp_path):

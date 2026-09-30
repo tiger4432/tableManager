@@ -71,6 +71,10 @@ class _StubCrud:
     # The same for which row and which cell are blank (총괄 69aad666e C).
     row_is_blank = staticmethod(_real_crud.row_is_blank)
     is_blank_value = staticmethod(_real_crud.is_blank_value)
+    # And the one sentence for what was offered and not written, by reason (d4a949a8c ③).
+    DROP_UNDECLARED_COLUMN = _real_crud.DROP_UNDECLARED_COLUMN
+    DROP_UNMAPPED_COLUMN = _real_crud.DROP_UNMAPPED_COLUMN
+    not_written_sentence = staticmethod(_real_crud.not_written_sentence)
 
     @staticmethod
     def apply_batch_updates(_db, _t_name, batch_obj, notation_report=None):
@@ -138,8 +142,9 @@ def test_dropped_columns_are_named_and_counted(watcher, caplog):
         assert f"{col}=200" in line, line
     assert "200 row(s)" in line
     assert "smart_paste.html" in line
-    # 0 dropped and 200 dropped must not look the same
-    assert "Dropped 4 undeclared column(s)" in line
+    # 0 dropped and 200 dropped must not look the same - every column, with its count
+    assert ("Not written: undeclared_column bdie_wf=200, cdie_lot=200, cdie_wf=200, title=200 "
+            "over 200 row(s)") in line
 
 
 def test_first_sighting_warns_once_then_stops_shouting(watcher, caplog):
@@ -212,7 +217,7 @@ def test_report_is_capped_and_says_so(watcher, caplog, monkeypatch):
         _ingest(watcher, [row], "malformed.csv")
 
     line = [m for m in _lines(caplog, logging.INFO) if "undeclared column" in m][0]
-    assert "Dropped 4 undeclared column(s)" in line
+    assert line.count("junk_") == 4, line
     assert "report cap 4 reached" in line
     assert "junk_19" not in line
 

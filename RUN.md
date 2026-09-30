@@ -1,5 +1,21 @@
 # 지금 돌리면 되는 것
 
+> ## 🔴 [10-01 새벽] **파일의 «내놓았는데 안 써진 칸» — 한 문장 · 다음 행동 먼저 · 모델이 못 받는 칸만 든 파일도 FAILED · 마이그레이션 «없음» · 재기동 워처 (run_app.bat 로 전체)**
+>
+> ```
+> 무엇이 바뀌나  파일 기록 · 워처 줄이 한 문장: 「Next: declare the undeclared columns in table_config.json; reload or restart so this process holds the
+>              unmapped columns, then Retry the file. Not written: undeclared_column a=3; unmapped_column c=5 over N row(s).」(있는 사유만)
+>              전엔 「Dropped N undeclared column(s) ...」 과 「Not written (unmapped_column): ...」 두 문장
+>              선언됐지만 이 프로세스 모델이 못 받는 칸만 든 파일(쓴 행 0) -> 이제 FAILED 「... Nothing was written to '<표>' - dropped: unmapped_column <칸>.」
+> 돌릴 명령     없음
+> 뜻           undeclared_column = 표 선언(table_config.json)에 없는 칸 -> 선언하거나 그대로(옛 필드면 버리는 게 맞음)
+>             unmapped_column = 선언엔 있는데 이 프로세스가 아직 모름 -> 리로드/재기동 뒤 그 파일 Retry
+>             WARNING 은 (사유, 칸) 이 이 프로세스에서 처음 보일 때 한 번, 그 뒤엔 파일마다 INFO
+> 급할 때       커밋 되돌리기
+> ```
+
+---
+
 > ## 🔴 [10-01 새벽] **체인 범위 배치 — 권한(allow_replace_map / allow_retraction)을 봉투 독자가 묻음 · 동작 같음 · 마이그레이션 «없음» · 재기동 체인 워커 (run_app.bat 로 전체)**
 >
 > ```
@@ -315,7 +331,7 @@
 > 무엇이 바뀌나  Reload 실패 · 설정과 모델이 갈리는 순간 · 모델이 건너뛰는 칸 이름(is_graph_synced · needs_graph_rollback ·
 >              graph_synced_at) — 전에는 층엔 값을 쓰고 표 값은 조용히 안 써서 「층엔 값 · 표엔 빈칸」이 됐음
 >              이제 그 칸은 층도 표도 안 쓰고 버린 칸(unmapped_column)으로 셈 — 층과 표가 어긋나지 않음
-> 확인          파일 처리 줄(워처 로그 · 파일 기록)의 「Not written (unmapped_column): <칸>=<값 수> over N row(s) - declared, but this
+> 확인          파일 처리 줄(워처 로그 · 파일 기록)의 「Next: reload or restart so this process holds the unmapped columns, then Retry the file. Not written: unmapped_column <칸>=<값 수> over N row(s)」(10-01 d4a949a8c ③ 에서 이 모양으로 — 옛 글: declared, but this
 >              process's model does not hold the column; reload or restart, then Retry the file.」
 > 뜻           그 줄이 뜨면 그 칸 값은 «어디에도» 안 들어감 — Reload(안 되면 재기동) 뒤 그 파일을 Retry 하면 들어감
 >             칸 이름이 위 셋 중 하나면 Reload · 재기동으로도 안 됨 — 표 편집기에서 칸 이름을 바꿔야 함
@@ -1117,7 +1133,7 @@
 > 전부 버림   선언된 칸이 하나도 없는 파일 -> FAILED · 파일 기록(error_message) 한 줄:
 >            No column of this file is declared on '<표>', so nothing was written - dropped <칸들>. Declare the columns on the table, or send the file to the table that declares them.
 >            표준 파서(헤더에서) · 커스텀 파서(쓰기 고리에서) 같은 문장. 전: 커스텀은 SUCCESS · 기록 없음, 표준은 FAILED · 트레이스백
-> 일부 버림   SUCCESS 그대로 + 기록에 Dropped N undeclared column(s) over M row(s): <칸>=<값 수> ...
+> 일부 버림   SUCCESS 그대로 + 기록에 Next: declare the undeclared columns in table_config.json. Not written: undeclared_column <칸>=<값 수> over M row(s). (10-01 d4a949a8c ③)
 >            전: 표준 파서 길은 기록 없음(표준 파서가 스스로 빼고 WARNING 만)
 > 로그       버린 칸은 워처의 한 자리가 적음 — 칸마다 처음 한 번 WARNING · 파일마다 INFO(기록과 같은 문장). 표준 파서의 "ignoring unknown column(s)" WARNING 은 없어짐
 > 아카이브 끔  FAILED 파일은 raws 에 남음. 내용이 같은 실패 파일이 둘 이상이면 워처 기동마다 하나 빼고 다시 읽혀 FAILED 기록이 늘어남(보고만 · 958d57347)

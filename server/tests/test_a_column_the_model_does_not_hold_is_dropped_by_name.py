@@ -93,5 +93,14 @@ def test_the_file_line_names_the_column_the_model_does_not_hold(session, pg_engi
                                        t_name=T, table_info=crud.TABLE_CONFIG[T])
 
     assert "t_late=3" in sentence and crud.DROP_UNMAPPED_COLUMN in sentence, sentence
+    assert sentence.startswith("Next: reload or restart"), sentence      # d4a949a8c ③
+
+    # a file whose every column the model does not hold wrote nothing: the same refusal a file
+    # of undeclared columns gets (d4a949a8c ③)
+    with pytest.raises(crud.NothingWritten) as refused:
+        handler._send_to_upsert([{"t_late": "2026-09-29 10:00:00"}], uploader="t",
+                                filename="only_unmapped.csv", t_name=T,
+                                table_info=crud.TABLE_CONFIG[T])
+    assert refused.value.columns == {crud.DROP_UNMAPPED_COLUMN: ["t_late"]}, refused.value.columns
     assert session.execute(text('SELECT count(*) FROM "%s" WHERE t_late IS NULL' % T)
                            ).scalar() == 3

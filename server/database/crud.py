@@ -1065,20 +1065,47 @@ class CellRefused(ValueError):
             where, self.column, self.value, self.expected)
 
 
+#: What an operator does about a column that was offered and not written, by reason - the
+#: first words of the sentence, because a file's status field keeps 500 characters (총괄
+#: c4faced98 · d4a949a8c ③).
+NOT_WRITTEN_NEXT = {
+    DROP_UNDECLARED_COLUMN: "declare the undeclared columns in table_config.json",
+    DROP_UNMAPPED_COLUMN: "reload or restart so this process holds the unmapped columns, "
+                          "then Retry the file",
+}
+
+
+def not_written_sentence(by_reason, tail):
+    """`Next: <actions>. <tail>: <reason> <columns> · ...` - ONE spelling for a file's columns
+    that were offered and not written, whether some rows were written (`tail` "Not written")
+    or none (`NothingWritten`). `by_reason` is `{reason: {column: non-blank values}}`, or
+    `{reason: [column, ...]}` where the values are not known (a header)."""
+    reasons = [reason for reason in NOT_WRITTEN_NEXT if by_reason.get(reason)]
+    named = []
+    for reason in reasons:
+        columns = by_reason[reason]
+        named.append("%s %s" % (reason, ", ".join(
+            "%s=%s" % (column, columns[column]) for column in sorted(columns))
+            if isinstance(columns, dict) else ", ".join(sorted(columns))))
+    return "Next: %s. %s: %s" % ("; ".join(NOT_WRITTEN_NEXT[reason] for reason in reasons),
+                                 tail, "; ".join(named))
+
+
 class NothingWritten(ValueError):
-    """A file none of whose columns its table declares, so nothing of it was written - ONE
-    sentence whichever parser read it (총괄 8e54a261b ② · f0578f20a): the standard parser meets it
-    in the header, the file loader's write loop in the rows. Named by column, not by value count,
-    because the header does not know the values."""
+    """A file every column of which was dropped, so nothing of it was written - ONE sentence
+    whichever parser read it (총괄 8e54a261b ② · f0578f20a): the standard parser meets it in the
+    header, the file loader's write loop in the rows. `columns` is `{reason: [column, ...]}` -
+    undeclared, or declared and not held by this process's model (총괄 d4a949a8c ③). Named by
+    column, not by value count, because the header does not know the values."""
 
     def __init__(self, table, columns):
         super().__init__(table, columns)
-        self.table, self.columns = table, sorted(columns)
+        self.table = table
+        self.columns = {reason: sorted(names) for reason, names in dict(columns).items() if names}
 
     def __str__(self):
-        return ("No column of this file is declared on '%s', so nothing was written - dropped %s. "
-                "Declare the columns on the table, or send the file to the table that declares "
-                "them." % (self.table, ", ".join(self.columns)))
+        return not_written_sentence(
+            self.columns, "Nothing was written to '%s' - dropped" % self.table) + "."
 
 
 def cast_value_by_type(value: Any, col_type: str, col_name: str,

@@ -84,7 +84,7 @@ def _build_header_map(header: list, table_info: dict, table_name: str, file_path
     # drops and counts them - one place, whichever parser read the file (총괄 f0578f20a).
     known = {c for c in header_map if c is not None}
     if not known:
-        raise crud.NothingWritten(table_name, unknown)
+        raise crud.NothingWritten(table_name, {crud.DROP_UNDECLARED_COLUMN: unknown})
 
     bk_col = table_info.get("business_key")
     composite_src = table_info.get("composite_key_source")

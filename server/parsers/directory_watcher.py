@@ -199,7 +199,7 @@ def _analyze_after_load(table_name: str, rows: int, why: str = None) -> bool:
         return False
 
 
-def _announce_dropped_columns(t_name, dropped_value_counts, defined_cols, filename, row_count):
+def _announce_dropped_columns(t_name, not_written, defined_cols, filename, row_count):
     """Report columns the loadable-column filter discarded before the write.
 
     Dropping is often the CORRECT outcome - a file carrying fields of a superseded
@@ -219,44 +219,46 @@ def _announce_dropped_columns(t_name, dropped_value_counts, defined_cols, filena
         look the same to anyone who goes looking.
     ASCII only - this reaches a cp949 console.
     """
-    if not dropped_value_counts:
+    if not any(not_written.values()):
         return None
 
     announced = _dropped_column_announced.setdefault(t_name, set())
-    first_seen = sorted(c for c in dropped_value_counts if c not in announced)
+    first_seen = sorted((reason, c) for reason, columns in not_written.items()
+                        for c in columns if (reason, c) not in announced)
     if first_seen:
         announced.update(first_seen)
         logger.warning(
-            f"[{t_name}] Column(s) absent from the declaration are dropped before the "
-            f"write, so NO per-cell record is created for them: {', '.join(first_seen)}. "
-            f"First sighting in this process, carried by '{filename or '?'}'. If the drop "
-            f"is intended (a field of a superseded scheme) this is the expected state; "
-            f"if the column is new or misspelled, declare it in "
-            f"config/table_config.json. Repeats are reported at INFO, once per file."
+            f"[{t_name}] Column(s) dropped before the write, so NO per-cell record is created "
+            f"for them: {', '.join(f'{c} ({reason})' for reason, c in first_seen)}. First "
+            f"sighting in this process, carried by '{filename or '?'}'. If the drop is intended "
+            f"(a field of a superseded scheme) this is the expected state. Repeats are "
+            f"reported at INFO, once per file."
         )
 
-    named = ", ".join(f"{col}={count}" for col, count in sorted(dropped_value_counts.items()))
     capped = ""
-    if len(dropped_value_counts) >= MAX_DROPPED_COLUMNS_REPORTED:
+    if len(not_written[crud.DROP_UNDECLARED_COLUMN]) >= MAX_DROPPED_COLUMNS_REPORTED:
         capped = (
             f" [report cap {MAX_DROPPED_COLUMNS_REPORTED} reached - further dropped "
             f"column names are NOT listed]"
         )
-    # The file's record carries the same sentence as this line (총괄 8e54a261b ②).
-    sentence = (f"Dropped {len(dropped_value_counts)} undeclared column(s) over {row_count} "
-                f"row(s): {named} (name=non-blank values discarded).{capped}")
+    # The file's record carries the same sentence as this line (총괄 8e54a261b ②), next
+    # action first (d4a949a8c ③). column=non-blank values discarded.
+    sentence = crud.not_written_sentence(
+        not_written, "Not written") + f" over {row_count} row(s).{capped}"
     logger.info(f"[{t_name}] {sentence} File '{filename or '?'}'. "
                 f"Declared columns={list(defined_cols)}.")
     return sentence
 
 
-def _nothing_written(t_name, dropped_value_counts, rows_sent):
-    """THE judgment for a file that wrote nothing: values were dropped for undeclared columns
-    and no row reached the write. Dropping PART of a file stays a success - see
-    `_announce_dropped_columns`. Returns the refusal, or None."""
-    if rows_sent or not sum(dropped_value_counts.values()):
+def _nothing_written(t_name, not_written, rows_sent):
+    """THE judgment for a file that wrote nothing: values were dropped - undeclared, or declared
+    and not held by this process's model (d4a949a8c ③) - and no row reached the write. Dropping
+    PART of a file stays a success - see `_announce_dropped_columns`. Returns the refusal, or
+    None."""
+    if rows_sent or not sum(sum(columns.values()) for columns in not_written.values()):
         return None
-    return crud.NothingWritten(t_name, dropped_value_counts)
+    return crud.NothingWritten(t_name, {reason: list(columns)
+                                        for reason, columns in not_written.items()})
 
 # [Std Ingestion] 워크스페이스 자동 생성에서 제외하는 시스템 내부 테이블.
 # (파일 드롭 인제션 대상이 아닌 메타데이터성 테이블 — 필요 시 여기에 추가)
@@ -3275,7 +3277,6 @@ class IngestionHandler(FileSystemEventHandler):
         # 🔴 [총괄 791c0f45e 3] Declared, but this process's model cannot hold it - the door
         #    would drop it anyway; here it is named on the file's line with its values.
         unmapped = set(crud.unmapped_columns(t_name, defined_cols))
-        unmapped_value_counts = {}
         # 총괄 4311a51ed: what makes a `nokey` key, and what the door did with it per chunk.
         file_origin = ((checkpoint.file_signature, checkpoint.started_at)
                        if checkpoint is not None and checkpoint.active
@@ -3363,7 +3364,9 @@ class IngestionHandler(FileSystemEventHandler):
         # with an empty error_message. Not writing the column is frequently the correct
         # outcome; being unable to tell that outcome apart from a new or misspelled column
         # going nowhere is not. See _announce_dropped_columns for the reporting shape.
-        dropped_value_counts = {}
+        not_written = {crud.DROP_UNDECLARED_COLUMN: {}, crud.DROP_UNMAPPED_COLUMN: {}}
+        dropped_value_counts = not_written[crud.DROP_UNDECLARED_COLUMN]
+        unmapped_value_counts = not_written[crud.DROP_UNMAPPED_COLUMN]
         # Rows handed to the write. A resumed prefix was committed through it - a chunk
         # records progress only when it had items.
         rows_sent = resume_from
@@ -3596,16 +3599,8 @@ class IngestionHandler(FileSystemEventHandler):
 
             # [Drop visibility] Individual silence, named aggregate - one report per file.
             dropped = _announce_dropped_columns(
-                t_name, dropped_value_counts, defined_cols, filename, processed_rows
+                t_name, not_written, defined_cols, filename, processed_rows
             )
-            if unmapped_value_counts:
-                named = ", ".join(f"{col}={count}"
-                                  for col, count in sorted(unmapped_value_counts.items()))
-                note = (f"Not written ({crud.DROP_UNMAPPED_COLUMN}): {named} over "
-                        f"{processed_rows} row(s) - declared, but this process's model does "
-                        f"not hold the column; reload or restart, then Retry the file.")
-                logger.warning(f"[{t_name}] {note} File '{filename or '?'}'.")
-                dropped = f"{dropped} {note}" if dropped else note
             for kind, seen in nokey_counts.items():
                 if not seen["rows"]:
                     continue
@@ -3631,7 +3626,7 @@ class IngestionHandler(FileSystemEventHandler):
             # [OUTBOX-4] Restore per_row for whatever this thread does next. A leaked
             # token would make the NEXT writer on this thread collapse silently.
             request_outbox_mode.reset(_outbox_token)
-        refused = _nothing_written(t_name, dropped_value_counts, rows_sent)
+        refused = _nothing_written(t_name, not_written, rows_sent)
         if refused is not None:
             raise refused
         return dropped

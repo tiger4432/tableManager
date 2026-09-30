@@ -27,7 +27,7 @@
 |---|---|
 | 대상 확장자 | `.csv`(콤마) · `.tsv`(탭) · `.txt`(`csv.Sniffer`로 감지, 실패 시 탭→콤마 순) |
 | 인코딩 | `utf-8-sig` 시도 → 실패 시 `cp949` 폴백 |
-| 헤더 검증 | **적재 대상 컬럼(`display_columns`)** 과 대소문자 무시 대조. 🆕 09-26 `749318c9` — 선언 없는 칸은 파서가 빼지 않고 쓰기 고리로 넘기고, 쓰기 고리 «한 자리»가 버리며 셉니다(커스텀 파서와 같은 자리). **선언된 칸이 하나도 없는 파일은 FAILED** — 파일 기록에 한 문장 「No column of this file is declared on '<표>', so nothing was written - dropped <칸>. Declare the columns on the table, or send the file to the table that declares them.」(헤더에서 거절하든 쓰기 고리에서 거절하든 같은 문장, `crud.NothingWritten`). **일부만 버린 파일은 SUCCESS** 그대로, 파일 기록에 「Dropped N undeclared column(s) over M row(s): …」. 버림 자체는 옳은 경우가 흔하므로 표에 칸을 늘리지 않습니다 |
+| 헤더 검증 | **적재 대상 컬럼(`display_columns`)** 과 대소문자 무시 대조. 🆕 09-26 `749318c9` — 선언 없는 칸은 파서가 빼지 않고 쓰기 고리로 넘기고, 쓰기 고리 «한 자리»가 버리며 셉니다(커스텀 파서와 같은 자리). **쓸 수 있는 칸이 하나도 없는 파일은 FAILED** — 선언 안 된 칸이든 선언됐지만 이 프로세스의 모델이 못 받는 칸이든(d4a949a8c ③) 파일 기록에 한 문장, «다음 행동 먼저»: 「Next: declare the undeclared columns in table_config.json; reload or restart so this process holds the unmapped columns, then Retry the file. Nothing was written to '<표>' - dropped: undeclared_column <칸>; unmapped_column <칸>.」(있는 사유만. 헤더에서 거절하든 쓰기 고리에서 거절하든 같은 문장, `crud.NothingWritten` · `crud.not_written_sentence`). **일부만 버린 파일은 SUCCESS** 그대로, 파일 기록에 「Next: … Not written: undeclared_column <칸>=<값 수>; unmapped_column <칸>=<값 수> over M row(s).」. 버림 자체는 옳은 경우가 흔하므로 표에 칸을 늘리지 않습니다 |
 | 처리 거부 | `business_key` 컬럼(또는 `composite_key_source` 전체)이 헤더에 없으면 거부 → `err/` 이동 + `FileIngestionLog` FAILED |
 | 키 결측 행 스킵 | 키 컬럼(단일 bk 또는 composite 소스 전체) **값이 공백/결측인 행은 적재하지 않고 스킵+카운트** — 소계/각주 행 때문에 파일 전체를 거부하지 않되, 키 없는 고아 행(재드롭마다 중복 신규 행)이 생기는 것을 차단합니다. 스킵 수는 완료 메시지에 "키 결측으로 N행 스킵"으로 표시됩니다 |
 | 빈 파일 | 빈 파일/헤더만 있는 파일은 적재 없이 안전하게 `archives/`로 이동 |

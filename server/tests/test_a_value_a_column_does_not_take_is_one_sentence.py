@@ -62,6 +62,9 @@ def test_a_file_load_names_the_file_row_not_the_batch_row(monkeypatch):
         unmapped_columns = staticmethod(crud.unmapped_columns)
         row_is_blank = staticmethod(crud.row_is_blank)
         is_blank_value = staticmethod(crud.is_blank_value)
+        DROP_UNDECLARED_COLUMN = crud.DROP_UNDECLARED_COLUMN
+        DROP_UNMAPPED_COLUMN = crud.DROP_UNMAPPED_COLUMN
+        not_written_sentence = staticmethod(crud.not_written_sentence)
 
         @staticmethod
         def apply_batch_updates(_db, _table, batch, notation_report=None):
