@@ -36,8 +36,9 @@ def fixture_table(pg_engine, tmp_path, monkeypatch):
     crud.TABLE_CONFIG[T] = OLD
     # The reloads walk EVERY registered model (create what is missing, sync columns); in the
     # scratch schema that would build lookalikes of relations other proofs create by their
-    # own DDL (S-260) - so this process registers this table alone while it runs.
-    monkeypatch.setattr(models, "DYNAMIC_TABLES", {T: models.DYNAMIC_TABLES.pop(T)})
+    # own DDL (S-260) - so this process sees this table alone while it runs. The registry
+    # comes back before `retire_dynamic_model` takes the table out of it (S-191).
+    monkeypatch.setattr(models, "DYNAMIC_TABLES", {T: models.DYNAMIC_TABLES[T]})
     with pg_engine.begin() as conn:
         conn.execute(text('DROP TABLE IF EXISTS "%s"' % T))
         conn.execute(text("DELETE FROM cell_sources WHERE table_name = :t"), {"t": T})
@@ -45,6 +46,7 @@ def fixture_table(pg_engine, tmp_path, monkeypatch):
     try:
         yield path
     finally:
+        monkeypatch.undo()
         crud.TABLE_CONFIG.clear()
         crud.TABLE_CONFIG.update(saved)
         retire_dynamic_model(T)
