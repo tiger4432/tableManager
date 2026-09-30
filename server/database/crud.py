@@ -540,19 +540,7 @@ def _same_source_content_differs(db, table_name, row, update_item, config, versi
                     None)
         # The source has never written this cell: that is a NEW field appearing at an
         # unchanged version, which is the same upstream defect.
-        if prev is None and incoming is None:
-            continue
-        if (prev is None) != (incoming is None):
-            differing.append(col_name)
-            continue
-        if col_type == "number":
-            try:
-                if float(prev) != float(incoming):
-                    differing.append(col_name)
-                continue
-            except (ValueError, TypeError):
-                pass
-        if str(prev).strip() != str(incoming).strip():
+        if values_differ(prev, incoming, col_type):
             differing.append(col_name)
     return differing
 
@@ -761,16 +749,21 @@ def is_file_layer(source_name) -> bool:
 
 
 def value_key(value, col_type: str):
-    """What a value COMPARES as - the ONE equality the value layer, the layer no-op and the
-    file-layer fold share (총괄 a7d2e90ec): a number column compares numbers when the value
-    reads as one, anything else its text with the ends trimmed."""
-    if value is None:
+    """What a value COMPARES as - the ONE equality every 「did this cell change」 asks (총괄
+    a7d2e90ec · 2dd93d4a9 2): a blank is absence (판정 284), a number column compares numbers
+    when the value reads as one, a datetime column instants (`time_format.instant_key`),
+    anything else its text with the ends trimmed."""
+    if is_blank_value(value):
         return None
     if col_type == "number":
         try:
             return ("n", float(value))
         except (ValueError, TypeError):
             pass
+    if col_type == "datetime":
+        moment = time_format.instant_key(value)
+        if moment is not None:
+            return moment
     return ("s", str(value).strip())
 
 
@@ -3730,12 +3723,9 @@ def apply_row_update_internal(
                                 
                             old_val = getattr(row, col_name, None)
                             
-                            has_cell_changed = False
-                            if new_val is not None:
-                                if old_val is None:
-                                    has_cell_changed = True
-                                else:
-                                    has_cell_changed = str(old_val).strip() != str(new_val).strip()
+                            has_cell_changed = new_val is not None and values_differ(
+                                old_val, new_val,
+                                (config.get("column_types") or {}).get(col_name, "string"))
                                 
                             if has_cell_changed and not is_value_protected:
                                 setattr(row, col_name, new_val)
@@ -5690,7 +5680,8 @@ def delete_cell_source_batch(db: Session, table_name: str, cells: list[dict], so
                 cell_overwrites_to_delete.add(ow_key)
                 cell_overwrites_to_upsert.pop(ow_key, None)
 
-        if str(old_val) != str(new_val):
+        if values_differ(old_val, new_val, (TABLE_CONFIG.get(table_name, {}).get(
+                "column_types") or {}).get(col_name, "string")):
             log_dict = create_audit_log(
                 db, table_name, r_id, col_name, old_val, new_val,
                 f"delete_source:{source_name}", "system",
@@ -5844,7 +5835,8 @@ def set_cell_manual_priority_batch(db: Session, table_name: str, updates: list[d
                 cell_overwrites_to_delete.add(ow_key)
                 cell_overwrites_to_upsert.pop(ow_key, None)
 
-        if str(old_val) != str(new_val):
+        if values_differ(old_val, new_val, (TABLE_CONFIG.get(table_name, {}).get(
+                "column_types") or {}).get(col_name, "string")):
             log_dict = create_audit_log(
                 db, table_name, r_id, col_name, old_val, new_val,
                 f"set_priority:{effective_source}", updated_by,
@@ -5922,12 +5914,9 @@ def set_cell_manual_priority_batch(db: Session, table_name: str, updates: list[d
                             new_v = getattr(row_to_delete, c_name, None)
                             
                             old_v = getattr(row, c_name, None)
-                            has_changed = False
-                            if new_v is not None:
-                                if old_v is None:
-                                    has_changed = True
-                                else:
-                                    has_changed = str(old_v).strip() != str(new_v).strip()
+                            has_changed = new_v is not None and values_differ(
+                                old_v, new_v,
+                                (table_info.get("column_types") or {}).get(c_name, "string"))
                                     
                             if has_changed and not is_value_protected:
                                 setattr(row, c_name, new_v)
