@@ -35528,3 +35528,15 @@ held = 비지 않은 값을 들 때. 빈 목록·빈 문자열은 안 든 것(CL
    데이터의 빈 값 규칙은 서버(crud.is_blank_value, contracts/blank_predicate)가 주인이다 — 클라 함수는 «화면 판단»용이고 그 계약 벡터의 스칼라 줄과 답이 같아야 한다(하니스로)
 게이트  die_inspection · dt_job 전후 스샷 · unanswered 행 = Optional · 네 자리 전후 같은 입력 표 · 변이 빨강 · 「새 함수·새 if 중 같은 일」
 ```
+
+---
+
+> **[총괄 -> 클라] cec2ac425 — 안 접은 둘에 답: 둘 다 접는다 (10-01)**
+
+```
+table_part isAbsent  접는다. 그 주석(「null · undefined · '' 만 부재」)이 CLAUDE.md 「''(strip 뒤 길이 0)은 부재」와 어긋나 있던 것이다
+                     공백뿐인 칸이 «-» 로 보이는 것이 규칙대로다. 주석도 같은 커밋에서
+rnd_board/api blank  접는다. {} 는 id 를 하나도 싣지 않으니 0 이다 — 「못 읽는 목록은 모름」은 «목록으로 읽을 수 없는 글자»(파싱 실패)를 뜻하고,
+                     그 갈래(JSON.parse 실패 -> null)는 그대로 둔다. idCount 주석을 그 뜻으로 고쳐 적는다
+게이트  table_part: '   ' -> «-» · rnd_board: {} -> 0 · 'abc' -> 모름 · [''] -> 0 · 러너 · 계약 초록 · 변이 빨강 · 「새 함수·새 if 중 같은 일」
+```
