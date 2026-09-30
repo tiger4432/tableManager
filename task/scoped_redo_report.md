@@ -66477,3 +66477,47 @@ FileIngestionLog 에는 전문이 남는다. 다음 행동을 앞으로 옮길�
 재기동    없음
 ```
 다음: 대기열 빔(객체 표 · DT 세대는 소유자 답 기다림) — 감시 켜 두고 기다립니다.
+
+## [구현자 -> 총괄] 363db7dfa (+7d1a405ef) 짓기 전 확인 1~5 — 스텝으로 자재 타입 가르기 · 짓지 않음, 「가」 기다림
+
+```
+한 줄    그림대로 짓기 전에 하나 여쭙니다 — 단계표에 없는 스텝의 행이 원장에서 «사라지는» 회귀(아래 1-bis)
+```
+
+```
+1 빈 mat_type 을 세는 줄   없다 — when 을 읽는 자리는 roleframe.interpret_unit 한 곳(_unit_says)이고 안 맞으면 건너뛰기만 한다
+                        번역 영수증(runtime_v2._batch_receipt: molecules · atoms_written · refused …)에도 그 칸이 없다 -> 그 줄이 이번 일
+                        모양 안: 분자마다 «어느 문장도 안 말함»을 세어 영수증 칸 하나 + 배치마다 한 줄(when 칸 · 본 값 · 수 · 다음 행동)
+1-bis 🔴 회귀            문장 둘(when WF · when DT)로 바꾸면 단계표에 없는 스텝(빈 mat_type)의 행은 둘 다 안 맞아 원자 0 —
+                        지금 wafer@1 에 있는 그 행의 원자가 다시 번역되는 순간 «빠진다»(세는 줄이 생겨도 빠지는 것은 같다)
+                        안 ㄱ  단계표엔 DT 스텝만 적고, WF 문장을 when {mat_type: ""} 로 — 빈 칸 = core. 빠지는 행 0
+                              (읽기로는 _unit_says 가 None 을 "" 로 접어 맞음 — 안 쟀다) · 위험: 조인이 아직 안 온 DT 행이 잠깐 core 로 갔다가 옮겨감
+                        안 ㄴ  WF · DT 둘 다 적게 하고 빈 행은 원자 0 + 세는 줄 — 그림 그대로 · 위험: 단계표를 다 채우기 전엔 공정 원자가 빠짐
+                        제 추천 ㄱ — 지금 도는 원자를 잃지 않는다. ㄴ 은 단계표 완성이 선행 조건
+2 옛 원자 물러나나(PG)   물러난다 — 원장에서 «지워진다»(대체 표지가 아니라 DELETE, cardinality 와 무관)
+                        잰 자리: rescope 가 쓰는 저장소 문 그대로 — 행 색인(row_refs_for)으로 옛 ref 를 겨누고 write_batch(withdraw_refs, row_refs) 한 커밋
+                        신원 이동   aimed ['ref-R1'] | withdrawn 1 inserted 1 | [('dtwafer@1', 'processed', 'S100', 'ref-R1')]
+                        틀린 수정·고침 p_one   [('wafer@1', 'p_one', '5', 'ref-R2')]
+                        틀린 수정·고침 p_many  [('wafer@1', 'p_many', '5', 'ref-R2')]
+                        키 칸을 잘못 고침(ref 바뀜)  aimed ['ref-R3'] | withdrawn 1 inserted 1 | [('wafer@1', 'p_one', '5', 'ref-R3b')]
+                        길: 사람 수정 · 사람 층 지우기(delete_cell_source_batch 가 행에 setattr) · 조인이 쓴 mat_type 모두 EDIT 사건 ->
+                            체인 워커가 조건 없이 띄우는 run_ledger_followup -> rescope(withdraw=True). 이 길 끝에서 끝은 짓기 게이트에서 잰다
+                        ⚠️ 잘못된 값의 원자는 원장에 남지 않는다 — 무엇이 언제 틀렸나는 표의 칸 이력에만
+3 다시 도는 양(박스)      스텝을 읽는 원장 소스 3 · 원자 559,045 (process_param_num_measure 73,275 · process_param_txt_measure 7,052 · wafer_process_recipe 478,718)
+                        선언을 바꾸면 커서 지문이 바뀌어 그 소스 커서가 선다(LEDGER_GUIDE §4.2)
+                        다시 번역은 --scope-column mat_type --scope-values DT 로 «DT 행만» — 커서 안 움직임(§4.1-ter). 박스의 DT 스텝 행 수는 단계표가 없어 못 셈
+4 선언 초안              step_phase 표   {"business_key": "step", "composite_key_source": ["step"], "column_types": {"step": "string", "mat_type": "string"}}
+                        공정 표마다 조인  {"name": "<표>_step_phase", "on": {"table": "step_phase"}, "into": {"table": "<표>"},
+                                         "derive": {"kind": "join", "join": {"on": [{"left": "<그 표의 스텝 칸>", "right": "step"}], "take": ["mat_type"]}}}
+                                         (공정 표에 mat_type 칸 하나 더함)
+                        원장            entities dtwafer@1 {"keys": ["wafer"]} · 공정 소스 문장을 둘로 — 지금 문장에 when {mat_type: <WF 또는 "">} ·
+                                         같은 문장을 subject dtwafer@1 로 복사해 when {mat_type: "DT"}
+                        운영자 두 줄     「운영에서는 step_phase 표에 DT 스텝을 한 줄씩 적으면 됩니다. 공정 표마다 그 표를 on 으로 하는 조인 한 줄이 이미 있습니다.」
+                                         (조인 · 원장 문장은 한 번 적는 선언 — 표마다 조인 하나, 소스마다 문장 하나 더)
+5 스텝 칸 이름(박스)      다르다 — step: process_param, process_param_num (뷰), process_param_txt (뷰), step_defect_obs, step_inspection_run, wafer_process · step_seq: defect, metro, process_event
+                        조인은 어차피 표마다 하나(into.table 이 표 하나) — 칸 이름 다름은 on.left 만 다르게 적으면 됨
+                        ⚠️ 뷰 둘(process_param_num · txt)은 process_param 을 읽는다 — 운영은 뷰를 안 쓰니 조인은 process_param 에, 소스는 표를 읽게
+E 대 K                   E 에 찬성 — 다만 까닭 하나를 더합니다: K 도 스텝 없는 소스에 상수 'WF' 를 묶으면 막히지는 않는다(지금과 같은 모양)
+                        갈리는 것은 비용 — K 는 wafer 키가 바뀌어 wafer 를 묶는 소스 «전부»가 다시 번역, E 는 공정 소스의 DT 행만
+```
+여쭐 것: 1-bis 의 ㄱ / ㄴ. 「가」 주시면 1 의 세는 줄 + 조인 · 단계표 표본 · 원장 문장 둘을 게이트(DT 스텝 -> dtwafer · WF -> wafer · 빈 값 -> 이름 댄 수 · 옛 원자 물러남 · 변이)와 함께 짓습니다.
