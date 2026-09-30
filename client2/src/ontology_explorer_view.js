@@ -1913,15 +1913,15 @@ function plannedValue(context, path) {
     && typeof row.value === 'object' && !Array.isArray(row.value) ? row : null;
 }
 
-/** Where the value comes from (the ground's path, in the declaration's own words), then each
- *  member drawn by the read tree's renderer. The map's add row below stays: it is the override. */
+/** The server's sentence for it and the path it comes from (the ground's, in the declaration's
+ *  own words) -- no word of the screen's -- then each member drawn by the read tree's renderer. The map's add row below stays: it is the override. */
 function renderPlannedValue(context, node, path, row, depth) {
   const [from] = row.ground?.from_paths || [];
   const steps = from ? splitBundlePath(from) : [];
   const [section, id] = splitBundlePath(row.path);
   const trail = steps[0] === section && steps[1] === id ? steps.slice(2) : steps;
   const fold = foldDecision(row, context.expanded);
-  const rows = [treeRow(depth + 1, 'Inherited from', [], h('code', 'oe-planned-from', trail.join(' › ')),
+  const rows = [treeRow(depth + 1, row.ground?.text || '', [], h('code', 'oe-planned-from', trail.join(' › ')),
                         h('i', 'oe-tier oe-tier--' + row.tier, fold.open ? row.tier : fold.reason))];
   // One step under that line, so they read as what it brings -- not as the map's own members.
   const read = readContext(context.schema, context.expanded);

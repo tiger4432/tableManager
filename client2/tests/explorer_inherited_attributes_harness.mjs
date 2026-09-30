@@ -4,7 +4,7 @@
  * (fixtures/authoring_skeleton.json) and the server's plan for the sample's `dt_job`
  * (fixtures/authoring_inherited_plan.json, both captured by the scripts beside them), every branch open.
  *
- *   I  where the plan says a role inherits: the source path the value comes from, in the
+ *   I  where the plan says a role inherits: the server's sentence for it, the source path the value comes from, in the
  *      declaration's own words, then one step under it each inherited member drawn read-only - no control in it -
  *      while the map's add row (the override) stays and its own row is not drawn twice
  *   C  the same form without that row draws no block; the plan's list-valued shape rows draw none
@@ -54,6 +54,8 @@ const liveContext = (fields) => ({
   hot: [], expanded: ALL_OPEN, absolute: (at) => `${PLAN.base}.${at}`, planLoaded: true,
 });
 const nodeAt = (form, at) => walk(form).find((n) => cls(n, 'oe-node') && n.dataset.path === at) || null;
+// A block is known by its source-path line, whatever sentence names it.
+const blocksIn = (el) => walk(el).filter((n) => cls(n, 'oe-planned-from')).length;
 const rowsLabelled = (el, label) => walk(el).filter((n) => cls(n, 'oe-node-row')
   && walk(n).some((m) => cls(m, 'oe-node-name') && m._text === label));
 
@@ -65,11 +67,11 @@ function suite(view) {
     && INHERITED.some((row) => row.path === `${PLAN.base}.${ROLE}`), INHERITED.map((row) => row.path).join(', '));
   const form = draw(PLAN.fields);
   const map = nodeAt(form, ROLE);
-  const header = map ? rowsLabelled(map, 'Inherited from') : [];
-  eq('I1 the source path it comes from, in the declaration\'s words',
-    header.length ? (walk(header[0]).find((n) => cls(n, 'oe-planned-from')) || {})._text : '(none)',
-    'bind › entities › dtjob@1 › attributes');
   const row = INHERITED.find((r) => r.path === `${PLAN.base}.${ROLE}`);
+  const header = map ? rowsLabelled(map, row.ground.text) : [];
+  eq('I1 the server\'s sentence names it, and the path it comes from is in the declaration\'s words',
+    header.length ? (walk(header[0]).find((n) => cls(n, 'oe-planned-from')) || {})._text : '(no row named by the server\'s text)',
+    'bind › entities › dtjob@1 › attributes');
   const members = Object.keys(row.value).map((key) => nodeAt(form, `${ROLE}.${key}`));
   eq('I2 each inherited member is drawn with its value', members.map((n) => (n ? n.textContent.includes(
     row.value[n.dataset.path.split('.').pop()].column) : false)).join(','), Object.keys(row.value).map(() => 'true').join(','));
@@ -89,9 +91,9 @@ function suite(view) {
   const without = draw(PLAN.fields.filter((r) => r !== row));
   const bare = nodeAt(without, ROLE);
   eq('C1 without that plan row: no block, no member',
-    `${bare ? rowsLabelled(bare, 'Inherited from').length : 'no map'}|${Object.keys(row.value).filter((key) => nodeAt(without, `${ROLE}.${key}`)).length}`, '0|0');
+    `${bare ? blocksIn(bare) : 'no map'}|${Object.keys(row.value).filter((key) => nodeAt(without, `${ROLE}.${key}`)).length}`, '0|0');
   eq('C2 across the whole form only the plan\'s inherited rows draw a block (list-valued shape rows do not)',
-    rowsLabelled(form, 'Inherited from').length, INHERITED.length);
+    blocksIn(form), INHERITED.length);
   return { ran, failed: failedList.slice() };
 }
 
@@ -100,8 +102,8 @@ const load = async (mutate) => (await loadWithProbe(VIEW, mutate ? { mutate } : 
 const MUTANTS = [
   { name: 'the-live-context-draws-it', catches: ['I3'],
     from: '  const read = readContext(context.schema, context.expanded);\n', to: '  const read = context;\n' },
-  { name: 'no-source-path', catches: ['I1'],
-    from: "  const rows = [treeRow(depth + 1, 'Inherited from', [],", to: "  const rows = [treeRow(depth + 1, 'Value', []," },
+  { name: 'the-screen-names-it', catches: ['I1'],
+    from: "  const rows = [treeRow(depth + 1, row.ground?.text || '', [],", to: "  const rows = [treeRow(depth + 1, 'Inherited from', []," },
   { name: 'own-row-drawn-too', catches: ['I4'],
     from: '  if (given) box.append(...renderPlannedValue(context, node, path, given, depth));\n  else {\n',
     to: '  if (given) box.append(...renderPlannedValue(context, node, path, given, depth));\n  {\n' },
