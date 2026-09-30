@@ -252,6 +252,10 @@ class Field:
     #: `lot-event-role@1.input_columns`, where the file declares 10 and the bindings need
     #: 4, and an equality comparison called that a conflict.
     comparison: str = "equal"
+    #: 🔴 THIS VALUE DECIDES WHICH SQUARES EXIST OR WHAT THEY OFFER (총괄 791c0f45e 1) - the
+    #: screen asks for the plan again, over the unsaved body, when such a leaf changes. Set
+    #: where the plan reads the value to lay out other rows, so the screen names no path.
+    reshapes: bool = False
     #: 🔴 WHAT A PERSON MAY DO ABOUT A FILLED VALUE.  Owner rule, 2026-08-19: a derived
     #: field renders its value AND its ground AND can be overridden -- and a field that
     #: CANNOT be overridden is not derivation, it is force, and force belongs out of the
@@ -315,6 +319,7 @@ class Field:
             # notion" are the same instruction to the screen -- draw no locked chips.
             "locked": [_plain(item) for item in self.locked],
             "comparison": self.comparison,
+            "reshapes": self.reshapes,
             "disposition": self.disposition,
             "forbidden": [_plain(item) for item in self.forbidden],
             "note": self.note,
@@ -785,21 +790,6 @@ def _locked_read_columns(source: Any) -> tuple[str, ...]:
     )
 
 
-def _binding_columns(binding: Any, path: str) -> list[tuple[str, str]]:
-    """Every column a binding names, with the exact authoring path that names it."""
-    if not isinstance(binding, Mapping):
-        return []
-    if binding.get("kind") == "column":
-        column = binding.get("column")
-        return [(column, f"{path}.column")] if isinstance(column, str) else []
-    out: list[tuple[str, str]] = []
-    keys = binding.get("keys")
-    if isinstance(keys, Mapping):
-        for key in sorted(keys, key=str):
-            out.extend(_binding_columns(keys[key], f"{path}.keys.{key}"))
-    return out
-
-
 #: 🔴 ONE IMPLEMENTATION (S-196, 판정 306-b 되돌림). This module carried its own copy of the
 #: traversal and `setup_bundle` carried another — two answers to 「which columns do this
 #: profile's bindings name」, measured identical on all 15 live sources and one edit away from
@@ -942,7 +932,7 @@ def _implementation_clause_fields(base: str, clause: Mapping[str, Any],
         state="answered" if identifier else "missing", tier=TIER_CONSTRAINED,
         value=identifier, declared=identifier if identifier else _ABSENT,
         candidates=identifiers,
-        note=note,
+        note=note, reshapes=True,
     )
     versions = _registered_versions(declarations, identifier)
     yield Field(
@@ -1262,7 +1252,7 @@ def _implementation_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
             path=f"{base}.unit.kind", step="sources", label="Mapper unit",
             state="answered" if kind else "missing", tier=TIER_CONSTRAINED,
             value=kind, declared=kind if kind else _ABSENT,
-            candidates=tuple(sorted(_MAPPER_UNITS)),
+            candidates=tuple(sorted(_MAPPER_UNITS)), reshapes=True,
         )
         if kind == "group_by":
             group_by = list(_listed(_driver(source).get("group_by")))
@@ -1382,6 +1372,7 @@ def _mapping_fields(base: str, sentence: str, mapping: Mapping[str, Any],
                 name for name, item in vocabulary.items()
                 if isinstance(item, Mapping) and item.get("status") == "active")),
             note="The predicate this sentence states. Picking one lays out the role squares below.",
+            reshapes=True,
         )
         return
     yield Field(
@@ -1392,6 +1383,7 @@ def _mapping_fields(base: str, sentence: str, mapping: Mapping[str, Any],
             name for name, item in vocabulary.items()
             if isinstance(item, Mapping) and item.get("status") == "active")),
         note="Retired predicates are not candidates.",
+        reshapes=True,
     )
     # The screen lays out one row per slot the predicate forces, and since S-52 an
     # object-less predicate forces one per attribute its subject types declare - so the
@@ -1452,7 +1444,7 @@ def _mapping_fields(base: str, sentence: str, mapping: Mapping[str, Any],
                 state="missing" if required else "unanswered",
                 tier=TIER_CONSTRAINED,
                 candidates=tuple(role_binding_kinds(role)),
-                note=f"kind={role.get('kind')}",
+                note=f"kind={role.get('kind')}", reshapes=True,
                 refusals=({
                     "code": "missing_required_role",
                     "path": f"{mpath}.bind.{role_id}",
@@ -1466,7 +1458,7 @@ def _mapping_fields(base: str, sentence: str, mapping: Mapping[str, Any],
             state="answered" if binding.get("kind") else "missing",
             tier=TIER_CONSTRAINED, value=binding.get("kind"),
             declared=binding.get("kind"),
-            candidates=tuple(role_binding_kinds(role)),
+            candidates=tuple(role_binding_kinds(role)), reshapes=True,
         )
         if role.get("kind") == "symbolic" and binding.get("kind") == "constant":
             yield Field(
@@ -1518,7 +1510,7 @@ def _entity_binding_fields(path: str, binding: Mapping[str, Any],
         path=f"{path}.entity_type", step="sources", label="Entity type",
         state="answered" if entity_type else "missing", tier=TIER_CONSTRAINED,
         value=entity_type, declared=entity_type if entity_type else _ABSENT,
-        candidates=tuple(sorted(entities, key=str)),
+        candidates=tuple(sorted(entities, key=str)), reshapes=True,
     )
     entity = entities.get(entity_type) if isinstance(entity_type, str) else None
     if not isinstance(entity, Mapping):
@@ -1694,6 +1686,7 @@ def _source_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
             value=relation, declared=relation if relation else _ABSENT,
             candidates=tuple(sorted(catalog, key=str)),
             note=f"Candidates come from {PHYSICAL_CATALOG_FILENAME}. Declare a missing one there first.",
+            reshapes=True,
         )
         unit = driver.get("unit")
         yield Field(
@@ -1834,7 +1827,7 @@ def _source_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
             # was still open and named the task file holding it -- true, and useless to
             # somebody filling the box, who cannot act on either.  What is left is the one
             # rule that changes what they press.
-            note="Pick one of column · basis",
+            note="Pick one of column · basis", reshapes=True,
         )
         # 🔴 THE SQUARE THE TIMEZONE REFUSAL LANDS ON.  Filling it from the picker above is
         # only half: the validator refuses at `…occurred_at.timezone`, and with no row at

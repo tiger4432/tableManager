@@ -336,6 +336,38 @@ def draft_target(record: Mapping[str, Any], index: ExplorerIndex) -> Any:
     )
 
 
+def parse_draft_raw(raw_text: Any) -> Mapping[str, Any]:
+    """The editor's text as a declaration body - the save and the unsaved plan read refuse
+    the same text by the same names."""
+    try:
+        raw = json.loads(raw_text)
+    except (TypeError, json.JSONDecodeError) as exc:
+        raise ConfigExplorerError(
+            "invalid_json", "raw", f"invalid JSON: {exc}") from exc
+    if not isinstance(raw, Mapping):
+        raise ConfigExplorerError(
+            "invalid_json_type", "raw", "definition must be a JSON object")
+    return raw
+
+
+def with_unsaved_body(document: Mapping[str, Any], catalog: Mapping[str, Any],
+                      record: Mapping[str, Any], index: ExplorerIndex,
+                      raw_text: Any) -> dict[str, Any]:
+    """`document` with the editor's body at the draft's place, filled as a save would fill
+    it (총괄 791c0f45e 1ㄴ) - so a plan over it answers what the plan answers after the save.
+    Nothing is written."""
+    from .config_authoring import filled_declaration
+
+    node = draft_target(record, index)
+    body = filled_declaration(document, catalog, node.bundle_path, parse_draft_raw(raw_text))
+    out = json.loads(json.dumps(document, ensure_ascii=False))
+    try:
+        _set_path(out, node.bundle_path, body)
+    except (KeyError, IndexError, TypeError) as exc:
+        raise ConfigExplorerError("draft_target_missing", "draft.target_id", str(exc)) from exc
+    return out
+
+
 def _set_path(document: Any, path: Sequence[Any], value: Any) -> None:
     if not path:
         raise KeyError("empty target path")
@@ -491,14 +523,7 @@ class OntologyDraftStore:
         active_setup: Any,
         active_index: ExplorerIndex,
     ) -> tuple[dict[str, Any], DraftPreview]:
-        try:
-            raw = json.loads(raw_text)
-        except (TypeError, json.JSONDecodeError) as exc:
-            raise ConfigExplorerError(
-                "invalid_json", "raw", f"invalid JSON: {exc}") from exc
-        if not isinstance(raw, Mapping):
-            raise ConfigExplorerError(
-                "invalid_json_type", "raw", "definition must be a JSON object")
+        raw = parse_draft_raw(raw_text)
 
         with self._lock:
             record = self._read_record(draft_id)

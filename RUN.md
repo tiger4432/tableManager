@@ -1,5 +1,20 @@
 # 지금 돌리면 되는 것
 
+> ## 🔴 [09-30 오전] **원장 선언 창: 역할을 엔티티로 고르고 키 없이 저장해도 500 없음 · 저장 없이 키 칸을 받는 읽기 — 마이그레이션 «없음» · 재기동 서버**
+>
+> ```
+> 무엇이 바뀌나  역할을 entity 로 고르고 키를 아직 안 적은 채 Save -> 전엔 500(KeyError 'keys'), 이제 저장되고 그 칸의 거절 이름이 뜸
+>              POST /admin/ontology-explorer/authoring/plan  {selection, draft_id, raw} -> 저장 없이 그 본문의 폼(키 칸 포함)
+>              GET plan 과 같은 답 모양 · 쓰는 것 0 · 화면이 이 길을 부르는 것은 클라 몫
+>              plan 의 행마다 "reshapes" — true 인 잎(entity_type · kind · predicate …)이 바뀌면 화면이 다시 물음
+> 확인          그 Save 가 200 이고 화면에 「Saved but not applied」 와 그 칸의 거절 줄
+> 뜻           「Saved but not applied」 인 채 파일에 남은 소스는 재기동 뒤 원장이 «그 소스만» 안 읽음 —
+>             서버 로그 「[Ledger] source <id> is NOT planned: …」(다른 소스는 읽음). 키를 채워 다시 저장하면 풀림
+> 급할 때       스위치 없음
+> ```
+
+---
+
 > ## 🔴 [09-30 아침] **대조 저장 — contrast_run 한 줄 -> 체인 -> contrast_factor (걷기의 순위 그대로) — 마이그레이션 «없음» · 재기동 서버 · 체인 워커 (run_app.bat 로 전체를 다시 띄우면 둘 다 됨)**
 >
 > ```

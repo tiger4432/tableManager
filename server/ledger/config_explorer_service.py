@@ -12,7 +12,7 @@ from .column_stats import (
     population,
 )
 from .config_authoring import authoring_plan, closed_lists
-from .config_drafts import OntologyDraftStore
+from .config_drafts import OntologyDraftStore, with_unsaved_body
 from .config_explorer import (
     AUTHORABLE_SECTION_NAMES,
     ConfigExplorerError,
@@ -952,7 +952,8 @@ class OntologyExplorerService:
             return None
         return f"bundle.{section}.{name}"
 
-    def authoring(self, *, selection_prefix: str | None = None) -> dict[str, Any]:
+    def authoring(self, *, selection_prefix: str | None = None, draft_id: str | None = None,
+                  raw: Any = None) -> dict[str, Any]:
         """What is filled by force, what is missing, and what is still a real question.
 
         🔴 THIS DELIBERATELY DOES NOT GO THROUGH `active()`.  A compiled snapshot exists
@@ -978,8 +979,14 @@ class OntologyExplorerService:
                     "unreadable_config", CONFIG_FILENAME,
                     f"{path} must contain a JSON object")
             source = {"file": str(path), "state": "present"}
-        payload = authoring_plan(
-            bundle, self._catalog_loader(), selection_prefix=selection_prefix)
+        catalog = self._catalog_loader()
+        if draft_id is not None:
+            # 🔴 THE EDITOR'S BODY, UNSAVED (총괄 791c0f45e 1ㄴ) - a picked entity type
+            #    lays out its key squares before anything is written.
+            _, index, _ = self.active()
+            bundle = with_unsaved_body(
+                bundle, catalog, self.draft_store.get(draft_id), index, raw)
+        payload = authoring_plan(bundle, catalog, selection_prefix=selection_prefix)
         payload["config_source"] = source
         return payload
 

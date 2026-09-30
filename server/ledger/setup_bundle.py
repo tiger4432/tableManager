@@ -2796,19 +2796,28 @@ def _profile_binding_columns(path: str, profile: Mapping[str, Any]
     return tuple(out)
 
 
-def _binding_columns(binding: Mapping[str, Any], path: str) -> list[tuple[str, str]]:
-    if binding["kind"] == "column":
-        return [(binding["column"], f"{path}.column")]
+def _binding_columns(binding: Any, path: str) -> list[tuple[str, str]]:
+    """🔴 TOLERANT OF A HALF-BUILT BINDING, for the reason `_profile_binding_columns` gives
+    (총괄 791c0f45e 1). An entity binding with a type and no `keys` yet is what the form
+    holds the moment an operator picks the type - it raised KeyError and the draft save
+    answered 500. Measured the same way: strict and tolerant agree on every source of the
+    live bundle and the shipped sample."""
+    if not isinstance(binding, Mapping):
+        return []
+    if binding.get("kind") == "column":
+        column = binding.get("column")
+        return [(column, f"{path}.column")] if isinstance(column, str) else []
     out: list[tuple[str, str]] = []
-    if binding["kind"] == "entity":
-        for key in sorted(binding["keys"]):
-            out.extend(_binding_columns(binding["keys"][key], f"{path}.keys.{key}"))
+    if binding.get("kind") == "entity":
+        keys = binding.get("keys")
+        for key in sorted(keys, key=str) if isinstance(keys, Mapping) else ():
+            out.extend(_binding_columns(keys[key], f"{path}.keys.{key}"))
         # An attribute's column is read from the same frame as a key's, so it belongs in
         # the same census - otherwise a source could declare a prepared column for an
         # attribute and nothing would notice it was never produced.
-        for name in sorted(binding.get("attributes") or {}):
-            out.extend(_binding_columns(binding["attributes"][name],
-                                        f"{path}.attributes.{name}"))
+        attributes = binding.get("attributes")
+        for name in sorted(attributes, key=str) if isinstance(attributes, Mapping) else ():
+            out.extend(_binding_columns(attributes[name], f"{path}.attributes.{name}"))
     return out
 
 

@@ -122,6 +122,18 @@ def authoring_plan_view(selection: str | None = Query(default=None)):
         raise _refusal(exc) from exc
 
 
+@router.post("/authoring/plan", dependencies=[Depends(require_admin_token)])
+def authoring_plan_for_draft(payload: dict[str, Any] = Body(...)):
+    """The same plan over the draft's UNSAVED body - `{selection, draft_id, raw}`, raw being
+    the editor's text. Writes nothing (총괄 791c0f45e 1ㄴ)."""
+    try:
+        return _service.authoring(
+            selection_prefix=_service.authoring_prefix(payload.get("selection")),
+            draft_id=str(payload.get("draft_id") or ""), raw=payload.get("raw"))
+    except ConfigExplorerError as exc:
+        raise _refusal(exc) from exc
+
+
 @router.get("/deletion-preview", dependencies=[Depends(require_admin_token)])
 def deletion_preview(
     targets: list[str] | None = Query(default=None),
