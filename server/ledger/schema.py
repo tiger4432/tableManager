@@ -790,6 +790,12 @@ def changed_sources(names) -> frozenset:
         != "already")
 
 
+def speaks_for(names):
+    """The sources a world's translation writes: `None` - every source that reads the table -
+    for the default; a branch only its `changed_sources` (총괄 c23b02aeb ③)."""
+    return changed_sources(names) if names.base_root else None
+
+
 def world_deletion(engine, world: str) -> dict:
     """What deleting a ledger branch takes - its schema, with every atom, cursor and index row
     in it, and its declaration and draft files. READ ONLY. The default is no branch and is

@@ -37,6 +37,7 @@ pytestmark = pytest.mark.pg
 SAMPLE = os.path.join(SERVER_DIR, "config", "sample")
 TABLES = ("wafer_process", "lot_slot_wafer")
 CHANGED, KEPT = "wafer_process_recipe", "lot_slot_wafer"
+ADDED = "zz_wafer_at_step"
 WORLD = "exp" + "".join(ch for ch in RUN_TOKEN.lower() if ch.isalnum())[:20]
 EVENT_TIME = "2026-09-30 10:00:00"
 
@@ -320,3 +321,40 @@ def test_deleting_the_branch_leaves_no_schema_and_no_file(world):
     assert WORLD not in schema.worlds()
     with pytest.raises(ValueError):
         schema.world_deletion(world["engine"], None)                     # the default: never
+
+
+def test_a_branch_that_adds_a_source_writes_only_that_source(world):
+    """총괄 c23b02aeb ③ — rows are queued by TABLE, so translating a NEW source that reads
+    wafer_process also wrote wafer_process_recipe into the branch, and the view then hid that
+    source's default atoms (box: 10 -> 8 on a partly translated branch). A branch writes only
+    the sources it speaks for; the one it did not change stays the default's in its view."""
+    _seed(world)
+    document = _sample("ledger_config.json.sample")
+    document["entities"]["stepno@1"] = {"keys": ["step"]}
+    document["vocabulary"]["at_step@1"] = {
+        "status": "active", "subjects": ["wafer@1"],
+        "object": {"kind": "entity_ref", "types": ["stepno@1"],
+                   "qualifiers": {"required": [], "optional": []}}}
+    added = copy.deepcopy(document["sources"][CHANGED])
+    said = added["bind"]["mappings"]["wafer-processed-with-recipe"]["bind"]
+    added["bind"]["mappings"] = {"wafer-at-step": {"predicate": "at_step@1", "bind": {
+        "occurred_at": said["occurred_at"], "subject": said["subject"],
+        "target": {"kind": "entity", "entity_type": "stepno@1",
+                   "keys": {"step": {"kind": "column", "column": "step"}}}}}}
+    document["sources"][ADDED] = added
+    (world["config"] / "ontology_worlds" / WORLD / "ledger_config.json").write_text(
+        json.dumps(document), encoding="utf-8")
+    names = schema.require_world(WORLD)
+    assert schema.changed_sources(names) == {ADDED}
+
+    LedgerStore(world["engine"], world=WORLD).ensure_schema()
+    backfill.run(world["engine"], source=ADDED, world=WORLD)
+
+    with world["engine"].connect() as conn:
+        written = {who for (who,) in conn.execute(text(
+            "SELECT DISTINCT source_who FROM %s" % names.ledger))}
+        legs = set(conn.execute(text(
+            "SELECT source_who, world_leg FROM %s WHERE source_who IN (:a, :b)"
+            % names.read_relation), {"a": CHANGED, "b": ADDED}).fetchall())
+    assert written == {ADDED}, written
+    assert legs == {(ADDED, "branch"), (CHANGED, "default")}, legs

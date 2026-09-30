@@ -310,8 +310,11 @@ def _take():
         return _queue.popleft() if _queue else None
 
 
-def drain_once(engine, setup, world=None):
+def drain_once(engine, setup, world=None, sources=None):
     """Follow ONE queued event: all of its rows, one `rescope` per source. Or `None`.
+
+    `sources`, when given, is the only ones to translate - a branch speaks only for what its
+    declaration changed, not for every source that reads the table (총괄 c23b02aeb ③).
 
     🔴 ONE BATCH IS ONE EVENT, NOT ONE ROW (ruling 129 ㉥). A collapsed event names up to
     1,000 rows; they go into a single scope, so a chain batch that touched a thousand rows
@@ -360,7 +363,8 @@ def drain_once(engine, setup, world=None):
             logger.warning("[LedgerFollowUp] delete on %s (%d rows) failed: %s",
                            table, len(row_ids), exc)
         return done
-    table_sources = list(sources_for_table(setup, table))
+    table_sources = [source for source in sources_for_table(setup, table)
+                     if sources is None or source in sources]
     # ⚰️ THE "CAUGHT UP" GATE WENT WITH THE CURSOR (판정 171). It existed because a source
     # still walking its cursor would read a new row itself, so following it here too would
     # translate the same molecule twice. There is no cursor walk any more -- the initial load

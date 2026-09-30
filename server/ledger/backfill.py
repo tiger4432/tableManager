@@ -321,7 +321,7 @@ def _run_via_events(engine, setup, source, page_rows=DEFAULT_FETCH_ROWS,
     nothing advances a position any more, and `translator_ver` is the fingerprint that
     remains.
     """
-    from . import followup
+    from . import followup, schema
     from .setup_registry import cursor_translator_version
 
     plan = setup.snapshot.source_plans[source]
@@ -332,6 +332,9 @@ def _run_via_events(engine, setup, source, page_rows=DEFAULT_FETCH_ROWS,
     pages_per_cycle, rest_seconds = resolve_pace(pace)
     started = time.perf_counter()
     after = None
+    # A branch translates only the sources it speaks for (총괄 c23b02aeb ③): the rows are
+    # queued by TABLE, and a source it did not change must stay the default's in its view.
+    speaks_for = schema.speaks_for(schema.world_names(world))
     while max_pages is None or report["batches"] < max_pages:
         page = rows_missing_from_the_index(engine, setup, source, page_rows, after,
                                            world=world)
@@ -344,7 +347,7 @@ def _run_via_events(engine, setup, source, page_rows=DEFAULT_FETCH_ROWS,
         report["max_queue_depth"] = max(report["max_queue_depth"],
                                         followup.queue_depth())
         while followup.queue_depth() >= EVENT_LOAD_QUEUE_LIMIT:
-            _drain_into(engine, setup, report, world=world)
+            _drain_into(engine, setup, report, world=world, sources=speaks_for)
         if pages_per_cycle and rest_seconds and (
                 report["batches"] % pages_per_cycle == 0):
             time.sleep(rest_seconds)
@@ -353,7 +356,7 @@ def _run_via_events(engine, setup, source, page_rows=DEFAULT_FETCH_ROWS,
             logger.info("[Ledger] stopped by request after %d rows", report["rows_read"])
             break
     while followup.queue_depth():
-        _drain_into(engine, setup, report, world=world)
+        _drain_into(engine, setup, report, world=world, sources=speaks_for)
     # 🔴 THE REFUSAL COUNTS COME WITH THE KEYS (판정 171: keep the names).
     # These three were published by the cursor driver and were LOST when the load
     # moved here, silently -- the only test of them inspected that driver's source, so
@@ -378,10 +381,10 @@ def _run_via_events(engine, setup, source, page_rows=DEFAULT_FETCH_ROWS,
     return report
 
 
-def _drain_into(engine, setup, report, world=None):
+def _drain_into(engine, setup, report, world=None, sources=None):
     from . import followup
 
-    done = followup.drain_once(engine, setup, world=world)
+    done = followup.drain_once(engine, setup, world=world, sources=sources)
     if done is None:
         return
     for value in (done.get("sources") or {}).values():
