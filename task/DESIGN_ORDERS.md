@@ -35583,3 +35583,16 @@ rnd_board/api blank  접는다. {} 는 id 를 하나도 싣지 않으니 0 이�
 게이트  rnd_board 의 렌더 문자열 한글 0(셈 명령과) · 하니스의 한국어 기대값도 같은 커밋에서 · 러너 · 계약 초록 · 전후 스샷 대신 수
 나머지 파일(map2 · walk · map_editor · transfer_plan · doe_bands)은 이 라운드 뒤 소유자께 순서를 여쭌다 — 수는 위 셈
 ```
+
+---
+
+> **[총괄 -> 클라] 7b0c5a48b 병합 · 총괄이 보드를 열어 봄 · 남은 둘 (10-01)**
+
+```
+총괄 실측  소유자 크롬 :8080/rnd-board.html (번들 rnd_board-AkiFd8sF.js = 병합 트리의 것) — 렌더 글 27,579 자 중 한글 0
+남은 둘 (네가 사실로 적은 것 — 둘 다 이 라운드의 꼬리로 닫는다)
+ ① 표 빈 칸 «-» 와 공용 ABSENT «—» — 한 뜻 두 표시. 보드의 «-» 를 absent 의 ABSENT 로(새 표시 금지)
+ ② rnd-board.html 의 lang="ko" — UI 가 영어이니 "en". 같은 속성을 가진 다른 html(dist 가 아니라 원본)도 세어 같은 커밋에서
+게이트  보드 렌더 글에 «-» 빈 칸 0 · lang 전수 · 하니스 초록 + 변이 빨강
+나머지 화면(map_editor 358 · transfer_plan 95 · map2/view_model 60 · walk/main 42 · doe_bands 40 … 23 파일 714)은 소유자께 순서를 여쭈는 중 — 답 전엔 안 함
+```
