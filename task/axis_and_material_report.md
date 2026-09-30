@@ -1,3 +1,141 @@
+> ## [06:57 디자인] R&D 보드의 화면 문자열을 영어로 — 한 뜻 한 낱말 · 카드의 measured 줄 제거 — 총괄 919ccc065 · 84dc66bd8 · 1bb1489ed
+
+**셈(AST, rolldown parseAst — 주석은 AST 에 없음)**: 한글이 든 문자열·템플릿 리터럴. console 호출 안의 것은 따로 셈.
+
+| 파일 | 전 | 후 |
+|---|---|---|
+| candidate_list_panel.js | 17 | 0 |
+| composition_panel.js | 15 | 0 |
+| control_bar_panel.js | 27 | 0 |
+| declaration_panel.js | 2 | 0 |
+| expanded_layer_panel.js | 7 | 0 |
+| grid_shell.js | 1 | 0 |
+| head_summary_panel.js | 25 | 0 |
+| main.js | 28 | 0 |
+| main_trend_panel.js | 28 | 0 |
+| map_panel.js | 19 | 0 |
+| marking_status_panel.js | 1 | 0 |
+| rank_list_panel.js | 17 | 0 |
+| reach_panel.js | 13 | 0 |
+| walk_box_panel.js | 23 | 0 |
+| rnd-board.html (탭 제목 · 페이지 제목 · 안내) | 3 | 0 |
+
+- 카나리아(같은 명령): rnd_board 가 훑은 문자열 리터럴 1913개 · 같은 도구로 map_editor.js 는 358개. 셈이 산 채로 0 을 냈습니다. console 문자열은 rnd_board 에 전후 0.
+- 한글 셈이 못 보는 «» · 「」 도 rnd_board 문자열에서 0 입니다(같은 방식으로 셈).
+- 셈 명령: 스크래치의 census_korean.mjs <디렉터리> [--list] (아래 붙임).
+
+**한 뜻 한 낱말** — 새 사전 파일 없이, 이미 있는 ui_words · absent 의 낱말을 불렀습니다.
+
+| 뜻 | 전(여러 벌) | 후 |
+|---|---|---|
+| 읽는 중 | 읽는 중… · 불러오는 중 · 선언을 읽는 중… | LOADING (Loading…) |
+| 걷는 중 | 걷는 중 · 걷는 중… | WALKING (Walking…) |
+| 서버 거절 | 서버가 거절했습니다 · 서버 거절 | SERVER_REFUSED (Server refused) |
+| 씨앗 안 고름 | 후보 목록 UNPICKED · 순위 목록 「씨앗 없음」 | UNPICKED (None selected) |
+| 수와 단위 | …칸 · …행 · …점 · …홉 · …개 | unitText (3 cells · 1 row …) |
+| 이름 없음 | (이름 없음) 두 벌 | (unnamed) |
+| 이름뿐 후보 | 「이름뿐 N」(머리) · 「모델 이름뿐 N」(접힌 카드) | Name only N |
+
+**카드**: measured 후보만 카드를 받고 목록 머리가 이미 Measured N 을 말하므로, 카드마다의 measured 줄을 지웠습니다(「지우면 틀리게 읽나」 → 아니오). 아무도 안 타던 «-» 갈래와 그 CSS 규칙도 같이 갔습니다. 하니스 H3 은 「measured 마다 카드 · 이름뿐은 한 장 · 카드 줄 없음」, 변이 X14 는 「이름뿐 후보가 카드를 받음」.
+
+**하니스**: 한국어 기대값과 한국어 원문에 걸린 변이 닻을 같은 커밋에서 새 영어로 옮겼습니다 — rnd_board_walk · rnd_board · rnd_board_composition · rnd_board_control_trend · rnd_board_walk_box · rnd_board_reach · disabled_reason. 옮기다 잡은 것 하나: X2 의 새 닻 「no cause candidate」가 코드보다 먼저 주석에 걸려 변이가 빠져나갔고, 닻을 코드 쪽으로 좁혔습니다.
+
+게이트: 보드 하니스 11 개 초록 · 변이 전부 빨강 · 러너 154 중 152 게이트 초록 · 계약 12 개 어긋남 0.
+- 화면: 이 박스에서 보드는 서버 데이터가 있어야 그려져서 열어 보지 못했습니다. 하니스가 진짜 부품을 스텁 DOM 에 그려 글을 잽니다. 스샷 대신 위 수입니다.
+- 새 함수 · 새 if 중 기존 것과 같은 일: 새 함수 0 · 새 if 0(카드의 갈래 하나를 지움).
+- 사실(안 접음): 또래 알약 넷(Same leg · Same lot · Recipe · Equipment)이 세 자리에 적혀 있습니다(control_bar PEER_AXES · main.js 두 곳). 셋 다 같은 영어입니다.
+
+**디자이너 결함 검토** — 12 가지 중 11 가지를 1bb1489ed 에서 고쳤습니다.
+- 한 뜻 두 낱말: unexamined 는 서버의 대조군 낱말에만(No controls · unexamined — 저장 패널의 No controls 와 같은 말) · 예산에서 끊긴 걷기는 Cut at budget · the rest not walked · 잘린 축은 목록 셋 다 Truncated at … · may be more · Components N · Not a ledger node yet · drawable, not markable(api.js 와 같은 말) · NO_VALUE · (unnamed) · choose · single timestamp
+- 거절의 대체 글은 전부 SERVER_REFUSED(reach · walk box 둘 · expanded layer)
+- 문장 → 낱말: Quantity axis · ratios only · No collect declared · Fixed seed · awaiting wafer→chip edge · Default · <창> · No composition · not a bonded chip · Numeric values only · DESTINATION · Axis picker(여기서 control 은 (−) 마킹) 등
+- 안 고친 것, 사실만: 표의 빈 칸 «-» 가 공용 ABSENT «—» 와 다릅니다(table_part 의 자체 상수 · 이번 전부터 · 한국어 아님 · 하니스가 «-» 를 잼). rnd-board.html 의 lang="ko" 는 화면 글이 아닙니다(여섯 페이지 공통).
+- 하니스: Z2 가 대조군 줄의 unexamined 에 우연히 걸려 초록이던 것을, 예산 줄의 not walked 를 재게 좁혔습니다.
+
+**나머지 파일 — 소유자께 순서를 여쭐 수** (같은 도구, src · src/map2 · src/walk, 그려질 수 있는 것 / console):
+
+| 파일 | 한국어 리터럴 | console |
+|---|---|---|
+| src/map_editor.js | 358 | 30 |
+| src/transfer_plan.js | 95 | 3 |
+| src/map2/view_model.js | 60 | 0 |
+| src/walk/main.js | 42 | 0 |
+| src/doe_bands.js | 40 | 0 |
+| src/map2/main.js | 29 | 0 |
+| src/map2/excel_io.js | 28 | 0 |
+| src/map2/authoring.js | 23 | 0 |
+| src/map2/candidates.js | 7 | 0 |
+| src/map2/artifact_gateway.js | 5 | 0 |
+| src/map_editor2.js | 4 | 0 |
+| src/map_open_timing.js | 4 | 0 |
+| src/map2/confirm_ruling.js | 4 | 0 |
+| src/map2/brush.js | 3 | 0 |
+| src/map2/verdict.js | 3 | 0 |
+| src/changed_rows.js | 2 | 0 |
+| src/map2/legend.js | 2 | 0 |
+| src/map_table_list.js | 1 | 0 |
+| src/split_registry_row.js | 1 | 0 |
+| src/map2/attestation.js | 1 | 0 |
+| src/map2/origin_basis.js | 1 | 0 |
+| src/walk/styles.js | 1 | 0 |
+| src/websocket.js | 0 | 1 |
+| 합(23 파일) | 714 | 34 |
+
+셈 명령:
+```
+// Korean string literals in a directory's .js files, by AST (lead 919ccc065). Comments are not in an AST.
+// A literal is `console` when it sits inside a console.* call, `key` when it is a property key, else `render?`.
+// Usage: node census_korean.mjs <dir> [--list]
+import { readFileSync, readdirSync } from 'node:fs';
+import path from 'node:path';
+import { createRequire } from 'node:module';
+const require = createRequire('C:/Users/kk980/Developments/assyManager-design/client2/package.json');
+const { parseAst } = require('rolldown/parseAst');
+const HANGUL = /[\u3131-\u318e\uac00-\ud7a3]/;
+const dir = process.argv[2];
+const list = process.argv.includes('--list');
+const files = readdirSync(dir).filter((f) => f.endsWith('.js')).sort();
+const lineOf = (text, at) => text.slice(0, at).split('\n').length;
+let scanned = 0;
+const total = { render: 0, console: 0, key: 0 };
+const perFile = {};
+const rows = [];
+for (const f of files) {
+  const text = readFileSync(path.join(dir, f), 'utf8');
+  const ast = parseAst(text, { sourceType: 'module' });
+  const counts = { render: 0, console: 0, key: 0 };
+  const visit = (node, stack) => {
+    if (!node || typeof node !== 'object') return;
+    if (Array.isArray(node)) { for (const n of node) visit(n, stack); return; }
+    if (typeof node.type !== 'string') return;
+    let value = null;
+    if (node.type === 'Literal' && typeof node.value === 'string') value = node.value;
+    if (node.type === 'TemplateLiteral') value = node.quasis.map((q) => q.value.cooked ?? q.value.raw).join('${}');
+    if (value !== null) scanned += 1;
+    if (value !== null && HANGUL.test(value)) {
+      const parent = stack[stack.length - 1];
+      const inConsole = stack.some((s) => s.type === 'CallExpression' && s.callee && s.callee.type === 'MemberExpression'
+        && s.callee.object && s.callee.object.name === 'console');
+      const kind = inConsole ? 'console' : (parent && parent.type === 'Property' && parent.key === node ? 'key' : 'render');
+      counts[kind] += 1;
+      rows.push({ file: f, line: lineOf(text, node.start), kind, value: value.slice(0, 90), raw: text.slice(node.start, node.end) });
+      if (node.type === 'TemplateLiteral') { for (const e of node.expressions) visit(e, [...stack, node]); return; }
+      return;
+    }
+    for (const [k, v] of Object.entries(node)) {
+      if (k === 'type' || k === 'start' || k === 'end' || k === 'range' || k === 'loc') continue;
+      if (v && typeof v === 'object') visit(v, [...stack, node]);
+    }
+  };
+  visit(ast, []);
+  perFile[f] = counts;
+  for (const k of Object.keys(total)) total[k] += counts[k];
+}
+const canary = rows.filter((r) => r.value.includes('모델 이름뿐')).length;
+console.log(JSON.stringify({ files: files.length, scanned, total, canary_model_name_only: canary, perFile }));
+if (list) for (const r of rows) console.log(r.file + ':' + r.line + '  ' + r.raw);
+```
+
 > ## [05:54 디자인] 후보 카드는 measured 판정 그대로 — «실측 -» 거짓 줄 고침 — 총괄 1b1d90d61 · 2b20ed983
 
 - candidate_list_panel: 카드 줄이 c.measured 를 읽습니다(참 Measured · 거짓 «-»). ref 를 읽던 _firstMeasuredRef 는 지웠습니다. 새 판정 · 새 함수 없음.
