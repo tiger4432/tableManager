@@ -66128,3 +66128,19 @@ PG        7 failed, 140 passed, 7537 deselected in 275.89s (0:04:35) — 실패�
           같은 내용을 다시 올리면 안 겹침
 ```
 다음: 8903333bc(+f922b3db4) -> eed8b37de -> d8b1e7cfb -> ④ (순서 여쭌 것 답 오면 따름).
+
+## [구현자 -> 총괄] 착지 3748c0e52 — 8903333bc + f922b3db4: 워크벤치 노트북 첫 셀 · 토폴로지 가이드
+
+```
+노트북    두 노트북 첫 셀 — 뿌리를 server/admin/dev_bench.py 로 찾고 import admin.dev_bench as dev_bench
+          (from admin import … 로 쓰면 시험의 import 허용 목록이 「admin」 전체를 허락해야 해서, 이 모양으로 목록에 admin.dev_bench 한 칸)
+시험      test_the_workbench_notebooks_call_production 에 첫 셀을 «실제로 실행»하는 칸 — 매직 줄 빼고 · DB 없이 · 노트북 폴더에서 · 따로 프로세스
+          19 passed, 2 skipped in 3.30s (end-to-end 두 칸은 전처럼 노트북 러너가 없어 건너뜀)
+변이 N1 옛 첫 셀(09-13 전 경로)   2 failed, 19 deselected in 0.78s — 빨강 test_the_first_cell_runs_and_reaches_the_bench[mapper_workbench.ipynb] · test_the_first_cell_runs_and_reaches_the_bench[parser_workbench.ipynb] · 그 파일의 글자 시험들은 옛 셀에서 다 초록이었던 것
+README    server/admin/dev_bench.py(두 곳) · python server/scripts/try_core.py — 저장소 뿌리에서 --help 로 돌려 봄(exit 0)
+가이드     §2 가져오기를 §4 와 같은 짧은 이름으로 · §3.6 가져오기도 같은 모양이라 같이 고침(지시 밖 한 줄 — 같은 결함)
+          is_header_fn 예시를 (tag, row_idx, col_idx) 로 — 파서가 셋을 넘김 · 머리 줄을 이번에 연 만큼으로(§1 · §3.1~§3.5 · §4 본문은 안 엶)
+시험 범위  노트북 시험 파일만 — 가이드 · README 를 읽는 시험 0
+재기동    없음
+```
+다음: eed8b37de(HTML 토폴로지 파서 — 같은 헤더 경로 값 잃음) -> d8b1e7cfb -> ④.
