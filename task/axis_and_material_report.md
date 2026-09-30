@@ -1,3 +1,20 @@
+> ## [17:51 디자인] 물려받음 블록의 이름을 서버 ground.text 로 — 화면이 지은 낱말 0 · 총괄 2dcf6be37 뒤 · 30ffc1d98
+
+```
+한 것     그 줄의 라벨 = row.ground.text(「Inherited: this source's attributes of dtjob@1」), 경로 = ground.from_paths 를 › 로
+          뷰 코드에 «Inherited» 낱말 0
+```
+
+| 게이트 | 결과 |
+|---|---|
+| explorer_inherited_attributes — I1 라벨이 서버 문장(변이: 화면 낱말), C1·C2 블록을 경로 줄로 셈(어떤 문장이 이름이든) | 8/0 · 변이 5 전부 빨강 |
+| 러너 | 152 중 150 게이트 초록 |
+
+여쭐 것 — 라벨 칸에서 문장이 잘립니다
+- 잰 것(스크래치 1280): 이름 칸 폭 145px, 문장 350px → «Inherited: this so…» 까지 보이고 나머지는 title(마우스 올림)로만 봅니다.
+- 잘림은 기존 판정 그대로입니다: ontology_explorer.css 의 «THE ROW KEEPS ONE HEIGHT» — 트리 이름 칸은 줄바꿈 없이 잘리고 title 로 전체를 봄. 그래서 이 줄만 줄바꿈하게 하지는 않았습니다.
+- 고르실 것: (가) 지금대로(말씀대로 라벨, 잘림 + title) · (나) 이름 칸은 비우고 값 칸에 «서버 문장 · 경로» — 다른 derived 행이 근거 글을 값 칸에 그리는 것과 같은 자리이고, 값 칸은 줄바꿈이 됩니다.
+
 > ## [17:39 디자인] 형식 창이 «Not in this table's smart_paste» 한 줄을 말한다 — 선언이 있는데 그 형식이 클립보드에 하나도 없어 물을 때 · 총괄 a2eb8e745 뒤 ① · 2dcf6be37
 
 ```
