@@ -248,23 +248,19 @@ null    Matches: …      «아직 모른다» -- 세는 중 (+ 원소에 `is-co
 📎 정본은 스킬 [`.claude/skills/ui-design-system/SKILL.md`](../../.claude/skills/ui-design-system/SKILL.md),
 캐논 파일은 `client2/src/ontology_explorer.css` 입니다. 아래 표는 «선언 자리와 오늘의 소비자»만 적습니다.
 
-| 토큰 | 값 | 선언 | 오늘 읽는 곳 (`git grep "var(<토큰>" -- client2`, dist 제외) |
+| 토큰 | 값 | 선언 | 오늘 읽는 곳 (`git grep -c -e "var(<토큰>" -- client2 ':!client2/dist'`) — 🆕 **다시 셈 @`a5eeaabf2`(09-30)** |
 |---|---|---|---|
-| `--space-1` | 3.4px | `tokens.css:167` | **7** — 전부 `client2/admin.html` |
-| `--space-2` | 6.8px | `tokens.css:168` | **10** — 전부 `client2/admin.html` |
-| `--space-3` | 10.2px | `tokens.css:169` | **1** — `client2/admin.html` |
-| `--space-4` | 13.6px | `tokens.css:170` | **3** — `client2/admin.html` |
-| ⚠️ `--space-5` | 20.4px | `tokens.css:171` | **0** |
-| ⚠️ `--space-6` | 27.2px | `tokens.css:172` | **0** |
-| `--fs-label` | 12px | `tokens.css:178` | **2** — `client2/admin.html` |
-| `--graph-max-height` | 420px | `tokens.css:182` | **1** — `client2/admin.html` |
-| 🆕 `--menu-max-height` | 50vh | `tokens.css:217` | **1** — `client2/src/style.css`(`.redo-panel__rows`, 09-29 `e99b496f5`) |
+| `--space-1` | 3.4px | `tokens.css:184` | **32** — `admin.html` · `src/base.css` · `src/ontology_explorer.css` · `src/rnd_board/board.css` · `src/style.css` · `src/transfer_plan.css` |
+| `--space-2` | 6.8px | `tokens.css:185` | **50** — `admin.html` · `sample.html` · `src/base.css` · `src/ontology_explorer.css` · `src/rnd_board/board.css` · `src/style.css` · `src/transfer_plan.css` |
+| `--space-3` | 10.2px | `tokens.css:186` | **36** — `admin.html` · `sample.html` · `src/base.css` · `src/ontology_explorer.css` · `src/rnd_board/board.css` · `src/style.css` · `src/transfer_plan.css` |
+| `--space-4` | 13.6px | `tokens.css:187` | **18** — `admin.html` · `sample.html` · `src/base.css` · `src/rnd_board/board.css` · `src/style.css` |
+| `--space-5` | 20.4px | `tokens.css:188` | **6** — `admin.html` · `sample.html` · `src/ontology_explorer.css` · `src/style.css` |
+| `--space-6` | 27.2px | `tokens.css:189` | **6** — `admin.html` · `sample.html` · `src/style.css` |
+| `--fs-label` | 12px | `tokens.css:208` | **114** — `admin.html` · `src/admin_rows.js` · `src/base.css` · `src/ontology_explorer.css` · `src/rnd_board/board.css` · `src/style.css` |
+| `--graph-max-height` | 420px | `tokens.css:214` | **1** — `admin.html` |
+| `--menu-max-height` | 50vh | `tokens.css:217` | **1** — `src/style.css` |
 
-🔴 **`--space-5`·`--space-6` 은 «선언돼 있고 아무도 안 읽습니다»** — 사다리를 여섯 칸으로 선언하고
-네 칸만 밟고 있습니다. 이것은 결함이 아니라 «측정»이고, 다음 화면이 그 둘을 밟거나 아니면 둘이
-은퇴해야 한다는 뜻입니다(부류: 「착지는 배선이 아니다」의 CSS 판).
-⚠️ **그리고 `var(--space*)` 를 쓰는 `.css` 파일이 «하나도 없습니다»** — 스물한 개 참조가 전부
-`client2/admin.html` 의 인라인 `<style>` 입니다. 토큰이 «한 벌»이 된 것과 «한 벌이 퍼진» 것은 다른 일입니다.
+⚰️ ~~`--space-5`·`--space-6` 은 선언돼 있고 아무도 안 읽는다 · `var(--space*)` 를 쓰는 `.css` 파일이 하나도 없다~~ — 🆕 **09-30 다시 셈: 여섯 칸 다 읽히고, `.css` 파일들(`base.css` · `style.css` · `ontology_explorer.css` · `rnd_board/board.css` · `transfer_plan.css`)이 읽는다**(위 표). 폼의 들여쓰기 `--oe-indent` 가 `--space-5` 가 됐다(`3cf207cd6`, 전엔 16px).
 
 **왜 이 값들인가 — 셋 다 실측에서 나왔습니다** (C-80 커밋 본문이 정본):
 ```
