@@ -1488,7 +1488,8 @@ const FLOORS = new Map([
   // the board part: the walk itself. 32 -> 34 (D5 and its mutant X11, lead d4a949a8c ㉱): the two
   // lists walk through one prelude. 34 -> 39 (H0-H2 and X12 X13, lead 9dd1e378b): measured reads the
   // hops' predicates, the same answer the retired pairing function gave on the same fixture.
-  ['rnd_board_walk_harness.mjs', 39],
+  // 39 -> 41 (H3 and X14, lead 1b1d90d61): a measured card says Measured, not the dash.
+  ['rnd_board_walk_harness.mjs', 41],
   // 🔴 the walk REQUEST, not the walk return. `createWalkBoxWalk` accepted `spec.hops` and
   //    never put it on the wire, so the screen wrote 「3홉」 while the server walked 12 -- with
   //    no error and no warning. A harness that scores the RETURN is green throughout that.

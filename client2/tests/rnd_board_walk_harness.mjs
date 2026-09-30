@@ -254,6 +254,14 @@ async function suite(mods) {
     [Object.values(before).includes(true), Object.values(before).includes(false)], [true, true]);
   eq('H1 on the same fixture, measured is what the pairing function answered before it retired', now, before);
   eq('H2 the pairing function is gone', 'measuredFromHops__untilServerServesIt' in mods.api, false);
+  // The card says the judgment itself; the name-only ones fold into one card (lead 1b1d90d61).
+  const hostH = doc.createElement('div');
+  const h = mk(cand.CandidateListPanel, hostH, { doc, markings, reads: 'marking:1', writes: 'marking:1' }, measuredBody);
+  h.mount(); await flush(); await flush();
+  eq('H3 a measured card says Measured, and the name-only candidates fold into one card',
+    [byClass(hostH, 'rb-cand-measured').map((n) => n.textContent),
+      byClass(hostH, 'rb-cand-card--folded').length],
+    [Object.values(before).filter(Boolean).map(() => 'Measured'), 1]);
 
   return { ran, failures };
 }
@@ -264,6 +272,8 @@ const MUTANTS = [
     mutate: { 'api.js': (s) => s.replace("(h.predicates || []).includes('measures')", "(h.predicates || [])[0] === 'measures'") } },
   { id: 'X13', what: 'any predicate counts, so a name-only candidate reads as measured', catches: 'H1',
     mutate: { 'api.js': (s) => s.replace("(h.predicates || []).includes('measures')", '(h.predicates || []).length > 0') } },
+  { id: 'X14', what: 'a measured card draws the dash again, the line that read as not measured', catches: 'H3',
+    mutate: { 'candidate_list_panel.js': (s) => s.replace("measured.textContent = c.measured ? 'Measured' : '-';", "measured.textContent = '-';") } },
   { id: 'X11', what: 'one list gets its own load again - a second copy of the prelude', catches: 'D5',
     mutate: { 'rank_list_panel.js': (s) => s.replace(
       '  render() {', '  async load() { return super.load(); }\n\n  render() {') } },

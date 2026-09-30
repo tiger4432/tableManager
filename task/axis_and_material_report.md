@@ -1,3 +1,26 @@
+> ## [05:54 디자인] 후보 카드는 measured 판정 그대로 — «실측 -» 거짓 줄 고침 — 총괄 1b1d90d61 · 2b20ed983
+
+- candidate_list_panel: 카드 줄이 c.measured 를 읽습니다(참 Measured · 거짓 «-»). ref 를 읽던 _firstMeasuredRef 는 지웠습니다. 새 판정 · 새 함수 없음.
+
+같은 픽스처(rnd_board_measured.json)에서 카드 글 전후 — 전 = HEAD 의 소스, 후 = 이 커밋:
+
+| 후보 | 전 | 후 |
+|---|---|---|
+| forward | 실측 - | Measured |
+| backward | 실측 - | Measured |
+| second_hop | 실측 - | Measured |
+| both | 실측 - | Measured |
+| 이름뿐 후보(접힌 한 장) | 모델 이름뿐 2 | 모델 이름뿐 2 |
+
+- 사실: 카드는 measured 후보에게만 그려지고 이름뿐인 후보는 접힌 한 장으로 갑니다. 그래서 카드의 «-» 갈래를 오늘 타는 후보가 없습니다. 지시대로 두었습니다.
+- 게이트: rnd_board_walk 41/0 (H3 카드 글과 접힌 한 장), 변이 X14(다시 «-») 빨강 · 러너 154 중 152 게이트 초록 · 계약 12 개 어긋남 0
+- 새 함수 · 새 if 중 기존 것과 같은 일: 새 함수 0(하나를 지움) · 새 if 0.
+
+제안(짓지 않음)
+| 항목 | 왜 | 크기 |
+|---|---|---|
+| 같은 카드의 한국어 낱말(최상위 · 동률 · 종류 다름 · 모델 이름뿐 · 값도 트렌드도 없음)을 영어로 | UI 는 영어라는 소유자 상설. 이번에 Measured 만 영어라 한 카드에 두 말이 섞임 | 작음(안 쟀다) |
+
 > ## [05:31 디자인] ㉳ — measured 는 홉의 predicates 를 읽음, 짝짓기 함수 은퇴 — 총괄 9dd1e378b · ce659dc93
 
 - api.js subgraphModel: 후보의 자취 중 한 홉의 predicates 에 measures 가 있으면 measured. 연이은 홉 id 를 엣지와 짝짓던 함수와 그 임시 경계 주석을 지웠습니다. 옛 이름 호출 0(H2 가 잼).

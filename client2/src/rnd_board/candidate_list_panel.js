@@ -166,23 +166,11 @@ export class CandidateListPanel extends WalkedListPanel {
 
     const measured = doc.createElement('div');
     measured.className = 'rb-cand-measured';
-    // What it actually reaches, from the hop -- not a number invented for the card.
-    const ref = this._firstMeasuredRef(c);
-    measured.textContent = ref ? `실측 ${ref}` : '실측 -';
+    // The measured judgment itself (the hops' predicates). A measures atom's ref is not on a hop,
+    // so none is drawn - a dash for it would read as 「not measured」 (lead 1b1d90d61).
+    measured.textContent = c.measured ? 'Measured' : '-';
     el.appendChild(measured);
     return el;
-  }
-
-  _firstMeasuredRef(c) {
-    for (const ev of c.evidence || []) {
-      for (const hop of ev.hops || []) {
-        // NOT the rule `measured` answers by (the hops' predicates, lead 9dd1e378b): this reads the
-        // `value` hop's ref, and no hop has had kind `value` since every node became an entity, so
-        // it finds none and the card says 「실측 -」 (asked of the lead with 9dd1e378b's report).
-        if (hop.kind === 'value' && hop.ref) return hop.ref;
-      }
-    }
-    return null;
   }
 
   _folded(count) {
