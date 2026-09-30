@@ -196,6 +196,9 @@ class GeneralUpdateItem(BaseModel):
     # {column: the spelling that arrived} for each value the write funnel's notation fold
     # changed - the audit line's old_value (총괄 5ee9d3bd1 ②). Set by `crud`, never sent.
     _written_spelling: Optional[dict] = PrivateAttr(default=None)
+    # The item's data row in its FILE (1-based, the watcher's count) - what a `nokey` key is
+    # made from with the file's identity (총괄 4311a51ed). Set by the watcher, never sent.
+    _file_row: Optional[int] = PrivateAttr(default=None)
 
 
 class EffortReport(BaseModel):
@@ -251,6 +254,11 @@ class GeneralUpdateBatch(BaseModel):
     model_config = ConfigDict(extra="allow")
 
     updates: list[GeneralUpdateItem]
+    # (file signature, the first time that file was ingested) when the batch comes from a
+    # FILE - the rest of a `nokey` key (총괄 4311a51ed). Set by the watcher, never sent.
+    _file_origin: Optional[tuple] = PrivateAttr(default=None)
+    # What the door's `nokey` fill did to this batch: {"filled": {col: n}, "unfilled": {col: n}}.
+    _nokey: Optional[dict] = PrivateAttr(default=None)
     transaction_id: Optional[str] = None # [Phase 75] 외부에서 주입하는 트랜잭션 ID 지원
     silent: bool = False                 # [Phase 76] True일 경우 WebSocket 브로드캐스트 생략
     replace_map: bool = False            # True일 경우 동일 맵의 기존 레코드를 클린 삭제 후 재기록

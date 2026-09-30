@@ -255,13 +255,15 @@ class CheckpointPlan:
     resume_from: 적재를 건너뛸 선두 행 수 (0이면 처음부터)
     note:        재개/재시작 사유 — 로그와 FileIngestionLog detail에 **반드시** 남긴다.
     active:      False면 체크포인트 비활성(시그니처 계산 실패 등) — 기존 동작 그대로.
+    started_at:  그 (표, 시그니처) 행이 처음 생긴 시각 — 같은 파일이면 Retry 에도 같음(총괄 4311a51ed nokey)
     """
 
     __slots__ = ("table_name", "file_signature", "filename", "filepath",
-                 "source_kind", "total_rows", "resume_from", "note", "active")
+                 "source_kind", "total_rows", "resume_from", "note", "active", "started_at")
 
     def __init__(self, table_name=None, file_signature=None, filename=None, filepath=None,
-                 source_kind=None, total_rows=None, resume_from=0, note=None, active=False):
+                 source_kind=None, total_rows=None, resume_from=0, note=None, active=False,
+                 started_at=None):
         self.table_name = table_name
         self.file_signature = file_signature
         self.filename = filename
@@ -271,6 +273,7 @@ class CheckpointPlan:
         self.resume_from = resume_from
         self.note = note
         self.active = active
+        self.started_at = started_at
 
     @classmethod
     def disabled(cls, note: str = None):
@@ -510,11 +513,15 @@ def plan_ingestion(db, table_name: str, file_signature: str, filename: str, file
             filepath=filepath, source_kind=source_kind, total_rows=total_rows,
             file_mtime=file_mtime, file_size=file_size,
             processed_rows=0, chunk_index=0, status=STATUS_IN_PROGRESS,
+            # Stated rather than left to the server default, so the plan holds it with no read back.
+            started_at=datetime.now(timezone.utc),
         )
         db.add(row)
         db.commit()
+        plan.started_at = row.started_at
         return plan
 
+    plan.started_at = row.started_at
     # 기존 행이 있다 — 재개 가부를 명시적으로 판정한다.
     reason = None
     if force_restart:

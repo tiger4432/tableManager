@@ -3276,6 +3276,12 @@ class IngestionHandler(FileSystemEventHandler):
         #    would drop it anyway; here it is named on the file's line with its values.
         unmapped = set(crud.unmapped_columns(t_name, defined_cols))
         unmapped_value_counts = {}
+        # 총괄 4311a51ed: what makes a `nokey` key, and what the door did with it per chunk.
+        file_origin = ((checkpoint.file_signature, checkpoint.started_at)
+                       if checkpoint is not None and checkpoint.active
+                       and checkpoint.file_signature and checkpoint.started_at is not None
+                       else None)
+        nokey_counts = {kind: {"rows": 0, "columns": set()} for kind in ("filled", "unfilled")}
 
         # Determine source_name based on real original filename
         if source_name:
@@ -3429,6 +3435,7 @@ class IngestionHandler(FileSystemEventHandler):
                                     source_name=real_source,
                                     updated_by=uploader
                                 ))
+                                items[-1]._file_row = file_row
                                 item_rows.append(file_row)
                 
                     if not items:
@@ -3444,6 +3451,7 @@ class IngestionHandler(FileSystemEventHandler):
                             transaction_id=file_tx_id,
                             silent=True
                         )
+                        batch_obj._file_origin = file_origin
                         # [P2-A] 진행 오프셋을 이 청크와 **같은 트랜잭션**에 실어 원자 커밋한다.
                         # crud.apply_batch_updates가 내부에서 commit하므로, 그 호출 '이전'에
                         # 같은 세션으로 UPDATE를 발행해야 한 번의 커밋으로 함께 확정된다.
@@ -3483,6 +3491,9 @@ class IngestionHandler(FileSystemEventHandler):
                         # closes, so asking a row its id afterwards is a refresh on a dead
                         # session. The id is in memory here - no query.
                         new_row_ids = _new_row_ids(t_name, results)
+                        for kind, seen in (batch_obj._nokey or {}).items():
+                            nokey_counts[kind]["rows"] += seen["rows"]
+                            nokey_counts[kind]["columns"].update(seen["columns"])
 
                         with alignment_batch_counts.stage("commit"):
                             db.commit()
@@ -3594,6 +3605,16 @@ class IngestionHandler(FileSystemEventHandler):
                         f"{processed_rows} row(s) - declared, but this process's model does "
                         f"not hold the column; reload or restart, then Retry the file.")
                 logger.warning(f"[{t_name}] {note} File '{filename or '?'}'.")
+                dropped = f"{dropped} {note}" if dropped else note
+            for kind, seen in nokey_counts.items():
+                if not seen["rows"]:
+                    continue
+                columns = ", ".join(sorted(seen["columns"]))
+                rows_n = seen["rows"]
+                note = (f"{rows_n} row(s) keyed nokey_... ({columns})." if kind == "filled" else
+                        f"{rows_n} row(s) not keyed nokey ({columns}) - the file has no content "
+                        f"signature to make the key from.")
+                logger.info(f"[{t_name}] {note} File '{filename or '?'}'.")
                 dropped = f"{dropped} {note}" if dropped else note
             file_tally.log(t_name, filename)
 
