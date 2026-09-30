@@ -67487,3 +67487,62 @@ to_local_str        2026-09-30 10:00:00+00:00
                         -> 같은 naive 판 글자를 판 비교(_naive_utc, UTC)와 바뀜 판정(instant_key, 세션 시간대)이 다른 순간으로 읽을 수 있음
 덤                      to_local_str docstring 의 「31 call sites in four modules」 — 지금 29 · 파일 3
 ```
+
+## [구현자 -> 총괄] 8147199d8 재기만 — 가지로 새 어휘를 끝에서 끝까지 (코드 안 고침)
+
+```
+방법  박스 기본 선언(읽기만) + 한 가지 바꿈 -> 임시 가지 vocabprobe (wt-impl 설정 밑 — 라이브 프로세스의 가지 목록엔 안 뜸)
+      -> changed_sources -> 바뀐 소스를 한 조각 번역(backfill.run max_batches 1 · fetch_rows 5000)
+      -> trace_router._evidence_graph(world=) 로 같은 씨앗 걷기(hops 2) -> drop_world. 트리 1f0369216
+기본  ledger_events 행 2261723 -> 2261723 · 기본 걷기 해시(웨이퍼·레시피 씨앗) 전후 같음: True · 남은 가지 []
+```
+```
+경우                              소스 움직임                         가지 걷기에 보임                                   기본 걷기
+① 술어 cardinality one           lot_slot_wafer · wafer_process_recipe 엣지 표지 has_wafer=one, processed_with=one · 대체 0 (두 조각 뒤, include_superseded 도 0)   무변
+   (processed_with · has_wafer)
+② recipe@1 static 뺌             0                                  제품 그대로는 걷기 못함 — HTTPException: 503: {'reason': 'ledger_relation_absent', 'st
+                                                                      refresh_world_view 뒤: 씨앗 recipe 에서 노드 500(웨이퍼 499) · 기본 1   무변
+③ 새 술어 + 기존 소스에 새 문장   wafer_process_recipe               tested_with 엣지 8 · 기본 0                               무변
+④ 새 엔티티 + 새 술어 + 새 소스   wafer_process_step                 stepno 노드 80 · at_step 엣지 1978 · 기본 0 · 0        무변
+```
+**안 되는 것과 까닭** (고치지 않음)
+```
+① 쓸 때 찍는 대체가 운영 원자에 안 닿음 — 가지 탓 아님: 기본 번역도 같은 _stamp_supersedes 를 지남(코드로 읽음, 기본에선 안 잼)
+   runtime_v2._one_cardinality_predicates 는 선언 키(processed_with@1, 버전 붙음)를 돌려주고, 원자의 술어는
+   roleframe._runtime_id 가 버전을 뗀 processed_with. _stamp_supersedes · _conflicting_subjects 둘 다 `atom.predicate in one_predicates`
+   -> 운영 모양에선 늘 거짓. 잰 것: 첫 조각 5000 행 -> 삽입 5000 (한 웨이퍼의 processed_with 목적어 8 이 한 배치에 — 거절 0),
+   둘째 조각 뒤 그 웨이퍼 processed_with 10 · 대체 표지 0
+   시험 test_a_one_cardinality_predicate_carries_one_object 는 원자 술어를 "holds@1"(버전 붙음)로 지어 초록 — 운영 모양 아님
+   대체 표지는 «쓸 때» 찍힘(_stamp_supersedes: 배치마다 가게의 현재 원자와 견줌, 한 배치 안·소급은 안 함) ·
+   «읽을 때»는 표지로 거르기만(trace.live_claims <- ledger_subgraph._split_superseded). 엣지 cardinality 표지는 걷기가 world 선언에서 읽어 맞음
+② 가지 뷰를 짓는 자리가 backfill 의 두 자리(run 끝 · 범위 배치 끝의 refresh_world_view)뿐 — 소스를 안 움직이는 선언 바꿈(static)은
+   번역이 없어 뷰가 없고 걷기가 503. 걷기 자체는 가지 선언을 읽음(_static_types(world) · 선언 경로 contextvar)
+④ 곁일: 새 소스가 기존 소스와 같은 relation 을 읽으면 backfill 이 relation 단위로 줄을 넣어(followup.enqueue(plan.relation))
+   기존 소스도 가지에 다시 번역 — 가지 원장: wafer_process_recipe processed_with 5000 · wafer_process_step at_step 5000
+   가지 뷰는 가지가 쓴 소스의 기본 원자를 가려서, 조각만 번역된 동안 기존 엣지가 덜 보임(씨앗 웨이퍼 processed_with 기본 10 -> 가지 8).
+   끝까지 번역하면 같아지는지는 안 잼
+```
+**덤 — world 를 받는 서버 라우트 21** (AST, 데코레이터가 있는 함수 중 world 인자를 받는 것)
+```
+DELETE /admin/ontology-explorer/declarations/{target_key:path}
+DELETE /admin/ontology-explorer/drafts/{draft_id}
+DELETE /admin/ontology-explorer/worlds/{world}
+GET /admin/ontology-explorer/authoring/plan
+GET /admin/ontology-explorer/authoring/schema
+GET /admin/ontology-explorer/columns
+GET /admin/ontology-explorer/deletion-preview
+GET /admin/ontology-explorer/view
+GET /api/ledger/declaration
+GET /api/ledger/gaps
+GET /api/ledger/key-values
+GET /api/ledger/subgraph
+POST /admin/ontology-explorer/authoring/plan
+POST /admin/ontology-explorer/bootstrap
+POST /admin/ontology-explorer/drafts
+POST /admin/ontology-explorer/drafts/new
+POST /admin/ontology-explorer/drafts/{draft_id}/activate
+POST /admin/ontology-explorer/drafts/{draft_id}/review
+POST /admin/ontology-explorer/drafts/{draft_id}/revise
+POST /admin/ontology-explorer/test-run
+PUT /admin/ontology-explorer/drafts/{draft_id}
+```
