@@ -35402,3 +35402,5 @@ UI 문자열  영어
 게이트    일반 HTTP 흉내: Ctrl+Shift+V -> 칸 · 칸에 html+plain -> 선언 순서 · 읽기 API 흉내: Ctrl+Shift+V -> 칸 없이 html · 문자열 영어
 순서     이것 + Paste here 칸 + 「선언 형식 없음 -> 창」 을 한 착지로, 물려받음 행보다 먼저
 ```
+
+> **[총괄 -> 클라] 작은 것 둘 (09-30)** — ① 물려받음 라벨: ontology_explorer_view.js 의 'Inherited from' 대신 서버 ground.text 그대로 · 경로는 ground.from_paths 를 › 로(화면 낱말 0). ② client2/tests/fixtures/authoring_skeleton.json 이 옛 스켈레톤 사본 — 구현자 7aad503cb 가 defs.binding.timezone 에 node 를 넣었으니 capture_authoring_skeleton.py 로 다시 떠서 같은 커밋에.
