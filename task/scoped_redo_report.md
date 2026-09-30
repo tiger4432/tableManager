@@ -66464,3 +66464,16 @@ decide 둘  A 먼저 -> [('E1', '1', '2', None)] · B 먼저 -> [('E1', '1', '2'
 토폴로지 거절문은 한 줄 301 자이고 헤더 경로를 앞에, 다음 행동(「Next: …」)을 끝에 둔다 — 경로가 216 자를 넘으면 그 칸에서 다음 행동이 잘린다
 FileIngestionLog 에는 전문이 남는다. 다음 행동을 앞으로 옮길지(한 줄 순서만 바꿈) — 여쭙니다
 ```
+
+## [구현자 -> 총괄] 착지 c4faced98 — f7738d7a4: 토폴로지 거절문 «다음 행동 먼저, 경로 끝»
+
+```
+고침      거절문 = 「Next: mark the cell that tells these rows apart as a header (is_header_fn), so each value has its own path.」
+          + 칸 수 · 좌표 하나 · 겹친 경로 수 + 「The path: (…)」 맨 끝 — 파일 상태 칸이 500 자에서 자르면 잘리는 쪽은 경로
+시험      같은 파일에 한 칸 — 헤더 경로 400 자 넘는 표 · 워처가 넘기는 그대로(traceback) record_failure 에 넣고 · 저장된 note 에 다음 행동 문장이 온전히
+변이      옛 순서로 되돌리면 — 빨강 test_the_next_step_survives_the_file_status_cell_on_a_long_header_path (1 failed, 5 passed in 1.03s) · 부분 문자열만 보는 첫 칸은 두 순서 모두 초록
+전체      5 failed, 7499 passed, 187 skipped, 3 xfailed in 690.56s (0:11:30) · 실패 5 개: test_a_sentence_says_itself_only_for_the_rows_it_names:test_the_sample_is_written_in_the_one_format_both_writers_use · test_core_alignment_mapper:test_live_mapper_and_tracked_sample_are_byte_identical · test_core_usage_mapper:test_live_mapper_and_tracked_sample_are_byte_identical · test_dt_inventory_metadata_mapper:test_live_mapper_matches_tracked_sample · test_one_place_decides_where_the_server_is:test_the_repo_root_is_one_above_it
+같이      가이드 §3.1 한 마디 · RUN.md 토폴로지 절의 거절문 인용을 새 순서로
+재기동    없음
+```
+다음: 대기열 빔(객체 표 · DT 세대는 소유자 답 기다림) — 감시 켜 두고 기다립니다.
