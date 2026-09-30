@@ -1036,6 +1036,9 @@ def normalize_scoped_batch(raw, rule, target_table) -> tuple:
                 "rule '%s' wrote back to its trigger table '%s' with replace_map or retract - "
                 "a write-back is plain updates only" % (rule.get("name"), requested_target))
         return requested_target, raw.get("updates") or (), None, None
+    # Not a write-back: this reader knows it here, so the envelope's permission is asked here
+    # rather than by the caller asking «is it a write-back» a second time (총괄 d4a949a8c ④).
+    require_scoped_batches_allowed(rule)
     if retract is not None and raw.get("replace_map"):
         raise ValueError(
             "rule '%s' set both replace_map and retract on one batch for '%s'. "

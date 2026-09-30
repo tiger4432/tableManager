@@ -2145,9 +2145,9 @@ def _process_chain_transaction_group_sync(tx_id, events, db, rules):
                             raise ValueError("chain map metadata update requires a non-empty map_id")
                         map_metadata_updates.append(requested)
                 if target_payload["batches"]:
-                    # Either permission opens the envelope; the per-batch checks below
-                    # then require the one that matches the strategy the batch actually
-                    # asked for. A retract-only rule must not have to grant itself
+                    # Either permission opens the envelope - the reader asks it of a batch
+                    # that is not a write-back - and its per-batch checks then require the
+                    # one that matches the strategy the batch actually asked for. A retract-only rule must not have to grant itself
                     # `allow_replace_map` to be heard - that would leave a purge
                     # permission standing for a rule that never purges.
                     # 🔴 [C-15] 봉투 검증은 «한 독자»가 한다. 이 여섯 규칙이 여기와
@@ -2156,8 +2156,6 @@ def _process_chain_transaction_group_sync(tx_id, events, db, rules):
                     for requested in target_payload.get("batches") or []:
                         batch = dt_map_derivation.normalize_scoped_batch(
                             requested, rule, target_table)
-                        if batch[0] == target_table:
-                            dt_map_derivation.require_scoped_batches_allowed(rule)
                         scoped_batches.append(batch)
                         # A scoped batch writes its table - this target, or the trigger
                         # table written back (총괄 2dd93d4a9 1) - so a failure in it names

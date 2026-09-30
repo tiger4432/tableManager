@@ -63,7 +63,9 @@ def test_every_consumer_calls_the_one_reader():
     for name in CONSUMERS:
         code = _code(name)
         assert "normalize_scoped_batch(" in code, "%s no longer reads the envelope" % name
-        assert "require_scoped_batches_allowed(" in code
+        # the reader asks the permission; a consumer asking «is it a write-back» again is
+        # the second judge 총괄 d4a949a8c ④ folded
+        assert "require_scoped_batches_allowed(" not in code, name
 
 
 # ============================================ 2. 여섯 규칙이 «그대로» 산다
@@ -99,6 +101,12 @@ def test_either_permission_opens_the_envelope():
     with pytest.raises(ValueError) as e:
         dmd.require_scoped_batches_allowed({"name": "r"})
     assert "allow_replace_map or allow_retraction" in str(e.value)
+    # and the reader asks it of a batch for the target, not of a write-back
+    with pytest.raises(ValueError) as e:
+        dmd.normalize_scoped_batch({"replace_map": True, "scope": {"a": 1}}, {"name": "r"}, "t")
+    assert "allow_replace_map or allow_retraction" in str(e.value)
+    assert dmd.normalize_scoped_batch({"target_table": "t_in", "updates": ["u"]},
+                                      {"name": "r", "trigger_table": "t_in"}, "t")[0] == "t_in"
 
 
 def test_the_two_strategies_come_back_apart():
