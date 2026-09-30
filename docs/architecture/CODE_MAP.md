@@ -3893,7 +3893,8 @@ note_naive_time(...)      셈 · `naive_time_counts()` · `naive_time_note()` �
 | GET `/view` | `require_admin_token` | 탐색기 읽기 모델 |
 | 🆕⑩ GET `/columns` | `require_admin_token` | 컬럼 피커 — `column_stats`의 물리 프로브를 태운다(**비싼 읽기**라 strict가 아니다) |
 | 🆕⑩ GET `/authoring/schema` | `require_admin_token` | `config_authoring.closed_lists()` — 폼이 고를 수 있는 닫힌 목록 |
-| 🆕⑩ GET `/authoring/plan?selection=` | `require_admin_token` | **작성 계획** — `authoring_plan`의 4상태 행 전량 |
+| 🆕⑩ GET `/authoring/plan?selection=` | `require_admin_token` | **작성 계획** — `authoring_plan`의 4상태 행 전량. 🆕 행마다 `reshapes`(09-29 `052ac582c` — 그 값이 다른 행의 배치를 바꾸면 true, `config_authoring.Field`, 잎 아홉 — 화면이 경로를 안 대고 다시 묻는다) |
+| 🆕 POST `/authoring/plan` `{selection, draft_id, raw}` | `require_admin_token` | **저장 안 한 초안 본문 위의 같은 계획**(`052ac582c`) — 파일에 편집기 본문을 초안 자리에 끼워, 저장이 채우듯 채운 뒤 답한다(`config_drafts.with_unsaved_body` · `filled_declaration`). 아무것도 안 씀. 본문 파싱은 저장도 부르는 한 함수 `parse_draft_raw` — 둘이 같은 글을 같은 이름으로 거절 |
 | 🆕⑩ GET `/deletion-preview?targets=&context_token=` | `require_admin_token` | 삭제가 **함께 데려갈 선언 전부**를 확정 전에 이름 댄다. 🔴 **아무것도 쓰지 않아서** `/view`와 같은 토큰이다 |
 | 🆕⑩ **POST `/test-run`** | `require_admin_token` | 🔴 **선언 하나를 «진짜 한 배치» 돌려 본다.** 아래 별도 항목 |
 | POST `/drafts` | `require_admin_token_strict` | |
@@ -3904,7 +3905,7 @@ note_naive_time(...)      셈 · `naive_time_counts()` · `naive_time_note()` �
 | DELETE `/drafts/{draft_id}` | `require_admin_token_strict` | |
 | 🆕⑩ DELETE `/declarations/{target_key:path}` | `require_admin_token_strict` | 선언 삭제(경로 컨버터 — key에 `.`이 들어간다) |
 
-🔒 **게이트가 갈리는 규칙은 「쓰는가」가 아니라 「쓰는가 + 값싼가」다** — `/view`·`/columns`·`/authoring/schema`·`/authoring/plan`·`/deletion-preview`·`/test-run` **여섯**이 보통 토큰이고 **나머지 «아홉» 쓰기 전부가 strict**다(6+9=15. 검사: `grep -c 'Depends(require_admin_token)'` = **6**). 모듈 수준 헬퍼: `configure_service(service)`(테스트가 서비스를 갈아 끼우는 자리) · `_refusal(exc)`(`ConfigExplorerError`/`ColumnStatsError` → HTTPException 단일 철자).
+🔒 **게이트가 갈리는 규칙은 「쓰는가」가 아니라 「쓰는가 + 값싼가」다** — `/view`·`/columns`·`/authoring/schema`·`/authoring/plan`(GET · 🆕 POST)·`/deletion-preview`·`/test-run` ~~여섯~~ 🆕 **일곱**이 보통 토큰이고 **나머지 «아홉» 쓰기 전부가 strict**다(🆕 7+9=16 @`052ac582c`. 검사: `grep -c 'Depends(require_admin_token)'` = **7** · `grep -c -E '^@router\.'` = **16**). 모듈 수준 헬퍼: `configure_service(service)`(테스트가 서비스를 갈아 끼우는 자리) · `_refusal(exc)`(`ConfigExplorerError`/`ColumnStatsError` → HTTPException 단일 철자).
 
 ⚠️ [§1.4](#14-api-라우트-표--어드민운영그래프맵인리치먼트)의 「`/admin`+`/internal` 게이트 데코레이터 28개」 계수에 **이 라우터는 들어 있지 않다**(그 수는 `main.py`의 `@app.*`만 셌다). 🆕⑩ **이 패스도 다시 세지 않았다.**
 
