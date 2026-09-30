@@ -18,6 +18,8 @@ through one funnel is what makes those two answer the same.
 """
 import datetime
 
+import pytest
+
 from database import crud
 
 T_MICRO = datetime.datetime(2026, 8, 4, 6, 23, 39, 123456)
@@ -51,6 +53,17 @@ def test_the_type_bridge_still_spells_a_bool_and_a_timestamp_the_way_sql_does():
         "if this ever became 'true', the two spellings merged and the bridge is moot")
     assert crud.comparison_text_value(True) == "true"
     assert crud.comparison_text_value(T_MICRO) == T_MICRO_TEXT
+
+
+def test_the_reading_twin_reads_what_the_writer_spells_and_refuses_the_rest():
+    """총괄 d4a949a8c ⑤: "yes" was True to one reader and False to another - the text a yes/no
+    column holds is the two words `boolean_text_value` writes, and nothing else is guessed."""
+    for value in (True, False):
+        assert crud.boolean_text_read(crud.boolean_text_value(value)) is value
+    assert crud.boolean_text_read(" TRUE ") is True and crud.boolean_text_read("") is None
+    for word in ("yes", "1", "on", "no", "0"):
+        with pytest.raises(ValueError):
+            crud.boolean_text_read(word)
 
 
 def test_the_temporal_text_is_pinned_not_the_dialects_default():

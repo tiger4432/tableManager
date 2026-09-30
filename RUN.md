@@ -1,5 +1,19 @@
 # 지금 돌리면 되는 것
 
+> ## 🔴 [10-01 아침] **걷기 응답의 증거 길 — 홉마다 predicates · 대조 저장은 그 길 그대로 · 참거짓 글 칸은 "true"/"false" 만 · 마이그레이션 «없음» · 재기동 서버 · 체인 워커 (run_app.bat 로 전체)**
+>
+> ```
+> 무엇이 바뀌나  /api/ledger/subgraph 의 propagation.ranked[].evidence[].hops[i](i ≥ 1)에 predicates 가 붙음 — 응답 edges 중 앞 홉과 그 홉 사이 술어 전부
+>              대조 저장(contrast_factor.evidence)은 전과 같은 글(시험 픽스처에서 byte 같음)
+>              contrast_run.include_superseded 칸: "true"/"false" 만 읽음. 전엔 "1" 도 참, "yes" 는 거짓 — 이제 둘 다 그 run 거절
+>              소급 작업의 참거짓 인자도 같은 읽기 · 같은 거절 문장
+> 돌릴 명령     없음
+> 뜻           대조 run 이 「include_superseded must be true or false, got "yes" - write true or false」 로 안 돌면 = 그 칸에 true 나 false 를 적기
+> 급할 때       커밋 되돌리기
+> ```
+
+---
+
 > ## 🔴 [10-01 새벽] **작성 폼 감사 스크립트가 제품의 스켈레톤 해석기를 부름 · 출력 같음 · 재기동 «없음»**
 >
 > ```

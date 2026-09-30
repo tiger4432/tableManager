@@ -76,8 +76,15 @@ def _walk_arguments(row) -> tuple:
         raw = getattr(row, cell, None)
         args[cell] = _route_default(cell) if _blank(raw) else str(raw).strip()
     raw = getattr(row, "include_superseded", None)
-    args["include_superseded"] = (_route_default("include_superseded") if _blank(raw)
-                                  else str(raw).strip().lower() in ("true", "1"))
+    if _blank(raw):
+        args["include_superseded"] = _route_default("include_superseded")
+    else:
+        from database import crud
+
+        try:
+            args["include_superseded"] = crud.boolean_text_read(raw, "include_superseded")
+        except ValueError as refused:
+            return None, str(refused)
     for cell in ("since", "until"):
         raw = getattr(row, cell, None)
         args[cell] = None if _blank(raw) else (raw.isoformat() if hasattr(raw, "isoformat")
@@ -101,31 +108,6 @@ def _walk(db, args):
         collect=None, seed_type=args["seed_type"], seed_limit=args["seed_limit"],
         group_by=None, measure=None, response_format="json", db=db,
         include_superseded=args["include_superseded"], world=args["world"])
-
-
-def _with_predicates(trails, edges) -> list:
-    """Each hop after the first carries the predicates of the edges between it and the hop
-    before - either direction, as the board pairs them (총괄: the stored trail names what it
-    crossed; the route's own trails stay as they are)."""
-    between = {}
-    for edge in edges or ():
-        source, target, predicate = edge.get("source"), edge.get("target"), edge.get("predicate")
-        if source and target and predicate:
-            between.setdefault(frozenset((source, target)), set()).add(str(predicate))
-    out = []
-    for trail in trails or ():
-        hops = [dict(hop) for hop in trail.get("hops") or ()]
-        for index in range(1, len(hops)):
-            pair = frozenset((hops[index - 1].get("id"), hops[index].get("id")))
-            hops[index]["predicates"] = sorted(between.get(pair) or ())
-        out.append(dict(trail, hops=hops))
-    return out
-
-
-def _flag(value):
-    """A yes/no of the response as the text its JSON spells (`true`/`false`) - the column is
-    text, and a bool handed to it reads back as `1` on one database and is refused on another."""
-    return None if value is None else ("true" if value else "false")
 
 
 def contrast_walk(db, payload, rule=None):
@@ -159,13 +141,12 @@ def contrast_walk(db, payload, rule=None):
             refusals.append("%s: %s" % (run_id, detail.get("message") or refused.detail))
             continue
         block = answer.get("propagation") or {}
-        edges = answer.get("edges") or []
         ranked = block.get("ranked") or ()
         runs.append(schemas.GeneralUpdateItem(
             row_id=row.row_id,
             updates={"run_id": run_id, "computed_at": datetime.now(timezone.utc),
                      "candidates": len(ranked), "contrast": block.get("contrast"),
-                     "complete": _flag(block.get("complete"))},
+                     "complete": crud.boolean_text_value(block.get("complete"))},
             origin_row_id=row.row_id, source_name=crud.CHAIN_SOURCE, updated_by=name))
         for item in ranked:
             reach = list(item.get("reach") or [None, None])
@@ -179,10 +160,13 @@ def contrast_walk(db, payload, rule=None):
                          "reach_positive": reach[0], "reach_negative": reach[1],
                          "reachable_positive": reachable[0],
                          "reachable_negative": reachable[1],
-                         "rank": item.get("rank"), "top": _flag(item.get("top")),
-                         "tied": _flag(item.get("tied")),
-                         "incomparable": _flag(item.get("incomparable")),
-                         "evidence": json.dumps(_with_predicates(item.get("evidence"), edges),
+                         "rank": item.get("rank"),
+                         # the column is text; a bool reads back `1` on one database and is
+                         # refused on another
+                         "top": crud.boolean_text_value(item.get("top")),
+                         "tied": crud.boolean_text_value(item.get("tied")),
+                         "incomparable": crud.boolean_text_value(item.get("incomparable")),
+                         "evidence": json.dumps(item.get("evidence") or [],
                                                 ensure_ascii=False)},
                 origin_row_id=row.row_id, source_name=crud.CHAIN_SOURCE, updated_by=name))
     for why in refusals:

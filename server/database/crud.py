@@ -1502,6 +1502,23 @@ def boolean_text_value(value):
     return "true" if value else "false"
 
 
+def boolean_text_read(value, name="value"):
+    """The reading twin of `boolean_text_value`: the two words it writes, `true` / `false` (case
+    and surrounding space aside), a bool as itself, a blank as None - anything else is refused
+    as `name`, in `validation.flag_refusal`'s sentence (총괄 d4a949a8c ⑤: "yes" was True to one
+    reader and False to another)."""
+    if isinstance(value, bool):
+        return value
+    if is_blank_value(value):
+        return None
+    word = str(value).strip().lower()
+    if word in ("true", "false"):
+        return word == "true"
+    import validation
+
+    raise ValueError(validation.flag_refusal(name, value))
+
+
 def column_text_sql(col_expr):
     """THE funnel: any column expression rendered to the canonical comparison text.
 

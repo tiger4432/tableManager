@@ -2113,10 +2113,12 @@ def validate(op: str, params: dict) -> dict:
                 raise RetroactiveRefused(
                     f"'{op}' parameter '{p['name']}' must be a whole number; got {raw!r}")
         elif p["type"] == "bool":
-            value = {"true": True, "false": False}.get(str(raw).strip().lower())
-            if value is None:
-                raise RetroactiveRefused(
-                    f"'{op}' parameter '{p['name']}' must be true or false; got {raw!r}")
+            from database import crud
+
+            try:
+                value = crud.boolean_text_read(raw, p["name"])
+            except ValueError as refused:
+                raise RetroactiveRefused(f"'{op}' parameter {refused}") from None
         else:
             value = str(raw).strip()
         out[p["name"]] = value

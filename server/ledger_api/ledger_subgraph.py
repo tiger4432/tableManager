@@ -1221,29 +1221,46 @@ def _trail_back(trail, node_id):
     return ids, predicates
 
 
-def _evidence(nodes, parents, seed_signs, node_id):
+def _predicates_between(edges):
+    """`{frozenset((a, b)): {predicate, ...}}` over the response's edges, either direction - what
+    a trail's hop pair crossed as the board pairs them (총괄 d4a949a8c ⑤, from the mapper that
+    used to add it: every predicate between the two, not only the one the BFS met first)."""
+    between = {}
+    for edge in edges or ():
+        source, target, predicate = edge.get("source"), edge.get("target"), edge.get("predicate")
+        if source and target and predicate:
+            between.setdefault(frozenset((source, target)), set()).add(str(predicate))
+    return between
+
+
+def _evidence(nodes, parents, seed_signs, node_id, between):
     """The hop-by-hop path from every seed that reached this candidate.
 
     Each hop carries the ref the projection already holds — the claim atom's raw source for
     a ledger hop, the declaration file for a synthesized mechanism hop — rather than a
-    second provenance vocabulary invented for the ranking.
+    second provenance vocabulary invented for the ranking. Each hop after the first carries
+    `predicates`: `_predicates_between` for it and the hop before.
     """
     trails = []
     for seed, trail in parents.items():
         if node_id not in trail:
             continue
         path, _predicates = _trail_back(trail, node_id)
+        hops = [{
+            "id": item,
+            "node_kind": nodes[item].get("node_kind"),
+            "label": nodes[item].get("label"),
+            "atom": (nodes[item].get("keys") or {}).get("id"),
+            "ref": (nodes[item].get("source_raw_ref")
+                    or nodes[item].get("basis")),
+        } for item in path]
+        for index in range(1, len(hops)):
+            hops[index]["predicates"] = sorted(
+                between.get(frozenset((path[index - 1], path[index]))) or ())
         trails.append({
             "seed": seed,
             "sign": "+" if seed_signs[seed] > 0 else "-",
-            "hops": [{
-                "id": item,
-                "node_kind": nodes[item].get("node_kind"),
-                "label": nodes[item].get("label"),
-                "atom": (nodes[item].get("keys") or {}).get("id"),
-                "ref": (nodes[item].get("source_raw_ref")
-                        or nodes[item].get("basis")),
-            } for item in path],
+            "hops": hops,
         })
     return trails
 
@@ -1416,6 +1433,7 @@ def _propagation(nodes, edges, seed_signs, complete, static_types=()):
         block["message"] = "This walk reached no node beyond its seeds"
         return block
     layers = _rank_layers(collected)
+    between = _predicates_between(edges)
     block["state"] = "ranked"
     block["ranked"] = [{
         "id": item["id"], "type": item["type"], "label": item["label"],
@@ -1434,7 +1452,7 @@ def _propagation(nodes, edges, seed_signs, complete, static_types=()):
         # graph's DIAMETER rather than by `hops`.  ⚠️ That measurement was taken when the
         # population was ONE collected kind; it is now every reached node, so the item
         # count is the node budget rather than a fraction of it.
-        "evidence": _evidence(nodes, parents, seed_signs, item["id"]),
+        "evidence": _evidence(nodes, parents, seed_signs, item["id"], between),
     } for layer in layers for item in layer]
     block["top_set"] = [item["id"] for item in layers[0]]
     return block

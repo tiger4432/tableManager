@@ -181,6 +181,24 @@ def test_the_stored_trail_names_the_predicates_it_crossed(db):
                           for trail in trails for hop in trail["hops"][1:])
 
 
+def test_include_superseded_is_read_as_true_or_false_and_anything_else_is_refused():
+    """총괄 d4a949a8c ⑤: `crud.boolean_text_read`, not a reader of its own that took "1" and
+    called "yes" false."""
+    from types import SimpleNamespace
+
+    import validation
+    from mappers import contrast_walk
+
+    for text, want in (("true", True), ("FALSE", False)):
+        args, why = contrast_walk._walk_arguments(
+            SimpleNamespace(include_superseded=text, until=UNTIL))
+        assert why is None and args["include_superseded"] is want, (text, why)
+    for text in ("yes", "1"):
+        args, why = contrast_walk._walk_arguments(
+            SimpleNamespace(include_superseded=text, until=UNTIL))
+        assert args is None and why == validation.flag_refusal("include_superseded", text), why
+
+
 def test_a_run_without_until_is_refused_by_name(db):
     row_id = _save_run(db, "R_OPEN_ENDED", [_lot("P1")], [_lot("N1")], until=None)
     out = _chain(db, row_id)
