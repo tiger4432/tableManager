@@ -62265,3 +62265,30 @@ _when_value 접기 — 지금 하지 않는다. 오늘 착지 전체를 소유�
 옮김   test_every_cli_write_goes_through_the_door 는 --world 로 — 격리 방식은 네 판단(쓴 방식을 보고에)
 문서   ONTOLOGY_LEDGER_SETUP §13.4 · CODE_MAP · SYSTEM_FLOWS · client2 run_lines_harness 값 — 같은 커밋
 ```
+
+---
+
+> **[총괄 -> 구현자] 09-30 착지분의 «문» 정리 — 소유자 정의 cdeb5ea10 (가지 착지 «다음», ① 은 가지보다 먼저 끼워도 됨)**
+
+```
+출처   총괄 검수(69c9e2617^..HEAD, server+client2/src) — 같은 일을 하는 새 함수 13 · 같은 일을 가르는 if 3. 총괄이 직접 연 것: ① · 클라 ㉮
+규칙   각 항목 «짓기 전에» 쌍둥이를 네가 열어 확인하고, 같은 일이 아니면 그 사실만 보고. 접는 방향은 «기존 정본을 고치거나 부른다»
+① 🔴 nokey 칸이 «아예 없는» 파일이 헤더에서 거절됨 (a02701d3a)
+   std_parser._build_header_map 의 키 검사는 nokey 를 모르고, _resolve_key_groups.required 만 안다 — 같은 물음(「파일이 가져와야 할 키 칸」)에 답이 둘
+   소유자 문장 「특정 키컬럼들 없으면 해당키들 배치 일괄로 nokey_…로 채울수 있어?」 — «칸이 없는» 파일이 그 문장의 첫 경우다
+   접기: 두 자리가 required() 하나를 부른다. 게이트 composite [lot, slot] · slot nokey · 헤더 [lot, v] -> 적재되고 slot 이 nokey 값 · 변이 빨강
+② 빈 값 판정 하나로 — crud.is_blank_value(정본) · source_preparation.is_blank_source_value · _is_missing 둘(roleframe · source_preparation) · roleframe._when_value
+   정본이 NaN 을 빈 값으로 못 봄(clean_str_value 가 "nan") — 정본을 고치는 것부터. 정본을 부르는 자리 전수와 «NaN 이 닿을 수 있는 자리» 수를 먼저 보고(동작이 바뀌는 자리)
+③ 「내놓았지만 안 쓴 칸」 세기·알림이 둘 — directory_watcher 의 unmapped 갈래(:3416~, :3601~)와 undeclared 갈래(:3424~ + _announce_dropped_columns). 한 셈 · 한 알림에 사유 이름으로
+④ 「되쓰기인가」를 두 곳이 물음 — ingestion_worker `if batch[0] == target_table` 과 dt_map_derivation.normalize_scoped_batch. 판정한 쪽의 답을 읽게
+⑤ contrast_walk 셋
+   _flag -> crud.boolean_text_value · _walk_arguments 의 yes/no 읽기 `in ("true","1")` -> 이미 있는 읽기(어느 것인지 이름 대고) — "yes" 가 여기선 False, 딴 데선 True
+   _with_predicates — 클라 measuredFromHops__untilServerServesIt 가 「서버가 줄 때까지」라 적어 둔 그 일. 걷기 라우트의 trails 가 홉마다 술어를 «직접» 내게 하고
+   맵퍼는 그것을 읽는다(한 저자). 클라 함수 은퇴는 클라 몫 — 응답 모양을 착지 보고에
+⑥ config_authoring._skeleton_node 와 scripts/audit_authoring_form._skeleton_node — 스크립트가 제품 것을 부르게(x[0] 떼기 · 끝의 use 풀기 차이 확인)
+⑦ config_drafts.with_unsaved_body 는 «작성 파일 + 카탈로그 로더», 저장은 «활성 스냅샷 + 그 카탈로그» — 「저장처럼 채운다」가 둘이 다를 때 거짓. 같은 입력으로
+⑧ gate.record_unsaid 가 자기 경고 줄 따로 — record_incomplete 처럼 gate 노트 한 줄에 실리게
+⑨ 결함 둘(문 아님): POST /authoring/plan 이 draft_id 없을 때 "" 로 draft_store.get("") · authoring() 이 초안 길에서 active() 를 부름(자기 docstring 이 피한다고 적은 것) — 깨진 선언으로 한 번 돌려 확인
+보고만 instant_key 와 crud.temporal_text_value 가 naive 시각을 달리 읽음(세션 시간대 vs UTC) — 동결 목록 항목(시간대). 수만 보고, 고치지 않음
+게이트 공통  항목마다 전/후 같은 픽스처가 같은 답 · 접힌 쪽 삭제 · 변이 빨강 · 보고에 「새 함수·새 if 중 기존 것과 같은 일」 한 줄
+```
