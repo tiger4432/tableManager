@@ -67185,3 +67185,83 @@ F4 complete is stored as a bool                      빨강  (1 failed, 13 passe
 전체  5 failed, 7520 passed, 196 skipped, 3 xfailed in 692.62s (0:11:32) — 실패 5 개, 파일::이름으로 알려진 다섯과 같음: True
 PG    7 failed, 150 passed, 7567 deselected, 53 warnings in 264.08s (0:04:24) — 실패 이름이 알려진 일곱과 같음: True
 ```
+
+## [구현자 -> 총괄] d4a949a8c ⑦ ⑨ 착지 ea4508a0e — 저장 전 계획의 채우기 · 초안 없는 POST · 파일 없음 500 (1 나 · 2 가 · 3 한 착지)
+
+**⑦ 채우기 입력 — 전후** (추적 표본 · 임시 폴더 · filled_declaration 에 기록기, 계획과 저장 두 호출 비교. 전 = origin/main 사본, 후 = 착지 트리)
+```
+sample as tracked
+  전  bundle same=False · catalog same=True · virtual_joins: plan None save {}
+  후  bundle same=True · catalog same=True
+another source broken (lot_event read.table)
+  전  bundle same=False · catalog same=True · sources: plan-only ['lot_event'] save-only [] differing [] · virtual_joins: plan None save {}
+  후  bundle same=True · catalog same=True
+```
+```
+바꾼 것   with_unsaved_body 가 catalog 대신 활성 셋업을 받아 저장의 _filled_declaration(active_setup, node, raw) 를 그대로 부름
+         서비스는 이미 부르던 active() 의 셋업을 넘김. 계획 표(authoring_plan)는 전처럼 작성 파일 + 로더 카탈로그 위
+게이트    두 상자 — 활성 셋업이 뺀 선언(lot_event read.table 깨짐) · 컴파일 뒤 바뀐 카탈로그(로더에만 표 하나 더)
+         두 호출의 넷(문서·카탈로그·경로·raw)이 같음 + 상자가 실제로 둘을 갈라 놓았는지 같은 시험에서 단언
+```
+**⑨ 거절 문장 — 전후** (같은 상자, 라우트별)
+```
+POST plan, no draft_id                       400 invalid_draft_id       -> 400 draft_required
+GET view draft_preview, no draft_id          400 draft_required         -> 400 draft_required
+file gone: POST plan with draft              500 Internal Server Error  -> 400 missing_config_file
+file gone: GET plan                          200 (200)                  -> 200 (200)
+file gone: GET view                          500 Internal Server Error  -> 400 missing_config_file
+file gone: PUT draft                         500 Internal Server Error  -> 400 missing_config_file
+file unreadable: POST plan with draft        400 unreadable_config      -> 400 unreadable_config
+file unreadable: GET plan                    400 unreadable_config      -> 400 unreadable_config
+file unreadable: GET view                    500 Internal Server Error  -> 400 invalid_json
+file unreadable: PUT draft                   500 Internal Server Error  -> 400 invalid_json
+
+후 문장(Next 먼저):
+  Next: restore or fix ledger_config.json, or start one with Create starting file. config_root: file 'ledger_config.json' does not exist
+  Next: restore or fix ledger_config.json, or start one with Create starting file. ledger_config: invalid JSON at line 1 column 3
+```
+```
+1 (나)   required_draft_id — view 의 draft_preview 가 자리 안에서 짓던 거절을 한 자리로. view 와 POST /authoring/plan 이 부름
+2 (가)   active() 안에서 LedgerSetupValidationError -> ConfigExplorerError (코드·경로 그대로, 문장은 Next 먼저)
+         active() 를 부르는 서비스 자리 열 곳이 전부 이 한 자리를 지남 — 초안 길뿐 아니라 view · 초안 만들기 · 저장 등의 500 도 400
+         authoring() docstring: 「초안 없는 길만 active() 를 안 지난다 · 초안 길은 저장처럼 채우려고 지난다」
+```
+**active() 를 지나는 라우트 열 — 클라가 400 을 어떻게 보이나** (라우트: 라우터 함수의 서비스 호출을 AST 로, 서비스 메서드 중 active() 에 닿는 것 열 · 클라: client2/src 에서 라우트 글자로 부르는 자리를 찾아 catch 를 읽음 — 부르는 파일은 ontology_explorer.js 하나)
+```
+라우트                          클라 자리 -> 보이는 곳
+GET  /view                      load -> REQUEST_FAILED(errorSentence) -> state.error 「oe-error」
+GET  /columns                   loadColumnStats -> COLUMNS_FAILED(errorMessage) -> 칸 옆 글
+POST /authoring/plan (초안)      reshapeIfMoved -> 토스트(errorMessage)
+GET  /deletion-preview          deleteDeclaration -> 토스트(errorMessage)
+POST /test-run                  TEST_RUN_FAILED(errorSentence, code 따로) -> 시험 결과의 거절 문장
+POST /drafts                    reopenForEditing -> 토스트(warning) · 다른 한 자리 -> 토스트
+POST /drafts/new                createDeclaration -> 이름 줄 「oe-error」(detail.message) · openUnread -> 토스트(detail.message)
+PUT  /drafts/{id}               createDeclaration 안 -> 이름 줄 · 저장 -> 토스트
+DELETE /declarations/{key}      deleteDeclaration -> 토스트
+POST /drafts/{id}/activate      createDeclaration 안 -> 이름 줄 · 저장+반영 -> 토스트 · 검토 뒤 반영 -> 토스트
+```
+```
+뭉개는 자리   0 — 열 라우트 모든 자리가 서버 detail.message 를 그대로 보임 (errorMessage 는 문장 · code · path 를 이음)
+500 일 때     jsonRequest 는 「Request failed (500)」, adminFetch 직접 두 자리는 「HTTP 500」 — 이번 착지로 그 자리에 문장이 옴
+문장의 문     「Create starting file」 — 총괄 예의 「Bootstrap」 대신 화면 버튼 글자를 적었습니다. 버튼은 /bootstrap 을 부르고,
+             /view 가 실패하면 클라가 작성 계획(GET)을 읽어 파일 없음일 때 그 버튼을 그립니다. 화면에 「Bootstrap」 낱말은 없습니다
+```
+**여쭐 것 하나** — 못 읽는 파일의 낱말이 둘입니다. 계획(GET·초안 POST)은 authoring() 자기 읽기의 `unreadable_config`(Next 없음), view·저장은 이번 변환의 `invalid_json`(Next 먼저). 전에는 view 쪽이 500 이라 겹치지 않았습니다. 하나로 접을지(어느 쪽 낱말로) 말씀 주십시오. 이번 착지에선 안 건드렸습니다.
+
+변이 넷 — 각각 되돌림
+```
+M1 the plan fills against the authoring file     빨강  (2 failed, 6 passed)
+M2 the plan fills against the loader's catalog   빨강  (1 failed, 7 passed)
+N1 a missing draft id becomes an empty one again 빨강  (1 failed, 7 passed)
+N2 active() lets the setup error through         빨강  (1 failed, 7 passed)
+```
+**새 함수 · 새 if 중 기존 것과 같은 일** (cdeb5ea10)
+```
+새 함수   config_explorer_service.required_draft_id — view 안의 식을 옮긴 자리(둘이 부름). ⑦ 은 새 함수 0 — 저장의 _filled_declaration 을 부름
+새 if     active() 의 except 하나 — 오류 형 변환, 같은 일을 가르는 갈래 아님. view 의 `and draft_id is None` 갈래는 required_draft_id 로 옮김
+지운 것   with_unsaved_body 의 filled_declaration 직접 호출 · 라우터의 `or ""`
+```
+**스위트** (C:/wt-impl, 착지 트리)
+```
+전체  5 failed, 7524 passed, 196 skipped, 3 xfailed in 830.45s (0:13:50) — 실패 5 개, 파일::이름으로 알려진 다섯과 같음: True
+```

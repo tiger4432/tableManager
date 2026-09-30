@@ -10,7 +10,7 @@ from admin.auth import require_admin_token, require_admin_token_strict
 from database.database import get_db
 from ledger.column_stats import ColumnStatsError
 from ledger.config_explorer import ConfigExplorerError
-from ledger.config_explorer_service import OntologyExplorerService
+from ledger.config_explorer_service import OntologyExplorerService, required_draft_id
 from ledger.setup import DEFAULT_ONTOLOGY_ROOT
 
 
@@ -174,7 +174,8 @@ def authoring_plan_for_draft(payload: dict[str, Any] = Body(...),
     try:
         return _service_for(world).authoring(
             selection_prefix=_service_for(world).authoring_prefix(payload.get("selection")),
-            draft_id=str(payload.get("draft_id") or ""), raw=payload.get("raw"))
+            draft_id=str(required_draft_id(payload.get("draft_id") or None)),
+            raw=payload.get("raw"))
     except ConfigExplorerError as exc:
         raise _refusal(exc) from exc
 

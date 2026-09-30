@@ -350,17 +350,17 @@ def parse_draft_raw(raw_text: Any) -> Mapping[str, Any]:
     return raw
 
 
-def with_unsaved_body(document: Mapping[str, Any], catalog: Mapping[str, Any],
+def with_unsaved_body(document: Mapping[str, Any], active_setup: Any,
                       record: Mapping[str, Any], index: ExplorerIndex,
                       raw_text: Any) -> dict[str, Any]:
     """`(document, dropped)` - `document` with the editor's body at the draft's place, filled
     as a save would fill it (총괄 791c0f45e 1ㄴ) - so a plan over it answers what the plan
-    answers after the save - and the switched-off fields the fill took out. Nothing is written."""
-    from .config_authoring import filled_declaration
+    answers after the save - and the switched-off fields the fill took out. Nothing is written.
 
+    The fill is the save's own `_filled_declaration`, over the active setup the save fills
+    against - not `document`, which is the authoring file (총괄 d4a949a8c ⑦)."""
     node = draft_target(record, index)
-    body, dropped = filled_declaration(document, catalog, node.bundle_path,
-                                       parse_draft_raw(raw_text))
+    body, dropped = _filled_declaration(active_setup, node, parse_draft_raw(raw_text))
     out = json.loads(json.dumps(document, ensure_ascii=False))
     try:
         _set_path(out, node.bundle_path, body)

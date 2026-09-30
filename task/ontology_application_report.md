@@ -34881,3 +34881,18 @@ fa41a6f25   소스 전부 새로 고침이 잃은 행의 원자를 거둠 — BA
    한 셈으로 합치면서 고장 쪽 반복이 조용해졌습니다. 파일 기록(상태 칸)에는 여전히 남습니다
    의도하신 것인지요. 아니면 WARNING/INFO 를 사유로 가르는 것이 «문»인지 판정이 필요합니다
 ```
+
+---
+
+## [C 응용] 10-01 ea4508a0e 적대 검수 — 초안 id 가 «빈 글자»면 두 자리가 다른 거절을 냅니다 — 문서 `d857f358c`
+
+```
+입력 draft_id = ""(빈 글자)
+  POST /authoring/plan           route 가 payload.get("draft_id") or None 으로 접은 뒤 required_draft_id -> draft_required
+  GET /view?view_mode=draft_preview&draft_id=   FastAPI Query 가 "" 를 그대로 -> required_draft_id("") 통과(is None 만 봄)
+                                 -> if draft_id is not None 로 초안을 읽으러 감 -> config_drafts._record_path 가 invalid_draft_id
+근거  config_explorer_service.required_draft_id 는 `if draft_id is None` 만 거절 · 빈 글자를 접는 `or None` 은 라우트 한 곳에만 있음
+뜻    ⑨ 의 「한 좌석」은 섰는데, 「빈 글자는 부재」(CLAUDE.md)를 접는 자리가 좌석 «밖»(라우트)에 있어 같은 입력이 두 문장이 됩니다
+      공백만 든 "  " 는 두 자리 다 invalid_draft_id (라우트의 or None 도 못 접음)
+여쭐 것  접기를 required_draft_id 안으로 옮길지(crud.is_blank_value 로) — 제가 짓지 않았습니다. 재지는 않았고 코드 읽기입니다
+```

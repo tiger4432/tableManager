@@ -6,6 +6,7 @@
 """
 import copy
 import json
+from collections.abc import Mapping
 from pathlib import Path
 
 import pytest
@@ -21,6 +22,7 @@ from ledger_api import ontology_config_explorer_router as explorer_router
 SHIPPED = Path(__file__).resolve().parent.parent / "config" / "sample"
 SOURCE, SENTENCE = "wafer_process_recipe", "wafer-processed-with-recipe"
 DRAFTS, PLAN = "/admin/ontology-explorer/drafts", "/admin/ontology-explorer/authoring/plan"
+VIEW = "/admin/ontology-explorer/view"
 ROLE = "bundle.sources.%s.bind.mappings.%s.bind.step" % (SOURCE, SENTENCE)
 SAMPLE = json.loads((SHIPPED / "ledger_config.json.sample").read_text(encoding="utf-8"))
 TARGET = SAMPLE["sources"][SOURCE]["bind"]["mappings"][SENTENCE]["bind"]["target"]
@@ -37,16 +39,24 @@ SWITCHES = {
 }
 
 
+CATALOG = load_physical_catalog(SHIPPED / "table_config.json.sample")
+
+
 @pytest.fixture(name="client")
 def fixture_client(tmp_path):
+    return _client(tmp_path, (SHIPPED / "ledger_config.json.sample").read_bytes(), CATALOG)
+
+
+def _client(tmp_path, config_bytes, loader_catalog):
+    """The explorer over `config_bytes`; the setup compiles with the sample's catalog and the
+    service's catalog loader answers `loader_catalog`."""
     root = tmp_path / "ontology"
     root.mkdir()
-    (root / "ledger_config.json").write_bytes(
-        (SHIPPED / "ledger_config.json.sample").read_bytes())
-    catalog = load_physical_catalog(SHIPPED / "table_config.json.sample")
+    (root / "ledger_config.json").write_bytes(config_bytes)
     service = OntologyExplorerService(
         config_root=root, draft_root=tmp_path / "drafts",
-        setup_loader=lambda r: load_setup(r, catalog=catalog), catalog_loader=lambda: catalog,
+        setup_loader=lambda r: load_setup(r, catalog=CATALOG),
+        catalog_loader=lambda: loader_catalog,
         convergence_probe=lambda expected: {"ontology-explorer-api": expected,
                                             "ledger-persistent-reader": expected})
     explorer_router.configure_service(service)
@@ -98,3 +108,76 @@ def test_a_binding_that_has_not_chosen_keeps_what_it_holds(client):
     assert saved["dropped_fields"] == []
     assert saved["raw"] == raw
     assert saved["lifecycle_status"] == "invalid" and saved["validation_errors"]
+
+
+def _plain(value):
+    if isinstance(value, Mapping):
+        return {str(key): _plain(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_plain(item) for item in value]
+    return value
+
+
+_BROKEN_OTHER = copy.deepcopy(SAMPLE)
+_BROKEN_OTHER["sources"]["lot_event"]["read"]["table"] = "no_such_table"
+APART = {
+    # the file holds a declaration the active setup left out
+    "a_declaration_left_out": (_BROKEN_OTHER, CATALOG,
+                               lambda document, catalog: "lot_event" not in document["sources"]),
+    # the catalog loader answers what the setup did not compile with
+    "a_catalog_changed_since": (SAMPLE, {**CATALOG, "added_since": CATALOG["lot_event"]},
+                                lambda document, catalog: "added_since" not in catalog),
+}
+
+
+@pytest.mark.parametrize("apart", list(APART))
+def test_the_unsaved_plan_fills_from_what_the_save_fills_from(tmp_path, monkeypatch, apart):
+    """총괄 d4a949a8c ⑦ — 저장 없는 계획은 작성 파일 + 카탈로그 로더로, 저장은 활성 셋업 + 그 카탈로그로
+    채웠다. 둘이 다를 때 「저장처럼 채운다」가 거짓. 두 호출이 filled_declaration 에 넘기는 넷이 같다."""
+    from ledger import config_authoring
+
+    document, loader_catalog, save_side_differs = APART[apart]
+    http, draft = _client(tmp_path, json.dumps(document).encode("utf-8"), loader_catalog)
+    fills, real = [], config_authoring.filled_declaration
+
+    def recording(bundle, catalog, bundle_path, raw):
+        fills.append(_plain((bundle, catalog, bundle_path, raw)))
+        return real(bundle, catalog, bundle_path, raw)
+
+    monkeypatch.setattr(config_authoring, "filled_declaration", recording)
+    raw = json.dumps(draft["raw"])
+    plan = http.post(PLAN, json={"selection": "source_plan|" + SOURCE,
+                                 "draft_id": draft["draft_id"], "raw": raw})
+    saved = http.put("%s/%s" % (DRAFTS, draft["draft_id"]),
+                     json={"expected_revision": 0, "raw": raw})
+
+    assert plan.status_code == 200 and saved.status_code == 200, (plan.text, saved.text)
+    assert len(fills) == 2
+    assert save_side_differs(*fills[1][:2])          # the box sets the two inputs apart
+    assert fills[0] == fills[1]
+
+
+def test_a_plan_without_a_draft_id_is_refused_as_the_draft_preview_refuses_it(client):
+    """총괄 d4a949a8c ⑨ — draft_id 없는 POST 가 "" 로 draft_store.get("") 을 불러 invalid_draft_id 였다."""
+    http, _draft = client
+    plan = http.post(PLAN, json={"selection": "source_plan|" + SOURCE, "raw": "{}"})
+    view = http.get(VIEW, params={"view_mode": "draft_preview"})
+
+    assert plan.status_code == view.status_code == 400, (plan.text, view.text)
+    assert plan.json()["detail"] == view.json()["detail"]
+    assert plan.json()["detail"]["code"] == "draft_required"
+
+
+def test_a_config_file_gone_under_a_draft_is_refused_by_name_next_action_first(client, tmp_path):
+    """총괄 d4a949a8c ⑨ — 초안 길은 active() 를 지나고, 파일이 없으면 LedgerSetupValidationError 가
+    라우터를 빠져나가 500 이었다. view 도 같은 자리에서 같은 거절."""
+    http, draft = client
+    (tmp_path / "ontology" / "ledger_config.json").unlink()
+    plan = http.post(PLAN, json={"selection": "source_plan|" + SOURCE,
+                                 "draft_id": draft["draft_id"], "raw": json.dumps(draft["raw"])})
+    view = http.get(VIEW)
+
+    assert plan.status_code == view.status_code == 400, (plan.text, view.text)
+    assert plan.json()["detail"] == view.json()["detail"]
+    assert plan.json()["detail"]["code"] == "missing_config_file"
+    assert plan.json()["detail"]["message"].startswith("Next: ")

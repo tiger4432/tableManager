@@ -1,5 +1,18 @@
 # 지금 돌리면 되는 것
 
+> ## 🔴 [10-01 아침] **작성 화면 — 저장 전 계획이 저장과 같은 입력으로 채움 · 초안 없는 POST 는 draft_required · 설정 파일 없음/못 읽음은 500 대신 이름 붙은 거절 · 마이그레이션 «없음» · 재기동 서버 (run_app.bat 로 전체)**
+>
+> ```
+> 무엇이 바뀌나  POST /admin/ontology-explorer/authoring/plan (초안 있음): 채우기가 저장과 같은 활성 셋업·카탈로그로
+>              같은 라우트에 draft_id 없음: 400 draft_required (전: invalid_draft_id)
+>              ledger_config.json 이 없거나 객체로 못 읽힘: view·초안·저장 등 400 + 코드(missing_config_file · invalid_json · invalid_type) (전: 500)
+> 돌릴 명령     없음
+> 뜻           「Next: restore or fix ledger_config.json ...」 거절 = 그 파일을 되살리거나 고치기. 파일이 없으면 작성 화면의 Create starting file
+> 급할 때       커밋 되돌리기
+> ```
+
+---
+
 > ## 🔴 [10-01 아침] **걷기 응답의 증거 길 — 홉마다 predicates · 대조 저장은 그 길 그대로 · 참거짓 글 칸은 "true"/"false" 만 · 마이그레이션 «없음» · 재기동 서버 · 체인 워커 (run_app.bat 로 전체)**
 >
 > ```
