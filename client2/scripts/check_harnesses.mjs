@@ -929,6 +929,9 @@ const FLOORS = new Map([
   // 16 -> 19 (W6-W8, lead 115134f12): a switched-off field holding an empty list is not drawn.
   // 19 -> 21 (P7 W9, lead 810d0044b ① ④): an owed row's state word; the map's here row is a word.
   ['explorer_form_grammar_harness.mjs', 21],
+  // New with lead a5720d9d8: the screen's one blank rule (absent.js isBlank) - the contract's scalar
+  // rows, the rule beyond scalars, and the seats that fold into it asking the same function.
+  ['blank_rule_harness.mjs', 4],
   // New 2026-09-10 with C-55 (S-117's screen half). Floor is the count it reports on the
   // commit that introduces it. 🔴 THE FIXTURE IS THE CONTRACT VECTOR, captured off the live
   // route: the receipt has TWO envelopes and the failed one carries no counts at all, so a

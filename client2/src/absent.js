@@ -61,6 +61,26 @@ export function isCount(v) {
   return Number.isFinite(Number(v));
 }
 
+// The server's whitespace (Python str.isspace, contracts/blank_predicate `whitespace_class`, 29 codepoints) -
+// not JS trim, which keeps U+001C-U+001F and U+0085 and drops U+FEFF.
+const SPACE = new Set([9, 10, 11, 12, 13, 28, 29, 30, 31, 32, 133, 160, 5760, 8192, 8193, 8194, 8195, 8196, 8197,
+  8198, 8199, 8200, 8201, 8202, 8232, 8233, 8239, 8287, 12288]);
+
+/**
+ * 「비었다」 — 길이 0 은 부재 (lead a5720d9d8, the screen's one rule). null · undefined · 공백뿐인 글자 ·
+ * 원소가 전부 빈 목록([] · [''] 포함) · 키 없는 순수 객체. 그 밖(0 · false · NaN 포함)은 값.
+ * 데이터의 빈 값은 서버(crud.is_blank_value)가 주인이고, 스칼라에서는 그 계약 벡터와 답이 같습니다.
+ */
+export function isBlank(value) {
+  if (value === null || value === undefined) return true;
+  if (typeof value === 'string') return [...value].every((ch) => SPACE.has(ch.codePointAt(0)));
+  if (Array.isArray(value)) return value.every(isBlank);
+  if (typeof value === 'object' && [Object.prototype, null].includes(Object.getPrototypeOf(value))) {
+    return Object.keys(value).length === 0;
+  }
+  return false;
+}
+
 /** 수면 그 수, 아니면 `—`. 천단위 구분 «없이» — 좁은 칸의 배지용입니다. */
 export function countText(v) {
   return isCount(v) ? String(Number(v)) : ABSENT;

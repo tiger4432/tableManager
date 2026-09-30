@@ -53,6 +53,7 @@
 
 import { escapeHtml } from '../utils.js';
 import { parseTsv, serializeTsv } from '../tsv.js';
+import { isBlank } from '../absent.js';
 import { frameFromDeclaration, ABSENT, DECLARED } from './declaration.js';
 
 // ── the format's own constants, each traceable to the reference implementation ───
@@ -107,7 +108,6 @@ function coordInt(raw) {
 }
 
 const asText = (v) => String(v === null || v === undefined ? '' : v);
-const isBlank = (v) => asText(v).trim() === '';
 
 function refusal(code, reason) {
   return Object.freeze({

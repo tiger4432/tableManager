@@ -1,1 +1,0 @@
-var e=`None selected`,t=`Unknown`;function n(e){return`Subject ${e||`—`}`}function r(e){return e==null||typeof e==`string`&&e.trim()===``?!1:Number.isFinite(Number(e))}function i(e){return r(e)?String(Number(e)):`—`}function a(e){return r(e)?Number(e).toLocaleString():`—`}export{a,r as i,e as n,n as o,i as r,t};
