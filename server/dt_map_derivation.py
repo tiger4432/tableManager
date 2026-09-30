@@ -1021,10 +1021,21 @@ def normalize_scoped_batch(raw, rule, target_table) -> tuple:
     if not isinstance(raw, dict):
         raise ValueError("chain scoped batch must be an object")
     requested_target = raw.get("target_table") or target_table
-    if requested_target != target_table:
-        raise ValueError("rule '%s' cannot redirect scoped batch to '%s'"
-                         % (rule.get("name"), requested_target))
     retract = raw.get("retract")
+    if requested_target != target_table:
+        # 🔴 [총괄 2dd93d4a9 1 ㄱ] A WRITE-BACK: a rule may write the rows it READ - its trigger
+        #    table - as plain updates (a saved contrast says on its own row that it was
+        #    computed). Nothing else: no other table, no purge, no retraction there.
+        if requested_target != rule.get("trigger_table"):
+            raise ValueError(
+                "rule '%s' cannot redirect a scoped batch to '%s' - a rule writes its target, "
+                "and besides it only the rule's trigger table" % (rule.get("name"),
+                                                                 requested_target))
+        if retract is not None or raw.get("replace_map"):
+            raise ValueError(
+                "rule '%s' wrote back to its trigger table '%s' with replace_map or retract - "
+                "a write-back is plain updates only" % (rule.get("name"), requested_target))
+        return requested_target, raw.get("updates") or (), None, None
     if retract is not None and raw.get("replace_map"):
         raise ValueError(
             "rule '%s' set both replace_map and retract on one batch for '%s'. "

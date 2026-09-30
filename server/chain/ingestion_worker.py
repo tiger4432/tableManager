@@ -2152,15 +2152,21 @@ def _process_chain_transaction_group_sync(tx_id, events, db, rules):
                         # 🔴 [C-15] 봉투 검증은 «한 독자»가 한다. 이 여섯 규칙이 여기와
                         #    `chain_replay` 에 «두 사본»으로 있었고, 그 옆 주석이 「손으로
                         #    맞춘다」고 적어 두었다 — 형제(retract 봉투)는 이미 한 독자였다.
-                        dt_map_derivation.require_scoped_batches_allowed(rule)
                         for requested in target_payload.get("batches") or []:
-                            scoped_batches.append(
-                                dt_map_derivation.normalize_scoped_batch(
-                                    requested, rule, target_table))
-                        # A scoped batch writes this target too - a failure in it has to be
-                        # able to name this rule (총괄 a4cb623e0 ②).
-                        if rule.get("name") not in table_contributors[target_table]:
-                            table_contributors[target_table].append(rule.get("name"))
+                            batch = dt_map_derivation.normalize_scoped_batch(
+                                requested, rule, target_table)
+                            if batch[0] == target_table:
+                                dt_map_derivation.require_scoped_batches_allowed(rule)
+                            scoped_batches.append(batch)
+                            # A scoped batch writes its table - this target, or the trigger
+                            # table written back (총괄 2dd93d4a9 1) - so a failure in it names
+                            # this rule (총괄 a4cb623e0 ②) and its write carries this
+                            # declaration, which is what keeps the rule from waking on it.
+                            rules_by_target[batch[0]].add(_rule_name)
+                            declarations_by_target[batch[0]].add(
+                                rule_shape.declaration_of(rule))
+                            if rule.get("name") not in table_contributors[batch[0]]:
+                                table_contributors[batch[0]].append(rule.get("name"))
                 else:
                     # Single event execution - one call per ROW. The fan-out moved INTO the
                     # seat with the door it belongs to, so this hands over the whole

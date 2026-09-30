@@ -110,6 +110,12 @@ def _chain(db, *row_ids):
     return out
 
 
+def _run_facts(out):
+    """The write-back the mapper proposes for the run rows: {run_id: cells}."""
+    return {item.updates["run_id"]: item.updates for batch in out.get("batches") or ()
+            if batch.get("target_table") == "contrast_run" for item in batch["updates"]}
+
+
 def _factors(db, run_id):
     model = models.DYNAMIC_TABLES["contrast_factor"]
     return {r.node_id: r for r in db.query(model).filter(model.run_id == run_id).all()}
@@ -126,7 +132,7 @@ def _route(db, positive, negative, until=UNTIL.isoformat(), node_limit=400):
 
 def test_the_rows_are_the_route_ranked_candidates_bound_by_until(db):
     positive, negative = [_lot("P1"), _lot("P2")], [_lot("N1")]
-    _chain(db, _save_run(db, "R1", positive, negative, backbone_hops=0))
+    out = _chain(db, _save_run(db, "R1", positive, negative, backbone_hops=0))
     rows = _factors(db, "R1")
     route = _route(db, positive, negative)
 
@@ -138,7 +144,8 @@ def test_the_rows_are_the_route_ranked_candidates_bound_by_until(db):
         assert (row.rank, row.type, row.label) == (item["rank"], item["type"], item["label"])
         assert (row.top, row.tied, row.incomparable) == tuple(
             json.dumps(item[k]) for k in ("top", "tied", "incomparable"))
-    assert {r.contrast for r in rows.values()} == {"contrasted"}
+    facts = _run_facts(out)["R1"]
+    assert (facts["contrast"], facts["candidates"]) == ("contrasted", len(rows))
     labels = {r.label for r in rows.values()}
     assert "LATE" not in labels
     assert "LATE" in {i["label"] for i in _route(db, positive, negative, until=None)["ranked"]}, (
@@ -146,12 +153,11 @@ def test_the_rows_are_the_route_ranked_candidates_bound_by_until(db):
 
 
 def test_no_controls_is_unexamined_and_a_cut_walk_is_not_complete(db):
-    _chain(db, _save_run(db, "R_OPEN", [_lot("P1"), _lot("P2")], []),
-           _save_run(db, "R_CUT", [_lot("P1")], [_lot("N1")], node_limit=10))
+    facts = _run_facts(_chain(db, _save_run(db, "R_OPEN", [_lot("P1"), _lot("P2")], []),
+                              _save_run(db, "R_CUT", [_lot("P1")], [_lot("N1")], node_limit=10)))
 
-    assert {r.contrast for r in _factors(db, "R_OPEN").values()} == {"unexamined"}
-    assert {r.complete for r in _factors(db, "R_OPEN").values()} == {"true"}
-    assert {r.complete for r in _factors(db, "R_CUT").values()} == {"false"}
+    assert (facts["R_OPEN"]["contrast"], facts["R_OPEN"]["complete"]) == ("unexamined", "true")
+    assert facts["R_CUT"]["complete"] == "false"
 
 
 def test_a_replay_writes_the_same_rows_and_two_saves_are_two_runs(db):
@@ -238,6 +244,111 @@ def test_a_run_the_board_writes_through_the_door_is_walked_into_rows(pg_engine, 
         db.close()
         for name in TABLES:
             crud.TABLE_CONFIG.pop(name, None)
+
+
+# ------------------------------------------------ the run row says it was computed (2dd93d4a9 1)
+
+def _drain(db):
+    """The worker over this file's events -> chain-written events that woke the rule."""
+    import event_constants
+    from chain import ingestion_worker as worker
+    from utils.payload_helper import get_payload_dict
+
+    woke = 0
+    for _ in range(4):
+        pending = [e for e in db.query(models.DatabaseOutbox)
+                   .filter(models.DatabaseOutbox.processed_chain.is_(False))
+                   .order_by(models.DatabaseOutbox.id).all() if e.table_name in TABLES]
+        if not pending:
+            return woke
+        woke += sum(1 for e in pending
+                    if event_constants.channel_of(get_payload_dict(e)) == event_constants.CHANNEL_CHAIN
+                    and worker.fires(RULE, e) and worker.rule_watches_changed_columns(RULE, e))
+        groups = {}
+        for e in pending:
+            groups.setdefault(get_payload_dict(e).get("transaction_id"), []).append(e)
+        for tx_id, events in groups.items():
+            ok, error, _ = worker._process_chain_transaction_group_sync(tx_id, events, db, [RULE])
+            assert ok, error
+            for e in events:
+                event_constants.mark_processed(e, "SUCCESS")
+            db.commit()
+    raise AssertionError("the chain did not settle")
+
+
+@pytest.mark.pg
+def test_a_run_row_says_whether_it_was_computed_and_what_it_found(pg_engine, monkeypatch):
+    """computed_at · candidates · contrast · complete, written back by the same call through the
+    worker: a run never walked has all four empty, one that found nothing has computed_at and
+    0, and the write-back does not wake the rule again."""
+    import event_constants
+    from utils.payload_helper import get_payload_dict
+
+    _walk_on_the_fixture_ledger(monkeypatch)
+    models.init_dynamic_models(TABLES)
+    crud.TABLE_CONFIG.update(TABLES)
+    Base.metadata.create_all(bind=pg_engine,
+                             tables=[models.DYNAMIC_TABLES[n].__table__ for n in TABLES])
+    models.sync_dynamic_tables_schema(pg_engine)
+    db = sessionmaker(bind=pg_engine)()
+    model = models.DYNAMIC_TABLES["contrast_run"]
+
+    def save(run_id, positive, negative, until="2026-09-30T09:00:00+09:00"):
+        cells = {"run_id": run_id, "positive": json.dumps(positive),
+                 "negative": json.dumps(negative), "hops": 4, "backbone_hops": 0}
+        if until:
+            cells["until"] = until
+        crud.apply_batch_updates(db, "contrast_run", schemas.GeneralUpdateBatch(
+            updates=[schemas.GeneralUpdateItem(updates=cells)]))
+        db.commit()
+
+    def facts(run_id):
+        row = db.query(model).filter(model.run_id == run_id).one()
+        db.refresh(row)
+        return row.computed_at, row.candidates, row.contrast, row.complete
+
+    try:
+        save("RW_FOUND", [_lot("P1"), _lot("P2")], [_lot("N1")])
+        save("RW_NONE", [_lot("NOBODY")], [_lot("NOBODY2")])
+        save("RW_OPEN_ENDED", [_lot("P1")], [_lot("N1")], until=None)
+        waiting = facts("RW_FOUND")
+        woke = _drain(db)
+        found, none, open_ended = facts("RW_FOUND"), facts("RW_NONE"), facts("RW_OPEN_ENDED")
+        written = [get_payload_dict(e) for e in db.query(models.DatabaseOutbox).all()
+                   if e.table_name == "contrast_run" and event_constants.channel_of(
+                       get_payload_dict(e)) == event_constants.CHANNEL_CHAIN]
+
+        assert waiting == (None, None, None, None), "not computed yet: all four empty"
+        assert found[0] is not None and found[1] == len(_factors(db, "RW_FOUND")) > 0
+        assert found[2:] == ("contrasted", "true")
+        assert none[0] is not None and none[1] == 0 and _factors(db, "RW_NONE") == {}
+        assert open_ended == (None, None, None, None), "refused: nothing written back"
+        assert woke == 0, "the write-back woke the rule again"
+        assert written and all(p[event_constants.WRITTEN_BY_KEY] == [DECLARATION["name"]]
+                               for p in written)
+    finally:
+        db.rollback()
+        db.close()
+        for name in TABLES:
+            crud.TABLE_CONFIG.pop(name, None)
+
+
+def test_a_rule_writes_back_to_its_trigger_table_only_and_only_plainly():
+    import dt_map_derivation
+
+    rule = {"name": "r", "trigger_table": "t_in", "target_table": "t_out"}
+    table, updates, scope, retract = dt_map_derivation.normalize_scoped_batch(
+        {"target_table": "t_in", "updates": ["u"]}, rule, "t_out")
+    assert (table, list(updates), scope, retract) == ("t_in", ["u"], None, None)
+    with pytest.raises(ValueError) as elsewhere:
+        dt_map_derivation.normalize_scoped_batch(
+            {"target_table": "t_other", "updates": ["u"]}, rule, "t_out")
+    assert "'r'" in str(elsewhere.value) and "'t_other'" in str(elsewhere.value)
+    assert "only the rule's trigger table" in str(elsewhere.value)
+    with pytest.raises(ValueError) as purge:
+        dt_map_derivation.normalize_scoped_batch(
+            {"target_table": "t_in", "replace_map": True, "scope": {"a": 1}}, rule, "t_out")
+    assert "plain updates only" in str(purge.value)
 
 
 # ---------------------------------------------------------------- the owner's shape (lead)

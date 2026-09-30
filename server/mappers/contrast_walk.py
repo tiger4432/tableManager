@@ -15,12 +15,17 @@ without one is refused by name rather than walked unbound.
 arguments in this package as a mapper (`mapper_sdk.mapper_candidates`), so helpers stay `_`.
 ⚠️ THE ROUTE MODULE IS IMPORTED WHEN A RUN IS WALKED, NOT HERE: `discover` imports this file in
 every process at start, and nothing it pulls in at import time should be a router.
+🔴 THE RUN ROW SAYS IT WAS COMPUTED (총괄 2dd93d4a9 1): the same call writes back to the run
+row - computed_at, candidates, and the two facts of the whole walk (contrast, complete), which
+the factor rows no longer repeat. A run never walked has all four empty; one that found nothing
+has computed_at and candidates 0.
 """
 from __future__ import annotations
 
 import inspect
 import json
 import logging
+from datetime import datetime, timezone
 
 logger = logging.getLogger("Mappers.ContrastWalk")
 
@@ -137,7 +142,7 @@ def contrast_walk(db, payload, rule=None):
     if model is None or not row_ids:
         return {"updates": [], "refusal": "no run rows reached this mapper"}
     name = str((rule or {}).get("name") or "")
-    updates, refusals = [], []
+    updates, refusals, runs = [], [], []
     for row in db.query(model).filter(model.row_id.in_(list(row_ids))).all():
         run_id = getattr(row, "run_id", None)
         if _blank(run_id):
@@ -155,7 +160,14 @@ def contrast_walk(db, payload, rule=None):
             continue
         block = answer.get("propagation") or {}
         edges = answer.get("edges") or []
-        for item in block.get("ranked") or ():
+        ranked = block.get("ranked") or ()
+        runs.append(schemas.GeneralUpdateItem(
+            row_id=row.row_id,
+            updates={"run_id": run_id, "computed_at": datetime.now(timezone.utc),
+                     "candidates": len(ranked), "contrast": block.get("contrast"),
+                     "complete": _flag(block.get("complete"))},
+            origin_row_id=row.row_id, source_name=crud.CHAIN_SOURCE, updated_by=name))
+        for item in ranked:
             reach = list(item.get("reach") or [None, None])
             reachable = list(item.get("reachable") or [None, None])
             updates.append(schemas.GeneralUpdateItem(
@@ -171,11 +183,10 @@ def contrast_walk(db, payload, rule=None):
                          "tied": _flag(item.get("tied")),
                          "incomparable": _flag(item.get("incomparable")),
                          "evidence": json.dumps(_with_predicates(item.get("evidence"), edges),
-                                                ensure_ascii=False),
-                         "contrast": block.get("contrast"),
-                         "complete": _flag(block.get("complete"))},
+                                                ensure_ascii=False)},
                 origin_row_id=row.row_id, source_name=crud.CHAIN_SOURCE, updated_by=name))
     for why in refusals:
         logger.warning("[ContrastWalk] %s: %s - nothing written for it", name or "contrast", why)
     return {"updates": updates,
-            "refusal": "; ".join(refusals) if refusals and not updates else None}
+            "batches": [{"target_table": trigger, "updates": runs}] if runs else [],
+            "refusal": "; ".join(refusals) if refusals and not runs else None}

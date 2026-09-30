@@ -1134,7 +1134,7 @@
     ]
   },
   "contrast_run": {
-    "__comment": "3a262cc76 - one saved contrast: the walk route's own arguments (GET /api/ledger/subgraph). positive/negative/follow are JSON lists.",
+    "__comment": "3a262cc76 - one saved contrast: the walk route's own arguments (GET /api/ledger/subgraph). positive/negative/follow are JSON lists. computed_at, candidates, contrast and complete are written back by the chain (2dd93d4a9): all four empty = not computed yet; computed_at with candidates 0 = computed, nothing found.",
     "business_key": "run_id",
     "column_types": {
       "run_id": "string",
@@ -1151,7 +1151,11 @@
       "include_superseded": "string",
       "seed_type": "string",
       "seed_limit": "number",
-      "note": "string"
+      "note": "string",
+      "computed_at": "datetime",
+      "candidates": "number",
+      "contrast": "string",
+      "complete": "string"
     },
     "display_columns": [
       "run_id",
@@ -1168,7 +1172,11 @@
       "include_superseded",
       "seed_type",
       "seed_limit",
-      "note"
+      "note",
+      "computed_at",
+      "candidates",
+      "contrast",
+      "complete"
     ]
   },
   "contrast_factor": {
@@ -1191,9 +1199,7 @@
       "top": "string",
       "tied": "string",
       "incomparable": "string",
-      "evidence": "string",
-      "contrast": "string",
-      "complete": "string"
+      "evidence": "string"
     },
     "display_columns": [
       "run_id",
@@ -1208,9 +1214,7 @@
       "top",
       "tied",
       "incomparable",
-      "evidence",
-      "contrast",
-      "complete"
+      "evidence"
     ]
   }
 }

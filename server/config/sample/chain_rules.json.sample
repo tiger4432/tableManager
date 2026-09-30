@@ -309,6 +309,7 @@
       "name": "contrast_factor_from_run",
       "__why_enabled": "SHIPS ENABLED because the R&D board's Save contrast writes contrast_run and reads contrast_factor (3a262cc76, owner 09-30): off, a saved contrast is a row nothing computes. It runs only when a contrast_run row is written.",
       "enabled": true,
+      "is_batch": true,
       "on": {
         "table": "contrast_run"
       },

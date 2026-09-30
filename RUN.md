@@ -1,5 +1,21 @@
 # 지금 돌리면 되는 것
 
+> ## 🔴 [09-30 오후] **대조 run 행이 스스로 말함 — computed_at · candidates · contrast · complete — 마이그레이션 «없음» · 재기동 서버 · 체인 워커 (run_app.bat 로 전체)**
+>
+> ```
+> 준비          운영 table_config 의 contrast_run 에 칸 넷: computed_at(datetime) · candidates(number) · contrast · complete(string) — 표 편집기 저장
+>              운영 chain_rules 의 contrast_factor_from_run 에 "is_batch": true 한 칸 — Chain 탭 저장 (표본 server/config/sample/chain_rules.json.sample 과 같게)
+>              둘 중 하나라도 빠지면: 칸이 없으면 그 칸은 버린 칸(unmapped/undeclared)으로 셈 · is_batch 가 없으면 run 행에 아무것도 안 씀
+> 무엇이 바뀌나  체인이 대조를 계산한 같은 호출에서 그 run 행에 넷을 되씀. factor 행은 contrast · complete 를 더는 안 씀(옛 행의 값은 남음)
+>              규칙은 읽은 표(trigger)에만, 덮어쓰기로만 되쓸 수 있음 — 다른 표는 「cannot redirect a scoped batch … only the rule's trigger table」 로 거절
+> 확인          체인 워커 로그 「Executing chained batch updates to 'contrast_run' …」 · 그 run 행의 computed_at 이 참
+> 뜻           넷 다 빔 = 아직 안 돎(또는 until 이 비어 거절) · computed_at 있고 candidates 0 = 돌았고 후보 0
+>             [ChainRule] 줄의 rows_out 은 이제 factor 행 수 + run 행 수(run 하나면 N+1)
+> 급할 때       Chain 탭에서 contrast_factor_from_run 의 enabled 를 false 로 저장
+> ```
+
+---
+
 > ## 🔴 [09-30 오전 4] **조인이 시각 칸 값을 옮겨도 쓰기가 안 깨짐 — 층 · 표 · 다시 읽은 값이 같은 순간 — 마이그레이션 «없음» · 재기동 서버 · 체인 워커 (run_app.bat 로 전체)**
 >
 > ```
