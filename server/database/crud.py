@@ -2865,11 +2865,13 @@ NOKEY_RING = 16 ** 6
 
 
 def nokey_value(file_signature: str, first_ingested_at, file_row: int) -> str:
-    """`nokey_<first ingestion, UTC>_<6 hex>` for one data row of one file (총괄 4311a51ed).
+    """`nokey_<first ingestion, UTC to the microsecond>_<6 hex>` for one data row of one file
+    (총괄 4311a51ed · 1ce3305f3 - two files begun in the same second would otherwise share the
+    time part, and rows whose ring parts meet would merge).
 
     NOTHING RANDOM: the same file (its content signature, the dedup's own identity) and the
     same row give the same value, so a Retry finds the rows the first load made."""
-    moment = first_ingested_at.astimezone(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    moment = first_ingested_at.astimezone(timezone.utc).strftime("%Y%m%dT%H%M%S.%fZ")
     offset = int(hashlib.sha256(str(file_signature).encode("utf-8")).hexdigest(), 16)
     return "nokey_%s_%06x" % (moment, (offset + int(file_row)) % NOKEY_RING)
 

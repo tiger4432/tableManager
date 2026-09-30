@@ -32,7 +32,9 @@ from test_a_chain_rules_top_level_cells_have_one_list import (      # noqa: E402
 
 #: Cells only a chain rule carries - the seed of the census.
 CHAIN_ONLY = ("trigger_columns", "mapper_module", "mapper_function", "is_batch",
-              "allow_chain_trigger")
+              "allow_chain_trigger", "allow_map_metadata_upsert")
+#: ⚠️ `allow_map_metadata_upsert` joined when the worker stopped reading `is_batch` (총괄
+#:    12cc7dd1f ③): that dead read was the only seed telling the census its `rule` is one.
 
 #: The owner's mapper files and the collector scripts are not product code; a mapper reads its
 #: arguments through `params`, which is a different dict.

@@ -3,7 +3,11 @@
 > **Status:** 🟢 Living | **Last-verified:** 2026-09-13 | **Owner:** Ingester | **Source-of-truth:** `server/parsers/html_topology_parser.py` · 상위 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
 
 > 🔴 **[2026-09-13 갱신] 이 문서는 07-24 이후 «거절 경로»를 한 글자도 들고 있지 않았습니다.** `419cd8fa`(2026-08-04, 이 파일에 +151/−51)가 「격자 원점을 «두 번» 유도하고 어긋나면 파일을 거절한다」를 넣었고, 그 뒤 `b95d998b`(2026-09-07)까지 옵직였습니다. 그 경로가 **§3.6-bis** 로 들어왔습니다 — «0행으로 들어온 파일»을 만나면 그 절부터 열으십시오.
-> ⚠️ 그 밖의 절(§1~§3.5 · §4)은 이번 패스가 «열지 않았습니다» — 그대로인지 재지 않았다는 뜻입니다.
+> 🔴 **[2026-09-30]** §2 의 가져오기 줄과 `is_header_fn` 예시, §3.6 의 가져오기 줄을 코드와 대조해 고쳤습니다 —
+> 가져오기는 §4 와 같은 짧은 이름(`from html_topology_parser import …`, 운영 워처 · `prepare_plugin_imports` 와 같음).
+> `parsers.html_topology_parser` 로 가져오면 같은 파일이 «다른 모듈»로 한 번 더 로드되어 클래스가 둘이 됩니다.
+> `is_header_fn` 은 파서가 `(cell, row_idx, col_idx)` 셋을 넘깁니다.
+> ⚠️ 그 밖의 절(§1 · §3.1~§3.5 · §4 본문)은 이번 패스가 «열지 않았습니다» — 그대로인지 재지 않았다는 뜻입니다.
 
 이 가이드는 HTML 테이블 구조에서 셀 병합(`rowspan`, `colspan`)과 불규칙한 레이아웃 위상(Topology)을 분석하여 데이터와 헤더 간의 의미론적 관계를 역추적하고, 노드와 엣지 기반의 유향 그래프 및 연결 행렬을 생성하는 **`HTMLTableGraphParser`**의 사용 방법과 통합 방안에 대해 다룹니다.
 
@@ -29,7 +33,7 @@
 ## 2. 모듈 가져오기 및 파서 생성
 
 ```python
-from parsers.html_topology_parser import HTMLTableGraphParser
+from html_topology_parser import HTMLTableGraphParser
 
 # 1. 기본 생성 (<th> 태그 및 볼드/인라인 스타일 기반 자동 헤더 판정)
 parser = HTMLTableGraphParser()
@@ -37,7 +41,7 @@ parser = HTMLTableGraphParser()
 # 2. 커스텀 헤더 판정식 주입 생성 (선택 사항)
 # 예: class 명에 'data-header'가 포함된 경우만 헤더로 판정
 custom_parser = HTMLTableGraphParser(
-    is_header_fn=lambda tag: "data-header" in tag.get("class", [])
+    is_header_fn=lambda tag, row_idx, col_idx: "data-header" in tag.get("class", [])
 )
 ```
 
@@ -161,7 +165,7 @@ X축과 Y축 정수형 인덱스 눈금으로 구성된 2D 매트릭스(격자 �
 누적 장벽 알고리즘(Accumulative Barrier Algorithm)과 조상 필터링을 사용하여 메타데이터의 값 셀과 키 셀 간의 역추적 매핑을 정밀하게 추출합니다.
 
 ```python
-from parsers.html_topology_parser import HTMLMatrixTableParser
+from html_topology_parser import HTMLMatrixTableParser
 
 # 1. 매트릭스 파서 초기화
 matrix_parser = HTMLMatrixTableParser()

@@ -34,7 +34,7 @@ NAMES = ("mapper_workbench.ipynb", "parser_workbench.ipynb")
 
 #: Everything a BENCH cell is allowed to import. The bench functions and the standard library
 #: it takes to name a path — everything else belongs behind `dev_bench`.
-ALLOWED_IMPORTS = {"dev_bench", "pandas", "sys", "json", "shutil", "pathlib",
+ALLOWED_IMPORTS = {"admin.dev_bench", "pandas", "sys", "json", "shutil", "pathlib",
                    "parsers", "parsers.directory_watcher"}
 
 #: Spellings that mean a cell stopped calling production and started being it.
@@ -108,13 +108,33 @@ def test_the_first_cell_says_which_interpreter_it_is_on(name):
 @pytest.mark.parametrize("name", NAMES)
 def test_no_cell_carries_this_boxs_absolute_path(name):
     """⛔ 「박스 절대경로 금지」. The repository root is FOUND by walking up to
-    `server/dev_bench.py`, so the notebook works in any checkout."""
+    `server/admin/dev_bench.py` (its home since aa77a2fe3), so the notebook works in any checkout."""
     # ⚠️ THE CELL TEXT, NOT `json.dumps` OF IT — the dump escapes every quote, so a probe
     # spelling one finds nothing and the assertion reads as 「absent」 while being unasked.
     body = "".join(_text(c) for c in _load(name)["cells"])
     for spelling in ("C:\\Users", "C:/Users", "/home/"):
         assert spelling not in body, (name, spelling)
-    assert 'server" / "dev_bench.py' in body, "the root is found, not assumed"
+    assert 'server" / "admin" / "dev_bench.py' in body, "the root is found, not assumed"
+
+
+@pytest.mark.parametrize("name", NAMES)
+def test_the_first_cell_runs_and_reaches_the_bench(name):
+    """총괄 8903333bc: the text above stayed green for two weeks while the first cell raised
+    StopIteration - the bench had moved. This RUNS it (magics aside, no database), in its own
+    process and from the notebook's folder, the way a kernel would."""
+    import subprocess
+
+    body = "\n".join(line for line in _text(_code_cells(_load(name))[0]).splitlines()
+                     if not line.lstrip().startswith("%"))
+    probe = body + "\nprint('BENCH', dev_bench.__name__)\n"
+    env = {k: v for k, v in os.environ.items() if k != "ASSY_DATA_ROOT"}
+    env["DATABASE_URL"] = "sqlite:///:memory:"
+    env["PYTHONIOENCODING"] = "utf-8"
+    done = subprocess.run([sys.executable, "-c", probe], cwd=NOTEBOOKS, env=env,
+                          capture_output=True, timeout=180)
+    out = done.stdout.decode("utf-8", "replace")
+    assert done.returncode == 0, done.stderr.decode("utf-8", "replace")[-2000:]
+    assert "BENCH admin.dev_bench" in out, out[-1000:]
 
 
 @pytest.mark.parametrize("name", NAMES)

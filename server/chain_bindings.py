@@ -915,9 +915,12 @@ def sdk_mapper_refusals(rule) -> list:
                  "Next: keep one." % name)]
     why = []
     if not rule.get("is_batch"):
+        # [총괄 12cc7dd1f ③] The worker now reads a per-row rule's removal, so the reason is no
+        # longer that it is dropped: each row's call removes by that row alone, and a job or map
+        # several rows feed keeps only the last row's cells.
         why.append(("sdk_removal_needs_batch",
-                    "rule '%s' allows %s but is not a batch rule - a rule called row by row has "
-                    "its removal dropped, so nothing would be removed. Next: set "
+                    "rule '%s' allows %s but is not a batch rule - called row by row, each "
+                    "row's call removes what the other rows of its job or map made. Next: set "
                     "\"is_batch\": true." % (name, "allow_retraction" if retract else
                                              "allow_replace_map")))
     trigger = str(rule.get("trigger_table") or "")

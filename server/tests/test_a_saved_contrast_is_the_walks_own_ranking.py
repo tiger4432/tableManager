@@ -248,7 +248,7 @@ def test_a_run_the_board_writes_through_the_door_is_walked_into_rows(pg_engine, 
 
 # ------------------------------------------------ the run row says it was computed (2dd93d4a9 1)
 
-def _drain(db):
+def _drain(db, rule=RULE):
     """The worker over this file's events -> chain-written events that woke the rule."""
     import event_constants
     from chain import ingestion_worker as worker
@@ -263,12 +263,12 @@ def _drain(db):
             return woke
         woke += sum(1 for e in pending
                     if event_constants.channel_of(get_payload_dict(e)) == event_constants.CHANNEL_CHAIN
-                    and worker.fires(RULE, e) and worker.rule_watches_changed_columns(RULE, e))
+                    and worker.fires(rule, e) and worker.rule_watches_changed_columns(rule, e))
         groups = {}
         for e in pending:
             groups.setdefault(get_payload_dict(e).get("transaction_id"), []).append(e)
         for tx_id, events in groups.items():
-            ok, error, _ = worker._process_chain_transaction_group_sync(tx_id, events, db, [RULE])
+            ok, error, _ = worker._process_chain_transaction_group_sync(tx_id, events, db, [rule])
             assert ok, error
             for e in events:
                 event_constants.mark_processed(e, "SUCCESS")
@@ -277,10 +277,12 @@ def _drain(db):
 
 
 @pytest.mark.pg
-def test_a_run_row_says_whether_it_was_computed_and_what_it_found(pg_engine, monkeypatch):
+@pytest.mark.parametrize("shape", ["batch", "per_row"])
+def test_a_run_row_says_whether_it_was_computed_and_what_it_found(pg_engine, monkeypatch, shape):
     """computed_at · candidates · contrast · complete, written back by the same call through the
     worker: a run never walked has all four empty, one that found nothing has computed_at and
-    0, and the write-back does not wake the rule again."""
+    0, and the write-back does not wake the rule again. `per_row` (총괄 12cc7dd1f ③): the same
+    rule called row by row - its write-back was dropped by the worker before."""
     import event_constants
     from utils.payload_helper import get_payload_dict
 
@@ -290,6 +292,10 @@ def test_a_run_row_says_whether_it_was_computed_and_what_it_found(pg_engine, mon
     Base.metadata.create_all(bind=pg_engine,
                              tables=[models.DYNAMIC_TABLES[n].__table__ for n in TABLES])
     models.sync_dynamic_tables_schema(pg_engine)
+    with pg_engine.begin() as conn:                 # each shape starts from empty tables
+        for name in TABLES:
+            conn.exec_driver_sql('DELETE FROM "%s"' % name)
+            conn.exec_driver_sql("DELETE FROM cell_sources WHERE table_name = '%s'" % name)
     db = sessionmaker(bind=pg_engine)()
     model = models.DYNAMIC_TABLES["contrast_run"]
 
@@ -312,7 +318,7 @@ def test_a_run_row_says_whether_it_was_computed_and_what_it_found(pg_engine, mon
         save("RW_NONE", [_lot("NOBODY")], [_lot("NOBODY2")])
         save("RW_OPEN_ENDED", [_lot("P1")], [_lot("N1")], until=None)
         waiting = facts("RW_FOUND")
-        woke = _drain(db)
+        woke = _drain(db, RULE if shape == "batch" else dict(RULE, is_batch=False))
         found, none, open_ended = facts("RW_FOUND"), facts("RW_NONE"), facts("RW_OPEN_ENDED")
         written = [get_payload_dict(e) for e in db.query(models.DatabaseOutbox).all()
                    if e.table_name == "contrast_run" and event_constants.channel_of(

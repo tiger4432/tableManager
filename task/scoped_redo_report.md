@@ -66083,3 +66083,64 @@ PG         7 failed, 139 passed, 7537 deselected in 250.52s (0:04:10) — 실패
 재기동     서버 · 워처 — RUN.md 새 절 (표 편집기의 null_policy 칸은 클라 몫)
 ```
 다음: ③ 행 단위 체인 갈래가 batches · map_metadata_updates 를 읽게.
+
+## [구현자 -> 총괄] 착지 620326332 — 12cc7dd1f ③: 행마다 부르는 규칙의 batches · 맵 메타데이터를 읽음
+
+```
+자리      chain/ingestion_worker — 두 갈래가 run_rule 을 «똑같이» 부르고 배치 갈래만 map_metadata_updates · batches 를 읽었음
+          좌석(run_rule)은 행마다 부를 때도 세 칸을 다 모아 돌려줌 -> 읽기를 «한 길»로(갈래를 없앰). 허락 검사 · 되쓰기 등록도 그 한 길
+말        @mapper 의 지우기 가드(sdk_removal_needs_batch)는 남김 — 사유만 참인 것으로:
+          「called row by row, each row's call removes what the other rows of its job or map made」
+          (전 문장 「its removal dropped」는 이 변경으로 거짓이 됨. 행마다 지우기는 같은 job 의 다른 행이 만든 칸을 지우고 마지막 행만 남김)
+게이트    2 passed, 7682 deselected in 31.80s — 대조 규칙을 배치로 · 행마다로: 둘 다 run 행 넷 · 선언 도장 · 재깨움 0 (칸마다 표를 비우고 시작)
+변이 R1 옛 갈래로 되돌림            1 failed, 1 passed, 7682 deselected in 32.73s — 빨강 test_a_run_row_says_whether_it_was_computed_and_what_it_found[per_row] (행마다만 — computed_at 이 안 써짐), 배치는 초록
+전체      5 failed, 7490 passed, 186 skipped, 3 xfailed in 787.94s (0:13:07) — 실패는 알려진 다섯과 이름이 같음
+          첫 판은 6 failed, 7489 passed, 186 skipped, 3 xfailed in 814.53s (0:13:34) — 알려진 다섯 + test_every_cell_the_product_reads_off_a_chain_rule_is_in_the_list — 지운 죽은 줄(rule.get("is_batch"))이 «체인 규칙에서 읽는 칸» 전수 시험의 워커 쪽 씨앗이었음
+          -> 그 시험의 씨앗 칸에 allow_map_metadata_upsert(체인 규칙만 드는 칸, 워커가 읽음)를 더함 -> 그 시험 초록 -> 전체 다시
+PG        7 failed, 140 passed, 7537 deselected in 275.89s (0:04:35) — 실패는 알려진 일곱과 이름이 같음
+크기 · 영향 박스 라이브 선언과 표본에서 불러오는 규칙이 전부 is_batch — 동작이 바뀌는 규칙 0
+          박스   CANARY rules 15 | mapper sources read 15 / PER-ROW RULES, MAPPER FUNCTION RETURNS AN ENVELOPE: 0 [] / PER-ROW RULES, MAPPER MODULE MENTIONS ONE (upper bound): 0 []
+          표본   CANARY rules 11 | mapper sources read 10 / PER-ROW RULES, MAPPER FUNCTION RETURNS AN ENVELOPE: 0 [] / PER-ROW RULES, MAPPER MODULE MENTIONS ONE (upper bound): 0 []
+          명령   python <스크래치>/census_per_row_envelopes.py (서버 폴더에서, 표본은 ASSY_DATA_ROOT 로)
+재기동    체인 워커 — RUN.md 새 절
+```
+다음: 1ce3305f3(nokey 시각 마이크로초) -> d8b1e7cfb(같은 id 가 시각에 따라 다른 물건, 설계) -> ④ dc4ca3e7c.
+
+## [구현자 -> 총괄] 착지 d28bccbdd — 1ce3305f3: nokey 시각을 마이크로초까지
+
+```
+값        nokey_<첫 적재 UTC, 마이크로초까지 — 20260930T051503.123456Z>_<6 hex>
+게이트    5 passed, 7680 deselected in 13.95s — 같은 초에 처음 적재된 두 파일, 6 hex 가 같도록 행 번호를 고른 픽스처 -> 행 둘(안 합쳐짐). 나머지 nokey 칸 그대로
+단위      1 passed, 5 deselected in 0.55s
+변이 M1 시각을 초까지          1 failed, 4 passed, 7680 deselected in 13.10s — 빨강 test_two_files_begun_in_the_same_second_stay_apart_where_their_rings_meet (두 행이 하나로)
+확률      초까지: 같은 초에 시작한 두 파일(각 10000 행)의 구간이 겹칠 확률 ≈ (n+m)/16^6 = 0.0012
+          마이크로초까지: 그 위에 «같은 마이크로초에 시작»이 곱해짐 — 같은 초 안에서 1e-06, 합쳐 ≈ 1e-09
+          워처는 파일을 차례로 적재하니 같은 마이크로초에 체크포인트 행 둘이 생기는 일은 사실상 없음(안 잼)
+시험 범위  고친 것은 값 모양 한 줄 — nokey 시험 파일(PG 다섯 · 단위 하나)만 돌림. 이 값을 읽는 다른 시험 0(git grep nokey_value)
+```
+
+**재 올 것 — 자라는 파일은 평소 길에서도 나나 (잰 것, 안 고침)**
+```
+평소 계획(force 없음)  처음 3 행 · 같은 내용 다시 3 행 · 한 행 이어쓴 뒤 7 행 · 값별 {"a": 2, "b": 2, "c": 2, "d": 1}
+강제 재적재           처음 3 행 · 같은 내용 다시 3 행 · 한 행 이어쓴 뒤 7 행 · 값별 {"a": 2, "b": 2, "c": 2, "d": 1}
+뜻        Retry · 강제에서만이 아니라 «평소에도» 남 — 내용이 바뀌면 시그니처가 바뀌고, 새 시그니처는 체크포인트가 없으니 0 행부터 다시 읽음
+          (오프셋 이어 읽기는 «같은 시그니처»의 IN_PROGRESS 에만 걸림 — checkpoint.plan_ingestion)
+          같은 내용을 다시 올리면 안 겹침
+```
+다음: 8903333bc(+f922b3db4) -> eed8b37de -> d8b1e7cfb -> ④ (순서 여쭌 것 답 오면 따름).
+
+## [구현자 -> 총괄] 착지 3748c0e52 — 8903333bc + f922b3db4: 워크벤치 노트북 첫 셀 · 토폴로지 가이드
+
+```
+노트북    두 노트북 첫 셀 — 뿌리를 server/admin/dev_bench.py 로 찾고 import admin.dev_bench as dev_bench
+          (from admin import … 로 쓰면 시험의 import 허용 목록이 「admin」 전체를 허락해야 해서, 이 모양으로 목록에 admin.dev_bench 한 칸)
+시험      test_the_workbench_notebooks_call_production 에 첫 셀을 «실제로 실행»하는 칸 — 매직 줄 빼고 · DB 없이 · 노트북 폴더에서 · 따로 프로세스
+          19 passed, 2 skipped in 3.30s (end-to-end 두 칸은 전처럼 노트북 러너가 없어 건너뜀)
+변이 N1 옛 첫 셀(09-13 전 경로)   2 failed, 19 deselected in 0.78s — 빨강 test_the_first_cell_runs_and_reaches_the_bench[mapper_workbench.ipynb] · test_the_first_cell_runs_and_reaches_the_bench[parser_workbench.ipynb] · 그 파일의 글자 시험들은 옛 셀에서 다 초록이었던 것
+README    server/admin/dev_bench.py(두 곳) · python server/scripts/try_core.py — 저장소 뿌리에서 --help 로 돌려 봄(exit 0)
+가이드     §2 가져오기를 §4 와 같은 짧은 이름으로 · §3.6 가져오기도 같은 모양이라 같이 고침(지시 밖 한 줄 — 같은 결함)
+          is_header_fn 예시를 (tag, row_idx, col_idx) 로 — 파서가 셋을 넘김 · 머리 줄을 이번에 연 만큼으로(§1 · §3.1~§3.5 · §4 본문은 안 엶)
+시험 범위  노트북 시험 파일만 — 가이드 · README 를 읽는 시험 0
+재기동    없음
+```
+다음: eed8b37de(HTML 토폴로지 파서 — 같은 헤더 경로 값 잃음) -> d8b1e7cfb -> ④.
