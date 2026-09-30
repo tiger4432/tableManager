@@ -32,6 +32,7 @@ from .roleframe import (
     SOURCE_EVENT_INCOMPLETE_ATTR,
     SOURCE_OCCURRED_AT_COLUMN,
     SOURCE_ROW_REF_COLUMN,
+    _is_missing,
     read_columns_once,
 )
 from .setup_registry import (
@@ -146,20 +147,6 @@ def _canonical(value: Any, *, path: str) -> str:
             "source_preparation_incomplete", path,
             f"value is not deterministic JSON: {exc}",
         ) from exc
-
-
-def _is_missing(value: Any) -> bool:
-    if value is None:
-        return True
-    try:
-        result = pd.isna(value)
-    except (TypeError, ValueError):
-        return False
-    if isinstance(result, bool):
-        return result
-    if getattr(result, "shape", None) == ():
-        return bool(result)
-    return False
 
 
 def is_blank_source_value(value: Any) -> bool:
@@ -682,7 +669,7 @@ def _validate_base_frame(
     # identity and group_by stay: without them there is no molecule to name.
     for column in sorted(required_physical):
         for position, value in enumerate(frame[column].tolist()):
-            if _is_missing(value) or (isinstance(value, str) and not value.strip()):
+            if is_blank_source_value(value):
                 raise SourcePreparationError(
                     "source_preparation_incomplete",
                     f"source_batch.rows[{position}].{column}",
@@ -826,7 +813,9 @@ def _assemble_prepared_frame(
                 f"source_preparation.outputs.{column}",
                 "output must contain exactly one value per source row",
             )
-        out[column] = list(values)
+        # object, so a `None` output stays `None` - a list would be typed `str`/`float` and
+        # the None made NaN (총괄 3a109bfd9 ②)
+        out[column] = pd.Series(list(values), dtype=object)
     for column in base.columns:
         if not out[column].equals(base.reset_index(drop=True)[column]):
             raise SourcePreparationError(
@@ -1025,7 +1014,7 @@ def _event_frames(
             identity = {}
             for column in driver.group_by:
                 value = cells[column][position]
-                if _is_missing(value) or (isinstance(value, str) and not value.strip()):
+                if is_blank_source_value(value):
                     raise SourcePreparationError(
                         "source_preparation_incomplete",
                         f"event_frame.rows[{position}].{column}",

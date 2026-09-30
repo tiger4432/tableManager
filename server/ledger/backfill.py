@@ -149,7 +149,7 @@ def prepare_v2_cursor_batch(snapshot, source_id, rows, reader, implementations,
         source_plan = snapshot.source_plans[source_id]
     except (AttributeError, KeyError) as exc:
         raise ValueError(f"unknown Ledger v2 source {source_id!r}") from exc
-    frame = rows if isinstance(rows, pd.DataFrame) else pd.DataFrame(rows)
+    frame = rows if isinstance(rows, pd.DataFrame) else _v2_frame(rows)
     context = SourcePreparationContext(snapshot, source_plan)
     frames = prepare_source_batch(context, frame, reader, implementations)
     if refusals is not None:
@@ -1710,8 +1710,12 @@ def count_excluded_but_indexed(engine, setup, source, fetch_rows=PREVIEW_FETCH_R
 
 
 def _v2_frame(rows):
+    """Database rows as a ledger source frame. `object`, so a NULL stays `None`: pandas 3
+    types a text column that holds a NULL as `str` and turns the `None` into NaN
+    (총괄 3a109bfd9 ② - a ledger frame does not make NaN, the way `ledger_frame` and
+    `roleframe` build theirs)."""
     import pandas as pd
-    return pd.DataFrame(rows)
+    return pd.DataFrame(rows, dtype=object)
 
 
 def _page_key(plan):

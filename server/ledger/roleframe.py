@@ -122,11 +122,6 @@ def _plain(value: Any) -> Any:
         return {str(key): _plain(value[key]) for key in sorted(value, key=str)}
     if isinstance(value, (tuple, list)):
         return [_plain(item) for item in value]
-    if _is_missing(value):
-        # 🔴 [총괄 363db7dfa] pandas 3 holds a NULL of a text column as NaN, and `allow_nan=False`
-        #   then refused the WHOLE batch - measured in this box on 09-10 (dt_job follow-up, seven
-        #   batches). Missing is None here as everywhere; `_is_missing` is this module's judge.
-        return None
     if isinstance(value, datetime):
         if value.tzinfo is None:
             raise TypeError("naive datetime has no deterministic instant")
@@ -893,15 +888,9 @@ def _unit_says(unit_columns: Mapping[Any, tuple], when: Mapping[str, Any]) -> bo
         if values is None:
             return False
         target = clean_str_value(expected)
-        if any(_when_value(value) != target for value in values):
+        if any(clean_str_value(value) != target for value in values):
             return False
     return True
-
-
-def _when_value(value: Any) -> str:
-    """A cell as `when` compares it. A missing cell (None, or pandas's NaN for a NULL of a text
-    column) is "" - without the fold `clean_str_value` spells NaN "nan" (총괄 363db7dfa)."""
-    return clean_str_value(None if _is_missing(value) else value)
 
 
 def _said_by_no_when(unit_columns: Mapping[Any, tuple], profile: ProfileDescriptor):
@@ -915,7 +904,7 @@ def _said_by_no_when(unit_columns: Mapping[Any, tuple], profile: ProfileDescript
     if any(_unit_says(unit_columns, mapping.when) for mapping in mappings):
         return None
     columns = sorted({column for mapping in mappings for column in mapping.when})
-    return tuple((column, ", ".join(sorted({_when_value(value)
+    return tuple((column, ", ".join(sorted({clean_str_value(value)
                                            for value in (unit_columns.get(column) or ())})))
                  for column in columns)
 

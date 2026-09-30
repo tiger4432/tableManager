@@ -1,5 +1,19 @@
 # 지금 돌리면 되는 것
 
+> ## 🔴 [10-01 새벽] **원장 프레임은 NaN 을 만들지 않음 — DB 의 NULL 이 None 으로 끝까지 · 마이그레이션 «없음» · 재기동 서버 · 체인 워커 (run_app.bat 로 전체)**
+>
+> ```
+> 무엇이 바뀌나  DB 행 -> 원장 소스 프레임(backfill._v2_frame) · 준비기 출력 -> 프레임 칸(_assemble_prepared_frame) 을 object 로 지음
+>              pandas 3 은 NULL 이 섞인 글자 칸을 str 로 잡아 None 을 NaN 으로 바꿨음 — 이제 None 그대로
+>              그래서 when 비교(_when_value) · 정본 JSON 의 NaN 갈래가 빠짐. 번역 결과는 같아야 함(NULL 이 든 글자 칸 = 빈 칸으로 견줌)
+> 돌릴 명령     없음. 재기동 뒤 따라가기가 평소처럼 도는지만
+> 뜻           로그 「value is not deterministic JSON ... NaN」 으로 배치가 거절되면 = 어딘가 프레임이 아직 NaN 을 만듦(원장 밖에서 지은 프레임) -> 그 소스 이름과 보고
+>             「said no sentence - mat_type='nan'」 처럼 nan 글자가 보이면 = 같은 원인
+> 급할 때       커밋 되돌리기
+> ```
+
+---
+
 > ## 🔴 [10-01 새벽] **row 소스의 group_by — 폼에 안 그림 · 저장하면 파일에서 빠짐 · 없음은 빈 목록으로 읽음 · 마이그레이션 «없음» · 재기동 서버 · 체인 워커 (run_app.bat 로 전체)**
 >
 > ```
