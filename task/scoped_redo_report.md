@@ -66083,3 +66083,25 @@ PG         7 failed, 139 passed, 7537 deselected in 250.52s (0:04:10) — 실패
 재기동     서버 · 워처 — RUN.md 새 절 (표 편집기의 null_policy 칸은 클라 몫)
 ```
 다음: ③ 행 단위 체인 갈래가 batches · map_metadata_updates 를 읽게.
+
+## [구현자 -> 총괄] 착지 620326332 — 12cc7dd1f ③: 행마다 부르는 규칙의 batches · 맵 메타데이터를 읽음
+
+```
+자리      chain/ingestion_worker — 두 갈래가 run_rule 을 «똑같이» 부르고 배치 갈래만 map_metadata_updates · batches 를 읽었음
+          좌석(run_rule)은 행마다 부를 때도 세 칸을 다 모아 돌려줌 -> 읽기를 «한 길»로(갈래를 없앰). 허락 검사 · 되쓰기 등록도 그 한 길
+말        @mapper 의 지우기 가드(sdk_removal_needs_batch)는 남김 — 사유만 참인 것으로:
+          「called row by row, each row's call removes what the other rows of its job or map made」
+          (전 문장 「its removal dropped」는 이 변경으로 거짓이 됨. 행마다 지우기는 같은 job 의 다른 행이 만든 칸을 지우고 마지막 행만 남김)
+게이트    2 passed, 7682 deselected in 31.80s — 대조 규칙을 배치로 · 행마다로: 둘 다 run 행 넷 · 선언 도장 · 재깨움 0 (칸마다 표를 비우고 시작)
+변이 R1 옛 갈래로 되돌림            1 failed, 1 passed, 7682 deselected in 32.73s — 빨강 test_a_run_row_says_whether_it_was_computed_and_what_it_found[per_row] (행마다만 — computed_at 이 안 써짐), 배치는 초록
+전체      5 failed, 7490 passed, 186 skipped, 3 xfailed in 787.94s (0:13:07) — 실패는 알려진 다섯과 이름이 같음
+          첫 판은 6 failed, 7489 passed, 186 skipped, 3 xfailed in 814.53s (0:13:34) — 알려진 다섯 + test_every_cell_the_product_reads_off_a_chain_rule_is_in_the_list — 지운 죽은 줄(rule.get("is_batch"))이 «체인 규칙에서 읽는 칸» 전수 시험의 워커 쪽 씨앗이었음
+          -> 그 시험의 씨앗 칸에 allow_map_metadata_upsert(체인 규칙만 드는 칸, 워커가 읽음)를 더함 -> 그 시험 초록 -> 전체 다시
+PG        7 failed, 140 passed, 7537 deselected in 275.89s (0:04:35) — 실패는 알려진 일곱과 이름이 같음
+크기 · 영향 박스 라이브 선언과 표본에서 불러오는 규칙이 전부 is_batch — 동작이 바뀌는 규칙 0
+          박스   CANARY rules 15 | mapper sources read 15 / PER-ROW RULES, MAPPER FUNCTION RETURNS AN ENVELOPE: 0 [] / PER-ROW RULES, MAPPER MODULE MENTIONS ONE (upper bound): 0 []
+          표본   CANARY rules 11 | mapper sources read 10 / PER-ROW RULES, MAPPER FUNCTION RETURNS AN ENVELOPE: 0 [] / PER-ROW RULES, MAPPER MODULE MENTIONS ONE (upper bound): 0 []
+          명령   python <스크래치>/census_per_row_envelopes.py (서버 폴더에서, 표본은 ASSY_DATA_ROOT 로)
+재기동    체인 워커 — RUN.md 새 절
+```
+다음: 1ce3305f3(nokey 시각 마이크로초) -> d8b1e7cfb(같은 id 가 시각에 따라 다른 물건, 설계) -> ④ dc4ca3e7c.
