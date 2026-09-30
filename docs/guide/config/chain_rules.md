@@ -210,7 +210,7 @@ conda run -n assy_manager python server/scripts/backup_config.py restore chain_r
 
 ### 5-B. 규칙 수준 — 프레임워크 키 (`rules[]` 항목)
 
-> 🔴 **예/아니오 칸은 `true` / `false` 만** (09-27, 총괄 872f6cb6b) — `enabled` · `is_batch` · `allow_*` · `idempotent` · `key.unique` · 통합 문법의 `derive.decide.auto_confirm` · `alignment` 에 `0` · `1` · `null` · `"false"` · `"true"` 를 적으면 로드 · 저장에서 그 선언이 **안 섭니다** — 「`<칸> must be true or false, got <값> - write true or false`」. 전에는 `"false"` 글자가 켜짐으로 읽혔습니다(`allow_retraction` 이면 지우기가 켜짐). 칸을 **안 적으면** 오늘 뜻 그대로(`enabled` 생략 = 켜짐).
+> 🔴 **예/아니오 칸은 `true` / `false` 만** (09-27, 총괄 872f6cb6b) — `enabled` · `is_batch` · `allow_*` · `idempotent` · `key.unique` · 통합 문법의 `derive.decide.auto_confirm` · `alignment` 에 `0` · `1` · `null` · `"false"` · `"true"` 를 적으면 로드 · 저장에서 그 선언이 **안 섭니다** — 「`<칸> must be true or false, got <값> - write true or false`」. 전에는 `"false"` 글자가 켜짐으로 읽혔습니다(`allow_retraction` 이면 지우기가 켜짐). 칸을 **안 적으면** 오늘 뜻 그대로(`enabled` 생략 = 켜짐). 🆕 10-01 `0f609ed41`: 대조 run 행의 `include_superseded` 칸도 같은 문장으로 그 run 을 거절합니다(전엔 `"1"` 이 켜짐, `"yes"` 가 꺼짐으로 읽혔다). 소급 작업의 예/아니오 칸도 같은 문장입니다.
 
 | 키 | 읽는 곳 | 의미 · 기본값 |
 |---|---|---|
