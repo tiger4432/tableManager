@@ -67416,3 +67416,48 @@ early-exit loop, batch                               0.324
 2  드롭 경로의 「O(1) 해시·할당 없음」 — 고리(할당 없음 · 최대 19 비교 · 잰 값 위) 로 바꿔도 되나, 아니면 그 한 자리는 해시 조회로 남기고
    상수만 같은 것을 쓰나 (그러면 판정 자리가 둘 — 문)
 ```
+
+## [구현자 -> 총괄] 5c39aa10c · 5deda97cf 착지 f6f7373d2 — 알림 문턱 하나 · 넘김 판정 하나 (범위 crud · 고리 하나)
+
+**다섯 문 · 같은 입력 — 전후** (문을 직접 몰아 줄이 나오나. 전 = 5deda97cf 사본, 후 = 착지 트리. L = 줄, . = 없음. 한 번에 하나씩 세는 문은 한 걸음 입력만)
+```
+입력 순서  0->1 · 1->2 · 9->10 · 10->11 · 5->50 · 0->5000 · 999999->1000000 · 1000000->1000001 · 1000000->5000000 · 9999999->10000000 · 10000000->100000000 · 999999999999999999->1000000000000000000 · 1000000000000000000->1000000000000000001
+key_gate             전 L.L.LLL......
+                     후 L.L.LLL..LLL.
+void_sat_format      전 L.L.LLL......
+                     후 L.L.LLL..LLL.
+gate.refuse          전 L.L.L....
+                     후 L.L.L.LL.
+gate.record_unsaid   전 L.L.LLL......
+                     후 L.L.LLL..LLL.
+crud drop            전 L.L.L.LL.
+                     후 L.L.L.LL.
+늘어난 줄 11 — key_gate 9999999->10000000 · key_gate 10000000->100000000 · key_gate 999999999999999999->1000000000000000000 · void_sat_format 9999999->10000000 · void_sat_format 10000000->100000000 · void_sat_format 999999999999999999->1000000000000000000 · gate.refuse 9999999->10000000 · gate.refuse 999999999999999999->1000000000000000000 · gate.record_unsaid 9999999->10000000 · gate.record_unsaid 10000000->100000000 · gate.record_unsaid 999999999999999999->1000000000000000000
+줄어든 줄 0
+```
+```
+상수·함수   utils/logger.py — ANNOUNCE_AT(10^0..10^18) · announce_crossed(before, total): 작은 표부터 보다 total 을 넘으면 멈추는 고리, 할당 없음, 최대 19 비교
+부르는 자리 5 — server/chain/key_gate.py:155 · server/database/crud.py:152 · server/ledger/gate.py:421 · server/ledger/gate.py:453 · server/parsers/void_sat_format.py:385
+남은 문턱   서버 코드(시험 빼고)에서 *ANNOUNCE_AT 를 정의하는 모듈 — 1 (server/utils/logger.py:ANNOUNCE_AT)
+문장        crud 주석 「O(1) hash lookup」 은 삭제(상수와 같이), PRIMITIVES.md 한 줄은 「할당 없는 고리, 최대 19 비교」로 · CODE_MAP 셋 · SYSTEM_FLOWS 하나가 함수 이름으로
+```
+변이 여섯 — 각각 되돌림
+```
+A1 key_gate keeps its own marks to 10^6            빨강  (3 failed, 55 passed)
+A2 void_sat_format keeps its own marks to 10^6     빨강  (3 failed, 55 passed)
+A3 gate._record lands on its own marks to 10^6     빨강  (2 failed, 56 passed)
+A4 gate.record_unsaid keeps its own marks to 10^6  빨강  (3 failed, 55 passed)
+A5 crud writes its own marks back (same answers)   빨강  (1 failed, 57 passed)
+A6 the one constant stops at 10^6                  빨강  (13 failed, 45 passed)
+```
+**새 함수 · 새 if 중 기존 것과 같은 일** (cdeb5ea10)
+```
+새 함수   utils.logger.announce_crossed — 다섯 자리의 판정 셋(any 넘김 셋 · `total in` · `count != 1 and not in`)을 접은 자리
+새 if     0 — 고리 안의 `if mark > total: break` 는 옛 판정이 하던 비교
+지운 것   _ANNOUNCE_AT 셋 · _DROP_ANNOUNCE_AT · 자리 안 판정 다섯 · 넘김 까닭 주석 둘(함수 docstring 으로)
+```
+**스위트** (C:/wt-impl, 착지 트리)
+```
+전체  5 failed, 7585 passed, 196 skipped, 3 xfailed in 816.56s (0:13:36) — 실패 5 개, 파일::이름으로 알려진 다섯과 같음: True
+PG    7 failed, 150 passed, 7632 deselected, 53 warnings in 316.84s (0:05:16) — 실패 이름이 알려진 일곱과 같음: True
+```
