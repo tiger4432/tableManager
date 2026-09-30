@@ -440,9 +440,6 @@
 #ontology-explorer-root .oe-signature { display: grid; grid-template-columns: 104px minmax(0, 1fr); gap: 10.2px 13.6px; }
 #ontology-explorer-root .oe-label { color: var(--oe-ink-label); font-size: var(--fs-label); }
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-value { min-width: 0; overflow-wrap: anywhere; font-size: var(--fs-button); }
-:is(#ontology-explorer-root, .oe-skeleton-form) .oe-planned-from {
-  min-width: 0; overflow-wrap: anywhere; font-family: var(--oe-font-mono); font-size: var(--fs-button); color: var(--oe-muted);
-}
 #ontology-explorer-root .oe-definition { display: grid; gap: 13.6px; }
 #ontology-explorer-root .oe-code {
   margin: 0; padding: 10.2px; background: var(--oe-surface-2);
