@@ -73,6 +73,7 @@
 >              같은 인자로 부른 걷기의 propagation.ranked 수 = <N> = contrast_factor 에서 그 run_id 의 행 수
 > 뜻           contrast=unexamined -> 양품(negative) 씨앗이 없었음 · complete=false -> 걷기가 잘림(node_limit) — 순위는 잠정
 >             「[ContrastWalk] … until is empty - …」 -> until 이 빈 run 이라 안 씀 (걷기를 묶을 수 없어서)
+>             until 은 시간대를 붙여 적는다 — 안 붙이면 DB 세션 시간대로 읽힘(보드는 Z 를 붙여 보냄, 그리드에 손으로 적을 때만 해당)
 >             행 0 -> 후보 0 이거나 아직 안 돎 — 둘을 가를 자리는 아직 없음(보고의 제안)
 >             contrast_run 행을 지우면 -> 그 run 의 factor 행은 «남고» 칸이 전부 비워짐(맵퍼가 찍은 도장으로 걷힘, 키 R1|<노드> 만 남음)
 >             그때 「[ChainRetract] … 파일 맵퍼는 … 적는지는 제품이 모릅니다」 줄이 나와도 이 규칙엔 해당 없음 — 이 맵퍼는 도장을 찍음
