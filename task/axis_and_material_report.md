@@ -1,3 +1,27 @@
+> ## [23:13 디자인] 09-30 착지분의 «문» 정리 — ㉮ 사유 되살림 · ㉲ 빈 id 한 판단 · ㉱ 두 목록 한 앞머리 · ㉯㉰ 경로 위젯 하나 + 고르면 map-goto · ㉳ 대기 — 총괄 d4a949a8c · 3d5c0c938
+
+| 항목 | 커밋 | 한 것 | 게이트 |
+|---|---|---|---|
+| ㉮ 🔴 대조 저장 거절 사유 | 1313d50c2 | refused 가 refusalSentence 를 부름(그 함수에 fallback 인자 하나, 기존 두 호출 그대로). 이름 붙은 사유·배열 detail 이 «Save refused (422)»로 뭉개지던 것 | contrast_save G5·G6, 옛 읽기 되돌린 변이 잡힘 |
+| ㉲ 빈 id | e008edb43 | api.js 에 blank 하나(서버 is_blank_value 와 같은 규칙). idCount 가 빈 id 를 버림(["a",""] -> 1), computedAt 의 같은 판단도 그것을 지남 | C7, 빈 것을 세는 변이 잡힘 |
+| ㉱ 두 목록 앞머리 | 252b2a1b7 | panel.js 의 WalkedListPanel 로 옮김(생성자·seed·mount·onStartChanged·load — 옮기는 스크립트가 두 사본이 rank 의 opened 빼고 글자 그대로임을 단언). Panel 자체에 안 넣은 이유: 그 onStartChanged 는 다른 구독 패널들이 기대는 no-op | walk D5 두 목록의 네 메서드가 같은 함수, 한쪽에 load 되살린 변이 잡힘 · 보드 페이지 열어 봄(목록 둘 섬) |
+| ㉯ 경로 위젯 하나 | 3d5c0c938 | path_bar.js 의 pathSteps 하나로 선언 경로(브레드크럼)와 폼 경로를 둘 다 그림. 상자는 자리 몫(폼: 한 줄·테두리, 워크스페이스: 줄바꿈) | path_bar B1·B2, 같은 고정 상태로 전/후 대조: 라벨·구분자·현재·select·pathId·edgeId 같음 |
+| ㉰ 고르면 커서 | 3d5c0c938 | 단계 버튼이 data-action=map-goto 를 싣고 컨트롤러의 기존 map-goto 가 처리(커서·조상 펼침·가운데). 옛 onPick 스크롤 콜백 은퇴 | path_bar P3 · 브라우저: 고른 단계로 커서·부모 표시가 옮겨 가고 행이 가운데 |
+| ㉳ | — | 서버 ⑤(trails 에 홉마다 술어)가 main 에 아직 없음 — 대기 | — |
+
+러너 152 중 150 게이트 초록
+
+전/후가 다른 것 둘(한 위젯이 된 결과)
+- 현재 위치의 브레드크럼 단계가 더는 자기 자신을 다시 select 하지 않습니다(위젯의 규칙: 현재 단계는 묻지 않음).
+- hover 가 하나로: 밑줄(브레드크럼은 배경 틴트였음).
+
+같은 일이 아니어서 사실만: contrastCell 과 grid.rawCellValue — 빈 칸을 '' 와 undefined 로 다르게 답해서, 접으면 대조의 «후보 수 모름»이 0 이 됩니다. 그리고 grid.js 는 AG Grid 를 끌어와 보드가 import 못 합니다.
+
+새 함수 · 새 if 중 기존 것과 같은 일 — 이번 착지: pathSteps(둘을 대신) · WalkedListPanel(두 사본 대신) · blank(두 철자 대신) · 새 if 0.
+🔴 앞서 제가 「같은 일 0」이라 한 것이 틀렸던 것 하나 더: paste_box.js 의 _el 은 clipboard_type_modal.js 의 _el 사본입니다. 지시대로 그 파일을 만질 때 접습니다.
+
+새 지시 셋(8fd2f185d · 7602a4a83 · 482288b12)은 이것 다음에 집니다.
+
 > ## [18:02 디자인] 물려받음 (나) — 이름 칸 비우고 값 칸의 근거 상자에 «서버 문장 · 경로» + 뼈대 픽스처 다시 뜨기 — 총괄 1d3c04e21 · df2e7b1b7
 
 ```
