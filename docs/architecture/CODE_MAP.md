@@ -4130,9 +4130,9 @@ note_naive_time(...)      셈 · `naive_time_counts()` · `naive_time_note()` �
 
 🧪 **하니스**: `client2/tests/ontology_explorer_harness.mjs` · 🆕⑩ `client2/tests/ontology_authoring_panel_harness.mjs`(신설) · 🆕⑩ `client2/tests/dom_patch_harness.mjs`(신설). ⚠️ **이 패스는 하니스를 돌리지 않았고 채점 결과를 등재하지 않는다.**
 
-### 🆕⑩ `server/scripts/audit_authoring_form.py` (**280줄**, 신설) — 폼의 «구멍을 세는» 기계
+### 🆕⑩ `server/scripts/audit_authoring_form.py` (🆕 **263줄** @`78172e1a7` · 280줄, 신설) — 폼의 «구멍을 세는» 기계
 
-⚠️ 이 지도는 `server/scripts/**`를 파일 단위로 등재하지 않지만([§5-I](#5-i-미등재-모듈-레지스트리-2026-08-18-실측) 제외 규칙), **이것은 위 표면 자체를 채점하므로** 이름을 남긴다. `audit(root, catalog_path)` · `unanswered_leaves(document, plan, skeleton)`(계획이 대변하지 않는 **그려질 잎** — 후보도 기본값도 접기도 없는 것) · `_skeleton_node`/`_skeleton_leaves` · `_reader_counts`(선언 키를 **선언 집합 «밖»의 파일 몇 개가 언급하는가**) · `DECLARING = ("config_authoring.py", "setup_bundle.py", "config_explorer.py", …)` · `SKELETON` · `TITLES` · `main(argv=None)`.
+⚠️ 이 지도는 `server/scripts/**`를 파일 단위로 등재하지 않지만([§5-I](#5-i-미등재-모듈-레지스트리-2026-08-18-실측) 제외 규칙), **이것은 위 표면 자체를 채점하므로** 이름을 남긴다. `audit(root, catalog_path)` · `unanswered_leaves(document, plan, skeleton)`(계획이 대변하지 않는 **그려질 잎** — 후보도 기본값도 접기도 없는 것) · `_skeleton_node`(🆕 10-01 `af70331cd`: 제품의 `config_authoring._skeleton_node` 를 부른다 — 계획 경로의 `[i]` 를 먼저 떼고 마지막 `use` 를 따라감. 스켈레톤을 따로 걷던 두 번째 걷기 은퇴 · 읽는 이 없던 `_required` 도장 은퇴)/`_skeleton_leaves` · `_reader_counts`(선언 키를 **선언 집합 «밖»의 파일 몇 개가 언급하는가**) · `DECLARING = ("config_authoring.py", "setup_bundle.py", "config_explorer.py", …)` · `SKELETON` · `TITLES` · `main(argv=None)`.
 
 ---
 
