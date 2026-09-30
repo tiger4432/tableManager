@@ -430,7 +430,7 @@
 #ontology-explorer-root .oe-tabs { display: flex; gap: 13.6px; padding: 0 13.6px; border-bottom: 1px solid var(--oe-line); }
 #ontology-explorer-root .oe-tab {
   border: 0; border-bottom: 2px solid transparent; background: transparent;
-  color: var(--oe-accent); padding: 10.2px 3.4px 6.8px; cursor: pointer;
+  color: var(--oe-accent); padding: var(--space-3) var(--space-1) var(--space-2); cursor: pointer;
   font-family: var(--oe-font-head); font-weight: 600; font-size: var(--fs-button); line-height: 1.2;
 }
 #ontology-explorer-root .oe-tab:hover { background: var(--oe-tint-accent-hover); color: var(--oe-accent); }
@@ -859,7 +859,7 @@
   height: auto; min-height: 0; line-height: inherit;
 }
 #ontology-explorer-root .oe-path-step[aria-current="true"] { flex: none; }
-#ontology-explorer-root .oe-path-step:hover { text-decoration: underline; }
+#ontology-explorer-root button.oe-path-step:hover { text-decoration: underline; }
 #ontology-explorer-root .oe-path-step[aria-current="true"] { color: var(--oe-text); font-weight: 600; cursor: default; }
 /* Inside a tree row the card is only its body -- the row already said the name. */
 #ontology-explorer-root .oe-field.is-bare {
@@ -867,14 +867,15 @@
 }
 #ontology-explorer-root .oe-field.is-bare .oe-field-head { margin: 0; }
 #ontology-explorer-root .oe-field.is-bare .oe-field-path { display: none; }
+/* A head with nothing in it takes no gap and is no baseline: the value starts where the inputs do. */
+#ontology-explorer-root .oe-field.is-bare .oe-field-head:empty { display: none; }
 /* A folded one-value field in a tree row is ONE line: its head and its value side by side on the
    row's baseline (lead 8fd2f185d). Open, or outside the tree, the card still stacks. */
 #ontology-explorer-root .oe-field.is-bare.is-folded { flex-direction: row; flex-wrap: wrap; align-items: baseline; }
 
-/* 🔴 A FOLDED LINE IS SEVERAL FACTS, AND WITHOUT A GAP IT IS ONE WORD. Measured at 0px
-   apart, `["dt_cell_key"]` and its ground ran together into a single run of text. The
-   button is the line, so the line carries the spacing unit: 6.8px between parts, and it
-   wraps rather than pushing the state column sideways. */
+/* The folded line is the value, and outside the tree its reason. Measured at 0px apart the two
+   ran together into one run of text, so the line carries the spacing unit and wraps rather than
+   pushing the state column sideways. */
 #ontology-explorer-root .oe-field-folded {
   display: flex; align-items: baseline; flex-wrap: wrap; gap: var(--space-2);
   flex: 1 1 0%; min-width: 0; text-align: left;
@@ -1189,9 +1190,8 @@
    screen a box is what can be pressed. The state column's word, a demand, a node's kind. */
 :is(#ontology-explorer-root, .oe-skeleton-form) :is(.oe-tier, .oe-node-badge) {
   font-style: normal; font-size: var(--fs-tag); letter-spacing: 0.02em; white-space: nowrap;
-  padding: 0; border: 0; background: transparent; color: var(--oe-ink-meta);
+  padding: 0; border: 0; background: transparent; color: var(--oe-muted);
 }
-:is(#ontology-explorer-root, .oe-skeleton-form) .oe-tier--structural { color: var(--oe-ok); }
 /* 🔴 WHO IS SPEAKING FOR A BOX THE PLAN HAS NO ROW FOR. Same column as the plan's own
    state chip, because it answers the same question -- what does this square want -- just
    from the skeleton instead. ⚠️ 「필수」 is the warning colour and 「모름」 is not: a demand
@@ -1204,13 +1204,16 @@
    「선택」 both computed rgb(91,103,121). The comment above was true of the intent and false
    of the output; ordering is what makes it true of both. */
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-demand--warn { color: var(--oe-warn); }
-:is(#ontology-explorer-root, .oe-skeleton-form) .oe-demand--muted { color: var(--oe-ink-meta); }
+:is(#ontology-explorer-root, .oe-skeleton-form) .oe-demand--muted { color: var(--oe-muted); }
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-demand--danger { color: var(--oe-warn); font-weight: 600; }
 #ontology-explorer-root .oe-chip {
   font-family: var(--oe-font-mono); color: var(--oe-text);
   background: var(--oe-surface-2); overflow-wrap: anywhere; white-space: normal;
 }
 #ontology-explorer-root .oe-chip.is-none { color: var(--oe-muted); font-family: var(--oe-font-body); }
+/* A chip nobody can press (a list's value, a candidate with no draft, a forbidden name) keeps its
+   surface and loses its box (lead 7602a4a83). */
+#ontology-explorer-root .oe-chip:not(.oe-pick) { border-color: transparent; }
 
 /* A chip that WRITES. Same tag as the chip beside it because it is the same object -- a
    candidate -- and the only new thing it says is that pressing it does something. The

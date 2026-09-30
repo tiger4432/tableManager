@@ -925,7 +925,8 @@ const FLOORS = new Map([
   // New with lead 8fd2f185d: the ledger form's grammar - a folded one-value field is one line (L).
   // 5 -> 9 (P, lead 7602a4a83): what is pressed looks pressable, what explains does not.
   // 9 -> 14 (W, lead 482288b12): no word only this code knows.
-  ['explorer_form_grammar_harness.mjs', 14],
+  // 14 -> 16 (P5 P6, the review): a chip nobody can press has no box; an empty head takes no room.
+  ['explorer_form_grammar_harness.mjs', 16],
   // New 2026-09-10 with C-55 (S-117's screen half). Floor is the count it reports on the
   // commit that introduces it. 🔴 THE FIXTURE IS THE CONTRACT VECTOR, captured off the live
   // route: the receipt has TWO envelopes and the failed one carries no counts at all, so a

@@ -1392,8 +1392,7 @@ export function renderAuthoringRow(row, expanded = [], editable = null, bare = f
     // already says 「선언됨」, so repeating it here put the same word at two x-positions and
     // rendered as one run of text -- `dt_log선언됨`. Outside the tree there IS no state
     // column, so the reason stays. `bare` already carries that distinction; it does not need
-    // a second flag. The GROUND line is untouched -- it says why the value is what it is,
-    // which the state column never says.
+    // a second flag.
     if (!bare) line.append(h('i', 'oe-folded-why', fold.reason));
     // The folded line is the value only (lead 8fd2f185d, owner 「세로 여백이 너무 많고」): the ground
     // is the open card's (`renderGround`), one press away. This overturns 「the ground goes NEXT TO
@@ -1969,7 +1968,7 @@ function renderSkeletonOneOf(context, node, path, value, depth, label, required)
   head.style.setProperty('--oe-depth', String(depth));
   head.appendChild(h('span', 'oe-node-label', label === null ? path : label));
   if (depth > 0) head.appendChild(depthGuides(depth));
-  if (required) head.appendChild(h('i', 'oe-node-badge', 'Required'));
+  if (required) head.appendChild(h('i', 'oe-node-badge oe-demand--warn', 'Required'));
   head.appendChild(renderClosedList(
     closedListChoice(names, chosen, { loaded: true, name: path }),
     h, { action: 'edit-shape-branch', path, label: label === null ? path : label }));

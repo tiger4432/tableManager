@@ -91,8 +91,8 @@ function suite(view, css) {
 
   console.log('\n-- P. what is pressed looks pressable, what explains does not --');
   const words = rule(css, ':is(#ontology-explorer-root, .oe-skeleton-form) :is(.oe-tier, .oe-node-badge)');
-  eq('P1 a word that explains has no box (the state word, a demand, a node\'s kind)',
-    `${decl(words, 'border')}|${decl(words, 'padding')}`, '0|0');
+  eq('P1 a word that explains has no box and is the canon\'s dim ink (the state word, a demand, a node\'s kind)',
+    `${decl(words, 'border')}|${decl(words, 'padding')}|${decl(words, 'color')}`, '0|0|var(--oe-muted)');
   const fold = rule(css, ':is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-fold,\n:is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-folded');
   eq('P2 a fold is a link-coloured word, one line high', `${decl(fold, 'color')}|${decl(fold, 'height')}`, 'var(--oe-accent)|auto');
   eq('P3 the folded value wears the input\'s surface', `${decl(folded, 'border')}|${decl(folded, 'background')}`,
@@ -101,6 +101,9 @@ function suite(view, css) {
     .flatMap((card) => walk(card).filter((n) => cls(n, 'oe-field-head')));
   eq('P4 no tier word in any card\'s head (bare, open, or outside the tree)',
     heads.length ? heads.flatMap((hd) => walk(hd).filter((n) => cls(n, 'oe-tier'))).length : '(no head)', 0);
+  eq('P5 a chip nobody can press has no box', decl(rule(css, '#ontology-explorer-root .oe-chip:not(.oe-pick)'), 'border-color'), 'transparent');
+  eq('P6 an empty head in a tree row takes no room',
+    decl(rule(css, '#ontology-explorer-root .oe-field.is-bare .oe-field-head:empty'), 'display'), 'none');
 
   console.log('\n-- W. no word only this code knows --');
   const at = LEAF.path.slice(PLAN.base.length + 1);
@@ -142,9 +145,15 @@ const MUTANTS = [
   { name: 'the-global-button-rule-wins', catches: ['L2'], file: CSS,
     from: '  justify-content: flex-start; height: auto; min-height: 0; white-space: normal;\n', to: '\n' },
   { name: 'a-word-wears-a-box-again', catches: ['P1'], file: CSS,
-    from: '  padding: 0; border: 0; background: transparent; color: var(--oe-ink-meta);',
-    to: '  padding: 3px 10px; border: 1px solid var(--oe-line); background: transparent; color: var(--oe-ink-meta);' },
-  { name: 'the-fold-goes-grey', catches: ['P2'], file: CSS,
+    from: '  padding: 0; border: 0; background: transparent; color: var(--oe-muted);',
+    to: '  padding: 3px 10px; border: 1px solid var(--oe-line); background: transparent; color: var(--oe-muted);' },
+  { name: 'the-explaining-word-is-half-ink', catches: ['P1'], file: CSS,
+    from: '  padding: 0; border: 0; background: transparent; color: var(--oe-muted);',
+    to: '  padding: 0; border: 0; background: transparent; color: var(--oe-ink-meta);' },
+  { name: 'a-read-only-chip-wears-a-box', catches: ['P5'], file: CSS,
+    from: '.oe-chip:not(.oe-pick) { border-color: transparent; }', to: '.oe-chip:not(.oe-pick) { border-color: var(--oe-line); }' },
+  { name: 'the-empty-head-takes-a-gap', catches: ['P6'], file: CSS,
+    from: '.oe-field.is-bare .oe-field-head:empty { display: none; }', to: '.oe-field.is-bare .oe-field-head:empty { }' },  { name: 'the-fold-goes-grey', catches: ['P2'], file: CSS,
     from: '  color: var(--oe-accent); padding: 0 var(--space-1); height: auto;', to: '  color: var(--oe-muted); padding: 0 var(--space-1); height: auto;' },
   { name: 'the-folded-value-looks-like-text', catches: ['P3'], file: CSS,
     from: '  border: 1px solid var(--oe-line); background: var(--oe-surface); padding: var(--space-1) var(--space-2);',
