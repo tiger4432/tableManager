@@ -65920,3 +65920,80 @@ CANARY base errors: 0 | sources 6 | entities 9 | vocabulary 16
 화면: dropped_fields 를 보여 주는 것과, 저장 뒤 받은 raw 로 폼을 다시 그리는 것은 클라 몫(서버는 걷은 몸을 돌려줌).
 
 다음: 2dd93d4a9 항목 3(원장 세상 설계 보고) -> dc4ca3e7c.
+
+## [구현자 -> 총괄] 2dd93d4a9 항목 3 — 원장 세상 여럿: 설계 보고 (안 지음)
+
+**세상은 어느 칸인가 — 한 줄**
+```
+세상 = 「어느 원장을 읽고 쓰나」 = 이미 있는 두 칸을 «한 이름»으로 묶은 것
+   원장 관계 이름   걷기가 이미 인자로 받음 — ledger_subgraph.SqlEvidenceLookup(relation="ledger_events")
+   선언 뿌리       선언 적재가 이미 인자로 받음 — ledger.setup.load_setup(root) · 탐색기 OntologyExplorerService(config_root, draft_root)
+새 기제가 아니라, 지금 «상수»로 박힌 자리(schema.LEDGER_TABLE · CURSOR_TABLE · ROW_REF_TABLE · trace_router.LEDGER_RELATION · 선언 경로)를 그 이름이 고르게 넓히는 것
+```
+
+**전수 — 원장을 읽고 쓰는 자리 (AST, 함수 단위)**
+```
+명령   python scratchpad/census_ledger_seats.py <작업 트리>   (저장소 scratchpad/, 추적 밖)
+       REL = 원장 관계를 이름으로 듦 · CUR = 번역 커서 · row_ref 표 · DECL = 선언 파일 · 적재를 부름
+CANARY files 285 | ensure_schema kinds ('CUR', 'REL')
+TOTAL functions 159 | by kind {'CUR': 36, 'DECL': 57, 'REL': 83}
+운영 경로만(scripts · migrations 뺌)  함수 96 · 파일 27 · CUR 21 · DECL 45 · REL 34
+⚠️ 이름을 «안 드는» 자리는 안 셈 — 위 자리를 부르는 쪽(예: 대조 맵퍼는 trace_router.evidence_subgraph 를 부름)
+```
+| 영역 | 자리 | 세상이 들어가는 길 |
+|---|---|---|
+| 원장 쓰기 · 커서 · row_ref | ledger/store.py LedgerStore (REL · CUR) · schema.ensure_schema | 상수 -> LedgerStore 생성자 인자 하나 |
+| 선언 적재 | ledger/config.py · setup.load_setup · setup_registry (DECL) | 뿌리 인자 — 이미 있음 |
+| 번역 · 뒤채움 | ledger/backfill.py run · main (setup + store 를 받음) | 위 둘에서 따라옴 |
+| followup | chain/ingestion_worker `_drain_ledger_followup_sync` · ledger/followup.py | 원천 행 하나 -> 세상 «수만큼» 번역. 세상 목록을 도는 자리가 새로 생김 |
+| 걷기 | ledger_api/ledger_subgraph · ledger/trace | relation 인자 — 이미 있음 |
+| 보드 라우트 · gaps · 관측 | ledger/trace_router (LEDGER_RELATION 상수) · gaps.measure · observability | 요청 인자 world -> relation |
+| 탐색기 · 저장 관문 · 초안 | ledger/config_explorer_service · config_drafts | 세상마다 config_root · draft_root |
+| 대조 맵퍼 | mappers/contrast_walk -> trace_router.evidence_subgraph | run 행이 어느 세상을 걸었나 — run 칸 하나 |
+
+**저장 — 안 셋**
+| 안 | 무엇 | 좋은 점 | 위험 | 크기 |
+|---|---|---|---|---|
+| ㄱ world 칸 | ledger_events · 커서 · row_ref 에 world 칸, 모든 질의에 world 조건 | 표 하나 · 세상끼리 견주는 질의가 쉬움 | 조건 하나 빠지면 세상이 «조용히» 섞임 · 원자 중복 색인 uq_ledger_atom(284.6 B/원자, 가장 큰 색인)과 row_ref 키 · 커서 키(source)에 world 를 넣어 다시 지음 | REL·CUR 운영 자리 전부 + 색인 다시 짓기 — 시간 안 쟀다 |
+| ㄴ 세상마다 파티션 | LIST(world) 아래 지금의 월 RANGE | 세상 지우기 = 파티션 떼기 | 파티션 키를 바꾸는 ALTER 가 없어 «새 표로 전체 복사» · 질의 조건 · 키는 ㄱ 과 같음 | ㄱ + 전체 복사 — 안 쟀다 |
+| ㄷ 세상마다 PG 스키마 | 같은 이름의 표 셋을 스키마 w_<세상> 에. 원장 DDL 은 이미 한 함수(ensure_schema) | 기본 세상 = 지금 public 그대로 · 키 · 색인 무변 · 세상 지우기 = DROP SCHEMA | 이름을 search_path 로 풀면 «없는 표가 public 으로 떨어짐» — 오늘 잰 증거: 시험 DB 의 public 모조 ledger_events 가 ensure_schema 의 존재 판정(to_regclass)을 속여 색인 둘을 건너뛰고 걷기 라우트 503 (29b14dc21 보고) | 이름을 «스키마로 한정»하는 함수 하나를 상수 자리가 부름 — 자리 수는 위 전수 |
+
+**선언 — 세상마다 파일 하나**
+```
+config/ontology/ledger_config.json            기본 세상 — 지금 그대로
+config/ontology/worlds/<세상>/ledger_config.json   그 밖의 세상
+탐색기 · 저장 관문 · 초안   서비스가 이미 config_root · draft_root 를 받음 -> 세상을 고르면 그 뿌리의 서비스
+                         요청에 world 한 칸(없으면 기본) · 초안 저장소도 세상마다 · 활성화 관문(S-244 판정자)은 세상 안에서
+```
+
+**비용 — «세상 하나를 처음부터 번역» (이 박스 수 · 운영 주장 아님)**
+```
+번역하는 소스 6 — die_inspection · dt_job · lot_event · lot_slot_wafer · transfer_event · wafer_process_recipe (보기 · 거절된 소스 9 빼고 — 이 박스 선언 상태)
+원천 행      die_inspection 117,742 · dt_job 535,559 · lot_event 3,633 · lot_slot_wafer 37,325 · transfer_event 1,405 · wafer_process_recipe 478,718
+합          1,174,382 행 · 지금 원장 원자 2,261,723 · row_ref 1,218,992
+속도        7.2 ms/분자 — 이 박스 09-08 잰 것(b98dbaf8a: 33,917 분자 274.3 s, 배치의 97 % 가 번역 · 쓰기 3.2 %)
+세상 하나    1,174,382 x 7.2 ms ≈ 140.9 분 — 행 = 분자로 본 «위쪽» 추정(group_by 소스는 분자가 적음. 분자 수는 안 셈)
+규격 대조    쓰기(원자 0.15 ms · 색인 0.07 ms)는 IO ≤ 1.3 s/1k 안. 7.2 s/1k 는 번역(매퍼 고유 로직 — 규격 밖)
+저장        ㄷ 은 세상마다 원자 · row_ref 가 한 벌씩 더 — 위 원자 · row_ref 수가 세상 하나의 몫
+```
+
+**기본 세상 — 「세상을 안 적은 설치는 한 글자도 안 바뀜」을 지키는 칸**
+```
+세상 목록이 «없으면» 이름은 하나(기본) -> 관계 ledger_events · 커서 · row_ref 표 이름 · 선언 경로가 오늘 상수 그대로
+한 함수가 「세상 -> 이름들」을 답하고, 상수 자리는 전부 그 함수를 부름. 기본의 답 = 오늘의 상수 (byte 같음)
+지을 때 게이트  세상 목록 없는 설치에서 모든 REL · CUR · DECL 자리가 내는 이름이 오늘과 같음 · 원장 · 커서 행 한 글자 무변
+```
+
+**추천 — ㄷ(세상마다 스키마) + 이름은 search_path 가 아니라 «스키마로 한정»**
+```
+까닭  키 · 색인 · 기본 세상이 안 움직임 · 원장 DDL 이 이미 한 함수 · 세상이 섞일 길이 없음(없는 세상은 «오류», 조용한 폴백 아님)
+빚    followup 이 세상마다 번역 — 원천 쓰기 하나가 세상 수만큼 번역을 낳음(소급 비용이 세상 수에 비례)
+```
+**여쭐 것**
+```
+1 followup: 모든 세상을 따라가나, 기본 세상만 따라가고 나머지는 사람이 돌리나(세상이 «시험장»이면 뒤쪽)
+2 걷기 · 보드: 요청에 world 한 칸 — 기본을 안 적으면 기본. 한 화면에 두 세상을 나란히 보는 것이 필요한가(그러면 마킹이 세상을 들고 다님)
+3 세상 지우기 · 이름 바꾸기가 운영에서 필요한가 — ㄷ 은 DROP SCHEMA 한 줄
+```
+
+다음: dc4ca3e7c(엔티티 속성 — 객체 표) 설계 보고.
