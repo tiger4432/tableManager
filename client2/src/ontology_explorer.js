@@ -873,7 +873,10 @@ No effect`;
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ selection: planSelection, draft_id: draft.draft_id, raw: state.editorText }),
       });
-      if (turn === reshapeTurn) dispatch({ type: 'AUTHORING_RECEIVED', plan });
+      if (turn === reshapeTurn) {
+        dispatch({ type: 'AUTHORING_RECEIVED', plan });
+        dispatch({ type: 'FIELDS_DROPPED', key: draft.target_key, fields: plan.dropped_fields, saved: false });
+      }
     } catch (error) {
       if (turn === reshapeTurn) showToast(errorMessage(error), 'error');
     }
@@ -1281,6 +1284,7 @@ No effect`;
         // The file is written either way; whether the product LOADS it is the save's answer.
         const unapplied = Array.isArray(record.validation_errors) ? record.validation_errors : [];
         dispatch({ type: 'SAVE_NOT_APPLIED', key: targetKey, errors: unapplied });
+        dispatch({ type: 'FIELDS_DROPPED', key: targetKey, fields: record.dropped_fields, saved: true });
         if (!unapplied.length) showToast('Saved', 'success');
         await readMirror({ draft: null, selection: null, viewMode: 'active' });
         // 🔴 STAY ON WHAT YOU WERE EDITING. 「저장하고 계속 편집하던거 떠있게」 --

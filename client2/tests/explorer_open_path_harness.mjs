@@ -482,8 +482,8 @@ failed += reshapeBase.failures.length;
       mutate: (text) => swap(text, "  root.addEventListener('input', (event) => {\n",
                              "  root.addEventListener('input', (event) => {\n    void reshapeIfMoved();\n") },
     { id: 'M6', what: 'the answer is not drawn', catches: 'R5',
-      mutate: (text) => swap(text, "      if (turn === reshapeTurn) dispatch({ type: 'AUTHORING_RECEIVED', plan });",
-                             '      void plan;') },
+      mutate: (text) => swap(text, "        dispatch({ type: 'AUTHORING_RECEIVED', plan });\n        dispatch({ type: 'FIELDS_DROPPED'",
+                             "        void plan;\n        dispatch({ type: 'FIELDS_DROPPED'") },
     { id: 'M7', what: 'the saved text is sent instead of the draft', catches: 'R4',
       mutate: (text) => swap(text, 'draft_id: draft.draft_id, raw: state.editorText }',
                              'draft_id: draft.draft_id, raw: JSON.stringify(draft.raw) }') },
@@ -533,6 +533,111 @@ failed += reshapeBase.failures.length;
       title: '\n  [5] rule mutants — each must be caught by the check it names.' });
   ran += RULE_MUTANTS.length;
   failed += scoredRule.wrong;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+// [6] order 8771e43ac 2 — the fields the server dropped because the declaration's own choice
+//     switched them off: said at the head of the form, from the unsaved plan and from the save.
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+console.log('\n[6] what the server dropped, said');
+const COLUMN = 'bundle.entities.quantity@1.column';
+async function fieldDropWalk(create) {
+  const on = { click: [], change: [], input: [] };
+  const root = element('div');
+  root.addEventListener = (type, fn) => { if (on[type]) on[type].push(fn); };
+  const settle = async () => { for (let i = 0; i < 20; i += 1) await new Promise((r) => setImmediate(r)); };
+  const fire = async (type, target) => { for (const fn of on[type]) await fn({ target }); await settle(); };
+  const click = (action) => { const t = { dataset: { action }, disabled: false }; t.closest = () => t; return fire('click', t); };
+  const field = (at, value) => ({ dataset: { action: 'edit-field', value: at }, value });
+  // The server's rule, in the fixture: a constant has no column, so a column beside it goes.
+  const dropOf = (raw) => (raw.class === 'constant' && raw.column !== undefined
+    ? { kept: Object.fromEntries(Object.entries(raw).filter(([k]) => k !== 'column')), dropped: [{ path: COLUMN, value: raw.column }] }
+    : { kept: raw, dropped: [] });
+  let saved = { class: 'column', column: 'lot_id', keys: ['quantity'] };
+  const plan = (raw) => ({ ...AUTHORING, fields: [planRow(LEAF, raw.class ?? null, true),
+    ...(raw.column !== undefined ? [planRow(COLUMN, raw.column, false)] : [])] });
+  const fetchOf = async (url, init = {}) => {
+    const u = String(url);
+    const path = u.split('?')[0];
+    const method = init.method || 'GET';
+    const draftNow = { ...DRAFT, raw: saved, context_token: 'ctx:1' };
+    let body = /draft_id=d1/.test(u) ? { ...SELECTED, draft: draftNow } : SELECTED;
+    if (/\/drafts\/d1$/.test(path) && method === 'PUT') {
+      const { kept, dropped } = dropOf(JSON.parse(JSON.parse(init.body).raw));
+      saved = kept;
+      body = { ...DRAFT, revision: 2, raw: saved, validation_errors: [], dropped_fields: dropped };
+    } else if (path.endsWith('/activate')) body = { ok: true };
+    else if (/\/drafts$/.test(path) && method === 'POST') body = draftNow;
+    else if (path.endsWith('/authoring/schema')) body = SCHEMA;
+    else if (path.endsWith('/authoring/plan') && method === 'POST') {
+      const { kept, dropped } = dropOf(JSON.parse(JSON.parse(init.body).raw));
+      body = { ...plan(kept), dropped_fields: dropped };
+    } else if (path.endsWith('/authoring/plan')) body = { ...plan(saved), dropped_fields: [] };
+    return { ok: true, status: 200, json: async () => body };
+  };
+  const controller = create({ root, apiBase: '', adminFetch: fetchOf, showToast: () => {} });
+  await controller.refresh();
+  await settle();
+  await click('create-draft');
+  const line = () => {
+    const box = walkAll(root).find((n) => n._classes?.includes('oe-dropped'));
+    return box ? box.textContent : '';
+  };
+  const typed = () => { try { return JSON.parse(controller.getState().editorText); } catch (e) { return {}; } };
+  const out = {};
+  await fire('input', field(LEAF, 'constant'));
+  await fire('change', field(LEAF, 'constant'));
+  out.planned = line();
+  await click('save-draft');
+  out.saved = line();
+  out.typedAfter = typed();
+  out.savedRaw = saved;
+  await click('save-draft');
+  out.again = line();
+  return out;
+}
+function fieldDropSuite(seen6) {
+  const names = [];
+  const failures = [];
+  const say = (name, cond, detail) => {
+    names.push(name);
+    if (cond) { console.log(`  PASS ${name}`); return; }
+    failures.push(detail ? `${name} — ${detail}` : name);
+    console.log(`  FAIL ${name}${detail ? ' — ' + detail : ''}`);
+  };
+  const said = 'entities › quantity@1 › column = "lot_id"';
+  say('X1 before the save, the plan says what the save will drop, in the declaration\'s words',
+    seen6.planned.startsWith('Dropped on save') && seen6.planned.includes(said), seen6.planned);
+  say('X2 the save says what it dropped', seen6.saved.startsWith('Dropped') && !seen6.saved.startsWith('Dropped on save')
+    && seen6.saved.includes(said), seen6.saved);
+  say('X3 the form is the saved body: no column', !('column' in seen6.typedAfter) && !('column' in seen6.savedRaw),
+    JSON.stringify(seen6.typedAfter));
+  say('X4 saved again, nothing is dropped and nothing is said', seen6.again === '', seen6.again);
+  return { ran: names.length, names, failures };
+}
+const fieldDropBase = fieldDropSuite(await fieldDropWalk(createOntologyExplorerController));
+ran += fieldDropBase.ran;
+failed += fieldDropBase.failures.length;
+{
+  const { loadWithProbe } = await import('./lib/probe.mjs');
+  const { scoreMutants } = await import('./lib/mutation_scorer.mjs');
+  const SUBJECT = join(HERE, '..', 'src', 'ontology_explorer.js');
+  const swap = (text, from, to) => {
+    if (!text.includes(from)) throw new Error(`mutation anchor is GONE: ${from.slice(0, 60)}`);
+    return text.split(from).join(to);
+  };
+  const MUTANTS = [
+    { id: 'M11', what: 'the save\'s dropped fields are not read', catches: 'X2',
+      mutate: (text) => swap(text, "fields: record.dropped_fields, saved: true", "fields: [], saved: true") },
+    { id: 'M12', what: 'the plan\'s dropped fields are not read', catches: 'X1',
+      mutate: (text) => swap(text, "fields: plan.dropped_fields, saved: false", "fields: [], saved: false") },
+  ];
+  const scored = await scoreMutants(MUTANTS, async (m) => fieldDropSuite(await fieldDropWalk(
+    (await loadWithProbe(SUBJECT, { mutate: (t) => m.mutate(t.replace(/\r\n/g, '\n')) })).module.createOntologyExplorerController)),
+    { baselineRan: fieldDropBase.ran, baselineNames: fieldDropBase.names,
+      title: '\n  [6] mutants — each must be caught by the check it names.' });
+  ran += MUTANTS.length;
+  failed += scored.wrong;
 }
 
 console.log(`\n════ RESULT: ${ran - failed} passed, ${failed} failed ════`);
