@@ -454,6 +454,10 @@
                     {
                       "key": "group_by",
                       "required": true,
+                      "when": {
+                        "field": "unit",
+                        "is": "group"
+                      },
                       "node": {
                         "kind": "map",
                         "keyed_by": "index",

@@ -89,6 +89,7 @@ from .setup_bundle import (
     VALUE_TYPES,
     predicate_claim,
     public_bundle_schema,
+    read_group_by,
     role_binding_kinds,
     validate_bundle_errors,
 )
@@ -820,7 +821,7 @@ def _locked_read_columns(source: Any) -> tuple[str, ...]:
     excluded = preparation.get("exclude_when")
     return locked_select_columns(
         identity=[str(name) for name in _listed(driver.get("identity"))],
-        group_by=[str(name) for name in _listed(driver.get("group_by"))],
+        group_by=[str(name) for name in _listed(read_group_by(driver))],
         order_by=[str(name) for name in _listed(driver.get("order_by"))],
         cursor_columns=[str(name) for name in _listed(cursor.get("columns"))],
         occurred_at_column=column if isinstance(column, str) else None,
@@ -1099,7 +1100,7 @@ def _implementation_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
             #
             # 🔴 SCOPE IS THIS KEY AND THE MAPPER'S TWIN, NOWHERE ELSE.  The same rule at
             # `authoring_plan`'s class-level branch would catch `read.group_by`, where `[]`
-            # is the RIGHT answer under `unit: row` and overwriting it would be a defect.
+            # is a legal value (`allow_empty`) and overwriting it would be a defect.
             # That is why the test lives here at the producer instead.
             inputs = list(_listed(preparation.get("input_columns")))
             declared_inputs = inputs if inputs else _ABSENT
@@ -1300,7 +1301,7 @@ def _implementation_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
             candidates=tuple(sorted(_MAPPER_UNITS)), reshapes=True,
         )
         if kind == "group_by":
-            group_by = list(_listed(_driver(source).get("group_by")))
+            group_by = list(_listed(read_group_by(_driver(source))))
             # 🔴 THE SAME FUNCTION THE DERIVATION USES (판정 306-b). Reading `unit` here
             # too would be a second reader, and the two would disagree about whether a
             # column is required to exist.
@@ -1777,20 +1778,10 @@ def _source_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
             value=identity, declared=identity if identity else _ABSENT,
             candidates=tuple(available), universe=UNIVERSE_PREPARED,
         )
-        if unit == "row":
-            yield Field(
-                path=f"{base}.read.group_by", step="sources", label="group_by",
-                state="derived", tier=TIER_STRUCTURAL, value=[],
-                declared=list(_listed(driver.get("group_by")))
-                if "group_by" in driver else _ABSENT,
-                ground=Ground(
-                    "group_by_absent_for_row_unit",
-                    "Filled: unit=row -> no group_by",
-                    (f"{base}.read.unit",), "row"),
-                note="With unit=row this square does not exist.",
-            )
-        elif unit == "group":
-            group_by = list(_listed(driver.get("group_by")))
+        # `unit: row` has no group_by row: the skeleton draws the field for `unit: group`
+        # alone, and a row source writes none (`setup_bundle.read_group_by`).
+        if unit == "group":
+            group_by = list(_listed(read_group_by(driver)))
             # 🔴 A DEFAULT ONLY WHERE THE FILE SAYS NOTHING, AND THAT IS WHY IT CANNOT PAINT
             # A LEGAL DECLARATION RED.  `group_by` equals `identity` on both live sources,
             # and the validator binds them ONE WAY ONLY -- `invalid_driver: group_by columns
@@ -2330,8 +2321,8 @@ def filled_declaration(bundle: Mapping[str, Any], catalog: Mapping[str, Any],
         # `None` is the derivation having NO ANSWER YET, not an answer of nothing: an
         # `implementation_version` whose `implementation_id` has not been chosen derives to
         # `None`, and writing that would turn `missing_field` into `invalid_version` while
-        # inventing a value nobody picked.  An empty LIST is a different thing -- it is the
-        # answer for `read.group_by` under `unit: row` -- so it is written.
+        # inventing a value nobody picked.  An empty LIST is a different thing -- it is an
+        # answer -- so it is written.
         if row["value"] is None:
             continue
         _fill_leaf(out, _split_path(row["path"])[len(steps):], row["value"])

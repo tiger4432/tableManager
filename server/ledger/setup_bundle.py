@@ -772,6 +772,14 @@ def _derived_cursor(value: Mapping[str, Any]) -> dict[str, Any]:
     return {**value, "sources": rebuilt}
 
 
+def read_group_by(read: Mapping[str, Any]) -> Any:
+    """`read.group_by`, or `()` where the declaration writes none - which a row source does
+    not have to (총괄 3a109bfd9 ①: the skeleton draws the field for `unit: group` alone, so
+    the save leaves it out). THE one place 「absent is empty」 is said for this field: the
+    validator, the compiler and the authoring plan all read it through here."""
+    return read.get("group_by", ())
+
+
 def validate_bundle(value: Mapping[str, Any], *,
                     catalog: Mapping[str, Any] | None = None) -> LedgerSetupBundle:
     issues = validate_bundle_errors(value, catalog=catalog)
@@ -2035,10 +2043,16 @@ def _validate_sources(section: Mapping[str, Any], problems: _Problems) -> None:
         # far a read got, which can only be said in the order that read ran, so the value
         # is DERIVED from `order_by` in `validate_bundle` rather than declared.  The name
         # is swallowed here because every config on disk still carries one.
+        # `group_by` is asked of `unit: group` alone (총괄 3a109bfd9 ①): a row source writes
+        # none, and `read_group_by` reads that as empty.
+        grouped = isinstance(read, Mapping) and read.get("unit") == "group"
+        group_field = ("group_by",)
         if not problems.exact(
                 read, f"{path}.read",
-                required=("unit", "identity", "group_by", "order_by", "occurred_at"),
-                optional=("registration_probe",), ignored=("cursor",)):
+                required=("unit", "identity", "order_by", "occurred_at",
+                          *(group_field if grouped else ())),
+                optional=("registration_probe", *(() if grouped else group_field)),
+                ignored=("cursor",)):
             continue
         _validate_registration_probe(
             read.get("registration_probe"), f"{path}.read.registration_probe",
@@ -2047,11 +2061,12 @@ def _validate_sources(section: Mapping[str, Any], problems: _Problems) -> None:
         if not isinstance(source_unit, str) or source_unit not in _SOURCE_UNITS:
             problems.add("invalid_driver", f"{path}.read.unit",
                          f"must be one of {sorted(_SOURCE_UNITS)}")
-        for field in ("identity", "group_by", "order_by"):
-            _nonblank_list(read.get(field), f"{path}.read.{field}", problems,
-                           allow_empty=(field == "group_by"))
-        group_by = read.get("group_by")
+        group_by = read_group_by(read)
         identity = read.get("identity")
+        for field, value in (("identity", identity), ("group_by", group_by),
+                             ("order_by", read.get("order_by"))):
+            _nonblank_list(value, f"{path}.read.{field}", problems,
+                           allow_empty=(field == "group_by"))
         if source_unit == "row" and _is_list(group_by) and group_by:
             problems.add("invalid_driver", f"{path}.read.group_by",
                          "row unit requires an empty group_by list")
@@ -2357,8 +2372,9 @@ def _cross_validate(bundle: Mapping[str, Any], catalog: Mapping[str, Any],
                         f"join rule {rule_id!r} left key column(s) {missing_inputs!r} "
                         f"must be declared by {prep_path}.input_columns")
 
-        for field in ("identity", "group_by"):
-            for index, column in enumerate(driver.get(field, [])):
+        for field, columns in (("identity", driver.get("identity", [])),
+                               ("group_by", read_group_by(driver))):
+            for index, column in enumerate(columns):
                 if column not in available:
                     problems.add(
                         "unknown_column", f"{path}.read.{field}[{index}]",
@@ -2372,7 +2388,7 @@ def _cross_validate(bundle: Mapping[str, Any], catalog: Mapping[str, Any],
                     problems.add("unknown_column", f"{mapper_path}.input_columns",
                                  f"column {column!r} is not in EventFrame schema")
             if (mapper.get("unit", {}).get("kind") == "group_by"
-                    and not driver.get("group_by")):
+                    and not read_group_by(driver)):
                 problems.add("invalid_mapper", f"{mapper_path}.unit.kind",
                              "group_by mapper requires source group_by columns")
         if profile is not None:

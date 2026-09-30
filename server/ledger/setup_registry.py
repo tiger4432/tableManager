@@ -27,6 +27,7 @@ from .setup_bundle import (
     bundle_readiness_errors,
     is_retired,
     predicate_claim,
+    read_group_by,
     role_binding_kinds,
     validate_bundle,
     validate_bundle_errors,
@@ -1381,7 +1382,7 @@ def _compile_source_plans(
             driver=SourceDriverPlan(
                 unit=driver["unit"],
                 identity=tuple(driver["identity"]),
-                group_by=tuple(driver["group_by"]),
+                group_by=tuple(read_group_by(driver)),
                 order_by=tuple(driver["order_by"]),
                 occurred_at=_occurred_at_plan(driver["occurred_at"]),
                 cursor_columns=tuple(driver["cursor"]["columns"]),

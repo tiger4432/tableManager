@@ -1,6 +1,6 @@
 {
  "captured_by": "client2/tests/fixtures/capture_authoring_inherited_plan.py",
- "server_at": "666f738d3201c7e643883b81ea039729db08708f",
+ "server_at": "3a109bfd9adddb8250185c50cee6deaefb4cb84c",
  "base": "bundle.sources.dt_job",
  "fields": [
   {
@@ -565,6 +565,7 @@
     "defect_kind@1",
     "die@1",
     "dtjob@1",
+    "dtwafer@1",
     "lot@1",
     "lot_slot@1",
     "quantity@1",
@@ -929,6 +930,7 @@
     "defect_kind@1",
     "die@1",
     "dtjob@1",
+    "dtwafer@1",
     "lot@1",
     "lot_slot@1",
     "quantity@1",
@@ -1103,6 +1105,7 @@
     "slot_trace_for_dt",
     "step_defect_obs",
     "step_inspection_run",
+    "step_phase",
     "valid_die_ref",
     "void_obs",
     "wafer_id_status",
@@ -1176,39 +1179,6 @@
    "disposition": "",
    "forbidden": [],
    "note": "",
-   "refusals": [],
-   "remaining": false
-  },
-  {
-   "path": "bundle.sources.dt_job.read.group_by",
-   "step": "sources",
-   "label": "group_by",
-   "state": "derived",
-   "tier": "structural",
-   "value": [],
-   "declared": [],
-   "has_declared": true,
-   "conflicts": false,
-   "ground": {
-    "rule": "group_by_absent_for_row_unit",
-    "text": "Filled: unit=row -> no group_by",
-    "from_paths": [
-     "bundle.sources.dt_job.read.unit"
-    ],
-    "from_keys": [
-     "source_plan|dt_job"
-    ],
-    "from_value": "row"
-   },
-   "candidates": null,
-   "universe": null,
-   "universe_note": "",
-   "locked": [],
-   "comparison": "equal",
-   "reshapes": false,
-   "disposition": "grammar_requires_it",
-   "forbidden": [],
-   "note": "With unit=row this square does not exist.",
    "refusals": [],
    "remaining": false
   },

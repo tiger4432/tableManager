@@ -350,7 +350,6 @@
         "identity": [
           "dt_job"
         ],
-        "group_by": [],
         "order_by": [
           "dt_job"
         ],
@@ -805,7 +804,6 @@
             "dt_cell_key"
           ]
         },
-        "group_by": [],
         "identity": [
           "dt_cell_key"
         ],
@@ -827,7 +825,6 @@
         "identity": [
           "run_uid"
         ],
-        "group_by": [],
         "order_by": [
           "run_uid"
         ],
@@ -1029,7 +1026,6 @@
         "identity": [
           "row_id"
         ],
-        "group_by": [],
         "order_by": [
           "row_id"
         ],
@@ -1052,7 +1048,6 @@
         "identity": [
           "lot_slot_wafer_key"
         ],
-        "group_by": [],
         "order_by": [
           "lot_slot_wafer_key"
         ],

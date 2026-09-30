@@ -82,9 +82,9 @@
 |---|---|---|---|
 | `relation` | ① | `sources.<s>.relation` :1470 — 표 «또는 뷰» | 카탈로그(`table_config.json`)에 있는 이름 |
 | 표/뷰 갈래 | ① | 카탈로그의 `kind` ∈ {table, view}, 오타는 «경로 대어» 거절(:250~255) | 닫힌 둘. `view` 면 `row_id` 를 «안 심는다» |
-| `read.unit` | ① | {row, group} (`_SOURCE_UNITS` :131) · row 는 `group_by` 빈 목록, group 은 «하나 이상» :1494~1500 | 닫힌 둘 |
+| `read.unit` | ① | {row, group} (`_SOURCE_UNITS` :131) · row 는 `group_by` 를 안 적거나 빈 목록(없음은 빈 목록으로 읽음 — `read_group_by`), group 은 «하나 이상» | 닫힌 둘 |
 | `read.identity` · `order_by` | ① | :1489 비지 않은 목록 · `group_by` ⊆ `identity` :1501 | 컬럼 이름 |
-| `read.cursor` | ② | 🔴 **더 «묻지 않는다»** — `order_by` 에서 «파생»된다(`_derived_cursor` :557, :1483 주석). 파일에 남아 있으면 «삼킨다»(`ignored=("cursor",)`) | |
+| `read.cursor` | ② | 🔴 **더 «묻지 않는다»** — `order_by` 에서 «파생»된다(`_derived_cursor`). 파일에 남아 있으면 «삼킨다»(`ignored=("cursor",)`) | |
 | `prepare` · `map` | ① | :1248~1327 — `implementation_id`/`_version` · `input_columns` · `output_columns` · `unit.kind` ∈ {event, row, group_by} | 닫힘 |
 | `bind.mappings.<문장>` | ① | `{predicate, bind:{역할→바인딩}}` :1372~1382 | 바인딩 kind ∈ {column, constant, entity} :1389~1400 |
 | `bind.entities.<t>.attributes` | ① | :1821~1850 — 소스당 «한 번»(판정 124) | column\|constant. entity ⛔ (:1846 — 「엔티티 값 속성은 엣지가 옷을 갈아입은 것」) |

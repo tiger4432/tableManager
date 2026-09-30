@@ -1122,7 +1122,7 @@ subject/object entity type으로 모양을 계산해 후보를 골랐고, 그래
 | `relation` | `table_config.json`이 선언한 base physical relation. **안 옮겼다** — `prepared_columns`가 여기서 출발한다 |
 | `read.unit` | `row` 또는 `group`. 🔴 **작성 화면이 «채워 주지 않는» 칸이다** — 채우면 드롭다운이 사라져 새 소스에서 고를 수가 없어진다(2026-08-22 판정) |
 | `read.identity` | 결정적인 source event identity 컬럼 |
-| `read.group_by` | group event 조립 컬럼. row이면 빈 배열. 화면은 **파일이 아무 말도 안 할 때만** `identity`로 채운다 — 검증기가 「`identity`의 부분집합」만 요구하므로 진부분집합이 합법이고, 무조건 채우면 그런 선언을 빨갛게 칠한다 |
+| `read.group_by` | group event 조립 컬럼. row이면 적지 않는다 — 폼은 group일 때만 그리고, 검증·컴파일은 없음을 빈 목록으로 읽는다(`setup_bundle.read_group_by`, 적는다면 빈 배열). 화면은 **파일이 아무 말도 안 할 때만** `identity`로 채운다 — 검증기가 「`identity`의 부분집합」만 요구하므로 진부분집합이 합법이고, 무조건 채우면 그런 선언을 빨갛게 칠한다 |
 | `read.order_by` | physical read order. catalog UNIQUE key 전체를 포함해야 함. 화면은 `table_config.json`이 선언한 **가장 짧은 유일 키**를 기본값으로 낸다 |
 | `read.occurred_at.column` | 세계 시각을 담은 physical column |
 | `read.occurred_at.basis` | 표에 세계 시각이 **없을 때** `column` 대신. 현재 `"ingested"` 하나 |
@@ -1134,8 +1134,8 @@ subject/object entity type으로 모양을 계산해 후보를 골랐고, 그래
 | `bind` | 이 소스의 문장 별명 → Role binding (§7.6) |
 
 `read`의 여섯(`unit`·`identity`·`group_by`·`order_by`·`occurred_at`·`cursor`)은 번들에 전부
-있어야 하고 `registration_probe`만 문법상 선택이다. **다만 사람이 적는 것은 다섯이다** —
-`cursor`는 아래대로 파생된다. `occurred_at`의 `column`과 `basis`는 **정확히 하나**여야 한다 —
+있어야 하고 `registration_probe`만 문법상 선택이다. **다만 사람이 적는 것은 다섯이다(row 소스는 넷)** —
+`cursor`는 아래대로 파생되고, row 소스는 `group_by`를 적지 않는다. `occurred_at`의 `column`과 `basis`는 **정확히 하나**여야 한다 —
 둘 다 적거나 둘 다 없으면 거절된다. 자세한 것은 §7.9.
 
 🔴 **[2026-08-22 `90383987`] `read.cursor`는 «질문»에서 빠졌지 «문서»에서 빠지지 않았다.**
