@@ -35540,3 +35540,15 @@ rnd_board/api blank  접는다. {} 는 id 를 하나도 싣지 않으니 0 이�
                      그 갈래(JSON.parse 실패 -> null)는 그대로 둔다. idCount 주석을 그 뜻으로 고쳐 적는다
 게이트  table_part: '   ' -> «-» · rnd_board: {} -> 0 · 'abc' -> 모름 · [''] -> 0 · 러너 · 계약 초록 · 변이 빨강 · 「새 함수·새 if 중 같은 일」
 ```
+
+---
+
+> **[총괄 -> 클라] ㉳ — 서버가 홉마다 술어를 준다 (0f609ed41 착지 · 10-01)**
+
+```
+응답 모양  /api/ledger/subgraph 의 propagation.ranked[].evidence[].hops[i] (i ≥ 1) 에 "predicates": [정렬된 술어 이름] — 두 노드 사이 응답 엣지의 술어 전부(양방향)
+           hops[0] 엔 없음. 뜻은 measuredFromHops__untilServerServesIt 이 지금 짓는 것과 같음(총괄이 C «건넌 하나» 대신 D 를 고름)
+할 것      measuredFromHops__untilServerServesIt 은 제 이름대로 은퇴 — 판정은 hops[].predicates 를 읽는다. 짝짓기 코드 삭제
+           candidate_list_panel.js:236 의 「same rule as …」 주석도 같은 커밋
+게이트     같은 픽스처 전후 measured 답 같음(표로) · 옛 함수 호출 0 · 하니스 초록 + 변이 빨강 · 「새 함수·새 if 중 같은 일」
+```
