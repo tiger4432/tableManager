@@ -67487,3 +67487,142 @@ to_local_str        2026-09-30 10:00:00+00:00
                         -> 같은 naive 판 글자를 판 비교(_naive_utc, UTC)와 바뀜 판정(instant_key, 세션 시간대)이 다른 순간으로 읽을 수 있음
 덤                      to_local_str docstring 의 「31 call sites in four modules」 — 지금 29 · 파일 3
 ```
+
+## [구현자 -> 총괄] 8147199d8 재기만 — 가지로 새 어휘를 끝에서 끝까지 (코드 안 고침)
+
+```
+방법  박스 기본 선언(읽기만) + 한 가지 바꿈 -> 임시 가지 vocabprobe (wt-impl 설정 밑 — 라이브 프로세스의 가지 목록엔 안 뜸)
+      -> changed_sources -> 바뀐 소스를 한 조각 번역(backfill.run max_batches 1 · fetch_rows 5000)
+      -> trace_router._evidence_graph(world=) 로 같은 씨앗 걷기(hops 2) -> drop_world. 트리 1f0369216
+기본  ledger_events 행 2261723 -> 2261723 · 기본 걷기 해시(웨이퍼·레시피 씨앗) 전후 같음: True · 남은 가지 []
+```
+```
+경우                              소스 움직임                         가지 걷기에 보임                                   기본 걷기
+① 술어 cardinality one           lot_slot_wafer · wafer_process_recipe 엣지 표지 has_wafer=one, processed_with=one · 대체 0 (두 조각 뒤, include_superseded 도 0)   무변
+   (processed_with · has_wafer)
+② recipe@1 static 뺌             0                                  제품 그대로는 걷기 못함 — HTTPException: 503: {'reason': 'ledger_relation_absent', 'st
+                                                                      refresh_world_view 뒤: 씨앗 recipe 에서 노드 500(웨이퍼 499) · 기본 1   무변
+③ 새 술어 + 기존 소스에 새 문장   wafer_process_recipe               tested_with 엣지 8 · 기본 0                               무변
+④ 새 엔티티 + 새 술어 + 새 소스   wafer_process_step                 stepno 노드 80 · at_step 엣지 1978 · 기본 0 · 0        무변
+```
+**안 되는 것과 까닭** (고치지 않음)
+```
+① 쓸 때 찍는 대체가 운영 원자에 안 닿음 — 가지 탓 아님: 기본 번역도 같은 _stamp_supersedes 를 지남(코드로 읽음, 기본에선 안 잼)
+   runtime_v2._one_cardinality_predicates 는 선언 키(processed_with@1, 버전 붙음)를 돌려주고, 원자의 술어는
+   roleframe._runtime_id 가 버전을 뗀 processed_with. _stamp_supersedes · _conflicting_subjects 둘 다 `atom.predicate in one_predicates`
+   -> 운영 모양에선 늘 거짓. 잰 것: 첫 조각 5000 행 -> 삽입 5000 (한 웨이퍼의 processed_with 목적어 8 이 한 배치에 — 거절 0),
+   둘째 조각 뒤 그 웨이퍼 processed_with 10 · 대체 표지 0
+   시험 test_a_one_cardinality_predicate_carries_one_object 는 원자 술어를 "holds@1"(버전 붙음)로 지어 초록 — 운영 모양 아님
+   대체 표지는 «쓸 때» 찍힘(_stamp_supersedes: 배치마다 가게의 현재 원자와 견줌, 한 배치 안·소급은 안 함) ·
+   «읽을 때»는 표지로 거르기만(trace.live_claims <- ledger_subgraph._split_superseded). 엣지 cardinality 표지는 걷기가 world 선언에서 읽어 맞음
+② 가지 뷰를 짓는 자리가 backfill 의 두 자리(run 끝 · 범위 배치 끝의 refresh_world_view)뿐 — 소스를 안 움직이는 선언 바꿈(static)은
+   번역이 없어 뷰가 없고 걷기가 503. 걷기 자체는 가지 선언을 읽음(_static_types(world) · 선언 경로 contextvar)
+④ 곁일: 새 소스가 기존 소스와 같은 relation 을 읽으면 backfill 이 relation 단위로 줄을 넣어(followup.enqueue(plan.relation))
+   기존 소스도 가지에 다시 번역 — 가지 원장: wafer_process_recipe processed_with 5000 · wafer_process_step at_step 5000
+   가지 뷰는 가지가 쓴 소스의 기본 원자를 가려서, 조각만 번역된 동안 기존 엣지가 덜 보임(씨앗 웨이퍼 processed_with 기본 10 -> 가지 8).
+   끝까지 번역하면 같아지는지는 안 잼
+```
+**덤 — world 를 받는 서버 라우트 21** (AST, 데코레이터가 있는 함수 중 world 인자를 받는 것)
+```
+DELETE /admin/ontology-explorer/declarations/{target_key:path}
+DELETE /admin/ontology-explorer/drafts/{draft_id}
+DELETE /admin/ontology-explorer/worlds/{world}
+GET /admin/ontology-explorer/authoring/plan
+GET /admin/ontology-explorer/authoring/schema
+GET /admin/ontology-explorer/columns
+GET /admin/ontology-explorer/deletion-preview
+GET /admin/ontology-explorer/view
+GET /api/ledger/declaration
+GET /api/ledger/gaps
+GET /api/ledger/key-values
+GET /api/ledger/subgraph
+POST /admin/ontology-explorer/authoring/plan
+POST /admin/ontology-explorer/bootstrap
+POST /admin/ontology-explorer/drafts
+POST /admin/ontology-explorer/drafts/new
+POST /admin/ontology-explorer/drafts/{draft_id}/activate
+POST /admin/ontology-explorer/drafts/{draft_id}/review
+POST /admin/ontology-explorer/drafts/{draft_id}/revise
+POST /admin/ontology-explorer/test-run
+PUT /admin/ontology-explorer/drafts/{draft_id}
+```
+
+## [구현자 -> 총괄] 434b6a621 — cardinality one 을 켜면 무엇이 되나 (재기만 · 이름 고침은 wt-impl 에만, 착지 안 함) · 설계 셋
+
+**1·2 박스에서 켜 봄** (임시 가지 · 박스 기본 선언 + 그 술어만 one · 소스 번역 · drop_world. 박스 수)
+```
+술어            소스                  쪽      배치   행      원자    거절(셈)  표지     거꾸로  초
+has_wafer@1     lot_slot_wafer        2000    19     37325   37325   0         1082     0       79.5
+has_wafer@1     lot_slot_wafer        10      3733   37325   37325   0         26418    0       605.2
+has_wafer@1     lot_slot_wafer        100000  1      37325   37325   0         0        0       95.7
+processed_with@1 wafer_process_recipe (앞 20000 행) 10      2000   20000   16910   0         16735    0       299.4
+processed_with@1 wafer_process_recipe (앞 20000 행) 2000    10     20000   0       0         0        0       48.7
+processed_with@1 wafer_process_recipe (앞 20000 행) 20000   1      20000   0       0         0        0       46.5
+기본 원장 행 2261723 -> 2261723 · 남은 가지 []
+```
+```
+읽는 법  has_wafer — 박스엔 목적어가 둘 이상인 주어 0. 그런데 표지가 쪽 크기로 0 -> 1082 -> 26418: «같은 목적어가 뒤 배치에 다시 온 것»에도 찍힘(찍는 자리가 목적어를 안 봄)
+         processed_with — 박스에 목적어 여럿인 주어 5401. 한 배치 충돌이 «거절»이 아니라 ValueError('cardinality_one_violated' 가 거절 어휘 밖) ->
+         따라가기가 그 이벤트를 «실패로 버림» (로그 [LedgerFollowUp] … failed 320 줄). 쪽 2000 · 20000 에선 20,000 행 중 원장에 간 원자 0, 쪽 10 에선 3090 행 몫이 사라짐
+         시각 거꾸로 표지 — 이 박스 데이터에선 0 (행 순서 = 시각 순서라서). 거꾸로가 생기는 모양은 아래 픽스처
+```
+**3 읽는 쪽** — 대체는 «표지»로만 본다: 걷기 `_split_superseded` -> `trace.live_claims`, 가져온 묶음 안에서. occurred_at 으로 «지금 것»을 세는 자리 0. `since/until` 은 가져오기 «전»에 occurred_at 으로 거름
+
+**픽스처** — 슬롯 하나: t1 w1 · t2 w2 · t3 w3, 그리고 늦게 온 옛 사실 t1.5 w9 가 마지막(커서 순 = 키 순). 가 = 제품(실행 문 · 가게 이중 · 읽기 거르기 live_claims, 이름 고침만 끼움), 나 · 다 = 모형(안 지음)
+```
+모양                              설계                         지금 것      t2.5 기준    거절  표지(거꾸로)
+one batch                         가 product, reason as today   터짐: ValueError -            -     -
+one batch                         가 product, reason declared   터짐: MoleculeRefused -            -     -
+one batch                         나 model                      w3           w2           0     -
+one batch                         다 model                      w3           w2           0     -
+one batch + same value again (t4 w3) 가 product, reason as today   터짐: ValueError -            -     -
+one batch + same value again (t4 w3) 가 product, reason declared   터짐: MoleculeRefused -            -     -
+one batch + same value again (t4 w3) 나 model                      w3           w2           0     -
+one batch + same value again (t4 w3) 다 model                      w3           w2           0     -
+a batch per row                   가 product, reason as today   w9           w2 · w9      0     3(1)
+a batch per row                   가 product, reason declared   w9           w2 · w9      0     3(1)
+a batch per row                   나 model                      w3           w2           1     -
+a batch per row                   다 model                      w3           w2           0     -
+a batch per row + same value again (t4 w3) 가 product, reason as today   w3 · w9      w2 · w9      0     4(1)
+a batch per row + same value again (t4 w3) 가 product, reason declared   w3 · w9      w2 · w9      0     4(1)
+a batch per row + same value again (t4 w3) 나 model                      w3           w2           1     -
+a batch per row + same value again (t4 w3) 다 model                      w3           w2           0     -
+```
+**설계 셋**
+```
+가) 판정 256 그대로 — 배치 사이는 들어온 순서로 대체 표지, 배치 안 목적어 둘 이상은 이름 대어 거절
+   운영자   선언에 one. 거절 줄을 보고 원천을 고침
+   좋은 점  지금 코드에 가장 가까움
+   위험     답이 쪽 크기에 달림(위 표 — 같은 데이터에 표지 0/1082/26418) · 늦게 온 옛 사실이 «지금 것»이 됨(픽스처 배치마다 -> w9, 거꾸로 표지 1)
+            · until 보기에 지금 것 둘(w2 · w9) · 같은 값 다시 뒤엔 지금 것 둘(w3 · w9 — 가게 조회는 시각 최신, 사슬은 도착 순이라 어긋남)
+            · 한 배치 충돌은 지금 배치가 터지고, 거절 어휘에 넣어도 MoleculeRefused 가 실행 문 밖으로 샘(잡는 자리 0) — 배치 통째 실패
+   크기     이름 고침 + 거절 어휘 한 줄 + 분자만 빼는 잡기 + 같은 목적어면 표지 안 찍기 — 잡기 자리 설계는 안 쟀다
+   늦은 옛 사실  새것을 대체 — 틀림
+   같은 값 다시  표지가 찍힘 — 판정 124 와 어긋남(충돌 아님인데 대체로 기록)
+나) 사실의 시각 순 — 배치 안팎 모두 occurred_at 순으로 사슬, 같은 시각·다른 목적어만 이름 대어 거절
+   운영자   선언에 one
+   좋은 점  쪽 크기 · 도착 순서와 무관(모형: 두 모양 다 w3) · until 보기 맞음(w2)
+   위험     늦게 온 옛 사실을 append-only 사슬 «가운데»에 못 끼움 — 이미 쓴 원자의 표지를 고쳐야 함. 그래서 이름 대어 거절(모형: 거절 1, w9 가 원장에 없음 = 역사를 잃음)
+            또는 받아 두면 지금 것 둘
+   크기     가 의 넷 + 배치 안 정렬 + 가게 조회가 시각도 돌려줌 + 늦은 옛 사실 거절 — 안 쟀다
+   늦은 옛 사실  거절(잃음) 또는 지금 것 둘
+   같은 값 다시  바뀐 게 없으면 표지 안 찍음 — 판정 124 와 맞음
+다) 쓸 때 표지 안 찍고, 읽을 때 (주어, 술어)마다 occurred_at 최신이 지금 것
+   운영자   선언에 one — 다시 번역 필요 없음(이미 있는 원자에 바로 적용 — 소급 문제가 없어짐)
+   좋은 점  쪽 크기 · 도착 순서 무관(모형: w3) · until 보기가 역사대로(t2.5 -> w2, t1.7 이면 w9) · 늦은 옛 사실이 역사로 남음 · 거절 0
+            · cardinality 는 읽는 쪽이 이미 world 선언에서 읽음(_predicate_cardinalities)
+   위험     읽기가 «가져온 묶음 안»에서 셈 — 묶음이 예산으로 잘리면 최신이 빠질 수 있음(표지 방식도 같은 위험)
+            · 같은 시각·다른 목적어는 읽을 때 동률 — 둘 다 보이고 이름을 달아야 함(모양 안 정함)
+   크기     읽는 쪽 한 자리(live_claims 에 cardinality) + 걷기 부르는 한 자리 + 쓰는 쪽 둘(_stamp_supersedes · _conflicting_subjects) 은퇴 — 안 쟀다
+   늦은 옛 사실  역사로 남고 지금 것은 안 됨
+   같은 값 다시  최신 시각 것이 지금 것 — 문제 없음
+```
+**추천** 다) — 소급이 필요 없고, 쪽 크기·도착 순서가 답을 안 바꾸고, 늦은 옛 사실이 역사로 남음. 가) 는 켜는 순간 위 표처럼 배치가 버려짐
+**여쭐 것**
+```
+1  셋 중 어느 것
+2  다) 면 supersedes 열의 쓰는 자리가 _stamp_supersedes 하나뿐(docstring 「THE LEDGER'S FIRST WRITER」)인데 — 은퇴시키면 그 열은 쓰는 자리 0. 열은 두나(정정·철회 §3 자리로)
+```
+잰 것 하나 더  지금 운영에서 쓰는 쪽 one 길은 한 번도 안 돈다 — 검증기가 술어 키에 버전을 요구해서(버전 없는 키 -> invalid_versioned_id),
+             선언 키는 늘 @N 이고 원자 술어는 늘 버전 없음. 그래서 거절 0 · 표지 0 은 «데이터가 깨끗해서»가 아니라 «길이 닫혀서»
+**그동안 지은 것(착지 안 함)** 이름 고침 + 제품 길 시험(번역 -> 가게 -> 걷기) — 패치로 보관. 제품 길 시험이 위 ValueError 를 잡음
