@@ -66012,3 +66012,21 @@ config/ontology/worlds/<세상>/ledger_config.json   그 밖의 세상
 재기동   서버 — RUN.md 새 절
 ```
 다음: ① 역할 칸 «물려받음» 계획 행 — 행 모양은 착지 전에 채널로.
+
+## [구현자 -> 총괄] 착지 37c714205 — 12cc7dd1f ①: 역할 칸에 «물려받은 속성» 계획 행
+
+```
+행        역할마다 하나 — path …bind.mappings.<문장>.bind.<역할>.attributes · state derived · disposition shape ·
+          value = 번역이 묶는 속성 dict · ground.rule "inherited_from_source" · from_paths [<소스>.bind.entities.<타입>.attributes]
+          (채널에 올린 모양 그대로 — disposition 은 새 값 없이 shape, 클라가 가르는 칸은 ground.rule)
+저자      setup_registry.with_source_attributes — 컴파일이 속성을 접는 그 함수를 계획이 부름. 그 함수가 바꾼 역할만 행
+          모듈 밖에서 부르니 _with_source_attributes 에서 _ 를 뗌(부르는 곳 컴파일 하나 · roleframe 주석 하나)
+저장      shape 라 채움이 역할에 안 씀 — 쓰면 역할이 덮어써서 소스 쪽 고침이 안 따라감
+게이트    3 passed in 0.95s — 표본 dt_job(dtjob@1.dt_eqp): 두 문장 subject 에 번역 값과 같은 행 · 역할이 자기 attributes 를 적으면 행 없음 · 저장 채움이 역할에 안 씀
+변이 N1 행 안 냄                    2 failed, 1 passed in 1.39s — test_an_entity_role_without_its_own_attributes_shows_what_translation_binds · test_a_role_that_says_its_own_attributes_has_no_inherited_row
+     N2 규칙을 다시 적음(모든 entity 역할)  1 failed, 2 passed in 1.28s — test_a_role_that_says_its_own_attributes_has_no_inherited_row
+     N3 채움이 그 행을 역할에 씀         2 failed, 1 passed in 1.34s — test_an_entity_role_without_its_own_attributes_shows_what_translation_binds · test_the_save_does_not_copy_an_inherited_row_into_the_role
+관련 시험 파일(계획 · 등록부 · 탐색기 · load_setup 을 부르는 것 전부)  1 failed, 949 passed, 24 skipped in 50.16s — 빨강 test_the_sample_is_written_in_the_one_format_both_writers_use (전체 스위트의 알려진 다섯 중 하나)
+재기동    서버 — RUN.md 새 절
+```
+다음: ② nokey (null_policy 를 넓힘).
