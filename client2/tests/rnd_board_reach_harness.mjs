@@ -376,7 +376,7 @@ const MUTANTS = [
     from: '    if (!this.walkFn || !start) {',
     to: '    if (!this.walkFn) {' },
   { name: 'every-absence-shares-one-sentence', target: 'reach_panel.js', wakes: 'E3',
-    from: "    if (this.loadState === 'refused') return (this.model && this.model.message) || 'Not walked';",
+    from: "    if (this.loadState === 'refused') return (this.model && this.model.message) || SERVER_REFUSED;",
     to: "    if (this.loadState === 'refused') return UNPICKED;" },
   // 🔴 `writes: null` ON THE TABLE IS NOT SCORED, AND THAT IS SAID OUT LOUD RATHER THAN
   //    FAKED. A mutant that hands the table this part's write name ESCAPES: the table would

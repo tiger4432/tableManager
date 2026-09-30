@@ -150,13 +150,13 @@ async function suite(mods) {
   const c = mk(cand.CandidateListPanel, hostC, { doc, markings, reads: 'marking:1', writes: 'marking:1' });
   c.mount(); await flush(); await flush();
   const candText = hostC.textContent;
-  truthy('Z1 contrast:unexamined says nobody measured, not that it was clean', candText.includes('peers not measured'));
+  truthy('Z1 contrast:unexamined says nobody measured, not that it was clean', candText.includes('No controls'));
   eq('Z1b and it is not drawn with the refusal class', byClass(hostC, 'rb-cand-line--refused').length, 0);
 
   const hostD = doc.createElement('div');
   const d = mk(cand.CandidateListPanel, hostD, { doc, markings, reads: 'marking:1', writes: null }, bodyWith({ complete: false }));
   d.mount(); await flush(); await flush();
-  truthy('Z2 complete:false says UNEXAMINED, not absent', hostD.textContent.includes('unexamined'));
+  truthy('Z2 complete:false says UNEXAMINED, not absent', hostD.textContent.includes('not walked'));
 
   const hostE = doc.createElement('div');
   const e = mk(cand.CandidateListPanel, hostE, { doc, markings, reads: 'marking:1', writes: null }, bodyWith({ state: 'empty', ranked: [] }));
@@ -292,8 +292,8 @@ const MUTANTS = [
       '    if (false) {') } },
   { id: 'X1', what: 'contrast:unexamined is drawn as a refusal', catches: 'Z1b',
     mutate: { 'candidate_list_panel.js': (s) => s.replace(
-      "head.appendChild(this._stat('No control · peers not measured', 'absent'));",
-      "root.appendChild(this._line('No control · peers not measured', 'refused'));") } },
+      "head.appendChild(this._stat('No controls · unexamined', 'absent'));",
+      "root.appendChild(this._line('No controls · unexamined', 'refused'));") } },
   { id: 'X2', what: 'state:empty is reported as "no cause"', catches: 'Z3c',
     mutate: { 'candidate_list_panel.js': (s) => s.replace(
       '— no cause candidate`', '— no cause`') } },

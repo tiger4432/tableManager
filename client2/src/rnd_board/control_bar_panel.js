@@ -200,7 +200,7 @@ export class ControlBarPanel extends Panel {
 
     const grammar = doc.createElement('div');
     grammar.className = 'rb-control-grammar';
-    grammar.textContent = 'Group by → Y value → pick a seed on the trend → marking → candidates';
+    grammar.textContent = 'Group by → Y value → choose a seed on the trend → marking → candidates';
     root.appendChild(grammar);
 
     this.host.appendChild(root);
@@ -236,7 +236,7 @@ export class ControlBarPanel extends Panel {
     if (this.declarationState === 'refused') {
       note.textContent = `Declaration unreadable — ${this.declarationMessage || ''}`;
     } else if (this.declarationState === 'absent') {
-      note.textContent = 'No declaration — the qualifier list comes from it';
+      note.textContent = 'No declaration';
     } else if (!this.numericReads) {
       note.textContent = 'Qualifiers from the declaration · numeric not measured here';
     } else if (this.qualifierTypes === null) {
@@ -275,7 +275,7 @@ export class ControlBarPanel extends Panel {
       title: agg.numericOnly
         ? (nonNumeric
           ? `${chosen.qualifier} is not numeric in this marking`
-          : 'Numeric values only — the chart says how many were skipped')
+          : 'Numeric values only')
         : 'Any kind of value',
       onPick: () => this._writePair(agg.id, this._chosenPair().qualifier),
     }));
@@ -298,7 +298,7 @@ export class ControlBarPanel extends Panel {
       if (straddled) {
         return this._pill({
           id: this._axisId('peer', peer.label),
-          text: `${peer.label} · contrast 0 · straddling ${got.straddling === null ? got.subjects : got.straddling}`,
+          text: `${peer.label} · no contrast · both sides ${got.straddling === null ? got.subjects : got.straddling}`,
           count: undefined,
           unsourced: true,
           title: [got.message || got.straddleMessage, this._peerTitle(got)]
@@ -332,7 +332,7 @@ export class ControlBarPanel extends Panel {
     for (const q of this.qualifiers) {
       const got = this.qualifierTypes ? (this.qualifierTypes[q.name] || { seen: 0, numeric: 0 }) : null;
       const words = got
-        ? (got.seen ? `numeric ${got.numeric}/${got.seen}` : 'no value in this marking')
+        ? (got.seen ? `numeric ${got.numeric}/${got.seen}` : NO_VALUE)
         : null;
       pills.push(this._pill({
         id: this._axisId('qualifier', q.name),

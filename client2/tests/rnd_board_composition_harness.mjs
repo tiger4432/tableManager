@@ -194,7 +194,7 @@ async function suite(mods) {
   h.mount(); await flush(); await flush();
   const chips = byClass(hostH, 'rb-chip');
   const absent = chips.filter((c) => c.classList.contains('rb-chip--absent'));
-  truthy('E1 the defaulted window is drawn as an absence', absent.some((c) => c.textContent.includes('never chosen')));
+  truthy('E1 the defaulted window is drawn as an absence', absent.some((c) => c.textContent.includes('Default · ')));
   truthy('E2 cardinality stays the word the ledger chose', absent.some((c) => c.textContent.includes('variable')));
   eq('E3 no absence is drawn with the refusal class', byClass(hostH, 'rb-head-note--refused').length, 0);
   // 🔴 THE CLAIM IS UNCHANGED, THE ADDRESS MOVED. 목업 2a puts 「어떻게 정해졌나」 beside the
@@ -367,7 +367,7 @@ const MUTANTS = [
   { id: 'H-M1', what: 'the head hides that its chip is a fixed seed while the maps follow the marking',
     catches: 'H9',
     mutate: { 'head_summary_panel.js': (s) => s.replace(
-      "        'Chip', 'Fixed seed — does not follow the marking (awaiting the wafer→chip edge)', 'absent'));",
+      "        'Chip', 'Fixed seed · awaiting wafer→chip edge', 'absent'));",
       "        'Chip', '', 'absent'));") } },
   // 🔴 마킹을 안 보고 «첫 층»을 펼치면, 아무것도 안 찍은 화면이 「이 층이 답」이라고 말합니다.
   { id: 'L-M1', what: 'the expanded layer opens the first component instead of the marked one',

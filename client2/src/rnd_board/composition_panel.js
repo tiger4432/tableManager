@@ -142,7 +142,7 @@ export class CompositionPanel extends Panel {
     if (m.cardinality.components) {
       const card = doc.createElement('div');
       card.className = 'rb-comp-cardinality';
-      card.textContent = `Cardinality ${m.cardinality.components} — measured on this chip, not a constant`;
+      card.textContent = `Components ${m.cardinality.components} · measured on this chip`;
       root.appendChild(card);
     }
 
@@ -190,7 +190,7 @@ export class CompositionPanel extends Panel {
       reads: this.reads,
       writes: this.writes,
       rowKey: 'nodeId',
-      emptyText: 'No composition for this wafer — only a bonded chip has one',
+      emptyText: 'No composition · not a bonded chip',
       columns: [
         { key: 'layer', label: 'Layer', width: '4rem', kind: 'mono' },
         { key: 'wafer', label: 'Core wafer', width: 'minmax(11rem, 16rem)', kind: 'mono' },

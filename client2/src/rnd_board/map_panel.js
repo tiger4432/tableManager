@@ -1057,7 +1057,7 @@ export class MapPanel extends Panel {
     //    two apart, so it is the gate. The day the route ships the id, this opens by itself
     //    and no line here changes.
     if (cell.nodeIdResolved !== true) {
-      this.unmarkable = 'No node here yet — markable once the server serves an id';
+      this.unmarkable = 'Not a ledger node yet · drawable, not markable';
       this._writeHead();
       return null;
     }

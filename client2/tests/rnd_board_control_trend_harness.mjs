@@ -305,8 +305,8 @@ async function suite(mods) {
       Boolean(straddlePill) && /by bonding_log\.leg/.test(straddlePill.getAttribute('title') || ''),
       String(straddlePill && straddlePill.getAttribute('title')));
     ok('A6 a straddled peer says so instead of printing a comparable number',
-      Boolean(straddlePill) && straddlePill.textContent.includes('contrast 0')
-      && straddlePill.textContent.includes('straddling 6'), straddlePill && straddlePill.textContent);
+      Boolean(straddlePill) && straddlePill.textContent.includes('no contrast')
+      && straddlePill.textContent.includes('both sides 6'), straddlePill && straddlePill.textContent);
 
     // 🔴 A COUNT NOBODY SERVES IS 「—」. Zero would say 「또래가 없다」, which nobody measured.
     const peer = pills.find((p) => p.textContent.includes('Same lot'));
@@ -406,7 +406,7 @@ async function suite(mods) {
     //    nothing; the axis now names the materials and prints the one timestamp, so what must
     //    be scored is that BOTH are said -- the material ticks and the moment.
     ok('D2 a single timestamp is said, and the axis names its materials',
-      text.includes('one time') && text.includes('x is material'), text.slice(0, 200));
+      text.includes('single timestamp') && text.includes('x is material'), text.slice(0, 200));
     ok('D4 each material gets one tick, not one per point',
       byClass(host, 'rb-trend-xtick').length === 2,
       String(byClass(host, 'rb-trend-xtick').map((n) => n.textContent)));
@@ -444,7 +444,7 @@ async function suite(mods) {
     await flush(); await flush();
     eq('E2 a seat that declared no collect is not walked for one', asked, 0);
     ok('E3 ... and the panel SAYS that, rather than drawing a refusal',
-      bareHost.textContent.includes('declares no collect')
+      bareHost.textContent.includes('No collect declared')
       && byClass(bareHost, 'rb-trend-note--refused').length === 0,
       bareHost.textContent.slice(0, 140));
   }

@@ -157,7 +157,7 @@ export class RankListPanel extends WalkedListPanel {
     if (c.incomparable) words.push('Incomparable');
     // `complete:false` means the budget cut the walk short: what is below is UNEXAMINED, and
     // that is a different sentence from 「없다」.
-    if (m.complete === false) words.push('Unexamined');
+    if (m.complete === false) words.push('Cut at budget');
     return words;
   }
 

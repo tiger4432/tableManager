@@ -24,7 +24,7 @@ import { SIGN } from './marking_store.js';
 import { TablePart } from './table_part.js';
 // 🔴 C-77. 서버 시각은 offset 단 ISO — 순간으로 읽고 보는 쪽 zone 으로 그린다.
 import { localMinute } from '../server_time.js';
-import { LOADING } from '../ui_words.js';
+import { LOADING, SERVER_REFUSED } from '../ui_words.js';
 
 export class ReachPanel extends Panel {
   constructor(host, deps) {
@@ -181,7 +181,7 @@ export class ReachPanel extends Panel {
   _emptyText() {
     if (this.loadState === 'no-marking') return UNPICKED;
     if (this.loadState === 'loading') return LOADING;
-    if (this.loadState === 'refused') return (this.model && this.model.message) || 'Not walked';
+    if (this.loadState === 'refused') return (this.model && this.model.message) || SERVER_REFUSED;
     return 'No edge out of this node';
   }
 }

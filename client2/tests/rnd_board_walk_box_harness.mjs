@@ -355,7 +355,7 @@ async function suite(mods) {
     await pt.run();
     await settle();
     const cutText = textOf(hostT);
-    ok('T1 a truncated walk says so', cutText.includes('Cut at budget'), cutText.slice(-100));
+    ok('T1 a truncated walk says so', cutText.includes('Truncated at'), cutText.slice(-100));
     ok('T2 and it names what the server named', cutText.includes('nodes, edges, claims, actions'));
     // 🔴 THE ROWS ARE STILL THERE. 「끊겼다」 is not 「없다」 -- a cut answer still answers.
     eq('T3 the rows it did get are still drawn', rowsOf(hostT).length, 2);
@@ -375,10 +375,10 @@ async function suite(mods) {
     pq.setType('die@1');
     await pq.run();
     await settle();
-    ok('T4 a walk that was NOT cut stays silent', !textOf(hostQ).includes('Cut at budget'),
+    ok('T4 a walk that was NOT cut stays silent', !textOf(hostQ).includes('Truncated at'),
       textOf(hostQ).slice(-80));
     ok('T4b and a walk with no truncated key at all stays silent too',
-      !textOf(host).includes('Cut at budget'));
+      !textOf(host).includes('Truncated at'));
   }
 
   console.log(`${LF}-- E. three absences, three sentences --`);
@@ -393,7 +393,7 @@ async function suite(mods) {
   await settle();
   const noDecl = textOf(hostR);
   ok('E1 no declaration says the SERVER cannot answer yet',
-    noDecl.includes('The server serves no declaration yet'), noDecl.slice(0, 90));
+    noDecl.includes('Server refused'), noDecl.slice(0, 90));
   eq('E2 and it draws no controls to click', byAttr(hostR, 'data-field').length, 0);
 
   // ① chosen nothing yet, ③ walked and found nothing -- on the SAME panel, different sentences.

@@ -18,7 +18,7 @@ import { Panel } from './panel.js';
 import { SIGN } from './marking_store.js';
 import { TablePart } from './table_part.js';
 import { UNPICKED } from '../absent.js';
-import { LOADING } from '../ui_words.js';
+import { LOADING, SERVER_REFUSED } from '../ui_words.js';
 
 export class ExpandedLayerPanel extends Panel {
   constructor(host, deps) {
@@ -116,8 +116,8 @@ export class ExpandedLayerPanel extends Panel {
         : (this.loadState === 'ready'
           ? (((this.model && this.model.components) || []).length
             ? UNPICKED
-            : 'No composition for this wafer — no layer to expand')
-          : (this.model && this.model.message) || 'Composition unreadable');
+            : 'No composition · not a bonded chip')
+          : (this.model && this.model.message) || SERVER_REFUSED);
       root.appendChild(note);
       this.host.appendChild(root);
       return;

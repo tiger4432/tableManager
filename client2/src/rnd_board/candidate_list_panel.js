@@ -20,7 +20,7 @@
 import { WalkedListPanel, markingIntent } from './panel.js';
 import { SIGN } from './marking_store.js';
 import { UNPICKED } from '../absent.js';
-import { WALKING, SERVER_REFUSED } from '../ui_words.js';
+import { WALKING, SERVER_REFUSED, NO_VALUE } from '../ui_words.js';
 
 export class CandidateListPanel extends WalkedListPanel {
   render() {
@@ -72,11 +72,11 @@ export class CandidateListPanel extends WalkedListPanel {
     head.appendChild(this._stat(`Name only ${m.counts.nameOnly}`, 'absent'));
     // 🔴 「안 쟀다」 is not 「깨끗했다」. It is stated, in its own words, and never in red.
     if (m.contrast === 'unexamined') {
-      head.appendChild(this._stat('No control · peers not measured', 'absent'));
+      head.appendChild(this._stat('No controls · unexamined', 'absent'));
     }
     // 🔴 `!m.complete` 는 «모름»(null)까지 「끊김」으로 만듭니다. 끊긴 것만 말합니다.
     if (m.complete === false) {
-      head.appendChild(this._stat('Cut at budget · the rest unexamined', 'absent'));
+      head.appendChild(this._stat('Cut at budget · the rest not walked', 'absent'));
     }
     // 🔴 «잘렸다고 말하는 것»이 자르는 것보다 먼저입니다 (총괄 판정 2026-08-24). 지금 응답은
     //    세 웨이퍼 전부 `truncated: ['depth']` 인데 화면은 아무 말도 안 했습니다 -- 그러면
@@ -177,7 +177,7 @@ export class CandidateListPanel extends WalkedListPanel {
     t.textContent = `Name only ${count}`;
     const d = this.doc.createElement('div');
     d.className = 'rb-cand-model';
-    d.textContent = 'No value, no trend · "-" in the rank table';
+    d.textContent = `${NO_VALUE} · no trend`;
     el.append(t, d);
     return el;
   }

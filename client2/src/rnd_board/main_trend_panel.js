@@ -29,7 +29,7 @@ import { localMinute } from '../server_time.js';
 //    오늘 거짓입니다 — 바로 위 줄이 이미 바깥 import 이고, C-93 이 공용 로더의 재작성을 한
 //    자리로 모은 뒤로 여덟 하니스가 그것을 따라옵니다. 낡은 문장은 같이 지웁니다.
 import { UNPICKED, subjectText } from '../absent.js';
-import { LOADING, SERVER_REFUSED, unitText } from '../ui_words.js';
+import { LOADING, SERVER_REFUSED, NO_VALUE, unitText } from '../ui_words.js';
 
 /**
  * 🔴 이 점이 «어느 노드»인가 — 찍는 키는 한 곳에서 정합니다 (소유자 판정 2026-08-24:
@@ -255,7 +255,7 @@ export class MainTrendPanel extends Panel {
       note.textContent = this.loadState === 'awaiting'
         ? UNPICKED
         : (this.loadState === 'undeclared'
-          ? 'This seat declares no collect — not walked'
+          ? 'No collect declared'
           : (this.loadState === 'loading' ? LOADING
             // 🔴 C-90 ② / 판정 341. 거절은 «서버의 낱말»입니다 — 이름이 있으면 그 이름을
             //    먼저 그립니다(`measure_needs_numbers` 같은 코드). 문장은 서버의 것이고,
@@ -274,8 +274,7 @@ export class MainTrendPanel extends Panel {
       // The id stays checkable in the title; the sentence says the KIND, because a raw node id
       // in a sentence is a string nobody reads.
       note.setAttribute('title', String(this.axisChosen));
-      note.textContent = 'The chosen axis is a quantity — this chart draws ratios only'
-        + ' (an axis picked from the walk is for candidates and rank)';
+      note.textContent = 'Quantity axis · ratios only';
       root.appendChild(note);
       this.host.appendChild(root);
       return;
@@ -391,7 +390,7 @@ export class MainTrendPanel extends Panel {
         : ` · chips inspected ${seen} · chips with a void ${hit}`
           + ` · ratio ${formatValue(m, valueOf(p))}`;
       dot.setAttribute('title',
-        `${p.wafer || '(no wafer)'}`
+        `${p.wafer || '(unnamed)'}`
         + body
         + (grainWord ? ` · by ${grainWord}` : '')
         + (p.state ? ` · ${p.state}` : ''));
@@ -457,7 +456,7 @@ export class MainTrendPanel extends Panel {
     const xLeft = doc.createElement('div');
     xLeft.className = 'rb-trend-xlabel is-left';
     xLeft.textContent = this.flatTime
-      ? `${stamp(points[0].at)} · one time`
+      ? `${stamp(points[0].at)} · single timestamp`
       : `${stamp(points[0].at)} → ${stamp(points[points.length - 1].at)}`;
     plot.appendChild(xLeft);
     plot.append(yTop, yBottom);
@@ -531,7 +530,7 @@ export class MainTrendPanel extends Panel {
       if (this.flatRate) parts.push('All values equal');
       // The axis now names the materials and the moment, so the old wording («차례») would
       // contradict what the reader can see on it.
-      if (this.flatTime) parts.push('x is material · one time only');
+      if (this.flatTime) parts.push('x is material · single timestamp');
       flat.textContent = parts.join(' · ');
       el.appendChild(flat);
     }
@@ -541,7 +540,7 @@ export class MainTrendPanel extends Panel {
       gap.className = 'rb-trend-absent';
       // Not dropped silently: a point without a value is a wafer nobody measured.
       gap.textContent = m.valueKind === 'aggregate' && m.axis
-        ? `No value ${unplotted} — ${m.axis.qualifier} not carried on this material`
+        ? `${NO_VALUE} ${unplotted} — ${m.axis.qualifier} not carried on this material`
         : `No ratio ${unplotted} — not measured`;
       el.appendChild(gap);
     }

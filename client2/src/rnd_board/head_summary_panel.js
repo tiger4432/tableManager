@@ -298,13 +298,13 @@ export class HeadSummaryPanel extends Panel {
     //       말하면서 둘 다 사실인 «척» 하는 것이 지금 제일 나쁩니다. 요청 0개입니다.
     if (this.finalChipId) {
       absences.appendChild(this._chip(
-        'Chip', 'Fixed seed — does not follow the marking (awaiting the wafer→chip edge)', 'absent'));
+        'Chip', 'Fixed seed · awaiting wafer→chip edge', 'absent'));
     }
 
     if (m.window.defaulted) {
       // 「기간을 안 골랐다」 ≠ 「기간이 없다」. The server applied its own; say whose it is.
       absences.appendChild(this._chip(
-        'Window', `Default · ${m.window.spec || '?'} — never chosen`, 'absent'));
+        'Window', `Default · ${m.window.spec || '?'}`, 'absent'));
     } else if (m.window.spec) {
       absences.appendChild(this._chip('Window', m.window.spec, 'fact'));
     }
@@ -312,7 +312,7 @@ export class HeadSummaryPanel extends Panel {
     // `variable` stays the word the ledger chose.
     if (m.cardinality.components) {
       absences.appendChild(this._chip(
-        'Count', `${m.cardinality.components} — not a constant`, 'absent'));
+        'Components', `${m.cardinality.components} · measured`, 'absent'));
     }
 
     if (!m.provenance.ledgerBacked) {

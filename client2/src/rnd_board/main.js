@@ -221,7 +221,7 @@ export const BOARD = Object.freeze({
       //    보입니다. 오늘은 종류가 하나뿐이라 목록이 같지만, 둘째가 오는 날 갈립니다.
       direction: 'outgoing',
       part: 'controlBar',
-      title: 'Controls · axis',
+      title: 'Axis picker',
       at: { column: 1, row: 2, columnSpan: 4 },
       reads: 'axis:y',
       writes: 'axis:y',
@@ -683,7 +683,7 @@ export const BOARD = Object.freeze({
       //    찍으면 마킹 2 에 «쓰므로», 손으로 시작한 걸음도 체인에 들어옵니다.
       id: 'walkBox',
       part: 'walkBox',
-      title: 'Walk -- type · key · predicates · collect',
+      title: 'Walk · type · key · predicates · collect',
       at: { column: 1, row: 8, columnSpan: 2 },
       reads: null,
       writes: 'marking:2',

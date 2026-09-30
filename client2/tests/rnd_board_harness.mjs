@@ -418,7 +418,7 @@ async function suite(mods) {
     eq('C17 ... and nothing was written under that id',
       markings.signOf('marking:1', cell.nodeId), SIGN.ABSENT);
     ok('C18 ... and the panel says why',
-      /No node here yet/.test(String(byClass(elOf('a'), 'rb-map__note')[0]
+      /Not a ledger node yet/.test(String(byClass(elOf('a'), 'rb-map__note')[0]
         && byClass(elOf('a'), 'rb-map__note')[0].textContent)),
       String(byClass(elOf('a'), 'rb-map__note')[0]
         && byClass(elOf('a'), 'rb-map__note')[0].textContent));
