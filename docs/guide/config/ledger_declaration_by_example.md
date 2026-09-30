@@ -173,6 +173,8 @@ Link type    inspected  Wafer -> Die                              backing datase
                               그 분자를 «이름 대어» 거절합니다(`cardinality_one_violated`) — 세고 건너뜁니다
 ③ 걷기가 그 사실을 «싣습니다»     엣지에 `cardinality` 가 실려, 화면이 「그린 것을 보고 짐작」하지 않습니다
 ```
+⚠️ **10-01 — 오늘 운영 모양에서 ①② 는 일어나지 않습니다**(구현 실측 `918f49ccc` · 코드로 확인): 선언의 술어 키는 버전이 붙고(`processed_with@1`) 원자의 술어는 버전을 뗀 이름(`processed_with`, `roleframe._runtime_id`)이라 `runtime_v2._one_cardinality_predicates` 와의 대조가 늘 거짓입니다 — 대체 표지 0, 한 배치의 목적어 둘도 거절 0. ③(엣지가 `cardinality` 를 실음)은 맞습니다. 수리 전까지 이 절의 ①② 는 «약속»이지 «동작»이 아닙니다.
+
 ⚠️ **소급은 «안 합니다»** — 이미 여러 원자가 살아 있는 (주어, `one` 술어)는 «다음 새 원자부터»
 대체됩니다. 과거 정리는 재번역(rescope)의 일입니다.
 ✅ **걷기는 «현재만» 그립니다**(S-141, 2026-09-10 저녁). 대체된 엣지는 빠지고, 몇 개를 뺐는지는
