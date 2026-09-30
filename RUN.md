@@ -7,7 +7,7 @@
 >              같은 줄에 나란히 선 그룹 헤더(A · B)는 자기 열 아래 칸에만 붙음 (전: B 가 A 의 칸에도 붙어 값 하나가 사라짐)
 > 누가 부르나     이 박스: 추적 코드 0 · ingestion_workspace 파이썬 18 개 중 0 (bonding_map 은 HTMLMatrixTableParser — 안 바뀜)
 > 확인          이 함수를 부르는 커스텀 파서가 있으면, 헤더 경로가 겹치는 파일은 그 파일 줄에
->              「N value cells share the header path (…) … Next: mark the cell that tells these rows apart as a header (is_header_fn) …」
+>              「Next: mark the cell that tells these rows apart as a header (is_header_fn) … N value cells share one header path … The path: (…)」 — 다음 행동이 맨 앞(파일 상태 칸이 500 자만 남겨도 안 잘림, 09-30 f7738d7a4)
 > 뜻           그 줄 = 전에는 값 일부를 조용히 잃던 파일. 할 일은 행을 가르는 칸(예: 웨이퍼 열)을 is_header_fn 에서 헤더로 — 그 뒤 다시 올리기
 >             위아래로 쌓인 표는 거절이 아니라 가이드 §3.1-bis(먼저 나눠 읽기)
 > 급할 때       끄는 스위치 없음 — 커밋 되돌리기

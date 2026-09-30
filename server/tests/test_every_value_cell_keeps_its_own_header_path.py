@@ -70,6 +70,36 @@ def test_two_value_cells_on_one_header_path_are_refused_by_name():
     assert "header" in said.split("Next:")[1], said   # what to do
 
 
+def test_the_next_step_survives_the_file_status_cell_on_a_long_header_path():
+    """총괄 f7738d7a4 — the watcher hands `checkpoint.record_failure` the traceback and the file
+    status cell keeps its last line up to 500 characters. With a 400-character header path the
+    whole next-step sentence must still be in that cell."""
+    import traceback
+
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+
+    from database import models
+    from database.database import Base
+    from ingestion import checkpoint
+
+    lot, column = "L" * 200, "W" * 200
+    html = SHARED.replace("L001", lot).replace("<td>WAFER</td>", "<td>%s</td>" % column)
+    try:
+        _tuples(html, lambda tag, r, c: r == 0 or c == 0)
+    except ValueError as refused:
+        said, reason = str(refused), traceback.format_exc()
+    assert len(repr((lot, column))) >= 400
+    step = said[said.index("Next:"):].split(". ")[0] + "."
+
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(bind=engine, tables=[models.FileIngestionCheckpoint.__table__])
+    db = sessionmaker(bind=engine)()
+    assert checkpoint.record_failure(db, "t", "sha256:1:aa", "f.html", "/in/f.html", reason)
+    note = checkpoint.find_checkpoint(db, "t", "sha256:1:aa").note
+    assert step in note, note
+
+
 def test_marking_the_row_splitting_column_as_a_header_keeps_every_value():
     got, values = _tuples(SHARED, lambda tag, r, c: r == 0 or c <= 1)
     assert len(got) == len(values) == 8

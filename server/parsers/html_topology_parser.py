@@ -233,16 +233,19 @@ class HTMLTableGraphParser:
         #   second value cell on a path replaced the first in silence (the lead measured 12 cells
         #   -> 8). The cells are different facts and nothing here can say which one the path
         #   means, so the table is refused by name.
+        # ⚠️ [총괄 f7738d7a4] THE NEXT STEP FIRST, THE PATH LAST. The file status cell keeps 500
+        #   characters of this line (ingestion/checkpoint.record_failure), so a long header path
+        #   is what that cut may take - never what to do.
         shared = {path: cells for path, cells in cells_on.items() if len(cells) > 1}
         if shared:
             path, cells = next(iter(shared.items()))
             raise ValueError(
-                "%d value cells share the header path %r (e.g. row %d col %d and row %d col %d, "
-                "counted from 0) - only one of them could be kept; %d header path(s) in this "
-                "table are shared. Next: mark the cell that tells these rows apart as a header "
-                "(is_header_fn), so each value has its own path."
-                % (len(cells), path, cells[0].row_range[0], cells[0].col_range[0],
-                   cells[1].row_range[0], cells[1].col_range[0], len(shared)))
+                "Next: mark the cell that tells these rows apart as a header (is_header_fn), so "
+                "each value has its own path. %d value cells share one header path (e.g. row %d "
+                "col %d and row %d col %d, counted from 0) - only one of them could be kept; %d "
+                "header path(s) in this table are shared. The path: %r"
+                % (len(cells), cells[0].row_range[0], cells[0].col_range[0],
+                   cells[1].row_range[0], cells[1].col_range[0], len(shared), path))
         return results
 
     def _reconstruct_2d_grid(self, table_tag) -> Tuple[Dict[Tuple[int, int], TableNode], int, int]:
