@@ -65512,3 +65512,56 @@ varchar 로 만들어진 칸을 datetime 으로 선언하면 쓰기 문이 어�
 ```
 
 대조 PG 측정으로 돌아갑니다.
+
+## [구현자 -> 총괄] 착지 052ac582c — 791c0f45e 1: 원장 선언 창 500 · 저장 없이 키 칸
+
+```
+ㄱ 500    setup_bundle._binding_columns 가 반쪽 바인딩을 견딤 — kind 없음 · column 없음 · keys 없음/None/모양 틀림 ·
+          키 항목이 dict 아님 · attributes 모양 틀림. 부르는 _profile_binding_columns(S-196)와 같은 결
+          잰 것(S-196 방식): 고치기 전후 답이 같음 — 살아 있는 번들 15 · 107 · 표본 6 · 38 (소스 수 · 칸 수), 다른 곳 0
+ㄴ 저장 없이  POST /admin/ontology-explorer/authoring/plan {selection, draft_id, raw} — 채널로 먼저 보낸 모양 그대로
+          파일 번들의 그 초안 자리에 raw 를 놓고 저장이 쓰는 채움(filled_declaration)을 거쳐 plan — 쓰는 것 0
+          글 읽기는 저장과 한 함수(parse_draft_raw) — 거절 이름이 같음
+표시     plan 의 모든 행에 "reshapes" — 계획이 그 값을 읽어 다른 행을 까는 잎만 true(config_authoring.Field 한 자리)
+          true 9 자리: predicate(두 갈래) · 안 묶은 역할 · 역할 kind · entity_type · relation ·
+          read.occurred_at · implementation_id · unit.kind — 계획의 모든 갈래를 센 것은 아님(값으로 행을 가르는 자리를 읽어 찾음)
+옛 사본  config_authoring._binding_columns 지움 — 부르는 곳 0 (파일 802 개) · 카나리아(setup_bundle 의 def) 1
+          명령: python scratchpad/census_binding_columns_copy.py <저장소> (AST · 추적 파일 전부 · 시험 포함)
+재현      표본 die_inspection · die-inspected 의 선언된 역할 target 을 entity die@1 · 키 없이 — 표본의 술어엔 역할이
+          더 없어서 target 을 다시 고름. 같은 자리(_binding_columns)를 지나고 고치기 전엔 KeyError 'keys'
+```
+
+| 칸 | 입력 | 답 |
+|---|---|---|
+| 반쪽 바인딩 일곱 | 라우터로 저장(PUT) | 200 · invalid · 거절 이름이 있음 |
+| 키 칸 | 저장 없이 POST plan | die@1 의 선언 키 칸이 그대로 뜸(키 이름은 표본에서 읽음) |
+| 저장 뒤와 같음 | 저장 + 반영 뒤 GET plan | 그 역할 아래 행이 저장 없이 받은 것과 같음 |
+| 채움 | 저장이 채우는 칸 하나를 본문에서 뺌 | 저장 없이 받은 것도 채워져 저장 뒤와 같음 |
+| 쓰기 0 | POST plan 앞뒤 | 파일 바이트 · 초안 기록 그대로 |
+| 거절 | 깨진 글 · 배열 · 없는 초안 | invalid_json · invalid_json_type · 초안 조회 거절 |
+| 표시 | 저장 없이 받은 행 | entity_type · kind 는 reshapes true · 키 칸은 false |
+
+```
+통과   75 passed in 9.18s — 이 시험 파일 + 옆 시험 둘(test_ontology_config_explorer · test_an_attribute_binding_gets_a_square)
+변이   KeyError 되돌림 -> 7 failed, 4 passed in 8.78s — test_a_half_built_binding_is_saved_with_named_refusals[no_keys] · test_a_half_built_binding_is_saved_with_named_refusals[keys_none] · test_a_half_built_binding_is_saved_with_named_refusals[keys_list] · test_a_half_built_binding_is_saved_with_named_refusals[attributes_list] · test_the_key_squares_come_up_before_the_save_as_they_do_after_it · test_a_square_the_save_fills_is_filled_in_the_unsaved_answer · test_the_plan_marks_the_leaf_that_lays_out_the_key_squares
+       읽기가 본문을 안 씀 -> 2 failed, 9 passed in 3.59s — test_the_key_squares_come_up_before_the_save_as_they_do_after_it · test_a_square_the_save_fills_is_filled_in_the_unsaved_answer
+       본문을 안 채움 -> 1 failed, 10 passed in 3.20s — test_a_square_the_save_fills_is_filled_in_the_unsaved_answer
+       entity_type 에 표시 안 함 -> 1 failed, 10 passed in 3.28s — test_the_plan_marks_the_leaf_that_lays_out_the_key_squares
+전체   5 failed, 7479 passed, 164 skipped, 3 xfailed in 1021.00s (0:17:01) — 실패는 알려진 다섯과 이름이 같음
+PG     7 failed, 118 passed, 7526 deselected in 240.76s (0:04:00) — 실패는 알려진 일곱과 이름이 같음
+재기동 서버. 마이그레이션 없음 — RUN.md 새 절
+```
+
+**덤 (읽기만)** — 「Saved but not applied」 인 줄이 파일에 남은 채 재기동하면
+```
+표본에 그 모양(die_inspection.bind.entities.die@1.attributes = {})을 넣고 로더를 돌림:
+  파일의 소스 6 · 읽는 소스 ['dt_job', 'lot_event', 'lot_slot_wafer', 'transfer_event', 'wafer_process_recipe']
+  안 읽는 소스 {'die_inspection': ('active', 'invalid_binding')}
+  로그 「[Ledger] source die_inspection is NOT planned: bundle.sources.die_inspection.bind.entities.die@1.attributes must be a non-empty object keyed by attribute name」
+  -> 그 소스만 안 읽고 나머지는 읽음 · 키를 채워 다시 저장할 때까지 «계속»
+  ⚠️ 총괄이 본 거절 이름은 signature_mismatch 였는데 제 재현은 invalid_binding — 그 줄의 정확한 모양은 제가 모릅니다
+```
+
+```
+다음      2 핫스왑 뒤 컴파일 캐시 비우기
+```
