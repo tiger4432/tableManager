@@ -912,7 +912,10 @@ const FLOORS = new Map([
   // once per committed change — never per keystroke — and its fields take the plan's place.
   // 39 -> 45 (lead 8771e43ac 2, [6]): what the server dropped is said, from the plan and from the save.
   // 45 -> 48 (lead 9073d7225 ㉰, [7]): the page's form path bar takes a step through map-goto.
-  ['explorer_open_path_harness.mjs', 48],
+  // 48 -> 74 (lead 64c380aeb, [8]): the branch - Default asks what it asked before, a branch reaches
+  // every request, a pick starts the screen over (unsaved typing through the one dirty decision), a branch
+  // is made by the bootstrap and deleted after its preview; the picker makes nothing from a blank name and keeps a name across redraws.
+  ['explorer_open_path_harness.mjs', 74],
   // New with lead 619befe8c: where an edit sits in the ledger form — a guide per ancestor on every
   // row of the real skeleton's form, the trail as the declaration path's own words, the path bar
   // part, and no skeleton word in the bar's code.
@@ -1485,7 +1488,9 @@ const FLOORS = new Map([
   // 58 -> 60 (G5-G6, lead d4a949a8c ㉮): a refused save keeps a named reason and a list refusal.
   // 60 -> 61 (C7, ㉲): a blank id is not counted, as the chain's walk drops it.
   // 61 -> 62 (lead dcd159739, C8): an object or a list of blanks holds no id; unreadable text is unknown.
-  ['rnd_board_contrast_save_harness.mjs', 62],
+  // 62 -> 70 (lead 64c380aeb, M): Default asks what it asked before; a branch reaches every request, the
+  // saved row and the saved list; a blank branch in the address is Default.
+  ['rnd_board_contrast_save_harness.mjs', 70],
   // the board part: the walk itself. 32 -> 34 (D5 and its mutant X11, lead d4a949a8c ㉱): the two
   // lists walk through one prelude. 34 -> 39 (H0-H2 and X12 X13, lead 9dd1e378b): measured reads the
   // hops' predicates, the same answer the retired pairing function gave on the same fixture.

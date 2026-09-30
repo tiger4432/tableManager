@@ -1,0 +1,24 @@
+{
+ "made_by": "the whole BOARD at 64c380aeb, booted on a recording fetch then one Save - the default half of rnd_board_contrast_save_harness M; before lead 64c380aeb",
+ "urls": [
+  "injected GET /api/ledger/declaration",
+  "injected GET /api/ledger/subgraph?id=ledger-entity%3Av1%3AWyJ3YWZlciIseyJ3YWZlciI6IlNZTi1DWC1CVy0wMDEifV0&follow=inspected&follow=observed&follow=of_kind&direction=outgoing",
+  "injected GET /api/ledger/subgraph?id=ledger-entity%3Av1%3AWyJ3YWZlciIseyJ3YWZlciI6IlNZTi1DWC1CVy0wMDEifV0&follow=inspected&follow=observed&follow=of_kind&direction=outgoing",
+  "injected GET /api/ledger/subgraph?id=ledger-entity%3Av1%3AWyJ3YWZlciIseyJ3YWZlciI6IlNZTi1DWC1CVy0wMDEifV0&follow=inspected&follow=observed&follow=of_kind&direction=outgoing",
+  "injected GET /api/ledger/subgraph?id=ledger-entity%3Av1%3AWyJ3YWZlciIseyJ3YWZlciI6IlNZTi1DWC1CVy0wMDEifV0&node_limit=1000&direction=outgoing",
+  "injected GET /api/ledger/subgraph?id=ledger-entity%3Av1%3AWyJ3YWZlciIseyJ3YWZlciI6IlNZTi1DWC1CVy0wMDEifV0&positive=ledger-entity%3Av1%3AWyJ3YWZlciIseyJ3YWZlciI6IlNZTi1DWC1CVy0wMDEifV0&node_limit=1000&direction=outgoing",
+  "injected GET /tables/contrast_run/data?limit=10&order_by=updated_at&order_desc=true",
+  "injected GET /tables/contrast_run/data?limit=10&order_by=updated_at&order_desc=true",
+  "injected GET /tables/wafer_map_metadata/data?limit=1&filters=%7B%22map_id%22%3A%7B%22filterType%22%3A%22text%22%2C%22type%22%3A%22equals%22%2C%22filter%22%3A%22SYN-CX-BW-001%22%7D%7D",
+  "injected GET /tables/wafer_map_metadata/data?limit=1&filters=%7B%22map_id%22%3A%7B%22filterType%22%3A%22text%22%2C%22type%22%3A%22equals%22%2C%22filter%22%3A%22SYN-CX-BW-001%22%7D%7D",
+  "injected PUT /tables/contrast_run/data/updates"
+ ],
+ "saveRowKeys": [
+  "direction",
+  "negative",
+  "node_limit",
+  "positive",
+  "run_id",
+  "until"
+ ]
+}

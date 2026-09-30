@@ -10,6 +10,8 @@ import {
 } from './ontology_explorer_store.js';
 import { renderOntologyExplorer, nodeTrail } from './ontology_explorer_view.js';
 import { PathBar } from './path_bar.js';
+import { withWorld } from './world.js';
+import { BranchPicker } from './branch_picker.js';
 import {
   splitBundlePath, setAtPath, getAtPath, deleteAtPath, writeShapeAtPath, addMember,
 } from './ontology_path.js';
@@ -125,6 +127,9 @@ function ancestorPaths(path) {
 
 export function createOntologyExplorerController({ root, apiBase, adminFetch, showToast }) {
   let state = { ...initialExplorerState, navigation: { back: [], forward: [] } };
+  // THE SCREEN'S ONE WORLD SEAT is `state.world`; every request below goes through these two (lead 64c380aeb).
+  const ask = withWorld(adminFetch, () => state.world);
+  const askPublic = withWorld((url, init) => fetch(url, init), () => state.world);
   let generation = 0;
   let searchTimer = null;
 
@@ -148,6 +153,9 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
   };
   // A picked step is the map's own door (`map-goto`): cursor, ancestors opened, row centred (㉰).
   const pathBar = new PathBar(null, { doc: document, action: 'map-goto' });
+  const branchPicker = new BranchPicker(null, { doc: document,
+    onPick: (name) => void pickWorld(name), onCreate: (name) => void pickWorld(name, { create: true }),
+    onDelete: (name) => void deleteWorld(name) });
   // The section the field being edited sits in — its parent node, found in the drawn tree.
   const markFormCursor = () => {
     for (const node of root.querySelectorAll('.oe-node.is-editing-parent')) {
@@ -161,6 +169,8 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
     renderOntologyExplorer(root, state);
     pathBar.attach(root.querySelector('.oe-bucket--form .oe-path-mount'));
     pathBar.show(trailNow());
+    branchPicker.attach(root.querySelector('.oe-branch-mount'));
+    branchPicker.show({ worlds: state.worlds, current: state.world });
     markFormCursor();
   };
 
@@ -367,7 +377,7 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
   // not parse, which is somebody's work with a bad comma in it rather than an absence.
   const bootstrapConfig = async () => {
     try {
-      const res = await adminFetch(`${apiBase}/admin/ontology-explorer/bootstrap`, {
+      const res = await ask(`${apiBase}/admin/ontology-explorer/bootstrap`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}',
       });
       const body = await res.json().catch(() => ({}));
@@ -391,6 +401,40 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
     }
   };
 
+  // A branch is another world: nothing selected or open here is a node there, so a pick starts the
+  // screen over on it (lead 64c380aeb). Unsaved typing asks first through the one dirty dialog and its
+  // one decision, as `select` does; the draft belongs to the world it was typed in, so Keep cannot cross
+  // and only Discard goes on - deleting it there, as `select`'s Discard does. A new branch is made by the
+  // existing bootstrap, sent on the new name.
+  const pickWorld = async (name, { create = false } = {}) => {
+    const next = name || null;
+    if (next === state.world && !create) return;
+    const choice = state.dirty ? await chooseDirtyNavigation(root) : 'keep';
+    const decision = dirtyNavigationDecision(state, () => choice);
+    if (state.dirty && decision !== 'discard') { render(); return; }
+    if (decision === 'discard' && state.draft && !(await discardDraft({ ask: false }))) return;
+    state = { ...initialExplorerState, navigation: { back: [], forward: [] }, world: next, worlds: state.worlds };
+    render();
+    if (create) await bootstrapConfig();
+    else await load({ allowContextSwitch: true });
+  };
+
+  // The server's preview first (what goes: atoms and files), confirmed, then the delete with the atom
+  // count the preview showed - the existing route, twice. Afterwards the screen reads the default.
+  const deleteWorld = async (name) => {
+    const at = `/worlds/${encodeURIComponent(name)}`;
+    try {
+      const preview = await jsonRequest(at, { method: 'DELETE' });
+      const files = (preview.files || []).length;
+      if (!window.confirm(`Delete branch ${name}? ${preview.atoms} atoms · ${files} files go with it.`)) return;
+      await jsonRequest(`${at}?confirm_atoms=${preview.atoms}`, { method: 'DELETE' });
+      showToast?.(`Branch ${name} deleted`, 'success');
+      await pickWorld(null);
+    } catch (error) {
+      showToast?.(errorMessage(error), 'error');
+    }
+  };
+
   // Author a declaration that does not exist yet, then open its draft.
   //
   // 🔴 THE REFUSAL STAYS ON THE NAMING ROW rather than becoming a toast. The operator's
@@ -402,7 +446,7 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
     const canonicalId = declarationIdFor(state, kind, state.newDeclaration?.id);
     if (!canonicalId) return;
     try {
-      const res = await adminFetch(`${apiBase}/admin/ontology-explorer/drafts/new`, {
+      const res = await ask(`${apiBase}/admin/ontology-explorer/drafts/new`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -569,7 +613,7 @@ No effect`;
   // Open a declaration that is in the file but could not be read, on its own text.
   const openUnread = async (item) => {
     try {
-      const res = await adminFetch(`${apiBase}/admin/ontology-explorer/drafts/new`, {
+      const res = await ask(`${apiBase}/admin/ontology-explorer/drafts/new`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -679,7 +723,7 @@ No effect`;
   });
 
   const jsonRequest = async (path, init) => {
-    const response = await adminFetch(`${apiBase}/admin/ontology-explorer${path}`, init);
+    const response = await ask(`${apiBase}/admin/ontology-explorer${path}`, init);
     let payload = null;
     try { payload = await response.json(); } catch (_) { /* structured fallback below */ }
     if (!response.ok) {
@@ -797,10 +841,11 @@ No effect`;
   //    「세 봤더니 0」이 아닙니다. 봉투를 푸는 것은 `censusBySource` «하나»입니다(C-47).
   const loadCensus = async () => {
     try {
-      const res = await fetch(`${apiBase}/api/ledger/declaration`);
+      const res = await askPublic(`${apiBase}/api/ledger/declaration`);
       if (!res.ok) return;
       const body = await res.json().catch(() => null);
-      dispatch({ type: 'CENSUS_RECEIVED', bySource: censusBySource(body), names: censusNames(body) });
+      dispatch({ type: 'CENSUS_RECEIVED', bySource: censusBySource(body), names: censusNames(body),
+        worlds: (body && body.worlds) || [] });
     } catch (error) {
       void error;                       // the line simply does not appear — see above
     }

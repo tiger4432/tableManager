@@ -1,0 +1,15 @@
+{
+ "made_by": "the declaration screen at 64c380aeb (git archive of client2/src), opened on a recording fetch then one create-draft click - the default half of explorer_open_path_harness [8]; before lead 64c380aeb",
+ "urls": [
+  "admin GET /admin/ontology-explorer/authoring/plan",
+  "admin GET /admin/ontology-explorer/authoring/plan?selection=entity%7Cquantity%401",
+  "admin GET /admin/ontology-explorer/authoring/plan?selection=entity%7Cquantity%401",
+  "admin GET /admin/ontology-explorer/authoring/schema",
+  "admin GET /admin/ontology-explorer/view?q=&page=1&limit=100&view_mode=active",
+  "admin GET /admin/ontology-explorer/view?q=&page=1&limit=100&view_mode=active&selection=entity%7Cquantity%401&draft_id=d1&revision=1",
+  "admin POST /admin/ontology-explorer/drafts",
+  "public GET /api/ledger/declaration",
+  "public GET /api/ledger/declaration"
+ ],
+ "draftOpen": true
+}

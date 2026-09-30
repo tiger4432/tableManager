@@ -16,17 +16,17 @@
     rel="stylesheet">
   <!-- 토큰(SSOT)과 이 화면의 뼈대. main.js 는 CSS 를 임포트하지 않는다 — bare node 로
        채점 가능해야 하기 때문. 그 규율의 근거는 ledger_map_panel.js 머리 주석. -->
-  <script type="module" crossorigin src="/assets/rnd_board-AH0BKtCD.js"></script>
+  <script type="module" crossorigin src="/assets/rnd_board-B_88-YU1.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/tokens-C9Rjx7_P.js">
   <link rel="modulepreload" crossorigin href="/assets/preload-helper-zJ_50EbN.js">
   <link rel="modulepreload" crossorigin href="/assets/absent-DJDVnjis.js">
   <link rel="modulepreload" crossorigin href="/assets/disabled_reason-BP_E0n0W.js">
+  <link rel="modulepreload" crossorigin href="/assets/api-BJzbzbFd.js">
+  <link rel="modulepreload" crossorigin href="/assets/branch_picker-B7hLOCxk.js">
   <link rel="modulepreload" crossorigin href="/assets/painter-Chj-t6K2.js">
-  <link rel="modulepreload" crossorigin href="/assets/api-CLwaHHce.js">
-  <link rel="modulepreload" crossorigin href="/assets/table_part-Cz7Ba4BP.js">
   <link rel="modulepreload" crossorigin href="/assets/server_time-DPFIAi5u.js">
   <link rel="stylesheet" crossorigin href="/assets/tokens-CSBELxgq.css">
-  <link rel="stylesheet" crossorigin href="/assets/rnd_board-DuenkVOD.css">
+  <link rel="stylesheet" crossorigin href="/assets/rnd_board-D-nZFWle.css">
 </head>
 
 <body>
@@ -36,6 +36,7 @@
       <!-- 🔴 판정 361 ②. 안내가 필요해도 «문장»은 안 씁니다 — 상설 「기호·짧은 영어·명사형」.
            누르는 것과 그 결과를 등호로 잇는 것이 이 사실의 전부이고, 그 밖은 설명입니다. -->
       <span class="rb-page__note">Click = mark · Shift+click = control (−)</span>
+      <span id="rb-branch" class="rb-page__branch"></span>
     </header>
     <!-- 배치는 이 페이지에 없다. 셸이 선언(main.js 의 BOARD)을 읽어 격자에 앉힌다. -->
     <div id="rb-board"></div>

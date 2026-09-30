@@ -2695,6 +2695,7 @@ export function renderOntologyExplorer(root, state) {
   forward.setAttribute('aria-label', 'Next selection');
   history.append(back, forward);
   top.append(h('div', 'oe-brand', 'Ontology Config Explorer'));
+  top.append(h('div', 'oe-branch-mount'));
   // 🔴 ABSENCE IS NOT PROGRESS. This read `불러오는 중` whenever there was no hash, so an
   // empty config announced a load that would never finish and the operator waited for it.
   // In-flight and absent are different states and only one of them ends -- `state.loading`
