@@ -37,7 +37,6 @@ from ledger.implementations import (role_mapper_registry,         # noqa: E402
 from ledger.setup import LedgerSetup                             # noqa: E402
 from ledger.setup_registry import compile_setup_snapshot         # noqa: E402
 from pathlib import Path                                         # noqa: E402
-from types import SimpleNamespace                                # noqa: E402
 
 SAMPLE = os.path.join(os.path.dirname(__file__), "..", "config", "sample")
 OCCURRED_AT = "2026-09-08T01:00:00+09:00"
@@ -94,9 +93,14 @@ class FakeEngine:
 def no_database(monkeypatch):
     """Everything the preview reaches OUT for, and nothing it decides."""
     import ledger.store as store_module
+    from ledger import schema
 
-    monkeypatch.setattr(store_module, "LedgerStore",
-                        lambda engine, **_: SimpleNamespace(connection=FakeConnection))
+    class _Store:
+        names = schema.world_names()
+        connection = FakeConnection
+        atoms_for_refs = store_module.LedgerStore.atoms_for_refs    # the real count, faked below
+
+    monkeypatch.setattr(store_module, "LedgerStore", lambda engine, **_: _Store())
     return FakeEngine()
 
 

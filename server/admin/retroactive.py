@@ -514,20 +514,22 @@ def _count_ledger_rescope(db, params, scan_limit):
 
     source = params["source"]
     if params.get("whole_source"):
-        # 총괄 8d10633ae ㉡: every row, counted from the table and NOT previewed - a preview
-        # of a whole source is the whole translation, run once only to be thrown away.
-        census = backfill.rows_not_yet_translated(
-            db.get_bind(), _ledger_setup(params), source, world=_ledger_world(params))
-        total = census.get("relation_rows")
+        # 총괄 8d10633ae ㉡ · 3a109bfd9 ③: the rescope's own whole-source preview - the table's
+        # rows, the rows it lost and their atoms. Not translated: that would be the whole job.
+        said = backfill.rescope(db.get_bind(), _ledger_setup(params), source, None, None,
+                                apply=False, whole_source=True, world=_ledger_world(params))
+        total, gone, atoms = said["relation_rows"], said["gone_rows"], said["gone_atoms"]
         return {
             "affected": total, "affected_label": "rows re-translated",
             "absence": None, "count_kind": COUNT_EXACT, "scanned": total,
             "scan_limit": None, "truncated": False,
             "detail": (f"Re-translates every row of '{source}' ({total} row(s) in the "
                        f"table) from today's declaration: page by page, each page's old "
-                       f"atoms withdrawn and new ones written in one commit. Not previewed "
-                       f"- a preview of a whole source would be the whole translation."),
-            "extra": {"source": source, "whole_source": True, "relation_rows": total}}
+                       f"atoms withdrawn and new ones written in one commit. Withdraws "
+                       f"{atoms} atom(s) of {gone} row(s) the table no longer has. The "
+                       f"re-translation is not previewed - that would be the whole job."),
+            "extra": {"source": source, "whole_source": True, "relation_rows": total,
+                      "gone_rows": gone, "gone_atoms": atoms}}
     column = params["scope_column"]
     values = params.get("scope_values") or []
     preview = backfill.preview_rescope(

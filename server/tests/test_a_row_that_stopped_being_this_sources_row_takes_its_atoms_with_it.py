@@ -145,6 +145,9 @@ class IndexStore:
     def connection(self):
         return Reader()
 
+    def atoms_for_refs(self, source, refs):
+        return 0                                  # what `Reader` answered the count with
+
     def row_refs_for(self, relation, row_ids):
         self.asked_for_rows = (relation, tuple(row_ids))
         return [(SOURCE, ref)

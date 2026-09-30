@@ -147,6 +147,9 @@ class FakeStore:
         return [(who, ref) for rel, row_id, who, ref in self.index
                 if rel == relation and row_id in wanted]
 
+    def atoms_for_refs(self, source, refs):
+        return 2 * len(refs)                   # two atoms per ref, as a row with two sentences
+
     def withdraw(self, source, refs):
         self.withdrawn.append((source, tuple(refs)))
         return len(refs)
@@ -165,7 +168,7 @@ INDEX = [(RELATION, "R1", "dt_job", "dt_log:one"),
 @pytest.fixture
 def store(monkeypatch):
     made = FakeStore(INDEX)
-    monkeypatch.setattr("ledger.store.LedgerStore", lambda engine: made)
+    monkeypatch.setattr("ledger.store.LedgerStore", lambda engine, **_: made)
     return made
 
 
@@ -193,7 +196,7 @@ def test_a_dry_run_writes_nothing_and_still_says_what_it_would_do(store):
     result = backfill.withdraw_deleted_rows(None, None, RELATION, ["R1"])
     assert store.withdrawn == [] and store.forgotten == []
     assert result["applied"] is False
-    assert result["sources"]["dt_job"] == {"refs": 1, "withdrawn": 0}
+    assert result["sources"]["dt_job"] == {"refs": 1, "withdrawn": 0, "atoms": 2}
 
 
 def test_a_row_the_ledger_never_translated_costs_nothing(store):
