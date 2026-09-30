@@ -1355,6 +1355,9 @@ const FLOORS = new Map([
   // 103 -> 104 (W7): the server's 「not seen」 is said, not drawn as a wait.
   ['chain_rule_form_harness.mjs', 104],
   ['clipboard_type_modal_harness.mjs', 21],
+  // New with lead 8771e43ac 1: the table's smart_paste order picks the format without asking; no
+  // order or none of it present asks as before; both readers choose through the one function.
+  ['smart_paste_choice_harness.mjs', 8],
   // 72 -> 75 (Q, lead 460f202d3): after a save, the page's queue seat hands the worker's base to the form.
   // 75 -> 76 (Q): a queue body with loop_seen_via null says 「not seen」.
   ['chain_rule_user_path_harness.mjs', 76],

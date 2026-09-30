@@ -6,6 +6,7 @@ import './style.css';
 import './base.css';
 import { initTheme } from './theme.js';
 import { ClipboardTypeModal } from './clipboard_type_modal.js';
+import { chooseClipboardType } from './smart_paste_choice.js';
 import { API_BASE, CURRENT_USER, pageLimit } from './config.js';
 import { narrowingTail } from './narrowing.js';
 // C-14: 값의 «출처»를 찍는 두 행. 하니스가 import 로 채점할 수 있게 자기 모듈에 삽니다 —
@@ -1874,7 +1875,7 @@ function extForMime(mime) {
 
 // The half that is identical for every reader: wrap the text as a file and hand it to the
 // ingestion endpoint.
-async function uploadSmartPastePayload(selectedText, selectedType) {
+async function uploadSmartPastePayload(selectedText, selectedType, byOrder = false) {
   if (!state.currentTable) {
     showToast('No table selected · smart paste not sent', 'error');
     return;
@@ -1905,7 +1906,7 @@ async function uploadSmartPastePayload(selectedText, selectedType) {
       const savedPath = resData.path || '';
       const savedFilename = savedPath.split(/[/\\]/).pop() || file.name;
       elements.performanceLog.textContent = '📋 Clipboard uploaded to parser. Automatic reload will trigger soon.';
-      showToast(`Smart paste done (format ${selectedType.split('/')[1].toUpperCase()} · file ${savedFilename})`, 'success');
+      showToast(`Smart paste done (format ${selectedType.split('/')[1].toUpperCase()}${byOrder ? ' · table order' : ''} · file ${savedFilename})`, 'success');
     } else {
       const detail = await res.text().catch(() => '');
       console.error('Smart paste upload rejected', res.status, detail);
@@ -1963,17 +1964,13 @@ async function smartPasteFromPasteEvent(e) {
   const byType = {};
   textTypes.forEach(t => { byType[t] = dt.getData(t); });
 
-  let selectedType = textTypes[0];
-  if (textTypes.length > 1) {
-    const chosen = await showClipboardTypeModal(textTypes);
-    if (!chosen) {
-      elements.performanceLog.textContent = 'Smart paste cancelled';
-      return;
-    }
-    selectedType = chosen;
+  const pick = await chooseClipboardType(textTypes, state.currentSmartPaste, showClipboardTypeModal);
+  if (!pick.type) {
+    elements.performanceLog.textContent = 'Smart paste cancelled';
+    return;
   }
 
-  await uploadSmartPastePayload(byType[selectedType], selectedType);
+  await uploadSmartPastePayload(byType[pick.type], pick.type, pick.byOrder);
 }
 
 // Click entry point (toolbar button / context-menu item). Prefers the async Clipboard API
@@ -2002,22 +1999,18 @@ async function smartPasteViaIngestion() {
         return;
       }
 
-      let selectedType = textTypes[0];
-      if (textTypes.length > 1) {
-        const chosen = await showClipboardTypeModal(textTypes);
-        if (!chosen) {
-          elements.performanceLog.textContent = 'Smart paste cancelled';
-          return;
-        }
-        selectedType = chosen;
+      const pick = await chooseClipboardType(textTypes, state.currentSmartPaste, showClipboardTypeModal);
+      if (!pick.type) {
+        elements.performanceLog.textContent = 'Smart paste cancelled';
+        return;
       }
 
       try {
-        const blob = await item.getType(selectedType);
-        await uploadSmartPastePayload(await blob.text(), selectedType);
+        const blob = await item.getType(pick.type);
+        await uploadSmartPastePayload(await blob.text(), pick.type, pick.byOrder);
       } catch (err) {
         console.error('Clipboard blob read failed', err);
-        showToast(`Could not read ${selectedType} from the clipboard`, 'error');
+        showToast(`Could not read ${pick.type} from the clipboard`, 'error');
       }
       return;
     }
