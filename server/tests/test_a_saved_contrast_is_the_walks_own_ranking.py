@@ -58,8 +58,8 @@ ATOMS = ([_atom(1, "P1", "X", BEFORE), _atom(2, "P2", "X", BEFORE),
          + [_atom(10 + i, "P1", "FAN%d" % i, BEFORE) for i in range(15)])
 
 
-@pytest.fixture(name="db")
-def fixture_db(monkeypatch):
+def _walk_on_the_fixture_ledger(monkeypatch):
+    """The route's catalogue questions answered empty, and its ledger is ATOMS in memory."""
     monkeypatch.setattr(trace_router.trace, "relation_exists", lambda *a, **k: True)
     monkeypatch.setattr(trace_router, "_subgraph_contract_state", lambda *a, **k: [])
     for name in ("_static_types", "_static_step_predicates", "_self_describing_predicates"):
@@ -68,6 +68,11 @@ def fixture_db(monkeypatch):
     monkeypatch.setattr(ledger_subgraph, "SqlEvidenceLookup",
                         lambda connection, relation=None, since=None, until=None:
                         ledger_subgraph.InMemoryEvidenceLookup(ATOMS, since=since, until=until))
+
+
+@pytest.fixture(name="db")
+def fixture_db(monkeypatch):
+    _walk_on_the_fixture_ledger(monkeypatch)
     engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False})
     models.init_dynamic_models(TABLES)
     crud.TABLE_CONFIG.update(TABLES)
@@ -197,6 +202,42 @@ def test_the_rows_carry_the_run_rows_stamp_so_deleting_the_run_empties_them(db):
     assert stats["cells_withdrawn"] == count * len(TABLES["contrast_factor"]["column_types"])
     assert len(rows) == count and {(r.run_id, r.node_id, r.rank) for r in rows} == {
         (None, None, None)}
+
+
+@pytest.mark.pg
+@pytest.mark.parametrize("until", ["2026-09-30T09:00:00", "2026-09-30T09:00:00+09:00"])
+def test_a_run_the_board_writes_through_the_door_is_walked_into_rows(pg_engine, monkeypatch,
+                                                                      until):
+    """Save contrast is PUT /tables/contrast_run/data/updates - the lists as JSON text, until as
+    ISO text with or without a zone. That door writes the run on PostgreSQL and the chain fills
+    its rows. The walk still reads the in-memory ledger."""
+    _walk_on_the_fixture_ledger(monkeypatch)
+    models.init_dynamic_models(TABLES)
+    crud.TABLE_CONFIG.update(TABLES)
+    Base.metadata.create_all(bind=pg_engine)
+    models.sync_dynamic_tables_schema(pg_engine)
+    db = sessionmaker(bind=pg_engine)()
+    run_id = "R_PG_ZONED" if "+" in until else "R_PG_NAIVE"
+    positive, negative = [_lot("P1"), _lot("P2")], [_lot("N1")]
+    try:
+        crud.apply_batch_updates(db, "contrast_run", schemas.GeneralUpdateBatch(updates=[
+            schemas.GeneralUpdateItem(updates={
+                "run_id": run_id, "positive": json.dumps(positive),
+                "negative": json.dumps(negative), "until": until, "hops": 4,
+                "backbone_hops": 0})]))
+        model = models.DYNAMIC_TABLES["contrast_run"]
+        run = db.query(model).filter(model.run_id == run_id).one()
+        _chain(db, run.row_id)
+        rows = _factors(db, run_id)
+        route = _route(db, positive, negative, until=run.until.isoformat())
+
+        assert len(rows) == len(route["ranked"]) > 0
+        assert "LATE" not in {r.label for r in rows.values()}
+    finally:
+        db.rollback()
+        db.close()
+        for name in TABLES:
+            crud.TABLE_CONFIG.pop(name, None)
 
 
 # ---------------------------------------------------------------- the owner's shape (lead)
