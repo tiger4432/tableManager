@@ -640,6 +640,88 @@ failed += fieldDropBase.failures.length;
   failed += scored.wrong;
 }
 
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+// [7] lead 9073d7225 ㉰ — a step of the form's path bar goes where the map's own door goes.
+//
+// 🔴 explorer_path_bar_harness hands the widget its action itself, so it cannot see which one the
+//    PAGE hands it: the lead swapped the page's 'map-goto' for 'select' and it stayed green. Here
+//    the page builds the bar, the page's own hover fills it and the page's own click takes a step.
+// ⚠️ This DOM finds nothing by selector, so the root answers the one seat the bar asks for with a
+//    mount the harness holds, and the hover hands in two form nodes as the form nests them.
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+console.log('\n[7] a form path step is the map\'s door');
+async function pathBarWalk(create) {
+  const on = { click: [], mouseover: [] };
+  const root = element('div');
+  root.addEventListener = (type, fn) => { if (on[type]) on[type].push(fn); };
+  const mount = element('div');
+  root.querySelector = (sel) => (sel === '.oe-bucket--form .oe-path-mount' ? mount : null);
+  const settle = async () => { for (let i = 0; i < 20; i += 1) await new Promise((r) => setImmediate(r)); };
+  const controller = create({ root, apiBase: '', adminFetch, showToast: () => {} });
+  await controller.refresh();
+  await settle();
+  const formNode = (at, parent) => {
+    const n = element('div');
+    n.className = 'oe-node';
+    n.dataset.path = at;
+    n.nodeType = 1;
+    n.parentNode = parent || null;
+    return n;
+  };
+  const outer = formNode('bundle.entities.quantity@1');
+  const inner = formNode('bundle.entities.quantity@1.keys', outer);
+  for (const fn of on.mouseover) fn({ target: { closest: () => inner } });
+  const steps = walkAll(mount).filter((n) => n._classes?.includes('oe-path-step'));
+  const pick = steps.find((n) => n.tagName === 'BUTTON') || null;
+  if (pick) {
+    pick.closest = () => pick;
+    for (const fn of on.click) await fn({ target: pick });
+    await settle();
+  }
+  return { steps: steps.map((n) => n.textContent), picked: pick ? pick.dataset.value : null,
+           cursor: controller.getState().mapCursor };
+}
+function pathBarSuite(seen7) {
+  const names = [];
+  const failures = [];
+  const say = (name, cond, detail) => {
+    names.push(name);
+    if (cond) { console.log(`  PASS ${name}`); return; }
+    failures.push(detail ? `${name} — ${detail}` : name);
+    console.log(`  FAIL ${name}${detail ? ' — ' + detail : ''}`);
+  };
+  // The canary: with no step drawn the click below would score nothing.
+  say('Y1 the page\'s hover draws the hovered node\'s trail in the form\'s bar',
+    seen7.steps.join(' › ') === 'entities › quantity@1 › keys', seen7.steps.join(' › '));
+  say('Y2 a picked step lands the map cursor on that step\'s path',
+    seen7.picked === 'bundle.entities.quantity@1' && seen7.cursor === seen7.picked,
+    `picked ${seen7.picked}, cursor ${seen7.cursor}`);
+  return { ran: names.length, names, failures };
+}
+const pathBarBase = pathBarSuite(await pathBarWalk(createOntologyExplorerController));
+ran += pathBarBase.ran;
+failed += pathBarBase.failures.length;
+{
+  const { loadWithProbe } = await import('./lib/probe.mjs');
+  const { scoreMutants } = await import('./lib/mutation_scorer.mjs');
+  const SUBJECT = join(HERE, '..', 'src', 'ontology_explorer.js');
+  const swap = (text, from, to) => {
+    if (!text.includes(from)) throw new Error(`mutation anchor is GONE: ${from.slice(0, 60)}`);
+    return text.split(from).join(to);
+  };
+  const MUTANTS = [
+    { id: 'M13', what: 'the page hands the form\'s bar the declaration pick (the lead\'s swap)', catches: 'Y2',
+      mutate: (text) => swap(text, "new PathBar(null, { doc: document, action: 'map-goto' })",
+        "new PathBar(null, { doc: document, action: 'select' })") },
+  ];
+  const scored = await scoreMutants(MUTANTS, async (m) => pathBarSuite(await pathBarWalk(
+    (await loadWithProbe(SUBJECT, { mutate: (t) => m.mutate(t.replace(/\r\n/g, '\n')) })).module.createOntologyExplorerController)),
+    { baselineRan: pathBarBase.ran, baselineNames: pathBarBase.names,
+      title: '\n  [7] mutants — each must be caught by the check it names.' });
+  ran += MUTANTS.length;
+  failed += scored.wrong;
+}
+
 console.log(`\n════ RESULT: ${ran - failed} passed, ${failed} failed ════`);
 console.log(`ASSERTIONS ${ran} ${failed}`);
 process.exit(failed === 0 ? 0 : 1);

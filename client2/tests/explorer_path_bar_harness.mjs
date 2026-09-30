@@ -109,6 +109,7 @@ function suite(view, bar) {
   const steps = (m) => walk(m).filter((n) => cls(n, 'oe-path-step'));
   eq('P1 the steps in order, a separator between each', `${steps(mount).map((s) => s.textContent).join('|')}|${walk(mount).filter((n) => cls(n, 'oe-path-sep')).length}`, 'root|A|B|2');
   eq('P2 only the last is where the hand is', steps(mount).map((s) => s.getAttribute('aria-current') || '-').join(','), '-,-,true');
+  eq('P7 where the hand is is a word, the rest are buttons (lead 7602a4a83)', steps(mount).map((s) => s.tagName).join(','), 'BUTTON,BUTTON,SPAN');
   const asks = (m) => steps(m).map((s) => (s.dataset.action ? `${s.dataset.action}:${s.dataset.value}` : '-')).join(',');
   eq('P3 a step asks the page\'s action for its own path; the last asks nothing', asks(mount), 'map-goto:,map-goto:a,-');
   const again = doc.createElement('div');
@@ -187,6 +188,8 @@ const MUTANTS = [
     from: '      go.dataset.value = step.value;', to: '      go.dataset.value = steps[0].value;' },
   { name: 'the-last-step-asks-too', catches: ['P3'], file: BAR,
     from: "    if (step.current) go.setAttribute('aria-current', 'true');\n    else {", to: "    if (step.current) go.setAttribute('aria-current', 'true');\n    {" },
+  { name: 'the-current-step-is-a-button', catches: ['P7'], file: BAR,
+    from: "    const go = doc.createElement(step.current ? 'span' : 'button');", to: "    const go = doc.createElement('button');" },
   { name: 'the-trail-marks-no-current', catches: ['B1', 'B2'], file: VIEW,
     from: '    current: key === state.selection.key,', to: '    current: false,' },
   { name: 'the-trail-drops-its-route', catches: ['B2'], file: VIEW,

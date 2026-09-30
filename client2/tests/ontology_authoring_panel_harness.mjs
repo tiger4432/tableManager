@@ -370,8 +370,9 @@ const renderDraft = (plan) => {
     derivedGrounds.length, derivedRows.length);
   check('B3 the ground states its sentence',
     at(derivedGrounds, 0).textContent.includes('채움: DTJob@1의 식별키'));
+  // In the declaration's own words, not the bundle path (lead 482288b12).
   check('B4 the ground names the declaration it came from',
-    at(derivedGrounds, 0).textContent.includes('bundle.entities.DTJob@1.keys'));
+    at(derivedGrounds, 0).textContent.includes('entities › DTJob@1 › keys'));
   check('B5 the ground is inside the field card, not a separate tooltip layer',
     byClass(at(derivedRows, 0), 'oe-ground').length === 1);
   check('B6 the derived value itself is rendered',

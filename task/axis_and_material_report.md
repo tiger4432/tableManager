@@ -1,3 +1,142 @@
+> ## [01:14 디자인] 원장 선언 폼 정리 — 한 줄 행 · 누르는 것과 설명의 모양 · 내부 낱말 걷기 · 꺼진 칸의 빈 값 — 총괄 8fd2f185d · 7602a4a83 · 482288b12 · 115134f12 · 9073d7225 ㉰ · 92ad06716
+
+| 지시 | 커밋 | 한 것 |
+|---|---|---|
+| 8fd2f185d 한 줄 행 | 06a7139f2 | 접힌 한 값 칸이 한 줄: 카드가 가로로, 접힌 값 단추는 제 자리에서 전역 button 규칙을 덮음(왼쪽 · 높이 auto · 줄바꿈). 전역 규칙은 안 건드림. 접힌 줄은 값만 |
+| 7602a4a83 누르는 것 · 설명 | f8c28ef94 | 설명 낱말(상태·요구·종류 표지·알림)은 상자 없이 흐리게, 누르는 글자(접기·지도 행·탭)는 링크 색, 접힌 값은 입력 칸 겉모양, 경로 막대의 현재 단계는 낱말(span). 머리의 등급 칩 지움 |
+| 482288b12 내부 낱말 | f99ffc7f4 | 상태 낱말이 열어도 접어도 같음 · «This slot» 없음 · 근거 경로를 선언 낱말(›)로 · unmeasured 줄 지움 |
+| 디자이너 결함 검토 | a057073e7 | 아래 «검토» 표 |
+| 115134f12 꺼진 칸의 빈 값 | 92ad06716 | 아래 |
+| 9073d7225 ㉰ 배선 단언 | e1a483dd9 | 아래 |
+
+셈 (스크래치: 진짜 컨트롤러·CSS, 샘플 die_inspection, 1600 폭, 폼의 모든 가지를 연 뒤, 모집단 = 화면 전체 #ontology-explorer-root 의 보이는 요소 1376개)
+
+| 잰 것 | 전 | 8fd2f185d 뒤 | 셋 다 뒤 | 검토 뒤 |
+|---|---|---|---|---|
+| 한 값 행 높이(px) | 79–85 | 40–57 | 42–61 | 42–61 |
+| 한 값 행 높이 합(px) | 2476 | 1295 | 1359 | 1359 |
+| 행 안 윗선 차이 최대(px) | 35 | 9 | 1 | 1 |
+| 누를 수 없는데 네 변 테두리 | 100 | — | 0 | 0 |
+| 누르는데 상자도 링크 색도 아님 | 125 | — | 0 | 0 |
+| 폼 글줄 | 269 | 260 | 223 | 223 |
+| 값이 값 칸 왼쪽에서 시작하는 x(px) | — | — | 11 | 8 |
+
+- 셈의 정의: 상자 = 네 변 테두리(행의 격자선 .oe-node-row 은 표라서 뺌), 「지금 여기」(aria-current · 선택된 탭)는 낱말이라 누르는 것에서 뺌. «전» 수는 같은 실행의 종류별 수에서 그 둘을 뺀 것(상자 106−행 6, 밋밋함 127−현재 경로 단계 2).
+- 🔴 이 샘플 화면에는 누를 수 없는 칩(목록 값·초안 없는 후보·금지 이름)이 0개, 잠긴 칩이 0개입니다. 그래서 «테두리 0» 은 그 자리들을 못 잰 수입니다 — 검토가 찾았고, 그 자리는 CSS 단언(P5)으로만 잽니다.
+- 손가락 커서 없는 누르는 것: 이 CSS 에서 전·후 0. 총괄 박스에서 잰 .oe-icon-action · .oe-mode-action 은 이 CSS 에 cursor: pointer 가 이미 있어 여기서 재현이 안 됩니다 — 그 박스의 번들부터 보셔야 합니다.
+- 접힌 값 글자색 rgb(31, 39, 51) · 설명 낱말 rgb(91, 103, 121) — 다름.
+- 지시 게이트 «값 x 가 칩 오른쪽 바로 뒤»: 칩을 지워서 칩이 없습니다. 대신 모든 한 값 행의 값이 같은 x 에서 시작합니다(위 표 마지막 줄 — 검토 뒤 빈 머리칸의 틈이 빠져 입력 칸과 같은 자리).
+- 뒤집은 판정 하나: renderAuthoringRow 의 「the ground goes NEXT TO the value, never in a tooltip」을 «접힌 줄»에서만 뒤집었습니다. 근거는 열린 카드에 그대로(툴팁 아님). 근거는 소유자의 482288b12 문구입니다.
+- 전·후 스샷: 도구 스샷이 파일로 안 남아 나란히 붙이지 못했습니다.
+
+482288b12 ③ 낱말 표
+
+| 낱말 | 결정 | 왜 |
+|---|---|---|
+| 등급 낱말(constrained_input · structural · derivation) — 머리 칩, 열린 행의 상태 칸, structural 의 초록 | 지움 | 상태 칸이 Declared · Derived · Forced 로 같은 말을 함 |
+| «This slot» | 지움 | 이 코드만 아는 낱말 |
+| 번들 경로(bundle.sources.…) | 선언 낱말(read › unit)로 | 폼에서 찾아가는 길은 선언 낱말 |
+| «Filled: …» 근거 문장 | 접힌 줄에서 빼고 열린 카드에 남김 | 지우면 «왜 못 고치나»를 틀리게 읽음 |
+| note 문장 | 남김 | 다음 행동(«Declare a missing one there first») |
+| Forced · cannot change here 등 행동 줄 | 남김 | 사유와 다음 행동 |
+| Refusals remain · removability not measured (②) | 지움 | 뜻이 안 감. 거절은 제 행에 그려지고 그 행을 엶 |
+| Basis · <선언> | 남김 | 근거 선언으로 가는 단추 |
+| Declared · Derived · Forced · Single candidate · Empty | 남김(흐린 낱말) | 이 값의 주인이 누구인지 |
+| RECORD · Name · Item | 남김(흐린 낱말) | 묶음인지, 더하기 칸이 무엇을 묻는지 |
+
+검토(디자이너 결함 검토 8건)
+
+| 결함 | 처리 |
+|---|---|
+| 설명 낱말이 글자색 50% 라 흐림(밝은 테마 3.09:1) | 정본의 흐린 색 --oe-muted 로. 같은 뜻인 .oe-demand--muted 도 |
+| 빈 머리칸이 한 값 행에서 틈을 먹어 값이 입력 칸보다 오른쪽 | 빈 머리칸 숨김 |
+| 등급이 structural 행에서 초록으로 남음 | 그 색 규칙 지움. 세 자리가 붙이는 oe-tier--<등급> 클래스는 마크업에 남음(이제 읽는 CSS 0) |
+| 누를 수 없는 칩에 테두리 | 테두리 투명. 잠긴 칩(«Read anyway · cannot turn off»)은 안 건드림 — 물음 ③ |
+| 한-갈래 머리의 «Required» 가 가장 흐린 낱말 | 상태 칸과 같은 경고색 |
+| 할 일이 남은 행(남은 것·거절·충돌·바꿀 수 있는 기본값)의 상태 칸이 빔 | 안 함 — 물음 ① |
+| 현재 경로 단계(span)가 hover 에 밑줄 · 맵의 «여기» 행 색 | 밑줄은 button 만. 맵 색은 물음 ④ |
+| 탭 안쪽 여백 숫자 · 틀린 주석 셋 · 빈 행동 줄 | 여백은 토큰, 주석 고침. 빈 행동 줄은 안 함 — 물음 ② |
+
+115134f12 — fieldApplies 의 «든 값»을 !isBlank(held) 로(같은 모듈의 빈 값 판정, 새 판정자 없음). 부르는 자리 넷: 폼의 칸 · 맵 목록 · missingRequired(꺼진 빈 필수 칸을 «빠짐»으로 안 셈) · 씨앗(든 값을 안 넘겨 그대로). 🔴 지금 뼈대의 group_by 에는 when 이 없어 화면은 안 바뀝니다 — 구현자의 when 이 main 에 오는 날부터 돕니다. 게이트는 when 을 단 뼈대 사본으로: W6 row+[] 안 그림 · W7 row+[lot] 그림 · W8 판정([] · 빈 글자 = 없음, [lot] · 0 = 있음). 변이 둘(옛 held !== undefined → W8, 폼이 판정을 건너뜀 → W6) 빨강.
+
+9073d7225 ㉰ — explorer_open_path [7] 이 컨트롤러를 통째로 import 해서, 페이지가 만든 폼 경로 막대를 페이지의 hover 로 채우고 페이지의 클릭으로 한 단계를 누릅니다. 맵 커서가 그 단계의 경로에 떨어지는지 잽니다. 총괄의 변이('map-goto' → 'select')를 M13 으로 넣었고 Y2 가 빨강으로 잡았습니다. 게이트 대상이 아닌 둘: alignment_verdict (164 중 7 빨강) · valid_die_frame_adoption (241 중 13 빨강) — 알려진 빨강 빚 목록(맵 쪽).
+
+새 함수 · 새 if 중 기존 것과 같은 일: 새 함수 0. 상태 낱말은 foldDecision 이 자기 규칙을 한 번 더 물어 냄(둘째 함수 아님). 물려받음 블록의 근거 상자는 renderGround 로 접음(제가 만든 둘째 상자 걷음). 새 if 0 — 115134f12 는 있던 if 의 조건만 바꿈(검토의 빈 행동 줄 if 는 넣었다가 물음 ② 때문에 뺌). ⚠️ 사실 하나: 클라에 빈 값 판정이 셋입니다(ontology_skeleton isBlank · rnd_board/api blank · map2/excel_io isBlank). 빈 레코드 {} 에서 답이 갈립니다(앞의 것만 «빔»). 이번에 접지 않았습니다 — 물음 ⑤.
+
+게이트: explorer_form_grammar 19/0 · 변이 16 전부 빨강 · explorer_open_path 48/0 · explorer_path_bar 20/0 · explorer_inherited_attributes 8/0 · ontology_authoring_panel 94/0 · 러너 153 중 151 게이트 초록
+
+총괄께 여쭐 것
+- ① 할 일이 남은 행의 상태 낱말 — 전에는 등급 낱말이 있던 자리라 지금 빕니다. 무슨 낱말로 할지 정해 주십시오(제가 짓지 않습니다).
+- ② ontology_authoring_panel 의 E3 「파생 행마다 할 수 있는 일을 말한다」는 «빈» 행동 줄도 하나로 셉니다. shape 행과, 근거 단추가 없는 unmeasured 행은 그 줄에 아무것도 없는데 초록입니다. 빈 줄을 안 그리면 E3 가 빨개져서 되돌렸습니다. E3 를 «내용 있는 줄»로 고치고 그 행들에 낱말을 줄지, 지금대로 둘지.
+- ③ 잠긴 칩은 누를 수 없는데 테두리+채움입니다(08-21 「끄는 것이 보여야 안전하다」의 모양). 그대로 둘지.
+- ④ 맵 행이 전부 링크 색이 되어 «여기» 행은 옅은 바탕과 2px 막대로만 다릅니다. 그대로 둘지.
+- ⑤ 클라의 빈 값 판정 셋을 하나로 접을지.
+
+셈 명령(페이지 콘솔에 붙여 넣기 — 폼의 접힘을 다 연 뒤 잼):
+```
+// Form census (lead 8fd2f185d · 7602a4a83 · 482288b12). Population: every visible element in
+// #ontology-explorer-root after every fold in the form is opened. Paste into the page's console.
+// A box = all four borders; a row's grid lines (.oe-node-row) are the table, not a box. Where you are
+// ([aria-current], [aria-selected=true]) is a word, not a pressable.
+(async () => {
+  const root = document.querySelector('#ontology-explorer-root');
+  const form = root.querySelector('.oe-bucket--form');
+  for (let pass = 0; pass < 40; pass += 1) {
+    const shut = [...form.querySelectorAll('button[data-action="toggle-field"]')].filter((b) => /Folded/.test(b.textContent));
+    if (!shut.length) break;
+    shut.forEach((b) => b.click());
+    await new Promise((r) => setTimeout(r, 60));
+  }
+  const px = (v) => parseFloat(v) || 0;
+  const cs = (el) => getComputedStyle(el);
+  const side = (s, k) => px(s[`border${k}Width`]) > 0 && s[`border${k}Style`] !== 'none' && !/rgba\(0, 0, 0, 0\)|transparent/.test(s[`border${k}Color`]);
+  const boxed = (el) => { const s = cs(el); return ['Top', 'Right', 'Bottom', 'Left'].every((k) => side(s, k)); };
+  const visible = (el) => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0 && cs(el).visibility !== 'hidden'; };
+  const here = (el) => el.matches('[aria-current], [aria-selected="true"]');
+  const pressable = (el) => !here(el) && el.matches('button, a[href], input, select, textarea, [data-action]');
+  const accent = cs(root.querySelector('.oe-form-add')).color;
+  const kinds = (list) => Object.fromEntries(Object.entries(list.reduce((m, el) => {
+    const k = (el.className || el.tagName).toString().split(' ')[0]; m[k] = (m[k] || 0) + 1; return m; }, {})));
+  const els = [...root.querySelectorAll('*')].filter(visible);
+  const boxNotPress = els.filter((el) => boxed(el) && !pressable(el) && !el.matches('.oe-node-row') && !el.querySelector('button, input, select, textarea, [data-action]') && !el.closest('button'));
+  const pressPlain = els.filter((el) => pressable(el) && !['INPUT', 'SELECT', 'TEXTAREA'].includes(el.tagName) && !boxed(el) && cs(el).color !== accent);
+  const noPointer = els.filter((el) => pressable(el) && !el.disabled && !['INPUT', 'SELECT', 'TEXTAREA'].includes(el.tagName) && cs(el).cursor !== 'pointer');
+  const oneValue = [...form.querySelectorAll('.oe-node-row')].filter((row) => row.querySelector('.oe-node-value .oe-field-folded'));
+  const tops = oneValue.map((row) => {
+    const parts = [row.querySelector('.oe-node-name'), row.querySelector('.oe-node-value .oe-folded-value'), row.querySelector('.oe-node-state > *')].filter((el) => el && el.textContent.trim());  // a part with no text has no top line
+    const t = parts.map((el) => el.getBoundingClientRect().top);
+    const v = row.querySelector('.oe-node-value .oe-folded-value');
+    return { h: row.getBoundingClientRect().height, spread: Math.max(...t) - Math.min(...t),
+      valueX: v ? Math.round(v.getBoundingClientRect().left - row.querySelector('.oe-node-value').getBoundingClientRect().left) : null };
+  });
+  const folded = form.querySelector('.oe-folded-value');
+  const explain = form.querySelector('.oe-node-state .oe-tier, .oe-node-badge');
+  const out = {
+    population: els.length,
+    oneValueRows: oneValue.length,
+    rowHeight: oneValue.length ? [Math.round(Math.min(...tops.map((t) => t.h))), Math.round(Math.max(...tops.map((t) => t.h)))] : null,
+    rowHeightSum: Math.round(tops.reduce((s, t) => s + t.h, 0)),
+    topSpreadMax: tops.length ? Math.round(Math.max(...tops.map((t) => t.spread))) : null,
+    valueXInColumn: [...new Set(tops.map((t) => t.valueX))].slice(0, 6),
+    boxedNotPressable: boxNotPress.length, boxedKinds: kinds(boxNotPress),
+    pressableLooksPlain: pressPlain.length, plainKinds: kinds(pressPlain),
+    pressableNoPointer: noPointer.length, noPointerKinds: kinds(noPointer),
+    foldedValueColor: folded && cs(folded).color, explanationColor: explain && cs(explain).color,
+    formRows: form.querySelectorAll('.oe-node-row, .oe-node-head').length,
+    formTextLines: form.innerText.split('\n').map((l) => l.trim()).filter(Boolean).length,
+  };
+  console.log('FORM_CENSUS ' + JSON.stringify(out));
+  return JSON.stringify(out);
+})();
+```
+
+제안(5분 써 보고 — 안 지음)
+| 항목 | 왜 | 크기 |
+|---|---|---|
+| Basis 가 지금 보는 그 선언일 때 숨기기 | 자기 자신으로 가는 단추(group_by 행: «Basis · die_inspection») | 작음(안 쟀다) |
+| 1280 에서 이름 칸 폭 줄이기 | 값 칸이 165 px 라 긴 목록이 여러 줄로 쌓임 | 한 줄(안 쟀다) |
+| 값이 빈 파생 행의 «Empty» 값과 상태 «Empty» 겹침 | 한 행에 같은 낱말 둘 | 작음(안 쟀다) |
+
 > ## [23:13 디자인] 09-30 착지분의 «문» 정리 — ㉮ 사유 되살림 · ㉲ 빈 id 한 판단 · ㉱ 두 목록 한 앞머리 · ㉯㉰ 경로 위젯 하나 + 고르면 map-goto · ㉳ 대기 — 총괄 d4a949a8c · 3d5c0c938
 
 | 항목 | 커밋 | 한 것 | 게이트 |

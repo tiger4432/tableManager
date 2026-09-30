@@ -911,15 +911,23 @@ const FLOORS = new Map([
   // 19 -> 39 (lead 791c0f45e, [5]): a leaf the plan marks `reshapes` asks for the draft's form
   // once per committed change — never per keystroke — and its fields take the plan's place.
   // 39 -> 45 (lead 8771e43ac 2, [6]): what the server dropped is said, from the plan and from the save.
-  ['explorer_open_path_harness.mjs', 45],
+  // 45 -> 48 (lead 9073d7225 ㉰, [7]): the page's form path bar takes a step through map-goto.
+  ['explorer_open_path_harness.mjs', 48],
   // New with lead 619befe8c: where an edit sits in the ledger form — a guide per ancestor on every
   // row of the real skeleton's form, the trail as the declaration path's own words, the path bar
   // part, and no skeleton word in the bar's code.
   // 17 -> 19 (B1-B2, lead d4a949a8c ㉯): the declaration trail is the same widget.
-  ['explorer_path_bar_harness.mjs', 19],
+  // 19 -> 20 (P7): where the hand is is a word, not a button.
+  ['explorer_path_bar_harness.mjs', 20],
   // New with lead 619befe8c (implementer 37c714205): a role's inherited attributes, read-only,
   // on the server's plan for the sample's dt_job.
   ['explorer_inherited_attributes_harness.mjs', 8],
+  // New with lead 8fd2f185d: the ledger form's grammar - a folded one-value field is one line (L).
+  // 5 -> 9 (P, lead 7602a4a83): what is pressed looks pressable, what explains does not.
+  // 9 -> 14 (W, lead 482288b12): no word only this code knows.
+  // 14 -> 16 (P5 P6, the review): a chip nobody can press has no box; an empty head takes no room.
+  // 16 -> 19 (W6-W8, lead 115134f12): a switched-off field holding an empty list is not drawn.
+  ['explorer_form_grammar_harness.mjs', 19],
   // New 2026-09-10 with C-55 (S-117's screen half). Floor is the count it reports on the
   // commit that introduces it. 🔴 THE FIXTURE IS THE CONTRACT VECTOR, captured off the live
   // route: the receipt has TWO envelopes and the failed one carries no counts at all, so a
