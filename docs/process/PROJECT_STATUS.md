@@ -57,7 +57,7 @@
 | 할 일 | 문 |
 |---|---|
 | 설명서 읽기 · 걷기 | `/api/ledger/*` 읽기 라우트 (`declaration` · `subgraph` · `gaps` …) |
-| 빈틈 신호 | 쓰기 응답 `drop_report`(버려진 칸 이름) · 워처 줄 「Dropped N undeclared column(s)」 · `/dashboard/summary` 재교정률 · 걷기의 «없음» 판정 |
+| 빈틈 신호 | 쓰기 응답 `drop_report`(버려진 칸 이름) · 파일 줄 「Next: … Not written: <사유> <칸=수> over N row(s)」(crud.not_written_sentence 하나) · `/dashboard/summary` 재교정률 · 걷기의 «없음» 판정 |
 | 온톨로지 선언 쓰기 | `/admin/ontology-explorer/` 초안 — `drafts/new` → `PUT drafts/{id}` → `test-run` → `review` → `activate` (+ `deletion-preview`, `authoring/plan`) · strict 토큰 |
 | 액션(체인) 선언 쓰기 | `POST /admin/chain/rules/raw` · `/grammar` — 저장 관문이 틀린 선언 거절, 저장 뒤 워커가 규칙만 다시 읽음 |
 
