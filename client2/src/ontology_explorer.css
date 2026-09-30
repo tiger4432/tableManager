@@ -943,11 +943,11 @@
 #ontology-explorer-root .oe-map-row.is-left {
   color: var(--oe-warn); border-left-color: var(--oe-warn);
 }
-/* 「나는 지금 어디에 있나」. The bar and the ground together, because on a marked row the
-   colour alone is already spoken for. */
+/* 「나는 지금 어디에 있나」. The bar and the ground together, and the text colour: where you are
+   is a word, not a link - the path bar's and the tabs' rule (lead 810d0044b ④). */
 #ontology-explorer-root .oe-map-row.is-here {
   background: var(--oe-accent-soft); border-left-color: var(--oe-accent);
-  color: var(--oe-accent); font-weight: 600;
+  color: var(--oe-text); font-weight: 600;
 }
 
 /* ── The mockup's components, stated once ───────────────────────────────────────────────

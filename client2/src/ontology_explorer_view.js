@@ -456,7 +456,10 @@ function renderDeclarationMap(state) {
     item.append(h('span', 'oe-map-name', row.label));
     if (row.branch) item.classList.add('is-branch');
     if (needsAttention(hot, absolute)) item.classList.add('is-left');
-    if (row.path === (state.mapCursor || '')) item.classList.add('is-here');
+    if (row.path === (state.mapCursor || '')) {
+      item.classList.add('is-here');
+      item.setAttribute('aria-current', 'true');
+    }
     item.title = row.path || subject.label;
     list.append(item);
   }
@@ -1278,8 +1281,12 @@ function foldDecision(row, expanded = {}) {
     return chosen ? { open: true, reason: '', byHand: true, word }
       : { open: false, reason: 'Folded', byHand: true, word };
   }
-  if (row.remaining) return { open: true, reason: '', word: '' };
-  if (row.conflicts || row.refusals?.length) return { open: true, reason: '', word: '' };
+  // A row somebody still owes is said in the server's own facts, the problem before the emptiness
+  // (lead 810d0044b ①); a fact this table has no word for stays blank.
+  if (row.remaining || row.conflicts || row.refusals?.length) {
+    const word = row.refusals?.length ? 'Refused' : row.conflicts ? 'Differs' : row.state === 'missing' ? 'Missing' : '';
+    return { open: true, reason: '', word };
+  }
   // 🔴 A DEFAULT THE AUTHOR MAY CHANGE, WITH SOMETHING TO CHANGE IT TO, IS A CHOICE. The
   // server measures that distinction already and stamps it: `default_overridable` means
   // nothing FIXED this value, and a candidate list means today's data offers alternatives.
@@ -1291,11 +1298,7 @@ function foldDecision(row, expanded = {}) {
     && row.disposition === 'default_overridable'
     && Array.isArray(row.candidates) && row.candidates.length > 1;
   if (row.state === 'derived' && !overridable) {
-    // 🔴 THE WORDS ARE NOT NEW. Each is already this screen's word for the same thing --
-    // 「파생됨 · 묻지 않음」 on the bucket heading, 「강제 · …」 on the row's own action line,
-    // 「비움」 on an empty list chip, 「후보」 across the client. Nothing here was translated
-    // into existence; the state column had simply been left in the language the mockup did
-    // not rule on, so 「선언됨」 stood beside four English words in one column.
+    // The words are the screen's own: the bucket heading says Derived, the row's action line Forced.
     const word = row.disposition === 'grammar_requires_it' ? 'Forced' : 'Derived';
     return { open: false, reason: word, word };
   }
@@ -1313,8 +1316,8 @@ function foldDecision(row, expanded = {}) {
   // list. Folding by "is anything still owed here" instead of by tier is what turns a
   // complete config into a short page, which is the state it should read as.
   if (row.state === 'answered') return { open: false, reason: 'Declared', word: 'Declared' };
-  if (row.state === 'unanswered') return { open: false, reason: 'Empty', word: 'Empty' };
-  return { open: true, reason: '', word: '' };
+  if (row.state === 'unanswered') return { open: false, reason: 'Not answered', word: 'Not answered' };
+  return { open: true, reason: '', word: row.disposition === 'default_overridable' ? 'Default' : '' };
 }
 
 /** 🔴 THE GROUND THIS MEASUREMENT JUDGES, NAMED BY THE SERVER RATHER THAN BY A PATH.
@@ -1437,7 +1440,8 @@ export function renderAuthoringRow(row, expanded = [], editable = null, bare = f
       jump.dataset.direct = 'true';
       act.append(jump);
     }
-    card.append(act);
+    // A row with nothing to do (a shape, an unmeasured row with no basis) draws no line (lead 810d0044b ②).
+    if (act.children.length) card.append(act);
   }
   // A derived row keeps its chips hidden UNLESS the server called it a default the author
   // may change and `editableFor` agreed -- that is the one derived case with a real choice

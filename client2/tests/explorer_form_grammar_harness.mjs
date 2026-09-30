@@ -35,17 +35,15 @@ const SAMPLE = JSON.parse(readFileSync(
   path.join(HERE, '..', '..', 'server', 'config', 'sample', 'ledger_config.json.sample'), 'utf8'));
 const RAW = SAMPLE.sources.dt_job;
 const SECTION = (SKELETON.authorable_kinds.find((k) => k.id === 'source_plan') || {}).section;
-// The implementer's `when` on group_by is not in the skeleton yet, so this copy carries one: a record
-// holding both `unit` and `group_by` asks for group_by only when unit is `group`.
-const GATED = JSON.parse(JSON.stringify(SKELETON.skeleton));
+// The skeleton's own `when` on group_by (c83fe086a): asked for only when unit is `group`.
 let gatedFields = 0;
-(function gate(node) {
+(function count(node) {
   if (!node || typeof node !== 'object') return;
-  const fields = Array.isArray(node.fields) ? node.fields : [];
-  const groupBy = fields.find((f) => f && f.key === 'group_by');
-  if (groupBy && fields.some((f) => f && f.key === 'unit')) { groupBy.when = { field: 'unit', is: 'group' }; gatedFields += 1; }
-  for (const child of Object.values(node)) gate(child);
-})(GATED);
+  for (const f of Array.isArray(node.fields) ? node.fields : []) {
+    if (f && f.key === 'group_by' && f.when && f.when.field === 'unit') gatedFields += 1;
+  }
+  for (const child of Object.values(node)) count(child);
+})(SKELETON.skeleton);
 // A plain leaf the plan answers (its state word is 「Declared」), for the open/folded comparison.
 const LEAF = PLAN.fields.find((row) => row.path === `${PLAN.base}.relation`);
 // Every branch open; every field folded by the rule (field folds are keyed by the plan's path).
@@ -117,6 +115,13 @@ function suite(view, css, skel) {
   eq('P5 a chip nobody can press has no box', decl(rule(css, '#ontology-explorer-root .oe-chip:not(.oe-pick)'), 'border-color'), 'transparent');
   eq('P6 an empty head in a tree row takes no room',
     decl(rule(css, '#ontology-explorer-root .oe-field.is-bare .oe-field-head:empty'), 'display'), 'none');
+  const map = view.renderDeclarationMap({ mapCursor: 'relation', authoring: { fields: [] },
+    selection: { kind: 'source_plan', canonical_id: 'dt_job', raw: RAW },
+    authoringSchema: { skeleton: SKELETON.skeleton, authorable_kinds: SKELETON.authorable_kinds } });
+  const here = walk(map).filter((n) => cls(n, 'oe-map-row') && cls(n, 'is-here'));
+  eq('P7 the map\'s here row is a word, not a link: the text colour, marked as where you are (lead 810d0044b ④)',
+    `${decl(rule(css, '#ontology-explorer-root .oe-map-row.is-here'), 'color')}|${here.length}|${here.map((n) => n.attrs['aria-current']).join(',')}`,
+    'var(--oe-text)|1|true');
 
   console.log('\n-- W. no word only this code knows --');
   const at = LEAF.path.slice(PLAN.base.length + 1);
@@ -140,17 +145,29 @@ function suite(view, css, skel) {
   const paths = walk(open).filter((n) => cls(n, 'oe-ground-from')).map((n) => n._text);
   ok('W4 a ground names where it comes from in the declaration\'s words, not the bundle path',
     paths.length > 0 && paths.every((p) => !p.startsWith('bundle') && p.includes('›')), paths.join(' | '));
-  const unmeasured = view.renderAuthoringRow({ ...GROUNDED, disposition: 'unmeasured' }, { [GROUNDED.path]: true }, null, true);
-  eq('W5 the unmeasured line is gone (its refusals are drawn on their own rows)',
-    walk(unmeasured).filter((n) => /Refusals remain|removability/.test(n._text || '')).length, 0);
-  const gatedForm = (groupBy) => view.renderSkeletonForm(
-    { ...liveContext(view, ALL_OPEN_BRANCHES), schema: { skeleton: GATED, authorable_kinds: SKELETON.authorable_kinds } },
-    declarationShape(GATED, SECTION), '', { ...RAW, read: { ...RAW.read, unit: 'row', group_by: groupBy } }, 0, 'dt_job');
+  // No basis to jump to, so nothing but the retired line could have filled its action line.
+  const unmeasured = view.renderAuthoringRow({ ...GROUNDED, disposition: 'unmeasured', ground: { ...GROUNDED.ground, from_keys: [] } },
+    { [GROUNDED.path]: true }, null, true);
+  eq('W5 the unmeasured line is gone (its refusals are drawn on their own rows), and no empty action line is left',
+    `${walk(unmeasured).filter((n) => /Refusals remain|removability/.test(n._text || '')).length}|`
+      + `${walk(unmeasured).filter((n) => cls(n, 'oe-field-act') && !n.children.length).length}`, '0|0');
+  const gatedForm = (groupBy) => view.renderSkeletonForm(liveContext(view, ALL_OPEN_BRANCHES),
+    declarationShape(SKELETON.skeleton, SECTION), '', { ...RAW, read: { ...RAW.read, unit: 'row', group_by: groupBy } }, 0, 'dt_job');
   const drawn = (tree) => walk(tree).some((n) => cls(n, 'oe-node') && n.dataset.path === 'read.group_by');
   eq('W6 a switched-off field holding an empty list is not drawn (unit row, group_by [])',
     gatedFields > 0 ? drawn(gatedForm([])) : '(no gated field)', false);
   eq('W7 holding a value it is still drawn, so the save shows it going (unit row, group_by [lot])',
     drawn(gatedForm(['lot'])), true);
+  // The state column of one leaf, fed the server's facts one at a time (lead 810d0044b ①).
+  const said = (facts) => stateOf(view.renderSkeletonForm({ ...liveContext(view, ALL_OPEN_BRANCHES),
+    planRow: (p) => (p === at ? { ...LEAF, candidates: [], remaining: false, refusals: [], conflicts: false, ...facts } : liveContext(view, {}).planRow(p)) },
+  declarationShape(SKELETON.skeleton, SECTION), '', RAW, 0, 'dt_job'));
+  const refusal = { code: 'x', path: LEAF.path, message: 'refused' };
+  eq('W9 a row somebody owes says which fact: missing · refused · differs · not answered · default, and a fact with no word stays blank',
+    [{ state: 'missing', remaining: true }, { state: 'answered', remaining: true, refusals: [refusal] },
+      { state: 'derived', conflicts: true }, { state: 'unanswered' },
+      { state: 'derived', disposition: 'default_overridable', candidates: ['a', 'b'] }, { state: 'nobody_named_this' }]
+      .map(said).join('|'), 'Missing|Refused|Differs|Not answered|Default|');
   const field = { key: 'group_by', when: { field: 'unit', is: 'group' } };
   eq('W8 the predicate the form asks: an empty list or string holds nothing, a list or 0 holds a value',
     ['[]', '"  "', '["lot"]', '0'].map((v) => skel.fieldApplies(field, { unit: 'row' }, JSON.parse(v))).join('|'),
@@ -162,8 +179,11 @@ const cssText = (mutate) => {
   const text = readFileSync(CSS, 'utf8').replace(/\r\n/g, '\n');
   return mutate ? mutate(text) : text;
 };
-const loadFrom = async (file, mutate) => (await loadWithProbe(file, mutate ? { mutate: (t) => mutate(t.replace(/\r\n/g, '\n')) } : {})).module;
-const load = (mutate) => loadFrom(VIEW, mutate);
+const loadFrom = async (file, mutate, expose) => {
+  const got = await loadWithProbe(file, { ...(mutate ? { mutate: (t) => mutate(t.replace(/\r\n/g, '\n')) } : {}), ...(expose ? { expose } : {}) });
+  return { ...got.module, ...got.probe };
+};
+const load = (mutate) => loadFrom(VIEW, mutate, ['renderDeclarationMap']);
 
 const MUTANTS = [
   { name: 'the-bare-card-stacks-again', catches: ['L1'], file: CSS,
@@ -199,6 +219,19 @@ const MUTANTS = [
     from: "      act.append(h('span', '', 'Default · can be overridden'));\n    }\n",
     to: "      act.append(h('span', '', 'Default · can be overridden'));\n    } else if (row.disposition === 'unmeasured') {\n"
       + "      act.append(h('span', '', 'Refusals remain · removability not measured'));\n    }\n" },
+  { name: 'an-owed-row-says-nothing', catches: ['W9'], file: VIEW,
+    from: "    const word = row.refusals?.length ? 'Refused' : row.conflicts ? 'Differs' : row.state === 'missing' ? 'Missing' : '';",
+    to: "    const word = '';" },
+  { name: 'not-answered-is-empty-again', catches: ['W9'], file: VIEW,
+    from: "reason: 'Not answered', word: 'Not answered' }", to: "reason: 'Empty', word: 'Empty' }" },
+  { name: 'the-default-says-nothing', catches: ['W9'], file: VIEW,
+    from: "word: row.disposition === 'default_overridable' ? 'Default' : '' };", to: "word: '' };" },
+  { name: 'the-here-row-is-a-link-again', catches: ['P7'], file: CSS,
+    from: '  color: var(--oe-text); font-weight: 600;\n}', to: '  color: var(--oe-accent); font-weight: 600;\n}' },
+  { name: 'the-here-row-is-not-marked', catches: ['P7'], file: VIEW,
+    from: "      item.setAttribute('aria-current', 'true');\n", to: '\n' },
+  { name: 'the-empty-act-line-is-appended', catches: ['W5'], file: VIEW,
+    from: '    if (act.children.length) card.append(act);', to: '    card.append(act);' },
   { name: 'an-empty-list-is-held', catches: ['W8'], file: SKEL,
     from: '  if (!isBlank(held)) return true;', to: '  if (held !== undefined) return true;' },
   { name: 'the-form-skips-the-gate', catches: ['W6'], file: VIEW,
