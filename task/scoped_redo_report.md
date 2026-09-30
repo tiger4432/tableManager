@@ -65769,3 +65769,94 @@ PG         7 failed, 129 passed, 7527 deselected in 280.72s (0:04:40) — 실패
 
 항목 2(시각 칸은 같은 순간이면 같은 값)로 갑니다 — 전수와 물음 둘은 채널로 드렸고 답(빈 글은 None 으로 접음 · 키는 보고만)을 받았습니다.
 그 뒤 순서: 2dd93d4a9 항목 3(원장 세상 설계 보고) -> dc4ca3e7c(엔티티 속성 객체 표 설계 보고). 다르게 원하시면 채널로.
+
+## [구현자 -> 총괄] 착지 29b14dc21 — 2dd93d4a9 항목 2: 시각 칸은 같은 순간이면 같은 값 · 빈 글은 None
+
+```
+함수 하나  crud.value_key — 이미 쓰기 문 비교 · 층 no-op · 파일 층 접기의 «한» 비교(a7d2e90ec)였음. 그것을 넓힘
+          빈 글('' · 공백만) -> None (판정 284 · is_blank_value = 쓰기 문의 빈 술어)
+          datetime 칸 -> 순간 (time_format.instant_key). ISO 로 안 읽히는 글은 오늘처럼 글자 비교
+꼬리 없는 시각  PG 세션 시간대로 읽음 — PG 가 연결마다 알려 줌(get_parameter_status, 질의 없음). Engine 의 connect 에서 적어 둠
+          모름(SQLite · 연결 전 · ZoneInfo 가 못 읽는 이름)이면 벽시계로 견줌 — 꼬리 있는 값과는 «다름», 틀린 «같음»은 안 냄
+```
+
+**전수 — 「칸 값이 바뀌었나」를 묻는 자리 (AST · server/ 추적 파일, tests 제외)**
+```
+명령   python scratchpad/census_value_changed.py <작업 트리>   (저장소 scratchpad/, 추적 밖)
+       카나리아: 파일 285 · def 넷 _resolve_cell, clean_str_value, value_key, values_differ | 패턴 걸린 자리 전 81 · 후 79 (그중 아래 표가 «칸 값» 자리)
+```
+| 자리 | 전 | 지금 |
+|---|---|---|
+| 쓰기 문 has_changed | value_key | value_key |
+| 쓰기 문 source_unchanged (층 no-op) | value_key | value_key |
+| 파일 층 접기 ×2 (file_layer_fold) | value_key | value_key |
+| stacked_file_layers | value_key | value_key |
+| 버전 게이트 같은 판 다른 내용 (_same_source_content_differs) | value_key 를 베낀 사본 | values_differ |
+| R2/R3 _resolve_cell | clean_str_value | values_differ |
+| 행 합치기 — 쓰기 문 | str.strip | values_differ |
+| 행 합치기 — set_cell_manual_priority_batch | str.strip | values_differ |
+| 이력 줄 — delete_cell_source_batch | str | values_differ |
+| 이력 줄 — set_cell_manual_priority_batch | str | values_differ |
+```
+뺀 것(물음이 다름)  업무 키 비교 셋(apply_row_update_internal 둘 · set_cell_manual_priority_batch 하나 — 조립한 키 글끼리) · 표기 뒤채움의 fold 결과 비교 ·
+                  unique_key 사본 판정(두 쪽 다 표에서 읽음) · 맵 값의 _value_key · 원장 fingerprint · 일회 마이그레이션
+```
+
+**게이트 (PG)**
+| 칸 | 입력 | 답 |
+|---|---|---|
+| 같은 순간 다시 옮김 | 조인이 같은 시각을 세 번 | 첫 번 칸 1 · 이력 줄 1 · 사건 ≥1 / 둘째 · 셋째 (0, 0, 0) |
+| 다른 순간 | 원천을 다른 시각으로 바꾸고 다시 | 칸 1 · 이력 줄 1 · 사건 ≥1 · 표가 새 순간 |
+| 파일이 같은 순간을 다시 | UTC 철자 · 세션 시간대의 꼬리 없는 철자 | (0, 0, 0) 둘 다 |
+| 파일이 다른 순간 | 한 시간 뒤 | (1, 1, 1) |
+| 옛 '' 칸 + 이긴 층 None | 쓰기 문 | (0, 0, 0) · 표는 '' 그대로 |
+| R3 dry-run | 철자만 다른 순간 · 옛 '' 위 None · 다른 순간 | 다른 순간 하나만 셈 |
+```
+게이트   6 passed, 7663 deselected in 12.24s
+변이 I1 datetime 을 글자로 견줌       4 failed, 2 passed, 7663 deselected in 12.76s — test_the_same_instant_moved_again_is_not_written · test_a_file_resending_the_same_instant_writes_nothing[utc-expected0] · test_a_file_resending_the_same_instant_writes_nothing[naive_in_session_zone-expected1] · test_r3_counts_neither_a_respelled_instant_nor_a_stored_blank
+     I2 꼬리 없는 시각을 UTC 로       1 failed, 5 passed, 7663 deselected in 12.37s — test_a_file_resending_the_same_instant_writes_nothing[naive_in_session_zone-expected1]
+     I3 연결이 시간대를 안 적음        1 failed, 5 passed, 7663 deselected in 13.00s — test_a_file_resending_the_same_instant_writes_nothing[naive_in_session_zone-expected1]
+     I4 빈 글을 값으로               2 failed, 4 passed, 7663 deselected in 12.37s — test_a_stored_blank_under_an_empty_winner_is_not_rewritten · test_r3_counts_neither_a_respelled_instant_nor_a_stored_blank
+     I5 R3 가 자기 글자 비교          1 failed, 5 passed, 7663 deselected in 13.92s — test_r3_counts_neither_a_respelled_instant_nor_a_stored_blank
+전체     5 failed, 7480 passed, 181 skipped, 3 xfailed in 814.55s (0:13:34) — 실패는 알려진 다섯과 이름이 같음
+PG       10 failed, 132 passed, 7527 deselected in 246.34s (0:04:06) — ⚠️ 알려진 일곱과 다름: ['test_an_install_that_predates_attributes_is_widened_once', 'test_an_unknown_lot_and_an_undeployed_ledger_are_different_responses', 'test_postgres_bundle_to_read_apis_is_one_compiler_and_one_transaction', 'test_postgres_gate_refusal_stops_before_store_transaction', 'test_postgres_missing_join_and_ambiguous_reader_leave_atom0', 'test_postgres_replay_dedupes_the_second_write_of_the_same_batch', 'test_the_live_door_writes_the_refusal_breakdown_to_the_registry_row', 'test_the_route_answers_for_a_lot_the_ledger_never_heard_of', 'test_the_route_serves_the_walk_over_real_postgres', 'test_two_independent_refusals_are_counted_and_named_in_one_run']
+         넘는 셋은 test_ledger_trace_pg — 이 변경 없는 main(dfd2c47e9)에서도 같은 셋 · 같은 503 (그 셋만 돌려 잼)
+재기동   서버 · 워처 · 체인 워커. 마이그레이션 없음 — RUN.md 새 절
+게이트가 안 재는 자리  행 합치기 ×2 · 이력 줄 ×2 · 버전 게이트 · 파일 층 접기 — 같은 함수를 부르는 것까지만(위 전수)
+```
+
+**질문 1 판정 찾기**
+```
+찾음     판정 284(소유자 09-11, 609833d97) 「길이 0 문자열 = NULL, 모든 자리 한 함수」 — fold_key_value 독스트링: 그 규칙이 is_blank_value(strip 뒤 길이 0)
+못 찾음  value_key 의 '' != None 을 «일부러» 지은 판정. value_key(98471a546)는 옛 has_changed 의 None 짝 비교를 그대로 옮긴 것
+명령     git log -S"def value_key" -- server/database/crud.py · git log -S"길이 0 인 문자열은 NULL" -- CLAUDE.md
+```
+
+**질문 2 — 시각이 키 재료인 선언 (보고만, 안 고침)**
+```
+명령   python scratchpad/count_time_keys.py <저장소>   (추적된 table_config 넷)
+docs/guide/config_reference/table_config.json | tables 19 | with a datetime column 2 | time in the key 1: inspection_run(observed_at)
+server/config/sample/table_config.json.sample | tables 39 | with a datetime column 12 | time in the key 2: inspection_run(observed_at) step_inspection_run(observed_at)
+server/tests/support/transfer_explorer_table_config.json | tables 2 | with a datetime column 1 | time in the key 0: 
+task/evidence/void_ingestion_table_config.json | tables 2 | with a datetime column 1 | time in the key 1: inspection_run(observed_at)
+기제   compose_business_key 가 키 조각을 clean_str_value 글자로 붙임 — 같은 순간이 다른 철자로 오면 다른 키(다른 행)
+       키 조각이 바뀌어 다시 조립할 때는 표에서 읽은 datetime 의 str 철자가 들어감. 운영에서 다른 행이 생겼는지는 안 쟀다
+```
+
+**박스 — trace 시험 셋의 503, 따라간 끝 (dfd2c47e9 보고의 이어짐 · 안 고침)**
+```
+1 수집만 해도 assy_test 에 public.ledger_events(빈 varchar 모조)가 생김 — 지우고 --collect-only 한 번 -> 다시 있음
+2 누가  tests/conftest.py 가 import 때 main.bootstrap_database_schema() — 그 안의 Base.metadata.create_all 은 view 를 안 거름
+       PG 판에서 그 bind 는 assy_test public (conftest 자기 주석: 「would issue create_all into that database's public schema」)
+       S-260 이 pg_engine 에는 creatable_tables 로 view 를 걸렀고, 이 자리는 안 거름
+       이 박스 라이브 table_config(추적 밖)의 ledger_events(kind: view) 가 거기서 표로 지어짐 (코드 읽기 + 수집만으로 생김을 잼)
+3 그래서  ledger.schema.ensure_schema 의 ledger_existed = to_regclass('ledger_events') 가 search_path 로 public 모조를 봄
+       -> 참 -> source-event 색인 둘(idx_ledger_source_event · idx_ledger_object_entity)을 안 지음 -> 라우트가 503
+안 잰 것  같은 순서인데 14:03 · 14:04 판(항목 1 트리)에서는 셋이 초록이었던 이유
+고칠 자리 후보(안 지음)  bootstrap_database_schema 의 create_all 도 creatable_tables 로 거름 · create_missing_dynamic_tables 도 view 를 거름 · ledger_existed 를 search_path 로 묻는 것
+         dfd2c47e9 보고의 「모자란 표 만들기가 view 를 안 거름」은 이 자리의 하나였고, 누가 짓는지는 이번에 찾음
+```
+
+**알림 (안 고침)** 버전 게이트 parse_version_key 는 꼬리 없는 시각을 UTC 로 읽음(_naive_utc). PG 는 세션 시간대로 읽으니 이 박스(Asia/Seoul)에서는 9 시간 어긋나게 견줌.
+
+다음: b30fbd38c(꺼진 갈래의 칸 걷기) -> 2dd93d4a9 항목 3 -> dc4ca3e7c.
