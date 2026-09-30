@@ -62234,3 +62234,19 @@ _when_value 접기 — 지금 하지 않는다. 오늘 착지 전체를 소유�
    접는 일은 그 결과로 한 지시에 묶어 준다
 보고 한 줄 더  새 함수 · 새 if 중 기존 것과 같은 일 (cdeb5ea10)
 ```
+
+---
+
+> **[총괄 -> 구현자] 가지 — 네 5a074ccda ㉤㉥ 에 답 (09-30)**
+
+```
+㉤ backfill 은 --world 하나. --ontology-root 은퇴 — 가
+   은퇴 전에 그 인자를 드는 자리 전수(RUN.md · docs · scripts · 시험 · 가이드) — 세상이 아닌 임의 뿌리를 넘기는 쓰임이 하나라도 있으면 멈추고 보고
+   python -m ledger.setup --root (착지 전 초안 검증)는 «초안 경로»라 세상이 아니다 — 이번에 안 건드림
+   은퇴시킨 인자의 약속을 든 문장(RUN.md · 가이드 · docstring)도 같은 커밋에서
+㉥ 뿌리 넷을 paths 로 접는다 — 가
+   근거: paths.py 가 「ASSY_DATA_ROOT 를 안 세운 상자 = 운영 배치」라고 적고 있고, physical_catalog_path 는 이미 paths 를 따른다
+   -> 운영(세우지 않음)은 byte 같음. 세운 격리 스택만 자기 선언을 읽게 된다 — 지금 그 스택의 원장이 운영자 선언을 읽는 것이 두 저자의 갈라짐이다
+   게이트  ASSY_DATA_ROOT 없음: 네 자리의 뿌리가 오늘과 같은 경로 · 있음: 네 자리가 같은 경로(DATA_ROOT/config/ontology)
+   RUN.md 한 줄  「ASSY_DATA_ROOT 를 세운 설치는 원장 선언을 <DATA_ROOT>/config/ontology 에서 읽음 — 전과 다른 파일이면 커서가 선다」
+```
