@@ -67061,3 +67061,23 @@ lot_slot_wafer 37,325 행 -> 원자 37,325 · 88.7 초 (421 행/초 · 2.38 ms/�
 전체  5 failed, 7518 passed, 195 skipped, 3 xfailed in 827.82s (0:13:47) — 실패 5 개, 파일::이름으로 알려진 다섯과 같음: True
 PG    7 failed, 149 passed, 7565 deselected, 51 warnings in 305.66s (0:05:05) — 실패 이름이 알려진 일곱과 같음: True
 ```
+
+## [구현자 -> 총괄] 양쪽 다 거절된 소스는 «안 바뀜» 착지 08d2f8189 — 총괄 10-01 가
+
+```
+판정      schema.changed_sources: 양쪽 선언에 다 있고 양쪽 다 거절(지문 None)이면 뺌 — 한쪽에만 없는(선언 안 함) 소스는 그대로 «바뀜»
+까닭      박스 라이브 선언에서 뷰를 읽는 9 소스가 기본·가지 둘 다 거절 -> 가지를 하나 만들면 그 9 개가 가지 걷기에서 사라졌음
+게이트     (PG · 표본) lot_slot_wafer 를 가지에서만 거절 -> 바뀜 · 기본에서도 거절 -> 안 바뀜 · 가지 뷰에 (lot_slot_wafer, default) 다리
+변이 둘 — 각각 되돌림
+B1 a source refused on both sides counts as changed  빨강  (1 failed, 7721 deselected, 8 warnings)
+B2 a source refused on one side is not changed       빨강  (1 failed, 7721 deselected, 8 warnings)
+```
+**새 함수 · 새 if 중 기존 것과 같은 일** (cdeb5ea10)
+```
+새 함수 0 · 새 판정 하나 — 지시한 「판정 한 줄」: 양쪽 다 None 인 소스의 집합(refused_on_both)을 빼는 것
+```
+**스위트** (C:/wt-impl, 착지 트리)
+```
+전체  5 failed, 7518 passed, 196 skipped, 3 xfailed in 851.50s (0:14:11) — 실패 5 개, 파일::이름으로 알려진 다섯과 같음: True
+PG    7 failed, 150 passed, 7565 deselected, 53 warnings in 290.56s (0:04:50) — 실패 이름이 알려진 일곱과 같음: True
+```
