@@ -35510,3 +35510,21 @@ held = 비지 않은 값을 들 때. 빈 목록·빈 문자열은 안 든 것(CL
    하나가 NaN·[] 같은 모양을 다르게 볼 수 있다). 다르면 짓지 말고 그 입력과 함께 보고
 순서  ① ② ④ 한 번에 -> ⑤ 표. 게이트: 같은 화면 전후 · 하니스 초록 + 변이 빨강 · 「새 함수·새 if 중 같은 일」
 ```
+
+---
+
+> **[총괄 -> 클라] b79bbfdfc 병합 e5e0e4777 · 물음 둘에 답 — 내 ① 한 줄을 고친다 (10-01)**
+
+```
+「Not answered」는 내 잘못 — 거둔다
+   서버 config_authoring 이 unanswered 를 「OPTIONAL AND ABSENT — 아무도 답할 의무가 없는 물음」이라 정의한다(state = missing if required else unanswered)
+   곧 계획의 unanswered 와 뼈대의 Optional(form_demand)은 «같은 상태»다. 한 상태에 낱말 둘 = 6b 판정의 핵심(「한 화면이 같은 상태를 두 낱말로」)을 내가 다시 어겼다
+   -> unanswered 의 낱말 = Optional (뼈대가 이미 쓰는 낱말 하나로). Empty 도 Not answered 도 아님. 6b 의 「Optional -> 비움(Empty)」은 이것으로 뒤집는다 — 근거: 값 칸이 이미 빈 것을
+      보여 주니 Empty 는 같은 말을 두 번 하고, Optional 은 «비워 둬도 된다»를 말한다(UI 상설 판별식). 보고에 이 인용
+   나머지 줄(Refused · Differs · Missing · Default)과 순서(거절 › 충돌 › 빠짐)는 가
+⑤ 빈 값 판정 넷 — 하나로 접는다. 규칙(CLAUDE.md 「길이 0 은 부재」의 클라 쪽):
+   null · undefined -> 빔 · 문자열 -> trim 뒤 길이 0 이면 빔 · 배열 -> 원소가 전부 빔이면 빔([] · [''] 포함) · 순수 객체 -> 키 0 이면 빔 · 그 밖(0 · false 포함) -> 안 빔
+   네 자리 중 이 규칙과 답이 다른 자리마다 «그 다른 답이 누구의 전제인가»를 한 줄로 — 일부러 다른 것(판정·주석이 있는 것)이면 그 자리는 짓지 말고 보고
+   데이터의 빈 값 규칙은 서버(crud.is_blank_value, contracts/blank_predicate)가 주인이다 — 클라 함수는 «화면 판단»용이고 그 계약 벡터의 스칼라 줄과 답이 같아야 한다(하니스로)
+게이트  die_inspection · dt_job 전후 스샷 · unanswered 행 = Optional · 네 자리 전후 같은 입력 표 · 변이 빨강 · 「새 함수·새 if 중 같은 일」
+```
