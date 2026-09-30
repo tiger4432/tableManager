@@ -121,12 +121,48 @@ def test_a_file_without_a_signature_is_not_filled_and_says_why(load):
     assert "3 row(s) not keyed nokey (slot)" in line, line
 
 
+@pytest.mark.pg
+def test_two_files_begun_in_the_same_second_stay_apart_where_their_rings_meet(load, pg_engine):
+    """총괄 1ce3305f3: two files' first loads in one second, and rows chosen so the 6-hex parts are
+    equal - the first-ingestion time to the microsecond keeps them two rows."""
+    import hashlib
+    from datetime import datetime, timezone
+    from database import schemas
+
+    def offset(signature):
+        return int(hashlib.sha256(signature.encode("utf-8")).hexdigest(), 16)
+
+    crud.TABLE_CONFIG[T] = DECLARED
+    first, second = "sha256:1:aa", "sha256:1:bb"
+    rows = {first: 1}
+    rows[second] = (offset(first) + rows[first] - offset(second)) % crud.NOKEY_RING or crud.NOKEY_RING
+    starts = {first: datetime(2026, 9, 30, 5, 15, 3, 100000, tzinfo=timezone.utc),
+              second: datetime(2026, 9, 30, 5, 15, 3, 200000, tzinfo=timezone.utc)}
+    db = sessionmaker(bind=pg_engine)()
+    try:
+        for signature in (first, second):
+            item = schemas.GeneralUpdateItem(updates={"lot": "L1", "slot": None, "v": signature[-2:]},
+                                             source_name="f.csv", updated_by="t")
+            item._file_row = rows[signature]
+            batch = schemas.GeneralUpdateBatch(updates=[item])
+            batch._file_origin = (signature, starts[signature])
+            crud.apply_batch_updates(db, T, batch)
+            db.commit()
+        slots = [slot for (slot,) in db.execute(text('SELECT slot FROM "%s" ORDER BY v' % T))]
+    finally:
+        db.close()
+
+    assert len(slots) == 2, slots                                      # not merged
+    assert slots[0].rsplit("_", 1)[1] == slots[1].rsplit("_", 1)[1], "the fixture meets the rings"
+    assert slots[0] != slots[1]
+
+
 def test_the_value_is_the_file_the_row_and_the_first_load_nothing_random():
     from datetime import datetime, timezone
     at = datetime(2026, 9, 30, 5, 15, 3, tzinfo=timezone.utc)
     one = crud.nokey_value("sha256:1:aa", at, 1)
 
     assert one == crud.nokey_value("sha256:1:aa", at, 1)
-    assert one.startswith("nokey_20260930T051503Z_")
+    assert one.startswith("nokey_20260930T051503.000000Z_")
     assert len({crud.nokey_value("sha256:1:aa", at, row) for row in range(1, 20001)}) == 20000
     assert crud.nokey_value("sha256:1:bb", at, 1) != one
