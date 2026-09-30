@@ -1935,7 +1935,7 @@ export async function fetchKeyValues(params) {
  *    «돌면서 잇기»만 합니다 — 여기에 「홉이 너무 큽니다」를 쓰면 서버가 한계를 바꾸는 날
  *    화면만 옛 문장을 말합니다.
  */
-function refusalSentence(body, status) {
+function refusalSentence(body, status, fallback = `Walk failed (${status})`) {
   const detail = body && body.detail;
   if (detail && typeof detail.message === 'string') return detail.message;
   // 🔴 C-52. THE SERVER'S NAMED REFUSAL, WHICH HAD NO ARM HERE. `{reason, argument, value}`
@@ -1965,7 +1965,7 @@ function refusalSentence(body, status) {
       .join(' / ');
   }
   if (typeof detail === 'string' && detail) return detail;
-  return `Walk failed (${status})`;
+  return fallback;
 }
 
 /**
@@ -2179,10 +2179,10 @@ export function createContrastStore(deps) {
   const { apiBase, fetchImpl, user } = deps || {};
   const doFetch = fetchImpl || ((...args) => fetch(...args));
   const table = (name) => `${apiBase || ''}/tables/${name}`;
+  // The server's reason in every shape it sends ({message}, {reason, argument, value}, a list) -
+  // the one reader, `refusalSentence` (C-52).
   const refused = async (res, what) => {
-    const body = await res.json().catch(() => null);
-    const detail = body && body.detail;
-    const said = typeof detail === 'string' ? detail : (detail && detail.message) || '';
+    const said = refusalSentence(await res.json().catch(() => null), res.status, '');
     return { ok: false, message: said ? `${what} — ${said}` : `${what} (${res.status})` };
   };
   return {

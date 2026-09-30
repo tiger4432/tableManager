@@ -267,6 +267,19 @@ async function suite(mods) {
   const empty = seat(emptyServer);
   await settle();
   ok('G4 a readable empty list says it is empty', lines(empty.host, 'rb-cand-line--absent').includes(CONTRAST_WORDS.empty));
+  // The server's other refusal shapes (lead d4a949a8c ㉮, C-52): a named reason and a list.
+  const refusedWith = async (detail) => {
+    const s = seat(fakeTables({ refuseSave: detail }));
+    await settle();
+    s.markings.set('marking:1', CASES[0], SIGN.CASE);
+    saveBtn(s.host).dispatch('click');
+    await settle();
+    return lines(s.host, 'rb-cand-line--refused');
+  };
+  const named = await refusedWith({ reason: 'run_id_taken', argument: 'run_id', value: 'R1' });
+  ok('G5 a named refusal keeps its reason and where', named.includes('Save refused — run_id_taken · run_id=R1'), named.join(' | '));
+  const listed = await refusedWith([{ loc: ['body', 'updates'], msg: 'Field required' }]);
+  ok('G6 a list refusal keeps each field and message', listed.includes('Save refused — updates · Field required'), listed.join(' | '));
 
   console.log(`${LF}-- H. two instances on one screen --`);
   const doc = makeDoc();
@@ -370,6 +383,10 @@ async function suite(mods) {
 }
 
 const MUTANTS = [
+  { name: 'the-save-reads-only-a-message', catches: ['G5', 'G6'], file: 'api.js',
+    from: "    const said = refusalSentence(await res.json().catch(() => null), res.status, '');\n",
+    to: "    const body = await res.json().catch(() => null);\n    const detail = body && body.detail;\n"
+      + "    const said = typeof detail === 'string' ? detail : (detail && detail.message) || '';\n" },
   { name: 'the-whole-question-is-saved', catches: ['A7'], file: 'api.js',
     from: '  for (const key of CONTRAST.args) {',
     to: '  for (const key of Object.keys(r.question || {})) {' },
