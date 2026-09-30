@@ -5567,7 +5567,7 @@ Excel 클립보드 왕복의 공용 저층 — export `parseTsv`/`serializeTsv`/
 | `main_trend_panel.js` | **430** | 기본 트렌드 좌석 |
 | `head_summary_panel.js` | **347** | 머리 요약 |
 | `composition_panel.js` | **293** | 자재 구성 |
-| `candidate_list_panel.js` | 🆕 **220** @`919ccc065` · 272 | 후보 목록. 🆕 [10-01 `2b20ed983`] 카드의 실측 줄은 걷기의 판정 `c.measured`(걸음의 술어) 그대로 — `Measured` 또는 `-`. `_firstMeasuredRef` 은퇴: 값 걸음의 ref 를 읽었는데 모든 노드가 엔티티가 된 뒤로 값 걸음이 안 와 실측 카드가 늘 「실측 -」였다 |
+| `candidate_list_panel.js` | 🆕 **216** @`ef3766e70` · 220 @`919ccc065` · 272 | 후보 목록. 🆕 [10-01 `2b20ed983`] ~~카드의 실측 줄은 걷기의 판정 `c.measured`(걸음의 술어) 그대로 — `Measured` 또는 `-`.~~ 🆕 `84dc66bd8`: 카드마다의 실측 줄 은퇴 — 실측 후보만 카드를 받고(이름뿐인 후보는 한 장으로 접힘) 머리가 이미 `Measured N` 을 말한다(`board.css` 의 `.rb-cand-measured` 도). `_firstMeasuredRef` 은퇴: 값 걸음의 ref 를 읽었는데 모든 노드가 엔티티가 된 뒤로 값 걸음이 안 와 실측 카드가 늘 「실측 -」였다 |
 | `control_bar_panel.js` | **260** | 제어 막대 — 축 선택을 `axis:y` 마킹에 «쓴다» |
 | `rank_list_panel.js` | **225** | 순위표 |
 | `reach_panel.js` | **181** | 「닿는 곳」 — 마킹에서 어느 술어로 무엇에 닿는가 |
@@ -5588,7 +5588,7 @@ Excel 클립보드 왕복의 공용 저층 — export `parseTsv`/`serializeTsv`/
 
 `export class WalkBoxPanel extends Panel`. 🔴 **`GET /api/ledger/declaration`의 유일한 소비자**이고, 드롭다운의 목록을 **코드에 적지 않는다** — 타입·키·따라갈 술어가 전부 선언에서 온다. 메서드(실측): `historyName()` · `goto(id)` · `push(value)` · `moveTo(nodeId)` · `collect(nodeId, sign)` · `siblingsOf(id)` · `mount()`/`unmount()` · `types()` · `keysOf(type)` · `followOptions()` · `setType(type)` · `toggleFollow(name)` · `declaredTypes()` · `routes()` · `useRoute(index)` · `render()` + private `_historyBox`/`_destinationRow`/`_note`/`_field`/`_typeRow`/`_keyRow`/`_followRow`/`_runRow`/`_resultBox`/`_emptyText` · 모듈 private `bareTypeName(value)`.
 
-🔴 **이 부품은 «다른 모양의 walk»을 받는다**(`main.js` 실측): `decl.part === 'walkBox'`일 때만 `bound.walk = createWalkBoxWalk(...)` · `bound.loadDeclaration = () => fetchDeclaration(...)`가 주입된다. 소스 주석이 그 이유를 적는다 — 이 부품의 씨앗은 마킹이 아니라 **사람이 넣은 키**에서 만들어지므로(`entitySeedId(type, keys)`), 같은 이름을 섞으면 **오류 없이 «빈 답»**이 나온다. 그리고 주입 조건은 `decl.part`이지 `options.part`가 **아니다** — 틀리면 조건이 영원히 거짓이라 라우트가 200을 주는 동안에도 화면이 「선언을 받지 못했습니다」를 그린다.
+🔴 **이 부품은 «다른 모양의 walk»을 받는다**(`main.js` 실측): `decl.part === 'walkBox'`일 때만 `bound.walk = createWalkBoxWalk(...)` · `bound.loadDeclaration = () => fetchDeclaration(...)`가 주입된다. 소스 주석이 그 이유를 적는다 — 이 부품의 씨앗은 마킹이 아니라 **사람이 넣은 키**에서 만들어지므로(`entitySeedId(type, keys)`), 같은 이름을 섞으면 **오류 없이 «빈 답»**이 나온다. 그리고 주입 조건은 `decl.part`이지 `options.part`가 **아니다** — 틀리면 조건이 영원히 거짓이라 라우트가 200을 주는 동안에도 화면이 「No declaration」(🆕 10-01 `84dc66bd8` — 전엔 「선언을 받지 못했습니다」)을 그린다.
 
 #### 🆕⑬ `api.js` (**1,567줄**) — 🔴 **`ROUTES`의 다섯 중 넷이 «없는 라우트»다**
 
