@@ -66521,3 +66521,63 @@ E 대 K                   E 에 찬성 — 다만 까닭 하나를 더합니다:
                         갈리는 것은 비용 — K 는 wafer 키가 바뀌어 wafer 를 묶는 소스 «전부»가 다시 번역, E 는 공정 소스의 DT 행만
 ```
 여쭐 것: 1-bis 의 ㄱ / ㄴ. 「가」 주시면 1 의 세는 줄 + 조인 · 단계표 표본 · 원장 문장 둘을 게이트(DT 스텝 -> dtwafer · WF -> wafer · 빈 값 -> 이름 댄 수 · 옛 원자 물러남 · 변이)와 함께 짓습니다.
+
+## [구현자 -> 총괄] 착지 c1746aa1e — 363db7dfa + 1dd4091a6(ㄱ) + 4349db8e8: DT 스텝 뒤 공정 · 다이는 DT 쪽 신원으로 · 어느 문장도 안 말한 행을 센다 · NULL 이 배치를 안 멈춤
+
+```
+선언(표본만)  table_config  step_phase(키 step) · wafer_process.mat_type
+             chain_rules   step_phase_to_wafer_process(on step · take mat_type · key.unique, 켜짐 — 단계표가 비면 아무것도 안 씀)
+             ledger_config dtwafer@1 · processed_with@1 주어에 dtwafer@1 · wafer_process_recipe 문장 둘 — when {mat_type: ""} -> wafer · when "DT" -> dtwafer
+             라이브 선언은 안 건드림 — 옮기는 절차는 RUN.md 맨 위
+코드         세는 줄    roleframe(분자마다 «어느 문장도 안 말함» 기록) -> 미리보기 unsaid -> 영수증 칸 unsaid -> gate.record_unsaid 배치마다 한 줄
+                      「[Ledger] <소스>: N unit(s) said no sentence - mat_type='WF' (N). Next: …」
+             NULL 접기  roleframe._plain 이 빠진 값(NaN · NA · NaT)을 None 으로 · when 비교도 빠진 칸을 "" 로(_when_value)
+운영자 두 줄  「운영에서는 step_phase 표에 DT 스텝을 한 줄씩 적으면 됩니다.」
+             「결함 계측 표에도 같은 조인 한 줄, 다이 문장을 when 으로 둘.」
+```
+
+게이트
+```
+번역(표본, DB 없이)   mat_type NULL -> wafer · "" -> wafer · DT -> dtwafer · WF -> 원자 0 + 세는 줄에 mat_type='WF' (1)   ㉠ ㉡
+다이(픽스처)          표본 die_inspection 을 스텝 있는 표로 복사한 픽스처 — NULL · "" -> die(…, Wafer) · DT -> die(…, DT) · WF 는 셈   (표본에 새 소스 0)
+끝에서 끝(PG)         2 passed, 7698 deselected in 13.33s — crud 쓰기 -> 체인 묶음 본문(원장 따라가기 줄 세우기가 여기 있음) -> followup.drain_once(표본 setup)
+                     스텝을 DT 로 적음 -> 공정 행 mat_type DT -> 원자 wafer 가 지워지고 dtwafer 로 · mat_type 을 비움 -> wafer 로 돌아감 ·
+                     단계표 행을 지움 -> 공정 행에 DT 가 남음(표본 주석 「지우지 말고 비워라」의 근거)
+변이 다섯            M1 -> 빨강 4 (a_row_no_sentence_says_is_counted_by_its_value_and_named, a_step_listed_as_dt_moves_the_rows_atom_and_emptying_it_moves_it_back, each_row_is_said_about_the_wafer_its_material_type_names, every_row_said_leaves_nothing_to_count)
+                     M2 -> 빨강 5 (a_row_no_sentence_says_is_counted_by_its_value_and_named, a_step_listed_as_dt_moves_the_rows_atom_and_emptying_it_moves_it_back, deleting_the_step_phase_row_does_not_reach_the_rows_it_filled, each_row_is_said_about_the_wafer_its_material_type_names, every_row_said_leaves_nothing_to_count)
+                     M3 -> 빨강 2 (a_die_inspected_after_a_dt_step_is_the_dt_die, a_row_no_sentence_says_is_counted_by_its_value_and_named)
+                     M4 -> 빨강 4 (a_die_inspected_after_a_dt_step_is_the_dt_die, a_row_no_sentence_says_is_counted_by_its_value_and_named, each_row_is_said_about_the_wafer_its_material_type_names, every_row_said_leaves_nothing_to_count)
+                     M5 -> 빨강 4 (a_die_inspected_after_a_dt_step_is_the_dt_die, a_row_no_sentence_says_is_counted_by_its_value_and_named, each_row_is_said_about_the_wafer_its_material_type_names, every_row_said_leaves_nothing_to_count)
+전체                 5 failed, 7503 passed, 189 skipped, 3 xfailed in 681.53s (0:11:21) — 실패 5: test_a_sentence_says_itself_only_for_the_rows_it_names:test_the_sample_is_written_in_the_one_format_both_writers_use · test_core_alignment_mapper:test_live_mapper_and_tracked_sample_are_byte_identical · test_core_usage_mapper:test_live_mapper_and_tracked_sample_are_byte_identical · test_dt_inventory_metadata_mapper:test_live_mapper_matches_tracked_sample · test_one_place_decides_where_the_server_is:test_the_repo_root_is_one_above_it
+                     첫 전체 실행에서 알려진 것 밖 다섯 — 고침: 영수증 시험의 가짜 미리보기에 unsaid 칸(셋) · 켜진 표본 조인에 __why_enabled(하나)
+                     남은 하나 = 설정 리로드 대기 시간 칸(test_config_reload_integrity:test_inv_9_1_atomic_save_event_applies_physical_alter) — 혼자 돌리면 통과. 이 파일이 전체 실행 중 빨강이 된 것이 두 번째
+                     (499d89de4 착지 때 h3 · 이번 inv_9_1) — 우연이 아니라 부하를 탐, 이 일과 닿는 자리는 없음
+PG 전체              7 failed, 143 passed, 7550 deselected in 235.98s (0:03:55) — 실패 7 · 알려진 일곱 밖: 없음
+```
+
+NULL 접기 게이트 셋 (4349db8e8 ②)
+```
+㉠ 닿는 자리   roleframe 의 _plain · _canonical 은 모듈 밖에서 가져가는 곳 0 — 닿는 자리는 roleframe 안뿐(이름만 같은 _plain · _canonical 이 다른 모듈에 따로 있음)
+             roleframe 안 부르는 함수 6 · 부르는 자리 11 — _evaluate_binding 2 · _partition_units 1 · _row_sort_token 1 · compile_role_rows 5 · first_sight 1 · validate_role_frame 1
+             갈래: 빈 값이 실제로 닿는 곳은 행 정렬 토큰(_row_sort_token — 행의 모든 칸)과 group_by 토큰(_partition_units)
+             문장에 묶인 칸의 빈 값은 그 전에 「column … contains a missing value」로 이름 대어 멈춘다(잰 것: step) — 원자 · ref · 수식어에는 안 닿음
+             명령: 저장소 뿌리 scratchpad/census_plain_seats.py <트리>
+㉡ 신원 안 바뀜  박스 라이브 소스를 제품 미리보기 길로, 첫 2000 행과 «읽는 칸에 NULL 이 있는» 행 2000 까지 — 고치기 전(main 트리) · 후(이 커밋) 비교
+             미리보기한 소스 6 (die_inspection · dt_job · lot_event · lot_slot_wafer · transfer_event · wafer_process_recipe) · 표본 8 개 — 전 · 후 같음 8 · 다름 0 (행 · 분자 · 원자 · ref · 거절 · 원자 해시 모두)
+             적재에서 안 선 소스(드라이버 없음 — 뷰를 읽거나 거절된 것): bonded_from · bw_dt_seat · dt_transfer · lot_slot_move · mechanism_edge_to_finding_causes · mechanism_edge_to_quantity_causes · process_param_num_measure · process_param_txt_measure · void_observation (9)
+             명령: scratchpad/probe_nan_fold_before_after.py <트리> 2000 [<소스>]
+㉢ 09-10 실패   dt_job_rollup 표가 박스에 없다(지금 라이브 dt_job 은 dt_log 를 읽음) — 그 행으로는 재현 못 함
+             같은 모양(문자열 칸 NULL -> NaN)은 번역 게이트가 잰다: 전엔 배치 예외 · 이제 wafer 원자
+```
+
+찾은 것 · 여쭐 것
+```
+1 커서 칸이 빈 행   dt_job 의 커서 칸 dt_cell_key 가 빈 행(박스 dt_log 144 행)이 섞인 배치는 「cursor number must be finite」로 통째로 멈춘다 —
+                   고치기 전 · 후 같음(이번 접기와 별개 자리). pandas 3 의 NaN 이 문자열 커서를 숫자로 읽힘. 고칠지 여쭙니다
+2 뷰              process_param_num · process_param_txt — 열 목록이 박혀 있어 process_param 에 mat_type 을 더해도 안 나른다
+                   그리고 이 박스에서 두 소스는 뷰를 읽는다는 까닭으로 이미 적재에서 안 선다. relation 은 안 바꿈(지시대로)
+3 시험 DB          제 끝에서 끝 픽스처 첫 판이 스키마 없는 DROP 을 써서 격리 시험 DB(assy_test)의 public.wafer_process 를 지웠을 수 있습니다 —
+                   지금은 격리 스키마 이름을 붙여 만들고 지움. 운영 DB 는 아님(db_safety 가 막음)
+4 열린 물음(소유자) DT 다이의 mat_id 가 DT 웨이퍼 id 인가 작업 id 인가 — 게이트는 전사 사슬에 이어짐을 단언하지 않음(지시대로)
+```
+다음: 대기열 빔 — 감시 켜 두고 기다립니다.
