@@ -11,7 +11,7 @@
 ## 🔴 규칙 하나 — 노트북은 운영 코드를 «부른다»
 
 셀이 다시 구현하는 것은 «없다». 입력·클레임 훑기·세 단계 분리·발행 대조는 전부
-`server/dev_bench.py` 의 함수이고, 그 함수들이 부르는 것은 `outbox_expand` ·
+`server/admin/dev_bench.py` 의 함수이고, 그 함수들이 부르는 것은 `outbox_expand` ·
 `mapper_sdk` · `pipeline_base` · `directory_watcher` — 운영이 부르는 그것들이다.
 **여기서 되는 것이 운영에서 안 되면, 도구가 신뢰받는 바로 그 순간에 거짓말을 한 것이다.**
 
@@ -23,7 +23,7 @@
 
 노트북 둘이 «같은» 모듈(`dev_bench`)을 부른다. 파서 것을 `parsers/` 밑에 두면 맵퍼 것과
 갈라지고, 워크스페이스(`ingestion_workspace/`)에 두면 그 폴더가 통째로 gitignore 라 도구가
-커밋되지 않는다. 뿌리 찾기는 셀이 «한다»(`server/dev_bench.py` 를 찾아 올라간다) — 이 박스의
+커밋되지 않는다. 뿌리 찾기는 셀이 «한다»(`server/admin/dev_bench.py` 를 찾아 올라간다) — 이 박스의
 절대경로는 어느 셀에도 없다.
 
 ## 옛 자리
@@ -47,5 +47,5 @@ VS Code / Cursor 의 노트북 편집기, 커널 **conda `assy_manager`**.
 
 ## 명령줄로 같은 것을 하려면
 
-`python scripts/try_core.py mapper|parser|folder ...` 가 **같은 `dev_bench` 함수**를 지난다.
+`python server/scripts/try_core.py mapper|parser|folder ...` 가 **같은 `dev_bench` 함수**를 지난다.
 두 껍데기가 각자 조립하면 「명령줄에서는 된다」와 「시험은 통과한다」가 다른 사실이 된다.
