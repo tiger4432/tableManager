@@ -2,8 +2,9 @@
 // SMART PASTE — which clipboard format is sent (lead 8771e43ac 1, owner 「페이스트는 ㄱ으로해」).
 //
 // A table may declare its order (`table_config.<table>.smart_paste`, MIME as written, served by
-// `/tables/<t>/schema`). The first of that order on the clipboard goes without asking. With no
-// order, or none of it on the clipboard, it is as before: more than one format asks, one goes.
+// `/tables/<t>/schema`). The first of that order on the clipboard goes without asking. When the
+// order is declared and none of it is on the clipboard, it asks (lead 5793b49fb), even for one
+// format. With no order: more than one format asks, one goes.
 // Both readers (the paste event and navigator.clipboard.read) choose here. No format is named here.
 // ═══════════════════════════════════════════════════════════════════════════════
 
@@ -15,10 +16,11 @@
  */
 export async function chooseClipboardType(textTypes, order, ask) {
   const types = Array.isArray(textTypes) ? textTypes : [];
-  if (Array.isArray(order)) {
+  const declared = Array.isArray(order) && order.length > 0;
+  if (declared) {
     const hit = order.find((type) => types.includes(type));
     if (hit) return { type: hit, byOrder: true };
   }
-  if (types.length > 1) return { type: (await ask(types)) || null, byOrder: false };
+  if (types.length > 1 || (declared && types.length > 0)) return { type: (await ask(types)) || null, byOrder: false };
   return { type: types[0] || null, byOrder: false };
 }

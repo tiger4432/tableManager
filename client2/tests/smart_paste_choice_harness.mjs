@@ -1,7 +1,7 @@
 /**
  * Smart paste: which clipboard format is sent (lead 8771e43ac 1).
- *   C  the table's declared order picks without asking; no order or none of it on the clipboard asks
- *      as before (more than one format), one format goes as before
+ *   C  the table's declared order picks without asking; declared but none of it on the clipboard asks,
+ *      even for one format (lead 5793b49fb); no order: more than one format asks, one goes
  *   N  the chooser names no format (the order is the table's), and both readers in main.js choose
  *      through it — main.js cannot be imported (it wires the page), so that line reads its text
  */
@@ -44,8 +44,11 @@ async function suite(choose, source) {
   const c = await choose(EXCEL, null, ask(PLAIN));
   eq('C3 no order declared: asked, as before', `${c.type}|${c.byOrder}|${asked.length}`, `${PLAIN}|false|1`);
   asked.length = 0;
-  const d = await choose([PLAIN], [HTML], ask(RTF));
-  eq('C4 one format and not the declared one: it goes, as before, unasked', `${d.type}|${d.byOrder}|${asked.length}`, `${PLAIN}|false|0`);
+  const d = await choose([PLAIN], [HTML], ask(PLAIN));
+  eq('C4 one format and not the declared one: asked (lead 5793b49fb)', `${d.type}|${d.byOrder}|${asked.length}`, `${PLAIN}|false|1`);
+  asked.length = 0;
+  const g = await choose([PLAIN], null, ask(RTF));
+  eq('C7 no order, one format: it goes unasked, as before', `${g.type}|${g.byOrder}|${asked.length}`, `${PLAIN}|false|0`);
   const e = await choose(EXCEL, [], ask(null));
   eq('C5 an empty order is no order; a cancelled ask sends nothing', `${e.type}|${e.byOrder}`, 'null|false');
   const f = await choose([PLAIN, HTML], [HTML, PLAIN], ask(RTF));
@@ -67,10 +70,11 @@ const load = async (mutate) => {
 };
 
 const MUTANTS = [
-  { name: 'the-order-is-not-read', catches: ['C1', 'C6'], from: '  if (Array.isArray(order)) {', to: '  if (false) {' },
+  { name: 'the-order-is-not-read', catches: ['C1', 'C6'], from: '  if (declared) {', to: '  if (false) {' },
   { name: 'the-clipboard-order-wins', catches: ['C6'],
     from: '    const hit = order.find((type) => types.includes(type));', to: '    const hit = types.find((type) => order.includes(type));' },
-  { name: 'one-format-asks-too', catches: ['C4'], from: '  if (types.length > 1) return', to: '  if (types.length >= 1) return' },
+  { name: 'one-format-asks-too', catches: ['C7'], from: '  if (types.length > 1 ||', to: '  if (types.length >= 1 ||' },
+  { name: 'declared-but-absent-goes-unasked', catches: ['C4'], from: ' || (declared && types.length > 0)', to: '' },
   { name: 'a-default-format-is-named', catches: ['N1'],
     from: '  return { type: types[0] || null, byOrder: false };', to: "  return { type: types[0] || 'text/plain', byOrder: false };" },
 ];

@@ -3176,3 +3176,27 @@ body.resizing-active .history-sidebar {
   color: var(--danger);
   outline: none;
 }
+
+/* Paste box (lead 4311a51ed): the ctm dialog shell, a smaller card, and the zone that takes Ctrl+V.
+   The zone is focused by script after a click, which `:focus-visible` does not match, so the
+   ring is on `:focus` -- the ring is how the operator sees where Ctrl+V goes. */
+.pbx-card { width: 320px; gap: var(--space-4); }
+.pbx-card .ctm-title { margin: 0; }
+.pbx-zone {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: calc(var(--control-h) * 2);
+  padding: var(--space-4);
+  background: var(--bg-inset);
+  border: 1px dashed var(--border-strong);
+  color: var(--text);
+  font-size: var(--fs-button);
+  font-weight: 600;
+}
+.pbx-zone:focus {
+  border: 1px solid var(--accent);
+  background: var(--accent-weak);
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
