@@ -911,6 +911,10 @@ const FLOORS = new Map([
   // 19 -> 39 (lead 791c0f45e, [5]): a leaf the plan marks `reshapes` asks for the draft's form
   // once per committed change — never per keystroke — and its fields take the plan's place.
   ['explorer_open_path_harness.mjs', 39],
+  // New with lead 619befe8c: where an edit sits in the ledger form — a guide per ancestor on every
+  // row of the real skeleton's form, the trail as the declaration path's own words, the path bar
+  // part, and no skeleton word in the bar's code.
+  ['explorer_path_bar_harness.mjs', 17],
   // New 2026-09-10 with C-55 (S-117's screen half). Floor is the count it reports on the
   // commit that introduces it. 🔴 THE FIXTURE IS THE CONTRACT VECTOR, captured off the live
   // route: the receipt has TWO envelopes and the failed one carries no counts at all, so a

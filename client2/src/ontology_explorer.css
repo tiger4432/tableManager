@@ -74,6 +74,8 @@
   --oe-tint-row: var(--tint-row);
   --oe-tint-accent-hover: color-mix(in srgb, var(--oe-accent) 10%, transparent);
   --oe-tint-accent-press: color-mix(in srgb, var(--oe-accent) 18%, transparent);
+  /* One depth step of the tree (lead 619befe8c): a spacing token, not a typed px. */
+  --oe-indent: var(--space-5);
   --oe-line-hover: var(--line-hover);
   --oe-ink-label: var(--ink-label);
   --oe-ink-th: var(--ink-th);
@@ -720,16 +722,16 @@
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-row {
   display: grid;
   grid-template-columns:
-    calc(288px - 16px * var(--oe-depth, 0)) minmax(0, 1fr) 132.6px;
+    calc(288px - var(--oe-indent) * var(--oe-depth, 0)) minmax(0, 1fr) 132.6px;
   gap: 10px; align-items: baseline; min-width: 0;
   /* The indent is padding, and the label column loses exactly what the padding gains --
      so `value` starts at the same x at every depth. Measured before this line existed:
      depth 0 put the value column at 331px and depth 1 at 315px. */
-  padding: 7px 12px 7px calc(12px + 16px * var(--oe-depth, 0));
+  padding: 7px 12px 7px calc(12px + var(--oe-indent) * var(--oe-depth, 0));
   border: 1px solid var(--oe-line); border-top: 0;
   background: var(--oe-surface);
 }
-:is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-row:hover { background: var(--oe-tint-row); }
+:is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-row:hover { background-color: var(--oe-tint-row); }
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-children > .oe-node:first-child > .oe-node-row {
   border-top: 1px solid var(--oe-line);
 }
@@ -784,11 +786,11 @@
 /* The two states the mockup keeps open get the 3px edge and the taller box. */
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-row.is-remaining {
   border-left: 3px solid var(--oe-accent);
-  padding: 8px 12px 8px calc(12px + 16px * var(--oe-depth, 0));
+  padding: 8px 12px 8px calc(12px + var(--oe-indent) * var(--oe-depth, 0));
 }
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-row.is-refused {
   border-left: 3px solid var(--oe-warn);
-  padding: 8px 12px 8px calc(12px + 16px * var(--oe-depth, 0));
+  padding: 8px 12px 8px calc(12px + var(--oe-indent) * var(--oe-depth, 0));
 }
 /* A fold states its count; both halves are buttons so it opens where it says it folded. */
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-fold,
@@ -798,6 +800,58 @@
 }
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-folded { color: var(--oe-accent); }
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-row.is-new { background: transparent; border-bottom: 0; }
+/* 🔴 DEPTH YOU CAN SEE (lead 619befe8c; owner 「어디의 하위 선언을 고치고 있는지」). One guide per
+   ancestor, as a code editor draws them: a row at depth N has N lines, each under its ancestor's
+   indent. A one-of's own row keeps the same stair and the same lines. */
+:is(#ontology-explorer-root, .oe-skeleton-form) :is(.oe-node-row, .oe-node-head) {
+  position: relative;
+  /* The path bar stands over the top of the form, one control tall; a row it goes to lands right below it. */
+  scroll-margin-top: var(--control-h);
+}
+:is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-guides { position: absolute; inset: 0; pointer-events: none; }
+:is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-guide {
+  position: absolute; top: 0; bottom: 0; width: 1px; background: var(--oe-line);
+  left: calc(12px + var(--oe-indent) * var(--oe-guide, 0) + var(--space-1));
+}
+/* The 3px edge moves the padding box 2px right; the lines stay on the column every other row draws. */
+:is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-row:is(.is-remaining, .is-refused) .oe-node-guide {
+  margin-left: -2px;
+}
+:is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-head {
+  display: flex; align-items: baseline; gap: var(--space-2); min-width: 0;
+  padding: 7px 12px 7px calc(12px + var(--oe-indent) * var(--oe-depth, 0));
+  border: 1px solid var(--oe-line); border-top: 0; background: var(--oe-surface-2);
+}
+/* ㄴ The section the field being edited sits in: its whole block, tinted over what each row is. */
+:is(#ontology-explorer-root, .oe-skeleton-form) .oe-node.is-editing-parent:not([data-path=""]) :is(.oe-node-row, .oe-node-head) {
+  background-image: linear-gradient(var(--oe-accent-soft), var(--oe-accent-soft));
+}
+/* Narrow: the row stacks and the indent eats the input, so the step is the small token. */
+@media (max-width: 700px) {
+  :root { --oe-indent: var(--space-2); }
+}
+/* ㄱ The path bar — the field under the hand as its ancestors' labels; it stays while the form scrolls. */
+#ontology-explorer-root .oe-path-mount { position: sticky; top: 0; z-index: 2; }
+/* ONE line, as ordered: the ancestors shrink to «…» (whole word in `title`), the field itself never. */
+#ontology-explorer-root .oe-path-bar {
+  display: flex; flex-wrap: nowrap; align-items: baseline; gap: var(--space-2); min-width: 0;
+  min-height: var(--control-h); box-sizing: border-box; overflow: hidden;
+  padding: var(--space-2) var(--space-3); background: var(--oe-surface);
+  border: 1px solid var(--oe-line); font-size: var(--fs-label); white-space: nowrap;
+}
+#ontology-explorer-root .oe-path-sep { flex: none; }
+#ontology-explorer-root .oe-path-sep { color: var(--oe-ink-meta); }
+#ontology-explorer-root .oe-path-step {
+  border: 0; background: transparent; padding: 0; font: inherit; font-family: var(--oe-font-mono);
+  color: var(--oe-accent); cursor: pointer;
+  display: block; text-align: start;
+  flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis;
+  /* A word, not a control: the base layer's button height would make the bar two controls tall. */
+  height: auto; min-height: 0; line-height: inherit;
+}
+#ontology-explorer-root .oe-path-step[aria-current="true"] { flex: none; }
+#ontology-explorer-root .oe-path-step:hover { text-decoration: underline; }
+#ontology-explorer-root .oe-path-step[aria-current="true"] { color: var(--oe-text); font-weight: 600; cursor: default; }
 /* Inside a tree row the card is only its body -- the row already said the name. */
 #ontology-explorer-root .oe-field.is-bare {
   border: 0; padding: 0; background: transparent; margin: 0; gap: 3.4px;
