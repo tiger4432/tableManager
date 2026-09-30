@@ -66162,3 +66162,27 @@ README    server/admin/dev_bench.py(두 곳) · python server/scripts/try_core.p
           (다시 뜨는 스크립트 capture_authoring_skeleton.py 가 옆에 있음)
 ```
 다음: eed8b37de ①(가 — 이름 대어 거절)+② 한 커밋 + 가이드 「쌓인 표는 먼저 나눠 읽기」 절 -> d8b1e7cfb 설계 보고 -> ④ dc4ca3e7c.
+
+
+## [구현자 -> 총괄] 착지 499d89de4 — eed8b37de ①(가)+②: HTML 토폴로지 파서 · 한 헤더 경로에 값 칸 하나 · 옆 그룹 헤더 안 섞임
+
+```
+①        extract_semantic_tuples — 같은 헤더 경로에 값 칸이 둘 이상이면 ValueError. 거절문(잘림): 2 value cells share the header path ('L001', 'WAFER') (e.g. row 1 col …
+         경로 · 칸 수 · 좌표 하나 · 겹친 경로 수 · 다음 행동(행을 가르는 칸을 is_header_fn 에서 헤더로)
+②        넓은 헤더는 그 값 칸과 «열이 겹칠 때만» 섹션 헤더 — 같은 줄의 A · B 가 서로의 칸에 안 붙음
+전 → 후   (origin 파서 → 이 커밋, 같은 픽스처)
+         한 경로 표   값 칸 12 → 결과 6 (조용히 잃음) → 거절 · 웨이퍼 열을 헤더로 하면 8 / 8
+         두 그룹      값 칸 6 → 결과 5 → 6
+         소유자 모양   그대로 (A → 집계 · A,A1 → 집계1 · A,A2 → 집계2)
+         쌓인 표      값 칸 8 → 결과 8 (③ 안 지음 — 아래 표 경로에 위 표 머리가 붙는 모양은 남음)
+부르는 곳  추적 코드(시험 밖) 0 · 박스 ingestion_workspace 파이썬 18 개 중 0 (bonding_map_parser 는 HTMLMatrixTableParser — 안 바뀜)
+시험      test_every_value_cell_keeps_its_own_header_path.py 다섯 칸
+변이      거절 끄기 — 빨강 test_two_value_cells_on_one_header_path_are_refused_by_name · 열 겹침 조건 빼기 — 빨강 test_sibling_groups_head_only_their_own_columns · 둘 다에서 test_html_topology.py 는 초록이었음
+전체      6 failed, 7497 passed, 187 skipped, 3 xfailed in 814.65s (0:13:34) · 실패 6 개: test_a_sentence_says_itself_only_for_the_rows_it_names:test_the_sample_is_written_in_the_one_format_both_writers_use · test_config_reload_integrity:test_h3_cross_directory_replace_applies_physical_alter · test_core_alignment_mapper:test_live_mapper_and_tracked_sample_are_byte_identical · test_core_usage_mapper:test_live_mapper_and_tracked_sample_are_byte_identical · test_dt_inventory_metadata_mapper:test_live_mapper_matches_tracked_sample · test_one_place_decides_where_the_server_is:test_the_repo_root_is_one_above_it
+          그중 test_h3_cross_directory_replace_applies_physical_alter 는 알려진 다섯 밖 — 「debounced reload never ran」(대기 시간 초과)
+          그 파일만 다시 돌리면 32 passed in 35.51s · 직전 전체(7aad503cb 착지 때)에서는 통과 · 파서와 닿는 자리 없음
+가이드     §3.1 거절과 다음 행동 · §1-3 열 규칙 · 새 §3.1-bis 「쌓인 표는 먼저 나눠 읽기」(split_blocks) — 예시 코드와 출력 줄은 돌려서 나온 그대로
+          가이드 예시를 돌리는 시험은 없음(잘라 쓰기 금지 — 한 번 돌려 출력만 옮김)
+재기동    없음 — RUN.md 맨 위
+```
+다음: d8b1e7cfb 설계 보고(더할 것 셋 포함) -> ④ dc4ca3e7c.
