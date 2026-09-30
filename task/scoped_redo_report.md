@@ -67309,3 +67309,57 @@ G5 the line leads with the value, not Next           빨강  (1 failed, 82 passe
 전체  5 failed, 7524 passed, 196 skipped, 3 xfailed in 847.70s (0:14:07) — 실패 5 개, 파일::이름으로 알려진 다섯과 같음: True
 PG    7 failed, 150 passed, 7571 deselected, 53 warnings in 297.15s (0:04:57) — 실패 이름이 알려진 일곱과 같음: True
 ```
+
+## [구현자 -> 총괄] d4a949a8c ⑨ 후속 착지 c21edb793 — 설정 파일 읽기 하나 · 못 읽음은 한 낱말 · draft_required 문장 ((나) · (ㄱ))
+
+**네 읽는 자리 — 전후** (같은 상자, 라우트별. 전 = 1997f54b8 사본, 후 = 착지 트리)
+```
+broken json: GET plan                  400 unreadable_config at ledger_config.json -> 400 invalid_json at ledger_config
+broken json: GET view                  400 invalid_json at ledger_config        -> 400 invalid_json at ledger_config
+broken json: GET deletion-preview      400 invalid_json at ledger_config        -> 400 invalid_json at ledger_config
+broken json: GET authoring/schema      200 (200)                                -> 200 (200)
+root is a list: GET plan               400 unreadable_config at ledger_config.json -> 400 invalid_type at ledger_config
+root is a list: GET view               400 invalid_type at bundle               -> 400 invalid_type at ledger_config
+root is a list: GET deletion-preview   400 invalid_type at bundle               -> 400 invalid_type at ledger_config
+root is a list: GET authoring/schema   200 (200)                                -> 200 (200)
+repeated key: GET plan                 200 (200)                                -> 200 (200)
+repeated key: GET view                 200 (200)                                -> 200 (200)
+repeated key: GET deletion-preview     200 (200)                                -> 200 (200)
+repeated key: GET authoring/schema     200 (200)                                -> 200 (200)
+```
+**draft_required 문장 — 전후**
+```
+POST plan, no draft_id                 draft_preview mode requires a draft id
+                                       -> Next: open a draft first - this request needs a draft id
+GET view draft_preview, no draft_id    draft_preview mode requires a draft id
+                                       -> Next: open a draft first - this request needs a draft id
+```
+```
+읽기 하나     config_explorer_service.read_config_document — json.loads(너그러움)로 읽고, 객체가 아니면 로더의 엄격 읽기(_read_json)를 불러
+              그 코드·문장으로 올림. 부르는 자리: 4 — _resolution · deletion_preview · authoring_schema · authoring
+              docstring 한 줄: 탐색기는 로더가 거절하는 반쯤 쓴 파일을 보여 주므로 너그럽고, 원장 적재 로더는 원자를 쓰므로 엄격
+거절 하나     _setup_refusal — active() 와 작성 계획이 부름. unreadable_config 은퇴 — 서버 코드(시험 빼고)에 남은 것: 0
+뿌리가 목록   전엔 부분 로드로 넘어가 invalid_type at bundle, 이제 엄격 읽기의 invalid_type at ledger_config — 계획·view 같음
+deletion_preview 의 [] -> None
+              같은 함수가 읽기 «전»에 active() 를 부름(그 함수 안 순서: active() 다음에 읽기). 뿌리가 목록이면 active() 가 먼저 400 이라 그 읽기에 안 닿음 — 위 표의 deletion-preview 줄이 전후 둘 다 active() 의 거절
+              닿는다면 [] 는 document.values() 에서 AttributeError(500), None 은 빈 unread_after — None 쪽이 이름대로 다룸
+남긴 읽기     seed_root 의 설정 한 자리 — 새 가지가 시작하는 «기본 세상의» 파일이라 운영자가 쓰는 이 파일이 아님
+```
+변이 다섯 — 각각 되돌림
+```
+R1 _resolution reads the file its own way again      빨강  (1 failed, 76 passed)
+R2 the plan reads the file its own way again         빨강  (4 failed, 73 passed)
+R3 the explorer reads strictly                       빨강  (1 failed, 76 passed)
+R4 the plan words its refusal itself                 빨강  (2 failed, 75 passed)
+R5 draft_required says the draft-preview sentence again 빨강  (1 failed, 76 passed)
+```
+**새 함수 · 새 if 중 기존 것과 같은 일** (cdeb5ea10)
+```
+새 함수   read_config_document — 서비스 안 같은 읽기 넷을 접은 자리 · _setup_refusal — active() 안 식을 옮김(active() · 작성 계획이 부름)
+새 if     read_config_document 의 `isinstance(document, Mapping)` — 옛 네 자리가 각자 하던 판정(작성 계획 · authoring_schema)을 한 자리로
+지운 것   작성 계획의 unreadable_config 두 갈래 · 네 자리의 json.loads(read_text) · authoring_schema 의 isinstance 갈래
+```
+**스위트** (C:/wt-impl, 착지 트리)
+```
+전체  5 failed, 7527 passed, 196 skipped, 3 xfailed in 821.59s (0:13:41) — 실패 5 개, 파일::이름으로 알려진 다섯과 같음: True
+```
