@@ -67363,3 +67363,56 @@ R5 draft_required says the draft-preview sentence again 빨강  (1 failed, 76 pa
 ```
 전체  5 failed, 7527 passed, 196 skipped, 3 xfailed in 821.59s (0:13:41) — 실패 5 개, 파일::이름으로 알려진 다섯과 같음: True
 ```
+
+## [구현자 -> 총괄] 5c39aa10c 알림 문턱 — 짓기 전 표 · 까닭 인용 · 여쭐 것
+
+**다섯 자리 · 같은 입력 (before -> total) — 오늘 vs 상수 하나** (각 자리의 오늘 상수·판정 모양을 import 해서 잼. 한 번에 하나씩 세는 자리 — gate._record · crud — 는 total = before + 1 만)
+```
+후보 A   1 과 10^1..10^18 (crud 의 범위)      후보 B   1..10^6 (나머지 셋의 범위)
+seat                   before -> total      today  A      B     
+key_gate               9999999 -> 10000000  -      line   -        <- A
+key_gate               10000000 -> 100000000 -      line   -        <- A
+key_gate               999999999999999999 -> 1000000000000000000 -      line   -        <- A
+void_sat_format        9999999 -> 10000000  -      line   -        <- A
+void_sat_format        10000000 -> 100000000 -      line   -        <- A
+void_sat_format        999999999999999999 -> 1000000000000000000 -      line   -        <- A
+gate.record_unsaid     9999999 -> 10000000  -      line   -        <- A
+gate.record_unsaid     10000000 -> 100000000 -      line   -        <- A
+gate.record_unsaid     999999999999999999 -> 1000000000000000000 -      line   -        <- A
+gate._record           9999999 -> 10000000  -      line   -        <- A
+gate._record           999999999999999999 -> 1000000000000000000 -      line   -        <- A
+crud drop              9999999 -> 10000000  line   line   -        <- B
+crud drop              999999999999999999 -> 1000000000000000000 line   line   -        <- B
+changed under A: 11 ['gate._record', 'gate.record_unsaid', 'key_gate', 'void_sat_format']
+changed under B: 2 ['crud drop']
+```
+전체 표(자리마다 key_gate 13 · void_sat_format 13 · gate.record_unsaid 13 · gate._record 9 · crud 9 입력)는 스크래치 `announce_table.txt` — 바뀌는 칸만 위에 적었습니다.
+
+**다르게 둔 까닭 — 주석·기록에 있는 것 (인용)**
+```
+① 범위   crud 경고 문장 「this warning repeats at each power of ten, so silence after this line means the drops STOPPED」
+          -> B 로 접으면 10^6 뒤 침묵이 「멈췄다」가 아니게 됨. A 는 이 약속을 지킴
+② 모양   crud 주석 「A frozenset of ints so the check on the drop path is an O(1) hash lookup that allocates nothing」
+          PRIMITIVES.md 한 줄 「드롭 경로의 멤버십 검사가 할당 없는 O(1)이어야 한다」
+          -> 다른 셋의 넘김 판정 any(before < t <= total …) 은 할당(제너레이터)이 있음
+```
+**잰 것 — 한 번 판정의 값** (이 박스, timeit 최솟값, µs/호출)
+```
+crud today (count != 1 and count not in D)           0.074
+any() crossing, as key_gate/void_sat/record_unsaid   2.552
+early-exit loop, step 1                              0.326
+early-exit loop, batch                               0.324
+```
+```
+제안   상수 하나 = A(1 · 10^1 · … · 10^18, 정렬된 튜플) + 함수 하나 announce_crossed(before, total) — 작은 것부터 보다가 total 을 넘으면 멈추는 고리
+       할당 없음 · 갈래 하나(한 걸음·배치 가르지 않음) · 넘김 판정과 답이 같음(위 66 쌍) · 드롭 경로 값은 오늘의 약 4 배
+       자리: utils/logger.py (로그 줄을 «언제» 찍나는 로깅의 일, 네 모듈이 순환 없이 import 가능한 기존 모듈)
+       다섯 자리가 부름 — crud 의 `count != 1 and count not in` 모양과 gate._record 의 `total in` 도 이 함수로
+바뀌는 답  A 면 crud 0 칸, 나머지 넷은 10^6 을 넘는 수에서 줄이 더 나옴(위 표) · B 면 crud 가 10^6 뒤 침묵
+```
+**여쭐 것**
+```
+1  범위 A 로 가도 되나 (넷이 10^7 이상에서도 줄을 냄)
+2  드롭 경로의 「O(1) 해시·할당 없음」 — 고리(할당 없음 · 최대 19 비교 · 잰 값 위) 로 바꿔도 되나, 아니면 그 한 자리는 해시 조회로 남기고
+   상수만 같은 것을 쓰나 (그러면 판정 자리가 둘 — 문)
+```
