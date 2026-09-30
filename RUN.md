@@ -1,5 +1,45 @@
 # 지금 돌리면 되는 것
 
+> ## 🔴 [09-30 오후] **원장 선언 계획에 «물려받은 속성» 행 — 마이그레이션 «없음» · 재기동 서버 (run_app.bat 로 전체)**
+>
+> ```
+> 무엇이 바뀌나  역할이 entity 이고 자기 attributes 를 안 적었으면, 계획(GET/POST /admin/ontology-explorer/authoring/plan)에
+>              그 역할의 attributes 자리에 읽기 전용 행 하나 — 값 = 번역이 묶는 속성 · ground.rule "inherited_from_source" ·
+>              근거 = 그 소스의 bind.entities.<타입>.attributes
+>              저장은 그 행을 역할에 «안 씀»(쓰면 역할이 덮어써서 소스 쪽 고침이 안 따라감)
+> 확인          속성을 소스에 적은 소스의 계획에서 그 타입을 쓰는 역할마다 그 행
+> 뜻           역할이 자기 attributes 를 적었으면 그 행이 없음 — 그 역할은 소스 것을 안 씀
+> 급할 때       끄는 스위치 없음 — 커밋 되돌리기
+> ```
+
+---
+
+> ## 🔴 [09-30 오후] **표 스키마 응답에 smart_paste — 마이그레이션 «없음» · 재기동 서버 (run_app.bat 로 전체)**
+>
+> ```
+> 무엇이 바뀌나  GET /tables/<표>/schema 에 "smart_paste" — 표 선언(table_config.<표>.smart_paste)을 그대로. 안 적은 표는 null
+> 확인          선언한 표의 스키마 응답에 그 목록 · 안 적은 표는 null
+> 뜻           null = 순서를 안 적음(클라가 묻는 쪽) · [] 는 오지 않음
+> 급할 때       끄는 스위치 없음 — 커밋 되돌리기
+> ```
+
+---
+
+> ## 🔴 [09-30 오후] **원장 선언 저장이 꺼진 갈래의 칸을 걷음 — 마이그레이션 «없음» · 재기동 서버 (run_app.bat 로 전체)**
+>
+> ```
+> 무엇이 바뀌나  바인딩을 column -> constant 로 바꾸면 남던 "column": "" 같은 칸을 저장이 걷음(스켈레톤의 when)
+>              저장(PUT drafts/<id>)과 저장 없는 계획(POST authoring/plan)이 같은 자리를 지남
+>              응답에 dropped_fields: [{path, value}] — 걷은 칸과 그 값
+>              kind 를 아직 안 고른 바인딩은 아무것도 안 걷음(저장이 이름 대어 거절)
+> 확인          원장 선언 창에서 역할 하나를 column -> constant 로 바꿔 저장 -> 저장됨 · dropped_fields 에 그 column
+> 뜻           dropped_fields 가 비었는데 unknown_field 로 거절되면 when 이 없는 칸이 남은 것 — 그 경로를 적어 올릴 것
+>             엔티티 · 키 · 속성 · 술어 · 한정어 · 컬럼 이름을 바꾸거나 지운 흔적은 이 변경이 안 걷음 — 저장이 이름 대어 거절(보고의 표)
+> 급할 때       끄는 스위치 없음 — 커밋 되돌리기
+> ```
+
+---
+
 > ## 🔴 [09-30 오후] **시각 칸은 같은 순간이면 같은 값 · 빈 글은 None — 마이그레이션 «없음» · 재기동 서버 · 워처 · 체인 워커 (run_app.bat 로 전체)**
 >
 > ```

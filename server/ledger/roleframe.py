@@ -1167,7 +1167,7 @@ def _with_attribute_values(
 
     Which qualifiers are attributes is read from the SUBJECT's binding rather than from a
     list of names: `setup_bundle.predicate_claim` opens one optional qualifier per attribute
-    the subject types declare, and `setup_registry._with_source_attributes` has already
+    the subject types declare, and `setup_registry.with_source_attributes` has already
     folded `bind.entities.<type>.attributes` onto that role. So the two sides meet on the
     entity, and no third spelling of the name exists.
     """

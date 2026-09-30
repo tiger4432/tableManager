@@ -71,7 +71,7 @@ from .implementations import (
     preparer_output_columns,
     source_preparer_declarations,
 )
-from .setup_registry import OCCURRED_AT_BASIS_COLUMNS
+from .setup_registry import OCCURRED_AT_BASIS_COLUMNS, with_source_attributes
 from .source_preparation import locked_select_columns
 from .setup_bundle import (
     _profile_binding_columns as _setup_bundle_profile_binding_columns,
@@ -498,8 +498,8 @@ def empty_value(node: Any, defs: Mapping[str, Any],
     REQUIRED field back out; building a source through the form ended at two
     `unknown_field` refusals nobody could clear.
 
-    So the gate is ASKED, never listed.  `when` appears at eight sites in the skeleton and
-    names four different kinds; a set of kinds written here would be a second author for
+    So the gate is ASKED (`_gate`), never listed.  `when` appears across the skeleton and
+    names several kinds; a set of kinds written here would be a second author for
     the grammar and would go stale the first time the skeleton changes its mind -- silently,
     which is the failure this module keeps removing.  The gate is read against the record as
     it is being seeded, so an ungated required container (`qualifiers`, the complaint this
@@ -533,8 +533,7 @@ def empty_value(node: Any, defs: Mapping[str, Any],
         for field in shape.get("fields") or []:
             if field.get("required") is not True:
                 continue
-            gate = field.get("when")
-            if isinstance(gate, Mapping) and seeded.get(gate.get("field")) != gate.get("is"):
+            if _gate(field, seeded) is not True:
                 continue
             child = _deref(field.get("node"), defs, seen)
             if not isinstance(child, Mapping):
@@ -546,14 +545,25 @@ def empty_value(node: Any, defs: Mapping[str, Any],
     return False if shape.get("hint") == "flag" else ""
 
 
-def empty_declaration(section: str) -> dict[str, Any]:
-    """What a brand-new declaration of `section` starts as, per the skeleton."""
-    doc = skeleton()
+def _gate(field: Mapping[str, Any], record: Mapping[str, Any]) -> bool | None:
+    """What a field's `when` says of `record`: True - it applies, False - the record chose
+    otherwise, None - the record has not chosen yet. A field with no `when` applies."""
+    gate = field.get("when")
+    if not isinstance(gate, Mapping):
+        return True
+    chosen = record.get(gate.get("field")) if isinstance(record, Mapping) else None
+    if _says_nothing(chosen):
+        return None
+    return chosen == gate.get("is")
+
+
+def _skeleton_node(doc: Mapping[str, Any], steps: Sequence[Any]) -> Any:
+    """The skeleton node for the document path `steps` (a map member is any name)."""
     node = doc.get("root", {})
-    for step in (section, "*"):
+    for step in steps:
         node = _deref(node, doc.get("defs", {}), frozenset())
         if not isinstance(node, Mapping):
-            return {}
+            return None
         if node.get("kind") == "record":
             field = next((item for item in node.get("fields") or []
                           if item.get("key") == step), None)
@@ -561,9 +571,44 @@ def empty_declaration(section: str) -> dict[str, Any]:
         elif node.get("kind") == "map":
             node = node.get("of")
         else:
-            return {}
+            return None
+    return node
+
+
+def empty_declaration(section: str) -> dict[str, Any]:
+    """What a brand-new declaration of `section` starts as, per the skeleton."""
+    doc = skeleton()
+    node = _skeleton_node(doc, (section, "*"))
+    if not isinstance(_deref(node, doc.get("defs", {}), frozenset()), Mapping):
+        return {}
     value = empty_value(node, doc.get("defs", {}))
     return value if isinstance(value, dict) else {}
+
+
+def _drop_switched_off(value: Any, node: Any, defs: Mapping[str, Any], path: str,
+                       dropped: list) -> None:
+    """Remove, in place, every field of `value` whose `when` the record chose otherwise
+    (총괄 b30fbd38c ㄱ) - `{kind: constant, column: ""}` left by a switch from column. Each
+    goes into `dropped` as `{path, value}`. A field with no `when`, or whose record has not
+    chosen yet, is not touched."""
+    shape = _deref(node, defs, frozenset())
+    if not isinstance(shape, Mapping):
+        return
+    if shape.get("kind") == "record" and isinstance(value, dict):
+        for field in shape.get("fields") or []:
+            key = field.get("key")
+            if key not in value:
+                continue
+            if _gate(field, value) is False:
+                dropped.append({"path": "%s.%s" % (path, key), "value": value.pop(key)})
+            else:
+                _drop_switched_off(value[key], field.get("node"), defs,
+                                   "%s.%s" % (path, key), dropped)
+    elif shape.get("kind") == "map":
+        members = (value.items() if isinstance(value, dict)
+                   else enumerate(value) if isinstance(value, list) else ())
+        for name, member in members:
+            _drop_switched_off(member, shape.get("of"), defs, "%s.%s" % (path, name), dropped)
 
 
 @lru_cache(maxsize=1)
@@ -1340,6 +1385,7 @@ def _profile_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
             yield from _mapping_fields(
                 base, sentence, mapping, vocabulary, entities, available,
                 time_basis=time_basis, source_id=source_id)
+            yield from _inherited_attribute_fields(base, sentence, mapping, bound_entities)
 
 
 def _mapping_fields(base: str, sentence: str, mapping: Mapping[str, Any],
@@ -1500,6 +1546,35 @@ def _mapping_fields(base: str, sentence: str, mapping: Mapping[str, Any],
                     "message": f"role {role_id!r} is not declared by Claim"},),
                 note="A role Claim does not declare.",
             )
+
+
+def _inherited_attribute_fields(base: str, sentence: str, mapping: Any,
+                                by_type: Any) -> Iterable[Field]:
+    """One read-only row per role that inherits the source's attributes (총괄 12cc7dd1f ①).
+
+    🔴 THE RULE IS THE COMPILER'S, CALLED - NOT RESTATED. `with_source_attributes` is what
+    translation binds; a role it changed inherits, and its value is what translation uses.
+    `shape`, so the fill never writes it into the role - a role that carries attributes
+    OVERRIDES the source's, and a copy there would stop following the source."""
+    bind = mapping.get("bind") if isinstance(mapping, Mapping) else None
+    if not isinstance(bind, Mapping) or not isinstance(by_type, Mapping):
+        return
+    compiled = with_source_attributes(bind, by_type)
+    for role_id in sorted(bind, key=str):
+        if compiled.get(role_id) == bind.get(role_id):
+            continue
+        entity_type = bind[role_id].get("entity_type")
+        inherited = compiled[role_id].get("attributes")
+        yield Field(
+            path=f"{base}.mappings.{sentence}.bind.{role_id}.attributes", step="sources",
+            label="Attributes (inherited)", state="derived", tier=TIER_STRUCTURAL,
+            value=inherited,
+            ground=Ground(
+                "inherited_from_source",
+                f"Inherited: this source's attributes of {entity_type}",
+                (f"{base}.entities.{entity_type}.attributes",), inherited),
+            disposition="shape",
+        )
 
 
 def _entity_binding_fields(path: str, binding: Mapping[str, Any],
@@ -2193,8 +2268,10 @@ def _fill_leaf(document: Any, steps: Sequence[Any], value: Any) -> None:
 
 def filled_declaration(bundle: Mapping[str, Any], catalog: Mapping[str, Any],
                        bundle_path: Sequence[Any], raw: Mapping[str, Any]
-                       ) -> dict[str, Any]:
-    """`raw`, with the plan's derived values written into the gaps it leaves.
+                       ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    """`(raw, dropped)` - `raw` without the fields its own choices switched off, with the
+    plan's derived values written into the gaps it leaves. `dropped` is what went, as
+    `{path, value}` (총괄 b30fbd38c ㄱ - the save and the unsaved plan both pass here).
 
     🔴 THE SCREEN SAYS 「채움」 AND THE FILE HAS TO AGREE.  A `derived` row renders its value
     and its ground, so the operator reads "this is filled in" -- and then the declaration is
@@ -2228,15 +2305,18 @@ def filled_declaration(bundle: Mapping[str, Any], catalog: Mapping[str, Any],
     steps = [str(step) for step in bundle_path]
     out = copy.deepcopy(dict(raw))
     if not steps:
-        return out
+        return out, []
+    doc, dropped = skeleton(), []
+    _drop_switched_off(out, _skeleton_node(doc, steps), doc.get("defs", {}),
+                       "bundle." + ".".join(steps), dropped)
     document = copy.deepcopy(dict(bundle))
     cursor: Any = document
     for step in steps[:-1]:
         if not isinstance(cursor, dict) or not isinstance(cursor.get(step), dict):
-            return out
+            return out, dropped
         cursor = cursor[step]
     if not isinstance(cursor, dict):
-        return out
+        return out, dropped
     cursor[steps[-1]] = out
     # Not `selection_prefix`: that is a `startswith` over a dotted path, so saving
     # `user_test` would also match `user_test_2`'s rows and fill THEM into this body at the
@@ -2255,4 +2335,4 @@ def filled_declaration(bundle: Mapping[str, Any], catalog: Mapping[str, Any],
         if row["value"] is None:
             continue
         _fill_leaf(out, _split_path(row["path"])[len(steps):], row["value"])
-    return out
+    return out, dropped

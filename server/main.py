@@ -3165,6 +3165,9 @@ def get_table_schema(table_name: str, db: Session = Depends(get_db)):
         # Strict `is True`: a config typo ("true"/"false" strings, 1) must not unlock
         # destruction - only the JSON boolean true counts, same as the client's `=== true`.
         "map_push_ok": _map_push_ok(table_name, config),
+        # The table's smart-paste format order as declared (총괄 12cc7dd1f ⓪), or `None` when
+        # it declares none - which is a different fact from an empty order.
+        "smart_paste": config.get("smart_paste"),
         # Always present, `[]` when no verified join touches this table: a stable shape
         # is what lets a client read it without asking whether the key exists.
         "virtual_columns": virtual_columns,

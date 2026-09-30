@@ -65860,3 +65860,173 @@ task/evidence/void_ingestion_table_config.json | tables 2 | with a datetime colu
 **알림 (안 고침)** 버전 게이트 parse_version_key 는 꼬리 없는 시각을 UTC 로 읽음(_naive_utc). PG 는 세션 시간대로 읽으니 이 박스(Asia/Seoul)에서는 9 시간 어긋나게 견줌.
 
 다음: b30fbd38c(꺼진 갈래의 칸 걷기) -> 2dd93d4a9 항목 3 -> dc4ca3e7c.
+
+## [구현자 -> 총괄] 착지 ee918c6b3 — b30fbd38c: 원장 선언 저장이 꺼진 갈래의 칸을 걷음
+
+```
+자리 하나  config_authoring.filled_declaration — 저장(DraftStore.save)과 POST /authoring/plan(with_unsaved_body)이 이미 지나던 채움
+          채우기 «전»에 스켈레톤의 when 을 레코드에 물어, 레코드가 «다르게 고른» 칸을 걷음
+when 읽기  _gate 하나 — 해당 · 다르게 고름 · 아직 안 고름. 빈 값 씨앗(empty_value)도 이것을 물음(답은 전과 같음)
+안 고름    kind 가 없는(빈) 바인딩은 아무것도 안 걷음 — 저장이 이름 대어 거절. 지시에 없던 갈래라 이렇게 정했습니다
+응답 이름  dropped_fields: [{path, value}] — path 는 계획 행과 같은 말(bundle.sources.<소스>. …). 저장 응답과 계획 응답 둘 다
+          저장된 초안에는 걷은 뒤의 몸만 남음(적용하면 그것이 파일로)
+고치기 전  column -> constant 저장이 invalid · unknown_field (남은 column 경로) — 소유자 증상 그대로
+```
+
+| 칸 | 보낸 바인딩(step 역할) | 답 |
+|---|---|---|
+| column -> constant | kind constant · value · column "" | saved · 걷음 [column ""] · 계획도 같은 목록 · 몸은 보낸 것에서 그 칸만 빠짐 |
+| constant -> column | kind column · column · value | saved · 걷음 [value] |
+| entity -> column | kind column · column · attributes · entity_type · keys | saved · 걷음 [attributes, entity_type, keys] |
+| 안 고름 | column · value, kind 없음 | 걷음 [] · 몸 그대로 · invalid(이름 대어 거절) |
+
+```
+게이트   4 passed in 2.39s
+변이 B1 채움이 아무것도 안 걷음       3 failed, 1 passed in 1.36s — test_a_switch_saves_with_the_switched_off_fields_dropped_and_named[column_to_constant] · test_a_switch_saves_with_the_switched_off_fields_dropped_and_named[constant_to_column] · test_a_switch_saves_with_the_switched_off_fields_dropped_and_named[entity_to_column]
+     B2 안 고른 바인딩도 걷음         1 failed, 3 passed in 2.23s — test_a_binding_that_has_not_chosen_keeps_what_it_holds
+전체     5 failed, 7484 passed, 181 skipped, 3 xfailed in 805.46s (0:13:25) — 실패는 알려진 다섯과 이름이 같음
+PG       10 failed, 132 passed, 7531 deselected in 233.31s (0:03:53) — 알려진 일곱 + trace 셋(29b14dc21 보고의 모조 ledger_events, main 에서도 같음)
+재기동   서버. 마이그레이션 없음 — RUN.md 새 절
+```
+
+**전수 — 「바꾸고 나면 흔적이 남아 오류가 나는」 자리 (표본 선언에서 하나씩 바꾸고, 가리키는 곳은 그대로 두고 검증기에 물음)**
+```
+명령   python scratchpad/census_b30f_leftovers.py   (저장소 scratchpad/, 추적 밖 · 표본 ledger_config · table_config)
+       검증 = setup_bundle.validate_bundle_errors(초안 미리보기가 묻는 그것) · 걷은 뒤 = 그 소스를 filled_declaration 에 한 번 통과
+열: 바꾼 것 | 오류 수 | 오류 코드 | 앞 두 경로 | 걷은 칸 수 -> 걷은 뒤 오류 수
+CANARY base errors: 0 | sources 6 | entities 9 | vocabulary 16
+| binding kind switched column -> constant, column left | 1 | unknown_field | bundle.sources.wafer_process_recipe.bind.mappings.wafer-processed-with-recipe.bind.step.column | dropped 1 -> errors 0 |
+| entity renamed recipe@1 -> recipe2@1 | 2 | unknown_entity_type | bundle.sources.wafer_process_recipe.bind.mappings.wafer-processed-with-recipe.bind.target.entity_type; bundle.vocabulary.processed_with@1.object.types[0] | dropped 0 -> errors 2 |
+| entity removed recipe@1 | 2 | unknown_entity_type | bundle.sources.wafer_process_recipe.bind.mappings.wafer-processed-with-recipe.bind.target.entity_type; bundle.vocabulary.processed_with@1.object.types[0] | dropped 0 -> errors 2 |
+| entity key renamed recipe -> recipe_code | 1 | invalid_entity_ref | bundle.sources.wafer_process_recipe.bind.mappings.wafer-processed-with-recipe.bind.target.keys | dropped 0 -> errors 1 |
+| entity attribute removed dtjob@1.dt_eqp | 1 | unknown_entity_attribute | bundle.sources.dt_job.bind.entities.dtjob@1.attributes.dt_eqp | dropped 0 -> errors 1 |
+| entity attribute renamed dt_eqp -> dt_tool | 1 | unknown_entity_attribute | bundle.sources.dt_job.bind.entities.dtjob@1.attributes.dt_eqp | dropped 0 -> errors 1 |
+| predicate renamed processed_with@1 -> processed_with2@1 | 1 | unknown_predicate | bundle.sources.wafer_process_recipe.bind.mappings.wafer-processed-with-recipe.predicate | dropped 0 -> errors 1 |
+| predicate removed processed_with@1 | 1 | unknown_predicate | bundle.sources.wafer_process_recipe.bind.mappings.wafer-processed-with-recipe.predicate | dropped 0 -> errors 1 |
+| qualifier removed step | 1 | unknown_role | bundle.sources.wafer_process_recipe.bind.mappings.wafer-processed-with-recipe.bind.step | dropped 0 -> errors 1 |
+| qualifier renamed step -> stage | 1 | unknown_role | bundle.sources.wafer_process_recipe.bind.mappings.wafer-processed-with-recipe.bind.step | dropped 0 -> errors 1 |
+| sentence renamed | 0 |  |  | dropped 0 -> errors 0 |
+| source renamed | 0 |  |  | dropped 0 -> errors 0 |
+| relation column removed step | 3 | unknown_column | bundle.sources.wafer_process_recipe.bind.mappings.wafer-processed-with-recipe.bind.step.column; bundle.sources.wafer_process_recipe.map.input_columns | dropped 0 -> errors 3 |
+```
+```
+ㄱ 로 닫힘     kind 를 바꾼 뒤 남은 칸 — 걷은 뒤 오류 0
+안 닫힘(안 지음) 엔티티 이름 바꿈·지움 · 키 이름 · 속성 지움·이름 · 술어 이름·지움 · 한정어 지움·이름 · 컬럼 지움 —
+              전부 «이름 대어» 거절(unknown_* · invalid_entity_ref). 조용한 것은 없었음. 걷으면 사용자의 값을 지우는 것이라 ㄱ 과 성질이 다름
+              (고칠 모양 후보: 이름 바꾸기를 «가리키는 곳까지» 한 번에 바꾸는 편집 — 안 지음)
+오류 0         문장 이름 · 소스 이름 바꿈 — 선언 안에 가리키는 곳이 없음
+안 잰 것       소스 · 문장 이름을 바꾸면 선언 «밖»에 옛 이름으로 남는 상태(번역 커서 · 원자의 source_who 등)가 다시 번역되는지
+```
+화면: dropped_fields 를 보여 주는 것과, 저장 뒤 받은 raw 로 폼을 다시 그리는 것은 클라 몫(서버는 걷은 몸을 돌려줌).
+
+다음: 2dd93d4a9 항목 3(원장 세상 설계 보고) -> dc4ca3e7c.
+
+## [구현자 -> 총괄] 2dd93d4a9 항목 3 — 원장 세상 여럿: 설계 보고 (안 지음)
+
+**세상은 어느 칸인가 — 한 줄**
+```
+세상 = 「어느 원장을 읽고 쓰나」 = 이미 있는 두 칸을 «한 이름»으로 묶은 것
+   원장 관계 이름   걷기가 이미 인자로 받음 — ledger_subgraph.SqlEvidenceLookup(relation="ledger_events")
+   선언 뿌리       선언 적재가 이미 인자로 받음 — ledger.setup.load_setup(root) · 탐색기 OntologyExplorerService(config_root, draft_root)
+새 기제가 아니라, 지금 «상수»로 박힌 자리(schema.LEDGER_TABLE · CURSOR_TABLE · ROW_REF_TABLE · trace_router.LEDGER_RELATION · 선언 경로)를 그 이름이 고르게 넓히는 것
+```
+
+**전수 — 원장을 읽고 쓰는 자리 (AST, 함수 단위)**
+```
+명령   python scratchpad/census_ledger_seats.py <작업 트리>   (저장소 scratchpad/, 추적 밖)
+       REL = 원장 관계를 이름으로 듦 · CUR = 번역 커서 · row_ref 표 · DECL = 선언 파일 · 적재를 부름
+CANARY files 285 | ensure_schema kinds ('CUR', 'REL')
+TOTAL functions 159 | by kind {'CUR': 36, 'DECL': 57, 'REL': 83}
+운영 경로만(scripts · migrations 뺌)  함수 96 · 파일 27 · CUR 21 · DECL 45 · REL 34
+⚠️ 이름을 «안 드는» 자리는 안 셈 — 위 자리를 부르는 쪽(예: 대조 맵퍼는 trace_router.evidence_subgraph 를 부름)
+```
+| 영역 | 자리 | 세상이 들어가는 길 |
+|---|---|---|
+| 원장 쓰기 · 커서 · row_ref | ledger/store.py LedgerStore (REL · CUR) · schema.ensure_schema | 상수 -> LedgerStore 생성자 인자 하나 |
+| 선언 적재 | ledger/config.py · setup.load_setup · setup_registry (DECL) | 뿌리 인자 — 이미 있음 |
+| 번역 · 뒤채움 | ledger/backfill.py run · main (setup + store 를 받음) | 위 둘에서 따라옴 |
+| followup | chain/ingestion_worker `_drain_ledger_followup_sync` · ledger/followup.py | 원천 행 하나 -> 세상 «수만큼» 번역. 세상 목록을 도는 자리가 새로 생김 |
+| 걷기 | ledger_api/ledger_subgraph · ledger/trace | relation 인자 — 이미 있음 |
+| 보드 라우트 · gaps · 관측 | ledger/trace_router (LEDGER_RELATION 상수) · gaps.measure · observability | 요청 인자 world -> relation |
+| 탐색기 · 저장 관문 · 초안 | ledger/config_explorer_service · config_drafts | 세상마다 config_root · draft_root |
+| 대조 맵퍼 | mappers/contrast_walk -> trace_router.evidence_subgraph | run 행이 어느 세상을 걸었나 — run 칸 하나 |
+
+**저장 — 안 셋**
+| 안 | 무엇 | 좋은 점 | 위험 | 크기 |
+|---|---|---|---|---|
+| ㄱ world 칸 | ledger_events · 커서 · row_ref 에 world 칸, 모든 질의에 world 조건 | 표 하나 · 세상끼리 견주는 질의가 쉬움 | 조건 하나 빠지면 세상이 «조용히» 섞임 · 원자 중복 색인 uq_ledger_atom(284.6 B/원자, 가장 큰 색인)과 row_ref 키 · 커서 키(source)에 world 를 넣어 다시 지음 | REL·CUR 운영 자리 전부 + 색인 다시 짓기 — 시간 안 쟀다 |
+| ㄴ 세상마다 파티션 | LIST(world) 아래 지금의 월 RANGE | 세상 지우기 = 파티션 떼기 | 파티션 키를 바꾸는 ALTER 가 없어 «새 표로 전체 복사» · 질의 조건 · 키는 ㄱ 과 같음 | ㄱ + 전체 복사 — 안 쟀다 |
+| ㄷ 세상마다 PG 스키마 | 같은 이름의 표 셋을 스키마 w_<세상> 에. 원장 DDL 은 이미 한 함수(ensure_schema) | 기본 세상 = 지금 public 그대로 · 키 · 색인 무변 · 세상 지우기 = DROP SCHEMA | 이름을 search_path 로 풀면 «없는 표가 public 으로 떨어짐» — 오늘 잰 증거: 시험 DB 의 public 모조 ledger_events 가 ensure_schema 의 존재 판정(to_regclass)을 속여 색인 둘을 건너뛰고 걷기 라우트 503 (29b14dc21 보고) | 이름을 «스키마로 한정»하는 함수 하나를 상수 자리가 부름 — 자리 수는 위 전수 |
+
+**선언 — 세상마다 파일 하나**
+```
+config/ontology/ledger_config.json            기본 세상 — 지금 그대로
+config/ontology/worlds/<세상>/ledger_config.json   그 밖의 세상
+탐색기 · 저장 관문 · 초안   서비스가 이미 config_root · draft_root 를 받음 -> 세상을 고르면 그 뿌리의 서비스
+                         요청에 world 한 칸(없으면 기본) · 초안 저장소도 세상마다 · 활성화 관문(S-244 판정자)은 세상 안에서
+```
+
+**비용 — «세상 하나를 처음부터 번역» (이 박스 수 · 운영 주장 아님)**
+```
+번역하는 소스 6 — die_inspection · dt_job · lot_event · lot_slot_wafer · transfer_event · wafer_process_recipe (보기 · 거절된 소스 9 빼고 — 이 박스 선언 상태)
+원천 행      die_inspection 117,742 · dt_job 535,559 · lot_event 3,633 · lot_slot_wafer 37,325 · transfer_event 1,405 · wafer_process_recipe 478,718
+합          1,174,382 행 · 지금 원장 원자 2,261,723 · row_ref 1,218,992
+속도        7.2 ms/분자 — 이 박스 09-08 잰 것(b98dbaf8a: 33,917 분자 274.3 s, 배치의 97 % 가 번역 · 쓰기 3.2 %)
+세상 하나    1,174,382 x 7.2 ms ≈ 140.9 분 — 행 = 분자로 본 «위쪽» 추정(group_by 소스는 분자가 적음. 분자 수는 안 셈)
+규격 대조    쓰기(원자 0.15 ms · 색인 0.07 ms)는 IO ≤ 1.3 s/1k 안. 7.2 s/1k 는 번역(매퍼 고유 로직 — 규격 밖)
+저장        ㄷ 은 세상마다 원자 · row_ref 가 한 벌씩 더 — 위 원자 · row_ref 수가 세상 하나의 몫
+```
+
+**기본 세상 — 「세상을 안 적은 설치는 한 글자도 안 바뀜」을 지키는 칸**
+```
+세상 목록이 «없으면» 이름은 하나(기본) -> 관계 ledger_events · 커서 · row_ref 표 이름 · 선언 경로가 오늘 상수 그대로
+한 함수가 「세상 -> 이름들」을 답하고, 상수 자리는 전부 그 함수를 부름. 기본의 답 = 오늘의 상수 (byte 같음)
+지을 때 게이트  세상 목록 없는 설치에서 모든 REL · CUR · DECL 자리가 내는 이름이 오늘과 같음 · 원장 · 커서 행 한 글자 무변
+```
+
+**추천 — ㄷ(세상마다 스키마) + 이름은 search_path 가 아니라 «스키마로 한정»**
+```
+까닭  키 · 색인 · 기본 세상이 안 움직임 · 원장 DDL 이 이미 한 함수 · 세상이 섞일 길이 없음(없는 세상은 «오류», 조용한 폴백 아님)
+빚    followup 이 세상마다 번역 — 원천 쓰기 하나가 세상 수만큼 번역을 낳음(소급 비용이 세상 수에 비례)
+```
+**여쭐 것**
+```
+1 followup: 모든 세상을 따라가나, 기본 세상만 따라가고 나머지는 사람이 돌리나(세상이 «시험장»이면 뒤쪽)
+2 걷기 · 보드: 요청에 world 한 칸 — 기본을 안 적으면 기본. 한 화면에 두 세상을 나란히 보는 것이 필요한가(그러면 마킹이 세상을 들고 다님)
+3 세상 지우기 · 이름 바꾸기가 운영에서 필요한가 — ㄷ 은 DROP SCHEMA 한 줄
+```
+
+다음: dc4ca3e7c(엔티티 속성 — 객체 표) 설계 보고.
+
+## [구현자 -> 총괄] 착지 5c67b2473 — 12cc7dd1f ⓪: 표 스키마 응답에 smart_paste
+
+```
+자리     GET /tables/{t}/schema 에 "smart_paste": config.get("smart_paste") — 선언 그대로 · 안 적었으면 null(빈 목록과 다른 사실)
+         그 응답의 키 집합을 박아 둔 시험(test_the_catalogue_kind_reaches_the_wire)에 새 키를 적음
+게이트   5 passed in 1.24s — 안 적음 -> null · 적음 -> 목록 그대로
+변이 S1 키 뺌              2 failed in 1.09s — test_an_undeclared_order_is_null · test_a_declared_order_passes_through_as_written
+     S2 안 적음을 [] 로     1 failed, 1 passed in 1.07s — test_an_undeclared_order_is_null
+스키마 경로를 부르는 시험 파일 전부(10)  1 failed, 217 passed in 43.25s — 빨강 test_h3_cross_directory_replace_applies_physical_alter
+         그 하나는 워처 타이밍 시험, 따로 세 번: 1 passed, 31 deselected in 2.66s / 1 passed, 31 deselected in 2.64s / 1 passed, 31 deselected in 2.55s
+전체 · PG 안 돌림 — 고친 것은 응답 키 하나, 그 경로를 부르는 파일을 다 돌림
+재기동   서버 — RUN.md 새 절
+```
+다음: ① 역할 칸 «물려받음» 계획 행 — 행 모양은 착지 전에 채널로.
+
+## [구현자 -> 총괄] 착지 37c714205 — 12cc7dd1f ①: 역할 칸에 «물려받은 속성» 계획 행
+
+```
+행        역할마다 하나 — path …bind.mappings.<문장>.bind.<역할>.attributes · state derived · disposition shape ·
+          value = 번역이 묶는 속성 dict · ground.rule "inherited_from_source" · from_paths [<소스>.bind.entities.<타입>.attributes]
+          (채널에 올린 모양 그대로 — disposition 은 새 값 없이 shape, 클라가 가르는 칸은 ground.rule)
+저자      setup_registry.with_source_attributes — 컴파일이 속성을 접는 그 함수를 계획이 부름. 그 함수가 바꾼 역할만 행
+          모듈 밖에서 부르니 _with_source_attributes 에서 _ 를 뗌(부르는 곳 컴파일 하나 · roleframe 주석 하나)
+저장      shape 라 채움이 역할에 안 씀 — 쓰면 역할이 덮어써서 소스 쪽 고침이 안 따라감
+게이트    3 passed in 0.95s — 표본 dt_job(dtjob@1.dt_eqp): 두 문장 subject 에 번역 값과 같은 행 · 역할이 자기 attributes 를 적으면 행 없음 · 저장 채움이 역할에 안 씀
+변이 N1 행 안 냄                    2 failed, 1 passed in 1.39s — test_an_entity_role_without_its_own_attributes_shows_what_translation_binds · test_a_role_that_says_its_own_attributes_has_no_inherited_row
+     N2 규칙을 다시 적음(모든 entity 역할)  1 failed, 2 passed in 1.28s — test_a_role_that_says_its_own_attributes_has_no_inherited_row
+     N3 채움이 그 행을 역할에 씀         2 failed, 1 passed in 1.34s — test_an_entity_role_without_its_own_attributes_shows_what_translation_binds · test_the_save_does_not_copy_an_inherited_row_into_the_role
+관련 시험 파일(계획 · 등록부 · 탐색기 · load_setup 을 부르는 것 전부)  1 failed, 949 passed, 24 skipped in 50.16s — 빨강 test_the_sample_is_written_in_the_one_format_both_writers_use (전체 스위트의 알려진 다섯 중 하나)
+재기동    서버 — RUN.md 새 절
+```
+다음: ② nokey (null_policy 를 넓힘).
