@@ -163,6 +163,8 @@ async function suite(mods) {
   server.runs.unshift(runRow('run-blank', { positive: '["a"]', negative: '[]', computed_at: AT, candidates: '' }));
   server.runs.unshift(runRow('run-new', { positive: '["a"]', negative: '["b"]' }));
   server.runs.unshift(runRow('run-gap', { positive: '["a"," "]', negative: '["b",""]' }));
+  server.runs.unshift(runRow('run-empty', { positive: '{}', negative: '[""]' }));
+  server.runs.unshift(runRow('run-text', { positive: 'abc', negative: '["b"]' }));
   server.gets.length = 0;
   refreshBtn(a.host).dispatch('click');
   await settle();
@@ -177,6 +179,9 @@ async function suite(mods) {
     `defects 1 · controls 0 · factors — · computed ${hm(AT)}`);
   eq('C7 a blank id is not counted, as the chain\'s walk drops it (lead d4a949a8c ㉲)', countsOf(a.host, 'run-gap'),
     `defects 1 · controls 1 · ${CONTRAST_WORDS.notComputed}`);
+  eq('C8 an object or a list of blanks holds no id (0); text that is not a list is unknown (lead dcd159739)',
+    `${countsOf(a.host, 'run-empty')} | ${countsOf(a.host, 'run-text')}`,
+    `defects 0 · controls 0 · ${CONTRAST_WORDS.notComputed} | defects — · controls 1 · ${CONTRAST_WORDS.notComputed}`);
   const lastOf = (r) => countsOf(a.host, r).split(' · ').slice(2).join(' · ');
   eq('C6 not computed, computed 0 and computed N are three different lines',
     new Set(['run-new', 'run-zero', 'run-fixed'].map(lastOf)).size, 3);
@@ -391,8 +396,12 @@ const MUTANTS = [
     to: "    const body = await res.json().catch(() => null);\n    const detail = body && body.detail;\n"
       + "    const said = typeof detail === 'string' ? detail : (detail && detail.message) || '';\n" },
   { name: 'a-blank-id-is-counted', catches: ['C7'], file: 'api.js',
-    from: '  return Array.isArray(ids) ? ids.filter((id) => !blank(id)).length : null;',
+    from: '  return Array.isArray(ids) ? ids.filter((id) => !isBlank(id)).length : null;',
     to: '  return Array.isArray(ids) ? ids.length : null;' },
+  { name: 'an-object-reads-as-unknown', catches: ['C8'], file: 'api.js',
+    from: '  if (isBlank(ids)) return 0;', to: '  if (Array.isArray(ids) && !ids.length) return 0;' },
+  { name: 'unreadable-text-reads-as-zero', catches: ['C8'], file: 'api.js',
+    from: '    try { ids = JSON.parse(ids); } catch (e) { return null; }', to: '    try { ids = JSON.parse(ids); } catch (e) { return 0; }' },
   { name: 'the-whole-question-is-saved', catches: ['A7'], file: 'api.js',
     from: '  for (const key of CONTRAST.args) {',
     to: '  for (const key of Object.keys(r.question || {})) {' },
@@ -415,7 +424,7 @@ const MUTANTS = [
     from: '        && Number.isFinite(Number(found)) ? Number(found) : null,',
     to: '        && Number(found) ? Number(found) : null,' },
   { name: 'a-run-is-always-computed', catches: ['B4', 'C6', 'J6'], file: 'api.js',
-    from: '    const computedAt = blank(at) ? null : at;',
+    from: '    const computedAt = isBlank(at) ? null : at;',
     to: "    const computedAt = at || 'soon';" },
   { name: 'the-list-sorts-by-a-name-the-table-lacks', catches: ['B2', 'B3'], file: 'api.js',
     from: '&order_by=updated_at&order_desc=true',

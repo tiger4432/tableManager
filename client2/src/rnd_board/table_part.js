@@ -21,13 +21,11 @@
 
 import { Panel, markingIntent } from './panel.js';
 import { SIGN } from './marking_store.js';
+import { isBlank } from '../absent.js';
 
+// A cell the screen's one blank rule calls blank (a blank string too - CLAUDE.md 「strip 뒤 길이 0 은 부재」)
+// draws this; 0 and false are values (lead dcd159739).
 const ABSENT = '-';
-
-/** `null`·`undefined`·`''` 만 부재입니다. 0 과 false 는 값입니다. */
-function isAbsent(value) {
-  return value === null || value === undefined || value === '';
-}
 
 export class TablePart extends Panel {
   constructor(host, deps) {
@@ -126,11 +124,11 @@ export class TablePart extends Panel {
   _cell(col, row) {
     const value = row[col.key];
     if (col.kind === 'two_line') {
-      const main = isAbsent(value) ? ABSENT : String(value);
+      const main = isBlank(value) ? ABSENT : String(value);
       const sub = col.subKey ? row[col.subKey] : null;
-      return this._cellEl(col, main, 'two_line', isAbsent(value) ? null : sub);
+      return this._cellEl(col, main, 'two_line', isBlank(value) ? null : sub);
     }
-    const text = isAbsent(value) ? ABSENT : String(value);
+    const text = isBlank(value) ? ABSENT : String(value);
     return this._cellEl(col, text, col.kind || 'text');
   }
 
