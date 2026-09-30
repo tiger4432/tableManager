@@ -1,0 +1,290 @@
+{
+ "captured_by": "client2/tests/fixtures/capture_rnd_board_measured.py",
+ "server_at": "206c2fb33f234dabaa145157f22a6e9c317e85c0",
+ "state": "ok",
+ "nodes": [
+  "ledger-entity:v1:E",
+  "ledger-entity:v1:W",
+  "ledger-entity:v1:W2",
+  "ledger-quantity:v1:backward",
+  "ledger-quantity:v1:both",
+  "ledger-quantity:v1:forward",
+  "ledger-quantity:v1:named",
+  "ledger-quantity:v1:outside",
+  "ledger-quantity:v1:second_hop"
+ ],
+ "edges": [
+  {
+   "source": "ledger-entity:v1:W",
+   "target": "ledger-quantity:v1:forward",
+   "predicate": "measures"
+  },
+  {
+   "source": "ledger-quantity:v1:backward",
+   "target": "ledger-entity:v1:W",
+   "predicate": "measures"
+  },
+  {
+   "source": "ledger-entity:v1:W",
+   "target": "ledger-quantity:v1:named",
+   "predicate": "leads_to"
+  },
+  {
+   "source": "ledger-entity:v1:W",
+   "target": "ledger-entity:v1:E",
+   "predicate": "processed_with"
+  },
+  {
+   "source": "ledger-entity:v1:E",
+   "target": "ledger-quantity:v1:second_hop",
+   "predicate": "measures"
+  },
+  {
+   "source": "ledger-entity:v1:W",
+   "target": "ledger-quantity:v1:both",
+   "predicate": "leads_to"
+  },
+  {
+   "source": "ledger-entity:v1:W",
+   "target": "ledger-quantity:v1:both",
+   "predicate": "measures"
+  },
+  {
+   "source": "ledger-entity:v1:W",
+   "target": "ledger-quantity:v1:outside",
+   "predicate": "leads_to"
+  },
+  {
+   "source": "ledger-entity:v1:W2",
+   "target": "ledger-quantity:v1:outside",
+   "predicate": "measures"
+  }
+ ],
+ "propagation": {
+  "collect": "quantity",
+  "state": "ranked",
+  "contrast": "unexamined",
+  "complete": true,
+  "message": null,
+  "top_set": [
+   "ledger-quantity:v1:forward"
+  ],
+  "ranked": [
+   {
+    "id": "ledger-quantity:v1:forward",
+    "type": "Quantity",
+    "label": "forward · model",
+    "rank": 1,
+    "top": true,
+    "tied": false,
+    "incomparable": false,
+    "evidence": [
+     {
+      "seed": "ledger-entity:v1:W",
+      "sign": "+",
+      "hops": [
+       {
+        "id": "ledger-entity:v1:W",
+        "node_kind": "entity",
+        "label": "W",
+        "atom": null,
+        "ref": null
+       },
+       {
+        "id": "ledger-quantity:v1:forward",
+        "node_kind": "entity",
+        "label": "forward",
+        "atom": null,
+        "ref": null,
+        "predicates": [
+         "measures"
+        ]
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "id": "ledger-quantity:v1:backward",
+    "type": "Quantity",
+    "label": "backward · model",
+    "rank": 2,
+    "top": false,
+    "tied": false,
+    "incomparable": false,
+    "evidence": [
+     {
+      "seed": "ledger-entity:v1:W",
+      "sign": "+",
+      "hops": [
+       {
+        "id": "ledger-entity:v1:W",
+        "node_kind": "entity",
+        "label": "W",
+        "atom": null,
+        "ref": null
+       },
+       {
+        "id": "ledger-quantity:v1:backward",
+        "node_kind": "entity",
+        "label": "backward",
+        "atom": null,
+        "ref": null,
+        "predicates": [
+         "measures"
+        ]
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "id": "ledger-quantity:v1:named",
+    "type": "Quantity",
+    "label": "named · model",
+    "rank": 3,
+    "top": false,
+    "tied": false,
+    "incomparable": false,
+    "evidence": [
+     {
+      "seed": "ledger-entity:v1:W",
+      "sign": "+",
+      "hops": [
+       {
+        "id": "ledger-entity:v1:W",
+        "node_kind": "entity",
+        "label": "W",
+        "atom": null,
+        "ref": null
+       },
+       {
+        "id": "ledger-quantity:v1:named",
+        "node_kind": "entity",
+        "label": "named",
+        "atom": null,
+        "ref": null,
+        "predicates": [
+         "leads_to"
+        ]
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "id": "ledger-quantity:v1:second_hop",
+    "type": "Quantity",
+    "label": "second_hop · model",
+    "rank": 4,
+    "top": false,
+    "tied": false,
+    "incomparable": false,
+    "evidence": [
+     {
+      "seed": "ledger-entity:v1:W",
+      "sign": "+",
+      "hops": [
+       {
+        "id": "ledger-entity:v1:W",
+        "node_kind": "entity",
+        "label": "W",
+        "atom": null,
+        "ref": null
+       },
+       {
+        "id": "ledger-entity:v1:E",
+        "node_kind": "entity",
+        "label": "E",
+        "atom": null,
+        "ref": null,
+        "predicates": [
+         "processed_with"
+        ]
+       },
+       {
+        "id": "ledger-quantity:v1:second_hop",
+        "node_kind": "entity",
+        "label": "second_hop",
+        "atom": null,
+        "ref": null,
+        "predicates": [
+         "measures"
+        ]
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "id": "ledger-quantity:v1:both",
+    "type": "Quantity",
+    "label": "both · model",
+    "rank": 5,
+    "top": false,
+    "tied": false,
+    "incomparable": false,
+    "evidence": [
+     {
+      "seed": "ledger-entity:v1:W",
+      "sign": "+",
+      "hops": [
+       {
+        "id": "ledger-entity:v1:W",
+        "node_kind": "entity",
+        "label": "W",
+        "atom": null,
+        "ref": null
+       },
+       {
+        "id": "ledger-quantity:v1:both",
+        "node_kind": "entity",
+        "label": "both",
+        "atom": null,
+        "ref": null,
+        "predicates": [
+         "leads_to",
+         "measures"
+        ]
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "id": "ledger-quantity:v1:outside",
+    "type": "Quantity",
+    "label": "outside · model",
+    "rank": 6,
+    "top": false,
+    "tied": false,
+    "incomparable": false,
+    "evidence": [
+     {
+      "seed": "ledger-entity:v1:W",
+      "sign": "+",
+      "hops": [
+       {
+        "id": "ledger-entity:v1:W",
+        "node_kind": "entity",
+        "label": "W",
+        "atom": null,
+        "ref": null
+       },
+       {
+        "id": "ledger-quantity:v1:outside",
+        "node_kind": "entity",
+        "label": "outside",
+        "atom": null,
+        "ref": null,
+        "predicates": [
+         "leads_to"
+        ]
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ }
+}

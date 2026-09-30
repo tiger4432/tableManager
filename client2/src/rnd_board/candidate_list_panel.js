@@ -176,10 +176,9 @@ export class CandidateListPanel extends WalkedListPanel {
   _firstMeasuredRef(c) {
     for (const ev of c.evidence || []) {
       for (const hop of ev.hops || []) {
-        // same rule as `measuredFromHops__untilServerServesIt`: the hop that makes a
-        // candidate measured is the `value` one -- the old test was `claim || value` and the
-        // `claim` arm died when a claim became an edge. `ref` rides on that same hop, so it
-        // is read from the hop that answered, never from a neighbour.
+        // NOT the rule `measured` answers by (the hops' predicates, lead 9dd1e378b): this reads the
+        // `value` hop's ref, and no hop has had kind `value` since every node became an entity, so
+        // it finds none and the card says 「실측 -」 (asked of the lead with 9dd1e378b's report).
         if (hop.kind === 'value' && hop.ref) return hop.ref;
       }
     }
