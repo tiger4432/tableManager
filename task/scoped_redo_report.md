@@ -65601,3 +65601,44 @@ PG 첫 판  이 시험의 Reload 가 스크래치 스키마에 «등록된 모�
 ```
 다음   3 쓰기 문이 모델이 모르는 칸을 버린 칸으로 셈
 ```
+
+## [구현자 -> 총괄] 착지 469f748bb — 791c0f45e 3: 모델이 모르는 칸은 층도 표도 안 쓰고 버린 칸으로 셈
+
+```
+판정 한 자리  crud.unmapped_columns(표, 칸들) — 설정엔 있는데 이 프로세스의 모델이 그 칸을 모름
+              쓰기 문과 워처의 걸러내기가 이 함수 하나를 부름(loadable_columns 를 둘이 같이 부르는 것과 같은 결)
+              모델이 아예 없는 표는 빈 답 — 쓰기 문이 그 표를 이름 대어 거절하는 것은 전과 같음
+쓰기 문      그 칸은 층을 쓰기 «전»에 버림 — 사유 unmapped_column(버린 칸 보고 by_reason · by_column · rows)
+워처         undeclared 칸을 거르는 자리에서 같이 거르고, 파일 줄에 이름과 값 수:
+              「Not written (unmapped_column): t_late=3 over 3 row(s) - declared, but this process's model does not hold the column; reload or restart, then Retry the file.」
+시험 가짜 둘  워처 시험이 쓰는 crud 가짜 둘에 진짜 unmapped_columns 를 실음(loadable_columns 를 싣는 것처럼)
+```
+
+| 칸 | 입력 | 답 |
+|---|---|---|
+| 설정이 모델을 앞섬 | t_late 가 설정에만 · 쓰기 문으로 한 행 | 층 없음 · 표 빈칸 · 버린 칸 unmapped_column 1 |
+| 모델이 건너뛰는 이름 | graph_synced_at 선언 · 모델 새로 짓기 · 쓰기 | 같음 |
+| 파일 줄 | 워처 _send_to_upsert 로 세 행 | 줄에 t_late=3 과 사유 · 표엔 세 행 모두 빈칸 |
+| 앞 보고의 탐침 | 0a7c46615 의 probe_s7b · probe_s12 를 다시 | s7b 어긋남 0 · 층 {} · 버린 칸 {'unmapped_column': 1} / s12 층의 칸 ['k'] |
+
+```
+통과   3 passed, 7654 deselected in 13.01s
+변이   쓰기 문 판정 뺌 -> 2 failed, 1 passed, 7654 deselected in 12.14s — test_a_column_the_model_does_not_hold_is_dropped_by_name[t_late] · test_a_column_the_model_does_not_hold_is_dropped_by_name[graph_synced_at]
+       워처 걸러내기 뺌 -> 1 failed, 2 passed, 7654 deselected in 11.18s — test_the_file_line_names_the_column_the_model_does_not_hold
+       모든 칸을 «모델이 앎»으로 -> 3 failed, 7654 deselected in 11.32s — test_a_column_the_model_does_not_hold_is_dropped_by_name[t_late] · test_a_column_the_model_does_not_hold_is_dropped_by_name[graph_synced_at] · test_the_file_line_names_the_column_the_model_does_not_hold
+전체   6 failed, 7478 passed, 170 skipped, 3 xfailed in 912.16s (0:15:12) — ⚠️ 알려진 다섯과 다름: ['test_live_mapper_and_tracked_sample_are_byte_identical', 'test_live_mapper_and_tracked_sample_are_byte_identical', 'test_live_mapper_matches_tracked_sample', 'test_the_only_seats_left_are_the_three_restore_pairs_and_the_helper', 'test_the_repo_root_is_one_above_it', 'test_the_sample_is_written_in_the_one_format_both_writers_use']
+PG     7 failed, 124 passed, 7526 deselected in 257.01s (0:04:17) — 실패는 알려진 일곱과 이름이 같음
+재기동 서버 · 워처 · 체인 워커. 마이그레이션 없음 — RUN.md 새 절
+```
+
+```
+⚠️ 전체의 여섯째 실패는 제 앞 착지(c15b186cb)의 시험 탓입니다 — 그 시험이 models.DYNAMIC_TABLES 를 직접 pop 해서
+   S-191 의 자리 세기(test_the_only_seats_left_are_the_three_restore_pairs_and_the_helper)를 깼습니다
+   항목 2 의 전체 스위트는 그 pop 을 넣기 «전»에 돌았고, 넣은 뒤엔 PG 만 다시 돌려서 놓쳤습니다
+   bc7d2a58c 로 고침(레지스트리를 바꿔 끼우고 monkeypatch.undo 뒤 retire_dynamic_model) — 그 파일 초록 ·
+   항목 2 게이트와 뒤따르는 원장 PG 시험 둘 초록 · 항목 2 변이 넷 여전히 빨강
+```
+
+```
+다음   4 조인이 시각 칸 값을 옮기면 묶음째 TypeError
+```
