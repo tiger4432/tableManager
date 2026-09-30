@@ -41,9 +41,11 @@ from ledger.source_preparation import (
     PREPARATION_METRICS_ATTR,
     PREPARATION_PROVENANCE_ATTR,
     SQLAlchemyVerifiedJoinBatchReader,
+    SourcePreparationContext,
     SourcePreparationError,
     SourcePreparerImplementationRegistry,
     VerifiedJoinBatchReader,
+    _assemble_prepared_frame,
     dependency_replay_worklist,
     preparation_action_candidate,
     right_value_fingerprint,
@@ -494,6 +496,17 @@ def test_missing_join_key_refuses_without_any_right_query():
         "details": {"join_key_index": 0, "rule_id": "input_to_reference"},
     }
     assert reader.calls == []
+
+
+def test_a_preparer_output_of_none_stays_none_in_the_prepared_frame():
+    """총괄 3a109bfd9 ②: a ledger frame does not MAKE NaN. `out[column] = list(values)` typed a
+    column holding None as `str` on pandas 3 and made the None NaN - the path a preparer's
+    output (a joined value that is NULL) takes into the frame."""
+    compiled = snapshot()
+    base = base_rows(2)
+    context = SourcePreparationContext(compiled, compiled.source_plans["input_rows"])
+    out = _assemble_prepared_frame(context, base, {"target_id": ("OUT-J-0000", None)})
+    assert out["target_id"].tolist() == ["OUT-J-0000", None]
 
 
 def test_prepared_output_never_overwrites_a_recorded_left_value():

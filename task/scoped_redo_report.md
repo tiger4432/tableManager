@@ -66985,3 +66985,44 @@ G7 the bundle fills [] for a row source again        빨강  (5 failed, 7 passed
 전체  5 failed, 7517 passed, 194 skipped, 3 xfailed in 817.94s (0:13:37) — 실패 5 개, 파일::이름으로 알려진 다섯과 같음: True
 PG    7 failed, 148 passed, 7564 deselected, 49 warnings in 285.48s (0:04:45) — 실패 이름이 알려진 일곱과 같음: True
 ```
+
+## [구현자 -> 총괄] 원장 프레임 NaN 착지 0ba4c82ce — d4a949a8c ② · 3a109bfd9 ②(나)
+
+```
+짓는 자리 둘   backfill._v2_frame(DB 행 -> 원장 소스 프레임, 부르는 곳 셋 + prepare_v2_cursor_batch 의 목록 입력) · _assemble_prepared_frame(준비기 출력 -> 칸)
+              둘 다 object 로 — ledger_frame · roleframe 가 이미 쓰는 모양. 접기 함수 없음 · mapper_sdk 안 건드림
+뒤에서 빠진 것  roleframe._when_value 삭제(when 은 clean_str_value) · roleframe._plain 의 NaN 갈래 삭제
+하나로        _is_missing 두 벌 -> roleframe 것 하나(source_preparation 이 가져다 씀)
+              source_preparation 의 is_blank_source_value 본문 복사 둘(드라이버 identity/group_by 검사 · 그룹 정체 검사) -> is_blank_source_value 부름
+is_blank_key_part  같은 물음 아님 — «키 조각이 정체가 될 수 있나»(inf 도 빔), 정본은 «값이 비었나». 그 docstring 이 2026-09-04 총괄 판정으로 일부러 따로 둔다고 적음. 안 건드림
+```
+**전수 — 경계가 덮는 길** (탐침: roleframe · source_preparation 의 _is_missing 에 None 아닌 NaN 이 닿으면 시험 id · 호출 사슬 기록)
+```
+접기 없음(카나리아)         NULL 게이트 두 파일에서 15 건 닿음 — 탐침이 봄
+준비 입구에서 접기          13 남음 — 런타임이 준비 «전»에 base_rows 로 커서를 셈
+_v2_frame 에서 접기         PG 0 · 단위 34(24 사슬) 전부 시험이 직접 만든 프레임
+그 뒤 찾은 운영 길          _assemble_prepared_frame 의 out[column] = list(values) — ['S1', None] -> str · nan (재 봄). 시험이 이 길을 안 타서 탐침이 조용했음
+정정                      c1746aa1e 의 「스텝 못 찾음」 은 표에 저장된 NULL(_v2_frame 길)이지 준비기 조인 아님 — 추적 표본 소스 여섯 중 준비기 조인을 쓰는 곳 0
+모르는 것                  _v2_frame 접기 탐침의 단위 +1 실패 — 나)로 가서 그 방식을 안 쓰게 되어 이름 찾던 재실행을 멈춤. 이름 모름 — 착지한 나)의 전체 스위트엔 +1 없음(알려진 다섯뿐)
+이 착지 뒤(접기 없이, 코드 그대로)  단위 16 건(13 사슬) · roleframe 까지 닿은 것 0 · 시험 파일별 {'test_a_row_with_an_empty_cursor_cell_is_refused_by_name.py': 10, 'test_ledger_source_preparation.py': 3, 'test_test_run_counts_the_bad_rows.py': 3} · PG 0 건
+```
+**게이트**
+```
+c1746aa1e 시험  프레임을 _v2_frame 으로 지음(세 자리) — 단언 그대로 초록
+준비기 출력     _assemble_prepared_frame 에 ("OUT-J-0000", None) -> 칸이 ["OUT-J-0000", None]
+              ⚠️ 조인이 오른쪽 행을 «못 찾으면» 준비기가 거절함(기존 test_zero_or_multiple_right_rows_refuse…) — None 출력은
+              «오른쪽 행은 있고 그 칸이 NULL» 인 경우. 그래서 이 길은 조립 함수를 바로 불러 잼(픽스처의 노출 칸 target_id 는
+              정체 키라 None 이면 분자가 거절되어 프레임까지 안 감)
+변이 둘 — 각각 되돌림
+N1 database rows become a frame pandas types         빨강  (4 failed, 29 passed)
+N2 a preparer output goes in as a list               빨강  (1 failed, 32 passed)
+```
+**새 함수 · 새 if 중 기존 것과 같은 일** (cdeb5ea10)
+```
+새 함수 0 · 새 if 0. 지운 것: _when_value · _plain 의 NaN 갈래 · _is_missing 한 벌 · is_blank_source_value 본문 복사 둘
+```
+**스위트** (C:/wt-impl, 착지 트리 — 탐침 플러그인을 단 채로 돎: 판정은 원래 함수가 내고 탐침은 기록만)
+```
+전체  5 failed, 7518 passed, 194 skipped, 3 xfailed in 809.96s (0:13:29) — 실패 5 개, 파일::이름으로 알려진 다섯과 같음: True
+PG    7 failed, 148 passed, 7565 deselected, 49 warnings in 302.55s (0:05:02) — 실패 이름이 알려진 일곱과 같음: True
+```
