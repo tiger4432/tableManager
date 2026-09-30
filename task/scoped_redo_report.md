@@ -65682,3 +65682,33 @@ PG       7 failed, 126 passed, 7526 deselected in 229.91s (0:03:49) — 실패�
 ```
 
 대조 PG 측정(세워 둔 것)으로 돌아갑니다.
+
+## [구현자 -> 총괄] 착지 3d3bd2427 — 대조 저장: 보드의 첫 클릭을 PG 의 쓰기 문으로 잼 (2005c0649 뒤 한 칸)
+
+```
+칸      tests/test_a_saved_contrast_is_the_walks_own_ranking.py 에 -m pg 한 칸 — until 모양 둘로 매개
+        run 한 줄은 crud.apply_batch_updates 로(PUT /tables/contrast_run/data/updates 가 부르는 문) — 행 모델 직접 넣기 없음
+        positive · negative = JSON 글 · until = ISO 글 「2026-09-30T09:00:00」 · 「2026-09-30T09:00:00+09:00」 · hops 4 · backbone_hops 0
+        -> 체인 좌석(rule_run.run_rule) -> factor 행을 쓰기 문으로 -> 표에서 셈
+        걷기는 여전히 메모리 원장(InMemoryEvidenceLookup) — PG 인 것은 표와 쓰기 문
+단언     factor 행 수 = 저장된 until 로 부른 라우트의 ranked 수 > 0 · until 뒤 원자(LATE) 없음
+통과     2 passed, 7659 deselected in 34.69s (2026-09-30T09:00:00 · 2026-09-30T09:00:00+09:00)
+변이     until 을 걷기에 안 넘김 -> 2 failed, 7659 deselected in 33.20s — 두 칸 다
+기존 칸  걷기 가짜(여섯 줄)를 한 함수로 뽑아 sqlite 칸과 PG 칸이 같이 씀 — 이 파일 sqlite: 8 passed, 2 skipped in 4.18s
+전체     5 failed, 7479 passed, 174 skipped, 3 xfailed in 791.34s (0:13:11) — 실패는 알려진 다섯과 이름이 같음
+PG       7 failed, 128 passed, 7526 deselected in 238.21s (0:03:58) — 실패는 알려진 일곱과 이름이 같음
+재기동   없음 — 시험만 바뀜
+```
+
+**until 의 순간 — 이 박스 PG (운영 주장 아님)**
+```
+세션 시간대  Asia/Seoul
+꼬리 없음 「2026-09-30T09:00:00」    저장 2026-09-30T09:00:00+09:00 · 라우트가 같은 글을 읽으면 2026-09-30T09:00:00+00:00 — 다른 순간
+꼬리 있음 「2026-09-30T09:00:00+09:00」 저장 2026-09-30T09:00:00+09:00 · 라우트 2026-09-30T09:00:00+09:00 — 같은 순간
+뜻   꼬리 없이 보내면 저장된 대조는 세션 시간대로, 보드의 실시간 걷기(_instant_arg)는 UTC 로 같은 글을 읽음
+     이 박스에선 9 시간 어긋남 — 저장된 쪽이 더 이른 순간에서 끊음. 꼬리를 달면 같은 순간
+     쓰기 문은 꼬리 없는 글을 세고 통과시킴(time_format.note_naive_time) — 판정 289 ⓑ 가 켜지면 거절될 모양
+물음 보드가 until 을 꼬리 달아 보내게 할지 — 클라 레인 몫이라 안 지음
+```
+
+후보 0 과 «아직 안 돎»(①②③)은 소유자 답 대기 그대로입니다. 착지 보고 후 멈춥니다. 감시는 켜 둡니다.
