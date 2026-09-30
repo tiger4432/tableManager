@@ -1044,7 +1044,7 @@ label 「keys 앞 둘」  ② 로 적힌 «표면 규칙» — 판정 169 로 �
 | 후보 | 판정 | 근거(실측) |
 |---|---|---|
 | **값 변환** | 🔴 **③** | 바인딩 kind ∈ {column, constant, entity} «뿐»(`setup_bundle.py:495` `binding_kinds`). 값에 «함수»를 먹일 칸이 없습니다. 있는 변환은 «이름 붙은 하나» — `read.occurred_at.timezone`(샘플 :326). 🔴 그것이 이 축의 증거입니다: 변환이 필요할 때마다 «칸을 하나씩» 더해 왔고, 그 밖은 매퍼로 나갑니다 |
-| **조건부 값** | 🔴 **③ = S-99** | `mappings.<s>` 에 `when` 이 «없습니다». 문법의 `when` 은 «둘 다 다른 것»입니다 — 스켈레톤의 `when` 은 «폼 표시 조건»(`{field, is}`), `setup_bundle.py:1304` 의 `when` 은 «엔티티 참조의 from 조건»입니다. 🔵 그러므로 S-99 는 «없던 것을 짓는 것»이 아니라 «이미 있는 조건 어휘를 문장 자리에 두는 것»입니다 |
+| **조건부 값** | ✅ **① — S-99 착지 09-09 `0651f2f4b`**(🆕 이 행이 그 뒤로 «없다»고 남아 있었다 — 09-30 정정) · `sources.<s>.bind.mappings.<문장>.when` — 운영자 설명은 `guide/config/ledger_declaration_by_example.md` ⑤. 🆕 09-30 `c1746aa1e`: 빈 칸은 `""` 로 견줌 · 어느 문장도 안 고른 행은 세고 이름 댐(`gate.record_unsaid`). ⚰️ 아래는 착지 «전» 서술: ~~`mappings.<s>` 에 `when` 이 «없습니다».~~ 문법의 `when` 은 «둘 다 다른 것»입니다 — 스켈레톤의 `when` 은 «폼 표시 조건»(`{field, is}`), `setup_bundle.py:1304` 의 `when` 은 «엔티티 참조의 from 조건»입니다. 🔵 그러므로 S-99 는 «없던 것을 짓는 것»이 아니라 «이미 있는 조건 어휘를 문장 자리에 두는 것»입니다 |
 | **그룹 집계** | 🔴 **③** | `map.unit.kind: group_by` 는 «분할»을 선언하고 «집계»는 선언하지 않습니다. 샘플에서 group_by 는 «1»이고 그 소스가 곧 `dt-job-role`(파이썬)입니다. 범용 매퍼는 여러 값을 만나면 `ambiguous_binding_value` 로 «거절»합니다 |
 | **선언 조인** | ✅ **①** (단서 있음) | 칸이 있습니다 — `prepare.accepts_verified_join_rules` · `inherit_virtual_join_rules`, 그리고 `direct-join` 준비기를 15 중 «14»가 씁니다. ⚠️ 단서 둘: ⓐ 조인 «규칙»은 «다른 선언 언어»(`virtual_join_rules.json`)에 삽니다 — `decision_key` 와 «같은 부류»이므로 판정 165 와 같이 «관계를 적는» 처리 ⓑ 샘플 15 전부가 `false` / `[]` 입니다(소비자 0) → ③′ 의 성격을 «함께» 가집니다 |
 | **다중 목적어 타입** | ✅ **①** | `object.types` 가 «목록»입니다(`setup_bundle.py:1149` `_nonblank_list`, 검사 :1993 · :2133). 한 술어의 목적어가 여러 엔티티 타입일 수 있습니다 |
