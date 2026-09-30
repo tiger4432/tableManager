@@ -66882,3 +66882,64 @@ W10 an unknown world is read as a world          빨강  (unit: 5 passed · pg: 
 전체  5 failed, 7512 passed, 194 skipped, 3 xfailed in 820.18s (0:13:40) — 실패 5 개, 파일::이름으로 알려진 다섯과 같음: True
 PG    7 failed, 148 passed, 7559 deselected, 49 warnings in 311.08s (0:05:11) — 실패 이름이 알려진 일곱과 같음: True
 ```
+
+## [구현자 -> 총괄] 짓기 전 물음 둘 — 482288b12 (group_by when) · d4a949a8c ② (빈 값 판정 전수)
+
+### 482288b12 — 문법이 unit=row 소스의 group_by 없음을 «안 받는다». 그리고 지우라는 derived 행이 그 빈칸을 채우던 자리다
+```
+재는 것   추적 표본만(ledger_config.json.sample · table_config.json.sample) — 소스 6 (row 5 · group 1), row 다섯 다 "group_by": []
+문법     row 소스에서 group_by 키를 빼면 validate_bundle_errors 가 소스마다 2건 — missing_field「field is required」 · invalid_type「must be a list」 (다섯 -> 10)
+         (setup_bundle 의 read exact(required=(unit, identity, group_by, order_by, occurred_at)) · 컴파일도 setup_registry 가 driver["group_by"] 로 읽음)
+저장     스켈레톤 group_by 에 when {field: unit, is: group} 을 단 사본으로 filled_declaration(dt_job):
+            derived 행 있음 -> 드롭 목록에 group_by: [] · 그러나 파일엔 group_by: [] 가 «다시 들어감» · 번들 0 건
+            derived 행 없앰(변이, 되돌림 byte 같음) -> 파일에 group_by 없음 · 번들 2 건(위 둘)
+         -> config_authoring 의 unit=row derived 행(value=[])은 «해당 없음»을 그리는 일과 함께 «저장이 뺀 칸을 [] 로 다시 채우는» 일을 하고 있음
+            지시대로 when 달고 그 행을 지우면 row 소스 저장이 전부 거절됨
+group 소스  같은 사본에서 lot_event 저장: 드롭 0 · group_by 그대로 — 지금과 같음
+```
+**안 셋 — 고르실 것**
+```
+가  문법을 넓힘: row 소스의 group_by 는 «없어도 됨», 번들을 검증할 때 [] 로 채움 — 기존 _derived_cursor(order_by -> cursor 를 번들에 씀)와 같은 자리·같은 모양
+    derived 행은 지움(지시 그대로). 파일에 [] 가 있는 기존 선언도 그대로 통과
+    좋은 점  폼·파일·검증이 「row 엔 그 칸이 없다」 한 뜻 · 컴파일은 채워진 번들을 받아 안 바뀜
+    위험    저장한 row 소스 파일에서 "group_by": [] 가 빠짐 — 소스 지문이 «채운 번들»에서 계산되면 안 움직이고, 날 파일에서면 움직여 커서가 섬. 어느 쪽인지 안 쟀다 — 게이트에 «저장 전후 지문 같음» 을 넣겠음
+    크기    검증기 required 에서 group_by 옮김 + 채우기 한 곳 + derived 행 삭제 · group 소스 누락은 기존 「group unit requires at least one」 으로 거절되게(키 없음도 빈 목록으로 읽음). 안 쟀다
+나  파일엔 두고 안 그림: when 은 안 달고, 폼이 unit=row 의 group_by 를 안 그림
+    위험    「이 선택일 때만 쓰이는 칸」의 판정자가 스켈레톤 when 과 «폼 쪽 규칙» 둘이 됨 — 지시가 접으려던 두 길이 그대로
+다  when 을 달되 저장의 드롭이 required 칸은 안 뺌
+    위험    when 의 뜻이 칸마다 갈림(드롭 되는 when · 안 되는 when) — 새 if
+추천  가 — 기존 _derived_cursor 의 모양. 여쭐 것: 채우기를 _derived_cursor 옆 새 함수로 둘지, 「번들이 적지 않아도 되는 값을 채운다」 한 함수로 넓힐지
+```
+
+### d4a949a8c ② — 정본 «을 부르는 자리» 전수와 NaN 이 닿는 자리
+```
+센 명령   scratchpad census_blank_judges.py · dump_blank_sites.py — AST, git ls-files *.py, tests/·contracts/ 밖
+정본 부름  is_blank_value 직접 39 + row_is_blank 경유 2 = 41 자리 · clean_str_value 31 자리(is_blank_value · _when_value · _unit_says 포함)
+같은 물음의 판정자  crud.is_blank_value(정본, NaN -> 안 빔) · crud.is_blank_key_part(무한·NaN -> 빔, 그다음 정본) — 목록에 없던 여섯째
+                · source_preparation.is_blank_source_value · _is_missing 둘(본문 같음) · roleframe._when_value
+NaN -> None 을 이미 접는 문  pipeline_base.clean_for_postgres(작업공간 파이프라인 parse) · mapper_sdk.df_to_updates(where(pd.notna))
+```
+**41 자리 — 값이 어디서 오나(읽어서 가름, 명령으로 센 것 아님)**
+```
+닿지 않음   요청·라우트 문자열 인자 13 · 저장 행/아웃박스 JSON 7(쓰기 관문이 NaN 거절 · JSONB 는 NaN 못 담음)
+           선언·요청 본문 2 · 접힌 뒤(df_to_updates 뒤 · cast 뒤) 2 · 이미 접음(is_blank_key_part) 1 · CSV 문자열(std_parser · void_sat) 2
+끝까지 안 따라감  enrichment candidates/config 의 key_values·bind_params 3 · join_into._unsaid 1 — 페이로드 값으로 봄
+닿음        들어오는 쓰기(관문 «전»): version_gate_verdict · value_key(들어오는 쪽) · cast_value_by_type · derive_replace_map_scope 둘
+           파서 행: directory_watcher 의 row_is_blank · unmapped/dropped 셈 셋
+           조건: 작업공간 파서가 BasePipelineParser.parse 를 안 지남(덮어쓰기·비상속) 또는 API 쓰기 본문의 NaN 글자(json.loads 가 받음)
+나머지 1    row_is_blank 본문 — 부르는 두 자리(directory_watcher 닿음 · std_parser 안 닿음)로 셈
+합         27 + 4 + 9 + 1 = 41
+```
+**🔴 정본을 고치면 뒤집히는 판정 하나 — 그래서 멈추고 여쭘**
+```
+contracts/blank_predicate/vectors.json NUM1(07-31): 「nan/inf stay refused on purpose」 — cast_value_by_type 가 NaN 을 CellRefused 로 거절
+cast_value_by_type 는 첫 줄에 is_blank_value 를 물음 -> 정본이 NaN 을 빈 값으로 보면 «거절되던 NaN 이 NULL 로 써짐»
+같은 계약의 불변식 「blank(v) iff render(v) == ''」(render = clean_str_value) -> is_blank_value 만 고치면 계약이 깨짐. 고친다면 clean_str_value 에서
+clean_str_value 를 고치면 정체성 합성 넷도 바뀜: compose_business_key · _apply · _folded_join_key · get_row_by_business_key — 오늘 NaN 이 키 조각 "nan", 뒤엔 빈 조각
+```
+```
+안  A  clean_str_value 가 NaN/NaT/NA 를 '' 로 — 불변식 유지 · _when_value 는 clean_str_value 로 접힘 · NUM1 은 뒤집힘(쓰기 관문에서 NaN = NULL)
+    B  NUM1 유지 + A: cast 가 정본보다 «먼저» NaN 을 거절 — 새 if 하나
+    C  정본은 그대로, NaN 을 «표 경계»에서 한 함수로 접음(원장 소스 프레임 · 파서 · 맵퍼 — 뒤 둘은 이미 접음). 원장 쪽 _is_missing 둘·_when_value 의 NaN 몫이 빠짐
+여쭐 것  NUM1(쓰기 관문의 NaN 거절)이 서 있나 — 서 있으면 B 나 C, 아니면 A. 제 추천은 C(판정 안 뒤집고, 이미 있는 접기 두 개와 같은 모양), 크기 안 쟀다
+```
