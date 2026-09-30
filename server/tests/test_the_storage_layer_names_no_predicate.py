@@ -95,4 +95,4 @@ def test_ensure_schema_carries_the_drop():
     import inspect
 
     body = inspect.getsource(schema.ensure_schema)
-    assert "ensure_register_object_constraint_dropped(cursor)" in body
+    assert "ensure_register_object_constraint_dropped(cursor, names)" in body

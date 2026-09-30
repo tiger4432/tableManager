@@ -812,7 +812,9 @@ def live_claims(claims):
 
 #: A relation name may be interpolated into SQL only after this says it is a bare
 #: identifier — the reads below take a table name as an argument.
-_IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+#: A relation the walk may name: one identifier, or a ledger world's `w_<name>.<table>`
+#: (`schema.world_names`). The one guard - `ledger_subgraph` asks this one too.
+_IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)?$")
 
 # --------------------------------------------------------------------------
 # Payload readers — the ONE place a predicate's object shape is spelled
@@ -1000,7 +1002,7 @@ def relation_exists(connection, relation):
     test fixture ask about the scratch table rather than about `public`'s.
     """
     if not _IDENTIFIER.match(relation or ""):
-        raise ValueError(f"relation must be a bare SQL identifier: {relation!r}")
+        raise ValueError(f"relation must be a SQL identifier (schema.name at most): {relation!r}")
     rows = _fetch(connection, "SELECT to_regclass(%(rel)s) IS NOT NULL",
                   {"rel": relation})
     return bool(rows and rows[0][0])

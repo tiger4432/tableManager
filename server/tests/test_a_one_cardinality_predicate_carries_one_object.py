@@ -316,7 +316,7 @@ def test_the_router_reads_cardinality_from_the_same_declaration_as_its_siblings(
     assert 'str(key).split("@", 1)[0]' in body
 
     call = inspect.getsource(trace_router)
-    assert "cardinalities=_predicate_cardinalities()" in call
+    assert "cardinalities=_predicate_cardinalities(world)" in call
 
 
 def test_a_declaration_that_cannot_be_read_still_draws_the_graph():

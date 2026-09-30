@@ -16,6 +16,7 @@ remain guarded by the underlying operation.
 """
 import json
 import logging
+import os
 import uuid
 
 import event_constants
@@ -412,7 +413,8 @@ def _count_ledger_backfill(db, params, scan_limit):
     from ledger.setup import load_setup
 
     source = params["source"]
-    census = backfill.rows_not_yet_translated(db.get_bind(), load_setup(), source)
+    census = backfill.rows_not_yet_translated(db.get_bind(), _ledger_setup(params), source,
+                                              world=_ledger_world(params))
 
     if census.get("refused"):
         return {
@@ -469,9 +471,10 @@ def _given(params, *names):
 def _run_ledger_backfill(db, params, log, control=None):
     from ledger import backfill
 
+    _ledger_world(params)        # a job stored before worlds: its root is judged here
     s = backfill.run(db.get_bind(), source=params["source"],
                      checkpoint=_checkpoint(control), pace=params.get("pace"),
-                     **_given(params, "fetch_rows", "max_batches", "ontology_root"))
+                     **_given(params, "fetch_rows", "max_batches", "world"))
     _final_progress(control, s.get("rows_read"), s)
     return {"rows_read": s.get("rows_read"), "batches": s.get("batches"),
             "inserted": s.get("inserted"), "deduped": s.get("deduped"),
@@ -508,13 +511,28 @@ def _count_ledger_rescope(db, params, scan_limit):
     budget would describe a walk this never takes.
     """
     from ledger import backfill
-    from ledger.setup import load_setup
 
     source = params["source"]
+    if params.get("whole_source"):
+        # 총괄 8d10633ae ㉡: every row, counted from the table and NOT previewed - a preview
+        # of a whole source is the whole translation, run once only to be thrown away.
+        census = backfill.rows_not_yet_translated(
+            db.get_bind(), _ledger_setup(params), source, world=_ledger_world(params))
+        total = census.get("relation_rows")
+        return {
+            "affected": total, "affected_label": "rows re-translated",
+            "absence": None, "count_kind": COUNT_EXACT, "scanned": total,
+            "scan_limit": None, "truncated": False,
+            "detail": (f"Re-translates every row of '{source}' ({total} row(s) in the "
+                       f"table) from today's declaration: page by page, each page's old "
+                       f"atoms withdrawn and new ones written in one commit. Not previewed "
+                       f"- a preview of a whole source would be the whole translation."),
+            "extra": {"source": source, "whole_source": True, "relation_rows": total}}
     column = params["scope_column"]
     values = params.get("scope_values") or []
     preview = backfill.preview_rescope(
-        db.get_bind(), load_setup(), source, column, values)
+        db.get_bind(), _ledger_setup(params), source, column, values,
+        world=_ledger_world(params))
     preview.pop("refs", None)
     rows = preview["rows_in_scope"]
     withdraw, remake = preview["withdraw"], preview["remake"]
@@ -542,7 +560,7 @@ def _count_ledger_rescope(db, params, scan_limit):
     # to anything above. It rides in `extra` with its OWN count_kind, because the scope
     # count is exact while this one is a sample on a large source, and one `count_kind`
     # cannot honestly describe both.
-    orphans = backfill.count_orphan_atoms(db.get_bind(), source)
+    orphans = backfill.count_orphan_atoms(db.get_bind(), source, world=_ledger_world(params))
     if orphans["rows_gone"]:
         detail += (f" \u26a0\ufe0f This source holds {orphans['atoms']} atom(s) "
                    f"whose row is GONE - SEPARATE from this scope's work.")
@@ -616,9 +634,10 @@ def _run_ledger_rescope(db, params, log, control=None):
     from ledger import backfill
 
     s = backfill.rescope(
-        db.get_bind(), _ledger_setup(params), params["source"], params["scope_column"],
+        db.get_bind(), _ledger_setup(params), params["source"], params.get("scope_column"),
         params.get("scope_values") or [], apply=True,
-        page_rows=backfill.RESCOPE_PAGE_ROWS, checkpoint=_checkpoint(control))
+        page_rows=backfill.RESCOPE_PAGE_ROWS, checkpoint=_checkpoint(control),
+        whole_source=bool(params.get("whole_source")), **_given(params, "world"))
     log(f"[rescope] {s['source']} {s['scope_column']}: rows {s['rows_in_scope']}, "
         f"withdrawn {s['withdrawn']}, written {s['inserted']} of {s['attempted']}")
     _final_progress(control, s.get("rows_in_scope"), s)
@@ -1125,11 +1144,27 @@ def _judge_table(params):
         raise RetroactiveRefused(str(e)) from None
 
 
+def _ledger_world(params):
+    """The ledger world a job names (총괄 3b6dacd2f). A job stored before worlds carries the
+    root it read instead: the default root IS the default world, and any other root is
+    refused by name - reading it as the default would read a different declaration."""
+    from ledger import schema
+
+    root = params.get("ontology_root")
+    if root is not None and (os.path.normcase(os.path.normpath(str(root)))
+                             != os.path.normcase(os.path.normpath(
+                                 schema.world_names().declaration_root))):
+        raise RetroactiveRefused(
+            f"this job reads the declaration at {root}, which is no ledger world's root - "
+            f"run it again naming a world (--world)")
+    return params.get("world")
+
+
 def _ledger_setup(params):
+    from ledger import schema
     from ledger.setup import load_setup
 
-    return (load_setup(params["ontology_root"]) if "ontology_root" in params
-            else load_setup())
+    return load_setup(schema.require_world(_ledger_world(params)).declaration_root)
 
 
 def _judge_ledger_backfill(params):
@@ -1151,7 +1186,8 @@ def _judge_ledger_rescope(params):
 
     try:
         backfill.rescope_scope(_ledger_setup(params), params["source"],
-                               params["scope_column"], params.get("scope_values") or [])
+                               params.get("scope_column"), params.get("scope_values") or [],
+                               whole_source=bool(params.get("whole_source")))
     except LedgerSetupError as e:
         raise RetroactiveRefused(str(e)) from None
 
@@ -1366,13 +1402,13 @@ OPERATIONS = {
                       help="rows read per page"),
                    _p("max_batches", required=False, kind="int", form=False,
                       help="stop after this many pages"),
-                   _p("ontology_root", required=False, form=False,
-                      help="the Ledger config root to read")],
+                   _p("world", required=False, form=False,
+                      help="a ledger world (branch) by name; none = the default")],
         "count": _count_ledger_backfill,
         "run": _run_ledger_backfill,
         "judge": _judge_ledger_backfill,
         "cli": ("server/ledger/backfill.py --source <source> [--pace slow] "
-                "[--fetch-rows N] [--max-batches N] [--ontology-root <dir>]"),
+                "[--fetch-rows N] [--max-batches N] [--world <name>]"),
         "deletes": None,
         # 🔴 THIS IS THE ONE THE OWNER NAMED: "백필 돌리다 서버 렉먹는데 백필만 못꺼서
         # 서버 재기동". It commits per page and a rerun asks the row index again for the rows
@@ -1388,18 +1424,20 @@ OPERATIONS = {
         "label": "Re-translate a ledger scope",
         "what_is_missing": "corrected input never reached the ledger, so that scope alone holds stale values",
         "params": [_p("source", help="ledger source id (GET /api/ledger/declaration)"),
-                   _p("scope_column",
+                   _p("scope_column", required=False,
                       help="a column this source's read declares; anything else is "
                            "refused by name with the declared list"),
-                   _p("scope_values", kind="csv",
+                   _p("scope_values", required=False, kind="csv",
                       help="comma-separated values of that column"),
-                   _p("ontology_root", required=False, form=False,
-                      help="the Ledger config root to read")],
+                   _p("whole_source", required=False, kind="bool", form=False,
+                      help="every row of the source instead of a scope"),
+                   _p("world", required=False, form=False,
+                      help="a ledger world (branch) by name; none = the default")],
         "count": _count_ledger_rescope,
         "run": _run_ledger_rescope,
         "judge": _judge_ledger_rescope,
         "cli": ("server/ledger/backfill.py --source <source> --scope-column <column> "
-                "--scope-values <a,b,c> [--ontology-root <dir>] --apply"),
+                "--scope-values <a,b,c> | --whole-source [--world <name>] --apply"),
         # It deletes this source's atoms from the NAMED rows and nothing else:
         # `source_who` is in the delete predicate, so an atom another source wrote about
         # the same die is unreachable from here however the scope is spelled.

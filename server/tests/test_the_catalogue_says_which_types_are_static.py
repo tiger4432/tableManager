@@ -51,7 +51,7 @@ def test_an_entity_without_a_class_publishes_none_rather_than_dynamic(monkeypatc
     one thing the order forbade, and it is invisible without this."""
     from ledger import config as _config
 
-    monkeypatch.setattr(_config, "load", lambda: {
+    monkeypatch.setattr(_config, "load", lambda *_args, **_kwargs: {
         "entities": {"told@1": {"keys": ["k"], "class": "static"},
                      "untold@1": {"keys": ["k"]}},
         "vocabulary": {}})
@@ -65,12 +65,12 @@ def test_the_value_follows_the_declaration(monkeypatch):
     restated" means - a list held in this file would not move."""
     from ledger import config as _config
 
-    monkeypatch.setattr(_config, "load", lambda: {
+    monkeypatch.setattr(_config, "load", lambda *_args, **_kwargs: {
         "entities": {"wafer@1": {"keys": ["w"], "class": "dynamic"}},
         "vocabulary": {}})
     assert catalogue()["entities"][0]["class"] == ["dynamic"]
 
-    monkeypatch.setattr(_config, "load", lambda: {
+    monkeypatch.setattr(_config, "load", lambda *_args, **_kwargs: {
         "entities": {"wafer@1": {"keys": ["w"], "class": "static"}},
         "vocabulary": {}})
     assert catalogue()["entities"][0]["class"] == ["static"]
@@ -157,7 +157,7 @@ def test_a_key_the_type_did_not_declare_is_refused_by_name(monkeypatch):
     a JSON field that cannot exist and report "no values", which reads as a fact."""
     from ledger import config as _config
 
-    monkeypatch.setattr(_config, "load", lambda: {
+    monkeypatch.setattr(_config, "load", lambda *_args, **_kwargs: {
         "entities": {"wafer@1": {"keys": ["wafer_id"]}}, "vocabulary": {}})
     with pytest.raises(Exception) as raised:
         trace_router.ledger_key_values(type="wafer", key="nope", limit=10, db=None)
@@ -172,10 +172,10 @@ def test_the_declared_keys_come_from_the_declaration(monkeypatch):
     edit here, which is the only way the catalogue and this route stay one answer."""
     from ledger import config as _config
 
-    monkeypatch.setattr(_config, "load", lambda: {
+    monkeypatch.setattr(_config, "load", lambda *_args, **_kwargs: {
         "entities": {"wafer@1": {"keys": ["a", "b"]}}, "vocabulary": {}})
     assert trace_router._declared_keys("wafer") == {"a", "b"}
-    monkeypatch.setattr(_config, "load", lambda: {
+    monkeypatch.setattr(_config, "load", lambda *_args, **_kwargs: {
         "entities": {"wafer@1": {"keys": ["a"]}}, "vocabulary": {}})
     assert trace_router._declared_keys("wafer") == {"a"}
 
@@ -239,7 +239,7 @@ def _run(monkeypatch, *, keys, rows, entity="die", key=None, limit=50):
     """Drive the real handler against a recorded connection."""
     from ledger import config as _config
 
-    monkeypatch.setattr(_config, "load", lambda: {
+    monkeypatch.setattr(_config, "load", lambda *_args, **_kwargs: {
         "entities": {entity + "@1": {"keys": list(keys)}}, "vocabulary": {}})
     monkeypatch.setattr(trace_router.trace, "relation_exists",
                         lambda *a, **k: True)
@@ -260,7 +260,7 @@ def test_a_composite_type_is_grouped_by_every_declared_key(monkeypatch):
 
     from ledger import config as _config
 
-    monkeypatch.setattr(_config, "load", lambda: {
+    monkeypatch.setattr(_config, "load", lambda *_args, **_kwargs: {
         "entities": {"die@1": {"keys": ["x", "y"]}}, "vocabulary": {}})
     assert trace_router._declared_keys("die") == {"x", "y"}
 
@@ -312,7 +312,7 @@ def test_the_key_argument_is_optional_now():
 def test_the_catalogue_publishes_an_entitys_attribute_names(monkeypatch):
     from ledger import config as _config
 
-    monkeypatch.setattr(_config, "load", lambda: {
+    monkeypatch.setattr(_config, "load", lambda *_args, **_kwargs: {
         "entities": {"wafer@1": {"keys": ["wafer"], "attributes": ["product", "grade"]}},
         "vocabulary": {}})
     entity, = catalogue()["entities"]
@@ -325,7 +325,7 @@ def test_a_type_that_declares_none_publishes_no_key_rather_than_an_empty_list(mo
     빈 목록을 내면 그 둘이 같은 픽셀이 된다 — 오늘 밤 내내 잡은 그 부류."""
     from ledger import config as _config
 
-    monkeypatch.setattr(_config, "load", lambda: {
+    monkeypatch.setattr(_config, "load", lambda *_args, **_kwargs: {
         "entities": {"wafer@1": {"keys": ["wafer"]}},
         "vocabulary": {}})
     entity, = catalogue()["entities"]

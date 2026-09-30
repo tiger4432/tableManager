@@ -361,19 +361,13 @@ def _config_dir():
                             "config")
 
 
-#: The subdirectory the CANONICAL declaration lives in. Ruled 2026-08-24 after counting the
-#: readers: six of them, split across two files. Five went through `load()` to
-#: `config/ledger_config.json`, which DOES NOT EXIST and fell back to a setup_version 3
-#: sample; the sixth is the walk, which opens `config/ontology/ledger_config.json` directly.
-#: The ontology file is the one that exists, the one already migrated to v5, and the one the
-#: screen actually reads, so the path moves to it rather than a copy being made beside it --
-#: a second file holding the same declaration is the defect this repository spent 2026-08-23
-#: repairing at two other layers.
-CONFIG_SUBDIR = "ontology"
-
-
 def config_path(filename: str = CONFIG_FILENAME) -> str:
-    return os.path.join(_config_dir(), CONFIG_SUBDIR, filename)
+    """The default world's declaration root, from the one seat (`schema.world_names`) - the
+    walk, the loader and this read one path, so an isolated stack (`ASSY_DATA_ROOT`) reads
+    its own declaration everywhere (총괄 e61194b1a ㉥)."""
+    from .schema import world_names
+
+    return os.path.join(world_names().declaration_root, filename)
 
 
 def sample_path(path: str = None) -> str:

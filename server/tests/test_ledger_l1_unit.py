@@ -988,7 +988,7 @@ def test_a_scoped_redo_re_reads_the_row_so_a_humans_correction_reaches_the_ledge
             pass
 
     class _Store:
-        def __init__(self, engine):
+        def __init__(self, engine, world=None):
             pass
 
         def connection(self):
@@ -1017,7 +1017,7 @@ def test_a_scoped_redo_re_reads_the_row_so_a_humans_correction_reaches_the_ledge
         events.append("fetch")
         return [{"row_id": "R1", "core_wafer": "C1", "value": CORRECTED}]
 
-    def _preview(engine, setup, source, plan, frame):
+    def _preview(engine, setup, source, plan, frame, world=None):
         # The page's preview (총괄 8d8abfb5d) is handed the frame just read; a writer that
         # got its rows anywhere else would show the stale value below.
         return {"withdraw": 1, "remake": 1, "refs": ["REF-1"],

@@ -57,6 +57,7 @@ from .setup_bundle import (
     setup_bundle_errors,
     validate_bundle,
 )
+from . import schema
 from .setup_registry import (
     LedgerSetupSnapshot, compile_setup_snapshot, snapshot_compile_errors)
 from .source_preparation import (
@@ -65,7 +66,10 @@ from .source_preparation import (
 )
 
 
-DEFAULT_ONTOLOGY_ROOT = Path(__file__).parents[1] / "config" / "ontology"
+#: The default world's declaration root, from the one seat - through `paths`, like the
+#: catalogue beside it (총괄 e61194b1a ㉥). A stack that sets `ASSY_DATA_ROOT` reads its OWN
+#: declaration; one that does not reads `server/config/ontology`, as before.
+DEFAULT_ONTOLOGY_ROOT = Path(schema.world_names().declaration_root)
 
 
 def physical_catalog_path() -> Path:

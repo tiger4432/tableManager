@@ -47,7 +47,7 @@ def client():
 @pytest.fixture
 def declared(monkeypatch):
     def declare(vocabulary):
-        monkeypatch.setattr(_config, "load", lambda: {
+        monkeypatch.setattr(_config, "load", lambda *_args, **_kwargs: {
             "entities": {"wafer@1": {"keys": ["wid"]}},
             "vocabulary": vocabulary})
     return declare

@@ -33,7 +33,7 @@ logger = logging.getLogger("Mappers.ContrastWalk")
 LIST_CELLS = ("positive", "negative", "follow")
 #: Run cells passed to the walk route as they are (blank -> the route's own default).
 NUMBER_CELLS = ("hops", "node_limit", "edge_limit", "backbone_hops", "seed_limit")
-TEXT_CELLS = ("direction", "seed_type")
+TEXT_CELLS = ("direction", "seed_type", "world")
 
 
 def _route():
@@ -100,7 +100,7 @@ def _walk(db, args):
         follow=args["follow"] or None, backbone_hops=args["backbone_hops"],
         collect=None, seed_type=args["seed_type"], seed_limit=args["seed_limit"],
         group_by=None, measure=None, response_format="json", db=db,
-        include_superseded=args["include_superseded"])
+        include_superseded=args["include_superseded"], world=args["world"])
 
 
 def _with_predicates(trails, edges) -> list:

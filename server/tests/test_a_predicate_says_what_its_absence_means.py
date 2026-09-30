@@ -156,7 +156,7 @@ def test_the_explorer_refuses_an_undeclared_name_by_NAME(tmp_path):
     root = tmp_path / "ontology"
     shutil.copytree(DEFAULT_ONTOLOGY_ROOT, root)
     service = OntologyExplorerService(config_root=root, draft_root=tmp_path / "drafts")
-    saved_service = explorer_router._service
+    saved_service = explorer_router._services[None]
     explorer_router.configure_service(service)
     try:
         app = FastAPI()

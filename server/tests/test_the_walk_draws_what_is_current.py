@@ -54,7 +54,7 @@ def test_the_walk_calls_the_shared_filter_rather_than_its_own():
     # 🪦 [S-211 packaging] the walk reaches it as `from ledger import trace`.
     assert "trace.live_claims(" in helper
 
-    body = inspect.getsource(ledger_subgraph.subgraph)
+    body = inspect.getsource(ledger_subgraph._walk)
     assert "_split_superseded(batch)" in body, "the fetch path must pass through it"
     assert "superseded_dropped += " in body
 
@@ -64,7 +64,7 @@ def test_the_response_always_says_how_many_it_left_out():
     fact, and a key that appears only sometimes trains a reader to ignore it."""
     import inspect
 
-    body = inspect.getsource(ledger_subgraph.subgraph)
+    body = inspect.getsource(ledger_subgraph._walk)
 
     assert '"superseded_dropped": superseded_dropped,' in body
 
@@ -73,7 +73,7 @@ def test_including_them_marks_the_edge_rather_than_drawing_it_plain():
     """「보인다」와 「현재다」는 다른 사실이라, 일부러 그린 것에는 표지가 붙는다."""
     import inspect
 
-    body = inspect.getsource(ledger_subgraph.subgraph)
+    body = inspect.getsource(ledger_subgraph._walk)
 
     assert 'edge["superseded_by"] = replaced' in body
     assert "if not include_superseded:" in body

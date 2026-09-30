@@ -406,7 +406,7 @@ def test_a_relation_name_that_is_not_an_identifier_is_refused_before_any_sql():
     ⛔ AND IT MUST RAISE BEFORE THE CONNECTION IS TOUCHED, which `None` here proves: a
     guard that ran after the query would be interpolating the string it is refusing.
     """
-    for bad in ("ledger_events; DROP TABLE x", "public.ledger_events", "", None):
+    for bad in ("ledger_events; DROP TABLE x", "public.ledger_events.x", "", None):
         with pytest.raises(ValueError):
             lt.relation_exists(None, bad)
 

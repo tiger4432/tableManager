@@ -501,8 +501,13 @@ def test_the_route_names_an_absent_ledger_in_a_field_not_in_prose(
     is judged by the catalogue and the body is machine-readable. This is the test
     that fires it, against a real catalogue.
     """
-    from ledger import trace_router as router_module
-    monkeypatch.setattr(router_module, "LEDGER_RELATION", "ledger_events_not_migrated")
+    from dataclasses import replace
+
+    from ledger import schema
+    # the relation the walk reads is the world seat's answer; make it name a missing table
+    real = schema.world_names
+    monkeypatch.setattr(schema, "world_names", lambda world=None: replace(
+        real(world), read_relation="ledger_events_not_migrated"))
 
     resp = ledger_client.get(WALK_ROUTE, params={"id": lot_seed("L-D"), "hops": 3})
     assert resp.status_code == 503, resp.text

@@ -200,12 +200,13 @@ def test_one_read_answers_both_questions(declared):
     declared({"wafer@1": {"keys": ["wid", "slot"], "attributes": ["product"],
                           "attribute_cardinality": {"product": "many"}}})
 
-    assert ledger_subgraph._entity_key_order is None, "nothing has read it yet"
+    assert ledger_subgraph._declaration_facts == {}, "nothing has read it yet"
 
     assert ledger_subgraph._declared_plural_attributes("wafer") == {"product"}
 
     # The key order arrived in the SAME read, without a second open().
-    assert ledger_subgraph._entity_key_order["wafer"] == ["wid", "slot"]
+    (order, _plural, _confirmers), = ledger_subgraph._declaration_facts.values()
+    assert order["wafer"] == ["wid", "slot"]
 
 
 # ---------------------------------------------------------------------------
@@ -310,12 +311,12 @@ def test_forgetting_drops_both_halves_of_the_one_read(declared):
     declared({"wafer@1": {"keys": ["wid", "slot"], "attributes": ["product"],
                           "attribute_cardinality": {"product": "many"}}})
     assert ledger_subgraph._declared_plural_attributes("wafer") == {"product"}
-    assert ledger_subgraph._entity_key_order["wafer"] == ["wid", "slot"]
+    (order, _plural, _confirmers), = ledger_subgraph._declaration_facts.values()
+    assert order["wafer"] == ["wid", "slot"]
 
     ledger_subgraph.reset_declaration_cache()
 
-    assert ledger_subgraph._entity_key_order is None
-    assert ledger_subgraph._entity_plural_attributes == {}
+    assert ledger_subgraph._declaration_facts == {}
 
 
 def test_the_reload_seat_names_this_cache_beside_the_others():

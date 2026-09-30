@@ -276,7 +276,8 @@ class GapQuestionUnknown(ValueError):
     """
 
 
-def measure(engine, declaration, names=None, scan_limit=NODE_SCAN_LIMIT, only=None):
+def measure(engine, declaration, names=None, scan_limit=NODE_SCAN_LIMIT, only=None,
+            relation=None):
     """Count each named gap over a bounded sample of nodes, with each one's age. READ ONLY.
 
     🔴 `only` EXISTS BECAUSE THE SCREEN HAS THREE SECONDS AND ALL TWENTY TAKE THIRTY.
@@ -301,8 +302,10 @@ def measure(engine, declaration, names=None, scan_limit=NODE_SCAN_LIMIT, only=No
             raise GapQuestionUnknown(
                 f"no gap is named {only!r}. The names come from "
                 f"docs/spec/APPLICATION_GAP_SPEC.md - ask GET /api/ledger/gaps for the list.")
-    node_sql = _nodes_of_type_sql().replace("{table}", schema.LEDGER_TABLE)
-    has_sql = _has_predicate_sql().replace("{table}", schema.LEDGER_TABLE)
+    # `relation`: the walk relation of the world asked about (the router's `_world`)
+    relation = relation or schema.world_names().read_relation
+    node_sql = _nodes_of_type_sql().replace("{table}", relation)
+    has_sql = _has_predicate_sql().replace("{table}", relation)
 
     out = []
     connection = engine.raw_connection()

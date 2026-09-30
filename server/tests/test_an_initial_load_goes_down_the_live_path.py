@@ -52,7 +52,7 @@ def test_it_pages_by_what_the_index_does_not_name_and_stops_when_that_is_empty(m
     pages = [["a", "b"], ["c"], []]
     asked = []
 
-    def fake_missing(engine, setup, source, limit, after=None):
+    def fake_missing(engine, setup, source, limit, after=None, world=None):
         asked.append(after)
         return pages.pop(0) if pages else []
 
@@ -63,7 +63,7 @@ def test_it_pages_by_what_the_index_does_not_name_and_stops_when_that_is_empty(m
     monkeypatch.setattr(followup, "enqueue",
                         lambda table, ids, kind: drained.append((table, list(ids), kind)))
     monkeypatch.setattr(followup, "queue_depth", lambda: 0)
-    monkeypatch.setattr(followup, "drain_once", lambda engine, setup: None)
+    monkeypatch.setattr(followup, "drain_once", lambda engine, setup, world=None: None)
 
     setup = _setup({"s": _Plan("t")})
     report = backfill._run_via_events(object(), setup, "s", page_rows=2)

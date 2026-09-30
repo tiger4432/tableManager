@@ -71,9 +71,9 @@ def rescope_doors(monkeypatch):
     monkeypatch.setattr(backfill, "_scope_predicate", lambda plan, scope: scope)
     monkeypatch.setattr(setup_module, "_require_declared_source", lambda setup, source: source)
     monkeypatch.setattr(backfill, "_v2_registration_subjects", lambda plan, frame: None)
-    monkeypatch.setattr(backfill, "_preview_frame", lambda e, s, src, plan, frame: {
+    monkeypatch.setattr(backfill, "_preview_frame", lambda e, s, src, plan, frame, **_: {
         "withdraw": len(frame), "remake": len(frame), "refs": list(frame["row_id"])})
-    monkeypatch.setattr(store_module, "LedgerStore", lambda engine: store)
+    monkeypatch.setattr(store_module, "LedgerStore", lambda engine, **_: store)
 
     def _write(setup, source, frame, scope, reader, store, known_registrations=None,
                withdraw_refs=None):

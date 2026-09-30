@@ -12,12 +12,13 @@ from chain.enrichment import analysis
 from chain.enrichment import config as enrichment_config
 import chain.enrichment.backfill as enrichment_backfill
 import ledger.backfill as ledger_backfill
+import ledger.schema as ledger_schema
 import ledger.setup as ledger_setup
 
 #: op -> the CLI options widened into it (the census in the 3d03bc819 report).
 WIDENED = {
-    "ledger_backfill": {"fetch_rows": 50, "max_batches": 0, "ontology_root": "/r"},
-    "ledger_rescope": {"ontology_root": "/r"},
+    "ledger_backfill": {"fetch_rows": 50, "max_batches": 0, "world": "w1"},
+    "ledger_rescope": {"world": "w1"},
     "chain_replay": {"limit": 5, "chunk_size": 7},
     "enrichment_backfill": {"limit": 5, "force_disabled": True, "chunk_size": 7},
     "enrichment_confirm": {"limit": 5, "probe_scan_rows": 11, "probe_distinct_values": 13},
@@ -48,6 +49,8 @@ def _rule_r_is_found(monkeypatch):
     monkeypatch.setattr(cell_layer, "resolve_target", lambda *a, **k: (None, {}))
     monkeypatch.setattr(ledger_setup, "load_setup", lambda *a, **k: _FOUND)
     monkeypatch.setattr(ledger_backfill, "rescope_scope", lambda *a, **k: (None, None))
+    # one ledger world this file names, declared by the seat's own list (총괄 3b6dacd2f)
+    monkeypatch.setattr(ledger_schema, "worlds", lambda: ["w1"])
 
 
 def test_the_form_does_not_offer_them_and_the_record_accepts_them():
@@ -121,7 +124,7 @@ def _run(op, params):
 
 #: op -> (operation function, the options it receives as keywords)
 RECEIVES = {
-    "ledger_backfill": ("run", ["fetch_rows", "max_batches", "ontology_root"]),
+    "ledger_backfill": ("run", ["fetch_rows", "max_batches", "world"]),
     "chain_replay": ("replay_rule", ["limit", "chunk_size"]),
     "enrichment_backfill": ("run_backfill", ["limit", "chunk_size"]),
     "enrichment_confirm": ("sweep", ["limit"]),
@@ -153,8 +156,10 @@ def test_the_rest_reach_their_seats(calls):
 
     _run("ledger_rescope", {**REQUIRED["ledger_rescope"], **WIDENED["ledger_rescope"]})
     _run("ledger_rescope", REQUIRED["ledger_rescope"])
-    # Each run twice - its params judgment and the run read the SAME root (총괄 06bb8f474).
-    assert calls["load_setup"] == [("/r",), ("/r",), (), ()]
+    # Each run twice - its params judgment and the run read the SAME root (총괄 06bb8f474),
+    # the world's when the job names one and the default's when it names none.
+    w1, default = (ledger_schema.world_names(w).declaration_root for w in ("w1", None))
+    assert calls["load_setup"] == [(w1,), (w1,), (default,), (default,)]
 
     _run("enrichment_confirm", {**REQUIRED["enrichment_confirm"],
                                 **WIDENED["enrichment_confirm"]})

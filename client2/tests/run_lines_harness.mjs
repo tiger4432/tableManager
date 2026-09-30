@@ -22,7 +22,7 @@ const RUNS = {
   state_names: { running: 'Running', done: 'Done', failed: 'Failed', cancel_requested: 'Stopping' },
   runs: [
     { run_id: 'r1', op: 'resolve', label: 'Recompute shown values (R3)', state: 'running',
-      params: { table: 'void_obs', pace: 'slow', ontology_root: 'C:/x/server/config/ontology', chunk_size: 100 },
+      params: { table: 'void_obs', pace: 'slow', world: 'exp', chunk_size: 100 },
       processed_rows: 50, total_rows: 100, started_at: '2026-09-25T10:20:00+00:00' },
     { run_id: 'r2', op: 'resolve', label: 'Recompute shown values (R3)', state: 'done',
       params: { table: 'void_obs' }, processed_rows: 103858, total_rows: null,
