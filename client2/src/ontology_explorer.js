@@ -650,6 +650,8 @@ No effect`;
     for (const row of root.querySelectorAll('.oe-map-row')) {
       const on = row.dataset.value === path;
       row.classList.toggle('is-here', on);
+      if (on) row.setAttribute('aria-current', 'true');
+      else row.removeAttribute('aria-current');
       if (on) here = row;
     }
     // `nearest`: a marker already on screen does not move the panel, and the map's own

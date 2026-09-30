@@ -1,3 +1,101 @@
+> ## [01:50 디자인] 폼 라운드 물음 다섯의 답 — 할 일이 남은 행의 상태 낱말 · 빈 행동 줄 · 맵 «여기» 행 · 빈 값 판정 표 — 총괄 810d0044b · b79bbfdfc
+
+①②④ 는 한 커밋 b79bbfdfc. ⑤ 는 표만(짓지 않음).
+
+① 상태 낱말 — foldDecision(Declared · Derived 를 내던 그 자리)에 줄을 더함. 새 함수 없음.
+
+| 서버의 사실 | 낱말 |
+|---|---|
+| 거절 있음 | Refused |
+| 충돌 | Differs |
+| state missing | Missing |
+| state unanswered | Not answered (전에는 Empty) |
+| 바꿀 수 있는 기본값(default_overridable) | Default |
+| 표에 없는 사실 | 빈칸 |
+
+- 한 행에 사실이 둘이면 «문제가 빔보다 먼저»: 거절 › 충돌 › 빠짐. 이 순서는 제가 정했습니다 — 다르게 원하시면 한 줄입니다.
+- 🔴 뒤집은 판정: unanswered 의 Empty 는 6b 판정(task/ontology_screen_6b_brief.md 「Optional → 비움」, 뒤에 영어로 Empty)에서 왔습니다. 810d0044b 표대로 Not answered 로 바꿨고, ontology_authoring_panel F3 의 닫힌 낱말 목록도 같은 커밋에서 바꿨습니다.
+
+② E3 는 «낱말이 든 행동 줄»만 셉니다(빈 줄을 「말한다」로 세던 것). shape 행과 근거 단추 없는 unmeasured 행은 줄을 안 그립니다. E9 「빈 행동 줄 0」 더함.
+
+③ 잠긴 칩 — 안 건드림. 수: dt_job 화면에서 «누를 수 없는데 테두리» 1개가 바로 그 칩(«Read anyway · cannot turn off»)입니다. die_inspection 에는 0개.
+
+④ 맵 «여기» 행 — 본문색 + 막대와 옅은 바탕은 그대로. 그리고 aria-current 를 그 행을 표시하는 두 자리(처음 그릴 때 · 커서가 움직일 때)에 달았습니다. 경로 막대의 현재 단계와 같은 표지라서, 셈의 「지금 여기는 누르는 것에서 뺀다」가 이 행에도 같게 걸립니다.
+
+같은 화면 전후 (스크래치: 전 = main 의 client2/src, 후 = 이 커밋, 같은 캡처 · 진짜 계획 · 1600 폭 · 폼의 접힘 다 연 뒤)
+
+| 잰 것 | die_inspection 전 → 후 | dt_job 전 → 후 |
+|---|---|---|
+| 상태 칸의 Empty | 1 → 0 | 2 → 0 |
+| 상태 칸의 Not answered | 0 → 1 | 0 → 2 |
+| 상태 칸의 Default | 0 → 0 | 0 → 1 |
+| 상태 칸의 Missing · Refused · Differs | 0 → 0 | 0 → 0 |
+| 빈 행동 줄 | 0 → 0 | 0 → 0 |
+| 맵 «여기» 행 글자색 | rgb(26, 102, 208) → rgb(31, 39, 51) (aria-current) | rgb(26, 102, 208) → rgb(31, 39, 51) (aria-current) |
+| 누르는데 상자도 링크 색도 아님 | 0 → 0 | 0 → 0 |
+| 폼 글줄 | 217 → 217 | 322 → 323 |
+
+- 두 샘플 다 완성된 선언이라 할 일이 남은 행이 없습니다. 그래서 Missing · Refused · Differs 는 화면에서 0 이고 하니스(W9)로만 잽니다.
+- 셈 명령: 앞 보고의 폼 셈 + 이번 셈(상태 칸 · 행동 줄 · «여기» 행), 아래에 붙임.
+
+⑤ 클라의 빈 값 판정 — 셋이 아니라 넷입니다(이름이 다른 isAbsent 하나를 더 찾음). 넷 다 모듈 밖으로 안 나가서 부르는 곳은 그 파일 안뿐입니다.
+
+| 판정 | 자리 | 부르는 곳 |
+|---|---|---|
+| ontology_skeleton isBlank | ontology_skeleton.js | 2 |
+| rnd_board/api blank | rnd_board/api.js | 3 |
+| map2/excel_io isBlank | map2/excel_io.js | 7 |
+| rnd_board/table_part isAbsent | rnd_board/table_part.js | 3 |
+
+서로 다른 답을 내는 입력(참 = «비었다»). 서버 is_blank_value 를 기준으로 같이 돌림:
+
+| 입력 | ontology_skeleton isBlank | rnd_board/api blank | map2/excel_io isBlank | rnd_board/table_part isAbsent | server is_blank_value |
+|---|---|---|---|---|---|
+| `'  '` | 참 | 참 | 참 | 거짓 | 참 |
+| `'\t\n'` | 참 | 참 | 참 | 거짓 | 참 |
+| `[]` | 참 | 참 | 참 | 거짓 | 거짓 |
+| `['']` | 거짓 | 참 | 참 | 거짓 | 거짓 |
+| `{}` | 참 | 거짓 | 거짓 | 거짓 | 거짓 |
+
+- 다섯이 모두 같은 답을 내는 입력: `undefined` · `null` · `''` · `'x'` · `'0'` · `0` · `false` · `NaN`. NaN 은 다섯 다 «값»입니다.
+- rnd_board/api blank 와 map2/excel_io isBlank 는 13개 입력에서 답이 같습니다(같은 판정의 두 철자).
+- 지시대로 짓지 않았습니다. 접으려면 [] · [''] · {} · 공백 문자를 어느 쪽으로 볼지부터 정해야 합니다.
+- 센 방법: client2/src 의 최상위 함수·상수 이름이 (is)Blank · Empty · Missing · Absent · blank · empty 꼴인 것. 이름 없이 그 자리에서 쓴 비교(=== '' 같은 것)는 안 셌습니다.
+
+새 함수 · 새 if 중 기존 것과 같은 일: 새 함수 0. foldDecision 의 열린 두 갈래를 하나로 접음. 새 if 둘 — 빈 행동 줄 거르기(지시된 빈 값 거르기), markMapCursor 의 aria-current 켜고 끄기(같은 자리의 class 켜고 끄기와 같은 일을 하는 짝).
+
+게이트: explorer_form_grammar 21/0 · 변이 22 전부 빨강 · ontology_authoring_panel 95/0 · 러너 153 중 151 게이트 초록. authoring_skeleton.json 은 캡처 스크립트로 다시 떴고(group_by 의 when), 하니스는 이제 그 진짜 when 으로 잽니다.
+
+총괄께 여쭐 것
+- 선택 칸이 비어 있을 때, 계획(plan)에 그 칸의 행이 있으면 Not answered, 행이 없어 뼈대가 「필수 아님」으로 답하면 Optional 입니다(form_demand). 한 화면에 가까운 뜻의 낱말이 둘입니다. 그대로 둘지.
+
+셈 명령(이번 셈 — 폼 셈을 먼저 돌린 뒤):
+```
+// Round census (lead 810d0044b ① ② ④). Run after form_census.js (which opens every fold).
+// Population: the form's state column cells, every action line in the explorer, the map's here row.
+(() => {
+  const root = document.querySelector('#ontology-explorer-root');
+  const form = root.querySelector('.oe-bucket--form');
+  const visible = (el) => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
+  const states = [...form.querySelectorAll('.oe-node-state')].filter(visible).map((el) => el.textContent.trim());
+  const words = states.reduce((m, w) => { m[w || '(blank)'] = (m[w || '(blank)'] || 0) + 1; return m; }, {});
+  // A row the rule keeps open has a card and no fold control on its line: those are the rows still owed.
+  const acts = [...root.querySelectorAll('.oe-field-act')];
+  const here = [...root.querySelectorAll('.oe-map-row.is-here')];
+  const out = {
+    stateCells: states.length,
+    stateWords: words,
+    actionLines: acts.length,
+    emptyActionLines: acts.filter((el) => !el.textContent.trim()).length,
+    hereRows: here.length,
+    hereColor: here.map((el) => getComputedStyle(el).color),
+    hereAriaCurrent: here.map((el) => el.getAttribute('aria-current')),
+    linkColor: getComputedStyle(root.querySelector('.oe-map-row:not(.is-here)')).color,
+  };
+  return JSON.stringify(out);
+})();
+```
+
 > ## [01:14 디자인] 원장 선언 폼 정리 — 한 줄 행 · 누르는 것과 설명의 모양 · 내부 낱말 걷기 · 꺼진 칸의 빈 값 — 총괄 8fd2f185d · 7602a4a83 · 482288b12 · 115134f12 · 9073d7225 ㉰ · 92ad06716
 
 | 지시 | 커밋 | 한 것 |

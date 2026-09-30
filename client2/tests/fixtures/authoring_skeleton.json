@@ -1,6 +1,6 @@
 {
  "captured_by": "client2/tests/fixtures/capture_authoring_skeleton.py",
- "server_at": "60e1a675ad5f2c2b9aacdf909a18b7fd67f19025",
+ "server_at": "c83fe086abe35d57a4595fa234425e800bbdc24b",
  "authorable_kinds": [
   {
    "id": "entity",
@@ -474,6 +474,10 @@
            {
             "key": "group_by",
             "required": true,
+            "when": {
+             "field": "unit",
+             "is": "group"
+            },
             "node": {
              "kind": "map",
              "keyed_by": "index",

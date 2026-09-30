@@ -927,7 +927,8 @@ const FLOORS = new Map([
   // 9 -> 14 (W, lead 482288b12): no word only this code knows.
   // 14 -> 16 (P5 P6, the review): a chip nobody can press has no box; an empty head takes no room.
   // 16 -> 19 (W6-W8, lead 115134f12): a switched-off field holding an empty list is not drawn.
-  ['explorer_form_grammar_harness.mjs', 19],
+  // 19 -> 21 (P7 W9, lead 810d0044b ① ④): an owed row's state word; the map's here row is a word.
+  ['explorer_form_grammar_harness.mjs', 21],
   // New 2026-09-10 with C-55 (S-117's screen half). Floor is the count it reports on the
   // commit that introduces it. 🔴 THE FIXTURE IS THE CONTRACT VECTOR, captured off the live
   // route: the receipt has TWO envelopes and the failed one carries no counts at all, so a
@@ -1211,7 +1212,8 @@ const FLOORS = new Map([
   // 「나머지는 들어가겠지」, which is the promise the server was forbidden to make, so a
   // screen that omits it makes that promise on the server's behalf. H5/H6 hold the two
   // silent states, and I3 holds that a code-less issue draws no code rather than a blank.
-  ['ontology_authoring_panel_harness.mjs', 94],
+  // 94 -> 95 (lead 810d0044b ②): E3 counts action lines with words in them, E9 no empty action line.
+  ['ontology_authoring_panel_harness.mjs', 95],
   // New with the N2 round (overlay markers coloured by the overlay cell's own value). Same
   // rule: floor is the count it reports on the commit that introduces it.
   // 70 as of 2026-08-04: A12 (loading an overlay REGISTERS its values, so the colouring this
