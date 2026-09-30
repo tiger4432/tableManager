@@ -1146,11 +1146,16 @@ function renderGround(row) {
   const ground = row.ground;
   if (!ground) return null;
   const box = h('div', 'oe-ground');
-  box.append(h('span', 'oe-ground-text', ground.text));
-  for (const path of ground.from_paths.slice(0, 2)) box.append(h('code', '', path));
-  if (ground.from_paths.length > 2) {
-    box.append(h('small', '', `+${ground.from_paths.length - 2} more`));
+  box.append(h('span', 'oe-ground-text', ground.text || ''));
+  // Where it comes from in the declaration's own words, not the bundle path (lead 482288b12).
+  const [section, id] = splitBundlePath(row.path);
+  const paths = ground.from_paths || [];
+  for (const from of paths.slice(0, 2)) {
+    const steps = splitBundlePath(from);
+    const trail = steps[0] === section && steps[1] === id ? steps.slice(2) : steps;
+    box.append(h('code', 'oe-ground-from', trail.join(' › ')));
   }
+  if (paths.length > 2) box.append(h('small', '', `+${paths.length - 2} more`));
   return box;
 }
 
@@ -1266,10 +1271,15 @@ function foldDecision(row, expanded = {}) {
   // same control failing the other way round, which is what "opened by hand" used to mean
   // here: the toggle could only ever agree with the screen.
   const chosen = expanded ? expanded[row.path] : undefined;
-  if (chosen === true) return { open: true, reason: '', byHand: true };
-  if (chosen === false) return { open: false, reason: 'Folded', byHand: true };
-  if (row.remaining) return { open: true, reason: '' };
-  if (row.conflicts || row.refusals?.length) return { open: true, reason: '' };
+  // `word` is the state column's, and it does not change when the person opens or shuts the row
+  // (lead 482288b12): an open row used to show the tier word, a word only this code knew.
+  if (chosen === true || chosen === false) {
+    const { word } = foldDecision(row);
+    return chosen ? { open: true, reason: '', byHand: true, word }
+      : { open: false, reason: 'Folded', byHand: true, word };
+  }
+  if (row.remaining) return { open: true, reason: '', word: '' };
+  if (row.conflicts || row.refusals?.length) return { open: true, reason: '', word: '' };
   // 🔴 A DEFAULT THE AUTHOR MAY CHANGE, WITH SOMETHING TO CHANGE IT TO, IS A CHOICE. The
   // server measures that distinction already and stamps it: `default_overridable` means
   // nothing FIXED this value, and a candidate list means today's data offers alternatives.
@@ -1286,11 +1296,12 @@ function foldDecision(row, expanded = {}) {
     // 「비움」 on an empty list chip, 「후보」 across the client. Nothing here was translated
     // into existence; the state column had simply been left in the language the mockup did
     // not rule on, so 「선언됨」 stood beside four English words in one column.
-    return { open: false, reason: row.disposition === 'grammar_requires_it' ? 'Forced' : 'Derived' };
+    const word = row.disposition === 'grammar_requires_it' ? 'Forced' : 'Derived';
+    return { open: false, reason: word, word };
   }
   // Read live. `candidates` is the list the server sent for THIS render.
   if (Array.isArray(row.candidates) && row.candidates.length === 1) {
-    return { open: false, reason: 'Single candidate' };
+    return { open: false, reason: 'Single candidate', word: 'Single candidate' };
   }
   // 🔴 A SETTLED DECISION IS NOT A PENDING ONE. A person-decided field that is already
   // filled and carries no problem is done -- keeping it open spends the operator's
@@ -1301,9 +1312,9 @@ function foldDecision(row, expanded = {}) {
   // the short ones -- the tall ones are the filled choices, carrying their whole candidate
   // list. Folding by "is anything still owed here" instead of by tier is what turns a
   // complete config into a short page, which is the state it should read as.
-  if (row.state === 'answered') return { open: false, reason: 'Declared' };
-  if (row.state === 'unanswered') return { open: false, reason: 'Empty' };
-  return { open: true, reason: '' };
+  if (row.state === 'answered') return { open: false, reason: 'Declared', word: 'Declared' };
+  if (row.state === 'unanswered') return { open: false, reason: 'Empty', word: 'Empty' };
+  return { open: true, reason: '', word: '' };
 }
 
 /** 🔴 THE GROUND THIS MEASUREMENT JUDGES, NAMED BY THE SERVER RATHER THAN BY A PATH.
@@ -1421,8 +1432,6 @@ export function renderAuthoringRow(row, expanded = [], editable = null, bare = f
       act.append(h('span', '', 'Forced · removable in the file'));
     } else if (row.disposition === 'default_overridable') {
       act.append(h('span', '', 'Default · can be overridden'));
-    } else if (row.disposition === 'unmeasured') {
-      act.append(h('span', '', 'Refusals remain · removability not measured'));
     }
     for (const key of row.ground?.from_keys || []) {
       const jump = button(`Basis · ${key.split('|')[1] || key}`, 'select', key, 'oe-jump');
@@ -1898,11 +1907,10 @@ function branchOwnRow(context, path, depth) {
   // card head among flat siblings and states itself twice. Passing `bare` also means the
   // row must supply the state element itself, exactly as `renderTreeLeaf` does.
   const fold = foldDecision(own, context.expanded);
-  const state = h('i', 'oe-tier oe-tier--' + own.tier,
-                  fold.open ? own.tier : fold.reason);
+  const state = h('i', 'oe-tier oe-tier--' + own.tier, fold.word);
   const cls = own.remaining ? 'is-remaining'
     : own.refusals && own.refusals.length ? 'is-refused' : '';
-  return treeRow(depth + 1, 'This slot', [],
+  return treeRow(depth + 1, '', [],
                  context.renderRow(own, null, true), state, cls);
 }
 
@@ -1919,18 +1927,11 @@ function plannedValue(context, path) {
 /** The server's sentence for it and the path it comes from (the ground's, in the declaration's
  *  own words) -- no word of the screen's -- then each member drawn by the read tree's renderer. The map's add row below stays: it is the override. */
 function renderPlannedValue(context, node, path, row, depth) {
-  const [from] = row.ground?.from_paths || [];
-  const steps = from ? splitBundlePath(from) : [];
-  const [section, id] = splitBundlePath(row.path);
-  const trail = steps[0] === section && steps[1] === id ? steps.slice(2) : steps;
   const fold = foldDecision(row, context.expanded);
-  // In the value column, where every derived row's ground sits, so the sentence wraps rather
-  // than being clipped to the name column's width.
-  const ground = h('div', 'oe-ground');
-  ground.append(h('span', 'oe-ground-text', row.ground?.text || ''),
-                h('code', 'oe-planned-from', trail.join(' › ')));
-  const rows = [treeRow(depth + 1, '', [], ground,
-                        h('i', 'oe-tier oe-tier--' + row.tier, fold.open ? row.tier : fold.reason))];
+  // The ground every derived row draws (`renderGround`), in the value column, so the sentence
+  // wraps rather than being clipped to the name column's width.
+  const rows = [treeRow(depth + 1, '', [], renderGround(row),
+                        h('i', 'oe-tier oe-tier--' + row.tier, fold.word))];
   // One step under that line, so they read as what it brings -- not as the map's own members.
   const read = readContext(context.schema, context.expanded);
   for (const key of Object.keys(row.value)) {
@@ -2099,8 +2100,7 @@ function renderTreeLeaf(context, node, path, value, depth, label, required = und
   let cls = '';
   if (planned) {
     const fold = foldDecision(planned, context.expanded);
-    state = h('i', 'oe-tier oe-tier--' + planned.tier,
-              fold.open ? planned.tier : fold.reason);
+    state = h('i', 'oe-tier oe-tier--' + planned.tier, fold.word);
     cls = planned.remaining ? 'is-remaining'
       : planned.refusals && planned.refusals.length ? 'is-refused' : '';
   } else if (demand.text) {

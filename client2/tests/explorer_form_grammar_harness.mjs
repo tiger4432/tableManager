@@ -9,6 +9,8 @@
  *      value only — the ground is the open card's
  *   P  what is pressed looks pressable and what explains does not: an explaining word has no box, a
  *      fold is a link-coloured word, the folded value wears the input's surface, no tier word in a head
+ *   W  no word only this code knows (482288b12): the state word is the same open or folded, no tier word,
+ *      no «This slot», a ground's path in the declaration's words, no «removability not measured»
  */
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
@@ -16,6 +18,7 @@ import { fileURLToPath } from 'node:url';
 import { makeDoc, walk } from './lib/board_dom.mjs';
 import { loadWithProbe } from './lib/probe.mjs';
 import { scoreMutants } from './lib/mutation_scorer.mjs';
+import { declarationShape } from '../src/ontology_skeleton.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const VIEW = path.join(HERE, '..', 'src', 'ontology_explorer_view.js');
@@ -24,6 +27,25 @@ const PLAN = JSON.parse(readFileSync(path.join(HERE, 'fixtures', 'authoring_inhe
 // A derived row the server grounds, with a value that is not a mapping: the ordinary folded one-liner.
 const GROUNDED = PLAN.fields.find((row) => row.state === 'derived' && row.ground && row.ground.text
   && (typeof row.value !== 'object' || Array.isArray(row.value)));
+
+const SKELETON = JSON.parse(readFileSync(path.join(HERE, 'fixtures', 'authoring_skeleton.json'), 'utf8'));
+const SAMPLE = JSON.parse(readFileSync(
+  path.join(HERE, '..', '..', 'server', 'config', 'sample', 'ledger_config.json.sample'), 'utf8'));
+const RAW = SAMPLE.sources.dt_job;
+const SECTION = (SKELETON.authorable_kinds.find((k) => k.id === 'source_plan') || {}).section;
+// A plain leaf the plan answers (its state word is 「Declared」), for the open/folded comparison.
+const LEAF = PLAN.fields.find((row) => row.path === `${PLAN.base}.relation`);
+// Every branch open; every field folded by the rule (field folds are keyed by the plan's path).
+const ALL_OPEN_BRANCHES = new Proxy({}, { get: (_t, k) => (String(k).startsWith('bundle.') ? undefined : true) });
+const liveContext = (view, expanded) => ({
+  schema: { skeleton: SKELETON.skeleton, authorable_kinds: SKELETON.authorable_kinds }, readOnly: false,
+  planRow: (p) => PLAN.fields.find((row) => row.path === `${PLAN.base}${p ? '.' + p : ''}`) || null,
+  plannedMembers: () => [], covering: () => null,
+  deref: (item) => (item && item.use ? (SKELETON.skeleton.defs || {})[item.use] : item), declared: () => [],
+  rolesNear: () => [], usedElsewhere: () => [],
+  renderRow: (row, node, bare = false) => view.renderAuthoringRow(row, expanded, null, bare, null),
+  suggest: (row) => row, hot: [], expanded, absolute: (p) => `${PLAN.base}.${p}`, planLoaded: true,
+});
 
 globalThis.document = makeDoc('light');
 
@@ -79,6 +101,32 @@ function suite(view, css) {
     .flatMap((card) => walk(card).filter((n) => cls(n, 'oe-field-head')));
   eq('P4 no tier word in any card\'s head (bare, open, or outside the tree)',
     heads.length ? heads.flatMap((hd) => walk(hd).filter((n) => cls(n, 'oe-tier'))).length : '(no head)', 0);
+
+  console.log('\n-- W. no word only this code knows --');
+  const at = LEAF.path.slice(PLAN.base.length + 1);
+  const form = (expanded) => view.renderSkeletonForm(liveContext(view, expanded),
+    declarationShape(SKELETON.skeleton, SECTION), '', RAW, 0, 'dt_job');
+  const stateOf = (tree) => {
+    const node = walk(tree).find((n) => cls(n, 'oe-node') && n.dataset.path === at);
+    const row = node && node.children.find((c) => cls(c, 'oe-node-row'));
+    const st = row && row.children.find((c) => cls(c, 'oe-node-state'));
+    return st ? st.textContent : '(no row)';
+  };
+  const folded2 = form(ALL_OPEN_BRANCHES);
+  const opened = form(new Proxy({}, { get: (_t, k) => (k === LEAF.path ? true : ALL_OPEN_BRANCHES[k]) }));
+  eq('W1 the state column says the same word folded and opened (not the tier word)',
+    `${stateOf(folded2)}|${stateOf(opened)}`, 'Declared|Declared');
+  const TIERS = new Set(PLAN.fields.map((r) => r.tier));
+  const states = walk(opened).filter((n) => cls(n, 'oe-node-state')).map((n) => n.textContent).filter(Boolean);
+  ok('W2 no tier word in any state column', states.length > 5 && !states.some((s) => TIERS.has(s)),
+    `${states.length} states, tiers seen: ${states.filter((s) => TIERS.has(s)).join(',')}`);
+  eq('W3 no row is named «This slot»', walk(opened).filter((n) => cls(n, 'oe-node-name') && n._text === 'This slot').length, 0);
+  const paths = walk(open).filter((n) => cls(n, 'oe-ground-from')).map((n) => n._text);
+  ok('W4 a ground names where it comes from in the declaration\'s words, not the bundle path',
+    paths.length > 0 && paths.every((p) => !p.startsWith('bundle') && p.includes('›')), paths.join(' | '));
+  const unmeasured = view.renderAuthoringRow({ ...GROUNDED, disposition: 'unmeasured' }, { [GROUNDED.path]: true }, null, true);
+  eq('W5 the unmeasured line is gone (its refusals are drawn on their own rows)',
+    walk(unmeasured).filter((n) => /Refusals remain|removability/.test(n._text || '')).length, 0);
   return { ran, failed: failedList.slice() };
 }
 
@@ -104,6 +152,18 @@ const MUTANTS = [
   { name: 'the-tier-chip-comes-back', catches: ['P4'], file: VIEW,
     from: "  if (!bare) head.append(h('b', '', row.label));\n",
     to: "  if (!bare) head.append(h('b', '', row.label));\n  head.append(h('i', `oe-tier oe-tier--${row.tier}`, row.tier));\n" },
+  { name: 'the-open-row-says-its-tier', catches: ['W1', 'W2'], file: VIEW,
+    from: "    state = h('i', 'oe-tier oe-tier--' + planned.tier, fold.word);",
+    to: "    state = h('i', 'oe-tier oe-tier--' + planned.tier, fold.open ? planned.tier : fold.word);" },
+  { name: 'this-slot-is-back', catches: ['W3'], file: VIEW,
+    from: "  return treeRow(depth + 1, '', [],\n                 context.renderRow(own,",
+    to: "  return treeRow(depth + 1, 'This slot', [],\n                 context.renderRow(own," },
+  { name: 'the-bundle-path-is-back', catches: ['W4'], file: VIEW,
+    from: "    box.append(h('code', 'oe-ground-from', trail.join(' › ')));", to: "    box.append(h('code', 'oe-ground-from', from));" },
+  { name: 'unmeasured-is-said-again', catches: ['W5'], file: VIEW,
+    from: "      act.append(h('span', '', 'Default · can be overridden'));\n    }\n",
+    to: "      act.append(h('span', '', 'Default · can be overridden'));\n    } else if (row.disposition === 'unmeasured') {\n"
+      + "      act.append(h('span', '', 'Refusals remain · removability not measured'));\n    }\n" },
   { name: 'the-ground-rides-the-folded-line', catches: ['L3'], file: VIEW,
     from: "    if (!bare) line.append(h('i', 'oe-folded-why', fold.reason));\n",
     to: "    if (!bare) line.append(h('i', 'oe-folded-why', fold.reason));\n    if (row.ground?.text) line.append(h('small', 'oe-folded-ground', row.ground.text));\n" },

@@ -55,7 +55,7 @@ const liveContext = (fields) => ({
 });
 const nodeAt = (form, at) => walk(form).find((n) => cls(n, 'oe-node') && n.dataset.path === at) || null;
 // A block is known by its source-path line, whatever sentence names it.
-const blocksIn = (el) => walk(el).filter((n) => cls(n, 'oe-planned-from')).length;
+const blocksIn = (el) => walk(el).filter((n) => cls(n, 'oe-ground')).length;
 const rowsLabelled = (el, label) => walk(el).filter((n) => cls(n, 'oe-node-row')
   && walk(n).some((m) => cls(m, 'oe-node-name') && m._text === label));
 
@@ -71,7 +71,7 @@ function suite(view) {
   const header = map ? walk(map).filter((n) => cls(n, 'oe-node-row') && blocksIn(n) === 1) : [];
   const textOf = (el, c) => ((el && walk(el).find((n) => cls(n, c))) || {})._text;
   eq('I1 in the value column: the server\'s sentence, then the path in the declaration\'s words; the name column empty',
-    header.length ? [textOf(header[0], 'oe-ground-text'), textOf(header[0], 'oe-planned-from'),
+    header.length ? [textOf(header[0], 'oe-ground-text'), textOf(header[0], 'oe-ground-from'),
       JSON.stringify(textOf(header[0], 'oe-node-name'))].join(' | ') : '(no block)',
     [row.ground.text, 'bind › entities › dtjob@1 › attributes', '""'].join(' | '));
   const members = Object.keys(row.value).map((key) => nodeAt(form, `${ROLE}.${key}`));
@@ -81,7 +81,9 @@ function suite(view) {
   const controls = inside.filter((n) => ['INPUT', 'SELECT', 'TEXTAREA'].includes(n.tagName)
     || (n.tagName === 'BUTTON' && n.dataset.action !== 'toggle-field'));
   eq('I3 no control inside an inherited member (only its fold)', controls.map((n) => n.tagName + ':' + n.dataset.action).join(',') || 0, 0);
-  const own = map ? rowsLabelled(map, 'This slot') : [];
+  // The map's own row: no name (482288b12 took 'This slot'), no ground, not the add row.
+  const own = map ? walk(map).filter((n) => cls(n, 'oe-node-row') && !cls(n, 'is-new')
+    && textOf(n, 'oe-node-name') === '' && blocksIn(n) === 0) : [];
   const add = map ? walk(map).filter((n) => n.dataset && n.dataset.action === 'form-name' && n.dataset.value === ROLE) : [];
   eq('I4 the map\'s own row is not drawn twice, and its add row (the override) stays', `${own.length}|${add.length}`, '0|1');
   const depthOf = (el) => Number(el ? el.style.getPropertyValue('--oe-depth') : NaN);
@@ -105,9 +107,10 @@ const MUTANTS = [
   { name: 'the-live-context-draws-it', catches: ['I3'],
     from: '  const read = readContext(context.schema, context.expanded);\n', to: '  const read = context;\n' },
   { name: 'the-screen-names-it', catches: ['I1'],
-    from: "h('span', 'oe-ground-text', row.ground?.text || '')", to: "h('span', 'oe-ground-text', 'Inherited from')" },
+    from: "h('span', 'oe-ground-text', ground.text || '')", to: "h('span', 'oe-ground-text', 'Inherited from')" },
   { name: 'the-sentence-clipped-in-the-name-column', catches: ['I1'],
-    from: "  const rows = [treeRow(depth + 1, '', [], ground,", to: "  const rows = [treeRow(depth + 1, row.ground?.text || '', [], ground," },
+    from: "  const rows = [treeRow(depth + 1, '', [], renderGround(row),",
+    to: "  const rows = [treeRow(depth + 1, row.ground?.text || '', [], renderGround(row)," },
   { name: 'own-row-drawn-too', catches: ['I4'],
     from: '  if (given) box.append(...renderPlannedValue(context, node, path, given, depth));\n  else {\n',
     to: '  if (given) box.append(...renderPlannedValue(context, node, path, given, depth));\n  {\n' },
