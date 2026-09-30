@@ -1466,7 +1466,8 @@ const FLOORS = new Map([
   // the board part: composition
   // 42 -> 44 (lead 09-30, H10): the head's marking 1 place says the board's question.
   // -> 46 (lead dcd159739, T6): a cell holding only spaces is absent, by the screen's one blank rule.
-  ['rnd_board_composition_harness.mjs', 46],
+  // 46 -> 47 (lead 50c8d9469, M8): an empty cell draws the shared absent mark, not its own dash.
+  ['rnd_board_composition_harness.mjs', 47],
   // the board part: control trend
   ['rnd_board_control_trend_harness.mjs', 59],
   // the board shell that seats the parts above

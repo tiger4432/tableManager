@@ -21,11 +21,9 @@
 
 import { Panel, markingIntent } from './panel.js';
 import { SIGN } from './marking_store.js';
-import { isBlank } from '../absent.js';
-
 // A cell the screen's one blank rule calls blank (a blank string too - CLAUDE.md 「strip 뒤 길이 0 은 부재」)
-// draws this; 0 and false are values (lead dcd159739).
-const ABSENT = '-';
+// draws the shared absent mark; 0 and false are values (lead dcd159739, 50c8d9469).
+import { isBlank, ABSENT } from '../absent.js';
 
 export class TablePart extends Panel {
   constructor(host, deps) {

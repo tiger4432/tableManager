@@ -37,7 +37,7 @@
 // ═══════════════════════════════════════════════════════════════════════════════
 
 import { Panel, markingIntent } from './panel.js';
-import { UNPICKED, subjectText } from '../absent.js';
+import { UNPICKED, subjectText, ABSENT } from '../absent.js';
 import { SIGN } from './marking_store.js';
 import { projectionModel, mapModel } from './api.js';
 import { layoutFor, paintSeating, createCanvasSurface } from '../map2/painter.js';
@@ -713,8 +713,8 @@ export class MapPanel extends Panel {
       n.outside.className = 'rb-map__outside';
     } else if (un.state === 'measured') {
       n.outside.className = 'rb-map__outside is-measured';
-      n.outside.textContent = `Off map · scanned ${un.scanned === null ? '-' : un.scanned}`
-        + ` · found ${un.found === null ? '-' : un.found}`;
+      n.outside.textContent = `Off map · scanned ${un.scanned === null ? ABSENT : un.scanned}`
+        + ` · found ${un.found === null ? ABSENT : un.found}`;
       if (un.message) n.outside.setAttribute('title', un.message);
     } else {
       n.outside.className = 'rb-map__outside is-unknown';

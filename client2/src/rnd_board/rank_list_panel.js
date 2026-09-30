@@ -20,7 +20,7 @@ import { WalkedListPanel, markingIntent } from './panel.js';
 import { SIGN } from './marking_store.js';
 import { TablePart } from './table_part.js';
 import { WALKING, SERVER_REFUSED } from '../ui_words.js';
-import { UNPICKED } from '../absent.js';
+import { UNPICKED, ABSENT } from '../absent.js';
 
 export class RankListPanel extends WalkedListPanel {
   constructor(host, deps) {
@@ -171,7 +171,7 @@ export class RankListPanel extends WalkedListPanel {
         line.className = hop.declaredOnly ? 'rb-rank-hop is-declared' : 'rb-rank-hop';
         const kind = doc.createElement('span');
         kind.className = 'rb-rank-hop-kind';
-        kind.textContent = hop.kind || '-';
+        kind.textContent = hop.kind || ABSENT;
         const label = doc.createElement('span');
         label.className = 'rb-rank-hop-label';
         label.textContent = hop.label || '';
