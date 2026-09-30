@@ -25,6 +25,7 @@ from .roleframe import (
     MapperContext,
     RoleMapperImplementationRegistry,
     SOURCE_EVENT_INCOMPLETE_ATTR,
+    UNIT_SAID_NOTHING_ATTR,
     dry_run_event_frame,
 )
 from .source_preparation import (
@@ -63,6 +64,9 @@ class CursorBatchPreview:
     #: (S-54-b). Carried on the preview because this is the one place both halves are in
     #: hand, and written in the same transaction as the atoms -- see `_row_ref_index`.
     row_refs: tuple = ()
+    #: 🔴 [총괄 363db7dfa] Units no sentence said, `{((column, value), ...): units}` -
+    #:    summed from the role rows (`UNIT_SAID_NOTHING_ATTR`). Not refusals.
+    unsaid: Mapping = MappingProxyType({})
 
     @property
     def atom_count(self) -> int:
@@ -132,6 +136,7 @@ def _batch_receipt(store, plan, preview, rows: int, batch_id: str):
                 "atoms_withdrawn": written.get("withdrawn"),
                 "refused": len(preview.refusals),
                 "reasons": _refusal_reasons(preview.refusals),
+                "unsaid": sum(preview.unsaid.values()),
                 "translator_ver": preview.translator_version,
                 "status": "ok",
                 "error": None,
@@ -241,6 +246,10 @@ def preview_cursor_batch(
         for event_frame in event_frames
     )
     row_refs = _row_ref_index(source_plan, event_frames, event_results)
+    unsaid: dict = {}
+    for result in event_results:
+        for key in result.role_rows.attrs.get(UNIT_SAID_NOTHING_ATTR, ()):
+            unsaid[key] = unsaid.get(key, 0) + 1
     normalized_registrations = _known_registrations(known_registrations)
     event_atoms = _filtered_event_atoms(event_results, normalized_registrations)
     semantics = []
@@ -263,6 +272,7 @@ def preview_cursor_batch(
         refusals=tuple(refusals),
         excluded_rows=(sum(excluded) if excluded else None),
         row_refs=row_refs,
+        unsaid=MappingProxyType(unsaid),
     )
 
 
@@ -371,6 +381,7 @@ def execute_scoped_batch(
     _record_refusals(source_id, preview)
     if preview.incomplete_count:
         gate.record_incomplete(source_id, preview.incomplete_count)
+    gate.record_unsaid(source_id, preview.unsaid)
     return CursorBatchExecutionResult(
         preview=preview,
         store_result=MappingProxyType(dict(written)),

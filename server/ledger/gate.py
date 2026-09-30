@@ -388,6 +388,22 @@ def record_incomplete(source: str, count: int = 1):
     _incomplete[source] = _incomplete.get(source, 0) + int(count)
 
 
+def record_unsaid(source: str, unsaid) -> None:
+    """Units no sentence said - every sentence's `when` passed over them (총괄 363db7dfa).
+
+    NOT a refusal either: such a unit simply says nothing, and before this line it said so
+    nowhere. One line per batch, `{((column, value), ...): units}` named by value."""
+    if not unsaid:
+        return
+    named = " · ".join(
+        "%s (%d)" % (" ".join("%s=%r" % pair for pair in key), units)
+        for key, units in sorted(unsaid.items(), key=lambda item: (-item[1], item[0])))
+    logger.warning(
+        "[Ledger] %s: %d unit(s) said no sentence - %s. Next: every sentence's when passed "
+        "them over; correct the value in the table it comes from, or declare a sentence whose "
+        "when names it.", source, sum(unsaid.values()), named)
+
+
 def _record(source: str, reason: str, atoms: int, detail: str, rows: int = 1,
             addresses=()):
     key = (source, reason)

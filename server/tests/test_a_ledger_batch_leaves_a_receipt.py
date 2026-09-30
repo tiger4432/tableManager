@@ -73,6 +73,7 @@ class _Preview:
     molecule_count = 7
     refusals = ()
     translator_version = "v-3"
+    unsaid = {}
 
 
 class _Plan:

@@ -184,6 +184,34 @@
       "__why_enabled": "SHIPS ENABLED because the shipped ledger declaration READS dt_job_rollup (measured 2026-09-10). The ledger is local and calculation-free so it cannot count a group; S-100 (a) moved that count here. Off, the ledger source has nothing to read."
     },
     {
+      "__comment": "A process row carries the material type of its step: step_phase lists the DT steps, and this join copies mat_type onto every wafer_process row with that step - the ledger says the row about a dtwafer when it reads DT and about a wafer when it is blank (363db7dfa). To take a step out, empty its mat_type rather than deleting the row: a deleted source row names no key, so the rows it filled keep their value.",
+      "name": "step_phase_to_wafer_process",
+      "__why_enabled": "SHIPS ENABLED because the shipped ledger declaration READS wafer_process.mat_type (363db7dfa, lead 1dd4091a6): wafer_process_recipe says its sentence about a dtwafer when that cell is DT, and this join is its only writer. With step_phase empty it writes nothing, so every row stays on the core wafer as before.",
+      "on": {
+        "table": "step_phase"
+      },
+      "derive": {
+        "kind": "join",
+        "join": {
+          "on": [
+            {
+              "left": "step",
+              "right": "step"
+            }
+          ],
+          "take": [
+            "mat_type"
+          ]
+        }
+      },
+      "into": {
+        "table": "wafer_process"
+      },
+      "key": {
+        "unique": true
+      }
+    },
+    {
       "__comment": "Unified declaration ① join — when a value in on.table (the source) changes, the take columns are written to the row with the same key in into.table. In join.on, left is a column of the into table and right a column of the source. TWO rules stand up: this name (when the source changes) and name:target (when a row enters the into table or its key changes). The source must be unique per key, and key.unique declares that.",
       "name": "sample_unified_join",
       "enabled": false,
