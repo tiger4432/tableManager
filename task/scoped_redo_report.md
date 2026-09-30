@@ -67265,3 +67265,47 @@ N2 active() lets the setup error through         빨강  (1 failed, 7 passed)
 ```
 전체  5 failed, 7524 passed, 196 skipped, 3 xfailed in 830.45s (0:13:50) — 실패 5 개, 파일::이름으로 알려진 다섯과 같음: True
 ```
+
+## [구현자 -> 총괄] d4a949a8c ⑧ 착지 7328bed80 — 안 말한 단위는 gate 노트로 · 문턱 한 줄 (ㄱ · ㄴ · ㄷ)
+
+**전후** (같은 순서를 gate.record_unsaid 에: 한 소스, WF 1 단위 배치 12 번 뒤 XX 3 단위 배치 한 번. 전 = 1997f54b8 사본, 후 = 착지 트리)
+```
+전  배치 13 · 단위 15 -> 줄 13
+      WARNING [Ledger] wafer_process_recipe: 1 unit(s) said no sentence - mat_type='WF' (1). Next: every sentence's when passed them over; correct the value in the table it comes from, or declare a sentence whose when names it.
+      (같은 모양 12 줄 더)
+    note: None
+후  배치 13 · 단위 15 -> 줄 3
+      WARNING [Ledger] Next: correct the value in the table it comes from, or declare a sentence whose when names it. wafer_process_recipe: mat_type='WF' said no sentence - every sentence's when passed it over | units so far in this process: 1
+      WARNING [Ledger] Next: correct the value in the table it comes from, or declare a sentence whose when names it. wafer_process_recipe: mat_type='WF' said no sentence - every sentence's when passed it over | units so far in this process: 10
+      WARNING [Ledger] Next: correct the value in the table it comes from, or declare a sentence whose when names it. wafer_process_recipe: mat_type='XX' said no sentence - every sentence's when passed it over | units so far in this process: 3
+    note: units no sentence said: units=15 | wafer_process_recipe:mat_type='WF'=12, wafer_process_recipe:mat_type='XX'=3
+```
+```
+(ㄱ) note 한 부분   거절 부분과 같은 모양 — 둘 다 _top(상위 _NOTE_TOP_N + (+k more))을 지남. 키도 거절처럼 (소스, 무엇)
+(ㄴ) Next          note 엔 없음. 줄은 (소스, 값)마다 단위가 1·10·100… 을 넘을 때 한 번 — Next 먼저. 배치마다 줄은 지움
+(ㄷ) captured()    incomplete 와 같이 저장 · handle["unsaid"] · 복원. reset_counters 도 비움
+문장을 든 자리     안내서(ledger_declaration_by_example) · CODE_MAP 한 줄 · RUN.md 옛 절의 인용 셋 — 같은 커밋에서 새 줄 모양으로
+```
+변이 다섯 — 각각 되돌림
+```
+G1 a line every batch again                          빨강  (1 failed, 82 passed)
+G2 the note leaves the unsaid part out               빨강  (1 failed, 82 passed)
+G3 a capture does not give back the process's units  빨강  (1 failed, 82 passed)
+G4 a capture does not hand its units back            빨강  (1 failed, 82 passed)
+G5 the line leads with the value, not Next           빨강  (1 failed, 82 passed)
+```
+**새 함수 · 새 if 중 기존 것과 같은 일** (cdeb5ea10)
+```
+새 함수   gate._top — note 거절 부분의 식을 옮긴 자리(거절 · 안 말함 두 부분이 부름) · gate._unsaid_name — record_unsaid 의 이름 짓기 식을 옮김(note 와 줄이 부름)
+새 if     note 의 `if _unsaid:` — incomplete 부분과 같은 모양의 한 부분 · 문턱 `any(before < t <= total …)` — 한 번에 여러 단위가 느는 수라 거절의 `total in` 대신
+          key_gate · void_sat_format 이 이미 쓰는 넘김 판정
+찾은 것   알림 문턱 (`git grep -n ANNOUNCE_AT -- server`, 시험 빼고)
+          정의 4: server/chain/key_gate.py:97 · server/database/crud.py:101 · server/ledger/gate.py:229 · server/parsers/void_sat_format.py:316
+          판정 5: server/chain/key_gate.py:159 · server/database/crud.py:156 · server/ledger/gate.py:420 · server/ledger/gate.py:452 · server/parsers/void_sat_format.py:389
+          이번엔 안 접음 — 접을지 여쭙니다
+```
+**스위트** (C:/wt-impl, 착지 트리)
+```
+전체  5 failed, 7524 passed, 196 skipped, 3 xfailed in 847.70s (0:14:07) — 실패 5 개, 파일::이름으로 알려진 다섯과 같음: True
+PG    7 failed, 150 passed, 7571 deselected, 53 warnings in 297.15s (0:04:57) — 실패 이름이 알려진 일곱과 같음: True
+```
