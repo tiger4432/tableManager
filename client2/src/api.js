@@ -282,6 +282,8 @@ export async function loadSchema(tableName) {
     // 🔴 문자열이 «아니면» 빈 값이다: 옛 서버는 이 키를 안 보내고, 그 «모름»을 뷰로 읽으면
     //    멀쩡한 표의 편집이 사라진다.
     state.currentTableKind = typeof data.kind === 'string' ? data.kind : '';
+    // The table's smart paste order (lead 8771e43ac 1): `null` when it declares none.
+    state.currentSmartPaste = Array.isArray(data.smart_paste) ? data.smart_paste : null;
     state.currentBusinessKey = data.business_key || '';
     state.currentCompositeKeySources = data.composite_key_source || [];
     // [Virtual join] The route always sends this key (`[]` when no verified join touches the
