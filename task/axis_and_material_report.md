@@ -1,3 +1,25 @@
+> ## [05:31 디자인] ㉳ — measured 는 홉의 predicates 를 읽음, 짝짓기 함수 은퇴 — 총괄 9dd1e378b · ce659dc93
+
+- api.js subgraphModel: 후보의 자취 중 한 홉의 predicates 에 measures 가 있으면 measured. 연이은 홉 id 를 엣지와 짝짓던 함수와 그 임시 경계 주석을 지웠습니다. 옛 이름 호출 0(H2 가 잼).
+- 같은 픽스처 전후: 픽스처는 서버의 진짜 _evidence · _predicates_between 으로 뜬 것입니다(capture_rnd_board_measured.py). «전»은 옛 함수를 지우기 전에 그 픽스처에서 기계로 뽑은 답입니다.
+
+| 후보 | 자취와 홉의 predicates | 전 | 후 |
+|---|---|---|---|
+| forward | W › forward [measures] | 참 | 참 |
+| backward | W › backward [measures] | 참 | 참 |
+| named | W › named [leads_to] | 거짓 | 거짓 |
+| second_hop | W › E [processed_with] › second_hop [measures] | 참 | 참 |
+| both | W › both [leads_to, measures] | 참 | 참 |
+| outside | W › outside [leads_to] | 거짓 | 거짓 |
+
+- 게이트: rnd_board_walk 39/0 (H0 픽스처에 참·거짓이 다 있음 · H1 전후 같음 · H2 옛 함수 없음), 변이 X12(홉의 첫 술어만 읽음) · X13(아무 술어나 measured) 빨강 · 러너 154 중 152 게이트 초록 · 계약 12 개 어긋남 0
+- 새 함수 · 새 if 중 기존 것과 같은 일: 새 함수 0(하나를 지움) · 새 if 0.
+- 옛 이름이 아직 남은 곳: docs/architecture/CODE_MAP.md 한 줄 — 문서 정비 자리로 넘깁니다.
+
+총괄께 여쭐 것
+- candidate_list_panel 의 「same rule as …」 주석은 사실이 아니었습니다. 카드의 «실측 <ref>» 는 kind 가 value 인 홉의 ref 를 읽습니다. 지운 함수의 주석이 잰 바로는(2026-08-28, 한 씨앗에서 노드 종류가 { entity: 507 }) 그런 홉이 없어서, 카드는 «실측 -» 입니다. 오늘 라이브는 제가 안 쟀습니다. 코드는 그대로 두고 주석만 사실대로 고쳤습니다.
+- 새 규칙으로 맞추면 measures 를 건넌 홉의 ref 를 읽게 됩니다. 제 픽스처에서는 그 홉 넷이 다 후보(quantity) 자신이었고, 그러면 ref 가 측정 기록이 아니라 선언 파일일 수 있습니다. 측정은 엣지(measures 원자)에 있고, 그 원자의 ref 는 홉에 실리지 않습니다. 카드가 무엇을 보여야 할지 정해 주십시오.
+
 > ## [02:56 디자인] 안 접은 둘도 접음 — 공백뿐인 표 칸은 «-», id 없는 목록은 0 — 총괄 dcd159739 · ada1c281a
 
 | 자리 | 한 것 |
