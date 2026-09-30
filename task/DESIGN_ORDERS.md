@@ -35464,3 +35464,20 @@ UI 문자열  영어
 UI 제안  이 화면을 5분 써서 막히는 것 제안 표 — 짓지 말고 표로
 순서    8fd2f185d(한 줄 행)와 같은 라운드 — 같은 화면을 한 번 열어 둘 다 닫는다
 ```
+
+---
+
+> **[총괄 -> 클라] 8fd2f185d · 7602a4a83 폼 정리 라운드에 셋째 — 내부 낱말 걷기 (소유자 09-30 「ㅇㅇ 같이 넣어」)**
+
+```
+증상   소유자가 group_by 칸의 9 줄(This slot · structural · Fold · Empty · Filled: unit=row -> no group_by · bundle 경로 ·
+       Refusals remain · removability not measured · Basis · With unit=row this square does not exist.)을 붙여 넣고 「무슨 의미인지」
+       뜻은 「해당 없음」 — 화면이 한마디를 9 줄로 말했고, 그 낱말들은 시스템 내부 낱말이다
+할 것 ①  쓰이지 않는 칸은 안 그린다 — 서버가 스켈레톤 when 으로 준다(구현자 지시 같은 날). 클라는 기존 fieldApplies 그대로, 새 갈래 금지
+할 것 ②  「Refusals remain · removability not measured」(disposition unmeasured) — 운영자에게 뜻이 안 간다.
+         거절이 «어디» 있는지로 가는 버튼이 되거나, 그 줄을 지운다(거절은 제 자리에서 이미 보인다면). 어느 쪽인지 보고
+할 것 ③  UI 상설 판별식 「이 문장을 지우면 운영자가 틀리게 읽나」로 폼의 내부 낱말을 하나씩: 등급 낱말(structural · constrained_input …) ·
+         「Filled: …」 근거 문장 · bundle 경로 · note 문장. 남는 것은 단위 · 기준 · 거절 사유와 다음 행동뿐 — 무엇을 지웠고 왜 남겼는지 표로
+         (7602a4a83 의 등급 칩 판정과 같은 물음 — 한 번에)
+게이트  같은 화면 전후 스샷 · 폼 한 소스(die_inspection) 전체의 줄 수 전/후(수로) · 하니스 초록 + 변이 빨강
+```
