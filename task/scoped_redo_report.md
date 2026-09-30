@@ -66769,3 +66769,31 @@ PG    7 failed, 143 passed, 7554 deselected, 41 warnings in 236.04s (0:03:56) �
 뷰의 유무(기본은 뷰 없음)도 함수가 «이름 · DDL»로 답하고 ensure_schema 는 받은 것을 돌리기만 — 갈래가 함수 밖으로 안 나감
 0 이 안 되는 자리  scripts · migrations 의 원장 이름 상수 (㉣)
 ```
+
+## [구현자 -> 총괄] c7f9e7afa 덧 — 확인 1~8 을 「문」 기준(cdeb5ea10)으로: 새 함수 · 새 if 중 기존 것과 같은 일
+
+```
+1 달라진 소스    새 함수 0 · 새 if 0 — 「두 지문이 같은가」는 LedgerStore.restamp_decision(stored, wanted) 이 이미 답함
+                (부팅 재도장 · 재도장 스크립트가 부르는 한 자리). 가지 = restamp_decision(기본 지문, 가지 지문) 이 already 가 아닌 소스
+2 뷰           새 함수 0 — 뷰 DDL 은 ensure_schema 안(이름이 DDL 을 들고 옴). 새 if 는 「DDL 이 비었나」 가드 하나(기본은 뷰 없음)
+               관계 검사 _IDENTIFIER 가 «이미 둘»(ledger/trace · ledger_api/ledger_subgraph) — 넓힐 때 하나로 접음. 따로 넓히면 문
+               subjects_of_type 은 상수 대신 self.relation — 고침이지 새 것 아님
+3 다시 번역     새 함수 0 — _fetch_v2_lineage_rows · _scope_pages 가 이미 scope=None 을 «전부»로 읽음(가드). rescope 가 None 을 넘기게만
+               새 if 한 줄이 생길 자리: CLI 에서 «전부»를 None 으로. 빈 값을 전부로 읽히면 지금의 scope_incomplete 거절이 가장 비싼 일로 바뀜 -> 명시 인자
+4 --world      ⚠️ 같은 일 둘이 될 자리: 기존 --ontology-root 도 「어느 선언」을 답함. --world 를 옆에 더하면 두 인자가 한 물음 (㉤)
+5 contrast_run 새 함수 0 · 새 if 0 — contrast_walk 가 run 행의 world 를 evidence_subgraph 에 넘기기만
+6 세상->이름    새 함수 1. 그런데 같은 물음에 «이미» 답하는 자리가 여럿 — 이 함수가 그것들을 대신해야 문이 안 는다 (㉥)
+               원장 관계 이름 3  schema.LEDGER_TABLE · trace_router.LEDGER_RELATION · SqlEvidenceLookup 기본값 "ledger_events"
+               커서 표 이름 2    schema.CURSOR_TABLE · trace_router.LEDGER_CURSOR_RELATION
+               선언 파일 이름 5  ledger/config · config_drafts · setup_bundle · declared_entities · ledger_subgraph 줄 안 글자
+               선언 뿌리 4      셋은 paths.CONFIG_DIR(ASSY_DATA_ROOT 를 따름) · setup.DEFAULT_ONTOLOGY_ROOT 는 server/config/ontology 고정
+                               -> ASSY_DATA_ROOT 를 세우면 load_setup() 기본과 걷기의 선언 읽기가 다른 파일 (코드로 읽음, 안 잼)
+               센 명령  git grep -n '= "ledger_events"\|= "ledger_translator_cursor"\|relation="ledger_events"\|ledger_config.json\|DEFAULT_ONTOLOGY_ROOT\s*=\|def _config_path' (server, 시험·scripts·migrations 뺌, 주석·독스트링 줄은 손으로 뺌)
+7 라우트        새 함수 0 — 라우트마다 world 를 이름 함수에 넘기기만
+8 세상 묻기      함수 밖 0 — 2 의 DDL 가드 말고 갈래 없음
+```
+**여쭐 것 — 앞 넷(㉠~㉣)에 더해**
+```
+㉤ --world 와 --ontology-root — 인자 하나로(--ontology-root 를 세상 이름 함수의 답으로 대신)
+㉥ 이름 스펠링 접기(관계 3 · 커서 2 · 파일 5 · 뿌리 4)를 이 일에 넣나 — 안 넣으면 세상 함수가 여섯째 스펠링
+```
