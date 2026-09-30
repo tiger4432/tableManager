@@ -25,6 +25,7 @@
 // ═══════════════════════════════════════════════════════════════════════════════
 
 import { SIGN } from './marking_store.js';
+import { createWalk } from './api.js';
 
 /**
  * The modifier keys, read ONCE, in the vocabulary the store speaks. Four parts read the same
@@ -172,4 +173,67 @@ export class Panel {
 
   /** The box changed. Default: redraw. */
   onResize() { this.render(); }
+}
+
+/**
+ * The walked lists' prelude (candidate list · rank list, lead d4a949a8c ㉱): the walk they share,
+ * the seat's question or a fixed seed, a walk on mount and whenever the question moves.
+ * ⚠️ Not in `Panel` itself: its `onStartChanged` is a no-op other subscribed panels inherit.
+ */
+export class WalkedListPanel extends Panel {
+  constructor(host, deps) {
+    super(host, deps);
+    const options = deps || {};
+    // 🔴 ONE CALL — 소유자가 그린 데이터 흐름(2026-08-24): 부품은 { start, collect } 만 선언하고
+    //    라우트·질의·모델을 다시는 부르지 않습니다. 화면이 walk 하나를 «주입»하므로 같은 walk 을
+    //    쓰는 두 부품이 요청 하나를 나눠 씁니다. 혼자 서는 부품은 자기 것을 만듭니다.
+    this.walk = options.walk || createWalk({ apiBase: options.apiBase, fetchImpl: options.fetchImpl });
+    // 시작점과 걷는 종류. 값이고 축이 아닙니다 — 소유자: 「일단 wafer 로 고정」.
+    this.start = options.start || null;
+    // 이 걷기의 «예산». 기본값에 기대면 끊긴 걷기가 「후보 없음」으로 보입니다
+    // (오늘 두 번 그렇게 읽혔습니다).
+    // 🔴 이 화면에서는 «여기로 안 들어옵니다» -- `CANDIDATE_QUESTION` 이 선언에 실려
+    //    `bindLoaders` 의 질문으로 들어오고, 그게 세 자리를 한 요청으로 합치는 조건입니다.
+    //    남겨 둔 이유는 이 부품이 «혼자 설» 때입니다: 그때는 질문을 얹어 줄 선언이 없습니다.
+    this.nodeLimit = options.nodeLimit || null;
+    this.seedNodeId = options.seedNodeId || null;
+    this.legacyRoute = options.legacyRoute || 'candidate';
+    this.fetchImpl = options.fetchImpl || null;
+    this.model = null;
+    this.loadState = this.seed() ? 'idle' : 'no-seed';
+  }
+
+  /** The walk's start: the seat's question (its marking, or what it names while that is empty),
+   *  or a fixed seed when the part stands alone. */
+  seed() {
+    if (this.start && this.start.marking) return this.startFor();
+    return this.start || (this.seedNodeId ? { groupby: 'wafer', value: this.seedNodeId } : null);
+  }
+
+  mount() {
+    super.mount();
+    if (this.seed()) this.load();
+  }
+
+  /** The question moved: walk again. */
+  onStartChanged() { this.load(); }
+
+  async load() {
+    const start = this.seed();
+    if (!start) {
+      this.model = null;
+      this.loadState = 'no-seed';
+      this.render();
+      return;
+    }
+    this.loadState = 'loading';
+    this.render();
+    this.model = await this.walk({
+      start,
+      legacyRoute: this.legacyRoute,
+      ...(this.nodeLimit ? { node_limit: this.nodeLimit } : {}),
+    });
+    this.loadState = this.model.ok ? 'ready' : 'refused';
+    this.render();
+  }
 }

@@ -2142,11 +2142,17 @@ const contrastCell = (row, col) => {
   const cell = row && row.data ? row.data[col] : undefined;
   return cell && typeof cell === 'object' && !Array.isArray(cell) && 'value' in cell ? cell.value : cell;
 };
-// How many ids a stored list holds. A list the screen cannot read is unknown (null), not 0.
+// The server's `is_blank_value`: absent, or text that is empty once trimmed. `0` and `false` are values.
+const blank = (value) => value === null || value === undefined || String(value).trim() === '';
+// How many ids a stored list holds - blank ids dropped, as the chain's walk drops them. A list the
+// screen cannot read is unknown (null), not 0.
 const idCount = (value) => {
-  if (Array.isArray(value)) return value.length;
-  if (value === null || value === undefined || value === '') return 0;
-  try { const parsed = JSON.parse(String(value)); return Array.isArray(parsed) ? parsed.length : null; } catch (e) { return null; }
+  if (blank(value)) return 0;
+  let ids = value;
+  if (!Array.isArray(ids)) {
+    try { ids = JSON.parse(String(value)); } catch (e) { return null; }
+  }
+  return Array.isArray(ids) ? ids.filter((id) => !blank(id)).length : null;
 };
 // `complete` is a string column: the chain's false arrives as 'false'.
 const saysFalse = (value) => value === false || String(value).trim().toLowerCase() === 'false';
@@ -2157,7 +2163,7 @@ export function contrastListModel(body) {
   const rows = body && Array.isArray(body.data) ? body.data : [];
   return rows.map((row) => {
     const at = contrastCell(row, CONTRAST.computedAt);
-    const computedAt = at === null || at === undefined || String(at).trim() === '' ? null : at;
+    const computedAt = blank(at) ? null : at;
     const found = contrastCell(row, CONTRAST.candidates);
     return {
       runId: String(contrastCell(row, CONTRAST.runId) ?? ''),

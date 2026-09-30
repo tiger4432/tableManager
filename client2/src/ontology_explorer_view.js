@@ -4,6 +4,7 @@ import { isDraftRevisionEditable, declarationIdFor, fieldOpensByDefault }
   from './ontology_explorer_store.js';
 import { commitTree } from './dom_patch.js';
 import { splitBundlePath, getAtPath } from './ontology_path.js';
+import { pathSteps } from './path_bar.js';
 import {
   asList, declarationShape, fieldApplies, memberPath, membersOf, shapeAt, valueFits,
 } from './ontology_skeleton.js';
@@ -463,21 +464,22 @@ function renderDeclarationMap(state) {
   return area;
 }
 
-function renderBreadcrumb(state) {
-  const trail = h('div', 'oe-breadcrumb');
-  trail.setAttribute('aria-label', 'Path');
+// The declaration trail: the explorer's one path widget (path_bar.js), in this seat.
+export function renderBreadcrumb(state) {
+  const seat = h('div', 'oe-breadcrumb');
   const nodes = nodeMap(state);
   const path = state.currentPath?.node_keys || [state.selection.key];
-  path.forEach((key, index) => {
-    const node = nodes.get(key);
-    const crumb = button(node?.canonical_id || key, 'select', key, 'oe-crumb-button');
-    crumb.dataset.pathId = state.currentPath?.path_id || 'root';
-    if (index > 0) crumb.dataset.edgeId = state.currentPath?.edge_ids[index - 1] || '';
-    if (key === state.selection.key) crumb.setAttribute('aria-current', 'page');
-    trail.append(crumb);
-    if (index < path.length - 1) trail.append(h('span', 'oe-crumb-separator', '›'));
-  });
-  return trail;
+  seat.append(pathSteps(document, path.map((key, index) => ({
+    label: nodes.get(key)?.canonical_id || key,
+    action: 'select',
+    value: key,
+    current: key === state.selection.key,
+    dataset: {
+      pathId: state.currentPath?.path_id || 'root',
+      ...(index > 0 ? { edgeId: state.currentPath?.edge_ids[index - 1] || '' } : {}),
+    },
+  }))));
+  return seat;
 }
 
 /** One validation reason as a line -- the raw tab and the 「not applied」 head share it. */

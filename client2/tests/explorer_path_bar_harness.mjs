@@ -6,8 +6,11 @@
  *   G  a row — and a one-of's own row — at depth N carries N guides
  *   T  a node's trail is the declaration path's own words — section, id, each step — root first;
  *      every step lands on the deepest drawn node at or above it (owner's choice, via the lead)
- *   P  the path bar: steps in order, the last is where the hand is, a step asks to go to its path,
- *      seated in a new mount it draws the same trail, two bars do not cross
+ *   P  the path bar: steps in order, the last is where the hand is, a step asks the page's own
+ *      action for its path (the page's click does the rest), seated in a new mount it draws the
+ *      same trail, two bars do not cross
+ *   B  the declaration trail is the same widget (lead d4a949a8c ㉯): its steps, where you are, and each
+ *      other step asking to select its declaration with its route
  *   W  the path bar's code names none of the skeleton's words (the population is printed: the canary)
  *
  * The controller's wiring (focus -> bar, the tinted parent, the sticky seat) is looked at in the
@@ -100,24 +103,39 @@ function suite(view, bar) {
 
   console.log('\n-- P. the path bar --');
   const TRAIL = [{ path: '', label: 'root' }, { path: 'a', label: 'A' }, { path: 'a.b', label: 'B' }];
-  const picks = [];
   const mount = doc.createElement('div');
-  const one = new bar.PathBar(mount, { doc, onPick: (p) => picks.push(p) });
+  const one = new bar.PathBar(mount, { doc, action: 'map-goto' });
   one.show(TRAIL);
   const steps = (m) => walk(m).filter((n) => cls(n, 'oe-path-step'));
   eq('P1 the steps in order, a separator between each', `${steps(mount).map((s) => s.textContent).join('|')}|${walk(mount).filter((n) => cls(n, 'oe-path-sep')).length}`, 'root|A|B|2');
   eq('P2 only the last is where the hand is', steps(mount).map((s) => s.getAttribute('aria-current') || '-').join(','), '-,-,true');
-  steps(mount)[1].dispatch('click');
-  steps(mount)[2].dispatch('click');
-  eq('P3 a step asks to go to its own path; the last asks nothing', picks.join(','), 'a');
+  const asks = (m) => steps(m).map((s) => (s.dataset.action ? `${s.dataset.action}:${s.dataset.value}` : '-')).join(',');
+  eq('P3 a step asks the page\'s action for its own path; the last asks nothing', asks(mount), 'map-goto:,map-goto:a,-');
   const again = doc.createElement('div');
   one.attach(again);
   eq('P4 seated in a new mount, it draws the same trail', steps(again).map((s) => s.textContent).join('|'), 'root|A|B');
   const mount2 = doc.createElement('div');
-  const two = new bar.PathBar(mount2, { doc, onPick: () => {} });
+  const two = new bar.PathBar(mount2, { doc, action: 'map-goto' });
   two.show([{ path: 'z', label: 'Z' }]);
   eq('P5 two bars do not cross', `${steps(again).map((s) => s.textContent).join('|')}/${steps(mount2).map((s) => s.textContent).join('|')}`, 'root|A|B/Z');
   eq('P6 a shrunk step keeps its whole word one hover away', steps(again).map((s) => s.getAttribute('title')).join('|'), 'root|A|B');
+
+  console.log('\n-- B. the declaration trail is the same widget --');
+  const crumbs = view.renderBreadcrumb({
+    items: [{ key: 'entity|die', canonical_id: 'die@1' }],
+    nodes: [{ key: 'predicate|inspected', canonical_id: 'inspected@1' },
+      { key: 'source_plan|dt_job', canonical_id: 'dt_job' }],
+    selection: { key: 'source_plan|dt_job' },
+    currentPath: { path_id: 'p1', node_keys: ['entity|die', 'predicate|inspected', 'source_plan|dt_job'],
+      edge_ids: ['e1', 'e2'] },
+  });
+  const cs = steps(crumbs);
+  eq('B1 its steps, separators and where you are - the path bar\'s own',
+    `${cs.map((s) => s.textContent).join('|')}|${walk(crumbs).filter((n) => cls(n, 'oe-path-sep')).length}|`
+      + cs.map((s) => s.getAttribute('aria-current') || '-').join(','), 'die@1|inspected@1|dt_job|2|-,-,true');
+  eq('B2 each other step asks to select its declaration, with its route; where you are asks nothing',
+    cs.map((s) => (s.dataset.action ? `${s.dataset.action}:${s.dataset.value}:${s.dataset.pathId}:${s.dataset.edgeId || '-'}` : '-')).join(','),
+    'select:entity|die:p1:-,select:predicate|inspected:p1:e1,-');
 
   console.log('\n-- W. the bar names no declaration word --');
   const words = new Set();
@@ -129,7 +147,9 @@ function suite(view, bar) {
     }
   };
   collect(CAPTURE.skeleton);
-  const JS = new Set(['class', 'object', 'function', 'return', 'const', 'let', 'new', 'this', 'if', 'else', 'for', 'import', 'export', 'default', 'true', 'false', 'null', 'type']);
+  // JS words, plus `value`: the page's click contract (`data-action` · `data-value`) the bar writes.
+  const JS = new Set(['class', 'object', 'function', 'return', 'const', 'let', 'new', 'this', 'if', 'else', 'for', 'import', 'export', 'default', 'true', 'false', 'null', 'type',
+    'map', 'Object', 'value']);
   const code = bar.__source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
   const population = [...words].filter((w) => !JS.has(w));
   const shown = population.filter((w) => walk(form).some((n) => n.textContent === w)).length;
@@ -164,14 +184,17 @@ const MUTANTS = [
     from: '  const landing = (count) => drawn.filter((node) => stepsOf(node) <= count).pop() || drawn[0];',
     to: '  const landing = () => drawn[drawn.length - 1];' },
   { name: 'a-step-asks-for-the-root', catches: ['P3'], file: BAR,
-    from: "go.addEventListener('click', () => this.onPick(step.path));",
-    to: "go.addEventListener('click', () => this.onPick(this.trail[0].path));" },
+    from: '      go.dataset.value = step.value;', to: '      go.dataset.value = steps[0].value;' },
   { name: 'the-last-step-asks-too', catches: ['P3'], file: BAR,
-    from: "      else if (go.addEventListener) go.addEventListener('click'", to: "      if (go.addEventListener) go.addEventListener('click'" },
+    from: "    if (step.current) go.setAttribute('aria-current', 'true');\n    else {", to: "    if (step.current) go.setAttribute('aria-current', 'true');\n    {" },
+  { name: 'the-trail-marks-no-current', catches: ['B1', 'B2'], file: VIEW,
+    from: '    current: key === state.selection.key,', to: '    current: false,' },
+  { name: 'the-trail-drops-its-route', catches: ['B2'], file: VIEW,
+    from: '      ...(index > 0 ? { edgeId:', to: '      ...(false ? { edgeId:' },
   { name: 'a-new-seat-stays-empty', catches: ['P4'], file: BAR,
     from: '    this.mount = mount || null;\n    this.render();\n', to: '    this.mount = mount || null;\n' },
   { name: 'the-bar-spells-a-section', catches: ['W2'], file: BAR,
-    from: "    bar.className = 'oe-path-bar';", to: "    bar.className = 'oe-path-bar'; bar.dataset.from = 'mappings';" },
+    from: "  bar.className = 'oe-path-bar';", to: "  bar.className = 'oe-path-bar'; bar.dataset.from = 'mappings';" },
 ];
 
 const main = async () => {

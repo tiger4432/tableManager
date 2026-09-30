@@ -840,13 +840,18 @@
 }
 /* ㄱ The path bar — the field under the hand as its ancestors' labels; it stays while the form scrolls. */
 #ontology-explorer-root .oe-path-mount { position: sticky; top: 0; z-index: 2; }
-/* ONE line, as ordered: the ancestors shrink to «…» (whole word in `title`), the field itself never. */
+/* The path widget (path_bar.js), drawn in two seats; each seat owns its box. */
 #ontology-explorer-root .oe-path-bar {
-  display: flex; flex-wrap: nowrap; align-items: baseline; gap: var(--space-2); min-width: 0;
-  min-height: var(--control-h); box-sizing: border-box; overflow: hidden;
-  padding: var(--space-2) var(--space-3); background: var(--oe-surface);
-  border: 1px solid var(--oe-line); font-size: var(--fs-label); white-space: nowrap;
+  display: flex; align-items: baseline; gap: var(--space-2); min-width: 0; font-size: var(--fs-label);
 }
+/* The form's seat - ONE line, as ordered: the ancestors shrink to «…» (whole word in `title`), the field itself never. */
+#ontology-explorer-root .oe-path-mount .oe-path-bar {
+  flex-wrap: nowrap; white-space: nowrap; overflow: hidden;
+  min-height: var(--control-h); box-sizing: border-box;
+  padding: var(--space-2) var(--space-3); background: var(--oe-surface); border: 1px solid var(--oe-line);
+}
+/* The workspace's seat: the declaration trail wraps. */
+#ontology-explorer-root .oe-breadcrumb .oe-path-bar { flex-wrap: wrap; }
 #ontology-explorer-root .oe-path-sep { flex: none; }
 #ontology-explorer-root .oe-path-sep { color: var(--oe-ink-meta); }
 #ontology-explorer-root .oe-path-step {
@@ -1042,8 +1047,7 @@
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-form-remove,
 #ontology-explorer-root .oe-field-row-add,
 #ontology-explorer-root .oe-field-row-remove,
-#ontology-explorer-root .oe-field-refold,
-#ontology-explorer-root .oe-crumb-button {
+#ontology-explorer-root .oe-field-refold {
   display: inline-flex; align-items: center; justify-content: center; gap: 6px;
   border: 1px solid transparent; border-radius: 0; background: transparent;
   color: var(--oe-accent); cursor: pointer;
@@ -1057,7 +1061,6 @@
 #ontology-explorer-root .oe-field-row-add:hover,
 #ontology-explorer-root .oe-field-row-remove:hover,
 #ontology-explorer-root .oe-field-refold:hover,
-#ontology-explorer-root .oe-crumb-button:hover,
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-fold:hover,
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-folded:hover { background: var(--oe-tint-accent-hover); }
 #ontology-explorer-root .oe-jump:active,
@@ -1066,13 +1069,8 @@
 #ontology-explorer-root .oe-field-row-add:active,
 #ontology-explorer-root .oe-field-row-remove:active,
 #ontology-explorer-root .oe-field-refold:active,
-#ontology-explorer-root .oe-crumb-button:active,
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-fold:active,
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-folded:active { background: var(--oe-tint-accent-press); }
-#ontology-explorer-root .oe-crumb-button {
-  font-family: var(--oe-font-mono); font-weight: 400; font-size: var(--fs-label);
-}
-#ontology-explorer-root .oe-crumb-button[aria-current="page"] { color: var(--oe-text); font-weight: 600; }
 
 /* INPUT — 100% wide, 36px tall, 6/10 padding, 14px, one hairline, square, accent caret.
    Hover raises the border to 45% of the text colour; focus takes the accent and pulls the

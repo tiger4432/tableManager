@@ -162,6 +162,7 @@ async function suite(mods) {
     contrast: 'contrasted', complete: 'true' }));
   server.runs.unshift(runRow('run-blank', { positive: '["a"]', negative: '[]', computed_at: AT, candidates: '' }));
   server.runs.unshift(runRow('run-new', { positive: '["a"]', negative: '["b"]' }));
+  server.runs.unshift(runRow('run-gap', { positive: '["a"," "]', negative: '["b",""]' }));
   server.gets.length = 0;
   refreshBtn(a.host).dispatch('click');
   await settle();
@@ -174,6 +175,8 @@ async function suite(mods) {
     `defects 1 · controls 1 · factors 0 · computed ${hm(AT)}`);
   eq('C5 a computed run whose count is blank is unknown, not 0', countsOf(a.host, 'run-blank'),
     `defects 1 · controls 0 · factors — · computed ${hm(AT)}`);
+  eq('C7 a blank id is not counted, as the chain\'s walk drops it (lead d4a949a8c ㉲)', countsOf(a.host, 'run-gap'),
+    `defects 1 · controls 1 · ${CONTRAST_WORDS.notComputed}`);
   const lastOf = (r) => countsOf(a.host, r).split(' · ').slice(2).join(' · ');
   eq('C6 not computed, computed 0 and computed N are three different lines',
     new Set(['run-new', 'run-zero', 'run-fixed'].map(lastOf)).size, 3);
@@ -387,6 +390,9 @@ const MUTANTS = [
     from: "    const said = refusalSentence(await res.json().catch(() => null), res.status, '');\n",
     to: "    const body = await res.json().catch(() => null);\n    const detail = body && body.detail;\n"
       + "    const said = typeof detail === 'string' ? detail : (detail && detail.message) || '';\n" },
+  { name: 'a-blank-id-is-counted', catches: ['C7'], file: 'api.js',
+    from: '  return Array.isArray(ids) ? ids.filter((id) => !blank(id)).length : null;',
+    to: '  return Array.isArray(ids) ? ids.length : null;' },
   { name: 'the-whole-question-is-saved', catches: ['A7'], file: 'api.js',
     from: '  for (const key of CONTRAST.args) {',
     to: '  for (const key of Object.keys(r.question || {})) {' },
@@ -409,7 +415,7 @@ const MUTANTS = [
     from: '        && Number.isFinite(Number(found)) ? Number(found) : null,',
     to: '        && Number(found) ? Number(found) : null,' },
   { name: 'a-run-is-always-computed', catches: ['B4', 'C6', 'J6'], file: 'api.js',
-    from: "    const computedAt = at === null || at === undefined || String(at).trim() === '' ? null : at;",
+    from: '    const computedAt = blank(at) ? null : at;',
     to: "    const computedAt = at || 'soon';" },
   { name: 'the-list-sorts-by-a-name-the-table-lacks', catches: ['B2', 'B3'], file: 'api.js',
     from: '&order_by=updated_at&order_desc=true',

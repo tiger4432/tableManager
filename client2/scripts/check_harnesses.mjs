@@ -915,7 +915,8 @@ const FLOORS = new Map([
   // New with lead 619befe8c: where an edit sits in the ledger form — a guide per ancestor on every
   // row of the real skeleton's form, the trail as the declaration path's own words, the path bar
   // part, and no skeleton word in the bar's code.
-  ['explorer_path_bar_harness.mjs', 17],
+  // 17 -> 19 (B1-B2, lead d4a949a8c ㉯): the declaration trail is the same widget.
+  ['explorer_path_bar_harness.mjs', 19],
   // New with lead 619befe8c (implementer 37c714205): a role's inherited attributes, read-only,
   // on the server's plan for the sample's dt_job.
   ['explorer_inherited_attributes_harness.mjs', 8],
@@ -1467,9 +1468,11 @@ const FLOORS = new Map([
   // two instances on one screen, the real chain's run rows through the real route (J), and the
   // lists walking what Save saves (L). 54 -> 58 (lead 2dd93d4a9).
   // 58 -> 60 (G5-G6, lead d4a949a8c ㉮): a refused save keeps a named reason and a list refusal.
-  ['rnd_board_contrast_save_harness.mjs', 60],
-  // the board part: the walk itself
-  ['rnd_board_walk_harness.mjs', 32],
+  // 60 -> 61 (C7, ㉲): a blank id is not counted, as the chain's walk drops it.
+  ['rnd_board_contrast_save_harness.mjs', 61],
+  // the board part: the walk itself. 32 -> 34 (D5 and its mutant X11, lead d4a949a8c ㉱): the two
+  // lists walk through one prelude.
+  ['rnd_board_walk_harness.mjs', 34],
   // 🔴 the walk REQUEST, not the walk return. `createWalkBoxWalk` accepted `spec.hops` and
   //    never put it on the wire, so the screen wrote 「3홉」 while the server walked 12 -- with
   //    no error and no warning. A harness that scores the RETURN is green throughout that.
