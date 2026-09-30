@@ -240,6 +240,47 @@ def test_a_merge_promotes_the_declaration_and_leaves_no_atom_of_the_old_one(worl
     assert not after & before                          # no atom of the old declaration
 
 
+def test_a_whole_source_refresh_takes_the_atoms_of_a_row_the_source_lost(world):
+    """총괄 3a109bfd9 ③: a branch has no follow-up, and the default's can miss a delete. A
+    whole-source refresh withdraws what the relation lost, in every world, the way a delete is."""
+    from ledger.setup import load_setup
+
+    names = _branch_translated(world)
+    _write(world, "wafer_process", [{"proc_id": "P2", "wafer_id": "W2", "step": "S1",
+                                     "recipe_id": "RCP-1", "eventtime": EVENT_TIME}])
+    for name in (None, WORLD):
+        backfill.run(world["engine"], source=CHANGED, world=name)
+    with world["engine"].begin() as conn:                     # no outbox row: nobody follows it
+        conn.execute(text('DELETE FROM "%s"."wafer_process" WHERE proc_id = :p' % PG_TEST_SCHEMA),
+                     {"p": "P2"})
+
+    def atoms_of(relation, wafer):
+        with world["engine"].connect() as conn:
+            return conn.execute(text(
+                "SELECT count(*) FROM %s WHERE source_who = :s AND subject_keys::text LIKE :w"
+                % relation), {"s": CHANGED, "w": '%%"%s"%%' % wafer}).scalar()
+
+    for name, relation in ((None, schema.LEDGER_TABLE), (WORLD, names.ledger)):
+        setup = load_setup(schema.require_world(name).declaration_root)
+        assert atoms_of(relation, "W2") > 0 and atoms_of(relation, "W1") > 0, name
+        said = backfill.rescope(world["engine"], setup, CHANGED, None, None, apply=False,
+                                whole_source=True, world=name)      # the cheap preview
+        assert (said["relation_rows"], said["gone_rows"], said["gone_atoms"]) == (
+            1, 1, atoms_of(relation, "W2")), (name, said)
+        done = backfill.rescope(world["engine"], setup, CHANGED, None, None, apply=True,
+                                page_rows=backfill.RESCOPE_PAGE_ROWS, whole_source=True,
+                                world=name)
+        assert (done["gone_rows"], done["gone_withdrawn"] > 0) == (1, True), (name, done)
+        assert atoms_of(relation, "W2") == 0 and atoms_of(relation, "W1") > 0, name
+        again = backfill.rescope(world["engine"], setup, CHANGED, None, None, apply=True,
+                                 page_rows=backfill.RESCOPE_PAGE_ROWS, whole_source=True,
+                                 world=name)
+        assert (again["gone_rows"], again["gone_withdrawn"]) == (0, 0), (name, again)
+        said = backfill.rescope(world["engine"], setup, CHANGED, None, None, apply=False,
+                                whole_source=True, world=name)
+        assert (said["gone_rows"], said["gone_atoms"]) == (0, 0), (name, said)
+
+
 def test_deleting_the_branch_leaves_no_schema_and_no_file(world):
     names = _branch_translated(world)
     preview = schema.world_deletion(world["engine"], WORLD)

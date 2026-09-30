@@ -67026,3 +67026,38 @@ N2 a preparer output goes in as a list               빨강  (1 failed, 32 passe
 전체  5 failed, 7518 passed, 194 skipped, 3 xfailed in 809.96s (0:13:29) — 실패 5 개, 파일::이름으로 알려진 다섯과 같음: True
 PG    7 failed, 148 passed, 7565 deselected, 49 warnings in 302.55s (0:05:02) — 실패 이름이 알려진 일곱과 같음: True
 ```
+
+## [구현자 -> 총괄] 소스 전부 새로 고침이 표가 잃은 행을 거둠 fa41a6f25 — eb823ad72 · 3a109bfd9 ③(모든 세상 · 미리보기 가)
+
+```
+질의       backfill.rows_gone_from_the_source(world=) — 색인엔 있고 표엔 없는 row_id. rows_missing_from_the_index(반대 방향) 바로 옆
+거두기      rescope(whole_source, apply) 끝에서 그 id 를 withdraw_deleted_rows(world= 인자 하나 더) 로. 세상 묻는 if 없음 — 기본에선 따라가기가 이미 거뒀으면 0
+미리보기    --apply 없는 --whole-source = relation_rows · gone_rows · gone_atoms(번역 안 함). CLI 와 관리 화면 소급 작업 count 가 이 하나를 부름
+원자 셈     store.atoms_for_refs — rescope 미리보기가 속에 적던 count 를 이름 붙여 거기와 삭제 미리보기가 같이 씀
+가지 run 의 drain  소급 작업은 자식 프로세스(admin.retroactive_run), CLI 는 자기 프로세스 — 큐엔 그 run 이 넣은 것뿐이라 기본의 실시간 사건을 안 먹음(확인만)
+```
+**게이트** (PG · 추적 표본 · 기본과 가지 둘 다 같은 시험)
+```
+따라가기가 못 본 삭제(outbox 없이 SQL 로 P2 지움) -> 미리보기 relation_rows 1 · gone_rows 1 · gone_atoms = 그 행 원자 수
+-> --apply: gone_rows 1 · 거둔 원자 > 0 · P2 원자 0 · P1 원자 그대로 -> 다시 돌리면 0 · 미리보기도 0
+변이 넷 — 각각 되돌림
+R1 a whole source does not take what is gone         빨강  (1 failed, 7720 deselected, 8 warnings)
+R2 the gone-rows query looks the wrong way           빨강  (1 failed, 7720 deselected, 8 warnings)
+R3 a delete is withdrawn from the default only       빨강  (1 failed, 7720 deselected, 8 warnings)
+R4 the preview counts no atoms                       빨강  (1 failed, 7720 deselected, 8 warnings)
+```
+**새 함수 · 새 if 중 기존 것과 같은 일** (cdeb5ea10)
+```
+새 함수   rows_gone_from_the_source — 지시대로 반대 방향 질의의 짝(같은 일 아님: 방향이 반대)
+          store.atoms_for_refs — 새 일 아님, _preview_frame 속 count 를 옮김(부르는 곳 둘)
+새 if     rescope 의 whole_source 꼬리(거두기) · 미리보기 갈래 — 둘 다 「소스 전부」 인자의 뜻. withdraw_deleted_rows 의 --apply 없는 갈래에서 원자 셈
+```
+**가지 속도** (박스 수 — 임시 가지, 선언은 문장 이름만 바꿈, 재고 drop_world 로 지움: 남은 스키마 · 파일 0)
+```
+lot_slot_wafer 37,325 행 -> 원자 37,325 · 88.7 초 (421 행/초 · 2.38 ms/행) · 19 배치
+```
+**스위트** (C:/wt-impl, 착지 트리)
+```
+전체  5 failed, 7518 passed, 195 skipped, 3 xfailed in 827.82s (0:13:47) — 실패 5 개, 파일::이름으로 알려진 다섯과 같음: True
+PG    7 failed, 149 passed, 7565 deselected, 51 warnings in 305.66s (0:05:05) — 실패 이름이 알려진 일곱과 같음: True
+```

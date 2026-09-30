@@ -761,6 +761,25 @@ class LedgerStore:
             if own:
                 connection.close()
 
+    def atoms_for_refs(self, source, refs, connection=None):
+        """How many atoms of `source` carry one of `refs` - what a withdrawal aimed at them
+        takes. READ ONLY. The rescope preview and a delete's preview both count this way."""
+        if not refs:
+            return 0
+        own = connection is None
+        connection = connection or self.connection()
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    f"SELECT count(*) FROM {self.names.ledger} "
+                    "WHERE source_who = %s AND source_raw_ref = ANY(%s)",
+                    (source, list(refs)))
+                return int(cursor.fetchone()[0])
+        finally:
+            if own:
+                connection.rollback()
+                connection.close()
+
     def indexed_row_ids(self, relation, row_ids, source, connection=None):
         """Which of `row_ids` this source's index already names. READ ONLY.
 

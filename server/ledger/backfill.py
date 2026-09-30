@@ -456,7 +456,6 @@ def preview_rescope(engine, setup, source, scope_column, scope_values, world=Non
 def _preview_frame(engine, setup, source, plan, frame, world=None):
     """`preview_rescope`'s three numbers for rows already read - a whole scope, or one page
     of a paged `rescope` (총괄 8d8abfb5d)."""
-    from . import schema
     from .store import LedgerStore
     from .setup import preview_selected_cursor_batch
     from .runtime_v2 import _filtered_event_atoms, last_cursor
@@ -485,18 +484,7 @@ def _preview_frame(engine, setup, source, plan, frame, world=None):
     result["remake"] = len(atoms)
     result["refs"] = refs
 
-    store = LedgerStore(engine, world=world)
-    connection = store.connection()
-    try:
-        with connection.cursor() as cursor:
-            cursor.execute(
-                f"SELECT count(*) FROM {schema.world_names(world).ledger} "
-                "WHERE source_who = %s AND source_raw_ref = ANY(%s)",
-                (source, refs))
-            result["withdraw"] = int(cursor.fetchone()[0])
-    finally:
-        connection.rollback()
-        connection.close()
+    result["withdraw"] = LedgerStore(engine, world=world).atoms_for_refs(source, refs)
     return result
 
 
@@ -730,7 +718,19 @@ def rescope(engine, setup, source, scope_column, scope_values, apply=False,
     zeros = {"applied": False, "withdrawn": 0, "forgotten": 0,
              "attempted": 0, "inserted": 0, "deduped": 0}
     if not apply:
-        if withdraw:
+        if whole_source:
+            # 🔴 A WHOLE SOURCE PREVIEWS WHAT IS CHEAP (총괄 3a109bfd9 ③): the table's rows,
+            #    the rows it lost and their atoms. Never a translation of every row - that was
+            #    the reason it refused without --apply.
+            plan = setup.snapshot.source_plans[source]
+            gone = rows_gone_from_the_source(engine, setup, source, world=world)
+            aimed = withdraw_deleted_rows(engine, setup, plan.relation, gone, world=world)
+            census = rows_not_yet_translated(engine, setup, source, world=world)
+            result = {"source": source, "whole_source": True, "previewed": False,
+                      "relation_rows": census.get("relation_rows"), "gone_rows": len(gone),
+                      "gone_atoms": sum(item.get("atoms", 0)
+                                        for item in aimed["sources"].values())}
+        elif withdraw:
             result = preview_rescope(engine, setup, source, scope_column, scope_values,
                                      world=world)
             result.pop("refs", None)
@@ -801,6 +801,15 @@ def rescope(engine, setup, source, scope_column, scope_values, apply=False,
         if checkpoint is not None and checkpoint(result["rows_in_scope"]):
             result["stopped"] = True
             break
+    if whole_source and not result.get("stopped"):
+        # 🔴 THE PAGES CAN ONLY REMAKE ROWS THAT ARE STILL THERE (총괄 3a109bfd9 ③). What the
+        #    relation lost is withdrawn the way a delete is, in every world: the default's
+        #    follow-up has usually taken it already (then 0), a branch has no follow-up.
+        gone = rows_gone_from_the_source(engine, setup, source, world=world)
+        taken = withdraw_deleted_rows(engine, setup, plan.relation, gone, apply=True,
+                                      world=world)
+        result["gone_rows"] = len(gone)
+        result["gone_withdrawn"] = sum(item["withdrawn"] for item in taken["sources"].values())
     if not result["rows_in_scope"]:
         # 🔴 AN EMPTY SCOPE IS AN ANSWER, NOT A FAULT (S-81) - the row can be gone by the
         # time it is read. Falling through handed an empty frame to the write boundary, which
@@ -899,6 +908,33 @@ def rows_missing_from_the_index(engine, setup, source, limit, after=None, world=
     try:
         with connection.cursor() as cursor:
             cursor.execute(query, (plan.relation, source, after, after, limit))
+            return [row[0] for row in cursor.fetchall()]
+    finally:
+        connection.rollback()
+        connection.close()
+
+
+def rows_gone_from_the_source(engine, setup, source, world=None):
+    """The other direction (총괄 3a109bfd9 ③): the row ids the index names for this source
+    that the relation no longer has - a delete the follow-up did not see, or any delete in a
+    branch, which has no follow-up. `withdraw_deleted_rows` takes them."""
+    from psycopg2 import sql
+
+    from . import schema
+
+    plan = setup.snapshot.source_plans[source]
+    relation = sql.SQL(".").join(
+        sql.Identifier(part) for part in str(plan.relation).split("."))
+    query = sql.SQL(
+        "SELECT DISTINCT x.row_id FROM {refs} x "
+        " WHERE x.relation = %s AND x.source_who = %s "
+        "   AND NOT EXISTS (SELECT 1 FROM {relation} r WHERE r.row_id = x.row_id) "
+        " ORDER BY x.row_id"
+    ).format(relation=relation, refs=sql.SQL(schema.world_names(world).row_ref))
+    connection = engine.raw_connection()
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(query, (plan.relation, source))
             return [row[0] for row in cursor.fetchall()]
     finally:
         connection.rollback()
@@ -1369,7 +1405,7 @@ def _index_one_chunk(connection, store, source, refs, result, apply):
     result["indexed"] += len(pairs)
 
 
-def withdraw_deleted_rows(engine, setup, relation, row_ids, apply=False):
+def withdraw_deleted_rows(engine, setup, relation, row_ids, apply=False, world=None):
     """Withdraw the atoms of physical rows that are GONE. No remake -- see below.
 
     운영에서는 아무것도 적지 않습니다 -- 표에서 행이 사라지면 원장에서 그 행의 사실이 걷힙니다.
@@ -1403,7 +1439,7 @@ def withdraw_deleted_rows(engine, setup, relation, row_ids, apply=False):
     """
     from .store import LedgerStore
 
-    store = LedgerStore(engine)
+    store = LedgerStore(engine, world=world)
     ids = [str(item) for item in (row_ids or ()) if item]
     result = {"relation": relation, "rows": len(ids), "applied": False,
               "sources": {}, "forgotten": 0}
@@ -1414,7 +1450,13 @@ def withdraw_deleted_rows(engine, setup, relation, row_ids, apply=False):
         by_source.setdefault(source_who, set()).add(ref)
     for source in sorted(by_source):
         result["sources"][source] = {"refs": len(by_source[source]), "withdrawn": 0}
-    if not apply or not by_source:
+    if not apply:
+        # what the apply would take, in atoms (총괄 3a109bfd9 ③ - the whole-source preview)
+        for source in sorted(by_source):
+            result["sources"][source]["atoms"] = store.atoms_for_refs(
+                source, sorted(by_source[source]))
+        return result
+    if not by_source:
         return result
     for source in sorted(by_source):
         result["sources"][source]["withdrawn"] = store.withdraw(
@@ -2007,8 +2049,10 @@ def main(argv=None):
         "--via-events", action="store_true",
         help="retired - the same job as the plain load; run without it")
     parser.add_argument("--whole-source", action="store_true",
-                        help="rescope EVERY row of --source (with --apply): the redo a changed "
-                             "declaration needs - after a merge, or to refresh a branch")
+                        help="rescope EVERY row of --source: the redo a changed declaration "
+                             "needs - after a merge, or to refresh a branch - and rows the "
+                             "table lost are withdrawn. Without --apply: the table's rows, the "
+                             "rows it lost and their atoms")
     parser.add_argument("--apply", action="store_true",
                         help="with --scope-column: withdraw and remake for real. Without "
                              "it the scope is a dry-run and writes nothing")
@@ -2047,18 +2091,24 @@ def main(argv=None):
 
     if args.whole_source:
         # 총괄 8d10633ae ㉡: every row of the source, page by page. Not with a scope - two
-        # definitions of one redo's rows - and not as a dry run, which would translate the
-        # whole source once only to say how much it would translate.
-        if args.scope_column or args.scope_values or not args.apply:
+        # definitions of one redo's rows. Without --apply it says what is cheap (총괄
+        # 3a109bfd9 ③): the table's rows, the rows it lost and their atoms.
+        if args.scope_column or args.scope_values:
             raise LedgerSetupError(
                 "whole_source_alone", "whole_source",
-                "--whole-source is every row of --source: give it with --apply and "
-                "without --scope-column/--scope-values")
-        scoped = _written("ledger_rescope", {
-            "source": args.source, "whole_source": True, "world": args.world})
-        if scoped is None:
-            return 2
+                "--whole-source is every row of --source: give it without "
+                "--scope-column/--scope-values")
+        if args.apply:
+            scoped = _written("ledger_rescope", {
+                "source": args.source, "whole_source": True, "world": args.world})
+            if scoped is None:
+                return 2
+        else:
+            scoped = rescope(engine, load_setup(names.declaration_root), args.source, None,
+                             None, apply=False, whole_source=True, world=args.world)
         logger.info("[Ledger] %s", scoped)
+        if not args.apply:
+            logger.info("[Ledger] dry-run: nothing was written. Re-run with --apply.")
         return 0
 
     if args.scope_column or args.scope_values:
