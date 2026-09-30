@@ -66611,3 +66611,36 @@ NULL 접기 게이트 셋 (4349db8e8 ②)
 여쭐 것        사유 이름 — 닫힌 어휘(12, 시험이 닫힘을 잼) 안에서 «no_raw_ref»(원천 참조를 order_by 값 = 커서 칸으로 짓는데 그 값이 빔)로 가도 되나
                아니면 사유 하나를 더하나(닫힌 목록 · 이름 표 · 그 시험 같이)
 ```
+
+## [구현자 -> 총괄] 4b5964ab2 ② 착지 전 — 행 하나를 떼면 «묶음 소스»의 분자가 쪼개진다 (① 은 다 됨)
+
+```
+잰 것 (박스 라이브 선언·데이터, 읽기만)
+  dt_job 은 묶음 소스   unit group · group_by [dt_job] · 커서 [dt_job, dt_cell_key]
+  빈 커서 작업 셋이 든 페이지 (행 216 · 빈 커서 144)
+     고치기 전  배치 전체 예외 LedgerV2RuntimeError: cursor_value: cursor number must be finite
+     고친 뒤    거절 144 건 no_raw_ref · 주소 bundle.sources.dt_job.read.order_by.dt_cell_key · 나머지 작업 원자 2
+  커서가 다 찬 작업(72 행)에서 한 행만 dt_cell_key 를 비우면
+     분자 1 · 원자 2 · 거절 1 — 그런데 has_netdie 가 72 -> 71 으로 «적힌다»
+     남은 행으로 분자를 지었기 때문. 거절은 셌지만 원장엔 틀린 값이 들어간다
+```
+```
+걸리는 판정 둘
+  116  단위는 분자 — 「부분 분자를 들이면 다른 계약(incomplete)」, S-41 ③ 으로 남김
+       (source_preparation._refuse_molecule 독스트링)
+  110  order/cursor 빈 칸은 «오늘처럼» 페이지 거절 — 이 착지가 «커서 칸 몫»을 뒤집는다
+```
+| 안 | 무엇 | 위험 | 크기 |
+|---|---|---|---|
+| ㄱ (추천) | 묶음 소스는 빈 커서 행이 든 «분자 전체»를 거절 1 건(rows = 분자 행 수, 주소 = 빈 칸). 행 소스는 지은 대로 행 하나. group_by 칸까지 빈 행은 이름 댈 분자가 없어 그 행 하나 | 한 행 때문에 작업 하나가 통째로 원장에 안 들어감 — 116 이 이미 그렇게 정함 | 떼는 함수 안 몇 줄 + 게이트 한 줄. 안 쟀다 |
+| ㄴ | 지은 대로 행 단위 | 116 과 어긋남. 틀린 값(71)이 원장에. 행을 채우면 다음 따라가기가 고쳐 씀 | 0 |
+| ㄷ | 묶음 소스만 오늘처럼 페이지 예외 | 박스 dt_job 이 계속 막힘 | 작음 |
+
+```
+같이 고칠 말 (어느 안이든 이 착지에) — grep 으로 찾은 넷, 전수는 착지 때 다시 센다
+  source_preparation 의 「order_by and cursor_columns decide where the PAGE is」 주석
+  test_ledger_l1_pg 의 param_id 주석 두 곳 (「blanking it ... aborts the whole batch」)
+  test_a_row_that_stopped_being_this_sources_row... 의 docstring (「cursor value is missing」 로 거절)
+스위트  전체·PG 도는 중. 결과는 착지 보고에
+여쭐 것  ㄱ 로 가도 되나
+```
