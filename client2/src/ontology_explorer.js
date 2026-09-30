@@ -5,6 +5,8 @@ import {
   declarationIdFor,
   // C-82: the draft-leaf reader and the rule that says whose relation the choices follow.
   draftValueAt as storeDraftValueAt, relationInEffect,
+  // 791c0f45e: whether the draft moved a leaf the plan marks as shaping the form.
+  draftReshapesPlan,
 } from './ontology_explorer_store.js';
 import { renderOntologyExplorer } from './ontology_explorer_view.js';
 import {
@@ -757,6 +759,7 @@ No effect`;
   };
 
   const loadAuthoring = async (selection) => {
+    planSelection = selection;
     try {
       const params = new URLSearchParams();
       if (selection) params.set('selection', selection);
@@ -776,6 +779,10 @@ No effect`;
             : jsonRequest('/authoring/plan'),
       ]);
       dispatch({ type: 'AUTHORING_RECEIVED', plan, schema, whole: whole || plan });
+      // A saved plan under a draft that already moved a shaping leaf (a refresh, a restored
+      // editor) would draw the saved form again — the draft's is asked for once more.
+      reshapeAsked = '';
+      void reshapeIfMoved();
       // 🔴 THE ANSWER THE SERVER ALREADY COMPUTES AND NOBODY ASKED FOR. The plan hands
       // the author the shortest DECLARED unique key as the ordering default; whether that
       // key is unique IN THE DATA is a different question, and `column_stats` answers it.
@@ -792,6 +799,31 @@ No effect`;
     } catch (error) {
       console.warn('[ontology] authoring plan unavailable', error);
       dispatch({ type: 'AUTHORING_FAILED', message: errorMessage(error) });
+    }
+  };
+
+  // 🔴 THE DRAFT'S FORM, ASKED OF THE SERVER (lead 791c0f45e) — the C-82 wall again: a plan
+  //    exists only for what was saved. After a COMMITTED edit (a change or a click, never a
+  //    keystroke) that moved a leaf the plan marks `reshapes`, the plan is asked once for THIS
+  //    draft text, and its fields take the plan's place. No leaf is named here.
+  let planSelection = null;   // what the GET asked with; the POST asks with the same
+  let reshapeAsked = '';      // the draft text last asked about — the same text is not asked twice
+  let reshapeTurn = 0;        // only the newest answer is drawn
+  const reshapeIfMoved = async () => {
+    const draft = state.draft;
+    if (!draft || !state.editorText || state.editorText === reshapeAsked) return;
+    if (!draftReshapesPlan(state, state.authoring, PATH_TOOLS)) return;
+    reshapeAsked = state.editorText;
+    const turn = ++reshapeTurn;
+    try {
+      const plan = await jsonRequest('/authoring/plan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ selection: planSelection, draft_id: draft.draft_id, raw: state.editorText }),
+      });
+      if (turn === reshapeTurn) dispatch({ type: 'AUTHORING_RECEIVED', plan });
+    } catch (error) {
+      if (turn === reshapeTurn) showToast(errorMessage(error), 'error');
     }
   };
 
@@ -1254,6 +1286,11 @@ No effect`;
       if (await discardDraft()) await readMirror({ draft: null });
     }
   });
+
+  // A committed edit — a picked option, a box left, a chip pressed — may have moved a leaf that
+  // shapes the form. Typing is not a commit: `input` below never asks.
+  root.addEventListener('change', () => { void reshapeIfMoved(); });
+  root.addEventListener('click', () => { void reshapeIfMoved(); });
 
   root.addEventListener('input', (event) => {
     if (event.target.dataset.action === 'edit-draft-item') {
