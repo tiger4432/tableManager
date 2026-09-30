@@ -1119,7 +1119,11 @@ def cast_value_by_type(value: Any, col_type: str, col_name: str,
         # round ⓑ turns the count into a refusal once the owner has declared.
         if time_format.time_is_naive(value):
             time_format.note_naive_time(table_name, col_name)
-        return value
+        # 🔴 [총괄 791c0f45e 4] A datetime OBJECT - what the chain moves out of a datetime
+        #    column - leaves here in crud's JSON spelling (ISO, its offset kept), because the
+        #    layer is JSON and the object made the whole write raise TypeError. Text passes
+        #    byte-identical and the instant never moves, so round ⓐ above still holds.
+        return sanitize_to_utf8(value)
 
     if col_type == "number":
         val_str = str(value).strip()
