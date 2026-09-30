@@ -1357,11 +1357,13 @@ const FLOORS = new Map([
   // 97 -> 103 (W1-W6, lead 460f202d3): after a save, loaded only when the worker holds that base.
   // 103 -> 104 (W7): the server's 「not seen」 is said, not drawn as a wait.
   ['chain_rule_form_harness.mjs', 104],
-  ['clipboard_type_modal_harness.mjs', 21],
+  // 21 -> 23 (F1-F2, lead 5793b49fb): the line saying why it asks is the caller's when given.
+  ['clipboard_type_modal_harness.mjs', 23],
   // New with lead 8771e43ac 1: the table's smart_paste order picks the format without asking; no
   // order or none of it present asks as before; both readers choose through the one function.
   // 8 -> 9 (C7, lead 5793b49fb): declared but absent asks even for one format; undeclared one goes.
-  ['smart_paste_choice_harness.mjs', 9],
+  // 9 -> 10 (C8): the ask is told when it asks because none of the declared order is there.
+  ['smart_paste_choice_harness.mjs', 10],
   // New with lead 4311a51ed: where a click cannot read the clipboard, the paste box takes Ctrl+V
   // and the real paste listener hands it to the smart paste reader.
   // 16 -> 17 (M3, lead 5793b49fb): Ctrl+Shift+V takes the button's entry.

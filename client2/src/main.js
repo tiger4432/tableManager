@@ -2023,8 +2023,11 @@ async function smartPasteViaIngestion() {
 //    다섯 블록과 innerHTML 의 `style="…"` 넷으로 화면을 «통째로» 지었고, 클래스가 하나도
 //    없어 시트가 이 화면에 대해 아무 말도 못 했습니다(스킬 「인라인이 스타일시트를 이긴다」).
 //    ⚠️ 「어디에 뜨나」는 부품 밖의 일이라 mount 를 여기서 고릅니다 — 조립식 상설 그대로.
-function showClipboardTypeModal(types) {
-  return new ClipboardTypeModal(document.body).open(types);
+function showClipboardTypeModal(types, outsideOrder) {
+  // Asked because none of the table's declared order is on the clipboard (lead 5793b49fb):
+  // that fact is the line, since a format outside it may not parse.
+  return new ClipboardTypeModal(document.body).open(
+    types, outsideOrder ? "Not in this table's smart_paste · pick one" : undefined);
 }
 
 // Global mouseup handling for drag range selection completion

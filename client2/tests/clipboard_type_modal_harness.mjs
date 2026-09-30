@@ -140,6 +140,19 @@ console.log('\n-- E. 겉모양은 «클래스»가 말한다 --');
   eq('E4 닫히면 body 에 남는 것이 없다', doc.body.children.filter((h) => h.children.length).length, 0);
 }
 
+console.log('\n-- F. why it asks: the line the caller gives (lead 5793b49fb) --');
+{
+  const given = mountIn();
+  const plain = mountIn();
+  const a = new ClipboardTypeModal(given, nowDeps).open(['text/plain'], "Not in this table's smart_paste · pick one");
+  const b = new ClipboardTypeModal(plain, nowDeps).open(TYPES);
+  eq('F1 a given line is the line', byClass(given, 'ctm-sub')[0].textContent, "Not in this table's smart_paste · pick one");
+  eq('F2 none given: the default', byClass(plain, 'ctm-sub')[0].textContent, 'The clipboard holds several formats · pick one');
+  byClass(given, 'ctm-cancel')[0].dispatch('click', {});
+  byClass(plain, 'ctm-cancel')[0].dispatch('click', {});
+  await a; await b;
+}
+
 await flush();
 console.log(`\n${pass} passed, ${fail} failed.`);
 console.log(`ASSERTIONS ${pass + fail} ${fail}`);

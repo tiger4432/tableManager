@@ -34,7 +34,8 @@ const EXCEL = [PLAIN, HTML, RTF];
 
 async function suite(choose, source) {
   const asked = [];
-  const ask = (answer) => async (types) => { asked.push(types.join(',')); return answer; };
+  const outside = [];
+  const ask = (answer) => async (types, out) => { asked.push(types.join(',')); outside.push(out === true); return answer; };
   console.log('\n-- C. the order picks; otherwise as before --');
   const a = await choose(EXCEL, [HTML, PLAIN], ask(RTF));
   eq('C1 declared [html, plain], an Excel copy: html, without asking', `${a.type}|${a.byOrder}|${asked.length}`, `${HTML}|true|0`);
@@ -53,6 +54,8 @@ async function suite(choose, source) {
   eq('C5 an empty order is no order; a cancelled ask sends nothing', `${e.type}|${e.byOrder}`, 'null|false');
   const f = await choose([PLAIN, HTML], [HTML, PLAIN], ask(RTF));
   eq('C6 the order\'s first that is present, not the clipboard\'s first', `${f.type}|${f.byOrder}`, `${HTML}|true`);
+  eq('C8 each ask is told whether it asks because none of the declared order is there (C2 C3 C4 C5)',
+    outside.join(','), 'true,false,true,false');
 
   console.log('\n-- N. no format named; both readers choose here --');
   const code = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
@@ -75,6 +78,7 @@ const MUTANTS = [
     from: '    const hit = order.find((type) => types.includes(type));', to: '    const hit = types.find((type) => order.includes(type));' },
   { name: 'one-format-asks-too', catches: ['C7'], from: '  if (types.length > 1 ||', to: '  if (types.length >= 1 ||' },
   { name: 'declared-but-absent-goes-unasked', catches: ['C4'], from: ' || (declared && types.length > 0)', to: '' },
+  { name: 'the-ask-is-not-told-why', catches: ['C8'], from: '(await ask(types, declared))', to: '(await ask(types))' },
   { name: 'a-default-format-is-named', catches: ['N1'],
     from: '  return { type: types[0] || null, byOrder: false };', to: "  return { type: types[0] || 'text/plain', byOrder: false };" },
 ];
