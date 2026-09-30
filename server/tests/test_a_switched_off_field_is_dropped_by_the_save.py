@@ -166,6 +166,7 @@ def test_a_plan_without_a_draft_id_is_refused_as_the_draft_preview_refuses_it(cl
     assert plan.status_code == view.status_code == 400, (plan.text, view.text)
     assert plan.json()["detail"] == view.json()["detail"]
     assert plan.json()["detail"]["code"] == "draft_required"
+    assert plan.json()["detail"]["message"].startswith("Next: ")      # true at both seats
 
 
 def test_a_config_file_gone_under_a_draft_is_refused_by_name_next_action_first(client, tmp_path):
@@ -181,3 +182,33 @@ def test_a_config_file_gone_under_a_draft_is_refused_by_name_next_action_first(c
     assert plan.json()["detail"] == view.json()["detail"]
     assert plan.json()["detail"]["code"] == "missing_config_file"
     assert plan.json()["detail"]["message"].startswith("Next: ")
+
+
+@pytest.mark.parametrize("text, code", [("{ not json", "invalid_json"), ("[]", "invalid_type")],
+                         ids=["broken_json", "root_is_a_list"])
+def test_a_file_that_cannot_be_read_is_one_refusal_at_the_plan_and_at_view(client, tmp_path,
+                                                                           text, code):
+    """총괄 d4a949a8c ⑨ 후속 — 작성 계획은 자기 읽기로 unreadable_config, view 는 invalid_json ·
+    invalid_type(path bundle) 이었다. 한 사실에 한 낱말."""
+    http, _draft = client
+    (tmp_path / "ontology" / "ledger_config.json").write_text(text, encoding="utf-8")
+    plan = http.get(PLAN, params={"selection": "source_plan|" + SOURCE})
+    view = http.get(VIEW)
+
+    assert plan.status_code == view.status_code == 400, (plan.text, view.text)
+    assert plan.json()["detail"] == view.json()["detail"]
+    assert plan.json()["detail"]["code"] == code
+    assert plan.json()["detail"]["message"].startswith("Next: ")
+
+
+def test_a_file_with_a_repeated_key_is_still_read_by_the_plan_and_by_view(client, tmp_path):
+    """The lenient read stays (총괄 (나)): the loader refuses a repeated key, the explorer shows it."""
+    http, _draft = client
+    sample = (SHIPPED / "ledger_config.json.sample").read_text(encoding="utf-8")
+    repeated = sample.replace('"setup_version"', '"setup_version": 0, "setup_version"', 1)
+    assert repeated != sample
+    (tmp_path / "ontology" / "ledger_config.json").write_text(repeated, encoding="utf-8")
+
+    plan = http.get(PLAN, params={"selection": "source_plan|" + SOURCE})
+    view = http.get(VIEW)
+    assert plan.status_code == view.status_code == 200, (plan.text, view.text)

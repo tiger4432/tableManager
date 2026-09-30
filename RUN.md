@@ -1,5 +1,19 @@
 # 지금 돌리면 되는 것
 
+> ## 🔴 [10-01 아침] **작성 화면 — 못 읽는 설정 파일은 계획과 view 가 같은 낱말 · unreadable_config 은퇴 · draft_required 문장 · 마이그레이션 «없음» · 재기동 서버 (run_app.bat 로 전체)**
+>
+> ```
+> 무엇이 바뀌나  ledger_config.json 이 JSON 으로 안 읽히면 작성 계획도 view 와 같이 400 invalid_json (전: unreadable_config)
+>              뿌리가 객체가 아니면 둘 다 400 invalid_type at ledger_config
+>              draft_id 없는 요청의 문장: 「Next: open a draft first - this request needs a draft id」
+>              받는 파일은 그대로 — 같은 키가 두 번인 파일도 전처럼 읽힘
+> 돌릴 명령     없음
+> 뜻           「Next: restore or fix ledger_config.json ...」 = 그 파일을 고치기. 문장 끝에 줄·칸 위치
+> 급할 때       커밋 되돌리기
+> ```
+
+---
+
 > ## 🔴 [10-01 아침] **어느 문장도 안 말한 행 — 배치마다 경고 대신 값마다 세어 하트비트 노트 · 1·10·100… 단위에서 한 줄 · 마이그레이션 «없음» · 재기동 서버 · 체인 워커 (run_app.bat 로 전체)**
 >
 > ```
