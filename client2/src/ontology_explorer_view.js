@@ -1368,7 +1368,7 @@ export function renderAuthoringRow(row, expanded = [], editable = null, bare = f
   // it inside the card would put the same word twice on one line and, worse, at a second
   // x-position -- the thing the mockup's fixed columns exist to stop.
   if (!bare) head.append(h('b', '', row.label));
-  head.append(h('i', `oe-tier oe-tier--${row.tier}`, row.tier));
+  // No tier word (lead 7602a4a83): the state column already says Declared · Derived · Forced.
   card.append(head);
   if (!fold.open) {
     // The folded line is one row: value, and WHY it folded. A fold whose reason is

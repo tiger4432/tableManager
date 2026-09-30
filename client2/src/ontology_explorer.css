@@ -430,12 +430,13 @@
 #ontology-explorer-root .oe-tabs { display: flex; gap: 13.6px; padding: 0 13.6px; border-bottom: 1px solid var(--oe-line); }
 #ontology-explorer-root .oe-tab {
   border: 0; border-bottom: 2px solid transparent; background: transparent;
-  color: var(--oe-muted); padding: 10.2px 3.4px 6.8px; cursor: pointer;
+  color: var(--oe-accent); padding: 10.2px 3.4px 6.8px; cursor: pointer;
   font-family: var(--oe-font-head); font-weight: 600; font-size: var(--fs-button); line-height: 1.2;
 }
 #ontology-explorer-root .oe-tab:hover { background: var(--oe-tint-accent-hover); color: var(--oe-accent); }
 #ontology-explorer-root .oe-tab:active { background: var(--oe-tint-accent-press); }
-#ontology-explorer-root .oe-tab[aria-selected="true"] { color: var(--oe-accent); border-bottom-color: var(--oe-accent); }
+/* Where you are is a word, not a link — the path bar's rule. */
+#ontology-explorer-root .oe-tab[aria-selected="true"] { color: var(--oe-text); border-bottom-color: var(--oe-accent); }
 #ontology-explorer-root .oe-tab-panel { padding: 13.6px; }
 #ontology-explorer-root .oe-signature { display: grid; grid-template-columns: 104px minmax(0, 1fr); gap: 10.2px 13.6px; }
 #ontology-explorer-root .oe-label { color: var(--oe-ink-label); font-size: var(--fs-label); }
@@ -700,8 +701,8 @@
   font-size: var(--fs-tag); color: var(--oe-ink-meta);
 }
 #ontology-explorer-root .oe-note {
-  padding: 6.8px 10.2px; font-size: var(--fs-h6);
-  background: transparent; border: 1px solid var(--oe-line);
+  padding: var(--space-2) var(--space-3); font-size: var(--fs-h6);
+  background: transparent; border: 0; border-left: 1px solid var(--oe-line);
   color: var(--oe-muted);
 }
 
@@ -785,10 +786,6 @@
 /* Node kind, said in the row rather than implied by indentation alone.
    Named `-badge`, not `-kind`: `.oe-node-kind` was already taken by the path popover
    (view.js:200), and styling it here would have restyled that too. */
-:is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-badge {
-  font-size: var(--fs-tag); letter-spacing: 0.02em; color: var(--oe-ink-th);
-  font-style: normal; padding: 3px 6.8px; border: 1px solid var(--oe-line);
-}
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-row.is-branch { background: var(--oe-surface-2); }
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-row.is-branch .oe-node-name { font-weight: 600; }
 /* The two states the mockup keeps open get the 3px edge and the taller box. */
@@ -804,9 +801,8 @@
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-fold,
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-folded {
   border: 1px solid transparent; background: transparent; cursor: pointer; font-size: var(--fs-tag);
-  color: var(--oe-muted); padding: 0 3.4px;
+  color: var(--oe-accent); padding: 0 var(--space-1); height: auto; min-height: 0; line-height: inherit;
 }
-:is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-folded { color: var(--oe-accent); }
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-row.is-new { background: transparent; border-bottom: 0; }
 /* 🔴 DEPTH YOU CAN SEE (lead 619befe8c; owner 「어디의 하위 선언을 고치고 있는지」). One guide per
    ancestor, as a code editor draws them: a row at depth N has N lines, each under its ancestor's
@@ -885,10 +881,11 @@
   /* The global button rule centres, makes a 36px box and never wraps; a value is read from the left,
      one line high, and a long one wraps under its own first line. */
   justify-content: flex-start; height: auto; min-height: 0; white-space: normal;
-  border: 1px solid transparent; background: transparent; padding: 0 var(--space-1);
+  /* The input's surface (lead 7602a4a83): the value is the square you press to change it. */
+  border: 1px solid var(--oe-line); background: var(--oe-surface); padding: var(--space-1) var(--space-2);
   color: var(--oe-text); cursor: pointer;
 }
-#ontology-explorer-root .oe-field-folded:hover { background: var(--oe-tint-hover); }
+#ontology-explorer-root .oe-field-folded:hover { border-color: var(--oe-line-hover); }
 #ontology-explorer-root .oe-field-folded:active { background: var(--oe-tint-press); }
 #ontology-explorer-root .oe-folded-value {
   font-family: var(--oe-font-mono); font-size: var(--fs-label); color: var(--oe-text);
@@ -932,13 +929,13 @@
 #ontology-explorer-root .oe-map-row {
   display: block; width: 100%; text-align: left; cursor: pointer;
   border: 0; border-left: 2px solid transparent; background: transparent;
-  color: var(--oe-muted); font-family: var(--oe-font-mono); font-size: var(--fs-tag);
+  color: var(--oe-accent); font-family: var(--oe-font-mono); font-size: var(--fs-tag);
   line-height: 1.5; padding: 0 4px 0 calc(6px + var(--oe-depth, 0) * 10px);
   overflow-wrap: anywhere;
 }
 /* The connector stays a rung, not a word: it never takes the row's colour emphasis. */
 #ontology-explorer-root .oe-map-branch { color: var(--oe-ink-meta); margin-right: 2px; }
-#ontology-explorer-root .oe-map-row.is-branch { color: var(--oe-text); }
+#ontology-explorer-root .oe-map-row.is-branch { font-weight: 600; }
 #ontology-explorer-root .oe-map-row:hover { background: var(--oe-tint-accent-hover); color: var(--oe-accent); }
 #ontology-explorer-root .oe-map-row:active { background: var(--oe-tint-accent-press); }
 /* 「어디가 남았나」 -- the plan's own predicate, in the warn tone the form rows use. */
@@ -1182,14 +1179,19 @@
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-form-new .oe-form-new-id { flex: 1; width: auto; min-width: 0; }
 :is(#ontology-explorer-root, .oe-skeleton-form) .oe-role-required { accent-color: var(--oe-accent); margin: 0; }
 
-/* TAG — 11px, 0.02em, 3 / 10, square. */
-:is(#ontology-explorer-root, .oe-skeleton-form) .oe-tier,
+/* TAG — 11px, 0.02em, 3 / 10, square. A tag you can press (a candidate) keeps its box. */
 #ontology-explorer-root .oe-chip {
   font-style: normal; font-size: var(--fs-tag); letter-spacing: 0.02em;
   padding: 3px 10px; border-radius: 0; border: 1px solid var(--oe-line);
   color: var(--oe-muted); background: transparent; white-space: nowrap;
 }
-:is(#ontology-explorer-root, .oe-skeleton-form) .oe-tier--structural { color: var(--oe-ok); border-color: currentColor; }
+/* A WORD THAT EXPLAINS (lead 7602a4a83, owner 「뭐가 클릭해야되는건지 뭐가 설명인지」): no box — on this
+   screen a box is what can be pressed. The state column's word, a demand, a node's kind. */
+:is(#ontology-explorer-root, .oe-skeleton-form) :is(.oe-tier, .oe-node-badge) {
+  font-style: normal; font-size: var(--fs-tag); letter-spacing: 0.02em; white-space: nowrap;
+  padding: 0; border: 0; background: transparent; color: var(--oe-ink-meta);
+}
+:is(#ontology-explorer-root, .oe-skeleton-form) .oe-tier--structural { color: var(--oe-ok); }
 /* 🔴 WHO IS SPEAKING FOR A BOX THE PLAN HAS NO ROW FOR. Same column as the plan's own
    state chip, because it answers the same question -- what does this square want -- just
    from the skeleton instead. ⚠️ 「필수」 is the warning colour and 「모름」 is not: a demand

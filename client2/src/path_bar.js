@@ -25,9 +25,10 @@ export function pathSteps(doc, steps) {
       sep.setAttribute('aria-hidden', 'true');
       bar.appendChild(sep);
     }
-    const go = doc.createElement('button');
+    // Where you are is a word, the rest are buttons (a button on this screen is always pressable).
+    const go = doc.createElement(step.current ? 'span' : 'button');
     go.className = 'oe-path-step';
-    go.setAttribute('type', 'button');
+    if (!step.current) go.setAttribute('type', 'button');
     go.textContent = step.label;
     // One line: an ancestor may shrink to «…», so its whole word stays one hover away.
     go.setAttribute('title', step.label);

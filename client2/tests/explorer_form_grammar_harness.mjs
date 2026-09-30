@@ -7,6 +7,8 @@
  *   L  a folded one-value field is one line: the bare card lays its parts out in a row, the folded
  *      button reads from the left and is not a 36px box (the global rule), and the folded line is the
  *      value only — the ground is the open card's
+ *   P  what is pressed looks pressable and what explains does not: an explaining word has no box, a
+ *      fold is a link-coloured word, the folded value wears the input's surface, no tier word in a head
  */
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
@@ -64,6 +66,19 @@ function suite(view, css) {
   const open = view.renderAuthoringRow(GROUNDED, { [GROUNDED.path]: true }, null, true);
   ok('L4 the open card still says why the value is what it is',
     walk(open).some((n) => n._text === GROUNDED.ground.text), GROUNDED.ground.text);
+
+  console.log('\n-- P. what is pressed looks pressable, what explains does not --');
+  const words = rule(css, ':is(#ontology-explorer-root, .oe-skeleton-form) :is(.oe-tier, .oe-node-badge)');
+  eq('P1 a word that explains has no box (the state word, a demand, a node\'s kind)',
+    `${decl(words, 'border')}|${decl(words, 'padding')}`, '0|0');
+  const fold = rule(css, ':is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-fold,\n:is(#ontology-explorer-root, .oe-skeleton-form) .oe-node-folded');
+  eq('P2 a fold is a link-coloured word, one line high', `${decl(fold, 'color')}|${decl(fold, 'height')}`, 'var(--oe-accent)|auto');
+  eq('P3 the folded value wears the input\'s surface', `${decl(folded, 'border')}|${decl(folded, 'background')}`,
+    '1px solid var(--oe-line)|var(--oe-surface)');
+  const heads = [shut, open, view.renderAuthoringRow(GROUNDED, {}, null, false)]
+    .flatMap((card) => walk(card).filter((n) => cls(n, 'oe-field-head')));
+  eq('P4 no tier word in any card\'s head (bare, open, or outside the tree)',
+    heads.length ? heads.flatMap((hd) => walk(hd).filter((n) => cls(n, 'oe-tier'))).length : '(no head)', 0);
   return { ran, failed: failedList.slice() };
 }
 
@@ -78,6 +93,17 @@ const MUTANTS = [
     from: '.oe-field.is-bare.is-folded { flex-direction: row;', to: '.oe-field.is-bare.is-folded { flex-direction: column;' },
   { name: 'the-global-button-rule-wins', catches: ['L2'], file: CSS,
     from: '  justify-content: flex-start; height: auto; min-height: 0; white-space: normal;\n', to: '\n' },
+  { name: 'a-word-wears-a-box-again', catches: ['P1'], file: CSS,
+    from: '  padding: 0; border: 0; background: transparent; color: var(--oe-ink-meta);',
+    to: '  padding: 3px 10px; border: 1px solid var(--oe-line); background: transparent; color: var(--oe-ink-meta);' },
+  { name: 'the-fold-goes-grey', catches: ['P2'], file: CSS,
+    from: '  color: var(--oe-accent); padding: 0 var(--space-1); height: auto;', to: '  color: var(--oe-muted); padding: 0 var(--space-1); height: auto;' },
+  { name: 'the-folded-value-looks-like-text', catches: ['P3'], file: CSS,
+    from: '  border: 1px solid var(--oe-line); background: var(--oe-surface); padding: var(--space-1) var(--space-2);',
+    to: '  border: 1px solid transparent; background: transparent; padding: var(--space-1) var(--space-2);' },
+  { name: 'the-tier-chip-comes-back', catches: ['P4'], file: VIEW,
+    from: "  if (!bare) head.append(h('b', '', row.label));\n",
+    to: "  if (!bare) head.append(h('b', '', row.label));\n  head.append(h('i', `oe-tier oe-tier--${row.tier}`, row.tier));\n" },
   { name: 'the-ground-rides-the-folded-line', catches: ['L3'], file: VIEW,
     from: "    if (!bare) line.append(h('i', 'oe-folded-why', fold.reason));\n",
     to: "    if (!bare) line.append(h('i', 'oe-folded-why', fold.reason));\n    if (row.ground?.text) line.append(h('small', 'oe-folded-ground', row.ground.text));\n" },

@@ -916,12 +916,14 @@ const FLOORS = new Map([
   // row of the real skeleton's form, the trail as the declaration path's own words, the path bar
   // part, and no skeleton word in the bar's code.
   // 17 -> 19 (B1-B2, lead d4a949a8c ㉯): the declaration trail is the same widget.
-  ['explorer_path_bar_harness.mjs', 19],
+  // 19 -> 20 (P7): where the hand is is a word, not a button.
+  ['explorer_path_bar_harness.mjs', 20],
   // New with lead 619befe8c (implementer 37c714205): a role's inherited attributes, read-only,
   // on the server's plan for the sample's dt_job.
   ['explorer_inherited_attributes_harness.mjs', 8],
   // New with lead 8fd2f185d: the ledger form's grammar - a folded one-value field is one line (L).
-  ['explorer_form_grammar_harness.mjs', 5],
+  // 5 -> 9 (P, lead 7602a4a83): what is pressed looks pressable, what explains does not.
+  ['explorer_form_grammar_harness.mjs', 9],
   // New 2026-09-10 with C-55 (S-117's screen half). Floor is the count it reports on the
   // commit that introduces it. 🔴 THE FIXTURE IS THE CONTRACT VECTOR, captured off the live
   // route: the receipt has TWO envelopes and the failed one carries no counts at all, so a
