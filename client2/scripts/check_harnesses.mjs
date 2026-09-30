@@ -1358,6 +1358,9 @@ const FLOORS = new Map([
   // New with lead 8771e43ac 1: the table's smart_paste order picks the format without asking; no
   // order or none of it present asks as before; both readers choose through the one function.
   ['smart_paste_choice_harness.mjs', 8],
+  // New with lead 4311a51ed: where a click cannot read the clipboard, the paste box takes Ctrl+V
+  // and the real paste listener hands it to the smart paste reader.
+  ['paste_box_harness.mjs', 16],
   // 72 -> 75 (Q, lead 460f202d3): after a save, the page's queue seat hands the worker's base to the form.
   // 75 -> 76 (Q): a queue body with loop_seen_via null says 「not seen」.
   ['chain_rule_user_path_harness.mjs', 76],

@@ -7,6 +7,7 @@ import './base.css';
 import { initTheme } from './theme.js';
 import { ClipboardTypeModal } from './clipboard_type_modal.js';
 import { chooseClipboardType } from './smart_paste_choice.js';
+import { PasteBox } from './paste_box.js';
 import { API_BASE, CURRENT_USER, pageLimit } from './config.js';
 import { narrowingTail } from './narrowing.js';
 // C-14: 값의 «출처»를 찍는 두 행. 하니스가 import 로 채점할 수 있게 자기 모듈에 삽니다 —
@@ -734,6 +735,9 @@ function setupEventListeners() {
     //     `paste` event carrying `e.clipboardData` - the only readable clipboard on plain
     //     HTTP. Swallowing the keydown would swallow the read.
     if (!isTextField && e.shiftKey && (e.ctrlKey || e.metaKey) && (e.key === 'v' || e.key === 'V')) {
+      // The paste box holds the arming until it closes. Re-arming here would shorten it, and a
+      // later Ctrl+V in the box would fall into the grid's cell paste.
+      if (smartPasteBox && smartPasteBox.root) return;
       armSmartPaste(SMART_PASTE_KEY_TTL_MS);
       elements.performanceLog.textContent = `📋 Smart paste (${SMART_PASTE_KEY_LABEL}): waiting for the paste event`;
       // Whether a browser turns Ctrl+Shift+V into a paste command is the browser's business,
@@ -1816,7 +1820,8 @@ async function refreshSourcesList() {
 //                                 command lands in the same breath, so it is one keystroke
 //                                 WHEN the browser honours the chord. When it does not, the
 //                                 arming holds and the user is told to press Ctrl+V.
-//   * Button / context menu     - cannot read at all; they ARM the next paste and name the key.
+//   * Button / context menu     - cannot read at all; they open the paste box (paste_box.js),
+//                                 which takes Ctrl+V while it holds the arming.
 //   * navigator.clipboard.read  - still PREFERRED where it genuinely exists (localhost dev is
 //                                 a secure context) because a click can drive it.
 //
@@ -1853,7 +1858,28 @@ function cancelSmartPasteArm(logText) {
   clearTimeout(smartPasteEscalationTimer);
   smartPasteEscalationTimer = null;
   dismissToasts(SMART_PASTE_ARM_TOAST_KEY);
+  closeSmartPasteBox();
   if (logText) elements.performanceLog.textContent = logText;
+}
+
+// No click-readable clipboard (plain HTTP, or the browser refused): the box takes Ctrl+V, and the
+// paste listener in clipboard.js hands that paste to smartPasteFromPasteEvent. The box holds the
+// arming until it is pasted into, Esc (the keydown above) or a click outside - a box that
+// outlived its arming would let Ctrl+V fall into the grid's cell paste.
+let smartPasteBox = null;
+
+function openSmartPasteBox() {
+  armSmartPaste(Number.POSITIVE_INFINITY);
+  if (!smartPasteBox) smartPasteBox = new PasteBox(document.body);
+  smartPasteBox.open({
+    onCancel: () => cancelSmartPasteArm('Smart paste cancelled'),
+    keyLabel: SMART_PASTE_FALLBACK_KEY_LABEL,
+  });
+  elements.performanceLog.textContent = `📋 Smart paste: paste into the box (${SMART_PASTE_FALLBACK_KEY_LABEL})`;
+}
+
+function closeSmartPasteBox() {
+  if (smartPasteBox) smartPasteBox.close();
 }
 
 // Text-bearing formats only. An image or a file list has nothing for the parser to read, and
@@ -1930,6 +1956,7 @@ async function smartPasteFromPasteEvent(e) {
   clearTimeout(smartPasteEscalationTimer);
   smartPasteEscalationTimer = null;
   dismissToasts(SMART_PASTE_ARM_TOAST_KEY);
+  closeSmartPasteBox();
 
   if (state.smartPasteArmedTable !== state.currentTable) {
     elements.performanceLog.textContent = '❌ Smart paste: table changed after arming';
@@ -1974,7 +2001,7 @@ async function smartPasteFromPasteEvent(e) {
 }
 
 // Click entry point (toolbar button / context-menu item). Prefers the async Clipboard API
-// where it is really there; otherwise it cannot read at all, and says so while arming the key.
+// where it is really there; otherwise it opens the paste box.
 async function smartPasteViaIngestion() {
   if (navigator.clipboard && typeof navigator.clipboard.read === 'function') {
     let items = null;
@@ -2015,11 +2042,9 @@ async function smartPasteViaIngestion() {
       return;
     }
 
-    // The API exists but would not give us anything. Fall through to the key route rather
-    // than dialling the same object again.
-    armSmartPaste(SMART_PASTE_ARM_TTL_MS);
-    showToast(`The browser refused the clipboard read · press ${SMART_PASTE_FALLBACK_KEY_LABEL} (Esc to cancel)`, 'info', { ttl: SMART_PASTE_ARM_TTL_MS, dedupeKey: SMART_PASTE_ARM_TOAST_KEY });
-    elements.performanceLog.textContent = `📋 Smart paste armed - press ${SMART_PASTE_FALLBACK_KEY_LABEL}`;
+    // The API exists but would not give us anything. Take the paste event rather than
+    // dialling the same object again.
+    openSmartPasteBox();
     return;
   }
 
@@ -2031,24 +2056,13 @@ async function smartPasteViaIngestion() {
       await uploadSmartPastePayload(text, 'text/plain');
     } catch (err) {
       console.warn('navigator.clipboard.readText() refused', err);
-      armSmartPaste(SMART_PASTE_ARM_TTL_MS);
-      showToast(`The browser refused the clipboard read · press ${SMART_PASTE_FALLBACK_KEY_LABEL} (Esc to cancel)`, 'info', { ttl: SMART_PASTE_ARM_TTL_MS, dedupeKey: SMART_PASTE_ARM_TOAST_KEY });
+      openSmartPasteBox();
     }
     return;
   }
 
   // Production lands here: plain HTTP = non-secure context = no `navigator.clipboard` at all.
-  // Naming the cause and the key is the whole point - the user's bug report was
-  // "무슨 read 막혔다고 작동안하네", which is as far as the old generic toast let them get.
-  armSmartPaste(SMART_PASTE_ARM_TTL_MS);
-  elements.performanceLog.textContent = `📋 Smart paste armed - press ${SMART_PASTE_FALLBACK_KEY_LABEL} (clipboard API unavailable on plain HTTP)`;
-  showToast(
-    `On plain HTTP the button cannot read the clipboard · press ${SMART_PASTE_FALLBACK_KEY_LABEL} now (Esc to cancel)`,
-    'info',
-    // The toast lives exactly as long as the latch: when the instruction disappears, the
-    // arming really is gone. A prompt that outlives what it promises is its own defect.
-    { ttl: SMART_PASTE_ARM_TTL_MS, dedupeKey: SMART_PASTE_ARM_TOAST_KEY }
-  );
+  openSmartPasteBox();
 }
 
 // 🔴 C-100. 이 자리는 이제 «앉히기»뿐입니다. 모달은 자기 파일의 부품이고 겉모양은

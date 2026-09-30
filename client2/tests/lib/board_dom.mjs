@@ -96,6 +96,11 @@ export function makeNode(doc, tag) {
     //    `utils.js` 의 `removeToast` 가 400ms 뒤 «비동기로» 던집니다 — 단언 하나도
     //    안 빨개지고, 리모브를 재는 하니스는 «사라지지 않는 노드»를 정상으로 읽습니다.
     remove() { if (this.parentNode) this.parentNode.removeChild(this); },
+    // 🔴 ADDED 2026-09-30 (lead 4311a51ed). The paste listener in clipboard.js decides by
+    //    `document.activeElement` and `hasAttribute('contenteditable')`; without these a part that
+    //    puts the caret somewhere could be scored only on a mirror of that condition.
+    focus() { doc.activeElement = node; },
+    hasAttribute(k) { return Object.prototype.hasOwnProperty.call(this.attrs, String(k)); },
     // 🔴 ADDED 2026-09-16 (C-121). `dom_patch.commitTree` 가 «첫 커밋»에 이것을 부릅니다 —
     //    자식이 하나가 아니면 patch 를 안 하고 통째로 갈아 끼웁니다. 이 철자가 없으면
     //    온톨로지 탐색기가 이 문서에 «한 번도» 못 앉고, 그러면 그 화면에 대한 단언은
