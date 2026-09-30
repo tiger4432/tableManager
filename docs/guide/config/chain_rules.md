@@ -236,7 +236,7 @@ conda run -n assy_manager python server/scripts/backup_config.py restore chain_r
 🔴 **번역기는 `rule_shape.expand_declaration` «하나»이고 로더와 어드민 raw 저장 라우트(`POST /admin/chain/rules/raw`)가 같이 부른다**(S-244 `00da7e91`) — 저장 버튼은 «로더가 세울 규칙»을 판정하지 날것을 판정하지 않는다(종전엔 `trigger_table` 없음·`derive` 모름으로 저장에서 거절되고 같은 파일로 부팅은 됐다). 파일에는 운영자가 적은 그대로 남고 번역본은 «판정에만» 쓴다. 소급은 [BACKFILL_GUIDE §0](../BACKFILL_GUIDE.md) — 선언된 join 은 왼쪽 규칙에 R1.
 
 🔵 **대조 저장 (09-30 `3a262cc76`)** — 보드에서 저장하면 `contrast_run` 에 행이 들어가고, 체인이 대조를 계산해 `contrast_factor` 를 채웁니다(표본 `contrast_factor_from_run` — 맵퍼는 추적 파일 `server/mappers/contrast_walk.py` 의 `contrast_walk`, 선언은 `derive: {kind: "mapper", mapper: {mapper_module: "mappers.contrast_walk", mapper_function: "contrast_walk"}}` — 폼의 맵퍼 후보에 소유자 맵퍼와 같이 뜬다).
-순위는 걷기 라우트(`GET /api/ledger/subgraph`)가 그 run 의 인자로 낸 `propagation.ranked` 그대로이고 `until` 이 걷기를 묶어 리플레이해도 같은 행입니다 — `until` 이 빈 run 은 이름 대어 거절, 끄는 것은 그 규칙의 `enabled: false`.
+순위는 걷기 라우트(`GET /api/ledger/subgraph`)가 그 run 의 인자로 낸 `propagation.ranked` 그대로이고 `until` 이 걷기를 묶어 리플레이해도 같은 행입니다 — `until` 이 빈 run 은 이름 대어 거절, 끄는 것은 그 규칙의 `enabled: false`. `until` 은 시간대를 붙여 적습니다 — 안 붙이면 DB 세션 시간대로 읽힙니다(보드는 `Z` 를 붙여 보내므로 그리드에 손으로 적을 때만 해당, 09-30 `290d9cb4e`).
 
 | 키 | 읽는 곳 | 의미 |
 |---|---|---|
