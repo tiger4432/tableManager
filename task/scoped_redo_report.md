@@ -67106,3 +67106,32 @@ E2 a write-back is asked the permission too          빨강  (2 failed, 18 passe
       이 착지가 바꾼 두 자리(normalize_scoped_batch · 워커의 봉투 검사)를 지나지 않음
 PG    7 failed, 150 passed, 7565 deselected, 53 warnings in 273.55s (0:04:33) — 실패 이름이 알려진 일곱과 같음: True
 ```
+
+## [구현자 -> 총괄] d4a949a8c ③ 착지 64f5b0411 — 「내놓았지만 안 쓴 칸」 한 셈 · 한 문장
+
+```
+셈        directory_watcher: 사유별 한 맵 not_written = {undeclared_column: {}, unmapped_column: {}} — crud 사유 상수 그대로
+알림       _announce_dropped_columns 하나가 두 사유를 — (사유, 칸) 첫 목격 WARNING, 파일마다 INFO. 옛 unmapped 는 파일마다 WARNING 이었음
+문장       crud.not_written_sentence 하나 — 「Next: <사유별 행동>. <무엇>: <사유> <칸> ...」 다음 행동 먼저(c4faced98). 파일 기록 · NothingWritten 둘 다 이것
+NothingWritten  {사유: 칸} 을 받음 — 모델이 못 받는 칸만 든 파일도 같은 거절(답 (1)). std_parser 헤더 거절은 undeclared_column 으로 이름 붙임
+구분자      「; 」 — 알림 줄이 cp949 콘솔로 가서(그 함수 docstring 의 ASCII 약속)
+옛 문장을 읽던 자리(git grep, 추적 파일)  시험 다섯(wrote_nothing · drop_visibility · std_parser · model_does_not_hold · value_a_column_does_not_take; drop_visibility · value_a_column_does_not_take 는 crud 대역에 사유 상수 · 문장 함수를 실제 것으로 더함) · 가이드 INGESTION_GUIDE · CODE_MAP · RUN.md 두 줄 — 같은 커밋
+                                    클라: 파일 메시지는 retry_verdict.ingestionMessageView 가 글 그대로 보임(파싱 없음). client2/src 에서 옛 문장 조각
+                                    (Dropped · column(s) · Not written · nothing was written)은 다른 뜻 셋뿐 — doe_bands · map2/decode 주석 · map2/session 주석
+                                    🔴 PROJECT_STATUS.md 60 줄이 「Dropped N undeclared column(s)」 을 인용 — 총괄 파일이라 안 건드림
+변이 셋 — 각각 되돌림
+T1 nothing-written counts undeclared columns only    빨강  (1 failed, 2 passed, 7719 deselected, 8 warnings)
+T2 the list comes before the next action             빨강  (8 failed, 51 passed)
+T3 an unmapped column has no next action             빨강  (1 failed, 58 passed)
+```
+**새 함수 · 새 if 중 기존 것과 같은 일** (cdeb5ea10)
+```
+새 함수   crud.not_written_sentence — 세 문장(옛 per-file · 옛 unmapped 인라인 · NothingWritten.__str__)을 하나로 접은 자리
+새 if     하나 — not_written_sentence 의 isinstance(dict): 헤더 거절(칸 이름만)과 쓰기 고리(칸=값 수) 두 모양.
+          옛 NothingWritten 문장과 옛 per-file 문장이 각자 하던 구분이 한 자리로 옴. 지운 것: 셈 두 맵 · 인라인 알림 한 덩이
+```
+**스위트** (C:/wt-impl, 착지 트리)
+```
+전체  5 failed, 7518 passed, 196 skipped, 3 xfailed in 699.81s (0:11:39) — 실패 5 개, 파일::이름으로 알려진 다섯과 같음: True
+PG    7 failed, 150 passed, 7565 deselected, 53 warnings in 267.78s (0:04:27) — 실패 이름이 알려진 일곱과 같음: True
+```
