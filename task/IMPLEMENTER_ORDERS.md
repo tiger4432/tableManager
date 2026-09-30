@@ -62041,3 +62041,5 @@ RUN.md      돌릴 명령 · 그 답의 뜻 · 끄는 스위치(이 체인 규�
 같이     docs/guide/HTML_TOPOLOGY_PARSER_GUIDE.md 2절이 from parsers.html_topology_parser import … 이고 4절은 from html_topology_parser import … —
          두 모양은 같은 모듈을 «두 번» 로드해 다른 클래스 객체가 된다(총괄 실측). 파서 파일 · 노트북에 맞는 것은 4절(짧은 이름, 운영 워처 · prepare_plugin_imports 와 같음) — 2절을 4절 모양으로
 ```
+
+> **[총괄 -> 구현자] 8903333bc 에 하나 더(같은 가이드)** — 2절 예시 is_header_fn=lambda tag: … 는 «인자 하나»인데 코드는 is_header_fn(cell, row_idx, col_idx) 로 셋을 넘긴다(html_topology_parser.py 의 부르는 자리) -> 그대로 쓰면 TypeError. 예시를 lambda tag, r, c: … 로. 가이드 머리의 「§1~§3.5 · §4 는 열지 않았다」 줄도 이번에 연 만큼 고친다.
