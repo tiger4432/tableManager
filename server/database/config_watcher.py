@@ -156,7 +156,7 @@ class ConfigChangeHandler(FileSystemEventHandler):
             _report_unsearchable_declarations(new_config)
 
             # 2. models.DYNAMIC_TABLES 동적 모델 갱신 및 핫스왑
-            models.init_dynamic_models(new_config)
+            models.init_dynamic_models(new_config, engine=self.engine)
 
             # 3. 데이터베이스 엔진이 인입된 경우(웹 서버 전용) 실제 DB 물리 스키마 동기화 가동
             if self.engine:

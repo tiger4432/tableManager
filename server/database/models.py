@@ -987,11 +987,16 @@ FRAMEWORK_COLUMNS = (
 )
 
 
-def init_dynamic_models(config_dict: dict):
+def init_dynamic_models(config_dict: dict, engine=None):
     """
     table_config.json 설정을 기반으로 SQLAlchemy Table 객체들을 동적으로 빌드하고
     Imperative Mapping을 사용하여 완전한 ORM 모델 클래스로 매핑해 DYNAMIC_TABLES에 등록합니다.
     이미 로드된 테이블에 새 컬럼이 추가된 경우, 런타임에 동적으로 매핑에 결합(Hot-swap)합니다.
+
+    🔴 `engine` IS THE PROCESS'S, AND A HOT-SWAP THAT ADDED A COLUMN EMPTIES ITS COMPILED CACHE
+    (총괄 791c0f45e 2). A query shape compiled before the swap was served from that cache as
+    the old SELECT, so the grid read the new column empty in every row until a restart while
+    the table held the values (74101b158). A reload that adds nothing clears nothing.
     """
     # `Boolean` left with the three graph-sync columns on 2026-08-31 - nothing in
     # this function builds one any more, and `"boolean"` is not a declarable type.
@@ -999,6 +1004,7 @@ def init_dynamic_models(config_dict: dict):
     from sqlalchemy.sql import func
     from sqlalchemy.orm import class_mapper
     
+    added = False
     for table_name, table_cfg in config_dict.items():
         col_types = table_cfg.get("column_types", {})
         
@@ -1022,6 +1028,7 @@ def init_dynamic_models(config_dict: dict):
                     col_obj = Column(col_name, sql_type, nullable=True)
                     table_obj.append_column(col_obj)
                     mapper.add_property(col_name, col_obj)
+                    added = True
             continue
             
         # 1. 모든 동적 물리 테이블이 공유할 메타데이터 컬럼들
@@ -1206,6 +1213,8 @@ def init_dynamic_models(config_dict: dict):
         
         mapper_registry.map_imperatively(dynamic_class, table_obj)
         DYNAMIC_TABLES[table_name] = dynamic_class
+    if added and engine is not None:
+        engine.clear_compiled_cache()
 
 
 def sync_dynamic_tables_schema(engine):
@@ -1667,7 +1676,7 @@ def refresh_dynamic_models(engine=None):
         return []
     crud.TABLE_CONFIG.clear()
     crud.TABLE_CONFIG.update(new_config)
-    init_dynamic_models(new_config)
+    init_dynamic_models(new_config, engine=engine)
     if engine is not None:
         created = create_missing_dynamic_tables(engine)
         # ⚰️ [R-2026-08-14-H] `ensure_graph_tables(engine)` 호출이 여기 있었다.
