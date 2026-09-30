@@ -239,11 +239,17 @@ async function suite(mods) {
   const px = (src) => (src.match(/\b\d{2,4}px\b/g) || []);
   eq('D4 neither part bakes a size',
     [px(sources['candidate_list_panel.js']).length, px(sources['rank_list_panel.js']).length], [0, 0]);
+  eq('D5 the two lists walk through ONE prelude, not two copies (lead d4a949a8c ㉱)',
+    ['seed', 'mount', 'onStartChanged', 'load'].map((k) => cand.CandidateListPanel.prototype[k] === rank.RankListPanel.prototype[k]),
+    [true, true, true, true]);
 
   return { ran, failures };
 }
 
 const MUTANTS = [
+  { id: 'X11', what: 'one list gets its own load again - a second copy of the prelude', catches: 'D5',
+    mutate: { 'rank_list_panel.js': (s) => s.replace(
+      '  render() {', '  async load() { return super.load(); }\n\n  render() {') } },
   { id: 'X10', what: 'the unserved candidate categories are omitted, so they read as absent',
     catches: 'Z11',
     mutate: { 'candidate_list_panel.js': (s) => s.replace(

@@ -64,8 +64,10 @@ export async function loadBoardModules(mutate = {}) {
   read('board.css');
   const storeUrl = moduleUrl(read('marking_store.js'));
   const apiUrl = moduleUrl(read('api.js'));
+  // panel.js imports api.js since the walked lists' prelude moved there (lead d4a949a8c ㉱).
   const panelUrl = moduleUrl(read('panel.js')
-    .replaceAll("'./marking_store.js'", `'${storeUrl}'`));
+    .replaceAll("'./marking_store.js'", `'${storeUrl}'`)
+    .replaceAll("'./api.js'", `'${apiUrl}'`));
   const mapUrl = moduleUrl(read('map_panel.js')
     .replaceAll("'./panel.js'", `'${panelUrl}'`)
     .replaceAll("'./marking_store.js'", `'${storeUrl}'`)

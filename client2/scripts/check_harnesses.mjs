@@ -1469,8 +1469,9 @@ const FLOORS = new Map([
   // 58 -> 60 (G5-G6, lead d4a949a8c ㉮): a refused save keeps a named reason and a list refusal.
   // 60 -> 61 (C7, ㉲): a blank id is not counted, as the chain's walk drops it.
   ['rnd_board_contrast_save_harness.mjs', 61],
-  // the board part: the walk itself
-  ['rnd_board_walk_harness.mjs', 32],
+  // the board part: the walk itself. 32 -> 34 (D5 and its mutant X11, lead d4a949a8c ㉱): the two
+  // lists walk through one prelude.
+  ['rnd_board_walk_harness.mjs', 34],
   // 🔴 the walk REQUEST, not the walk return. `createWalkBoxWalk` accepted `spec.hops` and
   //    never put it on the wire, so the screen wrote 「3홉」 while the server walked 12 -- with
   //    no error and no warning. A harness that scores the RETURN is green throughout that.
