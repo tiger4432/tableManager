@@ -65712,3 +65712,60 @@ PG       7 failed, 128 passed, 7526 deselected in 238.21s (0:03:58) — 실패�
 ```
 
 후보 0 과 «아직 안 돎»(①②③)은 소유자 답 대기 그대로입니다. 착지 보고 후 멈춥니다. 감시는 켜 둡니다.
+
+## [구현자 -> 총괄] 착지 247c0aba6 — 2dd93d4a9 항목 1: 대조 run 행이 스스로 「계산했나 · 무엇을 찾았나」를 말함
+
+```
+칸 넷     contrast_run 에 computed_at(datetime, UTC) · candidates(number, 순위 매긴 후보 수) · contrast(contrasted|unexamined) · complete("true"|"false")
+         factor 행은 contrast · complete 를 더는 안 씀 — run 의 사실은 run 행 한 곳에
+쓰는 자리  contrast_walk 가 factor 행을 내는 «같은 호출»에서 run 행에 넷을 되씀
+좌석      dt_map_derivation.normalize_scoped_batch 한 곳을 넓힘 — 규칙 종류를 안 묻고 봉투의 표 이름으로
+         규칙의 trigger 표 = 되쓰기(덮어쓰기만, 허락 칸 없음) · 그 밖의 표 = 이름 대어 거절
+         거절 문구 「rule '<규칙>' cannot redirect a scoped batch to '<표>' - a rule writes its target, and besides it only the rule's trigger table」
+         trigger 표에 replace_map · retract 를 실으면 「… a write-back is plain updates only」 로 거절
+재깨움    워커가 봉투의 표를 rules_by_target · declarations_by_target 에 올림 -> 되쓴 사건의 written_by 가 그 규칙의 선언 -> 자기 쓰기에 안 깨어남
+```
+
+| 칸 | 입력 | 답 |
+|---|---|---|
+| 찾음 | run 한 줄(until 있음) | factor N 행 · run 행 computed_at 있음 · candidates = 표의 factor 행 수 > 0 · contrasted · "true" |
+| 후보 0 | 원자에 없는 노드만 | computed_at 있음 · candidates 0 |
+| 안 돎 | 워커가 아직 안 본 run | 넷 다 빔 |
+| 거절 | until 빈 run | 넷 다 빔 |
+| 재깨움 | 되쓴 사건 전부 | 규칙을 깨운 체인 사건 0 · 되쓴 사건의 written_by 전부 = 그 선언 |
+| 봉투 거절 | 다른 표 · trigger 표에 replace_map | 둘 다 이름 대어 거절 (단위 칸) |
+
+```
+게이트 PG   3 passed, 7660 deselected in 45.99s
+sqlite      20 passed, 3 skipped in 4.60s
+변이 F1 되쓰기 안 함                 1 failed, 7662 deselected in 20.00s — test_a_run_row_says_whether_it_was_computed_and_what_it_found
+     F2 읽는 자리가 예전처럼 거절      1 failed, 7662 deselected in 19.31s — test_a_run_row_says_whether_it_was_computed_and_what_it_found
+        같은 변이에 단위 칸도 빨강     1 failed, 11 deselected in 0.76s
+     F3 되쓰기가 그 선언의 것이 아님   1 failed, 7662 deselected in 20.41s — test_a_run_row_says_whether_it_was_computed_and_what_it_found
+     F4 규칙을 행마다 부름(is_batch 뺌) 1 failed, 7662 deselected in 19.83s — test_a_run_row_says_whether_it_was_computed_and_what_it_found
+전체       5 failed, 7480 passed, 175 skipped, 3 xfailed in 873.19s (0:14:33) — 실패는 알려진 다섯과 이름이 같음
+PG         7 failed, 129 passed, 7527 deselected in 280.72s (0:04:40) — 실패는 알려진 일곱과 이름이 같음
+           첫 판은 10 failed, 126 passed, 7527 deselected in 267.57s (0:04:27) — 알려진 일곱 + test_an_unknown_lot_and_an_undeployed_ledger_are_different_responses · test_the_route_answers_for_a_lot_the_ledger_never_heard_of · test_the_route_serves_the_walk_over_real_postgres
+재기동      서버 · 체인 워커. 마이그레이션 없음. 운영 선언 두 곳(칸 넷 · is_batch) — RUN.md 새 절
+```
+
+**시험 DB 가 셋을 빨갛게 했음 (이 박스 · 안 고침)**
+```
+첫 PG 판의 셋(test_ledger_trace_pg) 503 source_event_projection_not_deployed — missing idx_ledger_source_event · idx_ledger_object_entity
+그때 assy_test 에 public.ledger_events 가 있었음 — 행 0 · 칸이 전부 varchar (원장 DDL 이 아니라 표 선언을 베낀 모조)
+그 표를 지우자 셋 초록(3 passed) · 이 코드로 다시 돈 전체 PG 가 위 줄(알려진 일곱)
+그 모조는 PG 판마다 다시 생깁니다 — 파일 하나만 돌려도(넷 다 따로 잼). 부팅의 「Dynamic database models and schema sync completed」 줄이 앞에 찍힘
+   이 박스의 라이브 table_config(추적 밖)가 ledger_events 를 kind: view 로 선언 · 모자란 표를 만드는 자리(create_missing_dynamic_tables)는 view 를 안 거름
+안 잰 것  모조가 있는데도 셋이 초록인 판과 빨강인 판이 갈린 이유. 지금 모조는 남아 있습니다(다음 판이 어느 쪽일지 모름)
+```
+
+**물음 하나 (안 고침)**
+```
+워커의 «행마다» 갈래는 규칙이 돌려준 batches 와 map_metadata_updates 를 «말없이» 버립니다
+  두 갈래(is_batch · 행마다)가 rule_run.run_rule 을 똑같이 부르고, 봉투를 읽는 것은 is_batch 갈래뿐입니다
+  이번 게이트가 처음에 빨갛던 이유가 이것이었습니다 — 대조 규칙에 "is_batch": true 를 선언해 지나갔고, F4 가 그 줄을 잽니다
+  같은 규칙 결과가 선언 한 칸에 따라 다르게 쓰이는 «문 가르기»입니다. 행마다 갈래도 봉투를 읽게 할지, 버릴 때 이름을 대게 할지 — 여쭙니다
+```
+
+항목 2(시각 칸은 같은 순간이면 같은 값)로 갑니다 — 전수와 물음 둘은 채널로 드렸고 답(빈 글은 None 으로 접음 · 키는 보고만)을 받았습니다.
+그 뒤 순서: 2dd93d4a9 항목 3(원장 세상 설계 보고) -> dc4ca3e7c(엔티티 속성 객체 표 설계 보고). 다르게 원하시면 채널로.
