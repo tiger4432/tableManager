@@ -88,10 +88,11 @@ export function fieldOf(node, key) {
  *  🔴 A GATED FIELD IS STILL SHOWN WHEN THE DOCUMENT HOLDS ONE. Hiding a control takes
  *  somebody's data off the screen while leaving it in the file, which is the failure this
  *  screen keeps removing -- an absence that is really a value nobody can see.
+ *  An empty list or string holds nothing (lead 115134f12): `group_by []` beside `unit: row` is not drawn.
  */
 export function fieldApplies(field, siblings, held) {
   if (!field || !field.when) return true;
-  if (held !== undefined) return true;
+  if (!isBlank(held)) return true;
   const actual = siblings && typeof siblings === 'object'
     ? siblings[field.when.field] : undefined;
   return actual === field.when.is;

@@ -10,7 +10,8 @@
  *   P  what is pressed looks pressable and what explains does not: an explaining word has no box, a
  *      fold is a link-coloured word, the folded value wears the input's surface, no tier word in a head
  *   W  no word only this code knows (482288b12): the state word is the same open or folded, no tier word,
- *      no «This slot», a ground's path in the declaration's words, no «removability not measured»
+ *      no «This slot», a ground's path in the declaration's words, no «removability not measured»,
+ *      and a switched-off field holding an empty list is not drawn (115134f12)
  */
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
@@ -22,6 +23,7 @@ import { declarationShape } from '../src/ontology_skeleton.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const VIEW = path.join(HERE, '..', 'src', 'ontology_explorer_view.js');
+const SKEL = path.join(HERE, '..', 'src', 'ontology_skeleton.js');
 const CSS = path.join(HERE, '..', 'src', 'ontology_explorer.css');
 const PLAN = JSON.parse(readFileSync(path.join(HERE, 'fixtures', 'authoring_inherited_plan.json'), 'utf8'));
 // A derived row the server grounds, with a value that is not a mapping: the ordinary folded one-liner.
@@ -33,6 +35,17 @@ const SAMPLE = JSON.parse(readFileSync(
   path.join(HERE, '..', '..', 'server', 'config', 'sample', 'ledger_config.json.sample'), 'utf8'));
 const RAW = SAMPLE.sources.dt_job;
 const SECTION = (SKELETON.authorable_kinds.find((k) => k.id === 'source_plan') || {}).section;
+// The implementer's `when` on group_by is not in the skeleton yet, so this copy carries one: a record
+// holding both `unit` and `group_by` asks for group_by only when unit is `group`.
+const GATED = JSON.parse(JSON.stringify(SKELETON.skeleton));
+let gatedFields = 0;
+(function gate(node) {
+  if (!node || typeof node !== 'object') return;
+  const fields = Array.isArray(node.fields) ? node.fields : [];
+  const groupBy = fields.find((f) => f && f.key === 'group_by');
+  if (groupBy && fields.some((f) => f && f.key === 'unit')) { groupBy.when = { field: 'unit', is: 'group' }; gatedFields += 1; }
+  for (const child of Object.values(node)) gate(child);
+})(GATED);
 // A plain leaf the plan answers (its state word is 「Declared」), for the open/folded comparison.
 const LEAF = PLAN.fields.find((row) => row.path === `${PLAN.base}.relation`);
 // Every branch open; every field folded by the rule (field folds are keyed by the plan's path).
@@ -73,7 +86,7 @@ const decl = (body, prop) => {
   return m ? m[1].trim() : null;
 };
 
-function suite(view, css) {
+function suite(view, css, skel) {
   console.log('\n-- L. a folded one-value field is one line --');
   ok('L0 the fixture has a grounded derived row (else the rest proves nothing)', Boolean(GROUNDED), 'none');
   eq('L1 the bare folded card lays its parts out in a row',
@@ -130,6 +143,18 @@ function suite(view, css) {
   const unmeasured = view.renderAuthoringRow({ ...GROUNDED, disposition: 'unmeasured' }, { [GROUNDED.path]: true }, null, true);
   eq('W5 the unmeasured line is gone (its refusals are drawn on their own rows)',
     walk(unmeasured).filter((n) => /Refusals remain|removability/.test(n._text || '')).length, 0);
+  const gatedForm = (groupBy) => view.renderSkeletonForm(
+    { ...liveContext(view, ALL_OPEN_BRANCHES), schema: { skeleton: GATED, authorable_kinds: SKELETON.authorable_kinds } },
+    declarationShape(GATED, SECTION), '', { ...RAW, read: { ...RAW.read, unit: 'row', group_by: groupBy } }, 0, 'dt_job');
+  const drawn = (tree) => walk(tree).some((n) => cls(n, 'oe-node') && n.dataset.path === 'read.group_by');
+  eq('W6 a switched-off field holding an empty list is not drawn (unit row, group_by [])',
+    gatedFields > 0 ? drawn(gatedForm([])) : '(no gated field)', false);
+  eq('W7 holding a value it is still drawn, so the save shows it going (unit row, group_by [lot])',
+    drawn(gatedForm(['lot'])), true);
+  const field = { key: 'group_by', when: { field: 'unit', is: 'group' } };
+  eq('W8 the predicate the form asks: an empty list or string holds nothing, a list or 0 holds a value',
+    ['[]', '"  "', '["lot"]', '0'].map((v) => skel.fieldApplies(field, { unit: 'row' }, JSON.parse(v))).join('|'),
+    'false|false|true|true');
   return { ran, failed: failedList.slice() };
 }
 
@@ -137,7 +162,8 @@ const cssText = (mutate) => {
   const text = readFileSync(CSS, 'utf8').replace(/\r\n/g, '\n');
   return mutate ? mutate(text) : text;
 };
-const load = async (mutate) => (await loadWithProbe(VIEW, mutate ? { mutate: (t) => mutate(t.replace(/\r\n/g, '\n')) } : {})).module;
+const loadFrom = async (file, mutate) => (await loadWithProbe(file, mutate ? { mutate: (t) => mutate(t.replace(/\r\n/g, '\n')) } : {})).module;
+const load = (mutate) => loadFrom(VIEW, mutate);
 
 const MUTANTS = [
   { name: 'the-bare-card-stacks-again', catches: ['L1'], file: CSS,
@@ -173,6 +199,10 @@ const MUTANTS = [
     from: "      act.append(h('span', '', 'Default · can be overridden'));\n    }\n",
     to: "      act.append(h('span', '', 'Default · can be overridden'));\n    } else if (row.disposition === 'unmeasured') {\n"
       + "      act.append(h('span', '', 'Refusals remain · removability not measured'));\n    }\n" },
+  { name: 'an-empty-list-is-held', catches: ['W8'], file: SKEL,
+    from: '  if (!isBlank(held)) return true;', to: '  if (held !== undefined) return true;' },
+  { name: 'the-form-skips-the-gate', catches: ['W6'], file: VIEW,
+    from: '    if (!fieldApplies(field, held, current)) continue;\n', to: '\n' },
   { name: 'the-ground-rides-the-folded-line', catches: ['L3'], file: VIEW,
     from: "    if (!bare) line.append(h('i', 'oe-folded-why', fold.reason));\n",
     to: "    if (!bare) line.append(h('i', 'oe-folded-why', fold.reason));\n    if (row.ground?.text) line.append(h('small', 'oe-folded-ground', row.ground.text));\n" },
@@ -180,21 +210,22 @@ const MUTANTS = [
 
 const main = async () => {
   console.log('== baseline ==');
-  const base = suite(await load(), cssText());
+  const base = suite(await load(), cssText(), await loadFrom(SKEL));
   const BASE_NAMES = NAMES.slice();
   console.log(`\n${base.ran - base.failed.length} passed, ${base.failed.length} failed.`);
   if (base.failed.length) { console.log(`ASSERTIONS ${base.ran} ${base.failed.length}`); process.exit(1); }
   const { wrong } = await scoreMutants(MUTANTS, async (m) => {
     const swap = (t) => { if (!t.includes(m.from)) throw new Error(`mutation anchor is GONE: ${m.name}`); return t.split(m.from).join(m.to); };
-    let view, css;
+    let view, css, skel;
     try {
       view = m.file === VIEW ? await load(swap) : await load();
       css = m.file === CSS ? cssText(swap) : cssText();
+      skel = m.file === SKEL ? await loadFrom(SKEL, swap) : await loadFrom(SKEL);
     } catch (err) { console.error(`HARNESS FAILURE: ${err.message}`); process.exit(2); }
     const real = console.log;
     console.log = () => {};
     ran = 0; failedList = [];
-    try { suite(view, css); } finally { console.log = real; }
+    try { suite(view, css, skel); } finally { console.log = real; }
     return { failures: failedList, ran };
   }, { baselineRan: base.ran, baselineNames: BASE_NAMES,
        title: '\n== defect mutants (each must be CAUGHT by its named line) ==' });
