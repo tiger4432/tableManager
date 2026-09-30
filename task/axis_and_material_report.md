@@ -1,3 +1,22 @@
+> ## [14:30 디자인] 저장한 대조 목록 — run 행의 계산 칸으로 «Not computed yet» / «factors N · computed HH:MM» 을 가름, 목록은 contrast_run 한 번 읽기 — 총괄 2dd93d4a9 · 구현자 247c0aba6 · c35c28ba9
+
+```
+한 것     목록 = contrast_run 한 번 읽기(factor 읽기 0). computed_at 비면 «Not computed yet» · 있으면 «factors N · computed HH:MM»
+          0 은 0 · 계산됐는데 수 칸이 비면 «—»(모름) · unexamined / incomplete 는 run 행의 contrast · complete
+          시각 글자는 server_time.js 에 한 폭 더(localHourMinute, 같은 parseServerInstant)
+J 다시 캡처  진짜 체인의 «두 쓰기»(factor 행 + run 행 write-back, 게이트의 _run_facts) · run 다섯: 대조 있음 · 양품 없음 · 잘림 ·
+          아무것도 안 닿음(factors 0 · computed) · 안 돌림(Not computed yet) — 체인이 쓴 factor 행 R_SEEN 17 · R_OPEN 18 · R_CUT 8 · R_EMPTY 0 · R_WAITING 0 (서버 b30fbd38c)
+          SQLite 는 DateTime 에 zone 을 안 남겨 캡처의 computed_at 은 zone 없이 읽힘 — PostgreSQL 은 +00:00, 그 모양은 게이트 C 가 그림
+```
+
+| 게이트 | 결과 |
+|---|---|
+| rnd_board_contrast_save — B 안 돈 run · C 셋이 서로 다름 · 한 번 읽기 · 0 · 모름 · D run 행 태그 · J 진짜 체인 | 58/0 · 변이 18 전부 빨강 |
+| 러너 | 148 중 146 게이트 초록 |
+| 화면(스크래치, 진짜 부품 · CSS) | 1280 · 375(161 px 칸) — 세 상태가 다른 줄 · 가로 넘침 0 · 칸 테두리에 닿는 것 0. 번들 rnd_board-ersTZXOL.js |
+
+⏳ 총괄께(박스): 박스 표 설정에 contrast_run 네 칸이 들어간 뒤 — 저장 -> 목록 «Not computed yet» -> 체인 뒤 Refresh -> «factors N · computed HH:MM»
+
 > ## [10:33 디자인] 원장 선언 창 — 계획이 reshapes 로 표시한 잎을 고르면 저장 없이 그 초안의 폼을 서버에 물어 키 칸이 뜸 — 총괄 791c0f45e · 92611320e
 
 ```

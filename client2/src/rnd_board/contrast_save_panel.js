@@ -11,7 +11,7 @@
 import { Panel } from './panel.js';
 import { createContrastStore, newContrastRunId } from './api.js';
 import { setDisabledReason } from '../disabled_reason.js';
-import { localShort } from '../server_time.js';
+import { localShort, localHourMinute } from '../server_time.js';
 
 export const CONTRAST_WORDS = Object.freeze({
   save: 'Save contrast',
@@ -21,6 +21,7 @@ export const CONTRAST_WORDS = Object.freeze({
   noControls: 'No controls — saved as unexamined',
   nothingMarked: 'Nothing marked — default',
   empty: 'No saved contrasts',
+  notComputed: 'Not computed yet',
   unexamined: 'unexamined',
   incomplete: 'incomplete',
 });
@@ -128,10 +129,12 @@ export class ContrastSavePanel extends Panel {
     const row = el('div', 'rb-contrast-row');
     row.setAttribute('data-run', run.runId);
     const count = (n) => (n === null || n === undefined ? '—' : String(n));
+    const computed = run.computedAt
+      ? `factors ${count(run.factors)} · computed ${localHourMinute(run.computedAt)}` : CONTRAST_WORDS.notComputed;
     row.append(
       el('span', 'rb-contrast-when', run.asOf ? localShort(run.asOf) : '—'),
       el('span', 'rb-contrast-counts',
-        `defects ${count(run.positive)} · controls ${count(run.negative)} · factors ${count(run.factors)}`),
+        `defects ${count(run.positive)} · controls ${count(run.negative)} · ${computed}`),
     );
     if (run.unexamined) row.appendChild(el('span', 'rb-cand-stat rb-cand-stat--absent', CONTRAST_WORDS.unexamined));
     if (run.incomplete) row.appendChild(el('span', 'rb-cand-stat rb-cand-stat--absent', CONTRAST_WORDS.incomplete));
