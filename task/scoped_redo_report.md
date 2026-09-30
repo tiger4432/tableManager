@@ -66186,3 +66186,173 @@ README    server/admin/dev_bench.py(두 곳) · python server/scripts/try_core.p
 재기동    없음 — RUN.md 맨 위
 ```
 다음: d8b1e7cfb 설계 보고(더할 것 셋 포함) -> ④ dc4ca3e7c.
+
+## [구현자 -> 총괄] d8b1e7cfb 설계 보고 — 같은 id 가 시각에 따라 다른 물건 (DT 세대 · 자재 타입) · 짓지 않음
+
+```
+추천     안 2 — 경계 표를 따로 짓지 않고, 쓰는 조인이 DT 표를 바로 읽는다
+         조인에 시각 칸(as_of)을 넓히고, 각 표에 두 칸(mat_type · generation), 원장은 die · wafer 키를 넓힌다
+기존 선언만으로는 안 선다  decide 로 경계 표를 지으면 세 곳에서 막힌다(1번)
+여쭐 것   다섯 — 맨 아래
+수        전부 이 박스 수. 박스엔 DT 재사용도 wafer out time 칸도 없어서 «id 하나의 행 수»로 한도만 잰다
+```
+
+### 1 경계 표 — 기존 선언으로 되나
+
+```
+decide(파생행)로 (id, out time) 행은 지어진다 — 판단키를 [id, out time] 로 두면 짝마다 한 행
+막히는 곳 셋
+  fields 필수   enrichment/config._validate_rule — 판단키와 안 겹치는 «사람이 채울 칸»이 하나 이상 있어야 한다. 경계 표엔 그런 칸이 없다
+  상수 없음     집계는 count · min · max · unique_concat 넷(AGGREGATION_FUNCTIONS) — 'DT' 같은 글자를 적을 칸이 없다
+  거두기 없음   enrichment/mapper.py 는 새 짝을 올리기만 한다. out time 을 고치거나 지우면 옛 경계 행이 남아 세대가 틀린다
+넓힐 칸      쓰는 조인(chain/join_into.py)의 on.table 을 DT 표로 두면 경계 표가 필요 없다 — 조인이 DT 표를 바로 읽는다
+             새 종류 · 새 표 0. 넓히는 것은 조인 안의 칸 셋 — as_of(2번) · take 의 상수 항목 · 짝 없을 때 값(4번)
+```
+
+### 2 시각 조인 — 조인의 칸 하나로
+
+```
+지금     키가 같은 원천 행이 둘 이상이면 그 행을 건너뛴다(fan-out 그물) · 시각 축 없음
+넓힘     derive.join.as_of: {left: <into 표의 시각 칸>, right: <on 표의 시각 칸>}
+뜻       키가 같은 원천 행 중 right 시각 ≤ left 시각인 것의 «가장 늦은 것» 하나
+그물     같은 키 · 같은 시각 · 같은 take 값 = 답 하나 (DT 표의 셀 행들이 경계 하나로 접힌다)
+         같은 시각에 take 가 다르면 지금처럼 건너뛰고 이름 댄다 — 그물의 뜻이 「행 둘」에서 「답 둘」로 바뀐다
+시각 읽기  time_format.instant_key 하나 — 값 비교(value_key)가 쓰는 그것
+         후보 시각 칸 5 개 중 4 개가 string 으로 선언됨(core_wafer_map.event_time · dt_log.event_time · wafer_id_status.valid_from · wafer_process.eventtime) — SQL 로 못 거르고 읽은 뒤 가린다
+못 읽는 시각  짝 없음으로 두고 한 줄로 센다 (키가 모두 빈 행과 같은 모양)
+```
+같은 칸이 둘에 쓰인다 — 방향은 하나, 답을 «받는» 표가 into:
+```
+경계       on.table <DT 표> · into.table <각 표>
+           on [{left: <id 칸>, right: <dt wafer id>}] · as_of {left: <사건 시각>, right: <wafer out time>}
+           take [<wafer out time> -> generation, 상수 "DT" -> mat_type] · 짝 없을 때 {mat_type: "WF"}
+액션 닫힘   on.table <액션 표> · into.table <측정 표>
+           on [{left: <대상 키>, right: <대상 키>}] · as_of {left: <측정 시각>, right: <발급 시각>}
+           take [<액션 id> -> 닫는 액션]      발급 «뒤» 측정만 그 액션을 받는다 (보드 가치관 4 「측정으로 닫힌다」)
+```
+
+### 3 모집단 (박스)
+
+```
+센 것     박스 table_config 에서 칸 이름이 wafer|wf_id|wfid|dtw 인 표 — «이름»으로 센 대리
+          박스의 DT 신원 칸 dt_log.dt_job(원장에서 die 의 mat_type DT 로 묶임)은 이 이름에 안 걸린다
+명령      저장소 뿌리 scratchpad/ (추적 안 됨) — probe_population.py · probe_relkind.py · probe_time_parse.py ·
+          probe_atoms_per_row.py · probe_ledger_k.py · probe_die_sentences.py — conda env assy_manager 로 인자 없이 (읽기만)
+표        27 = 실제 표 19 · 뷰 8 (pg_class — 선언의 kind 와 전부 일치)
+core id 와 철자가 만나는 표  14  (core id 집합 = dt_log.core_wafer ∪ core_wafer_map.wafer_id ∪ core_usage_map.core_wafer — 대리)
+  그중 뷰 7 — 소유자 「운영에서는 뷰 안 써」 · 칸은 밑 표가 든다
+  그중 표 7 — 시각 칸 있음 5 (core_wafer_map · dt_log · process_param · wafer_id_status · wafer_process) · 없음 2 (core_usage_map · dt_core_view — 가를 수 없다)
+시각이 읽히나   dt_log.event_time 534,893 중 492,426 이 글자(박스 채움 행) · 나머지는 전부 읽힘
+id 칸 둘       dt_log(core_wafer · core_wafer_id) — 칸 짝(mat_type · generation)도 id 칸마다
+목록 칸        lot_event.waferids 는 콜론 목록 — 한 행이 여러 웨이퍼라 짝 하나를 못 든다. 펼친 lot_slot_wafer(한 행 한 웨이퍼)는 든다
+               박스 lot_event 의 웨이퍼 id 는 core id 와 0 만남 — 박스 세계가 따로라서, 운영 주장 아님
+소유자 문장 밖  base_wafer_id 표 bonding_inventory · bonding_log · bonding_map · delam_obs · inspection_run · void_obs — core id 와 0 만남. 넣을지 안 정함(여쭐 것 5)
+```
+
+### 4 첫 DT 이전 = WF — 누가 적나
+
+```
+ㄱ 짝 없음 = WF   조인에 「짝 없을 때 적을 값」 칸 — 적는 이는 선언
+                 f3c04dee3 의 「짝 없는 행은 안 쓴다」를 그 선언이 있을 때만 뒤집는다
+                 그 커밋의 소유자 판정은 「짝이 된 빈 값은 빈 값으로」 쪽, 짝 없는 쪽은 «없음 ≠ 빈 값» 원칙에 기댄 구현 판단(커밋 본문)
+ㄴ 바닥 경계 행   코어 웨이퍼 표에서 decide 로 (id, 처음 본 시각, WF) — 1번의 막힘 셋에 그대로 걸린다
+ㄷ 비면 WF       아무도 안 적는다. 그런데 빈 칸은 「체인이 아직 안 옴」·「시각을 못 읽음」도 뜻한다 — 박스 dt_log 492,426 행이 그 둘째
+blank: skip(소유자 09-29 ㄱ)은 가장 가까운 칸이지만 «짝이 된 빈 값»을 안 쓰는 칸 — 짝이 없는 행과 다른 경우라 이것을 못 덮는다
+```
+
+### 5 원장 — 키에 넣나, 엔티티를 가르나
+
+```
+K 키 넓힘     die [mat_id, x, y, mat_type] 에 generation · wafer [wafer] 에 mat_type · generation
+  좋은 점    한 종류 안에서 WF 와 DT 세대가 갈린다 — die 가 이미 mat_type 을 키에 든 모양을 웨이퍼에 넓히는 것
+  위험       키가 바뀌면 새 버전(die@2 · wafer@2) — 묶는 바인딩 전부가 두 칸을 묶는다(박스 die 12 · wafer 8)
+             그 소스 11 개의 원자 1,395,374 개가 한 번 전부 다시 번역된다(박스 전체 2,261,723) · 커서 지문이 바뀌어 커서가 선다(LEDGER_GUIDE §4.2)
+             WF 행은 generation 이 빈 값 — 그 키 칸에 allow_null
+             칸이 빈 행(체인이 아직 안 옴 · 시각 못 읽음)은 키가 비어 «이름 대어 거절» — 조용히 안 빠진다
+E 엔티티 둘   wafer(WF) · dtwafer(DT, 키에 generation) · 문장마다 when: {mat_type: "WF" | "DT"}
+  좋은 점    종류 이름이 무엇인지 말한다
+  위험       v5 when 은 «같음»만 · 안 맞으면 «말 안 함»이지 거절이 아니다(roleframe._unit_says) — mat_type 이 빈 행은 원자 0 · 거절 0 (그 좌석이 세는 줄은 없음 — 번역 쪽 다른 줄이 세는지는 안 쟀다)
+             문장이 종류마다 둘로 · 다시 번역하는 양은 K 와 같다
+둘 다        자재 타입 낱말이 지금 셋 — 박스 die 바인딩 12: Wafer 9 · DT 2 · DTLotSlot 1. 소유자 낱말은 WF · DT
+             같음 비교는 공백·숫자만 접고 동의어는 안 접는다 — 낱말 한 벌을 정해야 한다(여쭐 것 3)
+```
+
+### 5 더하기 — 다이 신원 · 상수 mat_type 문장 · 소속 엣지 (총괄 물음)
+
+```
+다이 신원   die 키는 [mat_id, x, y, mat_type] · DT 다이의 mat_id 는 dt_job(_id) — DT id 가 재사용되면 (dt_job_id, x, y, DT) 가 세대 사이에 같다
+           -> 부딪힌다. 세대는 웨이퍼 키만이 아니라 «다이 키»에도 든다. 안 K 의 die 키 넓힘이 그 자리
+           (mat_id 에 세대를 이어 붙이는 길은 원장 선언이 못 하는 계산이라, 키 칸 하나를 더하는 것이 같은 일의 선언 모양)
+die 바인딩 12 개를 mat_id 칸 «이름»으로 가르면 (대리 — scratchpad/probe_die_sentences.py)
+  core 쪽 · 상수 Wafer   4  -> mat_type 이 상수에서 «시각으로 갈린 칸»으로 바뀐다 (같은 id 가 DT 일 수 있어서)
+  dt 쪽 · 상수 DT        2  -> mat_type 은 상수 그대로 · generation 만 더한다 (그 행의 out 시각이 곧 세대)
+  base 쪽 · 상수 Wafer   5  -> 소유자 문장 밖 (여쭐 것 5)
+  그 밖 · DTLotSlot      1  -> 웨이퍼 id 가 아니라 그대로
+소속 엣지   die -> wafer 문장은 박스에 2 (bonded_from 의 core-die-in-core-wafer, in_container@1 · bonded_from 의 base-die-in-base-wafer, in_container@1) — DT 다이 쪽은 0
+           세대 신원이 생기면 DT 전달 소스(dt_transfer · transfer_event)에 문장 하나:
+           die (dt id, x, y, DT, gen) in_container wafer (dt id, DT, gen) — core-die-in-core-wafer 와 같은 모양
+           entities.references 로 거는 길은 폼이 내놓지 않는 칸(test_ledger_skeleton NOT_OFFERED)이라 안 쓴다
+```
+
+### 6 소급 — 경계 하나(새 out time)가 들어오면
+
+```
+계산    그 id 의 into 표 행을 «전부» 읽고 가린다 — 시각 칸이 string 이라 SQL 로 못 좁힌다
+쓰기    값이 바뀐 행만 — 새 경계부터 다음 경계 전까지. 값이 같으면 쓰기 문이 칸을 안 건드려 EDIT 가 안 난다(crud has_changed)
+원장    쓰인 행만 아웃박스로 따라가 그 분자를 다시 번역(ledger/followup.py — 판정 144, 아웃박스가 살아 있는 길 · 커서는 따라잡기)
+늦게 온 이른 out time   쓰기 · 원장은 «그 경계와 다음 경계 사이»만. 계산은 그 id 전부
+```
+박스 한도 (경계 하나가 id 의 모든 행 앞에 올 때 — id 하나의 행 수):
+```
+core_usage_map.core_wafer
+    id 당 행 최대 183 · 중앙 183 · 행당 원자 원장 소스 아님 · 시각 칸 없음
+core_wafer_map.wafer_id
+    id 당 행 최대 357 · 중앙 79 · 행당 원자 원장 소스 아님
+dt_core_view.core_wafer
+    id 당 행 최대 183 · 중앙 183 · 행당 원자 원장 소스 아님 · 시각 칸 없음
+dt_log.core_wafer
+    id 당 행 최대 12000 · 중앙 14 · 행당 원자 1.85 (dt_job)
+process_param.wafer_id
+    id 당 행 최대 40 · 중앙 16 · 행당 원자 1.0 (process_param_num_measure) · 1.0 (process_param_txt_measure)
+wafer_id_status.wafer_id
+    id 당 행 최대 2 · 중앙 1 · 행당 원자 원장 소스 아님
+wafer_process.wafer_id
+    id 당 행 최대 100 · 중앙 5 · 행당 원자 1.0 (wafer_process_recipe)
+```
+
+### 안 셋
+
+```
+안 1  경계 표(decide) + 시각 조인
+  무엇       decide 로 경계 표 · 조인이 그 표를 읽음 — decide 도 넓혀야 한다(fields 선택 · 상수 · 거두기)
+  운영자     decide 선언 1 + 조인 선언(표 × id 칸마다)
+  좋은 점    경계가 한 표에 보여 한 행으로 고친다 · 읽기가 작다
+  위험       decide 세 곳 넓힘 · 거두기를 안 넓히면 틀린 경계가 남는다
+  크기       안 쟀다
+
+안 2  조인이 DT 표를 바로 읽음  (추천)
+  무엇       join 에 as_of · take 의 상수 항목(DT) · 짝 없을 때 값(WF) · 각 표에 칸 둘 · 원장 K
+  운영자     조인 선언(표 × id 칸마다) · 원장 die · wafer 키 넓힘
+  좋은 점    새 표 · 새 종류 0 · DT 표를 고치면 조인의 원천 쪽이 그 id 를 다시 계산 — 틀린 경계가 안 남는다 · 액션 닫힘이 같은 as_of
+  위험       DT 표를 id 마다 읽는다(같은 시각 행은 접어도 스캔은 원천 행 수만큼) · 짝 없음 = WF 가 f3c04dee3 절반을 선언에서 뒤집는다
+  크기       조인 한 파일(join_into 의 읽기 · 답 가리기 · 원천 쪽 행 찾기) + 선언 번역(rule_shape) · 스켈레톤 칸 — 줄 수는 안 쟀다
+
+안 3  세대 한 칸 + 원장이 있음/없음으로 가름
+  무엇       조인은 as_of 만 · 각 표에 generation 한 칸 · 원장 v5 when 에 present/absent 를 넓혀 WF 문장 · DT 문장
+  운영자     조인 선언 + 원장 문장 둘씩
+  좋은 점    f3c04dee3 그대로 · 체인에 상수 0
+  위험       빈 칸 = WF 라 「아직 안 옴」·「시각 못 읽음」도 WF 로 번역된다 · 총괄 그림(칸 둘)과 다르다 · 자재 타입이 표에 안 보인다
+  크기       안 쟀다
+```
+
+### 여쭐 것
+
+```
+1 경계 시각과 «같은» 시각의 행   DT 표의 dt wafer id 칸은 새 세대(≤)여야 하고, 같은 행의 core wafer id 칸은 (두 id 가 같을 때) 옛 WF(<)여야 한다
+                               한 규칙으로 두 칸을 다 못 맞춘다 — as_of 에 「같은 시각 포함」 칸을 둘지, DT 표 자기 칸은 조인 없이 원장이 바로 묶을지
+2 짝 없음 = WF                  f3c04dee3 의 「짝 없는 행은 안 쓴다」를 선언이 적었을 때만 뒤집어도 되나
+3 자재 타입 낱말 한 벌           지금 Wafer 9 · DT 2 · DTLotSlot 1 · 소유자 낱말 WF · DT
+4 선언 수                       into.table 이 표 하나라 (표 × id 칸)마다 조인 하나 — 박스로 세면 7 쌍(시각 칸 있는 것 5)
+                               「두 줄」로 안 말해진다. into 를 여러 표로 넓힐지
+5 base_wafer_id 표를 넣나
+```
