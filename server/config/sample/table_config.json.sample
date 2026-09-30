@@ -811,7 +811,8 @@
       "result": "string",
       "eventtime": "string",
       "recipe_id": "string",
-      "knobs": "string"
+      "knobs": "string",
+      "mat_type": "string"
     },
     "display_columns": [
       "proc_id",
@@ -827,7 +828,23 @@
       "result",
       "eventtime",
       "recipe_id",
-      "knobs"
+      "knobs",
+      "mat_type"
+    ]
+  },
+  "step_phase": {
+    "__comment": "Which steps a wafer goes through as a DT wafer - one row per DT step, mat_type DT. A step not listed is a core wafer step (the ledger's blank sentence). The join step_phase_to_wafer_process copies mat_type onto each process row by its step (363db7dfa).",
+    "business_key": "step",
+    "composite_key_source": [
+      "step"
+    ],
+    "column_types": {
+      "step": "string",
+      "mat_type": "string"
+    },
+    "display_columns": [
+      "step",
+      "mat_type"
     ]
   },
   "dt_job_attribution": {

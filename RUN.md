@@ -1,5 +1,63 @@
 # 지금 돌리면 되는 것
 
+> ## 🔴 [09-30 밤] **원장 커서 칸이 빈 행 — 그 행이 든 분자만 이름 대어 거절, 배치는 계속 · 마이그레이션 «없음» · 재기동 서버 · 체인 워커 (run_app.bat 로 전체)**
+>
+> ```
+> 무엇이 바뀌나  원장 번역: 커서 칸(read.order_by)이 빈 행이 든 분자를 no_raw_ref 로 거절 1 건 — 같은 배치의 나머지 분자는 번역됨
+>              전: 그런 행 하나가 배치 전체를 멈춤 「cursor number must be finite」 — 이 박스 dt_log 에서 작업 3 개(144 행), 그 작업을 따라갈 때마다
+>              묶음 소스(group_by 가 있는 소스, 예 dt_job)는 그 분자를 «통째로» 거절 — 남은 행으로 작은 사건을 짓지 않음
+> 확인          서버·체인 워커 로그에 「cursor number must be finite」가 더는 안 남
+>              대신 거절 표본: 사유 no_raw_ref · 주소 bundle.sources.<소스>.read.order_by.<칸>
+>              문장 「molecule …: row … leaves its cursor column <칸> empty - … fill <칸>」
+> 뜻           그 줄 = 원천 표의 그 행 커서 칸이 비어 있음. 할 일은 그 칸을 채우는 것 — 채우면 다음 따라가기가 그 분자를 번역
+>             그 분자에 전에 적힌 원자는 거절되는 동안 원장에서 걷힘 — 편집으로 칸을 비우면 걷히고 채우면 돌아옴(PG 에서 잼)
+>             거절 수는 그 작업을 따라갈 때마다 늘어남 — 채울 때까지
+>             identity · group_by 칸이 빈 행은 전처럼 페이지째 멈춤 — 문장만 「driver identity/group_by value is missing」 으로
+> 급할 때       끄는 스위치 없음 — 커밋 되돌리기
+> ```
+
+---
+
+> ## 🔴 [09-30 밤] **DT 스텝 뒤 공정 행은 dtwafer 로 — 표본 선언 셋을 라이브에 옮기면 켜짐 · 마이그레이션 «없음» · 재기동 서버 · 체인 워커(번역 ①②) · 선언 ③ 은 리로드 + 커서 지문**
+>
+> ```
+> 무엇이 바뀌나  ① 원장 번역: 어느 문장의 when 에도 안 맞은 행을 세어 한 줄 — 「[Ledger] <소스>: N unit(s) said no sentence - mat_type='WF' (N). Next: …」
+>              ② 원장 번역: 문자열 칸의 NULL(pandas 3 에선 NaN)이 배치 전체를 멈추던 것이 멈추지 않음 — 09-10 박스 로그의 「not deterministic JSON … nan」
+>              ③ 표본 선언(추적 파일)에 스텝 가르기 — 라이브 선언에는 «운영자가 옮길 때» 켜짐. 옮기기 전엔 동작 그대로
+> 옮기기        표본 server/config/sample 의 세 파일에서 그대로:
+>              table_config   step_phase 표(business_key · composite_key_source = step, 칸 step · mat_type) · wafer_process 에 mat_type 칸
+>                             저장하면 웹 서버의 설정 감시가 표를 만들고 칸을 더함 — 서버 로그 「Physical database schema synced successfully.」
+>              chain_rules    step_phase_to_wafer_process 조인(체인 탭 저장 — 리로드 불필요)
+>              ledger_config  dtwafer@1 · processed_with@1 subjects 에 dtwafer@1 · wafer_process_recipe 문장 둘(when mat_type "" / "DT") · input_columns 에 mat_type
+>              curl -X POST "http://<host>:8080/admin/reload-configs" -H "X-Admin-Token: <토큰>"
+>              python server/scripts/ledger_restamp_cursor.py --apply     (선언이 바뀌어 커서가 선 것을 풀기 — 위치는 안 움직임)
+> 운영자 두 줄   「운영에서는 step_phase 표에 DT 스텝을 한 줄씩 적으면 됩니다(스텝 · DT).」
+>              「결함 계측 표에도 같은 조인 한 줄, 다이 문장을 when 으로 둘(빈 칸 -> mat_type Wafer · DT -> DT).」
+> 확인          DT 스텝을 적으면 그 스텝의 공정 행 mat_type 이 DT 가 되고, 원장의 그 행 원자가 wafer -> dtwafer 로 옮겨감(옛 원자는 지워짐)
+> 뜻           「said no sentence - mat_type='WF'」 = 단계표에 DT 가 아닌 값(WF · 오타)을 적은 스텝 — 그 행은 원장에 안 감. 그 칸을 비우거나 DT 로
+>             스텝을 빼려면 단계표 행을 지우지 말고 mat_type 칸을 비울 것 — 지운 행은 채웠던 공정 행에 닿지 않아 DT 가 남음(잰 것)
+>             「cursor number must be finite」 = 이제 안 남 — 바로 위 절(커서 칸이 빈 행)
+> 놓친 따라가기  원장 따라가기 줄은 메모리라 워커가 죽으면 잃음 — 그때만: python -m ledger.backfill --source wafer_process_recipe --scope-column mat_type --scope-values DT --apply (server/ 에서)
+> 급할 때       스텝 가르기만 끄기: 단계표를 비움(행의 mat_type 을 비우면 원자가 wafer 로 돌아감) · 코드 되돌리기는 커밋 되돌리기
+> ```
+
+---
+
+> ## 🔴 [09-30 저녁] **HTML 토폴로지 파서 — 한 헤더 경로에 값 칸 둘이면 이름 대어 거절 · 옆 그룹 헤더가 안 섞임 · 마이그레이션 «없음» · 재기동 «없음»**
+>
+> ```
+> 무엇이 바뀌나  HTMLTableGraphParser.extract_semantic_tuples — 두 값 칸의 헤더 경로가 같으면 ValueError (전: 뒤 칸만 남고 앞 칸이 말없이 사라짐)
+>              같은 줄에 나란히 선 그룹 헤더(A · B)는 자기 열 아래 칸에만 붙음 (전: B 가 A 의 칸에도 붙어 값 하나가 사라짐)
+> 누가 부르나     이 박스: 추적 코드 0 · ingestion_workspace 파이썬 18 개 중 0 (bonding_map 은 HTMLMatrixTableParser — 안 바뀜)
+> 확인          이 함수를 부르는 커스텀 파서가 있으면, 헤더 경로가 겹치는 파일은 그 파일 줄에
+>              「Next: mark the cell that tells these rows apart as a header (is_header_fn) … N value cells share one header path … The path: (…)」 — 다음 행동이 맨 앞(파일 상태 칸이 500 자만 남겨도 안 잘림, 09-30 f7738d7a4)
+> 뜻           그 줄 = 전에는 값 일부를 조용히 잃던 파일. 할 일은 행을 가르는 칸(예: 웨이퍼 열)을 is_header_fn 에서 헤더로 — 그 뒤 다시 올리기
+>             위아래로 쌓인 표는 거절이 아니라 가이드 §3.1-bis(먼저 나눠 읽기)
+> 급할 때       끄는 스위치 없음 — 커밋 되돌리기
+> ```
+
+---
+
 > ## 🔴 [09-30 저녁] **원장 선언 폼 — column 바인딩의 Time zone 칸이 글자 상자로 · 마이그레이션 «없음» · 재기동 «없음» (리로드 한 번)**
 >
 > ```

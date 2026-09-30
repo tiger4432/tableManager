@@ -218,3 +218,19 @@ retired 로 적어도 계속 번역합니다」라고 적혀 있었고, 오늘�
 🔵 **자리가 «표»인 이유**: 판단 단위는 그 표의 성질이지 그 표를 읽는 «원장 소스»의 성질이 아닙니다 —
 소스가 둘이면 같은 표에 두 번 적게 되고, 그 둘이 «갈릴 수» 있습니다(판정 e578eabc).
 ⚠️ 그래서 출하 샘플에는 이 칸의 예시를 «안 넣었습니다** — 어느 컬럼이 판단 단위인지는 «도메인 사실»이고, 기본값이 없는 칸에 예시를 넣으면 그것이 기본값처럼 읽힙니다.
+
+### ⑤ 문장 고르기 — `sources.<소스>.bind.mappings.<문장>.when` (S-99 · 🆕 09-30 `c1746aa1e` 에 넓어짐)
+```
+운영에서는 소스의 `bind.mappings.<문장>` 에 `when: {컬럼: 값}` 을 적으면 됩니다.
+그 칸 값이 맞는 행만 그 문장을 말합니다 — 한 표가 값에 따라 «다른 주어»로 말하게 할 때 씁니다.
+```
+출하 샘플 `wafer_process_recipe` 가 그 모양입니다 — 같은 술어 `processed_with@1` 을 문장 «둘»로 적고 주어만 가릅니다:
+```json
+"wafer-processed-with-recipe":   { "predicate": "processed_with@1", "when": {"mat_type": ""},   "bind": { "subject": { "entity_type": "wafer@1",   ... } } },
+"dtwafer-processed-with-recipe": { "predicate": "processed_with@1", "when": {"mat_type": "DT"}, "bind": { "subject": { "entity_type": "dtwafer@1", ... } } }
+```
+`mat_type` 은 체인 조인이 단계 표(`step_phase` — DT 단계만 적음)에서 채웁니다. 조인이 안 닿은 행은 빈 값이라 전처럼 `wafer@1` 로 말합니다.
+- **빈 칸은 `""` 입니다** — 값이 없거나(NULL) 텍스트 칸의 NULL 이 판다스에서 NaN 으로 와도 `when` 은 `""` 로 견줍니다(전엔 `"nan"` 이 돼 어느 문장도 안 맞았다).
+- **어느 문장도 안 고른 행은 «세고 이름 댑니다»** — 모든 문장이 `when` 을 들고 그 어느 것도 안 맞으면 그 행은 아무것도 말하지 않고, 배치마다 한 줄:
+  `[Ledger] <소스>: N unit(s) said no sentence - mat_type='WF' (N). Next: every sentence's when passed them over; correct the value in the table it comes from, or declare a sentence whose when names it.`
+  미리보기와 배치 영수증에도 `unsaid` 로 실립니다. `when` 없는 문장이 하나라도 있으면 모든 행이 그것을 말하므로 이 줄은 안 납니다.

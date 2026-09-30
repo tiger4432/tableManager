@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from collections import OrderedDict
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime
 import hashlib
 import json
@@ -79,6 +79,10 @@ EVENT_FRAME_REQUIRED_ATTRS = (
 )
 SOURCE_EVENT_INCOMPLETE_ATTR = "assy_manager.source_event_incomplete"
 EVENT_FRAME_PASSTHROUGH_ATTRS = (SOURCE_EVENT_INCOMPLETE_ATTR,)
+#: 🔴 [총괄 363db7dfa] A unit every sentence's `when` passed over says nothing, and it said so
+#:   nowhere - no atom, no refusal, no count. `map` puts that unit's `when` values here as
+#:   `((column, value), ...)`, one per such unit; the preview sums them (`unsaid`).
+UNIT_SAID_NOTHING_ATTR = "assy_manager.unit_said_nothing"
 SOURCE_ROW_REF_COLUMN = "__source_row_ref"
 #: Engine-owned column carrying the one instant the preparer validated for this event.
 #: A mapper reads the time under THIS name whichever way the source declared its origin
@@ -118,6 +122,11 @@ def _plain(value: Any) -> Any:
         return {str(key): _plain(value[key]) for key in sorted(value, key=str)}
     if isinstance(value, (tuple, list)):
         return [_plain(item) for item in value]
+    if _is_missing(value):
+        # 🔴 [총괄 363db7dfa] pandas 3 holds a NULL of a text column as NaN, and `allow_nan=False`
+        #   then refused the WHOLE batch - measured in this box on 09-10 (dt_job follow-up, seven
+        #   batches). Missing is None here as everywhere; `_is_missing` is this module's judge.
+        return None
     if isinstance(value, datetime):
         if value.tzinfo is None:
             raise TypeError("naive datetime has no deterministic instant")
@@ -274,6 +283,7 @@ class BaseLedgerMapper:
     ) -> pd.DataFrame:
         _validate_event_frame(context, event_frame, descriptor, profile)
         emissions: list[RoleEmission] = []
+        unsaid: list = []
         for unit_index, unit in enumerate(
                 _partition_units(context, event_frame, descriptor)):
             unit_columns = _ColumnsOnFirstAsk(unit)
@@ -303,8 +313,16 @@ class BaseLedgerMapper:
                     context, profile, emission, unit,
                     f"mapper.units[{unit_index}].emissions[{emission_index}]",
                     columns=unit_columns))
+            if not produced:
+                quiet = _said_by_no_when(unit_columns, profile)
+                if quiet is not None:
+                    unsaid.append(quiet)
         frame = _role_frame_from_emissions(event_frame.attrs, emissions, profile)
-        return validate_role_frame(context, frame, descriptor, profile)
+        rows = validate_role_frame(context, frame, descriptor, profile)
+        if unsaid:
+            rows = replace(rows, attrs=MappingProxyType(
+                {**rows.attrs, UNIT_SAID_NOTHING_ATTR: tuple(unsaid)}))
+        return rows
 
     def interpret_unit(
         self,
@@ -875,9 +893,31 @@ def _unit_says(unit_columns: Mapping[Any, tuple], when: Mapping[str, Any]) -> bo
         if values is None:
             return False
         target = clean_str_value(expected)
-        if any(clean_str_value(value) != target for value in values):
+        if any(_when_value(value) != target for value in values):
             return False
     return True
+
+
+def _when_value(value: Any) -> str:
+    """A cell as `when` compares it. A missing cell (None, or pandas's NaN for a NULL of a text
+    column) is "" - without the fold `clean_str_value` spells NaN "nan" (총괄 363db7dfa)."""
+    return clean_str_value(None if _is_missing(value) else value)
+
+
+def _said_by_no_when(unit_columns: Mapping[Any, tuple], profile: ProfileDescriptor):
+    """`((column, value), ...)` when every sentence carries a `when` and none says this unit -
+    else None (총괄 363db7dfa). The judge is `_unit_says`, the one the skip uses; a sentence
+    without a `when` is said by every unit, so its presence answers None. A group unit
+    whose rows differ shows their values joined."""
+    mappings = list(profile.mappings.values())
+    if not mappings or any(not mapping.when for mapping in mappings):
+        return None
+    if any(_unit_says(unit_columns, mapping.when) for mapping in mappings):
+        return None
+    columns = sorted({column for mapping in mappings for column in mapping.when})
+    return tuple((column, ", ".join(sorted({_when_value(value)
+                                           for value in (unit_columns.get(column) or ())})))
+                 for column in columns)
 
 
 def read_columns_once(frame: pd.DataFrame) -> dict[Any, tuple]:

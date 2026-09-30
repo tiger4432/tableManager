@@ -1,6 +1,6 @@
 # HTML Table Adjacency Graph Topology Parser User Guide
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-09-13 | **Owner:** Ingester | **Source-of-truth:** `server/parsers/html_topology_parser.py` · 상위 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
+> **Status:** 🟢 Living | **Last-verified:** 2026-09-30 | **Owner:** Ingester | **Source-of-truth:** `server/parsers/html_topology_parser.py` · 상위 [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md)
 
 > 🔴 **[2026-09-13 갱신] 이 문서는 07-24 이후 «거절 경로»를 한 글자도 들고 있지 않았습니다.** `419cd8fa`(2026-08-04, 이 파일에 +151/−51)가 「격자 원점을 «두 번» 유도하고 어긋나면 파일을 거절한다」를 넣었고, 그 뒤 `b95d998b`(2026-09-07)까지 옵직였습니다. 그 경로가 **§3.6-bis** 로 들어왔습니다 — «0행으로 들어온 파일»을 만나면 그 절부터 열으십시오.
 > 🔴 **[2026-09-30]** §2 의 가져오기 줄과 `is_header_fn` 예시, §3.6 의 가져오기 줄을 코드와 대조해 고쳤습니다 —
@@ -8,6 +8,7 @@
 > `parsers.html_topology_parser` 로 가져오면 같은 파일이 «다른 모듈»로 한 번 더 로드되어 클래스가 둘이 됩니다.
 > `is_header_fn` 은 파서가 `(cell, row_idx, col_idx)` 셋을 넘깁니다.
 > ⚠️ 그 밖의 절(§1 · §3.1~§3.5 · §4 본문)은 이번 패스가 «열지 않았습니다» — 그대로인지 재지 않았다는 뜻입니다.
+> 🔴 **[2026-09-30 저녁]** 두 값 칸의 헤더 경로가 같으면 `extract_semantic_tuples` 가 `ValueError` 로 거절합니다(전에는 뒤 칸만 남고 앞 칸은 말없이 사라졌습니다 — §3.1). 섹션 헤더는 그 값 칸의 «열 위에» 선 것만 붙습니다(§1-3). 위아래로 쌓인 표는 먼저 나눠 읽습니다(§3.1-bis, 새 절).
 
 이 가이드는 HTML 테이블 구조에서 셀 병합(`rowspan`, `colspan`)과 불규칙한 레이아웃 위상(Topology)을 분석하여 데이터와 헤더 간의 의미론적 관계를 역추적하고, 노드와 엣지 기반의 유향 그래프 및 연결 행렬을 생성하는 **`HTMLTableGraphParser`**의 사용 방법과 통합 방안에 대해 다룹니다.
 
@@ -22,7 +23,7 @@
 2. **공간 인접 엣지 정의**:
    가상 그리드 상에서 각 셀 경계를 기준으로 상하좌우(`UP`, `DOWN`, `LEFT`, `RIGHT`)에 접해 있는 이웃 노드들을 탐색하여 방향성 **`TableEdge`**를 빌드합니다.
 3. **물리적 방향 제약 및 장벽 규칙 (Barrier Rule)**:
-   특정 노드에서 조상 헤더를 찾기 위해 DFS 탐색을 수행할 때, 탐색 방향(UP, LEFT)에 대해 기하학적 범위 조건(예: UP이면 행 인덱스가 감소하고 열 범위가 겹칠 것)을 엄격히 적용하여 무분별한 엣지 추적 누수를 차단합니다. 또한 가로 전체를 덮는 수평 병합 셀(섹션 헤더)은 **차단 장벽(Barrier)**으로 판단하여 그 장벽을 가로질러 윗행으로 탐색이 흘러가는 것을 즉시 차단합니다.
+   특정 노드에서 조상 헤더를 찾기 위해 DFS 탐색을 수행할 때, 탐색 방향(UP, LEFT)에 대해 기하학적 범위 조건(예: UP이면 행 인덱스가 감소하고 열 범위가 겹칠 것)을 엄격히 적용하여 무분별한 엣지 추적 누수를 차단합니다. 또한 가로 전체를 덮는 수평 병합 셀(섹션 헤더)은 **차단 장벽(Barrier)**으로 판단하여 그 장벽을 가로질러 윗행으로 탐색이 흘러가는 것을 즉시 차단합니다. 섹션 헤더는 그 값 칸의 «열 위에» 서 있을 때만 붙습니다 — 같은 줄에 나란히 선 그룹(A · B)이 서로의 칸에 붙지 않습니다(2026-09-30).
 4. **위치 및 값 기반 Row Header 자동 감지**:
    `<th>` 태그나 볼드체 등의 스타일링이 지정되지 않은 일반 `<td>` 태그 형태라도, 숫자가 아닌 일반 텍스트 문자열이면서 테이블의 마지막 열 이전(`c < max_cols - 1`)에 위치한 노드는 구조적인 **Row Header**로 인지합니다. 이 하이브리드 휴리스틱 덕분에, 병합 셀(`colspan` 등)로 인해 첫 열(`c=0`)을 벗어난 우측 열에 나타나는 계층적 행 속성(예: `lot`, `value`)들까지 완벽하게 헤더로 자동 판단하여 튜플 키에 수집합니다.
 5. **빈 행(Empty TR)에 대한 인덱스 복원**:
@@ -81,6 +82,54 @@ for headers, val in mappings.items():
 # [출력 결과]
 # 계층구조: ('2026년 실적', '1분기') => 값: 1000
 # 계층구조: ('2026년 실적', '2분기') => 값: 2000
+```
+
+> 🔴 **한 경로에 값 칸 하나** (2026-09-30). 두 값 칸의 헤더 경로가 같으면 `ValueError` 로 거절합니다 — 결과가 경로를 열쇠로 한 사전이라, 전에는 뒤 칸만 남고 앞 칸은 말없이 사라졌습니다. 거절문은 다음 행동을 맨 앞에 두고 칸 수 · 좌표 하나 · 겹친 경로 수 · 경로를 댑니다 — 파일 상태 칸이 사유를 500 자만 남겨도 다음 행동은 안 잘립니다.
+> 다음 행동: 행을 가르는 칸(예: 랏이 병합된 표의 웨이퍼 열)을 `is_header_fn` 으로 헤더로 표시해 값마다 경로가 따로 서게 합니다.
+
+### 3.1-bis 위아래로 쌓인 표 — 먼저 나눠 읽기
+한 `<table>` 안에 머리 줄이 둘 이상 쌓여 있으면(표 두 개를 이어 붙인 모양) 아래 표의 값이 가운데 머리 줄을 지나 위 표의 머리까지 붙습니다 — 예: `('L001', 'W01', 'THK', 'BOW')`. 파서는 그 경계를 추측하지 않습니다. 읽는 쪽이 «블록 첫 행»을 알려 주고, `<tr>` 을 그 행에서 잘라 블록마다 파싱합니다.
+
+```python
+from bs4 import BeautifulSoup
+from html_topology_parser import HTMLTableGraphParser
+
+
+def split_blocks(html_content, starts_block):
+    """<tr> 들을 «블록 첫 행»(starts_block(tr) 이 참인 행)에서 잘라 표 여러 개로 돌려줍니다."""
+    table = BeautifulSoup(html_content, "html.parser").find("table")
+    blocks, rows = [], []
+    for tr in table.find_all("tr"):
+        if starts_block(tr) and rows:
+            blocks.append(rows)
+            rows = []
+        rows.append(str(tr))
+    if rows:
+        blocks.append(rows)
+    return ["<table>%s</table>" % "".join(rows) for rows in blocks]
+
+
+html_data = """
+<table>
+    <tr><td>LOT</td><td>WAFER</td><td>THK</td><td>RES</td></tr>
+    <tr><td>L001</td><td>W01</td><td>10.1</td><td>3.2</td></tr>
+    <tr><td>LOT</td><td>WAFER</td><td>BOW</td><td>WARP</td></tr>
+    <tr><td>L001</td><td>W01</td><td>21</td><td>40</td></tr>
+</table>
+"""
+
+# 블록마다 행 번호가 0 부터 다시 셉니다 — 그래서 「첫 행 · 앞 두 열이 헤더」가 블록마다 맞습니다
+parser = HTMLTableGraphParser(is_header_fn=lambda tag, row_idx, col_idx: row_idx == 0 or col_idx <= 1)
+for block in split_blocks(html_data, lambda tr: tr.find("td").get_text(strip=True) == "LOT"):
+    nodes, edges = parser.parse_to_graph(block)
+    for headers, val in parser.extract_semantic_tuples(nodes, edges).items():
+        print(f"계층구조: {headers} => 값: {val}")
+
+# [출력 결과]
+# 계층구조: ('L001', 'W01', 'THK') => 값: 10.1
+# 계층구조: ('L001', 'W01', 'RES') => 값: 3.2
+# 계층구조: ('L001', 'W01', 'BOW') => 값: 21
+# 계층구조: ('L001', 'W01', 'WARP') => 값: 40
 ```
 
 ---

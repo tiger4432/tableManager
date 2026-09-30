@@ -673,8 +673,9 @@ def test_a_page_whose_every_molecule_is_refused_is_values_not_an_exception():
 
 def _time_is_not_the_order_column():
     """The shipped majority shape: 13 of 15 v2 sources order by something other than
-    their time column. The two that do not (`lot_event`, `lot_slot_move`) keep the PAGE
-    refusal below, and that is the rule, not an exception to it."""
+    their time column. In the two that do not (`lot_event`, `lot_slot_move`) a blank time
+    is a blank cursor cell too, and the molecule is refused as `no_raw_ref` - the cursor is
+    asked first (총괄 4b5964ab2)."""
     raw = logical_bundle()
     raw["sources"]["input_rows"]["read"]["order_by"] = ["record_id"]
     return raw
@@ -697,20 +698,31 @@ def test_a_blank_time_refuses_its_molecule_by_the_time_name():
     assert refusal.addresses[0]["path"] == "event_frame.rows[1].event_at"
 
 
-def test_a_blank_ORDER_column_is_still_a_page_refusal():
-    """The half that does NOT move, and the reason it does not: `order_by` decides WHERE
-    THE PAGE IS. A blank there is not a row that cannot be translated, it is a reader
-    that cannot say what comes next - so there is no next molecule to keep."""
+def test_a_blank_ORDER_column_refuses_its_WHOLE_molecule_by_no_raw_ref():
+    """S-41 ② (the cursor part, 총괄 4b5964ab2): `order_by` is the cursor, and a row names
+    itself by it - a blank there leaves the row nothing to be said from. It was a PAGE
+    refusal, and the box's dt_log showed what that costs: one job with an empty
+    `dt_cell_key` stopped every follow-up that read it. Now the molecule holding the row
+    goes, WHOLE (ruling 116): two rows share `E-SHARED`, one is blank, the refusal counts
+    TWO - a molecule built from the other row alone would be a smaller event (the box's
+    72-row job said `has_netdie` 71)."""
     compiled = snapshot(_time_is_not_the_order_column())
-    base = base_rows(2)
+    base = base_rows(3)
+    base.loc[0, "event_key"] = "E-SHARED"
+    base.loc[1, "event_key"] = "E-SHARED"
     base.loc[1, "record_id"] = None
 
-    with pytest.raises(SourcePreparationError) as exc:
-        prepare_v2_cursor_batch(compiled, "input_rows", base, reader_for(base),
-                                preparers(), refusals=[])
-    error = issue(exc)
-    assert error["code"] == "source_preparation_incomplete"
-    assert error["path"] == "source_batch.rows[1].record_id"
+    refusals = []
+    events = prepare_v2_cursor_batch(compiled, "input_rows", base, reader_for(base),
+                                     preparers(), refusals=refusals)
+
+    assert [event["source_id"].tolist() for event in events] == [["IN-0002"]]
+    refusal, = refusals
+    assert (refusal.reason, refusal.rows) == ("no_raw_ref", 2)
+    assert "E-SHARED" in refusal.detail and "fill record_id" in refusal.detail, refusal.detail
+    assert list(refusal.addresses) == [{
+        "code": "source_preparation_incomplete",
+        "path": "bundle.sources.input_rows.read.order_by.record_id"}]
 
 
 def test_a_multi_row_molecule_is_refused_WHOLE_and_counts_all_its_rows():

@@ -198,7 +198,8 @@
     "processed_with@1": {
       "status": "active",
       "subjects": [
-        "wafer@1"
+        "wafer@1",
+        "dtwafer@1"
       ],
       "object": {
         "kind": "entity_ref",
@@ -311,6 +312,11 @@
       ]
     },
     "wafer@1": {
+      "keys": [
+        "wafer"
+      ]
+    },
+    "dtwafer@1": {
       "keys": [
         "wafer"
       ]
@@ -916,6 +922,9 @@
         "mappings": {
           "wafer-processed-with-recipe": {
             "predicate": "processed_with@1",
+            "when": {
+              "mat_type": ""
+            },
             "bind": {
               "occurred_at": {
                 "kind": "column",
@@ -924,6 +933,42 @@
               "subject": {
                 "kind": "entity",
                 "entity_type": "wafer@1",
+                "keys": {
+                  "wafer": {
+                    "kind": "column",
+                    "column": "wafer_id"
+                  }
+                }
+              },
+              "target": {
+                "kind": "entity",
+                "entity_type": "recipe@1",
+                "keys": {
+                  "recipe": {
+                    "kind": "column",
+                    "column": "recipe_id"
+                  }
+                }
+              },
+              "step": {
+                "kind": "column",
+                "column": "step"
+              }
+            }
+          },
+          "dtwafer-processed-with-recipe": {
+            "predicate": "processed_with@1",
+            "when": {
+              "mat_type": "DT"
+            },
+            "bind": {
+              "occurred_at": {
+                "kind": "column",
+                "column": "eventtime"
+              },
+              "subject": {
+                "kind": "entity",
+                "entity_type": "dtwafer@1",
                 "keys": {
                   "wafer": {
                     "kind": "column",
@@ -957,7 +1002,8 @@
           "wafer_id",
           "recipe_id",
           "step",
-          "eventtime"
+          "eventtime",
+          "mat_type"
         ],
         "unit": {
           "kind": "row"
@@ -973,7 +1019,8 @@
           "wafer_id",
           "recipe_id",
           "step",
-          "eventtime"
+          "eventtime",
+          "mat_type"
         ],
         "output_columns": {}
       },

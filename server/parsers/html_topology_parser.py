@@ -169,6 +169,7 @@ class HTMLTableGraphParser:
         total_cols = max_col_idx + 1
 
         results = {}
+        cells_on = {}
 
         for node in nodes:
             # 헤더가 아니고 값(value)이 비어있지 않은 데이터 셀을 출발점으로 삼음
@@ -185,7 +186,12 @@ class HTMLTableGraphParser:
                     is_wide = (other.col_span >= int(total_cols * 0.7))
                 
                 # 섹션 헤더는 반드시 가로 병합 셀이어야 함 (col_span > 1)
-                if other.is_header and other.col_span > 1 and is_wide:
+                # 🔴 [총괄 eed8b37de ②] AND IT MUST STAND OVER THIS CELL'S COLUMNS - a column header
+                #   reaches a cell UP only. Without it every wide header above applied to every
+                #   cell: two 2-wide groups A · B over 4 columns (int(4*0.7) = 2) both headed a1.
+                over = max(other.col_range[0], node.col_range[0]) <= min(other.col_range[1],
+                                                                          node.col_range[1])
+                if other.is_header and other.col_span > 1 and is_wide and over:
                     # 데이터 셀보다 행 번호가 상단인 섹션 헤더
                     if other.row_range[1] < node.row_range[0]:
                         section_headers.append(other)
@@ -220,8 +226,26 @@ class HTMLTableGraphParser:
             else:
                 key_tuple = tuple(clean_path)
 
+            cells_on.setdefault(key_tuple, []).append(node)
             results[key_tuple] = node.value
 
+        # 🔴 [총괄 eed8b37de ①] ONE PATH, ONE VALUE CELL. The answer is keyed by the path, so a
+        #   second value cell on a path replaced the first in silence (the lead measured 12 cells
+        #   -> 8). The cells are different facts and nothing here can say which one the path
+        #   means, so the table is refused by name.
+        # ⚠️ [총괄 f7738d7a4] THE NEXT STEP FIRST, THE PATH LAST. The file status cell keeps 500
+        #   characters of this line (ingestion/checkpoint.record_failure), so a long header path
+        #   is what that cut may take - never what to do.
+        shared = {path: cells for path, cells in cells_on.items() if len(cells) > 1}
+        if shared:
+            path, cells = next(iter(shared.items()))
+            raise ValueError(
+                "Next: mark the cell that tells these rows apart as a header (is_header_fn), so "
+                "each value has its own path. %d value cells share one header path (e.g. row %d "
+                "col %d and row %d col %d, counted from 0) - only one of them could be kept; %d "
+                "header path(s) in this table are shared. The path: %r"
+                % (len(cells), cells[0].row_range[0], cells[0].col_range[0],
+                   cells[1].row_range[0], cells[1].col_range[0], len(shared), path))
         return results
 
     def _reconstruct_2d_grid(self, table_tag) -> Tuple[Dict[Tuple[int, int], TableNode], int, int]:

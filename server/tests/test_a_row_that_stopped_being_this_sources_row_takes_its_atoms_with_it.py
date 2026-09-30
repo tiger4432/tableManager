@@ -91,12 +91,11 @@ def setup_excluding():
 def rows(count=5, eqp="EQP-7"):
     """Five rows of `dt_job_rollup` - one per job.
 
-    ⚠️ THE CLAUSE IS ON `dt_eqp` RATHER THAN ON AN IDENTITY PART, and the reason is a
-    measurement: `dt_job` reads its cursor from `dt_job`, and a batch whose last row leaves a
-    CURSOR column blank is refused by name (`cursor_value.<column>: cursor value is missing`)
-    before any of this is reached. So a source cannot be made to stop translating by blanking
-    one of those - the refusal arrives first, and it is a different question. `dt_eqp` is a
-    column the clause can name and the cursor does not.
+    ⚠️ THE CLAUSE IS ON `dt_eqp` RATHER THAN ON AN IDENTITY PART: `dt_job` reads its cursor
+    from `dt_job`, and blanking a cursor or identity column is a REFUSAL (`no_raw_ref` for a
+    cursor cell, 총괄 4b5964ab2; the page for an identity one) - a different question from a
+    clause saying the row is not this source's. `dt_eqp` is a column the clause can name
+    and the cursor does not.
     """
     return [{"created_at": OCCURRED_AT, "dt_job": JOBS[index],
              "netdie_count": 2 + index, "dt_eqp": eqp,

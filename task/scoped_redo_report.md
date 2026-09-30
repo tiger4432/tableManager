@@ -66162,3 +66162,638 @@ README    server/admin/dev_bench.py(두 곳) · python server/scripts/try_core.p
           (다시 뜨는 스크립트 capture_authoring_skeleton.py 가 옆에 있음)
 ```
 다음: eed8b37de ①(가 — 이름 대어 거절)+② 한 커밋 + 가이드 「쌓인 표는 먼저 나눠 읽기」 절 -> d8b1e7cfb 설계 보고 -> ④ dc4ca3e7c.
+
+
+## [구현자 -> 총괄] 착지 499d89de4 — eed8b37de ①(가)+②: HTML 토폴로지 파서 · 한 헤더 경로에 값 칸 하나 · 옆 그룹 헤더 안 섞임
+
+```
+①        extract_semantic_tuples — 같은 헤더 경로에 값 칸이 둘 이상이면 ValueError. 거절문(잘림): 2 value cells share the header path ('L001', 'WAFER') (e.g. row 1 col …
+         경로 · 칸 수 · 좌표 하나 · 겹친 경로 수 · 다음 행동(행을 가르는 칸을 is_header_fn 에서 헤더로)
+②        넓은 헤더는 그 값 칸과 «열이 겹칠 때만» 섹션 헤더 — 같은 줄의 A · B 가 서로의 칸에 안 붙음
+전 → 후   (origin 파서 → 이 커밋, 같은 픽스처)
+         한 경로 표   값 칸 12 → 결과 6 (조용히 잃음) → 거절 · 웨이퍼 열을 헤더로 하면 8 / 8
+         두 그룹      값 칸 6 → 결과 5 → 6
+         소유자 모양   그대로 (A → 집계 · A,A1 → 집계1 · A,A2 → 집계2)
+         쌓인 표      값 칸 8 → 결과 8 (③ 안 지음 — 아래 표 경로에 위 표 머리가 붙는 모양은 남음)
+부르는 곳  추적 코드(시험 밖) 0 · 박스 ingestion_workspace 파이썬 18 개 중 0 (bonding_map_parser 는 HTMLMatrixTableParser — 안 바뀜)
+시험      test_every_value_cell_keeps_its_own_header_path.py 다섯 칸
+변이      거절 끄기 — 빨강 test_two_value_cells_on_one_header_path_are_refused_by_name · 열 겹침 조건 빼기 — 빨강 test_sibling_groups_head_only_their_own_columns · 둘 다에서 test_html_topology.py 는 초록이었음
+전체      6 failed, 7497 passed, 187 skipped, 3 xfailed in 814.65s (0:13:34) · 실패 6 개: test_a_sentence_says_itself_only_for_the_rows_it_names:test_the_sample_is_written_in_the_one_format_both_writers_use · test_config_reload_integrity:test_h3_cross_directory_replace_applies_physical_alter · test_core_alignment_mapper:test_live_mapper_and_tracked_sample_are_byte_identical · test_core_usage_mapper:test_live_mapper_and_tracked_sample_are_byte_identical · test_dt_inventory_metadata_mapper:test_live_mapper_matches_tracked_sample · test_one_place_decides_where_the_server_is:test_the_repo_root_is_one_above_it
+          그중 test_h3_cross_directory_replace_applies_physical_alter 는 알려진 다섯 밖 — 「debounced reload never ran」(대기 시간 초과)
+          그 파일만 다시 돌리면 32 passed in 35.51s · 직전 전체(7aad503cb 착지 때)에서는 통과 · 파서와 닿는 자리 없음
+가이드     §3.1 거절과 다음 행동 · §1-3 열 규칙 · 새 §3.1-bis 「쌓인 표는 먼저 나눠 읽기」(split_blocks) — 예시 코드와 출력 줄은 돌려서 나온 그대로
+          가이드 예시를 돌리는 시험은 없음(잘라 쓰기 금지 — 한 번 돌려 출력만 옮김)
+재기동    없음 — RUN.md 맨 위
+```
+다음: d8b1e7cfb 설계 보고(더할 것 셋 포함) -> ④ dc4ca3e7c.
+
+## [구현자 -> 총괄] d8b1e7cfb 설계 보고 — 같은 id 가 시각에 따라 다른 물건 (DT 세대 · 자재 타입) · 짓지 않음
+
+```
+추천     안 2 — 경계 표를 따로 짓지 않고, 쓰는 조인이 DT 표를 바로 읽는다
+         조인에 시각 칸(as_of)을 넓히고, 각 표에 두 칸(mat_type · generation), 원장은 die · wafer 키를 넓힌다
+기존 선언만으로는 안 선다  decide 로 경계 표를 지으면 세 곳에서 막힌다(1번)
+여쭐 것   다섯 — 맨 아래
+수        전부 이 박스 수. 박스엔 DT 재사용도 wafer out time 칸도 없어서 «id 하나의 행 수»로 한도만 잰다
+```
+
+### 1 경계 표 — 기존 선언으로 되나
+
+```
+decide(파생행)로 (id, out time) 행은 지어진다 — 판단키를 [id, out time] 로 두면 짝마다 한 행
+막히는 곳 셋
+  fields 필수   enrichment/config._validate_rule — 판단키와 안 겹치는 «사람이 채울 칸»이 하나 이상 있어야 한다. 경계 표엔 그런 칸이 없다
+  상수 없음     집계는 count · min · max · unique_concat 넷(AGGREGATION_FUNCTIONS) — 'DT' 같은 글자를 적을 칸이 없다
+  거두기 없음   enrichment/mapper.py 는 새 짝을 올리기만 한다. out time 을 고치거나 지우면 옛 경계 행이 남아 세대가 틀린다
+넓힐 칸      쓰는 조인(chain/join_into.py)의 on.table 을 DT 표로 두면 경계 표가 필요 없다 — 조인이 DT 표를 바로 읽는다
+             새 종류 · 새 표 0. 넓히는 것은 조인 안의 칸 셋 — as_of(2번) · take 의 상수 항목 · 짝 없을 때 값(4번)
+```
+
+### 2 시각 조인 — 조인의 칸 하나로
+
+```
+지금     키가 같은 원천 행이 둘 이상이면 그 행을 건너뛴다(fan-out 그물) · 시각 축 없음
+넓힘     derive.join.as_of: {left: <into 표의 시각 칸>, right: <on 표의 시각 칸>}
+뜻       키가 같은 원천 행 중 right 시각 ≤ left 시각인 것의 «가장 늦은 것» 하나
+그물     같은 키 · 같은 시각 · 같은 take 값 = 답 하나 (DT 표의 셀 행들이 경계 하나로 접힌다)
+         같은 시각에 take 가 다르면 지금처럼 건너뛰고 이름 댄다 — 그물의 뜻이 「행 둘」에서 「답 둘」로 바뀐다
+시각 읽기  time_format.instant_key 하나 — 값 비교(value_key)가 쓰는 그것
+         후보 시각 칸 5 개 중 4 개가 string 으로 선언됨(core_wafer_map.event_time · dt_log.event_time · wafer_id_status.valid_from · wafer_process.eventtime) — SQL 로 못 거르고 읽은 뒤 가린다
+못 읽는 시각  짝 없음으로 두고 한 줄로 센다 (키가 모두 빈 행과 같은 모양)
+```
+같은 칸이 둘에 쓰인다 — 방향은 하나, 답을 «받는» 표가 into:
+```
+경계       on.table <DT 표> · into.table <각 표>
+           on [{left: <id 칸>, right: <dt wafer id>}] · as_of {left: <사건 시각>, right: <wafer out time>}
+           take [<wafer out time> -> generation, 상수 "DT" -> mat_type] · 짝 없을 때 {mat_type: "WF"}
+액션 닫힘   on.table <액션 표> · into.table <측정 표>
+           on [{left: <대상 키>, right: <대상 키>}] · as_of {left: <측정 시각>, right: <발급 시각>}
+           take [<액션 id> -> 닫는 액션]      발급 «뒤» 측정만 그 액션을 받는다 (보드 가치관 4 「측정으로 닫힌다」)
+```
+
+### 3 모집단 (박스)
+
+```
+센 것     박스 table_config 에서 칸 이름이 wafer|wf_id|wfid|dtw 인 표 — «이름»으로 센 대리
+          박스의 DT 신원 칸 dt_log.dt_job(원장에서 die 의 mat_type DT 로 묶임)은 이 이름에 안 걸린다
+명령      저장소 뿌리 scratchpad/ (추적 안 됨) — probe_population.py · probe_relkind.py · probe_time_parse.py ·
+          probe_atoms_per_row.py · probe_ledger_k.py · probe_die_sentences.py — conda env assy_manager 로 인자 없이 (읽기만)
+표        27 = 실제 표 19 · 뷰 8 (pg_class — 선언의 kind 와 전부 일치)
+core id 와 철자가 만나는 표  14  (core id 집합 = dt_log.core_wafer ∪ core_wafer_map.wafer_id ∪ core_usage_map.core_wafer — 대리)
+  그중 뷰 7 — 소유자 「운영에서는 뷰 안 써」 · 칸은 밑 표가 든다
+  그중 표 7 — 시각 칸 있음 5 (core_wafer_map · dt_log · process_param · wafer_id_status · wafer_process) · 없음 2 (core_usage_map · dt_core_view — 가를 수 없다)
+시각이 읽히나   dt_log.event_time 534,893 중 492,426 이 글자(박스 채움 행) · 나머지는 전부 읽힘
+id 칸 둘       dt_log(core_wafer · core_wafer_id) — 칸 짝(mat_type · generation)도 id 칸마다
+목록 칸        lot_event.waferids 는 콜론 목록 — 한 행이 여러 웨이퍼라 짝 하나를 못 든다. 펼친 lot_slot_wafer(한 행 한 웨이퍼)는 든다
+               박스 lot_event 의 웨이퍼 id 는 core id 와 0 만남 — 박스 세계가 따로라서, 운영 주장 아님
+소유자 문장 밖  base_wafer_id 표 bonding_inventory · bonding_log · bonding_map · delam_obs · inspection_run · void_obs — core id 와 0 만남. 넣을지 안 정함(여쭐 것 5)
+```
+
+### 4 첫 DT 이전 = WF — 누가 적나
+
+```
+ㄱ 짝 없음 = WF   조인에 「짝 없을 때 적을 값」 칸 — 적는 이는 선언
+                 f3c04dee3 의 「짝 없는 행은 안 쓴다」를 그 선언이 있을 때만 뒤집는다
+                 그 커밋의 소유자 판정은 「짝이 된 빈 값은 빈 값으로」 쪽, 짝 없는 쪽은 «없음 ≠ 빈 값» 원칙에 기댄 구현 판단(커밋 본문)
+ㄴ 바닥 경계 행   코어 웨이퍼 표에서 decide 로 (id, 처음 본 시각, WF) — 1번의 막힘 셋에 그대로 걸린다
+ㄷ 비면 WF       아무도 안 적는다. 그런데 빈 칸은 「체인이 아직 안 옴」·「시각을 못 읽음」도 뜻한다 — 박스 dt_log 492,426 행이 그 둘째
+blank: skip(소유자 09-29 ㄱ)은 가장 가까운 칸이지만 «짝이 된 빈 값»을 안 쓰는 칸 — 짝이 없는 행과 다른 경우라 이것을 못 덮는다
+```
+
+### 5 원장 — 키에 넣나, 엔티티를 가르나
+
+```
+K 키 넓힘     die [mat_id, x, y, mat_type] 에 generation · wafer [wafer] 에 mat_type · generation
+  좋은 점    한 종류 안에서 WF 와 DT 세대가 갈린다 — die 가 이미 mat_type 을 키에 든 모양을 웨이퍼에 넓히는 것
+  위험       키가 바뀌면 새 버전(die@2 · wafer@2) — 묶는 바인딩 전부가 두 칸을 묶는다(박스 die 12 · wafer 8)
+             그 소스 11 개의 원자 1,395,374 개가 한 번 전부 다시 번역된다(박스 전체 2,261,723) · 커서 지문이 바뀌어 커서가 선다(LEDGER_GUIDE §4.2)
+             WF 행은 generation 이 빈 값 — 그 키 칸에 allow_null
+             칸이 빈 행(체인이 아직 안 옴 · 시각 못 읽음)은 키가 비어 «이름 대어 거절» — 조용히 안 빠진다
+E 엔티티 둘   wafer(WF) · dtwafer(DT, 키에 generation) · 문장마다 when: {mat_type: "WF" | "DT"}
+  좋은 점    종류 이름이 무엇인지 말한다
+  위험       v5 when 은 «같음»만 · 안 맞으면 «말 안 함»이지 거절이 아니다(roleframe._unit_says) — mat_type 이 빈 행은 원자 0 · 거절 0 (그 좌석이 세는 줄은 없음 — 번역 쪽 다른 줄이 세는지는 안 쟀다)
+             문장이 종류마다 둘로 · 다시 번역하는 양은 K 와 같다
+둘 다        자재 타입 낱말이 지금 셋 — 박스 die 바인딩 12: Wafer 9 · DT 2 · DTLotSlot 1. 소유자 낱말은 WF · DT
+             같음 비교는 공백·숫자만 접고 동의어는 안 접는다 — 낱말 한 벌을 정해야 한다(여쭐 것 3)
+```
+
+### 5 더하기 — 다이 신원 · 상수 mat_type 문장 · 소속 엣지 (총괄 물음)
+
+```
+다이 신원   die 키는 [mat_id, x, y, mat_type] · DT 다이의 mat_id 는 dt_job(_id) — DT id 가 재사용되면 (dt_job_id, x, y, DT) 가 세대 사이에 같다
+           -> 부딪힌다. 세대는 웨이퍼 키만이 아니라 «다이 키»에도 든다. 안 K 의 die 키 넓힘이 그 자리
+           (mat_id 에 세대를 이어 붙이는 길은 원장 선언이 못 하는 계산이라, 키 칸 하나를 더하는 것이 같은 일의 선언 모양)
+die 바인딩 12 개를 mat_id 칸 «이름»으로 가르면 (대리 — scratchpad/probe_die_sentences.py)
+  core 쪽 · 상수 Wafer   4  -> mat_type 이 상수에서 «시각으로 갈린 칸»으로 바뀐다 (같은 id 가 DT 일 수 있어서)
+  dt 쪽 · 상수 DT        2  -> mat_type 은 상수 그대로 · generation 만 더한다 (그 행의 out 시각이 곧 세대)
+  base 쪽 · 상수 Wafer   5  -> 소유자 문장 밖 (여쭐 것 5)
+  그 밖 · DTLotSlot      1  -> 웨이퍼 id 가 아니라 그대로
+소속 엣지   die -> wafer 문장은 박스에 2 (bonded_from 의 core-die-in-core-wafer, in_container@1 · bonded_from 의 base-die-in-base-wafer, in_container@1) — DT 다이 쪽은 0
+           세대 신원이 생기면 DT 전달 소스(dt_transfer · transfer_event)에 문장 하나:
+           die (dt id, x, y, DT, gen) in_container wafer (dt id, DT, gen) — core-die-in-core-wafer 와 같은 모양
+           entities.references 로 거는 길은 폼이 내놓지 않는 칸(test_ledger_skeleton NOT_OFFERED)이라 안 쓴다
+```
+
+### 6 소급 — 경계 하나(새 out time)가 들어오면
+
+```
+계산    그 id 의 into 표 행을 «전부» 읽고 가린다 — 시각 칸이 string 이라 SQL 로 못 좁힌다
+쓰기    값이 바뀐 행만 — 새 경계부터 다음 경계 전까지. 값이 같으면 쓰기 문이 칸을 안 건드려 EDIT 가 안 난다(crud has_changed)
+원장    쓰인 행만 아웃박스로 따라가 그 분자를 다시 번역(ledger/followup.py — 판정 144, 아웃박스가 살아 있는 길 · 커서는 따라잡기)
+늦게 온 이른 out time   쓰기 · 원장은 «그 경계와 다음 경계 사이»만. 계산은 그 id 전부
+```
+박스 한도 (경계 하나가 id 의 모든 행 앞에 올 때 — id 하나의 행 수):
+```
+core_usage_map.core_wafer
+    id 당 행 최대 183 · 중앙 183 · 행당 원자 원장 소스 아님 · 시각 칸 없음
+core_wafer_map.wafer_id
+    id 당 행 최대 357 · 중앙 79 · 행당 원자 원장 소스 아님
+dt_core_view.core_wafer
+    id 당 행 최대 183 · 중앙 183 · 행당 원자 원장 소스 아님 · 시각 칸 없음
+dt_log.core_wafer
+    id 당 행 최대 12000 · 중앙 14 · 행당 원자 1.85 (dt_job)
+process_param.wafer_id
+    id 당 행 최대 40 · 중앙 16 · 행당 원자 1.0 (process_param_num_measure) · 1.0 (process_param_txt_measure)
+wafer_id_status.wafer_id
+    id 당 행 최대 2 · 중앙 1 · 행당 원자 원장 소스 아님
+wafer_process.wafer_id
+    id 당 행 최대 100 · 중앙 5 · 행당 원자 1.0 (wafer_process_recipe)
+```
+
+### 안 셋
+
+```
+안 1  경계 표(decide) + 시각 조인
+  무엇       decide 로 경계 표 · 조인이 그 표를 읽음 — decide 도 넓혀야 한다(fields 선택 · 상수 · 거두기)
+  운영자     decide 선언 1 + 조인 선언(표 × id 칸마다)
+  좋은 점    경계가 한 표에 보여 한 행으로 고친다 · 읽기가 작다
+  위험       decide 세 곳 넓힘 · 거두기를 안 넓히면 틀린 경계가 남는다
+  크기       안 쟀다
+
+안 2  조인이 DT 표를 바로 읽음  (추천)
+  무엇       join 에 as_of · take 의 상수 항목(DT) · 짝 없을 때 값(WF) · 각 표에 칸 둘 · 원장 K
+  운영자     조인 선언(표 × id 칸마다) · 원장 die · wafer 키 넓힘
+  좋은 점    새 표 · 새 종류 0 · DT 표를 고치면 조인의 원천 쪽이 그 id 를 다시 계산 — 틀린 경계가 안 남는다 · 액션 닫힘이 같은 as_of
+  위험       DT 표를 id 마다 읽는다(같은 시각 행은 접어도 스캔은 원천 행 수만큼) · 짝 없음 = WF 가 f3c04dee3 절반을 선언에서 뒤집는다
+  크기       조인 한 파일(join_into 의 읽기 · 답 가리기 · 원천 쪽 행 찾기) + 선언 번역(rule_shape) · 스켈레톤 칸 — 줄 수는 안 쟀다
+
+안 3  세대 한 칸 + 원장이 있음/없음으로 가름
+  무엇       조인은 as_of 만 · 각 표에 generation 한 칸 · 원장 v5 when 에 present/absent 를 넓혀 WF 문장 · DT 문장
+  운영자     조인 선언 + 원장 문장 둘씩
+  좋은 점    f3c04dee3 그대로 · 체인에 상수 0
+  위험       빈 칸 = WF 라 「아직 안 옴」·「시각 못 읽음」도 WF 로 번역된다 · 총괄 그림(칸 둘)과 다르다 · 자재 타입이 표에 안 보인다
+  크기       안 쟀다
+```
+
+### 여쭐 것
+
+```
+1 경계 시각과 «같은» 시각의 행   DT 표의 dt wafer id 칸은 새 세대(≤)여야 하고, 같은 행의 core wafer id 칸은 (두 id 가 같을 때) 옛 WF(<)여야 한다
+                               한 규칙으로 두 칸을 다 못 맞춘다 — as_of 에 「같은 시각 포함」 칸을 둘지, DT 표 자기 칸은 조인 없이 원장이 바로 묶을지
+2 짝 없음 = WF                  f3c04dee3 의 「짝 없는 행은 안 쓴다」를 선언이 적었을 때만 뒤집어도 되나
+3 자재 타입 낱말 한 벌           지금 Wafer 9 · DT 2 · DTLotSlot 1 · 소유자 낱말 WF · DT
+4 선언 수                       into.table 이 표 하나라 (표 × id 칸)마다 조인 하나 — 박스로 세면 7 쌍(시각 칸 있는 것 5)
+                               「두 줄」로 안 말해진다. into 를 여러 표로 넓힐지
+5 base_wafer_id 표를 넣나
+```
+
+## [구현자 -> 총괄] dc4ca3e7c 설계 보고 — 엔티티 속성은 객체 표 하나에서 · 짓지 않음
+
+```
+추천     안 2 — decide(파생행)를 넓혀 «사람 칸 없는 파생행»으로 객체 표를 채운다. 관문 둘은 「적재는 세우고 이름 대기 · 저장은 거절」(ㄱ)
+오늘 되나  된다, 대가를 치르고 — decide 둘이 한 객체 표에 «없으면 만들고 자기 칸만» 쓴다(PG 측정, 두 순서 같음). 조인은 행을 못 만든다
+관문 수   체인 — 켜진 규칙 둘이 같은 값 칸을 쓰는 쌍: 박스 1 · 표본 0 · 원장 — 한 속성을 둘 이상이 매김: 박스 0 · 표본 0
+수        PG 측정 말고는 전부 이 박스 수
+```
+
+### 1 행 만들기 + 자기 칸만 — PG 측정
+
+```
+탐침      원천 A(칸 a) · 원천 B(칸 b) · 객체 표(키 ent · a · b · note) — 제품의 체인 묶음 본문으로 돌림
+          저장소 뿌리 scratchpad/test_zz_probe_object_table.py (추적 안 됨 — server/tests 에 넣고 run_pg_tests.py -k zz_probe_object_table -s)
+조인만    객체 표 비었을 때 A 가 들어옴 -> 객체 행 [] (로그 「오른쪽 표에서 짝을 찾은 행이 없습니다」) — 조인은 있는 행만 고친다
+decide 둘  A 먼저 -> [('E1', '1', '2', None)] · B 먼저 -> [('E1', '1', '2', None)]  (한 행에 a · b, 서로 안 지움, 순서 같음)
+사람 칸    note 를 사람이 적고 A 의 값 1 -> 5 -> [('E1', '5', '2', 'checked')] (사람 칸 · b 그대로)
+대가 넷    ① fields 필수 — 판단키와 안 겹치는 «사람이 채울 칸»이 decide 마다 있어야 한다(둘 다 note 를 적어도 로드됨)
+          ② 그래서 객체 행이 decide 마다 작업 목록의 «열린 행» — note 전 1 개씩(decide 둘 모두)
+          ③ decide 하나가 규칙 2 개로 선다 — auto_confirm 반쪽이 객체 표 쓰기마다 깨어나 「이 표에 켜진 자동확정 규칙이 없습니다」로 끝남
+          ④ 원천 행을 지워도 값이 남는다 — A 의 원천 행 삭제 뒤 [('E1', '5', '2', 'checked')] (decide 는 거두기를 안 한다)
+값의 모양   칸은 «집계»로만 쓴다(count · min · max · unique_concat) — 원천 한 키에 한 값이면 max 가 곧 그 값, 여럿이면 규칙이 필요
+넓힐 칸    decide 의 fields 를 «선택»으로 — 없으면 작업 목록 · auto_confirm 반쪽이 안 선다(②③). 그리고 원천 행 삭제에 그 원천 칸을 다시 집계(④)
+           새 종류 0 — 파생행(decide)의 칸 하나를 넓힌다
+```
+
+### 2 관문 A (체인) — 한 표의 한 칸을 쓰는 규칙은 하나
+
+```
+명령      저장소 뿌리 scratchpad/census_chain_cell_writers.py (추적 안 됨, 저장소 뿌리에서 인자 없이)
+센 것     join 은 take 의 into 칸 · decide 는 집계 이름 (+ auto_confirm 이면 fields) · 키 칸은 따로 · mapper · 평면 규칙은 «코드만 앎»
+박스      값 칸 겹침 1 — dt_log.dt_lot <- inventory_confirmed · test (둘 다 켜짐 — 적재에서 떨어뜨리면 하나가 멈춘다)
+          키 칸 겹침 0 · 코드만 칸을 아는 규칙 10 (0 이 아니라 «모름»)
+표본      값 칸 겹침 0 · 키 칸 겹침 1 — dt_inventory.dt_job <- sample_unified_decide (off) · sample_unified_auto_confirm (off) · 코드만 아는 규칙 12
+🔴 키 칸    decide 둘이 같은 객체 표를 쓰면 키 칸(ent)은 «언제나» 둘이 쓴다 — 관문이 키 칸까지 세면 객체 표 모양 자체가 걸린다. 값 칸만 센다
+```
+
+### 3 관문 B (원장) — 한 엔티티 속성을 매기는 소스는 하나
+
+```
+명령      저장소 뿌리 scratchpad/census_ledger_attribute_sources.py — server/ 에서, 표본은 인자로 경로
+센 것     적재가 쓰는 물려받기 그대로(setup_registry.with_source_attributes — 역할이 적으면 역할, 아니면 소스의 bind.entities)
+박스      (엔티티, 속성) 1 개 — dtjob@1.dt_eqp <- dt_job · 둘 이상이 매김 0
+표본      (엔티티, 속성) 1 개 — dtjob@1.dt_eqp <- dt_job · 둘 이상이 매김 0
+그래서     오늘 이 관문이 적재에서 떨어뜨릴 소스는 박스 · 표본 0 — 운영 선언(소유자 파일)은 못 셌다
+```
+
+### 관문이 걸렸을 때 적재가 할 일 — 안 셋 (둘 다 같은 물음)
+
+```
+ㄱ 적재는 세우고 이름 댄다 · 저장은 거절   판정자는 하나(S-244 — expand_declaration), 답이 둘: 저장 라우트는 거절, 적재는 쌍마다 한 줄 남기고 규칙을 세운다
+                                      unknown_join_cells 와 같은 자리 · 도는 것은 안 멈추고 새 쌍은 못 들어온다
+ㄴ 앞 선언만 세우고 뒤 것은 건너뜀         이름 대고 건너뜀 — 박스에서 한 규칙이 멈춘다(위 쌍). 「뒤」가 파일 순서라 운영자가 고르지 않은 쪽이 멈춤
+ㄷ 저장에서만                          적재는 오늘 그대로 — 판정자가 둘이 된다(S-244 가 닫은 모양)
+추천  ㄱ — 이미 도는 것이 안 멈추고, 새로 생기는 겹침은 저장 버튼이 막는다
+```
+
+### 4 소급 — 속성을 객체 표 소스로 옮기면
+
+```
+속성의 모양  원장에 따로 된 원자가 아니라 그 소스 문장의 원자마다 qualifiers 로 실린다 — dt_job 소스 원자: register 433,096 · has_netdie 433,096
+옮기면      dt_job 소스 선언이 바뀌어 커서 지문이 바뀌고 그 소스 원자 866,192 개 전부가 다시 번역된다
+           + 객체 표 소스가 새로 낼 원자 — 엔티티마다 하나면 dtjob 433,095 개(원장의 register 주어 수) · dt_log 의 dt_job 은 488,428 개
+박스 수    원장 전체 2,261,723 중 — 박스 dt_log 는 대부분 채움 행이라 운영 규모 주장 아님
+```
+
+### 안 셋 (객체 표를 무엇으로 채우나)
+
+```
+안 1  decide 그대로 — 지금 되는 것
+  무엇       원천마다 decide 선언 하나(into 객체 표 · key = 엔티티 keys · 집계로 자기 칸) · 사람 칸 하나를 둔다
+  운영자     원천마다 선언 하나 + 객체 표에 사람 칸 하나
+  좋은 점    코드 0 — PG 에서 도는 것을 쟀다
+  위험       객체 행이 decide 수만큼 작업 목록에 뜬다 · decide 마다 규칙이 하나 더 돈다 · 지운 원천의 값이 남는다
+  크기       코드 0 (관문 제외)
+
+안 2  decide 넓힘 — 사람 칸 없는 파생행  (추천)
+  무엇       fields 를 선택으로 — 없으면 작업 목록 · auto_confirm 반쪽이 안 선다 · 원천 행 삭제에 그 원천 칸을 다시 집계
+  운영자     원천마다 decide 선언 하나 (fields 안 적음)
+  좋은 점    두 줄로 말해진다 — 「객체 표를 into 로, 엔티티 키를 key 로, 자기 칸을 집계로 적으면 됩니다」 · 새 종류 0
+  위험       값이 집계를 지난다(원천 한 키에 값이 여럿이면 max/min 중 무엇인지 적어야) · 삭제 다시 집계는 새 길
+  크기       enrichment/config._validate_rule 한 곳 · chain_rules_for(반쪽 세우기) 한 곳 · 삭제 사건 — 줄 수는 안 쟀다
+
+안 3  조인 넓힘 — 「없으면 만든다」 칸
+  무엇       join 의 into 에 행 만들기 칸 · take 가 값을 그대로 옮긴다
+  운영자     원천마다 조인 선언 하나
+  좋은 점    값이 집계 없이 그대로
+  위험       원천 한 키에 행이 둘이면 조인은 그 행을 건너뛴다(fan-out 그물) — 같은 엔티티가 원천에 여러 행인 표는 못 쓴다 · 삭제 거두기 없음
+             조인의 원천 쪽 행 찾기는 into 행이 «있다»는 전제 — 만들기를 넣으면 짝(:target)과 원천 쪽 둘 다 바뀐다
+  크기       안 쟀다
+```
+
+### 여쭐 것
+
+```
+1 관문이 걸렸을 때 — ㄱ(적재는 세우고 이름 · 저장은 거절)로 가도 되나
+2 객체 표 칸의 값이 원천 한 키에 여럿일 때 — max · min · 가장 늦은 것 중 무엇을 기본으로 둘지(안 2)
+3 박스의 켜진 겹침 한 쌍(dt_log.dt_lot <- inventory_confirmed · test) — 운영에도 같은 모양이 있으면 ㄱ 에서 그 줄이 뜬다
+```
+
+### 지난 착지(499d89de4)에서 찾은 것 — 물음
+
+```
+파일 상태 칸(ingestion/checkpoint 의 note)은 사유의 마지막 줄을 500 자까지만 남긴다
+토폴로지 거절문은 한 줄 301 자이고 헤더 경로를 앞에, 다음 행동(「Next: …」)을 끝에 둔다 — 경로가 216 자를 넘으면 그 칸에서 다음 행동이 잘린다
+FileIngestionLog 에는 전문이 남는다. 다음 행동을 앞으로 옮길지(한 줄 순서만 바꿈) — 여쭙니다
+```
+
+## [구현자 -> 총괄] 착지 c4faced98 — f7738d7a4: 토폴로지 거절문 «다음 행동 먼저, 경로 끝»
+
+```
+고침      거절문 = 「Next: mark the cell that tells these rows apart as a header (is_header_fn), so each value has its own path.」
+          + 칸 수 · 좌표 하나 · 겹친 경로 수 + 「The path: (…)」 맨 끝 — 파일 상태 칸이 500 자에서 자르면 잘리는 쪽은 경로
+시험      같은 파일에 한 칸 — 헤더 경로 400 자 넘는 표 · 워처가 넘기는 그대로(traceback) record_failure 에 넣고 · 저장된 note 에 다음 행동 문장이 온전히
+변이      옛 순서로 되돌리면 — 빨강 test_the_next_step_survives_the_file_status_cell_on_a_long_header_path (1 failed, 5 passed in 1.03s) · 부분 문자열만 보는 첫 칸은 두 순서 모두 초록
+전체      5 failed, 7499 passed, 187 skipped, 3 xfailed in 690.56s (0:11:30) · 실패 5 개: test_a_sentence_says_itself_only_for_the_rows_it_names:test_the_sample_is_written_in_the_one_format_both_writers_use · test_core_alignment_mapper:test_live_mapper_and_tracked_sample_are_byte_identical · test_core_usage_mapper:test_live_mapper_and_tracked_sample_are_byte_identical · test_dt_inventory_metadata_mapper:test_live_mapper_matches_tracked_sample · test_one_place_decides_where_the_server_is:test_the_repo_root_is_one_above_it
+같이      가이드 §3.1 한 마디 · RUN.md 토폴로지 절의 거절문 인용을 새 순서로
+재기동    없음
+```
+다음: 대기열 빔(객체 표 · DT 세대는 소유자 답 기다림) — 감시 켜 두고 기다립니다.
+
+## [구현자 -> 총괄] 363db7dfa (+7d1a405ef) 짓기 전 확인 1~5 — 스텝으로 자재 타입 가르기 · 짓지 않음, 「가」 기다림
+
+```
+한 줄    그림대로 짓기 전에 하나 여쭙니다 — 단계표에 없는 스텝의 행이 원장에서 «사라지는» 회귀(아래 1-bis)
+```
+
+```
+1 빈 mat_type 을 세는 줄   없다 — when 을 읽는 자리는 roleframe.interpret_unit 한 곳(_unit_says)이고 안 맞으면 건너뛰기만 한다
+                        번역 영수증(runtime_v2._batch_receipt: molecules · atoms_written · refused …)에도 그 칸이 없다 -> 그 줄이 이번 일
+                        모양 안: 분자마다 «어느 문장도 안 말함»을 세어 영수증 칸 하나 + 배치마다 한 줄(when 칸 · 본 값 · 수 · 다음 행동)
+1-bis 🔴 회귀            문장 둘(when WF · when DT)로 바꾸면 단계표에 없는 스텝(빈 mat_type)의 행은 둘 다 안 맞아 원자 0 —
+                        지금 wafer@1 에 있는 그 행의 원자가 다시 번역되는 순간 «빠진다»(세는 줄이 생겨도 빠지는 것은 같다)
+                        안 ㄱ  단계표엔 DT 스텝만 적고, WF 문장을 when {mat_type: ""} 로 — 빈 칸 = core. 빠지는 행 0
+                              (읽기로는 _unit_says 가 None 을 "" 로 접어 맞음 — 안 쟀다) · 위험: 조인이 아직 안 온 DT 행이 잠깐 core 로 갔다가 옮겨감
+                        안 ㄴ  WF · DT 둘 다 적게 하고 빈 행은 원자 0 + 세는 줄 — 그림 그대로 · 위험: 단계표를 다 채우기 전엔 공정 원자가 빠짐
+                        제 추천 ㄱ — 지금 도는 원자를 잃지 않는다. ㄴ 은 단계표 완성이 선행 조건
+2 옛 원자 물러나나(PG)   물러난다 — 원장에서 «지워진다»(대체 표지가 아니라 DELETE, cardinality 와 무관)
+                        잰 자리: rescope 가 쓰는 저장소 문 그대로 — 행 색인(row_refs_for)으로 옛 ref 를 겨누고 write_batch(withdraw_refs, row_refs) 한 커밋
+                        신원 이동   aimed ['ref-R1'] | withdrawn 1 inserted 1 | [('dtwafer@1', 'processed', 'S100', 'ref-R1')]
+                        틀린 수정·고침 p_one   [('wafer@1', 'p_one', '5', 'ref-R2')]
+                        틀린 수정·고침 p_many  [('wafer@1', 'p_many', '5', 'ref-R2')]
+                        키 칸을 잘못 고침(ref 바뀜)  aimed ['ref-R3'] | withdrawn 1 inserted 1 | [('wafer@1', 'p_one', '5', 'ref-R3b')]
+                        길: 사람 수정 · 사람 층 지우기(delete_cell_source_batch 가 행에 setattr) · 조인이 쓴 mat_type 모두 EDIT 사건 ->
+                            체인 워커가 조건 없이 띄우는 run_ledger_followup -> rescope(withdraw=True). 이 길 끝에서 끝은 짓기 게이트에서 잰다
+                        ⚠️ 잘못된 값의 원자는 원장에 남지 않는다 — 무엇이 언제 틀렸나는 표의 칸 이력에만
+3 다시 도는 양(박스)      스텝을 읽는 원장 소스 3 · 원자 559,045 (process_param_num_measure 73,275 · process_param_txt_measure 7,052 · wafer_process_recipe 478,718)
+                        선언을 바꾸면 커서 지문이 바뀌어 그 소스 커서가 선다(LEDGER_GUIDE §4.2)
+                        다시 번역은 --scope-column mat_type --scope-values DT 로 «DT 행만» — 커서 안 움직임(§4.1-ter). 박스의 DT 스텝 행 수는 단계표가 없어 못 셈
+4 선언 초안              step_phase 표   {"business_key": "step", "composite_key_source": ["step"], "column_types": {"step": "string", "mat_type": "string"}}
+                        공정 표마다 조인  {"name": "<표>_step_phase", "on": {"table": "step_phase"}, "into": {"table": "<표>"},
+                                         "derive": {"kind": "join", "join": {"on": [{"left": "<그 표의 스텝 칸>", "right": "step"}], "take": ["mat_type"]}}}
+                                         (공정 표에 mat_type 칸 하나 더함)
+                        원장            entities dtwafer@1 {"keys": ["wafer"]} · 공정 소스 문장을 둘로 — 지금 문장에 when {mat_type: <WF 또는 "">} ·
+                                         같은 문장을 subject dtwafer@1 로 복사해 when {mat_type: "DT"}
+                        운영자 두 줄     「운영에서는 step_phase 표에 DT 스텝을 한 줄씩 적으면 됩니다. 공정 표마다 그 표를 on 으로 하는 조인 한 줄이 이미 있습니다.」
+                                         (조인 · 원장 문장은 한 번 적는 선언 — 표마다 조인 하나, 소스마다 문장 하나 더)
+5 스텝 칸 이름(박스)      다르다 — step: process_param, process_param_num (뷰), process_param_txt (뷰), step_defect_obs, step_inspection_run, wafer_process · step_seq: defect, metro, process_event
+                        조인은 어차피 표마다 하나(into.table 이 표 하나) — 칸 이름 다름은 on.left 만 다르게 적으면 됨
+                        ⚠️ 뷰 둘(process_param_num · txt)은 process_param 을 읽는다 — 운영은 뷰를 안 쓰니 조인은 process_param 에, 소스는 표를 읽게
+E 대 K                   E 에 찬성 — 다만 까닭 하나를 더합니다: K 도 스텝 없는 소스에 상수 'WF' 를 묶으면 막히지는 않는다(지금과 같은 모양)
+                        갈리는 것은 비용 — K 는 wafer 키가 바뀌어 wafer 를 묶는 소스 «전부»가 다시 번역, E 는 공정 소스의 DT 행만
+```
+여쭐 것: 1-bis 의 ㄱ / ㄴ. 「가」 주시면 1 의 세는 줄 + 조인 · 단계표 표본 · 원장 문장 둘을 게이트(DT 스텝 -> dtwafer · WF -> wafer · 빈 값 -> 이름 댄 수 · 옛 원자 물러남 · 변이)와 함께 짓습니다.
+
+## [구현자 -> 총괄] 착지 c1746aa1e — 363db7dfa + 1dd4091a6(ㄱ) + 4349db8e8: DT 스텝 뒤 공정 · 다이는 DT 쪽 신원으로 · 어느 문장도 안 말한 행을 센다 · NULL 이 배치를 안 멈춤
+
+```
+선언(표본만)  table_config  step_phase(키 step) · wafer_process.mat_type
+             chain_rules   step_phase_to_wafer_process(on step · take mat_type · key.unique, 켜짐 — 단계표가 비면 아무것도 안 씀)
+             ledger_config dtwafer@1 · processed_with@1 주어에 dtwafer@1 · wafer_process_recipe 문장 둘 — when {mat_type: ""} -> wafer · when "DT" -> dtwafer
+             라이브 선언은 안 건드림 — 옮기는 절차는 RUN.md 맨 위
+코드         세는 줄    roleframe(분자마다 «어느 문장도 안 말함» 기록) -> 미리보기 unsaid -> 영수증 칸 unsaid -> gate.record_unsaid 배치마다 한 줄
+                      「[Ledger] <소스>: N unit(s) said no sentence - mat_type='WF' (N). Next: …」
+             NULL 접기  roleframe._plain 이 빠진 값(NaN · NA · NaT)을 None 으로 · when 비교도 빠진 칸을 "" 로(_when_value)
+운영자 두 줄  「운영에서는 step_phase 표에 DT 스텝을 한 줄씩 적으면 됩니다.」
+             「결함 계측 표에도 같은 조인 한 줄, 다이 문장을 when 으로 둘.」
+```
+
+게이트
+```
+번역(표본, DB 없이)   mat_type NULL -> wafer · "" -> wafer · DT -> dtwafer · WF -> 원자 0 + 세는 줄에 mat_type='WF' (1)   ㉠ ㉡
+다이(픽스처)          표본 die_inspection 을 스텝 있는 표로 복사한 픽스처 — NULL · "" -> die(…, Wafer) · DT -> die(…, DT) · WF 는 셈   (표본에 새 소스 0)
+끝에서 끝(PG)         2 passed, 7698 deselected in 13.33s — crud 쓰기 -> 체인 묶음 본문(원장 따라가기 줄 세우기가 여기 있음) -> followup.drain_once(표본 setup)
+                     스텝을 DT 로 적음 -> 공정 행 mat_type DT -> 원자 wafer 가 지워지고 dtwafer 로 · mat_type 을 비움 -> wafer 로 돌아감 ·
+                     단계표 행을 지움 -> 공정 행에 DT 가 남음(표본 주석 「지우지 말고 비워라」의 근거)
+변이 다섯            M1 -> 빨강 4 (a_row_no_sentence_says_is_counted_by_its_value_and_named, a_step_listed_as_dt_moves_the_rows_atom_and_emptying_it_moves_it_back, each_row_is_said_about_the_wafer_its_material_type_names, every_row_said_leaves_nothing_to_count)
+                     M2 -> 빨강 5 (a_row_no_sentence_says_is_counted_by_its_value_and_named, a_step_listed_as_dt_moves_the_rows_atom_and_emptying_it_moves_it_back, deleting_the_step_phase_row_does_not_reach_the_rows_it_filled, each_row_is_said_about_the_wafer_its_material_type_names, every_row_said_leaves_nothing_to_count)
+                     M3 -> 빨강 2 (a_die_inspected_after_a_dt_step_is_the_dt_die, a_row_no_sentence_says_is_counted_by_its_value_and_named)
+                     M4 -> 빨강 4 (a_die_inspected_after_a_dt_step_is_the_dt_die, a_row_no_sentence_says_is_counted_by_its_value_and_named, each_row_is_said_about_the_wafer_its_material_type_names, every_row_said_leaves_nothing_to_count)
+                     M5 -> 빨강 4 (a_die_inspected_after_a_dt_step_is_the_dt_die, a_row_no_sentence_says_is_counted_by_its_value_and_named, each_row_is_said_about_the_wafer_its_material_type_names, every_row_said_leaves_nothing_to_count)
+전체                 5 failed, 7503 passed, 189 skipped, 3 xfailed in 681.53s (0:11:21) — 실패 5: test_a_sentence_says_itself_only_for_the_rows_it_names:test_the_sample_is_written_in_the_one_format_both_writers_use · test_core_alignment_mapper:test_live_mapper_and_tracked_sample_are_byte_identical · test_core_usage_mapper:test_live_mapper_and_tracked_sample_are_byte_identical · test_dt_inventory_metadata_mapper:test_live_mapper_matches_tracked_sample · test_one_place_decides_where_the_server_is:test_the_repo_root_is_one_above_it
+                     첫 전체 실행에서 알려진 것 밖 다섯 — 고침: 영수증 시험의 가짜 미리보기에 unsaid 칸(셋) · 켜진 표본 조인에 __why_enabled(하나)
+                     남은 하나 = 설정 리로드 대기 시간 칸(test_config_reload_integrity:test_inv_9_1_atomic_save_event_applies_physical_alter) — 혼자 돌리면 통과. 이 파일이 전체 실행 중 빨강이 된 것이 두 번째
+                     (499d89de4 착지 때 h3 · 이번 inv_9_1) — 우연이 아니라 부하를 탐, 이 일과 닿는 자리는 없음
+PG 전체              7 failed, 143 passed, 7550 deselected in 235.98s (0:03:55) — 실패 7 · 알려진 일곱 밖: 없음
+```
+
+NULL 접기 게이트 셋 (4349db8e8 ②)
+```
+㉠ 닿는 자리   roleframe 의 _plain · _canonical 은 모듈 밖에서 가져가는 곳 0 — 닿는 자리는 roleframe 안뿐(이름만 같은 _plain · _canonical 이 다른 모듈에 따로 있음)
+             roleframe 안 부르는 함수 6 · 부르는 자리 11 — _evaluate_binding 2 · _partition_units 1 · _row_sort_token 1 · compile_role_rows 5 · first_sight 1 · validate_role_frame 1
+             갈래: 빈 값이 실제로 닿는 곳은 행 정렬 토큰(_row_sort_token — 행의 모든 칸)과 group_by 토큰(_partition_units)
+             문장에 묶인 칸의 빈 값은 그 전에 「column … contains a missing value」로 이름 대어 멈춘다(잰 것: step) — 원자 · ref · 수식어에는 안 닿음
+             명령: 저장소 뿌리 scratchpad/census_plain_seats.py <트리>
+㉡ 신원 안 바뀜  박스 라이브 소스를 제품 미리보기 길로, 첫 2000 행과 «읽는 칸에 NULL 이 있는» 행 2000 까지 — 고치기 전(main 트리) · 후(이 커밋) 비교
+             미리보기한 소스 6 (die_inspection · dt_job · lot_event · lot_slot_wafer · transfer_event · wafer_process_recipe) · 표본 8 개 — 전 · 후 같음 8 · 다름 0 (행 · 분자 · 원자 · ref · 거절 · 원자 해시 모두)
+             적재에서 안 선 소스(드라이버 없음 — 뷰를 읽거나 거절된 것): bonded_from · bw_dt_seat · dt_transfer · lot_slot_move · mechanism_edge_to_finding_causes · mechanism_edge_to_quantity_causes · process_param_num_measure · process_param_txt_measure · void_observation (9)
+             명령: scratchpad/probe_nan_fold_before_after.py <트리> 2000 [<소스>]
+㉢ 09-10 실패   dt_job_rollup 표가 박스에 없다(지금 라이브 dt_job 은 dt_log 를 읽음) — 그 행으로는 재현 못 함
+             같은 모양(문자열 칸 NULL -> NaN)은 번역 게이트가 잰다: 전엔 배치 예외 · 이제 wafer 원자
+```
+
+찾은 것 · 여쭐 것
+```
+1 커서 칸이 빈 행   dt_job 의 커서 칸 dt_cell_key 가 빈 행(박스 dt_log 144 행)이 섞인 배치는 「cursor number must be finite」로 통째로 멈춘다 —
+                   고치기 전 · 후 같음(이번 접기와 별개 자리). pandas 3 의 NaN 이 문자열 커서를 숫자로 읽힘. 고칠지 여쭙니다
+2 뷰              process_param_num · process_param_txt — 열 목록이 박혀 있어 process_param 에 mat_type 을 더해도 안 나른다
+                   그리고 이 박스에서 두 소스는 뷰를 읽는다는 까닭으로 이미 적재에서 안 선다. relation 은 안 바꿈(지시대로)
+3 시험 DB          제 끝에서 끝 픽스처 첫 판이 스키마 없는 DROP 을 써서 격리 시험 DB(assy_test)의 public.wafer_process 를 지웠을 수 있습니다 —
+                   지금은 격리 스키마 이름을 붙여 만들고 지움. 운영 DB 는 아님(db_safety 가 막음)
+4 열린 물음(소유자) DT 다이의 mat_id 가 DT 웨이퍼 id 인가 작업 id 인가 — 게이트는 전사 사슬에 이어짐을 단언하지 않음(지시대로)
+```
+다음: 대기열 빔 — 감시 켜 두고 기다립니다.
+
+## [구현자 -> 총괄] c1746aa1e 보고 바로잡기 셋 (138e9b8ed 에)
+
+```
+1 변이       「다섯 모두 빨강」은 번역 수준 시험 파일 기준. M4(_plain 접기 뺌) · M5(_when_value 뺌)에서 PG 끝에서 끝은 초록이었다 —
+            그 시험의 NULL 칸은 한 행뿐이라 pandas 가 None 으로 둬서 NaN 갈래를 안 지난다. NULL 접기의 게이트는 번역 수준 넷뿐
+2 세는 줄     WF 행 -> preview.unsaid 는 잰 것. 그것이 실행 문(runtime_v2.execute_scoped_batch -> gate.record_unsaid)에서 «줄로» 찍히는 것은 코드로 읽은 것 —
+            시험은 gate.record_unsaid 를 직접 부른다. 문은 하나(_record_refusals 옆)
+3 ㉡ 표본     dt_job 의 두 표본은 커서 칸이 빈 행 1 개씩을 «전 · 후 똑같이» 빼고 비교했다(탐침 줄의 cursor cell empty, left out: 1) —
+            빼지 않으면 전 · 후 모두 「cursor number must be finite」로 멈춘다(여쭐 것 1)
+```
+
+## [구현자 -> 총괄] 4b5964ab2 ② 짓기 전 — 커서 칸이 빈 행 (① 은 짓는 중)
+
+```
+어디서 멈추나  runtime_v2._cursor_value — 넘겨받은 커서 값만이 아니라 배치 «모든 행»의 커서 칸을 JSON 값으로 바꿔 대조하다가 NaN 한 칸에 예외.
+             pandas 3 이 빈 문자열 커서 칸(dt_cell_key)을 NaN 으로 읽어 「cursor number must be finite」
+             그리고 커서 값은 «배치 마지막 행»에서 고르는데 그 자리가 셋 — execute_scoped_batch · backfill._preview_frame · backfill 의 탐침 미리보기
+1 어떻게 들어오나  원장 따라가기는 바뀐 행의 페이지 키(dt_job) 값으로 범위를 잡고 그 작업의 행 «전부»를 한 페이지로 읽는다 —
+                 빈 커서 행이 든 작업은 그 작업의 어느 행이 바뀌어도 «매번» 걸린다. 소급(rescope)도 그 행이 든 페이지마다
+                 박스 144 행 · 작업 3 개 · 그 작업들의 행 144 — 세 작업은 행 전부가 빈 커서
+2 거절 뒤 다시 읽히나  읽힌다 — 행은 표에 남고 범위는 작업 단위라, 그 작업을 다시 따라갈 때마다 다시 읽혀 «다시 이름 대어 거절»(배치는 계속)
+                 독 든 행이지만 멈추지 않는다. 거절 수는 따라갈 때마다 는다 — 지금 있는 거절들(신원 빔 등)과 같은 모양
+3 워터마크        살아 있는 길은 advance_cursor=False — 커서 값은 미리보기 계약을 채우려고 고를 뿐 안 쓴다(runtime_v2 주석 그대로). 레지스트리 행은 census 가 씀
+                 고친 뒤: 커서 값은 «커서 칸이 찬 행» 중 마지막에서 고른다 — 세 자리가 한 함수를 지나게. 모든 행이 비면 배치 전체가 거절(원자 0), 워터마크 영향 0
+모양           preview_cursor_batch(모든 문이 지나는 자리) 첫머리에서 커서 칸이 빈 행을 떼어 기존 MoleculeRefusal 로 preview.refusals 에 —
+               실행 문이 이미 gate.refuse 로 세고 영수증 reasons 에 싣는다(_record_refusals). 새 기제 0
+여쭐 것        사유 이름 — 닫힌 어휘(12, 시험이 닫힘을 잼) 안에서 «no_raw_ref»(원천 참조를 order_by 값 = 커서 칸으로 짓는데 그 값이 빔)로 가도 되나
+               아니면 사유 하나를 더하나(닫힌 목록 · 이름 표 · 그 시험 같이)
+```
+
+## [구현자 -> 총괄] 4b5964ab2 ② 착지 전 — 행 하나를 떼면 «묶음 소스»의 분자가 쪼개진다 (① 은 다 됨)
+
+```
+잰 것 (박스 라이브 선언·데이터, 읽기만)
+  dt_job 은 묶음 소스   unit group · group_by [dt_job] · 커서 [dt_job, dt_cell_key]
+  빈 커서 작업 셋이 든 페이지 (행 216 · 빈 커서 144)
+     고치기 전  배치 전체 예외 LedgerV2RuntimeError: cursor_value: cursor number must be finite
+     고친 뒤    거절 144 건 no_raw_ref · 주소 bundle.sources.dt_job.read.order_by.dt_cell_key · 나머지 작업 원자 2
+  커서가 다 찬 작업(72 행)에서 한 행만 dt_cell_key 를 비우면
+     분자 1 · 원자 2 · 거절 1 — 그런데 has_netdie 가 72 -> 71 으로 «적힌다»
+     남은 행으로 분자를 지었기 때문. 거절은 셌지만 원장엔 틀린 값이 들어간다
+```
+```
+걸리는 판정 둘
+  116  단위는 분자 — 「부분 분자를 들이면 다른 계약(incomplete)」, S-41 ③ 으로 남김
+       (source_preparation._refuse_molecule 독스트링)
+  110  order/cursor 빈 칸은 «오늘처럼» 페이지 거절 — 이 착지가 «커서 칸 몫»을 뒤집는다
+```
+| 안 | 무엇 | 위험 | 크기 |
+|---|---|---|---|
+| ㄱ (추천) | 묶음 소스는 빈 커서 행이 든 «분자 전체»를 거절 1 건(rows = 분자 행 수, 주소 = 빈 칸). 행 소스는 지은 대로 행 하나. group_by 칸까지 빈 행은 이름 댈 분자가 없어 그 행 하나 | 한 행 때문에 작업 하나가 통째로 원장에 안 들어감 — 116 이 이미 그렇게 정함 | 떼는 함수 안 몇 줄 + 게이트 한 줄. 안 쟀다 |
+| ㄴ | 지은 대로 행 단위 | 116 과 어긋남. 틀린 값(71)이 원장에. 행을 채우면 다음 따라가기가 고쳐 씀 | 0 |
+| ㄷ | 묶음 소스만 오늘처럼 페이지 예외 | 박스 dt_job 이 계속 막힘 | 작음 |
+
+```
+같이 고칠 말 (어느 안이든 이 착지에) — grep 으로 찾은 넷, 전수는 착지 때 다시 센다
+  source_preparation 의 「order_by and cursor_columns decide where the PAGE is」 주석
+  test_ledger_l1_pg 의 param_id 주석 두 곳 (「blanking it ... aborts the whole batch」)
+  test_a_row_that_stopped_being_this_sources_row... 의 docstring (「cursor value is missing」 로 거절)
+스위트  전체·PG 도는 중. 결과는 착지 보고에
+여쭐 것  ㄱ 로 가도 되나
+```
+
+## [구현자 -> 총괄] 4b5964ab2 ①+② 착지 2b295dea6 — 빈 커서 칸 행이 든 분자는 no_raw_ref 로 거절 1 건, 배치는 계속 · S-41 ② 커서 몫 닫힘
+
+```
+① 셈 줄   시험이 실행 문(execute_scoped_batch)을 지나 그 문이 쓴 로그 한 줄을 단언 — 문의 record_unsaid 를 지우면 빨강(M7)
+② 한 규칙  「빈 커서 칸 행이 든 분자를 거절 1 건 — rows = 분자 행 수 · 주소 = 빈 칸 · no_raw_ref」
+   자리    source_preparation._refuse_molecule — 신원·시간 빈 칸을 이미 분자로 거절하던 곳(116). 단위 종류를 묻는 자리 0
+           _validate_base_frame 의 페이지 거절에서 order_by(= 커서, setup_bundle._derived_cursor)를 뺌. identity · group_by 는 그대로 페이지
+           커서 값은 커서 칸이 찬 행 중 마지막(last_cursor, 세 자리가 한 함수) · _cursor_value 도 그 행들만 후보로
+           시간이자 커서인 칸(lot_event 의 event_time)은 커서를 먼저 물어 no_raw_ref — 지시 문장 그대로
+   은퇴    5c7e54f19 에 올린 «행 하나만 떼는» 모양(부분 분자)은 이 착지에 없음
+```
+잰 것 — 박스 라이브 선언·데이터, 읽기만
+```
+dt_job 페이지(행 216 · 빈 커서 144)  전 배치 예외 「cursor number must be finite」
+                                        후 거절 3 건(작업마다 1) · 거절 행 144 · 나머지 작업 원자 2
+72 행 작업에서 한 행만 비움        분자 0 · 원자 0 · 거절 rows 72 — has_netdie 71 이 안 생김
+```
+잰 것 — PG, 시험 밖 탐침(선언만 order_by [row_id, step] 로 바꿔 표본 wafer_process_recipe 로)
+```
+편집으로 커서 칸을 비움  따라가기 withdrawn 1 · inserted 0 · 거절 no_raw_ref(주소 …read.order_by.step) — 그 행 원자가 걷힘
+다시 채움              inserted 1 — 돌아옴
+= 판정 199 의 길(번역이 멈춘 행은 지워진 행과 같은 길). 전에는 페이지 예외라 옛 원자가 남았을 것 — 코드로 읽음, 옛 트리에서 이 탐침은 안 돌렸다
+```
+변이 — 각각 되돌림, 시험 파일 셋
+```
+M1 the molecule check does not ask the cursor        빨강 4
+M2 the cursor is a page refusal again                빨강 4
+M3 the cursor check reads every row                  빨강 3
+M4 the cursor is the plain last row                  빨강 2
+M5 the refusal counts one row                        빨강 1
+M6 the refusal carries no address                    빨강 3
+M7 the execute door does not write the unsaid line   빨강 1
+```
+거짓이 된 말 — 착지 때 다시 셈 (git grep: identity/order/cursor · blank.*cursor · cursor.*blank · where the PAGE · cursor value is missing · cursor number must be finite)
+```
+고침   source_preparation 페이지 거절 주석 · 그 거절 문장 「identity/order/cursor/time」 -> 「identity/group_by」
+       test_ledger_source_preparation 의 _time_is_not_the_order_column docstring
+       test_a_blank_ORDER_column_is_still_a_page_refusal -> 분자 전체 거절 게이트로 (묶음 픽스처, rows 2)
+       test_a_row_that_stopped_being_this_sources_row… docstring · RUN.md 줄
+       test_ledger_l1_pg param_id 주석 둘 — param_id 는 identity 라 «여전히» 페이지(참). 인용한 문장만 새 문장으로
+안 고침 task/ 두 파일의 넷 줄(옛 보고·지시서) — 이력
+RUN.md 제 c1746aa1e 절 머리 「재기동 «없음»」이 틀렸습니다 — 번역 코드 ①② 는 서버·체인 워커 재기동이 있어야 켜짐. 고쳤습니다
+```
+스위트 (C:/wt-impl, 착지 트리)
+```
+전체  5 failed, 7507 passed, 189 skipped, 3 xfailed in 732.16s (0:12:12) — 실패 5 개, 파일::이름으로 알려진 다섯과 같음: True
+PG    7 failed, 143 passed, 7554 deselected, 41 warnings in 236.04s (0:03:56) — 실패 이름이 알려진 일곱과 같음: True
+```
+
+## [구현자 -> 총괄] 60d7e8e42 + fb7ece9a3 짓기 전 확인 1~8 (안 지음)
+
+**결론 먼저 — 짓기 전에 여쭐 것 넷**
+```
+㉠ 뷰 모양   「기본 다리에 source_who 거르기」 뷰는 박스에서 걷기가 색인을 잃는다(775.025 ms, seq 9)
+            다리 표지 칸 + 거르기를 UNION «밖»에 두면 같은 색인(0.415 ms, 기본 표 0.430 ms) — 이 모양으로 짓겠습니다
+㉡ 소스 하나를 «처음부터» 다시 번역하는 길이 없다 — 병합 뒤 기본 · 가지 새로 고침 둘 다 이것이 필요
+            안: 기존 rescope 문에 범위 «소스 전부» 한 형태(인자). 가도 되나
+㉢ 가지 «지우기» · «목록»의 기존 문이 없다 — 「새 라우트 0」과 부딪힘. 어느 문의 뜻을 넓힐지
+㉣ scripts · migrations 는 기본 원장 이름을 직접 든다(운영 경로 밖) — 기본 전용으로 둬도 되나
+```
+
+**1 달라진 소스** — 기존 소스 지문(`source_cursor_fingerprint` = 커서 지문)이 판정자. 새 판정자·넓히기 불필요
+```
+표본에서 잼 (scratchpad/probe_world_changed_sources.py, 추적 표본)
+  wafer_process_recipe bind edit                             -> 움직인 소스 ['wafer_process_recipe']
+  entity attribute: wafer@1 gains attribute diameter         -> 움직인 소스 ['dt_job', 'lot_event']
+  entity attribute: recipe@1 (reached only as an object type) gains one -> 움직인 소스 []
+  entity attribute: lot@1 gains one                          -> 움직인 소스 ['dt_job', 'lot_event']
+  vocabulary: processed_with@1 optional qualifier += tool    -> 움직인 소스 ['wafer_process_recipe']
+  vocabulary: a predicate no source names, added             -> 움직인 소스 []
+  entity: one no source reaches, added                       -> 움직인 소스 []
+  setup_version bumped                                       -> declaration refused: bundle.setup_version: supported setup_version is 5
+  source removed: lot_slot_wafer                             -> 움직인 소스 ['lot_slot_wafer']
+  source added: copy of dt_job as zz_dt_job                  -> 움직인 소스 ['zz_dt_job']
+엔티티 속성 — 엔티티 해시는 키 · null 허용 · status 뿐, 속성은 «청구(claim)»를 거쳐서만 원자에 닿는다
+             그래서 속성에서 수식어를 받는 목적어 없는 술어(register@1)를 쓰는 소스만 움직이고, wafer@1 을 bind 만 하는 셋은 안 움직임 — 그 셋의 원자에 속성이 닿는 길이 청구뿐이라 맞다고 봄(코드로 읽음, 원자로는 안 잼)
+             attribute_cardinality 는 번역이 안 읽음(grep) — 지문 밖이 맞음
+엔티티 키 — 그것을 bind 하는 소스를 같이 안 고치면 선언이 거절됨 -> 소스 편집으로 움직임
+```
+**2 뷰** — 박스 EXPLAIN ANALYZE, 한 트랜잭션 롤백(남은 스키마 0), 가지 = lot_event 원자 15542 복사, 걷기 SQL 은 제품 것(SqlEvidenceLookup)
+```
+모양                                   나가는 걷기 1회     색인 스캔 · seq
+기본 표 그대로                            0.430 ms      8 · 0
+가지 UNION ALL 기본(기본 다리에 거르기)       775.025 ms      0 · 9
+다리 표지 칸 + 거르기를 UNION 밖            0.415 ms      9 · 0
+뒤 모양 · 들어오는 0.256 ms · 바뀐 소스 주체 0.170 ms · id 50 개 0.553 ms · 주체 목록 21.987 ms (기본 표 0.113 · 0.115 · 0.428 · 19.684)
+뒤 모양에서 lot_event 행은 가지 다리에서만: [('b', 15542)]
+```
+```
+원인  UNION ALL 다리에 WHERE 가 붙은 분할 표는 평평해지지 않아(Subquery Scan) 조인 조건이 색인으로 못 내려감
+걸리는 자리 둘  ledger_subgraph 관계 검사(_IDENTIFIER)가 맨 이름만 받음 -> schema.name 을 받게
+             subjects_of_type 이 relation 인자를 안 쓰고 상수 LEDGER_TABLE 을 읽음 -> 가지에서 틀린 답. relation 으로
+```
+**3 다시 번역** — 없다
+```
+있는 것  rescope(--scope-column/--scope-values --apply) — 고른 값의 행만 걷고(row_ref 색인 ∪ 새 번역) 다시 만듦, 페이지마다 한 커밋
+        평이한 적재(run)는 색인이 이름 안 댄 행만 — 이미 번역된 행은 다시 안 함
+        rename_ledger_for_rebuild 는 원장 «전체»를 옆으로
+필요한 곳  병합 뒤 기본 · 가지 새로 고침(가지는 안 따라가니 원천 행이 바뀌면 낡는데, 평이한 적재로는 안 고쳐짐)
+안        rescope 에 범위 «소스 전부» — 페이지마다 걷고 다시 만듦(옛 원자 0), 지워진 행 몫은 기존 지워진 행 걷기
+비용      박스 추정 wafer_process_recipe 478,718 행 x 7.2 ms/분자 ≈ 57 분 위쪽 (둘 다 3add4a6ca 에서 잰 수)
+```
+**4 명령** — `python -m ledger.backfill --source <소스> --world <가지> [범위] --apply` (기존 `--ontology-root` 옆 인자)
+```
+원천 표 공유 전제 맞음  소스 relation 전부 맨 이름(표본 6 · 박스 라이브 15) · 원장 표를 읽는 소스 0
+                    -> 가지 스키마엔 원장 표 셋 + 뷰만. 원장 이름은 스키마로 한정 -> search_path 안 바꿈 -> 소스는 public 을 읽음
+⚠️ 체인 규칙(조인 등)은 가지에 없다 — 가지가 시험하는 것은 원장 선언뿐
+```
+**5 contrast_run** — 지금 world 칸 없음(칸 19). 표 선언에 world 한 칸 + contrast_walk 가 그 칸으로 관계 이름을 고름. 저장 버튼(클라)도 world 를 보내야 — 클라 레인
+
+**6 크기** — 오늘 원장 이름을 드는 운영 자리(독스트링 뺌): 88 · 파일 22 (scratchpad/census_world_seats.py)
+```
+기본만 (따라가기 · 체인 · census · 감시 · envelope)   10 · 파일 6 — 함수의 기본 답을 부름, 동작 무변
+세상을 받는 자리                                    78 · 파일 16 — store 19 · schema 8 · backfill 7 · config_explorer_service 7 · trace_router 7 · setup 6 · …
+새로 생기는 것  세상 -> 이름 함수 1 · 가지 스키마·뷰 DDL(ensure_schema 가 이름을 받음) · 달라진 소스 셈(기존 지문 비교)
+              --world(backfill) · world 인자(retroactive 두 작업 · 걷기·보드 라우트 · 탐색기·저장 관문) · contrast_run.world · ㉡
+```
+**7 라우트** — 지금 130 (APIRoute 124 · Route 4 · WebSocket 1 · Mount 1, 경로 122) (명령 scratchpad/count_routes.py = main.app.routes). 이 그림으로 느는 라우트 0 — ㉢ 이 답해지면
+
+**8 세상을 묻는 자리** — 지금 0(세상 개념 없음). 지은 뒤 함수 밖 0 으로:
+```
+뷰의 유무(기본은 뷰 없음)도 함수가 «이름 · DDL»로 답하고 ensure_schema 는 받은 것을 돌리기만 — 갈래가 함수 밖으로 안 나감
+0 이 안 되는 자리  scripts · migrations 의 원장 이름 상수 (㉣)
+```
+
+## [구현자 -> 총괄] c7f9e7afa 덧 — 확인 1~8 을 「문」 기준(cdeb5ea10)으로: 새 함수 · 새 if 중 기존 것과 같은 일
+
+```
+1 달라진 소스    새 함수 0 · 새 if 0 — 「두 지문이 같은가」는 LedgerStore.restamp_decision(stored, wanted) 이 이미 답함
+                (부팅 재도장 · 재도장 스크립트가 부르는 한 자리). 가지 = restamp_decision(기본 지문, 가지 지문) 이 already 가 아닌 소스
+2 뷰           새 함수 0 — 뷰 DDL 은 ensure_schema 안(이름이 DDL 을 들고 옴). 새 if 는 「DDL 이 비었나」 가드 하나(기본은 뷰 없음)
+               관계 검사 _IDENTIFIER 가 «이미 둘»(ledger/trace · ledger_api/ledger_subgraph) — 넓힐 때 하나로 접음. 따로 넓히면 문
+               subjects_of_type 은 상수 대신 self.relation — 고침이지 새 것 아님
+3 다시 번역     새 함수 0 — _fetch_v2_lineage_rows · _scope_pages 가 이미 scope=None 을 «전부»로 읽음(가드). rescope 가 None 을 넘기게만
+               새 if 한 줄이 생길 자리: CLI 에서 «전부»를 None 으로. 빈 값을 전부로 읽히면 지금의 scope_incomplete 거절이 가장 비싼 일로 바뀜 -> 명시 인자
+4 --world      ⚠️ 같은 일 둘이 될 자리: 기존 --ontology-root 도 「어느 선언」을 답함. --world 를 옆에 더하면 두 인자가 한 물음 (㉤)
+5 contrast_run 새 함수 0 · 새 if 0 — contrast_walk 가 run 행의 world 를 evidence_subgraph 에 넘기기만
+6 세상->이름    새 함수 1. 그런데 같은 물음에 «이미» 답하는 자리가 여럿 — 이 함수가 그것들을 대신해야 문이 안 는다 (㉥)
+               원장 관계 이름 3  schema.LEDGER_TABLE · trace_router.LEDGER_RELATION · SqlEvidenceLookup 기본값 "ledger_events"
+               커서 표 이름 2    schema.CURSOR_TABLE · trace_router.LEDGER_CURSOR_RELATION
+               선언 파일 이름 5  ledger/config · config_drafts · setup_bundle · declared_entities · ledger_subgraph 줄 안 글자
+               선언 뿌리 4      셋은 paths.CONFIG_DIR(ASSY_DATA_ROOT 를 따름) · setup.DEFAULT_ONTOLOGY_ROOT 는 server/config/ontology 고정
+                               -> ASSY_DATA_ROOT 를 세우면 load_setup() 기본과 걷기의 선언 읽기가 다른 파일 (코드로 읽음, 안 잼)
+               센 명령  git grep -n '= "ledger_events"\|= "ledger_translator_cursor"\|relation="ledger_events"\|ledger_config.json\|DEFAULT_ONTOLOGY_ROOT\s*=\|def _config_path' (server, 시험·scripts·migrations 뺌, 주석·독스트링 줄은 손으로 뺌)
+7 라우트        새 함수 0 — 라우트마다 world 를 이름 함수에 넘기기만
+8 세상 묻기      함수 밖 0 — 2 의 DDL 가드 말고 갈래 없음
+```
+**여쭐 것 — 앞 넷(㉠~㉣)에 더해**
+```
+㉤ --world 와 --ontology-root — 인자 하나로(--ontology-root 를 세상 이름 함수의 답으로 대신)
+㉥ 이름 스펠링 접기(관계 3 · 커서 2 · 파일 5 · 뿌리 4)를 이 일에 넣나 — 안 넣으면 세상 함수가 여섯째 스펠링
+```

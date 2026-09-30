@@ -35404,3 +35404,20 @@ UI 문자열  영어
 ```
 
 > **[총괄 -> 클라] 작은 것 둘 (09-30)** — ① 물려받음 라벨: ontology_explorer_view.js 의 'Inherited from' 대신 서버 ground.text 그대로 · 경로는 ground.from_paths 를 › 로(화면 낱말 0). ② client2/tests/fixtures/authoring_skeleton.json 이 옛 스켈레톤 사본 — 구현자 7aad503cb 가 defs.binding.timezone 에 node 를 넣었으니 capture_authoring_skeleton.py 로 다시 떠서 같은 커밋에.
+
+---
+
+> **[총괄 -> 클라] 09-30 착지분의 «문» 정리 — 소유자 정의 cdeb5ea10**
+
+```
+출처   총괄 검수 — 네 자기 판정(「같은 일 0」)과 다르다. 아래는 쌍둥이가 «있는» 것. 짓기 전에 네가 열어 확인하고, 같은 일이 아니면 그 사실만 보고
+㉮ 🔴 대조 저장 거절이 사유를 잃음 — rnd_board/api.js createContrastStore 의 refused(:2182) 가 refusalSentence(:1938) 를 안 부름
+   {reason, argument} · 배열 detail 이 「Save refused (422)」로 뭉개짐 — C-52 가 고친 그 결함의 재발. refusalSentence 를 부르게 (총괄 직접 확인)
+㉯ PathBar.render 와 renderBreadcrumb(view:466) — 같은 위젯(단계 · '›' · aria-current · aria-label="Path")을 한 화면에 두 번 짓는다. 하나로
+㉰ PathBar 에서 고르면 스크롤만 — map-goto(ontology_explorer.js:1129~)는 커서 이동 · 조상 펼침 · 가운데 맞춤까지 한다. 고른 뒤 커서 표시가 옛 경로에 남음 -> map-goto 를 부르게
+㉱ CandidateListPanel.seed/onStartChanged + 불러오기 앞머리(:50~71) = RankListPanel(:51~72) 글자 그대로 — 바탕 Panel 로
+㉲ idCount 가 빈 id 를 셈(["a",""] -> 2, 걷기는 1) — 서버와 같은 규칙으로(빈 id 버림)
+㉳ 서버 몫 ⑤(구현자 지시)가 걷기 trails 에 홉마다 술어를 싣으면, measuredFromHops__untilServerServesIt 은 자기 이름대로 은퇴 — 서버 착지 뒤
+지나는 김에  _el 류 · contrastCell vs grid.rawCellValue — 그 파일을 만질 때 접는다. 따로 라운드 열지 않음
+게이트  항목마다 전/후 같은 입력이 같은 화면 · 접힌 쪽 삭제 · 하니스 초록 + 변이 빨강 · 보고에 「새 함수·새 if 중 기존 것과 같은 일」
+```
