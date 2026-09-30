@@ -19,7 +19,7 @@ import { Panel, markingIntent } from './panel.js';
 import { SIGN } from './marking_store.js';
 import { createWalk } from './api.js';
 import { TablePart } from './table_part.js';
-import { UNPICKED } from '../absent.js';
+import { UNPICKED, ABSENT } from '../absent.js';
 import { LOADING, SERVER_REFUSED } from '../ui_words.js';
 
 export class CompositionPanel extends Panel {
@@ -169,11 +169,11 @@ export class CompositionPanel extends Panel {
         row.append(key, val);
         box.appendChild(row);
       };
-      put('state', m.resolution.state || '-', !m.resolution.state);
+      put('state', m.resolution.state || ABSENT, !m.resolution.state);
       // `basis` is a path into the ledger; it is printed verbatim so it can be checked.
       put('basis', m.resolution.basis || 'No basis in the response', !m.resolution.basis);
       put('candidates',
-        typeof m.resolution.candidateCount === 'number' ? String(m.resolution.candidateCount) : '-',
+        typeof m.resolution.candidateCount === 'number' ? String(m.resolution.candidateCount) : ABSENT,
         typeof m.resolution.candidateCount !== 'number');
       root.appendChild(box);
     }
@@ -256,7 +256,7 @@ export class CompositionPanel extends Panel {
     el.className = 'rb-comp-count';
     const v = this.doc.createElement('span');
     v.className = 'rb-comp-count-value';
-    v.textContent = typeof value === 'number' ? String(value) : '-';
+    v.textContent = typeof value === 'number' ? String(value) : ABSENT;
     const k = this.doc.createElement('span');
     k.className = 'rb-comp-count-label';
     k.textContent = label;

@@ -28,7 +28,7 @@ import { loadBoardModules } from './lib/board_modules.mjs';
 //    「아직 안 골랐다」 has its own seat -- and a copy of the sentence here would make
 //    this harness a second author of it: a wording change reddens an assertion that
 //    was never about the wording.
-import { UNPICKED } from '../src/absent.js';
+import { UNPICKED, ABSENT } from '../src/absent.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const BOARD_DIR = path.join(HERE, '..', 'src', 'rnd_board');
@@ -242,7 +242,7 @@ async function suite(mods) {
     (cellOf('inspected', 'whenText')._text || '').includes('2026-08-12'),
     JSON.stringify(cellOf('inspected', 'whenText')._text));
   eq('G5c and it is BLANK, not zero, where there is no time',
-    cellOf('binding', 'whenText')._text, '-');
+    cellOf('binding', 'whenText')._text, ABSENT);
   ok('G5d blank is marked absent so it cannot read as a value',
     (cellOf('binding', 'whenText').className || '').includes('is-absent'));
 

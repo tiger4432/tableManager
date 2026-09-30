@@ -31,7 +31,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadBoardModules } from './lib/board_modules.mjs';
 // C-99 ③. The spelling has one author; see the same note in the reach harness.
-import { UNPICKED } from '../src/absent.js';
+import { UNPICKED, ABSENT } from '../src/absent.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const BOARD_DIR = path.join(HERE, '..', 'src', 'rnd_board');
@@ -227,7 +227,7 @@ async function suite(mods) {
     fetchImpl: async () => ({ ok: true, status: 200, json: async () => thin }) });
   t.mount(); await flush(); await flush();
   const counts = byClass(hostT, 'rb-comp-count-value').map((n) => n.textContent);
-  truthy('F1 a count the server did not send prints as a dash', counts.includes('-'));
+  truthy('F1 a count the server did not send prints the shared absent mark', counts.includes(ABSENT));
   truthy('F2 and a count it DID send prints as itself', counts.includes('18'));
 
   // ── T. 표 부품 «둘»이 한 화면에서 서로를 모릅니다 (소유자 상설 ①의 시험) ──────────
@@ -262,7 +262,7 @@ async function suite(mods) {
     // 없는 값은 «없다고». 0 과 같은 픽셀이면 이 화면이 존재할 이유가 없습니다.
     truthy('T5 an absent cell says so instead of printing nothing',
       walk(hostT2).some((n) => n.getAttribute && n.getAttribute('data-col') === 'seen'
-        && n.textContent === '-' && String(n.className).includes('is-absent')));
+        && n.textContent === ABSENT && String(n.className).includes('is-absent')));
     // A cell holding only spaces is absent too: the screen's one blank rule (lead dcd159739).
     const hostT3 = doc.createElement('div');
     const t3 = new TablePart(hostT3, { doc, markings: store2, reads: 'm:3', writes: 'm:3',
@@ -270,7 +270,7 @@ async function suite(mods) {
     t3.mount();
     truthy('T6 a cell holding only spaces says it is absent, as an empty one does',
       walk(hostT3).some((n) => n.getAttribute && n.getAttribute('data-col') === 'seen'
-        && n.textContent === '-' && String(n.className).includes('is-absent')));
+        && n.textContent === ABSENT && String(n.className).includes('is-absent')));
     t1.destroy(); t2.destroy(); t3.destroy();
   }
 
@@ -402,11 +402,14 @@ const MUTANTS = [
     mutate: { 'panel.js': (s) => s.replace('this.box = { width: w, height: h };', '') } },
   { id: 'M4', what: 'a missing count is defaulted to 0 instead of stated as absent', catches: 'F1',
     mutate: { 'composition_panel.js': (s) => s.replace(
-      "v.textContent = typeof value === 'number' ? String(value) : '-';",
+      "v.textContent = typeof value === 'number' ? String(value) : ABSENT;",
       'v.textContent = String(value || 0);') } },
   { id: 'M5', what: 'a defaulted window is drawn with the refusal styling', catches: 'E1',
     mutate: { 'head_summary_panel.js': (s) => s.replace(
       "'Window', `Default · ", "'Window', 'refused', `Default · ") } },
+  { id: 'M8', what: 'a table cell draws its own dash again instead of the shared absent mark', catches: 'T5',
+    mutate: { 'table_part.js': (s) => s.replace('    const text = isBlank(value) ? ABSENT : String(value);',
+      "    const text = isBlank(value) ? '-' : String(value);") } },
   { id: 'M7', what: 'a table cell keeps its own absence judge, blind to a blank string', catches: 'T6',
     mutate: { 'table_part.js': (s) => s.replace('    const text = isBlank(value) ? ABSENT : String(value);',
       "    const text = (value === null || value === undefined || value === '') ? ABSENT : String(value);") } },

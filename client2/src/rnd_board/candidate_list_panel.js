@@ -19,7 +19,7 @@
 
 import { WalkedListPanel, markingIntent } from './panel.js';
 import { SIGN } from './marking_store.js';
-import { UNPICKED } from '../absent.js';
+import { UNPICKED, ABSENT } from '../absent.js';
 import { WALKING, SERVER_REFUSED, NO_VALUE } from '../ui_words.js';
 
 export class CandidateListPanel extends WalkedListPanel {
@@ -143,7 +143,7 @@ export class CandidateListPanel extends WalkedListPanel {
     top.className = 'rb-cand-card-top';
     const rank = doc.createElement('span');
     rank.className = 'rb-cand-rank';
-    rank.textContent = c.rank === null ? '-' : String(c.rank);
+    rank.textContent = c.rank === null ? ABSENT : String(c.rank);
     top.appendChild(rank);
     // Each of these is a DIFFERENT absence/state and gets its own chip. None is an error.
     if (c.top) top.appendChild(this._tag('Top', 'top'));
@@ -162,7 +162,7 @@ export class CandidateListPanel extends WalkedListPanel {
     q.textContent = c.quantity;
     const mdl = doc.createElement('div');
     mdl.className = 'rb-cand-model';
-    mdl.textContent = c.model || '-';
+    mdl.textContent = c.model || ABSENT;
     el.append(q, mdl);
     // No measured line: only measured candidates get a card, and the head already says Measured N
     // (lead 919ccc065 - the dash arm nobody took went with it).
