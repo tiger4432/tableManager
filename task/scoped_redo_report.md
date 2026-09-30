@@ -66811,3 +66811,74 @@ PG    7 failed, 143 passed, 7554 deselected, 41 warnings in 236.04s (0:03:56) �
 스위트      전체 6 failed, 7508 passed, 191 skipped, 3 xfailed in 820.89s (0:13:40) — 알려진 다섯 + test_ensure_schema_carries_the_drop 하나. 그 하나는 같은 트리의 «가지 작업»(미착지 schema.py)이 ensure_schema 글자를 바꿔서 — 이 착지 경로 밖, 가지 착지에서 고침 · PG 7 failed, 145 passed, 7556 deselected, 43 warnings in 315.04s (0:05:15) — 실패 이름이 알려진 일곱과 같음: True
 재기동      워처만(표준 파서를 부르는 곳이 directory_watcher 하나 — git grep parse_std_file)
 ```
+
+## [구현자 -> 총괄] 원장 가지 착지 070a4558b — 60d7e8e42 · fb7ece9a3 · 8d10633ae · e61194b1a · 3b6dacd2f
+
+```
+가지 <이름> = 선언 파일 하나(config/ontology_worlds/<이름>) + 스키마 하나(w_<이름>)
+바뀐 소스만 가지에 번역 · 걷기는 뷰(가지 원자 + 기본 원자 − 그 소스) · 따라가기는 기본만
+병합 = 기존 저장 관문(탐색기 초안) + --whole-source rescope · 지움 = 미리보기 → 원자 수 확인
+세상 좌석 = schema.world_names 하나. 세상을 묻는 함수는 전부 같은 모듈(schema.py)
+```
+**게이트** — PG, 추적 표본 두 소스(바꾼 wafer_process_recipe · 안 바꾼 lot_slot_wafer)
+```
+가지 없는 설치        ensure_schema · ensure_partition 이 내는 문장 = 이전 트리 기록과 byte 같음(새 설치 31 · 기존 21) · 이름 셋 그대로
+소스 하나 바꿈         changed_sources = {wafer_process_recipe} · 가지 원장엔 그 소스만 · 기본 원장 전후 같음
+                   뷰: 그 소스는 branch 다리에서만, 나머지는 default 다리
+걷기                SqlEvidenceLookup · 걷기 라우트 문(_evidence_graph, world=) 둘 다 두 소스를 봄 · /declaration worlds 칸 · 없는 세상 404 world_unknown
+기본 행이 나중에 바뀜    가지 뷰에 보임
+병합                탐색기 초안 source_plan|… 저장·활성화 -> 소스 전부 rescope -> 기본의 그 소스 원자 판 = 가지의 판 · 옛 판 0
+지움                미리보기 원자 수로만(다른 수 거절) · 스키마 없음 · 파일 없음 · 목록에서 빠짐 · 기본은 거절
+뷰 모양             PG 시험: 걷기 계획에 Subquery Scan 없음
+                   박스 EXPLAIN — 이 착지가 짓는 뷰 그대로, 한 트랜잭션 롤백(남은 스키마 0): outgoing wafer 0.407 ms (색인 8 · seq 0) vs 기본 0.489 ms (색인 8)
+                   incoming wafer 0.224 ms (색인 8 · seq 0) vs 기본 0.356 ms (색인 8)
+                   outgoing lot (changed) 0.178 ms (색인 8 · seq 0) vs 기본 0.169 ms (색인 8)
+                   claims_by_ids 50 0.467 ms (색인 8 · seq 0) vs 기본 0.397 ms (색인 8)
+뿌리 넷             ASSY_DATA_ROOT 없음 -> 넷 다 server/config/ontology · 있음 -> 넷 다 <DATA_ROOT>/config/ontology (새 프로세스로 잼)
+좌석 밖 세상 판단      AST 0 · 좌석 스스로는 잡힘(카나리아)
+라우트              130 -> 131 — 는 것 DELETE /admin/ontology-explorer/worlds/{world} 하나
+                   (㉢: 기존 선언 삭제 문은 «선언 부품의 도달성»을 지워서 뜻이 안 맞음 — 좌석 함수 하나를 부르는 라우트 하나)
+변이 열 — 각각 되돌림
+W1 the view filters inside the default leg       빨강  (unit: 5 passed · pg: 1 failed, 2 passed, 7711 deselected, 12 warnings)
+W2 no source is called changed                   빨강  (unit: 5 passed · pg: 1 failed, 2 passed, 7711 deselected, 12 warnings)
+W3 the view excludes nothing                     빨강  (unit: 5 passed · pg: 1 failed, 2 passed, 7711 deselected, 12 warnings)
+W4 the store ignores its world                   빨강  (unit: 5 passed · pg: 3 failed, 7711 deselected, 12 warnings)
+W5 a rescope withdraws nothing                   빨강  (unit: 5 passed · pg: 1 failed, 2 passed, 7711 deselected, 12 warnings)
+W6 deleting a branch leaves its schema           빨강  (unit: 5 passed · pg: 1 failed, 2 passed, 7711 deselected, 12 warnings)
+W7 a seat outside asks the world                 빨강  (unit: 1 failed, 4 passed · pg: 3 passed, 7711 deselected, 12 warnings)
+W8 the default ledger DDL drifts                 빨강  (unit: 1 failed, 4 passed · pg: 1 failed, 7711 deselected, 12 warnings, 3 errors)
+W9 the setup root stops following paths          빨강  (unit: 1 failed, 4 passed · pg: 3 passed, 7711 deselected, 12 warnings)
+W10 an unknown world is read as a world          빨강  (unit: 5 passed · pg: 1 failed, 2 passed, 7711 deselected, 12 warnings)
+```
+**새 함수 · 새 if 중 기존 것과 같은 일** (cdeb5ea10)
+```
+접은 것     원장 관계 이름 셋 · 커서 표 둘(trace_router 두 상수 은퇴) · 선언 뿌리 넷 -> paths.config_path · _IDENTIFIER 둘 -> 하나
+           CONFIG_SUBDIR 둘 · declared_entities 파일 이름 은퇴 · CLI 의 --ontology-root -> --world
+기존 것 부름  «바뀐 소스» 판정 = LedgerStore.restamp_decision · 소스 전부 = _scope_predicate 의 None · 탐색기 = 기존 저장 관문(초안)
+새 함수     좌석: world_names · require_world · worlds · changed_sources · ensure_world · ensure_view(_write_view) · world_deletion · drop_world
+           얼굴: trace_router._world(HTTP 404) · 탐색기 _service_for · retroactive._ledger_world(저장된 옛 칸) · ledger_subgraph.subgraph -> _walk(세상 묶기)
+           _world 와 _service_for 는 같은 일이 아님 — 앞은 없는 세상 거절(require_world), 뒤는 만들기 위해 허용(world_names)
+새 if      좌석 모듈 안에만 세상 판단. 밖은 빈 값 가드: 요청 world 가 FastAPI 기본값·빈칸이면 None · gaps relation 없으면 기본
+           · 탐색기 부트스트랩 seed 없으면 뼈대 · 소스 전부 rescope 의 페이지 범위(scoped or 그 페이지 행) · CLI 의 if args.world 는 없앰(검증이 None 을 뺌)
+안 늘린 두 벌 점 이름을 sql.Identifier 로 쪼개는 줄이 backfill 3 · followup 1 에 이미 넷 — 가지 이름은 검증된 식별자라 sql.SQL 로(다섯째 안 만듦)
+```
+**내 판단으로 정한 것 — 확인 부탁**
+```
+가지 뿌리 자리   config/ontology 밖 — 선언 뿌리는 json 하나만 두고 그 검사가 재귀라, 안에 두면 기본이 안 읽힘(시험이 잡음)
+걷기 깊은 선언   키 순서 · 복수 속성은 «한 걷기 동안» 세상의 선언 파일을 묶어 읽음(contextvar). 인자로 내리면 재귀 전부의 시그니처가 바뀜
+가지 만들기     탐색기 Bootstrap 에 world — 기본 선언을 복사해 시작(seed = 좌석의 base_root). 새 문 없음
+소스 전부       CLI 는 --apply 없이 거절(미리보기 = 전부 번역) · 관리 화면 count 는 표 행 수만
+병합 뒤 restamp  시험에선 rescope 가 지문으로 막지 않았음 — RUN.md 엔 이제까지처럼 restamp 줄을 둠
+관계 이름 가드   trace._IDENTIFIER 가 점 «하나»(스키마 한정)를 받음 — 가지 걷기가 w_<이름>.ledger_view 를 읽어서
+               test_ledger_trace 의 거절 예 public.ledger_events -> public.ledger_events.x (점 둘은 여전히 거절)
+```
+**모르는 것**
+```
+가지 번역 속도 — 박스에서 안 잼(추정 3add4a6ca 7.2 ms/분자)
+가지엔 지운 행 걷기가 없음 — 기본 원천 행이 지워지면 가지 원자가 남음. --whole-source 는 있는 행만 다시 지음(RUN.md 에 적음)
+```
+**스위트** (C:/wt-impl, 착지 트리)
+```
+전체  5 failed, 7512 passed, 194 skipped, 3 xfailed in 820.18s (0:13:40) — 실패 5 개, 파일::이름으로 알려진 다섯과 같음: True
+PG    7 failed, 148 passed, 7559 deselected, 49 warnings in 311.08s (0:05:11) — 실패 이름이 알려진 일곱과 같음: True
+```
