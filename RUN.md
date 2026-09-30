@@ -1,6 +1,24 @@
 # 지금 돌리면 되는 것
 
-> ## 🔴 [09-30 밤] **DT 스텝 뒤 공정 행은 dtwafer 로 — 표본 선언 셋을 라이브에 옮기면 켜짐 · 마이그레이션 «없음» · 재기동 «없음»(리로드 + 커서 지문)**
+> ## 🔴 [09-30 밤] **원장 커서 칸이 빈 행 — 그 행이 든 분자만 이름 대어 거절, 배치는 계속 · 마이그레이션 «없음» · 재기동 서버 · 체인 워커 (run_app.bat 로 전체)**
+>
+> ```
+> 무엇이 바뀌나  원장 번역: 커서 칸(read.order_by)이 빈 행이 든 분자를 no_raw_ref 로 거절 1 건 — 같은 배치의 나머지 분자는 번역됨
+>              전: 그런 행 하나가 배치 전체를 멈춤 「cursor number must be finite」 — 이 박스 dt_log 에서 작업 3 개(144 행), 그 작업을 따라갈 때마다
+>              묶음 소스(group_by 가 있는 소스, 예 dt_job)는 그 분자를 «통째로» 거절 — 남은 행으로 작은 사건을 짓지 않음
+> 확인          서버·체인 워커 로그에 「cursor number must be finite」가 더는 안 남
+>              대신 거절 표본: 사유 no_raw_ref · 주소 bundle.sources.<소스>.read.order_by.<칸>
+>              문장 「molecule …: row … leaves its cursor column <칸> empty - … fill <칸>」
+> 뜻           그 줄 = 원천 표의 그 행 커서 칸이 비어 있음. 할 일은 그 칸을 채우는 것 — 채우면 다음 따라가기가 그 분자를 번역
+>             그 분자에 전에 적힌 원자는 거절되는 동안 원장에서 걷힘 — 편집으로 칸을 비우면 걷히고 채우면 돌아옴(PG 에서 잼)
+>             거절 수는 그 작업을 따라갈 때마다 늘어남 — 채울 때까지
+>             identity · group_by 칸이 빈 행은 전처럼 페이지째 멈춤 — 문장만 「driver identity/group_by value is missing」 으로
+> 급할 때       끄는 스위치 없음 — 커밋 되돌리기
+> ```
+
+---
+
+> ## 🔴 [09-30 밤] **DT 스텝 뒤 공정 행은 dtwafer 로 — 표본 선언 셋을 라이브에 옮기면 켜짐 · 마이그레이션 «없음» · 재기동 서버 · 체인 워커(번역 ①②) · 선언 ③ 은 리로드 + 커서 지문**
 >
 > ```
 > 무엇이 바뀌나  ① 원장 번역: 어느 문장의 when 에도 안 맞은 행을 세어 한 줄 — 「[Ledger] <소스>: N unit(s) said no sentence - mat_type='WF' (N). Next: …」
@@ -18,7 +36,7 @@
 > 확인          DT 스텝을 적으면 그 스텝의 공정 행 mat_type 이 DT 가 되고, 원장의 그 행 원자가 wafer -> dtwafer 로 옮겨감(옛 원자는 지워짐)
 > 뜻           「said no sentence - mat_type='WF'」 = 단계표에 DT 가 아닌 값(WF · 오타)을 적은 스텝 — 그 행은 원장에 안 감. 그 칸을 비우거나 DT 로
 >             스텝을 빼려면 단계표 행을 지우지 말고 mat_type 칸을 비울 것 — 지운 행은 채웠던 공정 행에 닿지 않아 DT 가 남음(잰 것)
->             「cursor number must be finite」 = 원장 커서 칸이 빈 행이 섞인 배치(이번 일과 별개, 박스 dt_log 에서 잼) — 그대로
+>             「cursor number must be finite」 = 이제 안 남 — 바로 위 절(커서 칸이 빈 행)
 > 놓친 따라가기  원장 따라가기 줄은 메모리라 워커가 죽으면 잃음 — 그때만: python -m ledger.backfill --source wafer_process_recipe --scope-column mat_type --scope-values DT --apply (server/ 에서)
 > 급할 때       스텝 가르기만 끄기: 단계표를 비움(행의 mat_type 을 비우면 원자가 wafer 로 돌아감) · 코드 되돌리기는 커밋 되돌리기
 > ```

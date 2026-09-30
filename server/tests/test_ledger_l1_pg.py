@@ -178,7 +178,7 @@ def param(param_id, *, wafer_id="WF-1", step="CMP", name="pressure", value=1.5,
 #:
 #: 🔴 THE BLANK IS `wafer_id`, NOT `param_id`, AND THAT DISTINCTION IS THE WHOLE FIXTURE.
 #: `param_id` is this source's identity AND its cursor AND its order_by, so blanking it is
-#: refused at the BASE FRAME - `driver identity/order/cursor/time value is missing` - which
+#: refused at the BASE FRAME - `driver identity/group_by value is missing` - which
 #: aborts the whole batch before molecules exist and is counted under no reason at all.
 #: `wafer_id` is an entity KEY the molecule check reads (`_required_entity_columns`), so
 #: blanking it refuses ONE molecule, by name, and the rest of the batch still lands.
@@ -929,8 +929,8 @@ def test_two_independent_refusals_are_counted_and_named_in_one_run(ledger, caplo
     because it reads its instant from a BASIS.
 
     🔴 AND THE BLANK IS `wafer_id`, NOT `param_id`. `param_id` is identity AND cursor AND
-    order_by, so blanking it is refused at the BASE FRAME - "driver identity/order/cursor/time
-    value is missing" - which aborts the whole batch before any molecule exists and is counted
+    order_by, so blanking it is refused at the BASE FRAME - "driver identity/group_by value
+    is missing", as the identity - which aborts the whole batch before any molecule exists and is counted
     under no reason at all. An entity KEY is what the molecule check reads, so blanking that
     refuses ONE molecule and leaves the others alone. The two are one character apart in the
     fixture and completely different in what they prove.

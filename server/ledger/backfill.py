@@ -452,13 +452,11 @@ def _preview_frame(engine, setup, source, plan, frame):
     from . import schema
     from .store import LedgerStore
     from .setup import preview_selected_cursor_batch
-    from .runtime_v2 import _filtered_event_atoms
+    from .runtime_v2 import _filtered_event_atoms, last_cursor
 
     result = {}
     subjects = _v2_registration_subjects(plan, frame)
-    ordered = frame.sort_values(list(plan.driver.cursor_columns))
-    last = ordered.iloc[-1]
-    cursor_value = {column: last[column] for column in plan.driver.cursor_columns}
+    cursor_value = last_cursor(plan, frame)
     preview = preview_selected_cursor_batch(
         setup, source, frame, cursor_value, _no_join_reader(),
         known_registrations=None if subjects is None else ())
@@ -1521,6 +1519,7 @@ def preview_first_batch(engine, setup, source, fetch_rows=PREVIEW_FETCH_ROWS,
     five refusals `lot_event` met at backfill while the screen was green. Substituting an
     empty set here would swallow it.
     """
+    from .runtime_v2 import last_cursor
     from .setup import LedgerSetupError, preview_selected_cursor_batch
 
     plan = setup.snapshot.source_plans[source]
@@ -1570,10 +1569,7 @@ def preview_first_batch(engine, setup, source, fetch_rows=PREVIEW_FETCH_ROWS,
             frame = _v2_frame(complete)
             subjects = _v2_registration_subjects(plan, frame)
             known = None if subjects is None else ()
-            ordered = frame.sort_values(list(plan.driver.cursor_columns))
-            last = ordered.iloc[-1]
-            cursor_value = {column: last[column]
-                            for column in plan.driver.cursor_columns}
+            cursor_value = last_cursor(plan, frame)
             answered = preview_selected_cursor_batch(
                 setup, source, frame, cursor_value, _no_join_reader(),
                 known_registrations=known)

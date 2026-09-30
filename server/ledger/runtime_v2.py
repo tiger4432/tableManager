@@ -221,6 +221,30 @@ def _row_ref_index(source_plan, event_frames, event_results):
     return tuple(sorted(pairs))
 
 
+def placeable_rows(plan, frame: pd.DataFrame) -> pd.Series:
+    """True where every cursor column of the row holds a value - the rows a cursor can name
+    (총괄 4b5964ab2). Empty is `is_blank_source_value`, this seam's one judge of it."""
+    from .source_preparation import is_blank_source_value
+
+    mask = pd.Series(True, index=frame.index)
+    for column in plan.driver.cursor_columns:
+        mask &= ~frame[column].map(is_blank_source_value).astype(bool)
+    return mask
+
+
+def last_cursor(plan, frame: pd.DataFrame) -> dict[str, Any]:
+    """The cursor of the batch's last row, in cursor order, among the rows a cursor can name -
+    `{}` when there is none. ONE chooser for the three seats that pick it (the execute door,
+    `backfill._preview_frame`, the backfill probe): each took the plain last row, and a row
+    whose cursor cell was empty sorted last and stopped the whole batch (box dt_log, 09-30)."""
+    columns = list(plan.driver.cursor_columns)
+    placeable = frame[placeable_rows(plan, frame)]
+    if placeable.empty:
+        return {}
+    last = placeable.sort_values(columns).iloc[-1]
+    return {column: last[column] for column in columns}
+
+
 def preview_cursor_batch(
     snapshot: LedgerSetupSnapshot,
     source_id: str,
@@ -336,10 +360,7 @@ def execute_scoped_batch(
     # from the stored cursor deliberately: a value read here and handed to the writer would
     # be a read-then-write race with any concurrent forward scan, which is the same silent
     # rewind by a longer route.
-    ordered = base_rows.sort_values(list(plan.driver.cursor_columns))
-    last = ordered.iloc[-1]
-    unwritten_cursor = {
-        column: last[column] for column in plan.driver.cursor_columns}
+    unwritten_cursor = last_cursor(plan, base_rows)
     preview = preview_cursor_batch(
         snapshot, source_id, base_rows, unwritten_cursor, join_reader, preparers, mappers,
         known_registrations=known_registrations)
@@ -719,16 +740,22 @@ def _cursor_value(source_plan, frame: Any, value: Any) -> dict[str, Any]:
         raise LedgerV2RuntimeError(
             "invalid_cursor", path, "cursor value must be a mapping")
     expected = set(source_plan.driver.cursor_columns)
-    if set(value) != expected:
-        raise LedgerV2RuntimeError(
-            "invalid_cursor", path,
-            f"cursor must contain exactly physical columns {sorted(expected)}",
-        )
     missing_columns = sorted(expected - set(frame.columns))
     if missing_columns:
         raise LedgerV2RuntimeError(
             "invalid_cursor_batch", "source_batch.columns",
             f"base batch is missing cursor columns {missing_columns}",
+        )
+    # 🔴 [총괄 4b5964ab2] only the rows a cursor can name are candidates: a row with an empty
+    # cursor cell is refused with its molecule (`source_preparation._refuse_molecule`), and
+    # a batch of nothing else has no cursor - `last_cursor` answers `{}` for it.
+    frame = frame[placeable_rows(source_plan, frame)]
+    if frame.empty and not value:
+        return {}
+    if set(value) != expected:
+        raise LedgerV2RuntimeError(
+            "invalid_cursor", path,
+            f"cursor must contain exactly physical columns {sorted(expected)}",
         )
     normalized = {}
     for column in sorted(expected):

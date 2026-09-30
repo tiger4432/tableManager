@@ -674,22 +674,19 @@ def _validate_base_frame(
     driver = context.source_plan.driver
     outputs = set(driver.preparation.preparer.output_columns)
     required_physical = (set(driver.identity) | set(driver.group_by)) - outputs
-    required_physical.update(driver.order_by)
-    required_physical.update(driver.cursor_columns)
-    # 🔴 `occurred_at.column` IS DELIBERATELY NOT HERE ANY MORE. An empty time is a fact
-    # about ONE ROW, and the gate has a name for it (`missing_occurred_at`); refusing the
-    # page for it threw away every other molecule in the batch. It is checked in
-    # `_event_frames`, where molecules exist to be refused one at a time.
-    #
-    # The rest stay: `order_by` and `cursor_columns` decide where the PAGE is, so a blank
-    # there is not a row defect - the reader cannot say what comes next at all.
+    # 🔴 `occurred_at.column` AND `order_by` (= the cursor, `setup_bundle._derived_cursor`)
+    # ARE DELIBERATELY NOT HERE ANY MORE. Each is a fact about ONE ROW with a gate name -
+    # `missing_occurred_at`, `no_raw_ref` - and refusing the page threw away every other
+    # molecule (box dt_log 09-30: one job's empty `dt_cell_key` stopped every follow-up of
+    # it). `_refuse_molecule` answers them, where molecules exist (S-41 ②, 총괄 4b5964ab2).
+    # identity and group_by stay: without them there is no molecule to name.
     for column in sorted(required_physical):
         for position, value in enumerate(frame[column].tolist()):
             if _is_missing(value) or (isinstance(value, str) and not value.strip()):
                 raise SourcePreparationError(
                     "source_preparation_incomplete",
                     f"source_batch.rows[{position}].{column}",
-                    "driver identity/order/cursor/time value is missing",
+                    "driver identity/group_by value is missing",
                 )
 
 
@@ -947,14 +944,34 @@ def _refuse_molecule(context, cells, positions) -> "MoleculeRefusal | None":
     # 🔴 IMPORTED, NOT RESPELLED. The refusal vocabulary is closed and lives in the
     # gatekeeper; a second copy of either string here would drift the day one is renamed
     # and `refuse()` would reject it at the door with no test having said so.
-    from .gate import REFUSE_MISSING_OCCURRED_AT, REFUSE_NO_IDENTITY
+    from .gate import REFUSE_MISSING_OCCURRED_AT, REFUSE_NO_IDENTITY, REFUSE_NO_RAW_REF
 
     plan = context.source_plan
     driver = plan.driver
     key = _molecule_key(driver, cells, positions)
+    # the one "empty" `runtime_v2.placeable_rows` also asks - a row it will not name as
+    # the cursor is a row refused here, or the two disagree about the same cell
+    _empty = is_blank_source_value
 
-    def _empty(value) -> bool:
-        return _is_missing(value) or (isinstance(value, str) and not value.strip())
+    # 🔴 THE CURSOR FIRST (총괄 4b5964ab2): a row names itself by its cursor columns, so an
+    # empty one leaves its molecule no reference to be said from - `no_raw_ref`, the
+    # address the declaration cell to fill. A cursor cell that is also the time is this one.
+    for position in positions:
+        empty = [column for column in driver.cursor_columns
+                 if column in cells and _empty(cells[column][position])]
+        if empty:
+            row = plan.frame_row_id
+            named = cells[row][position] if row in cells else f"at event_frame.rows[{position}]"
+            return MoleculeRefusal(
+                reason=REFUSE_NO_RAW_REF,
+                detail=(f"molecule {key}: row {named} leaves its cursor column "
+                        f"{', '.join(empty)} empty - the ledger names a row by its cursor "
+                        f"(read.order_by); fill {', '.join(empty)}"),
+                rows=len(positions),
+                addresses=tuple({"code": "source_preparation_incomplete",
+                                 "path": f"bundle.sources.{plan.source_id}.read.order_by."
+                                         f"{column}"} for column in empty),
+            )
 
     checks = (
         (REFUSE_NO_IDENTITY, tuple(_required_entity_columns(plan)) + tuple(driver.identity)),

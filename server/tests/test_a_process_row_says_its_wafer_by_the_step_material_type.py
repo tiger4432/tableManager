@@ -14,11 +14,10 @@ import pytest
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from ledger import gate                                                  # noqa: E402
 from ledger.implementations import (role_mapper_registry,                # noqa: E402
                                     source_preparer_registry,
                                     trusted_implementations)
-from ledger.runtime_v2 import preview_cursor_batch                       # noqa: E402
+from ledger.runtime_v2 import execute_scoped_batch, preview_cursor_batch # noqa: E402
 from ledger.setup_bundle import (load_physical_catalog,                  # noqa: E402
                                  require_ready_bundle, validate_bundle)
 from ledger.setup_registry import compile_setup_snapshot                 # noqa: E402
@@ -72,14 +71,33 @@ def test_each_row_is_said_about_the_wafer_its_material_type_names(snapshot):
     assert "W-WF" not in said, said
 
 
+class _Store:
+    """What the execute door asks of a store here: one write, answered with counts."""
+
+    def __init__(self):
+        self.written = []
+
+    def write_batch(self, source, version, atoms, cursor, molecules, *args, **kwargs):
+        self.written.append(list(atoms))
+        return {"attempted": len(atoms), "inserted": len(atoms), "deduped": 0, "withdrawn": 0}
+
+
 def test_a_row_no_sentence_says_is_counted_by_its_value_and_named(snapshot, caplog):
-    preview = _preview(snapshot, _rows())
-    assert dict(preview.unsaid) == {(("mat_type", "WF"),): 1}
+    """총괄 4b5964ab2 ①: through the execute door - the line an operator reads is the one the
+    door writes, not a call a test makes."""
+    assert dict(_preview(snapshot, _rows()).unsaid) == {(("mat_type", "WF"),): 1}
+    frame = pd.DataFrame(_rows())
+    store = _Store()
     with caplog.at_level(logging.WARNING, logger="Ledger.Gate"):
-        gate.record_unsaid(SOURCE, preview.unsaid)
-    line = caplog.records[-1].getMessage()
-    assert "%s: 1 unit(s) said no sentence - mat_type='WF' (1)" % SOURCE in line, line
-    assert "Next:" in line, line
+        executed = execute_scoped_batch(
+            snapshot, SOURCE, frame, ("row_id", tuple(frame["row_id"])), _NoJoin(),
+            source_preparer_registry(), role_mapper_registry(), store, known_registrations=())
+    assert len(store.written) == 1 and len(store.written[0]) == 3
+    assert dict(executed.preview.unsaid) == {(("mat_type", "WF"),): 1}
+    lines = [r.getMessage() for r in caplog.records if "said no sentence" in r.getMessage()]
+    assert len(lines) == 1, lines
+    assert "%s: 1 unit(s) said no sentence - mat_type='WF' (1)" % SOURCE in lines[0], lines
+    assert "Next:" in lines[0], lines
 
 
 def test_every_row_said_leaves_nothing_to_count(snapshot):
