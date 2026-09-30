@@ -143,6 +143,42 @@ def naive_time_note():
     return "timezone_naive: " + " · ".join(parts)
 
 
+#: The zone PostgreSQL reads a NAIVE time in on this process's connections - the session
+#: `TimeZone` the server reports when a connection opens (`database._note_the_session_zone`).
+#: Empty until one has opened, and on SQLite, which reports none.
+_SESSION_ZONE = []
+
+
+def note_session_zone(name):
+    """Record the session TimeZone a connection reported. A name `ZoneInfo` cannot read leaves
+    the zone unknown - never a guessed one."""
+    try:
+        _SESSION_ZONE[:] = [ZoneInfo(str(name))] if name else []
+    except Exception:                                   # noqa: BLE001
+        _SESSION_ZONE[:] = []
+
+
+def instant_key(value):
+    """What a world time COMPARES as (총괄 2dd93d4a9 2): `("t", its UTC instant)`, or
+    `("tn", its wall clock)` for a naive one while no connection has said which zone it is read
+    in - two naive values are the same instant exactly when their wall clocks are. `None` when
+    the value does not read as ISO-8601; the caller then compares its text, as before.
+
+    🔴 A NAIVE TIME IS READ IN THE SESSION ZONE because that is what the write door does with
+    it: it hands the text to PostgreSQL, which reads it there. No second rule."""
+    moment = value
+    if not isinstance(value, datetime):
+        try:
+            moment = datetime.fromisoformat(str(value).strip())
+        except ValueError:
+            return None
+    if moment.tzinfo is None:
+        if not _SESSION_ZONE:
+            return ("tn", moment)
+        moment = moment.replace(tzinfo=_SESSION_ZONE[0])
+    return ("t", moment.astimezone(timezone.utc))
+
+
 TS_FMT = "%Y-%m-%d %H:%M:%S"
 
 # Value memo. Rows are bulk-ingested, so a page of them shares a handful of

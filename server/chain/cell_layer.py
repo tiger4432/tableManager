@@ -120,7 +120,7 @@ def _resolve_cell(table_name: str, col_types: dict, row, col: str,
         "old_value": old_val,
         "new_value": new_val,
         "top_source": top_src,
-        "changed": crud.clean_str_value(old_val) != crud.clean_str_value(new_val),
+        "changed": crud.values_differ(old_val, new_val, col_types.get(col, "string")),
     }
 
 def cells_stamped_by(db, origin_row_ids, chunk_size: int = DEFAULT_CHUNK_SIZE) -> dict:

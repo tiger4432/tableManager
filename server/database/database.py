@@ -96,6 +96,17 @@ def _name_the_connection(dialect, conn_rec, cargs, cparams):
     if dialect.name == "postgresql":
         cparams.setdefault("application_name", connection_name())
 
+
+# [총괄 2dd93d4a9 2] The zone PostgreSQL reads a naive time in is the session TimeZone, and the
+# server reports it on every connection (a ParameterStatus - no query), so a comparison can read
+# a naive time the way the database this process writes to will. SQLite reports none.
+@event.listens_for(_Engine, "connect")
+def _note_the_session_zone(dbapi_connection, connection_record):
+    read = getattr(dbapi_connection, "get_parameter_status", None)
+    if read is not None:
+        from utils import time_format
+        time_format.note_session_zone(read("TimeZone"))
+
 # [Notation normalization] SQLite has neither `regexp_replace` nor `translate`, so the
 # query-time notation fold has no SQL spelling there. Register it as a scalar function
 # instead, on the Engine CLASS - the suite and the contracts each build their own
