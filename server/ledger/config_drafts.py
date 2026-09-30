@@ -90,7 +90,7 @@ def _empty_declaration(section: str) -> dict:
 
 
 def _filled_declaration(active_setup: Any, node: Any,
-                        raw: Mapping[str, Any]) -> Mapping[str, Any]:
+                        raw: Mapping[str, Any]) -> tuple[Mapping[str, Any], list]:
     """What the operator typed, plus what the screen already told them was filled in.
 
     The derivations are `config_authoring`'s -- this is the moment they stop being
@@ -353,19 +353,20 @@ def parse_draft_raw(raw_text: Any) -> Mapping[str, Any]:
 def with_unsaved_body(document: Mapping[str, Any], catalog: Mapping[str, Any],
                       record: Mapping[str, Any], index: ExplorerIndex,
                       raw_text: Any) -> dict[str, Any]:
-    """`document` with the editor's body at the draft's place, filled as a save would fill
-    it (총괄 791c0f45e 1ㄴ) - so a plan over it answers what the plan answers after the save.
-    Nothing is written."""
+    """`(document, dropped)` - `document` with the editor's body at the draft's place, filled
+    as a save would fill it (총괄 791c0f45e 1ㄴ) - so a plan over it answers what the plan
+    answers after the save - and the switched-off fields the fill took out. Nothing is written."""
     from .config_authoring import filled_declaration
 
     node = draft_target(record, index)
-    body = filled_declaration(document, catalog, node.bundle_path, parse_draft_raw(raw_text))
+    body, dropped = filled_declaration(document, catalog, node.bundle_path,
+                                       parse_draft_raw(raw_text))
     out = json.loads(json.dumps(document, ensure_ascii=False))
     try:
         _set_path(out, node.bundle_path, body)
     except (KeyError, IndexError, TypeError) as exc:
         raise ConfigExplorerError("draft_target_missing", "draft.target_id", str(exc)) from exc
-    return out
+    return out, dropped
 
 
 def _set_path(document: Any, path: Sequence[Any], value: Any) -> None:
@@ -551,7 +552,7 @@ class OntologyDraftStore:
             # (`missing_field` on `implementation_version`) about a square the screen has
             # already answered -- and `activate` writes `record["raw"]` verbatim, so this
             # is also the only assignment that decides what reaches the config file.
-            raw = _filled_declaration(active_setup, node, raw)
+            raw, dropped = _filled_declaration(active_setup, node, raw)
             preview = compile_draft_preview(active_setup, node, raw)
             record["revision"] += 1
             record["raw"] = json.loads(json.dumps(raw, ensure_ascii=False))
@@ -563,7 +564,7 @@ class OntologyDraftStore:
             record["review_revision"] = None
             record["updated_at"] = _now()
             self._write_record(record)
-            return self.public(record), preview
+            return {**self.public(record), "dropped_fields": dropped}, preview
 
     def request_review(self, draft_id: str, *, expected_revision: int) -> dict[str, Any]:
         with self._lock:

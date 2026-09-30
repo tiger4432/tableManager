@@ -980,14 +980,16 @@ class OntologyExplorerService:
                     f"{path} must contain a JSON object")
             source = {"file": str(path), "state": "present"}
         catalog = self._catalog_loader()
+        dropped: list = []
         if draft_id is not None:
             # 🔴 THE EDITOR'S BODY, UNSAVED (총괄 791c0f45e 1ㄴ) - a picked entity type
             #    lays out its key squares before anything is written.
             _, index, _ = self.active()
-            bundle = with_unsaved_body(
+            bundle, dropped = with_unsaved_body(
                 bundle, catalog, self.draft_store.get(draft_id), index, raw)
         payload = authoring_plan(bundle, catalog, selection_prefix=selection_prefix)
         payload["config_source"] = source
+        payload["dropped_fields"] = dropped
         return payload
 
     def bootstrap_config(self) -> dict[str, Any]:
