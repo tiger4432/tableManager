@@ -34,7 +34,7 @@ const LF = String.fromCharCode(10);
 // `setAttribute` · `addEventListener` · `value` · `checked` · `type`, plus a `head` for
 // `ensureWalkStyles`. Nothing else is touched, which is what makes this cheap.
 function makeDoc() {
-  const make = (tag) => ({
+  const make = (tag) => option(tag, {
     tagName: tag, children: [], attrs: {}, listeners: {},
     className: '', value: '', checked: false, type: '', _text: '',
     append(...cs) { cs.forEach((c) => this.children.push(c)); },
@@ -46,6 +46,16 @@ function makeDoc() {
     set textContent(v) { this._text = String(v); this.children = []; },
   });
   return { createElement: make, head: make('head') };
+}
+// The browser's rule for an <option>: with no value of its own it is worth its TEXT. A stub where every
+// value starts as '' cannot see the type placeholder becoming a type (lead b417e2ad8), so it keeps the rule.
+function option(tag, node) {
+  if (tag !== 'option') return node;
+  delete node.value;
+  return Object.defineProperty(node, 'value', {
+    get() { return this._value !== undefined ? this._value : this.textContent; },
+    set(v) { this._value = String(v); },
+  });
 }
 
 const walkAll = (el, out = []) => { out.push(el); el.children.forEach((c) => walkAll(c, out)); return out; };
@@ -148,6 +158,33 @@ async function suite(mod) {
   const { host: exact } = await render(mod, { nodes: RESULT.nodes, edges: [] });
   eq('C4 under the cap there is no cap note -- the absence is the answer',
     capNotes(exact).length, 0);
+
+  console.log(`${LF}-- the type placeholder is no type (lead b417e2ad8) --`);
+  {
+    const asked = [];
+    const doc = makeDoc();
+    const host = doc.createElement('div');
+    const handle = mod.boot(doc, host, { apiBase: '',
+      fetchImpl: async (url) => { asked.push(String(url)); return { ok: true, status: 200, json: async () => DECL }; } });
+    await settle();
+    // The page's own control, as the browser drives it: the select takes the picked option's value.
+    const pick = (at) => {
+      const sel = byClass(host, 'wk-select')[0];
+      if (!sel) return;
+      sel.value = at(sel.children).value;
+      for (const fn of sel.listeners.change || []) fn();
+    };
+    pick((opts) => opts.find((o) => o.value === 'die@1'));
+    await settle();
+    const subjects = () => asked.filter((u) => u.includes('/key-values')).length;
+    const onType = subjects();
+    pick((opts) => opts[0]);
+    await settle();
+    const go = byClass(host, 'wk-go')[0];
+    ok('P1 picking the placeholder again: no type, Run is off, no subject list is asked',
+      onType === 1 && handle.state.type === '' && go && go.disabled === true && subjects() === onType,
+      `${onType} ${JSON.stringify(handle.state.type)} ${go && go.disabled} ${subjects()}`);
+  }
 }
 
 // ═══ baseline ═══════════════════════════════════════════════════════════════════════════
@@ -184,6 +221,9 @@ const MUTANTS = [
     catches: 'C3 the total is not what is printed',
     from: '      box.append(el(doc, \'div\', \'wk-note\', `이 아래 ${view.hidden} 개 안 그림`));',
     to: '      box.append(el(doc, \'div\', \'wk-note\', `이 아래 ${r.nodes.length} 개 안 그림`));' },
+  { id: 'M6', what: 'the type placeholder carries its text as its value again',
+    catches: 'P1 picking the placeholder',
+    from: "    none.value = '';\n", to: '' },
   // 🔴 CONTROL: a comment cannot change an answer. If this reddens something, the harness is
   //    reading text rather than behaviour.
   { id: 'M5', what: 'CONTROL: a comment line is removed', control: true,
