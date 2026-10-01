@@ -68511,3 +68511,45 @@ atoms counted instead of distinct far nodes (fanned adds atom.id) -> 2 failed, 7
    실패: test_live_mapper_and_tracked_sample_are_byte_identical · test_live_mapper_matches_tracked_sample · test_the_repo_root_is_one_above_it · test_the_sample_is_written_in_the_one_format_both_writers_use
 PG  6 failed, 163 passed, 7632 deselected in 356.75s (0:05:56) · 알려진 밖: 0
 ```
+
+---
+
+## [10-01 밤] 원장 펼친 보기 — 짓기 전 실측과 안 셋 (총괄 0fb9e9390)
+
+**박스 실측** (읽기만 · 새 색인 없이 보기를 하위 질의로 써서 잼 — scratch probe_row_atoms.py · probe_flat_view.py)
+```
+ledger_source_row_ref   1,218,992 행 · 1,389 MB · 색인은 PK (relation, row_id, source_who, source_raw_ref) 하나
+                        한 원천 행에 참조 둘: 3,168 행(전부 lot_event) — 예 lot_event 01a01548-7f96-… 한 행 -> 원자 25 (같은 꼴 6 · 17)
+원천 행 참조 «없는» 원자  bw_dt_seat 371,673 · void_observation 207,726 · bonded_from 55,827 · lot_slot_move 135 (뷰를 읽던 소스)
+                        -> 이음이 inner 면 이 원자들이 보기에서 사라짐(주어 거르기 0 행의 까닭) -> LEFT JOIN 이어야 원자가 다 보임
+읽기 넷(새 색인 0)        첫 쪽 100 행(원자 id 순) 10.2 s · row_id 하나 0.69 s · 주어 평문 일부 15.2 s · 전체 행 수 5.0 s(inner 기준 1,698,715)
+```
+**모양** (안 셋 공통)
+```
+관계      SQL 뷰 하나 ledger_atom_rows(제품 낱말) — 원자 LEFT JOIN 원천 행 참조 (source_who, source_raw_ref)
+칼럼      atom_id · occurred_at · subject_type · subject(평문) · predicate · object(평문) · qualifiers(평문) · source_who · source_relation · source_row_id
+          ⚠️ row_id 라 부르지 않음 — 그리드의 total_order_keys 가 «row_id 칼럼이 있으면 그것»을 전순서로 집는데 이 보기에서 row_id 는 유일하지 않다
+등록      table_config 에 kind: view + composite_key_source [atom_id, source_relation, source_row_id] (S-229 의 합성 전순서 그대로) · 쓰기 거절은 kind: view 가 이미 함
+평문      저장 철자 그대로(1.0 은 1.0). 모양은 아래 안에 따라
+```
+**안 셋**
+```
+가  원천 행 참조 표에만 색인 둘 — (source_who, md5(source_raw_ref)) · (row_id)
+    좋은 점 원장 쓰기 경로 비용 0(원장 표 무변). 첫 쪽은 원자 id 색인 순서로 걸으며 참조를 색인으로 찾아 빨라질 것 — «안 쟀다»(박스에 DDL 을 안 해서)
+    위험    주어 평문 거르기는 그대로 원자 전부를 훑음(지금 15 s). 전체 행 수도 수 초
+    크기    뷰 하나 + 색인 둘 + 등록 칸 + 이주 스크립트(미리보기 · --apply) — 줄 수 안 쟀다
+나  가 + 원장 표에 주어 평문의 트라이그램 색인 하나 — 평문을 «색인 가능한 식»으로: regexp_replace(subject_keys::text, '[{}"]', '', 'g')
+    (모양 「x: 1.0, y: 4.0, mat_id: SYN-CX-BW-001, mat_type: Wafer」 — 저장 순서 · 저장 철자 그대로)
+    좋은 점 주어 거르기를 색인으로
+    위험    원장 쓰기 경로에 GIN 색인 하나 — 원자마다 트라이그램 수십 개. 크기 추정: 등록 원자에만 건 같은 종류 색인이 원자당 68.8 B -> 전체 2.26M 이면 약 150 MB(추정, 안 만들어 봄)
+나'  가 + 주어 거르기를 «키 값 같음»으로 — 이미 있는 idx_ledger_subject_entity (subject_type, subject_keys) 를 타게
+    좋은 점 원장 색인 0 · 정확한 다이 하나는 빠름
+    위험    「일부로」 찾기가 아님 — 소유자 문장 「원자들 검색」의 «부분 찾기»를 못 함
+```
+**추천** 가 로 짓고 첫 쪽 · row_id 를 잰 뒤, 주어 부분 찾기가 필요하면 나 의 색인 하나를 수와 함께 따로
+**여쭐 것**
+```
+① 재려면 박스 DB 에 색인을 만들어야 한다(CREATE INDEX CONCURRENTLY, 되돌리기 DROP) — 박스에 만들어도 되나, 아니면 이주를 소유자가 돌린 뒤 재나
+② 원천 행 없는 원자(563,361)도 보기에 한 줄씩(원천 칸 빈 채) 넣나 — 추천: 넣는다(LEFT JOIN)
+③ 전체 행 수 — 그리드가 total 을 물으면 수 초. 그대로 둘지(사실과 수만 적음)
+```
