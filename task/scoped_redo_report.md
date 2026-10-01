@@ -68189,3 +68189,80 @@ PG  6 failed, 163 passed, 7608 deselected in 360.17s (0:06:00)
    실패 6: test_an_install_that_predates_attributes_is_widened_once · test_postgres_bundle_to_read_apis_is_one_compiler_and_one_transaction · test_postgres_gate_refusal_stops_before_store_transaction · test_postgres_replay_dedupes_the_second_write_of_the_same_batch · test_the_live_door_writes_the_refusal_breakdown_to_the_registry_row · test_two_independent_refusals_are_counted_and_named_in_one_run
    알려진 일곱 중 이번에 은퇴: test_postgres_missing_join_and_ambiguous_reader_leave_atom0 · 알려진 밖: 0
 ```
+
+---
+
+## [10-01 저녁] 걷기 제어 ① 실측 — 짓기 전 (총괄 c9bf53033) · 🔴 ㄱ 이 그대로는 도착 못 함
+
+**결론 먼저**
+```
+다이 -> 웨이퍼 -> 다이 수백 개는 «두 술어»로 동시에 내려온다 — in_container 를 거꾸로(=올라온 술어) «와» inspected 정방향(=다른 술어)
+같은 다이-웨이퍼 쌍을 두 술어가 같이 말한다: 쌍 768 개가 둘 다 · 66 개가 하나만
+그래서 「같은 술어로 도로 내려가지 않기」는 어느 모양으로 걸어도 이 퍼짐을 못 줄인다 — 모의 1000 -> 1000
+줄이려면 「inspected 는 in_container 의 역」이라는 사실이 필요한데, 선언에 그것을 «적을 자리»가 없다 — 이것이 이번 라운드의 진짜 일
+```
+**씨앗** (이 박스 · 합성 데이터 SYN-…, 읽기만 — scratch probe_die_fanout.py)
+```
+다이 {"x": 1.0, "y": 5.0, "mat_id": "SYN-CX-CW-HBM-B-02", "mat_type": "Wafer"} — 그 웨이퍼 SYN-CX-CW-HBM-B-02 에 in_container 396 개 · inspected 0 개
+씨앗의 첫 걸음: bonded_from 6 · in_container 1
+```
+**오늘 걷기** (라우트 기본: hops 12 · both · follow 없음)
+```
+상한 400(기본)             노드 400 · 엣지 892 · 홉 3 · 잘림 nodes
+                       타입 die 393 · wafer 7 | 술어 bonded_from 168 · in_container 392 · inspected 326 · transfer 6
+상한 1000(MAX_NODE_LIMIT) 노드 1000 · 엣지 2472 · 홉 4 · 잘림 nodes, claims
+                       타입 die 897 · wafer 7 · defect 96 | 술어 bonded_from 768 · in_container 834 · inspected 768 · transfer 6 · observed 96
+퍼지는 자리(가까운 쪽 -> 먼 쪽, 엣지 수) — 상한 1000 답에서
+   wafer SYN-CX-BW-001 (깊이 2) -in_container incoming-> die 127
+   wafer SYN-CX-BW-002 (깊이 2) -in_container incoming-> die 127
+   wafer SYN-CX-BW-003 (깊이 2) -in_container incoming-> die 127
+   wafer SYN-CX-BW-004 (깊이 2) -in_container incoming-> die 127
+   wafer SYN-CX-BW-005 (깊이 2) -in_container incoming-> die 127
+   wafer SYN-CX-BW-006 (깊이 2) -in_container incoming-> die 127
+   wafer SYN-CX-BW-003 (깊이 2) -inspected outgoing-> die 127
+   wafer SYN-CX-BW-001 (깊이 2) -inspected outgoing-> die 127
+경로: 씨앗 -bonded_from-> 다른 웨이퍼의 다이(깊이 1) -in_container-> 그 웨이퍼(깊이 2) -> 그 웨이퍼의 다이 전부(깊이 3)
+```
+**🔴 펼치기에 가드가 «이미» 있다 — 총괄 실측 · WALK.md 의 문장 정정**
+```
+ledger_subgraph._walk._expand_atom 「A STEP DOES NOT GO BACK DOWN THE PREDICATE IT JUST CLIMBED」 — 주석이 아니라 코드다(return)
+   막는 모양: incoming(P) 로 닿은 노드에서 outgoing(P) — 그리고 그 노드에 닿은 걸음이 «정확히 그 하나»일 때만(== , in 아님)
+   일부러 남긴 모양: outgoing(P) -> incoming(P) 「내가 가리키는 것을 가리키는 것 전부」(같은 레시피를 돈 웨이퍼) — 주석이 그 이유를 든다
+_reach 는 같은 규칙을 «경로의 직전 걸음»으로 잰다 — 두 자리의 판정 단위가 다르다(노드의 도착 집합 vs 경로의 직전 하나)
+in_container 형제: die -in_container-> wafer <-in_container- die' 는 outgoing -> incoming 이라 «일부러 남긴 모양»
+inspected 정방향: 올라온 술어(in_container)와 «다른» 술어라 가드 밖. inspected 로도 닿았다면 도착 집합이 둘이라 == 가 거짓 — 어느 쪽이든 안 막힘
+```
+**ㄱ 의 변형이 줄이는 양** (상한 1000 으로 가져온 답 위에서 다시 걸은 모의 — 가져온 것 안에서만 자르므로 «하한»)
+```
+ 1000  die 897 · defect 96 · wafer 7   <- no rule (graph as fetched)
+ 1000  die 897 · defect 96 · wafer 7   <- today (incoming then outgoing, same predicate)
+ 1000  die 897 · defect 96 · wafer 7   <- either orientation, same predicate
+   15  wafer 7 · die 8   <- either orientation, same predicate or its inverse (in_container ~ inspected)
+   14  wafer 7 · die 7   <- no type bounce (A -> B -> another A)
+```
+**아이디어 셋** (짓지 않았음)
+```
+가  역 술어 선언 한 칸 + 「같은 술어 또는 그 역으로 도로 내려가지 않기」(양 방향)
+    운영자  어휘의 inspected 에 「in_container 의 역」을 적는다(칸 이름 미정). 비우면 오늘과 같음 — 제가 채우지 않음
+    좋은 점 이 박스 모의 1000 -> 15 · 사실을 «선언»이 들고, 코드에 도메인 낱말 0
+    위험    양 방향을 막으면 「내가 가리키는 것을 가리키는 것」 모양도 막힌다 — 동적 노드에서 그 모양을 묻는 길이 몇인지 «안 쟀다»
+            (레시피는 정적이라 이미 막힘). 펼치기 · 순위가 같은 함수를 부르게 하려면 판정 단위(도착 집합 vs 직전 걸음)를 하나로 정해야 함
+    크기    어휘 한 칸 + 검증 + 한 함수(두 자리가 부름) + /declaration 에 싣기 — 줄 수 안 쟀다
+나  선언 없이 「타입 되돌기 금지」(A -> B -> 다른 A)
+    운영자  없음
+    좋은 점 모의 1000 -> 14
+    위험    선언 없이 코드가 «그 걸음은 무의미하다»고 추론한다 — 같은 랏의 다른 웨이퍼처럼 사람이 묻는 형제 질문까지 막는다. 막히는 길 수 안 쟀다
+    크기    작음(한 함수) — 안 쟀다
+다  ㄴ(묶음) 만 — ㄱ 은 오늘 그대로
+    운영자  fanout_limit 를 요청에 준다
+    좋은 점 선언 변경 0. 127 개짜리 펼침이 묶음 한 줄 «둘»(in_container · inspected 각각)로 — 같은 다이를 두 묶음이 센다
+    위험    걸음 수(=질의 · 원자 읽기)는 그대로 — 상한 1000 에 «원자 6000 상한»도 같이 걸렸다. 그리는 수만 준다
+    크기    지시서 ③ 그대로
+```
+**추천** 가 + ㄴ. 가 없이 ㄴ 만이면 같은 다이를 두 묶음이 따로 센다.
+**여쭐 것**
+```
+① ㄱ 에 «역 술어 선언 칸» 하나를 더해도 되나(스키마 한 칸 — 소급 0: 원장 · 원자는 안 건드리고 걷기만 읽음)
+② 양 방향 막기 — 오늘 주석이 일부러 남긴 「내가 가리키는 것을 가리키는 것」 모양도 같은 술어면 막는다. 받으시나, 아니면 역 술어 쪽만 양 방향인가
+③ 한 함수의 판정 단위 — 펼치기의 「도착 집합이 정확히 그 하나」(==) 와 순위의 「직전 걸음」 중 무엇으로
+```
