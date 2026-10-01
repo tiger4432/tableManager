@@ -358,3 +358,73 @@ def test_a_branch_that_adds_a_source_writes_only_that_source(world):
             % names.read_relation), {"a": CHANGED, "b": ADDED}).fetchall())
     assert written == {ADDED}, written
     assert legs == {(ADDED, "branch"), (CHANGED, "default")}, legs
+
+
+# ── 총괄 c23b02aeb ② — the view is made again at the doors that make and save a branch ──
+# Only backfill made a branch's view, so a branch whose change moves no source (a `static` flip)
+# had none and its walk answered 503, and a save that changed which sources the branch speaks
+# for left the view excluding the old set.
+
+@pytest.fixture(name="doors")
+def fixture_doors(world, monkeypatch):
+    import database.database as database_module
+    from ledger_api import ontology_config_explorer_router as explorer_router
+    from runtime import system_reload
+
+    monkeypatch.setattr(database_module, "engine", world["engine"])
+    monkeypatch.setattr(system_reload, "reload_system_configs", lambda db: None)
+    monkeypatch.setattr(explorer_router, "_services", {})
+    _seed(world)
+    return explorer_router
+
+
+def test_a_branch_made_through_bootstrap_is_walked_before_anything_is_translated(world, doors):
+    from ledger import explorer, trace_router
+
+    made = "v" + WORLD[1:]
+    try:
+        doors.bootstrap_config(world=made)
+        with world["engine"].connect() as conn:
+            payload = trace_router._evidence_graph(
+                conn, node_id=explorer.entity_id("wafer", {"wafer": "W1"}), hops=2,
+                direction="both", node_limit=100, edge_limit=200, world=made)
+        assert {"processed_with", "has_wafer"} <= {e.get("predicate") for e in payload["edges"]}
+    finally:
+        if made in schema.worlds():
+            preview = schema.world_deletion(world["engine"], made)
+            schema.drop_world(world["engine"], made, preview["atoms"])
+
+
+def _saved_legs(world):
+    names = schema.require_world(WORLD)
+    return schema.changed_sources(names), set(_rows(world, names.read_relation,
+                                                    "source_who", "world_leg"))
+
+
+def test_a_save_that_changes_a_source_takes_its_default_atoms_out_of_the_view(world, doors):
+    service = doors._service_for(WORLD)
+    _setup, index, *_rest = service.active()
+    draft = service.create_draft(target_key="source_plan|" + KEPT,
+                                 base_snapshot_hash=index.snapshot_hash)
+    source = _branch_document()["sources"][KEPT]
+    source["bind"]["mappings"]["seat-holds-wafer-saved"] = source["bind"]["mappings"].pop(
+        "seat-holds-wafer")
+    saved = service.save_draft(draft["draft_id"], expected_revision=0, raw=json.dumps(source))
+    assert saved["preview_valid"] is True, saved.get("validation_errors")
+    doors.activate_draft(draft["draft_id"], payload={"expected_revision": 1},
+                         db=world["db"], world=WORLD)
+
+    changed, legs = _saved_legs(world)
+    assert changed == {CHANGED, KEPT}
+    assert (KEPT, "default") not in legs and (CHANGED, "default") not in legs, legs
+
+
+def test_a_deleted_declaration_takes_its_default_atoms_out_of_the_view(world, doors):
+    service = doors._service_for(WORLD)
+    _setup, index, *_rest = service.active()
+    doors.delete_declaration("source_plan|" + KEPT, base_snapshot_hash=index.snapshot_hash,
+                             db=world["db"], world=WORLD)
+
+    changed, legs = _saved_legs(world)
+    assert KEPT in changed
+    assert (KEPT, "default") not in legs, legs
