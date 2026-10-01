@@ -82,12 +82,21 @@
 표를 고르기 전에도 칸과 버튼이 보이지만 꺼져 있습니다 — 「Pick a table or Add table」(10-01 `cbbf03dd7`). 저장(Save · Ctrl+S)과 원문 칸도 같은 낱말로 꺼집니다(`b4f162ccd`).
 1줄 = 칸 이름, 2줄 = 타입, 3줄(있으면) = 키 칸 밑에 key.
 ```
-- **타입은 `string` · `number` · `datetime` 셋뿐입니다** — 서버가 가르는 낱말이 이 셋이고(그 밖의 낱말은 글자 칸이 됨) 화면은 다른 낱말을 거절합니다. 대소문자는 안 가립니다 — `Number` · `KEY` 도 읽고, 저장은 서버의 철자(`number` · `key`)로 씁니다(`666b3568d`).
+- **타입은 `string` · `number` · `datetime` 셋뿐입니다** — 서버가 가르는 낱말이 이 셋이고(그 밖의 낱말은 글자 칸이 됨) 화면은 다른 낱말을 거절합니다. 🆕 10-01: 이미지 칸 낱말 `image`(아래 §2.2, 글자로 저장)는 아직 붙여 넣기가 거절합니다 — 받는 것은 클라 몫(`a8dea2bcf`). 대소문자는 안 가립니다 — `Number` · `KEY` 도 읽고, 저장은 서버의 철자(`number` · `key`)로 씁니다(`666b3568d`).
 - 3줄에 `key` 가 하나면 `business_key`, 여럿이면 `composite_key_source`(왼쪽부터). 3줄이 없으면 키는 그대로입니다.
 - 붙여 넣은 것은 `column_types` · `display_columns`(3줄이 있으면 키 둘도)를 **바꿔 씁니다**. 그 밖의 칸은 그대로 남습니다.
 - 거절은 칸마다 이름 대어 밑에 섭니다: `column N: no name` · `name repeated` · `unknown type <낱말>` · `<값> is not key` · `row N: only names, types and key are read` · `Nothing pasted`.
 - **이미 있는 표**는 저장(Save · Ctrl+S)이 바꾸는 것을 먼저 보이고 묻습니다: `Dropped · <칸>` · `Type · <칸> · <전> → <후>` · `Key · <전> → <후>` · `Existing rows change identity`. 칸 삭제 · 타입 변경이 운영 표에 반영되는 길은 위 4. 그대로입니다(재기동 + 수동 마이그레이션). 보이는 칸이 늘면 `Shown · + <칸>` 도 말합니다(`927b73a6e`).
 - **Copy columns** — 붙여 넣기 칸 밑의 버튼이 표의 지금 칸을 «같은 세 줄 모양»으로 복사합니다(보이는 순서, 그 뒤에 안 보이는 타입 칸 · 문서의 타입 낱말 · 키 밑 `key`). 시트에서 고쳐 그대로 붙여 넣으면 됩니다. 키 줄은 세 줄이 표의 키를 «그대로» 다시 쓸 수 있을 때만 씁니다 — 키 철자 둘(`business_key` · `composite_key_source`)을 다 든 표와 칸 하나짜리 `composite_key_source`(다시 붙이면 `business_key` 로 읽힘)는 키 줄 없이 복사하고, 복사 직후 그렇다고 한 줄 말합니다(`927b73a6e` · `176244796`). 그때 붙여 넣으면 키는 그대로 남습니다.
+
+### 2.2 이미지 칸 — `image_sources.json` (10-01 `a8dea2bcf`)
+```
+운영에서는 칸 타입을 image 로 적고, 그 칸이 가리키는 출처를 server/config/image_sources.json 에 적으면 됩니다.
+칸 값은 https://… 그대로, 또는 <출처 이름>:<경로 또는 키>. 화면은 GET /api/image?ref=<값> 으로 읽습니다.
+```
+- 출처 종류 셋(샘플 `server/config/sample/image_sources.json.sample`): `folder`(`root` — 경로가 그 밖으로 나가면 거절) · `db`(`connection` + `query` — 질의는 `:key` 하나만 묶고 읽기 전용으로 돌림) · `url`(`base` + 나머지, `proxy: true` 면 서버가 받아 넘김).
+- **비밀번호는 이 파일에 적지 않습니다** — `db` 출처는 `password_env` 에 «환경변수 이름»만 적습니다. 읽기 전용 사용자를 권합니다.
+- 거절은 상태 코드와 이름 댄 한 문장: 선언 안 된 출처 404 · 루트 밖 경로 400 · 없는 파일 · 키 404 · 환경변수 비어 있음 500 · 바깥 주소가 실패 502.
 
 ## 3. 반영 확인
 
