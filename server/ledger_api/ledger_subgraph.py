@@ -33,7 +33,7 @@ import json
 import re
 import uuid
 from collections import defaultdict, deque
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 
 from ledger import explorer
@@ -405,6 +405,9 @@ class EvidenceAtom:
     supersedes: str | None
     source_event_id: str | None
     source_event_state: str | None
+    #: A `one` predicate's fact with a later fact of the same (subject, predicate) - drawn only
+    #: when the walk asks for history (총괄 22ebdd153). Set by the lookup that fetched it.
+    not_current: bool = False
 
     @property
     def event_identity(self):
@@ -432,13 +435,15 @@ def _atom_from_row(row):
         occurred_at=row[6], source_who=row[7], source_translator_ver=row[8],
         source_raw_ref=row[9], supersedes=str(row[10]) if row[10] else None,
         source_event_id=str(row[11]) if row[11] else None,
-        source_event_state=str(row[12]) if row[12] else None)
+        source_event_state=str(row[12]) if row[12] else None,
+        not_current=bool(row[13]) if len(row) > 13 else False)
 
 
 class SqlEvidenceLookup:
     """Exact, batched reads against the ledger; no ranking or inference."""
 
-    def __init__(self, connection, relation="ledger_events", since=None, until=None):
+    def __init__(self, connection, relation="ledger_events", since=None, until=None,
+                 one=(), current_only=True):
         if not _IDENTIFIER.match(relation or ""):
             raise ValueError("relation must be a bare identifier")
         self.connection = connection
@@ -457,6 +462,9 @@ class SqlEvidenceLookup:
         #: leaves the key OUT rather than publishing a zero that reads as "nothing was
         #: excluded" when nothing was excluded because nothing was asked.
         self.interval_excluded = None if (since is None and until is None) else 0
+        #: The `one` predicates (bare names) and whether only their current facts are fetched.
+        self.one = sorted(set(one))
+        self.current_only = current_only
 
     def _interval_clause(self, params):
         """The rows the interval KEEPS. Empty string when no interval was asked for.
@@ -486,6 +494,24 @@ class SqlEvidenceLookup:
         if not kept:
             return ""
         return "(" + " OR ".join(kept) + ")"
+
+    def _not_current_clause(self, params):
+        """🔴 THE ONE CONDITION for 「not the current value」 (총괄 22ebdd153, 판정 256 reversed): a
+        `one` predicate's fact for which a LATER fact of the same (subject, predicate) exists -
+        before `until` when the walk is as-of. The fetch keeps its complement and the history
+        view SELECTs it as `not_current`, so the two cannot mean different things. Both arms:
+        walked from the object, the later fact names another object and is never fetched, so
+        only the database can say it exists. Empty when no predicate is declared `one`."""
+        if not self.one:
+            return ""
+        params["one"] = self.one
+        bound = ""
+        if self.until is not None:
+            params["until"] = self.until
+            bound = " AND n.occurred_at < %(until)s"
+        return (f"(e.predicate = ANY(%(one)s) AND EXISTS (SELECT 1 FROM {self.relation} n "
+                f"WHERE n.subject_type = e.subject_type AND n.subject_keys = e.subject_keys "
+                f"AND n.predicate = e.predicate AND n.occurred_at > e.occurred_at{bound}))")
 
     def _execute(self, sql, params):
         return trace._fetch(self.connection, sql, params)
@@ -520,6 +546,10 @@ class SqlEvidenceLookup:
             kept = [item for item in conditions if item]
             return ("WHERE " + " AND ".join(kept)) if kept else ""
 
+        not_current = self._not_current_clause(params)
+        selected = f"{EVIDENCE_COLUMNS}, {not_current or 'false'} AS not_current"
+        current = f"NOT {not_current}" if not_current and self.current_only else ""
+
         # 🔴 ONE ARM BUILDER, TWO QUESTIONS (ruling 208). The fetch asks for the claims
         # INSIDE the interval and the census asks how many fall OUTSIDE it; they must differ
         # in nothing but that clause, or the number reported is about a different set of rows
@@ -528,19 +558,19 @@ class SqlEvidenceLookup:
             built = []
             if direction in ("outgoing", "both"):
                 built.append(f"""
-                    SELECT {EVIDENCE_COLUMNS} FROM frontier f
+                    SELECT {selected} FROM frontier f
                     JOIN {self.relation} e
                       ON e.subject_type = f.type AND e.subject_keys = f.keys
-                    {_where(follow_clause, extra_clause)}
+                    {_where(follow_clause, extra_clause, current)}
                 """)
             if direction in ("incoming", "both"):
                 built.append(f"""
-                    SELECT {EVIDENCE_COLUMNS} FROM frontier f
+                    SELECT {selected} FROM frontier f
                     JOIN {self.relation} e
                       ON e.object_kind = 'entity_ref'
                      AND e.object_payload->>'type' = f.type
                      AND e.object_payload->'keys' = f.keys
-                    {_where(follow_clause, extra_clause)}
+                    {_where(follow_clause, extra_clause, current)}
                 """)
             return " UNION ".join(built)
 
@@ -657,8 +687,10 @@ class _DescribedSeeds:
 class InMemoryEvidenceLookup:
     """Contract double used to prove traversal independently of PostgreSQL."""
 
-    def __init__(self, atoms, since=None, until=None):
+    def __init__(self, atoms, since=None, until=None, one=(), current_only=True):
         self.atoms = list(atoms)
+        self.one = frozenset(one)
+        self.current_only = current_only
         # 🔴 THE SAME TWO ARGUMENTS AND THE SAME ACCUMULATOR AS THE SQL LOOKUP. A double
         # thinner than the thing it stands in for is more permissive than production, and a
         # test suite driving this one would then score only the SQL side of the interval.
@@ -715,8 +747,24 @@ class InMemoryEvidenceLookup:
                     if self.interval_excluded is not None:
                         self.interval_excluded += 1
                     continue
+                if self._not_current(atom):
+                    if self.current_only:
+                        continue
+                    atom = replace(atom, not_current=True)
                 rows.append(atom)
         return self._result(rows, limit)
+
+    def _not_current(self, atom):
+        """`SqlEvidenceLookup._not_current_clause` over the atoms held here - the same condition,
+        so the double is not looser than the SQL it stands in for."""
+        if atom.predicate not in self.one:
+            return False
+        subject = (atom.subject_type, _canonical(atom.subject_keys))
+        return any(other.predicate == atom.predicate
+                   and (other.subject_type, _canonical(other.subject_keys)) == subject
+                   and other.occurred_at > atom.occurred_at
+                   and (self.until is None or other.occurred_at < self.until)
+                   for other in self.atoms)
 
     def claims_by_ids(self, claims, limit):
         wanted = {(str(item[0]), _instant(item[1])) for item in claims}
@@ -952,6 +1000,34 @@ def _apply_registrations(nodes, registrations):
         node["attributes"] = values
         node["attribute_conflicts"] = conflicts
 
+
+def one_predicates(cardinalities):
+    """The predicates declared `cardinality: one` - what the lookup filters to the current
+    fact and what `current_conflicts` counts, from the one `{name: one|many}` the walk gets."""
+    return sorted(name for name, value in (cardinalities or {}).items() if value == "one")
+
+
+def _apply_current_conflicts(nodes, atoms, cardinalities):
+    """`current_conflicts` on each subject node of a `one` predicate: how many of its `one`
+    predicates hold more than one object among their CURRENT facts - two facts at the same
+    latest instant, which no rule can order (총괄 22ebdd153). Both stay drawn; the count says
+    so, in `attribute_conflicts`' shape. A node with no `one` fact gets no key.
+    The object is the payload WITHOUT its qualifiers - the same object said with another
+    `step` is one object, as it is one edge."""
+    one = set(one_predicates(cardinalities))
+    objects = {}
+    for atom in atoms:
+        if atom.not_current or atom.predicate not in one:
+            continue
+        node_id = explorer.entity_id(atom.subject_type, atom.subject_keys)
+        objects.setdefault(node_id, {}).setdefault(atom.predicate, set()).add(_canonical(
+            {k: v for k, v in (atom.object_payload or {}).items() if k != "qualifiers"}))
+    for node_id, by_predicate in objects.items():
+        if node_id in nodes:
+            nodes[node_id]["current_conflicts"] = sum(
+                1 for held in by_predicate.values() if len(held) > 1)
+
+
 def _entity_node(entity_type, keys):
     node = explorer._entity(entity_type, keys)
     node.update({"node_kind": "entity", "schema_kind": "entity_instance"})
@@ -965,34 +1041,9 @@ def _entity_node(entity_type, keys):
     return node
 
 
-def _split_superseded(atoms):
-    """`(live, superseded_by)` — 대체된 원자를 «하나뿐인 필터»로 가른다 (S-141).
-
-    🔴 THE FILTER IS `ledger_trace.live_claims` AND THE WALK DOES NOT BUILD ITS OWN.
-    Two places deciding 「which claim is current」 is the class this repository keeps
-    meeting: they do not error when they disagree, one of them just starts drawing a
-    fact that was replaced.
-
-    ⚰️ AND UNTIL NOW THE WALK CALLED NOTHING. `live_claims` had zero product callers, so
-    a superseded edge and the edge that replaced it were BOTH drawn. S-133 ④ asserted the
-    function directly from a test rather than through this response, which proved the
-    filter and not the wiring - 착지는 배선이 아니다.
-
-    ⚠️ SCOPE IS THE FETCHED SET, which is what `live_claims` documents: a correction is
-    about the same subject, so the superseding atom rides in the same neighbourhood.
-    """
-    from ledger import trace
-
-    atoms = list(atoms)
-    live = trace.live_claims(atoms)
-    if len(live) == len(atoms):
-        return atoms, {}
-    kept = {str(a.id) for a in live}
-    replaced_by = {}
-    for atom in atoms:
-        if atom.supersedes:
-            replaced_by[str(atom.supersedes)] = str(atom.id)
-    return live, {k: v for k, v in replaced_by.items() if k not in kept}
+# ⚰️ `_split_superseded` - the walk's split of a fetched batch by `supersedes` markers (S-141). The
+# markers had one writer, and it retired with 판정 256 (총괄 22ebdd153): the lookup now fetches a
+# `one` predicate's current facts only, by `_not_current_clause`.
 
 
 def _edge(edge_type, source, target, *, original_predicate=None,
@@ -1730,7 +1781,7 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
              action_lookup=None, follow=None,
              backbone_hops=DEFAULT_BACKBONE_HOPS, static_types=None,
              static_follow=None, follow_keys=None, collect=None,
-             cardinalities=None, include_superseded=False, rows=False,
+             cardinalities=None, rows=False,
              entities=None, group_by=None, measure=None,
              seed_type=None, seed_limit=DEFAULT_SEED_LIMIT,
              registration_follow=None):
@@ -1878,10 +1929,6 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
     budgeted = 0
     budgeted_edges = 0
     claims_scanned = 0
-    #: [S-141] 대체돼서 «안 그린» 원자 수. 절단처럼 «숨기지 않고 센다».
-    superseded_dropped = 0
-    #: 대체된 원자 id -> 그것을 대체한 원자 id (include_superseded 일 때 표지로 쓴다).
-    superseded_by = {}
     actions_scanned = 0
 
     #: 🔴 THE EXEMPTION IS GONE, BECAUSE THE PLUMBING IS NO LONGER MADE OF NODES.
@@ -1958,11 +2005,10 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
         edge["source_who"] = atom.source_who
         edge["basis"] = atom.source_raw_ref
         edge["qualifiers"] = dict((atom.object_payload or {}).get("qualifiers") or {})
-        # ⚠️ include_superseded 로 «일부러» 그린 엣지에만 붙는 표지 (S-141). 기본 걷기는
-        # 이 원자를 애초에 안 그리므로 이 키가 없고, 있으면 「이건 대체된 것」이다.
-        replaced = superseded_by.get(str(atom.id))
-        if replaced:
-            edge["superseded_by"] = replaced
+        # ⚠️ include_superseded 로 «일부러» 그린 엣지에만 붙는 표지 (총괄 22ebdd153). 기본 걷기는
+        # 지금 것 아닌 사실을 애초에 안 가져오므로 이 키가 없고, 있으면 「지금 값이 아님」이다.
+        if atom.not_current:
+            edge["not_current"] = True
         return edge
 
     def _record_registration(atom):
@@ -2205,13 +2251,6 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
                 direction, remaining,
                 follow=group_follow)
             claims_scanned += len(batch); remaining -= len(batch); claim_cut |= cut
-            # 🔴 대체된 원자를 «여기서» 거른다 (S-141). 필터는 `live_claims` 하나이고
-            # 걷기는 자기 필터를 짓지 않는다. 뺀 수는 아래 응답이 «이름 대어» 말한다.
-            live, replaced_by = _split_superseded(batch)
-            superseded_by.update(replaced_by)
-            if not include_superseded:
-                superseded_dropped += len(batch) - len(live)
-                batch = live
             fetched.extend(batch)
             frontier_entities = {item["id"] for item in group}
             for atom in batch:
@@ -2318,6 +2357,7 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
     from ledger.setup_bundle import ATTRIBUTE_CARDINALITY_MANY
 
     _apply_registrations(nodes, registrations)
+    _apply_current_conflicts(nodes, fetched, cardinalities)
     ordered_nodes = sorted(nodes.values(), key=lambda item: (
         item["depth"], item["node_kind"], item["label"], item["id"]))
     # 🔴 THE LAST STEP, AND ONLY ON THIS LIST. `nodes` (the dict) still holds everything
@@ -2411,9 +2451,6 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
             "hops_requested": hops,
             "hops_reached": max(depths.values(), default=0),
             "claims_scanned": claims_scanned,
-            # ⚠️ 이름 대어 «뺀 수»를 말한다 — truncation 과 같은 규율. 0 이면 이 걷기가
-            # 대체된 것을 하나도 안 만났다는 뜻이고, 그것도 사실이라 늘 싣는다.
-            "superseded_dropped": superseded_dropped,
             "actions_scanned": actions_scanned,
             "enrich_actions": action_lookup is not None,
             "raw_claims": True, "resolver_applied": False,

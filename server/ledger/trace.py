@@ -3,7 +3,7 @@
 Design source: `docs/architecture/CANONICAL_LEDGER_DESIGN.md` §6 (resolution order).
 It is not edited from here; this module implements it.
 
-    RESOLUTION   `claim_class` / `claim_rank_key` / `resolve` / `live_claims`
+    RESOLUTION   `claim_class` / `claim_rank_key` / `resolve`
                  Pure Python over `Claim` objects. No SQL, no table name, no
                  connection. This is "THE resolver" of §6 — there is exactly one,
                  and `ledger_subgraph`'s walk and `runtime_v2` both ask it.
@@ -794,20 +794,9 @@ def _with_basis(reason, winner, config=None):
     return f"{reason} · {label}" if label else reason
 
 
-def live_claims(claims):
-    """Drop claims a later atom superseded. §3: 정정·철회 = 새 원자.
-
-    Applied HERE and not in the lookup on purpose: supersession is part of "which
-    claim is current", so putting it in the lookup would make every lookup
-    implementation re-spell it — the second spelling problem again. It is safe to
-    do over a fetched set because a correction is about the same subject (§3), so
-    the superseding atom is in the same neighbourhood the walk already fetched.
-    """
-    claims = list(claims)
-    retired = {str(c.supersedes) for c in claims if c.supersedes}
-    if not retired:
-        return claims
-    return [c for c in claims if str(c.id) not in retired]
+# ⚰️ `live_claims` - dropped a claim a later atom's `supersedes` named. The pointer's one writer
+# retired with 판정 256 (총괄 22ebdd153); a `one` predicate's current fact is the latest
+# occurred_at, which the walk's lookup reads (`ledger_subgraph._not_current_clause`).
 
 
 #: A relation name may be interpolated into SQL only after this says it is a bare

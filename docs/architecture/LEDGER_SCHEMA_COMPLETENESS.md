@@ -62,7 +62,7 @@
 | **카디널리티** | ✅ **① (09-11 D-3c — «거짓»이었습니다)** — 칸 `vocabulary.<p>.cardinality` 가 있고 읽는 쪽이 «셋»입니다: 컴파일(`9f17f8a9`) · 위반 거절(`3c81682d`) · 대체 기록(`ccedc59f`) · 걷기 엣지(`118cc4f0`). S-133(09-10 16:57~17:12). 뒤의 표 A2-3 은 이미 닫혀 있었고 이 행만 남았습니다. 🪦 당시 근거: | `vocabulary` 에 칸 없음. ⚠️ `virtual_joins.<r>.join_cardinality` 는 «있다» — 다른 선언 언어에만 | — | BASIS §3 대로 B5 집계의 «중복 셈»을 구조적으로 못 막는다 |
 | **부재의 뜻** | ✅ **① (S-147-a, 판정 333)** — `vocabulary.<p>.absence_confirmed_by` = «검사 술어의 id». 🔴 **A1 의 `allow_null` 의 거울이고, 이 부축이 A2 에 «아예 없었다».** 「이 술어가 안 보이는 것」이 「안 봤다」인지 「보고 없었다」인지를 가르는 것은 «다른 원자의 존재»라, 값이 자기 완결 낱말이 아니라 «다른 술어의 이름»이다 — `absence: none\|unknown` 류로는 쓸 수 없다. 없으면 오늘 그대로(부재 = «모름») | 선언된 술어 id · 자기 자신 ⛔ · retired ⛔(`status` 재사용) · 오타는 «거절»(조용한 분모 0 금지) | S-147-b 가 분모를 `parents` 에서 «유도»(새 걷기 0) |<br>🆕 **[2026-09-13 S-216 `09217e2e`, 판정 366] 이제 그 칸을 «화면이 읽을 수» 있다** — `/api/ledger/declaration` 의 `predicates[]` 가 `absence_confirmed_by` 를 «선언한 술어에만» 실어 보낸다. 🔴 **그전엔 화면이 부재 열의 모집단을 «노드에서» 가져올 수밖에 없었고**, 그것은 «도착한 술어»을 모집단으로 쓰는 것이라 이 칸이 막으려던 오독 그 자체였다. ⚠️ 연결은 «서렸고», 오늘 출하 선언은 그 칸을 한 번도 안 채운다 — 기제가 있다 ≠ 돌다
 | 방향 | ① | 주어→목적어 «고정». 걷기는 양방향, 같은 술어 반전 ⛔ | | 걷기 |
-| **supersede** | ⚰️ **③′ 였다가 «닫힘»** (컬럼은 ①, 09-10 D-3 확인) | 컬럼 `supersedes UUID` · 검증(`ledger_frame`) · CHECK `ck_ledger_no_self_supersede` 는 그대로. 🔵 **오늘 «비-null 을 쓰는 자리»가 생겼습니다** — `ledger/runtime_v2._stamp_supersedes` 가 「원장의 «첫» supersedes writer」이고(S-133 ①, 판정 256), 그것을 «켜는 선언 칸»은 `vocabulary.<p>.cardinality: one` 입니다. `roleframe` 은 여전히 `None` 을 싣고(문장 한 개는 자기가 무엇을 대체하는지 모릅니다), 대체는 «배치가 끝난 뒤» 주어별로 찍힙니다 | | 읽는 쪽 넷(subgraph · trace · frame · dry_run) — 🔴 다만 **걷기는 이 값을 읽고도 «안 씁니다»**: `WALK.md` 「정정·철회는 걷기에서 아직 안 떨어진다」 |
+| **supersede** | 🔴 **컬럼만 있고 «쓰는 자리 0»** (총괄 22ebdd153, 10-01) | 컬럼 `supersedes UUID` · 검증(`ledger_frame`) · CHECK `ck_ledger_no_self_supersede` 는 그대로. ⚰️ 유일한 writer `runtime_v2._stamp_supersedes` 는 판정 256 과 함께 은퇴 — `cardinality: one` 의 지금 값은 «가장 늦은 occurred_at» 이고 걷기가 읽을 때 정한다(`WALK.md` 「`cardinality: one`」). `roleframe` 은 `None` 을 싣는다 | | 읽는 쪽도 은퇴(`live_claims` · `_split_superseded`) — 칸을 지우는 것은 이 라운드 밖 |
 
 ---
 
@@ -365,7 +365,7 @@ S-65-d 뷰 삭제   A4 「삭제 — row_id 없는 뷰」   ✅ ② («이름 �
 ## 표 B 의 ③ — «일곱»
 
 > 🔵 **[09-11 D-3c 재측정] 표 B 는 «움직인 것이 하나»입니다** — B7 의 «세대»가 S-141 로 닫혔습니다
-> (걷기가 `live_claims` 를 지나고 뺀 수를 `walk.superseded_dropped` 로 말합니다). 나머지는 오늘도 참입니다:
+> (🔵 10-01 이후: `one` 술어의 지금 값은 가장 늦은 occurred_at 을 걷기가 읽어 정합니다 — 총괄 22ebdd153). 나머지는 오늘도 참입니다:
 > B4 `group_by` · B5 `aggregate`/`measure` · B12 「진위」 는 걷기 모듈에서 히트가 «주석뿐»이고,
 > ⚰️ B11-bis 의 엣지 `sources`·`witnesses`·`rank` 는 **은퇴했습니다**(S-150, 판정 340) — 읽는 쪽이 0 인 채로 남겨 두면 「있는데 안 쓴다」가 「곧 쓸 것」으로 읽힙니다.
 > ⚠️ 표 C 는 이번 패스에서 «안 쟀습니다** — 지시가 완전성 표 A 의 구멍을 겨눴고, C-3(15 라우트)은 한 커밋에
@@ -607,7 +607,7 @@ C-5 마킹 대수           🔴 ③ 그대로 = 표 B B1-1. 걷기에 ∩·∖�
 🔴 DB    CONSTRAINT ck_ledger_register_has_no_object CHECK (
              (predicate = 'register') = (object_kind IS NULL))          schema.py:140~141
          «동치»다. predicate='retire' 이고 object_kind IS NULL 이면  거짓 = 참  ->  거절
-         그리고 저장되는 predicate 는 «맨이름»이다(`_runtime_id` roleframe.py:1242~1250 이 @1 을 벗긴다)
+         그리고 저장되는 predicate 는 «맨이름»이다(`roleframe` 이 `declaration_names.bare_name` 으로 @1 을 벗긴다)
 근거     그 파일이 스스로 적어 두었다 — 「makes that legal for `register` and for nothing else,
          in BOTH directions - a register with an object and a non-register without one are equally refused」
          (schema.py:20~24)
@@ -751,7 +751,7 @@ C-5 마킹 대수           🔴 ③ 그대로 = 표 B B1-1. 걷기에 ∩·∖�
 | # | 무엇 | 비용 |
 |---|---|---|
 | 13 | `key_types` 칸 삭제 (③′, 판정 165) | 문법 + 스켈레톤 + 레지스트리 «한 커밋». 🔵 소급 0 |
-| 14 | ⚰️ ~~`supersedes` 선언 은퇴~~ — **항목이 아닙니다(판정 256, 09-10)** | 은퇴 대신 «배선»으로 갈렸습니다: `cardinality: one` → `runtime_v2._stamp_supersedes`. 🔴 소급은 «안 합니다»(이름만, S-133-b) — 이미 live 원자가 여럿인 (주어, one 술어)는 «다음 새 원자부터» 대체됩니다 |
+| 14 | ⚰️ ~~`supersedes` 선언 은퇴~~ — **항목이 아닙니다(판정 256, 09-10)** | 🔵 10-01 판정 256 뒤집음(총괄 22ebdd153): `cardinality: one` 은 쓰기에서 아무것도 안 하고, 지금 값은 걷기가 «가장 늦은 occurred_at» 으로 읽는다 — 소급 0(이미 쓰인 원자에도 같은 규칙이 바로 걸린다) |
 | 15 | CHECK 의 `'register'` 리터럴 | = Ⓐ5 «같은 줄». 🔵 **판정 169: ㉡(성질화) 채택 — S-77** 로 열렸고, 저장 층은 «구조 불변식»만 지킨다. 따로 세지 않는다 |
 | 15-bis | 🔴 `bind.occurred_at.column` — basis 가 `ingested` 인 소스에서 «죽은 칸** | ③′ 부류(판정 172). `read.occurred_at.basis: ingested` 면 원자의 시각은 «적재 순간»이고, 문장의 `bind.occurred_at.column` 은 «항상 무시»된다(`roleframe.py:339~347`, 판정 2026-08-23). 실측 2026-09-09: `dt_job` 의 두 문장이 `column: event_time` 을 적어 두고 있고 아무도 안 읽는다. 🔵 수리는 «검증기가 거절»하거나 «폼이 안 묻는» 쪽 — 라이브 선언은 안 고친다 |
 | 16 | `label` 의 「keys 앞 둘」 | 경미 — ② 로 «적었다». 필요해지면 그때 선언 칸 |
@@ -817,7 +817,7 @@ delete_cell_source_batch        crud.py:4402 -> `compute_priority_value(...)` �
 | 표 A 의 ③ | 착지 뒤 | 자리 | 정의역 | 읽는 쪽 |
 |---|---|---|---|---|
 | A2-1 값 목적어의 타입 | `vocabulary.<p>.object.value_type` | ① | ✅ **① (S-84-b 닫힘, 09-10 13:5x)** — `EMITTABLE_VALUE_TYPES == VALUE_TYPES` 입니다: 넷 다 발행됩니다(`number`→quantity · `string`/`boolean`→attribute · `timestamp`→time). 🔴 마지막 하나를 연 것은 «영리한 import 가 아니라 선언»입니다 — `time` Role 은 tz-aware 를 요구하고 소스 컬럼은 대개 문자열이라, 「naive 한 읽기가 어느 시간대인가」를 «값 바인딩»이 말합니다(`bind.<role>.timezone`). 파스는 `roleframe.aware_time` «하나»이고 `occurred_at` 이 쓰던 그것입니다. timezone 을 안 적은 timestamp 바인딩은 «작성 시점에» `missing_timezone` 으로 거절됩니다(번역에서 전부 거절되는 옛 덫을 그 자리에서 막음) | ⚰️ 그때: 발행 «0» · `number` 만 통과(판정 178) |
-| A2-3 카디널리티 | `vocabulary.<p>.cardinality` ∈ {one, many}, 기본 `many` | ① | ⚰️ **③′ 였다가 «닫힘» (S-133, 09-10 17:1x 확인)** | 읽는 곳이 «생겼습니다» — `runtime_v2._one_cardinality_predicates` 가 `cardinality == "one"` 인 술어를 모아 쓰기 경로에서 쓰고(그래서 원장이 `supersedes` 의 «첫 기록자»가 됩니다, 판정 256), 걷기의 엣지가 `cardinality` 를 «싣습니다»(`ledger_subgraph` :477~492 · :1095). 🔴 그때의 제 기록: 제가 이 자리를 «무해»라고 적었습니다. 사실(읽는 쪽 0)은 맞았고 «판정»이 틀렸습니다: 폼이 고르게 하고 검증이 받아들이는 칸은 운영자에게 «약속»이고, 아무도 안 읽으면 그 약속이 조용히 거짓입니다 — 이 문서가 `entity.status`·`source.status` 에 대해 «③′» 이라 부른 것과 «같은 모양»인데 이 줄만 ① 이었습니다(제 잣대가 한 칸에서 흔들린 것). S-133 이 그 자리를 다시 세웁니다 |
+| A2-3 카디널리티 | `vocabulary.<p>.cardinality` ∈ {one, many}, 기본 `many` | ① | ✅ ① — 읽는 곳은 «걷기» 하나 (총괄 22ebdd153, 10-01) | 라우트의 `_predicate_cardinalities()` 가 읽어 `ledger_subgraph.one_predicates` 로 룩업에 건넨다: (주어, `one` 술어)의 지금 사실 = 가장 늦은 occurred_at, 엣지는 `cardinality` 를 싣는다. ⚰️ 09-10 의 쓰기 쪽(`_one_cardinality_predicates` · 배치 거절 · `supersedes` 찍기)은 선언 키 `@1` 과 원자 맨이름이 안 맞아 한 번도 안 돌았고(`918f49ccc`), 판정 256 과 함께 은퇴 |
 | A1-1 엔티티 은퇴 | `entities.<t>.status` ∈ {active, retired}, 기본 `active` | ① | ① | «0» — 무해 |
 | A4-2 소스 은퇴 | `sources.<s>.status` 같음 | ① | ① | 🔴 «0» — ⚠️ **무해하지 않음**: retired 로 적어도 «계속 번역»합니다 |
 | A4-1 결정 단위 | 🔵 **표 카탈로그**의 `decision_key` (`setup_bundle.py:304~315`) — 소스에서 «옮겨졌습니다**(판정 e578eabc) | ① | ① (기본값 «없음» — 판정 151) | 미검 |
@@ -1752,9 +1752,8 @@ B7 의 문장   「as-of · 구간 · 세대 선택」이 한 줄에 있습니�
 B7(구간)   🟡 ② — 「자리 있음 · 인자 없음」. 오늘 없지만 «오늘 데이터로» 됩니다. 비용은 인자 넷(위 표)
 B7(as-of)  🔴 ③ — 기제가 «없습니다». 철회가 삭제라 재료가 안 남습니다. 이것이 B7 의 «진짜 구멍»입니다
 B7(세대)   ③ 그대로 — supersedes 는 원자에 있고 걷기가 «안 읽습니다»(별도 축)
-          ⚰️ **09-10 저녁: 닫혔습니다(S-141, `6aa21c25`)** — 걷기가 `live_claims` 를 지나고,
-             뺀 수를 `walk.superseded_dropped` 로 «0 일 때도» 말합니다. 아침에 이 자리에
-             「둘 다 그려진다」라고 적었고 그것이 그날의 사실이었습니다.
+          ⚰️ **09-10 저녁: 닫혔습니다(S-141, `6aa21c25`)** — 🔵 10-01 부터는 `supersedes` 가 아니라
+             «가장 늦은 occurred_at» 으로 닫힙니다(총괄 22ebdd153, `WALK.md`).
              🔵 그러므로 B7 의 셋 중 «세대»는 이제 「걷기가 현재를 그린다」이고, 남은 ③ 은
              **as-of**(철회가 삭제라 재료가 없다, 판정 210) «하나»입니다
 ```

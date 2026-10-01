@@ -63,7 +63,7 @@ def _declared_signature(predicate):
 
     The declaration is the authority since 2026-08-27 and carries the same three things this
     module reads - `subjects`, `object`, `status`. Ids are versioned there (`observed@1`) and
-    bare on an atom, so the version comes off on the way past, exactly as `_runtime_id` does
+    bare on an atom, so the version comes off on the way past, exactly as `bare_name` does
     it for the emit path. An unreadable declaration answers `None`, which this module already
     treats as「undeclared」rather than as an error.
     """

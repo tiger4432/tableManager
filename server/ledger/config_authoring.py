@@ -1690,7 +1690,7 @@ def _registering_sentences(source: Any) -> tuple[tuple[str, str], ...]:
     🔴 DERIVED FROM THE SAME WORD THE RUNTIME KEYS ON, not from a spelling rule.  A
     sentence registers when its predicate resolves to the canonical `register`
     (`REGISTER_PREDICATE`); the config addresses it as `register@1` and the atom carries
-    it unversioned, which is the split `roleframe._runtime_id` makes everywhere else.
+    it unversioned, which is the split `declaration_names.bare_name` makes everywhere else.
 
     The entity type comes out of the subject binding, and is `""` while that binding is
     half-written.  The two answers are kept apart on purpose: whether the source registers

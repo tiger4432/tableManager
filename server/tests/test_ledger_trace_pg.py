@@ -296,22 +296,128 @@ def test_the_rendered_time_does_not_depend_on_the_postgres_session_timezone(ledg
         f"the rendered time follows the PostgreSQL session TimeZone: {rendered}")
 
 
-def test_supersedes_is_honoured_against_real_uuid_columns(ledger):
-    """A later atom that names an earlier one in `supersedes` (a uuid column read back
-    as text) retires it: the walk draws the correction only, and says how many it
-    dropped (`walk.superseded_dropped`, S-141)."""
-    rows = [
-        atom("reg", "L-D", "register", {}),
-        atom("wrong", "L-D", "derived_from", {"lot": "L-WRONG"},
-             occurred_at=T0 + timedelta(days=10), who="user"),
-        atom("fix", "L-D", "derived_from", {"lot": "L-RIGHT"},
-             occurred_at=T0, who="zz_file.csv", supersedes="wrong"),
-    ]
+# ---------------------------------------------------------------------------
+# `cardinality: one` - the current fact is the latest occurred_at (총괄 22ebdd153)
+# ---------------------------------------------------------------------------
+
+#: `has_wafer` declared `one`. L-D: t1 W1 · t2 W2 · t3 W3, and W9 at t1.5 arriving LAST - the
+#: late old fact that an arrival-order rule made current.
+ONE_DECLARED = {"vocabulary": {"has_wafer@1": {"cardinality": "one"}}, "entities": {}}
+T1, T2, T3 = (T0 + timedelta(hours=hours) for hours in (1, 2, 3))
+HOLDS = [("hw-1", T1, "W1"), ("hw-2", T2, "W2"), ("hw-3", T3, "W3"),
+         ("hw-late", T0 + timedelta(minutes=90), "W9")]
+
+
+def _holds(rows=HOLDS, lot="L-D"):
+    return [atom(name, lot, "has_wafer", {"slot": "1", "wafer": wafer}, occurred_at=when)
+            for name, when, wafer in rows]
+
+
+def _walk_one(monkeypatch, conn, seed, direction="outgoing", edge_limit=1200, **kw):
+    """The product path - the route's own walk, which reads `one` from the declaration and
+    builds the lookup - with `has_wafer` declared `one`."""
+    from ledger import config as ledger_config
+    from ledger import trace_router
+
+    monkeypatch.setattr(ledger_config, "load", lambda *a, **k: ONE_DECLARED)
+    return trace_router._evidence_graph(conn, node_id=seed, hops=1, direction=direction,
+                                        node_limit=1000, edge_limit=edge_limit, **kw)
+
+
+def _wafer(name):
+    return explorer.entity_id("Wafer", {"wafer": name})
+
+
+def _lot_node(body, lot="L-D"):
+    node, = [node for node in body["nodes"] if node["id"] == lot_seed(lot)]
+    return node
+
+
+@pytest.mark.parametrize("batches", ["one", "many"])
+def test_a_one_predicate_draws_its_latest_fact_whatever_order_it_arrived_in(
+        ledger, monkeypatch, batches):
+    for rows in ([_holds()] if batches == "one" else [[row] for row in _holds()]):
+        with ledger.begin() as conn:
+            insert(conn, rows)
+    with ledger.connect() as conn:
+        body = _walk_one(monkeypatch, conn, lot_seed("L-D"))
+
+    assert [(s, t, e["cardinality"]) for s, t, e in edges_of(body, "has_wafer")] == [
+        ("L-D", "W3", "one")]
+    assert _lot_node(body)["current_conflicts"] == 0
+
+
+def test_as_of_a_time_the_current_fact_is_the_latest_before_it(ledger, monkeypatch):
+    with ledger.begin() as conn:
+        insert(conn, _holds())
+    with ledger.connect() as conn:
+        body = _walk_one(monkeypatch, conn, lot_seed("L-D"),
+                         until=T2 + timedelta(minutes=30))
+
+    assert [(s, t) for s, t, _ in edges_of(body, "has_wafer")] == [("L-D", "W2")]
+
+
+def test_history_draws_all_four_and_marks_all_but_the_current(ledger, monkeypatch):
+    with ledger.begin() as conn:
+        insert(conn, _holds())
+    with ledger.connect() as conn:
+        body = _walk_one(monkeypatch, conn, lot_seed("L-D"), include_superseded=True)
+
+    assert sorted((t, bool(e.get("not_current"))) for _, t, e in edges_of(body, "has_wafer")) == [
+        ("W1", True), ("W2", True), ("W3", False), ("W9", True)]
+
+
+def test_walked_from_an_old_object_the_replaced_fact_is_not_drawn(ledger, monkeypatch):
+    """🔴 THE ARM THE FETCH CANNOT ANSWER ALONE. From W1 the later fact names W3 and is never
+    fetched, so only the database can say that a later fact exists."""
+    with ledger.begin() as conn:
+        insert(conn, _holds())
+    with ledger.connect() as conn:
+        old = _walk_one(monkeypatch, conn, _wafer("W1"), direction="incoming")
+        current = _walk_one(monkeypatch, conn, _wafer("W3"), direction="incoming")
+
+    assert edges_of(old, "has_wafer") == []
+    assert [(s, t) for s, t, _ in edges_of(current, "has_wafer")] == [("L-D", "W3")]
+
+
+def test_the_same_value_said_again_is_one_current_fact(ledger, monkeypatch):
+    with ledger.begin() as conn:
+        insert(conn, _holds([("hw-1", T1, "W1"), ("hw-again", T2, "W1")]))
+    with ledger.connect() as conn:
+        body = _walk_one(monkeypatch, conn, lot_seed("L-D"))
+
+    (_, target, edge), = edges_of(body, "has_wafer")
+    assert (target, edge["claim_id"]) == ("W1", _uuid("hw-again"))
+
+
+def test_two_facts_at_the_latest_instant_are_both_current_and_counted(ledger, monkeypatch):
+    """No rule orders a tie, so both are drawn and the subject says how many of its `one`
+    predicates hold more than one object now."""
+    with ledger.begin() as conn:
+        insert(conn, _holds(HOLDS + [("hw-tie", T3, "W4")]))
+    with ledger.connect() as conn:
+        body = _walk_one(monkeypatch, conn, lot_seed("L-D"))
+
+    assert sorted(t for _, t, _ in edges_of(body, "has_wafer")) == ["W3", "W4"]
+    assert _lot_node(body)["current_conflicts"] == 1
+
+
+def test_a_cut_fetch_draws_no_fact_that_was_replaced(ledger, monkeypatch):
+    """400 lots took W1 at t1 and lots 300-399 moved to W2 at t2. From W1 the budget (200
+    claims) cuts the fetch, the cut is named, and no lot that moved is drawn."""
+    moved = {f"L-{i:03d}" for i in range(300, 400)}
+    rows = [atom(f"take-{i}", f"L-{i:03d}", "has_wafer", {"slot": "1", "wafer": "W1"},
+                 occurred_at=T1) for i in range(400)]
+    rows += [atom(f"move-{lot}", lot, "has_wafer", {"slot": "1", "wafer": "W2"},
+                  occurred_at=T2) for lot in sorted(moved)]
     with ledger.begin() as conn:
         insert(conn, rows)
-        body = walk_on(conn, "L-D", hops=1, direction="outgoing")
-    assert [(s, t) for s, t, _ in edges_of(body, "derived_from")] == [("L-D", "L-RIGHT")]
-    assert body["walk"]["superseded_dropped"] == 1
+    with ledger.connect() as conn:
+        body = _walk_one(monkeypatch, conn, _wafer("W1"), direction="incoming", edge_limit=100)
+
+    drawn = {s for s, _, _ in edges_of(body, "has_wafer")}
+    assert drawn and body["truncated"]["claims"]
+    assert not drawn & moved, sorted(drawn & moved)[:5]
 
 
 def test_a_cycle_in_the_ledger_does_not_spin_the_walk(ledger):
