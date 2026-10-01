@@ -62770,3 +62770,14 @@ _when_value 접기 — 지금 하지 않는다. 오늘 착지 전체를 소유�
    칸마다 official 행 수 · 셀 층 수 · 뜨는 값 기대값. + 같은 소스 층 둘이 화면에 둘로 보임 · 조인 다시 짝짓기 칸 · 빈 칸은 「해당 없음」으로 단언
 채널로   계획 셋(각: 무엇 · 운영자가 하는 일 · 좋은 점 · 위험 · 크기) + 추천 + 여쭐 것. 총괄 확인 전 짓지 않는다
 ```
+
+```
+덧붙임 — official 재고 계획 (소유자 10-01 「오피셜은 묶음임」 · 총괄이 빠뜨린 기존 문)
+   맵퍼   소유자의 official 맵퍼는 batch — 도장(origin_row_id)은 맵퍼가 항목마다 적어야만 선다(제품이 대신 못 찍는다)
+   기존 문 SDK `allow_retraction`(mapper_sdk._removal_batches -> dt_map_derivation retract, 소유자 판정 ed70c3970 ② · 717f60124) —
+         여러 잡이 한 표로 모이는 dt_inventory -> dt_map 이 이미 이것으로 돈다: 출처(잡) 하나가 이번에 안 낸 것만 거두고 형제는 남김,
+         사람이 손댄 행 안 거둠, 20 행 이상에서 절반 넘게 거두면 거절(DEFAULT_MIN_RETRACT_POPULATION · DEFAULT_MAX_RETRACT_FRACTION)
+   계획 셋 중 하나는 반드시 이 문으로 — 「맵퍼가 들어온 잡의 dt_log 행을 «전부» 다시 읽어 그 잡의 official 행을 다시 낸다 + allow_retraction」
+      이것이 덮는 칸 / 못 덮는 칸을 게이트 표 그대로 단언(키 바뀜 · require 비움 · 행 지움 · 규칙 바뀜 · 사람 고침 · 다르게 적은 값이 층으로 보임)
+      그리고 이 문이 «ㄱ 층 넓히기»를 필요 없게 하는지, 남는 칸만 넓히면 되는지를 수로
+```
