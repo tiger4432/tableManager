@@ -1,3 +1,37 @@
+> ## [14:00 디자인] 표를 고르기 전에도 붙여넣기 칸과 Copy columns — 둘 다 꺼진 채, 자리표시 「Pick a table or Add table」 — 총괄 27c1853b2 · cbbf03dd7
+
+- 고침: 등록부가 붙여넣기를 하는지 묻는 템플릿의 그 한 자리가, 문서를 골랐든 안 골랐든 칸을 그립니다. 안 골랐으면 칸과 버튼을 `setDisabledReason`(컨트롤을 끄는 기존 좌석)으로 끄고, 둘 다 아무것도 듣지 않습니다. 고르면 오늘 그대로입니다. 설명 문장은 더하지 않았습니다(자리표시자와, 끄는 좌석이 다는 같은 낱말의 툴팁뿐).
+- 낱말 자리: 「Pick a table or Add table」 은 «table» 이 든 도메인 낱말이라 템플릿이 아니라 표 등록부의 paste 선언 한 줄(`pickFirst`)에 둡니다. 체인 규칙 등록부는 paste 선언이 없어 고르든 안 고르든 그리는 것 0.
+- 게이트(table_config_panel 103): F1 안 고름 → 칸 · 버튼 있음 · 둘 다 꺼짐 · 자리표시 그 낱말 / F2 거기 붙여넣기 → 초안 없음 · Unsaved 없음 · 원문 그대로 · 보관 0 · 저장 0 / F3 거기 Copy → 복사 0 · 줄 0 / F4 같은 패널에서 고르면 → 켜짐 · 오늘 자리표시 · 붙여넣기가 문서를 만들고 Copy 가 그것을 복사 / D2 체인 등록부 안 고름 → 칸 0(D1 고름 → 0 은 그대로). 변이 다섯(끄지 않음 · 안 골라도 붙여넣기를 들음 · 안 골라도 복사 · 예전처럼 고를 때만 그림 · 등록부에서 낱말 빠짐) 전부 이름 댄 단언에서 빨강.
+- 공허한 칸 하나: F2 의 「저장 0」 과 「보관 0」 은 붙여넣기가 원래 저장을 안 보내고, 안 고른 이름(빈 이름)은 보관을 안 쓰므로 어느 변이로도 빨개지지 않습니다. 빈 칸을 빼지 않으려고 단언으로 남겼고, F2 를 빨갛게 하는 것은 초안 · Unsaved · 원문 쪽입니다.
+- 화면(미리보기 · Admin 은 토큰 뒤라 표 읽기만 페이지 안에서 가짜 답 `box sample` · 쓰기 막음 · 막힌 것 0): 첫 화면에 점선 칸이 흐리게 「Pick a table or Add table」, 그 밑 Copy columns 도 흐림(둘 다 disabled · 불투명도 0.5 는 base.css 의 기존 규칙). 표를 고르면 칸이 켜지고 오늘 자리표시자로 돌아오며, 진짜 ClipboardEvent 로 세 줄을 붙여넣으니 Unsaved 와 `Shown · + at` 한 줄. 만든 로컬 초안은 지웠습니다.
+- 하니스: 러너 155 중 153 초록 · 알려진 빨강 2 · 막힘 0 · 계약 12 개 어긋남 0
+- 새 함수 · 새 if 중 기존 것과 같은 일: 새 함수 0. 새 갈래는 «골랐나» 하나를 이 함수 안 세 곳(끄기 사유 · 붙여넣기 듣기 · 복사 듣기)이 묻는 것인데, 셋 다 render 가 이미 계산한 `picked` 를 받아 쓰므로 «골랐나»를 새로 판정하는 자리는 0. 끄기는 기존 좌석을 불렀습니다.
+
+**제안(짓지 않음) — 이 화면을 5분 쓰면**
+
+| 항목 | 왜 | 크기 |
+|---|---|---|
+| 안 고른 첫 화면의 Save | 표 등록부는 스켈레톤이 없어서 안 골라도 Save 와 빈 원문 칸이 섭니다(템플릿 `picked \|\| !root`). 코드로 읽으면 누르면 빈 글자를 JSON 으로 읽다 실패해 파서의 문장이 거절 줄로 섭니다(누르지 않았음). 이번 칸처럼 끄거나 안 그리는 것이 맞는지 여쭙니다 | 안 쟀다 |
+
+> ## [13:17 디자인] 읽기만 — client2/src 의 prepare · direct-join 낱말 자리, 「서버가 prepare 칸을 안 실으면」 — 총괄 지시(메시지) · 읽은 트리 976c3c390
+
+셈 명령: `git grep -c -iE "prepare|direct-join|direct_join" -- client2/src` → 5 파일 15 줄(총괄 수와 같음). direct-join · direct_join 은 0. 카나리아: 같은 파일에 skeleton 10. 코드는 손대지 않았습니다.
+
+| 자리 | 무엇 | 코드/주석 | 서버가 prepare 칸을 안 실으면 |
+|---|---|---|---|
+| main.js:145 · startup.js 다섯 줄 | 그리드 시작 순서의 훅 이름 `prepare()` | 코드 | 아무것도 — 원장의 prepare 와 낱말만 같음 |
+| ontology_explorer_view.js:29 | 종류 라벨 표 `preparer: 'Preparers'` | 코드(값 한 칸) | 서버가 preparer 종류를 안 내면 그 칸은 안 닿음 — 화면 변화 0, 남는 것은 안 쓰이는 라벨 한 칸 |
+| ontology_explorer_view.js:514 | 읽기 나무 주석(read/prepare/map/bind 를 사례로) | 주석 | 동작 0 — 읽기 나무는 스켈레톤을 따라 걸어서, prepare 절이 빠지면 그 절도 안 그려짐 |
+| ontology_explorer_view.js:651 · 655 | 원문 편집기만 있는 자리 목록(prepare.output_columns) | 주석 | 동작 0 — 그 목록의 한 항목이 사라져 문장이 낡음 |
+| ontology_explorer_view.js:1697 | 아직 할 일 셈 주석(prepare.implementation_version 사례) | 주석 | 동작 0 — 규칙(파생 칸이 null 이면 안 셈)은 칸 이름과 무관 |
+| ontology_explorer_view.js:2183 · ontology_explorer.js:1413 | 숫자 칸 주석(preparer 를 사례로) | 주석 | 동작 0 — 숫자 판정은 스켈레톤의 `hint: number` |
+| ontology_explorer_store.js:537 · 541 | 고를 목록 주석(source_preparers · preparer 를 종류 사례로) | 주석 | 동작 0 — 사례 낱말이 낡음 |
+
+- 결론: 코드가 prepare 칸을 «이름으로» 읽는 자리는 0 입니다. 폼 · 읽기 나무 · 숫자 칸은 서버 스켈레톤을 따라 그리므로, 서버가 prepare 를 안 실으면 그 절이 그냥 안 그려집니다. 남는 것은 라벨 한 칸과 주석 여덟 줄의 사례 낱말입니다.
+- 하니스 쪽(셈 범위 밖, 같은 명령을 client2/tests 로): 서버 모양을 떠 둔 고정 자료 둘이 prepare 를 든 채입니다 — authoring_skeleton.json(prepare 절 3 줄) · authoring_inherited_plan.json(28 줄). 읽는 하니스는 explorer_form_grammar · explorer_inherited_attributes · explorer_path_bar 이고, 셋 다 prepare 를 단언하지는 않습니다. 서버 착지 뒤 그 둘을 옆의 capture_*.py 로 다시 뜨지 않으면 옛 모양 위에서 초록입니다. ontology_authoring_panel 하니스의 상수 `universe: 'PREPARED'` 도 서버가 그 낱말을 거두면 더는 실제를 닮지 않습니다(자기 상수라 빨개지지는 않음). 나머지 셋(startup_socket_gate · virtual_column_render · oracle)은 다른 뜻의 같은 낱말.
+- 짓지 않았습니다. 착지와 맞물려 할 일이 생기면: 라벨 한 칸 지우기 · 주석의 사례 낱말 · 고정 자료 둘 다시 뜨기 — 전부 서버 모양이 정해진 뒤입니다.
+
 > ## [12:59 디자인] 저장 답의 note — 이름 바꾸기가 다시 쓰는 것을 저장 줄 밑에 서버 말 그대로 — 총괄 43f4823dc · 46bb3f26b
 
 - 원인: 템플릿이 저장 답을 그릴 모양(이름 · 수 · 백업 · 지문)으로 접으면서 `note` 를 버리고 있었습니다.

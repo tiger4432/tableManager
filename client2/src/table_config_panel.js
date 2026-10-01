@@ -159,7 +159,8 @@ export const TABLE_REGISTRY = Object.freeze({
   // 는 얕은 병합이라 없던 키를 만듭니다(이름이 비었을 때만 `table_name_required` 로 거절).
   addLabel: 'Add table',
   // 이 라우트는 스켈레톤을 «안 싣습니다» — 그래서 폼이 없고 화면은 오늘 그대로입니다.
-  paste: Object.freeze({ read: columnsFromPaste, changes: columnChanges, copy: columnsToSheet }),
+  paste: Object.freeze({ read: columnsFromPaste, changes: columnChanges, copy: columnsToSheet,
+    pickFirst: 'Pick a table or Add table' }),
 });
 
 /**
