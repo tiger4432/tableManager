@@ -1832,7 +1832,7 @@ map      lot-event-role (파이썬) · unit.kind = event   -> 매퍼가 «그룹
 
 ### B 의 «선언 diff» (출하 샘플)
 
-> ⚰️ (🆕 10-01 `0b59a2f30`) v6 이 이 diff 의 방향으로 착지했습니다 — 아래는 그 전의 샘플에 대한 제안입니다.
+> ⚰️ (🆕 10-01 `0b59a2f30`) `lot_event` 소스와 `prepare` 절이 v6 에서 은퇴했습니다 — 아래는 그 전 샘플에 대한 제안입니다.
 ```
 descent.subject.keys.lot   `child_lot`  ->  `lot_id`      (B 에서는 자식이 «자기 행»의 lot_id 입니다)
 split.subject.keys.lot     `child_lot`  ->  `lot_id`      (같은 이유. 목적어는 그대로 parent_lot)
