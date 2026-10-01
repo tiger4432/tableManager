@@ -25,6 +25,7 @@ from zoneinfo import ZoneInfo
 import pandas as pd
 
 from database.crud import clean_str_value, is_blank_key_part
+from declaration_names import bare_name
 from utils import time_format
 
 from .envelope import source_event_identity
@@ -1437,17 +1438,6 @@ def _claim(snapshot: LedgerSetupSnapshot, predicate_id: Any, path: str) -> Claim
     return claim
 
 
-def _runtime_id(versioned_id: str) -> str:
-    """Config/Registry addresses are versioned; the existing Ledger API is not.
-
-    The version remains in the immutable snapshot hash and translator version.  The
-    physical predicate/entity spellings stay compatible with the existing LedgerStore
-    and read APIs (`register`, `Lot`, ...), rather than leaking Registry addresses such
-    as `register@1` into the evidence graph.
-    """
-    return versioned_id.rsplit("@", 1)[0]
-
-
 def _validate_role_value(
     snapshot: LedgerSetupSnapshot,
     role: RoleDescriptor,
@@ -1601,7 +1591,7 @@ def _emission_plan(context: MapperContext, predicate_id: Any, path: str) -> _Emi
         claim=claim,
         emission=emission,
         predicate=predicate,
-        predicate_runtime_id=_runtime_id(emission.predicate_id),
+        predicate_runtime_id=bare_name(emission.predicate_id),
         required_qualifiers=required,
         allowed_qualifiers=required | frozenset(predicate.optional_qualifiers),
     )
@@ -1687,7 +1677,7 @@ def compile_role_rows(context: MapperContext, role_frame) -> LedgerRows:
         elif emission.object_kind == "entity_ref":
             object_kind = "entity_ref"
             object_payload = {
-                "type": _runtime_id(obj_value["type"]),
+                "type": bare_name(obj_value["type"]),
                 "keys": _plain(obj_value["keys"]),
             }
         elif emission.object_kind == "value":
@@ -1717,7 +1707,7 @@ def compile_role_rows(context: MapperContext, role_frame) -> LedgerRows:
         rows.append({
             "source_event_id": expected_id,
             "source_event_state": event_state,
-            "subject_type": _runtime_id(subject["type"]),
+            "subject_type": bare_name(subject["type"]),
             "subject_keys": _plain(subject["keys"]),
             "predicate": plan.predicate_runtime_id,
             "object_kind": object_kind,

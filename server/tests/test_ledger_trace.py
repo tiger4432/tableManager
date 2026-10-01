@@ -339,30 +339,6 @@ def test_rank_key_matches_crud_tuple_shape():
 
 
 
-def test_supersedes_guard_goes_red_without_retirement():
-    """MUTANT: skip `live_claims` and the corrected atom wins again."""
-    atoms = [
-        claim("wrong", "L-C", "derived_from", {"lot": "L-WRONG"},
-              occurred_at=T0 + timedelta(days=10), who="user"),
-        claim("fix", "L-C", "derived_from", {"lot": "L-RIGHT"},
-              occurred_at=T0, who="zz_file.csv", supersedes="wrong"),
-    ]
-    assert min(atoms, key=lt.claim_rank_key).id == "wrong", (
-        "without retirement the corrected atom wins - which is what "
-        "live_claims() exists to prevent")
-    assert [c.id for c in lt.live_claims(atoms)] == ["fix"]
-
-
-
-
-
-
-
-
-
-
-
-
 # ---------------------------------------------------------------------------
 # Shape
 # ---------------------------------------------------------------------------

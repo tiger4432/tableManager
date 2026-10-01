@@ -146,9 +146,9 @@ def evidence_subgraph(
     db: Session = Depends(get_db),
     include_superseded: bool = Query(
         False,
-        description=("대체된 원자도 그린다. 기본은 «안 그림» — 걷기는 «지금 참인 것»을 "
-                     "그리고, 뺀 수는 `stats.superseded_dropped` 가 이름 대어 말한다. "
-                     "켜면 엣지에 `superseded_by` 표지가 붙는다")),
+        description=("Also draw facts that are no longer current - for a predicate declared "
+                     "`cardinality: one`, a fact with a later fact for the same subject. "
+                     "Default: the current fact only. Such edges carry `not_current`")),
 ):
     """어느 증거 노드에서든 Entity–Event–Claim 서브그래프를 답한다."""
     # ⛔ FIRST, BEFORE ANY OTHER ARGUMENT IS TOUCHED. A direct call leaves FastAPI's
@@ -576,8 +576,8 @@ def _declared_entities(world=None):
 def _evidence_graph(connection, *, node_id, hops, direction, world=None,
                     node_limit, edge_limit, follow=None, follow_keys=None,
                     backbone_hops=ledger_subgraph.DEFAULT_BACKBONE_HOPS,
-        # [S-141] 기본은 «안 그림». true 면 대체된 원자도 그리되 엣지에
-        # `superseded_by` 표지가 붙는다 — 「보인다」와 「현재다」를 가르기 위해.
+        # 기본은 `one` 술어의 «지금 것»(가장 늦은 occurred_at)만 가져온다. true 면 옛것도
+        # 가져오되 엣지에 `not_current` 표지 (총괄 22ebdd153, 판정 256 뒤집음).
         include_superseded: bool = False,
                     collect=None, since=None, until=None, rows=False,
                     group_by=None, measure=None,
@@ -593,17 +593,19 @@ def _evidence_graph(connection, *, node_id, hops, direction, world=None,
             "message": ("The Source Event graph is not migrated - run "
                         "server/migrations/add_ledger_source_events.py --apply"),
         })
+    cardinalities = _predicate_cardinalities(world)
     return ledger_subgraph.subgraph(
         node_id, ledger_subgraph.SqlEvidenceLookup(
-        connection, relation=names.read_relation, since=since, until=until),
+        connection, relation=names.read_relation, since=since, until=until,
+        one=ledger_subgraph.one_predicates(cardinalities),
+        current_only=not include_superseded),
         hops=hops, direction=direction,
         node_limit=node_limit, edge_limit=edge_limit, follow=follow,
         follow_keys=follow_keys,
         backbone_hops=backbone_hops, static_types=_static_types(world),
         static_follow=_static_step_predicates(world), collect=collect,
         registration_follow=_self_describing_predicates(world),
-        cardinalities=_predicate_cardinalities(world),
-        include_superseded=include_superseded,
+        cardinalities=cardinalities,
         # The declaration is the ONLY authority for which columns exist — the same source
         # the client reads through /declaration, so a key added to a declaration reaches
         # both the screen and the TSV with no edit in either (S-183).

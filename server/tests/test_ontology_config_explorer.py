@@ -2156,6 +2156,57 @@ def test_the_starting_file_is_the_smallest_one_that_validates(tmp_path):
     assert all(bundle[name] == {} for name in LOGICAL_SECTIONS)
 
 
+def test_a_branch_starts_from_a_base_that_has_a_refused_source(
+        shipped_root_with_a_refused_source, tmp_path):
+    """총괄 204a50bd2 ①: the base loads with a refused source left out by name, so its copy is
+    judged the same way - a branch is never held stricter than its base. Held to every
+    declaration validating, no branch could be made while the base had one refused source."""
+    catalog = shipped_catalog()
+    branch = tmp_path / "branch"
+    service = OntologyExplorerService(
+        config_root=branch, draft_root=tmp_path / "branch_drafts",
+        seed_root=shipped_root_with_a_refused_source,
+        setup_loader=lambda root: load_setup(root, catalog=catalog),
+        catalog_loader=lambda: catalog)
+
+    service.bootstrap_config()
+    setup, index, _ = service.active()
+    draft = service.create_declaration_draft(
+        kind="entity", canonical_id="zz_probe@1", base_snapshot_hash=index.snapshot_hash)
+
+    def read(root):
+        return json.loads((root / "ledger_config.json").read_text(encoding="utf-8"))
+
+    assert read(branch) == read(shipped_root_with_a_refused_source), "the base, as written"
+    assert f"source_plan|{REFUSED_SOURCE}" in setup.left_out, "left out by name, as in the base"
+    assert draft["draft_id"]
+
+
+def test_a_branch_not_made_yet_is_refused_by_name_with_the_next_action_first(tmp_path):
+    """총괄 204a50bd2 ②: no declaration root reached the loader's strict resolve and answered
+    500 from every route that reads the setup."""
+    service = OntologyExplorerService(
+        config_root=tmp_path / "never_made", draft_root=tmp_path / "drafts",
+        seed_root=tmp_path / "base")
+
+    for reads in (service.view, lambda: service.create_declaration_draft(
+            kind="entity", canonical_id="zz_probe@1", base_snapshot_hash="")):
+        with pytest.raises(ConfigExplorerError) as refused:
+            reads()
+        said = refused.value.to_mapping()
+        assert said["code"] == "world_not_created"
+        assert said["message"].startswith("Next: create the branch first")
+
+    def a_file_under_it_is_missing(_root):
+        raise FileNotFoundError("table_config.json")
+
+    (tmp_path / "made").mkdir()
+    with pytest.raises(FileNotFoundError):
+        OntologyExplorerService(
+            config_root=tmp_path / "made", draft_root=tmp_path / "drafts",
+            setup_loader=a_file_under_it_is_missing).view()
+
+
 def test_the_plan_lists_every_declaration_unpaged(transfer_sample_setup, tmp_path):
     """🔴 THE SECTION LIST CANNOT COME FROM THE TREE, and the reason is a silent defect.
 

@@ -66,8 +66,8 @@ def _walk_on_the_fixture_ledger(monkeypatch):
         monkeypatch.setattr(trace_router, name, lambda *a, **k: frozenset())
     monkeypatch.setattr(trace_router, "_predicate_cardinalities", lambda *a, **k: {})
     monkeypatch.setattr(ledger_subgraph, "SqlEvidenceLookup",
-                        lambda connection, relation=None, since=None, until=None:
-                        ledger_subgraph.InMemoryEvidenceLookup(ATOMS, since=since, until=until))
+                        lambda connection, relation=None, **window:
+                        ledger_subgraph.InMemoryEvidenceLookup(ATOMS, **window))
 
 
 @pytest.fixture(name="db")

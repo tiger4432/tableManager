@@ -67692,3 +67692,171 @@ V3 delete makes no view                            빨강  (1 failed, 8 passed, 
 전체  5 failed, 7585 passed, 200 skipped, 3 xfailed in 850.79s (0:14:10) — 실패 5 개, 알려진 다섯과 같음: True
 PG    7 failed, 154 passed, 7632 deselected, 61 warnings in 326.72s (0:05:26) — 실패 이름이 알려진 일곱과 같음: True
 ```
+
+## [구현자 -> 총괄] 204a50bd2 착지 77a5f264c — 새 가지는 기본 그대로 만들어지고, 안 만든 가지는 이름 대어 거절
+
+```
+①  bootstrap 의 시작 파일 판정 = 로더의 잣대 resolve_declarations
+    안 맞는 선언은 그것만 이름 대어 빠지고, 거절은 config_level(파일 전체 문제)만
+    새 판정자 0 — load_setup · ledger.config.load 가 부르는 그 함수. 사본은 기본 파일 그대로
+    기본의 첫 파일(빈 root)도 같은 길 — 선언이 없어서 전에 거절이던 것은 지금도 거절
+②  active() 의 같은 자리 — 로더가 FileNotFoundError 로 실패하고 그 root 가 정말 없을 때만
+    400 world_not_created 「Next: create the branch first - <root> is not there」
+    root 가 있는데 난 FileNotFoundError 는 그대로 올라감(가지 없음으로 잘못 부르지 않음)
+    ⚠️ 처음엔 active() 맨 앞에서 root 유무만 물었고, 주입 로더로 없는 root 에서 도는 기존 시험 셋이 빨개짐 -> 로더 실패 뒤로 옮김
+```
+**게이트 — 박스 선언 사본** (총괄 repro 그대로: 격리 데이터 뿌리 · TestClient · DB 두 걸음 막음. 박스 선언 = 박스 수)
+```
+                          전 (origin)                후
+기본에서 빠지는 선언               9                         9
+bootstrap t1              400 bootstrap_invalid     200
+t1 파일 == 기본 선언            False                     True
+view t1                   500                       200
+drafts/new t1 (entity)    500                       200 · draft_id
+changed_sources(t1)       FileNotFoundError         []
+view t9 (안 만든 가지)         500                       400 world_not_created
+drafts/new t9             500                       400 world_not_created
+```
+⚠️ repro 의 drafts/new 는 kind "entities" 였고 그 낱말은 400 unauthorable_kind 입니다 — 만들 수 있는 kind 는 "entity". 위 표는 "entity" 로 잼
+
+**시험** (추적 데이터 — 출하 선언 + 거절 소스 하나 픽스처, test_ontology_config_explorer)
+```
+가지가 기본에서 만들어짐 · 파일 == 기본 · 거절 소스가 이름 대어 빠짐 · 새 entity 초안 생김
+안 만든 가지의 view · 초안 -> world_not_created, Next 먼저 · root 가 있는 FileNotFoundError 는 그대로
+변이
+M1 starting file held to every declaration validating  red   test_a_branch_starts_from_a_base_that_has_a_refused_source
+M2 missing root not named                              red   test_a_branch_not_made_yet_is_refused_by_name_with_the_next_action_first
+M3 every FileNotFoundError named as a missing branch   red   test_a_branch_not_made_yet_is_refused_by_name_with_the_next_action_first
+```
+**새 함수 · 새 if 중 기존 것과 같은 일** (cdeb5ea10)
+```
+새 함수   0
+새 if     1 — 「root 가 있으면 다시 올림」. _file_stamp 의 is_dir 과 같은 물음을 다른 일(거절 이름 가르기)에 씀
+지움      import 1 (validate_bundle_errors — 이 모듈에서 쓰는 곳이 0 이 됨)
+```
+**스위트** (C:/wt-impl, 착지 트리)
+```
+전체  5 failed, 7587 passed, 200 skipped, 3 xfailed in 839.39s (0:13:59) — 알려진 다섯
+PG    7 failed, 154 passed, 7634 deselected in 333.43s (0:05:33) — 알려진 일곱(이름까지 같음)
+```
+
+## [구현자 -> 총괄] 22ebdd153 착지 051c7c187 — `cardinality: one` 의 지금 값 = 가장 늦은 occurred_at, 걷기가 읽을 때 정함
+
+```
+쓰기   runtime_v2 의 supersedes 찍기 · 한 배치 거절 · store.current_atoms_for_subjects 은퇴
+       판정 256 을 뒤집는다고 코드(묘비)·문서에 적음
+읽기   SqlEvidenceLookup._not_current_clause «하나» = 「같은 (주어, 술어)에 더 늦은 사실이 있다(until 이면 그 전)」
+       나감·들어옴 두 팔이 같은 식을 씀 — WHERE 는 NOT 그 식(기본), SELECT 는 그 식을 not_current 칸으로
+       include_superseded=true -> WHERE 에서 빠지고 엣지에 not_current
+       InMemoryEvidenceLookup._not_current 가 같은 조건(시험 대역)
+       ⚠️ 말씀과 다른 점 — 「EVIDENCE_COLUMNS · EvidenceAtom 칸 하나」 중 EvidenceAtom 에만 칸을 넣음.
+          EVIDENCE_COLUMNS 는 표의 실제 칸 목록(ATOM_COLUMNS)이라 계산 칸을 넣을 수 없어 SELECT 에서 옆에 붙임
+       말 하나 바뀜 — 구간 밖 수(interval_excluded)도 같은 팔을 지나므로 이제 «지금 사실 중» 구간 밖 수
+동시각  둘 다 그리고 주어 노드에 current_conflicts (attribute_conflicts 와 같은 모양: 정수)
+       목적어는 qualifiers 를 뺀 것 — 같은 목적어를 다른 step 으로 말한 것은 하나(엣지 id 도 그렇다).
+       박스 첫 판에서 잡힘: wafer 하나에 사실 100 · payload 100 가지 · recipe 10
+은퇴   trace.live_claims · ledger_subgraph._split_superseded · walk.superseded_dropped · 엣지 superseded_by
+       클라 src 에서 읽는 자리 0 (git grep). 걷기 함수의 include_superseded 인자도 죽어서 뺌(라우트 인자는 그대로)
+접기   roleframe._runtime_id -> declaration_names.bare_name, 세 자리 교체. 유효 id(name@N)에서 둘의 답이 같음
+남김   supersedes 칸 — LEDGER_SCHEMA_COMPLETENESS 에 「쓰는 자리 0」
+문서   은퇴한 이름을 든 현재형 문장 전부 — WALK.md · LEDGER_SCHEMA_COMPLETENESS · CODE_MAP ·
+       ONTOLOGY_LEDGER_SETUP · ledger_declaration_by_example · 독스트링 둘 · RUN.md (날짜 박힌 이력 줄은 둠)
+```
+**게이트** (PG, 제품 경로 `trace_router._evidence_graph` — 선언에서 one 을 읽어 룩업을 짓는 그 자리.
+픽스처 L-D: t1 W1 · t2 W2 · t3 W3 · 맨 나중에 도착한 t1.5 W9)
+```
+한 배치 / 배치 넷           W3 하나 · 엣지 cardinality one · current_conflicts 0
+until t2.5                 W2
+include_superseded         넷 다 그림, not_current 는 W1 W2 W9
+W1 에서 들어옴 팔            has_wafer 0  (W3 에서는 1)
+같은 값 다시 (t1 W1, t2 W1)  엣지 하나, 근거 원자는 t2 것 — ⚠️ 어느 변이에도 안 빨개짐:
+                           엣지 id 가 (술어, 주어, 목적어)라 이 규칙 없이도 하나. 기록용 대조
+동시각 (t3 W3, t3 W4)        둘 다 + current_conflicts 1
+잘린 가져오기               랏 400 이 W1, 그중 100 이 t2 에 W2 로 옮김. W1 에서 예산 200 -> 잘림 표시 · 옮긴 랏 0
+메모리 대역                 같은 픽스처로 다섯 (지금 · until 과 이력 · 들어옴 · 동시각 · 같은 목적어 다른 qualifier 는 충돌 0)
+```
+**변이** (하나씩 넣고 그 시험들만 돌림)
+```
+M1 no current filter in WHERE            red   test_a_cut_fetch_draws_no_fact_that_was_replaced, test_a_one_predicate_draws_its_latest_fact_whatever_order_it_arrived_in, test_as_of_a_time_the_current_fact_is_the_latest_before_it, test_two_facts_at_the_latest_instant_are_both_current_and_counted, test_walked_from_an_old_object_the_replaced_fact_is_not_drawn
+M2 until bound dropped                   red   test_as_of_a_time_the_current_fact_is_the_latest_before_it
+M3 incoming arm without the condition    red   test_a_cut_fetch_draws_no_fact_that_was_replaced, test_walked_from_an_old_object_the_replaced_fact_is_not_drawn
+M4 not_current never selected            red   test_history_draws_all_four_and_marks_all_but_the_current
+M5 conflicts count any object            red   test_a_one_predicate_draws_its_latest_fact_whatever_order_it_arrived_in
+M6 route ignores include_superseded      red   test_history_draws_all_four_and_marks_all_but_the_current
+M7 route passes no one predicate         red   test_a_cut_fetch_draws_no_fact_that_was_replaced, test_a_one_predicate_draws_its_latest_fact_whatever_order_it_arrived_in, test_as_of_a_time_the_current_fact_is_the_latest_before_it, test_history_draws_all_four_and_marks_all_but_the_current, test_two_facts_at_the_latest_instant_are_both_current_and_counted, test_walked_from_an_old_object_the_replaced_fact_is_not_drawn
+M8 in-memory double never not-current    red   test_a_tie_draws_both_and_the_subject_counts_it, test_as_of_a_time_and_with_history_the_double_answers_as_the_sql, test_the_latest_fact_is_drawn_and_the_late_old_one_is_not, test_walked_from_an_old_object_the_replaced_fact_is_not_drawn
+M9 in-memory double ignores until        red   test_as_of_a_time_and_with_history_the_double_answers_as_the_sql
+M10 conflicts compare qualifiers too     red   test_the_same_object_with_another_qualifier_at_that_instant_is_no_conflict
+```
+**박스** (박스 데이터·박스 수 — processed_with 를 one 으로 적은 임시 가지, wafer_process_recipe 20,000 행, 쪽 2,000. 끝나고 가지 지움.
+204a50bd2 를 먼저 하느라 보관했다가 다시 얹음 — 박스 게이트와 변이는 보관 전 트리(d10e54d24 + 이 변경)에서, 스위트는 착지 트리에서 잼.
+`many` 가지를 대조로 쓰지 않은 까닭: ③ 뒤로 기본과 같은 선언의 가지는 아무 소스도 대변하지 않아 0 을 씀 — 대조는 기본 원장의 «행마다 원자 하나»)
+```
+대조     기본 원장: wafer_process 행 478718 · processed_with 원자 478718 (행마다 하나)
+가지     speaks for ['wafer_process_recipe'] · 읽은 행 20000 · 쓴 원자 20000 · processed_with 20000 · 거절 0 · supersedes 찍힘 0 · 45.5 s
+0 lost   True  (쓴 원자 == 읽은 행 == processed_with, 거절 0, 찍힘 0)
+걷기     목적어 둘 이상인 주어 20 개: 지금 그림 == 가장 늦은 시각의 목적어 · 이력 == 목적어 전부 · not_current == 나머지 · current_conflicts -> True
+         주어당 사실 [100] · 목적어(qualifiers 뺌) [10] · 가장 늦은 시각의 목적어 수 [1] · current_conflicts ['0']
+         박스 표본엔 동시각이 없음 — 동시각은 PG 시험이 잼
+뒤       기본 원장 행 전/후 [2261723, 2261723] · 남은 가지 []
+```
+**새 함수 · 새 if 중 기존 것과 같은 일** (cdeb5ea10)
+```
+새 함수   넷 — _not_current_clause · one_predicates · _apply_current_conflicts · InMemoryEvidenceLookup._not_current
+같은 일   하나 — _not_current 는 SQL 조건의 메모리 사본(대역이라서. 같은 픽스처로 같은 답을 잼)
+         _apply_current_conflicts 는 attribute_conflicts 와 «모양»만 같음 — 세는 것이 지금 사실의 목적어라 안 접음
+새 if     둘(not_current 표시 · current_only) — 같은 일 0
+은퇴 함수  여덟 — _one_cardinality_predicates · _atom_subject · _conflicting_subjects · _stamp_supersedes ·
+         current_atoms_for_subjects · live_claims · _split_superseded · _runtime_id
+```
+**여쭐 것 하나** — `SqlEvidenceLookup.claims_by_ids` 는 호출자 0 이고 이 조건을 안 지납니다. 이번에 안 건드렸습니다(은퇴할지 여쭙니다).
+
+**스위트** (C:/wt-impl, 착지 트리) — 첫 판에서 test_a_saved_contrast 가 PG 넷 · 전체 다섯 빨강: 그 시험의 SqlEvidenceLookup
+대역이 since·until 둘만 받아 새 인자(one · current_only)에 TypeError. 대역이 받은 인자를 메모리 룩업에 그대로 넘기게 고치고 둘 다 다시 돌림
+```
+전체  5 failed, 7566 passed, 207 skipped, 3 xfailed in 759.38s (0:12:39) — 알려진 다섯
+PG    7 failed, 161 passed, 7613 deselected in 369.20s (0:06:09) — 알려진 일곱(이름까지 같음)
+```
+
+## [구현자 -> 총괄] ec01b42de 바로잡음 착지 5a7f2592e — 세 문의 같은 다섯 줄을 함수 하나로
+
+```
+바꾼 것   bootstrap · 초안 반영 · 선언 삭제 세 문이 각자 들던 다섯 줄(import 둘 · ensure_world · refresh_world_view)
+         -> 라우터의 _world_after_write(world) 하나를 셋이 부름. 동작은 같음
+CODE_MAP  세 문 줄에 그 함수 이름
+```
+**게이트** (PG, 문마다 시험 하나)
+```
+M1 door bootstrap does not call it           red   test_a_branch_made_through_bootstrap_is_walked_before_anything_is_translated
+M2 door delete_declaration does not call it  red   test_a_deleted_declaration_takes_its_default_atoms_out_of_the_view
+M3 door activate does not call it            red   test_a_save_that_changes_a_source_takes_its_default_atoms_out_of_the_view
+M4 the helper refreshes no view              red   test_a_branch_made_through_bootstrap_is_walked_before_anything_is_translated, test_a_deleted_declaration_takes_its_default_atoms_out_of_the_view, test_a_save_that_changes_a_source_takes_its_default_atoms_out_of_the_view
+```
+**새 함수 · 새 if 중 기존 것과 같은 일** (cdeb5ea10)
+```
+새 함수   하나(_world_after_write) — 사본 셋을 접은 것. 같은 일을 하는 다른 함수 0
+새 if     0
+```
+⚠️ ec01b42de 보고에 적은 「모으면 새 함수라 안 모음」은 틀렸습니다 — 앞으로 사본이 둘 이상이면 모읍니다.
+
+**스위트** (C:/wt-impl, 착지 트리)
+```
+전체  6 failed, 7565 passed, 207 skipped, 3 xfailed in 783.57s (0:13:03) — 알려진 다섯 + test_config_reload_integrity::test_inv_9_1 (파일 감시가 디바운스 재적재를 기다리는 시간 시험. PG 스위트와 동시에 돌 때 빨강, 혼자 세 번 돌려 세 번 초록. 이 변경은 라우터만 만짐)
+PG    7 failed, 161 passed, 7613 deselected in 344.11s (0:05:44) — 알려진 일곱(이름까지 같음)
+```
+
+## [구현자 -> 총괄] claims_by_ids 은퇴 착지 7057fe12c — 정의 둘, 한 커밋
+
+```
+지움     SqlEvidenceLookup.claims_by_ids · InMemoryEvidenceLookup.claims_by_ids
+센 것    git grep "by_ids" (task 빼고) -> 정의 둘 + 다른 이름 load_rows_by_ids(outbox_expand) 뿐. 카나리아: "def claims_by_ids" 2
+남김     묘비 한 줄(호출자 0, _not_current_clause 를 안 지나던 것)
+문서     CODE_MAP 에 이 이름 없음 — 고칠 문장 0
+```
+**새 함수 · 새 if 중 기존 것과 같은 일** (cdeb5ea10) — 새 함수 0 · 새 if 0
+
+**스위트** (C:/wt-impl, 착지 트리)
+```
+전체  5 failed, 7566 passed, 207 skipped, 3 xfailed in 833.59s (0:13:53) — 알려진 다섯
+PG    7 failed, 161 passed, 7613 deselected in 344.88s (0:05:44) — 알려진 일곱(이름까지 같음)
+```

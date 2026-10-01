@@ -19,7 +19,6 @@ from . import gate
 from .backfill import prepare_v2_cursor_batch
 from .envelope import canonical_keys, registration_fingerprint, registration_token
 from .ledger_frame import atoms_from_ledger_rows
-from .setup_bundle import DEFAULT_CARDINALITY
 from .roleframe import (
     LedgerV2DryRunResult,
     MapperContext,
@@ -365,10 +364,6 @@ def execute_scoped_batch(
         snapshot, source_id, base_rows, unwritten_cursor, join_reader, preparers, mappers,
         known_registrations=known_registrations)
     kept_all = _screened_atoms(snapshot, source_id, preview)
-    # 🔴 AFTER THE SCREEN AND BEFORE THE WRITE (S-133 ①). A refused molecule
-    # must not replace anything, so this runs on what SURVIVED; and the pointer
-    # has to exist before `write_batch` inserts the row that carries it.
-    _stamp_supersedes(store, snapshot, kept_all)
     batch_id = str(uuid6.uuid7())
     try:
         written = store.write_batch(
@@ -445,98 +440,13 @@ def _require_scope(base_rows: Any, scope: Any) -> None:
             f"{outside[:5]}")
 
 
-def _one_cardinality_predicates(snapshot: LedgerSetupSnapshot) -> frozenset:
-    """The predicates whose declaration says a subject carries at most one object NOW."""
-    return frozenset(
-        predicate_id for predicate_id, predicate in snapshot.vocabulary.items()
-        if getattr(predicate, "cardinality", DEFAULT_CARDINALITY) == "one")
-
-
-def _atom_subject(atom) -> tuple:
-    """The identity a `one` predicate is 「one」 PER. Keys are canonicalised because two
-    dicts spelling the same identity in a different order are the same subject."""
-    return (atom.subject_type, _canonical(atom.subject_keys or {}), atom.predicate)
-
-
-def _conflicting_subjects(snapshot: LedgerSetupSnapshot, event_atoms) -> set:
-    """Subjects this BATCH gives more than one object for, on a `one` predicate.
-
-    🔴 THE BATCH CANNOT BE ORDERED BY ITSELF (S-133 ②, 판정 256). Across batches a later
-    object supersedes an earlier one - that is a value CHANGING, and the arrival order says
-    which is current. Inside one batch there is no such order, so two objects for one
-    subject leave nobody able to say which is now true. Refusing is the only answer that
-    does not invent one.
-
-    ⚠️ COMPUTED ONCE OVER THE WHOLE BATCH, because a per-molecule screen cannot see this:
-    the second object is in a different molecule by definition.
-    """
-    one_predicates = _one_cardinality_predicates(snapshot)
-    if not one_predicates:
-        return set()
-
-    objects_by_subject: dict[tuple, set] = {}
-    for atoms in event_atoms:
-        for atom in atoms:
-            if atom.predicate not in one_predicates:
-                continue
-            objects_by_subject.setdefault(_atom_subject(atom), set()).add(
-                _canonical(atom.object_payload or {}))
-    return {subject for subject, objects in objects_by_subject.items()
-            if len(objects) > 1}
-
-
-def _stamp_supersedes(store, snapshot: LedgerSetupSnapshot, atoms) -> int:
-    """Point each new `one`-predicate atom at the atom it replaces. Returns how many.
-
-    🔴 THE LEDGER'S FIRST WRITER OF `supersedes` (S-133 ①, 판정 256). The column has been
-    carried, validated and serialised since it existed, and `ledger_trace.live_claims` has
-    read it - but every construction site wrote `None`, so the reader had nothing to drop.
-
-    ⛔ THE ATOM IS NOT REMOVED, A POINTER IS ADDED. 「투영은 지워도 되고 기록은 안 된다」 -
-    what the ledger records is that a later fact replaced an earlier one, and both rows
-    stay. That is why this is a record rather than a projection.
-
-    ⚠️ ONE QUERY PER `one` PREDICATE PER BATCH, not one per atom. Production runs thousands
-    of rows in a transaction, so a per-subject lookup would be a thousand round trips.
-
-    ⚠️ AND NOTHING IS DONE RETROACTIVELY (S-133-b). A subject that already carries several
-    live atoms keeps them; only new atoms from here on point at what they replace. Tidying
-    the past is a rescope's job, not a write's.
-    """
-    one_predicates = _one_cardinality_predicates(snapshot)
-    if not one_predicates or not atoms:
-        return 0
-
-    by_predicate: dict[str, list] = {}
-    for atom in atoms:
-        if atom.predicate in one_predicates:
-            by_predicate.setdefault(atom.predicate, []).append(atom)
-    if not by_predicate:
-        return 0
-
-    stamped = 0
-    # ⚠️ READ-ONLY AND ITS OWN CONNECTION, rolled back rather than left open: this
-    # runs before `write_batch` opens the transaction that owns the insert and the
-    # cursor advance, and holding a second one across that is how a writer waits on
-    # itself. `store.connection()` hands out a raw DBAPI handle the caller closes.
-    connection = store.connection()
-    try:
-        for predicate, predicate_atoms in by_predicate.items():
-            subjects = {(atom.subject_type, _canonical(atom.subject_keys or {}))
-                        for atom in predicate_atoms}
-            current = store.current_atoms_for_subjects(connection, predicate, subjects)
-            if not current:
-                continue
-            for atom in predicate_atoms:
-                previous = current.get(
-                    (atom.subject_type, _canonical(atom.subject_keys or {})))
-                if previous is not None:
-                    atom.supersedes = str(previous)
-                    stamped += 1
-    finally:
-        connection.rollback()
-        connection.close()
-    return stamped
+# ⚰️ `cardinality: one` IS NOT ACTED ON WHEN ATOMS ARE WRITTEN (총괄 22ebdd153, 소유자 10-01 「다」).
+# 판정 256 - a batch refuses two objects for one subject, and across batches the later arrival is
+# stamped `supersedes` - is reversed: the current value of a (subject, `one` predicate) is the
+# fact with the latest occurred_at, and the walk reads it so (`ledger_subgraph`). Measured before
+# the reversal: the stamp depended on page size and fell on repeated values, a batch refusal
+# crashed the batch, and a late old fact became current. `_one_cardinality_predicates`,
+# `_atom_subject`, `_conflicting_subjects` and `_stamp_supersedes` went with it.
 
 
 def _screened_atoms(snapshot: LedgerSetupSnapshot, source_id: str, preview) -> list:
@@ -550,24 +460,9 @@ def _screened_atoms(snapshot: LedgerSetupSnapshot, source_id: str, preview) -> l
     event_atoms = _filtered_event_atoms(
         preview.event_results, preview.known_registrations)
     _stamp_occurred_at_basis(_source_plan(snapshot, source_id), event_atoms)
-    conflicting = _conflicting_subjects(snapshot, event_atoms)
     for result, atoms in zip(preview.event_results, event_atoms):
         molecule_ref = result.role_rows.attrs["molecule_ref"]
         with gate.building_molecule(source_id):
-            # ⛔ NAMED, COUNTED, SKIPPED - and it has to be here rather than in
-            # `screen_compiled_molecule` because the OTHER object is in another
-            # molecule. `gate.refuse` inside this context counts and then raises,
-            # which is what stops a caller from counting a refusal and writing the
-            # molecule anyway.
-            clashing = sorted({atom.predicate for atom in atoms
-                               if _atom_subject(atom) in conflicting})
-            if clashing:
-                gate.refuse(
-                    source_id, "cardinality_one_violated",
-                    f"this batch carries more than one object for one subject on "
-                    f"{clashing}, declared cardinality 'one' - nothing in the batch "
-                    f"says which is current, so no atom is written for it",
-                    rows=1, addresses=[molecule_ref])
             # 🔴 `_report` STAYS DISCARDED HERE, AND THAT IS MEASURED RATHER THAN LAZY.
             # This call sits inside `gate.building_molecule`, and a refusal there does not
             # return -- `gate.refuse` raises `MoleculeRefused` while a molecule is open, so

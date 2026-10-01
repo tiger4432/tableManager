@@ -1,91 +1,78 @@
 # -*- coding: utf-8 -*-
-"""걷기가 «지금 참인 것»을 그린다 (S-141, 응용 D-3 발견 ①).
+"""걷기가 «지금 참인 것»을 그린다 - `cardinality: one` 의 지금 값은 가장 늦은 occurred_at
+(총괄 22ebdd153, 판정 256 뒤집음).
 
-⚰️ MY OWN S-133 ④ GATE PROVED THE WRONG THING. It called `ledger_trace.live_claims`
-DIRECTLY from a test and asserted the replaced atom was dropped - which proved the FILTER
-and not the WIRING. `live_claims` had zero product callers, so the walk fetched
-`supersedes`, carried it, and drew the superseded edge and its replacement side by side.
-착지는 배선이 아니다, and a gate that calls the function under test bypasses exactly the
-question 「does anything call it」.
-
-⛔ ONE FILTER. The walk does not build its own - two places deciding 「which claim is
-current」 do not error when they disagree; one of them just starts drawing a fact that was
-replaced.
-
-⚠️ AND THE REMOVAL IS COUNTED, NOT HIDDEN - the same discipline truncation follows.
+⚰️ S-141's split by `supersedes` markers retired with the markers' one writer. Its symptom - a
+replaced fact drawn beside its replacement - is the control here. The PG half (both SQL arms,
+until, the same value again, ties, a cut fetch) is `test_ledger_trace_pg`; this is the in-memory
+double, held to the same answers on the same fixture.
 """
+from datetime import datetime, timedelta, timezone
 import os
 import sys
+import uuid
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
+from ledger import explorer                                          # noqa: E402
 from ledger_api import ledger_subgraph                               # noqa: E402
 
-
-class _Atom:
-    def __init__(self, atom_id, supersedes=None):
-        self.id = atom_id
-        self.supersedes = supersedes
-
-
-def test_the_replaced_atom_is_dropped_and_the_replacement_is_named():
-    live, replaced_by = ledger_subgraph._split_superseded(
-        [_Atom("A"), _Atom("B", supersedes="A")])
-
-    assert [a.id for a in live] == ["B"]
-    assert replaced_by == {"A": "B"}
+T0 = datetime(2026, 1, 1, tzinfo=timezone.utc)
+T1, T2, T3 = (T0 + timedelta(hours=hours) for hours in (1, 2, 3))
+#: t1 W1 · t2 W2 · t3 W3, and W9 at t1.5 arriving LAST.
+HOLDS = [(1, T1, "W1"), (2, T2, "W2"), (3, T3, "W3"), (4, T0 + timedelta(minutes=90), "W9")]
+LOT = explorer.entity_id("Lot", {"lot": "L-D"})
 
 
-def test_a_set_with_nothing_superseded_is_returned_untouched():
-    """⚠️ 기존 무변 — supersedes 가 없는 원자는 수 0 이고 아무것도 안 빠진다."""
-    atoms = [_Atom("A"), _Atom("B")]
-
-    live, replaced_by = ledger_subgraph._split_superseded(atoms)
-
-    assert live == atoms
-    assert replaced_by == {}
-
-
-def test_the_walk_calls_the_shared_filter_rather_than_its_own():
-    """🔴 THE WIRING, WHICH IS WHAT S-133 ④ FAILED TO CHECK."""
-    import inspect
-
-    helper = inspect.getsource(ledger_subgraph._split_superseded)
-    # 🪦 [S-211 packaging] the walk reaches it as `from ledger import trace`.
-    assert "trace.live_claims(" in helper
-
-    body = inspect.getsource(ledger_subgraph._walk)
-    assert "_split_superseded(batch)" in body, "the fetch path must pass through it"
-    assert "superseded_dropped += " in body
+def _atoms(rows=HOLDS, qualifiers=None):
+    return [ledger_subgraph.EvidenceAtom(
+        id=str(uuid.UUID(int=number)), subject_type="Lot", subject_keys={"lot": "L-D"},
+        predicate="has_wafer", object_kind="entity_ref",
+        object_payload={"type": "Wafer", "keys": {"wafer": wafer},
+                        "qualifiers": (qualifiers or {}).get(number, {})},
+        occurred_at=when, source_who="fixture", source_translator_ver="v1",
+        source_raw_ref=f"row:{number}", supersedes=None,
+        source_event_id=str(uuid.UUID(int=1000 + number)), source_event_state="source_record")
+        for number, when, wafer in rows]
 
 
-def test_the_response_always_says_how_many_it_left_out():
-    """⚠️ ALWAYS PRESENT, INCLUDING ZERO. 「이 걷기는 대체된 것을 만나지 않았다」 also is a
-    fact, and a key that appears only sometimes trains a reader to ignore it."""
-    import inspect
-
-    body = inspect.getsource(ledger_subgraph._walk)
-
-    assert '"superseded_dropped": superseded_dropped,' in body
-
-
-def test_including_them_marks_the_edge_rather_than_drawing_it_plain():
-    """「보인다」와 「현재다」는 다른 사실이라, 일부러 그린 것에는 표지가 붙는다."""
-    import inspect
-
-    body = inspect.getsource(ledger_subgraph._walk)
-
-    assert 'edge["superseded_by"] = replaced' in body
-    assert "if not include_superseded:" in body
+def _drawn(atoms=None, seed=LOT, direction="outgoing", **lookup):
+    body = ledger_subgraph.subgraph(
+        seed, ledger_subgraph.InMemoryEvidenceLookup(
+            _atoms() if atoms is None else atoms, one=["has_wafer"], **lookup),
+        hops=1, direction=direction, cardinalities={"has_wafer": "one"})
+    label = {node["id"]: node["label"] for node in body["nodes"]}
+    edges = sorted((label[e["target"]], bool(e.get("not_current")))
+                   for e in body["edges"] if e["predicate"] == "has_wafer")
+    return edges, body
 
 
-def test_the_route_offers_it_and_defaults_to_current_only():
-    import inspect
+def test_the_latest_fact_is_drawn_and_the_late_old_one_is_not():
+    assert _drawn()[0] == [("W3", False)]
 
-    from ledger import trace_router
 
-    params = inspect.signature(trace_router.evidence_subgraph).parameters
-    assert "include_superseded" in params
+def test_as_of_a_time_and_with_history_the_double_answers_as_the_sql():
+    assert _drawn(until=T2 + timedelta(minutes=30))[0] == [("W2", False)]
+    assert _drawn(current_only=False)[0] == [
+        ("W1", True), ("W2", True), ("W3", False), ("W9", True)]
 
-    body = inspect.getsource(trace_router)
-    assert "include_superseded=include_superseded" in body, "착지는 배선이 아니다"
+
+def test_walked_from_an_old_object_the_replaced_fact_is_not_drawn():
+    seed = explorer.entity_id("Wafer", {"wafer": "W1"})
+    assert _drawn(seed=seed, direction="incoming")[0] == []
+
+
+def test_a_tie_draws_both_and_the_subject_counts_it():
+    edges, body = _drawn(_atoms(HOLDS + [(5, T3, "W4")]))
+    lot, = [node for node in body["nodes"] if node["id"] == LOT]
+
+    assert edges == [("W3", False), ("W4", False)]
+    assert lot["current_conflicts"] == 1
+
+
+def test_the_same_object_with_another_qualifier_at_that_instant_is_no_conflict():
+    edges, body = _drawn(_atoms(HOLDS + [(6, T3, "W3")], qualifiers={6: {"slot": "2"}}))
+    lot, = [node for node in body["nodes"] if node["id"] == LOT]
+
+    assert edges == [("W3", False)]
+    assert lot["current_conflicts"] == 0

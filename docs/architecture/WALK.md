@@ -72,7 +72,7 @@ GET /api/ledger/gaps
 id(alias)  hops 1–40 (기본 12)  direction outgoing|incoming|both  node_limit 10–1000
 edge_limit 20–MAX  positive[]  negative[]  follow[]  collect[]  backbone_hops 0–40
 since  until      ISO 시각 둘. 반열린 구간 [since, until) — 아래 「구간 걷기」 절
-include_superseded  기본 false. 대체된 원자도 그릴지 (S-141)
+include_superseded  기본 false. `one` 술어의 «지금 아닌» 사실도 그릴지 — 그 엣지엔 `not_current` (총괄 22ebdd153)
 format              `json`(기본) | `rows` — 아래 「행 투영」 절 (S-183, 09-11)
 ```
 ⚰️ **여기 「아홉」이라 적혀 있었고 목록은 «열» 이었습니다**(2026-09-10 D-3 실측).
@@ -102,9 +102,12 @@ nodes        {id, type, label, keys, attributes}    🔵 type 이 «도메인 �
              🔴 `attribute_conflicts` = 닿은 원자에서 «서로 다른 값»(JSON 동등)이 둘 이상인 «이름의 수»
              — 같은 값이 두 시각에 오는 것은 «충돌이 아니다»(판정 124). 도착을 세면 「다시 말한 사실」이
              「어긋난다」로 보인다
+             🔵 `current_conflicts` = 같은 모양의 수 — `one` 술어 중 «지금 사실»(가장 늦은 시각)의 목적어가
+             둘 이상인 것의 수(목적어는 qualifiers 를 뺀 것 — 엣지 id 와 같다). `one` 사실이 하나도
+             안 닿은 노드엔 키가 없다 (총괄 22ebdd153)
 
 edges        {id, source, target, predicate, predicate_label, original_predicate, qualifiers,
-              🔵 claim_id, basis, occurred_at, source_who, cardinality}
+              🔵 claim_id, basis, occurred_at, source_who, cardinality, not_current?}
               — 🔴 «근거가 여기 실린다»(S-75 B11, 2026-09-09):
               원자에서 온 엣지는 `claim_id` = 그 원자의 id · `basis` = 그 원자의 `source_raw_ref`(어느 «물리 행»)
               를 달고, 응답은 이 dict 를 «투영 없이» 그대로 낸다(`_edge` 가 짓고 `_claim_edge` 가 원자 것을 더한다)
@@ -126,23 +129,24 @@ propagation  🔴 «닿은 노드 전부»를 두 부호의 «도달 대비»로
              순위는 내부에서 전부 본다. 두 축이 안 부딪힌다
 walk/state   모드·방향·시작 부호 수 / ready|empty
 ```
-### ⚰️ 정정·철회 — 걷기가 «현재만» 그린다 (S-141 착지 `6aa21c25`, 2026-09-10)
+### `cardinality: one` — 지금 값은 «가장 늦은 occurred_at», 걷기가 읽을 때 정한다 (총괄 22ebdd153, 소유자 10-01 「다」)
 
 ```
-쓰는 쪽   `ledger/runtime_v2._stamp_supersedes` — 원장의 «첫» supersedes writer (S-133 ①)
-읽는 쪽   `ledger_trace.live_claims` — 나중 원자가 대체한 것을 뺀다
-걷기      ✅ **이제 지난다.** `_split_superseded(atoms)` 가 `live_claims` 를 부르고,
-         걷기는 «자기 필터를 안 짓는다» — 「어느 주장이 현재인가」를 정하는 자리가 둘이면
-         둘이 어긋나도 «오류가 안 나고», 한쪽이 조용히 대체된 사실을 그리기 시작한다
-뺀 수     `walk.superseded_dropped` — «0 일 때도» 실린다. 「이 걷기는 대체된 것을 하나도
-         안 만났다」도 사실이고, 가끔만 있는 키는 독자를 「건너뛰게」 길들인다(절단과 같은 규율)
-둘 다 보기 `?include_superseded=true` → 대체된 엣지도 그리되 «`superseded_by` 표지»가 붙는다.
-         「보인다」와 「현재다」는 다른 사실이라, 둘을 보자고 한 사람도 둘을 가를 수 있어야 한다
+규칙     (주어, `one` 술어)의 지금 사실 = occurred_at 이 가장 늦은 것. 도착 순서는 안 본다
+         `until` 이 있으면 그 시각 «전»에서 가장 늦은 것
+자리     `SqlEvidenceLookup._not_current_clause` 하나 — 「같은 (주어, 술어)에 더 늦은 사실이 있다」
+         가져오기는 그 반대만(WHERE), 이력 보기는 같은 식을 `not_current` 칸으로(SELECT). 나감·들어옴 두 팔 다
+         들어옴 팔은 SQL 이어야 한다 — 옛 목적어에서 걸으면 더 늦은 사실은 다른 목적어를 가리켜 안 가져와진다
+이력     `?include_superseded=true` -> 옛 사실도 그리되 엣지에 `not_current: true`
+동시각   가장 늦은 시각에 목적어가 둘이면 둘 다 지금 것 -> 주어 노드의 `current_conflicts`
+쓰기     원자를 쓸 때 `one` 은 아무것도 안 한다 — 거절도 `supersedes` 찍기도 없음
 ```
-🪦 **여기 「아직 안 떨어진다」가 적혀 있었습니다**(같은 날 아침 D-3 실측). 그때 참이었고
-오늘 저녁 닫혔습니다 — 절은 지우지 않고 «닫힘»으로 남깁니다. 이 자리가 남는 이유는 하나입니다:
-**판정 256 의 게이트가 `live_claims` 를 «직접 불러» 초록이었습니다.** 그것은 «필터»를 증명하고
-«배선»을 증명하지 않습니다(「착지는 배선이 아니다」). 응답 층에서 재야 했고, 지금은 그렇게 잽니다.
+⚰️ **판정 256 을 뒤집었습니다**(10-01). 전엔 한 배치의 목적어 둘을 거절하고, 배치를 건너서는
+«나중에 도착한» 원자에 `supersedes` 를 찍고, 걷기가 그것을 `live_claims` · `_split_superseded` 로 빼며
+`walk.superseded_dropped` 로 셌습니다. 잰 것(`918f49ccc`): 선언 키(`@1`)와 원자 술어(맨이름)가 안 맞아
+한 번도 안 돌았고, 맞추면 찍힘이 페이지 크기에 따라 달랐고 늦게 온 옛 사실이 지금 것이 됐습니다.
+넷 다 은퇴했고, 그 증상은 대조 시험(t1·t2·t3 + 늦은 t1.5 — `test_ledger_trace_pg` ·
+`test_the_walk_draws_what_is_current`)이 잽니다.
 
 🔵 **이것을 «어떻게 선언하나» — 두 줄 (판정 124 정정본)**
 ```
