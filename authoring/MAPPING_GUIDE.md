@@ -190,7 +190,7 @@ false      «첫 실패에 격리»합니다 — 두 번 돌면 안 되는 맵�
 ## 5-bis. 🔴 import 해도 되는 이름 — 표가 있습니다
 
 ```
-정본   server/mapper_sdk.py 의 `MAPPER_SURFACE` :422      (S-215 `c3015b8a`, 판정 368)
+정본   server/mapper_sdk.py 의 `MAPPER_SURFACE`      (S-215 `c3015b8a`, 판정 368)
 쓰는 법  from mapper_sdk import <그 표에 있는 이름>
 ```
 🔵 **이 문서는 그 목록을 «옮겨 적지 않습니다».**
@@ -213,6 +213,10 @@ SDK 에 `_name` 이 있는 것은 이상해 보이고, 실제로 이상합니다
 🔴 **그리고 이 목록은 «고른 것»이 아니라 «잴 것»입니다** —
 오늘 라이브 맵퍼가 실제로 import 하는 이름을 읽어서 만들었습니다.
 그래서 줄이는 것은 «정리»가 아니라 «계약 파기»입니다.
+⚠️ **둘만 «잰» 것이 아니라 «내놓은» 것입니다** — `find_links` · `unknown_words`
+(10-01 `cb4d5157d`, 글에서 «원인 -> 현상» 후보를 뽑는 도우미,
+[TEXT_LINKS_GUIDE](../docs/guide/TEXT_LINKS_GUIDE.md)). 맵퍼를 위해 쓴 제품 도우미는
+import 길을 하나 더 내지 않고 이 문으로 들어옵니다.
 
 ## 6. 거절 — 전부 «이름이 있습니다»
 

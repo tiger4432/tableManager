@@ -1412,8 +1412,9 @@ const FLOORS = new Map([
   // (lead 1d07f1dae): one per bundle answered, a press expands it on the same picture.
   ['subgraph_view_harness.mjs', 52],
   // New (lead 65754c39a): the one layered-SVG template - both screens draw their pinned pictures, two
-  // declarations on one page apart, the template's own slots/shapes/texts/presses, the category tokens.
-  ['layered_graph_harness.mjs', 21],
+  // declarations on one page apart, the template's own slots/shapes/texts/presses; (lead 2cbd0756d) the nine
+  // category colours of their own, measured, and seven token mutants.
+  ['layered_graph_harness.mjs', 33],
   // a value carrying markup does not come back out as markup, and the backlog has a ceiling
   ['escaping_harness.mjs', 56],
   // clicking a derived route fills follow, and a later-hop predicate stays visible
