@@ -68449,3 +68449,535 @@ ledger_subgraph._entity_node   선언 키 순서가 있는 타입: label = 선�
 PG  6 failed, 163 passed, 7621 deselected in 355.09s (0:05:55) · 알려진 밖: 0
    test_value_suggest::test_like_metacharacters_are_literal - 전체에서만 실패(b1245bab9 착지 때와 같음), 단독 61 passed in 6.23s - 순서 의존, 이 변경과 닿지 않음
 ```
+
+---
+
+## [10-01 밤] 걷기 제어 가 — 역 술어 · 같은 타입 형제만 막음 (총괄 739edd59c · f3fb29a44, 소유자 「가로해」 · 「2로」) + ㄴ 보강 — 3ab88ae49
+
+**칸 · 규칙**
+```
+선언    어휘 술어 칸 inverse_of: "<술어 id>" — 한쪽만 적어도 양쪽으로 읽힘(짝은 하나)
+        검증(setup_bundle._validate_inverse, absence_confirmed_by 와 같은 자리):
+           없는 술어 -> unknown_id · 두 끝 타입이 뒤집혀 안 맞음 / entity_ref 아님 -> invalid_predicate · 한 술어에 역 둘 -> invalid_predicate
+        컴파일 안 함(PredicateDescriptor 에 없음) -> 소스 지문 · 원장 무변
+        스켈레톤 칸 inverse_of (hint ref, section vocabulary) — 탐색기 폼이 따라 그림
+규칙    _goes_back_down(닿은 걸음들, 술어, 방향, 먼 타입) 한 함수 — _step(펼치기) · _reach(순위)가 같이 부름
+        되밟기 = 같은 술어 반대 방향 또는 역 술어 같은 방향 · 양 방향 · 먼 노드가 출발한 노드와 같은 타입일 때만(안 2)
+        닿은 걸음이 «전부» 되밟기일 때만 막음(오늘의 == 를 넓힌 것)
+        _reach 는 시드별 BFS 를 «깊이 단위»로 걸어 그 노드에 닿은 걸음 집합을 모음 — 걷기의 도착 기록과 같은 단위
+        도착 기록 = (술어, 방향, 온 타입)
+걷기 선언 읽기  _read_entity_declaration 의 넷째 사실(역 짝) — 같은 한 번 읽기 · 같은 캐시
+```
+**게이트**
+```
+시험  11 passed in 0.43s
+      검증 다섯(한쪽 · 양쪽 한 짝 · 없는 술어 · 안 뒤집힘 · 역 둘) · 지문 불변(출고 샘플 소스 전부) ·
+      짝 있음/없음 x 걷기 · 순위 같은 다이 · 웨이퍼의 다른 사실(랏 · 레시피) 그대로 · 다른 타입 되밟기는 걷고 같은 타입은 막음
+      기존 키 제약 시험 둘(다이 -> 좌석 <- 웨이퍼) 안 2 에서 다시 초록 · 두 규칙 시험은 다른 다이가 이름에 «다른 술어»로 닿게 고침(술어 규칙이 같은 술어 모양을 이제 혼자 막으므로)
+변이  (전부 빨강, 복원 확인)
+   the inverse is not read                            -> 2 failed, 45 passed, 1 skipped, 6 warnings in 1.61s
+   one orientation only (incoming then outgoing)      -> 3 failed, 44 passed, 1 skipped, 6 warnings in 1.69s
+   no type condition (option 1)                       -> 3 failed, 44 passed, 1 skipped, 6 warnings in 1.68s
+   the reach does not ask the function                -> 2 failed, 45 passed, 1 skipped, 6 warnings in 1.64s
+   an undeclared inverse is accepted                  -> 1 failed, 46 passed, 1 skipped, 6 warnings in 1.97s
+   ends that do not flip are accepted                 -> 1 failed, 46 passed, 1 skipped, 6 warnings in 1.60s
+   two inverses are accepted                          -> 1 failed, 46 passed, 1 skipped, 6 warnings in 1.69s
+   baseline: 47 passed, 1 skipped, 6 warnings in 1.29s
+박스  (읽기만 · 다이 씨앗 = 걷기 제어 ①의 그것 · 짝은 라이브가 아니라 «사본» 선언에만 적음)
+   old (HEAD before ga): nodes 400 edges 892 types {'die': 393, 'wafer': 7} truncated nodes
+   new, no pair: nodes 400 edges 795 types {'die': 393, 'wafer': 7} truncated nodes
+   new, pair in a COPY: nodes 15 edges 25 types {'die': 8, 'wafer': 7} truncated None
+      고친 게이트 「짝 없음 = 오늘에서 형제 걸음만 빠짐」 — hops 3(노드 상한 안, 잘림은 깊이뿐):
+         옛 노드 842 · 엣지 2004 -> 새 노드 777 · 엣지 1549
+         빠진 노드 65 — reached only by sibling steps 65
+         빠진 엣지 — bonded_from | touches a dropped sibling node 390 · in_container | sibling step 65
+         새로 생긴 노드 0 · 엣지 0
+      「웨이퍼의 다른 사실 그대로」 — 이 박스 웨이퍼에는 in_container · inspected 말고 원자가 없어 박스로 못 보임 -> 시험 픽스처로
+```
+**ㄴ 보강** (총괄 b1245bab9 검증)
+```
+픽스처에 같은 다이를 두 번 inspected 한 원자 둘 — count 는 서로 다른 먼 노드
+atoms counted instead of distinct far nodes (fanned adds atom.id) -> 2 failed, 7 passed, 6 warnings in 0.91s
+```
+**새 함수 · 새 if 중 같은 일**
+```
+새 함수  _goes_back_down(옛 두 자리의 되밟기 판정을 «한» 함수로 — 같은 일 둘을 하나로 줄임) · _validate_inverse(새 칸 하나의 검증)
+새 if    검증 넷 · _step 조건 하나가 함수 호출로 바뀜 · _reach 의 깊이 단위 루프
+         같은 일 0 — 남은 둘: 이름(정적) 규칙은 여전히 _step · _reach 두 곳에 적혀 있음(전부터)
+```
+**스위트** (C:/wt-impl)
+```
+비PG 전체  5 failed, 7583 passed, 41 skipped, 169 deselected, 3 xfailed in 832.08s (0:13:52)
+   실패: test_live_mapper_and_tracked_sample_are_byte_identical · test_live_mapper_matches_tracked_sample · test_the_repo_root_is_one_above_it · test_the_sample_is_written_in_the_one_format_both_writers_use
+PG  6 failed, 163 passed, 7632 deselected in 356.75s (0:05:56) · 알려진 밖: 0
+```
+
+---
+
+## [10-01 밤] 원장 펼친 보기 — 짓기 전 실측과 안 셋 (총괄 0fb9e9390)
+
+**박스 실측** (읽기만 · 새 색인 없이 보기를 하위 질의로 써서 잼 — scratch probe_row_atoms.py · probe_flat_view.py)
+```
+ledger_source_row_ref   1,218,992 행 · 1,389 MB · 색인은 PK (relation, row_id, source_who, source_raw_ref) 하나
+                        한 원천 행에 참조 둘: 3,168 행(전부 lot_event) — 예 lot_event 01a01548-7f96-… 한 행 -> 원자 25 (같은 꼴 6 · 17)
+원천 행 참조 «없는» 원자  bw_dt_seat 371,673 · void_observation 207,726 · bonded_from 55,827 · lot_slot_move 135 (뷰를 읽던 소스)
+                        -> 이음이 inner 면 이 원자들이 보기에서 사라짐(주어 거르기 0 행의 까닭) -> LEFT JOIN 이어야 원자가 다 보임
+읽기 넷(새 색인 0)        첫 쪽 100 행(원자 id 순) 10.2 s · row_id 하나 0.69 s · 주어 평문 일부 15.2 s · 전체 행 수 5.0 s(inner 기준 1,698,715)
+```
+**모양** (안 셋 공통)
+```
+관계      SQL 뷰 하나 ledger_atom_rows(제품 낱말) — 원자 LEFT JOIN 원천 행 참조 (source_who, source_raw_ref)
+칼럼      atom_id · occurred_at · subject_type · subject(평문) · predicate · object(평문) · qualifiers(평문) · source_who · source_relation · source_row_id
+          ⚠️ row_id 라 부르지 않음 — 그리드의 total_order_keys 가 «row_id 칼럼이 있으면 그것»을 전순서로 집는데 이 보기에서 row_id 는 유일하지 않다
+등록      table_config 에 kind: view + composite_key_source [atom_id, source_relation, source_row_id] (S-229 의 합성 전순서 그대로) · 쓰기 거절은 kind: view 가 이미 함
+평문      저장 철자 그대로(1.0 은 1.0). 모양은 아래 안에 따라
+```
+**안 셋**
+```
+가  원천 행 참조 표에만 색인 둘 — (source_who, md5(source_raw_ref)) · (row_id)
+    좋은 점 원장 쓰기 경로 비용 0(원장 표 무변). 첫 쪽은 원자 id 색인 순서로 걸으며 참조를 색인으로 찾아 빨라질 것 — «안 쟀다»(박스에 DDL 을 안 해서)
+    위험    주어 평문 거르기는 그대로 원자 전부를 훑음(지금 15 s). 전체 행 수도 수 초
+    크기    뷰 하나 + 색인 둘 + 등록 칸 + 이주 스크립트(미리보기 · --apply) — 줄 수 안 쟀다
+나  가 + 원장 표에 주어 평문의 트라이그램 색인 하나 — 평문을 «색인 가능한 식»으로: regexp_replace(subject_keys::text, '[{}"]', '', 'g')
+    (모양 「x: 1.0, y: 4.0, mat_id: SYN-CX-BW-001, mat_type: Wafer」 — 저장 순서 · 저장 철자 그대로)
+    좋은 점 주어 거르기를 색인으로
+    위험    원장 쓰기 경로에 GIN 색인 하나 — 원자마다 트라이그램 수십 개. 크기 추정: 등록 원자에만 건 같은 종류 색인이 원자당 68.8 B -> 전체 2.26M 이면 약 150 MB(추정, 안 만들어 봄)
+나'  가 + 주어 거르기를 «키 값 같음»으로 — 이미 있는 idx_ledger_subject_entity (subject_type, subject_keys) 를 타게
+    좋은 점 원장 색인 0 · 정확한 다이 하나는 빠름
+    위험    「일부로」 찾기가 아님 — 소유자 문장 「원자들 검색」의 «부분 찾기»를 못 함
+```
+**추천** 가 로 짓고 첫 쪽 · row_id 를 잰 뒤, 주어 부분 찾기가 필요하면 나 의 색인 하나를 수와 함께 따로
+**여쭐 것**
+```
+① 재려면 박스 DB 에 색인을 만들어야 한다(CREATE INDEX CONCURRENTLY, 되돌리기 DROP) — 박스에 만들어도 되나, 아니면 이주를 소유자가 돌린 뒤 재나
+② 원천 행 없는 원자(563,361)도 보기에 한 줄씩(원천 칸 빈 채) 넣나 — 추천: 넣는다(LEFT JOIN)
+③ 전체 행 수 — 그리드가 total 을 물으면 수 초. 그대로 둘지(사실과 수만 적음)
+```
+
+---
+
+## [10-01 밤] 원장 펼친 보기 ledger_atom_rows (총괄 0fb9e9390 · 880bc9e56) — 57bc6d5e9
+
+**무엇을 지었나**
+```
+schema.py      ATOM_ROWS_SELECT(칼럼과 식 — 한 철자) -> 보기 SQL · ATOM_ROWS_COLUMNS · 참조 표 색인 둘 (source_who, md5(source_raw_ref)) · (row_id)
+               원자 LEFT JOIN 참조 (source_who · md5 · 원문 같음). atom_id 는 uuid 그대로(정렬이 원장 PK 를 타게)
+ensure_schema  새 설치: 참조 표가 새로 생길 때 색인 · 보기가 없으면 보기
+이주           migrations/add_ledger_atom_rows.py — --report · 색인 CONCURRENTLY · 보기 (add_ledger_entity_catalog_indexes 선례 모양)
+등록           출고 샘플 table_config 에 kind: view + composite_key_source [atom_id, source_relation, source_row_id]
+               원천 행 칸은 source_row_id — row_id 라 부르면 그리드 total_order_keys 가 유일하지 않은 그것을 전순서로 집는다
+카탈로그 시험   PHYSICAL_COLUMNS 에 이 보기 한 줄(그 시험이 「새 관계는 한 줄」로 지어 둔 자리)
+DDL 오라클     tests/support/ledger_default_ddl.json 다시 기록 — ensure_schema 가 이번에 새로 내는 문장만: 새 설치 31 -> 36 문장 (+5 · 지움 0) · 최신 21 -> 23 문장 (+2 · 지움 0)
+```
+**게이트**
+```
+PG 시험  4 passed in 2.02s
+         원천 행 하나 -> 그 행이 낳은 원자 전부(참조 둘 · 원자 셋) · 다른 소스의 같은 참조 글자는 안 이음 · 1.0 은 1.0
+         목적 평문(엔티티 · 값) · 수식어 · 원천 없는 원자는 원천 칸 빈 한 줄 · 보기 쓰기 거절(PG) · 칼럼 == 제품 상수 == 샘플
+변이     inner join (atoms with no row vanish)      -> 1 failed, 3 passed, 6 warnings in 2.14s · joined without source_who                  -> 3 failed, 1 passed, 6 warnings in 2.27s · values as JSON, not their stored text      -> 2 failed, 2 passed, 6 warnings in 1.97s
+박스     (총괄 ① 허락 — 이주 실행, 원장 표 무변)
+   page (first 100, ordered by atom id, relation, row id): 색인 전 10.16 s (100) -> 지금 0.03 s (100)
+   row_id filter (one source row, no relation given): 색인 전 0.69 s (25) -> 지금 1.85 s (25)
+   subject plain filter (contains SYN-CX-BW-001 / x=1.0, first 100): 색인 전 15.17 s (0) -> 지금 10.9 s (28)
+   total rows: 색인 전 4.96 s (1698715) -> 지금 10.5 s (2334076)
+   색인 79 MB + 67 MB
+         게이트 예 「한 행 · 원자 둘 이상」: lot_event 원천 행 하나가 참조 둘로 원자 25 · 6 · 17 (같은 꼴 행 3,168 개)
+쓰기 비용 (참조 표 — 원장 쓰기가 같은 커밋에 쓰는 표) 시험 DB 격리 스키마, 참조 20만 행 위에 1,000 행 쪽 열 번(지우고 다시 넣기):
+   base 200,000 refs, pages of 1,000, ref length 882
+   색인 없음 44.5 / 47.1 ms · 색인 둘 62.5 / 65.5 ms (1,000 행당, 열 번 중 가운데, 두 번씩)
+   색인 바이트(참조 21만 행): idx_ledger_row_ref_raw 16,613,376 · idx_ledger_row_ref_row 12,419,072
+```
+**새 함수 · 새 if 중 같은 일** — 새 함수 셋(row_ref_indexes · atom_rows_view_name · atom_rows_view_sql) + _plain. 같은 일 0. 새 if 둘(ensure_schema 의 «새 표일 때» · «보기 없을 때» — source_event 색인과 같은 모양)
+**스위트** (C:/wt-impl)
+```
+비PG 전체  6 failed, 7582 passed, 41 skipped, 173 deselected, 3 xfailed in 772.02s (0:12:52)
+   실패: test_a_ledger_world_is_a_set_of_names.py::test_an_install_with_no_branch_issues_the_statements_it_always_did · test_a_sentence_says_itself_only_for_the_rows_it_names.py::test_the_sample_is_written_in_the_one_format_both_writers_use · test_core_alignment_mapper.py::test_live_mapper_and_tracked_sample_are_byte_identical · test_core_usage_mapper.py::test_live_mapper_and_tracked_sample_are_byte_identical · test_dt_inventory_metadata_mapper.py::test_live_mapper_matches_tracked_sample · test_one_place_decides_where_the_server_is.py::test_the_repo_root_is_one_above_it
+   위 실패 중 test_an_install_with_no_branch_issues_the_statements_it_always_did 는 이 변경이 낸 것(DDL 오라클) -> 오라클 다시 기록 뒤 그 파일 5 passed in 6.38s · 나머지는 알려진 것
+PG  6 failed, 167 passed, 7632 deselected in 337.85s (0:05:37) · 알려진 밖: 0
+```
+
+---
+
+## [10-01 밤] official 셀 — 받치는 원천 행마다 층 하나: 재고 계획 (총괄 9c7e8cbbb · 덧붙임 0f68f3de3 · 15a4d8e43) — 짓지 않음
+
+**결론 먼저**
+```
+잡이 다른 dt_log 행들이 한 official 행을 받치면(소유자 「잡은 다르게 찍힘」)
+   잡 단위 거둠(allow_retraction)   official 행의 잡 칸이 «하나»라 마지막에 쓴 잡이 주인 — 쓴 순서에 따라 맞고 틀린다
+   키 단위 교체(allow_replace_map)  들어온 행의 «지금» 키만 부른다 — 옛 키를 못 부른다
+   둘 다 «옛 자리»를 기억하는 칸이 없어서다. 이벤트는 포인터라 맵퍼가 받는 행은 지금 값뿐(outbox_expand 머리)
+옛 자리를 기억하는 칸은 이미 있다 — cell_sources.origin_row_id. 다만 셀·소스마다 하나라 마지막 행만 안다
+그래서 기존 문이 층 넓히기를 필요 없게 하지 «않는다». 게이트 표 11 줄 중 기존 문 둘이 맞는 줄: 거둠 2 · 교체 1
+추천  나(층 넓히기). 크기는 자리 59(깨짐 39) 한 커밋 + 유일 색인 다시 짓기
+```
+
+**잰 것**
+```
+① 「한 셀 · 한 source_name 에 층 하나」 전제 자리 59
+     깨짐 39 · 파일 층만 깨짐 4 · 셈이 틀림 4 · 주석 7 · 클라 5
+     파일별 깨짐: crud.py 24 · cell_layer.py 7 · main.py 6 · models.py 1 · replay.py 1
+     Explore 에이전트 전수, 제가 연 자리 7(crud 의 묶음 중복 거름 · 이름으로 층 찾기 · 이름 dict · compute_priority_value,
+     main 의 칸 소스 응답 둘, 클라 셀 소스 창). 층 하나를 단언하는 시험 4 파일
+     유일 색인은 create_all 만 짓는다 -> 운영 DB 는 이주가 있어야 열쇠가 바뀐다
+② 박스 cell_sources 37,788,110 행 · 표 6.3 GB · 유일 색인 7.2 GB
+     체인 층 2,769,381 중 도장 있음 53,520 · 도장 없음 2,715,861
+     열쇠 넓힘 쓰기 비용 — 시험 DB 격리 스키마, base 500,000 layers (2% stamped), pages of 1,000 stamped layers
+        새 층    지금 43.3 / 43.7 ms -> 넓힘 41.8 / 42.5 ms (1,000 층, 열 번 중 가운데, 두 번씩)
+        같은 층  지금 66.4 / 69.3 ms -> 넓힘 65.0 / 61.9 ms
+        유일 색인 바이트 44.8 MB -> 44.4 MB
+     열쇠 모양 (table, row, column, source, coalesce(origin_row_id, ''))
+        S-181 · 판정 285·287 이 NULLS NOT DISTINCT 를 거절하고 coalesce 를 정했다(join_key_index 의 ⛔ 줄 — '' 를 따로 셈)
+        PG 18 · SQLite 3.53 둘 다 그 식을 ON CONFLICT 대상으로 받는다(잼)
+③ 층이 다 빠진 행 — withdraw_source 는 칸을 NULL 로 다시 풀고 행은 남긴다(코드)
+     박스 체인 대상 표 7 중 층이 하나도 없는 행: dt_log 50 행(키 빈 것 0) · 나머지 0
+④ require 가 다시 빈 행 — rule_run.held_back 이 맵퍼 «전»에 뺀다(모든 종류 · 재생). 규칙 안에서는 못 거둔다
+     거둘 자리 = 규칙의 답을 쓰는 문(apply_chain_writes). run_rule 을 부르는 곳 1 (ingestion_worker.py:2121)
+     -> run_rule 이 답에 «넘긴 행 + 뺀 행»을 실어야 한다
+⑤ 조인 — 한 규칙 「이번 실행이 말한 행의, 이 규칙이 쓴 층 중 이번에 다시 말하지 않은 것을 거둔다」
+     말한 행 = 층의 origin 이 넘긴 행 «또는» 층이 앉은 행이 넘긴 행 — 술어 하나, 종류 물음 0
+        복사          origin = dt_log 행
+        조인 기준쪽    origin = 오른쪽 행 (join_into 가 짝 찾은 오른쪽 행 id 를 찍는다)
+        조인 대상쪽    앉은 행 = 왼쪽 행
+     A -> B 다시 짝: 대상쪽이 돌면 T 의 A 층이 빠짐. 기준쪽(A 키 바뀜)이 돌면 A 가 옛 T 에 쓴 층이 빠짐
+        지금은 T 가 다시 돌 때까지 A 의 옛 값이 남는다(기준쪽은 A 의 «새» 키로만 왼쪽 행을 찾음)
+     🔴 «말 안 함»이 지금 «옛 값 유지»인 자리 둘 — blank: skip(14c75ff43) · 짝 둘(둘 다 안 씀). 한 규칙을 그대로 걸면 둘 다 «거둠»이 된다 -> 여쭐 것 ②
+⑥ 방아쇠 — 가이드 §4 「이미 복사된 행은 지우지 않는다」 <- 총괄 49052cbdd(09-28)
+     「거둠 없음 — 이미 쓴 뒤 require 칸이 다시 비어도 대상 행을 거두지 않는다(소유자에게 그렇게 말씀드림)」
+     도착지가 이것을 «뒤집는다». 판정 435 ④ 「DELETE 는 규칙 고리에 안 들어간다」는 나 · 다 둘 다 안 건드린다(지움은 지금처럼 도장으로 거둠)
+⑦ 도장 — 한 행씩 부르는 맵퍼: 제품이 넘긴 행으로 찍을 수 있다(rule_run 의 행마다 부르는 고리 한 곳, 항목이 비워 둘 때만)
+     batch: 맵퍼만 찍을 수 있다 — 소유자 official 맵퍼가 이것
+        손 맵퍼   항목마다 origin_row_id 한 칸
+        @mapper   지금은 못 찍는다 — df_to_updates 가 DataFrame 칸을 전부 «값»으로 바꾼다 -> SDK 에 예약 칸 약속 하나(제품)
+     그리고 같은 official 키라도 dt_log 행마다 «따로» 항목을 내야 층이 둘이 된다(합쳐 내면 층 하나)
+     맵퍼 파일 크기 — 박스에 그 파일이 없어 못 잼
+```
+
+**계획 셋**
+```
+가  기존 문 — 잡 다시 내기 + allow_retraction (덧붙임 1)
+   무엇     맵퍼가 들어온 행의 잡마다 그 잡의 dt_log 행을 DB 에서 다시 읽어(require 를 스스로 거름) official 을 다시 낸다
+            잡이 이번에 안 낸 official 행은 지운다 — 사람 손 댄 행 제외 · 20 행 이상에서 절반 넘으면 거절
+   운영자   맵퍼 고침(잡 다시 읽기 · 결과에 잡 칸) · official 표에 잡 칸 · 규칙에 세 칸
+   좋은 점  제품 0 줄. dt_inventory -> dt_map 이 지금 이것으로 돈다
+   위험     공유 행의 주인이 마지막에 쓴 잡 하나 — 그 잡이 떠나면 다른 잡이 받쳐도 행이 지워진다
+            행 지움 · 묶음 전부 require 걸림은 맵퍼가 안 불려 안 거둔다. 값이 다르면 층 하나
+   크기     제품 0 줄 · 운영자 맵퍼 못 잼 · 잡마다 다시 읽는 비용 못 잼
+
+나  층 넓히기 — 총괄 도착지 그대로 (추천)
+   무엇     층 열쇠에 origin_row_id(coalesce). 쓰기 문 한 곳에서 ⑤ 의 한 규칙으로 거둠
+            지움(도장으로 거둠)도 같은 함수 — 말한 행 = 지운 행, 다시 말한 것 0. 거둔 뒤 층 0 인 행은 지운다
+   운영자   official 맵퍼가 항목마다 dt_log 행 id 를 적고, 같은 키라도 행마다 따로 낸다. 이주 한 번
+   좋은 점  게이트 표 전 줄. 잡과 무관. 옛 키를 «알 필요가 없다» — 옛 자리는 층의 도장이 안다
+   위험     자리 59 한 커밋
+            이주 순서 — 새 색인을 먼저 짓고, 코드(CELL_SOURCE_CONFLICT_COLS)와 옛 색인 지우기가 «같은 배포»
+               옛 4 칸 색인이 살아 있는 동안 둘째 도장 층은 23505 로 막힌다
+            도장 없는 옛 체인 층 2,715,861 — 그 행이 다시 돌면 도장 층이 «옆에» 생기고 옛 층은 남는다 -> 여쭐 것 ④
+            고정 · 소스 지우기가 source_name 을 부른다 — 같은 소스 층이 둘이면 뜻을 정해야 함 -> 여쭐 것 ③
+   크기     자리 59 · 새 함수 하나(거둠) · run_rule 답에 칸 하나 · SDK 예약 칸 하나 · 이주 하나(유일 색인 7.2 GB)
+
+다  도장만 여럿 — 층은 하나, origin_row_id 칸을 «도장 집합 표»로 옮김(칸은 은퇴)
+   무엇     체인 쓰기가 (셀, 받친 행) 을 집합 표에 적는다. ⑤ 의 한 규칙은 집합에서 행을 뺀다
+            집합이 비면 그 층을 거둔다(지금의 withdraw_source) · 층 0 행은 지운다
+   운영자   나 와 같다(항목마다 행 id · 행마다 따로)
+   좋은 점  cell_sources 열쇠 무변 — 59 자리를 안 건드린다. 잡과 무관하게 행 수는 맞다
+   위험     값은 «마지막에 쓴 행»의 것 — 그 행이 떠나도 남은 행이 다시 돌 때까지 떠난 행의 값이 뜬다
+            값이 다른 두 행을 화면에 못 보인다. 도장이 두 곳(집합 표 · 은퇴 전 칸)인 기간이 생긴다
+   크기     origin_row_id 가 나오는 자리 38 줄 · 9 파일 를 집합 표로 — 자리별로는 안 셌다
+```
+
+**게이트 표** — 한 픽스처. 쓴 순서 r2 -> r1 (r1 이 나중)
+```
+r1  잡 A · 키 K · v=a        r2  잡 B · 키 K · v=b        r3  잡 A · 키 L · v=c
+기대 = 도착지. 「행」= official 행 수 · 「층」= K.v 의 체인 층 수 · 「뜸」= K.v
+가 = 잡 거둠 · 나 = 층 넓히기 · 다 = 도장 집합 · 교체 = allow_replace_map(키 단위)
+```
+```
+0 기준
+   기대  행 2 · 층 2 · 뜸 a
+   가 ✗ 층 1   나 ✓   다 ✗ 층 1   교체 ✗ 층 1
+1 r1 키 K -> M
+   기대  행 3(K · L · M) · 층 1 · 뜸 b
+   가 ✗ K 지워짐(r2 가 받치는데. r2 가 나중이었으면 ✓)   나 ✓
+   다 ✗ 뜸 a(떠난 r1 값)   교체 ✗ 뜸 a — M 만 부름
+2 r3 키 L -> M2   (혼자 받치던 행이 떠남)
+   기대  행 2(K · M2) — L 없음
+   가 ✓   나 ✓   다 ✓   교체 ✗ L 남음 — M2 만 부름
+3 r1 require 비움 (묶음에 r1 혼자)
+   기대  행 2 · 층 1 · 뜸 b
+   가 ✗ 맵퍼 안 불림 · 뜸 a   나 ✓   다 ✗ 뜸 a   교체 ✗ 뜸 a
+4 r3 require 비움
+   기대  행 1(K) — L 없음
+   가 ✗ 혼자면 안 불림(같은 묶음에 잡 A 의 다른 행이 있으면 ✓)   나 ✓   다 ✓   교체 ✗ L 남음
+5 r1 지움
+   기대  행 2 · 층 1 · 뜸 b
+   가 ✗ 도장이 r1 이면 K.v 가 NULL, 없으면 뜸 a   나 ✓   다 ✗ 뜸 a   교체 ✗ 가 와 같음
+6 r1 · r2 지움
+   기대  행 1(L) — K 없음
+   가 ✗ K 남음   나 ✓   다 ✓   교체 ✗ K 남음
+7 규칙 바뀜(값 대문자 · 칸 w 를 더는 안 씀) + 다시 돌리기
+   기대  뜸 A · L 은 C · w 빈 칸
+   가 ✗ w 남음(행을 거두지 칸을 안 거둠)   나 ✓   다 ✓   교체 안 봄(w 칸을 지우는지 코드 안 열었음)
+8 사람이 K.v = h 로 고친 뒤 r1 · r2 지움
+   기대  행 2 · K 남음 · 뜸 h
+   가 ✓   나 ✓ (사람 층이 남아 층 0 이 아님)   다 ✓   교체 ✓
+9 같은 소스 층 둘이 셀 소스 창에 줄 둘 (기준 상태)
+   기대  줄 2 (a · b)
+   가 ✗   나 ✓ (클라 5 자리 포함)   다 ✗   교체 ✗
+10 조인 다시 짝 — 조인 규칙: 왼쪽 T(x) 가 오른쪽 A(x) 에 짝. A 키 x -> y
+   기대  T 에 A 층 없음
+   가 해당 없음(지금 그대로 — A 옛 값 남음)   나 ✓   다 ✓   교체 해당 없음
+```
+```
+기존 문 둘이 덮는 줄 — 거둠 2 · 8 · 교체 8
+못 덮는 줄을 «무엇이 필요한가»로 가르면
+   행마다 층(값 둘을 보임)이 있어야 닫힘   0 · 9
+   옛 자리 기억(도장 여럿)이면 닫힘          1 · 3 · 5 · 6 · 4(혼자)   — 다 가 행 수는 닫지만 뜸은 1 · 3 · 5 에서 ✗
+   칸 단위 거둠이면 닫힘                    7
+   -> 기존 문에 «남는 칸만» 더해 닿는 길 없음. 남는 칸이 곧 나 의 칸이다
+```
+
+**추천** 나. 「잡은 다르게 찍힘」이 정상인 표에서, 행 수와 뜨는 값과 화면을 다 맞추는 것은 도장을 «층마다» 두는 길 하나다(게이트 표).
+다 는 자리를 적게 건드리지만 떠난 행의 값을 띄운다(1 · 3 · 5).
+
+**여쭐 것**
+```
+① 49052cbdd 를 뒤집는다 — 그때 「소유자에게 그렇게 말씀드림」이 있어, 소유자께 «뒤집힘»을 알려 드릴지
+② 조인의 «말 안 함» 둘(blank: skip · 짝 둘) — 거둠으로 바꾸나, 옛 값 유지로 두나
+   유지면 조인이 «유지한 칸»을 답에 싣는다(칸 하나)
+③ 같은 소스 층이 둘일 때 고정 · 소스 지우기 — 소스 이름 단위(그 소스 층 전부) 그대로 / 층 단위(새 칸)
+④ 이주 때 도장 없는 옛 체인 층 2,715,861(박스 수) — 같은 규칙의 도장 층이 그 셀에 생기면 같이 거둔다 / 이주 때 재생으로 갈아 끼운다 / 둔다
+⑤ 층 0 인 행 지우기 — 「층 0」 그대로 / 「층 0 이고 칸이 다 빔」(층 없이 값을 가진 옛 행을 지키는 가드. 박스 dt_log 에 그런 행 50 행)
+⑥ 소유자 official 맵퍼가 @mapper 인지 손 맵퍼인지 — @mapper 면 SDK 예약 칸이 제품 일
+```
+센 명령: ① scratchpad census(Explore) + 열어 본 7 자리 · ② probe_layerless_rows.py(박스 읽기만) · measure_layer_key_write_cost.py(시험 DB) ·
+④ git grep -n 'run_rule(' -- '*.py' ':!tests' · 다 git grep -n origin_row_id -- 'server/*.py' ':!server/tests'
+
+---
+
+## [10-01 밤] official 재고 계획 — 덧붙임 3 (총괄 770ab70bf · 소유자 「행 단위 맵퍼로」) — 짓지 않음
+
+**바뀌는 것** — official 맵퍼가 행 단위면
+```
+⑦ 닫힘  도장은 제품이 찍는다(아래 ⑧). 운영자는 행마다 자기 항목을 내면 되고, 행 단위라 «따로 내기»는 저절로 된다
+        SDK 예약 칸(여쭐 것 ⑥)은 필요 없어진다
+가 · 교체는 이 전제에서 빠진다 — allow_retraction / allow_replace_map 은 batch 를 요구한다
+        @mapper 면 로드에서 거절(sdk_removal_needs_batch), 손 맵퍼면 행마다 «그 행»만 보고 지운다(그 판정 문장 그대로)
+추천은 그대로 나
+```
+
+**잰 것 더**
+```
+⑧ 찍는 자리  맵퍼를 부르는 곳 3 줄 · dev_bench.py · rule_run.py — 그중 제품 좌석은 rule_run 의 호출 고리 하나(나머지는 개발 벤치, 좌석을 안 거침)
+     행 단위일 때만 «넘긴 그 행»을 안다 — batch 는 지금처럼 맵퍼만
+     항목 모양이 둘(dict · GeneralUpdateItem)이고 칸이 둘(updates · batches 안의 updates) — 같은 고리 안
+   하는 일이 바뀐다 (대리-b)
+     · 운영의 «다른» 행 단위 파일 맵퍼도 그때부터 찍힌다 -> 입력 행을 지우면 그 맵퍼가 쓴 칸이 거둬진다(오늘은 남는다)
+       박스: 실린 규칙 15 중 행 단위 0 — 운영의 행 단위 파일 맵퍼 수는 여기서 셀 수 없다
+     · 판정 434 의 「여러 행에서 나온 칸은 도장을 비운다(반쪽 출처는 거둠을 틀리게 한다)」(models.origin_row_id 주석)
+       행 단위 맵퍼가 다른 행을 sql 로 읽어 칸을 만들면, 제품이 넘긴 행으로 찍는 순간 그 구분이 사라진다
+       -> 맵퍼가 «안 찍음»을 말할 길: 항목이 origin_row_id 를 «적지 않았으면» 제품이 찍고, None 을 «적었으면» 안 찍는다(여쭐 것 ⑦)
+     · 말이 바뀐다 — rule_run.retraction_refusal 의 「파일 맵퍼는 … 제품이 모릅니다」가 행 단위 규칙에는 거짓이 된다. 같은 커밋
+⑨ 찍기만 하고 층을 안 넓히면 «오늘보다 나빠지는» 칸이 있다 -> 찍기와 넓히기는 «한 커밋». 게이트 표 11
+⑩ 행 단위 속도 — 박스(DB 가 같은 기계), 실제 좌석 rule_run.run_rule, dt_log 1,000 행 한 묶음, 읽기 전용 세션, 세 번 중 가운데
+     표본 맵퍼        행 단위        batch
+     sql 없음         0.072 s     0.07 s
+     키 조회 sql 하나  0.401 s     0.091 s      <- 행 단위는 sql 이 1,000 번, batch 는 1 번
+     좌석의 행 단위 고리 자체는 값이 거의 없다. 비용은 «맵퍼 안에서 행마다 읽는 것»이다
+```
+
+**층 0 행을 지우는 문** (나 · 다 공통 — 앞 절에 빠졌던 것)
+```
+문     crud.purge_map_rows — 표 이름을 받는 일반 문(이름만 map). DELETE 를 같은 flush 에 남기고 · 행 지움 이력을 적고 · 층 · 덮어쓰기 · 행을 지운다
+       스스로 커밋하지 않아 체인 쓰기 트랜잭션 안에서 부를 수 있다. crud.delete_rows_batch(그리드 지우기)는 스스로 커밋해서 여기선 못 쓴다
+따라오는 것  그 DELETE 가 원장 후속(판정 129 ㉤)과 체인 거둠(_retract_what_those_rows_fed)으로 간다
+       -> official 행이 사라지면 그 행에서 나온 원자와, 그 행이 먹인 다른 표의 칸도 같이 빠진다. 되돌리기 = 받치는 행이 다시 오면 다시 생김
+곁에서 본 것  가 의 거둠(dt_map_derivation.apply_retraction)은 세 지우기를 손으로 적고 DELETE 도 이력도 안 남긴다
+       (지운 id 는 화면 알림에만 실린다 — ingestion_worker 의 row_delete_message). 그래서 거둠으로 지운 행은 원장 후속과 이력에 안 닿는다
+       오늘 allow_retraction 을 쓰는 규칙 전부에 해당. 이번 일 밖 — 따로 올립니다
+```
+
+**게이트 표 덧붙임** (픽스처는 앞 절 그대로 — r1 이 나중에 씀)
+```
+11 찍기만 먼저 착지(층 안 넓힘) 뒤 r1 지움
+   기대  행 2 · 층 1 · 뜸 b
+   오늘(찍기 없음)  K 남음 · 뜸 a — 낡았지만 값은 있다
+   찍기만          K.v 층 0 -> NULL — r2 가 받치는데 빈 칸. 오늘보다 나쁨
+   나              ✓  -> 찍기와 넓히기는 한 커밋
+12 행 단위 선언(require · allow_chain_trigger, is_batch 없음)이 로드되고 행마다 한 번 불린다
+   박스 잼  로드 판정 거절 0 · 50 행 넘김 -> 맵퍼 50 번 · 번마다 1 행 · 항목 50
+13 다른 행 단위 맵퍼(official 아님)의 입력 행 지움
+   오늘  그 맵퍼가 쓴 칸 남음     나(⑧ 포함)  거둬짐 — 하는 일이 바뀜, 여쭐 것 ⑦ 의 답대로
+```
+
+**여쭐 것 더**
+```
+⑦ 제품이 행 단위 항목에 도장을 찍을 때, 맵퍼가 «안 찍음»을 말하는 길(None 을 적음)을 두나 — 판정 434 의 반쪽 출처 구분
+⑥(앞 절)은 행 단위 전제로 «필요 없음»으로 닫힘
+```
+센 명령: ⑧ git grep -n 'bound.call\|\.call(db' -- 'server/*.py' ':!server/tests' · 박스 규칙 수 loaded_chain_rules() ·
+⑩ probe_per_row_speed.py · 12 probe_per_row_calls.py (둘 다 읽기 전용 세션, 박스)
+
+---
+
+## [10-01 밤] 글에서 «원인 -> 현상» 후보 — 짓기 전 (총괄 15a4d8e43) — 짝짓는 규칙 · 연결 말 칸 · 표 결과
+
+**짝짓는 규칙 두 줄**
+```
+1  원인 연결 말마다, 그 행이 적은 쪽(앞/뒤)에서 가장 가까운 노드가 원인이다 — 그 노드와 «나열 말»(과 공백)로만 이어진 노드도 원인
+2  같은 문장의 나머지 노드가 현상이다 — 원인 × 현상마다 후보 하나. 부정 · 확신은 문장 단위
+```
+둘째 · 넷째 줄(현상이 주제로 앞에 옴)이 갈리는 이유: 「가장 가까운」이 「보이드는」을 원인에서 뺀다 — 둘 사이에 나열 말이 아닌 글(「는」)이 있어서. 낱말을 코드가 아는 것이 아니라 «사전에 없는 글이 끼었다»로 갈린다.
+
+**연결 말 행의 칸 — 셋**
+```
+phrase    말
+meaning   cause · and · negation · suspected · confirmed
+side      cause 만 — before(원인이 말 앞) / after(원인이 말 뒤). 나머지는 비움
+같은 말을 두 행에 적으면 두 뜻 — 「무관」 = cause(before) 한 행 + negation 한 행
+나열도 사전 행이다 — 「,」 · 「와」 · 「과」 를 and 로. 코드에 부호 · 낱말 0
+```
+
+**맞추기 · 나누기**
+```
+대소문자   notation_norm.fold_notation 의 case 규칙을 부른다 — 같은 성질(ASCII 대소문자, 글자 수 무변이라 원문 위치가 그대로)
+띄어쓰기   이 모듈이 한다 — notation_norm 의 separator 는 구분자 «런»을 '-' 하나로 접어 「계면 미충진」->「계면-미충진」 ≠ 「계면미충진」. 여기는 공백을 «지운다»
+긴 말 이김  두 사전을 «한 묶음»으로, 왼쪽부터 가장 긴 말
+영문 경계   ASCII 글자 · 숫자로 시작/끝나는 말만 — 원문에서 그 앞/뒤가 ASCII 글자 · 숫자면 안 맞음(void ≠ avoid). 한국어 말은 경계 없음(조사가 붙는다)
+문장       줄바꿈 · 문장 끝 부호(. ! ? 。) 뒤 공백에서 나눔 — 1.5 는 안 나눔
+확신       suspected 말과 confirmed 말이 겹치지 않고 둘 다 나오면 suspected(덜 확실한 쪽) — 제안
+기존 문    저장소에서 문장 나누기 · 말 사전 맞추기를 찾음(sentence · tokeni · phrase · longest · trie · aho · synonym · casefold · 회의록) — 제품 코드에 같은 성질 0.
+           sentence 가 든 함수는 운영자 문장을 «짓는» 것들
+```
+
+**표 결과** — scratch 시제품(제품 코드 아님, notation_norm 을 import)이 낸 그대로
+```
+사전  부르는 말 bond_pressure(본딩 압력) · interface_unfilled(계면 미충진) · void(보이드, void) · wafer_warp(웨이퍼 휨)
+      연결 말 로 인해=cause(before) · 원인=cause(after) · 무관=cause(before) · 무관=negation · ,=and · 와=and · 과=and · 추정=suspected · 확인 필요=suspected · 확인=confirmed
+「본딩 압력 저하로 인해 계면 미충진 발생 추정」
+      bond_pressure -> interface_unfilled · asserted · suspected
+「보이드는 본딩 압력 저하로 인해 발생」
+      bond_pressure -> void · asserted · stated
+「보이드의 원인은 본딩 압력」
+      bond_pressure -> void · asserted · stated
+「보이드는 웨이퍼 휨과 무관 확인」
+      wafer_warp -> void · negated · confirmed
+「본딩 압력, 웨이퍼 휨으로 인해 보이드」
+      wafer_warp -> void · asserted · stated / bond_pressure -> void · asserted · stated
+「보이드 다수, 웨이퍼 휨 확인 필요」
+      후보 0
+「보이드는 본딩압력 저하로 인해 발생」
+      bond_pressure -> void · asserted · stated
+「VOID 는 본딩 압력 저하로 인해 발생」
+      bond_pressure -> void · asserted · stated
+「avoid 를 위해 본딩 압력 저하로 인해 계면 미충진」
+      bond_pressure -> interface_unfilled · asserted · stated
+「본딩 압력과 웨이퍼 휨으로 인해 계면 미충진 발생」
+      wafer_warp -> interface_unfilled · asserted · stated / bond_pressure -> interface_unfilled · asserted · stated
+사전 비었음  후보 0
+자주 나온 말(위 글 전부)  저하 5 · 발생 5 · 는 4 · 으 2 · 의 1 · 은 1 · 다수 1 · avoid 1
+```
+
+**여쭐 것**
+```
+① 규칙 두 줄 · 연결 말 칸 셋(phrase · meaning · side) 이대로 짓나
+② 확신이 둘 다 나오면 suspected — 이대로인가
+③ 자주 나온 말에 조사 잔여(는 · 의 · 으)가 같이 세어진다 — 그대로 둠 / 최소 길이 칸 하나
+④ 모듈 이름 server/utils/text_links.py · 함수 find_links(text, names, links) · unknown_words(texts, names, links)
+```
+
+---
+
+## [10-01 밤] 글 원인 -> 현상 라이브러리 착지 (총괄 15a4d8e43 · 9f301f9bc) — 27978d555
+
+**무엇을 지었나**
+```
+server/utils/text_links.py   find_links(text, names, links) · unknown_words(texts, names, links) — 확인받은 그대로
+   규칙 두 줄 · 연결 말 칸 셋 · 같은 말 두 행 = 두 뜻 · suspected 가 confirmed 를 이김 · 조사 잔여 그대로 셈(칸 · 인자 0)
+   부르는 것  대소문자 notation_norm.fold_notation(case) · 빈 말 crud.is_blank_value · NaN mapper_call.without_missing · 글자 정리 crud.clean_str_value
+   거절      연결 말 행의 meaning 이 다섯 밖 · cause 행에 side 없음 -> 행 번호를 대고 ValueError
+docs/guide/TEXT_LINKS_GUIDE.md  한 장 — 표 넷 · 규칙 두 줄 · @mapper 예(sql 로 사전 읽기) · 규칙 선언(allow_retraction, 출처 = 글 id) · 사전 고친 뒤 다시 돌리기 · 남는 것 둘 · 조사 거르기는 맵퍼 몫
+시험         tests/test_a_sentence_names_its_cause_and_phenomenon.py — 모듈을 import
+```
+**게이트**
+```
+시험   16 passed in 0.33s
+       지시 표 여섯 줄 · 띄어쓰기(글 쪽 「계면미충진」 · 사전 쪽 「웨이퍼휨」) · 나열 「과」 · 추정+확인 -> suspected
+       대소문자(VOID, 적힌 그대로 돌려줌) · avoid · 두 사전이 한 «긴 말» 겨루기(「확인 필요」 > 노드 「확인」)
+       문장 번호 · 1.5 는 안 나눔 · 사전 비었음 0 · 빈 말(None · NaN · 공백) 안 맞음 · 자주 나온 말 횟수 · 거절 둘
+변이   farthest node, not nearest   -> 3 failed, 13 passed
+       spaces kept                  -> 5 failed, 11 passed
+       no ASCII word boundary       -> 1 failed, 15 passed
+       shortest phrase first        -> 1 failed, 15 passed
+       confirmed beats suspected    -> 1 failed, 15 passed
+       any text joins causes        -> 3 failed, 13 passed
+       case not folded              -> 1 failed, 15 passed
+       NaN phrase not folded        -> 1 failed, 15 passed
+속도   박스, naming phrases 1000 · link phrases 7 · texts 1000 x 20 sentences (seeded synthetic)
+       글마다 find_links 한 번(맵퍼가 부르는 모양) — 전체 10.56 s · 글 하나 9.7 ms(가운데) 중 사전 짓기 8.3 ms
+       unknown_words 전체 1.37 s · 후보 20,000 행
+       -> 비용의 대부분이 «부를 때마다 사전 짓기»다. 묶음 하나에 사전 한 번이면 줄지만 API 를 바꾸는 일이라 안 함 — 여쭐 것 ①
+```
+**새 함수 · 새 if 중 같은 일** — 새 모듈의 함수 8 (공개 2: find_links · unknown_words + 내부 6). 같은 일 0 — 대소문자 · 빈 값 · NaN · 글자 정리는 위 넷을 부른다. 새 if 중 종류 가르기 0 (거절 둘은 읽을 수 없는 행 거름)
+**스위트** (C:/wt-impl)
+```
+비PG 전체  6 failed, 7598 passed, 41 skipped, 173 deselected, 3 xfailed in 719.55s (0:11:59)
+   알려진 다섯 밖: test_the_sweep_still_runs_when_there_is_nothing_to_do -> 그 파일만 다시 3 passed in 2.06s
+```
+**여쭐 것**
+```
+① 속도 — 사전 짓기가 글마다 8.3 ms. 묶음에서 한 번만 짓게 하려면 API 가 달라진다(예: 사전을 먼저 지어 넘김). 지금 그대로 / 바꿈
+② 맵퍼가 제품 도우미를 부르는 정해진 길은 mapper_sdk 의 MAPPER_SURFACE(authoring/MAPPING_GUIDE §5-bis) — 지시대로 from utils import text_links 로 두었다.
+   표면에 두 이름을 올리면 from mapper_sdk import find_links, unknown_words — 지시 밖이라 안 함
+③ docs/README.md 의 가이드 목록에 TEXT_LINKS_GUIDE 한 줄 — 응용 레인 몫이라 안 건드림
+```
+
+---
+
+## [10-01 밤] 잡 단위 거둠 -> crud.purge_map_rows (총괄 eb7e84342 · ef3b0caeb) + 맵퍼 표면 두 이름 — cb4d5157d
+
+**무엇을 지었나**
+```
+dt_map_derivation.apply_retraction   손으로 적은 세 지우기 0 -> 덩이마다 crud.purge_map_rows. 덩이 나누기 · 끝의 커밋 그대로
+                                     돌려주는 수 = 덩이마다 purge 전에 그 id 의 행 수(총괄 ㄱ) — 「실제로 지운 수」 뜻 그대로
+                                     독스트링의 「같은 세 문장」 문단 -> 「같은 문을 지난다」로
+mapper_sdk.MAPPER_SURFACE            find_links · unknown_words -> utils.text_links (주석 한 줄: 잰 것이 아니라 내놓은 둘)
+docs/guide/TEXT_LINKS_GUIDE.md       import 줄 -> from mapper_sdk import find_links, mapper, sql
+```
+**먼저 센 것 — 부르는 곳과 요청 문맥**
+```
+apply_retraction 을 부르는 제품 자리 1 (ingestion_worker.py:1704)
+   요청 문맥  apply_chain_writes 가 request_user = chain_worker · request_transaction_id = chain_<tx> 를 세운 «안»에서 부른다 -> purge_map_rows 가 그것을 읽는다
+   재생      자기가 지우지 않는다 — EDIT 이벤트를 남겨 같은 문을 지난다(replay.py 의 페이지 쓰기)
+```
+**게이트**
+```
+칸                                           결과
+거둠 한 번 -> DELETE 이벤트 하나 · 지운 id 그대로   새 시험 — 이벤트 1 · id {k2, k3}
+원장 후속이 그 id 를 받음                         같은 시험 — 워커가 넘기는 함수(ledger_followup.row_ids_of)로 읽어 {k2, k3}
+행 지움 이력                                     같은 시험 — AuditLog DELETE 두 줄(k2 · k3)
+층 · 덮어쓰기 · 행 0                              test_apply_retraction_takes_the_ledgers_with_the_row 그대로 초록
+사람 손 댄 행 보호                                test_retraction_never_deletes_a_human_correction 그대로 초록
+절반 가드 거절 — 지운 것 0 · 이벤트 0 · 이력 0        기존 시험에 두 단언 더함
+화면 지움 알림이 두 번 안 감                       같은 시험 — 거둠 중 row_delete_message 0 번(알림은 워커가 deleted_row_ids 로 한 번)
+DELETE 가 체인을 안 깨움                          같은 시험 — _is_trigger_event(그 이벤트) False
+변이 hand deletes again (before the fix)  -> 1 failed, 15 passed
+   counted after the purge              -> 3 failed, 13 passed
+```
+**소급** (짓지 않음 — 박스)
+```
+거둠 규칙 dt_inventory_to_standard_dt_map · 표 dt_map. 원장 참조가 있는 표 11 개 중 행이 사라진 참조: process_param_txt 3
+-> 이미 거둠으로 지운 행에서 나온 원자 0. 거두는 길 = 원장 후속에 DELETE 를 넣는 것(ledger.backfill.withdraw_deleted_rows 가 그 일) — 박스는 셀 것 0 이라 명령 안 만듦
+```
+**사이드 이펙트**
+```
+하는 일  거둠마다 질의 늘어남 — 덩이당 행 수 세기 1 · 이력 읽기 1(purge 안) · 이벤트 1. 거둔 행이 있을 때만
+말      거둠 뒤 [ChainRetract] 줄이 새로 나온다. 그 표를 지켜보는 «되돌릴 수 없는» 규칙이 있으면 경고 한 줄씩 — 박스 dt_map 를 지켜보는 규칙 0 · 경고할 것 0
+```
+**새 함수 · 새 if 중 같은 일** — 새 함수 0 · 새 if 0. 같은 일을 하던 사본(세 지우기) 하나 지움
+**스위트** (C:/wt-impl)
+```
+비PG 전체  6 failed, 7603 passed, 41 skipped, 173 deselected, 3 xfailed in 701.07s (0:11:41)
+   알려진 다섯 밖: test_h3_cross_directory_replace_applies_physical_alter -> 그 파일만 다시 32 passed in 34.59s
+PG  6 failed, 167 passed, 7653 deselected in 329.28s (0:05:29) · 알려진 밖: 0
+   그 시험 하나만 서른 번씩: 이 변경 있는 트리 28/30 통과 · 같은 트리에서 변경 뺌 28/30 통과 — 실패율이 같다. 파일 감시 타이밍이고 이 변경과 무관
+```

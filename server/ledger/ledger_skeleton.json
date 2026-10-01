@@ -386,6 +386,16 @@
                 }
               },
               {
+                "key": "inverse_of",
+                "required": false,
+                "label": "Inverse of - the predicate that says this link the other way; the walk does not step back down either (blank = none)",
+                "node": {
+                  "kind": "leaf",
+                  "hint": "ref",
+                  "section": "vocabulary"
+                }
+              },
+              {
                 "key": "class",
                 "required": false,
                 "label": "Classes - words you choose to group predicates; follow=class:<word> walks every predicate that has it (blank = no class)",

@@ -1,5 +1,77 @@
 # 지금 돌리면 되는 것
 
+> ## [10-01 밤] **잡 단위 거둠으로 지운 행이 이력 · 원장 후속에 간다 + 맵퍼 표면에 find_links · unknown_words — 이주 «불필요» · 재기동 «필요»(run_app.bat 전체)**
+>
+> ```
+> 무엇이 바뀌나  allow_retraction 이 행을 지우는 길이 그리드 지우기 · 맵 퍼지와 «같은 문»(crud.purge_map_rows)
+>              -> 거둠으로 지운 행마다 DELETE 이벤트 · 행 지움 이력. 원장 후속이 그 행에서 나온 원자를 거두고, 체인 거둠 바퀴가 그 행이 먹인(도장 있는) 칸을 거둔다
+>              맵퍼는 from mapper_sdk import find_links, unknown_words 로 부른다 (from utils import text_links 도 계속 된다)
+> 뜻           `🔄 [DtMapRetraction] … retracted N stale row(s)` 뒤에 같은 표의 `[ChainRetract] table=<표> deleted_rows=N …` 가 따라 나오면 이 변경이 돈 것
+>              그 표를 지켜보는 규칙 중 «되돌릴 수 없는» 종류가 있으면 거둠마다 `[ChainRetract] <규칙>: …` 경고 한 줄씩 — 이 박스는 dt_map 를 지켜보는 규칙 0 · 경고할 것 0
+>              이미 거둠으로 지운 행에서 나온 원자(소급) — 이 박스 원자 0 (거둠 표 dt_map 는 원장 참조 0)
+>              운영에서 세기: SELECT count(*) FROM ledger_source_row_ref r WHERE r.relation = '<거둠 표>'
+>                             AND NOT EXISTS (SELECT 1 FROM <거둠 표> x WHERE x.row_id = r.row_id)
+> 급할 때       이 커밋을 되돌린다(git revert) -> 거둠이 다시 손으로 지우고 이벤트 · 이력이 안 남는다. 이미 남은 이력 · 거둬진 원자는 그대로
+> 재기동 뒤 로그 위 두 줄 — 거둠이 일어날 때만
+> ```
+
+---
+
+> ## [10-01 밤] **글에서 원인 -> 현상 후보 — server/utils/text_links.py — 이주 «불필요» · 재기동 «불필요»(새 파일)**
+>
+> ```
+> 무엇이 바뀌나  소유자 @mapper 가 import 해 쓰는 순수 함수 둘 — find_links(text, names, links) · unknown_words(texts, names, links). 다른 코드 무변
+> 가이드        docs/guide/TEXT_LINKS_GUIDE.md — 표 넷 · 짝짓는 규칙 두 줄 · 맵퍼 예 · 규칙 선언(allow_retraction) · 사전 고친 뒤 다시 돌리기 · 남는 것 둘
+> import 한 줄  from utils import text_links
+> 뜻           글에 말이 있는데 후보 0 -> 연결 말 사전에 cause 행(side 포함)이 없거나, 그 side 쪽에 노드가 없다. unknown_words 로 사전이 못 덮은 낱말을 본다
+>              연결 말 행의 meaning 이 다섯 밖이거나 cause 행에 side 가 없으면 그 행 번호를 대고 ValueError -> 그 규칙의 실패 로그로 보인다
+>              속도(박스, 합성 naming phrases 1000 · link phrases 7 · texts 1000 x 20 sentences (seeded synthetic)): 글 하나 9.7 ms 중 사전 짓기 8.3 ms — 글 1,000 건 10.56 s
+> 급할 때       그 규칙을 끈다(enabled false). 이 모듈은 부르는 맵퍼가 없으면 안 돈다
+> 재기동 뒤 로그 새 줄 없음. 이 모듈을 고친 «뒤»에는 체인 워커 재기동 — 이미 읽힌 모듈은 다시 안 읽는다
+> ```
+
+---
+
+> ## [10-01 밤] **원장 «펼친 보기» ledger_atom_rows — 그리드에서 원자를 평문으로 · 원천 row_id 로 — 이주 «필요» · 재기동 «필요»**
+>
+> ```
+> 무엇이 바뀌나  읽기 전용 보기 ledger_atom_rows: 한 행 = (원자, 원천 행). 주어 · 목적 · 수식어는 저장 철자 그대로의 평문(키=값 / …)
+>              source_row_id 로 거르면 그 행이 낳은 원자가 전부 나온다. 원천 행이 없는 원자(뷰를 읽던 소스)는 원천 칸이 빈 한 줄
+>              원천 행 참조 표에 색인 둘(이음 · row_id). 원장 표는 무변
+> 돌릴 명령     python server/migrations/add_ledger_atom_rows.py --report     (있고 없음 · 크기)
+>              python server/migrations/add_ledger_atom_rows.py              (색인 둘 CONCURRENTLY + 보기 — 쓰기 계속됨, IF NOT EXISTS 라 다시 돌려도 같음)
+>              table_config.json 에 "ledger_atom_rows" 항목을 출고 샘플에서 그대로 복사 -> 재기동(run_app.bat 전체) -> 그리드 표 목록에 뜸
+>              ⚠️ 이 박스는 이주가 «이미» 돌았다(보기 · 색인 둘 있음) — table_config 항목만 남음
+> 뜻           이 박스: 색인 79 MB + 67 MB
+>              첫 쪽 100 행 0.03 s · row_id 하나 1.85 s · 주어 평문 일부 10.9 s · 전체 행 수 10.5 s (2,334,076 행)
+>              전체 행 수는 그리드의 미뤄 세기(defer_total -> /data/count, 캐시)로 — 첫 쪽을 막지 않는다
+>              row_id · 주어 거르기는 원장 표에 색인을 안 넣어 원장 전체를 훑는다(총괄 판정 — 원장 표에는 색인을 안 넣기로)
+>              참조 표 쓰기 비용: 1,000 행당 44.5 / 47.1 ms -> 62.5 / 65.5 ms (시험 DB, 참조 길이 882 · 지우고 다시 넣기)
+> 급할 때       table_config 의 그 항목을 지우면 그리드에서 사라진다. 보기 · 색인은 DROP VIEW ledger_atom_rows · DROP INDEX CONCURRENTLY 두 색인
+> 재기동 뒤 로그 새 로그 줄 없음
+> ```
+
+---
+
+> ## [10-01 밤] **걷기 «도로 내려가지 않기» — 역 술어 칸 `inverse_of` · 같은 타입 형제만 막음 — 마이그레이션 «없음» · 재기동 «필요»**
+>
+> ```
+> 무엇이 바뀌나  걷기가 형제로 퍼지지 않는다: 같은 술어를 반대 방향으로(또는 선언된 역 술어를 같은 방향으로) 되밟아
+>              «출발한 노드와 같은 타입»으로 가는 걸음을 막는다 — 다이 -> 웨이퍼 <- 다이. 다른 타입으로 가는 길은 걷는다
+>              어휘 술어에 칸 하나 inverse_of — 걷기만 읽는다(소스 지문 · 원장 무변, 소급 0)
+> 운영자가 적을 것  ledger_config.json 의 vocabulary 에 짝 하나 (한쪽만 적어도 양쪽으로 읽힘):
+>                "inspected@1": { …, "inverse_of": "in_container@1" }
+>              적지 않은 짝은 그 두 술어로 형제가 «오늘처럼» 퍼진다(같은 술어 되밟기만 막힘)
+> 돌릴 명령     재기동 — run_app.bat 전체 (짝을 적은 뒤에도 재기동이 걷기에 읽힘을 보장)
+> 뜻           이 박스 다이 씨앗(라우트 기본): 오늘 노드 400 · 엣지 892(잘림) -> 짝 없음 노드 400 · 엣지 795 -> 짝 적은 사본 노드 15 · 엣지 25(잘림 없음)
+>              짝 없이 빠지는 것은 같은 술어 형제 걸음뿐 — hops 3 비교에서 빠진 노드 65 개 전부 «형제 걸음으로만 닿던» 노드
+>              검증 거절: unknown_id(없는 술어) · invalid_predicate(두 끝이 뒤집혀 안 맞음 / 역이 둘)
+> 급할 때       짝을 지우면 그 두 술어는 다시 따로 걸린다. 규칙 자체를 되돌리려면 커밋 되돌리기
+> 재기동 뒤 로그 새 로그 줄 없음 · 짝이 틀리면 선언 적재가 그 이름으로 거절
+> ```
+
+---
+
 > ## [10-01 밤] **걷기 노드 이름표 — 선언 키 전부 · 키 철자 — 마이그레이션 «없음» · 재기동 «필요»**
 >
 > ```

@@ -45,7 +45,8 @@ NAMES_THAT_NEVER_EXISTED = ("recorded_at", "subject_key", "source", "tx_id")
 #: Relation -> the columns the PRODUCT says it has. One entry today; the loop below is over
 #: the catalogue, so the day a second ledger relation is declared it is covered by adding a
 #: line here rather than by writing another test.
-PHYSICAL_COLUMNS = {schema.LEDGER_TABLE: frozenset(ROW_COLUMNS)}
+PHYSICAL_COLUMNS = {schema.LEDGER_TABLE: frozenset(ROW_COLUMNS),
+                    schema.ATOM_ROWS_VIEW: frozenset(schema.ATOM_ROWS_COLUMNS)}
 
 
 @pytest.fixture(scope="module")

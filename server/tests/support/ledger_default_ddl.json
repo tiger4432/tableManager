@@ -40,6 +40,12 @@
    null
   ],
   [
+   "SELECT to_regclass(%s) IS NOT NULL",
+   [
+    "ledger_source_row_ref"
+   ]
+  ],
+  [
    "\nCREATE TABLE IF NOT EXISTS ledger_source_row_ref (\n    relation       TEXT NOT NULL,\n    row_id         TEXT NOT NULL,\n    source_who     TEXT NOT NULL,\n    source_raw_ref TEXT NOT NULL,\n    -- 🔴 THE REF IS IN THE KEY. One physical row can appear under SEVERAL claim refs: one\n    -- event may emit several sentences over different subsets of its rows, and each\n    -- subset produces its own `source_raw_ref`. Keyed without it, the second sentence\n    -- would overwrite the first and its atoms would survive the row's deletion.\n    PRIMARY KEY (relation, row_id, source_who, source_raw_ref)\n)\n",
    null
   ],
@@ -131,6 +137,24 @@
    null
   ],
   [
+   "CREATE INDEX IF NOT EXISTS idx_ledger_row_ref_raw ON ledger_source_row_ref (source_who, md5(source_raw_ref))",
+   null
+  ],
+  [
+   "CREATE INDEX IF NOT EXISTS idx_ledger_row_ref_row ON ledger_source_row_ref (row_id)",
+   null
+  ],
+  [
+   "SELECT to_regclass(%s) IS NOT NULL",
+   [
+    "ledger_atom_rows"
+   ]
+  ],
+  [
+   "\nCREATE OR REPLACE VIEW ledger_atom_rows AS\nSELECT e.id AS atom_id,\n       e.occurred_at AS occurred_at,\n       e.subject_type AS subject_type,\n       (SELECT string_agg(k || '=' || v, ' / ' ORDER BY k) FROM jsonb_each_text(e.subject_keys) AS kv(k, v)) AS subject,\n       e.predicate AS predicate,\n       CASE WHEN e.object_kind = 'entity_ref' THEN (e.object_payload->>'type') || ' ' || (SELECT string_agg(k || '=' || v, ' / ' ORDER BY k) FROM jsonb_each_text(e.object_payload->'keys') AS kv(k, v)) WHEN e.object_kind = 'value' THEN e.object_payload->>'value' END AS object,\n       (SELECT string_agg(k || '=' || v, ' / ' ORDER BY k) FROM jsonb_each_text(e.object_payload->'qualifiers') AS kv(k, v)) AS qualifiers,\n       e.source_who AS source_who,\n       r.relation AS source_relation,\n       r.row_id AS source_row_id\n  FROM ledger_events e\n  LEFT JOIN ledger_source_row_ref r\n    ON r.source_who = e.source_who\n   AND md5(r.source_raw_ref) = md5(e.source_raw_ref)\n   AND r.source_raw_ref = e.source_raw_ref\n",
+   null
+  ],
+  [
    "COMMIT",
    null
   ],
@@ -181,6 +205,12 @@
   [
    "\nCREATE TABLE IF NOT EXISTS ledger_translator_cursor (\n    source               TEXT        PRIMARY KEY,\n    translator_ver       TEXT        NOT NULL,\n    cursor_value         JSONB       NOT NULL,\n    molecules_done       BIGINT      NOT NULL DEFAULT 0,\n    atoms_written        BIGINT      NOT NULL DEFAULT 0,\n    atoms_deduped        BIGINT      NOT NULL DEFAULT 0,\n    molecules_refused    BIGINT      NOT NULL DEFAULT 0,\n    incomplete_molecules BIGINT      NOT NULL DEFAULT 0,\n    refusal_reasons      JSONB,\n    source_head          JSONB,\n    head_probed_at       TIMESTAMPTZ,\n    row_census           JSONB,\n    rows_indexed         BIGINT,\n    started_at           TIMESTAMPTZ NOT NULL DEFAULT now(),\n    updated_at           TIMESTAMPTZ NOT NULL DEFAULT now()\n)\n",
    null
+  ],
+  [
+   "SELECT to_regclass(%s) IS NOT NULL",
+   [
+    "ledger_source_row_ref"
+   ]
   ],
   [
    "\nCREATE TABLE IF NOT EXISTS ledger_source_row_ref (\n    relation       TEXT NOT NULL,\n    row_id         TEXT NOT NULL,\n    source_who     TEXT NOT NULL,\n    source_raw_ref TEXT NOT NULL,\n    -- 🔴 THE REF IS IN THE KEY. One physical row can appear under SEVERAL claim refs: one\n    -- event may emit several sentences over different subsets of its rows, and each\n    -- subset produces its own `source_raw_ref`. Keyed without it, the second sentence\n    -- would overwrite the first and its atoms would survive the row's deletion.\n    PRIMARY KEY (relation, row_id, source_who, source_raw_ref)\n)\n",
@@ -244,6 +274,12 @@
   [
    "CREATE INDEX IF NOT EXISTS idx_ledger_subject_entity ON ledger_events (subject_type, subject_keys)",
    null
+  ],
+  [
+   "SELECT to_regclass(%s) IS NOT NULL",
+   [
+    "ledger_atom_rows"
+   ]
   ],
   [
    "COMMIT",

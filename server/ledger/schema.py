@@ -281,6 +281,68 @@ CREATE TABLE IF NOT EXISTS {names.row_ref} (
 
 CREATE_ROW_REF = create_row_ref_sql(_DEFAULT)
 
+#: 🔴 THE FLATTENED READ (총괄 0fb9e9390, 소유자 「원자들 검색」 · 「원자별 참조 행 rowid」): one row
+#: per (atom, source row), keys and payload as plain text in their STORED spelling, for the
+#: main grid (`kind: view`). An atom no row refers to - a source that read a view - keeps one
+#: row with its source cells empty (LEFT JOIN). The source row column is `source_row_id`,
+#: not `row_id`: the grid orders by a `row_id` column when one exists, and here it repeats.
+ATOM_ROWS_VIEW = "ledger_atom_rows"
+#: Atom -> its rows (the join, a page) and row -> its refs (a `source_row_id` filter). On the
+#: ref table only: the ledger's own write path carries no new index.
+ROW_REF_RAW_INDEX = "idx_ledger_row_ref_raw"
+ROW_REF_ROW_INDEX = "idx_ledger_row_ref_row"
+
+
+def row_ref_indexes(names: WorldNames, concurrently: bool = False) -> tuple:
+    how = "CONCURRENTLY " if concurrently else ""
+    return (f"CREATE INDEX {how}IF NOT EXISTS {ROW_REF_RAW_INDEX} ON {names.row_ref} "
+            f"(source_who, md5(source_raw_ref))",
+            f"CREATE INDEX {how}IF NOT EXISTS {ROW_REF_ROW_INDEX} ON {names.row_ref} (row_id)")
+
+
+def atom_rows_view_name(names: WorldNames) -> str:
+    return f"{names.schema}.{ATOM_ROWS_VIEW}" if names.schema else ATOM_ROWS_VIEW
+
+
+def _plain(column):
+    """`k=v / k=v`, keys in order, each value in its STORED spelling (jsonb text: 1.0 stays 1.0)."""
+    return (f"(SELECT string_agg(k || '=' || v, ' / ' ORDER BY k) "
+            f"FROM jsonb_each_text({column}) AS kv(k, v))")
+
+
+#: The view's columns and what each reads - ONE spelling, so the catalogue's column list is
+#: scored against this tuple rather than against a copy.
+ATOM_ROWS_SELECT = (
+    # the atom's own uuid, NOT `::text`: a page orders by it, and only the uuid walks the
+    # ledger's primary key in order - measured, `::text` sorted all 2.3M rows per page (14 s)
+    ("atom_id", "e.id"),
+    ("occurred_at", "e.occurred_at"),
+    ("subject_type", "e.subject_type"),
+    ("subject", _plain("e.subject_keys")),
+    ("predicate", "e.predicate"),
+    ("object", "CASE WHEN e.object_kind = 'entity_ref' THEN (e.object_payload->>'type') || ' ' || "
+               + _plain("e.object_payload->'keys'")
+               + " WHEN e.object_kind = 'value' THEN e.object_payload->>'value' END"),
+    ("qualifiers", _plain("e.object_payload->'qualifiers'")),
+    ("source_who", "e.source_who"),
+    ("source_relation", "r.relation"),
+    ("source_row_id", "r.row_id"),
+)
+ATOM_ROWS_COLUMNS = tuple(name for name, _expression in ATOM_ROWS_SELECT)
+
+
+def atom_rows_view_sql(names: WorldNames) -> str:
+    columns = ",\n       ".join(f"{expression} AS {name}" for name, expression in ATOM_ROWS_SELECT)
+    return f"""
+CREATE OR REPLACE VIEW {atom_rows_view_name(names)} AS
+SELECT {columns}
+  FROM {names.ledger} e
+  LEFT JOIN {names.row_ref} r
+    ON r.source_who = e.source_who
+   AND md5(r.source_raw_ref) = md5(e.source_raw_ref)
+   AND r.source_raw_ref = e.source_raw_ref
+"""
+
 def create_cursor_sql(names: WorldNames) -> str:
     return f"""
 CREATE TABLE IF NOT EXISTS {names.cursor} (
@@ -735,6 +797,7 @@ def ensure_schema(connection, names: WorldNames = _DEFAULT):
         ensure_objectless_payload_constraint(cursor, names)
         ensure_register_object_constraint_dropped(cursor, names)
         cursor.execute(create_cursor_sql(names))
+        row_ref_existed = _relation_exists(cursor, names.row_ref)
         ensure_row_ref_table(cursor, names)
         for column, statement in ledger_additions(names):
             if not column_exists(cursor, names.ledger, column):
@@ -753,6 +816,13 @@ def ensure_schema(connection, names: WorldNames = _DEFAULT):
         if not ledger_existed:
             for statement in source_event_indexes(names):
                 cursor.execute(statement)
+        # A table that already has rows gets these from `add_ledger_atom_rows.py`,
+        # CONCURRENTLY - here they would lock the ref table at every start.
+        if not row_ref_existed:
+            for statement in row_ref_indexes(names):
+                cursor.execute(statement)
+        if not _relation_exists(cursor, atom_rows_view_name(names)):
+            cursor.execute(atom_rows_view_sql(names))
     connection.commit()
 
 
