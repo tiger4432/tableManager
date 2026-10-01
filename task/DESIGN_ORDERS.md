@@ -35719,3 +35719,11 @@ R&D 보드는 끝남(렌더 한글 0) · 꼬리 둘(ABSENT · lang)은 43e793ce4
         키 없는 표 -> 3 줄 없음 · 컴포짓 -> key 가 그 컬럼들에, 왼쪽부터 키 순서 · 초안이 있으면 초안을 복사 ·
         클립보드 실패 문장 · 체인 규칙 화면 변화 0 · 하니스 초록 + 변이 빨강 · 「새 함수·새 if 중 같은 일」 · 착지 뒤 총괄이 소유자 크롬에서 연다
 ```
+
+```
+덧붙임 (총괄 검증: 927b73a6e 변이 5 빨강 · 서버 ㉠ 4a0c69b2f 착지 — 시험 10 · 총괄 변이 5 빨강)
+   서버의 이름 바꾸기 답이 «renamed_from + note» 한 줄을 싣는다(「Cells this rule wrote are written again under the new name the next time
+   their rows arrive」 — 소급 비용을 말하는 자리). 지금 클라는 저장 답의 note 를 안 그린다(git grep: raw_registry_panel · admin.js 에 note 0)
+할 것  저장 답에 note 가 있으면 저장 줄 밑에 그대로 한 줄 — 등록부 템플릿 한 자리(체인 규칙만의 if 금지). 거절 rule_name_held 는 서버 문장(Next 먼저) 그대로
+게이트  이름 바꿈 답 -> note 줄 · 바꾼 이름이 골라진 채 · 목록에 한 줄 · note 없는 답 -> 줄 0 · rule_name_held -> 서버 문장 · 친 글 그대로 · 변이 빨강
+```
