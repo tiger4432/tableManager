@@ -62897,3 +62897,12 @@ RUN.md   배포 뒤 「거둠으로 지운 행이 이력과 원장 후속에 간
 게이트    위 두 주소 · base 가 / 로 끝나는 같은 값(통과) · 받아 오기 3xx · db 연결 실패 문장 · 변이 빨강
 남겨 둠   https:// 로 시작하는 칸은 어디로든 넘긴다(열린 넘김) — 소유자께 여쭙는 중. 이번에 안 건드린다
 ```
+
+```
+덧붙임 — 클라 레인이 문서 정비에서 찾은 서버 자리 둘 (d3ee3120b) — 이미지 덧과 같은 착지에
+   ① apply_retraction 독스트링 「THE DOOR THE GRID'S DELETE AND THE MAP PURGE ALREADY SHARE」는 거짓 — crud.delete_rows_batch 는 purge_map_rows 를 안 지나고
+      같은 세 지우기를 따로 적는다. 문장을 참으로 고친다
+      그리고 그 사본 둘을 접을 수 있나 본다: delete_rows_batch 가 purge_map_rows + 자기 커밋이면 이벤트 · 이력 · 돌려주는 값이 오늘과 같은가.
+      같으면 접는다(게이트: 그리드 지움 시험 그대로 초록 + 변이). 다르면 그 차이를 채널로 — 짓지 않는다
+   ② mapper_sdk MAPPER_SURFACE 주석의 손 수 「nine modules · 13,406 lines」 — 오늘 10 모듈 15,050 줄. 수를 지운다(파일에 손으로 적은 수 금지)
+```
