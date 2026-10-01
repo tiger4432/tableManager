@@ -67935,3 +67935,80 @@ rejections when switched on: []
 전체  5 failed, 7576 passed, 207 skipped, 3 xfailed in 762.97s (0:12:42) — 알려진 다섯
 PG    7 failed, 161 passed, 7623 deselected in 326.51s (0:05:26) — 알려진 일곱(이름까지 같음)
 ```
+
+## [구현자 -> 총괄] ㉡ 착지 7350027a6 — 숫자의 신원 철자는 하나: 문자 칸 숫자 · 저장된 칸 소급 · 원장 엔티티 키 (c6a8c069c ㉡ · 0f5992e74 · 7233a7a31)
+
+```
+①  crud.cast_value_by_type 문자 갈래 — 유한한 수(bool 제외 · numpy 포함) -> clean_str_value 의 답. 새 접기 함수 0
+    1.0 -> '1' · int64(3) -> '3' · 1.5 -> '1.5' · 1e16 -> '10000000000000000' · float64(2.0) -> '2'
+    오늘 그대로: True · NaN · inf · 글자 '1.0' · number 칸 1.0 · Decimal  (numpy float32(1.0) 은 clean_str_value 의 답 '1.0')
+    층(cell_sources)과 보이는 칸이 같은 글자 — PG 에서 칸 = 층 #>> '{}' = clean_str_value (PG 증명)
+    체인이 쓰는 칸도 같은 깔때기 · cell_layer 재계산(R2·R3)도 같은 cast 를 지남 — 시험 열
+②  fold_written_notation(소급 등록부의 그 항목)을 넓힘 — 새 소급 종류 0
+    접는 칸 = write 칸 ∪ 글자 칸(notation_norm.is_text_type — 키 자리가 묻는 그 물리 질문). 값마다 깔때기 순서 그대로: 표기 접기 -> cast
+    층이 접힌 칸은 보이는 값을 접힌 층에서 다시 정함 — cell_layer._load_cell_state + _resolve_cell(R2·R3 이 쓰는 그 둘, 나1)
+    키(가): 접기가 키 부품 칸을 바꾼 행만 · 접은 뒤 키가 저장 키와 같으면 그대로 · 다를 때 안 접은 칸이 저장 키를 짓는 행만 바꿈,
+           아니면 그 행 통째로 건너뛰고 keys_not_rebuilt + not_rebuilt 목록(미리보기 · 실행 둘 다). 오늘 write 칸 표에도 같은 줄
+    소급 화면 문장: write 칸도 글자 칸도 없는 표만 「nothing is folded」, 건너뜀 문장 하나 더
+넓힘  roleframe._evaluate_binding entity 갈래 — 키 자식마다 canonical_key_value(값, declared_column_type(소스 relation, 칸)),
+    상수 자식은 타입 없음(trim). 등록 프로브 _v2_registration_subjects 도 canonical_bind_value. 3(컴파일)엔 두 번째 접기 없음
+    🔴 남은 빚: 코드 맵퍼가 스스로 짓는 엔티티 키(오늘 dt-job-role 의 dt_job — 숫자 키 0)는 이 접기를 안 지난다
+```
+**게이트**
+```
+같은 씨앗 · 두 소스가 다이 x 를 정수 1 · 실수 1.0 · number 칸 '01' · 문자 칸 "1" 로 줌 -> 걷기 die 노드 «하나» + 문자 칸 '1.0' 은 따로 하나,
+   그 다이로 걷기가 가져오는 사실 4(두 소스 다) — 응답은 (주어·술어·목적어)마다 엣지 하나라 «가져오는 사실»로 잼
+문자 칸 '1.0' -> '1.0' 그대로 · number 칸 '1.0' -> '1' · 프로브 토큰 = 원자 키 철자(1.0 · '01' -> '1')
+write 칸 + 숫자 층 1.0: 미리보기 층 1(넓히기 전 0) -> 실행 -> 다시 미리보기 0 -> 화면 '1' (SQLite · PG)
+키: 숫자에서 지은 키(L1_1) 그대로 · 이미 어긋난 키(옛 구분자 L2:2.0) -> 신원 그대로 · 건너뜀 1 · 칸에서 지은 키(L3_3.0) -> L3_3 · 접힐 것 없는 어긋난 키 -> 안 셈
+write 칸 없는 표 -> 글자 절반을 훑고 «정말 없음» · write 칸도 글자 칸도 없는 표 -> 「nothing is folded」
+dt_job 등록 · 속성: 박스 dt_job 시험 실행 묶음 행 145 · 원자 4 · 등록 2(속성 실은 것 2) — 바뀐 두 자리를 옛 동작으로 되돌린 것과 «똑같음»
+옛 날것 키를 고정하던 시험 하나: test_ledger_source_preparation 의 dt_x 기대값 {100, 101, 102} -> {'100', '101', '102'} (지시된 바뀜)
+변이
+M1   �� fold removed                                            red
+M2   �� bool not excluded                                       red
+M3   �� str() instead of the read function                      red
+M4   �� text columns not folded                                 red
+M5   �� shown value not re-decided from the folded layers       red
+M6   �� key rebuilt though the cells no longer spell it         red
+M7   �� key judged on rows whose parts did not move             red
+M8   widening: entity keys not canonical                        red
+M9   widening: declared type ignored                            red
+M10  widening: probe token not canonical                        red
+```
+**박스** (미리보기만 — 실행 안 함, 스크래치 box_fold_preview.py · box_retranslate_preview.py)
+```
+② 표별 소급 미리보기
+bonding_map          행 5,411 · 보이는 칸 0 · 층 0 · 키 바뀜 0 · 키 어긋나 건너뜀 0 · 0.2 초
+dt_map               행 1,006,147 · 보이는 칸 1,000,399 · 층 1,000,400 · 키 바뀜 0 · 키 어긋나 건너뜀 0 · 200.0 초
+wafer_map_metadata   행 7,430 · 보이는 칸 0 · 층 1 · 키 바뀜 0 · 키 어긋나 건너뜀 0 · 0.9 초
+③ 소스별 다시 번역 미리보기(뺄 = 오늘 그 소스가 든 원자, 쓸 = 미리보기가 짓는 원자, 숫자로 남은 키)
+bonded_from        미리보기 없음 — 오늘 로드에서 거절(뷰를 읽음)
+bw_dt_seat         미리보기 없음 — 오늘 로드에서 거절(뷰를 읽음)
+die_inspection     행 117,742 · 뺄(오늘 든 원자) 117,743 · 쓸 117,742 · 숫자로 남은 키 0 · 분자 거절 0
+dt_transfer        미리보기 없음 — 오늘 로드에서 거절(뷰를 읽음)
+transfer_event     행 1,405 · 뺄(오늘 든 원자) 1,405 · 쓸 1,405 · 숫자로 남은 키 0 · 분자 거절 0
+void_observation   미리보기 없음 — 오늘 로드에서 거절(뷰를 읽음)
+```
+**따로 — 컴포짓 키가 칸과 이미 어긋난 행** (소유자께 올리실 것, ㉡ 와 무관 · 스크래치 census_composite_keys.py)
+```
+core_wafer_map             행 78,563 · 어긋남 8 · 예 ZZ-DOE-CL_01 vs ZZ-DOE-CL_01_0_0
+dt_log                     행 535,559 · 어긋남 12,400 · 예 PROBE-S119-SHAPE-0000|0|0 vs PROBE-S119-SHAPE-dt_job|0|0
+dt_map                     행 1,006,147 · 어긋남 157 · 예 DT_LOT_1_7_1 vs DT_LOT|1|7|1
+inspection_run             행 117,742 · 어긋남 117,742 · 예 sat|SYN-BW-001-01|13|5|7|2026-08-14T00:03:00+09:00 vs sat|SYN-BW-001-01|13|5|7|2026-08-14 00:03:00+09:00
+mechanism_edge             행 22 · 어긋남 22 · 예 void_formation:bond_pressure:interface_unfill vs void_formation|bond_pressure|interface_unfill
+mechanism_edge_to_finding  행 9 · 어긋남 9 · 예 void_formation:interface_unfill:void vs void_formation|interface_unfill|void
+mechanism_edge_to_quantity 행 13 · 어긋남 13 · 예 void_formation:bond_pressure:interface_unfill vs void_formation|bond_pressure|interface_unfill
+step_defect_obs            행 1,371 · 어긋남 25 · 예 core|SYN-AUG-CL-002_2|5|6|2026-07-18T03:27:00+09:00|1811.0|1651.26 vs core|SYN-AUG-CL-002_2|5|6|2026-07-18T03:27:00+09:00|1811|1651.26
+step_inspection_run        행 5,040 · 어긋남 5,040 · 예 core|SYN-AUG-CL-001_1|0|6|2026-07-12T03:00:00+09:00 vs core|Wafer|SYN-AUG-CL-001_1|0|6|2026-07-12 03:00:00+09:00
+void_obs                   행 103,858 · 어긋남 56 · 예 zzdoe|ZZ-DOE-BW-02|0|0|1|2026-12-01T00:00:00+09:00|1 vs zzdoe|ZZ-DOE-BW-02|0|0|1|2026-12-01T00:00:00+09:00|100|200
+tables with a composite key read: 23 | rows: 2302313 | differ: 135472
+원인 넷: datetime 부품을 칸(datetime)에서 지으면 'T' 대신 공백 · 키 부품 목록이 키 지은 뒤 바뀜 · 구분자가 바뀜(':' · '_' -> '|') · probe 행.
+그리고 숫자 칸 부품을 글자 "1811.0" 으로 받아 지은 키(step_defect_obs) — 이건 ㉡ 축이지만 number 칸이라 ① 밖, 칸에서 다시 지으면 '1811'
+```
+**새 함수 · 새 if 중 기존 것과 같은 일**: 새 함수 0. 새 if — ① 수 접기 1 · ② 글자 칸 cast 1 · 층 접힘 재계산 1 · 키 가드 3(부품 안 움직임 · 이미 같음 · 저장 키를 못 지음) · 건너뜀 갈래 1 · 넓힘 칸 자식 판별 1 — 같은 일 0 (접기 · 재계산 · 정규화는 전부 있던 함수)
+**스위트** (C:/wt-impl, 착지 트리)
+```
+전체  5 failed, 7592 passed, 209 skipped, 3 xfailed in 846.29s (0:14:06) — 알려진 다섯
+PG    7 failed, 163 passed, 7639 deselected in 349.70s (0:05:49) — 알려진 일곱(이름까지 같음)
+```
