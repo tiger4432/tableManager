@@ -1203,6 +1203,19 @@ def test_a_retracted_row_is_announced_and_remembered_like_any_deleted_row(env, m
     assert notices == [], "the worker announces the deleted ids once; this must add none"
 
 
+def test_the_count_is_the_rows_that_were_still_there(env):
+    """[총괄 ef3b0caeb ㄱ] What comes back is what was deleted, not what was planned: a row the
+    plan named that went away before the apply is not counted."""
+    db = env
+    _seed_map_rows(db, ["k1", "k2", "k3"])
+    plan = derivation.plan_retraction(db, MAP, "job", JOB, derived_keys={"k1"},
+                                      min_population=100)
+    model = models.DYNAMIC_TABLES[MAP]
+    db.query(model).filter(model.row_id == "k3").delete(synchronize_session=False)
+    db.commit()
+    assert derivation.apply_retraction(db, plan) == 1
+
+
 def test_apply_retraction_deletes_exactly_the_plan_and_re_derives_nothing(env):
     """A dry run that could differ from what runs is a decoration."""
     db = env

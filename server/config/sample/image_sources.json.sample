@@ -1,0 +1,24 @@
+{
+  "_comment": "이미지 출처 선언. image_sources.json 으로 복사해 쓴다. 칸 값은 https://… 그대로, 또는 <출처 이름>:<경로 또는 키>. 비밀번호는 이 파일에 적지 않고 환경변수 «이름»만 적는다. db 출처는 읽기 전용 사용자를 권한다.",
+  "photos": {
+    "kind": "folder",
+    "root": "D:/shared/photos"
+  },
+  "inspection_db": {
+    "kind": "db",
+    "connection": {
+      "dialect": "postgresql",
+      "host": "db-host",
+      "port": 5432,
+      "database": "inspection",
+      "user": "image_reader",
+      "password_env": "INSPECTION_DB_PASSWORD"
+    },
+    "query": "SELECT image FROM images WHERE image_id = :key"
+  },
+  "vendor": {
+    "kind": "url",
+    "base": "https://vendor.example.com/images/",
+    "proxy": false
+  }
+}

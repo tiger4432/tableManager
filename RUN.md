@@ -1,5 +1,30 @@
 # 지금 돌리면 되는 것
 
+> ## [10-01 밤] **이미지 참조 — 출처 선언 image_sources.json · 읽기 GET /api/image?ref= — 이주 «불필요» · 재기동 «필요»(run_app.bat 전체)**
+>
+> ```
+> 무엇이 바뀌나  칸 값 하나로 이미지를 가리킨다 — https://… 그대로, 또는 <출처 이름>:<경로 또는 키>. 칼럼 타입 낱말은 "image"(저장은 글자)
+>              출처는 server/config/image_sources.json 한 파일 — 샘플 server/config/sample/image_sources.json.sample 에 셋:
+>                 folder  {"kind": "folder", "root": "D:/shared/photos"}                         photos:2026/10/a.png
+>                 db      {"kind": "db", "connection": {dialect · host · port · database · user · password_env},
+>                          "query": "SELECT image FROM images WHERE image_id = :key"}             inspection_db:IMG-001
+>                 url     {"kind": "url", "base": "https://vendor.example.com/images/", "proxy": false}   vendor:a.png
+>              🔴 비밀번호는 파일에 0 — password_env 에 «환경변수 이름»만. db 출처는 «읽기 전용 사용자»를 권한다
+> 확인 명령     curl -i "http://<서버>:<포트>/api/image?ref=photos:a.png"
+> 뜻           200 + 이미지                   읽힘
+>              400 "… outside the root …"     folder 경로가 root 밖(.. · 절대경로) — 거절
+>              404 "no file … / no image for key …"   파일 · 키가 없다(이름을 댄다)
+>              404 "image source … is not declared"   선언에 없는 출처 이름
+>              500 "… must bind :key and nothing else"   db 출처의 query 가 :key 하나만 묶지 않는다
+>              500 "… reads its password from X, which is not set"   그 환경변수가 서버 프로세스에 없다
+>              307 + Location                 url 출처(proxy false) · https:// 값 — 브라우저가 그 주소로 간다. https 화면에서 http 주소는 브라우저가 막으니 그때 "proxy": true
+>              db 값이 글자면 그 글자를 참조로 «한 번 더» 푼다. 두 번째도 글자면 500 "… another reference twice"
+> 급할 때       image_sources.json 을 지우면 모든 출처 참조가 404 — https:// 값만 그대로 간다
+> 재기동 뒤 로그 새 로그 줄 없음 — 거절은 응답의 detail 로 말한다
+> ```
+
+---
+
 > ## [10-01 밤] **잡 단위 거둠으로 지운 행이 이력 · 원장 후속에 간다 + 맵퍼 표면에 find_links · unknown_words — 이주 «불필요» · 재기동 «필요»(run_app.bat 전체)**
 >
 > ```
