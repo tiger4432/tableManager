@@ -328,6 +328,8 @@ export class RawRegistryPanel {
     this._pasteRefused = null;
     // What the last Copy columns could not do, by document name (lead 72aa14785).
     this._copyFailed = null;
+    // Why the last copy carries no key row, when it carries none for a table that has a key.
+    this._copyNote = null;
     // The clipboard writer, injectable so a harness can see what is written and make it fail.
     this.copyText = deps.copyText || ((text) => writeClipboardRich('', text));
     // 폼 안의 접힘도 같습니다 — 기록은 탐색기와 «같은 함수»(`reduceFieldFold`)가 합니다.
@@ -1127,6 +1129,9 @@ export class RawRegistryPanel {
     if (this._copyFailed && this._copyFailed.key === key) {
       box.appendChild(this._line(`${spec.cls}-copy-failed`, this._copyFailed.text));
     }
+    if (this._copyNote && this._copyNote.key === key) {
+      box.appendChild(this._line(`${spec.cls}-copy-note`, this._copyNote.text));
+    }
     const refused = this._pasteRefused && this._pasteRefused.key === key ? this._pasteRefused.lines : [];
     for (const line of refused) box.appendChild(this._line(`${spec.cls}-paste-refused`, line));
     // Worked out at every draw from the text as it stands: the raw box can be edited after a paste.
@@ -1159,10 +1164,15 @@ export class RawRegistryPanel {
   _copy(key) {
     let wrote = false;
     let why = 'the browser did not take it';
-    try { wrote = Boolean(this.copyText(serializeTsv(this.spec.paste.copy(this._held(key))))); } catch (e) {
+    let sheet = { rows: [], note: '' };
+    try {
+      sheet = this.spec.paste.copy(this._held(key)) || sheet;
+      wrote = Boolean(this.copyText(serializeTsv(sheet.rows)));
+    } catch (e) {
       why = String(e && e.message ? e.message : e);
     }
     this._copyFailed = wrote ? null : { key, text: `Copy failed · ${why}` };
+    this._copyNote = wrote && sheet.note ? { key, text: sheet.note } : null;
     this._drawAgain();
   }
 

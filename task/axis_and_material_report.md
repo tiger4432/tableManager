@@ -1,3 +1,20 @@
+> ## [12:43 디자인] 72aa14785 답 셋 — 3 줄은 키를 그대로 적을 수 있을 때만 · 안 쓰면 복사 직후 한 줄 · 공용 클립보드 쓰기를 직접 재는 하니스 — 총괄 답 · 176244796
+
+**3 줄 규칙** — 「세 줄 문법이 그 표의 키를 그대로 적을 수 있을 때만」
+- 적는다: business_key 만 있을 때(그 칸에 key) · composite_key_source 가 «둘 이상»일 때(그 칸들에 key).
+- 안 적는다: 두 철자를 다 들었을 때, 그리고 «한 칸짜리» composite 일 때 — 되붙이면 business_key 로 바뀌기 때문입니다(규칙을 글자 그대로 따르면 이것도 «그대로 적을 수 없음»). 둘 다 복사 직후 한 줄: `Key row left out · this table has both business_key and composite_key_source` / `Key row left out · a composite_key_source of one column reads back as business_key`.
+- 게이트: sample 40 표 · 두 철자 17 · 숨은 컬럼 7(하니스가 셈) — E1 이 «모든» 표를 되붙여 바뀌는 줄 0(숨은 컬럼이 있는 표만 Shown 한 줄). 두 철자 표도 그 안에서 0. E2 TEXT 표(lot_slot_wafer) 하나는 «거절이 이름 대어 섬». E10 한 칸 composite → 3 줄 없음 · 그 줄 · 되붙여 0. E11 복사 직후 그 줄은 키를 안 적은 때«만».
+- 변이 P25(한 칸 composite 에도 key) · P26(안 적은 것을 안 말함) 빨강, P20 은 새 닻으로 다시 빨강.
+
+**공용 클립보드 쓰기 — 직접 재는 하니스** (새 clipboard_write_harness, 8)
+- 왜: map 하니스 셋은 그 이름을 갈아 끼우고 표 하니스는 쓰기를 주입해서, 함수 «자체»를 돌리는 곳이 0 이었습니다 — 변이가 어디서도 안 빨개지는 자리였습니다.
+- 그대로 import 하고 `execCommand('copy')` 가 copy 리스너를 부르는 문서 위에서 돌립니다: W1 HTML 이 없으면 글만(text/html 없음) · W2 HTML 이 있으면 둘 다 · W3 쓸 곳이 없거나 copy 가 안 일면 실패 · W4 끝나면 숨은 칸 · 리스너 없음, 사용자 선택 복원.
+- 변이 K1(빈 HTML 도 실음) · K2(글 안 실음) · K3(안 실려도 성공) · K4(리스너 남김) 전부 빨강.
+- map 하니스 셋: company_roundtrip 84 · coord_table_paste 52 · copy_header_count 151 초록. check_clipboard_convention OK.
+
+- 하니스: table_config 93 · 러너 155 중 153 초록 · 알려진 빨강 2 · 막힘 0 · 계약 12 개 어긋남 0
+- 새 함수 · 새 if 중 기존 것과 같은 일: 새 함수 0 — columnsToSheet 가 줄과 함께 «왜 3 줄이 없는지»를 돌려줍니다(모양만 넓힘). 새 if: 그 사유 고르기 하나 · 복사 직후 줄 하나.
+
 > ## [12:27 디자인] 표 선언 «Copy columns» — 지금 컬럼을 붙여넣기의 세 줄 모양으로, 넓어지는 display_columns 는 저장 전 «Shown» 줄 — 총괄 72aa14785 · 927b73a6e
 
 **열린 물음 하나 (메시지로 먼저 여쭘)**: 키 철자를 둘 다 든 표(business_key + composite_key_source) — sample 40 중 17. 세 줄로는 적을 수가 없어서(key 하나 → business_key, 둘 이상 → composite) 지금은 «3 줄을 안 씁니다». 되붙여도 두 철자가 그대로라 바뀌는 줄이 0 입니다. 지시 문장대로 둘 다 key 로 적으면 dt_log 는 composite 4 개가 되어 신원이 바뀌고, 컴포짓 부분에만 적으면 business_key 가 빠집니다(Key 줄). 답에 따라 한 줄과 E5 를 바꿉니다.

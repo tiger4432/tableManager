@@ -368,10 +368,12 @@ async function pasteSuite(m) {
     const wrong = [];
     let tables = 0;
     let shownTables = 0;
+    let bothTables = 0;
     for (const [name, doc] of Object.entries(SAMPLE)) {
       if (name.startsWith('__') || !doc || typeof doc !== 'object') continue;
       tables += 1;
-      const text = m.serializeTsv(m.columnsToSheet(doc));
+      const text = m.serializeTsv(m.columnsToSheet(doc).rows);
+      if (doc.business_key && Array.isArray(doc.composite_key_source) && doc.composite_key_source.length) bothTables += 1;
       const got = m.columnsFromPaste(m.parseTsv(text, { trimCells: true, dropBlankLines: true }), doc);
       const outside = Object.values(doc.column_types || {}).some((t) => !known.includes(String(t).toLowerCase()));
       if (outside) {
@@ -387,21 +389,33 @@ async function pasteSuite(m) {
       if (JSON.stringify(lines) !== JSON.stringify(want) || !prefix) wrong.push(`${name}: ${JSON.stringify(lines)}`);
     }
     say('E1 every sample table pasted back untouched changes nothing but its hidden columns coming into view',
-      tables > 0 && shownTables > 0 && wrong.length === 0, `${tables} tables, ${shownTables} with hidden columns, ${wrong.slice(0, 3).join(' | ')}`);
+      tables > 0 && shownTables > 0 && bothTables > 0 && wrong.length === 0,
+      `${tables} tables, ${shownTables} with hidden columns, ${wrong.slice(0, 3).join(' | ')}`);
+    console.log(`    (sample: ${tables} tables · ${bothTables} with both key spellings · ${shownTables} with hidden columns)`);
     say('E2 ...and a table carrying a type word outside the three is refused on the way back, by name',
       JSON.stringify(odd) === '["lot_slot_wafer"]', JSON.stringify(odd));
     const keyless = m.columnsToSheet({ column_types: { a: 'string' }, display_columns: ['a'] });
-    say('E3 a table with no key copies two rows', keyless.length === 2, JSON.stringify(keyless));
+    say('E3 a table with no key copies two rows, and says nothing about a key', keyless.rows.length === 2 && keyless.note === '',
+      JSON.stringify(keyless));
     const composite = m.columnsToSheet({ column_types: { a: 'string', b: 'number', c: 'string' },
       display_columns: ['a', 'b', 'c'], composite_key_source: ['a', 'c'] });
     const single = m.columnsToSheet({ column_types: { a: 'string', b: 'number' }, display_columns: ['a', 'b'],
       business_key: 'b' });
     say('E4 a key is marked under its columns: the composite\'s parts, or the one business key',
-      JSON.stringify(composite[2]) === '["key","","key"]' && JSON.stringify(single[2]) === '["","key"]',
+      JSON.stringify(composite.rows[2]) === '["key","","key"]' && JSON.stringify(single.rows[2]) === '["","key"]'
+        && composite.note === '' && single.note === '',
       JSON.stringify([composite, single]));
     const both = m.columnsToSheet({ column_types: { k: 'string', a: 'string', b: 'string' }, display_columns: ['k', 'a', 'b'],
       business_key: 'k', composite_key_source: ['a', 'b'] });
-    say('E5 both spellings: no key row, so a paste back keeps both', both.length === 2, JSON.stringify(both));
+    say('E5 both spellings: no key row, so a paste back keeps both, and the copy says why',
+      both.rows.length === 2 && both.note === 'Key row left out · this table has both business_key and composite_key_source',
+      JSON.stringify(both));
+    const oneOfComposite = { column_types: { a: 'string', b: 'string' }, display_columns: ['a', 'b'], composite_key_source: ['a'] };
+    const one = m.columnsToSheet(oneOfComposite);
+    const oneBack = m.columnsFromPaste(m.parseTsv(m.serializeTsv(one.rows), { trimCells: true, dropBlankLines: true }), oneOfComposite);
+    say('E10 a composite of one column: no key row (it would read back as business_key), said, and kept on the way back',
+      one.rows.length === 2 && one.note === 'Key row left out · a composite_key_source of one column reads back as business_key'
+        && oneBack.next && m.columnChanges(oneOfComposite, oneBack.next).length === 0, JSON.stringify(one));
 
     const copied = [];
     const { host: hc, p: pc } = panel({ copyText: (text) => { copied.push(text); return true; } });
@@ -425,6 +439,18 @@ async function pasteSuite(m) {
     say('E8 a copy the clipboard did not take says so, with why',
       JSON.stringify(lines(hf, 'table-config-copy-failed')) === '["Copy failed · the browser did not take it"]'
         && JSON.stringify(lines(ht, 'table-config-copy-failed')) === '["Copy failed · denied"]');
+    const noted = [];
+    const { host: hn, p: pn } = panel({ copyText: (text) => { noted.push(text); return true; } });
+    pn.render({ ...PASTE_PAYLOAD, declaration: { column_types: { k: 'string', a: 'string', b: 'string' },
+      display_columns: ['k', 'a', 'b'], business_key: 'k', composite_key_source: ['a', 'b'] } });
+    tap(byClass(hn, 'table-config-copy')[0]);
+    const noteNow = lines(hn, 'table-config-copy-note');
+    const { host: hs, p: ps } = panel({ copyText: () => true });
+    ps.render(PASTE_PAYLOAD);
+    tap(byClass(hs, 'table-config-copy')[0]);
+    say('E11 right after a copy that left the key row out, one line says so - and only then',
+      JSON.stringify(noteNow) === '["Key row left out · this table has both business_key and composite_key_source"]'
+        && noted.length === 1 && lines(hs, 'table-config-copy-note').length === 0, JSON.stringify(noteNow));
     say('E9 a shown column is said before the save', JSON.stringify(m.columnChanges(
       { column_types: { a: 'string', b: 'string' }, display_columns: ['a'] },
       { column_types: { a: 'string', b: 'string' }, display_columns: ['a', 'b'] })) === '["Shown · + b"]');
@@ -504,16 +530,20 @@ async function pasteSuite(m) {
     R('P19', 'the copy never writes the key row', 'E4',
       '  if (keys.length) rows.push(', '  if (false) rows.push('),
     R('P20', 'both spellings are marked as one key row', 'E5',
-      'const keys = single && parts.length ? [] :', 'const keys = single && parts.length ? [single, ...parts] :'),
+      'const keys = single && !parts.length ? [single] :', 'const keys = single ? [single, ...parts] :'),
+    R('P25', 'a composite of one column is marked anyway', 'E10',
+      '(!single && parts.length > 1 ? parts : [])', '(!single && parts.length ? parts : [])'),
+    T('P26', 'a key row left out is not said', 'E11',
+      '    this._copyNote = wrote && sheet.note ? { key, text: sheet.note } : null;\n', '    this._copyNote = null;\n'),
     R('P21', 'a column coming into view is not said', 'E9',
       '  if (widened.length) lines.push(', '  if (false) lines.push('),
     T('P22', 'the copy reads the server\'s document, not the one on screen', 'E6',
-      'this.copyText(serializeTsv(this.spec.paste.copy(this._held(key))))',
-      'this.copyText(serializeTsv(this.spec.paste.copy(this._payload && this._payload.declaration)))'),
+      'sheet = this.spec.paste.copy(this._held(key)) || sheet;',
+      'sheet = this.spec.paste.copy(this._payload && this._payload.declaration) || sheet;'),
     T('P23', 'a failed copy says nothing', 'E8',
       "    this._copyFailed = wrote ? null : { key, text: `Copy failed · ${why}` };\n", '    this._copyFailed = null;\n'),
     T('P24', 'the copy writes its own text instead of the shared serializer', 'E7',
-      'this.copyText(serializeTsv(', "this.copyText(((rows) => rows.map((r) => r.join('\\t')).join('\\n'))("),
+      'this.copyText(serializeTsv(sheet.rows))', "this.copyText(sheet.rows.map((r) => r.join('\\t')).join('\\n'))"),
     R('P14', 'the empty-paste guard is gone (lead ba5e1eaad)', 'A7',
       "  if (!width) return { next: null, refused: ['Nothing pasted'] };\n", ''),
     R('P15', 'a type is written as typed, not as the server spells it', 'A8',
