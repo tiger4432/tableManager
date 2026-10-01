@@ -1,3 +1,29 @@
+> ## [17:35 디자인] 원장 v6(0b59a2f30)의 클라 몫 + 문서 정비 — 'Preparers' 라벨 · 은퇴 낱말 · 씨앗 서술 · 픽스처 둘 다시 뜸 · 문서 일곱 — 총괄 69ad850b8 · ef0d96bd5
+
+**클라 몫 (구현자 보고 1faf36b69 의 목록, 자리를 열어 확인)**
+
+| 자리 | 한 일 |
+|---|---|
+| ontology_explorer_view.js 종류 라벨 `preparer: 'Preparers'` | 지움. 그 종류가 은퇴해 아무도 안 타는 칸. 지운 뒤 우는 하니스 0 — 그 라벨을 단언한 하니스가 없었습니다(`git grep Preparers -- client2/tests` 0, 같은 명령이 src 의 그 줄은 잡음) |
+| ontology_explorer_store.js 주석 | 「안에 사는 종류」 목록에서 `preparer` 를 뺌. 바로 위 「08-20 까지 목록에 있었다」 줄은 날짜 붙은 이력이라 남김 |
+| rnd_board/walk_box_panel.js 주석 | 08-26 실측 목록(wafer · lot → register)을 출고 샘플 v6 의 술어로 바꿈 — v6 에서 register 의 주어는 dtjob 하나 |
+| rnd_board/api.js 씨앗 서술 문구 셋 | 「그 타입으로 등록된 주어」 → 「그 타입을 이름 댄 원자가 있는 노드(주어 쪽이든 목적어 쪽이든)」, 거절 대역 문장도 서버의 새 뜻으로. 셋 다 주석이라 화면에 안 그려짐. 「키 순서 앞쪽」은 서버에서 순서를 안 재서 적지 않았습니다 |
+| closed_lists 의 prepare_implementation · PREPARED | 제품 코드에서 이름으로 읽는 자리 0. ontology_authoring_panel 하니스가 자기 상수로 `universe: 'PREPARED'` 를 들고 있어 서버의 하나 남은 우주(RELATION · 'Table columns')로 바꿈 — 95 그대로 |
+| 고정 자료 authoring_skeleton.json · authoring_inherited_plan.json | 병합한 v6 서버 코드에서 capture_*.py 로 다시 뜸. prepare 낱말이 25 · 3 줄 → 0. 읽는 하니스 explorer_form_grammar 21 · explorer_inherited_attributes 8 · explorer_path_bar 20 초록 |
+| rnd_board_reach.json 확인 | 한 id 를 건 걷기(08-25)라 v6 가 바꾼 씨앗 서술을 안 씀. prepare · lot_event · register · seed_type 0 줄(카나리아 inspected 118). rnd_board_reach 63 초록 — 그대로 둠 |
+| 서버 거절 문장 둘 | 그 문장을 고정한 클라 하니스 · 계약 0(옛 철자 「registered subject」로 셈, 같은 명령이 다른 registered 줄은 잡음) |
+
+**문서 정비**
+- 계기: 구현자가 고친 것과 같은 명령(`git grep --untracked -i -F`, 낱말 15, 카나리아 `def event_frames` 1). 낱말별 합이 보고의 수와 같았습니다(LEDGER_SCHEMA_COMPLETENESS 32 · SERVER_DEFECT_QUEUE 11 · CODE_MAP 57 = 커밋에서 고친 셋 + 54) — 계기가 같은 것을 셉니다.
+- 서로 다른 줄로 세면 17 문서 111 줄. 그중 이미 v6 표시(0b59a2f30 · ⚰️ · 취소선 · 🪦)가 붙었거나 닫힌 결함(✅) 줄, 그리고 ⚰️ 절 밑의 줄을 빼고, 나머지를 한 줄씩 열어 «지금 동작을 옛 이름으로 말하는» 문장만 고쳤습니다: PRIMITIVES(현행 짝 DirectJoinSourcePreparer) · DOC_OWNERSHIP(소유 파일 목록의 source_preparation.py → event_frame.py) · FORK_SESSION_BRIEF(v5 문법 줄에 v6 한 줄) · README(소스 다섯 절 · direct-join@1) · LEDGER_SCHEMA_COMPLETENESS(현재형으로 읽히는 절 머리 셋에 ⚰️ 한 줄 — 본문은 날짜 붙은 조사 기록이라 남김) · CODE_MAP(lot-event-role 예시 · 「현재 실물 둘」 → 하나).
+- 목록 밖 하나: WALK.md 의 서술된 씨앗 절 — 클라 씨앗 문구와 같은 사실(등록된 주어 → 이름 댄 노드 · 거절 문장)이라 절 머리에 ⚰️ 한 줄.
+- 다시 셈: 112 줄(제가 단 v6 표시 줄이 늘어서). 표시 없이 남은 37 줄은 전부 남길 이유가 있습니다 — 날짜 붙은 이력(조사 기록 D-6~D-14 · CODE_MAP 패스 기록과 재측정 메모 · 판정 196 · 08-18 릴리스 로그 · 단계 해시 표 · ✅ 검증 기록 · 소유자 판정 설명)이거나, 다른 뜻의 같은 낱말(그리드 부팅 훅 `startup({prepare})` — 은퇴와 무관)입니다. «지금 동작을 옛 이름으로 말하는» 줄은 제 판정으로 0 입니다.
+- ⚠️ 문서 정비 트리거(커밋 누적 수) 파일은 지우지 않았습니다 — 이번 정비는 v6 목록 범위이고 전체 정비가 아니라서입니다. 지울지 정해 주십시오.
+
+- 하니스: 러너 157 중 155 초록 · 알려진 빨강 2 · 막힘 0 · 계약 12 개 어긋남 0
+- 새 함수 · 새 if 중 기존 것과 같은 일: 새 함수 0 · 새 if 0 (지운 것 · 주석 · 상수 · 고정 자료 · 문서뿐).
+- 함께 푸시: 서브그래프 뷰어 + 마킹 잇기(74974d6ed · 보고 902c12f3e — 하니스 39 · 변이 18 · 실데이터 미리보기 노드 400 · 엣지 431 → Continue 뒤 노드 505 · 엣지 982).
+
 > ## [17:16 디자인] 서브그래프 뷰어 + 마킹으로 잇기 — 걷기 화면의 Graph 보기, 새 부품 SubgraphView (묶음 칩은 서버 착지 뒤) — 총괄 c9bf53033 · f6fc6ba66 · 74974d6ed
 
 - 무엇: 걷기 화면 날리기 밑에 `Table | Graph`. Graph 는 시작점을 마킹으로 걷습니다 — 페이지가 폼의 주어를 사슬 첫 마킹에 + 로 적고, 부품은 그 마킹만 실어 같은 전선(createWalkBoxWalk)을 부릅니다. 폼의 follow · collect · 손잡이는 Table 의 것이라 안 싣습니다(소유자 「start 만 있고」를 그렇게 읽음 — 서버 기본 예산). 새 라우트 0.
