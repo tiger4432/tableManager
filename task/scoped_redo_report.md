@@ -67860,3 +67860,42 @@ PG    7 failed, 161 passed, 7613 deselected in 344.11s (0:05:44) — 알려진 �
 전체  5 failed, 7566 passed, 207 skipped, 3 xfailed in 833.59s (0:13:53) — 알려진 다섯
 PG    7 failed, 161 passed, 7613 deselected in 344.88s (0:05:44) — 알려진 일곱(이름까지 같음)
 ```
+
+## [구현자 -> 총괄] c6a8c069c ㉠ 착지 4a0c69b2f — 체인 규칙 이름 바꾸기는 제자리, 이름을 붙든 기록이 있으면 거절
+
+```
+전선    POST /admin/chain/rules/raw 의 from(편집기가 연 이름, 새 규칙이면 없음) -> save_chain_rule_raw(renamed_from=)
+고침    연 규칙을 «오늘의 기존 규칙 고침» 줄로 — 자리 · enabled 그대로. 새 if 0 (찾는 이름만 from 으로)
+거절    rule_name_taken(새 이름이 이미 있음) · stale_base(연 규칙이 파일에 없음 — 다시 열라) ·
+        rule_name_held — rule_name_holders 가 옛 이름으로 찾는 기록 넷을 셈(확정 · 미처리 리플레이 사건의 only_rule(파생 이름 포함) ·
+        다른 규칙의 alignment_rule · 안 끝난 소급 실행). 문장은 Next 먼저: 「이름 유지, 꼭 필요하면 새 규칙 추가하고 이것을 끄기」 + 무엇이 몇 개
+답      바꾸기가 되면 renamed_from + note 한 줄(이 규칙이 쓴 칸은 그 행이 다음에 올 때 새 이름으로 다시 쓰임 — source_unchanged 가 작성자를 비교)
+접기    「요청 세션 아니면 내 세션」 사본 둘(이름 세기 · 리로드 알림)을 _session_of 하나로
+```
+**게이트** (tests/test_a_chain_rule_is_renamed_where_it_stands.py · 시험 열)
+```
+바꾸기 -> 규칙 수 그대로 · 같은 자리 · enabled 그대로 · 옛 이름 0(워커 재읽기 기준) · renamed_from + note
+같은 이름 저장 -> 바꾸기 아님(답에 renamed_from 없음) · 있는 이름 -> rule_name_taken · from 없는 연 규칙 -> stale_base
+from 없는 새 규칙 -> 오늘과 같음(꺼진 채 덧붙임) · 기록 넷 각각 -> rule_name_held(그 종류 · 수 · Next) · 끝난 실행·처리된 사건은 안 붙듦
+변이
+M1 the save looks the rule up by the new name (today's append)     red
+M2 a taken name is not refused                                     red
+M3 an opened rule that left the file is not refused                red
+M4 nothing holds a name                                            red
+M5 a replay event is asked about the rule's own name only          red
+M6 a finished run still holds                                      red
+M7 the rename says nothing of its cost                             red
+M8 a save under the opened name is read as a rename                red
+```
+**박스** (박스 수, 읽기만 — rule_name_holders 를 박스 규칙 13 개 각각에): 이름이 붙들린 규칙 0. 확정 기록의 이름(dt_frame_confrimation 81 · dt_job_lot_slot_attribution 14 · eqp_product_frame_attribution 2)과 alignment_rule 이 가리키는 core_frame_review 는 «지금 박스 규칙 이름이 아님» — 이미 어느 규칙에도 안 묶인 기록이라 이번 거절과 무관
+**새 함수 · 새 if 중 기존 것과 같은 일** (cdeb5ea10)
+```
+새 함수   둘 — rule_name_holders(이름을 붙든 기록 세기, 같은 일 하는 함수 0) · _session_of(사본 둘을 접은 것)
+새 if     거절 가드 셋(taken · stale · held) + from 정규화 한 줄 — 같은 일 0. 쓰기는 기존 줄
+```
+**sample alignment_rule** — 이 착지에 «없음». 가리키던 decide 선언이 09-24 에 빠진 것이라(오타 아님) 가/나/다 를 여쭌 상태 — 답 오면 따로 착지
+**스위트** (C:/wt-impl, 착지 트리)
+```
+전체  6 failed, 7575 passed, 207 skipped, 3 xfailed in 915.52s (0:15:15) — 알려진 다섯 + test_h3_cross_directory_replace_applies_physical_alter(부하 탐 — PG 와 동시에 돌 때만, 혼자 세 번 초록)
+PG    7 failed, 161 passed, 7623 deselected in 383.70s (0:06:23) — 알려진 일곱(이름까지 같음)
+```
