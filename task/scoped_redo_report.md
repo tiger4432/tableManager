@@ -68884,3 +68884,49 @@ side      cause 만 — before(원인이 말 앞) / after(원인이 말 뒤). �
 ③ 자주 나온 말에 조사 잔여(는 · 의 · 으)가 같이 세어진다 — 그대로 둠 / 최소 길이 칸 하나
 ④ 모듈 이름 server/utils/text_links.py · 함수 find_links(text, names, links) · unknown_words(texts, names, links)
 ```
+
+---
+
+## [10-01 밤] 글 원인 -> 현상 라이브러리 착지 (총괄 15a4d8e43 · 9f301f9bc) — 27978d555
+
+**무엇을 지었나**
+```
+server/utils/text_links.py   find_links(text, names, links) · unknown_words(texts, names, links) — 확인받은 그대로
+   규칙 두 줄 · 연결 말 칸 셋 · 같은 말 두 행 = 두 뜻 · suspected 가 confirmed 를 이김 · 조사 잔여 그대로 셈(칸 · 인자 0)
+   부르는 것  대소문자 notation_norm.fold_notation(case) · 빈 말 crud.is_blank_value · NaN mapper_call.without_missing · 글자 정리 crud.clean_str_value
+   거절      연결 말 행의 meaning 이 다섯 밖 · cause 행에 side 없음 -> 행 번호를 대고 ValueError
+docs/guide/TEXT_LINKS_GUIDE.md  한 장 — 표 넷 · 규칙 두 줄 · @mapper 예(sql 로 사전 읽기) · 규칙 선언(allow_retraction, 출처 = 글 id) · 사전 고친 뒤 다시 돌리기 · 남는 것 둘 · 조사 거르기는 맵퍼 몫
+시험         tests/test_a_sentence_names_its_cause_and_phenomenon.py — 모듈을 import
+```
+**게이트**
+```
+시험   16 passed in 0.33s
+       지시 표 여섯 줄 · 띄어쓰기(글 쪽 「계면미충진」 · 사전 쪽 「웨이퍼휨」) · 나열 「과」 · 추정+확인 -> suspected
+       대소문자(VOID, 적힌 그대로 돌려줌) · avoid · 두 사전이 한 «긴 말» 겨루기(「확인 필요」 > 노드 「확인」)
+       문장 번호 · 1.5 는 안 나눔 · 사전 비었음 0 · 빈 말(None · NaN · 공백) 안 맞음 · 자주 나온 말 횟수 · 거절 둘
+변이   farthest node, not nearest   -> 3 failed, 13 passed
+       spaces kept                  -> 5 failed, 11 passed
+       no ASCII word boundary       -> 1 failed, 15 passed
+       shortest phrase first        -> 1 failed, 15 passed
+       confirmed beats suspected    -> 1 failed, 15 passed
+       any text joins causes        -> 3 failed, 13 passed
+       case not folded              -> 1 failed, 15 passed
+       NaN phrase not folded        -> 1 failed, 15 passed
+속도   박스, naming phrases 1000 · link phrases 7 · texts 1000 x 20 sentences (seeded synthetic)
+       글마다 find_links 한 번(맵퍼가 부르는 모양) — 전체 10.56 s · 글 하나 9.7 ms(가운데) 중 사전 짓기 8.3 ms
+       unknown_words 전체 1.37 s · 후보 20,000 행
+       -> 비용의 대부분이 «부를 때마다 사전 짓기»다. 묶음 하나에 사전 한 번이면 줄지만 API 를 바꾸는 일이라 안 함 — 여쭐 것 ①
+```
+**새 함수 · 새 if 중 같은 일** — 새 모듈의 함수 8 (공개 2: find_links · unknown_words + 내부 6). 같은 일 0 — 대소문자 · 빈 값 · NaN · 글자 정리는 위 넷을 부른다. 새 if 중 종류 가르기 0 (거절 둘은 읽을 수 없는 행 거름)
+**스위트** (C:/wt-impl)
+```
+비PG 전체  6 failed, 7598 passed, 41 skipped, 173 deselected, 3 xfailed in 719.55s (0:11:59)
+   알려진 다섯 밖: test_the_sweep_still_runs_when_there_is_nothing_to_do -> 그 파일만 다시 3 passed in 2.06s
+```
+**여쭐 것**
+```
+① 속도 — 사전 짓기가 글마다 8.3 ms. 묶음에서 한 번만 짓게 하려면 API 가 달라진다(예: 사전을 먼저 지어 넘김). 지금 그대로 / 바꿈
+② 맵퍼가 제품 도우미를 부르는 정해진 길은 mapper_sdk 의 MAPPER_SURFACE(authoring/MAPPING_GUIDE §5-bis) — 지시대로 from utils import text_links 로 두었다.
+   표면에 두 이름을 올리면 from mapper_sdk import find_links, unknown_words — 지시 밖이라 안 함
+③ docs/README.md 의 가이드 목록에 TEXT_LINKS_GUIDE 한 줄 — 응용 레인 몫이라 안 건드림
+```
