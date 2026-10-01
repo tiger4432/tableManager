@@ -68816,3 +68816,71 @@ r1  잡 A · 키 K · v=a        r2  잡 B · 키 K · v=b        r3  잡 A · �
 ```
 센 명령: ⑧ git grep -n 'bound.call\|\.call(db' -- 'server/*.py' ':!server/tests' · 박스 규칙 수 loaded_chain_rules() ·
 ⑩ probe_per_row_speed.py · 12 probe_per_row_calls.py (둘 다 읽기 전용 세션, 박스)
+
+---
+
+## [10-01 밤] 글에서 «원인 -> 현상» 후보 — 짓기 전 (총괄 15a4d8e43) — 짝짓는 규칙 · 연결 말 칸 · 표 결과
+
+**짝짓는 규칙 두 줄**
+```
+1  원인 연결 말마다, 그 행이 적은 쪽(앞/뒤)에서 가장 가까운 노드가 원인이다 — 그 노드와 «나열 말»(과 공백)로만 이어진 노드도 원인
+2  같은 문장의 나머지 노드가 현상이다 — 원인 × 현상마다 후보 하나. 부정 · 확신은 문장 단위
+```
+둘째 · 넷째 줄(현상이 주제로 앞에 옴)이 갈리는 이유: 「가장 가까운」이 「보이드는」을 원인에서 뺀다 — 둘 사이에 나열 말이 아닌 글(「는」)이 있어서. 낱말을 코드가 아는 것이 아니라 «사전에 없는 글이 끼었다»로 갈린다.
+
+**연결 말 행의 칸 — 셋**
+```
+phrase    말
+meaning   cause · and · negation · suspected · confirmed
+side      cause 만 — before(원인이 말 앞) / after(원인이 말 뒤). 나머지는 비움
+같은 말을 두 행에 적으면 두 뜻 — 「무관」 = cause(before) 한 행 + negation 한 행
+나열도 사전 행이다 — 「,」 · 「와」 · 「과」 를 and 로. 코드에 부호 · 낱말 0
+```
+
+**맞추기 · 나누기**
+```
+대소문자   notation_norm.fold_notation 의 case 규칙을 부른다 — 같은 성질(ASCII 대소문자, 글자 수 무변이라 원문 위치가 그대로)
+띄어쓰기   이 모듈이 한다 — notation_norm 의 separator 는 구분자 «런»을 '-' 하나로 접어 「계면 미충진」->「계면-미충진」 ≠ 「계면미충진」. 여기는 공백을 «지운다»
+긴 말 이김  두 사전을 «한 묶음»으로, 왼쪽부터 가장 긴 말
+영문 경계   ASCII 글자 · 숫자로 시작/끝나는 말만 — 원문에서 그 앞/뒤가 ASCII 글자 · 숫자면 안 맞음(void ≠ avoid). 한국어 말은 경계 없음(조사가 붙는다)
+문장       줄바꿈 · 문장 끝 부호(. ! ? 。) 뒤 공백에서 나눔 — 1.5 는 안 나눔
+확신       suspected 말과 confirmed 말이 겹치지 않고 둘 다 나오면 suspected(덜 확실한 쪽) — 제안
+기존 문    저장소에서 문장 나누기 · 말 사전 맞추기를 찾음(sentence · tokeni · phrase · longest · trie · aho · synonym · casefold · 회의록) — 제품 코드에 같은 성질 0.
+           sentence 가 든 함수는 운영자 문장을 «짓는» 것들
+```
+
+**표 결과** — scratch 시제품(제품 코드 아님, notation_norm 을 import)이 낸 그대로
+```
+사전  부르는 말 bond_pressure(본딩 압력) · interface_unfilled(계면 미충진) · void(보이드, void) · wafer_warp(웨이퍼 휨)
+      연결 말 로 인해=cause(before) · 원인=cause(after) · 무관=cause(before) · 무관=negation · ,=and · 와=and · 과=and · 추정=suspected · 확인 필요=suspected · 확인=confirmed
+「본딩 압력 저하로 인해 계면 미충진 발생 추정」
+      bond_pressure -> interface_unfilled · asserted · suspected
+「보이드는 본딩 압력 저하로 인해 발생」
+      bond_pressure -> void · asserted · stated
+「보이드의 원인은 본딩 압력」
+      bond_pressure -> void · asserted · stated
+「보이드는 웨이퍼 휨과 무관 확인」
+      wafer_warp -> void · negated · confirmed
+「본딩 압력, 웨이퍼 휨으로 인해 보이드」
+      wafer_warp -> void · asserted · stated / bond_pressure -> void · asserted · stated
+「보이드 다수, 웨이퍼 휨 확인 필요」
+      후보 0
+「보이드는 본딩압력 저하로 인해 발생」
+      bond_pressure -> void · asserted · stated
+「VOID 는 본딩 압력 저하로 인해 발생」
+      bond_pressure -> void · asserted · stated
+「avoid 를 위해 본딩 압력 저하로 인해 계면 미충진」
+      bond_pressure -> interface_unfilled · asserted · stated
+「본딩 압력과 웨이퍼 휨으로 인해 계면 미충진 발생」
+      wafer_warp -> interface_unfilled · asserted · stated / bond_pressure -> interface_unfilled · asserted · stated
+사전 비었음  후보 0
+자주 나온 말(위 글 전부)  저하 5 · 발생 5 · 는 4 · 으 2 · 의 1 · 은 1 · 다수 1 · avoid 1
+```
+
+**여쭐 것**
+```
+① 규칙 두 줄 · 연결 말 칸 셋(phrase · meaning · side) 이대로 짓나
+② 확신이 둘 다 나오면 suspected — 이대로인가
+③ 자주 나온 말에 조사 잔여(는 · 의 · 으)가 같이 세어진다 — 그대로 둠 / 최소 길이 칸 하나
+④ 모듈 이름 server/utils/text_links.py · 함수 find_links(text, names, links) · unknown_words(texts, names, links)
+```
