@@ -56,17 +56,20 @@
   --orange-weak: #fdeee3;
   --overwrite: #b45309;
   --overwrite-weak: #fdf1e0;
-  /* Category palette — one set, nine, for anything coloured by its type (lead 65754c39a). Each is a role
-     above, so both themes follow; danger is left out so red keeps meaning error. Graph screens read these. */
-  --cat-1: var(--accent);
-  --cat-2: var(--accent-2);
-  --cat-3: var(--success);
-  --cat-4: var(--info);
-  --cat-5: var(--orange);
-  --cat-6: var(--warning);
-  --cat-7: var(--overwrite);
-  --cat-8: var(--text-dim);
-  --cat-9: var(--text);
+  /* Category palette — nine colours of their own for anything coloured by its type (lead 2cbd0756d). The same
+     nine hues in both themes, none near danger red. Held by layered_graph_harness [P]: apart from each other
+     and from accent/text (the viewer's rings) by dE2000 >= 15, from danger >= 20, from the other roles >= 5,
+     contrast >= 3 on --bg-inset and --bg-surface. Ordered so the first few a small declaration uses are the
+     farthest apart. */
+  --cat-1: #9c8600;
+  --cat-2: #9b61ea;
+  --cat-3: #005355;
+  --cat-4: #315300;
+  --cat-5: #1733b1;
+  --cat-6: #693b00;
+  --cat-7: #009e72;
+  --cat-8: #7a006e;
+  --cat-9: #0092c5;
   /* 그림자·인터랙션 */
   --shadow-card: 0 1px 3px rgba(30, 41, 59, 0.08), 0 1px 2px rgba(30, 41, 59, 0.05);
   --shadow-pop: 0 10px 30px rgba(30, 41, 59, 0.18);
@@ -139,6 +142,16 @@
   --orange-weak: rgba(246, 142, 72, 0.14);
   --overwrite: #f6ac43;
   --overwrite-weak: rgba(246, 172, 67, 0.16);
+  /* Category palette — the same nine hues, set for this ground (light block says what holds them). */
+  --cat-1: #877400;
+  --cat-2: #825eb9;
+  --cat-3: #00adb3;
+  --cat-4: #79a946;
+  --cat-5: #7094ee;
+  --cat-6: #d38328;
+  --cat-7: #008a63;
+  --cat-8: #cb75bc;
+  --cat-9: #007fac;
   --shadow-card: 0 2px 8px rgba(0, 0, 0, 0.35);
   --shadow-pop: 0 10px 30px rgba(0, 0, 0, 0.6);
   --row-stripe: rgba(255, 255, 255, 0.03);

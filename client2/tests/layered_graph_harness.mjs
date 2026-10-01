@@ -8,7 +8,9 @@
 //   U  the template itself: a declaration in, the tree it promises out (shapes, marks, texts, slots, presses).
 //      Its mutants are scored here - the viewer imports it from a parent folder, which the probe cannot
 //      redirect, so a template mutant reaches the screens only through this.
-//   P  「팔레트 토큰 하나」 - nine category tokens in tokens.css, and the viewer's type colours read them.
+//   P  「진짜 범주 색 아홉」 (lead 2cbd0756d) - nine category tokens of their own in each theme block of tokens.css,
+//      measured with the colour oracle against each other, the grounds, danger, the viewer's rings and the
+//      roles; the viewer's type colours read them. Its mutants rewrite tokens.css and re-run only [P].
 // The template file is also read as TEXT for one claim whose subject is its text: no domain word, no import.
 //
 // Run: node client2/tests/layered_graph_harness.mjs
@@ -20,6 +22,7 @@ import { snapshot, seatChain, seatSubgraph, CHAIN_PAYLOAD } from './lib/graph_se
 import { ChainGraphPanel } from '../src/chain_graph.js';
 import { SubgraphView } from '../src/walk/subgraph_view.js';
 import { WALK_CSS } from '../src/walk/styles.js';
+import { deltaE00, contrastRatio, over } from './oracle/colour_difference_oracle.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const TEMPLATE = path.join(HERE, '..', 'src', 'layered_graph.js');
@@ -141,14 +144,111 @@ async function screens() {
       found.length === 0 && imports === 0 && lets === 0 && /export function drawLayeredGraph/.test(code),
       JSON.stringify({ found, imports, lets }));
   }
+  return { ran: names.length, names, failures: fails };
+}
 
-  console.log('\n[P] one category palette');
+// The bars (lead 2cbd0756d). Measured through its aliases with this oracle, the role-alias set this replaced
+// stood 4.64 (light) and 7.69 (dark) apart at its nearest pair, 13.74 from danger (light) and 0 from accent.
+const BAR = Object.freeze({ apart: 15, ring: 15, danger: 20, role: 5, contrast: 3 });
+const BLOCKS = Object.freeze({ light: ':root[data-theme="light"] {', dark: ':root[data-theme="dark"] {' });
+const CATS = [1, 2, 3, 4, 5, 6, 7, 8, 9].map((k) => `cat-${k}`);
+const RING = ['accent', 'text'];
+const ROLES = ['accent-2', 'success', 'warning', 'info', 'orange', 'overwrite', 'text-dim'];
+const HEX = /^#[0-9a-fA-F]{6}$/;
+
+/** One theme block of tokens.css as { name: [values] } - every declaration of a name, so twice reads as twice. */
+function themeBlock(text, opener) {
+  const at = text.indexOf(opener);
+  if (at < 0) return {};
+  const out = {};
+  for (const m of text.slice(at + opener.length, text.indexOf('}', at)).matchAll(/^\s*--([\w-]+):\s*([^;]+);/gm)) {
+    (out[m[1]] = out[m[1]] || []).push(m[2].trim());
+  }
+  return out;
+}
+
+/** The same text with one declaration inside one theme block rewritten (null removes it). Throws if it is not there. */
+function setToken(text, theme, name, value) {
+  const at = text.indexOf(BLOCKS[theme]);
+  const end = text.indexOf('}', at);
+  const line = new RegExp(`^([ \\t]*--${name}:\\s*)[^;]+;[^\\S\\r\\n]*(\\r?\\n)`, 'm');
+  const body = text.slice(at, end);
+  if (at < 0 || !line.test(body)) throw new Error(`mutation anchor is GONE: --${name} in ${theme}`);
+  return text.slice(0, at) + body.replace(line, value == null ? '' : `$1${value};$2`) + text.slice(end);
+}
+
+function paletteSuite(text) {
+  const names = [];
+  const fails = [];
+  const say = (name, cond, detail) => {
+    names.push(name);
+    if (cond) { console.log(`  PASS ${name}`); return; }
+    fails.push(name);
+    console.log(`  FAIL ${name}${detail ? ' -- ' + detail : ''}`);
+  };
+  const themes = Object.fromEntries(Object.entries(BLOCKS).map(([t, o]) => [t, themeBlock(text, o)]));
+  const one = (t, n) => ((themes[t][n] || []).length === 1 ? themes[t][n][0] : null);
+  const colour = (t, n) => (HEX.test(one(t, n) || '') ? one(t, n) : null);
+  const cats = (t) => CATS.map((c) => [c, colour(t, c)]).filter(([, v]) => v);
+  /** The nearest of the nine to any of `others` (names in the same block), by the oracle. */
+  const nearest = (t, others) => {
+    let d = Infinity, at = '';
+    for (const [c, v] of cats(t)) {
+      for (const o of others) {
+        const w = colour(t, o);
+        if (w && deltaE00(v, w) < d) { d = deltaE00(v, w); at = `${c}~${o}`; }
+      }
+    }
+    return { d: Math.round(d * 100) / 100, at };
+  };
+  const r2 = (x) => Math.round(x * 100) / 100;
+  // P2-P6 measure only a WHOLE population - nine colours and every reference in both blocks. A min over what
+  // could be read would turn an unreadable palette (today's var() aliases) into Infinity, i.e. green.
+  const measured = Object.fromEntries(Object.keys(BLOCKS).map((t) => [t, cats(t).length]));
+  const whole = Object.values(measured).every((n) => n === 9) && Object.keys(BLOCKS).every((t) =>
+    ['bg-inset', 'bg-surface', 'danger', ...RING, ...ROLES].every((n) => colour(t, n)));
+
+  console.log('\n[P] the category palette - nine of its own in each theme');
   {
-    const tokens = [1, 2, 3, 4, 5, 6, 7, 8, 9].map((k) => (TOKENS.match(new RegExp(`--cat-${k}:`, 'g')) || []).length);
-    const canary = (TOKENS.match(/--accent:/g) || []).length;
+    const openers = Object.values(BLOCKS).map((o) => text.split(o).length - 1);
+    const counts = Object.fromEntries(Object.keys(BLOCKS).map((t) => [t, CATS.map((c) => (themes[t][c] || []).length)]));
+    const own = Object.keys(BLOCKS).every((t) => CATS.every((c) => colour(t, c)));
+    const grounds = Object.keys(BLOCKS).every((t) => ['bg-inset', 'bg-surface', 'danger', ...RING, ...ROLES].every((n) => colour(t, n)));
     const reads = [0, 1, 2, 3, 4, 5, 6, 7, 8].every((k) => WALK_CSS.includes(`.sg-type-${k} { --sg-c: var(--cat-${k + 1}); }`));
-    say('P1 nine category tokens, each once, and the viewer\'s nine type colours read them in order',
-      canary > 0 && tokens.every((n) => n === 1) && reads, JSON.stringify({ tokens, canary, reads }));
+    say('P1 nine category tokens, once in each theme block, each a colour of its own; the viewer\'s nine type colours read them in order',
+      openers.every((n) => n === 1) && Object.values(counts).every((a) => a.every((n) => n === 1)) && own && grounds && reads,
+      JSON.stringify({ openers, counts, own, grounds, reads }));
+  }
+  {
+    const apart = Object.fromEntries(Object.keys(BLOCKS).map((t) => {
+      let d = Infinity, at = '';
+      const cs = cats(t);
+      cs.forEach(([a, x], i) => cs.slice(i + 1).forEach(([b, y]) => { if (deltaE00(x, y) < d) { d = deltaE00(x, y); at = `${a}~${b}`; } }));
+      return [t, { d: r2(d), at }];
+    }));
+    say(`P2 the nine are apart from each other in each theme (dE2000 >= ${BAR.apart})`,
+      whole && Object.values(apart).every((x) => x.d >= BAR.apart), JSON.stringify({ measured, apart }));
+  }
+  {
+    const low = Object.fromEntries(Object.keys(BLOCKS).map((t) => [t, r2(Math.min(...cats(t).flatMap(([, v]) =>
+      ['bg-inset', 'bg-surface'].filter((g) => colour(t, g)).map((g) => contrastRatio(v, colour(t, g))))))]));
+    say(`P3 each stands off its theme's grounds, --bg-inset and --bg-surface (contrast >= ${BAR.contrast})`,
+      whole && Object.values(low).every((x) => x >= BAR.contrast), JSON.stringify({ measured, low }));
+  }
+  {
+    const d = Object.fromEntries(Object.keys(BLOCKS).map((t) => [t, nearest(t, ['danger'])]));
+    say(`P4 none is near danger red, so red keeps meaning error (dE2000 >= ${BAR.danger})`,
+      whole && Object.values(d).every((x) => x.d >= BAR.danger), JSON.stringify({ measured, d }));
+  }
+  {
+    const d = Object.fromEntries(Object.keys(BLOCKS).map((t) => [t, nearest(t, RING)]));
+    say(`P5 none is near accent or text, the viewer's ring and chip colours (dE2000 >= ${BAR.ring})`,
+      whole && Object.values(d).every((x) => x.d >= BAR.ring), JSON.stringify({ measured, d }));
+  }
+  {
+    const d = Object.fromEntries(Object.keys(BLOCKS).map((t) => [t, nearest(t, ROLES)]));
+    say(`P6 none is one of the other role colours (dE2000 >= ${BAR.role})`,
+      whole && Object.values(d).every((x) => x.d >= BAR.role), JSON.stringify({ measured, d }));
   }
   return { ran: names.length, names, failures: fails };
 }
@@ -197,6 +297,38 @@ const failures = [];
        title: '\n  [mutants] - each must be caught by the check it names.' });
   pass += MUTANTS.length - scored.wrong;
   for (let i = 0; i < scored.wrong; i += 1) failures.push(`mutant verdict ${i + 1}`);
+
+  const pal = paletteSuite(TOKENS);
+  pass += pal.ran - pal.failures.length;
+  failures.push(...pal.failures);
+  // Each rewrites tokens.css from its own values (no colour typed here) and re-runs [P] alone.
+  const tokenOf = (t, n) => themeBlock(TOKENS, BLOCKS[t])[n][0];
+  const T = (id, what, catches, mutate) => ({ id, what, catches, mutate });
+  const TOKEN_MUTANTS = [
+    T('K1', 'two of the nine are one colour again (the orange three)', 'P2',
+      (s) => setToken(s, 'light', 'cat-7', tokenOf('light', 'cat-6'))),
+    T('K2', 'a category goes back to a role alias', 'P1',
+      (s) => setToken(s, 'light', 'cat-1', 'var(--accent)')),
+    T('K3', 'a category is danger red', 'P4',
+      (s) => setToken(s, 'dark', 'cat-3', tokenOf('dark', 'danger'))),
+    T('K4', 'a category washes out on its ground', 'P3',
+      (s) => setToken(s, 'light', 'cat-5', over(tokenOf('light', 'cat-5'), 0.3, tokenOf('light', 'bg-surface')))),
+    T('K5', 'a category is the ring colour', 'P5',
+      (s) => setToken(s, 'dark', 'cat-9', tokenOf('dark', 'accent'))),
+    T('K6', 'a category is a role colour', 'P6',
+      (s) => setToken(s, 'light', 'cat-4', tokenOf('light', 'success'))),
+    T('K7', 'the dark block loses a category, so the light one shows through', 'P1',
+      (s) => setToken(s, 'dark', 'cat-9', null)),
+  ];
+  const tok = await scoreMutants(TOKEN_MUTANTS, async (mu) => {
+    const text = mu.mutate(TOKENS);
+    const quiet = console.log;
+    console.log = () => {};
+    try { return paletteSuite(text); } finally { console.log = quiet; }
+  }, { baselineRan: pal.ran, baselineNames: pal.names,
+       title: '\n  [token mutants] - each must be caught by the check it names.' });
+  pass += TOKEN_MUTANTS.length - tok.wrong;
+  for (let i = 0; i < tok.wrong; i += 1) failures.push(`token mutant verdict ${i + 1}`);
 }
 
 console.log(`\n════ RESULT: ${pass} passed, ${failures.length} failed ════`);
