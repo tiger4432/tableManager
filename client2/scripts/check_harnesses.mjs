@@ -1411,6 +1411,9 @@ const FLOORS = new Map([
   // a press marks into the store, Continue walks that marking onto the same picture; bundle chips
   // (lead 1d07f1dae): one per bundle answered, a press expands it on the same picture.
   ['subgraph_view_harness.mjs', 52],
+  // New (lead 65754c39a): the one layered-SVG template - both screens draw their pinned pictures, two
+  // declarations on one page apart, the template's own slots/shapes/texts/presses, the category tokens.
+  ['layered_graph_harness.mjs', 21],
   // a value carrying markup does not come back out as markup, and the backlog has a ceiling
   ['escaping_harness.mjs', 56],
   // clicking a derived route fills follow, and a later-hop predicate stays visible
@@ -1604,7 +1607,7 @@ const FLOORS = new Map([
   // 19 -> 24 (lead bed890af2): `localShortOrAsSent`, the one spelling of the sources panel's two clocks.
   // 24 -> 28 (lead e573a6edf): `localSpan`, the failure line's one-day span.
   ['server_time_harness.mjs', 28],
-  ['chain_graph_harness.mjs', 91],
+  ['chain_graph_harness.mjs', 106],
   // 39 -> 46 (lead 13aa739f3 · 2f2a2f570): idle · the server's on-demand word · its next action.
   ['runtime_panel_harness.mjs', 46],
   ['reference_view_head_harness.mjs', 87],

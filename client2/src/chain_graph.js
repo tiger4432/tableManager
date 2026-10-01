@@ -15,6 +15,8 @@
 // ⛔ 설명 문구 «0» (상설). 원에 표 이름, 선에 종류, 그 밖에 문장이 없습니다.
 // ═══════════════════════════════════════════════════════════════════════════════
 
+import { drawLayeredGraph, slotXY } from './layered_graph.js';
+
 /**
  * 엣지 종류 넷. 순서는 «범례»의 순서이고 판정이 아닙니다.
  *
@@ -91,14 +93,16 @@ export function layersOf(nodes, edges) {
 // ── 배치의 «세» 수. 소유자 2026-09-11 「체인 그래프를 줄여」 뒤로 라벨이 겹치지 않는 최소로.
 //    ⚠️ 원은 r=12 라 세로 간격은 24 «초과»여야 원끼리 안 닿고, 라벨은 11px 이라 x+18 에서
 //       시작해 가로로 «다음 층»을 침범하면 안 됩니다. 두 성질을 하니스가 수로 단언합니다.
-const NODE_GAP_Y = 30;
-const LAYER_GAP_X = 170;
-const MARGIN = 20;
+/** The chain's own geometry (lead 65754c39a: each screen declares it; the template places by it). */
+const GEOMETRY = Object.freeze({ margin: 20, gapX: 170, gapY: 30, r: 12, labelDx: 18 });
+const NODE_GAP_Y = GEOMETRY.gapY;
+const LAYER_GAP_X = GEOMETRY.gapX;
+const MARGIN = GEOMETRY.margin;
 
 /** 원의 반지름. 간격 단언이 이 수를 읽으므로 그리는 자리와 «같은 상수»여야 합니다. */
-const NODE_R = 12;
+const NODE_R = GEOMETRY.r;
 /** 라벨이 원에서 떨어지는 거리. 위와 같은 이유로 상수입니다. */
-const LABEL_DX = 18;
+const LABEL_DX = GEOMETRY.labelDx;
 
 /**
  * 배치가 «겹치지 않나» — 수로 답합니다.
@@ -209,8 +213,7 @@ export function chainGraphView(payload) {
       id: node.id,
       label: node.label || node.id,
       layer: column,
-      x: MARGIN + column * LAYER_GAP_X,
-      y: MARGIN + row * NODE_GAP_Y,
+      ...slotXY(GEOMETRY, column, row),
       // 「꺼져 있다」는 «값»입니다. 키가 없으면 끈 적이 없는 것이라 흐리게 그리지 않습니다.
       // ⚠️ 오늘 라우트의 «노드»는 `enabled` 도 `opt_in` 도 «안 실어 보냅니다»(실측:
       //    `{id, kind, declared, wakes}`). `enabled` 는 «엣지»에 있습니다. 그래서 이 두 칸은
@@ -271,7 +274,6 @@ export function chainGraphView(payload) {
   };
 }
 
-const SVG_NS = 'http://www.w3.org/2000/svg';
 
 export class ChainGraphPanel {
   constructor(mount, deps = {}) {
@@ -284,14 +286,6 @@ export class ChainGraphPanel {
     this.mount.appendChild(this.root);
     // 🔴 클릭이 고른 표. 선택은 «부품의» 상태이고 그래프의 값이 아닙니다.
     this.selected = null;
-  }
-
-  _svg(tag, attrs) {
-    const el = this.doc.createElementNS(SVG_NS, tag);
-    for (const [key, value] of Object.entries(attrs || {})) {
-      if (value !== undefined && value !== null) el.setAttribute(key, String(value));
-    }
-    return el;
   }
 
   /** @param {object|null} payload `GET /chain/graph` 의 응답, 못 읽었으면 `null` */
@@ -340,49 +334,29 @@ export class ChainGraphPanel {
     //    늘립니다 — 층이 적고 행이 많은 체인(45 노드 / 3 층)에서 그 비율이 세로로 길어
     //    한 그림이 화면 몇 장이 됐습니다. 여기서 1 단위 = 1 px 로 못 박으면 라벨 11px 이
     //    11px 로 남고, «상자»가 높이를 맡습니다(`--graph-max-height`, 넘치면 상자 안 스크롤).
-    const svg = this._svg('svg', {
-      class: 'chain-graph', viewBox: `0 0 ${width} ${height}`,
-      width, height, preserveAspectRatio: 'xMinYMin meet',
-    });
-
-    // 선을 «먼저» 그립니다 — 원 밑으로 지나가야 원이 가려지지 않습니다.
-    for (const edge of view.edges) {
-      if (edge.x1 === undefined || edge.x2 === undefined) continue;   // 끝이 없는 변은 못 그립니다
-      svg.appendChild(this._svg('line', {
-        class: edge.className, x1: edge.x1, y1: edge.y1, x2: edge.x2, y2: edge.y2,
-        'data-kind': edge.kind,
+    // Declared into the one layered drawer (lead 65754c39a): the chain's classes, data and marks.
+    const { box } = drawLayeredGraph(this.doc, {
+      geometry: GEOMETRY, boxClass: 'chain-graph-box', svgClass: 'chain-graph', width, height,
+      // An edge without both ends cannot be drawn.
+      edges: view.edges.filter((edge) => edge.x1 !== undefined && edge.x2 !== undefined).map((edge) => ({
+        x1: edge.x1, y1: edge.y1, x2: edge.x2, y2: edge.y2,
         // 값이 «없으면 칸도 없습니다» — 빈 속성은 「파일에서 왔다」로 읽힙니다.
-        'data-origin': edge.origin,
-        'data-rule': edge.rule,
-      }));
-    }
-
-    for (const node of view.nodes) {
-      const group = this._svg('g', {
-        class: 'cg-node' + (node.dim ? ' is-dim' : '') + (node.inCycle ? ' is-cycle' : '') + (node.declaredSelf ? ' is-declared-self' : '')
-          + (node.undeclared ? ' is-undeclared' : '')
-          + (node.kind === 'ledger' ? ' is-ledger' : ''),
-        'data-node': node.id,
-      });
-      group.appendChild(this._svg('circle', { cx: node.x, cy: node.y, r: NODE_R }));
-      const label = this._svg('text', { x: node.x + LABEL_DX, y: node.y + 4 });
-      label.textContent = node.label;
-      group.appendChild(label);
-      // 옵트인은 «표시 하나»입니다. 문장이 아닙니다.
-      if (node.optIn) {
-        const mark = this._svg('text', { class: 'cg-optin', x: node.x - 4, y: node.y - 16 });
-        mark.textContent = '◦';
-        group.appendChild(mark);
-      }
-      if (group.addEventListener) {
-        group.addEventListener('click', () => { this.select(node.id); });
-      }
-      svg.appendChild(group);
-    }
+        attrs: { class: edge.className, 'data-kind': edge.kind, 'data-origin': edge.origin, 'data-rule': edge.rule },
+      })),
+      nodes: view.nodes.map((node) => ({
+        id: node.id, x: node.x, y: node.y, label: node.label,
+        attrs: {
+          class: 'cg-node' + (node.dim ? ' is-dim' : '') + (node.inCycle ? ' is-cycle' : '') + (node.declaredSelf ? ' is-declared-self' : '')
+            + (node.undeclared ? ' is-undeclared' : '')
+            + (node.kind === 'ledger' ? ' is-ledger' : ''),
+          'data-node': node.id,
+        },
+        // 옵트인은 «표시 하나»입니다. 문장이 아닙니다.
+        marks: node.optIn ? [{ dx: -4, dy: -16, text: '◦', attrs: { class: 'cg-optin' } }] : [],
+        onPress: () => { this.select(node.id); },
+      })),
+    });
     // 상자는 «자기 것»입니다 — 그림이 커도 페이지가 안 늘어나고, 스크롤이 이 안에서 납니다.
-    const box = this.doc.createElement('div');
-    box.className = 'chain-graph-box';
-    box.appendChild(svg);
     this.root.appendChild(box);
     // 🔴 표를 못 칠하는 고리도 «말해집니다». 문장은 서버의 것이고 여기서 다시 쓰지 않습니다.
     for (const note of view.cycleNotes || []) {
