@@ -67692,3 +67692,50 @@ V3 delete makes no view                            빨강  (1 failed, 8 passed, 
 전체  5 failed, 7585 passed, 200 skipped, 3 xfailed in 850.79s (0:14:10) — 실패 5 개, 알려진 다섯과 같음: True
 PG    7 failed, 154 passed, 7632 deselected, 61 warnings in 326.72s (0:05:26) — 실패 이름이 알려진 일곱과 같음: True
 ```
+
+## [구현자 -> 총괄] 204a50bd2 착지 77a5f264c — 새 가지는 기본 그대로 만들어지고, 안 만든 가지는 이름 대어 거절
+
+```
+①  bootstrap 의 시작 파일 판정 = 로더의 잣대 resolve_declarations
+    안 맞는 선언은 그것만 이름 대어 빠지고, 거절은 config_level(파일 전체 문제)만
+    새 판정자 0 — load_setup · ledger.config.load 가 부르는 그 함수. 사본은 기본 파일 그대로
+    기본의 첫 파일(빈 root)도 같은 길 — 선언이 없어서 전에 거절이던 것은 지금도 거절
+②  active() 의 같은 자리 — 로더가 FileNotFoundError 로 실패하고 그 root 가 정말 없을 때만
+    400 world_not_created 「Next: create the branch first - <root> is not there」
+    root 가 있는데 난 FileNotFoundError 는 그대로 올라감(가지 없음으로 잘못 부르지 않음)
+    ⚠️ 처음엔 active() 맨 앞에서 root 유무만 물었고, 주입 로더로 없는 root 에서 도는 기존 시험 셋이 빨개짐 -> 로더 실패 뒤로 옮김
+```
+**게이트 — 박스 선언 사본** (총괄 repro 그대로: 격리 데이터 뿌리 · TestClient · DB 두 걸음 막음. 박스 선언 = 박스 수)
+```
+                          전 (origin)                후
+기본에서 빠지는 선언               9                         9
+bootstrap t1              400 bootstrap_invalid     200
+t1 파일 == 기본 선언            False                     True
+view t1                   500                       200
+drafts/new t1 (entity)    500                       200 · draft_id
+changed_sources(t1)       FileNotFoundError         []
+view t9 (안 만든 가지)         500                       400 world_not_created
+drafts/new t9             500                       400 world_not_created
+```
+⚠️ repro 의 drafts/new 는 kind "entities" 였고 그 낱말은 400 unauthorable_kind 입니다 — 만들 수 있는 kind 는 "entity". 위 표는 "entity" 로 잼
+
+**시험** (추적 데이터 — 출하 선언 + 거절 소스 하나 픽스처, test_ontology_config_explorer)
+```
+가지가 기본에서 만들어짐 · 파일 == 기본 · 거절 소스가 이름 대어 빠짐 · 새 entity 초안 생김
+안 만든 가지의 view · 초안 -> world_not_created, Next 먼저 · root 가 있는 FileNotFoundError 는 그대로
+변이
+M1 starting file held to every declaration validating  red   test_a_branch_starts_from_a_base_that_has_a_refused_source
+M2 missing root not named                              red   test_a_branch_not_made_yet_is_refused_by_name_with_the_next_action_first
+M3 every FileNotFoundError named as a missing branch   red   test_a_branch_not_made_yet_is_refused_by_name_with_the_next_action_first
+```
+**새 함수 · 새 if 중 기존 것과 같은 일** (cdeb5ea10)
+```
+새 함수   0
+새 if     1 — 「root 가 있으면 다시 올림」. _file_stamp 의 is_dir 과 같은 물음을 다른 일(거절 이름 가르기)에 씀
+지움      import 1 (validate_bundle_errors — 이 모듈에서 쓰는 곳이 0 이 됨)
+```
+**스위트** (C:/wt-impl, 착지 트리)
+```
+전체  5 failed, 7587 passed, 200 skipped, 3 xfailed in 839.39s (0:13:59) — 알려진 다섯
+PG    7 failed, 154 passed, 7634 deselected in 333.43s (0:05:33) — 알려진 일곱(이름까지 같음)
+```
