@@ -151,8 +151,9 @@ strip 뒤 길이가 0 이면 — NULL 이고, 키를 «견주는» 자리에서�
 거절   `object.value_type` 이 넷 밖이면 `unsupported_value_type`
       `timestamp` 값인데 바인딩에 시간대가 없거나 이상하면 `invalid_timezone`
       선언 안 된 컬럼을 바인딩하면 `unknown_column` · 은퇴한 타입을 내는 문장은 «이름 대어» 거절
-      한 문장이 «양 끝을 같은 신원»으로 읽으면 자기 엣지로 거절 · `cardinality: one` 위반은 쓰기에서 분자째 거절
-      ⚠️ 10-01: 그 거절은 운영 모양에서 안 난다 — 선언 키 `…@1` 과 원자 술어(버전 뗀 이름)가 달라 늘 거짓(`918f49ccc`, 수리 전)
+      한 문장이 «양 끝을 같은 신원»으로 읽으면 자기 엣지로 거절 · ~~`cardinality: one` 위반은 쓰기에서 분자째 거절~~
+      🆕 10-01 `051c7c187`: `cardinality: one` 은 쓰기에서 아무것도 안 한다(거절 · 대체 표지 은퇴, 판정 256 뒤집음) —
+      걷기가 읽을 때 (주어, 술어)마다 occurred_at 이 가장 늦은 사실을 지금 것으로 그린다
 🔵 깨진 선언 하나는 «혼자» 떨어진다(로더가 어느 것인지 말한다) — 나머지 선언은 그대로 돈다
 ```
 📎 [ledger_declaration_by_example](./config/ledger_declaration_by_example.md) — «두 줄»의 정본 ·
