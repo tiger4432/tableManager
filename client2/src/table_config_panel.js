@@ -88,7 +88,7 @@ export function columnsFromPaste(rows, held) {
  * the typed columns not shown, row 2 the document's type words as they are, row 3 `key` under the key.
  * Pasted back untouched, it changes nothing but what was hidden. Pure.
  * @param {object|null} held  the document as it stands
- * @returns {string[][]}
+ * @returns {{rows: string[][], note: string}}  `note`: why there is no key row, when there is a key
  */
 export function columnsToSheet(held) {
   const doc = held && typeof held === 'object' && !Array.isArray(held) ? held : {};
@@ -98,11 +98,15 @@ export function columnsToSheet(held) {
   const rows = [columns, columns.map((name) => (types[name] === undefined ? '' : String(types[name])))];
   const parts = Array.isArray(doc.composite_key_source) ? doc.composite_key_source.map(String) : [];
   const single = isBlank(doc.business_key) ? '' : String(doc.business_key);
-  // 🔴 BOTH SPELLINGS cannot be written in three rows: one key reads back as business_key and more as
-  //    composite_key_source. So no key row, and a paste back keeps both (asked of the lead, 72aa14785).
-  const keys = single && parts.length ? [] : (parts.length ? parts : (single ? [single] : []));
+  // 🔴 ROW 3 ONLY WHEN THE THREE ROWS CAN WRITE THIS TABLE'S KEY AS IT IS (lead 72aa14785): one key reads
+  //    back as business_key and more as composite_key_source. A table holding both spellings, or a
+  //    composite of one column, gets no key row - a paste back keeps its key - and the copy says why.
+  const keys = single && !parts.length ? [single] : (!single && parts.length > 1 ? parts : []);
   if (keys.length) rows.push(columns.map((name) => (keys.includes(name) ? KEY_MARK : '')));
-  return rows;
+  const note = keys.length || (!single && !parts.length) ? ''
+    : (single ? 'Key row left out · this table has both business_key and composite_key_source'
+      : 'Key row left out · a composite_key_source of one column reads back as business_key');
+  return { rows, note };
 }
 
 const keyText = (d) => {

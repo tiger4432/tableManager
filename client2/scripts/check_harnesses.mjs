@@ -269,7 +269,12 @@ const FLOORS = new Map([
   // 66 -> 72 (lead c6a8c069c, ba5e1eaad: the empty-paste guard measured (A7, C9, P14); type and key words in any case (A8, P15, P16)).
   // 72 -> 89 (lead 72aa14785, [10] E1-E9 and P17-P24): the columns copied out as the sheet the box reads,
   // every sample table round tripped, a column coming into view said.
-  ['table_config_panel_harness.mjs', 89],
+  // 89 -> 93 (lead 72aa14785 answer): row 3 only when the three rows can write the key as it is, and a
+  // copy that leaves it out says why (E10 E11, P25 P26).
+  ['table_config_panel_harness.mjs', 93],
+  // New with lead 72aa14785: the shared clipboard writer (moved from map_editor.js) run as it ships -
+  // the map harnesses replace its name and the table harness injects its own, so nothing else runs it.
+  ['clipboard_write_harness.mjs', 8],
   // CHAIN RULE. The one this exists for beyond the table's two: a saved rule may not be
   // a RUNNING rule. The server writes a new rule with `enabled: false` because the loader
   // re-reads on reload, so saving would otherwise arm and fire at once - and if the screen
