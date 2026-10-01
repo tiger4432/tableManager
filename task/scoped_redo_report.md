@@ -67817,3 +67817,30 @@ M10 conflicts compare qualifiers too     red   test_the_same_object_with_another
 전체  5 failed, 7566 passed, 207 skipped, 3 xfailed in 759.38s (0:12:39) — 알려진 다섯
 PG    7 failed, 161 passed, 7613 deselected in 369.20s (0:06:09) — 알려진 일곱(이름까지 같음)
 ```
+
+## [구현자 -> 총괄] ec01b42de 바로잡음 착지 5a7f2592e — 세 문의 같은 다섯 줄을 함수 하나로
+
+```
+바꾼 것   bootstrap · 초안 반영 · 선언 삭제 세 문이 각자 들던 다섯 줄(import 둘 · ensure_world · refresh_world_view)
+         -> 라우터의 _world_after_write(world) 하나를 셋이 부름. 동작은 같음
+CODE_MAP  세 문 줄에 그 함수 이름
+```
+**게이트** (PG, 문마다 시험 하나)
+```
+M1 door bootstrap does not call it           red   test_a_branch_made_through_bootstrap_is_walked_before_anything_is_translated
+M2 door delete_declaration does not call it  red   test_a_deleted_declaration_takes_its_default_atoms_out_of_the_view
+M3 door activate does not call it            red   test_a_save_that_changes_a_source_takes_its_default_atoms_out_of_the_view
+M4 the helper refreshes no view              red   test_a_branch_made_through_bootstrap_is_walked_before_anything_is_translated, test_a_deleted_declaration_takes_its_default_atoms_out_of_the_view, test_a_save_that_changes_a_source_takes_its_default_atoms_out_of_the_view
+```
+**새 함수 · 새 if 중 기존 것과 같은 일** (cdeb5ea10)
+```
+새 함수   하나(_world_after_write) — 사본 셋을 접은 것. 같은 일을 하는 다른 함수 0
+새 if     0
+```
+⚠️ ec01b42de 보고에 적은 「모으면 새 함수라 안 모음」은 틀렸습니다 — 앞으로 사본이 둘 이상이면 모읍니다.
+
+**스위트** (C:/wt-impl, 착지 트리)
+```
+전체  6 failed, 7565 passed, 207 skipped, 3 xfailed in 783.57s (0:13:03) — 알려진 다섯 + test_config_reload_integrity::test_inv_9_1 (파일 감시가 디바운스 재적재를 기다리는 시간 시험. PG 스위트와 동시에 돌 때 빨강, 혼자 세 번 돌려 세 번 초록. 이 변경은 라우터만 만짐)
+PG    7 failed, 161 passed, 7613 deselected in 344.11s (0:05:44) — 알려진 일곱(이름까지 같음)
+```
