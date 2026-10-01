@@ -526,6 +526,34 @@ async function pasteSuite(m) {
       JSON.stringify({ added, opened, saves: saves.length }));
   }
 
+  console.log('\n[12] the new-name word is the registry\'s, the value under it is one (lead 0cb2ab958)');
+  {
+    const addOn = (registry, payload, cls) => {
+      const opened = [];
+      const d = makeDoc();
+      const h = d.createElement('div');
+      const p = new m.Panel(h, { doc: d, storage: null, onOpen: (name, extra) => { opened.push([name, extra]); } }, registry);
+      p.render(payload);
+      tap(byClass(h, `${cls}-add`)[0]);
+      p.render({ ...payload, [registry.nameKey]: undefined, declaration: undefined, raw: undefined }, { forNew: true });
+      const picker = byClass(h, `${cls}-picker`)[0];
+      const marked = picker ? picker.children.filter((o) => o.getAttribute('selected')) : [];
+      const one = marked.length === 1 ? marked[0] : null;
+      opened.length = 0;
+      // Choosing the marked option, by the value the DOM holds, opens nothing.
+      if (one && picker._on && picker._on.change) picker._on.change({ target: { value: one.value } });
+      return { value: one && one.value, word: one && one.textContent, opened: opened.length };
+    };
+    const table = addOn(m.TABLE_REGISTRY, PASTE_PAYLOAD, 'table-config');
+    const chain = addOn(m.CHAIN_RULE_REGISTRY, CHAIN_PAYLOAD, 'chain-rule');
+    say('H1 Add table: the picker says (new table), its value the one marker',
+      table.word === '(new table)' && table.value === m.NEW_NAME, JSON.stringify(table));
+    say('H2 Add rule: the picker says (new rule) as before', chain.word === '(new rule)' && chain.value === m.NEW_NAME,
+      JSON.stringify(chain));
+    say('H3 choosing that option opens nothing, on both', table.opened === 0 && chain.opened === 0,
+      JSON.stringify([table.opened, chain.opened]));
+  }
+
   console.log('\n[9] the chain rules screen is not touched');
   {
     const doc = makeDoc();
@@ -575,7 +603,7 @@ async function pasteSuite(m) {
   const chain = await import('../src/chain_rule_panel.js');
   const tsv = await import('../src/tsv.js');
   const real = { ...registry, Panel: template.RawRegistryPanel, CHAIN_RULE_REGISTRY: chain.CHAIN_RULE_REGISTRY,
-    parseTsv: tsv.parseTsv, serializeTsv: tsv.serializeTsv, PASTE_HERE: template.PASTE_HERE };
+    parseTsv: tsv.parseTsv, serializeTsv: tsv.serializeTsv, PASTE_HERE: template.PASTE_HERE, NEW_NAME: template.NEW_NAME };
   const base = await pasteSuite(real);
   pass += base.ran - base.failures.length;
   failures.push(...base.failures);
@@ -623,6 +651,16 @@ async function pasteSuite(m) {
     T('P35', 'Ctrl+S saves while Save is off', 'G2',
       '    this._saveNow = (picked || !root) && !off ? runSave : null;\n',
       '    this._saveNow = (picked || !root) ? runSave : null;\n'),
+    T('P38', 'the picker shows the marker value, not the registry\'s word', 'H1',
+      '    if (this.newMode && this.spec.addLabel) opt(NEW_NAME, true, this.spec.newName);\n',
+      '    if (this.newMode && this.spec.addLabel) opt(NEW_NAME, true);\n'),
+    R('P39', 'the table registry declares no new-name word', 'H1',
+      "  newName: '(new table)',\n", ''),
+    T('P40', 'every registry shows the table word', 'H2',
+      '    if (this.newMode && this.spec.addLabel) opt(NEW_NAME, true, this.spec.newName);\n',
+      "    if (this.newMode && this.spec.addLabel) opt(NEW_NAME, true, '(new table)');\n"),
+    T('P41', 'the option\'s value is its word, so choosing it opens a table of that name', 'H3',
+      '      o.value = value;\n', '      o.value = word;\n'),
     T('P37', 'no paste is spelled as the name of nothing picked', 'D3',
       '    this._pasted = null;\n    this._pasteRefused = null;\n', "    this._pasted = '';\n    this._pasteRefused = null;\n"),
     T('P36', 'every registry turns off with nothing picked, not only the one that declares the word', 'D3',
