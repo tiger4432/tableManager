@@ -843,6 +843,21 @@ body.resizing-active .history-sidebar {
   user-select: none;
 }
 
+/* Image cell (lead 191912ce2): the value as written, and a mark that opens the picture. */
+.cell-image { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
+.cell-image-open { flex: none; padding: 0 var(--space-1); border: 1px solid var(--accent); border-radius: 0;
+  background: transparent; color: var(--accent); font: inherit; line-height: 1.2; cursor: pointer; }
+.cell-image-open:hover { background: var(--accent-weak); }
+.cell-image-ref { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Its preview: one box, fixed beside the cell, capped by the token, never in the pointer's way. */
+.image-preview { position: fixed; z-index: 1000; box-sizing: border-box; max-width: var(--image-preview-max);
+  max-height: var(--image-preview-max); padding: var(--space-2); background: var(--bg-surface);
+  border: 1px solid var(--border); box-shadow: var(--shadow-pop); pointer-events: none; overflow: hidden; }
+.image-preview-img { display: block; max-width: 100%; max-height: calc(var(--image-preview-max) - 2 * var(--space-2)); }
+.image-preview.is-refused .image-preview-img { display: none; }
+.image-preview-why { font-size: var(--fs-label); color: var(--text); overflow-wrap: anywhere; }
+.image-preview-why:empty { display: none; }
+
 /* Buttons (.glass-btn) are the base layer's (base.css). */
 .glass-btn.hover-danger:hover {
   border-color: var(--danger);

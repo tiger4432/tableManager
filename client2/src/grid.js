@@ -1,5 +1,5 @@
 import { createGrid } from 'ag-grid-community';
-import { pageLimit } from './config.js';
+import { pageLimit, API_BASE } from './config.js';
 import { state, updateVisibleColIndexMap, joinResolvedColumn, visibleRangeColIds } from './state.js';
 import { notANumber, unitText } from './ui_words.js';
 // C-107. 「쓸 수 있나」는 한 규칙이 답합니다 — 편집 진입도 쓰기의 문입니다.
@@ -22,6 +22,8 @@ import { applyValueToSelectedRange, updateSelectedCellUI } from './ui.js';
 import { SuggestCellEditor, handleEditorKey, isSuggestEditorActive } from './value_suggest.js';
 import { refreshReferenceForSelection, fillTargetOrdinals, syncReferenceViewRule } from './enrichment_reference_view.js';
 import { ledgerColumnDef } from './grid_ledger_column.js';
+import { imageColumnParts } from './grid_image_column.js';
+import { ImagePreview } from './image_preview.js';
 import { localStamp, NO_TIME } from './server_time.js';
 
 // ── [0b-c] Keyboard range selection (Shift+Arrow) ───────────────────────────────
@@ -948,6 +950,8 @@ export function buildColumnDefs() {
       // which is a separate round.
       colDef.cellEditor = SuggestCellEditor;
     }
+    // (lead 191912ce2) an image column: its cells preview on a dwell and open from their mark.
+    Object.assign(colDef, imageColumnParts(colType));
 
     if (isSystem) {
       colDef.cellClass = 'cell-system-readonly';
@@ -1070,6 +1074,7 @@ export function buildColumnDefs() {
       // Same grey a system column gets. Reusing the existing class rather than inventing a
       // "virtual" one: to the operator the fact is identical — this cell cannot be typed in.
       cellClass: 'cell-system-readonly',
+      ...imageColumnParts(vc.type),
       cellClassRules: {
         // The other four stored-column rules are deliberately absent, not forgotten:
         // `cell-dirty-tx` keys on `pendingTxEdits`, which a column that cannot be edited
@@ -1214,9 +1219,15 @@ export function renderGrid(initialRows) {
   }
 
   const gridDiv = document.querySelector('#myGrid');
+  // (lead 191912ce2) the grid's one image preview, in its own div; image cells reach it through `context`.
+  const previewMount = document.createElement('div');
+  previewMount.className = 'image-preview-mount';
+  document.body.appendChild(previewMount);
+  const imagePreview = new ImagePreview(previewMount, { doc: document, base: API_BASE });
 
   const gridOptions = {
     theme: 'legacy',
+    context: { imagePreview },
     columnDefs: columnDefs,
     rowData: initialRows,
     enableBrowserTooltips: false,
@@ -1480,6 +1491,8 @@ export function renderGrid(initialRows) {
       }
     },
     onBodyScroll: (event) => {
+      // A box fixed beside a cell would float off it once the cell moves.
+      imagePreview.leave();
       // Ahead of the infinite-scroll early return on purpose: a HORIZONTAL scroll changes
       // how many columns are off the right edge in every view mode, and returning first
       // would leave the count frozen at whatever it was on load in `pagination` mode.

@@ -1416,6 +1416,10 @@ const FLOORS = new Map([
   // declarations on one page apart, the template's own slots/shapes/texts/presses; (lead 2cbd0756d) the nine
   // category colours of their own, measured, and seven token mutants.
   ['layered_graph_harness.mjs', 33],
+  // New (lead 191912ce2): an image cell previews on a dwell and opens from its mark - passing over asks
+  // nothing, one at a time, the last let go, the server's refusal said, two previews apart; the grid
+  // changes only its image columns.
+  ['image_preview_harness.mjs', 31],
   // a value carrying markup does not come back out as markup, and the backlog has a ceiling
   ['escaping_harness.mjs', 56],
   // clicking a derived route fills follow, and a later-hop predicate stays visible
