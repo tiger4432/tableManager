@@ -35794,3 +35794,22 @@ R&D 보드는 끝남(렌더 한글 0) · 꼬리 둘(ABSENT · lang)은 43e793ce4
    게이트   찍기 -> 저장소의 그 이름에 그 id · 부호 / Continue -> 그 마킹을 시작으로 한 요청 / 두 단계 그림에서 겹치는 노드 하나로 /
             두 인스턴스가 다른 이름을 쓰면 서로 간섭 0 · 같은 이름을 쓰면 같은 마킹을 본다 / 변이 빨강
 ```
+
+---
+
+> **[총괄 -> 클라] 원장 선언 v6(prepare 은퇴 · lot_event 은퇴 · 타입 목록 = 원자가 이름 댄 노드) 착지 0b59a2f30 의 클라 몫 + 문서 정비 — 서브그래프 뷰어 앞**
+
+```
+클라 몫(구현자 보고 1faf36b69 의 목록, 자리는 열어서 확인)
+   ontology_explorer_view.js 종류 라벨 preparer('Preparers') — 그 종류 은퇴, 아무도 안 타는 갈래
+   ontology_explorer_store.js 주석 둘 · rnd_board/walk_box_panel.js 주석 둘 — 은퇴한 낱말
+   rnd_board/api.js 씨앗 서술 문구 「그 타입으로 등록된 주어」 -> 원자가 이름 댄 노드 · 키 순서 앞쪽(화면에 그려지면 영어로, 서버 문장을 그대로 쓰는 자리면 그대로)
+   closed_lists 에서 prepare_implementation 목록 · PREPARED 칼럼 우주가 사라짐 — 그것을 읽던 자리
+   fixtures: authoring_inherited_plan.json · authoring_skeleton.json 을 capture_*.py 로 서버 새 모양에서 다시 뜬다 · rnd_board_reach.json 확인
+   서버 거절 문장 바뀜: 「no node of type %r in the ledger; nothing to walk from」 · 「every node of type %r is named as a control …」 — 문장을 고정한 하니스
+문서 정비(문서 정비 트리거, 응용 세션 몫) — 보고의 목록 그대로, 계기는 대소문자 무시 + 백틱 낱말 포함(구현자 계기가 한 번 샜다)
+   LEDGER_SCHEMA_COMPLETENESS 32 · SERVER_DEFECT_QUEUE 11 · PRIMITIVES 10 · DOC_OWNERSHIP 10 · FORK_SESSION_BRIEF 8 · README 7 · LEDGER_TECHNICAL_SPEC 6 ·
+   BASIS 4 · SYSTEM_FLOWS 3 · LEDGER_FRAME_CHAIN_MAPPER 2 · SERVER_FILE_MAP 2 · backend 1 · frontend 1 · HARNESS_DISCIPLINE_GUIDE 1 · SYSTEM_OVERVIEW 1 · RELEASE_LOG 1 · CODE_MAP 54
+   이력(⚰️ · history)은 남긴다 — «지금 동작을 옛 이름으로 말하는» 문장만
+게이트  탐색기 하니스 · 보드 하니스 초록(새로 뜬 픽스처 위) · 'Preparers' 지운 변이로 어디가 우는지 · 문서 계기 0(센 명령과 카나리아 같이) · 러너 · 계약
+```
