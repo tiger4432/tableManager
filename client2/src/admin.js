@@ -1276,7 +1276,7 @@ async function refreshTableConfig(table, extra = {}) {
   if (!mount) return;
   if (!tableConfigPanel) {
     tableConfigPanel = new TableConfigPanel(mount, {
-      onOpen: (name) => refreshTableConfig(name),
+      onOpen: (name, extra) => refreshTableConfig(name, extra || {}),
       onSave: (payload) => saveTableConfig(payload),
     });
   }
