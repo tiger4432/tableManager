@@ -1,12 +1,12 @@
 # -*- coding: utf-8 -*-
 """S-215. What a mapper may import is a declared table, and every name in it resolves.
 
-🔴 THE SURFACE WAS REAL BUT UNWRITTEN. The owner's live mappers reach into nine product
-modules for 41 names; only two of what they use came from `mapper_sdk` at all. So the
+🔴 THE SURFACE WAS REAL BUT UNWRITTEN. The owner's live mappers reached into several product
+modules for their names; only two of what they used came from `mapper_sdk` at all. So the
 "SDK" described a surface nobody used while the real one was undeclared - and an undeclared
 surface cannot be kept, because nothing says what is in it.
 
-🔴 DECLARED, AND RESOLVED WHEN TOUCHED. Those nine modules are 13,406 lines and `mapper_sdk`
+🔴 DECLARED, AND RESOLVED WHEN TOUCHED. Those modules are large and `mapper_sdk`
 sits on the chain worker's boot path, so re-exporting eagerly would put all of it there for
 names most mappers never touch. `__getattr__` pulls only what is asked for, and returns the
 SOURCE MODULE'S OWN OBJECT - a wrapper would be a second implementation of something that
