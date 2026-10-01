@@ -68553,3 +68553,45 @@ ledger_source_row_ref   1,218,992 행 · 1,389 MB · 색인은 PK (relation, row
 ② 원천 행 없는 원자(563,361)도 보기에 한 줄씩(원천 칸 빈 채) 넣나 — 추천: 넣는다(LEFT JOIN)
 ③ 전체 행 수 — 그리드가 total 을 물으면 수 초. 그대로 둘지(사실과 수만 적음)
 ```
+
+---
+
+## [10-01 밤] 원장 펼친 보기 ledger_atom_rows (총괄 0fb9e9390 · 880bc9e56) — 57bc6d5e9
+
+**무엇을 지었나**
+```
+schema.py      ATOM_ROWS_SELECT(칼럼과 식 — 한 철자) -> 보기 SQL · ATOM_ROWS_COLUMNS · 참조 표 색인 둘 (source_who, md5(source_raw_ref)) · (row_id)
+               원자 LEFT JOIN 참조 (source_who · md5 · 원문 같음). atom_id 는 uuid 그대로(정렬이 원장 PK 를 타게)
+ensure_schema  새 설치: 참조 표가 새로 생길 때 색인 · 보기가 없으면 보기
+이주           migrations/add_ledger_atom_rows.py — --report · 색인 CONCURRENTLY · 보기 (add_ledger_entity_catalog_indexes 선례 모양)
+등록           출고 샘플 table_config 에 kind: view + composite_key_source [atom_id, source_relation, source_row_id]
+               원천 행 칸은 source_row_id — row_id 라 부르면 그리드 total_order_keys 가 유일하지 않은 그것을 전순서로 집는다
+카탈로그 시험   PHYSICAL_COLUMNS 에 이 보기 한 줄(그 시험이 「새 관계는 한 줄」로 지어 둔 자리)
+DDL 오라클     tests/support/ledger_default_ddl.json 다시 기록 — ensure_schema 가 이번에 새로 내는 문장만: 새 설치 31 -> 36 문장 (+5 · 지움 0) · 최신 21 -> 23 문장 (+2 · 지움 0)
+```
+**게이트**
+```
+PG 시험  4 passed in 2.02s
+         원천 행 하나 -> 그 행이 낳은 원자 전부(참조 둘 · 원자 셋) · 다른 소스의 같은 참조 글자는 안 이음 · 1.0 은 1.0
+         목적 평문(엔티티 · 값) · 수식어 · 원천 없는 원자는 원천 칸 빈 한 줄 · 보기 쓰기 거절(PG) · 칼럼 == 제품 상수 == 샘플
+변이     inner join (atoms with no row vanish)      -> 1 failed, 3 passed, 6 warnings in 2.14s · joined without source_who                  -> 3 failed, 1 passed, 6 warnings in 2.27s · values as JSON, not their stored text      -> 2 failed, 2 passed, 6 warnings in 1.97s
+박스     (총괄 ① 허락 — 이주 실행, 원장 표 무변)
+   page (first 100, ordered by atom id, relation, row id): 색인 전 10.16 s (100) -> 지금 0.03 s (100)
+   row_id filter (one source row, no relation given): 색인 전 0.69 s (25) -> 지금 1.85 s (25)
+   subject plain filter (contains SYN-CX-BW-001 / x=1.0, first 100): 색인 전 15.17 s (0) -> 지금 10.9 s (28)
+   total rows: 색인 전 4.96 s (1698715) -> 지금 10.5 s (2334076)
+   색인 79 MB + 67 MB
+         게이트 예 「한 행 · 원자 둘 이상」: lot_event 원천 행 하나가 참조 둘로 원자 25 · 6 · 17 (같은 꼴 행 3,168 개)
+쓰기 비용 (참조 표 — 원장 쓰기가 같은 커밋에 쓰는 표) 시험 DB 격리 스키마, 참조 20만 행 위에 1,000 행 쪽 열 번(지우고 다시 넣기):
+   base 200,000 refs, pages of 1,000, ref length 882
+   색인 없음 44.5 / 47.1 ms · 색인 둘 62.5 / 65.5 ms (1,000 행당, 열 번 중 가운데, 두 번씩)
+   색인 바이트(참조 21만 행): idx_ledger_row_ref_raw 16,613,376 · idx_ledger_row_ref_row 12,419,072
+```
+**새 함수 · 새 if 중 같은 일** — 새 함수 셋(row_ref_indexes · atom_rows_view_name · atom_rows_view_sql) + _plain. 같은 일 0. 새 if 둘(ensure_schema 의 «새 표일 때» · «보기 없을 때» — source_event 색인과 같은 모양)
+**스위트** (C:/wt-impl)
+```
+비PG 전체  6 failed, 7582 passed, 41 skipped, 173 deselected, 3 xfailed in 772.02s (0:12:52)
+   실패: test_a_ledger_world_is_a_set_of_names.py::test_an_install_with_no_branch_issues_the_statements_it_always_did · test_a_sentence_says_itself_only_for_the_rows_it_names.py::test_the_sample_is_written_in_the_one_format_both_writers_use · test_core_alignment_mapper.py::test_live_mapper_and_tracked_sample_are_byte_identical · test_core_usage_mapper.py::test_live_mapper_and_tracked_sample_are_byte_identical · test_dt_inventory_metadata_mapper.py::test_live_mapper_matches_tracked_sample · test_one_place_decides_where_the_server_is.py::test_the_repo_root_is_one_above_it
+   위 실패 중 test_an_install_with_no_branch_issues_the_statements_it_always_did 는 이 변경이 낸 것(DDL 오라클) -> 오라클 다시 기록 뒤 그 파일 5 passed in 6.38s · 나머지는 알려진 것
+PG  6 failed, 167 passed, 7632 deselected in 337.85s (0:05:37) · 알려진 밖: 0
+```
