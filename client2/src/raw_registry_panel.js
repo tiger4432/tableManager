@@ -27,6 +27,8 @@ import { ABSENT, countText } from './absent.js';
 import { CHOOSE } from './ui_words.js';
 import { renderSkeletonForm } from './ontology_explorer_view.js';
 import { emptyOf, missingRequired, shapeAt } from './ontology_skeleton.js';
+// The grid's own reader of pasted sheet text (lead f382dacfb: no second parser).
+import { parseTsv } from './tsv.js';
 import {
   writeShapeAtPath, deleteAtPath, splitBundlePath, getAtPath, addMember,
 } from './ontology_path.js';
@@ -57,6 +59,8 @@ export const PICK_NAME = CHOOSE;
  * 「지금 보던 것이 저장 안 된 상태」라는 사실을 운영자가 모르고 넘어가지 않게 하려는 것입니다.
  */
 export const LEAVE_UNSAVED = 'Unsaved changes · leave anyway?';
+/** The paste box's placeholder (lead f382dacfb). */
+export const PASTE_HERE = 'Paste columns · names / types / key';
 
 /**
  * 한 등록부의 «선언». 도메인 낱말은 «전부» 여기로 들어옵니다.
@@ -71,6 +75,11 @@ export const LEAVE_UNSAVED = 'Unsaved changes · leave anyway?';
  *      등록부에 버튼을 그리면 그 버튼은 거절을 만들러 가는 길입니다. 오늘 둘 다 받습니다
  *      (실측: `save_chain_rule_raw` 는 새 이름을 «꺼진 채로» 적고,
  *       `save_table_config_raw` 는 얕은 병합이라 새 키를 만듭니다).
+ * @property {{read:(rows:string[][], held:object|null)=>{next:object|null, refused:string[]},
+ *             changes:(before:object|null, after:object)=>string[]}} [paste]
+ *   Rows pasted from a sheet, turned into this registry's document (lead f382dacfb). Without it no
+ *   paste box is drawn. `changes` answers what a save would change against the SERVER's document;
+ *   when it names anything the save asks first.
  * @property {string[]} [firstScreen]  「필수」는 아니지만 «첫 화면»에 서는 칸.
  *   🔴 「required」와 «다른 물음»입니다. required 는 「없으면 거절되나」이고 스켈레톤이 답합니다
  *      (실측 2026-09-13: 체인 규칙의 required 는 `name`·`trigger_table` «둘»). 이것은 「이것
@@ -310,6 +319,10 @@ export class RawRegistryPanel {
     //    이 둘이 그대로라야 편집 한 번이 화면을 접어 버리지 않습니다.
     this.moreOpen = false;
     this.rawOpen = false;
+    // The document whose unsaved text came from a paste, and what the last paste refused (both by
+    // document name) - the parts a re-render draws again (lead f382dacfb).
+    this._pasted = '';
+    this._pasteRefused = null;
     // 폼 안의 접힘도 같습니다 — 기록은 탐색기와 «같은 함수»(`reduceFieldFold`)가 합니다.
     // 다른 문서를 열면 비웁니다. 한 규칙에서 편 목록이 다음 규칙의 같은 경로를 펴면 안 됩니다.
     this._formFold = { expandedFields: {} };
@@ -749,6 +762,12 @@ export class RawRegistryPanel {
       // ⛔ 그런데 «막지는» 않습니다. 새 규칙은 «빈 채로 꺼져서» 태어나는 설계이고(그 계약은
       //    `chain_rule_form_harness` C5 가 들고 있습니다: 저장이 «빈 문서»를 보낸다), 막으면
       //    「규칙 추가」가 통째로 안 됩니다. 그래서 조용한 쪽만 고칩니다.
+      // A pasted document asks before it changes the table the server holds (lead f382dacfb). Only a
+      // registry that declares `paste` ever sets `_pasted` - the declaration is asked where the box is drawn.
+      if (this._pasted === key) {
+        const lines = this._pasteChanges(payload, area.value);
+        if (lines.length && !this.ask([...lines, 'Save?'].join('\n'))) return;
+      }
       if (root && held && typeof held === 'object') {
         const short = missingRequired(root, held, this._defs);
         if (short.length) this._markShort(this._formBox, view, short);
@@ -764,6 +783,7 @@ export class RawRegistryPanel {
     //    두고 거절로 답하는 것은 화면이 답할 수 있는 것을 서버에 미룬 것입니다.
     if (picked || !root) head.appendChild(save);
     this.root.appendChild(head);
+    if (spec.paste && picked) this._drawPaste(key, payload);
 
     // 🔴 `base` 는 «화면에 보이는 값»이 아니라 저장이 되돌려 보낼 지문입니다.
     this.root.setAttribute('data-base', view.base);
@@ -1061,10 +1081,71 @@ export class RawRegistryPanel {
 
   _forget() {
     const was = this.draftOf;
+    this._pasted = '';
     this.draft = null;
     this.draftOf = '';
     if (!this.store || !was) return;
     try { this.store.removeItem(this._slot(was)); } catch (e) { /* noqa */ }
+  }
+
+  /** The paste box, what the last paste refused, and what a save of the pasted text would change. */
+  _drawPaste(key, payload) {
+    const spec = this.spec;
+    const box = this.doc.createElement('div');
+    box.className = `${spec.cls}-paste-box`;
+    const sink = this.doc.createElement('textarea');
+    sink.className = `${spec.cls}-paste`;
+    sink.setAttribute('data-paste', spec.nameKey);
+    sink.setAttribute('placeholder', PASTE_HERE);
+    sink.setAttribute('aria-label', PASTE_HERE);
+    sink.setAttribute('rows', '2');
+    if (sink.addEventListener) {
+      sink.addEventListener('paste', (event) => {
+        const text = event && event.clipboardData ? event.clipboardData.getData('text/plain') : '';
+        if (event && typeof event.preventDefault === 'function') event.preventDefault();
+        this._paste(key, text);
+      });
+    }
+    box.appendChild(sink);
+    const refused = this._pasteRefused && this._pasteRefused.key === key ? this._pasteRefused.lines : [];
+    for (const line of refused) box.appendChild(this._line(`${spec.cls}-paste-refused`, line));
+    // Worked out at every draw from the text as it stands: the raw box can be edited after a paste.
+    if (this._pasted === key && this.draft !== null && this.draftOf === key) {
+      for (const line of this._pasteChanges(payload, this.draft)) {
+        box.appendChild(this._line(`${spec.cls}-paste-change`, line));
+      }
+    }
+    this.root.appendChild(box);
+  }
+
+  /** What saving `text` changes against the server's document. A new name has none to change. */
+  _pasteChanges(payload, text) {
+    let after;
+    try { after = JSON.parse(text || '{}'); } catch (e) { return []; }
+    const before = this.newMode ? null : (payload && payload.declaration);
+    return this.spec.paste.changes(before, after) || [];
+  }
+
+  /** Sheet text -> the open document, through the grid's reader and the registry's `paste.read`. */
+  _paste(key, text) {
+    const rows = parseTsv(String(text || ''), { trimCells: true, dropBlankLines: true });
+    // The document as it stands: the unsaved text if it reads, else the server's.
+    let held = this._payload && !this.newMode ? this._payload.declaration : null;
+    if (this.draft !== null && this.draftOf === key) {
+      try { held = JSON.parse(this.draft || 'null'); } catch (e) { /* the server's stands */ }
+    }
+    const { next, refused } = this.spec.paste.read(rows, held);
+    if (refused && refused.length) {
+      this._pasteRefused = { key, lines: refused };
+    } else {
+      this._pasteRefused = null;
+      this._keep(key, JSON.stringify(next, null, 2));
+      // After `_keep`: a paste equal to the server's document leaves no draft, and nothing to confirm.
+      this._pasted = this.draft !== null ? key : '';
+    }
+    // 🔴 Not `_again()` as it stands: the last draw's options may carry `saved`, and a draw with
+    //    `saved` drops the draft - the paste would vanish the moment it landed.
+    this.render(this._payload, { ...this._opts, background: false, saved: null });
   }
 
   /** 이 등록부의 «이 문서»에 붙는 열쇠. 등록부가 둘이면 열쇠도 둘입니다. */

@@ -264,7 +264,9 @@ const FLOORS = new Map([
   // (drop it and two operators editing one file erase each other silently, which is the
   // guard the server made part of the ruling), and a refusal keeps the server's own code,
   // path and sentence rather than a second refusal vocabulary written here.
-  ['table_config_panel_harness.mjs', 35],
+  // 35 -> 66 (lead f382dacfb, [6]-[9] and P1-P13): a sheet pasted into a table's columns - read by the
+  // grid's reader, refused by name, what a save would change said and asked before it, chain untouched.
+  ['table_config_panel_harness.mjs', 66],
   // CHAIN RULE. The one this exists for beyond the table's two: a saved rule may not be
   // a RUNNING rule. The server writes a new rule with `enabled: false` because the loader
   // re-reads on reload, so saving would otherwise arm and fire at once - and if the screen

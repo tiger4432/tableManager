@@ -469,6 +469,29 @@
       color: var(--text);
       caret-color: var(--accent);
     }
+    /* Paste columns (lead f382dacfb): the box takes a sheet's rows; what a save would change and what
+       the paste refused stand under it, one line each - the badges' shape (mono, label size). */
+    .table-config-paste-box { margin: 0 0 var(--space-3); }
+    .table-config-paste {
+      display: block;
+      width: 100%;
+      resize: vertical;
+      padding: var(--space-2);
+      border: 1px dashed var(--border);
+      border-radius: 0;
+      background: var(--bg-surface);
+      color: var(--text);
+      font-family: var(--font-mono);
+      font-size: var(--fs-label);
+    }
+    .table-config-paste-change,
+    .table-config-paste-refused {
+      margin: var(--space-1) 0 0;
+      font-family: var(--font-mono);
+      font-size: var(--fs-label);
+    }
+    .table-config-paste-change { color: var(--warning); }
+    .table-config-paste-refused { color: var(--danger); }
     /* 🔴 「도는가」는 «값»입니다. 서버의 낱말 그대로 두고, 꺼진 것만 눈에 띄게 합니다 —
        저장이 «장전»까지라는 사실을 운영자가 놓치면 없는 고장을 찾게 됩니다.
        ⛔ 문장은 없습니다. `enabled true` / `enabled false` / 거절 코드가 전부입니다.
@@ -1601,7 +1624,7 @@
     .retro-group.is-chosen { border-color: var(--accent); color: var(--accent); }
 
   </style>
-  <script type="module" crossorigin src="/assets/admin-DBUNGvE2.js"></script>
+  <script type="module" crossorigin src="/assets/admin-BiaNigYD.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/tokens-C9Rjx7_P.js">
   <link rel="modulepreload" crossorigin href="/assets/absent-DJDVnjis.js">
   <link rel="modulepreload" crossorigin href="/assets/disabled_reason-BP_E0n0W.js">
@@ -1611,7 +1634,7 @@
   <link rel="modulepreload" crossorigin href="/assets/branch_picker-DYONRekB.js">
   <link rel="modulepreload" crossorigin href="/assets/config-BUp4smhE.js">
   <link rel="modulepreload" crossorigin href="/assets/effort_meter-CUYmTmql.js">
-  <link rel="modulepreload" crossorigin href="/assets/truncation-D0jGGZ7g.js">
+  <link rel="modulepreload" crossorigin href="/assets/tsv-Bu7Jx7Kb.js">
   <link rel="stylesheet" crossorigin href="/assets/tokens-CSBELxgq.css">
   <link rel="stylesheet" crossorigin href="/assets/admin-wYz4oWJp.css">
   <link rel="stylesheet" crossorigin href="/assets/base-BKdD9OIR.css">
