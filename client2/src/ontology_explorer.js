@@ -403,15 +403,19 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
 
   // A branch is another world: nothing selected or open here is a node there, so a pick starts the
   // screen over on it (lead 64c380aeb). Unsaved typing asks first through the one dirty dialog and its
-  // one decision, as `select` does; the draft belongs to the world it was typed in, so Keep cannot cross
-  // and only Discard goes on - deleting it there, as `select`'s Discard does. A new branch is made by the
-  // existing bootstrap, sent on the new name.
+  // one decision, as `select` does. The draft belongs to the world it was typed in: Keep stores the typing
+  // in that world's draft store before the screen leaves it (lead ccf374d48 answer 2), Discard deletes it
+  // there as `select`'s Discard does, and a refused store stays. A new branch is made by the existing
+  // bootstrap, sent on the new name.
   const pickWorld = async (name, { create = false } = {}) => {
     const next = name || null;
     if (next === state.world && !create) return;
     const choice = state.dirty ? await chooseDirtyNavigation(root) : 'keep';
     const decision = dirtyNavigationDecision(state, () => choice);
-    if (state.dirty && decision !== 'discard') { render(); return; }
+    if (decision === 'cancel') { render(); return; }
+    if (decision === 'keep' && state.dirty) {
+      try { await putDraft(); } catch (error) { showToast(errorMessage(error), 'error'); render(); return; }
+    }
     if (decision === 'discard' && state.draft && !(await discardDraft({ ask: false }))) return;
     state = { ...initialExplorerState, navigation: { back: [], forward: [] }, world: next, worlds: state.worlds };
     render();
@@ -937,6 +941,13 @@ No effect`;
     }
   };
 
+  // The typing into the open draft's record, in the world the screen reads now: Save's first step, and
+  // the whole of a branch pick's Keep.
+  const putDraft = () => jsonRequest(`/drafts/${state.draft.draft_id}`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ expected_revision: state.draft.revision, raw: state.editorText }),
+  });
+
   const discardDraft = async ({ ask = true } = {}) => {
     if (!state.draft) return true;
     if (ask && !window.confirm('Discard the current draft?')) return false;
@@ -1308,12 +1319,7 @@ No effect`;
       // not a re-render problem.
       const place = checkpoint();
       try {
-        const saved = await jsonRequest(`/drafts/${draftId}`, {
-          method: 'PUT', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            expected_revision: state.draft.revision, raw: state.editorText,
-          }),
-        });
+        const saved = await putDraft();
         const record = saved.draft || saved;
         dispatch({ type: 'DRAFT_SAVED', draft: record });
         await jsonRequest(`/drafts/${draftId}/activate`, {
