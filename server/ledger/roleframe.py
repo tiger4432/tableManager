@@ -390,7 +390,8 @@ class DeclarativeRoleMapper(BaseLedgerMapper):
                 else:
                     roles[role_id] = _evaluate_binding(
                         binding, unit, columns=unit_columns,
-                        path=f"{mapping.config_path}.bind.{role_id}")
+                        path=f"{mapping.config_path}.bind.{role_id}",
+                        relation=context.source_plan.relation)
             out.append(RoleEmission(
                 sentence=sentence,
                 roles=roles,
@@ -1055,7 +1056,8 @@ def aware_time(value: Any, timezone_name: str, path: str, error=None) -> datetim
 
 
 def _evaluate_binding(binding: Mapping[str, Any], unit: pd.DataFrame, *, path: str,
-                      columns: Mapping[Any, tuple] | None = None) -> Any:
+                      columns: Mapping[Any, tuple] | None = None,
+                      relation: str | None = None) -> Any:
     # `approval_status` gated this call until 2026-08-21.  It refused any binding that did
     # not say `approved`, and no file in the tree ever held another value -- 40 of 40 live
     # bindings said `approved`, so the gate could not fire and the field could not be
@@ -1092,9 +1094,19 @@ def _evaluate_binding(binding: Mapping[str, Any], unit: pd.DataFrame, *, path: s
     if kind == "constant":
         return _plain(binding.get("value"))
     if kind == "entity":
+        # 🔴 [총괄 7233a7a31, 소유자 「die 가 x,y 를 1 로 읽은 것 1.0 으로 읽은 게 뒤섞여서 중복」] AN
+        # ENTITY KEY IS SPELLED BY THE ONE KEY CANONICALIZER, by the DECLARED type of the column it
+        # came from: a number column's 1, 1.0 and '01' are one key '1', a text column's '1.0'
+        # stays '1.0' (the spelling is the meaning there). Read as it came, one die was three
+        # nodes. A constant child has no column, so it is trimmed. This is the one seat where a
+        # key value meets its column; a code mapper's keys do not pass here.
+        import map_overlay
+
         keys = {
-            key: _evaluate_binding(child, unit, path=f"{path}.keys.{key}",
-                                   columns=columns)
+            key: map_overlay.canonical_key_value(
+                _evaluate_binding(child, unit, path=f"{path}.keys.{key}", columns=columns),
+                map_overlay.declared_column_type(relation, child.get("column"))
+                if isinstance(child, Mapping) and child.get("kind") == "column" else None)
             for key, child in binding.get("keys", {}).items()
         }
         payload = {"type": binding.get("entity_type"), "keys": keys}

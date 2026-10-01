@@ -876,8 +876,9 @@ def test_multi_core_dt_inventory_builds_stage_local_identity_and_direction_claim
     core_to_dt = transfers[transfers["subject_type"] == "CoreDie"]
     assert {payload["keys"]["dt_lot"]
             for payload in core_to_dt["object_payload"]} == {"DT-CONFIRMED"}
+    # 총괄 7233a7a31: an entity key is spelled by the one key canonicalizer - text, one spelling
     assert {payload["keys"]["dt_x"]
-            for payload in core_to_dt["object_payload"]} == {100, 101, 102}
+            for payload in core_to_dt["object_payload"]} == {"100", "101", "102"}
 
     components = ledger[ledger["predicate"] == "component_of"]
     assert len(components) == 3

@@ -774,9 +774,21 @@ def fold_written_notation(db, table_name: str, apply: bool = False,
                           chunk_size: int = DEFAULT_CHUNK_SIZE, limit: int = None,
                           pace: str = None, max_report: int = DEFAULT_MAX_REPORT,
                           log=logger.info, checkpoint=None) -> dict:
-    """Notation stage three (총괄 2dc2c1baf): what a `write` column stored before its declaration
-    is folded IN PLACE by the one write fold (`notation_norm.fold_for_write`) - every layer's
-    value, the shown value and the row's business key.
+    """Notation stage three (총괄 2dc2c1baf), widened to the whole write fold (총괄 c6a8c069c ㉡):
+    what a column stored before today's fold is folded IN PLACE by the two steps the write funnel
+    runs - a `write` column's notation fold (`notation_norm.fold_for_write`), then, on every text
+    column, the cast (`crud.cast_value_by_type`, which stores a number in `clean_str_value`'s
+    spelling). Every layer's value, the shown value and the row's business key.
+
+    A cell whose layers moved shows what the folded layers now decide - `cell_layer._resolve_cell`
+    over `_load_cell_state`, the one layer -> shown pair R2 and R3 use; a cell whose layers did not
+    move has its shown value folded.
+
+    🔴 A KEY MOVES ONLY WHEN THE FOLD MOVED ONE OF ITS PARTS, and only when the row's unfolded
+    parts still spell its stored key. Otherwise the row is skipped and named (`not_rebuilt`):
+    measured on the box 10-01, 135,472 rows in 11 tables whose cells no longer spell their stored
+    key (a time part read back as a datetime, an older separator, probe rows), and rebuilding the
+    key from those cells would have changed their identity.
 
     ⛔ NOT THROUGH THE WRITE DOOR: re-sending a stored layer moves its `ingested_at` ahead of a
     newer layer of its class and changes the shown VALUE, not its spelling (measured, 0d9a69a63).
@@ -791,19 +803,28 @@ def fold_written_notation(db, table_name: str, apply: bool = False,
     from database import crud, models
     from chain import keyset_scan
 
-    model, _col_types = resolve_target(table_name)
+    model, col_types = resolve_target(table_name)
     pages_per_cycle, rest_seconds = resolve_pace(pace)
     written = notation_norm.written_columns(table_name)
+    physical = model.__table__.columns
+    # The text half of the write fold: every column the funnel's cast stores as text - a String
+    # column, the same physical question the key seats ask.
+    text_columns = [column for column in col_types if column in physical
+                    and notation_norm.is_text_type(physical[column].type)]
+    folded = sorted(set(written) | set(text_columns))
     config = crud.TABLE_CONFIG.get(table_name, {})
     key_col = config.get("business_key")
     composite_src = config.get("composite_key_source")
     stats = {"mode": "apply" if apply else "dry-run", "table": table_name,
-             "written_columns": list(written), "rows_scanned": 0, "pages": 0,
+             "written_columns": list(written), "text_columns": text_columns,
+             "rows_scanned": 0, "pages": 0,
              "cells_folded": 0, "layers_folded": 0, "keys_changed": 0, "rows_skipped": 0,
-             "skipped": [], "moves_again": 0, "again": [], "time_left": {},
+             "skipped": [], "keys_not_rebuilt": 0, "not_rebuilt": [],
+             "moves_again": 0, "again": [], "time_left": {},
              "stopped": False, "stopped_on_moves_again": False}
-    if not written:
-        log(f"[notation] '{table_name}' declares no \"write\" column - nothing to fold")
+    if not folded:
+        log(f"[notation] '{table_name}' has no \"write\" column and no text column - nothing "
+            f"to fold")
         return stats
     aliases = notation_norm.aliases_by_column(db)
     claimed = set()
@@ -819,6 +840,9 @@ def fold_written_notation(db, table_name: str, apply: bool = False,
                 aliases.get((table_name, column)) or {})
             if moved is not None:
                 again.append([column, value, stored, moved])
+        if column in text_columns:
+            stored = crud.cast_value_by_type(stored, col_types.get(column, "string"), column,
+                                             table_name)
         return stored
 
     with crud.transaction_context(NOTATION_BACKFILL_SOURCE, tx_id, NOTATION_BACKFILL_SOURCE):
@@ -832,42 +856,69 @@ def fold_written_notation(db, table_name: str, apply: bool = False,
             again, plans = [], {}
             for row in page:
                 cells = {}
-                for column in written:
+                for column in folded:
                     old = getattr(row, column, None)
                     new = fold(column, old, again)
                     if new != old:
                         cells[column] = (old, new)
                 plans[row.row_id] = {"row": row, "cells": cells, "layers": [], "key": None}
-            for layer_id, row_id, column, value in (
+            moved = {}
+            for layer_id, row_id, column, source, value in (
                     db.query(models.CellSource.id, models.CellSource.row_id,
-                             models.CellSource.column_name, models.CellSource.value)
+                             models.CellSource.column_name, models.CellSource.source_name,
+                             models.CellSource.value)
                     .filter(models.CellSource.table_name == table_name,
                             models.CellSource.row_id.in_(list(plans)),
-                            models.CellSource.column_name.in_(written)).all()):
+                            models.CellSource.column_name.in_(folded)).all()):
                 new = fold(column, value, again)
                 if new != value:
                     plans[row_id]["layers"].append({"id": layer_id, "value": new})
+                    moved.setdefault((row_id, column), {})[source] = new
+            if moved:
+                sources, pins = _load_cell_state(db, table_name, sorted({r for r, _ in moved}))
+                for (row_id, column), now in moved.items():
+                    layers = {source: dict(layer, value=now.get(source, layer["value"]))
+                              for source, layer in sources.get((row_id, column), {}).items()}
+                    row, cells = plans[row_id]["row"], plans[row_id]["cells"]
+                    old = getattr(row, column, None)
+                    new = _resolve_cell(table_name, col_types, row, column, layers,
+                                        pins.get((row_id, column)))["new_value"]
+                    if new != old:
+                        cells[column] = (old, new)
+                    else:
+                        cells.pop(column, None)
+            parts_of_key = composite_src or ([key_col] if key_col else [])
             for plan in plans.values():
                 row, cells = plan["row"], plan["cells"]
-                if composite_src:
-                    parts = [cells[c][1] if c in cells else getattr(row, c, None)
-                             for c in composite_src]
-                    key = (None if any(crud.is_blank_key_part(p) for p in parts)
-                           else crud.compose_business_key(table_name, parts))
-                elif key_col in written and isinstance(row.business_key_val, str):
-                    key = notation_norm.fold_for_write(table_name, key_col, row.business_key_val,
-                                                       aliases)[0]
+                if not any(column in cells for column in parts_of_key):
+                    continue
+                before, after = (
+                    None if any(crud.is_blank_key_part(p) for p in parts)
+                    else crud.compose_business_key(table_name, parts) if composite_src
+                    else crud.clean_str_value(parts[0])
+                    for parts in ([getattr(row, c, None) for c in parts_of_key],
+                                  [cells[c][1] if c in cells else getattr(row, c, None)
+                                   for c in parts_of_key]))
+                if not after or after == row.business_key_val:
+                    continue
+                if before != row.business_key_val:
+                    plan["not_rebuilt"] = after
                 else:
-                    key = None
-                if key and key != row.business_key_val:
-                    plan["key"] = key
+                    plan["key"] = after
             wanted = {plan["key"] for plan in plans.values() if plan["key"]}
             holders = dict(db.query(model.business_key_val, model.row_id)
                            .filter(model.business_key_val.in_(list(wanted))).all()) \
                 if wanted else {}
             for row_id, plan in list(plans.items()):
                 key = plan["key"]
-                if key and (key in claimed or holders.get(key, row_id) != row_id):
+                if "not_rebuilt" in plan:
+                    stats["keys_not_rebuilt"] += 1
+                    if len(stats["not_rebuilt"]) < max_report:
+                        stats["not_rebuilt"].append({
+                            "row_id": row_id, "business_key_val": plan["row"].business_key_val,
+                            "folded_key": plan["not_rebuilt"]})
+                    del plans[row_id]
+                elif key and (key in claimed or holders.get(key, row_id) != row_id):
                     stats["rows_skipped"] += 1
                     if len(stats["skipped"]) < max_report:
                         stats["skipped"].append({"row_id": row_id,
@@ -909,7 +960,8 @@ def fold_written_notation(db, table_name: str, apply: bool = False,
                 time.sleep(rest_seconds)
     log(f"[notation] '{table_name}' {stats['mode']}: {stats['cells_folded']} cell(s) and "
         f"{stats['layers_folded']} layer(s) folded in {stats['rows_scanned']} row(s), "
-        f"{stats['keys_changed']} key(s) changed, {stats['rows_skipped']} row(s) skipped "
+        f"{stats['keys_changed']} key(s) changed, {stats['keys_not_rebuilt']} row(s) skipped "
+        f"(their cells no longer spell their stored key), {stats['rows_skipped']} row(s) skipped "
         f"(their folded key is another row's), {stats['moves_again']} value(s) change again")
     return stats
 

@@ -431,12 +431,24 @@ def test_the_folded_rows_go_out_as_retroactive_events_for_the_ledger(env, tmp_pa
     assert any(row.row_id in (p.get("row_ids") or [p.get("row_id")]) for p in events), events
 
 
-def test_the_dry_run_says_a_table_with_no_write_column_has_nothing_to_fold(
+def test_the_dry_run_says_a_table_with_no_write_and_no_text_column_has_nothing_to_fold(
         env, tmp_path, monkeypatch):
+    """총괄 c6a8c069c ㉡: a table with no `write` column still has the text half of the fold,
+    so it is scanned and says none; only a table with neither has nothing to fold."""
     from admin import retroactive
 
     _declare(tmp_path, monkeypatch, {PLAIN: DECLARED[PLAIN]})
     out = retroactive.count(env, "fold_written_notation", {"table": COMP})
-    assert out["absence"] == retroactive.ABSENCE_NOT_APPLICABLE
-    assert out["detail"] == ("'notw_comp' declares no \"write\" column in notation_rules.json "
-                             "- nothing is folded.")
+    assert (out["absence"], out["affected"]) == (retroactive.ABSENCE_TRULY_NONE, 0)
+
+    numbers = "notw_numbers"
+    models.init_dynamic_models({numbers: {"column_types": {"n": "number"}}})
+    crud.TABLE_CONFIG[numbers] = {"column_types": {"n": "number"}}
+    try:
+        out = retroactive.count(env, "fold_written_notation", {"table": numbers})
+        assert out["absence"] == retroactive.ABSENCE_NOT_APPLICABLE
+        assert out["detail"] == ("'notw_numbers' has no \"write\" column in notation_rules.json "
+                                 "and no text column - nothing is folded.")
+    finally:
+        crud.TABLE_CONFIG.pop(numbers, None)
+        retire_dynamic_model(numbers)

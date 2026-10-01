@@ -1937,6 +1937,7 @@ def _v2_registration_subjects(plan, frame):
     duplicates every first-sight atom -- the unsafe direction (see
     `setup_bundle._validate_registration_probe` for why the error is one-sided).
     """
+    import map_overlay
     from .envelope import canonical_keys
 
     probes = plan.driver.registration_probe
@@ -1947,8 +1948,8 @@ def _v2_registration_subjects(plan, frame):
         values = []
         for column in probe.columns:
             if column in frame.columns:
-                values.extend(frame[column].tolist())
-        for value in values:
+                values.extend((column, value) for value in frame[column].tolist())
+        for column, value in values:
             # 🔴 `or ""` HERE IS NOT `crud.is_blank_value`, AND ON THIS PATH THE DIFFERENCE
             # IS REACHABLE. `values` comes from `frame[column].tolist()` - the SOURCE
             # ROWS - so whatever the probe column actually holds arrives here. `or ""`
@@ -1969,7 +1970,10 @@ def _v2_registration_subjects(plan, frame):
             parts = (text.split(probe.list_separator) if probe.list_separator
                      else [text])
             for part in parts:
-                key = part.strip()
+                # 🔴 [총괄 7233a7a31] THE SPELLING THE KEY GETS IN THE ATOM - the one key
+                # canonicalizer, by this column's declared type - or a number key would be
+                # first-seen again on every run.
+                key = map_overlay.canonical_bind_value(plan.relation, column, part)
                 if key:
                     subjects.add((probe.subject_type,
                                   canonical_keys({probe.identity_key: key})))
