@@ -68,11 +68,9 @@ from .implementations import (
     _IMPLEMENTATION_PACKAGE,
     implementation_choices,
     mapper_declarations,
-    preparer_output_columns,
-    source_preparer_declarations,
 )
 from .setup_registry import OCCURRED_AT_BASIS_COLUMNS, with_source_attributes
-from .source_preparation import locked_select_columns
+from .event_frame import locked_select_columns
 from .setup_bundle import (
     _profile_binding_columns as _setup_bundle_profile_binding_columns,
     _MAPPER_UNITS,
@@ -134,16 +132,13 @@ STEPS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
     ("sources", "Sources", ("sources",)),
 )
 
-#: The three column universes of §3E, which are NOT one set.  Measured: a preparer output
-#: (`target_id`) passes in `read.identity` and is refused in `read.order_by` with
-#: `unknown_column ... is not in relation`.  Same name, different answer, so a single
-#: merged dropdown would hide half the real columns and offer half that do not exist.
+#: The column universe a square offers. ⚰️ [총괄 e14416950] There were two -- RELATION and
+#: PREPARED (relation + preparer outputs) -- and with the preparer gone they are one set, so
+#: one name.
 UNIVERSE_RELATION = "RELATION"
-UNIVERSE_PREPARED = "PREPARED"
 
 _UNIVERSE_NOTE = {
     UNIVERSE_RELATION: "Table columns",
-    UNIVERSE_PREPARED: "Table columns + preparer outputs",
 }
 
 _ABSENT = object()
@@ -243,7 +238,7 @@ class Field:
     #: pick this" vs "is it already coming"), and a screen that could not tell them apart
     #: would either hide half the picker or write locked names into `input_columns`.
     #:
-    #: The set is `source_preparation.locked_select_columns` -- computed HERE and shipped,
+    #: The set is `event_frame.locked_select_columns` -- computed HERE and shipped,
     #: because a client that re-derived it would be a second vocabulary for one sentence.
     locked: tuple[str, ...] = dataclass_field(default_factory=tuple)
     note: str = ""
@@ -476,8 +471,9 @@ def empty_value(node: Any, defs: Mapping[str, Any],
     seeded value is not a guess about what they meant -- it is the value the screen was
     ALREADY showing them, so the file stops disagreeing with the pixels.
 
-    The class, not the case.  `accepts_verified_join_rules` is the one that showed today;
-    the skeleton has two required flags (`virtual_joins.*.enabled` is the other -- the
+    The class, not the case.  `accepts_verified_join_rules` is the one that showed that day
+    (⚰️ it left with `prepare`, setup_version 6); the skeleton had two required flags
+    (`virtual_joins.*.enabled` is the other -- the
     third, `packs.*.claims.*.roles.*.required`, left with its section on 2026-08-21), and
     the hint is READ, so a third is covered the day it is declared.  ⚰️ [판정 484]
     A THIRD WAS DECLARED ON 2026-09-17 (`virtual_joins.*.materialize`) AND THE COVER WAS
@@ -710,13 +706,9 @@ def closed_lists(sources: Any = None) -> dict[str, Any]:
             for kind, section in sorted(AUTHORABLE_SECTIONS.items())
         ],
         # 🔴 THE NAME THE OPERATOR CANNOT INVENT, FROM THE REGISTRY THAT ENFORCES IT.
-        # Both `implementation_id` squares were free text, so the only way to reach
+        # The `implementation_id` square was free text, so the only way to reach
         # `declarative-role` was to already know it -- and `untrusted_implementation` at
-        # compile time is where a typo showed up. Two keys rather than one because the
-        # preparer and the mapper registries are two different sets, and offering a
-        # mapper's name in the preparer square is a value that can only refuse.
-        "prepare_implementation": [
-            option["id"] for option in implementations["prepare"]["options"]],
+        # compile time is where a typo showed up.
         "map_implementation": [
             option["id"] for option in implementations["map"]["options"]],
         # ⚠️ THE DEFAULT IS A STARTING VALUE AND IS PUBLISHED, NOT APPLIED. Nothing here
@@ -748,31 +740,10 @@ def _column_types(catalog: Mapping[str, Any], relation: Any) -> Mapping[str, str
     return columns if isinstance(columns, Mapping) else {}
 
 
-def prepared_columns(bundle: Mapping[str, Any], catalog: Mapping[str, Any],
-                     source: Mapping[str, Any]) -> tuple[str, ...]:
-    """RELATION ∪ the preparer's `output_columns` -- mirrors `available` in the validator.
-
-    Kept as its own function because the profile's column bindings are checked against
-    THIS set (`_binding_refs` receives `available`), not against the mapper's
-    `input_columns`.  Once `input_columns` is derived from the bindings, PREPARED is the
-    only universe a person picks from, and offering RELATION there would hide every
-    preparer-made column.
-
-    `bundle` is no longer read -- the preparer is a clause of `source` itself as of
-    2026-08-20 -- and stays in the signature because every caller has it and the parameter
-    names what this set is derived FROM.
-    """
-    columns = set(relation_columns(catalog, _driver_relation(source)))
-    outputs = _preparation(source).get("output_columns")
-    if isinstance(outputs, Mapping):
-        columns.update(str(name) for name in outputs)
-    return tuple(sorted(columns))
-
-
 def _driver(source: Any) -> Mapping[str, Any]:
     """The source's `read` clause.  Named for the plan it compiles into, not the key.
 
-    `driver` split into `read`/`prepare`/`map` in the FILE on 2026-08-21; `SourceDriverPlan`
+    `driver` split into `read`/`map` in the FILE on 2026-08-21; `SourceDriverPlan`
     did not, so this reader keeps the compiled word and changes only which key it opens.
     """
     driver = source.get("read") if isinstance(source, Mapping) else None
@@ -781,11 +752,6 @@ def _driver(source: Any) -> Mapping[str, Any]:
 
 def _driver_relation(source: Any) -> Any:
     return source.get("relation") if isinstance(source, Mapping) else None
-
-
-def _preparation(source: Any) -> Mapping[str, Any]:
-    prep = source.get("prepare") if isinstance(source, Mapping) else None
-    return prep if isinstance(prep, Mapping) else {}
 
 
 def _mapper(source: Any) -> Mapping[str, Any]:
@@ -797,7 +763,7 @@ def _locked_read_columns(source: Any) -> tuple[str, ...]:
     """Columns this source's `read` brings in before either `input_columns` says a word.
 
     🔴 THE RUNTIME'S OWN FORMULA, FED FROM THE DECLARATION.  The set is
-    `source_preparation.locked_select_columns`, which `base_select_columns` also calls --
+    `event_frame.locked_select_columns`, which `base_select_columns` also calls --
     the screen and the cursor say ONE sentence about what arrives anyway.  What this
     function does is the part the runtime does not need: read the five terms off a bundle
     that has not compiled, because a source someone is still building never has.
@@ -816,17 +782,13 @@ def _locked_read_columns(source: Any) -> tuple[str, ...]:
               else occurred.get("column"))
     cursor = driver.get("cursor")
     cursor = cursor if isinstance(cursor, Mapping) else {}
-    preparation = _preparation(source)
-    outputs = preparation.get("output_columns")
-    excluded = preparation.get("exclude_when")
+    excluded = driver.get("exclude_when")
     return locked_select_columns(
         identity=[str(name) for name in _listed(driver.get("identity"))],
         group_by=[str(name) for name in _listed(read_group_by(driver))],
         order_by=[str(name) for name in _listed(driver.get("order_by"))],
         cursor_columns=[str(name) for name in _listed(cursor.get("columns"))],
         occurred_at_column=column if isinstance(column, str) else None,
-        preparer_outputs=([str(name) for name in outputs]
-                          if isinstance(outputs, Mapping) else ()),
         # S-91. A half-written declaration may hold anything here, so each clause is
         # read defensively - this screen draws bundles that do not compile.
         exclude_when_columns=[
@@ -917,8 +879,7 @@ def _vocabulary_fields(bundle: Mapping[str, Any]) -> Iterable[Field]:
 
 #: The one line the candidate list needs beside it.  A name that is not on the list yet is
 #: NOT a wall: `/admin/scripts/code` reads and writes Python under `mappers/`, and
-#: `implementations._descendants()` picks a newly written class up on the next start.  Said
-#: once, because the preparer list and the mapper list are the same situation.
+#: `implementations._descendants()` picks a newly written class up on the next start.
 NEW_IMPLEMENTATION_NOTE = (
     "New implementation: write mappers/ledger_v2_*.py in /admin/scripts/code · listed after a server restart")
 
@@ -959,8 +920,8 @@ def _implementation_clause_fields(base: str, clause: Mapping[str, Any],
     🔴 THE VERSION IS NOT A SECOND DECISION, AND ASKING FOR IT AS ONE IS WHAT THE FORM DID.
     The registry is keyed by `(id, version)` and every trusted address is stated BY THE
     CLASS (`implementations._self_declared_identity`), so picking the name has already
-    picked the number: measured 2026-08-21, all 2 preparers and all 3 mappers register
-    exactly one version each.  The old form drew a bare number box beside a bare text box,
+    picked the number: measured 2026-08-21, all 3 mappers register exactly one version
+    each.  The old form drew a bare number box beside a bare text box,
     which is two ways to be wrong about one fact -- `unsupported_implementation_version`
     lands at compile time on a person who typed the only other integer they could think of.
 
@@ -1039,7 +1000,7 @@ def unit_group_columns(mapper):
 
 def _implementation_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
                            ) -> Iterable[Field]:
-    """The preparer and mapper clauses of every source, walked FROM the source.
+    """The mapper clause of every source, walked FROM the source.
 
     🔴 THE OWNER LOOKUP IS GONE, AND THAT IS THE POINT OF THE 2026-08-20 MOVE.  This
     function used to walk two sections and search backwards for the source that selected
@@ -1052,9 +1013,7 @@ def _implementation_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
     # every call, and the answer cannot change between two sources of one bundle.  Not
     # cached across calls on purpose -- a class written through `/admin/scripts/code` has
     # to appear the moment the process that imported it serves the next plan.
-    preparers = source_preparer_declarations()
     mappers = mapper_declarations()
-    preparer_ids = _registered_ids(preparers)
     mapper_ids = _registered_ids(mappers)
     for source_id in sorted(sources, key=str):
         source = sources[source_id]
@@ -1064,172 +1023,13 @@ def _implementation_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
         profile_base = f"bundle.sources.{source_id}.bind"
         relation = _driver_relation(source)
         physical = relation_columns(catalog, relation)
-        prepared = prepared_columns(bundle, catalog, source)
-
-        # ------------------------------------------------------------------ preparer
-        preparation = _preparation(source)
-        prep_base = f"bundle.sources.{source_id}.prepare"
-        # 🔴 THE SET THE READ ALREADY CARRIES, FOR BOTH SQUARES BELOW.  One call, one
-        # sentence: `locked_select_columns` is the runtime's own first five terms, and it
+        # 🔴 THE SET THE READ ALREADY CARRIES.  One call, one sentence: `locked_select_columns` is the runtime's own first five terms, and it
         # is fed here from the DECLARATION because the source being authored does not
         # compile.  Intersected with each square's candidates before it ships, since a
         # locked chip that is not in the picker is a chip the screen cannot draw --
         # `occurred_at.basis` resolves to `created_at`, which the schema builder puts on
         # every table and `table_config.json` lists on none of them.
         locked_all = set(_locked_read_columns(source))
-        prep_locked = tuple(name for name in physical if name in locked_all)
-        # Not gated on `physical`: which preparer runs is a fact about the REGISTRY, and a
-        # source whose relation is not in the catalog yet still has to be able to name one.
-        yield from _implementation_clause_fields(
-            prep_base, preparation, preparers, preparer_ids, "Preparer implementation",
-            NEW_IMPLEMENTATION_NOTE)
-        if physical:
-            # 🔴 EMPTY IS UNANSWERED HERE, AND THAT IS A RULING, NOT AN OVERSIGHT.  Do not
-            # "fix" this back to a membership test.  A membership test stood here earlier on
-            # 2026-08-22 and was correct on its own terms: `_nonblank_list` passes
-            # `allow_empty=True` for this key, so `[]` IS a legal declaration, and reading it
-            # as absent hands the square to the default and overwrites what somebody wrote.
-            # The owner was told exactly that -- including that `dt_job.prepare` would change
-            # and its cursor would stop -- and ruled the other way: 「그냥 다 갈아버린다」.
-            #
-            # So `[]` means UNANSWERED for this key regardless of who left it there, and the
-            # default wins.  The provenance split that would have kept a saved `[]` while
-            # treating a create draft's seed as unanswered was designed and CANCELLED in the
-            # same breath; it is not a smaller version of this and must not be reintroduced
-            # as one.
-            #
-            # 🔴 SCOPE IS THIS KEY AND THE MAPPER'S TWIN, NOWHERE ELSE.  The same rule at
-            # `authoring_plan`'s class-level branch would catch `read.group_by`, where `[]`
-            # is a legal value (`allow_empty`) and overwriting it would be a defect.
-            # That is why the test lives here at the producer instead.
-            inputs = list(_listed(preparation.get("input_columns")))
-            declared_inputs = inputs if inputs else _ABSENT
-            # 🔴 THE ONE UNIVERSE THAT MADE THIS MOVE NECESSARY.  A preparer reads the
-            # PHYSICAL table and nothing else -- it runs before anything has been
-            # prepared -- so its candidates are `relation`'s columns.  While the body
-            # lived in its own section this field had no relation to point at and the
-            # screen offered a bare text box.
-            #
-            # 🔴 EVERYTHING ON, MINUS WHAT IS ALREADY COMING (owner, 2026-08-22: 「그러면 그냥
-            # 디폴트 전체 입력해도 되지?」, on top of the locked-chip ruling minutes earlier).
-            # The default is the candidates the locks do NOT already cover, because a locked
-            # column arrives whether or not this key names it and the key must not name it:
-            # `input_columns` still means "on top of the read", and putting a locked name in
-            # it would move a fingerprint to say something the file already said.
-            #
-            # The cost, chosen knowingly and twice: the saved list names columns this source
-            # does not read, so dropping one of them from the table stops this source too.
-            # The mitigation IS the control -- the person turns the chip off -- which is why
-            # the locks and the everything-default had to land together.
-            yield Field(
-                path=f"{prep_base}.input_columns", step="sources",
-                label="Preparer input_columns",
-                state="derived", tier=TIER_DERIVATION,
-                value=[name for name in physical if name not in locked_all],
-                declared=declared_inputs,
-                ground=Ground(
-                    "preparer_inputs_from_relation_minus_locked",
-                    f"Default: the {len(physical)} columns of relation {relation} minus the "
-                    f"{len(prep_locked)} that read already reads",
-                    (f"{PHYSICAL_CATALOG_FILENAME}:{relation}",),
-                    [name for name in physical if name not in locked_all]),
-                # 🔴 STATED, NOT MEASURED, AND `comparison` IS NOT THE LEVER FOR IT.  The
-                # derived value is a MAXIMUM a person narrows, which is neither of the two
-                # things `comparison` can say (`equal` = zero freedom, `superset` = a
-                # derived MINIMUM a wider declaration satisfies).  `superset` is the word
-                # that already produced a false red on `input_columns` once, so the row
-                # states its own disposition, as `_source_fields`' `group_by` does.  That
-                # word is also what routes this row through `authoring_plan`'s
-                # withholding: a square that already answers keeps its answer.
-                disposition="default_overridable",
-                candidates=tuple(physical), universe=UNIVERSE_RELATION,
-                locked=prep_locked,
-                note="Locked = columns read already reads · the rest toggle",
-            )
-            outputs = preparation.get("output_columns")
-            names = sorted(outputs, key=str) if isinstance(outputs, Mapping) else []
-            # 🔴 THE IMPLEMENTATION IS ASKED FIRST, AND MOST CANNOT ANSWER.  A preparer
-            # that states its own outputs turns this square into a copy of a fact the
-            # code already holds -- owner ruling 2026-08-20: 「닿을 수 없으면 선언도 닿지
-            # 않는다 - 자유도 0인 선언은 계약이 아니라 사본이다. state="derived"가 그 표지」.
-            # Measured 2026-09-05: `lot-event-live-frame` emits exactly 7 names, all module
-            # constants, and `prepare_outputs` REFUSES when the declaration disagrees, so
-            # the operator's degrees of freedom here are zero.
-            #
-            # ⛔ `None` MEANS "IT DID NOT SAY", WHICH IS NOT "IT ADDS NOTHING".  Two
-            # preparers ship and both happen to know; a third whose output NAMES came from
-            # its rows would not, and filling its square on a rule induced from two would
-            # be a description of those two.  So the ask fails closed to today's row.
-            said = preparer_output_columns(preparation.get("implementation_id"),
-                                           preparation.get("implementation_version"))
-            if said is not None:
-                yield Field(
-                    path=f"{prep_base}.output_columns", step="sources",
-                    label="Preparer output_columns", state="derived", tier=TIER_STRUCTURAL,
-                    # The MAPPING, not the name list: `filled_declaration` writes a derived
-                    # value into the file, and `_column_types` refuses anything that is not
-                    # `{column: type}` -- a list of names here would fill the square with a
-                    # shape the validator then refuses on the square that said it was full.
-                    value=dict(said),
-                    declared=dict(outputs) if isinstance(outputs, Mapping) else _ABSENT,
-                    forbidden=tuple(physical),
-                    # The grammar names `output_columns` in `_validate_preparation`'s
-                    # `required` tuple, so the key stays even though its value is forced.
-                    disposition="grammar_requires_it",
-                    ground=Ground(
-                        "preparer_output_columns_from_implementation",
-                        "Filled: %s emits %d columns · a different list is refused at run"
-                        % (preparation.get("implementation_id"), len(said)),
-                        (f"{prep_base}.implementation_id",), dict(said)),
-                    note="The output columns the implementation states.",
-                )
-            else:
-                # NOT a derived value.  The relation's columns are what this field may not
-                # BE; filling the field with them would declare exactly the collisions
-                # `output_column_collision` refuses.
-                yield Field(
-                    path=f"{prep_base}.output_columns", step="sources",
-                    label="Preparer output_columns",
-                    state="answered" if names else "unanswered", tier=TIER_CONSTRAINED,
-                    value=names, declared=names if names else _ABSENT,
-                    forbidden=tuple(physical),
-                    ground=Ground(
-                        "preparer_output_collision_from_relation",
-                        f"Limit: no name may repeat one of the {len(physical)} columns of relation {relation}",
-                        (f"{PHYSICAL_CATALOG_FILENAME}:{relation}",), list(physical)),
-                    note="Names of the columns the preparer adds. A name the table already has is not allowed.",
-                )
-        inherited = _listed(preparation.get("inherit_virtual_join_rules"))
-        # 🔴 IS THIS DECLARATION EVEN NEEDED -- ASKED BEFORE IT WAS WIRED.  Measured
-        # 2026-08-21: exactly one file outside the validator mentions the key, and it does
-        # not READ it -- `setup_registry` writes
-        # `SourcePreparerDescriptor.accepts_verified_join_rules` at compile time and
-        # nothing ever looks at the attribute again.  The validator states one rule about
-        # it (`invalid_driver`: must be true when the source inherits virtual join rules).
-        # So inheriting FORCES true, and not inheriting leaves a bit whose value changes
-        # nothing -- a default, not a question, in both directions.
-        #
-        # It used to be derived only in the first case, which is why this square sat on the
-        # form as a bare checkbox for all four live sources: none of them inherits a rule,
-        # so none of them reached the derivation, and the operator was asked for a bit
-        # nobody consumes.  The `if` is what left; the inheriting branch is unchanged.
-        #
-        # 🔴 AND THE STRONGER FIX IS STILL OPEN, SAID OUT LOUD.  A key nothing reads should
-        # leave the grammar rather than be filled in silence; that is `setup_bundle` +
-        # `setup_registry` + every config on disk, not this module, so it stays an open
-        # item here instead of being absorbed into a green box.
-        yield Field(
-            path=f"{prep_base}.accepts_verified_join_rules", step="sources",
-            label="accepts_verified_join_rules", state="derived",
-            tier=TIER_DERIVATION, value=bool(inherited),
-            declared=preparation.get("accepts_verified_join_rules", _ABSENT),
-            ground=Ground(
-                "accepts_join_rules_from_inheritance",
-                f"Filled: source {source_id} inherits {len(inherited)} join rules"
-                if inherited else
-                f"Default: source {source_id} inherits no join rule -> false",
-                (f"{prep_base}.inherit_virtual_join_rules",), bool(inherited)),
-        )
 
         # -------------------------------------------------------------------- mapper
         mapper = _mapper(source)
@@ -1243,52 +1043,68 @@ def _implementation_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
         # `MapperDescriptor.emits` is compiled from `bind.mappings.<sentence>.use` and there is
         # nothing left to show.
         binding_columns = profile_binding_columns(profile_base, profile) if profile else ()
-        # 🔴 THE PREPARED FRAME, NOT THE BINDINGS.  Deriving this from `bind.mappings` made
-        # the PROFILE the gate, so a source with no mappings yet -- which is what a
-        # half-built one looks like -- got no row at all, and the ruling says both squares
-        # come up full on a new source.  The frame is also the honest universe: it covers
-        # the columns a binding never names and a custom mapper still reads
-        # (`__source_event_incomplete` on `lot_event`).
-        if prepared:
-            map_locked = tuple(name for name in prepared if name in locked_all)
+        # 🔴 THE TABLE, NOT THE BINDINGS.  Deriving this from `bind.mappings` made the PROFILE
+        # the gate, so a source with no mappings yet -- which is what a half-built one looks
+        # like -- got no row at all, and the ruling says the square comes up full on a new
+        # source.
+        if physical:
+            # 🔴 EMPTY IS UNANSWERED HERE, AND THAT IS A RULING, NOT AN OVERSIGHT.  Do not
+            # "fix" this back to a membership test.  A membership test stood here earlier on
+            # 2026-08-22 and was correct on its own terms: `_nonblank_list` passes
+            # `allow_empty=True` for this key, so `[]` IS a legal declaration, and reading it
+            # as absent hands the square to the default and overwrites what somebody wrote.
+            # The owner was told exactly that -- including that `dt_job`'s list would change
+            # and its cursor would stop -- and ruled the other way: 「그냥 다 갈아버린다」.
+            #
+            # So `[]` means UNANSWERED for this key regardless of who left it there, and the
+            # default wins.  The provenance split that would have kept a saved `[]` while
+            # treating a create draft's seed as unanswered was designed and CANCELLED in the
+            # same breath; it is not a smaller version of this and must not be reintroduced
+            # as one.
+            #
+            # 🔴 SCOPE IS THIS KEY, NOWHERE ELSE.  The same rule at
+            # `authoring_plan`'s class-level branch would catch `read.group_by`, where `[]`
+            # is a legal value (`allow_empty`) and overwriting it would be a defect.
+            # That is why the test lives here at the producer instead.
+            map_locked = tuple(name for name in physical if name in locked_all)
             mapper_inputs = list(_listed(mapper.get("input_columns")))
             declared_mapper_inputs = mapper_inputs if mapper_inputs else _ABSENT
+            # 🔴 EVERYTHING ON, MINUS WHAT IS ALREADY COMING (owner, 2026-08-22: 「그러면 그냥
+            # 디폴트 전체 입력해도 되지?」, on top of the locked-chip ruling minutes earlier).
+            # The default is the candidates the locks do NOT already cover, because a locked
+            # column arrives whether or not this key names it and the key must not name it:
+            # `input_columns` still means "on top of the read", and putting a locked name in
+            # it would move a fingerprint to say something the file already said.
+            #
+            # The cost, chosen knowingly and twice: the saved list names columns this source
+            # does not read, so dropping one of them from the table stops this source too.
+            # The mitigation IS the control -- the person turns the chip off -- which is why
+            # the locks and the everything-default had to land together.
             yield Field(
                 path=f"{base}.input_columns", step="sources",
                 label="Mapper input_columns", state="derived", tier=TIER_DERIVATION,
                 value=_with_required_columns(
-                    [name for name in prepared if name not in locked_all],
+                    [name for name in physical if name not in locked_all],
                     mapper, profile, profile_base),
-                # Empty-as-unanswered, same ruling and same scope as the preparer row above
-                # -- see the comment there before changing this back to a membership test.
                 declared=declared_mapper_inputs,
                 ground=Ground(
-                    "mapper_inputs_from_prepared_frame_minus_locked",
-                    f"Default: the {len(prepared)} prepared frame columns minus the "
-                    f"{len(map_locked)} that read already reads "
-                    f"(relation {relation} + preparer output_columns)",
-                    (f"{PHYSICAL_CATALOG_FILENAME}:{relation}",
-                     f"{prep_base}.output_columns"),
+                    "mapper_inputs_from_relation_minus_locked",
+                    f"Default: the {len(physical)} columns of relation {relation} minus the "
+                    f"{len(map_locked)} that read already reads",
+                    (f"{PHYSICAL_CATALOG_FILENAME}:{relation}",),
                     _with_required_columns(
-                        [name for name in prepared if name not in locked_all],
+                        [name for name in physical if name not in locked_all],
                         mapper, profile, profile_base)),
-                # Stated for the same reason as the preparer row above: the value is the
-                # MAXIMUM and a person narrows it, so `comparison` has no word for it.
+                # 🔴 STATED, NOT MEASURED, AND `comparison` IS NOT THE LEVER FOR IT.  The
+                # derived value is a MAXIMUM a person narrows, which is neither of the two
+                # things `comparison` can say (`equal` = zero freedom, `superset` = a
+                # derived MINIMUM a wider declaration satisfies).  `superset` is the word
+                # that already produced a false red on `input_columns` once, so the row
+                # states its own disposition, as `_source_fields`' `group_by` does.  That
+                # word is also what routes this row through `authoring_plan`'s
+                # withholding: a square that already answers keeps its answer.
                 disposition="default_overridable",
-                # 🔴 RELATION ∪ 준비기.output_columns, WHICH THE MAPPER COULD NOT BE TOLD
-                # BEFORE.  The mapper runs AFTER preparation, so a preparer-made column is
-                # legal here and a physical one still is too -- the widening the move was
-                # for.  Universe and default are the same set minus the locks; the universe
-                # is what a person may put BACK after narrowing.
-                candidates=tuple(prepared), universe=UNIVERSE_PREPARED,
-                # 🔴 THE SAME FIVE TERMS AS THE PREPARER SQUARE, INCLUDING THE `output_columns`
-                # SUBTRACTION -- the order publishes ONE formula and this row does not get a
-                # private variant.  Consequence, stated rather than absorbed: a preparer
-                # output that `read.identity` names (`row_identity` on `lot_event`) is in
-                # this square's candidates and is NOT locked, so it comes up pressed and
-                # still pressable even though the frame carries it regardless.  Turning it
-                # off is harmless: `base_select_columns` already drops mapper inputs that
-                # are preparer outputs, so it never widens the physical SELECT either way.
+                candidates=tuple(physical), universe=UNIVERSE_RELATION,
                 locked=map_locked,
                 note="Locked = columns read already reads · the rest toggle",
             )
@@ -1323,7 +1139,7 @@ def _profile_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
                     ) -> Iterable[Field]:
     """Every source's profile body, walked FROM the source.
 
-    🔴 THE OWNER LOOKUP IS GONE, exactly as it went for the preparer and the mapper.  This
+    🔴 THE OWNER LOOKUP IS GONE, exactly as it went for the mapper.  This
     function used to walk the `profiles` section and search backwards for the source that
     selected each member, then derive `profile.source` from what it found -- a field whose
     only correct value was the key of the thing that pointed at it.  A body inside a source
@@ -1342,7 +1158,7 @@ def _profile_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
         base = f"bundle.sources.{source_id}.bind"
         # `packs` was a `derived` row here on the same terms as the mapper's `emits`, and
         # left the file with it on 2026-08-21.
-        available = prepared_columns(bundle, catalog, source)
+        available = relation_columns(catalog, _driver_relation(source))
         # 🔴 `bind.entities` IS A SIBLING OF `bind.mappings` and gets squares the same
         # way -- one per attribute the type declares -- so a refusal written at
         # `….attributes.<name>` lands on a row instead of in `unattached_refusals`.
@@ -1531,7 +1347,7 @@ def _mapping_fields(base: str, sentence: str, mapping: Mapping[str, Any],
                 state="answered" if binding.get("column") else "missing",
                 tier=TIER_CONSTRAINED, value=binding.get("column"),
                 declared=binding.get("column"),
-                candidates=tuple(available), universe=UNIVERSE_PREPARED,
+                candidates=tuple(available), universe=UNIVERSE_RELATION,
             )
         if binding.get("kind") == "entity":
             yield from _entity_binding_fields(
@@ -1629,7 +1445,7 @@ def _entity_binding_fields(path: str, binding: Mapping[str, Any],
             label=f"Key {key} column",
             state="answered" if column else "unanswered", tier=TIER_CONSTRAINED,
             value=column, declared=column if column else _ABSENT,
-            candidates=tuple(available), universe=UNIVERSE_PREPARED,
+            candidates=tuple(available), universe=UNIVERSE_RELATION,
         )
 
 
@@ -1755,7 +1571,6 @@ def _source_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
         driver = _driver(source)
         relation = source.get("relation")
         physical = relation_columns(catalog, relation)
-        available = prepared_columns(bundle, catalog, source)
         yield Field(
             path=f"{base}.relation", step="sources", label="relation",
             state="answered" if relation else "missing", tier=TIER_CONSTRAINED,
@@ -1776,7 +1591,7 @@ def _source_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
             path=f"{base}.read.identity", step="sources", label="identity",
             state="answered" if identity else "missing", tier=TIER_CONSTRAINED,
             value=identity, declared=identity if identity else _ABSENT,
-            candidates=tuple(available), universe=UNIVERSE_PREPARED,
+            candidates=tuple(physical), universe=UNIVERSE_RELATION,
         )
         # `unit: row` has no group_by row: the skeleton draws the field for `unit: group`
         # alone, and a row source writes none (`setup_bundle.read_group_by`).
@@ -1807,7 +1622,7 @@ def _source_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
                 tier=TIER_CONSTRAINED,
                 value=list(identity) if filling else group_by,
                 declared=group_by if group_by else _ABSENT,
-                candidates=tuple(identity), universe=UNIVERSE_PREPARED,
+                candidates=tuple(identity), universe=UNIVERSE_RELATION,
                 disposition="default_overridable" if filling else "",
                 ground=Ground(
                     "group_by_default_from_identity",
@@ -1965,17 +1780,11 @@ def _source_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
                 note="The entity a register sentence registers · one identity key",
             )
             columns = list(_listed(probe.get("columns")))
-            # 🔴 RELATION, NOT PREPARED, AND THE SAME REFUSAL SAYS SO.  The probe is asked
-            # BEFORE preparation, on physical column names, while the bindings name
-            # post-preparation ones -- so offering the preparer's outputs here produces
-            # `unknown_column ... has no column`, which is exactly the refusal a person
-            # gets today for typing the binding's spelling from memory.
             yield Field(
                 path=f"{ppath}.columns", step="sources", label="Registration probe columns",
                 state="answered" if columns else "missing", tier=TIER_CONSTRAINED,
                 value=columns, declared=columns if columns else _ABSENT,
                 candidates=tuple(physical), universe=UNIVERSE_RELATION,
-                note="Asked before preparation, so table columns only",
             )
             # 🔴 `list_separator` GETS NO ROW HERE, AND THE MEASUREMENT IS WHY.  It reads
             # like the obvious third row -- `waferids` is `:`-separated and probing the
@@ -2134,7 +1943,7 @@ def authoring_plan(bundle: Mapping[str, Any], catalog: Mapping[str, Any], *,
         # seeded -- would otherwise read as "answered", withhold the default, AND still
         # carry `invalid_type: must be a list with at least one item`.  Keying on
         # emptiness alone would be wrong in the other direction: `_nonblank_list` passes
-        # `allow_empty=True` for `prepare.input_columns`, `map.input_columns` and
+        # `allow_empty=True` for `map.input_columns` and
         # `read.group_by`, so `[]` IS an answer there, and `_says_nothing`'s own docstring
         # records the same thing for a declared `false`.  So: nothing in the box AND the
         # validator objecting to this square.
@@ -2224,8 +2033,8 @@ def _says_nothing(value: Any) -> bool:
 
     Absent, `null`, and the skeleton's empty containers (`[]`, `{}`, `""`) all mean "not
     answered".  `false` and `0` do NOT -- they are answers, and treating a declared `false`
-    as a gap is how a fill starts overwriting decisions.  `accepts_verified_join_rules` is
-    exactly that field and is `false` on all three live sources.
+    as a gap is how a fill starts overwriting decisions.  `accepts_verified_join_rules` was
+    exactly that field, `false` on all three live sources (⚰️ gone with `prepare`).
     """
     return value is None or (isinstance(value, (str, list, tuple, dict)) and not value)
 

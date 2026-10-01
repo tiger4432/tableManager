@@ -261,3 +261,22 @@ def test_the_route_gives_the_names_for_free_and_charges_only_when_asked_for_one(
     assert all("count" not in item for item in body["gaps"])
 
     assert client.get("/api/ledger/gaps", params={"name": "no such gap"}).status_code == 404
+
+
+def test_the_shipped_declaration_and_the_shipped_table_agree_without_a_skip():
+    """총괄 819726624 ㄹ: 「등록되지 않은 웨이퍼 · 랏」 retired from the table, and the shipped
+    declaration stopped asking it (register@1's subjects) in the same landing. The live check
+    above SKIPS on a mismatch; this one is the two shipped files, so a mismatch is red."""
+    import json
+    import os
+
+    sample = os.path.join(os.path.dirname(__file__), "..", "config", "sample",
+                          "ledger_config.json.sample")
+    with open(sample, encoding="utf-8") as handle:
+        declared = json.load(handle)
+
+    produced = gaps.questions(declared, names=gaps.load_names())
+
+    asked = {(item["type"], tuple(item["absent"])) for item in produced}
+    assert ("dtjob@1", ("register@1",)) in asked
+    assert not {("wafer@1", ("register@1",)), ("lot@1", ("register@1",))} & asked

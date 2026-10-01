@@ -1,5 +1,5 @@
 {
-  "setup_version": 6,
+  "setup_version": 5,
   "vocabulary": {
     "measures@1": {
       "status": "active",
@@ -61,6 +61,8 @@
     "register@1": {
       "status": "active",
       "subjects": [
+        "lot@1",
+        "wafer@1",
         "dtjob@1"
       ],
       "object": {
@@ -369,6 +371,14 @@
           }
         ]
       },
+      "prepare": {
+        "implementation_id": "direct-join",
+        "implementation_version": 1,
+        "input_columns": [],
+        "output_columns": {},
+        "accepts_verified_join_rules": false,
+        "inherit_virtual_join_rules": []
+      },
       "map": {
         "implementation_id": "declarative-role",
         "implementation_version": 1,
@@ -449,6 +459,40 @@
     "lot_event": {
       "bind": {
         "mappings": {
+          "descent": {
+            "bind": {
+              "occurred_at": {
+                "approval_status": "approved",
+                "column": "event_time",
+                "kind": "column"
+              },
+              "subject": {
+                "approval_status": "approved",
+                "entity_type": "lot@1",
+                "keys": {
+                  "lot": {
+                    "approval_status": "approved",
+                    "column": "child_lot",
+                    "kind": "column"
+                  }
+                },
+                "kind": "entity"
+              },
+              "target": {
+                "approval_status": "approved",
+                "entity_type": "lot@1",
+                "keys": {
+                  "lot": {
+                    "approval_status": "approved",
+                    "column": "parent_lot",
+                    "kind": "column"
+                  }
+                },
+                "kind": "entity"
+              }
+            },
+            "predicate": "derived_from@1"
+          },
           "first_sight_holder": {
             "bind": {
               "occurred_at": {
@@ -589,6 +633,31 @@
           "kind": "event"
         }
       },
+      "prepare": {
+        "accepts_verified_join_rules": false,
+        "implementation_id": "lot-event-live-frame",
+        "implementation_version": 1,
+        "inherit_virtual_join_rules": [],
+        "input_columns": [
+          "lot_id",
+          "event_type",
+          "slotnumbers",
+          "waferids",
+          "parent_lot",
+          "child_lot",
+          "txn_seq",
+          "event_time"
+        ],
+        "output_columns": {
+          "__source_event_incomplete": "boolean",
+          "__source_row_excluded": "boolean",
+          "event_group_key": "string",
+          "lot": "string",
+          "row_identity": "string",
+          "slots": "string",
+          "wafers": "string"
+        }
+      },
       "read": {
         "cursor": {
           "columns": [
@@ -627,8 +696,7 @@
           }
         ]
       },
-      "relation": "lot_event",
-      "status": "retired"
+      "relation": "lot_event"
     },
     "transfer_event": {
       "bind": {
@@ -710,6 +778,26 @@
           "kind": "row"
         }
       },
+      "prepare": {
+        "accepts_verified_join_rules": false,
+        "implementation_id": "direct-join",
+        "implementation_version": 1,
+        "inherit_virtual_join_rules": [],
+        "input_columns": [
+          "b_wx",
+          "b_wy",
+          "c_wx",
+          "c_wy",
+          "core_wafer_id",
+          "dt_job",
+          "dt_job_id",
+          "dt_x",
+          "dt_y",
+          "product",
+          "row_id"
+        ],
+        "output_columns": {}
+      },
       "read": {
         "cursor": {
           "columns": [
@@ -749,6 +837,21 @@
           "column": "observed_at",
           "timezone": "Asia/Seoul"
         }
+      },
+      "prepare": {
+        "implementation_id": "direct-join",
+        "implementation_version": 1,
+        "input_columns": [
+          "run_uid",
+          "base_wafer_id",
+          "base_x",
+          "base_y",
+          "stack_gate",
+          "observed_at"
+        ],
+        "output_columns": {},
+        "accepts_verified_join_rules": false,
+        "inherit_virtual_join_rules": []
       },
       "map": {
         "implementation_id": "declarative-role",
@@ -903,6 +1006,21 @@
           "kind": "row"
         }
       },
+      "prepare": {
+        "accepts_verified_join_rules": false,
+        "implementation_id": "direct-join",
+        "implementation_version": 1,
+        "inherit_virtual_join_rules": [],
+        "input_columns": [
+          "row_id",
+          "wafer_id",
+          "recipe_id",
+          "step",
+          "eventtime",
+          "mat_type"
+        ],
+        "output_columns": {}
+      },
       "read": {
         "unit": "row",
         "identity": [
@@ -958,6 +1076,21 @@
           "kind": "row"
         }
       },
+      "prepare": {
+        "accepts_verified_join_rules": false,
+        "implementation_id": "direct-join",
+        "implementation_version": 1,
+        "inherit_virtual_join_rules": [],
+        "input_columns": [
+          "lot",
+          "slot",
+          "wafer",
+          "event_type",
+          "event_time",
+          "lot_slot_wafer_key"
+        ],
+        "output_columns": {}
+      },
       "bind": {
         "mappings": {
           "seat-holds-wafer": {
@@ -996,111 +1129,6 @@
                     "column": "wafer"
                   }
                 }
-              }
-            }
-          }
-        }
-      }
-    },
-    "lot_lineage": {
-      "relation": "lot_lineage",
-      "read": {
-        "unit": "row",
-        "identity": [
-          "lot_lineage_key"
-        ],
-        "order_by": [
-          "event_time",
-          "lot_lineage_key"
-        ],
-        "cursor": {
-          "columns": [
-            "event_time",
-            "lot_lineage_key"
-          ]
-        },
-        "occurred_at": {
-          "column": "event_time",
-          "timezone": "Asia/Seoul"
-        }
-      },
-      "map": {
-        "implementation_id": "declarative-role",
-        "implementation_version": 1,
-        "input_columns": [
-          "parent_lot",
-          "child_lot",
-          "event_type",
-          "event_time",
-          "lot_lineage_key"
-        ],
-        "unit": {
-          "kind": "row"
-        }
-      },
-      "bind": {
-        "mappings": {
-          "descent_split": {
-            "predicate": "derived_from@1",
-            "when": {
-              "event_type": "split"
-            },
-            "bind": {
-              "subject": {
-                "kind": "entity",
-                "entity_type": "lot@1",
-                "keys": {
-                  "lot": {
-                    "kind": "column",
-                    "column": "child_lot"
-                  }
-                }
-              },
-              "target": {
-                "kind": "entity",
-                "entity_type": "lot@1",
-                "keys": {
-                  "lot": {
-                    "kind": "column",
-                    "column": "parent_lot"
-                  }
-                }
-              },
-              "occurred_at": {
-                "kind": "column",
-                "column": "event_time"
-              }
-            }
-          },
-          "descent_merge": {
-            "predicate": "derived_from@1",
-            "when": {
-              "event_type": "merge"
-            },
-            "bind": {
-              "subject": {
-                "kind": "entity",
-                "entity_type": "lot@1",
-                "keys": {
-                  "lot": {
-                    "kind": "column",
-                    "column": "child_lot"
-                  }
-                }
-              },
-              "target": {
-                "kind": "entity",
-                "entity_type": "lot@1",
-                "keys": {
-                  "lot": {
-                    "kind": "column",
-                    "column": "parent_lot"
-                  }
-                }
-              },
-              "occurred_at": {
-                "kind": "column",
-                "column": "event_time"
               }
             }
           }

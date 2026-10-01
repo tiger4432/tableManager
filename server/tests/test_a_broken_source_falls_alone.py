@@ -55,16 +55,13 @@ BROKEN = "dt_log"
 def two_source_document():
     """One plant, two sources reading two relations.  Both sound to start with.
 
-    The plant's virtual join is switched OFF and neither source inherits it: an enabled
-    rule demands a physical verification descriptor, which is a question about an index
-    and says nothing about the declaration isolation under test here.
+    The plant's virtual join is switched OFF: the declaration isolation under test here is
+    about sources, and since setup_version 6 no source inherits a join rule.
     """
     raw = copy.deepcopy(logical_bundle())
     raw["sources"][BROKEN] = copy.deepcopy(
         logical_bundle(source_name=BROKEN))["sources"][BROKEN]
     raw["virtual_joins"]["input_to_reference"]["enabled"] = False
-    for source in raw["sources"].values():
-        source["prepare"]["inherit_virtual_join_rules"] = []
     return raw
 
 
@@ -151,6 +148,22 @@ def test_the_backfill_refuses_the_refused_source_before_it_reads(tmp_path):
                      catalog=DEFAULT_CATALOG)
     assert refused.value.code == "source_refused"
     assert refused.value.path == "sources.%s" % BROKEN
+
+
+def test_the_backfill_refuses_a_retired_source_by_name_before_it_reads(tmp_path):
+    """총괄 ae3d408ae ④ - the operator's path once the v6 migration retires lot_event. The
+    retired-source refusal was built without its path, so asking for that source raised
+    TypeError instead of refusing by name."""
+    from ledger import backfill
+
+    document = two_source_document()
+    document["sources"][BROKEN]["status"] = "retired"
+    with pytest.raises(LedgerSetupError) as refused:
+        backfill.run(object(), BROKEN, ontology_root=write_root(tmp_path, document),
+                     catalog=DEFAULT_CATALOG)
+    assert refused.value.code == "source_retired"
+    assert refused.value.path == "sources.%s.status" % BROKEN
+    assert repr(BROKEN) in refused.value.message
 
 
 # ---------------------------------------------------------------------------
@@ -276,7 +289,7 @@ def test_a_root_document_fault_is_still_refused_whole(tmp_path):
 # ---------------------------------------------------------------------------
 
 def bundle_with_a_broken_join_rule():
-    """The rule `input_to_reference` is broken; `input_rows` inherits it, `dt_log` does not.
+    """The rule `input_to_reference` is broken, and no source inherits it (setup_version 6).
 
     판정, 2026-09-11: the unit rule already makes `bundle.virtual_joins.<rule>` a path root,
     so a fixpoint that blames the rule should take the rule and its inheritors and leave the
@@ -286,13 +299,13 @@ def bundle_with_a_broken_join_rule():
     raw = two_source_document()
     raw["virtual_joins"]["input_to_reference"]["enabled"] = True
     raw["virtual_joins"]["input_to_reference"]["colour"] = "blue"   # unknown field
-    raw["sources"][HEALTHY]["prepare"]["inherit_virtual_join_rules"] = [
-        "input_to_reference"]
     return raw
 
 
-def test_a_broken_join_rule_takes_only_the_sources_that_inherit_it(tmp_path):
-    """판정 281. A broken rule falls WITH its inheritors, and the bundle survives.
+def test_a_broken_join_rule_falls_alone(tmp_path):
+    """판정 281. A broken rule falls WITH its inheritors, and the bundle survives - and since
+    setup_version 6 retired the `prepare` clause that inherited one, it has none: every
+    source stays planned.
 
     ⚰️ THIS TEST ASSERTED THE OPPOSITE ONE COMMIT AGO, and the reversal is the point.
     Measured then: `resolve_declarations` blamed through `ground_node_key`, which reads
@@ -306,14 +319,8 @@ def test_a_broken_join_rule_takes_only_the_sources_that_inherit_it(tmp_path):
 
     # The bundle LOADS. That is the whole of it: one typo in one rule used to stop every
     # ledger on the deployment.
-    inheritor = setup.snapshot.source_plans[HEALTHY]
-    bystander = setup.snapshot.source_plans[BROKEN]
-
-    assert inheritor.planned is False, (
-        "a source whose declared join rule is gone cannot keep its own declaration")
-    assert "input_to_reference" in str(inheritor.refusal), inheritor.refusal
-    assert bystander.planned is True, (
-        "the source that never named the rule is nobody's casualty")
+    assert all(plan.planned for plan in setup.snapshot.source_plans.values()), (
+        "no source names the rule, so none is its casualty")
 
 
 def test_the_loader_isolates_a_join_rule_and_the_screen_still_does_not_author_one():

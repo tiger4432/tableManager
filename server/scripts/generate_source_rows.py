@@ -194,9 +194,8 @@ def source_columns(source: dict) -> tuple[str, ...]:
             _add(name)
     occurred = read.get("occurred_at") or {}
     _add(occurred.get("column"))
-    for clause in ("prepare", "map"):
-        for name in (source.get(clause) or {}).get("input_columns") or ():
-            _add(name)
+    for name in (source.get("map") or {}).get("input_columns") or ():
+        _add(name)
 
     def _walk_binding(binding):
         if not isinstance(binding, dict):
@@ -237,22 +236,13 @@ def plan_for(bundle, catalog, views, source_id: str, *, rows: int = DEFAULT_ROWS
             f"relation {relation!r} is not in the table catalog, so this script cannot "
             f"know its columns.")
 
-    # 🔴 THE ROWS THIS SCRIPT WRITES ARE THE RELATION'S, NOT THE SOURCE'S READ LIST. A source
-    # reads two kinds of column: the ones the TABLE has, and the ones its PREPARER makes
-    # (`prepare.output_columns`). Only the first kind can be written - the second is produced
-    # downstream, and a table has no business declaring it. Demanding both refused
-    # `lot_event` for six names that are exactly the preparer's own outputs, which is a
-    # refusal about the wrong thing: nothing was missing.
-    #
-    # ⚠️ THE REFUSAL SURVIVES FOR THE CASE IT WAS BUILT FOR. A column the source reads that
-    # is neither in the relation nor a preparer output is still named and still refused -
-    # that one really is a table the operator has to fix, and losing it would trade a loud
-    # refusal for eight silently blank columns.
-    prepared = set((source.get("prepare") or {}).get("output_columns") or {})
+    # A column the source reads that the relation does not have is named and refused - that
+    # one really is a table the operator has to fix, and losing it would trade a loud
+    # refusal for silently blank columns. (A preparer's outputs were exempt until
+    # setup_version 6 retired the preparer: a computed column is the relation's own now.)
     declared = set(entry.get("columns") or {})
     read_columns = source_columns(source)
-    missing = tuple(name for name in read_columns
-                    if name not in declared and name not in prepared)
+    missing = tuple(name for name in read_columns if name not in declared)
     if missing:
         raise MissingColumns(relation, missing)
     wanted = tuple(name for name in read_columns if name in declared)

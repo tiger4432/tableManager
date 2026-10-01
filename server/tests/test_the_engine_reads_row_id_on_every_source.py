@@ -24,7 +24,7 @@ import pytest
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from ledger import source_preparation                             # noqa: E402
+from ledger import event_frame                             # noqa: E402
 from ledger.implementations import trusted_implementations        # noqa: E402
 from ledger.setup_bundle import (load_physical_catalog,           # noqa: E402
                                  require_ready_bundle, validate_bundle)
@@ -48,7 +48,7 @@ def document():
 def compiled(document, catalog):
     bundle = require_ready_bundle(validate_bundle(document, catalog=catalog))
     return compile_setup_snapshot(
-        bundle, trusted_implementations(), (), catalog=catalog)
+        bundle, trusted_implementations(), catalog=catalog)
 
 
 @pytest.fixture(scope="module")
@@ -66,10 +66,11 @@ def test_every_source_whose_relation_has_one_reads_the_row_id(snapshot):
     Every source reads a table that has `row_id` (총괄 f3bc02f6e), so "every" is literal."""
     without = sorted(
         name for name, plan in snapshot.source_plans.items()
-        if source_preparation.FRAME_ROW_ID_COLUMN not in
-        source_preparation.base_select_columns(plan))
+        if plan.runs and event_frame.FRAME_ROW_ID_COLUMN not in
+        event_frame.base_select_columns(plan))
     assert without == []
-    assert len(snapshot.source_plans) == 6, (
+    # Seven declared, six read: `lot_event` is retired (setup_version 6) and reads nothing.
+    assert len([plan for plan in snapshot.source_plans.values() if plan.runs]) == 6, (
         "the shipped sample changed size -- confirm the claim still covers all of it")
 
 
@@ -78,12 +79,12 @@ def test_the_declaration_says_nothing_about_it(document, catalog, snapshot):
     `row_id` nowhere in their `read`, `prepare` or `map`, and they read it anyway -- which is
     the whole point of Ⓐ over Ⓒ (a declaration edit and a moved fingerprint each)."""
     silent = [name for name, source in document["sources"].items()
-              if "row_id" not in json.dumps(
+              if snapshot.source_plans[name].runs and "row_id" not in json.dumps(
                   {key: value for key, value in source.items() if key != "bind"})]
     assert len(silent) >= 3, silent
     for name in silent:
-        assert source_preparation.FRAME_ROW_ID_COLUMN in \
-            source_preparation.base_select_columns(snapshot.source_plans[name])
+        assert event_frame.FRAME_ROW_ID_COLUMN in \
+            event_frame.base_select_columns(snapshot.source_plans[name])
 
 
 def test_the_name_is_scored_against_the_catalogue_and_not_against_itself(catalog,
@@ -100,9 +101,9 @@ def test_the_name_is_scored_against_the_catalogue_and_not_against_itself(catalog
         declared = (catalog[relation] or {}).get("columns") or {}
         names = declared if isinstance(declared, dict) else {
             (item.get("name") if isinstance(item, dict) else item) for item in declared}
-        assert source_preparation.FRAME_ROW_ID_COLUMN in names, relation
+        assert event_frame.FRAME_ROW_ID_COLUMN in names, relation
         checked += 1
-    assert checked == 6, "the six relations the six shipped sources read"
+    assert checked == 7, "the seven relations the seven shipped sources read"
 
 
 # ------------------------------------------------------- and it costs no cursor a restamp
@@ -116,11 +117,11 @@ def test_the_read_is_not_what_a_cursor_fingerprint_is_made_of(snapshot, monkeypa
     Measured out of process at the same time, on the same sample: 15 fingerprints, none
     moved between HEAD and this change."""
     calls = []
-    real = source_preparation.base_select_columns
-    monkeypatch.setattr(source_preparation, "base_select_columns",
+    real = event_frame.base_select_columns
+    monkeypatch.setattr(event_frame, "base_select_columns",
                         lambda plan: calls.append(plan) or real(plan))
     fingerprints = {name: source_cursor_fingerprint(snapshot, name)
-                    for name in snapshot.source_plans}
+                    for name, plan in snapshot.source_plans.items() if plan.runs}
     assert len(fingerprints) == 6 and calls == [], (
         "a cursor fingerprint read the SELECT list, so an engine-owned column would "
         "restamp every source")

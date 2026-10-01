@@ -14,16 +14,10 @@ from ledger.runtime_v2 import (
     preview_cursor_batch,
 )
 from ledger.setup_registry import cursor_translator_version
-from ledger.source_preparation import SourcePreparationError
+from ledger.event_frame import SourcePreparationError
 from ledger.store import CursorVersionConflict, LedgerStore
 from test_ledger_setup_registry import snapshot
-from test_ledger_source_preparation import (
-    FakeJoinReader,
-    base_rows,
-    mappers,
-    preparers,
-    reader_for,
-)
+from test_ledger_event_frame import base_rows, mappers
 
 
 def cursor_for(frame):
@@ -99,13 +93,11 @@ def test_dry_run_and_execute_use_the_exact_same_compiler_candidates():
     compiled = snapshot()
     base = base_rows(2)
     dry = preview_cursor_batch(
-        compiled, "input_rows", base, cursor_for(base), reader_for(base),
-        preparers(), mappers())
+        compiled, "input_rows", base, cursor_for(base), mappers())
     store = RecordingStore()
 
     executed = execute_scoped_batch(
-        compiled, "input_rows", base, scope_for(base), reader_for(base),
-        preparers(), mappers(), store)
+        compiled, "input_rows", base, scope_for(base), mappers(), store)
 
     assert executed.preview.candidate_semantics == dry.candidate_semantics
     assert executed.preview.snapshot_hash == compiled.snapshot_sha256
@@ -145,17 +137,19 @@ def test_dry_run_and_execute_use_the_exact_same_compiler_candidates():
 # contract gap to rule on, not a fault to fix inside a retirement.
 
 
-def test_source_preparation_failure_writes_no_atom():
+def test_a_frame_failure_writes_no_atom():
+    """Was `test_source_preparation_failure_writes_no_atom`, driven by an empty join reader
+    (`source_preparation_missing`). The reader retired with the preparer (setup_version 6);
+    the frame failure that remains is a batch missing a column the read selects."""
     compiled = snapshot()
-    base = base_rows()
+    base = base_rows().drop(columns=["target_id"])
     store = RecordingStore()
 
     with pytest.raises(SourcePreparationError) as exc:
         execute_scoped_batch(
-            compiled, "input_rows", base, scope_for(base), FakeJoinReader(),
-            preparers(), mappers(), store)
+            compiled, "input_rows", base, scope_for(base), mappers(), store)
 
-    assert exc.value.code == "source_preparation_missing"
+    assert exc.value.code == "source_preparation_incomplete"
     assert store.calls == []
 
 
@@ -170,8 +164,7 @@ def test_gate_refusal_writes_no_atom(monkeypatch):
     monkeypatch.setattr(gate, "screen_compiled_molecule", refuse)
     with pytest.raises(gate.MoleculeRefused):
         execute_scoped_batch(
-            compiled, "input_rows", base, scope_for(base), reader_for(base),
-            preparers(), mappers(), store)
+            compiled, "input_rows", base, scope_for(base), mappers(), store)
 
     assert store.calls == []
 
@@ -194,8 +187,7 @@ def test_later_event_refusal_does_not_partially_store_earlier_event(monkeypatch)
     monkeypatch.setattr(gate, "screen_compiled_molecule", refuse_second)
     with pytest.raises(gate.MoleculeRefused):
         execute_scoped_batch(
-            compiled, "input_rows", base, scope_for(base), reader_for(base),
-            preparers(), mappers(), store)
+            compiled, "input_rows", base, scope_for(base), mappers(), store)
 
     assert calls == 2
     assert store.calls == []
@@ -209,8 +201,7 @@ def test_store_failure_is_not_converted_to_success():
 
     with pytest.raises(RuntimeError, match="database write failed"):
         execute_scoped_batch(
-            compiled, "input_rows", base, scope_for(base), reader_for(base),
-            preparers(), mappers(), store)
+            compiled, "input_rows", base, scope_for(base), mappers(), store)
 
     assert len(store.calls) == 1
     # The write was attempted and it was the scoped one: a door that swallowed the failure
@@ -331,8 +322,7 @@ def test_the_live_door_lands_the_previews_atoms_and_asks_for_no_cursor_advance()
 
     scoped = RecordingStore()
     executed = execute_scoped_batch(
-        compiled, "input_rows", base, ("join_id", ["J-0000"]), reader_for(base),
-        preparers(), mappers(), scoped)
+        compiled, "input_rows", base, ("join_id", ["J-0000"]), mappers(), scoped)
 
     assert len(scoped.calls[0]["atoms"]) == executed.preview.atom_count
     assert [semantic_atom(atom)["predicate"] for atom in scoped.calls[0]["atoms"]] == \
@@ -354,8 +344,7 @@ def test_every_way_the_scoped_door_could_become_a_whole_source_write_is_refused_
     def refusal(scope, rows=base):
         with pytest.raises(LedgerV2RuntimeError) as caught:
             execute_scoped_batch(
-                compiled, "input_rows", rows, scope, reader_for(rows),
-                preparers(), mappers(), store)
+                compiled, "input_rows", rows, scope, mappers(), store)
         return caught.value.to_mapping()
 
     assert refusal(None)["code"] == "scope_required"
@@ -383,8 +372,7 @@ def test_a_store_that_cannot_separate_the_two_statements_is_explicitly_unsupport
 
     with pytest.raises(LedgerV2RuntimeError) as caught:
         execute_scoped_batch(
-            compiled, "input_rows", base, ("join_id", ["J-0000"]), reader_for(base),
-            preparers(), mappers(), CursorAlwaysStore())
+            compiled, "input_rows", base, ("join_id", ["J-0000"]), mappers(), CursorAlwaysStore())
     assert caught.value.to_mapping() == {
         "code": "unsupported_store_contract",
         "path": "store.write_batch",
@@ -412,8 +400,7 @@ def test_a_store_that_cannot_take_the_receipt_is_refused_by_the_same_name():
 
     with pytest.raises(LedgerV2RuntimeError) as caught:
         execute_scoped_batch(
-            compiled, "input_rows", base, ("join_id", ["J-0000"]), reader_for(base),
-            preparers(), mappers(), NoReceiptStore())
+            compiled, "input_rows", base, ("join_id", ["J-0000"]), mappers(), NoReceiptStore())
     assert caught.value.to_mapping()["code"] == "unsupported_store_contract"
     assert "receipt" in caught.value.to_mapping()["message"]
 

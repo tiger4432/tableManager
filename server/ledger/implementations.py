@@ -12,10 +12,9 @@ What was wrong was not the boundary but the bookkeeping: the same fact was writt
 FOUR places -- a trusted catalog, a preparer registry, a mapper registry, and a fourth
 literal inside the transfer sample's test support -- so adding one mapper meant editing
 four lists, and forgetting one produced ``untrusted_implementation`` at compile time with
-no hint that the class existed.  MEASURED 2026-08-18: two generic implementations
-(:class:`ledger.roleframe.DeclarativeRoleMapper`,
-:class:`ledger.source_preparation.DirectJoinSourcePreparer`) were already written, already
-correct, and unreachable from any config because nobody had added them to the lists.
+no hint that the class existed.  MEASURED 2026-08-18: two generic implementations were
+already written, already correct, and unreachable from any config because nobody had added
+them to the lists. (⚰️ The preparer half retired with the `prepare` section, 총괄 e14416950.)
 
 Now the class states its own identity and this module reads it back.  The trusted set is
 therefore DERIVED from the code that exists, and the two can no longer disagree.
@@ -24,34 +23,29 @@ WHAT COUNTS AS TRUSTED, PRECISELY
 ---------------------------------
 A class is addressable from config when all of the following hold, and each is checked:
 
-  1. it subclasses :class:`~ledger.source_preparation.BaseSourcePreparer` or
-     :class:`~ledger.roleframe.BaseLedgerMapper`;
+  1. it subclasses :class:`~ledger.roleframe.BaseLedgerMapper`;
   2. it declares a non-blank ``implementation_id`` and a positive
      ``implementation_version`` **on itself**, not merely inherited (an intermediate base
      must not lend its identity to every subclass);
-  3. it lives in a module this file imports -- ``ledger.roleframe``,
-     ``ledger.source_preparation``, or a ``mappers/ledger_v2_*.py`` module.  The import
-     set is a property of the REPOSITORY LAYOUT, not of any config file, which is what
-     keeps a declaration from choosing what gets imported;
-  4. it passes the registry's own structural gate -- ``map()`` / ``prepare_batch()`` are
-     final and must not be overridden, and it must construct with no arguments.  Those
-     checks already lived in the registries and are still the ones that run.
+  3. it lives in a module this file imports -- ``ledger.roleframe`` or a
+     ``mappers/ledger_v2_*.py`` module.  The import set is a property of the REPOSITORY
+     LAYOUT, not of any config file, which is what keeps a declaration from choosing what
+     gets imported;
+  4. it passes the registry's own structural gate -- ``map()`` is final and must not be
+     overridden, and it must construct with no arguments.  Those checks already lived in
+     the registry and are still the ones that run.
 
 So "add a mapper" is one new file under ``server/mappers/`` named ``ledger_v2_*.py``, and
 this module is not edited.
 """
 from __future__ import annotations
 
-from collections.abc import Iterator, Mapping
+from collections.abc import Iterator
 import importlib
 import pkgutil
 
 from .roleframe import BaseLedgerMapper, RoleMapperImplementationRegistry
 from .setup_registry import TrustedImplementationCatalog
-from .source_preparation import (
-    BaseSourcePreparer,
-    SourcePreparerImplementationRegistry,
-)
 
 
 #: Package scanned for source-specific implementations, and the prefix that marks a
@@ -141,28 +135,13 @@ def _declarations(base: type) -> dict[tuple[str, int], type]:
     return found
 
 
-def source_preparer_declarations() -> dict[tuple[str, int], type]:
-    return _declarations(BaseSourcePreparer)
-
-
 def mapper_declarations() -> dict[tuple[str, int], type]:
     return _declarations(BaseLedgerMapper)
 
 
 def trusted_implementations() -> TrustedImplementationCatalog:
     """The trusted set, derived from the classes that exist rather than from a list."""
-    return TrustedImplementationCatalog.build(
-        source_preparers=tuple(sorted(source_preparer_declarations())),
-        mappers=tuple(sorted(mapper_declarations())),
-    )
-
-
-def source_preparer_registry() -> SourcePreparerImplementationRegistry:
-    registry = SourcePreparerImplementationRegistry()
-    for (identifier, version), implementation in sorted(
-            source_preparer_declarations().items()):
-        registry.register(identifier, version, implementation)
-    return registry.seal()
+    return TrustedImplementationCatalog.build(mappers=tuple(sorted(mapper_declarations())))
 
 
 def role_mapper_registry() -> RoleMapperImplementationRegistry:
@@ -170,39 +149,6 @@ def role_mapper_registry() -> RoleMapperImplementationRegistry:
     for (identifier, version), implementation in sorted(mapper_declarations().items()):
         registry.register(identifier, version, implementation)
     return registry.seal()
-
-
-def preparer_output_columns(identifier, version=None):
-    """What the named preparer SAYS it adds, or ``None`` when it does not say.
-
-    🔴 READ BACK OFF THE CLASS, THE SAME WAY THE IDENTITY IS.  `__dict__` rather than
-    `getattr` for the same reason `_self_declared_identity` uses it: an intermediate base
-    that answered would lend its answer to every subclass, and a subclass that adds one
-    column would then get a declaration filled in that is quietly short by one.
-
-    ⚠️ `None` IS "IT DOES NOT SAY", WHICH IS NOT "IT ADDS NOTHING".  An empty mapping is a
-    preparer stating it adds no columns; the caller has to keep those apart, because
-    filling a square with `{}` on behalf of a class that never spoke is inventing an
-    answer -- the failure this whole file exists to have deleted.
-
-    `version` picks one registration; omitted, the LATEST registered under the name wins,
-    which is what `implementation_choices` offers and what the form therefore selects.
-    """
-    if not isinstance(identifier, str) or not identifier.strip():
-        return None
-    declarations = source_preparer_declarations()
-    if version is None:
-        versions = [v for name, v in declarations if name == identifier]
-        if not versions:
-            return None
-        version = max(versions)
-    implementation = declarations.get((identifier, version))
-    if implementation is None:
-        return None
-    said = implementation.__dict__.get("declared_output_columns")
-    if not isinstance(said, Mapping):
-        return None
-    return {str(name): str(said[name]) for name in sorted(said)}
 
 
 def implementation_choices(sources=None) -> dict:
@@ -251,11 +197,7 @@ def implementation_choices(sources=None) -> dict:
             return None                     # a tie decides nothing
         return ranked[0][0]
 
-    out = {}
-    for kind, declarations in (("prepare", source_preparer_declarations()),
-                               ("map", mapper_declarations())):
-        counts = _count(kind)
-        out[kind] = {"options": _ids(declarations),
-                     "counts": counts,
-                     "default": _default(counts)}
-    return out
+    counts = _count("map")
+    return {"map": {"options": _ids(mapper_declarations()),
+                    "counts": counts,
+                    "default": _default(counts)}}

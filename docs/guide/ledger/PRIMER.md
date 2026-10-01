@@ -42,9 +42,9 @@ event_type=split · event_time=2026-01-01 13:00:00 · lot_slot_wafer_key=NAB123|
 |---|---|---|---|---|
 | 1 | **소스 관계** | 세계의 수첩 | 사실이 행으로 눕는 곳. 뜻 없음 | 위의 행 |
 | 2 | **`table_config.json`** | 표의 주민등록 | 이 표의 행을 시스템이 «지목»할 수 있게 하는 것 | 선언이 고를 수 있는 관계 집합이 곧 여기 있는 것. 원장 소스가 읽으려면 뷰가 아니라 `row_id` 가 있는 «표»여야 한다 |
-| 3 | **선언의 `sources.<이름>`** | 이 소스의 독해 지침서 | 「이 표를 어떻게 읽는가」 전부. 칸은 넷: `read` · `prepare` · `map` · `bind` | `relation: lot_slot_wafer` (체인이 만드는 표) |
+| 3 | **선언의 `sources.<이름>`** | 이 소스의 독해 지침서 | 「이 표를 어떻게 읽는가」 전부. 칸은 셋: `read` · `map` · `bind` | `relation: lot_slot_wafer` (체인이 만드는 표) |
 | 4 | **`read`** | 제본기 | 행을 «분자(한 사건)»로 묶고, 언제인지·어디까지 읽었는지를 정한다 | `unit: row` · `identity: [lot_slot_wafer_key]` · `occurred_at: {column: event_time, timezone: Asia/Seoul}` |
-| 5 | **`prepare`** | 자료 준비 | 필요한 컬럼을 모은다(조인이 필요하면 여기서) | `implementation_id: direct-join` |
+| 5 | ⚰️ **`prepare`** | (은퇴) | setup_version 6 에서 은퇴 — 조인·계산은 체인이 표에 쓰고 소스는 그 컬럼을 읽는다 | 없음 |
 | 6 | **`map`** | 통역사 | 분자를 원자 후보로 편다. **구현은 «선언이 고르는 것»이다** | `implementation_id: declarative-role` |
 | 7 | **`bind`** | 문장 작성 | 원자의 «칸마다» 어느 컬럼이 들어가는지 적는다. 코드 0줄 | 아래 §2 |
 | 8 | **선언의 `vocabulary`** | 문법책 | 술어마다 주어·목적어의 «서명». 서명에 안 맞으면 못 들어온다 | `has_wafer@1`: 주어 `lot_slot@1`, 목적어 `entity_ref` → `wafer@1`, 수식어 없음 |

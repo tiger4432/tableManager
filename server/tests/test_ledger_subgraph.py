@@ -838,7 +838,7 @@ def test_the_offered_scope_columns_are_exactly_the_ones_the_scope_reader_accepts
     """
     from ledger import backfill
     from ledger.setup import LedgerSetupError, load_setup
-    from ledger.source_preparation import base_select_columns
+    from ledger.event_frame import base_select_columns
 
     catalogue = trace_router.ledger_declaration_catalog()
     assert "sources" in catalogue, "an absent key means 'could not find out', not 'none'"

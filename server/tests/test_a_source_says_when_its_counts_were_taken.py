@@ -29,7 +29,7 @@ class _Plan:
     thing it stands in for is more permissive than production, and this one hid that the
     census has to know whether a source reads by ROW or by GROUP.
 
-    `preparation.exclude_when` for the same reason, since the census also asks how many rows
+    `driver.exclude_when` for the same reason, since the census also asks how many rows
     the declaration now EXCLUDES but the index still names (ruling 199). Empty here: these
     cases are about the STAMP, and a source with no clause is asked nothing."""
 
@@ -46,7 +46,7 @@ class _Plan:
         self.refusal = refusal
         self.driver = type("D", (), {
             "unit": unit, "group_by": tuple(group_by),
-            "preparation": type("P", (), {"exclude_when": tuple(exclude_when)})()})()
+            "exclude_when": tuple(exclude_when)})()
 
     @property
     def runs(self):

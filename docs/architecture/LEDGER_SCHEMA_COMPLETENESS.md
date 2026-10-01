@@ -85,13 +85,13 @@
 | `read.unit` | ① | {row, group} (`_SOURCE_UNITS` :131) · row 는 `group_by` 를 안 적거나 빈 목록(없음은 빈 목록으로 읽음 — `read_group_by`), group 은 «하나 이상» | 닫힌 둘 |
 | `read.identity` · `order_by` | ① | :1489 비지 않은 목록 · `group_by` ⊆ `identity` :1501 | 컬럼 이름 |
 | `read.cursor` | ② | 🔴 **더 «묻지 않는다»** — `order_by` 에서 «파생»된다(`_derived_cursor`). 파일에 남아 있으면 «삼킨다»(`ignored=("cursor",)`) | |
-| `prepare` · `map` | ① | :1248~1327 — `implementation_id`/`_version` · `input_columns` · `output_columns` · `unit.kind` ∈ {event, row, group_by} | 닫힘 |
+| ~~`prepare`~~ · `map` | ① | 🆕 10-01 `0b59a2f30`: `prepare` 절 은퇴 — 적으면 그 소스만 `prepare_retired` 로 거절(Next: `scripts/migrate_ledger_config_to_v6.py`), v5 파일은 `setup_bundle.upgrade_setup` 이 메모리에서 v6 로 읽는다. `map` 은 :1248~1327 — `implementation_id`/`_version` · `input_columns` · `output_columns` · `unit.kind` ∈ {event, row, group_by} | 닫힘 |
 | `bind.mappings.<문장>` | ① | `{predicate, bind:{역할→바인딩}}` :1372~1382 | 바인딩 kind ∈ {column, constant, entity} :1389~1400 |
 | `bind.entities.<t>.attributes` | ① | :1821~1850 — 소스당 «한 번»(판정 124) | column\|constant. entity ⛔ (:1846 — 「엔티티 값 속성은 엣지가 옷을 갈아입은 것」) |
 | **결정 단위** `decision_key` | ✅ **① (09-11 D-3c — «거짓»이었습니다)** — 표 카탈로그에 칸이 있고 `setup_bundle` 이 「선언된 컬럼 이름의 비지 않은 목록」으로 검증하며 어긋나면 `invalid_catalog` 로 «이름 대어» 거절합니다. 자리가 «표»인 이유는 판정 151/165 그대로(판단 단위는 그 표의 성질). 🪦 당시 근거: | 🔴 **원장 선언에도 표 카탈로그에도 없다.** 실측: 카탈로그 항목의 키 = `{business_key, column_types, composite_key_separator, composite_key_source, display_columns, kind, map_key_columns, workspace_name}` (샘플 44 표 전수). ⚠️ **`decision_key` 는 «다른 선언 언어»에 산다** — `enrichment_rules.json` 의 규칙마다(`enrichment_config` · `alignment_view_service.py:53` · `chain_bindings.resolve_decision_column`). 🔵 **판정 165: 이름은 «같게» 둔다** — 뜻이 같고 «범위»만 다르다(규칙의 판단 단위 / 표의 판단 단위). 관계를 적는다: 규칙 칸이 있으면 규칙 · 없으면 표 · 둘 다 없으면 «이름 대어 거절» | 목록(컬럼들) |
 | 삭제 겨눔 | ① | 🆕 10-01 `fa41a6f25`: 반대 방향 `backfill.rows_gone_from_the_source` — 색인이 이 소스로 들고 있는데 표에 없는 row_id. 소스 전부 새로 고침(`rescope(whole_source=True, apply=True)`)이 끝에 그것을 `withdraw_deleted_rows` 로 거둔다 — 가지(삭제 후속이 없음)와 후속이 놓친 기본 세상 삭제 · `ledger_source_row_ref` (`schema.py:69`, 키 `(relation, row_id, source_who, source_raw_ref)`) · ⚰️ `backfill.sources_without_row_index`(09-25 `c193986a8` 삭제 — 겨누지 못하는 소스가 없어짐) · `index_existing_refs` :936 · `withdraw_deleted_rows` :1056 | |
 | 삭제 — row_id 없는 뷰 | ⚰️ | **09-25 `c193986a8` — 이 경우가 없어졌다.** 원장 소스는 `row_id` 가 있는 표만 읽고, 뷰를 읽는 소스는 로드 때 이름 대어 거절된다 — 삭제를 겨누지 못하는 소스가 남지 않는다. (종전 ②: 「이름 대어 남는다 — `sources_without_row_index` 가 센다 · 샘플 뷰 10 중 5 는 base 의 `row_id` 를 흘려 겨눌 수 있었다」) | |
-| 🔴 **행 선택·제외** (S-91, 09-09 17:10 **닫힘**) | ✅ **①** | `sources.<s>.prepare.exclude_when: [{column, blank:true}]` — 검증 `setup_bundle.py:1351` `_validate_exclude_when` · 미지 컬럼은 :1903 에서 이름 대어 거절 · `direct-join` 이 아닌 준비기에는 :1913 이 「그 준비기는 이것을 안 읽는다」로 거절 · 레지스트리 `setup_registry.py:310` · 읽는 곳 `source_preparation.py:459` · 스켈레톤 `:576`(폼이 그림) · 출하 샘플 `:1781`. ⚠️ **착지 전 상태를 기록으로 남깁니다** — 기제는 있었으나 «파이썬 준비기»만 냈습니다 — `SOURCE_ROW_EXCLUDED_COLUMN = "__source_row_excluded"` (`source_preparation.py:47`), `setup_bundle.py` 에 «0회». 소유자 실측(09-09 15:59): 신원 키 부품이 빈 행 «하나»가 전부-아니면-전무로 995 행을 막습니다. ⚠️ 출하 카탈로그 주석이 2026-08-23 에 «이미» 이 자리를 적어 뒀습니다(「the only row-exclusion mechanism … is emitted by a preparer implementation」) | 목록(조건) |
+| 🔴 **행 선택·제외** (S-91, 09-09 17:10 **닫힘**) | ✅ **①** | 🆕 10-01 `0b59a2f30` `sources.<s>.read.exclude_when: [{column, blank:true}]`(전엔 `prepare.exclude_when` · 떨구는 곳 `event_frame._without_excluded_rows`) — 이하 착지 때 기록: 검증 `setup_bundle.py:1351` `_validate_exclude_when` · 미지 컬럼은 :1903 에서 이름 대어 거절 · `direct-join` 이 아닌 준비기에는 :1913 이 「그 준비기는 이것을 안 읽는다」로 거절 · 레지스트리 `setup_registry.py:310` · 읽는 곳 `source_preparation.py:459` · 스켈레톤 `:576`(폼이 그림) · 출하 샘플 `:1781`. ⚠️ **착지 전 상태를 기록으로 남깁니다** — 기제는 있었으나 «파이썬 준비기»만 냈습니다 — `SOURCE_ROW_EXCLUDED_COLUMN = "__source_row_excluded"` (`source_preparation.py:47`), `setup_bundle.py` 에 «0회». 소유자 실측(09-09 15:59): 신원 키 부품이 빈 행 «하나»가 전부-아니면-전무로 995 행을 막습니다. ⚠️ 출하 카탈로그 주석이 2026-08-23 에 «이미» 이 자리를 적어 뒀습니다(「the only row-exclusion mechanism … is emitted by a preparer implementation」) | 목록(조건) |
 | **소스 은퇴** | ✅ **① (09-11 D-3c — ③ 에서 ③′ 로 갔다가 «닫힘»)** — 읽는 쪽이 둘 생겼습니다: 재번역이 `source_retired` 로 거절하고, 센서스가 「retired 라서 건너뜀」을 «로그에 이름 대고» 셈에서 뺍니다(S-103 `b61c67fa`). ⚠️ 이 항목은 §7 에서 ③ 목록과 ③′ 목록에 «둘 다» 있었습니다. 🪦 당시 근거: | ⚰️ 옛 판정(「`exact` 가 `status` 를 거절한다 — 적을 수 없다」)은 «낡았습니다». 오늘 `setup_bundle.py:1611` 이 `optional=("status",)` 이고 값도 검증됩니다(:1617, `{active, retired}`). 🔴 그러나 «읽는 쪽이 없습니다** — 엔티티·소스 서술자에 `status` 필드가 없어 레지스트리에 안 실립니다(술어는 실리고 `roleframe._emission_plan` 이 읽습니다). 적어도 아무 일도 안 일어납니다. 자세히 D-7-6 | |
 
 ---
@@ -648,7 +648,7 @@ C-5 마킹 대수           🔴 ③ 그대로 = 표 B B1-1. 걷기에 ∩·∖�
 | `vocabulary.<p>` · `subjects` · `object.kind` · `object.types` | `fact` 의 **P** 와 목적어 종류 | ✅ |
 | `qualifiers.required/optional` | `fact` 의 **Q** | ✅ |
 | `status`(술어) | D_P 의 «수명» | ✅ |
-| `sources.<s>` 의 `relation`·`read`·`prepare`·`map`·`bind` | **Π** 로 가는 번역 | ✅ |
+| `sources.<s>` 의 `relation`·`read`·`map`·`bind`(🆕 10-01 `0b59a2f30` — ~~`prepare`~~ 은퇴) | **Π** 로 가는 번역 | ✅ |
 | `registration_probe` | Π 의 「첫 목격」 — fact(register) 를 «한 번만» | ✅ |
 | `occurred_at`(+ `basis`) | **τ** | ✅ |
 | `setup_version` · 지문 | **Π** 의 리비전 | ✅ |
@@ -1046,7 +1046,7 @@ label 「keys 앞 둘」  ② 로 적힌 «표면 규칙» — 판정 169 로 �
 | **값 변환** | 🔴 **③** | 바인딩 kind ∈ {column, constant, entity} «뿐»(`setup_bundle.py:495` `binding_kinds`). 값에 «함수»를 먹일 칸이 없습니다. 있는 변환은 «이름 붙은 하나» — `read.occurred_at.timezone`(샘플 :326). 🔴 그것이 이 축의 증거입니다: 변환이 필요할 때마다 «칸을 하나씩» 더해 왔고, 그 밖은 매퍼로 나갑니다 |
 | **조건부 값** | ✅ **① — S-99 착지 09-09 `0651f2f4b`**(🆕 이 행이 그 뒤로 «없다»고 남아 있었다 — 09-30 정정) · `sources.<s>.bind.mappings.<문장>.when` — 운영자 설명은 `guide/config/ledger_declaration_by_example.md` ⑤. 🆕 09-30 `c1746aa1e`: 빈 칸은 `""` 로 견줌 · 어느 문장도 안 고른 행은 세고 이름 댐(`gate.record_unsaid`). ⚰️ 아래는 착지 «전» 서술: ~~`mappings.<s>` 에 `when` 이 «없습니다».~~ 문법의 `when` 은 «둘 다 다른 것»입니다 — 스켈레톤의 `when` 은 «폼 표시 조건»(`{field, is}`), `setup_bundle.py:1304` 의 `when` 은 «엔티티 참조의 from 조건»입니다. 🔵 그러므로 S-99 는 «없던 것을 짓는 것»이 아니라 «이미 있는 조건 어휘를 문장 자리에 두는 것»입니다 |
 | **그룹 집계** | 🔴 **③** | `map.unit.kind: group_by` 는 «분할»을 선언하고 «집계»는 선언하지 않습니다. 샘플에서 group_by 는 «1»이고 그 소스가 곧 `dt-job-role`(파이썬)입니다. 범용 매퍼는 여러 값을 만나면 `ambiguous_binding_value` 로 «거절»합니다 |
-| **선언 조인** | ✅ **①** (단서 있음) | 칸이 있습니다 — `prepare.accepts_verified_join_rules` · `inherit_virtual_join_rules`, 그리고 `direct-join` 준비기를 15 중 «14»가 씁니다. ⚠️ 단서 둘: ⓐ 조인 «규칙»은 «다른 선언 언어»(`virtual_join_rules.json`)에 삽니다 — `decision_key` 와 «같은 부류»이므로 판정 165 와 같이 «관계를 적는» 처리 ⓑ 샘플 15 전부가 `false` / `[]` 입니다(소비자 0) → ③′ 의 성격을 «함께» 가집니다 |
+| **선언 조인** | ✅ **①** (단서 있음) | 🆕 10-01 `0b59a2f30`: 읽을 때 조인 칸 둘(`accepts_verified_join_rules` · `inherit_virtual_join_rules`)과 `direct-join` 준비기 은퇴 — 조인은 체인 `derive: {kind: "join"}` + `into.table` 이 표에 쓰고 원장은 그 표를 읽는다. 아래는 이력: 칸이 있습니다 — `prepare.accepts_verified_join_rules` · `inherit_virtual_join_rules`, 그리고 `direct-join` 준비기를 15 중 «14»가 씁니다. ⚠️ 단서 둘: ⓐ 조인 «규칙»은 «다른 선언 언어»(`virtual_join_rules.json`)에 삽니다 — `decision_key` 와 «같은 부류»이므로 판정 165 와 같이 «관계를 적는» 처리 ⓑ 샘플 15 전부가 `false` / `[]` 입니다(소비자 0) → ③′ 의 성격을 «함께» 가집니다 |
 | **다중 목적어 타입** | ✅ **①** | `object.types` 가 «목록»입니다(`setup_bundle.py:1149` `_nonblank_list`, 검사 :1993 · :2133). 한 술어의 목적어가 여러 엔티티 타입일 수 있습니다 |
 | **부재의 뜻** | ✅ **②** | `entities.*.allow_null` 이 칸으로 있고(`ledger_skeleton.json:183`) 읽는 쪽이 있습니다(`roleframe.py:1289~1293`). 기본은 «원자 없음», 적으면 «null 목적어». 🔴 「없음 vs 모름」을 «구별»하려면 값의 정의역이 필요하고 그것은 S-84 의 자리입니다 — 번역 인자가 아닙니다 |
 
@@ -1184,7 +1184,7 @@ Q-짝짓기  «분자 안의 위치» — 같은 분자의 «다른 행/다른 �
 | `entities.*.allow_null` | **emit** 의 부재 | ② |
 | `read.registration_probe` | **규칙의 «명시된 예외»**(비국소) | ① |
 | `decision_key` | 번역 인자 «아님** — 표의 판단 단위(판정 165) | ① |
-| `prepare.accepts_verified_join_rules` · `inherit_virtual_join_rules` | **규칙 «밖»**(조인) | 칸 있음 · 샘플 소비 0 → S-100 |
+| ⚰️ ~~`prepare.accepts_verified_join_rules` · `inherit_virtual_join_rules`~~(🆕 10-01 `0b59a2f30` 은퇴) | **규칙 «밖»**(조인) | 칸 있음 · 샘플 소비 0 → S-100 |
 | `status` (술어) | 번역 인자 «아님** — 선언의 수명 | ✅ ① — «읽힙니다**(`roleframe._emission_plan` `predicate.status != "active"` 면 발행 안 함) |
 | `status` (엔티티·소스) | 번역 인자 «아님** | 🔴 **③′** — 적을 수 «있고»(:1611 `optional=("status",)`) 검증도 되는데 **레지스트리에 안 실립니다** (D-7-6) |
 ```
@@ -1443,7 +1443,7 @@ S-101·S-103 은 «있는 칸이 말한 대로 되지 않는» 자리입니다. 
 ```
 
 ## D-10-2. ⚰️ **닫혔습니다 (판정 201 착지 · 19:4x 확인).** 아래는 «그때» 참이던 진단입니다
-> ✅ **확인한 것**(제 주장이 아니라 코드): `source_preparation.base_select_columns` 가
+> ✅ **확인한 것**(제 주장이 아니라 코드): `source_preparation.base_select_columns`(🆕 10-01 `0b59a2f30` → `event_frame.base_select_columns`) 가
 > `columns.update(source_plan.binding_select_columns)` 를 «오늘» 합니다 — 그 줄의 주석이
 > 「판정 201. A column a role binding names is read BECAUSE it is bound」입니다.
 > 그러므로 아래 「바인딩 컬럼이 목록에 없다」는 **오늘 거짓**이고, 그 자리의 런타임 실패도 없습니다.

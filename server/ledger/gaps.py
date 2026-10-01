@@ -206,7 +206,9 @@ def _refuse_unnamed(declaration, live, named):
             "the declaration asks questions the spec has not named: "
             + "; ".join(sorted(set(missing)))
             + ". Name them in docs/spec/APPLICATION_GAP_SPEC.md and add the rows to "
-              "gap_names.json - do not name them here.")
+              "gap_names.json - do not name them here. Or, if the declaration should not ask "
+              "them, take that type out of the predicate's subjects (object types) in "
+              "ledger_config.json.")
 
 
 #: How many distinct nodes one question examines before it calls itself a sample. Small on
@@ -218,11 +220,12 @@ NODE_SCAN_LIMIT = 200
 #: 🔴 THE SAMPLE IS NOT THE OLDEST N, AND SAYS SO. Choosing the oldest would mean ordering
 #: every node of the type by age first, which is the full scan the budget exists to avoid.
 #: The rows that come back DO carry their age and are shown oldest-first among themselves,
-#: but the SET was chosen by whatever the scan met first. Letting "first found" read as
-#: "oldest" is the misreading this whole vocabulary exists to prevent, so the wording is
-#: part of the answer rather than a caveat somewhere else.
+#: but the SET is the front of the KEY order (총괄 ㄱ 10-01 - it was whatever the scan met
+#: first until `_nodes_of_type_sql` became a skip scan). Letting either read as "oldest" is
+#: the misreading this whole vocabulary exists to prevent, so the wording is part of the
+#: answer rather than a caveat somewhere else.
 SAMPLE_NOT_AGE_ORDERED = (
-    "표본은 «먼저 만난» 노드들입니다 — «가장 오래된» 것들이 아닙니다. "
+    "표본은 키 순서로 «앞쪽» 노드들입니다 — «가장 오래된» 것들이 아닙니다. "
     "나이순으로 고르려면 그 타입 전체를 한 번 훑어야 하고, 그게 이 예산이 피하는 그 비용입니다. "
     "돌아온 것들끼리는 오래된 순으로 보여 드립니다.")
 
@@ -235,16 +238,47 @@ def _nodes_of_type_sql():
     this box: `defect_kind@1` and `recipe@1` have ZERO atoms of their own and appear only
     as objects, so a subject-only enumeration would report them as having no members at
     all rather than as having no age.
+
+    🔴 A SKIP SCAN, SO THE BUDGET IS WHAT IT COSTS (총괄 ㄱ 10-01). Grouping every atom of
+    the type before the LIMIT made a budget of 200 cost the whole type. Each side steps from
+    a key to the next larger one - one probe of the side's index (`idx_ledger_subject_entity`,
+    `idx_ledger_object_entity`) a step - and stops at the budget; the first instant is read
+    for the chosen keys only. The set is the FRONT OF THE KEY ORDER (`SAMPLE_NOT_AGE_ORDERED`).
+    ⚠️ Reading a whole type this way is slower than grouping it - no caller asks past the
+    route's seed cap (`ledger_subgraph.MAX_SEED_LIMIT`) or `NODE_SCAN_LIMIT`.
     """
     return """
-        SELECT keys, min(occurred_at) AS first_seen FROM (
-            SELECT subject_keys AS keys, occurred_at
-              FROM {table} WHERE subject_type = %(bare)s
+        WITH RECURSIVE subject_side(keys, n) AS (
+            (SELECT subject_keys, 1 FROM {table} WHERE subject_type = %(bare)s
+              ORDER BY subject_keys LIMIT 1)
             UNION ALL
-            SELECT object_payload->'keys' AS keys, occurred_at
-              FROM {table}
-             WHERE object_kind = 'entity_ref' AND object_payload->>'type' = %(bare)s
-        ) named GROUP BY keys LIMIT %(scan)s
+            SELECT (SELECT s.subject_keys FROM {table} s
+                     WHERE s.subject_type = %(bare)s AND s.subject_keys > subject_side.keys
+                     ORDER BY s.subject_keys LIMIT 1), n + 1
+              FROM subject_side WHERE subject_side.keys IS NOT NULL AND n < %(scan)s
+        ), object_side(keys, n) AS (
+            (SELECT object_payload->'keys', 1 FROM {table}
+              WHERE object_kind = 'entity_ref' AND object_payload->>'type' = %(bare)s
+              ORDER BY object_payload->'keys' LIMIT 1)
+            UNION ALL
+            SELECT (SELECT o.object_payload->'keys' FROM {table} o
+                     WHERE o.object_kind = 'entity_ref' AND o.object_payload->>'type' = %(bare)s
+                       AND o.object_payload->'keys' > object_side.keys
+                     ORDER BY o.object_payload->'keys' LIMIT 1), n + 1
+              FROM object_side WHERE object_side.keys IS NOT NULL AND n < %(scan)s
+        ), named AS (
+            SELECT keys FROM subject_side WHERE keys IS NOT NULL
+            UNION
+            SELECT keys FROM object_side WHERE keys IS NOT NULL
+            ORDER BY keys LIMIT %(scan)s
+        )
+        SELECT named.keys AS keys, LEAST(
+            (SELECT min(s.occurred_at) FROM {table} s
+              WHERE s.subject_type = %(bare)s AND s.subject_keys = named.keys),
+            (SELECT min(o.occurred_at) FROM {table} o
+              WHERE o.object_kind = 'entity_ref' AND o.object_payload->>'type' = %(bare)s
+                AND o.object_payload->'keys' = named.keys)) AS first_seen
+          FROM named ORDER BY named.keys LIMIT %(scan)s
     """
 
 

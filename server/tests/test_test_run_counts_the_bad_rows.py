@@ -91,7 +91,7 @@ def test_a_blank_string_is_empty_too():
     """The preparer treats whitespace as absent, so this must as well - otherwise the
     count would say zero for the very rows that caused the refusal."""
     import pandas as pd
-    from ledger.source_preparation import _is_missing
+    from ledger.event_frame import _is_missing
     assert _is_missing(None) and _is_missing(pd.NaT)
     assert not _is_missing("   ")          # the preparer pairs it with a strip() check
     # and the counter applies that pair, which is what this asserts through the count:

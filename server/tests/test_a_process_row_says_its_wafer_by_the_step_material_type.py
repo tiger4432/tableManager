@@ -16,23 +16,16 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 from ledger import gate                                                 # noqa: E402
 from ledger.backfill import _v2_frame                                   # noqa: E402
 from ledger.implementations import (role_mapper_registry,                # noqa: E402
-                                    source_preparer_registry,
                                     trusted_implementations)
 from ledger.runtime_v2 import execute_scoped_batch, preview_cursor_batch # noqa: E402
 from ledger.setup_bundle import (load_physical_catalog,                  # noqa: E402
                                  require_ready_bundle, validate_bundle)
 from ledger.setup_registry import compile_setup_snapshot                 # noqa: E402
-from ledger.source_preparation import VerifiedJoinBatchReader            # noqa: E402
 
 SAMPLE = os.path.join(os.path.dirname(__file__), "..", "config", "sample")
 SOURCE = "wafer_process_recipe"
 #: wafer id -> the mat_type its row carries. None is a row the join found no step for.
 ROWS = {"W-NULL": None, "W-BLANK": "", "W-DT": "DT", "W-WF": "WF"}
-
-
-class _NoJoin(VerifiedJoinBatchReader):
-    def read_chunk(self, descriptor, keys):
-        raise AssertionError("this source reads no joins")
 
 
 @pytest.fixture(scope="module", name="snapshot")
@@ -43,7 +36,7 @@ def fixture_snapshot():
     with open(os.path.join(SAMPLE, "ledger_config.json.sample"), encoding="utf-8") as fh:
         document = json.load(fh)
     bundle = require_ready_bundle(validate_bundle(document, catalog=catalog))
-    return compile_setup_snapshot(bundle, trusted_implementations(), (), catalog=catalog)
+    return compile_setup_snapshot(bundle, trusted_implementations(), catalog=catalog)
 
 
 def _preview(snapshot, rows):
@@ -51,7 +44,7 @@ def _preview(snapshot, rows):
     frame = _v2_frame(rows)
     return preview_cursor_batch(
         snapshot, SOURCE, frame, {"row_id": frame.iloc[-1]["row_id"]},
-        _NoJoin(), source_preparer_registry(), role_mapper_registry(), known_registrations=())
+        role_mapper_registry(), known_registrations=())
 
 
 def _rows():
@@ -94,8 +87,7 @@ def test_a_row_no_sentence_says_is_counted_by_its_value_and_named(snapshot, capl
     with caplog.at_level(logging.WARNING, logger="Ledger.Gate"):
         for _batch in range(2):
             executed = execute_scoped_batch(
-                snapshot, SOURCE, frame, ("row_id", tuple(frame["row_id"])), _NoJoin(),
-                source_preparer_registry(), role_mapper_registry(), store,
+                snapshot, SOURCE, frame, ("row_id", tuple(frame["row_id"])), role_mapper_registry(), store,
                 known_registrations=())
     assert len(store.written) == 2 and len(store.written[0]) == 3
     assert dict(executed.preview.unsaid) == {(("mat_type", "WF"),): 1}
@@ -137,8 +129,7 @@ def fixture_die_snapshot(tmp_path_factory):
         document = json.load(fh)
     source = copy.deepcopy(document["sources"]["die_inspection"])
     source["relation"] = DIE_TABLE
-    for stage in ("prepare", "map"):
-        source[stage]["input_columns"] += ["step", "mat_type"]
+    source["map"]["input_columns"] += ["step", "mat_type"]
     core = source["bind"]["mappings"].pop("die-inspected")
     dt = copy.deepcopy(core)
     core["when"] = {"mat_type": ""}
@@ -148,7 +139,7 @@ def fixture_die_snapshot(tmp_path_factory):
     document["sources"][DIE_SOURCE] = source
     catalog = load_physical_catalog(str(folder / "table_config.json"))
     bundle = require_ready_bundle(validate_bundle(document, catalog=catalog))
-    return compile_setup_snapshot(bundle, trusted_implementations(), (), catalog=catalog)
+    return compile_setup_snapshot(bundle, trusted_implementations(), catalog=catalog)
 
 
 def test_a_die_inspected_after_a_dt_step_is_the_dt_die(die_snapshot):
@@ -159,7 +150,7 @@ def test_a_die_inspected_after_a_dt_step_is_the_dt_die(die_snapshot):
         for index, (wafer, mat_type) in enumerate(ROWS.items(), start=1)])
     preview = preview_cursor_batch(
         die_snapshot, DIE_SOURCE, rows, {"run_uid": rows.iloc[-1]["run_uid"]},
-        _NoJoin(), source_preparer_registry(), role_mapper_registry(), known_registrations=())
+        role_mapper_registry(), known_registrations=())
     dies = {atom["object_payload"]["keys"]["mat_id"]: atom["object_payload"]["keys"]["mat_type"]
             for atom in preview.candidate_semantics}
     assert dies == {"W-NULL": "Wafer", "W-BLANK": "Wafer", "W-DT": "DT"}, dies

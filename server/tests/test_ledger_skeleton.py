@@ -59,7 +59,7 @@ ANCHORS = {
     # S-91. One clause of `exclude_when`: which rows a source says are not its own. The
     # mechanism (`__source_row_excluded`) predates the clause and only a preparer CLASS
     # could emit it, so this anchor is what makes the form able to offer it.
-    ("_validate_exclude_when", "spot"): "sources.*.prepare.exclude_when.*",
+    ("_validate_exclude_when", "spot"): "sources.*.read.exclude_when.*",
     ("_validate_mapper", "path"): "sources.*.map",
     ("_validate_mapper", "f'{path}.unit'"): "sources.*.map.unit",
     # The five `_validate_packs` / `_validate_emission` anchors left this map on

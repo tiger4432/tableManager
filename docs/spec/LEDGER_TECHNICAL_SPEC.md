@@ -620,7 +620,7 @@ payload와 맞는지 본다. 한 행도 읽지 않고 확정할 수 있는 모�
 > 나머지 구조(`packs`·`mapping_id`·
 > `use`·`declared_lookup`)는 v1 계약 그대로다.
 > **v2 `server/config/ontology/ledger_config.json`에는 `profiles` section도 `mapping_id`도
-> 없다** — 소스 하나가 `relation`·`read`·`prepare`·`map`·`bind`를 직접 들고, mapping은
+> 없다** — 소스 하나가 `relation`·`read`·~~`prepare`~~·`map`·`bind`를 직접 들고(🆕 setup_version 6 에서 `prepare` 은퇴, `0b59a2f30`), mapping은
 > mapper가 선언한 **문장 별명**으로 키가 매겨지며, **binding은 종류와 그 payload만 말한다**.
 > 🔴 **[2026-08-21 `9b6c5da`] 아래 표의
 > `packs[]`와 `mappings[].use`도 v2에는 «없다»** — v2 문장은 `predicate`로 술어를 직접 대고
@@ -770,8 +770,8 @@ UI, Trace, DB 연결, migration, write가 없다. 실행은 다음 3단계 절�
 🗄️ [`_archive/ledger_v2_redesign_plan_20260817`](../_archive/ledger_v2_redesign_plan_20260817/README.md)의
 단계별 승인 뒤에만 변경한다.
 
-v2 목표는 현행 `declared_lookup`/Position 계약을 계승하지 않는다. cursor 뒤 pandas source
-preparer가 verified virtual-join rule ID를 상속하고, 완성 EventFrame 이후 compiler는 DB를
+v2 목표는 현행 `declared_lookup`/Position 계약을 계승하지 않는다. ~~cursor 뒤 pandas source
+preparer가 verified virtual-join rule ID를 상속하고,~~(🆕 10-01 `0b59a2f30` 준비기 · 읽을 때 조인 은퇴) 완성 EventFrame 이후 compiler는 DB를
 읽지 않는다. Registry 등록 데이터는 `server/config/ontology/` config에서만 온다. 🔴 **[2026-08-21]
 착지한 선언의 정본은 [guide/ONTOLOGY_LEDGER_SETUP](../guide/ONTOLOGY_LEDGER_SETUP.md)이다** —
 종전 이 자리가 정본이라 부르던 `TARGET_ARCHITECTURE_AND_SSOT.md`는
@@ -1571,7 +1571,7 @@ psycopg2가 첫 `SELECT`에서 트랜잭션을 암묵적으로 열고 명시적�
 **무엇을 만들지에 대한 지침이 아니다.**
 
 ⚠️ **여기 있는 것을 새 소스의 본보기로 삼지 말 것.** 오늘 「코드 0줄」의 자리는
-범용 구현 둘이다 — Preparer `direct-join@1` · Mapper `declarative-role@1`
+범용 구현 ~~둘~~이다 — ~~Preparer `direct-join@1`~~(🆕 setup_version 6 에서 준비기째 은퇴, `0b59a2f30`) · Mapper `declarative-role@1`
 ([ONTOLOGY_LEDGER_SETUP §7.3·§7.4](../guide/ONTOLOGY_LEDGER_SETUP.md)).
 
 ### 8.1 ⚰️ `declared` — **파이썬 클래스가 «없는» 문법** (2026-08-15 3차 · 브리핑 §6-2 · 갱신 트리거 ②③⑥) — 옛 §3.8
@@ -1581,7 +1581,7 @@ psycopg2가 첫 `SELECT`에서 트랜잭션을 암묵적으로 열고 명시적�
 > 트리에 **없고**(`e47d325`), 그것을 고르던 `kind` 디스패치와 `_run_declared`도
 > `backfill.py`에서 빠졌다(`d7bfcd0`). 아래 ①~⑧의 계약을 **집행하는 실행 경로가 없다**
 > — `rows_matching_nothing`도 `server/`에 없다. **선언만으로 코드 0줄 소스를 세우는 오늘의
-> 자리는 이것이 아니라** 범용 구현 둘이다: Preparer `direct-join@1`, Mapper
+> 자리는 이것이 아니라** 범용 구현이다: ~~Preparer `direct-join@1`,~~(v6 은퇴) Mapper
 > `declarative-role@1`([ONTOLOGY_LEDGER_SETUP §7.3·§7.4](../guide/ONTOLOGY_LEDGER_SETUP.md)).
 > 남겨 둔 이유는 이 문법으로 적재된 옛 원자를 읽을 때 그 payload의 뜻이 여기 적혀 있기
 > 때문이다 — **실행 지시로 읽지 않는다.**

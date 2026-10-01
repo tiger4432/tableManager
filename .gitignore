@@ -85,6 +85,11 @@ server/mappers/*
 # owner's mappers, and a declaration names it by module and function - so a checkout without
 # it holds a sample rule that names nothing.
 !server/mappers/contrast_walk.py
+# The two chain mappers derived from `lot_event` (총괄 e14416950): the shipped sample rules
+# `lot_event_to_lot_slot_wafer` and `lot_event_to_lot_lineage` name them - the same reason as
+# above. One home: `authoring/examples` holds no copy (판정 348·349 moved it there; reversed).
+!server/mappers/lot_slot_wafer_mapper.py
+!server/mappers/lot_lineage_mapper.py
 # void 파이프라인 파서 하나만 예외로 둔다 — 그 스크립트가 voids.json 인제션의 실제
 # 구현이고, 운영과 개발이 같은 것을 봐야 한다.
 # 🔴 `server/ingestion_workspace/`처럼 디렉터리를 통째로 무시하면 git이 그 안으로 내려가지

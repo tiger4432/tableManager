@@ -1037,7 +1037,7 @@ def ledger_declaration_catalog(
     # a setup that will not compile does not stop `entities` and `predicates` being true.
     try:
         from ledger.setup import load_setup
-        from ledger.source_preparation import base_select_columns
+        from ledger.event_frame import base_select_columns
 
         plans = load_setup(_world(world).declaration_root).snapshot.source_plans
         declared_sources = declared.get("sources") or {}

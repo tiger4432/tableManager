@@ -23,23 +23,16 @@ from ledger import explorer                                             # noqa: 
 from ledger.backfill import _v2_frame, _v2_registration_subjects        # noqa: E402
 from ledger.envelope import canonical_keys                              # noqa: E402
 from ledger.implementations import (role_mapper_registry,                # noqa: E402
-                                    source_preparer_registry,
                                     trusted_implementations)
 from ledger.runtime_v2 import preview_cursor_batch                      # noqa: E402
 from ledger.setup_bundle import (load_physical_catalog,                  # noqa: E402
                                  require_ready_bundle, validate_bundle)
 from ledger.setup_registry import compile_setup_snapshot                 # noqa: E402
-from ledger.source_preparation import VerifiedJoinBatchReader            # noqa: E402
 from ledger_api import ledger_subgraph                                  # noqa: E402
 
 SAMPLE = os.path.join(os.path.dirname(__file__), "..", "config", "sample")
 NUM, TXT = "zz_die_by_number", "zz_die_by_text"
 TABLES = {NUM: "zz_inspection_number", TXT: "zz_inspection_text"}
-
-
-class _NoJoin(VerifiedJoinBatchReader):
-    def read_chunk(self, descriptor, keys):
-        raise AssertionError("this source reads no joins")
 
 
 @pytest.fixture(name="snapshot")
@@ -63,7 +56,7 @@ def fixture_snapshot(tmp_path, monkeypatch):
         document["sources"][source] = copied
     catalog = load_physical_catalog(str(tmp_path / "table_config.json"))
     bundle = require_ready_bundle(validate_bundle(document, catalog=catalog))
-    return compile_setup_snapshot(bundle, trusted_implementations(), (), catalog=catalog)
+    return compile_setup_snapshot(bundle, trusted_implementations(), catalog=catalog)
 
 
 def _atoms(snapshot, source, xs, first):
@@ -72,8 +65,7 @@ def _atoms(snapshot, source, xs, first):
          "base_x": x, "base_y": 2, "stack_gate": 1, "observed_at": "2026-09-30 10:00:00"}
         for i, x in enumerate(xs)])
     preview = preview_cursor_batch(
-        snapshot, source, rows, {"run_uid": rows.iloc[-1]["run_uid"]}, _NoJoin(),
-        source_preparer_registry(), role_mapper_registry(), known_registrations=())
+        snapshot, source, rows, {"run_uid": rows.iloc[-1]["run_uid"]}, role_mapper_registry(), known_registrations=())
     return list(preview.candidate_semantics)
 
 

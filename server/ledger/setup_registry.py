@@ -14,11 +14,6 @@ import json
 from types import MappingProxyType
 from typing import Any, Generic, TypeVar
 
-from verified_join_contract import (
-    VerifiedJoinDescriptor,
-    is_physically_verified_descriptor,
-)
-
 from .setup_bundle import (
     DEFAULT_CARDINALITY,
     DEFAULT_LIFECYCLE,
@@ -158,27 +153,21 @@ class ImplementationKey:
 class TrustedImplementationCatalog:
     """Closed code-owned implementation keys; never module/function/path strings."""
 
-    source_preparers: frozenset[ImplementationKey]
     mappers: frozenset[ImplementationKey]
 
     def __post_init__(self) -> None:
-        for name in ("source_preparers", "mappers"):
-            values = frozenset(getattr(self, name))
-            if any(not isinstance(item, ImplementationKey) for item in values):
-                raise TypeError(f"{name} must contain ImplementationKey values")
-            object.__setattr__(self, name, values)
+        values = frozenset(self.mappers)
+        if any(not isinstance(item, ImplementationKey) for item in values):
+            raise TypeError("mappers must contain ImplementationKey values")
+        object.__setattr__(self, "mappers", values)
 
     @classmethod
     def build(
         cls,
         *,
-        source_preparers: Sequence[tuple[str, int]] = (),
         mappers: Sequence[tuple[str, int]] = (),
     ) -> "TrustedImplementationCatalog":
-        return cls(
-            source_preparers=frozenset(ImplementationKey(*item) for item in source_preparers),
-            mappers=frozenset(ImplementationKey(*item) for item in mappers),
-        )
+        return cls(mappers=frozenset(ImplementationKey(*item) for item in mappers))
 
 
 @dataclass(frozen=True)
@@ -267,17 +256,6 @@ class ClaimDescriptor:
 
 
 @dataclass(frozen=True)
-class SourcePreparerDescriptor:
-    preparer_id: str
-    version: int
-    implementation: ImplementationKey
-    input_columns: tuple[str, ...]
-    output_columns: Mapping[str, str]
-    accepts_verified_join_rules: bool
-    config_path: str
-
-
-@dataclass(frozen=True)
 class MapperDescriptor:
     """One source's mapper.
 
@@ -324,15 +302,14 @@ class ProfileMappingDescriptor:
 class ProfileDescriptor:
     """One source's profile, keyed and identified by the source that holds it.
 
-    🔴 NO `version` FIELD, AND THE ABSENCE IS A DECISION.  A preparer and a mapper kept
-    theirs through the same absorption because their bodies still declare
-    `implementation_version` -- a real number that moves when the code contract moves.  A
+    🔴 NO `version` FIELD, AND THE ABSENCE IS A DECISION.  A mapper kept its through the
+    same absorption because its body still declares `implementation_version` -- a real number that moves when the code contract moves.  A
     profile body declares no version of any kind once `profile@1` is gone, so the only
     ways to keep the field were a literal that can never change or a copy of something
     else's number.  Both would ride into `canonical_content_json` and therefore into
     `snapshot_sha256`, telling every reader that profiles are versioned when nothing can
     version them.  Measured before removing it: no execution path read it -- `roleframe`
-    and `source_preparation` use `mappings`, `source_id` and `config_path` only.
+    and `event_frame` use `mappings`, `source_id` and `config_path` only.
 
     🔴 `pack_ids` LEFT ON 2026-08-21 FOR THE SAME MEASUREMENT.  `bind.packs` was
     `sorted(set(...))` of the packs `mappings.<sentence>.use` names, checked both ways, and nothing
@@ -349,16 +326,6 @@ class ProfileDescriptor:
     source_id: str
     mappings: Mapping[str, ProfileMappingDescriptor]
     config_path: str
-
-
-@dataclass(frozen=True)
-class SourcePreparationPlan:
-    preparer: SourcePreparerDescriptor
-    verified_join_descriptors: tuple[VerifiedJoinDescriptor, ...]
-    #: S-91. `({"column": <name>, "blank": True}, ...)` - a row matching ANY clause is not
-    #: this source's. Empty for every source that does not declare it, which is the state
-    #: all 26 shipped sources are in.
-    exclude_when: tuple[Mapping[str, Any], ...] = ()
 
 
 #: What each declared basis reads INSTEAD of a world-time column. ``created_at`` is put on
@@ -386,7 +353,7 @@ class OccurredAtPlan:
 
 @dataclass(frozen=True)
 class RegistrationProbePlan:
-    """One entity type's first-sight probe over BASE (pre-preparation) columns."""
+    """One entity type's first-sight probe over the columns the source reads."""
 
     entity_type: str
     identity_key: str
@@ -407,9 +374,11 @@ class SourceDriverPlan:
     order_by: tuple[str, ...]
     occurred_at: OccurredAtPlan
     cursor_columns: tuple[str, ...]
-    preparation: SourcePreparationPlan
     mapper: MapperDescriptor
     registration_probe: tuple[RegistrationProbePlan, ...] = ()
+    #: S-91. `({"column": <name>, "blank": True}, ...)` - a row matching ANY clause is not
+    #: this source's. Empty where a source declares none (`read.exclude_when`).
+    exclude_when: tuple[Mapping[str, Any], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -434,8 +403,7 @@ class SourcePlan:
     status: str = "active"
     #: 판정 201. Physical relation columns a role binding names, computed at COMPILE time
     #: where the catalogue is already resolved - so `base_select_columns` keeps its contract
-    #: of never consulting one at run time. Preparer outputs and join-exposed columns are
-    #: deliberately absent: each is carried by whatever produces it.
+    #: of never consulting one at run time.
     binding_select_columns: tuple = ()
     #: The engine's `row_id` column WHEN THIS RELATION HAS ONE, else `None` (판정 136).
     #:
@@ -500,19 +468,11 @@ class ClaimRegistry(_SealedRegistry[ClaimDescriptor]):
     """Every predicate's derived Claim, keyed by the predicate id it belongs to."""
 
 
-class SourcePreparerRegistry(_SealedRegistry[SourcePreparerDescriptor]):
-    pass
-
-
 class MapperRegistry(_SealedRegistry[MapperDescriptor]):
     pass
 
 
 class ProfileRegistry(_SealedRegistry[ProfileDescriptor]):
-    pass
-
-
-class VerifiedJoinRegistry(_SealedRegistry[VerifiedJoinDescriptor]):
     pass
 
 
@@ -552,11 +512,9 @@ class LedgerSetupSnapshot:
     snapshot_sha256: str
     vocabulary: VocabularyRegistry
     entities: EntityTypeRegistry
-    source_preparers: SourcePreparerRegistry
     mappers: MapperRegistry
     claims: ClaimRegistry
     profiles: ProfileRegistry
-    verified_joins: VerifiedJoinRegistry
     source_plans: SourcePlanRegistry
     readiness: str
 
@@ -567,9 +525,7 @@ class LedgerSetupSnapshot:
             "claims": self.claims,
             "mappers": self.mappers,
             "profiles": self.profiles,
-            "source_preparers": self.source_preparers,
             "sources": self.source_plans,
-            "verified_joins": self.verified_joins,
             "vocabulary": self.vocabulary,
         })
 
@@ -598,7 +554,6 @@ class LedgerSetupSnapshot:
 def snapshot_compile_errors(
     bundle: LedgerSetupBundle,
     trusted: TrustedImplementationCatalog,
-    verified_joins: Sequence[VerifiedJoinDescriptor] = (),
     *,
     catalog: Mapping[str, Any] | None = None,
 ) -> tuple[LedgerSetupValidationError, ...]:
@@ -623,87 +578,24 @@ def snapshot_compile_errors(
     if readiness:
         return readiness
 
-    issues: list[LedgerSetupValidationError] = list(
-        _verified_join_errors(validated, verified_joins))
+    issues: list[LedgerSetupValidationError] = []
     for source_id, source in validated.section("sources").items():
         # 🔴 NOTHING RUNS A RETIRED SOURCE'S BODIES, SO NOTHING ASKS WHETHER THEY ARE
-        # TRUSTED (S-177 ①). The validator has already stopped reading `prepare`/`map`
-        # for it, so this loop would be the one pass still indexing clauses it may no
-        # longer assume are shaped -- and refusing the bundle over an implementation that
-        # is never called is the same stop the retirement was supposed to end.
+        # TRUSTED (S-177 ①). The validator has already stopped reading `map` for it, so
+        # this loop would be the one pass still indexing a clause it may no longer assume
+        # is shaped -- and refusing the bundle over an implementation that is never called
+        # is the same stop the retirement was supposed to end.
         if is_retired(source):
             continue
-        for kind, clause, trusted_keys in (
-            ("source preparer", "prepare", trusted.source_preparers),
-            ("mapper", "map", trusted.mappers),
-        ):
-            item = source[clause]
-            key = ImplementationKey(
-                item["implementation_id"], item["implementation_version"])
-            if key not in trusted_keys:
-                issues.append(_untrusted_implementation_issue(
-                    kind=kind,
-                    path=f"bundle.sources.{source_id}.{clause}",
-                    key=key,
-                    trusted_keys=trusted_keys,
-                ))
-    return tuple(sorted(issues, key=lambda issue: (issue.path, issue.code, issue.message)))
-
-
-def _verified_join_errors(
-    bundle: LedgerSetupBundle,
-    verified_joins: Sequence[VerifiedJoinDescriptor],
-) -> tuple[LedgerSetupValidationError, ...]:
-    issues: list[LedgerSetupValidationError] = []
-    supplied: dict[str, VerifiedJoinDescriptor] = {}
-    for index, descriptor in enumerate(verified_joins):
-        path = f"verified_joins[{index}]"
-        if not is_physically_verified_descriptor(descriptor):
-            issues.append(LedgerSetupValidationError(
-                "invalid_verified_join", path,
-                "must be a VerifiedJoinDescriptor produced by physical verification"))
-            continue
-        if descriptor.rule_id in supplied:
-            issues.append(LedgerSetupValidationError(
-                "duplicate_verified_join", path,
-                f"verified join {descriptor.rule_id!r} is duplicated"))
-            continue
-        supplied[descriptor.rule_id] = descriptor
-
-    declared = bundle.section("virtual_joins")
-    enabled = {rule_id: rule for rule_id, rule in declared.items() if rule["enabled"]}
-    for rule_id in sorted(enabled):
-        path = f"bundle.virtual_joins.{rule_id}"
-        descriptor = supplied.get(rule_id)
-        if descriptor is None:
-            issues.append(LedgerSetupValidationError(
-                "unverified_join", path,
-                f"join rule {rule_id!r} requires a physical UNIQUE "
-                "verification descriptor"))
-            continue
-        rule = enabled[rule_id]
-        expected_pairs = tuple(
-            (pair["left"], pair["right"]) for pair in rule["join_key"])
-        expected_fold = rule.get("fold") or {}
-        actual_folds = tuple(dict(item) for item in descriptor.pair_folds)
-        expected_folds = tuple(dict(expected_fold) for _ in expected_pairs)
-        matches = (
-            descriptor["left_table"] == rule["left_table"]
-            and descriptor["right_table"] == rule["right_table"]
-            and descriptor.join_key_pairs == expected_pairs
-            and tuple(descriptor["expose"]) == tuple(rule["expose"])
-            and descriptor["join_cardinality"] == rule["join_cardinality"]
-            and actual_folds == expected_folds
-            and descriptor.verification_basis == "physical_unique_index"
-        )
-        if not matches:
-            issues.append(LedgerSetupValidationError(
-                "verified_join_mismatch", path,
-                f"physical verification descriptor does not match join rule {rule_id!r}"))
-    for rule_id in sorted(set(supplied) - set(enabled)):
-        issues.append(LedgerSetupValidationError(
-            "unknown_verified_join", f"verified_joins.{rule_id}",
-            f"verified join {rule_id!r} has no enabled Bundle declaration"))
+        item = source["map"]
+        key = ImplementationKey(item["implementation_id"], item["implementation_version"])
+        if key not in trusted.mappers:
+            issues.append(_untrusted_implementation_issue(
+                kind="mapper",
+                path=f"bundle.sources.{source_id}.map",
+                key=key,
+                trusted_keys=trusted.mappers,
+            ))
     return tuple(sorted(issues, key=lambda issue: (issue.path, issue.code, issue.message)))
 
 
@@ -729,7 +621,6 @@ def _untrusted_implementation_issue(
 def compile_setup_snapshot(
     bundle: LedgerSetupBundle,
     trusted: TrustedImplementationCatalog,
-    verified_joins: Sequence[VerifiedJoinDescriptor] = (),
     *,
     catalog: Mapping[str, Any] | None = None,
     refused_sources: Mapping[str, Any] | None = None,
@@ -743,8 +634,7 @@ def compile_setup_snapshot(
     bundle being compiled -- nothing about them is validated or planned -- and they are
     registered by name so the screens that show sources can say what happened to them.
     """
-    issues = snapshot_compile_errors(
-        bundle, trusted, verified_joins, catalog=catalog)
+    issues = snapshot_compile_errors(bundle, trusted, catalog=catalog)
     if issues:
         raise issues[0]
     bundle = validate_bundle(bundle.to_mapping(), catalog=catalog)
@@ -752,15 +642,12 @@ def compile_setup_snapshot(
     vocabulary = _compile_vocabulary(bundle.section("vocabulary"),
                                      bundle.section("entities"))
     entities = _compile_entities(bundle.section("entities"))
-    preparers = _compile_preparers(bundle.section("sources"))
     mappers = _compile_mappers(bundle.section("sources"))
     claims = _compile_claims(bundle.section("vocabulary"),
                              bundle.section("entities"))
     profiles = _compile_profiles(bundle.section("sources"))
-    verified_join_registry = _compile_verified_joins(verified_joins)
     source_plans = _compile_source_plans(
-        bundle.section("sources"), preparers, mappers, profiles,
-        verified_join_registry, entities, catalog, refused_sources)
+        bundle.section("sources"), mappers, profiles, entities, catalog, refused_sources)
 
     bundle_canonical_json = bundle.serialize()
     bundle_sha256 = sha256(bundle_canonical_json.encode("utf-8")).hexdigest()
@@ -769,9 +656,7 @@ def compile_setup_snapshot(
         "entities": entities,
         "mappers": mappers,
         "profiles": profiles,
-        "source_preparers": preparers,
         "sources": source_plans,
-        "verified_joins": verified_join_registry,
         "vocabulary": vocabulary,
     }
     content = {
@@ -806,11 +691,9 @@ def compile_setup_snapshot(
         snapshot_sha256=sha256(canonical_content_json.encode("utf-8")).hexdigest(),
         vocabulary=vocabulary,
         entities=entities,
-        source_preparers=preparers,
         mappers=mappers,
         claims=claims,
         profiles=profiles,
-        verified_joins=verified_join_registry,
         source_plans=source_plans,
         readiness="ready",
     )
@@ -857,10 +740,10 @@ def source_cursor_fingerprint(
 
     The closure is transitive and deliberately errs LARGE:
 
-        the source plan       relation, read, prepare (preparer + verified joins),
-                              map (mapper), bind (profile) -- all of it EXCEPT the two
-                              `input_columns`, which are the one carve-out and are
-                              deleted below with the measurement that earned them
+        the source plan       relation, read, map (mapper), bind (profile) -- all of it
+                              EXCEPT the mapper's `input_columns`, which is the one
+                              carve-out and is deleted below with the measurement that
+                              earned it
         the predicates        every predicate a `bind.mappings.<sentence>.predicate`
                               names.  This used to be "the packs, WHOLE, plus the
                               predicates their claims emitted".  The packs went on
@@ -905,13 +788,13 @@ def source_cursor_fingerprint(
     # 🔴 THE ONE CARVE-OUT, AND IT IS A CARVE-OUT WITH A REASON RATHER THAN AN OVERSIGHT.
     # Everything else above stays: the closure errs LARGE on purpose, because a source
     # that should have been refused and is not re-reads under a stale contract silently.
-    # These two keys are the documented exception, measured 2026-08-22, because neither
-    # direction of changing them can produce a WRONG atom:
+    # This key is the documented exception, measured 2026-08-22, because neither direction
+    # of changing it can produce a WRONG atom:
     #
-    #   WIDENING carries columns nobody reads.  The mapper reads its own declared inputs;
-    #     a preparer input the mapper never names reaches no Role and no atom.  Measured
-    #     on `dt_job`: `prepare.input_columns` [] -> 22 widens the SELECT 5 -> 25 and the
-    #     mapper's inputs stay the same three, so the atoms are the same atoms.
+    #   WIDENING carries columns nobody reads.  A column reaches a Role only through a
+    #     binding, and bound columns are read because they are bound (판정 201). Measured on
+    #     `dt_job` (then on the retired `prepare.input_columns`): [] -> 22 widened the SELECT
+    #     5 -> 25 and the atoms were the same atoms.
     #   NARROWING is refused before it can write.  `roleframe` raises
     #     `missing_mapper_input` when a bound column is not in the frame -- a STOP, which
     #     the fingerprint is not needed to cause and cannot make safer.
@@ -934,11 +817,8 @@ def source_cursor_fingerprint(
     # longer has the key at all and a bare `del` raised on it. `getattr` keeps the rename
     # loud (AttributeError, naming the field) while the `pop` tolerates the absence that is
     # now ordinary.
-    for descriptor, clause in (
-            (plan.driver.preparation.preparer, source["driver"]["preparation"]["preparer"]),
-            (plan.driver.mapper, source["driver"]["mapper"])):
-        getattr(descriptor, "input_columns")
-        clause.pop("input_columns", None)
+    getattr(plan.driver.mapper, "input_columns")
+    source["driver"]["mapper"].pop("input_columns", None)
     material: dict[str, Any] = {
         "compiler_contract_version": snapshot.compiler_contract_version,
         "setup_version": snapshot.setup_version,
@@ -1096,38 +976,12 @@ def _compile_claims(section: Mapping[str, Any],
     return builder.seal()
 
 
-def _compile_preparers(section: Mapping[str, Any]) -> SourcePreparerRegistry:
-    """One preparer per SOURCE, keyed by the source it prepares.
-
-    🔴 THE KEY IS THE SOURCE ID BECAUSE THE DECLARATION NO LONGER HAS ONE.  The body moved
-    inline to `sources.<id>.prepare` on 2026-08-20, so "which preparer" and
-    "which source" are the same question and there is nothing else to key on.  The registry
-    itself stays: `LedgerSetupSnapshot.registries` publishes it, the explorer reads it, and
-    the trust check walks it -- only what identifies a member changed.
-
-    `version` therefore tracks the IMPLEMENTATION's version, which is the only version the
-    body still carries.
-    """
-    builder = _RegistryBuilder(SourcePreparerRegistry)
-    for source_id, source in section.items():
-        if is_retired(source):
-            continue                     # S-177 ①: no read plan, so no preparer
-        item = source["prepare"]
-        builder.add(source_id, SourcePreparerDescriptor(
-            preparer_id=source_id,
-            version=item["implementation_version"],
-            implementation=ImplementationKey(
-                item["implementation_id"], item["implementation_version"]),
-            input_columns=tuple(item["input_columns"]),
-            output_columns=_freeze(item["output_columns"]),
-            accepts_verified_join_rules=item["accepts_verified_join_rules"],
-            config_path=f"bundle.sources.{source_id}.prepare",
-        ))
-    return builder.seal()
-
-
 def _compile_mappers(section: Mapping[str, Any]) -> MapperRegistry:
-    """One mapper per SOURCE, keyed by the source it maps -- see `_compile_preparers`."""
+    """One mapper per SOURCE, keyed by the source it maps.
+
+    The body moved inline to `sources.<id>.map` on 2026-08-20, so "which mapper" and "which
+    source" are the same question and there is nothing else to key on.
+    """
     builder = _RegistryBuilder(MapperRegistry)
     for source_id, source in section.items():
         if is_retired(source):
@@ -1171,7 +1025,7 @@ def with_source_attributes(bind: Mapping[str, Any],
 
 
 def _compile_profiles(section: Mapping[str, Any]) -> ProfileRegistry:
-    """One profile per SOURCE, keyed by the source it maps -- see `_compile_preparers`."""
+    """One profile per SOURCE, keyed by the source it maps -- see `_compile_mappers`."""
     builder = _RegistryBuilder(ProfileRegistry)
     for source_id, source in section.items():
         if is_retired(source):
@@ -1202,15 +1056,6 @@ def _compile_profiles(section: Mapping[str, Any]) -> ProfileRegistry:
             mappings=mappings,
             config_path=path,
         ))
-    return builder.seal()
-
-
-def _compile_verified_joins(
-    descriptors: Sequence[VerifiedJoinDescriptor],
-) -> VerifiedJoinRegistry:
-    builder = _RegistryBuilder(VerifiedJoinRegistry)
-    for descriptor in sorted(descriptors, key=lambda item: item.rule_id):
-        builder.add(descriptor.rule_id, descriptor)
     return builder.seal()
 
 
@@ -1265,9 +1110,8 @@ def _binding_select_columns(catalog, relation, item):
     then failed at run time with `missing_binding_column` - which is how the shipped sample
     broke. `when` and `exclude_when` already work this way; bindings now do too.
 
-    ⚠️ INTERSECTED WITH THE CATALOGUE ON PURPOSE. A binding may also name a preparer output
-    or a join-exposed column, and asking the RELATION for either would be `UndefinedColumn`
-    on the cursor path. Each of those is loaded by the thing that produces it.
+    ⚠️ INTERSECTED WITH THE CATALOGUE ON PURPOSE. Asking the RELATION for a column it does
+    not have would be `UndefinedColumn` on the cursor path.
     """
     def _columns_of(binding):
         # ⚠️ COLLECTED HERE RATHER THAN IMPORTED. `setup_bundle._binding_columns` exists but
@@ -1312,7 +1156,7 @@ def _declared_row_id(catalog, relation):
     snapshot compiled without one would differ from the same file compiled with one.
     """
     from .setup_bundle import reads_a_row_table
-    from .source_preparation import FRAME_ROW_ID_COLUMN
+    from .event_frame import FRAME_ROW_ID_COLUMN
 
     # 🔴 [총괄 f3bc02f6e] THE LOADER'S OWN QUESTION. A planned source has passed it, so this
     #   is always `row_id` for one; asking anything else here would let the two disagree.
@@ -1321,10 +1165,8 @@ def _declared_row_id(catalog, relation):
 
 def _compile_source_plans(
     section: Mapping[str, Any],
-    preparers: SourcePreparerRegistry,
     mappers: MapperRegistry,
     profiles: ProfileRegistry,
-    verified_joins: VerifiedJoinRegistry,
     entities: EntityTypeRegistry,
     catalog: Mapping[str, Any] = None,
     refused: Mapping[str, Any] = None,
@@ -1366,12 +1208,11 @@ def _compile_source_plans(
                 config_path=path,
             ))
             continue
-        # The COMPILED plan keeps `driver` as the name for the read clause and its two
-        # bodies; only the FILE split.  Nothing downstream of the compiler asks the config
+        # The COMPILED plan keeps `driver` as the name for the read clause and its
+        # mapper; only the FILE split.  Nothing downstream of the compiler asks the config
         # a question, so renaming `SourcePlan.driver` would move `backfill`,
-        # `source_preparation` and `runtime_v2` for a spelling.
+        # `event_frame` and `runtime_v2` for a spelling.
         driver = item["read"]
-        preparation = item["prepare"]
         builder.add(source_id, SourcePlan(
             source_id=source_id,
             status=item.get("status", DEFAULT_LIFECYCLE),
@@ -1386,17 +1227,8 @@ def _compile_source_plans(
                 order_by=tuple(driver["order_by"]),
                 occurred_at=_occurred_at_plan(driver["occurred_at"]),
                 cursor_columns=tuple(driver["cursor"]["columns"]),
-                preparation=SourcePreparationPlan(
-                    preparer=preparers[source_id],
-                    verified_join_descriptors=tuple(
-                        verified_joins[rule_id]
-                        for rule_id in preparation["inherit_virtual_join_rules"]
-                    ),
-                    exclude_when=tuple(
-                        _freeze(clause)
-                        for clause in preparation.get("exclude_when", ())
-                    ),
-                ),
+                exclude_when=tuple(
+                    _freeze(clause) for clause in driver.get("exclude_when", ())),
                 mapper=mappers[source_id],
                 registration_probe=_compile_registration_probe(
                     driver.get("registration_probe"), entities),

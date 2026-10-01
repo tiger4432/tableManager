@@ -7,8 +7,10 @@ deterministically serializable logical bundle.  Runtime registries are a later s
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping, Sequence
+import copy
 from dataclasses import dataclass
 import difflib
+import logging
 
 import validation
 import json
@@ -19,7 +21,9 @@ from typing import Any, Optional
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 
-SETUP_VERSION = 5
+SETUP_VERSION = 6
+
+logger = logging.getLogger("Ledger.Config")
 
 #: The one authoring file. The path does not move: the operator writes here.
 CONFIG_FILENAME = "ledger_config.json"
@@ -35,13 +39,10 @@ CONFIG_FILENAME = "ledger_config.json"
 #: now lives inline at `sources.*.bind`, and its `source` field is gone with the section:
 #: the source that HOLDS it is the answer that field used to repeat.
 #: 🔴 `source_preparers` AND `mappers` ARE NOT HERE EITHER (owner, 2026-08-20: 「소스플랜
-#: 준비기 맵퍼」).  A preparer's `input_columns` must be columns of a PHYSICAL relation, and
-#: `relation` is declared only by a source -- so a preparer sitting in its own section was
-#: always one hop away from the only declaration that could check it.  Both bodies now live
-#: inline at `sources.*.prepare` and `sources.*.map`, where the
-#: relation is one key away.  Measured before the move: both were 1:1 with their source, so
-#: no sharing was lost.  What is reused is CODE, not declaration, and that reuse is still
-#: spelled `implementation_id` + `implementation_version`, which both bodies still carry.
+#: 준비기 맵퍼」).  Both bodies moved inline into their source, where the relation is one key
+#: away; the mapper's is `sources.*.map`. What is reused is CODE, not declaration, spelled
+#: `implementation_id` + `implementation_version`. (⚰️ The preparer's body retired with
+#: setup_version 6 - `upgrade_setup`.)
 #: 🔴 `tables` IS NOT HERE, AND ITS ABSENCE IS THE POINT (owner, 2026-08-18: "why is
 #: `tables` in the ledger json as well?").  It used to be an eighth section restating
 #: the physical schema.  Measured on the live root before removal: its one relation was a
@@ -741,7 +742,7 @@ def _derived_cursor(value: Mapping[str, Any]) -> dict[str, Any]:
     🔴 THE QUESTION LEFT THE FORM; THE VALUE DID NOT LEAVE THE DOCUMENT.  Everything
     downstream reads `driver.cursor_columns` -- `setup_registry` compiles it,
     `backfill` sorts the page by it and stores the watermark from it, `runtime_v2`
-    checks a cursor tuple against it, `source_preparation` requires those columns to
+    checks a cursor tuple against it, `event_frame` requires those columns to
     survive preparation.  None of them changes: the bundle they are handed still carries
     `read.cursor.columns`, it is just no longer something a person types.
 
@@ -782,6 +783,7 @@ def read_group_by(read: Mapping[str, Any]) -> Any:
 
 def validate_bundle(value: Mapping[str, Any], *,
                     catalog: Mapping[str, Any] | None = None) -> LedgerSetupBundle:
+    value = upgrade_setup(value)
     issues = validate_bundle_errors(value, catalog=catalog)
     if issues:
         raise issues[0]
@@ -806,10 +808,10 @@ def validate_bundle_errors(value: Mapping[str, Any], *,
       can come from a source the caller did not name, nobody can tell which answer they
       got.  The refusal names the fix.
 
-    It is a parameter for the same reason `trusted_implementations()` and
-    `verified_joins` are parameters on `compile_setup_snapshot`: the caller states which
-    world it is judging against.  Production resolves it once, in `ledger.setup`.
+    It is a parameter for the same reason `trusted_implementations()` is a parameter on
+    `compile_setup_snapshot`: the caller states which world it is judging against.  Production resolves it once, in `ledger.setup`.
     """
+    value = upgrade_setup(value)
     problems = _Problems()
     if catalog is None:
         return (LedgerSetupValidationError(
@@ -930,11 +932,54 @@ def load_setup_bundle(root: str | Path, *, config_name: str = CONFIG_FILENAME,
             f"the setup is one file ({config_name}); this root also contains "
             f"{relative!r} — move it outside the config root")
 
-    document = _read_json(config_path, "ledger_config")
+    document = upgrade_setup(_read_json(config_path, "ledger_config"))
     issues = _root_document_errors(document)
     if issues:
         raise issues[0]
     return validate_bundle(document, catalog=catalog)
+
+
+#: The setup version the last grammar change came from, and the ones its in-memory reading
+#: already said a word about - one note per distinct count, not one per request.
+UPGRADED_FROM = 5
+_UPGRADE_SAID: set = set()
+
+
+def upgrade_setup(document: Any) -> Any:
+    """A setup_version 5 document as 6 - THE ONE v5 -> v6 reading (총괄 e14416950).
+
+    The loader calls it in memory and `scripts/migrate_ledger_config_to_v6.py` calls it to
+    write the file, so the two cannot disagree about what v6 is. `prepare` retired: a
+    `direct-join` preparer computed nothing, so its body is dropped (`exclude_when` moves
+    under `read`, same meaning, c6a8c069c ④); a RETIRED source's body is dropped whatever it
+    names, because nothing reads it. A working preparer on an active source is KEPT, and
+    the validator then refuses that source by name (`prepare_retired`) - its computation has
+    to move to the chain first, which is the migration's job, not a reader's.
+
+    Anything that is not a v5 document comes back as it came.
+    """
+    if not isinstance(document, Mapping) or document.get("setup_version") != UPGRADED_FROM:
+        return document
+    upgraded = copy.deepcopy(dict(document))
+    dropped = 0
+    for source in (upgraded.get("sources") or {}).values():
+        if not isinstance(source, dict) or not isinstance(source.get("prepare"), Mapping):
+            continue
+        preparation = source["prepare"]
+        if not is_retired(source) and preparation.get("implementation_id") != "direct-join":
+            continue
+        if "exclude_when" in preparation and isinstance(source.get("read"), dict):
+            source["read"].setdefault("exclude_when", preparation["exclude_when"])
+        del source["prepare"]
+        dropped += 1
+    upgraded["setup_version"] = SETUP_VERSION
+    if dropped not in _UPGRADE_SAID:
+        _UPGRADE_SAID.add(dropped)
+        logger.info("[Ledger] setup_version %d read as %d: %d source(s)' prepare section "
+                    "dropped in memory (direct-join, or a retired source) - Next: run "
+                    "scripts/migrate_ledger_config_to_v6.py to write it",
+                    UPGRADED_FROM, SETUP_VERSION, dropped)
+    return upgraded
 
 
 def _root_document_errors(document: Mapping[str, Any]
@@ -976,7 +1021,7 @@ def setup_bundle_errors(root: str | Path, *, config_name: str = CONFIG_FILENAME,
             "invalid_config_root", "config_root", "must be a directory")
     config_path = _resolve_config_path(
         root_path, config_name, "config_root", require_json=True)
-    document = _read_json(config_path, "ledger_config")
+    document = upgrade_setup(_read_json(config_path, "ledger_config"))
     root_issues = _root_document_errors(document)
     if root_issues:
         # The section-level validator would read sections this one just called absent or
@@ -1664,45 +1709,6 @@ def _validate_exclude_when(value: Any, path: str, problems: _Problems) -> None:
                          "the only supported condition is 'blank': true")
 
 
-def _validate_preparation(item: Any, path: str, problems: _Problems) -> None:
-    """One source's preparer body, at `sources.<id>.prepare`.
-
-    No `_versioned_id` here and no id at all: the declaration is not named any more, it IS
-    the source's preparation clause.  `implementation_id`/`implementation_version` stay,
-    because the thing that is shared and versioned is the CODE the body selects, never the
-    body itself.
-    """
-    if not problems.exact(
-            item, path,
-            required=("implementation_id", "implementation_version", "input_columns",
-                      "output_columns", "accepts_verified_join_rules",
-                      "inherit_virtual_join_rules"),
-            # S-91. OPTIONAL, so all 26 shipped sources stay valid without being edited -
-            # a source that says nothing here excludes nothing, which is what they all do
-            # today.
-            optional=("exclude_when",)):
-        return
-    _validate_exclude_when(item.get("exclude_when"), f"{path}.exclude_when", problems)
-    _implementation(item, path, problems)
-    _nonblank_list(item.get("input_columns"), f"{path}.input_columns", problems,
-                   allow_empty=True)
-    _column_types(item.get("output_columns"), f"{path}.output_columns", problems)
-    _nonblank_list(item.get("inherit_virtual_join_rules"),
-                   f"{path}.inherit_virtual_join_rules", problems, allow_empty=True)
-    inputs = set(_column_values(item.get("input_columns")))
-    outputs = item.get("output_columns")
-    if isinstance(outputs, Mapping):
-        for column in sorted(set(outputs) & inputs):
-            problems.add(
-                "output_column_collision", f"{path}.output_columns.{column}",
-                "preparer output must not overwrite an input column")
-    why = (validation.flag_refusal("accepts_verified_join_rules",
-                                   item["accepts_verified_join_rules"])
-           if "accepts_verified_join_rules" in item else None)
-    if why:
-        problems.add("invalid_type", f"{path}.accepts_verified_join_rules", why)
-
-
 def _validate_mapper(item: Any, path: str, problems: _Problems) -> None:
     """One source's mapper body, at `sources.<id>.map`.
 
@@ -1981,15 +1987,15 @@ def _validate_sources(section: Mapping[str, Any], problems: _Problems) -> None:
     clauses now stand as SIBLINGS of `relation`, and the file reads in the order execution
     happens:
 
-        relation   the physical table this source reads.  UNMOVED -- `prepared_columns`
-                   starts from it, and moving it would drag that with it for nothing
+        relation   the physical table this source reads
         read       unit, identity, group_by, order_by, occurred_at, cursor, probe
-        prepare    the preparer body, character for character as it was
         map        the mapper body, character for character as it was
         bind       the profile body, character for character as it was
 
-    The file itself is written `sort_keys=True`, so on disk these sit `bind · map · prepare
-    · read`.  That is deliberate and is not fixed here: the serialization is canonical hash
+    (⚰️ `prepare`, the preparer body, retired with setup_version 6 - a source that still
+    writes one is refused by name with the migration as its Next.)
+
+    The file itself is written `sort_keys=True`, so on disk these sit `bind · map · read`.  That is deliberate and is not fixed here: the serialization is canonical hash
     material, and the ORDER A READER SEES is made by the skeleton, which lists them in the
     order above.
     """
@@ -1997,8 +2003,18 @@ def _validate_sources(section: Mapping[str, Any], problems: _Problems) -> None:
         path = f"bundle.sources.{source_id}"
         _nonblank_id(source_id, path, problems)
         source = section[source_id]
+        # ⚰️ [총괄 e14416950] A PREPARE THAT REACHES HERE IS ONE `upgrade_setup` KEPT - a
+        # working preparer on an active source - so this source cannot be read until its
+        # computation moves to the chain. Named, and it falls alone (S-177 ②).
+        if isinstance(source, Mapping) and "prepare" in source:
+            problems.add(
+                "prepare_retired", f"{path}.prepare",
+                "a source has no prepare section since setup_version 6 - a computation writes "
+                "a table through the chain and the source reads that table. "
+                "Next: run scripts/migrate_ledger_config_to_v6.py")
+            continue
         if not problems.exact(
-                source, path, required=("relation", "read", "prepare", "map", "bind"),
+                source, path, required=("relation", "read", "map", "bind"),
                 optional=("status",)):
             continue
         _nonblank_text(source.get("relation"), f"{path}.relation", problems)
@@ -2018,7 +2034,7 @@ def _validate_sources(section: Mapping[str, Any], problems: _Problems) -> None:
         # 🔴 A RETIRED SOURCE IS NOT READ, SO ITS CONTENT IS NOT READ EITHER (S-177 ①,
         # owner 2026-09-11: 「아예 못 읽는 선언은 retired 가 안 먹던데」). Retiring a source
         # means 「this one is no longer read」, and the three clauses below all ask what
-        # WOULD BE READ -- which columns the preparer takes, which the profile binds, which
+        # WOULD BE READ -- which columns the read takes, which the profile binds, which
         # mapper turns them into sentences. Judging them anyway made retirement answer a
         # question nobody asked: a source whose relation lost a column REFUSED THE WHOLE
         # BUNDLE, so the ledger stopped on a declaration that had already said it was done.
@@ -2032,7 +2048,6 @@ def _validate_sources(section: Mapping[str, Any], problems: _Problems) -> None:
         # Each clause is judged on its own: one malformed clause must not silence the
         # other three, or an author fixes four rounds of one refusal at a time.
         _validate_profile(source.get("bind"), f"{path}.bind", problems)
-        _validate_preparation(source.get("prepare"), f"{path}.prepare", problems)
         _validate_mapper(source.get("map"), f"{path}.map", problems)
         read = source.get("read")
         # 🔴 `cursor` IS NOT ASKED ANY MORE -- IT WAS THE SAME CONTRACT, ASKED TWICE.
@@ -2051,12 +2066,16 @@ def _validate_sources(section: Mapping[str, Any], problems: _Problems) -> None:
                 read, f"{path}.read",
                 required=("unit", "identity", "order_by", "occurred_at",
                           *(group_field if grouped else ())),
-                optional=("registration_probe", *(() if grouped else group_field)),
+                optional=("registration_probe", "exclude_when",
+                          *(() if grouped else group_field)),
                 ignored=("cursor",)):
             continue
         _validate_registration_probe(
             read.get("registration_probe"), f"{path}.read.registration_probe",
             problems)
+        # S-91, under `read` since the preparer section retired (소유자 10-01 「남겨」)
+        _validate_exclude_when(read.get("exclude_when"), f"{path}.read.exclude_when",
+                               problems)
         source_unit = read.get("unit")
         if not isinstance(source_unit, str) or source_unit not in _SOURCE_UNITS:
             problems.add("invalid_driver", f"{path}.read.unit",
@@ -2289,6 +2308,15 @@ def _cross_validate(bundle: Mapping[str, Any], catalog: Mapping[str, Any],
         _cross_registration_probe(
             driver.get("registration_probe"), f"{path}.read.registration_probe",
             relation, physical, tables, entities, problems)
+        # S-91. The column has to BE in the relation.
+        for index, clause in enumerate(driver.get("exclude_when") or []):
+            if not isinstance(clause, Mapping):
+                continue
+            column = clause.get("column")
+            if isinstance(column, str) and column not in physical:
+                problems.add(
+                    "unknown_column", f"{path}.read.exclude_when[{index}].column",
+                    f"column {column!r} is not in relation {relation!r}")
         table = tables.get(relation)
         if isinstance(table, Mapping):
             # ONE ordering, scored once.  This was a two-entry loop over `order_by` and
@@ -2308,77 +2336,14 @@ def _cross_validate(bundle: Mapping[str, Any], catalog: Mapping[str, Any],
         profile = source.get("bind") if isinstance(source.get("bind"), Mapping) else None
         profile_path = f"{path}.bind"
 
-        prep = source.get("prepare") if isinstance(source.get("prepare"), Mapping) else {}
-        prep_path = f"{path}.prepare"
         available = set(physical)
-        if prep:
-            for column in prep.get("input_columns", []):
-                if column not in physical:
-                    problems.add("unknown_column", f"{prep_path}.input_columns",
-                                 f"column {column!r} is not in relation {relation!r}")
-            if isinstance(prep.get("output_columns"), Mapping):
-                for column in sorted(set(prep["output_columns"]) & physical):
-                    problems.add(
-                        "output_column_collision",
-                        f"{prep_path}.output_columns.{column}",
-                        f"preparer output collides with physical relation {relation!r}")
-                available.update(prep["output_columns"])
-            # S-91. The column has to BE in the relation, and it has to be read by a
-            # preparer that looks at it.
-            for index, clause in enumerate(prep.get("exclude_when") or []):
-                if not isinstance(clause, Mapping):
-                    continue
-                column = clause.get("column")
-                if isinstance(column, str) and column not in physical:
-                    problems.add(
-                        "unknown_column", f"{prep_path}.exclude_when[{index}].column",
-                        f"column {column!r} is not in relation {relation!r}")
-            # 🔴 REFUSED BY NAME RATHER THAN IGNORED (판정 194 ㉡). Only the generic
-            # `direct-join` preparer reads this clause; a source that declares it under
-            # some other implementation would have it silently do nothing, which is the
-            # mirror image of the two-paths problem this feature exists to avoid. A
-            # preparer class that wants to exclude rows already emits the marker itself.
-            if prep.get("exclude_when") and prep.get("implementation_id") != "direct-join":
-                problems.add(
-                    "invalid_driver", f"{prep_path}.exclude_when",
-                    f"only the 'direct-join' preparer reads exclude_when; this source "
-                    f"declares {prep.get('implementation_id')!r}, whose implementation "
-                    f"emits the row-exclusion marker itself")
-            inherited_rules = prep.get("inherit_virtual_join_rules", [])
-            if inherited_rules and not prep.get("accepts_verified_join_rules"):
-                problems.add(
-                    "invalid_driver", f"{prep_path}.accepts_verified_join_rules",
-                    "must be true when the source inherits virtual join rules")
-        for index, rule_id in enumerate(prep.get("inherit_virtual_join_rules", [])):
-            rule = bundle["virtual_joins"].get(rule_id)
-            rpath = f"{prep_path}.inherit_virtual_join_rules[{index}]"
-            if rule is None:
-                problems.add("unknown_join_rule", rpath, f"unknown rule {rule_id!r}")
-            elif not rule.get("enabled"):
-                problems.add("invalid_driver", rpath, f"join rule {rule_id!r} is disabled")
-            elif rule.get("left_table") != relation:
-                problems.add("invalid_driver", rpath,
-                             f"join rule left_table must be {relation!r}")
-            else:
-                declared_inputs = set(prep.get("input_columns", []))
-                left_keys = {
-                    pair.get("left") for pair in rule.get("join_key", [])
-                    if isinstance(pair, Mapping)
-                }
-                missing_inputs = sorted(left_keys - declared_inputs)
-                if missing_inputs:
-                    problems.add(
-                        "invalid_driver", rpath,
-                        f"join rule {rule_id!r} left key column(s) {missing_inputs!r} "
-                        f"must be declared by {prep_path}.input_columns")
-
         for field, columns in (("identity", driver.get("identity", [])),
                                ("group_by", read_group_by(driver))):
             for index, column in enumerate(columns):
                 if column not in available:
                     problems.add(
                         "unknown_column", f"{path}.read.{field}[{index}]",
-                        f"column {column!r} is not in prepared EventFrame schema")
+                        f"column {column!r} is not in relation {relation!r}")
 
         mapper = source.get("map") if isinstance(source.get("map"), Mapping) else None
         mapper_path = f"{path}.map"
@@ -2393,7 +2358,7 @@ def _cross_validate(bundle: Mapping[str, Any], catalog: Mapping[str, Any],
                              "group_by mapper requires source group_by columns")
         if profile is not None:
             # S-99. The column has to exist where the mapper will look for it, which is
-            # the PREPARED frame - relation columns plus preparer outputs. That is the set
+            # the relation's columns. That is the set
             # S-91's `exclude_when` is checked against, and ruling 195 asked for the same
             # function rather than a second opinion about what a column is.
             # S-105 ③. Reads nothing but the profile, so it is independent of the
@@ -2414,7 +2379,7 @@ def _cross_validate(bundle: Mapping[str, Any], catalog: Mapping[str, Any],
                         problems.add(
                             "unknown_column",
                             f"{path}.bind.mappings.{sentence}.when.{column}",
-                            f"column {column!r} is not in prepared EventFrame schema")
+                            f"column {column!r} is not in relation {relation!r}")
             # The EventFrame schema this source's Profile binds against is `available`,
             # which is only known HERE -- so the bind/column half of the Profile contract
             # is asked inside the source loop, while the file-only half was asked above.

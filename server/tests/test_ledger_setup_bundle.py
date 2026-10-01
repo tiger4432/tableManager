@@ -66,6 +66,9 @@ def logical_catalog(*, source_name="input_rows", prefix=""):
             "columns": {
                 record: "string", event: "string", occurred: "datetime",
                 source_key: "string", join_key: "string",
+                # Written by the write join `input_to_reference` (materialize). Since
+                # setup_version 6 a source reads it as its own column - no preparer adds it.
+                target_key: "string",
                 # 🔴 DECLARED AND SELECTED BY NOTHING (판정 204). Every other column here is
                 # pulled into the read by an identity, a cursor or a declared input, so a
                 # test asking "does naming a column in a clause make it arrive" had no
@@ -186,14 +189,6 @@ def logical_bundle(*, source_name="input_rows", prefix=""):
                     "order_by": [occurred, record],
                     "occurred_at": {"column": occurred, "timezone": "Asia/Seoul"},
                 },
-                "prepare": {
-                    "implementation_id": "prepare-input",
-                    "implementation_version": 1,
-                    "input_columns": [join_key],
-                    "output_columns": {target_key: "string"},
-                    "accepts_verified_join_rules": True,
-                    "inherit_virtual_join_rules": ["input_to_reference"],
-                },
                 "map": {
                     "implementation_id": "map-transition-role",
                     "implementation_version": 1,
@@ -216,20 +211,15 @@ def logical_bundle(*, source_name="input_rows", prefix=""):
     }
 
 
-#: The preparer, the mapper and the profile have no section and no id of their own since
-#: 2026-08-20 -- they are clauses of a source.  These two say so once, so a test that pokes at a body
+#: The mapper and the profile have no section and no id of their own since 2026-08-20 --
+#: they are clauses of a source.  These two say so once, so a test that pokes at a body
 #: reads as "this source's mapper" rather than repeating a five-key path.
 MAPPER_PATH = "bundle.sources.input_rows.map"
-PREPARATION_PATH = "bundle.sources.input_rows.prepare"
 PROFILE_PATH = "bundle.sources.input_rows.bind"
 
 
 def driver_mapper(bundle, source_name="input_rows"):
     return bundle["sources"][source_name]["map"]
-
-
-def driver_preparation(bundle, source_name="input_rows"):
-    return bundle["sources"][source_name]["prepare"]
 
 
 def source_profile(bundle, source_name="input_rows"):
@@ -472,8 +462,10 @@ def test_same_bundle_normalizes_and_serializes_deterministically():
     # MEANS - from a default to 「read-time join」, which is retired - and 481 made this
     # validator mirror that, so the fixture now declares what an operator is told to
     # declare. The movement is those two keys and nothing else.
+    # 2026-10-01 (setup_version 6, 총괄 e14416950): 2f78cf2f... -> the version reads 6, the
+    # source's `prepare` record left, and the catalog's `target_id` is the relation's own.
     assert hashlib.sha256(first.serialize().encode()).hexdigest() == (
-        "2f78cf2f0ab8b4dfac12cb72038d19734a62fb182985fa08e11649d9f5f269f9")
+        "748b3a96028b32556f92e6441d2ed2240c8a925a7185848e0e9cd3234d97f092")
 
 
 def test_list_order_is_preserved_but_object_order_is_not():
@@ -785,7 +777,7 @@ def test_a_binding_endpoint_the_predicate_does_not_admit_is_rejected():
         f"{PROFILE_PATH}.mappings.main_transition.bind.target.entity_type")
 
 
-def test_unknown_predicate_role_and_join_are_named():
+def test_unknown_predicate_and_role_are_named():
     """Was `test_unknown_pack_claim_role_and_join_are_named`.
 
     DELETED with the pack section: the `unknown_pack` case (a `use` naming a pack that is
@@ -806,10 +798,8 @@ def test_unknown_predicate_role_and_join_are_named():
     cases.append((bundle, "unknown_role"))
     # RETIRED 2026-08-20 with the references they measured: the preparer and the mapper
     # are bodies inside the driver now, so there is no id left to misspell and no
-    # `unknown_source_preparer` / `unknown_mapper` refusal to raise.
-    bundle = logical_bundle()
-    bundle["sources"]["input_rows"]["prepare"]["inherit_virtual_join_rules"] = ["absent"]
-    cases.append((bundle, "unknown_join_rule"))
+    # `unknown_source_preparer` / `unknown_mapper` refusal to raise. `unknown_join_rule`
+    # left with the `prepare` section (setup_version 6).
     for value, code in cases:
         assert any(item.code == code for item in validate_bundle_errors(value)), code
 
@@ -912,18 +902,12 @@ def test_the_only_place_a_source_names_a_predicate_is_its_bind_mapping():
     assert set(validated.to_mapping()["sources"]["input_rows"]["bind"]) == {"mappings"}
 
 
-def test_mapper_inputs_cover_profile_columns_and_preparer_outputs_do_not_collide():
+def test_mapper_inputs_cover_profile_columns():
     bundle = logical_bundle()
     driver_mapper(bundle)["input_columns"].remove("event_key")
     errors = validate_bundle_errors(bundle)
     assert any(error.code == "invalid_mapper"
                and "Profile column 'event_key'" in error.message for error in errors)
-
-    bundle = logical_bundle()
-    driver_preparation(bundle)["output_columns"]["source_id"] = "string"
-    errors = validate_bundle_errors(bundle)
-    assert any(error.code == "output_column_collision"
-               and error.path.endswith("output_columns.source_id") for error in errors)
 
 
 @pytest.mark.parametrize(
@@ -1233,16 +1217,6 @@ def test_virtual_join_fold_must_be_an_object():
     assert "invalid_join" in {item.code for item in validate_bundle_errors(bundle)}
 
 
-def test_preparer_must_explicitly_accept_inherited_join_rules():
-    bundle = logical_bundle()
-    driver_preparation(bundle)["accepts_verified_join_rules"] = False
-    errors = validate_bundle_errors(bundle)
-    assert any(
-        item.code == "invalid_driver"
-        and item.path.endswith("accepts_verified_join_rules")
-        for item in errors)
-
-
 def test_errors_have_deterministic_order():
     bundle = logical_bundle()
     bundle["sources"]["input_rows"]["relation"] = "absent"
@@ -1330,7 +1304,9 @@ def test_every_json_node_shape_mutation_returns_only_structured_errors():
     # its `columns` list and the list's two items), +1 for the column `order_by` absorbed
     # from that cursor. Every one of the sixteen was a node whose mutation had ALREADY
     # stopped producing an error, which is how the subtraction was taken.
-    assert checked >= 94
+    # 94 -> 86 on 2026-10-01, when the source's `prepare` record left (setup_version 6).
+    # MEASURED both sides: 94 before, 86 after.
+    assert checked >= 86
 
 
 def test_every_json_node_accepts_or_structurally_rejects_all_json_value_kinds():
@@ -1353,8 +1329,9 @@ def test_every_json_node_accepts_or_structurally_rejects_all_json_value_kinds():
     # `tables`, 894 while the preparer and mapper had their own sections; 816 while it
     # still carried `packs`. 660 while the vocabulary still declared `layer`. 654 while
     # the bindings still declared their origin and approval and the source its cursor.
-    # 564 today (94 x 6) -- the net fifteen nodes from above, times six.
-    assert checked >= 564
+    # 564 (94 x 6) -- the net fifteen nodes from above, times six. 516 today (86 x 6),
+    # since `prepare` left.
+    assert checked >= 516
 
 
 def test_common_module_has_no_domain_source_branches_or_runtime_imports():
@@ -1381,8 +1358,11 @@ def test_common_module_has_no_domain_source_branches_or_runtime_imports():
     # out of this module. It is admitted on `difflib`'s terms -- pure comparison, no I/O, no
     # domain, no runtime -- and the assertion below is what keeps that true, because a name
     # on this list would otherwise be a hole the size of whatever that module imports next.
-    STDLIB_ONLY = {"__future__", "collections", "dataclasses", "difflib", "json",
-                   "pathlib", "re", "types", "typing", "zoneinfo"}
+    # `copy` and `logging` joined on 2026-10-01 (총괄 e14416950): the v5 -> v6 reading
+    # (`upgrade_setup`) copies the document it reads and says ONE load note - the only line
+    # this module writes. Neither reads data or knows a source.
+    STDLIB_ONLY = {"__future__", "collections", "copy", "dataclasses", "difflib", "json",
+                   "logging", "pathlib", "re", "types", "typing", "zoneinfo"}
     assert imported <= STDLIB_ONLY | {"validation"}
     for forbidden in ("database", "sqlalchemy", "psycopg2", "backfill", "store",
                       "translator", "chain_mapper"):
@@ -1604,39 +1584,21 @@ def test_a_root_shape_problem_is_reported_without_its_downstream_consequences(tm
     assert issues[0].code == "missing_field"
 
 
-def test_a_column_name_is_judged_against_three_different_universes():
-    """🔴 "EVERY COLUMN MUST EXIST IN THE RELATION" IS FALSE, AND THE SCREEN DEPENDS ON IT.
+def test_a_column_name_is_judged_against_two_different_universes():
+    """🔴 "EVERY COLUMN MUST EXIST IN THE RELATION" IS NOT THE WHOLE RULE.
 
-    Derived 2026-08-19 while writing the authoring screen's forced-relationship table.  The
-    same column name gets opposite answers depending on which field names it:
-
-      * RELATION  = the catalog's columns          -- order_by, cursor.columns,
-                                                      occurred_at.column, preparer
-                                                      input_columns, registration_probe
-      * PREPARED  = RELATION + preparer outputs    -- driver.identity, driver.group_by,
-                                                      mapper input_columns
+      * RELATION  = the catalog's columns          -- order_by, occurred_at.column,
+                                                      driver.identity, driver.group_by,
+                                                      mapper input_columns, registration_probe
       * MAPPER IN = that mapper's input_columns    -- every profile column binding
 
-    A screen that fed one list to every column dropdown would offer columns that do not
-    exist in half the fields and hide legal ones in the other half.  So this is pinned by
-    the DISCRIMINATING case: one name, accepted in one field and refused in another.  A
-    fixture where the three universes coincide would prove nothing, which is why the column
-    used here is a preparer OUTPUT -- a column that exists downstream and not upstream.
+    ⚰️ A third, PREPARED (relation + preparer outputs), left with the preparer in
+    setup_version 6 - since then a computed column is a column the chain wrote, so it is
+    in the relation.
     """
     base = logical_bundle()
-    produced = sorted(driver_preparation(base)["output_columns"])
-    assert produced, "the fixture must have a preparer that produces a column"
-    column = produced[0]
-    assert column not in DEFAULT_CATALOG["input_rows"]["columns"], (
-        f"{column!r} must NOT be a relation column or the two universes coincide here")
-
-    prepared = copy.deepcopy(base)
-    prepared["sources"]["input_rows"]["read"]["identity"] = [column]
-    prepared["sources"]["input_rows"]["read"]["group_by"] = []
-    assert not [
-        item for item in validate_bundle_errors(prepared)
-        if item.code == "unknown_column"
-    ], "driver.identity reads the PREPARED frame, so a preparer output is legal there"
+    column = "absent_column"
+    assert column not in DEFAULT_CATALOG["input_rows"]["columns"]
 
     relation = copy.deepcopy(base)
     relation["sources"]["input_rows"]["read"]["order_by"] = [column]
@@ -1644,10 +1606,10 @@ def test_a_column_name_is_judged_against_three_different_universes():
         item for item in validate_bundle_errors(relation)
         if item.code == "unknown_column"
     ]
-    assert refused, "order_by reads the RELATION, so a preparer output must be refused"
+    assert refused, "order_by reads the RELATION, so a column it lacks must be refused"
     assert "is not in relation" in refused[0].message
 
-    # And the third universe: a profile binds only what its mapper declares as input.
+    # And the second universe: a profile binds only what its mapper declares as input.
     narrowed = copy.deepcopy(base)
     driver_mapper(narrowed)["input_columns"] = ["source_id"]
     assert [

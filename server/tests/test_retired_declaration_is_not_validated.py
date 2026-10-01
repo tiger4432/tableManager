@@ -32,7 +32,6 @@ from test_ledger_setup_bundle import (
 )
 from test_ledger_setup_registry import (
     compile_setup_snapshot,
-    physically_verified_joins,
     trusted_implementations,
 )
 
@@ -63,14 +62,6 @@ def bundle_with_a_retired_source(*, status="retired"):
             "order_by": ["gone_at", "gone_record"],
             "occurred_at": {"column": "gone_at", "timezone": "Asia/Seoul"},
         },
-        "prepare": {
-            "implementation_id": "prepare-input",
-            "implementation_version": 1,
-            "input_columns": ["gone_join"],
-            "output_columns": {"gone_target": "string"},
-            "accepts_verified_join_rules": False,
-            "inherit_virtual_join_rules": [],
-        },
         "map": {
             "implementation_id": "map-transition-role",
             "implementation_version": 1,
@@ -95,7 +86,7 @@ def bundle_with_a_retired_source(*, status="retired"):
 def compile_fixture(raw):
     bundle = validate_bundle(raw)
     return compile_setup_snapshot(
-        bundle, trusted_implementations(), physically_verified_joins(raw),
+        bundle, trusted_implementations(),
         catalog=DEFAULT_CATALOG)
 
 
@@ -148,7 +139,6 @@ def test_a_retired_source_is_registered_by_name_and_status_with_no_plan():
     # second door into the same unread clauses.
     assert RETIRED_SOURCE not in snapshot.mappers
     assert RETIRED_SOURCE not in snapshot.profiles
-    assert RETIRED_SOURCE not in snapshot.source_preparers
 
 
 def test_the_active_neighbour_is_planned_in_full():
@@ -160,7 +150,6 @@ def test_the_active_neighbour_is_planned_in_full():
     assert plan.driver is not None and plan.profile is not None
     assert "input_rows" in snapshot.mappers
     assert "input_rows" in snapshot.profiles
-    assert "input_rows" in snapshot.source_preparers
 
 
 # ---------------------------------------------------------------------------

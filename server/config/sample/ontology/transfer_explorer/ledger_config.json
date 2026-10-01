@@ -1,5 +1,5 @@
 {
-  "setup_version": 5,
+  "setup_version": 6,
   "vocabulary": {
     "transferred_to@1": {
       "status": "active",
@@ -130,28 +130,6 @@
           "column": "event_time",
           "timezone": "Asia/Seoul"
         }
-      },
-      "prepare": {
-        "implementation_id": "direct-join",
-        "implementation_version": 1,
-        "input_columns": [
-          "dt_job_id"
-        ],
-        "output_columns": {
-          "dt_lot": "string",
-          "dt_slot": "number",
-          "dt_offset_x": "number",
-          "dt_offset_y": "number",
-          "bond_wafer": "string",
-          "bond_offset_x": "number",
-          "bond_offset_y": "number",
-          "bond_layer": "number",
-          "final_chip": "string"
-        },
-        "accepts_verified_join_rules": true,
-        "inherit_virtual_join_rules": [
-          "dt_job_to_inventory"
-        ]
       },
       "map": {
         "implementation_id": "declarative-role",

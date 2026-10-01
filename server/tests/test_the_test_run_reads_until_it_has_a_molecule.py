@@ -23,11 +23,19 @@ import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+import json                                                            # noqa: E402
+
 from ledger import backfill                                            # noqa: E402
 from ledger.setup import load_setup                                    # noqa: E402
+from ledger.setup_bundle import load_physical_catalog                  # noqa: E402
 
-
-SOURCE = "lot_event"
+# 🔴 RE-AIMED (setup_version 6): this read THIS BOX's live `lot_event`, whose preparer marked
+# a blank row excluded. The source retired and its preparer with it; the marker is a
+# declaration now (`read.exclude_when`), so the walk is measured on the SHIPPED sample's
+# `lot_slot_wafer` declaring one - the same three states, on a file every checkout has.
+SOURCE = "lot_slot_wafer"
+SAMPLE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                      "config", "sample")
 NOW = pd.Timestamp("2026-08-17T10:00:00+09:00")
 
 
@@ -35,13 +43,12 @@ def _row(index, *, filled=True):
     """One source row. `filled=False` is the shape the grid leaves behind: the row is
     there, its declared identity is not."""
     return {
-        "lot_id": ("P%03d" % index) if filled else None,
-        "event_type": "split" if filled else None,
-        "slotnumbers": "1" if filled else None,
-        "waferids": "W1" if filled else None,
-        "parent_lot": "", "child_lot": "",
-        "txn_seq": "R%03d" % index,
-        "event_time": NOW + pd.Timedelta(seconds=index),
+        "lot": ("L%03d" % index) if filled else None,
+        "slot": "1" if filled else None,
+        "wafer": ("W%03d" % index) if filled else None,
+        "event_type": "track_in" if filled else None,
+        "event_time": (NOW + pd.Timedelta(seconds=index)).isoformat(),
+        "lot_slot_wafer_key": "K%03d" % index,
         "row_id": "ROW-%03d" % index,
     }
 
@@ -100,8 +107,15 @@ class _StubEngine:
 
 
 @pytest.fixture(scope="module")
-def setup():
-    return load_setup()
+def setup(tmp_path_factory):
+    """The shipped declaration, with the source declaring which rows are not its own."""
+    with open(os.path.join(SAMPLE, "ledger_config.json.sample"), encoding="utf-8") as fh:
+        document = json.load(fh)
+    document["sources"][SOURCE]["read"]["exclude_when"] = [{"column": "wafer", "blank": True}]
+    root = tmp_path_factory.mktemp("declaration")
+    (root / "ledger_config.json").write_text(json.dumps(document), encoding="utf-8")
+    return load_setup(root, catalog=load_physical_catalog(
+        os.path.join(SAMPLE, "table_config.json.sample")))
 
 
 def _read(setup, relation, fetch_rows=4):
@@ -114,9 +128,8 @@ def test_a_head_of_unusable_rows_does_not_decide_the_answer(setup):
     """㉠ The whole point, end to end on the production declaration. The head compiles no
     molecule and the run keeps reading until one does.
 
-    ⚠️ MEASURED, NOT ASSUMED: on `lot_event` a blank row does NOT become a named refusal.
-    Its entity identity columns are `lot` and `wafers`, both PREPARER OUTPUTS, and the
-    preparer marks such a row EXCLUDED before molecules exist - so it leaves as
+    ⚠️ MEASURED, NOT ASSUMED: here a blank row does NOT become a named refusal. The
+    source's `exclude_when` marks it EXCLUDED before molecules exist - so it leaves as
     `rows_read` with no molecule and no refusal. Excluded, refused and absent are three
     states, and this fixture is the first: a head that produces nothing, which is exactly
     the shape the owner hit."""
@@ -180,7 +193,7 @@ def test_the_walk_reads_forward_and_never_re_reads_a_page(setup):
 # The walk's own contract, isolated from what any one declaration refuses.
 #
 # 🔴 THE FIXTURE ABOVE CANNOT PRODUCE A NAMED REFUSAL, and pretending otherwise is how a
-# gate ends up green on a path it never walks. `lot_event` excludes its unusable rows
+# gate ends up green on a path it never walks. The source excludes its unusable rows
 # before molecules exist. The two facts this section pins - the walk stops as soon as a
 # page compiles, and refusals ACCUMULATE across every page it walked - are properties of
 # the loop, so they are measured against a compiler that says what it compiled.
@@ -201,7 +214,7 @@ def _compiler(script):
     """One scripted answer per page, in order."""
     calls = iter(script)
 
-    def compile_one(setup, source, frame, cursor_value, reader, known_registrations=None):
+    def compile_one(setup, source, frame, cursor_value, known_registrations=None):
         return next(calls)
     return compile_one
 
@@ -237,9 +250,9 @@ def test_refusals_from_the_pages_walked_past_are_not_lost(setup, monkeypatch):
 # S-49: the rows the preparer EXCLUDED are counted, because otherwise the screen
 # cannot say where they went.
 #
-# 🔴 THREE STATES, NOT TWO. `lot_event` holds two generations that spell the same facts
-# differently, and its preparer marks the ones it does not read as excluded - they leave
-# before anything asks them for an identity. So a test run could say "200 rows read, 3
+# 🔴 THREE STATES, NOT TWO. `lot_event` held two generations that spelled the same facts
+# differently, and its preparer marked the ones it did not read as excluded - they left
+# before anything asked them for an identity. (That marker is `read.exclude_when` now.) So a test run could say "200 rows read, 3
 # molecules, 0 refused" with 197 rows unaccounted for, and the operator had no way to tell
 # that from a declaration quietly dropping their data.
 # ---------------------------------------------------------------------------
@@ -251,7 +264,7 @@ def test_the_excluded_rows_are_counted_rather_than_silently_gone(setup):
 
     reading = _read(setup, relation)
 
-    assert reading.excluded_rows is not None, "lot_event declares the marker"
+    assert reading.excluded_rows is not None, "the source declares exclude_when"
     assert reading.excluded_rows >= 4
     assert reading.rows_read >= reading.excluded_rows
 

@@ -62,13 +62,17 @@ def test_a_type_names_every_registered_subject_of_it():
     assert all(seed["sign"] == "+" for seed in body["seeds"])
 
 
-def test_only_REGISTERED_subjects_are_named():
-    """⚠️ THE SAME RULE AS EXISTENCE (A1). A subject that only ever appeared as somebody
-    else's object was never registered, and seeding from it would walk from something the
-    declaration does not say exists."""
-    atoms = _registered(2) + [_atom(50, "inspected", wid="ghost")]
+def test_any_atom_naming_a_node_names_it_registered_or_not():
+    """🔴 [총괄 819726624 ㄹ] REVERSES S-148-a / 판정 337 「registered subjects only」: a node
+    is any atom naming it, subject side or object side - `gaps._nodes_of_type_sql`'s rule.
+    With lot_event retired nothing registers a wafer, and a register-only list would be
+    empty for it."""
+    atoms = _registered(2) + [
+        _atom(50, "inspected", wid="as_subject"),
+        _atom(51, "holds", subject_type="lot", wid="L1", kind="entity_ref",
+              payload={"type": "wafer", "keys": {"wid": "as_object"}})]
 
-    assert len(_walk(atoms, seed_type="wafer")["seeds"]) == 2
+    assert len(_walk(atoms, seed_type="wafer")["seeds"]) == 4
 
 
 def test_the_version_does_not_have_to_be_spelled():
@@ -333,7 +337,7 @@ def test_the_description_resolves_on_the_connection_the_route_actually_holds():
     """🔴 THE GATE THAT WAS MISSING. Not 「does the query look right」 but 「does it run on
     the thing the product hands it」."""
     connection = _SqlAlchemyShapedConnection(
-        [("wafer", '{"wid": "W0"}'), ("wafer", '{"wid": "W1"}')])
+        [('{"wid": "W0"}', NOW), ('{"wid": "W1"}', NOW)])
     lookup = ledger_subgraph.SqlEvidenceLookup(connection)
 
     described = lookup.subjects_of_type("wafer@1", 10)
@@ -351,19 +355,21 @@ def test_the_budget_reaches_the_database_and_asks_for_one_more():
 
     statement, params = connection.seen[0]
     assert "--" not in statement, "a commented-out clause still reads as present"
-    assert statement.rstrip().endswith("LIMIT %(fetch)s"), statement
-    assert params["fetch"] == 26, "one row past the budget makes 「there were more」 a fact"
-    assert params["predicate"] == "register"
-    assert params["subject_type"] == "wafer", "the version is folded before the index"
+    assert statement.startswith("SELECT keys FROM (") and "LIMIT %(scan)s" in statement, statement
+    assert "WITH RECURSIVE" in statement, "a skip scan - the budget is what it costs (총괄 ㄱ)"
+    assert params["scan"] == 26, "one row past the budget makes 「there were more」 a fact"
+    assert params["bare"] == "wafer", "the version is folded before the index"
+    assert "predicate" not in statement, "any atom names a node - not only a register"
+    assert "object_payload->>'type' = %(bare)s" in statement, "the object side names it too"
 
 
 def test_subject_keys_arrive_as_text_or_as_a_mapping():
     """⚠️ TWO DRIVERS, TWO SHAPES — the same two-shaped handling `_atom_from_row` does. A
     reader that assumed one would work on one deployment and not the other."""
     as_text = ledger_subgraph.SqlEvidenceLookup(
-        _SqlAlchemyShapedConnection([("wafer", '{"wid": "W0"}')])).subjects_of_type("wafer", 5)
+        _SqlAlchemyShapedConnection([('{"wid": "W0"}', NOW)])).subjects_of_type("wafer", 5)
     as_mapping = ledger_subgraph.SqlEvidenceLookup(
-        _SqlAlchemyShapedConnection([("wafer", {"wid": "W0"})])).subjects_of_type("wafer", 5)
+        _SqlAlchemyShapedConnection([({"wid": "W0"}, NOW)])).subjects_of_type("wafer", 5)
 
     assert as_text.ids == as_mapping.ids
 

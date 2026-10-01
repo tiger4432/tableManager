@@ -13,7 +13,7 @@ molecules, 995 refused for no identity, with the rows that carry one sitting lat
 order.
 
 Two lines an operator can act on:
-    「운영에서는 소스의 `prepare` 에 `exclude_when: [{column: <컬럼>, blank: true}]` 을 적으면
+    「운영에서는 소스의 `read` 에 `exclude_when: [{column: <컬럼>, blank: true}]` 을 적으면
       그 컬럼이 빈 행은 «제외»되고 나머지가 들어갑니다.」
 
 ⛔ ONE PREDICATE ON PURPOSE. `blank: true` and nothing else - no value comparisons, no SQL
@@ -30,49 +30,19 @@ import pytest
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from ledger.backfill import prepare_v2_cursor_batch                   # noqa: E402
-from ledger.source_preparation import (                               # noqa: E402
-    SOURCE_ROW_EXCLUDED_COLUMN, SourcePreparationError,
-    is_blank_source_value)
+from ledger.event_frame import is_blank_source_value                  # noqa: E402
 from test_ledger_setup_bundle import (                                # noqa: E402
-    driver_preparation, logical_bundle, logical_catalog,
-    validate_bundle_errors)
-from ledger.setup_registry import TrustedImplementationCatalog        # noqa: E402
-from ledger.source_preparation import locked_select_columns           # noqa: E402
+    logical_bundle, logical_catalog, validate_bundle_errors)
 from test_ledger_setup_registry import snapshot                       # noqa: E402
-from test_ledger_source_preparation import base_select_columns_of  # noqa: E402
-from ledger.source_preparation import (                               # noqa: E402
-    DirectJoinSourcePreparer, SourcePreparerImplementationRegistry)
-from test_ledger_source_preparation import (                          # noqa: E402
-    NOW, base_rows, reader_for)
+from test_ledger_event_frame import (                                 # noqa: E402
+    NOW, base_rows, base_select_columns_of)
 
 SOURCE = "input_rows"
 
 
-def direct_join_trusted():
-    """The fixture plant trusts `prepare-input`; `exclude_when` is read only by the
-    GENERIC preparer, so driving it end to end needs `direct-join` trusted instead."""
-    return TrustedImplementationCatalog.build(
-        source_preparers=[("direct-join", 1)],
-        mappers=[("map-transition-role", 1)],
-    )
-
-
-def direct_join_registry():
-    """The RUNTIME half of the same swap: the shared helper registers the class under the
-    fixture's `prepare-input` id, and this clause is only read under `direct-join`."""
-    registry = SourcePreparerImplementationRegistry()
-    registry.register("direct-join", 1, DirectJoinSourcePreparer)
-    return registry.seal()
-
-
-def _with_exclusion(clauses, bundle=None, direct=False):
+def _with_exclusion(clauses, bundle=None):
     raw = bundle if bundle is not None else logical_bundle()
-    prep = driver_preparation(raw)
-    prep["exclude_when"] = clauses
-    if direct:
-        # The fixture ships `prepare-input`; only `direct-join` reads the clause, which is
-        # the refusal pinned at the bottom of this file.
-        prep["implementation_id"] = "direct-join"
+    raw["sources"][SOURCE]["read"]["exclude_when"] = clauses
     return raw
 
 
@@ -90,28 +60,20 @@ def test_a_declared_blank_column_excludes_that_row_and_the_rest_still_land():
         base = base_rows(3)
         base["event_at"] = [NOW, NOW, NOW]
         base["join_id"] = ["", "   ", base["join_id"].tolist()[2]]
-        compiled = snapshot(bundle, direct_join_trusted())
-        frames = prepare_v2_cursor_batch(compiled, SOURCE, base,
-                                         reader_for(base), direct_join_registry())
+        frames = prepare_v2_cursor_batch(snapshot(bundle), SOURCE, base)
         return frames, sum(len(frame) for frame in frames)
 
-    plain = _with_exclusion([], direct=True)
-    del driver_preparation(plain)["exclude_when"]
+    plain = _with_exclusion([])
+    del plain["sources"][SOURCE]["read"]["exclude_when"]
     _before, landed_before = run(plain)
     assert landed_before == 3, "precondition: without the clause every row is translated"
 
-    frames, landed = run(_with_exclusion([{"column": "join_id", "blank": True}],
-                                         direct=True))
+    frames, landed = run(_with_exclusion([{"column": "join_id", "blank": True}]))
 
     assert landed == 1, (
         f"two rows leave `join_id` blank and were declared not this source's; got {landed}")
-    # ⚠️ THE MARKER COLUMN SURVIVES ON THE FRAME, and asserting otherwise was MY
-    # expectation rather than this seam's contract - `_assemble_prepared_frame` filters
-    # ROWS and does not drop the column, exactly as it already did for the python preparer
-    # that has emitted it for weeks. What is worth pinning is that nothing marked stayed.
-    for frame in frames:
-        assert not any(frame[SOURCE_ROW_EXCLUDED_COLUMN].tolist()), (
-            "a row the declaration excluded is still in the prepared frame")
+    assert [frame["source_id"].tolist() for frame in frames] == [["IN-0002"]], (
+        "the row that landed must be the one whose `join_id` is filled")
 
 
 def test_a_column_named_only_by_the_clause_still_reaches_the_read():
@@ -128,8 +90,7 @@ def test_a_column_named_only_by_the_clause_still_reaches_the_read():
     plain = base_select_columns_of(snapshot(logical_bundle()), SOURCE)
     assert "unselected_note" not in plain, "precondition: nothing else selects it"
 
-    compiled = snapshot(_with_exclusion([{"column": "unselected_note", "blank": True}],
-                                        direct=True), direct_join_trusted())
+    compiled = snapshot(_with_exclusion([{"column": "unselected_note", "blank": True}]))
 
     assert "unselected_note" in base_select_columns_of(compiled, SOURCE), (
         "a column named only by the clause must still be read")
@@ -167,13 +128,6 @@ def test_a_predicate_other_than_blank_is_refused():
     assert any("blank" in path for path in negated), sorted(negated)
 
 
-def test_declaring_it_under_a_preparer_that_cannot_read_it_is_refused():
-    """🔴 판정 194 ㉡. Only the generic `direct-join` preparer reads this clause. A source
-    that declares it under another implementation would have it silently do nothing - the
-    mirror image of the two-paths problem the feature exists to avoid - so setup refuses by
-    name instead. A preparer CLASS that wants to exclude rows already emits the marker."""
-    raw = _with_exclusion([{"column": "join_id", "blank": True}])
-    driver_preparation(raw)["implementation_id"] = "lot-event-role"
-
-    new = paths_of(raw) - paths_of(logical_bundle())
-    assert any(path.endswith("prepare.exclude_when") for path in new), sorted(new)
+# ⚰️ RETIRED with the preparer (setup_version 6): `test_declaring_it_under_a_preparer_that_
+# cannot_read_it_is_refused` (판정 194 ㉡). The clause is applied by the event frame on every
+# source now, so there is no implementation under which it could silently do nothing.

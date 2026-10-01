@@ -32,8 +32,7 @@ from ledger import backfill                                      # noqa: E402
 from ledger.implementations import trusted_implementations       # noqa: E402
 from ledger.setup_bundle import (load_physical_catalog,          # noqa: E402
                                  require_ready_bundle, validate_bundle)
-from ledger.implementations import (role_mapper_registry,         # noqa: E402
-                                    source_preparer_registry)
+from ledger.implementations import role_mapper_registry         # noqa: E402
 from ledger.setup import LedgerSetup                             # noqa: E402
 from ledger.setup_registry import compile_setup_snapshot         # noqa: E402
 from pathlib import Path                                         # noqa: E402
@@ -49,13 +48,13 @@ def setup():
         document = json.load(fh)
     bundle = require_ready_bundle(validate_bundle(document, catalog=catalog))
     snapshot = compile_setup_snapshot(
-        bundle, trusted_implementations(), (), catalog=catalog)
+        bundle, trusted_implementations(), catalog=catalog)
     # The real type, because `preview_selected_cursor_batch` refuses a stand-in -- and it
     # should: a preview taken against something that is not the compiled setup is a
     # preview of nothing.
     return LedgerSetup(
         config_root=Path(SAMPLE), bundle=bundle, snapshot=snapshot,
-        preparers=source_preparer_registry(), mappers=role_mapper_registry(),
+        mappers=role_mapper_registry(),
         catalog=catalog)
 
 

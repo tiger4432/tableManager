@@ -27,10 +27,6 @@ from .roleframe import (
     UNIT_SAID_NOTHING_ATTR,
     dry_run_event_frame,
 )
-from .source_preparation import (
-    SourcePreparerImplementationRegistry,
-    VerifiedJoinBatchReader,
-)
 from .setup_registry import LedgerSetupSnapshot, cursor_translator_version
 
 
@@ -57,7 +53,7 @@ class CursorBatchPreview:
     incomplete_count: int
     #: Molecules the preparation refused by name instead of killing the page.
     refusals: tuple = ()
-    #: Rows the preparer's own marker removed, or `None` when it declares no marker.
+    #: Rows the source's `exclude_when` removed, or `None` when it declares none.
     excluded_rows: Any = None
     #: `(relation, row_id, source_raw_ref)` for every physical row this batch translated
     #: (S-54-b). Carried on the preview because this is the one place both halves are in
@@ -177,7 +173,7 @@ def _row_ref_index(source_plan, event_frames, event_results):
     """`(relation, row_id, source_raw_ref)` -- the ref the LEDGER stores, not the row's own.
 
     🔴 THE TWO REFS ARE NOT THE SAME STRING, AND THAT IS THE WHOLE OF THIS FUNCTION.
-    `source_preparation` gives each ROW a ref of `<relation>:<json of its order_by values>`;
+    `event_frame` gives each ROW a ref of `<relation>:<json of its order_by values>`;
     the atom carries `_claim_source_raw_ref`'s answer, which is that string only when the
     molecule is one row and `{"event":…, "rows":[…]}` otherwise. The withdrawal matches
     `source_raw_ref` on the ledger, so an index holding the ROW's spelling would find no
@@ -192,7 +188,7 @@ def _row_ref_index(source_plan, event_frames, event_results):
     handing in one that shallow is a test double, and the write it feeds is unchanged.
     """
     from .roleframe import SOURCE_ROW_REF_COLUMN, claim_source_row_refs
-    from .source_preparation import FRAME_ROW_ID_COLUMN
+    from .event_frame import FRAME_ROW_ID_COLUMN
 
     row_id_of: dict = {}
     for frame in event_frames:
@@ -223,7 +219,7 @@ def _row_ref_index(source_plan, event_frames, event_results):
 def placeable_rows(plan, frame: pd.DataFrame) -> pd.Series:
     """True where every cursor column of the row holds a value - the rows a cursor can name
     (총괄 4b5964ab2). Empty is `is_blank_source_value`, this seam's one judge of it."""
-    from .source_preparation import is_blank_source_value
+    from .event_frame import is_blank_source_value
 
     mask = pd.Series(True, index=frame.index)
     for column in plan.driver.cursor_columns:
@@ -249,8 +245,6 @@ def preview_cursor_batch(
     source_id: str,
     base_rows: pd.DataFrame,
     cursor_value: Mapping[str, Any],
-    join_reader: VerifiedJoinBatchReader,
-    preparers: SourcePreparerImplementationRegistry,
     mappers: RoleMapperImplementationRegistry,
     *,
     known_registrations: Any = None,
@@ -261,8 +255,7 @@ def preview_cursor_batch(
     refusals: list = []
     excluded: list = []
     event_frames = prepare_v2_cursor_batch(
-        snapshot, source_id, base_rows, join_reader, preparers, refusals=refusals,
-        excluded=excluded)
+        snapshot, source_id, base_rows, refusals=refusals, excluded=excluded)
     mapper_context = MapperContext(snapshot, source_plan)
     event_results = tuple(
         dry_run_event_frame(mapper_context, event_frame, mappers)
@@ -317,8 +310,6 @@ def execute_scoped_batch(
     source_id: str,
     base_rows: pd.DataFrame,
     scope: Any,
-    join_reader: VerifiedJoinBatchReader,
-    preparers: SourcePreparerImplementationRegistry,
     mappers: RoleMapperImplementationRegistry,
     store: Any,
     *,
@@ -361,7 +352,7 @@ def execute_scoped_batch(
     # rewind by a longer route.
     unwritten_cursor = last_cursor(plan, base_rows)
     preview = preview_cursor_batch(
-        snapshot, source_id, base_rows, unwritten_cursor, join_reader, preparers, mappers,
+        snapshot, source_id, base_rows, unwritten_cursor, mappers,
         known_registrations=known_registrations)
     kept_all = _screened_atoms(snapshot, source_id, preview)
     batch_id = str(uuid6.uuid7())
@@ -642,7 +633,7 @@ def _cursor_value(source_plan, frame: Any, value: Any) -> dict[str, Any]:
             f"base batch is missing cursor columns {missing_columns}",
         )
     # 🔴 [총괄 4b5964ab2] only the rows a cursor can name are candidates: a row with an empty
-    # cursor cell is refused with its molecule (`source_preparation._refuse_molecule`), and
+    # cursor cell is refused with its molecule (`event_frame._refuse_molecule`), and
     # a batch of nothing else has no cursor - `last_cursor` answers `{}` for it.
     frame = frame[placeable_rows(source_plan, frame)]
     if frame.empty and not value:
@@ -685,7 +676,7 @@ def _json_scalar(value: Any) -> Any:
             # value with no offset is 「어느 쪽인지 모르는 값」, and a payload is the last
             # place it can still be caught.
             #
-            # ⚠️ THE SPELLING IS NOT NEW. `roleframe._plain` and `source_preparation._plain`
+            # ⚠️ THE SPELLING IS NOT NEW. `roleframe._plain` and `event_frame._plain`
             # are the same serializer role and both already raise exactly this - one
             # sentence, three seats, so they cannot drift into three answers.
             raise TypeError("naive datetime has no deterministic instant")

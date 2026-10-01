@@ -26,27 +26,20 @@ from ledger.implementations import (                                    # noqa: 
     _self_declared_identity,
     mapper_declarations,
     role_mapper_registry,
-    source_preparer_declarations,
-    source_preparer_registry,
     trusted_implementations,
 )
 from ledger.roleframe import BaseLedgerMapper, DeclarativeRoleMapper    # noqa: E402
 from ledger.setup_registry import ImplementationKey                     # noqa: E402
-from ledger.source_preparation import (                                 # noqa: E402
-    BaseSourcePreparer,
-    DirectJoinSourcePreparer,
-)
 from tests.support.ontology_explorer_sample import (                    # noqa: E402
     load_transfer_sample_setup,
 )
 
 
 def test_generic_implementations_are_addressable_from_config():
-    """The two implementations that were locked out by omission are now trusted."""
+    """The implementation that was locked out by omission is trusted. (Its preparer
+    sibling `direct-join` left with the preparer in setup_version 6.)"""
     trusted = trusted_implementations()
-    assert ImplementationKey("direct-join", 1) in trusted.source_preparers
     assert ImplementationKey("declarative-role", 1) in trusted.mappers
-    assert source_preparer_declarations()[("direct-join", 1)] is DirectJoinSourcePreparer
     assert mapper_declarations()[("declarative-role", 1)] is DeclarativeRoleMapper
 
 
@@ -57,15 +50,10 @@ def test_trusted_catalog_and_executable_registries_cannot_disagree():
     with no class behind it, or a class could exist with no name in front of it.
     """
     trusted = trusted_implementations()
-    preparers = source_preparer_registry()
     mappers = role_mapper_registry()
 
     assert {(key.implementation_id, key.implementation_version)
-            for key in trusted.source_preparers} == set(source_preparer_declarations())
-    assert {(key.implementation_id, key.implementation_version)
             for key in trusted.mappers} == set(mapper_declarations())
-    for key in trusted.source_preparers:
-        assert isinstance(preparers.resolve(key), BaseSourcePreparer)
     for key in trusted.mappers:
         assert isinstance(mappers.resolve(key), BaseLedgerMapper)
 
@@ -73,12 +61,12 @@ def test_trusted_catalog_and_executable_registries_cannot_disagree():
 def test_a_subclass_that_declares_nothing_is_not_addressable():
     """Silence is not an address -- a test double must not become callable from config."""
 
-    class UndeclaredPreparer(BaseSourcePreparer):
-        def prepare_outputs(self, context, base_frame, joins):
-            return {}
+    class UndeclaredMapper(BaseLedgerMapper):
+        def interpret_unit(self, context, unit, profile):
+            return []
 
-    assert UndeclaredPreparer not in source_preparer_declarations().values()
-    assert _self_declared_identity(UndeclaredPreparer) is None
+    assert UndeclaredMapper not in mapper_declarations().values()
+    assert _self_declared_identity(UndeclaredMapper) is None
 
 
 def test_an_inherited_identity_is_not_re_used_by_a_subclass():
@@ -88,11 +76,11 @@ def test_an_inherited_identity_is_not_re_used_by_a_subclass():
     collide on one key, and the collision message would name a class nobody had touched.
     """
 
-    class QuietSubclass(DirectJoinSourcePreparer):
+    class QuietSubclass(DeclarativeRoleMapper):
         pass
 
     assert _self_declared_identity(QuietSubclass) is None
-    assert _self_declared_identity(DirectJoinSourcePreparer) == ("direct-join", 1)
+    assert _self_declared_identity(DeclarativeRoleMapper) == ("declarative-role", 1)
 
 
 @pytest.mark.parametrize("identifier,version", [
@@ -110,7 +98,7 @@ def test_a_malformed_self_declaration_is_refused_rather_than_ignored(identifier,
     config names it, and the refusal points at the config instead of at the typo.
 
     Deliberately built OFF the implementation base classes.  A broken subclass would join
-    ``BaseSourcePreparer.__subclasses__()`` and make every later call to the real discovery
+    ``BaseLedgerMapper.__subclasses__()`` and make every later call to the real discovery
     walk raise -- a test that breaks unrelated tests through an interpreter-global.
     """
     malformed = type("MalformedImplementation", (), {
@@ -130,8 +118,6 @@ def test_transfer_sample_draft_validates_unchanged_with_a_non_lot_event_implemen
     """
     setup = load_transfer_sample_setup()
     plan = setup.snapshot.source_plans["dt_log"]
-    assert plan.driver.preparation.preparer.implementation \
-        == ImplementationKey("direct-join", 1)
     assert plan.driver.mapper.implementation == ImplementationKey("declarative-role", 1)
 
     index = build_explorer_index(setup)

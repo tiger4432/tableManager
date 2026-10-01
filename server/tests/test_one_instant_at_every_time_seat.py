@@ -145,12 +145,12 @@ def test_a_naive_datetime_cannot_reach_the_ledger_payload():
 
 def test_the_three_serializers_refuse_with_ONE_sentence():
     """Three seats, one spelling. Three wordings would be three rules that drift."""
-    from ledger import roleframe, runtime_v2, source_preparation
+    from ledger import event_frame, roleframe, runtime_v2
 
     said = set()
     for call in (lambda: runtime_v2._json_scalar(NAIVE),
                  lambda: roleframe._plain(NAIVE),
-                 lambda: source_preparation._plain(NAIVE)):
+                 lambda: event_frame._plain(NAIVE)):
         with pytest.raises(TypeError) as caught:
             call()
         said.add(str(caught.value))

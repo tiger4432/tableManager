@@ -36,7 +36,16 @@ def fixture_world():
     catalog = load_physical_catalog(os.path.join(SAMPLE, "table_config.json.sample"))
     with open(os.path.join(SAMPLE, "ledger_config.json.sample"), encoding="utf-8") as fh:
         document = json.load(fh)
-    units = {name: source["read"]["unit"] for name, source in document["sources"].items()}
+    # 🔴 THE SHIPPED SAMPLE HOLDS NO GROUP SOURCE SINCE setup_version 6 - lot_event was the only
+    # one and it retired. So the group half is a variant of a shipped row source, declared here.
+    grouped = copy.deepcopy(document["sources"]["lot_lineage"])
+    grouped["read"] = {"unit": "group", "identity": ["child_lot"], "group_by": ["child_lot"],
+                       "order_by": ["event_time", "lot_lineage_key"],
+                       "occurred_at": dict(grouped["read"]["occurred_at"])}
+    document["sources"]["lineage_by_child"] = grouped
+    # A retired source is not read, so it has no unit to judge (lot_event, setup_version 6).
+    units = {name: source["read"]["unit"] for name, source in document["sources"].items()
+             if source.get("status") != "retired"}
     assert "row" in units.values() and "group" in units.values(), (
         "CANARY: the sample must carry both units", units)
     held = copy.deepcopy(document)
@@ -60,8 +69,9 @@ def _saved(document, catalog, names):
 
 def _fingerprints(document, catalog):
     bundle = require_ready_bundle(validate_bundle(document, catalog=catalog))
-    snapshot = compile_setup_snapshot(bundle, trusted_implementations(), (), catalog=catalog)
-    return {name: source_cursor_fingerprint(snapshot, name) for name in document["sources"]}
+    snapshot = compile_setup_snapshot(bundle, trusted_implementations(), catalog=catalog)
+    return {name: source_cursor_fingerprint(snapshot, name) for name, plan
+            in snapshot.source_plans.items() if plan.runs}
 
 
 def test_a_saved_row_source_leaves_group_by_out_and_the_bundle_still_validates(world):
@@ -90,7 +100,7 @@ def test_a_row_sources_bundle_holds_none_and_its_compiled_plan_reads_it_empty(wo
     bundle that filled `[]` in made every row-source save report dropping it (총괄 3a109bfd9)."""
     document, _, catalog, units = world
     bundle = require_ready_bundle(validate_bundle(document, catalog=catalog))
-    snapshot = compile_setup_snapshot(bundle, trusted_implementations(), (), catalog=catalog)
+    snapshot = compile_setup_snapshot(bundle, trusted_implementations(), catalog=catalog)
     for name, unit in units.items():
         read = bundle.to_mapping()["sources"][name]["read"]
         compiled = snapshot.source_plans[name].driver.group_by
@@ -110,7 +120,12 @@ def test_a_group_source_keeps_its_group_by_and_its_row_in_the_plan(world):
         assert not [path for path in dropped[name] if path.endswith(".group_by")]
     drawn = {row["path"] for row in authoring_plan(document, catalog)["fields"]
              if row["path"].endswith(".read.group_by")}
-    assert drawn == {"bundle.sources.%s.read.group_by" % name for name in groups}, drawn
+    # The form draws a RETIRED source's declaration too - it is still a declaration an
+    # operator may edit - so its group_by square is drawn beside the live ones.
+    retired_groups = [name for name, source in document["sources"].items()
+                      if source.get("status") == "retired" and source["read"]["unit"] == "group"]
+    assert drawn == {"bundle.sources.%s.read.group_by" % name
+                     for name in groups + retired_groups}, drawn
 
 
 def test_a_group_source_without_group_by_is_still_refused(world):

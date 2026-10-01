@@ -486,7 +486,7 @@ def _validate_for_version(raw: dict, origin: str, catalog=None):
         # many, because a short list reads as "that is all of them" - the same defect this
         # repository fixed four times today in other places.
         raise LedgerConfigError(
-            "%s: setup_version %d declaration refused by the v5 validator - "
+            "%s: setup_version %d declaration refused by the setup validator - "
             "%d issue(s): %s"
             % (origin, version, len(errors),
                "; ".join(str(e) for e in errors)),

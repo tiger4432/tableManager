@@ -12,6 +12,7 @@ on the same frames, or the round's own gate is blind to a regression.
 """
 from __future__ import annotations
 
+import json
 import os
 import sys
 
@@ -21,10 +22,10 @@ import pytest
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from ledger.backfill import _v2_registration_subjects                    # noqa: E402
-from ledger.setup import load_setup                         # noqa: E402
 from ledger.envelope import canonical_keys                               # noqa: E402
 from ledger.setup_bundle import (                                        # noqa: E402
     LedgerSetupValidationError,
+    load_physical_catalog,
     require_ready_bundle,
     validate_bundle,
     validate_bundle_errors,
@@ -96,18 +97,44 @@ def _retired_hardcoded_subjects(frame):
     return subjects
 
 
+# 🔴 RE-AIMED (setup_version 6): this read THIS BOX's live `lot_event`, which retired. The
+# subject is the probe, so a source on the SHIPPED sample reads the same `lot_event` table
+# and the probe is declared on it - every checkout has both files.
+SAMPLE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                      "config", "sample")
+CATALOG = load_physical_catalog(os.path.join(SAMPLE, "table_config.json.sample"))
+PROBED = "first_sight"
+
+
+def _document(probe):
+    with open(os.path.join(SAMPLE, "ledger_config.json.sample"), encoding="utf-8") as fh:
+        document = json.load(fh)
+
+    def lot(column):
+        return {"kind": "entity", "entity_type": "lot@1",
+                "keys": {"lot": {"kind": "column", "column": column}}}
+
+    document["sources"][PROBED] = {
+        "relation": "lot_event",
+        "read": {"unit": "row", "identity": ["txn_seq"],
+                 "order_by": ["event_time", "txn_seq"],
+                 "occurred_at": {"column": "event_time", "timezone": "Asia/Seoul"},
+                 "registration_probe": probe},
+        "map": {"implementation_id": "declarative-role", "implementation_version": 1,
+                "unit": {"kind": "row"},
+                "input_columns": ["lot_id", "parent_lot", "event_time", "txn_seq"]},
+        "bind": {"mappings": {"descent": {
+            "predicate": "derived_from@1",
+            "bind": {"subject": lot("lot_id"), "target": lot("parent_lot"),
+                     "occurred_at": {"kind": "column", "column": "event_time"}}}}},
+    }
+    return document
+
+
 def _plan_with_probe(probe):
-    setup = load_setup()
-    logical = setup.bundle.to_mapping()
-    logical["sources"]["lot_event"]["read"]["registration_probe"] = probe
-    # Re-validating the live bundle must judge it against the SAME physical catalog the
-    # load used -- `setup.catalog` carries it -- or the probe would be checked against one
-    # world and the plan compiled against another.
-    bundle = require_ready_bundle(validate_bundle(logical, catalog=setup.catalog))
-    snapshot = compile_setup_snapshot(
-        bundle, trusted_implementations(),
-        tuple(setup.snapshot.verified_joins.values()), catalog=setup.catalog)
-    return snapshot.source_plans["lot_event"]
+    bundle = require_ready_bundle(validate_bundle(_document(probe), catalog=CATALOG))
+    snapshot = compile_setup_snapshot(bundle, trusted_implementations(), catalog=CATALOG)
+    return snapshot.source_plans[PROBED]
 
 
 @pytest.mark.parametrize("name", sorted(FRAMES))
@@ -176,31 +203,22 @@ def test_no_probe_answers_None_rather_than_an_empty_set():
      "unsafe_declaration"),
 ])
 def test_a_malformed_probe_is_refused_at_load_with_its_own_code(probe, code):
-    setup = load_setup()
-    logical = setup.bundle.to_mapping()
-    logical["sources"]["lot_event"]["read"]["registration_probe"] = probe
-    issues = validate_bundle_errors(logical, catalog=setup.catalog)
+    logical = _document(probe)
+    issues = validate_bundle_errors(logical, catalog=CATALOG)
     assert code in {issue.code for issue in issues}, [i.to_mapping() for i in issues]
     with pytest.raises(LedgerSetupValidationError):
-        validate_bundle(logical, catalog=setup.catalog)
+        validate_bundle(logical, catalog=CATALOG)
 
 
 def test_the_config_still_loads_without_a_probe():
     """The field is optional, so a root that OMITS it must still load.
 
-    🔴 THE CASE IS NOW BUILT BY REMOVAL. This asserted that the shipped root carried no
-    probe, which stopped being a statement about optionality the day the declaration
-    adopted one -- both the sample and the live file now declare a `lot@1` and a `wafer@1`
-    probe on `lot_event`. Pinning their absence measured the declaration's current
-    contents, not the field's optionality, so the claim is made the only way that stays
-    true: take the probe OUT and the root must still validate and compile.
+    🔴 THE CASE IS BUILT BY REMOVAL: take the probe OUT and the root must still validate
+    and compile.
     """
-    setup = load_setup()
-    logical = setup.bundle.to_mapping()
-    logical["sources"]["lot_event"]["read"].pop("registration_probe", None)
-    assert validate_bundle_errors(logical, catalog=setup.catalog) == ()
-    bundle = require_ready_bundle(validate_bundle(logical, catalog=setup.catalog))
-    snapshot = compile_setup_snapshot(
-        bundle, trusted_implementations(),
-        tuple(setup.snapshot.verified_joins.values()), catalog=setup.catalog)
-    assert snapshot.source_plans["lot_event"].driver.registration_probe == ()
+    logical = _document([])
+    logical["sources"][PROBED]["read"].pop("registration_probe")
+    assert validate_bundle_errors(logical, catalog=CATALOG) == ()
+    bundle = require_ready_bundle(validate_bundle(logical, catalog=CATALOG))
+    snapshot = compile_setup_snapshot(bundle, trusted_implementations(), catalog=CATALOG)
+    assert snapshot.source_plans[PROBED].driver.registration_probe == ()

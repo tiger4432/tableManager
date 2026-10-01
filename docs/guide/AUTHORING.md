@@ -22,7 +22,7 @@ authoring/      이 저장소의 «루트» 폴더 — 추적 파일이라 pull 
 | `README.md` | 누구를 위한 것인가 · **SDK 버전 = 이 저장소의 커밋 해시** | — |
 | `MAPPING_GUIDE.md` | 체인 맵퍼 — `(df, db) -> df` 하나 + `@mapper` 등록 | [`server/mapper_sdk.py`](../../server/mapper_sdk.py) |
 | `PARSER_GUIDE.md` | 인제션 파서 — 함수형·클래스형 두 길 | [`server/parsers/pipeline_base.py`](../../server/parsers/pipeline_base.py) (`custom_parser_template.py` 는 `examples/` 로 «옮겨졌습니다» — 아래) |
-| `examples/` | 맵퍼 샘플 셋(`dt_standard_map_mapper` · `lot_slot_wafer_mapper` · `production_mapper`) + `custom_parser_template.py` + `custom_parser.py.sample` — 판정 348·349 의 «다섯», 저장소에서 «이동»(사본 0) | — |
+| `examples/` | 맵퍼 샘플 둘(`dt_standard_map_mapper` · `production_mapper`) + `custom_parser_template.py` + `custom_parser.py.sample` — 판정 348·349 의 «다섯» 중 넷, 저장소에서 «이동»(사본 0). `lot_slot_wafer_mapper` 는 총괄 e14416950 으로 되돌아옴 — 표본 규칙이 부르는 제품 맵퍼라 추적 | [`server/mappers/lot_slot_wafer_mapper.py`](../../server/mappers/lot_slot_wafer_mapper.py) |
 
 ## 정본 관계 — 한 줄
 

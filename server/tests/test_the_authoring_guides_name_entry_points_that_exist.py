@@ -36,11 +36,10 @@ REPO_DIR = os.path.dirname(SERVER_DIR)
 AUTHORING_DIR = os.path.join(REPO_DIR, "authoring")
 EXAMPLES_DIR = os.path.join(AUTHORING_DIR, "examples")
 
-#: The five that MOVED (판정 348·349). Two copies of one file is the defect this half of
+#: The four that MOVED (판정 348·349; the fifth came back - see below). Two copies of one file is the defect this half of
 #: S-209 exists to prevent, so their repo paths have to stay empty.
 MOVED = (
     "mappers/dt_standard_map_mapper.py.sample",
-    "mappers/lot_slot_wafer_mapper.py.sample",
     "mappers/production_mapper.py.sample",
     "parsers/custom_parser_template.py",
     "parsers/custom_parser.py.sample",
@@ -115,6 +114,13 @@ def test_a_moved_example_has_no_second_copy_here(relative):
     and the outside one is the one an operator reads."""
     assert not os.path.exists(os.path.join(SERVER_DIR, relative)), (
         "%s came back - the authoring copy is the only one" % relative)
+
+
+def test_the_lot_slot_wafer_mapper_came_back_with_no_copy_outside():
+    """🔴 [총괄 e14416950] THE FIFTH CAME BACK. A shipped sample rule names it by module, so it
+    is a product mapper, tracked here; the authoring copy is the second home and stays gone."""
+    assert os.path.exists(os.path.join(SERVER_DIR, "mappers", "lot_slot_wafer_mapper.py"))
+    assert not os.path.exists(os.path.join(EXAMPLES_DIR, "lot_slot_wafer_mapper.py.sample"))
 
 
 @pytest.mark.parametrize("relative", STAYS)

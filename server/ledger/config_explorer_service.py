@@ -665,7 +665,7 @@ class OntologyExplorerService:
     # form validation would build a third vocabulary to drift; `main.py`'s ledger admin
     # block already says so ("the server's structure, not the screen's discipline").
     #
-    # The cure is that the screen RUNS THE REAL THING once: the same preparers, the same
+    # The cure is that the screen RUNS THE REAL THING once: the same event frame, the same
     # mappers, the same compiler, the same gate-shaped candidates -- over real rows, with
     # no write of any kind. Whatever refuses, refuses HERE, in its own words.
 
@@ -769,9 +769,9 @@ class OntologyExplorerService:
             # exactly as it was written: 「event time 좋은 행도」.
             #
             # The refusal's own path is `...rows[N].<col>`, so the column is IN the
-            # answer; a path that names no column (`verified_join_reader_required`, whose
-            # path is `source_preparation.join_reader`) yields none, and then there is no
-            # count to show rather than a wrong one.
+            # answer; a path that names no column (a refusal about the source rather
+            # than a row) yields none, and then there is no count to show rather than a
+            # wrong one.
             column = _refused_column(result["refusal"].get("path"))
             if column:
                 try:
@@ -835,8 +835,7 @@ class OntologyExplorerService:
             # refusal beside the row instead of beside a count.
             #
             # ⚠️ ABSENT WHEN THE PATH NAMES NO ROW, never invented. A refusal about the
-            # source rather than a row (`verified_join_reader_required`, whose path is
-            # `source_preparation.join_reader`) has no row to point at, and a zero there
+            # source rather than a row has no row to point at, and a zero there
             # would send an operator to the first row of their table for no reason.
             "samples": [dict({"reason": r.reason, "detail": r.detail, "rows": r.rows,
                               "addresses": [dict(a) for a in r.addresses]},

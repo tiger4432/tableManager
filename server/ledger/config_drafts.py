@@ -65,11 +65,11 @@ _EDITABLE_FILE = "ledger_config.json"
 _UNRESOLVED_CODES = {
     "unknown_entity_type", "unknown_entity_attribute", "unknown_predicate",
     "unknown_source",
-    "unknown_preparer", "unknown_mapper", "unknown_table", "unknown_virtual_join",
+    "unknown_mapper", "unknown_table", "unknown_virtual_join",
 }
 _WRONG_VERSION_CODES = {
     "unsupported_profile_version",
-    "unsupported_preparer_version", "unsupported_mapper_version",
+    "unsupported_mapper_version",
 }
 _WRONG_KIND_CODES = {"invalid_entity_ref", "invalid_reference_kind"}
 _SIGNATURE_CODES = {
@@ -248,9 +248,8 @@ def compile_draft_preview(active_setup: Any, node: ExplorerNode, raw: Mapping[st
         )
     try:
         bundle = require_ready_bundle(validate_bundle(logical, catalog=catalog))
-        verified = tuple(active_setup.snapshot.verified_joins.values())
         compile_issues = snapshot_compile_errors(
-            bundle, trusted_implementations(), verified, catalog=catalog)
+            bundle, trusted_implementations(), catalog=catalog)
         if compile_issues:
             return DraftPreview(
                 False, None, None,
@@ -267,7 +266,7 @@ def compile_draft_preview(active_setup: Any, node: ExplorerNode, raw: Mapping[st
                    for source_id, plan in active_setup.snapshot.source_plans.items()
                    if not plan.planned and source_id not in declared}
         snapshot = compile_setup_snapshot(
-            bundle, trusted_implementations(), verified, catalog=catalog,
+            bundle, trusted_implementations(), catalog=catalog,
             refused_sources=refused)
         preview_setup = SimpleNamespace(
             config_root=active_setup.config_root,

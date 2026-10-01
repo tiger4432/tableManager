@@ -34923,3 +34923,34 @@ absent.js                ABSENT = '—' (「없음」의 철자 한 곳, PRIMITI
                    코드 · 시험은 안 건드림. 수리가 착지하면 이 줄들을 걷습니다
 여쭐 것            없음 — 수리 지시는 총괄 몫. 구현 보고의 「시험이 holds@1(버전 붙음)로 지어 초록」도 같은 까닭입니다
 ```
+
+---
+
+## [C 응용] 69ad850b8 문서 정비 착지 — setup_version 6 의 은퇴 낱말 — @`8fb3b4c97`
+
+커밋 넷
+```
+091924115  운영자 가이드 잔여 · docs/README · SYSTEM_OVERVIEW · LEDGER_TECHNICAL_SPEC
+           (LEDGER_GUIDE 파이프라인 「prepare → map → bind」 · 지문 예외 둘 -> 하나 · README/개관의 setup_version 5 · 다섯 절)
+9a917c0b1  CODE_MAP — event_frame.py 등재 · source_preparation · verified_join_contract ⚰️ · 준비기 절 둘 ⚰️ 머리 ·
+           오늘 흐름을 옛 이름으로 말하던 행 여덟을 후계로(event_frames · base/locked_select_columns · execute_scoped_batch 서명 ·
+           implementation_choices 반환 · 지문 카브아웃 하나 · _notation_sql 호출자 · _v2_frame)
+ad1aa4a47  LEDGER_SCHEMA_COMPLETENESS · PRIMITIVES · SYSTEM_FLOWS · SERVER_FILE_MAP · BASIS · LEDGER_FRAME_CHAIN_MAPPER · SPEC ·
+           DOC_OWNERSHIP · FORK_SESSION_BRIEF (exclude_when 은 read. 으로 · 읽을 때 조인 칸 ⚰️ · 발행 자리 event_frame)
+8fb3b4c97  DOC_OWNERSHIP 원장 가이드 소유 줄의 setup_version 5 · verified join · Preparer
+```
+게이트 — 구현자 계기 그대로(git grep -i -F, 낱말 15) · 영역 = 지시서의 17 파일 · 카나리아 `def event_frames` 1
+```
+명령   scratchpad instr_v6.py (git grep -n -i -F -e <15 낱말> HEAD -- <17 파일>) · 분류 classify_v6.py
+전     맞은 줄 111 · 이력 표지 없는 줄 93
+후     맞은 줄 111 · 이력 표지 없는 줄 62 — 그 62 를 열어 가름:
+         후계를 함께 말하는 줄(이번에 고친 줄)              7
+         클라 startup({prepare}) — 무관                       4
+         닫힌 결함 행(SERVER_DEFECT_QUEUE ✅)                 7
+         이력(날짜 박힌 패스 기록 · D-절 분석 · ⚰️ 머리 밑 · 「아래는 이력」 주석 밑)  44
+       「지금 동작을 옛 이름으로 말하는 줄」 0 — 이 0 은 위 44 를 제가 «열어서» 가른 판정이지 기계 술어가 아닙니다
+```
+제가 못 고치는 것 하나 — 손대지 않음
+```
+server/config/ontology/README.md:78  「범용 구현 direct-join@1(준비기)과 declarative-role@1(매퍼)만 쓰면 코드 0줄로」 — server/config 는 총괄 기록 자리
+```

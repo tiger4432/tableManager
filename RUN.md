@@ -1,5 +1,32 @@
 # 지금 돌리면 되는 것
 
+> ## [10-01 저녁] **원장 선언 v6 — prepare 절 은퇴 · lot_event 은퇴(계보는 체인) · 맵퍼 칼럼 이름은 규칙 칸 — 이주 «필요»(v6 --apply) · 재기동 «필요»**
+>
+> ```
+> 무엇이 바뀌나  ① 원장 선언 setup_version 6 — 소스의 prepare 절 은퇴. 옛(5) 파일은 메모리에서 6 으로 읽힘:
+>                 direct-join prepare 는 버리고 적재 노트 한 줄, 일하는 준비기를 든 lot_event 만 이름 거절(Next: 아래 이주)
+>              ② lot_event 소스 은퇴(원자는 남음) — 계보 derived_from 은 체인 규칙 lot_event_to_lot_lineage -> 표 lot_lineage -> 원장 소스 lot_lineage
+>                 웨이퍼·랏 등록(register)은 끊김 · 갭 질문 「등록되지 않은 웨이퍼 · 랏」 은퇴 · 어휘 register@1 의 주어에서 lot@1 · wafer@1 빠짐
+>              ③ 체인 맵퍼 lot_slot_wafer · lot_lineage 는 칼럼 이름 전부를 규칙 params 에서 읽음 — 기본값 없음, 빠지면 이름 거절
+>              ④ 걷기 타입 목록(seed_type) = 원자가 이름 댄 노드 전부(등록 여부 무관) · 예산만큼 «키 순서 앞쪽». 갭 측정도 같은 질의
+> 돌릴 명령     git pull 전에 server/mappers/lot_slot_wafer_mapper.py 를 옆으로 옮김 (추적 안 된 박스 사본 — 같은 경로에 추적판이 들어옴)
+>              python server/scripts/migrate_ledger_config_to_v6.py                 (미리보기 — 바꿀 것을 줄마다, 아무것도 안 씀)
+>              python server/scripts/migrate_ledger_config_to_v6.py --apply         (ledger_config · table_config · chain_rules 셋, 백업 남김)
+>              재기동 — run_app.bat 전체 (lot_lineage 표 생성 · 규칙 적재)
+>              python server/scripts/chain_replay_cli.py replay lot_event_to_lot_lineage --apply
+> 뜻           --apply 전(재기동 사이)에 멈추는 것 셋: lot_event 소스(이름 거절) · lot_slot_wafer 규칙(돌 때마다 「빠진 칸」 거절) · 갭 화면(「이름 없는 질문」 거절)
+>                 셋 다 같은 Next(위 이주)이고 --apply 로 풀림. 나머지 소스는 그대로 돎
+>              미리보기 정상 줄: vocabulary.register@1.subjects: - lot@1, wafer@1 · chain_rules.lot_event_to_lot_slot_wafer.params: + target_* 다섯
+>              옛 계보 원자는 남는다 — lot_event 가 쓴 derived_from 과 lot_lineage 가 쓸 derived_from 은 걷기에서 엣지 «하나»(근거는 둘 중 하나만 보임)
+>              이 박스(사본 · 메모리, 쓰기 0): 이주 뒤 prepare_retired 0 · lot_slot_wafer 36525행 전후 같음 · 계보 쌍 1986 원장과 같음
+> 급할 때       커밋 되돌리기 + --apply 가 남긴 백업 세 파일 복원
+> 재기동 뒤 로그 --apply 전: [Ledger] setup_version 5 read as 6: … - Next: run scripts/migrate_ledger_config_to_v6.py to write it
+>                         [Ledger] source lot_event is NOT planned: bundle.sources.lot_event.prepare …
+>              --apply 뒤: 그 두 줄이 없어야 함
+> ```
+
+---
+
 > ## [10-01 오후] **숫자의 신원 철자는 하나 — 문자 칸 숫자 · 저장된 칸 소급 · 원장 엔티티 키 — 마이그레이션 «없음» · 재기동 «필요» · 소급/다시 번역은 운영자가 표·소스마다**
 >
 > ```

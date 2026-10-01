@@ -156,7 +156,7 @@
       "__why_enabled": "SHIPS ENABLED because a test asserts on what it produces: this rule's own comment says it is the only live exercise of the CHAIN path and that test_api.py::test_chained_ingestion reads the outbox events it creates. Turning it off removes that coverage silently."
     },
     {
-      "__comment": "lot_event -> lot_slot_wafer: the two parallel colon lists (slotnumbers, waferids) become one row per (lot, slot, wafer, time). Owner ruling 2026-08-31 - derive it from lot_event through the chain, the way production spreads derived tables. A view exists only on the box whose script ran, so a declaration pointing at one ships a source that never appears elsewhere. | list_delimiter IS DECLARED, NOT ASSUMED: a separator is a property of the feed, and a wrong one produces ROWS rather than an error - every wafer id glued into one - so nobody notices until a map is wrong. The five column names are the same kind of fact and are overridable for the same reason. | A row whose two lists DISAGREE is refused by the mapper, never trimmed to the shorter one: trimming drops wafers silently and the loss is indistinguishable from wafers that were never in the lot. Measured on the authoring box 2026-08-31: 80 rows carry both lists, 907 pairs, ZERO disagree. | SHIPS DISABLED because the target table has to exist first - a chain cannot create it, and it cannot write into a view. Enable this once lot_slot_wafer is a real table and the ledger source needs NO change at all: the table it already declares, business_key lot_slot_wafer_key, is exactly what this mapper builds. | Proven on the authoring box 2026-08-31, in this order: baseline 907 has_wafer atoms, drop the view, let the declared table stand in its place, enable, run the chain (907 rows, 5,442 cells, 907 distinct keys), re-translate the ledger source over its 25 lots, and compare - 907 atoms again, same predicate, same 238 {lot, slot} subjects. The count matching is not the proof on its own; the content matching is.",
+      "__comment": "lot_event -> lot_slot_wafer: the two parallel colon lists (slotnumbers, waferids) become one row per (lot, slot, wafer, time). Owner ruling 2026-08-31 - derive it from lot_event through the chain, the way production spreads derived tables. A view exists only on the box whose script ran, so a declaration pointing at one ships a source that never appears elsewhere. | list_delimiter IS DECLARED, NOT ASSUMED: a separator is a property of the feed, and a wrong one produces ROWS rather than an error - every wafer id glued into one - so nobody notices until a map is wrong. Every column name, read and written, is the same kind of fact: it sits under params with no default in the mapper, and a missing one is refused by name (lead 0cb2ab958). | A row whose two lists DISAGREE is refused by the mapper, never trimmed to the shorter one: trimming drops wafers silently and the loss is indistinguishable from wafers that were never in the lot. Measured on the authoring box 2026-08-31: 80 rows carry both lists, 907 pairs, ZERO disagree. | SHIPS DISABLED because the target table has to exist first - a chain cannot create it, and it cannot write into a view. Enable this once lot_slot_wafer is a real table and the ledger source needs NO change at all: the table it already declares, business_key lot_slot_wafer_key, is exactly what this mapper builds. | Proven on the authoring box 2026-08-31, in this order: baseline 907 has_wafer atoms, drop the view, let the declared table stand in its place, enable, run the chain (907 rows, 5,442 cells, 907 distinct keys), re-translate the ledger source over its 25 lots, and compare - 907 atoms again, same predicate, same 238 {lot, slot} subjects. The count matching is not the proof on its own; the content matching is.",
       "name": "lot_event_to_lot_slot_wafer",
       "trigger_table": "lot_event",
       "target_table": "lot_slot_wafer",
@@ -164,13 +164,20 @@
       "mapper_function": "build_lot_slot_wafer_rows",
       "is_batch": true,
       "enabled": true,
-      "list_delimiter": ":",
-      "slot_list_column": "slotnumbers",
-      "wafer_list_column": "waferids",
-      "lot_column": "lot_id",
-      "time_column": "event_time",
-      "event_type_column": "event_type",
-      "__why_enabled": "SHIPS ENABLED by owner ruling 2026-08-31, quoted in this rule's own comment: derive lot_slot_wafer from lot_event THROUGH THE CHAIN, the way production spreads derived tables. A view exists only on the box whose script ran, so shipping it off would ship a source that never appears elsewhere."
+      "__why_enabled": "SHIPS ENABLED by owner ruling 2026-08-31, quoted in this rule's own comment: derive lot_slot_wafer from lot_event THROUGH THE CHAIN, the way production spreads derived tables. A view exists only on the box whose script ran, so shipping it off would ship a source that never appears elsewhere.",
+      "params": {
+        "list_delimiter": ":",
+        "slot_list_column": "slotnumbers",
+        "wafer_list_column": "waferids",
+        "lot_column": "lot_id",
+        "time_column": "event_time",
+        "event_type_column": "event_type",
+        "target_lot_column": "lot",
+        "target_slot_column": "slot",
+        "target_wafer_column": "wafer",
+        "target_time_column": "event_time",
+        "target_event_type_column": "event_type"
+      }
     },
     {
       "__comment": "[S-100 ⓐ] Writes one row per dt_job with that job's row count. The ledger does not aggregate (local, no computation), so the count runs here. The ledger's Python mapper `dt-job-role` used to count len(unit), and the declaration beside it pointed at dt_index, which it never read (rulings 197 · 211).",
@@ -542,6 +549,28 @@
           ]
         }
       }
+    },
+    {
+      "__comment": "lot_event -> lot_lineage: a row naming a parent (parent_lot) or a child (child_lot) becomes one descent row (parent, child, kind, time); the two rows of a pair write the same row. A row naming no lot is an old generation and writes nothing; a row naming both is refused by name. [총괄 e14416950 - the ledger's lot_event preparer retires; this is the computation it did, moved to the chain]",
+      "name": "lot_event_to_lot_lineage",
+      "trigger_table": "lot_event",
+      "target_table": "lot_lineage",
+      "mapper_module": "mappers.lot_lineage_mapper",
+      "mapper_function": "build_lot_lineage_rows",
+      "is_batch": true,
+      "enabled": true,
+      "params": {
+        "lot_column": "lot_id",
+        "parent_column": "parent_lot",
+        "child_column": "child_lot",
+        "time_column": "event_time",
+        "event_type_column": "event_type",
+        "target_parent_column": "parent_lot",
+        "target_child_column": "child_lot",
+        "target_event_type_column": "event_type",
+        "target_time_column": "event_time"
+      },
+      "__why_enabled": "SHIPS ENABLED because the ledger source lot_lineage reads only this table: lot_event, which said a lot's descent before, retired with setup_version 6 (lead e14416950). Off, no new descent is said anywhere."
     }
   ]
 }

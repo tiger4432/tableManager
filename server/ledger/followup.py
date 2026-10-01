@@ -17,10 +17,10 @@ and why `enqueue` cannot raise into the chain's path.
 
 🔴 THE SCOPE COLUMN IS THE SOURCE'S PAGE KEY, FOR ALL OF THEM, WITH NO BRANCH.
 `backfill._page_key` already answers it: the cursor's first column. For a source whose
-identity IS a physical column that is the same column; for a source whose identity the
-PREPARER derives, the page key is a coarsening of the group (the derived key embeds it),
-and a coarsening never splits a molecule -- `_page_key`'s own docstring rules that, and it
-is why "14 plus a special one" is not the shape of this.
+identity IS a physical column that is the same column (⚰️ a source whose identity a
+PREPARER derived retired with setup_version 6), and a page cut on a group-constant key
+never splits a molecule -- `_page_key`'s own docstring rules that, and it is why
+"14 plus a special one" is not the shape of this.
 """
 from __future__ import annotations
 

@@ -31,7 +31,6 @@ from database import crud, models, schemas                          # noqa: E402
 from database.context import channel                                # noqa: E402
 from ledger import followup, schema                                 # noqa: E402
 from ledger.implementations import (role_mapper_registry,           # noqa: E402
-                                    source_preparer_registry,
                                     trusted_implementations)
 from ledger.setup import LedgerSetup                                # noqa: E402
 from ledger.setup_bundle import (load_physical_catalog,             # noqa: E402
@@ -92,8 +91,8 @@ def fixture_world(pg_engine, monkeypatch):
                                                   catalog=catalog))
     setup = LedgerSetup(
         config_root=Path(SAMPLE), bundle=bundle,
-        snapshot=compile_setup_snapshot(bundle, trusted_implementations(), (), catalog=catalog),
-        preparers=source_preparer_registry(), mappers=role_mapper_registry(), catalog=catalog)
+        snapshot=compile_setup_snapshot(bundle, trusted_implementations(), catalog=catalog),
+        mappers=role_mapper_registry(), catalog=catalog)
     join = next(r for r in _sample("chain_rules.json.sample")["rules"] if r.get("name") == JOIN)
     rules = rule_shape.expand_declaration(join, crud.TABLE_CONFIG)[0]
     followup.reset()

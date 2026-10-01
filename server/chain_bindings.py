@@ -500,18 +500,38 @@ def rule_warnings(rule, path="rule"):
         for name in flat]
 
 
-def params_of(rule):
+def params_of(rule, required=(), columns_of=None):
     """The mapper's arguments: the `params` block, with flat cells read underneath it.
 
     🔴 `params` WINS. If a name is written both ways the block is the one the author moved
     on purpose, and silently preferring the flat copy would make the migration a no-op that
     looks done.
+
+    `required`: cells the mapper reads and has NO default for (총괄 0cb2ab958) - a blank or
+    absent one is refused by name. `columns_of`: `{cell: table}` - that cell names a column
+    of that table, and a name the table does not declare is refused by name.
     """
+    from database import crud
+
     rule = rule or {}
     block = rule.get(PARAMS_KEY)
     merged = {name: rule[name] for name in flat_param_cells(rule)}
     if isinstance(block, dict):
         merged.update(block)
+    rule_name = rule.get("name") or "<unnamed rule>"
+    missing = [name for name in required if crud.is_blank_value(merged.get(name))]
+    if missing:
+        raise ColumnBindingRefused(
+            "chain rule '%s' has no %s under params - its mapper reads %s and has no "
+            "default. Next: run scripts/migrate_ledger_config_to_v6.py (it writes what a rule "
+            "from before setup_version 6 lacks), or write %s under the rule's params."
+            % (rule_name, ", ".join(repr(n) for n in missing),
+               "it" if len(missing) == 1 else "them", "it" if len(missing) == 1 else "them"))
+    for cell, table in (columns_of or {}).items():
+        known = declared_columns(table)
+        if known is not None and merged.get(cell) not in known:
+            _refuse_unknown(rule_name, cell, merged.get(cell), table,
+                            "a column its mapper writes", known, derived=False)
     return merged
 
 
@@ -845,13 +865,16 @@ def resolve_table(rule, key: str, purpose: str = None) -> str:
         % (rule_name, key, (" for %s" % purpose) if purpose else ""))
 
 
-def _refuse_unknown(rule_name, key, name, table, purpose, known):
+def _refuse_unknown(rule_name, key, name, table, purpose, known, derived=True):
+    """`derived`: the cell, when absent, would be derived from `table_config` - so the
+    sentence says why that cannot rescue a wrong name. A `params` cell has no derivation."""
     raise ColumnBindingRefused(
         "chain rule '%s' resolves %s='%s' for %s on table '%s', but '%s' declares no "
         "such column (declared: %s). Correct the name in chain_rules.json, or declare "
-        "the column in table_config.json — it cannot be inherited while a declaration "
-        "out-ranks the derivation."
-        % (rule_name, key, name, purpose, table, table, ", ".join(sorted(known))))
+        "the column in table_config.json%s"
+        % (rule_name, key, name, purpose, table, table, ", ".join(sorted(known)),
+           " — it cannot be inherited while a declaration out-ranks the derivation."
+           if derived else "."))
 
 
 def resolve_column(rule, key: str, table: str, purpose: str) -> str:

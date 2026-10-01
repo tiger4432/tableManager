@@ -85,7 +85,7 @@ EVENT_FRAME_PASSTHROUGH_ATTRS = (SOURCE_EVENT_INCOMPLETE_ATTR,)
 #:   `((column, value), ...)`, one per such unit; the preview sums them (`unsaid`).
 UNIT_SAID_NOTHING_ATTR = "assy_manager.unit_said_nothing"
 SOURCE_ROW_REF_COLUMN = "__source_row_ref"
-#: Engine-owned column carrying the one instant the preparer validated for this event.
+#: Engine-owned column carrying the one instant the event frame validated for this event.
 #: A mapper reads the time under THIS name whichever way the source declared its origin
 #: (``occurred_at.column`` or ``occurred_at.basis``); resolving a declaration to a physical
 #: column is the plan's job, and a mapper that had to ask for that name was carrying a
@@ -361,10 +361,9 @@ class DeclarativeRoleMapper(BaseLedgerMapper):
                 if role is not None and role.kind == "time":
                     # A TIME Role is filled from the instant the preparation boundary
                     # already interpreted (`SOURCE_OCCURRED_AT_COLUMN`), never from the
-                    # frame cell the binding names.  Both custom mappers do exactly this
-                    # (`ledger_v2_dt_job_mapper` line 57, `ledger_v2_lot_event_role_mapper`
-                    # line 208) and neither ever reads its `occurred_at` binding; this is
-                    # the same reading, not a new one.  Reading the cell is what refused
+                    # frame cell the binding names.  The custom mapper does exactly this
+                    # (`ledger_v2_dt_job_mapper.interpret_unit`) and never reads its
+                    # `occurred_at` binding; this is the same reading, not a new one.  Reading the cell is what refused
                     # `transfer_event` outright -- a varchar time column arrives as a
                     # string and `_validate_role_value` demands a tz-aware datetime -- and
                     # re-parsing it here would be a SECOND spelling of an instant the
@@ -878,7 +877,7 @@ def _unit_says(unit_columns: Mapping[Any, tuple], when: Mapping[str, Any]) -> bo
 
     ⚠️ ONE SPELLING OF EQUALITY. `clean_str_value` folds both sides, so a declaration
     saying `1` matches a column holding `1.0`, and padding does not decide an answer. It is
-    the same function the business key and the preparer's key parts are built with; a
+    the same function the business key and the event frame's key parts are built with; a
     second spelling here would disagree with them about exactly these values.
 
     A column the frame does not carry answers False rather than raising: the validator
@@ -914,7 +913,7 @@ def _said_by_no_when(unit_columns: Mapping[Any, tuple], profile: ProfileDescript
 def read_columns_once(frame: pd.DataFrame) -> dict[Any, tuple]:
     """One frame's values, read once, column by column.
 
-    🔴 PUBLIC BECAUSE `source_preparation` READS IT TOO (S-64-b). It was
+    🔴 PUBLIC BECAUSE `event_frame` READS IT TOO (S-64-b). It was
     `_unit_columns` and private, and the file beside this one went on paying the exact
     cost this fixes - `prepared.iloc[position][column]`, nine sites, ten reads per
     molecule. A second spelling of the repair would have been the second path this
@@ -1014,7 +1013,7 @@ def aware_time(value: Any, timezone_name: str, path: str, error=None) -> datetim
 
     🔴 IT LIVES HERE SO BOTH READERS CAN REACH IT (S-84-b, 판정 09-10 13:44). The
     `occurred_at` column has been read this way since 2026-08-21; a `timestamp` VALUE needs
-    exactly the same reading, and `source_preparation` already imports this module while the
+    exactly the same reading, and `event_frame` already imports this module while the
     reverse would be a cycle. A second copy beside the value binding is the shape that
     drifts: the two would then disagree about a string the day one of them learns a format.
 

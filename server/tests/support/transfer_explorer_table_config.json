@@ -9,7 +9,10 @@
     "",
     "WARNING: dt_log and dt_inventory here are NOT the dt_log and dt_inventory of",
     "server/config/table_config.json. Same names, different columns. See the round",
-    "report -- the collision predates this file and is not resolved by it."
+    "report -- the collision predates this file and is not resolved by it.",
+    "",
+    "dt_log carries the columns the write join dt_job_to_inventory (materialize) puts",
+    "on it: since setup_version 6 a source reads them as its own - no preparer adds them."
   ],
   "dt_inventory": {
     "column_types": {
@@ -33,7 +36,16 @@
       "dt_job_id": "string",
       "core_wafer": "string",
       "core_x": "number",
-      "core_y": "number"
+      "core_y": "number",
+      "dt_lot": "string",
+      "dt_slot": "number",
+      "dt_offset_x": "number",
+      "dt_offset_y": "number",
+      "bond_wafer": "string",
+      "bond_offset_x": "number",
+      "bond_offset_y": "number",
+      "bond_layer": "number",
+      "final_chip": "string"
     },
     "business_key": "record_id"
   }

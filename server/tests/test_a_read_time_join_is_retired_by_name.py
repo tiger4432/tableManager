@@ -80,8 +80,6 @@ def test_the_loader_refuses_a_read_declaration_by_name(declared):
     assert "u_read" in refusal, "the refusal does not name the declaration: %s" % refusal
 
 
-
-
 def test_the_refusal_says_what_to_write_instead():
     """🔴 [상설] 「거절의 «사유»와 «다음 행동»」. A retirement that names only what stopped
     working leaves the operator to guess the replacement — and here the replacement is not
@@ -117,12 +115,6 @@ def test_a_writing_join_still_stands_two_chain_rules(declared):
     stood, refusal, _notes = rule_shape.expand_declaration(writing, KNOWN)
 
     assert refusal is None and len(stood) == 2
-
-
-
-
-
-
 
 
 # ---------------------------------------------------------------------------
@@ -226,12 +218,7 @@ def test_all_four_seats_answer_the_same_way(materialize, accepted):
         assert "READ-TIME join" in said, (
             f"the bundle must refuse with 446's sentence, not its own: {said}")
 
-    # ㉢ the descriptor contract - silent either way, and unable to be otherwise
-    import verified_join_contract
-    with pytest.raises(TypeError):
-        verified_join_contract.VerifiedJoinDescriptor({"name": "x"})
-    assert "materialize" not in verified_join_contract.VerifiedJoinDescriptor \
-        ._validated_data.__doc__.split("required = ")[0] or True
+    # ⚰️ ㉢ the descriptor contract - `verified_join_contract` retired (총괄 ae3d408ae ③).
 
 
 # ---------------------------------------------------------------------------

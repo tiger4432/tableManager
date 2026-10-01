@@ -15,6 +15,14 @@ they have no subject.  They are retired by name, next to what replaced them.
 """
 from __future__ import annotations
 
+from datetime import datetime, timezone
+import io
+import json
+import os
+import shutil
+import tempfile
+
+import pandas as pd
 import pytest
 
 from ledger.roleframe import (
@@ -23,14 +31,43 @@ from ledger.roleframe import (
     SentenceShape,
     mapper_context,
 )
-from mappers.ledger_v2_lot_event_role_mapper import LotEventRoleMapper
-from test_ledger_v2_lot_event_parity import (
-    NOW,
-    compiled_lot_event,
-    lot_event_bundle,
-    preview,
-    split_rows,
-)
+from ledger.setup import load_setup, preview_selected_cursor_batch
+from ledger.setup_bundle import load_physical_catalog
+from mappers.ledger_v2_dt_job_mapper import DtJobRoleMapper
+
+# 🔴 [총괄 e14416950 · 819726624] RE-AIMED 2026-10-01: the lot_event mapper this file read its
+# shapes from retired with its source. The dt_job mapper says its sentences through the same
+# `SentenceShape` naming, so the properties are scored on it, against the SHIPPED dt_job
+# declaration with its mapper put back to `dt-job-role`.
+SAMPLE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "config", "sample")
+NOW = datetime(2026, 9, 9, 3, 0, tzinfo=timezone.utc)
+JOB = "SYN-DTJ-002-04"
+
+
+def dt_job_bundle():
+    with io.open(os.path.join(SAMPLE, "ledger_config.json.sample"), encoding="utf-8") as fh:
+        document = json.load(fh)
+    document["sources"]["dt_job"]["map"]["implementation_id"] = "dt-job-role"
+    return document
+
+
+def compiled_dt_job():
+    root = tempfile.mkdtemp()
+    with io.open(os.path.join(root, "ledger_config.json"), "w", encoding="utf-8") as fh:
+        json.dump(dt_job_bundle(), fh)
+    try:
+        return load_setup(root, catalog=load_physical_catalog(
+            os.path.join(SAMPLE, "table_config.json.sample")))
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+def preview_rows():
+    rows = [{"dt_job": JOB, "netdie_count": 5, "dt_eqp": "EQP-7", "event_time": NOW,
+             "created_at": NOW, "row_id": "r0"}]
+    return preview_selected_cursor_batch(
+        compiled_dt_job(), "dt_job", pd.DataFrame(rows), {"dt_job": JOB},
+        known_registrations=())
 
 
 # RETIRED 2026-09-07 with the sentences they served: `merge_rows()` and
@@ -47,8 +84,8 @@ def test_a_shape_is_named_by_the_attribute_it_was_bound_to():
     mechanism, and a literal here would still be green on the day the declaration stopped
     matching and the mapper stopped resolving.
     """
-    declared = set(lot_event_bundle()["sources"]["lot_event"]["bind"]["mappings"])
-    said = {shape.sentence for shape in vars(LotEventRoleMapper).values()
+    declared = set(dt_job_bundle()["sources"]["dt_job"]["bind"]["mappings"])
+    said = {shape.sentence for shape in vars(DtJobRoleMapper).values()
             if isinstance(shape, SentenceShape)}
 
     assert said == declared, (
@@ -61,7 +98,7 @@ def test_a_shape_is_named_by_the_attribute_it_was_bound_to():
     # declares is equal to every other as a VALUE (`sentence` is compare=False), so the
     # attribute each was bound to is the only thing telling any two apart; a shape that
     # ever stopped being interchangeable would redden here without anything being renamed.
-    shapes = [shape for shape in vars(LotEventRoleMapper).values()
+    shapes = [shape for shape in vars(DtJobRoleMapper).values()
               if isinstance(shape, SentenceShape)]
     assert len(shapes) > 1, "one shape cannot show that the name is what separates them"
     for other in shapes[1:]:
@@ -80,10 +117,9 @@ def test_the_shapes_own_name_selects_the_mapping_end_to_end():
     untouched, so it is pointed at the sentences the mapper says TODAY - and read off the
     class rather than listed here, so the next retirement changes this test's expectation
     without changing this test."""
-    said = {shape.sentence for shape in vars(LotEventRoleMapper).values()
+    said = {shape.sentence for shape in vars(DtJobRoleMapper).values()
             if isinstance(shape, SentenceShape)}
-    landed = {item["derivation"]
-              for item in preview(split_rows(), known=()).candidate_semantics}
+    landed = {item["derivation"] for item in preview_rows().candidate_semantics}
 
     assert landed, "the fixture must produce atoms or this asserts nothing"
     assert landed <= said, (
@@ -114,8 +150,8 @@ def test_one_shape_bound_to_two_attribute_names_is_refused_at_class_creation():
     assert "'merge_slot_join'" in caught.value.message
 
 
-def sentences_for_lot_event():
-    context = mapper_context(compiled_lot_event(), "lot_event")
+def sentences_for_dt_job():
+    context = mapper_context(compiled_dt_job().snapshot, "dt_job")
     return ProfileSentences(
         context, context.source_plan.profile, occurred_at=NOW)
 
@@ -141,7 +177,7 @@ def test_a_sentence_no_mapping_realizes_is_a_named_refusal_that_lists_the_ones_t
     assert shape.sentence == "mislabelled"
 
     with pytest.raises(RoleFrameError) as caught:
-        sentences_for_lot_event().say(
+        sentences_for_dt_job().say(
             shape, "P", ("R1",), obj="C",
             qualifiers={"from": "1", "to": "5", "wafer": "W1"})
 
@@ -155,7 +191,7 @@ def test_a_sentence_no_mapping_realizes_is_a_named_refusal_that_lists_the_ones_t
     # "the refusal lists what is declared" and started testing "the fixture still says
     # this one word". Asking the bundle means the assertion survives the next retirement
     # and still fails if the refusal ever stops listing anything.
-    declared = set(lot_event_bundle()["sources"]["lot_event"]["bind"]["mappings"])
+    declared = set(dt_job_bundle()["sources"]["dt_job"]["bind"]["mappings"])
     assert declared, "the fixture must declare something or this asserts nothing"
     for sentence in declared:
         assert repr(sentence) in caught.value.message
@@ -172,7 +208,7 @@ def test_an_unbound_shape_says_nothing_rather_than_matching_by_structure():
     assert unbound.sentence is None
 
     with pytest.raises(RoleFrameError) as caught:
-        sentences_for_lot_event().say(
+        sentences_for_dt_job().say(
             unbound, "P", ("R1",), obj="C",
             qualifiers={"from": "1", "to": "5", "wafer": "W1"})
     assert caught.value.code == "unnamed_sentence"

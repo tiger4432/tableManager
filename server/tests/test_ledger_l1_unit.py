@@ -907,8 +907,8 @@ class _PlanStub:
 
 
 def _declares(monkeypatch, columns):
-    from ledger import source_preparation
-    monkeypatch.setattr(source_preparation, "base_select_columns",
+    from ledger import event_frame
+    monkeypatch.setattr(event_frame, "base_select_columns",
                         lambda plan: tuple(columns))
 
 
@@ -1025,7 +1025,7 @@ def test_a_scoped_redo_re_reads_the_row_so_a_humans_correction_reaches_the_ledge
 
     written = {}
 
-    def _write(setup, source, frame, scope, reader, store, known_registrations=None,
+    def _write(setup, source, frame, scope, store, known_registrations=None,
                withdraw_refs=None):
         events.append("write")
         written["frame"] = frame

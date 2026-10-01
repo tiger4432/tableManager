@@ -36,10 +36,8 @@ from ledger.setup_registry import (
 from test_ledger_setup_bundle import (
     DEFAULT_CATALOG,
     MAPPER_PATH,
-    PREPARATION_PATH,
     PROFILE_PATH,
     driver_mapper,
-    driver_preparation,
     load_setup_bundle,
     logical_bundle,
     objectless_register_bundle,
@@ -48,69 +46,25 @@ from test_ledger_setup_bundle import (
     validate_bundle,
     write_tree,
 )
-from verified_join_contract import (
-    VerifiedJoinDescriptor,
-    _bind_physical_verifier_issuer,
-    is_physically_verified_descriptor,
-)
+# ⚰️ [총괄 ae3d408ae ③] `verified_join_contract` - the physical verifier's descriptor and its
+# issuer - retired with its last product reader (the preparer's compile of verified joins,
+# setup_version 6), and with it the three tests that scored the issuer's fence.
 
 
-def compile_setup_snapshot(bundle, trusted, verified_joins=(), *, catalog=None):
+def compile_setup_snapshot(bundle, trusted, *, catalog=None):
     """Fixture-defaulting wrapper. Production callers resolve the catalog once in
     `ledger.setup`; here the fixture plant's catalog stands in for `table_config.json`."""
     return setup_registry_module.compile_setup_snapshot(
-        bundle, trusted, verified_joins,
-        catalog=DEFAULT_CATALOG if catalog is None else catalog)
+        bundle, trusted, catalog=DEFAULT_CATALOG if catalog is None else catalog)
 
 
-def snapshot_compile_errors(bundle, trusted, verified_joins=(), *, catalog=None):
+def snapshot_compile_errors(bundle, trusted, *, catalog=None):
     return setup_registry_module.snapshot_compile_errors(
-        bundle, trusted, verified_joins,
-        catalog=DEFAULT_CATALOG if catalog is None else catalog)
+        bundle, trusted, catalog=DEFAULT_CATALOG if catalog is None else catalog)
 
 
 def trusted_implementations():
-    return TrustedImplementationCatalog.build(
-        source_preparers=[("prepare-input", 1)],
-        mappers=[("map-transition-role", 1)],
-    )
-
-
-_TEST_ISSUER = _bind_physical_verifier_issuer()
-
-
-def load_verified_rules(rules, unique_index):
-    """⚠️ 이 «이름»이어야 증서가 발급된다 — 계약은 호출자의 이름이 아니라 «지금 도는
-    프레임»이 그 모듈의 `load_verified_rules` 인지를 본다 (판정 364). 그래서 이 함수는
-    편의가 아니라 계약이 적어 둔 유일한 문이다."""
-    return [_TEST_ISSUER.issue(dict(rule, unique_index=unique_index)) for rule in rules]
-
-
-def physically_verified_joins(bundle=None, *, unique_index="uq_reference_join_id"):
-    """Obtain test descriptors through the production physical-verifier boundary."""
-    raw = bundle or logical_bundle()
-    normalized_rules = []
-    for rule_id, rule in sorted(raw["virtual_joins"].items()):
-        if not rule.get("enabled"):
-            continue
-        fold = rule.get("fold") or None
-        normalized_rules.append({
-            "name": rule_id,
-            "left_table": rule["left_table"],
-            "right_table": rule["right_table"],
-            "join_key": [
-                {"left": pair["left"], "right": pair["right"], "fold": fold}
-                for pair in rule["join_key"]
-            ],
-            "expose": list(rule["expose"]),
-            "join_cardinality": rule["join_cardinality"],
-        })
-    # ⚰️ [판정 652 3걸음] 이 자리는 «생산 발급 경로»(읽기 시점 조인 로더)를 빌려 썼다. 그
-    #    문법이 걷히면서 발급자가 «아무 데도 없다** — 그리고 이 파일이 재는 것은 로더가
-    #    아니라 «레지스트리»다. 그래서 계약이 적어 둔 길로 이 모듈이 자기 발급자를 연다:
-    #    권한은 「누가 들고 있나」가 아니라 「무엇을 하고 있나」로 걸려 있어(판정 364),
-    #    아래 `load_verified_rules` 안에서만 발급이 선다.
-    return tuple(load_verified_rules(normalized_rules, unique_index))
+    return TrustedImplementationCatalog.build(mappers=[("map-transition-role", 1)])
 
 
 def snapshot(bundle=None, trusted=None, *, catalog=None):
@@ -122,7 +76,6 @@ def snapshot(bundle=None, trusted=None, *, catalog=None):
     return compile_setup_snapshot(
         validate_bundle(raw, catalog=catalog),
         trusted or trusted_implementations(),
-        physically_verified_joins(raw),
         catalog=catalog,
     )
 
@@ -224,20 +177,6 @@ def test_registries_and_descriptors_are_recursively_immutable():
         compiled.claims["moves_to@1"].claim_id = "other@1"
 
 
-def test_source_plan_reuses_registry_join_descriptor_without_copying_it():
-    compiled = snapshot()
-    source_descriptor = (
-        compiled.source_plans["input_rows"]
-        .driver.preparation.verified_join_descriptors[0]
-    )
-    registry_descriptor = compiled.verified_joins["input_to_reference"]
-
-    assert source_descriptor is registry_descriptor
-    assert source_descriptor["verified"] is True
-    assert source_descriptor.verification_basis == "physical_unique_index"
-    assert source_descriptor.join_key_pairs == (("join_id", "join_id"),)
-
-
 def test_snapshot_hash_and_serialization_are_deterministic():
     first = snapshot(logical_bundle())
     second = snapshot(reverse_mappings(logical_bundle()))
@@ -263,172 +202,6 @@ def test_snapshot_hash_binds_compiled_semantic_content():
     assert compiled.snapshot_sha256 != compiled.bundle_sha256
 
 
-def test_snapshot_compile_refuses_join_without_physical_verification():
-    errors = snapshot_compile_errors(
-        validate_bundle(logical_bundle()), trusted_implementations())
-
-    assert [error.to_mapping() for error in errors] == [{
-        "code": "unverified_join",
-        "path": "bundle.virtual_joins.input_to_reference",
-        "message": (
-            "join rule 'input_to_reference' requires a physical UNIQUE "
-            "verification descriptor"
-        ),
-    }]
-
-
-def test_catalog_mapping_cannot_construct_a_verified_descriptor_directly():
-    with pytest.raises(TypeError):
-        VerifiedJoinDescriptor({"name": "catalog_only"})
-    with pytest.raises(TypeError):
-        VerifiedJoinDescriptor()
-    assert not hasattr(VerifiedJoinDescriptor, "from_verified_rule")
-    # 🔴 [S-211, 판정 364] THE GATE MOVED FROM 「WHO ASKS」 TO 「WHAT THEY DO」. Binding used
-    # to be refused by comparing the caller's module NAME to `virtual_join_config`, and a
-    # capability keyed to a name stops working the moment the module is packaged. Holding an
-    # issuer is now open and grants NOTHING: minting still requires the running frame to BE
-    # the caller's own `load_verified_rules`, which is what this asserts.
-    # ⚠️ This is a real, narrow loosening: forging a descriptor now takes deliberately
-    # defining a module-level `load_verified_rules` and issuing from inside it. It cannot
-    # happen by accident, and no rename can cause it.
-    _bind_physical_verifier_issuer()                     # open, and inert on its own
-    with pytest.raises(
-            TypeError,
-            match="only be issued inside the loader's own load_verified_rules"):
-        _TEST_ISSUER.issue({"name": "raw"})
-
-
-def test_former_internal_issue_cannot_use_the_bound_capability_directly():
-    with pytest.raises(
-            TypeError,
-            match="direct VerifiedJoinDescriptor issuance is not allowed"):
-        VerifiedJoinDescriptor._issue(
-            {
-                "name": "input_to_reference",
-                "left_table": "input_rows",
-                "right_table": "reference_rows",
-                "join_key": [
-                    {"left": "join_id", "right": "join_id", "fold": None}
-                ],
-                "expose": ["target_id"],
-                "join_cardinality": "one",
-                "materialize": True,
-                "max_rewrite_rows": 10000,
-                "unique_index": "NOT_PROBED_FAKE_INDEX",
-            },
-            issuer=_TEST_ISSUER,
-        )
-
-
-def test_unissued_instance_is_not_accepted_as_physical_proof():
-    forged = object.__new__(VerifiedJoinDescriptor)
-    object.__setattr__(forged, "_data", {"name": "input_to_reference"})
-
-    assert is_physically_verified_descriptor(forged) is False
-    errors = snapshot_compile_errors(
-        validate_bundle(logical_bundle()),
-        trusted_implementations(),
-        (forged,),
-    )
-    assert errors[0].to_mapping() == {
-        "code": "unverified_join",
-        "path": "bundle.virtual_joins.input_to_reference",
-        "message": (
-            "join rule 'input_to_reference' requires a physical UNIQUE "
-            "verification descriptor"
-        ),
-    }
-    assert errors[1].to_mapping() == {
-        "code": "invalid_verified_join",
-        "path": "verified_joins[0]",
-        "message": (
-            "must be a VerifiedJoinDescriptor produced by physical verification"
-        ),
-    }
-
-
-def test_issuer_registry_has_no_module_level_mutation_handle():
-    import verified_join_contract as contract
-
-    assert not hasattr(contract, "_ISSUED_DESCRIPTORS")
-    assert not hasattr(contract, "_PhysicalVerifierIssuer")
-    assert not hasattr(contract, "_ISSUER_BIND_TOKEN")
-
-
-def test_fake_index_name_cannot_bypass_the_physical_verifier():
-    raw = logical_bundle()
-    fake_catalog_rule = {
-        "name": "input_to_reference",
-        "left_table": "input_rows",
-        "right_table": "reference_rows",
-        "join_key": [{"left": "join_id", "right": "join_id", "fold": None}],
-        "expose": ["target_id"],
-        "join_cardinality": "one",
-        "materialize": True,
-        "max_rewrite_rows": 10000,
-        "unique_index": "NOT_PROBED_FAKE_INDEX",
-    }
-
-    # The former public promotion API is absent.  Passing the same raw declaration to
-    # the compiler is also rejected as a non-physical descriptor.
-    assert not hasattr(VerifiedJoinDescriptor, "from_verified_rule")
-    errors = snapshot_compile_errors(
-        validate_bundle(raw), trusted_implementations(), (fake_catalog_rule,))
-
-    assert [error.to_mapping() for error in errors] == [
-        {
-            "code": "unverified_join",
-            "path": "bundle.virtual_joins.input_to_reference",
-            "message": (
-                "join rule 'input_to_reference' requires a physical UNIQUE "
-                "verification descriptor"
-            ),
-        },
-        {
-            "code": "invalid_verified_join",
-            "path": "verified_joins[0]",
-            "message": (
-                "must be a VerifiedJoinDescriptor produced by physical verification"
-            ),
-        },
-    ]
-
-
-def test_snapshot_compile_rejects_mismatched_physical_descriptor_exactly():
-    raw = logical_bundle()
-    descriptor_source = logical_bundle()
-    descriptor_source["virtual_joins"]["input_to_reference"][
-        "left_table"] = "different_rows"
-    descriptor = physically_verified_joins(descriptor_source)[0]
-
-    errors = snapshot_compile_errors(
-        validate_bundle(raw), trusted_implementations(), (descriptor,))
-
-    assert [error.to_mapping() for error in errors] == [{
-        "code": "verified_join_mismatch",
-        "path": "bundle.virtual_joins.input_to_reference",
-        "message": (
-            "physical verification descriptor does not match join rule "
-            "'input_to_reference'"
-        ),
-    }]
-
-
-def test_physical_verification_result_changes_snapshot_not_bundle_hash():
-    raw = logical_bundle()
-    validated = validate_bundle(raw)
-    first = compile_setup_snapshot(
-        validated, trusted_implementations(),
-        physically_verified_joins(raw, unique_index="uq_reference_a"))
-    second = compile_setup_snapshot(
-        validated, trusted_implementations(),
-        physically_verified_joins(raw, unique_index="uq_reference_b"))
-
-    assert first.bundle_sha256 == second.bundle_sha256
-    assert first.snapshot_sha256 != second.snapshot_sha256
-    assert first.canonical_content_json != second.canonical_content_json
-
-
 def test_compiler_contract_version_changes_snapshot_hash(monkeypatch):
     first = snapshot()
     monkeypatch.setattr(
@@ -448,8 +221,6 @@ def test_virtual_join_change_changes_snapshot_hash():
 
     compiled = snapshot(changed)
     assert compiled.snapshot_sha256 != snapshot().snapshot_sha256
-    descriptor = compiled.verified_joins["input_to_reference"]
-    assert descriptor.pair_folds == ({"case": False, "separator": True},)
 
 
 @pytest.mark.parametrize(
@@ -499,14 +270,13 @@ def test_join_fold_contract_matches_operational_notation_vocabulary():
 # because it stopped passing.
 
 
-def test_untrusted_preparer_and_mapper_errors_are_structured_and_deterministic():
+def test_untrusted_mapper_errors_are_structured_and_deterministic():
     bundle = validate_bundle(logical_bundle())
     none_trusted = TrustedImplementationCatalog.build()
 
-    verified = physically_verified_joins(bundle.to_mapping())
-    first = snapshot_compile_errors(bundle, none_trusted, verified)
+    first = snapshot_compile_errors(bundle, none_trusted)
     second = snapshot_compile_errors(
-        validate_bundle(reverse_mappings(logical_bundle())), none_trusted, verified)
+        validate_bundle(reverse_mappings(logical_bundle())), none_trusted)
 
     assert [issue.to_mapping() for issue in first] == [
         {
@@ -514,17 +284,12 @@ def test_untrusted_preparer_and_mapper_errors_are_structured_and_deterministic()
             "path": f"{MAPPER_PATH}.implementation_id",
             "message": "mapper implementation 'map-transition-role' version 1 is not trusted",
         },
-        {
-            "code": "untrusted_implementation",
-            "path": f"{PREPARATION_PATH}.implementation_id",
-            "message": "source preparer implementation 'prepare-input' version 1 is not trusted",
-        },
     ]
     assert [issue.to_mapping() for issue in first] == [
         issue.to_mapping() for issue in second
     ]
     with pytest.raises(LedgerSetupValidationError) as caught:
-        compile_setup_snapshot(bundle, none_trusted, verified)
+        compile_setup_snapshot(bundle, none_trusted)
     assert caught.value.to_mapping() == first[0].to_mapping()
 
 
@@ -542,21 +307,9 @@ def test_untrusted_preparer_and_mapper_errors_are_structured_and_deterministic()
     ("section", "entry_id", "trusted", "path"),
     [
         (
-            "preparation",
-            "input_rows",
-            TrustedImplementationCatalog.build(
-                source_preparers=[("prepare-input", 2)],
-                mappers=[("map-transition-role", 1)],
-            ),
-            f"{PREPARATION_PATH}.implementation_version",
-        ),
-        (
             "mapper",
             "input_rows",
-            TrustedImplementationCatalog.build(
-                source_preparers=[("prepare-input", 1)],
-                mappers=[("map-transition-role", 2)],
-            ),
+            TrustedImplementationCatalog.build(mappers=[("map-transition-role", 2)]),
             f"{MAPPER_PATH}.implementation_version",
         ),
     ],
@@ -565,7 +318,7 @@ def test_known_implementation_with_untrusted_version_has_exact_error_path(
         section, entry_id, trusted, path):
     raw = logical_bundle()
     errors = snapshot_compile_errors(
-        validate_bundle(raw), trusted, physically_verified_joins(raw))
+        validate_bundle(raw), trusted)
 
     assert [issue.code for issue in errors] == ["unsupported_implementation_version"]
     assert [issue.path for issue in errors] == [path]
@@ -596,119 +349,6 @@ def test_directly_constructed_invalid_bundle_is_revalidated_fail_closed():
             f"{PROFILE_PATH}.mappings.main_transition.predicate")
         for issue in errors
     )
-
-
-@pytest.mark.parametrize(
-    ("mutation", "code", "path"),
-    [
-        (
-            "missing",
-            "unknown_join_rule",
-            (
-                "bundle.sources.input_rows.prepare."
-                "inherit_virtual_join_rules[0]"
-            ),
-        ),
-        (
-            "disabled",
-            "invalid_driver",
-            (
-                "bundle.sources.input_rows.prepare."
-                "inherit_virtual_join_rules[0]"
-            ),
-        ),
-        (
-            "left_mismatch",
-            "invalid_driver",
-            (
-                "bundle.sources.input_rows.prepare."
-                "inherit_virtual_join_rules[0]"
-            ),
-        ),
-        (
-            "rejected_unique_proof",
-            "invalid_join",
-            "bundle.virtual_joins.input_to_reference.join_key",
-        ),
-    ],
-)
-def test_inherited_join_must_be_present_enabled_and_verified(mutation, code, path):
-    raw = logical_bundle()
-    catalog = copy.deepcopy(DEFAULT_CATALOG)
-    if mutation == "missing":
-        raw["sources"]["input_rows"]["prepare"][
-            "inherit_virtual_join_rules"] = ["missing-rule"]
-    elif mutation == "disabled":
-        raw["virtual_joins"]["input_to_reference"]["enabled"] = False
-    elif mutation == "left_mismatch":
-        raw["virtual_joins"]["input_to_reference"]["left_table"] = "reference_rows"
-    else:
-        # The physical half moved out of the bundle: "the join's right side cannot be
-        # proven unique" is now stated by mutating the CATALOG, which is where relation
-        # keys and unique indexes are declared.  Mutating a copy, so the shared
-        # `DEFAULT_CATALOG` stays intact for the other parameter cases.
-        catalog["reference_rows"].pop("business_key")
-        catalog["reference_rows"]["indexes"][0]["unique"] = False
-
-    errors = snapshot_compile_errors(
-        LedgerSetupBundle(raw), trusted_implementations(), catalog=catalog)
-
-    assert errors
-    assert all(issue.code and issue.path and issue.message for issue in errors)
-    assert any(issue.code == code and issue.path == path for issue in errors)
-
-
-def test_inherited_join_left_keys_must_be_preparer_inputs():
-    raw = logical_bundle()
-    driver_preparation(raw)["input_columns"] = []
-
-    errors = snapshot_compile_errors(LedgerSetupBundle(raw), trusted_implementations())
-
-    assert [issue.to_mapping() for issue in errors] == [{
-        "code": "invalid_driver",
-        "path": (
-            "bundle.sources.input_rows.prepare."
-            "inherit_virtual_join_rules[0]"
-        ),
-        "message": (
-            "join rule 'input_to_reference' left key column(s) ['join_id'] must be "
-            "declared by bundle.sources.input_rows.prepare.input_columns"
-        ),
-    }]
-
-
-def test_source_preparation_cannot_redeclare_join_contract():
-    raw = logical_bundle()
-    raw["sources"]["input_rows"]["prepare"]["join_key"] = [
-        {"left": "join_id", "right": "join_id"}
-    ]
-
-    errors = snapshot_compile_errors(LedgerSetupBundle(raw), trusted_implementations())
-
-    # The preparer's fields are the driver clause's fields now, so the refusal lists
-    # them -- which is the `_Problems.exact` behaviour, not a new message.
-    #
-    # 🔴 THE WHOLE SENTENCE IS PINNED ON PURPOSE, so adding a field to this clause
-    # turns this red. S-91 added `exclude_when` and it did, which is the pin working: an
-    # operator reads this message to learn what the clause takes, and a grammar that grows
-    # without the message growing would teach them a list that is missing a field.
-    #
-    # ⚠️ `exclude_when` CARRIES NO "(required)", and that is the half worth reading
-    # rather than the half worth pasting. Optional is what keeps all 26 shipped sources
-    # valid without being edited; if it ever gained the marker, every one of them would
-    # start refusing and this line is where that shows up first.
-    message = (
-        "field is not allowed; allowed here: implementation_id (required), "
-        "implementation_version (required), input_columns (required), "
-        "output_columns (required), accepts_verified_join_rules (required), "
-        "inherit_virtual_join_rules (required), exclude_when"
-    )
-    assert [issue.to_mapping() for issue in errors] == [{
-        "code": "unknown_field",
-        "path": "bundle.sources.input_rows.prepare.join_key",
-        "message": message,
-    }]
-    assert "exclude_when (required)" not in message
 
 
 def test_new_config_entity_and_predicate_need_no_compiler_change():
@@ -800,12 +440,8 @@ def test_config_root_path_does_not_enter_snapshot_hash(tmp_path):
 
     first_bundle = load_setup_bundle(first_root)
     second_bundle = load_setup_bundle(second_root)
-    first = compile_setup_snapshot(
-        first_bundle, trusted_implementations(),
-        physically_verified_joins(first_bundle.to_mapping()))
-    second = compile_setup_snapshot(
-        second_bundle, trusted_implementations(),
-        physically_verified_joins(second_bundle.to_mapping()))
+    first = compile_setup_snapshot(first_bundle, trusted_implementations())
+    second = compile_setup_snapshot(second_bundle, trusted_implementations())
 
     assert first.snapshot_sha256 == second.snapshot_sha256
     assert first.serialize() == second.serialize()
@@ -855,9 +491,7 @@ def test_compiler_does_not_mutate_the_validated_bundle():
     before = validate_bundle(logical_bundle())
     expected = before.serialize()
 
-    compile_setup_snapshot(
-        before, trusted_implementations(),
-        physically_verified_joins(before.to_mapping()))
+    compile_setup_snapshot(before, trusted_implementations())
 
     assert before.serialize() == expected
 
@@ -946,9 +580,10 @@ def test_a_sources_own_edit_moves_its_own_cursor():
     assert after["other_rows"] == before["other_rows"]
 
 
-@pytest.mark.parametrize("clause", ["prepare", "map"])
+@pytest.mark.parametrize("clause", ["map"])
 def test_editing_only_input_columns_leaves_the_cursor_where_it_is(clause):
-    """The carve-out, once per key. `source_cursor_fingerprint` deletes both before hashing.
+    """The carve-out. `source_cursor_fingerprint` deletes the mapper's before hashing (the
+    preparer's was the other one until setup_version 6).
 
     Owner ruling 2026-08-22, after being shown what it costs: these two keys leave the
     closure and nothing else does. Neither direction of changing them can produce a WRONG

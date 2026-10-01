@@ -28,7 +28,7 @@ KIND_ORDER = {
     # closing the gap would move every one of them for no reason a reader could see.
     "predicate": 6,
     "entity": 7,
-    "preparer": 8,
+    # `preparer` sat at 8 until setup_version 6 retired it (총괄 e14416950).
     "mapper": 9,
     "verified_join": 10,
     "table": 11,
@@ -577,7 +577,7 @@ def _node_description(kind: str, raw: Any) -> str:
         return f"predicate {raw.get('predicate', 'none')}"
     if kind == "binding":
         return f"{raw.get('kind', 'unknown')} binding"
-    if kind in {"preparer", "mapper"}:
+    if kind == "mapper":
         return f"implementation {raw.get('implementation_id', 'none')}"
     if kind == "source_plan":
         return f"relation {raw.get('relation', 'none')}"
@@ -902,18 +902,15 @@ def build_explorer_index(setup: Any, *, snapshot_hash: str | None = None) -> Exp
             config_file=table_file, json_pointer=pointer(table_id),
         )
 
-    join_compiled = registries["verified_joins"].to_mapping()
     join_file = ledger_file
     for join_id, raw in sorted(bundle["virtual_joins"].items()):
-        compiled = join_compiled.get(join_id, raw)
         builder.add_node(
-            "verified_join", join_id, raw, compiled,
+            "verified_join", join_id, raw, raw,
             ("virtual_joins", join_id), config_file=join_file,
             json_pointer=pointer("virtual_joins", join_id),
         )
 
     source_compiled = registries["sources"].to_mapping()
-    preparer_compiled = registries["source_preparers"].to_mapping()
     mapper_compiled = registries["mappers"].to_mapping()
     profile_compiled = registries["profiles"].to_mapping()
     for source_id, raw in sorted(bundle["sources"].items()):
@@ -989,23 +986,10 @@ def build_explorer_index(setup: Any, *, snapshot_hash: str | None = None) -> Exp
                         binding_key, entity_id, "entity", "binding_entity",
                         entity_pointer,
                     )
-        # 🔴 THE PREPARER AND THE MAPPER ARE POSITIONS INSIDE THE SOURCE, exactly like a
-        # `claim` inside a pack: their `bundle_path` EXTENDS the source's, which is what
-        # `owning_section` and the left index both read to tell a declaration from a
-        # position. So they keep their kinds (and their edges) and stop being rows in the
-        # index -- no list of kinds anywhere had to learn about the change.
-        preparation = raw.get("prepare", {})
-        preparer_ref = f"{source_id}#preparation"
-        builder.add_node(
-            "preparer", preparer_ref, preparation,
-            preparer_compiled.get(source_id, preparation),
-            ("sources", source_id, "prepare"), config_file=ledger_file,
-            json_pointer=pointer("sources", source_id, "prepare"),
-        )
-        builder.add_edge(
-            source_key, preparer_ref, "preparer", "source_preparer",
-            pointer("sources", source_id, "prepare"),
-        )
+        # 🔴 THE MAPPER IS A POSITION INSIDE THE SOURCE, exactly like a `claim` inside a
+        # pack: its `bundle_path` EXTENDS the source's, which is what `owning_section` and
+        # the left index both read to tell a declaration from a position. (The preparer was
+        # the other one until setup_version 6.)
         mapper_raw = raw.get("map", {})
         mapper_ref = f"{source_id}#mapper"
         builder.add_node(
@@ -1021,16 +1005,6 @@ def build_explorer_index(setup: Any, *, snapshot_hash: str | None = None) -> Exp
         # The `mapper_emits` edges retired with `map.emits` on 2026-08-21, for the same
         # reason as `profile_pack`: a mapper cannot name a claim, so the edge was drawn
         # from a restatement of `bind.mappings.<sentence>.use`, and the mapping already draws it.
-        for index, join_id in enumerate(
-            preparation.get("inherit_virtual_join_rules", []),
-        ):
-            builder.add_edge(
-                source_key, join_id, "verified_join", "source_verified_join",
-                pointer(
-                    "sources", source_id, "prepare",
-                    "inherit_virtual_join_rules", index,
-                ),
-            )
     return builder.finish()
 
 
@@ -1262,7 +1236,7 @@ def integrity_checks(index: ExplorerIndex, selection: str) -> list[dict[str, str
                        "message": "Predicate and role bindings compiled"})
     elif node.kind == "source_plan":
         common.append({"code": "source_plan", "status": "valid",
-                       "message": "relation · cursor · preparer · mapper contract compiled"})
+                       "message": "relation · cursor · mapper contract compiled"})
     else:
         common.append({"code": "kind_specific", "status": "not_applicable",
                        "message": f"No further signature check applies to {node.kind}"})
