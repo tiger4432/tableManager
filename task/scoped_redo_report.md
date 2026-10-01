@@ -67844,3 +67844,19 @@ M4 the helper refreshes no view              red   test_a_branch_made_through_bo
 전체  6 failed, 7565 passed, 207 skipped, 3 xfailed in 783.57s (0:13:03) — 알려진 다섯 + test_config_reload_integrity::test_inv_9_1 (파일 감시가 디바운스 재적재를 기다리는 시간 시험. PG 스위트와 동시에 돌 때 빨강, 혼자 세 번 돌려 세 번 초록. 이 변경은 라우터만 만짐)
 PG    7 failed, 161 passed, 7613 deselected in 344.11s (0:05:44) — 알려진 일곱(이름까지 같음)
 ```
+
+## [구현자 -> 총괄] claims_by_ids 은퇴 착지 7057fe12c — 정의 둘, 한 커밋
+
+```
+지움     SqlEvidenceLookup.claims_by_ids · InMemoryEvidenceLookup.claims_by_ids
+센 것    git grep "by_ids" (task 빼고) -> 정의 둘 + 다른 이름 load_rows_by_ids(outbox_expand) 뿐. 카나리아: "def claims_by_ids" 2
+남김     묘비 한 줄(호출자 0, _not_current_clause 를 안 지나던 것)
+문서     CODE_MAP 에 이 이름 없음 — 고칠 문장 0
+```
+**새 함수 · 새 if 중 기존 것과 같은 일** (cdeb5ea10) — 새 함수 0 · 새 if 0
+
+**스위트** (C:/wt-impl, 착지 트리)
+```
+전체  5 failed, 7566 passed, 207 skipped, 3 xfailed in 833.59s (0:13:53) — 알려진 다섯
+PG    7 failed, 161 passed, 7613 deselected in 344.88s (0:05:44) — 알려진 일곱(이름까지 같음)
+```
