@@ -591,7 +591,7 @@ def mapper(target_table=None, *, source_name: str = "chain_ingestion",
 # 🔴 THE SURFACE A MAPPER MAY IMPORT — declared here, resolved when touched (S-215, 판정 369)
 # ---------------------------------------------------------------------------
 #
-# 🔴 WHY A TABLE AND NOT IMPORTS AT THE TOP: these nine modules are 13,406 lines, and
+# 🔴 WHY A TABLE AND NOT IMPORTS AT THE TOP: the modules behind these names are large, and
 # `mapper_sdk` is read on the chain worker's BOOT path. Re-exporting eagerly would put all of
 # it there for the sake of names most mappers never touch. Resolved on first access, a mapper
 # pulls only what it uses and a process that uses none pays nothing.
