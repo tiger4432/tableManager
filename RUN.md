@@ -1,5 +1,30 @@
 # 지금 돌리면 되는 것
 
+> ## [10-01 오후] **숫자의 신원 철자는 하나 — 문자 칸 숫자 · 저장된 칸 소급 · 원장 엔티티 키 — 마이그레이션 «없음» · 재기동 «필요» · 소급/다시 번역은 운영자가 표·소스마다**
+>
+> ```
+> 무엇이 바뀌나  ① 문자 칸(number · datetime 아닌 칸)에 숫자가 오면 clean_str_value 의 철자로 저장 — 1.0 -> '1', 3 -> '3', 1.5 -> '1.5'
+>                 층과 보이는 칸이 같은 글자(전엔 층 숫자 1.0 · 칸 PG 글자 '1.0' — 파이썬 '1' · PG ->> '1.0' 로 답이 둘). bool · NaN · inf · 글자 '1.0' · number 칸은 그대로
+>              ② 소급 "Fold stored values into the declared spelling" 이 write 칸만이 아니라 «글자 칸 전부»를 쓰기 접기 그대로 지남
+>                 층이 접힌 칸은 보이는 값을 접힌 층에서 다시 정함. 키는 접기가 키 부품 칸을 바꾼 행만, 그 행의 안 접은 칸이 저장 키를 그대로 짓는 때만 바뀜
+>              ③ 원장 엔티티 키 — 선언 바인딩의 키 칸이 그 칸의 «선언 타입»으로 정규화(map_overlay.canonical_key_value):
+>                 number 칸의 1 · 1.0 · '01' 은 키 '1'(글자) 하나. 문자 칸의 '1.0' 은 '1.0' 그대로 — 접고 싶으면 그 칸을 table_config 에서 number 로 선언
+>                 저장된 원장 키는 «다시 번역할 때까지» 옛 꼴(7.0) 그대로 — 새로 번역되는 원자부터 '7'
+> 돌릴 명령     재기동 — run_app.bat 전체
+>              ② 표마다: 어드민 Retroactive 탭 "Fold stored values into the declared spelling" -> table -> Count 먼저, 그다음 Run
+>              ③ 소스마다 (whole_source 는 화면 폼에 없어 명령줄):
+>                 python server/ledger/backfill.py --source <소스> --whole-source              (미리보기 — 행 · 잃은 행 · 그 원자, 안 씀)
+>                 python server/ledger/backfill.py --source <소스> --whole-source --apply --pace slow
+>                 대상 = number 칸을 엔티티 키에 묶는 소스: bonded_from · bw_dt_seat · die_inspection · dt_transfer · transfer_event · void_observation
+> 뜻           ② Count: affected = 보이는 값이 바뀌는 칸 · layers_folded = 바뀌는 층 · keys_not_rebuilt = 키가 저장 키와 이미 어긋나 건너뛰는 행(그 행은 한 칸도 안 접음, 신원 그대로)
+>              ③ 다시 번역 전에는 같은 다이가 옛 꼴(7.0)과 새 꼴('7')로 갈려 걷기에서 둘로 보일 수 있음 — 소스를 다시 번역하면 옛 꼴이 빠지고 새 꼴만 남음
+>              저장된 마킹의 옛 다이 id 는 다시 번역 뒤 안 맞음 — 마킹은 브라우저에 저장돼 서버에서 셀 수 없음. 저장된 대조(contrast_run)는 이 박스엔 표가 없음(0)
+>              이 박스(미리보기만, 실행 안 함): dt_map.value 층 1,000,400 · 보이는 칸 1,000,399 · wafer_map_metadata 층 1 / 다시 번역: die_inspection 숫자 키 0 · transfer_event 숫자 키 0 (뷰를 읽는 넷은 오늘 로드 거절 — 미리보기 없음)
+> 급할 때       커밋 되돌리기. 소급·다시 번역은 실행 전이면 안 돌리면 됨 — ② 는 돌린 뒤 되돌릴 수 없음(옛 철자는 칸마다 이력 줄), ③ 은 되돌린 코드로 다시 번역하면 옛 꼴로 돌아감
+> ```
+
+---
+
 > ## [10-01 오후] **sample 의 decide 넷 복원 — 마이그레이션 «없음» · 재기동 «없음» (sample 만)**
 >
 > ```

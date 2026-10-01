@@ -22,6 +22,7 @@ import uuid6
 import codecs
 import json
 import math
+import numbers
 import os
 import logging
 from datetime import datetime, date, timezone
@@ -1171,6 +1172,14 @@ def cast_value_by_type(value: Any, col_type: str, col_name: str,
                 return parsed
             raise CellRefused(col_name, value, "a number") from None
 
+    # 🔴 [총괄 c6a8c069c ㉡, 소유자 「문자타입에 숫자 들어올때 정수형으로 접어서」] A NUMBER INTO A
+    # TEXT COLUMN IS STORED IN `clean_str_value`'S SPELLING, the one every reader already uses.
+    # Passed through, the layer kept a JSON number (1.0) while PostgreSQL wrote '1.0' into the
+    # text column - Python read '1', `->>` read '1.0', one cell with two answers - and a notation
+    # rule, which reads text, never met it. A bool is a number to Python and stays as it came;
+    # NaN never gets here (blank, above) and inf is not data, so both keep today's path.
+    if isinstance(value, numbers.Real) and not isinstance(value, bool) and math.isfinite(value):
+        value = clean_str_value(value)
     # Strip BEFORE sanitizing: the UTF-8 scrub can only remove bytes, so it can turn
     # `"abc\udcff"` into `"abc"` but never introduces whitespace - order is not
     # load-bearing today, and doing it first keeps "normalize, then sanitize" readable.

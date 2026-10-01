@@ -813,13 +813,13 @@ def _count_fold_written_notation(db, params, scan_limit):
                                      log=lambda m: logger.debug(m))
     truncated = s["rows_scanned"] >= scan_limit
     affected = s["cells_folded"]
-    if not s["written_columns"]:
+    if not s["written_columns"] and not s["text_columns"]:
         return {"affected": 0, "absence": ABSENCE_NOT_APPLICABLE,
                 "affected_label": "cells whose spelling changes",
                 "count_kind": COUNT_EXACT, "scanned": 0, "scan_limit": scan_limit,
                 "truncated": False,
-                "detail": (f"'{params['table']}' declares no \"write\" column in "
-                           f"notation_rules.json - nothing is folded."),
+                "detail": (f"'{params['table']}' has no \"write\" column in "
+                           f"notation_rules.json and no text column - nothing is folded."),
                 "extra": {}}
     left = s["time_left"]
     detail = (
@@ -827,6 +827,9 @@ def _count_fold_written_notation(db, params, scan_limit):
         f"row(s) of '{params['table']}' take the declared spelling; {s['keys_changed']} row "
         f"key(s) change. Cannot be undone - the spelling that was stored stays in each cell's "
         f"history line.")
+    if s["keys_not_rebuilt"]:
+        detail += (f" {s['keys_not_rebuilt']} row(s) are skipped: the fold moves a key part, and "
+                   f"the row's cells no longer spell its stored key, so its identity is left alone.")
     if s["rows_skipped"]:
         detail += (f" {s['rows_skipped']} row(s) would take another row's key and are skipped "
                    f"- fix the alias rows or the rule and run again.")
@@ -849,7 +852,8 @@ def _count_fold_written_notation(db, params, scan_limit):
         "truncated": truncated,
         "detail": detail,
         "extra": {key: s[key] for key in ("layers_folded", "keys_changed", "rows_skipped",
-                                          "skipped", "moves_again", "again", "time_left")},
+                                          "skipped", "keys_not_rebuilt", "not_rebuilt",
+                                          "moves_again", "again", "time_left")},
     }
 
 
@@ -861,8 +865,8 @@ def _run_fold_written_notation(db, params, log, control=None):
                                      **_given(params, "limit", "chunk_size", "pace"))
     _final_progress(control, s.get("rows_scanned"), s)
     return {key: s[key] for key in ("cells_folded", "layers_folded", "keys_changed",
-                                    "rows_skipped", "moves_again", "stopped_on_moves_again",
-                                    "rows_scanned")}
+                                    "rows_skipped", "keys_not_rebuilt", "moves_again",
+                                    "stopped_on_moves_again", "rows_scanned")}
 
 
 def _run_resolve(db, params, log, control=None):
@@ -1345,7 +1349,8 @@ OPERATIONS = {
     },
     "fold_written_notation": {
         "label": "Fold stored values into the declared spelling",
-        "what_is_missing": "a \"write\" column keeps the spellings stored before it was declared",
+        "what_is_missing": ("a \"write\" column keeps the spellings stored before it was declared, "
+                            "and a text column keeps numbers stored before text took them"),
         "params": [_p("table"),
                    _pace_param(),
                    _p("limit", required=False, kind="int", form=False,
@@ -1358,9 +1363,10 @@ OPERATIONS = {
         "cli": ("python -c \"from admin import retroactive; retroactive.run_here("
                 "'fold_written_notation', {'table': '<table>', 'pace': '<pace>', 'limit': N, "
                 "'chunk_size': N})\" - pace, limit and chunk_size optional"),
-        # 총괄 2dc2c1baf: in place - a layer's value, the shown value and the key move; no layer
-        # is created or deleted and no `ingested_at` moves. A row whose folded key another row
-        # holds is skipped; a value a second fold moves again stops the run.
+        # 총괄 2dc2c1baf · c6a8c069c ㉡: in place - a layer's value, the shown value and the key
+        # move; no layer is created or deleted and no `ingested_at` moves. A row whose folded key
+        # another row holds, or whose cells no longer spell its key, is skipped; a value a second
+        # fold moves again stops the run.
         "deletes": None,
         "reads_as": "number",
         "cancellable": True,
