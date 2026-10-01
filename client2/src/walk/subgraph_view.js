@@ -10,7 +10,8 @@
 //    marking and nothing else: no follow, no collect, no budget of its own.
 // 🔴 It judges nothing the server or the declaration already said: the layer is the node's `depth`,
 //    static is `staticTypes(declaration)`, truncation is `cutBudgets` — the doors the table walks through.
-// ⛔ Bundles (the fan-out chips) wait for the server's landing report; their field names come from it.
+// 🔴 Bundles (lead 1d07f1dae, server b1245bab9): the walk carries `fanout_limit`; a fan-out over it comes back
+//    in `bundles` and stands as a chip under its node; a chip pressed adds `expand` to that step's walk.
 
 import { bareName, staticTypes, cutBudgets } from './derive.js';
 import { SIGN } from '../rnd_board/marking_store.js';
@@ -27,6 +28,8 @@ const NODE_R = 6.8;
 const LABEL_DX = 10.2;
 /** How many type colours there are; a type's colour is its declaration index modulo this. */
 export const TYPE_COLOURS = 9;
+/** The fan-out cap the part walks with unless its declaration says another (lead c9bf53033 · 1d07f1dae). */
+export const DEFAULT_FANOUT_LIMIT = 20;
 
 /** The signed ids of a marking, as the walk takes them. */
 export function seedsOf(entries) {
@@ -42,13 +45,15 @@ export function seedsOf(entries) {
 /**
  * Where everything goes, decided from the walks' answers and the declaration only.
  *
- * One step is one marking walked. Step 1's layer is the node's `depth`; a later step's layers carry on
- * from the marked points: `depth + the furthest column its seeds already stand in`. A node is drawn
- * once, where it was first reached, and remembers that step. Inside a column, arrival order (the
- * server's order, step after step). Same input, same picture. A node without a depth is counted, not
- * placed — its distance is not this screen's guess.
+ * One step is one marking walked; a step may hold more than one answer — each bundle expanded is the
+ * same walk asked again with that bundle drawn. Step 1's layer is the node's `depth`; a later step's
+ * layers carry on from the marked points: `depth + the furthest column its seeds already stand in`. A
+ * node is drawn once, where it was first reached, and remembers that step. Inside a column, arrival order
+ * (the server's order, answer after answer); a node's bundles (its step's latest answer) take the rows
+ * right under it. Same input, same picture. A node without a depth is counted, not placed — its distance
+ * is not this screen's guess.
  *
- * @param {Array<{result: object, seeds?: string[]}>} steps
+ * @param {Array<{results: object[], seeds?: string[]}>} steps
  * @param {object[]} entities  the declaration's entities
  */
 export function subgraphLayout(steps, entities) {
@@ -57,59 +62,88 @@ export function subgraphLayout(steps, entities) {
   // declaration does not name takes the next index in the order it first appears.
   const order = (entities || []).map((e) => bareName(e && e.type));
   const colourOf = new Map(order.map((type, i) => [type, i]));
+  const latest = (step) => {
+    const all = (step && step.results) || [];
+    return all[all.length - 1] || {};
+  };
+  // The bundles still standing: each step's latest answer says which fan-outs it did not draw.
+  const bundlesOf = new Map();
+  (steps || []).forEach((step, index) => {
+    for (const b of latest(step).bundles || []) {
+      if (!bundlesOf.has(b.node)) bundlesOf.set(b.node, []);
+      bundlesOf.get(b.node).push({ ...b, step: index });
+    }
+  });
   const rows = new Map();
   const at = new Map();
   const placed = [];
-  const drawn = [];
-  const edgeSeen = new Set();
-  const cut = [];
+  const chips = [];
   let unplaced = 0;
-  let loose = 0;
   (steps || []).forEach((step, index) => {
-    const result = (step && step.result) || {};
-    const nodes = Array.isArray(result.nodes) ? result.nodes : [];
-    const edges = Array.isArray(result.edges) ? result.edges : [];
     const seedLayers = (step.seeds || []).map((id) => at.get(id)).filter(Boolean).map((n) => n.layer);
     const base = index === 0 || !seedLayers.length ? 0 : Math.max(...seedLayers);
-    for (const node of nodes) {
-      const type = bareName(node.type);
-      if (!colourOf.has(type)) colourOf.set(type, colourOf.size);
-      if (at.has(node.id)) continue;
-      if (!Number.isFinite(node.depth)) { unplaced += 1; continue; }
-      const layer = base + node.depth;
-      const row = rows.get(layer) || 0;
-      rows.set(layer, row + 1);
-      const one = {
-        id: node.id,
-        type,
-        label: node.label || node.id,
-        depth: node.depth,
-        layer,
-        step: index + 1,
-        x: MARGIN + layer * LAYER_GAP_X,
-        y: MARGIN + row * NODE_GAP_Y,
-        static: statics.has(type),
-        colour: colourOf.get(type) % TYPE_COLOURS,
-        keys: node.keys || {},
-        attributes: node.attributes || {},
-      };
-      at.set(node.id, one);
-      placed.push(one);
+    for (const result of step.results || []) {
+      for (const node of (Array.isArray(result.nodes) ? result.nodes : [])) {
+        const type = bareName(node.type);
+        if (!colourOf.has(type)) colourOf.set(type, colourOf.size);
+        if (at.has(node.id)) continue;
+        if (!Number.isFinite(node.depth)) { unplaced += 1; continue; }
+        const layer = base + node.depth;
+        let row = rows.get(layer) || 0;
+        const one = {
+          id: node.id,
+          type,
+          label: node.label || node.id,
+          depth: node.depth,
+          layer,
+          step: index + 1,
+          x: MARGIN + layer * LAYER_GAP_X,
+          y: MARGIN + row * NODE_GAP_Y,
+          static: statics.has(type),
+          colour: colourOf.get(type) % TYPE_COLOURS,
+          keys: node.keys || {},
+          attributes: node.attributes || {},
+        };
+        at.set(node.id, one);
+        placed.push(one);
+        row += 1;
+        for (const b of bundlesOf.get(node.id) || []) {
+          chips.push({
+            step: b.step, node: b.node, predicate: b.predicate, direction: b.direction,
+            farType: bareName(b.far_type), count: b.count,
+            key: `${b.node}|${b.predicate}|${b.direction}`,
+            x: one.x + LABEL_DX, y: MARGIN + row * NODE_GAP_Y,
+          });
+          row += 1;
+        }
+        rows.set(layer, row);
+      }
     }
-    for (const edge of edges) {
-      if (edgeSeen.has(edge.id)) continue;
-      const from = at.get(edge.source);
-      const to = at.get(edge.target);
-      if (!from || !to) { loose += 1; continue; }
-      edgeSeen.add(edge.id);
-      drawn.push({
-        id: edge.id, source: edge.source, target: edge.target,
-        predicate: edge.predicate_label || edge.predicate || '',
-        occurredAt: edge.occurred_at || '',
-        x1: from.x, y1: from.y, x2: to.x, y2: to.y,
-      });
+  });
+  // Edges once every node of every answer stands, so an edge an expansion completes is drawn, not lost.
+  const drawn = [];
+  const edgeSeen = new Set();
+  const missing = new Set();
+  const cut = [];
+  (steps || []).forEach((step, index) => {
+    for (const result of step.results || []) {
+      for (const edge of (Array.isArray(result.edges) ? result.edges : [])) {
+        if (edgeSeen.has(edge.id)) continue;
+        const from = at.get(edge.source);
+        const to = at.get(edge.target);
+        if (!from || !to) { missing.add(edge.id); continue; }
+        edgeSeen.add(edge.id);
+        missing.delete(edge.id);
+        drawn.push({
+          id: edge.id, source: edge.source, target: edge.target,
+          predicate: edge.predicate_label || edge.predicate || '',
+          occurredAt: edge.occurred_at || '',
+          x1: from.x, y1: from.y, x2: to.x, y2: to.y,
+        });
+      }
     }
-    if (result.cut) cut.push({ step: index + 1, budgets: cutBudgets(result.truncatedAxes, result.limits) });
+    const last = latest(step);
+    if (last.cut) cut.push({ step: index + 1, budgets: cutBudgets(last.truncatedAxes, last.limits) });
   });
   const counts = new Map();
   for (const node of placed) counts.set(node.type, (counts.get(node.type) || 0) + 1);
@@ -119,12 +153,13 @@ export function subgraphLayout(steps, entities) {
   return {
     nodes: placed,
     edges: drawn,
+    chips,
     legend,
     unplaced,
-    loose,
+    loose: missing.size,
     cut,
     width: MARGIN * 2 + Math.max(0, ...placed.map((n) => n.x)) + LAYER_GAP_X,
-    height: MARGIN * 2 + Math.max(0, ...placed.map((n) => n.y)),
+    height: MARGIN * 2 + Math.max(0, ...placed.map((n) => n.y), ...chips.map((c) => c.y)),
   };
 }
 
@@ -148,9 +183,11 @@ export class SubgraphView {
   /**
    * @param {HTMLElement} mount
    * @param {{doc?: Document, walk: Function, entities?: () => object[],
-   *          markings: import('../rnd_board/marking_store.js').MarkingStore, chain: string[]}} deps
+   *          markings: import('../rnd_board/marking_store.js').MarkingStore, chain: string[],
+   *          fanoutLimit?: number}} deps
    *   `walk` is the page's `createWalkBoxWalk` function; `entities` reads the declaration the page holds;
    *   `chain` names the markings: the first is the start, each next one takes the presses of a step.
+   *   `fanoutLimit` (declaration, default DEFAULT_FANOUT_LIMIT): a fan-out over it comes back as a bundle chip.
    */
   constructor(mount, deps = {}) {
     if (!mount) throw new Error('SubgraphView needs a mount element');
@@ -163,6 +200,7 @@ export class SubgraphView {
     this.entities = deps.entities || (() => []);
     this.markings = deps.markings;
     this.chain = deps.chain.slice();
+    this.fanoutLimit = Number.isFinite(deps.fanoutLimit) ? deps.fanoutLimit : DEFAULT_FANOUT_LIMIT;
     ensureWalkStyles(this.doc);
     this.root = this.doc.createElement('div');
     this.root.className = 'sg-view';
@@ -204,13 +242,30 @@ export class SubgraphView {
       if (!this.steps.length) { this.state = 'empty'; this.render(); }
       return;
     }
+    const step = { marking: name, seeds: [...seeds.positive, ...seeds.negative],
+      positive: seeds.positive, negative: seeds.negative, expand: [], results: [] };
+    await this._ask(step, [], (res) => [...this.steps, { ...step, results: [res] }]);
+  }
+
+  /** Draw one bundle a step left undrawn: the same walk asked again with it expanded, on the same picture. */
+  async expandBundle(index, key) {
+    const step = this.steps[index];
+    if (!step || this.state !== 'done' || step.expand.includes(key)) return;
+    const expand = [...step.expand, key];
+    await this._ask(step, expand, (res) => this.steps.map((s, i) => (
+      i === index ? { ...s, expand, results: [...s.results, res] } : s)));
+  }
+
+  /** One walk of a step's marking, with the cap this part declares; `next` builds the steps from the answer. */
+  async _ask(step, expand, next) {
     const steps = this.steps;
     this.state = 'running';
     this.render();
-    const res = await this.walk({ positive: seeds.positive, negative: seeds.negative });
+    const res = await this.walk({ positive: step.positive, negative: step.negative,
+      fanout_limit: this.fanoutLimit, expand });
     if (this.steps !== steps) return;   // a new start was asked meanwhile
     if (res && res.ok) {
-      this.steps = [...steps, { marking: name, seeds: [...seeds.positive, ...seeds.negative], result: res }];
+      this.steps = next(res);
       this.layout = subgraphLayout(this.steps, this.entities());
       this.state = 'done';
     } else {
@@ -302,6 +357,15 @@ export class SubgraphView {
       label.textContent = node.label;
       group.appendChild(label);
       if (group.addEventListener) group.addEventListener('click', () => this.press(node.id));
+      svg.appendChild(group);
+    }
+    // A fan-out the walk did not draw, under its node: press it and that bundle is drawn.
+    for (const chip of view.chips) {
+      const group = this._svg('g', { class: 'sg-bundle', 'data-bundle': chip.key, 'data-step': chip.step + 1 });
+      const text = this._svg('text', { x: chip.x, y: chip.y + 4 });
+      text.textContent = `+${chip.count} ${chip.farType}`;
+      group.appendChild(text);
+      if (group.addEventListener) group.addEventListener('click', () => { this.expandBundle(chip.step, chip.key); });
       svg.appendChild(group);
     }
     const box = this._el('div', 'sg-box');

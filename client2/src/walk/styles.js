@@ -146,6 +146,7 @@ export const WALK_CSS = `
 .sg-node.is-seed circle, .sg-node.is-seed rect { stroke: var(--accent); stroke-width: 2; stroke-dasharray: none; }
 .sg-node.is-marked circle, .sg-node.is-marked rect { stroke: var(--accent); stroke-width: 3.4; stroke-dasharray: none; }
 .sg-node.is-selected circle, .sg-node.is-selected rect { stroke: var(--text); stroke-width: 3; }
+.sg-bundle text { fill: var(--accent); font-size: var(--fs-label); font-weight: 600; cursor: pointer; }
 .sg-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6.8px; }
 .sg-continue { min-height: 44px; padding: 0 13.6px; font: inherit; color: var(--accent-contrast);
   background: var(--accent); border: 1px solid var(--accent); border-radius: 0; cursor: pointer; }
