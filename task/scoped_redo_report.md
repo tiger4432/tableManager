@@ -68981,3 +68981,58 @@ DELETE 가 체인을 안 깨움                          같은 시험 — _is_t
 PG  6 failed, 167 passed, 7653 deselected in 329.28s (0:05:29) · 알려진 밖: 0
    그 시험 하나만 서른 번씩: 이 변경 있는 트리 28/30 통과 · 같은 트리에서 변경 뺌 28/30 통과 — 실패율이 같다. 파일 감시 타이밍이고 이 변경과 무관
 ```
+
+---
+
+## [10-01 밤] 이미지 참조 착지 (총괄 785b2ef54 · 20e1c09df) — a8dea2bcf
+
+**무엇을 지었나**
+```
+server/image_sources.py   resolve(ref) — 출처의 kind 를 묻는 좌석 하나(folder · db · url). 읽기만
+   문법    https://… 그대로(-> 넘김) · <출처>:<경로 또는 키>
+   folder  root 안인지는 parsers.directory_watcher._safe_relative_path(실경로 · 대소문자 — 외부 폴더 감시가 쓰는 그 판정, main 도 이미 부름)
+   db      선언의 query 가 :key 하나만 묶어야 함 · 키는 바인딩 · PostgreSQL 이면 읽기 전용 실행 · 끝에 rollback
+           연결은 출처 선언이 갖는다(dialect · host · port · database · user · password_env) — 비밀은 환경변수 «이름»만
+           값이 바이트면 그대로, 글자면 참조로 한 번 더(두 번째도 글자면 거절)
+   url     base + 나머지. proxy 칸(기본 false)이면 넘김, true 면 서버가 받아 그대로 돌려줌
+server/main.py            GET /api/image?ref= — 거절은 상태 + 이름 댄 detail(400 경로 탈출 · 404 없음/미선언 · 500 선언 결함 · 502 원격)
+샘플 · 문서               config/sample/image_sources.json.sample(셋) · table_config.md 의 column_types 행에 "image" 한 줄
+```
+**게이트**
+```
+시험   15 passed in 1.12s
+       folder  root 안 200(하위 폴더 포함) · 탈출 넷(../ · ..\ · sub/../../ · 절대경로) 400 · 없는 파일 404 에 이름
+       db      바이트 그대로 + 확장자 타입 · 주입 시도 키 404 + 표 그대로 · 글자 참조 한 번 풀기 · 두 번째 글자 거절 ·
+               :key 없음/둘 거절 · 비밀번호 환경변수 없음 거절(이름만 말함)
+       url     넘김(Location = base + 나머지) · https:// 값 그대로 · proxy true 면 서버가 받아 줌 · 선언 밖 출처 404 · 문법 밖 400
+손 확인 PG(시험 DB): 바이트 8 B image/png 그대로 · 쓰는 질의(nextval) -> ReadOnlySqlTransaction
+변이   no root containment            -> 4 failed, 11 passed
+       key spliced into the query     -> 1 failed, 14 passed
+       query bind not checked         -> 2 failed, 13 passed
+       db text not read again         -> 1 failed, 14 passed
+       read again without limit       -> 1 failed, 14 passed
+       url always fetched             -> 1 failed, 14 passed
+       password variable not checked  -> 1 failed, 14 passed
+```
+**cb4d5157d 덧 (총괄 검증 답)** — 「실제로 지운 수」를 재는 단언 하나: 계획한 id 중 하나가 apply 전에 이미 없으면 돌려주는 수 = 나머지 수
+```
+돌려주는 수 = len(덩이) (총괄의 초록 변이) -> 1 failed, 16 passed · 고친 그대로 17 passed
+```
+**새 함수 · 새 if 중 같은 일** — 새 함수 6 (load_sources · resolve · _folder · _engine · _db · _url). 같은 일 0 — 경로 안팎은 기존 판정을 부른다. kind 를 묻는 if 는 resolve 한 곳
+**사이드 이펙트** — 라우트 하나 · 모듈 하나가 새로 생김. 기존 코드가 부르는 곳 0. "image" 타입 낱말은 서버에서 이미 글자 칸이 된다(models — number · datetime 밖은 String)
+**남는 것 — 클라 몫**
+```
+화면의 표 설정 편집기는 타입 낱말 셋(string · number · datetime) 밖을 거절한다(table_config.md 의 «셋뿐» 줄 · table_config_panel.js) — "image" 를 받게 하는 것
+그리드 칸 · 걷기 노드 속성 · 뷰어의 미리보기 · 크게 보기
+```
+**스위트** (C:/wt-impl)
+```
+비PG 전체  5 failed, 7619 passed, 41 skipped, 173 deselected, 3 xfailed in 886.00s (0:14:45)
+PG  6 failed, 167 passed, 7669 deselected in 339.63s (0:05:39) · 알려진 밖: 0
+   cb4d5157d 덧 시험은 전체 실행이 시험을 모은 «뒤»에 더했다 — 그 시험의 증거는 위 덧 칸의 실행
+```
+**여쭐 것**
+```
+① db 출처의 연결 실패 · 질의 오류(호스트 꺼짐 · 쓰는 질의가 읽기 전용에 막힘 등)는 지금 이름 없는 500 이다.
+   출처 이름과 오류 첫 줄을 단 502 로 바꿀지 — 지시 밖이라 안 함
+```
