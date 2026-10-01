@@ -70,7 +70,7 @@ server/config/ontology/ledger_config.json   (파일 하나)
   → strict LedgerSetupBundle
   → immutable Registry/Snapshot
   → 기존 cursor의 bounded physical batch
-  → Source Preparer의 verified batch join
+  → ~~Source Preparer의 verified batch join~~ (🆕 10-01 `0b59a2f30` 은퇴 — `event_frame` 이 페이지를 EventFrame 으로, 조인은 체인이 표에)
   → pandas EventFrame
   → BaseLedgerMapper / RoleEmission / RoleFrame
   → Pack-owned LedgerFrame
@@ -133,7 +133,7 @@ server/config/ontology/ledger_config.json   (파일 하나)
 | Bundle strict validation | `server/ledger/setup_bundle.py` |
 | immutable Registry/Snapshot | `server/ledger/setup_registry.py` |
 | RoleFrame/Pack compiler | `server/ledger/roleframe.py` |
-| verified batch preparation | `server/ledger/source_preparation.py` |
+| ~~verified batch preparation~~ → EventFrame | `server/ledger/event_frame.py`(🆕 10-01 `0b59a2f30` — 전엔 `source_preparation.py`) |
 | preview/execute와 기존 transaction 연결 | `server/ledger/runtime_v2.py` |
 | ⚰️ ~~legacy↔V2 의미 비교~~ | `server/ledger/shadow_parity.py` — **파일이 «없습니다»**(2026-09-10 확인). legacy 쪽이 은퇴하면서 같이 갔고, 이 줄만 남아 있었습니다 |
 | 로드 경계(`load_setup`)와 비파괴 dry-run | `server/ledger/setup.py` |
@@ -189,7 +189,7 @@ full server suite와 Explorer PostgreSQL E2E는 사용자 지시에 따라 생�
 - 운영 DB migration/write
 - legacy config/translator/template 이동·삭제
 - 🔴 준비가 끝나지 않은 source를 `sources`에 적기 — **선언이 곧 활성화**라 그 순간 돈다
-- raw mapping이나 임의 index 문자열로 VerifiedJoinDescriptor 발급
+- ~~raw mapping이나 임의 index 문자열로 VerifiedJoinDescriptor 발급~~ (🆕 10-01 `0b59a2f30` — 발급기째 은퇴)
 - active config 직접 편집, config root 안에 다른 `.json`(백업·초안 포함) 두기
 - 기준본과 다른 dashboard/graph 중심 Explorer 재디자인
 

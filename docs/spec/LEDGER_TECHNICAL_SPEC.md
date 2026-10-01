@@ -770,8 +770,8 @@ UI, Trace, DB 연결, migration, write가 없다. 실행은 다음 3단계 절�
 🗄️ [`_archive/ledger_v2_redesign_plan_20260817`](../_archive/ledger_v2_redesign_plan_20260817/README.md)의
 단계별 승인 뒤에만 변경한다.
 
-v2 목표는 현행 `declared_lookup`/Position 계약을 계승하지 않는다. cursor 뒤 pandas source
-preparer가 verified virtual-join rule ID를 상속하고, 완성 EventFrame 이후 compiler는 DB를
+v2 목표는 현행 `declared_lookup`/Position 계약을 계승하지 않는다. ~~cursor 뒤 pandas source
+preparer가 verified virtual-join rule ID를 상속하고,~~(🆕 10-01 `0b59a2f30` 준비기 · 읽을 때 조인 은퇴) 완성 EventFrame 이후 compiler는 DB를
 읽지 않는다. Registry 등록 데이터는 `server/config/ontology/` config에서만 온다. 🔴 **[2026-08-21]
 착지한 선언의 정본은 [guide/ONTOLOGY_LEDGER_SETUP](../guide/ONTOLOGY_LEDGER_SETUP.md)이다** —
 종전 이 자리가 정본이라 부르던 `TARGET_ARCHITECTURE_AND_SSOT.md`는

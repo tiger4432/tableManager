@@ -8,8 +8,8 @@
 > 사용자 승인 전에는 재설계 1단계 코드도 시작하지 않는다.
 >
 > **v2 목표 판정:** 이 문서 아래의 `declared_lookup`/adapter는 동결된 현행 구현 설명이지
-> 재사용 목표가 아니다. v2는 lookup/Position을 제거하고, cursor 뒤 pandas source preparer가
-> verified virtual-join rule ID를 상속한다. Registry 등록값은 `server/config/ontology/`의
+> 재사용 목표가 아니다. v2는 lookup/Position을 제거하고, ~~cursor 뒤 pandas source preparer가
+> verified virtual-join rule ID를 상속한다~~(🆕 10-01 `0b59a2f30` setup_version 6 — 준비기 · 읽을 때 조인 은퇴, 조인은 체인이 표에 쓴다). Registry 등록값은 `server/config/ontology/`의
 > config에서만 컴파일한다. 🔴 **[2026-08-21] 착지한 구조와 config 목록의 정본은
 > [guide/ONTOLOGY_LEDGER_SETUP](../guide/ONTOLOGY_LEDGER_SETUP.md)이다** — 종전 이 자리가
 > 정본이라 부르던 `TARGET_ARCHITECTURE_AND_SSOT.md`는
@@ -21,7 +21,7 @@
 > 여기의 `chain_mapper.profile_id`는 `server/ledger/config.py`가 읽는 별개 레지스트리이고,
 > 어느 config에도 선언돼 있지 않다(그래서 이번 라운드들이 건드리지 않았다). v2
 > `ledger_config.json`에는 `profiles` section도 `profile_id`도 **없다** — 소스 하나가
-> `relation`·`read`·`prepare`·`map`·`bind`를 직접 들고, mapping은 문장 별명으로 키가 매겨진다
+> `relation`·`read`·`map`·`bind`를 직접 들고(🆕 10-01 `0b59a2f30` — ~~`prepare`~~ 은퇴), mapping은 문장 별명으로 키가 매겨진다
 > (`setup_version: 5` — `packs`/`claims`도 없고 문장이 `predicate`로 술어를 직접 댄다,
 > [ONTOLOGY_LEDGER_SETUP §4·§7.5·§7.6](../guide/ONTOLOGY_LEDGER_SETUP.md)).
 > **§5·§6을 v2 작성 지침으로 읽지 말 것.**

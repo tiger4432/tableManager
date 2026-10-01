@@ -83,7 +83,7 @@
 | 🔴 | `trace_fixture` | 1,000 | 2026-08-01 | Synthetic core-material trace fixture (docs/spec/TRACE_FIXTURE_SPEC.md). |
 | ✅ | `transfer_plan` | 218,352 | 2026-08-14 | Universal Transfer Plan (M2) — 전사(轉寫) 프레임워크: stage 선언 로더 + 가용 엔진 + 계획 검증. |
 | ✅ | `value_suggest` | 56,927 | 2026-08-18 | Unique-value lookup (F3) — the primitive every input suggestion sits on. |
-| ✅ | `verified_join_contract` | 8,548 | 2026-08-17 | Immutable hand-off produced only after virtual-join physical verification. |
+| ⚰️ | ~~`verified_join_contract`~~ | ~~8,548~~ | 2026-08-17 | Retired 10-01 (`0b59a2f30`) with the read-time verified join. |
 | ⚰️ | ~~`virtual_join/config`~~ → **`chain/legacy_join_declaration.py`** | — | 2026-09-17 | **옮겨졌습니다**(`306419fd`, 판정 461). 선언 로더/검증기는 «삽니다» — 다만 `materialize: true` 에 대해서만이고, `materialize: false`(읽기 시점)는 이제 «이름 대어 거절»됩니다. ⚠️ 이것은 `chain/join_into.py` 의 «동급이 아닙니다» — 정본 문은 `into.table` 이고 이 문은 «둘째 문이자 부채»입니다. |
 | ⚰️ | ~~`virtual_join/executor`~~ — **후계 없음** | — | 2026-09-17 | **삭제됐습니다**(`306419fd`, 915줄, 판정 461). 「저장하지 않고 LEFT 조인 한 방으로 행 페이로드에 붙이는」 읽기 시점 조인은 **오늘 없습니다**. 조인 컬럼은 «표에 써서» 씁니다(소유자 판정: `into.table` 뿐). 쓰기 절반만 `chain/legacy_materialized_join.py` 로 살아남았습니다 — 그것은 «실행기의 후계»가 아니라 위 선언이 살아 있는 동안의 부채입니다. |
 
@@ -126,7 +126,7 @@
 | ✅ | `ledger/setup_bundle` | 106,509 | 2026-08-27 | Pure Ledger authoring bundle schema and single-file loader. |
 | ✅ | `ledger/setup_registry` | 45,810 | 2026-08-22 | Pure Ledger v2 registry compiler and immutable setup snapshot. |
 | ✅ | `ledger/source_contract` | 16,060 | 2026-08-27 | Compile one ledger source into the contract an operator actually needs. |
-| ✅ | `ledger/source_preparation` | 48,328 | 2026-08-22 | Ledger v2 Stage 5 pandas source-preparation boundary. |
+| ⚰️ | ~~`ledger/source_preparation`~~ | ~~48,328~~ | 2026-08-22 | Retired 10-01 (`0b59a2f30`) - its successor is `ledger/event_frame` (the cursor page -> EventFrames, no preparer). |
 | ✅ | `ledger/source_profile` | 59,138 | 2026-08-21 | Public Source Ontology Profile model and validation contract. |
 | ✅ | `ledger/source_profile_builtins` | 6,655 | 2026-08-27 | Built-in registration data for Source Ontology Profile schema version 1. |
 | ✅ | `ledger/store` | 26,566 | 2026-08-21 | Writing atoms and moving the cursor - in ONE transaction, per the brief's risk 1. |
