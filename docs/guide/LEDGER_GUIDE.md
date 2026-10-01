@@ -356,6 +356,16 @@ conda run -n assy_manager python scripts/ledger_restamp_cursor.py
 씨더(`server/scripts/seed_syn_die_transfer.py`)는 채우기 순서를 다시 구현하지 않고
 `map_alignment.serpentine_index` 를 부르며, 기하는 `valid_die_ref` 에서 온다.
 
+### 4.8 메인 그리드에서 원장 보기 — `ledger_atom_rows` (10-01 `57bc6d5e9`)
+```
+운영에서는 table_config.json 에 출하 샘플의 ledger_atom_rows 항목을 그대로 옮기면 됩니다(kind: view).
+이미 원장이 있는 DB 는 먼저 migrations/add_ledger_atom_rows.py 를 --report 로 보고 돌립니다.
+```
+- **한 행 = (원자, 원천 행)** — 원자 하나를 원천 행 여럿이 말하면 줄도 여럿, 아무 원천 행도 가리키지 않는 원자는 원천 칸이 빈 한 줄입니다.
+- 칸: `atom_id` · `occurred_at` · `subject_type` · `subject` · `predicate` · `object` · `qualifiers` · `source_who` · `source_relation` · `source_row_id`. 키와 값은 저장된 철자 그대로의 글자입니다.
+- 읽기 전용 보기입니다. 표에 쓰지 않습니다.
+- 마이그레이션은 더하기만 하고 다시 돌려도 됩니다 — 원천 행 참조 표에 인덱스 둘(쓰기를 멈추지 않고 만듦)과 보기 하나, 원장 표 자체에는 아무것도 안 더합니다.
+
 ## 5. 원장이 «일부러» 하지 않는 것
 
 - 원천 데이터를 정규화해 고쳐 쓰지 않는다.
