@@ -69036,3 +69036,44 @@ PG  6 failed, 167 passed, 7669 deselected in 339.63s (0:05:39) · 알려진 밖:
 ① db 출처의 연결 실패 · 질의 오류(호스트 꺼짐 · 쓰는 질의가 읽기 전용에 막힘 등)는 지금 이름 없는 500 이다.
    출처 이름과 오류 첫 줄을 단 502 로 바꿀지 — 지시 밖이라 안 함
 ```
+
+---
+
+## [10-01 밤] 이미지 참조 — url 출처 호스트 고정 · 받아 오기 넘김 안 따라감 · db 실패 502 · 두 단 사슬 (총괄 e96551d02) — e1420082c
+
+**무엇을 지었나** (image_sources.py 하나 + 그 시험)
+```
+① _url  이은 주소와 base 의 (scheme, 호스트, 포트)를 urlsplit 으로 견줌 — 다르면 400. 넘김 · 받아 옴 앞의 한 자리. 숫자 아닌 포트도 같은 거절
+② _url  requests.get(…, allow_redirects=False) · 3xx 는 502 「… answered a redirect (3xx) … not followed」
+③ _db   SQLAlchemyError -> 502 「image source '<이름>' could not be read: <첫 줄>」
+④ 시험  두 번째 글자 거절을 고리가 아닌 두 단 사슬로(refs:k2 -> chain:k3 -> pics:a.png — 더 읽으면 파일이 나오는 사슬)
+```
+**게이트**
+```
+시험   24 passed in 1.67s
+       호스트  @evil.com/a.png · .evil.com/a.png · :99999/a.png × proxy false/true -> 400 · 받아 오기 0 번
+               같은 값을 / 로 끝나는 base 아래 -> 넘김, 호스트 그대로
+       넘김    받아 오기가 302 를 받으면 502 · requests.get 에 allow_redirects=False
+       db     없는 경로의 sqlite -> 502 출처 이름
+변이   no root containment                  -> 4 failed, 20 passed
+       key spliced into the query           -> 1 failed, 23 passed
+       query bind not checked               -> 2 failed, 22 passed
+       db text not read again               -> 1 failed, 23 passed
+       second text refused past 5 (lead)    -> 1 failed, 23 passed
+       url always fetched                   -> 2 failed, 22 passed
+       password variable not checked        -> 1 failed, 23 passed
+       host not judged                      -> 6 failed, 18 passed
+       fetch follows redirects              -> 1 failed, 23 passed
+       redirect answer not named            -> 1 failed, 23 passed
+       db failure not named                 -> 1 failed, 23 passed
+```
+**새 함수 · 새 if 중 같은 일** — 새 함수 0. 새 if 셋(호스트 같음 · 3xx · db 오류) — 종류 가르기 0
+**스위트** (C:/wt-impl)
+```
+비PG 전체  6 failed, 7628 passed, 41 skipped, 173 deselected, 3 xfailed in 831.99s (0:13:51)
+   알려진 다섯 밖: test_inv_9_1_atomic_save_event_applies_physical_alter -> 그 파일만 다시 32 passed in 39.29s
+PG  6 failed, 167 passed, 7678 deselected in 381.66s (0:06:21) · 알려진 밖: 0
+   image_sources 를 import 하는 곳은 main.get_image 안(git grep, 시험 밖) — 설정 재적재 시험이 지나지 않는다.
+   같은 파일의 형제 시험(test_h3_…)은 cb4d5157d 때 서른 번씩 견줘 변경 유무 실패율이 같았다(파일 감시 타이밍)
+```
+**안 건드린 것** — https:// 로 시작하는 칸의 열린 넘김(총괄이 소유자께 여쭙는 중)
