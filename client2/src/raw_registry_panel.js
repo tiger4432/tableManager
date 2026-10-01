@@ -326,8 +326,8 @@ export class RawRegistryPanel {
     this.moreOpen = false;
     this.rawOpen = false;
     // The document whose unsaved text came from a paste, and what the last paste refused (both by
-    // document name) - the parts a re-render draws again (lead f382dacfb).
-    this._pasted = '';
+    // document name) - the parts a re-render draws again (lead f382dacfb). None is null: '' names nothing picked.
+    this._pasted = null;
     this._pasteRefused = null;
     // What the last Copy columns could not do, by document name (lead 72aa14785).
     this._copyFailed = null;
@@ -551,6 +551,9 @@ export class RawRegistryPanel {
     // 🔴 C-95-b. 「무엇을 편집하고 있나」에 답이 있나. 없으면 편집기를 «안 그립니다» — 빈 편집기는
     //    친절이 아니라 «이름 없는 문서 위의 살아 있는 저장 버튼»입니다.
     const picked = this.newMode || Boolean(view.name);
+    // Nothing picked: the word a registry that pastes declares is the reason every control it turns off
+    // gives - box, Copy, Save, raw (lead 27c1853b2, 74c48d695). Empty: the control is live.
+    const off = picked ? '' : ((spec.paste && spec.paste.pickFirst) || '');
     // 저장이 답하면 그 초안은 «끝»입니다 — 보관까지 지웁니다.
     if (opts.saved) this._forget();
     // ⚠️ 다른 문서가 열리면 «메모리에서만» 내려놓습니다. 보관은 그 이름으로 남아 있고 돌아오면
@@ -791,14 +794,15 @@ export class RawRegistryPanel {
       this.onSave({ [spec.nameKey]: named, base: view.base, raw: area.value, forNew: this.newMode,
         ...(this.newMode ? {} : { from: view.name }) });
     };
-    this._saveNow = (picked || !root) ? runSave : null;
-    if (save.addEventListener && this.onSave) save.addEventListener('click', runSave);
+    this._saveNow = (picked || !root) && !off ? runSave : null;
+    if (save.addEventListener && this.onSave && !off) save.addEventListener('click', runSave);
+    setDisabledReason(save, off);
     // 🔴 C-95-b. 편집기가 없으면 저장도 없습니다 — 아무것도 안 고른 화면의 저장 버튼은
     //    «이름 없는 빈 문서»를 보내러 가는 길입니다. 서버도 거절하지만, 누를 수 있는 버튼을
     //    두고 거절로 답하는 것은 화면이 답할 수 있는 것을 서버에 미룬 것입니다.
     if (picked || !root) head.appendChild(save);
     this.root.appendChild(head);
-    if (spec.paste) this._drawPaste(key, payload, picked);
+    if (spec.paste) this._drawPaste(key, payload, off);
 
     // 🔴 `base` 는 «화면에 보이는 값»이 아니라 저장이 되돌려 보낼 지문입니다.
     this.root.setAttribute('data-base', view.base);
@@ -1001,6 +1005,7 @@ export class RawRegistryPanel {
     }
     // 🔴 C-95-b. 아무것도 안 골랐으면 «문서 자체가 없습니다» — 원문 상자도 그 문서의 한 모습이라
     //    같이 빠집니다. 스켈레톤이 없는 등록부(표 등록)는 원문이 «유일한» 편집기라 그대로 섭니다.
+    setDisabledReason(area, off);
     if (picked || !root) this.root.appendChild(area);
 
     // 저장이 «됐다»는 것도 값으로. 몇 개가 됐고 백업이 어디인지는 서버가 말합니다.
@@ -1098,7 +1103,7 @@ export class RawRegistryPanel {
 
   _forget() {
     const was = this.draftOf;
-    this._pasted = '';
+    this._pasted = null;
     this.draft = null;
     this.draftOf = '';
     if (!this.store || !was) return;
@@ -1106,10 +1111,9 @@ export class RawRegistryPanel {
   }
 
   /** The paste box, what the last paste refused, and what a save of the pasted text would change.
-   *  Nothing picked: the same box and button, off, and nothing listens (lead 27c1853b2). */
-  _drawPaste(key, payload, on) {
+   *  `off` (render's reason): the same box and button, off, and nothing listens (lead 27c1853b2). */
+  _drawPaste(key, payload, off) {
     const spec = this.spec;
-    const off = on ? '' : spec.paste.pickFirst;
     const box = this.doc.createElement('div');
     box.className = `${spec.cls}-paste-box`;
     const sink = this.doc.createElement('textarea');
@@ -1119,7 +1123,7 @@ export class RawRegistryPanel {
     sink.setAttribute('aria-label', PASTE_HERE);
     sink.setAttribute('rows', '2');
     setDisabledReason(sink, off);
-    if (on && sink.addEventListener) {
+    if (!off && sink.addEventListener) {
       sink.addEventListener('paste', (event) => {
         const text = event && event.clipboardData ? event.clipboardData.getData('text/plain') : '';
         if (event && typeof event.preventDefault === 'function') event.preventDefault();
@@ -1133,7 +1137,7 @@ export class RawRegistryPanel {
     copy.setAttribute('type', 'button');
     copy.textContent = 'Copy columns';
     setDisabledReason(copy, off);
-    if (on && copy.addEventListener) copy.addEventListener('click', () => this._copy(key));
+    if (!off && copy.addEventListener) copy.addEventListener('click', () => this._copy(key));
     box.appendChild(copy);
     if (this._copyFailed && this._copyFailed.key === key) {
       box.appendChild(this._line(`${spec.cls}-copy-failed`, this._copyFailed.text));
@@ -1195,7 +1199,7 @@ export class RawRegistryPanel {
       this._pasteRefused = null;
       this._keep(key, JSON.stringify(next, null, 2));
       // After `_keep`: a paste equal to the server's document leaves no draft, and nothing to confirm.
-      this._pasted = this.draft !== null ? key : '';
+      this._pasted = this.draft !== null ? key : null;
     }
     this._drawAgain();
   }
