@@ -49,11 +49,11 @@
 > **직전 라운드 (2026-08-18 · Ledger V2 설정 가이드·Explorer 인수인계 정비)**
 > - **[Ledger V2 설정 가이드 소유권]**
 >   [guide/ONTOLOGY_LEDGER_SETUP](../guide/ONTOLOGY_LEDGER_SETUP.md)이 **단일 파일
->   `ledger_config.json`**(🔴 **[2026-08-21] `setup_version: 5`, 필수 section «셋»**(`vocabulary`·`entities`·`sources`) + 선택 `virtual_joins`
+>   `ledger_config.json`**(🆕 **[10-01 `0b59a2f30`] `setup_version: 6`**(~~5~~ — `prepare` 절 은퇴), 🔴 필수 section «셋»**(`vocabulary`·`entities`·`sources`) + 선택 `virtual_joins`
 >   — 🔴 **[2026-08-18] `tables`가 빠졌다**: 물리 스키마의 정본은
 >   `server/config/table_config.json` 하나이고, 원장 파일에 `tables`를 적으면
 >   `unknown_field`로 거절된다. 가이드 §5),
->   physical catalog/verified join, Profile binding approval, trusted Preparer/Mapper,
+>   physical catalog, ~~verified join~~, Profile binding approval, trusted ~~Preparer/~~Mapper(v6 — 준비기 · 읽을 때 조인 은퇴),
 >   source cursor 전순서, 비파괴 preview 절차를 소유한다. copy 기준은
 >   `server/config/ontology/ledger_config.json`, 이종 transfer 예제는
 >   `server/config/sample/ontology/transfer_explorer/ledger_config.json`이며, 구 flat ledger
