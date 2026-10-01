@@ -83,6 +83,28 @@ export function columnsFromPaste(rows, held) {
   return { next, refused: [] };
 }
 
+/**
+ * The table's columns as the sheet a paste reads (lead 72aa14785): row 1 names in display order and then
+ * the typed columns not shown, row 2 the document's type words as they are, row 3 `key` under the key.
+ * Pasted back untouched, it changes nothing but what was hidden. Pure.
+ * @param {object|null} held  the document as it stands
+ * @returns {string[][]}
+ */
+export function columnsToSheet(held) {
+  const doc = held && typeof held === 'object' && !Array.isArray(held) ? held : {};
+  const types = doc.column_types && typeof doc.column_types === 'object' ? doc.column_types : {};
+  const shown = Array.isArray(doc.display_columns) ? doc.display_columns.map(String) : [];
+  const columns = [...shown, ...Object.keys(types).filter((name) => !shown.includes(name))];
+  const rows = [columns, columns.map((name) => (types[name] === undefined ? '' : String(types[name])))];
+  const parts = Array.isArray(doc.composite_key_source) ? doc.composite_key_source.map(String) : [];
+  const single = isBlank(doc.business_key) ? '' : String(doc.business_key);
+  // 🔴 BOTH SPELLINGS cannot be written in three rows: one key reads back as business_key and more as
+  //    composite_key_source. So no key row, and a paste back keeps both (asked of the lead, 72aa14785).
+  const keys = single && parts.length ? [] : (parts.length ? parts : (single ? [single] : []));
+  if (keys.length) rows.push(columns.map((name) => (keys.includes(name) ? KEY_MARK : '')));
+  return rows;
+}
+
 const keyText = (d) => {
   const parts = Array.isArray(d.composite_key_source) ? d.composite_key_source : [];
   const single = isBlank(d.business_key) ? '' : String(d.business_key);
@@ -112,6 +134,11 @@ export function columnChanges(before, after) {
   for (const name of Object.keys(was)) {
     if (has(types, name) && was[name] !== types[name]) lines.push(`Type · ${name} · ${was[name]} → ${types[name]}`);
   }
+  // Columns that were typed but not shown and now are (lead 72aa14785: a copy pasted back shows them).
+  const shownBefore = Array.isArray(before.display_columns) ? before.display_columns : [];
+  const widened = (Array.isArray(now.display_columns) ? now.display_columns : [])
+    .filter((name) => !shownBefore.includes(name));
+  if (widened.length) lines.push(`Shown · + ${widened.join(' · ')}`);
   if (keyText(before) !== keyText(now)) lines.push(`Key · ${keyText(before)} → ${keyText(now)}`);
   if (identityOf(before) !== identityOf(now)) lines.push('Existing rows change identity');
   return lines;
@@ -128,7 +155,7 @@ export const TABLE_REGISTRY = Object.freeze({
   // 는 얕은 병합이라 없던 키를 만듭니다(이름이 비었을 때만 `table_name_required` 로 거절).
   addLabel: 'Add table',
   // 이 라우트는 스켈레톤을 «안 싣습니다» — 그래서 폼이 없고 화면은 오늘 그대로입니다.
-  paste: Object.freeze({ read: columnsFromPaste, changes: columnChanges }),
+  paste: Object.freeze({ read: columnsFromPaste, changes: columnChanges, copy: columnsToSheet }),
 });
 
 /**

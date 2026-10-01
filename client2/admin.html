@@ -492,6 +492,14 @@
     }
     .table-config-paste-change { color: var(--warning); }
     .table-config-paste-refused { color: var(--danger); }
+    /* Copy columns (lead 72aa14785): under the box; a failure is one line in the refusal colour. */
+    .table-config-copy { margin: var(--space-1) 0 0; }
+    .table-config-copy-failed {
+      margin: var(--space-1) 0 0;
+      font-family: var(--font-mono);
+      font-size: var(--fs-label);
+      color: var(--danger);
+    }
     /* 🔴 「도는가」는 «값»입니다. 서버의 낱말 그대로 두고, 꺼진 것만 눈에 띄게 합니다 —
        저장이 «장전»까지라는 사실을 운영자가 놓치면 없는 고장을 찾게 됩니다.
        ⛔ 문장은 없습니다. `enabled true` / `enabled false` / 거절 코드가 전부입니다.

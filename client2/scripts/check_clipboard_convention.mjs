@@ -10,7 +10,8 @@
 // this check does.
 //
 // THE SANCTIONED PATTERN for writing is the `copy` event's `e.clipboardData`
-// (`clipboard.js` for the grid, `map_editor.writeClipboardRich` for the wafer map).
+// (`clipboard.js` for the grid, `clipboard_write.writeClipboardRich` for a button - the wafer map's
+// copy and the table registry's Copy columns).
 //
 // EXIT CODES: 0 = clean, 1 = a new violation (or a listed exception that got fixed and
 // should be removed from the list below).
@@ -105,7 +106,7 @@ console.error(`
         e.preventDefault();
       };
 
-  See client2/src/map_editor.js  writeClipboardRich()   (button-triggered, synthetic event)
+  See client2/src/clipboard_write.js  writeClipboardRich()   (button-triggered, synthetic event)
       client2/src/clipboard.js   document 'copy' handler (user-triggered Ctrl+C)
 `);
 process.exit(1);

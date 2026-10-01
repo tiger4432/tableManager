@@ -13,6 +13,7 @@
 // Run: node client2/tests/table_config_panel_harness.mjs
 import { tableConfigView, TableConfigPanel } from '../src/table_config_panel.js';
 import { ABSENT } from '../src/absent.js';
+import { readFileSync } from 'node:fs';
 
 let pass = 0;
 const failures = [];
@@ -202,6 +203,8 @@ async function pasteSuite(m) {
   };
   const rawOf = (host) => { try { return JSON.parse(byClass(host, 'table-config-raw')[0].value); } catch (e) { return null; } };
   const lines = (host, cls) => byClass(host, cls).map((n) => n.textContent);
+  // A mutant may take a control away: then there is nothing to press, and the check that needs it says so.
+  const tap = (node) => { if (node && node._on && node._on.click) node._on.click(); };
 
   console.log('\n[6] a sheet read into columns');
   {
@@ -354,6 +357,79 @@ async function pasteSuite(m) {
       JSON.stringify({ refused9, asked9, sent9doc }));
   }
 
+  console.log('\n[10] the columns copied out as the sheet the box reads (lead 72aa14785)');
+  {
+    // 🔴 EVERY TABLE OF THE TRACKED SAMPLE, round tripped: copy -> the grid's writer and reader -> paste
+    //    back untouched. Nothing may change but columns that were typed and hidden coming into view.
+    const SAMPLE = JSON.parse(readFileSync(new URL('../../server/config/sample/table_config.json.sample',
+      import.meta.url), 'utf8'));
+    const known = ['string', 'number', 'datetime'];
+    const odd = [];
+    const wrong = [];
+    let tables = 0;
+    let shownTables = 0;
+    for (const [name, doc] of Object.entries(SAMPLE)) {
+      if (name.startsWith('__') || !doc || typeof doc !== 'object') continue;
+      tables += 1;
+      const text = m.serializeTsv(m.columnsToSheet(doc));
+      const got = m.columnsFromPaste(m.parseTsv(text, { trimCells: true, dropBlankLines: true }), doc);
+      const outside = Object.values(doc.column_types || {}).some((t) => !known.includes(String(t).toLowerCase()));
+      if (outside) {
+        if (!(got.next === null && got.refused.some((r) => r.includes('unknown type')))) wrong.push(`${name}: ${JSON.stringify(got.refused)}`);
+        odd.push(name);
+        continue;
+      }
+      const lines = got.next ? m.columnChanges(doc, got.next) : got.refused;
+      const hidden = Object.keys(doc.column_types || {}).filter((c) => !(doc.display_columns || []).includes(c));
+      const want = hidden.length ? [`Shown · + ${hidden.join(' · ')}`] : [];
+      if (hidden.length) shownTables += 1;
+      const prefix = (doc.display_columns || []).every((c, i) => got.next && got.next.display_columns[i] === c);
+      if (JSON.stringify(lines) !== JSON.stringify(want) || !prefix) wrong.push(`${name}: ${JSON.stringify(lines)}`);
+    }
+    say('E1 every sample table pasted back untouched changes nothing but its hidden columns coming into view',
+      tables > 0 && shownTables > 0 && wrong.length === 0, `${tables} tables, ${shownTables} with hidden columns, ${wrong.slice(0, 3).join(' | ')}`);
+    say('E2 ...and a table carrying a type word outside the three is refused on the way back, by name',
+      JSON.stringify(odd) === '["lot_slot_wafer"]', JSON.stringify(odd));
+    const keyless = m.columnsToSheet({ column_types: { a: 'string' }, display_columns: ['a'] });
+    say('E3 a table with no key copies two rows', keyless.length === 2, JSON.stringify(keyless));
+    const composite = m.columnsToSheet({ column_types: { a: 'string', b: 'number', c: 'string' },
+      display_columns: ['a', 'b', 'c'], composite_key_source: ['a', 'c'] });
+    const single = m.columnsToSheet({ column_types: { a: 'string', b: 'number' }, display_columns: ['a', 'b'],
+      business_key: 'b' });
+    say('E4 a key is marked under its columns: the composite\'s parts, or the one business key',
+      JSON.stringify(composite[2]) === '["key","","key"]' && JSON.stringify(single[2]) === '["","key"]',
+      JSON.stringify([composite, single]));
+    const both = m.columnsToSheet({ column_types: { k: 'string', a: 'string', b: 'string' }, display_columns: ['k', 'a', 'b'],
+      business_key: 'k', composite_key_source: ['a', 'b'] });
+    say('E5 both spellings: no key row, so a paste back keeps both', both.length === 2, JSON.stringify(both));
+
+    const copied = [];
+    const { host: hc, p: pc } = panel({ copyText: (text) => { copied.push(text); return true; } });
+    pc.render(PASTE_PAYLOAD);
+    pasteInto(hc, SHEET(['lot', 'qty'], ['string', 'number'], ['', 'key']));
+    tap(byClass(hc, 'table-config-copy')[0]);
+    say('E6 Copy columns copies the open document as it stands - the unsaved paste, through the grid\'s writer',
+      copied.length === 1 && copied[0] === m.serializeTsv([['lot', 'qty'], ['string', 'number'], ['', 'key']])
+        && byClass(hc, 'table-config-copy-failed').length === 0, JSON.stringify(copied));
+    const quoted = [];
+    const { host: hq, p: pq } = panel({ copyText: (text) => { quoted.push(text); return true; } });
+    pq.render({ ...PASTE_PAYLOAD, declaration: { column_types: { 'say "hi"': 'string' }, display_columns: ['say "hi"'] } });
+    tap(byClass(hq, 'table-config-copy')[0]);
+    say('E7 ...the text is the shared serializer\'s, quoting and all', quoted[0] === ['"say ""hi""', '"\nstring'].join(''), JSON.stringify(quoted));
+    const { host: hf, p: pf } = panel({ copyText: () => false });
+    pf.render(PASTE_PAYLOAD);
+    tap(byClass(hf, 'table-config-copy')[0]);
+    const { host: ht, p: pt } = panel({ copyText: () => { throw new Error('denied'); } });
+    pt.render(PASTE_PAYLOAD);
+    tap(byClass(ht, 'table-config-copy')[0]);
+    say('E8 a copy the clipboard did not take says so, with why',
+      JSON.stringify(lines(hf, 'table-config-copy-failed')) === '["Copy failed · the browser did not take it"]'
+        && JSON.stringify(lines(ht, 'table-config-copy-failed')) === '["Copy failed · denied"]');
+    say('E9 a shown column is said before the save', JSON.stringify(m.columnChanges(
+      { column_types: { a: 'string', b: 'string' }, display_columns: ['a'] },
+      { column_types: { a: 'string', b: 'string' }, display_columns: ['a', 'b'] })) === '["Shown · + b"]');
+  }
+
   console.log('\n[9] the chain rules screen is not touched');
   {
     const doc = makeDoc();
@@ -361,8 +437,8 @@ async function pasteSuite(m) {
     new m.Panel(host, { doc, storage: null }, m.CHAIN_RULE_REGISTRY).render(CHAIN_PAYLOAD);
     const { host: tableHost, p } = panel();
     p.render(PASTE_PAYLOAD);
-    const pasteNodes = (h) => walk(h).filter((n) => /-paste/.test(String(n.className || ''))).length;
-    say('D1 the chain registry draws no paste box (the table one does)',
+    const pasteNodes = (h) => walk(h).filter((n) => /-paste|-copy/.test(String(n.className || ''))).length;
+    say('D1 the chain registry draws no paste box and no copy (the table one does)',
       pasteNodes(host) === 0 && pasteNodes(tableHost) > 0, `${pasteNodes(host)} ${pasteNodes(tableHost)}`);
   }
   return { ran: names.length, names, failures: fails };
@@ -379,7 +455,9 @@ async function pasteSuite(m) {
   const registry = await import('../src/table_config_panel.js');
   const template = await import('../src/raw_registry_panel.js');
   const chain = await import('../src/chain_rule_panel.js');
-  const real = { ...registry, Panel: template.RawRegistryPanel, CHAIN_RULE_REGISTRY: chain.CHAIN_RULE_REGISTRY };
+  const tsv = await import('../src/tsv.js');
+  const real = { ...registry, Panel: template.RawRegistryPanel, CHAIN_RULE_REGISTRY: chain.CHAIN_RULE_REGISTRY,
+    parseTsv: tsv.parseTsv, serializeTsv: tsv.serializeTsv };
   const base = await pasteSuite(real);
   pass += base.ran - base.failures.length;
   failures.push(...base.failures);
@@ -405,7 +483,7 @@ async function pasteSuite(m) {
     R('P7', 'a key spelling is said as an identity change', 'B3',
       '  if (identityOf(before) !== identityOf(now)) lines.push(', '  if (keyText(before) !== keyText(now)) lines.push('),
     R('P8', 'the table registry declares no paste', 'C1',
-      '  paste: Object.freeze({ read: columnsFromPaste, changes: columnChanges }),\n', ''),
+      '  paste: Object.freeze({ read: columnsFromPaste, changes: columnChanges, copy: columnsToSheet }),\n', ''),
     T('P9', 'Save does not ask', 'C3',
       "        if (lines.length && !this.ask([...lines, 'Save?'].join('\\n'))) return;\n", ''),
     T('P10', 'every registry draws a paste box', 'D1',
@@ -418,6 +496,24 @@ async function pasteSuite(m) {
     T('P13', 'what a save changes is worked out against the draft', 'C2',
       '    const before = this.newMode ? null : (payload && payload.declaration);\n',
       "    const before = this.newMode ? null : JSON.parse(this.draft || 'null');\n"),
+    R('P17', 'the copy puts the hidden columns first', 'E1',
+      'const columns = [...shown, ...Object.keys(types).filter((name) => !shown.includes(name))];',
+      'const columns = [...Object.keys(types).filter((name) => !shown.includes(name)), ...shown];'),
+    R('P18', 'the copy leaves the type row empty', 'E1',
+      "columns.map((name) => (types[name] === undefined ? '' : String(types[name])))", "columns.map(() => '')"),
+    R('P19', 'the copy never writes the key row', 'E4',
+      '  if (keys.length) rows.push(', '  if (false) rows.push('),
+    R('P20', 'both spellings are marked as one key row', 'E5',
+      'const keys = single && parts.length ? [] :', 'const keys = single && parts.length ? [single, ...parts] :'),
+    R('P21', 'a column coming into view is not said', 'E9',
+      '  if (widened.length) lines.push(', '  if (false) lines.push('),
+    T('P22', 'the copy reads the server\'s document, not the one on screen', 'E6',
+      'this.copyText(serializeTsv(this.spec.paste.copy(this._held(key))))',
+      'this.copyText(serializeTsv(this.spec.paste.copy(this._payload && this._payload.declaration)))'),
+    T('P23', 'a failed copy says nothing', 'E8',
+      "    this._copyFailed = wrote ? null : { key, text: `Copy failed · ${why}` };\n", '    this._copyFailed = null;\n'),
+    T('P24', 'the copy writes its own text instead of the shared serializer', 'E7',
+      'this.copyText(serializeTsv(', "this.copyText(((rows) => rows.map((r) => r.join('\\t')).join('\\n'))("),
     R('P14', 'the empty-paste guard is gone (lead ba5e1eaad)', 'A7',
       "  if (!width) return { next: null, refused: ['Nothing pasted'] };\n", ''),
     R('P15', 'a type is written as typed, not as the server spells it', 'A8',
