@@ -68418,3 +68418,34 @@ PG  6 failed, 163 passed, 7617 deselected in 353.61s (0:05:53) · 실패 6 · �
 타입 낱말   image (②-가일 때)
 여쭐 것     db 연결의 비밀번호를 선언 파일에 둘지(database.json 처럼 gitignore), 환경변수 이름을 적는 칸으로 할지
 ```
+
+---
+
+## [10-01 밤] 노드 이름표 — 선언 키 전부 · 키 철자 (총괄 1d07f1dae) — 4bedb9c0a
+
+**무엇을 했나**
+```
+ledger_subgraph._entity_node   선언 키 순서가 있는 타입: label = 선언 키 «전부», 값은 map_overlay.canonical_key_value(원장 키 접기)
+                               — 수(JSON 수)는 number 로 접어 1 · 1.0 -> '1', 글자는 trim, 빈 값은 뺌
+                               선언에 없는 타입은 explorer._entity 의 오늘 모양 그대로(그 자리는 안 건드림)
+⚠️ 「한 자리(_entity)에서」 — 선언 순서를 아는 자리는 _entity_node 하나다. explorer._entity 는 선언을 안 읽는 것이 그 함수의 판정
+   (그 주석: 「두 번째 읽기는 한 사실에 두 답」) — 그래서 고친 자리는 _entity_node
+```
+**게이트**
+```
+시험  4 passed in 0.33s
+      두 다이가 키 하나만 달라도 이름표 둘 · 1 과 1.0 같은 이름표 · 7.5 그대로 · 글자 '1.0' 그대로 · 빈 키 빠짐 · 키 하나 타입 · 선언 없는 타입 오늘과 같음
+변이  only the first two values        -> 2 failed, 2 passed, 6 warnings in 0.87s · no key fold (str as stored)      -> 3 failed, 1 passed, 6 warnings in 0.66s
+박스  (읽기만, 웨이퍼 SYN-CX-BW-001 에서 라우트 기본 걷기, 옛 코드 HEAD 65b45e5b3 vs 새 코드)
+   옛: defect 노드 121 이름표 121 · die 노드 278 이름표 42 · wafer 노드 1 이름표 1 · 다이 예 「SYN-CX-BW-001 / 1.0」
+   새: defect 노드 121 이름표 121 · die 노드 278 이름표 278 · wafer 노드 1 이름표 1 · 다이 예 「SYN-CX-BW-001 / 1 / 10 / Wafer」
+   다이 아닌 노드 122 개 이름표 옛 == 새
+```
+**새 함수 · 새 if 중 같은 일** — 새 함수 0 · 새 if 0(수인지 가르는 조건식 하나 — 키 접기 함수에 넘길 타입). 같은 일 0: 접기는 원장이 쓰는 그 함수
+**스위트** (C:/wt-impl, 가 작업은 트리에서 뺀 채)
+```
+비PG 전체  6 failed, 7571 passed, 41 skipped, 169 deselected, 3 xfailed in 792.78s (0:13:12)
+   실패: test_like_metacharacters_are_literal · test_live_mapper_and_tracked_sample_are_byte_identical · test_live_mapper_matches_tracked_sample · test_the_repo_root_is_one_above_it · test_the_sample_is_written_in_the_one_format_both_writers_use
+PG  6 failed, 163 passed, 7621 deselected in 355.09s (0:05:55) · 알려진 밖: 0
+   test_value_suggest::test_like_metacharacters_are_literal - 전체에서만 실패(b1245bab9 착지 때와 같음), 단독 61 passed in 6.23s - 순서 의존, 이 변경과 닿지 않음
+```

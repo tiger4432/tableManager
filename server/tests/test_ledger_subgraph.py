@@ -305,11 +305,12 @@ def test_entity_label_takes_its_key_order_from_the_live_declaration():
         # Declaration read, and this type is not in it: the label stays what it was.
         ledger_subgraph._declaration_facts[fake] = ({}, {}, {})
         assert ledger_subgraph._entity_node("die", keys)["label"] == "1.0 / 10.0"
-        # Declared: the order is the declaration's and the material name leads.
+        # Declared: the order is the declaration's, the material name leads, and every key
+        # is named, a number spelled as the key is (총괄 1d07f1dae).
         ledger_subgraph._declaration_facts[fake] = (
             {"die": ["mat_id", "x", "y", "mat_type"]}, {}, {})
         assert (ledger_subgraph._entity_node("die", keys)["label"]
-                == "SYN-XFER-CORE-W07 / 1.0")
+                == "SYN-XFER-CORE-W07 / 1 / 10 / Wafer")
         # A type the declaration does not name is untouched, declared in v1 or not.
         assert ledger_subgraph._entity_node("Lot", {"lot": "A"})["label"] == "A"
         # Nothing else about the node moves.

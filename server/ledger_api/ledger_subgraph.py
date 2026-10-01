@@ -1010,11 +1010,19 @@ def _entity_node(entity_type, keys):
     node.update({"node_kind": "entity", "schema_kind": "entity_instance"})
     order = _declared_key_order(entity_type)
     if order:
-        # Same shape as the label `_entity` builds, on the declared order instead of the
-        # insertion order.  Types the declaration does not name keep the label they have.
-        values = [str(keys.get(name)) for name in order
-                  if keys.get(name) is not None and str(keys.get(name)) != ""]
-        node["label"] = " / ".join(values[:2]) or str(entity_type)
+        # 🔴 EVERY DECLARED KEY, IN THE DECLARED ORDER, SPELLED AS THE KEY IS (총괄 1d07f1dae).
+        # The first two values labelled 278 dies with 42 names on the box - {.. x 1, y 10} and
+        # {.. x 1, y 4} both 「SYN-CX-BW-001 / 1.0」. A number folds the way the ledger folds a
+        # key (`canonical_key_value`: 1 and 1.0 -> '1'); text is trimmed. Types the declaration
+        # does not name keep the label `_entity` gives them.
+        import map_overlay
+
+        values = [map_overlay.canonical_key_value(
+                      keys.get(name),
+                      "number" if isinstance(keys.get(name), (int, float))
+                      and not isinstance(keys.get(name), bool) else None)
+                  for name in order]
+        node["label"] = " / ".join(v for v in values if v is not None) or str(entity_type)
     return node
 
 
