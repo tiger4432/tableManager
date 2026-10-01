@@ -1,3 +1,11 @@
+> ## [15:23 디자인] 새 이름을 짓는 동안 고르개의 낱말은 등록부의 것 — 표 「(new table)」 · 체인 「(new rule)」 · 표지 값은 하나 그대로 — 총괄 0cb2ab958 · 4ebb668df
+
+- 고침: 고르개 선택지에 «값»과 «낱말»을 따로 둡니다. 새 이름 선택지의 값은 템플릿 상수 NEW_NAME 그대로(고르개가 「새 이름이면 아무것도 안 연다」고 알아보는 값), 화면 낱말은 등록부 선언 `newName`. 표 등록부 `(new table)` 하나가 새 낱말이고, 체인 등록부는 오늘 보이던 `(new rule)` 을 선언으로 적었습니다. 새 함수 0 · 새 if 0.
+- 게이트(table_config_panel 120): H1 표 Add → 고르개가 `(new table)`, 값은 그 표지 하나 / H2 체인 Add → `(new rule)` 그대로 / H3 그 선택지를 DOM 의 값으로 고르면 두 등록부 다 아무것도 안 엶. 변이 넷(표지 값을 그대로 보임 · 표 낱말 선언 빠짐 · 모든 등록부가 표 낱말 · 선택지 값을 낱말로) 전부 이름 댄 단언에서 빨강.
+- admin 경로(table_config_user_path 15): B 가 값과 함께 낱말 `(new table)` 까지 봅니다(단언 수 그대로). 체인은 chain_rule_form 108 · chain_rule_user_path 87 그대로 — chain_rule_form 의 고르개 변이 하나는 바뀐 줄을 따라 고쳐 적었고 여전히 빨강.
+- 화면(미리보기 · 표 읽기만 페이지 안 가짜 답 · 쓰기 막음 · 막힌 것 0): 「+ Add table」 → 고르개 `(new table)` · Cancel · 이름 칸 · 붙여넣기·Copy·Save 켜짐. Cancel 로 첫 화면에 돌아옴, 로컬 초안 0.
+- 하니스: 러너 156 중 154 초록 · 알려진 빨강 2 · 막힘 0 · 계약 12 개 어긋남 0
+
 > ## [14:45 디자인] 「+ Add table」 이 admin 화면에서 열림 — 표 onOpen 을 체인과 같은 모양으로 · admin 경로 하니스 — 총괄 a2c41fed3 · e4fb38eec
 
 - 고침: admin.js 의 표 등록부 onOpen 을 체인과 같은 모양 `(name, extra) => refreshTableConfig(name, extra || {})` 으로. Add 의 답이 forNew 를 들고 와서 템플릿 가드를 지납니다. 새 함수 0 · 새 if 0.
