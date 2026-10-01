@@ -62621,3 +62621,13 @@ _when_value 접기 — 지금 하지 않는다. 오늘 착지 전체를 소유�
                  (미리보기에 무엇을 적는지 보임 · --apply 로 씀). 이주 전 재기동 사이에는 이름 거절 + 「Next: run scripts/migrate_ledger_config_to_v6.py」
    게이트 추가    박스 규칙 사본에 v6 -> 그 규칙이 오늘과 같은 lot_slot_wafer 행(수 · 내용)
 ```
+
+```
+덧붙임 — 준비기 라운드 착지 전 물음 답 (총괄 10-01)
+   어휘        v6 은퇴 단계가 register@1.subjects 에서 active 소스가 register 로 묶지 않는 타입(박스 lot@1 · wafer@1)을 뺀다. GapTableMismatch 의 Next 에 어휘 쪽 길도
+   가이드      운영자를 안내하는 가이드(ONTOLOGY_LEDGER_SETUP 37곳 + 그 밖 가이드 9곳)는 «이번 커밋». CODE_MAP · LEDGER_SCHEMA_COMPLETENESS 는 문서 정비로 — 목록을 착지 보고에
+   verified_join_contract.py   제품 import 0 이면 그 시험과 같이 은퇴
+   _require_declared_source    은퇴 소스 거절의 path 를 채워 이름 거절로 — 강제로 밟는 시험 하나
+   source_preparation_incomplete   전선 코드 철자 그대로, 코드 옆 한 줄로 옛 이름 표시
+   타입 목록 시간  박스 wafer 0.02 -> 0.54 s 는 받지 않는다(요청 경로) — 목적어 쪽(entity_ref type · keys) 부분 색인을 schema 색인 목록 + 이주에, 다시 재서 박스 0.1 s 안 · 색인 크기 · 원자당 쓰기 비용
+```
