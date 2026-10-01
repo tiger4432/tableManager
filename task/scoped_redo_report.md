@@ -68303,3 +68303,118 @@ inspected 정방향: 올라온 술어(in_container)와 «다른» 술어라 가�
 응답  bundles: [{node, predicate, direction, far_type, count}]   묶음은 노드가 아님 · truncated 와 별개 칸
 ```
 **여쭐 것** 가 / 나 중 무엇으로 — 답 전에는 짓지 않음
+
+---
+
+## [10-01 밤] 걷기 제어 ㄴ — 펼침 묶음 (총괄 c9bf53033 ③ · 가) — b1245bab9
+
+**칸** (클라가 그대로 씀)
+```
+요청  fanout_limit=<정수 ≥1>             없으면 오늘과 같음
+      expand=<노드 id>|<술어>|<방향>      여러 번 가능. 모양이 틀리면 422 subgraph_request_invalid (메시지가 모양을 말함)
+응답  bundles: [{node, predicate, direction, far_type, count}]   fanout_limit 을 물었을 때만 키가 있음
+      predicate = 엣지의 predicate 철자 · direction = 묶음 노드 쪽에서 본 방향(outgoing: 그 노드가 주어)
+      count = 가드를 지난 걸음의 서로 다른 먼 노드 — 이미 그린 노드도 들어감(박스: 128 = 새 다이 127 + 웨이퍼로 올라온 다이 1)
+```
+**무엇을 지었나**
+```
+ledger_subgraph._walk   _expand_atom 을 둘로 — _step(판정: 양 끝 · 먼 쪽 · 가드, 상태를 안 바꿈) · _expand_atom(기록)
+                        깊이마다 가져온 원자의 _step 으로 (노드 · 술어 · 방향 · 먼 타입) 묶어 세고, fanout_limit 을 넘고 expand 에 없는 묶음만 안 펼침
+                        묶음 없을 때도 같은 한 길(over 가 빈 집합) — 갈래 없음
+trace_router            /subgraph 에 두 칸 · _evidence_graph 가 그대로 넘김 (직접 호출의 Query 잔재는 collect 와 같은 모양으로 거름)
+WALK.md                 새 절 + 「확장 쪽은 주석으로만」 문장을 실측대로 고침
+```
+**게이트**
+```
+시험 (in-memory, 다이 25 개 웨이퍼 · 두 술어)   9 passed in 0.41s
+   N=20 -> 묶음 둘(in_container · inspected) 수 25 · 다이 안 그림 · 그 묶음 expand -> 그 묶음만 사라지고 그린 수 = 수
+   N=25 -> 묶음 0 (「넘으면」) · 가드가 막는 걸음(inspected 로만 올라온 웨이퍼의 inspected 내려가기)은 수에 없음
+   칸 없음 -> bundles 키 없음, 상한 1000 으로 물은 답과 generated_at · bundles 말고 같음 · 묶음은 truncated 를 안 건드림 · 틀린 expand 셋 거절 · 라우트가 두 칸을 넘김
+변이 (전부 빨강, 복원 확인)
+   guard does not reach the count (back-step guard off)    -> 1 failed, 8 passed, 6 warnings in 0.74s
+   expand ignored                                          -> 1 failed, 8 passed, 6 warnings in 0.67s
+   limit reached rather than exceeded                      -> 1 failed, 8 passed, 6 warnings in 0.64s
+   bundles key always present                              -> 2 failed, 7 passed, 6 warnings in 0.77s
+   a bundled step still drawn                              -> 2 failed, 7 passed, 6 warnings in 0.77s
+   route drops expand                                      -> 1 failed, 8 passed, 6 warnings in 0.66s
+   baseline: 9 passed, 6 warnings in 0.36s
+박스 (읽기만 · 다이 씨앗 = ① 실측의 그것)
+   칸 없음: 옛 코드(HEAD 6ef7bf9f6) vs 새 코드 die seed nodes 400 edges 892 differ ['generated_at'] bundles key False
+   fanout_limit=20: 노드 15 · 엣지 25 · 원자 읽음 2748 · 잘림 None · 묶음 13
+      in_container incoming -> die 66
+      in_container incoming -> die 128
+      inspected outgoing -> die 128
+      in_container incoming -> die 128
+      inspected outgoing -> die 128
+      in_container incoming -> die 128
+      inspected outgoing -> die 128
+      in_container incoming -> die 128
+      inspected outgoing -> die 128
+      in_container incoming -> die 128
+      inspected outgoing -> die 128
+      in_container incoming -> die 128
+      inspected outgoing -> die 128
+   묶음 펼치기(앞 넷, 노드 상한 1000): in_container incoming 66 -> 그림 66 · in_container incoming 128 -> 그림 128 · inspected outgoing 128 -> 그림 128 · in_container incoming 128 -> 그림 128
+```
+**새 함수 · 새 if 중 기존 것과 같은 일**
+```
+새 함수   _step — _expand_atom 의 판정 반쪽을 «떼어 낸» 것. 펼치기와 묶음 세기가 같은 함수를 지남 -> 같은 일 0
+새 if     expand 모양 거절 1 · fan_key 있을 때 1 · over 조건 1 · 펼치기 건너뛰기 1 · 응답 키 1 · 라우트 거르기 2(collect 와 같은 모양)
+          같은 일 0. ⚠️ 그대로인 것: 「도로 내려가기」 규칙은 _reach 에 따로 적혀 있다(전부터) — ㄱ 이 한 함수로 접는 자리
+```
+**모르는 것**
+```
+원자 예산은 안 아낀다(가) — 박스 씨앗에서 묶음 때문에 원자를 덜 읽은 것은 «펼칠 프론티어가 줄어서»이지 묶음이 원자를 거른 것이 아니다
+truncated.claims 가 참인 걷기에서는 묶음의 수가 읽은 만큼이다(따로 표시 칸 없음 — 지시서 칸 그대로)
+```
+**스위트** (C:/wt-impl)
+```
+비PG 전체  6 failed, 7567 passed, 41 skipped, 169 deselected, 3 xfailed in 812.96s (0:13:32)
+   실패: test_like_metacharacters_are_literal · test_live_mapper_and_tracked_sample_are_byte_identical · test_live_mapper_matches_tracked_sample · test_the_repo_root_is_one_above_it · test_the_sample_is_written_in_the_one_format_both_writers_use
+PG  6 failed, 163 passed, 7617 deselected in 353.61s (0:05:53) · 실패 6 · 알려진 밖: 0
+   test_value_suggest::test_like_metacharacters_are_literal - 전체 실행에서만 실패, 그 파일 단독 61 passed in 6.23s - 순서 의존, 이 변경(걷기)과 닿지 않음
+```
+
+---
+
+## [10-01 밤] 이미지 참조 — 짓기 전 셋 (총괄 785b2ef54)
+
+**① 외부 DB 연결 기존 문 — «없다»**
+```
+센 곳   서버(시험 밖)의 연결 여는 자리 전수 — git grep create_engine( · psycopg2.connect( · pyodbc · oracledb · pymssql · sqlite3.connect(
+        카나리아 def get_db 1
+        -> 전부 제품 «자기» DB 하나: database.py · outbox_listener · directory_watcher 가 같은 URL
+           (env DATABASE_URL > config/database.json > 기본값 — paths._database_url_from_config 한 자리)
+        나머지는 진단 · 이전 스크립트가 받는 --url 인자뿐
+        설정 샘플: 접속 선언은 database.json.sample 하나(제품 DB). chain_rules 의 query 는 제품 DB 에 도는 SQL
+        문서: PRIMITIVES · CODE_MAP · SYSTEM_OVERVIEW 에 외부 DB 낱말 0
+따라서  db 출처는 연결을 «자기 선언»에 든다 — 아래 ③
+```
+**② 「이 값이 이미지 참조인가」를 서버가 답하는 한 자리 — 안 셋**
+```
+가  표 칼럼 타입 낱말 image (저장은 문자) — 자리 하나: table_config 의 column_types
+    그리드   /schema 가 column_types 를 이미 내준다 -> 새 칸 0. 저장 · 형변환은 number · datetime 말고 전부 문자라 코드 0
+             (models.init_dynamic_models: number -> Float, datetime -> DateTime, 그 밖 -> String)
+    걷기    노드 속성(register 수식어)은 바인딩이 «어느 칼럼»인지 안다 -> 속성 -> 칼럼 -> 그 표의 타입으로 «유도»해
+             응답에 attribute_cardinality 옆 칸 하나로(선언 둘째 자리 없음)
+    위험    한 속성을 두 소스가 다른 타입 칼럼에서 묶으면 답이 둘 — 그때 규칙이 필요(이름 대고 «모름»으로 둘지). 엣지 수식어도 같은 유도
+    크기    유도 함수 하나 + 응답 칸 하나 — 안 쟀다
+나  원장 선언의 속성 표시(엔티티 attributes 에 「이미지」)
+    위험    그리드는 table_config 를 읽으므로 «자리가 둘» — 둘이 갈라질 수 있다
+다  값 모양으로 서버가 판정(https://… 또는 <선언된 출처>:…)
+    위험    서버가 «추측»한다 — 웹 페이지 URL · 우연히 출처 이름으로 시작하는 글자를 이미지로 잘못 답함
+추천 가
+```
+**③ 칸 이름 안**
+```
+칸 값      글자 하나 — https://… 그대로, 또는 <출처 이름>:<경로 또는 키>
+선언 파일   server/config/image_sources.json (샘플 image_sources.json.sample) — 한 파일 · 한 곳
+           {"sources": {"<이름>": {"kind": "folder", "root": "<폴더>"}
+                        | {"kind": "db", "connection": "<URL>", "query": "SELECT … WHERE … = :key"}
+                        | {"kind": "url", "base": "https://…", "relay": false}}}
+           db: 바인딩은 :key 하나만 — 둘 이상이거나 없으면 이름 대고 거절. 첫 칼럼이 바이트면 그대로, 글자면 참조로 «한 번» 더 풀기
+           url: relay=false(기본) 는 브라우저에 그 주소를 넘김(리다이렉트), true 면 서버가 받아 넘김(https 페이지의 http 이미지)
+라우트      GET /api/image?ref=<칸 값>   읽기만 · 선언 밖 출처 · root 밖 경로 · 없는 파일을 이름 대고 거절(404 는 «무엇이» 없는지)
+타입 낱말   image (②-가일 때)
+여쭐 것     db 연결의 비밀번호를 선언 파일에 둘지(database.json 처럼 gitignore), 환경변수 이름을 적는 칸으로 할지
+```

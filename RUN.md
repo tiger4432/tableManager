@@ -1,5 +1,22 @@
 # 지금 돌리면 되는 것
 
+> ## [10-01 밤] **걷기 펼침 묶음 — `fanout_limit` · `expand` · `bundles` — 마이그레이션 «없음» · 재기동 «필요»**
+>
+> ```
+> 무엇이 바뀌나  걷기(GET /api/ledger/subgraph)에 요청 칸 둘: fanout_limit=<정수> · expand=<노드 id>|<술어>|<방향>
+>              한 노드에서 한 술어 · 한 방향으로 먼 노드가 fanout_limit 을 «넘으면» 그리지 않고 응답 bundles 에 한 줄
+>              칸이 없으면 오늘과 같음(bundles 키도 없음)
+> 돌릴 명령     재기동 — run_app.bat 전체 (라우트 인자)
+>              확인: GET /api/ledger/subgraph?id=<다이 id>&fanout_limit=20  -> 응답에 bundles
+> 뜻           bundles 의 count = 그 묶음을 펼치면 그려지는 먼 노드 수(이미 그린 노드 포함). 묶음은 노드가 아니고 truncated 와 별개
+>              이 박스 다이 씨앗: 칸 없으면 노드 400(잘림 nodes) · fanout_limit=20 이면 노드 15 · 묶음 13 · 잘림 None
+>              원자는 오늘처럼 읽는다 — 묶음은 «그리는 수»를 줄이지 원자 예산을 아끼지 않는다
+> 급할 때       요청에서 fanout_limit 를 빼면 오늘과 같음(서버 스위치 없음)
+> 재기동 뒤 로그 새 로그 줄 없음
+> ```
+
+---
+
 > ## [10-01 저녁] **원장 선언 v6 — prepare 절 은퇴 · lot_event 은퇴(계보는 체인) · 맵퍼 칼럼 이름은 규칙 칸 — 이주 «필요»(v6 --apply) · 재기동 «필요»**
 >
 > ```

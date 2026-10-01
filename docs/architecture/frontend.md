@@ -67,7 +67,7 @@
 | `map_editor.html` | `src/map_editor.js` | 웨이퍼 맵 에디터 | ✅ |
 | `map_editor2.html` | `src/map_editor2.js` + `src/map2/*` | 맵 정렬 화면. 레거시 에디터를 **대체하지 않고 «옆에»** 섭니다 | ✅ |
 | `rnd-board.html` | `src/rnd_board/*` | **R&D 진단 보드** — 조립식 부품의 격자 (§4) | ⛔ 링크 없음 · 직접 연다 |
-| `walk.html` | `src/walk/main.js` + `src/walk/*` | 걷기 화면 — 씨앗 + follow + 방향 | ✅ 🆕 10-01 `ce041066d` — 메인 그리드 nav 드롭다운의 「Walk」(Map aligner 옆, 같은 모양) |
+| `walk.html` | `src/walk/main.js` + `src/walk/*` | 걷기 화면 — 씨앗 + follow + 방향. 🆕 Table | Graph(10-01 `74974d6ed` — Graph 는 마킹의 걷기를 깊이별 그림으로, 점을 마킹해 Continue 로 이어 감) | ✅ 🆕 10-01 `ce041066d` — 메인 그리드 nav 드롭다운의 「Walk」(Map aligner 옆, 같은 모양) |
 | `sample.html` | `src/sample.js` | 기본 요소 견본(「Base elements」) | ⛔ 링크 없음 · 직접 연다 |
 
 ⚠️ **온톨로지 선언 작성 화면은 «자기 페이지가 없다»** — `admin.html` 안의 탭이다(`admin.js` 가 `ontology_explorer.js` 를 `import` 한다). 위 표에서 그 이름을 찾지 마십시오.
