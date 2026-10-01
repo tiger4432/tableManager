@@ -266,7 +266,8 @@ const FLOORS = new Map([
   // path and sentence rather than a second refusal vocabulary written here.
   // 35 -> 66 (lead f382dacfb, [6]-[9] and P1-P13): a sheet pasted into a table's columns - read by the
   // grid's reader, refused by name, what a save would change said and asked before it, chain untouched.
-  ['table_config_panel_harness.mjs', 66],
+  // 66 -> 72 (lead c6a8c069c, ba5e1eaad: the empty-paste guard measured (A7, C9, P14); type and key words in any case (A8, P15, P16)).
+  ['table_config_panel_harness.mjs', 72],
   // CHAIN RULE. The one this exists for beyond the table's two: a saved rule may not be
   // a RUNNING rule. The server writes a new rule with `enabled: false` because the loader
   // re-reads on reload, so saving would otherwise arm and fire at once - and if the screen
@@ -1376,7 +1377,8 @@ const FLOORS = new Map([
   // 92 -> 97 (B4a-e): from the list, only [+ add]'s own answer draws the new form.
   // 97 -> 103 (W1-W6, lead 460f202d3): after a save, loaded only when the worker holds that base.
   // 103 -> 104 (W7): the server's 「not seen」 is said, not drawn as a wait.
-  ['chain_rule_form_harness.mjs', 104],
+  // 104 -> 106 (lead c6a8c069c: the save says which rule it opened, none for a new one (C4b, D4)).
+  ['chain_rule_form_harness.mjs', 106],
   // 21 -> 23 (F1-F2, lead 5793b49fb): the line saying why it asks is the caller's when given.
   ['clipboard_type_modal_harness.mjs', 23],
   // New with lead 8771e43ac 1: the table's smart_paste order picks the format without asking; no
@@ -1390,7 +1392,8 @@ const FLOORS = new Map([
   ['paste_box_harness.mjs', 17],
   // 72 -> 75 (Q, lead 460f202d3): after a save, the page's queue seat hands the worker's base to the form.
   // 75 -> 76 (Q): a queue body with loop_seen_via null says 「not seen」.
-  ['chain_rule_user_path_harness.mjs', 76],
+  // 76 -> 83 (lead c6a8c069c: from on the wire, none for a new rule, a refused rename re-read by the name opened (E, G, R)).
+  ['chain_rule_user_path_harness.mjs', 83],
   // a value carrying markup does not come back out as markup, and the backlog has a ceiling
   ['escaping_harness.mjs', 56],
   // clicking a derived route fills follow, and a later-hop predicate stays visible

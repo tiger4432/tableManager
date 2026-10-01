@@ -273,6 +273,7 @@ function suite(M) {
   const sent = saves[saves.length - 1] || {};
   ok(sent.name === 'gamma', `C3 save carries the TYPED name -- got [${sent.name}]`);
   ok(sent.base === 'fp-1', 'C4 ... and the base fingerprint it was handed, unchanged');
+  ok(!('from' in sent), `C4b ... and no from - a new rule opened nothing (lead c6a8c069c) -- got [${sent.from}]`);
   let sentDoc = null;
   try { sentDoc = JSON.parse(sent.raw || 'null'); } catch (e) { sentDoc = null; }
   ok(sentDoc && typeof sentDoc === 'object' && !sentDoc.trigger_table,
@@ -333,6 +334,17 @@ function suite(M) {
   byCls(d.host, 'chain-rule-save')[0].dispatch('click', {});
   ok((saves2[saves2.length - 1] || {}).raw === area.value,
     'D3 save sends the raw text -- one document reaches the server, not two');
+  // 🔴 lead c6a8c069c (owner: a renamed chain rule became a copy). The save says which document the
+  //    editor opened, so the server renames that one in place.
+  const nameLeaf = walk(d.host).find((n) => n.attrs && n.attrs['data-value'] === 'name');
+  if (nameLeaf) {
+    nameLeaf.value = 'renamed';
+    nameLeaf.dispatch('change', {});
+  }
+  byCls(d.host, 'chain-rule-save')[0].dispatch('click', {});
+  const renamed = saves2[saves2.length - 1] || {};
+  ok(renamed.name === 'renamed' && renamed.from === 'alpha',
+    `D4 a renamed rule's save names the new name and, as from, the one the editor opened -- got ${renamed.name}/${renamed.from}`);
 
   // ── E: the refusal is marked where the server addressed it ───────────────────────
   const e = makePanel(M, SPEC);
@@ -905,6 +917,11 @@ suite(await import('../src/raw_registry_panel.js'));
 
 // -- mutants ---------------------------------------------------------------------------
 const DEFECTS = [
+  // lead c6a8c069c: a rename that does not say which rule it was is a copy on the server.
+  ['the save does not say which document it opened',
+    s => s.replace(',\n        ...(this.newMode ? {} : { from: view.name }) });', ' });')],
+  ['the save gives the new name as the one it opened',
+    s => s.replace('{ from: view.name }', '{ from: named }')],
   // C-111. 「셋 중 하나」의 «패널 쪽» 절반 — 고르기가 문서에 닿는 자리와 문법 낱말.
   // ⚠️ 렌더러 쪽 절반(고른 가지만 그린다 · 가지 키 밑에 그린다)은 여기서 변이를 못 겁니다:
   //    이 하니스는 한 번에 «모듈 하나»만 갈아 끼우고, 폼을 그리는 것은 `ontology_explorer_view.js`

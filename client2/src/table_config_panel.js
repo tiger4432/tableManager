@@ -36,6 +36,8 @@ function missingRelations(payload, opts) {
 export const COLUMN_TYPES = Object.freeze(['string', 'number', 'datetime']);
 /** The word row 3 puts under a business key column. */
 const KEY_MARK = 'key';
+/** A type or key cell as the server spells it: any case is read, lower case is written (lead c6a8c069c). */
+const word = (cell) => (isBlank(cell) ? '' : String(cell).toLowerCase());
 
 /**
  * Sheet rows -> this table's columns. Row 1 names, row 2 types, row 3 (when it marks anything)
@@ -60,20 +62,19 @@ export function columnsFromPaste(rows, held) {
     const at = `column ${i + 1} (${name})`;
     if (seen.has(name)) refused.push(`${at}: name repeated`);
     seen.add(name);
-    const type = isBlank(types[i]) ? '' : String(types[i]);
-    if (!COLUMN_TYPES.includes(type)) refused.push(`${at}: unknown type ${type || ABSENT}`);
-    if (keyRow && !isBlank(marks[i]) && marks[i] !== KEY_MARK) refused.push(`${at}: ${marks[i]} is not ${KEY_MARK}`);
+    if (!COLUMN_TYPES.includes(word(types[i]))) refused.push(`${at}: unknown type ${word(types[i]) ? types[i] : ABSENT}`);
+    if (keyRow && word(marks[i]) && word(marks[i]) !== KEY_MARK) refused.push(`${at}: ${marks[i]} is not ${KEY_MARK}`);
   }
   if (refused.length) return { next: null, refused };
   const base = held && typeof held === 'object' && !Array.isArray(held) ? held : {};
   const columns = names.slice(0, width).map(String);
   const next = {
     ...base,
-    column_types: Object.fromEntries(columns.map((name, i) => [name, String(types[i])])),
+    column_types: Object.fromEntries(columns.map((name, i) => [name, word(types[i])])),
     display_columns: columns,
   };
   if (keyRow) {
-    const keys = columns.filter((_, i) => marks[i] === KEY_MARK);
+    const keys = columns.filter((_, i) => word(marks[i]) === KEY_MARK);
     delete next.business_key;
     delete next.composite_key_source;
     if (keys.length === 1) [next.business_key] = keys;

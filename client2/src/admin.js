@@ -1161,14 +1161,16 @@ async function refreshChainRule(name, extra = {}) {
   if (count) count.textContent = view.count;
 }
 
-async function saveChainRule({ name, base, raw, forNew = false }) {
+async function saveChainRule({ name, base, raw, forNew = false, from }) {
   // 🔴 A REFUSED NEW RULE IS STILL NEW (order c93637fc5). Re-reading its unsaved name gets no
   //    grammar -- the route does not guess one for a name the file lacks (판정 542·543) -- and no
   //    grammar is no form: the owner was left with the text box alone. It re-reads the way
   //    [+ add] does, with no name, which answers the new-rule grammar (판정 516).
+  // 🔴 A REFUSED RENAME IS RE-READ BY THE NAME IT OPENED (lead c6a8c069c): the new name may be another
+  //    rule (`rule_name_taken`), and opening that one would put the typing out of sight.
   const refused = (refusal) => (forNew
     ? refreshChainRule('', { refusal, forNew: true })
-    : refreshChainRule(name, { refusal }));
+    : refreshChainRule(from, { refusal }));
   // 표 등록과 같은 길입니다 — 운영자가 쓴 것이 JSON 이 아니면 «서버까지 가기 전»에
   // 걸리고, `code` 는 «비웁니다». 서버의 코드를 다른 조건에 찍지 않습니다.
   let declaration = null;
@@ -1184,7 +1186,7 @@ async function saveChainRule({ name, base, raw, forNew = false }) {
     const res = await adminFetch(`${API_BASE}/admin/chain/rules/raw`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, declaration, base }),
+      body: JSON.stringify({ name, declaration, base, from }),
     });
     const answer = await res.json().catch(() => null);
     if (!res.ok) {
@@ -1311,7 +1313,7 @@ async function refreshTableConfig(table, extra = {}) {
   if (count) count.textContent = view.count;
 }
 
-async function saveTableConfig({ table, base, raw }) {
+async function saveTableConfig({ table, base, raw, from }) {
   // 운영자가 쓴 JSON 이 아닌 것은 «서버까지 가기 전»에 걸립니다. 다만 거절의
   // 모양은 서버와 «같은 셋»입니다 — 화면이 두 번째 거절 어휘를 만들지 않습니다.
   // 🔴 그래서 `code` 를 «비워» 보냅니다. 서버의 `declaration_not_serialisable` 은
@@ -1332,7 +1334,8 @@ async function saveTableConfig({ table, base, raw }) {
     const res = await adminFetch(`${API_BASE}/admin/tables/config/raw`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ table, declaration, base }),
+      // `from` rides as the chain rule's does (the template's one save); the table route does not read it yet.
+      body: JSON.stringify({ table, declaration, base, from }),
     });
     const answer = await res.json().catch(() => null);
     if (!res.ok) {
