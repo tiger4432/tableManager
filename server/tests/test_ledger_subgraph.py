@@ -303,12 +303,12 @@ def test_entity_label_takes_its_key_order_from_the_live_declaration():
     token = ledger_subgraph._WALK_DECLARATION.set(fake)
     try:
         # Declaration read, and this type is not in it: the label stays what it was.
-        ledger_subgraph._declaration_facts[fake] = ({}, {}, {})
+        ledger_subgraph._declaration_facts[fake] = ({}, {}, {}, {})
         assert ledger_subgraph._entity_node("die", keys)["label"] == "1.0 / 10.0"
         # Declared: the order is the declaration's, the material name leads, and every key
         # is named, a number spelled as the key is (총괄 1d07f1dae).
         ledger_subgraph._declaration_facts[fake] = (
-            {"die": ["mat_id", "x", "y", "mat_type"]}, {}, {})
+            {"die": ["mat_id", "x", "y", "mat_type"]}, {}, {}, {})
         assert (ledger_subgraph._entity_node("die", keys)["label"]
                 == "SYN-XFER-CORE-W07 / 1 / 10 / Wafer")
         # A type the declaration does not name is untouched, declared in v1 or not.
@@ -486,8 +486,11 @@ def test_reach_obeys_the_two_walk_rules_the_fetch_obeys():
              "void": {"id": "void", "type": "defect_kind"},
              "w": {"id": "w", "type": "wafer"},
              "sib": {"id": "sib", "type": "die"}}
+    # ⚠️ `d2` names the kind by ANOTHER predicate: since 총괄 739edd59c the predicate rule
+    # refuses `d1 -of_kind-> void <-of_kind- d2` in either orientation on its own, and this
+    # case is about the CLASS rule doing it.
     edges = [{"source": "d1", "target": "void", "predicate": "of_kind"},
-             {"source": "d2", "target": "void", "predicate": "of_kind"},
+             {"source": "d2", "target": "void", "predicate": "seen_as"},
              {"source": "w", "target": "d1", "predicate": "inspected"},
              {"source": "w", "target": "sib", "predicate": "inspected"}]
 

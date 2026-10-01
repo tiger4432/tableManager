@@ -800,7 +800,7 @@ def _read_entity_declaration():
     facts = _declaration_facts.get(path)
     if facts is not None:
         return facts
-    order, plural_by_type, confirmers = {}, {}, {}
+    order, plural_by_type, confirmers, inverses = {}, {}, {}, {}
     try:
         with open(path, "r", encoding="utf-8") as handle:
             document = json.load(handle) or {}
@@ -814,6 +814,11 @@ def _read_entity_declaration():
             if isinstance(confirmer, str) and confirmer.strip():
                 confirmers[str(predicate).rsplit("@", 1)[0]] = (
                     confirmer.rsplit("@", 1)[0], confirmer in vocabulary)
+            # The fourth: a declared inverse pair, read both ways (총괄 739edd59c).
+            other = (spec or {}).get("inverse_of")
+            if isinstance(other, str) and other in vocabulary:
+                mine, theirs = str(predicate).rsplit("@", 1)[0], other.rsplit("@", 1)[0]
+                inverses[mine], inverses[theirs] = theirs, mine
         for name, spec in declared.items():
             spec = spec or {}
             bare = str(name).rsplit("@", 1)[0]
@@ -828,9 +833,31 @@ def _read_entity_declaration():
                 if plural:
                     plural_by_type[bare] = plural
     except Exception:
-        order, plural_by_type, confirmers = {}, {}, {}
-    facts = _declaration_facts[path] = (order, plural_by_type, confirmers)
+        order, plural_by_type, confirmers, inverses = {}, {}, {}, {}
+    facts = _declaration_facts[path] = (order, plural_by_type, confirmers, inverses)
     return facts
+
+
+def _goes_back_down(arrived, predicate, direction, far_type):
+    """Does this step walk back down what reached the node, to a sibling? ONE function - the
+    walk's expansion and the ranking's reach both ask it (총괄 739edd59c · f3fb29a44).
+
+    `arrived` holds (predicate, direction, type it came from). Back down = the same predicate
+    the other way, or its declared inverse the same way (`in_container` die -> wafer, then
+    `inspected` wafer -> die is one link walked back), in both orientations - AND the far node
+    is the type the node was reached from (소유자 「2로」): `die -> wafer <- die'` is a
+    sibling and refused, `die -> seat <- wafer` reaches something else and is walked.
+
+    ⚠️ EVERY step that reached the node must be one this walks back, as `==` was before:
+    a node reached some other way as well was not used purely as a container.
+    """
+    if not arrived:
+        return False
+    bare, far = _bare(predicate), _bare(far_type)
+    inverse = _read_entity_declaration()[3].get(bare)
+    return all(_bare(source) == far
+               and ((came == bare and how != direction) or (came == inverse and how == direction))
+               for came, how, source in ((_bare(p), d, t) for p, d, t in arrived))
 
 
 def reset_declaration_cache():
@@ -1184,11 +1211,11 @@ def _reach(nodes, edges, seed_signs, static_types=()):
     # container and come back down into another seed's dies, exactly the two steps the
     # fetch refuses.
     #
-    # ⚠️ THE RULES ARE STATED TWICE, HERE AND IN `_expand_atom`, AND THAT IS A COST.  The
-    # alternative is one fetch PER SEED so that reaching is simply membership; that is the
-    # honest shape and it is four times the queries.  Kept as one merged graph plus these
-    # two guards until the query cost is measured. If a third rule ever appears, this is the
-    # duplication to remove first.
+    # 🔴 THE BACK-DOWN RULE IS ONE FUNCTION, `_goes_back_down`, asked with the steps that
+    # reached the node - as the fetch asks it (총괄 739edd59c ③). So this walks a seed level
+    # by level and gathers every step from the level before, not only the first. The name
+    # rule is still written here and in `_step`; one merged graph rather than one fetch PER
+    # SEED, until that query cost is measured.
     adjacency = {}
     for edge in edges:
         predicate = edge.get("predicate")
@@ -1207,28 +1234,34 @@ def _reach(nodes, edges, seed_signs, static_types=()):
         trail = parents.setdefault(seed, {})
         reached_kinds = kinds.setdefault(seed, set())
         seen = {seed}
-        queue = deque([(seed, None, None)])
-        while queue:
-            node, came_by, came_how = queue.popleft()
-            here_is_name = _kind(node) in static
-            for nxt, predicate, direction in adjacency.get(node) or ():
-                if nxt in seen:
-                    continue
-                there_is_name = _kind(nxt) in static
-                # a name may lead to another name and never back out into the world
-                if here_is_name and not there_is_name:
-                    continue
-                # and no step goes back down the predicate it just climbed -- between two
-                # names there is no container and so no siblings, so that pair is exempt
-                if (direction == "outgoing" and came_how == "incoming"
-                        and predicate == came_by
-                        and not (here_is_name and there_is_name)):
-                    continue
+        arrived = {seed: set()}
+        level = [seed]
+        while level:
+            reached = defaultdict(set)
+            for node in level:
+                here_is_name = _kind(node) in static
+                for nxt, predicate, direction in adjacency.get(node) or ():
+                    if nxt in seen:
+                        continue
+                    there_is_name = _kind(nxt) in static
+                    # a name may lead to another name and never back out into the world
+                    if here_is_name and not there_is_name:
+                        continue
+                    # and no step goes back down what reached this node -- between two
+                    # names there is no container and so no siblings, so that pair is exempt
+                    if (not (here_is_name and there_is_name)
+                            and _goes_back_down(arrived[node], predicate, direction,
+                                                _kind(nxt))):
+                        continue
+                    if nxt not in reached:
+                        trail[nxt] = (node, predicate)
+                    reached[nxt].add((predicate, direction, _kind(node)))
+            for nxt, steps in reached.items():
                 seen.add(nxt)
-                trail[nxt] = (node, predicate)
+                arrived[nxt] = steps
                 reached_kinds.add(_kind(nxt))
                 reach.setdefault(nxt, [0, 0])[slot] += 1
-                queue.append((nxt, predicate, direction))
+            level = list(reached)
     return reach, parents, kinds
 
 
@@ -1913,7 +1946,8 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
     #: node -> how many DEPARTURES were spent reaching it.  A second budget,
     #: not a second depth: `depths` still counts every step.
     dep_cost = {}
-    #: node -> the set of (predicate, "incoming"|"outgoing") steps that REACHED it.
+    #: node -> the set of (predicate, "incoming"|"outgoing", type it came from) steps that
+    #: REACHED it - what `_goes_back_down` reads.
     #: Seeds keep an empty set, which is why they need no exemption below.
     arrivals = defaultdict(set)
     edges = {}
@@ -2116,16 +2150,12 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
         # `die -[inspected backwards]-> wafer -[inspected forwards]-> die'`. The ten that
         # remain are the ones the transfer and bond chain carries, and those are the answer.
         #
-        # 🔴 THE TEST IS ON THE ADJACENT PAIR, AND ON THAT DIRECTION ONLY.
-        # `outgoing(P) -> incoming(P)` is the OPPOSITE shape -- "everything that points at
-        # what I point at", which is how one asks for the wafers that ran the same recipe --
-        # and it stays. So does `P -> Q -> P`: the owner's own path climbs `inspected` and
-        # `has_wafer`, travels a `slot_map` chain, and descends into a DIFFERENT wafer.
-        # MEASURED on the declaration: that path is one of 23 lot_slot routes this rule
-        # keeps, out of 95 it is offered.
-        #
-        # 🔴 `==` AND NOT `in`: a node reached some other way as well was not used purely as
-        # a container, so expanding it is not the sibling step this refuses.
+        # 🔴 THE TEST IS ON THE ADJACENT PAIR, IN BOTH ORIENTATIONS, AND THROUGH A DECLARED
+        # INVERSE (총괄 739edd59c) - `_goes_back_down`, the one function `_reach` asks too.
+        # ⚰️ `outgoing(P) -> incoming(P)` used to stay ("what points at what I point at"):
+        # MEASURED 10-01 that shape is the sibling fan-out `die -> wafer <- die'`, the one the
+        # owner asked to stop (scoped_redo_report, walk control ①). `P -> Q -> P` still stays: the owner's own path climbs `inspected` and `has_wafer`,
+        # travels a `slot_map` chain, and descends into a DIFFERENT wafer.
         near_id = far_id = step_dir = None
         if subject_near and not target_near:
             near_id, step_dir = subject_id, "outgoing"
@@ -2138,9 +2168,10 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
         # differential a person is asking for. MEASURED: seeded at `defect_kind{void}` with
         # follow=leads_to, refusing the step costs 2 of 21 nodes -- one of them another
         # defect kind the same cause produces.
-        if (step_dir == "outgoing"
+        if (step_dir is not None
                 and not (near_kind in static_types and far_kind in static_types)
-                and arrivals.get(near_id) == {(atom.predicate, "incoming")}):
+                and _goes_back_down(arrivals.get(near_id), atom.predicate, step_dir,
+                                    far_kind)):
             return None
         return {"subject_id": subject_id, "target": target,
                 "subject_near": subject_near, "target_near": target_near,
@@ -2160,7 +2191,7 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
         near_kind, far_kind = step["near_kind"], step["far_kind"]
         far_id, step_dir = step["far_id"], step["step_dir"]
         if far_id is not None and step_dir is not None:
-            arrivals[far_id].add((atom.predicate, step_dir))
+            arrivals[far_id].add((atom.predicate, step_dir, near_kind))
         # 🔴 A STEP BETWEEN TWO HAPPENINGS IS NOT A DEPARTURE - policy 1 of
         # `ONTOLOGY_GRAPH_SPEC` §7.5c, and the same machine `continues` was, keyed on the
         # ENTITY CLASS instead of on a per-predicate flag. Following one wafer through its

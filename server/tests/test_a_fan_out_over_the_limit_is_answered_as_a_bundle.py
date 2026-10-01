@@ -41,6 +41,9 @@ def _wafer_of_dies(seed_in_container=True):
         if k or seed_in_container:
             atoms.append(_atom(k + 1, "die", {"d": f"D{k}"}, "in_container", "wafer", {"w": "W"}))
         atoms.append(_atom(100 + k, "wafer", {"w": "W"}, "inspected", "die", {"d": f"D{k}"}))
+    # one die inspected TWICE - two atoms, one far node (총괄 b1245bab9 검증): a count of
+    # atoms would read DIES + 1 here, and the count is of distinct far nodes
+    atoms.append(_atom(999, "wafer", {"w": "W"}, "inspected", "die", {"d": "D3"}))
     return atoms
 
 

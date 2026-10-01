@@ -1349,6 +1349,46 @@ def _validate_class(item: Mapping[str, Any], path: str, problems: _Problems, cod
         problems.add(code, f"{path}.class", "must be one word or a list of words")
 
 
+def _validate_inverse(predicate_id: str, item: Mapping[str, Any], section: Mapping[str, Any],
+                      where: str, problems: _Problems) -> None:
+    """`inverse_of` names a declared predicate linking the same two entity types the other
+    way, and a predicate has ONE inverse. Each failure is refused by name."""
+    other = item["inverse_of"]
+    if not isinstance(other, str) or not other.strip():
+        problems.add("invalid_predicate", where, "must be the id of a declared predicate")
+        return
+    if other not in section:
+        problems.add("unknown_id", where,
+                     f"{other!r} is not a declared predicate; declared: {sorted(section)}")
+        return
+
+    def ends(spec):
+        obj = (spec or {}).get("object") or {}
+        far = (frozenset(map(str, obj.get("types") or ()))
+               if obj.get("kind") == "entity_ref" else None)
+        return frozenset(map(str, (spec or {}).get("subjects") or ())), far
+
+    mine, theirs = ends(item), ends(section[other])
+    if mine[1] is None or theirs[1] is None or mine != (theirs[1], theirs[0]):
+        problems.add("invalid_predicate", where,
+                     f"{other!r} must link the same two entity types the other way: "
+                     f"{predicate_id!r} is {sorted(mine[0])} -> {sorted(mine[1] or ())}, "
+                     f"{other!r} is {sorted(theirs[0])} -> {sorted(theirs[1] or ())}")
+        return
+
+    def partners(name):
+        found = {key for key, spec in section.items() if (spec or {}).get("inverse_of") == name}
+        own = (section.get(name) or {}).get("inverse_of")
+        return found | ({own} if isinstance(own, str) else set())
+
+    for name in (predicate_id, other):
+        if len(partners(name)) > 1:
+            problems.add("invalid_predicate", where,
+                         f"{name!r} would be the inverse of {sorted(partners(name))} - a "
+                         f"predicate has one inverse")
+            return
+
+
 def _validate_vocabulary(section: Mapping[str, Any], problems: _Problems) -> None:
     for predicate_id in sorted(section, key=str):
         path = f"bundle.vocabulary.{predicate_id}"
@@ -1366,7 +1406,7 @@ def _validate_vocabulary(section: Mapping[str, Any], problems: _Problems) -> Non
         #: word from quietly reading as a live rule.
         if not problems.exact(
                 item, path, required=("status", "subjects", "object"),
-                optional=("cardinality", "absence_confirmed_by", "class")):
+                optional=("cardinality", "absence_confirmed_by", "class", "inverse_of")):
             continue
         _validate_class(item, path, problems, "invalid_predicate")
         status = item.get("status")
@@ -1414,6 +1454,13 @@ def _validate_vocabulary(section: Mapping[str, Any], problems: _Problems) -> Non
                 problems.add("invalid_predicate", where,
                              f"{confirmer!r} is retired, so its presence cannot confirm "
                              f"anything about today's absences")
+        # 🔴 AN INVERSE IS A FACT THE OPERATOR WRITES (소유자 10-01 「가로해」, 총괄 739edd59c):
+        # two predicates saying one link from its two ends. Only the walk reads it - a step
+        # does not go back down either of the two - so it is validated here and compiled
+        # nowhere, as `absence_confirmed_by` is: no source's fingerprint moves, no atom.
+        # One side is enough; written on both, it must name the same pair.
+        if "inverse_of" in item:
+            _validate_inverse(predicate_id, item, section, f"{path}.inverse_of", problems)
         _nonblank_list(item.get("subjects"), f"{path}.subjects", problems)
         obj = item.get("object")
         if problems.exact(
