@@ -149,6 +149,15 @@ def evidence_subgraph(
         description=("Also draw facts that are no longer current - for a predicate declared "
                      "`cardinality: one`, a fact with a later fact for the same subject. "
                      "Default: the current fact only. Such edges carry `not_current`")),
+    fanout_limit: int | None = Query(
+        None, ge=1,
+        description=("Steps from one node along one predicate and direction to more than this "
+                     "many nodes are not drawn - the answer's `bundles` lists them with their "
+                     "count. Absent: everything is drawn")),
+    expand: list[str] | None = Query(
+        None,
+        description=("`<node id>|<predicate>|<direction>` of a bundle to draw past "
+                     "`fanout_limit`. May repeat")),
 ):
     """어느 증거 노드에서든 Entity–Event–Claim 서브그래프를 답한다."""
     # ⛔ FIRST, BEFORE ANY OTHER ARGUMENT IS TOUCHED. A direct call leaves FastAPI's
@@ -260,6 +269,9 @@ def evidence_subgraph(
             rows=(wants == "rows"),
             group_by=group_by, measure=measure,
             seed_type=seed_type, seed_limit=seed_limit,
+            # A direct call leaves FastAPI's `Query` sentinels here, as for `collect` above.
+            fanout_limit=fanout_limit if isinstance(fanout_limit, int) else None,
+            expand=list(expand) if isinstance(expand, (list, tuple)) else None,
             **interval)
         if wants == "rows":
             # \U0001f534 THE SAME WALK, READ SIDEWAYS. No second route and no second traversal
@@ -581,7 +593,8 @@ def _evidence_graph(connection, *, node_id, hops, direction, world=None,
         include_superseded: bool = False,
                     collect=None, since=None, until=None, rows=False,
                     group_by=None, measure=None,
-                    seed_type=None, seed_limit=ledger_subgraph.DEFAULT_SEED_LIMIT):
+                    seed_type=None, seed_limit=ledger_subgraph.DEFAULT_SEED_LIMIT,
+                    fanout_limit=None, expand=None):
     names = _world(world)
     if not trace.relation_exists(connection, names.read_relation):
         raise _relation_absent(names.read_relation)
@@ -614,6 +627,7 @@ def _evidence_graph(connection, *, node_id, hops, direction, world=None,
         group_by=group_by, measure=measure,
         # S-148-a. The description resolves INSIDE the walk, on the same connection.
         seed_type=seed_type, seed_limit=seed_limit,
+        fanout_limit=fanout_limit, expand=expand,
         # the world's own declaration, for the walk's key order and plural names
         declaration_path=names.declaration_path)
 

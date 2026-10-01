@@ -1761,7 +1761,7 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
              cardinalities=None, rows=False,
              entities=None, group_by=None, measure=None,
              seed_type=None, seed_limit=DEFAULT_SEED_LIMIT,
-             registration_follow=None):
+             registration_follow=None, fanout_limit=None, expand=None):
     """Return a typed evidence subgraph from any public node id, or from a signed SET.
 
     `seed_id` is one opaque id as before, or `{"positive": [ids], "negative": [ids]}`.
@@ -1798,6 +1798,15 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
     # enumerate subjects, against a connection the caller never opened.
     seed_type = seed_type if isinstance(seed_type, str) and seed_type.strip() else None
     seed_cut = 0
+    # `expand` names bundles to draw past `fanout_limit`: `<node id>|<predicate>|<direction>`.
+    expand_keys = set()
+    for item in expand or ():
+        parts = tuple(str(item).split("|"))
+        if len(parts) != 3 or not all(parts) or parts[2] not in ("outgoing", "incoming"):
+            raise ValueError(f"expand {item!r} is not <node id>|<predicate>|<direction> - "
+                             f"direction is outgoing or incoming, as a bundle says it")
+        expand_keys.add(parts)
+    bundles = []
     if seed_type:
         # ⛔ AN UNDECLARED TYPE IS REFUSED BEFORE THE QUERY RUNS, and by name. Asking the
         # ledger for a type the declaration never named returns zero rows, which would read
@@ -2005,8 +2014,14 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
             registrations.setdefault(subject_id, {}).setdefault(name, []).append(
                 (atom.occurred_at, value))
 
-    def _expand_atom(atom, depth, frontier_entities):
-        """Materialise one atom's far side and the single edge that carries it."""
+    def _step(atom, depth, frontier_entities):
+        """One atom's step: its two ends, which one is far, and `None` when a guard refuses it.
+
+        🔴 IT READS THE WALK'S STATE AND CHANGES NONE OF IT, so the fan-out count and the
+        expansion ask ONE function (총괄 c9bf53033 ㄴ): a bundle's `count` is the steps the
+        guards pass, which is what expanding that bundle draws. Within one batch it reads only
+        what earlier depths wrote - a frontier node is never a batch's far end.
+        """
         subject_id = explorer.entity_id(atom.subject_type, atom.subject_keys)
         # 🔴 EVERY REGISTRATION THIS WALK TOUCHED, RECORDED BEFORE ANY BRANCH (S-52 ③).
         # A registration says what its SUBJECT is - the entity's own values ride in the
@@ -2057,7 +2072,7 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
         elif target_near and not subject_near:
             near_kind, far_kind = _bare(payload.get("type")), _bare(atom.subject_type)
         if near_kind in static_types and far_kind and far_kind not in static_types:
-            return
+            return None
         # 🔴 THE KEY CONSTRAINT, ON THE FAR NODE ONLY. An edge whose predicate was named
         # with keys may only land on a node matching the SEED on those keys - so a hop out
         # to a container and back does not hand over the container's OTHER children.
@@ -2080,9 +2095,9 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
             # the walk already holds.
             if far_keys is not None:
                 if any(name not in far_keys for name in key_names):
-                    return
+                    return None
                 if tuple(_json_key(far_keys[name]) for name in key_names) not in allowed:
-                    return
+                    return None
         # 🔴 A STEP DOES NOT GO BACK DOWN THE PREDICATE IT JUST CLIMBED. Reaching a
         # container by walking one predicate BACKWARDS and then walking the same predicate
         # FORWARDS lands on the container's other children -- the seed's own siblings,
@@ -2118,7 +2133,24 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
         if (step_dir == "outgoing"
                 and not (near_kind in static_types and far_kind in static_types)
                 and arrivals.get(near_id) == {(atom.predicate, "incoming")}):
+            return None
+        return {"subject_id": subject_id, "target": target,
+                "subject_near": subject_near, "target_near": target_near,
+                "subject_depth": subject_depth, "target_depth": target_depth,
+                "near_kind": near_kind, "far_kind": far_kind,
+                "far_id": far_id, "step_dir": step_dir,
+                "fan_key": ((near_id, atom.predicate, step_dir, far_kind)
+                            if far_id is not None and step_dir is not None else None)}
+
+    def _expand_atom(atom, step):
+        """Materialise one atom's far side and the single edge that carries it."""
+        if step is None:
             return
+        subject_id, target = step["subject_id"], step["target"]
+        subject_near, target_near = step["subject_near"], step["target_near"]
+        subject_depth, target_depth = step["subject_depth"], step["target_depth"]
+        near_kind, far_kind = step["near_kind"], step["far_kind"]
+        far_id, step_dir = step["far_id"], step["step_dir"]
         if far_id is not None and step_dir is not None:
             arrivals[far_id].add((atom.predicate, step_dir))
         # 🔴 A STEP BETWEEN TWO HAPPENINGS IS NOT A DEPARTURE - policy 1 of
@@ -2230,8 +2262,24 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
             claims_scanned += len(batch); remaining -= len(batch); claim_cut |= cut
             fetched.extend(batch)
             frontier_entities = {item["id"] for item in group}
-            for atom in batch:
-                _expand_atom(atom, depth, frontier_entities)
+            steps = [(atom, _step(atom, depth, frontier_entities)) for atom in batch]
+            # 🔴 A FAN-OUT OVER `fanout_limit` IS ANSWERED, NOT DRAWN (총괄 c9bf53033 ㄴ).
+            # Distinct far nodes per (node, predicate, direction, far type), over the steps the
+            # guards pass - so `count` is what expanding the bundle draws. A bundle is not a
+            # node: it rides in `bundles`, beside `truncated` and never inside it.
+            fanned = defaultdict(set)
+            for atom, step in steps:
+                if step is not None and step["fan_key"] is not None:
+                    fanned[step["fan_key"]].add(step["far_id"])
+            over = {key for key, far in fanned.items()
+                    if fanout_limit is not None and len(far) > fanout_limit
+                    and key[:3] not in expand_keys}
+            bundles.extend({"node": key[0], "predicate": key[1], "direction": key[2],
+                            "far_type": key[3], "count": len(fanned[key])}
+                           for key in sorted(over, key=str))
+            for atom, step in steps:
+                if step is None or step["fan_key"] not in over:
+                    _expand_atom(atom, step)
 
         # 🔴 FOUR BRANCHES LEFT HERE ON 2026-08-28: finding summaries, finding
         # points, quantities and source events, plus the enrich-action tail. Each expanded a
@@ -2455,6 +2503,8 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
                else {"interval_excluded": lookup.interval_excluded}),
         },
         "message": None if found else "No ledger evidence is connected to the selected node",
+        # ㄴ - present only when `fanout_limit` was asked, as `groups` is for `group_by`.
+        **({} if fanout_limit is None else {"bundles": bundles}),
     }
     if rows:
         # Folded at the END, from this walk's own structures (S-183). No second route, no
