@@ -14,6 +14,8 @@
 | Link type (`Wafer → Die: inspected`) | 술어 `inspected@1` | `vocabulary` (`subjects` · `object.kind: entity_ref` · `types`) |
 | Link property (링크에 붙는 값) | 술어의 `qualifiers` | `vocabulary.<p>.object.qualifiers` + 문장 bind 의 같은 이름 |
 | Backing dataset | 소스 `relation` + `read` | `sources.<s>` |
+
+> 🆕 **키 값의 철자**(10-01 `7350027a6`) — 엔티티 키는 그 컬럼의 `table_config` 선언 타입으로 접혀서 같은 것이 한 키가 됩니다. `number` 칸이면 `01` · `1` · ` 1 ` · `1.0` 이 모두 `1`(정수가 아닌 수는 그대로 `7.5`), 그 밖의 칸은 앞뒤 공백만 뗍니다. 빈 값은 키가 없는 것입니다. 상수로 적은 키는 공백만 뗍니다. 코드 맵퍼가 스스로 지은 키는 이 접기를 안 지납니다.
 | Object materialization | 등록 원자 (`register@1`, 목적어 없음 — 속성은 그 원자의 qualifiers) | 소스가 속성을 매기면 «암묵 등록» |
 | Link materialization | 사실 원자 (주어 → 술어 → 목적어) | 문장 `mappings` |
 | Edits layer (사용자 편집) | 표 쪽 `cell_sources` 사용자 층 (원장은 «쓰기 없음») | — |
