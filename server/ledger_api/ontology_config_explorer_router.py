@@ -76,6 +76,17 @@ def _refusal(exc: ConfigExplorerError | ColumnStatsError) -> HTTPException:
     return HTTPException(status_code=status, detail=exc.to_mapping())
 
 
+def _world_after_write(world) -> None:
+    """After a door writes a world's declaration - bootstrap, activate, delete - its schema and
+    walk view are made again (총괄 c23b02aeb ②): without it a branch whose change moves no
+    source has no view and its walk answers 503. The default has neither, so nothing happens."""
+    from database.database import engine
+    from ledger import backfill, schema
+
+    schema.ensure_world(engine, schema.world_names(world))
+    backfill.refresh_world_view(engine, world)
+
+
 @router.get("/view", dependencies=[Depends(require_admin_token)])
 def explorer_view(
     selection: str | None = Query(default=None),
@@ -252,13 +263,7 @@ def bootstrap_config(world: str | None = Query(default=None)):
         made = _service_for(world).bootstrap_config()
     except ConfigExplorerError as exc:
         raise _refusal(exc) from exc
-    # The branch's walk view is made again where a branch is made or saved (총괄 c23b02aeb ②):
-    # without it a branch whose change moves no source has no view and its walk answers 503.
-    from database.database import engine
-    from ledger import backfill, schema
-
-    schema.ensure_world(engine, schema.world_names(world))
-    backfill.refresh_world_view(engine, world)
+    _world_after_write(world)
     return made
 
 
@@ -344,13 +349,7 @@ def delete_declaration(
             reload_callback=lambda: system_reload.reload_system_configs(db))
     except ConfigExplorerError as exc:
         raise _refusal(exc) from exc
-    # The branch's walk view is made again where a branch is made or saved (총괄 c23b02aeb ②):
-    # without it a branch whose change moves no source has no view and its walk answers 503.
-    from database.database import engine
-    from ledger import backfill, schema
-
-    schema.ensure_world(engine, schema.world_names(world))
-    backfill.refresh_world_view(engine, world)
+    _world_after_write(world)
     return deleted
 
 
@@ -371,11 +370,5 @@ def activate_draft(
         )
     except ConfigExplorerError as exc:
         raise _refusal(exc) from exc
-    # The branch's walk view is made again where a branch is made or saved (총괄 c23b02aeb ②):
-    # without it a branch whose change moves no source has no view and its walk answers 503.
-    from database.database import engine
-    from ledger import backfill, schema
-
-    schema.ensure_world(engine, schema.world_names(world))
-    backfill.refresh_world_view(engine, world)
+    _world_after_write(world)
     return activated
