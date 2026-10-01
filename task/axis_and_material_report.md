@@ -1,3 +1,27 @@
+> ## [12:27 디자인] 표 선언 «Copy columns» — 지금 컬럼을 붙여넣기의 세 줄 모양으로, 넓어지는 display_columns 는 저장 전 «Shown» 줄 — 총괄 72aa14785 · 927b73a6e
+
+**열린 물음 하나 (메시지로 먼저 여쭘)**: 키 철자를 둘 다 든 표(business_key + composite_key_source) — sample 40 중 17. 세 줄로는 적을 수가 없어서(key 하나 → business_key, 둘 이상 → composite) 지금은 «3 줄을 안 씁니다». 되붙여도 두 철자가 그대로라 바뀌는 줄이 0 입니다. 지시 문장대로 둘 다 key 로 적으면 dt_log 는 composite 4 개가 되어 신원이 바뀌고, 컴포짓 부분에만 적으면 business_key 가 빠집니다(Key 줄). 답에 따라 한 줄과 E5 를 바꿉니다.
+
+**한 것**
+- 등록부 선언: paste 칸 옆에 순수 함수 `columnsToSheet`(문서 → 줄들). 1 줄 이름 = display_columns 순서, 그 뒤에 column_types 에만 있는 것 · 2 줄 문서의 타입 낱말 그대로 · 3 줄 key — 컴포짓이면 그 부분, 아니면 business_key, 키가 없으면 3 줄 없음.
+- 템플릿: 붙여넣는 칸 밑에 «Copy columns» 하나. 원천은 붙여넣기와 «같은 함수»(_held — 초안이 읽히면 초안, 아니면 서버 문서)로 접었습니다. 글은 tsv.js 의 serializeTsv.
+- 저장 전 줄(columnChanges)에 `Shown · + <컬럼>` — 보이던 목록에 없던 컬럼이 보이게 되면.
+- 클립보드 쓰기: 운영(LAN 평문 HTTP)에는 navigator.clipboard 가 없고 check_clipboard_convention 이 쓰기 경로의 그것을 막습니다. 그래서 map_editor 의 writeClipboardRich(copy 이벤트)를 공용 모듈 clipboard_write.js 로 옮기고 둘 다 그것을 부릅니다. map_editor 하니스 셋이 그 이름을 갈아 끼우는 자리라 map_editor 에는 한 줄짜리 부르기가 남습니다. HTML 이 없으면 text/html 을 안 싣습니다(빈 HTML 을 엑셀이 먼저 읽음) — map_editor 는 늘 HTML 을 넘기니 거동 그대로. 로그 머리 [map] → [clipboard].
+- 실패: 쓰기가 안 받히면 `Copy failed · the browser did not take it`, 던지면 그 문장으로 한 줄.
+
+**게이트** (table_config 하니스 [10], 89)
+- E1 커밋된 sample 의 표 «마다» 복사 → 그리드의 쓰기·읽기 → 손대지 않고 붙여넣기: 안 보이던 컬럼이 있는 표는 `Shown · + …` 한 줄만, 나머지는 0, 보이던 순서는 앞에 그대로. E2 그 밖의 타입 낱말을 든 표(lot_slot_wafer · TEXT)는 되붙일 때 이름 대어 거절 — 전제 ② 그대로.
+- E3 키 없는 표 → 두 줄 · E4 컴포짓은 그 부분에, 하나는 business_key 에 key · E5 두 철자 → 3 줄 없음 · E6 초안이 있으면 초안을 복사 · E7 글은 공용 직렬화(따옴표까지) · E8 실패 두 문장 · E9 Shown 줄 · D1 체인 규칙 화면에 붙여넣기 · 복사 둘 다 0.
+- 변이 P17~P24 전부 빨강(숨은 컬럼 앞으로 · 타입 줄 비움 · key 줄 없음 · 두 철자를 한 key 줄로 · Shown 안 말함 · 화면 대신 서버 문서 복사 · 실패 침묵 · 사적인 join). P8 은 Copy 단추가 없을 때 누르지 않게 고쳐 다시 «잡힘».
+- map_editor 하니스 셋(company_roundtrip 84 · coord_table_paste 52 · copy_header_count 151) · check_clipboard_convention 그대로 초록 · 러너 154 중 152 초록 · 알려진 빨강 2 · 막힘 0 · 계약 12 개 어긋남 0
+
+**화면** (미리보기 · 표 읽기만 페이지 안 가짜 · 쓰기 막음 0): 진짜 클릭으로 Copy columns → 공용 쓰기(copy 이벤트)가 세 줄을 실었고 실패 줄 0. 앞 미리보기에서 남은 붙여넣기 초안이 로컬 저장소에서 «restored» 로 떠 있었는데 그것이 복사됐습니다(초안이 원천 — E6 그대로). Revert 뒤에는 서버 문서(보이던 둘 + 숨은 hidden_at, key 는 lot)가 복사됐고, 그것을 되붙이니 `Shown · + hidden_at` 한 줄만 섰습니다. 남은 초안은 지웠습니다.
+
+**새 함수 · 새 if 중 기존 것과 같은 일**
+- 새 함수: columnsToSheet(지시) · 템플릿 _copy · _held(붙여넣기 안에 있던 「지금 문서」 판정을 꺼내 붙여넣기와 복사가 같이 부름) · _drawAgain(붙여넣기와 복사가 같이 쓰는 다시 그리기 한 줄을 접음).
+- 옮김: writeClipboardRich 는 «새로 짓지 않고» 옮김 — 같은 일을 하는 함수 0 → 1 그대로.
+- 새 if: 키 줄의 세 갈래(두 철자 · 컴포짓 · 하나) · Shown 줄 · 복사 실패 · 쓰기의 「HTML 이 있으면」.
+
 > ## [12:07 디자인] 붙여넣기 답 셋 · 체인 규칙 이름 바꾸기의 클라 몫(from) — 총괄 c6a8c069c · ba5e1eaad · 666b3568d
 
 **① 빈 붙여넣기 단언** (총괄 변이가 초록이던 자리)
