@@ -608,24 +608,8 @@ class SqlEvidenceLookup:
         """, params)
         self.interval_excluded += int(rows[0][0]) if rows else 0
 
-    def claims_by_ids(self, claims, limit):
-        if not claims or limit <= 0:
-            return [], False
-        frontier = [{"id": item[0], "occurred_at": _instant(item[1])}
-                    for item in claims]
-        rows = self._execute(f"""
-            WITH frontier AS (
-                SELECT id::uuid AS id, occurred_at
-                FROM jsonb_to_recordset(CAST(%(frontier)s AS jsonb))
-                     AS item(id text, occurred_at timestamptz)
-            )
-            SELECT {EVIDENCE_COLUMNS} FROM frontier f
-            JOIN {self.relation} e ON e.id = f.id AND e.occurred_at = f.occurred_at
-            ORDER BY e.occurred_at DESC, e.id DESC
-            LIMIT %(fetch)s
-        """, {"frontier": _canonical(frontier), "fetch": int(limit) + 1})
-        return self._bounded(rows, limit)
-
+    # ⚰️ `claims_by_ids` (and the in-memory one) - no caller, and it fetched past
+    # `_not_current_clause` (총괄 10-01).
 
     def subjects_of_type(self, entity_type, limit):
         """Every REGISTERED subject of one declared type — a described seed set (S-148-a).
@@ -765,13 +749,6 @@ class InMemoryEvidenceLookup:
                    and other.occurred_at > atom.occurred_at
                    and (self.until is None or other.occurred_at < self.until)
                    for other in self.atoms)
-
-    def claims_by_ids(self, claims, limit):
-        wanted = {(str(item[0]), _instant(item[1])) for item in claims}
-        return self._result([
-            atom for atom in self.atoms
-            if (atom.id, _instant(atom.occurred_at)) in wanted
-        ], limit)
 
 
 #: {declaration file: (key order per entity type, plural attributes per bare entity type
