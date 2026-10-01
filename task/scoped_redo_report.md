@@ -67626,3 +67626,38 @@ a batch per row + same value again (t4 w3) 다 model                      w3    
 잰 것 하나 더  지금 운영에서 쓰는 쪽 one 길은 한 번도 안 돈다 — 검증기가 술어 키에 버전을 요구해서(버전 없는 키 -> invalid_versioned_id),
              선언 키는 늘 @N 이고 원자 술어는 늘 버전 없음. 그래서 거절 0 · 표지 0 은 «데이터가 깨끗해서»가 아니라 «길이 닫혀서»
 **그동안 지은 것(착지 안 함)** 이름 고침 + 제품 길 시험(번역 -> 가게 -> 걷기) — 패치로 보관. 제품 길 시험이 위 ValueError 를 잡음
+
+## [구현자 -> 총괄] c23b02aeb ③ 착지 8d9228cf1 — 가지 번역은 가지가 바꾼 소스만
+
+```
+바꾼 것   schema.speaks_for(names) — 가지면 changed_sources, 기본이면 None(표를 읽는 소스 전부). 세상 좌석(schema.py) 안에 둠 —
+         backfill 에 `if names.base_root` 를 먼저 적었더니 test_no_seat_outside_the_world_seat_asks_which_world_it_is_in 이 잡음
+         followup.drain_once(sources=) 가 받은 소스만 번역 · backfill._run_via_events 가 한 번 묻고 넘김
+```
+**박스 전후** (임시 가지 · 새 엔티티 + 새 술어 + wafer_process 를 읽는 새 소스 · 한 조각 5000 행 · 씨앗 웨이퍼 걷기)
+```
+전  가지 원장 wafer_process_recipe processed_with 5000 · wafer_process_step at_step 5000
+    씨앗 웨이퍼 processed_with 기본 10 -> 가지 8 · at_step 가지 1978 · 기본 원장 행 2261723 -> 2261723
+후  가지 원장 wafer_process_step at_step 5000
+    씨앗 웨이퍼 processed_with 기본 10 -> 가지 10 · at_step 가지 1978 · 기본 원장 행 2261723 -> 2261723
+```
+**게이트** (PG, test_a_ledger_branch_speaks_only_for_what_it_changed — 새 소스 하나 더한 가지 번역 -> 가지 원장엔 그 소스만 · wafer_process_recipe 는 기본 다리)
+```
+B1 the drain keeps every source of the table       빨강  (1 failed, 5 passed, 7784 deselected)
+B2 backfill hands the branch no source list        빨강  (1 failed, 5 passed, 7784 deselected)
+B3 the world seat says every source for a branch   빨강  (1 failed, 5 passed, 7784 deselected)
+```
+```
+그대로인 것  이미 곁 소스가 들어간 가지는 그대로 — 뷰가 «가지가 쓴 소스»를 계속 빼므로(ensure_view). 그 가지를 지우고 다시 번역하면 빠짐(코드로 읽음, 안 잼)
+            가지에서 «안 바꾼» 소스를 --source 로 부르면 행은 읽고 아무것도 안 씀(안 잼 — 거절로 할지는 안 정함)
+```
+**새 함수 · 새 if 중 기존 것과 같은 일** (cdeb5ea10)
+```
+새 함수   schema.speaks_for — 세상 좌석 안의 한 줄. changed_sources 를 부르고, 기본/가지 가름은 좌석 안에서만
+새 if     drain_once 의 목록 거르기 한 줄(sources 가 없으면 전부) · speaks_for 의 가지/기본 가름(좌석 안)
+```
+**스위트** (C:/wt-impl, 착지 트리)
+```
+전체  5 failed, 7585 passed, 197 skipped, 3 xfailed in 845.61s (0:14:05) — 실패 5 개, 알려진 다섯과 같음: True
+PG    7 failed, 151 passed, 7632 deselected, 55 warnings in 309.00s (0:05:08) — 실패 이름이 알려진 일곱과 같음: True
+```
