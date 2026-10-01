@@ -1,5 +1,20 @@
 # 지금 돌리면 되는 것
 
+> ## [10-01 밤] **글에서 원인 -> 현상 후보 — server/utils/text_links.py — 이주 «불필요» · 재기동 «불필요»(새 파일)**
+>
+> ```
+> 무엇이 바뀌나  소유자 @mapper 가 import 해 쓰는 순수 함수 둘 — find_links(text, names, links) · unknown_words(texts, names, links). 다른 코드 무변
+> 가이드        docs/guide/TEXT_LINKS_GUIDE.md — 표 넷 · 짝짓는 규칙 두 줄 · 맵퍼 예 · 규칙 선언(allow_retraction) · 사전 고친 뒤 다시 돌리기 · 남는 것 둘
+> import 한 줄  from utils import text_links
+> 뜻           글에 말이 있는데 후보 0 -> 연결 말 사전에 cause 행(side 포함)이 없거나, 그 side 쪽에 노드가 없다. unknown_words 로 사전이 못 덮은 낱말을 본다
+>              연결 말 행의 meaning 이 다섯 밖이거나 cause 행에 side 가 없으면 그 행 번호를 대고 ValueError -> 그 규칙의 실패 로그로 보인다
+>              속도(박스, 합성 naming phrases 1000 · link phrases 7 · texts 1000 x 20 sentences (seeded synthetic)): 글 하나 9.7 ms 중 사전 짓기 8.3 ms — 글 1,000 건 10.56 s
+> 급할 때       그 규칙을 끈다(enabled false). 이 모듈은 부르는 맵퍼가 없으면 안 돈다
+> 재기동 뒤 로그 새 줄 없음. 이 모듈을 고친 «뒤»에는 체인 워커 재기동 — 이미 읽힌 모듈은 다시 안 읽는다
+> ```
+
+---
+
 > ## [10-01 밤] **원장 «펼친 보기» ledger_atom_rows — 그리드에서 원자를 평문으로 · 원천 row_id 로 — 이주 «필요» · 재기동 «필요»**
 >
 > ```
