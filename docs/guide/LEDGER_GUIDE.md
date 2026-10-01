@@ -91,7 +91,7 @@ source rows
   → 선언 검증 (setup_bundle)
   → Source Contract 검증
   → 분자 묶기 (read.unit)
-  → 원자 (prepare → map → bind)
+  → 원자 (map → bind)   🆕 setup_version 6 — `prepare` 절 은퇴(`0b59a2f30`). 계산된 칸은 체인이 쓴 표의 칸으로 읽는다
   → 게이트 검사
   → ledger_events + 커서 커밋
 ```
@@ -262,8 +262,8 @@ conda run -n assy_manager python -m ledger.backfill --source <source> \
 저장된 지문과 현재 선언의 지문이 다르면 그 소스의 커서는 `cursor_snapshot_reset_required` 로
 **선다** — 「원자를 다르게 만들 수 있는 선언이 바뀌었으니 사람이 보라」는 뜻이다.
 
-🔴 **지문은 «크게» 잡는 것이 기본이고, 예외는 둘뿐이다.**
-`prepare.input_columns` 와 `map.input_columns` 는 해시 재료에서 빠져 있다 — 넓히면 SELECT 만
+🔴 **지문은 «크게» 잡는 것이 기본이고, 예외는 ~~둘~~ 하나뿐이다**(🆕 setup_version 6 에서 `prepare.input_columns` 가 절째 은퇴, `0b59a2f30`).
+`map.input_columns` 는 해시 재료에서 빠져 있다 — 넓히면 SELECT 만
 넓어지고 매퍼 입력은 그대로라 «원자가 같은 원자»이고, 좁히면 지문이 아니라 `roleframe` 의
 `missing_mapper_input` 이 **쓰기 전에** 이름 대어 거절하기 때문이다.
 **다른 키를 여기 더하지 마라** — 예외마다 코드에 그 두 방향 증명이 붙어 있다.
