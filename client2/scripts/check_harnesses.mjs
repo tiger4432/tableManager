@@ -271,7 +271,7 @@ const FLOORS = new Map([
   // every sample table round tripped, a column coming into view said.
   // 89 -> 93 (lead 72aa14785 answer): row 3 only when the three rows can write the key as it is, and a
   // copy that leaves it out says why (E10 E11, P25 P26).
-  ['table_config_panel_harness.mjs', 93],
+  ['table_config_panel_harness.mjs', 103],
   // New with lead 72aa14785: the shared clipboard writer (moved from map_editor.js) run as it ships -
   // the map harnesses replace its name and the table harness injects its own, so nothing else runs it.
   ['clipboard_write_harness.mjs', 8],

@@ -456,6 +456,47 @@ async function pasteSuite(m) {
       { column_types: { a: 'string', b: 'string' }, display_columns: ['a', 'b'] })) === '["Shown · + b"]');
   }
 
+  console.log('\n[11] nothing picked: the box and the button stand, off (lead 27c1853b2)');
+  {
+    const UNPICKED = { ...PASTE_PAYLOAD, table: undefined, declaration: undefined, raw: undefined };
+    const sent = [];
+    const copied = [];
+    const kept = [];
+    const store = { getItem: () => null, setItem: (k) => { kept.push(k); }, removeItem: () => {} };
+    const { host: hu, p: pu } = panel({ onSave: (s) => { sent.push(s); }, onOpen: () => {}, storage: store,
+      copyText: (text) => { copied.push(text); return true; } });
+    pu.render(UNPICKED);
+    const sink = byClass(hu, 'table-config-paste')[0];
+    const copy = byClass(hu, 'table-config-copy')[0];
+    say('F1 the box and Copy columns are drawn, both off, the box saying what comes first',
+      Boolean(sink && copy) && sink.disabled === true && copy.disabled === true
+        && sink.getAttribute('placeholder') === 'Pick a table or Add table',
+      JSON.stringify({ sink: Boolean(sink), copy: Boolean(copy), off: [sink && sink.disabled, copy && copy.disabled],
+        placeholder: sink && sink.getAttribute('placeholder') }));
+    const rawBefore = (byClass(hu, 'table-config-raw')[0] || {}).value;
+    const reached = pasteInto(hu, SHEET(['lot', 'qty'], ['string', 'number']));
+    say('F2 a paste there makes no document: no unsaved mark, the raw box as it was, nothing kept, nothing sent',
+      reached && pu.draft === null && byClass(hu, 'table-config-unsaved').length === 0
+        && (byClass(hu, 'table-config-raw')[0] || {}).value === rawBefore && kept.length === 0 && sent.length === 0
+        && lines(hu, 'table-config-paste-change').length === 0 && lines(hu, 'table-config-paste-refused').length === 0,
+      JSON.stringify({ reached, draft: pu.draft, kept, sent: sent.length }));
+    tap(byClass(hu, 'table-config-copy')[0]);
+    say('F3 Copy columns there copies nothing and says nothing', copied.length === 0
+      && byClass(hu, 'table-config-copy-failed').length === 0 && byClass(hu, 'table-config-copy-note').length === 0,
+      JSON.stringify({ copied, failed: lines(hu, 'table-config-copy-failed') }));
+    pu.render(PASTE_PAYLOAD);
+    const on = byClass(hu, 'table-config-paste')[0];
+    const onCopy = byClass(hu, 'table-config-copy')[0];
+    pasteInto(hu, SHEET(['lot', 'qty'], ['string', 'number']));
+    tap(byClass(hu, 'table-config-copy')[0]);
+    say('F4 then picked: the same box and button, on, the paste makes the document and the copy copies it',
+      Boolean(on && onCopy) && on.disabled === false && onCopy.disabled === false
+        && on.getAttribute('placeholder') === m.PASTE_HERE && byClass(hu, 'table-config-unsaved').length === 1
+        && JSON.stringify(Object.keys((rawOf(hu) || {}).column_types || {})) === '["lot","qty"]'
+        && copied.length === 1 && copied[0] === m.serializeTsv([['lot', 'qty'], ['string', 'number'], ['key', '']]),
+      JSON.stringify({ off: [on && on.disabled, onCopy && onCopy.disabled], copied }));
+  }
+
   console.log('\n[9] the chain rules screen is not touched');
   {
     const doc = makeDoc();
@@ -466,6 +507,15 @@ async function pasteSuite(m) {
     const pasteNodes = (h) => walk(h).filter((n) => /-paste|-copy/.test(String(n.className || ''))).length;
     say('D1 the chain registry draws no paste box and no copy (the table one does)',
       pasteNodes(host) === 0 && pasteNodes(tableHost) > 0, `${pasteNodes(host)} ${pasteNodes(tableHost)}`);
+    let unpicked = -1;
+    try {
+      const d2 = makeDoc();
+      const h2 = d2.createElement('div');
+      new m.Panel(h2, { doc: d2, storage: null }, m.CHAIN_RULE_REGISTRY)
+        .render({ ...CHAIN_PAYLOAD, name: undefined, declaration: undefined, raw: undefined });
+      unpicked = pasteNodes(h2);
+    } catch (e) { unpicked = -1; }
+    say('D2 ...nor with nothing picked', unpicked === 0, String(unpicked));
   }
   return { ran: names.length, names, failures: fails };
 }
@@ -483,7 +533,7 @@ async function pasteSuite(m) {
   const chain = await import('../src/chain_rule_panel.js');
   const tsv = await import('../src/tsv.js');
   const real = { ...registry, Panel: template.RawRegistryPanel, CHAIN_RULE_REGISTRY: chain.CHAIN_RULE_REGISTRY,
-    parseTsv: tsv.parseTsv, serializeTsv: tsv.serializeTsv };
+    parseTsv: tsv.parseTsv, serializeTsv: tsv.serializeTsv, PASTE_HERE: template.PASTE_HERE };
   const base = await pasteSuite(real);
   pass += base.ran - base.failures.length;
   failures.push(...base.failures);
@@ -509,11 +559,23 @@ async function pasteSuite(m) {
     R('P7', 'a key spelling is said as an identity change', 'B3',
       '  if (identityOf(before) !== identityOf(now)) lines.push(', '  if (keyText(before) !== keyText(now)) lines.push('),
     R('P8', 'the table registry declares no paste', 'C1',
-      '  paste: Object.freeze({ read: columnsFromPaste, changes: columnChanges, copy: columnsToSheet }),\n', ''),
+      "  paste: Object.freeze({ read: columnsFromPaste, changes: columnChanges, copy: columnsToSheet,\n"
+        + "    pickFirst: 'Pick a table or Add table' }),\n", ''),
+    R('P31', 'the registry declares no words for nothing picked', 'F1',
+      ",\n    pickFirst: 'Pick a table or Add table' }),\n", ' }),\n'),
+    T('P27', 'nothing picked draws the box on', 'F1',
+      "    const off = on ? '' : spec.paste.pickFirst;\n", "    const off = '';\n"),
+    T('P28', 'nothing picked still takes a paste', 'F2',
+      '    if (on && sink.addEventListener) {\n', '    if (sink.addEventListener) {\n'),
+    T('P29', 'nothing picked still copies', 'F3',
+      '    if (on && copy.addEventListener) copy', '    if (copy.addEventListener) copy'),
+    T('P30', 'the box waits for a pick, as before', 'F1',
+      '    if (spec.paste) this._drawPaste(key, payload, picked);\n',
+      '    if (spec.paste && picked) this._drawPaste(key, payload, picked);\n'),
     T('P9', 'Save does not ask', 'C3',
       "        if (lines.length && !this.ask([...lines, 'Save?'].join('\\n'))) return;\n", ''),
     T('P10', 'every registry draws a paste box', 'D1',
-      '    if (spec.paste && picked) this._drawPaste(key, payload);\n', '    if (picked) this._drawPaste(key, payload);\n'),
+      '    if (spec.paste) this._drawPaste(key, payload, picked);\n', '    this._drawPaste(key, payload, picked);\n'),
     T('P11', 'the paste is read by a private split, not the grid\'s reader', 'C1',
       "parseTsv(String(text || ''), { trimCells: true, dropBlankLines: true })",
       "String(text || '').split('\\n').map((line) => line.split('\\t'))"),

@@ -31,6 +31,7 @@ import { emptyOf, missingRequired, shapeAt } from './ontology_skeleton.js';
 import { parseTsv, serializeTsv } from './tsv.js';
 // The one clipboard writer that works on plain HTTP (check_clipboard_convention), lead 72aa14785.
 import { writeClipboardRich } from './clipboard_write.js';
+import { setDisabledReason } from './disabled_reason.js';
 import {
   writeShapeAtPath, deleteAtPath, splitBundlePath, getAtPath, addMember,
 } from './ontology_path.js';
@@ -797,7 +798,7 @@ export class RawRegistryPanel {
     //    두고 거절로 답하는 것은 화면이 답할 수 있는 것을 서버에 미룬 것입니다.
     if (picked || !root) head.appendChild(save);
     this.root.appendChild(head);
-    if (spec.paste && picked) this._drawPaste(key, payload);
+    if (spec.paste) this._drawPaste(key, payload, picked);
 
     // 🔴 `base` 는 «화면에 보이는 값»이 아니라 저장이 되돌려 보낼 지문입니다.
     this.root.setAttribute('data-base', view.base);
@@ -1104,18 +1105,21 @@ export class RawRegistryPanel {
     try { this.store.removeItem(this._slot(was)); } catch (e) { /* noqa */ }
   }
 
-  /** The paste box, what the last paste refused, and what a save of the pasted text would change. */
-  _drawPaste(key, payload) {
+  /** The paste box, what the last paste refused, and what a save of the pasted text would change.
+   *  Nothing picked: the same box and button, off, and nothing listens (lead 27c1853b2). */
+  _drawPaste(key, payload, on) {
     const spec = this.spec;
+    const off = on ? '' : spec.paste.pickFirst;
     const box = this.doc.createElement('div');
     box.className = `${spec.cls}-paste-box`;
     const sink = this.doc.createElement('textarea');
     sink.className = `${spec.cls}-paste`;
     sink.setAttribute('data-paste', spec.nameKey);
-    sink.setAttribute('placeholder', PASTE_HERE);
+    sink.setAttribute('placeholder', off || PASTE_HERE);
     sink.setAttribute('aria-label', PASTE_HERE);
     sink.setAttribute('rows', '2');
-    if (sink.addEventListener) {
+    setDisabledReason(sink, off);
+    if (on && sink.addEventListener) {
       sink.addEventListener('paste', (event) => {
         const text = event && event.clipboardData ? event.clipboardData.getData('text/plain') : '';
         if (event && typeof event.preventDefault === 'function') event.preventDefault();
@@ -1128,7 +1132,8 @@ export class RawRegistryPanel {
     copy.setAttribute('data-action', `copy-${spec.cls}`);
     copy.setAttribute('type', 'button');
     copy.textContent = 'Copy columns';
-    if (copy.addEventListener) copy.addEventListener('click', () => this._copy(key));
+    setDisabledReason(copy, off);
+    if (on && copy.addEventListener) copy.addEventListener('click', () => this._copy(key));
     box.appendChild(copy);
     if (this._copyFailed && this._copyFailed.key === key) {
       box.appendChild(this._line(`${spec.cls}-copy-failed`, this._copyFailed.text));
