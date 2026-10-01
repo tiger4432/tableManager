@@ -130,15 +130,18 @@ def test_actual_snapshot_enumerates_every_registry_and_declaration(
     # All three registries are keyed by the SOURCE they belong to since 2026-08-20, and the
     # nodes are positions inside it -- `<source>#profile` / `<source>#preparation` /
     # `<source>#mapper` -- so the pairing is stated rather than assumed equal.
+    # A RETIRED source has no registry entry (nothing reads it) and keeps its declaration
+    # on the screen - an operator may still edit it - so its positions are drawn beside the
+    # registries' (the shipped lot_event, retired by setup_version 6).
+    retired = {source_id for source_id, plan in active_setup.snapshot.source_plans.items()
+               if plan.status == "retired"}
     assert by_kind["profile"] == {
         f"{source_id}#profile"
-        for source_id in active_setup.snapshot.registries["profiles"]}
-    assert by_kind["preparer"] == {
-        f"{source_id}#preparation"
-        for source_id in active_setup.snapshot.registries["source_preparers"]}
+        for source_id in set(active_setup.snapshot.registries["profiles"]) | retired}
+    assert by_kind["preparer"] == set(), "the preparer retired with setup_version 6"
     assert by_kind["mapper"] == {
         f"{source_id}#mapper"
-        for source_id in active_setup.snapshot.registries["mappers"]}
+        for source_id in set(active_setup.snapshot.registries["mappers"]) | retired}
     # A source the loader refused has no plan to show and is not a node; it is refused BY
     # NAME in its plan (총괄 0367926b6 - since S-177 a view source is refused by design).
     # Refused or not, every declared source is accounted.
@@ -148,7 +151,9 @@ def test_actual_snapshot_enumerates_every_registry_and_declaration(
     assert [s for s, p in plans.items() if not p.planned] == [REFUSED_SOURCE]
     assert plans[REFUSED_SOURCE].refusal["code"] == "relation_not_a_row_table"
     assert "'ledger_events'" in plans[REFUSED_SOURCE].refusal["message"]
-    assert by_kind["verified_join"] == set(active_setup.snapshot.registries["verified_joins"])
+    # The declaration's `virtual_joins`, drawn as written - the compiled registry of them
+    # retired with the preparer that inherited them (setup_version 6).
+    assert by_kind["verified_join"] == set(bundle.get("virtual_joins") or {})
     # WAS `== set(bundle["tables"])`. That section no longer exists -- the ledger stopped
     # keeping a copy of the physical schema -- so the subject of this assertion is now the
     # set of relations the setup REFERENCES, resolved against the carried catalog.
@@ -175,7 +180,6 @@ def test_actual_snapshot_enumerates_every_registry_and_declaration(
         "entity|lot@1",
         "profile|lot_slot_wafer#profile",
         "mapping|lot_slot_wafer#profile#mapping:seat-holds-wafer",
-        "preparer|lot_slot_wafer#preparation",
         "mapper|lot_slot_wafer#mapper",
         "source_plan|lot_slot_wafer",
         "binding|lot_slot_wafer#profile#mapping:seat-holds-wafer#binding:subject",
@@ -197,10 +201,11 @@ def test_actual_snapshot_enumerates_every_registry_and_declaration(
         + sum(len(mapping["bind"])
               for profile in profiles
               for mapping in profile["mappings"].values())
-        # one profile, one preparer and one mapper per source, inline in the source
-        + 3 * len(bundle["sources"])
+        # one profile and one mapper per source, inline in the source (the preparer was
+        # the third until setup_version 6)
+        + 2 * len(bundle["sources"])
         + len(bundle["sources"]) + len(tables)
-        + len(active_setup.snapshot.verified_joins))
+        + len(bundle.get("virtual_joins") or {}))
 
 
 def test_every_resolved_edge_has_symmetric_used_by_and_exact_pointer(active_setup):
@@ -493,7 +498,7 @@ def test_reference_extraction_is_registry_driven_for_transfer_fixture(active_set
     bundle = require_ready_bundle(validate_bundle(logical, catalog=catalog))
     snapshot = compile_setup_snapshot(
         bundle, trusted_implementations(),
-        tuple(active_setup.snapshot.verified_joins.values()), catalog=catalog)
+        catalog=catalog)
     fixture_setup = SimpleNamespace(
         config_root=active_setup.config_root, bundle=bundle, snapshot=snapshot,
         catalog=catalog)
@@ -526,7 +531,6 @@ def test_file_backed_transfer_sample_round_trip_covers_required_registry_kinds(
         # The sample names the GENERIC implementations the repository ships.  Before
         # self-registration it named "sample-*" ids no class declared, so this round trip
         # only compiled because the support module carried a private trust list.
-        "preparer|dt_log#preparation",
         "mapper|dt_log#mapper",
         "verified_join|dt_job_to_inventory",
         "source_plan|dt_log",
@@ -540,9 +544,9 @@ def test_file_backed_transfer_sample_round_trip_covers_required_registry_kinds(
     assert (
         "mapping|dt_log#profile#mapping:core_to_dt",
         "predicate|transferred_to@1", "mapping_predicate") in edges
-    assert (
-        "source_plan|dt_log", "verified_join|dt_job_to_inventory",
-        "source_verified_join") in edges
+    # ⚰️ The `source_verified_join` edge drew `prepare.inherit_virtual_join_rules`, which
+    # retired with the prepare clause (setup_version 6) - the join rule stands alone.
+    assert not [edge for edge in edges if edge[2] == "source_verified_join"]
     assert (
         "mapping|dt_log#profile#mapping:bond_component",
         "predicate|component_of@1", "mapping_predicate") in edges
@@ -654,9 +658,10 @@ def test_catalog_declaration_is_read_only_and_unknown_selection_fails_closed(
     service = OntologyExplorerService(
         config_root=copied_root, draft_root=tmp_path / "drafts")
     _, index, _ = service.active()
+    table = sorted(key for key in index.nodes if key.startswith("table|"))[0]
     with pytest.raises(ConfigExplorerError) as readonly:
         service.create_draft(
-            target_key="table|lot_event", base_snapshot_hash=index.snapshot_hash)
+            target_key=table, base_snapshot_hash=index.snapshot_hash)
     assert readonly.value.to_mapping() == {
         "code": "unsupported_draft_target",
         "path": "target_key",
@@ -1930,6 +1935,10 @@ def test_every_deficit_lands_on_a_field_rather_than_a_loose_error_list(active_se
     catalog = live_physical_catalog()
     bundle = json.loads(
         (DEFAULT_ONTOLOGY_ROOT / "ledger_config.json").read_text(encoding="utf-8"))
+    # lot_event as the v6 migration leaves it: retired. Before that migration THIS BOX reads
+    # its working preparer and refuses it by name (`prepare_retired`) - a refusal about the
+    # source, not about the dt_job holes this test makes.
+    bundle["sources"]["lot_event"]["status"] = "retired"
     # The object Role of `has_netdie@1` is named `value` since 2026-08-21 -- it is derived
     # from `object.kind`, and the operator's own name for it (`count`) went with the Claim
     # that declared it.
@@ -1965,8 +1974,10 @@ def test_every_deficit_lands_on_a_field_rather_than_a_loose_error_list(active_se
     assert blocked == {"sources"}
 
 
-def test_column_candidates_are_three_universes_and_not_one(active_setup):
-    """A preparer-made column is legal in `identity` and refused in `order_by`."""
+def test_identity_and_order_by_offer_the_same_relation_columns(active_setup):
+    """⚰️ Was `test_column_candidates_are_three_universes_and_not_one`: a preparer-made
+    column was legal in `identity` and refused in `order_by`. The preparer retired with
+    setup_version 6, so both squares offer the relation's own columns - one universe."""
     from ledger.config_authoring import authoring_plan
     from ledger.setup import live_physical_catalog
 
@@ -1975,13 +1986,11 @@ def test_column_candidates_are_three_universes_and_not_one(active_setup):
         (DEFAULT_ONTOLOGY_ROOT / "ledger_config.json").read_text(encoding="utf-8"))
     plan = authoring_plan(bundle, catalog)
     by_path = {row["path"]: row for row in plan["fields"]}
-    identity = by_path["bundle.sources.lot_event.read.identity"]
-    ordering = by_path["bundle.sources.lot_event.read.order_by"]
-    assert identity["universe"] == "PREPARED"
-    assert ordering["universe"] == "RELATION"
-    made = set(bundle["sources"]["lot_event"]["prepare"]["output_columns"])
-    assert made & set(identity["candidates"]), "preparer output must be offered here"
-    assert not (made & set(ordering["candidates"])), "and never offered here"
+    identity = by_path["bundle.sources.dt_job.read.identity"]
+    ordering = by_path["bundle.sources.dt_job.read.order_by"]
+    assert identity["universe"] == ordering["universe"] == "RELATION"
+    assert set(identity["candidates"]) == set(ordering["candidates"])
+    assert identity["candidates"], "a square offering nothing would make this vacuous"
 
 
 def test_remaining_counts_what_a_person_still_has_to_decide():

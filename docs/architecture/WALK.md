@@ -282,7 +282,8 @@ why     `not_declared`(검사 술어가 선언 안 됨) · `truncated` 의 그 �
 
 ```
 GET /api/ledger/subgraph?…&seed_type=<엔터티 타입>[&seed_limit=N]
-그 타입으로 «등록된 주어 전부»가 씨앗입니다. 라우트는 «그대로»
+그 타입의 «노드 전부»가 씨앗입니다 — 어느 원자든 주어 쪽이나 목적(entity_ref) 쪽에서
+그 노드를 이름 대면 노드입니다. 라우트는 «그대로»
 ```
 🔴 **「전체 ∖ 사례」가 이것으로 «말해집니다» — 집합 연산은 «안 지었습니다».**
 ```
@@ -294,13 +295,16 @@ GET /api/ledger/subgraph?…&seed_type=<엔터티 타입>[&seed_limit=N]
 ```
 왜 «저장»이 아니라 «서술»인가   저장된 파생은 소스가 바뀌면 낡습니다(08-24 판정의 근거 ①).
                             서술은 «요청마다 다시 평가»되므로 진실의 주인이 원장 하나로 남습니다
-어디서 오나                   `register` 원자 — A1 의 «존재» 축입니다. 새 개념 0
+어디서 오나                   `gaps._nodes_of_type_sql` — 「이 타입의 노드」의 답 한 곳(갭 측정과 같은 질의).
+                            🔴 [총괄 819726624 ㄹ] S-148-a · 판정 337 「등록된 주어만」을 뒤집음 —
+                            lot_event 가 은퇴해 웨이퍼·랏을 등록하는 소스가 없습니다
 모르는 타입                   질의 «전»에 카탈로그로 422 `seed_type_not_declared`(고를 이름 같이) —
                             선언에 없는 타입을 원장에 물으면 «0 행»이 오고, 그 0 은
                             「그 타입에 주어가 없다」로 읽힙니다(요청의 잘못인데 데이터의 사실처럼)
-어느 인덱스                   `idx_ledger_register (subject_type, subject_keys)
-                            WHERE predicate = 'register'` — «부분 인덱스»라 O(엔터티)이지
-                            O(원자)가 아닙니다(스키마 주석이 그렇게 적습니다). 전체 스캔 아님
+어느 인덱스                   새로 안 만들었습니다 — 주어 쪽 `idx_ledger_subject_entity` · 목적어 쪽
+                            `idx_ledger_object_entity` 를 «건너뛰며» 읽고 예산에서 멈춥니다(총괄 ㄱ 10-01)
+예산 안의 집합                 키 순서로 «앞쪽» 노드입니다. 나이 순서가 아닙니다
+                            (`gaps.SAMPLE_NOT_AGE_ORDERED`)
 예산                         `limits.seeds`(상한) · `truncated.seeds`(«안 걸은 수»).
                             🔴 기존 짝에 키 하나 — 둘째 철자 0. 서술을 «안 물으면 두 키가 없습니다»
                             씨앗이 잘리면 `truncated.reason` 에 `seeds` 가 들고

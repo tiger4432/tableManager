@@ -1,103 +1,37 @@
-"""Stage 7 manifest-only cutover and production lot_event preparation tests."""
+"""Stage 7 manifest-only cutover tests."""
 from __future__ import annotations
 
-from collections import Counter
 import json
 from pathlib import Path
 import shutil
 
-import pandas as pd
 import pytest
 
-# ⚰️ `backfill.v2_base_select_columns` WAS A ONE-LINE ADAPTER over this and was
-# deleted 2026-09-09 for having no production caller -- these tests were its only
-# users, and they were always measuring `base_select_columns`. Calling the authority
-# directly is what they meant; the adapter only made it look like backfill's rule.
-from test_ledger_source_preparation import base_select_columns_of
 from ledger.setup import (
     DEFAULT_ONTOLOGY_ROOT,
     LedgerSetupError,
     dry_run_report,
-    execute_selected_scoped_batch,
     live_physical_catalog,
     load_setup,
     main as setup_main,
     physical_catalog_path,
-    preview_selected_cursor_batch,
 )
 from ledger.setup_bundle import (
     CONFIG_FILENAME,
     LedgerSetupValidationError,
-    SETUP_VERSION,
     load_setup_bundle,
+    upgrade_setup,
 )
-from ledger.source_preparation import VerifiedJoinBatchReader
 
 
-NOW = pd.Timestamp("2026-08-17T10:00:00+09:00")
-
-
-class NoJoinReader(VerifiedJoinBatchReader):
-    def read_chunk(self, descriptor, keys):
-        raise AssertionError("production lot_event has no inherited virtual join")
-
-
-class RecordingStore:
-    def __init__(self):
-        self.calls = []
-
-    def write_batch(self, source, translator_ver, atoms, cursor_value, molecules,
-                    refused=0, incomplete=0, *, reasons, advance_cursor=True,
-                    withdraw_refs=None, row_refs=None, receipt=None):
-        self.calls.append({
-            # S-54-b: which physical row each `source_raw_ref` came from, written in the
-            # same transaction as the atoms -- so a DELETE can still name them afterwards.
-            "row_refs": tuple(row_refs or ()),
-            "source": source,
-            "translator_ver": translator_ver,
-            "atoms": tuple(atoms),
-            "cursor_value": dict(cursor_value),
-            "advance_cursor": advance_cursor,
-            "molecules": molecules,
-            "refused": refused,
-            "incomplete": incomplete,
-            "reasons": dict(reasons),
-            "withdraw_refs": withdraw_refs,
-        })
-        return {"attempted": len(atoms), "inserted": len(atoms),
-                "deduped": 0, "molecules": molecules}
-
-
-def physical_split_rows():
-    # 🔴 `row_id` IS HERE BECAUSE THE DECLARED CURSOR ASKS FOR IT. `lot_event`'s keyset is
-    # `(event_time, row_id)`, and a frame without `row_id` cannot carry the cursor its own
-    # source declares -- `_cursor_value` refuses with 「cursor must contain exactly physical
-    # columns」 rather than guessing. `txn_seq` stays because the mapping still reads it;
-    # it simply stopped being the tiebreak.
-    return pd.DataFrame([
-        {
-            "lot_id": "P", "event_type": "split", "slotnumbers": "1:2",
-            "waferids": "W1:W2", "parent_lot": "", "child_lot": "C",
-            "txn_seq": "R1", "event_time": NOW, "row_id": "ROW-1",
-        },
-        {
-            "lot_id": "C", "event_type": "split", "slotnumbers": "3",
-            "waferids": "W3", "parent_lot": "P", "child_lot": "",
-            "txn_seq": "R2", "event_time": NOW, "row_id": "ROW-2",
-        },
-    ], dtype=object)
-
-
-def cursor_for(frame):
-    """The cursor the DECLARATION asks for, read off the plan rather than spelled here.
-
-    Spelling the columns in the test is what let this fixture drift: it said
-    `(event_time, txn_seq)` for as long as the declaration did, and kept saying it after
-    the declaration moved to `row_id`.
-    """
-    row = frame.iloc[-1]
-    columns = load_setup().snapshot.source_plans["lot_event"].driver.cursor_columns
-    return {column: row[column] for column in columns}
+def _a_planned_source() -> str:
+    """A source THIS box's declaration plans and reads from a table - the subject the
+    cases below used to spell as `lot_event`, which retired (setup_version 6)."""
+    setup = load_setup()
+    planned = sorted(source for source, plan in setup.snapshot.source_plans.items()
+                     if setup.catalog[plan.relation].get("kind") == "table")
+    assert planned, "the live config plans no table source at all"
+    return planned[0]
 
 
 def copied_root(tmp_path: Path) -> Path:
@@ -164,9 +98,12 @@ def test_one_file_is_the_only_entry_and_compiles_deterministically():
 # name instead of being quietly ignored (a silently-ignored section is how a stale
 # duplicate would come back).
 def test_loaded_setup_carries_the_adaptation_of_the_live_table_config():
-    declared = json.loads(
-        physical_catalog_path().read_text(encoding="utf-8"))["lot_event"]
+    # 🔴 RE-AIMED (setup_version 6): this read `lot_event`, which retired. Any source the
+    # declaration PLANS answers the same question, so the first one does.
     setup = load_setup()
+    relation = setup.snapshot.source_plans[_a_planned_source()].relation
+    declared = json.loads(
+        physical_catalog_path().read_text(encoding="utf-8"))[relation]
 
     # The expected adaptation is spelled out here rather than obtained by calling
     # `load_physical_catalog` on the same file: a test that ran the translator against
@@ -192,9 +129,15 @@ def test_loaded_setup_carries_the_adaptation_of_the_live_table_config():
     #   「table that has row_id」 test has to be able to ask which one this is.
     expected["kind"] = "table"
 
-    assert dict(setup.catalog["lot_event"]) == expected
-    # And it is the catalog the validation used, not one re-read afterwards.
-    assert setup.snapshot.source_plans["lot_event"].relation == "lot_event"
+    assert dict(setup.catalog[relation]) == expected
+
+
+# ⚰️ RETIRED with lot_event (setup_version 6, 총괄 819726624): `test_existing_cursor_selects_
+# only_physical_lot_event_columns`, `test_live_physical_batch_normalizes_then_uses_stage6_
+# compiler_path` and `test_selected_execute_reuses_preview_candidates_and_existing_store_
+# transaction`. Each drove THIS box's production lot_event through its preparer; the source
+# retired and its preparer with it. Preview and execute sharing one candidate set is still
+# measured on the fixture plant (`test_ledger_v2_runtime`).
 
 
 def test_a_tables_section_in_the_ledger_file_is_refused_by_name(tmp_path):
@@ -233,70 +176,6 @@ def test_operator_report_is_ready_and_explicitly_non_destructive():
         "cursor_reset": False,
         "legacy_removal": False,
     }
-
-
-def test_existing_cursor_selects_only_physical_lot_event_columns():
-    setup = load_setup()
-
-    # `row_id` is selected because the declared cursor is `(event_time, row_id)` -- the
-    # keyset's own columns have to come back with the rows or the next page cannot be
-    # asked for. It is not a projection column; the two exclusions below still hold.
-    assert base_select_columns_of(setup.snapshot, "lot_event") == tuple(sorted({
-        "lot_id", "event_type", "slotnumbers", "waferids", "parent_lot",
-        "child_lot", "txn_seq", "event_time", "row_id",
-    }))
-    assert "event_group_key" not in base_select_columns_of(setup.snapshot, "lot_event")
-    assert "row_identity" not in base_select_columns_of(setup.snapshot, "lot_event")
-
-
-def test_live_physical_batch_normalizes_then_uses_stage6_compiler_path():
-    setup = load_setup()
-    frame = physical_split_rows()
-
-    preview = preview_selected_cursor_batch(
-        setup, "lot_event", frame, cursor_for(frame), NoJoinReader(),
-        known_registrations=(),
-    )
-
-    # THE MEMBERS, NOT THE NUMBER. `has_wafer` and `slot_map` left this source in
-    # d306b450 - three sentence shapes retired from the lot_event mapper, and `has_wafer`
-    # now comes from `lot_slot_wafer` - so ten became six. Retyping 6 would go red again
-    # on the next legitimate move, and would still PASS if one atom quietly vanished
-    # while another quietly appeared. A Counter says which sentences this source makes
-    # and how many of each, so the next move reads as a diff rather than as a defect.
-    assert Counter(item["predicate"] for item in preview.candidate_semantics) == {
-        "register": 5, "derived_from": 1,
-    }
-    assert preview.atom_count == len(preview.candidate_semantics)
-    assert preview.molecule_count == 1
-    assert preview.incomplete_count == 0
-    assert all(item["source_who"] == "lot_event"
-               for item in preview.candidate_semantics)
-
-
-def test_selected_execute_reuses_preview_candidates_and_existing_store_transaction():
-    setup = load_setup()
-    frame = physical_split_rows()
-    store = RecordingStore()
-
-    preview = preview_selected_cursor_batch(
-        setup, "lot_event", frame, cursor_for(frame), NoJoinReader(),
-        known_registrations=(),
-    )
-    executed = execute_selected_scoped_batch(
-        setup, "lot_event", frame, ("row_id", sorted(frame["row_id"].tolist())),
-        NoJoinReader(), store, known_registrations=(),
-    )
-
-    assert executed.preview.candidate_semantics == preview.candidate_semantics
-    assert len(store.calls) == 1
-    assert len(store.calls[0]["atoms"]) == preview.atom_count
-    # ⚰️ THE CURSOR ASSERTIONS WENT WITH `execute_selected_cursor_batch` (S-113 ⓐ, ruling
-    # 221): it had no product caller after S-76 and its wrapper went with it. What this
-    # asserted - that the value handed to the writer is built from the DECLARATION rather
-    # than spelled in the test - now lives on `cursor_for` above, which reads the columns
-    # off the plan and is still what the preview is given.
-    assert store.calls[0]["advance_cursor"] is False
 
 
 # RETIRED: test_v2_mode_requires_approved_parity.
@@ -360,12 +239,13 @@ def test_backfill_runs_the_ontology_root_without_being_asked_to(monkeypatch):
         lambda engine, setup, **kwargs: calls.append((engine, setup, kwargs)) or {
             "source": kwargs["source"], "selected": "v2"})
 
+    source = _a_planned_source()
     explicit = backfill.run(
-        object(), source="lot_event", ontology_root=DEFAULT_ONTOLOGY_ROOT,
+        object(), source=source, ontology_root=DEFAULT_ONTOLOGY_ROOT,
         max_batches=1)
-    implied = backfill.run(object(), source="lot_event", max_batches=1)
+    implied = backfill.run(object(), source=source, max_batches=1)
 
-    assert explicit == implied == {"source": "lot_event", "selected": "v2"}
+    assert explicit == implied == {"source": source, "selected": "v2"}
     assert len(calls) == 2
     # ⚠️ The retired cursor arguments are no longer forwarded -- `run()` refuses them
     # before it reaches the body -- so what this case pins is the SETUP both calls got.
@@ -377,7 +257,7 @@ def test_v2_backfill_refuses_reset_controls_before_store_access():
 
     with pytest.raises(LedgerSetupError) as exc:
         backfill.run(
-            object(), source="lot_event", ontology_root=DEFAULT_ONTOLOGY_ROOT,
+            object(), source=_a_planned_source(), ontology_root=DEFAULT_ONTOLOGY_ROOT,
             reset_cursor=True)
 
     # 🔴 THE PROPERTY IS "BEFORE STORE ACCESS", AND THAT IS WHY IT SURVIVED 판정 171.
@@ -389,8 +269,6 @@ def test_v2_backfill_refuses_reset_controls_before_store_access():
     assert refusal["code"] == "retired_cursor_argument"
     assert refusal["path"] == "run().reset_cursor"
     assert "rescope" in refusal["message"], refusal
-
-
 
 
 class _SatisfiedEngine:
@@ -495,7 +373,6 @@ def test_operator_cli_blocks_reset_and_replay_before_io(
     }
 
 
-
 def test_verify_without_root_still_reads_the_live_config(capsys):
     assert setup_main([]) == 0
     report = json.loads(capsys.readouterr().out)
@@ -519,9 +396,11 @@ def test_verifying_a_draft_does_not_touch_the_live_config(tmp_path, capsys):
     live = DEFAULT_ONTOLOGY_ROOT / "ledger_config.json"
     before = live.read_bytes()
     draft = copied_root(tmp_path)
+    # Brought to this generation the way the loader reads an older one (`upgrade_setup`),
+    # not by stamping the number: a v5 file stamped 6 still carries `prepare` everywhere.
     (draft / "ledger_config.json").write_text(
-        json.dumps({**json.loads((draft / "ledger_config.json").read_text("utf-8")),
-                    "setup_version": SETUP_VERSION}, ensure_ascii=False),
+        json.dumps(upgrade_setup(json.loads(
+            (draft / "ledger_config.json").read_text("utf-8"))), ensure_ascii=False),
         encoding="utf-8")
     assert setup_main(["--root", str(draft)]) == 0
     capsys.readouterr()

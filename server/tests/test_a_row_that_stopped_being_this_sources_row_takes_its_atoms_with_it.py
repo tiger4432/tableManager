@@ -31,7 +31,6 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 
 from ledger import backfill                                          # noqa: E402
 from ledger.implementations import (role_mapper_registry,            # noqa: E402
-                                    source_preparer_registry,
                                     trusted_implementations)
 from ledger.setup import LedgerSetup                                 # noqa: E402
 from ledger.setup_bundle import (load_physical_catalog,              # noqa: E402
@@ -69,12 +68,11 @@ def compiled(exclude_when=None):
     with open(os.path.join(SAMPLE, "ledger_config.json.sample"), encoding="utf-8") as fh:
         document = json.load(fh)
     if exclude_when is not None:
-        document["sources"][SOURCE]["prepare"]["exclude_when"] = exclude_when
+        document["sources"][SOURCE]["read"]["exclude_when"] = exclude_when
     bundle = require_ready_bundle(validate_bundle(document, catalog=catalog))
     snapshot = compile_setup_snapshot(
-        bundle, trusted_implementations(), (), catalog=catalog)
+        bundle, trusted_implementations(), catalog=catalog)
     return LedgerSetup(config_root=Path(SAMPLE), bundle=bundle, snapshot=snapshot,
-                       preparers=source_preparer_registry(),
                        mappers=role_mapper_registry(), catalog=catalog)
 
 

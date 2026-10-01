@@ -56,7 +56,7 @@ def shipped():
 
 def compiled(document, catalog):
     bundle = require_ready_bundle(validate_bundle(document, catalog=catalog))
-    return compile_setup_snapshot(bundle, trusted_implementations(), (), catalog=catalog)
+    return compile_setup_snapshot(bundle, trusted_implementations(), catalog=catalog)
 
 
 def event_frame(snapshot, source, rows):

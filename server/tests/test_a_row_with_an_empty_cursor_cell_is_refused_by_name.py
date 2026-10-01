@@ -22,24 +22,17 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 
 from ledger import gate                                                  # noqa: E402
 from ledger.implementations import (role_mapper_registry,                # noqa: E402
-                                    source_preparer_registry,
                                     trusted_implementations)
 from ledger.runtime_v2 import (execute_scoped_batch, last_cursor,        # noqa: E402
                                preview_cursor_batch)
 from ledger.setup_bundle import (load_physical_catalog,                  # noqa: E402
                                  require_ready_bundle, validate_bundle)
 from ledger.setup_registry import compile_setup_snapshot                 # noqa: E402
-from ledger.source_preparation import VerifiedJoinBatchReader            # noqa: E402
 
 SAMPLE = os.path.join(os.path.dirname(__file__), "..", "config", "sample")
 SOURCE, TABLE = "zz_process_by_seq", "zz_process_seq"
 ADDRESS = {"code": "source_preparation_incomplete",
            "path": "bundle.sources.%s.read.order_by.seq" % SOURCE}
-
-
-class _NoJoin(VerifiedJoinBatchReader):
-    def read_chunk(self, descriptor, keys):
-        raise AssertionError("this source reads no joins")
 
 
 class _Store:
@@ -65,12 +58,11 @@ def fixture_snapshot(tmp_path_factory):
     source["relation"] = TABLE
     source["read"]["order_by"] = ["row_id", "seq"]
     source["read"]["cursor"] = {"columns": ["row_id", "seq"]}
-    for stage in ("prepare", "map"):
-        source[stage]["input_columns"] += ["seq"]
+    source["map"]["input_columns"] += ["seq"]
     document["sources"][SOURCE] = source
     catalog = load_physical_catalog(str(folder / "table_config.json"))
     bundle = require_ready_bundle(validate_bundle(document, catalog=catalog))
-    return compile_setup_snapshot(bundle, trusted_implementations(), (), catalog=catalog)
+    return compile_setup_snapshot(bundle, trusted_implementations(), catalog=catalog)
 
 
 @pytest.fixture(autouse=True)
@@ -89,8 +81,7 @@ def _frame(seqs):
 
 def _preview(snapshot, frame):
     plan = snapshot.source_plans[SOURCE]
-    return preview_cursor_batch(snapshot, SOURCE, frame, last_cursor(plan, frame), _NoJoin(),
-                                source_preparer_registry(), role_mapper_registry(),
+    return preview_cursor_batch(snapshot, SOURCE, frame, last_cursor(plan, frame), role_mapper_registry(),
                                 known_registrations=())
 
 
@@ -115,7 +106,7 @@ def test_the_execute_door_keeps_going_batch_after_batch_and_names_the_column(sna
     store = _Store()
     for _ in range(2):          # the row is read again on the next follow-up - and refused again
         execute_scoped_batch(snapshot, SOURCE, frame, ("row_id", tuple(frame["row_id"])),
-                             _NoJoin(), source_preparer_registry(), role_mapper_registry(),
+                             role_mapper_registry(),
                              store, known_registrations=())
     assert [len(atoms) for atoms in store.written] == [2, 2]
     sample = gate.samples()[0]

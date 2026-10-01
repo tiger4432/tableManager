@@ -240,10 +240,10 @@ server/notebooks/mapper_workbench.ipynb      제품 저장소 경로 (사람이 
 ### 예제 — 이 디렉토리의 `examples/`
 ```
 examples/production_mapper.py.sample         가장 작은 것부터 — 여기서 시작하십시오
-examples/lot_slot_wafer_mapper.py.sample     한 행이 여러 원자가 되는 모양
 examples/dt_standard_map_mapper.py.sample    가장 큰 것 — 읽기와 파생이 같이 있는 예
+server/mappers/lot_slot_wafer_mapper.py      한 행이 여러 행이 되는 모양 — 제품 저장소 경로(추적, 복사본 없음)
 ```
-🔵 **셋 다 «읽는 파일»입니다** — 그대로 복사해 당신의 맵퍼 디렉토리에 두고 고치십시오.
+🔵 **셋 다 «읽는 파일»입니다** — 예제 둘은 복사해 당신의 맵퍼 디렉토리에 두고 고치십시오. 셋째는 표본 규칙이 이름으로 부르는 제품 맵퍼라 «복사하지 않습니다».
 ⚠️ **이것들은 «데코레이터 이전» 모양일 수 있습니다**(저장소에서 온 파일입니다). 오늘의 정본은
 §2 의 `@mapper()` 이고, 예제와 어긋나면 **§2 가 맞습니다** — 예제는 「이런 일을 한다」를 보여 주지
 「이렇게 등록한다」를 보여 주지 않습니다.

@@ -31,18 +31,17 @@ from ledger import implementations as impl                       # noqa: E402
 from ledger.config_explorer_service import OntologyExplorerService  # noqa: E402
 from ledger.setup_bundle import CONFIG_FILENAME                  # noqa: E402
 
-PREPARE_LIST = "prepare_implementation"
+#: ⚰️ `prepare_implementation` - the list the retired `prepare` square named (setup_version 6).
+RETIRED_LIST = "prepare_implementation"
 MAP_LIST = "map_implementation"
 
 
-def sources(*pairs):
-    return {"s%d" % i: {"prepare": {"implementation_id": p},
-                        "map": {"implementation_id": m}}
-            for i, (p, m) in enumerate(pairs)}
+def sources(*maps):
+    return {"s%d" % i: {"map": {"implementation_id": m}} for i, m in enumerate(maps)}
 
 
 def leaf(document, clause):
-    """The `implementation_id` leaf inside a source's `prepare` / `map` record."""
+    """The `implementation_id` leaf inside a source's `map` record."""
     def walk(node):
         if isinstance(node, dict):
             if node.get("key") == clause and isinstance(node.get("node"), dict):
@@ -64,33 +63,27 @@ def leaf(document, clause):
 
 # ---------------------------------------------------------------- the list is reachable
 
-def test_both_squares_are_pickers_naming_a_published_list():
-    """🔴 THE WIRING ITSELF. `hint: free` here is the defect this closes, and reverting a
+def test_the_square_is_a_picker_naming_a_published_list():
+    """🔴 THE WIRING ITSELF. `hint: free` here is the defect this closes, and reverting the
     leaf to it leaves every other test in the repository green."""
     published = closed_lists()
     document = published["skeleton"]
-    for clause, name in (("prepare", PREPARE_LIST), ("map", MAP_LIST)):
-        node = leaf(document, clause)
-        assert node is not None, "the %s clause lost its implementation_id" % clause
-        assert node["hint"] == "choice", (
-            "%s.implementation_id is free text again -- the name is unguessable, which is "
-            "why it was wired" % clause)
-        assert node["list"] == name
-        assert published[name], "the leaf names a list with no members"
+    node = leaf(document, "map")
+    assert node is not None, "the map clause lost its implementation_id"
+    assert node["hint"] == "choice", (
+        "map.implementation_id is free text again -- the name is unguessable, which is "
+        "why it was wired")
+    assert node["list"] == MAP_LIST
+    assert published[MAP_LIST], "the leaf names a list with no members"
+    # ⚰️ The `prepare` square retired with its clause (setup_version 6): neither the leaf
+    # nor its list is offered.
+    assert leaf(document, "prepare") is None and RETIRED_LIST not in published
 
 
 def test_the_members_are_the_registry_and_never_a_literal():
     published = closed_lists()
-    assert published[PREPARE_LIST] == sorted(
-        {name for name, _ in impl.source_preparer_declarations()})
     assert published[MAP_LIST] == sorted(
         {name for name, _ in impl.mapper_declarations()})
-
-
-def test_the_two_squares_are_offered_different_sets():
-    """A preparer's name in the mapper square is a value that can only ever refuse."""
-    published = closed_lists()
-    assert not set(published[PREPARE_LIST]) & set(published[MAP_LIST])
 
 
 def test_the_version_rides_along_because_a_list_of_names_cannot_hold_it():
@@ -105,10 +98,10 @@ def test_the_version_rides_along_because_a_list_of_names_cannot_hold_it():
 def test_the_default_follows_the_declaration_it_is_handed():
     """🔴 GATE: hand it different sources and it answers differently. That property is what
     keeps the name out of the code -- a constant could not do this."""
-    a = closed_lists(sources(("p1", "m1"), ("p1", "m1"), ("p2", "m2")))["implementations"]
-    b = closed_lists(sources(("p2", "m2"), ("p2", "m2"), ("p1", "m1")))["implementations"]
-    assert a["prepare"]["default"] == "p1" and a["map"]["default"] == "m1"
-    assert b["prepare"]["default"] == "p2" and b["map"]["default"] == "m2"
+    a = closed_lists(sources("m1", "m1", "m2"))["implementations"]
+    b = closed_lists(sources("m2", "m2", "m1"))["implementations"]
+    assert a["map"]["default"] == "m1"
+    assert b["map"]["default"] == "m2"
 
 
 def test_no_declaration_publishes_the_options_with_no_default():
@@ -116,7 +109,6 @@ def test_no_declaration_publishes_the_options_with_no_default():
     winner would decide by an axis that is not evidence."""
     for empty in (None, {}, ()):
         block = closed_lists(empty)["implementations"]
-        assert block["prepare"]["default"] is None
         assert block["map"]["default"] is None
         assert block["map"]["options"], "the options are not conditional on the sources"
 
@@ -126,7 +118,7 @@ def test_only_the_counted_entry_moves_when_the_declaration_changes():
     varying with the config, the screen would be offering a set the validator does not
     enforce -- which is the failure the whole module exists to prevent."""
     fixed = closed_lists()
-    varied = closed_lists(sources(("p1", "m1"), ("p1", "m1")))
+    varied = closed_lists(sources("m1", "m1"))
     assert set(fixed) == set(varied)
     moved = sorted(key for key in fixed if fixed[key] != varied[key])
     assert moved == ["implementations"], moved
@@ -149,10 +141,10 @@ def test_the_route_counts_off_the_file_rather_than_off_nothing(tmp_path):
     declaration at all. `closed_lists()` took no argument, so the answer used to be no."""
     write_config(tmp_path, json.dumps(
         {"setup_version": 2,
-         "sources": sources(("p9", "m9"), ("p9", "m9"), ("p8", "m8"))}))
+         "sources": sources("m9", "m9", "m8")}))
     block = service_for(tmp_path).authoring_schema()["implementations"]
-    assert block["prepare"]["default"] == "p9"
-    assert block["prepare"]["counts"] == {"p9": 2, "p8": 1}
+    assert block["map"]["default"] == "m9"
+    assert block["map"]["counts"] == {"m9": 2, "m8": 1}
 
 
 def test_an_unreadable_config_still_publishes_the_lists(tmp_path):

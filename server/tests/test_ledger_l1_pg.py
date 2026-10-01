@@ -18,7 +18,7 @@ table.
 
 🔴 THE SOURCE FIXTURE IS OURS, NOT THE DATABASE'S
 --------------------------------------------------
-`lot_event` is recreated inside the scratch schema and seeded here rather than read from
+Every source relation is recreated inside the scratch schema and seeded here rather than read from
 the isolated database's own copy. That copy is shared: this lane found two hand-edited
 rows in it, edited by somebody else, between two runs an hour apart. A test whose
 expected counts depend on a table other people are editing does not fail - it flaps, and
@@ -81,22 +81,18 @@ CREATE TABLE dt_job_rollup (
 )
 """
 
-#: \u26a0\ufe0f KEPT FOR ONE CASE ONLY. The shipped `lot_event` cannot translate a split today
-#: (S-112: its `descent` sentence carries no `when`, so it is said for every row while a
-#: split's two rows each hold only one of `child_lot`/`parent_lot`), and ONE test asserts that
-#: refusal by name rather than the whole file being built on it.
-LOT_EVENT_DDL = """
-CREATE TABLE lot_event (
-    txn_seq     TEXT PRIMARY KEY,
-    row_id      TEXT,
-    lot_id      TEXT,
-    event_type  TEXT,
-    parent_lot  TEXT,
-    child_lot   TEXT,
-    slotnumbers TEXT,
-    waferids    TEXT,
-    event_time  TEXT,
-    created_at  TIMESTAMPTZ DEFAULT now()
+#: \u26a0\ufe0f KEPT FOR ONE CASE ONLY - a molecule the declaration cannot say. It was a `lot_event`
+#: split (S-112) until setup_version 6 retired that source (lead e14416950): the chain writes
+#: one `lot_lineage` row per lineage now, so the case is a lineage row missing its parent.
+LOT_LINEAGE_DDL = """
+CREATE TABLE lot_lineage (
+    lot_lineage_key TEXT PRIMARY KEY,
+    row_id          TEXT,
+    parent_lot      TEXT,
+    child_lot       TEXT,
+    event_type      TEXT,
+    event_time      TIMESTAMPTZ,
+    created_at      TIMESTAMPTZ DEFAULT now()
 )
 """
 
@@ -187,18 +183,16 @@ PARAM_NO_IDENTITY = param("P-3", wafer_id="")
 PARAM_NO_INSTANT = param("P-4", eventtime=None)
 
 
-def _seed_lot_event(connection, rows):
-    """Seed the one relation kept for S-112's refusal case."""
+def _seed_lot_lineage(connection, rows):
+    """Seed the one relation kept for the cannot-say case."""
     with connection.cursor() as cursor:
-        cursor.execute("TRUNCATE lot_event")
+        cursor.execute("TRUNCATE lot_lineage")
         for index, r in enumerate(rows):
             cursor.execute(
-                "INSERT INTO lot_event (txn_seq, row_id, lot_id, event_type, parent_lot, "
-                "child_lot, slotnumbers, waferids, event_time) "
-                "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)",
-                (r["txn_seq"], f"le{index}", r["lot_id"], r["event_type"],
-                 r.get("parent_lot"), r.get("child_lot"), r.get("slotnumbers", ""),
-                 r.get("waferids", ""), r["event_time"]))
+                "INSERT INTO lot_lineage (lot_lineage_key, row_id, parent_lot, child_lot, "
+                "event_type, event_time) VALUES (%s,%s,%s,%s,%s,%s)",
+                (r["lot_lineage_key"], f"ll{index}", r.get("parent_lot"), r.get("child_lot"),
+                 r["event_type"], r["event_time"]))
     connection.commit()
 
 
@@ -215,13 +209,12 @@ def src(job, netdie_count=2, dt_eqp="EQP-7", event_time="2026-05-03T02:17:00",
             "event_time": event_time, "created_at": created_at}
 
 
-def lot_event_row(lot, event_type="split", parent_lot=None, child_lot=None,
-                  slots="", wafers="", event_time="2026-05-03T02:17:00", txn_seq=None):
-    """One `lot_event` row in the shipped spelling, for S-112's case only."""
-    return {"lot_id": lot, "event_type": event_type, "parent_lot": parent_lot,
-            "child_lot": child_lot, "slotnumbers": slots, "waferids": wafers,
+def lot_lineage_row(child_lot, parent_lot=None, event_type="split",
+                    event_time="2026-05-03T02:17:00"):
+    """One `lot_lineage` row in the shipped spelling, for the cannot-say case only."""
+    return {"child_lot": child_lot, "parent_lot": parent_lot, "event_type": event_type,
             "event_time": event_time,
-            "txn_seq": txn_seq or f"{lot}|{event_type}|{event_time}"}
+            "lot_lineage_key": f"{parent_lot}|{child_lot}|{event_type}|{event_time}"}
 
 
 #: Three jobs, three molecules, six atoms. Distinct `event_time`s so a month partition can be
@@ -233,14 +226,9 @@ BASE_ROWS = [
         created_at="2026-06-01T00:00:00+00:00"),
 ]
 
-#: The split the shipped declaration cannot translate today - both rows of one molecule,
-#: each holding only one of the two lot columns `descent` needs. S-112.
-SPLIT_ROWS = [
-    lot_event_row("SYN-R-001", child_lot="SYN-R-001TA", slots="07:08", wafers="W7:W8",
-                  txn_seq="LE-SYN-R-001-006-01-P"),
-    lot_event_row("SYN-R-001TA", parent_lot="SYN-R-001", slots="01:02", wafers="W1:W2",
-                  txn_seq="LE-SYN-R-001-006-01-C"),
-]
+#: A split lineage with no parent: `descent_split` binds its target from `parent_lot`, so the
+#: shipped declaration cannot say this row.
+PARENTLESS_ROWS = [lot_lineage_row("SYN-R-001TA")]
 
 @pytest.fixture(scope="module")
 def pg():
@@ -280,7 +268,7 @@ def pg():
             install_trigram(conn, SCRATCH_SCHEMA)
         with engine.begin() as conn:
             conn.execute(text(SOURCE_DDL))
-            conn.execute(text(LOT_EVENT_DDL))
+            conn.execute(text(LOT_LINEAGE_DDL))
             conn.execute(text(PROCESS_PARAM_DDL))
             conn.execute(text(DESTINATION_INVENTORY_DDL))
         # 🔴 [총괄 f8f9eaa46] The follow-up writes its receipt through the product's write path
@@ -475,28 +463,26 @@ def test_a_molecule_the_declaration_cannot_say_is_refused_counted_and_NAMED(ledg
     A refusal a caller can see and an operator cannot is the silent-skip defect wearing a
     return type.
 
-    ⚠️ THE MOLECULE IS A `lot_event` SPLIT, AND THAT IS S-112 RATHER THAN A FIXTURE CHOICE.
-    The shipped `lot_event` cannot translate one today: its `descent` sentence carries no
-    `when`, so it is said for every row, while a split's two rows hold only one each of
-    `child_lot` and `parent_lot`. So the refusal below is TODAY'S TRUTH about the shipped
-    declaration - the day S-112 is fixed this case goes red, and that redness is the
-    notification.
+    ⚰️ THE MOLECULE WAS A `lot_event` SPLIT (S-112) and this case went red the day S-112
+    closed, as it said it would: setup_version 6 retired `lot_event` and the chain writes one
+    `lot_lineage` row per lineage (총괄 e14416950). The property stays, on the source that
+    replaced it - a split row whose parent is blank.
     """
     connection = ledger.raw_connection()
     try:
-        _seed_lot_event(connection, SPLIT_ROWS)
+        _seed_lot_lineage(connection, PARENTLESS_ROWS)
     finally:
         connection.close()
 
     with caplog.at_level(logging.INFO, logger="Ledger.Gate"):
-        result = run(ledger, source="lot_event")
+        result = run(ledger, source="lot_lineage")
 
     messages = chr(10).join(r.getMessage() for r in caplog.records)
     assert "REFUSED" in messages, messages[:400]
     assert "no_identity" in messages, messages[:400]
     # ⛔ AND THE COLUMN IS NAMED. "something was refused" sends an operator looking; the
     # path is what they open.
-    assert "child_lot" in messages, messages[:400]
+    assert "parent_lot" in messages, messages[:400]
     assert result["refused_total"] >= 1, result
     assert result["inserted"] == 0, "nothing of a refused molecule may land"
 

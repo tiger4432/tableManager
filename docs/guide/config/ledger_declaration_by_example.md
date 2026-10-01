@@ -53,9 +53,6 @@ Link type    inspected  Wafer -> Die                              backing datase
         "cursor": { "columns": ["wafer_id"] },
         "occurred_at": { "column": "updated_at", "timezone": "Asia/Seoul" }
       },
-      "prepare": { "implementation_id": "direct-join", "implementation_version": 1,
-                   "input_columns": ["wafer_id", "product_code", "lot_id", "updated_at"],
-                   "output_columns": {}, "accepts_verified_join_rules": false, "inherit_virtual_join_rules": [] },
       "map":     { "implementation_id": "declarative-role", "implementation_version": 1, "unit": { "kind": "row" },
                    "input_columns": ["wafer_id", "product_code", "lot_id", "updated_at"] },
       "bind": {
@@ -83,9 +80,6 @@ Link type    inspected  Wafer -> Die                              backing datase
         "cursor": { "columns": ["row_id"] },
         "occurred_at": { "column": "inspected_at", "timezone": "Asia/Seoul" }
       },
-      "prepare": { "implementation_id": "direct-join", "implementation_version": 1,
-                   "input_columns": ["row_id", "wafer_id", "die_x", "die_y", "inspected_at"],
-                   "output_columns": {}, "accepts_verified_join_rules": false, "inherit_virtual_join_rules": [] },
       "map":     { "implementation_id": "declarative-role", "implementation_version": 1, "unit": { "kind": "row" },
                    "input_columns": ["row_id", "wafer_id", "die_x", "die_y", "inspected_at"] },
       "bind": {
@@ -126,10 +120,10 @@ Link type    inspected  Wafer -> Die                              backing datase
 
 ## 3. 이 예시가 «안» 보여 주는 것 (일부러)
 ```
-· 그룹 소스(한 이벤트 = 여러 행, `read.unit: "group"` + `group_by`) — 출하 샘플 lot_event 참고
+· 그룹 소스(한 이벤트 = 여러 행, `read.unit: "group"` + `group_by`) — 출하 예제 transfer_explorer 의 dt_log 참고
   row 소스는 `group_by` 를 적지 않습니다 — 폼도 안 그립니다. 옛 파일의 `"group_by": []` 는 그대로 읽히고 저장 때 빠집니다(10-01 `c83fe086a`)
-· 준비기가 «산출»하는 컬럼(`prepare.output_columns`) — 출하 샘플 참고
-· 검증된 가상 조인(`accepts_verified_join_rules`) — `docs/guide/config/` 의 그 문서
+· 계산된 컬럼 — 원장 선언에 «적을 자리가 없습니다». 체인이 표에 쓴 컬럼을 보통의 컬럼으로 읽습니다
+  (⚰️ `prepare` 절은 setup_version 6 에서 은퇴 — ONTOLOGY_LEDGER_SETUP §7.3)
 · 그룹 «집계»(`aggregations`) — 🔴 원장 선언의 칸이 «아닙니다». 인리치먼트 규칙의 것이고,
   원장이 그 결과를 쓰려면 그 파이프라인이 «표에 쓴» 컬럼을 보통의 컬럼으로 읽습니다(판정 211).
   칸의 뜻은 `docs/guide/config/enrichment_rules.md`

@@ -264,7 +264,10 @@ conda run -n assy_manager python server/scripts/backup_config.py restore chain_r
 |---|---|
 | `dt_alignment_metadata_mapper` · `core_alignment_mapper` | `alignment_rule` · `alignment_thresholds` · `reference` · `reference_by_job_pattern` · `geometry_bootstrap` · `primary_selector` · `assume_reference_geometry` · `allow_assumed_geometry` · `accepted_metrics` |
 | `dt_map_mapper` · `dt_standard_map_mapper` | `x_col` · `y_col` · `value_col` · `index_col` · `target_field` (+ 가상 조인 규칙의 `right_table`·`join_key`·`expose` 는 `virtual_join_config` 쪽 파일) |
-| `lot_slot_wafer_mapper` | `list_delimiter` · `slot_list_column` · `wafer_list_column` · `lot_column` · `time_column` · `event_type_column` |
+| `lot_slot_wafer_mapper` | `params` 밑에 — 읽기 `list_delimiter` · `slot_list_column` · `wafer_list_column` · `lot_column` · `time_column` · `event_type_column`, 쓰기 `target_lot_column` · `target_slot_column` · `target_wafer_column` · `target_time_column` · `target_event_type_column` |
+| `lot_lineage_mapper` | `params` 밑에 — 읽기 `lot_column` · `parent_column` · `child_column` · `time_column` · `event_type_column`, 쓰기 `target_parent_column` · `target_child_column` · `target_event_type_column` · `target_time_column` |
+
+🆕 **[10-01 총괄 0cb2ab958] 위 두 맵퍼는 칸이 «조용하지 않다»** — 기본값이 없어서 빠진 칸은 `chain_bindings.params_of(rule, required=…)` 가 규칙·칸 이름을 대어 거절하고(Next: params 에 적기 · v6 이전 규칙은 `scripts/migrate_ledger_config_to_v6.py`), 쓰기 칸은 대상 표 선언에 없으면 거절한다. 키 칼럼은 칸이 아니라 대상 표의 `business_key` 다.
 
 🔴 **이 층의 규율**: 사설 키의 오타는 «조용»하다(프레임워크가 모른다). 컬럼 이름은 `resolve_column` 을 «지나게» 써서 거절이 이름을 대게 하고, 새 사설 키를 만들기 전에 5-B 의 «같은 역할» 키(`reads` · `*_job_column`)로 표현되는지 먼저 본다.
 

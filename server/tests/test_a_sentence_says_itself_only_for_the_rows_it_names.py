@@ -27,7 +27,7 @@ import sys
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from ledger.roleframe import _unit_says, map_event_frame              # noqa: E402
-from ledger.source_preparation import locked_select_columns          # noqa: E402
+from ledger.event_frame import locked_select_columns          # noqa: E402
 from test_ledger_setup_bundle import (                               # noqa: E402
     logical_bundle, logical_catalog, source_profile, validate_bundle_errors)
 from test_ledger_setup_registry import snapshot                      # noqa: E402
@@ -107,14 +107,8 @@ def test_a_column_named_only_by_a_when_still_reaches_the_read():
     assert set(without) <= set(with_clause), "the term ADDS; it may not take anything away"
 
 
-def test_a_when_naming_a_preparer_output_is_not_asked_of_the_relation():
-    """⛔ A preparer OUTPUT is produced, not selected. Asking the relation for it would be
-    `UndefinedColumn` on the cursor path."""
-    columns = locked_select_columns(
-        identity=["event_key"], preparer_outputs=["made_here"],
-        condition_columns=["made_here"])
-
-    assert "made_here" not in columns
+# ⚰️ test_a_when_naming_a_preparer_output_is_not_asked_of_the_relation - its subject, a
+# preparer OUTPUT, retired with the prepare clause (setup_version 6).
 
 
 # ----------------------------------------------------------------- the refusals

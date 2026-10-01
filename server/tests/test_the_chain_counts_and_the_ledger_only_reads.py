@@ -30,7 +30,6 @@ import pytest
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from ledger.backfill import _no_join_reader                          # noqa: E402
 from ledger.implementations import mapper_declarations               # noqa: E402
 from ledger.setup import load_setup, preview_selected_cursor_batch   # noqa: E402
 from ledger.setup_bundle import load_physical_catalog                # noqa: E402
@@ -78,8 +77,7 @@ def setup():
 
 def semantics(setup, rows):
     preview = preview_selected_cursor_batch(
-        setup, "dt_job", pd.DataFrame(rows), {"dt_job": JOB}, _no_join_reader(),
-        known_registrations=())
+        setup, "dt_job", pd.DataFrame(rows), {"dt_job": JOB}, known_registrations=())
     out = [{key: item.get(key) for key in
             ("predicate", "subject_type", "subject_keys", "object_kind", "object_payload")}
            for item in preview.candidate_semantics]

@@ -95,10 +95,9 @@
 두 테이블을 **저장하지 않고 조회 시점에** 잇는다. `/api/maps/overlay`가 좌표로 하는 일의
 행(row) 버전이고, 잇는 기준은 좌표가 아니라 선언된 조인 키다.
 
-> **Ledger v2 목표 경계(아직 미구현):** Ledger cursor는 virtual column을 직접 읽지 않는다.
-> cursor가 base relation을 읽은 뒤 pandas source preparer가 이 선언의 verified descriptor를
-> rule ID로 상속해 batch join한다. `attach()`의 UI absent-only/`미상`/셀 표시 계약은 상속하지
-> 않는다. 🔴 **[2026-08-21] 선언의 정본은 [guide/ONTOLOGY_LEDGER_SETUP](../ONTOLOGY_LEDGER_SETUP.md)이다** —
+> ⚰️ **Ledger v2 의 «읽는 시점 조인» 경계는 은퇴했다(setup_version 6, 총괄 e14416950).** 원장은
+> 조인을 하지 않는다 — 체인의 쓰는 조인(`chain_rules.json` 의 `derive: {kind: "join"}` + `into.table`)이 왼쪽 표에 칼럼을
+> 써 넣고, 원장 소스는 그 칼럼을 자기 칼럼으로 읽는다. 🔴 **[2026-08-21] 선언의 정본은 [guide/ONTOLOGY_LEDGER_SETUP](../ONTOLOGY_LEDGER_SETUP.md)이다** —
 > 종전 이 자리가 목표 정본이라 부르던 `TARGET_ARCHITECTURE_AND_SSOT.md`는
 > 🗄️ [`_archive/ledger_v2_redesign_plan_20260817`](../../_archive/ledger_v2_redesign_plan_20260817/README.md)로
 > 이관됐다(닫힌 계획서 — 가르치는 config 문법은 은퇴).

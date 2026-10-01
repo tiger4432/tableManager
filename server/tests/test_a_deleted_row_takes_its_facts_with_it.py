@@ -29,7 +29,7 @@ from ledger import backfill, followup, runtime_v2, schema             # noqa: E4
 
 
 from ledger.roleframe import SOURCE_ROW_REF_COLUMN                    # noqa: E402
-from ledger.source_preparation import FRAME_ROW_ID_COLUMN             # noqa: E402
+from ledger.event_frame import FRAME_ROW_ID_COLUMN             # noqa: E402
 
 RELATION = "dt_log"
 OCCURRED_AT = datetime(2026, 9, 8, 1, 0, tzinfo=timezone.utc)

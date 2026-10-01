@@ -56,10 +56,6 @@
     {"predicate": "has_netdie", "type": "dtjob@1", "name": "넷다이가 안 적힌 DT 작업",
      "action": "Ⅱ 원천 — 그 수를 원천에서 가져옵니다"},
     {"predicate": "register", "type": "dtjob@1", "name": "등록되지 않은 DT 작업",
-     "action": "Ⅱ 원천 — 등록 기록을 원천에서 가져옵니다"},
-    {"predicate": "register", "type": "wafer@1", "name": "등록되지 않은 웨이퍼",
-     "action": "Ⅱ 원천 — 등록 기록을 원천에서 가져옵니다"},
-    {"predicate": "register", "type": "lot@1", "name": "등록되지 않은 랏",
      "action": "Ⅱ 원천 — 등록 기록을 원천에서 가져옵니다"}
   ],
   "object_sides": [

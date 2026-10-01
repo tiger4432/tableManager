@@ -559,80 +559,6 @@
                           ]
                         }
                       }
-                    }
-                  ]
-                }
-              },
-              {
-                "key": "prepare",
-                "required": true,
-                "node": {
-                  "kind": "record",
-                  "fields": [
-                    {
-                      "key": "implementation_id",
-                      "required": true,
-                      "node": {
-                        "kind": "leaf",
-                        "hint": "choice",
-                        "list": "prepare_implementation"
-                      }
-                    },
-                    {
-                      "key": "implementation_version",
-                      "required": true,
-                      "node": {
-                        "kind": "leaf",
-                        "hint": "number"
-                      }
-                    },
-                    {
-                      "key": "input_columns",
-                      "required": true,
-                      "node": {
-                        "kind": "map",
-                        "keyed_by": "index",
-                        "member": "Column",
-                        "of": {
-                          "kind": "leaf",
-                          "hint": "free"
-                        }
-                      }
-                    },
-                    {
-                      "key": "output_columns",
-                      "required": true,
-                      "node": {
-                        "kind": "map",
-                        "keyed_by": "name",
-                        "member": "Column",
-                        "of": {
-                          "kind": "leaf",
-                          "hint": "free"
-                        }
-                      }
-                    },
-                    {
-                      "key": "accepts_verified_join_rules",
-                      "required": true,
-                      "node": {
-                        "kind": "leaf",
-                        "hint": "flag"
-                      }
-                    },
-                    {
-                      "key": "inherit_virtual_join_rules",
-                      "required": true,
-                      "node": {
-                        "kind": "map",
-                        "keyed_by": "index",
-                        "member": "Rule",
-                        "of": {
-                          "kind": "leaf",
-                          "hint": "ref",
-                          "section": "virtual_joins"
-                        }
-                      }
                     },
                     {
                       "key": "exclude_when",
@@ -666,8 +592,7 @@
                       }
                     }
                   ]
-                },
-                "label": "Prepare"
+                }
               },
               {
                 "key": "map",

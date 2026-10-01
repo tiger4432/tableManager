@@ -32,7 +32,6 @@ from typing import Any
 
 import pandas as pd
 
-from verified_join_contract import VerifiedJoinDescriptor
 from .roleframe import RoleMapperImplementationRegistry
 from .runtime_v2 import (
     CursorBatchExecutionResult,
@@ -42,7 +41,6 @@ from .runtime_v2 import (
 )
 from .implementations import (
     role_mapper_registry,
-    source_preparer_registry,
     trusted_implementations,
 )
 from .setup_bundle import (
@@ -60,10 +58,6 @@ from .setup_bundle import (
 from . import schema
 from .setup_registry import (
     LedgerSetupSnapshot, compile_setup_snapshot, snapshot_compile_errors)
-from .source_preparation import (
-    SourcePreparerImplementationRegistry,
-    VerifiedJoinBatchReader,
-)
 
 
 #: The default world's declaration root, from the one seat - through `paths`, like the
@@ -108,7 +102,6 @@ class LedgerSetup:
     config_root: Path
     bundle: LedgerSetupBundle
     snapshot: LedgerSetupSnapshot
-    preparers: SourcePreparerImplementationRegistry
     mappers: RoleMapperImplementationRegistry
     #: The physical relation shape from `table_config.json` that `bundle` was validated
     #: against. Carried rather than re-read so that everything downstream -- the explorer
@@ -361,7 +354,6 @@ def _resolve_refused_declarations(root_path: Path, catalog: Mapping[str, Any],
 def load_setup(
     root: str | Path = DEFAULT_ONTOLOGY_ROOT,
     *,
-    verified_joins: Sequence[VerifiedJoinDescriptor] = (),
     catalog: Mapping[str, Any] | None = None,
 ) -> LedgerSetup:
     """Load one file, enforce binding readiness, and compile one snapshot.
@@ -391,13 +383,12 @@ def load_setup(
     _announce_unscored_bindings(
         _unscored_self_edge_sentences(bundle.section("sources")))
     snapshot = compile_setup_snapshot(
-        bundle, trusted_implementations(), verified_joins,
+        bundle, trusted_implementations(),
         catalog=resolved_catalog, refused_sources=refused)
     return LedgerSetup(
         config_root=root_path,
         bundle=bundle,
         snapshot=snapshot,
-        preparers=source_preparer_registry(),
         mappers=role_mapper_registry(),
         catalog=MappingProxyType(resolved_catalog),
         left_out=MappingProxyType(dict(left_out)),
@@ -408,7 +399,6 @@ def setup_from_document(
     document: Mapping[str, Any],
     *,
     config_root: str | Path = DEFAULT_ONTOLOGY_ROOT,
-    verified_joins: Sequence[VerifiedJoinDescriptor] = (),
     catalog: Mapping[str, Any] | None = None,
     refused_sources: Mapping[str, Any] | None = None,
 ) -> LedgerSetup:
@@ -428,13 +418,12 @@ def setup_from_document(
         dict(live_physical_catalog()) if catalog is None else dict(catalog))
     bundle = require_ready_bundle(validate_bundle(document, catalog=resolved_catalog))
     snapshot = compile_setup_snapshot(
-        bundle, trusted_implementations(), verified_joins, catalog=resolved_catalog,
+        bundle, trusted_implementations(), catalog=resolved_catalog,
         refused_sources=refused_sources)
     return LedgerSetup(
         config_root=Path(config_root),
         bundle=bundle,
         snapshot=snapshot,
-        preparers=source_preparer_registry(),
         mappers=role_mapper_registry(),
         catalog=MappingProxyType(resolved_catalog),
     )
@@ -445,14 +434,12 @@ def preview_selected_cursor_batch(
     source_id: str,
     base_rows: pd.DataFrame,
     cursor_value: Mapping[str, Any],
-    join_reader: VerifiedJoinBatchReader,
     *,
     known_registrations: Any = None,
 ) -> CursorBatchPreview:
     _require_declared_source(setup, source_id)
     return preview_cursor_batch(
-        setup.snapshot, source_id, base_rows, cursor_value, join_reader,
-        setup.preparers, setup.mappers,
+        setup.snapshot, source_id, base_rows, cursor_value, setup.mappers,
         known_registrations=known_registrations,
     )
 
@@ -466,7 +453,6 @@ def execute_selected_scoped_batch(
     source_id: str,
     base_rows: pd.DataFrame,
     scope: Any,
-    join_reader: VerifiedJoinBatchReader,
     store: Any,
     *,
     known_registrations: Any = None,
@@ -480,8 +466,7 @@ def execute_selected_scoped_batch(
     """
     _require_declared_source(setup, source_id)
     return execute_scoped_batch(
-        setup.snapshot, source_id, base_rows, scope, join_reader,
-        setup.preparers, setup.mappers, store,
+        setup.snapshot, source_id, base_rows, scope, setup.mappers, store,
         known_registrations=known_registrations,
         withdraw_refs=withdraw_refs,
     )
@@ -530,7 +515,7 @@ def _require_declared_source(setup: "LedgerSetup", source_id: str) -> str:
             f"{dict(plan.refusal or {}).get('message')}")
     if setup.snapshot.source_plans[source_id].status != "active":
         raise LedgerSetupError(
-            "source_retired",
+            "source_retired", f"sources.{source_id}.status",
             f"source {source_id!r} is retired; its atoms stay and nothing new is read. "
             f"Set `sources.{source_id}.status` to 'active' to read it again.")
     return source_id
@@ -644,7 +629,7 @@ def _authoring_issues(
         issues = bundle_readiness_errors(bundle)
     if not issues:
         issues = snapshot_compile_errors(
-            bundle, trusted_implementations(), (), catalog=catalog)
+            bundle, trusted_implementations(), catalog=catalog)
     return issues or (fallback,)
 
 

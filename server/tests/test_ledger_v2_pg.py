@@ -26,19 +26,11 @@ from ledger.runtime_v2 import execute_scoped_batch, preview_cursor_batch
 from ledger.roleframe import DeclarativeRoleMapper, RoleMapperImplementationRegistry
 from ledger.setup_bundle import validate_bundle
 from ledger.setup_registry import compile_setup_snapshot
-from ledger.source_preparation import (
-    DirectJoinSourcePreparer,
-    JoinRightRow,
-    SQLAlchemyVerifiedJoinBatchReader,
-    SourcePreparationError,
-    SourcePreparerImplementationRegistry,
-)
 from ledger.setup_registry import cursor_translator_version
 from ledger.store import LedgerStore
 from ledger.trace import relation_exists
 from test_ledger_setup_bundle import logical_bundle, logical_catalog
 from test_ledger_setup_registry import trusted_implementations
-from verified_join_contract import _bind_physical_verifier_issuer
 from chain import join_key_index
 
 
@@ -100,14 +92,6 @@ def _catalog():
 CATALOG = _catalog()
 
 
-_ISSUER = _bind_physical_verifier_issuer()
-
-
-def load_verified_rules(rules):
-    """⚠️ 이 «이름»이어야 증서가 발급된다 — 계약은 도는 프레임을 본다 (판정 364)."""
-    return [_ISSUER.issue(rule) for rule in rules]
-
-
 def _known_tables(catalog):
     return {
         table: {"column_types": dict(config["columns"])}
@@ -115,12 +99,10 @@ def _known_tables(catalog):
     }
 
 
-def _registries():
-    preparer_registry = SourcePreparerImplementationRegistry()
-    preparer_registry.register("prepare-input", 1, DirectJoinSourcePreparer)
+def _mappers():
     mapper_registry = RoleMapperImplementationRegistry()
     mapper_registry.register("map-transition-role", 1, DeclarativeRoleMapper)
-    return preparer_registry.seal(), mapper_registry.seal()
+    return mapper_registry.seal()
 
 
 @pytest.fixture(scope="module")
@@ -155,6 +137,7 @@ def pg_v2(tmp_path_factory):
                     record_id TEXT PRIMARY KEY,
                     join_id TEXT NOT NULL,
                     source_id TEXT NOT NULL,
+                    target_id TEXT,
                     event_at TIMESTAMPTZ NOT NULL,
                     event_key TEXT NOT NULL
                 )'''))
@@ -185,6 +168,8 @@ def pg_v2(tmp_path_factory):
             #    🔴 «물리 검증»은 안 죽었다 — 인덱스가 실재하나를 묻는 것은
             #    `join_key_index.unique_index_covering` 이고 그 좌석은 그대로다. 죽은 것은
             #    그것을 감싸던 로더뿐이라, 여기서 «같은 탐침»을 직접 물어 증서를 낸다.
+            #    (setup_version 6 에서 증서를 받던 준비기가 은퇴했다 — 탐침은 이제 아래
+            #    `test_postgres_right_unique_index_is_used_by_the_join_probe` 의 전제만 잰다.)
             #
             # 🔴 `RIGHT_TABLE` 이지 "reference_rows" 가 아니다. 죽은 로더는 `known_tables` 를
             #    받아 논리 이름을 «자기가» 물리 이름으로 풀었고, 직접 묻는 이 자리는 그 풀이를
@@ -197,14 +182,9 @@ def pg_v2(tmp_path_factory):
         assert probed == UNIQUE_INDEX, (
             "the unique index this fixture built was not found, so nothing below "
             "measures anything: %r" % (probed,))
-        verified = tuple(load_verified_rules(
-            [dict(rule, name=name, unique_index=probed)
-             for name, rule in raw["virtual_joins"].items()]))
-        assert len(verified) == 1, verified
-        assert verified[0].unique_index == UNIQUE_INDEX
         compiled = compile_setup_snapshot(
             validate_bundle(raw, catalog=CATALOG), trusted_implementations(),
-            verified, catalog=CATALOG)
+            catalog=CATALOG)
 
         RightBase = declarative_base()
 
@@ -265,8 +245,8 @@ def _seed(case, *, with_right=True):
     with case["admin"].begin() as connection:
         connection.execute(text(f'''
             INSERT INTO public."{SOURCE_TABLE}"
-                (record_id, join_id, source_id, event_at, event_key)
-            VALUES ('R-0001', 'J-0001', 'IN-0001', :event_at, 'E-0001')
+                (record_id, join_id, source_id, target_id, event_at, event_key)
+            VALUES ('R-0001', 'J-0001', 'IN-0001', 'OUT-J-0001', :event_at, 'E-0001')
         '''), {"event_at": NOW})
         if with_right:
             connection.execute(text(f'''
@@ -282,11 +262,8 @@ def _base_batch(case):
         *columns.driver.identity, *columns.driver.group_by,
         *columns.driver.order_by, *columns.driver.cursor_columns,
         columns.driver.occurred_at.column,
-        *columns.driver.preparation.preparer.input_columns,
-        *(column for column in columns.driver.mapper.input_columns
-          if column not in columns.driver.preparation.preparer.output_columns),
+        *columns.driver.mapper.input_columns,
     }))
-    assert "target_id" not in physical
     selected = ", ".join(f'"{column}"' for column in physical)
     with case["admin"].connect() as connection:
         rows = connection.execute(text(
@@ -309,7 +286,7 @@ def _scope(base):
     leaving nothing behind - belong to the door the live path uses, so that is the door
     they are asked of.
     """
-    return ("join_id", sorted(base["join_id"].tolist()))
+    return ("event_key", sorted(base["event_key"].tolist()))
 
 
 def _counts(case):
@@ -329,10 +306,10 @@ def test_postgres_bundle_to_read_apis_is_one_compiler_and_one_transaction(clean_
     try:
         dry = preview_cursor_batch(
             case["compiled"], "input_rows", base, _cursor(base),
-            SQLAlchemyVerifiedJoinBatchReader(session), *_registries())
+            _mappers())
         result = execute_scoped_batch(
             case["compiled"], "input_rows", base, _scope(base),
-            SQLAlchemyVerifiedJoinBatchReader(session), *_registries(), case["store"])
+            _mappers(), case["store"])
     finally:
         session.rollback()
         session.close()
@@ -375,44 +352,6 @@ def test_postgres_bundle_to_read_apis_is_one_compiler_and_one_transaction(clean_
             f'SELECT count(*) FROM public."{SOURCE_TABLE}"')).scalar() == 1
         assert connection.execute(text(
             f'SELECT count(*) FROM public."{RIGHT_TABLE}"')).scalar() == 1
-
-
-def test_postgres_missing_join_and_ambiguous_reader_leave_atom0(clean_pg_v2):
-    case = clean_pg_v2
-    _seed(case, with_right=False)
-    base = _base_batch(case)
-    session = case["sessionmaker"]()
-    try:
-        with pytest.raises(SourcePreparationError) as missing:
-            execute_scoped_batch(
-                case["compiled"], "input_rows", base, _scope(base),
-                SQLAlchemyVerifiedJoinBatchReader(session), *_registries(),
-                case["store"])
-    finally:
-        session.rollback()
-        session.close()
-    assert missing.value.code == "source_preparation_missing"
-    assert _counts(case) == (0, 0)
-
-    class AmbiguousReader(SQLAlchemyVerifiedJoinBatchReader):
-        def read_chunk(self, descriptor, keys):
-            key = keys[0]
-            return {key: (
-                JoinRightRow(key, {"row_id": "A"}, {"target_id": "A"}, NOW),
-                JoinRightRow(key, {"row_id": "B"}, {"target_id": "B"}, NOW),
-            )}
-
-    session = case["sessionmaker"]()
-    try:
-        with pytest.raises(SourcePreparationError) as ambiguous:
-            execute_scoped_batch(
-                case["compiled"], "input_rows", base, _scope(base),
-                AmbiguousReader(session), *_registries(), case["store"])
-    finally:
-        session.rollback()
-        session.close()
-    assert ambiguous.value.code == "source_preparation_ambiguous"
-    assert _counts(case) == (0, 0)
 
 
 # DELETED 2026-08-23 with the field it measured:
@@ -464,7 +403,7 @@ def test_postgres_replay_dedupes_the_second_write_of_the_same_batch(clean_pg_v2)
         try:
             results.append(execute_scoped_batch(
                 case["compiled"], "input_rows", base, _scope(base),
-                SQLAlchemyVerifiedJoinBatchReader(session), *_registries(),
+                _mappers(),
                 case["store"]))
         finally:
             session.rollback()
@@ -490,7 +429,7 @@ def test_postgres_gate_refusal_stops_before_store_transaction(clean_pg_v2, monke
         with pytest.raises(gate.MoleculeRefused):
             execute_scoped_batch(
                 case["compiled"], "input_rows", base, _scope(base),
-                SQLAlchemyVerifiedJoinBatchReader(session), *_registries(),
+                _mappers(),
                 case["store"])
     finally:
         session.rollback()

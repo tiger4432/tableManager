@@ -119,11 +119,13 @@ def _plain(value):
 
 
 _BROKEN_OTHER = copy.deepcopy(SAMPLE)
-_BROKEN_OTHER["sources"]["lot_event"]["read"]["table"] = "no_such_table"
+# A LIVE neighbour breaks: a retired one (lot_event, setup_version 6) is not read, so its
+# content is not judged and it would not be left out.
+_BROKEN_OTHER["sources"]["transfer_event"]["read"]["table"] = "no_such_table"
 APART = {
     # the file holds a declaration the active setup left out
     "a_declaration_left_out": (_BROKEN_OTHER, CATALOG,
-                               lambda document, catalog: "lot_event" not in document["sources"]),
+                               lambda document, catalog: "transfer_event" not in document["sources"]),
     # the catalog loader answers what the setup did not compile with
     "a_catalog_changed_since": (SAMPLE, {**CATALOG, "added_since": CATALOG["lot_event"]},
                                 lambda document, catalog: "added_since" not in catalog),

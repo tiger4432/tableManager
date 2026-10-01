@@ -3,12 +3,12 @@
 This is the capability the round exists to create, so it is proven by RUNNING one, not by
 asserting that the pieces are present.
 
-The source below is declared entirely in config. It names `direct-join` (no joins, so it
-computes nothing) and `declarative-role` (it executes the Profile's bindings). Both are
-generic implementations that already existed in the repository and were unreachable from
-every config file until the trusted set stopped being a hand-kept list -- compiling this
-bundle before that change failed with `untrusted_implementation`, which is precisely why
-"a simple source needs no Python" was not true.
+The source below is declared entirely in config. It names `declarative-role` (it executes
+the Profile's bindings), a generic implementation that already existed in the repository and
+was unreachable from every config file until the trusted set stopped being a hand-kept list --
+compiling this bundle before that change failed with `untrusted_implementation`, which is
+precisely why "a simple source needs no Python" was not true. (It also named `direct-join`,
+the preparer that computed nothing, until setup_version 6 retired the `prepare` section.)
 """
 from __future__ import annotations
 
@@ -22,7 +22,6 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from ledger.implementations import (                                     # noqa: E402
     role_mapper_registry,
-    source_preparer_registry,
     trusted_implementations,
 )
 from ledger.roleframe import DeclarativeRoleMapper                       # noqa: E402
@@ -30,10 +29,6 @@ from ledger.runtime_v2 import preview_cursor_batch                       # noqa:
 from ledger.setup_bundle import (                                        # noqa: E402
     SETUP_VERSION, require_ready_bundle, validate_bundle)
 from ledger.setup_registry import compile_setup_snapshot                 # noqa: E402
-from ledger.source_preparation import (                                  # noqa: E402
-    DirectJoinSourcePreparer,
-    VerifiedJoinBatchReader,
-)
 
 
 def _approved(**extra):
@@ -70,11 +65,6 @@ SHIPMENT_SETUP = {
             "registration_probe": [
                 {"entity_type": "Box@1", "columns": ["box"]}],
         },
-        "prepare": {
-            "implementation_id": "direct-join", "implementation_version": 1,
-            "input_columns": [], "output_columns": {},
-            "accepts_verified_join_rules": False,
-            "inherit_virtual_join_rules": []},
         "map": {
             "implementation_id": "declarative-role", "implementation_version": 1,
             "unit": {"kind": "row"},
@@ -106,17 +96,12 @@ SHIPMENT_CATALOG = {
 }
 
 
-class _NoJoin(VerifiedJoinBatchReader):
-    def read_chunk(self, descriptor, keys):
-        raise AssertionError("a simple source reads no joins")
-
-
 @pytest.fixture(scope="module")
 def snapshot():
     bundle = require_ready_bundle(
         validate_bundle(SHIPMENT_SETUP, catalog=SHIPMENT_CATALOG))
     return compile_setup_snapshot(
-        bundle, trusted_implementations(), (), catalog=SHIPMENT_CATALOG)
+        bundle, trusted_implementations(), catalog=SHIPMENT_CATALOG)
 
 
 @pytest.fixture
@@ -135,7 +120,7 @@ def test_a_config_only_source_produces_atoms(snapshot, rows):
     preview = preview_cursor_batch(
         snapshot, "shipment", rows,
         {"shipped_at": rows.iloc[-1]["shipped_at"], "shipment_id": "S2"},
-        _NoJoin(), source_preparer_registry(), role_mapper_registry(),
+        role_mapper_registry(),
         known_registrations=(),
     )
     assert preview.molecule_count == 2
@@ -151,11 +136,8 @@ def test_a_config_only_source_produces_atoms(snapshot, rows):
 def test_the_source_is_served_by_generic_implementations_and_no_source_specific_code(
     snapshot,
 ):
-    """No file anywhere is about `shipment`; both implementations serve any source."""
+    """No file anywhere is about `shipment`; the implementation serves any source."""
     plan = snapshot.source_plans["shipment"]
-    assert source_preparer_registry().resolve(
-        plan.driver.preparation.preparer.implementation).__class__ \
-        is DirectJoinSourcePreparer
     assert role_mapper_registry().resolve(
         plan.driver.mapper.implementation).__class__ is DeclarativeRoleMapper
 
@@ -179,7 +161,7 @@ def test_a_second_sight_is_suppressed_so_register_lands_once(snapshot, rows):
     preview = preview_cursor_batch(
         snapshot, "shipment", rows,
         {"shipped_at": rows.iloc[-1]["shipped_at"], "shipment_id": "S2"},
-        _NoJoin(), source_preparer_registry(), role_mapper_registry(),
+        role_mapper_registry(),
         known_registrations=(("Box", canonical_keys({"box": "BX-01"})),),
     )
     assert preview.atom_count == 1

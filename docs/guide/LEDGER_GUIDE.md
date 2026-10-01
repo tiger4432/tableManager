@@ -27,27 +27,23 @@
 
 ## 0. 먼저 고를 것 — 문법이 아니라 「Python 을 쓸지 말지」
 
-소스 하나가 `relation` · `read` · `prepare` · `map` · `bind` 를 **실행 순서대로 직접** 든다.
+소스 하나가 `relation` · `read` · `map` · `bind` 를 **실행 순서대로 직접** 든다
+(⚰️ `prepare` 는 setup_version 6 에서 은퇴 — [ONTOLOGY_LEDGER_SETUP §7.3](./ONTOLOGY_LEDGER_SETUP.md)).
 소스 「문법(kind)」을 고르는 축은 없다.
 
 | 소스 모양 | 선택 |
 |---|---|
-| 출력 컬럼이 상속한 verified join 에서 그대로 온다 | Preparer `direct-join@1` — Python 0줄 |
+| 조인한 값이 필요하다 | 체인의 쓰는 조인(`chain_rules.json` 의 `derive: {kind: "join"}` + `into.table`)이 표에 써 넣고 소스는 그 칼럼을 읽는다 — Python 0줄 |
 | 업무적 읽기가 `bind` 만으로 표현된다 | Mapper `declarative-role@1` — Python 0줄 |
 | 행을 쪼개거나 도메인 규칙으로 해석해야 한다 | `server/mappers/ledger_v2_*.py` 에 전용 mapper 파일 **하나** |
-| 정규화·그룹 조립처럼 계산이 필요하다 | `server/ledger/` 에 `BaseSourcePreparer` 하위 클래스 |
+| 정규화·짝 맞추기처럼 계산이 필요하다 | 체인 규칙이 «표에 쓴다» — 원장 소스는 그 표를 읽는다(원장 선언은 국소적·무계산) |
 
-**먼저 범용 구현 둘로 끝나는지 보고, 안 되는 부분만 코드로 쓴다.**
+**먼저 표에 쓰는 체인과 범용 mapper 로 끝나는지 보고, 안 되는 부분만 코드로 쓴다.**
 구현 클래스는 자기 `implementation_id`/`implementation_version` 을 선언하고
 `server/ledger/implementations.py` 가 **코드에서 발견**한다 — 손으로 유지하는 등록 목록은 없다.
-🆕 **[2026-09-05] 그리고 이제 «신원»만 말하는 것이 아니다** — `BaseSourcePreparer` 하위 클래스는
-`declared_output_columns` 로 **자기가 내놓는 컬럼**까지 밝힐 수 있고, 밝히면 선언의
-`prepare.output_columns` 가 **파생**이 되어 운영자가 그 칸을 안 적는다.
-🔴 **밝히는 것은 «선택»이고 기본값은 침묵이다** — 오늘 준비기 둘이 마침 둘 다 알지만, 그것을
-「준비기는 안다」로 일반화하면 그 둘에 대한 서술이지 규칙이 아니다. 절차 [ONTOLOGY_LEDGER_SETUP §7.3-bis](./ONTOLOGY_LEDGER_SETUP.md).
 🆕 **이름을 «타이핑»하지도 않는다** — 작성 폼이 고르개를 그리고, 그 목록과 기본값은
 **이 배포의 소스에서 세어** 나온다([ONTOLOGY_LEDGER_SETUP §0](./ONTOLOGY_LEDGER_SETUP.md)).
-`declarative-role@1` 은 시각 Role 도 채운다(Role kind 가 `time` 이면 준비 경계가 이미 해석한
+`declarative-role@1` 은 시각 Role 도 채운다(Role kind 가 `time` 이면 이벤트 프레임이 이미 해석한
 `__occurred_at` 을 읽는다). 그래서 「Python 0줄」이 시각 있는 소스에도 참이다.
 
 ## 1. 모듈 지도
@@ -59,7 +55,7 @@
 | `setup_bundle.py` · `setup_registry.py` · `setup.py` | 선언 «검증·compile» 과 로드 경계 |
 | `config.py` | 선언 로더(`load`)와 소스별 접근자 |
 | `source_contract.py` | 선언 → 프로필 → 가능한 발화 → 선언의 서명 결합 검사 |
-| `source_preparation.py` · `runtime_v2.py` · `roleframe.py` · `source_profile*.py` | 실행 경로 — `prepare` → `map`/RoleFrame → `bind` |
+| `event_frame.py` · `runtime_v2.py` · `roleframe.py` · `source_profile*.py` | 실행 경로 — 물리 batch → EventFrame → `map`/RoleFrame → `bind` |
 | `implementations.py` | 어떤 `implementation_id` 가 실행 가능한지 코드에서 발견해 답한다 |
 | `gate.py` | 분자 단위 전부-아니면-전무 검사와 거절 계수 |
 | `store.py` | 원자 append 와 커서 전진을 «한 트랜잭션»으로 |
@@ -117,7 +113,7 @@ source rows
 ### ② 선언 작성
 
 [ONTOLOGY_LEDGER_SETUP §10](./ONTOLOGY_LEDGER_SETUP.md) 을 따른다.
-물리 컬럼명은 `sources.<id>` 의 `relation`·`read` 와 `prepare`/`map` 의 `input_columns` 에만
+물리 컬럼명은 `sources.<id>` 의 `relation`·`read` 와 `map` 의 `input_columns` 에만
 두고 **구현 코드에는 넣지 않는다.**
 
 ### ③ 전용 mapper — 파일 하나

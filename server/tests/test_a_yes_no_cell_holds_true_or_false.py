@@ -209,8 +209,7 @@ LEDGER_CELLS = [
     (("virtual_joins", "input_to_reference", "enabled"), "enabled"),
     (("virtual_joins", "input_to_reference", "materialize"), "materialize"),
     (("virtual_joins", "input_to_reference", "fold", "case"), "case"),
-    (("sources", "input_rows", "prepare", "accepts_verified_join_rules"),
-     "accepts_verified_join_rules"),
+    # ⚰️ prepare.accepts_verified_join_rules left with the prepare clause (setup_version 6).
 ]
 
 
@@ -225,8 +224,8 @@ def test_a_ledger_flag_refuses_the_bundle_with_the_sentence(cells, name):
 
 def test_blank_and_allow_null_say_the_sentence_too():
     raw = logical_bundle()
-    raw["sources"]["input_rows"]["prepare"]["exclude_when"] = [
-        {"column": raw["sources"]["input_rows"]["prepare"]["input_columns"][0], "blank": 1}]
+    raw["sources"]["input_rows"]["read"]["exclude_when"] = [
+        {"column": "join_id", "blank": 1}]
     raw["entities"]["InputEntity@1"]["allow_null"] = "false"
     messages = {e.message for e in snapshot_compile_errors(
         LedgerSetupBundle(raw), trusted_implementations())}

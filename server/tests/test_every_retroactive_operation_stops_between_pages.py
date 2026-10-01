@@ -75,7 +75,7 @@ def rescope_doors(monkeypatch):
         "withdraw": len(frame), "remake": len(frame), "refs": list(frame["row_id"])})
     monkeypatch.setattr(store_module, "LedgerStore", lambda engine, **_: store)
 
-    def _write(setup, source, frame, scope, reader, store, known_registrations=None,
+    def _write(setup, source, frame, scope, store, known_registrations=None,
                withdraw_refs=None):
         written.append(list(frame["row_id"]))
         return SimpleNamespace(

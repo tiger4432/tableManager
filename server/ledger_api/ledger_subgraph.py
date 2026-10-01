@@ -612,7 +612,13 @@ class SqlEvidenceLookup:
     # `_not_current_clause` (총괄 10-01).
 
     def subjects_of_type(self, entity_type, limit):
-        """Every REGISTERED subject of one declared type — a described seed set (S-148-a).
+        """Every node of one declared type — a described seed set (S-148-a).
+
+        🔴 [총괄 819726624 ㄹ] A NODE IS ANY ATOM NAMING IT, ON EITHER SIDE — `gaps.
+        _nodes_of_type_sql`, the one answer to 「what is a node of this type」. This REVERSES
+        S-148-a / 판정 337 「registered subjects only」: with lot_event retired nothing
+        registers a wafer or a lot, and the register-only list would have shrunk to the
+        types something still registers.
 
         🔴 THROUGH THIS CLASS'S OWN RUNNER, `self._execute`, and that is not a style choice.
         Measured: every sibling method here goes through it (`ledger_trace._fetch`), and the
@@ -621,36 +627,27 @@ class SqlEvidenceLookup:
         `Connection`, which has no `cursor`, so the route answered 500. One class, one way
         of emitting SQL.
 
-        🔴 THE INDEX IS THE ONE THE SCHEMA ALREADY KEEPS:
-        `idx_ledger_register (subject_type, subject_keys) WHERE predicate = 'register'`.
-        PARTIAL, so it is O(entities) rather than O(atoms) -- the schema's own note says so.
-
-        🔴 EVERY ENTITY HAS A REGISTER ATOM. That is A1's existence axis and the predicate
-        name is fixed (`config_authoring.REGISTER_PREDICATE`), so 「this type's subjects」
-        reads the seat that already records existence rather than inventing one.
-
+        ⚠️ THE BUDGETED SET IS THE FRONT OF THE KEY ORDER, NOT THE OLDEST —
+        `gaps.SAMPLE_NOT_AGE_ORDERED` (a skip scan, 총괄 ㄱ 10-01).
         ⚠️ ONE ROW PAST THE BUDGET, so 「there were more」 is a fact rather than an inference
         from a full page.
         """
-        from ledger.config_authoring import REGISTER_PREDICATE
+        from ledger import gaps
 
         bare = str(entity_type or "").split("@", 1)[0]
+        # Keys only: the walk does not read the first instant, and selecting just `keys`
+        # leaves its per-key lookups out of the plan.
         rows = self._execute(
-            f"SELECT DISTINCT subject_type, subject_keys "
-            f"FROM {self.relation} "
-            f"WHERE predicate = %(predicate)s AND subject_type = %(subject_type)s "
-            f"ORDER BY subject_type, subject_keys "
-            f"LIMIT %(fetch)s",
-            {"predicate": REGISTER_PREDICATE, "subject_type": bare,
-             "fetch": int(limit) + 1})
+            "SELECT keys FROM (%s) n" % gaps._nodes_of_type_sql().format(table=self.relation),
+            {"bare": bare, "scan": int(limit) + 1})
         cut = max(0, len(rows) - int(limit))
-        # ⚠️ ROWS ARE POSITIONAL, as `_atom_from_row` beside this reads them, and
-        # `subject_keys` arrives as text on one driver and as a mapping on the other --
-        # the same two-shaped handling that function already does.
+        # ⚠️ ROWS ARE POSITIONAL, as `_atom_from_row` beside this reads them, and the keys
+        # arrive as text on one driver and as a mapping on the other -- the same two-shaped
+        # handling that function already does.
         out = []
         for row in rows[:int(limit)]:
-            keys = json.loads(row[1]) if isinstance(row[1], str) else row[1]
-            out.append(explorer.entity_id(str(row[0]), dict(keys or {})))
+            keys = json.loads(row[0]) if isinstance(row[0], str) else row[0]
+            out.append(explorer.entity_id(bare, dict(keys or {})))
         return _DescribedSeeds(out, cut)
 
 
@@ -693,19 +690,22 @@ class InMemoryEvidenceLookup:
         return ordered[:limit], len(ordered) > limit
 
     def subjects_of_type(self, entity_type, limit):
-        """The same question over the atoms held in memory. ⚠️ THE SAME RULE, not a looser
-        one: only REGISTERED subjects count, so a fixture cannot accidentally seed from a
-        type nothing registered."""
-        from ledger.config_authoring import REGISTER_PREDICATE
-
+        """The same question over the atoms held in memory. ⚠️ THE SAME RULE as
+        `gaps._nodes_of_type_sql`, not a looser one: a node is any atom naming it, subject
+        side or an `entity_ref` object (총괄 819726624 ㄹ - reverses S-148-a / 판정 337
+        「registered subjects only」)."""
         bare = str(entity_type or "").split("@", 1)[0]
+        named = []
+        for atom in self.atoms:
+            if str(atom.subject_type).split("@", 1)[0] == bare:
+                named.append((atom.subject_type, atom.subject_keys))
+            payload = atom.object_payload or {}
+            if (atom.object_kind == "entity_ref"
+                    and str(payload.get("type")).split("@", 1)[0] == bare):
+                named.append((payload.get("type"), payload.get("keys")))
         seen, ids = set(), []
-        for atom in sorted(self.atoms, key=lambda a: (a.subject_type, str(a.subject_keys))):
-            if atom.predicate != REGISTER_PREDICATE:
-                continue
-            if str(atom.subject_type).split("@", 1)[0] != bare:
-                continue
-            node_id = explorer.entity_id(atom.subject_type, atom.subject_keys)
+        for node_type, keys in sorted(named, key=str):
+            node_id = explorer.entity_id(node_type, dict(keys or {}))
             if node_id in seen:
                 continue
             seen.add(node_id)
@@ -1812,7 +1812,7 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
         seed_cut = described.cut
         if not described.ids:
             raise ValueError(
-                "no registered subject of type %r; nothing to walk from" % (seed_type,))
+                "no node of type %r in the ledger; nothing to walk from" % (seed_type,))
         negatives = list((seed_id or {}).get("negative") or ()) if isinstance(
             seed_id, dict) else []
         # 🔴 THE EXCEPTED SUBJECTS LEAVE THE DESCRIBED SIDE — this subtraction IS the set
@@ -1825,7 +1825,7 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
                    "negative": negatives}
         if not seed_id["positive"]:
             raise ValueError(
-                "every registered subject of type %r is named as a control; nothing is "
+                "every node of type %r is named as a control; nothing is "
                 "left to walk from" % (seed_type,))
     seed_signs = _signed_seeds(seed_id)
     seed_refs = {item: decode_node_id(item) for item in seed_signs}

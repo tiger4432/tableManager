@@ -131,11 +131,10 @@ def _bootstrap_path():
         sys.path.insert(0, here)
 
 
-def prepare_v2_cursor_batch(snapshot, source_id, rows, reader, implementations,
-                            refusals=None, excluded=None):
-    """Convert one complete existing-cursor batch into prepared EventFrames.
+def prepare_v2_cursor_batch(snapshot, source_id, rows, refusals=None, excluded=None):
+    """Convert one complete existing-cursor batch into EventFrames.
 
-    The function has no store/cursor mutation.  A preparation refusal propagates before
+    The function has no store/cursor mutation.  A page refusal propagates before
     any Role mapper/compiler call, so the caller keeps its current cursor unchanged.
 
     `refusals`: a list to receive the molecules this batch could NOT build. A page whose
@@ -144,14 +143,14 @@ def prepare_v2_cursor_batch(snapshot, source_id, rows, reader, implementations,
     frames alone, exactly as before.
     """
     import pandas as pd
-    from .source_preparation import SourcePreparationContext, prepare_source_batch
+    from .event_frame import SourcePreparationContext, event_frames
     try:
         source_plan = snapshot.source_plans[source_id]
     except (AttributeError, KeyError) as exc:
         raise ValueError(f"unknown Ledger v2 source {source_id!r}") from exc
     frame = rows if isinstance(rows, pd.DataFrame) else _v2_frame(rows)
     context = SourcePreparationContext(snapshot, source_plan)
-    frames = prepare_source_batch(context, frame, reader, implementations)
+    frames = event_frames(context, frame)
     if refusals is not None:
         refusals.extend(context.refusals)
     if excluded is not None:
@@ -392,28 +391,6 @@ def _drain_into(engine, setup, report, world=None, sources=None):
         report["deduped"] += value.get("deduped", 0) or 0
 
 
-def _no_join_reader():
-    """The join reader for a source that inherits no verified join: it refuses if asked.
-
-    Built here rather than declared at module scope because `LedgerSetupError` lives in
-    `.setup`, which imports `runtime_v2`, which imports THIS module -- every import in
-    this file is lazy for that reason.  One factory rather than one class per caller: the
-    execute path and the write-free preview path must refuse an unsupplied reader with the
-    SAME code, or the screen and the backfill disagree about what happened.
-    """
-    from .setup import LedgerSetupError
-    from .source_preparation import VerifiedJoinBatchReader
-
-    class NoJoinReader(VerifiedJoinBatchReader):
-        def read_chunk(self, descriptor, keys):
-            raise LedgerSetupError(
-                "verified_join_reader_required", "source_preparation.join_reader",
-                "selected source inherits a verified join but no reader was supplied",
-            )
-
-    return NoJoinReader()
-
-
 def preview_rescope(engine, setup, source, scope_column, scope_values, world=None):
     """What a scoped redo would withdraw and what it would put back. WRITES NOTHING.
 
@@ -467,7 +444,7 @@ def _preview_frame(engine, setup, source, plan, frame, world=None):
     subjects = _v2_registration_subjects(plan, frame)
     cursor_value = last_cursor(plan, frame)
     preview = preview_selected_cursor_batch(
-        setup, source, frame, cursor_value, _no_join_reader(),
+        setup, source, frame, cursor_value,
         known_registrations=None if subjects is None else ())
     # 🔴 THE SAME REGISTRATION BASIS AS THE LINE ABOVE, AND IT HAS TO BE. `None` there
     # means "this source declares no probe"; here it means "no snapshot was supplied", and
@@ -779,8 +756,7 @@ def rescope(engine, setup, source, scope_column, scope_values, apply=False,
             # a whole source names each page by its own rows - the door proves a batch
             # is exactly what was named, page by page
             executed = execute_selected_scoped_batch(
-                setup, source, frame, scoped or (plan.frame_row_id, scope_row_ids),
-                _no_join_reader(), store,
+                setup, source, frame, scoped or (plan.frame_row_id, scope_row_ids), store,
                 known_registrations=None if subjects is None else (),
                 withdraw_refs=aimed)
             written = executed.store_result
@@ -1311,7 +1287,7 @@ def index_existing_refs(engine, source, setup=None, apply=False, pace=None,
     `apply=False` reports what it would write and writes nothing.
     """
     from . import schema
-    from .source_preparation import FRAME_ROW_ID_COLUMN
+    from .event_frame import FRAME_ROW_ID_COLUMN
     from .store import LedgerStore
 
     units, rest = resolve_pace(pace)
@@ -1377,7 +1353,7 @@ def index_existing_refs(engine, source, setup=None, apply=False, pace=None,
 
 def _index_one_chunk(connection, store, source, refs, result, apply):
     """One paced unit: group, join, write. The unit is where resuming is exact."""
-    from .source_preparation import FRAME_ROW_ID_COLUMN
+    from .event_frame import FRAME_ROW_ID_COLUMN
 
     groups, owners, unreadable = _group_ref_identities(refs)
     result["unreadable_refs"] += unreadable
@@ -1519,7 +1495,7 @@ class TestRunReading:
     #: Key columns first, then the columns the declaration reads - not the whole row, which
     #: would put a source's every column through a screen nobody asked to see.
     rows_sample: tuple
-    #: Rows the preparer's marker removed, or `None` where this source declares no
+    #: Rows the source's `exclude_when` removed, or `None` where this source declares no
     #: marker - "not measured" and "measured, none" are different answers.
     excluded_rows: Any
 
@@ -1592,17 +1568,9 @@ def preview_first_batch(engine, setup, source, fetch_rows=PREVIEW_FETCH_ROWS,
     empty set here would swallow it.
     """
     from .runtime_v2 import last_cursor
-    from .setup import LedgerSetupError, preview_selected_cursor_batch
+    from .setup import preview_selected_cursor_batch
 
     plan = setup.snapshot.source_plans[source]
-    if plan.driver.preparation.verified_join_descriptors:
-        # Same refusal, same code, as the backfill entry: this path has no registered
-        # read-only join reader either, and inventing one for a preview would report a
-        # pass for a declaration the run cannot execute.
-        raise LedgerSetupError(
-            "verified_join_reader_required", "source_preparation.join_reader",
-            "the test run requires a registered read-only join reader",
-        )
     page_key = _page_key(plan)
     rows_read = pages = 0
     refusals: list = []
@@ -1643,7 +1611,7 @@ def preview_first_batch(engine, setup, source, fetch_rows=PREVIEW_FETCH_ROWS,
             known = None if subjects is None else ()
             cursor_value = last_cursor(plan, frame)
             answered = preview_selected_cursor_batch(
-                setup, source, frame, cursor_value, _no_join_reader(),
+                setup, source, frame, cursor_value,
                 known_registrations=known)
             refusals.extend(answered.refusals)
             if answered.excluded_rows is not None:
@@ -1677,12 +1645,12 @@ def count_rows_missing(engine, setup, source, column, fetch_rows=PREVIEW_FETCH_R
     `preview_first_batch`, so the number describes the rows the refusal came from rather
     than some other reading of the relation.
 
-    ⚠️ AND THE SAME PREDICATE. `is_blank_source_value` is imported from the preparer that
+    ⚠️ AND THE SAME PREDICATE. `is_blank_source_value` is imported from the event frame that
     raised, not respelled here - two spellings of "empty" would disagree on exactly the
     values this question is about. S-91 moved those two lines INTO that function so the
     declaration's `exclude_when` asks with them too, rather than growing a third spelling.
     """
-    from .source_preparation import is_blank_source_value
+    from .event_frame import is_blank_source_value
 
     plan = setup.snapshot.source_plans[source]
     read = engine.raw_connection()
@@ -1723,12 +1691,12 @@ def count_excluded_but_indexed(engine, setup, source, fetch_rows=PREVIEW_FETCH_R
     Empty for a source that declares no clause - the question has no subject, which is not
     the same as an answer of zero.
     """
-    from .source_preparation import is_blank_source_value
+    from .event_frame import is_blank_source_value
     from .store import LedgerStore
 
     plan = setup.snapshot.source_plans[source]
     columns = [clause.get("column")
-               for clause in getattr(plan.driver.preparation, "exclude_when", ())
+               for clause in plan.driver.exclude_when
                if isinstance(clause, Mapping) and clause.get("column")]
     if not columns:
         return 0, 0
@@ -1793,22 +1761,18 @@ def _page_key(plan):
 
       * `dt_job` groups by `dt_job` and pages on `dt_job` -- the same column, so no
         split is possible;
-      * `lot_event` groups by `event_group_key`, which the PREPARER derives and which no
-        page query can order by (that is also why this is not `group_by[0]`). Paging on
-        `event_time` is safe only because the mapper's `_event_key` EMBEDS `event_time`
-        in that derived key, making the page key a COARSENING of the group -- and a
-        coarsening never splits.
+      * ⚰️ `lot_event` grouped by `event_group_key`, a key its PREPARER derived, and paged
+        on `event_time` - safe only because that derived key embedded `event_time`. The
+        preparer and the source retired with setup_version 6 (총괄 e14416950), so every
+        group key is a physical column today.
 
-    The second one is a fact about a mapper, INVISIBLE TO THE DECLARATION. The compiler
-    cannot verify it and cannot refuse a future source whose cursor starts on a column
+    The retired one was a fact about a preparer, INVISIBLE TO THE DECLARATION. The compiler
+    cannot verify the invariant and cannot refuse a future source whose cursor starts on a column
     that varies within its group; such a config would read as correct right up to the
     day it silently split a molecule. That is why the run carries a cause-agnostic guard
     on the SYMPTOM (`completed_groups` in the deleted cursor driver) instead of an
     assertion here
     on the cause.
-
-    This function returns `event_time` for `lot_event`, the same column as before; only
-    a source whose two keys actually differ changes behaviour.
     """
     return plan.driver.cursor_columns[0]
 
@@ -1855,7 +1819,7 @@ def _scope_predicate(plan, scope):
     if not scope:
         return None
     from .setup import LedgerSetupError
-    from .source_preparation import base_select_columns
+    from .event_frame import base_select_columns
     column, values = scope
     column = str(column)
     declared = base_select_columns(plan)
@@ -1884,7 +1848,7 @@ def _fetch_v2_lineage_rows(connection, plan, *, after=None, group_value=None,
     """
     from psycopg2 import sql
 
-    from .source_preparation import base_select_columns
+    from .event_frame import base_select_columns
     columns = base_select_columns(plan)
     scoped = _scope_predicate(plan, scope)
     # The page key leads the ORDER BY so that its groups are CONTIGUOUS -- that
