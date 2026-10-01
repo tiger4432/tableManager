@@ -444,6 +444,7 @@ curl http://localhost:8080/api/transfer-plan/stages
 | `ingestion_settings.json` | 전부 기본값 동작 | heavy 임계(기본 10MB) 조정, dedup·재개 끄기 |
 | `auto_update_control.json` | 수집기 전부 활성 | 특정 수집기만 끄고 싶을 때 |
 | `maps.json` | 프리셋 없음 | 맵 프리셋 등록 시 (§3) |
+| HTTPS (nginx 앞단) | `http://<서버>:8080` 으로 접속 | 사내 CA 인증서로 https 를 열 때 — [HTTPS_PROXY_GUIDE.md](HTTPS_PROXY_GUIDE.md) |
 
 ---
 
