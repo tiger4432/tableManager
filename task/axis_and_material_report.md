@@ -1,3 +1,34 @@
+> ## [11:27 디자인] 표 선언에 컬럼 붙여넣기 — 엑셀 가로 이름 · 타입 · key → column_types · display_columns · 키, 있는 표는 바뀌는 것을 보이고 묻고 저장 — 총괄 f382dacfb · 4d07d3987
+
+**지시의 전제 둘이 오늘 서버에서 사실이 아닙니다 (잰 것)**
+- 저장(`save_table_config_raw`)이 재는 것은 넷뿐입니다 — 객체인가 · column_types 가 맵인가 · base 지문 · 직렬화. 빠진 컬럼을 원장 소스 · 체인 규칙이 읽어도 «거절하지 않습니다». 그래서 「그 거절이 화면에 그대로 보이는지」는 일반 게이트로만 섭니다 — C8: 붙여넣은 뒤 저장이 거절되면 서버 문장 그대로 서고 붙여넣은 글은 남음.
+- 서버에 타입의 닫힌 목록이 없습니다. models.py 가 number 는 Float, datetime 은 DateTime, 그 밖은 «전부» String 으로 받아서, 모르는 낱말도 조용히 문자열 칸이 됩니다. 그래서 화면의 세 낱말(string · number · datetime)이 그 규칙의 «둘째 저자»입니다. 커밋된 표 선언 샘플에 `TEXT` 가 6 번 있습니다 — 서버는 문자열로 읽는데 붙여넣기는 거절합니다.
+
+**한 것**
+- 자리: 표 등록부 선언(table_config_panel.js)에 `paste` 한 줄. 붙여넣은 행 → 문서(`columnsFromPaste`)와 저장이 바꾸는 것(`columnChanges`) 두 순수 함수가 그 파일에 삽니다. 템플릿(raw_registry_panel.js)은 선언이 있을 때만 붙여넣는 칸을 그리고, 그 물음은 그 한 자리입니다.
+- 읽기: 칸의 `paste` 이벤트 글을 그리드의 `parseTsv` 로, 그리드와 같은 옵션(칸 다듬기 · 빈 줄 버리기).
+- 채움: 1 줄 이름 · 2 줄 타입 → column_types · display_columns(붙여넣은 순서 전부). 3 줄에 key 가 하나면 business_key, 둘 이상이면 composite_key_source(왼쪽부터). key 줄이 있으면 두 키 철자를 다 붙여넣은 것으로 바꾸고, 없거나 다 비었으면 키는 그대로입니다. 문서의 다른 칸(__comment · map_key_columns · composite_key_separator …)은 그대로.
+- 있는 표: 붙여넣으면 저장 «전»에 줄로 섭니다 — `Dropped · …` · `Type · 칸 · 옛 → 새` · `Key · 옛 → 새` · `Existing rows change identity`. 키 줄과 신원 줄은 따로입니다(신원 = composite 가 있으면 그것, 없으면 business_key — 서버의 키 조립 그대로). 이 줄들은 «서버의 문서»에 대고, 그릴 때와 저장할 때마다 다시 셉니다(원문 상자를 고친 뒤에도 맞게). Save 와 Ctrl+S 는 같은 길이라 둘 다 그 줄들로 묻고, No 면 아무것도 안 보냅니다. 새 표는 잃을 것이 없어 묻지 않습니다.
+- 거절(저장 전, 이름 대어): `column N (이름): unknown type 낱말` · `column N: no name` · `column N (이름): name repeated` · `column N (이름): 낱말 is not key`.
+- 문자열은 영어. 저장은 지금 문(POST /admin/tables/config/raw · 표 하나) 그대로, 새 라우트 0.
+
+**지시 목록 밖으로 하나 더 거절합니다 — 여쭐 것**: 4 줄부터(`row N: only names, types and key are read`)와 빈 붙여넣기(`Nothing pasted` — 그대로 두면 컬럼 «0» 으로 표의 모든 컬럼을 덮습니다). 둘 다 그대로 둘까요. 그리고 타입 · key 낱말은 소문자 그대로만 받습니다(`Number` · `Key` 는 거절).
+
+**게이트** (table_config_panel 하니스 [6]~[9], 66)
+- A1 두 줄 → column_types · display_columns 순서대로 · A2 key 하나 → business_key · A3 둘 → composite_key_source 왼쪽부터 · A4 틀린 타입 · 빈 이름 · 중복 · key 아닌 낱말 거절 · A5 있는 표 통째로, 다른 칸과 (key 줄 없으면) 키는 그대로 · A6 빈 key 줄 = key 줄 없음
+- B1 새 표는 바뀌는 것 없음 · B2 빠짐 · 타입 · 키 · 신원 · B3 철자만 바뀐 키는 신원 줄 없음
+- C1 칸의 붙여넣기가 그리드의 읽기로(앞뒤 공백 · 빈 줄) · C2 저장 전 바뀌는 것이 보임 · C3 확인 없이는 저장 안 됨 · C4 확인하면 하나의 저장으로 통째로 · C5 거절은 사유를 말하고 문서는 서버의 것 그대로 · C6 새 표는 안 묻고 이름으로 저장 · C7 저장 직후 붙여넣기도 남음(지난 저장 줄을 들고 다시 그리면 초안이 버려졌습니다 — 그 자리를 피함) · C8 위의 서버 거절
+- D1 체인 규칙 화면에는 붙여넣는 칸 0(표 쪽은 있음) · chain_rule_form 104 · chain_list_edit 20 초록
+- 변이 P1~P13 전부 그 줄에서 빨강(키 순서 · 하나를 composite 로 · 모르는 타입 통과 · 중복 통과 · key 줄 없이 키 바꿈 · 빠짐 안 말함 · 철자를 신원으로 · 선언 없음 · 안 묻고 저장 · 모든 등록부에 칸 · 사적인 split · 저장 줄 들고 다시 그림 · 서버 대신 초안에 대고 셈)
+- 러너 154 중 152 초록 · 알려진 빨강 2 · 막힘 0 · 계약 12 개 어긋남 0
+
+**화면** (미리보기 · 박스): Admin 은 토큰 뒤라 표 읽기 하나만 페이지 안에서 가짜 답(박스 표본 `box sample`)으로 받고, 쓰기는 막았습니다(막힌 것 0). Tables 탭에서 표를 고르면 붙여넣는 칸이 섭니다(점선 · 자리표시자 `Paste columns · names / types / key`). 진짜 ClipboardEvent 로 세 줄을 붙여넣으니 원문이 바뀌고 Unsaved 가 뜨고 위 네 줄이 경고색으로 섰습니다. 틀린 타입을 다시 붙여넣으니 거절 줄이 위험색으로 서고 앞의 초안은 그대로였습니다. Save 의 확인창은 안 눌렀습니다(하니스 C3 · C4 가 잼). 저장은 총괄이 소유자 크롬에서 열 때도 안 함.
+
+**새 함수 · 새 if 중 기존 것과 같은 일**
+- 새 함수: columnsFromPaste · columnChanges(지시) · 템플릿의 _drawPaste · _pasteChanges · _paste. 같은 일을 하던 것 — 붙여넣은 글 읽기는 parseTsv 를 부름(사본 0). 템플릿에 붙여넣기 자리는 없었습니다.
+- 새 if: 템플릿에서 «이 등록부가 붙여넣나»를 묻는 자리는 그리는 곳 하나(저장 쪽은 붙여넣은 문서인가만 봄) · 저장 전 묻기 하나 · 읽기의 거절 조건들(빈 이름 · 중복 · 타입 · key 낱말 · 4 줄 · 빈 붙여넣기) · key 줄 갈래와 하나/여럿.
+- 사실: 「빈 값인가」는 absent.js 의 isBlank 하나로.
+
 > ## [10:00 디자인] 걷기 창 타입 자리표시자 — 다시 골라도 타입이 아님 — 총괄 b417e2ad8 답 · ef7de45d0
 
 - 고침: walk/main.js 타입 드롭다운의 첫 옵션에 빈 value. 글자(「— 고르십시오 —」)는 그대로라 영어 전환 동결과 무관합니다.
