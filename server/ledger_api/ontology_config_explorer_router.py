@@ -249,9 +249,17 @@ def bootstrap_config(world: str | None = Query(default=None)):
     parse: an unreadable config is somebody's work with a bad comma in it, not an absence.
     """
     try:
-        return _service_for(world).bootstrap_config()
+        made = _service_for(world).bootstrap_config()
     except ConfigExplorerError as exc:
         raise _refusal(exc) from exc
+    # The branch's walk view is made again where a branch is made or saved (총괄 c23b02aeb ②):
+    # without it a branch whose change moves no source has no view and its walk answers 503.
+    from database.database import engine
+    from ledger import backfill, schema
+
+    schema.ensure_world(engine, schema.world_names(world))
+    backfill.refresh_world_view(engine, world)
+    return made
 
 
 @router.post("/drafts/new", dependencies=[Depends(require_admin_token_strict)])
@@ -331,11 +339,19 @@ def delete_declaration(
     world: str | None = Query(default=None)):
     try:
         from runtime import system_reload
-        return _service_for(world).delete_declaration(
+        deleted = _service_for(world).delete_declaration(
             target_key, base_snapshot_hash=base_snapshot_hash,
             reload_callback=lambda: system_reload.reload_system_configs(db))
     except ConfigExplorerError as exc:
         raise _refusal(exc) from exc
+    # The branch's walk view is made again where a branch is made or saved (총괄 c23b02aeb ②):
+    # without it a branch whose change moves no source has no view and its walk answers 503.
+    from database.database import engine
+    from ledger import backfill, schema
+
+    schema.ensure_world(engine, schema.world_names(world))
+    backfill.refresh_world_view(engine, world)
+    return deleted
 
 
 @router.post("/drafts/{draft_id}/activate",
@@ -348,10 +364,18 @@ def activate_draft(
     try:
         # Import at the write boundary, as the sibling handler does.
         from runtime import system_reload
-        return _service_for(world).activate_draft(
+        activated = _service_for(world).activate_draft(
             draft_id,
             expected_revision=payload.get("expected_revision"),
             reload_callback=lambda: system_reload.reload_system_configs(db),
         )
     except ConfigExplorerError as exc:
         raise _refusal(exc) from exc
+    # The branch's walk view is made again where a branch is made or saved (총괄 c23b02aeb ②):
+    # without it a branch whose change moves no source has no view and its walk answers 503.
+    from database.database import engine
+    from ledger import backfill, schema
+
+    schema.ensure_world(engine, schema.world_names(world))
+    backfill.refresh_world_view(engine, world)
+    return activated

@@ -67661,3 +67661,34 @@ B3 the world seat says every source for a branch   빨강  (1 failed, 5 passed, 
 전체  5 failed, 7585 passed, 197 skipped, 3 xfailed in 845.61s (0:14:05) — 실패 5 개, 알려진 다섯과 같음: True
 PG    7 failed, 151 passed, 7632 deselected, 55 warnings in 309.00s (0:05:08) — 실패 이름이 알려진 일곱과 같음: True
 ```
+
+## [구현자 -> 총괄] c23b02aeb ② 착지 ec01b42de — 가지 뷰를 만들 때 · 저장할 때 다시 지음
+
+```
+바꾼 것   탐색기 라우터의 문 셋(bootstrap · 초안 반영 · 선언 삭제)이 쓰기 뒤에 이미 있는 둘을 부름 —
+         schema.ensure_world(가지의 스키마·표) · backfill.refresh_world_view. 새 함수 0
+         기본 세상은 스키마도 뷰도 없어 둘 다 아무것도 안 함(가지/기본 가름을 문에 안 적음)
+         refresh_world_view 안에 ensure_world 를 넣지 않은 까닭: 그 함수는 가지 번역의 이벤트마다(rescope 끝) 불려 DDL 이 이벤트마다 돎
+전        8147199d8 박스 잼: static 만 바꾼 가지 -> 번역 0 -> 뷰 없음 -> 걷기 503 ledger_relation_absent
+```
+**게이트** (PG, test_a_ledger_branch_speaks_only_for_what_it_changed — 문마다 하나)
+```
+bootstrap 으로 만든 가지   아무것도 번역 안 한 채 걷기가 기본 엣지(processed_with · has_wafer)를 그림
+반영으로 소스 하나 바꿈    lot_slot_wafer 의 기본 원자가 뷰에서 빠짐 · changed_sources 가 둘
+선언 삭제                 lot_slot_wafer 의 기본 원자가 뷰에서 빠짐
+변이(문마다 새로 짓기를 뺌)
+V1 bootstrap makes no view                         빨강  (1 failed, 8 passed, 7784 deselected)
+V2 activate makes no view                          빨강  (1 failed, 8 passed, 7784 deselected)
+V3 delete makes no view                            빨강  (1 failed, 8 passed, 7784 deselected)
+```
+**새 함수 · 새 if 중 기존 것과 같은 일** (cdeb5ea10)
+```
+새 함수   0 — ensure_world · refresh_world_view 를 부름
+새 if     0
+같은 일    세 문에 같은 두 줄(ensure_world · refresh_world_view) — 문마다 «쓰기 뒤 뷰 다시». 한 곳으로 모으면 새 함수라 안 모음
+```
+**스위트** (C:/wt-impl, 착지 트리)
+```
+전체  5 failed, 7585 passed, 200 skipped, 3 xfailed in 850.79s (0:14:10) — 실패 5 개, 알려진 다섯과 같음: True
+PG    7 failed, 154 passed, 7632 deselected, 61 warnings in 326.72s (0:05:26) — 실패 이름이 알려진 일곱과 같음: True
+```
