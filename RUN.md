@@ -1,5 +1,22 @@
 # 지금 돌리면 되는 것
 
+> ## [10-01 밤] **잡 단위 거둠으로 지운 행이 이력 · 원장 후속에 간다 + 맵퍼 표면에 find_links · unknown_words — 이주 «불필요» · 재기동 «필요»(run_app.bat 전체)**
+>
+> ```
+> 무엇이 바뀌나  allow_retraction 이 행을 지우는 길이 그리드 지우기 · 맵 퍼지와 «같은 문»(crud.purge_map_rows)
+>              -> 거둠으로 지운 행마다 DELETE 이벤트 · 행 지움 이력. 원장 후속이 그 행에서 나온 원자를 거두고, 체인 거둠 바퀴가 그 행이 먹인(도장 있는) 칸을 거둔다
+>              맵퍼는 from mapper_sdk import find_links, unknown_words 로 부른다 (from utils import text_links 도 계속 된다)
+> 뜻           `🔄 [DtMapRetraction] … retracted N stale row(s)` 뒤에 같은 표의 `[ChainRetract] table=<표> deleted_rows=N …` 가 따라 나오면 이 변경이 돈 것
+>              그 표를 지켜보는 규칙 중 «되돌릴 수 없는» 종류가 있으면 거둠마다 `[ChainRetract] <규칙>: …` 경고 한 줄씩 — 이 박스는 dt_map 를 지켜보는 규칙 0 · 경고할 것 0
+>              이미 거둠으로 지운 행에서 나온 원자(소급) — 이 박스 원자 0 (거둠 표 dt_map 는 원장 참조 0)
+>              운영에서 세기: SELECT count(*) FROM ledger_source_row_ref r WHERE r.relation = '<거둠 표>'
+>                             AND NOT EXISTS (SELECT 1 FROM <거둠 표> x WHERE x.row_id = r.row_id)
+> 급할 때       이 커밋을 되돌린다(git revert) -> 거둠이 다시 손으로 지우고 이벤트 · 이력이 안 남는다. 이미 남은 이력 · 거둬진 원자는 그대로
+> 재기동 뒤 로그 위 두 줄 — 거둠이 일어날 때만
+> ```
+
+---
+
 > ## [10-01 밤] **글에서 원인 -> 현상 후보 — server/utils/text_links.py — 이주 «불필요» · 재기동 «불필요»(새 파일)**
 >
 > ```

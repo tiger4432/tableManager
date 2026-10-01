@@ -947,19 +947,19 @@ def apply_retraction(db, plan) -> int:
     Takes the ids the plan decided on and re-derives nothing: recomputing here could
     delete something the dry run never showed.
 
-    THE LEDGERS GO WITH THE ROW. `cell_sources` and `cell_overwrites` are keyed by
-    `(table_name, row_id)` and nothing else, so a row deleted without them leaves
-    records that no longer describe anything and that no query will ever join back to.
-    `crud._apply_batch_updates_once` deletes exactly these two tables before it deletes
-    the row on BOTH of its removal paths (the up-front purge and the scope diff); this
-    is the same three statements in the same order, because a second way to remove a map
-    row is a second chance to disagree about what removing one means.
+    🔴 [총괄 eb7e84342] THROUGH `crud.purge_map_rows`, THE DOOR THE GRID'S DELETE AND THE MAP
+    PURGE ALREADY SHARE. This spelled the three deletes by hand as 「the same three statements」
+    as crud's - and that door has since grown the DELETE outbox event and the deletion
+    history, so a retracted row reached neither the ledger follow-up, nor the chain's
+    take-back lap, nor the audit log. One door, so the next thing a deletion owes cannot be
+    added to two paths and forgotten on the third. The row's `cell_sources` and
+    `cell_overwrites` go with it there (`dt_map` here once carried 16,150 orphaned overwrites,
+    measured 2026-08-12).
 
-    The orphans are not hypothetical: `dt_map` on this workstation carried 16,150
-    `cell_overwrites` rows whose `row_id` no longer existed (measured 2026-08-12), which
-    is what a purge that skipped the ledger leaves behind.
+    ⚠️ COUNTED BEFORE THE PURGE: the door returns the ids it was handed, and this returns the
+    rows that were actually there - one primary-key count per chunk.
     """
-    from database import models
+    from database import crud, models
     table_name = plan.get("target_table")
     model = models.DYNAMIC_TABLES.get(table_name)
     ids = plan.get("delete_row_ids") or []
@@ -968,15 +968,8 @@ def apply_retraction(db, plan) -> int:
     deleted = 0
     for i in range(0, len(ids), CHUNK):
         chunk = ids[i:i + CHUNK]
-        db.query(models.CellSource).filter(
-            models.CellSource.table_name == table_name,
-            models.CellSource.row_id.in_(chunk)).delete(synchronize_session=False)
-        db.query(models.CellOverwrite).filter(
-            models.CellOverwrite.table_name == table_name,
-            models.CellOverwrite.row_id.in_(chunk)).delete(synchronize_session=False)
-        deleted += (db.query(model)
-                    .filter(model.row_id.in_(chunk))
-                    .delete(synchronize_session=False))
+        deleted += db.query(model).filter(model.row_id.in_(chunk)).count()
+        crud.purge_map_rows(db, model, table_name, chunk)
     db.commit()
     return deleted
 

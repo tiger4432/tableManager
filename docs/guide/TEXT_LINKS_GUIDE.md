@@ -34,8 +34,7 @@
 
 ```python
 import pandas as pd
-from mapper_sdk import mapper, sql
-from utils import text_links
+from mapper_sdk import find_links, mapper, sql
 
 @mapper()
 def text_cause_links(df, db):
@@ -45,7 +44,7 @@ def text_cause_links(df, db):
                     "FROM <연결 말 표>").to_dict("records")
     rows = [{"<글 id 칸>": text_id, **row}
             for text_id, text in zip(df["<글 id 칸>"], df["<글 칸>"])
-            for row in text_links.find_links(text, names, links)]
+            for row in find_links(text, names, links)]
     return pd.DataFrame(rows)
 ```
 
@@ -64,6 +63,7 @@ def text_cause_links(df, db):
 
 - `allow_retraction` 의 출처 = 글 id. 글을 고치면 그 글이 «이번에 안 낸» 옛 후보 행이 지워진다. 다른 글의 후보는 안 건드린다. 사람이 손댄 후보 행도 안 지운다.
 - SQL 의 NULL 은 `NaN` 으로 오지만 이 함수가 «빈 말»로 접는다 — 빈 말 행은 아무것도 안 맞는다.
+- 두 함수 다 맵퍼가 제품 도우미를 부르는 문(`mapper_sdk`, [MAPPING_GUIDE §5-bis](../../authoring/MAPPING_GUIDE.md))으로 온다.
 - `unknown_words(texts, names, links)` 는 사전이 «못 덮은» 낱말과 횟수를 많은 순으로 준다 — 사전을 키우는 자리. 조사 잔여(「는」 · 「의」)도 그대로 센다. 거르는 것은 맵퍼 몫이다.
 
 ## 4. 사전을 고친 뒤

@@ -603,6 +603,8 @@ def mapper(target_table=None, *, source_name: str = "chain_ingestion",
 # ⚠️ THE NAMES ARE NOT CHOSEN, THEY ARE MEASURED. This is what the owner's live mappers
 # actually import today (`server/mappers/*.py`, gitignored - their files, read but never
 # edited). It is a CONTRACT, not a wish list: shortening it breaks files this repo cannot see.
+# ⚠️ EXCEPT TWO OFFERED RATHER THAN MEASURED - `find_links` · `unknown_words` (총괄 ef3b0caeb):
+# a product helper written FOR mappers enters by this door, not by a second import path.
 #
 # ⚠️ TWO OF THEM ARE PRIVATE (`_cells_of`, `_load_metas`), and they are here under exactly
 # those spellings (판정 368). A `_name` on an SDK looks wrong, and it is - but it is already
@@ -637,6 +639,7 @@ MAPPER_SURFACE = {
     "declared_columns": "chain_bindings",
     "derive_cells": "dt_map_derivation",
     "dt_equations": "dt_frame_transform",
+    "find_links": "utils.text_links",
     "fold_notation": "notation_norm",
     "fold_notation_sql": "notation_norm",
     "frame_trigger_scope": "dt_map_derivation",
@@ -653,6 +656,7 @@ MAPPER_SURFACE = {
     "resolve_table": "chain_bindings",
     "slow_warn_ms": "event_constants",
     "standard_meta": "dt_frame_transform",
+    "unknown_words": "utils.text_links",
 }
 
 

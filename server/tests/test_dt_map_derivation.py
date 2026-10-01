@@ -1152,6 +1152,18 @@ def test_retraction_never_deletes_a_human_correction(env):
     assert set(plan["delete_row_ids"]) == {"k1", "k3"}
 
 
+def _deletes(db):
+    return (db.query(models.DatabaseOutbox)
+            .filter(models.DatabaseOutbox.event_type == "DELETE",
+                    models.DatabaseOutbox.table_name == MAP).all())
+
+
+def _deletion_logs(db):
+    return (db.query(models.AuditLog)
+            .filter(models.AuditLog.table_name == MAP,
+                    models.AuditLog.column_name == "DELETE").all())
+
+
 def test_retraction_budget_guard_declines_a_wholesale_loss(env):
     """A wrong frame or a wrong attribution looks exactly like 'almost everything is
     stale'. The guard declines and NAMES the decline; it does not report zero."""
@@ -1163,6 +1175,32 @@ def test_retraction_budget_guard_declines_a_wholesale_loss(env):
     assert plan["delete_row_ids"] == []
     assert derivation.apply_retraction(db, plan) == 0
     assert "DECLINED" in derivation.format_retraction_summary(plan)
+    assert _deletes(db) == [] and _deletion_logs(db) == [], "a declined plan announced a deletion"
+
+
+def test_a_retracted_row_is_announced_and_remembered_like_any_deleted_row(env, monkeypatch):
+    """🔴 [총괄 eb7e84342, 소유자 「결함 고챠」] Retraction deleted its rows by hand, so they
+    reached neither the outbox - the ledger follow-up and the chain's take-back lap read it -
+    nor the history. It goes through `crud.purge_map_rows`, the door the grid's delete and
+    the map purge already share."""
+    import event_constants
+    from ledger import followup
+    from utils.payload_helper import get_payload_dict
+
+    db = env
+    _seed_map_rows(db, ["k1", "k2", "k3"])
+    notices = []
+    monkeypatch.setattr(event_constants, "row_delete_message",
+                        lambda *a, **k: notices.append(a))
+    plan = derivation.plan_retraction(db, MAP, "job", JOB, derived_keys={"k1"},
+                                      min_population=100)
+    assert derivation.apply_retraction(db, plan) == 2
+    events = _deletes(db)
+    assert len(events) == 1
+    assert sorted(followup.row_ids_of(get_payload_dict(events[0]))) == ["k2", "k3"]
+    assert ingestion_worker._is_trigger_event(events[0]) is False, "a deletion woke the chain"
+    assert sorted(log.row_id for log in _deletion_logs(db)) == ["k2", "k3"]
+    assert notices == [], "the worker announces the deleted ids once; this must add none"
 
 
 def test_apply_retraction_deletes_exactly_the_plan_and_re_derives_nothing(env):
