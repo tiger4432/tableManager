@@ -357,7 +357,9 @@ export async function fetchSubgraph(params) {
           group_by: groupBy, measure,
           // C-97 (S-148-a). 씨앗을 «열거하지 않고 서술»합니다 — 그 타입을 이름 댄 원자가 있는 노드 전부
           // (주어 쪽이든 목적어 쪽이든 — v6, 총괄 819726624 ㄹ).
-          seed_type: seedType, seed_limit: seedLimit } = params || {};
+          seed_type: seedType, seed_limit: seedLimit,
+          // Walk control ㄴ (b1245bab9): the fan-out cap, and the bundles to draw anyway (node|predicate|direction).
+          fanout_limit: fanoutLimit, expand } = params || {};
   // 🔴 THE GATE (contract §4). Refused HERE rather than at the server, because the server
   //    would answer 200 with an empty walk and the screen would read that as 「없다」.
   //    A refusal is CONTENT: `subgraphModel` already renders `ok:false` with its reason.
@@ -408,6 +410,9 @@ export async function fetchSubgraph(params) {
   //    and a request that names neither is byte-identical to before.
   if (nodeLimit !== undefined && nodeLimit !== null) query.set('node_limit', String(nodeLimit));
   if (hops !== undefined && hops !== null) query.set('hops', String(hops));
+  // Same rule as the budget: omitted stays omitted (no `bundles` in the answer then), and each expand repeats.
+  if (fanoutLimit !== undefined && fanoutLimit !== null) query.set('fanout_limit', String(fanoutLimit));
+  for (const key of expand || []) query.append('expand', String(key));
   // 🔴 C-51 / S-98. 구간은 «둘 다 선택»이고 반열린 [since, until) 입니다. 예산과 «같은 규율»:
   //    안 고르면 «안 싣고», 안 실으면 서버가 전체 역사를 걷습니다 — 그래서 구간을 안 쓰는
   //    호출의 요청은 이 줄이 붙어도 «한 글자도» 안 바뀝니다.
@@ -1928,7 +1933,7 @@ export function createWalkBoxWalk(deps) {
   const doFetch = fetchImpl || fetch;
   return async function walkBoxWalk(spec) {
     const { type, keys, follow, collect, direction, hops, node_limit: nodeLimit,
-            since, until, positive, negative } = spec || {};
+            since, until, positive, negative, fanout_limit: fanoutLimit, expand } = spec || {};
     // A marking is a start too (lead f6fc6ba66): its signed ids, in the shape the board's walk sends.
     const marked = Array.isArray(positive) && positive.length > 0;
     if (!type && !marked) return { ok: false, message: PICK_TYPE_FIRST };
@@ -1964,6 +1969,7 @@ export function createWalkBoxWalk(deps) {
         hops: hops || undefined,
         node_limit: nodeLimit || undefined,
         since, until,
+        fanout_limit: fanoutLimit || undefined, expand,
       });
       if (!got.ok || !got.body) {
         return { ok: false, message: refusalSentence(got.detail, got.status) };
@@ -2026,6 +2032,8 @@ export function createWalkBoxWalk(deps) {
         //    같이 버려지고 있었습니다 -- 즉 hops 가 안 가는 것을 «들킬 수 있는 값»이 함께
         //    사라졌습니다. 그래서 여기를 고칠 때 이것도 같이 살립니다.
         walk: body.walk || null,
+        // Walk control ㄴ: the fan-outs not drawn, as the server counts them. No key unless a cap was asked: null.
+        bundles: Array.isArray(body.bundles) ? body.bundles : null,
       };
     } catch (err) {
       return { ok: false, message: `Walk unreachable — ${err && err.message}` };

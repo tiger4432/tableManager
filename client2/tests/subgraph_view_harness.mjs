@@ -22,13 +22,15 @@ const DECL = fx('walk_start_declaration.json');
 const WAFER = fx('walk_start_wafer.json');
 const DIE = fx('walk_start_die.json');
 const STEP2 = fx('walk_start_die_step2.json');
+const BUNDLES = fx('walk_bundles_die.json');
+const EXPANDED = fx('walk_bundles_die_expanded.json');
 const ENTITIES = DECL.entities;
 // The oracle reads the declaration itself: the types whose classes hold 'static'.
 const STATIC = new Set(ENTITIES.filter((e) => Array.isArray(e.class) && e.class.includes('static'))
   .map((e) => String(e.type).split('@')[0]));
-const TYPE_BY_ID = new Map([...WAFER.nodes, ...DIE.nodes, ...STEP2.nodes].map((n) => [n.id, String(n.type).split('@')[0]]));
+const TYPE_BY_ID = new Map([...WAFER.nodes, ...DIE.nodes, ...STEP2.nodes, ...BUNDLES.nodes, ...EXPANDED.nodes].map((n) => [n.id, String(n.type).split('@')[0]]));
 const typeOf = (group) => TYPE_BY_ID.get(group.attrs['data-node']) || '';
-const startId = (body) => entitySeedId(body._start.type, body._start.keys);
+const startId = (body) => (body._start ? entitySeedId(body._start.type, body._start.keys) : body.seed.id);
 
 /** The page's wire, answering each call with the next body in turn (the last one repeats).
  *  `makeWalk` is the wire's own factory - a mutant of api.js swaps it. */
@@ -97,7 +99,7 @@ async function suite(m, makeWalk = createWalkBoxWalk) {
   console.log('\n[2] the layer is the step count from the start, the same picture for the same answer');
   {
     const r = await wire([DIE], [])(DIE._start);
-    const layout = m.subgraphLayout([{ result: r }], ENTITIES);
+    const layout = m.subgraphLayout([{ results: [r] }], ENTITIES);
     const xOf = new Map();
     let sameX = true;
     for (const n of layout.nodes) {
@@ -114,11 +116,11 @@ async function suite(m, makeWalk = createWalkBoxWalk) {
     }
     say('B1 one column per depth, columns in step order, the server\'s order down each',
       depths.length > 2 && sameX && rising && inOrder, JSON.stringify({ depths, sameX, rising, inOrder }));
-    const again = m.subgraphLayout([{ result: await wire([JSON.parse(JSON.stringify(DIE))], [])(DIE._start) }], ENTITIES);
+    const again = m.subgraphLayout([{ results: [await wire([JSON.parse(JSON.stringify(DIE))], [])(DIE._start)] }], ENTITIES);
     say('B2 the same answer lays out the same, twice', JSON.stringify(layout) === JSON.stringify(again));
     const w = await wire([WAFER], [])(WAFER._start);
     const lost = { ...w, nodes: w.nodes.map((n, i) => (i === 1 ? { ...n, depth: undefined } : n)) };
-    const partial = m.subgraphLayout([{ result: lost }], ENTITIES);
+    const partial = m.subgraphLayout([{ results: [lost] }], ENTITIES);
     say('B3 a node without a depth is counted, not placed', partial.unplaced === 1
       && partial.nodes.length === w.nodes.length - 1, JSON.stringify({ unplaced: partial.unplaced, placed: partial.nodes.length }));
   }
@@ -139,9 +141,9 @@ async function suite(m, makeWalk = createWalkBoxWalk) {
   {
     const { urls } = await seat([DIE]);
     const params = paramsOf(urls[0] || '');
-    const extra = [...params.keys()].filter((k) => k !== 'id' && k !== 'positive');
-    say('D1 one request: the start marking (id and positive, its one node), no follow, collect or budget',
-      urls.length === 1 && params.get('id') === startId(DIE)
+    const extra = [...params.keys()].filter((k) => k !== 'id' && k !== 'positive' && k !== 'fanout_limit');
+    say('D1 one request: the start marking (id and positive, its one node) and the declared fan-out cap, nothing else',
+      urls.length === 1 && params.get('id') === startId(DIE) && params.get('fanout_limit') === '20'
         && JSON.stringify(params.getAll('positive')) === JSON.stringify([startId(DIE)]) && extra.length === 0,
       JSON.stringify({ urls: urls.length, extra }));
   }
@@ -221,9 +223,9 @@ async function suite(m, makeWalk = createWalkBoxWalk) {
     await new Promise((resolve) => setTimeout(resolve, 0));
     await new Promise((resolve) => setTimeout(resolve, 0));
     const params = paramsOf(s.urls[0] || '');
-    const extra = [...params.keys()].filter((k) => k !== 'id' && k !== 'positive');
+    const extra = [...params.keys()].filter((k) => k !== 'id' && k !== 'positive' && k !== 'fanout_limit');
     say('K2 Continue is off until something is marked, then asks that marking and nothing else',
-      offBefore && onAfter && s.urls.length === 1 && params.get('id') === marked
+      offBefore && onAfter && s.urls.length === 1 && params.get('id') === marked && params.get('fanout_limit') === '20'
         && JSON.stringify(params.getAll('positive')) === JSON.stringify([marked]) && extra.length === 0,
       JSON.stringify({ offBefore, onAfter, urls: s.urls.length, id: params.get('id') === marked, extra }));
     const one = new Set(DIE.nodes.map((n) => n.id));
@@ -277,6 +279,52 @@ async function suite(m, makeWalk = createWalkBoxWalk) {
         && end.view.continueButton.getAttribute('title') === 'End of chain',
       JSON.stringify({ names: end.markings.names(), title: end.view.continueButton.getAttribute('title') }));
   }
+  console.log('\n[11] bundles: a fan-out over the cap is a chip; a chip pressed draws it on the same picture');
+  {
+    const doc = makeDoc('light');
+    const markings = new MarkingStore();
+    const a = await seat([BUNDLES, EXPANDED], { doc, markings, chain: ['a0', 'a1'] });
+    const b = await seat([BUNDLES], { doc, markings, chain: ['b0', 'b1'] });
+    const chipText = (host) => byClass(host, 'sg-bundle').map((g) => g.textContent).sort();
+    const want = BUNDLES.bundles.map((x) => `+${x.count} ${String(x.far_type).split('@')[0]}`).sort();
+    say('P1 one chip per bundle the walk answered, saying its count and far type',
+      want.length > 0 && JSON.stringify(chipText(a.host)) === JSON.stringify(want),
+      JSON.stringify({ chips: chipText(a.host), want }));
+    const first = EXPANDED._expanded;
+    const key = `${first.node}|${first.predicate}|${first.direction}`;
+    const chip = byClass(a.host, 'sg-bundle').find((g) => g.attrs['data-bundle'] === key);
+    a.urls.length = 0;
+    const bBefore = b.urls.length;
+    if (chip) chip.dispatch('click', {});
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const params = paramsOf(a.urls[0] || '');
+    say('P2 a chip pressed asks the same marking again with that bundle expanded; the other part asks nothing',
+      Boolean(chip) && a.urls.length === 1 && JSON.stringify(params.getAll('expand')) === JSON.stringify([key])
+        && params.get('id') === startId(BUNDLES) && params.get('fanout_limit') === '20' && b.urls.length === bBefore,
+      JSON.stringify({ chip: Boolean(chip), urls: a.urls.length, expand: params.getAll('expand'), b: b.urls.length - bBefore }));
+    const drawnIds = byClass(a.host, 'sg-node').map((g) => g.attrs['data-node']);
+    const union = new Set([...BUNDLES.nodes, ...EXPANDED.nodes].map((n) => n.id));
+    const outgoing = first.direction === 'outgoing';
+    const fan = EXPANDED.edges.filter((e) => e.predicate === first.predicate
+      && (outgoing ? e.source === first.node : e.target === first.node));
+    const drawnEdges = new Set(byClass(a.host, 'sg-edge').length ? a.view.layout.edges.map((e) => e.id) : []);
+    say('P3 drawn on the same picture: every node of both answers once, and the expanded fan-out is its count',
+      drawnIds.length === union.size && new Set(drawnIds).size === drawnIds.length
+        && fan.length === first.count && fan.every((e) => drawnEdges.has(e.id)),
+      JSON.stringify({ drawn: drawnIds.length, union: union.size, fan: fan.length, count: first.count }));
+    const after = byClass(a.host, 'sg-bundle').map((g) => g.attrs['data-bundle']);
+    say('P4 its chip is gone; the chips left are the ones the expanded answer still holds',
+      !after.includes(key) && after.length === (EXPANDED.bundles || []).length,
+      JSON.stringify({ left: after.length, answer: (EXPANDED.bundles || []).length, stale: after.includes(key) }));
+    const firstIds = new Set(BUNDLES.nodes.map((n) => n.id));
+    const inside = byClass(a.host, 'sg-node').find((g) => !firstIds.has(g.attrs['data-node']));
+    if (inside) inside.dispatch('click', {});
+    say('P5 a point inside the expanded bundle can be marked for Continue',
+      Boolean(inside) && JSON.stringify(markings.entries('a1')) === JSON.stringify([[inside.attrs['data-node'], SIGN.CASE]]),
+      JSON.stringify(markings.entries('a1')));
+  }
+
   return { ran: names.length, names, failures: fails };
 }
 
@@ -301,14 +349,14 @@ const failures = [];
     M('M2', 'a static node is drawn as a circle', 'C1',
       '      group.appendChild(node.static\n', '      group.appendChild(false\n'),
     M('M3', 'the part asks with a follow of its own', 'D1',
-      '    const res = await this.walk({ positive: seeds.positive, negative: seeds.negative });\n',
-      "    const res = await this.walk({ positive: seeds.positive, negative: seeds.negative, follow: ['inspected'] });\n"),
+      '      fanout_limit: this.fanoutLimit, expand });\n',
+      "      fanout_limit: this.fanoutLimit, expand, follow: ['inspected'] });\n"),
     M('M4', 'the edges are not drawn', 'A2',
       '    for (const edge of view.edges) {\n      svg.appendChild(', '    for (const edge of []) {\n      svg.appendChild('),
     M('M5', 'a press does not change the facts', 'E1',
       '    this.selected = id;\n    const next', '    const next'),
     M('M6', 'a cut walk says nothing', 'F1',
-      '    if (result.cut) cut.push(', '    if (false) cut.push('),
+      '    if (last.cut) cut.push(', '    if (false) cut.push('),
     M('M7', 'the part draws into the page, not its own mount', 'G1',
       '    this.mount.appendChild(this.root);\n', '    this.doc.body.appendChild(this.root);\n'),
     M('M8', 'a node without a depth is placed anyway', 'B3',
@@ -335,6 +383,22 @@ const failures = [];
     M('M17', 'the chain\'s end is not kept: a press past it writes a name of its own', 'L2',
       "  writes() { return this.chain[this.steps.length] || ''; }\n",
       "  writes() { return this.chain[this.steps.length] || 'extra'; }\n"),
+    M('B1', 'the part walks without its fan-out cap', 'D1',
+      '      fanout_limit: this.fanoutLimit, expand });\n', '      expand });\n'),
+    M('B2', 'the bundle chips are not drawn', 'P1',
+      '    for (const chip of view.chips) {\n', '    for (const chip of []) {\n'),
+    M('B3', 'a chip pressed asks without its bundle', 'P2',
+      '    const expand = [...step.expand, key];\n', '    const expand = [...step.expand];\n'),
+    M('B4', 'a chip says its far type but not its count', 'P1',
+      'text.textContent = `+${chip.count} ${chip.farType}`;', 'text.textContent = `${chip.farType}`;'),
+    M('B5', 'the chips come from a step\'s first answer, so an expanded one stays', 'P4',
+      '    return all[all.length - 1] || {};\n', '    return all[0] || {};\n'),
+    { ...M('W2', 'the wire drops the expand cells', 'P2',
+      "  for (const key of expand || []) query.append('expand', String(key));\n", ''), file: WIRE },
+    { ...M('W3', 'the wire drops the fan-out cap', 'D1',
+      "  if (fanoutLimit !== undefined && fanoutLimit !== null) query.set('fanout_limit', String(fanoutLimit));\n", ''), file: WIRE },
+    { ...M('W4', 'the wire does not carry the bundles', 'P1',
+      '        bundles: Array.isArray(body.bundles) ? body.bundles : null,\n', '        bundles: null,\n'), file: WIRE },
     // The wire, widened for this order: a marking start rides as the board's walk sends it.
     { ...M('W1', 'the wire drops a marking start and asks by type and keys', 'D1',
       '        ...(marked ? { nodeId: positive[0], positive, negative }\n',
