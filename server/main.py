@@ -6431,7 +6431,9 @@ def post_chain_rule_raw(payload: dict = Body(...), db: Session = Depends(get_db)
     from ledger import admin
     return admin.save_chain_rule_raw(
         str(payload.get("name") or ""), payload.get("declaration"),
-        str(payload.get("base") or ""), db=db)
+        str(payload.get("base") or ""), db=db,
+        # 🔴 the name the editor OPENED - absent for a new rule (총괄 c6a8c069c ㉠)
+        renamed_from=str(payload.get("from") or "") or None)
 
 
 @app.post("/admin/chain/rules/grammar", dependencies=[Depends(require_admin_token)])
