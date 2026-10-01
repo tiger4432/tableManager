@@ -68449,3 +68449,65 @@ ledger_subgraph._entity_node   선언 키 순서가 있는 타입: label = 선�
 PG  6 failed, 163 passed, 7621 deselected in 355.09s (0:05:55) · 알려진 밖: 0
    test_value_suggest::test_like_metacharacters_are_literal - 전체에서만 실패(b1245bab9 착지 때와 같음), 단독 61 passed in 6.23s - 순서 의존, 이 변경과 닿지 않음
 ```
+
+---
+
+## [10-01 밤] 걷기 제어 가 — 역 술어 · 같은 타입 형제만 막음 (총괄 739edd59c · f3fb29a44, 소유자 「가로해」 · 「2로」) + ㄴ 보강 — 3ab88ae49
+
+**칸 · 규칙**
+```
+선언    어휘 술어 칸 inverse_of: "<술어 id>" — 한쪽만 적어도 양쪽으로 읽힘(짝은 하나)
+        검증(setup_bundle._validate_inverse, absence_confirmed_by 와 같은 자리):
+           없는 술어 -> unknown_id · 두 끝 타입이 뒤집혀 안 맞음 / entity_ref 아님 -> invalid_predicate · 한 술어에 역 둘 -> invalid_predicate
+        컴파일 안 함(PredicateDescriptor 에 없음) -> 소스 지문 · 원장 무변
+        스켈레톤 칸 inverse_of (hint ref, section vocabulary) — 탐색기 폼이 따라 그림
+규칙    _goes_back_down(닿은 걸음들, 술어, 방향, 먼 타입) 한 함수 — _step(펼치기) · _reach(순위)가 같이 부름
+        되밟기 = 같은 술어 반대 방향 또는 역 술어 같은 방향 · 양 방향 · 먼 노드가 출발한 노드와 같은 타입일 때만(안 2)
+        닿은 걸음이 «전부» 되밟기일 때만 막음(오늘의 == 를 넓힌 것)
+        _reach 는 시드별 BFS 를 «깊이 단위»로 걸어 그 노드에 닿은 걸음 집합을 모음 — 걷기의 도착 기록과 같은 단위
+        도착 기록 = (술어, 방향, 온 타입)
+걷기 선언 읽기  _read_entity_declaration 의 넷째 사실(역 짝) — 같은 한 번 읽기 · 같은 캐시
+```
+**게이트**
+```
+시험  11 passed in 0.43s
+      검증 다섯(한쪽 · 양쪽 한 짝 · 없는 술어 · 안 뒤집힘 · 역 둘) · 지문 불변(출고 샘플 소스 전부) ·
+      짝 있음/없음 x 걷기 · 순위 같은 다이 · 웨이퍼의 다른 사실(랏 · 레시피) 그대로 · 다른 타입 되밟기는 걷고 같은 타입은 막음
+      기존 키 제약 시험 둘(다이 -> 좌석 <- 웨이퍼) 안 2 에서 다시 초록 · 두 규칙 시험은 다른 다이가 이름에 «다른 술어»로 닿게 고침(술어 규칙이 같은 술어 모양을 이제 혼자 막으므로)
+변이  (전부 빨강, 복원 확인)
+   the inverse is not read                            -> 2 failed, 45 passed, 1 skipped, 6 warnings in 1.61s
+   one orientation only (incoming then outgoing)      -> 3 failed, 44 passed, 1 skipped, 6 warnings in 1.69s
+   no type condition (option 1)                       -> 3 failed, 44 passed, 1 skipped, 6 warnings in 1.68s
+   the reach does not ask the function                -> 2 failed, 45 passed, 1 skipped, 6 warnings in 1.64s
+   an undeclared inverse is accepted                  -> 1 failed, 46 passed, 1 skipped, 6 warnings in 1.97s
+   ends that do not flip are accepted                 -> 1 failed, 46 passed, 1 skipped, 6 warnings in 1.60s
+   two inverses are accepted                          -> 1 failed, 46 passed, 1 skipped, 6 warnings in 1.69s
+   baseline: 47 passed, 1 skipped, 6 warnings in 1.29s
+박스  (읽기만 · 다이 씨앗 = 걷기 제어 ①의 그것 · 짝은 라이브가 아니라 «사본» 선언에만 적음)
+   old (HEAD before ga): nodes 400 edges 892 types {'die': 393, 'wafer': 7} truncated nodes
+   new, no pair: nodes 400 edges 795 types {'die': 393, 'wafer': 7} truncated nodes
+   new, pair in a COPY: nodes 15 edges 25 types {'die': 8, 'wafer': 7} truncated None
+      고친 게이트 「짝 없음 = 오늘에서 형제 걸음만 빠짐」 — hops 3(노드 상한 안, 잘림은 깊이뿐):
+         옛 노드 842 · 엣지 2004 -> 새 노드 777 · 엣지 1549
+         빠진 노드 65 — reached only by sibling steps 65
+         빠진 엣지 — bonded_from | touches a dropped sibling node 390 · in_container | sibling step 65
+         새로 생긴 노드 0 · 엣지 0
+      「웨이퍼의 다른 사실 그대로」 — 이 박스 웨이퍼에는 in_container · inspected 말고 원자가 없어 박스로 못 보임 -> 시험 픽스처로
+```
+**ㄴ 보강** (총괄 b1245bab9 검증)
+```
+픽스처에 같은 다이를 두 번 inspected 한 원자 둘 — count 는 서로 다른 먼 노드
+atoms counted instead of distinct far nodes (fanned adds atom.id) -> 2 failed, 7 passed, 6 warnings in 0.91s
+```
+**새 함수 · 새 if 중 같은 일**
+```
+새 함수  _goes_back_down(옛 두 자리의 되밟기 판정을 «한» 함수로 — 같은 일 둘을 하나로 줄임) · _validate_inverse(새 칸 하나의 검증)
+새 if    검증 넷 · _step 조건 하나가 함수 호출로 바뀜 · _reach 의 깊이 단위 루프
+         같은 일 0 — 남은 둘: 이름(정적) 규칙은 여전히 _step · _reach 두 곳에 적혀 있음(전부터)
+```
+**스위트** (C:/wt-impl)
+```
+비PG 전체  5 failed, 7583 passed, 41 skipped, 169 deselected, 3 xfailed in 832.08s (0:13:52)
+   실패: test_live_mapper_and_tracked_sample_are_byte_identical · test_live_mapper_matches_tracked_sample · test_the_repo_root_is_one_above_it · test_the_sample_is_written_in_the_one_format_both_writers_use
+PG  6 failed, 163 passed, 7632 deselected in 356.75s (0:05:56) · 알려진 밖: 0
+```
