@@ -1396,7 +1396,9 @@ const FLOORS = new Map([
   // it. 🔴 IT STANDS THE WALK PAGE UP. `boot(doc, host, deps)` takes an injected doc, so the
   // page's own rendering is scored on screen rather than by trusting that its copy is gone --
   // M1 is a copy put back, and it changes no count at all.
-  ['walk_table_harness.mjs', 15],
+  // 15 -> 17 (lead b417e2ad8, P1 and M6): picking the type placeholder again is no type - Run off,
+  // no subject list asked.
+  ['walk_table_harness.mjs', 17],
   ['walk_route_fill_harness.mjs', 71],
   // New 2026-09-08 with C-40 ② (the declaration form's three attribute seats). Floor is
   // the count it reports on the commit that introduces it -- there is no earlier tree to

@@ -156,7 +156,11 @@ export function boot(doc, host, deps) {
     // ── 씨앗: 타입 ──────────────────────────────────────────────────────────────
     const typeBox = field('노드 타입');
     const sel = el(doc, 'select', 'wk-select');
-    sel.append(el(doc, 'option', '', '— 고르십시오 —'));
+    // 🔴 The placeholder is NO type. An option without a value of its own is worth its text, and
+    //    picking it again made that text the type (lead b417e2ad8).
+    const none = el(doc, 'option', '', '— 고르십시오 —');
+    none.value = '';
+    sel.append(none);
     for (const e of entities()) {
       const o = el(doc, 'option', '', e.type);
       o.value = e.type;
