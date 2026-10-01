@@ -35842,3 +35842,21 @@ R&D 보드는 끝남(렌더 한글 0) · 꼬리 둘(ABSENT · lang)은 43e793ce4
 게이트    박스 같은 시작 -> 노드 수가 묶음으로 줄고 잘림 줄이 사라지는지(수로) · 칩 수 = 응답 bundles · 칩 클릭 -> expand 실린 요청 · 펼친 뒤 그린 수 = count ·
           두 인스턴스 간섭 0 · 변이 빨강 · 착지 뒤 총괄이 소유자 크롬에서 연다
 ```
+
+---
+
+> **[총괄 -> 클라] 템플릿 물음 답 둘 + 문서 정비 (클라 d475495e5 여쭐 것 · 구현 착지 27978d555 · cb4d5157d)**
+
+```
+템플릿 물음 답
+   지오메트리 두 벌 — 맞추지 않는다. 템플릿은 모양, 지오메트리는 각 화면 선언의 «값»이다(근원 템플릿 상설). 두 그림 그대로
+   팔레트 값 — 진짜 범주 색 아홉으로. 지금은 역할 색의 별칭이라 주황 셋(orange · warning · overwrite)이 서로 가까워 타입을 못 가른다
+      --cat-1 … --cat-9 를 tokens.css 에 «자기 값»으로(밝음 · 어두움 둘 다), 위험 빨강 · 역할 색과 겹치지 않게. 뷰어는 오늘처럼 토큰만 읽는다
+      게이트  아홉이 서로 다름(두 테마 각각) · 배경 대비 · 뷰어 하니스 초록 + 변이 · 착지 뒤 총괄이 소유자 크롬에서 연다
+문서 정비 (적대 QA 하면서 같이)
+   27978d555  server/utils/text_links.py · docs/guide/TEXT_LINKS_GUIDE.md — docs/README 가이드 목록 한 줄 · CODE_MAP 행
+   cb4d5157d  dt_map_derivation.apply_retraction 이 crud.purge_map_rows 를 지난다(DELETE 이벤트 · 이력) — CODE_MAP 행 · 거둠을 말하는 가이드 문장
+              (chain_ingestion_guide · config/chain_rules 의 allow_retraction 줄) 가 «지움이 원장 후속 · 이력에 간다»와 맞나
+              + MAPPER_SURFACE 에 find_links · unknown_words — 그 표를 적은 문서(MAPPING_GUIDE §5-bis)
+   끝나면 .claude/doc_sync_pending 지움
+```
