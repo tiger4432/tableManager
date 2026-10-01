@@ -62455,3 +62455,21 @@ _when_value 접기 — 지금 하지 않는다. 오늘 착지 전체를 소유�
              같은 값 다시 -> 지금 것 하나 · 동률 -> 둘 + 충돌 수 · 잘린 가져오기에서도 지금 것 맞음(또는 이름 댄 모름) ·
              박스 processed_with one 20,000 행 -> 원자 전부 씀(잃음 0) · 제품 길 시험 · 변이 빨강 · 「새 함수·새 if 중 같은 일」
 ```
+
+---
+
+> **[총괄 -> 구현자] 🔴 새 가지에서 아무것도 못 만든다 (소유자 10-01 「온톨로지 선언창에서 신규 브랜치에서 아무것도 생성할수 없는데」) — 지금 하던 것보다 먼저**
+
+```
+총괄 재현 (박스 선언 사본 · 격리 데이터 뿌리 · TestClient · DB 두 걸음은 막음 — 스크래치 repro_branch_create.py / repro_branch_tb.py)
+ ① POST bootstrap?world=t1 -> 400 bootstrap_invalid 「the starting file did not validate and was not written」 — 기본 선언의 거절 소스 9(뷰 읽음)가
+    가지 시작 파일 검증에서 걸림. 기본은 «부분 적재»로 도는데 가지 시작은 «전부 통과»를 요구한다 -> 기본에 거절 소스가 하나라도 있으면 가지를 못 만든다
+ ② 그 뒤 GET view?world=t1 · POST drafts/new?world=t1 -> 500. setup.load_setup 의 Path(root).resolve(strict=True) 가 FileNotFoundError(가지 폴더 없음) —
+    ea4508a0e 의 active() 변환은 LedgerSetupValidationError 만 잡아서 이 길이 샌다
+할 것
+ ① 가지 시작 = 기본 선언 «그대로» 복사, 판정 기준도 기본과 같게(부분 적재 — 거절 소스는 기본에서처럼 이름 대어 남는다). 가지가 기본보다 엄하면 안 된다
+    새 판정자 금지 — 기본 반영이 쓰는 그 기준을 부른다
+ ② 가지 폴더가 없을 때 = 이름 붙은 거절(예 world_not_created), Next 먼저 「Next: create the branch first」 — active() 의 같은 한 자리에서
+게이트  박스 선언(거절 소스 9) 사본으로: bootstrap t1 -> 200 · view t1 200 · drafts/new t1 -> 초안 생김 · changed_sources(t1) == [] ·
+        폴더 없는 가지 view -> 400 이름 · 변이 빨강 · 지금 짓던 22ebdd153 은 이것 뒤
+```
