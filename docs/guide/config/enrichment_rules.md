@@ -30,7 +30,7 @@
   ontology promotion: server/ontology_config.py:218 (RESOLVED_AS)
   web query API per-request: server/main.py:3442
   query_ref dir: enrichment/config.py:43 config/enrichment_queries/<ref>.sql (dir absent by default)
-  worked example source: server/config/sample/enrichment_rules.json.sample (⚰️ deleted 2026-09-24 with the file)
+  worked example source: server/config/sample/chain_rules.json.sample - the four derive.decide rules dt_job_lot_slot_attribution · dt_frame_confrimation · core_frame_review · dt_lot_slot_from_log (moved 10-01 from the flat sample deleted 2026-09-24; two alignment_rule cells name them)
 -->
 
 ## 1. 언제 이 파일을 만지는가

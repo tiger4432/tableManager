@@ -1,5 +1,18 @@
 # 지금 돌리면 되는 것
 
+> ## [10-01 오후] **sample 의 decide 넷 복원 — 마이그레이션 «없음» · 재기동 «없음» (sample 만)**
+>
+> ```
+> 무엇이 바뀌나  server/config/sample/chain_rules.json.sample 에 derive.decide 넷이 돌아옴 — 09-24 은퇴 때 옮겨지지 않고 지워졌던 것
+>              dt_job_lot_slot_attribution · dt_frame_confrimation · core_frame_review · dt_lot_slot_from_log (이름 철자 그대로)
+>              sample 의 alignment_rule 둘이 다시 있는 선언을 가리킴. 넷 다 꺼진 채 출하 — DT 체인을 켤 때 같이 켬
+> 돌릴 명령     없음
+> 뜻           박스·운영 설정은 한 줄도 안 바뀜. 새 설치가 sample 을 복사할 때만 닿음
+> 급할 때       커밋 되돌리기
+> ```
+
+---
+
 > ## [10-01 오후] **표 선언 엑셀 붙여넣기 · 복사 — 화면만 · 마이그레이션 «없음» · 재기동 «없음» (git pull 뒤 페이지 새로고침)**
 >
 > ```
