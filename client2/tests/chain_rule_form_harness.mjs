@@ -442,6 +442,14 @@ function suite(M) {
   const afterSave = walk(clock.host).find((n) => n.attrs && n.attrs['data-value'] === 'trigger_table');
   ok(Boolean(afterSave) && afterSave.value === 'stored',
     `H5 once the save answers, the served document wins -- [${afterSave ? afterSave.value : 'no field'}]`);
+  ok(byCls(clock.host, 'chain-rule-saved-note').length === 0,
+    'H5b an answer with no note draws no note line (lead 43f4823dc)');
+  const NOTE = 'Cells this rule wrote are written again under the new name the next time their rows arrive';
+  clock.panel.render(payloadFor(SKELETON, { name: 'alpha2', trigger_table: 'stored' }),
+                     { saved: { name: 'alpha2', rules: ['alpha2', 'beta'], backup: '/box/bak', renamed_from: 'alpha', note: NOTE } });
+  const noteLines = byCls(clock.host, 'chain-rule-saved-note').map((n) => n.textContent);
+  ok(noteLines.length === 1 && noteLines[0] === NOTE,
+    `H5c the answer's note stands under the saved line, verbatim -- ${JSON.stringify(noteLines)}`);
   // ⚠️ NOTHING OPEN MEANS NOTHING TO PROTECT -- the tab's first read is a background one, and a
   //    guard that refused it would open the tab on an empty panel.
   const first = makePanel(M, SPEC);
@@ -917,6 +925,11 @@ suite(await import('../src/raw_registry_panel.js'));
 
 // -- mutants ---------------------------------------------------------------------------
 const DEFECTS = [
+  // lead 43f4823dc: what a rename costs is the server's to say and the screen's to show.
+  ['the save answer\'s note is not drawn',
+    s => s.replace('      if (view.saved.note) this.root.appendChild(this._line(`${spec.cls}-saved-note`, view.saved.note));\n', '')],
+  ['the view drops the save answer\'s note',
+    s => s.replace("                        note: String(opts.saved.note || '') })", "                        note: '' })")],
   // lead c6a8c069c: a rename that does not say which rule it was is a copy on the server.
   ['the save does not say which document it opened',
     s => s.replace(',\n        ...(this.newMode ? {} : { from: view.name }) });', ' });')],

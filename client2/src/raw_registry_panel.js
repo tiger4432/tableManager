@@ -169,7 +169,9 @@ export function registryView(payload, opts, spec) {
       ? Object.freeze({ name: String(opts.saved[spec.nameKey] || ''),
                         count: countText(opts.saved[spec.listKey]),
                         backup: String(opts.saved.backup || ''),
-                        base: String(opts.saved.base || '') })
+                        base: String(opts.saved.base || ''),
+                        // What the save costs, in the server's words (a rename: cells written again).
+                        note: String(opts.saved.note || '') })
       : null,
   });
 }
@@ -1004,6 +1006,8 @@ export class RawRegistryPanel {
     if (view.saved) {
       this.root.appendChild(this._line(`${spec.cls}-saved`,
         `${view.saved.name} · ${view.saved.count} · ${view.saved.backup}`));
+      // 🔴 The answer's note, under it and verbatim (lead 43f4823dc) - a rename says what it will write again.
+      if (view.saved.note) this.root.appendChild(this._line(`${spec.cls}-saved-note`, view.saved.note));
     }
     // 🔴 C-101 ①. 「무엇이 열려 있나」를 적습니다 — 배경 갱신이 이것을 읽고 «비켜갑니다».
     this.open = picked ? key : '';

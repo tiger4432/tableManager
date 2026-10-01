@@ -1385,7 +1385,8 @@ const FLOORS = new Map([
   // 97 -> 103 (W1-W6, lead 460f202d3): after a save, loaded only when the worker holds that base.
   // 103 -> 104 (W7): the server's 「not seen」 is said, not drawn as a wait.
   // 104 -> 106 (lead c6a8c069c: the save says which rule it opened, none for a new one (C4b, D4)).
-  ['chain_rule_form_harness.mjs', 106],
+  // 106 -> 108 (lead 43f4823dc: the save answer's note under the saved line, none when it carries none (H5b, H5c)).
+  ['chain_rule_form_harness.mjs', 108],
   // 21 -> 23 (F1-F2, lead 5793b49fb): the line saying why it asks is the caller's when given.
   ['clipboard_type_modal_harness.mjs', 23],
   // New with lead 8771e43ac 1: the table's smart_paste order picks the format without asking; no
@@ -1400,7 +1401,8 @@ const FLOORS = new Map([
   // 72 -> 75 (Q, lead 460f202d3): after a save, the page's queue seat hands the worker's base to the form.
   // 75 -> 76 (Q): a queue body with loop_seen_via null says 「not seen」.
   // 76 -> 83 (lead c6a8c069c: from on the wire, none for a new rule, a refused rename re-read by the name opened (E, G, R)).
-  ['chain_rule_user_path_harness.mjs', 83],
+  // 83 -> 87 (lead 43f4823dc: a rename answered in place - picked, one line, its note; rule_name_held in its own words).
+  ['chain_rule_user_path_harness.mjs', 87],
   // a value carrying markup does not come back out as markup, and the backlog has a ceiling
   ['escaping_harness.mjs', 56],
   // clicking a derived route fills follow, and a later-hop predicate stays visible

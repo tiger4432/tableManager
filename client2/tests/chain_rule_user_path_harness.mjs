@@ -460,6 +460,8 @@ async function suite(probe) {
      `F the save reads back the rule it saved (${readBack.map(askedName).map((x) => JSON.stringify(x)).join(',') || 'no read'})`);
   ok(Boolean(byCls('chain-rule-saved')),
      'F and the screen says the write happened -- a save nobody can see is a save nobody trusts');
+  ok(!byCls('chain-rule-saved-note'),
+     'F ...and an answer that carries no note draws no note line (lead 43f4823dc)');
 
   // ── Q. the queue's rules_base decides the head line after the save (lead 460f202d3) ─────
   //    Through the page's own queue seat: the same body the Chain tab and the Overview read.
@@ -733,9 +735,17 @@ async function suite(probe) {
     : isCatalogue(call) ? { status: 200, body: { tables: TABLES } }
       : call.method === 'POST' ? onPost(call)
         : { status: 200, body: rawView(askedName(call)) }); };
+  // 🔴 lead 43f4823dc: the route renames in place and says what that costs; the list it answers holds
+  //    the new name where the old one stood.
+  const NOTE = 'Cells this rule wrote are written again under the new name the next time their rows arrive';
+  const RENAMED = NAMES.map((n) => (n === RULE.name ? 'renamed_rule' : n));
   let renameSave = null;
   serveSave((call) => { renameSave = call;
-    return { status: 200, body: { name: call.body.name, rules: NAMES, backup: '/box/bak', enabled: true, base: 'fp-2' } }; });
+    return { status: 200, body: { name: call.body.name, rules: RENAMED, backup: '/box/bak', enabled: true, base: 'fp-2',
+      renamed_from: call.body.from, note: NOTE } }; });
+  const servedRenamed = answer;
+  answer = (call) => (call.method === 'GET' && call.url.includes('/admin/chain/rules/raw')
+    ? { status: 200, body: { ...rawView(askedName(call)), rules: renameSave ? RENAMED : NAMES } } : servedRenamed(call));
   await refreshChainRule(RULE.name);
   await flush();
   type('name', 'renamed_rule');
@@ -744,6 +754,14 @@ async function suite(probe) {
   for (let i = 0; i < 4; i += 1) await flush();
   ok(Boolean(renameSave) && renameSave.body.name === 'renamed_rule' && renameSave.body.from === RULE.name,
      `R a renamed rule is saved as the rule it was: the new name, from the one opened (${renameSave ? JSON.stringify({ name: renameSave.body.name, from: renameSave.body.from }) : 'no save'})`);
+  const afterRename = byAttr('data-picker');
+  const listedAfter = afterRename ? afterRename.children.map((o) => o.value) : [];
+  const chosen = afterRename ? afterRename.children.filter((o) => o.getAttribute('selected')).map((o) => o.value) : [];
+  ok(JSON.stringify(chosen) === '["renamed_rule"]' && listedAfter.filter((v) => v === 'renamed_rule').length === 1
+     && !listedAfter.includes(RULE.name),
+     `R ...the renamed rule stays picked, one line in the list, the old name gone (${JSON.stringify({ chosen, listedAfter })})`);
+  ok(Boolean(byCls('chain-rule-saved-note')) && byCls('chain-rule-saved-note').textContent === NOTE,
+     `R ...and what the rename costs stands under the saved line, in the server's words (${byCls('chain-rule-saved-note') ? byCls('chain-rule-saved-note').textContent : 'no line'})`);
   const TAKEN = { code: 'rule_name_taken', path: 'rules.taken_name',
     message: "'taken_name' is already a rule - pick another name" };
   serveSave(() => ({ status: 400, body: { detail: TAKEN } }));
@@ -761,6 +779,19 @@ async function suite(probe) {
      "R ...with the server's sentence, verbatim");
   ok(rereadR.length === 1 && askedName(rereadR[0]) === RULE.name,
      `R ...re-read by the rule it opened, not the name refused (${rereadR.map(askedName).map((x) => JSON.stringify(x)).join(',') || 'no read'})`);
+  // The route's other refusal of a rename (4a0c69b2f): a record holds the old name.
+  const HELD = { code: 'rule_name_held', path: 'from',
+    message: "Next: keep the name 'lot_event'; if a new name is needed, add a new rule - frame_confirmation holds it" };
+  serveSave(() => ({ status: 400, body: { detail: HELD } }));
+  await refreshChainRule(RULE.name);
+  await flush();
+  type('name', 'held_rename');
+  await flush();
+  press('save-chain-rule');
+  for (let i = 0; i < 4; i += 1) await flush();
+  ok(Boolean(boxAt('name')) && boxAt('name').value === 'held_rename'
+     && Boolean(byCls('chain-rule-refusal-why')) && byCls('chain-rule-refusal-why').textContent === HELD.message,
+     `R a rename the server holds back keeps the typing, under its sentence with Next first (${boxAt('name') ? boxAt('name').value : 'no form'})`);
 
   // ── P. the failed list draws the failure RECORD, and names the rule the record names ─────
   // 🔴 order 45f5da3f5. Two rules on the event's table; the record names the SECOND. The drawer
