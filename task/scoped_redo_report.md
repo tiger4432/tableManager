@@ -67899,3 +67899,39 @@ M8 a save under the opened name is read as a rename                red
 전체  6 failed, 7575 passed, 207 skipped, 3 xfailed in 915.52s (0:15:15) — 알려진 다섯 + test_h3_cross_directory_replace_applies_physical_alter(부하 탐 — PG 와 동시에 돌 때만, 혼자 세 번 초록)
 PG    7 failed, 161 passed, 7623 deselected in 383.70s (0:06:23) — 알려진 일곱(이름까지 같음)
 ```
+
+## [구현자 -> 총괄] sample decide 넷 복원 착지 da435653a — sample 의 alignment_rule 둘이 다시 선언을 가리킴
+
+```
+한 일   97fed5ab1 판 enrichment_rules.json.sample 의 decide 넷을 RUN.md 09-24 키 표 그대로 sample chain_rules 끝에
+        (dt_job_lot_slot_attribution · dt_frame_confrimation · core_frame_review · dt_lot_slot_from_log — 이름 철자 그대로)
+        label 13 개 한국어 그대로(복원물 · 소유자 동결) · enabled 는 넷 다 false(S-132 · 09-10 「DT 체인 통째로 끔」)
+        docs/guide/config/enrichment_rules.md 의 「worked example ... deleted」 한 줄을 새 집으로
+```
+**게이트** (sample 을 읽게 겨눠 잼 — 스크래치 gate_four_decides.py · gate_report_sample.py)
+```
+{"loaded_rules": 13, "refusal_lines": [], "refusals_naming_the_four": []}
+{"rule": "dt_job_lot_slot_attribution", "stands": false, "companions": []}
+{"rule": "dt_frame_confrimation", "stands": false, "companions": []}
+{"rule": "core_frame_review", "stands": false, "companions": []}
+{"rule": "dt_lot_slot_from_log", "stands": false, "companions": []}
+{"alignment_rule": [{"rule": "dt_log_to_dt_alignment_metadata", "names": "dt_frame_confrimation", "declaration_found": false, "alignment": false}, {"rule": "dt_log_to_primary_core_frame", "names": "core_frame_review", "declaration_found": false, "alignment": false}]}
+{"find_each_of_the_four": {"dt_job_lot_slot_attribution": false, "dt_frame_confrimation": false, "core_frame_review": false, "dt_lot_slot_from_log": false}}
+{"domain": "chain", "counts": {"effective": 13, "ineffective": 39, "rejected": 0}, "rejected": [], "ineffective": [["bonding_core_die", "not_declared"], ["bonding_core_lot", "not_declared"], ["bonding_die_from_core", "not_declared"], ["bonding_inventory", "not_declared"], ["bonding_log", "not_declared"], ["bonding_map", "not_declared"], ["core_usage_map", "not_declared"], ["core_wafer_map", "not_declared"]]}
+{"domain": "enrichment", "counts": {"effective": 0, "ineffective": 0, "rejected": 0}, "rejected": [], "ineffective": []}
+{"decl": "dt_job_lot_slot_attribution", "found_as_shipped_off": false, "stands_when_switched_on": true, "alignment": false, "views": 5}
+{"decl": "dt_frame_confrimation", "found_as_shipped_off": false, "stands_when_switched_on": true, "alignment": true, "views": 3}
+{"decl": "core_frame_review", "found_as_shipped_off": false, "stands_when_switched_on": true, "alignment": true, "views": 3}
+{"decl": "dt_lot_slot_from_log", "found_as_shipped_off": false, "stands_when_switched_on": true, "alignment": true, "views": 2}
+rejections when switched on: []
+```
+```
+꺼진 채 출하라 정본 find 는 넷을 «못 찾음»(판정 399: 꺼진 선언은 규칙을 안 세움) — alignment_rule 을 든 두 규칙도 꺼져 있어 sample 에선 아무것도 안 돎.
+켜면 넷 다 거절 0 으로 서고, alignment_rule 이 부르는 둘은 alignment 참 (include_disabled 로 잼)
+```
+**새 함수 · 새 if 중 기존 것과 같은 일**: 0 · 0 (sample 과 문서 한 줄만)
+**스위트** (C:/wt-impl, 착지 트리)
+```
+전체  5 failed, 7576 passed, 207 skipped, 3 xfailed in 762.97s (0:12:42) — 알려진 다섯
+PG    7 failed, 161 passed, 7623 deselected in 326.51s (0:05:26) — 알려진 일곱(이름까지 같음)
+```

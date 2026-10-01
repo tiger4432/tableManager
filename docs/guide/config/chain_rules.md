@@ -185,7 +185,7 @@ return {"batches": [{"target_table": "dt_map",
    - `stale_base` — 연 규칙이 파일에서 사라짐(다시 열고 확인한 뒤 저장)
    - `rule_name_held` — 옛 이름으로 찾는 기록이 있으면 바꾸지 않습니다: 맵 확정 · 처리 안 된 재생 사건 · 다른 규칙의 `alignment_rule` ·
      안 끝난 소급 실행. 문장은 「Next: keep the name …; if a new name is needed, add a new rule and switch this one off.」로 시작합니다
-   바꾼 뒤의 값: 그 규칙이 쓴 행은 다음에 들어올 때 새 이름으로 «다시 쓰입니다»(쓴 이를 견주므로) — 저장 답이 `renamed_from` 과 함께 한 줄로 말합니다.
+   바꾼 뒤의 값: 그 규칙이 쓴 행은 다음에 들어올 때 새 이름으로 «다시 쓰입니다»(쓴 이를 견주므로) — 저장 답이 `renamed_from` 과 함께 한 줄로 말하고, 체인 탭이 그 줄을 저장 완료 줄 밑에 서버 낱말 그대로 그립니다(`46bb3f26b`).
 
 ## 3. 반영 확인
 
