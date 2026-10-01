@@ -76,6 +76,17 @@
    - **컬럼 추가(ALTER)**: **watcher 경로만** — reload-configs는 ALTER를 하지 않습니다
    - **컬럼 삭제·타입 변경**: 어떤 핫리로드도 반영하지 않음 — **재기동** + 수동 마이그레이션
 
+### 2.1 엑셀에서 칸을 붙여 넣기 — 어드민의 표 등록 (10-01 `4d07d3987`)
+```
+운영에서는 어드민 표 등록의 붙여 넣기 칸(「Paste columns · names / types / key」)에 시트의 줄을 붙여 넣으면 됩니다.
+1줄 = 칸 이름, 2줄 = 타입, 3줄(있으면) = 키 칸 밑에 key.
+```
+- **타입은 `string` · `number` · `datetime` 셋뿐입니다** — 서버가 가르는 낱말이 이 셋이고(그 밖의 낱말은 글자 칸이 됨) 화면은 다른 낱말을 거절합니다.
+- 3줄에 `key` 가 하나면 `business_key`, 여럿이면 `composite_key_source`(왼쪽부터). 3줄이 없으면 키는 그대로입니다.
+- 붙여 넣은 것은 `column_types` · `display_columns`(3줄이 있으면 키 둘도)를 **바꿔 씁니다**. 그 밖의 칸은 그대로 남습니다.
+- 거절은 칸마다 이름 대어 밑에 섭니다: `column N: no name` · `name repeated` · `unknown type <낱말>` · `<값> is not key` · `row N: only names, types and key are read` · `Nothing pasted`.
+- **이미 있는 표**는 저장(Save · Ctrl+S)이 바꾸는 것을 먼저 보이고 묻습니다: `Dropped · <칸>` · `Type · <칸> · <전> → <후>` · `Key · <전> → <후>` · `Existing rows change identity`. 칸 삭제 · 타입 변경이 운영 표에 반영되는 길은 위 4. 그대로입니다(재기동 + 수동 마이그레이션).
+
 ## 3. 반영 확인
 
 1. **웹서버 프로세스 로그**에서 watcher 발화 확인 (순서대로):
