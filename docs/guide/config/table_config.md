@@ -81,7 +81,7 @@
 운영에서는 어드민 표 등록의 붙여 넣기 칸(「Paste columns · names / types / key」)에 시트의 줄을 붙여 넣으면 됩니다.
 1줄 = 칸 이름, 2줄 = 타입, 3줄(있으면) = 키 칸 밑에 key.
 ```
-- **타입은 `string` · `number` · `datetime` 셋뿐입니다** — 서버가 가르는 낱말이 이 셋이고(그 밖의 낱말은 글자 칸이 됨) 화면은 다른 낱말을 거절합니다.
+- **타입은 `string` · `number` · `datetime` 셋뿐입니다** — 서버가 가르는 낱말이 이 셋이고(그 밖의 낱말은 글자 칸이 됨) 화면은 다른 낱말을 거절합니다. 대소문자는 안 가립니다 — `Number` · `KEY` 도 읽고, 저장은 서버의 철자(`number` · `key`)로 씁니다(`666b3568d`).
 - 3줄에 `key` 가 하나면 `business_key`, 여럿이면 `composite_key_source`(왼쪽부터). 3줄이 없으면 키는 그대로입니다.
 - 붙여 넣은 것은 `column_types` · `display_columns`(3줄이 있으면 키 둘도)를 **바꿔 씁니다**. 그 밖의 칸은 그대로 남습니다.
 - 거절은 칸마다 이름 대어 밑에 섭니다: `column N: no name` · `name repeated` · `unknown type <낱말>` · `<값> is not key` · `row N: only names, types and key are read` · `Nothing pasted`.
