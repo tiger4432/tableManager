@@ -1,3 +1,21 @@
+> ## [13:17 디자인] 읽기만 — client2/src 의 prepare · direct-join 낱말 자리, 「서버가 prepare 칸을 안 실으면」 — 총괄 지시(메시지) · 읽은 트리 976c3c390
+
+셈 명령: `git grep -c -iE "prepare|direct-join|direct_join" -- client2/src` → 5 파일 15 줄(총괄 수와 같음). direct-join · direct_join 은 0. 카나리아: 같은 파일에 skeleton 10. 코드는 손대지 않았습니다.
+
+| 자리 | 무엇 | 코드/주석 | 서버가 prepare 칸을 안 실으면 |
+|---|---|---|---|
+| main.js:145 · startup.js 다섯 줄 | 그리드 시작 순서의 훅 이름 `prepare()` | 코드 | 아무것도 — 원장의 prepare 와 낱말만 같음 |
+| ontology_explorer_view.js:29 | 종류 라벨 표 `preparer: 'Preparers'` | 코드(값 한 칸) | 서버가 preparer 종류를 안 내면 그 칸은 안 닿음 — 화면 변화 0, 남는 것은 안 쓰이는 라벨 한 칸 |
+| ontology_explorer_view.js:514 | 읽기 나무 주석(read/prepare/map/bind 를 사례로) | 주석 | 동작 0 — 읽기 나무는 스켈레톤을 따라 걸어서, prepare 절이 빠지면 그 절도 안 그려짐 |
+| ontology_explorer_view.js:651 · 655 | 원문 편집기만 있는 자리 목록(prepare.output_columns) | 주석 | 동작 0 — 그 목록의 한 항목이 사라져 문장이 낡음 |
+| ontology_explorer_view.js:1697 | 아직 할 일 셈 주석(prepare.implementation_version 사례) | 주석 | 동작 0 — 규칙(파생 칸이 null 이면 안 셈)은 칸 이름과 무관 |
+| ontology_explorer_view.js:2183 · ontology_explorer.js:1413 | 숫자 칸 주석(preparer 를 사례로) | 주석 | 동작 0 — 숫자 판정은 스켈레톤의 `hint: number` |
+| ontology_explorer_store.js:537 · 541 | 고를 목록 주석(source_preparers · preparer 를 종류 사례로) | 주석 | 동작 0 — 사례 낱말이 낡음 |
+
+- 결론: 코드가 prepare 칸을 «이름으로» 읽는 자리는 0 입니다. 폼 · 읽기 나무 · 숫자 칸은 서버 스켈레톤을 따라 그리므로, 서버가 prepare 를 안 실으면 그 절이 그냥 안 그려집니다. 남는 것은 라벨 한 칸과 주석 여덟 줄의 사례 낱말입니다.
+- 하니스 쪽(셈 범위 밖, 같은 명령을 client2/tests 로): 서버 모양을 떠 둔 고정 자료 둘이 prepare 를 든 채입니다 — authoring_skeleton.json(prepare 절 3 줄) · authoring_inherited_plan.json(28 줄). 읽는 하니스는 explorer_form_grammar · explorer_inherited_attributes · explorer_path_bar 이고, 셋 다 prepare 를 단언하지는 않습니다. 서버 착지 뒤 그 둘을 옆의 capture_*.py 로 다시 뜨지 않으면 옛 모양 위에서 초록입니다. ontology_authoring_panel 하니스의 상수 `universe: 'PREPARED'` 도 서버가 그 낱말을 거두면 더는 실제를 닮지 않습니다(자기 상수라 빨개지지는 않음). 나머지 셋(startup_socket_gate · virtual_column_render · oracle)은 다른 뜻의 같은 낱말.
+- 짓지 않았습니다. 착지와 맞물려 할 일이 생기면: 라벨 한 칸 지우기 · 주석의 사례 낱말 · 고정 자료 둘 다시 뜨기 — 전부 서버 모양이 정해진 뒤입니다.
+
 > ## [12:59 디자인] 저장 답의 note — 이름 바꾸기가 다시 쓰는 것을 저장 줄 밑에 서버 말 그대로 — 총괄 43f4823dc · 46bb3f26b
 
 - 원인: 템플릿이 저장 답을 그릴 모양(이름 · 수 · 백업 · 지문)으로 접으면서 `note` 를 버리고 있었습니다.
