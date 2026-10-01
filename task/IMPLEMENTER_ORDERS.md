@@ -62734,3 +62734,39 @@ _when_value 접기 — 지금 하지 않는다. 오늘 착지 전체를 소유�
    수 넷(첫 쪽 · row_id · 주어 부분 · total)은 RUN.md 「뜻」에 그대로 — 느린 것은 결함이 아니라 이 판정이다
    남은 게이트  참조 표 새 색인 둘(79 MB · 67 MB)의 쓰기 비용을 수로 — 원장 쓰기가 참조 표에도 행을 쓰므로 「원장 표 무변」은 그 비용을 안 잰다
 ```
+
+---
+
+> **[총괄 -> 구현자] official 셀의 체인 층을 «받치는 원천 행마다» 하나로 — 이번은 재고 계획만, 짓지 않는다 (소유자 10-01 「ㄱ으로 오피셜」) — 펼친 보기 착지 뒤, 이미지 참조 앞**
+
+```
+배경     소유자는 dt_log 를 dt_log_official 한 표로 모아 거기서 관리한다(여러 사람이 같은 내용을 다른 소스로 dt_log 에 넣으므로).
+         모으는 길은 소유자의 파일 맵퍼(dt_log -> official, require + allow_chain_trigger)
+총괄 실측(코드)
+   층    cell_sources 는 (표, 행, 칸, source_name) 에 층 하나 — 체인 쓰기는 전부 chain_ingestion 한 이름, origin_row_id 는 «마지막에 쓴 행» 하나
+         -> 두 dt_log 행이 같은 official 셀을 쓰면 나중 값이 조용히 덮고, 앞 행은 흔적이 없다
+   거둠   지운 행만 거둔다(ingestion_worker._retract_what_those_rows_fed -> cell_layer.withdraw_by_origin). 고친 행이 다른 official 행으로 옮겨 가거나
+         require 가 다시 비면 옛 official 행이 남는다 — 가이드 CHAIN_COPY_WHEN_FILLED_GUIDE §4 「이미 복사된 행은 지우지 않는다」
+   도장   파일 맵퍼는 origin_row_id 를 적을지 제품이 모른다(rule_run.retraction_refusal). batch 맵퍼면 맵퍼만 적을 수 있다
+도착지
+   official 셀의 체인 층 = 받치는 dt_log 행마다 하나
+   dt_log 행 하나가 다시 돌면(값 고침 · 키 바뀜 · require 빠짐 · 규칙 바뀜) 그 행의 옛 층 중 «이번에 다시 말하지 않은 것»만 빠진다
+   받치는 층이 하나도 안 남은 official 행은 사라진다 — 사람 층(user)이 있으면 남는다
+   키 아닌 칸을 서로 다르게 적으면 한 셀에 층이 여럿 — 화면에서 둘 다 보인다. 뜨는 값은 지금 규칙 그대로(같은 순위면 최근)
+   사람이 official 셀에 적은 값이 이긴다(지금 그대로)
+재는 것 (수에는 센 명령을 같이)
+   ① 「한 셀 · 한 source_name 에 층 하나」를 전제하는 자리 «전수» — 서버(crud 의 upsert_key · gone_key · 일괄 미리읽기 · LightCellSource · file_layer_fold,
+      cell_layer 의 _load_cell_state · _resolve_cell · withdraw_source, 유니크 색인 idx_sources_lookup_source) + 클라(그리드 층 보기가 source_name 으로 묶나)
+   ② 박스 cell_sources 행 수 · 색인 크기 · 키를 넓혔을 때 쓰기 비용
+   ③ 층이 전부 빠진 행이 «지금» 어떻게 되나 — NULL 셀로 남나(그리드 빈 행 · 원장에 키 NULL 행). 실측으로
+   ④ require 가 다시 빈 행은 규칙에 안 넘겨진다 — 규칙 안에서는 그 행의 옛 층을 못 거둔다. 거두는 자리가 어디여야 하나
+   ⑤ 다른 체인 쓰기(조인 · 대조 걷기)가 넓힌 키 아래서 어떻게 달라지나 — 조인이 A -> B 로 다시 짝지으면 지금은 같은 층을 덮지만,
+      넓히면 층 둘이 쌓여 A 가 지워질 때까지 옛 값이 남는다. 「다시 돌 때 이번에 말 안 한 자기 층을 거둔다」 «한 규칙»이 복사(원천 행 기준)와
+      조인(대상 행 기준) 둘 다에 맞나 — 종류마다 다른 규칙이 되면 문 가르기다. 안 맞으면 그 이유를 수로
+   ⑥ 방아쇠 — 가이드 「이미 복사된 행은 지우지 않는다」 뒤의 판정을 찾는다. 인용하거나 「못 찾았다」
+   ⑦ 도장 — 한 행씩 부르는 맵퍼면 제품이 그 행으로 찍을 수 있나(rule_run 넓힘), batch 면 맵퍼가 항목마다 origin_row_id 를 적어야 한다. 둘의 크기
+게이트 표(계획에 적는다, 짓지 않는다)
+   한 픽스처 — dt_log 두 행이 같은 official 행을 받침 · 한 행 키 바꿈 · 한 행 require 비움 · 한 행 지움 · 규칙 바꿈 · 사람이 official 셀 고침
+   칸마다 official 행 수 · 셀 층 수 · 뜨는 값 기대값. + 같은 소스 층 둘이 화면에 둘로 보임 · 조인 다시 짝짓기 칸 · 빈 칸은 「해당 없음」으로 단언
+채널로   계획 셋(각: 무엇 · 운영자가 하는 일 · 좋은 점 · 위험 · 크기) + 추천 + 여쭐 것. 총괄 확인 전 짓지 않는다
+```
