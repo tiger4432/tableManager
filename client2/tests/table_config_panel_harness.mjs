@@ -235,6 +235,13 @@ async function pasteSuite(m) {
     const blankMarks = read([['lot', 'qty'], ['string', 'number'], ['', '']], held);
     say('A6 a key row with nothing marked is no key row', blankMarks.next && blankMarks.next.business_key === 'old',
       JSON.stringify(blankMarks.next));
+    const empty = read([], held);
+    say('A7 nothing pasted is refused - it would write no columns over every column', empty.next === null
+      && JSON.stringify(empty.refused) === '["Nothing pasted"]', JSON.stringify(empty));
+    const cased = read([['lot', 'qty', 'at'], ['String', 'NUMBER', 'DateTime'], ['KEY', '', '']]);
+    say('A8 type and key words in any case are read, and written as the server spells them',
+      cased.next && JSON.stringify(cased.next.column_types) === '{"lot":"string","qty":"number","at":"datetime"}'
+        && cased.next.business_key === 'lot', JSON.stringify(cased));
   }
 
   console.log('\n[7] what a save changes, said before it');
@@ -328,6 +335,23 @@ async function pasteSuite(m) {
     say('C8 the server\'s refusal of that save stands in its own words, the pasted text still there',
       refusal && refusal.textContent.includes('Reopen it, check, then save')
         && JSON.stringify(Object.keys((rawOf(h8) || {}).column_types || {})) === '["lot","qty"]');
+
+    // 🔴 THE DATA GUARD KEPT BY RULING (lead c6a8c069c, ba5e1eaad): an empty paste must not reach the
+    //    document. The lead's mutation deleting it stayed green - nothing measured it.
+    const asked9 = [];
+    let sent9 = null;
+    const { host: h9, p: p9 } = panel({ confirm: (t) => { asked9.push(t); return true; }, onSave: (s) => { sent9 = s; } });
+    p9.render(PASTE_PAYLOAD);
+    pasteInto(h9, '\n\n');
+    const refused9 = lines(h9, 'table-config-paste-refused');
+    byClass(h9, 'table-config-save')[0]._on.click();
+    let sent9doc = null;
+    try { sent9doc = JSON.parse(sent9 && sent9.raw); } catch (e) { sent9doc = null; }
+    say('C9 an empty paste: the refusal line, the document as the server has it, and a Save after it sends every column, asking nothing',
+      JSON.stringify(refused9) === '["Nothing pasted"]' && byClass(h9, 'table-config-unsaved').length === 0
+        && JSON.stringify(rawOf(h9)) === JSON.stringify(PASTE_PAYLOAD.declaration) && asked9.length === 0
+        && JSON.stringify(sent9doc) === JSON.stringify(PASTE_PAYLOAD.declaration),
+      JSON.stringify({ refused9, asked9, sent9doc }));
   }
 
   console.log('\n[9] the chain rules screen is not touched');
@@ -371,7 +395,7 @@ async function pasteSuite(m) {
     R('P2', 'one key is written as a composite', 'A2',
       '    if (keys.length === 1) [next.business_key] = keys;\n', '    if (false) [next.business_key] = keys;\n'),
     R('P3', 'an unknown type is accepted', 'A4',
-      '    if (!COLUMN_TYPES.includes(type)) refused.push(', '    if (false) refused.push('),
+      '    if (!COLUMN_TYPES.includes(word(types[i]))) refused.push(', '    if (false) refused.push('),
     R('P4', 'a repeated name is accepted', 'A4',
       '    if (seen.has(name)) refused.push(', '    if (false) refused.push('),
     R('P5', 'no key row still rewrites the key', 'A5',
@@ -394,6 +418,12 @@ async function pasteSuite(m) {
     T('P13', 'what a save changes is worked out against the draft', 'C2',
       '    const before = this.newMode ? null : (payload && payload.declaration);\n',
       "    const before = this.newMode ? null : JSON.parse(this.draft || 'null');\n"),
+    R('P14', 'the empty-paste guard is gone (lead ba5e1eaad)', 'A7',
+      "  if (!width) return { next: null, refused: ['Nothing pasted'] };\n", ''),
+    R('P15', 'a type is written as typed, not as the server spells it', 'A8',
+      '[name, word(types[i])]', '[name, String(types[i])]'),
+    R('P16', 'a type or key word is read in lower case only', 'A8',
+      "String(cell).toLowerCase());", 'String(cell));'),
   ];
   const scored = await scoreMutants(MUTANTS, async (mu) => {
     const loaded = (await loadWithProbe(mu.file, { mutate: (t) => swap(t, mu.from, mu.to) })).module;

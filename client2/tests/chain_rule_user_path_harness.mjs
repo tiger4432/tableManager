@@ -431,6 +431,12 @@ async function suite(probe) {
   ok(posts.length === 1, `E saving makes ONE write (${posts.length})`);
   ok(Boolean(saved) && saved.body.name === RULE.name, 'E the write names the rule that was open');
   ok(Boolean(saved) && saved.body.base === 'fp-1', 'E the write carries the base fingerprint back');
+  ok(Boolean(saved) && saved.body.from === RULE.name,
+     `E ...and from, the name the editor opened (lead c6a8c069c) (${saved ? saved.body.from : 'no save'})`);
+  // Until the route reads `from` it is one key nobody reads (main.post_chain_rule_raw takes name ·
+  // declaration · base): the body is today's body and that key, nothing else.
+  ok(Boolean(saved) && JSON.stringify(Object.keys(saved.body).sort()) === '["base","declaration","from","name"]',
+     `E ...and nothing else beside today's three (${saved ? JSON.stringify(Object.keys(saved.body)) : 'no save'})`);
   ok(Boolean(saved) && saved.body.declaration
      && saved.body.declaration.target_table === 'lot_slot_wafer_v2',
      'E the write carries the EDITED document');
@@ -495,6 +501,8 @@ async function suite(probe) {
      `G the save carries the name typed in the form (${saved ? saved.body.name : 'no save'})`);
   ok(Boolean(saved) && saved.body.declaration && saved.body.declaration.name === 'brand_new_rule',
      'G and the document says the same name -- one fact, one place');
+  ok(Boolean(saved) && !('from' in saved.body),
+     `G and no from -- a new rule opened nothing (${saved ? JSON.stringify(Object.keys(saved.body)) : 'no save'})`);
 
   // ── I (closing): the catalogue was read ONCE for this page ───────────────────────────────
   // 🔴 Six refreshes have happened by here -- opening, picking, two clock reads, a save and a new
@@ -718,6 +726,42 @@ async function suite(probe) {
      && boxAt('target_table').value === 'refused_target',
      `O a refused EXISTING rule keeps its form and the edit (${boxAt('target_table') ? boxAt('target_table').value : 'no form'})`);
 
+  // ── R. a rename is the same rule, in place (lead c6a8c069c) ──────────────────────────────
+  // 🔴 THE OWNER: 「체인선언에서 체인명 바꾸면 복제가 되네」. The save sent only the document's new name, so
+  //    the route appended a new rule, switched off, and the old one kept running.
+  const serveSave = (onPost) => { answer = (call) => (call.url.includes('/admin/mappers/list') ? { status: 200, body: MAPPERS }
+    : isCatalogue(call) ? { status: 200, body: { tables: TABLES } }
+      : call.method === 'POST' ? onPost(call)
+        : { status: 200, body: rawView(askedName(call)) }); };
+  let renameSave = null;
+  serveSave((call) => { renameSave = call;
+    return { status: 200, body: { name: call.body.name, rules: NAMES, backup: '/box/bak', enabled: true, base: 'fp-2' } }; });
+  await refreshChainRule(RULE.name);
+  await flush();
+  type('name', 'renamed_rule');
+  await flush();
+  press('save-chain-rule');
+  for (let i = 0; i < 4; i += 1) await flush();
+  ok(Boolean(renameSave) && renameSave.body.name === 'renamed_rule' && renameSave.body.from === RULE.name,
+     `R a renamed rule is saved as the rule it was: the new name, from the one opened (${renameSave ? JSON.stringify({ name: renameSave.body.name, from: renameSave.body.from }) : 'no save'})`);
+  const TAKEN = { code: 'rule_name_taken', path: 'rules.taken_name',
+    message: "'taken_name' is already a rule - pick another name" };
+  serveSave(() => ({ status: 400, body: { detail: TAKEN } }));
+  await refreshChainRule(RULE.name);
+  await flush();
+  type('name', 'taken_name');
+  await flush();
+  calls.length = 0;
+  press('save-chain-rule');
+  for (let i = 0; i < 4; i += 1) await flush();
+  const rereadR = calls.filter((c) => c.method === 'GET' && c.url.includes('/admin/chain/rules/raw'));
+  ok(Boolean(boxAt('name')) && boxAt('name').value === 'taken_name',
+     `R a refused rename keeps what was typed (${boxAt('name') ? boxAt('name').value : 'no form'})`);
+  ok(Boolean(byCls('chain-rule-refusal-why')) && byCls('chain-rule-refusal-why').textContent === TAKEN.message,
+     "R ...with the server's sentence, verbatim");
+  ok(rereadR.length === 1 && askedName(rereadR[0]) === RULE.name,
+     `R ...re-read by the rule it opened, not the name refused (${rereadR.map(askedName).map((x) => JSON.stringify(x)).join(',') || 'no read'})`);
+
   // ── P. the failed list draws the failure RECORD, and names the rule the record names ─────
   // 🔴 order 45f5da3f5. Two rules on the event's table; the record names the SECOND. The drawer
   //    used to open the first rule whose table matched -- a guess the record now makes needless.
@@ -767,8 +811,14 @@ const DEFECTS = [
   ['the page drops the server\'s 「not seen」, so a worker nobody can see reads as coming',
     s => s.replace("seen: 'loop_seen_via' in payload ? payload.loop_seen_via != null : undefined", 'seen: undefined')],
   ['the save forgets the base fingerprint, so a concurrent edit is overwritten in silence',
-    s => s.replace('      body: JSON.stringify({ name, declaration, base }),',
-                   '      body: JSON.stringify({ name, declaration }),')],
+    s => s.replace('      body: JSON.stringify({ name, declaration, base, from }),',
+                   '      body: JSON.stringify({ name, declaration, from }),')],
+  // lead c6a8c069c: the two halves of a rename in place.
+  ['the save says nothing of the rule it opened, so a rename is a copy',
+    s => s.replace('      body: JSON.stringify({ name, declaration, base, from }),',
+                   '      body: JSON.stringify({ name, declaration, base }),')],
+  ['a refused rename is re-read by the name it was refused, so the typing goes out of sight',
+    s => s.replace('    : refreshChainRule(from, { refusal }));', '    : refreshChainRule(name, { refusal }));')],
   // 🔴 C-101 ①, AS THE OWNER MET IT. Without this one line the page hands its periodic read to
   //    the panel as if a person had asked for it, and a read that names no rule draws no editor.
   ['the page hands its own 30-second read to the form, which then has no document to draw',

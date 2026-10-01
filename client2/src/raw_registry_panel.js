@@ -774,7 +774,10 @@ export class RawRegistryPanel {
       }
       // `forNew`: a refused save of a rule that is still new must be re-read as [+ add] reads
       // it (no name), or the answer carries no grammar and the form goes (order c93637fc5).
-      this.onSave({ [spec.nameKey]: named, base: view.base, raw: area.value, forNew: this.newMode });
+      // `from`: the name the editor opened - a renamed document is that one, in place (lead c6a8c069c).
+      // A new name opened nothing, so it carries none.
+      this.onSave({ [spec.nameKey]: named, base: view.base, raw: area.value, forNew: this.newMode,
+        ...(this.newMode ? {} : { from: view.name }) });
     };
     this._saveNow = (picked || !root) ? runSave : null;
     if (save.addEventListener && this.onSave) save.addEventListener('click', runSave);
