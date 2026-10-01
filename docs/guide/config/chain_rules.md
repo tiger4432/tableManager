@@ -179,6 +179,14 @@ return {"batches": [{"target_table": "dt_map",
 
    (`mappers.*` 모듈 캐시도 함께 퍼지되므로 맵퍼 코드 수정도 이걸로 반영됩니다.)
 
+6. 🆕 **규칙 이름 바꾸기 — 체인 탭에서 이름을 고쳐 저장하면 «그 자리에서» 바뀝니다**(10-01 `4a0c69b2f`). 자리와 `enabled` 는 그대로입니다
+   (전엔 새 이름을 못 찾아 꺼진 새 규칙을 덧붙이고 옛 규칙이 계속 돌았습니다). 거절은 이름 대어 셋:
+   - `rule_name_taken` — 새 이름이 이미 다른 규칙의 것
+   - `stale_base` — 연 규칙이 파일에서 사라짐(다시 열고 확인한 뒤 저장)
+   - `rule_name_held` — 옛 이름으로 찾는 기록이 있으면 바꾸지 않습니다: 맵 확정 · 처리 안 된 재생 사건 · 다른 규칙의 `alignment_rule` ·
+     안 끝난 소급 실행. 문장은 「Next: keep the name …; if a new name is needed, add a new rule and switch this one off.」로 시작합니다
+   바꾼 뒤의 값: 그 규칙이 쓴 행은 다음에 들어올 때 새 이름으로 «다시 쓰입니다»(쓴 이를 견주므로) — 저장 답이 `renamed_from` 과 함께 한 줄로 말합니다.
+
 ## 3. 반영 확인
 
 1. `GET /admin/chain/rules` (`X-Admin-Token` 필요) — 룰이 보이는지. ⚠️ 이 뷰는 **「도는 규칙」과 「적혀 있지만 안 선 선언」을 «둘 다»** 답합니다(판정 644·656) — 칸은 `rule_state`(`running` / `declared_only`)입니다. 「없다」와 「꺼짐」이 같은 픽셀이 아닌 것이 이 라운드의 핵심입니다. 워커가 «실제로 실은 것»은 여전히 체인 워커 로그로 확인하십시오.
