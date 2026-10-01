@@ -28,7 +28,9 @@ import { CHOOSE } from './ui_words.js';
 import { renderSkeletonForm } from './ontology_explorer_view.js';
 import { emptyOf, missingRequired, shapeAt } from './ontology_skeleton.js';
 // The grid's own reader of pasted sheet text (lead f382dacfb: no second parser).
-import { parseTsv } from './tsv.js';
+import { parseTsv, serializeTsv } from './tsv.js';
+// The one clipboard writer that works on plain HTTP (check_clipboard_convention), lead 72aa14785.
+import { writeClipboardRich } from './clipboard_write.js';
 import {
   writeShapeAtPath, deleteAtPath, splitBundlePath, getAtPath, addMember,
 } from './ontology_path.js';
@@ -79,7 +81,8 @@ export const PASTE_HERE = 'Paste columns · names / types / key';
  *             changes:(before:object|null, after:object)=>string[]}} [paste]
  *   Rows pasted from a sheet, turned into this registry's document (lead f382dacfb). Without it no
  *   paste box is drawn. `changes` answers what a save would change against the SERVER's document;
- *   when it names anything the save asks first.
+ *   when it names anything the save asks first. `copy` (document -> rows) is the other way, for the
+ *   Copy columns button beside the box (lead 72aa14785).
  * @property {string[]} [firstScreen]  「필수」는 아니지만 «첫 화면»에 서는 칸.
  *   🔴 「required」와 «다른 물음»입니다. required 는 「없으면 거절되나」이고 스켈레톤이 답합니다
  *      (실측 2026-09-13: 체인 규칙의 required 는 `name`·`trigger_table` «둘»). 이것은 「이것
@@ -323,6 +326,10 @@ export class RawRegistryPanel {
     // document name) - the parts a re-render draws again (lead f382dacfb).
     this._pasted = '';
     this._pasteRefused = null;
+    // What the last Copy columns could not do, by document name (lead 72aa14785).
+    this._copyFailed = null;
+    // The clipboard writer, injectable so a harness can see what is written and make it fail.
+    this.copyText = deps.copyText || ((text) => writeClipboardRich('', text));
     // 폼 안의 접힘도 같습니다 — 기록은 탐색기와 «같은 함수»(`reduceFieldFold`)가 합니다.
     // 다른 문서를 열면 비웁니다. 한 규칙에서 편 목록이 다음 규칙의 같은 경로를 펴면 안 됩니다.
     this._formFold = { expandedFields: {} };
@@ -1110,6 +1117,16 @@ export class RawRegistryPanel {
       });
     }
     box.appendChild(sink);
+    const copy = this.doc.createElement('button');
+    copy.className = `admin-btn ${spec.cls}-copy`;
+    copy.setAttribute('data-action', `copy-${spec.cls}`);
+    copy.setAttribute('type', 'button');
+    copy.textContent = 'Copy columns';
+    if (copy.addEventListener) copy.addEventListener('click', () => this._copy(key));
+    box.appendChild(copy);
+    if (this._copyFailed && this._copyFailed.key === key) {
+      box.appendChild(this._line(`${spec.cls}-copy-failed`, this._copyFailed.text));
+    }
     const refused = this._pasteRefused && this._pasteRefused.key === key ? this._pasteRefused.lines : [];
     for (const line of refused) box.appendChild(this._line(`${spec.cls}-paste-refused`, line));
     // Worked out at every draw from the text as it stands: the raw box can be edited after a paste.
@@ -1129,15 +1146,30 @@ export class RawRegistryPanel {
     return this.spec.paste.changes(before, after) || [];
   }
 
-  /** Sheet text -> the open document, through the grid's reader and the registry's `paste.read`. */
-  _paste(key, text) {
-    const rows = parseTsv(String(text || ''), { trimCells: true, dropBlankLines: true });
-    // The document as it stands: the unsaved text if it reads, else the server's.
+  /** The document as it stands: the unsaved text if it reads, else the server's. A paste and a copy read it alike. */
+  _held(key) {
     let held = this._payload && !this.newMode ? this._payload.declaration : null;
     if (this.draft !== null && this.draftOf === key) {
       try { held = JSON.parse(this.draft || 'null'); } catch (e) { /* the server's stands */ }
     }
-    const { next, refused } = this.spec.paste.read(rows, held);
+    return held;
+  }
+
+  /** The open document's columns, as the sheet the paste box reads, onto the clipboard. */
+  _copy(key) {
+    let wrote = false;
+    let why = 'the browser did not take it';
+    try { wrote = Boolean(this.copyText(serializeTsv(this.spec.paste.copy(this._held(key))))); } catch (e) {
+      why = String(e && e.message ? e.message : e);
+    }
+    this._copyFailed = wrote ? null : { key, text: `Copy failed · ${why}` };
+    this._drawAgain();
+  }
+
+  /** Sheet text -> the open document, through the grid's reader and the registry's `paste.read`. */
+  _paste(key, text) {
+    const rows = parseTsv(String(text || ''), { trimCells: true, dropBlankLines: true });
+    const { next, refused } = this.spec.paste.read(rows, this._held(key));
     if (refused && refused.length) {
       this._pasteRefused = { key, lines: refused };
     } else {
@@ -1146,8 +1178,12 @@ export class RawRegistryPanel {
       // After `_keep`: a paste equal to the server's document leaves no draft, and nothing to confirm.
       this._pasted = this.draft !== null ? key : '';
     }
-    // 🔴 Not `_again()` as it stands: the last draw's options may carry `saved`, and a draw with
-    //    `saved` drops the draft - the paste would vanish the moment it landed.
+    this._drawAgain();
+  }
+
+  // 🔴 Not `_again()` as it stands: the last draw's options may carry `saved`, and a draw with
+  //    `saved` drops the draft - a paste would vanish the moment it landed.
+  _drawAgain() {
     this.render(this._payload, { ...this._opts, background: false, saved: null });
   }
 

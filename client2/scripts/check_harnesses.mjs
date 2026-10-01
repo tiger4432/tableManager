@@ -267,7 +267,9 @@ const FLOORS = new Map([
   // 35 -> 66 (lead f382dacfb, [6]-[9] and P1-P13): a sheet pasted into a table's columns - read by the
   // grid's reader, refused by name, what a save would change said and asked before it, chain untouched.
   // 66 -> 72 (lead c6a8c069c, ba5e1eaad: the empty-paste guard measured (A7, C9, P14); type and key words in any case (A8, P15, P16)).
-  ['table_config_panel_harness.mjs', 72],
+  // 72 -> 89 (lead 72aa14785, [10] E1-E9 and P17-P24): the columns copied out as the sheet the box reads,
+  // every sample table round tripped, a column coming into view said.
+  ['table_config_panel_harness.mjs', 89],
   // CHAIN RULE. The one this exists for beyond the table's two: a saved rule may not be
   // a RUNNING rule. The server writes a new rule with `enabled: false` because the loader
   // re-reads on reload, so saving would otherwise arm and fire at once - and if the screen
