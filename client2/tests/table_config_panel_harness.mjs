@@ -161,6 +161,252 @@ console.log('\n[5] two panels on one page');
   eq('a re-render replaces rather than appends', byClass(h1, 'table-config-save').length, 1);
 }
 
+// ═══ ⑥-⑨ paste columns from a sheet (lead f382dacfb) ══════════════════════════════════
+//
+// 🔴 THE PANEL IS BUILT AS `TableConfigPanel` BUILDS IT: the template with this registry's
+//    declaration (`super(mount, deps, TABLE_REGISTRY)` and nothing else), so a mutated template
+//    or a mutated registry is the thing scored - a probe stub cannot stand in for a class.
+const PASTE_PAYLOAD = {
+  ...PAYLOAD,
+  declaration: { __comment: 'c', column_types: { lot: 'string', gone: 'number', qty: 'string' },
+                 display_columns: ['lot', 'gone', 'qty'], business_key: 'lot' },
+  raw: '{"__comment":"c","column_types":{"lot":"string","gone":"number","qty":"string"},'
+    + '"display_columns":["lot","gone","qty"],"business_key":"lot"}',
+};
+const CHAIN_PAYLOAD = { config_path: '/x/chain_rules.json', base: 'sha256:c', rules: ['r1'], error: null,
+  name: 'r1', declaration: { name: 'r1' }, raw: '{"name":"r1"}' };
+const SHEET = (...rows) => rows.map((r) => r.join('\t')).join('\n');
+
+async function pasteSuite(m) {
+  const names = [];
+  const fails = [];
+  const say = (name, cond, detail) => {
+    names.push(name);
+    if (cond) { console.log(`  PASS ${name}`); return; }
+    fails.push(name);
+    console.log(`  FAIL ${name}${detail ? ' -- ' + detail : ''}`);
+  };
+  const read = (rows, held = null) => m.columnsFromPaste(rows, held);
+  const panel = (deps = {}) => {
+    const doc = makeDoc();
+    const host = doc.createElement('div');
+    const p = new m.Panel(host, { doc, storage: null, ...deps }, m.TABLE_REGISTRY);
+    return { host, p };
+  };
+  const pasteInto = (host, text) => {
+    const sink = byClass(host, 'table-config-paste')[0];
+    if (sink && sink._on && sink._on.paste) {
+      sink._on.paste({ clipboardData: { getData: () => text }, preventDefault() {} });
+    }
+    return Boolean(sink);
+  };
+  const rawOf = (host) => { try { return JSON.parse(byClass(host, 'table-config-raw')[0].value); } catch (e) { return null; } };
+  const lines = (host, cls) => byClass(host, cls).map((n) => n.textContent);
+
+  console.log('\n[6] a sheet read into columns');
+  {
+    const two = read([['lot', 'qty', 'at'], ['string', 'number', 'datetime']]);
+    say('A1 two rows: column_types and display_columns in the pasted order, no key',
+      JSON.stringify(two.next && two.next.column_types) === '{"lot":"string","qty":"number","at":"datetime"}'
+        && JSON.stringify(two.next.display_columns) === '["lot","qty","at"]'
+        && !('business_key' in two.next) && !('composite_key_source' in two.next), JSON.stringify(two));
+    const one = read([['lot', 'qty'], ['string', 'number'], ['key', '']]);
+    say('A2 one key -> business_key', one.next && one.next.business_key === 'lot'
+      && !('composite_key_source' in one.next), JSON.stringify(one.next));
+    const many = read([['lot', 'qty', 'slot'], ['string', 'number', 'string'], ['key', '', 'key']]);
+    say('A3 two keys -> composite_key_source, left to right', JSON.stringify(many.next && many.next.composite_key_source)
+      === '["lot","slot"]' && !('business_key' in many.next), JSON.stringify(many.next));
+    const bad = [
+      [read([['lot', 'qty'], ['string', 'num']]), 'column 2 (qty): unknown type num'],
+      [read([['lot', '', 'x'], ['string', 'number', 'string']]), 'column 2: no name'],
+      [read([['lot', 'qty', 'lot'], ['string', 'number', 'string']]), 'column 3 (lot): name repeated'],
+      [read([['lot', 'qty'], ['string', 'number'], ['yes', '']]), 'column 1 (lot): yes is not key'],
+    ];
+    say('A4 an unknown type, a blank name, a repeat and a word other than key are refused by name',
+      bad.every(([got, want]) => got.next === null && got.refused.includes(want)),
+      JSON.stringify(bad.map(([got]) => got.refused)));
+    const held = { __comment: 'c', column_types: { old: 'string' }, display_columns: ['old'],
+      business_key: 'old', map_key_columns: ['x'] };
+    const swap = read([['lot', 'qty'], ['string', 'number']], held);
+    say('A5 an existing table: the columns are replaced whole, other fields and (no key row) the key stay',
+      swap.next && JSON.stringify(Object.keys(swap.next.column_types)) === '["lot","qty"]'
+        && swap.next.__comment === 'c' && JSON.stringify(swap.next.map_key_columns) === '["x"]'
+        && swap.next.business_key === 'old', JSON.stringify(swap.next));
+    const blankMarks = read([['lot', 'qty'], ['string', 'number'], ['', '']], held);
+    say('A6 a key row with nothing marked is no key row', blankMarks.next && blankMarks.next.business_key === 'old',
+      JSON.stringify(blankMarks.next));
+  }
+
+  console.log('\n[7] what a save changes, said before it');
+  {
+    say('B1 a table that does not exist yet has nothing to lose', m.columnChanges(null, { column_types: { a: 'string' } }).length === 0);
+    const got = m.columnChanges(
+      { column_types: { lot: 'string', gone: 'number', qty: 'string' }, business_key: 'lot' },
+      { column_types: { lot: 'string', qty: 'number' }, composite_key_source: ['lot', 'qty'] });
+    say('B2 dropped, retyped, the key, and the rows\' identity',
+      JSON.stringify(got) === JSON.stringify(['Dropped · gone', 'Type · qty · string → number',
+        'Key · lot → lot + qty', 'Existing rows change identity']), JSON.stringify(got));
+    const spelling = m.columnChanges({ business_key: 'k', composite_key_source: ['a', 'b'] },
+      { composite_key_source: ['a', 'b'] });
+    say('B3 a key spelling that keeps the same identity says the key, not the identity',
+      JSON.stringify(spelling) === JSON.stringify(['Key · k (a + b) → a + b']), JSON.stringify(spelling));
+  }
+
+  console.log('\n[8] the panel');
+  {
+    const { host, p } = panel();
+    p.render(PASTE_PAYLOAD);
+    const drawn = pasteInto(host, SHEET([' lot ', ' qty'], ['string ', 'number']) + '\n\n');
+    const doc1 = rawOf(host);
+    say('C1 the paste box reads the sheet through the grid\'s reader (padded cells, a blank line)',
+      drawn && doc1 && JSON.stringify(doc1.column_types) === '{"lot":"string","qty":"number"}'
+        && byClass(host, 'table-config-unsaved').length === 1, JSON.stringify(doc1));
+
+    const asked = [];
+    let sent = null;
+    const { host: h2, p: p2 } = panel({ confirm: (text) => { asked.push(text); return false; }, onSave: (s) => { sent = s; } });
+    p2.render(PASTE_PAYLOAD);
+    pasteInto(h2, SHEET(['lot', 'qty'], ['string', 'number'], ['', 'key']));
+    const shown = lines(h2, 'table-config-paste-change');
+    say('C2 before saving, the screen says what goes: the dropped column, the type, the key, the identity',
+      JSON.stringify(shown) === JSON.stringify(['Dropped · gone', 'Type · qty · string → number',
+        'Key · lot → qty', 'Existing rows change identity']), JSON.stringify(shown));
+    byClass(h2, 'table-config-save')[0]._on.click();
+    say('C3 Save asks first, with those lines, and a No sends nothing',
+      asked.length === 1 && asked[0].includes('Dropped · gone') && sent === null, JSON.stringify({ asked, sent }));
+
+    let sent2 = null;
+    const { host: h3, p: p3 } = panel({ confirm: () => true, onSave: (s) => { sent2 = s; } });
+    p3.render(PASTE_PAYLOAD);
+    pasteInto(h3, SHEET(['lot', 'qty'], ['string', 'number'], ['', 'key']));
+    byClass(h3, 'table-config-save')[0]._on.click();
+    let saved = null;
+    try { saved = JSON.parse(sent2 && sent2.raw); } catch (e) { saved = null; }
+    say('C4 a Yes saves through the one save, the table replaced whole',
+      saved && JSON.stringify(saved.column_types) === '{"lot":"string","qty":"number"}'
+        && saved.business_key === 'qty' && saved.__comment === 'c' && sent2.table === 'lot_event', JSON.stringify(sent2));
+
+    const { host: h4, p: p4 } = panel();
+    p4.render(PASTE_PAYLOAD);
+    pasteInto(h4, SHEET(['lot', 'qty'], ['string', 'integer']));
+    const refusedLines = lines(h4, 'table-config-paste-refused');
+    say('C5 a refused paste says why and leaves the document as the server has it',
+      JSON.stringify(refusedLines) === JSON.stringify(['column 2 (qty): unknown type integer'])
+        && byClass(h4, 'table-config-unsaved').length === 0
+        && JSON.stringify(rawOf(h4)) === JSON.stringify(PASTE_PAYLOAD.declaration), JSON.stringify(refusedLines));
+
+    const asked6 = [];
+    let sent6 = null;
+    const { host: h6, p: p6 } = panel({ confirm: (t) => { asked6.push(t); return true; }, onSave: (s) => { sent6 = s; },
+      onOpen: () => {} });
+    p6.render(PASTE_PAYLOAD);
+    byClass(h6, 'table-config-add')[0]._on.click();
+    p6.render({ ...PASTE_PAYLOAD, table: undefined, declaration: undefined, raw: undefined }, { forNew: true });
+    pasteInto(h6, SHEET(['wafer', 'at'], ['string', 'datetime'], ['key', '']));
+    const nameBox = byClass(h6, 'table-config-new-name')[0];
+    if (nameBox) nameBox.value = 'new_table';
+    byClass(h6, 'table-config-save')[0]._on.click();
+    let saved6 = null;
+    try { saved6 = JSON.parse(sent6 && sent6.raw); } catch (e) { saved6 = null; }
+    say('C6 a new table: the paste fills it, nothing is asked, and it saves under its name',
+      asked6.length === 0 && sent6 && sent6.table === 'new_table' && saved6
+        && JSON.stringify(saved6.display_columns) === '["wafer","at"]' && saved6.business_key === 'wafer',
+      JSON.stringify({ asked6, sent6 }));
+
+    const { host: h7, p: p7 } = panel();
+    p7.render(PASTE_PAYLOAD, { saved: { name: 'lot_event', count: 1, backup: 'b.bak' } });
+    pasteInto(h7, SHEET(['lot', 'qty'], ['string', 'number']));
+    say('C7 a paste right after a save is kept, not dropped with the save\'s line',
+      byClass(h7, 'table-config-unsaved').length === 1
+        && JSON.stringify(Object.keys((rawOf(h7) || {}).column_types || {})) === '["lot","qty"]');
+
+    const { host: h8, p: p8 } = panel();
+    p8.render(PASTE_PAYLOAD);
+    pasteInto(h8, SHEET(['lot', 'qty'], ['string', 'number']));
+    p8.render(PASTE_PAYLOAD, { refusal: { code: 'stale_base', path: 'base', message: 'Reopen it, check, then save' } });
+    const refusal = byClass(h8, 'table-config-refusal')[0];
+    say('C8 the server\'s refusal of that save stands in its own words, the pasted text still there',
+      refusal && refusal.textContent.includes('Reopen it, check, then save')
+        && JSON.stringify(Object.keys((rawOf(h8) || {}).column_types || {})) === '["lot","qty"]');
+  }
+
+  console.log('\n[9] the chain rules screen is not touched');
+  {
+    const doc = makeDoc();
+    const host = doc.createElement('div');
+    new m.Panel(host, { doc, storage: null }, m.CHAIN_RULE_REGISTRY).render(CHAIN_PAYLOAD);
+    const { host: tableHost, p } = panel();
+    p.render(PASTE_PAYLOAD);
+    const pasteNodes = (h) => walk(h).filter((n) => /-paste/.test(String(n.className || ''))).length;
+    say('D1 the chain registry draws no paste box (the table one does)',
+      pasteNodes(host) === 0 && pasteNodes(tableHost) > 0, `${pasteNodes(host)} ${pasteNodes(tableHost)}`);
+  }
+  return { ran: names.length, names, failures: fails };
+}
+
+{
+  const { loadWithProbe } = await import('./lib/probe.mjs');
+  const { scoreMutants } = await import('./lib/mutation_scorer.mjs');
+  const { fileURLToPath } = await import('node:url');
+  const pathMod = await import('node:path');
+  const HERE = pathMod.dirname(fileURLToPath(import.meta.url));
+  const REGISTRY = pathMod.join(HERE, '..', 'src', 'table_config_panel.js');
+  const TEMPLATE = pathMod.join(HERE, '..', 'src', 'raw_registry_panel.js');
+  const registry = await import('../src/table_config_panel.js');
+  const template = await import('../src/raw_registry_panel.js');
+  const chain = await import('../src/chain_rule_panel.js');
+  const real = { ...registry, Panel: template.RawRegistryPanel, CHAIN_RULE_REGISTRY: chain.CHAIN_RULE_REGISTRY };
+  const base = await pasteSuite(real);
+  pass += base.ran - base.failures.length;
+  failures.push(...base.failures);
+  const swap = (text, from, to) => {
+    if (!text.includes(from)) throw new Error(`mutation anchor is GONE: ${from.slice(0, 60)}`);
+    return text.split(from).join(to);
+  };
+  const R = (id, what, catches, from, to) => ({ id, what, catches, file: REGISTRY, from, to });
+  const T = (id, what, catches, from, to) => ({ id, what, catches, file: TEMPLATE, from, to });
+  const MUTANTS = [
+    R('P1', 'composite keys are written right to left', 'A3',
+      '    else next.composite_key_source = keys;\n', '    else next.composite_key_source = keys.slice().reverse();\n'),
+    R('P2', 'one key is written as a composite', 'A2',
+      '    if (keys.length === 1) [next.business_key] = keys;\n', '    if (false) [next.business_key] = keys;\n'),
+    R('P3', 'an unknown type is accepted', 'A4',
+      '    if (!COLUMN_TYPES.includes(type)) refused.push(', '    if (false) refused.push('),
+    R('P4', 'a repeated name is accepted', 'A4',
+      '    if (seen.has(name)) refused.push(', '    if (false) refused.push('),
+    R('P5', 'no key row still rewrites the key', 'A5',
+      '  if (keyRow) {\n', '  if (true) {\n'),
+    R('P6', 'a dropped column is not said', 'B2',
+      '  if (dropped.length) lines.push(', '  if (false) lines.push('),
+    R('P7', 'a key spelling is said as an identity change', 'B3',
+      '  if (identityOf(before) !== identityOf(now)) lines.push(', '  if (keyText(before) !== keyText(now)) lines.push('),
+    R('P8', 'the table registry declares no paste', 'C1',
+      '  paste: Object.freeze({ read: columnsFromPaste, changes: columnChanges }),\n', ''),
+    T('P9', 'Save does not ask', 'C3',
+      "        if (lines.length && !this.ask([...lines, 'Save?'].join('\\n'))) return;\n", ''),
+    T('P10', 'every registry draws a paste box', 'D1',
+      '    if (spec.paste && picked) this._drawPaste(key, payload);\n', '    if (picked) this._drawPaste(key, payload);\n'),
+    T('P11', 'the paste is read by a private split, not the grid\'s reader', 'C1',
+      "parseTsv(String(text || ''), { trimCells: true, dropBlankLines: true })",
+      "String(text || '').split('\\n').map((line) => line.split('\\t'))"),
+    T('P12', 'the paste redraw keeps the last save\'s line', 'C7',
+      '    this.render(this._payload, { ...this._opts, background: false, saved: null });\n', '    this._again();\n'),
+    T('P13', 'what a save changes is worked out against the draft', 'C2',
+      '    const before = this.newMode ? null : (payload && payload.declaration);\n',
+      "    const before = this.newMode ? null : JSON.parse(this.draft || 'null');\n"),
+  ];
+  const scored = await scoreMutants(MUTANTS, async (mu) => {
+    const loaded = (await loadWithProbe(mu.file, { mutate: (t) => swap(t, mu.from, mu.to) })).module;
+    const mods = mu.file === REGISTRY ? { ...real, ...loaded } : { ...real, Panel: loaded.RawRegistryPanel };
+    const quiet = console.log;
+    console.log = () => {};
+    try { return await pasteSuite(mods); } finally { console.log = quiet; }
+  }, { baselineRan: base.ran, baselineNames: base.names,
+       title: '\n  [6-9] mutants - each must be caught by the check it names.' });
+  pass += MUTANTS.length - scored.wrong;
+  for (let i = 0; i < scored.wrong; i += 1) failures.push(`paste mutant verdict ${i + 1}`);
+}
+
 console.log(`\n════ RESULT: ${pass} passed, ${failures.length} failed ════`);
 console.log(`ASSERTIONS ${pass + failures.length} ${failures.length}`);
 process.exit(failures.length === 0 ? 0 : 1);
