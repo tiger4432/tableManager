@@ -62473,3 +62473,44 @@ _when_value 접기 — 지금 하지 않는다. 오늘 착지 전체를 소유�
 게이트  박스 선언(거절 소스 9) 사본으로: bootstrap t1 -> 200 · view t1 200 · drafts/new t1 -> 초안 생김 · changed_sources(t1) == [] ·
         폴더 없는 가지 view -> 400 이름 · 변이 빨강 · 지금 짓던 22ebdd153 은 이것 뒤
 ```
+
+---
+
+> **[총괄 -> 구현자] 원장 선언의 `prepare`(준비기) 은퇴 — lot_event 의 계산은 체인으로 (소유자 10-01 「원장 선언에서 준비기는 없애도 되지 않을까」 · 「준비기는 ㄱ으로」)**
+
+```
+도착지  원장 소스는 read · map · bind 셋. prepare 칸이 없다. 계산은 체인이 표에 쓰고 원장은 그 표를 선언으로 읽는다
+        (CLAUDE.md 「원장 선언은 국소적·무계산 번역만」)
+총괄 실측 (sample · 박스 선언, 소스 수)
+   direct-join(그대로 넘김) 박스 14/15 · sample 5/6
+   inherit_virtual_join_rules · accepts_verified_join_rules · exclude_when 을 쓰는 소스 0 (읽기 시점 조인은 86d598fb5 에서 은퇴)
+   일하는 준비기는 lot_event 의 lot-event-live-frame 하나 + 짝 맵퍼 lot-event-role (server/mappers/ledger_v2_lot_event_role_mapper.py)
+   lot_event 가 오늘 내는 문장 셋   register@1 lot · register@1 wafer · derived_from@1 (자식 -> 부모, split/merge)
+   🔴 웨이퍼 절반은 «이미» 체인에 있다 — chain_rules 의 lot_event_to_lot_slot_wafer(소유자 08-31 「체인으로 파생」)가
+      lot × slot × wafer × 시각 한 행씩 lot_slot_wafer 에 쓴다. 새 파생 표를 또 만들지 말 것. 남은 것은 위 문장 셋
+할 것
+ ① 원장 문법에서 prepare 은퇴 — 로더 · 컴파일 · 지문 · 스켈레톤 · 탐색기 · sample · source_preparation 기제
+    클라 후보(git grep -c -E "prepare|direct-join" -- client2/src, 줄 수 · 낱말이 다른 뜻일 수 있음 — 안 열었다):
+       ontology_explorer_view 6 · startup 5 · ontology_explorer_store 2 · ontology_explorer 1 · main 1 — 클라 몫이면 채널로, 총괄이 클라에 낸다
+    옛 파일에 direct-join prepare 가 있으면 읽고 버린다 — 적재 노트 «한 줄»(소스 수와 함께. 소스마다 한 줄 아님)
+    옛 파일에 lot-event-live-frame 이 있으면 이름 붙은 거절 + 「Next: run scripts/migrate_ledger_config_to_v6.py」 — 터지지 않는다
+    v6 이주 = v5 선례 그대로: prepare 를 지우고 lot_event 소스를 새 모양으로. 미리보기 기본 · --apply 로 쓴다
+ ② lot_event 를 선언으로 — lot-event-role 맵퍼 · LiveLotEventSourcePreparer 은퇴
+    짓기 «전» 채널로 한 갈래만 보고:  declarative-role 이 «키 칸이 빈 행에서 그 매핑만 건너뛰기»를 하나
+       예     -> derived_from 을 lot_event 행에서 바로 (parent_lot 있으면 lot -> parent_lot · child_lot 있으면 child_lot -> lot). 새 표 0
+       아니오  -> 체인이 계보 표에 (부모 · 자식 · 종류 · 시각) 한 행씩 쓰고 원장이 읽는다
+    register wafer 는 lot_slot_wafer 소스에서 · register lot 은 «한 곳»에서 — registration_probe 가 어디로 가는지도 같이
+ ③ 오늘의 판정 둘을 지킨다
+    옛 세대 행(lot_id 빈 행)은 원자 0 — 소유자 08-21 「옛 세대는 버린다」(준비기 주석이 인용한다. 주석과 같이 지우지 말고 새 자리로) · 이름 붙은 한 줄
+    한 행에 parent_lot 과 child_lot 이 둘 다 있으면 이름 붙은 거절 — 원자 둘이 아니다
+ ④ exclude_when — 소유자 답 대기(read 밑 거르기로 옮기나 / 은퇴하나). 답 오면 여기 덧붙인다. 그 전까지 손대지 말 것
+소급  기동 재찍기(_restamp_moved_fingerprints_sync)는 위치를 안 건드리고 지문만 옮긴다 — restamp_decision 은 v2 커서면 옮기고
+      «선언 내용이 바뀌었나»는 안 본다(docstring 은 「DECLARATION did not change」라 적는다 — 어긋남, 이 라운드에 고칠지는 보고만).
+      그래서 lot_event 도 저절로 다시 번역되지 않는다 -> 아래 «내용 같음» 게이트가 곧 「재번역 없이 이어진다」의 근거다
+게이트  같은 씨앗: lot_event 세 술어의 (술어 · 주어 키 · 목적어 키 · occurred_at) 묶음이 전후 같다 — 수가 아니라 내용 ·
+        박스 선언 사본 v6 이주 + 기동 재찍기 뒤 거절 0 · 같은 내용 원자 중복 0 ·
+        옛 파일(direct-join) 적재 -> 통과 + 노트 한 줄 · 옛 파일(lot-event-live-frame) -> 이름 거절 + Next ·
+        옛 세대 행 원자 0 · parent+child 한 행 -> 이름 거절 · 변이 빨강 ·
+        은퇴 전수: prepare · direct-join · lot-event-live-frame · lot-event-role · source_preparation 을 든 자리
+        (코드 · 주석 · docs · guide · sample · RUN.md) — 수와 센 명령 · 「새 함수·새 if 중 같은 일」
+```
