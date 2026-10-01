@@ -118,3 +118,6 @@ server/config_backup_*/
 
 # probe copies (C-67): mirrored out of client2/src so a harness walking src cannot see them
 client2/.tmp/
+
+# owner 2026-10-01: work in a personal copy of a workbench notebook; the tracked two are the template
+server/notebooks/my_*
