@@ -1143,6 +1143,27 @@
       "source_event_state": "string"
     }
   },
+  "ledger_atom_rows": {
+    "__comment": "[총괄 0fb9e9390] 원장 «펼친 보기» — 한 행 = (원자, 원천 행). 주어 · 목적 · 수식어는 저장된 철자 그대로의 평문(키=값 / …). source_row_id 로 거르면 그 행이 낳은 원자가 전부 나온다. 원천 행이 없는 원자(뷰를 읽던 소스)는 원천 칸이 빈 한 줄. 뷰를 만드는 것은 server/migrations/add_ledger_atom_rows.py. row_id 칼럼이 없으므로 전순서는 composite_key_source.",
+    "kind": "view",
+    "composite_key_source": [
+      "atom_id",
+      "source_relation",
+      "source_row_id"
+    ],
+    "column_types": {
+      "atom_id": "string",
+      "occurred_at": "datetime",
+      "subject_type": "string",
+      "subject": "string",
+      "predicate": "string",
+      "object": "string",
+      "qualifiers": "string",
+      "source_who": "string",
+      "source_relation": "string",
+      "source_row_id": "string"
+    }
+  },
   "notation_alias": {
     "__comment": "[제품 소유 저장소 — 이름·컬럼을 바꾸지 마라] Exact spellings mapped by hand to their written form, per column (총괄 6c156492f). A row reads: in `table_name`.`column_name`, a value written exactly `written` is stored as `canonical`. It is consulted first, before the column's notation rules, and only for a column that notation_rules.json declares `write: true` - a column not declared there is never touched. Ships EMPTY: the product fills no value, the operator does. The key separator is '|' because table and column names carry '_'.",
     "business_key": "alias_key",

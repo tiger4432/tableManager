@@ -1,5 +1,26 @@
 # 지금 돌리면 되는 것
 
+> ## [10-01 밤] **원장 «펼친 보기» ledger_atom_rows — 그리드에서 원자를 평문으로 · 원천 row_id 로 — 이주 «필요» · 재기동 «필요»**
+>
+> ```
+> 무엇이 바뀌나  읽기 전용 보기 ledger_atom_rows: 한 행 = (원자, 원천 행). 주어 · 목적 · 수식어는 저장 철자 그대로의 평문(키=값 / …)
+>              source_row_id 로 거르면 그 행이 낳은 원자가 전부 나온다. 원천 행이 없는 원자(뷰를 읽던 소스)는 원천 칸이 빈 한 줄
+>              원천 행 참조 표에 색인 둘(이음 · row_id). 원장 표는 무변
+> 돌릴 명령     python server/migrations/add_ledger_atom_rows.py --report     (있고 없음 · 크기)
+>              python server/migrations/add_ledger_atom_rows.py              (색인 둘 CONCURRENTLY + 보기 — 쓰기 계속됨, IF NOT EXISTS 라 다시 돌려도 같음)
+>              table_config.json 에 "ledger_atom_rows" 항목을 출고 샘플에서 그대로 복사 -> 재기동(run_app.bat 전체) -> 그리드 표 목록에 뜸
+>              ⚠️ 이 박스는 이주가 «이미» 돌았다(보기 · 색인 둘 있음) — table_config 항목만 남음
+> 뜻           이 박스: 색인 79 MB + 67 MB
+>              첫 쪽 100 행 0.03 s · row_id 하나 1.85 s · 주어 평문 일부 10.9 s · 전체 행 수 10.5 s (2,334,076 행)
+>              전체 행 수는 그리드의 미뤄 세기(defer_total -> /data/count, 캐시)로 — 첫 쪽을 막지 않는다
+>              row_id · 주어 거르기는 원장 표에 색인을 안 넣어 원장 전체를 훑는다(총괄 판정 — 원장 표에는 색인을 안 넣기로)
+>              참조 표 쓰기 비용: 1,000 행당 44.5 / 47.1 ms -> 62.5 / 65.5 ms (시험 DB, 참조 길이 882 · 지우고 다시 넣기)
+> 급할 때       table_config 의 그 항목을 지우면 그리드에서 사라진다. 보기 · 색인은 DROP VIEW ledger_atom_rows · DROP INDEX CONCURRENTLY 두 색인
+> 재기동 뒤 로그 새 로그 줄 없음
+> ```
+
+---
+
 > ## [10-01 밤] **걷기 «도로 내려가지 않기» — 역 술어 칸 `inverse_of` · 같은 타입 형제만 막음 — 마이그레이션 «없음» · 재기동 «필요»**
 >
 > ```
