@@ -117,6 +117,19 @@ export function makeNode(doc, tag) {
     //    reads -- and `children` stays elements only, as in a browser.
     nodeType: 1,
     get childNodes() { return (this._text ? [textNodeOf(this)] : []).concat(this.children); },
+    // ADDED 2026-10-01 (lead 65754c39a). The chain graph swaps its wakes list with this; a stub
+    // without it threw before the picture could be pinned.
+    replaceChild(next, old) {
+      const at = this.children.indexOf(old);
+      if (at < 0) return old;
+      if (next.parentNode && next.parentNode !== this && typeof next.parentNode.removeChild === 'function') {
+        next.parentNode.removeChild(next);
+      }
+      this.children[at] = next;
+      next.parentNode = this;
+      old.parentNode = null;
+      return old;
+    },
     insertBefore(c, ref) {
       if (c && c.nodeType === 3) { this._text = String(c.nodeValue); return c; }
       if (c.parentNode && typeof c.parentNode.removeChild === 'function') c.parentNode.removeChild(c);
