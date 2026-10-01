@@ -650,8 +650,8 @@ const ONE_BUILDER_DEFECTS = [
   // 🔴 「걷기 상자가 자기 질문을 다시 짓는다」의 대역: 정본을 지나되 «자기만» 인자를 하나
   //    더 실어 보냅니다. 그 순간 두 URL 이 갈라지고, 그것이 둘째 생성기가 하는 일 그대로입니다.
   ['the walk box adds an argument of its own, so the two URLs part again',
-    (src) => src.replace('          : { nodeId: entitySeedId(type, keys) }),',
-      "          : { nodeId: entitySeedId(type, keys) }), positive: ['x'],")],
+    (src) => src.replace('            : { nodeId: entitySeedId(type, keys) })),',
+      "            : { nodeId: entitySeedId(type, keys) })), positive: ['x'],")],
   // 🔴 C-97. 서술된 씨앗이 «id 와 같이» 나가는 판. 서버가 둘 다를 거절하므로 그 거절이
   //    화면에서는 「고장」으로 보이고, 운영자는 자기가 안 한 일로 혼납니다.
   ['a described seed travels WITH an id, which the route refuses',

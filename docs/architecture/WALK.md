@@ -280,6 +280,8 @@ why     `not_declared`(검사 술어가 선언 안 됨) · `truncated` 의 그 �
 
 ## 🔵 서술된 씨앗 — `seed_type` · 씨앗 예산 (S-148-a, 판정 337, 2026-09-13)
 
+> ⚰️ (🆕 10-01 `0b59a2f30`, 총괄 819726624 ㄹ) 씨앗은 이제 «그 타입을 이름 댄 원자가 있는 노드 전부»입니다 — 주어 쪽이든 `entity_ref` 목적어 쪽이든(`gaps._nodes_of_type_sql` 한 답). 판정 337 의 「등록된 주어만」을 뒤집었습니다: `lot_event` 가 은퇴해 웨이퍼·랏을 등록하는 것이 없어졌기 때문입니다. 아래 「등록된 주어」 · `register` 원자 · 등록 인덱스 줄은 그 전 모양이고, 거절 문장도 바뀌었습니다(「no node of type %r in the ledger; nothing to walk from」).
+
 ```
 GET /api/ledger/subgraph?…&seed_type=<엔터티 타입>[&seed_limit=N]
 그 타입의 «노드 전부»가 씨앗입니다 — 어느 원자든 주어 쪽이나 목적(entity_ref) 쪽에서
