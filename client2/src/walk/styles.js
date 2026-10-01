@@ -104,6 +104,56 @@ export const WALK_CSS = `
   font-size: 0.74rem; color: var(--text-dim, #71717a);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .wk-rowlabel { overflow-wrap: anywhere; }
+
+/* Table | Graph — which view of the walk the page shows (lead c9bf53033). */
+.wk-views { display: flex; gap: 6.8px; }
+.wk-view { min-height: 44px; padding: 0 13.6px; font: inherit; color: var(--text);
+  background: var(--bg-surface); border: 1px solid var(--border); border-radius: 0; cursor: pointer; }
+.wk-view.is-on { border-color: var(--accent); color: var(--accent); font-weight: 600; }
+
+/* Subgraph viewer. Corners 0, hairlines, colours from the roles in tokens.css only. A type's colour is a
+   cycle of nine role hues (TYPE_COLOURS) by its declaration index - danger is left out so red keeps
+   meaning error. A declaration with more types than hues repeats a colour; the legend names them. */
+.sg-view { display: flex; flex-direction: column; gap: 6.8px; padding: 10.2px 13.6px;
+  border: 1px solid var(--border); background: var(--bg-surface); color: var(--text); }
+.sg-counts { font-weight: 600; }
+.sg-note { font-size: var(--fs-meta); color: var(--text-dim); }
+.sg-fail { color: var(--danger); }
+.sg-trunc { font-family: 'JetBrains Mono', monospace; font-size: var(--fs-meta); color: var(--warning); }
+.sg-type-0 { --sg-c: var(--accent); }
+.sg-type-1 { --sg-c: var(--accent-2); }
+.sg-type-2 { --sg-c: var(--success); }
+.sg-type-3 { --sg-c: var(--info); }
+.sg-type-4 { --sg-c: var(--orange); }
+.sg-type-5 { --sg-c: var(--warning); }
+.sg-type-6 { --sg-c: var(--overwrite); }
+.sg-type-7 { --sg-c: var(--text-dim); }
+.sg-type-8 { --sg-c: var(--text); }
+.sg-legend { display: flex; flex-wrap: wrap; gap: 6.8px; }
+.sg-chip { display: inline-flex; align-items: center; gap: 6.8px; padding: 3.4px 6.8px;
+  border: 1px solid var(--border); font-family: 'JetBrains Mono', monospace; font-size: var(--fs-label); }
+.sg-swatch { width: 10.2px; height: 10.2px; border-radius: 50%; background: var(--sg-c); }
+.sg-swatch.is-static { border-radius: 0; }
+.sg-box { max-height: var(--graph-max-height); overflow: auto; border: 1px solid var(--border);
+  background: var(--bg-inset); }
+.sg-graph { display: block; }
+.sg-edge { stroke: var(--border-strong); stroke-width: 1; }
+.sg-node circle, .sg-node rect { fill: var(--sg-c); stroke: var(--bg-surface); stroke-width: 1.5; cursor: pointer; }
+/* The step a node came from is its border (lead f6fc6ba66): step 1 the plain halo, later steps dashed. */
+.sg-step-2 > circle, .sg-step-2 > rect { stroke: var(--text); stroke-dasharray: 3.4 1.7; }
+.sg-step-3 > circle, .sg-step-3 > rect { stroke: var(--text); stroke-dasharray: 1.7 1.7; }
+.sg-step-4 > circle, .sg-step-4 > rect { stroke: var(--text); stroke-dasharray: 6.8 1.7 1.7 1.7; }
+.sg-node.is-seed circle, .sg-node.is-seed rect { stroke: var(--accent); stroke-width: 2; stroke-dasharray: none; }
+.sg-node.is-marked circle, .sg-node.is-marked rect { stroke: var(--accent); stroke-width: 3.4; stroke-dasharray: none; }
+.sg-node.is-selected circle, .sg-node.is-selected rect { stroke: var(--text); stroke-width: 3; }
+.sg-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6.8px; }
+.sg-continue { min-height: 44px; padding: 0 13.6px; font: inherit; color: var(--accent-contrast);
+  background: var(--accent); border: 1px solid var(--accent); border-radius: 0; cursor: pointer; }
+.sg-continue[disabled] { opacity: 0.5; cursor: not-allowed; }
+.sg-node text { fill: var(--text); font-size: var(--fs-tag); cursor: pointer; }
+.sg-facts { display: flex; flex-direction: column; gap: 3.4px; }
+.sg-facts-head { font-weight: 600; }
+.sg-fact { font-family: 'JetBrains Mono', monospace; font-size: var(--fs-label); overflow-wrap: anywhere; }
 `;
 
 /**

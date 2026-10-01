@@ -1927,8 +1927,10 @@ export function createWalkBoxWalk(deps) {
   const doFetch = fetchImpl || fetch;
   return async function walkBoxWalk(spec) {
     const { type, keys, follow, collect, direction, hops, node_limit: nodeLimit,
-            since, until } = spec || {};
-    if (!type) return { ok: false, message: PICK_TYPE_FIRST };
+            since, until, positive, negative } = spec || {};
+    // A marking is a start too (lead f6fc6ba66): its signed ids, in the shape the board's walk sends.
+    const marked = Array.isArray(positive) && positive.length > 0;
+    if (!type && !marked) return { ok: false, message: PICK_TYPE_FIRST };
     // 🔴 C-53. 이 함수는 «요청을 짓지 않습니다». `fetchSubgraph` 가 이 라우트의 «정본
     //    생성기»이고, 여기는 걷기 상자의 spec 을 그 인자 모양으로 «옮기기»만 합니다.
     //    왜: 같은 라우트에 URLSearchParams 가 «둘»이었고, 인자가 하나 늘 때 한쪽에만 실리는
@@ -1953,9 +1955,10 @@ export function createWalkBoxWalk(deps) {
         //    `wafer@1` 을 실으면 선언 검사는 통과하고 주어가 «하나도» 안 맞습니다 — 거절이
         //    「그 타입에 등록된 주어가 없다」로 나오고, 그건 데이터에 대한 거짓입니다.
         //    하니스가 제 첫 판을 이 줄에서 잡았습니다.
-        ...(described
-          ? { seed_type: String(type).split('@')[0] }
-          : { nodeId: entitySeedId(type, keys) }),
+        ...(marked ? { nodeId: positive[0], positive, negative }
+          : (described
+            ? { seed_type: String(type).split('@')[0] }
+            : { nodeId: entitySeedId(type, keys) })),
         follow, collect, direction,
         hops: hops || undefined,
         node_limit: nodeLimit || undefined,

@@ -38,6 +38,14 @@ import {
 import { walkTableView } from './table_view.js';
 // 🔴 C-120. 「꺼짐 + 왜」의 좌석 하나 — 메인 그리드의 쓰기 버튼 셋이 쓰던 그 기제입니다.
 import { setDisabledReason } from '../disabled_reason.js';
+// The graph view of a start (lead c9bf53033) — a part with its own div; this page only places it.
+import { SubgraphView } from './subgraph_view.js';
+// The markings live outside every part, in one store (lead f6fc6ba66 · the board's MarkingStore).
+import { MarkingStore, SIGN } from '../rnd_board/marking_store.js';
+import { entitySeedId } from '../rnd_board/api.js';
+
+/** The graph's chain of markings: the start, then one per Continue. Its length is the chain's length. */
+const GRAPH_CHAIN = Object.freeze(['walk-start', 'walk-2', 'walk-3', 'walk-4']);
 
 /** 라벨«이자» 꺼진 사유. 한 상수라 둘이 갈라질 수 없습니다. */
 const RUNNING = '걷는 중';
@@ -76,6 +84,7 @@ export function boot(doc, host, deps) {
     subjectsScanned: null, subjectsScanCut: false, subjectsListCut: false,
     direction: '', hops: '', nodeLimit: '',
     run: 'idle', result: null, reason: '',
+    view: 'table',
   };
 
   // 🔴 `@1` 을 뗍니다. 선언은 타입을 `wafer@1` 로 쓰고 전선과 `pathsBetween` 의 타입 그래프는
@@ -87,6 +96,16 @@ export function boot(doc, host, deps) {
   const keysOf = (type) => {
     const found = entities().find((e) => e.type === type);
     return (found && found.keys) || [];
+  };
+  // Made once and kept across renders (`render` empties the host); it walks through the same wire.
+  const markings = new MarkingStore();
+  const graphMount = el(doc, 'div', 'wk-graph');
+  const graph = new SubgraphView(graphMount, { doc, walk, entities, markings, chain: GRAPH_CHAIN });
+  /** The form's subject becomes the chain's first marking; no subject, no mark (the part says so). */
+  const showGraph = (opts) => {
+    const named = Object.keys(state.keys || {}).length > 0;
+    markings.replace(GRAPH_CHAIN[0], named ? [[entitySeedId(state.type, state.keys), SIGN.CASE]] : []);
+    graph.show(opts);
   };
   // 🔴 술어도 «선언»에서, 그리고 «고른 타입을 주어로 갖는 것»만. 이것이 사람이 배관 낱말을
   //    몰라도 되는 이유입니다 — 고를 수 있는 것만 보입니다.
@@ -135,6 +154,8 @@ export function boot(doc, host, deps) {
 
   async function fire() {
     if (!state.type) return;
+    // The graph walks its marking and nothing else - follow, collect and the knobs are the table's.
+    if (state.view === 'graph') { showGraph(); return; }
     state.run = 'running'; state.result = null; state.reason = ''; render();
     const res = await walk(spec());
     if (res && res.ok) { state.run = 'done'; state.result = res; }
@@ -368,6 +389,21 @@ export function boot(doc, host, deps) {
       : (state.type ? '' : PICK_TYPE_FIRST));
     go.addEventListener('click', fire);
     root.append(go);
+
+    // ── Table | Graph ─────────────────────────────────────────────────────────
+    const views = el(doc, 'div', 'wk-views');
+    for (const [name, word] of [['table', 'Table'], ['graph', 'Graph']]) {
+      const button = el(doc, 'button', 'wk-view' + (state.view === name ? ' is-on' : ''), word);
+      button.type = 'button';
+      button.setAttribute('data-view', name);
+      button.addEventListener('click', () => {
+        state.view = name;
+        if (name === 'graph' && state.type) showGraph({ reuse: true });
+        render();
+      });
+      views.append(button);
+    }
+    root.append(views);
   }
 
   /**
@@ -502,7 +538,8 @@ export function boot(doc, host, deps) {
       root.append(line, again);
     } else {
       renderForm(root);
-      renderResult(root);
+      if (state.view === 'graph') root.append(graphMount);
+      else renderResult(root);
     }
     host.append(root);
   }

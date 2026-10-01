@@ -1406,6 +1406,10 @@ const FLOORS = new Map([
   // New (lead a2c41fed3): the table registry walked through admin.js - + Add table opens a name box,
   // a paste, a save with no from; a picked table as today. The panel harness hands forNew directly.
   ['table_config_user_path_harness.mjs', 15],
+  // New (leads c9bf53033 + f6fc6ba66): the walk page's Graph view - a start's whole walk drawn off the real wire;
+  // counts equal the table's, a column per depth, static squares, facts on a press, two on one page apart;
+  // a press marks into the store, Continue walks that marking onto the same picture.
+  ['subgraph_view_harness.mjs', 39],
   // a value carrying markup does not come back out as markup, and the backlog has a ceiling
   ['escaping_harness.mjs', 56],
   // clicking a derived route fills follow, and a later-hop predicate stays visible
