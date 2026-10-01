@@ -245,6 +245,13 @@ async function pasteSuite(m) {
     say('A8 type and key words in any case are read, and written as the server spells them',
       cased.next && JSON.stringify(cased.next.column_types) === '{"lot":"string","qty":"number","at":"datetime"}'
         && cased.next.business_key === 'lot', JSON.stringify(cased));
+    // (lead 5ef827675, server a8dea2bcf) an image reference column: the word is taken, a near miss is not.
+    const image = read([['lot', 'photo', 'shot'], ['string', 'image', 'IMAGE']]);
+    const nearMiss = read([['lot', 'photo'], ['string', 'images']]);
+    say('A9 the word image is a column type (any case), and a near miss of it is still refused by name',
+      image.next && JSON.stringify(image.next.column_types) === '{"lot":"string","photo":"image","shot":"image"}'
+        && nearMiss.next === null && JSON.stringify(nearMiss.refused) === '["column 2 (photo): unknown type images"]',
+      JSON.stringify({ image, nearMiss }));
   }
 
   console.log('\n[7] what a save changes, said before it');
@@ -355,6 +362,26 @@ async function pasteSuite(m) {
         && JSON.stringify(rawOf(h9)) === JSON.stringify(PASTE_PAYLOAD.declaration) && asked9.length === 0
         && JSON.stringify(sent9doc) === JSON.stringify(PASTE_PAYLOAD.declaration),
       JSON.stringify({ refused9, asked9, sent9doc }));
+
+    // (lead 5ef827675) the image column end to end: pasted, saved, reopened as the server answers, copied.
+    let sent10 = null;
+    const copied10 = [];
+    const { host: h10, p: p10 } = panel({ confirm: () => true, onSave: (s) => { sent10 = s; },
+      copyText: (text) => { copied10.push(text); return true; } });
+    p10.render(PASTE_PAYLOAD);
+    pasteInto(h10, SHEET(['lot', 'photo'], ['string', 'image'], ['key', '']));
+    tap(byClass(h10, 'table-config-save')[0]);
+    let saved10 = null;
+    try { saved10 = JSON.parse(sent10 && sent10.raw); } catch (e) { saved10 = null; }
+    if (saved10) p10.render({ ...PASTE_PAYLOAD, declaration: saved10, raw: sent10.raw });
+    tap(byClass(h10, 'table-config-copy')[0]);
+    const back10 = saved10 && copied10.length === 1
+      ? m.columnsFromPaste(m.parseTsv(copied10[0], { trimCells: true, dropBlankLines: true }), saved10) : null;
+    say('I1 an image column: the save sends image, the table reopened shows it, and its copied columns pasted back change nothing',
+      Boolean(saved10 && saved10.column_types.photo === 'image'
+        && ((rawOf(h10) || {}).column_types || {}).photo === 'image'
+        && back10 && back10.next && m.columnChanges(saved10, back10.next).length === 0),
+      JSON.stringify({ saved10, copied10, back10 }));
   }
 
   console.log('\n[10] the columns copied out as the sheet the box reads (lead 72aa14785)');
@@ -363,7 +390,7 @@ async function pasteSuite(m) {
     //    back untouched. Nothing may change but columns that were typed and hidden coming into view.
     const SAMPLE = JSON.parse(readFileSync(new URL('../../server/config/sample/table_config.json.sample',
       import.meta.url), 'utf8'));
-    const known = ['string', 'number', 'datetime'];
+    const known = m.COLUMN_TYPES;
     const odd = [];
     const wrong = [];
     let tables = 0;
@@ -620,6 +647,9 @@ async function pasteSuite(m) {
       '    if (keys.length === 1) [next.business_key] = keys;\n', '    if (false) [next.business_key] = keys;\n'),
     R('P3', 'an unknown type is accepted', 'A4',
       '    if (!COLUMN_TYPES.includes(word(types[i]))) refused.push(', '    if (false) refused.push('),
+    R('P42', 'image is not a column type word', 'A9',
+      "export const COLUMN_TYPES = Object.freeze(['string', 'number', 'datetime', 'image']);",
+      "export const COLUMN_TYPES = Object.freeze(['string', 'number', 'datetime']);"),
     R('P4', 'a repeated name is accepted', 'A4',
       '    if (seen.has(name)) refused.push(', '    if (false) refused.push('),
     R('P5', 'no key row still rewrites the key', 'A5',
