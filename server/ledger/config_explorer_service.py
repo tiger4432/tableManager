@@ -34,7 +34,7 @@ from .setup import (
 )
 from .setup_bundle import (
     CONFIG_FILENAME, LOGICAL_SECTIONS, SETUP_VERSION, LedgerSetupValidationError,
-    _read_json, _resolve_config_path, validate_bundle_errors,
+    _read_json, _resolve_config_path,
 )
 
 
@@ -270,6 +270,15 @@ class OntologyExplorerService:
                     # The file is not there or not one object - every route that asked
                     # refuses by name, not with a 500 (총괄 d4a949a8c ⑨).
                     raise _setup_refusal(exc) from exc
+                except FileNotFoundError as exc:
+                    # No declaration root: a branch not made yet - its bootstrap makes it.
+                    # The loader's strict resolve said so as a 500 (총괄 204a50bd2 ②).
+                    if self.config_root.is_dir():
+                        raise
+                    raise ConfigExplorerError(
+                        "world_not_created", "world",
+                        f"Next: create the branch first - {self.config_root} is not there"
+                    ) from exc
                 self._setup = resolved["setup"]
                 self._index = resolved["index"]
                 self._invalid = resolved["invalid"]
@@ -1061,16 +1070,15 @@ class OntologyExplorerService:
                         "setup_version": SETUP_VERSION,
                         **{name: {} for name in LOGICAL_SECTIONS},
                     })
-        # Checked BEFORE it is written, against the same validator the loader uses. A
-        # skeleton that does not validate would hand the operator a file to repair, which
-        # is the trip this whole path exists to remove.
-        issues = validate_bundle_errors(skeleton, catalog=self._catalog_loader())
+        # Checked BEFORE it is written, by the LOADER'S measure (총괄 204a50bd2 ①): a
+        # declaration that does not validate falls alone and by name - as it does in the base
+        # a branch copies - and only a whole-file problem refuses. Holding the copy to every
+        # declaration validating made a base with one refused source unbranchable.
+        issues = resolve_declarations(skeleton, catalog=self._catalog_loader())["config_level"]
         if issues:
             raise ConfigExplorerError(
                 "bootstrap_invalid", CONFIG_FILENAME,
-                "the starting file did not validate and was not written",
-                [issue.to_mapping() for issue in issues],
-            )
+                "the starting file did not validate and was not written", issues)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(
             json.dumps(skeleton, ensure_ascii=False, indent=2, sort_keys=True) + chr(10),
