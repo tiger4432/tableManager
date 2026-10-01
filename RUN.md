@@ -1,23 +1,6 @@
 # 지금 돌리면 되는 것
 
-> ## [10-01 밤] **이미지 참조 — url 출처는 선언한 호스트를 안 떠난다 · 받아 오기는 넘김을 안 따라간다 · db 실패는 이름 댄 502 — 이주 «불필요» · 재기동 «필요»(run_app.bat 전체)**
->
-> ```
-> 무엇이 바뀌나  url 출처: base + 칸 값의 scheme · 호스트 · 포트가 base 와 다르면 거절 — 넘김 · 받아 옴 둘 다 같은 판정 한 자리
->              proxy 받아 오기는 3xx 를 따라가지 않는다. db 출처의 연결 실패 · 질의 오류는 출처 이름 + 오류 첫 줄
-> 확인 명령     curl -i "http://<서버>:<포트>/api/image?ref=<url 출처>:@example.org/x.png"
->              base 가 / 로 안 끝나는 출처면 400, / 로 끝나는 출처면 307(그 호스트 안의 경로)
-> 뜻           400 "… leaves the host of image source …"   칸 값이 호스트를 바꾸려 했다(base 가 / 로 안 끝날 때 @ · . · :포트). base 를 / 로 끝내면 그 값은 경로가 된다
->              502 "… answered a redirect (3xx) … not followed"   원격이 다른 곳으로 넘기려 했다 — base 를 넘겨진 주소로 고친다
->              502 "image source '<이름>' could not be read: …"   db 연결 · 질의 실패(호스트 꺼짐 · 비번 틀림 · 쓰는 질의가 읽기 전용에 막힘). 뒤의 첫 줄이 사유
->              🔴 https:// 로 시작하는 칸은 여전히 어디로든 넘긴다 — 소유자께 여쭙는 중(총괄)
-> 급할 때       앞 줄(a8dea2bcf)과 같다 — image_sources.json 을 지우면 출처 참조가 전부 404
-> 재기동 뒤 로그 새 로그 줄 없음
-> ```
-
----
-
-> ## [10-01 밤] **이미지 참조 — 출처 선언 image_sources.json · 읽기 GET /api/image?ref= — 이주 «불필요» · 재기동 «필요»(run_app.bat 전체)**
+> ## [10-01 밤] **이미지 참조 — 이미지는 «전부» 서버가 받아서 보낸다 · 브라우저가 답을 3600 초 든다 — 이주 «불필요» · 재기동 «필요»(run_app.bat 전체)**
 >
 > ```
 > 무엇이 바뀌나  칸 값 하나로 이미지를 가리킨다 — https://… 그대로, 또는 <출처 이름>:<경로 또는 키>. 칼럼 타입 낱말은 "image"(저장은 글자)
@@ -25,18 +8,30 @@
 >                 folder  {"kind": "folder", "root": "D:/shared/photos"}                         photos:2026/10/a.png
 >                 db      {"kind": "db", "connection": {dialect · host · port · database · user · password_env},
 >                          "query": "SELECT image FROM images WHERE image_id = :key"}             inspection_db:IMG-001
->                 url     {"kind": "url", "base": "https://vendor.example.com/images/", "proxy": false}   vendor:a.png
+>                 url     {"kind": "url", "base": "https://vendor.example.com/images/"}         vendor:a.png
 >              🔴 비밀번호는 파일에 0 — password_env 에 «환경변수 이름»만. db 출처는 «읽기 전용 사용자»를 권한다
+>              🆕 url 출처도 https:// 칸도 서버가 받아서 보낸다 — 브라우저를 그 주소로 보내는 답은 없다
+>                 -> 사용자 PC 가 이미지 호스트에 못 닿아도 보인다. 그만큼 서버가 바깥 주소를 대신 읽는다(부하)
+>                 받은 답은 image/* · 20,971,520 바이트 이하 · 리다이렉트 아님 — 넘으면 다 받기 전에 끊는다
+>              옛 선언의 "proxy" 칸은 읽지 않는다 — 있어도 거절 안 함, 지워도 된다
+>              🆕 답(파일 · 바이트)에 Cache-Control: private, max-age=3600 — 거절에는 안 붙는다
 > 확인 명령     curl -i "http://<서버>:<포트>/api/image?ref=photos:a.png"
-> 뜻           200 + 이미지                   읽힘
->              400 "… outside the root …"     folder 경로가 root 밖(.. · 절대경로) — 거절
->              404 "no file … / no image for key …"   파일 · 키가 없다(이름을 댄다)
->              404 "image source … is not declared"   선언에 없는 출처 이름
->              500 "… must bind :key and nothing else"   db 출처의 query 가 :key 하나만 묶지 않는다
+>              curl -sI "http://<서버>:<포트>/api/image?ref=photos:a.png" | findstr /i cache-control
+> 뜻           200 + 이미지                                   읽힘
+>              400 "… outside the root …"                     folder 경로가 root 밖(.. · 절대경로)
+>              400 "… leaves the host of image source …"      url 출처에서 칸 값이 호스트를 바꾸려 했다(base 가 / 로 안 끝날 때 @ · . · :포트) — base 를 / 로 끝내면 그 값은 경로
+>              404 "no file … / no image for key …"           파일 · 키가 없다
+>              404 "image source … is not declared"           선언에 없는 출처 이름
+>              500 "… must bind :key and nothing else"        db 출처의 query 가 :key 하나만 묶지 않는다
 >              500 "… reads its password from X, which is not set"   그 환경변수가 서버 프로세스에 없다
->              307 + Location                 url 출처(proxy false) · https:// 값 — 브라우저가 그 주소로 간다. https 화면에서 http 주소는 브라우저가 막으니 그때 "proxy": true
->              db 값이 글자면 그 글자를 참조로 «한 번 더» 푼다. 두 번째도 글자면 500 "… another reference twice"
-> 급할 때       image_sources.json 을 지우면 모든 출처 참조가 404 — https:// 값만 그대로 간다
+>              500 "… another reference twice"                db 값이 글자면 참조로 «한 번 더» 푸는데 두 번째도 글자였다
+>              502 "image source '<이름>' could not be read: …"   db 연결 · 질의 실패 — 뒤의 첫 줄이 사유
+>              502 "… could not be fetched: …"                바깥 주소에 못 닿음(이름 · 연결 · 시간 초과)
+>              502 "… answered a redirect (3xx) - not followed"   바깥이 다른 곳으로 넘기려 했다 — 넘겨진 주소로 고친다
+>              502 "… answered '<type>', not an image"        바깥 답이 그림이 아니다(사내 페이지 · JSON)
+>              502 "… is larger than … bytes - not read further"   상한(image_sources.MAX_BYTES)을 넘었다
+>              🔴 배포 뒤 이미지를 «같은 참조»로 바꿔 놓으면 이미 본 화면은 최대 3600 초 옛 그림을 보인다
+> 급할 때       image_sources.json 을 지우면 출처 참조가 전부 404(https:// 칸은 여전히 받아 옴). 캐시는 image_sources.CACHE_SECONDS 를 0 으로 -> 재기동
 > 재기동 뒤 로그 새 로그 줄 없음 — 거절은 응답의 detail 로 말한다
 > ```
 
@@ -45,7 +40,7 @@
 > ## [10-01 밤] **잡 단위 거둠으로 지운 행이 이력 · 원장 후속에 간다 + 맵퍼 표면에 find_links · unknown_words — 이주 «불필요» · 재기동 «필요»(run_app.bat 전체)**
 >
 > ```
-> 무엇이 바뀌나  allow_retraction 이 행을 지우는 길이 그리드 지우기 · 맵 퍼지와 «같은 문»(crud.purge_map_rows)
+> 무엇이 바뀌나  allow_retraction 이 행을 지우는 길이 맵 퍼지와 «같은 문»(crud.purge_map_rows — 그리드 지우기는 따로)
 >              -> 거둠으로 지운 행마다 DELETE 이벤트 · 행 지움 이력. 원장 후속이 그 행에서 나온 원자를 거두고, 체인 거둠 바퀴가 그 행이 먹인(도장 있는) 칸을 거둔다
 >              맵퍼는 from mapper_sdk import find_links, unknown_words 로 부른다 (from utils import text_links 도 계속 된다)
 > 뜻           `🔄 [DtMapRetraction] … retracted N stale row(s)` 뒤에 같은 표의 `[ChainRetract] table=<표> deleted_rows=N …` 가 따라 나오면 이 변경이 돈 것

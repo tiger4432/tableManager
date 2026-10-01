@@ -139,61 +139,123 @@ def test_a_password_comes_from_the_named_variable_and_its_absence_is_named(clien
 
 # ---------------------------------------------------------------------------------- url
 
-def test_a_url_source_hands_the_address_on(client, declare):
-    declare({"vendor": {"kind": "url", "base": "https://img.example.com/p/"}})
-    answer = client.get("/api/image", params={"ref": "vendor:a.png"})
-    assert answer.status_code in (302, 307)
-    assert answer.headers["location"] == "https://img.example.com/p/a.png"
-    raw = client.get("/api/image", params={"ref": "https://other.example.com/x.png"})
-    assert raw.headers["location"] == "https://other.example.com/x.png"
+class _Answer:
+    """What `requests.get(..., stream=True)` hands back, and how much of it was read."""
+
+    def __init__(self, status=200, media="image/png", chunks=(PNG,), headers=None):
+        self.status_code = status
+        self.headers = dict(headers or {}, **({"content-type": media} if media else {}))
+        self._chunks, self.read = list(chunks), 0
+
+    def iter_content(self, size):
+        for chunk in self._chunks:
+            self.read += 1
+            yield chunk
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
 
 
-def test_a_url_source_may_be_fetched_by_the_server_when_declared(client, declare, monkeypatch):
+@pytest.fixture
+def fetched(monkeypatch):
+    """Every fetch the server makes, and what each one answers."""
     import requests
 
-    class Answer:
-        status_code, content, headers = 200, PNG, {"content-type": "image/png"}
-    asked = []
-    monkeypatch.setattr(requests, "get", lambda url, **k: asked.append(url) or Answer())
-    declare({"plain": {"kind": "url", "base": "http://intranet/img/", "proxy": True}})
-    answer = client.get("/api/image", params={"ref": "plain:a.png"})
+    asked, answer = [], {"next": _Answer()}
+
+    def get(url, **kwargs):
+        asked.append((url, kwargs))
+        if isinstance(answer["next"], Exception):
+            raise answer["next"]
+        return answer["next"]
+    monkeypatch.setattr(requests, "get", get)
+    return asked, answer
+
+
+@pytest.mark.parametrize("proxy", ["absent", False, True])
+def test_a_url_source_is_fetched_by_the_server_whatever_its_retired_proxy_cell(
+        client, declare, fetched, proxy):
+    """[총괄 f087403fe, 소유자 「그래야함」] Every image goes through the server; `proxy` is not read
+    and a declaration that still carries it is not refused."""
+    source = {"kind": "url", "base": "https://img.example.com/p/"}
+    if proxy != "absent":
+        source["proxy"] = proxy
+    declare({"vendor": source})
+    answer = client.get("/api/image", params={"ref": "vendor:a.png"})
     assert answer.status_code == 200 and answer.content == PNG
-    assert asked == ["http://intranet/img/a.png"]
+    assert [url for url, _k in fetched[0]] == ["https://img.example.com/p/a.png"]
+
+
+def test_an_address_cell_is_fetched_by_the_server_too(client, declare, fetched):
+    declare({})
+    answer = client.get("/api/image", params={"ref": "https://other.example.com/x.png"})
+    assert answer.status_code == 200 and answer.content == PNG
+    assert fetched[0] == [("https://other.example.com/x.png",
+                           {"timeout": 10, "allow_redirects": False, "stream": True})]
+
+
+@pytest.mark.parametrize("ref", ["plain:a.png", "http://intranet/img/a.png"])
+def test_a_fetch_does_not_follow_a_redirect(client, declare, fetched, ref):
+    fetched[1]["next"] = _Answer(status=302, media=None, headers={"location": "http://inside/x"})
+    declare({"plain": {"kind": "url", "base": "http://intranet/img/"}})
+    answer = client.get("/api/image", params={"ref": ref})
+    assert answer.status_code == 502 and "not followed" in answer.json()["detail"]
+    assert all(k["allow_redirects"] is False for _url, k in fetched[0])
+
+
+@pytest.mark.parametrize("media", ["text/html", "application/json", None])
+def test_a_fetched_answer_that_is_not_an_image_is_refused(client, declare, fetched, media):
+    fetched[1]["next"] = _Answer(media=media, chunks=(b"<html>inside</html>",))
+    declare({})
+    answer = client.get("/api/image", params={"ref": "https://intranet/page"})
+    assert answer.status_code == 502 and "not an image" in answer.json()["detail"]
+    assert b"inside" not in answer.content
+
+
+def test_an_image_type_with_parameters_is_still_an_image(client, declare, fetched):
+    fetched[1]["next"] = _Answer(media="Image/PNG; charset=binary")
+    declare({})
+    answer = client.get("/api/image", params={"ref": "https://img.example.com/a.png"})
+    assert answer.status_code == 200 and answer.headers["content-type"] == "image/png"
+
+
+def test_a_fetch_stops_reading_past_the_size_limit(client, declare, fetched, monkeypatch):
+    monkeypatch.setattr(image_sources, "MAX_BYTES", 10)
+    big = _Answer(chunks=[b"1234"] * 100)
+    fetched[1]["next"] = big
+    declare({})
+    answer = client.get("/api/image", params={"ref": "https://img.example.com/big.png"})
+    assert answer.status_code == 502 and "larger than 10 bytes" in answer.json()["detail"]
+    assert big.read == 3, "the fetch kept reading past the limit"
+
+
+def test_a_fetch_that_fails_says_which(client, declare, fetched):
+    import requests
+
+    fetched[1]["next"] = requests.ConnectionError("no route to host")
+    declare({})
+    answer = client.get("/api/image", params={"ref": "https://nowhere.example.com/a.png"})
+    assert answer.status_code == 502 and "nowhere.example.com" in answer.json()["detail"]
 
 
 # ------------------------------------------------------------------------------ refusals
 
 @pytest.mark.parametrize("value", ["@evil.com/a.png", ".evil.com/a.png", ":99999/a.png"])
-@pytest.mark.parametrize("proxy", [False, True])
-def test_a_value_cannot_move_the_host(client, declare, monkeypatch, value, proxy):
+def test_a_value_cannot_move_the_host(client, declare, fetched, value):
     """[총괄 e96551d02] Joined to a base without a trailing «/», a value could name a new host."""
-    import requests
-
-    asked = []
-    monkeypatch.setattr(requests, "get", lambda url, **k: asked.append(url))
-    declare({"vendor": {"kind": "url", "base": "https://img.example.com", "proxy": proxy}})
+    declare({"vendor": {"kind": "url", "base": "https://img.example.com"}})
     answer = client.get("/api/image", params={"ref": "vendor:" + value})
     assert answer.status_code == 400 and "leaves the host" in answer.json()["detail"]
-    assert asked == [], "the server fetched from a host nobody declared"
+    assert fetched[0] == [], "the server fetched from a host nobody declared"
 
 
-def test_the_same_value_under_a_base_ending_in_a_slash_stays_home(client, declare):
+def test_the_same_value_under_a_base_ending_in_a_slash_stays_home(client, declare, fetched):
     declare({"vendor": {"kind": "url", "base": "https://img.example.com/"}})
-    answer = client.get("/api/image", params={"ref": "vendor:@evil.com/a.png"})
-    assert answer.headers["location"] == "https://img.example.com/@evil.com/a.png"
-
-
-def test_a_fetch_does_not_follow_a_redirect(client, declare, monkeypatch):
-    import requests
-
-    class Moved:
-        status_code, content, headers = 302, b"", {"location": "http://inside/secret"}
-    asked = []
-    monkeypatch.setattr(requests, "get", lambda url, **k: asked.append(k) or Moved())
-    declare({"plain": {"kind": "url", "base": "http://intranet/img/", "proxy": True}})
-    answer = client.get("/api/image", params={"ref": "plain:a.png"})
-    assert answer.status_code == 502 and "not followed" in answer.json()["detail"]
-    assert asked == [{"timeout": 10, "allow_redirects": False}]
+    assert client.get("/api/image", params={"ref": "vendor:@evil.com/a.png"}).status_code == 200
+    assert [url for url, _k in fetched[0]] == ["https://img.example.com/@evil.com/a.png"]
 
 
 def test_a_db_source_that_cannot_be_read_says_which(client, declare, tmp_path):
@@ -209,3 +271,21 @@ def test_an_undeclared_source_is_refused_by_name(client, declare):
     answer = client.get("/api/image", params={"ref": "nowhere:a.png"})
     assert answer.status_code == 404 and "nowhere" in answer.json()["detail"]
     assert client.get("/api/image", params={"ref": "no-colon"}).status_code == 400
+
+
+# --------------------------------------------------------------------------------- cache
+
+def test_every_answer_may_be_kept_by_the_browser_and_no_refusal_is(client, declare, pics,
+                                                                  images_db, fetched):
+    """[총괄 191912ce2] The main grid's preview revisits the same cells; a refusal must be asked
+    again at once, so that a fixed declaration is read the next time."""
+    declare(dict(_db_sources(images_db, pics),
+                 vendor={"kind": "url", "base": "https://img.example.com/"}))
+    for ref in ("pics:a.png", "bytes:k1.png", "vendor:a.png", "https://img.example.com/a.png"):
+        answer = client.get("/api/image", params={"ref": ref})
+        assert answer.status_code == 200, ref
+        assert answer.headers.get("cache-control") == image_sources.CACHE_CONTROL, ref
+    assert image_sources.CACHE_CONTROL.startswith("private, max-age=")
+    for ref in ("pics:nope.png", "pics:../outside.png", "nowhere:a.png", "refs:k2"):
+        answer = client.get("/api/image", params={"ref": ref})
+        assert answer.status_code >= 400 and "cache-control" not in answer.headers, ref
