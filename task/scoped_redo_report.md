@@ -68930,3 +68930,54 @@ docs/guide/TEXT_LINKS_GUIDE.md  한 장 — 표 넷 · 규칙 두 줄 · @mapper
    표면에 두 이름을 올리면 from mapper_sdk import find_links, unknown_words — 지시 밖이라 안 함
 ③ docs/README.md 의 가이드 목록에 TEXT_LINKS_GUIDE 한 줄 — 응용 레인 몫이라 안 건드림
 ```
+
+---
+
+## [10-01 밤] 잡 단위 거둠 -> crud.purge_map_rows (총괄 eb7e84342 · ef3b0caeb) + 맵퍼 표면 두 이름 — cb4d5157d
+
+**무엇을 지었나**
+```
+dt_map_derivation.apply_retraction   손으로 적은 세 지우기 0 -> 덩이마다 crud.purge_map_rows. 덩이 나누기 · 끝의 커밋 그대로
+                                     돌려주는 수 = 덩이마다 purge 전에 그 id 의 행 수(총괄 ㄱ) — 「실제로 지운 수」 뜻 그대로
+                                     독스트링의 「같은 세 문장」 문단 -> 「같은 문을 지난다」로
+mapper_sdk.MAPPER_SURFACE            find_links · unknown_words -> utils.text_links (주석 한 줄: 잰 것이 아니라 내놓은 둘)
+docs/guide/TEXT_LINKS_GUIDE.md       import 줄 -> from mapper_sdk import find_links, mapper, sql
+```
+**먼저 센 것 — 부르는 곳과 요청 문맥**
+```
+apply_retraction 을 부르는 제품 자리 1 (ingestion_worker.py:1704)
+   요청 문맥  apply_chain_writes 가 request_user = chain_worker · request_transaction_id = chain_<tx> 를 세운 «안»에서 부른다 -> purge_map_rows 가 그것을 읽는다
+   재생      자기가 지우지 않는다 — EDIT 이벤트를 남겨 같은 문을 지난다(replay.py 의 페이지 쓰기)
+```
+**게이트**
+```
+칸                                           결과
+거둠 한 번 -> DELETE 이벤트 하나 · 지운 id 그대로   새 시험 — 이벤트 1 · id {k2, k3}
+원장 후속이 그 id 를 받음                         같은 시험 — 워커가 넘기는 함수(ledger_followup.row_ids_of)로 읽어 {k2, k3}
+행 지움 이력                                     같은 시험 — AuditLog DELETE 두 줄(k2 · k3)
+층 · 덮어쓰기 · 행 0                              test_apply_retraction_takes_the_ledgers_with_the_row 그대로 초록
+사람 손 댄 행 보호                                test_retraction_never_deletes_a_human_correction 그대로 초록
+절반 가드 거절 — 지운 것 0 · 이벤트 0 · 이력 0        기존 시험에 두 단언 더함
+화면 지움 알림이 두 번 안 감                       같은 시험 — 거둠 중 row_delete_message 0 번(알림은 워커가 deleted_row_ids 로 한 번)
+DELETE 가 체인을 안 깨움                          같은 시험 — _is_trigger_event(그 이벤트) False
+변이 hand deletes again (before the fix)  -> 1 failed, 15 passed
+   counted after the purge              -> 3 failed, 13 passed
+```
+**소급** (짓지 않음 — 박스)
+```
+거둠 규칙 dt_inventory_to_standard_dt_map · 표 dt_map. 원장 참조가 있는 표 11 개 중 행이 사라진 참조: process_param_txt 3
+-> 이미 거둠으로 지운 행에서 나온 원자 0. 거두는 길 = 원장 후속에 DELETE 를 넣는 것(ledger.backfill.withdraw_deleted_rows 가 그 일) — 박스는 셀 것 0 이라 명령 안 만듦
+```
+**사이드 이펙트**
+```
+하는 일  거둠마다 질의 늘어남 — 덩이당 행 수 세기 1 · 이력 읽기 1(purge 안) · 이벤트 1. 거둔 행이 있을 때만
+말      거둠 뒤 [ChainRetract] 줄이 새로 나온다. 그 표를 지켜보는 «되돌릴 수 없는» 규칙이 있으면 경고 한 줄씩 — 박스 dt_map 를 지켜보는 규칙 0 · 경고할 것 0
+```
+**새 함수 · 새 if 중 같은 일** — 새 함수 0 · 새 if 0. 같은 일을 하던 사본(세 지우기) 하나 지움
+**스위트** (C:/wt-impl)
+```
+비PG 전체  6 failed, 7603 passed, 41 skipped, 173 deselected, 3 xfailed in 701.07s (0:11:41)
+   알려진 다섯 밖: test_h3_cross_directory_replace_applies_physical_alter -> 그 파일만 다시 32 passed in 34.59s
+PG  6 failed, 167 passed, 7653 deselected in 329.28s (0:05:29) · 알려진 밖: 0
+   그 시험 하나만 서른 번씩: 이 변경 있는 트리 28/30 통과 · 같은 트리에서 변경 뺌 28/30 통과 — 실패율이 같다. 파일 감시 타이밍이고 이 변경과 무관
+```
