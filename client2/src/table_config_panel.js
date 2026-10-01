@@ -32,8 +32,9 @@ function missingRelations(payload, opts) {
 //
 // 🔴 THE TYPE WORDS THE SERVER TELLS APART. There is no list to read: `models.py` builds a column
 //    as Float for `number`, DateTime for `datetime` and String for anything else, so an unknown word
-//    lands as a string column with nothing said. These three are that rule's names.
-export const COLUMN_TYPES = Object.freeze(['string', 'number', 'datetime']);
+//    lands as a string column with nothing said. These are that rule's names, and `image` (server
+//    a8dea2bcf, table_config.md): an image reference, stored as text, read through GET /api/image.
+export const COLUMN_TYPES = Object.freeze(['string', 'number', 'datetime', 'image']);
 /** The word row 3 puts under a business key column. */
 const KEY_MARK = 'key';
 /** A type or key cell as the server spells it: any case is read, lower case is written (lead c6a8c069c). */
