@@ -108,12 +108,18 @@ def _db(name, source, rest, sources, hops):
     if set(query._bindparams) != {KEY}:
         raise ImageRefused(500, "image source %r: its query must bind :%s and nothing else"
                            % (name, KEY))
+    from sqlalchemy.exc import SQLAlchemyError
+
     engine = _engine(name, source.get("connection") or {})
-    with engine.connect() as connection:
-        if engine.dialect.name == "postgresql":
-            connection = connection.execution_options(postgresql_readonly=True)
-        row = connection.execute(query, {KEY: rest}).first()
-        connection.rollback()
+    try:
+        with engine.connect() as connection:
+            if engine.dialect.name == "postgresql":
+                connection = connection.execution_options(postgresql_readonly=True)
+            row = connection.execute(query, {KEY: rest}).first()
+            connection.rollback()
+    except SQLAlchemyError as error:
+        raise ImageRefused(502, "image source %r could not be read: %s"
+                           % (name, str(error).strip().splitlines()[0])) from error
     value = row[0] if row is not None else None
     if value is None:
         raise ImageRefused(404, "no image for key %r in image source %r" % (rest, name))
@@ -126,12 +132,29 @@ def _db(name, source, rest, sources, hops):
 
 
 def _url(name, source, rest):
-    address = str(source.get("base") or "") + rest
+    from urllib.parse import urlsplit
+
+    base = str(source.get("base") or "")
+    address = base + rest
+    # [총괄 e96551d02] The value is a path under the base, never a new host: joined to a base
+    # without a trailing «/», `@evil.com/a.png` would make evil.com the host. One judgement for
+    # both the hand-on and the fetch.
+    try:
+        here, there = urlsplit(base), urlsplit(address)
+        same = ((here.scheme.lower(), here.hostname, here.port)
+                == (there.scheme.lower(), there.hostname, there.port))
+    except ValueError:                      # a port that is not a number
+        same = False
+    if not same:
+        raise ImageRefused(400, "%r leaves the host of image source %r" % (rest, name))
     if not source.get("proxy"):
         return ("redirect", address)
     import requests
 
-    answer = requests.get(address, timeout=10)
+    answer = requests.get(address, timeout=10, allow_redirects=False)
+    if 300 <= answer.status_code < 400:
+        raise ImageRefused(502, "image source %r answered a redirect (%d) for %r - not followed"
+                           % (name, answer.status_code, rest))
     if answer.status_code != 200:
         raise ImageRefused(502, "image source %r answered %d for %r" % (name, answer.status_code, rest))
     return ("bytes", answer.content,

@@ -1,5 +1,22 @@
 # 지금 돌리면 되는 것
 
+> ## [10-01 밤] **이미지 참조 — url 출처는 선언한 호스트를 안 떠난다 · 받아 오기는 넘김을 안 따라간다 · db 실패는 이름 댄 502 — 이주 «불필요» · 재기동 «필요»(run_app.bat 전체)**
+>
+> ```
+> 무엇이 바뀌나  url 출처: base + 칸 값의 scheme · 호스트 · 포트가 base 와 다르면 거절 — 넘김 · 받아 옴 둘 다 같은 판정 한 자리
+>              proxy 받아 오기는 3xx 를 따라가지 않는다. db 출처의 연결 실패 · 질의 오류는 출처 이름 + 오류 첫 줄
+> 확인 명령     curl -i "http://<서버>:<포트>/api/image?ref=<url 출처>:@example.org/x.png"
+>              base 가 / 로 안 끝나는 출처면 400, / 로 끝나는 출처면 307(그 호스트 안의 경로)
+> 뜻           400 "… leaves the host of image source …"   칸 값이 호스트를 바꾸려 했다(base 가 / 로 안 끝날 때 @ · . · :포트). base 를 / 로 끝내면 그 값은 경로가 된다
+>              502 "… answered a redirect (3xx) … not followed"   원격이 다른 곳으로 넘기려 했다 — base 를 넘겨진 주소로 고친다
+>              502 "image source '<이름>' could not be read: …"   db 연결 · 질의 실패(호스트 꺼짐 · 비번 틀림 · 쓰는 질의가 읽기 전용에 막힘). 뒤의 첫 줄이 사유
+>              🔴 https:// 로 시작하는 칸은 여전히 어디로든 넘긴다 — 소유자께 여쭙는 중(총괄)
+> 급할 때       앞 줄(a8dea2bcf)과 같다 — image_sources.json 을 지우면 출처 참조가 전부 404
+> 재기동 뒤 로그 새 로그 줄 없음
+> ```
+
+---
+
 > ## [10-01 밤] **이미지 참조 — 출처 선언 image_sources.json · 읽기 GET /api/image?ref= — 이주 «불필요» · 재기동 «필요»(run_app.bat 전체)**
 >
 > ```

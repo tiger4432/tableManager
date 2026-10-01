@@ -55,7 +55,7 @@ def images_db(tmp_path):
     with sqlite3.connect(path) as db:
         db.execute("CREATE TABLE images (key TEXT, data BLOB, ref TEXT)")
         db.executemany("INSERT INTO images VALUES (?, ?, ?)", [
-            ("k1.png", PNG, "pics:a.png"), ("k2", b"two", "again:k2")])
+            ("k1.png", PNG, "pics:a.png"), ("k2", b"two", "chain:k3"), ("k3", None, "pics:a.png")])
     return {"dialect": "sqlite", "database": str(path)}
 
 
@@ -65,7 +65,7 @@ def _db_sources(connection, root):
                       "query": "SELECT data FROM images WHERE key = :key"},
             "refs": {"kind": "db", "connection": connection,
                      "query": "SELECT ref FROM images WHERE key = :key"},
-            "again": {"kind": "db", "connection": connection,
+            "chain": {"kind": "db", "connection": connection,
                       "query": "SELECT ref FROM images WHERE key = :key"}}
 
 
@@ -102,16 +102,21 @@ def test_db_bytes_come_back_as_they_are(client, declare, pics, images_db):
 
 def test_a_db_key_is_bound_not_spliced(client, declare, pics, images_db):
     declare(_db_sources(images_db, pics))
+
+    def rows():
+        with sqlite3.connect(images_db["database"]) as db:
+            return db.execute("SELECT count(*) FROM images").fetchone()[0]
+    before = rows()
     answer = client.get("/api/image", params={"ref": "bytes:x' OR '1'='1"})
     assert answer.status_code == 404
-    with sqlite3.connect(images_db["database"]) as db:
-        assert db.execute("SELECT count(*) FROM images").fetchone()[0] == 2
+    assert rows() == before
 
 
 def test_db_text_is_read_once_more_as_a_reference_and_only_once(client, declare, pics, images_db):
     declare(_db_sources(images_db, pics))
     assert client.get("/api/image", params={"ref": "refs:k1.png"}).content == PNG
-    answer = client.get("/api/image", params={"ref": "refs:k2"})      # k2 -> again:k2 -> again:k2
+    # a chain, not a loop: refs:k2 -> chain:k3 -> pics:a.png. Read on, it would find a file
+    answer = client.get("/api/image", params={"ref": "refs:k2"})
     assert answer.status_code == 500 and "another reference twice" in answer.json()["detail"]
 
 
@@ -149,7 +154,7 @@ def test_a_url_source_may_be_fetched_by_the_server_when_declared(client, declare
     class Answer:
         status_code, content, headers = 200, PNG, {"content-type": "image/png"}
     asked = []
-    monkeypatch.setattr(requests, "get", lambda url, timeout: asked.append(url) or Answer())
+    monkeypatch.setattr(requests, "get", lambda url, **k: asked.append(url) or Answer())
     declare({"plain": {"kind": "url", "base": "http://intranet/img/", "proxy": True}})
     answer = client.get("/api/image", params={"ref": "plain:a.png"})
     assert answer.status_code == 200 and answer.content == PNG
@@ -157,6 +162,47 @@ def test_a_url_source_may_be_fetched_by_the_server_when_declared(client, declare
 
 
 # ------------------------------------------------------------------------------ refusals
+
+@pytest.mark.parametrize("value", ["@evil.com/a.png", ".evil.com/a.png", ":99999/a.png"])
+@pytest.mark.parametrize("proxy", [False, True])
+def test_a_value_cannot_move_the_host(client, declare, monkeypatch, value, proxy):
+    """[총괄 e96551d02] Joined to a base without a trailing «/», a value could name a new host."""
+    import requests
+
+    asked = []
+    monkeypatch.setattr(requests, "get", lambda url, **k: asked.append(url))
+    declare({"vendor": {"kind": "url", "base": "https://img.example.com", "proxy": proxy}})
+    answer = client.get("/api/image", params={"ref": "vendor:" + value})
+    assert answer.status_code == 400 and "leaves the host" in answer.json()["detail"]
+    assert asked == [], "the server fetched from a host nobody declared"
+
+
+def test_the_same_value_under_a_base_ending_in_a_slash_stays_home(client, declare):
+    declare({"vendor": {"kind": "url", "base": "https://img.example.com/"}})
+    answer = client.get("/api/image", params={"ref": "vendor:@evil.com/a.png"})
+    assert answer.headers["location"] == "https://img.example.com/@evil.com/a.png"
+
+
+def test_a_fetch_does_not_follow_a_redirect(client, declare, monkeypatch):
+    import requests
+
+    class Moved:
+        status_code, content, headers = 302, b"", {"location": "http://inside/secret"}
+    asked = []
+    monkeypatch.setattr(requests, "get", lambda url, **k: asked.append(k) or Moved())
+    declare({"plain": {"kind": "url", "base": "http://intranet/img/", "proxy": True}})
+    answer = client.get("/api/image", params={"ref": "plain:a.png"})
+    assert answer.status_code == 502 and "not followed" in answer.json()["detail"]
+    assert asked == [{"timeout": 10, "allow_redirects": False}]
+
+
+def test_a_db_source_that_cannot_be_read_says_which(client, declare, tmp_path):
+    declare({"gone": {"kind": "db", "query": "SELECT data FROM images WHERE key = :key",
+                      "connection": {"dialect": "sqlite",
+                                     "database": str(tmp_path / "no" / "such" / "dir.db")}}})
+    answer = client.get("/api/image", params={"ref": "gone:k1.png"})
+    assert answer.status_code == 502 and "'gone' could not be read" in answer.json()["detail"]
+
 
 def test_an_undeclared_source_is_refused_by_name(client, declare):
     declare({})
