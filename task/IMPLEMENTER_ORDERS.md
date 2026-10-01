@@ -62841,3 +62841,11 @@ _when_value 접기 — 지금 하지 않는다. 오늘 착지 전체를 소유�
    순서  official 은 소유자 답 대기 -> 이것을 지금 짓는다. 그다음 이미지 참조
    게이트 원 지시 그대로(표 여섯 줄 + 띄어쓰기 · 대소문자 · avoid · 사전 비었음 · 나열 「과」 · 속도 1,000 × 1,000 · 변이 · RUN.md)
 ```
+
+```
+덧붙임 — official 층 넓히기(나) 짓지 않음 (소유자 10-01 「맵퍼 업서트 소스 적을 때 행 달면 되는거 아닌가」 · 「너무 일이 커지는데」)
+   소유자 맵퍼(행 단위)가 항목마다 source_name = crud.merged_layer_name(CHAIN_SOURCE, <dt_log row_id>) · origin_row_id = 그 행 — 제품 0 줄
+   총괄 박스 실측(probe_row_tagged_layers.py, 제품 apply_batch_updates · withdraw_by_origin): 같은 값 두 행 -> 층 둘 · r1 지움 -> r2 값 유지 · 둘 다 지움 -> 빈 칸(행 남음)
+      다른 이름(파일 층)이면 같은 값이 접혀 층 하나 — 이름 모양이 조건
+   남는 것(오늘과 같음): 키 바뀐 행의 옛 층 · require 다시 빔 · 받침 0 행이 빈 행으로 남음 — 소유자가 원하면 그때 지시
+```
