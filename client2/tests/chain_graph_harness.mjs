@@ -506,8 +506,10 @@ const MUTANTS = [
   //    notices -- every node, edge and count assertion stays green under it.
   { id: 'M14', what: 'the drawing goes elastic again',
     catches: 'Z2 the drawing declares its own width',
-    from: "      width, height, preserveAspectRatio: 'xMinYMin meet',",
-    to: "      preserveAspectRatio: 'xMinYMin meet'," },
+    // Re-aimed (lead 65754c39a): the SVG is drawn by the layered template now; what the chain still
+    // decides is that its declaration carries the width and height.
+    from: "      geometry: GEOMETRY, boxClass: 'chain-graph-box', svgClass: 'chain-graph', width, height,",
+    to: "      geometry: GEOMETRY, boxClass: 'chain-graph-box', svgClass: 'chain-graph'," },
   { id: 'M15', what: 'the contested cells are counted but not named',
     catches: 'X1 both shapes reach the line',
     from: "    contested: contestedLine(payload),",

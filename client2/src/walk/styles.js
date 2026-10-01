@@ -112,23 +112,23 @@ export const WALK_CSS = `
 .wk-view.is-on { border-color: var(--accent); color: var(--accent); font-weight: 600; }
 
 /* Subgraph viewer. Corners 0, hairlines, colours from the roles in tokens.css only. A type's colour is a
-   cycle of nine role hues (TYPE_COLOURS) by its declaration index - danger is left out so red keeps
-   meaning error. A declaration with more types than hues repeats a colour; the legend names them. */
+   palette token (--cat-1..9 in tokens.css, TYPE_COLOURS of them) by its declaration index. A declaration
+   with more types than tokens repeats a colour; the legend names them. */
 .sg-view { display: flex; flex-direction: column; gap: 6.8px; padding: 10.2px 13.6px;
   border: 1px solid var(--border); background: var(--bg-surface); color: var(--text); }
 .sg-counts { font-weight: 600; }
 .sg-note { font-size: var(--fs-meta); color: var(--text-dim); }
 .sg-fail { color: var(--danger); }
 .sg-trunc { font-family: 'JetBrains Mono', monospace; font-size: var(--fs-meta); color: var(--warning); }
-.sg-type-0 { --sg-c: var(--accent); }
-.sg-type-1 { --sg-c: var(--accent-2); }
-.sg-type-2 { --sg-c: var(--success); }
-.sg-type-3 { --sg-c: var(--info); }
-.sg-type-4 { --sg-c: var(--orange); }
-.sg-type-5 { --sg-c: var(--warning); }
-.sg-type-6 { --sg-c: var(--overwrite); }
-.sg-type-7 { --sg-c: var(--text-dim); }
-.sg-type-8 { --sg-c: var(--text); }
+.sg-type-0 { --sg-c: var(--cat-1); }
+.sg-type-1 { --sg-c: var(--cat-2); }
+.sg-type-2 { --sg-c: var(--cat-3); }
+.sg-type-3 { --sg-c: var(--cat-4); }
+.sg-type-4 { --sg-c: var(--cat-5); }
+.sg-type-5 { --sg-c: var(--cat-6); }
+.sg-type-6 { --sg-c: var(--cat-7); }
+.sg-type-7 { --sg-c: var(--cat-8); }
+.sg-type-8 { --sg-c: var(--cat-9); }
 .sg-legend { display: flex; flex-wrap: wrap; gap: 6.8px; }
 .sg-chip { display: inline-flex; align-items: center; gap: 6.8px; padding: 3.4px 6.8px;
   border: 1px solid var(--border); font-family: 'JetBrains Mono', monospace; font-size: var(--fs-label); }

@@ -14,18 +14,18 @@
 //    in `bundles` and stands as a chip under its node; a chip pressed adds `expand` to that step's walk.
 
 import { bareName, staticTypes, cutBudgets } from './derive.js';
+import { drawLayeredGraph, slotXY } from '../layered_graph.js';
 import { SIGN } from '../rnd_board/marking_store.js';
 import { setDisabledReason } from '../disabled_reason.js';
 // The look travels with the part (the walk page's rule): one stamp, one sheet per document.
 import { ensureWalkStyles } from './styles.js';
 
-const SVG_NS = 'http://www.w3.org/2000/svg';
 // Geometry on the 3.4 grid (ui-design-system §3).
-const MARGIN = 20.4;
-const LAYER_GAP_X = 238;
-const NODE_GAP_Y = 27.2;
-const NODE_R = 6.8;
-const LABEL_DX = 10.2;
+/** The viewer's own geometry (lead 65754c39a: each screen declares it; the template places by it). */
+const GEOMETRY = Object.freeze({ margin: 20.4, gapX: 238, gapY: 27.2, r: 6.8, labelDx: 10.2 });
+const MARGIN = GEOMETRY.margin;
+const LAYER_GAP_X = GEOMETRY.gapX;
+const LABEL_DX = GEOMETRY.labelDx;
 /** How many type colours there are; a type's colour is its declaration index modulo this. */
 export const TYPE_COLOURS = 9;
 /** The fan-out cap the part walks with unless its declaration says another (lead c9bf53033 · 1d07f1dae). */
@@ -97,8 +97,7 @@ export function subgraphLayout(steps, entities) {
           depth: node.depth,
           layer,
           step: index + 1,
-          x: MARGIN + layer * LAYER_GAP_X,
-          y: MARGIN + row * NODE_GAP_Y,
+          ...slotXY(GEOMETRY, layer, row),
           static: statics.has(type),
           colour: colourOf.get(type) % TYPE_COLOURS,
           keys: node.keys || {},
@@ -112,7 +111,7 @@ export function subgraphLayout(steps, entities) {
             step: b.step, node: b.node, predicate: b.predicate, direction: b.direction,
             farType: bareName(b.far_type), count: b.count,
             key: `${b.node}|${b.predicate}|${b.direction}`,
-            x: one.x + LABEL_DX, y: MARGIN + row * NODE_GAP_Y,
+            x: one.x + LABEL_DX, y: slotXY(GEOMETRY, layer, row).y,
           });
           row += 1;
         }
@@ -282,14 +281,6 @@ export class SubgraphView {
     return node;
   }
 
-  _svg(tag, attrs) {
-    const node = this.doc.createElementNS(SVG_NS, tag);
-    for (const [key, value] of Object.entries(attrs || {})) {
-      if (value !== undefined && value !== null) node.setAttribute(key, String(value));
-    }
-    return node;
-  }
-
   /** A node's class: type, shape, the step it came from, and whether it is picked, marked or a seed. */
   _classOf(node) {
     const name = this.writes();
@@ -335,41 +326,27 @@ export class SubgraphView {
     bar.appendChild(go);
     this.root.appendChild(bar);
 
-    const svg = this._svg('svg', {
-      class: 'sg-graph', viewBox: `0 0 ${view.width} ${view.height}`,
-      width: view.width, height: view.height, preserveAspectRatio: 'xMinYMin meet',
+    // Declared into the one layered drawer (lead 65754c39a): the viewer's classes, data, shapes and chips.
+    const { box, groups } = drawLayeredGraph(this.doc, {
+      geometry: GEOMETRY, boxClass: 'sg-box', svgClass: 'sg-graph', width: view.width, height: view.height,
+      edges: view.edges.map((edge) => ({
+        x1: edge.x1, y1: edge.y1, x2: edge.x2, y2: edge.y2,
+        attrs: { class: 'sg-edge', 'data-predicate': edge.predicate },
+      })),
+      nodes: view.nodes.map((node) => ({
+        id: node.id, x: node.x, y: node.y, label: node.label,
+        shape: node.static ? 'rect' : 'circle',
+        attrs: { class: this._classOf(node), 'data-node': node.id, 'data-depth': node.depth, 'data-step': node.step },
+        onPress: () => this.press(node.id),
+      })),
+      // A fan-out the walk did not draw, under its node: press it and that bundle is drawn.
+      texts: view.chips.map((chip) => ({
+        x: chip.x, y: chip.y, text: `+${chip.count} ${chip.farType}`,
+        attrs: { class: 'sg-bundle', 'data-bundle': chip.key, 'data-step': chip.step + 1 },
+        onPress: () => { this.expandBundle(chip.step, chip.key); },
+      })),
     });
-    // Lines first, so the shapes sit on top of them.
-    for (const edge of view.edges) {
-      svg.appendChild(this._svg('line', {
-        class: 'sg-edge', x1: edge.x1, y1: edge.y1, x2: edge.x2, y2: edge.y2, 'data-predicate': edge.predicate,
-      }));
-    }
-    for (const node of view.nodes) {
-      const group = this._svg('g', {
-        class: this._classOf(node), 'data-node': node.id, 'data-depth': node.depth, 'data-step': node.step,
-      });
-      this._groups.set(node.id, { group, node });
-      group.appendChild(node.static
-        ? this._svg('rect', { x: node.x - NODE_R, y: node.y - NODE_R, width: NODE_R * 2, height: NODE_R * 2 })
-        : this._svg('circle', { cx: node.x, cy: node.y, r: NODE_R }));
-      const label = this._svg('text', { x: node.x + LABEL_DX, y: node.y + 4 });
-      label.textContent = node.label;
-      group.appendChild(label);
-      if (group.addEventListener) group.addEventListener('click', () => this.press(node.id));
-      svg.appendChild(group);
-    }
-    // A fan-out the walk did not draw, under its node: press it and that bundle is drawn.
-    for (const chip of view.chips) {
-      const group = this._svg('g', { class: 'sg-bundle', 'data-bundle': chip.key, 'data-step': chip.step + 1 });
-      const text = this._svg('text', { x: chip.x, y: chip.y + 4 });
-      text.textContent = `+${chip.count} ${chip.farType}`;
-      group.appendChild(text);
-      if (group.addEventListener) group.addEventListener('click', () => { this.expandBundle(chip.step, chip.key); });
-      svg.appendChild(group);
-    }
-    const box = this._el('div', 'sg-box');
-    box.appendChild(svg);
+    for (const node of view.nodes) this._groups.set(node.id, { group: groups.get(node.id), node });
     this.root.appendChild(box);
     this.factsBox = this._facts();
     this.root.appendChild(this.factsBox);

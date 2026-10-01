@@ -56,6 +56,17 @@
   --orange-weak: #fdeee3;
   --overwrite: #b45309;
   --overwrite-weak: #fdf1e0;
+  /* Category palette — one set, nine, for anything coloured by its type (lead 65754c39a). Each is a role
+     above, so both themes follow; danger is left out so red keeps meaning error. Graph screens read these. */
+  --cat-1: var(--accent);
+  --cat-2: var(--accent-2);
+  --cat-3: var(--success);
+  --cat-4: var(--info);
+  --cat-5: var(--orange);
+  --cat-6: var(--warning);
+  --cat-7: var(--overwrite);
+  --cat-8: var(--text-dim);
+  --cat-9: var(--text);
   /* 그림자·인터랙션 */
   --shadow-card: 0 1px 3px rgba(30, 41, 59, 0.08), 0 1px 2px rgba(30, 41, 59, 0.05);
   --shadow-pop: 0 10px 30px rgba(30, 41, 59, 0.18);
