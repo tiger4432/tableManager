@@ -73,6 +73,7 @@ export const PASTE_HERE = 'Paste columns · names / types / key';
  * @property {string} nameKey   응답과 저장이 «고른 하나»를 부르는 이름 (예: 'table' · 'name')
  * @property {string} cls       CSS 클래스 접두 (예: 'table-config' · 'chain-rule')
  * @property {(payload:object)=>object|null} [extra]  이 등록부에만 있는 값 (예: enabled)
+ * @property {string} [newName]   the picker's word while a new name is being written (value stays NEW_NAME)
  * @property {string} [addLabel]  «새 이름»을 만드는 컨트롤의 말 (예: '규칙 추가').
  *   🔴 값입니다. 없으면 그 등록부에는 컨트롤이 «안 그려집니다» — 서버가 새 이름을 안 받는
  *      등록부에 버튼을 그리면 그 버튼은 거절을 만들러 가는 길입니다. 오늘 둘 다 받습니다
@@ -1032,16 +1033,17 @@ export class RawRegistryPanel {
     if (!picker) return;
     const doc = this.doc;
     picker.textContent = '';
-    const opt = (value, selected) => {
+    const opt = (value, selected, word = value) => {
       const o = doc.createElement('option');
       o.value = value;
-      o.textContent = value;
+      o.textContent = word;
       if (selected) o.setAttribute('selected', 'selected');
       picker.appendChild(o);
     };
     // 새 이름을 짓는 중이면 고르개가 «그것»을 보여 줍니다. 종전에는 이전 규칙의 이름이 그대로
     // 남아, 지금 보고 있는 것이 무엇인지 화면이 «틀리게» 말했습니다.
-    if (this.newMode && this.spec.addLabel) opt(NEW_NAME, true);
+    // NEW_NAME is the option's value the picker answers to; the word on the screen is the registry's (lead 0cb2ab958).
+    if (this.newMode && this.spec.addLabel) opt(NEW_NAME, true, this.spec.newName);
     // C-95-b. 아직 아무것도 안 골랐습니다. 자리표시자가 없으면 고르개가 «첫 이름»을 보여 주고,
     // 그 이름의 내용은 아직 읽은 적이 없습니다.
     else if (!open) opt(PICK_NAME, true);

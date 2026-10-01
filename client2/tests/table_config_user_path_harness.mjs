@@ -105,6 +105,11 @@ const chosen = () => {
   const on = picker ? picker.children.filter((o) => o.getAttribute('selected')) : [];
   return on.length === 1 ? on[0].value : `${on.length} selected`;
 };
+const chosenWord = () => {
+  const picker = byAttr('data-picker');
+  const on = picker ? picker.children.filter((o) => o.getAttribute('selected')) : [];
+  return on.length === 1 ? on[0].textContent : '';
+};
 const offOf = (cls) => { const el = byCls(cls); return el ? Boolean(el.disabled) : 'missing'; };
 const settle = async () => { await flush(); await flush(); await flush(); };
 const reads = () => calls.filter((c) => c.method === 'GET' && isRegistry(c));
@@ -142,7 +147,8 @@ async function suite(probe) {
   ok(reads().length === 1 && askedTable(reads()[0]) === '',
      `B Add asks once, naming no table (${reads().map((c) => c.url).join(' ')})`);
   ok(Boolean(byAttr('data-new-name')), 'B a name box stands');
-  ok(chosen() === NEW_NAME, `B the picker says a new name (${chosen()})`);
+  ok(chosen() === NEW_NAME && chosenWord() === '(new table)',
+     `B the picker marks a new name, in the table registry's word (${chosen()} / ${chosenWord()})`);
   const added = ['table-config-paste', 'table-config-copy', 'table-config-save', 'table-config-raw'].map(offOf);
   ok(JSON.stringify(added) === '[false,false,false,false]', `B paste, Copy, Save and the raw box are on (${added})`);
 

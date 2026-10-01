@@ -960,8 +960,8 @@ const DEFECTS = [
   // Re-aimed by C-101 ①: the options are built in ONE place now (`_options`), so the claim
   // 「the picker says WHICH document is on the screen」 is decided there. Same claim, same C6.
   ['the picker keeps showing the rule that was open while a new one is written',
-    s => s.replace('if (this.newMode && this.spec.addLabel) opt(NEW_NAME, true);',
-                   'if (false) opt(NEW_NAME, true);')],
+    s => s.replace('if (this.newMode && this.spec.addLabel) opt(NEW_NAME, true, this.spec.newName);',
+                   'if (false) opt(NEW_NAME, true, this.spec.newName);')],
   // C-95-b. Without the placeholder the browser picks the first option for the screen, and the
   // screen then names a rule it has never read -- with empty boxes beside the name.
   ['a response with no name still names the first rule in the list',
