@@ -68012,3 +68012,180 @@ tables with a composite key read: 23 | rows: 2302313 | differ: 135472
 전체  5 failed, 7592 passed, 209 skipped, 3 xfailed in 846.29s (0:14:06) — 알려진 다섯
 PG    7 failed, 163 passed, 7639 deselected in 349.70s (0:05:49) — 알려진 일곱(이름까지 같음)
 ```
+
+---
+
+## [10-01 저녁] 준비기 라운드 — 원장 선언 v6 · lot_event 은퇴 · 계보는 체인 · 맵퍼 칼럼 이름은 규칙 칸 · 타입 목록 (총괄 e14416950 · c6a8c069c ④ · 819726624 ㄹ · 0cb2ab958 · ae3d408ae) — 0b59a2f30
+
+**무엇이 바뀌나**
+```
+문법      setup_version 6 — 소스의 prepare 절 은퇴. 거절 prepare_retired(그 소스만 떨어짐) + Next: run scripts/migrate_ledger_config_to_v6.py
+          v5 는 메모리에서 6 으로 읽음 — setup_bundle.upgrade_setup 하나를 로더와 이주가 같이 부름
+             direct-join · 은퇴 소스의 prepare 는 버림(exclude_when 은 read 밑으로) · 적재 노트 한 줄 · 일하는 준비기를 든 active 소스만 이름 거절
+          ledger/source_preparation.py -> ledger/event_frame.py (남은 몫: event_frames · 분자 거절 · 선택 칼럼)
+          저장 철자 source_raw_ref 의 "verified_joins":[] 그대로(STORED_RAW_REF_JOINS) · 거절 코드 source_preparation_incomplete 철자 그대로 + 옛 이름 한 줄
+lot_event 은퇴(이주가 status retired) · lot-event-role 맵퍼 삭제 · 계보는 체인 규칙 lot_event_to_lot_lineage -> 표 lot_lineage -> 원장 소스 lot_lineage
+ㄹ        이주의 은퇴 단계가 register@1.subjects 에서 active 소스가 등록 안 하는 타입을 뺌(박스 lot@1 · wafer@1)
+          gap_names 「등록되지 않은 웨이퍼 · 랏」 은퇴 · GapTableMismatch 에 둘째 Next(그 타입을 술어 subjects 에서 빼라)
+          타입 목록 = gaps._nodes_of_type_sql 한 자리(S-148-a/판정 337 「등록된 것만」 뒤집음 — 두 독스트링 인용)
+          ㄱ 건너뛰기 — 쪽마다 다음 키 하나씩(idx_ledger_subject_entity · idx_ledger_object_entity), 예산에서 멈춤, 첫 시각은 고른 키만 · 표본 = 키 순서 앞쪽
+맵퍼 집   두 맵퍼가 칼럼 이름 전부를 chain_bindings.params_of(rule, required, columns_of) 로 — 기본값 0
+          빠진 칸 = 규칙·칸 이름 + Next(이주 · params 에 적기) · 쓰는 칸 = 대상 표 선언에 대조 · 키 칼럼 = 대상 표 business_key · 봉투 = mapper_sdk.df_to_updates
+          이주가 옛 lot_slot_wafer 규칙에 빠진 칸만 옛 코드 낱말로 params 밑에 채움(있는 칸은 그대로) · 출고 계보 규칙에 __why_enabled(S-132)
+          두 맵퍼는 server/mappers 에 추적(.gitignore 예외 둘) — authoring/examples 사본은 지움(이 커밋의 rename)
+은퇴      verified_join_contract.py — 제품 import 0 이 되어 그 계약 시험 셋과 같이
+수리      은퇴 소스 백필이 TypeError -> 이름 거절(source_retired · path sources.<id>.status) + 강제로 밟는 시험
+가이드    ONTOLOGY_LEDGER_SETUP · LEDGER_GUIDE · 선언 예시 · PRIMER · 조인 규칙 · chain_rules · OPERATOR_RUNBOOK
+```
+**게이트** (박스는 읽기만 · 메모리)
+```
+박스 선언 사본         거절 이주 전 {'prepare_retired': 1, 'relation_not_a_row_table': 9} -> 이주 뒤 {'relation_not_a_row_table': 9} — 남은 것은 전후 같은 «뷰를 읽는» 소스 · 계획 +lot_lineage · 라이브 파일 그대로
+옛 v5 (direct-join)    적재 + 노트 한 줄 · lot-event-live-frame 든 소스 -> 그 소스만 이름 거절 + Next · 읽기 == 쓰기(소스마다)
+lot_slot_wafer         박스 lot_event 3633행 -> 옛 맵퍼(박스 규칙) 36525행 · 새 맵퍼(이주한 박스 규칙) 36525행, 내용 같음(파이썬 형까지)
+계보                    새 맵퍼 쌍 1986 = 원장 lot_event derived_from 쌍 1986 · 차이 0 · 옛 세대 행 0 · 부모+자식 한 행 이름 거절
+걷기 그대로              같은 씨앗 넷(등록된 웨이퍼 · 등록 안 된 웨이퍼 · 랏 · dtjob), 옛 코드(HEAD 022ffc74d) vs 새 코드, 라이브 선언
+   dtjob nodes 1 edges 0 attributes 1 differ ['generated_at']
+   lot nodes 5 edges 8 attributes 0 differ ['generated_at']
+   wafer registered nodes 3 edges 2 attributes 0 differ ['generated_at']
+   wafer unregistered nodes 2 edges 1 attributes 0 differ ['generated_at']
+                        -> 응답이 generated_at 말고 같음 · dtjob 노드 속성 그대로
+중복(나)                같은 계보의 옛·새 원자 둘 -> 걷기 엣지 하나(엣지 중복 0)
+   근거를 싣는 자리: 그 엣지의 claim_id · source_who · basis 는 둘 중 «먼저 가져온» 하나(최근 시각 먼저, 같으면 원자 id 순). 다른 하나는 응답에 없음
+exclude_when           박스 선언 15 소스 중 0 — 주어 없음. 픽스처: 이주가 칸 그대로 read 로 · 런타임이 같은 행을 뺌
+lot_event 은퇴 뒤       박스 사본 이주 뒤 plan.runs False -> 번역 0 · 백필로 부르면 source_retired 이름 거절
+```
+**타입 목록 (총괄 ㄱ 조건)**
+```
+라우트가 실제로 도는 문장(subjects_of_type — 키만, 예산 +1), 박스, 셋 중 가운데 — 총괄이 받은 수는 기본 0.079 s · 상한 0.71 s
+   wafer 200      200 개 · 더 있음 1 · 0.083 s
+   wafer 2000    2000 개 · 더 있음 1 · 0.72 s
+   lot 200        200 개 · 더 있음 1 · 0.027 s
+   lot 2000      1793 개 · 더 있음 0 · 0.206 s
+   dtjob 200      200 개 · 더 있음 1 · 0.024 s
+   dtjob 2000    2000 개 · 더 있음 1 · 0.228 s
+   ⚠️ 상한의 wafer 는 받으신 0.71 s 를 이번 측정에서 0.01 s 넘음 — 같은 자릿수, 박스 부하에 따라 흔들리는 폭
+노드 질의(첫 시각 포함 — 갭 측정이 쓰는 것) 옛 -> 새
+   wafer 201      201 개 0.541 s ->   201 개 0.103 s
+   wafer 2001    2001 개 0.5 s ->  2001 개 0.892 s
+   lot 201        201 개 0.01 s ->   201 개 0.046 s
+   lot 2001      1793 개 0.018 s ->  1793 개 0.349 s
+   dtjob 201      201 개 1.768 s ->   201 개 0.047 s
+   dtjob 2001    2001 개 1.477 s ->  2001 개 0.383 s
+   lot 예산 2001 은 «느려짐» — 옛 묶음 질의는 랏 1,793 전부를 한 번에 묶어 끝났고 건너뛰기는 키마다 한 번 짚는다. 상한 0.71 s 안
+   wafer 전체(예산 100,000) 같은 집합 True — 새 6.78 s · 옛 0.601 s. 이 읽기를 하는 호출자는 아래 표로 0
+호출자 × 넘기는 예산
+   GET /api/ledger/subgraph?seed_type=   seed_limit Query ge=1 le=MAX_SEED_LIMIT(2000) · 기본 DEFAULT_SEED_LIMIT 200 -> subjects_of_type
+   _evidence_graph (같은 라우터)          받은 seed_limit 그대로(위 상한 안)
+   GET /api/ledger/gaps?name=            measure(scan_limit=NODE_SCAN_LIMIT 200) — 예산을 바꾸는 인자 없음
+   스크립트 · 다른 라우트                  0 (git grep subjects_of_type( · _nodes_of_type_sql · measure( — 시험 밖)
+   => 상한 2000 을 넘겨 읽는 자리 0. 「전체 3.4 s」 류의 수는 가설
+갭 측정 — 박스 선언 사본 v6 의 질문 17개, 옛 노드 질의 -> 새
+   질문마다 옛 0.106~7.772 s -> 새 0.08~0.246 s
+   exact 4개는 count · examined 같음 · sample 은 표본이 «키 순서 앞쪽» 으로 바뀜 — count 가 달라진 질문: 웨이퍼가 안 걸린 자리 7 -> 157
+표본 뜻 한 줄     gaps.SAMPLE_NOT_AGE_ORDERED (응답 문장) · WALK.md seed_type 절 · subjects_of_type 독스트링
+검색 색인(읽는 자리 0, 지우지 않음 — 총괄 답)  idx_ledger_register_search 파티션 8개 합 30.7 MB — 등록 원자 446,652개당 68.8 B (전체 원자 2,261,723개당 13.6 B)
+   새 색인 0 — 목적어 쪽 색인이 이미 있었다(총괄 전제 정정)
+```
+**변이** (전부 빨강, 복원 확인)
+```
+타입 목록   메모리 대역 목적어 쪽 뺌 · 메모리 대역 register 만 · SQL 옛 register 문장 · 옛 묶음 질의(HEAD) 되돌림
+맵퍼 집     빠진 칸 거절 끔 · 쓰는 칸 대조 끔 · 맵퍼가 칼럼 낱말 철자 · 이주 낱말 틀림 · 이주가 적힌 칸 덮어씀
+ㄹ          샘플 어휘에 lot@1 되돌림 · 이주의 어휘 빼기 끔
+중복(나)     엣지 id 에 원자 id 섞음
+수리        은퇴 거절의 path 뺌
+말 못 하는 분자  lot_lineage 행에 부모를 채움 (PG)
+```
+**시험 쓸기** — 수집 오류 25 -> 0
+```
+출고 샘플에 그룹 단위 소스가 «0» — lot_event 가 유일했다. 그룹 쪽 시험은 픽스처가 lot_lineage 의 그룹 변형을 세움(물음 ③)
+박스 라이브 선언(v5)을 읽는 시험 2개(갭 표 × 라이브 선언)는 --apply 전까지 «건너뜀» — 어긋남 보고와 함께
+PG 둘 (첫 PG 실행이 잡음)
+   test_ledger_l1_pg::…cannot_say_is_refused_counted_and_NAMED — 「S-112 가 고쳐지는 날 빨개진다」고 스스로 적은 시험이 그날 빨개짐(lot_event 은퇴).
+      성질(말 못 하는 분자는 운영자 로그에 REFUSED · no_identity · 칼럼 이름)은 그 자리를 이은 lot_lineage 로 — 부모 빈 분할 행
+      픽스처 DDL 은 제품과 같은 TIMESTAMPTZ(datetime -> DateTime(timezone=True)). 변이: 부모 채운 행 -> 빨강
+   test_ledger_v2_pg::_scope — 은퇴한 준비기의 조인 키 join_id 로 범위를 잡아 알려진 둘의 실패 이유가 KeyError 로 바뀌었었다 -> 소스가 읽는 event_key 로, 알려진 이유(row_id 누락)로 돌아옴
+⚠️ 공허한 시험 하나(이 라운드 전부터): test_ledger_l1_pg::test_the_cursor_does_not_advance_past_a_failed_batch 는 dt_job 을 실패시키고
+   lot_event 의 커서가 None 인지를 본다 — 돌리지 않은 소스라 늘 참. 손대지 않음
+```
+**은퇴 낱말 전수** — 🔴 앞선 전수가 «샜다»
+```
+앞선 전수는 대소문자 구분 -F 에 백틱 `prepare` · verified join 낱말이 없어서, 운영자 가이드의 «Preparer»(대문자) 자리를 못 셌다
+   — 총괄께 드린 「ONTOLOGY_LEDGER_SETUP 37 + 그 밖 9」 는 그 계기의 수였다
+고친 계기  git grep --untracked -i -F -c -e <낱말> -- <영역>  · 낱말 15개 · 카나리아 `def event_frames` 1
+더 고친 것  ONTOLOGY_LEDGER_SETUP.md 22 · LEDGER_GUIDE.md 1 · virtual_join_rules.md 1 · OPERATOR_RUNBOOK.md 2 (scratch guide_setup_edits3.py, 자리마다 정확히 한 번 맞음을 단언)
+           제품 주석: config_authoring 2 · backfill 2 · followup 1 — 은퇴한 lot_event 준비기를 «오늘 잰 사실»로 들던 독스트링
+           🔴 내가 이 라운드에 쓴 문장 셋이 틀렸었다 — 「쓰는 조인(virtual_joins, materialize: true)이 표에 써 넣는다」
+              원장 선언의 virtual_joins 절은 로더가 검증만 하고 실행하는 자리 0(git grep: config_explorer 노드 · authoring 뿐),
+              virtual_join_rules.json 은 09-22 판정 652 로 읽는 자리 0. 쓰는 조인은 chain_rules 의 derive: {kind: "join"} + into.table — 세 곳 그리로 고침
+낱말별 (제품 코드 · 시험 · 운영자 가이드 · 그 밖 문서 · 이력)
+   direct-join                  4 · 11 · 1 · 12 · 8
+   lot-event-live-frame         1 · 2 · 0 · 8 · 7
+   lot-event-role               8 · 8 · 0 · 14 · 6
+   source_preparation           12 · 13 · 0 · 43 · 37
+   SourcePreparer               2 · 0 · 0 · 8 · 28
+   source_preparer              9 · 6 · 5 · 10 · 23
+   preparer                     44 · 64 · 10 · 45 · 191
+   "prepare"                    8 · 13 · 0 · 1 · 0
+   `prepare`                    10 · 17 · 17 · 29 · 5
+   verified join                5 · 1 · 0 · 3 · 10
+   verified_join                9 · 28 · 3 · 8 · 39
+   batch join                   0 · 0 · 3 · 5 · 16
+   VerifiedJoinDescriptor       0 · 0 · 1 · 3 · 30
+   inherit_virtual_join_rules   0 · 7 · 1 · 3 · 8
+   accepts_verified_join_rules  2 · 7 · 1 · 3 · 11
+운영자 가이드에 남은 것: ⚰️ 표시 · 옛 세대 거절 목록(source_preparers) · 이력 문단 · 화면 부팅 인자 startup({prepare}) 하나(무관)
+```
+**문서 정비로 넘김** (총괄 ae3d408ae ② — 착지에 안 넣음 · 고친 계기의 줄 수)
+```
+docs/architecture/LEDGER_SCHEMA_COMPLETENESS.md 32
+docs/process/SERVER_DEFECT_QUEUE.md 11
+docs/architecture/PRIMITIVES.md 10
+docs/process/DOC_OWNERSHIP.md 10
+docs/process/FORK_SESSION_BRIEF.md 8
+docs/README.md 7
+docs/spec/LEDGER_TECHNICAL_SPEC.md 6
+docs/architecture/BASIS.md 4
+docs/architecture/SYSTEM_FLOWS.md 3
+docs/architecture/LEDGER_FRAME_CHAIN_MAPPER.md 2
+docs/architecture/SERVER_FILE_MAP.md 2
+docs/architecture/backend.md 1
+docs/architecture/frontend.md 1
+docs/guide/HARNESS_DISCIPLINE_GUIDE.md 1
+docs/overview/SYSTEM_OVERVIEW.md 1
+docs/process/RELEASE_LOG.md 1
+CODE_MAP 은 이 커밋에서 세 줄(params_of · lot_slot_wafer · gaps 예산)만 고침 — 나머지 54 은 문서 정비
+```
+**클라 레인 몫**
+```
+client2/src/ontology_explorer_view.js:29 종류 라벨 preparer('Preparers') — 그 노드 종류 은퇴
+client2/src/ontology_explorer_store.js:537 · 541 주석(source_preparers · preparer)
+client2/src/rnd_board/api.js:358 · 1941 · 1954 씨앗 서술 문구 「그 타입으로 등록된 주어」 -> 원자가 이름 댄 노드 · 키 순서 앞쪽
+client2/src/rnd_board/walk_box_panel.js:15 · 16 주석(wafer@1 · lot@1 -> register)
+closed_lists 에서 prepare_implementation 목록 사라짐 · PREPARED 칼럼 우주 사라짐(RELATION 하나)
+client2/tests/fixtures/authoring_inherited_plan.json · authoring_skeleton.json (prepare 절) · rnd_board_reach.json 확인 필요
+거절 문장: 「no node of type %r in the ledger; nothing to walk from」 · 「every node of type %r is named as a control …」(registered 낱말 빠짐)
+```
+**새 함수 · 새 if 중 기존 것과 같은 일**
+```
+새 함수   upgrade_setup(지시된 하나) · 이주 단계 넷(retire_lot_event_role · to_setup_version_6 · fill_lot_slot_wafer_params · 기존 둘) — 같은 일 0
+          params_of · _refuse_unknown 은 «넓힘»(인자 추가, 기존 호출 그대로)
+새 if     prepare_retired 1 · upgrade_setup 버전·버릴 조건 · params_of 빠진 칸 1 · columns_of 1 · _refuse_unknown 문장 꼬리 1 ·
+          이주의 맵퍼 고르기 1 · 빠진 칸 1 · 어휘 빼기 1 · 메모리 대역 주어/목적 2
+          같은 일 1 — 메모리 대역의 주어/목적 판정은 gaps._nodes_of_type_sql 의 SQL 규칙을 메모리로 다시 적은 것(대역이라 피할 수 없음)
+          키 칼럼 읽기 `crud.TABLE_CONFIG[..]["business_key"]` 가 두 맵퍼에 한 줄씩 — mapper_sdk.df_to_updates 도 같은 줄을 읽음
+```
+**물음 (따로)**
+```
+① virtual_joins 절 — 원장 선언 안에서 로더가 검증만 하고 실행하는 자리가 없다(탐색기 노드 · 작성 화면만). 원장 선언에서 은퇴할지
+② incomplete_count — 생산자(__source_event_incomplete) 가 준비기와 함께 0 이 되어 늘 0. 화면 계약이라 은퇴 여부
+③ 출고 샘플에 그룹 단위 소스가 하나도 없다 — 그룹 소스의 «예»가 출고 샘플에 있어야 하나
+```
+**스위트** (C:/wt-impl)
+```
+비PG 전체 (H — 둘째 가이드 손질 · 주석 다섯 «전» 트리)  5 failed, 7559 passed, 41 skipped, 169 deselected, 3 xfailed in 805.94s (0:13:25)
+   실패 = 알려진 다섯: test_a_sentence_says_itself_only_for_the_rows_it_names::test_the_sample_is_written_in_the_one_format_both_writers_use · test_core_alignment_mapper::test_live_mapper_and_tracked_sample_are_byte_identical · test_core_usage_mapper::test_live_mapper_and_tracked_sample_are_byte_identical · test_dt_inventory_metadata_mapper::test_live_mapper_matches_tracked_sample · test_one_place_decides_where_the_server_is::test_the_repo_root_is_one_above_it
+그 뒤 손질분 (문서 읽는 시험 · backfill/followup/authoring)  334 passed, 1 skipped in 11.87s / 127 passed, 7650 deselected in 17.20s
+PG  6 failed, 163 passed, 7608 deselected in 360.17s (0:06:00)
+   실패 6: test_an_install_that_predates_attributes_is_widened_once · test_postgres_bundle_to_read_apis_is_one_compiler_and_one_transaction · test_postgres_gate_refusal_stops_before_store_transaction · test_postgres_replay_dedupes_the_second_write_of_the_same_batch · test_the_live_door_writes_the_refusal_breakdown_to_the_registry_row · test_two_independent_refusals_are_counted_and_named_in_one_run
+   알려진 일곱 중 이번에 은퇴: test_postgres_missing_join_and_ambiguous_reader_leave_atom0 · 알려진 밖: 0
+```
