@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import copy
 import hashlib
+from contextlib import contextmanager
 import json
 import logging
 import os
@@ -749,7 +750,62 @@ def rule_index_named(rules, name):
     return found[0] if found else None
 
 
-def save_chain_rule_raw(name: str, declaration, base: str, db=None) -> dict:
+@contextmanager
+def _session_of(db):
+    """The request's own session when the route passed one, else one opened here and closed."""
+    if db is not None:
+        yield db
+        return
+    from database.database import SessionLocal
+    own = SessionLocal()
+    try:
+        yield own
+    finally:
+        own.close()
+
+
+def rule_name_holders(db, name: str, rules) -> list:
+    """What holds chain rule `name` BY ITS NAME and a rename would cut - `[(what, count)]`,
+    only the kinds that hold it (총괄 c6a8c069c ㉠, the census): a map confirmation, an
+    unprocessed replay event (its `only_rule` may name the rule's derived halves), another
+    rule's `alignment_rule`, and a retroactive run that has not finished."""
+    from admin import retroactive
+    from chain import rule_shape
+    from chain.enrichment import config as enrichment_config
+    from database import models
+    import event_constants
+
+    halves = {name, name + rule_shape.COMPANION_SUFFIX,
+              *enrichment_config.synthesized_rule_names(name)}
+
+    def names_it(params):
+        try:
+            params = json.loads(params or "{}")
+        except ValueError:
+            return False
+        return isinstance(params, dict) and (
+            params.get("rule") == name or name in (params.get("rules") or ()))
+
+    finished = (retroactive.RUN_DONE, retroactive.RUN_CANCELLED, retroactive.RUN_FAILED)
+    held = [
+        ("map confirmation(s)", db.query(models.FrameConfirmation)
+         .filter(models.FrameConfirmation.rule_name == name).count()),
+        ("unprocessed replay event(s)", sum(
+            1 for (payload,) in db.query(models.DatabaseOutbox.payload)
+            .filter(models.DatabaseOutbox.processed_chain.is_(False)).yield_per(1000)
+            if event_constants.only_rule_of(payload) in halves)),
+        ("rule(s) naming it as alignment_rule", sum(
+            1 for rule in rules
+            if isinstance(rule, dict) and rule.get("alignment_rule") == name)),
+        ("unfinished retroactive run(s)", sum(
+            1 for (params,) in db.query(models.RetroactiveRun.params)
+            .filter(models.RetroactiveRun.state.notin_(finished)) if names_it(params))),
+    ]
+    return [(what, count) for what, count in held if count]
+
+
+def save_chain_rule_raw(name: str, declaration, base: str, db=None,
+                        renamed_from: str = None) -> dict:
     """Write ONE chain rule. 🔴 A NEW RULE IS SAVED ARMED BUT NOT FIRING.
 
     A saved table registers something and nothing runs; a saved rule is re-read by
@@ -764,6 +820,11 @@ def save_chain_rule_raw(name: str, declaration, base: str, db=None) -> dict:
 
     ⚠️ AND THE CODE DEFAULT IS UNTOUCHED. Nothing about rules written by hand changes;
     what changes is only the document this route writes, which is why it is reversible.
+
+    🔴 `renamed_from` IS THE NAME THE EDITOR OPENED (총괄 c6a8c069c ㉠). A save under another
+    name used to append a NEW rule (switched off) and leave the old one running; now it edits
+    the opened rule where it stands - same place, same `enabled` - unless the new name is
+    taken, the opened rule is gone, or a record holds the old name (`rule_name_holders`).
     """
     if not isinstance(name, str) or not name.strip():
         raise _table_config_refusal("rule_name_required", "name",
@@ -794,7 +855,25 @@ def save_chain_rule_raw(name: str, declaration, base: str, db=None) -> dict:
     #   answer that cannot be taken back.
     rules = [dict(rule) if isinstance(rule, dict) else rule
              for rule in document["rules"]]
-    existing = rule_index_named(rules, name)
+    renamed_from = renamed_from if renamed_from != name else None
+    existing = rule_index_named(rules, renamed_from or name)
+    if renamed_from:
+        if existing is None:
+            raise _table_config_refusal(
+                "stale_base", "from",
+                f"Rule {renamed_from!r} is not in the file any more. Reopen it, check, then save")
+        if rule_index_named(rules, name) is not None:
+            raise _table_config_refusal(
+                "rule_name_taken", "name",
+                f"A rule named {name!r} already exists - pick another name")
+        with _session_of(db) as session:
+            holders = rule_name_holders(session, renamed_from, rules)
+        if holders:
+            raise _table_config_refusal(
+                "rule_name_held", "from",
+                f"Next: keep the name {renamed_from!r}; if a new name is needed, add a new rule "
+                f"and switch this one off. Renaming would cut what holds it by name: "
+                + ", ".join(f"{count} {what}" for what, count in holders))
     entry = dict(declaration)
     entry["name"] = name
     if existing is None:
@@ -913,15 +992,9 @@ def save_chain_rule_raw(name: str, declaration, base: str, db=None) -> dict:
     try:
         from runtime import system_reload
 
-        own = db is None
-        if own:
-            from database.database import SessionLocal
-            db = SessionLocal()
-        try:
-            system_reload.publish_reload(db, scope=system_reload.SCOPE_CHAIN_RULES, rule=name)
-        finally:
-            if own:
-                db.close()
+        with _session_of(db) as session:
+            system_reload.publish_reload(session, scope=system_reload.SCOPE_CHAIN_RULES,
+                                         rule=name)
     except Exception as exc:                                        # noqa: BLE001
         logger.error("[ChainRules] %s saved, but the chain worker was NOT told - it reads the "
                      "rules at the next Reload or restart: %s: %s",
@@ -933,7 +1006,13 @@ def save_chain_rule_raw(name: str, declaration, base: str, db=None) -> dict:
             "rules": sum(1 for rule in rules if isinstance(rule, dict)),
             # The value an operator needs next, never a sentence: a new rule is saved off.
             "enabled": not rule_shape.is_switched_off(entry),
-            "created": existing is None}
+            "created": existing is None,
+            # The cost of the rename, said where it is decided: `crud.source_unchanged`
+            # compares the writer, so each row this rule wrote is written again (under the
+            # new name) the next time it arrives.
+            **({"renamed_from": renamed_from,
+                "note": "Cells this rule wrote are written again under the new name the "
+                        "next time their rows arrive"} if renamed_from else {})}
 
 
 def _rerun_report(before, after):
