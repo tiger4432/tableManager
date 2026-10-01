@@ -26,7 +26,7 @@ import { backlogCells, hasBacklog, censusRefusal } from './source_backlog.js';
 const KIND_LABELS = Object.freeze({
   source_plan: 'Source plans', profile: 'Profiles', mapping: 'Mappings',
   binding: 'Bindings', predicate: 'Vocabulary', entity: 'Entities',
-  preparer: 'Preparers', mapper: 'Mappers', verified_join: 'Verified joins', table: 'Tables',
+  mapper: 'Mappers', verified_join: 'Verified joins', table: 'Tables',
 });
 
 const h = (tag, cls, text) => {

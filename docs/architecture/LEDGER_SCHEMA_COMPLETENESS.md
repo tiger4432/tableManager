@@ -1264,6 +1264,8 @@ enrichment_rules.json.sample 규칙 4. 키 = {source_table, derived_table, decis
 | **짝짓기 / 위치** | 🔴 **없음** | **③** — 같은 자리 |
 
 ## D-8-3. 🔴 그래서 S-100 은 «셋이 아니라 하나»만 선언으로 갑니다
+
+> ⚰️ (🆕 10-01 `0b59a2f30`) `lot_event` 은퇴 — 계보는 체인 규칙이 `lot_lineage` 에 쓰고 원장은 그 표를 읽습니다. 아래 `lot-event-*` 두 줄은 그 전 모양입니다.
 ```
 dt-job-role (집계)       ✅ 갈 곳이 있습니다 — 체인이 «세어» 표에 쓰고, 원장 소스는 그 컬럼을
                         `declarative-role` 로 «그대로» 읽습니다. 규칙(국소·무계산)을 지킵니다
@@ -1778,6 +1780,8 @@ Q-철회를-사실로  「as-of 가 필요하면 철회가 «삭제»가 아니�
 > 재 둘 수 있는 것을 재 둡니다. 실행은 그 답 뒤입니다.
 
 ## D-14-0. 출하 선언이 «오늘» 무엇을 말하나 (실측)
+
+> ⚰️ (🆕 10-01 `0b59a2f30`) 이 절의 «오늘»은 그 날입니다 — `prepare` 절과 `lot_event` 소스는 v6 에서 은퇴했습니다.
 ```
 read   unit=group · group_by=[event_group_key] · identity=[event_group_key] · occurred_at=event_time
 prepare  lot-event-live-frame (파이썬) — 산출 {event_group_key, lot, slots, wafers, row_identity,
@@ -1827,6 +1831,8 @@ map      lot-event-role (파이썬) · unit.kind = event   -> 매퍼가 «그룹
 | `first_sight_holder`/`_item` | 자식 행 |
 
 ### B 의 «선언 diff» (출하 샘플)
+
+> ⚰️ (🆕 10-01 `0b59a2f30`) v6 이 이 diff 의 방향으로 착지했습니다 — 아래는 그 전의 샘플에 대한 제안입니다.
 ```
 descent.subject.keys.lot   `child_lot`  ->  `lot_id`      (B 에서는 자식이 «자기 행»의 lot_id 입니다)
 split.subject.keys.lot     `child_lot`  ->  `lot_id`      (같은 이유. 목적어는 그대로 parent_lot)

@@ -1,192 +1,8 @@
 {
  "captured_by": "client2/tests/fixtures/capture_authoring_inherited_plan.py",
- "server_at": "3a109bfd9adddb8250185c50cee6deaefb4cb84c",
+ "server_at": "d6bf51a8407ba31ada012ec13b316983c2b1e12c",
  "base": "bundle.sources.dt_job",
  "fields": [
-  {
-   "path": "bundle.sources.dt_job.prepare.implementation_id",
-   "step": "sources",
-   "label": "Preparer implementation",
-   "state": "answered",
-   "tier": "constrained_input",
-   "value": "direct-join",
-   "declared": "direct-join",
-   "has_declared": true,
-   "conflicts": false,
-   "ground": null,
-   "candidates": [
-    "direct-join",
-    "lot-event-live-frame"
-   ],
-   "universe": null,
-   "universe_note": "",
-   "locked": [],
-   "comparison": "equal",
-   "reshapes": true,
-   "disposition": "",
-   "forbidden": [],
-   "note": "New implementation: write mappers/ledger_v2_*.py in /admin/scripts/code · listed after a server restart",
-   "refusals": [],
-   "remaining": false
-  },
-  {
-   "path": "bundle.sources.dt_job.prepare.implementation_version",
-   "step": "sources",
-   "label": "Preparer implementation version",
-   "state": "derived",
-   "tier": "structural",
-   "value": 1,
-   "declared": 1,
-   "has_declared": true,
-   "conflicts": false,
-   "ground": {
-    "rule": "implementation_version_from_registered_id",
-    "text": "Filled: registered direct-join@1",
-    "from_paths": [
-     "bundle.sources.dt_job.prepare.implementation_id"
-    ],
-    "from_keys": [
-     "source_plan|dt_job"
-    ],
-    "from_value": 1
-   },
-   "candidates": null,
-   "universe": null,
-   "universe_note": "",
-   "locked": [],
-   "comparison": "equal",
-   "reshapes": false,
-   "disposition": "grammar_requires_it",
-   "forbidden": [],
-   "note": "",
-   "refusals": [],
-   "remaining": false
-  },
-  {
-   "path": "bundle.sources.dt_job.prepare.input_columns",
-   "step": "sources",
-   "label": "Preparer input_columns",
-   "state": "derived",
-   "tier": "derivation",
-   "value": [
-    "dt_eqp",
-    "event_time",
-    "netdie_count",
-    "row_id"
-   ],
-   "declared": null,
-   "has_declared": false,
-   "conflicts": false,
-   "ground": {
-    "rule": "preparer_inputs_from_relation_minus_locked",
-    "text": "Default: the 5 columns of relation dt_job_rollup minus the 1 that read already reads",
-    "from_paths": [
-     "table_config.json:dt_job_rollup"
-    ],
-    "from_keys": [],
-    "from_value": [
-     "dt_eqp",
-     "event_time",
-     "netdie_count",
-     "row_id"
-    ]
-   },
-   "candidates": [
-    "dt_eqp",
-    "dt_job",
-    "event_time",
-    "netdie_count",
-    "row_id"
-   ],
-   "universe": "RELATION",
-   "universe_note": "Table columns",
-   "locked": [
-    "dt_job"
-   ],
-   "comparison": "equal",
-   "reshapes": false,
-   "disposition": "default_overridable",
-   "forbidden": [],
-   "note": "Locked = columns read already reads · the rest toggle",
-   "refusals": [],
-   "remaining": false
-  },
-  {
-   "path": "bundle.sources.dt_job.prepare.output_columns",
-   "step": "sources",
-   "label": "Preparer output_columns",
-   "state": "unanswered",
-   "tier": "constrained_input",
-   "value": [],
-   "declared": null,
-   "has_declared": false,
-   "conflicts": false,
-   "ground": {
-    "rule": "preparer_output_collision_from_relation",
-    "text": "Limit: no name may repeat one of the 5 columns of relation dt_job_rollup",
-    "from_paths": [
-     "table_config.json:dt_job_rollup"
-    ],
-    "from_keys": [],
-    "from_value": [
-     "dt_eqp",
-     "dt_job",
-     "event_time",
-     "netdie_count",
-     "row_id"
-    ]
-   },
-   "candidates": null,
-   "universe": null,
-   "universe_note": "",
-   "locked": [],
-   "comparison": "equal",
-   "reshapes": false,
-   "disposition": "",
-   "forbidden": [
-    "dt_eqp",
-    "dt_job",
-    "event_time",
-    "netdie_count",
-    "row_id"
-   ],
-   "note": "Names of the columns the preparer adds. A name the table already has is not allowed.",
-   "refusals": [],
-   "remaining": false
-  },
-  {
-   "path": "bundle.sources.dt_job.prepare.accepts_verified_join_rules",
-   "step": "sources",
-   "label": "accepts_verified_join_rules",
-   "state": "derived",
-   "tier": "derivation",
-   "value": false,
-   "declared": false,
-   "has_declared": true,
-   "conflicts": false,
-   "ground": {
-    "rule": "accepts_join_rules_from_inheritance",
-    "text": "Default: source dt_job inherits no join rule -> false",
-    "from_paths": [
-     "bundle.sources.dt_job.prepare.inherit_virtual_join_rules"
-    ],
-    "from_keys": [
-     "source_plan|dt_job"
-    ],
-    "from_value": false
-   },
-   "candidates": null,
-   "universe": null,
-   "universe_note": "",
-   "locked": [],
-   "comparison": "equal",
-   "reshapes": false,
-   "disposition": "grammar_requires_it",
-   "forbidden": [],
-   "note": "",
-   "refusals": [],
-   "remaining": false
-  },
   {
    "path": "bundle.sources.dt_job.map.implementation_id",
    "step": "sources",
@@ -200,8 +16,7 @@
    "ground": null,
    "candidates": [
     "declarative-role",
-    "dt-job-role",
-    "lot-event-role"
+    "dt-job-role"
    ],
    "universe": null,
    "universe_note": "",
@@ -275,8 +90,8 @@
     "netdie_count",
     "row_id"
    ],
-   "universe": "PREPARED",
-   "universe_note": "Table columns + preparer outputs",
+   "universe": "RELATION",
+   "universe_note": "Table columns",
    "locked": [
     "dt_job"
    ],
@@ -640,8 +455,8 @@
     "netdie_count",
     "row_id"
    ],
-   "universe": "PREPARED",
-   "universe_note": "Table columns + preparer outputs",
+   "universe": "RELATION",
+   "universe_note": "Table columns",
    "locked": [],
    "comparison": "equal",
    "reshapes": false,
@@ -695,8 +510,8 @@
     "netdie_count",
     "row_id"
    ],
-   "universe": "PREPARED",
-   "universe_note": "Table columns + preparer outputs",
+   "universe": "RELATION",
+   "universe_note": "Table columns",
    "locked": [],
    "comparison": "equal",
    "reshapes": false,
@@ -1005,8 +820,8 @@
     "netdie_count",
     "row_id"
    ],
-   "universe": "PREPARED",
-   "universe_note": "Table columns + preparer outputs",
+   "universe": "RELATION",
+   "universe_note": "Table columns",
    "locked": [],
    "comparison": "equal",
    "reshapes": false,
@@ -1093,6 +908,7 @@
     "inventory_master",
     "ledger_events",
     "lot_event",
+    "lot_lineage",
     "lot_slot_wafer",
     "map_split_registry",
     "mechanism_edge",
@@ -1171,8 +987,8 @@
     "netdie_count",
     "row_id"
    ],
-   "universe": "PREPARED",
-   "universe_note": "Table columns + preparer outputs",
+   "universe": "RELATION",
+   "universe_note": "Table columns",
    "locked": [],
    "comparison": "equal",
    "reshapes": false,
@@ -1404,7 +1220,7 @@
    "reshapes": false,
    "disposition": "",
    "forbidden": [],
-   "note": "Asked before preparation, so table columns only",
+   "note": "",
    "refusals": [],
    "remaining": false
   }

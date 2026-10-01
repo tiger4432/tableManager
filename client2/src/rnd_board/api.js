@@ -355,7 +355,8 @@ export async function fetchSubgraph(params) {
           backbone_hops: backboneHops, since, until,
           // C-90 ②. 무리와 잴 것. 좌석이 «선언»하고 이 함수는 실어 나르기만 합니다.
           group_by: groupBy, measure,
-          // C-97 (S-148-a). 씨앗을 «열거하지 않고 서술»합니다 — 그 타입으로 등록된 주어 전부.
+          // C-97 (S-148-a). 씨앗을 «열거하지 않고 서술»합니다 — 그 타입을 이름 댄 원자가 있는 노드 전부
+          // (주어 쪽이든 목적어 쪽이든 — v6, 총괄 819726624 ㄹ).
           seed_type: seedType, seed_limit: seedLimit } = params || {};
   // 🔴 THE GATE (contract §4). Refused HERE rather than at the server, because the server
   //    would answer 200 with an empty walk and the screen would read that as 「없다」.
@@ -1940,8 +1941,8 @@ export function createWalkBoxWalk(deps) {
     //    예산 0 도 「안 골랐다」의 표시입니다. 정본 생성기는 「없으면 안 싣는다」만 압니다.
     //    두 규칙을 하나로 접으면 좌석 쪽 전선이 «조용히» 바뀝니다.
     try {
-      // 🔴 C-97 (판정 365). 키를 «안 골랐으면» 씨앗을 «서술»합니다 — 그 타입으로 등록된 주어
-      //    전부. 실측 2026-09-13: 오늘 이 자리는 `entitySeedId(type, {})` 를 보내 «422»
+      // 🔴 C-97 (판정 365). 키를 «안 골랐으면» 씨앗을 «서술»합니다 — 그 타입을 이름 댄 원자가 있는
+      //    노드 전부(v6: 주어 쪽이든 목적어 쪽이든). 실측 2026-09-13: 오늘 이 자리는 `entitySeedId(type, {})` 를 보내 «422»
       //    (`entity id must contain [type, structured keys]`)를 받습니다. 즉 주어를 모르면
       //    걸을 수가 없었는데, 「이 타입이 무엇에 닿나」는 주어를 «모를 때» 묻는 질문입니다.
       // ⚠️ 새 낱말도 새 선언도 «없습니다» — 화면이 이미 든 타입 하나가 그대로 인자가 됩니다.
@@ -1953,7 +1954,7 @@ export function createWalkBoxWalk(deps) {
         // 🔴 «버전을 벗겨서» — `entitySeedId` 가 같은 이음매를 이미 그렇게 넘습니다(그 줄의 주석).
         //    서버는 「선언됐나」를 «벗긴 이름»으로 보고(`_bare`) 주어를 «적힌 그대로» 찾으므로,
         //    `wafer@1` 을 실으면 선언 검사는 통과하고 주어가 «하나도» 안 맞습니다 — 거절이
-        //    「그 타입에 등록된 주어가 없다」로 나오고, 그건 데이터에 대한 거짓입니다.
+        //    「그 타입의 노드가 원장에 없다」로 나오고, 그건 데이터에 대한 거짓입니다.
         //    하니스가 제 첫 판을 이 줄에서 잡았습니다.
         ...(marked ? { nodeId: positive[0], positive, negative }
           : (described

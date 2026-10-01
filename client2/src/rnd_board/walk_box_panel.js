@@ -11,9 +11,9 @@
 //
 // 🔴 「필터 수준에 따라 제안」의 기전은 «서버의 `subjects`»입니다. 클라가 규칙을 만들지
 //    않습니다: NODE TYPE 을 고르면 FOLLOW 는 그 타입을 `subjects` 에 가진 술어만 남는데,
-//    그건 선언이 이미 답에 실어 보낸 사실입니다. 실측(총괄 2026-08-26):
-//      die@1 -> transfer · observed · bonded_from      wafer@1 -> inspected · processed_with · register
-//      lot@1 -> derived_from · register                recipe@1 -> «없음»
+//    그건 선언이 이미 답에 실어 보낸 사실입니다. 출고 샘플(setup_version 6)에서:
+//      die@1 -> transfer · observed · bonded_from · in_container      wafer@1 -> measures · inspected · processed_with
+//      lot@1 -> derived_from · split_from · merged_into               recipe@1 -> «없음»
 //    🔴 `recipe@1` 이 이 부품의 시금석입니다 -- 목적어로만 나오는 타입이라 나가는 술어가
 //       없습니다. 그때 «문장»으로 말해야 합니다. 빈 드롭다운은 「고장」과 구별이 안 됩니다.
 //

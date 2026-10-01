@@ -538,7 +538,7 @@ export function reduceFieldFold(state, action) {
 // `profiles` were on that list until 2026-08-20, when all three moved inside a source plan
 // and joined the kinds below.)
 // The rest of the expected kinds have no section of their own: `claim`, `mapping`,
-// `binding`, `preparer`, `mapper` and `profile` (they live INSIDE an owner -- a mapper's `emits`
+// `binding`, `mapper` and `profile` (they live INSIDE an owner -- a mapper's `emits`
 // picks claims from across all packs) and `table` (physical, read-only here, its own
 // column universes). Those need a second source that does not exist yet. This is a gap in
 // what is here, not a defect in it.

@@ -194,8 +194,9 @@ const PLAN = {
     }),
     field({
       path: 'bundle.sources.dt_job.read.identity', label: 'identity', step: 'sources',
-      state: 'unanswered', candidates: CANDIDATES, universe: 'PREPARED',
-      universe_note: '물리 표 + 준비기 산출 컬럼',
+      // The server's one universe since the preparer retired (config_authoring UNIVERSE_RELATION, v6).
+      state: 'unanswered', candidates: CANDIDATES, universe: 'RELATION',
+      universe_note: 'Table columns',
     }),
     field({ path: 'bundle.entities.DTJob@1.keys', label: '식별키', step: 'entities',
       state: 'answered', value: ['dt_job'] }),
@@ -420,7 +421,7 @@ const renderDraft = (plan) => {
     chips.every((chip, i) => chip.textContent === CANDIDATES[i]),
     chips.map((c) => c.textContent).join(','));
   check('C7 the column universe is named beside them',
-    at(byClass(at(unanswered, 0), 'oe-candidates'), 0).textContent.includes('PREPARED'));
+    at(byClass(at(unanswered, 0), 'oe-candidates'), 0).textContent.includes('RELATION'));
   const left = byClass(root, 'oe-map-row').filter(
     (row) => row._classes.includes('is-left'));
   check('C8 a refusal with no field still reaches the screen, on the map',

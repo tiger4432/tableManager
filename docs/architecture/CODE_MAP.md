@@ -3949,7 +3949,7 @@ note_naive_time(...)      셈 · `naive_time_counts()` · `naive_time_note()` �
 | `@dataclass(frozen=True) class Ground` | `rule` · `text`(**한국어**, 값 «옆»에 렌더 — 툴팁 아님) · `from_paths` · `from_value`. `to_mapping()`이 `from_keys`를 **순서 보존 dedupe**로 유도한다(프로필 하나 아래 바인딩 8경로는 «갈 곳 하나»이지 여덟이 아니다) |
 | `class AuthoringGroundError(RuntimeError)` | 🔴 **불변식이 코드로 강제된다** — `state == "derived"`인데 `Ground`(rule·한국어 문장·출처 경로)가 없으면 `Field` 생성이 **거절된다**. 근거를 못 대는 유도는 추측이므로 `unanswered` + 후보로 내려간다 |
 | `@dataclass(frozen=True) class Field` | `path`·`step`·`label`·`state`·`tier`·`value`·`declared`·`ground`·`candidates`·`universe`·`note`·`comparison`·`disposition`·`forbidden`·`refusals`. `conflicts` 프로퍼티 = 「파일이 유도가 거절하는 것을 말한다」 |
-| `comparison` | `equal`(자유도 0) 대 **`superset`**(유도된 **최소**이고 더 넓은 선언도 만족). 🔴 이걸 틀리면 **합법 선언이 빨갛게 칠해진다** — 실측 `lot-event-role@1.input_columns`(파일 10 · 바인딩 필요 4) |
+| `comparison` | `equal`(자유도 0) 대 **`superset`**(유도된 **최소**이고 더 넓은 선언도 만족). 🔴 이걸 틀리면 **합법 선언이 빨갛게 칠해진다** — 실측 `lot-event-role@1.input_columns`(파일 10 · 바인딩 필요 4 — 🆕 10-01 `0b59a2f30` 그 구현째 은퇴) |
 | `disposition` **5종** | 🔴 **소유자 판정 2026-08-19: 「덮어쓸 수 없는 필드는 유도가 아니라 «강제»이고, 강제는 파일 밖에 있어야 한다」** — 회색 처리된 칸이 셋 중 최악이다. 값: `remove_from_file`(**실측**으로 지워도 검증 통과) · `grammar_requires_it`(**실측**으로 못 지움 — 잠근 컨트롤이 아니라 **말로 하는 미해결 항목**) · `default_overridable` · `shape`(파일 잎이 아님) · `unmeasured`(bundle이 검증을 통과 못 해 삭제 프로브가 오염됨) |
 | `tier` **4종** | `TIER_STRUCTURAL` > `TIER_DERIVATION` > `TIER_CONSTRAINED`(`constrained_input`) > `TIER_DIAGNOSTIC` — 🔴 **서열을 필드마다 기록해 감사 가능하게** 한다 |
 | `universe` | `UNIVERSE_RELATION`(`"RELATION"`) 대 `UNIVERSE_PREPARED`(`"PREPARED"`) + `_UNIVERSE_NOTE` — 이 후보가 **물리 컬럼**에서 왔는지 **준비된 컬럼**에서 왔는지 |
@@ -3984,7 +3984,7 @@ note_naive_time(...)      셈 · `naive_time_counts()` · `naive_time_note()` �
 
 심볼: `_IMPLEMENTATION_PACKAGE = "mappers"` · `_IMPLEMENTATION_MODULE_PREFIX = "ledger_v2_"`(🔴 접두어가 있는 이유 — 같은 디렉터리의 **체인 인제션 맵퍼**는 DB 기계장치를 import하므로, 여기서 함께 import하면 원장 셋업 경로가 무관한 의존성 뒤에 선다) · `ImplementationDeclarationError` · `_import_implementation_modules()` · `_descendants(base)` · `_self_declared_identity(implementation)` · `_declarations(base)` · `source_preparer_declarations()` · `mapper_declarations()` · `trusted_implementations()` · `source_preparer_registry()` · `role_mapper_registry()` · 🆕⑳ **`preparer_output_columns(identifier, version=None)`** · `implementation_choices(sources=None)`.
 
-🔴 **그래서 「맵퍼를 추가한다」 = `server/mappers/ledger_v2_*.py` 파일 하나이고, 이 모듈은 편집하지 않는다.** 현재 실물 둘: `mappers/ledger_v2_lot_event_role_mapper.py` · 🆕⑩ `mappers/ledger_v2_dt_job_mapper.py`(신설). 🪦 `mappers/ledger_lot_event_mapper.py`는 **삭제됐다**.
+🔴 **그래서 「맵퍼를 추가한다」 = `server/mappers/ledger_v2_*.py` 파일 하나이고, 이 모듈은 편집하지 않는다.** 현재 실물 하나: ~~`mappers/ledger_v2_lot_event_role_mapper.py`~~(🆕 10-01 `0b59a2f30` 은퇴) · 🆕⑩ `mappers/ledger_v2_dt_job_mapper.py`(신설). 🪦 `mappers/ledger_lot_event_mapper.py`는 **삭제됐다**.
 
 #### 🆕⑱ `implementation_choices(sources=None) -> dict` — **고를 수 있는 것과 «세어서 나온» 기본값** (`113752bc`)
 
