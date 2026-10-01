@@ -1,3 +1,22 @@
+> ## [09:11 디자인] ccf374d48 답 둘 — 기본 저장 목록은 world 가 빈 run 만 · Keep 은 옛 가지의 초안 저장소에 저장한 뒤 넘어감 — 총괄 답 · 609341a55
+
+**1. 기본 저장 목록** — 서버가 받는지 먼저 쟀습니다. 받습니다.
+- 코드: `{"world":{"filterType":"text","type":"blank"}}` 는 column_filter.py 의 blank 갈래를 지나 정본 `crud.blank_sql_condition` 에 닿습니다. 새 서버 문 없음.
+- 시험: 같은 경로(`/tables/{t}/data`)로 blank 거르기를 재는 기존 서버 시험 둘(숫자 칸 test_numeric_filtering_and_blank_checks · 텍스트 칸 test_worklist_blank_filter_and_user_fill)이 오늘 트리에서 2 passed.
+- 선언: 커밋된 표 선언 샘플의 contrast_run 에 world 칸이 있습니다.
+- 박스: 이 박스에는 contrast_run 표가 없어서(거르기 없이도 404) 실제 표로는 못 쟀습니다.
+- 게이트: M1 기본 요청은 바이트 같음 — 이름 댄 예외 한 요청, 저장 목록에 빈 world 거르기가 붙음 · M9 기본 목록의 거르기가 그 빈 조건 · M6 가지 목록은 그 이름. 변이 둘(가지 목록이 빈 조건으로 · 기본 목록 거르기가 빔) 빨강.
+- 사실(안 고침): 모델에 없는 칸으로 거르면 서버가 그 거르기를 조용히 뺍니다(column_filter 의 hasattr 가 없으면 None). world 칸이 없는 설치에서는 기본 목록이 전부를 보입니다 — 오늘과 같습니다.
+
+**2. Keep** — 이름대로 돕니다.
+- 저장 단추의 첫 걸음(`PUT /drafts/{id}`, 친 글과 revision)을 함수 하나 putDraft 로 빼서 저장 단추와 Keep 이 같이 부릅니다. 가지를 바꾸기 «전»에 부르니 옛 가지로 갑니다(서버의 그 경로도 world 를 받음).
+- 저장이 거절되면 넘어가지 않고 친 것이 그대로 남습니다. mutateDraft 는 안 썼습니다 — 저장 뒤 옛 가지를 다시 읽어 곧 버릴 요청이 생깁니다.
+- 게이트: Z14 Keep 은 첫 요청이 world 없는 PUT /drafts/d1(친 글 · revision 1)이고 그 뒤 요청은 전부 world=w1 · Z15 저장이 거절되면 머묾 · Z10 Stay 는 아무것도 안 보냄. 변이 M27(Keep 이 저장 안 함) · M28(거절돼도 넘어감) 빨강. 저장 단추가 putDraft 를 부르는 것은 기존 [4] 저장 시험이 잽니다.
+
+- 하니스: rnd_board_contrast_save 71 · explorer_open_path 78 · 러너 154 중 152 초록 · 알려진 빨강 2 · 막힘 0 · 계약 12 개 어긋남 0
+- 새 함수 · 새 if 중 기존 것과 같은 일: 새 함수 putDraft 1 — 저장 단추 안에 있던 같은 요청을 뺀 것이라 둘이 하나를 부릅니다. 새 if: pickWorld 의 Keep 갈래 1. 바뀐 if: 「쓰다 만 초안이고 Discard 가 아니면 머묾」이 「Stay 면 머묾」으로. api.js 의 삼항은 하나 그대로(무엇으로 거르나).
+- 다음: 새 지시 b417e2ad8(걷기 창을 메인 그리드 메뉴에 · 점검)을 잡습니다.
+
 > ## [08:47 디자인] 가지 선택기 — 선언 화면 · R&D 보드. 화면마다 좌석 하나, 모든 요청이 그 좌석을 지남, 기본은 오늘 요청 그대로 — 총괄 64c380aeb · ccf374d48
 
 **여쭐 것 둘**

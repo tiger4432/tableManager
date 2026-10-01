@@ -737,8 +737,9 @@ failed += pathBarBase.failures.length;
 console.log('\n[8] the branch the screen reads');
 const REQUESTS_BEFORE = JSON.parse(readFileSync(join(HERE, 'fixtures', 'explorer_requests.before.json'), 'utf8'));
 const PREVIEW = { world: 'w2', schema: 'ledger_w2', atoms: 7, files: ['a.json', 'b.json'] };
-async function branchWalk(create, { confirmDelete = true, typed = null } = {}) {
+async function branchWalk(create, { confirmDelete = true, typed = null, refuseKeep = false } = {}) {
   const urls = [];
+  const puts = [];
   const clicks = [];
   const inputs = [];
   const root = element('div');
@@ -760,6 +761,11 @@ async function branchWalk(create, { confirmDelete = true, typed = null } = {}) {
     urls.push(`admin ${method} ${u}`);
     const path = u.split('?')[0];
     const asked = (u.match(/draft_id=(d\d)/) || [])[1];
+    if (method === 'PUT') {
+      puts.push(JSON.parse(init.body));
+      if (refuseKeep) return { ok: false, status: 409, json: async () => ({ detail: { code: 'stale_revision',
+        path: 'expected_revision', message: 'the draft moved on' } }) };
+    }
     if (u.includes('/authoring')) return reply(AUTHORING);
     if (/\/drafts$/.test(path) && method === 'POST') return reply(DRAFT);
     if (path.endsWith('/bootstrap')) return reply({ created: 'ledger_config.json' });
@@ -795,7 +801,8 @@ async function branchWalk(create, { confirmDelete = true, typed = null } = {}) {
       if (answer) fire(answer, 'click');
       await settle();
       const s = controller.getState();
-      out.typed = { asked: Boolean(answer), world: s.world, draft: Boolean(s.draft), dirty: s.dirty, urls: urls.splice(0) };
+      out.typed = { asked: Boolean(answer), world: s.world, draft: Boolean(s.draft), dirty: s.dirty, urls: urls.splice(0),
+        puts: puts.splice(0) };
       return out;
     }
     const select = part('branch-picker__select');
@@ -826,8 +833,9 @@ const branchSeen = async (create) => ({ yes: await branchWalk(create),
   no: await branchWalk(create, { confirmDelete: false }),
   discard: (await branchWalk(create, { typed: 'discard' })).typed,
   stay: (await branchWalk(create, { typed: 'cancel' })).typed,
-  keep: (await branchWalk(create, { typed: 'keep' })).typed });
-function branchSuite({ yes, no, discard, stay, keep }) {
+  keep: (await branchWalk(create, { typed: 'keep' })).typed,
+  refused: (await branchWalk(create, { typed: 'keep', refuseKeep: true })).typed });
+function branchSuite({ yes, no, discard, stay, keep, refused }) {
   const names = [];
   const failures = [];
   const say = (name, cond, detail) => {
@@ -868,9 +876,20 @@ function branchSuite({ yes, no, discard, stay, keep }) {
     discard.asked && discard.urls[0] === 'admin DELETE /admin/ontology-explorer/drafts/d1?expected_revision=1'
       && discard.world === 'w1' && !discard.draft && opened.length > 0 && opened.every((u) => u.includes('world=w1')),
     `${discard.asked} ${discard.world} ${discard.urls.join(' | ')}`);
-  say('Z10 Stay and Keep send nothing: the screen stays on its world with the typing',
-    [stay, keep].every((t) => t.asked && t.urls.length === 0 && t.world === null && t.draft && t.dirty),
-    [stay, keep].map((t) => `${t.asked} ${t.world} ${t.draft} ${t.dirty} ${t.urls.join(' | ')}`).join(' :: '));
+  say('Z10 Stay sends nothing: the screen stays on its world with the typing',
+    stay.asked && stay.urls.length === 0 && stay.world === null && stay.draft && stay.dirty,
+    `${stay.asked} ${stay.world} ${stay.draft} ${stay.dirty} ${stay.urls.join(' | ')}`);
+  // Keep is what it says (lead ccf374d48 answer 2): the typing goes into the draft store of the world it was
+  // typed in - the default here, so no world on it - and only then does the screen leave.
+  const kept = keep.urls.slice(1);
+  say('Z14 Keep stores the typing in the world it was typed in, then the branch opens',
+    keep.asked && keep.urls[0] === 'admin PUT /admin/ontology-explorer/drafts/d1' && keep.puts.length === 1
+      && keep.puts[0].raw === '{"class": 4}' && keep.puts[0].expected_revision === 1
+      && keep.world === 'w1' && !keep.draft && kept.length > 0 && kept.every((u) => u.includes('world=w1')),
+    `${keep.asked} ${keep.world} ${JSON.stringify(keep.puts)} ${keep.urls.join(' | ')}`);
+  say('Z15 a refused Keep stays, with the typing',
+    refused.asked && refused.urls.length === 1 && refused.world === null && refused.draft && refused.dirty,
+    `${refused.asked} ${refused.world} ${refused.draft} ${refused.dirty} ${refused.urls.join(' | ')}`);
   return { ran: names.length, names, failures };
 }
 const branchBase = branchSuite(await branchSeen(createOntologyExplorerController));
@@ -907,12 +926,17 @@ failed += branchBase.failures.length;
           .module.withWorld;
         return (await loadWithProbe(SUBJECT, { stubs: { './world.js': { withWorld: loud } } })).module.createOntologyExplorerController;
       } },
-    { id: 'M20', what: 'Stay and Keep do not stay', catches: 'Z10',
-      mutate: (text) => swap(text, "    if (state.dirty && decision !== 'discard') { render(); return; }\n", '') },
+    { id: 'M20', what: 'Stay does not stay', catches: 'Z10',
+      mutate: (text) => swap(text, "    if (decision === 'cancel') { render(); return; }\n", '') },
     { id: 'M21', what: 'Discard leaves the draft in the world it was typed in', catches: 'Z9',
-      mutate: (text) => swap(text, "    if (state.dirty && decision !== 'discard') { render(); return; }\n"
-        + '    if (decision === \'discard\' && state.draft && !(await discardDraft({ ask: false }))) return;\n',
-        "    if (state.dirty && decision !== 'discard') { render(); return; }\n") },
+      mutate: (text) => swap(text,
+        "    if (decision === 'discard' && state.draft && !(await discardDraft({ ask: false }))) return;\n    state = {",
+        '    state = {') },
+    { id: 'M27', what: 'Keep leaves the typing behind', catches: 'Z14',
+      mutate: (text) => swap(text, "    if (decision === 'keep' && state.dirty) {\n", "    if (false) {\n") },
+    { id: 'M28', what: 'a refused Keep goes on anyway', catches: 'Z15',
+      mutate: (text) => swap(text, "showToast(errorMessage(error), 'error'); render(); return; }\n    }\n",
+        "showToast(errorMessage(error), 'error'); }\n    }\n") },
   ];
   const loadOf = async (m) => (m.load ? m.load()
     : (await loadWithProbe(SUBJECT, { mutate: m.mutate })).module.createOntologyExplorerController);

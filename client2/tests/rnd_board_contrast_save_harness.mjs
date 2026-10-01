@@ -16,8 +16,9 @@
  *   J  what the real chain wrote, as the real route answers it (fixtures/rnd_board_contrast_chain.json,
  *      captured by the script beside it from the implementer's gate)
  *   L  the board's one question: the lists walk what Save saves; nothing marked is the default wafer
- *   M  the branch (lead 64c380aeb): Default asks what it asked before; on a branch every request, the run
- *      row and the saved list carry it (fixtures/rnd_board_requests.before.json)
+ *   M  the branch (lead 64c380aeb): Default asks what it asked before but its saved list, which reads the
+ *      runs with no world (ccf374d48 answer 1); on a branch every request, the run row and the saved list
+ *      carry it (fixtures/rnd_board_requests.before.json)
  *
  * CONSOLE OUTPUT IS ASCII ONLY (cp949-safe) except for the sentences it quotes.
  */
@@ -437,9 +438,14 @@ async function suite(mods) {
     const onBranch = await boardOn('w1');
     const onBlank = await boardOn('  ');
     const rowKeys = (r) => (r ? Object.keys(r).sort().join(',') : '(no save)');
-    eq('M1 Default: the whole board asks what it asked before the round, byte for byte',
-      JSON.stringify(onDefault.urls) === JSON.stringify(BEFORE.urls) && rowKeys(onDefault.row) === BEFORE.saveRowKeys.join(','),
-      true);
+    // 🔴 ONE NAMED EXCEPTION (lead ccf374d48 answer 1): Default's saved list reads the runs with no world,
+    //    so that one request adds the table filter's blank condition. Every other request is the day before's.
+    const BLANK = JSON.stringify({ world: { filterType: 'text', type: 'blank' } });
+    const isList = (u) => u.includes(' GET ') && u.includes('/tables/contrast_run/data?');
+    const DEFAULT_NOW = BEFORE.urls.map((u) => (isList(u) ? `${u}&filters=${encodeURIComponent(BLANK)}` : u)).sort();
+    eq('M1 Default: the whole board asks what it asked before the round, byte for byte - but the saved list',
+      BEFORE.urls.some(isList) && JSON.stringify(onDefault.urls) === JSON.stringify(DEFAULT_NOW)
+        && rowKeys(onDefault.row) === BEFORE.saveRowKeys.join(','), true);
     eq('M2 the picker lists Default and the declaration\'s branches', onDefault.listed.join(','), '(default),w1');
     const lacking = onBranch.urls.filter((u) => !u.includes('world=w1'));
     eq('M3 on a branch every request of the board carries it',
@@ -451,7 +457,10 @@ async function suite(mods) {
     const filters = new URL(listUrl.split(' ').pop() || 'http://box', 'http://box').searchParams.get('filters');
     eq('M6 the saved list reads that branch\'s runs', filters, JSON.stringify({ world: { filterType: 'text', type: 'equals', filter: 'w1' } }));
     eq('M7 a pick hands the page the name; Default hands it none', JSON.stringify(onDefault.picked), JSON.stringify(['w1', null]));
-    eq('M8 a blank branch in the address is Default', JSON.stringify(onBlank.urls) === JSON.stringify(BEFORE.urls), true);
+    eq('M8 a blank branch in the address is Default', JSON.stringify(onBlank.urls) === JSON.stringify(DEFAULT_NOW), true);
+    const defaultList = onDefault.urls.find(isList) || '';
+    eq('M9 Default\'s saved list reads the runs with no world',
+      new URL(defaultList.split(' ').pop() || 'http://box', 'http://box').searchParams.get('filters'), BLANK);
   }
 
   return { ran, failed: failedList.slice() };
@@ -530,7 +539,10 @@ const MUTANTS = [
     from: '      const row = { ...contrastRunRow(run), ...(world ? { world } : {}) };',
     to: '      const row = { ...contrastRunRow(run) };' },
   { name: 'the-saved-list-reads-every-branch', catches: ['M6'], file: 'api.js',
-    from: '&order_desc=true${onBranch}`', to: '&order_desc=true`' },
+    from: "const onWorld = world ? { filterType: 'text', type: 'equals', filter: world } :",
+    to: "const onWorld = false ? { filterType: 'text', type: 'equals', filter: world } :" },
+  { name: 'the-default-list-reads-every-branch', catches: ['M9'], file: 'api.js',
+    from: ": { filterType: 'text', type: 'blank' };", to: ': {};' },
   { name: 'the-save-part-is-not-told-the-branch', catches: ['M5', 'M6'],
     from: ',\n        world: options.world });', to: ' });' },
   { name: 'the-picker-lists-no-branch', catches: ['M2'], file: 'api.js',

@@ -2146,9 +2146,11 @@ export function createContrastStore(deps) {
     },
     async list(limit) {
       try {
-        const onBranch = world
-          ? `&filters=${encodeURIComponent(JSON.stringify({ world: { filterType: 'text', type: 'equals', filter: world } }))}` : '';
-        const res = await doFetch(`${table(CONTRAST.runTable)}/data?limit=${limit || 10}&order_by=updated_at&order_desc=true${onBranch}`);
+        // The runs of the world read (lead ccf374d48 answer 1): a branch's by its name, the default's are
+        // the ones with no world - the table filter's own blank condition.
+        const onWorld = world ? { filterType: 'text', type: 'equals', filter: world } : { filterType: 'text', type: 'blank' };
+        const res = await doFetch(`${table(CONTRAST.runTable)}/data?limit=${limit || 10}&order_by=updated_at&order_desc=true`
+          + `&filters=${encodeURIComponent(JSON.stringify({ world: onWorld }))}`);
         if (!res.ok) return refused(res, 'Saved contrasts unreadable');
         return { ok: true, runs: contrastListModel(await res.json().catch(() => null)) };
       } catch (err) {
