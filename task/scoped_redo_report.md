@@ -68751,3 +68751,68 @@ r1  잡 A · 키 K · v=a        r2  잡 B · 키 K · v=b        r3  잡 A · �
 ```
 센 명령: ① scratchpad census(Explore) + 열어 본 7 자리 · ② probe_layerless_rows.py(박스 읽기만) · measure_layer_key_write_cost.py(시험 DB) ·
 ④ git grep -n 'run_rule(' -- '*.py' ':!tests' · 다 git grep -n origin_row_id -- 'server/*.py' ':!server/tests'
+
+---
+
+## [10-01 밤] official 재고 계획 — 덧붙임 3 (총괄 770ab70bf · 소유자 「행 단위 맵퍼로」) — 짓지 않음
+
+**바뀌는 것** — official 맵퍼가 행 단위면
+```
+⑦ 닫힘  도장은 제품이 찍는다(아래 ⑧). 운영자는 행마다 자기 항목을 내면 되고, 행 단위라 «따로 내기»는 저절로 된다
+        SDK 예약 칸(여쭐 것 ⑥)은 필요 없어진다
+가 · 교체는 이 전제에서 빠진다 — allow_retraction / allow_replace_map 은 batch 를 요구한다
+        @mapper 면 로드에서 거절(sdk_removal_needs_batch), 손 맵퍼면 행마다 «그 행»만 보고 지운다(그 판정 문장 그대로)
+추천은 그대로 나
+```
+
+**잰 것 더**
+```
+⑧ 찍는 자리  맵퍼를 부르는 곳 3 줄 · dev_bench.py · rule_run.py — 그중 제품 좌석은 rule_run 의 호출 고리 하나(나머지는 개발 벤치, 좌석을 안 거침)
+     행 단위일 때만 «넘긴 그 행»을 안다 — batch 는 지금처럼 맵퍼만
+     항목 모양이 둘(dict · GeneralUpdateItem)이고 칸이 둘(updates · batches 안의 updates) — 같은 고리 안
+   하는 일이 바뀐다 (대리-b)
+     · 운영의 «다른» 행 단위 파일 맵퍼도 그때부터 찍힌다 -> 입력 행을 지우면 그 맵퍼가 쓴 칸이 거둬진다(오늘은 남는다)
+       박스: 실린 규칙 15 중 행 단위 0 — 운영의 행 단위 파일 맵퍼 수는 여기서 셀 수 없다
+     · 판정 434 의 「여러 행에서 나온 칸은 도장을 비운다(반쪽 출처는 거둠을 틀리게 한다)」(models.origin_row_id 주석)
+       행 단위 맵퍼가 다른 행을 sql 로 읽어 칸을 만들면, 제품이 넘긴 행으로 찍는 순간 그 구분이 사라진다
+       -> 맵퍼가 «안 찍음»을 말할 길: 항목이 origin_row_id 를 «적지 않았으면» 제품이 찍고, None 을 «적었으면» 안 찍는다(여쭐 것 ⑦)
+     · 말이 바뀐다 — rule_run.retraction_refusal 의 「파일 맵퍼는 … 제품이 모릅니다」가 행 단위 규칙에는 거짓이 된다. 같은 커밋
+⑨ 찍기만 하고 층을 안 넓히면 «오늘보다 나빠지는» 칸이 있다 -> 찍기와 넓히기는 «한 커밋». 게이트 표 11
+⑩ 행 단위 속도 — 박스(DB 가 같은 기계), 실제 좌석 rule_run.run_rule, dt_log 1,000 행 한 묶음, 읽기 전용 세션, 세 번 중 가운데
+     표본 맵퍼        행 단위        batch
+     sql 없음         0.072 s     0.07 s
+     키 조회 sql 하나  0.401 s     0.091 s      <- 행 단위는 sql 이 1,000 번, batch 는 1 번
+     좌석의 행 단위 고리 자체는 값이 거의 없다. 비용은 «맵퍼 안에서 행마다 읽는 것»이다
+```
+
+**층 0 행을 지우는 문** (나 · 다 공통 — 앞 절에 빠졌던 것)
+```
+문     crud.purge_map_rows — 표 이름을 받는 일반 문(이름만 map). DELETE 를 같은 flush 에 남기고 · 행 지움 이력을 적고 · 층 · 덮어쓰기 · 행을 지운다
+       스스로 커밋하지 않아 체인 쓰기 트랜잭션 안에서 부를 수 있다. crud.delete_rows_batch(그리드 지우기)는 스스로 커밋해서 여기선 못 쓴다
+따라오는 것  그 DELETE 가 원장 후속(판정 129 ㉤)과 체인 거둠(_retract_what_those_rows_fed)으로 간다
+       -> official 행이 사라지면 그 행에서 나온 원자와, 그 행이 먹인 다른 표의 칸도 같이 빠진다. 되돌리기 = 받치는 행이 다시 오면 다시 생김
+곁에서 본 것  가 의 거둠(dt_map_derivation.apply_retraction)은 세 지우기를 손으로 적고 DELETE 도 이력도 안 남긴다
+       (지운 id 는 화면 알림에만 실린다 — ingestion_worker 의 row_delete_message). 그래서 거둠으로 지운 행은 원장 후속과 이력에 안 닿는다
+       오늘 allow_retraction 을 쓰는 규칙 전부에 해당. 이번 일 밖 — 따로 올립니다
+```
+
+**게이트 표 덧붙임** (픽스처는 앞 절 그대로 — r1 이 나중에 씀)
+```
+11 찍기만 먼저 착지(층 안 넓힘) 뒤 r1 지움
+   기대  행 2 · 층 1 · 뜸 b
+   오늘(찍기 없음)  K 남음 · 뜸 a — 낡았지만 값은 있다
+   찍기만          K.v 층 0 -> NULL — r2 가 받치는데 빈 칸. 오늘보다 나쁨
+   나              ✓  -> 찍기와 넓히기는 한 커밋
+12 행 단위 선언(require · allow_chain_trigger, is_batch 없음)이 로드되고 행마다 한 번 불린다
+   박스 잼  로드 판정 거절 0 · 50 행 넘김 -> 맵퍼 50 번 · 번마다 1 행 · 항목 50
+13 다른 행 단위 맵퍼(official 아님)의 입력 행 지움
+   오늘  그 맵퍼가 쓴 칸 남음     나(⑧ 포함)  거둬짐 — 하는 일이 바뀜, 여쭐 것 ⑦ 의 답대로
+```
+
+**여쭐 것 더**
+```
+⑦ 제품이 행 단위 항목에 도장을 찍을 때, 맵퍼가 «안 찍음»을 말하는 길(None 을 적음)을 두나 — 판정 434 의 반쪽 출처 구분
+⑥(앞 절)은 행 단위 전제로 «필요 없음»으로 닫힘
+```
+센 명령: ⑧ git grep -n 'bound.call\|\.call(db' -- 'server/*.py' ':!server/tests' · 박스 규칙 수 loaded_chain_rules() ·
+⑩ probe_per_row_speed.py · 12 probe_per_row_calls.py (둘 다 읽기 전용 세션, 박스)
