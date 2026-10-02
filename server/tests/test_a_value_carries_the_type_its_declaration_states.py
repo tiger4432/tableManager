@@ -127,3 +127,36 @@ def test_the_authoring_form_offers_what_the_emitter_honours():
 
     assert set(lists["value_type"]) == set(EMITTABLE_VALUE_TYPES)
     assert "string" in lists["value_type"]
+
+
+def test_a_timestamp_value_carries_its_column_not_the_event_time():
+    """🔴 총괄 0c9b6e3c0 ③. The declarative mapper picked the event time Role by KIND, and a
+    timestamp value Role is kind `time` too - so it was filled with the event instant and
+    its column dropped. Picked by NAME now, as the custom mappers do."""
+    import copy
+    from datetime import datetime, timezone
+
+    from ledger.roleframe import map_event_frame, mapper_context
+    from test_ledger_roleframe import OCCURRED_AT, event_frame, implementations
+    from test_ledger_setup_bundle import DEFAULT_CATALOG, logical_bundle, source_profile
+    from test_ledger_setup_registry import snapshot
+
+    raw = logical_bundle()
+    raw["vocabulary"]["moves_to@1"]["object"] = {
+        "kind": "value", "value_type": "timestamp",
+        "qualifiers": {"required": [], "optional": []}}
+    bind = source_profile(raw)["mappings"]["main_transition"]["bind"]
+    bind.pop("target")
+    bind.pop("event_key")
+    bind["value"] = {"kind": "column", "column": "measured_at", "timezone": "Asia/Seoul"}
+    catalog = copy.deepcopy(DEFAULT_CATALOG)
+    catalog["input_rows"]["columns"]["measured_at"] = "datetime"
+    compiled = snapshot(raw, catalog=catalog)
+    rows = [{"source_id": "IN-1", "target_id": "OUT-1", "event_at": OCCURRED_AT,
+             "event_key": "E-1", "measured_at": "2026-01-05 08:00:00"}]
+
+    roles = map_event_frame(mapper_context(compiled, "input_rows"),
+                            event_frame(compiled, rows), implementations()).iloc[0]["roles"]
+
+    assert roles["value"] == datetime(2026, 1, 4, 23, 0, tzinfo=timezone.utc)
+    assert roles["occurred_at"] == OCCURRED_AT

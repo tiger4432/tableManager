@@ -37,6 +37,7 @@ from .ledger_frame import (
     ledger_frame_of,
     validate_ledger_rows,
 )
+from .setup_bundle import is_event_time_role
 from .setup_registry import (
     ClaimDescriptor,
     ImplementationKey,
@@ -354,12 +355,13 @@ class DeclarativeRoleMapper(BaseLedgerMapper):
             # match says nothing here and goes on to the next sentence.
             if mapping.when and not _unit_says(unit_columns, mapping.when):
                 continue
-            claim = context.snapshot.claims.get(mapping.predicate_id)
             roles = {}
             for role_id, binding in mapping.bindings.items():
-                role = None if claim is None else claim.roles.get(role_id)
-                if role is not None and role.kind == "time":
-                    # A TIME Role is filled from the instant the preparation boundary
+                if is_event_time_role(role_id):
+                    # 🔴 BY NAME, NOT BY KIND (총괄 0c9b6e3c0 ③). A `timestamp` value Role is
+                    # kind `time` too; asking the kind filled it with the event instant and
+                    # dropped its column.
+                    # The EVENT TIME Role is filled from the instant the preparation boundary
                     # already interpreted (`SOURCE_OCCURRED_AT_COLUMN`), never from the
                     # frame cell the binding names.  The custom mapper does exactly this
                     # (`ledger_v2_dt_job_mapper.interpret_unit`) and never reads its
