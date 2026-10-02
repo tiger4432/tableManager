@@ -542,6 +542,7 @@ function readContext(schema, expanded) {
     renderRow: () => null,
     suggest: (row) => row,
     hot: [],
+    defaultsOnly: () => false,
     expanded: expanded || {},
     absolute: (at) => at,
   };
@@ -1183,13 +1184,23 @@ function formatValue(value) {
 // first at the cost of the second.
 const sameValue = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
 
-/** What a candidate READS as. An object candidate says which slot it fills. */
-function candidateLabel(item) {
+/** What a candidate READS as. An object candidate says the keys whose values differ across the
+ *  candidates (lead 04cecc30f) - a key they all carry alike tells no chip from another. */
+function candidateLabel(item, candidates = []) {
   if (typeof item === 'string') return item;
   if (item && typeof item === 'object' && !Array.isArray(item)) {
-    return Object.entries(item).map(([key, held]) => `${key} · ${held}`).join(' · ');
+    const keys = Object.keys(item).filter((key) => candidates.some(
+      (other) => !sameValue(other && typeof other === 'object' ? other[key] : undefined, item[key])));
+    return (keys.length ? keys : Object.keys(item)).map((key) => `${key} · ${item[key]}`).join(' · ');
   }
   return JSON.stringify(item);
+}
+
+/** Does the skeleton say this list holds records, with record candidates to pick (lead 04cecc30f)? */
+function recordItems(node, candidates, defs) {
+  const of = node && node.kind === 'map' && node.keyed_by === 'index' ? node.of : null;
+  const item = of && of.use ? (defs || {})[of.use] : of;
+  return Boolean(item && item.kind === 'record' && candidates.length);
 }
 
 /** Is this candidate the one the draft currently holds? */
@@ -1391,7 +1402,10 @@ export function renderAuthoringRow(row, expanded = [], editable = null, bare = f
     // the acceptance bar forbids -- so the reason is rendered, not implied.
     const line = button('', 'toggle-field', row.path, 'oe-field-folded');
     line.setAttribute('aria-expanded', 'false');
-    line.append(h('code', 'oe-folded-value', formatValue(row.value)));
+    // An optional row the server grounds says what its blank MEANS in the value's place (lead
+    // 04cecc30f ②: 「Not an event」) - one word on the same line, so 8fd2f185d's space holds.
+    line.append(h('code', 'oe-folded-value', row.state === 'unanswered' && row.ground
+      ? row.ground.text : formatValue(row.value)));
     // 🔴 THE REASON BELONGS TO WHICHEVER COLUMN OWNS IT. In the tree the row's state column
     // already says 「선언됨」, so repeating it here put the same word at two x-positions and
     // rendered as one run of text -- `dt_log선언됨`. Outside the tree there IS no state
@@ -1520,7 +1534,7 @@ export function renderAuthoringRow(row, expanded = [], editable = null, bare = f
         box.append(renderClosedList(
           closedListChoice(editable.options, editable.value, { name: row.label }),
           h, { action: 'edit-field', path: row.path, label: row.label }));
-      } else if (editable.kind === 'list') {
+      } else if (editable.kind === 'list' && !editable.records) {
         // The entity-keys shape, generalised: the rows edit the same draft buffer through
         // the same path tools, so save, dirty-tracking and the revision guard are untouched.
         // 🔴 THE LIST THE BOXES SHOW RIDES ON THE CONTROLS. A derived default is IN the box
@@ -1543,7 +1557,7 @@ export function renderAuthoringRow(row, expanded = [], editable = null, bare = f
         const add = button('+ Enter by hand', 'add-field-item', row.path, 'oe-field-row-add');
         add.dataset.list = shown;
         box.append(add);
-      } else if (editable.kind !== 'object') {
+      } else if (editable.kind !== 'object' && !editable.records) {
         box.append(nameInput(editable.value, 'edit-field'));
       }
       box.append(list);
@@ -1575,9 +1589,12 @@ export function renderAuthoringRow(row, expanded = [], editable = null, bare = f
             continue;
           }
           const on = candidateChosen(editable, item);
-          const chip = button(candidateLabel(item), 'pick-candidate', row.path,
+          const next = pickedValue(editable, item);
+          const clears = editable.records && next.length === 0;
+          const chip = button(candidateLabel(item, row.candidates),
+                              clears ? 'form-clear' : 'pick-candidate', clears ? editable.at : row.path,
                               'oe-chip oe-pick' + (on ? ' is-on' : ''));
-          chip.dataset.pick = JSON.stringify(pickedValue(editable, item));
+          if (!clears) chip.dataset.pick = JSON.stringify(next);
           chip.setAttribute('aria-pressed', String(on));
           picks.append(chip);
         }
@@ -1709,6 +1726,16 @@ function attentionPaths(plan) {
 function needsAttention(hot, absolute) {
   return hot.some((item) => item === absolute
     || item.startsWith(absolute + '.') || item.startsWith(absolute + '['));
+}
+
+/** Is every plan row under this absolute path the server's default or an optional row left
+ *  empty, with at least one default (lead 04cecc30f)? Whether anything there is still owed is
+ *  `needsAttention`'s question, not this one's. */
+function defaultsOnly(plan, absolute) {
+  const rows = (plan.fields || []).filter((row) => row.path.startsWith(absolute + '.')
+    || row.path.startsWith(absolute + '['));
+  const isDefault = (row) => row.state === 'derived' && row.disposition === 'default_overridable';
+  return rows.some(isDefault) && rows.every((row) => isDefault(row) || row.state === 'unanswered');
 }
 
 /** One guide per ancestor (lead 619befe8c), placed by the stylesheet from `--oe-guide`. Out of
@@ -1857,11 +1884,13 @@ export function renderSkeletonForm(context, node, path, value, depth = 0, label 
   //    같은 줄이 화면마다 다르게 태어납니다.
   // ⚠️ 자식을 «먼저» 짓는 이유: 하나뿐인 자식을 감추지 않으려면 몇인지 알아야 하고, 그 수는
   //    접힌 줄이 화면에 적는 수(「접힘 · N」)와 «같은 수»여야 합니다.
+  const defaults = Boolean(path && context.defaultsOnly && context.defaultsOnly(path));
   const open = fieldOpensByDefault({
     isRoot: !path,
     chosen: context.expanded ? context.expanded[path] : undefined,
     depth,
     attention: needsAttention(context.hot, context.absolute(path)),
+    defaultsOnly: defaults,
     // A member of an index list -- its address ends in `[n]` -- follows its list open.
     indexMember: typeof splitBundlePath(path).slice(-1)[0] === 'number',
     emptyDoor: !context.readOnly && shape.kind === 'map'
@@ -1875,7 +1904,7 @@ export function renderSkeletonForm(context, node, path, value, depth = 0, label 
     // apart from an emptiness.
     const hidden = children.childElementCount;
     const toggle = path
-      ? button(open ? '−' : 'Folded · ' + hidden, 'toggle-field', path,
+      ? button(open ? '−' : (defaults ? 'Defaults · ' : 'Folded · ') + hidden, 'toggle-field', path,
                open ? 'oe-node-fold' : 'oe-node-folded')
       : null;
     if (toggle) toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
@@ -2321,6 +2350,12 @@ function renderAuthoring(state) {
                            getAtPath(draftRaw, steps));
     const closed = closedListFor(row.candidates);
     const candidates = Array.isArray(row.candidates) ? row.candidates : [];
+    // A list of records is chips only (lead 04cecc30f): a record has no name box, and `at` is where
+    // the last chip takes the key out - the grammar refuses an empty list.
+    if (recordItems(node, candidates, skeleton?.defs)
+        && (current === undefined || Array.isArray(current))) {
+      return { kind: 'list', records: true, value: current || [], at: row.path.slice(prefix.length) };
+    }
     if (typeof current === 'string') {
       return closed ? { kind: 'closed', value: current, options: closed }
                     : { kind: 'string', value: current };
@@ -2547,6 +2582,7 @@ function renderAuthoring(state) {
     //    no `fields` array is the first; an empty one is the second.
     planLoaded: Array.isArray(plan.fields),
     hot: attentionPaths(plan),
+    defaultsOnly: (path) => defaultsOnly(plan, base ? base + '.' + path : path),
     expanded: state.expandedFields || {},
     absolute: (path) => (base ? base + '.' + path : path),
     suggest: (row, node, path) => {

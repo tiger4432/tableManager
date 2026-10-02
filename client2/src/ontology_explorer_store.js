@@ -506,6 +506,9 @@ export function fieldOpensByDefault(facts) {
   //    없고, 접어 두면 체인 창에서 짝 하나의 left · right 에 닿는 데 클릭이 «둘» 들었습니다.
   //    목록 자체가 접혀 있으면 항목은 애초에 안 그려지니, 이 줄이 펴는 것은 «편 목록의 항목»뿐입니다.
   if (f.indexMember) return true;
+  // 🔴 [총괄 04cecc30f · 소유자 「read 굳이 없애진 말고 일단 손안가게 잘 접어놔」] 아래 줄이 «전부»
+  //    서버 기본값이고 남은 것이 없는 가지는 접혀 시작합니다 — 윤곽(그 가지의 줄)은 그대로 그려집니다.
+  if (f.defaultsOnly && !f.attention) return false;
   return Boolean(f.depth <= 1 || f.attention || f.emptyDoor || f.childCount === 1);
 }
 

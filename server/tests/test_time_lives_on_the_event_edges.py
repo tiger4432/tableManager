@@ -236,3 +236,81 @@ def test_retired_binding_cells_go_only_when_asked():
     lines = slim.report(copy.deepcopy(document), CATALOG)
     assert any(line.startswith("retired binding cells:") for line in lines), "canary: the sample has some"
     assert slim.drop_retired(document) and "approval_status" not in json.dumps(document)
+
+
+# ------------------------------------------------------------------ the form (lead 5c3e49954)
+
+def test_a_source_with_no_read_opens_its_form_with_no_read_cell_owed():
+    """The RELEASE_LOG example: die_inspection writes no `read`, its event edge binds the time and
+    its zone. The authoring plan used to refuse to build (the zone row was derived with no ground),
+    so the whole form failed; no read cell is owed now."""
+    from ledger.config_authoring import authoring_plan
+
+    document = _document()
+    source = _die_inspection(document)
+    del source["read"]
+    source["bind"]["mappings"]["die-inspected"]["bind"]["occurred_at"]["timezone"] = ZONE
+    plan = authoring_plan(document, CATALOG, selection_prefix="bundle.sources.die_inspection")
+    rows = {f["path"]: f for f in plan["fields"]}
+    zone = rows["bundle.sources.die_inspection.read.occurred_at.timezone"]
+    assert (zone["state"], zone["disposition"], zone["ground"]["rule"], zone["ground"]["text"], zone["value"]) == (
+        "derived", "default_overridable", "read_default", "Default: " + ZONE, ZONE)
+    read = [f for p, f in rows.items() if p.startswith("bundle.sources.die_inspection.read.")]
+    assert read and not [f["path"] for f in read if f.get("remaining")], [f["path"] for f in read]
+
+
+def test_an_unbound_event_time_says_not_an_event_and_no_other_unbound_role_does():
+    """Lead 04cecc30f 2: the mapping's time role left blank is a not-an-event edge, and the form
+    says so through `is_event_time_role`; another unbound role in the same branch stays ungrounded."""
+    from ledger.config_authoring import authoring_plan
+
+    document = _document()
+    _with_a_not_an_event_mapping(document)
+    del _die_inspection(document)["bind"]["mappings"]["die-in-wafer"]["bind"]["target"]
+    plan = authoring_plan(document, CATALOG, selection_prefix="bundle.sources.die_inspection")
+    rows = {f["path"]: f for f in plan["fields"]}
+    at = "bundle.sources.die_inspection.bind.mappings.die-in-wafer.bind."
+    time, target = rows[at + "occurred_at"], rows[at + "target"]
+    assert (time["state"], time["ground"]["rule"], time["ground"]["text"]) == (
+        "unanswered", "not_an_event", "Not an event")
+    assert (target["state"], target["ground"]) == ("missing", None)
+
+
+def test_exclude_when_is_one_row_whose_candidates_are_clauses_the_validator_takes():
+    """Lead 04cecc30f 3: one row over the relation's columns; a candidate is the whole clause,
+    so writing one as it is validates and the screen owns no shape."""
+    from ledger.config_authoring import authoring_plan, relation_columns
+
+    document = _document()
+    source = _die_inspection(document)
+    source["read"].pop("exclude_when", None)
+    path = "bundle.sources.die_inspection.read.exclude_when"
+    row = {f["path"]: f for f in authoring_plan(
+        document, CATALOG, selection_prefix="bundle.sources.die_inspection")["fields"]}[path]
+    columns = relation_columns(CATALOG, source["relation"])
+    assert columns
+    assert (row["state"], row["value"], row["universe"]) == ("unanswered", None, "RELATION")
+    assert row["candidates"] == [{"column": name, "blank": True} for name in columns]
+    source["read"]["exclude_when"] = [row["candidates"][0]]
+    assert validate_bundle_errors(document, catalog=CATALOG) == ()
+    held = {f["path"]: f for f in authoring_plan(
+        document, CATALOG, selection_prefix="bundle.sources.die_inspection")["fields"]}[path]
+    assert (held["state"], held["value"]) == ("answered", [row["candidates"][0]])
+
+
+def test_a_mapper_unit_left_out_is_the_loaders_default_not_a_red_square():
+    """The loader fills `map.unit` a source leaves out (`source_defaults`); the form drew the row
+    missing, so a slim source opened with one remaining square nobody had to fill."""
+    from ledger.config_authoring import authoring_plan
+
+    document = _document()
+    del _die_inspection(document)["map"]["unit"]
+    path = "bundle.sources.die_inspection.map.unit.kind"
+    row = {f["path"]: f for f in authoring_plan(
+        document, CATALOG, selection_prefix="bundle.sources.die_inspection")["fields"]}[path]
+    assert (row["state"], row["disposition"], row["ground"]["rule"], row["value"]) == (
+        "derived", "default_overridable", "read_default", "row")
+    _die_inspection(document)["map"]["unit"] = {}
+    row = {f["path"]: f for f in authoring_plan(
+        document, CATALOG, selection_prefix="bundle.sources.die_inspection")["fields"]}[path]
+    assert row["state"] == "missing"            # a unit written without its kind is still owed

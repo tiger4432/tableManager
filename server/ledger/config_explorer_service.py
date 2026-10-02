@@ -34,7 +34,7 @@ from .setup import (
 )
 from .setup_bundle import (
     CONFIG_FILENAME, LOGICAL_SECTIONS, SETUP_VERSION, LedgerSetupValidationError,
-    _read_json, _resolve_config_path,
+    _read_json, _resolve_config_path, upgrade_setup,
 )
 
 
@@ -1092,7 +1092,11 @@ class OntologyExplorerService:
                 "stale_base_snapshot", "base_snapshot_hash",
                 "active snapshot changed before draft creation",
             )
-        return self.draft_store.create(setup, index, target_key)
+        # 총괄 04cecc30f (가): the draft starts from the FILE as the loader reads it, not from the
+        # index's node - that is the bundle whose left-out cells the product already filled, so
+        # saving it wrote every default into the file.
+        return self.draft_store.create(setup, index, target_key,
+                                       upgrade_setup(read_config_document(self.config_root)))
 
     def create_declaration_draft(self, *, kind: str, canonical_id: str,
                                  base_snapshot_hash: str) -> dict[str, Any]:

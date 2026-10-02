@@ -927,7 +927,7 @@ const FLOORS = new Map([
   // every request, a pick starts the screen over (unsaved typing through the one dirty decision), a branch
   // is made by the bootstrap and deleted after its preview; the picker makes nothing from a blank name and keeps a name across redraws.
   // 74 -> 78 (lead ccf374d48 answer 2): Keep stores the typing in the world it was typed in; a refused Keep stays.
-  ['explorer_open_path_harness.mjs', 85],
+  ['explorer_open_path_harness.mjs', 90],
   // New with lead 619befe8c: where an edit sits in the ledger form — a guide per ancestor on every
   // row of the real skeleton's form, the trail as the declaration path's own words, the path bar
   // part, and no skeleton word in the bar's code.
@@ -1231,7 +1231,7 @@ const FLOORS = new Map([
   // screen that omits it makes that promise on the server's behalf. H5/H6 hold the two
   // silent states, and I3 holds that a code-less issue draws no code rather than a blank.
   // 94 -> 95 (lead 810d0044b ②): E3 counts action lines with words in them, E9 no empty action line.
-  ['ontology_authoring_panel_harness.mjs', 95],
+  ['ontology_authoring_panel_harness.mjs', 110],
   // New with the N2 round (overlay markers coloured by the overlay cell's own value). Same
   // rule: floor is the count it reports on the commit that introduces it.
   // 70 as of 2026-08-04: A12 (loading an overlay REGISTERS its values, so the colouring this

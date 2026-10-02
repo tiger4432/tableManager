@@ -1061,6 +1061,92 @@ failed += pickerBase.failures.length;
   failed += scored.wrong;
 }
 
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+// [9] lead 04cecc30f — the slim source's form, through the controller's own clicks: opening the
+//     folded read writes nothing, and a record chip writes only its own key and takes it back out.
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+console.log('\n[9] the source form writes only what was picked');
+{
+  const on = { click: [] };
+  const root = element('div');
+  root.addEventListener = (type, fn) => { if (on[type]) on[type].push(fn); };
+  const settle = async () => { for (let i = 0; i < 20; i += 1) await new Promise((r) => setImmediate(r)); };
+  const press = async (el) => { el.closest = () => el; el.disabled = false; for (const fn of on.click) await fn({ target: el }); await settle(); };
+  const SKEY = 'source_plan|s';
+  const leaf = { kind: 'leaf', hint: 'free' };
+  const SOURCE_SCHEMA = {
+    authorable_kinds: [{ id: 'source_plan', section: 'sources', versioned: false }],
+    skeleton: { defs: {}, root: { kind: 'record', fields: [
+      { key: 'sources', required: true, node: { kind: 'map', keyed_by: 'name', member: 'Source',
+        of: { kind: 'record', fields: [
+          { key: 'relation', required: true, node: leaf },
+          { key: 'read', required: false, node: { kind: 'record', fields: [
+            { key: 'unit', required: false, node: leaf },
+            { key: 'exclude_when', required: false, node: { kind: 'map', keyed_by: 'index',
+              member: 'Condition', of: { kind: 'record', fields: [
+                { key: 'column', required: true, node: leaf },
+                { key: 'blank', required: true, node: { kind: 'leaf', hint: 'flag' } }] } } }] } }] } } }] } },
+  };
+  const SLIM = { relation: 't' };
+  const row = (over) => ({ step: 'sources', tier: 'constrained_input', declared: null, has_declared: false,
+    conflicts: false, ground: null, candidates: null, universe: null, universe_note: '', locked: [],
+    comparison: 'equal', reshapes: false, disposition: '', forbidden: [], note: '', refusals: [], ...over });
+  const planOf = (raw) => {
+    const held = raw.read && raw.read.exclude_when;
+    return { ...AUTHORING, fields: [
+      row({ path: 'bundle.sources.s.read.unit', label: 'Unit', state: 'derived', tier: 'derivation',
+        value: 'row', disposition: 'default_overridable',
+        ground: { rule: 'read_default', text: 'Default: "row"', from_paths: ['bundle.sources.s.read'],
+                  from_keys: [], from_value: 'row' } }),
+      row({ path: 'bundle.sources.s.read.exclude_when', label: 'Exclude when blank',
+        state: held ? 'answered' : 'unanswered', value: held || null, universe: 'RELATION',
+        candidates: [{ column: 'a', blank: true }, { column: 'b', blank: true }] }),
+    ] };
+  };
+  const SELECTION = { key: SKEY, canonical_id: 's', kind: 'source_plan', context_token: 'ctx:1', raw: SLIM };
+  const VIEWED = { ...COMPILE, selection: SELECTION, items: [SELECTION] };
+  const SDRAFT = { draft_id: 'd1', target_key: SKEY, target_kind: 'source_plan', target_id: 's',
+    revision: 1, raw: SLIM, lifecycle_status: 'draft', validation_errors: [], context_token: 'ctx:1' };
+  const fetchOf = async (url, init = {}) => {
+    const u = String(url);
+    const path = u.split('?')[0];
+    const method = init.method || 'GET';
+    let body = /draft_id=d1/.test(u) ? { ...VIEWED, draft: SDRAFT } : VIEWED;
+    if (/\/drafts$/.test(path) && method === 'POST') body = SDRAFT;
+    else if (path.endsWith('/authoring/schema')) body = SOURCE_SCHEMA;
+    else if (path.endsWith('/authoring/plan') && method === 'POST') body = planOf(JSON.parse(JSON.parse(init.body).raw));
+    else if (path.endsWith('/authoring/plan')) body = planOf(SLIM);
+    return { ok: true, status: 200, json: async () => body };
+  };
+  const controller = createOntologyExplorerController({ root, apiBase: '', adminFetch: fetchOf, showToast: () => {} });
+  await controller.refresh();
+  await settle();
+  const create = { dataset: { action: 'create-draft' } };
+  await press(create);
+  const text = () => controller.getState().editorText;
+  const find = (test) => walkAll(root).find(test);
+  const toggle = (value) => find((n) => n.dataset?.action === 'toggle-field' && n.dataset.value === value);
+  const chip = (label) => find((n) => n._classes?.includes('oe-pick') && n.textContent === label);
+  const before = text();
+  ok('F0 the draft is open on the slim source', JSON.stringify(JSON.parse(before || 'null')) === JSON.stringify(SLIM), before);
+  // The count is the panel harness's (K1): this stub has no childElementCount.
+  ok('F1 read starts folded on its defaults', String(toggle('read')?.textContent).startsWith('Defaults · '),
+    toggle('read')?.textContent);
+  if (toggle('read')) await press(toggle('read'));
+  ok('F2 opening it writes nothing - the draft is byte-identical', text() === before);
+  const own = toggle('bundle.sources.s.read.exclude_when');
+  if (own) await press(own);
+  if (chip('column · a')) await press(chip('column · a'));
+  const once = JSON.parse(text());
+  ok('F3 a chip writes its clause and nothing else',
+    JSON.stringify(once) === JSON.stringify({ relation: 't', read: { exclude_when: [{ column: 'a', blank: true }] } }),
+    JSON.stringify(once));
+  if (chip('column · a')) await press(chip('column · a'));
+  const back = JSON.parse(text());
+  ok('F4 its last chip takes the key out - no empty list is written',
+    back.read && !('exclude_when' in back.read), JSON.stringify(back));
+}
+
 console.log(`\n════ RESULT: ${ran - failed} passed, ${failed} failed ════`);
 console.log(`ASSERTIONS ${ran} ${failed}`);
 process.exit(failed === 0 ? 0 : 1);

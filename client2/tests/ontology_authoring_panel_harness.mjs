@@ -995,5 +995,112 @@ const renderDraft = (plan) => {
     byClass(shut, 'oe-node-folded').map((n) => n.textContent).join(' | '));
 }
 
+// ── L. lead 04cecc30f ②: a blank optional row the server grounds says what blank MEANS ──────
+// The folded line draws the value only (8fd2f185d); for an unanswered row with a ground the
+// ground's word stands in the value's place. A derived row waiting on its input keeps 「—」.
+{
+  const { renderAuthoringRow } = await import('../src/ontology_explorer_view.js');
+  const NOT_AN_EVENT = { rule: 'not_an_event', text: 'Not an event',
+    from_paths: ['bundle.vocabulary.in_container@1'], from_keys: [], from_value: null };
+  const folded = (over) => at(byClass(renderAuthoringRow(field({
+    path: 'bundle.sources.s.bind.mappings.m.bind.occurred_at', ...over }), [], null, true),
+  'oe-folded-value'), 0).textContent;
+  eq('L1 a blank event time says Not an event', folded({ state: 'unanswered', ground: NOT_AN_EVENT }),
+    'Not an event');
+  eq('L2 a blank optional row with no ground still says —', folded({ state: 'unanswered' }), '—');
+  eq('L3 a derived row waiting on its input keeps — beside its ground',
+    folded({ state: 'derived', tier: 'derivation', disposition: 'shape', ground: NOT_AN_EVENT }), '—');
+  eq('L4 an answered row draws its value, not its ground',
+    folded({ state: 'answered', value: 'observed_at', ground: NOT_AN_EVENT }), 'observed_at');
+}
+
+// ── K. lead 04cecc30f ①③: a read of server defaults folds; a record list is chips only ──────
+// Its own skeleton and plan: `read` holds one default (`unit`) and one optional record list
+// (`exclude_when`, which the skeleton says holds records), and the document holds no `read`.
+{
+  const CLAUSE = (column) => ({ column, blank: true });
+  const leaf = { kind: 'leaf', hint: 'free' };
+  const SOURCE_SKELETON = { defs: {}, root: { kind: 'record', fields: [
+    { key: 'sources', required: true, node: { kind: 'map', keyed_by: 'name', member: 'Source',
+      of: { kind: 'record', fields: [
+        { key: 'relation', required: true, node: leaf },
+        { key: 'read', required: false, label: 'Read', node: { kind: 'record', fields: [
+          { key: 'unit', required: false, node: leaf },
+          { key: 'exclude_when', required: false, node: { kind: 'map', keyed_by: 'index',
+            member: 'Condition', of: { kind: 'record', fields: [
+              { key: 'column', required: true, node: leaf },
+              { key: 'blank', required: true, node: { kind: 'leaf', hint: 'flag' } },
+            ] } } },
+        ] } },
+      ] } } },
+  ] } };
+  const at = (rest) => `bundle.sources.s.${rest}`;
+  const UNIT = field({ path: at('read.unit'), label: 'Unit', state: 'derived', tier: 'derivation',
+    value: 'row', disposition: 'default_overridable',
+    ground: { rule: 'read_default', text: 'Default: "row"', from_paths: [at('read')],
+              from_keys: [], from_value: 'row' } });
+  const EXCLUDE = (over = {}) => field({ path: at('read.exclude_when'), label: 'Exclude when blank',
+    state: 'unanswered', value: null, candidates: [CLAUSE('a'), CLAUSE('b')],
+    universe: 'RELATION', universe_note: 'Table columns', ...over });
+  const draw = (rows, raw, expandedFields = {}) => {
+    const root = element('div');
+    renderOntologyExplorer(root, {
+      ...initialExplorerState,
+      authoring: { ...PLAN, fields: rows, unattached_refusals: [] },
+      detailTab: 'authoring',
+      activeSnapshot: { snapshot_hash: 'abc12345', valid: true },
+      viewContext: { mode: 'active', context_token: 'active:abc12345' },
+      selection: { key: 'source_plan|s', canonical_id: 's', kind: 'source_plan',
+        config_path: 'bundle.sources.s', compile_status: 'valid',
+        config_file: 'ledger_config.json', raw },
+      authoringSchema: { skeleton: SOURCE_SKELETON,
+        authorable_kinds: [{ id: 'source_plan', section: 'sources', versioned: false }] },
+      navigation: { back: [], forward: [] },
+      draft: { target_kind: 'source_plan', target_id: 's' },
+      editorText: JSON.stringify(raw),
+      expandedFields,
+    });
+    return root;
+  };
+  const toggleOf = (root, path) => walk(root).find((n) => n.dataset?.action === 'toggle-field'
+    && n.dataset.value === path);
+  const chips = (root) => walk(root).filter((n) => n._classes?.includes('oe-pick'));
+  const SLIM = { relation: 't' };
+
+  eq('K1 a read of server defaults and an empty optional row starts folded, saying Defaults',
+    toggleOf(draw([UNIT, EXCLUDE()], SLIM), 'read')?.textContent, 'Defaults · 2');
+  eq('K2 ...a read holding a declared value does not',
+    toggleOf(draw([{ ...UNIT, state: 'answered', disposition: '', ground: null }, EXCLUDE()], SLIM),
+      'read')?.textContent, '−');
+  eq('K2b ...nor a read with only an empty optional row and no default',
+    toggleOf(draw([EXCLUDE()], SLIM), 'read')?.textContent, '−');
+  eq('K3 ...nor one whose optional row holds a value',
+    toggleOf(draw([UNIT, EXCLUDE({ state: 'answered', value: [CLAUSE('a')] })],
+      { relation: 't', read: { exclude_when: [CLAUSE('a')] } }), 'read')?.textContent, '−');
+  const opened = draw([UNIT, EXCLUDE()], SLIM, { read: true, [at('read.exclude_when')]: true });
+  check('K4 opened, the default is drawn', byClass(opened, 'oe-folded-value')
+    .some((n) => n.textContent === 'row'), byClass(opened, 'oe-folded-value').map((n) => n.textContent).join(' | '));
+  eq('K5 a record chip says only the keys that differ across the candidates',
+    chips(opened).map((n) => n.textContent).join(' | '), 'column · a | column · b');
+  const inside = walk(walk(opened).find((n) => n.dataset?.path === 'read.exclude_when') || element('div'));
+  check('K6 a record list draws its chips and no name box and no hand entry',
+    inside.some((n) => n._classes?.includes('oe-pick'))
+      && !inside.some((n) => n.tagName === 'INPUT' || n.dataset?.action === 'add-field-item'),
+    inside.filter((n) => n.tagName === 'INPUT').length + ' inputs');
+  eq('K7 on an empty list a chip appends the whole clause',
+    chips(opened)[0]?.dataset.pick, JSON.stringify([CLAUSE('a')]));
+  const one = draw([UNIT, EXCLUDE({ state: 'answered', value: [CLAUSE('a')] })],
+    { relation: 't', read: { exclude_when: [CLAUSE('a')] } }, { read: true, [at('read.exclude_when')]: true });
+  eq('K8 with one held, the other chip appends to it',
+    chips(one)[1]?.dataset.pick, JSON.stringify([CLAUSE('a'), CLAUSE('b')]));
+  eq('K9 ...and the held one is its last chip, which takes the key out',
+    `${chips(one)[0]?.dataset.action}|${chips(one)[0]?.dataset.value}|${chips(one)[0]?.dataset.pick}`,
+    'form-clear|read.exclude_when|undefined');
+  const single = draw([UNIT, EXCLUDE({ candidates: [CLAUSE('a')] })], SLIM,
+    { read: true, [at('read.exclude_when')]: true });
+  eq('K10 one candidate has no key that differs, so it says all of them',
+    chips(single).map((n) => n.textContent).join(' | '), 'column · a · blank · true');
+}
+
 console.log(`ASSERTIONS ${ran} ${failed}`);
 if (failed) process.exit(1);

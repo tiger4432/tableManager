@@ -420,14 +420,21 @@ class OntologyDraftStore:
         self.root = Path(root)
         self._lock = RLock()
 
-    def create(self, active_setup: Any, index: ExplorerIndex, target_key: str
-               ) -> dict[str, Any]:
+    def create(self, active_setup: Any, index: ExplorerIndex, target_key: str,
+               document: Mapping[str, Any]) -> dict[str, Any]:
+        """`document` is the declaration file the draft starts from (its node only says where)."""
         node = index.node(target_key)
         if node.config_file != _EDITABLE_FILE:
             raise ConfigExplorerError(
                 "unsupported_draft_target", "target_key",
                 "this declaration is read-only in the current explorer",
             )
+        raw: Any = document
+        try:
+            for part in node.bundle_path:
+                raw = raw[part]
+        except (KeyError, IndexError, TypeError) as exc:
+            raise ConfigExplorerError("draft_target_missing", "target_key", str(exc)) from exc
         now = _now()
         record = {
             "draft_id": uuid4().hex,
@@ -440,7 +447,7 @@ class OntologyDraftStore:
             "creates_declaration": False,
             "revision": 0,
             "lifecycle_status": "editing",
-            "raw": node.raw,
+            "raw": json.loads(json.dumps(raw, ensure_ascii=False)),
             "preview_snapshot_hash": None,
             "preview_valid": False,
             "validation_errors": [],

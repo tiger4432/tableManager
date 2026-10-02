@@ -1,5 +1,27 @@
 # 지금 돌리면 되는 것
 
+> ## [10-02 밤] **원장 소스 선언 폼 — 기본값뿐인 read 는 접힌 한 줄 · exclude_when 칸 칩 · 비운 사건 시각은 Not an event (총괄 04cecc30f) — 이주 «불필요» · 재기동 «필요»(run_app.bat 전체)**
+>
+> ```
+> 무엇이 바뀌나  탐색기 저작 계획(/admin/ontology-explorer/authoring/plan)에 read.exclude_when 줄이 선다
+>              후보는 그 관계의 칸마다 {"column": <칸>, "blank": true}
+>              매핑의 사건 시각 역할을 비우면 그 줄의 ground 가 not_an_event 「Not an event」
+>              화면: read 가 Defaults · N 으로 접혀 시작 · Exclude when 은 칩만(마지막 칩을 빼면 키 지움)
+>                    레코드 칩 글자는 후보마다 값이 다른 키만(read.occurred_at 칩도)
+>              초안은 파일의 그 선언 그대로 연다(v5 파일은 로더의 v6 읽기 upgrade_setup 으로)
+>              저장은 고친 칸만 쓴다 — 로더가 채우는 칸(read 기본값 · map.unit · map.input_columns)은 비워 둔다
+>              map.unit 을 안 적은 소스의 Mapper unit 은 로더의 기본값(row, 묶는 소스는 group_by) — 빨간 칸 아님
+>              이미 쓴 원장 · 원자는 안 바뀐다. 이미 적힌 선언은 다음 저장 때도 적힌 그대로
+> 확인         관리자 화면 Ontology Explorer -> read 를 안 적은 소스 -> 초안 -> read 줄이 Defaults · N
+>              펼쳐 Exclude when 줄을 열면 column · <칸> 칩
+> 뜻           read 가 펼쳐져 있고 Exclude when 에 + Condition 만 있으면 재기동 전 서버(계획에 그 줄이 없음)
+>              read 를 적은 소스는 펼쳐진 채 시작하는 것이 맞다(기본값이 아닌 칸이 있음)
+>              read 를 안 적은 소스의 초안 편집기에 read 가 보이면 재기동 전 서버(초안이 기본값 채운 선언에서 열림)
+> 급할 때       git revert <이 커밋> -> 재기동
+> ```
+
+---
+
 > ## [10-02 저녁] **메인 그리드 — row_id 가 있는 표 끝에 ROW_ID 칸 · 그 칸으로 거르기 (총괄 e67ef53f3 · d692af408) — 이주 «불필요» · 재기동 «필요»(run_app.bat 전체)**
 >
 > ```

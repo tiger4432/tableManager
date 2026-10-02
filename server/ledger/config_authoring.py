@@ -96,6 +96,7 @@ from .setup_bundle import (
     source_defaults,
     unit_group_columns,
     validate_bundle_errors,
+    with_read_defaults,
 )
 
 #: ⚰️ THE DAY THE COMMENT ABOVE PREDICTED. It read 「`setup_bundle` spells these
@@ -1083,11 +1084,15 @@ def _implementation_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
             )
         unit = mapper.get("unit") if isinstance(mapper.get("unit"), Mapping) else {}
         kind = unit.get("kind")
+        # A unit the file leaves out is the loader's (`source_defaults`), shown as the read cells
+        # show theirs - it was a red square the loader then filled (총괄 04cecc30f).
+        filled_unit = (source_defaults(source, catalog).get("map") or {}).get("unit")
         yield Field(
             path=f"{base}.unit.kind", step="sources", label="Mapper unit",
-            state="answered" if kind else "missing", tier=TIER_CONSTRAINED,
-            value=kind, declared=kind if kind else _ABSENT,
+            tier=TIER_CONSTRAINED, declared=kind if kind else _ABSENT,
             candidates=tuple(sorted(_MAPPER_UNITS)), reshapes=True,
+            **_answer_or_default(kind, filled_unit.get("kind")
+                                 if isinstance(filled_unit, Mapping) else None, base),
         )
         if kind == "group_by":
             group_by = list(_listed(read_group_by(_driver(source))))
@@ -1281,6 +1286,10 @@ def _mapping_fields(base: str, sentence: str, mapping: Mapping[str, Any],
                 tier=TIER_CONSTRAINED,
                 candidates=tuple(role_binding_kinds(role)),
                 note=f"kind={role.get('kind')}", reshapes=True,
+                # 총괄 04cecc30f ②: an unbound event time is a not-an-event edge (`role_must_be_bound`).
+                ground=(Ground("not_an_event", "Not an event",
+                               (f"bundle.vocabulary.{predicate_id}",))
+                        if is_event_time_role(role_id) else None),
                 refusals=({
                     "code": "missing_required_role",
                     "path": f"{mpath}.bind.{role_id}",
@@ -1711,6 +1720,22 @@ def _source_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
             # outside Seoul types it once and every later source is offered that answer.
             candidates=timezone_candidates,
             note="Filled with the time · type another if it differs",
+            # A zone the file leaves out is the product's default (its event edges' zone), stated
+            # as `_answer_or_default` states one - a derived row with no ground fails the whole
+            # plan, so a slim source's form did not open (lead 5c3e49954).
+            **({"disposition": "default_overridable",
+                "ground": Ground("read_default", f"Default: {zone_default}", (f"{base}.read",),
+                                 zone_default)} if zone_default else {}),
+        )
+        # 총괄 04cecc30f ③: one row over the relation's columns; a candidate is the whole clause
+        # `_validate_exclude_when` accepts, so the screen writes no shape of its own.
+        excluded = list(_listed(driver.get("exclude_when")))
+        yield Field(
+            path=f"{base}.read.exclude_when", step="sources", label="Exclude when blank",
+            state="answered" if excluded else "unanswered", tier=TIER_CONSTRAINED,
+            value=excluded or None, declared=excluded if excluded else _ABSENT,
+            candidates=tuple({"column": name, "blank": True} for name in physical),
+            universe=UNIVERSE_RELATION,
         )
         probes = _listed(driver.get("registration_probe"))
         single_key = tuple(sorted(
@@ -2049,6 +2074,15 @@ def _fill_leaf(document: Any, steps: Sequence[Any], value: Any) -> None:
     cursor[last] = copy.deepcopy(value)
 
 
+def _holds(document: Any, steps: Sequence[Any]) -> bool:
+    """Is there a value at `steps`, addressed as `_fill_leaf` addresses (mapping keys)?"""
+    for step in steps:
+        if not isinstance(document, Mapping) or step not in document:
+            return False
+        document = document[step]
+    return True
+
+
 def filled_declaration(bundle: Mapping[str, Any], catalog: Mapping[str, Any],
                        bundle_path: Sequence[Any], raw: Mapping[str, Any]
                        ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
@@ -2062,7 +2096,8 @@ def filled_declaration(bundle: Mapping[str, Any], catalog: Mapping[str, Any],
     that said it filled itself, and the square goes red.  Measured on the half-built
     `user_test` source, 2026-08-21: of its 7 red squares, 3 were this -- both
     `implementation_version` boxes and `read.order_by` -- so three of the seven things it
-    asked a person to go and fix were things it had already answered.
+    asked a person to go and fix were things it had already answered.  NARROWED (총괄
+    04cecc30f): a cell the loader fills (`with_read_defaults`) already agrees by being left out.
 
     ONE PASS OVER THE PLAN, NOT ONE RULE PER FIELD.  The plan already knows which rows are
     derived, what each one derives to, and (via `disposition == "shape"`) which of them are
@@ -2101,6 +2136,13 @@ def filled_declaration(bundle: Mapping[str, Any], catalog: Mapping[str, Any],
     if not isinstance(cursor, dict):
         return out, dropped
     cursor[steps[-1]] = out
+    # 🔴 [총괄 04cecc30f] A CELL THE LOADER FILLS IS NOT WRITTEN - the rule above, narrowed. The
+    #    loader (`with_read_defaults`) fills a left-out cell before the bundle is hashed, so writing
+    #    its value changed only the file: every default of a slim source landed in it the first
+    #    time one of its read cells was saved. The loader is asked, not listed here.
+    loaded: Any = with_read_defaults(document, catalog)
+    for step in steps:
+        loaded = loaded.get(step) if isinstance(loaded, Mapping) else None
     # Not `selection_prefix`: that is a `startswith` over a dotted path, so saving
     # `user_test` would also match `user_test_2`'s rows and fill THEM into this body at the
     # same relative steps.  The trailing dot is what makes the prefix a whole declaration.
@@ -2117,5 +2159,8 @@ def filled_declaration(bundle: Mapping[str, Any], catalog: Mapping[str, Any],
         # answer -- so it is written.
         if row["value"] is None:
             continue
-        _fill_leaf(out, _split_path(row["path"])[len(steps):], row["value"])
+        at = _split_path(row["path"])[len(steps):]
+        if not _holds(out, at) and _holds(loaded, at):
+            continue
+        _fill_leaf(out, at, row["value"])
     return out, dropped
