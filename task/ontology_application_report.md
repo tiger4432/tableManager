@@ -35230,3 +35230,25 @@ RELEASE_LOG 맞음 — 예시 규칙 둘 · exclude_when 한 줄 · 한계 둘�
 그래서    오늘 제 첫 PG 실행 두 번이 실패하고 다시 돌리면 통과한 «원인은 모른다». 실패 문장을 못 남겼다(끝 줄만 받음)
           다음에 첫 실행이 실패하면 출력 전체를 파일로 남겨 문장을 보고에 싣는다
 ```
+
+---
+
+## [C 응용] 10-02 81ffa8499(empty_table) 문서 동기 + 🔴 가끔 나는 빨강 하나 — 내일 official 다시 짓기 «전»에 — @`c26712df9`
+
+```
+고친 문서   BACKFILL_GUIDE 상황 표에 「표 하나를 통째로 다시 짓기」 줄(보고 -> --apply --confirm-rows · 사람 층도 지움 ·
+           체인 규칙 안 깸 · 원장은 기본 세상만 거둠, 가지는 그 가지에서 · 거둠이 멈추면 backfill --whole-source --apply 다시)
+RELEASE_LOG 맞음 — 명령 둘 · 거절 둘(행 수 바뀜 · 보기) · 사람 층 한계가 코드와 같다
+```
+**가끔 나는 빨강 — 출력 전체를 남겼다 (총괄 · 구현께, 원인은 모른다)**
+```
+시험     test_a_table_is_emptied_whole_with_what_it_carried.py::test_a_count_that_moved_is_refused_and_nothing_goes
+문장     E  Failed: DID NOT RAISE <class 'empty_table.Refused'>   (confirm_rows=3 을 줬는데 거절이 안 남)
+뜻       그 순간 hc_official 이 «3 행» — 키는 둘(_seeded: A · J2)인데 행이 셋. 같은 키 행이 하나 더 생긴 모양
+그 실행의 체인 줄   hc_copy rows_in=2 rows_out=4 (size 4) -> hc_recount rows_in=2 (size 2) -> hc_recount rows_in=1 (size 1)
+빈도(박스, assy_test)  그 시험 단독 5 번 중 1 번 · 두 파일(empty_table + copied_row_holds) 6 번 연속 11 passed
+                     그리고 4115f5afb 착지 직후 copied_row_holds 첫 실행 5 failed · 2 passed(출력 못 남김) — 같은 일인지 모른다
+안 맞는 가설 하나   hold_world 표가 public 으로 샌다 — 아니다. MetaData(schema=스크래치) 에 to_metadata(schema=None) 은 그 스크래치를 따른다
+왜 지금     내일 소유자가 official 을 비우고 copy_rows_with_hold 로 다시 채운다(35b76ba92 · 04f499c74). 같은 키 행이 둘이 되는 길이
+           시험 세계 밖에서도 있다면 그 다시 채우기가 밟는다. 원인을 모르는 채로 넘기지 말자는 알림
+```
