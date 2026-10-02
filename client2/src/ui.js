@@ -127,8 +127,8 @@ export function setTransactionFilter(txId) {
     }
   });
 
-  // Reload data from skip = 0
-  fetchData(true);
+  // Reload data from skip = 0 — true when the rows are on screen.
+  return fetchData(true);
 }
 
 export async function applyValueToSelectedRange(newValue) {

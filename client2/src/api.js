@@ -488,6 +488,8 @@ export async function fetchData(resetSkip = true) {
     }
 
     state.isLoadingMore = false;
+    // The rows are on screen. A caller that must say WHAT it showed asks this; the others ignore it.
+    return true;
   } catch (err) {
     console.error('Failed to fetch data', err);
     elements.performanceLog.textContent = 'Data fetch failed';

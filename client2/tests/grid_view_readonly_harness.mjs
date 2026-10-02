@@ -28,6 +28,8 @@
  *      server's sentence, empties the grid, and says 「not counted」 rather than 「0」
  *   W  the row delete WAITS VISIBLY (a0ae05b60): its button off with a reason, the seconds
  *      counted, no second request, the rows removed on the answer, the server's refusal + next step
+ *   L  a ledger receipt line (43a738d58) shows its transaction's rows and stops — no row jump; one
+ *      with no transaction says why; any other line still jumps to its row
  *   S  ONE RULE (C-107): every write control on this screen is armed from the same answer, the
  *      four funnels ask that same answer, and the table says what it is in its own header
  *
@@ -46,6 +48,7 @@
  * CONSOLE OUTPUT IS ASCII ONLY (cp949-safe).
  */
 import path from 'node:path';
+import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { loadWithProbe } from './lib/probe.mjs';
 
@@ -182,6 +185,7 @@ const REAL = {
   clipboard: await import('../src/clipboard.js'),
   ui: await import('../src/ui.js'),
   rows: await import('../src/source_rows.js'),
+  timeline: await import('../src/timeline.js'),
 };
 const realState = REAL.state.state;
 
@@ -552,6 +556,60 @@ async function suite(M) {
     realState.isDeletingRows = false;
   }
 
+  // ── L: a ledger receipt line shows its transaction's rows and stops (43a738d58) ────────────
+  // The logs are the contract's own (`contracts/ledger_receipt/vectors.json`, live shapes): a single
+  // line hands its log over, a grouped line hands `group.logs[0]` — the same object here.
+  const RECEIPT = JSON.parse(readFileSync(path.join(HERE, '..', '..', 'contracts', 'ledger_receipt',
+    'vectors.json'), 'utf8')).cases;
+  const followed = { ...RECEIPT.followed_success.logs[0], table_name: 't' };
+  const backfill = { ...RECEIPT.unfollowed_backfill.logs[0], table_name: 't' };
+  const reads = [];
+  const savedL = { fetch: globalThis.fetch, timeout: globalThis.setTimeout };
+  globalThis.fetch = (url, opts) => {
+    if (String((opts && opts.method) || 'GET').toUpperCase() === 'GET') reads.push(String(url));
+    return savedL.fetch(url, opts);
+  };
+  try {
+    await stageThrough(M.api, 'table');
+    realState.isNavigating = false;
+    await M.timeline.navigateToLog(followed);
+    const asked = reads.filter((u) => u.includes('/tables/t/data?'));
+    ok(asked.some((u) => u.includes(`transaction_id=${encodeURIComponent(followed.transaction_id)}`))
+      && realState.currentTransactionId === followed.transaction_id,
+      `L1 a receipt with a transaction reads that transaction's rows [${asked.join(' | ')}]`);
+    ok(realState.isNavigating === false && !log().textContent.includes('Navigating')
+      && log().textContent === `Ledger batch · t · 1 row of transaction ${String(followed.transaction_id).slice(0, 8)}`,
+      `L2 ... and stops there: no row jump, the line says what is shown [${log().textContent}]`);
+    // ⚠️ `switchTable` walks further than this stub goes (as in S): what is scored is that the
+    //    receipt switches to its table FIRST. The transaction read after it is L1's.
+    try { await M.timeline.navigateToLog({ ...followed, table_name: 'u' }); } catch (e) { /* the stub ends before the grid does */ }
+    ok(realState.currentTable === 'u', `L3 a receipt of another table switches to it first [${realState.currentTable}]`);
+    await stageThrough(M.api, 'table');
+    reads.length = 0;
+    await M.timeline.navigateToLog(backfill);
+    ok(reads.length === 0 && realState.isNavigating === false
+      && log().textContent === 'Ledger batch · t · no transaction to show — a backfill or retroactive batch',
+      `L4 a receipt with no transaction (backfill) reads nothing and says why [${log().textContent}]`);
+    await M.timeline.navigateToLog({ ...backfill, transaction_id: 'no_tid' });
+    ok(reads.length === 0 && log().textContent.includes('no transaction to show'),
+      `L5 ... and the grouped line's no_tid bucket says the same [${log().textContent}]`);
+    // A refused read: the line keeps the server's sentence rather than claiming rows it never showed.
+    await stageThrough(M.api, 'table');
+    readRefusal = { status: 422, body: { detail: 't: no row_id and no usable business_key -- declare one' } };
+    await M.timeline.navigateToLog(followed);
+    readRefusal = null;
+    ok(log().textContent === 't: no row_id and no usable business_key -- declare one',
+      `L7 a refused read keeps the server's sentence on the line [${log().textContent}]`);
+    // 🔴 A line of any other kind is unchanged: it starts the row jump. Its timers are held here.
+    globalThis.setTimeout = () => 0;
+    await M.timeline.navigateToLog({ ...followed, column_name: 'qty', row_id: 'R0' });
+    ok(realState.isNavigating === true && log().textContent.startsWith('🔍 Navigating to t:R0'),
+      `L6 a cell change line still jumps to its row [${log().textContent}]`);
+  } finally {
+    globalThis.fetch = savedL.fetch; globalThis.setTimeout = savedL.timeout;
+    M.timeline.releaseNavigationGuard('');
+  }
+
   return { pass: pass - before.pass, fail: fail - before.fail };
 }
 
@@ -644,6 +702,21 @@ const DEFECTS = [
     s => s.replace('  const line = `${refused} — reload the table to see which rows remain`;', '  const line = refused;')],
   ['api.js: the in-flight mark is never cleared, so delete locks after one run', 'api',
     s => s.replace('    state.isDeletingRows = false;\n', '')],
+  // ── L (43a738d58): a ledger receipt line ────────────────────────────────────────────────
+  ['timeline.js: a receipt jumps to its row again', 'timeline',
+    s => s.replace('  if (log && log.column_name === LEDGER_BATCH_COLUMN) return openLedgerReceipt(log);\n', '')],
+  ['timeline.js: a backfill receipt is filtered by a transaction it does not have', 'timeline',
+    s => s.replace('  if (!tx || tx === NO_TRANSACTION_BUCKET) {', '  if (false) {')],
+  ['timeline.js: the no_tid bucket is read as a transaction', 'timeline',
+    s => s.replace('  if (!tx || tx === NO_TRANSACTION_BUCKET) {', '  if (!tx) {')],
+  ['timeline.js: a receipt of another table stays on this one', 'timeline',
+    s => s.replace('    await switchTable(log.table_name);\n  }\n  // Only on screen', '  }\n  // Only on screen')],
+  ['timeline.js: the line claims rows a refused read never showed', 'timeline',
+    s => s.replace('  if (await setTransactionFilter(tx)) {', '  if (await setTransactionFilter(tx) || true) {')],
+  // ⚠️ NOT HERE: 「fetchData stops returning true」. `timeline.js` reaches `fetchData` through the REAL
+  //    `ui.js`, which imports the real `api.js`, so an `api.js` copy swapped in by this file never
+  //    reaches that path and the mutant escapes by construction (measured). L2 still runs through the
+  //    real chain, so a broken return reddens L2 on the real modules.
 ];
 const CONTROLS = [
   ['grid.js: a local rename', 'grid',
@@ -654,7 +727,7 @@ const CONTROLS = [
 ];
 
 const FILES = { state: 'state.js', api: 'api.js', grid: 'grid.js', clipboard: 'clipboard.js',
-                ui: 'ui.js', rows: 'source_rows.js', guard: 'write_guard.js' };
+                ui: 'ui.js', rows: 'source_rows.js', guard: 'write_guard.js', timeline: 'timeline.js' };
 
 async function scoreMutant(key, mutate, tag) {
   try {

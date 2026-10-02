@@ -1197,8 +1197,34 @@ export function appendHistoryLocally(log, skipRender = false) {
   }
 }
 
+/**
+ * A ledger batch receipt has no row to jump to — its `row_id` is the BATCH, so the row jump below
+ * failed on every receipt. It shows the rows of its transaction in that table and stops; a batch
+ * with no transaction (backfill, retroactive — `no_tid`) has nothing to show and says so.
+ * ⚠️ Rows translated in the same batch that this transaction did not change are not shown (lead 43a738d58).
+ */
+async function openLedgerReceipt(log) {
+  const tx = log.transaction_id;
+  if (!tx || tx === NO_TRANSACTION_BUCKET) {
+    elements.performanceLog.textContent =
+      `Ledger batch · ${log.table_name} · no transaction to show — a backfill or retroactive batch`;
+    return;
+  }
+  if (state.currentTable !== log.table_name) {
+    elements.tableSelect.value = log.table_name;
+    await switchTable(log.table_name);
+  }
+  // Only on screen does the line say what is shown; a refused read keeps the server's sentence.
+  if (await setTransactionFilter(tx)) {
+    elements.performanceLog.textContent = `Ledger batch · ${log.table_name} · `
+      + `${unitText(state.gridApi.getDisplayedRowCount(), 'row')} of transaction ${String(tx).slice(0, 8)}`;
+  }
+}
+
 // HistoryNavigator (4-Step Jump Sequence)
 export async function navigateToLog(log) {
+  // Every click path (the row tabs, the global tab's single and grouped lines) reaches here.
+  if (log && log.column_name === LEDGER_BATCH_COLUMN) return openLedgerReceipt(log);
   if (state.isNavigating) {
     elements.performanceLog.textContent = '⚠️ Already navigating, please wait...';
     return;
