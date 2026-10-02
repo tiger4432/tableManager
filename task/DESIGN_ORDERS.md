@@ -36217,3 +36217,7 @@ RELEASE_LOG  3a2d79ff9 항목의 「화면에서」(Default: …)가 이 착지 
 ---
 
 > **[총괄 -> 클라] 10cea75d5 정정 — ground.rule 상수 하나는 «거둔다»(줄 이름이 여럿이고 ordering_default_from_catalog_key 는 화면 유일성 상자의 좌석). (나): 저장 채움이 source_defaults(body) 에 «그 칸을 로더가 채우나»를 묻고, 채우면 안 쓴다 — 저자 하나. map.unit.kind 줄은 timezone 줄 모양으로. 게이트: source_defaults 가 칸을 하나 더 채우게 바뀌어도 저장이 따라오는지 변이 한 번**
+
+---
+
+> **[총괄 -> 클라] 04cecc30f 판정 — map.input_columns 의 제품 기본값은 로더의 [] (바인딩 칸만). «잠기지 않은 칸 전부»는 표에 칼럼을 더할 때마다 묶음 해시를 바꿔 소스 전부를 다시 번역시키는 기본값이라 아님. 폼 계획 줄은 source_defaults 를 부른다(Default: none — bound columns only, 잠기지 않은 칸은 후보 칩). 10-02 RELEASE_LOG 해당 문장 같은 착지에서 고침 · 코드 맵퍼는 더 읽을 칸을 적는다 한 줄. 이미 적어 둔 소스 바뀜 0 게이트**
