@@ -54,6 +54,8 @@ const ROUTES = [
   { hops: 2, follow: ['inspected', 'observed'], chain: ['wafer', 'die', 'defect'] },
   { hops: 1, follow: ['leads_to'], chain: ['defect_kind', 'quantity'] },
   { hops: 1, follow: ['measures'], chain: ['quantity', 'die'] },
+  // hand-held: a static start whose SECOND step leaves the static types (S8)
+  { hops: 2, follow: ['leads_to', 'measures'], chain: ['defect_kind', 'quantity', 'die'] },
 ];
 
 function suite(M) {
@@ -86,6 +88,37 @@ function suite(M) {
   ok(M.followChoices(FROM_WAFER, DECLARED, new Set()).join() === FROM_WAFER.join(),
     'C4 with nothing selected the list is exactly the start-type set');
 
+  // ── 10-02: the predicates a type can be walked along, from EITHER side ─────────────
+  // Shapes and classes from the shipped sample; `transfer@1` names die on both sides (O2), and
+  // `defect@1` is the object-only type that is NOT static (O1).
+  const PREDS = [
+    { name: 'inspected@1', subjects: ['wafer@1'], object: { types: ['die@1'] } },
+    { name: 'processed_with@1', subjects: ['wafer@1'], object: { types: ['recipe@1'] } },
+    { name: 'transfer@1', subjects: ['die@1'], object: { types: ['die@1'] } },
+    { name: 'observed@1', subjects: ['die@1'], object: { types: ['defect@1'] } },
+    { name: 'register@1', subjects: ['wafer@1'], object: {} },
+    { name: 'leads_to@1', subjects: ['quantity@1'], object: { types: ['quantity@1', 'defect_kind@1'] } },
+  ];
+  const touch = (type) => M.predicatesTouching(PREDS, type, ENTITIES).join();
+  ok(touch('defect@1') === 'observed@1', 'O1 an object-only type gets the predicate that enters it');
+  ok(touch('die@1') === 'inspected@1,transfer@1,observed@1',
+    'O2 a type on both sides gets both, once each, in declaration order');
+  ok(touch('wafer@1') === 'inspected@1,processed_with@1,register@1',
+    'O3 a subject-only type gets exactly what the subject-only rule gave it');
+  ok(touch('note@1') === '', 'O4 CONTROL: a type nothing names gets nothing');
+  ok(M.predicatesTouching(PREDS, '', ENTITIES).length === PREDS.length,
+    'O5 no type picked offers every declared predicate');
+  // 🔴 THE SEED'S FIRST STEP IS OPEN (owner 10-02 「첫걸음은 열어」, lead c24ba7d82).
+  ok(touch('recipe@1') === 'processed_with@1',
+    'O6 a static object-only type gets what enters it — the seed\'s first step goes to wafer@1');
+  ok(touch('defect_kind@1') === 'leads_to@1', 'O7 ... and static -> static too');
+  const ST = new Set(['recipe']);
+  ok(M.walkTakesStep(ST, 'recipe@1', 'wafer@1', 0) && !M.walkTakesStep(ST, 'recipe@1', 'wafer@1', 1)
+    && M.walkTakesStep(ST, 'wafer@1', 'recipe@1', 1),
+  'O8 the one step seat: static -> not static is taken as the first step only; into a static type always');
+  ok(M.noFollowSentence('note@1') === 'No predicate touches note@1',
+    'O9 the empty follow says nothing touches the type');
+
   ok(M.bareName('observed@1') === 'observed' && M.bareName('observed') === 'observed',
     'B1 the version suffix is dropped, and a bare name survives unchanged');
 
@@ -107,8 +140,10 @@ function suite(M) {
     'S4 ... and a route that never leaves a static type is untouched');
   ok(names.includes('defect_kind>quantity'),
     'S5 static -> static stays — the mechanism chain is what defect_kind exists to answer');
-  ok(!names.includes('quantity>die'),
-    'S6 a static step INTO a type with no class is dropped, which is the corrected rule');
+  ok(names.includes('quantity>die'),
+    'S6 a static START type\'s first step to a type with no class is kept — the seed\'s first step is open');
+  ok(!names.includes('defect_kind>quantity>die'),
+    'S8 ... and a static -> not-static step after the first is still dropped');
   // 🔴 The control for S3/S6: with nothing declared static, nothing may be dropped. Without it,
   //    a filter that returned [] would satisfy every "is dropped" assertion above.
   ok(M.keepWalkableRoutes([], ROUTES).length === ROUTES.length,
@@ -371,6 +406,23 @@ const DEFECTS = [
   ['the fill returns nothing at all',
     (s) => s.replace('  return (declaredNames || []).filter((name) => wanted.has(bareName(name)));',
       '  return [];')],
+  // ── 10-02. 「이 타입에서 고를 수 있는 술어」 ──────────────────────────────────────────
+  ['the object side is not read, so an object-only type offers nothing again',
+    (s) => s.replace('    if (!subjects.includes(type) && !objects.includes(type)) return false;',
+      '    if (!subjects.includes(type)) return false;')],
+  ['the subject side is not read',
+    (s) => s.replace('    if (!subjects.includes(type) && !objects.includes(type)) return false;',
+      '    if (!objects.includes(type)) return false;')],
+  ['no type picked offers nothing',
+    (s) => s.replace('  if (!type) return all.map((p) => p.name);', '  if (!type) return [];')],
+  // 🔴 c24ba7d82. ONE MUTANT, BOTH LISTS: closing the first step again must redden the follow list
+  //    (O6) AND the route list (S6) — that is what 「one seat」 means here.
+  ['the seed\'s first step is closed again',
+    (s) => s.replace('  return step === 0 || !statics.has(bareName(from))', '  return !statics.has(bareName(from))')],
+  ['every step of a route counts as the first, so a later static step is let through',
+    (s) => s.replace('walkTakesStep(statics, chain[i], chain[i + 1], i)', 'walkTakesStep(statics, chain[i], chain[i + 1], 0)')],
+  ['the follow list asks a later step, so a static type loses its first step',
+    (s) => s.replace('walkTakesStep(statics, type, to, 0)', 'walkTakesStep(statics, type, to, 1)')],
   ['the later-hop predicate stops being shown',
     (s) => s.replace('  return [...new Set([...(fromStartType || []), ...extra])];',
       '  return [...(fromStartType || [])];')],
@@ -437,13 +489,13 @@ const DEFECTS = [
       '  const extra = (declaredNames || []);')],
   // Gate ④ of the 22:00 ruling: deleting the filtering line must turn the first assertion red.
   ['the refused routes are offered again',
-    (s) => s.replace('      if (statics.has(here) && !statics.has(next)) return false;', '')],
+    (s) => s.replace('      if (!walkTakesStep(statics, chain[i], chain[i + 1], i)) return false;', '')],
   ['a type with no class counts as static, so the corrected rule is undone',
     (s) => s.replace(".filter((e) => e && Array.isArray(e.class) && e.class.includes('static'))",
       ".filter((e) => !e || !(Array.isArray(e.class) && e.class.includes('dynamic')))")],
   ['the filter drops any route that TOUCHES a static type, killing the mechanism chain',
-    (s) => s.replace('      if (statics.has(here) && !statics.has(next)) return false;',
-      '      if (statics.has(here) || statics.has(next)) return false;')],
+    (s) => s.replace('  return step === 0 || !statics.has(bareName(from)) || statics.has(bareName(to));',
+      '  return !statics.has(bareName(from)) && !statics.has(bareName(to));')],
 ];
 const CONTROLS = [
   ['a local rename', (s) => s.replace('  const wanted = new Set((routeFollow || []).map(bareName));',

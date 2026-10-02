@@ -29,10 +29,40 @@ export function followFromRoute(declaredNames, routeFollow) {
 }
 
 /**
+ * The predicates a type can be walked along: those naming it as a subject OR as an object type.
+ *
+ * 🔴 BOTH SIDES (owner 10-02 「목적어에서도 출발할 수 있어야 함」). The walk is two-way, so a
+ *    predicate that ENTERS the type is walkable from it; reading `subjects` alone left an
+ *    object-only type (`recipe@1`) with nothing to pick.
+ * 🔴 A PREDICATE FROM THE PICKED TYPE IS THE SEED'S FIRST STEP, so it asks `walkTakesStep` at step 0 —
+ *    the same seat the route list asks at every step. Today step 0 is always taken (owner 10-02
+ *    「첫걸음은 열어」), so a static type gets every predicate that touches it.
+ * 🔴 ONE SEAT. The walk page and the R&D board's walk box both call this — each held its own
+ *    subject-only copy until 10-02. No type picked -> every declared predicate.
+ */
+export function predicatesTouching(predicates, type, entities) {
+  const all = predicates || [];
+  if (!type) return all.map((p) => p.name);
+  const statics = staticTypes(entities);
+  return all.filter((p) => {
+    const subjects = p.subjects || [];
+    const objects = (p.object || {}).types || [];
+    if (!subjects.includes(type) && !objects.includes(type)) return false;
+    const far = [...(subjects.includes(type) ? objects : []), ...(objects.includes(type) ? subjects : [])];
+    return !far.length || far.some((to) => walkTakesStep(statics, type, to, 0));
+  }).map((p) => p.name);
+}
+
+/** The sentence both walk screens draw when no predicate touches the picked type. */
+export function noFollowSentence(type) {
+  return `No predicate touches ${type}`;
+}
+
+/**
  * Which follow checkboxes to draw.
  *
  * 🔴 THE START-TYPE FILTER STAYS. Its reason holds: someone choosing a seed should see the
- *    predicates that leave it, not the whole vocabulary. What it cannot do alone is show a
+ *    predicates that touch it (`predicatesTouching`), not the whole vocabulary. What it cannot do alone is show a
  *    LATER hop — `wafer -inspected-> die -observed-> defect` needs `observed`, whose subject is
  *    `die` — so a selected predicate is added back. A box that is ticked but not drawn is the
  *    screen hiding what it is about to send, which is worse than showing one extra row.
@@ -299,7 +329,7 @@ export function staticTypes(entities) {
 /**
  * Drop the routes the walk will refuse.
  *
- * 🔴 THE STEP THAT IS REFUSED IS `static -> not static`, NOT "the path touches a static type".
+ * 🔴 THE STEP THAT IS REFUSED IS `static -> not static` after the first (`walkTakesStep`), NOT "the path touches a static type".
  *    static -> static is a mechanism chain and the walk allows it, so filtering on "passes
  *    through a static type" would delete the answers `defect_kind` exists to give.
  *    Measured live before this existed: `wafer -> quantity -> defect_kind -> defect` was offered
@@ -311,10 +341,19 @@ export function keepWalkableRoutes(entities, routes) {
   return (routes || []).filter((route) => {
     const chain = (route && route.chain) || [];
     for (let i = 0; i + 1 < chain.length; i += 1) {
-      const here = bareName(chain[i]);
-      const next = bareName(chain[i + 1]);
-      if (statics.has(here) && !statics.has(next)) return false;
+      if (!walkTakesStep(statics, chain[i], chain[i + 1], i)) return false;
     }
     return true;
   });
+}
+
+/**
+ * Whether the walk takes the step `from -> to`, the `step`-th from the seed (0 = the first).
+ *
+ * 🔴 THE SERVER'S RULE, ONE SEAT HERE: `static -> not static` is not stepped — except the SEED's
+ *    first step (owner 10-02 「첫걸음은 열어」). The follow list asks it at step 0 and the route
+ *    list at every step, so the day the rule moves both lists move with it.
+ */
+export function walkTakesStep(statics, from, to, step) {
+  return step === 0 || !statics.has(bareName(from)) || statics.has(bareName(to));
 }
