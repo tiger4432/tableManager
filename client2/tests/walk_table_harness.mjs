@@ -185,6 +185,83 @@ async function suite(mod) {
       onType === 1 && handle.state.type === '' && go && go.disabled === true && subjects() === onType,
       `${onType} ${JSON.stringify(handle.state.type)} ${go && go.disabled} ${subjects()}`);
   }
+
+  console.log(`${LF}-- a walk may start from a node that only appears as an object (29cee1d47) --`);
+  {
+    // Shapes and classes from the shipped sample: recipe@1 is a static object-only type, defect@1
+    // an object-only type that is not static, die@1 on both sides.
+    const DECL2 = { ok: true,
+      entities: [{ type: 'die@1', keys: ['mat_id'] }, { type: 'wafer@1', keys: ['wafer'] },
+        { type: 'recipe@1', keys: ['recipe'], class: ['static'] }, { type: 'defect@1', keys: ['defect'] },
+        { type: 'note@1', keys: ['note'] }],
+      predicates: [
+        { name: 'inspected@1', subjects: ['wafer@1'], object: { types: ['die@1'] } },
+        { name: 'processed_with@1', subjects: ['wafer@1'], object: { types: ['recipe@1'] } },
+        { name: 'observed@1', subjects: ['die@1'], object: { types: ['defect@1'] } }] };
+    const stand = async (keyValues) => {
+      const doc = makeDoc();
+      const host = doc.createElement('div');
+      mod.boot(doc, host, { apiBase: '', fetchImpl: async (url) => ({ ok: true, status: 200,
+        json: async () => (String(url).includes('/key-values') ? keyValues : DECL2) }) });
+      await settle();
+      const sel = byClass(host, 'wk-select')[0];
+      return { host, pick: async (type) => {
+        sel.value = type;
+        for (const fn of sel.listeners.change || []) fn();
+        await settle();
+      } };
+    };
+    const follow = (h) => walkAll(h).filter((e) => e.attrs && e.attrs['data-follow'] !== undefined)
+      .map((e) => e.attrs['data-follow']).join(',');
+    const notes = (h) => byClass(h, 'wk-note').map((e) => e.textContent).join(' / ');
+
+    const listed = await stand({ nodes: [{ keys: { recipe: 'R-1' }, count: 3 }], scanned: 1,
+      scan_truncated: false, values_truncated: false });
+    await listed.pick('recipe@1');
+    const offered = byTag(listed.host, 'option').map((e) => e.textContent);
+    ok('F2 the seed field is Pick a node and offers the node the server listed',
+      walkAll(listed.host).some((e) => e.className === 'wk-label' && e.textContent === 'Pick a node')
+        && offered.includes('R-1  (3)'), offered.join(' | '));
+    // 🔴 THE SEED'S FIRST STEP IS OPEN (owner 10-02, lead c24ba7d82): static recipe@1 too.
+    eq('F6 static recipe@1 offers what enters it', follow(listed.host), 'processed_with@1');
+    await listed.pick('note@1');
+    ok('F7 a type no predicate touches says so', follow(listed.host) === ''
+      && notes(listed.host).includes('No predicate touches note@1'), notes(listed.host));
+    await listed.pick('defect@1');
+    eq('F1 defect@1, only ever an object, offers the predicate that enters it',
+      follow(listed.host), 'observed@1');
+    // 🔴 A TICKED FOLLOW THAT DOES NOT TOUCH THE NEW TYPE LEAVES WITH THE TYPE (lead 10-02) — and one
+    //    that does stays ticked. The R&D box gives the same answer (its harness, H3).
+    const tick = (h, name) => {
+      const row = walkAll(h).find((e) => e.attrs && e.attrs['data-follow'] === name);
+      const cb = row && row.children.find((c) => c.tagName === 'input');
+      for (const fn of (cb && cb.listeners.change) || []) fn();
+    };
+    const ticked = (h) => walkAll(h).filter((e) => e.attrs && e.attrs['data-follow'] !== undefined
+      && e.children.some((c) => c.tagName === 'input' && c.checked)).map((e) => e.attrs['data-follow']).join(',');
+    await listed.pick('die@1');
+    tick(listed.host, 'inspected@1');
+    const before = ticked(listed.host);
+    await listed.pick('recipe@1');
+    const dropped = ticked(listed.host);
+    tick(listed.host, 'processed_with@1');
+    await listed.pick('wafer@1');
+    ok('F8 changing the type drops a ticked follow that does not touch it, and keeps one that does',
+      before === 'inspected@1' && dropped === '' && ticked(listed.host) === 'processed_with@1',
+      `${before} / ${dropped} / ${ticked(listed.host)}`);
+    await listed.pick('die@1');
+    eq('F3 die@1 offers what leaves it and what enters it, in declaration order',
+      follow(listed.host), 'inspected@1,observed@1');
+
+    const empty = await stand({ nodes: [], scanned: 0, scan_truncated: false, values_truncated: false });
+    await empty.pick('recipe@1');
+    ok('F4 read and empty says there is no node of the type',
+      notes(empty.host).includes('No node of this type in the ledger'), notes(empty.host));
+    const cut = await stand({ nodes: [], scanned: 1001, scan_truncated: true, values_truncated: false });
+    await cut.pick('recipe@1');
+    ok('F5 not read to the end says how many nodes were read',
+      notes(cut.host).includes('Not every node read (up to 1001)'), notes(cut.host));
+  }
 }
 
 // ═══ baseline ═══════════════════════════════════════════════════════════════════════════
@@ -224,6 +301,26 @@ const MUTANTS = [
   { id: 'M6', what: 'the type placeholder carries its text as its value again',
     catches: 'P1 picking the placeholder',
     from: "    none.value = '';\n", to: '' },
+  // ── 29cee1d47 ────────────────────────────────────────────────────────────────────────
+  { id: 'M7', what: 'the page keeps its own subject-only copy of the follow list',
+    catches: 'F1 defect@1',
+    from: '    predicatesTouching(declaredPredicates(), state.type, entities()),',
+    to: '    declaredPredicates().filter((p) => !state.type'
+      + ' || (p.subjects || []).includes(state.type)).map((p) => p.name),' },
+  { id: 'M11', what: 'the type change filters through followOptions again, which keeps every tick',
+    catches: 'F8 changing the type',
+    from: '      const allowed = new Set(predicatesTouching(declaredPredicates(), state.type, entities()));',
+    to: '      const allowed = new Set(followOptions());' },
+  { id: 'M10', what: 'an empty follow list is drawn as nothing',
+    catches: 'F7 a type no predicate touches',
+    from: '        ? noFollowSentence(state.type)', to: "        ? ''" },
+  { id: 'M8', what: 'the node list reads the retired wire cell',
+    catches: 'F2 the seed field',
+    from: '      state.subjects = got.nodes;', to: '      state.subjects = got.subjects;' },
+  { id: 'M9', what: 'a list read to the end and empty reads as not read to the end',
+    catches: 'F4 read and empty',
+    from: '          subjBox.append(el(doc, \'div\', \'wk-note\', state.subjectsScanCut',
+    to: '          subjBox.append(el(doc, \'div\', \'wk-note\', true' },
   // 🔴 CONTROL: a comment cannot change an answer. If this reddens something, the harness is
   //    reading text rather than behaviour.
   { id: 'M5', what: 'CONTROL: a comment line is removed', control: true,

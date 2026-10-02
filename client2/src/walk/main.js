@@ -31,7 +31,8 @@ import { fetchDeclaration, createWalkBoxWalk, pathsBetween, fetchKeyValues, PICK
 //    뜹니다 — 오류 없이. 그게 기준 ④ 위반입니다.
 import { ensureWalkStyles } from './styles.js';
 import {
-  bareName, followFromRoute, followChoices, keepWalkableRoutes, cutBudgets,
+  bareName, followFromRoute, followChoices, predicatesTouching, noFollowSentence, keepWalkableRoutes,
+  cutBudgets,
 } from './derive.js';
 // 🔴 C-72. 표의 «결정»은 전부 여기 있고 이 파일에는 DOM 쓰기만 남습니다. 결정이 `boot()` 안
 //    클로저로 있는 동안은 「이 화면이 그 함수를 부르나」를 «거동으로» 잴 자리가 없었습니다.
@@ -107,16 +108,13 @@ export function boot(doc, host, deps) {
     markings.replace(GRAPH_CHAIN[0], named ? [[entitySeedId(state.type, state.keys), SIGN.CASE]] : []);
     graph.show(opts);
   };
-  // 🔴 술어도 «선언»에서, 그리고 «고른 타입을 주어로 갖는 것»만. 이것이 사람이 배관 낱말을
-  //    몰라도 되는 이유입니다 — 고를 수 있는 것만 보입니다.
-  const allPredicates = () => ((state.decl && state.decl.predicates) || []).map((p) => p.name);
-  const followOptions = () => {
-    const all = (state.decl && state.decl.predicates) || [];
-    if (!state.type) return all.map((p) => p.name);
-    const fromHere = all.filter((p) => (p.subjects || []).includes(state.type)).map((p) => p.name);
-    // 규칙과 그 사유는 `derive.js` 에 있습니다 — 하니스가 «그 함수»를 재기 때문입니다.
-    return followChoices(fromHere, allPredicates(), state.follow);
-  };
+  // 🔴 술어도 «선언»에서, 그리고 «고른 타입에 닿는 것»(씨앗의 첫 걸음)만. 고를 수 있는 것만
+  //    보입니다. 규칙과 사유는 `derive.js` 에 있고 R&D 걷기 상자도 «같은 함수»를 부릅니다.
+  const declaredPredicates = () => (state.decl && state.decl.predicates) || [];
+  const allPredicates = () => declaredPredicates().map((p) => p.name);
+  const followOptions = () => followChoices(
+    predicatesTouching(declaredPredicates(), state.type, entities()),
+    allPredicates(), state.follow);
 
   /**
    * 시작 타입에서 «고른 도착지»까지 선언이 아는 길. 지어내지 않고 `pathsBetween` 을 씁니다 --
@@ -194,7 +192,9 @@ export function boot(doc, host, deps) {
       const allowedKeys = new Set(keysOf(state.type));
       state.keys = Object.fromEntries(
         Object.entries(state.keys).filter(([k]) => allowedKeys.has(k)));
-      const allowed = new Set(followOptions());
+      // 🔴 `followOptions` 가 아니라 닿는 술어로 거릅니다 — 그쪽은 «체크된 것을 다시 더해» 거름이
+      //    아무것도 안 뺐습니다(10-02 박스 미리보기). R&D 걷기 상자와 같은 답입니다.
+      const allowed = new Set(predicatesTouching(declaredPredicates(), state.type, entities()));
       state.follow = new Set([...state.follow].filter((f) => allowed.has(f)));
       state.result = null; state.run = 'idle';
       render();
@@ -203,26 +203,28 @@ export function boot(doc, host, deps) {
     typeBox.append(sel);
     root.append(typeBox);
 
-    // ── 씨앗: 주어 고르기 ──────────────────────────────────────────────────────
+    // ── 씨앗: 노드 고르기 ──────────────────────────────────────────────────────
     //
-    // 🔴 고르는 것은 «키 하나의 값»이 아니라 «주어 하나»입니다. 그래서 한 번 고르면 아래 키 칸이
+    // 🔴 고르는 것은 «키 하나의 값»이 아니라 «노드 하나»(주어 쪽이든 목적어 쪽이든 — 서버가
+    //    두 쪽을 읽습니다, 29cee1d47)입니다. 그래서 한 번 고르면 아래 키 칸이
     //    «전부» 찹니다 — die 는 넷, lot_slot 은 둘입니다. 칸마다 따로 고르게 하면 각 목록은
     //    참인데 «그 조합은 없는» 씨앗을 만들 수 있습니다(키별 목록의 곱 ≠ 실재하는 개체).
     // 🔵 직접 입력은 «남습니다» — 목록이 상한에 걸릴 수 있고, 그때 손으로 치는 길이 없으면
-    //    목록 밖의 주어는 영영 못 묻습니다.
+    //    목록 밖의 노드는 영영 못 묻습니다.
     if (state.type) {
-      const subjBox = field('주어 고르기');
+      const subjBox = field('Pick a node');
       if (state.subjectsState === 'loading') {
         subjBox.append(el(doc, 'div', 'wk-note', '읽는 중'));
       } else if (state.subjectsState === 'failed') {
-        subjBox.append(el(doc, 'div', 'wk-fail', `주어 목록 · ${state.subjectsReason}`));
+        subjBox.append(el(doc, 'div', 'wk-fail', `Node list · ${state.subjectsReason}`));
       } else if (state.subjectsState === 'ready') {
         const list = state.subjects || [];
         if (!list.length) {
           // 🔴 「봤는데 없다」와 「다 못 봤다」는 다릅니다. 응답이 이미 그 둘을 나눠 줍니다.
+          //    N 은 응답의 `scanned` — 읽은 «노드» 수입니다.
           subjBox.append(el(doc, 'div', 'wk-note', state.subjectsScanCut
-            ? `주어를 다 못 봤습니다 (${state.subjectsScanned} 까지)`
-            : '이 타입은 원장에 주어로 없습니다 (정적 허브)'));
+            ? `Not every node read (up to ${state.subjectsScanned})`
+            : 'No node of this type in the ledger'));
         } else {
           const ssel = el(doc, 'select', 'wk-select');
           ssel.append(el(doc, 'option', '', '— 고르거나 아래에 직접 —'));
@@ -326,7 +328,7 @@ export function boot(doc, host, deps) {
     const opts = followOptions();
     if (!opts.length) {
       followBox.append(el(doc, 'div', 'wk-note', state.type
-        ? `${state.type} 에서 나가는 술어 없음`
+        ? noFollowSentence(state.type)
         : '선언에 술어 없음'));
     }
     for (const name of opts) {

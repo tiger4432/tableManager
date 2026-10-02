@@ -1429,8 +1429,8 @@ const FLOORS = new Map([
   // M1 is a copy put back, and it changes no count at all.
   // 15 -> 17 (lead b417e2ad8, P1 and M6): picking the type placeholder again is no type - Run off,
   // no subject list asked.
-  ['walk_table_harness.mjs', 17],
-  ['walk_route_fill_harness.mjs', 71],
+  ['walk_table_harness.mjs', 30],
+  ['walk_route_fill_harness.mjs', 81],
   // New 2026-09-08 with C-40 ② (the declaration form's three attribute seats). Floor is
   // the count it reports on the commit that introduces it -- there is no earlier tree to
   // measure it against. 🔴 IT READS THE SHIPPED SKELETON AND THE SHIPPED SAMPLE, so a seat
@@ -1514,7 +1514,7 @@ const FLOORS = new Map([
   // the board part: reach
   ['rnd_board_reach_harness.mjs', 63],
   // the board part: the walk box
-  ['rnd_board_walk_box_harness.mjs', 79],
+  ['rnd_board_walk_box_harness.mjs', 87],
   // the board part: Save contrast (lead 3a262cc76) — one contrast_run row per save, the list
   // with the run row's own computed facts (Not computed yet / factors N · computed HH:MM, one read),
   // two instances on one screen, the real chain's run rows through the real route (J), and the

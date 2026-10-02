@@ -9,13 +9,11 @@
 //    이 부품은 사람이 고르게 할 뿐입니다. 그래서 걷기 API 도 하나입니다 -- 늘어야 하는 것은
 //    선언이지 갈래가 아닙니다(소유자 상설).
 //
-// 🔴 「필터 수준에 따라 제안」의 기전은 «서버의 `subjects`»입니다. 클라가 규칙을 만들지
-//    않습니다: NODE TYPE 을 고르면 FOLLOW 는 그 타입을 `subjects` 에 가진 술어만 남는데,
-//    그건 선언이 이미 답에 실어 보낸 사실입니다. 출고 샘플(setup_version 6)에서:
-//      die@1 -> transfer · observed · bonded_from · in_container      wafer@1 -> measures · inspected · processed_with
-//      lot@1 -> derived_from · split_from · merged_into               recipe@1 -> «없음»
-//    🔴 `recipe@1` 이 이 부품의 시금석입니다 -- 목적어로만 나오는 타입이라 나가는 술어가
-//       없습니다. 그때 «문장»으로 말해야 합니다. 빈 드롭다운은 「고장」과 구별이 안 됩니다.
+// 🔴 「필터 수준에 따라 제안」의 기전은 «선언»입니다. 클라가 규칙을 만들지 않습니다: NODE TYPE 을
+//    고르면 FOLLOW 는 그 타입을 «주어든 목적어든» 단 술어만 남습니다(`predicatesTouching` —
+//    걷기 페이지와 한 좌석. 10-02 까지 이 파일이 «주어만» 보는 사본을 들고 있었습니다).
+//    🔴 아무 술어도 안 닿는 타입은 «문장»으로 말합니다(`noFollowSentence`). 빈 드롭다운은 「고장」과
+//       구별이 안 됩니다.
 //
 // 🔴 부재는 «셋»이고 문장도 셋입니다. 한 낱말로 합치면 화면에서 못 읽습니다:
 //      ① 아직 안 골랐다              ② 서버가 아직 답을 못 준다      ③ 걸었는데 없다
@@ -23,7 +21,7 @@
 //    `GET /api/ledger/declaration` 이 아직 없을 수 있고, 그때 화면은 «그렇게» 말해야 합니다.
 //
 // ── 주입되는 것 둘, 그리고 그 «모양» ────────────────────────────────────────────
-//   loadDeclaration()  -> { ok, entities:[{type,keys[]}], predicates:[{name,subjects[]}],
+//   loadDeclaration()  -> { ok, entities:[{type,keys[]}], predicates:[{name,subjects[],object:{types[]}}],
 //                           message? }
 //   walk({ type, keys, follow })
 //                      -> { ok, nodes:[{id,type,label}], message? }
@@ -46,8 +44,8 @@ import { LOADING, WALKING, CHOOSE, SERVER_REFUSED, unitText } from '../ui_words.
 const PICK_START_TYPE = 'Choose a start type';
 // 🔴 C-70. 구획과 컬럼을 «걷기 페이지와 같은 함수»에서 받습니다. 이 파일이 컬럼 셋을 자기
 //    소스에 적고 있던 동안 두 걷기 표는 «갈라질 수» 있었고, 갈라져도 오류가 안 납니다.
-import { sectionsByType, sectionHeading, tableColumns, cellSource, pluralAttributes, COLUMNS }
-  from '../walk/derive.js';
+import { sectionsByType, sectionHeading, tableColumns, cellSource, pluralAttributes, COLUMNS,
+  predicatesTouching, noFollowSentence, keepWalkableRoutes } from '../walk/derive.js';
 
 /** `wafer@1` -> `wafer`. 선언은 버전을 달고 타입 그래프는 안 답니다. */
 function bareTypeName(value) {
@@ -194,14 +192,10 @@ export class WalkBoxPanel extends Panel {
     return (found && found.keys) || [];
   }
 
-  /**
-   * 🔴 좁히는 것은 «서버의 subjects» 입니다. 타입을 안 골랐으면 좁힐 근거가 없으므로 전부입니다.
-   *    빈 배열이 나오는 것은 «고장이 아니라 답»입니다 -- 목적어로만 나오는 타입이 있습니다.
-   */
+  /** 판정은 걷기 페이지와 «한 함수». 빈 배열은 «고장이 아니라 답»입니다 — 문장은 `noFollowSentence`. */
   followOptions() {
-    const all = (this.declaration && this.declaration.predicates) || [];
-    if (!this.nodeType) return all.map((p) => p.name);
-    return all.filter((p) => (p.subjects || []).includes(this.nodeType)).map((p) => p.name);
+    const decl = this.declaration || {};
+    return predicatesTouching(decl.predicates || [], this.nodeType, decl.entities);
   }
 
   /** 타입을 바꾸면 «그 타입에 없는» 키와 술어는 따라올 자격이 없습니다. */
@@ -399,10 +393,11 @@ export class WalkBoxPanel extends Panel {
     return this.declaration ? typeGraph(this.declaration).types : [];
   }
 
-  /** 지금 시작 타입에서 고른 도착지까지의 경로들. 선언 한 번으로 계산됩니다. */
+  /** 지금 시작 타입에서 고른 도착지까지의 경로들 — 걷기가 거절할 것은 뺍니다(걷기 페이지와 같은 함수). */
   routes() {
     if (!this.declaration || !this.destination) return [];
-    return pathsBetween(this.declaration, bareTypeName(this.nodeType), this.destination);
+    return keepWalkableRoutes(this.declaration.entities,
+      pathsBetween(this.declaration, bareTypeName(this.nodeType), this.destination));
   }
 
   /** 경로 하나를 «쓴다» -- follow 와 hops 가 그 경로에서 나옵니다. */
@@ -505,7 +500,7 @@ export class WalkBoxPanel extends Panel {
     if (!options.length) {
       // 🔴 시금석. 「없다」를 «문장»으로 -- 빈 목록은 고장과 구별이 안 됩니다.
       box.appendChild(this._note(this.nodeType
-        ? `No predicate out of ${this.nodeType} — this type is only an object`
+        ? noFollowSentence(this.nodeType)
         : 'No predicate declared', 'is-absent'));
       return box;
     }

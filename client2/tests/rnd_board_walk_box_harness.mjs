@@ -3,14 +3,17 @@
  *
  * WHAT THIS SCORES (the order's five gates, each woken by a mutant):
  *   A  changing NODE TYPE changes the KEY fields -- their COUNT and their NAMES
- *   B  `recipe@1` says in a SENTENCE that nothing leaves it; an empty list is not an answer
+ *   B  FOLLOW offers what touches the type from EITHER side (`recipe@1` gets the one entering it),
+ *      the walk page offers the same list, and a type nothing touches says so in a SENTENCE
  *   C  FOLLOW unpicked means `follow` is NOT on the request -- an empty array is the opposite
  *   D  two instances, different type and collect, no interference
  *   E  the three absences are three different sentences
  *
  * 🔴 THE DECLARATION FIXTURE IS THE LEAD PM'S MEASUREMENT, not an invention: six entities, ten
  *    predicates, eight collects, and the `subjects` links they measured off the live
- *    declaration. `recipe@1` having no outgoing predicate is the shape that decides B.
+ *    declaration. The `object.types` and recipe's `class` are the shipped sample's (server/config/
+ *    sample/ledger_config.json.sample); `defect@1` (an object-only type that is not static) and
+ *    `note@1` (no predicate touches it) are HAND-HELD.
  *
  * 🔴 THE ROUTE DOES NOT EXIST YET. That is why every fetch here is injected and why E scores
  *    「서버가 아직 못 준다」 as its own sentence: a contract adopted before its material blanks
@@ -45,19 +48,21 @@ const DECL = {
     { type: 'lot@1', keys: ['lot'] },
     { type: 'lot_slot@1', keys: ['lot', 'slot'] },
     { type: 'dtjob@1', keys: ['job_id'] },
-    { type: 'recipe@1', keys: ['recipe'] },
+    { type: 'recipe@1', keys: ['recipe'], class: ['static'] },
+    { type: 'defect@1', keys: ['defect'] },
+    { type: 'note@1', keys: ['note'] },
   ],
   predicates: [
-    { name: 'transfer@1', subjects: ['die@1'] },
-    { name: 'observed@1', subjects: ['die@1'] },
-    { name: 'bonded_from@1', subjects: ['die@1', 'wafer@1'] },
-    { name: 'inspected@1', subjects: ['wafer@1'] },
-    { name: 'processed_with@1', subjects: ['wafer@1'] },
-    { name: 'register@1', subjects: ['wafer@1', 'dtjob@1', 'lot@1'] },
-    { name: 'has_wafer@1', subjects: ['lot_slot@1'] },
-    { name: 'slot_map@1', subjects: ['lot_slot@1'] },
-    { name: 'has_netdie@1', subjects: ['dtjob@1'] },
-    { name: 'derived_from@1', subjects: ['lot@1'] },
+    { name: 'transfer@1', subjects: ['die@1'], object: { types: ['die@1'] } },
+    { name: 'observed@1', subjects: ['die@1'], object: { types: ['defect@1'] } },
+    { name: 'bonded_from@1', subjects: ['die@1', 'wafer@1'], object: { types: ['die@1'] } },
+    { name: 'inspected@1', subjects: ['wafer@1'], object: { types: ['die@1'] } },
+    { name: 'processed_with@1', subjects: ['wafer@1'], object: { types: ['recipe@1'] } },
+    { name: 'register@1', subjects: ['wafer@1', 'dtjob@1', 'lot@1'], object: {} },
+    { name: 'has_wafer@1', subjects: ['lot_slot@1'], object: { types: ['wafer@1'] } },
+    { name: 'slot_map@1', subjects: ['lot_slot@1'], object: { types: ['lot_slot@1'] } },
+    { name: 'has_netdie@1', subjects: ['dtjob@1'], object: {} },
+    { name: 'derived_from@1', subjects: ['lot@1'], object: { types: ['lot@1'] } },
   ],
   collect: ['entity', 'event', 'claim', 'collection', 'point', 'value', 'quantity', 'action'],
 };
@@ -149,21 +154,105 @@ async function suite(mods) {
       return panel.keyValues.mat_id === undefined;
     })());
 
-  console.log(`${LF}-- B. a type nothing leaves says so in a sentence --`);
+  console.log(`${LF}-- B. FOLLOW offers what touches the type; a type nothing touches says so --`);
+  const drawnFollow = (h) => byAttr(h, 'data-follow').map((e) => e.getAttribute('data-follow')).join(',');
   panel.setType('die@1');
-  eq('B1 die@1 offers exactly what the declaration says leaves it',
-    panel.followOptions().join(','), 'transfer@1,observed@1,bonded_from@1');
-  eq('B2 wafer@1 offers its own three',
+  eq('B1 die@1 offers the three that leave it and inspected@1, which enters it',
+    panel.followOptions().join(','), 'transfer@1,observed@1,bonded_from@1,inspected@1');
+  eq('B2 wafer@1 offers its own four and has_wafer@1, which enters it',
     panel.followOptions.call(Object.assign(Object.create(Object.getPrototypeOf(panel)),
       panel, { nodeType: 'wafer@1' })).join(','),
-    'bonded_from@1,inspected@1,processed_with@1,register@1');
+    'bonded_from@1,inspected@1,processed_with@1,register@1,has_wafer@1');
+  panel.setType('defect@1');
+  eq('B3 defect@1, only ever an object, offers the predicate that enters it',
+    panel.followOptions().join(','), 'observed@1');
+  eq('B7 ... and draws its checkbox', drawnFollow(host), 'observed@1');
+  // 🔴 THE SEED'S FIRST STEP IS OPEN (owner 10-02, lead c24ba7d82): a static type gets what enters it.
   panel.setType('recipe@1');
-  eq('B3 recipe@1 offers nothing -- it is an object, never a subject', panel.followOptions().length, 0);
-  const recipeText = textOf(host);
-  ok('B4 and the screen SAYS so rather than drawing an empty list',
-    recipeText.includes('No predicate out of'), recipeText.slice(0, 90));
-  ok('B5 the sentence names the type it is talking about', recipeText.includes('recipe@1'));
+  eq('H1 static recipe@1 offers the step in from wafer@1', panel.followOptions().join(','), 'processed_with@1');
+  eq('H2 ... and draws its checkbox', drawnFollow(host), 'processed_with@1');
+  panel.setType('note@1');
+  const noteText = textOf(host);
+  ok('B4 a type no predicate touches: the screen SAYS so rather than drawing an empty list',
+    noteText.includes('No predicate touches'), noteText.slice(0, 90));
+  ok('B5 the sentence names the type it is talking about', noteText.includes('note@1'));
   eq('B6 no follow checkbox is drawn', byAttr(host, 'data-follow').length, 0);
+  // 🔴 ONE SEAT, SCORED ON BOTH SCREENS (lead 10-02). The walk page is stood up from disk with the
+  //    same declaration; for every declared type its drawn follow rows must equal this box's list.
+  const walkPage = await import('../src/walk/main.js');
+  const wdoc = makeDoc();
+  wdoc.head = wdoc.createElement('head');
+  const whost = wdoc.createElement('div');
+  const wpage = walkPage.boot(wdoc, whost, { apiBase: '',
+    fetchImpl: async () => ({ ok: true, status: 200, json: async () => DECL }) });
+  await settle();
+  const differ = [];
+  for (const { type } of DECL.entities) {
+    wpage.state.type = type;
+    wpage.render();
+    panel.setType(type);
+    if (drawnFollow(whost) !== panel.followOptions().join(',')) {
+      differ.push(`${type}: page ${drawnFollow(whost)} | box ${panel.followOptions().join(',')}`);
+    }
+  }
+  ok('B8 the walk page and this box offer the same follow list for every declared type',
+    differ.length === 0, differ.join(' ; '));
+  // 🔴 A TYPE CHANGE, ON BOTH SCREENS (lead 10-02): a ticked follow that does not touch the new type
+  //    leaves, one that does stays.
+  const pageType = (type) => {
+    const sel = walkAll(whost).find((e) => e.className === 'wk-select');
+    sel.value = type;
+    sel.fire('change');
+  };
+  pageType('die@1'); wpage.state.follow = new Set(['inspected@1', 'processed_with@1']); pageType('recipe@1');
+  panel.setType('die@1'); panel.follow = new Set(['inspected@1', 'processed_with@1']); panel.setType('recipe@1');
+  await settle();
+  ok('H3 a type change keeps only the ticked follow that touches the new type, on both screens',
+    [...wpage.state.follow].join(',') === 'processed_with@1' && [...panel.follow].join(',') === 'processed_with@1',
+    `page ${[...wpage.state.follow]} | box ${[...panel.follow]}`);
+
+  console.log(`${LF}-- K. the route list leaves out what the walk refuses, as the walk page does --`);
+  {
+    // Hand-held, in the shipped sample's shape: two ways from wafer to defect, one through the static hub.
+    const DECL_R = { ok: true,
+      entities: [{ type: 'wafer@1', keys: ['wafer'] }, { type: 'die@1', keys: ['mat_id'] },
+        { type: 'defect@1', keys: ['defect'] }, { type: 'quantity@1', keys: ['q'], class: ['static'] },
+        { type: 'defect_kind@1', keys: ['kind'], class: ['static'] }],
+      predicates: [
+        { name: 'measures@1', subjects: ['wafer@1'], object: { types: ['quantity@1'] } },
+        { name: 'leads_to@1', subjects: ['quantity@1'], object: { types: ['quantity@1', 'defect_kind@1'] } },
+        { name: 'of_kind@1', subjects: ['defect@1'], object: { types: ['defect_kind@1'] } },
+        { name: 'inspected@1', subjects: ['wafer@1'], object: { types: ['die@1'] } },
+        { name: 'observed@1', subjects: ['die@1'], object: { types: ['defect@1'] } }] };
+    const rhost = doc.createElement('div');
+    const rbox = new WalkBoxPanel(rhost, { doc, markings: new MarkingStore(), reads: 'marking:1', writes: 'marking:2',
+      loadDeclaration: () => Promise.resolve(DECL_R), walk: () => Promise.resolve({ ok: true, nodes: [] }) });
+    rbox.mount();
+    await settle();
+    const chains = () => rbox.routes().map((r) => r.chain.join('>')).sort().join(' ; ');
+    rbox.setType('wafer@1'); rbox.destination = 'defect';
+    eq('K1 wafer@1 to defect: the route through die, not the one stepping out of the static hub',
+      chains(), 'wafer>die>defect');
+    rbox.setType('quantity@1'); rbox.destination = 'die';
+    ok('K2 static quantity@1 to die: the first step out to wafer@1 is offered',
+      chains().split(' ; ').includes('quantity>wafer>die'), chains());
+    const rdoc = makeDoc();
+    rdoc.head = rdoc.createElement('head');
+    const rpageHost = rdoc.createElement('div');
+    const rpage = walkPage.boot(rdoc, rpageHost, { apiBase: '',
+      fetchImpl: async () => ({ ok: true, status: 200, json: async () => DECL_R }) });
+    await settle();
+    const pageChains = (type, to) => {
+      rpage.state.type = type; rpage.state.collect = new Set([to]); rpage.render();
+      return walkAll(rpageHost).filter((e) => e.className === 'wk-pathchain')
+        .map((e) => e.textContent.split(' → ').join('>')).sort().join(' ; ');
+    };
+    const boxChains = (type, to) => { rbox.setType(type); rbox.destination = to; return chains(); };
+    const pairs = [['wafer@1', 'defect'], ['quantity@1', 'die'], ['defect@1', 'wafer']];
+    const apart = pairs.filter(([t, to]) => pageChains(t, `${to}@1`) !== boxChains(t, to))
+      .map(([t, to]) => `${t}->${to}: page ${pageChains(t, `${to}@1`)} | box ${boxChains(t, to)}`);
+    ok('K3 the walk page and this box offer the same routes', apart.length === 0, apart.join(' ; '));
+  }
 
   console.log(`${LF}-- C. unpicked FOLLOW is ABSENT from the request, not an empty list --`);
   panel.setType('die@1');
@@ -642,9 +731,22 @@ const MUTANTS = [
   { name: 'an-empty-follow-list-is-drawn-as-a-list', catches: ['B4', 'B6'],
     from: "      box.appendChild(this._note(this.nodeType",
     to: "      return box; box.appendChild(this._note(this.nodeType" },
-  { name: 'follow-is-not-narrowed-by-subjects', catches: ['B1', 'B3'],
-    from: "    return all.filter((p) => (p.subjects || []).includes(this.nodeType)).map((p) => p.name);",
-    to: "    return all.map((p) => p.name);" },
+  { name: 'follow-is-not-narrowed-by-type', catches: ['B1', 'B3'],
+    from: "    return predicatesTouching(decl.predicates || [], this.nodeType, decl.entities);",
+    to: "    return (decl.predicates || []).map((p) => p.name);" },
+  // 🔴 10-02. The copy this round removed: the box answering on its own, subject side only.
+  { name: 'the-box-keeps-its-own-subject-only-copy', catches: ['B1', 'B3', 'B8'],
+    from: "    return predicatesTouching(decl.predicates || [], this.nodeType, decl.entities);",
+    to: "    const all = decl.predicates || []; if (!this.nodeType) return all.map((p) => p.name);"
+        + " return all.filter((p) => (p.subjects || []).includes(this.nodeType)).map((p) => p.name);" },
+  // 🔴 10-02. The route list that did not ask the walk's step rule — the walk page's did.
+  { name: 'the-box-route-list-offers-what-the-walk-refuses', catches: ['K1', 'K3'],
+    from: "    return keepWalkableRoutes(this.declaration.entities,\n"
+        + "      pathsBetween(this.declaration, bareTypeName(this.nodeType), this.destination));",
+    to: "    return pathsBetween(this.declaration, bareTypeName(this.nodeType), this.destination);" },
+  { name: 'ticked-follow-survives-a-type-change', catches: ['H3'],
+    from: "    this.follow = new Set([...this.follow].filter((f) => allowed.has(f)));\n    this.result = null;",
+    to: "    this.result = null;" },
   // ③ an empty array is the OPPOSITE of the server default.
   { name: 'unpicked-follow-is-sent-as-an-empty-array', catches: ['C2', 'C5'],
     // 앵커 갱신 2026-08-29 (round V): 그 줄이 전선에서 버전을 «벗기게» 바뀌었습니다.
