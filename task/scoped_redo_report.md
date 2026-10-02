@@ -70549,3 +70549,52 @@ AST                                      「어느 세상인가」를 묻는 자
 그리고  allow_chain_trigger 때문에 복사 한 번마다 공식 표 규칙이 한 번 더 돈다(세기 질의 한 번 더) — 받아들일지
 ```
 3211e9000(복사 + 보류, 원천 표 규칙)은 계속 짓는 중 — 이 답과 따로 착지할 수 있다
+
+---
+
+## [10-02 밤] 착지 — 보류 포함 행 복사 맵퍼 copy_rows_with_hold, 줄인 모양 (총괄 3211e9000 · 3ba1d1dd4) — 4115f5afb
+
+어느 DB · 어느 스키마 · 지운 것 — 시험은 assy_test 의 시험 스크래치 스키마(assy_pytest_pg_<프로세스>, 시험 끝에 픽스처가 DROP)뿐(카나리아: pg_namespace 에 그 스키마 1). 표 둘을 그 스키마에 만들고, 끝에 그 스키마 이름을 적은 DROP · DELETE 로 그 표 둘 · 그 표의 cell_sources · database_outbox 줄 · 그 소스의 원장 줄만 지움. 박스 DB 에는 안 씀
+
+**한 일**
+```
+맵퍼     server/mappers/hold_copy.py(추적 예외) — 등록 copy_rows_with_hold · params key_columns · columns · hold_column · source_table
+         원천 표 규칙  copy_one_row 그대로(columns 를 원천 행의 층 + origin_row_id) + 세 줄:
+                      같은 키(IS NOT DISTINCT FROM) 원천 행들의 columns 서로 다른 값 묶음 수를 mapper_sdk.sql 로 한 번 -> 2 이상 '' 아니면 agreed
+                      보류는 같은 updates 의 항목 하나 더, 그냥 chain_ingestion 층
+         공식 표 규칙  같은 함수, 보류만(값 칸 안 씀) — 모드는 trigger_table == target_table «한 자리»
+거둔 것   can_mean_emptied 변경 · 사람이 정함 · 9줄 게이트 표 · join 함수 부르기 · 운영 크기 pg 시험 — 작업 트리에서 되돌림
+         origin/main 과의 차이: crud.py · 두 독자 시험 = 없음(diff 0 줄)
+이름     등록 이름은 앞 계획 그대로 copy_rows_with_hold
+```
+**게이트 (pg, 체인 그룹 본체 -> 원장 따라가기까지 제품 자리 그대로, 규칙 둘 다 켠 채)**
+```
+하나 -> agreed · 원장이 그 값을 말함
+다른 값 둘 -> '' · 원장 원자 거둠(exclude_when hold — 시험이 그 줄을 제품 검사기 require_ready_bundle 로 통과시켜 씀)
+같은 값 둘 -> agreed
+값과 보류가 한 커밋   커밋마다 «값이 바뀐 공식 행의 보류가 그 순간 원천 행들이 주는 답과 다른» 수 = 0 — 한 묶음 · 두 묶음 둘 다
+보이던 값의 충돌 행 지움 -> '' 에서 agreed · 원장이 남은 값을 말함
+셋(7 · 7 · 9)에서 9 지움 -> agreed · 다시 세기 규칙이 쓴 이벤트 1(같은 보류는 이벤트 0 — 루프 0)
+변이(각 자리 되돌림 -> 빨강, 안 바꾼 첫 판 = 카나리아)
+   none (canary)                                                  7 passed, 7949 deselected, 18 warnings
+   the hold always agrees                                         5 failed, 2 passed, 7949 deselected, 18 warnings
+   the hold under the row's own layer (the rejected alternative)  4 failed, 3 passed, 7949 deselected, 18 warnings
+   no hold item in the updates                                    6 failed, 1 passed, 7949 deselected, 18 warnings
+   the mode is never hold-only                                    5 failed, 2 passed, 7949 deselected, 18 warnings
+예시     RELEASE_LOG 규칙 둘 — 로더 판정 거절 0
+전체 시험  5 failed, 7704 passed, 244 skipped, 3 xfailed, 13016 warnings in 841.01s (0:14:01)
+          실패: test_a_sentence_says_itself_only_for_the_rows_it_names · test_core_alignment_mapper · test_core_usage_mapper · test_dt_inventory_metadata_mapper · test_one_place_decides_where_the_server_is — 작업 트리 체크아웃의 줄 끝 · 경로(앞 착지들과 같은 다섯)
+```
+**남는 것**
+```
+가려진 값의 원천 행 지움은 아직 다시 안 셈 — (나) 지움 경로 이벤트(e11bb4de0)가 고친다. 시험 머리에 그 사실을 적어 둠
+사람이 공식 표에 값을 적어도 보류는 안 풀림 — 소유자께 말한 한계 그대로
+비용    행마다 세기 질의 하나 + 복사마다 다시 세기 규칙 한 번 — 1,000 행 시간은 «안 쟀다»
+```
+**여쭐 것 하나 — 내일 순서(35b76ba92 RUN.md)**
+```
+「재기동 -> table_config(키 · hold 칸)」 순서인데, hold 칸은 «재기동»만 기존 표에 더한다
+   (runtime/system_reload.reload_local_process_cache: 새 표 CREATE 만, 기존 표 ALTER 는 범위 밖)
+그래서 RUN.md 를 「table_config 고침 -> 재기동 -> 원장 소스 exclude_when -> 비우기 …」로 적으려 한다 — 재기동이 table_config 뒤로 간다
+```
+다음: 35b76ba92 빠른 비우기 + 내일 RUN.md (짓는 중)
