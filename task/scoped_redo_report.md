@@ -70814,3 +70814,48 @@ blocker=insert CIC=('LockNotAvailable: 오류:  잠금 대기 시간 초과로 �
    the stop does not name the sessions      2 failed, 1 passed, 7978 deselected, 10 warnings
 
 다음: (나) 행 지문 착지(총괄 야간 판정 둘 반영) -> 쓰기 문 성능 -> 지움 다시 세기 -> 338abb9f3 -> 세상
+
+---
+
+## [10-03 아침] 착지 — (나) 원장이 못 본 수정을 센다 (총괄 bb9b1c19c · 1472ec1cc · c21cba507 야간 판정) — 6b698fe2d
+
+어느 DB · 어느 스키마 · 지운 것 — 시험 · 재기는 assy_test 시험 스크래치 스키마뿐(픽스처가 DROP). 박스 DB 는 읽기 전용으로 행 색인 줄 수만 셈. 지운 것 0
+
+**한 일**
+```
+지문     행 색인 줄에 row_fingerprint — 그 소스의 선언이 읽는 칸(event_frame.bound_select_columns)만, crud.blank_to_null 로 빈 값 접고 md5. 원자와 같은 커밋
+칸       새 표는 CREATE 에, 옛 표는 ensure_schema 의 row_ref_additions(cursor_additions 와 같은 꼴, 카탈로그 먼저) — 이주 없음
+         기본 세상 DDL 기록(support/ledger_default_ddl.json)을 그 차이만큼 새로 뜸: CREATE 의 칸 · ALTER 한 줄
+census   measure_row_census 정확 모드(사람이 돌리는 census)에만 «수정 누락» · «지문 없음» 을 따로, 각각 measured_at 과 함께 — 주기 tick 은 안 훑음(S-122)
+명령     python -m ledger.backfill --source <소스> --drifted [--apply]
+야간 판정  ① 기본 세상 채우기 필수 아님 — RUN.md · RELEASE_LOG 에 채우는 명령 + 총괄 율 1,000 행당 5.85 s 어림(운영 안 쟀다)
+          ② census 기록의 잰 시각 — 두 수가 그 기록의 measured_at 을 그대로 가짐(시험 단언)
+```
+**게이트 (pg)** — 고친 칸 -> 누락 1(census 기록에 잰 시각과 함께, 지문 없음 0) -> 다시 번역 -> 0 · 원자가 새 값 · 주기 tick 은 이 수가 없음 · 안 읽는 칸은 누락 아님 · '' 와 NULL 한 지문 · 지문 없는 줄은 따로
+변이(카나리아 = 안 바꾼 첫 판)
+   none (canary)                              4 passed, 7981 deselected, 12 warnings
+   the print is not written                   3 failed, 1 passed, 7981 deselected, 12 warnings
+   a blank is not folded                      1 failed, 3 passed, 7981 deselected, 12 warnings
+   the census counts the matching lines       3 failed, 1 passed, 7981 deselected, 12 warnings
+   the print covers map.input_columns too     3 failed, 1 passed, 7981 deselected, 12 warnings
+   the redo picks no rows                     1 failed, 3 passed, 7981 deselected, 12 warnings
+**비용 (시험 스키마, 1만 행, 한 판씩)**
+```
+원장 따라가기  지문 있음 34.16 s · 없음 33.39 s -> 지문 몫 0.77 s / 1만 (1,000 행당 0.077 s)
+census 훑기    1만 줄 0.213 s
+⚠️ 이 판의 원장 시간(1만에 약 33 s)이 어제 묶음 프로브(23.7 s)보다 길다 — 다른 시각 · 다른 부하의 두 판이라 같은 판 비교가 아님, (가) 탓인지 모른다
+```
+**시험**
+```
+pg      39 passed, 7946 deselected, 81 warnings in 704.13s (0:11:44) (지문 4 · 따라가기 11 · 복사 18 · 비우기 4 · dtwafer 2)
+sqlite  5 failed, 7709 passed, 268 skipped, 3 xfailed, 13073 warnings in 832.62s (0:13:52)
+        실패: test_a_sentence_says_itself_only_for_the_rows_it_names · test_core_alignment_mapper · test_core_usage_mapper · test_dt_inventory_metadata_mapper · test_one_place_decides_where_the_server_is — 늘 같은 환경 다섯
+```
+**지문 칸 — 은퇴(2a8d9073c)와 걸리던 자리, 이 착지에서 풂**
+```
+처음 판은 base_select_columns(=선언이 읽는 칸 + map.input_columns + row_id)를 썼다 — 은퇴가 input_columns 를 «관계 전부»로 넓히면 모든 줄이 누락으로 셀 뻔했다
+판정 201(칸은 바인딩으로만 원자에 닿는다)과 소스 지문의 input_columns 빼기(setup_registry)에 맞춰, 지문은 bound_select_columns(선언이 읽는 칸)만
+   base_select_columns 는 그것에 input_columns · row_id 를 더하는 모양으로 나눔(같은 문장 한 자리)
+게이트  시험 세상 원장 소스가 input_columns 에 note 를 적는다 — note 고침은 누락 아님 · 지문을 input_columns 까지로 되돌리면 빨강
+```
+다음: 2a8d9073c input_columns 은퇴(먼저 잼: 전부 읽기로 원자가 바뀌는 소스가 있나) -> bce43236b -> e11bb4de0 -> 338abb9f3 -> 세상

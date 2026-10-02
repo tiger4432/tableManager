@@ -41,6 +41,25 @@ from functools import lru_cache
 from . import schema
 from .envelope import ROW_COLUMNS
 
+ROW_FINGERPRINT_COLUMN = schema.ROW_FINGERPRINT_COLUMN
+
+
+def row_fingerprint_sql(columns, alias):
+    """md5 of the columns a source reads (sorted) on row `alias`, a blank folded to NULL by
+    crud's one fold - the ONE spelling, written with the index line and asked by the census."""
+    import sqlalchemy as sa
+    from sqlalchemy.dialects import postgresql
+    from database import crud
+
+    parts = [str(crud.blank_to_null(sa.literal_column('%s."%s"::text' % (alias, column))).compile(
+        dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True}))
+             for column in sorted(set(columns))]
+    return "md5(jsonb_build_array(%s)::text)" % ", ".join(parts)
+
+
+def _relation_sql(relation):
+    return ".".join('"%s"' % part for part in str(relation).split("."))
+
 logger = logging.getLogger("Ledger.Store")
 
 INSERT_PAGE_SIZE = 1000
@@ -457,7 +476,7 @@ class LedgerStore:
     def write_batch(self, source, translator_ver, atoms, cursor_value, molecules,
                     refused=0, incomplete=0, *, reasons,
                     enforce_translator_version=False, advance_cursor=True,
-                    withdraw_refs=None, row_refs=None, receipt=None):
+                    withdraw_refs=None, row_refs=None, receipt=None, row_ref_columns=None):
         """🔴 The atomic unit. Atoms in, cursor forward, ONE commit, or nothing at all.
 
         🔴 `advance_cursor=False` IS THE SCOPED REDO, AND IT IS THIS SAME DOOR. Everything
@@ -515,7 +534,7 @@ class LedgerStore:
             self.ensure_partitions(connection, {a.occurred_at for a in atoms})
             withdrawn = self._withdraw_refs(connection, source, withdraw_refs)
             attempted, inserted = self.insert_atoms(connection, atoms)
-            self._write_row_refs(connection, source, row_refs)
+            self._write_row_refs(connection, source, row_refs, row_ref_columns)
             if advance_cursor:
                 self._advance_cursor(connection, source, translator_ver, cursor_value,
                                      molecules, inserted, attempted - inserted,
@@ -612,7 +631,7 @@ class LedgerStore:
                 (source, list(refs)))
             return int(cursor.rowcount or 0)
 
-    def _write_row_refs(self, connection, source, refs):
+    def _write_row_refs(self, connection, source, refs, columns=None):
         """Record which physical row each `source_raw_ref` was built from. Caller's
         transaction.
 
@@ -664,6 +683,15 @@ class LedgerStore:
                 "(relation, row_id, source_who, source_raw_ref) VALUES %s "
                 "ON CONFLICT DO NOTHING",
                 rows)
+            # (나) the row as the source read it: `columns` are what it reads. Not given
+            # (the index backfill) leaves the print NULL - unknown, counted apart.
+            if columns:
+                for relation, row_ids in sorted(touched.items()):
+                    cursor.execute(
+                        f"UPDATE {self.names.row_ref} r SET {ROW_FINGERPRINT_COLUMN} = "
+                        f"{row_fingerprint_sql(columns, 't')} FROM {_relation_sql(relation)} t "
+                        "WHERE r.relation = %s AND r.source_who = %s AND r.row_id = ANY(%s) "
+                        "AND t.row_id = r.row_id", (relation, source, sorted(row_ids)))
             # ⚠️ ONLY WHERE THE SOURCE HAS ALREADY BEEN COUNTED. `NULL` means 「never
             # planted」, and `NULL + 3` is NULL in SQL - which would be the right answer by
             # accident. It is written explicitly so nobody later "fixes" it with COALESCE

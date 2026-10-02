@@ -1,5 +1,20 @@
 # 지금 돌리면 되는 것
 
+> ## [10-03] **원장 — 원장이 못 본 수정을 센다 · 그 행만 다시 번역 (총괄 bb9b1c19c (나) · c21cba507) — 이주 «불필요» · 재기동 «필요»(run_app.bat 전체)**
+>
+> ```
+> 무엇이 바뀌나  원장 행 색인 줄에 «번역할 때의 행 지문». 칸은 원장 쓰기가 처음 돌 때 스스로 더함(로그 [Ledger] adding ledger_source_row_ref.row_fingerprint 한 번)
+> 확인         python -m ledger census --source <소스>   (server 폴더) — 「표 · 색인 · 남은 · 수정 누락 D · 지문 없음 U」
+> 뜻           U = 이 착지 전에 적힌 줄. 채우는 것은 필수 아님(새 세상 번역이 처음부터 적음)
+>                 기본 세상에서 채우려면 소스마다 python -m ledger.backfill --source <소스> --whole-source --apply
+>                 (이 박스 색인 행 1,215,824 · 시간은 총괄 율 1,000 행당 5.85 s 로 어림, 운영은 안 쟀다)
+>              D = 원장이 못 본 수정(그 소스가 읽는 칸이 바뀌었는데 원장은 옛 값). python -m ledger.backfill --source <소스> --drifted 로 보고 --apply 로 그 행만 다시
+>              D 가 다시 늘면 따라가기가 무언가를 놓친 것 — python -m ledger followup 의 실패 목록부터
+> 급할 때       git revert <이 커밋> -> 재기동 (칸은 남아도 옛 코드가 안 읽는다)
+> ```
+
+---
+
 > ## 🔴 [10-03 아침 고침] **원장 따라가기 — 대기열이 아웃박스 행으로 (총괄 bb9b1c19c (가) · a3d19dc51) — 이주 «필요»(앱을 «끄고») · 재기동 «필요»(run_app.bat 전체)**
 >
 > ```

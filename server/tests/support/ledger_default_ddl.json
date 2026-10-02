@@ -46,7 +46,7 @@
    ]
   ],
   [
-   "\nCREATE TABLE IF NOT EXISTS ledger_source_row_ref (\n    relation       TEXT NOT NULL,\n    row_id         TEXT NOT NULL,\n    source_who     TEXT NOT NULL,\n    source_raw_ref TEXT NOT NULL,\n    -- 🔴 THE REF IS IN THE KEY. One physical row can appear under SEVERAL claim refs: one\n    -- event may emit several sentences over different subsets of its rows, and each\n    -- subset produces its own `source_raw_ref`. Keyed without it, the second sentence\n    -- would overwrite the first and its atoms would survive the row's deletion.\n    PRIMARY KEY (relation, row_id, source_who, source_raw_ref)\n)\n",
+   "\nCREATE TABLE IF NOT EXISTS ledger_source_row_ref (\n    relation       TEXT NOT NULL,\n    row_id         TEXT NOT NULL,\n    source_who     TEXT NOT NULL,\n    source_raw_ref TEXT NOT NULL,\n    row_fingerprint TEXT,\n    -- 🔴 THE REF IS IN THE KEY. One physical row can appear under SEVERAL claim refs: one\n    -- event may emit several sentences over different subsets of its rows, and each\n    -- subset produces its own `source_raw_ref`. Keyed without it, the second sentence\n    -- would overwrite the first and its atoms would survive the row's deletion.\n    PRIMARY KEY (relation, row_id, source_who, source_raw_ref)\n)\n",
    null
   ],
   [
@@ -102,6 +102,17 @@
   ],
   [
    "ALTER TABLE ledger_translator_cursor ADD COLUMN rows_indexed BIGINT",
+   null
+  ],
+  [
+   "SELECT EXISTS (SELECT 1 FROM pg_attribute WHERE attrelid = to_regclass(%s) AND attname = %s AND attnum > 0 AND NOT attisdropped)",
+   [
+    "ledger_source_row_ref",
+    "row_fingerprint"
+   ]
+  ],
+  [
+   "ALTER TABLE ledger_source_row_ref ADD COLUMN row_fingerprint TEXT",
    null
   ],
   [
@@ -213,7 +224,7 @@
    ]
   ],
   [
-   "\nCREATE TABLE IF NOT EXISTS ledger_source_row_ref (\n    relation       TEXT NOT NULL,\n    row_id         TEXT NOT NULL,\n    source_who     TEXT NOT NULL,\n    source_raw_ref TEXT NOT NULL,\n    -- 🔴 THE REF IS IN THE KEY. One physical row can appear under SEVERAL claim refs: one\n    -- event may emit several sentences over different subsets of its rows, and each\n    -- subset produces its own `source_raw_ref`. Keyed without it, the second sentence\n    -- would overwrite the first and its atoms would survive the row's deletion.\n    PRIMARY KEY (relation, row_id, source_who, source_raw_ref)\n)\n",
+   "\nCREATE TABLE IF NOT EXISTS ledger_source_row_ref (\n    relation       TEXT NOT NULL,\n    row_id         TEXT NOT NULL,\n    source_who     TEXT NOT NULL,\n    source_raw_ref TEXT NOT NULL,\n    row_fingerprint TEXT,\n    -- 🔴 THE REF IS IN THE KEY. One physical row can appear under SEVERAL claim refs: one\n    -- event may emit several sentences over different subsets of its rows, and each\n    -- subset produces its own `source_raw_ref`. Keyed without it, the second sentence\n    -- would overwrite the first and its atoms would survive the row's deletion.\n    PRIMARY KEY (relation, row_id, source_who, source_raw_ref)\n)\n",
    null
   ],
   [
@@ -249,6 +260,13 @@
    [
     "ledger_translator_cursor",
     "rows_indexed"
+   ]
+  ],
+  [
+   "SELECT EXISTS (SELECT 1 FROM pg_attribute WHERE attrelid = to_regclass(%s) AND attname = %s AND attnum > 0 AND NOT attisdropped)",
+   [
+    "ledger_source_row_ref",
+    "row_fingerprint"
    ]
   ],
   [

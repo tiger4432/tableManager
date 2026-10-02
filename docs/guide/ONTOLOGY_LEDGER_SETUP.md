@@ -998,7 +998,7 @@ subject/object entity type으로 모양을 계산해 후보를 골랐고, 그래
 그건 정규 해시 재료라서 고치지 않는다 — **읽는 순서는 스켈레톤이 만든다**(화면 라벨
 읽기 · 준비 · 매핑 · 연결. 키는 영어 그대로).
 
-🆕 **[10-02 `3a2d79ff9`] `read` 칸은 안 적으면 제품이 채운다**(`setup_bundle.with_read_defaults` 한 자리, 적은 칸은 그대로 — 같은 값을 손으로 적은 소스와 같은 번들): `unit`(group_by 가 있으면 group, 없으면 row) · `identity` · `order_by`(표 선언의 가장 짧은 유일 키) · `group_by`(`unit: group` 이면 `identity`) · `occurred_at`(사건 엣지들이 적은 칼럼과 시간대 — 사건 엣지가 없으면 행의 저장 시각, `ingested` · UTC) · `registration_probe`(등록하는 주어마다 그 키 칼럼 하나) · `map.unit` · `map.input_columns`(`[]`). 사건 엣지들이 서로 다른 칼럼을 적거나 시간대 없이 적으면 `missing_time` 으로 거절한다(시각을 짐작하지 않는다). 폼에는 기본값이 채워진 칸(`Default: …`)으로 보인다. 소스 시각을 사건 엣지로 옮기는 이주는 `python -m scripts.migrate_ledger_slim_sources`(미리보기) → `--apply --source <소스>`.
+🆕 **[10-02 `3a2d79ff9`] `read` 칸은 안 적으면 제품이 채운다**(`setup_bundle.with_read_defaults` 한 자리, 적은 칸은 그대로 — 같은 값을 손으로 적은 소스와 같은 번들): `unit`(group_by 가 있으면 group, 없으면 row) · `identity` · `order_by`(표 선언의 가장 짧은 유일 키) · `group_by`(`unit: group` 이면 `identity`) · `occurred_at`(사건 엣지들이 적은 칼럼과 시간대 — 사건 엣지가 없으면 행의 저장 시각, `ingested` · UTC) · `registration_probe`(등록하는 주어마다 그 키 칼럼 하나) · `map.unit` · `map.input_columns`(`[]`). 사건 엣지들이 서로 다른 칼럼을 적거나 시간대 없이 적으면 `missing_time` 으로 거절한다(시각을 짐작하지 않는다). 폼에는 접힌 한 줄(`Defaults · N`)로 보이고, 펼치면 칸마다 기본값(`Default: …`)이다(10-02 `d06199e6a`). 초안은 파일에 적힌 선언 그대로 열리고, 저장은 로더가 채우는 칸을 파일에 적지 않는다. 소스 시각을 사건 엣지로 옮기는 이주는 `python -m scripts.migrate_ledger_slim_sources`(미리보기) → `--apply --source <소스>`.
 
 | 필드 | 설명 |
 |---|---|

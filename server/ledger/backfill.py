@@ -1057,6 +1057,57 @@ def rows_not_yet_translated(engine, setup, source, *, exact_rows=True, world=Non
     return report
 
 
+def _drift_from(setup, source, world=None):
+    """(FROM ... JOIN, the print expression, params) over this source's index lines."""
+    from .event_frame import bound_select_columns
+    from .store import ROW_FINGERPRINT_COLUMN, _relation_sql, row_fingerprint_sql
+    from . import schema
+
+    plan = setup.snapshot.source_plans[source]
+    return (f"FROM (SELECT DISTINCT row_id, {ROW_FINGERPRINT_COLUMN} AS printed "
+            f"FROM {schema.world_names(world).row_ref} WHERE relation = %s AND source_who = %s) r "
+            f"JOIN {_relation_sql(plan.relation)} t ON t.row_id = r.row_id",
+            row_fingerprint_sql(bound_select_columns(plan), "t"), (plan.relation, source))
+
+
+def rows_drifted(engine, setup, source, world=None):
+    """(총괄 bb9b1c19c (나)) Rows translated from values they no longer hold - an edit the
+    follow-up never delivered - and rows whose index line carries no print yet. Only the
+    columns the source reads count; a blank is NULL."""
+    joined, printed, params = _drift_from(setup, source, world)
+    connection = engine.raw_connection()
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(f"SELECT count(*) FILTER (WHERE r.printed IS NULL), "
+                           f"count(*) FILTER (WHERE r.printed <> {printed}) {joined}", params)
+            unprinted, drifted = cursor.fetchone()
+    finally:
+        connection.rollback()
+        connection.close()
+    return {"rows_drifted": int(drifted), "rows_unprinted": int(unprinted)}
+
+
+def retranslate_drifted(engine, setup, source, apply=False, world=None):
+    """Translate again exactly the rows `rows_drifted` counts as drifted (not the unprinted)."""
+    from .followup import scope_column
+
+    plan = setup.snapshot.source_plans[source]
+    column = scope_column(plan)
+    joined, printed, params = _drift_from(setup, source, world)
+    connection = engine.raw_connection()
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(f'SELECT DISTINCT t."{column}" {joined} WHERE r.printed <> {printed}',
+                           params)
+            values = [row[0] for row in cursor.fetchall()]
+    finally:
+        connection.rollback()
+        connection.close()
+    if not values:
+        return {"source": source, "scope_values": 0}
+    return rescope(engine, setup, source, column, values, apply=apply, world=world)
+
+
 #: The paced job that measures 「table rows · indexed rows · remainder」 for every source.
 #: A NAME, because `pacing.json` is keyed by one and an operator who needs this to stop
 #: crowding the database at 2am edits a cell there rather than a constant.
@@ -1072,6 +1123,8 @@ CENSUS_NAMES = {
     "not_yet": "Not yet",
     "measured_at": "Measured",
     "source_refused": "Refused by the loader",
+    "rows_drifted": "Edited, not followed",
+    "rows_unprinted": "Not yet printed",
 }
 
 
@@ -1112,6 +1165,16 @@ def measure_row_census(engine, setup, source, now=None, *, exact_rows=True):
         stamped["excluded_but_indexed"] = measured(
             excluded, exact=False,
             method=f"exclude_when over the first {page} rows, joined to the row index",
+            measured_at=stamp)
+    # (나) A SCAN, so the operator's census and never the paced tick (S-122). Rows, whatever
+    # the unit, so before the grouped return like the number above.
+    if exact_rows:
+        drift = rows_drifted(engine, setup, census["source"])
+        stamped["rows_drifted"] = measured(
+            drift["rows_drifted"], exact=True,
+            method="index print <> print of the row's read columns now", measured_at=stamp)
+        stamped["rows_unprinted"] = measured(
+            drift["rows_unprinted"], exact=True, method="index lines with no print",
             measured_at=stamp)
     grouped = census.get("counts") == "rows vs groups"
     # ⚠️ THE METHOD IS PART OF THE NUMBER (S-122). A paced tick reads the planner's free
@@ -2019,6 +2082,10 @@ def main(argv=None):
     parser.add_argument(
         "--via-events", action="store_true",
         help="retired - the same job as the plain load; run without it")
+    parser.add_argument("--drifted", action="store_true",
+                        help="translate again only the rows of --source whose read columns no "
+                             "longer match what was translated (python -m ledger census "
+                             "counts them). Without --apply: how many and what would change")
     parser.add_argument("--whole-source", action="store_true",
                         help="rescope EVERY row of --source: the redo a changed declaration "
                              "needs - after a merge, or to refresh a branch - and rows the "
@@ -2060,6 +2127,13 @@ def main(argv=None):
     names = schema.require_world(args.world)
     LedgerStore(engine, world=args.world).ensure_schema()
 
+    if args.drifted:
+        result = retranslate_drifted(engine, load_setup(names.declaration_root), args.source,
+                                     apply=args.apply,
+                                     world=args.world)
+        logger.info("[Ledger] drifted rows of %s: %s", args.source, result)
+        print("drifted: %s" % result)
+        return 0
     if args.whole_source:
         # 총괄 8d10633ae ㉡: every row of the source, page by page. Not with a scope - two
         # definitions of one redo's rows. Without --apply it says what is cheap (총괄
