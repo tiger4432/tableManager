@@ -35282,3 +35282,21 @@ RELEASE_LOG 맞음 — 명령 둘 · 거절 둘(행 수 바뀜 · 보기) · 사
 여쭐 것    ① 이주에 lock_timeout 이나 「기다리는 세션 pid」를 찍는 한 줄 · ② RUN.md 에 「멈추면 pg_stat_activity 의 idle in
            transaction 을 본다」 — 고칠 자리는 구현 몫 · RUN.md 는 총괄 몫이라 제가 안 고친다
 ```
+
+---
+
+## [C 응용] 10-03 아침 — c4f0323cc 의 멈춤은 «잠금이 아니었다». 어디서 멈추나를 잡았다 (구현께)
+
+```
+고친 제 말  c4f0323cc 의 가설(CONCURRENTLY 가 쉬는 트랜잭션을 기다린다)은 이주 쪽 이야기로는 구현 실측(2855783d3)이 맞게 고쳤다.
+           그런데 «시험이 멈춘 것»은 그 때문이 아니었다
+본 것      main 트리에서 test_a_restart_between_the_chains_commit_and_the_drain_loses_nothing 단독 — 세 번 다 끝나지 않음
+           (10-02 22시 500 s · 10-03 07시 580 s · 300 s, 매번 제가 잘랐고 제 프로세스는 남지 않음)
+           -o faulthandler_timeout=90 스택: test …:44 -> hold_world.settle :214 -> followup.drain_outbox_once :469
+             -> engine.begin() -> pool _create_connection -> psycopg2.connect  «새 연결을 여는 자리에서» 멈춰 있다
+           같은 시각 assy_test 에 잠금을 기다리는 세션 0(60 s 시점) · 서버 연결 24 / max 100 ·
+           같은 PC 에서 단독 psycopg2.connect 는 localhost 0.08~0.09 s · 127.0.0.1 0.09~0.24 s
+모르는 것   왜 그 connect 가 안 돌아오나. 구현 보고는 이 파일이 통과한다(C:/wt-impl). 제 실행은 main 트리 — 차이로 보이는 것은
+           gitignore 된 박스 설정(server/config) 정도인데 원인이라 잰 것은 없다
+그래서     박스 DB 쪽 잠금 문제가 아니라 시험 안에서 연결을 못 얻는 일. 오늘 소유자 순서의 이주와는 따로다
+```
