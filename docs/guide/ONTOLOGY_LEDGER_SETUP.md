@@ -694,7 +694,7 @@ Vocabulary는 “어떤 문장이 문법적으로 가능한가”를 정한다. 
 | `implementation_id/version` | trusted mapper 코드 선택 |
 | `unit.kind` | `event`, `row`, `group_by` 중 하나 |
 | `unit.columns` | `group_by` mapper에서만 필요한 grouping columns |
-| `input_columns` | relation 에서 mapper가 읽을 컬럼 전수 |
+| `input_columns` | 코드 맵퍼가 선언 «밖»에서 읽는 컬럼 — 🆕 10-02 `a5fe51b3f` 바인딩 · 엔티티 속성 · 묶음 · `when` 칸은 읽기가 저절로 싣는다(~~읽을 컬럼 전수~~) |
 
 Mapper는 Atom, predicate payload, Ledger 7컬럼을 직접 만들지 않는다. 공통
 `BaseLedgerMapper.map()` 경계를 통해 `RoleEmission`만 반환한다. subject/object/time/qualifier
@@ -1131,6 +1131,10 @@ instant`로 거절된다. 접는 것은 `basis` 경로뿐이고, 두 갈래를 �
 싣는다. 종전 원자는 이 값이 비어 있고, **비어 있음이 곧 「세계 시각」**이다. config를 다시
 읽지 않아도 구분되는 것이 요점이다 — 원자는 선언보다 오래 살고, 그때의 선언은 이미 바뀌어
 있다.
+
+🆕 **[10-02 `f45c75442`] 「비어 있음 = 세계 시각」을 읽는 자리는 한 함수다**(`schema.reads_as_event_time`). `ingested` 원자는
+걷기 시간 창이 언제나 지나보내고, 창 밖 수에 안 들고, 응답 엣지의 시각이 null 이고, 처음 본 시각(결측 목록)에 안 든다.
+최신값과 가져오기 순서는 저장된 시각 그대로다. 엔티티 `references` 원자도 같은 `ingested` 를 싣는다(사건이 아니라 구조).
 
 물리 컬럼 추가는 `server/migrations/add_ledger_occurred_at_basis.py`가 한다(널 허용,
 행 재작성 없음, 백필 없음).
@@ -1669,8 +1673,10 @@ timezone은 **자기 행을 유지한다** — 채워지는 것과 바꿀 수 �
   안 쓴 것이 판정이다(회색이지만 선택처럼 보이는 컨트롤을 소유자가 기각했다).
 - 🔴 **화면은 잠긴 컬럼을 문서에 «넣지도 빼지도» 않는다.** `input_columns`는 여전히
   「읽기 위에 더하는 것」이라 이미 오는 이름을 적으면 파일이 이미 한 말을 다시 해서 **지문만
-  움직인다.** 반대로 지우는 쪽도 안 한다 — 검증기가 binding이 부르는 컬럼을 `map.input_columns`가
-  전부 이름 대기를 요구하고, 라이브 선언 둘이 오늘 실제로 잠긴 컬럼을 적고 있다.
+  움직인다.** 반대로 지우는 쪽도 안 한다 — 이미 적힌 선언은 그대로 통과한다.
+- 🔴 **바인딩 · `bind.entities` 속성 · 맵퍼 묶음(`map.unit.columns`) · `when` 이 부르는 컬럼도 잠긴다**
+  (총괄 c38eae7cf). 읽기가 저절로 싣고, 검증기는 그 컬럼을 `map.input_columns` 에 다시 적으라고
+  요구하지 않는다. `input_columns` 는 코드 맵퍼가 선언 «밖»에서 직접 읽는 컬럼만 적는 자리다.
 - 🔴 **이 키에서는 `[]`가 «미응답»이다**(소유자 판정: 「그냥 다 갈아버린다」). `[]`는 문법상
   합법인 선언이지만 **읽는 쪽이 그것을 부재로 보고 기본값을 씌운다.** 대가를 알고 고른 것이다 —
   `dt_job.prepare.input_columns`(setup_version 5 시절의 칸)가 빈 목록이었으므로 22컬럼이 되고 그 소스의 지문이 움직였다.
@@ -1774,7 +1780,7 @@ PostgreSQL E2E는 `ASSY_PG_TEST_DATABASE_URL`이 안전한 격리 DB를 가리�
 
 | 증상 | 원인 | 해결 |
 |---|---|---|
-| `invalid_mapper` (`column ... is missing`) | physical/EventFrame 층 혼동 | 🔴 **`bind`가 binding할 수 있는 컬럼 집합은 정확히 `map.input_columns`다.** `table_config.json`에만 있고 mapper input에 없는 컬럼은 binding할 수 없다 |
+| `unknown_column` (`column ... is not in EventFrame schema` · `is not in relation ...`) | 바인딩 · 묶음 · `when` 이 관계에 없는 컬럼을 부름 | 🔴 **`bind`가 binding할 수 있는 컬럼 집합은 그 소스 관계(`table_config.json`)의 컬럼이다.** 부른 컬럼은 읽기가 저절로 싣는다 — `map.input_columns` 에 다시 적지 않는다(총괄 c38eae7cf, 전에는 `invalid_mapper` 「Profile column … is missing」) |
 | `invalid_cursor` | order/cursor가 UNIQUE key 전체를 안 포함 | business/composite/UNIQUE index 전체 컬럼 추가 |
 | 조인 값이 소스에 안 보인다 | 쓰는 조인이 아직 왼쪽 표에 칼럼을 안 썼거나, 그 칼럼이 `map.input_columns` 에 없다 | 조인 규칙 실행 확인 · `table_config.json` 의 왼쪽 표 칼럼 · `map.input_columns` |
 | `untrusted_implementation` | sample ID를 production에 복사 | 코드에 그 클래스가 있는지 확인 또는 기존 구현 재사용 |

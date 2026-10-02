@@ -9,6 +9,83 @@
 
 ---
 
+## 2026-10-02 · 그리드 행 지우기 — 기다리는 화면 · 답은 지운 수만
+
+- **무엇** — 메인 그리드에서 여러 행을 지울 때, 서버 답이 «지운 수와 트랜잭션»만 담습니다. 전에는 지운 행마다의 이력을 통째로 돌려보냈습니다. 행마다 이력은 전처럼 DB 에 남고, 다른 화면은 전처럼 방송으로 지움과 그 이력을 받습니다. 10,000 행(박스 시험 DB · 좁은 표 · 넓은 표)에서 답 크기 3,227,847 · 3,207,847 → 98 · 98 바이트, 서버 처리 2.7 → 2.3 s(좁은 표) · 3.5 → 2.8 s(넓은 표).
+- **화면에서** — 행을 고르고 `🗑️ Row` → 확인. 기다리는 동안 버튼이 꺼지고(사유 `Deleting…`) 아래 줄에 `Deleting N rows · S s` 가 초마다 오릅니다. 끝나면 그 행들이 빠지고 `Deleted N rows · S s`. 서버가 거절하면 서버의 사유 문장 뒤에 `— reload the table to see which rows remain`.
+- **필요한 조건** — 서버 재기동.
+- **바뀐 동작** — `POST /tables/{table}/rows/batch_delete` 의 답에서 `created_logs` 가 빠지고 `transaction_id` 가 생겼습니다. 이 답을 직접 읽는 스크립트가 있으면 이력은 DB 의 `audit_logs`(그 `transaction_id`)에서 읽습니다.
+- **자세히** — [api_documentation.md](../spec/api_documentation.md)(1.3) · 화면 커밋 45d14144b · 서버는 이 항목과 같은 커밋
+
+## 2026-10-02 · 원장 펼친 보기에 `occurred_at_basis` 칸
+
+- **무엇** — 원장 펼친 보기(`ledger_atom_rows`, 메인 그리드)에 `occurred_at_basis` 칸이 맨 끝에 붙습니다. 비어 있으면 `occurred_at` 이 사건 시각이고, `ingested` 면 사건 시각이 아닙니다(references 원자 · dt_job 같은 소스).
+- **선언 예시** — `config/table_config.json` 의 `ledger_atom_rows.column_types` 맨 끝에 한 줄. 출하 샘플(`config/sample/table_config.json.sample`)의 그 항목을 그대로 베껴도 됩니다:
+
+```json
+"occurred_at_basis": "string"
+```
+- **필요한 조건** — 이미 보기가 있는 설치는 `python server/migrations/add_ledger_atom_rows.py` 한 번(보기를 그 자리에서 다시 만듭니다. 원장 · 원천 표는 안 건드립니다). 새 설치는 서버가 처음 뜰 때 만듭니다.
+- **자세히** — 이 항목과 같은 커밋
+
+## 2026-10-02 · 바인딩에 적은 칸은 맵퍼 입력 칸에 다시 적지 않는다
+
+- **무엇** — 바인딩 · `bind.entities` 의 속성 · 맵퍼 묶음(`map.unit.columns`) · `when` 이 부르는 칸은 읽기가 저절로 싣습니다. 검증기가 그 칸을 `map.input_columns` 에 다시 적으라고 하지 않습니다(전에는 「Profile column 'X' at … is missing」 으로 거절). `input_columns` 에는 코드 맵퍼가 선언 밖에서 직접 읽는 칸만 적습니다.
+- **선언 예시** — `config/ontology/ledger_config.json` 의 `sources` 에서. 입력 칸이 비어 있어도 `dt_eqp`(엔티티 속성) · `netdie_count` · `event_time` · `dt_job` 이 읽힙니다:
+
+<!-- example: ledger_sources -->
+```json
+{
+  "dt_job": {
+    "relation": "dt_job_rollup",
+    "read": {"unit": "row", "identity": ["dt_job"], "order_by": ["dt_job"],
+             "cursor": {"columns": ["dt_job"]},
+             "occurred_at": {"basis": "ingested", "timezone": "Asia/Seoul"}},
+    "map": {"implementation_id": "declarative-role", "implementation_version": 1,
+            "unit": {"kind": "row"}, "input_columns": []},
+    "bind": {
+      "entities": {"dtjob@1": {"attributes": {"dt_eqp": {"kind": "column", "column": "dt_eqp"}}}},
+      "mappings": {
+        "counted": {"predicate": "has_netdie@1", "bind": {
+          "occurred_at": {"kind": "column", "column": "event_time"},
+          "subject": {"kind": "entity", "entity_type": "dtjob@1",
+                      "keys": {"dt_job": {"kind": "column", "column": "dt_job"}}},
+          "value": {"kind": "column", "column": "netdie_count"}}}
+      }
+    }
+  }
+}
+```
+- **화면에서** — 탐색기 소스 폼의 `Mapper input_columns` 에서 그 칸들이 눌린 채 잠긴 칩으로 나옵니다(전에는 키 · 묶음 · 정렬 · 커서 · 시각 칸만). 기본값은 잠기지 않은 칸 전부입니다.
+- **바뀐 동작** — 이미 두 곳에 적힌 선언은 그대로 통과하고 같은 원자를 씁니다. `bind.entities` 속성 칸은 전에는 `input_columns` 에서 빠지면 검증은 통과하고 번역에서 `missing_binding_column` 으로 멈췄는데, 이제 저절로 읽힙니다. 그런 속성이 있는 소스는 재기동 때 커서 지문이 한 번 다시 찍힙니다(자리 그대로, 다시 읽는 행 없음). 맵퍼 묶음 칸이 관계에 없으면 `unknown_column`(`map.unit.columns`)으로 거절합니다.
+- **자세히** — [ONTOLOGY_LEDGER_SETUP.md](../guide/ONTOLOGY_LEDGER_SETUP.md)(잠긴 칩 절 · 증상표) · 이 항목과 같은 커밋
+
+## 2026-10-02 · 다이 → 웨이퍼 잇기 — 엔티티의 `references` 가 원자를 쓴다
+
+- **무엇** — 엔티티 선언에 «이 엔티티는 자기 키로 정해지는 상위에 속한다»를 적으면, 그 엔티티를 부르는 소스가 어느 것이든(주어로든 목적어로든) 번역할 때 그 상위로 가는 엣지 원자를 하나 더 씁니다. 예: Wafer 다이는 mat_id 가 이름 붙인 웨이퍼 안에 있다 — 다이를 부르는 소스마다 다이 → 웨이퍼 `in_container` 가 생겨, 걷기에서 다이에서 웨이퍼로 닿습니다. 한 분자에 같은 다이가 둘이면 원자 하나이고, 그 분자가 이미 같은 사실을 말하면 다시 쓰지 않습니다. 이 원자의 시각은 사건 시각이 아닙니다(`occurred_at_basis` = `ingested`).
+- **선언 예시** — `config/ontology/ledger_config.json` 의 `entities` 에서 그 엔티티에 `references` 목록(하나만 적어도 됩니다). 목록 모양은 이 착지 전 코드도 받아들여서, 서버를 재기동하기 전에 선언을 먼저 고쳐도 그 엔티티가 빠지지 않습니다:
+
+<!-- example: ledger_entities -->
+```json
+{
+  "die@1": {
+    "keys": ["mat_id", "x", "y", "mat_type"],
+    "references": [{"edge": "in_container@1",
+                    "to": {"entity": "wafer@1", "keys": {"wafer": "mat_id"}},
+                    "from": {"when": {"mat_type": "Wafer"}}}]
+  }
+}
+```
+
+  `edge` 는 어휘의 술어이고 그 술어의 `subjects` 에 이 엔티티가, `object.types` 에 `to.entity` 가 있어야 합니다. `to.keys` 는 «상위의 키: 이 엔티티의 키», `from.when` 은 «이 엔티티의 키: 값» — 맞는 원자에만 씁니다. 틀리면 로더가 이름 대어 거절하고, 그 엔티티와 그것을 부르는 소스가 같이 빠집니다.
+- **화면에서** — 온톨로지 탐색기의 엔티티 폼에 `References` 칸(`Predicate` · `Points at` · `Only when`). 메인 그리드 메뉴의 `🚶 Walk` 에서 다이를 씨앗으로 `in_container@1` 을 따르면 웨이퍼에 닿습니다.
+- **필요한 조건** — 서버 재기동. 선언에 `references` 를 넣으면 그 엔티티를 부르는 소스들의 선언 지문이 바뀝니다 — 체인 데몬이 다시 뜰 때 커서 지문을 새로 찍고(자리는 그대로) 그 뒤에 번역되는 행부터 references 원자가 생깁니다. 이미 번역된 행은 소스마다 다시 번역해야 생깁니다: `python -m ledger.backfill --source <소스> --whole-source --apply`. 원장 이주는 없습니다(새 칸 · 새 값 없음).
+- **바뀐 동작**
+  - 사건 시각이 아닌 원자 — 이 references 원자, 그리고 원래부터 `ingested` 로 적히던 원자(이 박스에서는 dt_job) — 는 걷기 시간 창(`since` · `until`)이 언제나 지나보내고, 창 밖 수(`interval_excluded`)에 안 들어가며, 응답 엣지의 `occurred_at` 이 비어 있고(null), 노드의 처음 본 시각(결측 목록의 oldest · newest)에 안 듭니다. 전에는 `ingested` 원자가 적재 시각으로 걸러지고 보였습니다.
+  - 최신값 · 가져오기 순서는 저장된 시각 그대로입니다.
+  - `GET /api/ledger/declaration` 의 `sources[].emits` 에 그 소스가 부르는 엔티티의 references 술어도 나옵니다.
+- **자세히** — [WALK.md](../architecture/WALK.md)(구간 걷기 절) · 구현자 보고(task/scoped_redo_report.md) · 이 항목과 같은 커밋
+
 ## 2026-10-02 · 걷기 — 목적어 쪽 노드에서도 출발 · 정적 씨앗의 첫 걸음
 
 - **무엇** — 걷기 화면에서 노드 타입을 고르면, 그 타입의 노드 목록이 «주어 쪽»만이 아니라 «목적어 쪽»에서도 나옵니다. 그래서 다른 술어의 목적어로만 나오는 타입도 노드를 고를 수 있습니다. follow 목록에도 그 타입으로 «들어오는» 술어가 나옵니다. 정적 타입(예: 레시피)의 노드를 씨앗으로 걸으면 «첫 걸음»은 정적이 아닌 노드로도 갑니다 — 레시피 하나에서 그 레시피를 쓴 웨이퍼들로. 둘째 걸음부터는 전처럼 정적 → 정적 아님을 밟지 않습니다. R&D 보드의 걷기 상자도 같은 follow 목록 · 같은 경로 목록을 냅니다.

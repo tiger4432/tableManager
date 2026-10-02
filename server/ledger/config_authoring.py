@@ -89,6 +89,7 @@ from .setup_bundle import (
     public_bundle_schema,
     read_group_by,
     role_binding_kinds,
+    unit_group_columns,
     validate_bundle_errors,
 )
 
@@ -765,14 +766,18 @@ def _locked_read_columns(source: Any) -> tuple[str, ...]:
     🔴 THE RUNTIME'S OWN FORMULA, FED FROM THE DECLARATION.  The set is
     `event_frame.locked_select_columns`, which `base_select_columns` also calls --
     the screen and the cursor say ONE sentence about what arrives anyway.  What this
-    function does is the part the runtime does not need: read the five terms off a bundle
-    that has not compiled, because a source someone is still building never has.
+    function does is the part the runtime does not need: read the terms off a bundle that
+    has not compiled, because a source someone is still building never has.
 
     `basis` is resolved the way `setup_registry._occurred_at_plan` resolves it, so the
     screen locks what the read will actually select rather than what the file spells.
     Everything is tolerant of the wrong shape: a half-written `read` yields fewer terms,
     and a source that has declared nothing yet locks NOTHING -- correctly, because nothing
     arrives anyway until something is declared.
+
+    🔴 BOUND, GROUPED AND `when` COLUMNS ARE LOCKED TOO (총괄 c38eae7cf). The read fetched them
+    and this did not say so, so a key column a binding named was a locked chip the validator
+    demanded in `input_columns` - the owner could neither add it nor pass.
     """
     driver = _driver(source)
     occurred = driver.get("occurred_at")
@@ -783,9 +788,12 @@ def _locked_read_columns(source: Any) -> tuple[str, ...]:
     cursor = driver.get("cursor")
     cursor = cursor if isinstance(cursor, Mapping) else {}
     excluded = driver.get("exclude_when")
+    profile = source.get("bind") if isinstance(source, Mapping) else None
+    mappings = profile.get("mappings") if isinstance(profile, Mapping) else None
     return locked_select_columns(
         identity=[str(name) for name in _listed(driver.get("identity"))],
-        group_by=[str(name) for name in _listed(read_group_by(driver))],
+        group_by=[str(name) for name in (*_listed(read_group_by(driver)),
+                                         *unit_group_columns(_mapper(source)))],
         order_by=[str(name) for name in _listed(driver.get("order_by"))],
         cursor_columns=[str(name) for name in _listed(cursor.get("columns"))],
         occurred_at_column=column if isinstance(column, str) else None,
@@ -795,6 +803,13 @@ def _locked_read_columns(source: Any) -> tuple[str, ...]:
             str(clause["column"]) for clause in (excluded or ())
             if isinstance(clause, Mapping) and isinstance(clause.get("column"), str)
         ],
+        condition_columns=[
+            str(name) for mapping in (mappings.values() if isinstance(mappings, Mapping) else ())
+            if isinstance(mapping, Mapping) and isinstance(mapping.get("when"), Mapping)
+            for name in mapping["when"]
+        ],
+        binding_columns=[column for column, _where in
+                         _setup_bundle_profile_binding_columns("", profile)],
     )
 
 
@@ -956,48 +971,6 @@ def _implementation_clause_fields(base: str, clause: Mapping[str, Any],
     )
 
 
-def _with_required_columns(columns, mapper, profile, profile_path):
-    """The derived inputs, plus every column the VALIDATOR demands (S-196, 되돌림 뒤).
-
-    🔴 THE ENUMERATION IS THE VALIDATOR'S OWN. `setup_bundle.required_mapper_input_columns`
-    is what refuses an `input_columns` that misses a column; deriving from the same function
-    is what makes a bundle rebuilt from this derivation acceptable to it.
-
-    ⛔ MY FIRST REPAIR ADDED THE GROUP COLUMNS BY HAND, and the next source fell over on its
-    BINDING columns — `bonded_from` needs `base_id`, `by` and five more that no group
-    mentions. A list extended by hand misses whatever the next declaration uses; this asks
-    the one function instead.
-
-    ⚠️ APPENDED, NOT UNIONED-AND-SORTED. The base order is the prepared frame's, and a
-    re-derivation that reordered it would show an operator a diff that means nothing.
-    """
-    from .setup_bundle import required_mapper_input_columns
-
-    out = list(columns)
-    if not isinstance(profile, Mapping):
-        return out
-    for column, _where in required_mapper_input_columns(mapper, profile, profile_path):
-        if column not in out:
-            out.append(column)
-    return out
-
-
-def unit_group_columns(mapper):
-    """The columns a mapper's unit groups by — EMPTY for a row unit (S-196, 판정 306/306-b).
-
-    🔴 ONE PLACE READS `unit`. The derivation of `map.input_columns` needs these columns and
-    so does the `unit.columns` field itself; two readers of one declaration is how they come
-    to disagree, and here they would disagree about whether a column is required to exist.
-
-    ⚠️ A ROW UNIT HAS NO GROUP, and that is a declaration rather than an omission — 「없는
-    그룹」 must not be invented, so this answers `[]` and nothing downstream adds columns.
-    """
-    unit = mapper.get("unit") if isinstance(mapper.get("unit"), Mapping) else {}
-    if unit.get("kind") != "group_by":
-        return []
-    return list(_listed(unit.get("columns")))
-
-
 def _implementation_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
                            ) -> Iterable[Field]:
     """The mapper clause of every source, walked FROM the source.
@@ -1080,21 +1053,22 @@ def _implementation_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
             # does not read, so dropping one of them from the table stops this source too.
             # The mitigation IS the control -- the person turns the chip off -- which is why
             # the locks and the everything-default had to land together.
+            #
+            # ⚰️ `_with_required_columns` added the bound and grouped columns back on top
+            # (S-196) because the validator demanded them; it demands nothing now and they
+            # are locked (총괄 c38eae7cf), so the default is the sentence above and nothing else.
+            unlocked = [name for name in physical if name not in locked_all]
             yield Field(
                 path=f"{base}.input_columns", step="sources",
                 label="Mapper input_columns", state="derived", tier=TIER_DERIVATION,
-                value=_with_required_columns(
-                    [name for name in physical if name not in locked_all],
-                    mapper, profile, profile_base),
+                value=unlocked,
                 declared=declared_mapper_inputs,
                 ground=Ground(
                     "mapper_inputs_from_relation_minus_locked",
                     f"Default: the {len(physical)} columns of relation {relation} minus the "
                     f"{len(map_locked)} that read already reads",
                     (f"{PHYSICAL_CATALOG_FILENAME}:{relation}",),
-                    _with_required_columns(
-                        [name for name in physical if name not in locked_all],
-                        mapper, profile, profile_base)),
+                    unlocked),
                 # 🔴 STATED, NOT MEASURED, AND `comparison` IS NOT THE LEVER FOR IT.  The
                 # derived value is a MAXIMUM a person narrows, which is neither of the two
                 # things `comparison` can say (`equal` = zero freedom, `superset` = a

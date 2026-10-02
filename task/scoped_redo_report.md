@@ -69675,3 +69675,351 @@ _reach opens every seed, not its own     22 passed
 after restore                            22 passed
 ```
 `_reach opens every seed` 는 이 벡터로 못 본다 — 벡터가 씨앗 하나짜리라서. 그 변이는 test_a_static_seed_takes_its_first_step_into_the_world.py 가 잡는다(c46163324 보고)
+
+---
+
+## [10-02 오후] 다이 → 웨이퍼 잇기 — references 가 원자를 쓴다 (총괄 29047aedc, 시각은 3bf28f893) — f45c75442
+
+**무엇을 지었나**
+```
+선언     entities.<타입>.references — 하나 또는 목록 (철자는 있던 칸 그대로: edge · to{entity, keys} · from.when)
+         로드 판정 _cross_references: edge 가 어휘에 있고 활성 · subjects 에 이 엔티티 · object.types 에 to.entity · 필수 수식어 없음
+         키 대응 · when 칸은 원래 검증 그대로(이 엔티티의 키여야 함). 틀리면 이름 대어 거절 — 그 엔티티와 부르는 소스가 같이 빠짐
+         c7046a710(「걷기가 지어 그리지 말고 원자를 써라」)은 «그리는» 뜻만 죽였고 이번은 원자를 쓴다 — 커밋 · 문서에 적음
+컴파일   ReferenceDescriptor 가 엔티티 서술에 실림 — 빈 칸은 지문 재료가 아니라 references 를 둔 엔티티를 부르는 소스만 지문이 움직임
+번역기   roleframe.compile_role_rows -> _reference_rows 한 자리. 분자 안에서 그 엔티티를 부른 모든 행(주어 · entity_ref 목적어)을 보고
+         when 이 맞으면 원자 하나 — 같은 엔티티 둘이면 하나(그것을 부른 원천 행 모두가 받침) · 분자가 이미 말한 사실이면 안 씀
+시각     원자의 occurred_at_basis = ingested 상수 한 자리(schema.REFERENCE_BASIS) · 저장 시각은 그 분자의 것
+         새 basis 값 · CHECK 교체 없음(3bf28f893) — 앞서 지었던 timeless 갈래는 걷어냄
+읽기     「사건 시각으로 읽나」 한 함수 schema.reads_as_event_time / event_time_sql — 걷기 창 늘 통과 · 창 밖 수 안 셈 ·
+         응답 엣지 시각 null · gaps 처음 본 시각에 안 듦(그룹 시각은 엣지 시각을 따라감). 최신값 · 가져오기 순서는 저장된 시각 그대로
+emits    GET /api/ledger/declaration 의 sources[].emits 가 그 소스가 부르는 엔티티의 references 술어도 냄(setup_bundle.emitted_predicates 한 자리)
+화면     탐색기 엔티티 폼에 References 줄(스켈레톤) · 문서 WALK.md 구간 걷기 절 · RELEASE_LOG 항목
+```
+**박스 — 지은 코드로 미리보기(쓰기 없음), 라이브 선언을 임시 폴더에 복사해 references 만 더함**
+```
+transfer_event (1,405행)  원자 1,405 -> 2,810 · references 원자 1,405 · 닿은 다이 1,405 · 번역 1,000 행당 1.773 -> 2.162 s
+die_inspection (20,000행, 앞쪽)  원자 20,000 -> 40,000 · references 원자 20,000 · 닿은 다이 19,437 · 번역 1,000 행당 1.813 -> 2.317 s
+라이브 선언 파일은 안 씀(박스 라이브 설정 상설). 그래서 박스 원장에 references 원자를 실제로 쓰고 「웨이퍼에 못 닿던 다이가 닿는다」를 잰 것은 «아직 없음» —
+계획 때 잰 상한: 이 박스가 번역하는 둘(die_inspection · transfer_event)만이면 웨이퍼에 닿는 다이 139,688 -> 141,093
+(새로 닿는 다이 대부분은 bw_dt_seat 의 것이고 그 소스는 뷰를 읽어 번역 안 됨)
+```
+**선언 예시가 로드되나** — RELEASE_LOG 항목의 ledger_entities 블록을 파일에서 읽어 출하 샘플에 넣고 setup.load_setup:
+```
+example entities: ['die@1'] | left out naming die: [] | compiled: (ReferenceDescriptor(predicate_id='in_container@1', target_type='wafer@1', keys=(('wafer', 'key', 'mat_id'),), when=(('mat_type', 'Wafer'),), derivation='entity-reference:die@1#0'),)
+```
+**게이트**
+```
+시험  tests/test_an_entity_reference_is_written_by_every_source_naming_it.py 12 passed in 0.47s
+        die_inspection(목적어로 다이) · transfer_event(주어 Wafer 다이만 — DT 다이는 when 이 막음) · 선언 없으면 0 ·
+        references 원자만 ingested · 같은 분자 사건 원자와 같은 시각 · 분자가 이미 말한 사실 두 번 안 씀 · 같은 다이 두 번 -> 원자 하나(받침 행 둘) ·
+        지문은 다이를 부르는 소스만 움직임 · emits · 로드 거절 넷(술어 없음 · 목적 타입 안 받음 · 키 대응 · when 칸)
+      tests/test_a_time_that_is_not_an_event_reads_as_none.py — PG 3 passed in 6.49s · 그 밖 1 passed, 3 skipped in 0.30s
+        창 [이후, ∞) 로 걸어도 다이 -> 웨이퍼 닿음 · 창 밖 수는 사건 원자만 · 원자에 basis 가 실려 옴 · 처음 본 시각은 사건 시각(저장 시각이 더 일러도) ·
+        시험 대역(InMemory) · 응답 엣지 시각 null — 같은 규칙
+변이  baseline plain                         13 passed, 3 skipped
+      baseline pg                            3 passed
+      when ignored                           1 failed, 12 passed, 3 skipped
+      a stated fact said again               1 failed, 12 passed, 3 skipped
+      one atom per naming, not per entity    1 failed, 12 passed, 3 skipped
+      reference not stamped                  1 failed, 12 passed, 3 skipped
+      references not compiled                5 failed, 8 passed, 3 skipped
+      no vocabulary check                    2 failed, 11 passed, 3 skipped
+      emits ignores references               1 failed, 12 passed, 3 skipped
+      in-memory window reads every time      1 failed, 12 passed, 3 skipped
+      edge shows a stored time               1 failed, 12 passed, 3 skipped
+      SQL window reads every time            2 failed, 1 passed
+      SQL outside counts every time          2 failed, 1 passed
+      first sighting counts every time       1 failed, 2 passed
+      after restore plain                    13 passed, 3 skipped
+      after restore pg                       3 passed
+```
+**새 함수 · 새 if 중 같은 일** — 새 함수: entity_references(하나 또는 목록의 한 철자) · _cross_references · emitted_predicates · _compile_references · _reference_rows · reads_as_event_time / event_time_sql · is_reference_derivation. 같은 일을 하던 자리 하나를 고침: /declaration 의 emits 가 따로 적던 식 -> emitted_predicates. 같은 일 둘 0
+
+**스위트** (C:/wt-impl — a0ae05b60 의 라우트 변경이 같은 트리에 있음, 따로 착지)
+```
+비PG 전체  6 failed, 7672 passed, 41 skipped, 187 deselected, 3 xfailed in 799.78s (0:13:19) · 알려진 다섯 밖: 1
+   test_the_form_no_longer_offers_references -> 그 파일만 다시 4 passed in 0.29s  <- 전체를 돌린 «뒤» 뒤집은 시험(말할 것 ⑤). 이름이 바뀌어 그 파일만 다시가 통과
+PG 전체   6 failed, 181 passed, 7722 deselected in 348.83s (0:05:48) · 알려진 밖: 0
+클라 하니스  159 harnesses ― 157 gated, 2 on the known-red debt list (2 still red, 0 recovered).
+클라 계약    ✓ 13 contracts, no divergence.
+바탕  4592aad3a 위에서 잼. 착지 바탕 261311e71 까지 origin 이 바꾼 것은 client2 · docs · task 뿐(server 0)
+```
+**운영 규격 대비 (1,000 행, 박스 · 잰 값만)** — die_inspection 다시 번역 — 번역 2.317 + 읽기 0.152 + 쓰기(거둠 + 쓰기, 스크래치 원장) 0.657 = 3.126 s, 규격 ≤ 5 s. 쓰기는 빈 원장에서 잰 값이라 낙관적
+
+**말할 것**
+```
+① 순서: 지시는 ① 자리 표 -> 총괄 확인 -> 짓기였다. 3bf28f893 의 독자 규칙 둘(reads_as_event_time · 순서는 저장 시각)을 그 확인으로 읽고 지었다 —
+   그렇게 읽은 게 틀렸으면 자리 넷(창 · 창 밖 수 · 엣지 시각 · 처음 본 시각)을 되돌린다
+② 칸 철자 — 지시는 개념(술어 · 상위 타입 · 키 대응 · when)으로 적었고 계획 때 예시는 predicate · type · keys · when 이었다.
+   있던 칸의 철자(edge · to.entity · to.keys · from.when)를 그대로 썼다 — 넓히는 것이라 이름을 바꾸지 않았다. 바꾸라면 바꾼다
+③ emits 자리 — 지시 목록에는 없었다. 계획 보고에서 «틀린 말을 하게 될 자리»로 짚은 것이라 같이 고쳤다
+④ 정정 — 계획 보고(f60cd3205)의 「bonded_from 37,218 은 같은 원자면 저장에서 접힘」은 틀렸다. source_translator_ver 가 달라 저장은 안 접는다.
+   지은 코드는 «분자가 이미 말한 사실이면 안 쓴다»로 막는다(시험 있음)
+⑤ 뒤집은 시험 하나 — tests/test_form_does_not_offer_references.py 의 「폼이 references 를 안 낸다」(b143e162d, 09-05).
+   그 근거가 「읽는 곳이 없다」였고 이번에 번역기가 읽으므로, 그 단언만 「폼이 낸다」로 뒤집음 · 옆 셋(class 남음 · 스켈레톤 온전 · 문법 남음)은 그대로
+```
+**안 한 것 · 여쭐 것**
+```
+① 펼친 보기(ledger_atom_rows)에 basis 칸 — 답이 없어 안 지음
+② 박스에서 실제로 references 원자를 쓰고 「못 닿던 다이가 닿는다」를 재는 것 — 길 둘:
+   ㄱ 운영자가 라이브 선언의 die@1 에 references 를 넣고, 제가 die_inspection · transfer_event 를 다시 번역(--whole-source --apply)
+   ㄴ 운영에서 잰다. (임시 선언으로 박스 원장에 쓰는 지름길은 안 했다 — 선언에 없는 번역 버전의 원자가 남고 다른 레인이 그 원장을 잰다)
+③ dt_job 의 ingested 원자도 이제 창을 늘 지나고 엣지 시각이 비어 보임 — 소유자 b 대로. R&D 보드 시간축에서 dt_job 사실이 빠져 보일 수 있음(그룹 시각 · 처음 본 시각)
+```
+
+---
+
+## [10-02 오후] 바인딩에 적은 칸을 맵퍼 입력 칸에 다시 적으라는 요구를 뺌 (총괄 c38eae7cf + 33c930e98) — a5fe51b3f
+
+**먼저 잰 것 — 자동 읽기(판정 201)가 맵퍼 종류 전부에 걸리나: 걸린다. 요구를 남기는 종류 0**
+```
+맵퍼 종류    제품에 등록된 것은 둘 — declarative-role · dt-job-role
+읽는 자리    event_frame.base_select_columns 한 곳. 소스마다 부르고 맵퍼 종류를 묻지 않는다 · 맵퍼는 그 프레임을 통째로 받는다
+박스 — 라이브 선언을 임시 폴더에 복사(쓰기 없음), 뜨는 소스 5: die_inspection · dt_job · lot_slot_wafer · transfer_event · wafer_process_recipe
+                                     고치기 전                                  고친 뒤
+입력 칸에서 선언이 부르는 칸을 다 뺌     5 소스 전부 거절                        거절 0 · 읽는 칸이 선언 그대로와 같은 소스 5 / 5
+dt_job 에서 dt_eqp(엔티티 속성)만 뺌     검사 통과 · 번역 missing_binding_column       원자 28 개(첫 쪽 1014 행 · 요약값 8ea98acb231b)
+dt_job 선언 그대로                      원자 28 개(첫 쪽 1014 행 · 요약값 8ea98acb231b)                         원자 28 개(첫 쪽 1014 행 · 요약값 8ea98acb231b)
+지문이 움직인 소스   dt_job — 엔티티 속성 칸이 읽기 재료에 들어가서. 재기동 때 다시 찍힘(자리 그대로)
+잠긴 칩이 는 소스    13 / 15 · 폼 칸 상태가 바뀐 소스 0
+```
+**무엇을 지었나**
+```
+검사기   「Profile column X at … is missing」(교차 검사) · 「group_by columns must be mapper input columns」(맵퍼 검사) 두 자리를 걷어냄
+         map.unit.columns 는 «관계에 있나»를 따로 묻는다(unknown_column) — 전에는 input_columns ⊆ 관계가 대신 물었다
+읽기     바인딩 칸 열거 하나(setup_bundle._profile_binding_columns)가 bind.entities 속성까지 — setup_registry 의 사본은 지움
+         맵퍼 묶음 칸(map.unit.columns)도 읽기가 싣는다(read.group_by 와 같은 항)
+화면     row.locked = 런타임 식 그대로(event_frame.locked_select_columns 에 바인딩 항) — 바인딩 · when · 맵퍼 묶음 칸이 잠김
+         입력 칸 기본값 = 관계 칸 − 잠긴 칸(다시 더하던 _with_required_columns 지움) · 이미 적힌 값은 그대로
+문서     가이드 ONTOLOGY_LEDGER_SETUP.md(잠긴 칩 절 · 증상표) · RELEASE_LOG 항목 · RUN.md
+```
+**선언 예시가 로드되나** — RELEASE_LOG 항목의 ledger_sources 블록을 파일에서 읽어 출하 샘플의 dt_job 자리에 넣고 load_setup:
+```
+example sources: ['dt_job'] | planned: True | input_columns: [] | read selects: ['created_at', 'dt_eqp', 'dt_job', 'event_time', 'netdie_count', 'row_id']
+```
+**게이트** — 출하 샘플 + 박스 dt_job 모양의 묶음 소스(dt_log · dt-job-role), 미리보기 프레임은 base_select_columns 로 자른 행
+```
+시험  tests/test_a_column_the_declaration_names_is_read_without_repeating_it.py 16 passed in 0.69s
+        행 × 칸   transfer_event(키 칸 바인딩 = 소유자 경우) · dt_job(엔티티 속성) · wafer_process_recipe(when) · dt_job_group(묶음 + 코드 맵퍼)
+                  × 검사 통과 · 읽는 칸에 다 듦 · 원자가 입력 칸을 적은 선언과 같음 · 잠긴 칩에 보임 · 기본값에 안 듦
+        더        폼 기본값으로 다시 지은 선언이 검사 통과(S-196 증상 대조군) · 맵퍼 묶음만 부르는 칸이 읽히고 · 없는 칸이면 unknown_column ·
+                  반쯤 쓴 bind 넷에서 폼이 안 깨짐
+      tests/test_ledger_setup_bundle.py · tests/test_ledger_event_frame.py 116 passed, 1 skipped in 1.38s (뒤집은 넷 포함)
+변이  baseline                               132 passed, 1 skipped
+      bind.entities not walked               6 failed, 126 passed, 1 skipped  <- test_a_bound_attribute_column_is_read_without_a_third_place, test_every_column_the_declaration_names_is_selected[dt_job], test_every_column_the_declaration_names_is_selected[dt_job_g
+      validator demands bound columns        6 failed, 118 passed, 1 skipped, 8 errors  <- test_a_bound_attribute_column_is_read_without_a_third_place, test_a_bound_column_need_not_be_repeated_in_mapper_inputs, test_a_bundle_rebuilt_from_the_forms_default_is_accepted_by_
+      read skips bound columns               10 failed, 122 passed, 1 skipped  <- test_a_bound_attribute_column_is_read_without_a_third_place, test_every_column_the_declaration_names_is_selected[dt_job], test_every_column_the_declaration_names_is_selected[dt_job_g
+      read skips the mapper group            1 failed, 131 passed, 1 skipped  <- test_a_column_only_the_mappers_group_names_is_selected_and_m
+      form does not lock bound columns       1 failed, 131 passed, 1 skipped  <- test_the_form_locks_the_named_columns_and_leaves_them_out_of
+      form does not lock when columns        1 failed, 131 passed, 1 skipped  <- test_the_form_locks_the_named_columns_and_leaves_them_out_of
+      form does not lock the mapper group    1 failed, 131 passed, 1 skipped  <- test_a_column_only_the_mappers_group_names_is_selected_and_m
+      group existence unchecked              2 failed, 130 passed, 1 skipped  <- test_a_column_only_the_mappers_group_names_is_selected_and_m, test_group_by_mapper_unit_requires_columns_that_exist
+      after restore                          132 passed, 1 skipped
+```
+**스위트** (C:/wt-impl, 바탕 c7d5bbdfa (착지 바탕 7679d868c — 사이에 바뀐 것은 docs · task 뿐, server 0: git diff --stat c7d5bbdfa 7679d868c) — 비PG 는 event_frame 시험을 뒤집기 «전»에 돌렸다. 그 하나가 아래 알려진 밖 줄)
+```
+비PG 전체  6 failed, 7678 passed, 228 skipped, 3 xfailed in 856.54s (0:14:16) · 알려진 다섯 밖: 1
+   tests\test_ledger_event_frame.py::test_a_bound_attribute_column_must_be_declared_like_every_other_bound_column
+PG 전체   6 failed, 181 passed, 7728 deselected in 352.21s (0:05:52) · 알려진 밖: 0
+클라 하니스  159 harnesses ― 157 gated, 2 on the known-red debt list (2 still red, 0 recovered).
+클라 계약    ✓ 13 contracts, no divergence.
+```
+**말할 것**
+```
+① 지시에 없던 것 하나 — 맵퍼 묶음 칸(map.unit.columns)을 읽기가 싣게 했다. 지시의 「묶음(group_by)이 부르는 칸은 저절로 든 것」이
+   map.unit.columns 에도 참이 되려면 필요했다(read.group_by 는 전부터 읽혔다). 대신 그 칸이 관계에 있는지는 따로 묻는다
+② 「입력 칸에 진짜로 필요한 칸(파일 맵퍼가 따로 읽는 칸)이 빠지면 오늘처럼 거절」 — 오늘 검사기에 그런 거절은 없다(코드로 봄).
+   검사기는 코드 맵퍼가 무엇을 읽는지 모른다. 제품의 코드 맵퍼 dt-job-role 이 직접 읽는 칸은 dt_job 하나이고 그건 identity 라 늘 읽힌다.
+   선언 밖 칸을 읽는 코드 맵퍼가 그 칸을 입력 칸에서 빼면 번역 때 멈춘다 — 오늘과 같다(그런 맵퍼가 제품에 없어 재지는 못함)
+③ 뒤집은 시험 — S-196(판정 306-b)의 바인딩 반쪽:
+   test_a_derived_input_column_list_covers_the_group.py 은퇴(그 증상 「폼 기본값으로 지은 선언이 검사에서 거절」은 새 시험의 대조군)
+   test_ledger_setup_bundle.py 셋 이름을 바꿔 뒤집음 — mapper_inputs_cover_profile_columns · group_by_mapper_unit_requires_closed_input_columns ·
+   a_column_name_is_judged_against_two_different_universes
+   test_ledger_event_frame.py 하나 — a_bound_attribute_column_must_be_declared_like_every_other_bound_column(S-52-c 「세 자리」).
+   그 시험이 「셋째 자리를 없애는 판정이 오면 빨개져서 갱신을 부른다」고 스스로 적었고, 전체 스위트에서 빨개져서 찾음 —
+   뒤집은 것은 아무것도 고르지 않는 칸(unselected_note)으로 재서 변이에 빨개짐
+④ 화면 — 잠긴 칩은 GET /admin/ontology-explorer/authoring/plan 이 내는 row.locked 를 같은 함수(authoring_plan)로 쟀다.
+   그 라우트는 어드민 토큰 뒤라 브라우저로 열지 않았다. 클라 코드 변화 0
+   클라 주석 하나가 낡음 — client2/src/ontology_explorer_view.js 의 「every one of them REQUIRED there by the validator」(클라 레인 몫)
+⑤ 곁가지 — 폼의 unit.columns 후보에 엔티티 속성 칸이 더해진다(열거가 하나가 되어서. 박스 dt_job: dt_eqp)
+⑥ CODE_MAP 의 required_mapper_input_columns 언급은 응용 세션 문서 정비 몫으로 둠
+⑦ 「다음 착지에 실어」 둘(펼친 보기 basis 칸 · RELEASE_LOG references 예시를 목록 하나로)은 이 착지가 이미 시험을 다 돈 뒤 받아서,
+   바로 뒤 작은 착지 하나로 따로 낸다 — 지시 하나에 커밋 하나. 그 뒤 7679d868c(목록 하나로)
+```
+**여쭐 것**
+```
+① 코드 맵퍼가 선언 밖에서 읽는 칸을 검사기가 알 자리(맵퍼 클래스가 읽는 칸을 선언) — 지을지
+② db8f71231 계획과의 이음 — map.unit.columns 는 이제 읽기도 싣는다. read.group_by 와 «두 번 적음»은 그 계획에서 다룬다
+```
+
+---
+
+## [10-02 오후] 다이 → 웨이퍼 박스 시험 — 라이브 선언에 references 를 넣고 다시 번역 (총괄 7679d868c, 소유자 ㄱ)
+
+**결론 먼저** — references 원자는 썼고 다이 → 웨이퍼로 닿는다. 그런데 다시 번역한 두 소스의 다이 키 철자가 바뀌어(7.0 -> '7', 7350027a6),
+뷰를 읽는 네 소스(다시 번역 못 함)의 같은 다이와 «다른 노드»가 됐다. 키 철자를 무시하고 세면 닿는 다이 139,688 -> 141,093 (계획 때 잰 상한과 같음)
+
+**한 것**
+```
+백업     C:\Users\kk980\Developments\assyManager\server\config\ontology\ledger_config.json.bak-20261002-160649
+넣은 것  {"keys": ["mat_id", "x", "y", "mat_type"], "references": [{"edge": "in_container@1", "to": {"entity": "wafer@1", "keys": {"wafer": "mat_id"}}, "from": {"when": {"mat_type": "Wafer"}}}]}
+번역     다이를 부르는 뜨는 소스 die_inspection · transfer_event — 다시 번역(--whole-source --apply, 코드 = main 98112d1ba)
+   die_inspection  행 117,742 · 쪽 118 · 거둠 117,743 · 다시 씀 235,484(새로 235,484 · 겹쳐 버림 0) · 688.2 s · 1,000 행당 5.85 s
+   transfer_event  행 1,405 · 쪽 2 · 거둠 1,405 · 다시 씀 2,810(새로 2,810 · 겹쳐 버림 0) · 10.7 s · 1,000 행당 7.60 s
+```
+**전후 (박스 원장)**
+```
+                                    전              후
+Wafer 다이 (저장된 철자대로)           401,704       509,777
+  그 중 웨이퍼에 닿음                  139,688       146,798
+Wafer 다이 (철자 무시: mat_id · x·y 를 수로 · mat_type)  401,704  401,704
+  그 중 웨이퍼에 닿음                  139,688       141,093
+references 원자 [원자, 다이]           0               {"die_inspection": [117742, 108815], "transfer_event": [1405, 1405]}
+in_container 원자 전체                37,218          156,365
+소스별 원자 수                        {"die_inspection": 117743, "transfer_event": 1405} -> {"die_inspection": 235484, "transfer_event": 2810}
+transfer 원자 시각 (표본 다이 50, 철자 무시)   전 50 원자 · 후 50 원자 — (술어 · occurred_at · basis) 같음
+다이 x 철자 (주어 쪽, 후)              bonded_from number 55,827 · bw_dt_seat number 371,673 · die_inspection string 117,742 · dt_transfer number 29,078 · transfer_event string 2,810 · void_observation number 103,863
+```
+「전」 은 철자대로 센 수 하나 — 그때 transfer_event 표본 50 은 number 였다.
+
+**걷기 — 새 코드를 프로세스 안에서 불러, 다이 씨앗에서 1 걸음** (돌던 걷기 서버는 09-30 코드라 창 규칙이 옛것)
+```
+씨앗(references 원자의 다이)         {"die": {"x": "10", "y": "5", "mat_id": "SYN-XFER-CORE-W07", "mat_type": "Wafer"}, "stored time": "2026-08-22T00:00:00+09:00"}
+  창 없음                           in_container -> 웨이퍼 1 개(엣지 시각 None) · 엣지 전체 2 · 창 밖으로 안 가져온 원자 None
+  창 = 저장 시각 하루 뒤부터          in_container -> 웨이퍼 1 개(엣지 시각 None) · 엣지 전체 1 · 창 밖으로 안 가져온 원자 1
+같은 다이를 두 철자로                 {"new": {"x": "1", "y": "10", "mat_id": "SYN-CX-BW-001", "mat_type": "Wafer"}, "old": {"x": 1.0, "y": 10.0, "mat_id": "SYN-CX-BW-001", "mat_type": "Wafer"}}
+  새 철자 노드에서                   엣지 2 (in_container · inspected) · in_container -> 웨이퍼 1
+  옛 철자 노드에서                   엣지 3 (bonded_from · in_container · transfer) · in_container -> 웨이퍼 1
+```
+**되돌리는 법** — `ledger_config.json.bak-20261002-160649` 을 `config/ontology/ledger_config.json` 자리에 복사하고 재기동. 이미 쓴 references 원자는 남는다 — 지우려면 두 소스를 다시 번역(--whole-source --apply)
+
+**말할 것**
+```
+① 모양 — 총괄 답 ㄱ 대로 «목록 하나». 박스 서버(09-30 코드 f4d80664f)가 읽으면 어떻게 되나를 그 코드를 풀어 놓고 잼:
+   목록 — 뜨는 소스 잃음 0 · 지문 움직임 0 / 한 개 객체 — 빠짐 entity|die@1 · source_plan|die_inspection · 뜨는 소스 잃음 die_inspection · transfer_event
+② 걷기는 새 코드를 프로세스 안에서 불러 잼(돌던 걷기 서버는 09-30 코드라 창 규칙이 옛것 — 재기동 전까지 화면은 옛 규칙)
+③ 돌던 체인 데몬(09-30 코드)은 재기동 전까지 다이 소스의 «새 행»을 옛 코드로 번역 — 그 행엔 references 원자가 없다. 재기동은 소유자 몫
+④ 키 철자 갈림 — 7350027a6(10-01, 총괄 7233a7a31)이 엔티티 키를 칸의 선언 타입으로 접는다(number 칸 7.0 -> '7').
+   그 RUN.md 가 「다시 번역 전에는 같은 다이가 둘로 보일 수 있음 — 다시 번역하면 옛 꼴이 빠진다」고 했고 대상 여섯을 적었다.
+   그런데 그 중 넷(bonded_from · bw_dt_seat · dt_transfer · void_observation)은 뷰를 읽어 지금 뜨지 않는다(f3bc02f6e) — 다시 번역할 수 없다.
+   그래서 이 박스에서는 다이 소스를 다시 번역하는 순간 그 소스의 다이가 뷰 소스의 다이와 다른 노드가 된다. 이번 시험이 그 첫 번역이다
+⑤ 규격 — die_inspection 1,000 행당 5.85 s (규격 ≤ 5 s 넘음). 데몬이 같이 돌던 박스 · 원장이 차 있는 상태. 계획 때 잰 3.1 s 는 빈 원장
+```
+**여쭐 것**
+```
+① 다이 노드가 두 철자로 갈린 상태 — 그대로 둘지, 되돌릴지
+   ㄱ 그대로 — references 는 살아 있고 새 철자 쪽에서 닿는다. 뷰 소스 넷이 표가 되어 다시 번역될 때까지 갈림이 남는다
+   ㄴ 되돌림 — 선언 백업으로 바꾸고 두 소스를 09-30 코드로 다시 번역(옛 철자로 돌아감, references 원자는 없어짐)
+   ㄷ 걷기 · 원장 쪽에서 키 철자를 하나로 보는 일 — 짓는 일이라 지시가 필요
+② 재기동 — 돌던 데몬(09-30 코드)은 두 소스의 새 행을 옛 철자 · references 없이 번역한다. 재기동은 소유자 몫 그대로
+```
+
+---
+
+## [10-02 오후] 다이 시험 덧붙임 (총괄 6736254fd) — 111850bbe
+
+**① RUN.md «배포 뒤 운영 순서»** — 선언 · 재기동 · 다이를 부르는 소스 전부 다시 번역(목록 = /declaration 의 emits 에 in_container@1) · 시간 어림 1,000 행당 5.85 s
+
+**② 1,000 행당 5.85 s 는 어디서 늘었나 — 같은 표본(die_inspection 앞 5,000 행), references 켬(지금 라이브 선언) · 끔(시험 전 백업), 읽기만**
+```
+                       켬        끔
+원자                   10,000    5,000
+번역 (1,000 행당 s)     2.16     1.98       <- references 가 더한 것 0.18 s
+읽기 (1,000 행당 s)     0.26     0.14       (켬을 먼저 읽어 캐시가 빈 쪽 — 순서 탓, references 와 무관)
+색인 읽기 (거둠 겨냥)    0.013     0.008
+```
+한 줄: 다시 번역은 번역을 «두 번» 한다(거둠을 겨냥하는 미리보기 + 쓰기 — backfill.rescope 의 판정 166 주석). 번역 2.16 s × 2 = 4.32 s 가
+5.85 s 의 대부분이고, references 가 번역에 더한 것은 0.18 s. 나머지 1.25 s 가 거둠 · 쓰기 · 커밋(데몬이 같이 돌던 박스 · 꽉 찬 원장) —
+같은 일을 빈 시험 원장에 쓰면 0.66 s 였다(계획 때 잼).
+
+---
+
+## [10-02 오후] 그리드 행 지우기 서버 반쪽 — 답은 지운 수 · 트랜잭션만 (총괄 a0ae05b60, 소유자 「ㄱ, 한 1만행」) — 29cfa7047
+
+**무엇을 지었나**
+```
+답       POST /tables/<표>/rows/batch_delete = {status, deleted_count, transaction_id} — created_logs 뺌
+방송     500 행 묶음마다 그 행들의 이력 — 이력을 한 번만 훑어 묶음별로 나눔(전에는 묶음마다 이력 전체를 다시 훑음)
+문서     api_documentation 1.3 응답 예시 · RELEASE_LOG 항목(서버 · 화면 한 항목 — 이 기능의 마지막 착지) · RUN.md
+```
+**읽는 자리 전수** — HTTP 답을 읽는 클라 자리는 client2/src/api.js 하나이고 `deleted_count` 만 읽음. `created_logs` 를 읽는 클라 자리는
+websocket.js 하나(방송 메시지 — 그대로 옴) · effort_meter.js 는 주석. 서버 쪽에서 이 답을 읽는 코드 0(git grep, docs/_archive 제외)
+
+**10,000 행 전후 (박스 시험 DB 스크래치 스키마 · 제품 라우트를 TestClient 로, 쓰기는 그 스키마에만)**
+```
+좁은 표(3 칸)  답 3,227,847 -> 98 바이트 · 라우트 2.67 -> 2.29 s · 이력 줄 10,000 -> 10,000 · 답 칸 created_logs/deleted_count/status -> deleted_count/status/transaction_id
+넓은 표(40 칸)  답 3,207,847 -> 98 바이트 · 라우트 3.50 -> 2.82 s · 이력 줄 10,000 -> 10,000 · 답 칸 created_logs/deleted_count/status -> deleted_count/status/transaction_id
+```
+**게이트**
+```
+시험  tests/test_contention_fixes.py 10 passed in 1.87s
+        답에 created_logs 없음 · transaction_id 있음 · 그 트랜잭션의 DELETE 이력 줄이 행마다 ·
+        방송 501 행 = 묶음 둘, 묶음마다 자기 행들의 이력만(묶음 하나면 이 갈래를 못 가려서 501 로)
+      client2/tests/grid_view_readonly_harness.mjs 56 passed, 0 failed; 28/28 defects caught, 0 escaped; 2/2 controls escaped.
+변이  baseline                             10 passed
+      the answer echoes the logs again     1 failed, 9 passed  <- test_batch_delete_endpoint_smoke
+      no transaction in the answer         1 failed, 9 passed  <- test_batch_delete_endpoint_smoke
+      every chunk carries every log        1 failed, 9 passed  <- test_batch_delete_broadcasts_each_chunk_with_its_rows_logs
+      a chunk carries no logs              1 failed, 9 passed  <- test_batch_delete_broadcasts_each_chunk_with_its_rows_logs
+      after restore                        10 passed
+스위트 비PG 전체 6 failed, 7679 passed, 230 skipped, 3 xfailed in 773.62s (0:12:53) · 알려진 다섯 밖: 1
+      tests\test_a_ledger_world_is_a_set_of_names.py::test_an_install_with_no_branch_issues_the_statements_it_always_did
+      <- 이 착지 탓이 아니라 제 앞 착지 98112d1ba(펼친 보기 basis 칸)가 DDL 문장 기록(tests/support/ledger_default_ddl.json)을 안 고친 것.
+         다른 문장은 그 보기 한 줄뿐이고 그 칸만큼 다름을 확인해 ce648a9ae 로 고침(그 파일 5 passed). 98112d1ba 때 전체를 안 돌린 탓
+```
+**덧붙임 — 7679d868c 의 다이 키 철자 갈림은 그대로 둔다(총괄 답 ㄱ)** — 근거: 소유자 09-25 판정 f3bc02f6e(운영은 뷰를 안 쓰고, 뷰 소스는 소급 없이 걷어냄)라
+박스의 뷰 소스 넷이 옛 철자로 남는 것은 «박스에만» 있는 모양이다. 6736254fd 의 두 일은 111850bbe(RUN.md) · 7d23eb172(보고)로 끝냄
+
+---
+
+## [10-02 오후] 소급 잡 하나 = 대기열 한 줄 (총괄 b3a4334db) — 짓기 전에 멈춤: 지시의 전제 셋이 오늘 코드와 다름
+
+**오늘 코드 (조사 + 코드로 확인)**
+```
+① 「대기열이 이벤트를 한 줄씩」 — 아니다. /admin/chain/queue 는 이미 payload.transaction_id 로 접어 한 줄을 만든다(main.py 대기열 라우트의 접기).
+   다만 «앞에서부터 200 이벤트»를 자른 «뒤»에 접는다 — 줄 상한이 아니라 훑는 이벤트 상한이라, 한 잡이 200 이벤트를 넘기면 그 뒤 잡은 안 보인다
+② 「R1 은 tx id 가 페이지당 하나(미수리)」 — 이미 고쳐짐. chain/replay.py 가 실행당 replay_<run> 하나(d62f40730, 09-23).
+   가이드(chain_ingestion_guide §5.6 · BACKFILL_GUIDE · data_model)의 문장이 낡았다
+③ 한 잡이 여러 줄이 되는 진짜 자리 — 잡 신원(retroactive_runs.run_id)이 이벤트 어디에도 안 실린다. 대신:
+   · 연산마다 제 tx id 를 따로 지음(replay_ · chain_replay_withdraw_ · resolution_recompute_ · notation_backfill_ · enrichment_sweep_ …)
+   · R1 은 «트리거 이벤트»(replay_<run>)와 «그걸로 워커가 쓴 결과»(chain_replay_<run>)가 다른 tx — 두 줄
+   · group_by 를 선언한 규칙의 워커 쓰기는 묶음 키 tx(chain_group_by:…) — 묶음마다 한 줄
+   · 잡의 통제 행(RETROACTIVE_RUN)은 tx 가 없어 제 줄 「(no tx · outbox#N)」
+   · rerun_set_aside 는 표 · 규칙마다 replay 를 따로 불러 tx 가 여럿
+```
+**박스 아웃박스에 남은 것 (읽기만, 611 이벤트, 2026-09-25 17:46 ~ 2026-09-30 10:39 · 지금 기다리는 이벤트 0)**
+```
+enrichment_sweep_<hex>                               이벤트 226 · tx 1 · 행 226
+replay_<hex>                                         이벤트 184 · tx 3 · 행 3,635
+<uuid>                                               이벤트 79 · tx 78 · 행 80
+chain_enrichment_sweep_<hex>#half#<..>               이벤트 40 · tx 22 · 행 5,746
+(no tx: RETROACTIVE_RUN)                             이벤트 31 · tx 0 · 행 31
+chain_chain_enrichment_sweep_<hex>#half#<..>         이벤트 12 · tx 12 · 행 12
+chain_<uuid>                                         이벤트 10 · tx 10 · 행 10
+reload_<hex>                                         이벤트 7 · tx 7 · 행 7
+chain_enrichment_sweep_<hex>#half#<..>#row#<id>      이벤트 5 · tx 5 · 행 5
+<uuid>#row#<id>                                      이벤트 5 · tx 5 · 행 5
+chain_enrichment_sweep_<hex>                         이벤트 3 · tx 1 · 행 287
+chain_chain_enrichment_sweep_<hex>#half#<..>#row#<id> 이벤트 2 · tx 2 · 행 2
+(no tx: SCHEDULER_RUN_NOW)                           이벤트 2 · tx 0 · 행 2
+(no tx: BROADCAST_RECOVERY)                          이벤트 2 · tx 0 · 행 2
+chain_replay_withdraw_<hex>                          이벤트 1 · tx 1 · 행 1
+chain_replay_<hex>                                   이벤트 1 · tx 1 · 행 1
+chain_chain_enrichment_sweep_<hex>                   이벤트 1 · tx 1 · 행 1
+```
+`#half#` 꼬리(실패 묶음을 반으로 쪼갠 것)는 09-29 5fa5b1d83 이 은퇴시켰다 — 위 줄들은 그 전 것. 「소급 이벤트 하나가 몇 행」은 남은 replay 실행으로만 셀 수 있다: replay_67a4d3f1 이벤트 182 에 행 3,633 · replay_07cb0e59 이벤트 1 에 행 1 · replay_ab54f87d 이벤트 1 에 행 1
+
+**제가 짓기를 제안하는 모양 — 확인 받고 짓습니다**
+```
+잡 신원 한 칸  소급 잡이 도는 동안(admin/retroactive.py 의 한 자리 _run_to_the_end) 그 run_id 를 문맥에 두고, 봉투(_outbox_envelope)가
+             모든 이벤트 payload 에 run_id 를 싣는다. 워커가 소급 이벤트로 깨어 쓴 결과도 그 run_id 를 이어받는다(채널을 이어받는 그 자리)
+             통제 행은 이미 run_id 를 든다
+대기열 접기    run_id 가 있으면 run_id 로, 없으면 오늘처럼 transaction_id 로 — 한 줄: 잡 이름(op) · 남은 이벤트 · 남은 행 · 가장 오래 기다림
+             접기를 «자르기 전»에 SQL 로(GROUP BY) — 줄에 상한. 기다리는 행만 읽는 부분 색인(idx_outbox_unprocessed) 그대로 타는지 EXPLAIN 으로 잼
+R1 tx         이미 실행당 하나 — 짓지 않음. 가이드 세 문장만 고침
+재기          박스에서 소급 잡 하나(체인 재실행, 수만 행)를 돌려 전후 대기열 줄 수 · 이벤트당 행 · 접기 질의 시간
+안 쓰는 길     tx id 를 잡 하나로 맞추기 — 연산마다 tx 를 짓는 자리 넷(R1 · crud.transaction_context · _apply_batch_updates_once · 워커 chain_)이
+             덮어써서 «자리마다 고치는» 일이 되고, tx 는 «한 번의 쓰기»의 신원이라 뜻이 둘이 된다
+```
+**여쭐 것** — ① 이 모양(잡 신원 run_id 를 payload 에)으로 가도 되나 ② 박스에서 수만 행 소급 잡을 한 번 돌려 재도 되나(박스 서버는 09-30 코드라 «전»만 박스 서버로, «후»는 새 코드를 프로세스로 띄워서)

@@ -902,12 +902,14 @@ def test_the_only_place_a_source_names_a_predicate_is_its_bind_mapping():
     assert set(validated.to_mapping()["sources"]["input_rows"]["bind"]) == {"mappings"}
 
 
-def test_mapper_inputs_cover_profile_columns():
+def test_a_bound_column_need_not_be_repeated_in_mapper_inputs():
+    """⚰️ WAS `test_mapper_inputs_cover_profile_columns` (「Profile column 'event_key' … is
+    missing」). 총괄 c38eae7cf reverses it: the read fetches a bound column, so `input_columns`
+    is not asked to name it again. That it IS read is
+    `test_a_column_the_declaration_names_is_read_without_repeating_it.py`."""
     bundle = logical_bundle()
     driver_mapper(bundle)["input_columns"].remove("event_key")
-    errors = validate_bundle_errors(bundle)
-    assert any(error.code == "invalid_mapper"
-               and "Profile column 'event_key'" in error.message for error in errors)
+    assert validate_bundle_errors(bundle) == ()
 
 
 @pytest.mark.parametrize(
@@ -1389,7 +1391,10 @@ def test_stage_two_has_no_db_migration_write_runtime_or_compiler_surface():
     assert not (Path(__file__).resolve().parents[1] / "migrations" / "ledger_setup_bundle.py").exists()
 
 
-def test_group_by_mapper_unit_requires_closed_input_columns():
+def test_group_by_mapper_unit_requires_columns_that_exist():
+    """⚰️ WAS `…_requires_closed_input_columns`: unit.columns ⊆ input_columns (총괄 c38eae7cf
+    reverses it - the read fetches the group). What the old rule also asked, that the column
+    EXISTS, is asked of the relation now."""
     missing = logical_bundle()
     driver_mapper(missing)["unit"] = {"kind": "group_by"}
     errors = validate_bundle_errors(missing)
@@ -1402,8 +1407,9 @@ def test_group_by_mapper_unit_requires_closed_input_columns():
     unknown = logical_bundle()
     driver_mapper(unknown)["unit"] = {
         "kind": "group_by", "columns": ["not_an_input"]}
+    assert "not_an_input" not in DEFAULT_CATALOG["input_rows"]["columns"]
     errors = validate_bundle_errors(unknown)
-    assert any(error.code == "invalid_mapper"
+    assert any(error.code == "unknown_column"
                and error.path == f"{MAPPER_PATH}.unit.columns"
                for error in errors)
 
@@ -1584,17 +1590,13 @@ def test_a_root_shape_problem_is_reported_without_its_downstream_consequences(tm
     assert issues[0].code == "missing_field"
 
 
-def test_a_column_name_is_judged_against_two_different_universes():
-    """🔴 "EVERY COLUMN MUST EXIST IN THE RELATION" IS NOT THE WHOLE RULE.
+def test_a_column_name_is_judged_against_the_relation():
+    """RELATION = the catalog's columns -- order_by, occurred_at.column, driver.identity,
+    driver.group_by, mapper input_columns and unit.columns, registration_probe, bindings.
 
-      * RELATION  = the catalog's columns          -- order_by, occurred_at.column,
-                                                      driver.identity, driver.group_by,
-                                                      mapper input_columns, registration_probe
-      * MAPPER IN = that mapper's input_columns    -- every profile column binding
-
-    ⚰️ A third, PREPARED (relation + preparer outputs), left with the preparer in
-    setup_version 6 - since then a computed column is a column the chain wrote, so it is
-    in the relation.
+    ⚰️ A second universe, MAPPER IN (a profile binds only what `input_columns` names), was
+    retired by 총괄 c38eae7cf - the read fetches a bound column. ⚰️ A third, PREPARED, left
+    with the preparer in setup_version 6.
     """
     base = logical_bundle()
     column = "absent_column"
@@ -1609,13 +1611,10 @@ def test_a_column_name_is_judged_against_two_different_universes():
     assert refused, "order_by reads the RELATION, so a column it lacks must be refused"
     assert "is not in relation" in refused[0].message
 
-    # And the second universe: a profile binds only what its mapper declares as input.
+    # The retired second universe: narrowing `input_columns` refuses nothing now.
     narrowed = copy.deepcopy(base)
     driver_mapper(narrowed)["input_columns"] = ["source_id"]
-    assert [
-        item for item in validate_bundle_errors(narrowed)
-        if item.code == "invalid_mapper" and "is missing" in item.message
-    ], "profile column bindings are judged against the mapper's input_columns"
+    assert validate_bundle_errors(narrowed) == ()
 
 
 # ---------------------------------------------------------------------------

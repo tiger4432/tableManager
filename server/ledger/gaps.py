@@ -30,6 +30,7 @@ NAMES_PATH = Path(__file__).with_name("gap_names.json")
 
 
 from declaration_names import bare_name as _bare_name
+from .schema import event_time_sql
 
 
 class GapTableMismatch(ValueError):
@@ -274,10 +275,12 @@ def _nodes_of_type_sql():
         )
         SELECT named.keys AS keys, LEAST(
             (SELECT min(s.occurred_at) FROM {table} s
-              WHERE s.subject_type = %(bare)s AND s.subject_keys = named.keys),
+              WHERE s.subject_type = %(bare)s AND s.subject_keys = named.keys
+                AND """ + event_time_sql("s") + """),
             (SELECT min(o.occurred_at) FROM {table} o
               WHERE o.object_kind = 'entity_ref' AND o.object_payload->>'type' = %(bare)s
-                AND o.object_payload->'keys' = named.keys)) AS first_seen
+                AND o.object_payload->'keys' = named.keys
+                AND """ + event_time_sql("o") + """)) AS first_seen
           FROM named ORDER BY named.keys LIMIT %(scan)s
     """
 

@@ -19,7 +19,9 @@ from .setup_bundle import (
     DEFAULT_LIFECYCLE,
     LedgerSetupBundle,
     LedgerSetupValidationError,
+    _profile_binding_columns,
     bundle_readiness_errors,
+    entity_references,
     is_retired,
     predicate_claim,
     read_group_by,
@@ -204,6 +206,30 @@ class EntityTypeDescriptor:
     #: on being said. A field a screen can write and no reader can see is worse than an
     #: absent one - it reads as an action that was taken.
     status: str = "active"
+    #: `entities.<type>.references`, compiled (총괄 29047aedc) - the edges the translator writes
+    #: for every source naming this entity. Empty for an entity that declares none, and an
+    #: empty field is not fingerprint material (`_semantic_plain`), so no other cursor moves.
+    references: tuple = ()
+
+
+#: A reference atom's derivation begins with this - the one way the basis stamp knows it.
+REFERENCE_DERIVATION_PREFIX = "entity-reference:"
+
+
+def is_reference_derivation(derivation) -> bool:
+    return str(derivation or "").startswith(REFERENCE_DERIVATION_PREFIX)
+
+
+@dataclass(frozen=True)
+class ReferenceDescriptor:
+    """One compiled reference: `predicate_id` from this entity to `target_type`, whose keys are
+    `keys` ((target key, "key" | "value", own key or constant), ...), written when every
+    (own key, value) in `when` holds."""
+    predicate_id: str
+    target_type: str
+    keys: tuple
+    when: tuple
+    derivation: str
 
 
 @dataclass(frozen=True)
@@ -913,8 +939,27 @@ def _compile_entities(section: Mapping[str, Any]) -> EntityTypeRegistry:
             allow_null=item.get("allow_null", False),
             config_path=f"bundle.entities.{entity_id}",
             status=item.get("status", DEFAULT_LIFECYCLE),
+            references=() if is_retired(item) else _compile_references(entity_id, item),
         ))
     return builder.seal()
+
+
+def _compile_references(entity_id: str, item: Mapping[str, Any]) -> tuple:
+    compiled = []
+    for index, ref in enumerate(entity_references(item)):
+        keys = []
+        for target_key in sorted(ref["to"]["keys"], key=str):
+            binding = ref["to"]["keys"][target_key]
+            binding = {"key": binding} if isinstance(binding, str) else binding
+            keys.append((target_key, "key", binding["key"]) if "key" in binding
+                        else (target_key, "value", binding["value"]))
+        when = (ref.get("from") or {}).get("when") or {}
+        compiled.append(ReferenceDescriptor(
+            predicate_id=ref["edge"], target_type=ref["to"]["entity"], keys=tuple(keys),
+            when=tuple(sorted(when.items(), key=lambda pair: str(pair[0]))),
+            # ⚠️ by position: reordering a reference list changes these atoms' translator version
+            derivation=f"{REFERENCE_DERIVATION_PREFIX}{entity_id}#{index}"))
+    return tuple(compiled)
 
 
 def _role_reference(value: str) -> RoleReferenceDescriptor:
@@ -1103,48 +1148,22 @@ def _compile_registration_probe(
 
 
 def _binding_select_columns(catalog, relation, item):
-    """Physical columns of `relation` that this source's role bindings name (판정 201).
+    """Physical columns of `relation` that this source's `bind` names (판정 201).
 
     🔴 SO THAT NAMING A COLUMN IN A BINDING IS ENOUGH. A bound column also had to be
     repeated in `map.input_columns`, and forgetting the second place PASSED validation and
     then failed at run time with `missing_binding_column` - which is how the shipped sample
-    broke. `when` and `exclude_when` already work this way; bindings now do too.
+    broke. `bind.entities.<type>.attributes` is a binding too (총괄 33c930e98) - the
+    enumeration is `setup_bundle._profile_binding_columns`, the one the form locks by.
 
     ⚠️ INTERSECTED WITH THE CATALOGUE ON PURPOSE. Asking the RELATION for a column it does
     not have would be `UndefinedColumn` on the cursor path.
     """
-    def _columns_of(binding):
-        # ⚠️ COLLECTED HERE RATHER THAN IMPORTED. `setup_bundle._binding_columns` exists but
-        # takes a path and answers a different question (it builds refs for refusals); reusing
-        # a name whose contract I had not read is what produced a TypeError on the first run.
-        if not isinstance(binding, Mapping):
-            return set()
-        if binding.get("kind") == "column":
-            column = binding.get("column")
-            return {column} if isinstance(column, str) else set()
-        if binding.get("kind") != "entity":
-            return set()
-        found = set()
-        for group in ("keys", "attributes"):
-            part = binding.get(group)
-            if isinstance(part, Mapping):
-                for inner in part.values():
-                    found |= _columns_of(inner)
-        return found
-
     entry = (catalog or {}).get(relation) or {}
     physical = entry.get("columns") if isinstance(entry, Mapping) else None
     if not isinstance(physical, Mapping):
         return ()
-    bind = item.get("bind")
-    mappings = bind.get("mappings") if isinstance(bind, Mapping) else None
-    named = set()
-    if isinstance(mappings, Mapping):
-        for mapping in mappings.values():
-            bindings = mapping.get("bind") if isinstance(mapping, Mapping) else None
-            if isinstance(bindings, Mapping):
-                for binding in bindings.values():
-                    named |= _columns_of(binding)
+    named = {column for column, _where in _profile_binding_columns("", item.get("bind"))}
     return tuple(sorted(named & set(physical)))
 
 

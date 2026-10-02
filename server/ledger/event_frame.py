@@ -219,10 +219,11 @@ def locked_select_columns(
     occurred_at_column: str | None = None,
     exclude_when_columns: Sequence[str] = (),
     condition_columns: Sequence[str] = (),
+    binding_columns: Sequence[str] = (),
 ) -> tuple[str, ...]:
     """What a source's read brings in BEFORE anybody declares an input column.
 
-    The first five terms of `base_select_columns`, lifted out because a second reader
+    Every term of `base_select_columns` but `input_columns` and `row_id`, lifted out because a second reader
     needs them and cannot have a compiled plan.  The authoring screen draws these columns
     as pressed-and-locked chips -- "this arrives anyway" -- on a bundle that is half
     written and does not compile, which is the normal state of a source being built.  So
@@ -256,6 +257,9 @@ def locked_select_columns(
     # not otherwise read - it is neither an identity, a key, nor anybody's declared input -
     # so without this the mapper is asked to judge a column that is not in the frame.
     columns.update(condition_columns)
+    # 판정 201 · 총괄 c38eae7cf. A bound column is read because it is bound, never because it
+    # was repeated in `map.input_columns`.
+    columns.update(binding_columns)
     if occurred_at_column:
         columns.add(occurred_at_column)
     return tuple(sorted(columns))
@@ -266,7 +270,9 @@ def base_select_columns(source_plan: SourcePlan) -> tuple[str, ...]:
     driver = source_plan.driver
     columns = set(locked_select_columns(
         identity=driver.identity,
-        group_by=driver.group_by,
+        # The mapper's group is read like the source's (총괄 c38eae7cf) - it is not repeated
+        # in `input_columns` any more.
+        group_by=(*driver.group_by, *driver.mapper.unit_columns),
         order_by=driver.order_by,
         cursor_columns=driver.cursor_columns,
         occurred_at_column=driver.occurred_at.column,
@@ -276,15 +282,13 @@ def base_select_columns(source_plan: SourcePlan) -> tuple[str, ...]:
             for mapping in source_plan.profile.mappings.values()
             for column in mapping.when
         }),
+        # The compiler already intersected these with the catalogue.
+        binding_columns=source_plan.binding_select_columns,
     ))
     columns.update(driver.mapper.input_columns)
     # The engine's own column, on every planned source - each reads a table that has `row_id`
     # (a view source is refused at load, 총괄 f3bc02f6e).
     columns.add(source_plan.frame_row_id)
-    # 판정 201. A column a role binding names is read BECAUSE it is bound, not because it
-    # was repeated in `map.input_columns`. The compiler already intersected these with the
-    # catalogue, so nothing here asks one.
-    columns.update(source_plan.binding_select_columns)
     return tuple(sorted(columns))
 
 

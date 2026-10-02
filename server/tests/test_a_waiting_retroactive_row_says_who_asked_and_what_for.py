@@ -32,9 +32,11 @@ from database import models                                      # noqa: E402
 
 
 def _outbox(db, *, event_type, table_name, payload):
+    # The shape the product's stagers write - an object. The queue folds in SQL now and reads the
+    # object's keys (lead b3a4334db); a JSON string is only what two control-row writers leave.
     db.add(models.DatabaseOutbox(
         event_uuid=str(uuid.uuid4()), table_name=table_name, event_type=event_type,
-        payload=json.dumps(payload, ensure_ascii=False), processed_chain=False))
+        payload=dict(payload), processed_chain=False))
     db.flush()
 
 

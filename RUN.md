@@ -1,5 +1,107 @@
 # 지금 돌리면 되는 것
 
+> ## [10-02 저녁] **체인 대기열 — 소급 잡 하나는 한 줄 (run_id) · 접기는 자르기 전 — 이주 «불필요» · 재기동 «필요»(run_app.bat 전체)**
+>
+> ```
+> 무엇이 바뀌나  소급 잡이 도는 동안 낸 이벤트와 그것이 깨운 체인 쓰기가 payload 에 run_id 를 싣는다
+>              GET /admin/chain/queue 의 waiting_transactions = «줄»: 잡(run_id · op) · 트랜잭션 · 그 행 하나 중 하나
+>                 한 줄 = run_id · op · transaction_id · events(남은 이벤트) · rows(그 이벤트가 싣는 행) · 가장 오래 기다림
+>              🔴 rows 의 뜻이 바뀜: 전에는 «이벤트 수», 이제 «행 수». 이벤트 수는 events
+>              listed = {lines, lines_total, cap, capped} — 상한은 «줄» 200(전에는 «이벤트» 200, rows_scanned 은 없어짐)
+> 확인         재기동 뒤 소급 잡 하나(어드민 Retroactive 탭) -> 체인 대기열 화면에 그 잡이 한 줄
+>              curl -s -H "X-Admin-Token: <토큰>" http://localhost:8080/admin/chain/queue  -> waiting_transactions[].run_id · op
+> 뜻           같은 잡이 두 줄이면: 재기동 전에 큐에 들어간 이벤트(run_id 없음) — 다 빠지면 한 줄
+>              op 가 비어 있고 run_id 만 있으면 retroactive_runs 에 그 실행 행이 없는 것
+> 급할 때       git revert <이 커밋> -> 재기동. 이벤트의 run_id 키는 읽는 쪽이 없으면 무해
+> 화면         클라 레인이 이 줄 모양으로 대기열 화면을 바꾼다(그 전까지 화면의 rows 칸은 «행 수»를 보이고, 잡 줄의 tx 칸은 빈다)
+> ```
+
+---
+
+> ## [10-02 오후] **배포 뒤 운영 순서 — 다이 references · 키 철자 하나 (총괄 6736254fd) — 이주 «불필요» · 재기동 «필요»**
+>
+> ```
+> 1 선언     config/ontology/ledger_config.json 의 die@1 에 references 목록 하나(아래 references 절의 예시) — 재기동 «전»에 적어도 된다
+> 2 재기동   run_app.bat 전체. 로그 [Ledger] re-stamped N cursor(s) … — 다이를 부르는 소스들의 지문이 새로 찍힘(자리 그대로)
+> 3 다이를 부르는 소스 전부 다시 번역 — 키 철자 하나(7.0 -> '7', 7350027a6) 와 references 원자가 같이 들어온다
+>     소스 목록   GET /api/ledger/declaration 의 sources[].emits 에 in_container@1 이 있는 소스
+>     소스마다    python -m ledger.backfill --source <소스> --whole-source            (미리보기 — relation_rows 가 행 수, 안 씀)
+>                python -m ledger.backfill --source <소스> --whole-source --apply
+>     시간 어림   행 수 × 5.85 s / 1,000 (박스 die_inspection 117,742 행 = 11분 28초) — 1,000 행당 5 s 규격을 넘는다
+> 뜻           3 을 다 돌리기 전에는 같은 다이가 두 철자로 갈려 걷기에서 두 노드로 보인다 — 다 돌리면 하나
+>              한 소스만 돌리고 멈추면 그 소스의 다이만 새 철자 — 나머지를 이어서 돌린다
+> 급할 때       선언에서 references 를 지우고 재기동(이미 쓴 원자는 3 을 다시 돌리면 거둬진다)
+> ```
+
+---
+
+> ## [10-02 오후] **그리드 행 지우기 — 답은 지운 수 · 트랜잭션만 — 이주 «불필요» · 재기동 «필요»(run_app.bat 전체)**
+>
+> ```
+> 무엇이 바뀌나  POST /tables/<표>/rows/batch_delete 의 답 = {status, deleted_count, transaction_id} — created_logs 가 빠짐
+>              행마다 이력은 그대로 audit_logs 에, 다른 화면은 그대로 batch_row_delete 방송으로 받음(500 행 묶음마다 그 행들의 이력)
+> 확인         재기동 뒤 그리드에서 행 몇 개 고르고 🗑️ Row -> 아래 줄 Deleting … · N s 가 오르다 Deleted N rows · S s
+>              다른 탭에 같은 표를 열어 두면 그 행들이 그쪽에서도 빠짐(방송)
+> 뜻           Deleted 가 뜨는데 다른 탭에서 안 빠지면 방송이 안 간 것 — 서버 로그의 웹소켓 줄을 본다. 답 자체가 늦으면 지우기 본체(DB) 시간
+> 급할 때       git revert <이 커밋> -> 재기동(화면은 deleted_count 만 읽으므로 되돌려도 화면 변화 없음)
+> ```
+
+---
+
+> ## [10-02 오후] **원장 펼친 보기에 occurred_at_basis 칸 · references 예시는 목록 모양 — 이주 «필요»(보기만) · 재기동 «불필요»**
+>
+> ```
+> 무엇이 바뀌나  ledger_atom_rows 보기 맨 끝에 occurred_at_basis(빈 값 = 사건 시각, ingested = 아님)
+>              RELEASE_LOG · 아래 references 절의 선언 예시가 «목록 하나» 모양 — 재기동 전 옛 코드도 받아들인다
+> 돌릴 명령     python server/migrations/add_ledger_atom_rows.py --report    (보기 있음 확인)
+>              python server/migrations/add_ledger_atom_rows.py             (보기를 그 자리에서 다시 만듦 — 원장 · 원천 표 그대로)
+>              config/table_config.json 의 ledger_atom_rows.column_types 맨 끝에 "occurred_at_basis": "string" (샘플 그대로)
+> 뜻           메인 그리드의 ledger_atom_rows 에 그 칸이 보이면 끝. 칸만 비어 보이면 표 선언은 됐고 이주를 안 돌린 것
+>              이주가 「cannot change name of view column」으로 거절하면 보기를 손으로 바꾼 설치 — 보기를 지우고(DROP VIEW ledger_atom_rows) 다시 돌린다
+> 급할 때       표 선언에서 그 한 줄을 지우면 그리드에서 사라진다(보기는 그대로 둬도 됨)
+> ```
+
+---
+
+> ## [10-02 오후] **바인딩 · 묶음 · when 칸은 맵퍼 입력 칸에 다시 안 적는다 — 이주 «불필요» · 재기동 «필요»(run_app.bat 전체)**
+>
+> ```
+> 무엇이 바뀌나  검증기가 바인딩(bind.mappings 의 칸 · bind.entities 속성 칸) · map.unit.columns 를 map.input_columns 에 다시 적으라고 안 한다
+>              그 칸은 읽기가 저절로 싣는다 — bind.entities 속성 칸도(전에는 안 실려 번역에서 missing_binding_column)
+>              탐색기 소스 폼 Mapper input_columns 의 잠긴 칩에 그 칸들과 when 칸이 더해진다
+> 확인         재기동 뒤 탐색기에서 소스를 열어 Mapper input_columns — 바인딩한 칸이 눌린 채 잠겨 있다
+>              입력 칸에서 바인딩한 칸을 빼고 저장 · 적용 -> 거절 없음(전에는 「Profile column 'X' at … is missing」)
+> 뜻           체인 데몬이 뜰 때 [Ledger] re-stamped N cursor(s) … 줄 — bind.entities 속성이 있는 소스(박스: dt_job)의 지문만 새로 찍힘.
+>              자리 그대로, 다시 읽는 행 없음. [Ledger] N cursor(s) were NOT re-stamped 줄이 나오면 그 소스가 멈춘 것 — 줄 뒤 사유를 본다
+> 급할 때       git revert <이 커밋> -> 재기동. 단 이 커밋 뒤에 입력 칸을 비워 저장한 선언은 되돌리면 다시 거절된다
+> 재기동 뒤 로그 위 re-stamped 줄
+> ```
+
+---
+
+> ## [10-02 오후] **엔티티 references 가 원자를 쓴다(다이 → 웨이퍼) · 사건 시각 아닌 원자는 창을 늘 지난다 — 이주 «불필요» · 재기동 «필요»(run_app.bat 전체)**
+>
+> ```
+> 무엇이 바뀌나  entities.<타입>.references(하나 또는 목록)를 적으면 그 엔티티를 부르는 소스마다 그 엣지 원자를 하나 더 쓴다(분자당 하나)
+>              그 원자의 occurred_at_basis = ingested(사건 시각 아님). 새 칸 · 새 값 · CHECK 교체 없음
+>              사건 시각 아닌 원자(이것 · 원래 ingested 인 dt_job)는 걷기 시간 창이 늘 지나보내고 · 창 밖 수에 안 세고 ·
+>              응답 엣지 occurred_at 이 null · 처음 본 시각(gaps)에 안 든다. 최신값 · 가져오기 순서는 그대로
+> 선언(운영자가)  config/ontology/ledger_config.json 의 entities 에서, 예:
+>                "die@1": {"keys": [...그대로...], "references": [{"edge": "in_container@1",
+>                  "to": {"entity": "wafer@1", "keys": {"wafer": "mat_id"}}, "from": {"when": {"mat_type": "Wafer"}}}]}
+>              목록 모양으로 — 재기동 전 옛 코드도 받아들인다(한 개 객체면 옛 코드가 die@1 을 거절해 다이 소스가 멈춘다)
+> 확인 명령     재기동 뒤 로그에 [Ledger] entity|die@1 is NOT read: … 줄이 없어야 한다(있으면 그 줄 뒤가 거절 사유 — 술어 · 키 대응 · when)
+>              다이를 부르는 소스를 소스마다 다시 번역:  python -m ledger.backfill --source <소스> --whole-source --apply
+>              확인:  SELECT count(*) FROM ledger_events WHERE predicate = 'in_container' AND occurred_at_basis = 'ingested'
+> 뜻           그 수가 늘면 references 원자가 쓰인 것
+>              체인 데몬이 뜰 때 [Ledger] re-stamped N cursor(s) … 줄 — 선언이 바뀐 소스의 커서 지문을 새로 찍음(자리 그대로), 그 뒤 새 행부터 references 원자
+>              이미 번역된 옛 행은 위 다시 번역으로만 생긴다
+> 급할 때       선언에서 references 를 지우면 새 원자는 안 생긴다(이미 쓴 것은 남음 — 그 소스를 다시 번역하면 거둬진다). 코드는 git revert -> 재기동
+> 재기동 뒤 로그 위 두 줄
+> ```
+
+---
+
 > ## [10-02 낮] **정적 «씨앗»의 첫 걸음은 동적 노드로 간다 — 걷기 — 이주 «불필요» · 재기동 «필요»(run_app.bat 전체)**
 >
 > ```

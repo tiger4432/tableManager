@@ -13,9 +13,10 @@
 | Property (`product`, `lot`) | **`attributes`** | `entities.<t>.attributes` (이름) + `sources.<s>.bind.entities.<t>.attributes` (컬럼, 소스당 한 번) |
 | Link type (`Wafer → Die: inspected`) | 술어 `inspected@1` | `vocabulary` (`subjects` · `object.kind: entity_ref` · `types`) |
 | Link property (링크에 붙는 값) | 술어의 `qualifiers` | `vocabulary.<p>.object.qualifiers` + 문장 bind 의 같은 이름 |
+| Link a key implies (`Die` in the `Wafer` its `mat_id` names) | 🆕 엔티티의 `references`(10-02 `f45c75442`) | `entities.<t>.references` — `edge`(어휘의 술어) · `to.entity` · `to.keys`(상위 키: 이 엔티티의 키) · `from.when`. 그 엔티티를 부르는 소스마다 번역기가 원자를 쓴다(시각은 사건 시각 아님) |
 | Backing dataset | 소스 `relation` + `read` | `sources.<s>` |
 
-> 🆕 **키 값의 철자**(10-01 `7350027a6`) — 엔티티 키는 그 컬럼의 `table_config` 선언 타입으로 접혀서 같은 것이 한 키가 됩니다. `number` 칸이면 `01` · `1` · ` 1 ` · `1.0` 이 모두 `1`(정수가 아닌 수는 그대로 `7.5`), 그 밖의 칸은 앞뒤 공백만 뗍니다. 빈 값은 키가 없는 것입니다. 상수로 적은 키는 공백만 뗍니다. 코드 맵퍼가 스스로 지은 키는 이 접기를 안 지납니다.
+> 🆕 **키 값의 철자**(10-01 `7350027a6`) — 엔티티 키는 그 컬럼의 `table_config` 선언 타입으로 접혀서 같은 것이 한 키가 됩니다. `number` 칸이면 `01` · `1` · ` 1 ` · `1.0` 이 모두 `1`(정수가 아닌 수는 그대로 `7.5`), 그 밖의 칸은 앞뒤 공백만 뗍니다. 빈 값은 키가 없는 것입니다. 상수로 적은 키는 공백만 뗍니다. 코드 맵퍼가 스스로 지은 키는 이 접기를 안 지납니다. ⚠️ 그 전에 번역된 원자는 옛 철자(`7.0`) 그대로입니다 — 소스 하나만 다시 번역하면 그 소스의 개체만 새 철자가 되어 다른 소스가 부르는 같은 개체와 «다른 노드»가 됩니다. 그래서 그 엔티티를 부르는 소스는 «전부» 다시 번역합니다(총괄 `6736254fd`). 박스에 남은 갈림은 뷰를 읽는 소스 탓이고, 운영은 뷰를 안 씁니다(소유자 09-25, `f3bc02f6e`).
 | Object materialization | 등록 원자 (`register@1`, 목적어 없음 — 속성은 그 원자의 qualifiers) | 소스가 속성을 매기면 «암묵 등록» |
 | Link materialization | 사실 원자 (주어 → 술어 → 목적어) | 문장 `mappings` |
 | Edits layer (사용자 편집) | 표 쪽 `cell_sources` 사용자 층 (원장은 «쓰기 없음») | — |
@@ -115,7 +116,7 @@ Link type    inspected  Wafer -> Die                              backing datase
 ## 2. 두 줄 (완성의 정의)
 ```
 「운영에서는 엔티티 선언에 attributes 이름을 적고, 소스의 bind.entities 에서 그 이름에 컬럼을 «한 번» 매기면 됩니다」
-⚠️ 소스가 `map.input_columns` 를 «명시»했으면 그 컬럼을 거기에도 — 안 적으면 검증기가 그 경로를 댑니다(빈 목록이면 기본값이 전부라 이 줄이 없음, 큐 S-52-c)
+🆕 10-02 `a5fe51b3f` — 그 컬럼을 `map.input_columns` 에 다시 적지 않습니다. 읽기가 저절로 싣고 검증기도 요구하지 않습니다(전에는 「Profile column … is missing」)
 ```
 
 ## 3. 이 예시가 «안» 보여 주는 것 (일부러)

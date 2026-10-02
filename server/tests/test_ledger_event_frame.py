@@ -322,30 +322,22 @@ def test_runtime_module_has_no_cursor_store_gate_atom_or_transaction_capability(
     assert "atoms_from_ledger_frame" not in text
 
 
-def test_a_bound_attribute_column_must_be_declared_like_every_other_bound_column():
-    """🔴 이 라운드가 «발견»한 것. 검증기는 「프로파일이 바인드한 «모든» 컬럼은
-    `map.input_columns` 에 있어야 한다」를 이미 강제하고, 속성 바인딩도 «그 규칙 안»이다.
+def test_a_bound_attribute_column_is_read_without_a_third_place():
+    """⚰️ WAS `…_must_be_declared_like_every_other_bound_column`, which pinned 「the name is
+    written in three places — the entity's list · the source's bind · `map.input_columns`」
+    and said it would go red the day a ruling removed the third. 총괄 c38eae7cf + 33c930e98
+    is that ruling: the read fetches an attribute column because it is bound.
 
-    그래서 오늘 운영자는 이름을 «세 자리»에 적는다 — 엔티티의 목록 · 소스의 bind · 그리고
-    `map.input_columns`. 판정 124 의 «두 줄»은 그 셋째 자리를 세지 않았다.
-
-    ⚠️ 이 시험은 그것을 «옳다»고 말하지 않는다. 오늘 그렇다는 것을 «못 박을» 뿐이고,
-    셋째 자리를 없애는 판정이 오면 이 시험이 그날 «빨개져서» 갱신을 부른다."""
-    from ledger.setup_bundle import LedgerSetupValidationError
-
+    `unselected_note` is the fixture's one column nothing else selects, so the assertion can
+    fail."""
     raw = logical_bundle()
     raw["entities"]["InputEntity@1"]["attributes"] = ["product"]
     raw["sources"]["input_rows"]["bind"]["entities"] = {
         "InputEntity@1": {"attributes": {"product": {"kind": "column",
-                                                     "column": "event_key"}}}}
-    mapper = raw["sources"]["input_rows"]["map"]
-    mapper["input_columns"] = [name for name in mapper["input_columns"]
-                               if name != "event_key"]
+                                                     "column": "unselected_note"}}}}
+    assert "unselected_note" not in raw["sources"]["input_rows"]["map"]["input_columns"]
 
-    with pytest.raises(LedgerSetupValidationError) as caught:
-        snapshot(raw)
-    assert caught.value.path.endswith("map.input_columns")
-    assert "event_key" in caught.value.message
+    assert "unselected_note" in base_select_columns_of(snapshot(raw), "input_rows")
 
 
 def test_the_declared_column_is_then_selected_by_the_cursor():

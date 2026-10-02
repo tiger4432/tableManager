@@ -42,7 +42,7 @@
 | 존재 — **은퇴** | ✅ **① (09-11 D-3c 재측정 — 이 행이 «거짓»이었습니다)** — `entities.<t>` 의 optional 에 `status` 가 «있고»(`setup_bundle.py`), 은퇴한 타입을 내는 문장은 `_retired_entity_types` 가 «이름 대어» 거절합니다. S-103(`b61c67fa`, 09-10 07:23)이 닫았고 이 행만 남아 있었습니다. 🪦 당시 근거: | `entities.<t>` 의 optional 목록 :1119 = `(key_types, allow_null, references, class, attributes)` — **`status` 가 없다.** 술어에는 있다(A2) | — | — |
 | 시간(속성 변경) | ① | 새 등록 원자. 걷기가 최신 `occurred_at` 을 이기고 서로 다른 값의 수를 `attribute_conflicts` 로(`WALK.md` §4) | — | 걷기 · 클라 |
 | 표면 `label` | ② | 🔴 선언 칸이 «없다» — `ledger_subgraph.py:384` 가 **`keys` 앞 «둘»을 `" / "` 로 이어** 만든다. 비면 타입 이름 | — | 화면 |
-| `references` | ① | `entities.<t>.references` :1165 — 키 하나가 다른 엔티티를 가리키면 걷기가 «엣지를 합성»한다 (:1169) | | 걷기 |
+| `references` | ① | `entities.<t>.references`(하나 또는 목록 — `edge` · `to.entity` · `to.keys` · `from.when`) — 🆕 10-02 `f45c75442` 번역기가 그 엔티티를 부르는 소스마다 `edge` 원자를 쓴다(시각은 사건 시각 아님, `ingested`). ~~걷기가 «엣지를 합성»한다~~(08-27 은퇴) | `edge` 가 선언된 active 술어 · 이 엔티티 → `to.entity` · 필수 qualifier 없음 — 아니면 이름 대어 거절 | 번역기 |
 
 ---
 
@@ -113,7 +113,7 @@
 
 | 부축 | 상태 | 자리 |
 |---|---|---|
-| 봉투 다섯 칸 | ① | `_outbox_envelope()` (`server/database/database.py:189`) = `(transaction_id, user, source, ts, chain_depth)` — **한 자리**라 접힌 사건과 행별 사건이 «갈라질 수 없다» |
+| 봉투 다섯 칸 | ① | `_outbox_envelope()` (`server/database/database.py:189`) = `(transaction_id, user, source, ts, chain_depth)` — **한 자리**라 접힌 사건과 행별 사건이 «갈라질 수 없다». 🆕 10-02 `f843188e5` 소급 실행이 열려 있으면 `run_id` 도(`database.context.retroactive_run`) — 체인 대기열이 그것으로 잡 하나를 한 줄로 접는다 |
 | 파일 신원 → 데이터 행 | ① | `filename_rules` — 🔴 **자리 정정: 표 카탈로그가 «아니다».** 인제스터 선언(`AdvancedIngester(config_path)` 가 읽는 파일)의 세 계열 중 하나다(`advanced_ingester.py:180~186`). 주어는 «인제션 루트 기준 POSIX 상대경로»라 폴더명까지 본다(:267~) · 병합 서열 «경로 < 헤더 < 행». ⚠️ 출하 샘플에 이 계열을 쓰는 선언 **0** — 「관행의 부재」이지 결함이 아니다(판정 159) |
 | **봉투 없는 쓰기** | 🟡 **② (09-11 D-3c 재측정)** — 「칸」이 생긴 것이 아니라 «그 길이 닫혔습니다»: S-78 로 추적되는 스크립트가 전부 «제품 문»으로 쓰고(그래서 봉투가 붙고), `raw_write_census.py` 가 「직접 쓰기 0」을 «게이트»로 잡고 있습니다(오늘 0 — 출력의 6·51 은 되돌리기 «안내문»이라 남깁니다). 기본값이 덮는 자리이지 선언 칸은 아니므로 ② 입니다. 🪦 당시 근거: | 표에 직접 쓰는 스크립트는 세션을 안 지나 봉투가 «없고», 그래서 `write⁻¹` 도 없다 |
 | CREATE · EDIT · DELETE | ① | `CHAIN_OWNED_EVENT_TYPES = {"CREATE","EDIT","DELETE"}` (`event_constants.py:82`) · 접힘은 `row_ids` 로(:372) · DELETE 는 «접히지 않는다»(:362 — 지워진 행은 다시 못 읽는다) |
@@ -644,7 +644,7 @@ C-5 마킹 대수           🔴 ③ 그대로 = 표 B B1-1. 걷기에 ∩·∖�
 | `attributes`(이름) · `bind.entities…attributes`(값) | `fact(n, register, ∅, Q, τ, π)` 의 **Q** | ✅ |
 | `class` | 걷기 D_walk 의 «길» 제약(정적에서 안 나감) | ✅ B 쪽 인자 |
 | `allow_null` | K 의 정의역 | ✅ |
-| `references` | fact 의 목적어 N (합성 엣지) | ✅ |
+| `references` | fact 의 목적어 N (🆕 10-02 `f45c75442` 원자 — ~~합성 엣지~~) | ✅ |
 | `vocabulary.<p>` · `subjects` · `object.kind` · `object.types` | `fact` 의 **P** 와 목적어 종류 | ✅ |
 | `qualifiers.required/optional` | `fact` 의 **Q** | ✅ |
 | `status`(술어) | D_P 의 «수명» | ✅ |

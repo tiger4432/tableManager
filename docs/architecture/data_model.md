@@ -297,7 +297,7 @@ SOURCE_PRIORITY = { user: 0, collision_merge: 1, pipeline_parser: 2, custom_scri
   - ⚠️ **측정은 격리 `assy_qa`에서 했습니다 — 비율과 기제는 전이되지만 절대 수치는 아닙니다.**
 - **운영자 관점의 문장은 그대로입니다: 「즉시 갱신을 약속하지 않는다 · 안 바뀌어 보이면 새로고침」.** 라벨 수리는 **하류 캐스케이드를 끈 것**이지 화면 푸시를 켠 것이 아닙니다 — 워커는 체인이 **쓴 것**을 방송하고 아무것도 안 쓴 그룹은 즉시 처리 완료로 도장됩니다.
 - ✅ **R2(§2.2-bis)도 같은 결함이었고 `53f9187`로 닫혔습니다** — `ffb23d6`에 접지 않고 따로 물은 것이 옳았습니다(R2는 층을 **지우므로** 질문이 다릅니다). 실측 전후: 4이벤트 · `user`/`system` · tx id 3개 · 대상 테이블 4개 · WS 프레임 4 → 4이벤트 · `chain_ingestion`/`chain_replay_withdraw` · **tx id 1개 · 테이블 0 · 프레임 0**. 🔴 **삭제 술어는 라벨과 경로가 없습니다** — `_claimed_filter`와 DELETE 둘 다 `source_name` **파라미터**로 짜이고 라벨은 컨텍스트 변수입니다(생존 집합 sha256 동일로 실측). 🔴 **WS 프레임 4→0은 손실이 아닙니다** — 클라는 실제로 바뀐 셀을 **전후 어느 쪽에서도** 듣지 못하고 있었고(워커는 체인이 *쓴* 것을 방송합니다), 없어진 넷은 아무도 철회하지 않은 테이블의 **엉뚱한 캐스케이드 통지**였습니다. 절차 정본은 [chain_ingestion_guide §5.6.2](../guide/chain_ingestion_guide.md).
-- ⚠️ **R1(재적용)은 라벨이 *구성상* 옳지만 transaction id가 아직 *페이지당* 하나입니다** — `apply_batch_updates`가 항목의 `source_name`(=`chain_ingestion`)을 컨텍스트로 복사하므로 라벨 결함은 애초에 없었고, 남은 것은 같은 그룹핑 비용의 **약한 형태**입니다. 🔴 **라벨이 맞다고 그룹핑도 맞은 것이 아닙니다** — 두 필드는 같은 엔벨로프에 실릴 뿐 서로를 함의하지 않습니다. 미수리, 총괄 판정 대기.
+- ✅ **R1(재적용)의 transaction id 는 실행당 하나입니다**(d62f40730, 09-23 — 페이지당 하나이던 것은 닫혔습니다). 라벨은 구성상 옳았습니다(`apply_batch_updates`가 항목의 `source_name`을 컨텍스트로 복사). 🔴 **tx 는 잡의 신원이 아닙니다** — 한 잡은 연산 · 워커 쓰기마다 다른 tx 로 나가고, 잡의 신원은 payload 의 `run_id`(`retroactive_runs.run_id`)입니다(총괄 b3a4334db).
 - **기본은 dry-run이고 `--apply`만 씁니다.** 페이지 단위 커밋 + 키셋 순회(`keyset_scan.iter_pages`)라 대량 실행을 중간에 끊어도 됩니다. **dry-run이 곧 열거**입니다.
 - 절차·CLI 정본은 [guide/chain_ingestion_guide §5.5](../guide/chain_ingestion_guide.md), 운영자 진입점은 [guide/BACKFILL_GUIDE §2.5](../guide/BACKFILL_GUIDE.md).
 

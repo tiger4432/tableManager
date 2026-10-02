@@ -40,9 +40,11 @@ TX = "tx-control-probe"
 
 
 def outbox_row(db, *, event_type, table_name, transaction_id=TX):
+    # The shape the product's stagers write - an object. The queue folds in SQL now and reads the
+    # object's keys (lead b3a4334db); a JSON string is only what two control-row writers leave.
     db.add(models.DatabaseOutbox(
         event_uuid=str(uuid.uuid4()), table_name=table_name, event_type=event_type,
-        payload=json.dumps({"transaction_id": transaction_id}), processed_chain=False))
+        payload={"transaction_id": transaction_id}, processed_chain=False))
     db.flush()
 
 

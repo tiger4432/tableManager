@@ -1161,7 +1161,8 @@
       "qualifiers": "string",
       "source_who": "string",
       "source_relation": "string",
-      "source_row_id": "string"
+      "source_row_id": "string",
+      "occurred_at_basis": "string"
     }
   },
   "notation_alias": {

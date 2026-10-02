@@ -329,7 +329,7 @@ def _outbox_envelope():
     """
     from .context import (request_user, request_transaction_id, request_source,
                           request_chain_depth, request_channel, request_cascade,
-                          request_written_by)
+                          request_written_by, request_run_id)
     return (
         request_transaction_id.get() or str(uuid.uuid4()),
         request_user.get(),
@@ -343,6 +343,8 @@ def _outbox_envelope():
         request_cascade.get(),
         # [WRITTEN-BY] the declarations writing, while the chain writes (총괄 ebefd20e8).
         request_written_by.get(),
+        # [RUN] the retroactive run this write is the work of (총괄 b3a4334db).
+        request_run_id.get(),
     )
 
 
@@ -377,7 +379,7 @@ def stage_collapsed_event(session, event_type, table_name, row_ids, columns=None
     try:
         from event_constants import (OUTBOX_COLLAPSE_CHUNK_ROWS, CHAIN_DEPTH_KEY,
                                      ONLY_RULE_KEY, CHANNEL_KEY, CASCADE_KEY,
-                                     REPLAY_KEY, WRITTEN_BY_KEY)
+                                     REPLAY_KEY, WRITTEN_BY_KEY, RUN_KEY)
     except ImportError:  # pragma: no cover
         OUTBOX_COLLAPSE_CHUNK_ROWS = 1000
         CHAIN_DEPTH_KEY = "chain_depth"
@@ -386,8 +388,9 @@ def stage_collapsed_event(session, event_type, table_name, row_ids, columns=None
         CASCADE_KEY = "cascade"
         REPLAY_KEY = "replay"
         WRITTEN_BY_KEY = "written_by"
+        RUN_KEY = "run_id"
 
-    tx_id, user, source, ts, chain_depth, channel, cascade, written_by = _outbox_envelope()
+    tx_id, user, source, ts, chain_depth, channel, cascade, written_by, run_id = _outbox_envelope()
 
     # Split a huge flush into 1,000-id chunks: bounds the JSONB payload (~40 KB),
     # keeps the project's chunking discipline, and bounds the failure path (a
@@ -435,6 +438,8 @@ def stage_collapsed_event(session, event_type, table_name, row_ids, columns=None
             chunk_event.payload[CASCADE_KEY] = True
         if written_by:
             chunk_event.payload[WRITTEN_BY_KEY] = sorted(written_by)
+        if run_id:
+            chunk_event.payload[RUN_KEY] = run_id
         # [ONLY-RULE] Same rule as the depth above, for the same reason: the key is ABSENT
         # unless a caller named a rule, because the reader defines absence as 「no limit」
         # (`event_constants.only_rule_of`). Writing `None` would make a limit that reads as
@@ -459,16 +464,17 @@ def stage_event(session, event_type, table_name, data_row):
     try:
         from event_constants import (OUTBOX_PAYLOAD_EXCLUDED_COLUMNS as _EXCLUDED,
                                      CHAIN_DEPTH_KEY, CHANNEL_KEY, CASCADE_KEY,
-                                     WRITTEN_BY_KEY)
+                                     WRITTEN_BY_KEY, RUN_KEY)
     except ImportError:  # pragma: no cover
         CHAIN_DEPTH_KEY = "chain_depth"
         CHANNEL_KEY = "channel"
         CASCADE_KEY = "cascade"
         WRITTEN_BY_KEY = "written_by"
+        RUN_KEY = "run_id"
         _EXCLUDED = frozenset({"row_id", "business_key_val", "created_at", "updated_at",
                                "is_graph_synced", "needs_graph_rollback", "graph_synced_at"})
 
-    tx_id, user, source, ts, chain_depth, channel, cascade, written_by = _outbox_envelope()
+    tx_id, user, source, ts, chain_depth, channel, cascade, written_by, run_id = _outbox_envelope()
 
     data_dict = {}
     for col in data_row.__table__.columns:
@@ -512,6 +518,8 @@ def stage_event(session, event_type, table_name, data_row):
         event_obj.payload[CASCADE_KEY] = True
     if written_by:
         event_obj.payload[WRITTEN_BY_KEY] = sorted(written_by)
+    if run_id:
+        event_obj.payload[RUN_KEY] = run_id
     session.add(event_obj)
 
 

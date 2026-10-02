@@ -362,9 +362,9 @@ conda run -n assy_manager python scripts/ledger_restamp_cursor.py
 이미 원장이 있는 DB 는 먼저 migrations/add_ledger_atom_rows.py 를 --report 로 보고 돌립니다.
 ```
 - **한 행 = (원자, 원천 행)** — 원자 하나를 원천 행 여럿이 말하면 줄도 여럿, 아무 원천 행도 가리키지 않는 원자는 원천 칸이 빈 한 줄입니다.
-- 칸: `atom_id` · `occurred_at` · `subject_type` · `subject` · `predicate` · `object` · `qualifiers` · `source_who` · `source_relation` · `source_row_id`. 키와 값은 저장된 철자 그대로의 글자입니다.
+- 칸: `atom_id` · `occurred_at` · `subject_type` · `subject` · `predicate` · `object` · `qualifiers` · `source_who` · `source_relation` · `source_row_id` · 🆕 `occurred_at_basis`(10-02 `98112d1ba` — 비면 `occurred_at` 이 사건 시각, `ingested` 면 아님. 맨 끝 칸). 키와 값은 저장된 철자 그대로의 글자입니다.
 - 읽기 전용 보기입니다. 표에 쓰지 않습니다.
-- 마이그레이션은 더하기만 하고 다시 돌려도 됩니다 — 원천 행 참조 표에 인덱스 둘(쓰기를 멈추지 않고 만듦)과 보기 하나, 원장 표 자체에는 아무것도 안 더합니다.
+- 마이그레이션은 더하기만 하고 다시 돌려도 됩니다 — 원천 행 참조 표에 인덱스 둘(쓰기를 멈추지 않고 만듦)과 보기 하나, 원장 표 자체에는 아무것도 안 더합니다. 🆕 보기가 이미 있으면 그 자리에서 다시 만들어 새 칸을 끝에 붙입니다 — `table_config.json` 의 그 항목에도 `"occurred_at_basis": "string"` 한 줄을 더합니다(출하 샘플에 있음).
 
 ## 5. 원장이 «일부러» 하지 않는 것
 

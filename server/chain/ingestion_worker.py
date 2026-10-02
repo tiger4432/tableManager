@@ -1476,7 +1476,7 @@ def _in_rule_order(table_updates):
 def apply_chain_writes(db, tx_id, rule, incoming_depth, rules_by_target,
                        table_updates, map_metadata_updates, scoped_batches,
                        table_contributors, broadcast_messages, woken_by_a_replay=False,
-                       cascade=False, declarations_by_target=None):
+                       cascade=False, declarations_by_target=None, run=None):
     """The chain's WRITE, as a door. -> `(True, None)` or `(False, error_msg)`.
 
     🔴 [판정 603 · 604 ㉠] 소유자 v2: 「… 맵퍼 실행 -> «쓰기 문» -> 쓰기 -> 아웃박스 -> 반복」.
@@ -1504,7 +1504,8 @@ def apply_chain_writes(db, tx_id, rule, incoming_depth, rules_by_target,
         from database import schemas, crud
         from database.context import (request_user, request_transaction_id, request_source,
                                       request_chain_depth, request_channel,
-                                      request_cascade, outbox_mode, written_by)
+                                      request_cascade, request_run_id, outbox_mode,
+                                      written_by)
 
         chain_tx_id = f"chain_{tx_id}"
         writing = None
@@ -1522,6 +1523,8 @@ def apply_chain_writes(db, tx_id, rule, incoming_depth, rules_by_target,
         # never this, which is what lets an auto-confirm write read as the chain (⓪).
         token_channel = request_channel.set(rule_run.outgoing_channel(woken_by_a_replay))
         token_cascade = request_cascade.set(bool(cascade))
+        # [RUN] what a run's events woke is that run's work too (총괄 b3a4334db).
+        token_run = request_run_id.set(run)
 
         # 🔴 [판정 423] THE SAME ENVELOPE THE SEAT PUTS ON A BUILTIN'S OWN WRITE. `source`,
         # `chain_depth` and the collapsed outbox mode were spelled here, and a builtin's write
@@ -1890,6 +1893,7 @@ def apply_chain_writes(db, tx_id, rule, incoming_depth, rules_by_target,
             # next write may not be the chain's at all.
             request_chain_depth.reset(token_depth)
             request_cascade.reset(token_cascade)
+            request_run_id.reset(token_run)
             request_channel.reset(token_channel)
     return True, None
 
@@ -2058,7 +2062,7 @@ def _process_chain_transaction_group_sync(tx_id, events, db, rules):
                      for e in events) if d is not None] or [0])
     # What a group writes because a replay's trigger events woke it is the replay's write
     # (총괄 c2995cdd8) - asked of the replay's own mark, not of `only_rule`.
-    woken_by_a_replay, cascade = _replay_ask(events)
+    woken_by_a_replay, cascade, run = _replay_ask(events)
 
     for table_name in trigger_tables_in_order(valid_events):
         matched_rules = [
@@ -2122,7 +2126,7 @@ def _process_chain_transaction_group_sync(tx_id, events, db, rules):
                                                   row_ids=row_ids,
                                                   depth=incoming_depth,
                                                   woken_by_a_replay=woken_by_a_replay,
-                                                  cascade=cascade)
+                                                  cascade=cascade, run=run)
                 if target_payload["updates"]:
                     table_updates[target_table].extend(target_payload.get("updates"))
                     if rule.get("name") not in table_contributors[target_table]:
@@ -2186,7 +2190,7 @@ def _process_chain_transaction_group_sync(tx_id, events, db, rules):
         db, tx_id, rule, incoming_depth, rules_by_target, table_updates,
         map_metadata_updates, scoped_batches, table_contributors,
         broadcast_messages, woken_by_a_replay=woken_by_a_replay, cascade=cascade,
-        declarations_by_target=declarations_by_target)
+        declarations_by_target=declarations_by_target, run=run)
     if not written_ok:
         return False, write_error, []
 
@@ -2506,12 +2510,18 @@ def _rules_for_group(events_in_tx, rules):
 
 
 def _replay_ask(events):
-    """(woken by a replay's trigger events, that replay asked to cascade) - one answer for the
-    group body, which writes by it, and the merge, which must not fold across it: a replay's
-    group folded into an ordinary one would silence the ordinary writes' downstream."""
+    """(woken by a replay's trigger events, that replay asked to cascade, the retroactive run they
+    are the work of) - one answer for the group body, which writes by it, and the merge, which
+    must not fold across it: a replay's group folded into an ordinary one would silence the
+    ordinary writes' downstream, and two runs' groups folded into one would name one run.
+
+    The run is the one run every event that names one names (총괄 b3a4334db) - `None` when none
+    does or when they disagree, so a write is never filed under a run it is not all of."""
     woken = any(event_constants.replay_of(get_payload_dict(e)) for e in events)
-    return woken, woken and any(event_constants.cascade_of(get_payload_dict(e))
-                                for e in events)
+    runs = {event_constants.run_of(get_payload_dict(e)) for e in events} - {None}
+    return (woken, woken and any(event_constants.cascade_of(get_payload_dict(e))
+                                 for e in events),
+            next(iter(runs)) if len(runs) == 1 else None)
 
 
 def merge_consecutive_groups(group_order, groups, rules):

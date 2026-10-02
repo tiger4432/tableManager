@@ -35049,3 +35049,121 @@ server/config/ontology/README.md:78  「범용 구현 direct-join@1(준비기)�
 덧붙임  노드 목록을 못 읽을 때 화면은 「Node list · Subject list unreachable — …」 —
        뒤쪽은 api.js fetchKeyValues 의 거절문(client2/src/rnd_board/api.js)이라 «Subject» 가 남았다. 항목의 글자 목록에도 없다
 ```
+
+---
+
+## [C 응용] 10-02 클라 착지 둘 대조 — c5df86cdc(제 지적 둘 닫힘) · 45d14144b(그리드 삭제 기다림)
+
+```
+c5df86cdc   b409cf571 의 둘 다 닫힘 — api.js 거절문 「Node list unreachable」(client2/src 에 Subject list unreachable 0) ·
+            RELEASE_LOG 「표에서는 노드 상한과 원자 예산에서」
+45d14144b   하니스 grid_view_readonly 56 단언, 실패 0 (박스)
+            두 번째 요청 막기 — 표지 확인과 세우기 사이가 confirm(동기)뿐이라 두 번 눌러도 하나만 나감 · 새로 부르는 함수 다섯 전부 api.js 에 있음
+            문서 — CODE_MAP api.js 줄은 착지가 실었다. FEATURE_CHECKLIST 행 삭제 줄 · RELEASE_LOG 대조는 서버 절반 착지 뒤 한 번에
+```
+```
+말 하나 — 클라 몫, 판단은 작성자께
+   catch 가 fetch 만이 아니라 res.json() · applyTransaction 까지 감싼다 -> 서버가 지운 «뒤»의 실패도
+   「Delete request did not reach the server (network)」 로 읽힌다
+   서버 절반 전에는 답이 지운 행마다 이력 한 줄이라 10만 행 34 MB(45f87abfa 실측) — 그 해석이 실패하는 자리가 실제로 있다
+   서버 절반이 답을 수로 줄이면 크기는 사라지지만, 감싸는 범위는 그대로다
+```
+
+---
+
+## [C 응용] 10-02 f45c75442(엔티티 references 가 원자를 쓴다 · 사건 시각 아닌 원자) 문서 동기 + RELEASE_LOG 대조 — @`93838e340`
+
+```
+고친 문서 일곱  CODE_MAP(schema · setup_bundle · setup_registry · roleframe · runtime_v2 · ledger_subgraph 줄 · gaps 처음 본 시각 · emits) ·
+               LEDGER_SCHEMA_COMPLETENESS references 두 줄 · PRIMER · LEDGER_TECHNICAL_SPEC 3.7-b · LEDGER_EVIDENCE_SUBGRAPH_SPEC
+               (넷 다 「references 로 엣지가 안 생긴다」였다 — 이제 원자를 쓴다, 걷기는 여전히 안 그린다) ·
+               ONTOLOGY_LEDGER_SETUP basis 절 · ledger_declaration_by_example 대응표 한 줄. 줄 수는 f45c75442 에서 git 으로 읽음
+검수 (박스)     sqlite — references · 폼 · subgraph · gaps 시험 59 passed, 3 skipped
+               PG — run_pg_tests.py -k 「not_an_event_reads_as_none or reference_is_written」 첫 회 3 failed(사유 못 봄 — 끝 두 줄만 받음),
+               이어 네 번 연속 3 passed. 첫 회의 사유는 모른다
+               원자 행을 읽는 칸이 하나 밀렸다(occurred_at_basis 14번째, not_current 15번째) — 그 행을 만드는 질의는
+               SqlEvidenceLookup 의 한 SELECT(EVIDENCE_COLUMNS + not_current) 뿐 (카나리아 def _atom_from_row 1)
+               occurred_at_basis 허용값은 ingested 하나(CHECK) — 「basis 없음 = 사건 시각」 판정이 다른 값을 잘못 읽을 자리 없음
+```
+**RELEASE_LOG 「다이 → 웨이퍼 잇기」 — 작성자(구현)께**
+```
+맞음    선언 예시가 샘플 선언과 맞다 — wafer@1 키 wafer · die@1 키 mat_id … · in_container@1 active, die@1 -> wafer@1, 필수 수식어 없음
+        폼 글자 References · Points at · Only when 이 스켈레톤에 있음 · 🚶 Walk(index.html)
+빠진 것 하나 — 「바뀐 동작」의 «느려짐»
+        구현 보고(c7d5bbdfa)의 박스 미리보기: 다이를 부르는 소스는 원자가 두 배(transfer_event 1,405 -> 2,810 · die_inspection 20,000 -> 40,000),
+        번역 1,000 행당 1.773 -> 2.162 s · 1.813 -> 2.317 s. 항목은 다시 번역하라고만 하고 이 둘을 안 적는다
+        제안 — 「references 를 넣으면 그 엔티티를 부르는 소스의 원자가 늘고(박스: 분자마다 하나, 두 배) 번역이 느려집니다(박스 1,000 행당 약 0.4~0.5 s)」
+```
+
+---
+
+## [C 응용] 10-02 a5fe51b3f(바인딩 칸을 입력 칸에 다시 적지 않는다) 문서 동기 + RELEASE_LOG 대조 — @`1a68d5b9f`
+
+```
+고친 문서      CODE_MAP(setup_bundle · setup_registry · event_frame · config_authoring 줄, 줄 수는 a5fe51b3f 에서 git) ·
+              ONTOLOGY_LEDGER_SETUP 의 input_columns 칸 설명(「읽을 컬럼 전수」 -> 선언 밖에서 읽는 칸) ·
+              ledger_declaration_by_example §2 두 줄(「명시했으면 거기에도 — 안 적으면 검증기가 댄다」가 거짓이 됐다)
+              잠긴 칩 절 · 증상표는 착지가 실었다
+검수 (박스)    새 시험 + event_frame + setup_bundle 시험 132 passed, 1 skipped
+              지문 — 바인딩으로 읽는 칸 목록이 컴파일된 계획에 실려 지문 재료다. 엔티티 속성 칸을 든 소스는 재기동 때 지문이 한 번
+              다시 찍힌다(자리 그대로) — 항목의 문장과 맞다
+RELEASE_LOG   맞음 — 화면 글자 「Mapper input_columns」 는 서버가 보내는 작성 계획 줄 라벨(config_authoring.py) ·
+              선언 예시 로드는 구현 보고 bb1b12da1 에 그 명령. 고칠 것 없음
+```
+
+---
+
+## [C 응용] 10-02 구현 박스 시험(f34094906) 대조 — 문서 한 줄 · RELEASE_LOG 한 줄 — @`c93915263`
+
+```
+고친 문서   ledger_declaration_by_example 「키 값의 철자」 — 10-01 전에 번역된 원자는 옛 철자 그대로라, 소스 하나를 다시 번역하면
+           다시 번역 안 한(못 한) 소스의 같은 개체와 다른 노드가 된다는 한 줄(박스 실측 ④를 근거로)
+RELEASE_LOG 「다이 → 웨이퍼 잇기」 — 작성자(구현)께, 판단은 총괄께
+           「이미 번역된 행은 소스마다 다시 번역해야 생깁니다: … --whole-source --apply」 그대로 따르면 박스에서 ④ 가 난다
+           (다시 번역한 die_inspection · transfer_event 의 다이가 뷰를 읽는 네 소스의 다이와 갈림 — Wafer 다이 401,704 -> 509,777, 철자 무시하면 그대로)
+           「바뀐 동작」에 그 갈림을 적을지, 접기 이전 원자를 맞추는 길을 먼저 낼지는 제 몫이 아니다 — 여쭐 것
+덧붙임      ⑤ die_inspection 다시 번역 1,000 행당 5.85 s — 규격(≤ 5 s) 밖(데몬이 같이 돌던 박스 · 원장이 찬 상태, 구현 보고 그대로)
+```
+
+---
+
+## [C 응용] 10-02 29cfa7047(그리드 행 지우기 서버 절반) 문서 동기 + RELEASE_LOG 대조 — @`c8fe306c0`
+
+```
+고친 문서     FEATURE_CHECKLIST 행 추가/삭제 줄(기다리는 화면 · 답 모양) · CODE_MAP main 라우트 표 · backend 라우트 표
+             api_documentation 1.3 은 착지가 실었다
+검수 (박스)   test_contention_fixes 10 passed
+             답에서 빠진 created_logs 를 읽는 곳 — client2/src 0(api.js 는 deleted_count 만) · server/scripts/product_door 는 답을 읽고 버림
+             (websocket.js 의 created_logs 는 방송 쪽이라 그대로)
+RELEASE_LOG  맞음 — 🗑️ Row(index.html) · Deleting… · Deleting N rows · S s · Deleted N rows · S s · 「— reload the table to see which rows remain」
+             (client2/src/api.js), 답 모양은 서버와 같다
+남은 것      45d14144b 에 드린 말 하나(catch 가 서버 답을 받은 뒤의 일까지 감싸 「did not reach the server」로 읽힘)는 그대로 — 답이 98 바이트가 되어
+             큰 답 해석 실패는 사라졌고, 감싸는 범위만 남았다
+```
+
+---
+
+## [C 응용] 10-02 정정 하나 + 7d23eb172 문서 한 줄 — @`1031b87ef`
+
+```
+정정       1363d17fe 에서 RELEASE_LOG 작성자께 드린 제안 수 「번역 1,000 행당 약 0.4~0.5 s 느려짐」은 거두어 주십시오
+           그 수는 구현 미리보기(c7d5bbdfa) 둘의 차이였고 조건이 같지 않았다. 같은 표본 켬/끔으로 잰 7d23eb172 — references 가 더한 것 0.18 s
+           「느려짐」 줄을 넣는다면 0.18 s 와 「원자 두 배」(분자마다 하나)가 근거다
+고친 문서   BACKFILL_GUIDE ⓗ 줄 — 소스 전부 다시 만들기는 번역을 두 번(거둠 겨냥 미리보기 + 쓰기, 판정 166) · 시간 어림 = 번역 × 2 + 읽기 + 거둠·쓰기·커밋
+           (박스 die_inspection 5.85 s ≈ 2.16 × 2 + 0.26 + 1.25, 7d23eb172)
+```
+
+---
+
+## [C 응용] 10-02 f843188e5(소급 잡 하나는 체인 대기열 한 줄 — 서버) 문서 동기 — @`74e12b53c`
+
+```
+고친 문서     CODE_MAP 대기열 라우트 줄(접기 · 상한이 줄 위에 · 줄의 칸 · listed 모양) · CODE_MAP database.py 줄(봉투의 run_id) ·
+             LEDGER_SCHEMA_COMPLETENESS 봉투 줄 · PRIMITIVES 봉투 라벨. chain_ingestion_guide · BACKFILL_GUIDE · data_model 은 착지가 실었다
+검수 (박스)   대기열 시험 셋 24 passed, 1 skipped
+```
+```
+클라 절반이 오기 전 사이 — 클라(DESIGN_ORDERS b3a4334db) 몫, 알림만
+   chain_queue_panel.js 가 잘림 문장에 listed.rows_scanned 를 읽는다 — 그 칸이 빠져 잘릴 때 「Read the first — rows only (cap 200)」
+   그리고 상한은 이제 «줄» 위다(이벤트가 아님) — 그 문장의 «rows» 도 낡았다. 줄의 rows 는 이제 진짜 행 수라 그 칸 머리는 맞다
+```

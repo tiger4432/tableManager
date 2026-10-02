@@ -171,8 +171,41 @@ def test_batch_delete_endpoint_smoke(client, db_session):
     assert res.status_code == 200
     body = res.json()
     assert body["deleted_count"] == 3
-    assert isinstance(body["created_logs"], list)
+    # 총괄 a0ae05b60: the answer is the count and the transaction, not every row's history -
+    # the history is still written, one DELETE line per row, under that transaction
+    assert "created_logs" not in body and isinstance(body["transaction_id"], str)
     assert db_session.query(model).filter(model.row_id.in_(row_ids)).count() == 0
+    assert db_session.query(models.AuditLog).filter(
+        models.AuditLog.row_id.in_(row_ids), models.AuditLog.column_name == "DELETE",
+        models.AuditLog.transaction_id == body["transaction_id"]).count() == 3
+
+
+def test_batch_delete_broadcasts_each_chunk_with_its_rows_logs(client, db_session, monkeypatch):
+    """총괄 a0ae05b60: other screens still learn the deletion and its history from the broadcast -
+    every chunk carries exactly the DELETE logs of its own rows (gathered in one pass now)."""
+    import json as json_mod
+    import main as main_mod
+    from database import models
+
+    model = models.DYNAMIC_TABLES["raw_table_1"]
+    # 501 rows = two chunks of the route's 500, so a chunk carrying another chunk's logs shows
+    row_ids = [str(uuid.uuid4()) for _ in range(501)]
+    db_session.add_all(model(row_id=r_id, business_key_val="EQP_A0AE_%d" % i, EQP_ID="EQP_A0AE_%d" % i)
+                       for i, r_id in enumerate(row_ids))
+    db_session.commit()
+    sent = []
+
+    async def collect(message):
+        sent.append(json_mod.loads(message))
+    monkeypatch.setattr(main_mod.manager, "broadcast", collect)
+    res = client.post("/tables/raw_table_1/rows/batch_delete",
+                      json={"row_ids": row_ids, "user_name": "tester"})
+    assert res.status_code == 200
+    deletes = [m for m in sent if m.get("row_ids")]
+    assert len(deletes) == 2 and sorted(r for m in deletes for r in m["row_ids"]) == sorted(row_ids)
+    for message in deletes:
+        assert sorted(log["row_id"] for log in message["created_logs"]) == sorted(message["row_ids"])
+        assert {log["column_name"] for log in message["created_logs"]} == {"DELETE"}
 
 
 def test_internal_batch_refresh_accepts_total_log_count(client):

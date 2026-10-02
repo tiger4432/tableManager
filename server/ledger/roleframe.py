@@ -1632,6 +1632,9 @@ def compile_role_rows(context: MapperContext, role_frame) -> LedgerRows:
     source_id = context.source_plan.source_id
     translator_prefix = f"ledger-v2:{context.snapshot.snapshot_sha256}#"
     rows = []
+    #: (versioned entity type, keys, the row naming it, that row's source rows) - what the
+    #: entity references below read
+    named = []
     for position, row in enumerate(records):
         plan = _emission_plan(context, row["predicate"],
                               f"role_frame.rows[{position}].predicate")
@@ -1732,9 +1735,61 @@ def compile_role_rows(context: MapperContext, role_frame) -> LedgerRows:
             "molecule_ref": molecule_ref,
             "derivation": row["sentence"],
         })
+        named.append((subject["type"], subject["keys"], rows[-1], row["source_row_refs"]))
+        if emission.object_kind == "entity_ref":
+            named.append((obj_value["type"], obj_value["keys"], rows[-1], row["source_row_refs"]))
+    rows.extend(_reference_rows(context, named, rows, source_raw_ref, translator_prefix))
     return validate_ledger_rows(LedgerRows(
         tuple(rows),
         MappingProxyType({LEDGER_FRAME_ATTR: LEDGER_FRAME_SCHEMA_VERSION})))
+
+
+def _reference_rows(context: MapperContext, named, rows, source_raw_ref: str,
+                    translator_prefix: str) -> list:
+    """🔴 [총괄 29047aedc] THE ONE SEAT where `entities.<type>.references` become atoms: for every
+    entity this molecule names (subject or `entity_ref` object, any source, any mapper), each
+    reference whose `when` holds adds one edge to the entity it points at.
+
+    One per molecule: the same entity named twice makes one atom, backed by every source row
+    that named it (so deleting one of those rows withdraws it only with the last). A fact the
+    molecule already states itself is not said twice. Time is the naming row's - storage is
+    partitioned by it - and the atom says that time is not an event time (`schema.REFERENCE_BASIS`,
+    stamped in `runtime_v2._stamp_occurred_at_basis`).
+    """
+    entities = context.snapshot.entities
+    stated = {(r["subject_type"], json.dumps(r["subject_keys"], sort_keys=True), r["predicate"],
+               json.dumps(r["object_payload"], sort_keys=True)) for r in rows}
+    made: dict = {}
+    for entity_type, keys, base, refs in named:
+        if entity_type not in entities:
+            continue
+        for ref in entities[entity_type].references:
+            if any(_plain(keys.get(name)) != value for name, value in ref.when):
+                continue
+            target = {}
+            for target_key, kind, value in ref.keys:
+                part = keys.get(value) if kind == "key" else value
+                if is_blank_key_part(part):
+                    target = None
+                    break
+                target[target_key] = _plain(part)
+            if target is None:
+                continue
+            payload = {"type": bare_name(ref.target_type), "keys": target}
+            fact = (bare_name(entity_type), json.dumps(_plain(keys), sort_keys=True),
+                    bare_name(ref.predicate_id), json.dumps(payload, sort_keys=True))
+            if fact in stated:
+                continue
+            if fact not in made:
+                made[fact] = (dict(base, subject_type=fact[0], subject_keys=_plain(keys),
+                                   predicate=fact[2], object_kind="entity_ref",
+                                   object_payload=payload,
+                                   source_translator_ver=f"{translator_prefix}{ref.derivation}",
+                                   derivation=ref.derivation), set())
+            made[fact][1].update(refs)
+    for row, refs in made.values():
+        row["source_raw_ref"] = _claim_source_raw_ref(source_raw_ref, sorted(refs))
+    return [row for row, _ in made.values()]
 
 
 def claim_source_row_refs(claim_ref: str) -> tuple[str, ...]:

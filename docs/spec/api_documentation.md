@@ -96,26 +96,13 @@ Deletes a batch of multiple rows in a single operation.
   {
     "status": "success",
     "deleted_count": 2,
-    "created_logs": [
-      {
-        "id": 1053,
-        "table_name": "inventory_master",
-        "row_id": "018fdf99-b1d2-7c80-928d-d790d3d528b1",
-        "column_name": "DELETE",
-        "old_value": null,
-        "new_value": "행 삭제됨",
-        "source_name": "system",
-        "updated_by": "user_admin",
-        "transaction_id": "018fdf99-f567-7c80-bb2d-ea82b4a169b2",
-        "timestamp": "2026-06-02T07:29:12.456789+09:00",
-        "business_key": "PART-A-1002",
-        "is_row_deleted": true
-      }
-    ]
+    "transaction_id": "018fdf99-f567-7c80-bb2d-ea82b4a169b2"
   }
   ```
 - **WebSocket Broadcast**:
   - Triggers a `batch_row_delete` event containing the array of deleted row IDs and audit logs.
+  - The response carries the count and the transaction only; each row's history is in the
+    database and in the broadcast (lead a0ae05b60 - it was 32 MB at 100,000 rows).
 
 ---
 

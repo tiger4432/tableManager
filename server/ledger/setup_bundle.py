@@ -1638,13 +1638,52 @@ def _validate_entities(section: Mapping[str, Any], problems: _Problems) -> None:
                                  keys, section, problems)
 
 
-def _validate_references(value, path, own_keys, section, problems):
-    """「이 엔티티의 키 하나가 «다른 엔티티»를 가리킨다」 -- the walk composes an edge from it.
+def entity_references(item) -> list:
+    """The `references` of one entity declaration as a list - ONE spelling of 「one or a list」,
+    read by the validator and the compiler alike."""
+    value = item.get("references") if isinstance(item, Mapping) else None
+    if value is None:
+        return []
+    return [value] if isinstance(value, Mapping) else value
 
-    🔴 A REFERENCE IS NOT A MAPPING, AND THE WORDS SAY SO. A mapping writes an atom and is
-    spelled `subject`/`predicate`/`target`; a reference composes an edge no atom backs, and is
-    spelled `from`/`edge`/`to`. Reusing the mapping words would promise a reader that the
-    predicate's atoms can be found. They cannot.
+
+def emitted_predicates(source, entities) -> list:
+    """The predicates one declared source writes: its sentences', and the `references` edges of
+    every entity its bindings name (총괄 29047aedc - the translator writes those for any source).
+    ONE answer, so the declaration screen does not list less than the ledger receives."""
+    mappings = ((source or {}).get("bind") or {}).get("mappings") or {}
+    found = {mapping.get("predicate") for mapping in mappings.values()
+             if isinstance(mapping, Mapping) and mapping.get("predicate")}
+    named = set()
+
+    def scan(node):
+        if isinstance(node, Mapping):
+            if node.get("kind") == "entity" and isinstance(node.get("entity_type"), str):
+                named.add(node["entity_type"])
+            for item in node.values():
+                scan(item)
+        elif isinstance(node, list):
+            for item in node:
+                scan(item)
+    scan(mappings)
+    for entity_id in named:
+        item = (entities or {}).get(entity_id)
+        if isinstance(item, Mapping) and not is_retired(item):
+            refs = entity_references(item)
+            found.update(ref["edge"] for ref in (refs if _is_list(refs) else ())
+                         if isinstance(ref, Mapping) and isinstance(ref.get("edge"), str))
+    return sorted(found)
+
+
+def _validate_references(value, path, own_keys, section, problems):
+    """「이 엔티티의 키 하나가 «다른 엔티티»를 가리킨다」 -- the translator writes that edge as an atom.
+
+    🔴 [총괄 29047aedc, 소유자 「다이 웨이퍼 잇기 지어」] EVERY SOURCE THAT NAMES THE ENTITY WRITES IT:
+    `roleframe.compile_role_rows` adds one atom per molecule, and its time is not an event time
+    (`schema.REFERENCE_BASIS` - it is structure, not an event). This REVERSES the 08-27 retirement only in what it asks for: 총괄 c7046a710 retired the
+    walk DRAWING this edge from the declaration ("write atoms, do not draw"), and nothing here
+    draws - the walk reads the atoms like any other. `edge` must name a declared predicate whose
+    signature takes this entity to `to.entity` (`_cross_references`).
 
     🔴 EVERY UNKNOWN FIELD IS REFUSED, and so is every key name the entity does not have. A
     typo here does not fail loudly at run time -- it composes no edge, and the screen shows
@@ -1656,8 +1695,9 @@ def _validate_references(value, path, own_keys, section, problems):
     reads one way throughout. A binding is `{"key": <own key>}` or `{"value": <const>}`, and a
     bare string is shorthand for the first.
     """
+    value = [value] if isinstance(value, Mapping) else value
     if not _is_list(value) or not value:
-        problems.add("invalid_type", path, "must be a list with at least one item")
+        problems.add("invalid_type", path, "must be one reference or a list of them")
         return
     own = set(_column_values(own_keys)) if _is_list(own_keys) else set()
     for index, ref in enumerate(value):
@@ -1787,15 +1827,8 @@ def _validate_mapper(item: Any, path: str, problems: _Problems) -> None:
                     "missing_field", f"{path}.unit.columns",
                     "group_by mapper unit requires columns")
             else:
+                # Not repeated in `input_columns`: the read fetches them (총괄 c38eae7cf).
                 _nonblank_list(columns, f"{path}.unit.columns", problems)
-                if (_is_list(columns)
-                        and isinstance(item.get("input_columns"), list)):
-                    missing = sorted(set(_column_values(columns))
-                                     - set(_column_values(item["input_columns"])))
-                    if missing:
-                        problems.add(
-                            "invalid_mapper", f"{path}.unit.columns",
-                            f"group_by columns must be mapper input columns: {missing}")
         elif columns is not None:
             problems.add(
                 "invalid_mapper", f"{path}.unit.columns",
@@ -2261,6 +2294,7 @@ def _cross_validate(bundle: Mapping[str, Any], catalog: Mapping[str, Any],
     sources = bundle["sources"]
 
     _cross_vocabulary(vocabulary, entities, problems)
+    _cross_references(entities, vocabulary, problems)
     # `_cross_packs` stood here and checked a Claim against the predicate it emitted --
     # object kind agreement, every required qualifier present, no qualifier the predicate
     # does not allow, every `$role` endpoint declared with a compatible kind.  Every one of
@@ -2399,6 +2433,12 @@ def _cross_validate(bundle: Mapping[str, Any], catalog: Mapping[str, Any],
                 if column not in available:
                     problems.add("unknown_column", f"{mapper_path}.input_columns",
                                  f"column {column!r} is not in EventFrame schema")
+            # The read fetches the group columns now (총괄 c38eae7cf), so they are asked to
+            # exist here - before, being in `input_columns` asked it for them.
+            for column in unit_group_columns(mapper):
+                if column not in available:
+                    problems.add("unknown_column", f"{mapper_path}.unit.columns",
+                                 f"column {column!r} is not in relation {relation!r}")
             if (mapper.get("unit", {}).get("kind") == "group_by"
                     and not read_group_by(driver)):
                 problems.add("invalid_mapper", f"{mapper_path}.unit.kind",
@@ -2432,22 +2472,11 @@ def _cross_validate(bundle: Mapping[str, Any], catalog: Mapping[str, Any],
             # is asked inside the source loop, while the file-only half was asked above.
             _cross_profile_source(profile_path, profile, entities, vocabulary,
                                   available, problems)
-        if profile is not None and isinstance(mapper, Mapping):
-            # The two-direction set equality between `map.emits` and these `use` values
-            # stood here until 2026-08-21.  It is not relaxed -- it is unwritable: the
-            # mapper no longer declares the set, `MapperDescriptor.emits` is compiled FROM
-            # these very refs, and a rule comparing a value with its own source states
-            # nothing.
-            mapper_inputs = set(mapper.get("input_columns", []))
-            # 🔴 THE SAME ENUMERATION THE DERIVATION USES. Counting binding columns here
-            # and deriving them there is how the two came to disagree about what a mapper
-            # must hold.
-            for column, column_path in required_mapper_input_columns(
-                    mapper, profile, profile_path):
-                if column not in mapper_inputs:
-                    problems.add(
-                        "invalid_mapper", f"{mapper_path}.input_columns",
-                        f"Profile column {column!r} at {column_path} is missing")
+        # ⚰️ 「Profile column X at … is missing」 (S-196) stood here: it demanded that every
+        # bound and grouped column be written again in `map.input_columns`, while the read
+        # already fetched it and the form drew it as a locked chip it would not let anyone
+        # add - the owner was stuck between the two (총괄 c38eae7cf). `input_columns` is only
+        # what a code mapper reads beyond the declaration; nothing here can know that set.
 
 
 def _cross_vocabulary(vocabulary: Mapping[str, Any], entities: Mapping[str, Any],
@@ -2466,6 +2495,45 @@ def _cross_vocabulary(vocabulary: Mapping[str, Any], entities: Mapping[str, Any]
                     problems.add("unknown_entity_type", f"{path}.object.types[{index}]",
                                  f"unknown entity type {entity_type!r}"
                                  + _did_you_mean(entity_type, entities, "entity types"))
+
+
+def _cross_references(entities: Mapping[str, Any], vocabulary: Mapping[str, Any],
+                      problems: _Problems) -> None:
+    """A reference's `edge` is a predicate the translator will write - so it must exist, be active,
+    take THIS entity as its subject and `to.entity` as its object, and require no qualifier the
+    reference cannot supply (총괄 29047aedc). Refused by name, like a mapping's predicate."""
+    for entity_id, item in entities.items():
+        if not isinstance(item, Mapping) or is_retired(item):
+            continue
+        refs = entity_references(item)
+        for index, ref in enumerate(refs if _is_list(refs) else ()):
+            if not isinstance(ref, Mapping):
+                continue
+            here = f"bundle.entities.{entity_id}.references[{index}]"
+            predicate_id = ref.get("edge")
+            predicate = vocabulary.get(predicate_id) if isinstance(predicate_id, str) else None
+            if predicate is None:
+                problems.add("unknown_predicate", f"{here}.edge",
+                             f"unknown predicate {predicate_id!r}"
+                             + _did_you_mean(str(predicate_id), vocabulary, "predicates"))
+                continue
+            if predicate.get("status") != "active":
+                problems.add("inactive_predicate", f"{here}.edge",
+                             f"predicate {predicate_id!r} is not active")
+                continue
+            if entity_id not in (predicate.get("subjects") or ()):
+                problems.add("invalid_entity_ref", f"{here}.edge",
+                             f"predicate {predicate_id!r} does not take {entity_id!r} as its subject")
+            obj = predicate.get("object") or {}
+            target = (ref.get("to") or {}).get("entity") if isinstance(ref.get("to"), Mapping) else None
+            if obj.get("kind") != "entity_ref" or target not in (obj.get("types") or ()):
+                problems.add("invalid_entity_ref", f"{here}.to.entity",
+                             f"predicate {predicate_id!r} does not take {target!r} as its object")
+            required = ((obj.get("qualifiers") or {}).get("required") or ())
+            if required:
+                problems.add("missing_required_payload", f"{here}.edge",
+                             f"predicate {predicate_id!r} requires qualifiers {sorted(required)} "
+                             "and a reference carries none")
 
 
 def _validate_bind_entities(section: Any, path: str, problems: _Problems) -> None:
@@ -2759,68 +2827,56 @@ def _bind_entities_refs(path: str, profile: Mapping[str, Any],
                     f"them on each role of this sentence instead.")
 
 
-def required_mapper_input_columns(mapper: Mapping[str, Any], profile: Mapping[str, Any],
-                                 profile_path: str) -> tuple[tuple[str, str], ...]:
-    """Every column a mapper's `input_columns` MUST hold, with where each one is demanded.
+def unit_group_columns(mapper: Any) -> list:
+    """The columns a mapper's unit groups by — EMPTY for a row unit (S-196, 판정 306/306-b).
 
-    🔴 ONE ENUMERATION, TWO CALLERS (S-196, 판정 306-b 되돌림). The validator refuses an
-    `input_columns` that misses one of these, and the authoring form DERIVES that same list —
-    so the two have to be answering one question. They were not: the derivation was 「the
-    prepared frame minus what `read` already reads」, which subtracts away exactly the columns
-    a group or a binding needs, and a bundle rebuilt from it was refused by its own validator.
+    🔴 ONE PLACE READS `unit` off a declaration: the validator asks these to exist, and the
+    form draws them locked and offers them as `unit.columns` (`config_authoring`).
 
-    ⛔ AND THE FIX MAY NOT BE A HAND-WRITTEN LIST. The first repair added the group columns
-    only, and the next source fell over on its BINDING columns — a list extended by hand
-    misses whatever the next declaration uses. This enumerates the kinds; a new kind is added
-    here and both callers learn it at once.
-
-    ⚠️ THE PATHS RIDE ALONG because the refusals name where the demand comes from — 「Profile
-    column 'base_id' at …bind.subject.keys.x.column is missing」 sends an operator to the
-    declaration that wants it, which 「it is missing」 alone does not.
+    ⚠️ A ROW UNIT HAS NO GROUP, and that is a declaration rather than an omission — 「없는
+    그룹」 must not be invented, so this answers `[]`.
     """
-    demanded: list[tuple[str, str]] = []
-    unit = mapper.get("unit") if isinstance(mapper.get("unit"), Mapping) else {}
-    if unit.get("kind") == "group_by":
-        # A row unit declares that there IS no group, so it demands nothing here.
-        for column in _column_values(unit.get("columns") or ()):
-            demanded.append((column, f"{profile_path}.unit.columns"))
-    demanded.extend(_profile_binding_columns(profile_path, profile))
-    seen: set = set()
-    out: list[tuple[str, str]] = []
-    for column, where in demanded:
-        if column not in seen:
-            seen.add(column)
-            out.append((column, where))
-    return tuple(out)
+    unit = mapper.get("unit") if isinstance(mapper, Mapping) else None
+    if not isinstance(unit, Mapping) or unit.get("kind") != "group_by":
+        return []
+    columns = unit.get("columns")
+    return list(columns) if _is_list(columns) else []
 
 
 def _profile_binding_columns(path: str, profile: Mapping[str, Any]
                              ) -> tuple[tuple[str, str], ...]:
-    """Every column a profile's bindings name, with where each is named.
+    """Every column a source's `bind` names, with where each is named.
 
-    🔴 TOLERANT OF A HALF-BUILT PROFILE, AND THAT IS A REQUIREMENT NOW (S-196). This indexed
-    `profile["mappings"]` and `mapping["bind"]` directly, which is safe for the VALIDATOR —
-    `validate_bundle_errors` returns before cross-validation if anything is structurally
-    wrong, and the file says so where it does it. It is NOT safe for the authoring form,
-    which runs on a bundle being written: measured, three ordinary half-built shapes raised
-    (`{}`, a mapping with no `bind`, a `bind` of `None`), and the screen an operator is using
-    to finish the declaration would have gone blank.
+    🔴 ONE ENUMERATION: the read fetches these (`setup_registry._binding_select_columns`) and
+    the form draws them locked (`config_authoring._locked_read_columns`).
 
-    ⚠️ THE ANSWER DOES NOT MOVE. Measured across all 15 sources of the live bundle before the
-    merge: the strict traversal and the tolerant one disagreed on ZERO. That measurement is
-    what made this safe to unify rather than a hope.
+    🔴 TOLERANT OF A HALF-BUILT PROFILE (S-196): the authoring form runs on a bundle being
+    written, and `{}`, a mapping with no `bind`, a `bind` of `None` raised and blanked it.
+
+    🔴 `bind.entities.<type>.attributes` IS A BINDING TOO (총괄 33c930e98). It was left out, so
+    the read never fetched those columns and an `input_columns` without them passed the
+    validator and failed at translation with `missing_binding_column` (box: `dt_job` without
+    `dt_eqp`).
     """
     out: list[tuple[str, str]] = []
-    mappings = profile.get("mappings") if isinstance(profile, Mapping) else None
-    if not isinstance(mappings, Mapping):
+    if not isinstance(profile, Mapping):
         return ()
-    for sentence, mapping in sorted(mappings.items(), key=lambda pair: str(pair[0])):
+    mappings = profile.get("mappings")
+    for sentence, mapping in sorted(mappings.items() if isinstance(mappings, Mapping) else (),
+                                    key=lambda pair: str(pair[0])):
         base = f"{path}.mappings.{sentence}.bind"
         bind = mapping.get("bind") if isinstance(mapping, Mapping) else None
         if not isinstance(bind, Mapping):
             continue
         for role in sorted(bind, key=str):
             out.extend(_binding_columns(bind[role], f"{base}.{role}"))
+    by_type = profile.get("entities")
+    for entity_type in sorted(by_type if isinstance(by_type, Mapping) else (), key=str):
+        item = by_type[entity_type]
+        attributes = item.get("attributes") if isinstance(item, Mapping) else None
+        for name in sorted(attributes if isinstance(attributes, Mapping) else (), key=str):
+            out.extend(_binding_columns(
+                attributes[name], f"{path}.entities.{entity_type}.attributes.{name}"))
     return tuple(out)
 
 
