@@ -37,7 +37,7 @@
 
 - **화면에서** — 메인 그리드에서 그 표를 열고 image 칸에 마우스를 잠깐 올리면 미리보기가 뜹니다. 칸 안의 `▣` 표시(툴팁 `Open image`)를 누르면 새 창으로 열립니다. 칸 자체를 누르면 오늘처럼 고르기 · 편집입니다.
 - **필요한 조건** — 서버 재기동(새 경로 `GET /api/image`). `image_sources.json` 을 서버의 config 폴더에 둡니다. DB 출처의 비밀번호는 파일에 적지 않고 `password_env` 가 가리키는 환경변수에 둡니다.
-- **바뀐 동작** — 처음 생긴 기능입니다. 그림은 언제나 서버를 거쳐 옵니다. 그림이 아닌 답, 너무 큰 답, 다른 곳으로 넘기는 답은 서버가 502 로 거절하고, 미리보기 자리에 그 문장이 보입니다. 같은 그림은 브라우저가 잠시 들고 있어 다시 올려도 서버에 다시 가지 않습니다.
+- **바뀐 동작** — 처음 생긴 기능입니다. 그림은 언제나 서버를 거쳐 옵니다. 그림이 아닌 답, 너무 큰 답, 다른 곳으로 넘기는 답은 서버가 502 로 거절하고, 미리보기 자리에 그 문장이 보입니다. 같은 그림은 브라우저가 «최대 1시간»(서버의 `CACHE_SECONDS` 3600) 들고 있어, 그동안 다시 올려도 서버에 다시 가지 않습니다. 그래서 원본 그림을 바꿔도 그 시간 동안은 옛 그림이 보일 수 있습니다.
 - **자세히** — [config/table_config.md](../guide/config/table_config.md)(`column_types` 의 `image`) · 커밋 a8dea2bcf · e1420082c · c23df3704 · 26c1b238d · 493275903
 
 ## 2026-10-01 · 글에서 «원인 → 현상» 후보 뽑기 (text_links)
@@ -136,7 +136,7 @@ def copy_one_row(db, payload, rule=None):
     return result
 ```
 
-  대상 표와 규칙. 규칙에 `is_batch` 를 적지 않고(행마다 한 번 불립니다), `require` 에 대상의 키가 되는 칸을 적습니다.
+  대상 표와 규칙. 규칙에 `is_batch` 를 적지 않고(행마다 한 번 불립니다), `require` 에 대상의 키가 되는 칸을 적습니다. 소유자의 흐름처럼 `dt_log` 의 키 칸을 다른 체인(조인)이 채우면 `"allow_chain_trigger": true` 가 있어야 채워진 뒤에 다시 깨어납니다. 없으면 사람 · 파일 · 수집기가 바꾼 행에만 깨어나, 조인이 키를 채운 행은 넘어가지 않습니다.
 
 <!-- example: table -->
 ```json
@@ -157,14 +157,15 @@ def copy_one_row(db, payload, rule=None):
   "target_table": "official_dt",
   "mapper_module": "mappers.official_rows",
   "mapper_function": "copy_one_row",
-  "require": ["dt_job", "dt_x", "dt_y"]
+  "require": ["dt_job", "dt_x", "dt_y"],
+  "allow_chain_trigger": true
 }
 ```
 
 - **화면에서** — 없음(맵퍼 파일과 체인 규칙).
 - **필요한 조건** — 맵퍼 파일을 둔 뒤 체인 워커 재기동. 행마다 한 번 불리므로 1,000 행 묶음이면 맵퍼가 1,000 번 불립니다.
 - **바뀐 동작 · 주의** — 층 이름은 반드시 `chain_ingestion (` 로 시작해야 체인이 쓴 층으로 읽힙니다. 다른 이름이면 파일 층처럼 같은 값이 한 층으로 접혀, 행 하나를 지울 때 값이 같이 빠집니다. 이 이름은 소스 순위표에 없어서 순위 99(가장 낮음)로 읽힙니다. 같은 칸에 다른 소스의 값이 있으면 그쪽이 이길 수 있습니다. 남는 것도 셋 있습니다. 키가 바뀐 행의 옛 층, `require` 칸이 다시 빈 행, 받치는 행이 0 이 된 대상 행(빈 행으로 남음)입니다.
-- **자세히** — [MAPPING_GUIDE](../../authoring/MAPPING_GUIDE.md) · `task/IMPLEMENTER_ORDERS.md` 의 「official 층 넓히기(나) 짓지 않음」 덧붙임
+- **자세히** — [MAPPING_GUIDE](../../authoring/MAPPING_GUIDE.md) · [CHAIN_COPY_WHEN_FILLED_GUIDE](../guide/CHAIN_COPY_WHEN_FILLED_GUIDE.md) · `task/IMPLEMENTER_ORDERS.md` 의 「official 층 넓히기(나) 짓지 않음」 덧붙임
 
 ## 2026-10-01 · 원장 펼친 보기 — 메인 그리드에서 원자를 원천 행으로 찾기 (ledger_atom_rows)
 
@@ -516,8 +517,8 @@ key	key
 
 - **화면에서** — 어드민 `Chain` 탭의 폼에서 `on` 밑의 `require`, 조인의 `blank` 칸.
 - **필요한 조건** — 서버 · 체인 워커 재기동. `blank: "skip"` 전에 이미 NULL 로 쓴 층은 남습니다(걷는 절차는 `RUN.md`).
-- **바뀐 동작** — 위 (2) · (3) · (4) · (6). 로드 로그에 규칙마다 「wakes only on: [..]」 한 줄이 남습니다. 조인에 `on.columns` 를 적으면 키 + `take` 와 «집합으로» 같아야 합니다. `require` 에 트리거 표에 없는 이름을 적으면 그 규칙이 로드에서 거절됩니다.
-- **자세히** — [config/chain_rules.md](../guide/config/chain_rules.md) · `RUN.md` · 커밋 3aec8eaa9 · 29c590044 · 5ad90d16d · 66b5fcbe7 · 512b0575b · f36abbb1a · 880043afb · cb4d5157d
+- **바뀐 동작** — 위 (2) · (3) · (4) · (6). 로드 로그에 규칙마다 「wakes only on: [..]」 한 줄이 남습니다. 조인에 `on.columns` 를 적으면 키 + `take` 와 «집합으로» 같아야 합니다. `require` 에 트리거 표에 없는 이름을 적으면 그 규칙이 로드에서 거절됩니다. `require` 칸을 «조인(체인)»이 채우는 표라면 그 규칙에 `"allow_chain_trigger": true` 가 있어야 칸이 다 찬 뒤에 다시 깨어납니다 — 없으면 사람 · 파일 · 수집기가 바꾼 행에만 깨어나고, 「왜 안 도나」의 가장 흔한 답이 이것입니다(트리거 표와 대상 표가 같은 규칙에는 켜지 않습니다).
+- **자세히** — [config/chain_rules.md](../guide/config/chain_rules.md) · [CHAIN_COPY_WHEN_FILLED_GUIDE](../guide/CHAIN_COPY_WHEN_FILLED_GUIDE.md) · `RUN.md` · 커밋 3aec8eaa9 · 29c590044 · 5ad90d16d · 66b5fcbe7 · 512b0575b · f36abbb1a · 880043afb · cb4d5157d
 
 ## 2026-09-28 · 맵 에디터 — 고른 칸만 고쳐 쓰기 (Save changed cells)
 
