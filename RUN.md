@@ -12,6 +12,24 @@
 
 ---
 
+> ## [10-02 밤] **원장 소스 — 시각은 사건 엣지에만 · read 는 안 적어도 됨 (총괄 0c9b6e3c0) — 이주 «불필요» · 재기동 «필요»(run_app.bat 전체)**
+>
+> ```
+> 무엇이 바뀌나  bind.occurred_at 을 안 적은 매핑 = 사건 엣지 아님(원자 basis 'ingested', 저장 시각은 같은 행의 사건 시각 — 사건 id 하나)
+>              read 칸을 안 적으면 제품이 채움(unit · identity · order_by · group_by · occurred_at · registration_probe · map.unit · input_columns)
+>              적은 선언은 그대로 — 박스 미리보기 5 소스 · 원자 1,198 가 전후 같음(사건 id · 시각 · basis · 번역 버전), 묶음 해시 같음
+> 확인         재기동 뒤  python -m scripts.migrate_ledger_slim_sources   (미리보기, 아무것도 안 씀 — server 폴더에서)
+> 뜻           「movable - atoms unchanged」 옮겨도 원자가 같다 · 「movable - atoms change」 옮기면 시각 · 사건 id 가 바뀐다
+>              이 박스 선언은 setup_version 5 라 미리보기만 된다 — 옮기려면 먼저 v6 이주
+> 옮기기       --apply --source <소스>  (고른 소스만)
+>              박스에서 `dt_job` 을 옮기면 원자 866,192 개의 시각과 사건 id 가 바뀌고, 다시 번역은 원천 행 535,559 × 1,000 행당 5.85 s(박스에서 잰 율) ≈ 52 분입니다.
+>              그 소스는 --change-atoms 를 같이 주고, 뒤에 python -m ledger.backfill --source dt_job --whole-source --apply
+>              --drop-retired  아무도 안 읽는 옛 바인딩 칸(approval_status) 지우기 — 묶음 해시가 한 번 바뀜(새 원자만 새 번역 버전)
+> 급할 때       git revert <이 커밋> -> 재기동
+> ```
+
+---
+
 > ## [10-02 저녁] **메인 그리드 표 드롭다운 — table_config 의 group 으로 묶기 + 검색 (총괄 685f236d7) — 이주 «불필요» · 재기동 «필요»(run_app.bat 전체)**
 >
 > ```

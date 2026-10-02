@@ -50,40 +50,9 @@ class ColumnStatsError(ValueError):
         return {"code": self.code, "path": self.path, "message": self.message}
 
 
-def declared_unique_keys(table: Mapping[str, Any]) -> tuple[tuple[str, ...], ...]:
-    """Every column tuple the catalog claims is unique, in one place.
-
-    The validator's `_columns_cover_declared_unique_key` builds exactly this list and then
-    throws it away, keeping only the yes/no.  The picker needs the list itself: an ordering
-    that must COVER one of these has a derivable default -- the shortest one -- and offering
-    it is the derivation tier, one step stronger than validating what somebody typed.
-
-    🔴 A DECLARED KEY IS A CLAIM, NOT A MEASUREMENT.  `dt_log`'s `composite_key_source` is
-    three columns that are all empty, so it identifies nothing while satisfying every
-    compile-time check.  Whoever offers these as defaults must also measure them, which is
-    what `combination_uniqueness` is for.
-    """
-    keys: list[tuple[str, ...]] = []
-    for field in ("business_key", "composite_key"):
-        value = table.get(field)
-        if isinstance(value, str):
-            keys.append((value,))
-        elif isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
-            columns = tuple(str(item) for item in value)
-            if columns:
-                keys.append(columns)
-    for index in table.get("indexes", ()) or ():
-        if isinstance(index, Mapping) and index.get("unique") is True:
-            columns = tuple(str(item) for item in index.get("columns", ()))
-            if columns:
-                keys.append(columns)
-    seen: set[tuple[str, ...]] = set()
-    ordered: list[tuple[str, ...]] = []
-    for key in keys:
-        if key not in seen:
-            seen.add(key)
-            ordered.append(key)
-    return tuple(ordered)
+# `declared_unique_keys` lives in `setup_bundle` - the validator's key check and the default ordering
+# read the same list (총괄 261311e71); imported here for this module's callers.
+from .setup_bundle import declared_unique_keys  # noqa: E402,F401
 
 
 def physical_columns(db: Any, relation: str) -> dict[str, str]:

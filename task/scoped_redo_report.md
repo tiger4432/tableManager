@@ -70457,3 +70457,63 @@ AST                                      「어느 세상인가」를 묻는 자
 ① 두 칸의 집 — ㄱ(세상 배치 파일 하나, 추천) · ㄴ · ㄷ
 ② 기본 세상의 이름 — 예약 낱말 하나(예 "default")로 부르고 그 이름의 가지는 거절, 이것으로 가도 되나
 ```
+
+---
+
+## [10-02 밤] 착지 — 시각은 사건 엣지에만 · read 칸마다 제품 기본값 하나 (총괄 0c9b6e3c0 짓기 · 계획 ①~⑤ · ⑧) — 3a2d79ff9
+
+어느 DB · 어느 스키마 · 지운 것 0 — 박스 assy_manager · public · SELECT 만(미리보기는 쓰지 않는 길). 시험은 assy_test(제품 시험 그대로)
+
+**한 일**
+```
+기본값   setup_bundle.source_defaults(source, catalog) 하나 — with_read_defaults 가 문서 전체에. 검사기(validate_bundle_errors) · 로더(validate_bundle) · 폼(config_authoring)이 부른다
+         채우는 칸  read.unit · identity · order_by(표 선언의 가장 짧은 키 — declared_unique_keys 를 setup_bundle 로 옮겨 검사기의 키 확인과 한 목록)
+                   group_by(unit group 이면 identity — 답 ③ ㄴ, 3a109bfd9 ① 뒤집음. 박스 · 샘플에서 이 거절로 빠져 있던 소스 0 — 새 원자 0)
+                   occurred_at · registration_probe(register 문장 주어의 한 키 칼럼) · map.unit · map.input_columns([])
+         안 채우는 칸 map.implementation_version — 답 ① ㄱ «적는 칸». 계획 ⑤ 의 「implementation_version = 등록된 가장 새 버전」 줄은 거둔다
+                   (묶음 해시는 선언 파일만의 함수 — 박스에 깔린 맵퍼 코드에 따라 갈리면 안 됨)
+         자리     upgrade_setup 바로 뒤, 검사 «전» · 정규화 · 해시 «전». 적은 값은 그대로
+시각     read.occurred_at 이 없으면 사건 엣지(bind.occurred_at 을 적은 매핑)의 칼럼 + timezone, 사건 엣지가 없으면 {"basis": "ingested", "timezone": "UTC"}
+         사건 엣지가 서로 다른 칼럼이거나 시간대가 없으면 missing_time 거절(ㄱ — 추측 안 함)
+         매핑이 occurred_at 을 안 적어도 됨 — setup_bundle.role_must_be_bound 하나를 검사기와 폼이 부른다
+         번역기   모든 문장이 분자의 시각을 싣는다(roleframe 선언 맵퍼) · runtime_v2 의 basis 찍기가 «원자마다»: 사건 시각을 안 적은 매핑의 원자 = 'ingested'
+낱말     'ingested' 철자 넷(setup_bundle · setup_registry · schema · 새 기본값)을 setup_bundle.NOT_AN_EVENT_BASIS 하나로. schema.REFERENCE_BASIS -> NOT_AN_EVENT_BASIS
+         (references 뿐 아니라 사건 아닌 원자 전부의 낱말이라 이름이 틀려서). register 판정도 setup_bundle 하나(REGISTER_PREDICATE · registering_sentences)
+폼       안 적은 read 칸은 빨간 칸이 아니라 derived(ground read_default · default_overridable) · 매핑의 occurred_at 칸은 비워도 빨강 아님
+이주     scripts/migrate_ledger_slim_sources.py — 미리보기 기본 · --apply --source <소스> 만 옮김(015ef2aab ㄱ) · 사건 엣지가 다른 시각이면 --change-atoms 없이는 거절
+         박스 선언은 setup_version 5 라 미리보기만(옮기기 거절, v6 이주가 먼저) · 옛 바인딩 칸은 수와 이동 비용 한 줄만 보이고 --drop-retired 로만 지움(답 ② ㄱ)
+⑥ 묶음 소스를 체인 표로 — 안 지음(지시대로)
+```
+**게이트 (⑧)**
+```
+박스 미리보기 전후(probe_atoms_before_after.py, 박스 선언 그대로)
+   묶음 해시                    같음 (523d8a4d10a9…)
+   뜨는 소스 5 개 원자 1,198     같음 — 사건 id · 시각 · basis · 번역 버전 (die_inspection · dt_job · lot_slot_wafer · transfer_event · wafer_process_recipe)
+샘플(시험 test_time_lives_on_the_event_edges.py, 11)
+   기본값과 같은 칸을 지운 선언       같은 묶음 · 같은 snapshot 해시(지운 칸 10 이상 — 카나리아)
+   기본값이 없는 칸(키 없는 표의 identity)  이름 대어 거절
+   소스 시각을 지우고 사건 엣지에 시간대   read.occurred_at = 그 엣지 · 원자 같음
+   사건 엣지 없음                     read.occurred_at = 저장 시각 기본값
+   두 칼럼 · 시간대 없는 엣지           missing_time
+   사건 아닌 매핑                     basis 'ingested' · 같은 분자의 사건 원자와 시각 · 사건 id 같음
+   사건 아닌 매핑이 더해져도             사건 원자 그대로 · 같은 행 두 번 = 같은 원자
+   이주 왕복                          옮긴 소스의 원자 같음 · 두 번째는 할 일 0 · dt_job 은 --change-atoms 없이는 거절(손 안 댐)
+   옛 바인딩 칸                        미리보기는 수만 · --drop-retired 일 때만 지움
+   group 소스의 group_by 를 안 적음     identity 로 채움 · 손으로 적은 것과 같은 묶음 · 같은 snapshot 해시(test_a_row_source_has_no_group_by_to_write)
+변이(각 자리 되돌림 -> 위 시험 빨강)
+   stamp ignores the mapping                        1 failed
+   translator fills no time for an unbound mapping  5 failed
+   the old must-bind rule                           4 failed
+   no time default from the event edges             3 failed
+   two times: take one                              1 failed
+   no unit default                                  2 failed
+   no group_by default                              1 failed
+   defaults filled after the hash                   5 failed
+전체 시험  5 failed, 7703 passed, 231 skipped, 3 xfailed, 13028 warnings in 848.27s (0:14:08)
+           실패: test_a_sentence_says_itself_only_for_the_rows_it_names · test_core_alignment_mapper · test_core_usage_mapper · test_dt_inventory_metadata_mapper · test_one_place_decides_where_the_server_is — ③ 착지 때와 같은 다섯(작업 트리의 줄 끝 · 경로), 이 착지가 만진 파일과 겹치는 것 0
+```
+**폼(⑦, 클라 몫) — 읽을 것 한 줄**: 저작 계획(GET /admin/ontology-explorer/authoring/plan)의 read 칸 행이 state `derived` · ground.rule `read_default` · disposition `default_overridable` 이면 «제품 기본값»이다 — 값은 setup_bundle.source_defaults 가 낸 것. read 를 접힌 칸으로 그릴 때 이 행들을 접힘 안에.
+
+**문서가 낡는 자리(응용 세션 몫)** — docs/guide/ONTOLOGY_LEDGER_SETUP.md 의 read 칸 표(「read 의 여섯은 번들에 전부」)와 술어 Role 표의 「occurred_at (time, 필수)」는 이제 «매핑에는 필수 아님»
+
+**여쭐 것** — 없음(물음 셋의 답 ① ㄱ · ② ㄱ · ③ ㄴ 을 반영)

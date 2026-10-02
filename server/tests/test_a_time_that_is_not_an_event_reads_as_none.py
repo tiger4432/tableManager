@@ -38,7 +38,7 @@ def _row(predicate, obj_type, obj_keys, when, basis):
 #: a reader that took the stored time as an event time would move the die's first sighting
 STORED_EARLIER = T0 - timedelta(days=5)
 ATOMS = [_row("transfer", "die", {"mat_id": "J1", "mat_type": "DT", "x": "3", "y": "4"}, T0, None),
-         _row("in_container", "wafer", {"wafer": "W1"}, STORED_EARLIER, schema.REFERENCE_BASIS)]
+         _row("in_container", "wafer", {"wafer": "W1"}, STORED_EARLIER, schema.NOT_AN_EVENT_BASIS)]
 
 
 @pytest.fixture(scope="module", name="engine")
@@ -96,7 +96,7 @@ def test_a_window_after_the_event_keeps_the_reference_and_counts_only_the_event_
     predicates, excluded, atoms = _fetched(engine, LATER)
     assert predicates == ["in_container"]
     assert excluded == 1
-    assert atoms[0].occurred_at_basis == schema.REFERENCE_BASIS, "the walk reads the basis with the atom"
+    assert atoms[0].occurred_at_basis == schema.NOT_AN_EVENT_BASIS, "the walk reads the basis with the atom"
 
 
 @pytest.mark.pg

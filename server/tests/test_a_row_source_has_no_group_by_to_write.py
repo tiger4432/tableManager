@@ -128,10 +128,19 @@ def test_a_group_source_keeps_its_group_by_and_its_row_in_the_plan(world):
                      for name in groups + retired_groups}, drawn
 
 
-def test_a_group_source_without_group_by_is_still_refused(world):
+def test_a_group_source_without_group_by_groups_by_its_identity(world):
+    """총괄 0c9b6e3c0 ③ ㄴ - 3a109bfd9 ① reversed: left out, group_by is the source's identity,
+    the value the form already offered. The same bundle, so the same atoms, as writing it."""
     document, _, catalog, units = world
     name = next(n for n, unit in units.items() if unit == "group")
     cut = copy.deepcopy(document)
     del cut["sources"][name]["read"]["group_by"]
-    assert ("missing_field", "bundle.sources.%s.read.group_by" % name) in {
-        (issue.code, issue.path) for issue in validate_bundle_errors(cut, catalog=catalog)}
+    written = copy.deepcopy(cut)
+    written["sources"][name]["read"]["group_by"] = list(cut["sources"][name]["read"]["identity"])
+    assert validate_bundle_errors(cut, catalog=catalog) == ()
+    assert validate_bundle(cut, catalog=catalog).to_mapping() == (
+        validate_bundle(written, catalog=catalog).to_mapping())
+    snapshot = lambda doc: compile_setup_snapshot(
+        require_ready_bundle(validate_bundle(doc, catalog=catalog)), trusted_implementations(),
+        catalog=catalog).snapshot_sha256
+    assert snapshot(cut) == snapshot(written)

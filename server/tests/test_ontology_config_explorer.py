@@ -2048,12 +2048,12 @@ def test_a_complete_config_reports_no_remaining_work_and_a_broken_one_reports_wh
         f"{[(s['id'], s['remaining']) for s in before['steps']]}")
 
     broken = copy.deepcopy(bundle)
-    # Was `profile_id`, which retired into the source on 2026-08-20.  `driver.unit` is the
-    # replacement for the same reason it was chosen then: one required value, owned by
-    # exactly one layer, whose absence cannot be derived from anything else.
+    # Was `profile_id`, which retired into the source on 2026-08-20, then `read.unit` - which
+    # stopped qualifying on 10-02 (총괄 261311e71: it has a product default now). The mapper's
+    # implementation is one required value, owned by exactly one layer, derived from nothing.
     victim = next(name for name, source in broken["sources"].items()
-                  if isinstance(source, dict) and "unit" in source.get("read", {}))
-    del broken["sources"][victim]["read"]["unit"]
+                  if isinstance(source, dict) and "implementation_id" in source.get("map", {}))
+    del broken["sources"][victim]["map"]["implementation_id"]
 
     after = authoring_plan(broken, catalog)
     moved = [step["id"] for step in after["steps"] if step["remaining"]]

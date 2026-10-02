@@ -17,6 +17,45 @@
 - **바뀐 동작** — 모든 표 끝에 `ROW_ID` 칸이 붙습니다(편집은 막힘). `GET /tables/{표}/schema` 의 `columns` 가 `created_at` · `updated_at` 뒤에 `row_id` 로 끝납니다 — display_columns 에 이미 적은 표는 그 자리 그대로이고 두 번 나오지 않습니다. 시스템 칸 가운데 `ROW_ID` 하나만 거를 수 있고, `CREATED_AT` · `UPDATED_AT` · `UPDATED_BY` 에는 전처럼 거르기 칸이 없습니다. 맵 편집기의 X · Y · Val 고르기에는 `row_id` 같은 시스템 칸이 나오지 않습니다(밀어넣기가 싣지 못하는 칸).
 - **자세히** — 커밋은 이 항목과 같은 커밋
 
+## 2026-10-02 · 원장 소스 — 시각은 사건 엣지에만, read 는 안 적어도 된다
+
+- **무엇** — 매핑의 `bind.occurred_at` 이 «사건 시각 자리»가 됩니다. 그것을 적은 매핑이 사건 엣지이고, 안 적은 매핑의 원자는 «사건 시각 아님»(`occurred_at_basis = 'ingested'`)으로 쓰입니다 — 저장 시각은 같은 행의 사건 시각 그대로라 사건 id 는 하나입니다(entity references 원자와 같은 모양). 소스의 `read` 칸은 안 적으면 제품이 채웁니다: `unit`(group_by 유무) · `identity` · `order_by`(표 선언의 가장 짧은 키) · `group_by`(`unit: group` 이면 `identity`) · `occurred_at`(사건 엣지가 적은 칼럼과 시간대, 사건 엣지가 없으면 행의 저장 시각) · `registration_probe`(register 문장의 주어 키 칼럼) · `map.unit` · `map.input_columns`. 적은 값은 적은 대로 읽습니다.
+- **선언 예시** — `config/ontology/ledger_config.json` 의 `sources` 에서. `read` 가 없는 소스 하나, 사건 엣지 하나(`die-inspected`), 사건 엣지가 아닌 매핑 하나(`die-in-wafer`):
+
+<!-- example: ledger_sources -->
+```json
+{
+  "die_inspection": {
+    "relation": "inspection_run",
+    "map": {"implementation_id": "declarative-role", "implementation_version": 1},
+    "bind": {"mappings": {
+      "die-inspected": {"predicate": "inspected@1", "bind": {
+        "occurred_at": {"kind": "column", "column": "observed_at", "timezone": "Asia/Seoul"},
+        "subject": {"kind": "entity", "entity_type": "wafer@1",
+                    "keys": {"wafer": {"kind": "column", "column": "base_wafer_id"}}},
+        "target": {"kind": "entity", "entity_type": "die@1",
+                   "keys": {"mat_id": {"kind": "column", "column": "base_wafer_id"},
+                            "mat_type": {"kind": "constant", "value": "Wafer"},
+                            "x": {"kind": "column", "column": "base_x"},
+                            "y": {"kind": "column", "column": "base_y"}}}}},
+      "die-in-wafer": {"predicate": "in_container@1", "bind": {
+        "subject": {"kind": "entity", "entity_type": "die@1",
+                    "keys": {"mat_id": {"kind": "column", "column": "base_wafer_id"},
+                             "mat_type": {"kind": "constant", "value": "Wafer"},
+                             "x": {"kind": "column", "column": "base_x"},
+                             "y": {"kind": "column", "column": "base_y"}}},
+        "target": {"kind": "entity", "entity_type": "wafer@1",
+                   "keys": {"wafer": {"kind": "column", "column": "base_wafer_id"}}}}}
+    }}
+  }
+}
+```
+  출하 샘플의 표 선언으로 읽으면 `read` 는 `identity`·`order_by` = `["run_uid"]` · `unit` = `row` · `occurred_at` = `{"column": "observed_at", "timezone": "Asia/Seoul"}` 로 채워집니다.
+- **화면에서** — 선언 폼에서 안 적은 `read` 칸은 빨간 칸이 아니라 기본값이 채워진 칸으로 보입니다(`Default: …`). 매핑의 `Role occurred_at` 칸은 비워 둘 수 있습니다(비우면 사건 엣지가 아님).
+- **필요한 조건** — 서버 재기동. 이미 쓴 선언은 바꿀 것이 없습니다 — 적은 값을 그대로 읽어 사건 id · 원자가 그대로입니다. 소스 시각을 사건 엣지로 옮기려면 `python -m scripts.migrate_ledger_slim_sources`(미리보기) 뒤 `--apply --source <소스>`. 사건 엣지가 소스와 «다른» 시각을 적은 소스(예: `dt_job` — 소스는 `basis: ingested`, 매핑은 `event_time`)는 옮기면 그 소스 원자 전부의 시각과 사건 id 가 바뀌어 `--change-atoms` 를 같이 줘야 하고, 그 뒤 그 소스를 통째로 다시 번역합니다(`python -m ledger.backfill --source <소스> --whole-source --apply`). 미리보기는 아무도 안 읽는 옛 바인딩 칸(`approval_status`)의 수도 보입니다 — `--drop-retired` 를 줄 때만 지우고, 그러면 묶음 해시가 한 번 바뀌어 모든 소스의 새 원자가 새 번역 버전을 갖습니다(이미 쓴 원자 · 커서 자리는 그대로). 박스에서 `dt_job` 을 옮기면 원자 866,192 개의 시각과 사건 id 가 바뀌고, 다시 번역은 원천 행 535,559 × 1,000 행당 5.85 s(박스에서 잰 율) ≈ 52 분입니다.
+- **바뀐 동작** — `read.occurred_at` 을 안 적은 소스가 거절되지 않습니다(전에는 「missing field」). `unit: group` 에 `group_by` 를 안 적은 소스도 거절되지 않습니다(전에는 「missing field」 — 폼은 identity 를 미리 채우고 검사기는 거절했습니다). 사건 엣지들이 서로 다른 칼럼을 적거나 시간대 없이 적으면 `missing_time` 으로 거절합니다. 매핑이 `occurred_at` 을 안 적어도 거절되지 않습니다(전에는 `missing_required_role`).
+- **자세히** — 이 항목과 같은 커밋
+
 ## 2026-10-02 · 메인 그리드 표 고르기 — 운영자가 적은 묶음 · 검색
 
 - **무엇** — 메인 그리드의 표 드롭다운이 table_config 에 적은 `group` 이름 아래로 묶입니다(묶음은 이름 순, 안 적은 표는 맨 아래 `Other`). 드롭다운 앞의 검색 칸에 치면 표 이름으로 거릅니다. 분류는 운영자가 적습니다 — 제품이 표 이름이나 종류로 짐작해 나누지 않습니다. 원장 원자 보기(`ledger_atom_rows`)도 table_config 의 한 표라 같은 칸으로 묶입니다.

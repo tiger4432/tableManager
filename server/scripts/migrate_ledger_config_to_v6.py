@@ -127,7 +127,7 @@ def retire_lot_event_role(document: dict[str, Any]) -> list[str]:
     """A source mapped by the retired `lot-event-role` has nothing left to say: its descent is the
     lineage source's now and its first sights are no longer said (819726624). Retired, not
     deleted - its atoms are facts."""
-    from ledger.config_authoring import REGISTER_PREDICATE
+    from ledger.setup_bundle import REGISTER_PREDICATE
     from ledger.setup_bundle import is_retired
 
     said = []
