@@ -101,6 +101,9 @@ def main(argv=None) -> int:
         not_yet = (census.get("not_yet") or {}).get("estimate")
         # 「셀 수 없다」와 「한 것이 없다」는 다른 문장이므로 빈 칸은 빈 칸으로 둔다.
         tail = "" if not_yet is None else f" · 남은 {not_yet}"
+        if census.get("rows_drifted") is not None:
+            tail += (f" · 수정 누락 {census['rows_drifted']['estimate']}"
+                     f" · 지문 없음 {census['rows_unprinted']['estimate']}")
         print(f"{source}: 표 {rows} · 색인 {indexed}{tail}")
     return 0
 

@@ -45,8 +45,8 @@ TABLES = {
           "display_columns": ["log_id", "dt_job", "dt_x", "dt_y", "netdie"]},
     OFFICIAL: {"composite_key_source": KEYS,
                "column_types": {"dt_job": "string", "dt_x": "number", "dt_y": "number",
-                                "netdie": "number", "hold": "string"},
-               "display_columns": ["dt_job", "dt_x", "dt_y", "netdie", "hold"]},
+                                "netdie": "number", "hold": "string", "note": "string"},
+               "display_columns": ["dt_job", "dt_x", "dt_y", "netdie", "hold", "note"]},
 }
 RULE = {"name": "hc_copy", "trigger_table": LOG, "target_table": OFFICIAL,
         "mapper": "copy_rows_with_hold", "require": KEYS,
@@ -61,7 +61,9 @@ SOURCE = "hc_official"
 LEDGER_SOURCE = {
     "relation": OFFICIAL,
     "read": {"exclude_when": [{"column": "hold", "blank": True}]},
-    "map": {"implementation_id": "declarative-role", "implementation_version": 1},
+    # `note` is named as an input and bound by nothing - an edit there moves no atom (판정 201)
+    "map": {"implementation_id": "declarative-role", "implementation_version": 1,
+            "input_columns": ["netdie", "note"]},
     "bind": {"mappings": {"counted": {
         "predicate": "has_netdie@1",
         "bind": {"subject": {"kind": "entity", "entity_type": "dtjob@1",

@@ -97,7 +97,7 @@ class FakeStore:
     def connection(self):
         return FakeConnection(self.world)
 
-    def _write_row_refs(self, connection, source, pairs):
+    def _write_row_refs(self, connection, source, pairs, columns=None):
         self.world["written"].extend((source, *pair) for pair in pairs)
         return len(pairs)
 

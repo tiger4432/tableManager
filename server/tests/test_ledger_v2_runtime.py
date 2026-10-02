@@ -44,7 +44,7 @@ class RecordingStore:
     def write_batch(self, source, translator_ver, atoms, cursor_value, molecules,
                     refused=0, incomplete=0, *, reasons,
                     enforce_translator_version=False, advance_cursor=True,
-                    withdraw_refs=None, row_refs=None, receipt=None):
+                    withdraw_refs=None, row_refs=None, receipt=None, row_ref_columns=None):
         self.calls.append({
             "advance_cursor": advance_cursor,
             # S-54-b: which physical row each `source_raw_ref` was built from, written in
@@ -367,7 +367,7 @@ def test_a_store_that_cannot_separate_the_two_statements_is_explicitly_unsupport
         def write_batch(self, source, translator_ver, atoms, cursor_value,
                         molecules, refused=0, incomplete=0, *, reasons,
                         enforce_translator_version=False, withdraw_refs=None,
-                        row_refs=None, receipt=None):
+                        row_refs=None, receipt=None, row_ref_columns=None):
             raise AssertionError("body must not run")
 
     with pytest.raises(LedgerV2RuntimeError) as caught:
@@ -395,7 +395,7 @@ def test_a_store_that_cannot_take_the_receipt_is_refused_by_the_same_name():
         def write_batch(self, source, translator_ver, atoms, cursor_value,
                         molecules, refused=0, incomplete=0, *, reasons,
                         enforce_translator_version=False, advance_cursor=True,
-                        withdraw_refs=None, row_refs=None):
+                        withdraw_refs=None, row_refs=None, row_ref_columns=None):
             raise AssertionError("body must not run")
 
     with pytest.raises(LedgerV2RuntimeError) as caught:

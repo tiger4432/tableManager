@@ -265,10 +265,12 @@ def locked_select_columns(
     return tuple(sorted(columns))
 
 
-def base_select_columns(source_plan: SourcePlan) -> tuple[str, ...]:
-    """Physical columns the existing cursor must SELECT."""
+def bound_select_columns(source_plan: SourcePlan) -> tuple[str, ...]:
+    """The columns a source reads because its declaration names them - keys, order, time,
+    exclusions, conditions, bindings - and not `map.input_columns` nor `row_id`: a column
+    reaches an atom only through these (판정 201). What the row print covers (총괄 (나))."""
     driver = source_plan.driver
-    columns = set(locked_select_columns(
+    return locked_select_columns(
         identity=driver.identity,
         # The mapper's group is read like the source's (총괄 c38eae7cf) - it is not repeated
         # in `input_columns` any more.
@@ -284,8 +286,13 @@ def base_select_columns(source_plan: SourcePlan) -> tuple[str, ...]:
         }),
         # The compiler already intersected these with the catalogue.
         binding_columns=source_plan.binding_select_columns,
-    ))
-    columns.update(driver.mapper.input_columns)
+    )
+
+
+def base_select_columns(source_plan: SourcePlan) -> tuple[str, ...]:
+    """Physical columns the existing cursor must SELECT."""
+    columns = set(bound_select_columns(source_plan))
+    columns.update(source_plan.driver.mapper.input_columns)
     # The engine's own column, on every planned source - each reads a table that has `row_id`
     # (a view source is refused at load, 총괄 f3bc02f6e).
     columns.add(source_plan.frame_row_id)

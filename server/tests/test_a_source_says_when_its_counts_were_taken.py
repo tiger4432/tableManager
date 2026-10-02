@@ -24,6 +24,17 @@ import pacing                                                        # noqa: E40
 from ledger import backfill, schema                                  # noqa: E402
 
 
+import pytest                                                        # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def _no_drift_scan(monkeypatch):
+    """(나) The drift count scans the relation through a real plan; this file's fakes
+    stand in for the counts around it, and its own file measures it."""
+    monkeypatch.setattr(backfill, "rows_drifted",
+                        lambda *a, **k: {"rows_drifted": 0, "rows_unprinted": 0})
+
+
 class _Plan:
     """⚠️ THE FAKE CARRIES A `driver`, because the real plan does. A fake thinner than the
     thing it stands in for is more permissive than production, and this one hid that the

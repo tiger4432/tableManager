@@ -201,7 +201,7 @@ class _Store(store.LedgerStore):
     def insert_atoms(self, connection, atoms):
         return 4, 3
 
-    def _write_row_refs(self, connection, source, refs):
+    def _write_row_refs(self, connection, source, refs, columns=None):
         return 0
 
     def _advance_cursor(self, *args, **kwargs):

@@ -360,6 +360,8 @@ def test_the_number_is_stamped_as_a_sample_with_its_method(setup_excluding, monk
         "source": SOURCE, "relation": RELATION, "relation_rows": 5, "indexed_rows": 5,
         "counts": "rows", "not_yet": 0})
     monkeypatch.setattr(backfill, "count_excluded_but_indexed", lambda *a, **k: (2, 5))
+    monkeypatch.setattr(backfill, "rows_drifted",           # (나) its own file measures it
+                        lambda *a, **k: {"rows_drifted": 0, "rows_unprinted": 0})
 
     stamped = backfill.measure_row_census(SimpleNamespace(), setup_excluding, SOURCE)
 

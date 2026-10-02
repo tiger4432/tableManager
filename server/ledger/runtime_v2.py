@@ -27,6 +27,7 @@ from .roleframe import (
     UNIT_SAID_NOTHING_ATTR,
     dry_run_event_frame,
 )
+from .event_frame import bound_select_columns
 from .schema import NOT_AN_EVENT_BASIS
 from .setup_bundle import is_event_time_role
 from .setup_registry import LedgerSetupSnapshot, cursor_translator_version, is_reference_derivation
@@ -371,6 +372,7 @@ def execute_scoped_batch(
             advance_cursor=False,
             withdraw_refs=withdraw_refs,
             row_refs=preview.row_refs,
+            row_ref_columns=bound_select_columns(plan),
             receipt=_batch_receipt(store, plan, preview, len(base_rows), batch_id),
         )
     except TypeError as exc:

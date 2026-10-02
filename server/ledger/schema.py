@@ -290,6 +290,7 @@ CREATE TABLE IF NOT EXISTS {names.row_ref} (
     row_id         TEXT NOT NULL,
     source_who     TEXT NOT NULL,
     source_raw_ref TEXT NOT NULL,
+    row_fingerprint TEXT,
     -- 🔴 THE REF IS IN THE KEY. One physical row can appear under SEVERAL claim refs: one
     -- event may emit several sentences over different subsets of its rows, and each
     -- subset produces its own `source_raw_ref`. Keyed without it, the second sentence
@@ -514,6 +515,16 @@ ROW_CENSUS_COLUMN = "row_census"
 #: go negative before. So the increment counts rows gaining their FIRST line and the
 #: decrement counts rows losing their LAST.
 ROWS_INDEXED_COLUMN = "rows_indexed"
+
+#: (총괄 bb9b1c19c (나)) The row as its source read it, printed on its index line
+#: (`store.row_fingerprint_sql`). NULL = not yet printed.
+ROW_FINGERPRINT_COLUMN = "row_fingerprint"
+
+
+def row_ref_additions(names: WorldNames) -> tuple:
+    return ((ROW_FINGERPRINT_COLUMN,
+             f"ALTER TABLE {names.row_ref} ADD COLUMN {ROW_FINGERPRINT_COLUMN} TEXT"),)
+
 
 def cursor_additions(names: WorldNames) -> tuple:
     return (
@@ -832,6 +843,10 @@ def ensure_schema(connection, names: WorldNames = _DEFAULT):
             # at every chain-daemon start and every `backfill.run` (S-88).
             if not column_exists(cursor, names.cursor, column):
                 logger.info("[Ledger] adding %s.%s", names.cursor, column)
+                cursor.execute(statement)
+        for column, statement in row_ref_additions(names):
+            if not column_exists(cursor, names.row_ref, column):
+                logger.info("[Ledger] adding %s.%s", names.row_ref, column)
                 cursor.execute(statement)
         _ensure_trigram(cursor)
         for statement in indexes(names):
