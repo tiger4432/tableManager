@@ -199,7 +199,8 @@ SYSTEM_TABLE_COLUMNS = {
     #   table it finds.
     "retroactive_runs": ('error', 'finished_at', 'last_progress_at', 'op', 'params', 'processed_rows', 'queued_at', 'requested_by', 'result', 'run_id', 'runner', 'started_at', 'state', 'total_rows'),
     # processed_chain, broadcast_at: reconciled at boot in main.py startup_event
-    "database_outbox": ('broadcast_at', 'created_at', 'event_type', 'event_uuid', 'id', 'payload', 'processed_at', 'processed_chain', 'retry_count', 'status', 'table_name'),
+    # ledger_state:     migrations/add_outbox_ledger_state.py  (총괄 bb9b1c19c (가))
+    "database_outbox": ('broadcast_at', 'created_at', 'event_type', 'event_uuid', 'id', 'ledger_state', 'payload', 'processed_at', 'processed_chain', 'retry_count', 'status', 'table_name'),
     # file_mtime, file_size:
     #   migrations/add_ingestion_ledger_path_stat.sql [2026-08-13]. Promoting `filepath`
     #   from a stored marker to a LOOKUP KEY (SCHEMA_CANON R6 names this exact column as

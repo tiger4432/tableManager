@@ -303,16 +303,13 @@ class FakeEvent:
         self.payload = payload
 
 
-def test_the_chain_group_queues_above_its_trigger_filter_and_translates_nothing(monkeypatch):
-    """🔴 ㉤ AND ㉩ IN ONE RUN.
-
-    ㉤ -- the subject is the OUTBOX EVENT, not a chain rule. A person editing a cell in the
-    grid produces an event no rule matches, and `process_chain_transaction_group` RETURNS
-    EARLY on that. The queueing therefore has to sit above that return, and this passes it
-    zero rules to prove it does.
-
-    ㉩ -- and the chain path itself must translate nothing. `rescope` is replaced with a
+def test_the_chain_group_translates_nothing_and_queues_nothing_in_memory(monkeypatch):
+    """🔴 ㉩ -- the chain path itself must translate nothing. `rescope` is replaced with a
     detonator: if the follow-up were inline, the chain transaction would pay for it here.
+
+    ㉤ -- the subject is the OUTBOX EVENT, not a chain rule - and since 총괄 bb9b1c19c (가)
+    the event row IS the ledger's queue (`ledger_state`), rule or no rule
+    (`test_the_ledger_follow_up_loses_nothing.py`). Nothing goes on the memory deque here.
     """
     from chain import ingestion_worker as worker
 
@@ -326,8 +323,7 @@ def test_the_chain_group_queues_above_its_trigger_filter_and_translates_nothing(
     ok, reason, messages = asyncio.get_event_loop_policy().new_event_loop().run_until_complete(
         worker.process_chain_transaction_group("tx", events, None, []))
     assert ok is True and reason is None and messages == []
-    assert followup.queue_depth() == 3, (
-        "both EDIT shapes and the CREATE queued, and no rule was needed for any of it")
+    assert followup.queue_depth() == 0
 
 
 def test_an_empty_queue_never_becomes_a_hot_loop(monkeypatch):

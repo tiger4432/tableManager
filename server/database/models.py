@@ -256,6 +256,9 @@ class DatabaseOutbox(Base):
     # 즉시 스탬프(통지할 메시지가 없는 no-op 그룹). NULL로 남은 SUCCESS 행 = 통지 미확정 →
     # 주기 스윕이 감지·재발사(batch_refresh_required)·확정한다. eventual delivery 보장의 durable 마커.
     broadcast_at = Column(DateTime(timezone=True), nullable=True)
+    #: The ledger's mark (총괄 bb9b1c19c (가)): NULL = yet to follow, 'done', or 'failed: <why>'.
+    #: `ledger.followup.drain_outbox_once` takes and marks; migrations/add_outbox_ledger_state.py.
+    ledger_state = Column(String, nullable=True)
 
     # [핵심] Outbox 폴링 스캔 최적화 색인 일람.
     # 부분 인덱스(postgresql_where)는 PostgreSQL에서만 조건이 적용되고 SQLite에서는 조건이 무시된
@@ -284,6 +287,8 @@ class DatabaseOutbox(Base):
         # 비부분 status 인덱스(ix_database_outbox_status) DROP의 대체 — FAILED는 극소수라 사실상 빈 인덱스.
         Index("idx_outbox_failed", "status", "id",
               postgresql_where=text("status = 'FAILED'")),
+        Index("idx_outbox_ledger_pending", "id",
+              postgresql_where=text("processed_chain = true AND ledger_state IS NULL")),
     ]
     if not is_sqlite:
         _outbox_index_list.append(

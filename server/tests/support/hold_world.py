@@ -179,10 +179,9 @@ def push(world, rows):
         db.commit()
 
 
-def settle(world, rounds=12):
-    """The chain's transaction-group body until nothing is pending, then the ledger follow-up
-    until its queue is empty - the two loops the chain worker runs, with the worker's own
-    withdrawal after a drained deletion."""
+def run_chain(world, rounds=12):
+    """The chain's transaction-group body until nothing is pending - every event marked
+    processed, rule or no rule, as the worker does."""
     db = world["db"]
     for _ in range(rounds):
         pending = (db.query(models.DatabaseOutbox)
@@ -203,9 +202,18 @@ def settle(world, rounds=12):
             db.commit()
     else:
         raise AssertionError("the chain did not settle")
+
+
+def settle(world, rounds=12):
+    """The chain, then the ledger follow-up from the outbox until nothing is left - the two
+    loops the chain worker runs, with the worker's own withdrawal after a drained deletion."""
+    db = world["db"]
+    run_chain(world, rounds)
     retracted = False
-    while followup.queue_depth():
-        done = followup.drain_once(world["engine"], world["setup"])
+    while True:
+        done = followup.drain_outbox_once(world["engine"], world["setup"])
+        if done is None:
+            break
         assert not any("error" in (s or {}) for s in (done or {}).get("sources", {}).values()), done
         if done and done.get("event_type") == "DELETE" and done.get("row_ids"):
             worker._retract_what_those_rows_fed(db, done["table"], done["row_ids"])

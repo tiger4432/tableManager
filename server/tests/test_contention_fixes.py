@@ -307,6 +307,7 @@ def _add_outbox_row(db, *, processed: bool, age_days: int):
         payload={"row_id": "x"},
         status="SUCCESS" if processed else "PENDING",
         processed_chain=processed,
+        ledger_state="done" if processed else None,
         created_at=datetime.now(timezone.utc) - timedelta(days=age_days),
     )
     db.add(row)

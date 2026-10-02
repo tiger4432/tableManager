@@ -1,9 +1,28 @@
 # 지금 돌리면 되는 것
 
+> ## 🔴 [10-02 밤] **원장 따라가기 — 대기열이 아웃박스 행으로 (총괄 bb9b1c19c (가)) — 이주 «필요»(재기동 «전») · 재기동 «필요»(run_app.bat 전체)**
+>
+> ```
+> 순서          1 이주 보고   python server/migrations/add_outbox_ledger_state.py
+>                 뜻: server_version (11 이상이어야 칸 추가가 빠름) · column=ledger_state exists=False 면 아직
+>              2 이주        python server/migrations/add_outbox_ledger_state.py --apply
+>                 뜻: 「added ledger_state - existing events 'done', N unprocessed back to NULL」 · 「idx_outbox_ledger_pending ensured」
+>                    끝에 다시 찍는 보고에 done 이 거의 전부, <null = yet to follow> 이 N
+>              3 재기동       run_app.bat 전체 — 이주 «없이» 재기동하면 아웃박스 쓰기가 「column ledger_state does not exist」 로 실패
+> 확인          python -m ledger followup     (server 폴더) — 「따라갈 일 K · 실패 F」. K 는 체인이 돌면 줄어들고, 일이 없으면 0
+>              체인 워커 로그 [LedgerFollowUp] lap: N item(s) … M left in the queue — M 이 그 순간의 따라갈 일 수
+> 뜻           실패 F 가 0 이 아니면 아래 목록에 이유가 찍힘 — 원인을 고친 뒤 python -m ledger followup --requeue-failed
+>              K 가 줄지 않고 늘기만 하면 따라가기 루프가 안 도는 것 — 체인 워커 로그에 [LedgerFollowUp] batch failed 가 있는지
+> 급할 때       git revert <이 커밋> -> 재기동 (칸은 남아도 옛 코드가 안 읽는다 — 되돌릴 이주 없음)
+> ```
+
+---
+
 > ## 🔴 [10-02 밤 → 10-03 소유자] **공식 표를 제자리에서 비우고 다시 채우기 — 순서 전부 (총괄 35b76ba92 · 32bab7896 · e11bb4de0 · 1472ec1cc) — 이주 «불필요» · 재기동 «필요»(run_app.bat 전체, 한 번)**
 >
 > ```
-> 0 코드        git pull — 복사 맵퍼 묶음(이 커밋) · 비우기 도구(81ffa8499)가 들어 있어야 함
+> 0 코드        git pull — 복사 맵퍼 묶음(8990d408f) · 비우기 도구(81ffa8499) · 원장 따라가기 대기열(위 절)
+>              그리고 재기동 «전»에 이주: python server/migrations/add_outbox_ledger_state.py --apply (위 절)
 > 1 표 설정      server/config/table_config.json 의 official_dt — composite_key_source 를 코어 칸으로 · column_types 에 "hold": "string"
 > 2 원장 소스    config/ontology/ledger_config.json 에서 official_dt 를 읽는 소스의 read 에 "exclude_when": [{"column": "hold", "blank": true}]
 > 3 재기동       run_app.bat 전체 — 1 · 2 를 한 번에 읽는다
@@ -25,7 +44,7 @@
 >               python -m ledger census --source <official_dt 를 읽는 소스>        (server 폴더) — 「표 N · 색인 N · 남은 0」이어야
 >                  남은 이 0 이 아니면   python -m ledger.backfill --source <그 소스>   (색인에 없는 행만 번역)
 >                  색인이 표보다 크면    그만큼 «표엔 없고 색인엔 있는 행» — python -m ledger.backfill --source <그 소스> --whole-source --apply
->               ⚠️ 원장 따라가기 대기열을 잃지 않게 하는 고침이 아직 안 들어왔으면 오늘 길 그대로 — 이 census 0 확인이 그물
+>               python -m ledger followup (server 폴더) — 「따라갈 일 0 · 실패 0」이어야. 실패가 있으면 이유를 고치고 --requeue-failed
 > 급할 때       7 을 멈춤: python server/scripts/chain_pause_cli.py pause --reason "다시 채우기 멈춤" (다시: ... resume)
 >               규칙 둘을 "enabled": false -> Reload Configs & Code
 > ```
