@@ -35182,3 +35182,19 @@ RELEASE_LOG  맞음 — 🗑️ Row(index.html) · Deleting… · Deleting N row
 RELEASE_LOG 맞음 — Chain · Overview · Job / Transaction · Showing 이 admin.html / chain_queue_panel.js 에 있음
 고친 문서   CODE_MAP 대기열 패널 절 한 줄(lineName · Rows · 배지 · Showing, 줄 수는 77c0652a7 에서 git). FEATURE_CHECKLIST 는 착지가 고쳤다
 ```
+
+---
+
+## [C 응용] 10-02 3a2d79ff9(시각은 사건 엣지에만 · read 칸마다 기본값 하나) 문서 동기 — @`66d12c9ba`
+
+```
+고친 문서 다섯  ONTOLOGY_LEDGER_SETUP — 소스 필드 표 위에 기본값 문단(채우는 값 · missing_time · 이주 명령), 역할 표의 occurred_at
+               (술어에는 필수 · 매핑에서는 선택), registration_probe 기본값, 증상표에 missing_time 줄, 「여전히 필수」 두 문장에 예외
+               LEDGER_SCHEMA_COMPLETENESS — occurred_at · read.unit · read.identity/order_by 줄을 「기본값이 덮음」으로
+               ledger_declaration_by_example — read 는 안 적어도 된다 · 시각은 그 시각을 담은 매핑에만
+               WALK.md — 사건 시각 아님 원자에 「사건 시각을 안 적은 매핑」
+               CODE_MAP — setup_bundle(기본값 한 자리와 옮겨 온 것들) · roleframe · config_authoring · runtime_v2 · schema 줄, 줄 수는 git
+고친 제 글     CODE_MAP 두 줄이 schema.REFERENCE_BASIS 를 댔다 — 이 착지에서 setup_bundle.NOT_AN_EVENT_BASIS 로 이름이 바뀜(코드에 옛 이름 0)
+검수 (박스)    test_time_lives_on_the_event_edges 외 넷 — 189 passed, 1 skipped
+RELEASE_LOG   맞음 — 예시는 구현 보고에 제품 로더 명령. 폼 글자 Default: … 는 클라 몫 착지(04cecc30f) 뒤 대조
+```
