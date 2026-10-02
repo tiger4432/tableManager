@@ -8,7 +8,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <!-- FOUC 방지: CSS 로드 전에 저장된 테마를 <html data-theme>에 스탬프 (theme.js와 동일 키) -->
   <script>(function(){try{var t=localStorage.getItem('theme');document.documentElement.setAttribute('data-theme',t==='dark'?'dark':'light');}catch(e){document.documentElement.setAttribute('data-theme','light');}})();</script>
-  <title>걷기</title>
+  <title>Walk</title>
   <link rel="icon" type="image/svg+xml"
     href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🔎</text></svg>" />
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -50,14 +50,28 @@
       color: var(--text-dim);
     }
     .wk-head b { color: var(--text); font-size: 1rem; }
-    #wk-host { flex: 1; min-height: 0; }
+    /* Layout A (lead 2b5819e1d · owner 「걷기는 A로」): the form rail on the left, the result on the
+       right, the page itself does not scroll - each part scrolls inside itself. */
+    html, body { overflow: hidden; }
+    .wk-page { height: 100%; min-height: 0; }
+    #wk-host { flex: 1; min-height: 0; display: grid; grid-template-columns: 380px minmax(0, 1fr);
+      border: 1px solid var(--border); background: var(--bg-surface); }
     #wk-host > * { max-width: 100%; }
+    /* A phone: the rail sits above the result and the PAGE scrolls - two nested scroll boxes in a
+       phone's height leave neither readable. */
+    @media (max-width: 760px) {
+      html, body { overflow: auto; }
+      .wk-page { height: auto; min-height: 100%; }
+      #wk-host { display: block; }
+      #wk-host > .wk-rail { border-right: 0; border-bottom: 1px solid var(--border); }
+      #wk-host > .wk-rail > .wk-form, #wk-host > .wk-main { overflow: visible; }
+    }
   </style>
 </head>
 
 <body>
   <div class="wk-page">
-    <header class="wk-head"><b>걷기</b><span>GET /api/ledger/subgraph</span></header>
+    <header class="wk-head"><b>Walk</b><span>GET /api/ledger/subgraph</span></header>
     <div id="wk-host"></div>
   </div>
   <script type="module" src="/src/walk/main.js"></script>

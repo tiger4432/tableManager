@@ -1,7 +1,7 @@
 // 걷기 검색 — 「걷기 API 에 «폼 채워서 날려 보는» 자리」 (소유자 주문 그대로).
 //
 // 🔴 탐색기가 «아닙니다». 마킹 저장소도, 이력 나무도, 줍기(collect) 체인도 없습니다 —
-//    총괄이 그것을 명시적으로 거뒀습니다. 여기 있는 것은 인자를 채우는 칸들과 「날리기」
+//    총괄이 그것을 명시적으로 거뒀습니다. 여기 있는 것은 인자를 채우는 칸들과 Walk 버튼
 //    하나, 그리고 «응답을 보여 주는 자리»뿐입니다.
 //
 // ⚠️ R&D 보드의 `WalkBoxPanel` 을 «안 씁니다». 처음에 그것을 앉혔다가 걷어냈습니다:
@@ -11,31 +11,29 @@
 //    R&D 보드 것이라 못 고칩니다. 그래서 이 페이지가 자기 폼을 갖습니다.
 //
 // 🔴🔴 그런데 «요청을 짓는 것»은 이 페이지 일이 아닙니다 (소유자 2026-09-06, 깔끔 ④:
-//    「같은 기능인데 «두 경로»가 있어서도 안 됨」). 오늘 이 저장소가 그 부류로 결함을
-//    하나 냈습니다 — 걷기 요청을 짓는 함수가 둘이라 한쪽만 `hops` 를 안 실었고, 화면이
-//    「3홉」이라 쓰는 동안 서버는 12홉을 걸었습니다. 오류도 경고도 «0» 이었습니다.
+//    「같은 기능인데 «두 경로»가 있어서도 안 됨」). 걷기 요청을 짓는 함수가 둘이라 한쪽만
+//    `hops` 를 안 실었고, 화면이 「3홉」이라 쓰는 동안 서버는 12홉을 걸었습니다.
 //    => 그래서 이 페이지는 «폼»만 갖고, 요청은 `createWalkBoxWalk` «하나»가 짓습니다.
-//       세 번째 저자를 만들지 않습니다.
 //
 // 🔵 가져다 쓰는 것 둘. 다시 쓰지 않습니다:
 //      `fetchDeclaration`    무엇을 고를 수 있나는 «선언»이 답합니다. 화면이 목록을 안 듭니다
 //      `createWalkBoxWalk`   전선. 다섯 인자와 응답 키가 «한 자리»에 삽니다
-//                            (씨앗 접기도 그 안입니다 — 여기서 base64 를 다시 적지 않습니다)
+//
+// 🔴 배치 A (총괄 2b5819e1d · 소유자 10-02 「걷기는 A로」): 폼은 왼쪽 레일(.wk-rail), 결과는
+//    오른쪽(.wk-main). 두 부품이 자기 div 를 갖고, 격자에 앉히는 것은 페이지(walk.html)입니다.
+//    화면 글자는 영어(「영어로도 바꿔」), 서버가 보낸 문장은 그대로.
 //
 // ⛔ 걷기 API 는 «안 건드립니다» — 소유자 지시. 부르기만 합니다.
 
 import { fetchDeclaration, createWalkBoxWalk, pathsBetween, routeWith, fetchKeyValues, PICK_TYPE_FIRST }
   from '../rnd_board/api.js';
-// 🔴 겉모양은 «부품과 같이» 다닙니다 (총괄 판정 2026-09-06). 호스트가 스타일시트를
-//    챙기게 하면 호스트가 하나 늘 때마다 챙기기를 «기억»해야 하고, 안 챙기면 맨몸으로
-//    뜹니다 — 오류 없이. 그게 기준 ④ 위반입니다.
+// 🔴 겉모양은 «부품과 같이» 다닙니다 (총괄 판정 2026-09-06).
 import { ensureWalkStyles } from './styles.js';
 import {
   bareName, followFromRoute, followChoices, predicatesTouching, noFollowSentence, keepWalkableRoutes,
   cutBudgets,
 } from './derive.js';
-// 🔴 C-72. 표의 «결정»은 전부 여기 있고 이 파일에는 DOM 쓰기만 남습니다. 결정이 `boot()` 안
-//    클로저로 있는 동안은 「이 화면이 그 함수를 부르나」를 «거동으로» 잴 자리가 없었습니다.
+// 🔴 C-72. 표의 «결정»은 전부 여기 있고 이 파일에는 DOM 쓰기만 남습니다.
 import { walkTableView } from './table_view.js';
 // 🔴 C-120. 「꺼짐 + 왜」의 좌석 하나 — 메인 그리드의 쓰기 버튼 셋이 쓰던 그 기제입니다.
 import { setDisabledReason } from '../disabled_reason.js';
@@ -44,20 +42,22 @@ import { SubgraphView } from './subgraph_view.js';
 // The markings live outside every part, in one store (lead f6fc6ba66 · the board's MarkingStore).
 import { MarkingStore, SIGN } from '../rnd_board/marking_store.js';
 import { entitySeedId } from '../rnd_board/api.js';
+// The words other screens already draw for the same facts, spelled once.
+import { CHOOSE, FAILED, LOADING, WALKING, unitText } from '../ui_words.js';
+import { UNKNOWN, UNPICKED } from '../absent.js';
 
 /** The graph's chain of markings: the start, then one per Continue. Its length is the chain's length. */
 const GRAPH_CHAIN = Object.freeze(['walk-start', 'walk-2', 'walk-3', 'walk-4']);
 
 /** 라벨«이자» 꺼진 사유. 한 상수라 둘이 갈라질 수 없습니다. */
-const RUNNING = '걷는 중';
+const RUNNING = WALKING;
 
 /** 서버가 받는 값 그대로. 화면이 «자기 이름»을 만들지 않습니다. */
 const DIRECTIONS = ['both', 'outgoing', 'incoming'];
 
-// 🔴 손잡이의 기본값을 «여기 안 적습니다». 적으면 서버가 기본을 바꾸는 날 이 화면만
-//    옛 수를 보여 주고, 그게 오늘 고친 그 병(값의 저자가 둘)입니다. 비워 두면 «안 실리고»,
-//    안 실리면 서버가 정합니다 — 그리고 무엇으로 정해졌는지는 응답의 `walk` 가 말합니다.
-const SERVER_DEFAULT = '서버 기본';
+// 🔴 손잡이의 기본값을 «여기 안 적습니다». 비워 두면 «안 실리고», 안 실리면 서버가 정합니다 —
+//    무엇으로 정해졌는지는 응답의 `walk` 가 말합니다.
+const SERVER_DEFAULT = 'default';
 
 const el = (doc, tag, cls, text) => {
   const n = doc.createElement(tag);
@@ -85,16 +85,19 @@ export function boot(doc, host, deps) {
     subjectsScanned: null, subjectsScanCut: false, subjectsListCut: false,
     direction: '', hops: '', nodeLimit: '',
     run: 'idle', result: null, reason: '',
+    // What the shown result was asked with - the form can change after the walk.
+    asked: null,
     view: 'table',
     // Which loop chips are on, per route row (`routeKey`). Off unless pressed (lead 5d5b8d750).
     loopsOn: new Map(),
+    // The follow list is one folded line until opened (lead 2b5819e1d).
+    followOpen: false,
   };
   const routeKey = (r) => `${r.to}|${r.follow.slice().sort().join('+')}`;
   const loopsOf = (r) => state.loopsOn.get(routeKey(r)) || new Set();
 
   // 🔴 `@1` 을 뗍니다. 선언은 타입을 `wafer@1` 로 쓰고 전선과 `pathsBetween` 의 타입 그래프는
-  //    `wafer` 로 씁니다 -- 둘을 섞으면 경로가 «0 개»로 나오고, 그 0 은 「길이 없다」와
-  //    구별이 안 됩니다. 술어에서도 «같은 함정»이라, 그 규칙은 `derive.js` 한 곳에 삽니다.
+  //    `wafer` 로 씁니다 -- 그 규칙은 `derive.js` 한 곳에 삽니다.
   const bare = bareName;
 
   const entities = () => (state.decl && state.decl.entities) || [];
@@ -102,6 +105,9 @@ export function boot(doc, host, deps) {
     const found = entities().find((e) => e.type === type);
     return (found && found.keys) || [];
   };
+  // The two parts this page seats: the form rail and the result. Made once and kept across renders.
+  const rail = el(doc, 'div', 'wk-rail');
+  const main = el(doc, 'div', 'wk-main');
   // Made once and kept across renders (`render` empties the host); it walks through the same wire.
   const markings = new MarkingStore();
   const graphMount = el(doc, 'div', 'wk-graph');
@@ -112,8 +118,8 @@ export function boot(doc, host, deps) {
     markings.replace(GRAPH_CHAIN[0], named ? [[entitySeedId(state.type, state.keys), SIGN.CASE]] : []);
     graph.show(opts);
   };
-  // 🔴 술어도 «선언»에서, 그리고 «고른 타입에 닿는 것»(씨앗의 첫 걸음)만. 고를 수 있는 것만
-  //    보입니다. 규칙과 사유는 `derive.js` 에 있고 R&D 걷기 상자도 «같은 함수»를 부릅니다.
+  // 🔴 술어도 «선언»에서, 그리고 «고른 타입에 닿는 것»(씨앗의 첫 걸음)만. 규칙과 사유는
+  //    `derive.js` 에 있고 R&D 걷기 상자도 «같은 함수»를 부릅니다.
   const declaredPredicates = () => (state.decl && state.decl.predicates) || [];
   const allPredicates = () => declaredPredicates().map((p) => p.name);
   const followOptions = () => followChoices(
@@ -121,11 +127,8 @@ export function boot(doc, host, deps) {
     allPredicates(), state.follow);
 
   /**
-   * 시작 타입에서 «고른 도착지»까지 선언이 아는 길. 지어내지 않고 `pathsBetween` 을 씁니다 --
-   * 그 함수가 `{hops, follow, chain}` 을 이미 돌려주고, 같은 follow 를 가진 것은 «가장 짧은
-   * 홉»으로 접어 줍니다.
-   * 🔴 도착지마다 «따로» 냅니다. 합치면 「defect 로 가는 길」과 「die 로 가는 길」이 한 줄에
-   *    섞여, 누른 사람이 «무엇을 향한 길»을 골랐는지 알 수 없게 됩니다.
+   * 시작 타입에서 «고른 도착지»까지 선언이 아는 길. 지어내지 않고 `pathsBetween` 을 씁니다.
+   * 🔴 도착지마다 «따로» 냅니다. 합치면 누른 사람이 «무엇을 향한 길»을 골랐는지 알 수 없습니다.
    */
   function routes() {
     if (!state.decl || !state.type || !state.collect.size) return [];
@@ -158,30 +161,39 @@ export function boot(doc, host, deps) {
     if (!state.type) return;
     // The graph walks its marking and nothing else - follow, collect and the knobs are the table's.
     if (state.view === 'graph') { showGraph(); return; }
-    state.run = 'running'; state.result = null; state.reason = ''; render();
-    const res = await walk(spec());
+    const asked = spec();
+    state.run = 'running'; state.result = null; state.reason = '';
+    state.asked = { ...asked, keys: { ...asked.keys } };
+    render();
+    const res = await walk(asked);
     if (res && res.ok) { state.run = 'done'; state.result = res; }
     else {
       // ⚠️ 실패도 «보여야» 합니다. 빈 화면은 「안 눌렸나」와 구별이 안 됩니다.
       state.run = 'failed';
-      state.reason = (res && res.message) || '알 수 없음';
+      state.reason = (res && res.message) || UNKNOWN;
     }
     render();
   }
 
-  function field(label) {
-    const box = el(doc, 'div', 'wk-field');
+  function field(label, cls = 'wk-field') {
+    const box = el(doc, 'div', cls);
     box.append(el(doc, 'div', 'wk-label', label));
     return box;
   }
 
-  function renderForm(root) {
-    // ── 씨앗: 타입 ──────────────────────────────────────────────────────────────
-    const typeBox = field('노드 타입');
+  /** A name above its control - the key, step and type cells all take this shape. */
+  function cell(name, control, cls = 'wk-cell') {
+    const box = el(doc, 'label', cls);
+    box.append(el(doc, 'span', 'wk-keyname', name), control);
+    return box;
+  }
+
+  function renderStart(root) {
+    const start = field('Start');
     const sel = el(doc, 'select', 'wk-select');
     // 🔴 The placeholder is NO type. An option without a value of its own is worth its text, and
     //    picking it again made that text the type (lead b417e2ad8).
-    const none = el(doc, 'option', '', '— 고르십시오 —');
+    const none = el(doc, 'option', '', CHOOSE);
     none.value = '';
     sel.append(none);
     for (const e of entities()) {
@@ -196,42 +208,34 @@ export function boot(doc, host, deps) {
       const allowedKeys = new Set(keysOf(state.type));
       state.keys = Object.fromEntries(
         Object.entries(state.keys).filter(([k]) => allowedKeys.has(k)));
-      // 🔴 `followOptions` 가 아니라 닿는 술어로 거릅니다 — 그쪽은 «체크된 것을 다시 더해» 거름이
-      //    아무것도 안 뺐습니다(10-02 박스 미리보기). R&D 걷기 상자와 같은 답입니다.
+      // 🔴 닿는 술어로 거릅니다 — R&D 걷기 상자와 같은 답입니다.
       const allowed = new Set(predicatesTouching(declaredPredicates(), state.type, entities()));
       state.follow = new Set([...state.follow].filter((f) => allowed.has(f)));
       state.result = null; state.run = 'idle';
       render();
       loadSubjects();
     });
-    typeBox.append(sel);
-    root.append(typeBox);
+    start.append(cell('Type', sel, 'wk-cell wk-cell-row'));
 
-    // ── 씨앗: 노드 고르기 ──────────────────────────────────────────────────────
-    //
-    // 🔴 고르는 것은 «키 하나의 값»이 아니라 «노드 하나»(주어 쪽이든 목적어 쪽이든 — 서버가
-    //    두 쪽을 읽습니다, 29cee1d47)입니다. 그래서 한 번 고르면 아래 키 칸이
-    //    «전부» 찹니다 — die 는 넷, lot_slot 은 둘입니다. 칸마다 따로 고르게 하면 각 목록은
-    //    참인데 «그 조합은 없는» 씨앗을 만들 수 있습니다(키별 목록의 곱 ≠ 실재하는 개체).
-    // 🔵 직접 입력은 «남습니다» — 목록이 상한에 걸릴 수 있고, 그때 손으로 치는 길이 없으면
-    //    목록 밖의 노드는 영영 못 묻습니다.
+    // 🔴 고르는 것은 «키 하나의 값»이 아니라 «노드 하나»입니다. 한 번 고르면 아래 키 칸이
+    //    «전부» 찹니다 — 칸마다 따로 고르게 하면 «그 조합은 없는» 씨앗을 만들 수 있습니다.
+    // 🔵 직접 입력은 «남습니다» — 목록이 상한에 걸릴 수 있습니다.
     if (state.type) {
-      const subjBox = field('Pick a node');
+      const subjBox = field('Pick a node', 'wk-sub');
       if (state.subjectsState === 'loading') {
-        subjBox.append(el(doc, 'div', 'wk-note', '읽는 중'));
+        subjBox.append(el(doc, 'div', 'wk-note', LOADING));
       } else if (state.subjectsState === 'failed') {
         subjBox.append(el(doc, 'div', 'wk-fail', `Node list · ${state.subjectsReason}`));
       } else if (state.subjectsState === 'ready') {
         const list = state.subjects || [];
         if (!list.length) {
-          // 🔴 「봤는데 없다」와 「다 못 봤다」는 다릅니다. 응답이 이미 그 둘을 나눠 줍니다.
-          //    N 은 응답의 `scanned` — 읽은 «노드» 수입니다.
+          // 🔴 「봤는데 없다」와 「다 못 봤다」는 다릅니다. N 은 응답의 `scanned` — 읽은 «노드» 수입니다.
           subjBox.append(el(doc, 'div', 'wk-note', state.subjectsScanCut
             ? `Not every node read (up to ${state.subjectsScanned})`
             : 'No node of this type in the ledger'));
         } else {
           const ssel = el(doc, 'select', 'wk-select');
-          ssel.append(el(doc, 'option', '', '— 고르거나 아래에 직접 —'));
+          ssel.append(el(doc, 'option', '', '— pick, or type the keys below —'));
           list.forEach((s, i) => {
             const vals = Object.values(s.keys || {}).map((v) => String(v)).join(' · ');
             const o = el(doc, 'option', '', s.count ? `${vals}  (${s.count})` : vals);
@@ -248,136 +252,138 @@ export function boot(doc, host, deps) {
           subjBox.append(ssel);
           if (state.subjectsListCut) {
             subjBox.append(el(doc, 'div', 'wk-note',
-              `목록 ${list.length} · 이게 전부가 아닙니다 — 없으면 아래에 직접`));
+              `${unitText(list.length, 'node')} listed · not all · type the keys below if missing`));
           }
         }
       }
-      root.append(subjBox);
+      start.append(subjBox);
     }
 
-    // ── 씨앗: 키 ────────────────────────────────────────────────────────────────
-    const keyBox = field('키');
     const keys = keysOf(state.type);
-    if (!state.type) keyBox.append(el(doc, 'div', 'wk-note', '타입을 고르면 키가 나옵니다'));
-    else if (!keys.length) keyBox.append(el(doc, 'div', 'wk-note', '이 타입은 키가 없습니다'));
+    if (!state.type) start.append(el(doc, 'div', 'wk-note', 'Pick a type for its keys'));
+    else if (!keys.length) start.append(el(doc, 'div', 'wk-note', 'This type has no keys'));
+    const grid = el(doc, 'div', 'wk-keys');
     for (const k of keys) {
-      const row = el(doc, 'label', 'wk-keyrow');
-      row.append(el(doc, 'span', 'wk-keyname', k));
       const input = el(doc, 'input', 'wk-input');
       input.type = 'text';
       input.value = state.keys[k] === undefined ? '' : state.keys[k];
       input.addEventListener('input', () => { state.keys[k] = input.value; });
-      row.append(input);
-      keyBox.append(row);
+      grid.append(cell(k, input));
     }
-    root.append(keyBox);
+    if (keys.length) start.append(grid);
+    root.append(start);
+  }
 
-    // ── collect: «무엇을 가져오나» ────────────────────────────────────────────
-    //
-    // 🔴 목록이 시작 타입 드롭다운과 «같은 선언»에서 나옵니다. 사람이 배관 낱말(point ·
-    //    collection · claim …)을 몰라도 되는 이유가 그것입니다 -- 고를 수 있는 것만 보입니다.
-    // 🔵 체크박스입니다. 이 화면의 «여럿 고르기»는 이미 follow 가 체크박스라, 여기만 다중 선택
-    //    드롭다운을 쓰면 같은 일을 하는 컨트롤이 «두 모양»이 됩니다. 그리고 ctrl+클릭 다중
-    //    선택은 「하나 누르면 나머지가 풀리는」 사고가 나는 자리입니다.
-    const collectBox = field('collect · 무엇을 가져오나');
+  // ── collect: «무엇을 가져오나». 고른 타입은 칩(× 로 뺌), 더하기는 남은 타입의 드롭다운 하나 ──
+  // 🔵 드롭다운인 이유: 이 화면이 «타입 하나를 고르는» 데 이미 쓰는 컨트롤이 그것입니다.
+  function renderCollect(root) {
+    const box = field('Collect');
     const types = entities().map((e) => e.type);
-    if (!types.length) collectBox.append(el(doc, 'div', 'wk-note', '선언에 엔터티 없음'));
-    for (const t of types) {
-      const row = el(doc, 'label', 'wk-check' + (state.collect.has(t) ? ' is-on' : ''));
-      row.setAttribute('data-collect', t);
-      const cb = el(doc, 'input');
-      cb.type = 'checkbox';
-      cb.checked = state.collect.has(t);
-      cb.addEventListener('change', () => {
-        if (state.collect.has(t)) state.collect.delete(t); else state.collect.add(t);
+    if (!types.length) {
+      box.append(el(doc, 'div', 'wk-note', 'No entity declared'));
+      root.append(box);
+      return;
+    }
+    const chips = el(doc, 'div', 'wk-chips');
+    for (const t of types.filter((t) => state.collect.has(t))) {
+      const chip = el(doc, 'button', 'wk-chip', `${t} ×`);
+      chip.type = 'button';
+      chip.setAttribute('data-collect', t);
+      chip.setAttribute('aria-label', `Remove ${t}`);
+      chip.addEventListener('click', () => { state.collect.delete(t); render(); });
+      chips.append(chip);
+    }
+    const rest = types.filter((t) => !state.collect.has(t));
+    if (rest.length) {
+      const add = el(doc, 'select', 'wk-add');
+      add.setAttribute('aria-label', 'Add a type to collect');
+      const first = el(doc, 'option', '', '+ Type');
+      first.value = '';
+      add.append(first);
+      for (const t of rest) {
+        const o = el(doc, 'option', '', t);
+        o.value = t;
+        add.append(o);
+      }
+      add.addEventListener('change', () => {
+        if (!add.value) return;
+        state.collect.add(add.value);
         render();
       });
-      row.append(cb, el(doc, 'span', '', t));
-      collectBox.append(row);
+      chips.append(add);
     }
-    if (types.length) collectBox.append(el(doc, 'div', 'wk-note', `안 고르면 ${SERVER_DEFAULT} · 전부`));
-    root.append(collectBox);
+    box.append(chips);
+    if (!state.collect.size) box.append(el(doc, 'div', 'wk-note', `${UNPICKED} · ${SERVER_DEFAULT} · all`));
+    root.append(box);
+  }
 
-    // ── 경로: 시작과 도착지가 정해지면 선언이 «길을 알려 줍니다» ──────────────────
-    //
-    // 🔴 채워 주는 것이지 «뺏는 게 아닙니다». 누르면 아래 follow 체크와 hops 가 채워지고,
-    //    그다음 손으로 고쳐도 됩니다 -- 도출은 출발점이지 잠금이 아닙니다.
-    if (state.type && state.collect.size) {
-      const pathBox = field('경로 · 선언이 아는 길');
-      const found = routes();
-      if (!found.length) {
-        // 「길이 없다」는 답입니다. 빈 칸으로 두면 「아직 안 셌다」와 같아 보입니다.
-        pathBox.append(el(doc, 'div', 'wk-note',
-          `${bare(state.type)} 에서 ${[...state.collect].map(bare).join(' · ')} 로 가는 길 없음`));
-      }
-      // A route with the loop chips that are on fills follow and hops.
-      const useRoute = (r, on) => {
-        const asked = routeWith(r, on);
-        // 채우는 두 줄. 규칙은 `derive.js` 에 있고, 지우면 그쪽 하니스가 빨개집니다.
-        state.follow = new Set(followFromRoute(allPredicates(), asked.follow));
-        state.hops = String(asked.hops);
-        render();
-      };
-      for (const r of found) {
-        const asked = routeWith(r, loopsOf(r));
-        const row = el(doc, 'button', 'wk-path');
-        row.type = 'button';
-        row.append(el(doc, 'span', 'wk-pathto', `→ ${r.to}`));
-        row.append(el(doc, 'span', 'wk-pathchain', r.chain.join(' → ')));
-        row.append(el(doc, 'span', 'wk-pathmeta', `${asked.hops}홉 · ${asked.follow.join(', ')}`));
-        row.addEventListener('click', () => useRoute(r, loopsOf(r)));
-        pathBox.append(row);
-        // The route's self-loops: pressing one adds it to this route and uses the route.
-        if (r.loops.length) {
-          const chips = el(doc, 'div', 'wk-loops');
-          for (const loop of r.loops) {
-            const on = loopsOf(r).has(loop.predicate);
-            const chip = el(doc, 'button', 'wk-loopchip' + (on ? ' is-on' : ''), `↻ ${loop.predicate}`);
-            chip.type = 'button';
-            chip.setAttribute('aria-pressed', on ? 'true' : 'false');
-            chip.title = `${loop.at} → ${loop.at}`;
-            chip.addEventListener('click', () => {
-              const next = new Set(loopsOf(r));
-              if (on) next.delete(loop.predicate); else next.add(loop.predicate);
-              state.loopsOn.set(routeKey(r), next);
-              useRoute(r, next);
-            });
-            chips.append(chip);
-          }
-          pathBox.append(chips);
+  // ── 경로: 시작과 도착지가 정해지면 선언이 «길을 알려 줍니다» ──────────────────
+  // 🔴 채워 주는 것이지 «뺏는 게 아닙니다». 누르면 follow 와 hops 가 채워지고, 손으로 고쳐도 됩니다.
+  //    지금 고른 줄은 «지금 칸의 값»과 같은 줄입니다 — 손으로 고치면 표시가 정직하게 빠집니다.
+  function renderRoutes(root) {
+    if (!state.type || !state.collect.size) return;
+    const found = routes();
+    const box = el(doc, 'div', 'wk-field');
+    const head = el(doc, 'div', 'wk-routes-head');
+    head.append(el(doc, 'span', 'wk-label', `Route to ${[...state.collect].map(bare).join(', ')}`),
+      el(doc, 'span', 'wk-note', unitText(found.length, 'route')));
+    box.append(head);
+    if (!found.length) {
+      // 「길이 없다」는 답입니다. 빈 칸으로 두면 「아직 안 셌다」와 같아 보입니다.
+      box.append(el(doc, 'div', 'wk-note',
+        `No route from ${bare(state.type)} to ${[...state.collect].map(bare).join(' · ')}`));
+    }
+    // A route with the loop chips that are on fills follow and hops.
+    const useRoute = (r, on) => {
+      const asked = routeWith(r, on);
+      // 채우는 두 줄. 규칙은 `derive.js` 에 있고, 지우면 그쪽 하니스가 빨개집니다.
+      state.follow = new Set(followFromRoute(allPredicates(), asked.follow));
+      state.hops = String(asked.hops);
+      render();
+    };
+    const sameSet = (a, b) => a.size === b.size && [...a].every((x) => b.has(x));
+    for (const r of found) {
+      const asked = routeWith(r, loopsOf(r));
+      const picked = state.hops === String(asked.hops)
+        && sameSet(state.follow, new Set(followFromRoute(allPredicates(), asked.follow)));
+      const route = el(doc, 'div', 'wk-route' + (picked ? ' is-on' : ''));
+      const row = el(doc, 'button', 'wk-path');
+      row.type = 'button';
+      row.setAttribute('aria-pressed', picked ? 'true' : 'false');
+      row.append(el(doc, 'span', 'wk-pathto', `→ ${r.to}`));
+      row.append(el(doc, 'span', 'wk-pathchain', r.chain.join(' → ')));
+      row.append(el(doc, 'span', 'wk-pathmeta', `${unitText(asked.hops, 'hop')} · ${asked.follow.join(', ')}`));
+      row.addEventListener('click', () => useRoute(r, loopsOf(r)));
+      route.append(row);
+      // The route's self-loops: pressing one adds it to this route and uses the route.
+      if (r.loops.length) {
+        const chips = el(doc, 'div', 'wk-loops');
+        chips.append(el(doc, 'span', 'wk-note', 'self-loops'));
+        for (const loop of r.loops) {
+          const on = loopsOf(r).has(loop.predicate);
+          const chip = el(doc, 'button', 'wk-loopchip' + (on ? ' is-on' : ''), `↻ ${loop.predicate}`);
+          chip.type = 'button';
+          chip.setAttribute('aria-pressed', on ? 'true' : 'false');
+          chip.title = `${loop.at} → ${loop.at}`;
+          chip.addEventListener('click', () => {
+            const next = new Set(loopsOf(r));
+            if (on) next.delete(loop.predicate); else next.add(loop.predicate);
+            state.loopsOn.set(routeKey(r), next);
+            useRoute(r, next);
+          });
+          chips.append(chip);
         }
+        route.append(chips);
       }
-      root.append(pathBox);
+      box.append(route);
     }
+    root.append(box);
+  }
 
-    // ── follow ────────────────────────────────────────────────────────────────
-    const followBox = field('follow · 어느 길로');
-    const opts = followOptions();
-    if (!opts.length) {
-      followBox.append(el(doc, 'div', 'wk-note', state.type
-        ? noFollowSentence(state.type)
-        : '선언에 술어 없음'));
-    }
-    for (const name of opts) {
-      const row = el(doc, 'label', 'wk-check' + (state.follow.has(name) ? ' is-on' : ''));
-      row.setAttribute('data-follow', name);
-      const cb = el(doc, 'input');
-      cb.type = 'checkbox';
-      cb.checked = state.follow.has(name);
-      cb.addEventListener('change', () => {
-        if (state.follow.has(name)) state.follow.delete(name); else state.follow.add(name);
-        render();
-      });
-      row.append(cb, el(doc, 'span', '', name));
-      followBox.append(row);
-    }
-    if (opts.length) followBox.append(el(doc, 'div', 'wk-note', `안 고르면 ${SERVER_DEFAULT}`));
-    root.append(followBox);
-
-    // ── 손잡이 셋. 비면 «안 갑니다» — 그 상태를 칸이 «말합니다» ────────────────────
-    const knobs = field('걸음');
-    const dirRow = el(doc, 'label', 'wk-keyrow');
-    dirRow.append(el(doc, 'span', 'wk-keyname', 'direction'));
+  // ── 손잡이 셋. 비면 «안 갑니다» — 그 상태를 칸이 «말합니다» ────────────────────
+  function renderStep(root) {
+    const box = field('Step');
+    const grid = el(doc, 'div', 'wk-steps');
     const dir = el(doc, 'select', 'wk-select');
     dir.append(el(doc, 'option', '', SERVER_DEFAULT));
     for (const d of DIRECTIONS) {
@@ -387,70 +393,82 @@ export function boot(doc, host, deps) {
       dir.append(o);
     }
     dir.addEventListener('change', () => { state.direction = dir.value; });
-    dirRow.append(dir);
-    knobs.append(dirRow);
+    grid.append(cell('direction', dir));
     for (const [name, key, min, max] of [['hops', 'hops', 1, 40],
                                          ['node_limit', 'nodeLimit', 10, 5000]]) {
-      const row = el(doc, 'label', 'wk-keyrow');
-      row.append(el(doc, 'span', 'wk-keyname', name));
       const input = el(doc, 'input', 'wk-input');
       input.type = 'number';
       input.min = String(min); input.max = String(max);
       input.placeholder = SERVER_DEFAULT;
       input.value = state[key];
       input.addEventListener('input', () => { state[key] = input.value; });
-      row.append(input);
-      knobs.append(row);
+      grid.append(cell(name, input));
     }
-    root.append(knobs);
+    box.append(grid);
+    root.append(box);
+  }
 
-    // ── 날리기 ────────────────────────────────────────────────────────────────
-    const go = el(doc, 'button', 'wk-go', state.run === 'running' ? RUNNING : '날리기');
+  // ── follow: 접힌 한 줄(지금 고른 술어), 펴면 오늘의 체크 목록 ─────────────────────────
+  // 🔴 고를 것이 «없으면» 접을 것도 없습니다 — 그 문장을 바로 그립니다.
+  function renderFollow(root) {
+    const opts = followOptions();
+    const box = el(doc, 'div', 'wk-field');
+    if (!opts.length) {
+      box.append(el(doc, 'div', 'wk-label', 'Follow'));
+      box.append(el(doc, 'div', 'wk-note', state.type
+        ? noFollowSentence(state.type)
+        : 'No predicate declared'));
+      root.append(box);
+      return;
+    }
+    const summary = state.follow.size ? [...state.follow].map(bare).join(', ') : SERVER_DEFAULT;
+    const fold = el(doc, 'button', 'wk-fold');
+    fold.type = 'button';
+    fold.setAttribute('aria-expanded', state.followOpen ? 'true' : 'false');
+    fold.append(el(doc, 'span', 'wk-foldtext', `Follow · ${summary}`),
+      el(doc, 'span', 'wk-foldmark', state.followOpen ? '▾' : '▸'));
+    fold.addEventListener('click', () => { state.followOpen = !state.followOpen; render(); });
+    box.append(fold);
+    if (state.followOpen) {
+      const list = el(doc, 'div', 'wk-checks');
+      for (const name of opts) {
+        const row = el(doc, 'label', 'wk-check' + (state.follow.has(name) ? ' is-on' : ''));
+        row.setAttribute('data-follow', name);
+        const cb = el(doc, 'input');
+        cb.type = 'checkbox';
+        cb.checked = state.follow.has(name);
+        cb.addEventListener('change', () => {
+          if (state.follow.has(name)) state.follow.delete(name); else state.follow.add(name);
+          render();
+        });
+        row.append(cb, el(doc, 'span', '', name));
+        list.append(row);
+      }
+      box.append(list);
+      box.append(el(doc, 'div', 'wk-note', `${UNPICKED} · ${SERVER_DEFAULT}`));
+    }
+    root.append(box);
+  }
+
+  function renderGo(root) {
+    const go = el(doc, 'button', 'wk-go', state.run === 'running' ? RUNNING : 'Walk');
     go.type = 'button';
-    // 🔴 C-120. 꺼진 이유가 «둘»이고, 전에는 둘 다 말하지 않았습니다. 옆 드롭다운의
-    //    「— 고르십시오 —」가 «간접으로» 답하고 있었는데, 그것은 이 버튼의 자리가 아닙니다.
-    //    ⚠️ 「걷는 중」은 라벨과 «같은 상수»입니다 — 다른 낱말로 적으면 한 사실이 두 글자가 됩니다.
-    // ⚠️ 문장을 «새로 짓지» 않습니다. 이 화면의 전선이 같은 사실에 대고 이미 이 말을
-    //    하고 있었습니다(`fetchKeyValues` 의 거절문). 여기 한 줄을 더 적었다가 되돌렸습니다 —
-    //    같은 사실에 두 문구를 쓰면 그 둘은 언젠가 갈라집니다.
+    // 🔴 C-120. 꺼진 이유가 «둘»입니다. 「걷는 중」은 라벨과 «같은 상수»이고, 타입이 없을 때의
+    //    문장은 이 화면의 전선이 같은 사실에 이미 쓰는 말(`PICK_TYPE_FIRST`)입니다.
     setDisabledReason(go, state.run === 'running'
       ? RUNNING
       : (state.type ? '' : PICK_TYPE_FIRST));
     go.addEventListener('click', fire);
     root.append(go);
-
-    // ── Table | Graph ─────────────────────────────────────────────────────────
-    const views = el(doc, 'div', 'wk-views');
-    for (const [name, word] of [['table', 'Table'], ['graph', 'Graph']]) {
-      const button = el(doc, 'button', 'wk-view' + (state.view === name ? ' is-on' : ''), word);
-      button.type = 'button';
-      button.setAttribute('data-view', name);
-      button.addEventListener('click', () => {
-        state.view = name;
-        if (name === 'graph' && state.type) showGraph({ reuse: true });
-        render();
-      });
-      views.append(button);
-    }
-    root.append(views);
   }
 
   /**
    * 응답을 «표»로. 행은 «노드 하나»이고, 타입이 여럿이면 구획으로 나뉩니다.
-   *
-   * 🔴 컬럼 이름을 «코드에 안 적습니다». 키는 «선언»의 그 타입 `keys` 에서, 수식어는 «온 응답»의
-   *    엣지가 들고 온 이름에서 옵니다. 그래서 선언에 키가 하나 늘면 컬럼도 «따라 늡니다» --
-   *    여기를 고치지 않고.
-   * 🔴 빈 칸은 «빈 칸»입니다. 「—」나 0 으로 채우면 「없다」와 「0 이다」가 같은 글자가 됩니다.
-   * 🔴 순서는 «서버가 준 그대로». 화면이 다시 정렬하지 않습니다 -- 그 순서(깊이 -> 종류 -> 라벨)
-   *    가 답의 일부입니다.
+   * 🔴 C-72. 이 함수는 «아무것도 정하지 않습니다» — 구획도 컬럼도 셀 글자도 못 그린 수도
+   *    `walkTableView` 가 답하고, 여기서는 그 답을 DOM 으로 옮기기만 합니다.
    */
-  // 🔴 C-72. 이 함수는 이제 «아무것도 정하지 않습니다» — 구획도 컬럼도 셀 글자도 못 그린
-  //    수도 `walkTableView` 가 답하고, 여기서는 그 답을 DOM 으로 옮기기만 합니다. 그래서
-  //    하니스가 이 화면을 세워 「그려진 것이 그 함수의 답인가」를 «거동으로» 물을 수 있습니다.
   function renderTable(box, r) {
-    // C-98. 선언의 술어 목록이 «같이» 갑니다 — 확인 술어를 이름 대는 것은 선언이고,
-    // 화면은 그 이름을 읽을 뿐입니다.
+    // C-98. 선언의 술어 목록이 «같이» 갑니다 — 확인 술어를 이름 대는 것은 선언입니다.
     const view = walkTableView(r, entities(), (state.decl && state.decl.predicates) || []);
     for (const section of view.sections) {
       const sec = el(doc, 'div', 'wk-sec');
@@ -479,55 +497,75 @@ export function boot(doc, host, deps) {
     }
 
     if (view.hidden) {
-      box.append(el(doc, 'div', 'wk-note', `이 아래 ${view.hidden} 개 안 그림`));
+      box.append(el(doc, 'div', 'wk-note', `${view.hidden} more not drawn`));
     }
   }
 
+  /** What the shown walk asked: the start's type and key values, and the types it collects. */
+  function askedTitle(asked) {
+    const values = Object.values(asked.keys || {}).map((v) => String(v)).filter((v) => v).join(' · ');
+    const to = (asked.collect || []).map(bare).join(', ');
+    return `${bare(asked.type)}${values ? ' ' + values : ''}${to ? ' → ' + to : ''}`;
+  }
+
+  function renderHead(root) {
+    const head = el(doc, 'div', 'wk-mainhead');
+    const r = state.result;
+    if (state.view === 'table' && state.run === 'done' && r && state.asked) {
+      head.append(el(doc, 'span', 'wk-title', askedTitle(state.asked)));
+      // 🔴 두 수가 «다른 모집단»입니다. collect 는 노드를 거르고 엣지는 «안 거릅니다», 그래서
+      //    collect 가 걸렸을 때만 «주어»를 답니다.
+      const asked = (state.asked.collect || []).map(bare).join(', ');
+      head.append(el(doc, 'span', 'wk-counts', asked
+        ? `Nodes ${r.nodes.length} (collect: ${asked}) · Edges ${r.edges.length} (all)`
+        : `Nodes ${r.nodes.length} · Edges ${r.edges.length}`));
+    }
+    // ── Table | Graph ───────────────────────────────────────────────────────
+    const views = el(doc, 'div', 'wk-views');
+    for (const [name, word] of [['table', 'Table'], ['graph', 'Graph']]) {
+      const button = el(doc, 'button', 'wk-view' + (state.view === name ? ' is-on' : ''), word);
+      button.type = 'button';
+      button.setAttribute('data-view', name);
+      button.addEventListener('click', () => {
+        state.view = name;
+        if (name === 'graph' && state.type) showGraph({ reuse: true });
+        render();
+      });
+      views.append(button);
+    }
+    head.append(views);
+    root.append(head);
+  }
+
   function renderResult(root) {
-    if (state.run === 'idle') return;
     const box = el(doc, 'div', 'wk-result');
-    if (state.run === 'running') { box.append(el(doc, 'div', 'wk-note', '걷는 중')); }
-    else if (state.run === 'failed') {
+    if (state.run === 'idle') {
+      box.append(el(doc, 'div', 'wk-note', 'No walk yet'));
+    } else if (state.run === 'running') {
+      box.append(el(doc, 'div', 'wk-note', RUNNING));
+    } else if (state.run === 'failed') {
       // 🔴 사유를 «서버의 말»로. 여기서 다시 쓰면 같은 거절이 두 화면에서 달라집니다.
       const line = el(doc, 'div', 'wk-fail');
-      line.append(el(doc, 'b', '', '실패'), el(doc, 'span', '', ' · ' + state.reason));
+      line.append(el(doc, 'b', '', FAILED), el(doc, 'span', '', ' · ' + state.reason));
       box.append(line);
     } else if (state.result) {
       const r = state.result;
-      // 🔴 두 수가 «다른 모집단»입니다. collect 는 노드를 거르고 엣지는 «안 거릅니다»(오늘
-      //    판정), 그래서 한 줄에 나란히 두면 읽는 사람이 «같은 그래프»로 봅니다 — 응답에
-      //    대해서는 참인데 그 줄이 두 뜻입니다. collect 가 걸렸을 때만 «주어»를 답니다.
-      // ⚠️ 문장이 아니라 «주어»입니다. 안 걸렸으면 둘 다 전부라 붙일 것이 없습니다.
-      const asked = [...state.collect].map(bare).join(', ');
-      box.append(el(doc, 'div', 'wk-counts', asked
-        ? `노드 ${r.nodes.length} (collect: ${asked}) · 엣지 ${r.edges.length} (전부)`
-        : `노드 ${r.nodes.length} · 엣지 ${r.edges.length}`));
-      // 🔴 몇 홉을 «실제로» 걸었나. 요청한 수와 다르면 그 자체가 답입니다 —
-      //    예산에서 끊겼거나, 그 방향으로 더 갈 것이 없었거나.
+      // 🔴 몇 홉을 «실제로» 걸었나. 요청한 수와 다르면 그 자체가 답입니다.
       if (r.walk) {
         box.append(el(doc, 'div', 'wk-walk',
-          `요청 ${r.walk.hops_requested}홉 · 도달 ${r.walk.hops_reached}홉`
+          `Asked ${unitText(r.walk.hops_requested, 'hop')} · reached ${unitText(r.walk.hops_reached, 'hop')}`
           + ` · ${r.walk.direction}`));
       }
-      // 🔴 S-13: «기준 시각». 위의 수들이 「지금」이 아니라 «그때»의 것이고, 새로 고치지 않은
-      //    화면은 오래된 수를 «현재형»으로 말합니다. 서버가 줄곧 보내고 있었고 읽는 자리가
-      //    없었습니다.
-      // ⛔ 문장이 아니라 «값»입니다 — 「언제 것인지」는 수 옆에 서야 하고, 설명을 붙이면
-      //    그 자체가 화면이 안 보여 준다는 뜻입니다.
+      // 🔴 S-13: «기준 시각». 위의 수들이 「지금」이 아니라 «그때»의 것입니다.
       if (r.generatedAt) {
-        box.append(el(doc, 'div', 'wk-note', `기준 ${String(r.generatedAt)}`));
+        box.append(el(doc, 'div', 'wk-note', `As of ${String(r.generatedAt)}`));
       }
-      // ⚠️ 절단은 «말합니다». 안 말하면 잘린 목록이 「전부」로 읽힙니다.
-      // 🔴 «자른 축»을 씁니다. `reason` 을 그대로 쓰면 2홉을 물어 2홉을 걸은 답에도 "depth" 가
-      //    실려, 바로 위 「요청 2홉 · 도달 2홉」과 «정반대»를 말합니다 (실측 2026-09-06).
+      // ⚠️ 절단은 «말합니다». 🔴 «자른 축»을 씁니다 — `reason` 을 그대로 쓰면 다 걸은 답에도 depth 가 실립니다.
       if (r.cut) {
         box.append(el(doc, 'div', 'wk-trunc',
-          `절단됨 · ${cutBudgets(r.truncatedAxes, r.limits).join(' · ')}`));
+          `Cut · ${cutBudgets(r.truncatedAxes, r.limits).join(' · ')}`));
       }
-      // 🔴 타입 분포 — 「collect 가 «먹었나»」가 «눈에» 보이는 자리입니다. 수만 보면
-      //    collect 를 건 것과 안 건 것이 같아 보입니다: 둘 다 「노드 N」이니까요.
-      //    ⚠️ 여기서 «거르지 않습니다». 세기만 합니다 -- 거르는 것은 walk 의 일이고,
-      //       화면이 거르면 「서버가 무엇을 줬나」를 영영 못 봅니다.
+      // 🔴 타입 분포 — 「collect 가 «먹었나»」가 «눈에» 보이는 자리입니다. ⚠️ 거르지 않고 세기만.
       if (r.nodes.length) {
         const byType = new Map();
         for (const n of r.nodes) {
@@ -535,7 +573,7 @@ export function boot(doc, host, deps) {
           byType.set(t, (byType.get(t) || 0) + 1);
         }
         const dist = el(doc, 'div', 'wk-dist');
-        dist.append(el(doc, 'span', 'wk-distlabel', '타입'));
+        dist.append(el(doc, 'span', 'wk-distlabel', 'Types'));
         for (const [t, n] of [...byType.entries()].sort((a, b) => b[1] - a[1])) {
           const chip = el(doc, 'span', 'wk-distchip' + (state.collect.has(t) || state.collect.has(`${t}@1`) ? ' is-asked' : ''));
           chip.append(el(doc, 'b', '', t), el(doc, 'span', '', ` ${n}`));
@@ -545,7 +583,7 @@ export function boot(doc, host, deps) {
       }
       // 🔴 「닿은 것이 없다」는 «실패가 아닙니다». 서버가 그 문장을 들고 오므로 그것을 씁니다.
       if (!r.nodes.length) {
-        box.append(el(doc, 'div', 'wk-note', r.message || '닿은 노드 없음'));
+        box.append(el(doc, 'div', 'wk-note', r.message || 'No node reached'));
       }
       renderTable(box, r);
     }
@@ -554,23 +592,35 @@ export function boot(doc, host, deps) {
 
   function render() {
     host.textContent = '';
-    const root = el(doc, 'div', 'wk-form');
+    rail.textContent = '';
+    main.textContent = '';
+    // The rail scrolls inside itself; Walk sits in its foot, always in reach (lead 2b5819e1d).
+    const body = el(doc, 'div', 'wk-form');
+    const foot = el(doc, 'div', 'wk-rail-foot');
     if (state.declState === 'loading') {
-      root.append(el(doc, 'div', 'wk-note', '선언 · 읽는 중'));
+      body.append(el(doc, 'div', 'wk-note', `Declaration · ${LOADING}`));
     } else if (state.declState === 'failed') {
       // 「못 읽음」과 「없음」은 다릅니다 — 앞은 다시 눌러 볼 수 있습니다.
       const line = el(doc, 'div', 'wk-fail');
-      line.append(el(doc, 'b', '', '선언 못 읽음'), el(doc, 'span', '', ' · ' + state.declReason));
-      const again = el(doc, 'button', 'wk-go', '다시');
+      line.append(el(doc, 'b', '', 'Declaration not read'), el(doc, 'span', '', ' · ' + state.declReason));
+      const again = el(doc, 'button', 'wk-go', 'Retry');
       again.type = 'button';
       again.addEventListener('click', load);
-      root.append(line, again);
+      body.append(line);
+      foot.append(again);
     } else {
-      renderForm(root);
-      if (state.view === 'graph') root.append(graphMount);
-      else renderResult(root);
+      renderStart(body);
+      renderCollect(body);
+      renderRoutes(body);
+      renderStep(body);
+      renderFollow(body);
+      renderGo(foot);
+      renderHead(main);
+      if (state.view === 'graph') main.append(graphMount);
+      else renderResult(main);
     }
-    host.append(root);
+    rail.append(body, foot);
+    host.append(rail, main);
   }
 
   async function loadSubjects() {
@@ -578,8 +628,7 @@ export function boot(doc, host, deps) {
     const forType = state.type;
     state.subjectsState = 'loading'; state.subjects = null; render();
     const got = await fetchKeyValues({ apiBase, fetchImpl: options.fetchImpl, type: forType });
-    // 타입이 그새 바뀌었으면 «옛 답»을 앉히지 않습니다 — 늦게 온 응답이 새 타입의 목록을
-    // 덮으면 화면이 조용히 틀린 주어를 내놓습니다.
+    // 타입이 그새 바뀌었으면 «옛 답»을 앉히지 않습니다.
     if (state.type !== forType) return;
     if (got && got.ok) {
       state.subjectsState = 'ready';
@@ -589,7 +638,7 @@ export function boot(doc, host, deps) {
       state.subjectsListCut = got.valuesTruncated;
     } else {
       state.subjectsState = 'failed';
-      state.subjectsReason = (got && got.message) || '알 수 없음';
+      state.subjectsReason = (got && got.message) || UNKNOWN;
     }
     render();
   }
@@ -598,7 +647,7 @@ export function boot(doc, host, deps) {
     state.declState = 'loading'; render();
     const got = await fetchDeclaration({ apiBase, fetchImpl: options.fetchImpl });
     if (got && got.ok) { state.decl = got; state.declState = 'ready'; }
-    else { state.declState = 'failed'; state.declReason = (got && got.message) || '알 수 없음'; }
+    else { state.declState = 'failed'; state.declReason = (got && got.message) || UNKNOWN; }
     render();
   }
 

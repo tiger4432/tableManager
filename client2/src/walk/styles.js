@@ -44,18 +44,54 @@ export const WALK_CSS = `
 .wk-check.is-on { background: var(--accent-soft, rgba(37, 99, 235, 0.10)); }
 .wk-check input[type="checkbox"] { width: 22px; height: 22px; flex: none; }
 /* 🔴 고르는 목록은 «폭»을 씁니다. 높이 44 는 손가락이라 그대로이고, 한 줄에 하나씩 세우는
-   것만 그만둡니다 — 실측(480px 틀): 폼 1,623px 중 1,214px 가 체크박스 23줄이고, 줄마다
-   438px 중 열 글자만 씁니다. 390px 휴대폰에서 「걸음」까지 두 화면 반을 내려야 했습니다.
-   ⚠️ 고르는 상자만 고릅니다 — :has(.wk-check) 하나입니다. 키 줄과 걸음 손잡이는 체크박스가 없어서
-      선택자에 «걸리지도» 않고, 그래서 렌더러는 한 글자도 안 바뀝니다.
+   것만 그만둡니다 — 실측(480px 틀): 폼 1,623px 중 1,214px 가 체크박스 23줄이었습니다.
    🔴 칸은 «자기 이름만큼» 자랍니다(flex 0 1 auto) — 고정 폭으로 나누면 긴 이름이 잘리고,
    잘린 이름은 읽을 방법이 없습니다(이 폼에 hover 가 없습니다 — 휴대폰입니다). 최소 9.5em 은
    손가락이 옆 칸을 안 누르게 하는 바닥이고, 화면보다 긴 이름만 마지막 수단으로 잘립니다. */
-.wk-field:has(.wk-check) { flex-flow: row wrap; column-gap: 6px; }
-.wk-field:has(.wk-check) > .wk-label,
-.wk-field:has(.wk-check) > .wk-note { flex: 1 0 100%; }
+.wk-checks { display: flex; flex-flow: row wrap; gap: var(--space-1) var(--space-2); }
 .wk-check { flex: 0 1 auto; min-width: 9.5em; max-width: 100%; }
 .wk-check > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Layout A (lead 2b5819e1d): the form is a rail, the result its own part. The page seats the two;
+   each scrolls inside itself, and Walk stays in the rail's foot. */
+.wk-rail { display: flex; flex-direction: column; min-height: 0; background: var(--bg-surface);
+  border-right: 1px solid var(--border); }
+.wk-rail > .wk-form { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: var(--space-4);
+  gap: var(--space-5); }
+/* In the rail a section is a heading and its controls, not a boxed card (the layout A mockup). */
+.wk-rail .wk-field { gap: var(--space-2); padding: 0; background: transparent; border: 0; }
+.wk-rail-foot { flex: none; padding: var(--space-3) var(--space-4); border-top: 1px solid var(--border);
+  background: var(--bg-surface); }
+.wk-main { display: flex; flex-direction: column; gap: var(--space-3); min-width: 0; min-height: 0;
+  overflow: auto; padding: var(--space-4) var(--space-5); }
+.wk-mainhead { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3) var(--space-4); }
+.wk-title { font-size: 17px; font-weight: 600; overflow-wrap: anywhere; }
+.wk-mainhead > .wk-views { margin-left: auto; }
+/* A name above its control: key, step and pick cells. */
+.wk-cell { display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; }
+.wk-cell > .wk-keyname { width: auto; }
+.wk-cell-row { flex-direction: row; align-items: center; gap: var(--space-3); }
+.wk-cell-row > .wk-keyname { flex: none; width: 4.5em; }
+.wk-keys, .wk-steps { display: grid; gap: var(--space-2); }
+.wk-keys { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.wk-steps { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.wk-sub { display: flex; flex-direction: column; gap: var(--space-1); }
+/* Collect: the picked types are chips (× takes one out); the rest are behind one + Type dropdown. */
+.wk-chips { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.wk-chip, .wk-add { min-height: 44px; padding: 0 var(--space-4); border-radius: 999px; font: inherit;
+  font-size: 14px; cursor: pointer; }
+.wk-chip { color: var(--accent); background: var(--accent-weak); border: 1px solid var(--accent); }
+.wk-add { color: var(--text-dim); background: var(--bg-surface); border: 1px dashed var(--border-strong); }
+.wk-routes-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-3); }
+.wk-route { display: flex; flex-direction: column; gap: var(--space-2); margin: 0 0 var(--space-2);
+  padding: var(--space-2); border: 1px solid var(--border); border-radius: 8px; }
+.wk-route.is-on { border-color: var(--accent); background: var(--accent-weak); }
+/* Follow: one folded line saying what is picked; opened, today's check list. */
+.wk-fold { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3);
+  width: 100%; min-height: 44px; padding: 0 var(--space-3); font: inherit; font-size: 14px; text-align: left;
+  color: var(--text); background: var(--bg-header); border: 1px solid var(--border); border-radius: 6px;
+  cursor: pointer; }
+.wk-foldtext { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .wk-go { width: 100%; border: 0; border-radius: 8px;
   background: var(--accent, #2563eb); color: #fff; font-weight: 600; }
@@ -67,15 +103,15 @@ export const WALK_CSS = `
 .wk-counts { font-weight: 600; }
 /* 경로 — 누를 수 있는 것이므로 button 이고, 그래서 키보드로도 닿습니다. */
 .wk-path { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; width: 100%;
-  text-align: left; min-height: 44px; padding: 8px 10px; margin: 0 0 6px;
-  border: 1px solid var(--line, #e4e4e7); border-radius: 6px; cursor: pointer;
-  background: var(--surface, #fff); color: inherit; font: inherit; }
+  text-align: left; min-height: 44px; padding: 8px 10px; margin: 0;
+  border: 0; border-radius: 6px; cursor: pointer;
+  background: transparent; color: inherit; font: inherit; }
 .wk-path:hover { background: var(--accent-soft, rgba(37, 99, 235, 0.10)); }
 .wk-pathto { font-weight: 700; grid-row: 1 / span 2; align-self: center; }
 .wk-pathchain { font-size: 0.86rem; }
 .wk-pathmeta { font-size: 0.78rem; color: var(--text-dim, #71717a); }
 /* A route's self-loops, as chips under its row: off by default (lead 5d5b8d750). */
-.wk-loops { display: flex; flex-wrap: wrap; gap: 6px; margin: -2px 0 8px; }
+.wk-loops { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
 .wk-loopchip { min-height: 44px; padding: 0 12px; border-radius: 999px; cursor: pointer;
   border: 1px solid var(--line, #e4e4e7); background: var(--surface, #fff); color: var(--text-dim, #71717a);
   font: inherit; font-size: 0.82rem; }

@@ -186,6 +186,8 @@ async function suite(mods) {
   const wpage = walkPage.boot(wdoc, whost, { apiBase: '',
     fetchImpl: async () => ({ ok: true, status: 200, json: async () => DECL }) });
   await settle();
+  // The page's follow list is one folded line until opened (lead 2b5819e1d); the list is compared open.
+  wpage.state.followOpen = true;
   const differ = [];
   for (const { type } of DECL.entities) {
     wpage.state.type = type;

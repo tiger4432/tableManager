@@ -1,0 +1,4 @@
+{
+  "full": "/api/ledger/subgraph?id=ledger-entity%3Av1%3AWyJkaWUiLHsibWF0X2lkIjoiTS0xIiwieCI6IjEyIn1d&node_limit=200&hops=3&follow=in_container&follow=transfer&follow=observed&collect=wafer&direction=outgoing",
+  "bare": "/api/ledger/subgraph?id=ledger-entity%3Av1%3AWyJkaWUiLHsibWF0X2lkIjoiTS0xIn1d"
+}

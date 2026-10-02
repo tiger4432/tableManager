@@ -1433,6 +1433,9 @@ const FLOORS = new Map([
   // 15 -> 17 (lead b417e2ad8, P1 and M6): picking the type placeholder again is no type - Run off,
   // no subject list asked.
   ['walk_table_harness.mjs', 30],
+  // New (lead 2b5819e1d): walk layout A - the form is the rail, the result its own part, Follow folded,
+  // the same choices send the request recorded before the layout (fixtures/walk_wire_before.json).
+  ['walk_layout_harness.mjs', 18],
   ['walk_route_fill_harness.mjs', 81],
   // New 2026-09-08 with C-40 ② (the declaration form's three attribute seats). Floor is
   // the count it reports on the commit that introduces it -- there is no earlier tree to

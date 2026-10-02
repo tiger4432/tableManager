@@ -149,10 +149,10 @@ async function suite(mod) {
   // ⚠️ THE PAGE HAS OTHER NOTES. Scoping by class alone caught the form's two and made
   //    「no note」 unfalsifiable; the cap note is the one that says so.
   const capNotes = (h) => byClass(h, 'wk-note').map((e) => e.textContent)
-    .filter((t) => t.includes('안 그림'));
+    .filter((t) => t.includes('not drawn'));
   eq('C1 over the cap the view hides exactly what did not fit', capView.hidden, 3);
   eq('C2 and the screen prints THAT number',
-    capNotes(capped).join(' / '), '이 아래 3 개 안 그림');
+    capNotes(capped).join(' / '), '3 more not drawn');
   ok('C3 the total is not what is printed, since 203 would read as all of it being hidden',
     !capNotes(capped).some((t) => t.includes('203')), capNotes(capped).join(' / '));
   const { host: exact } = await render(mod, { nodes: RESULT.nodes, edges: [] });
@@ -209,6 +209,12 @@ async function suite(mod) {
         sel.value = type;
         for (const fn of sel.listeners.change || []) fn();
         await settle();
+        // The follow list is one folded line until opened (lead 2b5819e1d) - open it, as a person does.
+        const fold = byClass(host, 'wk-fold')[0];
+        if (fold && fold.attrs['aria-expanded'] === 'false') {
+          for (const fn of fold.listeners.click || []) fn();
+          await settle();
+        }
       } };
     };
     const follow = (h) => walkAll(h).filter((e) => e.attrs && e.attrs['data-follow'] !== undefined)
@@ -296,8 +302,8 @@ const MUTANTS = [
     to: "          const td = el(doc, 'td', '', cell.text);" },
   { id: 'M4', what: 'the cap note prints the total instead of what was hidden',
     catches: 'C3 the total is not what is printed',
-    from: '      box.append(el(doc, \'div\', \'wk-note\', `이 아래 ${view.hidden} 개 안 그림`));',
-    to: '      box.append(el(doc, \'div\', \'wk-note\', `이 아래 ${r.nodes.length} 개 안 그림`));' },
+    from: '      box.append(el(doc, \'div\', \'wk-note\', `${view.hidden} more not drawn`));',
+    to: '      box.append(el(doc, \'div\', \'wk-note\', `${r.nodes.length} more not drawn`));' },
   { id: 'M6', what: 'the type placeholder carries its text as its value again',
     catches: 'P1 picking the placeholder',
     from: "    none.value = '';\n", to: '' },
@@ -324,8 +330,8 @@ const MUTANTS = [
   // 🔴 CONTROL: a comment cannot change an answer. If this reddens something, the harness is
   //    reading text rather than behaviour.
   { id: 'M5', what: 'CONTROL: a comment line is removed', control: true,
-    from: '  // 🔴 C-72. 이 함수는 이제 «아무것도 정하지 않습니다» — 구획도 컬럼도 셀 글자도 못 그린',
-    to: '  //' },
+    from: '// 🔴 C-72. 표의 «결정»은 전부 여기 있고 이 파일에는 DOM 쓰기만 남습니다.',
+    to: '//' },
 ];
 
 const runMutant = async (m) => {
