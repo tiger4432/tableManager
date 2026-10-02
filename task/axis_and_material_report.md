@@ -1,3 +1,15 @@
+> ## [14:06 디자인] 걸음 규칙 계약 `contracts/walk_step` — 클라 절반 — 총괄 2dcf6fb71 · ccb5d1b4c
+
+- **벡터** `vectors.json` — (정적 타입 목록, from, to, 몇 번째 걸음) -> 밟나. 11 건, 오늘 클라 11 통과 · 0 어긋남. 지시서의 갈래(동적->동적 · 동적->정적 · 정적->정적 · 정적->동적 첫 걸음 · 정적->동적 둘째 · 판 접미 · 정적 목록 빔)에 더한 것: 정적->동적 셋째 걸음 · 첫 걸음의 정적->정적 · 동적->동적 · 판 접미.
+- **정적 타입은 맨 이름**, from · to 는 판이 붙어도 됨(follow 목록은 `recipe@1`, 경로 목록은 `recipe` 로 묻기 때문). 서버 절반이 `_held_to_names` 에 어떻게 대응하는지 벡터 머리에 한 줄로 적었습니다: 밟나 = not (`_held_to_names(bare(from), step == 0, 정적)` and bare(to) 가 정적 아님). 서버 채점 시험은 구현자 몫입니다.
+- **클라 하니스** `client_harness.mjs` — `walk/derive.js` 를 import 해 `walkTakesStep` 을 채점. 밟음 · 안 밟음이 둘 다 없는 벡터는 하니스 실패(한쪽 답만 있으면 「늘 예」도 통과하므로). 계약 러너가 디렉터리를 «찾아서» 돌리므로 등록은 파일을 두는 것으로 끝 — 계약 러너 13 개 어긋남 0(`walk_step` 포함).
+- **변이 — 하니스 파일은 그대로, `derive.js` 만 바꾼 임시 나무에서**
+  - exit 0 (want 0) · control: unchanged
+  - exit 1 (want 1) · the seed first step is closed again · red: static_to_dynamic_first_step, versioned_static_first_step
+  - exit 1 (want 1) · every step is open · red: static_to_dynamic_second_step, static_to_dynamic_deeper, versioned_static_second_step
+  - exit 1 (want 1) · the version is kept, so recipe@1 is never static · red: versioned_static_second_step
+- RELEASE_LOG 는 안 씀(시험만 바뀜). CODE_MAP derive 행에 계약 한 마디.
+
 > ## [14:01 디자인] 걷기 — 시작 타입에 닿는 술어 전부 · 정적 씨앗의 첫 걸음 · 두 화면 한 좌석 — 총괄 29cee1d47 · c24ba7d82 · 570e4b296
 
 **무엇**
