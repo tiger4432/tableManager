@@ -1,11 +1,542 @@
 # 📦 RELEASE_LOG — 릴리스 요약
 
-> **Status:** 🟢 Living | **Last-verified:** 2026-08-18 | **Owner:** Lead / PM
+> **Status:** 🟢 Living | **Last-verified:** 2026-10-02 | **Owner:** Lead / PM
 > 상위: [SYSTEM_OVERVIEW](../overview/SYSTEM_OVERVIEW.md) · 규율: [CONTRIBUTING](./CONTRIBUTING.md)
 
-불연속 `Phase N.x` 번호 체계를 대체하는 릴리스 요약입니다. 상세 이력은 [history/](../history/README.md)에 있으며, 이 문서는 **큰 흐름의 마일스톤**만 시맨틱하게 기록합니다.
+소유자가 요청해서 생긴 기능과 «동작이 바뀐» 것을 최신순으로 적습니다(총괄 9eccd4e12, 소유자 10-02 「주요 기능 추가할때 마다 사용법 등등해서 릴리지노트 하나에」). 내부 수리 · 정리 · 시험만 바뀐 것은 적지 않습니다. 주요 기능은 착지하는 커밋에 이 파일의 항목이 같이 들어옵니다.
 
-**형식:** `YYYY-MM-DD | 영역 | 요약` (최신순). 상세가 필요하면 history 링크.
+**항목 모양:** `## YYYY-MM-DD · 기능 이름` 아래에 무엇 · 선언 예시(실제로 로드되는 것, 어느 파일에 적나) · 화면에서(버튼은 화면 글자 그대로) · 필요한 조건 · 바뀐 동작 · 자세히. 2026-09-28 전의 옛 항목은 그때의 「날짜 | 영역 | 요약」 한 줄 모양 그대로 둡니다. 상세 이력은 [history/](../history/README.md).
+
+---
+
+## 2026-10-01 · 이미지 참조 — 칸에 적은 참조로 그림을 읽고, 메인 그리드에서 미리보기
+
+- **무엇** — 표 칸에 그림의 «참조»(글자)를 적어 두면 서버가 선언된 출처(공유 폴더 · DB · URL)에서 그림을 읽어 줍니다. 메인 그리드에서 image 칸에 잠깐 머물면 미리보기 하나가 뜨고, 칸 안의 표시를 누르면 새 창으로 열립니다.
+- **선언 예시** — 출처는 `config/image_sources.json` 에 적습니다(샘플: `server/config/sample/image_sources.json.sample`, DB 출처의 모양도 거기 있습니다).
+
+<!-- example: image_sources -->
+```json
+{
+  "photos": {"kind": "folder", "root": "D:/shared/photos"},
+  "vendor": {"kind": "url", "base": "https://vendor.example.com/images/"}
+}
+```
+
+  칸은 `config/table_config.json` 의 `column_types` 에 타입 낱말 `image` 로 적습니다(글자로 저장됩니다). 칸 값은 `photos:2026/10/a.png` · `vendor:a.png` · `https://…` 처럼 적습니다.
+
+<!-- example: table -->
+```json
+{
+  "inspection_photo": {
+    "business_key": "photo_id",
+    "column_types": {"photo_id": "string", "lot": "string", "photo": "image"},
+    "display_columns": ["photo_id", "lot", "photo"]
+  }
+}
+```
+
+- **화면에서** — 메인 그리드에서 그 표를 열고 image 칸에 마우스를 잠깐 올리면 미리보기가 뜹니다. 칸 안의 `▣` 표시(툴팁 `Open image`)를 누르면 새 창으로 열립니다. 칸 자체를 누르면 오늘처럼 고르기 · 편집입니다.
+- **필요한 조건** — 서버 재기동(새 경로 `GET /api/image`). `image_sources.json` 을 서버의 config 폴더에 둡니다. DB 출처의 비밀번호는 파일에 적지 않고 `password_env` 가 가리키는 환경변수에 둡니다.
+- **바뀐 동작** — 처음 생긴 기능입니다. 그림은 언제나 서버를 거쳐 옵니다. 그림이 아닌 답, 너무 큰 답, 다른 곳으로 넘기는 답은 서버가 502 로 거절하고, 미리보기 자리에 그 문장이 보입니다. 같은 그림은 브라우저가 잠시 들고 있어 다시 올려도 서버에 다시 가지 않습니다.
+- **자세히** — [config/table_config.md](../guide/config/table_config.md)(`column_types` 의 `image`) · 커밋 a8dea2bcf · e1420082c · c23df3704 · 26c1b238d · 493275903
+
+## 2026-10-01 · 글에서 «원인 → 현상» 후보 뽑기 (text_links)
+
+- **무엇** — 회의록 · 8D 같은 글을 운영자가 적은 사전 두 표(부르는 말 · 연결 말)로 읽어, «무엇이 무엇의 원인이라고 적혔나»를 후보 행으로 만듭니다. 맵퍼가 부르는 도우미 `find_links` · `unknown_words` 입니다. 코드에는 어느 언어의 낱말도 없고, 낱말은 전부 사전 행에서 옵니다.
+- **선언 예시** — 표 넷을 `config/table_config.json` 에 적습니다. 사전 둘은 `text_node_phrase`(노드를 부르는 말 — 한 노드에 말 여럿) · `text_link_phrase`(원인 · 나열 · 부정 · 추정 · 확인을 잇는 말)입니다.
+
+<!-- example: table -->
+```json
+{
+  "meeting_note": {
+    "business_key": "note_id",
+    "column_types": {"note_id": "string", "body": "string"},
+    "display_columns": ["note_id", "body"]
+  },
+  "text_node_phrase": {
+    "composite_key_source": ["node_type", "node_key", "phrase"],
+    "column_types": {"node_type": "string", "node_key": "string", "phrase": "string"},
+    "display_columns": ["node_type", "node_key", "phrase"]
+  },
+  "text_link_phrase": {
+    "composite_key_source": ["phrase", "meaning"],
+    "column_types": {"phrase": "string", "meaning": "string", "side": "string"},
+    "display_columns": ["phrase", "meaning", "side"]
+  },
+  "text_cause_candidate": {
+    "composite_key_source": ["note_id", "sentence_no", "cause_type", "cause_key", "phenomenon_type", "phenomenon_key"],
+    "column_types": {"note_id": "string", "sentence_no": "number", "sentence": "string",
+                     "cause_type": "string", "cause_key": "string", "cause_phrase": "string",
+                     "phenomenon_type": "string", "phenomenon_key": "string", "phenomenon_phrase": "string",
+                     "link": "string", "polarity": "string", "certainty": "string"},
+    "display_columns": ["note_id", "sentence_no", "cause_key", "phenomenon_key", "link", "polarity", "certainty"]
+  }
+}
+```
+
+  `text_link_phrase.meaning` 은 `cause` · `and` · `negation` · `suspected` · `confirmed` 중 하나이고, `cause` 행만 `side`(`before` = 원인이 말 앞 · `after` = 말 뒤)를 적습니다. 같은 말을 두 뜻으로 쓰면 두 행입니다(「무관」 = `cause` 한 행 + `negation` 한 행). 맵퍼는 `server/mappers/` 의 파일에 둡니다.
+
+<!-- example: mapper -->
+```python
+import pandas as pd
+from mapper_sdk import find_links, mapper, sql
+
+@mapper()
+def meeting_cause_links(df, db):
+    names = sql(db, "SELECT node_type, node_key, phrase FROM text_node_phrase").to_dict("records")
+    links = sql(db, "SELECT phrase, meaning, side FROM text_link_phrase").to_dict("records")
+    rows = [{"note_id": note_id, **row}
+            for note_id, text in zip(df["note_id"], df["body"])
+            for row in find_links(text, names, links)]
+    return pd.DataFrame(rows)
+```
+
+  규칙은 `config/chain_rules.json` 의 `rules` 에 적습니다. 글을 고치면 그 글이 이번에 안 낸 옛 후보만 지워집니다.
+
+<!-- example: chain_rule -->
+```json
+{
+  "name": "meeting_note_cause_links",
+  "trigger_table": "meeting_note",
+  "target_table": "text_cause_candidate",
+  "mapper": "meeting_cause_links",
+  "is_batch": true,
+  "allow_retraction": true,
+  "trigger_job_column": "note_id",
+  "target_job_column": "note_id"
+}
+```
+
+- **화면에서** — 사전 두 표는 메인 그리드에서 행으로 적습니다(엑셀 붙여넣기도 됩니다). 글 표에 글이 들어오면 규칙이 돌아 후보 표가 채워집니다.
+- **필요한 조건** — 표 넷이 선언돼 있어야 합니다. 맵퍼 파일을 둔 뒤 체인 워커 재기동. 사전 표를 고쳐도 규칙은 깨어나지 않으니, 고친 뒤에는 리플레이 명령으로 다시 돌립니다(가이드 4절).
+- **바뀐 동작** — 새 도우미입니다. 맵퍼는 두 함수를 `mapper_sdk` 에서 import 합니다.
+- **자세히** — [TEXT_LINKS_GUIDE](../guide/TEXT_LINKS_GUIDE.md) · 커밋 27978d555 · cb4d5157d
+
+## 2026-10-01 · 원천 행 여럿이 받치는 칸 — 행 단위 맵퍼로 쓰면 지운 행의 값만 빠집니다
+
+- **무엇** — 대상 표의 한 칸을 원천 행 여럿이 받칠 때(official 같은 표), 맵퍼가 항목마다 층 이름을 `chain_ingestion (<원천 row_id>)` 로, `origin_row_id` 를 그 원천 행으로 적으면 원천 행마다 층이 하나씩 남습니다. 원천 행 하나를 지우면 그 행의 층만 빠지고, 다른 행이 받치는 값은 그대로 보입니다. 제품 코드는 바뀌지 않았고 쓰는 법이 정해진 것입니다(총괄 55c1f20ee 판정).
+- **선언 예시** — 맵퍼(`server/mappers/official_rows.py`). 원천 한 행을 받아 그 행의 칸을 그대로 씁니다.
+
+<!-- example: mapper_module official_rows -->
+```python
+from database import crud
+from mapper_sdk import df_to_updates, payloads_to_df
+
+COLUMNS = ["dt_job", "dt_x", "dt_y", "c_bn"]   # 대상 표에 쓸 칸
+
+def copy_one_row(db, payload, rule=None):
+    df = payloads_to_df(payload)
+    if df.empty:
+        return {"updates": []}
+    row_id = df.at[0, "row_id"]
+    layer = crud.merged_layer_name(crud.CHAIN_SOURCE, row_id)
+    result = df_to_updates(df[COLUMNS], rule["target_table"], source_name=layer, updated_by="copy_one_row")
+    for item in result["updates"]:
+        item["origin_row_id"] = row_id
+    return result
+```
+
+  대상 표와 규칙. 규칙에 `is_batch` 를 적지 않고(행마다 한 번 불립니다), `require` 에 대상의 키가 되는 칸을 적습니다.
+
+<!-- example: table -->
+```json
+{
+  "official_dt": {
+    "composite_key_source": ["dt_job", "dt_x", "dt_y"],
+    "column_types": {"dt_job": "string", "dt_x": "number", "dt_y": "number", "c_bn": "string"},
+    "display_columns": ["dt_job", "dt_x", "dt_y", "c_bn"]
+  }
+}
+```
+
+<!-- example: chain_rule -->
+```json
+{
+  "name": "dt_log_to_official_dt",
+  "trigger_table": "dt_log",
+  "target_table": "official_dt",
+  "mapper_module": "mappers.official_rows",
+  "mapper_function": "copy_one_row",
+  "require": ["dt_job", "dt_x", "dt_y"]
+}
+```
+
+- **화면에서** — 없음(맵퍼 파일과 체인 규칙).
+- **필요한 조건** — 맵퍼 파일을 둔 뒤 체인 워커 재기동. 행마다 한 번 불리므로 1,000 행 묶음이면 맵퍼가 1,000 번 불립니다.
+- **바뀐 동작 · 주의** — 층 이름은 반드시 `chain_ingestion (` 로 시작해야 체인이 쓴 층으로 읽힙니다. 다른 이름이면 파일 층처럼 같은 값이 한 층으로 접혀, 행 하나를 지울 때 값이 같이 빠집니다. 이 이름은 소스 순위표에 없어서 순위 99(가장 낮음)로 읽힙니다. 같은 칸에 다른 소스의 값이 있으면 그쪽이 이길 수 있습니다. 남는 것도 셋 있습니다. 키가 바뀐 행의 옛 층, `require` 칸이 다시 빈 행, 받치는 행이 0 이 된 대상 행(빈 행으로 남음)입니다.
+- **자세히** — [MAPPING_GUIDE](../../authoring/MAPPING_GUIDE.md) · `task/IMPLEMENTER_ORDERS.md` 의 「official 층 넓히기(나) 짓지 않음」 덧붙임
+
+## 2026-10-01 · 원장 펼친 보기 — 메인 그리드에서 원자를 원천 행으로 찾기 (ledger_atom_rows)
+
+- **무엇** — 원장의 원자 하나 × 그 원자를 만든 원천 행 하나가 한 줄인 «읽기 전용 보기»입니다. 주어 · 술어 · 목적어 · 원천 표 · 원천 row_id 가 저장된 글자 그대로라, 그리드의 칸 필터로 「이 행이 만든 원자가 무엇인가」 「이 원자가 어느 행에서 왔나」를 찾습니다.
+- **선언 예시** — `config/table_config.json` 에 보기로 등록합니다(샘플에 같은 항목이 있습니다).
+
+<!-- example: table -->
+```json
+{
+  "ledger_atom_rows": {
+    "kind": "view",
+    "composite_key_source": ["atom_id", "source_relation", "source_row_id"],
+    "column_types": {"atom_id": "string", "occurred_at": "datetime", "subject_type": "string", "subject": "string",
+                     "predicate": "string", "object": "string", "qualifiers": "string", "source_who": "string",
+                     "source_relation": "string", "source_row_id": "string"}
+  }
+}
+```
+
+- **화면에서** — 메인 그리드 위의 표 고르기에서 `ledger_atom_rows` 를 고르고, `SOURCE_ROW_ID` 나 `SUBJECT` 칸 머리 아래 필터에 값을 적습니다. 보기라 편집은 안 됩니다.
+- **필요한 조건** — PostgreSQL. 이주 명령 두 번(저장소 루트에서): `python server/migrations/add_ledger_atom_rows.py --report`(있는지 · 크기만 봄) 다음 `python server/migrations/add_ledger_atom_rows.py`(색인 둘과 보기 — 쓰기는 계속되고, 다시 돌려도 같습니다).
+- **바뀐 동작** — 새 보기입니다. 원장 표에는 색인을 더하지 않고, 행 참조 표에만 둘을 더합니다.
+- **자세히** — `RUN.md` · 커밋 57bc6d5e9
+
+## 2026-10-01 · HTTPS 로 열기 — Windows 서버 앞에 nginx
+
+- **무엇** — 사내 CA 인증서로 https 를 여는 설정 안내입니다. 제품 코드는 바뀌지 않았습니다.
+- **선언 예시** — 없음(가이드의 nginx.conf).
+- **화면에서** — 없음.
+- **필요한 조건** — 인증서 파일(pfx · p7b, 가이드대로 fullchain 으로 만듦) · nginx · 방화벽 443 열기 · 부팅 때 자동 실행.
+- **바뀐 동작** — 없음(안내만).
+- **자세히** — [HTTPS_PROXY_GUIDE](../guide/HTTPS_PROXY_GUIDE.md) · [DEPLOY_SETUP](../guide/DEPLOY_SETUP.md) · 커밋 2967827ba
+
+## 2026-10-01 · 걷기 — 메인 메뉴에서 열기 · 되내려가지 않기 · 묶음 · Graph 보기
+
+- **무엇** — 걷기만 하는 화면을 메인 그리드 메뉴에서 엽니다. 걸음은 방금 올라온 술어로 형제에게 «되내려가지» 않습니다(다이 → 웨이퍼 → 다이 수백 개를 막음). Graph 보기는 시작점에서 걸어 닿는 서브그래프를 걸음마다 한 층으로 그립니다. 한 노드에서 같은 술어로 20 개 넘게 퍼지는 갈래는 «묶음» 하나로 보이고, 눌러야 펼쳐집니다. 그림의 점을 마킹하면 거기서 이어 걷습니다. 노드 이름표는 선언된 키를 모두 씁니다.
+- **선언 예시** — 짝인 술어는 `config/ledger_config.json` 의 `vocabulary` 에서 `inverse_of` 로 알려 줄 수 있습니다(새 칸, 안 적어도 됩니다). 같은 술어를 반대로 내려가는 걸음은 적지 않아도 막힙니다.
+
+<!-- example: ledger_vocabulary -->
+```json
+{
+  "wafer_in_slot@1": {
+    "status": "active",
+    "subjects": ["wafer@1"],
+    "object": {"kind": "entity_ref", "types": ["lot_slot@1"], "qualifiers": {"required": [], "optional": []}},
+    "inverse_of": "has_wafer@1"
+  }
+}
+```
+
+- **화면에서** — 메인 그리드 메뉴의 `🚶 Walk`(→ `/walk.html`) → 노드 타입과 키를 고르고 `Graph` → `날리기`. 그림에서 점을 누르면 그 노드의 사실이 보이고 마킹됩니다. `Continue` 를 누르면 그 마킹에서 이어 걷습니다. 노드 밑의 «+개수 타입» 칩을 누르면 그 묶음이 같은 그림에 펼쳐집니다.
+- **필요한 조건** — 서버 재기동(걷기 경로의 묶음 · 되내려가기 판정).
+- **바뀐 동작** — 걷기 답에서 «같은 술어를 반대로» 또는 «선언한 짝 술어로» 형제에게 내려가는 걸음이 사라집니다. 노드 이름표가 키를 모두 부릅니다(전엔 앞 두 값만이라 다이 278 개가 이름표 42 개를 나눠 썼습니다). 표(`Table`) 보기의 걷기는 묶지 않습니다.
+- **자세히** — [WALK.md](../architecture/WALK.md) · [ONTOLOGY_LEDGER_SETUP](../guide/ONTOLOGY_LEDGER_SETUP.md)(술어 표) · 커밋 ce041066d · 3ab88ae49 · b1245bab9 · 74974d6ed · 69f15a845 · 4bedb9c0a
+
+## 2026-10-01 · 원장 가지(branch) · `one` 술어의 «지금 값»
+
+- **무엇** — 원장 선언을 여러 벌 견주어 보려고 «가지»를 만듭니다. 가지에는 기본 선언과 «다른 소스만» 담기고, 걷기는 가지 + 기본을 한 보기로 읽습니다. 선언창과 R&D 보드에서 가지를 고릅니다. 그리고 `cardinality: one` 술어의 지금 값은 «가장 늦은 occurred_at» 하나로 읽힙니다.
+- **선언 예시** — 손으로 적는 파일은 없습니다. 화면이 가지 선언을 `config/ontology_worlds/<이름>` 에 만듭니다.
+- **화면에서** — 어드민 `Ontology Explorer` 탭 → `Branch` 에서 `New branch` 칸에 이름을 적고 `Create` → 그 가지에서 선언을 고쳐 저장 → (아래 번역 명령) → R&D 보드(`/rnd-board.html`)의 `Branch` 에서 그 가지를 고릅니다. 고치던 글이 있으면 `Keep draft` · `Discard draft` · `Stay` 를 묻습니다. 지울 때는 `Delete branch`(원자 수를 먼저 보여 줌). `Default` 는 오늘의 원장입니다.
+- **필요한 조건** — PostgreSQL · 서버 재기동. 가지에서 바꾼 소스는 한 번 번역합니다(server 폴더에서): `python -m ledger.backfill --source <바꾼 소스> --world <이름> --whole-source --apply`(`--apply` 없이 돌리면 미리보기).
+- **바뀐 동작** — `one` 술어: 쓸 때 막던 거절(`cardinality_one_violated`)이 없어지고, 읽을 때 최신 사실 하나만 지금 값으로 보입니다. 같은 시각의 사실 둘은 둘 다 지금 값이고 노드에 `current_conflicts` 가 붙습니다. 명령줄의 `--ontology-root` 는 `--world` 로 바뀌었습니다. 통째 다시 읽기(`--whole-source --apply`)는 표에서 사라진 행의 원자를 거둡니다.
+- **자세히** — [ONTOLOGY_LEDGER_SETUP](../guide/ONTOLOGY_LEDGER_SETUP.md) · `RUN.md` · 커밋 070a4558b · ccf374d48 · 609341a55 · 77a5f264c · ec01b42de · 8d9228cf1 · 08d2f8189 · fa41a6f25 · 051c7c187
+
+## 2026-10-01 · 원장 선언 setup_version 6 — 준비기(prepare) 은퇴 · 계보는 체인 규칙이 씁니다
+
+- **무엇** — 원장 소스의 `prepare` 칸이 없어졌습니다. 소스는 `relation` · `read` · `map` · `bind` 넷입니다. `lot_event` 원장 소스가 은퇴했고(이미 만든 원자는 남습니다), 계보(`derived_from`)는 체인 규칙이 `lot_lineage` 표에 쓴 것을 원장 소스 `lot_lineage` 가 읽습니다.
+- **선언 예시** — 이주 명령이 운영 파일에 넣어 주는 규칙입니다(`config/chain_rules.json`, 샘플에 같은 규칙).
+
+<!-- example: chain_rule -->
+```json
+{
+  "name": "lot_event_to_lot_lineage",
+  "trigger_table": "lot_event",
+  "target_table": "lot_lineage",
+  "mapper_module": "mappers.lot_lineage_mapper",
+  "mapper_function": "build_lot_lineage_rows",
+  "is_batch": true,
+  "enabled": true,
+  "params": {
+    "lot_column": "lot_id",
+    "parent_column": "parent_lot",
+    "child_column": "child_lot",
+    "time_column": "event_time",
+    "event_type_column": "event_type",
+    "target_parent_column": "parent_lot",
+    "target_child_column": "child_lot",
+    "target_event_type_column": "event_type",
+    "target_time_column": "event_time"
+  }
+}
+```
+
+- **화면에서** — 없음(이주 명령).
+- **필요한 조건** — 저장소 루트에서 `python server/scripts/migrate_ledger_config_to_v6.py`(미리보기 — 바꿀 것을 줄마다 보여 주고 아무것도 안 씀) 다음 `python server/scripts/migrate_ledger_config_to_v6.py --apply`(ledger_config · table_config · chain_rules 셋, 백업을 남김). 그다음 서버 · 체인 워커 재기동.
+- **바뀐 동작** — `prepare` 를 적은 소스는 그 소스만 이름 대어 거절됩니다(`prepare_retired`). 이주 전의 v5 파일은 메모리에서 v6 로 읽히고 로그에 「setup_version 5 read as 6 … Next: run scripts/migrate_ledger_config_to_v6.py」 한 줄이 남습니다. 노드 타입 목록은 그 노드를 이름 대는 원자가 하나라도 있으면 뜹니다. `lot_slot_wafer` · `lot_lineage` 맵퍼는 칸 이름을 전부 규칙의 `params` 에서 읽고, 빠진 칸은 규칙과 칸 이름을 대어 거절합니다.
+- **자세히** — [ONTOLOGY_LEDGER_SETUP](../guide/ONTOLOGY_LEDGER_SETUP.md) · `RUN.md` · 커밋 0b59a2f30
+
+## 2026-10-01 · 숫자는 한 철자로 — 문자 칸의 숫자 · 원장 키 1 과 1.0
+
+- **무엇** — 문자 칸(number · datetime 이 아닌 칸)에 숫자가 오면 한 철자로 저장됩니다(1.0 → `1`). 층과 보이는 칸이 같은 글자입니다. 원장 엔티티 키는 그 칼럼의 선언 타입으로 접혀, number 칸의 1 · 1.0 · 01 이 한 키가 됩니다.
+- **선언 예시** — 없음. 문자 칸의 `1.0` 을 접고 싶으면 그 칸을 `table_config` 에서 `number` 로 선언합니다.
+- **화면에서** — 이미 저장된 칸은 표마다 어드민 `Retroactive` 탭의 `Fold stored values into the declared spelling` → 표 고르기 → `Count` 로 먼저 세고 `Run`.
+- **필요한 조건** — 서버 재기동. 원장의 옛 꼴 키는 소스마다 다시 번역할 때 빠집니다(server 폴더에서 `python ledger/backfill.py --source <소스> --whole-source --apply --pace slow`, `--apply` 없이 미리보기).
+- **바뀐 동작** — 다이 x · y 가 1 과 1.0 으로 두 노드가 되던 것이 한 노드가 됩니다. 다시 번역하기 전에는 옛 꼴과 새 꼴이 걷기에서 둘로 보일 수 있습니다. 코드 맵퍼가 직접 만든 키는 이 접기를 지나지 않습니다.
+- **자세히** — [BACKFILL_GUIDE](../guide/BACKFILL_GUIDE.md) · `RUN.md` · 커밋 7350027a6
+
+## 2026-10-01 · 체인 규칙 이름 바꾸기 — 그 자리에서 이름만 바뀝니다
+
+- **무엇** — 체인 규칙 이름을 고쳐 저장하면 그 규칙이 그 자리에서, 켜짐 · 꺼짐도 그대로 이름만 바뀝니다. 전엔 꺼진 사본이 새로 생기고 옛 규칙이 계속 돌았습니다.
+- **선언 예시** — 없음.
+- **화면에서** — 어드민 `Chain` 탭 → 규칙 고르기 → 이름 고치기 → `Save`. 저장 줄 밑에 서버의 문장이 붙습니다(그 규칙이 쓴 행이 다음에 올 때 새 이름으로 다시 쓰인다는 안내).
+- **필요한 조건** — 서버 재기동.
+- **바뀐 동작** — 새 이름이 다른 규칙의 것이면, 열어 둔 규칙이 파일에서 사라졌으면, 그 이름을 기록이 붙들고 있으면(맵 확정 · 처리 안 된 리플레이 · 다른 규칙의 `alignment_rule` · 끝나지 않은 소급) 저장이 이름 대어 거절되고 「Next: 이름을 그대로 두거나, 새 규칙을 더하고 이것을 끄십시오」 가 붙습니다.
+- **자세히** — 커밋 4a0c69b2f · 666b3568d · 46bb3f26b
+
+## 2026-10-01 · 표 선언 — 엑셀에서 칼럼 붙여넣기 · Copy columns
+
+- **무엇** — 표 설정 화면에 엑셀 세 줄(1줄 칼럼 이름 · 2줄 타입 · 3줄 키 표시)을 붙여넣으면 `column_types` · `display_columns` · 키가 채워집니다. `Copy columns` 는 지금 칼럼을 같은 세 줄로 복사합니다. 타입 낱말은 `string` · `number` · `datetime` · `image` 넷입니다(대소문자 무관).
+- **선언 예시** — 붙여넣는 시트(칸은 탭으로 나뉨). 3줄은 키 칼럼 밑에 `key` — 하나면 `business_key`, 여럿이면 `composite_key_source` 가 됩니다.
+
+<!-- example: paste_sheet -->
+```text
+lot	slot	qty	photo
+string	string	number	image
+key	key
+```
+
+- **화면에서** — 어드민 `Tables` 탭 → 표를 고르거나 `+ Add table`(이름 적기) → 붙여넣기 칸에 Ctrl+V → 바뀌는 것(Dropped · Type · Key · Shown) 줄을 보고 `Save`(이미 있는 표는 저장 전에 그 줄로 묻습니다). `Copy columns` 로 지금 칼럼을 복사합니다. 표를 안 골랐으면 칸과 버튼이 꺼져 있고 「Pick a table or Add table」 이 보입니다.
+- **필요한 조건** — 없음.
+- **바뀐 동작** — 붙여넣은 표는 칼럼이 «통째로» 바뀝니다(없는 칼럼은 Dropped). 모르는 타입 낱말 · 빈 이름 · 겹친 이름은 이름 대어 거절됩니다.
+- **자세히** — [config/table_config.md](../guide/config/table_config.md) · 커밋 4d07d3987 · 927b73a6e · 176244796 · cbbf03dd7 · b4f162ccd · 4ebb668df · e4fb38eec · 26c1b238d
+
+## 2026-09-30 · 원장 선언창 — 저장 전 키 목록 · 경로 줄 · 물려받은 속성 · 꺼진 칸
+
+- **무엇** — 원장 선언 폼이 네 가지를 보여 줍니다. 엔티티 바인딩을 고르면 «저장하지 않아도» 그 엔티티의 키 칸이 뜹니다. 지금 고치는 칸의 경로가 위에 한 줄로 고정되고, 깊이마다 안내선이 그어집니다. 역할이 소스에서 물려받는 속성이 그 역할의 속성 밑에 읽기 전용으로 보입니다. column ↔ constant 처럼 고르기를 바꿔 꺼진 칸은 저장이 빼고, 폼 머리에 그 칸을 적습니다. 누를 수 있는 것만 상자로 그려 설명 글자와 구분됩니다.
+- **선언 예시** — 없음.
+- **화면에서** — 어드민 `Ontology Explorer` 탭 → 원장 선언 고르기 → 폼에서 바인딩의 kind 를 고르면 키 칸이 뜹니다. 경로 줄의 단계를 누르면 그 칸으로 갑니다. 저장 전에는 `Dropped on save`, 저장 뒤에는 `Dropped` 가 뺀 칸의 경로를 적습니다.
+- **필요한 조건** — 서버 재기동.
+- **바뀐 동작** — 키 없는 엔티티 바인딩 저장이 500 대신 이름 댄 거절이 됩니다. 바인드 칸을 상수로 바꾼 뒤 저장해도 빈 칸 오류가 나지 않습니다. 행 단위(`unit: row`) 소스에는 `group_by` 칸이 없습니다.
+- **자세히** — [ONTOLOGY_LEDGER_SETUP](../guide/ONTOLOGY_LEDGER_SETUP.md) · 커밋 92611320e · 052ac582c · 3cf207cd6 · f8c28ef94 · 06a7139f2 · a057073e7 · 37c714205 · b66f6eb2b · ee918c6b3 · 3f4efda82 · c83fe086a
+
+## 2026-09-30 · 대조 저장 (Save contrast)
+
+- **무엇** — R&D 보드에서 결함 웨이퍼와 비교군을 마킹한 «질문»을 저장하면, 체인이 그 걷기의 순위를 계산해 `contrast_factor` 에 쓰고, 저장한 행(`contrast_run`)에 계산했는지와 찾은 수를 적습니다.
+- **선언 예시** — 표 둘(`contrast_run` · `contrast_factor`)과 규칙 하나가 샘플에 있습니다(샘플 규칙은 켜져 나갑니다). 규칙:
+
+<!-- example: chain_rule -->
+```json
+{
+  "name": "contrast_factor_from_run",
+  "enabled": true,
+  "is_batch": true,
+  "on": {"table": "contrast_run"},
+  "into": {"table": "contrast_factor"},
+  "derive": {"kind": "mapper", "mapper": {"mapper_module": "mappers.contrast_walk", "mapper_function": "contrast_walk"}}
+}
+```
+
+- **화면에서** — R&D 보드(`/rnd-board.html`) → 결함 웨이퍼를 마킹(마킹 1)하고 비교군을 고름 → `Save contrast` → 저장 목록에 「Not computed yet」, 계산되면 「factors N · computed HH:MM」(`Refresh` 로 다시 읽음).
+- **필요한 조건** — 표 설정에 두 표, 체인 규칙에 위 규칙, 맵퍼 `server/mappers/contrast_walk.py`(저장소에 있음). 서버 · 체인 워커 재기동.
+- **바뀐 동작** — 새 기능입니다.
+- **자세히** — [config/chain_rules.md](../guide/config/chain_rules.md) · `RUN.md` · 커밋 cd069102e · 2005c0649 · e352d71a3 · 247c0aba6 · c35c28ba9
+
+## 2026-09-30 · 시간 칸 — 체인이 옮긴 시간이 표에 다시 보이고, 같은 순간은 같은 값
+
+- **무엇** — 조인이 datetime 칸을 가져올 때 쓰기 전체가 실패해 표에 NULL 로 보이던 것이 고쳐졌습니다. 같은 순간을 다른 철자(UTC · 지역 시각)로 다시 보내도 «바뀜»으로 치지 않습니다.
+- **선언 예시** — 없음.
+- **화면에서** — 없음.
+- **필요한 조건** — 서버 · 체인 워커 재기동.
+- **바뀐 동작** — 같은 순간을 다시 받으면 이력 줄 · 이벤트가 생기지 않습니다. 빈 값은 «없음»으로 견줍니다.
+- **자세히** — `RUN.md` · 커밋 0ba95c23a · 29b14dc21
+
+## 2026-09-30 · 스마트 붙여넣기 — 표가 정한 형식 순서 · 붙여넣기 상자 · Ctrl+Shift+V
+
+- **무엇** — 표 설정에 `smart_paste` 순서를 적으면, 그리드 스마트 붙여넣기가 묻지 않고 그 순서에서 클립보드에 먼저 있는 형식을 보냅니다. 평문 http 처럼 클립보드를 읽을 수 없는 곳에서는 붙여넣기 상자가 떠서 그 안에 Ctrl+V 합니다. Ctrl+Shift+V 도 같은 길입니다.
+- **선언 예시** — `config/table_config.json` 의 표에 `smart_paste`(클립보드 형식 이름, 적힌 그대로).
+
+<!-- example: table -->
+```json
+{
+  "paste_target": {
+    "business_key": "lot",
+    "column_types": {"lot": "string", "qty": "number"},
+    "display_columns": ["lot", "qty"],
+    "smart_paste": ["text/html", "text/plain"]
+  }
+}
+```
+
+- **화면에서** — 메인 그리드에서 오른쪽 클릭 메뉴의 `📋 Smart Paste` 나 `Ctrl+Shift+V` → 클립보드를 못 읽으면 「Paste here (Ctrl+V)」 상자가 뜨고 그 안에 Ctrl+V(취소는 Esc). 순서의 형식이 클립보드에 하나도 없으면 형식 고르기 창이 「Not in this table's smart_paste」 로 묻습니다. 순서가 고른 붙여넣기는 성공 알림에 「table order」 가 붙습니다.
+- **필요한 조건** — 서버 재기동(`/schema` 가 `smart_paste` 를 실음).
+- **바뀐 동작** — Ctrl+Shift+V 가 브라우저의 «서식 없이 붙여넣기»를 막고 스마트 붙여넣기로 갑니다. 예전의 「Smart paste armed · press Ctrl+V」 15 초 대기는 없어지고 상자로 바뀌었습니다.
+- **자세히** — [config/table_config.md](../guide/config/table_config.md)(`smart_paste`) · 커밋 5c67b2473 · ce9318a51 · 4c46b3268 · f5de87625 · 2dcf6be37
+
+## 2026-09-30 · nokey — 파일의 빈 키 칸을 제품이 채웁니다
+
+- **무엇** — 표 설정의 `null_policy` 에 키 칼럼을 `"nokey"` 로 적으면, 파일에서 읽은 행의 그 칸이 비거나 칼럼이 아예 없을 때 `nokey_<처음 적재 시각>_<6자리>` 로 채웁니다. 같은 파일을 다시 넣어도(Retry) 같은 값입니다.
+- **선언 예시** — `config/table_config.json`:
+
+<!-- example: table -->
+```json
+{
+  "void_inspection": {
+    "composite_key_source": ["lot", "slot"],
+    "column_types": {"lot": "string", "slot": "string", "void": "number"},
+    "display_columns": ["lot", "slot", "void"],
+    "null_policy": {"slot": "nokey"}
+  }
+}
+```
+
+- **화면에서** — 없음(파일 적재). 파일 줄에 「N row(s) keyed nokey_... (<칼럼>)」 이 남습니다.
+- **필요한 조건** — 서버 · 워처 재기동. 파일에 내용 서명이 있어야 합니다(없으면 채우지 않고 그렇다고 적습니다).
+- **바뀐 동작** — 그 칼럼이 없는 파일도 헤더에서 거절되지 않고 적재됩니다. 파일이 자라 내용 서명이 바뀌면 앞 행들의 키가 새로 매겨집니다.
+- **자세히** — [config/table_config.md](../guide/config/table_config.md)(`null_policy`) · 커밋 a02701d3a · d28bccbdd · 95248fee8
+
+## 2026-09-30 · HTML 토폴로지 파서 — 겹치는 헤더 경로는 이름 대어 거절합니다
+
+- **무엇** — 값 칸 둘 이상이 같은 헤더 경로를 가지면, 전엔 앞 값이 조용히 사라졌습니다. 이제 그 표를 거절하고 경로 · 칸 수 · 좌표 하나 · 다음 할 일을 말합니다. 넓은 헤더는 자기가 덮는 칼럼의 값만 머리합니다.
+- **선언 예시** — 없음(파서 코드의 `is_header_fn`).
+- **화면에서** — 어드민 `File Ingestion` 로그의 상태 칸에 「Next: …」 가 먼저 보입니다.
+- **필요한 조건** — 워처 재기동.
+- **바뀐 동작** — 전엔 값 일부를 잃은 채 적재되던 표가 거절됩니다. 행을 가르는 칸을 `is_header_fn` 에서 헤더로 표시하면 들어갑니다.
+- **자세히** — [HTML_TOPOLOGY_PARSER_GUIDE](../guide/HTML_TOPOLOGY_PARSER_GUIDE.md) · 커밋 499d89de4 · c4faced98
+
+## 2026-09-30 · DT 뒤 공정 행은 dtwafer 에 — 스텝으로 재료 종류 나누기
+
+- **무엇** — `step_phase` 표에 DT 스텝을 적으면, 조인이 그 스텝의 `wafer_process` 행에 `mat_type` 을 복사하고, 원장은 `mat_type` 이 DT 인 행을 dtwafer 에 대한 문장으로 읽습니다(비어 있으면 wafer).
+- **선언 예시** — 표와 조인(둘 다 샘플에 있음, 원장 쪽 문장 둘도 샘플의 `wafer_process_recipe`).
+
+<!-- example: table -->
+```json
+{
+  "step_phase": {
+    "business_key": "step",
+    "composite_key_source": ["step"],
+    "column_types": {"step": "string", "mat_type": "string"},
+    "display_columns": ["step", "mat_type"]
+  }
+}
+```
+
+<!-- example: chain_rule -->
+```json
+{
+  "name": "step_phase_to_wafer_process",
+  "on": {"table": "step_phase"},
+  "derive": {"kind": "join", "join": {"on": [{"left": "step", "right": "step"}], "take": ["mat_type"]}},
+  "into": {"table": "wafer_process"},
+  "key": {"unique": true}
+}
+```
+
+- **화면에서** — 메인 그리드에서 `step_phase` 표에 행을 적습니다(step, mat_type = DT).
+- **필요한 조건** — 샘플의 세 선언(표 · 조인 · 원장 문장)을 운영 설정에 넣습니다. 서버 · 체인 워커 재기동.
+- **바뀐 동작** — 어떤 문장도 말하지 않은 행은 세어 로그에 이름을 댑니다. 텍스트 칸의 NULL 이 배치를 멈추지 않습니다. 스텝을 빼려면 행을 지우지 말고 `mat_type` 을 비웁니다.
+- **자세히** — 커밋 c1746aa1e
+
+## 2026-09-29 · 부류(class) — 엔티티 · 술어에 낱말을 달고, 걷기에서 부류로 따라가기
+
+- **무엇** — 엔티티와 술어의 `class` 에 낱말 하나나 낱말 목록을 적습니다(예: 모델링 엣지 · 컨텍스트 엣지). 걷기의 `follow=class:<낱말>` 은 그 낱말을 단 술어 전부를 따라갑니다.
+- **선언 예시** — `config/ledger_config.json` 의 `vocabulary`(술어)와 `entities`(엔티티).
+
+<!-- example: ledger_vocabulary -->
+```json
+{
+  "in_container@1": {
+    "status": "active",
+    "subjects": ["die@1"],
+    "object": {"kind": "entity_ref", "types": ["wafer@1"], "qualifiers": {"required": [], "optional": []}},
+    "class": ["modeling", "containment"]
+  }
+}
+```
+
+<!-- example: ledger_entities -->
+```json
+{
+  "quantity@1": {"keys": ["quantity"], "class": ["static", "probe"]}
+}
+```
+
+- **화면에서** — 어드민 `Ontology Explorer` 선언창의 술어 · 엔티티 `class` 칸(낱말 하나도 목록 한 칸으로 고칩니다). 걷기는 요청의 `follow` 에 `class:modeling`.
+- **필요한 조건** — 서버 재기동.
+- **바뀐 동작** — 엔티티 `class` 가 static · dynamic 한 낱말에서 «낱말 목록»으로 넓어졌습니다. 걷기가 읽는 낱말은 여전히 `static` 입니다. 선언에 없는 부류 낱말로 걸으면 422 `predicate_class_not_declared`.
+- **자세히** — [WALK.md](../architecture/WALK.md) · 커밋 fdda4ebf6 · 45e363a05 · c9c27c450 · a5746efc1
+
+## 2026-09-29 · 체인 규칙 저장 뒤의 반응 · 실패한 묶음 처리
+
+- **무엇** — 체인 규칙을 저장하면 폼 머리가 「Saved · waiting for the chain worker」 에서, 워커가 그 파일을 읽으면 「Loaded by chain worker HH:MM:SS」 로 바뀝니다(워커가 안 보이면 「Saved · chain worker not seen」). 저장하면 체인 워커가 규칙만 다시 읽습니다. 거절된 새 규칙도 폼이 남고, 원장 선언이 저장됐지만 안 읽히면 「Saved but not applied」 와 사유가 붙습니다. 실패한 체인 묶음은 반으로 쪼개지 않고 «통째로» FAILED 가 되고, 실패 기록에 규칙 · 표 · 행 수 · 사유 원문 · 오류가 가리킨 행이 남습니다.
+- **선언 예시** — 없음(시도 횟수는 전부터 있던 `max_group_attempts`, 기본 1 번).
+- **화면에서** — 어드민 `Chain` 탭 → 규칙 고치고 `Save` → 폼 머리 줄. 실패한 사건은 Chain 탭의 실패 목록에서 열면 rule · table · rows · row · reason 이 기록 그대로 보입니다.
+- **필요한 조건** — 서버 · 체인 워커 재기동.
+- **바뀐 동작** — 실패 묶음이 한 행까지 쪼개지며 새 사건을 만들던 것이 없어졌습니다. 큐를 새로 읽을 때마다 규칙 파일을 다시 읽지 않습니다. 손으로 고친 파일은 `⚙️ Reload Configs & Code` 뒤에 읽힙니다.
+- **자세히** — [config/chain_rules.md](../guide/config/chain_rules.md)(`max_group_attempts`) · `RUN.md` · 커밋 5fa5b1d83 · 4ee01686e · 29de5321c · 31ae7ce4b · 370684bd0 · 640421b64 · 790511099 · 7fc52efef · 3a8f35296 · 7f3bf293b
+
+## 2026-09-29 · 폴더 아래 실패 파일을 한꺼번에 다시 넣기
+
+- **무엇** — File Ingestion 에서 폴더 하나를 고르면, 그 아래(모든 깊이)의 실패 파일 수를 먼저 보고 그것만 다시 넣습니다. 외부 폴더의 파일은 그 폴더의 처리기로 다시 들어가 폴더의 웨이퍼 · 시각 · 옵션을 지킵니다.
+- **선언 예시** — 없음.
+- **화면에서** — 어드민 `File Ingestion` 탭 → `Retry failed files under a folder` → `Folder` 에 적거나 고르기 → `Preview` → 서버가 센 수가 붙은 `Retry`.
+- **필요한 조건** — 서버 · 워처 재기동.
+- **바뀐 동작** — 다시 넣기가 워처의 그 표 처리기로 갑니다(전엔 새 처리기라 외부 파일의 문맥을 잃었습니다).
+- **자세히** — 커밋 207cb0bf1 · f90754d7d · 7e0a114dd · 5b20d9d1b
+
+## 2026-09-29 · 오토 업데이트 백필 — 마지막 실행의 다음부터
+
+- **무엇** — 수집기 백필의 시작 칸이 그 수집기의 마지막 실행이 끝난 다음 날로 열립니다. 다시 돌려도 처음부터 다시 돌지 않습니다.
+- **선언 예시** — 없음.
+- **화면에서** — 어드민 `Auto Update` 탭 → 수집기 줄의 `Backfill` 시작 칸(`YYYY-MM-DD`) → `Start`.
+- **필요한 조건** — 서버 · 스케줄러 · 체인 워커 재기동.
+- **바뀐 동작** — 칸을 건드리지 않고 `Start` 를 누르면 보이는 날짜가 그대로 갑니다(전엔 빈 시작이 가서 처음부터 돌았습니다).
+- **자세히** — 커밋 efa60fd9c · 9eb859e47
+
+## 2026-09-28 ~ 10-01 · 체인 규칙 · 조인의 동작
+
+- **무엇** — 여섯 가지입니다. (1) `require` — 적은 칸이 «다 찬» 트리거 행만 규칙에 넘어갑니다(조인은 양쪽). (2) 선언은 자기가 쓴 것으로 다시 깨어나지 않습니다(파생 → 조인 → 파생에서 돌던 것). (3) `trigger_columns` 가 실제로 거르고, 조인은 키와 `take` 칸이 바뀌면 깹니다. (4) 조인 키가 «모두» 빈 행은 짝이 아닙니다(일부만 빈 것은 짝). (5) 조인 `blank: "skip"` — 짝이 된 원천의 빈 `take` 값은 쓰지 않습니다. (6) `allow_retraction` 으로 거둔 행도 지움 이벤트 · 이력을 남기고 원장 후속으로 갑니다.
+- **선언 예시** — `config/chain_rules.json`. 통합 문법의 조인에 `on.require` 와 `blank`(옛 모양의 규칙은 맨 위에 `require`):
+
+<!-- example: chain_rule -->
+```json
+{
+  "name": "attribution_to_inventory_filled",
+  "on": {"table": "dt_job_attribution", "require": ["dt_lot_confirmed"]},
+  "derive": {"kind": "join", "join": {"on": [{"left": "dt_job", "right": "dt_job"}],
+                                       "take": ["dt_lot_confirmed", "dt_slot_confirmed"], "blank": "skip"}},
+  "into": {"table": "dt_inventory"},
+  "key": {"unique": true}
+}
+```
+
+<!-- example: chain_rule -->
+```json
+{
+  "name": "lot_event_to_lot_slot_wafer_filled",
+  "trigger_table": "lot_event",
+  "target_table": "lot_slot_wafer",
+  "mapper_module": "mappers.lot_slot_wafer_mapper",
+  "mapper_function": "build_lot_slot_wafer_rows",
+  "is_batch": true,
+  "require": ["lot_id", "slotnumbers", "waferids"],
+  "params": {"list_delimiter": ":", "slot_list_column": "slotnumbers", "wafer_list_column": "waferids",
+             "lot_column": "lot_id", "time_column": "event_time", "event_type_column": "event_type",
+             "target_lot_column": "lot", "target_slot_column": "slot", "target_wafer_column": "wafer",
+             "target_time_column": "event_time", "target_event_type_column": "event_type"}
+}
+```
+
+- **화면에서** — 어드민 `Chain` 탭의 폼에서 `on` 밑의 `require`, 조인의 `blank` 칸.
+- **필요한 조건** — 서버 · 체인 워커 재기동. `blank: "skip"` 전에 이미 NULL 로 쓴 층은 남습니다(걷는 절차는 `RUN.md`).
+- **바뀐 동작** — 위 (2) · (3) · (4) · (6). 로드 로그에 규칙마다 「wakes only on: [..]」 한 줄이 남습니다. 조인에 `on.columns` 를 적으면 키 + `take` 와 «집합으로» 같아야 합니다. `require` 에 트리거 표에 없는 이름을 적으면 그 규칙이 로드에서 거절됩니다.
+- **자세히** — [config/chain_rules.md](../guide/config/chain_rules.md) · `RUN.md` · 커밋 3aec8eaa9 · 29c590044 · 5ad90d16d · 66b5fcbe7 · 512b0575b · f36abbb1a · 880043afb · cb4d5157d
+
+## 2026-09-28 · 맵 에디터 — 고른 칸만 고쳐 쓰기 (Save changed cells)
+
+- **무엇** — 맵 에디터에서 고른 값 칼럼의 «바뀐 칸만» 그리드의 쓰기 문으로 저장합니다. 맵을 통째로 갈아끼우는 `Push` 는 그대로입니다.
+- **선언 예시** — 없음.
+- **화면에서** — 맵 에디터 → 값 칼럼 고르기 → 칠하기 · 지우기 → `Save changed cells` → 묻는 창에서 확인 → 결과 줄.
+- **필요한 조건** — 없음.
+- **바뀐 동작** — 불러온 뒤 다른 곳에서 값이 바뀐 칸은 건너뛰고 셉니다. 불러온 뒤 맵 키 · 값 칼럼 · 프레임이 바뀌었으면 저장을 거절합니다.
+- **자세히** — 커밋 de356e889
+
+## 2026-09-29 ~ 10-01 · 이번 주 고친 것 — 소유자가 신고한 화면
+
+- 참조 보기 탭이 가끔 사라지던 것이 고쳐졌습니다(a937d209d · 3da6a2a09).
+- Replay chain 드롭다운에서 글씨가 넘치던 것이 고쳐졌습니다(df7a22399 · 2538fe367).
+- 체인 선언 폼의 상태 배지가 입력칸과 겹치던 것이 고쳐졌습니다(42b9465c6 · 66e86ca0d).
+- Replay chain 줄이 겹치던 것과, 목록이 상자 안에서 스크롤되게 고쳐졌습니다(e99b496f5).
+- 체인 규칙 폼에서 다음에 누른 칸의 초점이 사라지던 것이 고쳐졌습니다(4ecbc813e).
+- 낱말 하나만 든 목록 칸을 고칠 수 없던 것이 고쳐졌습니다(c9c27c450 · a5746efc1).
+- 선언창에서 새 가지에 아무것도 만들 수 없던 것이 고쳐졌습니다(77a5f264c).
 
 ---
 

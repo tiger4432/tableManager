@@ -91,7 +91,7 @@ python docs/history/gen_index.py --check   # CI: 갱신 필요 시 종료코드 
 
 ## 6. 버전 체계
 
-불연속 `Phase N.x` 번호 대신 [RELEASE_LOG.md](./RELEASE_LOG.md)에 `YYYY-MM-DD | 영역 | 시맨틱 요약`으로 기록합니다.
+불연속 `Phase N.x` 번호 대신 [RELEASE_LOG.md](./RELEASE_LOG.md)에 기록합니다. 🆕 2026-10-02(총괄 9eccd4e12)부터 주요 기능은 착지하는 «같은 커밋»에 항목 하나 — `## YYYY-MM-DD · 기능 이름` 아래 무엇 · 선언 예시(제품 로더로 한 번 읽혀 본 것) · 화면에서(버튼은 화면 글자 그대로) · 필요한 조건 · 바뀐 동작 · 자세히.
 
 ## 7. 기술적 안전판 (SOP에서 계승)
 
