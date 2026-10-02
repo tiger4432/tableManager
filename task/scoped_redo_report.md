@@ -69932,3 +69932,94 @@ transfer 원자 시각 (표본 다이 50, 철자 무시)   전 50 원자 · 후 
 한 줄: 다시 번역은 번역을 «두 번» 한다(거둠을 겨냥하는 미리보기 + 쓰기 — backfill.rescope 의 판정 166 주석). 번역 2.16 s × 2 = 4.32 s 가
 5.85 s 의 대부분이고, references 가 번역에 더한 것은 0.18 s. 나머지 1.25 s 가 거둠 · 쓰기 · 커밋(데몬이 같이 돌던 박스 · 꽉 찬 원장) —
 같은 일을 빈 시험 원장에 쓰면 0.66 s 였다(계획 때 잼).
+
+---
+
+## [10-02 오후] 그리드 행 지우기 서버 반쪽 — 답은 지운 수 · 트랜잭션만 (총괄 a0ae05b60, 소유자 「ㄱ, 한 1만행」) — 29cfa7047
+
+**무엇을 지었나**
+```
+답       POST /tables/<표>/rows/batch_delete = {status, deleted_count, transaction_id} — created_logs 뺌
+방송     500 행 묶음마다 그 행들의 이력 — 이력을 한 번만 훑어 묶음별로 나눔(전에는 묶음마다 이력 전체를 다시 훑음)
+문서     api_documentation 1.3 응답 예시 · RELEASE_LOG 항목(서버 · 화면 한 항목 — 이 기능의 마지막 착지) · RUN.md
+```
+**읽는 자리 전수** — HTTP 답을 읽는 클라 자리는 client2/src/api.js 하나이고 `deleted_count` 만 읽음. `created_logs` 를 읽는 클라 자리는
+websocket.js 하나(방송 메시지 — 그대로 옴) · effort_meter.js 는 주석. 서버 쪽에서 이 답을 읽는 코드 0(git grep, docs/_archive 제외)
+
+**10,000 행 전후 (박스 시험 DB 스크래치 스키마 · 제품 라우트를 TestClient 로, 쓰기는 그 스키마에만)**
+```
+좁은 표(3 칸)  답 3,227,847 -> 98 바이트 · 라우트 2.67 -> 2.29 s · 이력 줄 10,000 -> 10,000 · 답 칸 created_logs/deleted_count/status -> deleted_count/status/transaction_id
+넓은 표(40 칸)  답 3,207,847 -> 98 바이트 · 라우트 3.50 -> 2.82 s · 이력 줄 10,000 -> 10,000 · 답 칸 created_logs/deleted_count/status -> deleted_count/status/transaction_id
+```
+**게이트**
+```
+시험  tests/test_contention_fixes.py 10 passed in 1.87s
+        답에 created_logs 없음 · transaction_id 있음 · 그 트랜잭션의 DELETE 이력 줄이 행마다 ·
+        방송 501 행 = 묶음 둘, 묶음마다 자기 행들의 이력만(묶음 하나면 이 갈래를 못 가려서 501 로)
+      client2/tests/grid_view_readonly_harness.mjs 56 passed, 0 failed; 28/28 defects caught, 0 escaped; 2/2 controls escaped.
+변이  baseline                             10 passed
+      the answer echoes the logs again     1 failed, 9 passed  <- test_batch_delete_endpoint_smoke
+      no transaction in the answer         1 failed, 9 passed  <- test_batch_delete_endpoint_smoke
+      every chunk carries every log        1 failed, 9 passed  <- test_batch_delete_broadcasts_each_chunk_with_its_rows_logs
+      a chunk carries no logs              1 failed, 9 passed  <- test_batch_delete_broadcasts_each_chunk_with_its_rows_logs
+      after restore                        10 passed
+스위트 비PG 전체 6 failed, 7679 passed, 230 skipped, 3 xfailed in 773.62s (0:12:53) · 알려진 다섯 밖: 1
+      tests\test_a_ledger_world_is_a_set_of_names.py::test_an_install_with_no_branch_issues_the_statements_it_always_did
+      <- 이 착지 탓이 아니라 제 앞 착지 98112d1ba(펼친 보기 basis 칸)가 DDL 문장 기록(tests/support/ledger_default_ddl.json)을 안 고친 것.
+         다른 문장은 그 보기 한 줄뿐이고 그 칸만큼 다름을 확인해 ce648a9ae 로 고침(그 파일 5 passed). 98112d1ba 때 전체를 안 돌린 탓
+```
+**덧붙임 — 7679d868c 의 다이 키 철자 갈림은 그대로 둔다(총괄 답 ㄱ)** — 근거: 소유자 09-25 판정 f3bc02f6e(운영은 뷰를 안 쓰고, 뷰 소스는 소급 없이 걷어냄)라
+박스의 뷰 소스 넷이 옛 철자로 남는 것은 «박스에만» 있는 모양이다. 6736254fd 의 두 일은 111850bbe(RUN.md) · 7d23eb172(보고)로 끝냄
+
+---
+
+## [10-02 오후] 소급 잡 하나 = 대기열 한 줄 (총괄 b3a4334db) — 짓기 전에 멈춤: 지시의 전제 셋이 오늘 코드와 다름
+
+**오늘 코드 (조사 + 코드로 확인)**
+```
+① 「대기열이 이벤트를 한 줄씩」 — 아니다. /admin/chain/queue 는 이미 payload.transaction_id 로 접어 한 줄을 만든다(main.py 대기열 라우트의 접기).
+   다만 «앞에서부터 200 이벤트»를 자른 «뒤»에 접는다 — 줄 상한이 아니라 훑는 이벤트 상한이라, 한 잡이 200 이벤트를 넘기면 그 뒤 잡은 안 보인다
+② 「R1 은 tx id 가 페이지당 하나(미수리)」 — 이미 고쳐짐. chain/replay.py 가 실행당 replay_<run> 하나(d62f40730, 09-23).
+   가이드(chain_ingestion_guide §5.6 · BACKFILL_GUIDE · data_model)의 문장이 낡았다
+③ 한 잡이 여러 줄이 되는 진짜 자리 — 잡 신원(retroactive_runs.run_id)이 이벤트 어디에도 안 실린다. 대신:
+   · 연산마다 제 tx id 를 따로 지음(replay_ · chain_replay_withdraw_ · resolution_recompute_ · notation_backfill_ · enrichment_sweep_ …)
+   · R1 은 «트리거 이벤트»(replay_<run>)와 «그걸로 워커가 쓴 결과»(chain_replay_<run>)가 다른 tx — 두 줄
+   · group_by 를 선언한 규칙의 워커 쓰기는 묶음 키 tx(chain_group_by:…) — 묶음마다 한 줄
+   · 잡의 통제 행(RETROACTIVE_RUN)은 tx 가 없어 제 줄 「(no tx · outbox#N)」
+   · rerun_set_aside 는 표 · 규칙마다 replay 를 따로 불러 tx 가 여럿
+```
+**박스 아웃박스에 남은 것 (읽기만, 611 이벤트, 2026-09-25 17:46 ~ 2026-09-30 10:39 · 지금 기다리는 이벤트 0)**
+```
+enrichment_sweep_<hex>                               이벤트 226 · tx 1 · 행 226
+replay_<hex>                                         이벤트 184 · tx 3 · 행 3,635
+<uuid>                                               이벤트 79 · tx 78 · 행 80
+chain_enrichment_sweep_<hex>#half#<..>               이벤트 40 · tx 22 · 행 5,746
+(no tx: RETROACTIVE_RUN)                             이벤트 31 · tx 0 · 행 31
+chain_chain_enrichment_sweep_<hex>#half#<..>         이벤트 12 · tx 12 · 행 12
+chain_<uuid>                                         이벤트 10 · tx 10 · 행 10
+reload_<hex>                                         이벤트 7 · tx 7 · 행 7
+chain_enrichment_sweep_<hex>#half#<..>#row#<id>      이벤트 5 · tx 5 · 행 5
+<uuid>#row#<id>                                      이벤트 5 · tx 5 · 행 5
+chain_enrichment_sweep_<hex>                         이벤트 3 · tx 1 · 행 287
+chain_chain_enrichment_sweep_<hex>#half#<..>#row#<id> 이벤트 2 · tx 2 · 행 2
+(no tx: SCHEDULER_RUN_NOW)                           이벤트 2 · tx 0 · 행 2
+(no tx: BROADCAST_RECOVERY)                          이벤트 2 · tx 0 · 행 2
+chain_replay_withdraw_<hex>                          이벤트 1 · tx 1 · 행 1
+chain_replay_<hex>                                   이벤트 1 · tx 1 · 행 1
+chain_chain_enrichment_sweep_<hex>                   이벤트 1 · tx 1 · 행 1
+```
+`#half#` 꼬리(실패 묶음을 반으로 쪼갠 것)는 09-29 5fa5b1d83 이 은퇴시켰다 — 위 줄들은 그 전 것. 「소급 이벤트 하나가 몇 행」은 남은 replay 실행으로만 셀 수 있다: replay_67a4d3f1 이벤트 182 에 행 3,633 · replay_07cb0e59 이벤트 1 에 행 1 · replay_ab54f87d 이벤트 1 에 행 1
+
+**제가 짓기를 제안하는 모양 — 확인 받고 짓습니다**
+```
+잡 신원 한 칸  소급 잡이 도는 동안(admin/retroactive.py 의 한 자리 _run_to_the_end) 그 run_id 를 문맥에 두고, 봉투(_outbox_envelope)가
+             모든 이벤트 payload 에 run_id 를 싣는다. 워커가 소급 이벤트로 깨어 쓴 결과도 그 run_id 를 이어받는다(채널을 이어받는 그 자리)
+             통제 행은 이미 run_id 를 든다
+대기열 접기    run_id 가 있으면 run_id 로, 없으면 오늘처럼 transaction_id 로 — 한 줄: 잡 이름(op) · 남은 이벤트 · 남은 행 · 가장 오래 기다림
+             접기를 «자르기 전»에 SQL 로(GROUP BY) — 줄에 상한. 기다리는 행만 읽는 부분 색인(idx_outbox_unprocessed) 그대로 타는지 EXPLAIN 으로 잼
+R1 tx         이미 실행당 하나 — 짓지 않음. 가이드 세 문장만 고침
+재기          박스에서 소급 잡 하나(체인 재실행, 수만 행)를 돌려 전후 대기열 줄 수 · 이벤트당 행 · 접기 질의 시간
+안 쓰는 길     tx id 를 잡 하나로 맞추기 — 연산마다 tx 를 짓는 자리 넷(R1 · crud.transaction_context · _apply_batch_updates_once · 워커 chain_)이
+             덮어써서 «자리마다 고치는» 일이 되고, tx 는 «한 번의 쓰기»의 신원이라 뜻이 둘이 된다
+```
+**여쭐 것** — ① 이 모양(잡 신원 run_id 를 payload 에)으로 가도 되나 ② 박스에서 수만 행 소급 잡을 한 번 돌려 재도 되나(박스 서버는 09-30 코드라 «전»만 박스 서버로, «후»는 새 코드를 프로세스로 띄워서)
