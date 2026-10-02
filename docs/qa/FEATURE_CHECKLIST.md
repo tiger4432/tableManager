@@ -37,7 +37,7 @@
 | 파일 업로드 | 브라우저에서 파일 선택 → 해당 테이블 워크스페이스로 투입(이후 인제션 파이프라인) | 툴바 파일 업로드(`toolbar-file-input`) | POST `/tables/{t}/upload`(§1.2) |
 | 컬럼 선택(표시 토글) | 표시할 컬럼 선택/전체/해제. 선택 상태는 AG-Grid 인메모리 컬럼 상태에만 유지(localStorage 미저장) — **새로고침 시 전체 표시로 초기화**, 테이블 전환 시 컬럼 정의 재구축으로 유지 비보장 | 툴바 `column-selector-btn` → 드롭다운 체크리스트(`col-select-all/none-btn`) | `main.setupEventListeners`(§7) — `gridApi.setColumnsVisible` |
 | 페이징/뷰 모드 | 페이지 이동(이전/다음/번호 입력), 뷰 모드 전환, 전체 로드, CSV export. 뷰 모드 2종: `📄 Paging`(pagination — 하단 페이지 컨트롤 표시) / `♾️ Scroll`(infinite — 페이지 컨트롤 숨김, 스크롤 하단 도달 시 다음 청크 자동 로드) | 하단 `prev/next-page-btn`·`page-input`·`view-mode-select`·`load-all-btn`·`load-csv-btn` | `state.currentSkip/pageCache`·`grid.updateViewModeUI`(§7) · GET `/tables/{t}/export`(§1.2) |
-| 컬럼 필터/정렬 | 컬럼 헤더 아래 플로팅 필터(텍스트/숫자 타입별), 헤더 클릭 정렬, 최신순 토글 | AG-Grid 헤더 필터 행, 설정 메뉴 `sort-latest-toggle` | `grid.buildColumnDefs`(floatingFilter) · `main.get_column_filter_condition`(서버, §1.1) |
+| 컬럼 필터/정렬 | 컬럼 헤더 아래 플로팅 필터(텍스트/숫자 타입별), 헤더 클릭 정렬, 최신순 토글. 🆕 10-02 표 맨 끝 `ROW_ID` 칸도 필터(시스템 칸 중 이것만) — `row_id` 가 있는 관계에만 그 칸이 선다(`cfbe1ceaf` · `5b3dfb05e`) | AG-Grid 헤더 필터 행, 설정 메뉴 `sort-latest-toggle` | `grid.buildColumnDefs`(floatingFilter) · `main.get_column_filter_condition`(서버, §1.1) |
 | 트랜잭션 모드 | 편집을 로컬 스테이징 후 일괄 커밋/롤백 | 설정 메뉴 `tx-mode-toggle` → `tx-apply-btn`/`tx-discard-btn` | `main.applyPendingTxEdits/discardPendingTxEdits` · `ui.updateTxModeUI/setTransactionFilter`(§7) |
 | ⚰️ ~~그래프 수동 동기화~~ | **[2026-08-14 `2ec78b9`] 은퇴** — `POST /api/graph/sync`가 410이다(프록시 대상 워커가 스택에 없다). §1.9 참조 | ~~툴바 `graph-sync-btn`~~ | — |
 

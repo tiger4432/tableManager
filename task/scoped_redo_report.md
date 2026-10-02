@@ -70549,3 +70549,158 @@ AST                                      「어느 세상인가」를 묻는 자
 그리고  allow_chain_trigger 때문에 복사 한 번마다 공식 표 규칙이 한 번 더 돈다(세기 질의 한 번 더) — 받아들일지
 ```
 3211e9000(복사 + 보류, 원천 표 규칙)은 계속 짓는 중 — 이 답과 따로 착지할 수 있다
+
+---
+
+## [10-02 밤] 착지 — 보류 포함 행 복사 맵퍼 copy_rows_with_hold, 줄인 모양 (총괄 3211e9000 · 3ba1d1dd4) — 4115f5afb
+
+어느 DB · 어느 스키마 · 지운 것 — 시험은 assy_test 의 시험 스크래치 스키마(assy_pytest_pg_<프로세스>, 시험 끝에 픽스처가 DROP)뿐(카나리아: pg_namespace 에 그 스키마 1). 표 둘을 그 스키마에 만들고, 끝에 그 스키마 이름을 적은 DROP · DELETE 로 그 표 둘 · 그 표의 cell_sources · database_outbox 줄 · 그 소스의 원장 줄만 지움. 박스 DB 에는 안 씀
+
+**한 일**
+```
+맵퍼     server/mappers/hold_copy.py(추적 예외) — 등록 copy_rows_with_hold · params key_columns · columns · hold_column · source_table
+         원천 표 규칙  copy_one_row 그대로(columns 를 원천 행의 층 + origin_row_id) + 세 줄:
+                      같은 키(IS NOT DISTINCT FROM) 원천 행들의 columns 서로 다른 값 묶음 수를 mapper_sdk.sql 로 한 번 -> 2 이상 '' 아니면 agreed
+                      보류는 같은 updates 의 항목 하나 더, 그냥 chain_ingestion 층
+         공식 표 규칙  같은 함수, 보류만(값 칸 안 씀) — 모드는 trigger_table == target_table «한 자리»
+거둔 것   can_mean_emptied 변경 · 사람이 정함 · 9줄 게이트 표 · join 함수 부르기 · 운영 크기 pg 시험 — 작업 트리에서 되돌림
+         origin/main 과의 차이: crud.py · 두 독자 시험 = 없음(diff 0 줄)
+이름     등록 이름은 앞 계획 그대로 copy_rows_with_hold
+```
+**게이트 (pg, 체인 그룹 본체 -> 원장 따라가기까지 제품 자리 그대로, 규칙 둘 다 켠 채)**
+```
+하나 -> agreed · 원장이 그 값을 말함
+다른 값 둘 -> '' · 원장 원자 거둠(exclude_when hold — 시험이 그 줄을 제품 검사기 require_ready_bundle 로 통과시켜 씀)
+같은 값 둘 -> agreed
+값과 보류가 한 커밋   커밋마다 «값이 바뀐 공식 행의 보류가 그 순간 원천 행들이 주는 답과 다른» 수 = 0 — 한 묶음 · 두 묶음 둘 다
+보이던 값의 충돌 행 지움 -> '' 에서 agreed · 원장이 남은 값을 말함
+셋(7 · 7 · 9)에서 9 지움 -> agreed · 다시 세기 규칙이 쓴 이벤트 1(같은 보류는 이벤트 0 — 루프 0)
+변이(각 자리 되돌림 -> 빨강, 안 바꾼 첫 판 = 카나리아)
+   none (canary)                                                  7 passed, 7949 deselected, 18 warnings
+   the hold always agrees                                         5 failed, 2 passed, 7949 deselected, 18 warnings
+   the hold under the row's own layer (the rejected alternative)  4 failed, 3 passed, 7949 deselected, 18 warnings
+   no hold item in the updates                                    6 failed, 1 passed, 7949 deselected, 18 warnings
+   the mode is never hold-only                                    5 failed, 2 passed, 7949 deselected, 18 warnings
+예시     RELEASE_LOG 규칙 둘 — 로더 판정 거절 0
+전체 시험  5 failed, 7704 passed, 244 skipped, 3 xfailed, 13016 warnings in 841.01s (0:14:01)
+          실패: test_a_sentence_says_itself_only_for_the_rows_it_names · test_core_alignment_mapper · test_core_usage_mapper · test_dt_inventory_metadata_mapper · test_one_place_decides_where_the_server_is — 작업 트리 체크아웃의 줄 끝 · 경로(앞 착지들과 같은 다섯)
+```
+**남는 것**
+```
+가려진 값의 원천 행 지움은 아직 다시 안 셈 — (나) 지움 경로 이벤트(e11bb4de0)가 고친다. 시험 머리에 그 사실을 적어 둠
+사람이 공식 표에 값을 적어도 보류는 안 풀림 — 소유자께 말한 한계 그대로
+비용    행마다 세기 질의 하나 + 복사마다 다시 세기 규칙 한 번 — 1,000 행 시간은 «안 쟀다»
+```
+**여쭐 것 하나 — 내일 순서(35b76ba92 RUN.md)**
+```
+「재기동 -> table_config(키 · hold 칸)」 순서인데, hold 칸은 «재기동»만 기존 표에 더한다
+   (runtime/system_reload.reload_local_process_cache: 새 표 CREATE 만, 기존 표 ALTER 는 범위 밖)
+그래서 RUN.md 를 「table_config 고침 -> 재기동 -> 원장 소스 exclude_when -> 비우기 …」로 적으려 한다 — 재기동이 table_config 뒤로 간다
+```
+다음: 35b76ba92 빠른 비우기 + 내일 RUN.md (짓는 중)
+
+---
+
+## [10-02 밤] 35b76ba92 짓는 중 잰 것 — 내일 «다시 채우기»가 100만 행이면 약 4.4 시간 (복사 맵퍼가 행마다 불려서) → 여쭐 것
+
+어느 DB · 어느 스키마 · 지운 것 — assy_test 의 시험 스크래치 스키마 assy_pytest_pg_41740_gw0 뿐, 시험 끝에 픽스처가 그 스키마를 DROP. 박스 DB 에는 안 씀
+
+**잰 것** — 내일 길 그대로: 원천 10,000 행(키 10,000 개) -> 비운 공식 표 -> `replay.replay_rule(복사 규칙, apply)` 가 이벤트를 쌓고 -> 체인 그룹 본체(다시 세기 규칙은 멈춤) -> 원장 따라가기
+```
+10,000 행   쌓기 2.79 s · 체인 131.96 s · 원장 23.21 s = 157.96 s   (행당 체인 13.2 ms)
+100만 행 어림(x100)  15,796 s ≈ 4.4 시간
+규격      체인 그룹 1,000 행 ≤ 5 s 인데 1,000 행에 13.2 s (위 판을 행 수로 나눔)
+```
+**어디서 드나 (1,000 행 프로파일, 프로파일러가 얹은 몫 포함)**
+```
+맵퍼 1,000 번 10.830 s   그중 df_to_updates 2,000 번 5.135 s · 세기 질의(mapper_sdk.sql -> pandas) 1.937 s — 행마다 pandas 를 새로 짓는다
+쓰기 한 번   4.724 s       항목 2,000 개(행마다 값 항목 + 보류 항목)
+```
+**여쭐 것 — 내일 전에 정할 것**
+```
+(가) 그대로 — 100만 행을 밤새 돌린다(약 4.4 시간). 코드 0
+(나) 같은 함수가 «묶음»도 받게 — 규칙에 is_batch: true 를 적으면 한 번에 1,000 행:
+     값 항목은 df_to_updates 한 번 + 행마다 층 이름 · origin_row_id, 세기는 그 묶음 키 전부를 GROUP BY 한 질의 하나, 보류 항목도 한 번
+     소유자 copy_one_row 모양(행 하나)에서 «묶음»으로 바뀐다 — 소유자 말씀(「copy one row 에서 세 줄」)과 갈리는 자리라 제가 정하지 않는다
+     크기: 안 쟀다. 앞서 묶음으로 지었던 판은 3,000 행에 맵퍼 0.18 s · 쓰기 2.16 s 였다(그때 표 · 그때 모양 — 같은 수가 나온다는 말이 아니다)
+(다) 내일 순서에서 다시 채우기를 «뒤»로 — 비우기만 하고 채우기는 (나) 착지 뒤
+```
+비우기 도구는 계속 짓는다(이 답과 무관)
+
+---
+
+## [10-02 밤] 착지 — 표 통째로 비우기 server/scripts/empty_table.py (총괄 35b76ba92) — 81ffa8499
+
+어느 DB · 어느 스키마 · 지운 것 — 시험은 assy_test 의 시험 스크래치 스키마(assy_pytest_pg_<프로세스>, 픽스처가 끝에 DROP)뿐(카나리아: pg_namespace 에 그 스키마 1). 비우기 시험이 지운 것은 그 스키마 안의 시험 표 둘과 그 줄들뿐. 박스 DB 에는 안 씀
+
+**한 일**
+```
+report   행 · 그 표의 칸 층 · 그중 사람 층(crud.layer_writer) · 덮어쓰기 · 그 표를 읽는 원장 소스(followup.sources_for_table)와 원자 · 그 표가 트리거인 체인 규칙. 읽기만
+--apply --confirm-rows <보고의 행 수>
+         보고를 다시 떠서 행 수가 다르면 거절(drop_world 모양) · 보기는 crud.refuse_write_to_view 로 거절
+         한 트랜잭션: 행 · cell_sources · cell_overwrites 를 SQL 로 지움(아웃박스 이벤트 0) + 감사 로그 요약 한 줄(출처 empty_table)
+         커밋 뒤 소스마다 backfill.rescope(whole_source, apply) — 표가 잃은 행의 원자를 지움처럼 거둠. 새 원장 쓰기 길 0
+RUN.md   도구 몫만. 내일 «순서 전부»는 총괄 순서대로 묶음 착지 뒤
+```
+**게이트 (pg, 복사 맵퍼 시험과 같은 세상)**
+```
+보고는 아무것도 안 씀 · 행 2 · 사람 층 1 · 원자 {hc_official: 2} · 트리거 규칙 하나
+apply   행 · 칸 층 · 덮어쓰기 · 아웃박스 새 줄 = 0 · 원장 원자 0 · 다른 표 칸 층 그대로 · 감사 줄 1
+움직인 수 -> 거절, 아무것도 안 감 · 보기 -> 거절
+변이(각 자리 되돌림 -> 빨강, 안 바꾼 첫 판 = 카나리아)
+   none (canary)                            4 passed, 7956 deselected, 12 warnings
+   a count that moved is not refused        1 failed, 3 passed, 7956 deselected, 12 warnings
+   the table's cell layers stay             1 failed, 3 passed, 7956 deselected, 12 warnings
+   the table's overwrites stay              1 failed, 3 passed, 7956 deselected, 12 warnings
+   the ledger atoms stay                    1 failed, 3 passed, 7956 deselected, 12 warnings
+   a view is not refused                    1 failed, 3 passed, 7956 deselected, 12 warnings
+시간    시험 스키마 10,000 행(칸 층 80,000 · 원자 10,000) 0.99 s -> 100만 어림 99 s
+전체 시험  안 돌림 — 새 파일은 스크립트 하나와 pg 시험 하나. 스크립트 폴더를 훑는 시험 셋 69 통과
+```
+**정정 — dfc0ec215 에 적은 재기동 근거**
+```
+「hold 칸은 재기동만 더한다」는 반쪽이었다. table_config.json 을 저장하면 웹 서버의 설정 감시(database/config_watcher.py)가
+그 자리에서 칸을 더한다. 총괄이 고른 순서(설정 둘 고치고 재기동 한 번)는 감시 · Reload 에 기대지 않는 길이라 그대로 맞다
+```
+다음: 32bab7896 · cb3d3c1bf 복사 맵퍼 묶음 + 세기 0 은 보류 '' -> 내일 RUN.md. (가) 대기열은 지어 두었다(작업 트리, pg 17 통과) — 순서대로 그 뒤에 착지
+
+---
+
+## [10-02 밤] 착지 — copy_rows_with_hold 묶음 + 원천 없는 키는 보류 '' (총괄 32bab7896 · cb3d3c1bf) — 8990d408f · 내일 RUN.md
+
+어느 DB · 어느 스키마 · 지운 것 — 시험 · 재기는 assy_test 의 시험 스크래치 스키마(assy_pytest_pg_<프로세스>, 픽스처가 끝에 DROP)뿐(카나리아: pg_namespace 1). 지운 것은 그 스키마의 시험 표와 그 줄들뿐. 박스 DB 에는 안 씀
+
+**한 일**
+```
+같은 함수   is_batch 면 묶음, 아니면 한 행 — 둘 다 df 하나로 같은 길
+값          묶음 df_to_updates 한 번 -> 항목마다 그 행의 층 chain_ingestion (<row>) · origin_row_id <row>
+세기        (키) IN (...) 같음 비교, 1,000 키마다 질의 하나 — 1만 키 한 질의는 PG 파서 스택을 넘었다(재서 봄). NULL 이 낀 키만 IS NOT DISTINCT FROM
+            🔴 앞 착지(4115f5afb)는 IS NOT DISTINCT FROM 이라 색인을 못 탄다 — 100만 행 원천이면 행마다 표 전체를 읽었다. 이 착지가 고침
+보류        값 묶음 «하나» agreed · «없음»(원천 다 지움) 또는 «둘 이상» '' — 키마다 한 항목, 그냥 chain 층
+```
+**게이트 (pg, 묶음 · 한 행 두 판 다)**
+```
+맨 앞      같은 묶음 · 같은 키 원천 둘 -> netdie 칸에 층 둘 · 출처 둘, 하나 지우면 그 행 층만 빠짐
+4115f5afb 의 7 + 원천 둘 다 지움 -> 보류 '' · 원장 원자 0   =  9 x 2 판 = 18 통과 · 비우기 4 같이 = 22
+변이(각 자리 되돌림 -> 빨강, 안 바꾼 첫 판 = 카나리아)
+   none (canary)                                                  18 passed, 7952 deselected, 40 warnings
+   one layer name for the whole batch                             1 failed, 17 passed, 7952 deselected, 40 warnings
+   the hold always agrees                                         12 failed, 6 passed, 7952 deselected, 40 warnings
+   a key with no source row agrees (count 0)                      2 failed, 16 passed, 7952 deselected, 40 warnings
+   the hold under the row's own layer (the rejected alternative)  10 failed, 8 passed, 7952 deselected, 40 warnings
+   no hold item in the updates                                    14 failed, 4 passed, 7952 deselected, 40 warnings
+   the mode is never hold-only                                    14 failed, 4 passed, 7952 deselected, 40 warnings
+예시       RELEASE_LOG 규칙 둘(is_batch) — 로더 판정 거절 0 · allow_retraction «켜지 말 것» 사유 한 줄
+sqlite     맵퍼 · 규칙 시험(-k mapper/rule_loader/chain_rules) 401 통과, 실패 3 은 늘 같은 환경 셋
+           — 이 판이 맵퍼 표면 시험에 한 번 걸렸다(crud._chunks 는 비공개) -> 범위 나누기 한 줄로 바꿈. 전체 시험은 안 돌림
+```
+**1만 행 다시 채우기 — 4.4 시간 어림이 얼마로**
+```
+묶음     쌓기 2.46 s · 체인 64.89 s · 원장 23.69 s -> 100만 어림 약 2.5 시간   (한 행씩: 체인 128.81 s, 약 4.3 시간)
+규격     1,000 행에 체인 6.5 s — 아직 5 s 를 넘는다
+남은 몫   1,000 행 프로파일: 체인 그룹 4.7 s 중 쓰기 문(crud.apply_batch_updates) 4.3 s — 항목 2,000 개(행마다 값 + 보류)를 하나씩 찾는다. 맵퍼는 0.4 s
+         쓰기 문은 이 주문 밖이라 안 건드림 — 줄이려면 그 자리가 다음 일
+```
+**RUN.md** — 내일 순서 전부(설정 둘 고치고 재기동 한 번 · 비우기 보고 -> 비우기 · 규칙 둘 is_batch, 다시 세기는 꺼 둔 채 · 다시 채우기 · 다시 세기 켬 · census 0 확인 · 급할 때)
+
+다음: (가) 대기열(지어 둠, pg 17 통과) 을 새 main 위로 옮겨 착지 -> (나) 지문 -> e11bb4de0 -> 338abb9f3 -> 세상

@@ -22,6 +22,70 @@
 
 ---
 
+> ## 🔴 [10-02 밤 → 10-03 소유자] **공식 표를 제자리에서 비우고 다시 채우기 — 순서 전부 (총괄 35b76ba92 · 32bab7896 · e11bb4de0 · 1472ec1cc) — 이주 «불필요» · 재기동 «필요»(run_app.bat 전체, 한 번)**
+>
+> ```
+> 0 코드        git pull — 복사 맵퍼 묶음(이 커밋) · 비우기 도구(81ffa8499)가 들어 있어야 함
+> 1 표 설정      server/config/table_config.json 의 official_dt — composite_key_source 를 코어 칸으로 · column_types 에 "hold": "string"
+> 2 원장 소스    config/ontology/ledger_config.json 에서 official_dt 를 읽는 소스의 read 에 "exclude_when": [{"column": "hold", "blank": true}]
+> 3 재기동       run_app.bat 전체 — 1 · 2 를 한 번에 읽는다
+>               뜻: 그리드 official_dt 에 HOLD 칸이 보이면 1 이 들어간 것
+> 4 비우기 보고   python server/scripts/empty_table.py official_dt
+>               뜻: 행 · 칸 층 · 사람 층(비우면 사람이 고친 값도 같이 감) · 덮어쓰기 · 원장 소스와 원자 · 트리거 규칙. 아무것도 안 씀
+> 5 비우기       python server/scripts/empty_table.py official_dt --apply --confirm-rows <4 의 행 수> --by <이름>
+>               뜻: 「비움 … · 원자 N 거둠 · 아웃박스 이벤트 0」. 「거절: 지금 K 행」이면 그 사이 표가 움직임 — 4 부터 다시
+>                  「비움」 줄 뒤 「원자 거둠」 전에 오류로 멈췄으면 표는 이미 빔 — 소스마다 python -m ledger.backfill --source <소스> --whole-source --apply (server 폴더)
+>               시간: 시험 스키마 10,000 행(칸 층 80,000 · 원자 10,000) 1.03 s -> 100만 어림 103 s
+> 6 체인 규칙 둘  config/chain_rules.json 에 RELEASE_LOG 「보류 포함 행 복사」의 두 규칙(둘 다 "is_batch": true) — 다시 세기 규칙 official_dt_hold_recount 에는 "enabled": false
+>               -> 어드민 Reload Configs & Code (체인 탭 편집기로 저장하면 그 자리에서 다시 읽음)
+> 7 다시 채우기   python server/scripts/chain_replay_cli.py replay dt_log_to_official_dt --apply
+>               뜻: 이벤트를 1,000 행씩 쌓고 바로 끝남. 복사는 체인 워커가 돈다 — 그동안 다른 체인 일은 그 뒤에 줄 선다
+>               시간: 시험 스키마 10,000 행에 체인 64.89 s · 원장 23.69 s -> 100만 어림 약 2.5 시간
+> 8 다시 세기 켬   체인 대기열에서 7 의 줄이 사라지면 official_dt_hold_recount 의 "enabled": false 를 지우고 Reload Configs & Code
+> 9 확인         체인 대기열 화면 — 7 은 «한 줄»(잡 하나), 다 돌면 없음
+>               SELECT count(*) FROM official_dt WHERE hold IS NULL OR hold = ''    -- 같은 키 원천 행들의 값이 갈린(또는 원천이 없는) 공식 행 수
+>               python -m ledger census --source <official_dt 를 읽는 소스>        (server 폴더) — 「표 N · 색인 N · 남은 0」이어야
+>                  남은 이 0 이 아니면   python -m ledger.backfill --source <그 소스>   (색인에 없는 행만 번역)
+>                  색인이 표보다 크면    그만큼 «표엔 없고 색인엔 있는 행» — python -m ledger.backfill --source <그 소스> --whole-source --apply
+>               ⚠️ 원장 따라가기 대기열을 잃지 않게 하는 고침이 아직 안 들어왔으면 오늘 길 그대로 — 이 census 0 확인이 그물
+> 급할 때       7 을 멈춤: python server/scripts/chain_pause_cli.py pause --reason "다시 채우기 멈춤" (다시: ... resume)
+>               규칙 둘을 "enabled": false -> Reload Configs & Code
+> ```
+
+---
+
+> ## [10-02 밤] **표 통째로 비우기 — server/scripts/empty_table.py (총괄 35b76ba92) — 이주 «불필요» · 재기동 «불필요»(새 명령)**
+>
+> ```
+> 무엇          표 하나의 행 · 그 표의 칸 층 · 덮어쓰기를 한 트랜잭션에 지우고, 그 표를 읽는 원장 소스의 원자를 거둔다. 아웃박스 이벤트 0
+>              내일 공식 표 다시 채우기의 «순서 전부»는 다음 착지(복사 맵퍼 묶음)의 RUN.md 에 들어간다
+> 보고          python server/scripts/empty_table.py <표>
+>              뜻: 행 · 칸 층 · 사람 층(비우면 사람이 고친 값도 감) · 덮어쓰기 · 원장 소스와 원자 · 트리거 규칙. 아무것도 안 씀
+> 비우기        python server/scripts/empty_table.py <표> --apply --confirm-rows <보고의 행 수> --by <이름>
+>              뜻: 「비움 … · 원자 N 거둠 · 아웃박스 이벤트 0」. 「거절: 지금 K 행」이면 그 사이 표가 움직임 — 보고부터 다시
+>                 「비움」 줄 뒤 「원자 거둠」 전에 오류로 멈췄으면 표는 이미 빔 — 소스마다 python -m ledger.backfill --source <소스> --whole-source --apply (server 폴더)
+>              시간: 시험 스키마 10,000 행(칸 층 80,000 · 원자 10,000) 0.99 s -> 100만 어림 99 s
+> 급할 때       없음 — --apply 전에는 아무것도 안 쓴다
+> ```
+
+---
+
+> ## [10-02 밤] **보류 포함 행 복사 맵퍼 copy_rows_with_hold (총괄 3211e9000 · 3ba1d1dd4) — 이주 «불필요» · 재기동 «필요»(체인 워커)**
+>
+> ```
+> 무엇이 바뀌나  제품 맵퍼 하나(server/mappers/hold_copy.py, 추적됨). 제품 코드는 그대로
+> 쓰는 법       RELEASE_LOG 「보류 포함 행 복사」 예시 — 대상 표에 hold 칸 · 규칙 둘(복사 · 보류 다시 세기) · 원장 소스 exclude_when 한 줄
+>              내일 공식 표 다시 채우기 순서는 다음 착지(빠른 비우기)의 RUN.md 에 «전부» 명령으로 들어간다
+> 확인         재기동 뒤 체인 규칙 화면에서 두 규칙에 거절이 없는지 · 원천 행 하나 저장 -> 공식 행 hold = agreed
+>              같은 키에 값이 다른 원천 행 하나 더 -> hold 빈 값 · 원장에서 그 행 원자가 거둬짐
+> 뜻           hold 빈 값 = 같은 키 원천 행들이 다른 값 묶음 둘 이상
+>              원천 행을 지운 뒤에도 빈 값이면: 지운 행의 값이 가려져 있던 경우(다음 착지가 고침) — 다시 세기 규칙을 그 행에 리플레이
+>              python server/scripts/chain_replay_cli.py replay official_dt_hold_recount --row-ids <공식 행 row_id> --apply
+> 급할 때       두 규칙을 enabled: false (또는 chain_rules.json 에서 지움) -> 체인 워커 재기동
+> ```
+
+---
+
 > ## [10-02 저녁] **메인 그리드 — row_id 가 있는 표 끝에 ROW_ID 칸 · 그 칸으로 거르기 (총괄 e67ef53f3 · d692af408) — 이주 «불필요» · 재기동 «필요»(run_app.bat 전체)**
 >
 > ```

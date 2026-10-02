@@ -17,6 +17,50 @@
 - **바뀐 동작** — 초안은 파일에 적힌 그 선언 그대로 열립니다(setup_version 5 파일은 로더가 읽는 v6 모양으로). 전에는 제품 기본값이 채워진 선언으로 열려, `read` 를 안 적은 소스도 초안에 `read` 칸 다섯이 있었고 저장하면 그것이 파일에 적혔습니다. 저장은 로더가 채우는 칸(`read` 의 기본값 · `map.unit` · `map.input_columns`)을 비어 있으면 비워 둡니다 — 계획이 채우는 다른 칸(`implementation_version` 등)은 전처럼 적힙니다. 묶음 해시는 같은 칸만 손으로 적은 파일과 같습니다. `map.unit` 을 안 적은 소스의 `Mapper unit` 은 빨간 칸이 아니라 로더의 기본값입니다(`row`, 묶는 소스는 `group_by`). `exclude_when` 후보에는 `row_id` 도 나옵니다(그 관계의 칸 전부).
 - **자세히** — 커밋은 이 항목과 같은 커밋
 
+## 2026-10-02 · 표 통째로 비우기 — 행 · 칸 층 · 원장 원자를 한 번에
+
+- **무엇** — 표 하나를 비우는 스크립트 `server/scripts/empty_table.py`. 먼저 «보고»(기본, 아무것도 안 씀): 행 수 · 그 표의 칸 층 수와 그중 사람 층 수 · 덮어쓰기 수 · 그 표를 읽는 원장 소스와 원자 수 · 그 표를 트리거로 읽는 체인 규칙. 그다음 `--apply --confirm-rows <보고의 행 수>`: 행 · 그 표의 칸 층 · 덮어쓰기를 한 트랜잭션에 지우고 감사 로그에 요약 한 줄, 이어서 그 표를 읽는 원장 소스마다 원자를 거둡니다. 아웃박스 이벤트를 내지 않아 체인 규칙은 깨지 않습니다. 행 하나씩 지우는 그리드 지우기와 달리 표 통째만 합니다.
+- **선언 예시** — 없음(명령).
+
+<!-- example: command -->
+```
+python server/scripts/empty_table.py official_dt
+python server/scripts/empty_table.py official_dt --apply --confirm-rows 1000000 --by owner
+```
+- **화면에서** — 없음.
+- **필요한 조건** — 없음. 보고가 보인 행 수와 지금 행 수가 다르면 거절합니다(그 사이 표가 움직임). 보기(`kind: view`)는 거절합니다.
+- **바뀐 동작** — 없음(새 명령).
+- **한계** — 사람이 고친 값(사람 층)도 같이 지워집니다 — 보고가 그 수를 먼저 보입니다. 이 박스 시험 스키마에서 10,000 행(칸 층 80,000 · 원자 10,000)에 0.99 s 였습니다.
+- **자세히** — 이 항목과 같은 커밋
+
+## 2026-10-02 · 보류 포함 행 복사 — 같은 키 원천 행들이 갈리면 공식 행이 보류된다
+
+- **무엇** — 제품 맵퍼 `copy_rows_with_hold`. 10-01 의 `copy_one_row` 와 같은 일(원천 행을 대상 표의 같은 키 행에, 그 원천 행의 층 `chain_ingestion (<원천 row_id>)` 으로 복사, 없으면 만듦)을 묶음으로도 합니다 — 규칙에 `is_batch: true` 를 적으면 1,000 행을 한 번에, 안 적으면 한 행씩 받고 둘 다 같은 길로 갑니다. 같은 키의 원천 행들이 `columns` 에 서로 다른 값 묶음을 몇 개 가졌는지 세어 «하나»면 보류 칸에 `agreed`, «없음»(원천 행이 다 지워짐)이나 «둘 이상»이면 빈 값을 씁니다. 보류 칸은 값과 같은 쓰기(같은 커밋)에 그냥 `chain_ingestion` 층으로 들어갑니다. 원장 소스가 `read.exclude_when` 에 보류 칸을 적으면 빈 보류 행은 원장에 들어가지 않고, 이미 있던 원자는 거둬집니다.
+  같은 함수를 대상 표에 건 규칙이 부르면(trigger 와 target 이 같은 표) 값은 안 쓰고 보류만 다시 셉니다 — 사람이 공식 행을 고칠 때, 그리고 원천 행을 지워 공식 행에 보이던 값이 바뀔 때 깹니다.
+- **선언 예시** — 대상 표(`config/table_config.json`)의 `column_types` 에 보류 칸 한 줄(`"hold": "string"`), 체인 규칙 둘(`config/chain_rules.json`), 원장 소스 한 줄. 규칙 둘은 제품의 규칙 검사로 거절 0 이었습니다.
+
+<!-- example: chain_rule -->
+```json
+[
+  {"name": "dt_log_to_official_dt", "trigger_table": "dt_log", "target_table": "official_dt",
+   "mapper": "copy_rows_with_hold", "is_batch": true, "require": ["dt_job", "dt_x", "dt_y"],
+   "allow_chain_trigger": true,
+   "params": {"key_columns": ["dt_job", "dt_x", "dt_y"], "columns": ["c_bn"], "hold_column": "hold"}},
+  {"name": "official_dt_hold_recount", "trigger_table": "official_dt", "target_table": "official_dt",
+   "mapper": "copy_rows_with_hold", "is_batch": true, "allow_chain_trigger": true,
+   "params": {"key_columns": ["dt_job", "dt_x", "dt_y"], "columns": ["c_bn"], "hold_column": "hold",
+              "source_table": "dt_log"}}
+]
+```
+  원장 소스(`config/ontology/ledger_config.json` 의 그 소스 `read`)에: `"exclude_when": [{"column": "hold", "blank": true}]`
+  - 둘째 규칙의 `allow_chain_trigger` 는 원천 행 지움을 받으려고 적습니다(지움 회수는 체인이 씁니다). 그래서 복사가 공식 행에 쓸 때마다 한 번 더 셉니다. 같은 보류를 다시 쓰면 이벤트가 생기지 않아 돌고 돌지 않습니다.
+  - `allow_retraction` 은 켜지 마세요 — 켜면 이번 묶음이 안 낸 같은 일(job)의 칸이 지워져, 같은 키를 받치는 다른 원천 행의 층까지 갑니다. 원천 행을 지운 몫은 `origin_row_id` 로 이미 거둬집니다.
+- **화면에서** — 없음(규칙 · 표 선언).
+- **필요한 조건** — 체인 워커 재기동. 시험 스키마에서 원천 10,000 행 다시 채우기에 체인 64.89 s(묶음) · 128.81 s(한 행씩)였습니다 — 남은 시간은 대부분 쓰기 문(항목마다 행 찾기)입니다.
+- **바뀐 동작** — 없음(새 맵퍼).
+- **한계** — 지운 원천 행의 값이 공식 행에 «가려져» 있었으면(다른 원천 행의 값이 보이던 중) 보이는 값이 안 바뀌어 다시 세지 않고, 보류가 그대로 남습니다 — 지움 경로가 스스로 이벤트를 내는 것이 다음 착지입니다. 사람이 공식 표에 값을 적어도 보류는 풀리지 않습니다(원천 행들이 갈린 동안은 계속 빈 값).
+- **자세히** — 이 항목과 같은 커밋
+
 ## 2026-10-02 · 걷기 경로 목록 — 자기 고리는 줄 안의 칩
 
 - **무엇** — 걷기 화면과 R&D 보드 걷기 상자의 경로 목록이 «자기 고리를 뺀» follow 세트로 한 줄씩 나옵니다. 그 길이 지나는 타입의 자기 고리(`transfer` · `bonded_from` 처럼 X → X 인 술어)는 그 줄 안의 칩이고 기본으로 꺼져 있습니다. 전에는 고리 하나를 넣고 빼는 것마다 다른 줄이 되어 줄이 곱해졌습니다.

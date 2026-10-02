@@ -36193,3 +36193,31 @@ RELEASE_LOG  3a2d79ff9 항목의 「화면에서」(Default: …)가 이 착지 
 ---
 
 > **[총괄 -> 클라] 04cecc30f 덧붙임 — 3a2d79ff9 결함(클라 실측): read 없는 슬림 소스의 선언 폼이 서버에서 통째로 실패(config_authoring 의 read.occurred_at.timezone 이 derived 인데 ground 없음). 그 한 줄을 «이 착지에 같이»(바로 위 occurred_at 줄과 같은 모양) + 서버 시험 한 칸 + RELEASE_LOG 「화면에서」 참 확인. 순서: d692af408(보기 표 ROW_ID) 먼저 -> 이 폼 -> 5d5b8d750**
+
+---
+
+> **[총괄 -> 클라] 04cecc30f 덧붙임 — ② 비운 사건 시각 줄의 ground 「Not an event」 와 ③ exclude_when 저작 계획 줄을 «이 착지에» config_authoring 으로(구현자 오늘 만석). ②는 setup_bundle.is_event_time_role 한 함수로 묻는다(새 판단 0) · ③ 후보 = 그 관계의 칸, 고르면 {column, blank: true} — 기록 모양은 서버. 줄마다 서버 시험 한 칸 · 변이. ① 접힘 = 가지 아래 전부 서버 기본값 · 남은 칸 0(이름으로 안 묻기)**
+
+---
+
+> **[총괄 -> 클라] 04cecc30f 답 둘 — ① 접힘: 값 없는 선택 칸은 남은 칸이 아니다(read 는 Defaults · N 으로 접힘, exclude_when 은 그 안). ② 레코드 목록 편집을 이 착지에서 넓힌다(첫 고르기만 되는 칸을 내보내지 않는다): «원소가 레코드인가»는 서버 계획 줄의 한 칸(item_shape 등)이 말하고 화면 갈래는 그것만 본다 — 칩만 · 이름 칸 · 손 입력 없음 · 마지막 칩을 빼면 키 지움. 칩 글자 = «후보마다 값이 다른 키만» 규칙 하나(read.occurred_at 칩도 같이). 시스템 칸 후보는 서버에 있는 좌석으로 빼거나 보고에 한 줄. 크기 크면 착지 전 보고**
+
+---
+
+> **[총괄 -> 클라] 11ac0e9e9 정정 — item_shape 칸은 «만들지 않는다». «원소가 레코드인가»는 이미 스켈레톤(exclude_when 노드 of.kind record)이 말한다 — 술어 하나(of.kind === 'record' + 후보 있음), 함수 하나. 계획 줄에 같은 사실을 또 적으면 저자가 둘**
+
+---
+
+> **[총괄 -> 클라] 04cecc30f 덧붙임 — 초안 raw 가 기본값 채운 묶음에서 온다(클라 실측: 첫 편집 뒤 read 펼침 · 저장하면 기본값 다섯이 파일에). 이 착지에서 (가): create_draft 가 초안 raw 를 «파일의 그 선언»에서(저작 계획이 파일을 읽는 그 길) — 색인 node.raw 는 그대로. 전수: 선언 파일에 쓰는 자리가 setup.bundle(기본값 채운 것)을 직렬화하는지(셈 명령), 있으면 이름만 보고. 게이트: 초안 raw 에 read 없음 · 한 칸 고쳐도 접힘 · 저장 뒤 파일에 read 칸 0 추가 · 해시 같음**
+
+---
+
+> **[총괄 -> 클라] 04cecc30f 덧붙임 둘 — ① 초안 raw 는 upgrade_setup(read_config_document) 을 거쳐 «파일의 그 선언»에서. ② filled_declaration 을 좁힌다: 로더가 로드 때 채우는 줄(source_defaults 가 내는 줄의 ground.rule — 상수 하나, 새 표시 없음)은 파일에 쓰지 않는다. map.input_columns 등 source_defaults 의 다른 칸도 같은 표시를 다는지 재고 서버 한 자리에서 맞춤. 2026-08-21 docstring 은 «좁히기»로. 게이트: read 안 칸만 고쳐 저장 → 그 칸만 파일에 · 기본값 칸 0 · 해시 = 손으로 같은 칸만 적은 파일**
+
+---
+
+> **[총괄 -> 클라] 10cea75d5 정정 — ground.rule 상수 하나는 «거둔다»(줄 이름이 여럿이고 ordering_default_from_catalog_key 는 화면 유일성 상자의 좌석). (나): 저장 채움이 source_defaults(body) 에 «그 칸을 로더가 채우나»를 묻고, 채우면 안 쓴다 — 저자 하나. map.unit.kind 줄은 timezone 줄 모양으로. 게이트: source_defaults 가 칸을 하나 더 채우게 바뀌어도 저장이 따라오는지 변이 한 번**
+
+---
+
+> **[총괄 -> 클라] 04cecc30f 판정 — map.input_columns 의 제품 기본값은 로더의 [] (바인딩 칸만). «잠기지 않은 칸 전부»는 표에 칼럼을 더할 때마다 묶음 해시를 바꿔 소스 전부를 다시 번역시키는 기본값이라 아님. 폼 계획 줄은 source_defaults 를 부른다(Default: none — bound columns only, 잠기지 않은 칸은 후보 칩). 10-02 RELEASE_LOG 해당 문장 같은 착지에서 고침 · 코드 맵퍼는 더 읽을 칸을 적는다 한 줄. 이미 적어 둔 소스 바뀜 0 게이트**
