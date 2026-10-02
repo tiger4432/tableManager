@@ -614,6 +614,15 @@ ASSY_TEST_DATABASE_URL=postgresql://postgres:...@localhost:5432/assy_qa \
    - 🔴 **`CONCURRENTLY` 이고 그것은 장식이 아니다** — 이 DB 를 레인 셋이 공유한다. **트랜잭션 블록 «안»에서는 못 돈다**: `psql`(또는 autocommit 클라이언트)로 그대로 돌리고 `BEGIN/COMMIT` 으로 감싸지 마라. 빌드가 중단되면 **INVALID 인덱스가 남는다** — `pg_index.indisvalid` 가 거짓이면 `DROP INDEX CONCURRENTLY` 후 다시 돌린다(확인 질의는 파일 주석에 있다).
    - **안 돌려도 «깨지지는 않는다»** — 느려질 뿐이다(위 8-bis·8-ter 와 같은 계급). ⚠️ 파일 주석의 벽시계·크기 수치는 **개발 박스 실측**이고 운영 수치가 아니다. 운영에도 참인 것은 **「부분 인덱스는 전수 count 에 안 쓰인다」**와 위의 **인덱스 유지비 논거** 쪽이다.
 
+8-decies. 🔴 **원장 따라가기 칸 `database_outbox.ledger_state` — 안 돌리고 재기동하면 아웃박스 쓰기가 실패한다**(10-02 `3bce75e88`). 재기동 «전»에:
+   ```bash
+   conda run -n assy_manager python server/migrations/add_outbox_ledger_state.py           # 보고(읽기만)
+   conda run -n assy_manager python server/migrations/add_outbox_ledger_state.py --apply
+   ```
+   - 기존 이벤트는 `done`, 체인이 아직 안 처리한 이벤트는 따라갈 일(빈 값)로 둔다. 칸 추가는 상수 기본값이라 표를 다시 쓰지 않는다.
+   - ⚠️ 마지막 단계의 부분 색인은 `CREATE INDEX CONCURRENTLY` 이고 대기 제한이 없다 — 그 DB 에 «idle in transaction» 세션이 있으면 끝날 때까지 기다린다. 멈춘 것처럼 보이면 `pg_stat_activity` 에서 그 세션을 본다(10-02 박스 시험 DB 에서 시험이 이 자리에서 멈추는 것을 봤다 — 그 대기 때문이라는 것은 가설).
+   - 안 돌리고 재기동하면 기동 배너(스키마 점검)가 `database_outbox.ledger_state` 와 이 이주 이름을 댄다.
+
 9. 기동 → 서버 로그 첫 줄에서 `[admin-auth]`가 **WARNING/ERROR가 아닌지** 확인(`ERROR`면 토큰이 비-ASCII라 무시된 것) → `curl http://localhost:8080/health` 가 **JSON 200**인지 → `/api/transfer-plan/stages` 등으로 바인딩 상태 확인
    - ⚠️ 런처와 웹서버가 **각자** 드리프트 배너를 한 번씩 찍습니다(약 14 ms). 8을 건너뛰었어도 기동 로그에 남으니 거기서 읽으십시오.
 
