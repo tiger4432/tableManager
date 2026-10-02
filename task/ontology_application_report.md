@@ -34971,3 +34971,27 @@ server/config/ontology/README.md:78  「범용 구현 direct-join@1(준비기)�
       전부터 쓰던 운영자가 그 거절을 본 적이 없으니 「막던」은 거짓입니다.
       제안 문장: 「쓸 때 거절 · 대체 표지는 운영에서 실제로 돈 적이 없었고(이름 철자 불일치), 이제 쓸 때는 아무것도 안 하고 읽을 때 …」
 ```
+
+---
+
+## [C 응용] 10-02 6c44b0b3d(걷기 시작점 목록이 노드를 두 쪽에서) 문서 동기 — @`ce0d934c1`
+
+```
+고친 문서 다섯  CODE_MAP(gaps 줄 둘 + _names_node_sql 새 줄 + 소비자 줄 · key-values 줄 둘) · PRIMITIVES · backend · LEDGER_GUIDE · WALK
+               행 -> 노드 · subjects -> nodes · limits.scan_rows -> scan_nodes · 정렬 value_asc · KEY_VALUE_SCAN_ROWS 은퇴 ·
+               count = 그 노드를 두 쪽에서 이름 부르는 원자 수. 줄 수 · 상수는 6c44b0b3d 에서 git 으로 읽음
+검수 (박스)     server/scripts/run_pg_tests.py -k key_list_reads -> 11 passed (박스 PG)
+               같은 파일 sqlite 묶음은 11 skipped(PG 표시) — 증명은 위 PG 줄
+               dist api 묶음이 r.nodes 를 읽음(grep) · client2/src 에서 key-values 옛 칸(subjects · scan_rows · count_desc)을 읽는 곳 0
+               (카나리아 fetchKeyValues 정의 1 · control_bar_panel 의 got.subjects 는 또래 수 전선 — 다른 라우트)
+               gaps 조각을 부르는 곳 (git grep) — _nodes_of_type_sql 셋(갭 measure · subgraph 서술 씨앗 · key-values) · _names_node_sql 둘
+```
+```
+말 하나 — 구현 소관
+   trace_router.ledger_key_values 의 key 인자 설명(OpenAPI 로 나감)이 「없으면 그 타입의 «주어»를 답한다 … 응답의 seedable 이 그것을 말한다」
+   seedable 은 전부터 남은 옛 이름(가이드 · backend 가 「코드 소관」으로 적어 둠). 이번 커밋 뒤 «주어»도 거짓 — 이제 두 쪽 노드
+확인 대기
+   코드 주석 둘(KEY_VALUE_SCAN_NODES · _names_node_sql)이 박스 속도 근거로 task/scoped_redo_report.md (29cee1d47) 를 대는데
+   그 파일에 그 절이 아직 없음(ce0d934c1 기준) — 구현 보고 커밋이 오면 대조
+제 몫 없음      화면 글자(주어 고르기 · 「…주어로 없습니다 (정적 허브)」)와 RELEASE_LOG 는 DESIGN_ORDERS 29cee1d47 에 클라 몫
+```
