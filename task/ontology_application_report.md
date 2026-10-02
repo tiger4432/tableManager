@@ -35317,3 +35317,14 @@ RELEASE_LOG 맞음 — 명령 셋 · census 칸 이름 둘 · 지문 없음의 �
    칸은 NULL 이라 다시 쓰지 않아 빠르지만, 그 표를 쥔 채 쉬는 세션이 하나라도 있으면 그 첫 원장 쓰기가 끝없이 기다린다(체인 워커 안)
    재기동 직후라 쉬는 세션이 없을 가능성이 크다 — 잰 것은 없다. 같은 「30 s 넘으면 이름 대고 멈춤」을 여기에도 걸지 여쭐 것
 ```
+
+---
+
+## [C 응용] 10-03 3bae757ef 덧붙임 — 그 문은 이미 같은 파일에 있다
+
+```
+schema.ensure_partition 은 이미 SET LOCAL lock_timeout = db_safety.DDL_LOCK_TIMEOUT 를 걸고, 넘으면
+「another session … holds a lock」 으로 이름 대어 멈춘다(db_safety.waited_past_the_lock_timeout)
+schema.ensure_schema 의 칸 더하기 셋(ledger_additions · cursor_additions · row_ref_additions)은 그것을 안 쓴다 — 새로 지을 것이 아니라
+같은 문을 지나게 하면 된다. 제 확인 순서가 틀렸다: lock_timeout 이 그 파일에 «둘» 있다는 것을 보고 «뒤»에 봤다. 주장 자체는 열어 보니 맞았다
+```
