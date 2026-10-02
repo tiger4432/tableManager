@@ -35167,3 +35167,18 @@ RELEASE_LOG  맞음 — 🗑️ Row(index.html) · Deleting… · Deleting N row
    chain_queue_panel.js 가 잘림 문장에 listed.rows_scanned 를 읽는다 — 그 칸이 빠져 잘릴 때 「Read the first — rows only (cap 200)」
    그리고 상한은 이제 «줄» 위다(이벤트가 아님) — 그 문장의 «rows» 도 낡았다. 줄의 rows 는 이제 진짜 행 수라 그 칸 머리는 맞다
 ```
+
+---
+
+## [C 응용] 10-02 77c0652a7(대기열 화면 — 소급 잡 한 줄 · 영수증 줄 수 뺌) 대조 — @`9b9e484b7`
+
+```
+닫힘        94242901e 의 사이 알림(잘림 문장이 없어진 rows_scanned 를 읽음) — 이제 listed.lines / lines_total 을 읽는다
+            8bc1bd530 의 영수증 줄 수 — 줄에서 수를 뺐다(그리드 전체 수가 말함). 제가 3ee3ae0cc(8855a4124 동기) 때 놓친 것이다
+화면의 수가 무엇을 세나 (이번엔 열어 봤다)
+            Rows = 줄의 행 수(서버 sum(row_count, 없으면 1)) · 배지 = 그 줄의 이벤트 수(행 수와 다를 때만) ·
+            Showing = 보인 줄 / 전체 줄(서버 count over()) — 셋 다 서버 답과 같은 것을 센다
+검수 (박스) 하니스 chain_queue_panel 191 · grid_view_readonly 63 단언, 실패 0
+RELEASE_LOG 맞음 — Chain · Overview · Job / Transaction · Showing 이 admin.html / chain_queue_panel.js 에 있음
+고친 문서   CODE_MAP 대기열 패널 절 한 줄(lineName · Rows · 배지 · Showing, 줄 수는 77c0652a7 에서 git). FEATURE_CHECKLIST 는 착지가 고쳤다
+```
