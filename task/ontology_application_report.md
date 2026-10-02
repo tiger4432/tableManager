@@ -35124,3 +35124,19 @@ RELEASE_LOG 「다이 → 웨이퍼 잇기」 — 작성자(구현)께, 판단�
            「바뀐 동작」에 그 갈림을 적을지, 접기 이전 원자를 맞추는 길을 먼저 낼지는 제 몫이 아니다 — 여쭐 것
 덧붙임      ⑤ die_inspection 다시 번역 1,000 행당 5.85 s — 규격(≤ 5 s) 밖(데몬이 같이 돌던 박스 · 원장이 찬 상태, 구현 보고 그대로)
 ```
+
+---
+
+## [C 응용] 10-02 29cfa7047(그리드 행 지우기 서버 절반) 문서 동기 + RELEASE_LOG 대조 — @`c8fe306c0`
+
+```
+고친 문서     FEATURE_CHECKLIST 행 추가/삭제 줄(기다리는 화면 · 답 모양) · CODE_MAP main 라우트 표 · backend 라우트 표
+             api_documentation 1.3 은 착지가 실었다
+검수 (박스)   test_contention_fixes 10 passed
+             답에서 빠진 created_logs 를 읽는 곳 — client2/src 0(api.js 는 deleted_count 만) · server/scripts/product_door 는 답을 읽고 버림
+             (websocket.js 의 created_logs 는 방송 쪽이라 그대로)
+RELEASE_LOG  맞음 — 🗑️ Row(index.html) · Deleting… · Deleting N rows · S s · Deleted N rows · S s · 「— reload the table to see which rows remain」
+             (client2/src/api.js), 답 모양은 서버와 같다
+남은 것      45d14144b 에 드린 말 하나(catch 가 서버 답을 받은 뒤의 일까지 감싸 「did not reach the server」로 읽힘)는 그대로 — 답이 98 바이트가 되어
+             큰 답 해석 실패는 사라졌고, 감싸는 범위만 남았다
+```
