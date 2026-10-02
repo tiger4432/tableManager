@@ -9,7 +9,7 @@
 >              화면: read 가 Defaults · N 으로 접혀 시작 · Exclude when 은 칩만(마지막 칩을 빼면 키 지움)
 >                    레코드 칩 글자는 후보마다 값이 다른 키만(read.occurred_at 칩도)
 >              초안은 파일의 그 선언 그대로 연다(v5 파일은 로더의 v6 읽기 upgrade_setup 으로)
->              저장은 고친 칸만 쓴다 — 로더가 채우는 칸(read 기본값 · map.unit · map.input_columns)은 비워 둔다
+>              저장은 로더가 채우는 칸(read 기본값 · map.unit · map.input_columns)을 비워 둔다 — 계획이 채우는 다른 칸(implementation_version 등)은 전처럼 적힌다
 >              map.unit 을 안 적은 소스의 Mapper unit 은 로더의 기본값(row, 묶는 소스는 group_by) — 빨간 칸 아님
 >              이미 쓴 원장 · 원자는 안 바뀐다. 이미 적힌 선언은 다음 저장 때도 적힌 그대로
 > 확인         관리자 화면 Ontology Explorer -> read 를 안 적은 소스 -> 초안 -> read 줄이 Defaults · N

@@ -91,6 +91,21 @@ def test_an_edit_outside_read_leaves_every_read_row_a_default(tmp_path):
     assert read and not [path for path, (state, _) in read.items() if state == "answered"], read
 
 
+def test_an_edit_inside_read_leaves_the_other_read_rows_defaults(tmp_path):
+    """The unsaved plan fills as the save fills, so a picked exclude_when clause leaves the read
+    cells the loader fills derived defaults - only the edited row is answered."""
+    http, _, _, _, _, draft = _opened(tmp_path)
+    raw = copy.deepcopy(draft["raw"])
+    raw["read"] = {"exclude_when": [{"column": "eqp_id", "blank": True}]}
+    plan = http.post(PLAN, json={"selection": KEY, "draft_id": draft["draft_id"],
+                                 "raw": json.dumps(raw)})
+    assert plan.status_code == 200, plan.text
+    read = {f["path"].split(".read.", 1)[1]: (f["state"], f["disposition"])
+            for f in plan.json()["fields"] if ".%s.read." % SLIM in f["path"]}
+    assert read.pop("exclude_when")[0] == "answered"
+    assert read and not [path for path, (state, _) in read.items() if state == "answered"], read
+
+
 def _saved(http, service, root, draft, raw):
     saved = http.put("%s/%s" % (DRAFTS, draft["draft_id"]),
                      json={"expected_revision": 0, "raw": json.dumps(raw)})
