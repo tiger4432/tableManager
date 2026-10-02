@@ -67,7 +67,7 @@
 | `map_editor.html` | `src/map_editor.js` | 웨이퍼 맵 에디터 | ✅ |
 | `map_editor2.html` | `src/map_editor2.js` + `src/map2/*` | 맵 정렬 화면. 레거시 에디터를 **대체하지 않고 «옆에»** 섭니다 | ✅ |
 | `rnd-board.html` | `src/rnd_board/*` | **R&D 진단 보드** — 조립식 부품의 격자 (§4) | ⛔ 링크 없음 · 직접 연다 |
-| `walk.html` | `src/walk/main.js` + `src/walk/*` | 걷기 화면 — 씨앗 + follow + 방향. 🆕 Table | Graph(10-01 `74974d6ed` — Graph 는 마킹의 걷기를 깊이별 그림으로, 점을 마킹해 Continue 로 이어 감) | ✅ 🆕 10-01 `ce041066d` — 메인 그리드 nav 드롭다운의 「Walk」(Map aligner 옆, 같은 모양) |
+| `walk.html` | `src/walk/main.js` + `src/walk/*` | 걷기 화면 — 씨앗 + follow + 방향. 🆕 10-02 `570e4b296` — 노드 목록(`Pick a node`)은 그 타입의 노드를 주어 · 목적어 두 쪽에서(`GET /api/ledger/key-values`), follow 는 그 타입에 «닿는» 술어(`derive.js` `predicatesTouching`), 정적 씨앗의 첫 걸음은 열림(`walkTakesStep` — 서버 `_held_to_names` 와 같은 규칙). 🆕 Table | Graph(10-01 `74974d6ed` — Graph 는 마킹의 걷기를 깊이별 그림으로, 점을 마킹해 Continue 로 이어 감) | ✅ 🆕 10-01 `ce041066d` — 메인 그리드 nav 드롭다운의 「Walk」(Map aligner 옆, 같은 모양) |
 | `sample.html` | `src/sample.js` | 기본 요소 견본(「Base elements」) | ⛔ 링크 없음 · 직접 연다 |
 
 ⚠️ **온톨로지 선언 작성 화면은 «자기 페이지가 없다»** — `admin.html` 안의 탭이다(`admin.js` 가 `ontology_explorer.js` 를 `import` 한다). 위 표에서 그 이름을 찾지 마십시오.
@@ -309,7 +309,7 @@ null    Matches: …      «아직 모른다» -- 세는 중 (+ 원소에 `is-co
 | `table_part.js` | 158 | **표 «한 벌»** — 컬럼 선언 `{key,label,align,width,kind}` 으로 구동 |
 | `map_panel.js` | 1,053 | 맵 |
 | `main_trend_panel.js` | 420 | 트렌드 |
-| `walk_box_panel.js` | 352 | 걷기 검색창 — NODE TYPE · KEY · FOLLOW. 🔴 **`COLLECT` 는 2026-08-28 에 라우트에서 빠졌다** — 화면에 그 칸이 남아 있으면 결함이다. `goto(id)` 가 마킹 저장소에 쓰는 «유일한» 자리이고, 이력은 «잘리지 않는 트리»다 |
+| `walk_box_panel.js` | 🆕 656 @`570e4b296` · 352 | 걷기 검색창 — NODE TYPE · KEY · FOLLOW. 🆕 10-02 FOLLOW 와 경로 목록은 걷기 페이지와 같은 함수(`predicatesTouching` · `keepWalkableRoutes`) — 전에는 주어만 보는 사본을 들고 있었고 경로 목록이 걷기가 거절할 경로를 냈다. 🔴 **`COLLECT` 는 2026-08-28 에 라우트에서 빠졌다** — 화면에 그 칸이 남아 있으면 결함이다. `goto(id)` 가 마킹 저장소에 쓰는 «유일한» 자리이고, 이력은 «잘리지 않는 트리»다 |
 | `head_summary_panel.js` · `control_bar_panel.js` | 324 · 255 | 머리 요약 · 컨트롤 바 |
 | `candidate_list_panel.js` · `rank_list_panel.js` | 220 · 189 @`919ccc065`(구 272 · 225) | 후보 · 순위표 |
 | `composition_panel.js` · `expanded_layer_panel.js` | 270 · 169 | 구성 · 펼친 층 |
