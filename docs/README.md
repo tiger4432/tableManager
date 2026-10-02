@@ -129,7 +129,7 @@
 | 🟢 [process/DOC_OWNERSHIP.md](./process/DOC_OWNERSHIP.md) | 서브시스템 ↔ 문서 소유 매핑 |
 | 🟢 [process/LEDGER_RULINGS.md](./process/LEDGER_RULINGS.md) | **원장·온톨로지 판정 대장**(2026-08-13 신설 · 온톨로지 포크 소유) — 🔴 **판정의 «배달 경로»다. 여기 없는 판정은 내려진 적이 없는 것으로 친다.** 세션 간 메시지 채널이 하루에 세 건을 조용히 유실한 것이 grep으로 실증돼(보내는 쪽은 성공과 유실을 구별할 수 없다) 판정이 파일로 옮겨졌다 — **커밋은 트리를 공유하므로 잃을 수 없다** |
 | ⚪ [process/LEDGER_SLICE_1_BRIEF.md](./process/LEDGER_SLICE_1_BRIEF.md) | 원장 슬라이스 1 착수 지시서 — 착지한 구현의 **근거 문서**이지 현행 서술이 아니다(현행은 위 서브시스템 행의 리빙 문서 셋) |
-| 🟢 [process/RELEASE_LOG.md](./process/RELEASE_LOG.md) | 릴리스 요약(Phase 번호 대체) |
+| 🟢 [process/RELEASE_LOG.md](./process/RELEASE_LOG.md) | 릴리스 노트 — 소유자가 요청한 기능과 바뀐 동작을 최신순으로: 무엇 · 선언 예시 · 누르는 순서 · 필요한 조건 (🆕 10-02 총괄 9eccd4e12, 그 전은 마일스톤 한 줄) |
 | 🟢 [process/agentic_environment.md](./process/agentic_environment.md) | 멀티 에이전트 협업 체계 — 총괄 + 도메인/문서/검수 에이전트. **명단의 정본은 `.claude/agents/`이고 여기에 수를 적지 않는다**(종전 「총괄 + 2 PM」이 넉 달간 낡아 있었다) |
 | 🟢 [prompts/starting_prompt.md](./prompts/starting_prompt.md) | 총괄 PM 작업 헌장(SOP) + 조직 구조 |
 | 🟢 [prompts/server_pm.md](./prompts/server_pm.md) | Server(백엔드) 도메인 PM 헌장 |
