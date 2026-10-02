@@ -838,6 +838,18 @@ def _read_entity_declaration():
     return facts
 
 
+def _held_to_names(kind, starts_here, static_types):
+    """Does a node of `kind` step only to static types? THE ONE SEAT of the static hub rule.
+
+    A static type is a name: one step from it back into the world drags in every thing that
+    carries it. 🔴 [총괄 c24ba7d82, 소유자 10-02 「첫걸음은 열어」] EXCEPT WHERE THE WALK STARTS -
+    a static seed's first step goes to dynamic nodes, so a type named only as an object can be
+    walked from. A static node met on the way is held as before. The fetch split and `_step`
+    ask it with 「is this node a seed」, `_reach` with 「is this the seed this reach started from」.
+    """
+    return kind in static_types and not starts_here
+
+
 def _goes_back_down(arrived, predicate, direction, far_type):
     """Does this step walk back down what reached the node, to a sibling? ONE function - the
     walk's expansion and the ranking's reach both ask it (총괄 739edd59c · f3fb29a44).
@@ -1214,8 +1226,8 @@ def _reach(nodes, edges, seed_signs, static_types=()):
     # 🔴 THE BACK-DOWN RULE IS ONE FUNCTION, `_goes_back_down`, asked with the steps that
     # reached the node - as the fetch asks it (총괄 739edd59c ③). So this walks a seed level
     # by level and gathers every step from the level before, not only the first. The name
-    # rule is still written here and in `_step`; one merged graph rather than one fetch PER
-    # SEED, until that query cost is measured.
+    # rule is `_held_to_names`, the seat `_step` and the fetch ask too; one merged graph
+    # rather than one fetch PER SEED, until that query cost is measured.
     adjacency = {}
     for edge in edges:
         predicate = edge.get("predicate")
@@ -1244,8 +1256,9 @@ def _reach(nodes, edges, seed_signs, static_types=()):
                     if nxt in seen:
                         continue
                     there_is_name = _kind(nxt) in static
-                    # a name may lead to another name and never back out into the world
-                    if here_is_name and not there_is_name:
+                    # a name may lead to another name and never back out into the world -
+                    # unless this reach starts at it
+                    if _held_to_names(_kind(node), node == seed, static) and not there_is_name:
                         continue
                     # and no step goes back down what reached this node -- between two
                     # names there is no container and so no siblings, so that pair is exempt
@@ -2108,12 +2121,16 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
         # quantity. What the rule is for is the other direction: `defect_kind` carries
         # 103,841 atoms against ONE distinct object, so one step from that name back out
         # to wafers drags in 747 of them and the answer drowns.
-        near_kind = far_kind = None
+        near_kind = far_kind = near_id = far_id = step_dir = None
         if subject_near and not target_near:
             near_kind, far_kind = _bare(atom.subject_type), _bare(payload.get("type"))
+            near_id, step_dir = subject_id, "outgoing"
+            far_id = target["id"] if target is not None else None
         elif target_near and not subject_near:
             near_kind, far_kind = _bare(payload.get("type")), _bare(atom.subject_type)
-        if near_kind in static_types and far_kind and far_kind not in static_types:
+            near_id, far_id, step_dir = target["id"], subject_id, "incoming"
+        if (_held_to_names(near_kind, near_id in seed_signs, static_types)
+                and far_kind and far_kind not in static_types):
             return None
         # 🔴 THE KEY CONSTRAINT, ON THE FAR NODE ONLY. An edge whose predicate was named
         # with keys may only land on a node matching the SEED on those keys - so a hop out
@@ -2156,12 +2173,6 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
         # MEASURED 10-01 that shape is the sibling fan-out `die -> wafer <- die'`, the one the
         # owner asked to stop (scoped_redo_report, walk control ①). `P -> Q -> P` still stays: the owner's own path climbs `inspected` and `has_wafer`,
         # travels a `slot_map` chain, and descends into a DIFFERENT wafer.
-        near_id = far_id = step_dir = None
-        if subject_near and not target_near:
-            near_id, step_dir = subject_id, "outgoing"
-            far_id = target["id"] if target is not None else None
-        elif target_near and not subject_near:
-            near_id, far_id, step_dir = target["id"], subject_id, "incoming"
         # 🔴 AND IT IS A RULE ABOUT THE WORLD, NOT ABOUT THE NAMES. Between two static
         # types there is no container and so no siblings: `leads_to` walked back to a cause
         # and then forward again reaches THE OTHER EFFECTS OF THAT CAUSE, which is the
@@ -2280,10 +2291,11 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
         #
         # The two groups differ ONLY in the `follow` they are fetched with, so `s -> s`
         # survives: `leads_to` is in `static_follow` and the mechanism chain still walks.
-        dynamic_refs = [item for item in full_entity_refs
-                        if _bare(item["type"]) not in static_types]
-        static_refs = [item for item in full_entity_refs
-                       if _bare(item["type"]) in static_types]
+        # A static SEED is not held (`_held_to_names`): it is fetched with the full `follow`.
+        held = [_held_to_names(_bare(item["type"]), item["id"] in seed_signs, static_types)
+                for item in full_entity_refs]
+        dynamic_refs = [item for item, h in zip(full_entity_refs, held) if not h]
+        static_refs = [item for item, h in zip(full_entity_refs, held) if h]
         # 🔴 AN EMPTY LIST IS NOT `None` HERE. `claims_for_entities` reads a falsy `follow`
         # as "every predicate", so narrowing to an empty intersection and passing it would
         # fetch MORE than narrowing to one name. The group is skipped instead.

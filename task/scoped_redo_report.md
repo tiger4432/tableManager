@@ -69274,3 +69274,235 @@ PG 전체   6 failed, 177 passed, 7680 deselected in 397.03s (0:06:37) · 알려
 ① 걷기 화면 낱말(⑤) — 클라 레인이 다음 착지(들어오는 술어 제안)에서 같이 고칠지
 ② 옛 동작을 적은 문서 네 곳(⑥) — 누가 고칠지
 ```
+
+---
+
+## [10-02 낮] 정적 씨앗의 첫 걸음은 동적 노드로 간다 (총괄 c24ba7d82) — c46163324
+
+**무엇을 지었나**
+```
+판정 한 자리  ledger_subgraph._held_to_names(타입, 시작점인가, 정적 타입들) — 「정적이고 시작점이 아니면 정적으로만 걷는다」
+묻는 곳 셋    가져오기 가르기(정적 노드를 정적->정적 술어로만 가져오던 곳) · _step(정적->동적 걸음 버림) · _reach(순위 · 표의 행)
+             앞의 둘은 「씨앗인가」(seed_signs), _reach 는 「이 도달이 시작한 씨앗인가」 — 다른 씨앗은 도중에 만난 노드라 막힌다
+접은 것      이름 규칙이 _step 과 _reach 에 따로 적혀 있었다(_reach 주석이 그렇게 말함) — 둘 다 이 함수를 부른다
+그대로       되밟기(_goes_back_down) · follow · direction · 묶음(fanout_limit) · 씨앗 예산 · 떠남 예산(정적->동적은 떠남 하나)
+뒤집은 판정   「정적 -> 동적은 막는다」(WALK.md 정적 허브 규칙) — 소유자가 «씨앗의 첫 걸음만» 열었다(총괄 지시). 도중의 정적 노드는 그대로
+문서         WALK.md 정적 허브 절 · LEDGER_EVIDENCE_SUBGRAPH_SPEC.md ② 행(「자리 셋」이 이제 「판정 한 자리, 묻는 곳 셋」이라 그 문장도 고침)
+```
+**박스 — 같은 라우트, 전(main) · 후(이 착지)** (씨앗은 박스 원장에서 고름 · 같은 질의)
+```
+레시피 SYN-R-CMP-02 씨앗 (원장의 웨이퍼 4)
+   전  노드 recipe 1 · 엣지 0
+   후  노드 recipe 1 · wafer 4 · 엣지 4
+레시피 RCP-01 씨앗 + fanout_limit 20 (원장의 웨이퍼 9,701)
+   전  노드 recipe 1 · 엣지 0
+   후  노드 recipe 1 · 엣지 0 · 묶음 wafer 1950 · claims 잘림
+결함 종류 void 씨앗 + fanout_limit 20 (원장의 결함 103,863)
+   전  노드 defect_kind 1 · 엣지 0
+   후  노드 defect_kind 1 · 엣지 0 · 묶음 defect 2400 · claims 잘림
+웨이퍼 SYN-R-001-W01 씨앗 -> 레시피 -> 다른 웨이퍼
+   전  노드 recipe 10 · wafer 1 · 엣지 10
+   후  노드 recipe 10 · wafer 1 · 엣지 10
+표(format=rows) — 레시피 SYN-R-CMP-02 씨앗에서 닿은 웨이퍼 행: 전 0 -> 후 4
+대조(씨앗 SYN-R-001-W01 · 대조군 SYN-R-001-W02, 둘 다 동적) — 답 전후 같음(generated_at 빼고 sha256 비교) · 노드 lot_slot 5 · recipe 10 · wafer 2 · 엣지 25
+seed_type=recipe + fanout_limit 20 (후만) — 씨앗 23 · recipe 23 · wafer 4 · 묶음 12 · 6.8 s · claims 잘림(limits.claims 2,400)
+seed_type=defect_kind + fanout_limit 20 (후만) — 씨앗 2 · defect_kind 2 · 묶음 1 · 1.4 s · claims 잘림(limits.claims 2,400)
+```
+**시험** tests/test_a_static_seed_takes_its_first_step_into_the_world.py — 6 passed in 0.37s
+```
+정적 씨앗 -> 그것을 부르는 동적 노드 셋 · 그 씨앗은 호출자의 follow 로 가져옴(좁히지 않음) ·
+도중에 만난 정적 노드는 막힘(다른 술어로 닿게 해 되밟기 규칙이 아니라 이 규칙만 막도록) ·
+정적 씨앗의 퍼짐은 묶음(그려지지 않고 count 3) · 표의 행이 그래프와 같은 노드를 씨앗에서 닿았다고 적음 ·
+_reach 두 씨앗 — 정적 씨앗만 나가고, 다른 씨앗은 그 이름에서 멈춤
+```
+**변이** (새 파일 + test_ledger_subgraph.py)
+```
+baseline                                   42 passed, 1 skipped
+the seat ignores where the walk starts     5 failed, 37 passed, 1 skipped
+the seat holds nothing                     4 failed, 38 passed, 1 skipped
+the fetch split asks no seed               4 failed, 38 passed, 1 skipped
+_step asks no seed                         3 failed, 39 passed, 1 skipped
+_reach opens every seed, not its own       1 failed, 41 passed, 1 skipped
+after restore                              42 passed, 1 skipped
+```
+**새 함수 · 새 if 중 같은 일** — 새 함수 하나(_held_to_names) · 새 if 0(세 조건이 그 함수를 부름) · 같은 일: 이름 규칙 사본 둘을 하나로 접음
+
+**스위트** (C:/wt-impl)
+```
+비PG 전체  5 failed, 7637 passed, 41 skipped, 184 deselected, 3 xfailed in 833.78s (0:13:53) · 알려진 다섯 밖: 0
+PG 전체   6 failed, 178 passed, 7686 deselected in 361.29s (0:06:01) · 알려진 밖: 0
+```
+**말할 것**
+```
+① 큰 레시피 · 결함 종류 씨앗은 claims 예산(limits.claims)에서 잘린다 — 묶음 count 는 «읽은 만큼»이다(WALK.md 묶음 절이 이미 그렇게 말함)
+② 클라 — 경로 목록이 정적 -> 동적 걸음을 아직 뺀다(walk/derive.js staticTypes). 지시대로 디자인 레인 몫, 서버는 그 첫 걸음을 이제 답한다
+```
+
+---
+
+## [10-02 오후] 다이 within 웨이퍼 — 재고 계획, 짓지 않음 (총괄 3518b91df + 덧붙임 eb3ff2670)
+
+**결론 먼저**
+```
+① 같은 말을 하는 선언 칸이 이미 있다 — entities.<타입>.references (edge · to{entity, keys} · from.when)
+   08-26 걷기가 이 칸으로 다이의 웨이퍼를 «읽을 때 지어» 그렸고(450779fc5), 08-27 총괄이 선언에서 지워 그 그리기가 은퇴(000a5cc6b)
+   은퇴 사유(총괄 c7046a710, 08-28): 흡수는 선언을 소스로 «원자를 쓰는 것»이고, 걷기가 선언에서 엣지를 만드는 것이 아니다
+   -> 이번 일은 바로 그 «원자를 쓰는» 쪽이다. 새 within 칸은 references 의 둘째 벌이라, references 를 넓히는 안을 추천 (여쭐 것 ①)
+② 번역기에서 이 일을 할 자리는 하나 — roleframe.compile_role_rows (모든 맵퍼의 역할 행이 원자가 되는 곳)
+③ 원자 +660,978 (지금 원장 2,261,723). 그중 웨이퍼에 새로 닿는 다이를 만드는 소스는 셋 — 나머지는 이미 닿은 다이를 다시 잇는다
+④ 시간: occurred_at_basis 를 «읽는» 원장 독자 0 (확인함). dt_job 의 ingested 원자 866,192개도 오늘 모든 자리에서 사건 시각으로 읽힌다
+```
+
+**④ 번역기의 한 자리 — 전수 (AST, 추적 파일)**
+```
+원자를 만드는 제품 길 하나  execute_scoped_batch -> preview_cursor_batch -> dry_run_event_frame -> map_event_rows(맵퍼)
+                          -> compile_role_rows -> atoms_from_ledger_rows -> 게이트 -> store.write_batch
+엔티티가 원자의 주어 · 목적어가 되는 곳  compile_role_rows 하나 (선언형 · 커스텀 맵퍼 모두 여기를 지난다)
+그 밖에 원자를 쓰는 곳      store.write_batch 를 직접 부르는 7 개 (seed_syn_complex_composite · seed_syn_composite_chip · seed_syn_journey_atoms · seed_syn_lot_excursion · seed_syn_process_ledger · seed_syn_split_merge_pressure · seed_syn_world) — 박스 씨앗 스크립트. 이 규칙을 안 지난다
+게이트                    허용 derivation · 주어 타입을 «그 분자의 행»에서 만든다 -> 여기서 낸 행은 통과. derivation 낱말 하나가 필요
+그 자리에서 함께 정할 것    시각 = 분자의 시각 (compile_role_rows 가 사건 id 를 시각으로 다시 지어 대조한다 — 다른 시각이면 invalid_source_event)
+                          basis 의 저자가 둘이 된다 — runtime_v2._stamp_occurred_at_basis 가 소스의 basis 를 분자의 «모든» 원자에 찍는다
+                          -> dt_job 분자에서 난 within 원자는 ingested 로 찍힌다. 이미 basis 가 있는 원자는 건너뛰게 해야 한다
+「이 소스는 무슨 술어를 내나」를 바인딩에서 읽는 자리 — within 원자가 생기면 이 자리들이 소스에 대해 틀린 말을 한다
+   /api/ledger/declaration 의 sources[].emits · 커서 지문의 술어 폐포(setup_registry, bind.mappings 의 술어만) ·
+   MapperDescriptor.emits(roleframe 이 맵퍼 행을 대조) · 클라 grid_source_label.js 의 emits
+```
+
+**① 원자 수 — 박스** (분자 = source_event_id, 한 분자에 같은 다이 둘이면 하나)
+```
+소스                   다이 원자     within      이미 말함         다이        새로 닿음
+bonded_from         74,436     37,218     37,218     36,578            0
+bw_dt_seat         371,673    371,673          0    371,673      253,609
+die_inspection     117,743    117,742          0    108,815            0
+dt_transfer         29,078     29,077          0     24,779        7,002
+transfer_event       1,405      1,405          0      1,405        1,405
+void_observation   103,863    103,863          0     50,501            0
+합 within 660,978 · 그중 같은 분자가 이미 in_container 로 말한 것 37,218 (같은 원자면 저장에서 접힘)
+다이 원자 = 그 소스가 Wafer 다이를 주어 · entity_ref 목적어로 부른 원자 · 새로 닿음 = 오늘 웨이퍼에 안 닿는 다이
+```
+
+**③ 걷기 전후 — 박스**
+```
+Wafer 다이 노드 401,704 · 오늘 웨이퍼에 닿는 것 139,688 (in_container 다이->웨이퍼 · inspected 웨이퍼->다이)
+여섯 소스를 다 다시 번역하면 401,704 (전부)
+이 박스가 번역하는 둘(die_inspection · transfer_event)만이면 141,093
+🔴 이 박스에서 «새로 닿는» 웨이퍼 다이는 거의 다 bw_dt_seat 의 것인데, 그 소스는 뷰를 읽어 이 박스에서 번역되지 않는다
+   -> 게이트 「잇지 못하던 다이가 닿는다」를 이 박스에서 재려면 그 소스가 표를 읽거나 다시 씨앗을 심어야 한다 (여쭐 것 ④)
+```
+
+**② 소급 비용**
+```
+길         python -m ledger.backfill --source <다이를 부르는 소스> --whole-source --apply   (이미 있는 문 · 페이지마다 한 커밋 · 멈출 수 있음)
+           선언을 넣으면 그 소스들의 커서 지문이 움직여 커서가 선다(cursor_snapshot_reset_required) — 단, 그건 지은 뒤의 일이다:
+           오늘 컴파일된 엔티티는 keys · allow_null · status 만 들어서 references 를 고쳐도 지문이 안 움직인다
+1,000 행당 (박스, 번역은 원장 박스 · 쓰기는 시험 DB 스크래치 스키마)
+   번역(읽기 + 맵퍼 + 컴파일, 쓰기 없음)  die_inspection 앞 40,000 행: 읽기 0.152 s · 번역 1.833 s · transfer_event 1,405 행: 읽기 0.114 s · 번역 1.835 s
+   원자  오늘 1000 · within 이 더함 1000 (두 소스 다 행 하나에 다이 하나)
+   쓰기(die_inspection 의 실제 원자 5,000 행분)  처음 쓰기 0.352 -> 0.409 s · 다시 번역(거둠 + 쓰기 한 커밋) 0.491 -> 0.657 s
+⚠️ 쓰기는 «빈» 스크래치 원장에서 쟀다 — 차이(within 이 더하는 몫)는 견줄 만하고, 절대값은 2,261,723 원자 원장의 색인보다 낙관적이다
+박스에서 이 길로 다시 번역할 수 있는 소스  transfer_event 1,405 행 · die_inspection 117,742 행 (나머지 넷은 뷰를 읽어 이 박스에서 번역 안 됨)
+운영 규격(체인 1,000 행 ≤ 5 s · IO ≤ 1.3 s/1k) 대비  번역 1.833 + 읽기 0.152 + 쓰기 0.657 = 2.642 s / 1,000 행
+안 쟀다     occurred_at_basis 값을 넓히는 CHECK 교체(분할 원장 전체 검사) — 틀은 migrations/add_ledger_occurred_at_basis.py
+```
+
+**⑤ 문법 · 로더 — 출하 샘플에 넣어 제품 로더(setup.load_setup)로 읽음**
+```
+출하 그대로  준비됨 ready · 빠진 선언 3
+die@1.within (지시서 철자)  준비됨 ready · 빠진 선언 11 · 다이 쪽: entity|die@1(unknown_field) / source_plan|die_inspection(unknown_entity_type)
+die@1.references (있는 칸)  준비됨 ready · 빠진 선언 3
+references 검증이 이미 하는 것   to.entity 가 선언됨 · to.keys 가 대상의 키 · 바인딩은 내 키 또는 상수 · from.when 은 내 키
+아직 안 하는 것                 edge 가 어휘의 술어이고 그 서명이 (이 엔티티 -> to.entity) 를 받는지
+탐색기 폼(ledger_skeleton.json)  엔티티 칸에 references 줄이 없다 — 한 줄
+RELEASE_LOG 선언 예시           지은 뒤에야 «도는» 예시가 된다. 지금 references 철자는 로드되지만 아무것도 안 한다
+```
+
+**⑥ ⑦ 시간 — 원장 occurred_at 을 읽는 자리 (basis 를 읽는 자리 0)**
+```
+[거르기] 걷기 시간 창 — ledger_subgraph SqlEvidenceLookup._interval_clause (since · until)
+   within 오늘  분자 시각으로 걸러짐 -> 창 밖 분자에서 난 다이는 웨이퍼를 잃는다
+   규칙 후보    언제나 통과
+   ingested 오늘  적재 시각으로 걸러짐
+[거르기] 창 밖 수 — _outside_clause · _count_excluded -> interval_excluded (R&D 보드가 보임)
+   within 오늘  창 밖이면 «빠진 수»에 들어감
+   규칙 후보    세지 않음
+   ingested 오늘  적재 시각 기준
+[최신값] one 술어의 현재값 — _not_current_clause (이 박스: cardinality 선언 0)
+   within 오늘  one 이면 분자 시각으로 경쟁
+   규칙 후보    경쟁에 안 나옴
+   ingested 오늘  적재 시각으로 경쟁
+[최신값] 등록 속성 — _record_registration · _apply_registrations (register 원자만)
+   within 오늘  해당 없음(register 가 아님)
+   규칙 후보    —
+   ingested 오늘  dt_job 등록이 적재 시각 순
+[순서] 가져오기 예산 — claims_for_entities 의 ORDER BY occurred_at DESC LIMIT
+   within 오늘  분자 시각 순으로 예산을 나눠 씀
+   규칙 후보    후보: 시각 없는 원자는 시각 순 밖(먼저 또는 따로)
+   ingested 오늘  적재 시각 순
+[보이기] 응답 엣지 시각 — _claim_edge 의 edge.occurred_at (클라 subgraph_view 사실 칸)
+   within 오늘  분자 시각이 사건처럼 보임
+   규칙 후보    비움(—)
+   ingested 오늘  적재 시각이 사건 시각처럼 보임
+[보이기] 펼친 보기 ledger_atom_rows 의 occurred_at 칸
+   within 오늘  저장값 그대로
+   규칙 후보    basis 칸을 같이 보임(후보)
+   ingested 오늘  basis 칸이 없어 구별 불가
+[대표 시각] 그룹 at — _latest_edge_instant (group_nodes) -> 클라 추세 x축
+   within 오늘  그룹의 최신 시각을 끌어올릴 수 있음
+   규칙 후보    빼고 셈
+   ingested 오늘  적재 시각
+[대표 시각] 처음 본 시각 — gaps._nodes_of_type_sql 의 first_seen · gaps.measure 의 oldest · newest
+   within 오늘  웨이퍼의 처음 본 시각이 within 원자로 당겨질 수 있음
+   규칙 후보    빼고 셈
+   ingested 오늘  적재 시각
+[대표 시각] 닿은 첫 시각 · 기간 — 클라 rnd_board reachModel · reach_panel
+   within 오늘  분자 시각
+   규칙 후보    응답이 비우면 클라는 이미 «시각 없음»으로 뒤에 둔다
+   ingested 오늘  적재 시각
+자리 10 곳 — 걷기의 넷(창 · 현재값 · 예산 순서 · 엣지 시각)은 코드를 열었고, 나머지는 위치를 git grep 으로 확인
+「within 오늘」은 지은 뒤 within 원자가 분자 시각을 들고 이 자리를 지날 때의 답이다 — 코드로 읽은 것, 잰 것 아님
+occurred_at_basis 를 읽는 원장 독자 0 — 쓰는 곳(store · runtime_v2 · 검증 · 폼)만. git grep occurred_at_basis -- server client2/src (시험 · 스크립트 뺌)
+```
+
+**아이디어 셋**
+```
+ㄱ (추천) references 를 넓힌다 — 번역기가 원자로 낸다 + basis 에 «시각 없음» 값 하나 + 읽는 자리마다 «시각 없는 원자» 한 조건
+   운영자    entities.die@1.references 에 한 항목(edge · to · from.when) -> 다이를 부르는 소스 다시 번역
+   좋은 점   칸이 하나(선언 문법 · 검증이 이미 있음) · 08-28 판정(원자를 쓴다)과 같은 쪽 · basis 축을 넓혀 ingested 도 같은 자리에서 드러남
+   위험      CHECK 교체(안 쟀다) · 읽는 자리 전부가 한 조건을 지나야 함 — 하나라도 빠지면 그 자리가 within 을 사건으로 읽는다
+   크기      자리는 셌다(아래 «지을 자리»). 줄 수는 안 쟀다
+ㄴ 지시서대로 새 within 칸 + 같은 basis
+   좋은 점   지시서 철자 그대로
+   위험      references 와 같은 말을 하는 둘째 칸 — 검증 · 폼 · 문서가 둘
+   크기      ㄱ + 새 칸의 검증 · 폼. 줄 수는 안 쟀다
+ㄷ references 를 넓히되 «시각 없음»을 술어 선언에 둔다(어휘의 in_container@1 에 한 칸) — basis 는 그대로
+   좋은 점   원장 이주 0 · 걷기가 이미 술어별 선언(cardinality)을 SQL 에 싣는 방식 그대로
+   위험      basis 를 넓히라는 덧붙임과 다르다 · 같은 술어를 사건으로 쓰는 소스가 생기면 갈라짐
+   크기      ㄱ 에서 CHECK 교체를 뺀 것. 줄 수는 안 쟀다
+```
+
+**지을 자리 (ㄱ 기준, 센 것)**
+```
+선언      setup_bundle._validate_references (edge 가 어휘 술어 · 서명) · setup_registry._compile_entities (지문에 들어가게) · ledger_skeleton.json 한 줄 · 샘플
+번역      roleframe.compile_role_rows (원자 내기 · derivation 낱말) · runtime_v2._stamp_occurred_at_basis (이미 찍힌 원자 건너뛰기)
+시간 축    setup_bundle._OCCURRED_AT_BASES · schema 의 CHECK + 이주 한 개
+읽기      위 ⑥ 표의 자리들이 한 조건(gaps._names_node_sql 처럼 한 철자)을 지난다
+emits     위 넷 — 소스가 내는 술어에 references 의 edge 가 들어가야 한다
+```
+
+**게이트 (짓기 전에 적는다)**
+```
+시간 창 [t1, t2) 로 걸어도 다이 -> 웨이퍼가 닿는다 · 최신값 · 타임라인(그룹 at · 처음 본 시각)에 within 원자 0 ·
+응답의 그 엣지 시각 칸 «없음» · 같은 다이의 사건 원자(transfer 등)는 오늘과 같은 시각 · 자리마다 변이 빨강 ·
+지운 행 · 고친 행의 within 원자는 거둠이 같이 데려감(출처가 같다) · 한 분자에 같은 다이 둘이면 원자 하나 ·
+references 의 edge 가 어휘에 없거나 서명이 안 맞으면 이름 대어 거절
+```
+
+**여쭐 것**
+```
+① references 를 넓힐까요, 새 within 칸을 지을까요 (추천 references — 이유 위 결론 ①)
+② «시각 없음»을 원자의 basis 로 둘까요(덧붙임대로, CHECK 교체 안 쟀다), 술어 선언으로 둘까요(이주 0)
+③ 같은 다이 → 웨이퍼 원자가 분자마다 생긴다 — 다이 401,704개에 원자 660,978개. die_inspection 은 117,742개를 더하고
+   새로 닿는 다이는 0 이다. 걷기 답도 원자마다 엣지 하나이고, 가져오기 예산(최신 순)을 그 원자들이 나눠 쓴다. 그대로 갈까요, 읽을 때 같은 엣지를 접을까요
+④ 박스 게이트 — bw_dt_seat 가 뷰를 읽어 이 박스에서 번역되지 않는다. 표를 읽게 할까요, 다시 심을까요, 운영에서 잴까요
+⑤ ingested 원자(866,192개)도 같은 자리들에서 사건 시각으로 읽힌다 — 이번에 같은 조건으로 고칠까요(규칙: ?), 따로 둘까요
+```
