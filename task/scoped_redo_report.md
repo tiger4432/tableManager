@@ -70279,3 +70279,181 @@ timestamp 값 역할                              칸 값 그대로(사건 시�
 ② dt_job — 매핑 시각을 지울지(오늘과 같음) 살릴지(원자 866,192 의 시각 · 사건 id 가 바뀜)
 ③ timestamp 값 역할 결함 — 이 계획을 짓는 착지에 같이 넣나, 먼저 따로 고치나
 ```
+
+---
+
+## [10-02 저녁] 착지 — 시각 값 문장이 사건 시각 대신 바인딩한 칸 값을 싣는다 (총괄 0c9b6e3c0 ③ · 015ef2aab ②) — faab0cbe0
+
+어느 DB · 어느 스키마 · 지운 것 0 — 박스 assy_manager · public · SELECT 만(READ ONLY). 시험은 assy_test(제품 시험 그대로)
+
+**박스에서 걸린 수 (probe_timestamp_value.py)**
+```
+사건 시각 말고 시각 역할을 가진 술어   박스 0/14 · 샘플 0/16
+걸린 소스 · 매핑 · 원자                0 · 0 · 0 — 소급할 것 없음(RUN.md 에 운영에서 확인하는 명령 한 줄)
+카나리아                             박스 원장 원자 2,380,869 · 시각 역할이 occurred_at 하나뿐인 술어가 있음(참)
+```
+**고친 자리 — «종류»가 아니라 «이름»으로, 함수 하나**
+```
+setup_bundle.is_event_time_role(role_id)   「이 역할이 사건 시각으로 채워지나」의 답 하나 — OCCURRED_AT_ROLE 와 견줌
+   부르는 곳  roleframe 선언 맵퍼의 시각 채우기 · config_authoring 폼의 「This square is not read」 줄
+   같은 이름을 상수로 읽는 곳  setup._dead_time_cells(바인딩을 이름으로 찾음 — 'occurred_at' 글자를 상수로)
+   종류 time 을 묻는 곳은 둘 남는다 — 값 검사(roleframe: 시각 값은 시간대 있는 datetime)와 시간대 필수(setup_bundle: 값 역할만). 둘 다 «종류»가 맞는 물음이다
+```
+**게이트**
+```
+선언 맵퍼 · timestamp 값 칸(시간대 Asia/Seoul)       값 = 그 칸(2026-01-05 08:00 → UTC 2026-01-04 23:00) · occurred_at = 사건 시각   초록
+폼 · basis 소스의 값 칸                               「not read」 아님 · occurred_at 칸은 그대로 time_from_source_basis           초록
+변이  is_event_time_role 이 값 역할도 참이라 답하게    위 둘 다 빨강(2 failed)
+      옛 «종류» 물음으로 각 자리 되돌림                 각 자리의 시험 빨강(1 failed · 1 failed)
+전체 시험  5 failed, 7691 passed, 231 skipped, 3 xfailed, 13061 warnings in 876.10s (0:14:36) (C:/wt-impl). 실패 5 은 작업 트리 체크아웃 탓 — 줄 끝(LF/CRLF) 비교 넷 · 저장소 뿌리 경로 하나:
+           test_a_sentence_says_itself_only_for_the_rows_it_names · test_core_alignment_mapper · test_core_usage_mapper · test_dt_inventory_metadata_mapper · test_one_place_decides_where_the_server_is
+           main 트리에서 같은 다섯을 돌리면 넷 통과, 샘플 줄 끝 하나는 main 에서도 실패(작업 사본이 CRLF) — 이 착지가 만진 파일과 겹치는 것 0
+```
+폼 시험 하나(test_a_dead_cell_is_named_rather_than_asked_for)는 소스 «글자»를 단언하던 것이라, 폼이 내는 «줄»을 단언하게 바꿨다(옛 종류 물음 글자를 박아 둔 단언이라 같이 죽음).
+
+---
+
+## [10-02 저녁] 보류 포함 행 복사 맵퍼 (총괄 2e3cf5392) — 짓기 전 join 점검(015ef2aab ①): join 이 «같은 키 행에 원천 칸 쓰기»를 이미 한다 → 맵퍼 파일 안 짓고 멈춤
+
+**join 이 하는 것 (코드: server/chain/join_into.py)**
+```
+쓰기      오른쪽(원천) 표 행의 take 칸 -> 왼쪽(대상) 표의 «같은 키» 행. 키는 접은 식 · NULL 안전(색인과 같은 모양) · origin_row_id = 그 원천 행
+읽기      왼쪽 행을 한 번, 그 키들의 오른쪽 행을 «키 묶음으로 한 번»(_read_once) — 키마다 원천 행 «전부»를 이미 읽는다(N+1 아님)
+층        «chain_ingestion» 한 층(체인 쓰기 공통 · 깨움 거름이 읽는 이름)
+```
+**join 이 안 하는 것 — 보류 맵퍼가 하려던 일이 정확히 여기다**
+```
+① 한 키에 원천 행이 둘 이상   «둘 다 안 쓴다»(_update_items 의 fanned — 「어느 쪽이 답인지 제품이 고를 수 없다」 경고). key.unique 를 적으면 제품이 원천 키에 유일 색인까지 세운다
+② 대상 행 만들기             있는 왼쪽 행만 채운다. 소유자 예시 copy_one_row 는 df_to_updates 로 대상 행을 «만든다»
+③ 원천 행마다 층             한 층을 같이 쓴다 — 원천 행 하나를 지우면 그 행 값만 빠지는 「행마다 층」(10-01 RELEASE_LOG)이 아니다
+```
+**넓히는 안 — join 에 «보류» 칸 하나 (짓지 않음)**
+```
+선언      derive.join.hold: <보류 칸 이름>   (JOIN_CELLS 에 하나 — 규칙 params 는 derive.join 을 통째로 옮기고(rule_shape) 폼 칸은 JOIN_CELLS 를 읽어 저절로 생긴다)
+쓰기      hold 가 있으면 ①의 갈래가 «안 씀» 대신: 원천 행마다 층 chain_ingestion (<원천 row_id>) + origin_row_id 로 take 칸을 쓰고,
+          보류 칸 = 키의 원천 행 값이 모두 같으면 낱말 하나 · 갈리면 빈 값 · 갈린 칸 «전부»에 대상 행 user 층이 있으면 낱말 하나 — 보류 칸도 원천 행의 층으로
+읽기 더    갈린 키의 대상 행 user 층 — 묶음 한 번(행마다 아님)
+거절      hold 와 key.unique 를 같이 적으면 거절(유일 색인이 «한 키 여러 원천»을 막는다)
+②         대상 행 만들기는 join 에 없는 축이라 넓히는 일이 하나 더다 — 대상 표의 행이 원천에서 처음 생기는 흐름(official_dt)이면 필요
+바뀌는 자리  join_into(칸 · _update_items 의 갈림 · user 층 읽기) · rule_shape(blank 거절 옆에 hold 거절 · hold + key.unique 거절) — 파일 둘. 줄 수는 안 쟀다
+```
+**여쭐 것**
+```
+① 이 넓히기로 갈까요 — 아니면 «join 이 대상 행을 안 만든다»(②)를 사유로 맵퍼 파일을 지을까요
+② 넓힌다면 대상 행 만들기(②)까지 이번에 넣나요
+```
+
+---
+
+## [10-02 밤] 계획 — 원장 세상 ㄱ: 세상마다 «밑에 깔 세상» + «운영 세상» 한 칸 (총괄 e1f54cd72) — 짓지 않음
+
+어느 DB · 어느 스키마 · 지운 것 0 — 박스 assy_manager. 읽기는 public(SELECT 만). 뷰 실측은 스크래치 스키마 zz_worlds_probe 에만 썼고(카나리아: 만든 것 5개 전부 zz_worlds_probe), 끝에 그 스키마를 이름으로 지움(남은 것 0). public 에 쓴 것 · 지운 것 0
+
+**결론 먼저**
+```
+① 「어느 세상인가」의 답은 오늘도 schema.world_names 한 좌석이다. world 없이 부르면(None) «기본»을 준다
+   -> 그 None 을 «운영 세상»으로 읽게 하면, 세상 이름 없이 읽는 자리 대부분이 «한 줄»로 운영 세상을 따라간다
+② 못 따라가는 자리는 «import 때 값을 굳힌» 자리다 — 모듈 상수(LEDGER_TABLE · _DEFAULT · setup.DEFAULT_ONTOLOGY_ROOT 등)와
+   기본값 인자 names=_DEFAULT. 실시간 따라가기(체인 워커의 원장 후속)가 바로 그 하나라, 그대로 두면 운영 세상을 바꿔도 기본 세상에 계속 쓴다
+③ 사슬 뷰는 오늘 가지 뷰의 모양(다리 표지 · 소스 거름을 합집합 «밖»에)을 다리 수만 늘리면 된다. 박스 실측에서 세 겹도 파티션 훑기 0
+④ 박스에는 선언된 가지가 0 이다(schema.worlds() 빈 목록 · w_ 스키마 0) — 오늘의 가지 동작은 시험(PG)으로만 확인된다
+```
+
+**① 두 칸이 사는 곳 — 안 셋**
+```
+ㄱ (추천) 세상 배치 파일 하나  config/ontology_worlds/worlds.json  {"operating": <세상>|null, "beneath": {<세상>: [<세상>…] | []}, "history": [...]}
+   운영자    세상을 만들 때 밑을 고르고, 운영 세상을 바꿀 때 이 한 칸. 파일이 없으면 오늘 그대로(운영 = 기본, 가지의 밑 = 기본)
+   좋은 점   두 칸이 «한 집» · 읽는 자리는 schema.py 하나 · 원장 선언(묶음 해시)을 안 건드려 세상을 옮겨도 번역 버전이 안 움직인다
+   위험      선언 파일과 따로 산다 — 세상 폴더를 지우면 이 파일의 그 세상 줄이 남는다(지우기 문이 같이 지운다)
+ㄴ 밑은 각 세상 선언(ledger_config.json 최상위 칸) · 운영은 따로 파일
+   위험      집이 둘(문법 둘). 그리고 밑 칸이 묶음 해시에 들어가 «밑만 바꿔도» 그 세상 원자의 번역 버전이 바뀐다
+ㄷ 운영 세상을 환경변수로
+   위험      「바꾸면 그 순간부터」가 안 된다(재기동) · 누가 언제 바꿨는지 남지 않는다
+크기   안 쟀다(줄 수). 자리 수는 아래 전수
+```
+**② 한 좌석 넓히기 — 무엇이 바뀌나**
+```
+world_names(None)   «운영 세상»의 이름들. 운영 세상 칸이 비면 오늘의 기본
+기본을 이름으로     기본 세상에도 이름 하나가 필요하다(지금은 None 이 기본이라 이름이 없다) — 예약 낱말 하나(예 "default"), 그 이름의 가지는 거절
+밑 사슬            world_names 가 사슬(위 -> 아래, 고리 거절 · 같은 세상 두 번 거절)을 같이 돌려준다
+읽는 값            파일 mtime 으로 다시 읽음 — 요청마다 stat 한 번. 바꾸면 다음 요청 · 다음 후속 틱부터
+```
+**③ 전수 — world 없이 원장을 읽거나 쓰는 자리 (census_worldless_seats.py, git ls-files server/*.py, 시험 제외, AST)**
+```
+갈래                                                       자리 수   판정
+A world_names() · require_world() 를 이름 없이              9      운영 세상을 따라감 — 좌석 하나로 «저절로». 단 import 때 부르는 2 곳(schema._DEFAULT · setup.DEFAULT_ONTOLOGY_ROOT)은 굳는다 -> 부를 때 묻게
+B world/names 를 None·_DEFAULT 로 받는 함수를 그 인자 없이      34      아래 나눔
+   체인 워커 — 원장 후속 drain_once · LedgerStore 셋            4      운영 세상을 따라감(틱마다 운영 세상의 이름 · 선언 · speaks_for). 지금은 기본 고정 -> 고칠 자리
+      ⚠️ drain_once 는 world 를 받는데 그 안의 지움 갈래(backfill.withdraw_deleted_rows)는 world 를 안 넘긴다 — 운영 세상을 따라가면 지움이 기본 세상 원자를 거둔다.
+         오늘은 가지 후속이 backfill --world 의 CREATE 만 돌아 안 걸린다(코드로 본 것, 돌려 보진 않음). 같은 착지에서 넘긴다
+   backfill · census · gaps · trace_router · main 라우트        13      운영 세상을 따라감 — None 이 운영이 되면 저절로. names=_DEFAULT 기본값만 부를 때 묻게
+   migrations · scripts(시드 · 진단 · 이주)                     17      이름으로 기본 고정(오늘 동작) — 세상을 받을 일은 별도
+C schema 의 기본 이름 상수를 밖에서                           53      migrations · scripts 50 · 제품 3(ledger/admin · backfill) — 제품 자리는 부를 때 묻게, 나머지 기본 고정
+D 기본 원장 이름을 글자로 적은 SQL                             88      scripts · migrations 77 · 제품 11(main · ledger_subgraph · trace · admin · retroactive · schema_drift · wire_format · ledger/__init__) — 제품 자리는 하나씩 판정(아래 「열어 볼 자리」)
+라우트 — 세상을 받는 것 21 · 원장을 읽는데 안 받는 것 3(admin/ledger/sources · config/raw · relations)   None = 운영 세상
+대조 저장(contrast_walk)  실행 행의 world 칸이 비면 걷기 라우트의 기본 = 운영 세상(저절로)
+```
+**③-더 그리드의 세상 서브탭 (총괄 2bb20ff56) — 「세상마다 있는 표」 = 원장 원자 보기 ledger_atom_rows(세상마다 ensure_schema 가 짓는다: atom_rows_view_name)**
+```
+표 이름으로 모델을 찾는 그리드 라우트(main.py, AST: DYNAMIC_TABLES.get(table_name) · narrowed_table_query 를 지나는 것)  8
+   world 를 같이 지나야 하는 것   6 — /data · /data/count · /row_ids/target · /export · /schema · /{row_id}
+   원자 보기에 «없는» 것          2 — /{row_id}/{col_name}/sources · /cells/sources/query — 층(출처) 읽기라 보기에는 해당 없음으로 판정. 이 둘이 보기에 무엇을 답하는지는 열어 보지 않았다
+모양     모델 찾기를 함수 하나로: (표 이름, 세상) -> 모델. 세상마다 있는 표면 world_names 가 답한 스키마의 같은 보기에 묶인 모델(세상별 캐시), 아니면 오늘의 DYNAMIC_TABLES
+         모르는 세상은 이름 대어 거절(기본으로 접지 않음) · world 없이 열면 운영 세상
+/tables  응답에 «세상마다 있는 표» 목록 · 세상 목록 · 운영 세상 — groups · kinds 와 같은 모양으로 덧붙임(화면이 표 이름으로 묻지 않게)
+세는 것 · 거르기 · 쪽 넘김 · 행 이동  셋 다 같은 모델 하나를 지난다(narrowed_table_query · count · target_row_id) — 모델이 세상을 들면 같이 따라온다. 캐시 키에 세상이 들어가야 한다(같은 표 이름 · 다른 세상)
+```
+열어 볼 자리(D 의 제품 쪽)는 짓는 라운드에서 하나씩 연다 — 이 계획은 «글자가 있다»까지만 셌다. 「없다」는 말하지 않는다
+
+**④ 사슬 — 소스마다 어느 세상이 말하나**
+```
+규칙      사슬 [W, B1, B2 …, 기본]에서 소스 X 는 «X 를 말하는 가장 위 세상»의 원자로 보인다(칸 층과 같은 규칙)
+말한다    W 가 X 를 말한다 = W 의 X 선언 지문이 «밑 사슬에서 X 를 말하는 세상»의 X 선언과 다르거나, W 가 X 원자를 이미 썼다
+          맨 아래(기본 · 또는 밑 없음 세상)는 자기 소스 전부를 말한다
+넓히는 곳  changed_sources(names) — 오늘 «기본 선언과» 견주던 것을 «밑 사슬에서 X 를 말하는 세상의 선언과». 판정은 오늘처럼 restamp_decision 하나
+거절      고리(자기를 밑으로 · 돌아오는 사슬) · 없는 세상 이름 · 운영 세상이나 남의 밑인 세상 지우기(누가 기대는지 이름 대어)
+어휘      맨 위 세상의 선언이 정한다(걷기가 읽는 선언 = 그 세상의 declaration_path — 오늘 그대로)
+```
+**⑤ 뷰 — 모양과 박스 실측 (probe_world_chain_view.py)**
+```
+모양   다리마다 표지 하나, 거름은 합집합 «밖»: WHERE NOT (leg='B1' AND source_who = ANY(W 가 말하는 것)) AND NOT (leg='기본' AND source_who = ANY(W·B1 이 말하는 것))
+       밑 없음 세상 = 자기 다리 하나(합집합 없음)
+실측   걷기 한 번의 주장 읽기(SqlEvidenceLookup.claims_for_entities, both, 400), 15 번 중 앞 3 번 빼고 중앙값 · 박스 원장 원자 2,380,869
+                                          걷기 씨앗: 위 세상이 가진 것      기본에만 있는 것             
+       default (public.ledger_events)     3.83 ms                3.68 ms               
+       today: two legs                    5.11 ms                4.88 ms               
+       chain: three legs                  5.98 ms                5.23 ms               
+       beneath none: own leg              1.48 ms                1.14 ms               
+       위 다리 둘은 원자 500 개씩(원장의 dt_job · wafer_process_recipe 소스 사본). 세 경우 모두 계획에 Subquery Scan 0 · 원장 파티션 Seq Scan 0
+```
+**⑥ 소급 — 새 세상에 소스 전부 번역**
+```
+박스   뜨는 소스 15 · 원천 행 1,791,900 · 원자 2,380,869  ->  행 × 1,000 행당 5.85 s(7d23eb172, 박스 다이 소스에서 잰 율) ≈ 2.9 시간
+운영   안 쟀다 — 운영 원천 행 수를 모른다. 같은 식(행 수 × 율)으로 어림한다
+밑이 «기본»인 세상은 바뀐 소스만 번역(오늘 가지와 같음) — 소급은 «밑 없음» 세상에만 전부
+```
+**⑦ 클라 몫 (목록만)**
+```
+선언 화면의 가지 만들기에 «밑» 고르기(없음 · 기본 · 다른 세상 순서) · 운영 세상 표시(어느 화면이 어느 세상을 보고 있나)
+운영 세상 바꾸기 — 누가 · 언제 이력(history 칸) · 바꾸기 전 확인 · 지우기 거절 문장(누가 기대나)
+그리드 — 원장 원자 보기는 드롭다운에 하나. 열면 작은 서브탭(기본 · 가지들 · 운영 세상 표시), 탭 = 그 세상의 고유 원자. 데이터 · 세기 · 내보내기 · 행 이동에 world 를 실어 보냄
+```
+**⑧ 게이트 표 (기대값 먼저)**
+```
+밑 없음 세상의 뷰                         기본 원자 0
+밑 = 기본 (오늘의 가지)                     오늘과 같은 뷰 · 같은 speaks_for
+사슬 [W, B1, 기본]                         W 가 말하는 소스는 W 원자 · B1 이 말하는 소스는 B1 · 나머지는 기본
+운영 세상을 W 로                           원장 후속이 W 에 씀 · 세상 이름 없는 라우트 · 걷기 · gaps · declaration 이 W
+되돌림(운영 = 기본)                         다시 기본에 씀 · W 는 남음
+세상 이름 없이 읽는 자리 전부                 운영 세상(③ 의 «따라감» 자리 전부) · 기본 고정 자리는 기본
+지우기                                    운영 세상 · 남의 밑 세상은 거절(기대는 세상 이름) · 나머지는 오늘 문(미리보기 -> 확인)
+그리드 world=W                            데이터 · 세기 · 행 이동 · 내보내기가 W 의 원자 보기 · 모르는 세상 404(이름 대어) · world 없이 = 운영 세상
+고리                                      거절
+뷰 시간                                   세 겹 계획에 Subquery Scan 0 (오늘의 PG 시험을 다리 수로 넓힘)
+AST                                      「어느 세상인가」를 묻는 자리가 schema.py 밖에 0 (오늘 시험 test_no_seat_outside_the_world_seat_asks_which_world_it_is_in)
+```
+**여쭐 것**
+```
+① 두 칸의 집 — ㄱ(세상 배치 파일 하나, 추천) · ㄴ · ㄷ
+② 기본 세상의 이름 — 예약 낱말 하나(예 "default")로 부르고 그 이름의 가지는 거절, 이것으로 가도 되나
+```
