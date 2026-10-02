@@ -37,7 +37,8 @@ GET /api/ledger/declaration      ->  { state, entities, predicates, sources }
                                      🆕 + `absence_confirmed_by` — «선언한 술어에만» (S-216 `09217e2e`)
 client2/src/rnd_board/api.js
    typeGraph(declaration)        ->  선언의 predicates 로 «타입 그래프» (from -술어-> to)
-   pathsBetween(decl, from, to)  ->  그 그래프의 «단순 경로 전부» = { hops, follow, chain }
+   pathsBetween(decl, from, to)  ->  그 그래프의 «단순 경로 전부» = { hops, follow, chain, loops }
+   routeWith(route, 켠 칩)        ->  { follow, hops } — 켠 자기 고리 칩마다 follow 에 더하고 hops +1
 client2/src/rnd_board/walk_box_panel.js
    routes()                      ->  pathsBetween(선언, 시작타입, 도착지)
    useRoute(i)                   ->  🔵 `follow` 와 `hops` 를 «그 경로에서» 채운다
@@ -50,14 +51,17 @@ client2/src/rnd_board/walk_box_panel.js
 
 ### 그 계산의 성질 (소스 주석이 근거를 들고 있다)
 ```
-상한       types - 1.  «구조적» 상한이다 — 단순 경로는 타입을 재방문 못 한다.
+상한       types - 1.  «구조적» 상한이다 — 단순 경로는 타입을 재방문 못 한다(자기 고리는 경로에 안 넣는다).
           ⛔ 짧게 하려고 낮추지 않는다: 상한 4 면 recipe->quantity 가 «둘인데 하나»로 보인다
-작게 유지  상한이 아니라 «고리 랭크»(E-V+1)가 한다. 오늘 1 이라 한 쌍에 경로 «둘»이 상한
-          어휘에 고리가 늘면 목록도 는다 — 그때는 «어휘를 볼» 때이지 답을 줄일 때가 아니다
 자기 고리  X -술어-> X 는 «경로의 한 칸»이다 (소유자 정정 2026-08-29).
           빼면 계보·전달이 «통째로» 사라진다 — transfer 는 die->die 이고 원자 401,206 으로
           원장에서 제일 큰 술어다. bonded_from 18,545 · slot_map 135 · leads_to 22 도 자기 고리
+          🆕 10-02 (총괄 5d5b8d750): 목록의 한 줄 = 자기 고리를 «뺀» follow 세트. 그 줄이 지나는 타입
+          (도착지 앞까지)의 자기 고리는 그 줄 안의 «칩», 기본 꺼짐. 켜면 follow 에 더하고 hops +1
+          — 고리 하나 넣고 빼고가 다른 follow 세트가 되어 줄이 곱해지던 것을 접었다
+          (잰 수는 그 착지 보고). 줄이 이미 걸음으로 밟는 술어는 칩이 아니다
           한 술어는 «한 번»만 밟는다: 반복 횟수는 `follow` 가 아니라 «사용자 축»이다
+          ⚠️ 옛 상한은 고리 걸음까지 셌다 — 그래서 «긴 길 + 칩 여럿»이 상한을 넘는 조합은 옛 목록에 없었다
 ```
 
 ## 3. 라우트 — 데이터에 답하는 것은 «하나»

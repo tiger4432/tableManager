@@ -1517,7 +1517,7 @@ const FLOORS = new Map([
   // the board part: reach
   ['rnd_board_reach_harness.mjs', 63],
   // the board part: the walk box
-  ['rnd_board_walk_box_harness.mjs', 87],
+  ['rnd_board_walk_box_harness.mjs', 99],   // 87 -> 99: RC1-RC11, the loop chips (lead 5d5b8d750)
   // the board part: Save contrast (lead 3a262cc76) — one contrast_run row per save, the list
   // with the run row's own computed facts (Not computed yet / factors N · computed HH:MM, one read),
   // two instances on one screen, the real chain's run rows through the real route (J), and the

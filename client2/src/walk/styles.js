@@ -74,6 +74,12 @@ export const WALK_CSS = `
 .wk-pathto { font-weight: 700; grid-row: 1 / span 2; align-self: center; }
 .wk-pathchain { font-size: 0.86rem; }
 .wk-pathmeta { font-size: 0.78rem; color: var(--text-dim, #71717a); }
+/* A route's self-loops, as chips under its row: off by default (lead 5d5b8d750). */
+.wk-loops { display: flex; flex-wrap: wrap; gap: 6px; margin: -2px 0 8px; }
+.wk-loopchip { min-height: 44px; padding: 0 12px; border-radius: 999px; cursor: pointer;
+  border: 1px solid var(--line, #e4e4e7); background: var(--surface, #fff); color: var(--text-dim, #71717a);
+  font: inherit; font-size: 0.82rem; }
+.wk-loopchip.is-on { border-color: var(--accent, #2563eb); color: var(--text, #111); font-weight: 600; }
 /* 타입 분포 — 「무엇이 몇 개 왔나」. 물어본 타입은 표시가 다릅니다. */
 .wk-dist { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 6px 0; }
 .wk-distlabel { font-size: 0.78rem; color: var(--text-dim, #71717a); }

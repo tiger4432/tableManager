@@ -24,7 +24,7 @@
 //
 // ⛔ 걷기 API 는 «안 건드립니다» — 소유자 지시. 부르기만 합니다.
 
-import { fetchDeclaration, createWalkBoxWalk, pathsBetween, fetchKeyValues, PICK_TYPE_FIRST }
+import { fetchDeclaration, createWalkBoxWalk, pathsBetween, routeWith, fetchKeyValues, PICK_TYPE_FIRST }
   from '../rnd_board/api.js';
 // 🔴 겉모양은 «부품과 같이» 다닙니다 (총괄 판정 2026-09-06). 호스트가 스타일시트를
 //    챙기게 하면 호스트가 하나 늘 때마다 챙기기를 «기억»해야 하고, 안 챙기면 맨몸으로
@@ -86,7 +86,11 @@ export function boot(doc, host, deps) {
     direction: '', hops: '', nodeLimit: '',
     run: 'idle', result: null, reason: '',
     view: 'table',
+    // Which loop chips are on, per route row (`routeKey`). Off unless pressed (lead 5d5b8d750).
+    loopsOn: new Map(),
   };
+  const routeKey = (r) => `${r.to}|${r.follow.slice().sort().join('+')}`;
+  const loopsOf = (r) => state.loopsOn.get(routeKey(r)) || new Set();
 
   // 🔴 `@1` 을 뗍니다. 선언은 타입을 `wafer@1` 로 쓰고 전선과 `pathsBetween` 의 타입 그래프는
   //    `wafer` 로 씁니다 -- 둘을 섞으면 경로가 «0 개»로 나오고, 그 0 은 「길이 없다」와
@@ -306,19 +310,42 @@ export function boot(doc, host, deps) {
         pathBox.append(el(doc, 'div', 'wk-note',
           `${bare(state.type)} 에서 ${[...state.collect].map(bare).join(' · ')} 로 가는 길 없음`));
       }
+      // A route with the loop chips that are on fills follow and hops.
+      const useRoute = (r, on) => {
+        const asked = routeWith(r, on);
+        // 채우는 두 줄. 규칙은 `derive.js` 에 있고, 지우면 그쪽 하니스가 빨개집니다.
+        state.follow = new Set(followFromRoute(allPredicates(), asked.follow));
+        state.hops = String(asked.hops);
+        render();
+      };
       for (const r of found) {
+        const asked = routeWith(r, loopsOf(r));
         const row = el(doc, 'button', 'wk-path');
         row.type = 'button';
         row.append(el(doc, 'span', 'wk-pathto', `→ ${r.to}`));
         row.append(el(doc, 'span', 'wk-pathchain', r.chain.join(' → ')));
-        row.append(el(doc, 'span', 'wk-pathmeta', `${r.hops}홉 · ${r.follow.join(', ')}`));
-        row.addEventListener('click', () => {
-          // 채우는 두 줄. 규칙은 `derive.js` 에 있고, 지우면 그쪽 하니스가 빨개집니다.
-          state.follow = new Set(followFromRoute(allPredicates(), r.follow));
-          state.hops = String(r.hops);
-          render();
-        });
+        row.append(el(doc, 'span', 'wk-pathmeta', `${asked.hops}홉 · ${asked.follow.join(', ')}`));
+        row.addEventListener('click', () => useRoute(r, loopsOf(r)));
         pathBox.append(row);
+        // The route's self-loops: pressing one adds it to this route and uses the route.
+        if (r.loops.length) {
+          const chips = el(doc, 'div', 'wk-loops');
+          for (const loop of r.loops) {
+            const on = loopsOf(r).has(loop.predicate);
+            const chip = el(doc, 'button', 'wk-loopchip' + (on ? ' is-on' : ''), `↻ ${loop.predicate}`);
+            chip.type = 'button';
+            chip.setAttribute('aria-pressed', on ? 'true' : 'false');
+            chip.title = `${loop.at} → ${loop.at}`;
+            chip.addEventListener('click', () => {
+              const next = new Set(loopsOf(r));
+              if (on) next.delete(loop.predicate); else next.add(loop.predicate);
+              state.loopsOn.set(routeKey(r), next);
+              useRoute(r, next);
+            });
+            chips.append(chip);
+          }
+          pathBox.append(chips);
+        }
       }
       root.append(pathBox);
     }

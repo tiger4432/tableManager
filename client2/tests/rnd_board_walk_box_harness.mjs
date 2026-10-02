@@ -254,6 +254,143 @@ async function suite(mods) {
     ok('K3 the walk page and this box offer the same routes', apart.length === 0, apart.join(' ; '));
   }
 
+  console.log(`${LF}-- R. a self-loop is a chip in its route's row, off by default (lead 5d5b8d750) --`);
+  {
+    // 🔴 THE BOX DECLARATION'S SHAPE (GET /api/ledger/declaration, 10-02): fourteen predicates,
+    //    five self-loops (transfer · bonded_from on die, derived_from on lot, slot_map on lot_slot,
+    //    leads_to on quantity - which also steps quantity -> defect_kind).
+    const P = (name, subjects, types) => ({ name: `${name}@1`, subjects: subjects.map((s) => `${s}@1`),
+      object: { types: types && types.map((t) => `${t}@1`) } });
+    const DECL_BOX = { ok: true,
+      entities: ['defect', 'die', 'dtjob', 'lot', 'lot_slot', 'wafer'].map((t) => ({ type: `${t}@1`, keys: ['k'] }))
+        .concat(['defect_kind', 'quantity', 'recipe'].map((t) => ({ type: `${t}@1`, keys: ['k'], class: ['static'] }))),
+      predicates: [P('bonded_from', ['die'], ['die']), P('derived_from', ['lot'], ['lot']),
+        P('has_netdie', ['dtjob'], null), P('has_wafer', ['lot_slot'], ['wafer']),
+        P('in_container', ['die'], ['wafer']), P('inspected', ['wafer'], ['die']),
+        P('leads_to', ['quantity'], ['quantity', 'defect_kind']), P('measures', ['wafer'], ['quantity']),
+        P('observed', ['die'], ['defect']), P('of_kind', ['defect'], ['defect_kind']),
+        P('processed_with', ['wafer'], ['recipe']), P('register', ['lot', 'wafer', 'dtjob'], null),
+        P('slot_map', ['lot_slot'], ['lot_slot']), P('transfer', ['die'], ['die'])] };
+    const { pathsBetween, routeWith, typeGraph } = A;
+    const { types, edges } = typeGraph(DECL_BOX);
+    const limit = types.length - 1;
+    // THE ORACLE IS THE OLD LIST BY ITS DEFINITION: every walk from `a` that reaches `b`, a type at
+    // most once, each loop at most once, at most `limit` steps, folded by follow set to the fewest
+    // hops. Written here from that definition, not copied from any source.
+    const oldList = (a, b) => {
+      const best = new Map();
+      const go = (at, seen, loops, steps) => {
+        if (steps.length && at === b) {
+          const key = [...new Set(steps)].sort().join('|');
+          if (!best.has(key) || steps.length < best.get(key)) best.set(key, steps.length);
+          return;
+        }
+        if (steps.length >= limit) return;
+        for (const e of edges) {
+          if (e.from === e.to) {
+            if (e.from !== at || loops.has(e.predicate)) continue;
+            loops.add(e.predicate); go(at, seen, loops, [...steps, e.predicate]); loops.delete(e.predicate);
+            continue;
+          }
+          const next = e.from === at ? e.to : e.to === at ? e.from : null;
+          if (!next || seen.has(next)) continue;
+          seen.add(next); go(next, seen, loops, [...steps, e.predicate]); seen.delete(next);
+        }
+      };
+      go(a, new Set([a]), new Set(), []);
+      return best;
+    };
+    const subsets = (xs) => xs.reduce((acc, x) => acc.concat(acc.map((s) => [...s, x])), [[]]);
+    const newList = (a, b) => {
+      const best = new Map();
+      for (const r of pathsBetween(DECL_BOX, a, b)) {
+        for (const on of subsets(r.loops.map((l) => l.predicate))) {
+          const { follow, hops } = routeWith(r, new Set(on));
+          const key = [...follow].sort().join('|');
+          if (!best.has(key) || hops < best.get(key)) best.set(key, hops);
+        }
+      }
+      return best;
+    };
+    const lost = [], gained = [], overCap = [];
+    let pairs = 0;
+    for (const a of types) for (const b of types) {
+      if (a === b) continue;
+      pairs += 1;
+      const o = oldList(a, b), n = newList(a, b);
+      for (const [k, h] of o) if (n.get(k) !== h) lost.push(`${a}>${b} ${k} ${h}->${n.get(k)}`);
+      for (const [k, h] of n) if (!o.has(k)) (h > limit ? overCap : gained).push(`${a}>${b} ${k} ${h}`);
+    }
+    ok('RC1 every {follow, hops} of the old list is a route with some chips on, same hops',
+      lost.length === 0 && pairs > 0, lost.slice(0, 3).join(' ; '));
+    ok('RC2 and the other way: a route with chips on is an old line, unless it runs past the old cap',
+      gained.length === 0, gained.slice(0, 3).join(' ; '));
+    ok('RC2b the only new ones are past the old cap (it counted loop steps; a route + its chips may not)',
+      overCap.every((s) => Number(s.split(' ').pop()) > limit), overCap.join(' ; '));
+    const dw = pathsBetween(DECL_BOX, 'die', 'wafer');
+    eq('RC3 die -> wafer: one row per follow set without its loops',
+      dw.map((r) => r.follow.slice().sort().join('+')).sort().join(' ; '),
+      'in_container ; inspected ; leads_to+measures+observed+of_kind');
+    ok('RC4 ... each row carries die\'s two loops as chips, and the row itself walks none of them',
+      dw.every((r) => r.loops.map((l) => l.predicate).sort().join('+') === 'bonded_from+transfer'
+        && !r.follow.includes('transfer') && !r.follow.includes('bonded_from')
+        && r.hops === r.chain.length - 1), JSON.stringify(dw));
+    const one = dw.find((r) => r.follow.join() === 'in_container');
+    eq('RC5 a chip on adds its loop to follow and one hop', JSON.stringify(routeWith(one, new Set(['transfer']))),
+      JSON.stringify({ follow: ['in_container', 'transfer'], hops: 2 }));
+    eq('RC6 no chip on is the row as it stands', JSON.stringify(routeWith(one, new Set())),
+      JSON.stringify({ follow: ['in_container'], hops: 1 }));
+    const viaKind = pathsBetween(DECL_BOX, 'wafer', 'defect_kind').find((r) => r.follow.includes('leads_to'));
+    ok('RC7 a loop the route already walks as a step is not a chip (leads_to on quantity -> defect_kind)',
+      viaKind && !viaKind.loops.some((l) => l.predicate === 'leads_to'), JSON.stringify(viaKind));
+
+    // ── both callers: the same rows, chips off by default, a chip on fills follow and one hop ──
+    const bdoc = makeDoc();
+    const bhost = bdoc.createElement('div');
+    const bbox = new WalkBoxPanel(bhost, { doc: bdoc, markings: new MarkingStore(), reads: 'marking:1',
+      writes: 'marking:2', loadDeclaration: () => Promise.resolve(DECL_BOX),
+      walk: () => Promise.resolve({ ok: true, nodes: [] }) });
+    bbox.mount();
+    await settle();
+    bbox.setType('die@1'); bbox.destination = 'wafer'; bbox.render();
+    const boxRows = () => walkAll(bhost).filter((e) => String(e.className).startsWith('rb-walkbox-route'));
+    const boxChips = () => walkAll(bhost).filter((e) => String(e.className).startsWith('rb-walkbox-loopchip'));
+    const pdoc = makeDoc();
+    pdoc.head = pdoc.createElement('head');
+    const phost = pdoc.createElement('div');
+    const ppage = walkPage.boot(pdoc, phost, { apiBase: '',
+      fetchImpl: async () => ({ ok: true, status: 200, json: async () => DECL_BOX }) });
+    await settle();
+    ppage.state.type = 'die@1'; ppage.state.collect = new Set(['wafer@1']); ppage.render();
+    const pageRows = () => walkAll(phost).filter((e) => e.className === 'wk-path');
+    const pageChips = () => walkAll(phost).filter((e) => String(e.className).startsWith('wk-loopchip'));
+    // the walkable rows (the 4-hop one steps out of a static type and the walk refuses it)
+    const walkable = bbox.routes().length;
+    ok('RC8 both callers draw the same rows for die -> wafer, each with its loop chips, all off',
+      walkable > 0 && boxRows().length === walkable && pageRows().length === walkable
+        && boxChips().length === 2 * walkable && pageChips().length === 2 * walkable
+        && [...boxChips(), ...pageChips()].every((c) => c.getAttribute('aria-pressed') === 'false'),
+      `box ${boxRows().length}/${boxChips().length} page ${pageRows().length}/${pageChips().length}`);
+    const first = bbox.routes()[0];
+    boxRows()[0].click();
+    ok('RC9 pressing a row with no chip on walks the route as it stands',
+      [...bbox.follow].sort().join('+') === first.follow.slice().sort().join('+') && bbox.hops === first.hops,
+      `${[...bbox.follow]} ${bbox.hops}`);
+    boxChips().find((c) => c.getAttribute('data-loop') === 'transfer').click();
+    ok('RC10 the box: pressing a loop chip adds it to that route and one hop, and the chip shows on',
+      bbox.follow.has('transfer') && bbox.hops === first.hops + 1
+        && boxChips().find((c) => c.getAttribute('data-loop') === 'transfer').getAttribute('aria-pressed') === 'true',
+      `${[...bbox.follow]} ${bbox.hops}`);
+    pageChips()[0].click();
+    const pfirst = pathsBetween(DECL_BOX, 'die', 'wafer')
+      .sort((a, b) => a.hops - b.hops || a.follow.length - b.follow.length)[0];
+    ok('RC11 the page: pressing a loop chip fills follow with the route and that loop, and one hop more',
+      ppage.state.hops === String(pfirst.hops + 1)
+        && [...ppage.state.follow].map((n) => n.split('@')[0]).sort().join('+')
+          === [...pfirst.follow, pfirst.loops[0].predicate].sort().join('+'),
+      `${[...ppage.state.follow]} ${ppage.state.hops}`);
+  }
+
   console.log(`${LF}-- C. unpicked FOLLOW is ABSENT from the request, not an empty list --`);
   panel.setType('die@1');
   panel.collect = 'quantity';
@@ -773,6 +910,21 @@ const MUTANTS = [
   { name: 'a-missing-route-reads-as-an-empty-result', catches: ['E1'],
     from: "    if (this.declState !== 'ready') {",
     to: "    if (false) {" },
+  // 🔴 10-02 (lead 5d5b8d750). The loop chips: off by default, one hop each, never a loop the route
+  //    already walks, never one at the destination (the walk stops on arriving), and the box asks them.
+  { name: 'the-loop-chips-are-on-by-default', catches: ['RC6 ', 'RC9 '], file: 'api.js',
+    from: "const picked = (route.loops || []).filter((l) => on && on.has(l.predicate));",
+    to: "const picked = route.loops || [];" },
+  { name: 'a-loop-the-route-already-walks-is-a-chip', catches: ['RC7 '], file: 'api.js',
+    from: "if (edge.from !== edge.to || edge.from !== at || follow.includes(edge.predicate)",
+    to: "if (edge.from !== edge.to || edge.from !== at" },
+  { name: 'a-loop-chip-adds-no-hop', catches: ['RC5 ', 'RC10 '], file: 'api.js',
+    from: "hops: route.hops + picked.length };", to: "hops: route.hops };" },
+  { name: 'a-loop-at-the-destination-is-offered', catches: ['RC2 '], file: 'api.js',
+    from: "for (const at of chain.slice(0, -1)) {", to: "for (const at of chain) {" },
+  { name: 'the-box-route-ignores-its-chips', catches: ['RC10 '],
+    from: "    const asked = routeWith(route, this.loopsOf(route));\n    this.chosenPath = index;",
+    to: "    const asked = routeWith(route, new Set());\n    this.chosenPath = index;" },
 ];
 
 const main = async () => {

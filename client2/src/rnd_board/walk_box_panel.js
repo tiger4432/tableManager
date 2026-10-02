@@ -33,7 +33,7 @@
 import { Panel } from './panel.js';
 import { SIGN } from './marking_store.js';
 import { TablePart } from './table_part.js';
-import { typeGraph, pathsBetween } from './api.js';
+import { typeGraph, pathsBetween, routeWith } from './api.js';
 import { UNPICKED } from '../absent.js';
 // 🔴 C-120. 「꺼짐 + 왜」의 좌석 하나. 이 부품의 「걷기」가 그 넷 중 «간접»이었습니다 —
 //    사유를 옆 패널에서 읽어야 했습니다.
@@ -66,6 +66,8 @@ export class WalkBoxPanel extends Panel {
     this.nodeType = options.nodeType || null;
     this.keyValues = {};
     this.follow = new Set();
+    // Which loop chips are on, per route (its follow set). Off unless pressed (lead 5d5b8d750).
+    this.loopsOn = new Map();
     // 🔴 C-51. 구간은 «둘 다 선택»이고 빈 칸이 「구간 없음」입니다 — 그래서 기본값이 빈
     //    문자열이지 `null` 도 오늘 날짜도 아닙니다. 채우면 그것이 질문이고, 비우면 «안 묻습니다».
     this.since = '';
@@ -375,17 +377,35 @@ export class WalkBoxPanel extends Panel {
       row.setAttribute('data-route', String(index));
       row.className = 'rb-walkbox-route'
         + (this.chosenPath === index ? ' is-on' : '');
-      // 🔴 자기 고리가 있는 경로는 «몇 번 반복하나»가 사용자 축입니다 (소유자 2026-08-29).
-      //    지금은 «한 번»으로 걷고, 그것이 «기본값임을 말합니다» -- 말 안 하면 화면이
-      //    「한 대 위까지만 봤다」를 「그게 전부다」로 내놓습니다. 오늘의 부재 규율 그대로입니다.
-      const loops = route.chain.filter((t, i) => i && t === route.chain[i - 1]).length;
-      row.textContent = `Route ${String.fromCharCode(65 + index)} · ${unitText(route.hops, 'hop')} · `
-        + `${route.chain.join(' → ')}`
-        + (loops ? ` · one revisit of a type by default` : '');
+      const asked = routeWith(route, this.loopsOf(route));
+      row.textContent = `Route ${String.fromCharCode(65 + index)} · ${unitText(asked.hops, 'hop')} · `
+        + `${route.chain.join(' → ')}`;
       row.addEventListener('click', () => this.useRoute(index));
       box.appendChild(row);
+      // The route's self-loops, off unless pressed; pressing one adds it and uses this route.
+      for (const loop of route.loops) {
+        const on = this.loopsOf(route).has(loop.predicate);
+        const chip = doc.createElement('button');
+        chip.setAttribute('type', 'button');
+        chip.setAttribute('data-loop', loop.predicate);
+        chip.setAttribute('aria-pressed', on ? 'true' : 'false');
+        chip.className = 'rb-walkbox-loopchip' + (on ? ' is-on' : '');
+        chip.textContent = `↻ ${loop.predicate}`;
+        chip.addEventListener('click', () => {
+          const next = new Set(this.loopsOf(route));
+          if (on) next.delete(loop.predicate); else next.add(loop.predicate);
+          this.loopsOn.set(route.follow.slice().sort().join('+'), next);
+          this.useRoute(index);
+        });
+        box.appendChild(chip);
+      }
     });
     return box;
+  }
+
+  /** The loop chips that are on for a route (keyed by its follow set). */
+  loopsOf(route) {
+    return this.loopsOn.get(route.follow.slice().sort().join('+')) || new Set();
   }
 
   /** 선언이 준 «타입 이름»들. 지어낸 목록이 아니라 선언의 것입니다. */
@@ -400,13 +420,14 @@ export class WalkBoxPanel extends Panel {
       pathsBetween(this.declaration, bareTypeName(this.nodeType), this.destination));
   }
 
-  /** 경로 하나를 «쓴다» -- follow 와 hops 가 그 경로에서 나옵니다. */
+  /** 경로 하나를 «쓴다» -- follow 와 hops 가 그 경로(와 켠 고리 칩)에서 나옵니다. */
   useRoute(index) {
     const route = this.routes()[index];
     if (!route) return;
+    const asked = routeWith(route, this.loopsOf(route));
     this.chosenPath = index;
-    this.follow = new Set(route.follow);
-    this.hops = route.hops;
+    this.follow = new Set(asked.follow);
+    this.hops = asked.hops;
     this.render();
   }
 
