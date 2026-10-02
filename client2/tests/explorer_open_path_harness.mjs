@@ -414,10 +414,20 @@ async function reshapeWalk(create, { refuse = false } = {}) {
   const keysNow = () => ((controller.getState().authoring || {}).fields || [])
     .map((r) => r.path).filter((p) => p.includes('.keys.')).map((p) => p.split('.').pop()).join(',');
   const out = { opened: posts.length };
+  // 🔴 43a738d58 ②: what the SCREEN shows is the raw window as last drawn (dom_patch syncs its value
+  //    on every render), so it tells a keystroke that redrew from one that only moved the draft.
+  const rawShown = () => { const t = walkAll(root).find((n) => n.dataset && n.dataset.action === 'edit-raw'); return t ? String(t.value) : null; };
+  const shownBefore = rawShown();
   await fire('input', field(LEAF, 'd'));
+  out.firstTyped = { draft: controller.getState().editorText, shown: rawShown(), before: shownBefore,
+    dirty: controller.getState().dirty,
+    save: !!walkAll(root).find((n) => n.dataset && n.dataset.action === 'save-draft' && !n.disabled) };
   await fire('input', field(LEAF, 'die'));
   out.typed = posts.length;
+  out.shownWhileTyping = rawShown();
   await fire('change', field(LEAF, 'die'));
+  out.shownAfterChange = rawShown();
+  out.draftAfterChange = controller.getState().editorText;
   out.picked = posts.length;
   out.sent = posts[0] || null;
   out.text = controller.getState().editorText;
@@ -426,6 +436,9 @@ async function reshapeWalk(create, { refuse = false } = {}) {
   await fire('input', field(PLAIN, 'hello'));
   await fire('change', field(PLAIN, 'hello'));
   out.plain = posts.length;
+  // A box that does not reshape the form: no plan answer will redraw, so only leaving the box can.
+  out.shownAfterPlain = rawShown();
+  out.draftAfterPlain = controller.getState().editorText;
   await fire('change', field(LEAF, 'die'));
   out.same = posts.length;
   await fire('input', field(LEAF, 'wafer'));
@@ -433,6 +446,7 @@ async function reshapeWalk(create, { refuse = false } = {}) {
   out.again = posts.length;
   out.keysWafer = keysNow();
   if (controller.getState().draft) await click('save-draft');
+  out.savedClass = saved.class;
   out.afterSave = posts.length;
   out.keysSaved = keysNow();
   out.savedGet = gets.includes('wafer');   // a plan GET answered for the SAVED class
@@ -463,6 +477,18 @@ function reshapeSuite(seen5, refused) {
   say('R10 after the save the plan GET draws the same fields, and nothing more is asked',
     seen5.savedGet && seen5.afterSave === seen5.again && seen5.keysSaved === 'lot,wafer',
     `${seen5.savedGet} ${seen5.afterSave} ${seen5.keysSaved} ${seen5.toastsAfter.join(' | ')}`);
+  // ── 43a738d58 ②: typing changes the draft, not the screen — the raw window's rule ──────────
+  const ft = seen5.firstTyped || {};
+  say('R11 a keystroke in a form box moves the draft and draws nothing',
+    ft.draft !== ft.before && ft.draft.includes('"d"') && ft.shown === ft.before
+      && seen5.shownWhileTyping === ft.before, `${JSON.stringify(ft.shown)} vs ${JSON.stringify(ft.draft)}`);
+  say('R12 leaving the box draws once: the screen shows what was typed — a box that reshapes nothing too',
+    seen5.shownAfterChange === seen5.draftAfterChange && seen5.shownAfterChange.includes('"die"')
+      && seen5.shownAfterPlain === seen5.draftAfterPlain && String(seen5.shownAfterPlain).includes('"hello"'),
+    `${JSON.stringify(seen5.shownAfterChange)} | ${JSON.stringify(seen5.shownAfterPlain)}`);
+  say('R13 the first keystroke marks the draft changed, and Save is on', ft.dirty === true && ft.save === true,
+    `${ft.dirty} ${ft.save}`);
+  say('R14 what Save writes is what was typed', seen5.savedClass === 'wafer', String(seen5.savedClass));
   say('R9 a refused ask says the server\'s words, and the saved form stays',
     refused.toasts.some((t) => t.includes('raw is not JSON')) && refused.keysDie === '', `${refused.toasts.join(' | ')} · ${refused.keysDie}`);
   return { ran: names.length, names, failures };
@@ -493,6 +519,13 @@ failed += reshapeBase.failures.length;
     { id: 'M8', what: 'a refusal is swallowed', catches: 'R9',
       mutate: (text) => swap(text, "      if (turn === reshapeTurn) showToast(errorMessage(error), 'error');",
                              '      void error;') },
+    // ── 43a738d58 ② ──────────────────────────────────────────────────────────────────────
+    { id: 'T1', what: 'every keystroke draws the whole screen again', catches: 'R11',
+      mutate: (text) => swap(text, '    if (typing) return state;\n', '') },
+    { id: 'T2', what: 'leaving the box draws nothing', catches: 'R12',
+      mutate: (text) => swap(text, "    if (TYPED_BOXES.has(event.target?.dataset?.action)) dispatch({ type: 'EDITOR_CHANGED', text: state.editorText });\n", '') },
+    { id: 'T3', what: 'the typing mark never clears, so the screen stops drawing', catches: 'R12',
+      mutate: (text) => swap(text, '    try { onInput(event); } finally { typing = false; }', '    onInput(event);') },
   ];
   const run = async (m) => reshapeRun(
     (await loadWithProbe(SUBJECT, { mutate: (t) => m.mutate(t) })).module.createOntologyExplorerController);

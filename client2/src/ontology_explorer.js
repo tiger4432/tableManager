@@ -174,8 +174,15 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
     markFormCursor();
   };
 
+  // 🔴 TYPING CHANGES THE DRAFT, NOT THE SCREEN — the raw window's rule, widened to the form's text
+  //    boxes (lead 43a738d58 ②, owner 「한 글자다 서버 갱신 느낌」). Measured on the box declaration:
+  //    one keystroke in an entity's Attributes box was a whole-screen render (8.2 ms of 10.1 ms JS,
+  //    no request). While a box is typed into, this is true and nothing is drawn; leaving the box
+  //    (`change`, below) draws once.
+  let typing = false;
   const dispatch = (action) => {
     state = reduceExplorerState(state, action);
+    if (typing) return state;
     render();
     // 🔴 ONE HOOK, NOT ONE PER WRITER. Every row, list and text edit ends in
     //    `EDITOR_CHANGED` (there are five writers), so the derivation hangs here —
@@ -1392,10 +1399,22 @@ No effect`;
 
   // A committed edit — a picked option, a box left, a chip pressed — may have moved a leaf that
   // shapes the form. Typing is not a commit: `input` below never asks.
-  root.addEventListener('change', () => { void reshapeIfMoved(); });
+  // The form's text boxes. Their `input` is typing (draft only); their `change` is the box left.
+  const TYPED_BOXES = new Set(['edit-draft-item', 'edit-shape', 'edit-field-item', 'edit-field',
+    'edit-entity-key']);
+  root.addEventListener('change', (event) => {
+    // Draw what was typed, once — the same dispatch typing skipped, so the column-stats hook runs too.
+    if (TYPED_BOXES.has(event.target?.dataset?.action)) dispatch({ type: 'EDITOR_CHANGED', text: state.editorText });
+    void reshapeIfMoved();
+  });
   root.addEventListener('click', () => { void reshapeIfMoved(); });
 
   root.addEventListener('input', (event) => {
+    typing = TYPED_BOXES.has(event.target.dataset.action);
+    try { onInput(event); } finally { typing = false; }
+  });
+
+  const onInput = (event) => {
     if (event.target.dataset.action === 'edit-draft-item') {
       const at = Number(event.target.dataset.index);
       const typed = event.target.value;
@@ -1493,7 +1512,7 @@ No effect`;
         editorCheckpoint: state.dirty ? checkpoint() : null,
       }), 180);
     }
-  });
+  };
 
   return {
     // The second caller that never carried the editor. A refresh is not a decision to
