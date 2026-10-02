@@ -23,7 +23,7 @@ from sqlalchemy.orm import Session
 from database.database import get_db
 
 from ledger_api import ledger_subgraph
-from ledger import trace
+from ledger import gaps, trace
 
 logger = logging.getLogger(__name__)
 
@@ -632,10 +632,11 @@ def _evidence_graph(connection, *, node_id, hops, direction, world=None,
         declaration_path=names.declaration_path)
 
 
-#: How many ledger rows one key-values answer may READ. The scan is bounded, not the
-#: grouping: a `GROUP BY` over a whole subject_type would visit every row that type has,
-#: which is the full scan this route exists beside rather than adds.
-KEY_VALUE_SCAN_ROWS = 20000
+#: How many NODES one key-values answer may read when it groups by ONE axis of a composite
+#: type (several nodes can share a value there). Grouping by every declared key needs only
+#: `limit + 1` nodes, since each node is then its own value. Scan + count at this budget, per
+#: type on the box: task/scoped_redo_report.md (29cee1d47).
+KEY_VALUE_SCAN_NODES = 1000
 
 #: How many distinct values one answer may CARRY. Asked as `limit + 1` so the answer can
 #: say it was cut instead of looking complete.
@@ -657,22 +658,14 @@ def ledger_key_values(
 ):
     """이 타입의 이 키에 «오늘 원장에 있는» 값들. 씨앗을 고르기 위한 목록이다.
 
-    🔴 값을 적으라면서 «어떤 값이 있는지»는 안 알려 주던 자리다. 걷기 상자의 키는 자유
-    텍스트였고, 운영자는 씨앗 하나를 «외워서» 쳐야 했다.
+    🔴 [총괄 29cee1d47] 노드는 `gaps._nodes_of_type_sql` 이 답한다 -- 주어 «와» 목적어 두 쪽.
+    주어 쪽만 읽던 때는 목적어로만 나오는 타입(이 박스의 recipe · defect_kind)이 빈 목록이었고, `LIKE`
+    접두가 `lot` 에 `lot_slot` 을 섞었다. 그 질의는 «키 순서의 앞»을 주므로 정렬은 «값 오름차순»
+    이고, `count` 는 보인 값의 노드를 두 쪽에서 이름 부르는 원자 수다 (`gaps._names_node_sql`).
 
-    🔴 **읽는 «행 수»를 자른다. 그룹을 자르는 것이 아니다.** 한 타입 전체에 `GROUP BY` 를
-    걸면 그 타입의 모든 행을 방문하고, 그것이 오늘 밤 등급 5 로 올린 바로 그 모양이다.
-    그래서 `KEY_VALUE_SCAN_ROWS` 로 «먼저 자르고» 그 위에서 센다 -- 같은 규율이
-    `enrichment_candidates.execute_candidate_probe` 에 이미 있고 이 함수는 그것을 따른다.
-
-    🔴 **절단이 «둘»이고 따로 보고한다.** `scan_truncated` 는 「행을 다 못 봤다」이고
-    `values_truncated` 는 「값이 더 있는데 안 실었다」다. 한 표지로 접으면 「이 키에는 값이
-    이만큼뿐」과 「이만큼까지만 봤다」가 같은 답이 된다 -- 오늘 밤 내내 걷어낸 그 부류다.
-
-    정렬은 «빈도 내림차순, 동률은 값 오름차순»이다. 적어 두지 않으면 질의가 정한다.
-
-    ⚠️ 세는 대상은 «읽은 창» 안의 빈도다. 창이 잘렸으면 그 빈도는 표본이지 전수가 아니고,
-    `scan_truncated` 가 그것을 말한다.
+    🔴 **절단이 «둘»이고 따로 보고한다.** `scan_truncated` 는 「노드를 다 못 봤다」이고
+    `values_truncated` 는 「값이 더 있는데 안 실었다」다. 모든 키로 묶으면 노드 하나가 값
+    하나라 둘은 대개 같이 켜진다 -- 축 하나로 묶을 때 갈린다.
     """
     wanted_type = str(type).split("@", 1)[0]
     collectable = _collectable_types()
@@ -715,8 +708,14 @@ def ledger_key_values(
             "message": "'%s' declares no keys, so its subjects cannot be counted - "
                        "declare its keys" % wanted_type})
 
-    params = {"type_prefix": wanted_type + "%",
-              "scan": KEY_VALUE_SCAN_ROWS + 1, "limit": limit + 1}
+    budget = limit + 1 if set(grouping) == set(declared_keys) else KEY_VALUE_SCAN_NODES
+    # `::text` keeps each node's keys exactly as stored - a float round trip through Python
+    # could name a node nobody has, and its count would read 0.
+    nodes = [row[0] for row in connection.exec_driver_sql(
+        "SELECT keys::text FROM (%s) n" % gaps._nodes_of_type_sql().format(table=relation),
+        {"bare": wanted_type, "scan": budget + 1}).fetchall()]
+    params = {"bare": wanted_type, "nodes": "[" + ",".join(nodes[:budget]) + "]",
+              "limit": limit + 1}
     # Key NAMES are bound, never interpolated - they came from the declaration, and
     # binding them keeps that true no matter what a declaration is allowed to contain.
     selected = []
@@ -726,46 +725,39 @@ def ledger_key_values(
         # canonical seed id writes those two differently, and the walk then answers a seed
         # nobody has - measured 2026-09-06: composite seeds 8/8 empty, the same 8 ready
         # once the type survives. A key's TYPE is part of its identity here.
-        selected.append("subject_keys -> %%(k%d)s AS v%d" % (index, index))
+        selected.append("k.keys -> %%(k%d)s AS v%d" % (index, index))
     columns = ", ".join("v%d" % index for index in range(len(grouping)))
-    present = " AND ".join("subject_keys ? %%(k%d)s" % index
-                           for index in range(len(grouping)))
     # jsonb `->` gives SQL NULL for a missing key and `'null'::jsonb` for a declared one
     # holding JSON null; neither is a value a seed can carry, and they are different rows.
     not_null = " AND ".join("v%d IS NOT NULL AND v%d <> 'null'::jsonb" % (index, index)
                             for index in range(len(grouping)))
 
     rows = connection.exec_driver_sql(
-        # The window is taken FIRST and grouped after, so the work is bounded by
-        # `KEY_VALUE_SCAN_ROWS` rather than by how many rows the type has.
-        "SELECT " + columns + ", count(*) AS n FROM ("
-        "  SELECT " + ", ".join(selected) + " FROM " + relation +
-        "  WHERE subject_type LIKE %(type_prefix)s AND " + present +
-        "  LIMIT %(scan)s"
+        "SELECT " + columns + ", sum(n) AS n FROM ("
+        "  SELECT " + ", ".join(selected) + ", (SELECT count(*) FROM " + relation + " e"
+        "   WHERE " + gaps._names_node_sql("e", "k.keys") + ") AS n"
+        "  FROM jsonb_array_elements(%(nodes)s::jsonb) AS k(keys)"
         ") w WHERE " + not_null + " GROUP BY " + columns +
-        " ORDER BY n DESC, " + columns + " LIMIT %(limit)s",
+        " ORDER BY " + columns + " LIMIT %(limit)s",
         params,
-    ).fetchall()
+    ).fetchall() if nodes else []
 
-    scanned = sum(int(row[-1]) for row in rows)
-    subjects = [{"keys": {name: row[index] for index, name in enumerate(grouping)},
-                 "count": int(row[-1])} for row in rows[:limit]]
     return {
         "type": wanted_type, "key": key, "keys": grouping,
-        "subjects": subjects,
+        "nodes": [{"keys": {name: row[index] for index, name in enumerate(grouping)},
+                   "count": int(row[-1])} for row in rows[:limit]],
         # ⚠️ THIS SAYS WHAT IT MEASURED, AND `seedable` DID NOT. The old name claimed the
         # combination would seed a walk, which this route never checked and which was
         # FALSE for every composite subject while the values came back as text. Key
         # coverage is what a set comparison can know; whether the walk answers is a
         # different question and belongs to whoever asks it.
         "covers_declared_keys": set(grouping) == set(declared_keys),
-        "scanned": min(scanned, KEY_VALUE_SCAN_ROWS),
-        # 🔴 TWO CUTS, SAID SEPARATELY. Neither implies the other: a small key can fill
-        # the value list off an untruncated scan, and a huge scan can yield three values.
-        "scan_truncated": scanned > KEY_VALUE_SCAN_ROWS,
+        "scanned": min(len(nodes), budget),
+        # 🔴 TWO CUTS, SAID SEPARATELY - see the docstring for when they part.
+        "scan_truncated": len(nodes) > budget,
         "values_truncated": len(rows) > limit,
-        "limits": {"scan_rows": KEY_VALUE_SCAN_ROWS, "values": limit},
-        "order": "count_desc_then_value_asc",
+        "limits": {"scan_nodes": budget, "values": limit},
+        "order": "value_asc",
     }
 
 

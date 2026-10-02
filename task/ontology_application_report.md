@@ -34954,3 +34954,55 @@ ad1aa4a47  LEDGER_SCHEMA_COMPLETENESS · PRIMITIVES · SYSTEM_FLOWS · SERVER_FI
 ```
 server/config/ontology/README.md:78  「범용 구현 direct-join@1(준비기)과 declarative-role@1(매퍼)만 쓰면 코드 0줄로」 — server/config 는 총괄 기록 자리
 ```
+
+---
+
+## [C 응용] 10-02 RELEASE_LOG(a7a8b9fd6) 대조 — 고칠 문장 하나, 클라(작성자)께 — @`ce04d073b`
+
+작성자 하나 규칙대로 저는 파일을 안 고쳤습니다. 항목 넷을 코드와 대조했습니다(이미지 · 행 단위 맵퍼 · 가지/one · v6).
+```
+맞음  화면 글자 — Open image · ▣ · New branch · Create · Keep draft · Discard draft · Stay · Delete branch · Branch (client2/src 에 있음)
+      서버 이름 — crud.merged_layer_name · crud.CHAIN_SOURCE · mapper_sdk.df_to_updates/payloads_to_df · prepare_retired ·
+      migrate_ledger_config_to_v6.py --apply(없으면 미리보기) · 「setup_version 5 read as 6 … Next: run …」 로그(setup_bundle 의 그 줄)
+고칠 것 하나 — 「원장 가지 · one 술어」 항목의 바뀐 동작
+      「`one` 술어: 쓸 때 막던 거절(cardinality_one_violated)이 없어지고」
+      그 거절은 운영 모양에서 «한 번도 난 적이 없습니다» — 선언 키(…@1)와 원자 술어(버전 뗀 이름)가 안 맞아 판정이 늘 거짓이었다
+      (구현 실측 918f49ccc, 051c7c187 커밋 본문 「Ruling 256 is reversed」 · 가이드 셋에 제가 단 표시 c23d702f9).
+      전부터 쓰던 운영자가 그 거절을 본 적이 없으니 「막던」은 거짓입니다.
+      제안 문장: 「쓸 때 거절 · 대체 표지는 운영에서 실제로 돈 적이 없었고(이름 철자 불일치), 이제 쓸 때는 아무것도 안 하고 읽을 때 …」
+```
+
+---
+
+## [C 응용] 10-02 6c44b0b3d(걷기 시작점 목록이 노드를 두 쪽에서) 문서 동기 — @`ce0d934c1`
+
+```
+고친 문서 다섯  CODE_MAP(gaps 줄 둘 + _names_node_sql 새 줄 + 소비자 줄 · key-values 줄 둘) · PRIMITIVES · backend · LEDGER_GUIDE · WALK
+               행 -> 노드 · subjects -> nodes · limits.scan_rows -> scan_nodes · 정렬 value_asc · KEY_VALUE_SCAN_ROWS 은퇴 ·
+               count = 그 노드를 두 쪽에서 이름 부르는 원자 수. 줄 수 · 상수는 6c44b0b3d 에서 git 으로 읽음
+검수 (박스)     server/scripts/run_pg_tests.py -k key_list_reads -> 11 passed (박스 PG)
+               같은 파일 sqlite 묶음은 11 skipped(PG 표시) — 증명은 위 PG 줄
+               dist api 묶음이 r.nodes 를 읽음(grep) · client2/src 에서 key-values 옛 칸(subjects · scan_rows · count_desc)을 읽는 곳 0
+               (카나리아 fetchKeyValues 정의 1 · control_bar_panel 의 got.subjects 는 또래 수 전선 — 다른 라우트)
+               gaps 조각을 부르는 곳 (git grep) — _nodes_of_type_sql 셋(갭 measure · subgraph 서술 씨앗 · key-values) · _names_node_sql 둘
+```
+```
+말 하나 — 구현 소관
+   trace_router.ledger_key_values 의 key 인자 설명(OpenAPI 로 나감)이 「없으면 그 타입의 «주어»를 답한다 … 응답의 seedable 이 그것을 말한다」
+   seedable 은 전부터 남은 옛 이름(가이드 · backend 가 「코드 소관」으로 적어 둠). 이번 커밋 뒤 «주어»도 거짓 — 이제 두 쪽 노드
+확인 대기
+   코드 주석 둘(KEY_VALUE_SCAN_NODES · _names_node_sql)이 박스 속도 근거로 task/scoped_redo_report.md (29cee1d47) 를 대는데
+   그 파일에 그 절이 아직 없음(ce0d934c1 기준) — 구현 보고 커밋이 오면 대조
+제 몫 없음      화면 글자(주어 고르기 · 「…주어로 없습니다 (정적 허브)」)와 RELEASE_LOG 는 DESIGN_ORDERS 29cee1d47 에 클라 몫
+```
+
+---
+
+## [C 응용] 10-02 구현 보고 a94afdccc 대조 — 확인 대기 하나 닫힘 · 여쭐 것 ② 는 이미 착지
+
+```
+닫힘     코드 주석이 대는 박스 속도 근거(task/scoped_redo_report.md 29cee1d47 절)가 a94afdccc 로 들어왔다 — 위 1351a82e2 의 「확인 대기」 끝
+여쭐 것 ②  옛 동작을 적은 문서 네 곳(CODE_MAP trace_router 두 줄 · PRIMITIVES 핵 ① · backend 표 · LEDGER_GUIDE §1.2) —
+          ce0d934c1 에 이미 고쳐 실었다(+ CODE_MAP gaps 줄 · WALK 씨앗 절). 고칠 사람을 정할 일 없음
+여쭐 것 ①  화면 낱말은 DESIGN_ORDERS 29cee1d47 이 이미 클라 몫으로 적었다. 구현 보고가 하나 더 짚은 api.js 'Subject list unreachable' 은 그 지시 목록에 없다
+```

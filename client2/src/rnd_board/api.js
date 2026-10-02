@@ -1854,7 +1854,7 @@ export async function fetchKeyValues(params) {
     if (!res.ok || !body) return { ok: false, message: refusalSentence(body, res.status) };
     return {
       ok: true,
-      subjects: Array.isArray(body.subjects) ? body.subjects : [],
+      nodes: Array.isArray(body.nodes) ? body.nodes : [],
       // 「안 온 것」과 「0」을 가릅니다. 안 오면 null 이고, 그건 「못 셌다」입니다.
       scanned: typeof body.scanned === 'number' ? body.scanned : null,
       scanTruncated: body.scan_truncated === true,

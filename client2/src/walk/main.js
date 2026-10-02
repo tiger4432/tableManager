@@ -554,7 +554,7 @@ export function boot(doc, host, deps) {
     if (state.type !== forType) return;
     if (got && got.ok) {
       state.subjectsState = 'ready';
-      state.subjects = got.subjects;
+      state.subjects = got.nodes;
       state.subjectsScanned = got.scanned;
       state.subjectsScanCut = got.scanTruncated;
       state.subjectsListCut = got.valuesTruncated;

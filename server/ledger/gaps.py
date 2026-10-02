@@ -282,6 +282,19 @@ def _nodes_of_type_sql():
     """
 
 
+def _names_node_sql(alias, node):
+    """`alias` (an atom) names `node` (an SQL expression for its keys), on either side.
+
+    🔴 [총괄 29cee1d47] ONE SPELLING of what a node of type `%(bare)s` is named by - the
+    predicate question below and the key list's count (`trace_router.ledger_key_values`) both
+    ask it. Measured on the box against two per-side subqueries: the same totals, no slower
+    (task/scoped_redo_report.md, 29cee1d47).
+    """
+    return ("((%(a)s.subject_type = %%(bare)s AND %(a)s.subject_keys = %(n)s)"
+            " OR (%(a)s.object_kind = 'entity_ref' AND %(a)s.object_payload->>'type' = %%(bare)s"
+            " AND %(a)s.object_payload->'keys' = %(n)s))" % {"a": alias, "n": node})
+
+
 def _has_predicate_sql():
     """One expression for "this node has that predicate", whichever side it is on.
 
@@ -291,15 +304,12 @@ def _has_predicate_sql():
     two expressions would mean deciding, per question, which one applies - a branch on the
     shape of the declaration, and a place for the two to drift apart.
     """
-    return """
+    return ("""
         EXISTS (
             SELECT 1 FROM {table} e
              WHERE e.predicate = ANY(%(preds)s)
-               AND ((e.subject_type = %(bare)s AND e.subject_keys = n.keys)
-                 OR (e.object_kind = 'entity_ref'
-                     AND e.object_payload->>'type' = %(bare)s
-                     AND e.object_payload->'keys' = n.keys)))
-    """
+               AND """ + _names_node_sql("e", "n.keys") + """)
+    """)
 
 
 class GapQuestionUnknown(ValueError):

@@ -69160,3 +69160,117 @@ PG  6 failed, 167 passed, 7685 deselected in 340.69s (0:05:40) · 알려진 밖:
 ① 파일 답이 If-None-Match · If-Modified-Since 에 304 를 주게 할지 — 시간이 지나도 그림이 같으면 본문을 안 보낸다. 지시 밖이라 안 함
 ② 받아 오기 실패를 이름 댄 502 로 한 것 — 지시에 없던 한 갈래(https:// 칸이 어느 주소든 받으니 못 닿는 일이 흔해진다). 빼라면 뺌
 ```
+
+---
+
+## [10-02 낮] 걷기 시작점 목록이 노드를 두 쪽에서 읽는다 (총괄 29cee1d47) — 6c44b0b3d
+
+**무엇을 지었나**
+```
+노드     gaps._nodes_of_type_sql 이 답한다 — 주어 · 목적어 두 쪽, 타입은 같은 이름만. 두 쪽 노드 질의를 새로 짓지 않음
+count   보인 값의 노드를 두 쪽에서 이름 부르는 원자 수. 그 조건은 gaps._names_node_sql 한 자리 —
+        _has_predicate_sql 안의 같은 조건을 이 함수로 옮겨 둘이 같이 부른다(그 SQL 은 공백 빼고 같음)
+순서     값 오름차순 ("order": "value_asc")
+읽는 양  모든 키로 묶으면 limit + 1 노드 · 축 하나(key=)로 묶으면 KEY_VALUE_SCAN_NODES 1,000
+전선     subjects -> nodes · limits.scan_rows -> limits.scan_nodes · scanned 는 «읽은 노드 수»
+그대로   key 인자 · limit · 절단 표지 둘 · 거절 셋
+클라     rnd_board/api.js fetchKeyValues · walk/main.js 필드 읽기 · tests/fixtures/capture_walk_start.mjs 각 한 줄
+        + client2/dist — 클라 커밋마다 실리는 것. 안 실으면 서버만 새것인 사이 걷기 목록이 모든 타입에서 빈다
+          이 트리 빌드는 HTML 이 줄끝(CR)만 다르게 나와서, 추적된 HTML 에 바뀐 청크 이름만 넣고 빌드 결과와 CR 빼고 같음을 확인
+          청크 이름 바뀜 5(admin · api · branch_picker · rnd_board · walk) · 새 청크 5 · HTML 3(admin.html · rnd-board.html · walk.html) · 그 밖 자산 바뀜 0
+RELEASE_LOG 손 안 댐
+```
+**count 의 뜻 — 재서 정한 것**
+```
+노드 질의는 «키 순서의 앞»을 준다. 그 앞에서 빈도로 줄 세우면 앞쪽 노드끼리의 순위일 뿐이라, 순서는 값으로 두고 count 는 옆에 붙는 수로
+노드 20,000 예산에서 (박스)  
+  defect       오늘 라우트 0.217 s · 노드 스캔 5.374 s(20,001개, 예산에 걸림) · 스캔한 노드 전부 세기 2.524 s · 앞 50 만 세기 0.009 s
+  defect_kind  오늘 라우트 0.487 s · 노드 스캔 0.006 s(2개) · 스캔한 노드 전부 세기 0.187 s · 앞 2 만 세기 0.173 s
+  die          오늘 라우트 0.126 s · 노드 스캔 4.176 s(20,001개, 예산에 걸림) · 스캔한 노드 전부 세기 2.531 s · 앞 50 만 세기 0.007 s
+  dtjob        오늘 라우트 0.333 s · 노드 스캔 2.107 s(20,001개, 예산에 걸림) · 스캔한 노드 전부 세기 1.725 s · 앞 50 만 세기 0.007 s
+  lot          오늘 라우트 0.329 s · 노드 스캔 0.208 s(1,793개) · 스캔한 노드 전부 세기 0.164 s · 앞 50 만 세기 0.007 s
+  lot_slot     오늘 라우트 0.459 s · 노드 스캔 0.795 s(10,751개) · 스캔한 노드 전부 세기 0.940 s · 앞 50 만 세기 0.007 s
+  quantity     오늘 라우트 0.463 s · 노드 스캔 0.010 s(53개) · 스캔한 노드 전부 세기 0.119 s · 앞 50 만 세기 0.040 s
+  recipe       오늘 라우트 0.428 s · 노드 스캔 0.011 s(23개) · 스캔한 노드 전부 세기 0.426 s · 앞 23 만 세기 0.405 s
+  wafer        오늘 라우트 0.037 s · 노드 스캔 3.608 s(17,111개) · 스캔한 노드 전부 세기 2.232 s · 앞 50 만 세기 0.008 s
+축 하나 예산 1,000 에서 스캔 + 세기 — 가장 느린 타입 wafer 0.464 s (스캔 0.354 s + 세기 0.110 s, 노드 1,001)
+세는 조건 하나(OR) 대 쪽별 질의 둘 — 합이 같고, wafer 0.008 s 대 0.008 s(합 50) · die 0.007 s 대 0.007 s(합 50) · recipe 0.161 s 대 0.423 s(합 478,718) · defect_kind 0.069 s 대 0.197 s(합 103,872) · lot 0.008 s 대 0.007 s(합 165)
+```
+**박스 — 같은 라우트, 전(trace_router 를 이 착지 앞에 마지막으로 바꾼 b1245bab9) · 후(이 착지), limit 50, 세 번 중 최선**
+```
+recipe       0.476 s · 0 개  ->  0.202 s · 23 개
+defect_kind  0.509 s · 0 개  ->  0.106 s · 2 개
+wafer        0.062 s · 50 개  ->  0.065 s · 50 개
+die          0.126 s · 50 개  ->  0.055 s · 50 개
+lot          0.168 s · 50 개  ->  0.054 s · 50 개
+```
+**두 쪽 노드 집합 — 박스**
+```
+두 라우트 다 안 잘린 타입  defect_kind 전 0 -> 후 2 · 전 목록이 후 안에 예 · 더 나온 2 은 주어 원자 0(목적어로만) · count 가 준 노드 0
+                          quantity 전 20 -> 후 53 · 전 목록이 후 안에 예 · 더 나온 33 은 주어 원자 0(목적어로만) · count 가 준 노드 0
+                          recipe 전 0 -> 후 23 · 전 목록이 후 안에 예 · 더 나온 23 은 주어 원자 0(목적어로만) · count 가 준 노드 0
+주어로만 나오는 타입      dtjob 전수 — 오늘 철자 433,095 · 노드 질의 433,095 · 같은 집합 예
+```
+**부작용 — 말할 것**
+```
+① lot 목록에서 lot_slot 이 빠졌다 — 전 lot 창(LIKE 'lot%'): lot 4,296 원자 · lot_slot 15,705 원자
+② 전의 scan_truncated 는 «보인 묶음의 원자 수 합 > 20,000» 으로 재서 창이 잘려도 거짓이었다 — 박스 dtjob 전 scan_truncated false(노드 433,095)
+   이제는 «읽은 노드 수 > 예산» — 후 scan_truncated true
+③ key 없이 부르면(클라가 부르는 모양) 두 표지가 대개 같이 켜진다 — 노드 하나가 값 하나. 갈리는 것은 축 하나로 부를 때와
+   키 값에 JSON null 이 있는 노드가 빠질 때. 두 방향을 시험 둘이 잰다
+④ 복합 키 타입의 «키 순서의 앞»은 jsonb 순서다 — 키 이름이 짧은 것 먼저 견준다(die 는 x · y 다음 mat_id). 박스 die 목록 50 은
+   x 가 가장 작은 다이들을 mat_id 순으로 보인 것. 목록 밖은 화면의 «직접 입력»
+⑤ 화면 낱말 — 칸 이름 「주어 고르기」 · 빈 목록 「이 타입은 원장에 주어로 없습니다 (정적 허브)」 · api.js 'Subject list unreachable'.
+   목록이 두 쪽이 되어 «주어»가 아니다. 클라 문구라 안 고침 -> 여쭐 것 ①
+⑥ 옛 동작(읽는 «행 수»를 자른다 · 빈도 순)을 적은 문서 — CODE_MAP trace_router 절 두 줄 · PRIMITIVES 「구현의 핵 ①」 ·
+   backend.md /api/ledger 표 · LEDGER_GUIDE §1.2 표. 문서 레인 몫이라 안 고침 -> 여쭐 것 ②
+```
+**게이트**
+```
+새 시험  tests/test_the_key_list_reads_a_types_nodes_from_both_sides.py (PG, 스크래치 스키마 · ensure_schema) 11 passed in 7.36s
+        목적어로만 나오는 타입 노드 둘 · 값 순서(R2 셋 · R1 하나인데 R1 먼저) · 두 쪽 노드 한 줄 count 3 ·
+        주어로만 나오는 타입 노드 넷, 숫자 그대로, JSON null 빠짐 · float 를 넘는 키도 셈 · lot 에 lot_slot 안 섞임 ·
+        축 하나 묶음 · 값만 잘림(limit 1) · 스캔만 잘림(예산 2) · 칸 이름 nodes ·
+        어느 쪽에도 노드가 없는 타입 — nodes 빈 목록 · scanned 0 · 표지 둘 false (RUN.md 의 그 줄이 기대는 것)
+은퇴     test_the_catalogue_says_which_types_are_static.py — 옛 SQL 글자를 읽던 셋 + 질의 하나를 녹음하던 둘. 성질은 새 파일이 돌려서 잰다
+        남은 그 파일 12 passed in 0.75s
+변이     baseline                       11 passed
+        node scan: subject side only   2 failed, 9 passed
+        count: subject side only       3 failed, 8 passed
+        order by count                 4 failed, 7 passed
+        one budget: always limit + 1   2 failed, 9 passed
+        JSON null kept                 3 failed, 8 passed
+        wire cell back to subjects     11 failed
+        keys through a Python float    3 failed, 8 passed
+        two cuts folded                2 failed, 9 passed
+        type by prefix                 1 failed, 10 passed
+        after restore                  11 passed
+클라     check_harnesses 159 harnesses ― 157 gated, 2 on the known-red debt list (2 still red, 0 recovered).
+        check_contracts ✓ 12 contracts, no divergence.
+```
+**새 함수 · 새 if 중 같은 일** — 새 함수 하나(gaps._names_node_sql — 「이 원자가 그 노드를 부른다」의 한 자리. _has_predicate_sql 이 그 위로 옮겨 앉고 SQL 은 공백 빼고 같음, 라우트가 둘째 호출자) · 새 if 둘(읽는 양 식 하나 · 노드가 0 이면 둘째 질의를 안 함) · 같은 일 0
+
+**열어 보지 않은 것** — 걷기 화면을 새 서버로 열어 보지 않았다. 박스 서버는 옛 코드로 돌고 있고 재기동은 제 몫이 아니다. 클라 하니스 · 계약 초록은 «간다»이지 «보인다»가 아니다
+**스위트** (C:/wt-impl)
+```
+비PG 전체  8 failed, 7628 passed, 41 skipped, 183 deselected, 3 xfailed in 840.01s (0:14:00) · 알려진 다섯 밖: 3
+   test_every_day_runs_in_order_and_waits_for_its_file -> 그 파일만 다시 16 passed in 0.46s
+      전체 때 단언: At index 2 diff: ('2026-10-02 00:00:00', '2026-10-02 12:37:15') != ('2026-10-02 00:00:00', '2026-10-02 12:37:14')
+   test_h3_cross_directory_replace_applies_physical_alter -> 그 파일만 다시 32 passed in 35.23s
+      전체 때 단언: At index 64 diff: b'\n' != b'\r'
+   test_inv_9_1_atomic_save_event_applies_physical_alter -> 그 파일만 다시 1 failed, 31 passed in 34.99s
+      전체 때 단언: At index 64 diff: b'\n' != b'\r'
+PG 전체   6 failed, 177 passed, 7680 deselected in 397.03s (0:06:37) · 알려진 밖: 0
+설정 재적재 파일을 따로 세 번씩 — 이 착지 앞 · 뒤
+   29cee1d47 run1 1 failed, 31 passed
+   29cee1d47 run2 32 passed
+   29cee1d47 run3 32 passed
+   6c44b0b3d run1 1 failed, 31 passed
+   6c44b0b3d run2 32 passed
+   6c44b0b3d run3 32 passed
+```
+**여쭐 것**
+```
+① 걷기 화면 낱말(⑤) — 클라 레인이 다음 착지(들어오는 술어 제안)에서 같이 고칠지
+② 옛 동작을 적은 문서 네 곳(⑥) — 누가 고칠지
+```
