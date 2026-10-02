@@ -1,5 +1,19 @@
 # 지금 돌리면 되는 것
 
+> ## [10-02 저녁] **메인 그리드 표 드롭다운 — table_config 의 group 으로 묶기 + 검색 (총괄 685f236d7) — 이주 «불필요» · 재기동 «필요»(run_app.bat 전체)**
+>
+> ```
+> 무엇이 바뀌나  GET /tables 에 groups 가 붙는다 — {표: 묶음}, group 을 안 적은 표는 없음. tables 목록은 그대로
+>              화면: 표 드롭다운이 그 묶음 이름 아래로 묶이고(Other 맨 아래), 앞에 검색 칸(Search tables)
+> 확인         curl -s http://localhost:8080/tables  -> 키에 groups 가 있다
+> 뜻           groups 가 {} 이면 아직 아무 표도 group 을 안 적은 것 — 드롭다운은 오늘처럼 묶음 없는 목록(정상)
+>              묶으려면 server/config/table_config.json 의 그 표 항목에 "group": "이름" 한 줄 -> 재기동(어드민 Reload Configs & Code 로도 되는지는 안 쟀음)
+>              groups 키 자체가 없으면 재기동 전 서버
+> 급할 때       git revert <이 커밋> -> 재기동. 화면은 groups 가 없으면 오늘 모양이라 서버만 되돌려도 된다
+> ```
+
+---
+
 > ## [10-02 저녁] **체인 대기열 — 소급 잡 하나는 한 줄 (run_id) · 접기는 자르기 전 — 이주 «불필요» · 재기동 «필요»(run_app.bat 전체)**
 >
 > ```
