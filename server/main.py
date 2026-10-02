@@ -2783,15 +2783,27 @@ async def delete_rows_batch_endpoint(table_name: str, batch: schemas.RowDeleteBa
     if deleted_count > 0:
         invalidate_table_cache(table_name)
         CHUNK_SIZE = 500
-        for i in range(0, len(batch.row_ids), CHUNK_SIZE):
-            chunk = batch.row_ids[i:i + CHUNK_SIZE]
-            chunk_row_ids = set(chunk)
-            chunk_logs = [log for log in created_logs if log["row_id"] in chunk_row_ids]
+        chunks = [batch.row_ids[i:i + CHUNK_SIZE] for i in range(0, len(batch.row_ids), CHUNK_SIZE)]
+        # ONE pass over the logs, each into every chunk naming its row, in log order - it used to
+        # rescan every log for every chunk (총괄 a0ae05b60, measured 1.39 s at 100,000 rows)
+        chunks_of = {}
+        for index, chunk in enumerate(chunks):
+            for row_id in set(chunk):
+                chunks_of.setdefault(row_id, []).append(index)
+        chunk_logs = [[] for _ in chunks]
+        for log in created_logs:
+            for index in chunks_of.get(log["row_id"], ()):
+                chunk_logs[index].append(log)
+        for chunk, logs in zip(chunks, chunk_logs):
             msg = event_constants.row_delete_message(
-                table_name, chunk, updated_by=batch.user_name, created_logs=chunk_logs)
+                table_name, chunk, updated_by=batch.user_name, created_logs=logs)
             await manager.broadcast(json.dumps(msg))
         
-    return {"status": "success", "deleted_count": deleted_count, "created_logs": created_logs}
+    # 🔴 [총괄 a0ae05b60, 소유자 「ㄱ, 한 1만행」] THE ANSWER IS THE COUNT, NOT EVERY ROW'S HISTORY. It
+    # carried each deleted row's log - 32 MB at 100,000 rows - and the grid reads only
+    # `deleted_count`; the history is in the database and rides the broadcast above.
+    transaction_id = created_logs[0]["transaction_id"] if created_logs else None
+    return {"status": "success", "deleted_count": deleted_count, "transaction_id": transaction_id}
 
 @app.post("/tables/{table_name}/row_ids/target")
 def get_target_row_ids(table_name: str, req: schemas.TargetedRowIdRequest, transaction_id: str = None, db: Session = Depends(get_db)):

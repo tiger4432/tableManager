@@ -9,6 +9,14 @@
 
 ---
 
+## 2026-10-02 · 그리드 행 지우기 — 기다리는 화면 · 답은 지운 수만
+
+- **무엇** — 메인 그리드에서 여러 행을 지울 때, 서버 답이 «지운 수와 트랜잭션»만 담습니다. 전에는 지운 행마다의 이력을 통째로 돌려보냈습니다. 행마다 이력은 전처럼 DB 에 남고, 다른 화면은 전처럼 방송으로 지움과 그 이력을 받습니다. 10,000 행(박스 시험 DB · 좁은 표 · 넓은 표)에서 답 크기 3,227,847 · 3,207,847 → 98 · 98 바이트, 서버 처리 2.7 → 2.3 s(좁은 표) · 3.5 → 2.8 s(넓은 표).
+- **화면에서** — 행을 고르고 `🗑️ Row` → 확인. 기다리는 동안 버튼이 꺼지고(사유 `Deleting…`) 아래 줄에 `Deleting N rows · S s` 가 초마다 오릅니다. 끝나면 그 행들이 빠지고 `Deleted N rows · S s`. 서버가 거절하면 서버의 사유 문장 뒤에 `— reload the table to see which rows remain`.
+- **필요한 조건** — 서버 재기동.
+- **바뀐 동작** — `POST /tables/{table}/rows/batch_delete` 의 답에서 `created_logs` 가 빠지고 `transaction_id` 가 생겼습니다. 이 답을 직접 읽는 스크립트가 있으면 이력은 DB 의 `audit_logs`(그 `transaction_id`)에서 읽습니다.
+- **자세히** — [api_documentation.md](../spec/api_documentation.md)(1.3) · 화면 커밋 45d14144b · 서버는 이 항목과 같은 커밋
+
 ## 2026-10-02 · 원장 펼친 보기에 `occurred_at_basis` 칸
 
 - **무엇** — 원장 펼친 보기(`ledger_atom_rows`, 메인 그리드)에 `occurred_at_basis` 칸이 맨 끝에 붙습니다. 비어 있으면 `occurred_at` 이 사건 시각이고, `ingested` 면 사건 시각이 아닙니다(references 원자 · dt_job 같은 소스).

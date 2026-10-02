@@ -1,5 +1,18 @@
 # 지금 돌리면 되는 것
 
+> ## [10-02 오후] **그리드 행 지우기 — 답은 지운 수 · 트랜잭션만 — 이주 «불필요» · 재기동 «필요»(run_app.bat 전체)**
+>
+> ```
+> 무엇이 바뀌나  POST /tables/<표>/rows/batch_delete 의 답 = {status, deleted_count, transaction_id} — created_logs 가 빠짐
+>              행마다 이력은 그대로 audit_logs 에, 다른 화면은 그대로 batch_row_delete 방송으로 받음(500 행 묶음마다 그 행들의 이력)
+> 확인         재기동 뒤 그리드에서 행 몇 개 고르고 🗑️ Row -> 아래 줄 Deleting … · N s 가 오르다 Deleted N rows · S s
+>              다른 탭에 같은 표를 열어 두면 그 행들이 그쪽에서도 빠짐(방송)
+> 뜻           Deleted 가 뜨는데 다른 탭에서 안 빠지면 방송이 안 간 것 — 서버 로그의 웹소켓 줄을 본다. 답 자체가 늦으면 지우기 본체(DB) 시간
+> 급할 때       git revert <이 커밋> -> 재기동(화면은 deleted_count 만 읽으므로 되돌려도 화면 변화 없음)
+> ```
+
+---
+
 > ## [10-02 오후] **원장 펼친 보기에 occurred_at_basis 칸 · references 예시는 목록 모양 — 이주 «필요»(보기만) · 재기동 «불필요»**
 >
 > ```
