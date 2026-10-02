@@ -63554,3 +63554,7 @@ DB      스크래치 스키마 + 카나리아(ed582bd92)
 ---
 
 > **[총괄 -> 구현자] 작게 · input_columns 은퇴 바로 다음 — 주기 census 가 사람이 잰 «수정 누락 · 지문 없음»을 지운다(클라 실측: write_row_census 가 기록을 통째로 바꾸고 주기 판은 exact_rows=False 라 두 수가 없음 -> 다음 tick 부터 패널이 Not measured). 도착지: 주기 판이 재지 않은 상자는 «직전 기록을 그 measured_at 그대로» 이어 싣는다(덮어쓰기 아니라 합치기 — 잰 상자만 바뀜). 시험: 사람 census -> 주기 tick -> 두 수 · 시각 그대로 · 사람 census 다시 -> 새 수. 6b698fe2d 의 「rows_drifted not in paced」 단언은 «주기 판이 새로 재지 않는다»로 바꿈**
+
+---
+
+> **[총괄 -> 구현자] 5baab7b8d 덧붙임(같은 착지) — census 기록이 «다음 행동 명령»도 싣는다: rows_drifted 옆에 그 소스의 --drifted 명령, 두 수가 없는(Not measured) 소스엔 python -m ledger census --source <소스>. 철자는 서버 한 자리(CLI 가 받는 인자와 같은 상수) — 클라 c965f6206 은 지금 같은 철자를 클라 상수로 들고 있어 저자가 둘. 착지 뒤 클라가 서버 값을 그리게 바꾼다**

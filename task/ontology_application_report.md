@@ -35342,3 +35342,22 @@ schema.ensure_schema 의 칸 더하기 셋(ledger_additions · cursor_additions 
           별개로 맞았고 2855783d3 이 고쳤다
 배운 것    「멈춤」이라 쓰기 전에 «한 번은 끝까지» 돌린다 — 제한을 제가 정하고 그 제한에 걸린 것을 멈춤이라 불렀다
 ```
+
+---
+
+## [C 응용] 10-03 c965f6206(원장 소스 패널의 수정 누락 줄) 문서 동기 + 검수 — @`00f617c3c`
+
+```
+고친 문서   CODE_MAP ledger_sources_panel 줄(마운트 둘 · 수정 누락 줄) · source_backlog.js 줄 «새로»(없었다) · absent NOT_MEASURED ·
+           BACKFILL_GUIDE 수정 누락 행(화면) · RUNTIME_MAP ⑤ · frontend absent 소비자 수(import 하는 파일 35, 명령 같이)
+검수 (박스) ledger_sources_panel_harness 128 passed · source_backlog_harness 40 passed · dist 번들에 새 클래스 있음
+           서버 쪽 확인: CENSUS_NAMES 의 두 이름 · 두 상자의 measured_at · write_row_census 가 ON CONFLICT … = EXCLUDED 로 기록을 통째로 바꿈
+           (디자인이 말한 「주기 tick 이 두 수를 지운다」가 맞다 — 5baab7b8d 가 고칠 것)
+RELEASE_LOG 맞음 — 마운트 둘(admin.js refreshLedgerSources 의 두 id) · 빨간 굵은 글자(--danger · 600) · 거절이면 거절 줄만 · 줄 모양
+```
+```
+한 줄 — 서버가 명령을 싣게 될 때(e1648e884) 같이 볼 것
+   지금 패널이 보이는 `--drifted` 는 «미리보기»다(아무것도 안 쓴다). 조작자가 그것만 돌리면 수는 그대로이고 패널은 계속 빨갛다.
+   쓰는 것은 `--drifted --apply`. 그리고 둘 다 server 폴더에서 돌려야 한다 — 줄에 그 말은 없다
+   서버가 철자를 정할 때 미리보기 하나를 실을지, 미리보기와 적용 둘을 실을지 정해 주십시오
+```
