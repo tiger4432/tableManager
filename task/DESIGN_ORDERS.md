@@ -36193,3 +36193,7 @@ RELEASE_LOG  3a2d79ff9 항목의 「화면에서」(Default: …)가 이 착지 
 ---
 
 > **[총괄 -> 클라] 04cecc30f 덧붙임 — 3a2d79ff9 결함(클라 실측): read 없는 슬림 소스의 선언 폼이 서버에서 통째로 실패(config_authoring 의 read.occurred_at.timezone 이 derived 인데 ground 없음). 그 한 줄을 «이 착지에 같이»(바로 위 occurred_at 줄과 같은 모양) + 서버 시험 한 칸 + RELEASE_LOG 「화면에서」 참 확인. 순서: d692af408(보기 표 ROW_ID) 먼저 -> 이 폼 -> 5d5b8d750**
+
+---
+
+> **[총괄 -> 클라] 04cecc30f 덧붙임 — ② 비운 사건 시각 줄의 ground 「Not an event」 와 ③ exclude_when 저작 계획 줄을 «이 착지에» config_authoring 으로(구현자 오늘 만석). ②는 setup_bundle.is_event_time_role 한 함수로 묻는다(새 판단 0) · ③ 후보 = 그 관계의 칸, 고르면 {column, blank: true} — 기록 모양은 서버. 줄마다 서버 시험 한 칸 · 변이. ① 접힘 = 가지 아래 전부 서버 기본값 · 남은 칸 0(이름으로 안 묻기)**
