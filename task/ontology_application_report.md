@@ -35049,3 +35049,22 @@ server/config/ontology/README.md:78  「범용 구현 direct-join@1(준비기)�
 덧붙임  노드 목록을 못 읽을 때 화면은 「Node list · Subject list unreachable — …」 —
        뒤쪽은 api.js fetchKeyValues 의 거절문(client2/src/rnd_board/api.js)이라 «Subject» 가 남았다. 항목의 글자 목록에도 없다
 ```
+
+---
+
+## [C 응용] 10-02 클라 착지 둘 대조 — c5df86cdc(제 지적 둘 닫힘) · 45d14144b(그리드 삭제 기다림)
+
+```
+c5df86cdc   b409cf571 의 둘 다 닫힘 — api.js 거절문 「Node list unreachable」(client2/src 에 Subject list unreachable 0) ·
+            RELEASE_LOG 「표에서는 노드 상한과 원자 예산에서」
+45d14144b   하니스 grid_view_readonly 56 단언, 실패 0 (박스)
+            두 번째 요청 막기 — 표지 확인과 세우기 사이가 confirm(동기)뿐이라 두 번 눌러도 하나만 나감 · 새로 부르는 함수 다섯 전부 api.js 에 있음
+            문서 — CODE_MAP api.js 줄은 착지가 실었다. FEATURE_CHECKLIST 행 삭제 줄 · RELEASE_LOG 대조는 서버 절반 착지 뒤 한 번에
+```
+```
+말 하나 — 클라 몫, 판단은 작성자께
+   catch 가 fetch 만이 아니라 res.json() · applyTransaction 까지 감싼다 -> 서버가 지운 «뒤»의 실패도
+   「Delete request did not reach the server (network)」 로 읽힌다
+   서버 절반 전에는 답이 지운 행마다 이력 한 줄이라 10만 행 34 MB(45f87abfa 실측) — 그 해석이 실패하는 자리가 실제로 있다
+   서버 절반이 답을 수로 줄이면 크기는 사라지지만, 감싸는 범위는 그대로다
+```
