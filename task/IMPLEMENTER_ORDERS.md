@@ -63185,3 +63185,26 @@ RUN.md   배포 뒤 「거둠으로 지운 행이 이력과 원장 후속에 간
    그 칸은 오늘 map.input_columns 에 있어야만 읽힌다(빠지면 검사 통과 · 번역 때 missing_binding_column). 이번 착지에서 «자동 읽기에도 넣고» 요구도 함께 뺀다 — 한 쪽만 하면 갈린다
    코드 맵퍼가 바인딩 밖에서 직접 읽는 칸(dt-job-role 의 dt_job)은 그대로 input_columns 로 적는다
 ```
+
+---
+
+> **[총괄 -> 구현자] 원장 소스 선언 줄이기 — 3bf28f893(시각은 사건 엣지에만)과 «한 번에» 한 계획으로 (소유자 10-02 「좀 이런거 더 찾아볼래 read도 필요한지 모르겠어 어차피 행단위로 만들기로 했는데」 · 「ㅇㅇ 해」) — 재고 계획만, 짓지 않는다. c38eae7cf(급함) 착지 뒤**
+
+```
+도착지(두 줄)  「운영에서는 <표 이름>을 적고, 사건 엣지라면 <사건 시각 칸>을 적으면 됩니다」 — 나머지는 제품이 정하거나 없앤다
+총괄 전수(Explore 조사 + 총괄이 코드로 넷 확인 — setup_bundle 695 occurred_at 역할 required · 2118 cursor ignored · setup_registry 1139 바인딩만 · 1754 blank 는 true 하나)
+   두 번 적음   map.input_columns(c38eae7cf 가 닫음) · read.unit(= group_by 유무) · read.cursor(= order_by, 검사 무시) · map.implementation_version(= id) ·
+               map.unit(행이면 무의미, 바꾸면 커서가 멈춤 — 지문 재료) · map.unit.columns(= read.group_by) · read.registration_probe(= 등록 문장의 주어 키, 검사 선택 · 실행 필수로 어긋남) ·
+               read.identity · order_by(= 표 선언 키 — 새 소스만, 돌던 소스는 사건 id 가 다시 만들어진다)
+   안 읽힘      매핑의 bind.occurred_at(검사 필수 · 읽는 이 0 — 3bf28f893 로 «사건 시각 자리»가 된다) · exclude_when[].blank(값 하나) · prepare.* · 바인딩 approval_status(은퇴, 옛 파일에 남음)
+   의심(확인)   timestamp 값을 바인딩하면 역할 종류가 time 이 되어 roleframe 이 사건 시각으로 채운다 — 칸 값이 버려지나. 재고 결함이면 이 라운드
+   묶음 소스    샘플은 은퇴한 lot_event 하나. 박스 설정의 dt_job 은 dt_log 를 잡별로 묶어 다이 수를 센다(has_netdie) — 샘플처럼 체인 표(dt_job_rollup)를 행으로 읽으면 묶음이 사라진다
+재는 것 (채널로)
+   ① 줄인 문법 — 운영자가 적는 칸 목록(표 · exclude_when · 사건 엣지의 시각 칸 · 바인딩 · 속성)과 제품이 정하는 칸, 각각 «어디서 정하나» 한 자리
+   ② 호환 — 옛 선언(v6 · 박스 v5)이 «그대로 읽힘»(옛 칸은 읽고 무시 + 로드 한 줄) · 지문(fingerprint)이 바뀌어 커서가 멈추는 칸이 있나 — 있으면 그 칸은 지문에서 빼는 이유
+   ③ 이주 스크립트 하나(--report / --apply) — 옛 칸 지우기 + 소스 시각을 사건 엣지로(3bf28f893 ②) — 사건 엣지는 운영자가 고른다(스크립트는 후보만)
+   ④ 묶음 소스를 체인 표로 옮기는 길(dt_job -> dt_job_rollup 샘플 길) — 비용 · 소급
+   ⑤ 선언 폼(클라 일) — 묻지 않게 될 칸 목록
+   ⑥ 게이트 표 — 줄인 선언과 옛 선언이 «같은 원자»(사건 id 포함)를 내는가(박스 소스 전부) · 사건 엣지 시각 · 비사건 basis · 이주 왕복 · 의심 결함
+   3bf28f893 의 ①(사건 묶음 신원) · ③(소급) · ④(파티션)과 같은 보고에
+```
