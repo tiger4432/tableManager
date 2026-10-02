@@ -1215,9 +1215,11 @@ async function openLedgerReceipt(log) {
     await switchTable(log.table_name);
   }
   // Only on screen does the line say what is shown; a refused read keeps the server's sentence.
+  // ⚠️ No count: the grid holds one page (pageLimit), so its displayed count lies past that page.
+  //    The grid's own total says how many (lead 8bc1bd530).
   if (await setTransactionFilter(tx)) {
-    elements.performanceLog.textContent = `Ledger batch · ${log.table_name} · `
-      + `${unitText(state.gridApi.getDisplayedRowCount(), 'row')} of transaction ${String(tx).slice(0, 8)}`;
+    elements.performanceLog.textContent =
+      `Ledger batch · ${log.table_name} · transaction ${String(tx).slice(0, 8)}`;
   }
 }
 

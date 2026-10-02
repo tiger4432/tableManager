@@ -23,7 +23,7 @@
 //    refreshes, not a property of one sample. So the age is stated and no colour pretends to
 //    have judged it. The one coloured cell is Failed, and only when it is not 0.
 //
-// ④ THE LIST IS CUT, AND THE CUT IS SAID. The route reads at most `listed.cap` rows, so
+// ④ THE LIST IS CUT, AND THE CUT IS SAID. The route lists at most `listed.cap` lines, so
 //    a short list can mean 「this is all of it」 or 「this is as far as I looked」. Those are
 //    different facts, and a silently truncated list reads as the whole queue — the same
 //    class of misreading as ② one layer out. When `listed.capped`, the screen says so.
@@ -31,7 +31,8 @@
 // ═══ SHAPE — mockup A (owner 「A 로 해」, lead 3c3f2b1f2 · 437a5d25f · 6fdd79d4e) ═══════════
 //    stale line (only when the picker's records failed — it must be read BEFORE the numbers)
 //    four numbers   Waiting · Oldest · Running · Failed since <date>
-//    the list       Transaction · Waiting · Tables · Rows · Drained by (+ 「retry N」 when not 0)
+//    the list       Job / Transaction · Waiting · Tables · Rows (+ 「N events」 when not the rows)
+//                   · Drained by (+ 「retry N」 when not 0). One retroactive job is one line (lead b3a4334db).
 //    meta line      retried · Log · Loop · Mapper · As of
 //    below it       the lines that appear only when something needs a look, the scheduler's
 //                   three pickup lines, and the per-owner lines when there are two or more
@@ -190,6 +191,14 @@ function blockedView(b) {
 function shortTx(id) {
   const t = String(id ?? '');
   return t.length > 9 ? `${t.slice(0, 8)}…` : t;
+}
+
+/** A queue line is one retroactive job — the server names it by `run_id`, its `transaction_id`
+ *  then null — or a transaction as before. The one place this file asks which. */
+function lineName(t) {
+  const run = t.run_id == null ? '' : String(t.run_id);
+  if (!run) return { id: String(t.transaction_id ?? ''), label: shortTx(t.transaction_id) };
+  return { id: run, label: [t.op == null ? '' : String(t.op), shortTx(run)].filter(Boolean).join(' · ') };
 }
 
 /**
@@ -351,9 +360,12 @@ export function queueView(payload, opts = {}) {
 
   const src = Array.isArray(payload.waiting_transactions) ? payload.waiting_transactions : [];
   const rows = src.map(t => Object.freeze({
-    txId: String(t.transaction_id ?? ''),
-    txShort: shortTx(t.transaction_id),
+    ...lineName(t),
+    // `rows` is the rows the line carries; `events` its outbox events (lead b3a4334db). The event
+    // count is said only where it is not the row count — a 「1 event」 on every plain row is noise.
     rows: countOf(t.rows),
+    eventsNote: isCount(t.events) && Number(t.events) !== Number(t.rows)
+      ? unitText(countOf(t.events), 'event') : '',
     // 🔴 S-36. A RETROACTIVE ROW SAYS WHAT IT IS, IN THE SLOT THAT SAID 「—」. Its `tables` is
     //    empty by construction (the run is not about one table), so this column was a dash on
     //    exactly the rows an operator most needs to identify — and the answer was already in
@@ -377,8 +389,8 @@ export function queueView(payload, opts = {}) {
   // ── rule ④: a cut list says it was cut ──
   const listed = payload.listed && typeof payload.listed === 'object' ? payload.listed : null;
   const truncated = listed && listed.capped
-    ? `Read the first ${unitText(countOf(listed.rows_scanned), 'row')} only (cap ${countOf(listed.cap)}). `
-      + 'The list below is not the whole queue.'
+    ? `Showing ${countOf(listed.lines)} of ${unitText(countOf(listed.lines_total), 'line')}`
+      + ` (cap ${countOf(listed.cap)}).`
     : '';
 
   // ── the four numbers (A). A cell that cannot be read is DROPPED, not drawn as 0 (rule ②) ──
@@ -598,7 +610,7 @@ export class ChainQueuePanel {
     return view;
   }
 
-  /** The list (A): Transaction · Waiting · Tables · Rows · Drained by. No px widths — the Tables
+  /** The list (A): Job / Transaction · Waiting · Tables · Rows · Drained by. No px widths — the Tables
    *  column takes what is left, the rest take their content (admin.html `.chain-queue-table`). */
   _table(rows) {
     const doc = this.doc;
@@ -607,7 +619,7 @@ export class ChainQueuePanel {
     const thead = doc.createElement('thead');
     thead.className = 'table-header';
     const hr = doc.createElement('tr');
-    for (const [label, col] of [['Transaction', 'tx'], [WAITING, 'age'], ['Tables', 'tables'],
+    for (const [label, col] of [['Job / Transaction', 'tx'], [WAITING, 'age'], ['Tables', 'tables'],
                                 ['Rows', 'rows'], ['Drained by', 'owners']]) {
       const th = doc.createElement('th');
       th.textContent = label;
@@ -621,13 +633,13 @@ export class ChainQueuePanel {
     for (const r of rows) {
       const tr = doc.createElement('tr');
       tr.className = 'table-row';
-      tr.setAttribute('data-txid', r.txId);
+      tr.setAttribute('data-line-id', r.id);
 
       const tdId = this._td('', 'tx');
       const chip = doc.createElement('span');
       chip.className = 'tx-id-chip';
-      chip.title = r.txId;
-      chip.textContent = r.txShort;
+      chip.title = r.id;
+      chip.textContent = r.label;
       tdId.appendChild(chip);
       tr.appendChild(tdId);
 
@@ -635,7 +647,19 @@ export class ChainQueuePanel {
       if (r.at) tdAge.title = `Waiting since ${r.at}`;
       tr.appendChild(tdAge);
       tr.appendChild(this._td(r.tables, 'tables'));
-      tr.appendChild(this._td(r.rows, 'rows'));
+      // The event count rides the Rows cell as a badge, before the number so the numbers stay
+      // right-aligned — no sixth column (the table overflowed its panel once; d886307b6).
+      const tdRows = this._td('', 'rows');
+      if (r.eventsNote) {
+        const events = doc.createElement('span');
+        events.className = 'chain-queue-events-badge';
+        events.textContent = r.eventsNote;
+        tdRows.appendChild(events);
+      }
+      const rowCount = doc.createElement('span');
+      rowCount.textContent = r.rows;
+      tdRows.appendChild(rowCount);
+      tr.appendChild(tdRows);
 
       // 🔴 누가 빼나 — 서버가 정한 이름 그대로, 한 이름에 배지 하나. 이름이 없으면 대시(「chain」이 아니다).
       const tdOwners = this._td(r.owners.length ? '' : ABSENT, 'owners');

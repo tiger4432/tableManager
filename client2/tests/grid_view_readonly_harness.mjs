@@ -572,14 +572,18 @@ async function suite(M) {
   try {
     await stageThrough(M.api, 'table');
     realState.isNavigating = false;
+    // A full page: the grid holds pageLimit rows of a transaction that changed more (lead 8bc1bd530).
+    const onePage = realState.gridApi.getDisplayedRowCount;
+    realState.gridApi.getDisplayedRowCount = () => 1000;
     await M.timeline.navigateToLog(followed);
+    realState.gridApi.getDisplayedRowCount = onePage;
     const asked = reads.filter((u) => u.includes('/tables/t/data?'));
     ok(asked.some((u) => u.includes(`transaction_id=${encodeURIComponent(followed.transaction_id)}`))
       && realState.currentTransactionId === followed.transaction_id,
       `L1 a receipt with a transaction reads that transaction's rows [${asked.join(' | ')}]`);
     ok(realState.isNavigating === false && !log().textContent.includes('Navigating')
-      && log().textContent === `Ledger batch · t · 1 row of transaction ${String(followed.transaction_id).slice(0, 8)}`,
-      `L2 ... and stops there: no row jump, the line says what is shown [${log().textContent}]`);
+      && log().textContent === `Ledger batch · t · transaction ${String(followed.transaction_id).slice(0, 8)}`,
+      `L2 ... and stops there: no row jump, the line names the transaction and no page count [${log().textContent}]`);
     // ⚠️ `switchTable` walks further than this stub goes (as in S): what is scored is that the
     //    receipt switches to its table FIRST. The transaction read after it is L1's.
     try { await M.timeline.navigateToLog({ ...followed, table_name: 'u' }); } catch (e) { /* the stub ends before the grid does */ }

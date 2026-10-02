@@ -316,7 +316,7 @@ const FLOORS = new Map([
   // with no inline widths, 「retry N」 badges, the local As of. 13 mutants, 13 caught.
   // 165 -> 166 (a80361a63): seen and 0 is a plain 0 — 「Truly none」 under it is gone.
   // 166 -> 167 (lead e573a6edf): with a summary, Failed counts the rows it folded.
-  ['chain_queue_panel_harness.mjs', 182],
+  ['chain_queue_panel_harness.mjs', 191],
   ['outbox_queue_panel_harness.mjs', 54],
   ['company_roundtrip_harness.mjs', 84],
   ['coord_table_paste_harness.mjs', 52],

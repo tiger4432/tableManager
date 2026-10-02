@@ -63,29 +63,30 @@ const NOT_MEASURED = {
 };
 const EMPTY = { waiting: 0, oldest_waiting_seconds: null, oldest_waiting_at: null,
                 retried_among_waiting: 0, waiting_transactions: [],
-                listed: { rows_scanned: 0, cap: 200, capped: false },
+                listed: { lines: 0, lines_total: 0, cap: 200, capped: false },
                 not_measured: NOT_MEASURED };
 const JUST_ARRIVED = { waiting: 1, oldest_waiting_seconds: 0,
                        oldest_waiting_at: '2026-09-03 11:40:00', retried_among_waiting: 0,
                        waiting_transactions: [
-                         { transaction_id: 'aaaaaaaa-1111-2222-3333-444444444444', rows: 1,
+                         { run_id: null, op: null,
+                           transaction_id: 'aaaaaaaa-1111-2222-3333-444444444444', events: 1, rows: 1,
                            tables: ['wafer_process'], event_types: ['CREATE'], max_retry: 0,
                            waiting_seconds: 0, waiting_at: '2026-09-03 11:40:00' },
                        ],
-                       listed: { rows_scanned: 1, cap: 200, capped: false },
+                       listed: { lines: 1, lines_total: 1, cap: 200, capped: false },
                        not_measured: NOT_MEASURED };
-// 812 waiting, but the route only ever reads `cap` rows -> the list is CUT. See rule ④.
+// 812 waiting in 9 lines, but the route lists `cap` lines -> the list is CUT. See rule ④.
 const BACKED_UP = { waiting: 812, oldest_waiting_seconds: 3725.4,
                     oldest_waiting_at: '2026-09-03 10:38:14', retried_among_waiting: 17,
                     waiting_transactions: [
-                      { transaction_id: 'bbbbbbbb-1111-2222-3333-444444444444', rows: 40,
+                      { transaction_id: 'bbbbbbbb-1111-2222-3333-444444444444', events: 12, rows: 40,
                         tables: ['wafer_process', 'lot_master'], event_types: ['CREATE', 'UPDATE'],
                         max_retry: 3, waiting_seconds: 3725.4, waiting_at: '2026-09-03 10:38:14' },
-                      { transaction_id: 'cccccccc-1111-2222-3333-444444444444', rows: 160,
+                      { transaction_id: 'cccccccc-1111-2222-3333-444444444444', events: 160, rows: 160,
                         tables: ['mi_gauge'], event_types: ['UPDATE'], max_retry: 0,
                         waiting_seconds: 90, waiting_at: '2026-09-03 11:38:14' },
                     ],
-                    listed: { rows_scanned: 200, cap: 200, capped: true },
+                    listed: { lines: 2, lines_total: 9, cap: 2, capped: true },
                     not_measured: NOT_MEASURED };
 
 const rowsOf = (host) => byClass(host, 'table-row');
@@ -244,8 +245,8 @@ console.log('\n[4] truncation is stated, and only when it happened');
 {
   const cut = queueView(BACKED_UP);
   ok('a capped read says so', cut.truncated.length > 0, cut.truncated);
-  ok('and names both the rows read and the cap', /200/.test(cut.truncated), cut.truncated);
-  ok('and says the list is not the whole queue', /not the whole queue/.test(cut.truncated), cut.truncated);
+  // lead b3a4334db: the route cuts LINES and says how many there are (`rows_scanned` is gone).
+  eq('and says how many lines of how many, and the cap', cut.truncated, 'Showing 2 of 9 lines (cap 2).');
 
   // 🔴 NEGATIVE CONTROL. An uncut list must say NOTHING -- a permanent warning is the same
   //    as no warning, because the reader stops seeing it.
@@ -270,8 +271,8 @@ console.log('\n[5] the list is drawn in the order it arrived, oldest first');
   eq('one row per transaction', v.rows.length, 2);
   // 🔴 the server orders by `id` ascending = longest waiting first. That ORDER IS THE ANSWER
   //    to 「누가 밀려 있나」, so the view must not re-sort it.
-  eq('server order is preserved', v.rows.map(r => r.txId.slice(0, 8)), ['bbbbbbbb', 'cccccccc']);
-  eq('the id is abbreviated head8', v.rows[0].txShort, 'bbbbbbbb…');
+  eq('server order is preserved', v.rows.map(r => r.id.slice(0, 8)), ['bbbbbbbb', 'cccccccc']);
+  eq('the id is abbreviated head8', v.rows[0].label, 'bbbbbbbb…');
   eq('several tables join into one cell', v.rows[0].tables, 'wafer_process, lot_master');
   eq('a transaction with no table named draws a dash, not blank',
     queueView({ ...BACKED_UP, waiting_transactions: [
@@ -296,6 +297,8 @@ console.log('\n[5] the list is drawn in the order it arrived, oldest first');
         event_types: [], max_retry: 0, waiting_seconds: 5 }] }).rows[0].tables,
     'wafer_process, lot_master');
   eq('the row count is carried', v.rows[0].rows, '40');
+  eq('and the event count beside it, where it is not the row count', v.rows[0].eventsNote, '12 events');
+  eq('NEGATIVE CONTROL: a line whose events are its rows says nothing more', v.rows[1].eventsNote, '');
   eq('the age is formatted, not raw seconds', v.rows[0].age, '1h 2m');
 
   const doc = makeDoc();
@@ -303,8 +306,9 @@ console.log('\n[5] the list is drawn in the order it arrived, oldest first');
   new ChainQueuePanel(host, { doc }).render(BACKED_UP);
   eq('two rows are drawn', rowsOf(host).length, 2);
   eq('each row has the five columns the header declares', cellsOf(rowsOf(host)[0]).length, 5);
-  eq('the header declares five (A)', byTag(host, 'TH').map((th) => th.textContent),
-    ['Transaction', 'Waiting', 'Tables', 'Rows', 'Drained by']);
+  eq('the header declares five (A; a line is a job or a transaction, lead b3a4334db)',
+    byTag(host, 'TH').map((th) => th.textContent),
+    ['Job / Transaction', 'Waiting', 'Tables', 'Rows', 'Drained by']);
   // A: no px widths, no inline alignment — the stylesheet reads each column by name.
   eq('no cell carries an inline width or alignment',
     walk(host).filter((n) => n.style && (n.style.width || n.style.textAlign)).length, 0);
@@ -317,7 +321,7 @@ console.log('\n[5] the list is drawn in the order it arrived, oldest first');
   ok('the full id is on the chip for copying, not only the abbreviation',
     walk(host).some(n => n.title === 'bbbbbbbb-1111-2222-3333-444444444444'));
   ok('and the row carries it as data for anything that wants to select on it',
-    rowsOf(host)[0].getAttribute('data-txid') === 'bbbbbbbb-1111-2222-3333-444444444444');
+    rowsOf(host)[0].getAttribute('data-line-id') === 'bbbbbbbb-1111-2222-3333-444444444444');
 
   // an empty queue draws NO table -- an empty table with a header reads as "loading"
   const doc2 = makeDoc();
@@ -327,6 +331,42 @@ console.log('\n[5] the list is drawn in the order it arrived, oldest first');
   ok('and says so in one line', byClass(host2, 'chain-queue-empty').map((n) => n.textContent).join('') === 'Nothing waiting');
   // ...but the numbers are still there, because 「대기 없음」 is itself the answer (rule ①)
   eq('while the numbers stay', valueOf(host2, 'waiting'), '0');
+}
+
+// ═══ ⑤-J one retroactive job is one line (lead b3a4334db, server f843188e5) ══════════════
+// The server folds a job's events by its run: the line carries `run_id` and `op`, and its
+// `transaction_id` is null. Before this the chip drew that null — an empty identity cell.
+console.log('\n[5J] one retroactive job is one line, named by its op and run');
+{
+  const JOB = { run_id: '9f8e7d6c5b4a39281706', op: 'chain_replay', transaction_id: null,
+                events: 37, rows: 18500, tables: ['wafer_process'], event_types: ['UPDATE'],
+                owners: ['chain'], max_retry: 0, waiting_seconds: 600, waiting_at: '2026-10-02 17:30:00' };
+  const TX = BACKED_UP.waiting_transactions[1];
+  const v = queueView({ ...BACKED_UP, waiting_transactions: [JOB, TX] });
+  eq('J1 a job line is named by its op and its run', v.rows[0].label, 'chain_replay · 9f8e7d6c…');
+  eq('J2 and its id is the run', v.rows[0].id, JOB.run_id);
+  eq('J3 its rows and its events are the server\'s, apart', [v.rows[0].rows, v.rows[0].eventsNote],
+    ['18500', '37 events']);
+  eq('J4 a transaction line beside it is as before', [v.rows[1].label, v.rows[1].id],
+    ['cccccccc…', TX.transaction_id]);
+  eq('J5 a job whose op the server could not name still shows its run',
+    queueView({ ...BACKED_UP, waiting_transactions: [{ ...JOB, op: null }] }).rows[0].label, '9f8e7d6c…');
+
+  const doc = makeDoc();
+  const host = doc.createElement('div');
+  new ChainQueuePanel(host, { doc }).render({ ...BACKED_UP, waiting_transactions: [JOB, TX] });
+  const [jobRow] = rowsOf(host);
+  const cellOf = (row, col) => [...cellsOf(row)].find((td) => td.getAttribute('data-col') === col);
+  const chip = byClass(jobRow, 'tx-id-chip')[0];
+  const rowsCell = cellOf(jobRow, 'rows');
+  // the badge comes first so the number stays at the right edge of a right-aligned column
+  eq('J6 the drawn job line: its chip, then the Rows cell as badge and number',
+    [rowsOf(host).length, chip.textContent, rowsCell.children.map((n) => [n.className, n.textContent])],
+    [2, 'chain_replay · 9f8e7d6c…', [['chain-queue-events-badge', '37 events'], ['', '18500']]]);
+  eq('J6b NEGATIVE CONTROL: the transaction line beside it has no events badge',
+    byClass(cellOf(rowsOf(host)[1], 'rows'), 'chain-queue-events-badge').length, 0);
+  eq('J7 the full run id is on the chip and on the line', [chip.title, jobRow.getAttribute('data-line-id')],
+    [JOB.run_id, JOB.run_id]);
 }
 
 // ═══ ⑥ formatAge — total, and the boundaries ═══════════════════════════════════════
