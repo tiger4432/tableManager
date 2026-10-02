@@ -70750,3 +70750,35 @@ pg 같이 돈 것   33 passed, 7946 deselected, 69 warnings in 698.09s (0:11:38)
 내일 순서 RUN.md 0 단계에 이주를 넣었고, 9 단계 그물 줄을 python -m ledger followup 으로 바꿨다
 ```
 다음: (나) 행 지문 · 수정 누락 census -> 쓰기 문 성능(bce43236b) -> e11bb4de0 -> 338abb9f3 -> 세상
+
+---
+
+## [10-02 밤] 진행 — (나) 행 지문 · 수정 누락 census: 지어 두었고 «착지 안 함» (총괄 bb9b1c19c · 1472ec1cc)
+
+어느 DB · 어느 스키마 · 지운 것 — 시험은 assy_test 시험 스크래치 스키마(픽스처가 DROP)뿐. 박스 DB 는 읽기 전용으로 행 색인 줄 수만 셈(assy_manager, 지운 것 0)
+
+**지은 것 (작업 트리 커밋 4fb8fbe03, origin 에 없음)**
+```
+쓰기    행 색인 줄을 쓴 같은 트랜잭션에 지문 — 그 소스가 읽는 칸(event_frame.base_select_columns)만, crud.blank_to_null 로 빈 값 접고 md5
+칸      ensure_row_ref_table 이 카탈로그를 먼저 묻고 없을 때만 ALTER(이주 따로 없음)
+census  사람이 돌리는 census 기록(measure_and_store, 정확 모드)에만 «수정 누락 · 지문 없음» — 주기 tick · 미리보기 셋은 훑지 않음
+명령    python -m ledger.backfill --source <소스> --drifted [--apply] — 누락된 행의 범위 값으로 rescope
+```
+**게이트 (pg 4 통과)** — 고친 칸 -> 누락 1 -> 다시 번역 -> 0 · 원자가 새 값 · 안 읽는 칸은 누락 아님 · '' 와 NULL 한 지문 · 지문 없는 줄은 따로 · 주기 tick 은 안 셈
+변이(카나리아 = 안 바꾼 첫 판)
+   none (canary)                            4 passed, 7979 deselected, 12 warnings
+   the print is not written                 3 failed, 1 passed, 7979 deselected, 12 warnings
+   a blank is not folded                    1 failed, 3 passed, 7979 deselected, 12 warnings
+   the census counts the matching lines     3 failed, 1 passed, 7979 deselected, 12 warnings
+   the redo picks no rows                   1 failed, 3 passed, 7979 deselected, 12 warnings
+
+**남은 것 — 착지 전에**
+```
+sqlite 전체 7,695 통과 · 실패 19 = 늘 같은 다섯 + 이 판의 가짜에 걸린 14:
+   test_the_index_can_be_recovered…(10, 가짜 _write_row_refs 인자 — 고쳤으나 가짜 커서의 fetchone 이 빈 줄이라 ensure_row_ref_table 의 카탈로그 물음에서 IndexError)
+   test_a_source_says_when_its_counts_were_taken(2) · test_a_row_that_stopped…(1) · test_a_ledger_world_is_a_set_of_names(1) — 가짜 plan/세상이 새 자리를 모름
+   -> 가짜 쪽을 맞추고 전체를 다시 돌린 뒤 착지
+비용     안 쟀다 — 재기 프로브의 원장 절반이 (가) 뒤 메모리 대기열을 읽어 0 을 쟀다(프로브 결함). 다시 잰다
+첫 채우기 이 박스 색인 행 1,215,824 (소스 11) — 소스마다 --whole-source --apply 로 채움. 율은 안 쟀다
+```
+다음: 위 남은 것 -> (나) 착지 -> 쓰기 문 성능(bce43236b) -> e11bb4de0 -> 338abb9f3 -> 세상
