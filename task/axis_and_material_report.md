@@ -1,3 +1,34 @@
+> ## [09:31 디자인] 릴리스 노트 — 이번 주 소급 25 항목(09-28 ~ 10-01, 서버 · 클라) · 새 모양의 머리 — 총괄 9eccd4e12 · a7a8b9fd6
+
+- `docs/process/RELEASE_LOG.md`: 머리를 새 모양(소유자가 요청한 기능 · 바뀐 동작, 최신순, 항목 모양)으로 바꾸고, 그 아래 25 항목. 옛 마일스톤 줄은 그대로. 묶음은 확인받은 대로(같은 선언 · 같은 화면끼리), 화면 수리는 「이번 주 고친 것」 한 항목에 한 줄씩. 판단 셋(원장 펼친 보기 · text_links · 거둠 이력)과 더한 둘(HTTPS 가이드 · 행 단위 맵퍼 작성법) 넣음.
+- `CONTRIBUTING.md` 6절 · `docs/README.md` 목록 줄: 새 모양과 상설(착지하는 같은 커밋에 항목 하나).
+
+**게이트 — 선언 예시 21 개를 제품 로더로 한 번씩**
+샘플 설정(`server/config/sample/*.sample`)을 임시 데이터 폴더에 깔고 예시를 넣은 뒤 `ASSY_DATA_ROOT=<그 폴더>` · `DATABASE_URL=sqlite:///:memory:` 로 돌렸습니다(박스 DB · 운영 설정은 안 건드림). 명령: `python <스크래치>/release_gate.py` — 스크립트는 `release_gate.py` · `release_gate_inner.py` · `release_gate_sheet.mjs`(이 세션 스크래치, 저장소에 안 넣음).
+- table_config reader: 10 example tables read (inspection_photo, meeting_note, text_node_phrase, text_link_phrase, text_cause_candidate, official_dt, ledger_atom_rows, paste_target, void_inspection, step_phase)
+- init_dynamic_models built a model for every example table
+- @mapper file executed: meeting_cause_links registered
+- mappers.official_rows imported and called on one row: source_name 'chain_ingestion (r1)', origin_row_id 'r1'
+- chain rule loader: meeting_note_cause_links stands
+- chain rule loader: dt_log_to_official_dt stands
+- chain rule loader: lot_event_to_lot_lineage stands
+- chain rule loader: contrast_factor_from_run stands
+- chain rule loader: step_phase_to_wafer_process stands
+- chain rule loader: attribution_to_inventory_filled stands
+- chain rule loader: lot_event_to_lot_slot_wafer_filled stands
+- ledger loader: predicate wafer_in_slot@1 in the loaded bundle, not left out (inverse_of)
+- ledger loader: predicate in_container@1 in the loaded bundle, not left out (class)
+- ledger loader: entity quantity@1 in the loaded bundle, not left out (class ['static', 'probe'])
+- ledger loader: left_out = nothing
+- image_sources reader: photos, vendor
+- resolve photos:a.png reads the folder source: 404 no file 'a.png' in image source 'photos'
+- find_links on the two dictionaries' columns: [{"sentence_no": 1, "sentence": "void caused by bake.", "cause_type": "process", "cause_key": "BAKE", "cause_phrase": "bake", "phenomenon_type": "defect", "phenomenon_key": "VOID", "phenomenon_phrase": "void", "link": "caused by", "polarity
+- paste sheet through columnsFromPaste: {"column_types":{"lot":"string","slot":"string","qty":"number","photo":"image"},"display_columns":["lot","slot","qty","photo"],"composite_key_source":["lot","slot"]}
+
+**화면 글자** — 「화면에서」 줄의 글자 52 개 중 48 개를 클라 소스(`client2/src` · 페이지 html)와 폼이 그리는 서버 뼈대(`chain_skeleton.json` · `ledger_skeleton.json` · 소급 작업 이름 `admin/retroactive.py`)에서 찾음. 못 찾은 4 개는 버튼이 아닙니다 — `ledger_atom_rows` · `/rnd-board.html` · `step_phase` · `class:modeling`: 표 이름 둘은 서버 데이터에서 오는 이름, `/rnd-board.html` 은 페이지 주소(파일 있음), `class:modeling` 은 요청 값.
+
+새 함수 · 새 if 중 기존 것과 같은 일: 제품 코드 0. 게이트 스크립트는 스크래치(저장소 밖).
+
 > ## [23:10 디자인] 메인 그리드 image 칸 — 머물면 미리보기 하나 · 표시를 누르면 새 창 · 서버 부하 작게 — 총괄 191912ce2 · f087403fe · 493275903
 
 **무엇이 됐나**
