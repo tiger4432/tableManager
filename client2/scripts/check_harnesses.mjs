@@ -927,7 +927,7 @@ const FLOORS = new Map([
   // every request, a pick starts the screen over (unsaved typing through the one dirty decision), a branch
   // is made by the bootstrap and deleted after its preview; the picker makes nothing from a blank name and keeps a name across redraws.
   // 74 -> 78 (lead ccf374d48 answer 2): Keep stores the typing in the world it was typed in; a refused Keep stays.
-  ['explorer_open_path_harness.mjs', 78],
+  ['explorer_open_path_harness.mjs', 85],
   // New with lead 619befe8c: where an edit sits in the ledger form — a guide per ancestor on every
   // row of the real skeleton's form, the trail as the declaration path's own words, the path bar
   // part, and no skeleton word in the bar's code.
