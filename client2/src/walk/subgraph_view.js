@@ -17,6 +17,7 @@ import { bareName, staticTypes, cutBudgets } from './derive.js';
 import { drawLayeredGraph, slotXY } from '../layered_graph.js';
 import { SIGN } from '../rnd_board/marking_store.js';
 import { setDisabledReason } from '../disabled_reason.js';
+import { unitText } from '../ui_words.js';
 // The look travels with the part (the walk page's rule): one stamp, one sheet per document.
 import { ensureWalkStyles } from './styles.js';
 
@@ -162,6 +163,73 @@ export function subgraphLayout(steps, entities) {
   };
 }
 
+/**
+ * What folding hides (lead 43a738d58 ③, view only): walking from where the walks stood — the seeds and every
+ * node the server put at depth 0 (a seed can have no edge of its own while a depth-0 twin carries them all) — in
+ * the picture's direction (never to a lower layer; a walk's depth can stay put along an edge) over the drawn
+ * edges, the nodes no longer reached once the folded nodes are not walked past.
+ * A node reached another way stays; a folded node itself stays; a node no start reaches is untouched.
+ */
+export function foldedAway(layout, folded, seeds) {
+  const layerOf = new Map(layout.nodes.map((n) => [n.id, n.layer]));
+  const starts = [...(seeds || []), ...layout.nodes.filter((n) => n.depth === 0).map((n) => n.id)];
+  const next = new Map();
+  for (const e of layout.edges) {
+    for (const [a, b] of [[e.source, e.target], [e.target, e.source]]) {
+      if (!(layerOf.get(b) >= layerOf.get(a))) continue;
+      if (!next.has(a)) next.set(a, []);
+      next.get(a).push(b);
+    }
+  }
+  const reach = (stop) => {
+    const seen = new Set(starts.filter((id) => layerOf.has(id)));
+    const queue = [...seen];
+    while (queue.length) {
+      const id = queue.shift();
+      if (stop.has(id)) continue;
+      for (const to of next.get(id) || []) {
+        if (!seen.has(to)) { seen.add(to); queue.push(to); }
+      }
+    }
+    return seen;
+  };
+  const kept = reach(folded);
+  return new Set([...reach(new Set())].filter((id) => !kept.has(id)));
+}
+
+/**
+ * The «+N» chip on the picture, for both kinds (lead 015ef2aab): a fan-out the walk did not draw (`press`
+ * asks the walk again) and a branch this view folded (`press` only opens it). One shape, one look.
+ */
+export function plusChip({ x, y, count, word, data, press }) {
+  return { x, y, text: `+${count} ${word}`, attrs: { class: 'sg-bundle', ...data }, onPress: press };
+}
+
+/**
+ * The layout as drawn with these nodes folded: the hidden nodes, their edges and their bundles left out, a
+ * folded node's own bundles too (they branch from it), and one «+N folded» spot per folded node still in sight
+ * — where the first node it hides stood. The counts above the picture stay the walk's.
+ */
+export function foldView(layout, folded, seeds) {
+  const hidden = foldedAway(layout, folded, seeds);
+  const gone = (id) => hidden.has(id);
+  const folds = [];
+  for (const id of folded) {
+    if (gone(id)) continue;
+    const under = foldedAway(layout, new Set([id]), seeds);
+    const first = layout.nodes.filter((n) => under.has(n.id))
+      .sort((a, b) => a.layer - b.layer || a.y - b.y)[0];
+    if (first) folds.push({ node: id, count: under.size, x: first.x, y: first.y });
+  }
+  return {
+    nodes: layout.nodes.filter((n) => !gone(n.id)),
+    edges: layout.edges.filter((e) => !gone(e.source) && !gone(e.target)),
+    chips: layout.chips.filter((c) => !gone(c.node) && !folded.has(c.node)),
+    folds,
+    hidden: hidden.size,
+  };
+}
+
 /** The facts the walks brought for one node: its keys, its attributes, and every edge touching it. */
 export function nodeFacts(layout, id) {
   const node = layout.nodes.find((n) => n.id === id);
@@ -210,6 +278,8 @@ export class SubgraphView {
     this.layout = null;
     this.selected = null;
     this.asked = '';
+    // The nodes this view folds (lead 43a738d58 ③): this instance's, never a module's, never a marking.
+    this.folded = new Set();
     // Another part writing the same name is seen here: same name, same marking.
     for (const name of this.chain) this.markings.subscribe(name, () => this._restyle());
   }
@@ -225,7 +295,17 @@ export class SubgraphView {
     this.steps = [];
     this.layout = null;
     this.selected = null;
+    this.folded = new Set();
     await this._step(this.chain[0]);
+  }
+
+  /** Every seed the steps walked from - where the fold's walk starts. */
+  _seeds() { return this.steps.flatMap((s) => s.seeds); }
+
+  /** Fold or open the branches beyond one node. The picture is redrawn; nothing is walked again. */
+  toggleFold(id) {
+    if (this.folded.has(id)) this.folded.delete(id); else this.folded.add(id);
+    this.render();
   }
 
   /** Walk from the marking the last step's presses wrote, and draw it on the same picture. */
@@ -308,6 +388,8 @@ export class SubgraphView {
     }
     if (view.unplaced) this.root.appendChild(this._el('div', 'sg-note', `No depth · ${view.unplaced} nodes`));
     if (view.loose) this.root.appendChild(this._el('div', 'sg-note', `Not drawn · ${view.loose} edges`));
+    const shown = foldView(view, this.folded, this._seeds());
+    if (shown.hidden) this.root.appendChild(this._el('div', 'sg-note', `Folded · ${unitText(shown.hidden, 'node')}`));
 
     const bar = this._el('div', 'sg-bar');
     const legend = this._el('div', 'sg-legend');
@@ -329,24 +411,27 @@ export class SubgraphView {
     // Declared into the one layered drawer (lead 65754c39a): the viewer's classes, data, shapes and chips.
     const { box, groups } = drawLayeredGraph(this.doc, {
       geometry: GEOMETRY, boxClass: 'sg-box', svgClass: 'sg-graph', width: view.width, height: view.height,
-      edges: view.edges.map((edge) => ({
+      edges: shown.edges.map((edge) => ({
         x1: edge.x1, y1: edge.y1, x2: edge.x2, y2: edge.y2,
         attrs: { class: 'sg-edge', 'data-predicate': edge.predicate },
       })),
-      nodes: view.nodes.map((node) => ({
+      nodes: shown.nodes.map((node) => ({
         id: node.id, x: node.x, y: node.y, label: node.label,
         shape: node.static ? 'rect' : 'circle',
         attrs: { class: this._classOf(node), 'data-node': node.id, 'data-depth': node.depth, 'data-step': node.step },
         onPress: () => this.press(node.id),
       })),
-      // A fan-out the walk did not draw, under its node: press it and that bundle is drawn.
-      texts: view.chips.map((chip) => ({
-        x: chip.x, y: chip.y, text: `+${chip.count} ${chip.farType}`,
-        attrs: { class: 'sg-bundle', 'data-bundle': chip.key, 'data-step': chip.step + 1 },
-        onPress: () => { this.expandBundle(chip.step, chip.key); },
-      })),
+      // A fan-out the walk did not draw, under its node: press it and that bundle is drawn. A folded branch,
+      // where it stood: press it and it opens. Both are one chip (`plusChip`).
+      texts: [
+        ...shown.chips.map((chip) => plusChip({ x: chip.x, y: chip.y, count: chip.count, word: chip.farType,
+          data: { 'data-bundle': chip.key, 'data-step': chip.step + 1 },
+          press: () => { this.expandBundle(chip.step, chip.key); } })),
+        ...shown.folds.map((fold) => plusChip({ x: fold.x, y: fold.y, count: fold.count, word: 'folded',
+          data: { 'data-fold': fold.node }, press: () => { this.toggleFold(fold.node); } })),
+      ],
     });
-    for (const node of view.nodes) this._groups.set(node.id, { group: groups.get(node.id), node });
+    for (const node of shown.nodes) this._groups.set(node.id, { group: groups.get(node.id), node });
     this.root.appendChild(box);
     this.factsBox = this._facts();
     this.root.appendChild(this.factsBox);
@@ -358,6 +443,16 @@ export class SubgraphView {
     const facts = this.layout && this.selected ? nodeFacts(this.layout, this.selected) : null;
     if (!facts) return box;
     box.appendChild(this._el('div', 'sg-facts-head', `${facts.node.label} · ${facts.node.type}`));
+    // Folding is its own press, beside the picked node's facts - a press on the node still picks and marks.
+    const id = facts.node.id;
+    const folded = this.folded.has(id);
+    if (folded || foldedAway(this.layout, new Set([id]), this._seeds()).size) {
+      const fold = this._el('button', 'sg-fold', folded ? 'Unfold' : 'Fold branches');
+      fold.setAttribute('type', 'button');
+      fold.setAttribute('data-fold-node', id);
+      if (fold.addEventListener) fold.addEventListener('click', () => { this.toggleFold(id); });
+      box.appendChild(fold);
+    }
     for (const [name, value] of [...Object.entries(facts.node.keys), ...Object.entries(facts.node.attributes)]) {
       box.appendChild(this._el('div', 'sg-fact', `${name} ${value}`));
     }

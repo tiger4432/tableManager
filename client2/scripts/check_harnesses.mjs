@@ -1414,7 +1414,7 @@ const FLOORS = new Map([
   // counts equal the table's, a column per depth, static squares, facts on a press, two on one page apart;
   // a press marks into the store, Continue walks that marking onto the same picture; bundle chips
   // (lead 1d07f1dae): one per bundle answered, a press expands it on the same picture.
-  ['subgraph_view_harness.mjs', 52],
+  ['subgraph_view_harness.mjs', 69],
   // New (lead 65754c39a): the one layered-SVG template - both screens draw their pinned pictures, two
   // declarations on one page apart, the template's own slots/shapes/texts/presses; (lead 2cbd0756d) the nine
   // category colours of their own, measured, and seven token mutants.

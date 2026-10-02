@@ -195,6 +195,9 @@ export const WALK_CSS = `
 .sg-continue[disabled] { opacity: 0.5; cursor: not-allowed; }
 .sg-node text { fill: var(--text); font-size: var(--fs-tag); cursor: pointer; }
 .sg-facts { display: flex; flex-direction: column; gap: 3.4px; }
+/* Fold branches / Unfold - its own press, under the picked node's head (lead 43a738d58 ③). */
+.sg-fold { align-self: flex-start; min-height: 44px; padding: 0 var(--space-4); font: inherit; color: var(--text);
+  background: var(--bg-surface); border: 1px solid var(--border); border-radius: 0; cursor: pointer; }
 .sg-facts-head { font-weight: 600; }
 .sg-fact { font-family: 'JetBrains Mono', monospace; font-size: var(--fs-label); overflow-wrap: anywhere; }
 `;

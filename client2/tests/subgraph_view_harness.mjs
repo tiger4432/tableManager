@@ -325,6 +325,63 @@ async function suite(m, makeWalk = createWalkBoxWalk) {
       JSON.stringify(markings.entries('a1')));
   }
 
+  console.log('\n[N] a node folds its branches on the picture only (lead 43a738d58 ③ · 015ef2aab)');
+  {
+    // A hand graph: s -> a -> b -> c and s -> d -> c. Folding a hides b; c is reached through d.
+    // And s -> e at the same depth (a real walk's depth stays put along some edges), f -> e one deeper.
+    const node = (id, layer) => ({ id, layer, x: layer * 100, y: 0 });
+    const edge = (source, target) => ({ id: `${source}${target}`, source, target });
+    const hand = { nodes: [node('s', 0), node('e', 0), node('a', 1), node('d', 1), node('f', 1), node('b', 2), node('c', 3)],
+      edges: [edge('s', 'a'), edge('a', 'b'), edge('b', 'c'), edge('s', 'd'), edge('d', 'c'), edge('s', 'e'), edge('f', 'e')],
+      chips: [{ node: 'a', key: 'k-a' }, { node: 'd', key: 'k-d' }] };
+    const away = (folded) => [...m.foldedAway(hand, new Set(folded), ['s'])].sort().join(',');
+    say('N1 only what is reached through the folded node hides; a node reached another way stays; a same-depth edge is walked',
+      away(['a']) === 'b' && away(['d']) === '' && away(['a', 'd']) === 'b,c' && away(['e']) === 'f',
+      JSON.stringify({ a: away(['a']), d: away(['d']), both: away(['a', 'd']), e: away(['e']) }));
+    const fv = m.foldView(hand, new Set(['a']), ['s']);
+    say('N2 a folded node keeps its place and loses its own bundles; one +N folded spot where its branch stood',
+      fv.nodes.some((n) => n.id === 'a') && !fv.chips.some((c) => c.node === 'a') && fv.chips.some((c) => c.node === 'd')
+        && fv.folds.length === 1 && fv.folds[0].count === 1 && fv.folds[0].x === 200,
+      JSON.stringify({ chips: fv.chips.map((c) => c.node), folds: fv.folds }));
+
+    const a = await seat([DIE]);
+    const b = await seat([DIE], { doc: a.doc });
+    const seeds = a.view.steps.flatMap((s) => s.seeds);
+    const target = a.view.layout.nodes.map((n) => ({ id: n.id, hides: m.foldedAway(a.view.layout, new Set([n.id]), seeds).size }))
+      .sort((x, y) => y.hides - x.hides)[0];
+    const counts = () => textOf(a.host, 'sg-counts').join('|');
+    const pictureOf = (host) => JSON.stringify(byClass(host, 'sg-graph').map((g) => g.children.length));
+    const countsBefore = counts();
+    const pictureBefore = pictureOf(a.host);
+    press(a.host, target.id);
+    const marksPressed = JSON.stringify(a.markings.entries(a.chain[1]));
+    const fold = byClass(a.host, 'sg-fold')[0];
+    if (fold) fold.dispatch('click', {});
+    const drawn = byClass(a.host, 'sg-node').length;
+    const foldChip = byClass(a.host, 'sg-bundle').find((g) => g.attrs['data-fold'] === target.id);
+    say('N3 Fold branches hides exactly what the fold reaches, and says +N folded where it stood',
+      target.hides > 0 && Boolean(fold) && drawn === a.view.layout.nodes.length - target.hides
+        && Boolean(foldChip) && foldChip.textContent === `+${target.hides} folded`,
+      JSON.stringify({ hides: target.hides, drawn, all: a.view.layout.nodes.length, chip: foldChip && foldChip.textContent }));
+    say('N4 the counts above stay the walk\'s; the folded count is its own line',
+      counts() === countsBefore && textOf(a.host, 'sg-note').includes(`Folded · ${target.hides} node${target.hides === 1 ? '' : 's'}`),
+      JSON.stringify({ before: countsBefore, after: counts(), notes: textOf(a.host, 'sg-note') }));
+    say('N5 the other part on the page folds nothing', byClass(b.host, 'sg-node').length === b.view.layout.nodes.length
+      && b.view.folded.size === 0, String(byClass(b.host, 'sg-node').length));
+    const bundles = await seat([BUNDLES]);
+    const bundleChip = byClass(bundles.host, 'sg-bundle')[0];
+    say('N6 both +N chips are one chip: the fold\'s and the bundle\'s share the class and the +N word grammar',
+      Boolean(bundleChip) && Boolean(foldChip) && bundleChip.attrs.class === foldChip.attrs.class
+        && /^\+\d+ \S+$/.test(bundleChip.textContent) && /^\+\d+ \S+$/.test(foldChip.textContent),
+      JSON.stringify({ bundle: bundleChip && bundleChip.attrs.class, fold: foldChip && foldChip.attrs.class }));
+    if (foldChip) foldChip.dispatch('click', {});
+    say('N7 the +N folded chip opens it: the same picture as before the fold, nothing walked again',
+      pictureOf(a.host) === pictureBefore && a.urls.length === 1, JSON.stringify({ urls: a.urls.length }));
+    say('N8 folding and opening mark nothing: the marking is what the press left',
+      marksPressed !== '[]' && JSON.stringify(a.markings.entries(a.chain[1])) === marksPressed,
+      `${marksPressed} -> ${JSON.stringify(a.markings.entries(a.chain[1]))}`);
+  }
+
   return { ran: names.length, names, failures: fails };
 }
 
@@ -352,7 +409,7 @@ const failures = [];
       '      fanout_limit: this.fanoutLimit, expand });\n',
       "      fanout_limit: this.fanoutLimit, expand, follow: ['inspected'] });\n"),
     M('M4', 'the edges are not drawn', 'A2',
-      '      edges: view.edges.map((edge) => ({\n', '      edges: [].map((edge) => ({\n'),
+      '      edges: shown.edges.map((edge) => ({\n', '      edges: [].map((edge) => ({\n'),
     M('M5', 'a press does not change the facts', 'E1',
       '    this.selected = id;\n    const next', '    const next'),
     M('M6', 'a cut walk says nothing', 'F1',
@@ -386,11 +443,11 @@ const failures = [];
     M('B1', 'the part walks without its fan-out cap', 'D1',
       '      fanout_limit: this.fanoutLimit, expand });\n', '      expand });\n'),
     M('B2', 'the bundle chips are not drawn', 'P1',
-      '      texts: view.chips.map((chip) => ({\n', '      texts: [].map((chip) => ({\n'),
+      '        ...shown.chips.map((chip) => plusChip({', '        ...[].map((chip) => plusChip({'),
     M('B3', 'a chip pressed asks without its bundle', 'P2',
       '    const expand = [...step.expand, key];\n', '    const expand = [...step.expand];\n'),
     M('B4', 'a chip says its far type but not its count', 'P1',
-      'text: `+${chip.count} ${chip.farType}`,', 'text: `${chip.farType}`,'),
+      'text: `+${count} ${word}`,', 'text: `${word}`,'),
     M('B5', 'the chips come from a step\'s first answer, so an expanded one stays', 'P4',
       '    return all[all.length - 1] || {};\n', '    return all[0] || {};\n'),
     { ...M('W2', 'the wire drops the expand cells', 'P2',
@@ -403,6 +460,25 @@ const failures = [];
     { ...M('W1', 'the wire drops a marking start and asks by type and keys', 'D1',
       '        ...(marked ? { nodeId: positive[0], positive, negative }\n',
       '        ...(false ? { nodeId: positive[0], positive, negative }\n'), file: WIRE },
+    M('F1', 'the fold walks from the seed ids only, not from every depth-0 node', 'N3',
+      '    const seen = new Set(starts.filter((id) => layerOf.has(id)));\n',
+      '    const seen = new Set((seeds || []).filter((id) => layerOf.has(id)));\n'),
+    M('F2', 'a same-depth edge is not walked', 'N1',
+      '      if (!(layerOf.get(b) >= layerOf.get(a))) continue;\n', '      if (!(layerOf.get(b) > layerOf.get(a))) continue;\n'),
+    M('F3', 'a folded node is walked past', 'N1', '      if (stop.has(id)) continue;\n', ''),
+    M('F4', 'a folded node keeps its own bundles', 'N2',
+      '    chips: layout.chips.filter((c) => !gone(c.node) && !folded.has(c.node)),\n',
+      '    chips: layout.chips.filter((c) => !gone(c.node)),\n'),
+    M('F5', 'the +N folded chip never opens', 'N7',
+      '    if (this.folded.has(id)) this.folded.delete(id); else this.folded.add(id);\n', '    this.folded.add(id);\n'),
+    M('F6', 'the folded nodes are shared by every part on the page', 'N5',
+      '    this.folded = new Set();\n', '    this.folded = (globalThis.__sgFolded ||= new Set());\n'),
+    M('F7', 'the fold chip is a chip of its own', 'N6',
+      "data: { 'data-fold': fold.node }", "data: { 'data-fold': fold.node, class: 'sg-fold-chip' }"),
+    M('F8', 'the folded count is not said', 'N4',
+      "    if (shown.hidden) this.root.appendChild(this._el('div', 'sg-note', `Folded · ${unitText(shown.hidden, 'node')}`));\n", ''),
+    M('F9', 'the picture draws the folded nodes anyway', 'N3',
+      '      nodes: shown.nodes.map((node) => ({', '      nodes: view.nodes.map((node) => ({'),
   ];
   const scored = await scoreMutants(MUTANTS, async (mu) => {
     const loaded = (await loadWithProbe(mu.file || SUBJECT, { mutate: (t) => swap(t, mu.from, mu.to) })).module;
