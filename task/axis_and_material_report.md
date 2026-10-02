@@ -1,3 +1,10 @@
+> ## [09:33 디자인] 릴리스 노트 고침 둘 — require 를 체인이 채우면 allow_chain_trigger · 이미지는 최대 1시간 캐시 — 총괄 a7a8b9fd6 검증 답 · ce04d073b
+
+- 「체인 규칙 · 조인의 동작」: `require` 칸을 조인(체인)이 채우는 표라면 그 규칙에 `"allow_chain_trigger": true` 가 있어야 다 찬 뒤 다시 깬다는 줄(없으면 사람 · 파일 · 수집기가 바꾼 행에만 · 트리거 표와 대상 표가 같은 규칙에는 켜지 않음). 가이드 링크 CHAIN_COPY_WHEN_FILLED_GUIDE.
+- 「원천 행 여럿이 받치는 칸」: 예시 규칙에 `"allow_chain_trigger": true`, 그 위 줄에 이유(소유자 흐름 — `dt_log` 키를 조인이 채움). 같은 가이드 링크.
+- 「이미지 참조」: 브라우저가 «최대 1시간»(`CACHE_SECONDS` 3600 — `server/image_sources.py` 에서 읽음) 들고 있어 원본을 바꿔도 그동안 옛 그림이 보일 수 있다는 것.
+- 게이트 다시: 예시 21 개 제품 로더로 다시 읽힘, 거절 0. 로드된 `dt_log_to_official_dt` 가 `allow_chain_trigger = True` · `require = ['dt_job', 'dt_x', 'dt_y']` 를 가진 채 섬(`ingestion_worker.loaded_chain_rules()` 로 읽음).
+
 > ## [09:31 디자인] 릴리스 노트 — 이번 주 소급 25 항목(09-28 ~ 10-01, 서버 · 클라) · 새 모양의 머리 — 총괄 9eccd4e12 · a7a8b9fd6
 
 - `docs/process/RELEASE_LOG.md`: 머리를 새 모양(소유자가 요청한 기능 · 바뀐 동작, 최신순, 항목 모양)으로 바꾸고, 그 아래 25 항목. 옛 마일스톤 줄은 그대로. 묶음은 확인받은 대로(같은 선언 · 같은 화면끼리), 화면 수리는 「이번 주 고친 것」 한 항목에 한 줄씩. 판단 셋(원장 펼친 보기 · text_links · 거둠 이력)과 더한 둘(HTTPS 가이드 · 행 단위 맵퍼 작성법) 넣음.
