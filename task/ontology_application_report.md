@@ -35152,3 +35152,18 @@ RELEASE_LOG  맞음 — 🗑️ Row(index.html) · Deleting… · Deleting N row
 고친 문서   BACKFILL_GUIDE ⓗ 줄 — 소스 전부 다시 만들기는 번역을 두 번(거둠 겨냥 미리보기 + 쓰기, 판정 166) · 시간 어림 = 번역 × 2 + 읽기 + 거둠·쓰기·커밋
            (박스 die_inspection 5.85 s ≈ 2.16 × 2 + 0.26 + 1.25, 7d23eb172)
 ```
+
+---
+
+## [C 응용] 10-02 f843188e5(소급 잡 하나는 체인 대기열 한 줄 — 서버) 문서 동기 — @`74e12b53c`
+
+```
+고친 문서     CODE_MAP 대기열 라우트 줄(접기 · 상한이 줄 위에 · 줄의 칸 · listed 모양) · CODE_MAP database.py 줄(봉투의 run_id) ·
+             LEDGER_SCHEMA_COMPLETENESS 봉투 줄 · PRIMITIVES 봉투 라벨. chain_ingestion_guide · BACKFILL_GUIDE · data_model 은 착지가 실었다
+검수 (박스)   대기열 시험 셋 24 passed, 1 skipped
+```
+```
+클라 절반이 오기 전 사이 — 클라(DESIGN_ORDERS b3a4334db) 몫, 알림만
+   chain_queue_panel.js 가 잘림 문장에 listed.rows_scanned 를 읽는다 — 그 칸이 빠져 잘릴 때 「Read the first — rows only (cap 200)」
+   그리고 상한은 이제 «줄» 위다(이벤트가 아님) — 그 문장의 «rows» 도 낡았다. 줄의 rows 는 이제 진짜 행 수라 그 칸 머리는 맞다
+```
