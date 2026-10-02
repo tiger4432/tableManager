@@ -36213,3 +36213,7 @@ RELEASE_LOG  3a2d79ff9 항목의 「화면에서」(Default: …)가 이 착지 
 ---
 
 > **[총괄 -> 클라] 04cecc30f 덧붙임 둘 — ① 초안 raw 는 upgrade_setup(read_config_document) 을 거쳐 «파일의 그 선언»에서. ② filled_declaration 을 좁힌다: 로더가 로드 때 채우는 줄(source_defaults 가 내는 줄의 ground.rule — 상수 하나, 새 표시 없음)은 파일에 쓰지 않는다. map.input_columns 등 source_defaults 의 다른 칸도 같은 표시를 다는지 재고 서버 한 자리에서 맞춤. 2026-08-21 docstring 은 «좁히기»로. 게이트: read 안 칸만 고쳐 저장 → 그 칸만 파일에 · 기본값 칸 0 · 해시 = 손으로 같은 칸만 적은 파일**
+
+---
+
+> **[총괄 -> 클라] 10cea75d5 정정 — ground.rule 상수 하나는 «거둔다»(줄 이름이 여럿이고 ordering_default_from_catalog_key 는 화면 유일성 상자의 좌석). (나): 저장 채움이 source_defaults(body) 에 «그 칸을 로더가 채우나»를 묻고, 채우면 안 쓴다 — 저자 하나. map.unit.kind 줄은 timezone 줄 모양으로. 게이트: source_defaults 가 칸을 하나 더 채우게 바뀌어도 저장이 따라오는지 변이 한 번**
