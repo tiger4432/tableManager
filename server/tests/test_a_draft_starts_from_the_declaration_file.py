@@ -127,6 +127,28 @@ def test_saving_one_read_cell_writes_that_cell_alone_and_hashes_as_the_hand_writ
     assert after.snapshot.bundle_sha256 == hand_setup.snapshot.bundle_sha256
 
 
+def test_the_draft_plans_over_the_bundle_its_save_loads(tmp_path):
+    """총괄 d4a949a8c ⑦ ⑨ after (가): the unsaved plan's input, loaded, is the bundle the save loads
+    - a cell only the plan fills (`implementation_version`) included."""
+    from ledger.config_drafts import with_unsaved_body
+    from ledger.config_explorer_service import read_config_document
+
+    http, service, root, index, setup, draft = _opened(tmp_path / "form")
+    raw = copy.deepcopy(draft["raw"])
+    raw["read"] = {"exclude_when": [{"column": "eqp_id", "blank": True}]}
+    del raw["map"]["implementation_version"]
+    planned, _ = with_unsaved_body(read_config_document(root), setup,
+                                   service.draft_store.get(draft["draft_id"]), index, json.dumps(raw))
+    planned_root = tmp_path / "planned"
+    planned_root.mkdir()
+    (planned_root / "ledger_config.json").write_text(json.dumps(planned), encoding="utf-8")
+    _saved(http, service, root, draft, raw)
+    after, _, _ = service.active(force=True)
+    loaded = load_setup(planned_root, catalog=CATALOG)
+    assert SLIM in loaded.snapshot.source_plans
+    assert after.snapshot.bundle_sha256 == loaded.snapshot.bundle_sha256
+
+
 def test_the_save_leaves_out_a_cell_the_loader_starts_filling(monkeypatch):
     """The save's fill asks the loader, so a cell `source_defaults` starts filling is left out with
     no change in the fill: `implementation_version` is written today (the plan derives it, the

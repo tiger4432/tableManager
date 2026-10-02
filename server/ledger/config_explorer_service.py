@@ -1004,8 +1004,8 @@ class OntologyExplorerService:
         exactly when it does not -- a half-written source, or a blank root that `/view`
         refuses.  So the plan reads the authoring FILE, tolerates any shape it finds, and
         lets `authoring_plan` name the deficits instead of raising.  A draft's plan does go
-        through it: the draft is an edit of the active setup, filled as its save fills it
-        (총괄 d4a949a8c ⑦ ⑨).
+        through it: the draft is an edit of the active setup, filled as the loader fills the
+        saved file -- the raw itself stays as written (총괄 d4a949a8c ⑦ ⑨ · 04cecc30f).
         """
         path = self.config_root / CONFIG_FILENAME
         if not path.is_file():

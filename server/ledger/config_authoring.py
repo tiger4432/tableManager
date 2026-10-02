@@ -2096,8 +2096,9 @@ def filled_declaration(bundle: Mapping[str, Any], catalog: Mapping[str, Any],
     that said it filled itself, and the square goes red.  Measured on the half-built
     `user_test` source, 2026-08-21: of its 7 red squares, 3 were this -- both
     `implementation_version` boxes and `read.order_by` -- so three of the seven things it
-    asked a person to go and fix were things it had already answered.  NARROWED (총괄
-    04cecc30f): a cell the loader fills (`with_read_defaults`) already agrees by being left out.
+    asked a person to go and fix were things it had already answered.  NARROWED, not reversed
+    (총괄 04cecc30f): 「로더가 채우지 않는 칸은 화면이 채운 대로 파일에 — 로더가 채우는 칸은
+    파일에 안 쓴다(3a2d79ff9 뒤)」.
 
     ONE PASS OVER THE PLAN, NOT ONE RULE PER FIELD.  The plan already knows which rows are
     derived, what each one derives to, and (via `disposition == "shape"`) which of them are
