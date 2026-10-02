@@ -1,3 +1,52 @@
+> ## [21:32 디자인] 원장 소스 선언 폼 — 기본값뿐인 read 는 접힌 한 줄 · exclude_when 칩 · Not an event · 초안은 파일에서 · 저장은 로더가 채우는 칸을 안 씀 — 총괄 04cecc30f · d06199e6a + 839b818d2
+
+**잰 것(고치기 전)**
+- 미리보기(출하 샘플 + 릴리스 예시 die_inspection 사본에서 캡처한 답, 관리자 토큰 없음): read 가 펼쳐진 채(「−」) 나왔고, 슬림 소스의 폼은 서버에서 통째로 실패했습니다(timezone 줄이 derived 인데 ground 없음).
+- 서버 프로세스 안(사본, sqlite 메모리): 파일의 die_inspection 에는 read 가 없는데, 초안 raw 에는 read 칸 다섯이 들어 있었습니다. 색인 node.raw(기본값이 채워진 묶음)에서 열렸기 때문입니다. 한 칸만 고쳐도 read 줄 넷이 answered 가 됐고, read 안 한 칸만 고쳐 저장하면 identity · occurred_at · order_by · unit 이 같이 파일에 적혔습니다(저장 채움 filled_declaration).
+- 이 박스 파일(setup_version 5, 소스 10 모두 prepare): 파일을 그대로 읽은 초안은 저장 미리보기가 prepare_retired 로 거절합니다. upgrade_setup 을 거치면 색인에 올라온 소스 모두(3 개) 지금 색인 raw 와 바이트까지 같고 미리보기도 통과합니다.
+- map.unit.kind: 로더는 채우는데 폼은 missing 으로 그려 「1 remaining」이었습니다.
+
+**고친 것**
+- ① 화면 접힘: 가지 아래 계획 줄이 전부 «서버 기본값» 또는 «값 없는 선택 칸»이고 기본값이 하나 이상이면 접혀 시작하고, 접힌 줄에 「Defaults · N」이 붙습니다. 이름으로 묻지 않습니다(뷰의 defaultsOnly 사실 + 스토어 fieldOpensByDefault 한 줄).
+- ② 서버: 매핑의 사건 시각 역할이 비면 ground not_an_event 「Not an event」(is_event_time_role 로 묻습니다). 화면: unanswered 이고 ground 가 있는 줄은 접힌 줄의 값 자리에 그 글자를 그립니다. 8fd2f185d 의 «접힌 줄은 값만»을 «값 없는 선택 줄»에서만 좁힌 것이고, 같은 줄의 한 낱말이라 세로 여백은 그대로입니다. 그런 Field 는 이 착지 전 0 개(Field 호출 36 중, AST) 였습니다.
+- ③ 서버: read.exclude_when 줄 하나 — 후보는 그 관계의 칸마다 {column, blank: true}. 화면: 스켈레톤이 «원소가 레코드»라 말하고 후보가 있으면(recordItems 함수 하나) 칩만 그립니다. 이름 칸 · 손 입력이 없고, 마지막 칩을 빼면 키를 지웁니다. 칩 글자는 «후보마다 값이 다른 키만»(candidateLabel — read.occurred_at 칩도 시간대가 빠졌습니다).
+- ④ timezone 줄 · map.unit.kind 줄: 로더의 기본값을 derived · default_overridable · read_default 로 그립니다.
+- ⑤ 초안 raw: create_draft 가 upgrade_setup(read_config_document) 의 그 선언에서 엽니다. 색인 node.raw 는 그대로입니다.
+- ⑥ 저장 채움: filled_declaration 이 with_read_defaults 에 «그 칸을 로더가 채우나»를 묻고, 비어 있고 로더가 채우면 쓰지 않습니다. 계획이 채우는 다른 칸(implementation_version 등)은 전처럼 적힙니다. 2026-08-21 규칙을 좁혔습니다(뒤집지 않음).
+
+**게이트**
+- 서버: 새 test_a_draft_starts_from_the_declaration_file 7 칸(파일 그대로 열림 · v5 파일 · read 밖 한 칸 고쳐도 read 줄 전부 기본값 · read 안 한 칸을 고쳐도 다른 read 줄은 기본값 · read 한 칸만 고쳐 저장 → 그 칸만, 해시 = 손으로 그 칸만 적은 파일 · 로더가 칸을 하나 더 채우면 저장이 따라옴 · 그대로 저장 → read 0 · 해시 같음)과 test_time_lives_on_the_event_edges 16 칸. 초안 · 저작 · 로더 기본값을 지나는 서버 시험 27 파일: 441 통과 · skip 9 · 실패 4. 실패 4 는 test_ontology_config_explorer 가 박스 설정을 읽어서이고, 이 착지 전의 config_authoring 으로 돌려도 같은 4 개(같은 이름) 입니다.
+- 서버 변이 10 개 중 10 개 잡힘.
+- 화면 하니스: 저작 패널 110 (K1~K10 · K2b · L1~L4), 열기 경로 90 (F0~F4 — 컨트롤러 클릭으로 «펼치기만 하면 초안 바이트 그대로 · 칩은 그 칸만 · 마지막 칩은 키 지움»). 화면 변이 11 개 중 11 개. 러너 초록 · 계약 13 개 어긋남 0 · 릴리스 게이트 항목 39 · 예시 27 로더 통과.
+- 미리보기(관리자 토큰 없이 캡처한 답, 비GET 은 페이지 안 가짜 adminFetch 로만 — 서버로 나간 쓰기 0): read 줄 「Defaults · 6」, 펼치면 칸마다 기본값, Exclude when 칩 11개(「column · <칸>」), 둘 고르고 하나 빼고 마지막을 빼면 키가 사라짐. 펼치기만 하면 초안 바이트 그대로였습니다. 초안은 사본에서 create_draft 가 답한 raw 로 열었고(read 없음: 예), Setup 줄은 complete, Mapper unit 은 접힌 Unit 줄 안의 기본값이었습니다.
+- 한 가지는 화면에서 이렇게 보입니다: read 안의 칸을 하나 고르면(예: Exclude when 칩) 그 칸이 «적은 칸»이 되어 read 는 그 뒤로 펼쳐진 채입니다(①의 규칙 — 적은 칸은 기본값이 아님). 다른 read 줄은 기본값 그대로이고(위 서버 칸), 그 칸만 파일에 적힙니다. «한 칸 고쳐도 접힘»은 read «밖»의 칸에서 참입니다.
+- RELEASE_LOG: 새 항목 하나 + 3a2d79ff9 항목의 「화면에서」를 이 착지 뒤 참인 문장으로 고침. RUN.md 맨 위 항목.
+- 어느 DB · 어느 스키마 · 지운 것 0 — DB 에 쓰는 측정 없음(sqlite 메모리, 사본 루트).
+
+**선언 파일에 쓰는 자리 전수(4b246b682)** 서버, 시험 뺌.
+- 셈 명령: `MSYS_NO_PATHCONV=1 git grep -n "bundle.to_mapping()" -- 'server/*.py' ':!server/tests'` — 8 자리(check_source_ordering.py 1 · config_drafts.py 3 · config_explorer.py 1 · setup_registry.py 3). 이 중 선언 파일로 가는 운반자는 config_drafts 의 _filled_declaration(저장 채움 — ⑥으로 고침)과 config_explorer 의 색인 node.raw(초안 — ⑤로 고침)입니다. 나머지는 미리보기 · 검증 · 읽기입니다.
+- 파일을 쓰는 자리: config_drafts._activate_file 하나(저장 · 선언 지우기 — 디스크의 파일에 초안 raw 를 그 자리에). config_explorer_service.bootstrap_config 는 고정된 시작 파일. ledger.admin.save_source 는 시험 말고 부르는 곳 0(라우트 은퇴). scripts 의 이주들은 bundle.to_mapping() 을 안 부릅니다.
+- 시험이 없는 것 둘: create 의 draft_target_missing 거절(색인에 있고 파일에 없는 선언 — 지금 닿는 길 없음), create_draft 의 read_config_document 는 authoring() 처럼 _setup_refusal 로 안 감쌌습니다(active() 가 먼저 거절해 지금 닿지 않음).
+
+**남은 것 — 여쭙니다(세션 메시지가 멈춰 이 채널로 보냅니다)**
+- map.input_columns 판정(34ad989bf)은 이 착지에서 짓지 않았습니다. 그 줄의 코드에 소유자 판정 둘이 인용돼 있습니다: 「그러면 그냥 디폴트 전체 입력해도 되지?」(2026-08-22, 기본값 = 잠기지 않은 칸 전부)와 「그냥 다 갈아버린다」([] = 안 적음). 총괄 판정은 첫째를 뒤집습니다. 지금은 저장이 그 칸을 쓰지 않고(로더가 채움) 로드는 로더의 [] 입니다 — 폼 글자만 «Default: N 칸»으로 틀립니다. 10-02 RELEASE_LOG 의 그 문장도 그대로 두었습니다. 소유자께 확인받으실지 정해 주십시오.
+- exclude_when 후보의 row_id: ledger 쪽에 «시스템 칸» 좌석이 없어(config_authoring · setup_bundle 에서 찾음) 그 관계의 칸 전부가 후보입니다.
+
+**새 함수 · 새 if 중 기존 것과 같은 일**
+- 새 함수 셋: defaultsOnly(뷰) — needsAttention 은 «남은 것이 있나», 이것은 «기본값뿐인가»로 물음이 다릅니다. recordItems(뷰) — 스켈레톤 of.kind 를 읽는 자리가 따로 없었습니다(editableFor 는 index map 까지만 물음). _holds(config_authoring) — 그 모듈에 경로 «읽기» 함수가 없었습니다(_fill_leaf 는 쓰기).
+- 새 if: 접힌 줄 값 자리(unanswered 이고 ground), 칩의 clears(레코드 목록의 마지막 칩), filled_declaration 의 로더 물음 한 줄, create 의 경로 못 찾음 거절(with_unsaved_body 의 draft_target_missing 과 같은 모양).
+- recordItems 의 «후보 있음» 조건은 총괄 문장 그대로 두었습니다. 다만 지금 트리에서는 covering 이 후보 없는 줄을 먼저 걸러, 그 조건만 타는 자리는 0 입니다.
+
+**UI 제안 (짓지 않음)**
+
+| 항목 | 왜 | 크기 |
+|---|---|---|
+| Exclude when 칩에서 시스템 칸 빼기 | 비는 일이 없는 row_id 가 후보에 섞임 | 서버 좌석 필요 · 안 쟀다 |
+| 접힌 Exclude when 줄에 고른 칸 이름 | 지금은 「—」 또는 JSON 이 보임 | 안 쟀다 |
+| 칩이 많은 표에서 칩 찾기 칸 | 칸 수십 개인 표에서 칩을 눈으로 찾음 | 안 쟀다 |
+
+**다음** 2b5819e1d(걷기 A + 영어) → 43a738d58 ③.
+
 > ## [20:11 디자인] ROW_ID 칸은 row_id 가 있는 관계에만 · 없는 관계의 row_id/id 거르기는 이름 대어 거절 — 총괄 d692af408 · 5b3dfb05e
 
 **잰 것(고치기 전, 프로세스 안 · 쓰기 0)** row_id 가 없는 보기 모델에 row_id 거르기를 실으면 500 이 아니라 S-71 의 일반 거절로 막혔지만, 사유가 «type object … has no attribute 'row_id'» 라는 파이썬 문장이었습니다. 박스 table_config 의 보기 11 중 row_id 를 선언한 것 5, 안 한 것 6 — 그 6 에 cfbe1ceaf 뒤 늘 빈 ROW_ID 칸이 섰습니다(박스 수 · 운영은 모름).
