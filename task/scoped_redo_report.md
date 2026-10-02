@@ -69675,3 +69675,95 @@ _reach opens every seed, not its own     22 passed
 after restore                            22 passed
 ```
 `_reach opens every seed` 는 이 벡터로 못 본다 — 벡터가 씨앗 하나짜리라서. 그 변이는 test_a_static_seed_takes_its_first_step_into_the_world.py 가 잡는다(c46163324 보고)
+
+---
+
+## [10-02 오후] 다이 → 웨이퍼 잇기 — references 가 원자를 쓴다 (총괄 29047aedc, 시각은 3bf28f893) — f45c75442
+
+**무엇을 지었나**
+```
+선언     entities.<타입>.references — 하나 또는 목록 (철자는 있던 칸 그대로: edge · to{entity, keys} · from.when)
+         로드 판정 _cross_references: edge 가 어휘에 있고 활성 · subjects 에 이 엔티티 · object.types 에 to.entity · 필수 수식어 없음
+         키 대응 · when 칸은 원래 검증 그대로(이 엔티티의 키여야 함). 틀리면 이름 대어 거절 — 그 엔티티와 부르는 소스가 같이 빠짐
+         c7046a710(「걷기가 지어 그리지 말고 원자를 써라」)은 «그리는» 뜻만 죽였고 이번은 원자를 쓴다 — 커밋 · 문서에 적음
+컴파일   ReferenceDescriptor 가 엔티티 서술에 실림 — 빈 칸은 지문 재료가 아니라 references 를 둔 엔티티를 부르는 소스만 지문이 움직임
+번역기   roleframe.compile_role_rows -> _reference_rows 한 자리. 분자 안에서 그 엔티티를 부른 모든 행(주어 · entity_ref 목적어)을 보고
+         when 이 맞으면 원자 하나 — 같은 엔티티 둘이면 하나(그것을 부른 원천 행 모두가 받침) · 분자가 이미 말한 사실이면 안 씀
+시각     원자의 occurred_at_basis = ingested 상수 한 자리(schema.REFERENCE_BASIS) · 저장 시각은 그 분자의 것
+         새 basis 값 · CHECK 교체 없음(3bf28f893) — 앞서 지었던 timeless 갈래는 걷어냄
+읽기     「사건 시각으로 읽나」 한 함수 schema.reads_as_event_time / event_time_sql — 걷기 창 늘 통과 · 창 밖 수 안 셈 ·
+         응답 엣지 시각 null · gaps 처음 본 시각에 안 듦(그룹 시각은 엣지 시각을 따라감). 최신값 · 가져오기 순서는 저장된 시각 그대로
+emits    GET /api/ledger/declaration 의 sources[].emits 가 그 소스가 부르는 엔티티의 references 술어도 냄(setup_bundle.emitted_predicates 한 자리)
+화면     탐색기 엔티티 폼에 References 줄(스켈레톤) · 문서 WALK.md 구간 걷기 절 · RELEASE_LOG 항목
+```
+**박스 — 지은 코드로 미리보기(쓰기 없음), 라이브 선언을 임시 폴더에 복사해 references 만 더함**
+```
+transfer_event (1,405행)  원자 1,405 -> 2,810 · references 원자 1,405 · 닿은 다이 1,405 · 번역 1,000 행당 1.773 -> 2.162 s
+die_inspection (20,000행, 앞쪽)  원자 20,000 -> 40,000 · references 원자 20,000 · 닿은 다이 19,437 · 번역 1,000 행당 1.813 -> 2.317 s
+라이브 선언 파일은 안 씀(박스 라이브 설정 상설). 그래서 박스 원장에 references 원자를 실제로 쓰고 「웨이퍼에 못 닿던 다이가 닿는다」를 잰 것은 «아직 없음» —
+계획 때 잰 상한: 이 박스가 번역하는 둘(die_inspection · transfer_event)만이면 웨이퍼에 닿는 다이 139,688 -> 141,093
+(새로 닿는 다이 대부분은 bw_dt_seat 의 것이고 그 소스는 뷰를 읽어 번역 안 됨)
+```
+**선언 예시가 로드되나** — RELEASE_LOG 항목의 ledger_entities 블록을 파일에서 읽어 출하 샘플에 넣고 setup.load_setup:
+```
+example entities: ['die@1'] | left out naming die: [] | compiled: (ReferenceDescriptor(predicate_id='in_container@1', target_type='wafer@1', keys=(('wafer', 'key', 'mat_id'),), when=(('mat_type', 'Wafer'),), derivation='entity-reference:die@1#0'),)
+```
+**게이트**
+```
+시험  tests/test_an_entity_reference_is_written_by_every_source_naming_it.py 12 passed in 0.47s
+        die_inspection(목적어로 다이) · transfer_event(주어 Wafer 다이만 — DT 다이는 when 이 막음) · 선언 없으면 0 ·
+        references 원자만 ingested · 같은 분자 사건 원자와 같은 시각 · 분자가 이미 말한 사실 두 번 안 씀 · 같은 다이 두 번 -> 원자 하나(받침 행 둘) ·
+        지문은 다이를 부르는 소스만 움직임 · emits · 로드 거절 넷(술어 없음 · 목적 타입 안 받음 · 키 대응 · when 칸)
+      tests/test_a_time_that_is_not_an_event_reads_as_none.py — PG 3 passed in 6.49s · 그 밖 1 passed, 3 skipped in 0.30s
+        창 [이후, ∞) 로 걸어도 다이 -> 웨이퍼 닿음 · 창 밖 수는 사건 원자만 · 원자에 basis 가 실려 옴 · 처음 본 시각은 사건 시각(저장 시각이 더 일러도) ·
+        시험 대역(InMemory) · 응답 엣지 시각 null — 같은 규칙
+변이  baseline plain                         13 passed, 3 skipped
+      baseline pg                            3 passed
+      when ignored                           1 failed, 12 passed, 3 skipped
+      a stated fact said again               1 failed, 12 passed, 3 skipped
+      one atom per naming, not per entity    1 failed, 12 passed, 3 skipped
+      reference not stamped                  1 failed, 12 passed, 3 skipped
+      references not compiled                5 failed, 8 passed, 3 skipped
+      no vocabulary check                    2 failed, 11 passed, 3 skipped
+      emits ignores references               1 failed, 12 passed, 3 skipped
+      in-memory window reads every time      1 failed, 12 passed, 3 skipped
+      edge shows a stored time               1 failed, 12 passed, 3 skipped
+      SQL window reads every time            2 failed, 1 passed
+      SQL outside counts every time          2 failed, 1 passed
+      first sighting counts every time       1 failed, 2 passed
+      after restore plain                    13 passed, 3 skipped
+      after restore pg                       3 passed
+```
+**새 함수 · 새 if 중 같은 일** — 새 함수: entity_references(하나 또는 목록의 한 철자) · _cross_references · emitted_predicates · _compile_references · _reference_rows · reads_as_event_time / event_time_sql · is_reference_derivation. 같은 일을 하던 자리 하나를 고침: /declaration 의 emits 가 따로 적던 식 -> emitted_predicates. 같은 일 둘 0
+
+**스위트** (C:/wt-impl — a0ae05b60 의 라우트 변경이 같은 트리에 있음, 따로 착지)
+```
+비PG 전체  6 failed, 7672 passed, 41 skipped, 187 deselected, 3 xfailed in 799.78s (0:13:19) · 알려진 다섯 밖: 1
+   test_the_form_no_longer_offers_references -> 그 파일만 다시 4 passed in 0.29s  <- 전체를 돌린 «뒤» 뒤집은 시험(말할 것 ⑤). 이름이 바뀌어 그 파일만 다시가 통과
+PG 전체   6 failed, 181 passed, 7722 deselected in 348.83s (0:05:48) · 알려진 밖: 0
+클라 하니스  159 harnesses ― 157 gated, 2 on the known-red debt list (2 still red, 0 recovered).
+클라 계약    ✓ 13 contracts, no divergence.
+바탕  4592aad3a 위에서 잼. 착지 바탕 261311e71 까지 origin 이 바꾼 것은 client2 · docs · task 뿐(server 0)
+```
+**운영 규격 대비 (1,000 행, 박스 · 잰 값만)** — die_inspection 다시 번역 — 번역 2.317 + 읽기 0.152 + 쓰기(거둠 + 쓰기, 스크래치 원장) 0.657 = 3.126 s, 규격 ≤ 5 s. 쓰기는 빈 원장에서 잰 값이라 낙관적
+
+**말할 것**
+```
+① 순서: 지시는 ① 자리 표 -> 총괄 확인 -> 짓기였다. 3bf28f893 의 독자 규칙 둘(reads_as_event_time · 순서는 저장 시각)을 그 확인으로 읽고 지었다 —
+   그렇게 읽은 게 틀렸으면 자리 넷(창 · 창 밖 수 · 엣지 시각 · 처음 본 시각)을 되돌린다
+② 칸 철자 — 지시는 개념(술어 · 상위 타입 · 키 대응 · when)으로 적었고 계획 때 예시는 predicate · type · keys · when 이었다.
+   있던 칸의 철자(edge · to.entity · to.keys · from.when)를 그대로 썼다 — 넓히는 것이라 이름을 바꾸지 않았다. 바꾸라면 바꾼다
+③ emits 자리 — 지시 목록에는 없었다. 계획 보고에서 «틀린 말을 하게 될 자리»로 짚은 것이라 같이 고쳤다
+④ 정정 — 계획 보고(f60cd3205)의 「bonded_from 37,218 은 같은 원자면 저장에서 접힘」은 틀렸다. source_translator_ver 가 달라 저장은 안 접는다.
+   지은 코드는 «분자가 이미 말한 사실이면 안 쓴다»로 막는다(시험 있음)
+⑤ 뒤집은 시험 하나 — tests/test_form_does_not_offer_references.py 의 「폼이 references 를 안 낸다」(b143e162d, 09-05).
+   그 근거가 「읽는 곳이 없다」였고 이번에 번역기가 읽으므로, 그 단언만 「폼이 낸다」로 뒤집음 · 옆 셋(class 남음 · 스켈레톤 온전 · 문법 남음)은 그대로
+```
+**안 한 것 · 여쭐 것**
+```
+① 펼친 보기(ledger_atom_rows)에 basis 칸 — 답이 없어 안 지음
+② 박스에서 실제로 references 원자를 쓰고 「못 닿던 다이가 닿는다」를 재는 것 — 길 둘:
+   ㄱ 운영자가 라이브 선언의 die@1 에 references 를 넣고, 제가 die_inspection · transfer_event 를 다시 번역(--whole-source --apply)
+   ㄴ 운영에서 잰다. (임시 선언으로 박스 원장에 쓰는 지름길은 안 했다 — 선언에 없는 번역 버전의 원자가 남고 다른 레인이 그 원장을 잰다)
+③ dt_job 의 ingested 원자도 이제 창을 늘 지나고 엣지 시각이 비어 보임 — 소유자 b 대로. R&D 보드 시간축에서 dt_job 사실이 빠져 보일 수 있음(그룹 시각 · 처음 본 시각)
+```
