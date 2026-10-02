@@ -70023,3 +70023,75 @@ R1 tx         이미 실행당 하나 — 짓지 않음. 가이드 세 문장만
              덮어써서 «자리마다 고치는» 일이 되고, tx 는 «한 번의 쓰기»의 신원이라 뜻이 둘이 된다
 ```
 **여쭐 것** — ① 이 모양(잡 신원 run_id 를 payload 에)으로 가도 되나 ② 박스에서 수만 행 소급 잡을 한 번 돌려 재도 되나(박스 서버는 09-30 코드라 «전»만 박스 서버로, «후»는 새 코드를 프로세스로 띄워서)
+
+---
+
+## [10-02 저녁] 체인 대기열 — 소급 잡 하나는 한 줄 (총괄 b3a4334db · 정정 9e8285eba, 소유자 「ㄱ」) — f843188e5
+
+**무엇을 지었나**
+```
+잡 신원    문맥 변수 하나(request_run_id) — 소급 실행이 끝나는 한 자리(_run_to_the_end)가 채널 옆에서 연다.
+          봉투(_outbox_envelope)가 싣고 두 스테이저(행 하나 · 묶음)가 payload.run_id 로 적는다
+          통제 행(RETROACTIVE_RUN) payload 는 객체로(SQL 이 그 run 을 읽게) — 읽는 쪽 둘 다 두 모양을 받는다
+이어받기   워커의 «재생 묻기» 한 자리(_replay_ask)가 run 도 답한다(이벤트가 부르는 run 이 하나일 때만) —
+          쓰기 자리 둘(apply_chain_writes · rule_run.chain_envelope)이 그 run 으로 쓴다 · 두 run 의 묶음은 안 합친다
+대기열     /admin/chain/queue 의 접기를 «자르기 전» SQL 로 — run_id, 없으면 transaction_id, 없으면 그 행. 상한은 «줄» 200
+          한 줄 = run_id · op(retroactive_runs) · transaction_id · events · rows(row_count, 없으면 1) · 가장 오래 기다림
+          🔴 rows 의 뜻이 바뀜(전: 이벤트 수 → 이제: 행 수, 이벤트 수는 events) · listed = {lines, lines_total, cap, capped}(rows_scanned 없어짐)
+          ⚰️ 뒤집은 것: 「접기는 파이썬 — payload 를 SQL 로 묶으면 색인이 없어 전수를 훑는다, 대신 훑는 행 수를 잘라 비용을 고정」(이 라우트의 옛 주석).
+             훑는 범위는 그때나 지금이나 «기다리는 행»(부분 인덱스)이고, 아래가 그 비용
+문서       chain_ingestion_guide §5.6 표 · 그 아래 줄 · BACKFILL_GUIDE · data_model — R1 tx 실행당 하나(d62f40730) · 잡 신원은 run_id
+```
+**비용 · 전후 — PG 스크래치 스키마(시험 DB)에 기다리는 이벤트 25,062 를 심고 라우트 함수를 그대로 부름**
+(총괄 ed582bd92 상설: DB assy_test · 스키마 assy_probe_queue_scale_<pid>(표를 그 이름으로 만들고 pg_namespace 카나리아 · 끝에 DROP) · 이 재기가 public 에서 지운 것 0.
+ 정리로 public 에서 지운 것은 제 앞선 재기가 넣은 행뿐 — 아래 말할 것 ①)
+```
+심은 것   잡 A 체인 재실행 3만 행: 트리거 30(1,000 행씩, R1 기본 묶음) + 결과 30 — run A
+          잡 B 행 하나짜리 연산 2만: 이벤트 2만, tx 하나 — run B · 사람 편집 5천(tx 각자) · 두 잡의 통제 행
+          전(main 코드)                         후(이 착지)
+줄       5 (잡 A 3 · 잡 B 2 · 사람 0)               200 / 전체 5,002 (잡 A 1 · 잡 B 1 · 사람 198)
+자른 것  앞 이벤트 200 개                            줄 200 개
+잡 A 줄  tx 둘로 갈림 + 통제 행 따로                     events 61 · rows 60,001
+라우트   0.035 s                                0.111 s (3번 중 가장 빠른 것)
+박스(기다리는 것 0)에서 EXPLAIN — 새 접기 질의도 부분 인덱스(idx_outbox_unprocessed)를 탄다: Limit  (cost=6.00..6.01 rows=1 width=104)
+```
+**박스 실측(총괄 ㄴ)은 돌리지 않음 — 이유 둘**
+```
+① 「값을 안 바꾸는 수만 행 재생」이 박스에 없다 — 수만 행짜리 후보 dt_transform_update 는 dt_x_base 에 'X' 를 쓰는데 488,103 행이 'X' 가 아니다
+   (재생하면 값이 바뀜). 값이 그대로일 lot_event_to_lot_slot_wafer 는 3,633 행
+② 박스 데몬은 09-30 코드라, 돌려도 워커 결과가 run 을 못 이어받는다 — 새 동작의 절반만 보인다
+대신   「소급 이벤트 하나가 몇 행」은 박스 이력: 09-25 재생(lot_event_to_lot_slot_wafer, chunk_size 20) 이벤트 182 에 행 3,633 — 이벤트당 행 = chunk_size(기본 1,000)
+```
+**게이트**
+```
+시험  tests/test_one_retroactive_job_is_one_line_in_the_queue.py 10 passed, 1 skipped in 2.23s
+        재생 트리거 이벤트와 그것이 깨운 쓰기 모두 run(연쇄 켬/끔) · run 밖 쓰기엔 키 없음 · 규칙 봉투가 run 을 싣는다 · 실행 끝 자리가 run 을 연다(끝나면 닫힘) ·
+        두 run 묶음 안 합침 · 대기열: 한 잡 = 한 줄(tx 셋 + 통제 행, 행 303) · 접기가 자르기 전(250 이벤트 잡 뒤의 잡이 보임) · 줄 수 상한 · 옛 문자열 통제 행은 제 줄
+      PG test_the_fold_reads_the_same_in_postgres 1 passed in 9.41s
+      18 passed in 3.79s (대기열 시험 셋 — 심는 payload 를 스테이저가 쓰는 «객체»로)
+변이  baseline                               28 passed, 1 skipped
+      the run seat opens no run              3 failed, 25 passed, 1 skipped  <- test_a_runs_trigger_events_and_what_they_woke_carry_the_ru, test_a_runs_trigger_events_and_what_they_woke_carry_the_ru, test_every_run_ends_inside_its_run
+      the stagers do not stamp the run       3 failed, 25 passed, 1 skipped  <- test_a_rules_own_write_carries_the_run_its_envelope_is_giv, test_a_runs_trigger_events_and_what_they_woke_carry_the_ru, test_a_runs_trigger_events_and_what_they_woke_carry_the_ru
+      the worker forgets the run             3 failed, 25 passed, 1 skipped  <- test_a_runs_trigger_events_and_what_they_woke_carry_the_ru, test_a_runs_trigger_events_and_what_they_woke_carry_the_ru, test_two_runs_groups_are_never_folded_into_one
+      a rule's envelope ignores the run      1 failed, 27 passed, 1 skipped  <- test_a_rules_own_write_carries_the_run_its_envelope_is_giv
+      the queue folds by transaction only    1 failed, 27 passed, 1 skipped  <- test_one_run_is_one_line_whatever_its_transactions
+      a line counts events as rows           1 failed, 27 passed, 1 skipped  <- test_one_run_is_one_line_whatever_its_transactions
+      the cut comes before the fold          2 failed, 26 passed, 1 skipped  <- test_a_cut_list_says_how_many_lines_there_are, test_the_fold_comes_before_the_cut
+      a cut list says nothing                1 failed, 27 passed, 1 skipped  <- test_a_cut_list_says_how_many_lines_there_are
+      after restore                          28 passed, 1 skipped
+스위트 비PG 전체 6 failed, 7689 passed, 231 skipped, 3 xfailed in 713.70s (0:11:53) · 알려진 다섯 밖: 1
+        tests/test_config_reload_integrity.py::test_h3_cross_directory_replace_applies_physical_alter
+          <- 혼자 세 번: 1 passed in 2.65s / 1 passed in 2.60s / 1 passed in 2.75s · 그 파일 통째: 32 passed in 38.76s
+          <- 혼자 되풀이 — 이 착지 30 번 중 3 실패 · 착지 전(ed582bd92) 30 번 중 1 실패 (착지 전에도 같은 실패 — 설정 감시의 시간 의존으로 보임. 이 착지가 그 경로에 닿는지는 안 셈)
+      PG 전체 6 failed, 184 passed in 362.55s (0:06:02) · 알려진 밖: 0
+```
+**말할 것**
+```
+① 측정 정정 — 제 지우기 재기(f16339e82 · a0ae05b60)와 이번 첫 규모 재기가 «스크래치 스키마»에 쓴다고 적었지만, 표를 schema 없이 만들어
+   시험 DB(assy_test) public 에 같은 이름 표가 있으면 그 표를 썼다(create_all 이 search_path 로 «있다»고 보고 건너뜀).
+   그래서 assy_test public 의 cell_sources · cell_overwrites · audit_logs · database_outbox 를 TRUNCATE 했다 — 박스 DB(assy_manager)는 아니다.
+   잰 수는 유효(빈 표에 심고 잼). 제가 남긴 행은 지웠고(아웃박스 25,072 · audit_logs 20,000 · retroactive_runs 2), 두 스크립트는 표를 스키마 이름으로 만들고
+   «그 스키마를 읽는지» 카나리아를 단다. 원래 public 에 있던 것은 TRUNCATE 로 없어졌고 무엇이었는지 모른다
+② 화면 — 클라 레인 몫. 착지 전까지 화면의 rows 칸은 «행 수»(전: 이벤트 수)를 보이고, 잡 줄의 tx 칸은 빈다(run_id · op 를 그릴 자리가 없어서)
+③ 큐에 이미 있던 이벤트(run_id 없음)는 그 tx 로 접힌다 — 재기동 뒤 새로 낸 것부터 한 줄
+```
