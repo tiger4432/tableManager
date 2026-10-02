@@ -35328,3 +35328,17 @@ schema.ensure_partition 은 이미 SET LOCAL lock_timeout = db_safety.DDL_LOCK_T
 schema.ensure_schema 의 칸 더하기 셋(ledger_additions · cursor_additions · row_ref_additions)은 그것을 안 쓴다 — 새로 지을 것이 아니라
 같은 문을 지나게 하면 된다. 제 확인 순서가 틀렸다: lock_timeout 이 그 파일에 «둘» 있다는 것을 보고 «뒤»에 봤다. 주장 자체는 열어 보니 맞았다
 ```
+
+---
+
+## [C 응용] 10-03 정정 — c4f0323cc · fb6e1e674 의 「멈춘다 · 끝나지 않는다」는 거짓입니다. «오래 걸린다»였습니다
+
+```
+잰 것     test_a_restart_between_the_chains_commit_and_the_drain_loses_nothing 단독, 제한 1,700 s 로 끝까지 —
+          1 passed in 502.24 s (0:08:22). 제가 앞서 500 s · 580 s · 300 s 에서 잘랐던 실행들은 «다 돌기 전에» 자른 것이다
+까닭      구현 A/B(00ccfc1c5) 그대로 — 시험 엔진(NullPool)이 따라가기마다 연결 둘을 새로 연다(한 번 0.1 s 남짓), 2,000 행이라 수천 번.
+          faulthandler 스택이 늘 psycopg2.connect 였던 것은 시간 대부분이 거기라서였다
+거둘 것    c4f0323cc 의 「PG 시험이 멈춘다」 · fb6e1e674 의 「세 번 다 끝나지 않음 · 연결을 못 얻는 일」. 이주 대기(lock_timeout) 이야기는
+          별개로 맞았고 2855783d3 이 고쳤다
+배운 것    「멈춤」이라 쓰기 전에 «한 번은 끝까지» 돌린다 — 제한을 제가 정하고 그 제한에 걸린 것을 멈춤이라 불렀다
+```
