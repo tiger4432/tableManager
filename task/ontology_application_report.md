@@ -35300,3 +35300,20 @@ RELEASE_LOG 맞음 — 명령 둘 · 거절 둘(행 수 바뀜 · 보기) · 사
            gitignore 된 박스 설정(server/config) 정도인데 원인이라 잰 것은 없다
 그래서     박스 DB 쪽 잠금 문제가 아니라 시험 안에서 연결을 못 얻는 일. 오늘 소유자 순서의 이주와는 따로다
 ```
+
+---
+
+## [C 응용] 10-03 6b698fe2d(원장이 못 본 수정을 센다) 문서 동기 + 한 줄 — @`9d8119ec1`
+
+```
+고친 문서   BACKFILL_GUIDE 상황 표(census 의 수정 누락 · 지문 없음, --drifted) · RUNTIME_MAP ⑤(주기 census 는 안 셈) ·
+           LEDGER_SCHEMA_COMPLETENESS 「수정 누락 겨눔」 줄 · CODE_MAP schema · store · event_frame · backfill 줄(줄 수 git)
+검수 (박스) run_pg_tests.py -k edit_the_ledger_never_saw — 4 passed (출력 파일로)
+RELEASE_LOG 맞음 — 명령 셋 · census 칸 이름 둘 · 지문 없음의 뜻 · 주기 census 가 안 센다
+```
+```
+한 줄 — a3d19dc51(이주는 말없이 기다리지 않는다)과 같은 부류
+   schema.row_ref_additions 가 원장 쓰기가 «처음 돌 때» 행 색인 표(박스 1,215,824 행)에 ALTER TABLE … ADD COLUMN 을 건다 — lock_timeout 없음
+   칸은 NULL 이라 다시 쓰지 않아 빠르지만, 그 표를 쥔 채 쉬는 세션이 하나라도 있으면 그 첫 원장 쓰기가 끝없이 기다린다(체인 워커 안)
+   재기동 직후라 쉬는 세션이 없을 가능성이 크다 — 잰 것은 없다. 같은 「30 s 넘으면 이름 대고 멈춤」을 여기에도 걸지 여쭐 것
+```
