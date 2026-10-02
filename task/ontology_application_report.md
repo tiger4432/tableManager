@@ -35094,3 +35094,19 @@ c5df86cdc   b409cf571 의 둘 다 닫힘 — api.js 거절문 「Node list unrea
         번역 1,000 행당 1.773 -> 2.162 s · 1.813 -> 2.317 s. 항목은 다시 번역하라고만 하고 이 둘을 안 적는다
         제안 — 「references 를 넣으면 그 엔티티를 부르는 소스의 원자가 늘고(박스: 분자마다 하나, 두 배) 번역이 느려집니다(박스 1,000 행당 약 0.4~0.5 s)」
 ```
+
+---
+
+## [C 응용] 10-02 a5fe51b3f(바인딩 칸을 입력 칸에 다시 적지 않는다) 문서 동기 + RELEASE_LOG 대조 — @`1a68d5b9f`
+
+```
+고친 문서      CODE_MAP(setup_bundle · setup_registry · event_frame · config_authoring 줄, 줄 수는 a5fe51b3f 에서 git) ·
+              ONTOLOGY_LEDGER_SETUP 의 input_columns 칸 설명(「읽을 컬럼 전수」 -> 선언 밖에서 읽는 칸) ·
+              ledger_declaration_by_example §2 두 줄(「명시했으면 거기에도 — 안 적으면 검증기가 댄다」가 거짓이 됐다)
+              잠긴 칩 절 · 증상표는 착지가 실었다
+검수 (박스)    새 시험 + event_frame + setup_bundle 시험 132 passed, 1 skipped
+              지문 — 바인딩으로 읽는 칸 목록이 컴파일된 계획에 실려 지문 재료다. 엔티티 속성 칸을 든 소스는 재기동 때 지문이 한 번
+              다시 찍힌다(자리 그대로) — 항목의 문장과 맞다
+RELEASE_LOG   맞음 — 화면 글자 「Mapper input_columns」 는 서버가 보내는 작성 계획 줄 라벨(config_authoring.py) ·
+              선언 예시 로드는 구현 보고 bb1b12da1 에 그 명령. 고칠 것 없음
+```
