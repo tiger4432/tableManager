@@ -24,13 +24,13 @@ SAMPLE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "config"
                       "table_config.json.sample")
 
 
-def _atom(subject_keys, predicate, raw_ref, source="src", kind=None, payload=None):
+def _atom(subject_keys, predicate, raw_ref, source="src", kind=None, payload=None, basis=None):
     return {"id": str(uuid.uuid4()), "subject_type": "die", "subject_keys": json.dumps(subject_keys),
             "predicate": predicate, "object_kind": kind,
             "object_payload": None if payload is None else json.dumps(payload),
             "occurred_at": WHEN, "source_who": source, "source_translator_ver": "v1",
             "source_raw_ref": raw_ref, "supersedes": None, "source_event_id": str(uuid.uuid4()),
-            "source_event_state": "source_molecule", "occurred_at_basis": None}
+            "source_event_state": "source_molecule", "occurred_at_basis": basis}
 
 
 ATOMS = [
@@ -45,7 +45,7 @@ ATOMS = [
           payload={"type": "wafer", "keys": {"w": "V"}}),
     # no row refers to this one (a source that read a view)
     _atom({"mat_id": "Z", "x": 3.0}, "in_container", "ref-none", kind="entity_ref",
-          payload={"type": "wafer", "keys": {"w": "W"}}),
+          payload={"type": "wafer", "keys": {"w": "W"}}, basis="ingested"),
 ]
 REFS = [("t", "R1", "src", "ref-A"), ("t", "R1", "src", "ref-B"), ("t", "R2", "other", "ref-A")]
 
@@ -141,3 +141,31 @@ def test_the_view_is_read_only_and_its_columns_are_the_products(view):
     with pytest.raises(DBAPIError):
         with engine.begin() as conn:
             conn.execute(text(f"UPDATE {schema.ATOM_ROWS_VIEW} SET predicate = 'x'"))
+
+
+def test_the_basis_says_whether_occurred_at_is_the_events_time(view):
+    """총괄 271f4512a ④: empty = the event's time, `ingested` = not."""
+    engine, _ = view
+    assert {r["occurred_at_basis"] for r in _rows(engine, "source_row_id = :rid", rid="R1")} == {None}
+    [row] = _rows(engine, "subject LIKE :s", s="%Z%")
+    assert row["occurred_at_basis"] == "ingested"
+
+
+def test_a_view_built_before_the_basis_column_is_replaced_in_place(view, monkeypatch):
+    """`add_ledger_atom_rows.py` re-runs `CREATE OR REPLACE VIEW` over an install that built the
+    view without the column - Postgres only lets that APPEND, so the column goes last."""
+    from sqlalchemy import inspect, text
+
+    engine, scratch = view
+    names = schema.world_names()
+    with engine.begin() as conn:
+        conn.execute(text(f"DROP VIEW {schema.ATOM_ROWS_VIEW}"))
+        with monkeypatch.context() as patch:
+            patch.setattr(schema, "ATOM_ROWS_SELECT", schema.ATOM_ROWS_SELECT[:-1])
+            conn.exec_driver_sql(schema.atom_rows_view_sql(names))
+    assert "occurred_at_basis" not in [
+        c["name"] for c in inspect(engine).get_columns(schema.ATOM_ROWS_VIEW, schema=scratch)]
+    with engine.begin() as conn:
+        conn.exec_driver_sql(schema.atom_rows_view_sql(names))
+    built = [c["name"] for c in inspect(engine).get_columns(schema.ATOM_ROWS_VIEW, schema=scratch)]
+    assert built == list(schema.ATOM_ROWS_COLUMNS) and built[-1] == "occurred_at_basis"

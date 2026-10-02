@@ -9,6 +9,17 @@
 
 ---
 
+## 2026-10-02 · 원장 펼친 보기에 `occurred_at_basis` 칸
+
+- **무엇** — 원장 펼친 보기(`ledger_atom_rows`, 메인 그리드)에 `occurred_at_basis` 칸이 맨 끝에 붙습니다. 비어 있으면 `occurred_at` 이 사건 시각이고, `ingested` 면 사건 시각이 아닙니다(references 원자 · dt_job 같은 소스).
+- **선언 예시** — `config/table_config.json` 의 `ledger_atom_rows.column_types` 맨 끝에 한 줄. 출하 샘플(`config/sample/table_config.json.sample`)의 그 항목을 그대로 베껴도 됩니다:
+
+```json
+"occurred_at_basis": "string"
+```
+- **필요한 조건** — 이미 보기가 있는 설치는 `python server/migrations/add_ledger_atom_rows.py` 한 번(보기를 그 자리에서 다시 만듭니다. 원장 · 원천 표는 안 건드립니다). 새 설치는 서버가 처음 뜰 때 만듭니다.
+- **자세히** — 이 항목과 같은 커밋
+
 ## 2026-10-02 · 바인딩에 적은 칸은 맵퍼 입력 칸에 다시 적지 않는다
 
 - **무엇** — 바인딩 · `bind.entities` 의 속성 · 맵퍼 묶음(`map.unit.columns`) · `when` 이 부르는 칸은 읽기가 저절로 싣습니다. 검증기가 그 칸을 `map.input_columns` 에 다시 적으라고 하지 않습니다(전에는 「Profile column 'X' at … is missing」 으로 거절). `input_columns` 에는 코드 맵퍼가 선언 밖에서 직접 읽는 칸만 적습니다.
@@ -44,16 +55,16 @@
 ## 2026-10-02 · 다이 → 웨이퍼 잇기 — 엔티티의 `references` 가 원자를 쓴다
 
 - **무엇** — 엔티티 선언에 «이 엔티티는 자기 키로 정해지는 상위에 속한다»를 적으면, 그 엔티티를 부르는 소스가 어느 것이든(주어로든 목적어로든) 번역할 때 그 상위로 가는 엣지 원자를 하나 더 씁니다. 예: Wafer 다이는 mat_id 가 이름 붙인 웨이퍼 안에 있다 — 다이를 부르는 소스마다 다이 → 웨이퍼 `in_container` 가 생겨, 걷기에서 다이에서 웨이퍼로 닿습니다. 한 분자에 같은 다이가 둘이면 원자 하나이고, 그 분자가 이미 같은 사실을 말하면 다시 쓰지 않습니다. 이 원자의 시각은 사건 시각이 아닙니다(`occurred_at_basis` = `ingested`).
-- **선언 예시** — `config/ontology/ledger_config.json` 의 `entities` 에서 그 엔티티에 `references` (하나 또는 목록):
+- **선언 예시** — `config/ontology/ledger_config.json` 의 `entities` 에서 그 엔티티에 `references` 목록(하나만 적어도 됩니다). 목록 모양은 이 착지 전 코드도 받아들여서, 서버를 재기동하기 전에 선언을 먼저 고쳐도 그 엔티티가 빠지지 않습니다:
 
 <!-- example: ledger_entities -->
 ```json
 {
   "die@1": {
     "keys": ["mat_id", "x", "y", "mat_type"],
-    "references": {"edge": "in_container@1",
-                   "to": {"entity": "wafer@1", "keys": {"wafer": "mat_id"}},
-                   "from": {"when": {"mat_type": "Wafer"}}}
+    "references": [{"edge": "in_container@1",
+                    "to": {"entity": "wafer@1", "keys": {"wafer": "mat_id"}},
+                    "from": {"when": {"mat_type": "Wafer"}}}]
   }
 }
 ```

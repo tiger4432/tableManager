@@ -1,5 +1,20 @@
 # 지금 돌리면 되는 것
 
+> ## [10-02 오후] **원장 펼친 보기에 occurred_at_basis 칸 · references 예시는 목록 모양 — 이주 «필요»(보기만) · 재기동 «불필요»**
+>
+> ```
+> 무엇이 바뀌나  ledger_atom_rows 보기 맨 끝에 occurred_at_basis(빈 값 = 사건 시각, ingested = 아님)
+>              RELEASE_LOG · 아래 references 절의 선언 예시가 «목록 하나» 모양 — 재기동 전 옛 코드도 받아들인다
+> 돌릴 명령     python server/migrations/add_ledger_atom_rows.py --report    (보기 있음 확인)
+>              python server/migrations/add_ledger_atom_rows.py             (보기를 그 자리에서 다시 만듦 — 원장 · 원천 표 그대로)
+>              config/table_config.json 의 ledger_atom_rows.column_types 맨 끝에 "occurred_at_basis": "string" (샘플 그대로)
+> 뜻           메인 그리드의 ledger_atom_rows 에 그 칸이 보이면 끝. 칸만 비어 보이면 표 선언은 됐고 이주를 안 돌린 것
+>              이주가 「cannot change name of view column」으로 거절하면 보기를 손으로 바꾼 설치 — 보기를 지우고(DROP VIEW ledger_atom_rows) 다시 돌린다
+> 급할 때       표 선언에서 그 한 줄을 지우면 그리드에서 사라진다(보기는 그대로 둬도 됨)
+> ```
+
+---
+
 > ## [10-02 오후] **바인딩 · 묶음 · when 칸은 맵퍼 입력 칸에 다시 안 적는다 — 이주 «불필요» · 재기동 «필요»(run_app.bat 전체)**
 >
 > ```
@@ -24,8 +39,9 @@
 >              사건 시각 아닌 원자(이것 · 원래 ingested 인 dt_job)는 걷기 시간 창이 늘 지나보내고 · 창 밖 수에 안 세고 ·
 >              응답 엣지 occurred_at 이 null · 처음 본 시각(gaps)에 안 든다. 최신값 · 가져오기 순서는 그대로
 > 선언(운영자가)  config/ontology/ledger_config.json 의 entities 에서, 예:
->                "die@1": {"keys": [...그대로...], "references": {"edge": "in_container@1",
->                  "to": {"entity": "wafer@1", "keys": {"wafer": "mat_id"}}, "from": {"when": {"mat_type": "Wafer"}}}}
+>                "die@1": {"keys": [...그대로...], "references": [{"edge": "in_container@1",
+>                  "to": {"entity": "wafer@1", "keys": {"wafer": "mat_id"}}, "from": {"when": {"mat_type": "Wafer"}}}]}
+>              목록 모양으로 — 재기동 전 옛 코드도 받아들인다(한 개 객체면 옛 코드가 die@1 을 거절해 다이 소스가 멈춘다)
 > 확인 명령     재기동 뒤 로그에 [Ledger] entity|die@1 is NOT read: … 줄이 없어야 한다(있으면 그 줄 뒤가 거절 사유 — 술어 · 키 대응 · when)
 >              다이를 부르는 소스를 소스마다 다시 번역:  python -m ledger.backfill --source <소스> --whole-source --apply
 >              확인:  SELECT count(*) FROM ledger_events WHERE predicate = 'in_container' AND occurred_at_basis = 'ingested'

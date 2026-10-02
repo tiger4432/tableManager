@@ -346,6 +346,9 @@ ATOM_ROWS_SELECT = (
     ("source_who", "e.source_who"),
     ("source_relation", "r.relation"),
     ("source_row_id", "r.row_id"),
+    # 총괄 271f4512a ④: empty = `occurred_at` is the event's time, `ingested` = it is not.
+    # LAST, because `CREATE OR REPLACE VIEW` can only append columns to a view that exists.
+    ("occurred_at_basis", "e.occurred_at_basis"),
 )
 ATOM_ROWS_COLUMNS = tuple(name for name, _expression in ATOM_ROWS_SELECT)
 
