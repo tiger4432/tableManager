@@ -83,9 +83,10 @@ function tokenGraph(overrides = {}) {
     for (const m of text.matchAll(/setProperty\(\s*['"`](--[A-Za-z0-9_-]+)/g)) defined.add(m[1]);
     text.split('\n').forEach((line, i) => {
       for (const m of line.matchAll(/var\(\s*(--[A-Za-z0-9_-]+)\s*([,)])/g)) {
-        // ⚠️ 대체값이 있으면 그건 «선언된 의도»입니다 — 없을 수 있다는 것을 저자가 적은 것이라
-        //    결함이 아닙니다. 이걸 안 가르면 게이트가 정당한 코드를 빨갛게 만듭니다.
-        if (m[2] === ',') continue;
+        // 🔴 대체값은 «정의된» 이름에만 뜻이 있습니다(그 토큰이 안 실린 호스트). 아무도 정의 안 한
+        //    이름의 대체값은 «언제나» 그 값이고, 그 값은 한 테마의 색입니다 — 걷기 화면의
+        //    `var(--surface, #fff)` 가 다크에서 흰 바탕에 흰 글자였습니다(총괄 3ea218524).
+        //    195c0e988 은 대체값 참조를 «안 셌고», 이 줄이 그것을 뒤집습니다.
         const where = `${path.relative(CLIENT, file)}:${i + 1}`;
         if (!referenced.has(m[1])) referenced.set(m[1], []);
         referenced.get(m[1]).push(where);
@@ -154,6 +155,8 @@ function suite(overrides = {}) {
 // ── 채점 ──────────────────────────────────────────────────────────────────────────────
 const ADMIN_TEXT = readFileSync(ADMIN_HTML, 'utf8');
 const TOKENS_TEXT = readFileSync(TOKENS, 'utf8');
+const WALK_STYLES = path.join(CLIENT, 'src', 'walk', 'styles.js');
+const WALK_TEXT = readFileSync(WALK_STYLES, 'utf8');
 const swap = (text, from, to) => {
   if (!text.includes(from)) {
     console.error(`HARNESS FAILURE: mutation anchor stopped matching: ${JSON.stringify(from)}`);
@@ -176,16 +179,23 @@ const DEFECTS = [
    () => ({ [TOKENS]: swap(TOKENS_TEXT, '  --text-dim: #8b99ae;', '  --text-dim: #33d68f;') })],
   ['M5 원의 fill 이 토큰을 안 쓴다 -> T3',
    () => ({ [ADMIN_HTML]: swap(ADMIN_TEXT, 'fill: var(--bg-surface);', 'fill: none;') })],
-];
-const CONTROLS = [
-  // 🔴 대체값은 «선언된 의도»입니다. 이것이 잡히면 게이트가 정당한 코드를 빨갛게 만듭니다.
-  // ⚠️ 그 참조를 «원의 fill 자리»에 넣었다가 T3 에 잡혔습니다 — 그건 대조군이 잘못 놓인
-  //    것이지 게이트가 틀린 것이 아닙니다(그 자리는 «정의된 토큰»을 대야 합니다). 규칙을
-  //    하나 «더해서» 잽니다: 그 줄은 T1 말고 아무도 안 봅니다.
-  ['대체값이 붙은 참조 (없어도 된다고 «적은» 것)',
+  // 195c0e988 에서는 이것이 «대조군»(빠져나가야 함)이었습니다. 걷기 화면의 병이 바로 이 모양입니다.
+  ['M6 대체값이 붙어도 아무도 정의 안 한 이름이다 -> T1',
    () => ({ [ADMIN_HTML]: swap(ADMIN_TEXT, '    .cg-optin { fill: var(--text-dim); font-size: var(--fs-tag); }',
                                '    .cg-optin { fill: var(--text-dim); font-size: var(--fs-tag); }\n'
                                + '    .cg-spare { color: var(--nowhere, #fff); }') })],
+  // JS 문자열 안의 CSS(WALK_CSS)도 모집단입니다 — `src/**/*.js` 를 훑습니다.
+  ['M7 걷기 화면의 CSS 문자열에 지어진 이름 하나 -> T1',
+   () => ({ [WALK_STYLES]: swap(WALK_TEXT, '.wk-trunc { color: var(--warning); }',
+                                '.wk-trunc { color: var(--nowhere, #fff); }') })],
+];
+const CONTROLS = [
+  // 🔴 «정의된» 이름의 대체값은 토큰이 안 실린 호스트를 위한 것입니다. 이것이 잡히면 게이트가 정당한 코드를 빨갛게 만듭니다.
+  // ⚠️ 그 줄은 T1 말고 아무도 안 보는 자리에 둡니다(원의 fill 자리에 넣으면 T3 이 잡습니다).
+  ['정의된 이름에 붙은 대체값',
+   () => ({ [ADMIN_HTML]: swap(ADMIN_TEXT, '    .cg-optin { fill: var(--text-dim); font-size: var(--fs-tag); }',
+                               '    .cg-optin { fill: var(--text-dim); font-size: var(--fs-tag); }\n'
+                               + '    .cg-spare { color: var(--text-dim, #fff); }') })],
   // 🔴 주석이 옛 이름을 «설명»하는 것. 잡히면 빨강을 푸는 제일 쉬운 길이 「설명 지우기」가 됩니다.
   ['주석 안의 옛 이름',
    () => ({ [ADMIN_HTML]: swap(ADMIN_TEXT, '/* 🔴 C-117 ㉰. 여기 `var(--bg)` 가 있었고',

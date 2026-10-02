@@ -34,14 +34,14 @@ export const WALK_CSS = `
 .wk-select, .wk-input, .wk-go, .wk-check { min-height: 44px; box-sizing: border-box;
   font: inherit; }
 .wk-select, .wk-input { width: 100%; padding: 0 8px; color: var(--text, #111);
-  background: var(--bg, #fff); border: 1px solid var(--border, #d4d4d8); border-radius: 6px; }
+  background: var(--bg-surface); border: 1px solid var(--border, #d4d4d8); border-radius: 6px; }
 .wk-keyrow { display: flex; align-items: center; gap: 8px; min-height: 44px; }
 .wk-keyname { flex: none; width: 8.5em; font-family: 'JetBrains Mono', monospace;
   font-size: 0.78rem; color: var(--text-dim, #71717a);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .wk-check { display: flex; align-items: center; gap: 8px; padding: 0 4px; border-radius: 6px;
   font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; }
-.wk-check.is-on { background: var(--accent-soft, rgba(37, 99, 235, 0.10)); }
+.wk-check.is-on { background: var(--accent-weak); }
 .wk-check input[type="checkbox"] { width: 22px; height: 22px; flex: none; }
 /* 🔴 고르는 목록은 «폭»을 씁니다. 높이 44 는 손가락이라 그대로이고, 한 줄에 하나씩 세우는
    것만 그만둡니다 — 실측(480px 틀): 폼 1,623px 중 1,214px 가 체크박스 23줄이었습니다.
@@ -94,7 +94,7 @@ export const WALK_CSS = `
 .wk-foldtext { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .wk-go { width: 100%; border: 0; border-radius: 8px;
-  background: var(--accent, #2563eb); color: #fff; font-weight: 600; }
+  background: var(--accent, #2563eb); color: var(--accent-contrast); font-weight: 600; }
 .wk-go[disabled] { opacity: 0.45; }
 
 .wk-result { display: flex; flex-direction: column; gap: 4px; padding: 8px 10px;
@@ -106,31 +106,31 @@ export const WALK_CSS = `
   text-align: left; min-height: 44px; padding: 8px 10px; margin: 0;
   border: 0; border-radius: 6px; cursor: pointer;
   background: transparent; color: inherit; font: inherit; }
-.wk-path:hover { background: var(--accent-soft, rgba(37, 99, 235, 0.10)); }
+.wk-path:hover { background: var(--accent-weak); }
 .wk-pathto { font-weight: 700; grid-row: 1 / span 2; align-self: center; }
 .wk-pathchain { font-size: 0.86rem; }
 .wk-pathmeta { font-size: 0.78rem; color: var(--text-dim, #71717a); }
 /* A route's self-loops, as chips under its row: off by default (lead 5d5b8d750). */
 .wk-loops { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
 .wk-loopchip { min-height: 44px; padding: 0 12px; border-radius: 999px; cursor: pointer;
-  border: 1px solid var(--line, #e4e4e7); background: var(--surface, #fff); color: var(--text-dim, #71717a);
+  border: 1px solid var(--border); background: var(--bg-surface); color: var(--text-dim, #71717a);
   font: inherit; font-size: 0.82rem; }
 .wk-loopchip.is-on { border-color: var(--accent, #2563eb); color: var(--text, #111); font-weight: 600; }
 /* 타입 분포 — 「무엇이 몇 개 왔나」. 물어본 타입은 표시가 다릅니다. */
 .wk-dist { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 6px 0; }
 .wk-distlabel { font-size: 0.78rem; color: var(--text-dim, #71717a); }
 .wk-distchip { display: inline-flex; gap: 4px; padding: 2px 8px; border-radius: 999px;
-  border: 1px solid var(--line, #e4e4e7); font-size: 0.82rem; }
+  border: 1px solid var(--border); font-size: 0.82rem; }
 .wk-distchip.is-asked { border-color: var(--accent, #2563eb); font-weight: 600; }
 /* 결과 표. 구획마다 «자기 키 컬럼»이라 표가 여럿입니다. */
 .wk-sec { margin: 10px 0 14px; }
 .wk-sechead { font-weight: 700; font-size: 0.86rem; margin: 0 0 4px; }
 .wk-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; display: block;
   overflow-x: auto; white-space: nowrap; }
-.wk-table th, .wk-table td { border-bottom: 1px solid var(--line, #e4e4e7);
+.wk-table th, .wk-table td { border-bottom: 1px solid var(--border);
   padding: 5px 8px; text-align: left; }
 .wk-table th { font-weight: 600; color: var(--text-dim, #71717a); position: sticky; top: 0;
-  background: var(--surface, #fff); }
+  background: var(--bg-surface); }
 /* 숫자는 «자릿수»로 섭니다 — x·y 가 세로로 안 맞으면 좌표를 못 읽습니다. */
 .wk-table td.wk-num { text-align: right; font-variant-numeric: tabular-nums; }
 /* id 는 길고 «마지막»입니다. 읽는 것이 아니라 «집는» 칸이라 폭을 안 뺏습니다. */
@@ -138,7 +138,7 @@ export const WALK_CSS = `
   color: var(--text-dim, #71717a); max-width: 22ch; overflow: hidden; text-overflow: ellipsis; }
 .wk-walk, .wk-trunc { font-family: 'JetBrains Mono', monospace; font-size: 0.78rem; }
 .wk-walk { color: var(--text-dim, #71717a); }
-.wk-trunc { color: var(--warn, #b45309); }
+.wk-trunc { color: var(--warning); }
 .wk-fail { color: var(--danger, #dc2626); font-size: 0.86rem; }
 .wk-row { display: flex; gap: 8px; align-items: baseline; padding: 3px 0;
   border-top: 1px solid var(--border, #d4d4d8); font-size: 0.82rem; }

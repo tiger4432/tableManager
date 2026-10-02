@@ -58,6 +58,9 @@
   --oe-accent-soft: var(--accent-weak);
   --oe-ok: var(--success);
   --oe-warn: var(--warning);
+  /* Rules below called it while nothing defined it, so both themes drew their fallback, the light
+     red (lead 3ea218524). */
+  --oe-danger: var(--danger);
 
   /* The mockup's two families. Mono is kept for identifiers and JSON -- the design file
      names two faces because it has no identifiers to show; this screen is made of them. */
@@ -297,7 +300,7 @@
    The change label keeps `margin-left: auto`, so this sits between the id and that label
    rather than pushing it — one row, three things, no new line. */
 #ontology-explorer-root .oe-refusal {
-  margin-left: 8px; color: var(--oe-ink-warn, #b45309); font-family: var(--oe-font-body);
+  margin-left: 8px; color: var(--oe-warn); font-family: var(--oe-font-body);
   font-size: var(--fs-tag); line-height: 1.2; white-space: nowrap; overflow: hidden;
   text-overflow: ellipsis; max-width: 45%;
 }
