@@ -69580,3 +69580,98 @@ references 의 edge 가 어휘에 없거나 서명이 안 맞으면 이름 대�
 ② ㄴ 처럼 «멈출 수 있는 지우기»가 되면 반쯤 지운 상태가 생깁니다 — 괜찮은지
 ```
 ⚠️ 시험 DB · 지어낸 행 위의 수다. 운영 표의 실제 층 수 · 이력 크기 · 색인은 다르다 — 비율과 자리를 읽고, 절대값은 운영 주장으로 쓰지 않는다
+
+---
+
+## [10-02 오후] 다이 -> 웨이퍼 짓기 ① — 원장 시각을 읽는 자리 전수 + 자리마다 규칙 (총괄 29047aedc, 짓기 전 확인용)
+
+**전수 — 추적된 제품 파이썬 (시험 · 스크립트 · 이주 · _archive 뺌, AST)**
+```
+occurred_at 을 부르는 곳  파일 19 · 함수 56 · 언급 108 — 대부분 쓰는 쪽(봉투 · 프레임 · 번역기 · 선언 검증 · 저장)
+읽는 쪽만 추리면 아래 표. 클라는 응답의 칸(edge.occurred_at · 그룹 at)만 읽으므로 서버 자리를 따라간다
+occurred_at_basis 를 읽는 자리 0 (쓰는 곳 · 검증 · 폼만)
+명령  scratchpad census_occurred_at.py (git ls-files server/*.py → ast) · 카나리: SqlEvidenceLookup._interval_clause 가 잡혀야 함
+```
+
+**한 함수** — 「이 원자의 시각을 사건 시각으로 읽나」
+```
+파이썬  reads_as_event_time(basis) -> basis 가 비었을 때만 참     (ingested · 시각 없음 둘 다 거짓 — 소유자 b 「같은 규칙」)
+SQL     같은 판정의 한 철자 — gaps._names_node_sql 처럼 함수 하나가 조건 문자열을 낸다
+자리마다 basis 문자열을 견주지 않는다. 걷기가 원자를 읽을 때 basis 칸을 같이 가져온다(ATOM_COLUMNS · EvidenceAtom 에 한 칸)
+새 값의 낱말  제안 "timeless" — 확인 부탁 (여쭐 것 ①)
+```
+
+**자리마다 — 오늘 · 규칙 후보** (〔확인〕 = 총괄 판정을 받고 짓는다)
+```
+시간 창 — SqlEvidenceLookup._interval_clause
+   오늘  저장된 시각으로 거른다
+   규칙  늘 통과
+창 밖 수 — _outside_clause · _count_excluded -> interval_excluded
+   오늘  창 밖이면 셈
+   규칙  안 셈
+one 현재값 — _not_current_clause (+ _apply_current_conflicts 가 그 결과로 겹침을 셈) · 이 박스는 cardinality 선언 0
+   오늘  나중 시각이 앞 것을 현재에서 뺀다
+   규칙  시각 없는 원자는 겨루지 않음 〔확인 ②〕
+예산 순서 — claims_for_entities 의 ORDER BY occurred_at DESC LIMIT
+   오늘  최신부터 남기고 자른다
+   규칙  〔확인 ③〕
+응답 엣지 시각 — _walk._claim_edge 의 edge.occurred_at (클라 subgraph_view 사실 칸)
+   오늘  저장된 시각을 사건처럼 보인다
+   규칙  비움(null) — 클라는 이미 빈 칸을 그린다
+등록 속성 — _walk._record_registration -> _apply_registrations (하나면 최신 · 여럿이면 시각 순)
+   오늘  저장된 시각으로 최신을 고른다
+   규칙  〔확인 ②〕
+그룹 시각 — _latest_edge_instant (group_nodes 의 at · 클라 추세 x축)
+   오늘  엣지 시각의 최대
+   규칙  시각 없는 엣지는 빼고 셈 — 그런 엣지뿐이면 at 없음
+처음 본 시각 — gaps._nodes_of_type_sql 의 first_seen (-> gaps.measure oldest · newest)
+   오늘  두 쪽 원자 시각의 최소
+   규칙  사건 시각 원자로만 셈 — 없으면 비움
+펼친 보기 — schema 의 ATOM_ROWS_SELECT (ledger_atom_rows 의 occurred_at 칸)
+   오늘  저장값 그대로
+   규칙  값은 그대로 · basis 칸을 더할지 〔확인 ④〕
+원자 읽기 — ATOM_COLUMNS · _atom_from_row (걷기의 모든 자리가 여기서 원자를 받음)
+   오늘  basis 를 안 가져온다
+   규칙  가져온다 — 위 자리들의 재료
+자리 10 곳 (읽는 쪽 함수 — 전수 위 명령) · 둘 다 같은 규칙: basis 가 ingested 거나 시각 없음이면 위 «규칙» 줄
+```
+
+**짓지 않는 자리** (읽기는 하나 제품에서 안 도는 곳 — AST 로 찾았고 호출자를 셌다)
+```
+trace._occurred_epoch · trace._hop    호출자 시험뿐
+explorer._edge_rows                   호출자 0
+_seed_node 의 사건 · 점 갈래           decode_node_id 가 엔티티만 돌려 닿지 않음
+InMemoryEvidenceLookup(시험 대역)      제품 자리와 같은 한 함수를 부르게 한다 — 안 그러면 시험이 다른 규칙을 잰다
+```
+
+**여쭐 것**
+```
+① 새 basis 값 낱말 — "timeless" 로 갈까요
+② one 술어 현재값 · 등록 속성 최신값 — 시각 없는 원자끼리는 시각으로 겨루지 않게(모두 현재 · 다르면 겹침으로 보임) 할까요,
+   ingested 는 «도착 순서»라도 쓸까요. 소유자 b 는 「같은 규칙」 — 그러면 dt_job 등록 속성이 바뀐 적 있는 것들은 최신값 대신 겹침으로 보인다
+③ 가져오기 예산 순서(최신부터 자름) — 시각 없는 원자를 맨 앞으로 둘까요(구조가 먼저 닿음), 저장된 시각 그대로 둘까요(오늘과 같음, 순서에 뜻 없음)
+④ 펼친 보기(ledger_atom_rows)에 basis 칸을 더할까요 — 보기 칸이 바뀌면 샘플 표 선언 · DDL 오라클도 같이
+```
+
+---
+
+## [10-02 오후] 걸음 규칙 계약 — 서버 반쪽 채점 (총괄 2dcf6fb71) — 4fddd10d8
+
+```
+무엇    server/tests/test_walk_step_contract.py — 클라가 올린 contracts/walk_step/vectors.json 을 그대로 읽는다(벡터는 손대지 않음)
+어떻게  공식을 다시 적지 않고 «제품 자리로» 걷는다: 벡터마다 씨앗 -> … -> from -> to 사슬을 만들어
+        _reach(표의 행 · 순위) 한 번, 그래프 걷기(subgraph — 가져오기 가르기 · _step) 한 번. 둘 다 _held_to_names 를 묻는다
+결과    서버 22 통과(벡터 11 × 두 자리) · 클라 하니스 11 통과 0 갈림
+픽스처 한 번 틀림  원자를 recipe@1 로 적었더니 못 찾음 — 원장은 버전 없는 타입으로 저장하고 걷기가 씨앗 철자를 벗긴다. 원자는 버전 없이, 씨앗은 호출자 철자 그대로로 고침
+```
+**변이** (이 파일만)
+```
+baseline                                 22 passed
+the seat ignores where the walk starts   4 failed, 18 passed
+the seat holds nothing                   6 failed, 16 passed
+the fetch split asks no seed             2 failed, 20 passed
+_step asks no seed                       2 failed, 20 passed
+_reach opens every seed, not its own     22 passed
+after restore                            22 passed
+```
+`_reach opens every seed` 는 이 벡터로 못 본다 — 벡터가 씨앗 하나짜리라서. 그 변이는 test_a_static_seed_takes_its_first_step_into_the_world.py 가 잡는다(c46163324 보고)
