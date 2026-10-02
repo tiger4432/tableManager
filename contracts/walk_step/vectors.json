@@ -1,0 +1,35 @@
+{
+  "$comment": [
+    "THE WALK'S STEP RULE, scored on both halves (lead 2dcf6fb71).",
+    "",
+    "A step from -> to, the `step`-th from the seed (0 = the seed's first step), is TAKEN unless",
+    "`from` is static, `to` is not, and it is not the seed's first step (owner 10-02 「첫걸음은 열어」).",
+    "",
+    "🔴 WHY THIS EXISTS. The client spells the server's rule a second time, and when the server",
+    "opened a static seed's first step (c46163324) the client copy kept the old rule with no",
+    "error - its route list dropped the very walks the server now takes. These vectors make a",
+    "change on either side red on the other.",
+    "",
+    "`static_types` are BARE names, as both halves hold them (client `staticTypes()`, server",
+    "`_static_types()` strip the version). `from` / `to` may carry a version (`recipe@1`) - the",
+    "follow list asks with the declared spelling, the route list with bare names; both must answer.",
+    "",
+    "Server half: takes = not (_held_to_names(bare(from), step == 0, static_types) and bare(to) not",
+    "in static_types). `step == 0` is the server's `starts_here` (the near node is the seed)."
+  ],
+  "server": "server/ledger_api/ledger_subgraph.py _held_to_names(kind, starts_here, static_types)",
+  "client": "client2/src/walk/derive.js walkTakesStep(statics, from, to, step)",
+  "cases": [
+    {"id": "dynamic_to_dynamic", "static_types": ["recipe", "quantity", "defect_kind"], "from": "wafer", "to": "die", "step": 1, "takes": true},
+    {"id": "dynamic_to_static", "static_types": ["recipe", "quantity", "defect_kind"], "from": "wafer", "to": "recipe", "step": 1, "takes": true},
+    {"id": "static_to_static", "static_types": ["recipe", "quantity", "defect_kind"], "from": "quantity", "to": "defect_kind", "step": 1, "takes": true},
+    {"id": "static_to_dynamic_first_step", "static_types": ["recipe", "quantity", "defect_kind"], "from": "recipe", "to": "wafer", "step": 0, "takes": true},
+    {"id": "static_to_dynamic_second_step", "static_types": ["recipe", "quantity", "defect_kind"], "from": "recipe", "to": "wafer", "step": 1, "takes": false},
+    {"id": "static_to_dynamic_deeper", "static_types": ["recipe", "quantity", "defect_kind"], "from": "defect_kind", "to": "defect", "step": 2, "takes": false},
+    {"id": "versioned_static_second_step", "static_types": ["recipe", "quantity", "defect_kind"], "from": "recipe@1", "to": "wafer@1", "step": 1, "takes": false},
+    {"id": "versioned_static_first_step", "static_types": ["recipe", "quantity", "defect_kind"], "from": "recipe@1", "to": "wafer@1", "step": 0, "takes": true},
+    {"id": "static_to_static_first_step", "static_types": ["recipe", "quantity", "defect_kind"], "from": "quantity", "to": "quantity", "step": 0, "takes": true},
+    {"id": "dynamic_to_dynamic_first_step", "static_types": ["recipe", "quantity", "defect_kind"], "from": "wafer", "to": "die", "step": 0, "takes": true},
+    {"id": "no_static_types", "static_types": [], "from": "recipe", "to": "wafer", "step": 1, "takes": true}
+  ]
+}
