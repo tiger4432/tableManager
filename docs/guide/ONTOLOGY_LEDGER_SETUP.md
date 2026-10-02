@@ -694,7 +694,7 @@ Vocabulary는 “어떤 문장이 문법적으로 가능한가”를 정한다. 
 | `implementation_id/version` | trusted mapper 코드 선택 |
 | `unit.kind` | `event`, `row`, `group_by` 중 하나 |
 | `unit.columns` | `group_by` mapper에서만 필요한 grouping columns |
-| `input_columns` | relation 에서 mapper가 읽을 컬럼 전수 |
+| `input_columns` | 코드 맵퍼가 선언 «밖»에서 읽는 컬럼 — 🆕 10-02 `a5fe51b3f` 바인딩 · 엔티티 속성 · 묶음 · `when` 칸은 읽기가 저절로 싣는다(~~읽을 컬럼 전수~~) |
 
 Mapper는 Atom, predicate payload, Ledger 7컬럼을 직접 만들지 않는다. 공통
 `BaseLedgerMapper.map()` 경계를 통해 `RoleEmission`만 반환한다. subject/object/time/qualifier

@@ -116,7 +116,7 @@ Link type    inspected  Wafer -> Die                              backing datase
 ## 2. 두 줄 (완성의 정의)
 ```
 「운영에서는 엔티티 선언에 attributes 이름을 적고, 소스의 bind.entities 에서 그 이름에 컬럼을 «한 번» 매기면 됩니다」
-⚠️ 소스가 `map.input_columns` 를 «명시»했으면 그 컬럼을 거기에도 — 안 적으면 검증기가 그 경로를 댑니다(빈 목록이면 기본값이 전부라 이 줄이 없음, 큐 S-52-c)
+🆕 10-02 `a5fe51b3f` — 그 컬럼을 `map.input_columns` 에 다시 적지 않습니다. 읽기가 저절로 싣고 검증기도 요구하지 않습니다(전에는 「Profile column … is missing」)
 ```
 
 ## 3. 이 예시가 «안» 보여 주는 것 (일부러)
