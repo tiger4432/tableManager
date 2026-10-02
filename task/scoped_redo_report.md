@@ -70782,3 +70782,35 @@ sqlite 전체 7,695 통과 · 실패 19 = 늘 같은 다섯 + 이 판의 가짜�
 첫 채우기 이 박스 색인 행 1,215,824 (소스 11) — 소스마다 --whole-source --apply 로 채움. 율은 안 쟀다
 ```
 다음: 위 남은 것 -> (나) 착지 -> 쓰기 문 성능(bce43236b) -> e11bb4de0 -> 338abb9f3 -> 세상
+
+---
+
+## [10-03 아침] 착지 — 이주 add_outbox_ledger_state 가 말없이 기다리지 않는다 (총괄 a3d19dc51 · 응용 c4f0323cc) — 2855783d3
+
+어느 DB · 어느 스키마 · 지운 것 — assy_test 시험 스크래치 스키마뿐(카나리아 pg_namespace 1). 🔴 지운 것 하나 더: 제 변이 실행(잠금 상한을 뺀 판)이 멈춘 채 남긴 pytest(pid 40104)를 끝냈고, 그 실행이 남긴 스키마 assy_pytest_pg_40104_gw0 를 이름 대고 DROP(assy_test). 박스 DB 에는 안 씀
+
+**먼저 잰 것 (스크래치 스키마, 잠금 상한 3 s)**
+```
+blocker=none CIC=('ok', 0.01) valid=True | ADD COLUMN=('ok', 0.0)
+blocker=select CIC=('ok', 0.01) valid=True | ADD COLUMN=('LockNotAvailable: 오류:  잠금 대기 시간 초과로 작업을 취소합니다.', 3.01)
+blocker=insert CIC=('LockNotAvailable: 오류:  잠금 대기 시간 초과로 작업을 취소합니다.', 3.01) valid=False | ADD COLUMN=('LockNotAvailable: 오류:  잠금 대기 시간 초과로 작업을 취소합니다.', 3.01)
+```
+-> 읽다 쉬는 세션은 칸 추가만, 쓰다 쉬는 세션은 둘 다 붙잡는다. 끊긴 색인은 INVALID 로 남는다. 잠금 상한은 둘 다 끊는다
+-> 응용이 본 500 s 는 이 자리일 수도 있지만, 그 파일 첫 시험(2,000 행 재기동)이 원래 길다(제 실행에서 그 파일 590 s) — 둘 다 가능, 어느 쪽인지는 안 쟀다
+
+**한 일**
+```
+이주     각 단계(칸 추가 · 끊긴 색인 지우기 · 색인)를 lock_timeout 30 s 안에서 — 단계 전에 붙잡을 수 있는 세션을 찍고,
+         넘으면 「STOPPED at <단계>: … pid 상태 초 application_name」 + 다음 행동 한 줄, 종료 코드 3
+         보고에 index valid=True/False/None
+순서     RUN.md · DEPLOY_SETUP 8-decies · RELEASE_LOG: 앱을 끈다 -> 이주 -> 앱을 켠다. 오늘 순서도 1 앱 끔 · 2 이주 · … · 5 앱 켬
+         빠졌던 셋도 넣음 — 앱 켠 뒤 hold 칸 확인 SQL 과 그 뜻 · 시간 어림마다 「운영은 안 쟀다」 · 다시 세기를 꺼 두는 까닭
+```
+**게이트 (pg)** — 쓰다 쉬는 세션을 쥔 채 이주 -> 「add column」 단계에서 그 pid 를 대고 멈춤 -> 세션이 끝난 뒤 다시 -> 칸 · 색인 다 섬 · 색인 단계에서 끊김 -> INVALID -> 다음 실행이 지우고 다시 세움 · 기존 이주 시험은 자기 세션을 먼저 닫음
+변이(카나리아 = 안 바꾼 첫 판)
+   none (canary)                            3 passed, 7978 deselected, 10 warnings
+   no lock timeout                          HUNG (cut at 150 s)
+   an invalid index is not dropped          1 failed, 2 passed, 7978 deselected, 10 warnings
+   the stop does not name the sessions      2 failed, 1 passed, 7978 deselected, 10 warnings
+
+다음: (나) 행 지문 착지(총괄 야간 판정 둘 반영) -> 쓰기 문 성능 -> 지움 다시 세기 -> 338abb9f3 -> 세상
