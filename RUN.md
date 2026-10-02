@@ -1,5 +1,22 @@
 # 지금 돌리면 되는 것
 
+> ## [10-02 오후] **배포 뒤 운영 순서 — 다이 references · 키 철자 하나 (총괄 6736254fd) — 이주 «불필요» · 재기동 «필요»**
+>
+> ```
+> 1 선언     config/ontology/ledger_config.json 의 die@1 에 references 목록 하나(아래 references 절의 예시) — 재기동 «전»에 적어도 된다
+> 2 재기동   run_app.bat 전체. 로그 [Ledger] re-stamped N cursor(s) … — 다이를 부르는 소스들의 지문이 새로 찍힘(자리 그대로)
+> 3 다이를 부르는 소스 전부 다시 번역 — 키 철자 하나(7.0 -> '7', 7350027a6) 와 references 원자가 같이 들어온다
+>     소스 목록   GET /api/ledger/declaration 의 sources[].emits 에 in_container@1 이 있는 소스
+>     소스마다    python -m ledger.backfill --source <소스> --whole-source            (미리보기 — relation_rows 가 행 수, 안 씀)
+>                python -m ledger.backfill --source <소스> --whole-source --apply
+>     시간 어림   행 수 × 5.85 s / 1,000 (박스 die_inspection 117,742 행 = 11분 28초) — 1,000 행당 5 s 규격을 넘는다
+> 뜻           3 을 다 돌리기 전에는 같은 다이가 두 철자로 갈려 걷기에서 두 노드로 보인다 — 다 돌리면 하나
+>              한 소스만 돌리고 멈추면 그 소스의 다이만 새 철자 — 나머지를 이어서 돌린다
+> 급할 때       선언에서 references 를 지우고 재기동(이미 쓴 원자는 3 을 다시 돌리면 거둬진다)
+> ```
+
+---
+
 > ## [10-02 오후] **그리드 행 지우기 — 답은 지운 수 · 트랜잭션만 — 이주 «불필요» · 재기동 «필요»(run_app.bat 전체)**
 >
 > ```
