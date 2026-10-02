@@ -81,7 +81,7 @@
 >               -> 어드민 Reload Configs & Code (체인 탭 편집기로 저장하면 그 자리에서 다시 읽음)
 > 9 다시 채우기   python server/scripts/chain_replay_cli.py replay dt_log_to_official_dt --apply
 >               뜻: 이벤트를 1,000 행씩 쌓고 바로 끝남. 복사는 체인 워커가 돈다 — 그동안 다른 체인 일은 그 뒤에 줄 선다
->               시간: 시험 스키마 10,000 행에 체인 64.89 s · 원장 23.69 s -> 100만 어림 약 2.5 시간 (운영은 안 쟀다)
+>               시간: 시험 스키마 10,000 행에 체인 64.89 s · 원장 21.59 s((가) 위, 운영 같은 연결 풀) -> 100만 어림 약 2.4 시간 (운영은 안 쟀다)
 > 10 다시 세기 켬  체인 대기열에서 9 의 줄이 사라지면 official_dt_hold_recount 의 "enabled": false 를 지우고 Reload Configs & Code
 > 11 확인        체인 대기열 화면 — 9 는 «한 줄»(잡 하나), 다 돌면 없음
 >               SELECT count(*) FROM official_dt WHERE hold IS NULL OR hold = ''    -- 같은 키 원천 행들의 값이 갈린(또는 원천이 없는) 공식 행 수
