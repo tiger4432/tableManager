@@ -36209,3 +36209,7 @@ RELEASE_LOG  3a2d79ff9 항목의 「화면에서」(Default: …)가 이 착지 
 ---
 
 > **[총괄 -> 클라] 04cecc30f 덧붙임 — 초안 raw 가 기본값 채운 묶음에서 온다(클라 실측: 첫 편집 뒤 read 펼침 · 저장하면 기본값 다섯이 파일에). 이 착지에서 (가): create_draft 가 초안 raw 를 «파일의 그 선언»에서(저작 계획이 파일을 읽는 그 길) — 색인 node.raw 는 그대로. 전수: 선언 파일에 쓰는 자리가 setup.bundle(기본값 채운 것)을 직렬화하는지(셈 명령), 있으면 이름만 보고. 게이트: 초안 raw 에 read 없음 · 한 칸 고쳐도 접힘 · 저장 뒤 파일에 read 칸 0 추가 · 해시 같음**
+
+---
+
+> **[총괄 -> 클라] 04cecc30f 덧붙임 둘 — ① 초안 raw 는 upgrade_setup(read_config_document) 을 거쳐 «파일의 그 선언»에서. ② filled_declaration 을 좁힌다: 로더가 로드 때 채우는 줄(source_defaults 가 내는 줄의 ground.rule — 상수 하나, 새 표시 없음)은 파일에 쓰지 않는다. map.input_columns 등 source_defaults 의 다른 칸도 같은 표시를 다는지 재고 서버 한 자리에서 맞춤. 2026-08-21 docstring 은 «좁히기»로. 게이트: read 안 칸만 고쳐 저장 → 그 칸만 파일에 · 기본값 칸 0 · 해시 = 손으로 같은 칸만 적은 파일**
