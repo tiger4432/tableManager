@@ -63178,3 +63178,10 @@ RUN.md   배포 뒤 「거둠으로 지운 행이 이력과 원장 후속에 간
          입력 칸에 진짜로 필요한 칸(파일 맵퍼가 따로 읽는 칸)이 빠지면 오늘처럼 거절 · 변이 · RELEASE_LOG 항목 · RUN.md
 순서     29047aedc 를 하던 자리에서 멈춤이 싸면 이것 먼저, 아니면 그 착지 바로 뒤
 ```
+
+```
+덧붙임 — c38eae7cf (총괄 전수 조사로 확인)
+   판정 201 의 자동 읽기(setup_registry._binding_select_columns)는 bind.mappings 의 바인딩만 본다 — bind.entities.<T>.attributes 의 칸은 안 본다(총괄이 코드로 봄).
+   그 칸은 오늘 map.input_columns 에 있어야만 읽힌다(빠지면 검사 통과 · 번역 때 missing_binding_column). 이번 착지에서 «자동 읽기에도 넣고» 요구도 함께 뺀다 — 한 쪽만 하면 갈린다
+   코드 맵퍼가 바인딩 밖에서 직접 읽는 칸(dt-job-role 의 dt_job)은 그대로 input_columns 로 적는다
+```
