@@ -1,3 +1,21 @@
+> ## [20:11 디자인] ROW_ID 칸은 row_id 가 있는 관계에만 · 없는 관계의 row_id/id 거르기는 이름 대어 거절 — 총괄 d692af408 · 5b3dfb05e
+
+**잰 것(고치기 전, 프로세스 안 · 쓰기 0)** row_id 가 없는 보기 모델에 row_id 거르기를 실으면 500 이 아니라 S-71 의 일반 거절로 막혔지만, 사유가 «type object … has no attribute 'row_id'» 라는 파이썬 문장이었습니다. 박스 table_config 의 보기 11 중 row_id 를 선언한 것 5, 안 한 것 6 — 그 6 에 cfbe1ceaf 뒤 늘 빈 ROW_ID 칸이 섰습니다(박스 수 · 운영은 모름).
+
+**고친 것** 묻는 자리 하나 — `column_filter.model_has_row_id(model)`: 그 관계의 «모델»에 row_id 칸이 있나. 스키마 라우트의 꼬리와 거르기 문이 둘 다 이것을 부릅니다. 거르기 문은 `row_id`(그리고 같은 칸으로 읽는 `id`)가 그런 관계에 오면 S-71 자리에서 이름 댄 422 로 거절합니다: 「'view_without_row_id' has no row_id, so it cannot be filtered by 'row_id'」.
+- 처음 제안했던 `main.has_row_id` 는 «row_id 가 있는 표(table)인가»(원장 소스 규칙 · `reads_a_row_table`)라 보기는 언제나 아니오 — row_id 를 실제로 가진 보기 5 에서 칸이 사라질 뻔했습니다. 착지 전에 총괄께 바로잡아 드렸습니다.
+- 이미 그 물음에 답하는 함수가 있는지 찾음(서버 · 시험 뺌, `git grep`): hasattr(…, row_id) 0 자리 · 「row_id in …columns」 1 자리(주석) · 이름에 row_id 가 든 함수 12 개. 함수 이름에 row_id 가 든 것들 중 «관계에 row_id 칸이 있나»에 답하는 것은 없었고(`has_row_id` · `setup_registry._declared_row_id` 는 둘 다 `reads_a_row_table` = 표 물음), `hasattr(…, 'row_id')` 로 묻는 자리도 0.
+
+**게이트**
+- `test_the_grid_filters_by_row_id`: 일반 표 · row_id 를 가진 보기에서 거르기가 좁힘(startsWith · contains · equals), row_id 없는 보기에서 `row_id` · `id` 둘 다 이름 댄 422, 칸 목록은 표 · 그 보기에 row_id · 없는 보기에는 없음 · 선언은 그대로.
+- 스키마 라우트나 거르기 문을 부르는 서버 시험 12 파일: 152 통과 · skip 1(뷰가 없는 카탈로그에서 도는 옛 시험). 변이 4 개 중 4 개 잡힘(모든 표에 붙임 · 이름 댄 거절 없음 · 모델 물음이 늘 예 · `id` 를 row_id 로 안 읽음). 계약 13 개 어긋남 0. 클라는 안 바뀜(스키마가 row_id 를 줄 때만 칸을 그림).
+- RELEASE_LOG ROW_ID 항목 · RUN.md 를 «row_id 가 있는 관계»로 고침 · 게이트 항목 38 · 예시 27 로더 통과.
+- 어느 DB · 어느 스키마 · 지운 것 0 — DB 에 쓰는 측정 없음(sqlite 메모리).
+
+**새 함수 · 새 if 중 기존 것과 같은 일** 새 함수 하나(`model_has_row_id`) — 같은 물음에 답하는 자리 0(위 찾음). 새 if 하나(거르기 문의 거절) — S-71 의 일반 거절과 같은 자리 · 같은 모양.
+
+**다음** 원장 소스 폼(04cecc30f) + 서버 timezone 줄.
+
 > ## [20:05 디자인] 걷기 경로 목록 — 자기 고리는 줄 안의 칩, 기본 꺼짐 — 총괄 5d5b8d750 · 6272a890a
 
 **무엇** 묶음 열쇠가 «자기 고리를 뺀» follow 세트입니다. 한 줄 = 그 길 + 그 길이 지나는 타입(도착지 앞까지)의 자기 고리 칩. 칩은 기본 꺼짐 — 줄을 누르면 follow = 길의 술어만 · hops = 길의 홉, 칩을 켜면 그 고리가 follow 에 더해지고 hops +1. 자리는 `pathsBetween` 한 곳이고, 부르는 곳 둘(걷기 화면 · R&D 걷기 상자)이 같은 답과 같은 `routeWith` 를 씁니다. 줄이 이미 걸음으로 밟는 술어(박스 선언의 `leads_to` 가 quantity → defect_kind 걸음일 때)는 칩으로 다시 내놓지 않습니다.
