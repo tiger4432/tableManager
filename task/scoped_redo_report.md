@@ -70704,3 +70704,49 @@ sqlite     맵퍼 · 규칙 시험(-k mapper/rule_loader/chain_rules) 401 통과
 **RUN.md** — 내일 순서 전부(설정 둘 고치고 재기동 한 번 · 비우기 보고 -> 비우기 · 규칙 둘 is_batch, 다시 세기는 꺼 둔 채 · 다시 채우기 · 다시 세기 켬 · census 0 확인 · 급할 때)
 
 다음: (가) 대기열(지어 둠, pg 17 통과) 을 새 main 위로 옮겨 착지 -> (나) 지문 -> e11bb4de0 -> 338abb9f3 -> 세상
+
+---
+
+## [10-02 밤] 착지 — (가) 원장 따라가기 대기열을 아웃박스 행으로 (총괄 bb9b1c19c · 1472ec1cc) — 3bce75e88
+
+어느 DB · 어느 스키마 · 지운 것 — 시험 · 재기는 assy_test 의 시험 스크래치 스키마(assy_pytest_pg_<프로세스>, 픽스처가 끝에 DROP)뿐(카나리아: pg_namespace 1). 이주 시험도 그 스키마의 database_outbox 에서만(칸을 지웠다 다시 더함). 박스 DB 에는 안 씀
+
+**갈림 — 묻지 않고 코드로 정한 것 하나**
+```
+「처리 표시를 원장 번역 뒤로」는 안 했다 — processed_chain 은 브로드캐스트가 기다리는 칸(idx_outbox_undelivered)이라, 옮기면 화면 알림이 번역을 기다린다
+그래서 원장 몫 칸 하나(ledger_state). 꺼내는 술어 processed_chain = true AND ledger_state IS NULL — 그룹 단계가 메모리에 넣던 «그때»와 같다
+```
+**자리 전수 (git grep, 시험 밖)**
+```
+메모리 대기열에 넣기   그룹 단계(ingestion_worker) -> 지움 · backfill 의 자기 프로세스 적재(backfill.py) -> 그대로(CLI 한 프로세스 안에서 넣고 뺌)
+꺼내기               워커 _drain_ledger_followup_sync -> drain_outbox_once · backfill _drain_into -> drain_once 그대로 · 둘 다 같은 _follow
+깊이                 워커 루프 -> 꺼낼 것이 없을 때까지 · 랩 줄의 depth -> outbox_depth · backfill -> 메모리 그대로
+아웃박스 지우는 곳     워커 7일 정리 · ops_purge_outbox_backlog.py — 둘 다 «원장이 따라간 것만»
+처리 표시            mark_processed(그룹 단계) — 안 건드림
+```
+**게이트 (pg)**
+```
+오늘 길(고치기 전 재서 봄)  2,000 행 체인 커밋 -> 재기동 -> 원장 원자 0 / 2,000
+이제                       같은 판 -> 2,000 행 다 원장에(시험 단언)
+체인이 처리한 것만 꺼냄 · 메모리 상한(3)보다 많은 이벤트 다 따라감 · 실패는 목록에 이유와 함께, requeue_failed 로 다시 -> 원자 생김
+규칙 없는 이벤트도 따라감 · 따라가지 않는 종류(SYSTEM_RELOAD)는 done · 7일 정리는 안 따라간 이벤트를 남김
+이주(스크래치 스키마, 두 번) — 처리된 옛 이벤트 done · 안 처리된 것 NULL · 색인 있음
+워커의 따라가기 자리가 아웃박스에서 꺼냄(행동으로)
+변이(각 자리 되돌림 -> 빨강, 안 바꾼 첫 판 = 카나리아)
+   none (canary)                                    8 passed, 7971 deselected, 20 warnings
+   the ledger takes what the chain has not run      1 failed, 7 passed, 7971 deselected, 20 warnings
+   a failed follow is marked done                   1 failed, 7 passed, 7971 deselected, 20 warnings
+   a kind it does not follow stays waiting          1 failed, 7 passed, 7971 deselected, 20 warnings
+   the purge forgets the ledger                     1 failed, 7 passed, 7971 deselected, 20 warnings
+   the migration marks the unprocessed done too     1 failed, 7 passed, 7971 deselected, 20 warnings
+   the worker drains the memory deque               1 failed, 7 passed, 7971 deselected, 20 warnings
+pg 같이 돈 것   33 passed, 7946 deselected, 69 warnings in 698.09s (0:11:38) (따라가기 9 · 복사 18 · 비우기 4 · dtwafer 2)
+전체 시험       11 failed, 7703 passed, 262 skipped, 3 xfailed, 12996 warnings in 827.53s (0:13:47)
+               실패: 늘 같은 환경 다섯 + 이 판이 바꾼 규칙에 걸린 6 (test_a_capped_purge_says_it_was_capped · test_contention_fixes · test_system_schema_drift) — 정리는 «원장이 따라간 줄만», 칸 선언 목록에 새 칸과 이주 이름 -> 시험의 줄 만들기 · 목록을 고쳐 그 파일들 다시 50 통과
+```
+**바뀌는 것 — 운영**
+```
+🔴 재기동 «전»에 이주 한 번(RUN.md 위 절) — 없이 재기동하면 아웃박스 쓰기가 실패
+내일 순서 RUN.md 0 단계에 이주를 넣었고, 9 단계 그물 줄을 python -m ledger followup 으로 바꿨다
+```
+다음: (나) 행 지문 · 수정 누락 census -> 쓰기 문 성능(bce43236b) -> e11bb4de0 -> 338abb9f3 -> 세상
