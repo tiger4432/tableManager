@@ -148,6 +148,9 @@ export const state = {
   colIdToIndexMap: {},
   currentSkip: 0,
   isLoadingMore: false,
+  // a0ae05b60. A row delete is in flight. The context menu calls the same funnel as the button,
+  // so switching the button off alone would let a second delete go out through the menu.
+  isDeletingRows: false,
   hasMoreData: true,
   isNavigating: false,
   navigationWatchdog: null,

@@ -2,7 +2,8 @@ import { API_BASE, WS_URL, CURRENT_USER, pageLimit } from './config.js';
 import { narrowingParams as buildNarrowing } from './narrowing.js';
 import { state } from './state.js';
 import { notANumber, unitText } from './ui_words.js';
-import { refuseWrite, applyWriteGuards } from './write_guard.js';
+import { refuseWrite, applyWriteGuards, writeRefusal } from './write_guard.js';
+import { setDisabledReason } from './disabled_reason.js';
 import { elements } from './dom.js';
 import { activateHistoryTab } from './history_tabs.js';
 import { clearRangeSelection } from './clipboard.js';
@@ -686,8 +687,12 @@ export async function addRows(count) {
 }
 
 // Delete selected rows batch
+//
+// 🔴 a0ae05b60 (소유자 「ㄱ, 한 1만행」). 기다림이 «보입니다» — 지우기 버튼은 사유와 함께 꺼지고
+//    상태줄이 초를 셉니다. 끝나면 그 행들을 «여기서» 뺍니다. 거절은 서버의 문장 그대로에 다음
+//    행동 하나를 붙입니다 — 커밋 뒤 방송에서 실패할 수도 있어 「안 지워졌다」고는 말하지 않습니다.
 export async function deleteSelectedRows() {
-  if (!state.gridApi) return;
+  if (!state.gridApi || state.isDeletingRows) return;
   const selectedNodes = state.gridApi.getSelectedNodes();
   if (selectedNodes.length === 0) {
     alert('No rows selected for deletion');
@@ -699,7 +704,16 @@ export async function deleteSelectedRows() {
 
   if (!confirm(`Are you sure you want to permanently delete the selected ${unitText(rowIds.length, 'row')}?`)) return;
 
-  elements.performanceLog.textContent = 'Deleting selected rows...';
+  state.isDeletingRows = true;
+  const startedAt = Date.now();
+  const seconds = () => Math.floor((Date.now() - startedAt) / 1000);
+  const tick = () => {
+    elements.performanceLog.textContent = `Deleting ${unitText(rowIds.length, 'row')} · ${seconds()} s`;
+  };
+  setDisabledReason(elements.deleteRowBtn, 'Deleting…');
+  tick();
+  const timer = setInterval(tick, 1000);
+  let refused = '';
   try {
     const res = await fetch(`${API_BASE}/tables/${state.currentTable}/rows/batch_delete`, {
       method: 'POST',
@@ -713,12 +727,25 @@ export async function deleteSelectedRows() {
     if (res.ok) {
       state.pageCache.clear();
       const result = await res.json();
-      elements.performanceLog.textContent = `Deleted ${unitText(result.deleted_count, 'row')} successfully`;
+      // ⚠️ Only the rows still in the grid: the broadcast may have taken them first, and AG-Grid
+      //    warns once per id it cannot find.
+      const left = rowIds.filter((rowId) => state.gridApi.getRowNode(rowId));
+      if (left.length) state.gridApi.applyTransaction({ remove: left.map((rowId) => ({ row_id: rowId })) });
+      updateLoadedCount();
+      elements.performanceLog.textContent = `Deleted ${unitText(result.deleted_count, 'row')} · ${seconds()} s`;
     } else {
-      throw new Error('Batch delete request failed');
+      refused = await refusalText(res, 'Delete failed');
     }
   } catch (err) {
-    console.error(err);
-    elements.performanceLog.textContent = '❌ Failed to delete selected rows';
+    console.error('Failed to delete rows', err);
+    refused = 'Delete request did not reach the server (network)';
+  } finally {
+    clearInterval(timer);
+    state.isDeletingRows = false;
+    setDisabledReason(elements.deleteRowBtn, writeRefusal());
   }
+  if (!refused) return;
+  const line = `${refused} — reload the table to see which rows remain`;
+  setBadge(elements.performanceLog, line);
+  showToast(line, 'error');
 }

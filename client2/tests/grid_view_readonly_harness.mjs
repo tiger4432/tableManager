@@ -26,6 +26,8 @@
  *      become 「[object Object]」 on the screen
  *   R  a refused READ is an answer, not an exception (C-105): the page's data fetch draws the
  *      server's sentence, empties the grid, and says 「not counted」 rather than 「0」
+ *   W  the row delete WAITS VISIBLY (a0ae05b60): its button off with a reason, the seconds
+ *      counted, no second request, the rows removed on the answer, the server's refusal + next step
  *   S  ONE RULE (C-107): every write control on this screen is armed from the same answer, the
  *      four funnels ask that same answer, and the table says what it is in its own header
  *
@@ -469,6 +471,87 @@ async function suite(M) {
     'R5 a read that is NOT refused still puts rows in the grid');
   realState.gridApi.setGridOption = () => {};
 
+  // ── W: the row delete waits VISIBLY (a0ae05b60, owner 「ㄱ, 한 1만행」) ─────────────────
+  // The clock and the interval are the harness's, so 「12 s」 is a value it set, not one it hoped for.
+  await stageThrough(M.api, 'table');
+  M.guard.applyWriteGuards();
+  const delBtn = document.getElementById('delete-row-btn');
+  const ROWS = ['R1', 'R2', 'R3'];
+  let present = new Set(ROWS);
+  let removed = [];
+  realState.gridApi.getSelectedNodes = () => ROWS.map((id) => ({ data: { row_id: id } }));
+  realState.gridApi.getRowNode = (id) => (present.has(id) ? { data: { row_id: id } } : null);
+  realState.gridApi.applyTransaction = (tx) => {
+    for (const r of (tx && tx.remove) || []) { removed.push(r.row_id); present.delete(r.row_id); }
+    return {};
+  };
+  const saved = { now: Date.now, set: globalThis.setInterval, clear: globalThis.clearInterval,
+    fetch: globalThis.fetch, confirm: globalThis.confirm };
+  let now = 1000000;
+  let ticks = [];
+  let cleared = 0;
+  Date.now = () => now;
+  globalThis.setInterval = (fn) => { ticks.push(fn); return ticks.length; };
+  globalThis.clearInterval = () => { cleared += 1; };
+  globalThis.confirm = () => true;
+  let reply = null;
+  let deletes = 0;
+  // 🔴 EVERY waiting request is held and released together. A mutant that lets a second delete out
+  //    must not hang this file — it must show up as a count.
+  const held = [];
+  const release = () => { while (held.length) held.shift()(); };
+  globalThis.fetch = async (url, opts) => {
+    if (!String(url).includes('/rows/batch_delete')) return saved.fetch(url, opts);
+    deletes += 1;
+    await new Promise((r) => { held.push(r); });
+    if (reply instanceof Error) throw reply;
+    return reply;
+  };
+  const settleW = async () => { for (let i = 0; i < 6; i += 1) await Promise.resolve(); };
+  try {
+    reply = { ok: true, status: 200, json: async () => ({ deleted_count: 3 }) };
+    const running = M.api.deleteSelectedRows();
+    await settleW();
+    ok(delBtn.disabled === true && delBtn.getAttribute('title') === 'Deleting…',
+      `W1 while the delete runs, its button is off and says so [${delBtn.disabled} ${delBtn.getAttribute('title')}]`);
+    now += 12000;
+    for (const fn of ticks) fn();
+    ok(log().textContent === 'Deleting 3 rows · 12 s',
+      `W2 ... and the status line counts the seconds [${log().textContent}]`);
+    const again = M.api.deleteSelectedRows();
+    await settleW();
+    ok(deletes === 1, `W3 a second press while one runs sends nothing — the menu calls the same funnel [${deletes}]`);
+    release();
+    await running;
+    await again;
+    ok(removed.join(',') === 'R1,R2,R3', `W4 when it answers, those rows leave the grid [${removed}]`);
+    ok(delBtn.disabled === false && cleared >= 1 && log().textContent === 'Deleted 3 rows · 12 s',
+      `W5 ... the button is back, the clock stopped, and the line says what and how long [${log().textContent}]`);
+    // the broadcast took R1 and R2 first: only R3 is removed here, so no id is removed twice
+    present = new Set(['R3']); removed = []; ticks = [];
+    const second = M.api.deleteSelectedRows();
+    await settleW(); release(); await second;
+    ok(removed.join(',') === 'R3', `W6 rows the broadcast already took are not removed again [${removed}]`);
+    // a refusal: the server's sentence, then what to do — and nothing leaves the grid
+    present = new Set(ROWS); removed = []; ticks = [];
+    reply = { ok: false, status: 422, json: async () => ({ detail: 'read-only relation: a view cannot be written through' }) };
+    const third = M.api.deleteSelectedRows();
+    await settleW(); release(); await third;
+    ok(log().textContent === 'read-only relation: a view cannot be written through — reload the table to see which rows remain',
+      `W7 a refusal shows the server's sentence and the next step [${log().textContent}]`);
+    ok(removed.length === 0 && delBtn.disabled === false,
+      `W8 ... the rows stay, and the button comes back [${removed} ${delBtn.disabled}]`);
+    reply = new Error('connection reset');
+    const fourth = M.api.deleteSelectedRows();
+    await settleW(); release(); await fourth;
+    ok(log().textContent === 'Delete request did not reach the server (network) — reload the table to see which rows remain',
+      `W9 a request that never reached the server says so [${log().textContent}]`);
+  } finally {
+    Date.now = saved.now; globalThis.setInterval = saved.set; globalThis.clearInterval = saved.clear;
+    globalThis.fetch = saved.fetch; globalThis.confirm = saved.confirm;
+    realState.isDeletingRows = false;
+  }
+
   return { pass: pass - before.pass, fail: fail - before.fail };
 }
 
@@ -542,6 +625,25 @@ const DEFECTS = [
     s => s.replace("(body && typeof body.detail === 'string' && body.detail)", '(body && body.detail)')],
   ['source_rows.js: a caller that omits the flag gets the controls', 'rows',
     s => s.replace('  const actions = writable\n', '  const actions = writable !== false\n')],
+  // ── W (a0ae05b60): the row delete's wait ────────────────────────────────────────────
+  ['api.js: the delete button stays clickable while it runs', 'api',
+    s => s.replace("  setDisabledReason(elements.deleteRowBtn, 'Deleting…');\n", '')],
+  ['api.js: the wait has no clock', 'api',
+    s => s.replace("`Deleting ${unitText(rowIds.length, 'row')} · ${seconds()} s`", "`Deleting ${unitText(rowIds.length, 'row')}`")],
+  ['api.js: a second delete goes out while one runs', 'api',
+    s => s.replace('  if (!state.gridApi || state.isDeletingRows) return;', '  if (!state.gridApi) return;')],
+  ['api.js: the rows wait for the broadcast', 'api',
+    s => s.replace("      if (left.length) state.gridApi.applyTransaction({ remove: left.map((rowId) => ({ row_id: rowId })) });\n", '')],
+  ['api.js: rows the broadcast took are removed again', 'api',
+    s => s.replace('      const left = rowIds.filter((rowId) => state.gridApi.getRowNode(rowId));', '      const left = rowIds;')],
+  ['api.js: the delete button stays off after the answer', 'api',
+    s => s.replace('    setDisabledReason(elements.deleteRowBtn, writeRefusal());\n', '')],
+  ['api.js: the delete refusal is ours, not the server`s', 'api',
+    s => s.replace("      refused = await refusalText(res, 'Delete failed');", "      refused = 'Delete failed';")],
+  ['api.js: a delete refusal leaves no next step', 'api',
+    s => s.replace('  const line = `${refused} — reload the table to see which rows remain`;', '  const line = refused;')],
+  ['api.js: the in-flight mark is never cleared, so delete locks after one run', 'api',
+    s => s.replace('    state.isDeletingRows = false;\n', '')],
 ];
 const CONTROLS = [
   ['grid.js: a local rename', 'grid',
