@@ -69767,3 +69767,88 @@ PG 전체   6 failed, 181 passed, 7722 deselected in 348.83s (0:05:48) · 알려
    ㄴ 운영에서 잰다. (임시 선언으로 박스 원장에 쓰는 지름길은 안 했다 — 선언에 없는 번역 버전의 원자가 남고 다른 레인이 그 원장을 잰다)
 ③ dt_job 의 ingested 원자도 이제 창을 늘 지나고 엣지 시각이 비어 보임 — 소유자 b 대로. R&D 보드 시간축에서 dt_job 사실이 빠져 보일 수 있음(그룹 시각 · 처음 본 시각)
 ```
+
+---
+
+## [10-02 오후] 바인딩에 적은 칸을 맵퍼 입력 칸에 다시 적으라는 요구를 뺌 (총괄 c38eae7cf + 33c930e98) — a5fe51b3f
+
+**먼저 잰 것 — 자동 읽기(판정 201)가 맵퍼 종류 전부에 걸리나: 걸린다. 요구를 남기는 종류 0**
+```
+맵퍼 종류    제품에 등록된 것은 둘 — declarative-role · dt-job-role
+읽는 자리    event_frame.base_select_columns 한 곳. 소스마다 부르고 맵퍼 종류를 묻지 않는다 · 맵퍼는 그 프레임을 통째로 받는다
+박스 — 라이브 선언을 임시 폴더에 복사(쓰기 없음), 뜨는 소스 5: die_inspection · dt_job · lot_slot_wafer · transfer_event · wafer_process_recipe
+                                     고치기 전                                  고친 뒤
+입력 칸에서 선언이 부르는 칸을 다 뺌     5 소스 전부 거절                        거절 0 · 읽는 칸이 선언 그대로와 같은 소스 5 / 5
+dt_job 에서 dt_eqp(엔티티 속성)만 뺌     검사 통과 · 번역 missing_binding_column       원자 28 개(첫 쪽 1014 행 · 요약값 8ea98acb231b)
+dt_job 선언 그대로                      원자 28 개(첫 쪽 1014 행 · 요약값 8ea98acb231b)                         원자 28 개(첫 쪽 1014 행 · 요약값 8ea98acb231b)
+지문이 움직인 소스   dt_job — 엔티티 속성 칸이 읽기 재료에 들어가서. 재기동 때 다시 찍힘(자리 그대로)
+잠긴 칩이 는 소스    13 / 15 · 폼 칸 상태가 바뀐 소스 0
+```
+**무엇을 지었나**
+```
+검사기   「Profile column X at … is missing」(교차 검사) · 「group_by columns must be mapper input columns」(맵퍼 검사) 두 자리를 걷어냄
+         map.unit.columns 는 «관계에 있나»를 따로 묻는다(unknown_column) — 전에는 input_columns ⊆ 관계가 대신 물었다
+읽기     바인딩 칸 열거 하나(setup_bundle._profile_binding_columns)가 bind.entities 속성까지 — setup_registry 의 사본은 지움
+         맵퍼 묶음 칸(map.unit.columns)도 읽기가 싣는다(read.group_by 와 같은 항)
+화면     row.locked = 런타임 식 그대로(event_frame.locked_select_columns 에 바인딩 항) — 바인딩 · when · 맵퍼 묶음 칸이 잠김
+         입력 칸 기본값 = 관계 칸 − 잠긴 칸(다시 더하던 _with_required_columns 지움) · 이미 적힌 값은 그대로
+문서     가이드 ONTOLOGY_LEDGER_SETUP.md(잠긴 칩 절 · 증상표) · RELEASE_LOG 항목 · RUN.md
+```
+**선언 예시가 로드되나** — RELEASE_LOG 항목의 ledger_sources 블록을 파일에서 읽어 출하 샘플의 dt_job 자리에 넣고 load_setup:
+```
+example sources: ['dt_job'] | planned: True | input_columns: [] | read selects: ['created_at', 'dt_eqp', 'dt_job', 'event_time', 'netdie_count', 'row_id']
+```
+**게이트** — 출하 샘플 + 박스 dt_job 모양의 묶음 소스(dt_log · dt-job-role), 미리보기 프레임은 base_select_columns 로 자른 행
+```
+시험  tests/test_a_column_the_declaration_names_is_read_without_repeating_it.py 16 passed in 0.69s
+        행 × 칸   transfer_event(키 칸 바인딩 = 소유자 경우) · dt_job(엔티티 속성) · wafer_process_recipe(when) · dt_job_group(묶음 + 코드 맵퍼)
+                  × 검사 통과 · 읽는 칸에 다 듦 · 원자가 입력 칸을 적은 선언과 같음 · 잠긴 칩에 보임 · 기본값에 안 듦
+        더        폼 기본값으로 다시 지은 선언이 검사 통과(S-196 증상 대조군) · 맵퍼 묶음만 부르는 칸이 읽히고 · 없는 칸이면 unknown_column ·
+                  반쯤 쓴 bind 넷에서 폼이 안 깨짐
+      tests/test_ledger_setup_bundle.py · tests/test_ledger_event_frame.py 116 passed, 1 skipped in 1.38s (뒤집은 넷 포함)
+변이  baseline                               132 passed, 1 skipped
+      bind.entities not walked               6 failed, 126 passed, 1 skipped  <- test_a_bound_attribute_column_is_read_without_a_third_place, test_every_column_the_declaration_names_is_selected[dt_job], test_every_column_the_declaration_names_is_selected[dt_job_g
+      validator demands bound columns        6 failed, 118 passed, 1 skipped, 8 errors  <- test_a_bound_attribute_column_is_read_without_a_third_place, test_a_bound_column_need_not_be_repeated_in_mapper_inputs, test_a_bundle_rebuilt_from_the_forms_default_is_accepted_by_
+      read skips bound columns               10 failed, 122 passed, 1 skipped  <- test_a_bound_attribute_column_is_read_without_a_third_place, test_every_column_the_declaration_names_is_selected[dt_job], test_every_column_the_declaration_names_is_selected[dt_job_g
+      read skips the mapper group            1 failed, 131 passed, 1 skipped  <- test_a_column_only_the_mappers_group_names_is_selected_and_m
+      form does not lock bound columns       1 failed, 131 passed, 1 skipped  <- test_the_form_locks_the_named_columns_and_leaves_them_out_of
+      form does not lock when columns        1 failed, 131 passed, 1 skipped  <- test_the_form_locks_the_named_columns_and_leaves_them_out_of
+      form does not lock the mapper group    1 failed, 131 passed, 1 skipped  <- test_a_column_only_the_mappers_group_names_is_selected_and_m
+      group existence unchecked              2 failed, 130 passed, 1 skipped  <- test_a_column_only_the_mappers_group_names_is_selected_and_m, test_group_by_mapper_unit_requires_columns_that_exist
+      after restore                          132 passed, 1 skipped
+```
+**스위트** (C:/wt-impl, 바탕 c7d5bbdfa (착지 바탕 7679d868c — 사이에 바뀐 것은 docs · task 뿐, server 0: git diff --stat c7d5bbdfa 7679d868c) — 비PG 는 event_frame 시험을 뒤집기 «전»에 돌렸다. 그 하나가 아래 알려진 밖 줄)
+```
+비PG 전체  6 failed, 7678 passed, 228 skipped, 3 xfailed in 856.54s (0:14:16) · 알려진 다섯 밖: 1
+   tests\test_ledger_event_frame.py::test_a_bound_attribute_column_must_be_declared_like_every_other_bound_column
+PG 전체   6 failed, 181 passed, 7728 deselected in 352.21s (0:05:52) · 알려진 밖: 0
+클라 하니스  159 harnesses ― 157 gated, 2 on the known-red debt list (2 still red, 0 recovered).
+클라 계약    ✓ 13 contracts, no divergence.
+```
+**말할 것**
+```
+① 지시에 없던 것 하나 — 맵퍼 묶음 칸(map.unit.columns)을 읽기가 싣게 했다. 지시의 「묶음(group_by)이 부르는 칸은 저절로 든 것」이
+   map.unit.columns 에도 참이 되려면 필요했다(read.group_by 는 전부터 읽혔다). 대신 그 칸이 관계에 있는지는 따로 묻는다
+② 「입력 칸에 진짜로 필요한 칸(파일 맵퍼가 따로 읽는 칸)이 빠지면 오늘처럼 거절」 — 오늘 검사기에 그런 거절은 없다(코드로 봄).
+   검사기는 코드 맵퍼가 무엇을 읽는지 모른다. 제품의 코드 맵퍼 dt-job-role 이 직접 읽는 칸은 dt_job 하나이고 그건 identity 라 늘 읽힌다.
+   선언 밖 칸을 읽는 코드 맵퍼가 그 칸을 입력 칸에서 빼면 번역 때 멈춘다 — 오늘과 같다(그런 맵퍼가 제품에 없어 재지는 못함)
+③ 뒤집은 시험 — S-196(판정 306-b)의 바인딩 반쪽:
+   test_a_derived_input_column_list_covers_the_group.py 은퇴(그 증상 「폼 기본값으로 지은 선언이 검사에서 거절」은 새 시험의 대조군)
+   test_ledger_setup_bundle.py 셋 이름을 바꿔 뒤집음 — mapper_inputs_cover_profile_columns · group_by_mapper_unit_requires_closed_input_columns ·
+   a_column_name_is_judged_against_two_different_universes
+   test_ledger_event_frame.py 하나 — a_bound_attribute_column_must_be_declared_like_every_other_bound_column(S-52-c 「세 자리」).
+   그 시험이 「셋째 자리를 없애는 판정이 오면 빨개져서 갱신을 부른다」고 스스로 적었고, 전체 스위트에서 빨개져서 찾음 —
+   뒤집은 것은 아무것도 고르지 않는 칸(unselected_note)으로 재서 변이에 빨개짐
+④ 화면 — 잠긴 칩은 GET /admin/ontology-explorer/authoring/plan 이 내는 row.locked 를 같은 함수(authoring_plan)로 쟀다.
+   그 라우트는 어드민 토큰 뒤라 브라우저로 열지 않았다. 클라 코드 변화 0
+   클라 주석 하나가 낡음 — client2/src/ontology_explorer_view.js 의 「every one of them REQUIRED there by the validator」(클라 레인 몫)
+⑤ 곁가지 — 폼의 unit.columns 후보에 엔티티 속성 칸이 더해진다(열거가 하나가 되어서. 박스 dt_job: dt_eqp)
+⑥ CODE_MAP 의 required_mapper_input_columns 언급은 응용 세션 문서 정비 몫으로 둠
+⑦ 「다음 착지에 실어」 둘(펼친 보기 basis 칸 · RELEASE_LOG references 예시를 목록 하나로)은 이 착지가 이미 시험을 다 돈 뒤 받아서,
+   바로 뒤 작은 착지 하나로 따로 낸다 — 지시 하나에 커밋 하나. 그 뒤 7679d868c(목록 하나로)
+```
+**여쭐 것**
+```
+① 코드 맵퍼가 선언 밖에서 읽는 칸을 검사기가 알 자리(맵퍼 클래스가 읽는 칸을 선언) — 지을지
+② db8f71231 계획과의 이음 — map.unit.columns 는 이제 읽기도 싣는다. read.group_by 와 «두 번 적음»은 그 계획에서 다룬다
+```
