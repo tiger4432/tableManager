@@ -69852,3 +69852,65 @@ PG 전체   6 failed, 181 passed, 7728 deselected in 352.21s (0:05:52) · 알려
 ① 코드 맵퍼가 선언 밖에서 읽는 칸을 검사기가 알 자리(맵퍼 클래스가 읽는 칸을 선언) — 지을지
 ② db8f71231 계획과의 이음 — map.unit.columns 는 이제 읽기도 싣는다. read.group_by 와 «두 번 적음»은 그 계획에서 다룬다
 ```
+
+---
+
+## [10-02 오후] 다이 → 웨이퍼 박스 시험 — 라이브 선언에 references 를 넣고 다시 번역 (총괄 7679d868c, 소유자 ㄱ)
+
+**결론 먼저** — references 원자는 썼고 다이 → 웨이퍼로 닿는다. 그런데 다시 번역한 두 소스의 다이 키 철자가 바뀌어(7.0 -> '7', 7350027a6),
+뷰를 읽는 네 소스(다시 번역 못 함)의 같은 다이와 «다른 노드»가 됐다. 키 철자를 무시하고 세면 닿는 다이 139,688 -> 141,093 (계획 때 잰 상한과 같음)
+
+**한 것**
+```
+백업     C:\Users\kk980\Developments\assyManager\server\config\ontology\ledger_config.json.bak-20261002-160649
+넣은 것  {"keys": ["mat_id", "x", "y", "mat_type"], "references": [{"edge": "in_container@1", "to": {"entity": "wafer@1", "keys": {"wafer": "mat_id"}}, "from": {"when": {"mat_type": "Wafer"}}}]}
+번역     다이를 부르는 뜨는 소스 die_inspection · transfer_event — 다시 번역(--whole-source --apply, 코드 = main 98112d1ba)
+   die_inspection  행 117,742 · 쪽 118 · 거둠 117,743 · 다시 씀 235,484(새로 235,484 · 겹쳐 버림 0) · 688.2 s · 1,000 행당 5.85 s
+   transfer_event  행 1,405 · 쪽 2 · 거둠 1,405 · 다시 씀 2,810(새로 2,810 · 겹쳐 버림 0) · 10.7 s · 1,000 행당 7.60 s
+```
+**전후 (박스 원장)**
+```
+                                    전              후
+Wafer 다이 (저장된 철자대로)           401,704       509,777
+  그 중 웨이퍼에 닿음                  139,688       146,798
+Wafer 다이 (철자 무시: mat_id · x·y 를 수로 · mat_type)  401,704  401,704
+  그 중 웨이퍼에 닿음                  139,688       141,093
+references 원자 [원자, 다이]           0               {"die_inspection": [117742, 108815], "transfer_event": [1405, 1405]}
+in_container 원자 전체                37,218          156,365
+소스별 원자 수                        {"die_inspection": 117743, "transfer_event": 1405} -> {"die_inspection": 235484, "transfer_event": 2810}
+transfer 원자 시각 (표본 다이 50, 철자 무시)   전 50 원자 · 후 50 원자 — (술어 · occurred_at · basis) 같음
+다이 x 철자 (주어 쪽, 후)              bonded_from number 55,827 · bw_dt_seat number 371,673 · die_inspection string 117,742 · dt_transfer number 29,078 · transfer_event string 2,810 · void_observation number 103,863
+```
+「전」 은 철자대로 센 수 하나 — 그때 transfer_event 표본 50 은 number 였다.
+
+**걷기 — 새 코드를 프로세스 안에서 불러, 다이 씨앗에서 1 걸음** (돌던 걷기 서버는 09-30 코드라 창 규칙이 옛것)
+```
+씨앗(references 원자의 다이)         {"die": {"x": "10", "y": "5", "mat_id": "SYN-XFER-CORE-W07", "mat_type": "Wafer"}, "stored time": "2026-08-22T00:00:00+09:00"}
+  창 없음                           in_container -> 웨이퍼 1 개(엣지 시각 None) · 엣지 전체 2 · 창 밖으로 안 가져온 원자 None
+  창 = 저장 시각 하루 뒤부터          in_container -> 웨이퍼 1 개(엣지 시각 None) · 엣지 전체 1 · 창 밖으로 안 가져온 원자 1
+같은 다이를 두 철자로                 {"new": {"x": "1", "y": "10", "mat_id": "SYN-CX-BW-001", "mat_type": "Wafer"}, "old": {"x": 1.0, "y": 10.0, "mat_id": "SYN-CX-BW-001", "mat_type": "Wafer"}}
+  새 철자 노드에서                   엣지 2 (in_container · inspected) · in_container -> 웨이퍼 1
+  옛 철자 노드에서                   엣지 3 (bonded_from · in_container · transfer) · in_container -> 웨이퍼 1
+```
+**되돌리는 법** — `ledger_config.json.bak-20261002-160649` 을 `config/ontology/ledger_config.json` 자리에 복사하고 재기동. 이미 쓴 references 원자는 남는다 — 지우려면 두 소스를 다시 번역(--whole-source --apply)
+
+**말할 것**
+```
+① 모양 — 총괄 답 ㄱ 대로 «목록 하나». 박스 서버(09-30 코드 f4d80664f)가 읽으면 어떻게 되나를 그 코드를 풀어 놓고 잼:
+   목록 — 뜨는 소스 잃음 0 · 지문 움직임 0 / 한 개 객체 — 빠짐 entity|die@1 · source_plan|die_inspection · 뜨는 소스 잃음 die_inspection · transfer_event
+② 걷기는 새 코드를 프로세스 안에서 불러 잼(돌던 걷기 서버는 09-30 코드라 창 규칙이 옛것 — 재기동 전까지 화면은 옛 규칙)
+③ 돌던 체인 데몬(09-30 코드)은 재기동 전까지 다이 소스의 «새 행»을 옛 코드로 번역 — 그 행엔 references 원자가 없다. 재기동은 소유자 몫
+④ 키 철자 갈림 — 7350027a6(10-01, 총괄 7233a7a31)이 엔티티 키를 칸의 선언 타입으로 접는다(number 칸 7.0 -> '7').
+   그 RUN.md 가 「다시 번역 전에는 같은 다이가 둘로 보일 수 있음 — 다시 번역하면 옛 꼴이 빠진다」고 했고 대상 여섯을 적었다.
+   그런데 그 중 넷(bonded_from · bw_dt_seat · dt_transfer · void_observation)은 뷰를 읽어 지금 뜨지 않는다(f3bc02f6e) — 다시 번역할 수 없다.
+   그래서 이 박스에서는 다이 소스를 다시 번역하는 순간 그 소스의 다이가 뷰 소스의 다이와 다른 노드가 된다. 이번 시험이 그 첫 번역이다
+⑤ 규격 — die_inspection 1,000 행당 5.85 s (규격 ≤ 5 s 넘음). 데몬이 같이 돌던 박스 · 원장이 차 있는 상태. 계획 때 잰 3.1 s 는 빈 원장
+```
+**여쭐 것**
+```
+① 다이 노드가 두 철자로 갈린 상태 — 그대로 둘지, 되돌릴지
+   ㄱ 그대로 — references 는 살아 있고 새 철자 쪽에서 닿는다. 뷰 소스 넷이 표가 되어 다시 번역될 때까지 갈림이 남는다
+   ㄴ 되돌림 — 선언 백업으로 바꾸고 두 소스를 09-30 코드로 다시 번역(옛 철자로 돌아감, references 원자는 없어짐)
+   ㄷ 걷기 · 원장 쪽에서 키 철자를 하나로 보는 일 — 짓는 일이라 지시가 필요
+② 재기동 — 돌던 데몬(09-30 코드)은 두 소스의 새 행을 옛 철자 · references 없이 번역한다. 재기동은 소유자 몫 그대로
+```
