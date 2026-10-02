@@ -201,6 +201,10 @@ body {
   min-width: 180px;
 }
 
+#table-search {
+  width: 140px;
+}
+
 .search-group {
   position: relative;
 }

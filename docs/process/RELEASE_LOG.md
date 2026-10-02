@@ -9,10 +9,32 @@
 
 ---
 
+## 2026-10-02 · 메인 그리드 표 고르기 — 운영자가 적은 묶음 · 검색
+
+- **무엇** — 메인 그리드의 표 드롭다운이 table_config 에 적은 `group` 이름 아래로 묶입니다(묶음은 이름 순, 안 적은 표는 맨 아래 `Other`). 드롭다운 앞의 검색 칸에 치면 표 이름으로 거릅니다. 분류는 운영자가 적습니다 — 제품이 표 이름이나 종류로 짐작해 나누지 않습니다. 원장 원자 보기(`ledger_atom_rows`)도 table_config 의 한 표라 같은 칸으로 묶입니다.
+- **선언 예시** — `config/table_config.json` 에서 그 표의 항목에 `"group"` 한 줄. 출하 샘플은 group 을 비워 둡니다.
+
+<!-- example: table -->
+```json
+{
+  "shift_report": {
+    "group": "Logs",
+    "business_key": "report_id",
+    "column_types": {"report_id": "string", "line": "string"},
+    "display_columns": ["report_id", "line"]
+  }
+}
+```
+
+- **화면에서** — 메인 그리드 맨 위 `Table` 옆 검색 칸(`Search tables`)에 치면 드롭다운이 그 글자를 담은 표로 줄고, 남은 표가 있는 묶음만 머리줄이 남습니다. 지금 열린 표는 걸러져도 드롭다운에 남습니다. 어느 표도 group 을 안 적었으면 오늘처럼 묶음 없는 목록입니다.
+- **필요한 조건** — 서버 재기동(`/tables` 가 묶음을 실음)과 화면 새로 받기.
+- **바뀐 동작** — `GET /tables` 에 `groups`({표: 묶음}, 안 적은 표는 없음)가 붙습니다. `tables` 목록은 한 글자도 안 바뀝니다.
+- **자세히** — 커밋은 이 항목과 같은 커밋
+
 ## 2026-10-02 · 체인 대기열 — 소급 잡 하나는 한 줄
 
 - **무엇** — 소급 실행 하나가 낸 체인 이벤트가 대기열에 «한 줄»로 뜹니다. 전에는 소급이 결과를 묶음마다 써서 묶음마다 이벤트가 생겼고, 잡 하나가 묶음 수만큼 여러 줄로 떴습니다(오류는 아니었습니다). 이제 서버가 잡이 낸 모든 이벤트(그것이 깨운 체인 쓰기까지)에 그 실행의 `run_id` 를 싣고, 대기열 답이 목록을 자르기 «전»에 그것으로 묶습니다.
-- **화면에서** — 관리자 화면 `Chain` 탭과 `Overview` 의 대기열 표. 첫 칸 `Job / Transaction` 은 잡 줄이면 «잡 이름(op) · 실행 id 앞 8자», 아니면 전처럼 트랜잭션 id 입니다. `Rows` 칸은 그 줄이 싣는 «행 수»이고, 이벤트 수가 행 수와 다르면 수 앞에 «N events» 배지가 붙습니다. 목록이 상한에 걸리면 표 위에 `Showing` 한 줄(몇 줄 중 몇 줄 · 상한).
+- **화면에서** — 관리자 화면 `Chain` 탭과 `Overview` 의 대기열 표. 첫 칸 `Job / Transaction` 은 잡 줄이면 두 줄(위 «잡 이름(op)», 아래 «실행 id 앞 8자»), 아니면 전처럼 트랜잭션 id 입니다. `Rows` 칸은 그 줄이 싣는 «행 수»이고, 이벤트 수가 행 수와 다르면 수 앞에 «N events» 배지가 붙습니다. 목록이 상한에 걸리면 표 위에 `Showing` 한 줄(몇 줄 중 몇 줄 · 상한).
 - **필요한 조건** — 서버 재기동(run_app.bat 전체)과 화면 새로 받기. 이주는 없습니다. 재기동 전에 큐에 들어간 이벤트는 실행 id 가 없어서, 그것들이 다 빠질 때까지는 같은 잡이 두 줄일 수 있습니다.
 - **바뀐 동작** — `GET /admin/chain/queue` 의 `waiting_transactions[]` 한 항목이 «줄»입니다: `run_id` · `op` · `transaction_id`(잡 줄이면 null) · `events`(새 칸) · `rows`. 🔴 `rows` 의 뜻이 «이벤트 수»에서 «행 수»로 바뀌었습니다. `listed` 는 `{lines, lines_total, cap, capped}` 이고 상한은 «줄»에 걸립니다(`rows_scanned` 는 없어졌습니다). 표 첫 칸 머리줄이 `Transaction` 에서 `Job / Transaction` 으로 바뀌었습니다.
 - **자세히** — [chain_ingestion_guide.md](../guide/chain_ingestion_guide.md)(5.6) · [BACKFILL_GUIDE.md](../guide/BACKFILL_GUIDE.md) · 서버 커밋 f843188e5 · 화면은 이 항목과 같은 커밋

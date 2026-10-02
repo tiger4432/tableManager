@@ -3,6 +3,8 @@ import { LEDGER_COL_ID } from './grid_ledger_column.js';
 export const state = {
   gridApi: null,
   currentTable: '',
+  // `/tables` as the dropdown draws it: {tables, groups}. `null` until the list has loaded.
+  tableList: null,
   currentColumns: [],
   currentColumnTypes: {},
   // C-84. 서버 카탈로그가 말하는 이 표의 «종류» — `/tables/<n>/schema.kind` 그대로.

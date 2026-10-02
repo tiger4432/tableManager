@@ -1375,6 +1375,9 @@ const FLOORS = new Map([
   //    funnels, the badge rules and the two source rows. A per-seat answer is how one rule
   //    turns into two spellings, so the gate asks them all with one fixture.
   ['grid_view_readonly_harness.mjs', 63],
+  // New 2026-10-02 (lead 685f236d7): the table dropdown groups by the operator's `group`, the
+  // search narrows it, and the open table stays in it on every way in. Floor = first run.
+  ['table_menu_harness.mjs', 15],
   // New 2026-09-13 with C-86 (the chain tab can add a rule it did not have). Floor is the
   // count it reports on the commit that introduces it.
   // 🔴 IT CARRIES A DECOY SKELETON. 「the fields come from the declaration」 cannot be scored by

@@ -1249,6 +1249,12 @@ def list_tables():
         # and the guess would be the very default this hands over explicitly.
         "kinds": {name: catalog_kind(entry)
                   for name, entry in crud.TABLE_CONFIG.items()},
+        # `group` rides for the same reason (lead 685f236d7): the main grid's dropdown groups by
+        # the operator's own word. A table that writes none is ABSENT, like `map_key_columns` —
+        # the dropdown puts it under Other; nothing guesses a group from a name.
+        "groups": {name: crud.clean_str_value(entry.get("group"))
+                   for name, entry in crud.TABLE_CONFIG.items()
+                   if isinstance(entry, dict) and not crud.is_blank_value(entry.get("group"))},
     }
 
 def get_deleted_row_business_key(db: Session, table_name: str, row_id: str):

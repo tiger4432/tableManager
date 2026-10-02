@@ -275,6 +275,8 @@
     .chain-queue-table [data-col="rows"] { text-align: right; }
     /* 13 = 캐논 h6 (토큰 없음, 위와 같은 사정). */
     .chain-queue-table .table-row td[data-col="tx"] { font-family: var(--font-mono); font-size: var(--fs-button); }
+    /* A job's chip is two lines, op over the run head (lead 362f1a91d) — its label carries the break. */
+    .chain-queue-table .tx-id-chip { white-space: pre-line; }
     .chain-queue-owner-badge,
     .chain-queue-retry-badge,
     .chain-queue-events-badge {
@@ -287,6 +289,9 @@
     }
     .chain-queue-retry-badge,
     .chain-queue-events-badge { color: var(--text-dim); }
+    /* Its own line above the row count, right-aligned: side by side the table outgrew a narrow
+       panel (lead 362f1a91d: under 570px). */
+    .chain-queue-table .chain-queue-events-badge { display: table; margin: 0 0 0 auto; }
     .chain-queue-empty {
       padding: var(--space-3) 0;
       color: var(--text-dim);

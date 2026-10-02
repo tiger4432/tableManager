@@ -194,11 +194,12 @@ function shortTx(id) {
 }
 
 /** A queue line is one retroactive job — the server names it by `run_id`, its `transaction_id`
- *  then null — or a transaction as before. The one place this file asks which. */
+ *  then null — or a transaction as before. The one place this file asks which.
+ *  A job's label is two lines, op over the run head: nothing hides behind a hover (lead 362f1a91d). */
 function lineName(t) {
   const run = t.run_id == null ? '' : String(t.run_id);
   if (!run) return { id: String(t.transaction_id ?? ''), label: shortTx(t.transaction_id) };
-  return { id: run, label: [t.op == null ? '' : String(t.op), shortTx(run)].filter(Boolean).join(' · ') };
+  return { id: run, label: [t.op == null ? '' : String(t.op), shortTx(run)].filter(Boolean).join('\n') };
 }
 
 /**
@@ -647,8 +648,8 @@ export class ChainQueuePanel {
       if (r.at) tdAge.title = `Waiting since ${r.at}`;
       tr.appendChild(tdAge);
       tr.appendChild(this._td(r.tables, 'tables'));
-      // The event count rides the Rows cell as a badge, before the number so the numbers stay
-      // right-aligned — no sixth column (the table overflowed its panel once; d886307b6).
+      // The event count rides the Rows cell as a badge on its own line above the number (admin.html),
+      // so the numbers stay right-aligned — no sixth column (the table overflowed its panel; d886307b6).
       const tdRows = this._td('', 'rows');
       if (r.eventsNote) {
         const events = doc.createElement('span');

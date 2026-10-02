@@ -343,7 +343,8 @@ console.log('\n[5J] one retroactive job is one line, named by its op and run');
                 owners: ['chain'], max_retry: 0, waiting_seconds: 600, waiting_at: '2026-10-02 17:30:00' };
   const TX = BACKED_UP.waiting_transactions[1];
   const v = queueView({ ...BACKED_UP, waiting_transactions: [JOB, TX] });
-  eq('J1 a job line is named by its op and its run', v.rows[0].label, 'chain_replay · 9f8e7d6c…');
+  // two lines, op over the run head - nothing only a hover shows (lead 362f1a91d)
+  eq('J1 a job line is named by its op over its run', v.rows[0].label, 'chain_replay\n9f8e7d6c…');
   eq('J2 and its id is the run', v.rows[0].id, JOB.run_id);
   eq('J3 its rows and its events are the server\'s, apart', [v.rows[0].rows, v.rows[0].eventsNote],
     ['18500', '37 events']);
@@ -362,7 +363,7 @@ console.log('\n[5J] one retroactive job is one line, named by its op and run');
   // the badge comes first so the number stays at the right edge of a right-aligned column
   eq('J6 the drawn job line: its chip, then the Rows cell as badge and number',
     [rowsOf(host).length, chip.textContent, rowsCell.children.map((n) => [n.className, n.textContent])],
-    [2, 'chain_replay · 9f8e7d6c…', [['chain-queue-events-badge', '37 events'], ['', '18500']]]);
+    [2, 'chain_replay\n9f8e7d6c…', [['chain-queue-events-badge', '37 events'], ['', '18500']]]);
   eq('J6b NEGATIVE CONTROL: the transaction line beside it has no events badge',
     byClass(cellOf(rowsOf(host)[1], 'rows'), 'chain-queue-events-badge').length, 0);
   eq('J7 the full run id is on the chip and on the line', [chip.title, jobRow.getAttribute('data-line-id')],

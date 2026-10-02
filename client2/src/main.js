@@ -19,6 +19,7 @@ import { writeRefusal } from './write_guard.js';
 import { elements } from './dom.js';
 import {
   switchTable,
+  drawTableMenu,
   fetchData,
   addRows,
   deleteSelectedRows,
@@ -507,6 +508,8 @@ function setupEventListeners() {
       redoBannerFollows(table);
     }
   });
+  // Typing narrows the dropdown by table name; the open table stays in it (lead 685f236d7).
+  if (elements.tableSearch) elements.tableSearch.addEventListener('input', () => drawTableMenu());
 
   // Debounced search
   let searchTimeout;

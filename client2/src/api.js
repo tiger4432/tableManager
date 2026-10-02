@@ -17,6 +17,7 @@ import { getLocalTimeString, showToast } from './utils.js';
 import { failureFactOf, fetchFailureLine } from './config_resolve_view.js';
 import { resetSuggestLearning } from './value_suggest.js';
 import { snapshot, commitIfRecorded } from './effort_meter.js';
+import { tableMenu, fillTableSelect } from './table_menu.js';
 
 /**
  * Write a status badge WITHOUT trusting the handle to exist.
@@ -184,16 +185,10 @@ async function loadTablesOnce() {
     elements.tableSelect.innerHTML = '';
 
     if (data.tables && data.tables.length > 0) {
-      data.tables.forEach(table => {
-        const option = document.createElement('option');
-        option.value = table;
-        option.textContent = table;
-        elements.tableSelect.appendChild(option);
-      });
-
-      // Auto select first table
+      // `groups` rides the list (lead 685f236d7): {table: group}, an ungrouped table absent.
+      state.tableList = { tables: data.tables, groups: data.groups };
+      // Auto select first table (switchTable draws the dropdown)
       const firstTable = data.tables[0];
-      elements.tableSelect.value = firstTable;
       await switchTable(firstTable);
     } else {
       elements.tableSelect.innerHTML = '<option value="">No tables found</option>';
@@ -206,8 +201,18 @@ async function loadTablesOnce() {
   }
 }
 
+/** The table dropdown, grouped and narrowed by the search box. The open table is always in it. */
+export function drawTableMenu(selected = state.currentTable) {
+  if (!state.tableList || !elements.tableSelect) return;
+  const query = elements.tableSearch ? elements.tableSearch.value : '';
+  fillTableSelect(elements.tableSelect,
+    tableMenu(state.tableList.tables, state.tableList.groups, query, selected), selected);
+}
+
 // Switch current working table
 export async function switchTable(tableName) {
+  // Every way in (the dropdown, a history jump) leaves the opened table in the list, search or not.
+  drawTableMenu(tableName);
   state.currentTable = tableName;
   window.currentTable = tableName; // Expose globally for Desktop Wrapper
   elements.performanceLog.textContent = `Switching to ${tableName}...`;

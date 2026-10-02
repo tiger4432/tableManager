@@ -1,5 +1,6 @@
 export const elements = {
   get tableSelect() { return document.getElementById('table-select'); },
+  get tableSearch() { return document.getElementById('table-search'); },
   get globalSearch() { return document.getElementById('global-search'); },
   get searchCols() { return document.getElementById('search-cols'); },
   get serverStatus() { return document.getElementById('server-status'); },
