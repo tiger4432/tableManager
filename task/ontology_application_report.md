@@ -34995,3 +34995,14 @@ server/config/ontology/README.md:78  「범용 구현 direct-join@1(준비기)�
    그 파일에 그 절이 아직 없음(ce0d934c1 기준) — 구현 보고 커밋이 오면 대조
 제 몫 없음      화면 글자(주어 고르기 · 「…주어로 없습니다 (정적 허브)」)와 RELEASE_LOG 는 DESIGN_ORDERS 29cee1d47 에 클라 몫
 ```
+
+---
+
+## [C 응용] 10-02 구현 보고 a94afdccc 대조 — 확인 대기 하나 닫힘 · 여쭐 것 ② 는 이미 착지
+
+```
+닫힘     코드 주석이 대는 박스 속도 근거(task/scoped_redo_report.md 29cee1d47 절)가 a94afdccc 로 들어왔다 — 위 1351a82e2 의 「확인 대기」 끝
+여쭐 것 ②  옛 동작을 적은 문서 네 곳(CODE_MAP trace_router 두 줄 · PRIMITIVES 핵 ① · backend 표 · LEDGER_GUIDE §1.2) —
+          ce0d934c1 에 이미 고쳐 실었다(+ CODE_MAP gaps 줄 · WALK 씨앗 절). 고칠 사람을 정할 일 없음
+여쭐 것 ①  화면 낱말은 DESIGN_ORDERS 29cee1d47 이 이미 클라 몫으로 적었다. 구현 보고가 하나 더 짚은 api.js 'Subject list unreachable' 은 그 지시 목록에 없다
+```
