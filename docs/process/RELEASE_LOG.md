@@ -9,6 +9,32 @@
 
 ---
 
+## 2026-10-02 · 보류 포함 행 복사 — 같은 키 원천 행들이 갈리면 공식 행이 보류된다
+
+- **무엇** — 제품 맵퍼 `copy_rows_with_hold`. 10-01 의 `copy_one_row` 와 같은 일(원천 행 하나를 대상 표의 같은 키 행에, 그 원천 행의 층 `chain_ingestion (<원천 row_id>)` 으로 복사, 없으면 만듦)에 한 가지를 더 합니다. 같은 키(`IS NOT DISTINCT FROM`)의 원천 행들이 `columns` 에 서로 다른 값 묶음을 몇 개 가졌는지 세어, 2 이상이면 보류 칸을 빈 값으로, 아니면 `agreed` 로 씁니다. 보류 칸은 값과 같은 쓰기(같은 커밋)에 그냥 `chain_ingestion` 층으로 들어갑니다. 원장 소스가 `read.exclude_when` 에 보류 칸을 적으면 빈 보류 행은 원장에 들어가지 않고, 이미 있던 원자는 거둬집니다.
+  같은 함수를 대상 표에 건 규칙이 부르면(trigger 와 target 이 같은 표) 값은 안 쓰고 보류만 다시 셉니다 — 사람이 공식 행을 고칠 때, 그리고 원천 행을 지워 공식 행에 보이던 값이 바뀔 때 깹니다.
+- **선언 예시** — 대상 표(`config/table_config.json`)의 `column_types` 에 보류 칸 한 줄(`"hold": "string"`), 체인 규칙 둘(`config/chain_rules.json`), 원장 소스 한 줄. 규칙 둘은 제품의 규칙 검사로 거절 0 이었습니다.
+
+<!-- example: chain_rule -->
+```json
+[
+  {"name": "dt_log_to_official_dt", "trigger_table": "dt_log", "target_table": "official_dt",
+   "mapper": "copy_rows_with_hold", "require": ["dt_job", "dt_x", "dt_y"], "allow_chain_trigger": true,
+   "params": {"key_columns": ["dt_job", "dt_x", "dt_y"], "columns": ["c_bn"], "hold_column": "hold"}},
+  {"name": "official_dt_hold_recount", "trigger_table": "official_dt", "target_table": "official_dt",
+   "mapper": "copy_rows_with_hold", "allow_chain_trigger": true,
+   "params": {"key_columns": ["dt_job", "dt_x", "dt_y"], "columns": ["c_bn"], "hold_column": "hold",
+              "source_table": "dt_log"}}
+]
+```
+  원장 소스(`config/ontology/ledger_config.json` 의 그 소스 `read`)에: `"exclude_when": [{"column": "hold", "blank": true}]`
+  - 둘째 규칙의 `allow_chain_trigger` 는 원천 행 지움을 받으려고 적습니다(지움 회수는 체인이 씁니다). 그래서 복사가 공식 행에 쓸 때마다 한 번 더 셉니다. 같은 보류를 다시 쓰면 이벤트가 생기지 않아 돌고 돌지 않습니다.
+- **화면에서** — 없음(규칙 · 표 선언).
+- **필요한 조건** — 체인 워커 재기동. 행마다 한 번 불리고, 한 번에 세기 질의 하나가 더 붙습니다.
+- **바뀐 동작** — 없음(새 맵퍼).
+- **한계** — 지운 원천 행의 값이 공식 행에 «가려져» 있었으면(다른 원천 행의 값이 보이던 중) 보이는 값이 안 바뀌어 다시 세지 않고, 보류가 그대로 남습니다 — 지움 경로가 스스로 이벤트를 내는 것이 다음 착지입니다. 사람이 공식 표에 값을 적어도 보류는 풀리지 않습니다(원천 행들이 갈린 동안은 계속 빈 값).
+- **자세히** — 이 항목과 같은 커밋
+
 ## 2026-10-02 · 걷기 경로 목록 — 자기 고리는 줄 안의 칩
 
 - **무엇** — 걷기 화면과 R&D 보드 걷기 상자의 경로 목록이 «자기 고리를 뺀» follow 세트로 한 줄씩 나옵니다. 그 길이 지나는 타입의 자기 고리(`transfer` · `bonded_from` 처럼 X → X 인 술어)는 그 줄 안의 칩이고 기본으로 꺼져 있습니다. 전에는 고리 하나를 넣고 빼는 것마다 다른 줄이 되어 줄이 곱해졌습니다.

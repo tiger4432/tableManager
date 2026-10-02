@@ -1,5 +1,21 @@
 # 지금 돌리면 되는 것
 
+> ## [10-02 밤] **보류 포함 행 복사 맵퍼 copy_rows_with_hold (총괄 3211e9000 · 3ba1d1dd4) — 이주 «불필요» · 재기동 «필요»(체인 워커)**
+>
+> ```
+> 무엇이 바뀌나  제품 맵퍼 하나(server/mappers/hold_copy.py, 추적됨). 제품 코드는 그대로
+> 쓰는 법       RELEASE_LOG 「보류 포함 행 복사」 예시 — 대상 표에 hold 칸 · 규칙 둘(복사 · 보류 다시 세기) · 원장 소스 exclude_when 한 줄
+>              내일 공식 표 다시 채우기 순서는 다음 착지(빠른 비우기)의 RUN.md 에 «전부» 명령으로 들어간다
+> 확인         재기동 뒤 체인 규칙 화면에서 두 규칙에 거절이 없는지 · 원천 행 하나 저장 -> 공식 행 hold = agreed
+>              같은 키에 값이 다른 원천 행 하나 더 -> hold 빈 값 · 원장에서 그 행 원자가 거둬짐
+> 뜻           hold 빈 값 = 같은 키 원천 행들이 다른 값 묶음 둘 이상
+>              원천 행을 지운 뒤에도 빈 값이면: 지운 행의 값이 가려져 있던 경우(다음 착지가 고침) — 다시 세기 규칙을 그 행에 리플레이
+>              python server/scripts/chain_replay_cli.py replay official_dt_hold_recount --row-ids <공식 행 row_id> --apply
+> 급할 때       두 규칙을 enabled: false (또는 chain_rules.json 에서 지움) -> 체인 워커 재기동
+> ```
+
+---
+
 > ## [10-02 저녁] **메인 그리드 — row_id 가 있는 표 끝에 ROW_ID 칸 · 그 칸으로 거르기 (총괄 e67ef53f3 · d692af408) — 이주 «불필요» · 재기동 «필요»(run_app.bat 전체)**
 >
 > ```
