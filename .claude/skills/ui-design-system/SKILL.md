@@ -23,14 +23,14 @@ sample   one sample page renders every base element. A screen is composed from i
 - A defect seen on one screen is fixed in the base layer, not on that screen - fixed on the screen, the next screen repeats it (the margin defect was fixed part by part and came back).
 - The Design System document is drawn FROM the sample page. Code is the source; the document is its picture, and the round that changes the base layer redraws it.
 
-## 1. Colour — ten roles, zero literals
+## 1. Colour — the `--oe-*` roles, zero literals
 ```
 --oe-bg        = var(--bg-inset)      --oe-surface   = var(--bg-surface)   --oe-surface-2 = var(--bg-header)
 --oe-text      = var(--text)          --oe-muted     = var(--text-dim)     --oe-line      = var(--border)
 --oe-accent    = var(--accent)        --oe-accent-soft = var(--accent-weak)
---oe-ok        = var(--success)       --oe-warn      = var(--warning)
+--oe-ok        = var(--success)       --oe-warn      = var(--warning)      --oe-danger    = var(--danger)
 ```
-- The ten `--oe-*` roles are the ONLY colour vocabulary, and they point at `tokens.css`. A hex or `rgb()` in a component is a defect.
+- The `--oe-*` roles in the canon's `:root` are the ONLY colour vocabulary, and they point at `tokens.css`. A hex or `rgb()` in a component is a defect, and so is a name nothing defines — a fallback on it is drawn in both themes (lead 3ea218524; the token harness counts it).
 - States are MIXES of a role, never a fixed grey (a fixed grey dies in one of the two themes):
   hover `--oe-tint-hover` (text 7%) · press `--oe-tint-press` (14%) · row `--oe-tint-row` (4%) · accent hover `--oe-tint-accent-hover` (10%) · accent press `--oe-tint-accent-press` (18%) · label ink 70% · th ink 60% · meta ink 50%.
 - Theme follows the site toggle (`:root[data-theme=…]` + `color-scheme`), not the OS. Both halves live in `tokens.css`; never define a colour that exists in only one theme.

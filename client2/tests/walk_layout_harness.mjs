@@ -16,6 +16,8 @@ import { scoreMutants } from './lib/mutation_scorer.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SRC = path.join(HERE, '..', 'src', 'walk', 'main.js');
+const STYLES = path.join(HERE, '..', 'src', 'walk', 'styles.js');
+const { WALK_CSS: REAL_CSS } = await import('../src/walk/styles.js');
 const BEFORE = JSON.parse(readFileSync(path.join(HERE, 'fixtures', 'walk_wire_before.json'), 'utf8'));
 const LF = String.fromCharCode(10);
 const HANGUL = /[가-힣]/;
@@ -110,7 +112,7 @@ async function stand(mod) {
   return { host, handle, asked, all, find, act };
 }
 
-async function suite(mod) {
+async function suite(mod, css = REAL_CSS) {
   console.log(`${LF}-- the parts: the form is the rail, the result its own --`);
   const page = await stand(mod);
   await page.act.type('die@1');
@@ -176,6 +178,23 @@ async function suite(mod) {
   const korean = page.all().filter((e) => !e.children.length && HANGUL.test(e.textContent || ''))
     .map((e) => e.textContent);
   ok('L11 nothing drawn in the walk page is Korean', korean.length === 0, korean.join(' | '));
+
+  // 🔴 「Walk stays at the rail's foot」 is the tree AND the stylesheet: this DOM has no layout, so the cell
+  //    reads where Walk stands and that WALK_CSS (the rules the page carries) pins that box and scrolls the
+  //    form. The lead's mutant renamed the foot's class and nothing went red (L1 only says 「in the rail」).
+  console.log(`${LF}-- Walk stays at the rail's foot --`);
+  const rules = [...css.replace(/\/\*[\s\S]*?\*\//g, ' ').matchAll(/([^{}]+)\{([^}]*)\}/g)]
+    .map((m) => [m[1].split(',').map((s) => s.trim()), m[2]]);
+  const ruled = (selector, prop) => rules.some(([sels, body]) => sels.includes(selector) && body.includes(prop));
+  const kids = rail ? rail.children : [];
+  const go = page.find((e) => e.className === 'wk-go');
+  const holder = kids.find((k) => walkAll(k).includes(go));
+  const footCls = holder ? classes(holder)[0] : '';
+  const formCls = kids[0] ? classes(kids[0])[0] : '';
+  ok('L12 Walk stands in the rail\'s last box, after the form, and the stylesheet pins that box while the form scrolls',
+    Boolean(go) && holder === kids[kids.length - 1] && kids.length > 1
+      && ruled(`.${footCls}`, 'flex: none') && ruled(`.wk-rail > .${formCls}`, 'overflow-y: auto'),
+    JSON.stringify({ footCls, formCls, kids: kids.length, last: holder === kids[kids.length - 1] }));
 }
 
 const first = await loadWithProbe(SRC, {});
@@ -205,11 +224,23 @@ const MUTANTS = [
     mutate: (t) => swap(t, "      chip.addEventListener('click', () => { state.collect.delete(t); render(); });", '') },
   { id: 'W7', what: 'a Korean word is drawn again', catches: 'L11 nothing',
     mutate: (t) => swap(t, "const SERVER_DEFAULT = 'default';", "const SERVER_DEFAULT = '서버 기본';") },
+  // The lead's escaped mutant, now named.
+  { id: 'W8', what: 'the foot box is renamed, so no rule pins it', catches: 'L12 Walk',
+    mutate: (t) => swap(t, "    const foot = el(doc, 'div', 'wk-rail-foot');", "    const foot = el(doc, 'div', 'wk-foot');") },
+  { id: 'W9', what: 'Walk is drawn inside the scrolling form', catches: 'L12 Walk',
+    mutate: (t) => swap(t, '      renderGo(foot);', '      renderGo(body);') },
+  { id: 'W10', what: 'the stylesheet stops pinning the foot', catches: 'L12 Walk', file: STYLES,
+    mutate: (t) => swap(t, '.wk-rail-foot { flex: none;', '.wk-rail-foot { flex: 1 1 auto;') },
 ];
 const run = async (m) => {
   ran = 0; NAMES.length = 0; failures = [];
-  const loaded = await loadWithProbe(SRC, { mutate: m.mutate });
-  await suite(loaded.module);
+  if (m.file === STYLES) {
+    const styles = await loadWithProbe(STYLES, { mutate: m.mutate });
+    await suite(first.module, styles.module.WALK_CSS);
+  } else {
+    const loaded = await loadWithProbe(SRC, { mutate: m.mutate });
+    await suite(loaded.module);
+  }
   return { ran, names: NAMES.slice(), failures: failures.slice() };
 };
 const scored = await scoreMutants(MUTANTS, run, { baselineRan: base.ran, baselineNames: base.names,

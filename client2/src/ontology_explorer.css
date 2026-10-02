@@ -31,23 +31,23 @@
    The explorer keeps its own copy of these three lines below; same value, so its computed
    output is unchanged, and removing them is a separate question from this ruling. */
 :root {
-  /* 🔴 ONE SOURCE OF COLOUR, AND THIS IS THE WHOLE OF IT. These ten used to be a
-     SECOND palette: the app's `tokens.css` holds the same ten roles a few RGB away, and a
+  /* 🔴 ONE SOURCE OF COLOUR, AND THIS IS THE WHOLE OF IT. These roles used to be a
+     SECOND palette: the app's `tokens.css` holds the same roles a few RGB away, and a
      part carried from this screen to another changed colour for no reason anybody
-     declared. Every one of them is now the app's own token.
+     declared. Every one of them is now the app's own token, one line per role.
 
-     🔴 TEN LINES RATHER THAN TWO HUNDRED. The other reading -- rewriting every
+     🔴 ONE LINE PER ROLE RATHER THAN TWO HUNDRED. The other reading -- rewriting every
      `var(--border)` in `admin.html` to `var(--oe-line)` -- moves the boundary instead of
      removing it: ten other files keep the app palette, so two palettes survive and a part
      moved to `rnd_board` still changes colour. Repointing the DEFINITIONS satisfies the
      same rule with no call site touched and no selector changed.
 
      ⚠️ `light-dark()` goes with them, and that is not a loss. The app tokens redefine
-     themselves per theme already, so dark follows one declaration instead of two -- all
-     ten carry both halves in `tokens.css`, checked before this landed.
+     themselves per theme already, so dark follows one declaration instead of two -- a role
+     is added here only when its token carries both halves in `tokens.css`.
 
      The derived mixes below are untouched and follow automatically; they are percentages
-     OF these, which is why there are ten lines here and not nineteen. */
+     OF these, which is why there is a line per role here and none per mix. */
   --oe-bg: var(--bg-inset);
   --oe-surface: var(--bg-surface);
   --oe-surface-2: var(--bg-header);
@@ -58,8 +58,8 @@
   --oe-accent-soft: var(--accent-weak);
   --oe-ok: var(--success);
   --oe-warn: var(--warning);
-  /* Rules below called it while nothing defined it, so both themes drew their fallback, the light
-     red (lead 3ea218524). */
+  /* Added later: rules below called it while nothing defined it, so both themes drew their
+     fallback, the light red (lead 3ea218524). */
   --oe-danger: var(--danger);
 
   /* The mockup's two families. Mono is kept for identifiers and JSON -- the design file
