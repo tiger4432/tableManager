@@ -69652,3 +69652,26 @@ InMemoryEvidenceLookup(시험 대역)      제품 자리와 같은 한 함수를
 ③ 가져오기 예산 순서(최신부터 자름) — 시각 없는 원자를 맨 앞으로 둘까요(구조가 먼저 닿음), 저장된 시각 그대로 둘까요(오늘과 같음, 순서에 뜻 없음)
 ④ 펼친 보기(ledger_atom_rows)에 basis 칸을 더할까요 — 보기 칸이 바뀌면 샘플 표 선언 · DDL 오라클도 같이
 ```
+
+---
+
+## [10-02 오후] 걸음 규칙 계약 — 서버 반쪽 채점 (총괄 2dcf6fb71) — 4fddd10d8
+
+```
+무엇    server/tests/test_walk_step_contract.py — 클라가 올린 contracts/walk_step/vectors.json 을 그대로 읽는다(벡터는 손대지 않음)
+어떻게  공식을 다시 적지 않고 «제품 자리로» 걷는다: 벡터마다 씨앗 -> … -> from -> to 사슬을 만들어
+        _reach(표의 행 · 순위) 한 번, 그래프 걷기(subgraph — 가져오기 가르기 · _step) 한 번. 둘 다 _held_to_names 를 묻는다
+결과    서버 22 통과(벡터 11 × 두 자리) · 클라 하니스 11 통과 0 갈림
+픽스처 한 번 틀림  원자를 recipe@1 로 적었더니 못 찾음 — 원장은 버전 없는 타입으로 저장하고 걷기가 씨앗 철자를 벗긴다. 원자는 버전 없이, 씨앗은 호출자 철자 그대로로 고침
+```
+**변이** (이 파일만)
+```
+baseline                                 22 passed
+the seat ignores where the walk starts   4 failed, 18 passed
+the seat holds nothing                   6 failed, 16 passed
+the fetch split asks no seed             2 failed, 20 passed
+_step asks no seed                       2 failed, 20 passed
+_reach opens every seed, not its own     22 passed
+after restore                            22 passed
+```
+`_reach opens every seed` 는 이 벡터로 못 본다 — 벡터가 씨앗 하나짜리라서. 그 변이는 test_a_static_seed_takes_its_first_step_into_the_world.py 가 잡는다(c46163324 보고)
