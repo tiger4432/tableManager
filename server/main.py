@@ -854,17 +854,19 @@ def download_desktop_bundle():
 def get_image(ref: str):
     """One image reference read from its declared source (`image_sources`). Reads only."""
     import image_sources
-    from fastapi.responses import RedirectResponse, Response
+    from fastapi.responses import Response
 
     try:
         answer = image_sources.resolve(ref)
     except image_sources.ImageRefused as refused:
         raise HTTPException(status_code=refused.status, detail=str(refused))
     if answer[0] == "file":
-        return FileResponse(answer[1])
-    if answer[0] == "redirect":
-        return RedirectResponse(answer[1])
-    return Response(content=answer[1], media_type=answer[2])
+        response = FileResponse(answer[1])
+    else:
+        response = Response(content=answer[1], media_type=answer[2])
+    # Answers only: a refusal raised above carries none, so a fixed declaration is read at once.
+    response.headers["Cache-Control"] = image_sources.CACHE_CONTROL
+    return response
 
 import time
 

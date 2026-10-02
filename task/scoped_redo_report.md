@@ -69101,3 +69101,62 @@ DELETE 이벤트의 id        «실제로 지운» 행만 · 지운 것 0 이면
 ```
 **② MAPPER_SURFACE 주석** — 「nine modules · 13,406 lines」 지움. 같은 손 수가 그 시험의 독스트링에 둘(「nine product modules for 41 names」 · 「nine modules are 13,406 lines」) — 같이 지움. CODE_MAP 의 줄 수는 문서 레인 몫이라 안 건드림
 **게이트** — 주석 · 독스트링만(동작 변경 0). 닿는 시험 파일 넷 170 passed, 1 skipped in 8.83s. 전체 스위트는 안 돌렸다
+
+---
+
+## [10-01 밤] 이미지는 전부 서버가 중개한다 + 브라우저 캐시 머리 (총괄 f087403fe · 191912ce2, 한 착지) — c23df3704
+
+**무엇을 지었나**
+```
+넘김 답 0      https:// 칸 · url 출처 둘 다 서버가 받아서 보낸다. main.get_image 의 답은 file · bytes 둘 — 넘김 낱말 0 번(get_image 소스의 Redirect)
+가드 셋 한 자리  image_sources._fetch — ① 받은 Content-Type 이 image/* 아니면 502 ② MAX_BYTES 넘으면 502, stream 으로 받다가 끊음 ③ 3xx 안 따라감(allow_redirects=False) 502
+               url 출처의 호스트 고정(e1420082c)은 그 앞에 그대로
+               + 받아 오기 자체가 실패(이름 · 연결 · 시간 초과)하면 502 이름 댄 문장 — db 실패(e96551d02 ③)와 같은 부류라 같이 넣음(여쭐 것 ②)
+proxy 칸 은퇴   읽지 않음 · 있어도 거절 안 함. 약속을 든 자리: image_sources.py(문서 머리 · _url) · config/sample/image_sources.json.sample · docs/guide/config/table_config.md §2.2 · RUN.md(옛 이미지 두 절 -> 지금 동작 한 절) · 시험(proxy 칸 없음 · false · true 모두 받아 옴) — 남은 proxy 낱말(이미지 파일들): 0
+캐시 머리       file · bytes 두 답에 Cache-Control: private, max-age=3600 — 자리 하나(main.get_image), 거절엔 없음
+```
+**값과 이유**
+```
+CACHE_SECONDS 3600  메인 그리드 미리보기가 한 작업 동안 같은 칸을 다시 올린다. 이미지는 기록이라 같은 참조가 바뀌는 일이 드물다 —
+                     바뀌면 이미 본 화면에 최대 3600 초 옛 그림. private — 사용자 브라우저만 든다
+                     그 시간이 지나면 다시 서버에 온다 — 파일 답도 본문 전체(이 서버의 FileResponse 는 조건 요청에 304 를 안 준다, 잼: If-None-Match 로 다시 물으면 200 · 본문 5 B (처음 5 B))
+MAX_BYTES 20,971,520 B  사진 · 맵 그림 한 장이 넉넉히 들어가는 크기. 서버가 받은 답을 메모리에 들고 보내므로 그 상한이 곧 요청 하나의 메모리 상한
+```
+**게이트**
+```
+시험   31 passed in 1.55s
+       https:// 칸 -> 서버가 받아 bytes(allow_redirects=False · stream=True 로 부름) · url 출처는 proxy 칸 없음 · false · true 모두 받아 옴
+       image 아닌 답 셋(text/html · application/json · 없음) 502 + 본문 안 샘 · "Image/PNG; charset=…" 는 그림
+       상한 넘음 502 · 넷째 덩이 안 읽음 · 3xx 502(url 출처 · https:// 칸 둘 다) · 받아 오기 실패 502 에 주소
+       호스트 고정 셋 400 + 받아 오기 0 번 · / 로 끝나는 base 아래 같은 값은 그 호스트로 받아 옴
+       캐시 — 네 답(파일 · db 바이트 · url 출처 · https:// 칸)에 그 머리 · 거절 넷에 없음
+변이   캐시 no header              -> 1 failed, 24 passed
+       file answers only      -> 1 failed, 24 passed
+       public, not private    -> 1 failed, 24 passed
+       refusals cached too    -> 1 failed, 24 passed
+       중개 not-an-image let through         -> 3 failed, 28 passed
+       no size limit                    -> 1 failed, 30 passed
+       limit checked after reading all  -> 1 failed, 30 passed
+       redirects followed               -> 3 failed, 28 passed
+       3xx not refused                  -> 2 failed, 29 passed
+       not streamed                     -> 1 failed, 30 passed
+       proxy cell read again            -> 5 failed, 26 passed
+       fetch failure not named          -> 1 failed, 30 passed
+       host not judged                  -> 3 failed, 28 passed
+       no cache header                  -> 1 failed, 30 passed
+```
+**새 함수 · 새 if 중 같은 일** — 새 함수 하나(_fetch — 받아 오기의 한 자리. 그전 url 출처 안의 받아 오기를 옮겨 넓힘). 같은 일 0
+**스위트** (C:/wt-impl)
+```
+비PG 전체  7 failed, 7634 passed, 41 skipped, 173 deselected, 3 xfailed in 832.78s (0:13:52)
+   알려진 다섯 밖: test_h3_cross_directory_replace_applies_physical_alter -> 그 파일만 다시 32 passed in 37.28s
+   알려진 다섯 밖: test_inv_9_1_atomic_save_event_applies_physical_alter -> 그 파일만 다시 32 passed in 38.26s
+PG  6 failed, 167 passed, 7685 deselected in 340.69s (0:05:40) · 알려진 밖: 0
+   image_sources 를 import 하는 곳은 main.get_image 안 — 설정 재적재 시험이 지나지 않는다. 그 파일의 두 시험은 앞 착지들에서도 따로 빨갰다
+   (test_h3_… 는 cb4d5157d 때 서른 번씩 견줘 변경 유무 실패율이 같았다 — 파일 감시 타이밍)
+```
+**여쭐 것**
+```
+① 파일 답이 If-None-Match · If-Modified-Since 에 304 를 주게 할지 — 시간이 지나도 그림이 같으면 본문을 안 보낸다. 지시 밖이라 안 함
+② 받아 오기 실패를 이름 댄 502 로 한 것 — 지시에 없던 한 갈래(https:// 칸이 어느 주소든 받으니 못 닿는 일이 흔해진다). 빼라면 뺌
+```

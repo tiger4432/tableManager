@@ -9,9 +9,11 @@ sources, one file:
      "<name>": {"kind": "db", "query": "SELECT <column> FROM <table> WHERE <key column> = :key",
                 "connection": {"dialect": "postgresql", "host": "..", "port": 5432,
                                "database": "..", "user": "..", "password_env": "<ENV VAR NAME>"}},
-     "<name>": {"kind": "url", "base": "https://../", "proxy": false}}
+     "<name>": {"kind": "url", "base": "https://../"}}
 
 No secret lives in the file: a db source names the environment variable that holds its password.
+Every image is read by the server - an http(s) cell and a url source are fetched and sent on,
+never handed to the browser (총괄 f087403fe); `_fetch` holds the guards that makes safe.
 `resolve` is the one seat that asks a source's kind; it reads and never writes.
 """
 import json
@@ -25,6 +27,12 @@ CONFIG_PATH = paths.config_path("image_sources.json")
 KINDS = ("folder", "db", "url")
 #: The one parameter a db source's query binds.
 KEY = "key"
+#: [총괄 191912ce2] How long a browser may keep an answer before asking again - the main grid's
+#: preview revisits the same cells. A replaced image can show its old picture this long.
+CACHE_SECONDS = 3600
+CACHE_CONTROL = "private, max-age=%d" % CACHE_SECONDS
+#: [총괄 f087403fe] The largest answer a fetch reads; past it the fetch stops and refuses.
+MAX_BYTES = 20 * 1024 * 1024
 _ADDRESS = re.compile(r"^https?://", re.IGNORECASE)
 _ENGINES = {}
 
@@ -47,10 +55,10 @@ def load_sources(path=None):
 
 
 def resolve(ref, sources=None, _hops=0):
-    """-> ("file", path) | ("bytes", data, media type) | ("redirect", address)."""
+    """-> ("file", path) | ("bytes", data, media type)."""
     text = str(ref or "").strip()
     if _ADDRESS.match(text):
-        return ("redirect", text)
+        return _fetch("%r" % text, text)
     name, colon, rest = text.partition(":")
     if not (colon and name and rest):
         raise ImageRefused(400, "%r is neither an http(s) address nor <source>:<path or key>" % text)
@@ -137,8 +145,7 @@ def _url(name, source, rest):
     base = str(source.get("base") or "")
     address = base + rest
     # [총괄 e96551d02] The value is a path under the base, never a new host: joined to a base
-    # without a trailing «/», `@evil.com/a.png` would make evil.com the host. One judgement for
-    # both the hand-on and the fetch.
+    # without a trailing «/», `@evil.com/a.png` would make evil.com the host.
     try:
         here, there = urlsplit(base), urlsplit(address)
         same = ((here.scheme.lower(), here.hostname, here.port)
@@ -147,15 +154,33 @@ def _url(name, source, rest):
         same = False
     if not same:
         raise ImageRefused(400, "%r leaves the host of image source %r" % (rest, name))
-    if not source.get("proxy"):
-        return ("redirect", address)
+    return _fetch("image source %r for %r" % (name, rest), address)
+
+
+def _fetch(label, address):
+    """The one fetch and its three guards (총괄 f087403fe) - the server reads any address an
+    http(s) cell names, so what comes back must be an image, no larger than MAX_BYTES (stopped
+    while it streams), and not a redirect, which is not followed."""
     import requests
 
-    answer = requests.get(address, timeout=10, allow_redirects=False)
-    if 300 <= answer.status_code < 400:
-        raise ImageRefused(502, "image source %r answered a redirect (%d) for %r - not followed"
-                           % (name, answer.status_code, rest))
-    if answer.status_code != 200:
-        raise ImageRefused(502, "image source %r answered %d for %r" % (name, answer.status_code, rest))
-    return ("bytes", answer.content,
-            answer.headers.get("content-type") or "application/octet-stream")
+    try:
+        answer = requests.get(address, timeout=10, allow_redirects=False, stream=True)
+    except requests.RequestException as error:
+        raise ImageRefused(502, "%s could not be fetched: %s"
+                           % (label, str(error).strip().splitlines()[0])) from error
+    with answer:
+        if 300 <= answer.status_code < 400:
+            raise ImageRefused(502, "%s answered a redirect (%d) - not followed"
+                               % (label, answer.status_code))
+        if answer.status_code != 200:
+            raise ImageRefused(502, "%s answered %d" % (label, answer.status_code))
+        media = (answer.headers.get("content-type") or "").split(";")[0].strip().lower()
+        if not media.startswith("image/"):
+            raise ImageRefused(502, "%s answered %r, not an image" % (label, media or "no type"))
+        data = bytearray()
+        for chunk in answer.iter_content(64 * 1024):
+            data.extend(chunk)
+            if len(data) > MAX_BYTES:
+                raise ImageRefused(502, "%s is larger than %d bytes - not read further"
+                                   % (label, MAX_BYTES))
+    return ("bytes", bytes(data), media)

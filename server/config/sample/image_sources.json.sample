@@ -18,7 +18,6 @@
   },
   "vendor": {
     "kind": "url",
-    "base": "https://vendor.example.com/images/",
-    "proxy": false
+    "base": "https://vendor.example.com/images/"
   }
 }
