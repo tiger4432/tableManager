@@ -35263,3 +35263,22 @@ RELEASE_LOG 맞음 — 명령 둘 · 거절 둘(행 수 바뀜 · 보기) · 사
 열린 둘     ① 50829cc6b 의 간헐 빨강(키 둘에 hc_official 3 행) — 이 코드에서 세 번 다시 안 났다. 원인은 여전히 모른다
            ② ffb8fac36 의 물음(빈 원천 칸도 값 묶음 하나로 세나) — 새 코드도 SELECT DISTINCT 라 NULL 을 한 묶음으로 센다. 답 대기
 ```
+
+---
+
+## [C 응용] 🔴 10-02 22시 — 3bce75e88 의 PG 시험이 멈춘다(박스, assy_test) · 이주가 운영에서도 말없이 멈출 수 있다
+
+```
+본 것      제 run_pg_tests.py -k 「follow_up_loses_nothing or follows_the_table_it_reads」가 test_the_ledger_follow_up_loses_nothing.py
+           첫 시험에서 진행 없이 500 s — 제 timeout 이 잘랐다(제 프로세스는 남지 않음, 확인함)
+           같은 시각 다른 실행 둘이 살아 있다 — 22:01:22 시작 「loses_nothing or follows_the_table_it_reads」 ·
+           22:10:15 시작 「ledger_never_saw or loses_nothing or …」. 제 것이 아니라 손대지 않았다
+           assy_test 세션(읽기만): 하나가 «idle in transaction» 499 s — database_outbox 를 SELECT 한 채
+가설(안 잼) migrations/add_outbox_ledger_state.py 가 CREATE INDEX CONCURRENTLY 를 lock_timeout 없이 — CONCURRENTLY 는
+           그 DB 의 오래된 스냅숏을 쥔 트랜잭션이 다 끝나기를 기다린다. 시험 세션 하나가 트랜잭션을 연 채 쉬면
+           (같은 실행이든 다른 실행이든) 이주 시험이 끝없이 기다린다
+운영에서   RUN.md 는 이 이주를 재기동 «전»(옛 앱이 도는 중)에 돌리라 한다. 그때 «idle in transaction» 세션이 하나라도 있으면
+           이주가 색인 단계에서 아무 말 없이 멈춘다. 데이터는 안 다치지만(칸은 이미 더해짐) 운영자는 멈춘 이유를 못 본다
+여쭐 것    ① 이주에 lock_timeout 이나 「기다리는 세션 pid」를 찍는 한 줄 · ② RUN.md 에 「멈추면 pg_stat_activity 의 idle in
+           transaction 을 본다」 — 고칠 자리는 구현 몫 · RUN.md 는 총괄 몫이라 제가 안 고친다
+```
