@@ -70663,3 +70663,44 @@ apply   행 · 칸 층 · 덮어쓰기 · 아웃박스 새 줄 = 0 · 원장 원
 그 자리에서 칸을 더한다. 총괄이 고른 순서(설정 둘 고치고 재기동 한 번)는 감시 · Reload 에 기대지 않는 길이라 그대로 맞다
 ```
 다음: 32bab7896 · cb3d3c1bf 복사 맵퍼 묶음 + 세기 0 은 보류 '' -> 내일 RUN.md. (가) 대기열은 지어 두었다(작업 트리, pg 17 통과) — 순서대로 그 뒤에 착지
+
+---
+
+## [10-02 밤] 착지 — copy_rows_with_hold 묶음 + 원천 없는 키는 보류 '' (총괄 32bab7896 · cb3d3c1bf) — 8990d408f · 내일 RUN.md
+
+어느 DB · 어느 스키마 · 지운 것 — 시험 · 재기는 assy_test 의 시험 스크래치 스키마(assy_pytest_pg_<프로세스>, 픽스처가 끝에 DROP)뿐(카나리아: pg_namespace 1). 지운 것은 그 스키마의 시험 표와 그 줄들뿐. 박스 DB 에는 안 씀
+
+**한 일**
+```
+같은 함수   is_batch 면 묶음, 아니면 한 행 — 둘 다 df 하나로 같은 길
+값          묶음 df_to_updates 한 번 -> 항목마다 그 행의 층 chain_ingestion (<row>) · origin_row_id <row>
+세기        (키) IN (...) 같음 비교, 1,000 키마다 질의 하나 — 1만 키 한 질의는 PG 파서 스택을 넘었다(재서 봄). NULL 이 낀 키만 IS NOT DISTINCT FROM
+            🔴 앞 착지(4115f5afb)는 IS NOT DISTINCT FROM 이라 색인을 못 탄다 — 100만 행 원천이면 행마다 표 전체를 읽었다. 이 착지가 고침
+보류        값 묶음 «하나» agreed · «없음»(원천 다 지움) 또는 «둘 이상» '' — 키마다 한 항목, 그냥 chain 층
+```
+**게이트 (pg, 묶음 · 한 행 두 판 다)**
+```
+맨 앞      같은 묶음 · 같은 키 원천 둘 -> netdie 칸에 층 둘 · 출처 둘, 하나 지우면 그 행 층만 빠짐
+4115f5afb 의 7 + 원천 둘 다 지움 -> 보류 '' · 원장 원자 0   =  9 x 2 판 = 18 통과 · 비우기 4 같이 = 22
+변이(각 자리 되돌림 -> 빨강, 안 바꾼 첫 판 = 카나리아)
+   none (canary)                                                  18 passed, 7952 deselected, 40 warnings
+   one layer name for the whole batch                             1 failed, 17 passed, 7952 deselected, 40 warnings
+   the hold always agrees                                         12 failed, 6 passed, 7952 deselected, 40 warnings
+   a key with no source row agrees (count 0)                      2 failed, 16 passed, 7952 deselected, 40 warnings
+   the hold under the row's own layer (the rejected alternative)  10 failed, 8 passed, 7952 deselected, 40 warnings
+   no hold item in the updates                                    14 failed, 4 passed, 7952 deselected, 40 warnings
+   the mode is never hold-only                                    14 failed, 4 passed, 7952 deselected, 40 warnings
+예시       RELEASE_LOG 규칙 둘(is_batch) — 로더 판정 거절 0 · allow_retraction «켜지 말 것» 사유 한 줄
+sqlite     맵퍼 · 규칙 시험(-k mapper/rule_loader/chain_rules) 401 통과, 실패 3 은 늘 같은 환경 셋
+           — 이 판이 맵퍼 표면 시험에 한 번 걸렸다(crud._chunks 는 비공개) -> 범위 나누기 한 줄로 바꿈. 전체 시험은 안 돌림
+```
+**1만 행 다시 채우기 — 4.4 시간 어림이 얼마로**
+```
+묶음     쌓기 2.46 s · 체인 64.89 s · 원장 23.69 s -> 100만 어림 약 2.5 시간   (한 행씩: 체인 128.81 s, 약 4.3 시간)
+규격     1,000 행에 체인 6.5 s — 아직 5 s 를 넘는다
+남은 몫   1,000 행 프로파일: 체인 그룹 4.7 s 중 쓰기 문(crud.apply_batch_updates) 4.3 s — 항목 2,000 개(행마다 값 + 보류)를 하나씩 찾는다. 맵퍼는 0.4 s
+         쓰기 문은 이 주문 밖이라 안 건드림 — 줄이려면 그 자리가 다음 일
+```
+**RUN.md** — 내일 순서 전부(설정 둘 고치고 재기동 한 번 · 비우기 보고 -> 비우기 · 규칙 둘 is_batch, 다시 세기는 꺼 둔 채 · 다시 채우기 · 다시 세기 켬 · census 0 확인 · 급할 때)
+
+다음: (가) 대기열(지어 둠, pg 17 통과) 을 새 main 위로 옮겨 착지 -> (나) 지문 -> e11bb4de0 -> 338abb9f3 -> 세상
