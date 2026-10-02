@@ -934,11 +934,11 @@ conda run -n assy_manager python server/scripts/chain_replay_cli.py resolve <테
 
 | | 라벨 | transaction id | 상태 |
 |---|---|---|---|
-| **R1** 재적용 | ✅ **구성상 옳다** — `apply_batch_updates`가 항목의 `source_name`(=`chain_ingestion`)을 컨텍스트로 복사한다 | ⚠️ **페이지당 하나**(`chain_replay_{run_id}_{page:06d}`) | **라벨은 닫혔고 그룹핑은 열려 있다** |
+| **R1** 재적용 | ✅ **구성상 옳다** — `apply_batch_updates`가 항목의 `source_name`(=`chain_ingestion`)을 컨텍스트로 복사한다 | ✅ **실행당 하나**(`replay_<run>` — d62f40730, 09-23) | **라벨도 그룹핑도 닫혔다** |
 | **R2** 철회 | ✅ `53f9187` — `chain_ingestion` / `chain_replay_withdraw` | ✅ 실행당 하나 | 닫힘 |
 | **R3** 재계산 | ✅ `ffb23d6` — `chain_ingestion` / `resolution_recompute` | ✅ 실행당 하나 | 닫힘 |
 
-- ⚠️ **R1의 남은 결함은 같은 비용의 약한 형태입니다** — 페이지당 tx id는 실행당 하나보다 **페이지 수만큼 많은 직렬 그룹**을 만듭니다. **라벨이 맞다고 그룹핑도 맞은 것이 아닙니다**(두 필드는 같은 엔벨로프에 있을 뿐 서로를 함의하지 않습니다). 미수리 — 총괄 판정 대기.
+- ✅ **R1의 tx id 는 실행당 하나입니다**(d62f40730, 09-23 — 페이지당 하나이던 결함은 닫혔습니다). 다만 tx 는 «한 번의 쓰기»의 신원이라 한 잡이 연산 · 워커 쓰기마다 다른 tx 로 나갑니다 — **잡의 신원은 `run_id`** 이고, 소급 잡이 낸 이벤트와 그것이 깨운 워커 쓰기가 모두 payload 에 싣습니다. 체인 대기열(`/admin/chain/queue`)은 그것으로 한 줄로 접습니다(총괄 b3a4334db).
 
 #### 5.6.1 R3에서 측정된 것 (`ffb23d6`)
 

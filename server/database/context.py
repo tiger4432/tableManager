@@ -50,6 +50,11 @@ request_cascade = sys._context_vars_cache.setdefault(
 #: [WRITTEN-BY] The declarations whose rules are writing, while the chain writes (총괄 ebefd20e8).
 request_written_by = sys._context_vars_cache.setdefault(
     "request_written_by", contextvars.ContextVar("request_written_by", default=None))
+#: [RUN] The retroactive run (`retroactive_runs.run_id`) whose work this write is - set where every
+#: run ends (`admin.retroactive._run_to_the_end`) and carried by the chain into what that run's
+#: events woke (총괄 b3a4334db). `None` = no run: the write is its own transaction's.
+request_run_id = sys._context_vars_cache.setdefault(
+    "request_run_id", contextvars.ContextVar("request_run_id", default=None))
 
 
 def _for_the_block(var, value):
@@ -81,6 +86,11 @@ def cascade(value: bool):
 def written_by(declarations):
     """Context manager: the writes inside say which declarations made them (총괄 ebefd20e8)."""
     return _for_the_block(request_written_by, tuple(sorted(declarations)) or None)
+
+
+def retroactive_run(run_id):
+    """Context manager: the writes inside are retroactive run `run_id`'s work (총괄 b3a4334db)."""
+    return _for_the_block(request_run_id, run_id or None)
 
 
 def outbox_mode(mode: str):

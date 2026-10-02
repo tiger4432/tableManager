@@ -43,9 +43,11 @@ def _queue(client):
 
 
 def _plant(db, created_at=PLANTED):
+    # The shape the product's stagers write - an object. The queue folds in SQL now and reads the
+    # object's keys (lead b3a4334db); a JSON string is only what two control-row writers leave.
     db.add(models.DatabaseOutbox(
         event_uuid=str(uuid.uuid4()), table_name="dt_map", event_type="ROW_UPDATED",
-        payload=json.dumps({"transaction_id": TX}), processed_chain=False,
+        payload={"transaction_id": TX}, processed_chain=False,
         created_at=created_at))
     db.flush()
 

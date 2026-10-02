@@ -2236,7 +2236,9 @@ def publish(db, op: str, params: dict, requested_by: str = None) -> dict:
             event_uuid=str(uuid.uuid4()),
             table_name=RUN_EVENT_TABLE,
             event_type=RUN_EVENT_TYPE,
-            payload=json.dumps(payload, ensure_ascii=False),
+            # An object, not a JSON string, so the queue's SQL reads its `run_id` and folds it
+            # into its run's line (총괄 b3a4334db). Both readers take either shape.
+            payload=payload,
             processed_chain=False,
         ))
     # 🔴 THE SAME COMMIT AS THE OUTBOX ROW. A queued event with no run row is a job nobody
@@ -2627,8 +2629,10 @@ def _run_to_the_end(run_id, op, spec, params, log, control, raise_failure=False)
         # 🔴 [소유자 09-26 · 총괄 c2995cdd8] EVERY OPERATION'S WRITES go out on the retroactive
         #   channel, which wakes no rule - one seat, because every run ends here. A collector
         #   backfill writes files; the watcher ingests them on its own channel.
-        from database.context import channel
-        with channel(ec.CHANNEL_RETROACTIVE):
+        # 🔴 [총괄 b3a4334db] AND EVERY EVENT THEY STAGE SAYS WHICH RUN, so one job is one line
+        #   in the queue whatever transactions its operations write in.
+        from database.context import channel, retroactive_run
+        with channel(ec.CHANNEL_RETROACTIVE), retroactive_run(run_id):
             out["result"] = spec["run"](db, params, log, control)
         # 🔴 STOPPED AND FINISHED ARE DIFFERENT OUTCOMES. A cancelled run has committed
         # everything it wrote and has more left to do; reporting it as `done` would tell

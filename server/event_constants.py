@@ -462,6 +462,15 @@ REPLAY_KEY = "replay"
 #: `apply_chain_writes`). A declaration is not woken by its own writes (소유자 09-28, 총괄
 #: ebefd20e8). Absent = a door that is not the chain's, or an event queued before the key.
 WRITTEN_BY_KEY = "written_by"
+#: [RUN] The retroactive run (`retroactive_runs.run_id`) whose work this event is - one job is one
+#: line in the queue whatever transactions its operations wrote in (총괄 b3a4334db). Absent = no run.
+RUN_KEY = "run_id"
+
+
+def run_of(payload):
+    """The retroactive run an event says it belongs to, or `None`."""
+    value = payload.get(RUN_KEY) if isinstance(payload, dict) else None
+    return value if isinstance(value, str) and value else None
 
 
 def channel_of(payload):

@@ -4584,18 +4584,30 @@ def get_chain_queue_depth(db: Session = Depends(get_db)):
     by_type = (db.query(outbox.event_type, _f.count(), _f.min(outbox.created_at))
                .filter(waiting_only).group_by(outbox.event_type).all())
 
-    # 🔴 가장 오래된 대기 행은 `MIN(created_at)`이 아니라 **`id` 오름차순의 첫 행**으로
-    # 찾는다. 부분 인덱스가 `(processed_chain, id)`라 그 순서는 인덱스가 이미 들고 있고,
-    # `created_at`은 색인돼 있지 않아 `MIN`을 물으면 같은 행을 찾으려고 전수를 훑는다.
-    # `id`는 단조이므로 두 질문의 답은 같은 행이다.
-    #
-    # 그 «첫 행»과 아래의 «앞에서부터 N 행»은 같은 인덱스의 같은 순서라, 목록을 뜨면
-    # 첫 행은 그 목록의 머리다. 그래서 `LIMIT 1` 질의를 따로 두지 않는다 — 질의가
-    # 하나 줄고, 두 수가 «같은 스냅샷»에서 나온다(따로 뜨면 사이에 큐가 움직인다).
-    head = (db.query(outbox.id, outbox.event_type, outbox.table_name, outbox.payload,
-                     outbox.retry_count, outbox.created_at)
-            .filter(waiting_only).order_by(outbox.id.asc()).limit(_QUEUE_LIST_CAP).all())
-    oldest = head[0].created_at if head else None
+    # ── 대기 «줄» — 한 잡은 한 줄 ────────────────────────────────────────────────
+    # 🔴 [총괄 b3a4334db] 줄의 신원은 소급 실행(`run_id`)이 있으면 그것, 없으면 `transaction_id`,
+    #    둘 다 없으면 그 행 하나. 접기는 «자르기 전»에 SQL 로 하고 상한은 «줄»에 건다.
+    # ⚰️ 전에는 «앞에서부터 200 이벤트»를 자른 «뒤» 파이썬으로 접었다(색인 없는 payload 를
+    #    SQL 로 묶으면 전수를 훑는다는 이유). 그래서 한 잡이 200 이벤트를 넘기면 그 뒤 잡이 안
+    #    보였고, 한 잡이 연산 · 워커 쓰기마다 tx 를 따로 지어 여러 줄이 됐다. 훑는 범위는 그때나
+    #    지금이나 «기다리는 행»(부분 인덱스 `idx_outbox_unprocessed`)이다.
+    from sqlalchemy import String as _String, cast as _cast, literal as _literal
+    run_of = outbox.payload["run_id"].as_string()
+    line_key = _f.coalesce(run_of, outbox.payload["transaction_id"].as_string(),
+                           _literal("outbox#").concat(_cast(outbox.id, _String)))
+    lines = (db.query(line_key.label("key"),
+                      _f.max(run_of).label("run"),
+                      _f.count().label("events"),
+                      # 묶인 이벤트는 «몇 행»을 싣는지 들고 있다(`row_count`); 행 하나짜리는 1
+                      _f.sum(_f.coalesce(outbox.payload["row_count"].as_integer(), 1)).label("rows"),
+                      _f.min(outbox.id).label("first_id"),
+                      _f.min(outbox.created_at).label("created_at"),
+                      _f.max(outbox.retry_count).label("max_retry"),
+                      _f.count().over().label("lines_total"))
+             .filter(waiting_only).group_by(line_key)
+             .order_by(_f.min(outbox.id)).limit(_QUEUE_LIST_CAP).all())
+    # 가장 오래 기다린 줄이 머리다(`id` 는 단조) — 그 줄의 가장 이른 시각이 큐 전체의 것
+    oldest = lines[0].created_at if lines else None
 
     # 🔴 이 응답의 「지금」은 «하나»다. `oldest_seconds` 와 아래 `_age()` 와 `generated_at`
     #    이 «같은 순간»을 써야 「기준 시각」이 그 옆의 수들을 실제로 설명한다. 여기서 나이마다
@@ -4614,58 +4626,43 @@ def get_chain_queue_depth(db: Session = Depends(get_db)):
         stamped = oldest if oldest.tzinfo else oldest.replace(tzinfo=timezone.utc)
         oldest_seconds = max(0.0, (now_utc - stamped).total_seconds())
 
-    # ── 대기 «트랜잭션» 목록 ────────────────────────────────────────────────────
-    # 깊이 하나로는 「누가」 기다리는지 모른다. 행을 트랜잭션으로 접어서 돌려준다 —
-    # 접는 것은 파이썬이다. `transaction_id`는 payload(JSON) 안에 있어 SQL 로 묶으면
-    # 색인이 없어 전수를 훑는다 (바로 아래 `/admin/outbox/failed` 가 같은 이유로 같은
-    # 방식을 쓴다). 대신 «훑는 행 수»를 위에서 잘라 비용을 고정했다.
-    from collections import OrderedDict
-    groups = OrderedDict()  # id 오름차순 = 오래 기다린 순. 그 순서가 답이라 dict 를 정렬하지 않는다
-    for row in head:
-        tx = (get_payload_dict(row) or {}).get("transaction_id") or f"(no tx · outbox#{row.id})"
-        g = groups.get(tx)
-        if g is None:
-            g = groups[tx] = {"transaction_id": tx, "rows": 0, "tables": [], "event_types": [],
-                              "max_retry": 0, "first_id": row.id, "created_at": row.created_at}
-        g["rows"] += 1
-        # 🔴 «없는 표 이름»은 표로 안 센다. `database_outbox.table_name` 은 관례상 비지
-        #    않아서, 표가 없는 행은 자리를 채우려고 이름을 «지어낸다»
-        #    (`event_constants.RETROACTIVE_RUN_TABLE` = `__retroactive__`). 그것이 이
-        #    목록에 뜨면 운영자는 그 표를 «찾으러 간다» — 「없음」을 「있는 이름」으로 말한
-        #    것이고, 그 헛걸음이 이 결함의 비용이다.
-        #    ⚠️ 신원을 «지우는» 것이 아니다: 이 행이 무엇인지는 아래의 `event_types` 가
-        #    이미 말한다.
-        #    🔴 부류는 「통제 이벤트인가」가 «아니라» 「그 이름이 없는 표인가」다. 앞의 것으로
-        #    걸렀더니 `SCHEDULER_RUN_NOW` 의 «진짜» 표 이름까지 지웠다 — 그 이벤트는
-        #    호출자가 준 실재하는 표를 싣는다(아래 `SCHEDULER_RUN_NOW` 발행 지점). 그러면
-        #    운영자가 「어느 표에 대한 온디맨드 실행인지」를 잃고, `event_types` 는 그 답을
-        #    들고 있지 않다.
-        #    ⛔ 그렇다고 리터럴로 맞추지 않는다 — 자리표시자들은 한 곳에 «선언»돼 있고,
-        #    그 선언이 곧 「이 이름들은 표가 아니다」라는 문서다. 다음 자리표시자는 거기
-        #    한 줄이고 이 자리는 안 고친다.
-        is_placeholder = row.table_name in event_constants.PLACEHOLDER_TABLE_NAMES
-        if row.table_name and not is_placeholder and row.table_name not in g["tables"]:
-            g["tables"].append(row.table_name)
-        # 🔴 [S-36] 소급 행은 «자기 payload 에» 누가·무슨 op·어느 인자를 이미 들고 있는데
-        #    이 라우트가 `transaction_id` «하나»만 읽고 나머지를 버렸다. 그래서 화면에는
-        #    「(no tx · outbox#12) · 표 없음 · event_type 하나」로 나갔고, 운영자는 그 행이
-        #    «무엇인지» 알 길이 없었다 — 답이 그 행 «안»에 있는데도.
-        #    ⚠️ 키가 «없는» 것과 값이 `None` 인 것이 다르다: 이 묶음에 소급 행이 하나도
-        #    안 섞였으면 `retroactive` 키가 «아예 없고**, 섞였는데 `requested_by` 를
-        #    아무도 안 적었으면 그 «칸»이 None 이다. 앞은 「해당 없음」이고 뒤는
-        #    「물었는데 아무도 안 말했다」이며, 화면은 그 둘을 다르게 그린다.
-        if row.event_type == event_constants.EVENT_RETROACTIVE_RUN:
-            _rp = get_payload_dict(row) or {}
-            g.setdefault("retroactive", []).append({
-                "run_id": _rp.get("run_id"),
-                "op": _rp.get("op"),
-                "requested_by": _rp.get("requested_by"),
-                "params": _rp.get("params"),
-                "outbox_id": row.id,
-            })
-        if row.event_type and row.event_type not in g["event_types"]:
-            g["event_types"].append(row.event_type)
-        g["max_retry"] = max(g["max_retry"], int(row.retry_count or 0))
+    # ── 줄마다 표 · 이벤트 종류 · 소급 통제 행 · 잡 이름 ─────────────────────────────
+    # 위에서 고른 줄의 것만 읽는다 — 줄 수만큼의 작은 묶음이다.
+    keys = [line.key for line in lines]
+    detail = {key: {"tables": [], "event_types": [], "retroactive": []} for key in keys}
+    if keys:
+        for key, table_name, event_type in (
+                db.query(line_key, outbox.table_name, outbox.event_type)
+                .filter(waiting_only, line_key.in_(keys))
+                .group_by(line_key, outbox.table_name, outbox.event_type)
+                .order_by(line_key, outbox.table_name, outbox.event_type).all()):
+            d = detail[key]
+            # 🔴 «없는 표 이름»은 표로 안 센다. 표가 없는 행은 자리를 채우려고 이름을 «지어낸다»
+            #    (`event_constants.PLACEHOLDER_TABLE_NAMES` — 그 선언이 「이 이름들은 표가 아니다」
+            #    라는 문서다). 그것이 목록에 뜨면 운영자는 그 표를 찾으러 간다.
+            if (table_name and table_name not in event_constants.PLACEHOLDER_TABLE_NAMES
+                    and table_name not in d["tables"]):
+                d["tables"].append(table_name)
+            if event_type and event_type not in d["event_types"]:
+                d["event_types"].append(event_type)
+        # [S-36] 소급 통제 행은 «자기 payload 에» 누가 · 무슨 op · 어느 인자를 들고 있다.
+        #    ⚠️ 키가 «없는» 것(소급 행이 안 섞임)과 칸이 None(아무도 안 적음)은 다르다.
+        for row in (db.query(outbox.id, outbox.payload, line_key)
+                    .filter(waiting_only, line_key.in_(keys),
+                            outbox.event_type == event_constants.EVENT_RETROACTIVE_RUN)
+                    .order_by(outbox.id).all()):
+            _rp = get_payload_dict(row.payload) or {}
+            detail[row[2]]["retroactive"].append({
+                "run_id": _rp.get("run_id"), "op": _rp.get("op"),
+                "requested_by": _rp.get("requested_by"), "params": _rp.get("params"),
+                "outbox_id": row.id})
+    # 잡 이름(op)은 «소급 실행 표»가 답한다 — 통제 행이 없는 잡(체인 재실행)도 있다
+    run_ids = [line.run for line in lines if line.run]
+    runs = {}
+    if run_ids:
+        runs = {r.run_id: r.op for r in (db.query(models.RetroactiveRun.run_id,
+                                                 models.RetroactiveRun.op)
+                                         .filter(models.RetroactiveRun.run_id.in_(run_ids)).all())}
 
     def _age(dt):
         if dt is None:
@@ -4673,20 +4670,28 @@ def get_chain_queue_depth(db: Session = Depends(get_db)):
         stamped = dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
         return max(0.0, (now_utc - stamped).total_seconds())
 
-    waiting_transactions = [{
-        "transaction_id": g["transaction_id"],
-        "rows": g["rows"],
-        "tables": g["tables"],
-        "event_types": g["event_types"],
-        # 같은 판정을 행 목록에도. 화면이 event_type 을 보고 «스스로» 누구 것인지 정하면
-        # 그 판정의 사본이 하나 더 생긴다 — 집이 하나여야 하는 이유가 그것이다.
-        "owners": sorted({event_constants.outbox_owner(t) for t in g["event_types"]}),
-        # 있을 때«만» 나간다 — 위 주석의 세 상태 그대로.
-        **({"retroactive": g["retroactive"]} if "retroactive" in g else {}),
-        "max_retry": g["max_retry"],
-        "waiting_seconds": _age(g["created_at"]),
-        "waiting_at": to_local_str(g["created_at"]) if g["created_at"] is not None else None,
-    } for g in groups.values()]
+    waiting_transactions = []
+    for line in lines:
+        d = detail[line.key]
+        is_run = bool(line.run)
+        is_row = not is_run and line.key == f"outbox#{line.first_id}"
+        waiting_transactions.append({
+            # 줄의 신원 셋 중 하나만 찬다 — 잡(run_id) · 트랜잭션 · 그 행 하나
+            "run_id": line.run if is_run else None,
+            "op": runs.get(line.run) if is_run else None,
+            "transaction_id": (None if is_run else
+                               f"(no tx · outbox#{line.first_id})" if is_row else line.key),
+            "events": int(line.events),
+            "rows": int(line.rows or 0),
+            "tables": d["tables"],
+            "event_types": d["event_types"],
+            # 같은 판정을 줄에도. 화면이 event_type 을 보고 «스스로» 정하면 그 판정의 사본이 생긴다.
+            "owners": sorted({event_constants.outbox_owner(t) for t in d["event_types"]}),
+            **({"retroactive": d["retroactive"]} if d["retroactive"] else {}),
+            "max_retry": int(line.max_retry or 0),
+            "waiting_seconds": _age(line.created_at),
+            "waiting_at": to_local_str(line.created_at) if line.created_at is not None else None,
+        })
 
     owners = {}
     for event_type, rows_of_type, oldest_of_type in by_type:
@@ -4778,9 +4783,10 @@ def get_chain_queue_depth(db: Session = Depends(get_db)):
         # 🔴 자른 것을 «말한다». 목록이 짧은 것이 「이것뿐」인지 「여기까지만 봤다」인지
         #    화면이 구별할 수 있어야 한다 — 조용히 자르면 목록이 «전부»로 읽힌다.
         "listed": {
-            "rows_scanned": len(head),
+            "lines": len(lines),
+            "lines_total": int(lines[0].lines_total) if lines else 0,
             "cap": _QUEUE_LIST_CAP,
-            "capped": len(head) >= _QUEUE_LIST_CAP,
+            "capped": bool(lines) and int(lines[0].lines_total) > len(lines),
         },
         # 세지 «않은» 것을 이름으로 말한다. 응답에 없는 수는 「0」으로 읽히기 쉽고,
         # 그 오독이 바로 이 라우트가 없애려는 부류다.

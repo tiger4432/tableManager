@@ -1,5 +1,23 @@
 # 지금 돌리면 되는 것
 
+> ## [10-02 저녁] **체인 대기열 — 소급 잡 하나는 한 줄 (run_id) · 접기는 자르기 전 — 이주 «불필요» · 재기동 «필요»(run_app.bat 전체)**
+>
+> ```
+> 무엇이 바뀌나  소급 잡이 도는 동안 낸 이벤트와 그것이 깨운 체인 쓰기가 payload 에 run_id 를 싣는다
+>              GET /admin/chain/queue 의 waiting_transactions = «줄»: 잡(run_id · op) · 트랜잭션 · 그 행 하나 중 하나
+>                 한 줄 = run_id · op · transaction_id · events(남은 이벤트) · rows(그 이벤트가 싣는 행) · 가장 오래 기다림
+>              🔴 rows 의 뜻이 바뀜: 전에는 «이벤트 수», 이제 «행 수». 이벤트 수는 events
+>              listed = {lines, lines_total, cap, capped} — 상한은 «줄» 200(전에는 «이벤트» 200, rows_scanned 은 없어짐)
+> 확인         재기동 뒤 소급 잡 하나(어드민 Retroactive 탭) -> 체인 대기열 화면에 그 잡이 한 줄
+>              curl -s -H "X-Admin-Token: <토큰>" http://localhost:8080/admin/chain/queue  -> waiting_transactions[].run_id · op
+> 뜻           같은 잡이 두 줄이면: 재기동 전에 큐에 들어간 이벤트(run_id 없음) — 다 빠지면 한 줄
+>              op 가 비어 있고 run_id 만 있으면 retroactive_runs 에 그 실행 행이 없는 것
+> 급할 때       git revert <이 커밋> -> 재기동. 이벤트의 run_id 키는 읽는 쪽이 없으면 무해
+> 화면         클라 레인이 이 줄 모양으로 대기열 화면을 바꾼다(그 전까지 화면의 rows 칸은 «행 수»를 보이고, 잡 줄의 tx 칸은 빈다)
+> ```
+
+---
+
 > ## [10-02 오후] **배포 뒤 운영 순서 — 다이 references · 키 철자 하나 (총괄 6736254fd) — 이주 «불필요» · 재기동 «필요»**
 >
 > ```

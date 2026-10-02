@@ -83,7 +83,7 @@ def outgoing_channel(woken_by_a_replay=False):
 
 
 @contextlib.contextmanager
-def chain_envelope(depth=None, woken_by_a_replay=False, cascade=False, written_by=()):
+def chain_envelope(depth=None, woken_by_a_replay=False, cascade=False, written_by=(), run=None):
     """The envelope a chain-caused write goes out in: source, hop, collapsed events.
 
     🔴 [S-279, 판정 423] THE THREE CELLS HAD FOUR DIFFERENT ANSWERS. Measured 2026-09-16
@@ -126,7 +126,8 @@ def chain_envelope(depth=None, woken_by_a_replay=False, cascade=False, written_b
     to the rule - the group step's `chain_<tx>` is its own identity and replay's is another.
     """
     from database.context import (outbox_mode, request_cascade, request_chain_depth,
-                                  request_channel, request_source, request_written_by)
+                                  request_channel, request_run_id, request_source,
+                                  request_written_by)
     import event_constants
 
     token_source = request_source.set(CHAIN_SOURCE)
@@ -137,12 +138,15 @@ def chain_envelope(depth=None, woken_by_a_replay=False, cascade=False, written_b
     # never this, so a write whose layer is not `chain_ingestion` still reads as the chain.
     token_channel = request_channel.set(outgoing_channel(woken_by_a_replay))
     token_cascade = request_cascade.set(bool(cascade))
+    # [RUN] what a run's events woke is that run's work too (총괄 b3a4334db).
+    token_run = request_run_id.set(run)
     try:
         with outbox_mode(event_constants.OUTBOX_MODE_COLLAPSED):
             yield
     finally:
         # Reset together: a depth left set stamps the NEXT write, and the next write may not
         # be the chain's at all.
+        request_run_id.reset(token_run)
         request_cascade.reset(token_cascade)
         request_channel.reset(token_channel)
         request_chain_depth.reset(token_depth)
@@ -419,7 +423,7 @@ def held_back(rule, handed) -> tuple:
 
 
 def run_rule(db, rule, payloads=None, row_ids=None, done=None, depth=None,
-             woken_by_a_replay=False, cascade=False):
+             woken_by_a_replay=False, cascade=False, run=None):
     """Run ONE chain rule over the input it was handed, whichever way it names its code.
 
     `payloads` are expanded trigger rows a proposing rule is handed; `row_ids` are the rows a
@@ -464,7 +468,7 @@ def run_rule(db, rule, payloads=None, row_ids=None, done=None, depth=None,
     #   returns, in the caller's own envelope - nothing enters two.
     from chain import rule_shape
     envelope = chain_envelope(depth, woken_by_a_replay, cascade,
-                              written_by=(rule_shape.declaration_of(rule),))
+                              written_by=(rule_shape.declaration_of(rule),), run=run)
     # 🔴 THE LINE IS IN `finally`, SO A RULE THAT THREW STILL SAYS SO (판정 498 ③).
     # ⚰️ LEVELLING THE TWO VOCABULARIES DOWN WOULD HAVE LOST A SENTENCE THE OWNER ASKED FOR.
     #    The mapper door wrote START/END/RAISED; the builtin door wrote one line and NOTHING on
