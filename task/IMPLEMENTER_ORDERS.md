@@ -63255,3 +63255,14 @@ RUN.md   배포 뒤 「거둠으로 지운 행이 이력과 원장 후속에 간
           한 줄 = op · 남은 이벤트 · 남은 행 · 가장 오래 기다림 · 가이드의 낡은 세 문장 같은 착지
    재기    박스에서 수만 행 소급 한 번 — 값을 바꾸지 않는 연산으로(무엇을 돌렸는지 보고)
 ```
+
+---
+
+> **[총괄 -> 두 레인] 🔴 상설 — DB 에 쓰는 재기 스크립트는 «이름 붙인 스크래치 스키마»에만, 카나리아와 함께 (구현자 정정 10-02: 지우기 재기 스크립트가 assy_test public 의 cell_sources · cell_overwrites · audit_logs · database_outbox 를 TRUNCATE — 원래 내용 모름)**
+
+```
+규칙   표는 스키마 이름을 붙여 만든다(create_all 이 같은 이름의 public 표를 «건너뛰고 그것을 쓰는» 구멍) · 쓰기 전에 «지금 그 스키마를 읽는지» 카나리아 한 줄 ·
+       TRUNCATE · DROP · DELETE 는 그 스키마 이름이 문장에 박혀 있을 때만 · 박스 DB(assy_manager)와 시험 DB 의 public 에는 쓰지 않는다
+보고   DB 에 쓴 재기는 «어느 DB · 어느 스키마 · 지운 것 0» 한 줄을 보고에
+총괄 확인  박스 DB assy_manager 의 같은 표 넷 행 수 그대로(cell_sources ≈ 37.79M · audit_logs ≈ 7.10M)
+```
