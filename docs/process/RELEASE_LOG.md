@@ -9,6 +9,38 @@
 
 ---
 
+## 2026-10-02 · 바인딩에 적은 칸은 맵퍼 입력 칸에 다시 적지 않는다
+
+- **무엇** — 바인딩 · `bind.entities` 의 속성 · 맵퍼 묶음(`map.unit.columns`) · `when` 이 부르는 칸은 읽기가 저절로 싣습니다. 검증기가 그 칸을 `map.input_columns` 에 다시 적으라고 하지 않습니다(전에는 「Profile column 'X' at … is missing」 으로 거절). `input_columns` 에는 코드 맵퍼가 선언 밖에서 직접 읽는 칸만 적습니다.
+- **선언 예시** — `config/ontology/ledger_config.json` 의 `sources` 에서. 입력 칸이 비어 있어도 `dt_eqp`(엔티티 속성) · `netdie_count` · `event_time` · `dt_job` 이 읽힙니다:
+
+<!-- example: ledger_sources -->
+```json
+{
+  "dt_job": {
+    "relation": "dt_job_rollup",
+    "read": {"unit": "row", "identity": ["dt_job"], "order_by": ["dt_job"],
+             "cursor": {"columns": ["dt_job"]},
+             "occurred_at": {"basis": "ingested", "timezone": "Asia/Seoul"}},
+    "map": {"implementation_id": "declarative-role", "implementation_version": 1,
+            "unit": {"kind": "row"}, "input_columns": []},
+    "bind": {
+      "entities": {"dtjob@1": {"attributes": {"dt_eqp": {"kind": "column", "column": "dt_eqp"}}}},
+      "mappings": {
+        "counted": {"predicate": "has_netdie@1", "bind": {
+          "occurred_at": {"kind": "column", "column": "event_time"},
+          "subject": {"kind": "entity", "entity_type": "dtjob@1",
+                      "keys": {"dt_job": {"kind": "column", "column": "dt_job"}}},
+          "value": {"kind": "column", "column": "netdie_count"}}}
+      }
+    }
+  }
+}
+```
+- **화면에서** — 탐색기 소스 폼의 `Mapper input_columns` 에서 그 칸들이 눌린 채 잠긴 칩으로 나옵니다(전에는 키 · 묶음 · 정렬 · 커서 · 시각 칸만). 기본값은 잠기지 않은 칸 전부입니다.
+- **바뀐 동작** — 이미 두 곳에 적힌 선언은 그대로 통과하고 같은 원자를 씁니다. `bind.entities` 속성 칸은 전에는 `input_columns` 에서 빠지면 검증은 통과하고 번역에서 `missing_binding_column` 으로 멈췄는데, 이제 저절로 읽힙니다. 그런 속성이 있는 소스는 재기동 때 커서 지문이 한 번 다시 찍힙니다(자리 그대로, 다시 읽는 행 없음). 맵퍼 묶음 칸이 관계에 없으면 `unknown_column`(`map.unit.columns`)으로 거절합니다.
+- **자세히** — [ONTOLOGY_LEDGER_SETUP.md](../guide/ONTOLOGY_LEDGER_SETUP.md)(잠긴 칩 절 · 증상표) · 이 항목과 같은 커밋
+
 ## 2026-10-02 · 다이 → 웨이퍼 잇기 — 엔티티의 `references` 가 원자를 쓴다
 
 - **무엇** — 엔티티 선언에 «이 엔티티는 자기 키로 정해지는 상위에 속한다»를 적으면, 그 엔티티를 부르는 소스가 어느 것이든(주어로든 목적어로든) 번역할 때 그 상위로 가는 엣지 원자를 하나 더 씁니다. 예: Wafer 다이는 mat_id 가 이름 붙인 웨이퍼 안에 있다 — 다이를 부르는 소스마다 다이 → 웨이퍼 `in_container` 가 생겨, 걷기에서 다이에서 웨이퍼로 닿습니다. 한 분자에 같은 다이가 둘이면 원자 하나이고, 그 분자가 이미 같은 사실을 말하면 다시 쓰지 않습니다. 이 원자의 시각은 사건 시각이 아닙니다(`occurred_at_basis` = `ingested`).

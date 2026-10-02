@@ -1,5 +1,21 @@
 # 지금 돌리면 되는 것
 
+> ## [10-02 오후] **바인딩 · 묶음 · when 칸은 맵퍼 입력 칸에 다시 안 적는다 — 이주 «불필요» · 재기동 «필요»(run_app.bat 전체)**
+>
+> ```
+> 무엇이 바뀌나  검증기가 바인딩(bind.mappings 의 칸 · bind.entities 속성 칸) · map.unit.columns 를 map.input_columns 에 다시 적으라고 안 한다
+>              그 칸은 읽기가 저절로 싣는다 — bind.entities 속성 칸도(전에는 안 실려 번역에서 missing_binding_column)
+>              탐색기 소스 폼 Mapper input_columns 의 잠긴 칩에 그 칸들과 when 칸이 더해진다
+> 확인         재기동 뒤 탐색기에서 소스를 열어 Mapper input_columns — 바인딩한 칸이 눌린 채 잠겨 있다
+>              입력 칸에서 바인딩한 칸을 빼고 저장 · 적용 -> 거절 없음(전에는 「Profile column 'X' at … is missing」)
+> 뜻           체인 데몬이 뜰 때 [Ledger] re-stamped N cursor(s) … 줄 — bind.entities 속성이 있는 소스(박스: dt_job)의 지문만 새로 찍힘.
+>              자리 그대로, 다시 읽는 행 없음. [Ledger] N cursor(s) were NOT re-stamped 줄이 나오면 그 소스가 멈춘 것 — 줄 뒤 사유를 본다
+> 급할 때       git revert <이 커밋> -> 재기동. 단 이 커밋 뒤에 입력 칸을 비워 저장한 선언은 되돌리면 다시 거절된다
+> 재기동 뒤 로그 위 re-stamped 줄
+> ```
+
+---
+
 > ## [10-02 오후] **엔티티 references 가 원자를 쓴다(다이 → 웨이퍼) · 사건 시각 아닌 원자는 창을 늘 지난다 — 이주 «불필요» · 재기동 «필요»(run_app.bat 전체)**
 >
 > ```

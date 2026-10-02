@@ -19,6 +19,7 @@ from .setup_bundle import (
     DEFAULT_LIFECYCLE,
     LedgerSetupBundle,
     LedgerSetupValidationError,
+    _profile_binding_columns,
     bundle_readiness_errors,
     entity_references,
     is_retired,
@@ -1147,48 +1148,22 @@ def _compile_registration_probe(
 
 
 def _binding_select_columns(catalog, relation, item):
-    """Physical columns of `relation` that this source's role bindings name (판정 201).
+    """Physical columns of `relation` that this source's `bind` names (판정 201).
 
     🔴 SO THAT NAMING A COLUMN IN A BINDING IS ENOUGH. A bound column also had to be
     repeated in `map.input_columns`, and forgetting the second place PASSED validation and
     then failed at run time with `missing_binding_column` - which is how the shipped sample
-    broke. `when` and `exclude_when` already work this way; bindings now do too.
+    broke. `bind.entities.<type>.attributes` is a binding too (총괄 33c930e98) - the
+    enumeration is `setup_bundle._profile_binding_columns`, the one the form locks by.
 
     ⚠️ INTERSECTED WITH THE CATALOGUE ON PURPOSE. Asking the RELATION for a column it does
     not have would be `UndefinedColumn` on the cursor path.
     """
-    def _columns_of(binding):
-        # ⚠️ COLLECTED HERE RATHER THAN IMPORTED. `setup_bundle._binding_columns` exists but
-        # takes a path and answers a different question (it builds refs for refusals); reusing
-        # a name whose contract I had not read is what produced a TypeError on the first run.
-        if not isinstance(binding, Mapping):
-            return set()
-        if binding.get("kind") == "column":
-            column = binding.get("column")
-            return {column} if isinstance(column, str) else set()
-        if binding.get("kind") != "entity":
-            return set()
-        found = set()
-        for group in ("keys", "attributes"):
-            part = binding.get(group)
-            if isinstance(part, Mapping):
-                for inner in part.values():
-                    found |= _columns_of(inner)
-        return found
-
     entry = (catalog or {}).get(relation) or {}
     physical = entry.get("columns") if isinstance(entry, Mapping) else None
     if not isinstance(physical, Mapping):
         return ()
-    bind = item.get("bind")
-    mappings = bind.get("mappings") if isinstance(bind, Mapping) else None
-    named = set()
-    if isinstance(mappings, Mapping):
-        for mapping in mappings.values():
-            bindings = mapping.get("bind") if isinstance(mapping, Mapping) else None
-            if isinstance(bindings, Mapping):
-                for binding in bindings.values():
-                    named |= _columns_of(binding)
+    named = {column for column, _where in _profile_binding_columns("", item.get("bind"))}
     return tuple(sorted(named & set(physical)))
 
 
