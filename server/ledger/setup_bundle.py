@@ -194,7 +194,10 @@ _SOURCE_UNITS = frozenset({"row", "group"})
 _MAPPER_UNITS = frozenset({"event", "row", "group_by"})
 # A source whose table carries no world time declares that instead of naming a column.
 # Closed on purpose: an open string here would let a typo become a silent claim about time.
-_OCCURRED_AT_BASES = frozenset({"ingested"})
+#: 🔴 THE ONE SPELLING of 「this `occurred_at` is not an event time」 (총괄 29047aedc · 0c9b6e3c0): the
+#: source basis that reads the row's stored time, and the basis every not-an-event atom carries.
+NOT_AN_EVENT_BASIS = "ingested"
+_OCCURRED_AT_BASES = frozenset({NOT_AN_EVENT_BASIS})
 
 
 class LedgerSetupValidationError(validation.DeclarationValidationError):
@@ -788,12 +791,138 @@ def read_group_by(read: Mapping[str, Any]) -> Any:
     return read.get("group_by", ())
 
 
+#: 🔴 [총괄 0c9b6e3c0 · 3bf28f893] What a source with no event edge reads as its time: the row's
+#: stored `created_at` (the basis every not-an-event atom carries). The product writes that column
+#: timezone-aware, so this zone answers no value - it is here because the read record requires one.
+DEFAULT_TIME_ORIGIN = {"basis": NOT_AN_EVENT_BASIS, "timezone": "UTC"}
+
+#: The predicate whose emission makes `read.registration_probe` load-bearing - the atom spelling
+#: `runtime_v2._filtered_event_atoms` compares against; the config addresses it as `register@1`.
+REGISTER_PREDICATE = "register"
+
+
+def role_must_be_bound(role_id: Any, role: Mapping[str, Any]) -> bool:
+    """THE one answer to 「must a mapping bind this role」 - the validator and the form ask here.
+    The event time role is required of the claim but not of the mapping: a mapping that binds
+    no event time is a not-an-event edge (총괄 0c9b6e3c0), its atom stores the molecule's time."""
+    return role.get("required") is True and not is_event_time_role(role_id)
+
+
+def registering_sentences(source: Any) -> tuple[tuple[str, Mapping[str, Any]], ...]:
+    """(sentence, mapping) for every sentence of this source whose predicate is `register`."""
+    profile = source.get("bind") if isinstance(source, Mapping) else None
+    mappings = profile.get("mappings") if isinstance(profile, Mapping) else None
+    return tuple(
+        (sentence, mapping) for sentence, mapping in sorted(
+            (mappings or {}).items() if isinstance(mappings, Mapping) else (), key=lambda p: str(p[0]))
+        if isinstance(mapping, Mapping) and isinstance(mapping.get("predicate"), str)
+        and mapping["predicate"].rsplit("@", 1)[0] == REGISTER_PREDICATE)
+
+
+def default_ordering_key(catalog: Mapping[str, Any], relation: Any) -> tuple[str, ...]:
+    """The shortest key the catalog declares for `relation`, or `()` - the default of
+    `read.identity` and `read.order_by` (총괄 261311e71), and the form's offered ordering."""
+    table = catalog.get(relation) if isinstance(relation, str) else None
+    keys = declared_unique_keys(table) if isinstance(table, Mapping) else ()
+    return min(keys, key=len) if keys else ()
+
+
+def with_read_defaults(document: Any, catalog: Mapping[str, Any]) -> Any:
+    """🔴 THE ONE PLACE a source's left-out read/map cells get the product's answer (총괄 261311e71
+    · 0c9b6e3c0). The validator, the loader and the form read a source through here. A written cell
+    is kept as written. Filled before the bundle is normalized and hashed, so a source that leaves a
+    cell out and one that writes the same value by hand are one bundle, one translator version."""
+    sources = document.get("sources") if isinstance(document, Mapping) else None
+    if not isinstance(sources, Mapping):
+        return document
+    return {**document, "sources": {source_id: source_defaults(source, catalog)
+                                    for source_id, source in sources.items()}}
+
+
+def source_defaults(source: Any, catalog: Mapping[str, Any]) -> Any:
+    """One source with its left-out cells filled (see `with_read_defaults`)."""
+    if not isinstance(source, Mapping) or "prepare" in source:
+        return source
+    read, mapper = source.get("read", {}), source.get("map", {})
+    if not isinstance(read, Mapping) or not isinstance(mapper, Mapping):
+        return source
+    read, mapper = dict(read), dict(mapper)
+    key = default_ordering_key(catalog, source.get("relation"))
+    if key:
+        read.setdefault("identity", list(key))
+        read.setdefault("order_by", list(key))
+    grouped = _is_list(read_group_by(read)) and bool(read_group_by(read))
+    read.setdefault("unit", "group" if grouped else "row")
+    # 총괄 0c9b6e3c0 ③ ㄴ: the form offered identity here and the validator refused the same
+    # source - the screen was saying something false. One answer now (3a109bfd9 ① reversed).
+    if read["unit"] == "group" and "group_by" not in read and _is_list(read.get("identity")):
+        read["group_by"] = list(read["identity"])
+    if "occurred_at" not in read:
+        origin = _event_edge_time(source.get("bind"))
+        if origin is not None:
+            read["occurred_at"] = origin
+    if "registration_probe" not in read:
+        probe = _registered_subject_columns(source)
+        if probe:
+            read["registration_probe"] = probe
+    group_by = read_group_by(read)
+    mapper.setdefault("unit", {"kind": "group_by", "columns": list(group_by)}
+                      if _is_list(group_by) and group_by else {"kind": "row"})
+    mapper.setdefault("input_columns", [])
+    return {**source, "read": read, "map": mapper}
+
+
+def _event_edge_time(profile: Any) -> Any:
+    """`read.occurred_at` a source leaves out: the time its EVENT EDGES bind - the mappings that
+    bind `occurred_at`, a column and its timezone - or, with no event edge, the row's stored time.
+    Edges naming different times, or one naming no timezone, leave it unfilled: one molecule has
+    one time, and the validator then names the cell to write (총괄 0c9b6e3c0)."""
+    mappings = profile.get("mappings") if isinstance(profile, Mapping) else None
+    times = set()
+    for mapping in (mappings.values() if isinstance(mappings, Mapping) else ()):
+        bind = mapping.get("bind") if isinstance(mapping, Mapping) else None
+        binding = bind.get(OCCURRED_AT_ROLE) if isinstance(bind, Mapping) else None
+        if binding is None:
+            continue
+        if not (isinstance(binding, Mapping) and binding.get("kind") == "column"
+                and isinstance(binding.get("column"), str) and binding["column"].strip()
+                and isinstance(binding.get("timezone"), str) and binding["timezone"].strip()):
+            return None
+        times.add((binding["column"], binding["timezone"]))
+    if not times:
+        return dict(DEFAULT_TIME_ORIGIN)
+    if len(times) > 1:
+        return None
+    column, zone = times.pop()
+    return {"column": column, "timezone": zone}
+
+
+def _registered_subject_columns(source: Any) -> list:
+    """`read.registration_probe` a source leaves out: for each entity its register sentences
+    register, the column bound to that entity's one key. An entity bound any other way gets no
+    default - the run then refuses as it does today (`registration_context_required`)."""
+    columns: dict = {}
+    for _sentence, mapping in registering_sentences(source):
+        bind = mapping.get("bind") if isinstance(mapping.get("bind"), Mapping) else {}
+        subject = bind.get(SUBJECT_ROLE)
+        keys = subject.get("keys") if isinstance(subject, Mapping) else None
+        entity_type = subject.get("entity_type") if isinstance(subject, Mapping) else None
+        if not (isinstance(entity_type, str) and isinstance(keys, Mapping) and len(keys) == 1):
+            continue
+        (binding,) = keys.values()
+        if isinstance(binding, Mapping) and binding.get("kind") == "column" and binding.get("column"):
+            columns.setdefault(entity_type, set()).add(binding["column"])
+    return [{"entity_type": entity_type, "columns": sorted(found)}
+            for entity_type, found in sorted(columns.items())]
+
+
 def validate_bundle(value: Mapping[str, Any], *,
                     catalog: Mapping[str, Any] | None = None) -> LedgerSetupBundle:
     value = upgrade_setup(value)
     issues = validate_bundle_errors(value, catalog=catalog)
     if issues:
         raise issues[0]
+    value = with_read_defaults(value, catalog)
     filled = {name: {} for name in OPTIONAL_SECTIONS if name not in value} | dict(value)
     normalized = _normalize(_derived_cursor(filled))
     return LedgerSetupBundle(_freeze(normalized))
@@ -833,6 +962,7 @@ def validate_bundle_errors(value: Mapping[str, Any], *,
     # sentence is true of what they were given and false about the world - the shape a loud
     # axis takes when it is standing in front of a quiet one.
     refuse_unadapted_catalog(catalog)
+    value = with_read_defaults(value, catalog)
     if not problems.exact(
             value, "bundle", required=("setup_version", *LOGICAL_SECTIONS),
             optional=OPTIONAL_SECTIONS):
@@ -1687,7 +1817,7 @@ def _validate_references(value, path, own_keys, section, problems):
 
     🔴 [총괄 29047aedc, 소유자 「다이 웨이퍼 잇기 지어」] EVERY SOURCE THAT NAMES THE ENTITY WRITES IT:
     `roleframe.compile_role_rows` adds one atom per molecule, and its time is not an event time
-    (`schema.REFERENCE_BASIS` - it is structure, not an event). This REVERSES the 08-27 retirement only in what it asks for: 총괄 c7046a710 retired the
+    (`schema.NOT_AN_EVENT_BASIS` - it is structure, not an event). This REVERSES the 08-27 retirement only in what it asks for: 총괄 c7046a710 retired the
     walk DRAWING this edge from the declaration ("write atoms, do not draw"), and nothing here
     draws - the walk reads the atoms like any other. `edge` must name a declared predicate whose
     signature takes this entity to `to.entity` (`_cross_references`).
@@ -2151,12 +2281,19 @@ def _validate_sources(section: Mapping[str, Any], problems: _Problems) -> None:
         group_field = ("group_by",)
         if not problems.exact(
                 read, f"{path}.read",
-                required=("unit", "identity", "order_by", "occurred_at",
+                required=("unit", "identity", "order_by",
                           *(group_field if grouped else ())),
-                optional=("registration_probe", "exclude_when",
+                optional=("occurred_at", "registration_probe", "exclude_when",
                           *(() if grouped else group_field)),
                 ignored=("cursor",)):
             continue
+        # 🔴 [총괄 0c9b6e3c0] ABSENT HERE = `source_defaults` could not answer it: the event edges
+        # name different times, or one names no timezone. The time is not guessed.
+        if "occurred_at" not in read:
+            problems.add(
+                "missing_time", f"{path}.read.occurred_at",
+                "no time to read: bind occurred_at (a column and its timezone) on the event-edge "
+                "mappings - one column for all of them - or write read.occurred_at")
         _validate_registration_probe(
             read.get("registration_probe"), f"{path}.read.registration_probe",
             problems)
@@ -2185,7 +2322,7 @@ def _validate_sources(section: Mapping[str, Any], problems: _Problems) -> None:
             problems.add("invalid_driver", f"{path}.read.group_by",
                          "group_by columns must be included in identity")
         occurred = read.get("occurred_at")
-        if problems.exact(
+        if occurred is not None and problems.exact(
                 occurred, f"{path}.read.occurred_at",
                 required=("timezone",), optional=("column", "basis")):
             _occurred_at_origin(occurred, f"{path}.read.occurred_at", problems)
@@ -2678,7 +2815,7 @@ def _cross_profile_contract(path: str, profile: Mapping[str, Any],
                         f"by symbolic role {role!r}")
         for role in sorted(roles):
             descriptor = roles[role]
-            if descriptor.get("required") and role not in bindings:
+            if role_must_be_bound(role, descriptor) and role not in bindings:
                 problems.add("missing_required_role", f"{mpath}.bind.{role}",
                              f"predicate {predicate_id!r} requires role {role!r}")
     # `packs` was checked here in both directions -- every declared pack had to be used and
@@ -2923,19 +3060,45 @@ def _table_has_unique_key(table: Mapping[str, Any], columns: Sequence[str]) -> b
     )
 
 
+def declared_unique_keys(table: Mapping[str, Any]) -> tuple[tuple[str, ...], ...]:
+    """Every column tuple the catalog claims is unique, in one place.
+
+    The validator's `_columns_cover_declared_unique_key` asks it for the yes/no; the default
+    ordering (`default_ordering_key`) and the picker need the list itself: an ordering
+    that must COVER one of these has a derivable default -- the shortest one -- and offering
+    it is the derivation tier, one step stronger than validating what somebody typed.
+
+    🔴 A DECLARED KEY IS A CLAIM, NOT A MEASUREMENT.  A composite key whose columns are all
+    empty identifies nothing while satisfying every compile-time check.  Whoever offers these as defaults must also measure them, which is
+    what `combination_uniqueness` is for.
+    """
+    keys: list[tuple[str, ...]] = []
+    for field in ("business_key", "composite_key"):
+        value = table.get(field)
+        if isinstance(value, str):
+            keys.append((value,))
+        elif isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
+            columns = tuple(str(item) for item in value)
+            if columns:
+                keys.append(columns)
+    for index in table.get("indexes", ()) or ():
+        if isinstance(index, Mapping) and index.get("unique") is True:
+            columns = tuple(str(item) for item in index.get("columns", ()))
+            if columns:
+                keys.append(columns)
+    seen: set[tuple[str, ...]] = set()
+    ordered: list[tuple[str, ...]] = []
+    for key in keys:
+        if key not in seen:
+            seen.add(key)
+            ordered.append(key)
+    return tuple(ordered)
+
+
 def _columns_cover_declared_unique_key(table: Mapping[str, Any],
                                        columns: Sequence[str]) -> bool:
     candidate = {column for column in columns if isinstance(column, str)}
-    declared: list[tuple[str, ...]] = []
-    for field in ("business_key", "composite_key"):
-        if field in table:
-            declared.append(tuple(_column_values(table[field])))
-    declared.extend(
-        tuple(index.get("columns", ()))
-        for index in table.get("indexes", [])
-        if isinstance(index, Mapping) and index.get("unique") is True
-    )
-    return any(key and set(key).issubset(candidate) for key in declared)
+    return any(set(key).issubset(candidate) for key in declared_unique_keys(table))
 
 
 def _relation_columns(relation: Any, columns: Sequence[Any], tables: Mapping[str, Any],

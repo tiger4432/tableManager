@@ -88,8 +88,12 @@ from .setup_bundle import (
     predicate_claim,
     public_bundle_schema,
     read_group_by,
+    default_ordering_key,
     is_event_time_role,
+    registering_sentences,
     role_binding_kinds,
+    role_must_be_bound,
+    source_defaults,
     unit_group_columns,
     validate_bundle_errors,
 )
@@ -101,12 +105,6 @@ from .setup_bundle import (
 #: can no longer offer a choice the validator refuses.
 LIFECYCLE_STATUSES = tuple(sorted(LIFECYCLE_STATES))
 
-#: The canonical predicate whose emission makes `read.registration_probe` load-bearing.
-#: The declaration addresses it as `register@1`; the atom spelling -- not that address --
-#: is what `runtime_v2._filtered_event_atoms` and
-#: its two `atom.predicate == "register"` tests compare against.  Named here rather
-#: than spelled inline so the three sites are one grep.
-REGISTER_PREDICATE = "register"
 
 TIER_STRUCTURAL = "structural"
 TIER_DERIVATION = "derivation"
@@ -1274,7 +1272,7 @@ def _mapping_fields(base: str, sentence: str, mapping: Mapping[str, Any],
             )
             continue
         binding = bind.get(role_id)
-        required = role.get("required") is True
+        required = role_must_be_bound(role_id, role)
         if not isinstance(binding, Mapping):
             yield Field(
                 path=f"{mpath}.bind.{role_id}", step="sources",
@@ -1476,27 +1474,11 @@ def _attribute_binding_fields(path: str, entity_type: str, declared: Sequence[An
 
 
 def _registering_sentences(source: Any) -> tuple[tuple[str, str], ...]:
-    """(sentence, subject entity type) for every sentence of this source that REGISTERS.
-
-    🔴 DERIVED FROM THE SAME WORD THE RUNTIME KEYS ON, not from a spelling rule.  A
-    sentence registers when its predicate resolves to the canonical `register`
-    (`REGISTER_PREDICATE`); the config addresses it as `register@1` and the atom carries
-    it unversioned, which is the split `declaration_names.bare_name` makes everywhere else.
-
-    The entity type comes out of the subject binding, and is `""` while that binding is
-    half-written.  The two answers are kept apart on purpose: whether the source registers
-    at all decides that the probe is REQUIRED, and a subject nobody has bound yet must not
-    turn that requirement back off -- it only leaves the candidate list short until the
-    binding names something.
-    """
-    profile = source.get("bind") if isinstance(source, Mapping) else None
+    """(sentence, subject entity type) for every sentence of this source that REGISTERS -
+    which sentences do is `setup_bundle.registering_sentences`, the word the runtime keys on.
+    The entity type is `""` while the subject binding names none."""
     found: list[tuple[str, str]] = []
-    for sentence, mapping in _mappings(profile):
-        predicate = mapping.get("predicate")
-        if not isinstance(predicate, str):
-            continue
-        if predicate.rsplit("@", 1)[0] != REGISTER_PREDICATE:
-            continue
+    for sentence, mapping in registering_sentences(source):
         bind = mapping.get("bind") if isinstance(mapping.get("bind"), Mapping) else {}
         subject = bind.get(SUBJECT_ROLE) if isinstance(bind, Mapping) else None
         entity_type = subject.get("entity_type") if isinstance(subject, Mapping) else None
@@ -1530,6 +1512,20 @@ def _declared_timezones(bundle: Mapping[str, Any]) -> list[str]:
     return sorted(found)
 
 
+def _answer_or_default(answer: Any, default: Any, from_path: str) -> dict:
+    """A read cell's state and value: the file's answer, else the product's default shown as
+    derived (`setup_bundle.source_defaults`, 총괄 261311e71), else missing."""
+    if answer:
+        return {"state": "answered", "value": answer}
+    if default:
+        shown = (", ".join(default) if isinstance(default, list)
+                 and all(isinstance(item, str) for item in default)
+                 else json.dumps(default, sort_keys=True))
+        return {"state": "derived", "value": default, "disposition": "default_overridable",
+                "ground": Ground("read_default", f"Default: {shown}", (from_path,), default)}
+    return {"state": "missing", "value": answer}
+
+
 def _source_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
                    ) -> Iterable[Field]:
     entities = _section(bundle, "entities")
@@ -1554,19 +1550,23 @@ def _source_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
             note=f"Candidates come from {PHYSICAL_CATALOG_FILENAME}. Declare a missing one there first.",
             reshapes=True,
         )
+        # 🔴 [총괄 261311e71] A CELL THE FILE LEAVES OUT IS SHOWN WITH THE PRODUCT'S ANSWER, from
+        # the one function the validator fills it with - never asked as a red square.
+        filled = source_defaults(source, catalog)
+        filled = (filled.get("read") or {}) if isinstance(filled, Mapping) else {}
         unit = driver.get("unit")
         yield Field(
             path=f"{base}.read.unit", step="sources", label="Unit",
-            state="answered" if unit else "missing", tier=TIER_CONSTRAINED,
-            value=unit, declared=unit if unit else _ABSENT,
+            tier=TIER_CONSTRAINED, declared=unit if unit else _ABSENT,
             candidates=tuple(sorted(_SOURCE_UNITS)),
+            **_answer_or_default(unit, filled.get("unit"), f"{base}.read"),
         )
         identity = list(_listed(driver.get("identity")))
         yield Field(
             path=f"{base}.read.identity", step="sources", label="identity",
-            state="answered" if identity else "missing", tier=TIER_CONSTRAINED,
-            value=identity, declared=identity if identity else _ABSENT,
+            tier=TIER_CONSTRAINED, declared=identity if identity else _ABSENT,
             candidates=tuple(physical), universe=UNIVERSE_RELATION,
+            **_answer_or_default(identity, filled.get("identity"), f"{base}.read"),
         )
         # `unit: row` has no group_by row: the skeleton draws the field for `unit: group`
         # alone, and a row source writes none (`setup_bundle.read_group_by`).
@@ -1614,7 +1614,7 @@ def _source_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
         # one was ever a wrong answer to the other.  The cursor is now written from this
         # list (`setup_bundle._derived_cursor`) and is not a question any more.
         if unique_keys:
-            shortest = min(unique_keys, key=len)
+            shortest = default_ordering_key(catalog, relation)
             declared = driver.get("order_by")
             yield Field(
                 path=f"{base}.read.order_by", step="sources", label="order_by",
@@ -1663,11 +1663,14 @@ def _source_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
         zone = occurred.get("timezone")
         zone = (zone.strip() if isinstance(zone, str) and zone.strip()
                 else timezone_default)
+        time_default = None if answered else filled.get("occurred_at")
         yield Field(
             path=f"{base}.read.occurred_at", step="sources", label="Time",
-            state="answered" if answered else "missing", tier=TIER_CONSTRAINED,
-            value=dict(occurred) if occurred else None,
+            state="answered" if answered else "derived" if time_default else "missing",
+            tier=TIER_CONSTRAINED,
+            value=dict(occurred) if occurred else time_default,
             declared=dict(occurred) if occurred else _ABSENT,
+            disposition="default_overridable" if time_default else "",
             candidates=tuple(
                 [{"column": name, "timezone": zone} for name in time_columns]
                 + [{"basis": name, "timezone": zone}
@@ -1695,11 +1698,13 @@ def _source_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
         # for it anywhere in the form.
         declared_zone = occurred.get("timezone")
         answered_zone = isinstance(declared_zone, str) and bool(declared_zone.strip())
+        zone_default = (time_default or {}).get("timezone") if not answered_zone else None
         yield Field(
             path=f"{base}.read.occurred_at.timezone", step="sources",
             label="Time zone",
-            state="answered" if answered_zone else "missing", tier=TIER_CONSTRAINED,
-            value=declared_zone if answered_zone else None,
+            state="answered" if answered_zone else "derived" if zone_default else "missing",
+            tier=TIER_CONSTRAINED,
+            value=declared_zone if answered_zone else zone_default,
             declared=declared_zone if answered_zone else _ABSENT,
             # 🔴 A SUGGESTION, NEVER A LIST TO PICK FROM.  What the file already answers
             # plus the default -- no IANA table is shipped and none is enforced, so a site
@@ -1727,11 +1732,14 @@ def _source_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
             name for name in sorted({entity for _, entity in registers if entity})
             if name in single_key)
         if registers or probes:
+            probe_default = None if probes else filled.get("registration_probe")
             yield Field(
                 path=f"{base}.read.registration_probe", step="sources",
                 label="Registration probe",
-                state="answered" if probes else "missing", tier=TIER_CONSTRAINED,
-                value=[dict(probe) for probe in probes if isinstance(probe, Mapping)],
+                state="answered" if probes else "derived" if probe_default else "missing",
+                tier=TIER_CONSTRAINED,
+                value=([dict(probe) for probe in probes if isinstance(probe, Mapping)]
+                       or probe_default or []),
                 declared=list(probes) if probes else _ABSENT,
                 ground=Ground(
                     "registration_probe_required_by_register_sentences",

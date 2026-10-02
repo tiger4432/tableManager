@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """총괄 29047aedc (소유자 「다이 웨이퍼 잇기 지어」): `entities.<type>.references` is written by the
 translator as an atom for every source that names the entity - one seat, `roleframe.compile_role_rows`
-(`_reference_rows`) - and its time is not an event time (`schema.REFERENCE_BASIS`).
+(`_reference_rows`) - and its time is not an event time (`schema.NOT_AN_EVENT_BASIS`).
 
 The shipped sample with one reference added to die@1: a die whose mat_type is Wafer sits in the wafer
 its mat_id names.
@@ -20,7 +20,7 @@ from ledger import roleframe                                            # noqa: 
 from ledger.backfill import _v2_frame                                   # noqa: E402
 from ledger.implementations import role_mapper_registry, trusted_implementations  # noqa: E402
 from ledger.runtime_v2 import execute_scoped_batch, last_cursor, preview_cursor_batch  # noqa: E402
-from ledger.schema import REFERENCE_BASIS                                 # noqa: E402
+from ledger.schema import NOT_AN_EVENT_BASIS                                 # noqa: E402
 from ledger.setup_bundle import load_physical_catalog, require_ready_bundle, validate_bundle  # noqa: E402
 from ledger.setup_registry import compile_setup_snapshot, source_cursor_fingerprint  # noqa: E402
 
@@ -116,7 +116,7 @@ def test_the_reference_atom_is_not_event_timed_and_the_event_atoms_keep_their_ti
     execute_scoped_batch(snapshot, "die_inspection", frame, ("row_id", tuple(frame["row_id"])),
                          role_mapper_registry(), store, known_registrations=())
     basis = sorted((a.predicate, a.occurred_at_basis) for a in store.written)
-    assert basis == [("in_container", REFERENCE_BASIS)] * 2 + [("inspected", None)] * 2
+    assert basis == [("in_container", NOT_AN_EVENT_BASIS)] * 2 + [("inspected", None)] * 2
     reference = [a for a in store.written if a.predicate == "in_container"][0]
     event = [a for a in store.written if a.predicate == "inspected" and a.source_raw_ref == reference.source_raw_ref][0]
     assert (reference.occurred_at, reference.source_event_id) == (event.occurred_at, event.source_event_id)

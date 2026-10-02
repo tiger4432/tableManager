@@ -27,7 +27,8 @@ from .roleframe import (
     UNIT_SAID_NOTHING_ATTR,
     dry_run_event_frame,
 )
-from .schema import REFERENCE_BASIS
+from .schema import NOT_AN_EVENT_BASIS
+from .setup_bundle import is_event_time_role
 from .setup_registry import LedgerSetupSnapshot, cursor_translator_version, is_reference_derivation
 
 
@@ -599,13 +600,19 @@ def _stamp_occurred_at_basis(source_plan, event_atoms) -> None:
 
     A source whose table carries world time leaves this None, which is what every atom
     written before this field existed also has - absence keeps meaning "world time".
-    An entity reference's atom carries `schema.REFERENCE_BASIS` whatever the source's (총괄 29047aedc).
+    🔴 NOT AN EVENT: an entity reference's atom (총괄 29047aedc), and an atom of a mapping that
+    binds no event time (총괄 0c9b6e3c0) - whatever the source's. It keeps the molecule's
+    stored time; only the basis says the time is not an event's.
     """
     basis = source_plan.driver.occurred_at.basis
+    mappings = source_plan.profile.mappings
     for atoms in event_atoms:
         for atom in atoms:
-            if is_reference_derivation(atom.derivation):
-                atom.occurred_at_basis = REFERENCE_BASIS
+            mapping = mappings.get(atom.derivation)
+            if is_reference_derivation(atom.derivation) or (
+                    mapping is not None and not any(
+                        is_event_time_role(role) for role in mapping.bindings)):
+                atom.occurred_at_basis = NOT_AN_EVENT_BASIS
             elif basis is not None:
                 atom.occurred_at_basis = basis
 

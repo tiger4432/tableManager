@@ -15,6 +15,7 @@ from types import MappingProxyType
 from typing import Any, Generic, TypeVar
 
 from .setup_bundle import (
+    NOT_AN_EVENT_BASIS,
     DEFAULT_CARDINALITY,
     DEFAULT_LIFECYCLE,
     LedgerSetupBundle,
@@ -358,7 +359,7 @@ class ProfileDescriptor:
 #: every table by the schema builder, so it exists wherever a source can be declared at all,
 #: and it is STORED - re-running a backfill reads back the same instant instead of inventing
 #: a fresh one, which is what makes an atom reproducible.
-OCCURRED_AT_BASIS_COLUMNS = {"ingested": "created_at"}
+OCCURRED_AT_BASIS_COLUMNS = {NOT_AN_EVENT_BASIS: "created_at"}
 
 
 @dataclass(frozen=True)

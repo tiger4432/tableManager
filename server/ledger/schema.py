@@ -228,9 +228,9 @@ RETIRED_OBJECTLESS_CONSTRAINT = "ck_ledger_objectless_has_no_payload"
 #: dropped a constraint」, exactly as `RETIRED_OBJECTLESS_CONSTRAINT` is.
 RETIRED_REGISTER_OBJECT_CONSTRAINT = "ck_ledger_register_has_no_object"
 
-#: The basis an entity reference's atom carries (총괄 29047aedc, shaped by 3bf28f893): its
-#: `occurred_at` is not an event time. ONE constant - the translator's stamp reads it.
-REFERENCE_BASIS = "ingested"
+#: The basis a not-an-event atom carries - an entity reference's, and a mapping's that binds no event
+#: time (총괄 29047aedc · 0c9b6e3c0). Spelled once, in `setup_bundle`; the translator's stamp reads it.
+from .setup_bundle import NOT_AN_EVENT_BASIS  # noqa: E402
 
 
 def reads_as_event_time(basis) -> bool:
@@ -238,7 +238,8 @@ def reads_as_event_time(basis) -> bool:
     (총괄 29047aedc · 3bf28f893): only an atom with no basis. Every reader that takes the ledger's
     time AS AN EVENT TIME - a window, a timeline, a first sighting, an edge's shown time - asks
     this or `event_time_sql`, never a basis string of its own. Ordering claims is not that
-    reading: it keeps the stored time for every atom (총괄 3bf28f893 `orders_claims`)."""
+    reading: it keeps the stored time for every atom (총괄 3bf28f893 `orders_claims`) - and a
+    not-an-event atom stores its molecule's time, so it orders by that (총괄 0c9b6e3c0 ①)."""
     return basis is None
 
 

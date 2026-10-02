@@ -37,7 +37,7 @@ from .ledger_frame import (
     ledger_frame_of,
     validate_ledger_rows,
 )
-from .setup_bundle import is_event_time_role
+from .setup_bundle import OCCURRED_AT_ROLE, is_event_time_role
 from .setup_registry import (
     ClaimDescriptor,
     ImplementationKey,
@@ -355,7 +355,10 @@ class DeclarativeRoleMapper(BaseLedgerMapper):
             # match says nothing here and goes on to the next sentence.
             if mapping.when and not _unit_says(unit_columns, mapping.when):
                 continue
-            roles = {}
+            # 🔴 EVERY SENTENCE STATES THE MOLECULE'S TIME (총괄 0c9b6e3c0). A mapping that binds
+            # no event time is a not-an-event edge: its atom keeps this stored time and
+            # `runtime_v2._stamp_occurred_at_basis` says it is not an event's.
+            roles = {OCCURRED_AT_ROLE: unit_columns[SOURCE_OCCURRED_AT_COLUMN][0]}
             for role_id, binding in mapping.bindings.items():
                 if is_event_time_role(role_id):
                     # 🔴 BY NAME, NOT BY KIND (총괄 0c9b6e3c0 ③). A `timestamp` value Role is
@@ -383,16 +386,15 @@ class DeclarativeRoleMapper(BaseLedgerMapper):
                     # not a rule being introduced; it is the rule already in force,
                     # reaching the mapper that had been left out of it.
                     #
-                    # What is NOT settled, and is queued rather than answered: whether the
-                    # form should keep ASKING for a column that decides nothing.  Removing
-                    # it rewrites `dt_job`'s and `lot_event`'s declarations and moves their
-                    # fingerprints, so it belongs to a retirement round, not to this one.
-                    roles[role_id] = unit_columns[SOURCE_OCCURRED_AT_COLUMN][0]
-                else:
-                    roles[role_id] = _evaluate_binding(
-                        binding, unit, columns=unit_columns,
-                        path=f"{mapping.config_path}.bind.{role_id}",
-                        relation=context.source_plan.relation)
+                    # ⚰️ SETTLED BY 총괄 0c9b6e3c0: the column is what an EVENT EDGE says - a
+                    # source that writes no `read.occurred_at` reads its event edges' column
+                    # (`setup_bundle.source_defaults`), and that instant arrives here. Still
+                    # never re-read at this seat.
+                    continue
+                roles[role_id] = _evaluate_binding(
+                    binding, unit, columns=unit_columns,
+                    path=f"{mapping.config_path}.bind.{role_id}",
+                    relation=context.source_plan.relation)
             out.append(RoleEmission(
                 sentence=sentence,
                 roles=roles,
@@ -1755,7 +1757,7 @@ def _reference_rows(context: MapperContext, named, rows, source_raw_ref: str,
     One per molecule: the same entity named twice makes one atom, backed by every source row
     that named it (so deleting one of those rows withdraws it only with the last). A fact the
     molecule already states itself is not said twice. Time is the naming row's - storage is
-    partitioned by it - and the atom says that time is not an event time (`schema.REFERENCE_BASIS`,
+    partitioned by it - and the atom says that time is not an event time (`schema.NOT_AN_EVENT_BASIS`,
     stamped in `runtime_v2._stamp_occurred_at_basis`).
     """
     entities = context.snapshot.entities
