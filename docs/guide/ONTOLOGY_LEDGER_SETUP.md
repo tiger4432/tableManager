@@ -736,7 +736,7 @@ Role 목록과 `emit` 절을 선언했다. 둘 다 **그 Claim이 내던 술어�
 
 | 술어의 `object.kind` | 도출되는 Role |
 |---|---|
-| 언제나 | `subject` (`entity`, 필수) · `occurred_at` (`time`, 필수) |
+| 언제나 | `subject` (`entity`, 필수) · `occurred_at` (`time` — 술어에는 필수, 🆕 10-02 `3a2d79ff9` 매핑에서는 빼도 된다: 적으면 그 매핑이 «사건 엣지», 안 적으면 그 원자는 사건 시각 아님 `ingested`) |
 | `none` | 그 둘뿐 |
 | `entity_ref` | + `target` (`entity`, 필수) |
 | `value` | + `value` (`quantity`, 필수) |
@@ -998,6 +998,8 @@ subject/object entity type으로 모양을 계산해 후보를 골랐고, 그래
 그건 정규 해시 재료라서 고치지 않는다 — **읽는 순서는 스켈레톤이 만든다**(화면 라벨
 읽기 · 준비 · 매핑 · 연결. 키는 영어 그대로).
 
+🆕 **[10-02 `3a2d79ff9`] `read` 칸은 안 적으면 제품이 채운다**(`setup_bundle.with_read_defaults` 한 자리, 적은 칸은 그대로 — 같은 값을 손으로 적은 소스와 같은 번들): `unit`(group_by 가 있으면 group, 없으면 row) · `identity` · `order_by`(표 선언의 가장 짧은 유일 키) · `group_by`(`unit: group` 이면 `identity`) · `occurred_at`(사건 엣지들이 적은 칼럼과 시간대 — 사건 엣지가 없으면 행의 저장 시각, `ingested` · UTC) · `registration_probe`(등록하는 주어마다 그 키 칼럼 하나) · `map.unit` · `map.input_columns`(`[]`). 사건 엣지들이 서로 다른 칼럼을 적거나 시간대 없이 적으면 `missing_time` 으로 거절한다(시각을 짐작하지 않는다). 폼에는 기본값이 채워진 칸(`Default: …`)으로 보인다. 소스 시각을 사건 엣지로 옮기는 이주는 `python -m scripts.migrate_ledger_slim_sources`(미리보기) → `--apply --source <소스>`.
+
 | 필드 | 설명 |
 |---|---|
 | source ID | **여기 있으면 이 소스는 돈다**(§8) |
@@ -1010,7 +1012,7 @@ subject/object entity type으로 모양을 계산해 후보를 골랐고, 그래
 | `read.occurred_at.basis` | 표에 세계 시각이 **없을 때** `column` 대신. 현재 `"ingested"` 하나 |
 | `read.occurred_at.timezone` | 명시적 IANA timezone. 묵시 기본값 없음 |
 | `read.cursor.columns` | physical keyset cursor 컬럼. 🔴 **[2026-08-22 `90383987`] 더 이상 «묻지 않는다»** — `read.order_by`에서 파생돼 번들에 쓰인다(아래) |
-| `read.registration_probe` | 이미 등록된 개체를 가려내는 probe. **`bind`가 `register@1`을 내는 소스에는 필수** |
+| `read.registration_probe` | 이미 등록된 개체를 가려내는 probe. **`bind`가 `register@1`을 내는 소스에는 필수** — 🆕 10-02 안 적으면 등록하는 주어마다 그 키 칼럼 하나로 채운다(키가 하나가 아닌 주어는 기본값 없음 → 오늘처럼 `registration_context_required`) |
 | ⚰️ `prepare` | 은퇴(setup_version 6) — 적으면 `prepare_retired` (§7.3) |
 | `map` | 이 소스의 mapper 본문 (§7.4) |
 | `bind` | 이 소스의 문장 별명 → Role binding (§7.6) |
@@ -1139,7 +1141,7 @@ instant`로 거절된다. 접는 것은 `basis` 경로뿐이고, 두 갈래를 �
 물리 컬럼 추가는 `server/migrations/add_ledger_occurred_at_basis.py`가 한다(널 허용,
 행 재작성 없음, 백필 없음).
 
-**팩·프로필은 안 바뀐다.** `occurred_at` 역할은 여전히 필수이고 `$role` 참조여야 한다.
+**팩·프로필은 안 바뀐다.** `occurred_at` 역할은 여전히 필수이고 `$role` 참조여야 한다. 🆕 10-02 `3a2d79ff9` — 매핑에서는 빼도 된다(빼면 그 매핑의 원자는 사건 시각 아님, 저장 시각과 사건 id 는 같은 행의 것).
 바뀌는 것은 그 역할에 **무엇이 들어오느냐**뿐이라, 프로필에 시각 리터럴이 등장할 이유가
 사라진다.
 
@@ -1328,7 +1330,7 @@ binding만으로 표현되면 Python을 한 줄도 쓰지 않는다. `map.implem
 2. 각 항목에 `predicate`(정확한 vocabulary id, 예 `has_wafer@1`)를 적는다. **어느 술어를
    쓰는지 따로 모아 적는 자리는 없다** — `predicate`가 그 답이다.
 3. 그 술어가 강제하는 required Role을 모두 binding한다. **목록은 §7.5가 도출한다** —
-   고를 것은 없고, 빠뜨리면 `missing_required_role`, 없는 이름을 적으면 `unknown_role`이다.
+   고를 것은 없고, 빠뜨리면 `missing_required_role`, 없는 이름을 적으면 `unknown_role`이다. (🆕 10-02 `occurred_at` 은 예외 — 빼면 그 매핑이 사건 엣지가 아닐 뿐이다)
 4. Entity logical key를 exact set으로 채운다.
 5. **더 적을 것이 없다.** binding은 **종류와 그 payload**만 말한다 — `binding_origin`·
    `approval_status`·`suggestion_reason` 셋은 2026-08-22에 선언에서 없어졌다(§7.6). 옛 파일에
@@ -1785,6 +1787,7 @@ PostgreSQL E2E는 `ASSY_PG_TEST_DATABASE_URL`이 안전한 격리 DB를 가리�
 | 조인 값이 소스에 안 보인다 | 쓰는 조인이 아직 왼쪽 표에 칼럼을 안 썼거나, 그 칼럼이 `map.input_columns` 에 없다 | 조인 규칙 실행 확인 · `table_config.json` 의 왼쪽 표 칼럼 · `map.input_columns` |
 | `untrusted_implementation` | sample ID를 production에 복사 | 코드에 그 클래스가 있는지 확인 또는 기존 구현 재사용 |
 | `missing_required_role` | 술어가 강제하는 Role과 `bind` 불일치 | §7.5의 도출 표를 기준으로 binding 추가 |
+| 🆕 `missing_time` | `read.occurred_at` 을 안 적은 소스에서 사건 엣지들(매핑의 `bind.occurred_at`)이 서로 다른 칼럼을 적었거나 시간대 없이 적음 — 한 분자의 시각은 하나다 | 엣지들의 `occurred_at` 을 한 칼럼 · 한 시간대로 맞추거나 `read.occurred_at` 을 적는다 |
 | `unknown_predicate` | `mappings.<문장>.predicate`가 `vocabulary` 밖 | 술어 ID와 version 철자 |
 | `unknown_payload_field` | binding한 qualifier가 Vocabulary 밖 | Vocabulary를 무작정 넓히지 말고 의미 확인 후 술어 서명 수정 |
 | draft validation은 되는데 execute 불가 | ⚰️ **[2026-08-23] 「pending/rejected binding 존재」는 원인이 «될 수 없다»** — `approval_status`는 2026-08-22에 은퇴했고 binding 승인 관문 자체가 없다(§7.6). 이 칸을 보고 승인 상태를 찾으러 가면 **없는 필드를 찾는다** | 그 소스가 `sources`에 적혀 있는지부터 본다(§8) — 준비 안 된 소스를 붙드는 자리는 그것 하나다. 실행 거절문은 코드·경로와 함께 오므로 **거절문의 `code`를 이 표에서 찾아라**(`undeclared_source`·`invalid_cursor`·`invalid_mapper` 등) |

@@ -119,6 +119,8 @@ Link type    inspected  Wafer -> Die                              backing datase
 🆕 10-02 `a5fe51b3f` — 그 컬럼을 `map.input_columns` 에 다시 적지 않습니다. 읽기가 저절로 싣고 검증기도 요구하지 않습니다(전에는 「Profile column … is missing」)
 ```
 
+🆕 **10-02 `3a2d79ff9` — `read` 는 안 적어도 됩니다.** 위 예시의 `read` 를 지우면 제품이 같은 값을 채웁니다(`unit`(group_by 가 있으면 group, 없으면 row) · `identity` · `order_by`(표 선언의 가장 짧은 유일 키) · `group_by`(`unit: group` 이면 `identity`) · `occurred_at`(사건 엣지들이 적은 칼럼과 시간대 — 사건 엣지가 없으면 행의 저장 시각, `ingested` · UTC) · `registration_probe`(등록하는 주어마다 그 키 칼럼 하나) · `map.unit` · `map.input_columns`(`[]`)). 시각은 그 시각을 담은 매핑에만 적습니다(`bind.occurred_at` — 사건 엣지). 안 적은 매핑의 원자는 «사건 시각 아님»입니다.
+
 ## 3. 이 예시가 «안» 보여 주는 것 (일부러)
 ```
 · 그룹 소스(한 이벤트 = 여러 행, `read.unit: "group"` + `group_by`) — 출하 예제 transfer_explorer 의 dt_log 참고
