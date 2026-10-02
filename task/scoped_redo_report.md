@@ -70704,3 +70704,113 @@ sqlite     맵퍼 · 규칙 시험(-k mapper/rule_loader/chain_rules) 401 통과
 **RUN.md** — 내일 순서 전부(설정 둘 고치고 재기동 한 번 · 비우기 보고 -> 비우기 · 규칙 둘 is_batch, 다시 세기는 꺼 둔 채 · 다시 채우기 · 다시 세기 켬 · census 0 확인 · 급할 때)
 
 다음: (가) 대기열(지어 둠, pg 17 통과) 을 새 main 위로 옮겨 착지 -> (나) 지문 -> e11bb4de0 -> 338abb9f3 -> 세상
+
+---
+
+## [10-02 밤] 착지 — (가) 원장 따라가기 대기열을 아웃박스 행으로 (총괄 bb9b1c19c · 1472ec1cc) — 3bce75e88
+
+어느 DB · 어느 스키마 · 지운 것 — 시험 · 재기는 assy_test 의 시험 스크래치 스키마(assy_pytest_pg_<프로세스>, 픽스처가 끝에 DROP)뿐(카나리아: pg_namespace 1). 이주 시험도 그 스키마의 database_outbox 에서만(칸을 지웠다 다시 더함). 박스 DB 에는 안 씀
+
+**갈림 — 묻지 않고 코드로 정한 것 하나**
+```
+「처리 표시를 원장 번역 뒤로」는 안 했다 — processed_chain 은 브로드캐스트가 기다리는 칸(idx_outbox_undelivered)이라, 옮기면 화면 알림이 번역을 기다린다
+그래서 원장 몫 칸 하나(ledger_state). 꺼내는 술어 processed_chain = true AND ledger_state IS NULL — 그룹 단계가 메모리에 넣던 «그때»와 같다
+```
+**자리 전수 (git grep, 시험 밖)**
+```
+메모리 대기열에 넣기   그룹 단계(ingestion_worker) -> 지움 · backfill 의 자기 프로세스 적재(backfill.py) -> 그대로(CLI 한 프로세스 안에서 넣고 뺌)
+꺼내기               워커 _drain_ledger_followup_sync -> drain_outbox_once · backfill _drain_into -> drain_once 그대로 · 둘 다 같은 _follow
+깊이                 워커 루프 -> 꺼낼 것이 없을 때까지 · 랩 줄의 depth -> outbox_depth · backfill -> 메모리 그대로
+아웃박스 지우는 곳     워커 7일 정리 · ops_purge_outbox_backlog.py — 둘 다 «원장이 따라간 것만»
+처리 표시            mark_processed(그룹 단계) — 안 건드림
+```
+**게이트 (pg)**
+```
+오늘 길(고치기 전 재서 봄)  2,000 행 체인 커밋 -> 재기동 -> 원장 원자 0 / 2,000
+이제                       같은 판 -> 2,000 행 다 원장에(시험 단언)
+체인이 처리한 것만 꺼냄 · 메모리 상한(3)보다 많은 이벤트 다 따라감 · 실패는 목록에 이유와 함께, requeue_failed 로 다시 -> 원자 생김
+규칙 없는 이벤트도 따라감 · 따라가지 않는 종류(SYSTEM_RELOAD)는 done · 7일 정리는 안 따라간 이벤트를 남김
+이주(스크래치 스키마, 두 번) — 처리된 옛 이벤트 done · 안 처리된 것 NULL · 색인 있음
+워커의 따라가기 자리가 아웃박스에서 꺼냄(행동으로)
+변이(각 자리 되돌림 -> 빨강, 안 바꾼 첫 판 = 카나리아)
+   none (canary)                                    8 passed, 7971 deselected, 20 warnings
+   the ledger takes what the chain has not run      1 failed, 7 passed, 7971 deselected, 20 warnings
+   a failed follow is marked done                   1 failed, 7 passed, 7971 deselected, 20 warnings
+   a kind it does not follow stays waiting          1 failed, 7 passed, 7971 deselected, 20 warnings
+   the purge forgets the ledger                     1 failed, 7 passed, 7971 deselected, 20 warnings
+   the migration marks the unprocessed done too     1 failed, 7 passed, 7971 deselected, 20 warnings
+   the worker drains the memory deque               1 failed, 7 passed, 7971 deselected, 20 warnings
+pg 같이 돈 것   33 passed, 7946 deselected, 69 warnings in 698.09s (0:11:38) (따라가기 9 · 복사 18 · 비우기 4 · dtwafer 2)
+전체 시험       11 failed, 7703 passed, 262 skipped, 3 xfailed, 12996 warnings in 827.53s (0:13:47)
+               실패: 늘 같은 환경 다섯 + 이 판이 바꾼 규칙에 걸린 6 (test_a_capped_purge_says_it_was_capped · test_contention_fixes · test_system_schema_drift) — 정리는 «원장이 따라간 줄만», 칸 선언 목록에 새 칸과 이주 이름 -> 시험의 줄 만들기 · 목록을 고쳐 그 파일들 다시 50 통과
+```
+**바뀌는 것 — 운영**
+```
+🔴 재기동 «전»에 이주 한 번(RUN.md 위 절) — 없이 재기동하면 아웃박스 쓰기가 실패
+내일 순서 RUN.md 0 단계에 이주를 넣었고, 9 단계 그물 줄을 python -m ledger followup 으로 바꿨다
+```
+다음: (나) 행 지문 · 수정 누락 census -> 쓰기 문 성능(bce43236b) -> e11bb4de0 -> 338abb9f3 -> 세상
+
+---
+
+## [10-02 밤] 진행 — (나) 행 지문 · 수정 누락 census: 지어 두었고 «착지 안 함» (총괄 bb9b1c19c · 1472ec1cc)
+
+어느 DB · 어느 스키마 · 지운 것 — 시험은 assy_test 시험 스크래치 스키마(픽스처가 DROP)뿐. 박스 DB 는 읽기 전용으로 행 색인 줄 수만 셈(assy_manager, 지운 것 0)
+
+**지은 것 (작업 트리 커밋 4fb8fbe03, origin 에 없음)**
+```
+쓰기    행 색인 줄을 쓴 같은 트랜잭션에 지문 — 그 소스가 읽는 칸(event_frame.base_select_columns)만, crud.blank_to_null 로 빈 값 접고 md5
+칸      ensure_row_ref_table 이 카탈로그를 먼저 묻고 없을 때만 ALTER(이주 따로 없음)
+census  사람이 돌리는 census 기록(measure_and_store, 정확 모드)에만 «수정 누락 · 지문 없음» — 주기 tick · 미리보기 셋은 훑지 않음
+명령    python -m ledger.backfill --source <소스> --drifted [--apply] — 누락된 행의 범위 값으로 rescope
+```
+**게이트 (pg 4 통과)** — 고친 칸 -> 누락 1 -> 다시 번역 -> 0 · 원자가 새 값 · 안 읽는 칸은 누락 아님 · '' 와 NULL 한 지문 · 지문 없는 줄은 따로 · 주기 tick 은 안 셈
+변이(카나리아 = 안 바꾼 첫 판)
+   none (canary)                            4 passed, 7979 deselected, 12 warnings
+   the print is not written                 3 failed, 1 passed, 7979 deselected, 12 warnings
+   a blank is not folded                    1 failed, 3 passed, 7979 deselected, 12 warnings
+   the census counts the matching lines     3 failed, 1 passed, 7979 deselected, 12 warnings
+   the redo picks no rows                   1 failed, 3 passed, 7979 deselected, 12 warnings
+
+**남은 것 — 착지 전에**
+```
+sqlite 전체 7,695 통과 · 실패 19 = 늘 같은 다섯 + 이 판의 가짜에 걸린 14:
+   test_the_index_can_be_recovered…(10, 가짜 _write_row_refs 인자 — 고쳤으나 가짜 커서의 fetchone 이 빈 줄이라 ensure_row_ref_table 의 카탈로그 물음에서 IndexError)
+   test_a_source_says_when_its_counts_were_taken(2) · test_a_row_that_stopped…(1) · test_a_ledger_world_is_a_set_of_names(1) — 가짜 plan/세상이 새 자리를 모름
+   -> 가짜 쪽을 맞추고 전체를 다시 돌린 뒤 착지
+비용     안 쟀다 — 재기 프로브의 원장 절반이 (가) 뒤 메모리 대기열을 읽어 0 을 쟀다(프로브 결함). 다시 잰다
+첫 채우기 이 박스 색인 행 1,215,824 (소스 11) — 소스마다 --whole-source --apply 로 채움. 율은 안 쟀다
+```
+다음: 위 남은 것 -> (나) 착지 -> 쓰기 문 성능(bce43236b) -> e11bb4de0 -> 338abb9f3 -> 세상
+
+---
+
+## [10-03 아침] 착지 — 이주 add_outbox_ledger_state 가 말없이 기다리지 않는다 (총괄 a3d19dc51 · 응용 c4f0323cc) — 2855783d3
+
+어느 DB · 어느 스키마 · 지운 것 — assy_test 시험 스크래치 스키마뿐(카나리아 pg_namespace 1). 🔴 지운 것 하나 더: 제 변이 실행(잠금 상한을 뺀 판)이 멈춘 채 남긴 pytest(pid 40104)를 끝냈고, 그 실행이 남긴 스키마 assy_pytest_pg_40104_gw0 를 이름 대고 DROP(assy_test). 박스 DB 에는 안 씀
+
+**먼저 잰 것 (스크래치 스키마, 잠금 상한 3 s)**
+```
+blocker=none CIC=('ok', 0.01) valid=True | ADD COLUMN=('ok', 0.0)
+blocker=select CIC=('ok', 0.01) valid=True | ADD COLUMN=('LockNotAvailable: 오류:  잠금 대기 시간 초과로 작업을 취소합니다.', 3.01)
+blocker=insert CIC=('LockNotAvailable: 오류:  잠금 대기 시간 초과로 작업을 취소합니다.', 3.01) valid=False | ADD COLUMN=('LockNotAvailable: 오류:  잠금 대기 시간 초과로 작업을 취소합니다.', 3.01)
+```
+-> 읽다 쉬는 세션은 칸 추가만, 쓰다 쉬는 세션은 둘 다 붙잡는다. 끊긴 색인은 INVALID 로 남는다. 잠금 상한은 둘 다 끊는다
+-> 응용이 본 500 s 는 이 자리일 수도 있지만, 그 파일 첫 시험(2,000 행 재기동)이 원래 길다(제 실행에서 그 파일 590 s) — 둘 다 가능, 어느 쪽인지는 안 쟀다
+
+**한 일**
+```
+이주     각 단계(칸 추가 · 끊긴 색인 지우기 · 색인)를 lock_timeout 30 s 안에서 — 단계 전에 붙잡을 수 있는 세션을 찍고,
+         넘으면 「STOPPED at <단계>: … pid 상태 초 application_name」 + 다음 행동 한 줄, 종료 코드 3
+         보고에 index valid=True/False/None
+순서     RUN.md · DEPLOY_SETUP 8-decies · RELEASE_LOG: 앱을 끈다 -> 이주 -> 앱을 켠다. 오늘 순서도 1 앱 끔 · 2 이주 · … · 5 앱 켬
+         빠졌던 셋도 넣음 — 앱 켠 뒤 hold 칸 확인 SQL 과 그 뜻 · 시간 어림마다 「운영은 안 쟀다」 · 다시 세기를 꺼 두는 까닭
+```
+**게이트 (pg)** — 쓰다 쉬는 세션을 쥔 채 이주 -> 「add column」 단계에서 그 pid 를 대고 멈춤 -> 세션이 끝난 뒤 다시 -> 칸 · 색인 다 섬 · 색인 단계에서 끊김 -> INVALID -> 다음 실행이 지우고 다시 세움 · 기존 이주 시험은 자기 세션을 먼저 닫음
+변이(카나리아 = 안 바꾼 첫 판)
+   none (canary)                            3 passed, 7978 deselected, 10 warnings
+   no lock timeout                          HUNG (cut at 150 s)
+   an invalid index is not dropped          1 failed, 2 passed, 7978 deselected, 10 warnings
+   the stop does not name the sessions      2 failed, 1 passed, 7978 deselected, 10 warnings
+
+다음: (나) 행 지문 착지(총괄 야간 판정 둘 반영) -> 쓰기 문 성능 -> 지움 다시 세기 -> 338abb9f3 -> 세상

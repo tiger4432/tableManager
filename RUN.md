@@ -1,5 +1,27 @@
 # 지금 돌리면 되는 것
 
+> ## 🔴 [10-03 아침 고침] **원장 따라가기 — 대기열이 아웃박스 행으로 (총괄 bb9b1c19c (가) · a3d19dc51) — 이주 «필요»(앱을 «끄고») · 재기동 «필요»(run_app.bat 전체)**
+>
+> ```
+> 순서          1 앱 끔       run_app.bat 전체를 닫는다 — 앱이 도는 중에 이주하지 않는다(쓰다 쉬는 세션이 이주를 붙잡는다)
+>              2 이주 보고   python server/migrations/add_outbox_ledger_state.py
+>                 뜻: server_version (11 이상이어야 칸 추가가 빠름) · column=ledger_state exists=False 면 아직 · index … valid=None 이면 색인 없음
+>              3 이주        python server/migrations/add_outbox_ledger_state.py --apply
+>                 뜻: 「added ledger_state - existing events 'done', N unprocessed back to NULL」 · 「idx_outbox_ledger_pending ensured」
+>                    끝에 다시 찍는 보고에 done 이 거의 전부, <null = yet to follow> 이 N · index … valid=True
+>                    「STOPPED at <단계>: waited 30s … pid … 」 면 그 pid 들이 아웃박스를 쥐고 있다(대개 아직 안 꺼진 앱) —
+>                    그 세션을 끝내고(앱을 끄고) 3 을 다시. 칸은 이미 더해졌으면 그대로, 끊긴 색인은 지우고 다시 세운다
+>              4 앱 켬       run_app.bat 전체 — 이주 «없이» 켜면 아웃박스 쓰기가 「column ledger_state does not exist」 로 실패
+> 확인          python -m ledger followup     (server 폴더) — 「따라갈 일 K · 실패 F」. K 는 체인이 돌면 줄어들고, 일이 없으면 0
+>              체인 워커 로그 [LedgerFollowUp] lap: N item(s) … M left in the queue — M 이 그 순간의 따라갈 일 수
+> 뜻           실패 F 가 0 이 아니면 아래 목록에 이유가 찍힘 — 원인을 고친 뒤 python -m ledger followup --requeue-failed
+>              K 가 줄지 않고 늘기만 하면 따라가기 루프가 안 도는 것 — 체인 워커 로그에 [LedgerFollowUp] batch failed 가 있는지
+>              색인이 valid=True 가 아니면 따라가기가 매번 아웃박스를 훑는다 — 앱을 끄고 3 을 다시
+> 급할 때       git revert <이 커밋> -> 재기동 (칸은 남아도 옛 코드가 안 읽는다 — 되돌릴 이주 없음)
+> ```
+
+---
+
 > ## [10-02 밤] **원장 소스 선언 폼 — 기본값뿐인 read 는 접힌 한 줄 · exclude_when 칸 칩 · 비운 사건 시각은 Not an event (총괄 04cecc30f) — 이주 «불필요» · 재기동 «필요»(run_app.bat 전체)**
 >
 > ```
@@ -22,33 +44,37 @@
 
 ---
 
-> ## 🔴 [10-02 밤 → 10-03 소유자] **공식 표를 제자리에서 비우고 다시 채우기 — 순서 전부 (총괄 35b76ba92 · 32bab7896 · e11bb4de0 · 1472ec1cc) — 이주 «불필요» · 재기동 «필요»(run_app.bat 전체, 한 번)**
+> ## 🔴 [10-03 소유자] **공식 표를 제자리에서 비우고 다시 채우기 — 순서 전부 (총괄 35b76ba92 · 32bab7896 · 1472ec1cc · a3d19dc51) — 이주 «필요»(위 절, 앱을 끄고) · 재기동 «필요»(run_app.bat 전체, 한 번)**
 >
 > ```
-> 0 코드        git pull — 복사 맵퍼 묶음(이 커밋) · 비우기 도구(81ffa8499)가 들어 있어야 함
-> 1 표 설정      server/config/table_config.json 의 official_dt — composite_key_source 를 코어 칸으로 · column_types 에 "hold": "string"
-> 2 원장 소스    config/ontology/ledger_config.json 에서 official_dt 를 읽는 소스의 read 에 "exclude_when": [{"column": "hold", "blank": true}]
-> 3 재기동       run_app.bat 전체 — 1 · 2 를 한 번에 읽는다
->               뜻: 그리드 official_dt 에 HOLD 칸이 보이면 1 이 들어간 것
-> 4 비우기 보고   python server/scripts/empty_table.py official_dt
+> 0 코드        git pull — 복사 맵퍼 묶음(8990d408f) · 비우기 도구(81ffa8499) · 원장 따라가기 대기열(3bce75e88) · 이주 고침(이 커밋)
+> 1 앱 끔       run_app.bat 전체를 닫는다
+> 2 이주        python server/migrations/add_outbox_ledger_state.py --apply   (위 절의 2 · 3 — STOPPED 면 그 절대로)
+> 3 표 설정      server/config/table_config.json 의 official_dt — composite_key_source 를 코어 칸으로 · column_types 에 "hold": "string"
+> 4 원장 소스    config/ontology/ledger_config.json 에서 official_dt 를 읽는 소스의 read 에 "exclude_when": [{"column": "hold", "blank": true}]
+> 5 앱 켬       run_app.bat 전체 — 3 · 4 를 한 번에 읽는다
+>               확인: SELECT count(*) FROM information_schema.columns WHERE table_name = 'official_dt' AND column_name = 'hold'
+>               뜻: 1 = hold 칸이 섰음 · 0 = 3 이 안 들어감(표 설정 파일 · 저장 위치를 다시 봄). 그리드 official_dt 에도 HOLD 칸이 보인다
+> 6 비우기 보고   python server/scripts/empty_table.py official_dt
 >               뜻: 행 · 칸 층 · 사람 층(비우면 사람이 고친 값도 같이 감) · 덮어쓰기 · 원장 소스와 원자 · 트리거 규칙. 아무것도 안 씀
-> 5 비우기       python server/scripts/empty_table.py official_dt --apply --confirm-rows <4 의 행 수> --by <이름>
->               뜻: 「비움 … · 원자 N 거둠 · 아웃박스 이벤트 0」. 「거절: 지금 K 행」이면 그 사이 표가 움직임 — 4 부터 다시
+> 7 비우기       python server/scripts/empty_table.py official_dt --apply --confirm-rows <6 의 행 수> --by <이름>
+>               뜻: 「비움 … · 원자 N 거둠 · 아웃박스 이벤트 0」. 「거절: 지금 K 행」이면 그 사이 표가 움직임 — 6 부터 다시
 >                  「비움」 줄 뒤 「원자 거둠」 전에 오류로 멈췄으면 표는 이미 빔 — 소스마다 python -m ledger.backfill --source <소스> --whole-source --apply (server 폴더)
->               시간: 시험 스키마 10,000 행(칸 층 80,000 · 원자 10,000) 1.03 s -> 100만 어림 103 s
-> 6 체인 규칙 둘  config/chain_rules.json 에 RELEASE_LOG 「보류 포함 행 복사」의 두 규칙(둘 다 "is_batch": true) — 다시 세기 규칙 official_dt_hold_recount 에는 "enabled": false
+>               시간: 시험 스키마 10,000 행(칸 층 80,000 · 원자 10,000) 1.03 s -> 100만 어림 103 s (운영은 안 쟀다)
+> 8 체인 규칙 둘  config/chain_rules.json 에 RELEASE_LOG 「보류 포함 행 복사」의 두 규칙(둘 다 "is_batch": true) — 다시 세기 규칙 official_dt_hold_recount 에는 "enabled": false
+>               까닭: 켜 두면 복사가 공식 행에 쓸 때마다 다시 세기가 한 번 더 돈다(세기 질의가 한 번씩 더) — 다시 채우기 내내
 >               -> 어드민 Reload Configs & Code (체인 탭 편집기로 저장하면 그 자리에서 다시 읽음)
-> 7 다시 채우기   python server/scripts/chain_replay_cli.py replay dt_log_to_official_dt --apply
+> 9 다시 채우기   python server/scripts/chain_replay_cli.py replay dt_log_to_official_dt --apply
 >               뜻: 이벤트를 1,000 행씩 쌓고 바로 끝남. 복사는 체인 워커가 돈다 — 그동안 다른 체인 일은 그 뒤에 줄 선다
->               시간: 시험 스키마 10,000 행에 체인 64.89 s · 원장 23.69 s -> 100만 어림 약 2.5 시간
-> 8 다시 세기 켬   체인 대기열에서 7 의 줄이 사라지면 official_dt_hold_recount 의 "enabled": false 를 지우고 Reload Configs & Code
-> 9 확인         체인 대기열 화면 — 7 은 «한 줄»(잡 하나), 다 돌면 없음
+>               시간: 시험 스키마 10,000 행에 체인 64.89 s · 원장 23.69 s -> 100만 어림 약 2.5 시간 (운영은 안 쟀다)
+> 10 다시 세기 켬  체인 대기열에서 9 의 줄이 사라지면 official_dt_hold_recount 의 "enabled": false 를 지우고 Reload Configs & Code
+> 11 확인        체인 대기열 화면 — 9 는 «한 줄»(잡 하나), 다 돌면 없음
 >               SELECT count(*) FROM official_dt WHERE hold IS NULL OR hold = ''    -- 같은 키 원천 행들의 값이 갈린(또는 원천이 없는) 공식 행 수
 >               python -m ledger census --source <official_dt 를 읽는 소스>        (server 폴더) — 「표 N · 색인 N · 남은 0」이어야
 >                  남은 이 0 이 아니면   python -m ledger.backfill --source <그 소스>   (색인에 없는 행만 번역)
 >                  색인이 표보다 크면    그만큼 «표엔 없고 색인엔 있는 행» — python -m ledger.backfill --source <그 소스> --whole-source --apply
->               ⚠️ 원장 따라가기 대기열을 잃지 않게 하는 고침이 아직 안 들어왔으면 오늘 길 그대로 — 이 census 0 확인이 그물
-> 급할 때       7 을 멈춤: python server/scripts/chain_pause_cli.py pause --reason "다시 채우기 멈춤" (다시: ... resume)
+>               python -m ledger followup (server 폴더) — 「따라갈 일 0 · 실패 0」이어야. 실패가 있으면 이유를 고치고 --requeue-failed
+> 급할 때       9 를 멈춤: python server/scripts/chain_pause_cli.py pause --reason "다시 채우기 멈춤" (다시: ... resume)
 >               규칙 둘을 "enabled": false -> Reload Configs & Code
 > ```
 

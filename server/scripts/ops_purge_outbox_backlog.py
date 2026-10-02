@@ -5,7 +5,7 @@
 중복 그룹 1,259,076개 포함)를 오프피크에 일괄 정리하기 위한 **수동 실행 전용** 스크립트입니다.
 라이브 프로세스는 이 스크립트를 절대 자동 실행하지 않습니다.
 
-동작: processed_chain = true 이고 created_at이 보관기간(기본 7일)을 경과한 행을
+동작: processed_chain = true · ledger_state 가 찬(원장이 따라간) 행 가운데 created_at이 보관기간(기본 7일)을 경과한 행을
       1000행 청크 DELETE로 삭제합니다(청크마다 commit → 락 보유시간 최소화, 중단 후 재실행 안전·멱등).
       미처리(processed_chain=false) 행은 나이와 무관하게 절대 삭제하지 않습니다.
 
@@ -47,7 +47,7 @@ def main():
         total_rows = conn.execute(text("SELECT count(*) FROM database_outbox")).scalar()
         target_rows = conn.execute(text(
             "SELECT count(*) FROM database_outbox "
-            "WHERE processed_chain = true AND created_at < now() - make_interval(days => :days)"
+            "WHERE processed_chain = true AND ledger_state IS NOT NULL AND created_at < now() - make_interval(days => :days)"
         ), {"days": args.days}).scalar()
         print(f"database_outbox 전체: {total_rows:,}행 / 삭제 대상(처리완료 & {args.days}일 경과): {target_rows:,}행")
 
@@ -66,7 +66,7 @@ def main():
             res = conn.execute(text(
                 "DELETE FROM database_outbox WHERE id IN ("
                 "  SELECT id FROM database_outbox "
-                "  WHERE processed_chain = true AND created_at < now() - make_interval(days => :days) "
+                "  WHERE processed_chain = true AND ledger_state IS NOT NULL AND created_at < now() - make_interval(days => :days) "
                 "  LIMIT :chunk)"
             ), {"days": args.days, "chunk": args.chunk})
             deleted = res.rowcount or 0

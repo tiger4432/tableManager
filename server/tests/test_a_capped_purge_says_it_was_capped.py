@@ -45,7 +45,7 @@ def expired_rows(db, count):
         db.add(models.DatabaseOutbox(
             event_uuid=str(uuid.uuid4()),
             event_type="CREATE", table_name="dt_map", payload={"n": i},
-            status="SUCCESS", processed_chain=True,
+            status="SUCCESS", processed_chain=True, ledger_state="done",
             created_at=datetime.now(timezone.utc) - timedelta(days=10)))
     db.commit()
 

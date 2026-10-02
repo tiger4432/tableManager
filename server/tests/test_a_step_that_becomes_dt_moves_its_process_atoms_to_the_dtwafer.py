@@ -140,8 +140,10 @@ def _settle(world, rounds=40):
             db.commit()
     else:
         raise AssertionError("the chain did not settle")
-    while followup.queue_depth():
-        done = followup.drain_once(world["engine"], world["setup"])
+    while True:
+        done = followup.drain_outbox_once(world["engine"], world["setup"])
+        if done is None:
+            break
         assert not any("error" in (s or {}) for s in (done or {}).get("sources", {}).values()), done
 
 

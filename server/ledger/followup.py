@@ -9,11 +9,11 @@ exists as a queue rather than as a call inside `process_chain_transaction_group`
 transaction must cost exactly what it costs today, and re-translating a molecule is a read,
 a withdrawal and a write against the ledger.
 
-🔴 THE QUEUE IS MEMORY, AND LOSING IT IS NOT LOSING THE FACT. If the worker dies with
-entries in it, those rows are picked up by the ledger's own forward run and by `rescope` on
-a retroactive pass -- that pass is the CANONICAL filler and this is the prompt one. What a
-crash costs is promptness, not correctness, and that is why no durable queue is built here
-and why `enqueue` cannot raise into the chain's path.
+🔴 THE LIVE QUEUE IS THE OUTBOX ROW (총괄 bb9b1c19c (가)). It used to be the memory deque
+below, on the reasoning that a crash cost promptness and the forward run would fill the gap -
+but the forward run reads rows MISSING from the index, and an edit to an indexed row lost
+here was found by nothing. `drain_outbox_once` takes the event row itself and marks it; the
+deque stays for the backfill, which fills and drains it in its own process.
 
 🔴 THE SCOPE COLUMN IS THE SOURCE'S PAGE KEY, FOR ALL OF THEM, WITH NO BRANCH.
 `backfill._page_key` already answers it: the cursor's first column. For a source whose
@@ -325,10 +325,15 @@ def drain_once(engine, setup, world=None, sources=None):
     the poisoned-row shape this repo has already been bitten by. Retrying is the retroactive
     run's job, and that run is this queue's canonical filler anyway.
     """
-    global _failed
     item = _take()
     if item is None:
         return None
+    return _follow(item, engine, setup, world=world, sources=sources)
+
+
+def _follow(item, engine, setup, world=None, sources=None):
+    """One queued event, followed - whichever queue it came from (memory or the outbox row)."""
+    global _failed
     table, row_ids, event_type, queued_at, transaction_id, chain_depth = item
     from . import backfill
 
@@ -423,3 +428,125 @@ def drain_once(engine, setup, world=None, sources=None):
                 "[LedgerFollowUp] %s <- %s (%d rows) failed: %s",
                 source, table, len(row_ids), exc)
     return done
+
+
+# ------------------------------------------------------------------- the outbox row's mark
+#: 🔴 THE LIVE QUEUE IS THE OUTBOX ROW ITSELF (총괄 bb9b1c19c (가), 소유자 10-02 「누락 절대 없고」).
+#: The memory deque above lost every event a restart caught between the chain group's commit
+#: and the drain - measured: 2,000 rows committed, restart, 0 atoms. The mark is the ledger's
+#: own cell on that row: NULL = not yet followed, DONE, or FAILED + the reason (kept, listed,
+#: and put back by `requeue_failed`). `processed_chain` stays the chain's - the broadcast
+#: (`idx_outbox_undelivered`) waits on it, so it cannot also wait on a translation.
+#: The memory deque stays for the backfill, which fills and drains it in its own process.
+LEDGER_DONE = "done"
+LEDGER_FAILED = "failed: "
+#: Taken when the chain has processed the event - the moment the group step used to queue it.
+_PENDING = "processed_chain = true AND ledger_state IS NULL"
+
+
+def _payload(value):
+    import json
+
+    if isinstance(value, (bytes, str)):
+        try:
+            value = json.loads(value)
+        except ValueError:
+            return {}
+    return value if isinstance(value, dict) else {}
+
+
+def drain_outbox_once(engine, setup):
+    """Follow the oldest outbox event the chain processed and the ledger has not. Or `None`.
+
+    Marked after the follow, in its own statement: a process that dies inside a follow leaves
+    the event unmarked and the next run follows it again (`rescope` is idempotent). An event
+    of a kind the ledger does not follow is marked DONE on the way past.
+    """
+    from sqlalchemy import text
+    import event_constants
+
+    kinds = ", ".join("'%s'" % kind for kind in FOLLOWED_EVENT_TYPES)
+    with engine.begin() as connection:
+        connection.execute(text(
+            "UPDATE database_outbox SET ledger_state = :done WHERE %s AND event_type NOT IN (%s)"
+            % (_PENDING, kinds)), {"done": LEDGER_DONE})
+        row = connection.execute(text(
+            "SELECT id, table_name, event_type, payload, created_at FROM database_outbox "
+            "WHERE %s ORDER BY id LIMIT 1" % _PENDING)).fetchone()
+    if row is None:
+        return None
+    payload = _payload(row.payload)
+    ids = tuple(str(item) for item in row_ids_of(payload))
+    queued_at = row.created_at.timestamp() if row.created_at is not None else time.time()
+    done = (_follow((str(row.table_name), ids, str(row.event_type), queued_at,
+                     payload.get("transaction_id"), event_constants.chain_depth_of(payload)),
+                    engine, setup)
+            if ids else {"table": row.table_name, "event_type": row.event_type, "rows": 0,
+                         "row_ids": [], "sources": {}})
+    errors = [done["error"]] if done.get("error") else []
+    errors += ["%s: %s" % (source, said["error"])
+               for source, said in sorted((done.get("sources") or {}).items())
+               if "error" in (said or {})]
+    with engine.begin() as connection:
+        connection.execute(text("UPDATE database_outbox SET ledger_state = :state WHERE id = :id"),
+                           {"state": (LEDGER_FAILED + " | ".join(errors))[:1000] if errors
+                            else LEDGER_DONE, "id": row.id})
+    done["outbox_id"] = row.id
+    return done
+
+
+def outbox_depth(engine):
+    """Events the ledger has yet to follow - the queue's depth, as a value."""
+    from sqlalchemy import text
+
+    with engine.connect() as connection:
+        return connection.execute(text(
+            "SELECT count(*) FROM database_outbox WHERE %s" % _PENDING)).scalar()
+
+
+def failed_events(engine, limit=50):
+    """(count, the first `limit` of them) - the events whose follow failed, oldest first."""
+    from sqlalchemy import text
+
+    with engine.connect() as connection:
+        total = connection.execute(text(
+            "SELECT count(*) FROM database_outbox WHERE ledger_state LIKE :f"),
+            {"f": LEDGER_FAILED + "%"}).scalar()
+        rows = connection.execute(text(
+            "SELECT id, table_name, event_type, ledger_state FROM database_outbox "
+            "WHERE ledger_state LIKE :f ORDER BY id LIMIT :n"),
+            {"f": LEDGER_FAILED + "%", "n": limit}).fetchall()
+    return total, [tuple(row) for row in rows]
+
+
+def requeue_failed(engine):
+    """Put every failed event back on the queue. Returns how many."""
+    from sqlalchemy import text
+
+    with engine.begin() as connection:
+        return connection.execute(text(
+            "UPDATE database_outbox SET ledger_state = NULL WHERE ledger_state LIKE :f"),
+            {"f": LEDGER_FAILED + "%"}).rowcount
+
+
+def main(argv=None) -> int:
+    """`python -m ledger followup` - what the ledger has yet to follow and what failed."""
+    import argparse
+
+    parser = argparse.ArgumentParser(prog="python -m ledger followup",
+                                     description="원장 따라가기 — 남은 수 · 실패 목록 · 다시 넣기")
+    parser.add_argument("--requeue-failed", action="store_true",
+                        help="실패한 이벤트를 전부 다시 따라갈 일로")
+    args = parser.parse_args(argv)
+    from database.database import engine
+
+    if args.requeue_failed:
+        print("다시 넣음 %d — 체인 워커가 따라간다" % requeue_failed(engine))
+        return 0
+    total, rows = failed_events(engine)
+    print("따라갈 일 %d · 실패 %d" % (outbox_depth(engine), total))
+    for outbox_id, table, event_type, state in rows:
+        print("  %s %s %s — %s" % (outbox_id, table, event_type, state[len(LEDGER_FAILED):]))
+    if total > len(rows):
+        print("  … 그리고 %d 더" % (total - len(rows)))
+    return 0

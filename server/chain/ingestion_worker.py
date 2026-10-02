@@ -185,6 +185,8 @@ def purge_expired_outbox_sync(db_session_factory, retention_days=OUTBOX_RETENTIO
         for _ in range(max_chunks):
             subq = select(DatabaseOutbox.id).where(
                 DatabaseOutbox.processed_chain == True,
+                # the ledger's mark too - an event it has yet to follow is its queue (가)
+                DatabaseOutbox.ledger_state.isnot(None),
                 DatabaseOutbox.created_at < cutoff,
             ).limit(chunk_size)
             res = db.execute(delete(DatabaseOutbox).where(DatabaseOutbox.id.in_(subq)))
@@ -1940,29 +1942,9 @@ def _process_chain_transaction_group_sync(tx_id, events, db, rules):
     #    규칙은 여기서 아무것도 안 남기고 `_run_mapper` 가 자기 결과를 남긴다.
     _record_pre_run_outcomes(rules, events)
 
-    # 🔴 THE LEDGER LISTENS HERE, ABOVE THE TRIGGER FILTER, AND ONLY DROPS A NOTE.
-    #    Its subject is the OUTBOX EVENT and not a chain rule: a person editing a cell in
-    #    the grid produces the same event, and the source that reads that table has to be
-    #    followed the same way (ruling 129 ㉤). So it sits above `valid_events`, which
-    #    both filters on `trigger_table`/`enabled` and RETURNS EARLY when nothing matches
-    #    - two decisions this step must not inherit.
-    # ⛔ AND IT TRANSLATES NOTHING. `enqueue` appends to a memory deque and returns, so
-    #    a chain transaction costs what it cost before this line existed; the paced task
-    #    beside this loop does the work (ruling 129-bis).
-    with alignment_batch_counts.stage("ledger enqueue"):
-        for event in events:
-            # `tx_id` and not `chain_tx_id`: the receipt this batch will write has to group
-            # with the table change that CAUSED it, and that change carries the original
-            # writer's transaction. `chain_tx_id` is what the chain's OWN writes take, one
-            # step further down (S-117, 판정 248).
-            ledger_followup.enqueue(
-                event.table_name,
-                ledger_followup.row_ids_of(get_payload_dict(event)),
-                event.event_type,
-                tx_id,
-                # [S-249 ⓒ] The hop this event arrived at, so the follow-up lap is a STEP of
-                # the same cascade rather than a place where the ceiling stops applying.
-                event_constants.chain_depth_of(get_payload_dict(event)))
+    # 🔴 THE LEDGER'S QUEUE IS THE OUTBOX ROW ITSELF (총괄 bb9b1c19c (가)): every event this
+    #    group marks processed is the ledger's to follow (`ledger_state` NULL), rule or no rule
+    #    (ruling 129 ㉤) - nothing is queued here and nothing is translated inline (129-bis).
 
     # Named for the same reason as `mark processed`: it walks every event against every
     # rule, so it is O(events x rules) on a thousand-row group and nothing on the line
@@ -3101,9 +3083,8 @@ FOLLOWUP_IDLE_SECONDS = 1.0
 def _retract_what_those_rows_fed(db, table, row_ids):
     """Withdraw the cells these deleted rows were the source of, and NAME what cannot be.
 
-    🔴 [S-280 · 판정 435 ④] THREE THINGS THAT ALREADY EXISTED. The listener is
-    `ledger_followup.enqueue`, which sits ABOVE the trigger filter and takes DELETE
-    (ruling 129 ㉤); the pacing is this drain, which already runs off the request path; the
+    🔴 [S-280 · 판정 435 ④] THREE THINGS THAT ALREADY EXISTED. The listener is the outbox
+    row's ledger mark, which every processed event carries, DELETE included (ruling 129 ㉤); the pacing is this drain, which already runs off the request path; the
     withdrawal is `cell_layer.withdraw_source`, reached with the arguments that make it act.
     So the CREATE/EDIT gate five places assert on is not touched — the ruling behind it
     (endless cascade) stays intact and DELETE never enters the rule loop.
@@ -3141,13 +3122,22 @@ def _retract_what_those_rows_fed(db, table, row_ids):
 
 
 
+def _ledger_outbox_depth_sync(db_session_factory):
+    """Events the ledger has yet to follow, in a thread."""
+    db = db_session_factory()
+    try:
+        return ledger_followup.outbox_depth(db.get_bind())
+    finally:
+        db.close()
+
+
 def _drain_ledger_followup_sync(db_session_factory):
     """One follow-up batch, in a thread. The session is this call's and closes with it."""
     from ledger.setup import load_setup
 
     db = db_session_factory()
     try:
-        done = ledger_followup.drain_once(db.get_bind(), load_setup())
+        done = ledger_followup.drain_outbox_once(db.get_bind(), load_setup())
         # ⚰️ [소유자 정본] `_run_the_follow_up_pass(db, done)` STOOD HERE and ran the deferred
         #   rules on the drained rows. That lap is not in 「트랜잭션 - 아웃박스 - 트리거 -
         #   맵퍼 실행 - 페이로드 및 업서트」, so those rules run on the trigger path like every
@@ -3312,9 +3302,9 @@ async def run_ledger_followup(db_session_factory):
     edits one cell in `pacing.json`, which is the reason that file exists rather than a
     constant; re-reading once per cycle is what makes "no restart" true.
 
-    ⛔ IT NEVER DIES QUIETLY. Anything this raises is named and the loop continues: the
-    queue is loss-tolerant by design, so one bad batch costs promptness, and a task that
-    ended silently would cost every batch after it with nothing on screen.
+    ⛔ IT NEVER DIES QUIETLY. Anything this raises is named and the loop rests and goes on:
+    the event stays unmarked in the outbox and is taken again, and a task that ended
+    silently would cost every batch after it with nothing on screen.
     """
     import pacing
 
@@ -3327,17 +3317,22 @@ async def run_ledger_followup(db_session_factory):
         drained = 0
         confirmed_total = refused_total = 0
         lap_started = time.monotonic()
-        while ledger_followup.queue_depth() and (units is None or drained < units):
+        while units is None or drained < units:
             try:
                 # S-176 덧붙임: the batch already COUNTS what it auto-confirmed; the return
                 # value was being discarded, so the two numbers died one frame above where
                 # they were computed. Carried, not re-measured.
                 done = await asyncio.to_thread(_drain_ledger_followup_sync,
                                                db_session_factory)
-                confirmed_total += (done or {}).get("auto_confirmed") or 0
-                refused_total += (done or {}).get("auto_refused") or 0
             except Exception as exc:
+                # The event stays unmarked and is taken again after the rest - going on
+                # here would take the same one in a tight loop.
                 logger.warning("[LedgerFollowUp] batch failed: %s", exc)
+                break
+            if done is None:
+                break
+            confirmed_total += done.get("auto_confirmed") or 0
+            refused_total += done.get("auto_refused") or 0
             drained += 1
         # 🔴 A SUCCESSFUL DRAIN USED TO SAY NOTHING, and that silence cost a measurement
         # (S-160, 판정 269). Asked whether the drain was working DURING a reproduction
@@ -3351,7 +3346,7 @@ async def run_ledger_followup(db_session_factory):
         # which is the log equivalent of a screen explaining what it is not showing.
         if drained:
             lap_seconds = time.monotonic() - lap_started
-            depth_left = ledger_followup.queue_depth()
+            depth_left = await asyncio.to_thread(_ledger_outbox_depth_sync, db_session_factory)
             logger.info("[LedgerFollowUp] lap: %d item(s) in %.3fs, %d left in the queue "
                         "(rest %.0fs between)", drained, lap_seconds, depth_left, rest)
             # S-176: the same three numbers, carried instead of dropped. No new

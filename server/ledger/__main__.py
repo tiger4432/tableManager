@@ -42,6 +42,8 @@ TOOLS = {
                 "선언이 안 바뀐 커서의 지문 문자열만 옮기기 (위치는 그대로)"),
     "census": ("ledger.census_cli",
                "소스마다 표 행 수 · 색인된 행 수 · 남은 수를 재서 저장"),
+    "followup": ("ledger.followup",
+                 "원장이 따라갈 아웃박스 이벤트 수 · 실패 목록 · --requeue-failed 로 다시 넣기"),
 }
 
 
