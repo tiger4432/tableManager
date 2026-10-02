@@ -653,6 +653,25 @@
       color: var(--danger);
       font-weight: 600;
     }
+    /* 수정 누락 (총괄 c21cba507): 두 수는 칸 따로, 누락이 0 이 아니면 `data-alarm` 이 같은 색으로 섭니다. */
+    .ledger-sources-drift {
+      font-family: var(--font-mono);
+      margin-top: 2px;
+      white-space: normal;
+      text-align: left;
+      color: var(--text-dim);
+    }
+    .ledger-sources-drift [data-alarm] {
+      color: var(--danger);
+      font-weight: 600;
+    }
+    .ledger-sources-next {
+      font-family: var(--font-mono);
+      margin-top: 2px;
+      overflow-wrap: anywhere;
+      text-align: left;
+      color: var(--text);
+    }
     .chain-queue-owner-strip {
       display: flex;
       flex-direction: column;

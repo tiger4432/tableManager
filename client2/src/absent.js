@@ -39,6 +39,13 @@ export const UNPICKED = 'None selected';
 export const UNKNOWN = 'Unknown';
 
 /**
+ * 「기록은 있는데 이 수는 «안 셌다»」의 글자 (총괄 c21cba507). 빈칸이 아닙니다 — 빈칸은 «0» 과
+ * 헷갈리고, 「Unknown」은 «물었는데 답이 안 왔다»입니다. 서버의 소스 상태 이름에도 같은 낱말이
+ * 있어, 그리는 쪽은 그 수의 이름표 «옆»에 둡니다.
+ */
+export const NOT_MEASURED = 'Not measured';
+
+/**
  * 「이 부품의 주어는 누구인가」를 «값»으로. 마킹 이름 하나이고 문장이 아닙니다.
  *
  * 🔴 세 부품이 각자 「… 이 이 차트의 주어입니다」·「… 이 맵의 주어입니다」·「… 이 목록의

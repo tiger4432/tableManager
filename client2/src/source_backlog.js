@@ -33,6 +33,7 @@
 // ═══════════════════════════════════════════════════════════════════════════════
 
 import { localShortOrAsSent } from './server_time.js';
+import { NOT_MEASURED } from './absent.js';
 
 /** 정확하지 않은 수 앞에 붙는 «기호 하나». 문장이 아닙니다. */
 const ESTIMATE_MARK = '≈';
@@ -63,6 +64,25 @@ export function censusRefusal(census, names = {}) {
 
 const nameOf = (names, key) => (names && typeof names[key] === 'string' && names[key]) || key;
 
+/** 봉투 하나 -> 칸 하나. 인구조사의 수와 «수정 누락»의 수가 이 함수 «하나»를 지납니다. */
+function countCell(src, name) {
+  // ⚠️ 「키가 있나」로 봅니다. 참/거짓으로 보면 «0 이 사라집니다» — 그리고 0 은 이 화면이
+  //    가장 말하고 싶어 하는 답(「다 돌았다」)입니다.
+  const box = Object.prototype.hasOwnProperty.call(src, name) ? src[name] : undefined;
+  if (!box || typeof box !== 'object') return { name, text: '', method: '' };
+  // 🔴 「어떻게 잰 수인가」는 «수와 같이» 나릅니다. `count(*)` 와 `pg_class.reltuples` 는
+  //    같은 픽셀로 그리면 안 되는 두 사실이고, `≈` 는 그중 «추정이라는 것»만 말합니다 —
+  //    «무엇으로» 쟀는지는 서버 낱말 그대로 실려야 조작자가 그 수를 믿을지 정합니다.
+  //    ⚠️ 다섯째 칸을 만들지 «않습니다» — 칸이 아니라 그 칸에 «붙는» 사실입니다.
+  const method = box.method == null ? '' : String(box.method);
+  const count = Number(box.estimate);
+  if (!Number.isFinite(count)) return { name, text: '', method };
+  // 🔴 `exact` 가 «명시적으로 거짓»일 때만 표시합니다. 키가 없으면 「말 안 함」이고,
+  //    말 안 한 것을 「추정」으로 그리는 것도 지어내는 것입니다.
+  const mark = box.exact === false ? ESTIMATE_MARK : '';
+  return { name, text: `${mark}${count}`, method };
+}
+
 /** 봉투의 `census_names` — 서버 한 자리의 이름표. 없으면 빈 표(그러면 키가 그려집니다). */
 export function censusNames(body) {
   const src = body && body.census_names;
@@ -79,26 +99,51 @@ export function censusNames(body) {
  */
 export function backlogCells(census, names = {}) {
   const src = census && typeof census === 'object' ? census : {};
-  const cells = BACKLOG_FIELDS.map((name) => {
-    // ⚠️ 「키가 있나」로 봅니다. 참/거짓으로 보면 «0 이 사라집니다» — 그리고 0 은 이 화면이
-    //    가장 말하고 싶어 하는 답(「다 돌았다」)입니다.
-    const box = Object.prototype.hasOwnProperty.call(src, name) ? src[name] : undefined;
-    if (!box || typeof box !== 'object') return { name, text: '', method: '' };
-    // 🔴 「어떻게 잰 수인가」는 «수와 같이» 나릅니다. `count(*)` 와 `pg_class.reltuples` 는
-    //    같은 픽셀로 그리면 안 되는 두 사실이고, `≈` 는 그중 «추정이라는 것»만 말합니다 —
-    //    «무엇으로» 쟀는지는 서버 낱말 그대로 실려야 조작자가 그 수를 믿을지 정합니다.
-    //    ⚠️ 다섯째 칸을 만들지 «않습니다» — 칸이 아니라 그 칸에 «붙는» 사실입니다.
-    const method = box.method == null ? '' : String(box.method);
-    const count = Number(box.estimate);
-    if (!Number.isFinite(count)) return { name, text: '', method };
-    // 🔴 `exact` 가 «명시적으로 거짓»일 때만 표시합니다. 키가 없으면 「말 안 함」이고,
-    //    말 안 한 것을 「추정」으로 그리는 것도 지어내는 것입니다.
-    const mark = box.exact === false ? ESTIMATE_MARK : '';
-    return { name, text: `${mark}${count}`, method };
-  });
+  const cells = BACKLOG_FIELDS.map((name) => countCell(src, name));
   const at = src[MEASURED_AT];
   cells.push({ name: MEASURED_AT, text: at == null ? '' : localShortOrAsSent(at), method: '' });
   return cells.map((cell) => ({ ...cell, label: nameOf(names, cell.name) }));
+}
+
+/**
+ * «원장이 못 본 수정»의 두 수(서버 `rows_drifted` · `rows_unprinted`, 구현자 6b698fe2d). 사람이 돌린
+ * census 만 셉니다 — 주기 census 는 안 셉니다. 둘은 «따로» 그립니다: 지문 없음은 누락이 아닙니다.
+ */
+export const DRIFT_FIELDS = Object.freeze(['rows_drifted', 'rows_unprinted']);
+
+/** 0 이 아니면 «눈에 띄는» 수 — 누락 쪽 하나뿐입니다(총괄 c21cba507). */
+const DRIFT_ALARM = 'rows_drifted';
+
+/**
+ * 누락을 다시 번역하는 명령. ⚠️ 서버가 실어 주지 않아 이 화면이 그 CLI 의 철자를 듭니다
+ * (RELEASE_LOG 2026-10-03 「원장이 못 본 수정을 수로 센다」의 명령 그대로).
+ */
+export const driftedCommand = (source) => `python -m ledger.backfill --source ${source} --drifted`;
+
+/**
+ * 한 소스의 «수정 누락» 줄 (총괄 c21cba507). 수는 서버 기록 그대로이고, 안 센 수는 `NOT_MEASURED`.
+ * 시각은 «그 두 수의» `measured_at` 입니다 — census 전체의 시각이 아닙니다.
+ *
+ * @returns {null | {cells: {name, label, text, method, counted, alarm}[], at: string, atLabel: string, next: string}}
+ *   거절된 census 는 null — 거절 줄이 이미 「셀 수 없다」를 말합니다.
+ */
+export function driftLine(census, names = {}, source = '') {
+  const src = census && typeof census === 'object' ? census : {};
+  if (censusRefusal(src)) return null;
+  const cells = DRIFT_FIELDS.map((name) => {
+    const cell = countCell(src, name);
+    const counted = cell.text !== '';
+    return { ...cell, text: counted ? cell.text : NOT_MEASURED, counted, label: nameOf(names, name),
+      alarm: name === DRIFT_ALARM && counted && Number(src[name].estimate) > 0 };
+  });
+  const stamped = DRIFT_FIELDS.map((name) => src[name])
+    .find((box) => box && typeof box === 'object' && box.measured_at != null);
+  return {
+    cells,
+    at: stamped ? localShortOrAsSent(stamped.measured_at) : '',
+    atLabel: nameOf(names, MEASURED_AT),
+    next: cells.some((c) => c.alarm) ? driftedCommand(source) : '',
+  };
 }
 
 /**

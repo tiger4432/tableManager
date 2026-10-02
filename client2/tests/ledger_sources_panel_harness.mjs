@@ -444,6 +444,164 @@ console.log('\n[8] inner lines: server names, one local clock, a short hash');
   eq('a short version is not cut', byClass(host, 'ledger-sources-sub')[1].textContent, 'Translator ledger-v2:abc');
 }
 
+// ═══ ⑨ 수정 누락 (총괄 c21cba507) — 서버 기록이 말하는 두 수, 그 시각, 그리고 다음 명령 ═══════════
+//
+// States: drift N · drift 0 · only unprinted · a record with no drift keys (the paced tick's) · no
+// census at all · refused. P cells read the pure seat (`driftLine`), R cells the panel's pixels, so a
+// mutant of either file is caught by a cell that reaches it (a mutated panel copy imports the real
+// backlog module). The drift boxes carry their OWN stamp, later than the census's, so 「which clock」
+// is a question this fixture can answer.
+console.log('\n[9] the drift line: as the record says, its own time, the command when there is drift');
+const { NOT_MEASURED } = await import('../src/absent.js');
+async function driftSuite(panelMod, backlogMod) {
+  const names = [];
+  const fails = [];
+  const say = (name, cond, detail = '') => {
+    names.push(name);
+    if (!cond) fails.push(name);
+    console.log(`  ${cond ? 'PASS' : 'FAIL'} ${name}${!cond && detail ? ` -- ${detail}` : ''}`);
+  };
+  const AT = '2026-10-03T00:10:00+00:00';
+  const LATER = '2026-10-03T01:20:00+00:00';
+  const box = (estimate, method, at = LATER) => ({ estimate, exact: true, method, measured_at: at });
+  const base = { relation: 'r', measured_at: AT, relation_rows: box(10, 'count(*)', AT),
+    indexed_rows: box(10, 'count(distinct row_id)', AT), not_yet: box(0, 'relation_rows - indexed_rows', AT) };
+  const DRIFT_M = "index print <> print of the row's read columns now";
+  const N = { ...base, source: 'n', rows_drifted: box(3, DRIFT_M), rows_unprinted: box(1200, 'index lines with no print') };
+  const ZERO = { ...base, source: 'z', rows_drifted: box(0, DRIFT_M), rows_unprinted: box(0, 'index lines with no print') };
+  const UNPRINTED = { ...base, source: 'u', rows_drifted: box(0, DRIFT_M), rows_unprinted: box(1200, 'index lines with no print') };
+  const NONE = { ...base, source: 'x' };
+  const REFUSED = { source: 'b', relation: 'q', measured_at: AT, refused: 'source_refused', remedy: 'fix' };
+  const NAMES = { rows_drifted: 'Edited, not followed', rows_unprinted: 'Not yet printed', measured_at: 'Measured' };
+  const COMMAND = 'python -m ledger.backfill --source n --drifted';
+  const drift = (census, source) => backlogMod.driftLine(census, NAMES, source) || { cells: [] };
+  const texts = (d) => d.cells.map((c) => c.text).join('|');
+  const alarms = (d) => d.cells.map((c) => Boolean(c.alarm)).join('|');
+
+  say('P1 drift N: both counts as recorded, only the edited one alarms, its own time, the command',
+    texts(drift(N, 'n')) === '3|1200' && alarms(drift(N, 'n')) === 'true|false'
+      && drift(N, 'n').at === localShort(LATER) && drift(N, 'n').next === COMMAND,
+    JSON.stringify(drift(N, 'n')));
+  say('P2 drift 0: a counted zero is a zero, not Not measured, and nothing to do',
+    texts(drift(ZERO, 'z')) === '0|0' && drift(ZERO, 'z').cells.every((c) => c.counted)
+      && alarms(drift(ZERO, 'z')) === 'false|false' && drift(ZERO, 'z').next === '',
+    JSON.stringify(drift(ZERO, 'z')));
+  say('P3 not yet printed is counted apart: 1200 of them alarm nothing and ask for nothing',
+    texts(drift(UNPRINTED, 'u')) === '0|1200' && alarms(drift(UNPRINTED, 'u')) === 'false|false'
+      && drift(UNPRINTED, 'u').next === '', JSON.stringify(drift(UNPRINTED, 'u')));
+  say('P4 a record with no drift keys says Not measured for each, with no time and no command',
+    texts(drift(NONE, 'x')) === `${NOT_MEASURED}|${NOT_MEASURED}` && drift(NONE, 'x').cells.every((c) => !c.counted)
+      && drift(NONE, 'x').at === '' && drift(NONE, 'x').next === '', JSON.stringify(drift(NONE, 'x')));
+  say('P5 no census at all is the same Not measured',
+    texts(drift(undefined, 'c')) === `${NOT_MEASURED}|${NOT_MEASURED}`, JSON.stringify(drift(undefined, 'c')));
+  say('P6 a refused census has no drift line: the refusal already says nothing was counted',
+    backlogMod.driftLine(REFUSED, NAMES, 'b') === null, JSON.stringify(backlogMod.driftLine(REFUSED, NAMES, 'b')));
+  say('P7 the time is the drift counts\' own stamp, not the census\'s',
+    localShort(LATER) !== localShort(AT) && drift(N, 'n').at === localShort(LATER), drift(N, 'n').at);
+  say('P8 the names are the server\'s, and a name it does not send draws its key',
+    drift(N, 'n').cells.map((c) => c.label).join('|') === 'Edited, not followed|Not yet printed'
+      && (backlogMod.driftLine(N, {}, 'n') || { cells: [] }).cells.map((c) => c.label).join('|') === 'rows_drifted|rows_unprinted');
+
+  const draw = (payload, opts, census) => {
+    const doc = makeDoc();
+    const host = doc.createElement('div');
+    new panelMod.LedgerSourcesPanel(host, { doc }).render(payload, opts, census, NAMES);
+    return host;
+  };
+  const CENSUS = { n: N, z: ZERO, u: UNPRINTED, x: NONE, b: REFUSED };
+  const gated = draw(null, { unavailable: 'HTTP 401' }, CENSUS);
+  const rowOf = (host, source) => rowsOf(host).find((r) => r.getAttribute('data-source') === source)
+    || rowsOf(host)[['b', 'n', 'u', 'x', 'z'].indexOf(source)];
+  const lineOf = (host, source) => byClass(rowOf(host, source) || {}, 'ledger-sources-drift')[0];
+  const textOfLine = (host, source) => (lineOf(host, source) || {}).textContent;
+  const alarmed = (host, source) => byClass(rowOf(host, source) || {}, 'ledger-sources-drift')
+    .flatMap((l) => walk(l)).filter((n) => n.getAttribute && n.getAttribute('data-alarm') === 'true')
+    .map((n) => n.className);
+  const nextOf = (host, source) => byClass(rowOf(host, source) || {}, 'ledger-sources-next').map((n) => n.textContent);
+
+  say('R1 drift N on screen: the two counts, its own time, and only the edited count alarms',
+    textOfLine(gated, 'n') === `Edited, not followed 3 · Not yet printed 1200 · Measured ${localShort(LATER)}`
+      && JSON.stringify(alarmed(gated, 'n')) === JSON.stringify(['ledger-sources-rows_drifted']),
+    JSON.stringify({ text: textOfLine(gated, 'n'), alarmed: alarmed(gated, 'n') }));
+  say('R2 the next action is one line: the --drifted command for that source', JSON.stringify(nextOf(gated, 'n')) === JSON.stringify([COMMAND]),
+    JSON.stringify(nextOf(gated, 'n')));
+  say('R3 drift 0 and only-unprinted draw their counts with no alarm and no command',
+    String(textOfLine(gated, 'z') || '').startsWith('Edited, not followed 0 · Not yet printed 0') && alarmed(gated, 'z').length === 0
+      && alarmed(gated, 'u').length === 0 && nextOf(gated, 'z').length === 0 && nextOf(gated, 'u').length === 0,
+    JSON.stringify({ z: textOfLine(gated, 'z'), u: alarmed(gated, 'u') }));
+  say('R4 a record with no drift keys reads Not measured beside each name, not a blank',
+    textOfLine(gated, 'x') === `Edited, not followed ${NOT_MEASURED} · Not yet printed ${NOT_MEASURED}`, textOfLine(gated, 'x'));
+  say('R5 a refused source draws its refusal and no drift line', !lineOf(gated, 'b')
+    && byClass(rowOf(gated, 'b') || {}, 'ledger-sources-census-refused').length === 1);
+  const full = draw({ ingestion: { note: NOTE, unavailable: null, sources: [row('n', 'ran_and_wrote'), row('c', 'ran_and_wrote')] } }, {}, CENSUS);
+  const fullLine = (i) => (byClass(rowsOf(full)[i] || {}, 'ledger-sources-drift')[0] || {}).textContent;
+  say('R6 the ledger table draws the same drift line as the census-only table, and a source with no census reads Not measured',
+    fullLine(0) === textOfLine(gated, 'n') && fullLine(1) === `Edited, not followed ${NOT_MEASURED} · Not yet printed ${NOT_MEASURED}`,
+    JSON.stringify([fullLine(0), fullLine(1)]));
+  const spans = byClass(lineOf(gated, 'n') || {}, 'ledger-sources-rows_unprinted');
+  say('R7 not yet printed is its own span, apart from the edited count',
+    spans.length === 1 && spans[0].textContent === 'Not yet printed 1200'
+      && byClass(lineOf(gated, 'n') || {}, 'ledger-sources-rows_drifted').length === 1);
+  say('R8 how each count was taken rides in the tooltip',
+    String((lineOf(gated, 'n') || {}).title).includes(DRIFT_M), String((lineOf(gated, 'n') || {}).title));
+  return { ran: names.length, names, failures: fails };
+}
+{
+  const backlogReal = await import('../src/source_backlog.js');
+  const panelReal = await import('../src/ledger_sources_panel.js');
+  const baseDrift = await driftSuite(panelReal, backlogReal);
+  pass += baseDrift.ran - baseDrift.failures.length;
+  failures.push(...baseDrift.failures);
+
+  const { loadWithProbe } = await import('./lib/probe.mjs');
+  const { scoreMutants } = await import('./lib/mutation_scorer.mjs');
+  const { fileURLToPath } = await import('node:url');
+  const BACKLOG = fileURLToPath(new URL('../src/source_backlog.js', import.meta.url));
+  const PANEL = fileURLToPath(new URL('../src/ledger_sources_panel.js', import.meta.url));
+  const swap = (text, from, to) => {
+    if (!text.includes(from)) throw new Error(`mutation anchor is GONE: ${from.slice(0, 60)}`);
+    return text.split(from).join(to);
+  };
+  const M = (id, what, catches, file, from, to) => ({ id, what, catches, file, from, to });
+  const MUTANTS = [
+    M('X1', 'a counted zero is drawn as Not measured', 'P2', BACKLOG,
+      "    const counted = cell.text !== '';\n", "    const counted = cell.text !== '' && cell.text !== '0';\n"),
+    M('X2', 'not yet printed alarms like an edit nobody followed', 'P3', BACKLOG,
+      'alarm: name === DRIFT_ALARM && counted &&', 'alarm: counted &&'),
+    M('X3', 'the time is the census\'s, not the drift counts\'', 'P7', BACKLOG,
+      '  const stamped = DRIFT_FIELDS.map((name) => src[name])\n', '  const stamped = [src]\n'),
+    M('X4', 'drift asks for no command', 'P1', BACKLOG,
+      "    next: cells.some((c) => c.alarm) ? driftedCommand(source) : '',\n", "    next: '',\n"),
+    M('X5', 'a refused census draws Not measured under its refusal', 'P6', BACKLOG,
+      '  if (censusRefusal(src)) return null;\n  const cells = DRIFT_FIELDS', '  const cells = DRIFT_FIELDS'),
+    M('X6', 'a count nobody took is a blank', 'P4', BACKLOG,
+      'text: counted ? cell.text : NOT_MEASURED,', 'text: cell.text,'),
+    M('X7', 'the command names no source', 'P1', BACKLOG,
+      '`python -m ledger.backfill --source ${source} --drifted`', '`python -m ledger.backfill --drifted`'),
+    M('Y1', 'the alarm is not drawn', 'R1', PANEL,
+      "      if (c.alarm) span.setAttribute('data-alarm', 'true');\n", ''),
+    M('Y2', 'the two counts share one class, so not yet printed cannot be told apart', 'R7', PANEL,
+      'this._span(`ledger-sources-${c.name}`, `${c.label} ${c.text}`)', "this._span('ledger-sources-count', `${c.label} ${c.text}`)"),
+    M('Y3', 'the command line is dropped', 'R2', PANEL,
+      '    return drift.next ? [line, this._line(\'ledger-sources-next\', drift.next)] : [line];\n', '    return [line];\n'),
+    M('Y4', 'no drift line is drawn at all', 'R4', PANEL,
+      '    out.push(...this._driftLines(census.drift));\n', ''),
+    M('Y5', 'the drift counts\' time is not drawn', 'R1', PANEL,
+      "    if (drift.at) parts.push(this._span('ledger-sources-drift-at', `${drift.atLabel} ${drift.at}`));\n", ''),
+  ];
+  const scored = await scoreMutants(MUTANTS, async (mu) => {
+    const loaded = (await loadWithProbe(mu.file, { mutate: (t) => swap(t, mu.from, mu.to) })).module;
+    const quiet = console.log;
+    console.log = () => {};
+    try {
+      return mu.file === BACKLOG ? await driftSuite(panelReal, loaded) : await driftSuite(loaded, backlogReal);
+    } finally { console.log = quiet; }
+  }, { baselineRan: baseDrift.ran, baselineNames: baseDrift.names,
+       title: '\n  [9 mutants] - each must be caught by the check it names.' });
+  pass += MUTANTS.length - scored.wrong;
+  for (let i = 0; i < scored.wrong; i += 1) failures.push(`drift mutant verdict ${i + 1}`);
+}
+
 console.log(`\n════ RESULT: ${pass} passed, ${failures.length} failed ════`);
 console.log(`ASSERTIONS ${pass + failures.length} ${failures.length}`);
 process.exit(failures.length === 0 ? 0 : 1);
