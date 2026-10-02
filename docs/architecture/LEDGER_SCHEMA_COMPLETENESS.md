@@ -113,7 +113,7 @@
 
 | 부축 | 상태 | 자리 |
 |---|---|---|
-| 봉투 다섯 칸 | ① | `_outbox_envelope()` (`server/database/database.py:189`) = `(transaction_id, user, source, ts, chain_depth)` — **한 자리**라 접힌 사건과 행별 사건이 «갈라질 수 없다» |
+| 봉투 다섯 칸 | ① | `_outbox_envelope()` (`server/database/database.py:189`) = `(transaction_id, user, source, ts, chain_depth)` — **한 자리**라 접힌 사건과 행별 사건이 «갈라질 수 없다». 🆕 10-02 `f843188e5` 소급 실행이 열려 있으면 `run_id` 도(`database.context.retroactive_run`) — 체인 대기열이 그것으로 잡 하나를 한 줄로 접는다 |
 | 파일 신원 → 데이터 행 | ① | `filename_rules` — 🔴 **자리 정정: 표 카탈로그가 «아니다».** 인제스터 선언(`AdvancedIngester(config_path)` 가 읽는 파일)의 세 계열 중 하나다(`advanced_ingester.py:180~186`). 주어는 «인제션 루트 기준 POSIX 상대경로»라 폴더명까지 본다(:267~) · 병합 서열 «경로 < 헤더 < 행». ⚠️ 출하 샘플에 이 계열을 쓰는 선언 **0** — 「관행의 부재」이지 결함이 아니다(판정 159) |
 | **봉투 없는 쓰기** | 🟡 **② (09-11 D-3c 재측정)** — 「칸」이 생긴 것이 아니라 «그 길이 닫혔습니다»: S-78 로 추적되는 스크립트가 전부 «제품 문»으로 쓰고(그래서 봉투가 붙고), `raw_write_census.py` 가 「직접 쓰기 0」을 «게이트»로 잡고 있습니다(오늘 0 — 출력의 6·51 은 되돌리기 «안내문»이라 남깁니다). 기본값이 덮는 자리이지 선언 칸은 아니므로 ② 입니다. 🪦 당시 근거: | 표에 직접 쓰는 스크립트는 세션을 안 지나 봉투가 «없고», 그래서 `write⁻¹` 도 없다 |
 | CREATE · EDIT · DELETE | ① | `CHAIN_OWNED_EVENT_TYPES = {"CREATE","EDIT","DELETE"}` (`event_constants.py:82`) · 접힘은 `row_ids` 로(:372) · DELETE 는 «접히지 않는다»(:362 — 지워진 행은 다시 못 읽는다) |
