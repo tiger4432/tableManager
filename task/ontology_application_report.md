@@ -35026,3 +35026,26 @@ server/config/ontology/README.md:78  「범용 구현 direct-join@1(준비기)�
 남은 것 — 클라 몫  경로 목록(walk/derive.js keepWalkableRoutes)이 정적 -> 동적 첫 걸음을 아직 뺀다 · WALK.md 「⚰️ 정적 경로」 줄도 그 착지 때
                    (DESIGN_ORDERS c24ba7d82 덧붙임 — 문서 넷 · RELEASE_LOG 한 항목이 그 게이트)
 ```
+
+---
+
+## [C 응용] 10-02 570e4b296(걷기 화면 두 쪽 · 정적 첫 걸음) 문서 동기 + RELEASE_LOG 대조 — @`086de7318`
+
+```
+고친 문서      frontend.md 걷기 줄 둘(walk.html · walk_box_panel.js) · CODE_MAP walk/derive.js 줄 수
+              나머지(CODE_MAP derive · declaration · 걷기 상자 줄 · backend · WALK)는 착지가 이미 실었다
+검수 (박스)    하니스 walk_route_fill 81 · walk_table 30 · rnd_board_walk_box 87 단언, 실패 0
+```
+**RELEASE_LOG 「걷기 — 목적어 쪽 노드에서도 출발 · 정적 씨앗의 첫 걸음」 — 클라(작성자)께**
+```
+맞음   화면 글자 — 🚶 Walk(index.html) · FOLLOW · Pick a node · Node list · Not every node read ·
+       No node of this type in the ledger · No predicate touches (client2/src 에 있음)
+       전선 칸 nodes · limits.scan_nodes · value_asc — 서버 6c44b0b3d 와 같음
+고칠 것 하나  「표에서는 노드 상한에서 잘렸다고 나옵니다」
+       박스에서 가장 큰 recipe 씨앗(원자 52,001)과 defect_kind 씨앗(103,870)을 표처럼(fanout_limit 없이) 걸으면
+       truncated.reason 「nodes, claims」 — 화면은 「절단됨 · nodes 400 · claims 2400」
+       (라우터만 띄운 in-process 호출, 새 코드, 박스 원장. 읽기만)
+       제안 — 「표에서는 노드 상한과 원자 예산에서 잘렸다고 나옵니다」
+덧붙임  노드 목록을 못 읽을 때 화면은 「Node list · Subject list unreachable — …」 —
+       뒤쪽은 api.js fetchKeyValues 의 거절문(client2/src/rnd_board/api.js)이라 «Subject» 가 남았다. 항목의 글자 목록에도 없다
+```
