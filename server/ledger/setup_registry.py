@@ -20,6 +20,7 @@ from .setup_bundle import (
     LedgerSetupBundle,
     LedgerSetupValidationError,
     bundle_readiness_errors,
+    entity_references,
     is_retired,
     predicate_claim,
     read_group_by,
@@ -204,6 +205,30 @@ class EntityTypeDescriptor:
     #: on being said. A field a screen can write and no reader can see is worse than an
     #: absent one - it reads as an action that was taken.
     status: str = "active"
+    #: `entities.<type>.references`, compiled (총괄 29047aedc) - the edges the translator writes
+    #: for every source naming this entity. Empty for an entity that declares none, and an
+    #: empty field is not fingerprint material (`_semantic_plain`), so no other cursor moves.
+    references: tuple = ()
+
+
+#: A reference atom's derivation begins with this - the one way the basis stamp knows it.
+REFERENCE_DERIVATION_PREFIX = "entity-reference:"
+
+
+def is_reference_derivation(derivation) -> bool:
+    return str(derivation or "").startswith(REFERENCE_DERIVATION_PREFIX)
+
+
+@dataclass(frozen=True)
+class ReferenceDescriptor:
+    """One compiled reference: `predicate_id` from this entity to `target_type`, whose keys are
+    `keys` ((target key, "key" | "value", own key or constant), ...), written when every
+    (own key, value) in `when` holds."""
+    predicate_id: str
+    target_type: str
+    keys: tuple
+    when: tuple
+    derivation: str
 
 
 @dataclass(frozen=True)
@@ -913,8 +938,27 @@ def _compile_entities(section: Mapping[str, Any]) -> EntityTypeRegistry:
             allow_null=item.get("allow_null", False),
             config_path=f"bundle.entities.{entity_id}",
             status=item.get("status", DEFAULT_LIFECYCLE),
+            references=() if is_retired(item) else _compile_references(entity_id, item),
         ))
     return builder.seal()
+
+
+def _compile_references(entity_id: str, item: Mapping[str, Any]) -> tuple:
+    compiled = []
+    for index, ref in enumerate(entity_references(item)):
+        keys = []
+        for target_key in sorted(ref["to"]["keys"], key=str):
+            binding = ref["to"]["keys"][target_key]
+            binding = {"key": binding} if isinstance(binding, str) else binding
+            keys.append((target_key, "key", binding["key"]) if "key" in binding
+                        else (target_key, "value", binding["value"]))
+        when = (ref.get("from") or {}).get("when") or {}
+        compiled.append(ReferenceDescriptor(
+            predicate_id=ref["edge"], target_type=ref["to"]["entity"], keys=tuple(keys),
+            when=tuple(sorted(when.items(), key=lambda pair: str(pair[0]))),
+            # ⚠️ by position: reordering a reference list changes these atoms' translator version
+            derivation=f"{REFERENCE_DERIVATION_PREFIX}{entity_id}#{index}"))
+    return tuple(compiled)
 
 
 def _role_reference(value: str) -> RoleReferenceDescriptor:

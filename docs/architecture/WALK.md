@@ -428,6 +428,9 @@ GET /api/ledger/subgraph?…&format=rows      «같은 걷기 결과»를 TSV �
 ```
 GET /api/ledger/subgraph?since=<ISO>&until=<ISO>    둘 다 선택 · 반열린 구간 [since, until)
 걸리는 것   원자의 occurred_at — 즉 «engine»이다. 노드는 닿은 엣지로만 들어온다
+🆕 사건 시각 아님  occurred_at_basis 가 있는 원자(엔티티 references · ingested 소스)는 창이 «언제나» 지나보내고
+         interval_excluded 에 안 센다 · 응답의 그 엣지 occurred_at 은 null · 처음 본 시각에 안 든다
+         판정 한 자리 schema.reads_as_event_time (총괄 29047aedc · 3bf28f893). 최신값 · 가져오기 순서는 저장된 시각 그대로
 씨앗     구간과 «무관»하다 — 모든 엣지를 제외하는 창도 씨앗은 돌려준다.
          그러지 않으면 «좁은 창»과 «틀린 id»가 같아 보이고, 운영자는 엉뚱한 것을 뒤진다
 절단     truncated.interval_excluded = «구간 밖이라 안 가져온 수»(홉 합)

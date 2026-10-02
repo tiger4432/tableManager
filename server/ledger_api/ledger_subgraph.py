@@ -37,6 +37,7 @@ from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 
 from ledger import explorer
+from ledger.schema import event_time_sql, reads_as_event_time
 from utils.wire_format import wire_text
 from declaration_names import bare_name as _bare_name
 from ledger import trace
@@ -408,6 +409,8 @@ class EvidenceAtom:
     #: A `one` predicate's fact with a later fact of the same (subject, predicate) - drawn only
     #: when the walk asks for history (총괄 22ebdd153). Set by the lookup that fetched it.
     not_current: bool = False
+    #: Where `occurred_at` came from - empty for an event time (`schema.reads_as_event_time`).
+    occurred_at_basis: str | None = None
 
     @property
     def event_identity(self):
@@ -421,7 +424,7 @@ class EvidenceAtom:
 ATOM_COLUMNS = (
     "id, subject_type, subject_keys, predicate, object_kind, object_payload, "
     "occurred_at, source_who, source_translator_ver, source_raw_ref, supersedes, "
-    "source_event_id, source_event_state"
+    "source_event_id, source_event_state, occurred_at_basis"
 )
 EVIDENCE_COLUMNS = ", ".join(f"e.{name.strip()}" for name in ATOM_COLUMNS.split(","))
 
@@ -436,7 +439,8 @@ def _atom_from_row(row):
         source_raw_ref=row[9], supersedes=str(row[10]) if row[10] else None,
         source_event_id=str(row[11]) if row[11] else None,
         source_event_state=str(row[12]) if row[12] else None,
-        not_current=bool(row[13]) if len(row) > 13 else False)
+        occurred_at_basis=row[13] if len(row) > 13 else None,
+        not_current=bool(row[14]) if len(row) > 14 else False)
 
 
 class SqlEvidenceLookup:
@@ -479,7 +483,11 @@ class SqlEvidenceLookup:
         if self.until is not None:
             params["until"] = self.until
             kept.append("e.occurred_at < %(until)s")
-        return " AND ".join(kept)
+        if not kept:
+            return ""
+        # 🔴 [총괄 29047aedc] AN ATOM WHOSE TIME IS NOT AN EVENT TIME IS ALWAYS INSIDE - a die
+        # stays in its wafer whichever window is asked; `ingested` follows the same rule (소유자 b)
+        return "(%s OR NOT %s)" % (" AND ".join(kept), event_time_sql("e"))
 
     def _outside_clause(self, params):
         """The rows the interval EXCLUDES - the complement of `_interval_clause`, and it has
@@ -493,7 +501,7 @@ class SqlEvidenceLookup:
             kept.append("e.occurred_at >= %(until)s")
         if not kept:
             return ""
-        return "(" + " OR ".join(kept) + ")"
+        return "(" + " OR ".join(kept) + ") AND " + event_time_sql("e")
 
     def _not_current_clause(self, params):
         """🔴 THE ONE CONDITION for 「not the current value」 (총괄 22ebdd153, 판정 256 reversed): a
@@ -680,6 +688,8 @@ class InMemoryEvidenceLookup:
         self.interval_excluded = None if (since is None and until is None) else 0
 
     def _outside(self, atom):
+        if not reads_as_event_time(atom.occurred_at_basis):
+            return False
         if self.since is not None and atom.occurred_at < self.since:
             return True
         return self.until is not None and atom.occurred_at >= self.until
@@ -2042,7 +2052,9 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
                      cardinality=(cardinalities or {}).get(
                          str(atom.predicate).split("@", 1)[0]))
         edge["claim_id"] = atom.id
-        edge["occurred_at"] = _instant(atom.occurred_at)
+        # an atom whose time is not an event time shows none (총괄 29047aedc)
+        edge["occurred_at"] = (_instant(atom.occurred_at)
+                               if reads_as_event_time(atom.occurred_at_basis) else None)
         edge["source_who"] = atom.source_who
         edge["basis"] = atom.source_raw_ref
         edge["qualifiers"] = dict((atom.object_payload or {}).get("qualifiers") or {})

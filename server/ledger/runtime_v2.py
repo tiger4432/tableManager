@@ -27,7 +27,8 @@ from .roleframe import (
     UNIT_SAID_NOTHING_ATTR,
     dry_run_event_frame,
 )
-from .setup_registry import LedgerSetupSnapshot, cursor_translator_version
+from .schema import REFERENCE_BASIS
+from .setup_registry import LedgerSetupSnapshot, cursor_translator_version, is_reference_derivation
 
 
 class LedgerV2RuntimeError(ValueError):
@@ -598,13 +599,15 @@ def _stamp_occurred_at_basis(source_plan, event_atoms) -> None:
 
     A source whose table carries world time leaves this None, which is what every atom
     written before this field existed also has - absence keeps meaning "world time".
+    An entity reference's atom carries `schema.REFERENCE_BASIS` whatever the source's (총괄 29047aedc).
     """
     basis = source_plan.driver.occurred_at.basis
-    if basis is None:
-        return
     for atoms in event_atoms:
         for atom in atoms:
-            atom.occurred_at_basis = basis
+            if is_reference_derivation(atom.derivation):
+                atom.occurred_at_basis = REFERENCE_BASIS
+            elif basis is not None:
+                atom.occurred_at_basis = basis
 
 def _source_plan(snapshot: LedgerSetupSnapshot, source_id: str):
     if not isinstance(snapshot, LedgerSetupSnapshot) or snapshot.readiness != "ready":

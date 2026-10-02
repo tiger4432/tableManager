@@ -1044,6 +1044,7 @@ def ledger_declaration_catalog(
     try:
         from ledger.setup import load_setup
         from ledger.event_frame import base_select_columns
+        from ledger.setup_bundle import emitted_predicates
 
         plans = load_setup(_world(world).declaration_root).snapshot.source_plans
         declared_sources = declared.get("sources") or {}
@@ -1082,12 +1083,8 @@ def ledger_declaration_catalog(
                 # `status` would tell the screen an operator retired it.
                 **({"planned": False,
                     "refusal": dict(plan.refusal or {})} if not plan.planned else {}),
-                "emits": sorted({
-                    (mapping or {}).get("predicate")
-                    for mapping in (((declared_sources.get(source_id) or {})
-                                     .get("bind") or {}).get("mappings") or {}).values()
-                    if (mapping or {}).get("predicate")
-                }),
+                "emits": emitted_predicates(declared_sources.get(source_id),
+                                            declared.get("entities")),
                 # ⛔ OMITTED, NOT EMPTIED, ON A RETIRED SOURCE. This list is compiled
                 # from the read plan, and a retired source has none; `[]` would say 「reads
                 # no columns」, which is a different and false fact.

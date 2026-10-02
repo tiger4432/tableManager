@@ -1638,13 +1638,52 @@ def _validate_entities(section: Mapping[str, Any], problems: _Problems) -> None:
                                  keys, section, problems)
 
 
-def _validate_references(value, path, own_keys, section, problems):
-    """「이 엔티티의 키 하나가 «다른 엔티티»를 가리킨다」 -- the walk composes an edge from it.
+def entity_references(item) -> list:
+    """The `references` of one entity declaration as a list - ONE spelling of 「one or a list」,
+    read by the validator and the compiler alike."""
+    value = item.get("references") if isinstance(item, Mapping) else None
+    if value is None:
+        return []
+    return [value] if isinstance(value, Mapping) else value
 
-    🔴 A REFERENCE IS NOT A MAPPING, AND THE WORDS SAY SO. A mapping writes an atom and is
-    spelled `subject`/`predicate`/`target`; a reference composes an edge no atom backs, and is
-    spelled `from`/`edge`/`to`. Reusing the mapping words would promise a reader that the
-    predicate's atoms can be found. They cannot.
+
+def emitted_predicates(source, entities) -> list:
+    """The predicates one declared source writes: its sentences', and the `references` edges of
+    every entity its bindings name (총괄 29047aedc - the translator writes those for any source).
+    ONE answer, so the declaration screen does not list less than the ledger receives."""
+    mappings = ((source or {}).get("bind") or {}).get("mappings") or {}
+    found = {mapping.get("predicate") for mapping in mappings.values()
+             if isinstance(mapping, Mapping) and mapping.get("predicate")}
+    named = set()
+
+    def scan(node):
+        if isinstance(node, Mapping):
+            if node.get("kind") == "entity" and isinstance(node.get("entity_type"), str):
+                named.add(node["entity_type"])
+            for item in node.values():
+                scan(item)
+        elif isinstance(node, list):
+            for item in node:
+                scan(item)
+    scan(mappings)
+    for entity_id in named:
+        item = (entities or {}).get(entity_id)
+        if isinstance(item, Mapping) and not is_retired(item):
+            refs = entity_references(item)
+            found.update(ref["edge"] for ref in (refs if _is_list(refs) else ())
+                         if isinstance(ref, Mapping) and isinstance(ref.get("edge"), str))
+    return sorted(found)
+
+
+def _validate_references(value, path, own_keys, section, problems):
+    """「이 엔티티의 키 하나가 «다른 엔티티»를 가리킨다」 -- the translator writes that edge as an atom.
+
+    🔴 [총괄 29047aedc, 소유자 「다이 웨이퍼 잇기 지어」] EVERY SOURCE THAT NAMES THE ENTITY WRITES IT:
+    `roleframe.compile_role_rows` adds one atom per molecule, and its time is not an event time
+    (`schema.REFERENCE_BASIS` - it is structure, not an event). This REVERSES the 08-27 retirement only in what it asks for: 총괄 c7046a710 retired the
+    walk DRAWING this edge from the declaration ("write atoms, do not draw"), and nothing here
+    draws - the walk reads the atoms like any other. `edge` must name a declared predicate whose
+    signature takes this entity to `to.entity` (`_cross_references`).
 
     🔴 EVERY UNKNOWN FIELD IS REFUSED, and so is every key name the entity does not have. A
     typo here does not fail loudly at run time -- it composes no edge, and the screen shows
@@ -1656,8 +1695,9 @@ def _validate_references(value, path, own_keys, section, problems):
     reads one way throughout. A binding is `{"key": <own key>}` or `{"value": <const>}`, and a
     bare string is shorthand for the first.
     """
+    value = [value] if isinstance(value, Mapping) else value
     if not _is_list(value) or not value:
-        problems.add("invalid_type", path, "must be a list with at least one item")
+        problems.add("invalid_type", path, "must be one reference or a list of them")
         return
     own = set(_column_values(own_keys)) if _is_list(own_keys) else set()
     for index, ref in enumerate(value):
@@ -2261,6 +2301,7 @@ def _cross_validate(bundle: Mapping[str, Any], catalog: Mapping[str, Any],
     sources = bundle["sources"]
 
     _cross_vocabulary(vocabulary, entities, problems)
+    _cross_references(entities, vocabulary, problems)
     # `_cross_packs` stood here and checked a Claim against the predicate it emitted --
     # object kind agreement, every required qualifier present, no qualifier the predicate
     # does not allow, every `$role` endpoint declared with a compatible kind.  Every one of
@@ -2466,6 +2507,45 @@ def _cross_vocabulary(vocabulary: Mapping[str, Any], entities: Mapping[str, Any]
                     problems.add("unknown_entity_type", f"{path}.object.types[{index}]",
                                  f"unknown entity type {entity_type!r}"
                                  + _did_you_mean(entity_type, entities, "entity types"))
+
+
+def _cross_references(entities: Mapping[str, Any], vocabulary: Mapping[str, Any],
+                      problems: _Problems) -> None:
+    """A reference's `edge` is a predicate the translator will write - so it must exist, be active,
+    take THIS entity as its subject and `to.entity` as its object, and require no qualifier the
+    reference cannot supply (총괄 29047aedc). Refused by name, like a mapping's predicate."""
+    for entity_id, item in entities.items():
+        if not isinstance(item, Mapping) or is_retired(item):
+            continue
+        refs = entity_references(item)
+        for index, ref in enumerate(refs if _is_list(refs) else ()):
+            if not isinstance(ref, Mapping):
+                continue
+            here = f"bundle.entities.{entity_id}.references[{index}]"
+            predicate_id = ref.get("edge")
+            predicate = vocabulary.get(predicate_id) if isinstance(predicate_id, str) else None
+            if predicate is None:
+                problems.add("unknown_predicate", f"{here}.edge",
+                             f"unknown predicate {predicate_id!r}"
+                             + _did_you_mean(str(predicate_id), vocabulary, "predicates"))
+                continue
+            if predicate.get("status") != "active":
+                problems.add("inactive_predicate", f"{here}.edge",
+                             f"predicate {predicate_id!r} is not active")
+                continue
+            if entity_id not in (predicate.get("subjects") or ()):
+                problems.add("invalid_entity_ref", f"{here}.edge",
+                             f"predicate {predicate_id!r} does not take {entity_id!r} as its subject")
+            obj = predicate.get("object") or {}
+            target = (ref.get("to") or {}).get("entity") if isinstance(ref.get("to"), Mapping) else None
+            if obj.get("kind") != "entity_ref" or target not in (obj.get("types") or ()):
+                problems.add("invalid_entity_ref", f"{here}.to.entity",
+                             f"predicate {predicate_id!r} does not take {target!r} as its object")
+            required = ((obj.get("qualifiers") or {}).get("required") or ())
+            if required:
+                problems.add("missing_required_payload", f"{here}.edge",
+                             f"predicate {predicate_id!r} requires qualifiers {sorted(required)} "
+                             "and a reference carries none")
 
 
 def _validate_bind_entities(section: Any, path: str, problems: _Problems) -> None:

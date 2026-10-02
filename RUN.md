@@ -1,5 +1,27 @@
 # 지금 돌리면 되는 것
 
+> ## [10-02 오후] **엔티티 references 가 원자를 쓴다(다이 → 웨이퍼) · 사건 시각 아닌 원자는 창을 늘 지난다 — 이주 «불필요» · 재기동 «필요»(run_app.bat 전체)**
+>
+> ```
+> 무엇이 바뀌나  entities.<타입>.references(하나 또는 목록)를 적으면 그 엔티티를 부르는 소스마다 그 엣지 원자를 하나 더 쓴다(분자당 하나)
+>              그 원자의 occurred_at_basis = ingested(사건 시각 아님). 새 칸 · 새 값 · CHECK 교체 없음
+>              사건 시각 아닌 원자(이것 · 원래 ingested 인 dt_job)는 걷기 시간 창이 늘 지나보내고 · 창 밖 수에 안 세고 ·
+>              응답 엣지 occurred_at 이 null · 처음 본 시각(gaps)에 안 든다. 최신값 · 가져오기 순서는 그대로
+> 선언(운영자가)  config/ontology/ledger_config.json 의 entities 에서, 예:
+>                "die@1": {"keys": [...그대로...], "references": {"edge": "in_container@1",
+>                  "to": {"entity": "wafer@1", "keys": {"wafer": "mat_id"}}, "from": {"when": {"mat_type": "Wafer"}}}}
+> 확인 명령     재기동 뒤 로그에 [Ledger] entity|die@1 is NOT read: … 줄이 없어야 한다(있으면 그 줄 뒤가 거절 사유 — 술어 · 키 대응 · when)
+>              다이를 부르는 소스를 소스마다 다시 번역:  python -m ledger.backfill --source <소스> --whole-source --apply
+>              확인:  SELECT count(*) FROM ledger_events WHERE predicate = 'in_container' AND occurred_at_basis = 'ingested'
+> 뜻           그 수가 늘면 references 원자가 쓰인 것
+>              체인 데몬이 뜰 때 [Ledger] re-stamped N cursor(s) … 줄 — 선언이 바뀐 소스의 커서 지문을 새로 찍음(자리 그대로), 그 뒤 새 행부터 references 원자
+>              이미 번역된 옛 행은 위 다시 번역으로만 생긴다
+> 급할 때       선언에서 references 를 지우면 새 원자는 안 생긴다(이미 쓴 것은 남음 — 그 소스를 다시 번역하면 거둬진다). 코드는 git revert -> 재기동
+> 재기동 뒤 로그 위 두 줄
+> ```
+
+---
+
 > ## [10-02 낮] **정적 «씨앗»의 첫 걸음은 동적 노드로 간다 — 걷기 — 이주 «불필요» · 재기동 «필요»(run_app.bat 전체)**
 >
 > ```

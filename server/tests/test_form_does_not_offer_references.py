@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
-"""The form stops offering `references`, and the grammar keeps accepting it.
+"""The form offers `references` (again, lead 29047aedc - the translator now writes them), and the
+grammar keeps accepting it. The paragraph below is the 2026-09-05 reason it was taken out.
 
 `references` has no reader - CODE_MAP records that across five layers, so there was
 nothing left to measure. Offering it in the authoring form asks an operator to fill a
@@ -31,8 +32,10 @@ def has_field(node, key):
     return False
 
 
-def test_the_form_no_longer_offers_references():
-    assert not has_field(config_authoring.skeleton(), "references")
+def test_the_form_offers_references_now_that_the_translator_reads_them():
+    """Lead 29047aedc reverses this file's first premise: `references` has a reader now - the
+    translator writes the edge for every source naming the entity - so the form shows it again."""
+    assert has_field(config_authoring.skeleton(), "references")
 
 
 def test_the_neighbouring_field_survived():

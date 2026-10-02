@@ -231,6 +231,89 @@
                 }
               },
               {
+                "key": "references",
+                "required": false,
+                "label": "References",
+                "node": {
+                  "kind": "map",
+                  "keyed_by": "index",
+                  "member": "Reference",
+                  "of": {
+                    "kind": "record",
+                    "fields": [
+                      {
+                        "key": "edge",
+                        "required": true,
+                        "label": "Predicate",
+                        "node": {
+                          "kind": "leaf",
+                          "hint": "ref",
+                          "section": "vocabulary"
+                        }
+                      },
+                      {
+                        "key": "to",
+                        "required": true,
+                        "label": "Points at",
+                        "node": {
+                          "kind": "record",
+                          "fields": [
+                            {
+                              "key": "entity",
+                              "required": true,
+                              "label": "Entity",
+                              "node": {
+                                "kind": "leaf",
+                                "hint": "ref",
+                                "section": "entities"
+                              }
+                            },
+                            {
+                              "key": "keys",
+                              "required": true,
+                              "label": "Its keys - from this entity's key",
+                              "node": {
+                                "kind": "map",
+                                "keyed_by": "name",
+                                "member": "Key",
+                                "of": {
+                                  "kind": "leaf",
+                                  "hint": "free"
+                                }
+                              }
+                            }
+                          ]
+                        }
+                      },
+                      {
+                        "key": "from",
+                        "required": false,
+                        "label": "Only when",
+                        "node": {
+                          "kind": "record",
+                          "fields": [
+                            {
+                              "key": "when",
+                              "required": false,
+                              "label": "This entity's key equals",
+                              "node": {
+                                "kind": "map",
+                                "keyed_by": "name",
+                                "member": "Key",
+                                "of": {
+                                  "kind": "leaf",
+                                  "hint": "free"
+                                }
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    ]
+                  }
+                }
+              },
+              {
                 "key": "status",
                 "required": false,
                 "label": "Status",
