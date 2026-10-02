@@ -487,6 +487,10 @@ entities.<개체id>       필수  keys                     선택  key_types · 
 
 #### 3.7-b ⚰️ 개체의 «참조 엣지» — **[2026-08-28 삭제. 아래는 역사 기록이다]**
 
+> 🆕 **[10-02 `f45c75442`] `references` 가 돌아왔다 — «합성»이 아니라 «원자»로**(총괄 29047aedc). 그 엔티티를 부르는 소스의
+> 분자마다 번역기(`roleframe._reference_rows`)가 `edge` 술어 원자 하나를 쓰고, 걷기는 그리지 않는다.
+> 아래 「🗄️ 믿지 말 것」 중 «`references` 문법 · from/edge/to 낱말»은 다시 산다. «합성 엣지 · 원자 없음»은 그대로 거짓이다.
+
 🔴 **선언에 `references` 를 적어도 엣지가 «생기지 않는다».** 그것을 읽던 `_link_containers` 가
 walk 에서 삭제됐고, 같은 밤 `entities.die@1.references` 도 지워졌다(실측 2026-08-29: 선언된
 엔터티 아홉 중 `references` 를 든 것이 «0»). 근거는 실측이었다 — 합성 엣지 `in_container` 가

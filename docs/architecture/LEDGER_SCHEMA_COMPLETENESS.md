@@ -42,7 +42,7 @@
 | 존재 — **은퇴** | ✅ **① (09-11 D-3c 재측정 — 이 행이 «거짓»이었습니다)** — `entities.<t>` 의 optional 에 `status` 가 «있고»(`setup_bundle.py`), 은퇴한 타입을 내는 문장은 `_retired_entity_types` 가 «이름 대어» 거절합니다. S-103(`b61c67fa`, 09-10 07:23)이 닫았고 이 행만 남아 있었습니다. 🪦 당시 근거: | `entities.<t>` 의 optional 목록 :1119 = `(key_types, allow_null, references, class, attributes)` — **`status` 가 없다.** 술어에는 있다(A2) | — | — |
 | 시간(속성 변경) | ① | 새 등록 원자. 걷기가 최신 `occurred_at` 을 이기고 서로 다른 값의 수를 `attribute_conflicts` 로(`WALK.md` §4) | — | 걷기 · 클라 |
 | 표면 `label` | ② | 🔴 선언 칸이 «없다» — `ledger_subgraph.py:384` 가 **`keys` 앞 «둘»을 `" / "` 로 이어** 만든다. 비면 타입 이름 | — | 화면 |
-| `references` | ① | `entities.<t>.references` :1165 — 키 하나가 다른 엔티티를 가리키면 걷기가 «엣지를 합성»한다 (:1169) | | 걷기 |
+| `references` | ① | `entities.<t>.references`(하나 또는 목록 — `edge` · `to.entity` · `to.keys` · `from.when`) — 🆕 10-02 `f45c75442` 번역기가 그 엔티티를 부르는 소스마다 `edge` 원자를 쓴다(시각은 사건 시각 아님, `ingested`). ~~걷기가 «엣지를 합성»한다~~(08-27 은퇴) | `edge` 가 선언된 active 술어 · 이 엔티티 → `to.entity` · 필수 qualifier 없음 — 아니면 이름 대어 거절 | 번역기 |
 
 ---
 
@@ -644,7 +644,7 @@ C-5 마킹 대수           🔴 ③ 그대로 = 표 B B1-1. 걷기에 ∩·∖�
 | `attributes`(이름) · `bind.entities…attributes`(값) | `fact(n, register, ∅, Q, τ, π)` 의 **Q** | ✅ |
 | `class` | 걷기 D_walk 의 «길» 제약(정적에서 안 나감) | ✅ B 쪽 인자 |
 | `allow_null` | K 의 정의역 | ✅ |
-| `references` | fact 의 목적어 N (합성 엣지) | ✅ |
+| `references` | fact 의 목적어 N (🆕 10-02 `f45c75442` 원자 — ~~합성 엣지~~) | ✅ |
 | `vocabulary.<p>` · `subjects` · `object.kind` · `object.types` | `fact` 의 **P** 와 목적어 종류 | ✅ |
 | `qualifiers.required/optional` | `fact` 의 **Q** | ✅ |
 | `status`(술어) | D_P 의 «수명» | ✅ |

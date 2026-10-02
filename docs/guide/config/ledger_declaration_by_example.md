@@ -13,6 +13,7 @@
 | Property (`product`, `lot`) | **`attributes`** | `entities.<t>.attributes` (이름) + `sources.<s>.bind.entities.<t>.attributes` (컬럼, 소스당 한 번) |
 | Link type (`Wafer → Die: inspected`) | 술어 `inspected@1` | `vocabulary` (`subjects` · `object.kind: entity_ref` · `types`) |
 | Link property (링크에 붙는 값) | 술어의 `qualifiers` | `vocabulary.<p>.object.qualifiers` + 문장 bind 의 같은 이름 |
+| Link a key implies (`Die` in the `Wafer` its `mat_id` names) | 🆕 엔티티의 `references`(10-02 `f45c75442`) | `entities.<t>.references` — `edge`(어휘의 술어) · `to.entity` · `to.keys`(상위 키: 이 엔티티의 키) · `from.when`. 그 엔티티를 부르는 소스마다 번역기가 원자를 쓴다(시각은 사건 시각 아님) |
 | Backing dataset | 소스 `relation` + `read` | `sources.<s>` |
 
 > 🆕 **키 값의 철자**(10-01 `7350027a6`) — 엔티티 키는 그 컬럼의 `table_config` 선언 타입으로 접혀서 같은 것이 한 키가 됩니다. `number` 칸이면 `01` · `1` · ` 1 ` · `1.0` 이 모두 `1`(정수가 아닌 수는 그대로 `7.5`), 그 밖의 칸은 앞뒤 공백만 뗍니다. 빈 값은 키가 없는 것입니다. 상수로 적은 키는 공백만 뗍니다. 코드 맵퍼가 스스로 지은 키는 이 접기를 안 지납니다.
