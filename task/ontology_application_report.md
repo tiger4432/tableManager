@@ -35006,3 +35006,23 @@ server/config/ontology/README.md:78  「범용 구현 direct-join@1(준비기)�
           ce0d934c1 에 이미 고쳐 실었다(+ CODE_MAP gaps 줄 · WALK 씨앗 절). 고칠 사람을 정할 일 없음
 여쭐 것 ①  화면 낱말은 DESIGN_ORDERS 29cee1d47 이 이미 클라 몫으로 적었다. 구현 보고가 하나 더 짚은 api.js 'Subject list unreachable' 은 그 지시 목록에 없다
 ```
+
+---
+
+## [C 응용] 10-02 c46163324(정적 씨앗의 첫 걸음) 문서 동기 — @`86ed0c7f4`
+
+```
+고친 문서 셋    CODE_MAP(ledger_subgraph 파일 줄 · _expand_atom 가드 ① · _held_to_names 새 줄) · LEDGER_SCHEMA_COMPLETENESS B2 정적 정책 줄 ·
+               LEDGER_EVIDENCE_SUBGRAPH_SPEC 「규칙 ② 는 세 자리」 문단. WALK.md · 스펙 ② 행은 착지가 이미 실었다
+               줄 수 2568 은 c46163324 에서 git 으로 읽음
+검수 (박스)     test_a_static_seed_takes_its_first_step_into_the_world.py + test_ledger_subgraph.py -> 42 passed, 1 skipped
+               정적 허브 판정을 묻는 곳 (git grep, 카나리아 def _held_to_names 1) — _held_to_names 호출 셋(가르기 · _step · _reach)
+               남은 정적 검사는 다른 물음 — 가드의 먼 쪽 · 되밟기 면제(_walk · _reach 의 정적-정적) · 떠남 예산(_charge)
+```
+```
+문서에 적은 사실 하나 — 스펙의 「분할 뒤 _step 사본은 구조상 발화 안 한다」 ⑴ 은 «씨앗이 아닌» 정적 노드의 문장이 됐다
+   정적 씨앗은 전체 follow 로 가져오므로 그 원자에서 near 정적 ∧ far 비정적이 선다 — _held_to_names 가 씨앗이라 안 버린다
+   그 문단에 한 줄로 적었다. LEDGER_RULINGS 의 같은 문장(규칙 ② 세 곳)은 날짜 붙은 판정 기록이라 안 건드렸다
+남은 것 — 클라 몫  경로 목록(walk/derive.js keepWalkableRoutes)이 정적 -> 동적 첫 걸음을 아직 뺀다 · WALK.md 「⚰️ 정적 경로」 줄도 그 착지 때
+                   (DESIGN_ORDERS c24ba7d82 덧붙임 — 문서 넷 · RELEASE_LOG 한 항목이 그 게이트)
+```
