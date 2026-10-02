@@ -70023,3 +70023,131 @@ R1 tx         이미 실행당 하나 — 짓지 않음. 가이드 세 문장만
              덮어써서 «자리마다 고치는» 일이 되고, tx 는 «한 번의 쓰기»의 신원이라 뜻이 둘이 된다
 ```
 **여쭐 것** — ① 이 모양(잡 신원 run_id 를 payload 에)으로 가도 되나 ② 박스에서 수만 행 소급 잡을 한 번 돌려 재도 되나(박스 서버는 09-30 코드라 «전»만 박스 서버로, «후»는 새 코드를 프로세스로 띄워서)
+
+---
+
+## [10-02 저녁] 체인 대기열 — 소급 잡 하나는 한 줄 (총괄 b3a4334db · 정정 9e8285eba, 소유자 「ㄱ」) — f843188e5
+
+**무엇을 지었나**
+```
+잡 신원    문맥 변수 하나(request_run_id) — 소급 실행이 끝나는 한 자리(_run_to_the_end)가 채널 옆에서 연다.
+          봉투(_outbox_envelope)가 싣고 두 스테이저(행 하나 · 묶음)가 payload.run_id 로 적는다
+          통제 행(RETROACTIVE_RUN) payload 는 객체로(SQL 이 그 run 을 읽게) — 읽는 쪽 둘 다 두 모양을 받는다
+이어받기   워커의 «재생 묻기» 한 자리(_replay_ask)가 run 도 답한다(이벤트가 부르는 run 이 하나일 때만) —
+          쓰기 자리 둘(apply_chain_writes · rule_run.chain_envelope)이 그 run 으로 쓴다 · 두 run 의 묶음은 안 합친다
+대기열     /admin/chain/queue 의 접기를 «자르기 전» SQL 로 — run_id, 없으면 transaction_id, 없으면 그 행. 상한은 «줄» 200
+          한 줄 = run_id · op(retroactive_runs) · transaction_id · events · rows(row_count, 없으면 1) · 가장 오래 기다림
+          🔴 rows 의 뜻이 바뀜(전: 이벤트 수 → 이제: 행 수, 이벤트 수는 events) · listed = {lines, lines_total, cap, capped}(rows_scanned 없어짐)
+          ⚰️ 뒤집은 것: 「접기는 파이썬 — payload 를 SQL 로 묶으면 색인이 없어 전수를 훑는다, 대신 훑는 행 수를 잘라 비용을 고정」(이 라우트의 옛 주석).
+             훑는 범위는 그때나 지금이나 «기다리는 행»(부분 인덱스)이고, 아래가 그 비용
+문서       chain_ingestion_guide §5.6 표 · 그 아래 줄 · BACKFILL_GUIDE · data_model — R1 tx 실행당 하나(d62f40730) · 잡 신원은 run_id
+```
+**비용 · 전후 — PG 스크래치 스키마(시험 DB)에 기다리는 이벤트 25,062 를 심고 라우트 함수를 그대로 부름**
+(총괄 ed582bd92 상설: DB assy_test · 스키마 assy_probe_queue_scale_<pid>(표를 그 이름으로 만들고 pg_namespace 카나리아 · 끝에 DROP) · 이 재기가 public 에서 지운 것 0.
+ 정리로 public 에서 지운 것은 제 앞선 재기가 넣은 행뿐 — 아래 말할 것 ①)
+```
+심은 것   잡 A 체인 재실행 3만 행: 트리거 30(1,000 행씩, R1 기본 묶음) + 결과 30 — run A
+          잡 B 행 하나짜리 연산 2만: 이벤트 2만, tx 하나 — run B · 사람 편집 5천(tx 각자) · 두 잡의 통제 행
+          전(main 코드)                         후(이 착지)
+줄       5 (잡 A 3 · 잡 B 2 · 사람 0)               200 / 전체 5,002 (잡 A 1 · 잡 B 1 · 사람 198)
+자른 것  앞 이벤트 200 개                            줄 200 개
+잡 A 줄  tx 둘로 갈림 + 통제 행 따로                     events 61 · rows 60,001
+라우트   0.035 s                                0.111 s (3번 중 가장 빠른 것)
+박스(기다리는 것 0)에서 EXPLAIN — 새 접기 질의도 부분 인덱스(idx_outbox_unprocessed)를 탄다: Limit  (cost=6.00..6.01 rows=1 width=104)
+```
+**박스 실측(총괄 ㄴ)은 돌리지 않음 — 이유 둘**
+```
+① 「값을 안 바꾸는 수만 행 재생」이 박스에 없다 — 수만 행짜리 후보 dt_transform_update 는 dt_x_base 에 'X' 를 쓰는데 488,103 행이 'X' 가 아니다
+   (재생하면 값이 바뀜). 값이 그대로일 lot_event_to_lot_slot_wafer 는 3,633 행
+② 박스 데몬은 09-30 코드라, 돌려도 워커 결과가 run 을 못 이어받는다 — 새 동작의 절반만 보인다
+대신   「소급 이벤트 하나가 몇 행」은 박스 이력: 09-25 재생(lot_event_to_lot_slot_wafer, chunk_size 20) 이벤트 182 에 행 3,633 — 이벤트당 행 = chunk_size(기본 1,000)
+```
+**게이트**
+```
+시험  tests/test_one_retroactive_job_is_one_line_in_the_queue.py 10 passed, 1 skipped in 2.23s
+        재생 트리거 이벤트와 그것이 깨운 쓰기 모두 run(연쇄 켬/끔) · run 밖 쓰기엔 키 없음 · 규칙 봉투가 run 을 싣는다 · 실행 끝 자리가 run 을 연다(끝나면 닫힘) ·
+        두 run 묶음 안 합침 · 대기열: 한 잡 = 한 줄(tx 셋 + 통제 행, 행 303) · 접기가 자르기 전(250 이벤트 잡 뒤의 잡이 보임) · 줄 수 상한 · 옛 문자열 통제 행은 제 줄
+      PG test_the_fold_reads_the_same_in_postgres 1 passed in 9.41s
+      18 passed in 3.79s (대기열 시험 셋 — 심는 payload 를 스테이저가 쓰는 «객체»로)
+변이  baseline                               28 passed, 1 skipped
+      the run seat opens no run              3 failed, 25 passed, 1 skipped  <- test_a_runs_trigger_events_and_what_they_woke_carry_the_ru, test_a_runs_trigger_events_and_what_they_woke_carry_the_ru, test_every_run_ends_inside_its_run
+      the stagers do not stamp the run       3 failed, 25 passed, 1 skipped  <- test_a_rules_own_write_carries_the_run_its_envelope_is_giv, test_a_runs_trigger_events_and_what_they_woke_carry_the_ru, test_a_runs_trigger_events_and_what_they_woke_carry_the_ru
+      the worker forgets the run             3 failed, 25 passed, 1 skipped  <- test_a_runs_trigger_events_and_what_they_woke_carry_the_ru, test_a_runs_trigger_events_and_what_they_woke_carry_the_ru, test_two_runs_groups_are_never_folded_into_one
+      a rule's envelope ignores the run      1 failed, 27 passed, 1 skipped  <- test_a_rules_own_write_carries_the_run_its_envelope_is_giv
+      the queue folds by transaction only    1 failed, 27 passed, 1 skipped  <- test_one_run_is_one_line_whatever_its_transactions
+      a line counts events as rows           1 failed, 27 passed, 1 skipped  <- test_one_run_is_one_line_whatever_its_transactions
+      the cut comes before the fold          2 failed, 26 passed, 1 skipped  <- test_a_cut_list_says_how_many_lines_there_are, test_the_fold_comes_before_the_cut
+      a cut list says nothing                1 failed, 27 passed, 1 skipped  <- test_a_cut_list_says_how_many_lines_there_are
+      after restore                          28 passed, 1 skipped
+스위트 비PG 전체 6 failed, 7689 passed, 231 skipped, 3 xfailed in 713.70s (0:11:53) · 알려진 다섯 밖: 1
+        tests/test_config_reload_integrity.py::test_h3_cross_directory_replace_applies_physical_alter
+          <- 혼자 세 번: 1 passed in 2.65s / 1 passed in 2.60s / 1 passed in 2.75s · 그 파일 통째: 32 passed in 38.76s
+          <- 혼자 되풀이 — 이 착지 30 번 중 3 실패 · 착지 전(ed582bd92) 30 번 중 1 실패 (착지 전에도 같은 실패 — 설정 감시의 시간 의존으로 보임. 이 착지가 그 경로에 닿는지는 안 셈)
+      PG 전체 6 failed, 184 passed in 362.55s (0:06:02) · 알려진 밖: 0
+```
+**말할 것**
+```
+① 측정 정정 — 제 지우기 재기(f16339e82 · a0ae05b60)와 이번 첫 규모 재기가 «스크래치 스키마»에 쓴다고 적었지만, 표를 schema 없이 만들어
+   시험 DB(assy_test) public 에 같은 이름 표가 있으면 그 표를 썼다(create_all 이 search_path 로 «있다»고 보고 건너뜀).
+   그래서 assy_test public 의 cell_sources · cell_overwrites · audit_logs · database_outbox 를 TRUNCATE 했다 — 박스 DB(assy_manager)는 아니다.
+   잰 수는 유효(빈 표에 심고 잼). 제가 남긴 행은 지웠고(아웃박스 25,072 · audit_logs 20,000 · retroactive_runs 2), 두 스크립트는 표를 스키마 이름으로 만들고
+   «그 스키마를 읽는지» 카나리아를 단다. 원래 public 에 있던 것은 TRUNCATE 로 없어졌고 무엇이었는지 모른다
+② 화면 — 클라 레인 몫. 착지 전까지 화면의 rows 칸은 «행 수»(전: 이벤트 수)를 보이고, 잡 줄의 tx 칸은 빈다(run_id · op 를 그릴 자리가 없어서)
+③ 큐에 이미 있던 이벤트(run_id 없음)는 그 tx 로 접힌다 — 재기동 뒤 새로 낸 것부터 한 줄
+```
+
+---
+
+## [10-02 저녁] 계획 — 원천 행 여럿이 받치는 표의 «주장 수» · 겹친 행 보류 (총괄 824c0c270, 소유자 「a」) — 짓지 않음
+
+**먼저 잰 것 (박스 DB assy_manager, 읽기만 · 쓴 것 0)**
+```
+출처 행이 붙은 층(origin_row_id)이 있는 표  dt_log 층 53,520 · 행 26,760 · 출처 253
+태그 층 이름 「chain_ingestion (<행>)」       0 — 소유자 맵퍼는 server/mappers(저장소 밖)에 있고 박스엔 없다
+주장 수별 행                                주장 1: 26,760 행 · 갈리는 행 중 사람이 정한 것 0 · 출처 둘인데 값 묶음 하나 0
+1,000 행 세기(층 읽기 질의 한 번)            중앙 0.030 s · 최대 0.037 s — 색인 idx_sources_by_origin · idx_sources_human_claims · idx_sources_lookup_source
+```
+**오늘 왜 섞이나 (코드로)** — 칸의 승자는 `crud.compute_priority_value` 한 자리: 핀 › 출처 우선순위(user 0 … chain_ingestion 4, 목록에 없는 이름 99) › 시각 › 최근 적재.
+우선순위는 이름을 «정확히» 대조해서(`get_source_priority`) 태그 층 「chain_ingestion (rA)」 은 99 — 칸마다 가장 최근 적재가 이기고, 그래서 칸마다 다른 출처가 이겨 섞인다.
+이 계획은 섞임을 «원장에 못 들어가게» 막을 뿐 화면의 섞임은 그대로다(여쭐 것 ③).
+
+**① 누가 언제 세나 — 안 셋**
+```
+ㄱ 쓰기 문 안 (추천)   _apply_batch_updates_once 의 행 루프 끝 ~ 일괄 쓰기 전. 이 묶음이 만진 행만, 이미 읽어 둔 층과 이번에 쓰는 층으로 센다 →
+                     보류 칸을 행에 적어 «같은 커밋 · 같은 아웃박스 이벤트». 원장 후속은 그 EDIT 로 그 행을 다시 본다(S-101 길 그대로)
+   운영자            table_config 의 그 표에 한 줄(주장 칸 목록 · 보류 칸 이름) + 원장 소스 read.exclude_when 에 그 보류 칸(blank)
+   좋은 점           섞인 행이 원장에 잠깐이라도 들어가는 틈이 없다 · 셈이 «쓰기와 같은 사실»을 본다
+   위험              모든 쓰기가 지나는 자리에 축 하나 — 선언한 표에만 비용이 들게 가둔다. 출처 행을 «지워» 층을 거두는 길(cell_layer.withdraw_by_origin)도
+                     같은 셈 함수를 불러야 한다(아니면 「지움 → 돌아옴」이 안 된다) — 셈 자리는 함수 하나, 부르는 곳 둘
+   크기              안 쟀다
+ㄴ 체인 규칙          쓰기 뒤 별도 트랜잭션에서 그 행을 다시 셈(선언된 파생 규칙 하나). 쓰기 문은 안 건드린다
+   위험              쓰기와 셈 사이에 원장 후속이 섞인 행을 읽어 원자를 썼다가 거둔다(틈) · 체인 한 홉 · 크기 안 쟀다
+ㄷ 원장 쪽에서 셈      보기 소스는 금지(f3bc02f6e)이고 원장 선언은 국소 · 무계산이라 맞지 않는다 — 버림
+```
+**② 비용** — 위 1,000 행 0.030 s(박스 dt_log, 조인 층 · 규격 5 s 의 아주 작은 몫). ㄱ 이면 이미 읽어 둔 층을 써서 질의가 0 일 수 있다(안 쟀다)
+
+**③ 「사람이 정함」 — 여쭐 것**
+```
+어느 칸에    주장끼리 «값이 갈리는 칸 전부»에 user 층이 있으면 정한 것 (추천 — 하나만 고치고 나머지가 섞인 채 들어가는 것을 막는다)
+            · 다른 안: 주장 칸 중 «하나라도» user 층
+지우면       user 층이 빈 값으로 남으면 «빈 것으로 정함» · user 층 자체를 지우면(층 지우기) 다시 보류 (추천)
+화면의 섞임   그대로 둘지, 태그 층의 우선순위를 «이름 꼴»로 읽게 고칠지(get_source_priority) — 이 계획 밖, 여쭙기만
+```
+**④ 게이트 표 (짓기 전 기대값)**
+```
+경우                          주장 수   보류 칸    원장
+처음 하나 A                      1       참        들어감
+나중에 다른 주장 B               2       빔        A 원자 거둠 · 이력 남음
+사람이 정함                      2       참        정한 값으로 들어감
+정한 뒤 새 주장 C                3       참(유지)   그대로
+틀린 로그 B 고침(A 와 같게)        1       참        돌아옴
+틀린 로그 B 지움(그 층 거둠)       1       참        돌아옴 — 거두는 길도 같은 셈을 부를 때만
+같은 값 두 주장                  1       참        들어감(겹침 아님)
+한 칸만 다른 주장                2       빔        안 들어감
+섞인 조합이 원장에               —       —         0
+```
+**⑤ 시간축** — 보류로 바뀌면 그 행 원자를 거두고(rescope 한 트랜잭션, S-101), 돌아오면 다시 번역 — 원자의 occurred_at 은 원천 행의 사건 시각 칸 그대로다.
+이 계획이 occurred_at 을 짓거나 바꾸는 자리는 0(셈과 보류 칸은 시각을 안 만진다). 보류 칸이 원장 선언의 사건 시각 칸으로 쓰이면 안 된다 — 검사기가 거절할지 여쭐 것
+
+**겹치는 개념** — enrichment 의 «모호»(candidates.py)는 «칸의 성질»이라는 소유자 판정이 있다. 이 «주장 수»는 출처 행 단위(origin_row_id)의 다른 물음이고,
+저장소가 이미 「주장 = origin_row_id」로 부르는 자리(test_a_deleted_row_takes_back_the_cells_it_fed)를 넓히는 것이다
