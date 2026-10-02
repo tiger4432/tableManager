@@ -1,3 +1,28 @@
+> ## [17:51 디자인] 감사 로그 — 원장 영수증 줄을 누르면 그 트랜잭션의 행 — 총괄 43a738d58 ① · 8855a4124
+
+**무엇**
+- `timeline.js navigateToLog` 맨 앞 한 자리: `ledger_batch` 로그면 `openLedgerReceipt` 로 — 클릭 길 셋(행 탭 · 전역 탭 낱개 · 전역 탭 묶음)이 모두 여기를 지납니다. 클릭 처리기는 안 바뀜.
+- 영수증: 그 표로 바꾸고(`switchTable`) · 그 트랜잭션으로 거르고(`setTransactionFilter` — 있는 문) · 멈춤(행 이동 없음). 화면에 행이 섰을 때만 상태 줄 「Ledger batch · 표 · N rows of transaction xxxxxxxx」 — 읽기가 거절되면 서버 문장이 그대로 남습니다.
+- 트랜잭션 없는 영수증(백필 · 소급 · `no_tid` 묶음): 읽지 않고 「Ledger batch · 표 · no transaction to show — a backfill or retroactive batch」.
+- 그러려고 `fetchData` 가 «행이 섰다»에서 `true` 를 돌려주고 `setTransactionFilter` 가 그 답을 돌려줍니다 — 다른 부르는 곳은 반환값을 안 읽습니다(하는 일 그대로).
+
+**게이트**
+
+| 칸 | 잰 것 |
+|---|---|
+| 하니스 | `grid_view_readonly_harness` L1~L7, 계약 `ledger_receipt` 의 실제 영수증 로그로: 트랜잭션 있음 -> 그 거르기로 읽음 · 멈춤 + 상태 줄 · 다른 표면 먼저 바꿈 · 백필(없음) -> 안 읽고 사유 · `no_tid` 묶음 -> 같음 · 거절된 읽기 -> 서버 문장 유지 · 다른 종류 줄(셀 변경) -> 오늘처럼 행 이동 시작 — 63 단언 0 실패(러너) |
+| 변이 | timeline 다섯(영수증이 다시 행 이동 · 백필을 거르기로 · `no_tid` 를 트랜잭션으로 · 다른 표 안 바꿈 · 거절된 읽기에 행 주장) 포함 결함 변이 33/33 잡힘 · 대조 2/2 빠져나감. ⚠️ 「fetchData 가 true 를 안 돌려줌」 변이는 이 하니스에서 못 닿습니다 — timeline 이 «진짜» ui.js -> api.js 를 거치므로 갈아 끼운 api.js 사본이 그 길에 없음(실측, 파일에 적음). L2 가 진짜 길로 그 반환을 잽니다 |
+| 미리보기(5174, 읽기 GET 만 · 비-GET 0) | 박스 `Global` 탭: `no_tid` 묶음 줄(wafer_process, 5,635) -> 「… no transaction to show …」, 데이터 읽기 0, 표 그대로. 트랜잭션 있는 영수증 줄 -> wafer_process 로 바뀌고 거르기 띠에 그 트랜잭션, `transaction_id=` 읽기, 상태 줄 「Ledger batch · wafer_process · 0 rows of transaction 01a0f49a」 |
+| RELEASE_LOG | 「2026-10-02 · 감사 로그 — 원장 영수증 줄을 누르면 그 트랜잭션의 행」 — 짧게. 게이트: 예시는 제품 로더로 읽힘(거절 0), 이 항목의 화면 글자 셋(`📒 Ledger batch` · `Global` · `no transaction to show`) 소스에 있음 |
+
+러너 159 중 157 초록 · 알려진 빨강 2 · 막힘 0 · 계약 13 개 어긋남 0.
+
+**보인 것 하나** 박스의 최근 영수증은 전부 wafer_process 의 «실패» 배치였고, 그 트랜잭션은 그 표에서 0 행이었습니다 — 화면은 「0 rows」를 말하고 그리드는 비어 있습니다(거짓은 아님). 지시서가 적은 한계(같은 배치로 번역됐지만 그 트랜잭션에서 안 바뀐 행은 안 보임)와 같은 자리입니다.
+
+**새 함수 · 새 if 중 기존 것과 같은 일** 새 함수 하나 `openLedgerReceipt` — 같은 일을 하던 것 없음(영수증은 행 이동을 «시도»만 했음). 거르기는 있는 문 `setTransactionFilter` 를 부름. 새 if 셋: 영수증인가(한 자리) · 트랜잭션이 없나 · 행이 섰나.
+
+**지나며 본 것** 체인 대기열 서버(f843188e5)가 착지했고, 응용 보고 94242901e 대로 클라 몫이 오기 전 대기열 화면은 «잘렸을 때» 문장이 사라진 칸(`rows_scanned`)을 읽어 수가 빠집니다. b3a4334db 클라 몫에서 닫습니다 — 순서는 지시대로 ② · ③ 뒤.
+
 > ## [14:43 디자인] 그리드 행 지우기 — 기다리는 화면 — 총괄 a0ae05b60 · 45d14144b
 
 **무엇** (`api.js deleteSelectedRows` 한 함수)
