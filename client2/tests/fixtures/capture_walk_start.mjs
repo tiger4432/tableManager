@@ -21,7 +21,7 @@ writeFileSync(path.join(HERE, 'walk_start_declaration.json'), JSON.stringify({
 // The first subject the key list offers for each type; the walk carries the start and nothing else.
 for (const [type, file] of [['wafer', 'walk_start_wafer.json'], ['die', 'walk_start_die.json']]) {
   const kv = await fetchKeyValues({ apiBase, type, limit: 1 });
-  const keys = kv.ok && kv.subjects.length ? kv.subjects[0].keys : null;
+  const keys = kv.ok && kv.nodes.length ? kv.nodes[0].keys : null;
   if (!keys) throw new Error(`no ${type} subject to start from`);
   let url = '';
   let body = null;
