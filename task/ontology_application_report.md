@@ -35068,3 +35068,29 @@ c5df86cdc   b409cf571 의 둘 다 닫힘 — api.js 거절문 「Node list unrea
    서버 절반 전에는 답이 지운 행마다 이력 한 줄이라 10만 행 34 MB(45f87abfa 실측) — 그 해석이 실패하는 자리가 실제로 있다
    서버 절반이 답을 수로 줄이면 크기는 사라지지만, 감싸는 범위는 그대로다
 ```
+
+---
+
+## [C 응용] 10-02 f45c75442(엔티티 references 가 원자를 쓴다 · 사건 시각 아닌 원자) 문서 동기 + RELEASE_LOG 대조 — @`93838e340`
+
+```
+고친 문서 일곱  CODE_MAP(schema · setup_bundle · setup_registry · roleframe · runtime_v2 · ledger_subgraph 줄 · gaps 처음 본 시각 · emits) ·
+               LEDGER_SCHEMA_COMPLETENESS references 두 줄 · PRIMER · LEDGER_TECHNICAL_SPEC 3.7-b · LEDGER_EVIDENCE_SUBGRAPH_SPEC
+               (넷 다 「references 로 엣지가 안 생긴다」였다 — 이제 원자를 쓴다, 걷기는 여전히 안 그린다) ·
+               ONTOLOGY_LEDGER_SETUP basis 절 · ledger_declaration_by_example 대응표 한 줄. 줄 수는 f45c75442 에서 git 으로 읽음
+검수 (박스)     sqlite — references · 폼 · subgraph · gaps 시험 59 passed, 3 skipped
+               PG — run_pg_tests.py -k 「not_an_event_reads_as_none or reference_is_written」 첫 회 3 failed(사유 못 봄 — 끝 두 줄만 받음),
+               이어 네 번 연속 3 passed. 첫 회의 사유는 모른다
+               원자 행을 읽는 칸이 하나 밀렸다(occurred_at_basis 14번째, not_current 15번째) — 그 행을 만드는 질의는
+               SqlEvidenceLookup 의 한 SELECT(EVIDENCE_COLUMNS + not_current) 뿐 (카나리아 def _atom_from_row 1)
+               occurred_at_basis 허용값은 ingested 하나(CHECK) — 「basis 없음 = 사건 시각」 판정이 다른 값을 잘못 읽을 자리 없음
+```
+**RELEASE_LOG 「다이 → 웨이퍼 잇기」 — 작성자(구현)께**
+```
+맞음    선언 예시가 샘플 선언과 맞다 — wafer@1 키 wafer · die@1 키 mat_id … · in_container@1 active, die@1 -> wafer@1, 필수 수식어 없음
+        폼 글자 References · Points at · Only when 이 스켈레톤에 있음 · 🚶 Walk(index.html)
+빠진 것 하나 — 「바뀐 동작」의 «느려짐»
+        구현 보고(c7d5bbdfa)의 박스 미리보기: 다이를 부르는 소스는 원자가 두 배(transfer_event 1,405 -> 2,810 · die_inspection 20,000 -> 40,000),
+        번역 1,000 행당 1.773 -> 2.162 s · 1.813 -> 2.317 s. 항목은 다시 번역하라고만 하고 이 둘을 안 적는다
+        제안 — 「references 를 넣으면 그 엔티티를 부르는 소스의 원자가 늘고(박스: 분자마다 하나, 두 배) 번역이 느려집니다(박스 1,000 행당 약 0.4~0.5 s)」
+```
