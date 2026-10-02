@@ -604,6 +604,13 @@ OCCURRED_AT_ROLE = "occurred_at"
 TARGET_ROLE = "target"
 VALUE_ROLE = "value"
 
+
+def is_event_time_role(role_id: Any) -> bool:
+    """THE one answer to 「is this the role filled with the event's time」 - by NAME (총괄
+    0c9b6e3c0 ③ · 015ef2aab ②). A `timestamp` value role is kind `time` too, and its column
+    is read; the translator and the form both ask here."""
+    return role_id == OCCURRED_AT_ROLE
+
 #: `object.kind` -> the Role kind that carries the object, for the ONE kind that carries
 #: one in a Role rather than in an entity reference and does not depend on a declared type.
 _OBJECT_VALUE_ROLE_KINDS = {"event_ref": "identity"}

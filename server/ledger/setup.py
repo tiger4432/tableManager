@@ -45,6 +45,7 @@ from .implementations import (
 )
 from .setup_bundle import (
     CONFIG_FILENAME,
+    OCCURRED_AT_ROLE,
     PHYSICAL_CATALOG_FILENAME,
     LedgerSetupBundle,
     LedgerSetupValidationError,
@@ -133,7 +134,7 @@ logger = logging.getLogger(__name__)
 def _dead_time_cells(sources):
     """`bind.occurred_at` paths that name a column the compiler will not read.
 
-    🔴 판정 179 ⓑ — NAMED, NOT REFUSED. `roleframe` fills a TIME role from the instant the
+    🔴 판정 179 ⓑ — NAMED, NOT REFUSED. `roleframe` fills the `occurred_at` role from the instant the
     preparation boundary already interpreted and IGNORES the binding's column (ruled
     2026-08-23: re-reading the cell would disagree with the event id minted from that same
     value). Where the source also declares a `basis`, the declaration says out loud that its
@@ -163,7 +164,7 @@ def _dead_time_cells(sources):
         for sentence in sorted(mappings or {}, key=str):
             mapping = mappings[sentence]
             bind = mapping.get("bind") if isinstance(mapping, Mapping) else None
-            slot = bind.get("occurred_at") if isinstance(bind, Mapping) else None
+            slot = bind.get(OCCURRED_AT_ROLE) if isinstance(bind, Mapping) else None
             column = slot.get("column") if isinstance(slot, Mapping) else None
             if column:
                 dead.append(

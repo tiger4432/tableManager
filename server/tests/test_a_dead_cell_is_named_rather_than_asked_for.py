@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """판정 179 ⓑ. A binding the compiler never reads: say so, do not refuse it.
 
-`roleframe` fills a TIME role from the instant the preparation boundary already interpreted
+`roleframe` fills the `occurred_at` role from the instant the preparation boundary already interpreted
 and IGNORES the column the binding names -- ALWAYS, not only where the two coincide (its own
 ruling, 2026-08-23: re-reading the cell would disagree with the event id minted from that
 same value). Where the source ALSO declares `read.occurred_at.basis`, the declaration says
@@ -79,14 +79,22 @@ def test_the_shipped_sample_is_what_this_was_measured_on():
 def test_the_form_shows_the_time_row_as_decided_elsewhere_rather_than_asking():
     """`derived` is 「answered elsewhere」. A `missing`/`unanswered` row here would be the
     screen asking a question whose answer changes nothing."""
-    import inspect
+    # 🔴 총괄 0c9b6e3c0 ③: only the `occurred_at` row. A timestamp VALUE role is kind `time`
+    # too and its column is read, so it stays a question.
+    vocabulary = {"stamped@1": {"status": "active", "subjects": ["part@1"],
+                                "object": {"kind": "value", "value_type": "timestamp"}}}
+    mapping = {"predicate": "stamped@1",
+               "bind": {"occurred_at": {"kind": "column", "column": "event_time"}}}
+    rows = {field.path.rsplit(".", 1)[-1]: field for field in config_authoring._mapping_fields(
+        "bundle.sources.dt_job.bind", "stamped", mapping, vocabulary, {}, ["event_time"],
+        time_basis="ingested", source_id="dt_job")}
 
-    body = inspect.getsource(config_authoring._mapping_fields)
-    assert 'role.get("kind") == "time"' in body
-    assert '"time_from_source_basis"' in body
+    assert rows["occurred_at"].ground.rule == "time_from_source_basis"
     # ⛔ NOT DROPPED. The row survives, so a declaration that already carries a column here
     # keeps its square instead of losing it without explanation.
-    assert 'state="derived"' in body
+    assert rows["occurred_at"].state == "derived"
+    assert rows["value"].ground is None or rows["value"].ground.rule != "time_from_source_basis"
+    assert "not read" not in (rows["value"].note or "")
 
 
 # --------------------------------------------------------------------------- S-97

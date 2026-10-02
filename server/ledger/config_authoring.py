@@ -88,6 +88,7 @@ from .setup_bundle import (
     predicate_claim,
     public_bundle_schema,
     read_group_by,
+    is_event_time_role,
     role_binding_kinds,
     unit_group_columns,
     validate_bundle_errors,
@@ -1162,7 +1163,7 @@ def _profile_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
             declared=[sentence for sentence, _ in sentences] if sentences else _ABSENT,
             note="Add one or more sentences with + Mapping below",
         )
-        # 🔴 판정 179 ⓑ. A TIME role's binding is IGNORED by the compiler -- always, not
+        # 🔴 판정 179 ⓑ. The `occurred_at` role's binding is IGNORED by the compiler -- always, not
         # only where a basis is declared (`roleframe`, ruled 2026-08-23: the instant comes
         # from the preparation boundary, and re-reading the cell would disagree with the
         # event id minted from that same value). Where the source declares a BASIS the
@@ -1246,7 +1247,7 @@ def _mapping_fields(base: str, sentence: str, mapping: Mapping[str, Any],
         role = roles[role_id]
         if not isinstance(role, Mapping):
             continue
-        if time_basis and role.get("kind") == "time":
+        if time_basis and is_event_time_role(role_id):
             # ⚠️ SHOWN, NOT HIDDEN. Dropping the row would make a declaration that
             # already carries a column here lose its square with no explanation -- and an
             # author who wrote `event_time` there deserves to be told it decides nothing,

@@ -1,5 +1,22 @@
 # 지금 돌리면 되는 것
 
+> ## [10-02 저녁] **원장 — 시각 값 문장이 사건 시각 대신 바인딩한 칸 값을 싣는다 (총괄 0c9b6e3c0 ③) — 이주 «불필요» · 재기동 «필요»(run_app.bat 전체)**
+>
+> ```
+> 무엇이 바뀌나  value_type "timestamp" 술어를 declarative-role 로 번역하면 값 = bind.value 의 칸(전에는 사건 시각)
+>              폼: basis 소스의 그 값 칸에서 「This square is not read」가 빠진다(occurred_at 칸은 그대로)
+> 확인         grep -n '"value_type": "timestamp"' server/config/ontology/ledger_config.json
+> 뜻           안 나오면 할 일 없음(이 박스는 0 — 걸린 소스 · 매핑 · 원자 0)
+>              나오면 그 술어를 매핑하는 소스 중 map.implementation_id 가 declarative-role 인 소스의 원자가 사건 시각을 값으로 들고 있다
+>              그 소스만 다시 번역(아래) — 돌리기는 소유자
+>                python -m ledger.backfill --source <소스> --whole-source            (미리보기 — relation_rows 가 행 수, 안 씀)
+>                python -m ledger.backfill --source <소스> --whole-source --apply
+>                시간 어림  행 수 × 5.85 s / 1,000 (박스 다이 소스에서 잰 율)
+> 급할 때       git revert <이 커밋> -> 재기동
+> ```
+
+---
+
 > ## [10-02 저녁] **체인 대기열 — 소급 잡 하나는 한 줄 (run_id) · 접기는 자르기 전 — 이주 «불필요» · 재기동 «필요»(run_app.bat 전체)**
 >
 > ```
