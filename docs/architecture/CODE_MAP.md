@@ -4801,7 +4801,7 @@ Vite + Vanilla ESM + AG-Grid. 상태는 `state.js` 싱글턴(리액티브 아님
 - 소비 이벤트: `file_ingestion_progress`(~73) `file_ingestion_completed`(~84) `batch_row_create`(~131) `batch_row_upsert`(~147) `batch_row_delete`(~229) `batch_refresh_required`(~244) → 델타 반영(`applyTransaction`)·페이지캐시 갱신.
 
 ### `ui.js` (🆕⑪ **346줄** @`b3e1ec83` — 구 표기 342) — 그리드 밖 UI 갱신
-- export: `setupBeforeUnloadWarning`(~9) `updateSelectedCellUI`(~19) `updateTxModeUI`(**~40**) `setTransactionFilter`(**~86**) `applyValueToSelectedRange(newValue)`(**~113**, 범위 일괄 적용→배치 PUT) `updatePageCacheOnUpsert`(**~277**) `updateEnrichmentBadge`(**~348** — **[`1fefd12`] 배지 카운트 필터도 `rule.queue_filters` 우선**(~356): 워크리스트·어드민과 세 수치가 어긋날 수 없다) `notifyEnrichmentTableEvent`(**~399**) `updatePageCacheOnDelete`(**~409**). 보조: `ENRICHMENT_COUNT_TTL=5000`(**~330**, 서버측 카운트 캐시와 같은 주기)/`loadEnrichmentRules`(**~332**)/`findEnrichmentRule`(**~342**).
+- export: `setupBeforeUnloadWarning`(~9) `updateSelectedCellUI`(~19) `updateTxModeUI`(**~40**) `setTransactionFilter`(**~86** — 🆕 10-02 `8855a4124` `fetchData` 의 답을 돌려준다: 행이 화면에 떴으면 true, 거절이면 서버 문장이 남는다) `applyValueToSelectedRange(newValue)`(**~113**, 범위 일괄 적용→배치 PUT) `updatePageCacheOnUpsert`(**~277**) `updateEnrichmentBadge`(**~348** — **[`1fefd12`] 배지 카운트 필터도 `rule.queue_filters` 우선**(~356): 워크리스트·어드민과 세 수치가 어긋날 수 없다) `notifyEnrichmentTableEvent`(**~399**) `updatePageCacheOnDelete`(**~409**). 보조: `ENRICHMENT_COUNT_TTL=5000`(**~330**, 서버측 카운트 캐시와 같은 주기)/`loadEnrichmentRules`(**~332**)/`findEnrichmentRule`(**~342**).
 
 ### `clipboard.js` (🆕⑪ **897줄** @`b3e1ec83` — 구 표기 865) — 엑셀형 범위 선택/복붙
 - export: `isCellInRange`(~14) `refreshRange`(~35) `refreshSelectedRangeDiff`(~63) `clearRangeSelection`(~98) `commitDragSelection`(~150) `getRangeSelectedTSV`(~178) **`registerSmartPasteHandler(fn)`(**~302**)** `setupClipboardHandlers`(**~306**, copy/paste 이벤트 본체) `clearSelectedCells`(**~679**).
@@ -4823,6 +4823,7 @@ Vite + Vanilla ESM + AG-Grid. 상태는 `state.js` 싱글턴(리액티브 아님
   - 🔴 **봉투가 «둘»인 것이 이 라운드의 값이다** — 성공 영수증과 실패 영수증이 «같은 칸에 다른 모양»으로 오고, 실패 쪽은 수를 «하나도» 안 싣는다. 서술에서 지은 픽스처였다면 빈칸 셋을 채점하고 맞다고 했을 것이다. 그래서 픽스처가 «라이브 라우트에서 뜬» 계약 벡터다 — `contracts/ledger_receipt/vectors.json`(`9e564281`), 채점 `client2/tests/ledger_receipt_timeline_harness.mjs`, 게이트 바닥값 **22**(`client2/scripts/check_harnesses.mjs:897`).
   - 🔴 **영수증 줄은 `baseLog.column_name === LEDGER_BATCH_COLUMN` 일 때«만» 붙는다**(`client2/src/timeline.js:459`) — 다른 종류의 픽셀은 한 개도 안 바뀐다.
   - **체인 없이 들어온 배치는 «이름을 받는다»**(`client2/src/timeline.js` — 묶음 `:408` · 낱개 `:439`) — `txId === NO_TRANSACTION_BUCKET` 이면 제목이 「체인 없이 들어온 배치」라고 «말한다». 빈 칸으로 두면 「모른다」와 「체인이 없다」가 같은 픽셀이 된다.
+  - 🆕 **[10-02 `8855a4124`] 영수증 줄을 누르면 «그 트랜잭션의 행»** — `navigateToLog` 가 영수증을 «먼저» `openLedgerReceipt(log)` 로 보낸다(모든 클릭 길이 한 자리로): 그 표로 바꾸고 `setTransactionFilter(tx)` 로 거른 뒤 멈춘다. 행 점프는 없다 — 영수증의 `row_id` 는 배치라 그 점프는 영수증마다 실패했다. 트랜잭션이 없는 영수증(`NO_TRANSACTION_BUCKET` — 백필 · 소급)은 아무것도 안 읽고 상태줄에 「no transaction to show」 · 같은 배치로 번역됐지만 그 트랜잭션에서 안 바뀐 행은 안 보인다
 
 ### `map_editor.js` (🆕⑰ **11,106줄** @`64b562b6` — 🆕⑯ 11,092 @`9eb30691` — 🆕⑨ 11,060 @`5359fdd`, 구 표기 11,031. ⚠️ **줄 수만 재측정** — 「코드 6,391 / 주석 3,858 / 공백 782」 분해는 `5359fdd` 기준이고 이 패스가 다시 재지 않았다) — 웨이퍼 맵 에디터 (단일 페이지 스크립트, export 없음)
 
