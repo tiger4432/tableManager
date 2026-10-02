@@ -35198,3 +35198,23 @@ RELEASE_LOG 맞음 — Chain · Overview · Job / Transaction · Showing 이 adm
 검수 (박스)    test_time_lives_on_the_event_edges 외 넷 — 189 passed, 1 skipped
 RELEASE_LOG   맞음 — 예시는 구현 보고에 제품 로더 명령. 폼 글자 Default: … 는 클라 몫 착지(04cecc30f) 뒤 대조
 ```
+
+---
+
+## [C 응용] 10-02 4115f5afb(copy_rows_with_hold) 문서 동기 + 물음 하나 + 알림 하나 — @`e52492c2a`
+
+```
+고친 문서    CODE_MAP 맵퍼 추적 예외 줄(다섯 -> 여섯, hold_copy.py) · authoring/MAPPING_GUIDE §7(params 를 읽는 맵퍼의 예)
+검수 (박스)  run_pg_tests.py -k copied_row_holds — 첫 회 5 failed · 2 passed, 다시 둘 다 7 passed (아래 알림)
+RELEASE_LOG 맞음 — 예시 규칙 둘 · exclude_when 한 줄 · 한계 둘이 코드와 같다
+```
+```
+물음 — 총괄께 (소유자 문장이 정하지 않은 자리, 제가 고르지 않음)
+   세는 질의가 SELECT DISTINCT <columns> 라 «빈 값»(NULL)도 값 묶음 하나로 센다
+   같은 키 원천 행이 c_bn 'A' 하나 · c_bn 빈 행 하나면 2 -> 보류(빈 값). 빈 원천 칸이 «다른 주장»인지 «주장 없음»인지는
+   소유자 「2개 이상이면 보류」가 답하지 않는다 — 빈 칸을 빼고 셀지 여쭐 것
+알림 — PG 게이트 겹침
+   run_pg_tests.py 의 스크래치 스키마 이름이 고정이라(conftest PG_TEST_SCHEMA) 두 레인이 같은 시각에 돌리면 서로 지운다
+   오늘 제 첫 실행이 두 번(f45c75442 · 이번) 실패하고 다시 돌리면 통과했다 — 겹침으로 보인다. 제 실행이 다른 레인의 게이트를
+   빨갛게 했을 수도 있다. 저는 PG 를 착지마다 «한 번»만, 실패하면 다시 한 번 돌리고 그 사실을 보고에 적는다
+```
