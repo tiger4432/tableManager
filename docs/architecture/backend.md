@@ -219,7 +219,7 @@ uvicorn은 **단일 이벤트 루프**이므로, `async def` 핸들러 본문에
 | `POST /tables/{t}/rows` | 빈 행 N개 생성 |
 | `PUT /tables/{t}/data/updates` | **통합 배치 업서트**(`crud.apply_batch_updates` 위임, 백그라운드 브로드캐스트). **[2026-08-06 P4] 응답의 `created_logs`는 `MAX_NOTIFY_CREATED_LOGS`(500)로 절단되고 절단 전 실건수는 `total_log_count`로 함께 온다** — 내부 이벤트 페이로드와 **같은** 절단 계약(`event_constants.py` 공용 상수)이며 새 관례가 아니다. 종전에는 이 쓰기가 만든 감사 로그 **전량**(셀 하나당 1건이므로 크기가 행×컬럼)을 돌려줬다: 200행×6컬럼 실측 1,200건 405KB, 맵 Push 규모면 수십 MB를 이벤트 루프에서 인코딩하고 브라우저 메인 스레드에서 파싱한다. **소비자는 없다** — client2에서 `created_logs`를 읽는 곳은 `websocket.js` 하나이고 그것은 **WS 메시지**에서 읽는다(WS 페이로드는 이 변경과 무관하게 종전 그대로). 키는 계속 존재하고 계속 list다. 그물 `server/tests/test_batch_response_log_budget.py` |
 | `DELETE /tables/{t}/rows/{row_id}` | 단건 삭제 |
-| `POST /tables/{t}/rows/batch_delete` | 일괄 물리 삭제 |
+| `POST /tables/{t}/rows/batch_delete` | 일괄 물리 삭제 — 🆕 10-02 답은 `{status, deleted_count, transaction_id}`(지운 행 이력은 답에 안 싣고 `audit_logs` · 방송으로, `29cfa7047`) |
 | `POST /tables/{t}/row_ids/target` | 정렬 오프셋의 row_id 해석(점프 스캐너) |
 | `GET /tables/{t}/export` | 필터/정렬 반영 CSV 스트림. 상한은 `main.EXPORT_MAX_ROWS`(1,000,000) **한 곳에서 선언**되고 **자르지 않고 거절한다(413)**. ⚠️ **2026-08-11 이전에는 이 상한이 응답 헤더에만 걸려 있었다** — `total_count = min(total_count, 1000000)`이 크기 추산만 깎았고 스트리밍 쿼리(`export_query`)엔 `.limit()`이 아예 없어서, 200만 행 테이블은 「최대 100만 행」이라고 광고하면서 200만 행을 다 내보내고 진행률을 100% 너머로 밀었다. **거절을 고른 이유**: 잘린 CSV는 엑셀에서 멀쩡히 열리고 숫자만 모자란 파일이라 「잘렸다」를 적을 자리가 파일 안에 없고, 다운로드가 시작된 뒤엔 헤더도 사용자에게 안 보인다. 거절은 `query.count()` 직후 **첫 바이트 이전**이라 반쯤 쓰인 파일이 남지 않는다(같은 라우트가 컬럼 밀린 CSV를 500으로 거절하는 것과 같은 판단). `X-Total-Rows`는 이제 **캡이 안 걸린 진짜 행수**다 |
 
