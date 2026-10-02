@@ -75,8 +75,9 @@ def sample(name):
         return json.load(fh)
 
 
-def build(pg_engine, monkeypatch, tmp_path):
-    """The world, yielded; the caller wraps it as its own fixture."""
+def build(pg_engine, monkeypatch, tmp_path, batch=False):
+    """The world, yielded; the caller wraps it as its own fixture. `batch`: both rules declare
+    `is_batch` (the mapper is handed the batch) or neither (one row a call)."""
     mapper_sdk.discover()
     import mappers.hold_copy                                         # noqa: F401 - registers
     saved = dict(crud.TABLE_CONFIG)
@@ -112,7 +113,9 @@ def build(pg_engine, monkeypatch, tmp_path):
         models.DYNAMIC_TABLES[name].__table__.to_metadata(scratch, schema=None)
     scratch.create_all(pg_engine)
     rules_path = tmp_path / "chain_rules.json"
-    rules_path.write_text(json.dumps({"rules": [RULE, RECOUNT]}), encoding="utf-8")
+    rules_path.write_text(json.dumps({"rules": [{**RULE, "is_batch": batch},
+                                                {**RECOUNT, "is_batch": batch}]}),
+                          encoding="utf-8")
     monkeypatch.setattr(worker, "RULES_PATH", str(rules_path))
     rules = [r for r in worker.load_chain_rules() if r.get("name") in (RULE["name"], RECOUNT["name"])]
     assert len(rules) == 2

@@ -26,9 +26,9 @@ from support import hold_world as hw                                 # noqa: E40
 pytestmark = pytest.mark.pg
 
 
-@pytest.fixture(name="world")
-def fixture_world(pg_engine, monkeypatch, tmp_path):
-    yield from hw.build(pg_engine, monkeypatch, tmp_path)
+@pytest.fixture(name="world", params=[True, False], ids=["batch", "one_row"])
+def fixture_world(request, pg_engine, monkeypatch, tmp_path):
+    yield from hw.build(pg_engine, monkeypatch, tmp_path, batch=request.param)
 
 
 def test_one_source_row_is_agreed_and_said(world):
@@ -98,3 +98,43 @@ def test_the_two_left_agreeing_are_agreed_and_the_recount_writes_once(world):
     hw.settle(world)
     assert hw.hold(world) == "agreed"
     assert len(hw.recount_writes(world)) == 1          # '' -> agreed, once; equal holds write nothing
+
+
+# ------------------------------------------------------------------ one batch (32bab7896 · cb3d3c1bf)
+
+def _netdie_layers(world):
+    from database import models
+    world["db"].expire_all()
+    return sorted((s.source_name, s.origin_row_id) for s in world["db"].query(models.CellSource)
+                  .filter_by(table_name=hw.OFFICIAL, column_name="netdie").all())
+
+
+def _row_id(world, log_id):
+    from sqlalchemy import text
+    return world["db"].execute(text('SELECT row_id FROM "%s" WHERE log_id = :l' % hw.LOG),
+                               {"l": log_id}).scalar()
+
+
+def test_two_rows_of_one_key_in_one_batch_keep_a_layer_each(world):
+    hw.push(world, [{"log_id": "A", **hw.KEY, "netdie": 7}, {"log_id": "B", **hw.KEY, "netdie": 7}])
+    hw.settle(world)
+    a, b = _row_id(world, "A"), _row_id(world, "B")
+    assert _netdie_layers(world) == sorted([("chain_ingestion (%s)" % a, a),
+                                            ("chain_ingestion (%s)" % b, b)])
+    hw.delete(world, "B")
+    hw.settle(world)
+    assert _netdie_layers(world) == [("chain_ingestion (%s)" % a, a)]
+
+
+def test_a_key_whose_source_rows_are_all_deleted_is_held_and_unsaid(world):
+    hw.push(world, [{"log_id": "A", **hw.KEY, "netdie": 7}])
+    hw.settle(world)
+    hw.push(world, [{"log_id": "C", **hw.KEY, "netdie": 7}])
+    hw.settle(world)
+    assert hw.hold(world) == "agreed" and len(hw.said(world)) == 1
+    hw.delete(world, "A")
+    hw.settle(world)
+    hw.delete(world, "C")
+    hw.settle(world)
+    assert hw.hold(world) in (None, "")
+    assert hw.said(world) == []
