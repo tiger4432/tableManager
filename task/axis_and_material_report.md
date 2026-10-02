@@ -1,3 +1,12 @@
+> ## [21:37 디자인] 04cecc30f 덧붙임 — 초안 계획의 묶음 해시 = 저장 뒤 로드한 묶음 해시 · docstring 둘 · cf4ed7f38
+
+- 총괄 메시지들이 착지 뒤에 한꺼번에 도착했습니다. 아직 안 한 것 셋을 이 커밋에 실었습니다.
+- 시험 한 칸: read 안 한 칸을 고치고 implementation_version 을 뺀 초안 — with_unsaved_body 가 만든 문서를 로드한 묶음 해시가, 저장한 파일을 로드한 묶음 해시와 같습니다. «계획이 채우지 않으면» 변이가 잡힙니다. 이 파일의 시험 8 칸 통과, 서버 변이 11/11 잡힘.
+- config_explorer_service.authoring docstring: 「filled as the loader fills the saved file -- the raw itself stays as written」.
+- config_authoring.filled_declaration docstring: 「로더가 채우지 않는 칸은 화면이 채운 대로 파일에 — 로더가 채우는 칸은 파일에 안 쓴다(3a2d79ff9 뒤)」(좁히기).
+- map.input_columns 판정(34ad989bf)은 그 메시지가 제 물음보다 먼저 쓰인 것이라, 바로 아래 보고의 물음(코드에 인용된 소유자 판정 2026-08-22 「그러면 그냥 디폴트 전체 입력해도 되지?」를 뒤집는가)이 그대로 남아 있습니다. 답을 받으면 같은 모양으로 짓겠습니다(폼 줄이 source_defaults 를 부름 · 글자 「Default: none — bound columns only」 · 10-02 RELEASE_LOG 문장 · 이미 적은 소스 바뀜 0 칸).
+- 어느 DB · 어느 스키마 · 지운 것 0 — DB 에 쓰는 측정 없음(tmp 루트, sqlite 메모리).
+
 > ## [21:32 디자인] 원장 소스 선언 폼 — 기본값뿐인 read 는 접힌 한 줄 · exclude_when 칩 · Not an event · 초안은 파일에서 · 저장은 로더가 채우는 칸을 안 씀 — 총괄 04cecc30f · d06199e6a + 839b818d2
 
 **잰 것(고치기 전)**
