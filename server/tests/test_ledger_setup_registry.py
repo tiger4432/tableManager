@@ -545,8 +545,6 @@ def test_editing_one_sources_binding_leaves_the_other_sources_cursor_alone():
     source = edited["sources"]["other_rows"]
     source["bind"]["mappings"]["main_transition"]["bind"][
         "subject"]["keys"]["input_id"]["column"] = "join_id"
-    source["map"]["input_columns"] = sorted(
-        {*source["map"]["input_columns"], "join_id"})
     after = cursor_fingerprints(edited)
 
     assert after["other_rows"] != before["other_rows"]
@@ -559,11 +557,6 @@ def test_a_sources_own_edit_moves_its_own_cursor():
     🔴 WITHOUT THIS ONE, "nothing ever moves" is indistinguishable from isolation --
     a fingerprint that ignored the sources entirely would pass the isolation test
     perfectly.  This is the sample on which the two candidate rules disagree.
-
-    🔴 AND IT SAYS NOTHING ABOUT `input_columns`, WHICH IS WHY THE TEST BELOW IS NOT A
-    DUPLICATE OF IT.  This edits `bind` AND `map.input_columns` in one breath -- the second
-    only so the binding's column stays legal -- so it passes on the `bind` half alone and
-    would keep passing if `input_columns` re-entered the closure tomorrow.
     """
     raw = two_source_bundle()
     before = cursor_fingerprints(raw)
@@ -572,34 +565,20 @@ def test_a_sources_own_edit_moves_its_own_cursor():
     source = edited["sources"]["input_rows"]
     source["bind"]["mappings"]["main_transition"]["bind"][
         "subject"]["keys"]["input_id"]["column"] = "join_id"
-    source["map"]["input_columns"] = sorted(
-        {*source["map"]["input_columns"], "join_id"})
     after = cursor_fingerprints(edited)
 
     assert after["input_rows"] != before["input_rows"]
     assert after["other_rows"] == before["other_rows"]
 
 
-@pytest.mark.parametrize("clause", ["map"])
-def test_editing_only_input_columns_leaves_the_cursor_where_it_is(clause):
-    """The carve-out. `source_cursor_fingerprint` deletes the mapper's before hashing (the
-    preparer's was the other one until setup_version 6).
+@pytest.mark.parametrize("written", [["record_id"], [], "anything"])
+def test_writing_input_columns_leaves_the_cursor_where_it_is(written):
+    """⚰️ `map.input_columns` is read and ignored (소유자 10-03, 총괄 2a8d9073c) - writing it, in
+    any shape, moves no cursor.
 
-    Owner ruling 2026-08-22, after being shown what it costs: these two keys leave the
-    closure and nothing else does. Neither direction of changing them can produce a WRONG
-    atom -- widening carries columns the mapper never reads (measured on `dt_job`: SELECT
-    5 -> 25, same three mapper inputs, same atoms), and narrowing is refused by
-    `roleframe`'s `missing_mapper_input`, which is a STOP the fingerprint cannot make
-    safer. Keeping them in cost a cursor stop for every edit that could not move a row,
-    and the everything-default writes this key on every source's first save.
-
-    🔴 THIS TEST IS HALF OF A PAIR AND IS VACUOUS ALONE. "The fingerprint did not move"
-    also passes for a function broken into returning a constant.
-    `test_a_sources_own_edit_moves_its_own_cursor` above is the other half: it asserts a
-    `bind` edit DOES move it, and neither is redundant with the other -- delete either and
-    the surviving one can be satisfied by a fingerprint that is simply wrong. The cheap
-    positive control below carries part of that inside this test: two sources whose
-    declarations differ must not hash alike.
+    🔴 HALF OF A PAIR AND VACUOUS ALONE. "The fingerprint did not move" also passes for a
+    function broken into returning a constant; `test_a_sources_own_edit_moves_its_own_cursor`
+    above is the other half, and the positive control below carries part of it here.
     """
     raw = two_source_bundle()
     before = cursor_fingerprints(raw)
@@ -608,16 +587,34 @@ def test_editing_only_input_columns_leaves_the_cursor_where_it_is(clause):
         "assertion below without hashing anything")
 
     edited = copy.deepcopy(raw)
-    columns = edited["sources"]["input_rows"][clause]["input_columns"]
-    # `record_id` is a real column of the relation and is named by `read.order_by`, so this
-    # widens the declaration without making any OTHER declaration illegal -- the point is
-    # an edit that touches this key and nothing else.
-    edited["sources"]["input_rows"][clause]["input_columns"] = sorted(
-        {*columns, "record_id"})
+    edited["sources"]["input_rows"]["map"]["input_columns"] = written
     after = cursor_fingerprints(edited)
 
     assert after["input_rows"] == before["input_rows"]
     assert after["other_rows"] == before["other_rows"]
+
+
+def test_a_table_that_grows_a_column_is_read_whole_and_moves_no_fingerprint():
+    """소유자 10-03 「그냥 다 읽으면 되잖아」 (총괄 2a8d9073c): the read brings every column of the
+    relation, and the column list is not atom material - a column reaches an atom only
+    through a binding (판정 201). So a new column arrives in the read, and neither the
+    cursor fingerprint nor the snapshot moves."""
+    from ledger.event_frame import base_select_columns, bound_select_columns
+
+    grown = copy.deepcopy(DEFAULT_CATALOG)
+    grown["input_rows"]["columns"]["added_later"] = "string"
+    raw = logical_bundle()
+    before = snapshot(raw, catalog=DEFAULT_CATALOG)
+    after = snapshot(raw, catalog=grown)
+
+    assert "added_later" not in base_select_columns(before.source_plans["input_rows"])
+    assert "added_later" in base_select_columns(after.source_plans["input_rows"])
+    assert set(base_select_columns(after.source_plans["input_rows"])) == {
+        *grown["input_rows"]["columns"]}
+    assert "added_later" not in bound_select_columns(after.source_plans["input_rows"])
+    assert (setup_registry_module.source_cursor_fingerprint(after, "input_rows")
+            == setup_registry_module.source_cursor_fingerprint(before, "input_rows"))
+    assert after.snapshot_sha256 == before.snapshot_sha256
 
 
 def test_editing_a_shared_predicate_moves_every_source_that_reaches_it():

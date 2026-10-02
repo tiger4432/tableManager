@@ -14,7 +14,7 @@ import pytest
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from ledger import gate                                                 # noqa: E402
-from ledger.backfill import _v2_frame                                   # noqa: E402
+from support.read_frame import as_read                                  # noqa: E402
 from ledger.implementations import (role_mapper_registry,                # noqa: E402
                                     trusted_implementations)
 from ledger.runtime_v2 import execute_scoped_batch, preview_cursor_batch # noqa: E402
@@ -41,7 +41,7 @@ def fixture_snapshot():
 
 def _preview(snapshot, rows):
     # built where the product builds it (총괄 3a109bfd9 ②): the database's NULL stays None
-    frame = _v2_frame(rows)
+    frame = as_read(snapshot.source_plans[SOURCE], rows)
     return preview_cursor_batch(
         snapshot, SOURCE, frame, {"row_id": frame.iloc[-1]["row_id"]},
         role_mapper_registry(), known_registrations=())
@@ -81,7 +81,7 @@ def test_a_row_no_sentence_says_is_counted_by_its_value_and_named(snapshot, capl
     """총괄 4b5964ab2 ①: through the execute door - the line an operator reads is the one the
     door writes, not a call a test makes."""
     assert dict(_preview(snapshot, _rows()).unsaid) == {(("mat_type", "WF"),): 1}
-    frame = _v2_frame(_rows())
+    frame = as_read(snapshot.source_plans[SOURCE], _rows())
     store = _Store()
     gate.reset_counters()
     with caplog.at_level(logging.WARNING, logger="Ledger.Gate"):
@@ -129,7 +129,6 @@ def fixture_die_snapshot(tmp_path_factory):
         document = json.load(fh)
     source = copy.deepcopy(document["sources"]["die_inspection"])
     source["relation"] = DIE_TABLE
-    source["map"]["input_columns"] += ["step", "mat_type"]
     core = source["bind"]["mappings"].pop("die-inspected")
     dt = copy.deepcopy(core)
     core["when"] = {"mat_type": ""}
@@ -143,7 +142,7 @@ def fixture_die_snapshot(tmp_path_factory):
 
 
 def test_a_die_inspected_after_a_dt_step_is_the_dt_die(die_snapshot):
-    rows = _v2_frame([
+    rows = as_read(die_snapshot.source_plans[DIE_SOURCE], [
         {"row_id": "R%d" % index, "run_uid": "U%d" % index, "base_wafer_id": wafer,
          "base_x": 1, "base_y": 2, "stack_gate": "G", "observed_at": "2026-09-30 10:00:00",
          "step": "S1", "mat_type": mat_type}

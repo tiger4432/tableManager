@@ -194,8 +194,6 @@ def source_columns(source: dict) -> tuple[str, ...]:
             _add(name)
     occurred = read.get("occurred_at") or {}
     _add(occurred.get("column"))
-    for name in (source.get("map") or {}).get("input_columns") or ():
-        _add(name)
 
     def _walk_binding(binding):
         if not isinstance(binding, dict):

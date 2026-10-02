@@ -1,5 +1,22 @@
 # 지금 돌리면 되는 것
 
+> ## [10-03] **원장 — 맵퍼는 그 표의 칸을 전부 받는다 · `map.input_columns` 은퇴 (소유자 · 총괄 2a8d9073c) — 이주 «불필요» · 재기동 «필요»(run_app.bat 전체)**
+>
+> ```
+> 무엇이 바뀌나  원장 읽기가 소스 표의 칸 전부(table_config.json 의 그 표)를 가져와 맵퍼에 넘긴다
+>              ledger_config.json 의 map.input_columns 는 읽고 무시(지우지 않아도 된다) · 탐색기 폼에서 그 칸이 사라짐
+> 확인         재기동 뒤 체인 워커 로그에 [Ledger] re-stamped N cursor(s) 줄이 «없어야» 한다
+>              (박스: 소스 다섯 · 샘플 소스 셋 모두 지문이 그대로 · 같은 2,000 행에서 원자가 같음)
+>              python -m ledger census --source <소스>   (server 폴더) — 수가 재기동 전과 같다
+> 뜻           re-stamped 줄이 나오면 지문이 움직인 것 — 원자는 같아도 그 소스 커서가 한 번 다시 찍힌다(자리 그대로, 다시 읽는 행 없음)
+>              어느 소스가 「column ... does not exist」 로 서면 table_config.json 에는 있는데 DB 표에 없는 칸이 있는 것
+>                 (전에는 input_columns 에 적은 칸만 그랬다) — table_config.json 과 DB 표를 맞춘다
+>              원자의 번역 버전(선언 전체 해시)은 재기동 뒤 새 원자부터 한 번 바뀐다 — 선언을 고칠 때마다 생기는 것과 같다
+> 급할 때       git revert <이 커밋> -> 재기동 (되돌릴 이주 없음 · 옛 코드는 안 적은 input_columns 를 [] 로 채운다)
+> ```
+
+---
+
 > ## [10-03] **원장 — 원장이 못 본 수정을 센다 · 그 행만 다시 번역 (총괄 bb9b1c19c (나) · c21cba507) — 이주 «불필요» · 재기동 «필요»(run_app.bat 전체)**
 >
 > ```
@@ -259,8 +276,8 @@
 > ```
 > 무엇이 바뀌나  검증기가 바인딩(bind.mappings 의 칸 · bind.entities 속성 칸) · map.unit.columns 를 map.input_columns 에 다시 적으라고 안 한다
 >              그 칸은 읽기가 저절로 싣는다 — bind.entities 속성 칸도(전에는 안 실려 번역에서 missing_binding_column)
->              탐색기 소스 폼 Mapper input_columns 의 잠긴 칩에 그 칸들과 when 칸이 더해진다
-> 확인         재기동 뒤 탐색기에서 소스를 열어 Mapper input_columns — 바인딩한 칸이 눌린 채 잠겨 있다
+>              ⚰️ 10-03 2a8d9073c 로 Mapper input_columns 칸째 사라짐 — 아래 확인은 할 수 없다
+> 확인         (⚰️) 재기동 뒤 탐색기에서 소스를 열어 Mapper input_columns — 바인딩한 칸이 눌린 채 잠겨 있다
 >              입력 칸에서 바인딩한 칸을 빼고 저장 · 적용 -> 거절 없음(전에는 「Profile column 'X' at … is missing」)
 > 뜻           체인 데몬이 뜰 때 [Ledger] re-stamped N cursor(s) … 줄 — bind.entities 속성이 있는 소스(박스: dt_job)의 지문만 새로 찍힘.
 >              자리 그대로, 다시 읽는 행 없음. [Ledger] N cursor(s) were NOT re-stamped 줄이 나오면 그 소스가 멈춘 것 — 줄 뒤 사유를 본다

@@ -374,13 +374,7 @@
         "implementation_version": 1,
         "unit": {
           "kind": "row"
-        },
-        "input_columns": [
-          "dt_job",
-          "netdie_count",
-          "dt_eqp",
-          "event_time"
-        ]
+        }
       },
       "bind": {
         "entities": {
@@ -572,19 +566,6 @@
       "map": {
         "implementation_id": "lot-event-role",
         "implementation_version": 1,
-        "input_columns": [
-          "__source_event_incomplete",
-          "child_lot",
-          "event_group_key",
-          "event_time",
-          "event_type",
-          "lot",
-          "lot_id",
-          "parent_lot",
-          "row_identity",
-          "slots",
-          "wafers"
-        ],
         "unit": {
           "kind": "event"
         }
@@ -691,21 +672,6 @@
       "map": {
         "implementation_id": "declarative-role",
         "implementation_version": 1,
-        "input_columns": [
-          "b_wx",
-          "b_wy",
-          "c_wx",
-          "c_wy",
-          "core_wafer_id",
-          "dt_job",
-          "dt_job_id",
-          "dt_x",
-          "dt_y",
-          "product",
-          "row_id",
-          "dt_cell_key",
-          "event_time"
-        ],
         "unit": {
           "kind": "row"
         }
@@ -755,15 +721,7 @@
         "implementation_version": 1,
         "unit": {
           "kind": "row"
-        },
-        "input_columns": [
-          "run_uid",
-          "base_wafer_id",
-          "base_x",
-          "base_y",
-          "stack_gate",
-          "observed_at"
-        ]
+        }
       },
       "bind": {
         "mappings": {
@@ -891,14 +849,6 @@
       "map": {
         "implementation_id": "declarative-role",
         "implementation_version": 1,
-        "input_columns": [
-          "row_id",
-          "wafer_id",
-          "recipe_id",
-          "step",
-          "eventtime",
-          "mat_type"
-        ],
         "unit": {
           "kind": "row"
         }
@@ -946,14 +896,6 @@
       "map": {
         "implementation_id": "declarative-role",
         "implementation_version": 1,
-        "input_columns": [
-          "lot",
-          "slot",
-          "wafer",
-          "event_type",
-          "event_time",
-          "lot_slot_wafer_key"
-        ],
         "unit": {
           "kind": "row"
         }
@@ -1027,13 +969,6 @@
       "map": {
         "implementation_id": "declarative-role",
         "implementation_version": 1,
-        "input_columns": [
-          "parent_lot",
-          "child_lot",
-          "event_type",
-          "event_time",
-          "lot_lineage_key"
-        ],
         "unit": {
           "kind": "row"
         }

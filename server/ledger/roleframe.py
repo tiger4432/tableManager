@@ -804,12 +804,6 @@ def _validate_event_frame(
         raise RoleFrameError(
             "snapshot_mismatch", f"{path}.attrs.setup_snapshot_hash",
             "EventFrame was not prepared for this setup snapshot")
-    missing = [column for column in descriptor.input_columns
-               if column not in value.columns]
-    if missing:
-        raise RoleFrameError(
-            "missing_mapper_input", f"{path}.columns",
-            f"mapper input columns are missing: {missing}")
 
 
 def _partition_units(

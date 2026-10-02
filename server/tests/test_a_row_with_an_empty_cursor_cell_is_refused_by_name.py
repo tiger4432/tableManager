@@ -15,7 +15,6 @@ import json
 import os
 import sys
 
-import pandas as pd
 import pytest
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -28,6 +27,7 @@ from ledger.runtime_v2 import (execute_scoped_batch, last_cursor,        # noqa:
 from ledger.setup_bundle import (load_physical_catalog,                  # noqa: E402
                                  require_ready_bundle, validate_bundle)
 from ledger.setup_registry import compile_setup_snapshot                 # noqa: E402
+from support.read_frame import as_read                                  # noqa: E402
 
 SAMPLE = os.path.join(os.path.dirname(__file__), "..", "config", "sample")
 SOURCE, TABLE = "zz_process_by_seq", "zz_process_seq"
@@ -58,7 +58,6 @@ def fixture_snapshot(tmp_path_factory):
     source["relation"] = TABLE
     source["read"]["order_by"] = ["row_id", "seq"]
     source["read"]["cursor"] = {"columns": ["row_id", "seq"]}
-    source["map"]["input_columns"] += ["seq"]
     document["sources"][SOURCE] = source
     catalog = load_physical_catalog(str(folder / "table_config.json"))
     bundle = require_ready_bundle(validate_bundle(document, catalog=catalog))
@@ -72,8 +71,8 @@ def clean_counters():
     gate.reset_counters()
 
 
-def _frame(seqs):
-    return pd.DataFrame([
+def _frame(seqs, snapshot):
+    return as_read(snapshot.source_plans[SOURCE], [
         {"row_id": "R%d" % index, "seq": seq, "wafer_id": "W%d" % index, "recipe_id": "RCP-1",
          "step": "S1", "eventtime": "2026-09-30 10:00:00", "mat_type": ""}
         for index, seq in enumerate(seqs, start=1)])
@@ -86,7 +85,7 @@ def _preview(snapshot, frame):
 
 
 def test_the_row_is_refused_by_name_and_the_rest_is_translated(snapshot):
-    preview = _preview(snapshot, _frame(["a", None, "c", "d"]))
+    preview = _preview(snapshot, _frame(["a", None, "c", "d"], snapshot))
     assert preview.atom_count == 3
     assert [(r.reason, r.rows) for r in preview.refusals] == [("no_raw_ref", 1)]
     refusal = preview.refusals[0]
@@ -97,12 +96,12 @@ def test_the_row_is_refused_by_name_and_the_rest_is_translated(snapshot):
 def test_the_cursor_is_the_last_row_a_cursor_can_name(snapshot):
     plan = snapshot.source_plans[SOURCE]
     # R4's cursor cell is empty and it is the last row - the plain last row was the one taken
-    assert last_cursor(plan, _frame(["a", "b", "c", None])) == {"row_id": "R3", "seq": "c"}
-    assert last_cursor(plan, _frame([None, None])) == {}
+    assert last_cursor(plan, _frame(["a", "b", "c", None], snapshot)) == {"row_id": "R3", "seq": "c"}
+    assert last_cursor(plan, _frame([None, None], snapshot)) == {}
 
 
 def test_the_execute_door_keeps_going_batch_after_batch_and_names_the_column(snapshot):
-    frame = _frame(["a", None, "c"])
+    frame = _frame(["a", None, "c"], snapshot)
     store = _Store()
     for _ in range(2):          # the row is read again on the next follow-up - and refused again
         execute_scoped_batch(snapshot, SOURCE, frame, ("row_id", tuple(frame["row_id"])),
@@ -115,6 +114,6 @@ def test_the_execute_door_keeps_going_batch_after_batch_and_names_the_column(sna
 
 
 def test_a_batch_of_nothing_but_such_rows_writes_nothing_and_does_not_stop(snapshot):
-    preview = _preview(snapshot, _frame([None, None]))
+    preview = _preview(snapshot, _frame([None, None], snapshot))
     assert preview.atom_count == 0
     assert [r.reason for r in preview.refusals] == ["no_raw_ref", "no_raw_ref"]

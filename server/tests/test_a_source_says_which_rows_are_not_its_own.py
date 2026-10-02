@@ -87,13 +87,16 @@ def test_a_column_named_only_by_the_clause_still_reaches_the_read():
     declared in the catalogue and selected by nothing, which is what makes the mutation
     below real.
     """
-    plain = base_select_columns_of(snapshot(logical_bundle()), SOURCE)
-    assert "unselected_note" not in plain, "precondition: nothing else selects it"
+    from ledger.event_frame import bound_select_columns
+
+    plain = bound_select_columns(snapshot(logical_bundle()).source_plans[SOURCE])
+    assert "unselected_note" not in plain, "precondition: nothing else names it"
 
     compiled = snapshot(_with_exclusion([{"column": "unselected_note", "blank": True}]))
 
-    assert "unselected_note" in base_select_columns_of(compiled, SOURCE), (
-        "a column named only by the clause must still be read")
+    assert "unselected_note" in bound_select_columns(compiled.source_plans[SOURCE]), (
+        "a column named only by the clause is named")
+    assert "unselected_note" in base_select_columns_of(compiled, SOURCE)
 
 
 def test_blank_is_spelled_once_for_the_clause_and_for_the_census():

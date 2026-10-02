@@ -8,7 +8,7 @@ SQL so no outbox event carries it - the follow-up never sees it.
 
   translated                             printed, nothing drifted
   a read column edited behind the chain  drifted 1 - the redo makes it 0 and the atom says the new value
-  a column only map.input_columns names  not drifted - no binding reaches it (판정 201)
+  a column no binding names             not drifted - read, but no binding reaches it (판정 201)
   '' and NULL                            one print
   an index line with no print            counted apart, not as drift
 """

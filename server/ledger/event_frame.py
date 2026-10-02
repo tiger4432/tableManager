@@ -55,10 +55,8 @@ from .setup_registry import (
 #: ⚰️ 판정 136 narrowed this to 「a source whose relation has one」, for view sources. Those are
 #: refused at load now (총괄 f3bc02f6e), so every planned source's relation has `row_id` again.
 #:
-#: ⚠️ IT GOES IN `base_select_columns` AND NOT IN `locked_select_columns`, deliberately. The
-#: second is what the authoring screen draws as pressed-and-locked chips, and this is not a
-#: column an author chose or may unchoose -- putting it there would offer the operator a
-#: decision they do not have.
+#: ⚠️ IT GOES IN `base_select_columns` AND NOT IN `bound_select_columns`: no binding names it,
+#: so it is not in the row print either.
 FRAME_ROW_ID_COLUMN = "row_id"
 
 #: 🔴 A STORED SPELLING, NOT A MECHANISM. Every atom stores its event's `source_raw_ref`
@@ -221,22 +219,8 @@ def locked_select_columns(
     condition_columns: Sequence[str] = (),
     binding_columns: Sequence[str] = (),
 ) -> tuple[str, ...]:
-    """What a source's read brings in BEFORE anybody declares an input column.
-
-    Every term of `base_select_columns` but `input_columns` and `row_id`, lifted out because a second reader
-    needs them and cannot have a compiled plan.  The authoring screen draws these columns
-    as pressed-and-locked chips -- "this arrives anyway" -- on a bundle that is half
-    written and does not compile, which is the normal state of a source being built.  So
-    the parameters are plain sequences read straight off a declaration, not a `SourcePlan`.
-
-    Written ONCE and called twice on purpose: the screen's locked set and the cursor's
-    SELECT are the same sentence, and a second spelling of it would drift the day a term
-    is added -- the screen would keep offering a chip the read had already forced on.
-
-    `occurred_at_column` is optional only for the authoring caller.  A compiled
-    `OccurredAtPlan.column` is always a readable column (a `basis` resolves to one at
-    compile time), while a half-written declaration may not name a time at all yet.
-    """
+    """The columns a source's declaration names - keys, order, time, exclusions, conditions,
+    bindings. `bound_select_columns` feeds it from a compiled plan."""
     columns = set(identity)
     columns.update(group_by)
     columns.update(order_by)
@@ -257,8 +241,7 @@ def locked_select_columns(
     # not otherwise read - it is neither an identity, a key, nor anybody's declared input -
     # so without this the mapper is asked to judge a column that is not in the frame.
     columns.update(condition_columns)
-    # 판정 201 · 총괄 c38eae7cf. A bound column is read because it is bound, never because it
-    # was repeated in `map.input_columns`.
+    # 판정 201 · 총괄 c38eae7cf. A bound column is read because it is bound.
     columns.update(binding_columns)
     if occurred_at_column:
         columns.add(occurred_at_column)
@@ -267,13 +250,12 @@ def locked_select_columns(
 
 def bound_select_columns(source_plan: SourcePlan) -> tuple[str, ...]:
     """The columns a source reads because its declaration names them - keys, order, time,
-    exclusions, conditions, bindings - and not `map.input_columns` nor `row_id`: a column
-    reaches an atom only through these (판정 201). What the row print covers (총괄 (나))."""
+    exclusions, conditions, bindings - and not the rest of the relation nor `row_id`: a
+    column reaches an atom only through these (판정 201). What the row print covers (총괄 (나))."""
     driver = source_plan.driver
     return locked_select_columns(
         identity=driver.identity,
-        # The mapper's group is read like the source's (총괄 c38eae7cf) - it is not repeated
-        # in `input_columns` any more.
+        # The mapper's group is read like the source's (총괄 c38eae7cf).
         group_by=(*driver.group_by, *driver.mapper.unit_columns),
         order_by=driver.order_by,
         cursor_columns=driver.cursor_columns,
@@ -290,9 +272,10 @@ def bound_select_columns(source_plan: SourcePlan) -> tuple[str, ...]:
 
 
 def base_select_columns(source_plan: SourcePlan) -> tuple[str, ...]:
-    """Physical columns the existing cursor must SELECT."""
+    """Physical columns the existing cursor must SELECT: every column of the relation (소유자
+    10-03 - the mapper receives them all), the declared ones, and `row_id`."""
     columns = set(bound_select_columns(source_plan))
-    columns.update(source_plan.driver.mapper.input_columns)
+    columns.update(source_plan.relation_columns)
     # The engine's own column, on every planned source - each reads a table that has `row_id`
     # (a view source is refused at load, 총괄 f3bc02f6e).
     columns.add(source_plan.frame_row_id)

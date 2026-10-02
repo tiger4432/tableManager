@@ -73,7 +73,7 @@ def defaulted_cells(source: dict, catalog: dict) -> list[str]:
     bare = copy.deepcopy(source)
     found = []
     for clause, cell in (("read", "unit"), ("read", "identity"), ("read", "order_by"),
-                         ("read", "registration_probe"), ("map", "unit"), ("map", "input_columns")):
+                         ("read", "registration_probe"), ("map", "unit")):
         if cell not in (bare.get(clause) or {}):
             continue
         written = bare[clause].pop(cell)
