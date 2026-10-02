@@ -34954,3 +34954,20 @@ ad1aa4a47  LEDGER_SCHEMA_COMPLETENESS · PRIMITIVES · SYSTEM_FLOWS · SERVER_FI
 ```
 server/config/ontology/README.md:78  「범용 구현 direct-join@1(준비기)과 declarative-role@1(매퍼)만 쓰면 코드 0줄로」 — server/config 는 총괄 기록 자리
 ```
+
+---
+
+## [C 응용] 10-02 RELEASE_LOG(a7a8b9fd6) 대조 — 고칠 문장 하나, 클라(작성자)께 — @`ce04d073b`
+
+작성자 하나 규칙대로 저는 파일을 안 고쳤습니다. 항목 넷을 코드와 대조했습니다(이미지 · 행 단위 맵퍼 · 가지/one · v6).
+```
+맞음  화면 글자 — Open image · ▣ · New branch · Create · Keep draft · Discard draft · Stay · Delete branch · Branch (client2/src 에 있음)
+      서버 이름 — crud.merged_layer_name · crud.CHAIN_SOURCE · mapper_sdk.df_to_updates/payloads_to_df · prepare_retired ·
+      migrate_ledger_config_to_v6.py --apply(없으면 미리보기) · 「setup_version 5 read as 6 … Next: run …」 로그(setup_bundle 의 그 줄)
+고칠 것 하나 — 「원장 가지 · one 술어」 항목의 바뀐 동작
+      「`one` 술어: 쓸 때 막던 거절(cardinality_one_violated)이 없어지고」
+      그 거절은 운영 모양에서 «한 번도 난 적이 없습니다» — 선언 키(…@1)와 원자 술어(버전 뗀 이름)가 안 맞아 판정이 늘 거짓이었다
+      (구현 실측 918f49ccc, 051c7c187 커밋 본문 「Ruling 256 is reversed」 · 가이드 셋에 제가 단 표시 c23d702f9).
+      전부터 쓰던 운영자가 그 거절을 본 적이 없으니 「막던」은 거짓입니다.
+      제안 문장: 「쓸 때 거절 · 대체 표지는 운영에서 실제로 돈 적이 없었고(이름 철자 불일치), 이제 쓸 때는 아무것도 안 하고 읽을 때 …」
+```
