@@ -1846,7 +1846,7 @@ def get_dashboard_summary(db: Session = Depends(get_db)):
 # import is a deliberate RE-EXPORT: `main.get_column_filter_condition` keeps
 # resolving. It moved because a worker process cannot rely on `main` naming this
 # module - see the module docstring of `column_filter.py` for the failure it caused.
-from column_filter import get_column_filter_condition
+from column_filter import ROW_ID_FILTER_NAMES, get_column_filter_condition, model_has_row_id
 
 # ---------------------------------------------------------------------------
 # Shared query construction for the two routes that read a table with the same
@@ -2055,6 +2055,11 @@ def apply_column_filters(query, table_model, table_name, filters):
         filter_dict = json.loads(filters)
         for col_name, f_info in filter_dict.items():
             failing_item = col_name
+            # A relation without a row_id column (a view that does not declare it) is refused by
+            # name, as every other filter that cannot be built (lead d692af408).
+            if col_name in ROW_ID_FILTER_NAMES and not model_has_row_id(table_model):
+                raise HTTPException(status_code=422, detail=(
+                    f"'{table_name}' has no row_id, so it cannot be filtered by '{col_name}'"))
             cond = get_column_filter_condition(table_model, col_name, f_info)
             if cond is not None:
                 query = query.filter(cond)
@@ -3156,8 +3161,10 @@ def get_table_schema(table_name: str, db: Session = Depends(get_db)):
     # 2026-09-02 was that the filling stopped. Written out because a comment that describes
     # a removal which only half happened is worse than no comment - it is what stops the
     # next person from looking.
-    # `row_id` joins them at the end (owner 10-02, lead e67ef53f3): the grid finds a row by it.
-    system_cols = ["created_at", "updated_at", "row_id"]
+    # `row_id` joins them at the end (owner 10-02, lead e67ef53f3): the grid finds a row by it -
+    # where the relation's model has one; a view that does not declare it has none (d692af408).
+    system_cols = ["created_at", "updated_at"] + (
+        ["row_id"] if model_has_row_id(models.DYNAMIC_TABLES.get(table_name)) else [])
     for sc in system_cols:
         if sc not in columns:
             columns.append(sc)

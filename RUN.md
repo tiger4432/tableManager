@@ -1,12 +1,15 @@
 # 지금 돌리면 되는 것
 
-> ## [10-02 저녁] **메인 그리드 — 모든 표 끝에 ROW_ID 칸 · 그 칸으로 거르기 (총괄 e67ef53f3) — 이주 «불필요» · 재기동 «필요»(run_app.bat 전체)**
+> ## [10-02 저녁] **메인 그리드 — row_id 가 있는 표 끝에 ROW_ID 칸 · 그 칸으로 거르기 (총괄 e67ef53f3 · d692af408) — 이주 «불필요» · 재기동 «필요»(run_app.bat 전체)**
 >
 > ```
-> 무엇이 바뀌나  GET /tables/{표}/schema 의 columns 가 created_at · updated_at 뒤에 row_id 로 끝난다(display_columns 에 이미 적은 표는 그 자리)
+> 무엇이 바뀌나  GET /tables/{표}/schema 의 columns 가 created_at · updated_at 뒤에 row_id 로 끝난다 — 그 관계의 모델에 row_id 가 있을 때만
+>              (모든 표 · row_id 를 선언한 보기. display_columns 에 이미 적은 표는 그 자리)
+>              row_id 없는 보기에 row_id/id 거르기 -> 422 「'<표>' has no row_id, so it cannot be filtered by 'row_id'」
 >              화면: 메인 그리드 맨 오른쪽 ROW_ID 칸, 머리 아래 거르기 칸. 맵 편집기 X · Y · Val 고르기에는 시스템 칸이 안 나옴
 > 확인         curl -s http://localhost:8080/tables/<표>/schema  -> columns 의 마지막이 "row_id"
-> 뜻           마지막이 updated_at 이면 재기동 전 서버. 화면에 ROW_ID 칸이 없으면 화면 새로 받기 전
+> 뜻           표에서 마지막이 updated_at 이면 재기동 전 서버. row_id 를 선언 안 한 보기는 updated_at 으로 끝나는 것이 맞다
+>              화면에 ROW_ID 칸이 없으면(표에서) 화면 새로 받기 전
 > 급할 때       git revert <이 커밋> -> 재기동. 화면은 row_id 가 안 오면 그 칸을 안 그린다
 > ```
 

@@ -40,6 +40,18 @@ WHAT USES IT
 """
 from database import crud
 
+#: The filter names read as the row's `row_id` (`id` is the grid's spelling of the identity).
+ROW_ID_FILTER_NAMES = ("row_id", "id")
+
+
+def model_has_row_id(table_model) -> bool:
+    """Does this relation's MODEL carry a `row_id` column (lead d692af408)? Every table does; a
+    `kind: view` is built from its column_types, so only a view that declares `row_id` has one.
+    The schema route's column list and the filter door below both ask this."""
+    table = getattr(table_model, "__table__", None)
+    return table is not None and "row_id" in table.columns
+
+
 def get_column_filter_condition(table_model, col_name: str, f_info: dict, col_expr_override=None):
     """AG-Grid filter spec -> SQLAlchemy condition.
 
@@ -105,7 +117,7 @@ def get_column_filter_condition(table_model, col_name: str, f_info: dict, col_ex
     elif col_name in ["created_at", "updated_at"]:
         target_col = table_model.created_at if col_name == "created_at" else table_model.updated_at
         col_expr = cast(target_col, String)
-    elif col_name in ["row_id", "id"]:
+    elif col_name in ROW_ID_FILTER_NAMES:
         col_expr = table_model.row_id
     else:
         if not hasattr(table_model, col_name):
