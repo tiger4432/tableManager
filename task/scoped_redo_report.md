@@ -70626,3 +70626,40 @@ AST                                      「어느 세상인가」를 묻는 자
 (다) 내일 순서에서 다시 채우기를 «뒤»로 — 비우기만 하고 채우기는 (나) 착지 뒤
 ```
 비우기 도구는 계속 짓는다(이 답과 무관)
+
+---
+
+## [10-02 밤] 착지 — 표 통째로 비우기 server/scripts/empty_table.py (총괄 35b76ba92) — 81ffa8499
+
+어느 DB · 어느 스키마 · 지운 것 — 시험은 assy_test 의 시험 스크래치 스키마(assy_pytest_pg_<프로세스>, 픽스처가 끝에 DROP)뿐(카나리아: pg_namespace 에 그 스키마 1). 비우기 시험이 지운 것은 그 스키마 안의 시험 표 둘과 그 줄들뿐. 박스 DB 에는 안 씀
+
+**한 일**
+```
+report   행 · 그 표의 칸 층 · 그중 사람 층(crud.layer_writer) · 덮어쓰기 · 그 표를 읽는 원장 소스(followup.sources_for_table)와 원자 · 그 표가 트리거인 체인 규칙. 읽기만
+--apply --confirm-rows <보고의 행 수>
+         보고를 다시 떠서 행 수가 다르면 거절(drop_world 모양) · 보기는 crud.refuse_write_to_view 로 거절
+         한 트랜잭션: 행 · cell_sources · cell_overwrites 를 SQL 로 지움(아웃박스 이벤트 0) + 감사 로그 요약 한 줄(출처 empty_table)
+         커밋 뒤 소스마다 backfill.rescope(whole_source, apply) — 표가 잃은 행의 원자를 지움처럼 거둠. 새 원장 쓰기 길 0
+RUN.md   도구 몫만. 내일 «순서 전부»는 총괄 순서대로 묶음 착지 뒤
+```
+**게이트 (pg, 복사 맵퍼 시험과 같은 세상)**
+```
+보고는 아무것도 안 씀 · 행 2 · 사람 층 1 · 원자 {hc_official: 2} · 트리거 규칙 하나
+apply   행 · 칸 층 · 덮어쓰기 · 아웃박스 새 줄 = 0 · 원장 원자 0 · 다른 표 칸 층 그대로 · 감사 줄 1
+움직인 수 -> 거절, 아무것도 안 감 · 보기 -> 거절
+변이(각 자리 되돌림 -> 빨강, 안 바꾼 첫 판 = 카나리아)
+   none (canary)                            4 passed, 7956 deselected, 12 warnings
+   a count that moved is not refused        1 failed, 3 passed, 7956 deselected, 12 warnings
+   the table's cell layers stay             1 failed, 3 passed, 7956 deselected, 12 warnings
+   the table's overwrites stay              1 failed, 3 passed, 7956 deselected, 12 warnings
+   the ledger atoms stay                    1 failed, 3 passed, 7956 deselected, 12 warnings
+   a view is not refused                    1 failed, 3 passed, 7956 deselected, 12 warnings
+시간    시험 스키마 10,000 행(칸 층 80,000 · 원자 10,000) 0.99 s -> 100만 어림 99 s
+전체 시험  안 돌림 — 새 파일은 스크립트 하나와 pg 시험 하나. 스크립트 폴더를 훑는 시험 셋 69 통과
+```
+**정정 — dfc0ec215 에 적은 재기동 근거**
+```
+「hold 칸은 재기동만 더한다」는 반쪽이었다. table_config.json 을 저장하면 웹 서버의 설정 감시(database/config_watcher.py)가
+그 자리에서 칸을 더한다. 총괄이 고른 순서(설정 둘 고치고 재기동 한 번)는 감시 · Reload 에 기대지 않는 길이라 그대로 맞다
+```
+다음: 32bab7896 · cb3d3c1bf 복사 맵퍼 묶음 + 세기 0 은 보류 '' -> 내일 RUN.md. (가) 대기열은 지어 두었다(작업 트리, pg 17 통과) — 순서대로 그 뒤에 착지
