@@ -143,6 +143,7 @@ def test_the_migration_marks_the_old_events_done_and_leaves_the_unprocessed_to_f
                         'payload, processed_chain) VALUES (:u, :e, :t, :p, :c)' % PG_TEST_SCHEMA),
                    {"u": "hc-mig-%s" % processed, "e": "EDIT", "t": hw.LOG, "p": "{}", "c": processed})
     db.commit()
+    db.close()                                   # no open transaction of this run in the way
     for _ in range(2):                                                # idempotent
         connection = world["engine"].raw_connection()
         try:
@@ -168,3 +169,81 @@ def test_the_workers_drain_takes_from_the_outbox(world, monkeypatch):
     before = followup.outbox_depth(world["engine"])
     done = worker._drain_ledger_followup_sync(sessionmaker(bind=world["engine"]))
     assert done is not None and followup.outbox_depth(world["engine"]) == before - 1
+
+
+def _held_after_writing(world):
+    """A session idle in a transaction that WROTE to the outbox - what holds both steps."""
+    from conftest import PG_TEST_SCHEMA
+    from sqlalchemy import text
+
+    held = world["engine"].connect()
+    held.begin()
+    held.execute(text('INSERT INTO "%s".database_outbox (event_uuid, event_type, table_name, '
+                      "payload, processed_chain) VALUES ('hc-held', 'EDIT', 'hc', '{}', true)"
+                      % PG_TEST_SCHEMA))
+    return held, held.execute(text("SELECT pg_backend_pid()")).scalar()
+
+
+def _apply(world, migration):
+    connection = world["engine"].raw_connection()
+    try:
+        migration.apply(connection)
+    finally:
+        connection.close()
+
+
+def test_the_migration_names_the_session_it_waited_for_and_finishes_after(world, monkeypatch):
+    """총괄 a3d19dc51 ③: an open transaction on the outbox stops the run by name, never in silence;
+    run again after it ends and the column and the index are there."""
+    from conftest import PG_TEST_SCHEMA
+    from sqlalchemy import text
+    from migrations import add_outbox_ledger_state as migration
+
+    monkeypatch.setattr(migration, "LOCK_TIMEOUT", "1s")
+    world["db"].execute(text('ALTER TABLE "%s".database_outbox DROP COLUMN ledger_state' % PG_TEST_SCHEMA))
+    world["db"].commit()
+    world["db"].close()
+    held, pid = _held_after_writing(world)
+    try:
+        with pytest.raises(migration.Waited) as stopped:
+            _apply(world, migration)
+        assert "add column" in str(stopped.value) and "pid %d" % pid in str(stopped.value)
+    finally:
+        held.rollback()
+        held.close()
+    _apply(world, migration)
+    connection = world["engine"].raw_connection()
+    try:
+        assert migration._column_exists(connection) and migration._index_valid(connection) is True
+    finally:
+        connection.close()
+
+
+def test_an_index_build_cut_off_is_dropped_and_built_again(world, monkeypatch):
+    from conftest import PG_TEST_SCHEMA
+    from sqlalchemy import text
+    from migrations import add_outbox_ledger_state as migration
+
+    monkeypatch.setattr(migration, "LOCK_TIMEOUT", "1s")
+    world["db"].execute(text('DROP INDEX "%s".%s' % (PG_TEST_SCHEMA, migration.INDEX)))
+    world["db"].commit()
+    world["db"].close()
+    held, pid = _held_after_writing(world)
+    try:
+        with pytest.raises(migration.Waited) as stopped:
+            _apply(world, migration)
+        assert "build the index" in str(stopped.value) and "pid %d" % pid in str(stopped.value)
+        connection = world["engine"].raw_connection()
+        try:
+            assert migration._index_valid(connection) is False            # left by the cut-off
+        finally:
+            connection.close()
+    finally:
+        held.rollback()
+        held.close()
+    _apply(world, migration)
+    connection = world["engine"].raw_connection()
+    try:
+        assert migration._index_valid(connection) is True
+    finally:
+        connection.close()
