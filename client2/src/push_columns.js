@@ -33,6 +33,13 @@ export const PUSH_SYSTEM_COLUMNS = [
   'created_at', 'updated_at', 'row_id', 'id', 'updated_by', 'business_key_val',
   'grid_metadata'
 ];
+
+/** The schema's columns a push can carry — what the map editor offers as X / Y / Val and searches
+ *  by. `row_id` ends every table's columns since lead e67ef53f3; picked as a value it would push
+ *  nothing and leave the real column uncovered. */
+export function pushPickableColumns(columns) {
+  return (Array.isArray(columns) ? columns : []).filter((c) => !PUSH_SYSTEM_COLUMNS.includes(c));
+}
 // RETIRED 2026-08-31: is_graph_synced, needs_graph_rollback, graph_synced_at left with the
 // branch they served.
 // 🔴 THE SENTENCE HERE USED TO SAY THE SERVER STOPPED INJECTING THEM IN THE SAME COMMIT,

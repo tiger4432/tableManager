@@ -625,7 +625,7 @@ const FLOORS = new Map([
   // input otherwise ― plus the empty-but-successful wording), and the discovery round added
   // 13 (the candidate list is ordered, and each candidate carries its registered spec as an
   // option label). Taking either branch's figure would have quietly un-scored the other's.
-  ['map_key_datalist_harness.mjs', 83],
+  ['map_key_datalist_harness.mjs', 84],   // 83 -> 84: the X/Y/Val pickers (lead e67ef53f3)
   // New 2026-08-05 with Map Editor 2 (MAP_ALIGNMENT_SPEC 0.2 layers 4, 7 and 10, plus the
   // composition root). Floor is the count it reports on the commit that introduces it -- there
   // is no earlier tree to measure it against.
@@ -1263,7 +1263,7 @@ const FLOORS = new Map([
   //
   //    The 16th behaviour assertion is the roster named MEMBER BY MEMBER. A count would stay
   //    green while a member was swapped, and a member is exactly what protects a column.
-  ['push_gate_harness.mjs', 34],
+  ['push_gate_harness.mjs', 37],   // 34 -> 37: [13] the pickers + M17 (lead e67ef53f3)
   // 345 -> 347 (lead 668fa004c): the operation's downstream note reaches its card, as sent.
   ['retroactive_view_harness.mjs', 347],
   // New with lead a274c90f0: one run is one line of five cells, its result a line under it.
@@ -1374,7 +1374,7 @@ const FLOORS = new Map([
   //    `loadSchema`, and the same staged table is then asked at edit entry, the three write
   //    funnels, the badge rules and the two source rows. A per-seat answer is how one rule
   //    turns into two spellings, so the gate asks them all with one fixture.
-  ['grid_view_readonly_harness.mjs', 63],
+  ['grid_view_readonly_harness.mjs', 66],   // 63 -> 66: ROW_ID filter B4-B6 (lead e67ef53f3)
   // New 2026-10-02 (lead 685f236d7): the table dropdown groups by the operator's `group`, the
   // search narrows it, and the open table stays in it on every way in. Floor = first run.
   ['table_menu_harness.mjs', 15],

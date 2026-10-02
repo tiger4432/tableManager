@@ -287,6 +287,34 @@ async function suite(M) {
     'B2 on a table the data columns are still editable -- no regression');
   ok(tableDefs.filter((d) => systemish.includes(d.field)).every((d) => d.editable === false),
     'B3 ... and a system column stays read-only, as before');
+  // ROW_ID alone gets the column filter (owner 10-02, lead e67ef53f3). The staged schema carries
+  // every system column here, so each one is asked.
+  const shownColumns = realState.currentColumns;
+  realState.currentColumns = [...COLUMNS, 'row_id', 'updated_by'];
+  const sysDefs = Object.fromEntries(M.grid.buildColumnDefs().filter((d) => d.field).map((d) => [d.field, d]));
+  realState.currentColumns = shownColumns;
+  ok(sysDefs.row_id && sysDefs.row_id.filter === 'agTextColumnFilter' && sysDefs.row_id.floatingFilter === true
+    && sysDefs.row_id.editable === false,
+    `B4 ROW_ID has the text filter under its head, and stays read-only [${JSON.stringify(sysDefs.row_id && [sysDefs.row_id.filter, sysDefs.row_id.floatingFilter, sysDefs.row_id.editable])}]`);
+  const closed = ['created_at', 'updated_at', 'id', 'updated_by'].filter((c) => sysDefs[c]);
+  ok(closed.length === 4 && closed.every((c) => sysDefs[c].filter === false && sysDefs[c].floatingFilter === false),
+    `B5 ... and the other system columns still have none [${closed.map((c) => `${c}:${sysDefs[c].filter}`).join(' ')}]`);
+  {
+    const asked = [];
+    const savedB = globalThis.fetch;
+    globalThis.fetch = (url, opts) => { asked.push(String(url)); return savedB(url, opts); };
+    const model = { row_id: { filterType: 'text', type: 'startsWith', filter: '01a0fb' } };
+    const savedModel = realState.gridApi.getFilterModel;
+    realState.gridApi.getFilterModel = () => model;
+    try { await M.api.fetchData(true); } finally {
+      realState.gridApi.getFilterModel = savedModel;
+      globalThis.fetch = savedB;
+    }
+    const page = asked.find((u) => u.includes('/tables/t/data?'));
+    const sent = page ? new URL(page, 'http://box').searchParams.get('filters') : null;
+    ok(sent === JSON.stringify(model),
+      `B6 a ROW_ID filter rides the page read as the grid's narrowing, unchanged [${sent}]`);
+  }
 
   // ── C: the three write funnels ────────────────────────────────────────────────────────
   const onView = await funnelRuns(M, 'view');

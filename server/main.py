@@ -3136,8 +3136,9 @@ def get_table_schema(table_name: str, db: Session = Depends(get_db)):
     테이블의 컬럼 스키마 정보를 반환합니다.
     """
     config = crud.TABLE_CONFIG.get(table_name, {})
-    columns = config.get("display_columns")
-    
+    # A copy: the system columns below are appended to the ANSWER, not to the table's declaration.
+    columns = list(config.get("display_columns") or [])
+
     if not columns:
         # 데이터에서 동적 추출 (Fallback)
         table_model = models.DYNAMIC_TABLES.get(table_name)
@@ -3155,7 +3156,8 @@ def get_table_schema(table_name: str, db: Session = Depends(get_db)):
     # 2026-09-02 was that the filling stopped. Written out because a comment that describes
     # a removal which only half happened is worse than no comment - it is what stops the
     # next person from looking.
-    system_cols = ["created_at", "updated_at"]
+    # `row_id` joins them at the end (owner 10-02, lead e67ef53f3): the grid finds a row by it.
+    system_cols = ["created_at", "updated_at", "row_id"]
     for sc in system_cols:
         if sc not in columns:
             columns.append(sc)

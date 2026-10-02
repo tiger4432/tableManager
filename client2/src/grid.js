@@ -804,6 +804,9 @@ export function buildColumnDefs() {
   const shown = state.currentColumns.filter((col) => !retired.includes(col));
   const columnDefs = shown.map((col, index) => {
     const isSystem = ['created_at', 'updated_at', 'row_id', 'id', 'updated_by'].includes(col);
+    // ROW_ID alone among them is filterable (owner 10-02, lead e67ef53f3): finding a row by its id
+    // is the question. It stays read-only, and the other system columns stay unfilterable.
+    const filterable = !isSystem || col === 'row_id';
     const colTypes = state.currentColumnTypes || {};
     const colType = colTypes[col] || 'string';
 
@@ -836,13 +839,11 @@ export function buildColumnDefs() {
       // C-84. 뷰면 «편집 진입 자체»가 없다 — 서버 400 을 셀에서 만나게 두지 않는다.
       editable: !isSystem && !viewTable,
       sortable: true,
-      // A system column is not editable and is not filterable either. Until now only the
-      // first half was said, and `defaultColDef.floatingFilter` then put a filter box under
-      // `ROW_ID`/`CREATED_AT` — a second vocabulary in which read-only still means
-      // queryable. `filter: false` is what AG-Grid reads to skip the floating row, and
+      // A system column is not editable and, except ROW_ID, not filterable either.
+      // `filter: false` is what AG-Grid reads to skip the floating row, and
       // `floatingFilter: false` says the same thing where a reader looks for it.
-      filter: isSystem ? false : (colType === 'number' ? 'agNumberColumnFilter' : 'agTextColumnFilter'),
-      floatingFilter: !isSystem,
+      filter: filterable ? (colType === 'number' ? 'agNumberColumnFilter' : 'agTextColumnFilter') : false,
+      floatingFilter: filterable,
       headerClass: fillOrdinal ? 'fill-target-header' : undefined,
       resizable: true,
       checkboxSelection: index === 0,

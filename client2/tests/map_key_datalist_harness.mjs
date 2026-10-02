@@ -115,6 +115,8 @@ const FUNCS = [
   'colValueKey', 'dropColumnValueCache', 'canReuseComplete',
   'populateColumnValueDatalist', 'onMetaInputSuggest',
   'renderMetadataInputs',
+  // The X / Y / Val pickers (lead e67ef53f3): `row_id` ends every served schema now.
+  'fillColumnDropdowns',
 ];
 const CONSTS = [
   'listFillSeq',
@@ -1164,6 +1166,23 @@ async function runChecks(src, { strict = true } = {}) {
     }
   }
 
+  // ── 4. THE X / Y / VAL PICKERS OFFER WHAT A PUSH CAN CARRY (lead e67ef53f3) ──────────
+  //   `row_id` ends every served schema since that order. Picked as Val it pushes nothing and
+  //   leaves the real value column uncovered — on a `map_push_ok` table one confirm away from
+  //   replace_map. The schema here is the served shape: data columns, then the system tail.
+  {
+    const env = await build(src, { table: 'dt_map', schema: {
+      columns: ['lot', 'slot', 'x', 'y', 'val', 'created_at', 'updated_at', 'row_id'] } });
+    for (const k of ['colMapX', 'colMapY', 'colMapVal']) env.el[k] = makeNode('select');
+    env.sandbox.fillColumnDropdowns();
+    r.pickers = ['colMapX', 'colMapY', 'colMapVal'].map((k) => optionValues(env.el[k]));
+    if (strict) {
+      const data = ['lot', 'slot', 'x', 'y', 'val'];
+      check('the X / Y / Val pickers offer the data columns, never the system tail', r.pickers,
+        [data, data, data]);
+    }
+  }
+
   return r;
 }
 
@@ -1174,6 +1193,15 @@ console.log(`  ${pass} passed, ${fail} failed`);
 
 // ── Mutants (must be CAUGHT) ────────────────────────────────────────────────────
 const MUTATIONS = [
+  {
+    name: 'M-PICK [HIGH] the X / Y / Val pickers stop asking the push roster (row_id is offered)',
+    find: `    pushPickableColumns(cols).forEach(col => {
+      const option`,
+    repl: `    cols.forEach(col => {
+      if (col === 'created_at' || col === 'updated_at') return;
+      const option`,
+    breaks: 'a push cannot be bound to a column it does not carry',
+  },
   {
     name: 'M1 [HIGH] `unavailable_reason` is collapsed into an empty result',
     find: `  if (body && body.unavailable_reason) {`,
@@ -1438,6 +1466,8 @@ function colValueKey(table, column) { return \`\${table}::\${column}\`; }`,
 //    tail of a message does not silently unname a mutant. It is still ONE assertion: these
 //    prefixes are unique in this file.
 const CATCHES = {
+    "M-PICK [HIGH] the X / Y / Val pickers stop asking the push roster (row_id is offered)":
+      "the X / Y / Val pickers offer the data columns, never the system tail",
     "M1 [HIGH] `unavailable_reason` is collapsed into an empty result":
       "an answer with a named reason is marked unavailable",
     "M2 [HIGH] the unavailability is cached, so the column stays dead for the session":

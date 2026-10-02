@@ -71,8 +71,9 @@ import {
 // the metadata search-column filter. Do not re-spell the roster locally: the schema
 // endpoint's system tail and the write path's skip list are ONE list, and a second copy is
 // how a column stops being protected on one screen while staying protected on the other.
+// The X / Y / Val pickers ask the same roster through `pushPickableColumns` (lead e67ef53f3).
 import {
-  PUSH_SYSTEM_COLUMNS, getUnprotectedPushColumns, logShapedPushDecision,
+  pushPickableColumns, getUnprotectedPushColumns, logShapedPushDecision,
 } from './push_columns.js';
 
 let tables = [];
@@ -1407,7 +1408,7 @@ export function renderMetadataInputs() {
   // Fallback: system cols filter (same classification the push gate uses -
   // one list, one answer; see PUSH_SYSTEM_COLUMNS)
   if (!searchCols || searchCols.length === 0) {
-    searchCols = cols.filter(col => !PUSH_SYSTEM_COLUMNS.includes(col) && col !== xCol && col !== yCol && col !== valCol);
+    searchCols = pushPickableColumns(cols).filter(col => col !== xCol && col !== yCol && col !== valCol);
   }
 
   searchCols.forEach(col => {
@@ -1464,8 +1465,7 @@ function fillColumnDropdowns() {
 
   const populate = (dropdown) => {
     dropdown.innerHTML = '';
-    cols.forEach(col => {
-      if (col === 'created_at' || col === 'updated_at') return;
+    pushPickableColumns(cols).forEach(col => {
       const option = document.createElement('option');
       option.value = col;
       option.textContent = col;

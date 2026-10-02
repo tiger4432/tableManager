@@ -34,7 +34,8 @@ const die = (m) => { console.error(`HARNESS FAILURE: ${m}\n(Nothing was compared
 // What the server actually appends to every table's columns. The three graph-sync names
 // were removed from `main.py`'s `system_cols` on 2026-08-31, so a fixture still carrying
 // them would test a server that no longer exists.
-const SYS_TAIL = ['created_at', 'updated_at'];
+// `row_id` joined the tail on 2026-10-02 (lead e67ef53f3), after `updated_at`.
+const SYS_TAIL = ['created_at', 'updated_at', 'row_id'];
 
 // ---- served schema fixtures ----
 const dtLog = {
@@ -71,7 +72,7 @@ const edsFailMap = {
 // mutant are scored by the SAME code against the SAME fixtures.
 // ═══════════════════════════════════════════════════════════════════════════════
 function run(M, { quiet = false } = {}) {
-  const { PUSH_SYSTEM_COLUMNS, getUnprotectedPushColumns, logShapedPushDecision } = M;
+  const { PUSH_SYSTEM_COLUMNS, getUnprotectedPushColumns, logShapedPushDecision, pushPickableColumns } = M;
   let pass = 0; const failures = [];
   const check = (name, actual, expected) => {
     const a = JSON.stringify(actual), e = JSON.stringify(expected);
@@ -145,6 +146,14 @@ function run(M, { quiet = false } = {}) {
   check('PUSH_SYSTEM_COLUMNS members', [...PUSH_SYSTEM_COLUMNS].sort(),
     ['business_key_val', 'created_at', 'grid_metadata', 'id',
      'row_id', 'updated_at', 'updated_by'].sort());
+
+  // [13] THE X / Y / VAL PICKERS OFFER WHAT A PUSH CAN CARRY (lead e67ef53f3). `row_id` now ends
+  //      every served schema; picked as Val it pushes nothing and leaves the real value column
+  //      uncovered, which on a `map_push_ok` table is one confirm away from replace_map.
+  say('[13] the column pickers offer the data columns, never the system tail');
+  check('dt_map pickers', pushPickableColumns(dtMap.columns),
+    ['cell_key', 'lot', 'slot', 'x', 'y', 'val']);
+  check('a degenerate schema offers nothing rather than throwing', pushPickableColumns(undefined), []);
 
   return { pass, failures, compared: pass + failures.length };
 }
@@ -226,6 +235,8 @@ const MUTANTS = [
     'const extras = getUnprotectedPushColumns(schema, xCol, yCol, valCol);',
     'const extras = (Array.isArray(schema && schema.columns) ? schema.columns : [])\n'
     + '    .filter(c => c !== xCol && c !== yCol && c !== valCol);'),
+  swap('M17 the pickers stop asking the roster (row_id is offered as X / Y / Val)',
+    '.filter((c) => !PUSH_SYSTEM_COLUMNS.includes(c));', ".filter((c) => c !== 'created_at' && c !== 'updated_at');"),
   // ── CONTROLS: these must ESCAPE. If one is caught, an assertion above is reading source
   //    text rather than executing behaviour.
   swap('CONTROL a comment change must NOT be caught',
