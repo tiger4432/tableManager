@@ -1,3 +1,60 @@
+> ## [08:33 디자인] 원장 소스 패널 census 칸 — 수정 누락 · 지문 없음 · 그 시각 · 누락이면 --drifted 명령 — 총괄 c21cba507 · c965f6206
+
+**결론** 소스 줄의 census 줄 아래에 `Edited, not followed N · Not yet printed N · Measured <시각>` 이 섭니다. 누락이 0 이 아니면 빨간 굵은 글자이고, 그 아래에 그 소스의 `--drifted` 명령이 섭니다. 수는 서버 기록 그대로이고, 기록에 없으면 `Not measured` 입니다.
+
+**먼저 올린 것(메시지로 보냄)** 주기 census 가 사람의 census 기록을 «통째로» 바꿔, 그 두 수가 다음 주기에 사라집니다. 그 뒤로 패널은 그 소스를 `Not measured` 로 그립니다. 근거는 셋입니다: `measure_and_store(..., exact_rows=False)`, `write_row_census` 의 `ON CONFLICT DO UPDATE SET census = EXCLUDED.census`, 구현자 시험의 `"rows_drifted" not in paced`. 클라는 census 전체의 시각이 아니라 «두 수의 상자»의 `measured_at` 을 읽습니다. 서버가 지난 측정을 이어 실으면 클라는 고칠 것이 없습니다. 총괄 답: 이어 싣기는 구현자에게 넣음(input_columns 은퇴 다음).
+
+**상태 표(하니스로 잰 것)**
+
+| 기록 | 줄 | 누락 칸 | 지문 없음 칸 | 명령 |
+|---|---|---|---|---|
+| 누락 N | 셋 다 + 시각 | 빨간 굵은 글자 | 흐린 글자 | 섬 |
+| 누락 0 | 셋 다 + 시각 | 흐린 0 | 흐린 0 | 없음 |
+| 지문 없음만 | 셋 다 + 시각 | 흐린 0 | 흐린 N, 경보 아님 | 없음 |
+| 두 수가 없는 기록(주기 census) | 이름 옆 `Not measured` 둘, 시각 없음 | — | — | 없음 |
+| census 자체 없음 | 위와 같음 | — | — | 없음 |
+| 거절 | 줄 없음 — 거절 줄이 이미 「셀 수 없다」를 말함 | — | — | 없음 |
+
+- 「Not measured」를 이름 «옆»에 둔 이유: 서버의 소스 상태 이름(`not_measured`)도 「Not measured」라서, 홀로 서면 다른 사실로 읽힙니다.
+- 지문 없음을 따로 둔 것: 칸 이름 · span · 클래스가 따로이고, 경보(`data-alarm`)는 누락 칸에만 붙습니다.
+
+**고친 것**
+- `source_backlog.js`: 봉투 → 칸을 만드는 줄을 `countCell` 하나로 접었습니다. census 칸과 새 칸이 같은 함수를 지나므로 `≈` · method 가 둘 다 같습니다. `driftLine(census, names, source)` 를 더했고(위 표), 명령 철자는 `driftedCommand` 상수 하나입니다.
+- `absent.js`: `NOT_MEASURED`.
+- `ledger_sources_panel.js`: `censusOf` 가 소스 이름과 `drift` 를 싣고, `_censusLines` 가 그 아래 줄을 그립니다. 그래서 장부 표와 토큰 없는 census 표가 같은 그림을 씁니다. `Overview` 의 Ledger 자리도 같은 패널이라 같이 바뀝니다.
+- `admin.html`: `.ledger-sources-drift` · `[data-alarm]`(기존 `data-sign="under"` 와 같은 모양: `--danger` · 600) · `.ledger-sources-next`. 글자 크기는 census 줄과 같고, 작은 글씨 묶음에 넣지 않았습니다.
+
+**게이트**
+- `ledger_sources_panel_harness` 128 칸 실패 0(바닥 100 → 128). 새 칸 16 개(P1 · P2 · P3 · P4 · P5 · P6 · P7 · P8 · R1 · R2 · R3 · R4 · R5 · R6 · R7 · R8): P 는 순수 함수, R 은 화면 — 위 상태 표의 줄마다 하나씩 있고, 시각은 두 수의 상자가 census 보다 늦게 찍힌 픽스처로 잽니다. 변이 12 개 중 12 개 잡힘(순수 함수 쪽 7, 화면 쪽 5). 맨 실행에서 셉니다(`--mutate` 뒤가 아님).
+- `source_backlog_harness` 40 칸 실패 0. 칸 함수를 접으며 `--mutate` 변이의 고정점이 들여쓰기만큼 썩었고, 다시 걸어 16/16 잡힘입니다(러너는 `--mutate` 를 안 돌려서 손으로 돌림).
+- 탐색기 하니스 83 칸 실패 0 · 토큰 하니스 7 칸 실패 0 · 러너 초록 · 계약 13 개 어긋남 0.
+- 미리보기(이 박스, 토큰 없음 = 401 경로 → census 만의 표. 공개 선언 GET 만 페이지 안에서 바꿈: 박스 응답에 두 수를 «die_inspection» 에 누락 3 · 지문 없음 1200, «dt_job» 에 0 · 0 으로 얹고, 커밋된 서버의 이름표 두 개를 얹음. 박스 서버는 옛 코드라 두 수가 있는 소스 0 개 · 이름표 없음. GET 아닌 요청 0).
+  - die_inspection: 「Edited, not followed 3 · Not yet printed 1200 · Measured 10-03 08:18:02」, 경보 글자 rgb(194, 47, 47) · 600 · 14px, 지문 없음 rgb(91, 103, 121) · 400 · 14px, 아래 줄 「python -m ledger.backfill --source die_inspection --drifted」.
+  - dt_job: 「Edited, not followed 0 · Not yet printed 0 · Measured 10-03 08:19:02」, 경보 없음 · 명령 없음.
+  - lot_event(박스 그대로): 「Edited, not followed Not measured · Not yet printed Not measured」.
+  - 거절된 소스: 거절 줄만, 누락 줄 없음.
+
+**새 함수 · 새 if 중 기존 것과 같은 일**
+- 새 함수: `driftLine` · `driftedCommand` · 패널의 `_driftLines` · `_span`. 봉투를 칸으로 바꾸는 일은 `countCell` 로 «접었습니다» — 전에는 `backlogCells` 안에만 있었고, 새 칸이 그 사본을 하나 더 적지 않습니다.
+- 새 if: 거절이면 줄 없음 · 경보면 `data-alarm` · 시각이 있으면 시각 칸 · 명령이 있으면 그 줄. 같은 판단을 다른 데서 하는 자리 0.
+
+**물음**
+① 명령 철자가 클라 상수입니다. 서버가 거절의 `remedy` 처럼 `rows_drifted` 옆에 명령을 실어 주면, 이 상수가 빠지고 CLI 가 바뀌어도 화면이 따라갑니다 — 구현자 몫인지.
+② `Not measured` 일 때 다음 행동을 둘지. 패널을 채우는 명령은 `--drifted` 가 아니라 `python -m ledger census --source <소스>` 입니다. 지시가 `--drifted` 명령만 말해서 누락이 있을 때만 세웠습니다.
+
+**UI 제안 (짓지 않음)**
+
+| 항목 | 왜(어떤 상황에서 막히나) | 크기 |
+|---|---|---|
+| 명령 줄 «한 번 눌러 복사» | 좁은 패널에서 줄을 끌어 고르기 어려움 | 안 쟀다 |
+| 탐색기 인스펙터에도 같은 줄(`driftLine` 하나를 부르면 됨) | 소스를 탐색기에서 보는 사람은 누락을 못 봄 | 안 쟀다 |
+| 패널 머리에 «누락 있는 소스 수» | 소스 목록을 끝까지 내려 읽어야 빨간 줄을 찾음 | 안 쟀다 |
+| 좁은 폭에서 왼쪽 패널 머리의 빈 칸이 목록 위를 가림(열어 보다 본 것, 이 라운드와 무관) | 첫 소스 이름이 가려짐 | 안 쟀다 |
+
+- 어느 DB · 어느 스키마 · 지운 것 0 — 화면만 바뀜, DB 에 쓰는 측정 없음.
+
+**다음** 총괄이 7c6674080 확인에서 준 ② — 캐논 머리 주석과 디자인 스킬의 색 역할 문장. 그리고 걷기 A 확인에서 물은 것 — 「Walk 가 레일 아래 고정」을 하니스가 클래스가 아닌 자리로 재는지(총괄의 변이 «wk-rail-foot 이름 바꿈»이 안 잡힘). map.input_columns(34ad989bf)는 소유자 답을 기다리는 보류입니다.
+
 > ## [08:07 디자인] 걷기 그림 노드 접기 — 그 노드만 거쳐 닿는 가지를 그림에서만 접는다 · 두 +N 칩은 한 함수 — 총괄 43a738d58 ③ · 015ef2aab · de8b86d79
 
 **결론** 노드를 누르면 `Fold branches` 가 서고, 누르면 그 노드만 거쳐 닿는 가지가 그림에서 빠지고 그 자리에 `+N folded` 가 섭니다. 다시 걷지 않고 마킹도 수 줄도 그대로입니다.
