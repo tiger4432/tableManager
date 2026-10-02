@@ -1831,11 +1831,11 @@ export async function fetchDeclaration(params) {
 export const PICK_TYPE_FIRST = 'Pick a node type first';
 
 /**
- * 「이 타입에 어떤 주어가 있나」 — 키 칸을 «외워서» 치지 않게 하는 목록.
+ * 「이 타입에 어떤 노드가 있나」(주어 쪽 · 목적어 쪽 둘 다, 6c44b0b3d) — 키 칸을 «외워서» 치지 않게 하는 목록.
  *
- * 🔴 돌아오는 것은 «키 하나의 값»이 아니라 «주어 하나»(`keys` 통째)입니다. 그 구별이 이 라우트의
+ * 🔴 돌아오는 것은 «키 하나의 값»이 아니라 «노드 하나»(`keys` 통째)입니다. 그 구별이 이 라우트의
  *    요점입니다: 복합 키 타입(die 는 넷, lot_slot 은 둘)에서 칸마다 따로 고르게 하면 «실재하지
- *    않는 조합»을 만들 수 있습니다 — 키별 목록의 곱은 실재하는 개체 집합이 아닙니다. 주어를
+ *    않는 조합»을 만들 수 있습니다 — 키별 목록의 곱은 실재하는 개체 집합이 아닙니다. 노드를
  *    통째로 고르면 그 문제가 «생기지 않습니다».
  * 🔴 그리고 세 사실을 «따로» 나릅니다. `scanned` 0 과 `scan_truncated` 는 「봤는데 없다」와
  *    「다 못 봤다」이고, `values_truncated` 는 「목록이 상한에 걸렸다」입니다. 하나로 접으면
@@ -1861,7 +1861,7 @@ export async function fetchKeyValues(params) {
       valuesTruncated: body.values_truncated === true,
     };
   } catch (err) {
-    return { ok: false, message: `Subject list unreachable — ${err && err.message}` };
+    return { ok: false, message: `Node list unreachable — ${err && err.message}` };
   }
 }
 

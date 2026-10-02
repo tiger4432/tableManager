@@ -38,10 +38,10 @@
   - 노드 목록이 주어 쪽만 읽다가 두 쪽을 읽습니다. 전에는 목적어로만 나오는 타입이 빈 목록과 「이 타입은 원장에 주어로 없습니다 (정적 허브)」로 보였습니다.
   - 노드 목록의 순서가 «많이 나온 순»에서 «값 순»으로 바뀌었습니다. 값 옆 괄호의 수는 그 노드를 주어 쪽이든 목적어 쪽이든 이름 부르는 원자 수입니다.
   - follow 목록에 들어오는 술어도 나옵니다. 주어 타입에 전부터 나오던 술어는 그대로 다 나옵니다.
-  - 정적 씨앗에서 걸으면 첫 걸음이 정적이 아닌 노드로 갑니다. 전에는 씨앗 하나만 돌아왔습니다. 그 노드가 많으면 그림(`Graph`)에서는 «+개수 타입» 묶음 칩으로 오고, 표에서는 노드 상한에서 잘렸다고 나옵니다. 걷는 도중 만난 정적 노드는 전처럼 막힙니다.
+  - 정적 씨앗에서 걸으면 첫 걸음이 정적이 아닌 노드로 갑니다. 전에는 씨앗 하나만 돌아왔습니다. 그 노드가 많으면 그림(`Graph`)에서는 «+개수 타입» 묶음 칩으로 오고, 표에서는 노드 상한과 원자 예산에서 잘렸다고(`nodes` · `claims`) 나옵니다. 걷는 도중 만난 정적 노드는 전처럼 막힙니다.
   - 경로 목록: 정적 시작 타입의 첫 걸음이 정적이 아닌 타입으로 가는 경로가 이제 나옵니다. 정적 타입을 «지나며» 정적이 아닌 쪽으로 나가는 경로는 전처럼 빠집니다. R&D 걷기 상자의 경로 목록은 전에는 그런 경로도 내놓았는데, 이제 걷기 화면과 같이 뺍니다.
   - 걷기 화면에서 타입을 바꾸면 새 타입에 안 닿는 follow 체크가 풀립니다. 전에는 체크가 남아 그대로 요청에 실렸습니다.
-  - 걷기 화면 글자: 「주어 고르기」 → Pick a node · 「주어 목록 · 사유」 → Node list · 사유 · 「주어를 다 못 봤습니다 (N 까지)」 → Not every node read (up to N) · 「이 타입은 원장에 주어로 없습니다 (정적 허브)」 → No node of this type in the ledger · 「타입 에서 나가는 술어 없음」 → No predicate touches 타입. R&D 걷기 상자의 「No predicate out of … — this type is only an object」 도 No predicate touches 타입으로 바뀌었습니다.
+  - 걷기 화면 글자: 「주어 고르기」 → Pick a node · 「주어 목록 · 사유」 → Node list · 사유(서버에 못 닿으면 사유도 Subject list unreachable → Node list unreachable) · 「주어를 다 못 봤습니다 (N 까지)」 → Not every node read (up to N) · 「이 타입은 원장에 주어로 없습니다 (정적 허브)」 → No node of this type in the ledger · 「타입 에서 나가는 술어 없음」 → No predicate touches 타입. R&D 걷기 상자의 「No predicate out of … — this type is only an object」 도 No predicate touches 타입으로 바뀌었습니다.
   - 노드 목록 경로를 직접 부르는 곳이 있으면 새 칸 이름을 읽어야 합니다: `subjects` → `nodes` · `limits.scan_rows` → `limits.scan_nodes` · `scanned` 는 읽은 노드 수 · `order` 는 `value_asc`.
 - **자세히** — [WALK.md](../architecture/WALK.md)(씨앗 절 · 정적 허브 규칙) · 커밋 6c44b0b3d(노드 목록) · 커밋 c46163324(정적 씨앗 첫 걸음) · 화면은 이 항목과 같은 커밋
 
