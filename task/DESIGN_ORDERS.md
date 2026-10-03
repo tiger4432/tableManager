@@ -36285,3 +36285,27 @@ map.input_columns  34ad989bf 는 «보류» — 소유자 판정(08-22 「그러
 ⑧ census 줄과 누락 줄 글꼴 하나로 — 이번 착지에서 생긴 차이, 패널의 수 글꼴 토큰 하나
 게이트  하니스(① 누른 뒤 사실 상자가 보이는 칸 안 · ② 누르기만으로 마킹 0 · Mark 로 들어가고 빠짐 · ⑤ 글자 크기 토큰 · ⑦ 1,234 · ⑧ 같은 글꼴) · 변이 · 미리보기 다크 · 라이트 스샷 · RELEASE_LOG «바뀐 동작»(② 는 꼭)
 남은 넷(③④⑥⑨)은 제안으로 남긴다 — 짓지 않는다
+
+---
+
+> **[총괄 -> 클라] 지금 — 세상 서버 착지(구현자 6bfb6d4be). 36137 의 그리드 세상 탭이 풀렸고, 화면 몫 셋을 «한 착지»로**
+
+```
+서버에 생긴 것(6bfb6d4be — 총괄이 diff 로 봄)
+   GET /api/... /worlds        {worlds: ["default", 가지들], operating, beneath: {가지: [밑…]}, history: [{world, by, at}]}
+   PUT /worlds/operating       {world} — 엄격 토큰(require_admin_token_strict). 모르는 세상은 이름 대어 거절
+   bootstrap ?beneath=a,b      새 가지가 설 세상들(위가 먼저). 고리 · 중복 · 없는 세상은 거절
+   /tables                     per_world(세상마다 있는 표) · worlds · operating
+   그리드 라우트 ?world=        세상마다 있는 표(ledger_atom_rows)를 그 세상 것으로
+   🔴 세상 이름 «없는» 요청 = «운영 세상» (전에는 기본). 운영을 바꾸면 world 없는 요청이 따라간다
+① 🔴 world.js 의 «기본(null) = 인자 없음»이 이제 «운영 세상»을 뜻한다 — 고치는 것이 먼저
+   고르기의 null 칸 이름은 «Operating · <운영 세상 이름>». «default» 를 고르면 world=default 를 «붙인다»
+   운영 = default 이면 오늘과 byte 같은 요청(둘 다 인자 없음이어도 된다 — 하니스가 정한다). 세상을 묻는 자리는 world.js 하나 그대로
+② 그리드 세상 탭(36137 그대로) — /tables 의 per_world 에 든 표에서만. 탭 = worlds, 운영 세상에 표시. 거르기 · 정렬 · 쪽 · 행 이동이 world 를 싣는다
+③ 선언 화면 — 가지 만들기에 «밑» 고르기(없음 · default · 다른 가지, 순서 있음 → beneath=) · 운영 세상 표시 · 바꾸기(확인 한 번 · history 의 누가 · 언제 몇 줄)
+   바꾸기는 엄격 토큰 문 — 토큰이 없으면 서버 거절 문구를 그대로 보인다(토큰을 화면이 지어내지 않는다)
+   지우기 거절(운영 세상 · 남의 밑)은 서버 문구를 그대로
+문자열 영어 · 44px · 마진 토큰
+게이트  하니스: ① 운영 ≠ default 일 때 null 고르기 -> 인자 없음 · default 고르기 -> world=default · ② 탭은 per_world 표에서만, 다른 표 byte 같음 · ③ beneath 순서가 요청에 · 바꾸기 확인 뒤 PUT 한 번
+        변이 · 미리보기(다크 · 라이트, 박스에 가지 없으면 임시 가지 — 끝나면 지움, 운영 세상은 «바꾸지 않는다») · RELEASE_LOG «바뀐 동작»(① 꼭)
+```
