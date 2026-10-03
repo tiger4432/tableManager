@@ -35677,3 +35677,16 @@ RELEASE_LOG 맞음 — 주기 판이 세지 않고 잇는다 · 직전 기록 �
             (default 를 고르면 ?world=default — 서버는 기본으로 읽으니 데이터는 맞다. 보이는 줄만 둘)
             재기동 순서(클라와 같이)로 막을지, 클라가 그 줄을 지울 때까지 서버가 옛 모양을 낼지 — 여쭐 것. 고르개 하니스는 이 트리에 없다(tests 에 branch 이름 0)
 ```
+
+---
+
+## [C 응용] 10-03 22ea53fa3(한 배치의 나중 항목이 동률을 이긴다 · layer_instant) 검수 · 문서 @`523b7bd80`
+
+```
+셈       칸 층 ingested_at 을 «지금»으로 찍는 자리: layer_instant() 를 부르는 줄 5(crud 셋 · normalize_schema · seed_data), datetime.now / func.now 로 직접 찍는 줄 0
+         (git grep, 카나리아 def layer_instant 1). 모델의 server_default now() 를 타는 생성은 없다 — 쓰기의 새 층도 같은 함수로 칸을 채운다
+시험     새 두 파일 pytest 2 passed — 둘 다 sqlite 메모리 엔진(PG 표시 없음, run_pg_tests 는 0 수집). -k (later_item · merge_keeps · priority · layer) 137 passed 7 skipped ·
+         PG -k (collision · key_part_is_spelled · world …) 15 passed
+         판정(나중 항목)은 파이썬에서 순위를 셀 때 나서 DB 와 무관해 보인다 — 다만 PG 의 다중 행 업서트 길(_pg_multirow_upsert)로 끝까지 도는 시험은 없다. 안 쟀다
+문서     CODE_MAP crud — layer_instant 줄(부르는 자리 5 · 병합 사본은 도착 순서대로 하나씩 · ⚠️ 프로세스 «안»에서만 단조: API 와 워커가 같은 µs 에 같은 칸을 쓰면 여전히 동률)
+```
