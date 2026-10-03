@@ -35499,3 +35499,16 @@ RELEASE_LOG 맞음 — 주기 판이 세지 않고 잇는다 · 직전 기록 �
    그 사이가 죽거나 단계가 터지면(except 가 ERROR 한 줄로 삼킴) 층은 거둬졌는데 EDIT 가 없다 — 오늘 고친 «보류가 그대로 남는» 모양 그대로.
    그 DELETE 사건을 다시 돌리는 길은 못 찾았다(이 함수는 원장 뒤따르기가 끝난 뒤 불리고, 실패가 그것을 되돌리지 않게 막혀 있다). 드문 창 — 크기는 안 쟀다
 ```
+
+---
+
+## [C 응용] 10-03 4e0950f3d(조합키만 표도 키를 다시 짓는다) 검수 · 문서 @`ea14fb6d0` · 50829cc6b 다시 돌림
+
+```
+검수 (박스, assy_test)  run_pg_tests -k composite_key_is_rebuilt_alike 7 passed
+                       RELEASE_LOG 맞음 — 문이 조합키 표 전부로 · 키 칸은 선언된 표에서만 · 바뀐 동작(조각을 고치면 다시 짓고 비우면 NULL)과 표 이름 · 수
+문서                   CODE_MAP crud — 한 쌍 rebuilt_business_key · put_business_key 줄을 새로, 핀 줄에 한 마디. data_model 은 구현자가 같은 커밋에
+50829cc6b(키 둘에 행 셋)  test_a_count_that_moved_is_refused_and_nothing_goes 단독 여섯 번 — 6 passed. 오늘 앞서 묶음으로 세 번 — 3 passed
+   전엔 다섯 번에 한 번이었다. 아홉 번 연속 초록은 «닫혔다»의 증거로 약하다(그 빈도면 우연히 아홉 번 초록일 확률이 열에 하나 남짓) —
+   그래서 «닫힘»이라 쓰지 않는다. 다시 나면 출력 전체를 남기겠다(cd5ee37e2 그대로)
+```
