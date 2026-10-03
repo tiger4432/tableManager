@@ -1,5 +1,31 @@
 # 지금 돌리면 되는 것
 
+> ## [10-03] **병합과 쓰기가 한 배치에 섞여도 인제션이 터지지 않고, 층의 원천 행(origin_row_id)을 잃지 않는다 (총괄 1495534c9) — 이주 «불필요» · 재기동 «필요»(run_app.bat 전체)**
+>
+> ```
+> 무엇이 바뀌나  키 조각이 다른 행의 키가 되어 병합이 나는 쓰기와 보통 쓰기가 한 배치에 있으면
+>              전: CompileError「origin_row_id is explicitly rendered as a boundparameter」로 배치 실패, 또는
+>                  오류 없이 그 청크 전부의 origin_row_id 가 NULL — 09-16 부터
+>              뒤: 오류 0 · 쓰기의 origin 남음 · 병합이 넘겨받은 층은 껍데기 행 층의 origin 을 그대로 가짐
+> 재기동 뒤     인제션 로그에 위 CompileError 가 더 안 나와야 한다
+> 세는 SQL     조용히 잃었을 수 있는 체인 층 (PG, 표마다)
+>   SELECT table_name,
+>          count(*) FILTER (WHERE source_name = 'chain_ingestion') AS chain_layers,
+>          count(*) FILTER (WHERE source_name LIKE 'chain_ingestion (%') AS merged_chain_layers
+>     FROM cell_sources
+>    WHERE origin_row_id IS NULL AND source_name LIKE 'chain_ingestion%'
+>      AND ingested_at >= '2026-09-16'
+>    GROUP BY table_name ORDER BY 2 DESC;
+> 뜻           원천 행 하나를 못 대는 체인 쓰기도 NULL 이라, 이 수는 «잃었을 수 있는» 상한이다
+>              NULL 인 칸은 원천 행이 지워져도 거둬지지 않는다(그 층이 남는다)
+>              층 이름으로는 못 되살린다 — 병합 층의 괄호 속은 합쳐진 행의 키와 행 id 앞 6자이지 원천 행이 아니다
+>              같은 값을 다시 써도 층은 다시 쓰이지 않아(값이 같으면 손대지 않음) 리플레이로도 안 채워진다
+>              그 원천 행이 바뀌어 새 값이 오면 그때 채워진다
+> 급할 때       git revert <이 커밋> -> 재기동 (되돌리면 섞인 배치가 다시 실패한다)
+> ```
+
+---
+
 > ## [10-03] **table_config 를 다시 쓰는 스크립트 둘이 운영자가 적은 칸을 지우지 않는다 (총괄 338abb9f3) — 이주 «불필요» · 재기동 «불필요»(명령줄 도구)**
 >
 > ```

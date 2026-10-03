@@ -2165,10 +2165,11 @@ def _is_executemany_safe(mappings: list[dict]) -> bool:
 
     Two properties are required and neither is guaranteed by the type annotation:
 
-    1. **Every mapping carries the same keys.** A ragged list is REFUSED either way -
-       measured: SQLAlchemy 2.0's `.values(ragged_list)` raises `CompileError` - so
-       this test is not buying tolerance, it is keeping the refusal in the shape
-       callers already get instead of a driver-level error from the batched path.
+    1. **Every mapping carries the same keys.** A ragged list is NOT refused either way
+       (총괄 1495534c9 - this said it was): `.values(ragged_list)` raises `CompileError`
+       only when the first mapping has the key another lacks, and sends the whole chunk
+       without it - NULL, silently - when the first is the one lacking it. So
+       `bulk_upsert_cell_sources` fills every mapping to one key set before it gets here.
     2. **No value is a SQL expression.** The collision-merge path used to put
        `func.now()` into these dicts; a `ClauseElement` cannot be bound as a
        parameter. Those sites now emit real datetimes, but an outside caller is free
@@ -2439,7 +2440,12 @@ def bulk_upsert_cell_sources(db: Session, mappings: list[dict], chunk_size: int 
 
     # Sort deterministically by key to prevent Deadlocks in PostgreSQL.
     sorted_keys = sorted(deduped.keys())
-    deduped_mappings = [deduped[k] for k in sorted_keys]
+    # 🔴 ONE KEY SET FOR THE WHOLE LIST (총괄 1495534c9). A list where one mapping lacks a key
+    #    another has is refused by `.values()` (CompileError) or - when the first one lacks
+    #    it - sends NULL for that key in the whole chunk without a word: from 09-16 a merge's
+    #    layers lacked `origin_row_id` beside a write's. A key a mapping lacks is None here.
+    keys = set().union(*deduped.values())
+    deduped_mappings = [{key: deduped[k].get(key) for key in keys} for k in sorted_keys]
 
     is_sqlite = db.bind.dialect.name == "sqlite"
     if is_sqlite:
@@ -3505,6 +3511,8 @@ def _merge_into_key_holder(db, table_name, table_model, row_to_delete, row, *, e
                         "source_name": backup_src_name,
                         "value": clean_str_value(old_val_to_backup),
                         "updated_by": old_by_to_backup,
+                        # A person's value read from no row (총괄 1495534c9).
+                        "origin_row_id": None,
                         # [P3] see the collision-merge overwrite dict
                         # above: a real datetime keeps the bulk upsert
                         # on its batched path.
@@ -3514,12 +3522,12 @@ def _merge_into_key_holder(db, table_name, table_model, row_to_delete, row, *, e
             src_list = []
             if old_srcs:
                 for s in old_srcs:
-                    src_list.append((s.source_name, s.value, s.updated_by))
+                    src_list.append((s.source_name, s.value, s.updated_by, s.origin_row_id))
             else:
                 # 폴백 소스
-                src_list.append((source_name or "user", new_val, updated_by or "system"))
+                src_list.append((source_name or "user", new_val, updated_by or "system", None))
 
-            for s_name, s_val, s_by in src_list:
+            for s_name, s_val, s_by, s_origin in src_list:
                 effective_src_name = s_name
                 if s_name == "user" and is_old_user_overwritten and is_new_user_overwritten:
                     effective_src_name = "user"
@@ -3536,6 +3544,9 @@ def _merge_into_key_holder(db, table_name, table_model, row_to_delete, row, *, e
                     "source_name": effective_src_name,
                     "value": clean_str_value(s_val),
                     "updated_by": s_by or "system",
+                    # The shell's layer keeps the row it was read from (총괄 1495534c9) - a
+                    # retraction of that row still finds it here.
+                    "origin_row_id": s_origin,
                     # [P3] real datetime - see above.
                     "ingested_at": datetime.now()
                 }
