@@ -36325,3 +36325,24 @@ map.input_columns  34ad989bf 는 «보류» — 소유자 판정(08-22 「그러
 ---
 
 > **[총괄 -> 응용] 문서 — a9f877ed3 가 지운 trace.CURSOR_FIELDS · CURSOR_TIME_FIELDS 를 «있다»고 적는 줄 셋(구현자 585f145d4: CODE_MAP 「고아 다섯」 행 · SYSTEM_FLOWS_A L-17 · SERVER_DEFECT_QUEUE S-267). 은퇴 규칙대로 그 둘만 걷고 S-267 의 나머지 셋은 그대로. 그리고 279d04475 의 speaks_for 은퇴를 약속하는 문서 줄 전수(CODE_MAP 등). 전후 수 보고**
+
+---
+
+> **[총괄 -> 클라] 세상 다시 — 소유자 10-04 «세상은 독립, 겹침은 걸을 때 여럿 고르기» · «실시간은 전 세상 기본 + 세상마다 켜기/끄기». 서버(구현자 092a6f9e5) 착지 «뒤» 착지, 하니스는 아래 모양으로 지금 지어도 된다**
+
+```
+서버가 낼 모양(092a6f9e5)
+   GET /worlds        {worlds, operating, live: {<세상>: bool}, history}
+   PUT /worlds/{world}/live   {live: bool} — 엄격 토큰 · X-User = CURRENT_USER
+   bootstrap ?world=&copy_from=<세상>   (beneath 없어짐)
+   걷기 라우트 world 를 여럿(world=a&world=c) · 응답 엣지 · 원자에 world
+바꿀 것
+   걷기 · R&D 보드  세상 고르기를 «여럿 고르기»로 — 빈 = 운영 세상(오늘 이름 그대로 Operating · <이름>). 고른 집합은 한 자리(world.js)가 들고 모든 요청이 그것을 지난다
+                   둘 이상 골랐을 때만 엣지 · 사실 상자에 세상 표지(작은 칩). 대조 저장은 고른 집합을 world 칸에
+   선언 화면       편집은 세상 «하나»(오늘 그대로). 밑 고르기 걷어냄 -> 만들기에 «Empty / Copy of <세상>» 하나
+                   세상 목록에 실시간 Live 켜기/끄기(확인 한 번) · 꺼진 세상은 «Paused» 표시
+   그리드 원자 탭   한 세상 그대로
+은퇴  밑 고르기 칩 · 그 하니스 단언 · RELEASE_LOG 의 그 줄은 새 항목에서 «없어짐»으로
+게이트  하니스: 여럿 고르기 -> 모든 걷기 요청에 world 가 고른 수만큼 · 빈 = 인자 없음 · 하나 고름 -> 칩 없음 · Live 끄기 PUT 한 번 · Copy of 가 copy_from
+        변이 · 미리보기(GET 은 페이지 안에서 답, PUT · bootstrap 은 막고 «보냈을 것» 적기) · RELEASE_LOG «바뀐 동작»
+```
