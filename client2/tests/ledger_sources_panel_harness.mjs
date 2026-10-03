@@ -14,7 +14,7 @@
 //
 // Run: node client2/tests/ledger_sources_panel_harness.mjs
 import { sourcesView, LedgerSourcesPanel } from '../src/ledger_sources_panel.js';
-import { ABSENT } from '../src/absent.js';
+import { ABSENT, localeCountText } from '../src/absent.js';
 import { localShort } from '../src/server_time.js';
 
 let pass = 0;
@@ -358,7 +358,7 @@ console.log('\n[7] the census: a different route, a different availability');
   eq('...and the census rows survive it', gated.view.censusRows.map((r) => r.source), ['a', 'b']);
   eq('...and reach the screen', rowsOf(gated.host).length, 2);
   ok('the counts are drawn from the envelope, in the server\'s own key names',
-    censusIn(gated.host)[0].includes('relation_rows 117742')
+    censusIn(gated.host)[0].includes(`relation_rows ${localeCountText(117742)}`)
     && censusIn(gated.host)[0].includes('not_yet 742'), censusIn(gated.host)[0]);
   // 🔴 THE DISCRIMINANT: the same 401 with NO census must still draw nothing. Otherwise this
   //    section only proves the panel draws something, not that the census is what draws it.
@@ -386,7 +386,7 @@ console.log('\n[7] the census: a different route, a different availability');
   eq('the ledger table still has four columns', byTag(full.host, 'TH').length, 4);
   eq('...and each row still four cells', rowsOf(full.host)[0].children.length, 4);
   ok('the census rides inside the source cell',
-    /relation_rows 117742/.test(rowsOf(full.host)[0].children[0].textContent));
+    rowsOf(full.host)[0].children[0].textContent.includes(`relation_rows ${localeCountText(117742)}`));
   // 🔴 AND A SOURCE NOBODY COUNTED DRAWS NOTHING — 「안 쟀다」, not 「셌더니 0」.
   eq('a source with no census draws no census line', censusIn(full.host).length, 1);
   ok('...and it is the counted one that drew it',
@@ -485,7 +485,7 @@ async function driftSuite(panelMod, backlogMod) {
   const alarms = (d) => d.cells.map((c) => Boolean(c.alarm)).join('|');
 
   say('P1 drift N: both counts as recorded, only the edited one alarms, its own time, the command',
-    texts(drift(N, 'n')) === '3|1200' && alarms(drift(N, 'n')) === 'true|false'
+    texts(drift(N, 'n')) === `3|${localeCountText(1200)}` && alarms(drift(N, 'n')) === 'true|false'
       && drift(N, 'n').at === localShort(LATER) && drift(N, 'n').next === COMMAND,
     JSON.stringify(drift(N, 'n')));
   say('P2 drift 0: a counted zero is a zero, not Not measured, and nothing to do',
@@ -493,7 +493,7 @@ async function driftSuite(panelMod, backlogMod) {
       && alarms(drift(ZERO, 'z')) === 'false|false' && drift(ZERO, 'z').next === '',
     JSON.stringify(drift(ZERO, 'z')));
   say('P3 not yet printed is counted apart: 1200 of them alarm nothing and ask for nothing',
-    texts(drift(UNPRINTED, 'u')) === '0|1200' && alarms(drift(UNPRINTED, 'u')) === 'false|false'
+    texts(drift(UNPRINTED, 'u')) === `0|${localeCountText(1200)}` && alarms(drift(UNPRINTED, 'u')) === 'false|false'
       && drift(UNPRINTED, 'u').next === '', JSON.stringify(drift(UNPRINTED, 'u')));
   say('P4 a record with no drift keys says Not measured for each, no time, and the census command its record names',
     texts(drift(NONE, 'x')) === `${NOT_MEASURED}|${NOT_MEASURED}` && drift(NONE, 'x').cells.every((c) => !c.counted)
@@ -508,8 +508,11 @@ async function driftSuite(panelMod, backlogMod) {
     drift(N, 'n').cells.map((c) => c.label).join('|') === 'Edited, not followed|Not yet printed'
       && (backlogMod.driftLine(N, {}) || { cells: [] }).cells.map((c) => c.label).join('|') === 'rows_drifted|rows_unprinted');
   say('P9 an older server\'s record (drift, no next_step) draws its counts and no command - the screen spells no CLI',
-    texts(drift(OLD)) === '3|1200' && alarms(drift(OLD)) === 'true|false' && drift(OLD).next === '',
+    texts(drift(OLD)) === `3|${localeCountText(1200)}` && alarms(drift(OLD)) === 'true|false' && drift(OLD).next === '',
     JSON.stringify(drift(OLD)));
+  say('P11 a count of four digits or more is grouped by the panel\'s count speller (lead 9dc2a5695 ⑦)',
+    drift(N).cells[1].text === localeCountText(1200) && drift(N).cells[1].text !== '1200',
+    drift(N).cells[1].text);
   const OTHER = 'python -m ledger.backfill --source spelled_elsewhere --drifted';
   say('P10 the command is the record\'s string as sent, whatever the client would have built',
     drift({ ...N, next_step: OTHER }).next === OTHER, drift({ ...N, next_step: OTHER }).next);
@@ -532,7 +535,7 @@ async function driftSuite(panelMod, backlogMod) {
   const nextOf = (host, source) => byClass(rowOf(host, source) || {}, 'ledger-sources-next').map((n) => n.textContent);
 
   say('R1 drift N on screen: the two counts, its own time, and only the edited count alarms',
-    textOfLine(gated, 'n') === `Edited, not followed 3 · Not yet printed 1200 · Measured ${localShort(LATER)}`
+    textOfLine(gated, 'n') === `Edited, not followed 3 · Not yet printed ${localeCountText(1200)} · Measured ${localShort(LATER)}`
       && JSON.stringify(alarmed(gated, 'n')) === JSON.stringify(['ledger-sources-rows_drifted']),
     JSON.stringify({ text: textOfLine(gated, 'n'), alarmed: alarmed(gated, 'n') }));
   say('R2 the next action is one line: the record\'s --drifted command', JSON.stringify(nextOf(gated, 'n')) === JSON.stringify([COMMAND]),
@@ -554,7 +557,7 @@ async function driftSuite(panelMod, backlogMod) {
     JSON.stringify([fullLine(0), fullLine(1)]));
   const spans = byClass(lineOf(gated, 'n') || {}, 'ledger-sources-rows_unprinted');
   say('R7 not yet printed is its own span, apart from the edited count',
-    spans.length === 1 && spans[0].textContent === 'Not yet printed 1200'
+    spans.length === 1 && spans[0].textContent === `Not yet printed ${localeCountText(1200)}`
       && byClass(lineOf(gated, 'n') || {}, 'ledger-sources-rows_drifted').length === 1);
   say('R8 how each count was taken rides in the tooltip',
     String((lineOf(gated, 'n') || {}).title).includes(DRIFT_M), String((lineOf(gated, 'n') || {}).title));
@@ -593,6 +596,9 @@ async function driftSuite(panelMod, backlogMod) {
     M('X7', 'the screen spells the command again when there is drift', 'P9', BACKLOG,
       "    next: typeof src.next_step === 'string' ? src.next_step : '',\n",
       "    next: cells.some((c) => c.alarm) ? 'python -m ledger.backfill --drifted' : '',\n"),
+    M('X9', 'census digits drawn ungrouped', 'P11', BACKLOG,
+      '  return { name, text: `${mark}${localeCountText(count)}`, method };\n',
+      '  return { name, text: `${mark}${count}`, method };\n'),
     M('X8', 'the record\'s command is drawn only when there is drift', 'P4', BACKLOG,
       "    next: typeof src.next_step === 'string' ? src.next_step : '',\n",
       "    next: cells.some((c) => c.alarm) && typeof src.next_step === 'string' ? src.next_step : '',\n"),
@@ -618,6 +624,29 @@ async function driftSuite(panelMod, backlogMod) {
        title: '\n  [9 mutants] - each must be caught by the check it names.' });
   pass += MUTANTS.length - scored.wrong;
   for (let i = 0; i < scored.wrong; i += 1) failures.push(`drift mutant verdict ${i + 1}`);
+}
+
+// ═══ ⑩ one font for the census line and the drift line (lead 9dc2a5695 ⑧) ═══════════════════════════
+// The panel draws no CSS; admin.html carries it, so the stylesheet text is the subject here.
+console.log('\n[10] the census line and the drift line share the panel\'s number font');
+{
+  const { readFileSync } = await import('node:fs');
+  const ADMIN = readFileSync(new URL('../admin.html', import.meta.url), 'utf8');
+  const fontOf = (text, selector) => {
+    const bodies = [...text.replace(/\/\*[\s\S]*?\*\//g, ' ').matchAll(/([^{}]+)\{([^}]*)\}/g)]
+      .filter((m2) => m2[1].split(',').map((x) => x.trim()).includes(selector)).map((m2) => m2[2]);
+    const hit = bodies.map((b) => (/font-family:\s*([^;]+);/.exec(b) || [])[1]).filter(Boolean);
+    return hit.length ? hit[hit.length - 1].trim() : '';
+  };
+  const same = (text) => {
+    const a = fontOf(text, '.ledger-sources-census');
+    return Boolean(a) && a.startsWith('var(--') && a === fontOf(text, '.ledger-sources-drift');
+  };
+  ok('S1 the census line and the drift line name the same font token', same(ADMIN),
+    `${fontOf(ADMIN, '.ledger-sources-census')} / ${fontOf(ADMIN, '.ledger-sources-drift')}`);
+  // Scored control: without the census line's rule the two differ, and the cell says so.
+  ok('S2 ...and without the census line\'s font rule they differ (the cell can fail)',
+    !same(ADMIN.replace('.ledger-sources-census { font-family: var(--font-mono); }', '')));
 }
 
 console.log(`\n════ RESULT: ${pass} passed, ${failures.length} failed ════`);

@@ -16,6 +16,7 @@
  */
 import { loadWithProbe } from './lib/probe.mjs';
 import { localShort } from '../src/server_time.js';
+import { localeCountText } from '../src/absent.js';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
@@ -75,7 +76,7 @@ async function score(mutate) {
   // 🔴 THE COUNTS ARE NOT NUMBERS ON THE WIRE. Reading the envelope as a number yields NaN,
   //    which this file renders as a blank — safe, and permanently empty. That is what the
   //    first wiring did, and only reading the real response caught it.
-  eq('B1 the count comes out of the envelope', '117742', textOf(COUNTED, 'relation_rows'));
+  eq('B1 the count comes out of the envelope', localeCountText(117742), textOf(COUNTED, 'relation_rows'));
   eq('B2 a measured ZERO is drawn as zero — somebody counted', '0', textOf(COUNTED, 'not_yet'));
   eq('B3 ...and a real remainder is drawn', '742', textOf(BEHIND, 'not_yet'));
   // 🔴 총괄 bed890af2 — the stamp is moved onto the viewer's clock by `server_time` (one author);
@@ -89,7 +90,9 @@ async function score(mutate) {
   //    sentence, and only when `exact` is EXPLICITLY false — an absent `exact` said nothing.
   eq('C1 an estimate is marked', '≈900',
     textOf({ ...COUNTED, relation_rows: box(900, 'pg_class.reltuples', false) }, 'relation_rows'));
-  eq('C2 an exact count carries no mark', '117742', textOf(COUNTED, 'relation_rows'));
+  eq('C2 an exact count carries no mark', localeCountText(117742), textOf(COUNTED, 'relation_rows'));
+  ok('C4 its digits are grouped, the refusal count\'s way (lead 9dc2a5695 ⑦)',
+    textOf(COUNTED, 'relation_rows') !== '117742', textOf(COUNTED, 'relation_rows'));
   eq('C3 an unstated `exact` is not read as an estimate', '900',
     textOf({ ...COUNTED, relation_rows: { estimate: 900, method: 'x' } }, 'relation_rows'));
 
@@ -195,8 +198,8 @@ const MUTATIONS = [
    s => s.replace("  if (!box || typeof box !== 'object') return { name, text: '', method: '' };",
                   "    if (!box || typeof box !== 'object') return { name, text: '0', method: '' };")],
   ['M3 a measured zero stops being drawn, so counted-and-empty looks uncounted',
-   s => s.replace('  return { name, text: `${mark}${count}`, method };',
-                  "    return { name, text: count === 0 ? '' : `${mark}${count}`, method };")],
+   s => s.replace('  return { name, text: `${mark}${localeCountText(count)}`, method };',
+                  "  return { name, text: count === 0 ? '' : `${mark}${localeCountText(count)}`, method };")],
   ['M4 an estimate is drawn like an exact count — the thing `measured()` exists to stop',
    s => s.replace("  const mark = box.exact === false ? ESTIMATE_MARK : '';",
                   "    const mark = '';")],

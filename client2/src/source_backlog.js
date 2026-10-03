@@ -33,7 +33,7 @@
 // ═══════════════════════════════════════════════════════════════════════════════
 
 import { localShortOrAsSent } from './server_time.js';
-import { NOT_MEASURED } from './absent.js';
+import { NOT_MEASURED, localeCountText } from './absent.js';
 
 /** 정확하지 않은 수 앞에 붙는 «기호 하나». 문장이 아닙니다. */
 const ESTIMATE_MARK = '≈';
@@ -80,7 +80,8 @@ function countCell(src, name) {
   // 🔴 `exact` 가 «명시적으로 거짓»일 때만 표시합니다. 키가 없으면 「말 안 함」이고,
   //    말 안 한 것을 「추정」으로 그리는 것도 지어내는 것입니다.
   const mark = box.exact === false ? ESTIMATE_MARK : '';
-  return { name, text: `${mark}${count}`, method };
+  // Digits grouped by the panel's own count speller (lead 9dc2a5695 ⑦) — the refusal count's function.
+  return { name, text: `${mark}${localeCountText(count)}`, method };
 }
 
 /** 봉투의 `census_names` — 서버 한 자리의 이름표. 없으면 빈 표(그러면 키가 그려집니다). */
