@@ -1345,8 +1345,9 @@ FastAPI 웹서버. 모든 REST/WS의 단일 진입점. 워커·워처와는 outb
 | `delete_cell_source_batch(db, table_name, cells, source_name)` | 소스 레이어 일괄 삭제 + 표시값 재계산 |
 | `delete_cell_source(db, ...)` | 단일 소스 삭제(배치 위임) |
 | `set_cell_manual_priority_batch(db, table_name, updates, source_name, updated_by)` | 수동 Pin 일괄(§크고 복잡 — 표시값 재계산·감사 포함) · 🆕 10-03 `4e0950f3d` 핀이 키 조각의 보이는 값을 바꾸면 아래 한 쌍으로 키를 다시 짓는다(하나라도 비면 NULL) |
+| 🆕 `compose_business_key(table_name, values, columns)` · `key_part(table_name, column, value)` | 10-03 `843bcfd11` 키 조각의 «철자 한 자리» — 조각마다 그 칸이 «저장할» 모양으로: 숫자는 `cast_value_by_type`("1.0" · "01" · 1.0 → 1), 시각은 `time_format.instant_text`(같은 순간 = 세션 존 벽시계 `%Y-%m-%d %H:%M:%S`, 마이크로초 있으면 `.ffffff`), 칸이 거절할 값 · ISO 아닌 시각은 글자 그대로. 키를 짓는 자리 «전부»(맞추기 · 다시 짓기 · 원래 철자 찾기 · enrichment 맵퍼 · replay · main 의 보기 id)가 `compose_business_key` 를 지난다 — 종전엔 맞추기가 페이로드 철자로, 다시 짓기가 저장된 값으로 지어 같은 행을 두 번 쓰면 껍데기 행이 생겨 병합됐다 |
 | 🆕 `rebuilt_business_key(table_name, row)` · `put_business_key(table_name, row, key)` | 10-03 `4e0950f3d` 키 다시 짓기의 «한 쌍» — 부르는 자리 둘(`apply_row_update_internal` 의 «2.» 조합 블록 · 위 핀). 문은 `composite_key_source` 를 선언한 표 «전부»(~~`business_key` 칸도 있는 표만~~ — 조합키만 표에서 이름 붙인 id 로 만든 행 · 그리드 새 행이 키 없이 남아 다음 키 쓰기가 행을 하나 더 만들었다). 앞은 조각이 하나라도 비면 None(`is_blank_key_part`), 뒤는 `business_key_val` 은 늘, `business_key` 칸은 선언된 표에서만 쓴다 — 두 모양을 묻는 자리는 뒤 하나. 새 행의 «조각이 비면 항목의 키» 폴백은 쓰기 쪽에 남음 |
-| 🆕 `_merge_into_key_holder(db, table_name, table_model, row_to_delete, row, *, explicit, human_columns, source_name, updated_by, transaction_id, changed_cols, …)` | 10-03 `a396f64a0` 다시 지은 키를 남의 행이 이미 쥐었을 때의 «병합 본문 하나» — 값 · 사람 값 보호 · 층 상속 · 캐시 · 감사 이동 · 껍데기 행 지우기. 부르는 자리 2(쓰기 «2.» · 핀), 행을 바꿔 넣는 것은 부르는 쪽. ~~핀 자리의 사본~~은 정의 안 된 `changed_cols` 에 붙여 07-17(`a65640ca8`) 부터 병합이 칸을 바꾸면 터져 핀 전체가 되감겼다. `human_columns` = 이 쓰기가 «사람 것»으로 세는 칸 — 사람이 쓴 항목은 그 항목의 칸만, 핀은 핀 꽂은 칸만(종전: 사람 항목이면 칸 «전부» — 키 조각만 쓴 사람이 키 주인의 사람 값을 껍데기의 기계 값으로 덮을 수 있었다) |
+| 🆕 `_merge_into_key_holder(db, table_name, table_model, row_to_delete, row, *, explicit, human_columns, source_name, updated_by, transaction_id, changed_cols, …)` | 10-03 `a396f64a0` 다시 지은 키를 남의 행이 이미 쥐었을 때의 «병합 본문 하나» — 값 · 사람 값 보호 · 층 상속 · 캐시 · 감사 이동 · 껍데기 행 지우기. 부르는 자리 2(쓰기 «2.» · 핀), 행을 바꿔 넣는 것은 부르는 쪽. 🆕 `843bcfd11` 이 배치가 «만든»(pending) 껍데기는 `expunge`, 저장된 것은 `delete` — 종전엔 `db.delete` 의 거절을 삼켜 껍데기가 층 없이 INSERT 됐다(fb9a0b649 전엔 CompileError 가 배치를 되돌려 안 보임) · ~~핀 자리의 사본~~은 정의 안 된 `changed_cols` 에 붙여 07-17(`a65640ca8`) 부터 병합이 칸을 바꾸면 터져 핀 전체가 되감겼다. `human_columns` = 이 쓰기가 «사람 것»으로 세는 칸 — 사람이 쓴 항목은 그 항목의 칸만, 핀은 핀 꽂은 칸만(종전: 사람 항목이면 칸 «전부» — 키 조각만 쓴 사람이 키 주인의 사람 값을 껍데기의 기계 값으로 덮을 수 있었다) |
 | `set_cell_manual_priority(db, ...)` | 단일 Pin(배치 위임) |
 | `get_ontology_mapping()` / `check_needs_rollback(table_name, modified_cols)` | 그래프 보조 — v2 검증+enrichment 승격 적용 결과 캐시 / v2 매핑 인식 rollback 신호(v1 폴백) |
 
@@ -1703,9 +1704,11 @@ outbox_triage       터진 재전개를 치운다. per-row 사건을 «건너뛰
 ⚠️ 둘 다 «문장이 아니라 명령»이어야 하는 이유가 같다 — 고칠 방법이 SQL 한 줄이면 그것은
 소유자에게 «못 쓰는 처방»이다.
 
-### 🆕㉕ `server/utils/time_format.py` (**219줄**, S-182 ⓐ) — naive 시각의 답이 «하나»
+### 🆕㉕ `server/utils/time_format.py` (🆕 **274줄** @`843bcfd11` · 219줄, S-182 ⓐ) — naive 시각의 답이 «하나»
 
 ```
+🆕 instant_key(value)  «순간»을 읽는 한 자리(naive 는 세션 존 — 쓰기 문이 하는 그대로)
+🆕 instant_text(value) 키 조각의 시각 철자 — 그 순간의 세션 존 벽시계 글자. crud.key_part 가 부른다(10-03 843bcfd11)
 time_is_naive(value)      «술어» — 문 둘이 «같은 것»을 거절해야 하므로 하나다(판정 290)
                           ⚠️ 텍스트는 «오프셋»으로 판단한다, 파싱으로가 아니라 — 읽는 것은 PostgreSQL 이다
 fold_time_value(v, zone)  «값을 답한다». 🔴 오프셋을 «이미 든» 값은 그대로 돌려준다 —
