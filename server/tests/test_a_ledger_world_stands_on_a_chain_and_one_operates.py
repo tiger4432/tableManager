@@ -186,6 +186,7 @@ def test_the_operating_world_and_a_world_stood_on_are_not_deleted(config):
 def test_every_answer_that_lists_the_worlds_carries_one_shape(config):
     """총괄 e51e3e417: the declaration answer, /tables and the explorer's list."""
     import main
+    from fastapi import HTTPException
     from ledger import trace_router
     from ledger_api import ontology_config_explorer_router as explorer_router
 
@@ -196,6 +197,9 @@ def test_every_answer_that_lists_the_worlds_carries_one_shape(config):
     for answer in (trace_router.ledger_declaration_catalog(world=None), main.list_tables(),
                    explorer_router.list_worlds()):
         assert {key: answer[key] for key in expected} == expected
+    with pytest.raises(HTTPException) as refused:                    # 총괄 f1ad96964 ①
+        trace_router._world("nowhere")
+    assert refused.value.detail["worlds"] == expected["worlds"]
 
 
 # ------------------------------------------------------------------ on PostgreSQL

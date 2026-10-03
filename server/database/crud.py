@@ -25,7 +25,8 @@ import math
 import numbers
 import os
 import logging
-from datetime import datetime, date, timezone
+import threading
+from datetime import datetime, date, timezone, timedelta
 
 # The one render/fold module for world time (S-182). Stdlib-only by design, so importing
 # it here cannot pull an application module into the write path.
@@ -1622,6 +1623,28 @@ def get_source_priority(source_name: str, table_name: str = None) -> int:
     return resolve_priority_map(table_name).get(source_name, 99)
 
 
+_last_layer_instant = None
+_layer_instant_lock = threading.Lock()
+
+
+def layer_instant() -> datetime:
+    """🔴 THE ONE SEAT THAT STAMPS A CELL LAYER'S `ingested_at` (총괄 9280922aa): now, and in this
+    process strictly after the last one it gave - equal or earlier moves one microsecond on.
+
+    `compute_priority_value` ranks equal sources by the newest delivery, so the later item of
+    one batch must carry the later time, as it would in a batch of its own. Each layer took
+    `datetime.now()`: two items in one clock tick tied and the source NAME picked the earlier,
+    so a batch's answer depended on the clock (measured, report ff9867655).
+    """
+    global _last_layer_instant
+    with _layer_instant_lock:
+        now = datetime.now()
+        if _last_layer_instant is not None and now <= _last_layer_instant:
+            now = _last_layer_instant + timedelta(microseconds=1)
+        _last_layer_instant = now
+        return now
+
+
 def resolution_ingested_at(entry: Any, source_name: str = None,
                            ingested_at_by_source: dict = None):
     """A source layer's `ingested_at` as absolute POSIX seconds, or None if unknown.
@@ -1636,10 +1659,10 @@ def resolution_ingested_at(entry: Any, source_name: str = None,
         instead, which is why this override is checked FIRST.
 
     Naive and aware datetimes coexist in one dict on purpose-free grounds: the write
-    path stamps `datetime.now()` (naive, local) while PostgreSQL's `timestamptz`
+    path stamps `layer_instant()` (naive, local) while PostgreSQL's `timestamptz`
     reads back aware. Comparing the two raises TypeError, so both are normalised to
     UTC here - `astimezone()` reads a naive value as local, which is exactly what
-    `datetime.now()` produced.
+    `layer_instant()` produced.
     """
     raw = None
     if ingested_at_by_source and source_name is not None:
@@ -1694,7 +1717,8 @@ def compute_priority_value(sources: dict, manual_priority_source: str = None, ta
        (2a), so a legacy NULL cannot displace a dated delivery; without 2a the
        comparison would also have to order `None` against a float.
     3. **`source_name` ascending** - the final TOTAL order. Two layers can carry the
-       same `ingested_at` (one batch writes several sources with one `datetime.now()`),
+       same `ingested_at` (two processes stamp in one clock tick, or the layers were stored
+       before `layer_instant`),
        and without a total order the answer would fall back to dict order, which is
        the defect above. `idx_sources_lookup_source` is unique on
        (table, row, column, source_name), so within one cell `source_name` is unique
@@ -3538,12 +3562,19 @@ def _merge_into_key_holder(db, table_name, table_model, row_to_delete, row, *, e
                         # [P3] see the collision-merge overwrite dict
                         # above: a real datetime keeps the bulk upsert
                         # on its batched path.
-                        "ingested_at": datetime.now()
+                        "ingested_at": layer_instant()
                     }
 
             src_list = []
             if old_srcs:
-                for s in old_srcs:
+                # Stamped below one by one in the shell's own delivery order - oldest first,
+                # equal times by name descending - so the copy of the value the shell showed
+                # is the newest and wins among the copies (총괄 9280922aa).
+                def delivered(layer):
+                    at = resolution_ingested_at({"ingested_at": layer.ingested_at})
+                    return (at is not None, at or 0.0)
+                for s in sorted(sorted(old_srcs, key=lambda layer: layer.source_name,
+                                       reverse=True), key=delivered):
                     src_list.append((s.source_name, s.value, s.updated_by, s.origin_row_id))
             else:
                 # 폴백 소스
@@ -3570,7 +3601,7 @@ def _merge_into_key_holder(db, table_name, table_model, row_to_delete, row, *, e
                     # retraction of that row still finds it here.
                     "origin_row_id": s_origin,
                     # [P3] real datetime - see above.
-                    "ingested_at": datetime.now()
+                    "ingested_at": layer_instant()
                 }
 
     # 4. 캐시 맵 마이그레이션 (row_to_delete.row_id ➡️ conflict_row.row_id)
@@ -3871,7 +3902,7 @@ def apply_row_update_internal(
             src_obj.value = clean_val
             src_obj.updated_by = update_item.updated_by
             src_obj.origin_row_id = update_item.origin_row_id
-            src_obj.ingested_at = datetime.now()
+            src_obj.ingested_at = layer_instant()
             for gone in folded:
                 col_srcs.remove(gone)
                 if cell_sources_to_upsert is None:

@@ -12,7 +12,7 @@ server_root = os.path.abspath(os.path.join(current_dir, ".."))
 sys.path.append(server_root)
 
 from database.database import SessionLocal, engine
-from database import models
+from database import crud, models
 
 def clear_db(table_config):
     db = SessionLocal()
@@ -65,7 +65,7 @@ def seed_row(db, table_name, row_id, business_key_val, data_dict, source_name="s
             source_name=source_name,
             value=val,
             updated_by=updated_by,
-            ingested_at=datetime.now()
+            ingested_at=crud.layer_instant()
         )
         db.add(cell_src)
 

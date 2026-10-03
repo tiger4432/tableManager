@@ -41,7 +41,7 @@ def _world(world):
             world if isinstance(world, str) and world.strip() else None)
     except (LookupError, ValueError) as exc:
         raise HTTPException(status_code=404, detail={
-            "reason": "world_unknown", "world": world, "worlds": schema.worlds(),
+            "reason": "world_unknown", "world": world, "worlds": schema.world_listing()["worlds"],
             "message": f"{exc} - pick one from 'worlds'"})
 
 
