@@ -103,7 +103,9 @@ export async function seatSubgraph(SubgraphView, which) {
     if (node) node.group.dispatch('click', {});
   };
   if (which === 'continue') {
+    // A press only picks (lead 9dc2a5695 ②); Mark puts it in the marking Continue walks.
     press(bodies[1]._marked);
+    if (view.markButton) view.markButton.dispatch('click', {});
     view.continueButton.dispatch('click', {});
     await flush(); await flush();
   }
@@ -115,6 +117,7 @@ export async function seatSubgraph(SubgraphView, which) {
     const firstIds = new Set(first.nodes.map((n) => n.id));
     const inside = bodies[1].nodes.find((n) => !firstIds.has(n.id));
     if (inside) press(inside.id);
+    if (inside && view.markButton) view.markButton.dispatch('click', {});
   }
   return host;
 }

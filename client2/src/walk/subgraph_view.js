@@ -2,7 +2,7 @@
 // 「걷기 ui 랑 동일한데 start 만 있고 start 에서 걸어 닿는 모든 서브그래프 가져와서 시각적으로」), continued by
 // marking (lead f6fc6ba66; owner 「묶은거 펼치고 거기서 특정 점 마킹해서 그 부분에서 다시 서브 그래프 잇고」):
 //
-//   marking 0 --walk--> subgraph --press--> marking 1 --Continue--> subgraph --press--> marking 2 ...
+//   marking 0 --walk--> subgraph --Mark--> marking 1 --Continue--> subgraph --Mark--> marking 2 ...
 //
 // 🔴 The markings live in the store handed in (`deps.markings`), never in this part; the chain of names is
 //    the part's declaration (`deps.chain`): the first is read, each next one is written in turn.
@@ -253,7 +253,7 @@ export class SubgraphView {
    *          markings: import('../rnd_board/marking_store.js').MarkingStore, chain: string[],
    *          fanoutLimit?: number}} deps
    *   `walk` is the page's `createWalkBoxWalk` function; `entities` reads the declaration the page holds;
-   *   `chain` names the markings: the first is the start, each next one takes the presses of a step.
+   *   `chain` names the markings: the first is the start, each next one takes the marks of a step.
    *   `fanoutLimit` (declaration, default DEFAULT_FANOUT_LIMIT): a fan-out over it comes back as a bundle chip.
    */
   constructor(mount, deps = {}) {
@@ -284,7 +284,7 @@ export class SubgraphView {
     for (const name of this.chain) this.markings.subscribe(name, () => this._restyle());
   }
 
-  /** The name the next press writes, or '' once the chain is used up. */
+  /** The name the next Mark writes, or '' once the chain is used up. */
   writes() { return this.chain[this.steps.length] || ''; }
 
   /** Walk from the chain's first marking and draw it. `reuse`: the same marking already drawn is not asked again. */
@@ -308,7 +308,7 @@ export class SubgraphView {
     this.render();
   }
 
-  /** Walk from the marking the last step's presses wrote, and draw it on the same picture. */
+  /** Walk from the marking the last step's marks wrote, and draw it on the same picture. */
   async continueWalk() {
     const name = this.writes();
     if (!name || this.state !== 'done') return;
@@ -440,19 +440,29 @@ export class SubgraphView {
 
   _facts() {
     const box = this._el('div', 'sg-facts');
+    this.markButton = null;
     const facts = this.layout && this.selected ? nodeFacts(this.layout, this.selected) : null;
     if (!facts) return box;
     box.appendChild(this._el('div', 'sg-facts-head', `${facts.node.label} · ${facts.node.type}`));
-    // Folding is its own press, beside the picked node's facts - a press on the node still picks and marks.
+    // A press on the node only picks it (owner 10-03, lead 9dc2a5695); marking for Continue is this button.
+    // Folding is its own press too. Both stand first, so a box capped in height shows them before the facts.
     const id = facts.node.id;
+    const acts = this._el('div', 'sg-facts-acts');
+    const mark = this._el('button', 'sg-mark', 'Mark');
+    mark.setAttribute('type', 'button');
+    mark.setAttribute('data-mark-node', id);
+    if (mark.addEventListener) mark.addEventListener('click', () => { this.toggleMark(id); });
+    this.markButton = mark;
+    acts.appendChild(mark);
     const folded = this.folded.has(id);
     if (folded || foldedAway(this.layout, new Set([id]), this._seeds()).size) {
       const fold = this._el('button', 'sg-fold', folded ? 'Unfold' : 'Fold branches');
       fold.setAttribute('type', 'button');
       fold.setAttribute('data-fold-node', id);
       if (fold.addEventListener) fold.addEventListener('click', () => { this.toggleFold(id); });
-      box.appendChild(fold);
+      acts.appendChild(fold);
     }
+    box.appendChild(acts);
     for (const [name, value] of [...Object.entries(facts.node.keys), ...Object.entries(facts.node.attributes)]) {
       box.appendChild(this._el('div', 'sg-fact', `${name} ${value}`));
     }
@@ -466,14 +476,24 @@ export class SubgraphView {
   /** The marks, the pick and Continue follow the store without redrawing the picture (the box keeps its scroll). */
   _restyle() {
     for (const { group, node } of (this._groups || new Map()).values()) group.setAttribute('class', this._classOf(node));
-    if (!this.continueButton) return;
     const name = this.writes();
+    if (this.markButton && this.selected) {
+      const on = Boolean(name) && this.markings.signOf(name, this.selected) !== SIGN.ABSENT;
+      this.markButton.setAttribute('aria-pressed', String(on));
+      this.markButton.className = `sg-mark${on ? ' is-on' : ''}`;
+      setDisabledReason(this.markButton, name ? '' : 'End of chain');
+    }
+    if (!this.continueButton) return;
     setDisabledReason(this.continueButton, !name ? 'End of chain' : (this.markings.count(name) ? '' : 'Mark a node'));
   }
 
-  /** A press: the node's facts under the picture, and a mark in the marking this step writes. */
+  /** A press on a node: its facts, nothing else - marking is the Mark button (owner 10-03). */
   press(id) {
     this.select(id);
+  }
+
+  /** Mark or unmark one node in the marking this step writes; the store tells every part that reads it. */
+  toggleMark(id) {
     const name = this.writes();
     if (name) this.markings.toggle(name, id, SIGN.CASE);
   }

@@ -193,11 +193,21 @@ export const WALK_CSS = `
 .sg-continue { min-height: 44px; padding: 0 13.6px; font: inherit; color: var(--accent-contrast);
   background: var(--accent); border: 1px solid var(--accent); border-radius: 0; cursor: pointer; }
 .sg-continue[disabled] { opacity: 0.5; cursor: not-allowed; }
-.sg-node text { fill: var(--text); font-size: var(--fs-tag); cursor: pointer; }
-.sg-facts { display: flex; flex-direction: column; gap: 3.4px; }
-/* Fold branches / Unfold - its own press, under the picked node's head (lead 43a738d58 ③). */
-.sg-fold { align-self: flex-start; min-height: 44px; padding: 0 var(--space-4); font: inherit; color: var(--text);
+/* Node names at the body size (lead 9dc2a5695 ⑤): the rows (gapY 27.2) clear it; names longer than a column
+   already ran into the next one at the tag size, and still do. */
+.sg-node text { fill: var(--text); font-size: var(--fs-body); cursor: pointer; }
+/* The picked node's facts stay in sight (lead 9dc2a5695 ①): pinned to the bottom of whatever scrolls the
+   picture, capped with a scroll of their own, Mark and Fold first. Nothing picked draws nothing. */
+.sg-facts { display: flex; flex-direction: column; gap: 3.4px; position: sticky; bottom: 0; z-index: 1;
+  max-height: 45vh; overflow: auto; padding: var(--space-3); background: var(--bg-surface);
+  border-top: 1px solid var(--border); }
+.sg-facts:empty { display: none; }
+.sg-facts-acts { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+/* Mark (into the marking Continue walks) and Fold branches / Unfold (lead 43a738d58 ③) - their own presses. */
+.sg-mark, .sg-fold { min-height: 44px; padding: 0 var(--space-4); font: inherit; color: var(--text);
   background: var(--bg-surface); border: 1px solid var(--border); border-radius: 0; cursor: pointer; }
+.sg-mark.is-on { color: var(--accent); background: var(--accent-weak); border-color: var(--accent); font-weight: 600; }
+.sg-mark[disabled] { opacity: 0.5; cursor: not-allowed; }
 .sg-facts-head { font-weight: 600; }
 .sg-fact { font-family: 'JetBrains Mono', monospace; font-size: var(--fs-label); overflow-wrap: anywhere; }
 `;

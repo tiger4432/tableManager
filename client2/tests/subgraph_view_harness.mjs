@@ -17,6 +17,8 @@ import { walkTableView } from '../src/walk/table_view.js';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SUBJECT = path.join(HERE, '..', 'src', 'walk', 'subgraph_view.js');
 const WIRE = path.join(HERE, '..', 'src', 'rnd_board', 'api.js');
+const STYLES = path.join(HERE, '..', 'src', 'walk', 'styles.js');
+const { WALK_CSS: REAL_CSS } = await import('../src/walk/styles.js');
 const fx = (name) => JSON.parse(readFileSync(path.join(HERE, 'fixtures', name), 'utf8'));
 const DECL = fx('walk_start_declaration.json');
 const WAFER = fx('walk_start_wafer.json');
@@ -50,7 +52,7 @@ const has = (n, cls) => String(n.className || '').split(/\s+/).includes(cls);
 const textOf = (host, cls) => byClass(host, cls).map((n) => n.textContent);
 const paramsOf = (u) => new URLSearchParams(String(u).split('?')[1] || '');
 
-async function suite(m, makeWalk = createWalkBoxWalk) {
+async function suite(m, makeWalk = createWalkBoxWalk, css = REAL_CSS) {
   const wire = wireWith(makeWalk);
   const names = [];
   const fails = [];
@@ -77,6 +79,12 @@ async function suite(m, makeWalk = createWalkBoxWalk) {
     const group = byClass(host, 'sg-node').find((g) => g.attrs['data-node'] === id);
     if (group) group.dispatch('click', {});
     return Boolean(group);
+  };
+  // A press only picks (lead 9dc2a5695 ②); the picked node's Mark puts it in the marking this step writes.
+  const mark = (host) => {
+    const button = byClass(host, 'sg-mark')[0];
+    if (button) button.dispatch('click', {});
+    return Boolean(button);
   };
 
   console.log('\n[1] what is drawn is what the walk answered - the same count the table shows');
@@ -184,7 +192,8 @@ async function suite(m, makeWalk = createWalkBoxWalk) {
     const b = await seat([DIE], { doc, markings, chain: ['b0', 'b1'] });
     const first = byClass(a.host, 'sg-node')[1];
     if (first) first.dispatch('click', {});
-    say('G1 each draws its own walk, and a press in one leaves the other unpicked and unmarked',
+    mark(a.host);
+    say('G1 each draws its own walk, and a press and Mark in one leave the other unpicked and unmarked',
       JSON.stringify(textOf(a.host, 'sg-counts')) === `["Nodes ${WAFER.nodes.length} · Edges ${WAFER.edges.length}"]`
         && JSON.stringify(textOf(b.host, 'sg-counts')) === `["Nodes ${DIE.nodes.length} · Edges ${DIE.edges.length}"]`
         && byClass(a.host, 'sg-fact').length > 0 && byClass(b.host, 'sg-fact').length === 0
@@ -207,16 +216,19 @@ async function suite(m, makeWalk = createWalkBoxWalk) {
       JSON.stringify({ chips: chips.length, types: types.size, counted, staticChips }));
   }
 
-  console.log('\n[9] continued by marking: a press marks, Continue walks the marking, one picture');
+  console.log('\n[9] continued by marking: a press picks, Mark marks, Continue walks the marking, one picture');
   {
     const s = await seat([DIE, STEP2]);
     const marked = STEP2._marked;
     const offBefore = s.view.continueButton && s.view.continueButton.disabled === true
       && s.view.continueButton.getAttribute('title') === 'Mark a node';
     press(s.host, marked);
-    say('K1 a press writes that node, +, into the marking this step writes',
-      JSON.stringify(s.markings.entries('s1')) === JSON.stringify([[marked, SIGN.CASE]]) && s.markings.count('s0') === 1,
-      JSON.stringify(s.markings.entries('s1')));
+    const afterPress = JSON.stringify(s.markings.entries('s1'));
+    mark(s.host);
+    say('K1 a press writes nothing; its Mark writes that node, +, into the marking this step writes',
+      afterPress === '[]' && JSON.stringify(s.markings.entries('s1')) === JSON.stringify([[marked, SIGN.CASE]])
+        && s.markings.count('s0') === 1,
+      `${afterPress} -> ${JSON.stringify(s.markings.entries('s1'))}`);
     const onAfter = s.view.continueButton && s.view.continueButton.disabled === false;
     s.urls.length = 0;
     if (s.view.continueButton) s.view.continueButton.dispatch('click', {});
@@ -267,17 +279,25 @@ async function suite(m, makeWalk = createWalkBoxWalk) {
     const c = await seat([WAFER], { doc, markings, chain: ['a0', 'a1'], keepStart: true });
     const target = byClass(a.host, 'sg-node')[1];
     const id = target ? target.attrs['data-node'] : '';
+    press(c.host, id);
     if (target) target.dispatch('click', {});
+    mark(a.host);
     const seen = byClass(c.host, 'sg-node').find((g) => g.attrs['data-node'] === id);
-    say('L1 a part reading the same names sees the other\'s mark', Boolean(seen) && has(seen, 'is-marked'),
-      JSON.stringify({ id: Boolean(id), marked: seen ? has(seen, 'is-marked') : null }));
+    const cMark = byClass(c.host, 'sg-mark')[0];
+    say('L1 a part reading the same names sees the other\'s mark, on the node and on its own Mark',
+      Boolean(seen) && has(seen, 'is-marked') && Boolean(cMark) && cMark.getAttribute('aria-pressed') === 'true',
+      JSON.stringify({ id: Boolean(id), marked: seen ? has(seen, 'is-marked') : null, cMark: cMark && cMark.getAttribute('aria-pressed') }));
     const end = await seat([WAFER], { chain: ['only'] });
     const node = byClass(end.host, 'sg-node')[1];
     if (node) node.dispatch('click', {});
-    say('L2 a chain of one name: a press marks nothing, Continue is off with End of chain',
+    const endMark = byClass(end.host, 'sg-mark')[0];
+    mark(end.host);
+    say('L2 a chain of one name: Mark and Continue are off with End of chain, and Mark marks nothing',
       end.markings.names().join() === 'only' && end.view.continueButton.disabled === true
-        && end.view.continueButton.getAttribute('title') === 'End of chain',
-      JSON.stringify({ names: end.markings.names(), title: end.view.continueButton.getAttribute('title') }));
+        && end.view.continueButton.getAttribute('title') === 'End of chain'
+        && Boolean(endMark) && endMark.disabled === true && endMark.getAttribute('title') === 'End of chain',
+      JSON.stringify({ names: end.markings.names(), title: end.view.continueButton.getAttribute('title'),
+        mark: endMark && [endMark.disabled, endMark.getAttribute('title')] }));
   }
   console.log('\n[11] bundles: a fan-out over the cap is a chip; a chip pressed draws it on the same picture');
   {
@@ -320,6 +340,7 @@ async function suite(m, makeWalk = createWalkBoxWalk) {
     const firstIds = new Set(BUNDLES.nodes.map((n) => n.id));
     const inside = byClass(a.host, 'sg-node').find((g) => !firstIds.has(g.attrs['data-node']));
     if (inside) inside.dispatch('click', {});
+    mark(a.host);
     say('P5 a point inside the expanded bundle can be marked for Continue',
       Boolean(inside) && JSON.stringify(markings.entries('a1')) === JSON.stringify([[inside.attrs['data-node'], SIGN.CASE]]),
       JSON.stringify(markings.entries('a1')));
@@ -354,6 +375,7 @@ async function suite(m, makeWalk = createWalkBoxWalk) {
     const countsBefore = counts();
     const pictureBefore = pictureOf(a.host);
     press(a.host, target.id);
+    mark(a.host);
     const marksPressed = JSON.stringify(a.markings.entries(a.chain[1]));
     const fold = byClass(a.host, 'sg-fold')[0];
     if (fold) fold.dispatch('click', {});
@@ -377,9 +399,42 @@ async function suite(m, makeWalk = createWalkBoxWalk) {
     if (foldChip) foldChip.dispatch('click', {});
     say('N7 the +N folded chip opens it: the same picture as before the fold, nothing walked again',
       pictureOf(a.host) === pictureBefore && a.urls.length === 1, JSON.stringify({ urls: a.urls.length }));
-    say('N8 folding and opening mark nothing: the marking is what the press left',
+    say('N8 folding and opening mark nothing: the marking is what Mark left',
       marksPressed !== '[]' && JSON.stringify(a.markings.entries(a.chain[1])) === marksPressed,
       `${marksPressed} -> ${JSON.stringify(a.markings.entries(a.chain[1]))}`);
+  }
+
+  console.log('\n[Q] Mark is the one press that marks; the facts stay in sight (lead 9dc2a5695 ① ②)');
+  {
+    const s = await seat([DIE, STEP2]);
+    const id = STEP2._marked;
+    press(s.host, id);
+    // A mutant may draw no Mark or no node: the cell then fails, it does not throw.
+    const button = () => byClass(s.host, 'sg-mark')[0] || { getAttribute: () => null, className: '' };
+    const nodeOf = () => byClass(s.host, 'sg-node').find((g) => g.attrs['data-node'] === id) || { className: '' };
+    const off = button() && button().getAttribute('aria-pressed') === 'false' && !has(button(), 'is-on');
+    mark(s.host);
+    const on = button() && button().getAttribute('aria-pressed') === 'true' && has(button(), 'is-on') && has(nodeOf(), 'is-marked');
+    mark(s.host);
+    const back = JSON.stringify(s.markings.entries('s1')) === '[]' && button().getAttribute('aria-pressed') === 'false'
+      && !has(nodeOf(), 'is-marked');
+    say('Q1 Mark shows whether this node is marked, and pressing it again takes it out',
+      Boolean(off) && Boolean(on) && back, JSON.stringify({ off, on, back }));
+    const kids = (byClass(s.host, 'sg-facts')[0] || { children: [] }).children;
+    say('Q2 Mark stands first, under the head, before any fact line',
+      kids.length > 2 && has(kids[1], 'sg-facts-acts') && byClass(kids[1], 'sg-mark').length === 1
+        && kids.slice(2).every((k) => has(k, 'sg-fact')),
+      JSON.stringify(kids.map((k) => k.className)));
+    // The picture has no viewport here, so the cell reads the rule the page carries (WALK_CSS, imported).
+    const rules = [...css.replace(/\/\*[\s\S]*?\*\//g, ' ').matchAll(/([^{}]+)\{([^}]*)\}/g)]
+      .map((m2) => [m2[1].split(',').map((x) => x.trim()), m2[2]]);
+    const ruled = (selector, prop) => rules.some(([sels, body]) => sels.includes(selector) && body.includes(prop));
+    say('Q3 the facts box is pinned to the bottom of what scrolls the picture, capped, with its own scroll',
+      ruled('.sg-facts', 'position: sticky') && ruled('.sg-facts', 'bottom: 0') && ruled('.sg-facts', 'overflow: auto')
+        && ruled('.sg-facts', 'max-height'));
+    say('Q5 node names are drawn at the body size token, not the tag size', ruled('.sg-node text', 'font-size: var(--fs-body)'));
+    say('Q4 nothing picked draws no box', ruled('.sg-facts:empty', 'display: none')
+      && byClass((await seat([DIE])).host, 'sg-facts').every((b) => b.children.length === 0));
   }
 
   return { ran: names.length, names, failures: fails };
@@ -421,8 +476,22 @@ const failures = [];
     M('M9', 'static chips lose their mark', 'H1',
       "      chip.appendChild(this._el('span', `sg-swatch${item.static ? ' is-static' : ''}`));\n",
       "      chip.appendChild(this._el('span', 'sg-swatch'));\n"),
-    M('M10', 'a press marks nothing', 'K1',
+    M('M10', 'a press still marks (owner 10-03: a press only picks)', 'K1',
+      '  press(id) {\n    this.select(id);\n', '  press(id) {\n    this.select(id);\n    this.toggleMark(id);\n'),
+    M('Q1m', 'Mark marks nothing', 'K1',
       '    if (name) this.markings.toggle(name, id, SIGN.CASE);\n', ''),
+    M('Q2m', 'Mark does not show its state', 'Q1',
+      "      this.markButton.setAttribute('aria-pressed', String(on));\n", ''),
+    M('Q3m', 'Mark is live past the chain\'s end', 'L2',
+      "      setDisabledReason(this.markButton, name ? '' : 'End of chain');\n", ''),
+    M('Q4m', 'Mark stands after the facts', 'Q2',
+      '    box.appendChild(acts);\n    for (const [name, value]', '    for (const [name, value]'),
+    { ...M('Q5m', 'the facts box is not pinned', 'Q3',
+      'position: sticky; bottom: 0; z-index: 1;', 'z-index: 1;'), file: STYLES },
+    { ...M('Q7m', 'node names back at the tag size', 'Q5',
+      '.sg-node text { fill: var(--text); font-size: var(--fs-body);', '.sg-node text { fill: var(--text); font-size: var(--fs-tag);'), file: STYLES },
+    { ...M('Q6m', 'an empty facts box is drawn as a bar', 'Q4',
+      '.sg-facts:empty { display: none; }\n', ''), file: STYLES },
     M('M11', 'Continue walks the start again, not the marking', 'K2',
       '    if (!name || this.state !== \'done\') return;\n    await this._step(name);\n',
       '    if (!name || this.state !== \'done\') return;\n    await this._step(this.chain[0]);\n'),
@@ -485,6 +554,7 @@ const failures = [];
     const quiet = console.log;
     console.log = () => {};
     try {
+      if (mu.file === STYLES) return await suite(real, createWalkBoxWalk, loaded.WALK_CSS);
       return mu.file ? await suite(real, loaded.createWalkBoxWalk) : await suite(loaded);
     } finally { console.log = quiet; }
   }, { baselineRan: base.ran, baselineNames: base.names,
