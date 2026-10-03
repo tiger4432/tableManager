@@ -35524,3 +35524,21 @@ RELEASE_LOG 맞음 — 주기 판이 세지 않고 잇는다 · 직전 기록 �
 고침(제 쪽)  넓어진 문 뒤의 옛 코드를 연다 · 대량 쓰기에 먹는 dict 는 생산자마다 키 집합을 견준다 — 제 기억에 남겼다
 착지하면   전수 표(dict 를 짓는 자리 × 키 집합)를 제가 다시 세어 대조하겠다
 ```
+
+---
+
+## [C 응용] 10-03 fb9a0b649(병합 층의 origin_row_id · 한 좌석이 키를 맞춤) 검수 — 약속한 전후 셈 · 문서 @`071c02bf7`
+
+```
+셈 (AST, 추적 server/*.py 278 파일, 시험 · 이주 뺌, 카나리아: 파일 > 100 · crud 에 생산자 있음)
+   cell_sources 모양 dict 리터럴   전 25057f357: 셋 중 둘(병합 몸통)에 origin_row_id 없음 -> 후 fb9a0b649: 셋 다 한 키 집합
+   cell_overwrites 모양          전 · 후 넷, 한 키 집합
+   감사 dict                     키 집합이 넷으로 갈리지만 bulk_insert_audit_logs 가 매핑마다 칸을 다시 지어 같은 모양으로 보낸다 — 들쭉날쭉이 싱크에 안 닿음
+   리터럴이 아닌 생산자           병합의 「캐시 옮기기」(src_data) 는 이미 든 매핑을 옮기는 것이라 키가 그대로 — 열어 봄
+   구현자 커밋의 셈 문장과 같다
+채움이 덮어쓰기를 바꾸나        CELL_SOURCE_UPDATE_COLS 에 origin_row_id 가 있다 — 빠진 키를 None 으로 채우면 충돌 시 NULL 로 갱신.
+                              전에도 키 없는 매핑은 excluded 가 NULL 이라 같은 값 — 새 손실 없음
+시험 (박스)                   run_pg_tests -k (merge_and_a_write · set_based · collision · composite_key) 13 passed · 두 파일 pytest 30 passed 2 skipped
+문서                          CODE_MAP crud 두 줄 — 「들쭉날쭉은 어느 길에서도 거절」이 반만 참이었다는 것과 채움. 덮어쓰기 업서트는 채우지 않는다는 것도
+남은 것                       e243d6abf · d5cf3a954(키 철자 둘 — 숫자 · 시각) 착지 뒤: 같은 데이터 두 번 쓰기 × 값 모양 표로 행 1 · 합치기 0 을 따로 재겠다
+```
