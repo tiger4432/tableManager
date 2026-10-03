@@ -1814,7 +1814,8 @@ export async function fetchDeclaration(params) {
         || `Declaration unreadable (${res.status})` };
     }
     return { ok: true, entities: body.entities || [], predicates: body.predicates || [],
-             collect: body.collect || [], worlds: body.worlds || [] };
+             collect: body.collect || [], worlds: body.worlds || [],
+             operating: typeof body.operating === 'string' ? body.operating : null };
   } catch (err) {
     return { ok: false, message: `Declaration unreachable — ${err && err.message}` };
   }

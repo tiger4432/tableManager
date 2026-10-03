@@ -3,7 +3,7 @@ import { ABSENT, isCount } from './absent.js';
 import { LOADING, unitText } from './ui_words.js';
 import { escapeHtml } from './utils.js';
 import { narrowingTail } from './narrowing.js';
-import { state } from './state.js';
+import { state, gridFetch } from './state.js';
 import { elements } from './dom.js';
 import { switchTable, fetchData } from './api.js';
 import { setTransactionFilter, updateSelectedCellUI } from './ui.js';
@@ -1343,7 +1343,7 @@ export async function navigatorStep3(log) {
     + `&limit=${pageLimit}${sortQueryTail()}${narrowing}`;
 
   try {
-    const res = await fetch(url);
+    const res = await gridFetch(url);
     const result = await res.json();
 
     // 🔴 THE REFUSAL IS SHOWN, NOT SWALLOWED (A-6-b). Under a header sort the server refuses

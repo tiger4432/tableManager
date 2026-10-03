@@ -1005,7 +1005,8 @@ export function boot(doc, host, deps) {
   if (options.branchMount) {
     const picker = new BranchPicker(options.branchMount, { doc, onPick: options.pickWorld });
     picker.show({ current: world });
-    bound.loadDeclaration().then((got) => picker.show({ worlds: (got && got.worlds) || [], current: world }));
+    bound.loadDeclaration().then((got) => picker.show({ worlds: (got && got.worlds) || [], current: world,
+      operating: got && got.operating }));
   }
   // Installed AFTER the seats, so a part that reads a derived name gets its first value from
   // the same first computation as everyone else.

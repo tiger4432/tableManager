@@ -154,8 +154,9 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
   // A picked step is the map's own door (`map-goto`): cursor, ancestors opened, row centred (㉰).
   const pathBar = new PathBar(null, { doc: document, action: 'map-goto' });
   const branchPicker = new BranchPicker(null, { doc: document,
-    onPick: (name) => void pickWorld(name), onCreate: (name) => void pickWorld(name, { create: true }),
-    onDelete: (name) => void deleteWorld(name) });
+    onPick: (name) => void pickWorld(name),
+    onCreate: (name, beneath) => void pickWorld(name, { create: true, beneath }),
+    onDelete: (name) => void deleteWorld(name), onOperate: (name) => void operateWorld(name) });
   // The section the field being edited sits in — its parent node, found in the drawn tree.
   const markFormCursor = () => {
     for (const node of root.querySelectorAll('.oe-node.is-editing-parent')) {
@@ -170,7 +171,8 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
     pathBar.attach(root.querySelector('.oe-bucket--form .oe-path-mount'));
     pathBar.show(trailNow());
     branchPicker.attach(root.querySelector('.oe-branch-mount'));
-    branchPicker.show({ worlds: state.worlds, current: state.world });
+    branchPicker.show({ worlds: state.worlds, current: state.world, operating: state.operating,
+      history: state.history });
     markFormCursor();
   };
 
@@ -382,9 +384,11 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
   // draft, so it happens on a press and never because the screen noticed the file was
   // missing. The server refuses if anything is at the path -- including a file that will
   // not parse, which is somebody's work with a bad comma in it rather than an absence.
-  const bootstrapConfig = async () => {
+  // `beneath` - a new branch's worlds to stand on, top first: not given, the server's own; [] nothing.
+  const bootstrapConfig = async (beneath) => {
+    const under = Array.isArray(beneath) ? `?beneath=${beneath.map(encodeURIComponent).join(',')}` : '';
     try {
-      const res = await ask(`${apiBase}/admin/ontology-explorer/bootstrap`, {
+      const res = await ask(`${apiBase}/admin/ontology-explorer/bootstrap${under}`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}',
       });
       const body = await res.json().catch(() => ({}));
@@ -413,8 +417,8 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
   // one decision, as `select` does. The draft belongs to the world it was typed in: Keep stores the typing
   // in that world's draft store before the screen leaves it (lead ccf374d48 answer 2), Discard deletes it
   // there as `select`'s Discard does, and a refused store stays. A new branch is made by the existing
-  // bootstrap, sent on the new name.
-  const pickWorld = async (name, { create = false } = {}) => {
+  // bootstrap, sent on the new name with what it stands on.
+  const pickWorld = async (name, { create = false, beneath = null } = {}) => {
     const next = name || null;
     if (next === state.world && !create) return;
     const choice = state.dirty ? await chooseDirtyNavigation(root) : 'keep';
@@ -424,14 +428,16 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
       try { await putDraft(); } catch (error) { showToast(errorMessage(error), 'error'); render(); return; }
     }
     if (decision === 'discard' && state.draft && !(await discardDraft({ ask: false }))) return;
-    state = { ...initialExplorerState, navigation: { back: [], forward: [] }, world: next, worlds: state.worlds };
+    state = { ...initialExplorerState, navigation: { back: [], forward: [] }, world: next, worlds: state.worlds,
+      operating: state.operating, history: state.history };
     render();
-    if (create) await bootstrapConfig();
+    if (create) await bootstrapConfig(beneath);
     else await load({ allowContextSwitch: true });
   };
 
   // The server's preview first (what goes: atoms and files), confirmed, then the delete with the atom
-  // count the preview showed - the existing route, twice. Afterwards the screen reads the default.
+  // count the preview showed - the existing route, twice. Afterwards the screen reads the operating world.
+  // A refusal (the operating world, a world another stands on) is the server's sentence.
   const deleteWorld = async (name) => {
     const at = `/worlds/${encodeURIComponent(name)}`;
     try {
@@ -441,6 +447,20 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
       await jsonRequest(`${at}?confirm_atoms=${preview.atoms}`, { method: 'DELETE' });
       showToast?.(`Branch ${name} deleted`, 'success');
       await pickWorld(null);
+    } catch (error) {
+      showToast?.(errorMessage(error), 'error');
+    }
+  };
+
+  // The world being read made the operating one (lead 120450931 ③): asked once, sent once, and the answer is
+  // the worlds as they now stand. The door wants the strict token; a refusal is the server's sentence.
+  const operateWorld = async (name) => {
+    if (!window.confirm(`Make ${name} the operating world?`)) return;
+    try {
+      const body = await jsonRequest('/worlds/operating', { method: 'PUT',
+        headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ world: name }) });
+      dispatch({ type: 'WORLDS_RECEIVED', worlds: body.worlds, operating: body.operating, history: body.history });
+      showToast?.(`${name} operating`, 'success');
     } catch (error) {
       showToast?.(errorMessage(error), 'error');
     }
@@ -739,7 +759,9 @@ No effect`;
     try { payload = await response.json(); } catch (_) { /* structured fallback below */ }
     if (!response.ok) {
       const detail = payload?.detail || payload || {};
-      const error = new Error(detail.message || `Request failed (${response.status})`);
+      // The token gate answers with a bare sentence, not an object: that sentence is the refusal.
+      const error = new Error((typeof detail === 'string' ? detail : detail.message)
+        || `Request failed (${response.status})`);
       error.detail = detail;
       throw error;
     }
@@ -819,6 +841,7 @@ No effect`;
       // S-39. Beside the compile, never in front of it — these are process counters and the
       // list is drawn whether or not they arrive.
       void loadCensus();
+      void loadWorlds();
       if (editorCheckpoint) {
         state = restoreDirtyEditorCheckpoint(state, editorCheckpoint);
         render();
@@ -855,10 +878,20 @@ No effect`;
       const res = await askPublic(`${apiBase}/api/ledger/declaration`);
       if (!res.ok) return;
       const body = await res.json().catch(() => null);
-      dispatch({ type: 'CENSUS_RECEIVED', bySource: censusBySource(body), names: censusNames(body),
-        worlds: (body && body.worlds) || [] });
+      dispatch({ type: 'CENSUS_RECEIVED', bySource: censusBySource(body), names: censusNames(body) });
     } catch (error) {
       void error;                       // the line simply does not appear — see above
+    }
+  };
+
+  // The worlds, the operating one and who operated which when - the picker's one source (lead 120450931 ③).
+  // Quiet on failure as the census is: a read list always names a world, so an empty one reads as not read.
+  const loadWorlds = async () => {
+    try {
+      const body = await jsonRequest('/worlds');
+      dispatch({ type: 'WORLDS_RECEIVED', worlds: body.worlds, operating: body.operating, history: body.history });
+    } catch (error) {
+      void error;
     }
   };
 

@@ -770,9 +770,20 @@ failed += pathBarBase.failures.length;
 console.log('\n[8] the branch the screen reads');
 const REQUESTS_BEFORE = JSON.parse(readFileSync(join(HERE, 'fixtures', 'explorer_requests.before.json'), 'utf8'));
 const PREVIEW = { world: 'w2', schema: 'ledger_w2', atoms: 7, files: ['a.json', 'b.json'] };
-async function branchWalk(create, { confirmDelete = true, typed = null, refuseKeep = false } = {}) {
+// GET /worlds as the server shapes it (6bfb6d4be), the operating world NOT the default - so an empty pick
+// and a pick of `default` are different requests (lead 120450931 ①). History is oldest first, as written.
+const WORLDS = { worlds: ['default', 'w1'], operating: 'w1', beneath: { w1: ['default'] },
+  history: [{ world: 'default', by: 'operator', at: '2026-10-01T00:00:00+00:00' },
+    { world: 'w1', by: 'operator', at: '2026-10-02T00:00:00+00:00' }] };
+// The token gate answers with a bare sentence; a delete refusal with the route's own object.
+const TOKEN_REFUSED = 'Admin token required.';
+const DELETE_REFUSED = "ledger world 'w2' is what 'w3' stands on";
+async function branchWalk(create, { confirmDelete = true, typed = null, refuseKeep = false, pick = 'w1',
+  beneath = null, confirmOperate = true, refuseOperate = false, refuseDelete = false } = {}) {
   const urls = [];
   const puts = [];
+  const operated = [];
+  const toasts = [];
   const clicks = [];
   const inputs = [];
   const root = element('div');
@@ -794,6 +805,14 @@ async function branchWalk(create, { confirmDelete = true, typed = null, refuseKe
     urls.push(`admin ${method} ${u}`);
     const path = u.split('?')[0];
     const asked = (u.match(/draft_id=(d\d)/) || [])[1];
+    if (path.endsWith('/worlds/operating')) {
+      const world = JSON.parse(init.body).world;
+      operated.push(world);
+      if (refuseOperate) return { ok: false, status: 401, json: async () => ({ detail: TOKEN_REFUSED }) };
+      return reply({ ...WORLDS, operating: world,
+        history: [...WORLDS.history, { world, by: 'operator', at: '2026-10-03T00:00:00+00:00' }] });
+    }
+    if (path.endsWith('/worlds')) return reply(WORLDS);
     if (method === 'PUT') {
       puts.push(JSON.parse(init.body));
       if (refuseKeep) return { ok: false, status: 409, json: async () => ({ detail: { code: 'stale_revision',
@@ -802,6 +821,8 @@ async function branchWalk(create, { confirmDelete = true, typed = null, refuseKe
     if (u.includes('/authoring')) return reply(AUTHORING);
     if (/\/drafts$/.test(path) && method === 'POST') return reply(DRAFT);
     if (path.endsWith('/bootstrap')) return reply({ created: 'ledger_config.json' });
+    if (path.includes('/worlds/') && refuseDelete) return { ok: false, status: 409, json: async () => ({
+      detail: { reason: 'world_not_deleted', world: 'w2', message: DELETE_REFUSED } }) };
     if (path.includes('/worlds/')) return reply(u.includes('confirm_atoms=') ? { deleted: 'w2' } : PREVIEW);
     return reply(asked ? { ...SELECTED, draft: { ...DRAFT, draft_id: asked, context_token: 'ctx:1' } } : SELECTED);
   };
@@ -812,9 +833,15 @@ async function branchWalk(create, { confirmDelete = true, typed = null, refuseKe
     urls.push(`public ${init.method || 'GET'} ${String(url)}`);
     return reply({ ...DECLARATION, worlds: ['w1'] });
   };
-  globalThis.window.confirm = (text) => { confirms.push(String(text)); return confirmDelete; };
+  const asks = [];
+  globalThis.window.confirm = (text) => {
+    if (String(text).startsWith('Make ')) { asks.push(String(text)); return confirmOperate; }
+    confirms.push(String(text));
+    return confirmDelete;
+  };
+  const texts = (cls) => walkAll(mount).filter((n) => n._classes.includes(cls)).map((n) => n.textContent);
   try {
-    const controller = create({ root, apiBase: '', adminFetch: adminOf, showToast: () => {} });
+    const controller = create({ root, apiBase: '', adminFetch: adminOf, showToast: (t) => toasts.push(String(t)) });
     await controller.refresh();
     await settle();
     await click('create-draft');
@@ -822,7 +849,10 @@ async function branchWalk(create, { confirmDelete = true, typed = null, refuseKe
     const out = { onDefault: urls.splice(0).sort() };
     const opened = controller.getState();
     out.open = `${Boolean(opened.selection)}|${Boolean(opened.draft)}`;
-    out.listed = walkAll(mount).filter((n) => n.tagName === 'OPTION').map((n) => n.value || '(default)');
+    out.listed = walkAll(mount).filter((n) => n.tagName === 'OPTION').map((n) => n.value || '(operating)');
+    out.emptyText = (walkAll(mount).find((n) => n.tagName === 'OPTION' && n.value === '') || {}).textContent;
+    const offNow = part('branch-picker__operate');
+    out.operateOff = `${offNow && offNow.disabled}|${offNow && offNow.getAttribute('title')}`;
     if (typed) {
       // Unsaved typing, then a pick: the one dirty dialog, answered with `typed`.
       for (const fn of inputs) fn({ target: { dataset: { action: 'edit-raw' }, value: '{"class": 4}' } });
@@ -839,7 +869,7 @@ async function branchWalk(create, { confirmDelete = true, typed = null, refuseKe
       return out;
     }
     const select = part('branch-picker__select');
-    if (select) { select.value = 'w1'; fire(select, 'change'); }
+    if (select) { select.value = pick; fire(select, 'change'); }
     // Read before the branch answers: what the pick itself left of the screen.
     const picked = controller.getState();
     out.picked = `${picked.world}|${Boolean(picked.selection)}|${Boolean(picked.draft)}`;
@@ -848,14 +878,29 @@ async function branchWalk(create, { confirmDelete = true, typed = null, refuseKe
     await settle();
     out.onBranch = urls.splice(0);
     const name = part('branch-picker__name');
+    if (name) { name.value = 'w2'; fire(name, 'input'); }
+    // What the new branch stands on, pressed in order; each press redraws the part.
+    for (const label of beneath || []) {
+      const chip = walkAll(mount).find((n) => n._classes.includes('branch-picker__chip') && n.textContent === label);
+      if (chip) fire(chip, 'click');
+    }
     const make = part('branch-picker__create');
-    if (name && make) { name.value = 'w2'; fire(name, 'input'); fire(make, 'click'); }
+    if (make) fire(make, 'click');
     await settle();
-    out.made = { world: controller.getState().world, urls: urls.splice(0) };
+    toasts.splice(0);
+    out.made = { world: controller.getState().world, urls: urls.splice(0),
+      operating: texts('branch-picker__operating').join('|'),
+      history: walkAll(mount).filter((n) => n.tagName === 'LI').map((n) => n.textContent.split(' · ')[0]).join(',') };
+    const go = part('branch-picker__operate');
+    if (go) fire(go, 'click');
+    await settle();
+    out.operated = { asks: asks.splice(0), sent: operated.splice(0), urls: urls.splice(0), toasts: toasts.splice(0),
+      operating: texts('branch-picker__operating').join('|'),
+      history: walkAll(mount).filter((n) => n.tagName === 'LI').length };
     const drop = part('branch-picker__delete');
     if (drop) fire(drop, 'click');
     await settle();
-    out.dropped = { world: controller.getState().world, urls: urls.splice(0), confirms };
+    out.dropped = { world: controller.getState().world, urls: urls.splice(0), confirms, toasts: toasts.splice(0) };
     return out;
   } finally {
     globalThis.fetch = keepFetch;
@@ -864,11 +909,17 @@ async function branchWalk(create, { confirmDelete = true, typed = null, refuseKe
 }
 const branchSeen = async (create) => ({ yes: await branchWalk(create),
   no: await branchWalk(create, { confirmDelete: false }),
+  byName: await branchWalk(create, { pick: 'default' }),
+  under: await branchWalk(create, { beneath: ['w1', 'default'] }),
+  nothing: await branchWalk(create, { beneath: ['Nothing'] }),
+  declined: await branchWalk(create, { confirmOperate: false }),
+  tokenless: await branchWalk(create, { refuseOperate: true }),
+  undeleted: await branchWalk(create, { refuseDelete: true }),
   discard: (await branchWalk(create, { typed: 'discard' })).typed,
   stay: (await branchWalk(create, { typed: 'cancel' })).typed,
   keep: (await branchWalk(create, { typed: 'keep' })).typed,
   refused: (await branchWalk(create, { typed: 'keep', refuseKeep: true })).typed });
-function branchSuite({ yes, no, discard, stay, keep, refused }) {
+function branchSuite({ yes, no, byName, under, nothing, declined, tokenless, undeleted, discard, stay, keep, refused }) {
   const names = [];
   const failures = [];
   const say = (name, cond, detail) => {
@@ -877,10 +928,14 @@ function branchSuite({ yes, no, discard, stay, keep, refused }) {
     failures.push(detail ? `${name} — ${detail}` : name);
     console.log(`  FAIL ${name}${detail ? ' — ' + detail : ''}`);
   };
-  say('Z1 Default: the screen asks what it asked before the round, byte for byte',
-    JSON.stringify(yes.onDefault) === JSON.stringify(REQUESTS_BEFORE.urls), yes.onDefault.join(' | '));
-  say('Z2 the picker lists Default and the declaration\'s branches', yes.listed.join(',') === '(default),w1',
-    yes.listed.join(','));
+  // One GET /worlds beside each census read (lead 120450931 ③) - the only request the round adds.
+  const withWorlds = [...REQUESTS_BEFORE.urls, ...REQUESTS_BEFORE.urls
+    .filter((u) => u === 'public GET /api/ledger/declaration').map(() => 'admin GET /admin/ontology-explorer/worlds')].sort();
+  say('Z1 no world: the screen asks what it asked before the round, byte for byte, and reads the worlds beside each census',
+    JSON.stringify(yes.onDefault) === JSON.stringify(withWorlds), yes.onDefault.join(' | '));
+  say('Z2 the empty choice is named after the operating world; then the worlds as the server names them',
+    yes.listed.join(',') === '(operating),default,w1' && yes.emptyText === 'Operating · w1',
+    `${yes.listed.join(',')} :: ${yes.emptyText}`);
   say('Z3 a pick starts the screen over on the branch: nothing selected, no draft open',
     yes.open === 'true|true' && yes.picked === 'w1|false|false', `${yes.open} -> ${yes.picked}`);
   const lacking = yes.onBranch.filter((u) => !u.includes('world=w1'));
@@ -894,7 +949,7 @@ function branchSuite({ yes, no, discard, stay, keep, refused }) {
     yes.made.world === 'w2' && yes.made.urls[0] === 'admin POST /admin/ontology-explorer/bootstrap?world=w2'
       && yes.made.urls.length > 1 && yes.made.urls.every((u) => u.includes('world=w2')), yes.made.urls.join(' | '));
   const after = yes.dropped.urls.slice(2);
-  say('Z7 delete: the preview, its count confirmed, the delete with that count; then Default',
+  say('Z7 delete: the preview, its count confirmed, the delete with that count; then no world (the operating one)',
     yes.dropped.urls[0] === 'admin DELETE /admin/ontology-explorer/worlds/w2?world=w2'
       && yes.dropped.urls[1] === 'admin DELETE /admin/ontology-explorer/worlds/w2?confirm_atoms=7&world=w2'
       && yes.dropped.confirms.length === 1 && yes.dropped.confirms[0].includes('7 atoms')
@@ -923,6 +978,32 @@ function branchSuite({ yes, no, discard, stay, keep, refused }) {
   say('Z15 a refused Keep stays, with the typing',
     refused.asked && refused.urls.length === 1 && refused.world === null && refused.draft && refused.dirty,
     `${refused.asked} ${refused.world} ${refused.draft} ${refused.dirty} ${refused.urls.join(' | ')}`);
+  say('Z16 the default is picked by its name: every request then carries world=default',
+    byName.picked === 'default|false|false' && byName.onBranch.length > 0
+      && byName.onBranch.every((u) => u.includes('world=default')), `${byName.picked} ${byName.onBranch.join(' | ')}`);
+  say('Z17 a new branch stands on what was pressed, in that order; Nothing sends it empty; untouched sends none',
+    under.made.urls[0] === 'admin POST /admin/ontology-explorer/bootstrap?beneath=w1,default&world=w2'
+      && nothing.made.urls[0] === 'admin POST /admin/ontology-explorer/bootstrap?beneath=&world=w2'
+      && yes.made.urls[0] === 'admin POST /admin/ontology-explorer/bootstrap?world=w2',
+    `${under.made.urls[0]} | ${nothing.made.urls[0]} | ${yes.made.urls[0]}`);
+  say('Z18 Operate asks once and sends one PUT naming the world read; declined, it sends none',
+    yes.operated.asks.length === 1 && JSON.stringify(yes.operated.sent) === '["w2"]'
+      && yes.operated.urls.filter((u) => u.startsWith('admin PUT')).length === 1
+      && declined.operated.asks.length === 1 && declined.operated.sent.length === 0
+      && declined.operated.urls.length === 0,
+    `${JSON.stringify(yes.operated)} :: ${JSON.stringify(declined.operated)}`);
+  say('Z19 a refused Operate shows the server\'s sentence as it was sent',
+    JSON.stringify(tokenless.operated.toasts) === JSON.stringify([TOKEN_REFUSED])
+      && tokenless.operated.operating === 'Operating · w1', JSON.stringify(tokenless.operated));
+  say('Z20 a refused delete shows the server\'s sentence and the branch stays',
+    undeleted.dropped.toasts.join('|') === DELETE_REFUSED && undeleted.dropped.world === 'w2'
+      && undeleted.dropped.confirms.length === 0, JSON.stringify(undeleted.dropped));
+  say('Z21 on a branch the operating world is shown, its history newest first; Operate updates both',
+    yes.made.operating === 'Operating · w1' && yes.made.history === 'w1,default'
+      && yes.operated.operating === 'Operating · w2' && yes.operated.history === 3,
+    `${yes.made.operating} ${yes.made.history} -> ${yes.operated.operating} ${yes.operated.history}`);
+  say('Z22 on the empty choice Operate is off, with the reason', yes.operateOff === 'true|Already the operating world',
+    yes.operateOff);
   return { ran: names.length, names, failures };
 }
 const branchBase = branchSuite(await branchSeen(createOntologyExplorerController));
@@ -944,16 +1025,16 @@ failed += branchBase.failures.length;
     { id: 'M15', what: 'the census goes round the seat', catches: 'Z4',
       mutate: (text) => swap(text, "      const res = await askPublic(`${apiBase}/api/ledger/declaration`);",
         "      const res = await fetch(`${apiBase}/api/ledger/declaration`);") },
-    { id: 'M16', what: 'a new branch is bootstrapped on the default', catches: 'Z6',
-      mutate: (text) => swap(text, "      const res = await ask(`${apiBase}/admin/ontology-explorer/bootstrap`, {",
-        "      const res = await adminFetch(`${apiBase}/admin/ontology-explorer/bootstrap`, {") },
+    { id: 'M16', what: 'a new branch is bootstrapped with no world (the operating one)', catches: 'Z6',
+      mutate: (text) => swap(text, "      const res = await ask(`${apiBase}/admin/ontology-explorer/bootstrap${under}`, {",
+        "      const res = await adminFetch(`${apiBase}/admin/ontology-explorer/bootstrap${under}`, {") },
     { id: 'M17', what: 'a pick keeps the selection and the draft', catches: 'Z3',
       mutate: (text) => swap(text,
-        '    state = { ...initialExplorerState, navigation: { back: [], forward: [] }, world: next, worlds: state.worlds };',
-        '    state = { ...state, world: next };') },
+        '    state = { ...initialExplorerState, navigation: { back: [], forward: [] }, world: next, worlds: state.worlds,',
+        '    state = { ...state, world: next, worlds: state.worlds,') },
     { id: 'M18', what: 'a branch is deleted without asking', catches: 'Z8',
       mutate: (text) => swap(text, 'if (!window.confirm(', 'if (void window.confirm(') },
-    { id: 'M19', what: 'the seat sends a world on Default too', catches: 'Z1 Default',
+    { id: 'M19', what: 'the seat sends a world when none is picked', catches: 'Z1 no world',
       load: async () => {
         const loud = (await loadWithProbe(WORLD, { mutate: (t) => swap(t, '    if (!world) return fetchImpl(url, init);\n', '') }))
           .module.withWorld;
@@ -965,6 +1046,20 @@ failed += branchBase.failures.length;
       mutate: (text) => swap(text,
         "    if (decision === 'discard' && state.draft && !(await discardDraft({ ask: false }))) return;\n    state = {",
         '    state = {') },
+    { id: 'M29', what: 'Operate goes without asking', catches: 'Z18',
+      mutate: (text) => swap(text, "    if (!window.confirm(`Make ${name} the operating world?`)) return;\n", '') },
+    { id: 'M30', what: 'Operate is sent twice', catches: 'Z18',
+      mutate: (text) => swap(text, "      const body = await jsonRequest('/worlds/operating', { method: 'PUT',",
+        "      await jsonRequest('/worlds/operating', { method: 'PUT', body: JSON.stringify({ world: name }) });\n"
+        + "      const body = await jsonRequest('/worlds/operating', { method: 'PUT',") },
+    { id: 'M31', what: 'what a new branch stands on is dropped', catches: 'Z17',
+      mutate: (text) => swap(text,
+        "    const under = Array.isArray(beneath) ? `?beneath=${beneath.map(encodeURIComponent).join(',')}` : '';",
+        "    const under = '';") },
+    { id: 'M32', what: 'the token gate\'s sentence is folded into a status line', catches: 'Z19',
+      mutate: (text) => swap(text, "(typeof detail === 'string' ? detail : detail.message)", 'detail.message') },
+    { id: 'M33', what: 'the worlds are not read', catches: 'Z1 no world',
+      mutate: (text) => swap(text, '      void loadWorlds();\n', '') },
     { id: 'M27', what: 'Keep leaves the typing behind', catches: 'Z14',
       mutate: (text) => swap(text, "    if (decision === 'keep' && state.dirty) {\n", "    if (false) {\n") },
     { id: 'M28', what: 'a refused Keep goes on anyway', catches: 'Z15',
@@ -981,7 +1076,7 @@ failed += branchBase.failures.length;
 }
 
 // The picker's own name field, the part alone: a blank name must make nothing - on the declaration
-// screen it would bootstrap the DEFAULT world - and Default has nothing to delete.
+// screen it would bootstrap the OPERATING world - and the empty choice has nothing to delete.
 async function pickerWalk(Picker) {
   const made = [];
   const dropped = [];
@@ -1010,6 +1105,32 @@ async function pickerWalk(Picker) {
   if (typing) { typing.value = 'w4'; fire(typing, 'input'); }
   picker.show({ worlds: ['w1'], current: null });
   out.kept = `${(part('branch-picker__name') || {}).value}|${(part('branch-picker__create') || {}).disabled}`;
+  // The empty choice's name (lead 120450931 ①), and what a new branch stands on, pressed in order (③).
+  const words = new Picker(element('div'), { doc: document, onPick: () => {} });
+  const emptyText = () => (walkAll(words.mount).find((n) => n.tagName === 'OPTION' && n.value === '') || {}).textContent;
+  words.show({ worlds: ['default', 'w1'], current: null, operating: 'w1' });
+  out.empty = emptyText();
+  words.show({ worlds: ['default', 'w1'], current: null });
+  out.bare = emptyText();
+  const stood = [];
+  const under = new Picker(element('div'), { doc: document, onPick: () => {}, onCreate: (n, b) => stood.push(b) });
+  under.show({ worlds: ['default', 'w1'], current: null, operating: 'w1' });
+  const press = (label) => {
+    const chip = walkAll(under.mount).find((n) => n._classes.includes('branch-picker__chip') && n.textContent === label);
+    if (chip) fire(chip, 'click');
+  };
+  const create = (presses) => {
+    for (const label of presses) press(label);
+    const field = walkAll(under.mount).find((n) => n._classes.includes('branch-picker__name'));
+    if (field) { field.value = 'w3'; fire(field, 'input'); }
+    const go = walkAll(under.mount).find((n) => n._classes.includes('branch-picker__create'));
+    if (go) fire(go, 'click');
+  };
+  create(['w1', 'default']);
+  create([]);
+  create(['Nothing']);
+  create(['w1', '1 · w1']);
+  out.stood = JSON.stringify(stood);
   return out;
 }
 function pickerSuite(seen) {
@@ -1024,9 +1145,13 @@ function pickerSuite(seen) {
   say('Z11 a blank name makes nothing: Create is off with the reason; a name goes trimmed',
     seen.fresh === 'true|Name the branch first' && seen.typed.join(',') === 'true,false'
       && JSON.stringify(seen.made) === '["w3"]', `${seen.fresh} ${seen.typed.join(',')} ${JSON.stringify(seen.made)}`);
-  say('Z12 Default offers nothing to delete', seen.deletable === false, String(seen.deletable));
+  say('Z12 the empty choice offers nothing to delete', seen.deletable === false, String(seen.deletable));
   say('Z13 a redraw keeps a name being typed; a made branch clears it',
     seen.afterMade === '' && seen.kept === 'w4|false', `${JSON.stringify(seen.afterMade)} ${seen.kept}`);
+  say('Z23 the empty choice is named after the operating world, or bare when the page does not know it',
+    seen.empty === 'Operating · w1' && seen.bare === 'Operating', `${seen.empty} | ${seen.bare}`);
+  say('Z24 beneath: pressed in order, Nothing is empty, a press taken back is none chosen, and each Create starts afresh',
+    seen.stood === JSON.stringify([['w1', 'default'], null, [], null]), seen.stood);
   return { ran: names.length, names, failures };
 }
 const { BranchPicker } = await import('../src/branch_picker.js');
@@ -1042,16 +1167,23 @@ failed += pickerBase.failures.length;
     return text.split(from).join(to);
   };
   const MUTANTS = [
-    { id: 'M22', what: 'a blank name is sent (the screen would bootstrap the default)', catches: 'Z11',
-      mutate: (text) => swap(text, 'if (!isBlank(name.value)) {', 'if (true) {') },
+    { id: 'M22', what: 'a blank name is sent (the screen would bootstrap the operating world)', catches: 'Z11',
+      mutate: (text) => swap(text, '        if (isBlank(name.value)) return;\n', '') },
     { id: 'M23', what: 'Create is on with no name', catches: 'Z11',
       mutate: (text) => swap(text, "isBlank(name.value) ? NAME_FIRST : ''", "''") },
-    { id: 'M24', what: 'Default offers a delete', catches: 'Z12',
+    { id: 'M24', what: 'the empty choice offers a delete', catches: 'Z12',
       mutate: (text) => swap(text, 'if (this.onDelete && this.current) {', 'if (this.onDelete) {') },
     { id: 'M25', what: 'a redraw drops the name being typed', catches: 'Z13',
       mutate: (text) => swap(text, '      name.value = this.typed;\n', '') },
+    { id: 'M34', what: 'the empty choice is named Default again', catches: 'Z23',
+      mutate: (text) => swap(text, "const empty = this.operating ? `Operating · ${this.operating}` : 'Operating';",
+        "const empty = 'Default';") },
+    { id: 'M35', what: 'a pressed world goes on top, not under the last', catches: 'Z24',
+      mutate: (text) => swap(text, '[...list, world]', '[world, ...list]') },
+    { id: 'M36', what: 'what was pressed outlives the Create', catches: 'Z24',
+      mutate: (text) => swap(text, "        this.typed = '';\n        this.beneath = null;\n", "        this.typed = '';\n") },
     { id: 'M26', what: 'a made branch leaves its name in the field', catches: 'Z13',
-      mutate: (text) => swap(text, "{ this.typed = ''; this.onCreate(", '{ this.onCreate(') },
+      mutate: (text) => swap(text, "        this.typed = '';\n        this.beneath = null;\n", "        this.beneath = null;\n") },
   ];
   const scored = await scoreMutants(MUTANTS, async (m) => pickerSuite(await pickerWalk(
     (await loadWithProbe(PICKER, { mutate: m.mutate })).module.BranchPicker)),

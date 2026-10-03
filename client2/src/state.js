@@ -1,10 +1,15 @@
 import { LEDGER_COL_ID } from './grid_ledger_column.js';
+import { withWorld } from './world.js';
 
 export const state = {
   gridApi: null,
   currentTable: '',
-  // `/tables` as the dropdown draws it: {tables, groups}. `null` until the list has loaded.
+  // `/tables` as the dropdown and the world tabs draw it: {tables, groups, perWorld, worlds, operating}.
+  // `null` until the list has loaded.
   tableList: null,
+  // The world tab picked on the open table (null: none picked - the operating world, no argument sent).
+  // It dies with the table, like the sort column.
+  gridWorld: null,
   currentColumns: [],
   currentColumnTypes: {},
   // C-84. 서버 카탈로그가 말하는 이 표의 «종류» — `/tables/<n>/schema.kind` 그대로.
@@ -229,6 +234,18 @@ export function isVirtualColumn(colId) {
 export function tableIsView() {
   return state.currentTableKind === 'view';
 }
+
+/** The open table is one each ledger world has its own of - `/tables` `per_world` says so, not its name
+ *  (lead 120450931 ②). The tab row and every read below ask this. */
+export function tableIsPerWorld() {
+  const perWorld = state.tableList && state.tableList.perWorld;
+  return Array.isArray(perWorld) && perWorld.includes(state.currentTable);
+}
+
+/** The grid's reads of the open table: the picked world rides them on a per-world table, nothing else
+ *  changes - another table's request is today's, byte for byte. */
+export const gridFetch = withWorld((url, init) => fetch(url, init),
+  () => (tableIsPerWorld() ? state.gridWorld : null));
 
 /** 뷰에서 쓰기를 거절할 때 적는 «한 줄». 술어와 같이 살아서 자리마다 다르게 안 적힌다. */
 export const VIEW_READ_ONLY_NOTE = 'View — read-only';

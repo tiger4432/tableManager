@@ -13,7 +13,7 @@ import { narrowingTail } from './narrowing.js';
 // C-14: 값의 «출처»를 찍는 두 행. 하니스가 import 로 채점할 수 있게 자기 모듈에 삽니다 —
 // 이 파일은 ag-grid 의 CSS 를 import 해서 node 가 못 읽습니다.
 import { sourceRowHtml, sourceRowAllHtml } from './source_rows.js';
-import { state } from './state.js';
+import { state, gridFetch } from './state.js';
 import { NONE, unitText } from './ui_words.js';
 import { writeRefusal } from './write_guard.js';
 import { elements } from './dom.js';
@@ -23,8 +23,11 @@ import {
   fetchData,
   addRows,
   deleteSelectedRows,
-  checkChainHealth
+  checkChainHealth,
+  seatWorldTabs,
+  pickGridWorld
 } from './api.js';
+import { WorldTabs } from './world_tabs.js';
 
 /** 체인 뱃지를 다시 묻는 간격. 서버의 stale_after 가 60 초라 그보다 촘촘할 이유가 없다. */
 const CHAIN_BADGE_POLL_MS = 20000;
@@ -165,6 +168,9 @@ async function init() {
       // `setRelation` 한 번으로 문장이 확정됩니다.
       sourceLabel = initGridSourceLabel();
       redoBanner = initRedoBanner();
+      // Seated before the table list loads, so the first table switch finds it.
+      const tabsHost = document.getElementById('world-tabs-host');
+      if (tabsHost) seatWorldTabs(new WorldTabs(tabsHost, { doc: document, onPick: (name) => void pickGridWorld(name) }));
       // 버튼의 활성/비활성은 «선택»이 정합니다. 그 신호를 여기서 부품에 잃습니다 --
       // 그리드는 배너를 모르고, 배너는 그리드를 모릅니다.
       registerSelectionListener(() => { if (redoBanner) redoBanner.selectionChanged(); });
@@ -1089,7 +1095,7 @@ function setupEventListeners() {
 
         // 1. 첫 번째 청크 요청하여 전체 개수(total)와 첫 데이터를 받아옴
         const firstUrl = `${baseApiUrl}?skip=${currentSkipOffset}&limit=${chunkLimit}&${queryParams}`;
-        const firstRes = await fetch(firstUrl);
+        const firstRes = await gridFetch(firstUrl);
         if (!firstRes.ok) throw new Error(`HTTP error! status: ${firstRes.status}`);
         const firstResult = await firstRes.json();
 
@@ -1111,7 +1117,7 @@ function setupEventListeners() {
           await new Promise(resolve => setTimeout(resolve, 5));
 
           const nextUrl = `${baseApiUrl}?skip=${currentSkipOffset}&limit=${chunkLimit}&${queryParams}`;
-          const nextRes = await fetch(nextUrl);
+          const nextRes = await gridFetch(nextUrl);
           if (!nextRes.ok) throw new Error(`HTTP error! status: ${nextRes.status}`);
           const nextResult = await nextRes.json();
 
@@ -1238,7 +1244,7 @@ function setupEventListeners() {
       showToast('📄 CSV download started', 'success');
 
       try {
-        const response = await fetch(url);
+        const response = await gridFetch(url);
         if (!response.ok) {
           throw new Error(`HTTP error! status: ${response.status}`);
         }

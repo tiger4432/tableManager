@@ -181,6 +181,25 @@
 #ontology-explorer-root .branch-picker__label { display: flex; align-items: center; gap: var(--space-1);
   font-size: var(--fs-label); color: var(--oe-muted); white-space: nowrap; }
 #ontology-explorer-root .branch-picker__name { width: 9rem; }
+#ontology-explorer-root .branch-picker { flex-wrap: wrap; }
+/* What a new branch stands on, pressed in order (lead 120450931 ③); a pressed one is filled, as `.oe-pick`. */
+#ontology-explorer-root .branch-picker__beneath { display: flex; align-items: center; gap: var(--space-1); flex-wrap: wrap; }
+#ontology-explorer-root .branch-picker__beneath-label { font-size: var(--fs-label); color: var(--oe-muted); }
+#ontology-explorer-root .branch-picker__chip { min-height: var(--control-h); padding: 0 var(--space-3);
+  border: 1px solid var(--oe-line); background: transparent; color: var(--oe-text); font-size: var(--fs-button); cursor: pointer; }
+#ontology-explorer-root .branch-picker__chip:hover { border-color: var(--oe-accent); color: var(--oe-accent); }
+#ontology-explorer-root .branch-picker__chip.is-on { border-color: var(--oe-accent); color: var(--oe-surface);
+  background: var(--oe-accent); font-weight: 600; }
+#ontology-explorer-root .branch-picker__operating { font-size: var(--fs-label); color: var(--oe-ok); white-space: nowrap; }
+/* Who operated which when: a popover under its own summary, as the canon's popovers hang. */
+#ontology-explorer-root .branch-picker__history { position: relative; font-size: var(--fs-label); color: var(--oe-muted); }
+#ontology-explorer-root .branch-picker__history summary { cursor: pointer; min-height: var(--control-h);
+  display: flex; align-items: center; padding: 0 var(--space-2); }
+#ontology-explorer-root .branch-picker__history ol { position: absolute; z-index: 30; right: 0; top: 100%;
+  margin: 0; padding: var(--space-3) var(--space-3) var(--space-3) var(--space-6); min-width: max-content;
+  border: 1px solid var(--oe-line); background: var(--oe-surface); color: var(--oe-text);
+  box-shadow: var(--shadow-pop); font-family: var(--oe-font-mono); }
+#ontology-explorer-root .branch-picker__history li { padding: var(--space-1) 0; white-space: nowrap; }
 /* The auto margin moved off the search and onto what follows it: the mockup's order is
    title, id, search, then everything else pushed right. */
 #ontology-explorer-root .oe-history-actions { display: flex; gap: 3.4px; margin-left: auto; }

@@ -927,7 +927,10 @@ const FLOORS = new Map([
   // every request, a pick starts the screen over (unsaved typing through the one dirty decision), a branch
   // is made by the bootstrap and deleted after its preview; the picker makes nothing from a blank name and keeps a name across redraws.
   // 74 -> 78 (lead ccf374d48 answer 2): Keep stores the typing in the world it was typed in; a refused Keep stays.
-  ['explorer_open_path_harness.mjs', 90],
+  // 90 -> 107 (lead 120450931): the empty pick is the operating world and named after it, the default is
+  // picked by its name, the worlds are read beside the census, beneath in pressed order, Operate asked once
+  // and sent once, the token's and a delete's refusal as sent, the operating world and its history shown.
+  ['explorer_open_path_harness.mjs', 107],
   // New with lead 619befe8c: where an edit sits in the ledger form — a guide per ancestor on every
   // row of the real skeleton's form, the trail as the declaration path's own words, the path bar
   // part, and no skeleton word in the bar's code.
@@ -1380,6 +1383,9 @@ const FLOORS = new Map([
   // New 2026-10-02 (lead 685f236d7): the table dropdown groups by the operator's `group`, the
   // search narrows it, and the open table stays in it on every way in. Floor = first run.
   ['table_menu_harness.mjs', 15],
+  // New with lead 120450931 ②: the grid's world tabs - only over a per-world table, the operating one marked,
+  // a pick reads again and every read after it carries the world, other tables byte for byte. Floor = first run.
+  ['grid_world_tabs_harness.mjs', 19],
   // New 2026-09-13 with C-86 (the chain tab can add a rule it did not have). Floor is the
   // count it reports on the commit that introduces it.
   // 🔴 IT CARRIES A DECOY SKELETON. 「the fields come from the declaration」 cannot be scored by
@@ -1533,7 +1539,8 @@ const FLOORS = new Map([
   // 62 -> 70 (lead 64c380aeb, M): Default asks what it asked before; a branch reaches every request, the
   // saved row and the saved list; a blank branch in the address is Default.
   // 70 -> 71 (lead ccf374d48 answer 1): Default's saved list reads the runs with no world.
-  ['rnd_board_contrast_save_harness.mjs', 71],
+  // 71 -> 72 (lead 120450931 ①): the empty choice is named after the operating world; the default by its name.
+  ['rnd_board_contrast_save_harness.mjs', 72],
   // the board part: the walk itself. 32 -> 34 (D5 and its mutant X11, lead d4a949a8c ㉱): the two
   // lists walk through one prelude. 34 -> 39 (H0-H2 and X12 X13, lead 9dd1e378b): measured reads the
   // hops' predicates, the same answer the retired pairing function gave on the same fixture.

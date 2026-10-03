@@ -74,7 +74,7 @@
  */
 
 import { API_BASE } from './config.js';
-import { state } from './state.js';
+import { state, gridFetch } from './state.js';
 import { saysTruncated, suggestTruncatedNote } from './truncation.js';
 import { slowReasonNote } from './slow_reason.js';
 
@@ -399,7 +399,7 @@ async function requestValues(table, column, prefix, limit) {
 
   let res;
   try {
-    res = await fetch(url, controller ? { signal: controller.signal } : undefined);
+    res = await gridFetch(url, controller ? { signal: controller.signal } : undefined);
   } catch (err) {
     // Aborted, offline, or the server went away. Not a user-facing event.
     return { values: [], truncated: false, ok: false, permanent: false, seq };

@@ -4,9 +4,12 @@
 import { saysTruncated } from './truncation.js';
 
 export const initialExplorerState = Object.freeze({
-  // The ledger world this screen reads (null = the default) and the branches there are (lead 64c380aeb).
+  // The ledger world this screen reads (null = the operating one) and the worlds there are (lead 64c380aeb);
+  // the operating one and who operated which when (lead 120450931 ③) - all from `GET /worlds`.
   world: null,
   worlds: [],
+  operating: null,
+  history: [],
   activeSnapshot: null,
   viewContext: null,
   selection: null,
@@ -156,8 +159,11 @@ export function reduceExplorerState(state = initialExplorerState, action) {
     //    `/api/ledger/declaration` is NOT admin-token gated, so it answers where the refusal
     //    report may not — and a failure here must leave the counts absent rather than empty.
     case 'CENSUS_RECEIVED':
-      return { ...state, census: action.bySource || {}, censusNames: action.names || {},
-        worlds: action.worlds || [] };
+      return { ...state, census: action.bySource || {}, censusNames: action.names || {} };
+    case 'WORLDS_RECEIVED':
+      return { ...state, worlds: Array.isArray(action.worlds) ? action.worlds : [],
+        operating: typeof action.operating === 'string' ? action.operating : null,
+        history: Array.isArray(action.history) ? action.history : [] };
     case 'REQUEST_FAILED':
       if (action.generation !== state.requestGeneration) return state;
       if (action.code === 'unknown_selection' || action.code === 'context_mismatch') {

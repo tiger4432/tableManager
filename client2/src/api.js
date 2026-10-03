@@ -1,6 +1,6 @@
 import { API_BASE, WS_URL, CURRENT_USER, pageLimit } from './config.js';
 import { narrowingParams as buildNarrowing } from './narrowing.js';
-import { state } from './state.js';
+import { state, gridFetch, tableIsPerWorld } from './state.js';
 import { notANumber, unitText } from './ui_words.js';
 import { refuseWrite, applyWriteGuards, writeRefusal } from './write_guard.js';
 import { setDisabledReason } from './disabled_reason.js';
@@ -186,7 +186,8 @@ async function loadTablesOnce() {
 
     if (data.tables && data.tables.length > 0) {
       // `groups` rides the list (lead 685f236d7): {table: group}, an ungrouped table absent.
-      state.tableList = { tables: data.tables, groups: data.groups };
+      state.tableList = { tables: data.tables, groups: data.groups, perWorld: data.per_world,
+        worlds: data.worlds, operating: data.operating };
       // Auto select first table (switchTable draws the dropdown)
       const firstTable = data.tables[0];
       await switchTable(firstTable);
@@ -207,6 +208,26 @@ export function drawTableMenu(selected = state.currentTable) {
   const query = elements.tableSearch ? elements.tableSearch.value : '';
   fillTableSelect(elements.tableSelect,
     tableMenu(state.tableList.tables, state.tableList.groups, query, selected), selected);
+}
+
+// The world tab row over the grid (lead 120450931 ②). The page seats the part; every table switch redraws it,
+// because every way to a table - the dropdown, boot, a history jump - goes through `switchTable`.
+let worldTabs = null;
+export function seatWorldTabs(part) {
+  worldTabs = part;
+  drawWorldTabs();
+}
+function drawWorldTabs() {
+  if (!worldTabs) return;
+  const list = state.tableList || {};
+  worldTabs.show(tableIsPerWorld()
+    ? { worlds: list.worlds, operating: list.operating, current: state.gridWorld } : null);
+}
+/** A world tab picked: the open table is read again in it, from its first page. */
+export async function pickGridWorld(world) {
+  state.gridWorld = world || null;
+  drawWorldTabs();
+  await fetchData(true);
 }
 
 // Switch current working table
@@ -233,6 +254,9 @@ export async function switchTable(tableName) {
   //    the wire, and the server answers that with a 422 — a refusal the operator did nothing
   //    to earn. It dies with the table, like the transaction filter above it.
   state.serverSort = null;
+  // The world tab dies with the table too (lead 120450931 ②); the row is drawn for the table now open.
+  state.gridWorld = null;
+  drawWorldTabs();
 
   // Reset transaction filter
   state.currentTransactionId = null;
@@ -278,7 +302,7 @@ export async function loadSchema(tableName) {
   try {
     // 🔴 Unchecked, a failure body became `columns: []` and the grid believed the table
     //    had no columns -- which is the state writes start from. Same class as F-11.
-    const res = await fetch(`${API_BASE}/tables/${tableName}/schema`);
+    const res = await gridFetch(`${API_BASE}/tables/${tableName}/schema`);
     if (!res.ok) throw new Error(`schema ${res.status}`);
     const data = await res.json();
     state.currentColumns = data.columns || [];
@@ -387,7 +411,7 @@ async function fillMatchCount(params, table) {
   const mine = ++countGeneration;
   const tail = params.toString();
   try {
-    const res = await fetch(`${API_BASE}/tables/${table}/data/count${tail ? `?${tail}` : ''}`);
+    const res = await gridFetch(`${API_BASE}/tables/${table}/data/count${tail ? `?${tail}` : ''}`);
     const body = await res.json();
     // 늦게 온 답은 버립니다 -- 그 사이에 표나 필터가 바뀌었으면 이건 «다른 질문»의 답입니다.
     if (mine !== countGeneration || table !== state.currentTable) return;
@@ -445,7 +469,7 @@ export async function fetchData(resetSkip = true) {
   if (tail) url += `&${tail}`;
 
   try {
-    const res = await fetch(url);
+    const res = await gridFetch(url);
     // 🔴 C-105. 거절은 «읽기»에도 옵니다 — 그리고 그 답에는 행이 «없습니다». 종전에는 `res.ok`
     //    를 안 보고 `result.data.length` 를 읽어 «던졌고», 서버가 이름을 대고 거절한 사유가
     //    (실경로: 「전순서가 없어 페이지를 읽을 수 없다 — business_key 를 선언하라」) 화면

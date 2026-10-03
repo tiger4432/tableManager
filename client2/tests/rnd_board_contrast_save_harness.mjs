@@ -407,7 +407,9 @@ async function suite(mods) {
         urls.push(`${via} ${(init && init.method) || 'GET'} ${String(url)}`);
         if (init && init.method === 'PUT') row = JSON.parse(init.body).updates[0].updates;
         const u = new URL(String(url), 'http://box');
-        if (u.pathname.endsWith('/api/ledger/declaration')) return reply(200, { sources: [], worlds: ['w1'] });
+        if (u.pathname.endsWith('/api/ledger/declaration')) {
+          return reply(200, { sources: [], worlds: ['default', 'w1'], operating: 'w1' });
+        }
         return reply(200, { data: [], total: 0 });
       };
       const keep = globalThis.fetch;
@@ -423,13 +425,14 @@ async function suite(mods) {
         await drain();
         await shell.partOf('contrast-save').save();
         await drain();
-        const listed = walk(mount).filter((n) => n.tagName === 'OPTION').map((n) => n.value || '(default)');
+        const listed = walk(mount).filter((n) => n.tagName === 'OPTION').map((n) => n.value || '(operating)');
+        const empty = (walk(mount).find((n) => n.tagName === 'OPTION' && n.value === '') || {}).textContent;
         const select = byClass(mount, 'branch-picker__select')[0];
         if (select) {
-          for (const value of ['w1', '']) { select.value = value; select.dispatch('change'); }
+          for (const value of ['w1', 'default', '']) { select.value = value; select.dispatch('change'); }
         }
         shell.destroy();
-        return { urls: urls.sort(), row, listed, picked };
+        return { urls: urls.sort(), row, listed, empty, picked };
       } finally {
         globalThis.fetch = keep;
       }
@@ -437,29 +440,34 @@ async function suite(mods) {
     const onDefault = await boardOn(null);
     const onBranch = await boardOn('w1');
     const onBlank = await boardOn('  ');
+    const byName = await boardOn('default');
     const rowKeys = (r) => (r ? Object.keys(r).sort().join(',') : '(no save)');
     // 🔴 ONE NAMED EXCEPTION (lead ccf374d48 answer 1): Default's saved list reads the runs with no world,
     //    so that one request adds the table filter's blank condition. Every other request is the day before's.
     const BLANK = JSON.stringify({ world: { filterType: 'text', type: 'blank' } });
     const isList = (u) => u.includes(' GET ') && u.includes('/tables/contrast_run/data?');
     const DEFAULT_NOW = BEFORE.urls.map((u) => (isList(u) ? `${u}&filters=${encodeURIComponent(BLANK)}` : u)).sort();
-    eq('M1 Default: the whole board asks what it asked before the round, byte for byte - but the saved list',
+    eq('M1 no world: the whole board asks what it asked before the round, byte for byte - but the saved list',
       BEFORE.urls.some(isList) && JSON.stringify(onDefault.urls) === JSON.stringify(DEFAULT_NOW)
         && rowKeys(onDefault.row) === BEFORE.saveRowKeys.join(','), true);
-    eq('M2 the picker lists Default and the declaration\'s branches', onDefault.listed.join(','), '(default),w1');
+    eq('M2 the empty choice is named after the operating world; then the declaration\'s worlds',
+      `${onDefault.listed.join(',')}|${onDefault.empty}`, '(operating),default,w1|Operating · w1');
     const lacking = onBranch.urls.filter((u) => !u.includes('world=w1'));
     eq('M3 on a branch every request of the board carries it',
       `${onBranch.urls.length}|${lacking.length}`, `${BEFORE.urls.length}|0`);
     eq('M4 ...and none goes round the page\'s fetch', onBranch.urls.filter((u) => u.startsWith('global')).length, 0);
-    eq('M5 the saved run says its branch; Default\'s row is the day before\'s',
+    eq('M5 the saved run says its branch; with no world the row is the day before\'s',
       `${onBranch.row && onBranch.row.world}|${rowKeys(onDefault.row)}`, `w1|${BEFORE.saveRowKeys.join(',')}`);
     const listUrl = onBranch.urls.find((u) => u.includes(' GET ') && u.includes('/tables/contrast_run/data?')) || '';
     const filters = new URL(listUrl.split(' ').pop() || 'http://box', 'http://box').searchParams.get('filters');
     eq('M6 the saved list reads that branch\'s runs', filters, JSON.stringify({ world: { filterType: 'text', type: 'equals', filter: 'w1' } }));
-    eq('M7 a pick hands the page the name; Default hands it none', JSON.stringify(onDefault.picked), JSON.stringify(['w1', null]));
-    eq('M8 a blank branch in the address is Default', JSON.stringify(onBlank.urls) === JSON.stringify(DEFAULT_NOW), true);
+    eq('M7 a pick hands the page the name, the default\'s too; the empty choice hands it none',
+      JSON.stringify(onDefault.picked), JSON.stringify(['w1', 'default', null]));
+    eq('M8 a blank branch in the address is no world', JSON.stringify(onBlank.urls) === JSON.stringify(DEFAULT_NOW), true);
     const defaultList = onDefault.urls.find(isList) || '';
-    eq('M9 Default\'s saved list reads the runs with no world',
+    eq('M10 the default by its name: every request of the board carries world=default',
+      `${byName.urls.length}|${byName.urls.filter((u) => !u.includes('world=default')).length}`, `${BEFORE.urls.length}|0`);
+    eq('M9 with no world the saved list reads the runs with no world',
       new URL(defaultList.split(' ').pop() || 'http://box', 'http://box').searchParams.get('filters'), BLANK);
   }
 
@@ -546,7 +554,9 @@ const MUTANTS = [
   { name: 'the-save-part-is-not-told-the-branch', catches: ['M5', 'M6'],
     from: ',\n        world: options.world });', to: ' });' },
   { name: 'the-picker-lists-no-branch', catches: ['M2'], file: 'api.js',
-    from: 'collect: body.collect || [], worlds: body.worlds || [] };', to: 'collect: body.collect || [], worlds: [] };' },
+    from: 'collect: body.collect || [], worlds: body.worlds || [],', to: 'collect: body.collect || [], worlds: [],' },
+  { name: 'the-picker-is-not-told-the-operating-world', catches: ['M2'], file: 'main.js',
+    from: ',\n      operating: got && got.operating }));', to: ' }));' },
   { name: 'a-blank-branch-is-sent', catches: ['M8'], file: 'main.js',
     from: '  const world = isBlank(options.world) ? null : options.world;', to: '  const world = options.world || null;' },
   { name: 'a-pick-goes-nowhere', catches: ['M7'], file: 'main.js',

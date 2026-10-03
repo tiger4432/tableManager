@@ -3013,6 +3013,16 @@ body.resizing-active .history-sidebar {
 .grid-source-label.is-refused .grid-source-label__name { font-weight: 600; }
 .grid-source-label__row.is-refused { color: var(--warning); }
 
+/* The world tabs over a per-world table (lead 120450931 ②): small underlined segments, one control high. */
+.world-tabs { display: flex; flex-wrap: wrap; gap: var(--space-1); padding: var(--space-1) var(--space-2);
+  border-bottom: 1px solid var(--border); }
+.world-tabs__tab { display: inline-flex; align-items: center; gap: var(--space-2); min-height: var(--control-h);
+  padding: 0 var(--space-4); background: none; border: none; border-radius: 0; color: var(--text-muted);
+  font-size: var(--fs-button); white-space: nowrap; cursor: pointer; }
+.world-tabs__tab:hover { color: var(--text); }
+.world-tabs__tab.is-active { color: var(--accent); box-shadow: inset 0 -2px 0 var(--accent); }
+.world-tabs__mark { font-size: var(--fs-tag); color: var(--success); text-transform: uppercase; letter-spacing: 0.08em; }
+
 /* 「다시 번역」 줄들. 자기 자리(li#rescope-menu-host) 안에만 그립니다. */
 .rescope-menu-host { padding: 0; }
 .redo-banner { display: inline-flex; gap: 6px; position: relative; }
