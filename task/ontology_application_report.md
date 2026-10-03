@@ -35573,3 +35573,28 @@ RELEASE_LOG 맞음 — 주기 판이 세지 않고 잇는다 · 직전 기록 �
            «똑같은 페이로드 두 번»은 병합 1 · 층 없는 유령 행 1 — 초 없는 시각 "2026-10-03 12:00" 하나로도 운영 재기동 전 판은 이 길을 탔다
 문서        CODE_MAP crud — compose_business_key · key_part(철자 한 자리, 부르는 자리 전부) 줄 새로, 병합의 pending 껍데기 expunge, time_format 절(instant_key · instant_text · 줄 수)
 ```
+
+---
+
+## [C 응용] 10-03 867c693d1(--apply 가 부딪힌 옛 철자 행을 병합) 검수 — 🔴 병합된 «저장된» 껍데기의 층 · 덮어쓰기 줄이 남는다 (쓰기 길도 같다)
+
+```
+어디서   제 사본(git worktree C:/wt-app @1da6ec76d, 무시된 server/config 만 복사, 끝나고 지움) · DB assy_test 스크래치 · 지운 것: 시험 표(fixture)
+출하 시험 -k old_spelled_key_is_rewritten 10 passed (사본 수집 오류 다섯은 무시된 server/mappers/*.py 부재 — 무관)
+더 잰 것  (시험 파일 전문 + 덧붙임, 사본에서만) 병합 «뒤에» 껍데기가 남긴 것 · 아웃박스가 들은 것
+```
+| 경우 (두 표 모양 모두) | 행 | 아웃박스 | 껍데기 row_id 의 cell_sources · cell_overwrites | 층 없는 행 |
+|---|---|---|---|---|
+| ① --apply 병합(사람 값 + 기계 값) | 1 | DELETE 1 · EDIT 1 | 남음 4·4 (키 칸 표 5·5) | 0 |
+| ② 쓰기 길 — 저장된 행의 키 조각을 남의 키로 고침 | 1 | — | 남음 4·0 (키 칸 표 5·0) | 0 |
+
+```
+원인     _merge_into_key_holder 는 «대기 중» 캐시만 주인에게 옮기고, 저장된 껍데기는 행만 db.delete 한다.
+         그 행의 cell_sources · cell_overwrites 줄은 안 지운다 — 지우는 문(delete_rows_batch)은 같은 두 표를 row_id 로 지운다
+         그 사이 층은 주인에게 «복사»돼 있으므로 값은 안 잃는다. 남는 것은 사라진 row_id 를 가리키는 줄
+누가 밟나  --apply 는 병합이 «전부» 저장된 행이라 병합마다 남는다(운영 미리보기의 collides 수만큼). 쓰기 · 핀의 병합은 저장된 행일 때(키 조각 수정)
+모르는 것  그 줄이 무엇을 틀리게 하나 — withdraw_by_origin 이 origin_row_id 로 이 줄을 찾아 없는 행에 거두려 할 수 있다. 안 쟀다.
+         언제부터인지 — 옮긴 몸통 그대로라 a396f64a0 이전 쓰기 길 병합도 같았을 것, 안 쟀다
+제안(한 자리)  병합 몸통이 저장된 껍데기를 지울 때 delete_rows_batch 와 같은 두 줄(그 row_id 의 cell_sources · cell_overwrites)을 지운다 —
+         「행이 표를 떠난다」의 메타 정리가 두 벌이면 다시 갈린다. 운영 --apply 를 돌리기 «전»에 넣을지 여쭐 것
+```
