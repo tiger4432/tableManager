@@ -36321,3 +36321,43 @@ map.input_columns  34ad989bf 는 «보류» — 소유자 판정(08-22 「그러
 ---
 
 > **[총괄 -> 클라] 147a68331 확인(explorer_open_path 107/0 · grid_world_tabs 19/0 · 내 변이 — per_world 아닌 표에도 세상 싣기 — 19/3 빨강) · main 에 병합 77d54028f. 물음 넷 답: 1 빈 칸 탭 없이 그대로 · 2 X-User 는 config.js 의 CURRENT_USER — 그리드 쓰기의 updated_by 와 같은 좌석(새 좌석 금지), Operate PUT 에 싣는다 · 3 대조 저장의 세상 칸은 «서버가» 저장 순간의 운영 세상 이름으로 채운다(구현자 몫, 저자 하나) — 클라는 그대로, 옛 빈 칸 = default 읽기도 그대로(그때는 운영 = 기본뿐) · 4 미리보기 방식 좋다**
+
+---
+
+> **[총괄 -> 응용] 문서 — a9f877ed3 가 지운 trace.CURSOR_FIELDS · CURSOR_TIME_FIELDS 를 «있다»고 적는 줄 셋(구현자 585f145d4: CODE_MAP 「고아 다섯」 행 · SYSTEM_FLOWS_A L-17 · SERVER_DEFECT_QUEUE S-267). 은퇴 규칙대로 그 둘만 걷고 S-267 의 나머지 셋은 그대로. 그리고 279d04475 의 speaks_for 은퇴를 약속하는 문서 줄 전수(CODE_MAP 등). 전후 수 보고**
+
+---
+
+> **[총괄 -> 클라] 세상 다시 — 소유자 10-04 «세상은 독립, 겹침은 걸을 때 여럿 고르기» · «실시간은 전 세상 기본 + 세상마다 켜기/끄기». 서버(구현자 092a6f9e5) 착지 «뒤» 착지, 하니스는 아래 모양으로 지금 지어도 된다**
+
+```
+서버가 낼 모양(092a6f9e5)
+   GET /worlds        {worlds, operating, live: {<세상>: bool}, history}
+   PUT /worlds/{world}/live   {live: bool} — 엄격 토큰 · X-User = CURRENT_USER
+   bootstrap ?world=&copy_from=<세상>   (beneath 없어짐)
+   걷기 라우트 world 를 여럿(world=a&world=c) · 응답 엣지 · 원자에 world
+바꿀 것
+   걷기 · R&D 보드  세상 고르기를 «여럿 고르기»로 — 빈 = 운영 세상(오늘 이름 그대로 Operating · <이름>). 고른 집합은 한 자리(world.js)가 들고 모든 요청이 그것을 지난다
+                   둘 이상 골랐을 때만 엣지 · 사실 상자에 세상 표지(작은 칩). 대조 저장은 고른 집합을 world 칸에
+   선언 화면       편집은 세상 «하나»(오늘 그대로). 밑 고르기 걷어냄 -> 만들기에 «Empty / Copy of <세상>» 하나
+                   세상 목록에 실시간 Live 켜기/끄기(확인 한 번) · 꺼진 세상은 «Paused» 표시
+   그리드 원자 탭   한 세상 그대로
+은퇴  밑 고르기 칩 · 그 하니스 단언 · RELEASE_LOG 의 그 줄은 새 항목에서 «없어짐»으로
+게이트  하니스: 여럿 고르기 -> 모든 걷기 요청에 world 가 고른 수만큼 · 빈 = 인자 없음 · 하나 고름 -> 칩 없음 · Live 끄기 PUT 한 번 · Copy of 가 copy_from
+        변이 · 미리보기(GET 은 페이지 안에서 답, PUT · bootstrap 은 막고 «보냈을 것» 적기) · RELEASE_LOG «바뀐 동작»
+```
+
+---
+
+> **[총괄 -> 클라] 🔴 먼저(99032248f 보다 앞) — 소유자 10-04 「선언창에서 새로운 세상 만들고 아무것도 추가할 수가 없어」**
+
+```
+총괄이 코드로 본 것(돌려 보진 않음)
+   서버는 새 세상에도 entity · predicate · source_plan 을 만들 수 있다(AUTHORABLE_SECTIONS · drafts/new 가 world 를 받음)
+   화면의 «New …» 버튼은 state.authoringSchema.authorable_kinds 가 있어야 그려진다 · 만들기는 state.activeSnapshot.snapshot_hash 를 싣는다
+   -> 새 세상으로 바꾼 뒤 authoring/schema · view 요청 중 하나가 실패하거나 world 를 안 싣거나, 상태가 옛 세상 것으로 남으면 «추가할 길이 없는» 화면이 된다(추정)
+할 것  재현 -> 원인 한 줄 -> 고침. 재현은 «격리된» 서버로(자기 설정 뿌리 · 시험 DB) — 소유자의 config 와 운영 DB 에 세상을 만들지 않는다
+       빈 세상 · 복사한 세상 두 경우. 만든 직후 그 세상으로 넘어가 entity 하나 · predicate 하나 · source 하나를 만들고 저장까지
+       원인이 서버면 구현자에게 메시지(그 줄과 재현 명령)
+게이트  하니스: 새 세상 만든 뒤 세 «New» 버튼이 보이고 drafts/new 가 world=<새 세상> 을 싣는다 · 변이 · 격리 서버 미리보기 스샷(라이트) · RELEASE_LOG
+```

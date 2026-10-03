@@ -71684,3 +71684,236 @@ RELEASE_LOG  세상 항목에 한 문장 · RUN.md 재기동 뒤 볼 명령
 ```
 
 다음: 9280922aa 시계 동률(뒤 항목이 이김) -> 8b81e79a0
+
+---
+
+## [10-03] 9280922aa 착지 22ea53fa3 — 한 배치 안에서도 뒤 항목이 이긴다 · 병합 사본은 껍데기의 원래 시각 순 (총괄 9280922aa · 544c758c6 · f1ad96964 ①)
+
+어느 DB · 어느 스키마 · 지운 것 — PG assy_test 시험 스크래치 스키마(카나리아 1) · 운영 DB 안 씀 · 끝난 pytest 스키마 7 개를 이름으로 DROP(아래)
+
+**층 시각을 찍는 자리 — 전수 (AST, server/ 시험 밖 293 파일, 카나리아 = crud 의 src_obj.ingested_at = datetime.now() 1)**
+```
+찍던 자리(지금으로)   database/crud.py:3541 _merge_into_key_holder · database/crud.py:3573 _merge_into_key_holder · database/crud.py:3874 apply_row_update_internal · setup/seed_data.py:68 seed_row
+                    + migrations/normalize_schema.py 의 «읽을 수 없는 시각» 대체(지역 변수에 먼저 담아 AST 키로는 안 잡혀 읽어서 찾음)
+지금                 database/crud.py _merge_into_key_holder · database/crud.py _merge_into_key_holder · database/crud.py apply_row_update_internal · setup/seed_data.py seed_row — 전부 crud.layer_instant() 를 지남
+받아 오는 자리(그대로)  DB 에서 읽은 층(LightCellSource) · 캐시 옮기기 · upsert 사전에 그 층의 시각 · 마이그레이션의 저장된 시각
+                    전달 자신의 시각을 층에 싣는 제품 자리는 못 찾음
+```
+**지은 것**
+```
+crud.layer_instant()   지금, 그리고 이 프로세스가 준 마지막 시각보다 반드시 뒤(같거나 앞이면 +1 µs, 잠금 안에서)
+병합 사본              껍데기 안의 원래 시각 순(오래된 것 먼저 · 같은 시각이면 이름 내림차순)으로 하나씩 찍음 (544c758c6)
+설명 문장              compute_priority_value 의 「한 배치는 한 datetime.now()」 -> 「두 프로세스가 같은 눈금 · 함수 전에 저장된 층」
+거절 목록              world_unknown 의 worlds = world_listing 의 worlds(default 먼저) (f1ad96964 ①)
+```
+**게이트**
+```
+오라클 시험 300 판   초록 300 · M 의 두 층 시각 같음 0 · 1 µs 로 밀린 판 33 (전이면 같은 눈금이던 것)
+한 배치 200 쌍        고친 뒤 3 번 모두 앞 값 0 · 감사 빠짐 0 / 옛 찍기면 169~176 쌍이 앞 값 · 감사 빠짐 (두 배치로 나누면 0)
+병합                 chain:a 1 먼저 · chain:b 2 나중 -> 임자 칸 2 · 사본 사이 해석도 2
+                    이름 순서가 반대(chain:b x 먼저 · chain:a y 나중) -> y · 같은 시각에 저장된 두 층 -> 껍데기가 보이던 값
+변이 7            보통 쓰기가 datetime.now()(전) RED · 앞보다 뒤로 미는 줄 없음 RED · 사본이 시각 하나를 나눔(ㄴ) RED · 사본을 읽힌 순서로(ㄱ) RED · 같은 시각을 이름 오름차순으로 RED · 사본이 datetime.now()(전) RED · 거절 목록이 가지만 RED
+병합 묶음            sqlite 281 passed, 15 skipped, 905 warnings in 33.17s · PG 25 passed, 279 deselected, 49 warnings in 55.31s
+PG 전체              3 failed, 282 passed, 7802 deselected, 241 warnings in 1259.00s (0:20:58) — 실패(지난 전체 실행들과 같은 셋) test_an_install_that_predates_attributes_is_widened_once · test_the_live_door_writes_the_refusal_breakdown_to_the_registry_row · test_two_independent_refusals_are_counted_and_named_in_one_run
+sqlite 전체           7 failed, 7751 passed, 326 skipped, 3 xfailed, 13022 warnings in 796.82s
+                    남은: 박스 체크아웃 사유 다섯 + test_h3_cross_directory_replace_applies_physical_alter · test_the_sweep_still_runs_when_there_is_nothing_to_do — 그 둘만 다시 돌리면 35 passed, 6 warnings in 38.30s (파일 감시 · 빈 루프 타이밍)
+```
+**지운 스키마 (총괄 허락 — pid 가 살아 있지 않은 것만, 이름으로)**
+```
+전 7 · 지움 7 · 살아 있어 둔 것 0 · 후 0
+assy_pytest_pg_18160_gw0 · assy_pytest_pg_19512_gw0 · assy_pytest_pg_32256_gw0 · assy_pytest_pg_36032_gw0 · assy_pytest_pg_41368_gw0 · assy_pytest_pg_41932_gw0 · assy_pytest_pg_43164_gw0
+```
+**알릴 것**
+```
+이미 저장된 동률   재기동 전에 같은 눈금으로 찍힌 층은 그대로 — 그 칸들은 이름 순 값을 보이고 있을 수 있음. 고치지 않음(RUN.md 에 세는 SQL)
+다음              71ecd8223 대조 저장의 빈 world -> 맵퍼가 걸은 세상 이름(총괄 답 0c918c2eb) · 그다음 8b81e79a0
+```
+
+---
+
+## [10-03] 71ecd8223 착지 954112801 — 세상 없이 저장한 대조는 운영 세상을 이름으로 걷고 그 이름을 행에 적는다 (총괄 답 0c918c2eb)
+
+어느 DB · 어느 스키마 · 지운 것 — 시험만: PG assy_test 시험 스크래치 스키마 · 운영 DB 안 씀 · 지운 것 0
+
+```
+지은 것    contrast_walk: world 빈 행은 schema.operating_world() 를 이름으로 걸음(전: 라우트 기본값 None = 읽는 때의 운영 세상)
+          computed_at 과 같은 되쓰기에 world — 빈 행만. world 를 적은 행은 그 세상을 걷고 칸은 그대로. 저자는 걷는 맵퍼 하나
+시험      운영 = b1 · 빈 행 -> 되쓴 world b1 · 걸은 세상 b1 / world=default 행 -> 걸은 세상 default · 되쓰기에 world 없음
+변이 3    행에 world 를 안 되씀 RED · 빈 행이 라우트 기본값으로 걸음 RED · world 를 적은 행에도 되씀 RED
+대조 파일   sqlite 11 passed, 4 skipped, 19 warnings in 3.51s · PG 4 passed, 11 deselected, 12 warnings in 51.68s
+sqlite 전체  5 failed, 7754 passed, 326 skipped, 3 xfailed, 13031 warnings in 767.15s — 박스 체크아웃 사유 다섯만
+말         샘플 contrast_run 설명(「empty = the default」) · 맵퍼 설명 · RELEASE_LOG 대조 항목 바뀐 동작 · RUN.md
+알릴 것    빈 칸으로 남은 옛 행은 그대로 — 다시 계산(리플레이)되면 그때의 운영 세상 이름이 적힘(걷기도 그 세상, 오늘과 같음)
+```
+
+다음: 8b81e79a0(계획 답 6c266e56b — 이름은 늘 싣는다) -> 4b90a8d23 재기
+
+---
+
+## [10-03] 8b81e79a0 착지 279d04475 — census · 원장 관리 화면 · backfill 이 소스마다 말하는 세상을 따른다 (계획 답 6c266e56b)
+
+어느 DB · 어느 스키마 · 지운 것 — 시험만: PG assy_test 시험 스크래치 스키마 + 시험이 만드는 w_ 스키마(끝에 이름으로 DROP) · 운영 DB 안 씀
+지운 것 — 코드를 바꾸는 사이에 걸쳐 돌던 내 PG 전체 실행을 멈췄고, 그 스키마를 이름으로 DROP: assy_pytest_pg_29296_gw0 (전 1 · 후 0 · pid 가 살아 있는 것 0)
+
+```
+한 좌석     schema.speaker(chain, source) — followed_by 답에서 그 소스를 말하는 세상(맨 위부터, 없으면 맨 아래) = 후속이 쓰는 곳
+           schema.speaking_cursor(chain, read, columns) — 소스마다 그 세상의 커서 줄
+           schema.speaking_world(engine, source, world=None) — 없음: 운영 사슬의 말하는 세상 / 적음: 그 세상이 말해야 함, 아니면 이름 대어 거절
+           (세상 좌석 안 — 「어느 세상인가」 묻는 자리가 schema.py 밖에 0 인 AST 시험 그대로)
+census 쓰기  워커 틱(_compiled_setup) · 훑기(measure_every_source — store 는 세상별 공장) · census CLI 셋 다 말하는 세상에서
+           measure_and_store 는 저장소의 세상으로 잼 · 기록에 world · 세는 셋(rows_not_yet_translated · count_excluded_but_indexed(이번에 world 받음) · rows_drifted)에 world
+           next_step 은 늘 --world <세상> (6c266e56b ⑤)
+census 읽기  원장 관리 화면(admin.ingestion_view) · 선언 답 census — 소스마다 말하는 세상의 줄 · 줄에 world
+backfill    CLI 가 모든 갈래 전에 세상을 정함 · 작업 기록에 이름 · 작업 좌석(retroactive._ledger_world)도 같은 함수 — 화면의 다시 번역(세상 없는 작업)도 말하는 세상에
+           run() 거르기 = followed_by 맨 위 답 · schema.speaks_for(선언 차이만) 은퇴 — «써서» 말하는 소스도 그 세상에 씀
+census CLI  --world: --source 와 같이면 그 소스를, 없으면 훑기를 그 세상에서(그 세상이 안 말하는 소스는 이름 대어 거절, 소스 하나씩) · 줄에 세상 이름
+```
+**게이트** (B1 이 기본 위에서 운영 · 레시피 소스만 말함)
+```
+운영 세상이 안 말하는 소스(적재 소스)  틱 · 훑기 · 한 소스 census 모두 기본에서 · 관리 화면 줄 (default, Translated) · 선언 census world default · 남은 0
+next_step                       레시피 «--world B1» · 적재 «--world default»
+backfill                        --world 없이 -> 새 행이 기본에 (B1 0) · 화면의 다시 번역 작업(세상 없음) -> 기본에 · --world B1 -> 「… is spoken for by default, not B1」 거절(두 CLI)
+B1 이 적재 소스를 쓴 뒤          말하는 세상 = B1 · backfill 이 B1 에 (기본 0)
+변이 9                         틱이 운영 세상에서 잼 RED · 훑기가 운영 세상에서 잼 RED · 관리 화면이 운영 세상 커서만 RED · 선언 census 가 한 세상만 RED · next_step 에 세상 없음 RED · backfill CLI 가 받은 world 그대로 RED · 안 말하는 세상을 적어도 거절 없음 RED · run() 거르기가 선언 차이만(speaks_for) RED · 세상 없는 작업이 운영 세상에서 RED
+sqlite 전체                      5 failed, 7755 passed, 327 skipped, 3 xfailed, 13107 warnings in 757.66s — 박스 체크아웃 사유 다섯만
+PG 전체                         5 failed, 281 passed, 7804 deselected, 245 warnings in 1249.54s (0:20:49) — 알려진 셋 밖: test_a_source_no_person_counted_names_the_census_as_its_next_step · test_an_edit_behind_the_chain_is_counted_and_redone — next_step 글자를 붙잡던 시험, 고친 뒤 그 파일 6 passed, 16 warnings in 26.42s
+오늘 모양을 붙잡던 시험            next_step 의 인자 · 훑기 시험의 저장소 대역 · 관리 화면 시험의 가짜 세션(bind · 배치 없음) · 세상 시험의 speaks_for 단언
+                               CLI 문 시험 · CLI 옵션 시험 · 경계 시험 — 작업 기록에 world 가 늘 이름(6c266e56b ⑤ · 전: 안 주면 안 실음). 세상 정하기는 세상 시험이 재고 이 셋은 좌석 답을 받음
+```
+**알릴 것**
+```
+은퇴 약속   CODE_MAP 의 schema.py · followup.py 행이 speaks_for 를 적고 있음(응용 세션 몫) · 지난 보고 안의 speaks_for 는 이력
+같은 물음   부팅 때 커서 지문 다시 찍기(_restamp_moved_fingerprints_sync)는 운영 세상 커서만 봄 — 지시 밖이라 안 건드림
+```
+
+다음: 4b90a8d23 재기(세상을 넘는 엣지 · 어휘)
+
+---
+
+## [10-03] 4b90a8d23 + 75471de2c 재기 — 세상을 넘는 엣지 · 어휘 · 파티션 · 노드 키 모양 (짓지 않음)
+
+어느 DB · 어느 스키마 · 지운 것 — PG assy_test 시험 스크래치 스키마 + 재기가 만든 w_ 스키마(끝에 이름으로 DROP, 뒤 남은 것 0 확인) · 운영 DB 안 씀
+명령(저장소 밖 재기 파일): server 폴더에서 PROBE_OUT=<json> python -m pytest -q -p no:cacheprovider -m pg tests/test_zz_probe_cross_world.py
+   파일은 빌드 트리에서 지우고 C:/Users/kk980/AppData/Local/Temp/claude/C--Users-kk980-Developments-assyManager/bb9c475d-6f85-4fe4-bc97-76584eed703b/scratchpad/test_zz_probe_cross_world.py 에 둠 · 결과 C:/Users/kk980/AppData/Local/Temp/claude/C--Users-kk980-Developments-assyManager/bb9c475d-6f85-4fe4-bc97-76584eed703b/scratchpad/probe_cross_world.json
+
+**칸마다 한 줄** (A = 기본 세상, 샘플 선언 · 걷기 = wafer W1 에서 2 홉)
+```
+① B 가 [A] 위 · B 소스가 wafer -> void   B 에서 엣지 has_wafer/processed_with/voids · 노드 lot_slot/recipe/void/wafer  -> 간다: B 의 엣지가 A 의 wafer 노드에 id 로 이어지고 A 의 엣지도 같이
+② B 가 독립(밑 없음)                    엣지 voids · 노드 void/wafer  -> void 로는 간다(엣지가 B 원장에 있고 노드 id 는 세상과 무관) · A 의 엣지는 안 보임
+③ B 를 만든 뒤 A 가 tool 타입 · processed_on · wafer_tool 소스를 더함
+   B 뷰 다시 짓기 전   걷기 엣지 has_wafer/processed_on/processed_with · 노드 lot_slot/recipe/tool/wafer · 검색(key-values type=tool) 422 type_declares_no_keys · 선언 답 노드 목록에 tool 없음
+   B 뷰 다시 지은 뒤   걷기 엣지 has_wafer/processed_with · 노드 lot_slot/recipe/wafer · 검색 422 type_declares_no_keys · B 의 followed_by 에서 B 가 wafer_tool 을 말함 -> A 의 그 원자가 B 에서 사라짐
+   (A 에서는 걷기 엣지 has_wafer/processed_on/processed_with · 노드 lot_slot/recipe/tool/wafer · 검색 노드 1)
+④ C 가 [A2, B2] 위 · A2 = proc_plain(일반 웨이퍼) · B2 = proc_dt(DT 웨이퍼), 같은 표 다른 거름
+   C 뷰 proc_plain(x 다리) 1 -> 둘 다 보이지 않는다: A2 가 proc_dt 를 «말함»으로 잡혀(followed_by A2 frozenset({'proc_plain', 'proc_dt'})) B2 의 원자를 가림
+   같은 소스 id(proc) 를 둘이 -> C 뷰 proc(q 다리) 1 -> 위 것만(예상대로)
+⑤ 노드 키   숫자 칸 1 · 글자 칸 "1" -> 둘 다 "1" · 이어짐   /   숫자 칸 2 · 글자 칸 "2.0" -> "2" 와 "2.0" · 안 이어짐
+   원장 노드 키는 늘 글자: kp_num {"wafer": "1"} · kp_num {"wafer": "2"} · kp_txt {"wafer": "2.0"} · 숫자 JSON 키(1)로 만든 노드 id 로 걸으면 엣지 없음 · 노드 wafer
+   덤: 두 소스가 같은 사실을 말하면 원자 하나 — 글자 "1" 행은 숫자 행과 같은 사실이라 dedupe (kp_num 넣음 3 dedupe 1 · kp_txt 넣음 0 dedupe 0)
+```
+**원인 한 줄과 고칠 자리 (짓지 않음)**
+```
+③ ④  ledger/schema.py _differing — 「한쪽에만 있는 소스는 지문이 없어 다르다」. 위 세상이 «안 가진» 소스를 위 세상이 «말하는» 것으로 쳐서
+     밑의 그 소스 원자를 뷰에서 거름. 판정 인용: changed_sources 설명 "A source on one side only, or one a loader refused on one side,
+     has no fingerprint there and so differs" (총괄 60d7e8e42 1 · e67ef53f3 ④ · 10-01) — 판정이 있어 뒤집지 않고 여쭘
+     ③ 은 시각에 걸림: 뷰 설명(comment)에 적힌 말하는 세상은 뷰를 지을 때 정해지므로, 다시 짓기 전에는 보이고 짓고 나면 사라짐
+③   검색 거절 문구가 거짓 — B 선언에 tool 이 «없는» 것을 「'tool' declares no keys」 로 말함(trace_router.ledger_key_values, 키 목록이 비면 그 사유).
+     미선언 타입과 키 없는 타입이 같은 사유
+⑤   map_overlay.canonical_key_value(값, 선언 칼럼 타입) — 숫자 칸 1 · 1.0 · '01' -> '1', 글자 칸은 철자 그대로 — 판정 7233a7a31
+     (소유자 「die 가 x,y 를 1 로 읽은 것 1.0 으로 읽은 게 뒤섞여서 중복」, 글자 칸의 철자는 뜻). 숫자 2 와 글자 "2.0" 이 안 이어지는 것은 그 판정대로
+     key_part 와 같은 좌석이어야 하나: 숫자 · 글자는 뜻이 같음(숫자 정수 -> 1, 글자는 다듬기만). 시각은 다름 —
+       '2026-09-30 10:00:00' -> 원장 노드 키 '2026-09-30 10:00:00' · key_part '2026-09-30 10:00:00'
+       '2026-09-30T10:00:00+09:00' -> 원장 노드 키 '2026-09-30T10:00:00+09:00' · key_part '2026-09-30 01:00:00'
+       datetime.datetime(2026, 9, 30, 1, 0, tzinfo=datetime.timezone.utc) -> 원장 노드 키 '2026-09-30 01:00:00+00:00' · key_part '2026-09-30 01:00:00'
+     같은 순간을 두 철자로 받으면 원장 노드 둘(업무 키는 하나). 고칠 자리: canonical_key_value 의 «그 밖» 갈래에 datetime 칸을
+     time_format.instant_text 로(= key_part 의 시각 갈래) — 한 함수로 접는 것. 운영에 시각 키 칼럼이 있는지는 안 셈
+```
+**알릴 것 (묻지 않은 것 — 재다가 봄)**
+```
+기본 세상에서 새 소스(wafer_tool)를 backfill 하면 같은 표의 다른 소스(wafer_process_recipe)도 다시 번역되고(backfill 결과 읽은 행 1 · 넣음 2 · dedupe 0),
+선언 파일이 바뀌어 그 소스의 지문이 달라져 같은 사실 원자가 하나 더 생김 — 전 1 -> 후 2 (둘 다 supersedes 없음)
+원인: run() 은 표 단위로 큐에 넣고, 기본 세상(밑 없음)은 거르는 소스가 없음(followed_by 맨 위 = None). 운영에서 몇 개인지는 안 셈
+```
+
+---
+
+## [10-03] 152f4bb0b 착지 919ce6436 — 부팅 때 커서 지문 다시 찍기도 소스마다 말하는 세상의 커서를
+
+어느 DB · 어느 스키마 · 지운 것 — 시험만: PG assy_test 시험 스크래치 스키마 + 시험이 만드는 w_ 스키마(끝에 이름으로 DROP) · 운영 DB 안 씀 · 지운 것 0
+
+**안 찍으면 무엇이 틀리나 (한 줄)**
+```
+운영 = W 이면 기본이 말하는 소스의 커서는 기본에 있는데(8b81e79a0) 부팅 다시 찍기는 W 커서만 봐서, 문법만 바뀐 그 커서가 옛 지문으로 남는다 —
+원장 관리 화면에 그 소스가 «안 올라간 선언 위»로 보이고, 거기 v1 모양 커서가 있어도 «안 찍음»으로 이름이 안 불린다.
+번역이 막히지는 않는다: 지문이 다른 커서를 거절하는 쓰기가 없다(enforce_translator_version 을 켜는 제품 자리 0 — git grep)
+```
+**지은 것**
+```
+_restamp_moved_fingerprints_sync   도는 소스마다 schema.speaking_world -> 그 세상의 LedgerStore · 그 세상 선언의 지문(_compiled_setup)
+                                   소스 목록은 운영 세상 것 그대로 · 로그 줄에 세상 이름
+```
+**게이트**
+```
+B1 운영     레시피 소스 커서는 B1 에서 · 적재 소스 커서는 기본에서 다시 찍힘(각 세상 선언의 지문)
+기본 운영    둘 다 기본에서(전과 같음)
+변이 2      운영 세상에 물음(전) RED · 세상은 묻고 운영 세상 저장소를 엶 RED
+sqlite 전체  6 failed, 7754 passed, 328 skipped, 3 xfailed, 13047 warnings in 760.86s — 박스 체크아웃 사유 다섯 밖: test_inv_9_1_atomic_save_event_applies_physical_alter (그 파일만 다시 돌리면 32 passed, 6 warnings in 33.92s — 파일 감시 시간)
+PG 전체      3 failed, 284 passed, 7804 deselected, 248 warnings in 1263.19s (0:21:03) — 지난 전체 실행과 같은 알려진 셋만
+오늘 모양    부팅 다시 찍기 단위 시험의 저장소 대역이 world 를 받음 · 그 시험의 설정 폴더를 빈 임시 폴더로(배치 없음)
+```
+**알릴 것**
+```
+같은 일의 사람 손 도구 scripts/ledger_restamp_cursor.py 는 --world 를 받고, 없으면 운영 세상 커서만 — 지시 밖이라 안 건드림
+ledger/trace.py 의 CURSOR_FIELDS · CURSOR_TIME_FIELDS 는 부르는 자리가 없음(git grep) — 지시 밖
+순서: 지시는 4b90a8d23 재기 «앞»이었으나 재기를 먼저 마친 뒤 받았음(de7bd083a)
+```
+
+---
+
+## [10-03] 5fec118bb ① ② · 8e8ee2dcf 착지 a9f877ed3 · ③ 재기 — 새 소스 backfill 이 다른 소스 사실을 한 번 더 쓰지 않는다 · 검색 거절 문구 · 커서 다시 찍기 스크립트도 소스마다 그 세상 · 시각 키 전수
+
+어느 DB · 어느 스키마 · 지운 것 — 시험: PG assy_test 시험 스크래치 스키마(+ 시험 w_ 스키마, 이름으로 DROP) · ③ 은 박스 DB assy_manager 를 «읽기만»(SET TRANSACTION READ ONLY) · 지운 것 0
+
+**① 원인 둘 (따로)**
+```
+(a) 원자 버전 = ledger-v2:{snapshot_sha256}#{문장}(roleframe) — 선언 «전체» 해시라 X 를 더하면 Y 원자의 버전 글자가 바뀜
+    Y 의 커서 지문(소스 재료만)은 그대로: 전 b6d9… · 후 b6d9… (재료 차이 0 줄) — 바뀐 것은 원자 버전뿐. 그 버전이 uq_ledger_atom 에 들어가 dedupe 안 됨
+    총괄 답 ㄱ(8e8ee2dcf) — 그대로 둠(그 사실이 «어느 선언»에서 나왔는지의 기록). 손대지 않음
+(b) backfill.run 이 X 의 색인에 없는 행을 표 단위 CREATE 로 넣고, 후속이 그 표를 읽는 소스 전부를 CREATE 로(거두지 않음, 판정 166) 번역 — Y 에겐 새 행이 아님
+```
+**① 지은 것 · ② · 게이트**
+```
+run()          X 만 번역(그 세상이 X 를 말할 때만) — 나머지 다시 번역(후속 고침 · drifted · whole-source · 범위)은 rescope 를 거두며 지남
+메모리 CREATE   넣는 자리 1: ledger/backfill.py:349 'CREATE' · 큐에 직접 쓰는 줄 1: ledger/followup.py:160(enqueue 안)
+ 센 명령        server 폴더에서  OUT=<결과.json> python C:/Users/kk980/AppData/Local/Temp/claude/C--Users-kk980-Developments-assyManager/bb9c475d-6f85-4fe4-bc97-76584eed703b/scratchpad/census_enqueue_create.py
+               AST · 추적 .py 278 파일(tests · migrations 뺌) · 이름이 enqueue 인 호출과 _queue 에 붙이는 호출 · 카나리아: enqueue 정의가 ledger/followup.py
+스크립트        scripts/ledger_restamp_cursor.py — --world 없으면 소스마다 그 소스를 말하는 세상의 커서를 그 세상 선언으로(부팅 단계와 같음) · 줄마다 [세상]
+               기본 목록은 «아직 읽히는» 소스만 — 은퇴 소스의 지문을 묻다가 첫 커서 전에 멈추던 것(이번 이전부터, 새 시험이 찾음)
+trace.py       부르는 자리 0 인 CURSOR_FIELDS 와 같이 쓰이던 CURSOR_TIME_FIELDS(부르는 자리 0) 지움
+② 검색 거절     /api/ledger/key-values 가 «물은 세상»의 선언으로 타입을 판정(전: 운영 세상 선언) -> node_type_not_declared · "type 'tool' is not declared in world <세상>" · detail 에 world
+게이트          두 소스 한 표 · X 추가 후 backfill X -> Y 원자 수 그대로 · Y 통째 다시 번역 -> 그대로 · 고침을 후속이 따라감 -> 그대로
+               옛 backfill 이 둘로 만든 원장 -> RUN.md 의 셈 SQL 이 1 -> --whole-source --apply 뒤 0 (RUN.md 고칠 명령을 시험으로 확인)
+               ②: 기본은 tool 선언 · B1 은 안 함 -> B1 에 물으면 그 문구
+변이 5          backfill 이 표의 소스 전부(전) RED · 후속이 고침을 거두지 않고 씀 RED · 검색이 운영 세상 선언에 물음(전 · 거절 없이 키 조회로 내려감) RED · 스크립트가 운영 세상 커서(전) RED · 스크립트가 은퇴 소스까지 물음(전) RED
+새 시험 · 세상 시험  11 passed, 29 warnings in 64.73s (0:01:04) (스크립트 시험만: 2 passed, 13 deselected, 11 warnings in 19.52s)
+sqlite 전체      5 failed, 7756 passed, 331 skipped, 3 xfailed, 13093 warnings in 732.97s — 박스 체크아웃 사유 다섯만
+PG 전체          3 failed, 287 passed, 7805 deselected, 255 warnings in 1211.67s (0:20:11) — 지난 전체 실행과 같은 알려진 셋만
+```
+**③ 재기 — 노드 키에 시각 조각이 있는 선언 타입 (짓지 않음)**
+```
+선언          박스 라이브 선언: 칼럼에서 오는 키 64 개 중 datetime 칸 0 · 추적 샘플: 29 개 중 0 — 시각 칸으로 노드 키를 짓는 선언 없음
+              (코드 맵퍼 소스 dt_job · lot_event 는 선언으로 안 보여 원장에서 직접 봄)
+박스 원장      원자 2380869 · (소스, 타입, 키) 무리 주어 38 · 목적어 34 — 키 «전체»가 시각인 것 0
+              키 «안에» 시각 조각이 든 것(아이디 글자):
+             void_observation defect.void_uid · 값 103863 중 시각 조각 103863 · 모양 9999-99-99T99:99:99+99:99 · 같은 키 두 철자 0
+             dt_job dtjob.dt_job · 값 433095 중 시각 조각 120 · 모양 99999999T9999 · 같은 키 두 철자 0
+             dt_transfer die.mat_id · 값 1217 중 시각 조각 80 · 모양 99999999T9999 · 같은 키 두 철자 0
+같은 순간 두 철자  0 — 3 무리 모두 한 모양씩. 셋 다 글자 칸에 저장된 아이디라 두 키 철자 함수(원장 · key_part) 어느 것도 손대지 않는 자리
+소급 비용       시각 갈래를 key_part 와 한 함수로 접어도 이 박스에서 다시 번역할 원자 0(datetime 키 칸이 없음). 운영은 안 잼(선언이 다를 수 있음)
+```
+**알릴 것**
+```
+걷기 collect 의 거절(같은 사유 node_type_not_declared)은 문구가 「Not a declared node type: …」 그대로 — 지시가 key-values 라 안 바꿈
+S-267 의 고아 상수 다섯 중 나머지 셋(DEFAULT_SAMPLE_SIZE · SAMPLE_CANDIDATE_WINDOW · UUID7_MS_SQL)은 그대로 — 코드에선 trace.py 밖 히트 0(git grep), 지시 밖
+지운 두 상수를 «있는 것»으로 적는 문서 줄: CODE_MAP 「커버리지가 가져간 고아 다섯」 행 · SYSTEM_FLOWS_A 의 L-17 행 · SERVER_DEFECT_QUEUE S-267 — 문서 몫이라 안 고침
+```

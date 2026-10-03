@@ -51,7 +51,8 @@ def main(argv=None):
     parser.add_argument("--apply", action="store_true",
                         help="write the new fingerprint (otherwise report only)")
     parser.add_argument("--world", default=None,
-                        help="a ledger world (branch) by name; none = the operating world")
+                        help="a ledger world (branch) by name; none = for each source, the "
+                             "world that speaks for it in the operating chain")
     args = parser.parse_args(argv)
 
     # 🔴 A HALF-BUILT SOURCE MUST NOT BLOCK AN OPERATIONAL COMMAND.  `load_setup` refuses
@@ -69,45 +70,57 @@ def main(argv=None):
     # operator reading "2 sources" needs to know whether that was 2 of 2 or 2 of 3.
     # 총괄 3b6dacd2f: the operator names a world; the one seat answers where its declaration
     # and its cursors are.
-    root = schema.require_world(args.world).declaration_root
-    try:
-        setup = load_setup(root)
-        dropped = {}
-    except Exception as exc:                                     # noqa: BLE001
-        catalog = live_physical_catalog()
-        resolved = load_resolved_setup(
-            root, catalog=catalog,
-            setup_from_document=lambda doc, **more: setup_from_document(
-                doc, config_root=root, catalog=catalog, **more))
-        setup = resolved["setup"]
-        dropped = resolved["invalid"]
-        print(f"config does not compile whole ({exc}); "
-              f"reading what resolves and naming what does not")
-    for key in sorted(dropped):
-        reasons = dropped[key].get("reasons") or []
-        first = reasons[0].get("path") if reasons else "?"
-        print(f"  DROPPED {key.partition('|')[2] or key} -- not compiled, "
-              f"no fingerprint to re-stamp ({first})")
+    def setup_of(world):
+        root = schema.require_world(world).declaration_root
+        try:
+            setup = load_setup(root)
+            dropped = {}
+        except Exception as exc:                                 # noqa: BLE001
+            catalog = live_physical_catalog()
+            resolved = load_resolved_setup(
+                root, catalog=catalog,
+                setup_from_document=lambda doc, **more: setup_from_document(
+                    doc, config_root=root, catalog=catalog, **more))
+            setup = resolved["setup"]
+            dropped = resolved["invalid"]
+            print(f"config does not compile whole ({exc}); "
+                  f"reading what resolves and naming what does not")
+        for key in sorted(dropped):
+            reasons = dropped[key].get("reasons") or []
+            first = reasons[0].get("path") if reasons else "?"
+            print(f"  DROPPED {key.partition('|')[2] or key} -- not compiled, "
+                  f"no fingerprint to re-stamp ({first})")
+        return setup
+
+    setup = setup_of(args.world)
+    # Only what is still read - a retired or refused source has no fingerprint, and asking
+    # for one raised here before the first cursor (S-177 ①②, as the boot step).
     sources = ([args.source] if args.source
-               else sorted(setup.snapshot.source_plans))
-    # Only reachable through `--source`: the default list IS `source_plans`, so it cannot
+               else sorted(name for name, plan in setup.snapshot.source_plans.items()
+                           if plan.runs))
+    # Only reachable through `--source`: the default list comes from `source_plans`, so it cannot
     # name something absent from it.  Named-and-dropped therefore leaves nothing to do.
     unknown = [s for s in sources if s not in setup.snapshot.source_plans]
     if unknown:
         print(f"{', '.join(unknown)}: REFUSED -- not among the sources that compiled; "
               f"finish the declaration first")
         return 1
-    store = LedgerStore(engine, world=args.world)
-    read = store.connection()
-    try:
-        rows = {source: store.read_cursor(read, source) for source in sources}
-    finally:
-        read.close()
-
+    # A world not named: each source's cursor is the one in the world that speaks for it, on
+    # that world's declaration (총괄 8e8ee2dcf - as the boot step, 152f4bb0b).
+    setups = {schema.require_world(args.world).world or schema.DEFAULT_WORLD: setup}
     exit_code = 0
     for source in sources:
-        wanted = cursor_translator_version(setup.snapshot, source)
-        existing = rows[source]
+        world = args.world or schema.speaking_world(engine, source)
+        if world not in setups:
+            setups[world] = setup_of(world)
+        store = LedgerStore(engine, world=world)
+        read = store.connection()
+        try:
+            existing = store.read_cursor(read, source)
+        finally:
+            read.close()
+        wanted = cursor_translator_version(setups[world].snapshot, source)
+        print(f"[{world}]", end=" ")
         if existing is None:
             print(f"{source}: no cursor row -- nothing to re-stamp "
                   f"(a first run writes {wanted})")

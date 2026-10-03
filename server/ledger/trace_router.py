@@ -41,7 +41,7 @@ def _world(world):
             world if isinstance(world, str) and world.strip() else None)
     except (LookupError, ValueError) as exc:
         raise HTTPException(status_code=404, detail={
-            "reason": "world_unknown", "world": world, "worlds": schema.worlds(),
+            "reason": "world_unknown", "world": world, "worlds": schema.world_listing()["worlds"],
             "message": f"{exc} - pick one from 'worlds'"})
 
 
@@ -668,13 +668,18 @@ def ledger_key_values(
     하나라 둘은 대개 같이 켜진다 -- 축 하나로 묶을 때 갈린다.
     """
     wanted_type = str(type).split("@", 1)[0]
-    collectable = _collectable_types()
+    # The world asked is the declaration asked (총괄 5fec118bb ②): a type another world
+    # declares used to pass here and be refused below as 「declares no keys」.
+    collectable = _collectable_types(world)
     if wanted_type not in collectable:
+        from ledger import schema
+
+        named = _world(world).world or schema.DEFAULT_WORLD
         raise HTTPException(status_code=422, detail={
             "reason": "node_type_not_declared", "unknown": [wanted_type],
-            "declared": sorted(collectable),
-            "message": "Not a declared node type: " + wanted_type
-                       + " - pick one from 'declared'"})
+            "declared": sorted(collectable), "world": named,
+            "message": "type '%s' is not declared in world %s - pick one from 'declared'"
+                       % (wanted_type, named)})
 
     declared_keys = _declared_keys(wanted_type, world)
     # 🔴 [판정 524] SIBLING OF THE SEAT 521 FOLDED, IN THIS SAME FILE. Folding one seat and
@@ -906,7 +911,8 @@ def ledger_gap_catalogue(name: str = Query(None),
 
 
 def _row_census_by_source(world=None):
-    """Every source's stored census, by source id. ONE query, no counting.
+    """Every source's stored census, by source id - one query per world of the chain, no
+    counting.
 
     ⚠️ FAILURE HERE COSTS THE CENSUS AND NOT THE CATALOGUE. The declaration answers from the
     DECLARATION; the census is a ledger table that may not exist yet on a fresh install, and
@@ -914,20 +920,19 @@ def _row_census_by_source(world=None):
     down with it.
     """
     try:
+        from sqlalchemy import text
+
         from database.database import engine
         from ledger import schema
 
-        connection = engine.raw_connection()
-        try:
-            with connection.cursor() as cursor:
-                cursor.execute(
-                    f"SELECT source, {schema.ROW_CENSUS_COLUMN} "
-                    f"  FROM {_world(world).cursor} "
-                    f" WHERE {schema.ROW_CENSUS_COLUMN} IS NOT NULL")
-                return {row[0]: row[1] for row in cursor.fetchall()}
-        finally:
-            connection.rollback()
-            connection.close()
+        # Each source from the world that speaks for it in this world's chain, which the
+        # census names (총괄 8b81e79a0).
+        chain = schema.followed_by(engine, _world(world))
+        with engine.connect() as connection:
+            rows = schema.speaking_cursor(
+                chain, lambda sql: connection.execute(text(sql)).all(),
+                (schema.ROW_CENSUS_COLUMN,), f"WHERE {schema.ROW_CENSUS_COLUMN} IS NOT NULL")
+        return {source: {**census, "world": speaking} for source, (speaking, census) in rows.items()}
     except Exception as exc:                       # noqa: BLE001 - see the docstring
         logger.warning("row census unavailable: %s", exc)
         return {}

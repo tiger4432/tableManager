@@ -207,6 +207,43 @@ def test_a_run_without_until_is_refused_by_name(db):
     assert _factors(db, "R_OPEN_ENDED") == {}
 
 
+def test_a_run_naming_no_world_walks_the_operating_one_and_is_told_which(db, tmp_path, monkeypatch):
+    """총괄 71ecd8223 · 0c918c2eb: with b1 operating, a run saved naming no world walks b1 by name
+    and its row is told b1; a run naming a world walks that one and its cell is left alone."""
+    import functools
+    import shutil
+
+    import paths
+    from ledger import schema
+
+    config = tmp_path / "config"
+    (config / "ontology").mkdir(parents=True)
+    shutil.copy(os.path.join(SAMPLE, "ledger_config.json.sample"),
+                config / "ontology" / "ledger_config.json")
+    monkeypatch.setattr(paths, "CONFIG_DIR", str(config))
+    schema.stand("b1", [schema.DEFAULT_WORLD])
+    (config / "ontology_worlds" / "b1").mkdir(parents=True)
+    shutil.copy(os.path.join(SAMPLE, "ledger_config.json.sample"),
+                config / "ontology_worlds" / "b1" / "ledger_config.json")
+    schema.operate("b1")
+    walked = []
+    real = trace_router.evidence_subgraph
+
+    @functools.wraps(real)
+    def spy(*args, **kwargs):
+        walked.append(kwargs.get("world"))
+        return real(*args, **kwargs)
+    monkeypatch.setattr(trace_router, "evidence_subgraph", spy)
+
+    positive, negative = [_lot("P1"), _lot("P2")], [_lot("N1")]
+    facts = _run_facts(_chain(db, _save_run(db, "W1", positive, negative),
+                              _save_run(db, "W2", positive, negative, world="default")))
+
+    assert (facts["W1"].get("world"), "world" in facts["W2"]) == ("b1", False)
+    assert sorted(walked) == ["b1", "default"]
+    assert facts["W1"]["candidates"] == facts["W2"]["candidates"] > 0     # both walked
+
+
 def test_the_rows_carry_the_run_rows_stamp_so_deleting_the_run_empties_them(db):
     """The body stamps `origin_row_id` as the join's body does; a deleted run row is taken
     back by that stamp (`withdraw_by_origin`, the delete path). The rows stay, their cells go."""

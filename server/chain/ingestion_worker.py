@@ -3204,7 +3204,7 @@ def _file_stamp(path):
     return status.st_mtime_ns, status.st_size
 
 
-def _measure_one_source_sync(db_session_factory, source, setup=None):
+def _measure_one_source_sync(db_session_factory, source):
     """One source's census, in a thread. The session is this call's and closes with it.
 
     🔴 THE PACED TICK DOES NOT SCAN (S-122). `exact_rows=False` makes the relation count
@@ -3214,20 +3214,21 @@ def _measure_one_source_sync(db_session_factory, source, setup=None):
     behind it. The number is published AS an estimate; the exact count belongs to the
     command a person runs.
 
-    ⚠️ `setup` IS PASSED IN, NOT LOADED HERE. Compiling the whole declaration costs 91 ms
-    on this box and it was being done once per SOURCE - fifteen times a lap for an answer
-    that cannot change inside one lap.
+    It is measured in the world that speaks for it, as the live follow-up writes it (총괄
+    8b81e79a0); that world's declaration comes from the compile cache (`_compiled_setup`) -
+    compiling it costs 91 ms on this box, and it was once done for every source of a lap.
     """
     from ledger import backfill as ledger_backfill
-    from ledger.setup import load_setup
+    from ledger import schema as ledger_schema
     from ledger.store import LedgerStore
 
     db = db_session_factory()
     try:
         engine = db.get_bind()
+        world = ledger_schema.speaking_world(engine, source)
         return ledger_backfill.measure_and_store(
-            engine, setup if setup is not None else load_setup(), source,
-            LedgerStore(engine), exact_rows=False)
+            engine, _compiled_setup(world), source, LedgerStore(engine, world=world),
+            exact_rows=False)
     finally:
         db.close()
 
@@ -3289,7 +3290,7 @@ async def run_ledger_row_census(db_session_factory):
             census = None
             try:
                 census = await asyncio.to_thread(_measure_one_source_sync, db_session_factory,
-                                                 source, setup)
+                                                 source)
             except Exception as exc:
                 logger.warning("[LedgerCensus] %s failed: %s", source, exc)
             # ⚠️ THE FAILING SOURCE COSTS THE DATABASE TOO, so it is timed like any
@@ -3468,42 +3469,44 @@ def _restamp_moved_fingerprints_sync(db_session_factory):
     Every move is NAMED in the log. A fingerprint that changes silently is a fingerprint
     nobody can audit, and this runs on every boot.
     """
-    from ledger.setup import load_setup
+    from ledger import schema
     from ledger.setup_registry import cursor_translator_version
     from ledger.store import LedgerStore
 
     db = db_session_factory()
     try:
-        setup = load_setup()
-        store = LedgerStore(db.get_bind())
-        read = store.connection()
-        try:
-            # 🔴 ONLY WHAT IS STILL READ IS RE-STAMPED (S-177 ①②). The stamp says which
-            # declaration a source is translating on; a source that is retired or that the
-            # loader refused translates nothing and is compiled with no material to
-            # fingerprint at all - so asking for its stamp raises, and this loop has no
-            # per-source guard, which would take every source AFTER it down too.
-            stored_rows = {source: store.read_cursor(read, source)
-                           for source, plan in setup.snapshot.source_plans.items()
-                           if plan.runs}
-        finally:
-            read.close()
+        engine = db.get_bind()
+        setup = _compiled_setup(None)
         moved, refused = [], []
-        for source in sorted(stored_rows):
-            existing = stored_rows[source]
-            wanted = cursor_translator_version(setup.snapshot, source)
+        # 🔴 ONLY WHAT IS STILL READ IS RE-STAMPED (S-177 ①②). The stamp says which
+        # declaration a source is translating on; a source that is retired or that the
+        # loader refused translates nothing and is compiled with no material to
+        # fingerprint at all - so asking for its stamp raises, and this loop has no
+        # per-source guard, which would take every source AFTER it down too.
+        for source in sorted(name for name, plan in setup.snapshot.source_plans.items()
+                             if plan.runs):
+            # The cursor of the world that speaks for it, on that world's declaration (총괄
+            # 152f4bb0b) - where the follow-up writes it and the census counts it.
+            world = schema.speaking_world(engine, source)
+            store = LedgerStore(engine, world=world)
+            read = store.connection()
+            try:
+                existing = store.read_cursor(read, source)
+            finally:
+                read.close()
+            wanted = cursor_translator_version(_compiled_setup(world).snapshot, source)
             stored = existing.get("translator_ver") if existing else None
             verdict, reason = store.restamp_decision(stored, wanted)
             if verdict == "refused":
-                refused.append(f"{source} ({reason})")
+                refused.append(f"{source} ({world}) ({reason})")
                 continue
             if verdict != "restamp":
                 continue
             if store.restamp_cursor(source, expect=stored, translator_ver=wanted):
-                moved.append(f"{source}: {stored} -> {wanted} "
+                moved.append(f"{source} ({world}): {stored} -> {wanted} "
                              f"(position stays {existing.get('cursor_value')!r})")
             else:
-                refused.append(f"{source} (row changed under us)")
+                refused.append(f"{source} ({world}) (row changed under us)")
         if moved:
             logger.info("[Ledger] re-stamped %d cursor(s) whose declaration did not "
                         "change: %s", len(moved), " | ".join(moved))

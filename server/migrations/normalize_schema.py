@@ -133,7 +133,7 @@ def migrate_row_sources(db, table_name: str, row_id: str, col: str, sources: dic
             try:
                 s_ts = datetime.fromisoformat(s_ts_str)
             except (ValueError, TypeError):
-                s_ts = datetime.now()
+                s_ts = crud.layer_instant()
 
         db.add(models.CellSource(
             table_name=table_name,

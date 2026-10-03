@@ -1,5 +1,89 @@
 # 지금 돌리면 되는 것
 
+> ## [10-03] **새 소스 backfill 이 같은 표의 다른 소스 사실을 한 번 더 쓰지 않는다 (총괄 5fec118bb) — 이주 «불필요» · 재기동 «필요»(API · 체인 데몬)**
+>
+> ```
+> 무엇이 바뀌나  python -m ledger.backfill --source X (와 화면의 다시 번역)가 X 만 번역 — 전: 그 표를 읽는 소스 전부를 거두지 않고 한 번 더
+> 운영에 쌓인 것  먼저 센다 (PG · 원장 전체를 훑음 — 한가할 때)
+>   SELECT source_who, sum(n - 1) AS extra FROM (
+>     SELECT source_who, count(*) AS n FROM ledger_events WHERE supersedes IS NULL
+>      GROUP BY source_who, source_raw_ref, occurred_at, predicate, subject_type, subject_keys,
+>               coalesce(object_payload, '{}'::jsonb)
+>     HAVING count(*) > 1) d GROUP BY source_who ORDER BY 2 DESC;
+> 뜻           소스마다 «같은 행 · 같은 사실을 이미 말한 원자가 있는데 하나 더» 의 수 — 줄이 없으면 끝
+> 고치기        센 소스마다 (server 폴더에서, 먼저 미리보기)
+>   python -m ledger.backfill --source <소스> --whole-source
+>   python -m ledger.backfill --source <소스> --whole-source --apply
+> 뜻           그 소스의 원자를 거두고 행마다 한 번씩 다시 씀 — 위 SQL 을 다시 돌려 그 소스 줄이 사라지면 끝
+> 함께         scripts/ledger_restamp_cursor.py 를 --world 없이 돌리면 소스마다 그 소스를 말하는 세상의 커서를 봄(줄 앞에 [세상])
+> 급할 때       git revert <이 커밋> -> 재기동 (backfill 이 다시 표 단위 — 선언이 바뀐 뒤면 중복이 다시 생김)
+> ```
+
+---
+
+> ## [10-03] **부팅 때 커서 지문 다시 찍기도 소스마다 말하는 세상의 커서를 (총괄 152f4bb0b) — 이주 «불필요» · 재기동 «필요»(체인 데몬)**
+>
+> ```
+> 무엇이 바뀌나  체인 데몬이 부팅 때 지문(translator_ver)만 바뀐 커서를 다시 찍을 때, 소스마다 그 소스를 말하는 세상의 커서를 그 세상 선언의 지문으로
+>              전: 운영 세상 커서만 — 운영 = W 이면 기본이 말하는 소스의 커서는 옛 지문으로 남아 원장 관리 화면에 옛 선언 위로 보였다
+> 재기동 뒤 볼 로그 줄
+>   [Ledger] re-stamped N cursor(s) whose declaration did not change: <소스> (<세상>): <전> -> <후> (position stays ...)
+>   [Ledger] N cursor(s) were NOT re-stamped: <소스> (<세상>) (<사유>)
+> 뜻           줄마다 괄호 안이 그 커서의 세상 — 운영 = 기본이면 전부 (default) · 줄이 없으면 옮길 커서가 없었다
+> 급할 때       git revert <이 커밋> -> 체인 데몬 재기동 (운영 세상 커서만 다시 찍음 · 이미 찍힌 지문은 그대로)
+> ```
+
+---
+
+> ## [10-03] **census · 원장 관리 화면 · backfill 이 소스마다 그 소스를 말하는 세상을 따른다 (총괄 8b81e79a0 · 6c266e56b) — 이주 «불필요» · 재기동 «필요»(API · 체인 데몬)**
+>
+> ```
+> 무엇이 바뀌나  운영 세상의 사슬에서 소스마다 «말하는 세상»(원장 후속이 쓰는 곳)에서 census 를 재고 · 읽고 · backfill 이 쓴다
+>              원장 관리 화면 줄 · 선언 답 census · python -m ledger census 출력에 세상 이름
+>              census 기록의 next_step 명령에 늘 --world <세상>
+> 재기동 뒤 볼 것 (server 폴더에서)
+>   python -m ledger census
+> 뜻           줄마다 「<소스> (<세상>): 표 … · 색인 … · 남은 …」 — 운영 = 기본이면 전부 (default)
+>              운영 = W(밑 기본)이면 W 가 말하는 소스만 (W), 나머지는 (default) — 그 줄의 «남은» 이 기본 세상의 수
+>   python -m ledger.backfill --source <소스> --world <그 소스를 안 말하는 세상>
+> 뜻           거절 「<소스> is spoken for by <세상>, not <적은 세상>」 — 적힌 세상으로 다시 돌리거나 --world 없이
+>              --world 없이 돌리면 말하는 세상에 쓴다(전: 운영 세상에 — 말하지 않으면 아무것도 안 하고 조용했다)
+> 급할 때       git revert <이 커밋> -> 재기동 (census 는 운영 세상 맨 위에서 · backfill 은 운영 세상에 · 거절 없음)
+> ```
+
+---
+
+> ## [10-03] **대조 저장의 빈 세상은 걸은 세상 이름으로 (총괄 71ecd8223 · 0c918c2eb) — 이주 «불필요» · 재기동 «필요»(체인 데몬)**
+>
+> ```
+> 무엇이 바뀌나  world 를 비워 저장한 contrast_run 행 — 체인 맵퍼가 운영 세상을 «이름으로» 걷고 computed_at 과 같은 되쓰기에 world 를 적는다
+>              world 를 적어 저장한 행은 그대로
+> 재기동 뒤 볼 것 R&D 보드에서 Save contrast 한 번 -> 계산된 뒤 그 행의 world 칸 = 운영 세상 이름(GET /admin/ontology-explorer/worlds 의 operating)
+> 뜻           빈 칸이면 체인 데몬이 재기동 전 코드로 돌고 있다
+>              그 전에 빈 칸으로 남은 행은 그대로 — 다시 계산(리플레이)되면 그때의 운영 세상 이름이 적힌다
+> 급할 때       git revert <이 커밋> -> 체인 데몬 재기동 (빈 칸으로 남고 걷기는 그때의 운영 세상)
+> ```
+
+---
+
+> ## [10-03] **한 배치 안에서도 나중에 온 값이 이긴다 (총괄 9280922aa) — 이주 «불필요» · 재기동 «필요»(API · 체인 데몬 · 파일 감시)**
+>
+> ```
+> 무엇이 바뀌나  층 시각(cell_sources.ingested_at)을 한 함수(crud.layer_instant)가 찍는다 — 한 프로세스 안에서 앞 찍기보다 반드시 뒤
+>              한 배치에 같은 칸을 두 소스가 쓰면 뒤 항목이 칸 · 감사 · 아웃박스에 나간다(전: 같은 눈금이면 이름 순으로 앞 항목)
+>              병합 사본은 사라지는 행 안의 원래 전달 순서대로 찍힌다 — 그 행이 보이던 값이 사본 사이에서도 이김
+>              (같이) 모르는 세상을 물으면 거절 world_unknown 의 worlds 가 default 를 먼저 싣는다 (총괄 f1ad96964 ①)
+> 재기동 뒤 볼 것 (스캔 — 한가할 때, PG)
+>   SELECT count(*) FROM (SELECT 1 FROM cell_sources WHERE ingested_at >= '<재기동 시각>'
+>    GROUP BY table_name, row_id, column_name, ingested_at HAVING count(*) > 1) t;
+> 뜻           재기동 뒤 한 칸에서 시각이 같은 층의 묶음 수 — 0 이 정상(한 프로세스는 같은 시각을 두 번 안 줌)
+>              0 이 아니면 두 프로세스가 같은 눈금에 같은 칸을 썼거나 재기동 전 코드가 돌고 있다
+>              '<재기동 시각>' 없이 돌리면 지난날 동률이 남긴 묶음까지 센다 — 그 칸들은 이름 순 값을 보이고 있을 수 있다(고치지 않음)
+> 급할 때       git revert <이 커밋> -> 재기동 (층마다 datetime.now() 로 돌아감 · 이미 찍힌 시각은 그대로)
+> ```
+
+---
+
 > ## [10-03] **세상 목록은 어느 답에서나 한 모양 (총괄 e51e3e417) — 이주 «불필요» · 재기동 «필요»**
 >
 > ```

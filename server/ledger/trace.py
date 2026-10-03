@@ -1032,21 +1032,6 @@ ATOMS_UNKNOWN = measured(0, exact=False, method="pg_class.reltuples",
                          unanalyzed_partitions=0)
 
 
-#: Every column the cursor report would like, in the order the response carries them.
-#: Which of them EXIST is asked of the catalogue per request, because a web server may
-#: legitimately be running against a database whose migration has not been applied yet —
-#: the ordering hazard `add_frame_confirmation.py` documents, and the failure it produces
-#: is a 500 on a status endpoint, i.e. the screen reporting itself broken.
-CURSOR_FIELDS = ("source", "translator_ver", "cursor_value", "molecules_done",
-                 "atoms_written", "atoms_deduped", "molecules_refused",
-                 "incomplete_molecules", "refusal_reasons", "source_head",
-                 "head_probed_at", "started_at", "updated_at")
-
-#: Cursor columns that are instants and are rendered in the declared display zone,
-#: the same rule every other time in this response follows.
-CURSOR_TIME_FIELDS = frozenset({"head_probed_at", "started_at", "updated_at"})
-
-
 def _unaccounted(entry, reasons):
     """`molecules_refused` minus what the breakdown explains. 0 on a healthy row.
 

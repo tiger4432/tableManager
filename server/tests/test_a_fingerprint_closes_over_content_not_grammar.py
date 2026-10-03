@@ -107,7 +107,7 @@ def test_a_v1_shaped_cursor_is_refused_by_name_and_not_moved():
 
 # --------------------------------------------- the boot that clears the one-time stop
 
-def test_a_boot_restamps_the_moved_cursors_and_names_every_one(monkeypatch, caplog):
+def test_a_boot_restamps_the_moved_cursors_and_names_every_one(monkeypatch, caplog, tmp_path):
     """🔴 THE GATE THAT MAKES THIS SAFE TO LAND. This very change moves all fifteen
     fingerprints - measured on the shipped sample - because dropping unfilled fields rewrites
     the canonical JSON for every source. Landing that alone would stop the operator's ledger
@@ -122,11 +122,11 @@ def test_a_boot_restamps_the_moved_cursors_and_names_every_one(monkeypatch, capl
     from ledger import setup as ledger_setup, store as ledger_store
     from ledger import setup_registry
 
-    written = []
+    written, worlds = [], []
 
     class _Store:
-        def __init__(self, engine):
-            pass
+        def __init__(self, engine, world=None):
+            worlds.append(world)
 
         restamp_decision = staticmethod(LedgerStore.restamp_decision)
 
@@ -158,6 +158,10 @@ def test_a_boot_restamps_the_moved_cursors_and_names_every_one(monkeypatch, capl
     monkeypatch.setattr(ledger_store, "LedgerStore", _Store)
     monkeypatch.setattr(setup_registry, "cursor_translator_version",
                         lambda snap, source: "ledger-v2:new")
+    # no worlds layout: the default operates and speaks for every source (총괄 152f4bb0b) - and
+    # the box's own layout and compiled declarations never answer
+    import paths
+    monkeypatch.setattr(paths, "CONFIG_DIR", str(tmp_path))
 
     class _Session:
         def get_bind(self):
@@ -169,6 +173,7 @@ def test_a_boot_restamps_the_moved_cursors_and_names_every_one(monkeypatch, capl
     with caplog.at_level(logging.INFO):
         worker._restamp_moved_fingerprints_sync(lambda: _Session())
 
+    assert set(worlds) == {"default"}, worlds                   # each in its speaking world
     assert written == [("stale", "ledger-v2:old", "ledger-v2:new")], (
         "only the cursor whose content is unchanged may be moved")
 

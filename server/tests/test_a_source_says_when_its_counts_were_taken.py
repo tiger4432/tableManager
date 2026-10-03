@@ -64,6 +64,15 @@ class _Plan:
         return self.status == "active" and self.planned
 
 
+@pytest.fixture(autouse=True)
+def _no_layout(tmp_path, monkeypatch):
+    """No worlds layout: every source is the default's (총괄 8b81e79a0) - the box's own never
+    answers."""
+    import paths
+
+    monkeypatch.setattr(paths, "CONFIG_DIR", str(tmp_path))
+
+
 def _setup(plans):
     return type("S", (), {"snapshot": type(
         "Snap", (), {"source_plans": plans, "__hash__": None})()})()
@@ -189,6 +198,8 @@ def test_one_source_failing_does_not_silence_the_rest(monkeypatch):
                         lambda snapshot, source_id: f"ledger-v2:{source_id}")
 
     class _Store:
+        names = schema.world_names(schema.DEFAULT_WORLD)
+
         def __init__(self):
             self.written = []
 
@@ -208,14 +219,14 @@ def test_one_source_failing_does_not_silence_the_rest(monkeypatch):
     # ⚠️ [총괄 f3bc02f6e] `a` and `c` used to be sources without row_id, refused WITHOUT the
     #   database; every planned source reads row_id now, so the census is stubbed and `b`'s
     #   raises - the subject is still that one failure costs one source.
-    def census(engine, setup, source, now=None, *, exact_rows=True):
+    def census(engine, setup, source, now=None, *, exact_rows=True, world=None):
         if source == "b":
             raise RuntimeError("relation rel_b was dropped")
         return {"source": source, "relation": "rel_" + source, "measured_at": "now"}
 
     monkeypatch.setattr(backfill, "measure_row_census", census)
     store = _Store()
-    done = backfill.measure_every_source(_Broken([]), setup, store=store)
+    done = backfill.measure_every_source(_Broken([]), setup, store=lambda world: store)
 
     assert done == ["a", "c"] and store.written == ["a", "c"]
 
@@ -269,6 +280,8 @@ def test_the_sweep_skips_a_retired_source_and_says_which(monkeypatch, caplog):
     from ledger import setup_registry
 
     class _Store:
+        names = schema.world_names(schema.DEFAULT_WORLD)
+
         def __init__(self):
             self.written = []
 
@@ -281,11 +294,11 @@ def test_the_sweep_skips_a_retired_source_and_says_which(monkeypatch, caplog):
                     "gone": _Plan("rel_gone", "row_id", status="retired"),
                     "c": _Plan("rel_c", "row_id")})
     monkeypatch.setattr(backfill, "measure_row_census",
-                        lambda engine, setup, source, now=None, *, exact_rows=True:
+                        lambda engine, setup, source, now=None, *, exact_rows=True, world=None:
                         {"source": source, "relation": "rel_" + source, "measured_at": "now"})
     store = _Store()
     with caplog.at_level(logging.INFO):
-        done = backfill.measure_every_source(_Engine([]), setup, store=store)
+        done = backfill.measure_every_source(_Engine([]), setup, store=lambda world: store)
 
     assert done == ["a", "c"] and store.written == ["a", "c"]
     assert "gone" in chr(10).join(r.getMessage() for r in caplog.records)
@@ -318,8 +331,8 @@ def _real_census_for_the_refused(monkeypatch):
     monkeypatch.setattr(setup_registry, "cursor_translator_version", version)
     monkeypatch.setattr(
         backfill, "measure_row_census",
-        lambda engine, setup, source, now=None, *, exact_rows=True:
-        real(engine, setup, source, now=now, exact_rows=exact_rows) if source == "r"
+        lambda engine, setup, source, now=None, *, exact_rows=True, world=None:
+        real(engine, setup, source, now=now, exact_rows=exact_rows, world=world) if source == "r"
         else {"source": source, "relation": "rel_" + source, "measured_at": "now"})
 
 
@@ -331,6 +344,8 @@ def test_a_refused_source_is_measured_and_stored_without_a_fingerprint(monkeypat
     import logging
 
     class _Store:
+        names = schema.world_names(schema.DEFAULT_WORLD)
+
         def __init__(self):
             self.written = []
 
@@ -340,7 +355,7 @@ def test_a_refused_source_is_measured_and_stored_without_a_fingerprint(monkeypat
     _real_census_for_the_refused(monkeypatch)
     store = _Store()
     with caplog.at_level(logging.INFO):
-        done = backfill.measure_every_source(_Engine([]), _one_of_each(), store=store)
+        done = backfill.measure_every_source(_Engine([]), _one_of_each(), store=lambda world: store)
 
     assert done == ["a", "r"]
     assert store.written == [("a", None, "ledger-v2:a"), ("r", "source_refused", None)]

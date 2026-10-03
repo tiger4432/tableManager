@@ -331,9 +331,13 @@ def _run_via_events(engine, setup, source, page_rows=DEFAULT_FETCH_ROWS,
     pages_per_cycle, rest_seconds = resolve_pace(pace)
     started = time.perf_counter()
     after = None
-    # A branch translates only the sources it speaks for (총괄 c23b02aeb ③): the rows are
-    # queued by TABLE, and a source it did not change must stay the default's in its view.
-    speaks_for = schema.speaks_for(schema.world_names(world))
+    # 🔴 THIS SOURCE ONLY (총괄 5fec118bb). The rows are queued by TABLE, and they are new to
+    # ITS index alone: another source reading the table has them already, and a CREATE is
+    # translated without withdrawing (판정 166) - so it wrote that source's facts twice, once
+    # more each time the declaration had moved. And only where this world speaks for it -
+    # `followed_by`'s top entry, what the live follow-up reads (총괄 c23b02aeb ③ · 8b81e79a0).
+    speaks = schema.followed_by(engine, schema.world_names(world))[0][1]
+    only = frozenset({source}) & (speaks if speaks is not None else {source})
     while max_pages is None or report["batches"] < max_pages:
         page = rows_missing_from_the_index(engine, setup, source, page_rows, after,
                                            world=world)
@@ -346,7 +350,7 @@ def _run_via_events(engine, setup, source, page_rows=DEFAULT_FETCH_ROWS,
         report["max_queue_depth"] = max(report["max_queue_depth"],
                                         followup.queue_depth())
         while followup.queue_depth() >= EVENT_LOAD_QUEUE_LIMIT:
-            _drain_into(engine, setup, report, world=world, sources=speaks_for)
+            _drain_into(engine, setup, report, world=world, sources=only)
         if pages_per_cycle and rest_seconds and (
                 report["batches"] % pages_per_cycle == 0):
             time.sleep(rest_seconds)
@@ -355,7 +359,7 @@ def _run_via_events(engine, setup, source, page_rows=DEFAULT_FETCH_ROWS,
             logger.info("[Ledger] stopped by request after %d rows", report["rows_read"])
             break
     while followup.queue_depth():
-        _drain_into(engine, setup, report, world=world, sources=speaks_for)
+        _drain_into(engine, setup, report, world=world, sources=only)
     # 🔴 THE REFUSAL COUNTS COME WITH THE KEYS (판정 171: keep the names).
     # These three were published by the cursor driver and were LOST when the load
     # moved here, silently -- the only test of them inspected that driver's source, so
@@ -1139,19 +1143,21 @@ PROG = "python -m ledger.backfill"
 DRIFTED_FLAG = "--drifted"
 
 
-def next_step(source, census):
+def next_step(source, census, world):
     """What a person runs next for this record (총괄 e1648e884), or None: the redo of the rows
     edited behind the chain when there are some, a person's census when the drift was never
-    counted. A refused source has neither - its refusal already says nothing was counted."""
+    counted. A refused source has neither - its refusal already says nothing was counted.
+    It names the world the record was measured in, always: it runs later, and the world
+    that operates then may be another (총괄 6c266e56b ⑤)."""
     from .census_cli import PROG as CENSUS_PROG
 
     if census.get("refused"):
         return None
     drifted = census.get("rows_drifted")
     if not isinstance(drifted, dict):
-        return f"{CENSUS_PROG} --source {source}"
+        return f"{CENSUS_PROG} --source {source} --world {world}"
     if drifted.get("estimate"):
-        return f"{PROG} --source {source} {DRIFTED_FLAG}"
+        return f"{PROG} --source {source} --world {world} {DRIFTED_FLAG}"
     return None
 
 
@@ -1167,7 +1173,7 @@ def _person_counts(store, source):
     return {box: last[box] for box in PERSON_ONLY_BOXES if box in last}
 
 
-def measure_row_census(engine, setup, source, now=None, *, exact_rows=True):
+def measure_row_census(engine, setup, source, now=None, *, exact_rows=True, world=None):
     """One source's census, STAMPED -- what was counted, how, and when.
 
     🔴 THIS IS THE JOB'S WORK, NOT THE REQUEST'S (D5, 판정 180). Both numbers are
@@ -1188,10 +1194,10 @@ def measure_row_census(engine, setup, source, now=None, *, exact_rows=True):
 
     from ledger.trace import measured
 
-    census = rows_not_yet_translated(engine, setup, source, exact_rows=exact_rows)
+    census = rows_not_yet_translated(engine, setup, source, exact_rows=exact_rows, world=world)
     stamp = (now or datetime.now(timezone.utc)).isoformat()
     stamped = {"source": census["source"], "relation": census["relation"],
-               "measured_at": stamp}
+               "measured_at": stamp, "world": world}
     if census.get("refused"):
         stamped["refused"] = census["refused"]
         stamped["remedy"] = census["remedy"]
@@ -1199,7 +1205,7 @@ def measure_row_census(engine, setup, source, now=None, *, exact_rows=True):
     # ⚠️ BEFORE THE GROUPED RETURN, because this number does not have the unit problem
     # that stops the remainder being published: it counts ROWS on both sides whatever the
     # source's unit is. A source that reads by group still has rows waiting to be withdrawn.
-    excluded, page = count_excluded_but_indexed(engine, setup, census["source"])
+    excluded, page = count_excluded_but_indexed(engine, setup, census["source"], world=world)
     if page:
         stamped["excluded_but_indexed"] = measured(
             excluded, exact=False,
@@ -1208,7 +1214,7 @@ def measure_row_census(engine, setup, source, now=None, *, exact_rows=True):
     # (나) A SCAN, so the operator's census and never the paced tick (S-122). Rows, whatever
     # the unit, so before the grouped return like the number above.
     if exact_rows:
-        drift = rows_drifted(engine, setup, census["source"])
+        drift = rows_drifted(engine, setup, census["source"], world=world)
         stamped["rows_drifted"] = measured(
             drift["rows_drifted"], exact=True,
             method="index print <> print of the row's read columns now", measured_at=stamp)
@@ -1269,10 +1275,15 @@ def measure_and_store(engine, setup, source, store, now=None, *, exact_rows=True
     """
     from .setup_registry import cursor_translator_version
 
-    census = measure_row_census(engine, setup, source, now=now, exact_rows=exact_rows)
+    from . import schema
+
+    # Measured in the store's world, by name - `setup` is that world's (총괄 8b81e79a0).
+    world = store.names.world or schema.DEFAULT_WORLD
+    census = measure_row_census(engine, setup, source, now=now, exact_rows=exact_rows,
+                                world=world)
     if not exact_rows:
         census = {**_person_counts(store, source), **census}
-    step = next_step(source, census)
+    step = next_step(source, census, world)
     if step:
         census["next_step"] = step
     if census.get("refused"):
@@ -1322,16 +1333,21 @@ def census_sources(setup):
             sorted(n for n, p in plans.items() if p.status != "active"))
 
 
-def measure_every_source(engine, setup, store=None, now=None):
-    """Measure each declared source in turn and store what it found.
+def measure_every_source(engine, setup, store=None, now=None, world=None):
+    """Measure each declared source in turn, in the world that speaks for it
+    (`schema.speaking_world` - `world` named: there, and a source it does not speak for is
+    refused by name), and store what it found there. `setup` is the operating world's;
+    `store(world)` gives the writer for a world (none: that world's `LedgerStore`).
 
     ⛔ ONE SOURCE'S FAILURE DOES NOT END THE SWEEP. A relation that was dropped, or a
     permission that changed, must cost that source's number and not every source after it --
     the shape the follow-up loop already carries, for the same reason.
     """
+    from . import schema
+    from .setup import load_setup
     from .store import LedgerStore
 
-    writer = LedgerStore(engine) if store is None else store
+    setups = {schema.operating_world(): setup}
     done = []
     measured, retired = census_sources(setup)
     # ⛔ NAMED, NOT SILENT (S-103) - a sweep that returns fewer sources than the declaration
@@ -1340,7 +1356,12 @@ def measure_every_source(engine, setup, store=None, now=None):
         logger.info("[Ledger] census skips %s: retired (content unvalidated)", source)
     for source in measured:
         try:
-            measure_and_store(engine, setup, source, writer, now=now)
+            speaking = schema.speaking_world(engine, source, world)
+            if speaking not in setups:
+                setups[speaking] = load_setup(schema.world_names(speaking).declaration_root)
+            measure_and_store(engine, setups[speaking], source,
+                              LedgerStore(engine, world=speaking) if store is None
+                              else store(speaking), now=now)
         except Exception as exc:
             logger.warning("[Ledger] census of %s failed: %s", source, exc)
             continue
@@ -1779,7 +1800,8 @@ def count_rows_missing(engine, setup, source, column, fetch_rows=PREVIEW_FETCH_R
     return missing, len(rows)
 
 
-def count_excluded_but_indexed(engine, setup, source, fetch_rows=PREVIEW_FETCH_ROWS):
+def count_excluded_but_indexed(engine, setup, source, fetch_rows=PREVIEW_FETCH_ROWS,
+                              world=None):
     """Of the page a test run reads, how many rows the declaration now EXCLUDES are still
     indexed. `(excluded_and_indexed, rows_read)`.
 
@@ -1829,7 +1851,7 @@ def count_excluded_but_indexed(engine, setup, source, fetch_rows=PREVIEW_FETCH_R
                 excluded.append(str(row_id))
     if not excluded:
         return 0, len(rows)
-    indexed = LedgerStore(engine).indexed_row_ids(plan.relation, excluded, source)
+    indexed = LedgerStore(engine, world=world).indexed_row_ids(plan.relation, excluded, source)
     return len(indexed), len(rows)
 
 
@@ -2195,13 +2217,18 @@ def main(argv=None):
     # one query and takes no lock.
     from .store import LedgerStore
 
-    names = schema.require_world(args.world)
     LedgerStore(engine, world=args.world).ensure_schema()
+    # Written in the world that speaks for the source, by name - the one the live follow-up
+    # writes it into - and a world named here that does not speak for it is refused by name
+    # (총괄 8b81e79a0). Read from the chain whose schema the line above made sure of.
+    world = schema.speaking_world(engine, args.source, args.world)
+    names = schema.require_world(world)
+    LedgerStore(engine, world=world).ensure_schema()
 
     if args.drifted:
         result = retranslate_drifted(engine, load_setup(names.declaration_root), args.source,
                                      apply=args.apply,
-                                     world=args.world)
+                                     world=world)
         logger.info("[Ledger] drifted rows of %s: %s", args.source, result)
         print("drifted: %s" % result)
         return 0
@@ -2216,12 +2243,12 @@ def main(argv=None):
                 "--scope-column/--scope-values")
         if args.apply:
             scoped = _written("ledger_rescope", {
-                "source": args.source, "whole_source": True, "world": args.world})
+                "source": args.source, "whole_source": True, "world": world})
             if scoped is None:
                 return 2
         else:
             scoped = rescope(engine, load_setup(names.declaration_root), args.source, None,
-                             None, apply=False, whole_source=True, world=args.world)
+                             None, apply=False, whole_source=True, world=world)
         logger.info("[Ledger] %s", scoped)
         if not args.apply:
             logger.info("[Ledger] dry-run: nothing was written. Re-run with --apply.")
@@ -2242,13 +2269,13 @@ def main(argv=None):
         if args.apply:
             scoped = _written("ledger_rescope", {
                 "source": args.source, "scope_column": args.scope_column,
-                "scope_values": values, "world": args.world})
+                "scope_values": values, "world": world})
             if scoped is None:
                 return 2
         else:
             setup = load_setup(names.declaration_root)
             scoped = rescope(engine, setup, args.source, args.scope_column, values,
-                             apply=False, world=args.world)
+                             apply=False, world=world)
         logger.info("[Ledger] %s", scoped)
         if not args.apply:
             logger.info("[Ledger] dry-run: nothing was written. Re-run with --apply.")
@@ -2257,7 +2284,7 @@ def main(argv=None):
     # `reset_cursor` / `start_from` never reach here - refused above, before any store access.
     result = _written("ledger_backfill", {
         "source": args.source, "fetch_rows": args.fetch_rows, "pace": args.pace,
-        "max_batches": args.max_batches, "world": args.world})
+        "max_batches": args.max_batches, "world": world})
     if result is None:
         return 2
     beat(result)

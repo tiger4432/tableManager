@@ -471,10 +471,9 @@ def _given(params, *names):
 def _run_ledger_backfill(db, params, log, control=None):
     from ledger import backfill
 
-    _ledger_world(params)        # a job stored before worlds: its root is judged here
     s = backfill.run(db.get_bind(), source=params["source"],
                      checkpoint=_checkpoint(control), pace=params.get("pace"),
-                     **_given(params, "fetch_rows", "max_batches", "world"))
+                     world=_ledger_world(params), **_given(params, "fetch_rows", "max_batches"))
     _final_progress(control, s.get("rows_read"), s)
     return {"rows_read": s.get("rows_read"), "batches": s.get("batches"),
             "inserted": s.get("inserted"), "deduped": s.get("deduped"),
@@ -639,7 +638,7 @@ def _run_ledger_rescope(db, params, log, control=None):
         db.get_bind(), _ledger_setup(params), params["source"], params.get("scope_column"),
         params.get("scope_values") or [], apply=True,
         page_rows=backfill.RESCOPE_PAGE_ROWS, checkpoint=_checkpoint(control),
-        whole_source=bool(params.get("whole_source")), **_given(params, "world"))
+        whole_source=bool(params.get("whole_source")), world=_ledger_world(params))
     log(f"[rescope] {s['source']} {s['scope_column']}: rows {s['rows_in_scope']}, "
         f"withdrawn {s['withdrawn']}, written {s['inserted']} of {s['attempted']}")
     _final_progress(control, s.get("rows_in_scope"), s)
@@ -1151,22 +1150,31 @@ def _judge_table(params):
 
 
 def _ledger_world(params):
-    """The ledger world a job names (총괄 3b6dacd2f). A job stored before worlds carries the
-    root it read instead: the default root IS the default world - by name, whichever world
-    operates now - and any other root is refused by name - reading it as the default would
-    read a different declaration. A job naming neither runs in the operating world."""
+    """The ledger world a job runs in, by name (총괄 3b6dacd2f · 8b81e79a0). A job stored before
+    worlds carries the root it read instead: the default root IS the default world - by name,
+    whichever world operates now - and any other root is refused by name - reading it as the
+    default would read a different declaration. A job naming no world runs in the one that
+    speaks for its source in the operating chain; one naming a world that does not speak for
+    it is refused by name (`schema.speaking_world`).
+    """
+    from database.database import engine
     from ledger import schema
+    from ledger.setup import LedgerSetupError
 
     root = params.get("ontology_root")
-    if root is None:
-        return params.get("world")
-    if (os.path.normcase(os.path.normpath(str(root)))
-            != os.path.normcase(os.path.normpath(
-                schema.world_names(schema.DEFAULT_WORLD).declaration_root))):
-        raise RetroactiveRefused(
-            f"this job reads the declaration at {root}, which is no ledger world's root - "
-            f"run it again naming a world (--world)")
-    return params.get("world") or schema.DEFAULT_WORLD
+    world = params.get("world")
+    if root is not None:
+        if (os.path.normcase(os.path.normpath(str(root)))
+                != os.path.normcase(os.path.normpath(
+                    schema.world_names(schema.DEFAULT_WORLD).declaration_root))):
+            raise RetroactiveRefused(
+                f"this job reads the declaration at {root}, which is no ledger world's root - "
+                f"run it again naming a world (--world)")
+        world = world or schema.DEFAULT_WORLD
+    try:
+        return schema.speaking_world(engine, params["source"], world)
+    except LedgerSetupError as exc:
+        raise RetroactiveRefused(str(exc)) from None
 
 
 def _ledger_setup(params):

@@ -40,13 +40,17 @@ def main(argv=None) -> int:
         "--source", default=None,
         help="이 소스 하나만. 없으면 선언된 소스 전부")
     parser.add_argument(
+        "--world", default=None,
+        help="이 세상에서. 없으면 소스마다 그 소스를 말하는 세상(운영 세상의 사슬에서) — "
+             "그 세상이 말하지 않는 소스는 이름 대어 거절")
+    parser.add_argument(
         "--json", action="store_true",
         help="사람 대신 기계가 읽을 모양으로")
     args = parser.parse_args(argv)
 
     from database.database import engine
-    from ledger import backfill
-    from ledger.setup import load_setup
+    from ledger import backfill, schema
+    from ledger.setup import LedgerSetupError, load_setup
     from ledger.store import LedgerStore
 
     setup = load_setup()
@@ -77,21 +81,29 @@ def main(argv=None) -> int:
 
         def __init__(self, inner):
             self._inner = inner
-            self.written = {}
 
         def write_row_census(self, source, census, **kwargs):
-            self.written[source] = census
+            measured[source] = census
             return self._inner.write_row_census(source, census, **kwargs)
 
         def __getattr__(self, name):
             return getattr(self._inner, name)
 
-    store = _Recording(LedgerStore(engine))
+    # Each source in the world that speaks for it, as the paced job measures it (총괄 8b81e79a0).
+    measured = {}
     if args.source is None:
-        backfill.measure_every_source(engine, setup, store=store)
+        backfill.measure_every_source(
+            engine, setup, store=lambda world: _Recording(LedgerStore(engine, world=world)),
+            world=args.world)
     else:
-        backfill.measure_and_store(engine, setup, args.source, store)
-    measured = store.written
+        try:
+            world = schema.speaking_world(engine, args.source, args.world)
+        except LedgerSetupError as refused:
+            print(f"{args.source}: {refused}", file=sys.stderr)
+            return 2
+        backfill.measure_and_store(
+            engine, load_setup(schema.world_names(world).declaration_root), args.source,
+            _Recording(LedgerStore(engine, world=world)))
 
     if args.json:
         print(json.dumps(measured, ensure_ascii=False, indent=1, default=str))
@@ -99,7 +111,7 @@ def main(argv=None) -> int:
     for source in sorted(measured):
         census = measured[source] or {}
         if census.get("refused"):
-            print(f"{source}: 셀 수 없음 -- {census['refused']}")
+            print(f"{source} ({census.get('world')}): 셀 수 없음 -- {census['refused']}")
             continue
         rows = (census.get("relation_rows") or {}).get("estimate")
         indexed = (census.get("indexed_rows") or {}).get("estimate")
@@ -109,7 +121,7 @@ def main(argv=None) -> int:
         if census.get("rows_drifted") is not None:
             tail += (f" · 수정 누락 {census['rows_drifted']['estimate']}"
                      f" · 지문 없음 {census['rows_unprinted']['estimate']}")
-        print(f"{source}: 표 {rows} · 색인 {indexed}{tail}")
+        print(f"{source} ({census.get('world')}): 표 {rows} · 색인 {indexed}{tail}")
     return 0
 
 

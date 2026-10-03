@@ -61,7 +61,8 @@ def test_an_edit_behind_the_chain_is_counted_and_redone(world):
     assert census["rows_drifted"]["estimate"] == 1
     assert census["rows_drifted"]["measured_at"] == census["measured_at"]   # when it was counted
     assert census["rows_unprinted"]["estimate"] == 0                         # counted apart
-    assert census["next_step"] == "python -m ledger.backfill --source %s --drifted" % hw.SOURCE
+    # the world it was measured in, named always (총괄 6c266e56b ⑤)
+    assert census["next_step"] == "python -m ledger.backfill --source %s --world default --drifted" % hw.SOURCE
     backfill.retranslate_drifted(world["engine"], world["setup"], hw.SOURCE, apply=True)
     assert _drift(world) == {"rows_drifted": 0, "rows_unprinted": 0}
     assert [(job, float(value)) for job, value in hw.said(world)] == [("J1", 8.0)]
@@ -121,7 +122,7 @@ def test_a_source_no_person_counted_names_the_census_as_its_next_step(world):
     paced = backfill.measure_and_store(world["engine"], world["setup"], hw.SOURCE,
                                        LedgerStore(world["engine"]), exact_rows=False)
     assert "rows_drifted" not in paced
-    assert paced["next_step"] == "%s --source %s" % (census_cli.PROG, hw.SOURCE)
+    assert paced["next_step"] == "%s --source %s --world default" % (census_cli.PROG, hw.SOURCE)
     assert _stored(world)["next_step"] == paced["next_step"]
 
 

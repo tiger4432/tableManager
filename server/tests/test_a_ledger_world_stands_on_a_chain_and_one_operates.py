@@ -93,7 +93,8 @@ def fixture_config(tmp_path, monkeypatch):
 def test_no_layout_is_today(config):
     assert schema.operating_world() == schema.DEFAULT_WORLD
     assert schema.world_names() == schema.world_names(schema.DEFAULT_WORLD)
-    assert schema.world_names().world is None and schema.speaks_for(schema.world_names()) is None
+    assert schema.world_names().world is None
+    assert schema.followed_by(None) == [(schema.DEFAULT_WORLD, None)]  # it speaks for all
     _declare(B1, _sample("ledger_config.json.sample"))
     names = schema.world_names(B1)
     assert names.beneath == (schema.DEFAULT_WORLD,)
@@ -156,12 +157,11 @@ def test_each_source_is_spoken_for_by_the_topmost_world_whose_declaration_differ
     assert names.beneath == (B1, schema.DEFAULT_WORLD)
     assert names.base_root == schema.world_names(B1).declaration_root
     assert schema._declared_speakers(names) == [{KEPT}, {CHANGED}, None]
-    assert schema.changed_sources(names) == schema.speaks_for(names) == {KEPT}
+    assert schema.changed_sources(names) == {KEPT}
 
     schema.stand(N, [])
     _declare(N, _sample("ledger_config.json.sample"))
     assert schema.world_names(N).base_root is None
-    assert schema.speaks_for(schema.require_world(N)) is None         # it speaks for all
     with pytest.raises(LookupError):
         schema.require_world("undeclared")
 
@@ -186,6 +186,7 @@ def test_the_operating_world_and_a_world_stood_on_are_not_deleted(config):
 def test_every_answer_that_lists_the_worlds_carries_one_shape(config):
     """총괄 e51e3e417: the declaration answer, /tables and the explorer's list."""
     import main
+    from fastapi import HTTPException
     from ledger import trace_router
     from ledger_api import ontology_config_explorer_router as explorer_router
 
@@ -196,6 +197,29 @@ def test_every_answer_that_lists_the_worlds_carries_one_shape(config):
     for answer in (trace_router.ledger_declaration_catalog(world=None), main.list_tables(),
                    explorer_router.list_worlds()):
         assert {key: answer[key] for key in expected} == expected
+    with pytest.raises(HTTPException) as refused:                    # 총괄 f1ad96964 ①
+        trace_router._world("nowhere")
+    assert refused.value.detail["worlds"] == expected["worlds"]
+
+
+def test_a_type_the_named_world_does_not_declare_is_refused_by_that_world(config):
+    """총괄 5fec118bb ②: the default declares tool, B1 does not - asked in B1, the key search
+    refuses it as not declared THERE (it said 「'tool' declares no keys」)."""
+    from fastapi import HTTPException
+    from ledger import trace_router
+
+    document = _sample("ledger_config.json.sample")
+    document["entities"]["tool@1"] = {"keys": ["tool"]}
+    (config / "ontology" / "ledger_config.json").write_text(json.dumps(document), encoding="utf-8")
+    schema.stand(B1, [schema.DEFAULT_WORLD])
+    _declare(B1, _sample("ledger_config.json.sample"))
+    with pytest.raises(HTTPException) as refused:
+        trace_router.ledger_key_values(type="tool", key=None,
+                                       limit=trace_router.KEY_VALUE_DEFAULT_LIMIT, world=B1, db=None)
+    detail = refused.value.detail
+    assert (refused.value.status_code, detail["reason"], detail["world"]) == (
+        422, "node_type_not_declared", B1)
+    assert detail["message"].startswith("type 'tool' is not declared in world %s" % B1)
 
 
 # ------------------------------------------------------------------ on PostgreSQL
@@ -410,6 +434,134 @@ def test_a_source_two_worlds_say_otherwise_is_the_topmost_ones_alone(world):
     assert _saying(world, w.ledger, "RCP-3") == {CHANGED}
     assert _saying(world, b1.ledger, "RCP-3") == set()
     assert _saying(world, schema.LEDGER_TABLE, "RCP-3") == set()
+
+
+@pytest.mark.pg
+def test_a_source_is_counted_and_written_in_the_world_that_speaks_for_it(world, monkeypatch, capsys):
+    """총괄 8b81e79a0: B1 operates on the default and speaks for the recipe source. The load
+    source is the default's: its census is measured and read there and says so, its next step
+    names it, a backfill naming no world writes it there, and naming B1 for it is refused by
+    name. Once B1 has written the load source too, B1 speaks for it and a backfill writes there."""
+    import database.database as database_module
+    from admin import retroactive
+    from chain import ingestion_worker
+    from ledger import admin, census_cli, trace_router
+    from ledger.setup import LedgerSetupError
+    from tests.support.retro_door import run_without_a_record
+
+    monkeypatch.setattr(retroactive, "run_here", run_without_a_record(world["engine"]))
+    monkeypatch.setattr(backfill, "beat", lambda result: None)
+    _seed(world)
+    _b1(world)
+    _operate(world, B1)
+    default = schema.DEFAULT_WORLD
+
+    for source in (CHANGED, KEPT):                                   # the paced tick
+        ingestion_worker._measure_one_source_sync(world["maker"], source)
+    census = trace_router._row_census_by_source()
+    assert {source: (census[source]["world"], census[source]["next_step"]) for source in census} == {
+        CHANGED: (B1, "python -m ledger census --source %s --world %s" % (CHANGED, B1)),
+        KEPT: (default, "python -m ledger census --source %s --world %s" % (KEPT, default))}
+    monkeypatch.setattr(backfill, "census_sources", lambda setup: ([CHANGED, KEPT], []))
+    assert census_cli.main([]) == 0                                  # a person's count, all
+    counted = trace_router._row_census_by_source()
+    assert all("rows_drifted" in counted[source] for source in (CHANGED, KEPT))  # in its world
+    assert census_cli.main(["--source", KEPT, "--world", default]) == 0
+    assert census_cli.main(["--source", KEPT, "--world", B1]) == 2
+    assert "%s is spoken for by %s, not %s" % (KEPT, default, B1) in capsys.readouterr().err
+    panel = {row["source"]: row for row in admin.ingestion_view(world["db"], [CHANGED, KEPT])["sources"]}
+    assert {source: (row["world"], row["state"]) for source, row in panel.items()} == {
+        CHANGED: (B1, admin.SOURCE_RAN_AND_WROTE), KEPT: (default, admin.SOURCE_RAN_AND_WROTE)}
+    assert trace_router._row_census_by_source()[KEPT]["not_yet"]["estimate"] == 0
+
+    _write(world, "lot_slot_wafer", [{"lot_slot_wafer_key": "K2", "lot": "L1", "slot": "2",
+                                      "wafer": "W2", "event_type": "load",
+                                      "event_time": EVENT_TIME}])
+    with pytest.raises(LedgerSetupError, match="%s is spoken for by %s" % (KEPT, default)):
+        backfill.main(["--source", KEPT, "--world", B1])
+    assert backfill.main(["--source", KEPT]) == 0
+    b1 = schema.require_world(B1)
+    assert (_saying(world, schema.LEDGER_TABLE, "W2"), _saying(world, b1.ledger, "W2")) == ({KEPT}, set())
+    _write(world, "lot_slot_wafer", [{"lot_slot_wafer_key": "K4", "lot": "L1", "slot": "4",
+                                      "wafer": "W4", "event_type": "load",
+                                      "event_time": EVENT_TIME}])
+    retroactive.run_here("ledger_backfill", {"source": KEPT})       # the board's redo: no world
+    assert (_saying(world, schema.LEDGER_TABLE, "W4"), _saying(world, b1.ledger, "W4")) == ({KEPT}, set())
+
+    backfill.rescope(world["engine"], load_setup(b1.declaration_root), KEPT, None, None,
+                     apply=True, page_rows=backfill.RESCOPE_PAGE_ROWS, whole_source=True,
+                     world=B1)                                        # B1 writes it: B1 speaks
+    backfill.refresh_world_view(world["engine"], B1)
+    assert schema.speaker(schema.followed_by(world["engine"]), KEPT) == B1
+    _write(world, "lot_slot_wafer", [{"lot_slot_wafer_key": "K3", "lot": "L1", "slot": "3",
+                                      "wafer": "W3", "event_type": "load",
+                                      "event_time": EVENT_TIME}])
+    assert backfill.main(["--source", KEPT]) == 0
+    assert (_saying(world, b1.ledger, "W3"), _saying(world, schema.LEDGER_TABLE, "W3")) == ({KEPT}, set())
+    assert database_module.engine is world["engine"]                 # canary: the fixture's
+
+
+def _stale_then_restamp(world, where, restamp):
+    """Each cursor of `where` (source -> world) given a fingerprint only the grammar moved, then
+    `restamp()`: -> what each cursor carries after, and what its world's declaration wants."""
+    from ledger.setup_registry import cursor_translator_version
+
+    for source, name in where.items():
+        with world["engine"].begin() as conn:
+            conn.execute(text("UPDATE %s SET translator_ver = 'ledger-v2:stale' WHERE source = :s"
+                              % schema.world_names(name).cursor), {"s": source})
+    restamp()
+    stamped, wanted = {}, {}
+    for source, name in where.items():
+        with world["engine"].connect() as conn:
+            stamped[source] = conn.execute(text(
+                "SELECT translator_ver FROM %s WHERE source = :s"
+                % schema.world_names(name).cursor), {"s": source}).scalar()
+        wanted[source] = cursor_translator_version(
+            load_setup(schema.world_names(name).declaration_root).snapshot, source)
+    return stamped, wanted
+
+
+def _b1_operating_with_both_cursors(world):
+    from chain import ingestion_worker
+
+    _seed(world)
+    _b1(world)
+    _operate(world, B1)
+    for source in (CHANGED, KEPT):                                   # the census makes the rows
+        ingestion_worker._measure_one_source_sync(world["maker"], source)
+    return {CHANGED: B1, KEPT: schema.DEFAULT_WORLD}
+
+
+@pytest.mark.pg
+def test_the_boot_restamp_moves_each_cursor_in_the_world_that_speaks_for_it(world):
+    """총괄 152f4bb0b: B1 operating - the load source's cursor is the default's, the recipe
+    source's B1's; a fingerprint only the grammar moved is restamped in each. The default
+    operating: both in the default, as before."""
+    from chain import ingestion_worker
+
+    def boot():
+        ingestion_worker._restamp_moved_fingerprints_sync(world["maker"])
+
+    stamped, wanted = _stale_then_restamp(world, _b1_operating_with_both_cursors(world), boot)
+    assert stamped == wanted
+
+    _operate(world, schema.DEFAULT_WORLD)
+    ingestion_worker._measure_one_source_sync(world["maker"], CHANGED)
+    stamped, wanted = _stale_then_restamp(
+        world, {CHANGED: schema.DEFAULT_WORLD, KEPT: schema.DEFAULT_WORLD}, boot)
+    assert stamped == wanted
+
+
+@pytest.mark.pg
+def test_the_restamp_script_naming_no_world_moves_each_cursor_where_it_is_spoken_for(world):
+    """총괄 8e8ee2dcf: the person's tool, without --world, as the boot step."""
+    from scripts import ledger_restamp_cursor
+
+    stamped, wanted = _stale_then_restamp(
+        world, _b1_operating_with_both_cursors(world),
+        lambda: ledger_restamp_cursor.main(["--apply"]))
+    assert stamped == wanted
 
 
 @pytest.mark.pg

@@ -25,7 +25,15 @@ import pytest
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
+import paths                                                             # noqa: E402
 from ledger import admin                                                  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def _no_layout(tmp_path, monkeypatch):
+    """No worlds layout: the default operates and is the whole chain (총괄 8b81e79a0) - so the
+    view reads one cursor table, the default's, and the box's own layout never answers."""
+    monkeypatch.setattr(paths, "CONFIG_DIR", str(tmp_path))
 
 
 class _Cursor:
@@ -33,6 +41,10 @@ class _Cursor:
 
     def __init__(self, rows=None, raises=None):
         self.rows, self.raises, self.queries = rows or {}, raises, []
+
+    def get_bind(self):
+        """The default world has no view, so its chain asks the database nothing."""
+        return None
 
     def execute(self, statement):
         self.queries.append(str(statement))

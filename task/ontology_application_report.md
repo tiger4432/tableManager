@@ -35677,3 +35677,75 @@ RELEASE_LOG 맞음 — 주기 판이 세지 않고 잇는다 · 직전 기록 �
             (default 를 고르면 ?world=default — 서버는 기본으로 읽으니 데이터는 맞다. 보이는 줄만 둘)
             재기동 순서(클라와 같이)로 막을지, 클라가 그 줄을 지울 때까지 서버가 옛 모양을 낼지 — 여쭐 것. 고르개 하니스는 이 트리에 없다(tests 에 branch 이름 0)
 ```
+
+---
+
+## [C 응용] 10-03 22ea53fa3(한 배치의 나중 항목이 동률을 이긴다 · layer_instant) 검수 · 문서 @`523b7bd80`
+
+```
+셈       칸 층 ingested_at 을 «지금»으로 찍는 자리: layer_instant() 를 부르는 줄 5(crud 셋 · normalize_schema · seed_data), datetime.now / func.now 로 직접 찍는 줄 0
+         (git grep, 카나리아 def layer_instant 1). 모델의 server_default now() 를 타는 생성은 없다 — 쓰기의 새 층도 같은 함수로 칸을 채운다
+시험     새 두 파일 pytest 2 passed — 둘 다 sqlite 메모리 엔진(PG 표시 없음, run_pg_tests 는 0 수집). -k (later_item · merge_keeps · priority · layer) 137 passed 7 skipped ·
+         PG -k (collision · key_part_is_spelled · world …) 15 passed
+         판정(나중 항목)은 파이썬에서 순위를 셀 때 나서 DB 와 무관해 보인다 — 다만 PG 의 다중 행 업서트 길(_pg_multirow_upsert)로 끝까지 도는 시험은 없다. 안 쟀다
+문서     CODE_MAP crud — layer_instant 줄(부르는 자리 5 · 병합 사본은 도착 순서대로 하나씩 · ⚠️ 프로세스 «안»에서만 단조: API 와 워커가 같은 µs 에 같은 칸을 쓰면 여전히 동률)
+```
+
+---
+
+## [C 응용] 10-03 279d04475(census · 번역기 패널 · 백필이 소스를 말하는 세상으로) 검수 · 문서 @`f0d825016` — 078cfd261 의 셋 중 남은 하나
+
+```
+시험 (박스)  run_pg_tests -k (world · branch · census · next_step · counts_were_taken · never_saw) 32 passed · 바뀐 시험 일곱 파일 pytest 89 passed 6 skipped
+문서        CODE_MAP schema 줄(speaker · speaking_world · speaking_cursor, ⚰️ speaks_for) · RUNTIME_MAP ⑤(소스마다 말하는 세상에서 잼) ·
+            BACKFILL_GUIDE(next_step 이 늘 --world) · LEDGER_GUIDE 4.9(이름 없이 따르는 자리에서 census · 백필을 빼고 «소스마다 말하는 세상» 줄 · 거절 문구)
+078cfd261 의 셋   ③ census — 이 착지로 닫힘(_measure_one_source_sync 가 speaking_world 로) · ② 부팅 지문 다시 찍기 — 152f4bb0b 가 같은 원칙으로 지시
+                  ① 워커 기동 스키마(_ensure_ledger_schema_sync -> LedgerStore(engine).ensure_schema() = 운영 세상만) — 아직 어느 지시에도 없다.
+                  운영 = 가지(밑 기본)일 때 기본이 말하는 소스는 기본에 쓰이는데, 기본에 칸을 더하는 업그레이드 뒤 재기동은 가지만 맞춘다. 같은 원칙(사슬의 세상 전부)으로 넣을지 여쭐 것
+```
+
+---
+
+## [C 응용] 10-03 919ce6436(부팅 지문 다시 찍기를 소스를 말하는 세상에서) 곁 — 「지문이 움직이면 커서가 선다」가 09-09 부터 거짓이었다 · 문서 넷 고침
+
+```
+계기     구현자 커밋 문장 「No writer is refused by a stale cursor (no caller enforces the version)」
+셈       server(시험 뺌)에서 cursor_snapshot_reset_required 낱말 5 줄 — 전부 주석 · 독스트링, 던지는 줄 0(raise · LedgerSetupError( 0)
+         test_ledger_v2_pg.py:387 이 이미 적는다: 「the live path does not compare fingerprints at all - nothing raises …」(S-113 셈) · 은퇴는 09-09 d91fba431
+고친 문서  LEDGER_GUIDE 4.2(제목 · 본문: 거절 없음, 패널이 «어느 선언 위인가»를 보임, 부팅이 내용 같은 지문만 다시 찍음) ·
+          ONTOLOGY_LEDGER_SETUP 두 줄 · PRIMITIVES 「커서를 세운다」 줄에 ⚰️ · SYSTEM_FLOWS L-14(은퇴한 _run_v2_lineage) ⚰️
+코드에 남은 옛말(구현자 몫, 안 고침)  ingestion_worker._restamp_moved_fingerprints_sync 독스트링 「… is REFUSED (cursor_snapshot_reset_required)」 ·
+          scripts/ledger_deploy_preflight.py 출력 「v2 백필은 legacy_cursor_reset_required 로 거절됩니다」 — 운영자가 «읽는» 문장이라 다음에 그 파일을 만질 때
+남은 물음  test_ledger_v2_pg.py 가 적은 S-113 ⓔ 의 열린 반쪽 — 「부팅 재스탬프(고침)로 충분한가, 거절이 다시 있어야 하나」 — 제 판정 아님
+919ce6436 검수  -k world PG 는 위 279d04475 와 같은 묶음이 초록이었다(32). 이 착지의 새 시험 줄은 따로 안 돌렸다
+```
+
+---
+
+## [C 응용] 10-03 919ce6436 시험 — 첫 실행 1 failed, 다시 7 passed · 공유 트리에서 파일이 바뀐 셋째 흔적 (시각만 적는다)
+
+```
+시험     run_pg_tests -k (stands_on_a_chain_and_one_operates · fingerprint_closes_over_content) 첫 실행 6 passed 1 failed -> 다시 7 passed · pytest 9 passed
+실패 모양  낡은 커서 'ledger-v2:stale' 가 다시 안 찍힘 — 이 착지의 «옛 몸통»(운영 세상만 묻기) 변이와 같은 모양
+파일 시각  server/chain/ingestion_worker.py mtime 23:28:30 — 그 파일의 커밋(919ce6436 23:25)보다 «뒤», 제 첫 실행 «안». 지금 내용은 HEAD 와 같다
+같은 분    총괄 8e8ee2dcf(「919ce6436 checked」) 23:28 — 그 확인의 변이를 공유 트리에서 돌린 것으로 보인다. 확인은 못 했다
+오늘 셋   10:07(8bbeb1aee) · 12:36(4761be755) · 23:28(919ce6436) — 셋 다 «방금 착지한 수리가 빠진» 모양으로 남의 실행이 빨개졌다
+여쭐 것   변이는 사본(git worktree)에서 — 37df8cb57 · a45ef40cc 와 같은 물음. 저는 오늘 오후부터 제 확인을 C:/wt-app 사본에서 돌린다
+```
+
+---
+
+## [C 응용] 10-04 3248055ff 착지 — 지운 이름 둘 · 은퇴한 speaks_for 를 약속하던 줄 · a9f877ed3 문서 동기
+
+```
+셈       살아 있는 문서 124(docs .md 중 history · _archive · RELEASE_LOG 뺌), 낱말 경계로 셈, 카나리아 'ledger' > 100
+전       CURSOR_FIELDS 3 · CURSOR_TIME_FIELDS 3 · speaks_for 3 (번)
+         약속하던 줄: CODE_MAP 「고아 다섯」 행 · SERVER_DEFECT_QUEUE S-267 · CODE_MAP followup 행(「backfill._run_via_events 가 schema.speaks_for 의 답을 넘긴다」)
+고침     그 셋 — 두 상수는 ~~지움~~ 표시(S-267 의 나머지 셋 DEFAULT_SAMPLE_SIZE · SAMPLE_CANDIDATE_WINDOW · UUID7_MS_SQL 은 그대로),
+         followup 행은 「그 소스 하나를, 그 세상이 말할 때만」(backfill.py 의 only = {source} & followed_by 맨 위)
+후       같은 수 3 · 3 · 3 — 낱말은 은퇴 표시로 남는다. 약속하던 줄 3 -> 0
+남긴 것   CODE_MAP 3658(S-261 묘비 — 은퇴한 _cursor_rows 가 그 둘을 썼다는 기록) · CODE_MAP schema 행의 ⚰️ speaks_for(제가 279d04475 때 적은 은퇴 표시)
+SYSTEM_FLOWS L-17  두 이름을 «안» 든다(셈 0) — 구현자 585f145d4 가 든 셋 중 이것은 고칠 줄이 없었다. 비슷한 이름 admin._CURSOR_FIELDS(L-13)는 살아 있는 다른 상수
+a9f877ed3 동기  BACKFILL_GUIDE ⓖ 줄(그 소스만 번역 · 이미 쌓인 중복은 RUN.md SQL -> --whole-source) · LEDGER_GUIDE 4.2(지문 스크립트가 말하는 세상을 따름) ·
+               CODE_MAP key-values(이름 댄 세상에 물음 · node_type_not_declared). 시험(박스) run_pg_tests -k (writes_no_other_sources_fact_twice · stands_on_a_chain · restamp) 10 passed
+```
