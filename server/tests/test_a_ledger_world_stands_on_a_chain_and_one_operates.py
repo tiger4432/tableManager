@@ -482,6 +482,46 @@ def test_a_source_is_counted_and_written_in_the_world_that_speaks_for_it(world, 
 
 
 @pytest.mark.pg
+def test_the_boot_restamp_moves_each_cursor_in_the_world_that_speaks_for_it(world):
+    """총괄 152f4bb0b: B1 operating - the load source's cursor is the default's, the recipe
+    source's B1's; a fingerprint only the grammar moved is restamped in each. The default
+    operating: both in the default, as before."""
+    from chain import ingestion_worker
+    from ledger.setup_registry import cursor_translator_version
+
+    def stale_then_restamp(where):
+        for source, name in where.items():
+            with world["engine"].begin() as conn:
+                conn.execute(text("UPDATE %s SET translator_ver = 'ledger-v2:stale' WHERE source = :s"
+                                  % schema.world_names(name).cursor), {"s": source})
+        ingestion_worker._restamp_moved_fingerprints_sync(world["maker"])
+        stamped = {}
+        for source, name in where.items():
+            with world["engine"].connect() as conn:
+                stamped[source] = conn.execute(text(
+                    "SELECT translator_ver FROM %s WHERE source = :s"
+                    % schema.world_names(name).cursor), {"s": source}).scalar()
+        return stamped
+
+    def wanted(source, name):
+        return cursor_translator_version(
+            load_setup(schema.world_names(name).declaration_root).snapshot, source)
+
+    _seed(world)
+    _b1(world)
+    _operate(world, B1)
+    for source in (CHANGED, KEPT):                                   # the census makes the rows
+        ingestion_worker._measure_one_source_sync(world["maker"], source)
+    where = {CHANGED: B1, KEPT: schema.DEFAULT_WORLD}
+    assert stale_then_restamp(where) == {source: wanted(source, name) for source, name in where.items()}
+
+    _operate(world, schema.DEFAULT_WORLD)
+    ingestion_worker._measure_one_source_sync(world["maker"], CHANGED)
+    where = {CHANGED: schema.DEFAULT_WORLD, KEPT: schema.DEFAULT_WORLD}
+    assert stale_then_restamp(where) == {source: wanted(source, name) for source, name in where.items()}
+
+
+@pytest.mark.pg
 def test_a_deletion_followed_in_a_branch_withdraws_there_and_leaves_the_default(world):
     _seed(world)
     b1 = _b1(world)
