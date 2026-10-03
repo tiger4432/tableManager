@@ -21,7 +21,9 @@ SERVER_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if SERVER_DIR not in sys.path:
     sys.path.insert(0, SERVER_DIR)
 
+import event_constants                                              # noqa: E402
 from support import hold_world as hw                                 # noqa: E402
+from utils.payload_helper import get_payload_dict                   # noqa: E402
 
 pytestmark = pytest.mark.pg
 
@@ -71,8 +73,6 @@ def test_no_commit_shows_new_values_without_their_hold(world, batches):
 
 
 # ------------------------------------------------------------------ the recount (3ba1d1dd4)
-# ⚠️ The deleted row is the one whose value shows: withdrawing a hidden value changes no shown
-#    cell and leaves no event today - the delete path's own event lands next (총괄 e11bb4de0 (나)).
 
 def test_deleting_the_clashing_row_recounts_the_hold_to_agreed(world):
     hw.push(world, [{"log_id": "A", **hw.KEY, "netdie": 7}])
@@ -84,6 +84,32 @@ def test_deleting_the_clashing_row_recounts_the_hold_to_agreed(world):
     hw.settle(world)
     assert (hw.official(world).netdie, hw.hold(world)) == (7, "agreed")
     assert [(job, float(value)) for job, value in hw.said(world)] == [("J1", 7.0)]
+
+
+def test_deleting_the_row_whose_value_is_hidden_recounts_the_hold_too(world):
+    """총괄 e11bb4de0 (나): withdrawing a layer that was not the shown one changes no cell, so only
+    the delete path's own EDIT wakes the recount."""
+    hw.push(world, [{"log_id": "A", **hw.KEY, "netdie": 7}])
+    hw.settle(world)
+    hw.push(world, [{"log_id": "B", **hw.KEY, "netdie": 9}])
+    hw.settle(world)
+    assert (hw.official(world).netdie, hw.hold(world) or "") == (9, "")
+    hw.delete(world, "A")
+    hw.settle(world)
+    assert (hw.official(world).netdie, hw.hold(world)) == (9, "agreed")
+    assert [(job, float(value)) for job, value in hw.said(world)] == [("J1", 9.0)]
+    assert len(hw.recount_writes(world)) == 1
+
+
+def test_a_deleted_row_that_fed_nothing_stages_no_event(world):
+    from database import models
+    from chain import ingestion_worker as worker
+    hw.push(world, [{"log_id": "A", **hw.KEY, "netdie": 7}])
+    hw.settle(world)
+    before = world["db"].query(models.DatabaseOutbox).count()
+    worker._retract_what_those_rows_fed(world["db"], hw.LOG, ["01890000-0000-7000-8000-000000000000"])
+    world["db"].commit()
+    assert world["db"].query(models.DatabaseOutbox).count() == before
 
 
 def test_the_two_left_agreeing_are_agreed_and_the_recount_writes_once(world):
@@ -98,6 +124,13 @@ def test_the_two_left_agreeing_are_agreed_and_the_recount_writes_once(world):
     hw.settle(world)
     assert hw.hold(world) == "agreed"
     assert len(hw.recount_writes(world)) == 1          # '' -> agreed, once; equal holds write nothing
+    # 총괄 e11bb4de0 (나): the shown value moved, so the recount was woken TWICE - its own edit
+    # and the delete path's - and the second wrote nothing, so it left no event either
+    from chain import cell_layer
+    from database import models
+    woke = [e for e in world["db"].query(models.DatabaseOutbox).filter_by(table_name=hw.OFFICIAL)
+            if get_payload_dict(e).get("updated_by") == cell_layer.R2_AUDIT_SOURCE]
+    assert len(woke) == 2
 
 
 # ------------------------------------------------------------------ one batch (32bab7896 · cb3d3c1bf)
@@ -138,3 +171,32 @@ def test_a_key_whose_source_rows_are_all_deleted_is_held_and_unsaid(world):
     hw.settle(world)
     assert hw.hold(world) in (None, "")
     assert hw.said(world) == []
+
+
+def test_the_delete_paths_edit_names_what_lost_a_layer_and_wakes_only_opted_in_rules(world):
+    """총괄 e11bb4de0 (나). A human layer carrying the deleted row's stamp is skipped, so its column
+    is not named; the event rides the chain channel, so a rule that does not opt in stays asleep."""
+    from chain import ingestion_worker as worker
+    from database import models
+    db = world["db"]
+    hw.push(world, [{"log_id": "A", **hw.KEY, "netdie": 7}])
+    hw.settle(world)
+    hw.push(world, [{"log_id": "B", **hw.KEY, "netdie": 9}])
+    hw.settle(world)
+    a, official_id = _row_id(world, "A"), hw.official(world).row_id
+    named = sorted({c for (c,) in db.query(models.CellSource.column_name).filter_by(origin_row_id=a)})
+    db.add(models.CellSource(table_name=hw.OFFICIAL, row_id=official_id, column_name="note",
+                             source_name="user", value="x", origin_row_id=a, updated_by="t"))
+    db.commit()
+    last = db.query(models.DatabaseOutbox.id).order_by(models.DatabaseOutbox.id.desc()).first()[0]
+    worker._retract_what_those_rows_fed(db, hw.LOG, [a])
+    new = db.query(models.DatabaseOutbox).filter(models.DatabaseOutbox.id > last).all()
+    assert "note" not in named and named
+    assert [(e.event_type, e.table_name) for e in new] == [("EDIT", hw.OFFICIAL)]
+    payload = get_payload_dict(new[0])
+    assert (payload["row_ids"], payload["columns"]) == ([official_id], named)
+    # the channel, not only the source name: the guard reading `chain_ingestion` as the chain retires
+    assert event_constants.channel_of(payload) == event_constants.CHANNEL_CHAIN
+    assert worker.fire_refusal(hw.RECOUNT, new[0]) is None
+    asleep = {**hw.RECOUNT, "allow_chain_trigger": False}
+    assert worker.fire_refusal(asleep, new[0]) == worker.FIRE_REFUSED_CHAIN
