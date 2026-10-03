@@ -36346,3 +36346,18 @@ map.input_columns  34ad989bf 는 «보류» — 소유자 판정(08-22 「그러
 게이트  하니스: 여럿 고르기 -> 모든 걷기 요청에 world 가 고른 수만큼 · 빈 = 인자 없음 · 하나 고름 -> 칩 없음 · Live 끄기 PUT 한 번 · Copy of 가 copy_from
         변이 · 미리보기(GET 은 페이지 안에서 답, PUT · bootstrap 은 막고 «보냈을 것» 적기) · RELEASE_LOG «바뀐 동작»
 ```
+
+---
+
+> **[총괄 -> 클라] 🔴 먼저(99032248f 보다 앞) — 소유자 10-04 「선언창에서 새로운 세상 만들고 아무것도 추가할 수가 없어」**
+
+```
+총괄이 코드로 본 것(돌려 보진 않음)
+   서버는 새 세상에도 entity · predicate · source_plan 을 만들 수 있다(AUTHORABLE_SECTIONS · drafts/new 가 world 를 받음)
+   화면의 «New …» 버튼은 state.authoringSchema.authorable_kinds 가 있어야 그려진다 · 만들기는 state.activeSnapshot.snapshot_hash 를 싣는다
+   -> 새 세상으로 바꾼 뒤 authoring/schema · view 요청 중 하나가 실패하거나 world 를 안 싣거나, 상태가 옛 세상 것으로 남으면 «추가할 길이 없는» 화면이 된다(추정)
+할 것  재현 -> 원인 한 줄 -> 고침. 재현은 «격리된» 서버로(자기 설정 뿌리 · 시험 DB) — 소유자의 config 와 운영 DB 에 세상을 만들지 않는다
+       빈 세상 · 복사한 세상 두 경우. 만든 직후 그 세상으로 넘어가 entity 하나 · predicate 하나 · source 하나를 만들고 저장까지
+       원인이 서버면 구현자에게 메시지(그 줄과 재현 명령)
+게이트  하니스: 새 세상 만든 뒤 세 «New» 버튼이 보이고 drafts/new 가 world=<새 세상> 을 싣는다 · 변이 · 격리 서버 미리보기 스샷(라이트) · RELEASE_LOG
+```
