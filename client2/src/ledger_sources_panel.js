@@ -109,11 +109,11 @@ function shortVersion(value) {
  * ⚠️ census 는 «공개 라우트»(선언)에서 옵니다. admin 응답이 401 이어도 이 칸들은 «옵니다» —
  *    그래서 두 반쪽의 «가용성이 다릅니다», 그리고 그 사실이 행에 그대로 드러납니다.
  */
-function censusOf(census, names, source) {
+function censusOf(census, names) {
   const refusal = censusRefusal(census, names);
   return Object.freeze({
     cells: Object.freeze(backlogCells(census, names).map((c) => Object.freeze({ ...c }))),
-    drift: driftLine(census, names, source),
+    drift: driftLine(census, names),
     refusedReason: refusal ? refusal.reason : '',
     refusedName: refusal ? refusal.name : '',
     refusedRemedy: refusal ? refusal.remedy : '',
@@ -133,7 +133,7 @@ export function sourcesView(payload, opts = {}, census = {}, names = {}) {
   // 🔴 census 는 admin 응답과 «가용성이 다릅니다» — 토큰이 없어 위가 401 이어도 여기는 옵니다.
   //    그래서 「아무것도 못 그린다」는 이제 «틀린 답»이고, 아래 두 이른 반환이 census 를 싣습니다.
   const censusRows = Object.freeze(Object.keys(censusBy).sort().map((source) => Object.freeze({
-    source, ...censusOf(censusBy[source], names, source),
+    source, ...censusOf(censusBy[source], names),
   })));
   const empty = Object.freeze({
     available: false, reason: '', note: '', rows: Object.freeze([]),
@@ -172,8 +172,7 @@ export function sourcesView(payload, opts = {}, census = {}, names = {}) {
   const rows = src.map(s => Object.freeze({
     source: String((s && s.source) == null ? '' : s.source),
     // C-47: 같은 리더가 읽은 인구조사. 없는 소스는 빈 칸 — 「안 쟀다」입니다.
-    census: censusOf(censusBy[String((s && s.source) == null ? '' : s.source)], names,
-      String((s && s.source) == null ? '' : s.source)),
+    census: censusOf(censusBy[String((s && s.source) == null ? '' : s.source)], names),
     // 규칙 ①: 서버의 낱말 그대로. 모르는 낱말이 와도 «그대로» 보여 줍니다 —
     // 화면이 아는 넷으로 «접으면» 새 상태가 조용히 사라집니다.
     state: String((s && s.state) == null ? '' : s.state),
@@ -297,7 +296,7 @@ export class LedgerSourcesPanel {
   }
 
   /**
-   * «수정 누락» 줄과, 누락이 있으면 그 명령 한 줄 (총괄 c21cba507). 두 수는 칸 «따로»이고 누락만
+   * «수정 누락» 줄과, 기록이 다음 명령(`next_step`)을 실으면 그 한 줄 (총괄 c21cba507 · 9060ad7dd). 두 수는 칸 «따로»이고 누락만
    * `data-alarm` 으로 눈에 띕니다 — 칸 이름 옆에 값이 서므로 「Not measured」는 그 수의 것입니다.
    */
   _driftLines(drift) {

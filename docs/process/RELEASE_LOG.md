@@ -9,6 +9,14 @@
 
 ---
 
+## 2026-10-03 · 원장 소스 패널 — 다음 명령은 census 기록이 말한다
+
+- **무엇** — 원장 소스 패널의 «수정 누락» 줄 아래 명령 한 줄은 이제 census 기록의 `next_step` 을 그대로 그립니다. 화면이 명령을 짓지 않습니다. 누락이 있으면 `--drifted` 다시 번역, 사람이 한 번도 안 셌으면(`Not measured`) census 명령, 0 이거나 거절이면 명령 줄이 없습니다.
+- **화면에서** — `Not measured` 인 소스 아래에도 `python -m ledger census --source <소스>` 한 줄이 섭니다(전에는 없었음).
+- **필요한 조건** — 화면 새로 받기와, `next_step` 을 싣는 서버(위 10-03 census 항목, 재기동). 옛 서버의 기록에는 `next_step` 이 없어 명령 줄이 안 섭니다 — 줄의 수와 색은 그대로입니다.
+- **바뀐 동작** — 명령의 철자는 서버 한 곳(`ledger.backfill` · `ledger census` 의 프로그램 이름)에서 옵니다. 전에는 화면이 `--drifted` 명령을 따로 들고 있었습니다.
+- **자세히** — 이 항목과 같은 커밋
+
 ## 2026-10-03 · 원장 census — 사람이 센 수정 누락 · 지문 없음이 주기 census 뒤에도 남고, 기록이 다음 할 명령을 싣는다
 
 - **무엇** — 주기 census(체인 워커가 소스마다 도는 것)는 «수정 누락» · «지문 없음»을 세지 않습니다(표를 훑는 일이라). 이제 주기 census 가 기록을 쓸 때 사람이 마지막으로 센 그 두 수를 «그때 잰 시각 그대로» 이어 싣습니다 — 전에는 기록을 통째로 바꿔 다음 주기부터 `Not measured` 로 돌아갔습니다. 그리고 census 기록에 `next_step` 이 붙습니다: 누락이 있으면 그 소스의 `python -m ledger.backfill --source <소스> --drifted`, 사람이 센 적이 없으면 `python -m ledger census --source <소스>`, 누락이 0 이면 없음. 명령의 철자는 그 도구가 받는 인자와 같은 상수에서 나옵니다.
@@ -101,7 +109,7 @@
 ## 2026-10-03 · 원장 소스 패널 — 소스 줄에 수정 누락 · 지문 없음
 
 - **무엇** — 대시보드의 원장 소스 패널(`Ontology Explorer` 탭, 그리고 `Overview` 의 Ledger 자리)이 소스마다 census 기록의 «수정 누락»(원장이 못 본 수정)과 «지문 없음»을, 그 둘을 잰 시각과 함께 보입니다. 수는 서버 기록 그대로이고 화면이 세지 않습니다. 누락이 0 이 아니면 빨간 굵은 글자이고, 그 아래에 그 소스의 `--drifted` 명령 한 줄이 섭니다. 지문 없음은 누락이 아니므로 따로, 흐린 글자입니다. 기록에 그 수가 없으면 이름 옆에 `Not measured` 가 섭니다. 거절된 소스는 거절 줄만 섭니다.
-- **화면에서** — census 줄 아래 `Edited, not followed N · Not yet printed N · Measured <시각>`. 누락이 있으면 그 아래 `python -m ledger.backfill --source <소스> --drifted`.
+- **화면에서** — census 줄 아래 `Edited, not followed N · Not yet printed N · Measured <시각>`. 누락이 있으면 그 아래 `python -m ledger.backfill --source <소스> --drifted`. ⚰️ 이 명령은 이제 census 기록의 `next_step` 입니다 — 위 「다음 명령은 census 기록이 말한다」.
 - **필요한 조건** — 화면만 새로 받으면 됩니다. 수는 사람이 `python -m ledger census --source <소스>` 를 돌려야 기록에 생깁니다(주기 census 는 안 셉니다). ⚰️ 다음 주기 census 가 그 수를 지우던 것은 위 10-03 census 항목으로 닫혔습니다 — 주기 census 가 사람이 센 수를 그 시각 그대로 잇습니다.
 - **바뀐 동작** — 없음. census 줄은 그대로이고, 그 아래에 줄이 하나(누락이 있으면 둘) 늘었습니다.
 - **자세히** — 이 항목과 같은 커밋

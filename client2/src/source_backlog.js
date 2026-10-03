@@ -115,19 +115,15 @@ export const DRIFT_FIELDS = Object.freeze(['rows_drifted', 'rows_unprinted']);
 const DRIFT_ALARM = 'rows_drifted';
 
 /**
- * 누락을 다시 번역하는 명령. ⚠️ 서버가 실어 주지 않아 이 화면이 그 CLI 의 철자를 듭니다
- * (RELEASE_LOG 2026-10-03 「원장이 못 본 수정을 수로 센다」의 명령 그대로).
- */
-export const driftedCommand = (source) => `python -m ledger.backfill --source ${source} --drifted`;
-
-/**
  * 한 소스의 «수정 누락» 줄 (총괄 c21cba507). 수는 서버 기록 그대로이고, 안 센 수는 `NOT_MEASURED`.
  * 시각은 «그 두 수의» `measured_at` 입니다 — census 전체의 시각이 아닙니다.
+ * 다음 명령은 기록의 `next_step` 그대로입니다(서버 66570d724, 저자 하나). 그것이 없는 기록(옛 서버)은
+ * 명령 줄이 없습니다 — 화면이 CLI 를 철자하지 않습니다.
  *
  * @returns {null | {cells: {name, label, text, method, counted, alarm}[], at: string, atLabel: string, next: string}}
  *   거절된 census 는 null — 거절 줄이 이미 「셀 수 없다」를 말합니다.
  */
-export function driftLine(census, names = {}, source = '') {
+export function driftLine(census, names = {}) {
   const src = census && typeof census === 'object' ? census : {};
   if (censusRefusal(src)) return null;
   const cells = DRIFT_FIELDS.map((name) => {
@@ -142,7 +138,7 @@ export function driftLine(census, names = {}, source = '') {
     cells,
     at: stamped ? localShortOrAsSent(stamped.measured_at) : '',
     atLabel: nameOf(names, MEASURED_AT),
-    next: cells.some((c) => c.alarm) ? driftedCommand(source) : '',
+    next: typeof src.next_step === 'string' ? src.next_step : '',
   };
 }
 

@@ -259,7 +259,7 @@ const FLOORS = new Map([
   // said which of them is bad and a screen deciding that would be inventing a judgement.
   // 86 -> 89 (lead 909ea2052 ①): the state's short name comes from the server's one seat and is drawn.
   // 89 -> 100 (lead bed890af2): census and reason names from the server, one local clock, a short hash.
-  ['ledger_sources_panel_harness.mjs', 128],
+  ['ledger_sources_panel_harness.mjs', 132],
   // TABLE CONFIG. The two it exists for: the `base` fingerprint survives the round trip
   // (drop it and two operators editing one file erase each other silently, which is the
   // guard the server made part of the ruling), and a refusal keeps the server's own code,
