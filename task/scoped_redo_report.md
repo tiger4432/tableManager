@@ -71512,3 +71512,26 @@ RUN.md    ③ 이 합친다 · ④ rebuildable 0 · collides 0 · 앞 판(5416d3
 ```
 
 다음: 세상 짓기 착지(세워 둔 것을 이 위로 · 전체 시험 다시)
+
+---
+
+## [10-03] a13fcf00c 착지 fd6d957c4 — 합쳐져 사라진 행의 층 · 덮어쓰기 행도 같이 지운다
+
+어느 DB · 어느 스키마 · 지운 것 — 시험만: PG assy_test 시험 스크래치 스키마(카나리아 1) · 운영 DB 안 씀
+
+```
+고친 것   행 지우기(delete_rows_batch)와 지도 비우기(purge_map_rows)의 같은 두 줄 -> delete_row_layers 하나로 접고 둘 다 부름
+          병합 몸통이 저장된 껍데기를 지울 때 끝에서 그 함수로 — 임자가 읽고 넘겨받은 «뒤» · 이 배치의 대기 행(expunge)은 그대로
+          쓰기 · 핀 · --apply 세 길이 모두 이 몸통을 지남
+게이트    두 표 모양 시험의 모든 갈래(쓰기 · 핀 병합 포함) 끝에 «행 없는 row_id 의 층 · 덮어쓰기 0» · --apply 병합 뒤 껍데기 row_id 0 0
+          임자의 층과 사람 값은 기존 단언 그대로
+변이      껍데기 층을 안 지움(옛 몸통) RED · 넘기기 전에 지움 RED
+PG 지움·병합·지도 37 passed, 282 deselected, 67 warnings in 86.10s (0:01:26)
+sqlite 전체  7 failed, 7743 passed, 321 skipped, 3 xfailed, 13093 warnings in 713.89s
+          남은 7: 박스 체크아웃 사유 다섯 + test_the_helper_still_clears_the_cell_metadata · test_the_merge_reads_the_overwrites_in_one_statement
+시험 둘    오늘 모양을 붙잡던 것 — 병합의 «한 번 읽기» 세기를 SELECT 만으로 · 지도 비우기 글자 시험이 한 함수와 그 두 지우기를 봄
+RUN.md    표마다 «행 없는 row_id 의 층 · 덮어쓰기» 세는 SQL -> 같은 조건으로 지우는 SQL (소유자가 돌림)
+RELEASE_LOG  병합 항목에 반 줄
+```
+
+다음: 세상 짓기 착지(세워 둔 것을 이 위로 · 전체 시험)
