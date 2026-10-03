@@ -1,5 +1,17 @@
 # 지금 돌리면 되는 것
 
+> ## [10-03] **table_config 를 다시 쓰는 스크립트 둘이 운영자가 적은 칸을 지우지 않는다 (총괄 338abb9f3) — 이주 «불필요» · 재기동 «불필요»(명령줄 도구)**
+>
+> ```
+> 무엇이 바뀌나  install_product_tables.py --overwrite-drift — 제품이 말하는 칸만 되돌리고 group · kind · indexes · 더한 열은 남김
+>              table_config_from_schema.py --merge     — 시트에 있는 표는 column_types · display_columns 만 바꾸고 나머지 칸은 그대로
+> 확인         python server/scripts/install_product_tables.py            (드라이런, 아무것도 안 씀)
+> 뜻           DRIFT 줄의 extra 는 현장이 더한 칸 — --overwrite-drift 로도 지워지지 않는다 · missing / changed 만 되돌아간다
+> 급할 때       없음 — 두 스크립트 다 쓰기 전에 백업을 남긴다(install) · --merge 는 -o 초안 파일에만 쓴다
+> ```
+
+---
+
 > ## [10-03] **두 행이 한 키로 합쳐질 때 — 핀은 터지지 않고, 사람 값은 사람이 쓴 칸에서만 이긴다 (총괄 6e041f4cb ①) — 이주 «불필요» · 재기동 «필요»(run_app.bat 전체, 위 절들과 같은 재기동이면 한 번)**
 >
 > ```

@@ -25,9 +25,10 @@ USAGE
 -----
     python table_config_from_schema.py <sheet.xlsx|.csv|.tsv> [-o out.json] [--merge existing.json]
 
-`--merge` keeps declarations already made for tables the sheet does not mention, and
-never overwrites a non-empty `business_key` / `composite_key_source` / `__comment` that a
-human already filled in -- so re-running after an edit does not undo the edit.
+`--merge` keeps declarations already made for tables the sheet does not mention, and for a
+table it does mention writes only `column_types` and `display_columns` from the sheet: every
+other cell a human already wrote (`business_key`, `__comment`, `composite_key_source`, `kind`,
+`group`, `indexes`, ...) stays as it is -- so re-running after an edit does not undo the edit.
 """
 from __future__ import annotations
 
@@ -147,6 +148,12 @@ def key_candidates(table: str, columns):
     return hits[:4]
 
 
+#: The cells this generator writes from the sheet. Every other cell of an existing entry is a
+#: human's and stays as it stands (총괄 338abb9f3 - a re-run used to keep three named cells and
+#: drop the rest: `kind`, `decision_key`, `indexes`, `smart_paste`, `group`).
+SHEET_CELLS = ("column_types", "display_columns")
+
+
 def build(rows, existing=None):
     existing = existing or {}
     tables = {}
@@ -176,13 +183,11 @@ def build(rows, existing=None):
             "__comment": prior.get("__comment", ""),
             # The single decision this generator must not make.
             "business_key": prior.get("business_key"),
+            **{cell: value for cell, value in prior.items() if cell not in SHEET_CELLS},
             "column_types": column_types,
             # Sheet order is the honest default: it loses nothing and hides nothing.
             "display_columns": [c for c, _ in cols],
         }
-        for optional in ("composite_key_source", "composite_key_separator", "map_key_columns"):
-            if optional in prior:
-                decl[optional] = prior[optional]
 
         if not decl["business_key"]:
             decisions.append((table, "business_key", key_candidates(table, [c for c, _ in cols])))

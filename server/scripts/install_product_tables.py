@@ -22,7 +22,8 @@ asset**. Every rule below exists to keep that file safe:
   — key order, indentation, spacing and line endings included.
 * Absent product entry -> added. Present and identical -> no write at all.
 * Present but different -> reported as drift and left alone. Changing it needs
-  ``--overwrite-drift``.
+  ``--overwrite-drift``, which puts back what the product needs and keeps every cell the
+  product does not name (an operator's ``group``, ``kind``, ``indexes``, an added column...).
 * Dry run is the default; writing needs ``--apply``.
 * ``--apply`` writes a timestamped backup first and prints where it went.
 * After writing, the result is re-scanned and every untouched member is compared
@@ -328,7 +329,51 @@ def is_blocking(status):
 # Plan / render / write
 # ---------------------------------------------------------------------------
 
-def build_edits(text, scan, statuses, overwrite_drift, definitions=None):
+def _overlay(product, config, path=""):
+    """`config` with what `product` names put back: a key the product does not name stays as
+    the site wrote it, a list the site only appended to (``ADDITIVE_LIST_PATHS``) stays, and
+    every other value the product names becomes the product's - the same reading as
+    `diff_declaration`, so after it nothing is ``missing`` or ``changed`` and nothing the site
+    added is gone."""
+    if not isinstance(config, dict) or not isinstance(product, dict):
+        return product
+    out = dict(config)
+    for k, pv in product.items():
+        p = f"{path}.{k}" if path else k
+        cv = config.get(k)
+        if isinstance(pv, dict) and isinstance(cv, dict):
+            out[k] = _overlay(pv, cv, p)
+        elif (k in config and p in ADDITIVE_LIST_PATHS and isinstance(pv, list)
+              and isinstance(cv, list) and _is_ordered_superset(pv, cv)):
+            out[k] = cv
+        else:
+            out[k] = pv
+    return out
+
+
+def overwritten_entries(scan, statuses, strict=False, definitions=None):
+    """{name: the entry it becomes} for every drifted entry ``--overwrite-drift`` changes.
+
+    🔴 A SITE FILE KEEPS WHAT THE PRODUCT DOES NOT NAME (총괄 338abb9f3). This replaced the whole
+    entry and so dropped, without a word, every cell an operator had added - ``group``, ``kind``,
+    ``indexes``, ``smart_paste``, ``decision_key``, an added column. Now the product's cells are
+    put back and the rest stays; an entry whose only drift is what the site added is not
+    rewritten at all. The tracked sample (``strict``) is the product's own artifact and still
+    becomes the definition exactly.
+    """
+    definitions = definitions if definitions is not None else product_tables.PRODUCT_TABLES
+    out = {}
+    for st in statuses:
+        if st.state != STATE_DRIFT:
+            continue
+        current = scan.parsed.get(st.name)
+        landed = definitions[st.name] if strict else _overlay(definitions[st.name], current)
+        if landed != current:
+            out[st.name] = landed
+    return out
+
+
+def build_edits(text, scan, statuses, overwrite_drift, definitions=None, strict=False):
     """Byte splices for the requested changes. Empty list == nothing to write."""
     definitions = definitions if definitions is not None else product_tables.PRODUCT_TABLES
     style = detect_style(text, scan.members)
@@ -336,10 +381,9 @@ def build_edits(text, scan, statuses, overwrite_drift, definitions=None):
     edits = []
 
     if overwrite_drift:
-        for st in statuses:
-            if st.state == STATE_DRIFT:
-                m = by_key[st.name]
-                edits.append((m.value_start, m.value_end, render_entry_value(definitions[st.name], style)))
+        for name, landed in overwritten_entries(scan, statuses, strict, definitions).items():
+            m = by_key[name]
+            edits.append((m.value_start, m.value_end, render_entry_value(landed, style)))
 
     to_add = [st.name for st in statuses if st.state == STATE_ADD]
     if to_add:
@@ -434,16 +478,14 @@ def render_report(path, statuses, apply_mode, overwrite_drift, wrote, backup_pat
         if adds:
             lines.append(f"    * --apply  (adds {len(adds)} table declaration(s))")
         if drifts:
-            lines.append("    * --apply --overwrite-drift  (replaces the drifted entries with the product definition)")
+            lines.append("    * --apply --overwrite-drift  (puts back what the product needs; keeps what the site added)")
     else:
         lines.append("  nothing to do -- the file already declares every product table.")
 
     if drifts and not overwrite_drift:
         lines.append("")
-        lines.append("  drift is never overwritten silently. --overwrite-drift replaces the WHOLE entry")
-        lines.append("  with the product definition, which drops the 'extra' items listed above from the")
-        lines.append("  declaration (physical columns already in the database are NOT dropped -- they just")
-        lines.append("  stop being declared, so they disappear from the grid and from ingestion).")
+        lines.append("  drift is never overwritten silently. --overwrite-drift puts back what the product")
+        lines.append("  needs ('missing' / 'changed' above) and keeps every 'extra' the site added.")
 
     if planned_adds or planned_overwrites:
         lines.append("")
@@ -566,13 +608,14 @@ def run(path, apply_mode=False, overwrite_drift=False, out=None, strict=False):
         return 2
 
     statuses = evaluate(scan.parsed, strict=strict)
-    edits = build_edits(text, scan, statuses, overwrite_drift) if apply_mode else []
+    edits = build_edits(text, scan, statuses, overwrite_drift, strict=strict) if apply_mode else []
+    landing = overwritten_entries(scan, statuses, strict) if overwrite_drift else {}
 
     # What this run intends to change. Captured before any write, because after a
     # successful apply the statuses show everything as matching and the operator
     # would lose the CREATE-vs-ALTER instructions that depend on it.
     planned_adds = [s.name for s in statuses if s.state == STATE_ADD]
-    planned_overwrites = [s.name for s in statuses if s.state == STATE_DRIFT] if overwrite_drift else []
+    planned_overwrites = list(landing)
 
     wrote = False
     backup_path = None
@@ -595,8 +638,8 @@ def run(path, apply_mode=False, overwrite_drift=False, out=None, strict=False):
         if problem is None:
             reparsed = json.loads(readback)
             for name in changed_keys:
-                if reparsed.get(name) != product_tables.PRODUCT_TABLES[name]:
-                    problem = f"'{name}' did not land as the product definition"
+                if reparsed.get(name) != landing.get(name, product_tables.PRODUCT_TABLES[name]):
+                    problem = f"'{name}' did not land as planned"
                     break
         if problem is not None:
             with open(path, "wb") as f:
