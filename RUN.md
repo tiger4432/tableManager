@@ -1,5 +1,24 @@
 # 지금 돌리면 되는 것
 
+> ## [10-03] **원장 세상 — 운영 세상 한 칸 · 세상마다 «밑에 깔 세상» (총괄 e1f54cd72 · e67ef53f3 · 86d5061a0 · 2bb20ff56) — 이주 «불필요» · 재기동 «필요»(서버 + 워커 — 위 절과 같은 재기동이면 한 번)**
+>
+> ```
+> 무엇이 바뀌나  세상 이름 없이 읽고 쓰는 자리 전부(원장 후속 · 걷기 · 그리드 원자 보기 · 선언 읽기 · census)가 «운영 세상»을 따른다
+>              원장 후속은 소스마다 운영 세상의 사슬에서 «그 소스를 말하는 세상»에 쓴다 — 운영 = 기본이면 오늘과 같다
+>              배치 파일 config/ontology_worlds/worlds.json 이 없으면 운영 = 기본 · 가지의 밑 = 기본 (오늘 그대로)
+> 확인         GET /admin/ontology-explorer/worlds
+> 뜻           "operating": "default" 이면 오늘과 같다 · "beneath" 는 세상마다 밑 사슬(위 -> 아래) · "history" 는 누가 언제 바꿨나
+> 운영 바꾸기   PUT /admin/ontology-explorer/worlds/operating   본문 {"world": "<이름>"}   (엄격 관리자 토큰 · X-User 머리가 이력의 by)
+>              되돌리기 = 같은 PUT 에 "default"
+> 되돌린 뒤     그동안 그 세상만 따라간 소스는 기본 세상에서 «Edited, not followed» 로 잡힌다 — 소스마다
+>   python -m ledger census --source <소스>                       (사람의 census 가 어긋남을 센다)
+>   python -m ledger.backfill --source <소스> --drifted            (미리보기)
+>   python -m ledger.backfill --source <소스> --drifted --apply    (그 행만 다시 번역)
+> 급할 때       worlds.json 의 "operating" 을 "default" 로 고치거나 파일을 지운다 -> 다음 요청 · 다음 후속 배치부터 기본
+> ```
+
+---
+
 > ## [10-03] **합쳐져 사라진 행의 층 · 덮어쓰기 행도 같이 지운다 (소유자 10-03 · 총괄 a13fcf00c) — 이주 «불필요» · 재기동 «필요»(위 절과 같은 재기동이면 한 번)**
 >
 > ```

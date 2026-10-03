@@ -149,7 +149,7 @@ def test_the_branch_translates_what_it_changed_and_walks_the_rest_from_the_defau
     assert _rows(world, schema.LEDGER_TABLE, "source_who", "source_translator_ver") == default_before
     assert {who for (who,) in _rows(world, names.ledger, "source_who")} == {CHANGED}
     legs = set(_rows(world, names.read_relation, "source_who", "world_leg"))
-    assert legs == {(CHANGED, "branch"), (KEPT, "default")}, legs
+    assert legs == {(CHANGED, WORLD), (KEPT, "default")}, legs   # a leg is named by its world
 
     with world["engine"].connect() as conn:
         lookup = ledger_subgraph.SqlEvidenceLookup(conn, relation=names.read_relation)
@@ -357,7 +357,7 @@ def test_a_branch_that_adds_a_source_writes_only_that_source(world):
             "SELECT source_who, world_leg FROM %s WHERE source_who IN (:a, :b)"
             % names.read_relation), {"a": CHANGED, "b": ADDED}).fetchall())
     assert written == {ADDED}, written
-    assert legs == {(ADDED, "branch"), (CHANGED, "default")}, legs
+    assert legs == {(ADDED, WORLD), (CHANGED, "default")}, legs
 
 
 # ── 총괄 c23b02aeb ② — the view is made again at the doors that make and save a branch ──

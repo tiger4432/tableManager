@@ -232,14 +232,15 @@ def test_a_delete_is_withdrawn_from_the_index_not_rescoped(monkeypatch):
 
     monkeypatch.setattr(backfill, "rescope", boom)
     monkeypatch.setattr(backfill, "withdraw_deleted_rows",
-                        lambda engine, setup, relation, row_ids, apply=False: seen.update(
-                            relation=relation, rows=list(row_ids), apply=apply)
+                        lambda engine, setup, relation, row_ids, apply=False, world=None: seen.update(
+                            relation=relation, rows=list(row_ids), apply=apply, world=world)
                         or {"sources": {"dt_job": {"withdrawn": 2}}, "forgotten": 2})
     followup.reset()
     followup.enqueue(RELATION, ["R1", "R2"], "DELETE")
     done = followup.drain_once(None, None)
     followup.reset()
-    assert seen == {"relation": RELATION, "rows": ["R1", "R2"], "apply": True}
+    # the world the drain follows (none: the operating one) - a branch's delete withdraws there
+    assert seen == {"relation": RELATION, "rows": ["R1", "R2"], "apply": True, "world": None}
     assert done["event_type"] == "DELETE" and done["forgotten"] == 2
 
 

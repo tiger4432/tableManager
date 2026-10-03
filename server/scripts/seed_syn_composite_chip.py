@@ -106,6 +106,7 @@ def validate(atoms):
 
 def apply(atoms):
     from database.database import engine
+    from ledger.schema import DEFAULT_WORLD
     from ledger.store import LedgerStore
     from ledger import gate
 
@@ -118,7 +119,7 @@ def apply(atoms):
             screened, _ = gate.screen_molecule(
                 SOURCE, members, {DERIVATION}, {"Wafer"}, molecule_ref=component_id)
         accepted.extend(screened)
-    store = LedgerStore(engine, who=SOURCE)
+    store = LedgerStore(engine, who=SOURCE, world=DEFAULT_WORLD)
     store.ensure_schema()
     return store.write_batch(SOURCE, TRANSLATOR, accepted,
                              cursor_value={"fixture": "complete"},

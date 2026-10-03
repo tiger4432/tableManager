@@ -513,10 +513,11 @@ def main():
         bond_n = _write(db, "bonding_log", bonding)
         run_n = _write(db, "inspection_run", runs)
         void_n = _write(db, "void_obs", voids)
+        from ledger.schema import DEFAULT_WORLD
         from ledger.store import LedgerStore
         from database.database import engine
 
-        store = LedgerStore(engine, who="syn_lot_excursion")
+        store = LedgerStore(engine, who="syn_lot_excursion", world=DEFAULT_WORLD)
         store.ensure_schema()
         atom_result = store.write_batch(
             "syn_lot_excursion", TRANSLATOR_BASE, atoms,

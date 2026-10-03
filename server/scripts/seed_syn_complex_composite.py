@@ -1023,10 +1023,11 @@ def _write_spatial_rows():
 
 def apply(atoms):
     from database.database import engine
+    from ledger.schema import DEFAULT_WORLD
     from ledger.store import LedgerStore
 
     accepted, molecules = screen(atoms)
-    store = LedgerStore(engine, who=SOURCE)
+    store = LedgerStore(engine, who=SOURCE, world=DEFAULT_WORLD)
     store.ensure_schema()
     ledger_result = store.write_batch(
         SOURCE, TRANSLATOR, accepted,

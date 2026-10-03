@@ -98,7 +98,7 @@ def test_an_install_with_no_branch_issues_the_statements_it_always_did():
 
 #: The seat's answers that say WHICH KIND of world it is. Testing one of them is asking the
 #: world; `ledger/schema.py` is the one place that may.
-_KIND = {"world", "base_root", "space_statements"}
+_KIND = {"world", "base_root", "space_statements", "beneath"}
 
 
 def _asks_the_world(path):

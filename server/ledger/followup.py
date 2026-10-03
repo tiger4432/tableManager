@@ -375,7 +375,7 @@ def _follow(item, engine, setup, world=None, sources=None):
         # every source that read that table.
         try:
             withdrawn = backfill.withdraw_deleted_rows(engine, setup, table, list(row_ids),
-                                                       apply=True)
+                                                       apply=True, world=world)
             done["sources"] = withdrawn["sources"]
             done["forgotten"] = withdrawn["forgotten"]
         except Exception as exc:
@@ -455,6 +455,28 @@ def _follow(item, engine, setup, world=None, sources=None):
     return done
 
 
+def _follow_chain(item, engine, chain):
+    """One event, followed in each world of `chain`: there, the sources it speaks for - at the
+    bottom, the rest. One record; a source said twice (a deletion) keeps its error."""
+    done, above = None, set()
+    for world, setup, spoken in chain:
+        sources = (spoken if spoken is not None
+                   else frozenset(setup.snapshot.source_plans) - above if above else None)
+        said = _follow(item, engine, setup, world=world, sources=sources)
+        above |= set(spoken or ())
+        if done is None:
+            done = said
+            continue
+        for source, outcome in said["sources"].items():
+            if source not in done["sources"] or "error" in (outcome or {}):
+                done["sources"][source] = outcome
+        if said.get("error") and not done.get("error"):
+            done["error"] = said["error"]
+        if "forgotten" in said:
+            done["forgotten"] = done.get("forgotten", 0) + said["forgotten"]
+    return done
+
+
 # ------------------------------------------------------------------- the outbox row's mark
 #: 🔴 THE LIVE QUEUE IS THE OUTBOX ROW ITSELF (총괄 bb9b1c19c (가), 소유자 10-02 「누락 절대 없고」).
 #: The memory deque above lost every event a restart caught between the chain group's commit
@@ -483,12 +505,17 @@ def _payload(value):
     return value if isinstance(value, dict) else {}
 
 
-def drain_outbox_once(engine, setup):
+def drain_outbox_once(engine, setup, chain=None):
     """Follow the oldest outbox event the chain processed and the ledger has not. Or `None`.
 
     Marked after the follow, in its own statement: a process that dies inside a follow leaves
     the event unmarked and the next run follows it again (`rescope` is idempotent). An event
     of a kind the ledger does not follow is marked DONE on the way past.
+
+    `chain` - the operating world's, top first: (world, its compiled declaration, the sources
+    it speaks for; None at the bottom) as `schema.followed_by` answers. Each source is followed
+    into the world that speaks for it, so the operating world's view stays live in every source
+    (총괄 86d5061a0); a deletion is withdrawn in each. None: `setup`, in the operating world.
     """
     from sqlalchemy import text
     import event_constants
@@ -506,10 +533,10 @@ def drain_outbox_once(engine, setup):
     payload = _payload(row.payload)
     ids = tuple(str(item) for item in row_ids_of(payload))
     queued_at = row.created_at.timestamp() if row.created_at is not None else time.time()
-    done = (_follow((str(row.table_name), ids, str(row.event_type), queued_at,
-                     payload.get("transaction_id"), event_constants.chain_depth_of(payload),
-                     event_constants.changed_columns_of(payload)),
-                    engine, setup)
+    done = (_follow_chain((str(row.table_name), ids, str(row.event_type), queued_at,
+                           payload.get("transaction_id"), event_constants.chain_depth_of(payload),
+                           event_constants.changed_columns_of(payload)),
+                          engine, chain or ((None, setup, None),))
             if ids else {"table": row.table_name, "event_type": row.event_type, "rows": 0,
                          "row_ids": [], "sources": {}})
     errors = [done["error"]] if done.get("error") else []

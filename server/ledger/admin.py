@@ -1498,7 +1498,7 @@ def ingestion_view(db, declared) -> dict:
             from ledger import schema as ledger_schema
             columns = ", ".join(("source",) + _CURSOR_FIELDS)
             for row in db.execute(text(
-                    f"SELECT {columns} FROM {ledger_schema.CURSOR_TABLE}")):
+                    f"SELECT {columns} FROM {ledger_schema.world_names().cursor}")):
                 cursor[row[0]] = dict(zip(_CURSOR_FIELDS, row[1:]))
         except Exception as exc:
             logger.warning("ledger translator cursor unreadable: %s", exc)

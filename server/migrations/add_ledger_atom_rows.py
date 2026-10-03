@@ -46,9 +46,9 @@ def main(argv=None):
         driver.autocommit = True
         with driver.cursor() as cursor:
             schema.ensure_row_ref_table(cursor)
-            for statement in schema.row_ref_indexes(schema.world_names(), concurrently=True):
+            for statement in schema.row_ref_indexes(schema.world_names(schema.DEFAULT_WORLD), concurrently=True):
                 cursor.execute(statement)
-            cursor.execute(schema.atom_rows_view_sql(schema.world_names()))
+            cursor.execute(schema.atom_rows_view_sql(schema.world_names(schema.DEFAULT_WORLD)))
         report(driver)
         return 0
     finally:

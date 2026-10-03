@@ -796,17 +796,17 @@ def rescope(engine, setup, source, scope_column, scope_values, apply=False,
         # refused it as `scope.row_id: the batch does not carry 'row_id'`; it repeated every
         # three seconds and the drain DROPPED each event.
         result["scope_empty"] = True
-    refresh_world_view(engine, world)
+    refresh_world_view(engine, world, source)
     return result
 
 
-def refresh_world_view(engine, world):
+def refresh_world_view(engine, world, source=None):
     """Make the branch's walk view again after its atoms moved - the sources it speaks for
-    may have changed. The default has no view, and nothing to compare with."""
+    may have changed; a write of one `source` it already speaks for leaves it (`ensure_view`).
+    The default has no view."""
     from . import schema
 
-    names = schema.world_names(world)
-    schema.ensure_view(engine, names, schema.changed_sources(names))
+    schema.ensure_view(engine, schema.world_names(world), source)
 
 
 #: Scope rows one page of an operator's rescope reads - a stop lands between two of them.
@@ -1399,6 +1399,7 @@ def index_existing_refs(engine, source, setup=None, apply=False, pace=None,
 
     units, rest = resolve_pace(pace)
     store = LedgerStore(engine)
+    names = store.names
     # 🔴 A DRY RUN THAT ANSWERS `0` ANSWERS NOTHING. 「저장 전에 무엇이 도나」 -- the point of
     # running this without `--apply` is to learn the size of the job, so `would_index` is
     # counted on both paths and `indexed` counts only what was written.
@@ -1426,11 +1427,11 @@ def index_existing_refs(engine, source, setup=None, apply=False, pace=None,
             # An install that has not run a translation since the index was added has no
             # table to write into, and `UndefinedTable` out of a paced job is a worse
             # answer than making it. Same DDL as `ensure_schema`, called rather than copied.
-            schema.ensure_row_ref_table(cursor)
+            schema.ensure_row_ref_table(cursor, names)
         connection.commit()
         with connection.cursor() as cursor:
             cursor.execute(
-                f"SELECT count(DISTINCT source_raw_ref) FROM {schema.LEDGER_TABLE} "
+                f"SELECT count(DISTINCT source_raw_ref) FROM {names.ledger} "
                 "WHERE source_who = %s", (source,))
             result["refs_total"] = int(cursor.fetchone()[0])
         offset = 0
@@ -1438,7 +1439,7 @@ def index_existing_refs(engine, source, setup=None, apply=False, pace=None,
         while True:
             with connection.cursor() as cursor:
                 cursor.execute(
-                    f"SELECT DISTINCT source_raw_ref FROM {schema.LEDGER_TABLE} "
+                    f"SELECT DISTINCT source_raw_ref FROM {names.ledger} "
                     "WHERE source_who = %s ORDER BY source_raw_ref LIMIT %s OFFSET %s",
                     (source, chunk, offset))
                 refs = [row[0] for row in cursor.fetchall()]
@@ -2138,7 +2139,7 @@ def main(argv=None):
     parser.add_argument("--max-batches", type=int, default=None)
     parser.add_argument(
         "--world", default=None,
-        help="a ledger world (branch) to translate into, by name; none = the default. "
+        help="a ledger world (branch) to translate into, by name; none = the operating world. "
              "The one seat answers where its declaration and tables are")
     parser.add_argument("--pace", default=None,
                         help="fast (default, unchanged) | slow | trickle - yield between "

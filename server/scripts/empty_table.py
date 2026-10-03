@@ -72,7 +72,7 @@ def empty(db, engine, setup, table, rules, confirm_rows, by) -> dict:
     """비운다. `confirm_rows` 가 지금의 행 수와 다르면 아무것도 안 하고 거절."""
     from sqlalchemy import text
     from database import crud
-    from ledger import backfill
+    from ledger import backfill, schema
 
     before = report(db, setup, table, rules)
     if int(confirm_rows) != before["rows"]:
@@ -88,7 +88,8 @@ def empty(db, engine, setup, table, rules, confirm_rows, by) -> dict:
     db.commit()
     done["ledger_withdrawn"] = {
         source: backfill.rescope(engine, setup, source, None, (), apply=True,
-                                 whole_source=True).get("gone_withdrawn", 0)
+                                 whole_source=True, world=schema.DEFAULT_WORLD
+                                 ).get("gone_withdrawn", 0)
         for source in before["ledger_atoms"]}
     return {"before": before, "done": done, "transaction_id": tx}
 
