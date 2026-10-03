@@ -71414,3 +71414,44 @@ sqlite 전체 7 failed, 7741 passed, 299 skipped, 3 xfailed, 13043 warnings in 7
 **RUN.md** — 재기동 한 줄 · 운영에서 조용히 origin 을 잃었을 수 있는 체인 층을 표마다 세는 SQL · 그 수의 뜻(상한 — 원천 행을 못 대는 쓰기도 NULL · 층 이름으로는 못 되살림 · 값이 같으면 다시 써도 층이 안 바뀌어 리플레이로도 안 채워지고, 원천 행이 바뀌어 새 값이 오면 그때 채워짐)
 
 다음: e243d6abf ③ · d5cf3a954(키 철자) — 짓고 있음, 미리보기(원인별 · 부딪힘 견본)까지 같은 착지 · 그 뒤 53995f058 · 세상 짓기
+
+---
+
+## [10-03] e243d6abf ③ · d5cf3a954 · 829e3fe20 ④ 착지 843bcfd11 — 키 조각은 칸이 저장하는 철자로 · 병합된 새 행 껍데기는 표에 안 남는다
+
+어느 DB · 어느 스키마 · 지운 것 — 시험만: sqlite(메모리) · PG assy_test 의 시험 스크래치 스키마(카나리아: pg_namespace 그 스키마 1 · 세션 존이 읽혔는지) · 지운 것은 그 스키마 안의 시험 표와 그 표 이름의 행뿐
+
+**고친 것**
+```
+③  crud.key_part 하나 — 숫자 · 글자는 cast_value_by_type 가 저장하는 값, 시각은 time_format.instant_text(instant_key 의 순간 -> 세션 존 벽시계,
+    마이크로초가 있으면 .ffffff). 칸이 거절할 값 · ISO 로 안 읽히는 시각 글자는 글자 그대로
+    compose_business_key 가 칸 이름을 같이 받아 모든 조각을 이 함수로 — 맞추기 · 다시 짓기 · 원래 철자 키 · 풍부화 맵퍼 · 리플레이 · main 의 뷰 표시 id
+④  병합된 껍데기가 이 배치에서 새로 만든 행이면 db.expunge(INSERT 없음 · 아웃박스 없음), 저장된 행이면 db.delete — 지우기 거절을 삼키던 except 없앰
+    원인: 새 행은 대기(pending) 상태라 db.delete 가 거절했고 그 거절을 말없이 넘겨 flush 때 층 없이 들어갔다
+미리보기  rebuild_blank_business_keys.py(이미 «관문 없이 전부 다시 짓고 옛 키와 다른 행만»)에 원인별 수(number · datetime · not_iso · split)와
+          부딪힘 견본(이 행 -> 그 키를 가진 행 · 다시 지은 키) — --apply 는 손대지 않음(소유자 답 대기)
+```
+**게이트**
+```
+값 모양 × 두 표 모양(PG)  숫자 6 모양 × 시각 8 모양(초 · 마이크로초 두 순간)을 번갈아 써도 행 1 · 병합 0 · 저장 키 = 다시 읽은 행으로 지은 키
+                         키 조각을 다른 행 값으로 고친 쓰기는 여전히 병합 1 · 빈 조각은 키 없음 · 병합 0
+                         ISO 로 안 읽히는 시각 글자 세 번: 행 1 · 병합 0 — 단 저장 키는 글자 철자, 다시 읽으면 달라 미리보기가 not_iso 로 센다
+총괄 프로브 여덟 모양       모두 행 1 · 병합 0 · 오류 없음 (plain · "1.0" · 초 없는 시각 · 1.0 × 두 표 모양 — 전: 껍데기 + 병합 + origin 오류)
+④ 갈래 둘(두 표 모양)     한 배치에서 새 id 로 만든 행이 남의 키 · 앞 항목이 만든 행을 뒤 항목이 남의 키로 -> 행 1 · collision_merge 줄
+변이                     ③ 페이로드 철자 그대로(옛 맞추기) RED · ③ 숫자를 안 바꿈 RED · 시각을 글자 그대로 RED · 시각을 UTC 로(세션 벽시계 아님) RED · 마이크로초 버림 RED · 미리보기가 시각 조각을 못 댐 RED · ④ 옛 몸통(지우기 거절을 삼킴) RED · ④ 대기 행도 지우기로(expunge 없음) RED
+PG 키 · 병합 · 체인       55 passed, 889 deselected, 71 warnings in 168.37s (0:02:48)
+sqlite 전체              6 failed, 7744 passed, 311 skipped, 3 xfailed, 13002 warnings in 718.88s
+                         남은 6: 박스 체크아웃 사유 다섯 + test_the_sweep_still_runs_when_there_is_nothing_to_do
+                         test_the_sweep_still_runs_when_there_is_nothing_to_do 은 워커 루프 시간 시험(키 함수를 안 부름) — 따로 세 번 통과
+```
+**알릴 것**
+```
+뷰 표시 id   main 의 뷰 행 id(키 칸을 이어 붙인 것)도 같은 철자 — 시각 조각이 offset 없이 세션 벽시계로 보인다(화면에 보이는 글자가 바뀜)
+세션 존      시각 철자는 프로세스가 PG 에 붙어 TimeZone 을 읽은 뒤의 것 — 못 읽으면(또는 붙기 전) naive 는 벽시계, offset 붙은 것은 UTC 로 적혀 갈린다
+            RUN.md 에 SHOW TimeZone 한 줄
+not_iso     「2026/10/03 12:00」 같은 글자는 지시대로 그대로 — 같은 글자로 다시 오면 찾지만, 다른 조각을 그리드에서 고쳐 다시 지어지면 철자가 바뀐다(미리보기가 센다)
+--apply     지금의 --apply 는 business_key_val 만 고친다 — 업무키 칸(business_key)이 있는 표는 그 칸이 옛 철자로 남는다. 부딪힘 답과 같이 정할 것
+```
+**RUN.md** — 맨 위 절: 재기동(a8d483ea4 의 보류가 이것으로 풀림) · 재기동 전 미리보기 명령과 수의 뜻 · SHOW TimeZone · fb9a0b649 로 이미 재기동한 경우 «키 있고 층 0» 행을 세는 SQL
+
+다음: 53995f058(목록 없던 기존 표) 작게 · 그 뒤 세상 짓기(로컬 가지에 세워 둔 것을 이 위로)
