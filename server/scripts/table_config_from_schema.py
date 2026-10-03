@@ -31,7 +31,7 @@ other cell a human already wrote (`business_key`, `__comment`, `composite_key_so
 `group`, `indexes`, ...) stays as it is -- so re-running after an edit does not undo the edit.
 Those two the sheet adds to and changes but never takes from: a column only the declaration
 has stays (and the report names it), a person's display order and hidden columns stay, and a
-column new to the declaration joins the end of `display_columns`.
+column new to the declaration joins the end of `display_columns` - an entry with none keeps none.
 """
 from __future__ import annotations
 
@@ -194,12 +194,15 @@ def build(rows, existing=None):
             "business_key": prior.get("business_key"),
             **{cell: value for cell, value in prior.items() if cell not in SHEET_CELLS},
             "column_types": {**prior_types, **column_types},
-            # A person's order and hidden columns stay; only a column the declaration did not
-            # type before joins the end. Sheet order where nobody wrote a list yet.
-            "display_columns": (
-                shown + [c for c in column_types if c not in prior_types and c not in shown]
-                if isinstance(shown, list) else [c for c, _ in cols]),
         }
+        # A person's order and hidden columns stay; only a column the declaration did not type
+        # before joins the end. An entry with no list keeps none - every column shows (총괄
+        # 53995f058); a new table gets the sheet order.
+        if isinstance(shown, list):
+            decl["display_columns"] = shown + [c for c in column_types
+                                               if c not in prior_types and c not in shown]
+        elif not prior:
+            decl["display_columns"] = [c for c, _ in cols]
 
         if not decl["business_key"]:
             decisions.append((table, "business_key", key_candidates(table, [c for c, _ in cols])))

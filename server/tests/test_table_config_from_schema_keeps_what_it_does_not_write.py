@@ -47,9 +47,10 @@ def test_a_persons_order_and_hidden_column_stay_and_a_new_column_joins_the_end()
     assert config["lot_event"]["display_columns"] == ["note", "old", "event_time", "qty"]
 
 
-def test_where_nobody_wrote_a_list_the_sheet_order_is_written():
+def test_an_entry_that_had_no_list_still_has_none():
+    """총괄 53995f058: no list shows every column - writing one would hide `old`."""
     config, _, _, _, _ = generator.build(ROWS, {"lot_event": {"column_types": {"old": "string"}}})
-    assert config["lot_event"]["display_columns"] == ["lot_id", "event_time", "qty"]
+    assert "display_columns" not in config["lot_event"]
 
 
 def test_a_table_the_merge_has_not_seen_gets_the_sheet_and_the_two_human_cells_empty():
