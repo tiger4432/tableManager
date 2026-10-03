@@ -35409,3 +35409,23 @@ RELEASE_LOG 맞음 — 마운트 둘(admin.js refreshLedgerSources 의 두 id) �
    그 칸을 고르면 WHERE "<칸>" = ANY(…) 가 UndefinedColumn 으로 터진다 — 이름 대는 거절이 아니다(그 칸은 읽기에서는 빠지는데 범위에서는 안 빠진다)
    c8d6a8597(물리 칸 묻는 자리 셋을 한 함수로)이 접을 때 이 둘도 그 함수를 지나면 같이 닫힌다 — 그 순서에 넣을지 여쭐 것
 ```
+
+---
+
+## [C 응용] 10-03 66570d724(주기 census 가 사람이 센 수를 잇는다 · next_step) 검수 + 문서 @`f8a84e61f`
+
+```
+검수 (박스)  run_pg_tests -k (next_step · edit_the_ledger_never_saw) 6 passed · next_step 시험 pytest 3 passed
+문서        BACKFILL_GUIDE 수정 누락 행 · RUNTIME_MAP ⑤ — 제가 00f617c3c 에 적은 「다음 주기가 지운다」 경고를 닫힘으로 · CODE_MAP source_backlog 줄(서버가 next_step 을 싣는다)
+RELEASE_LOG 맞음 — 주기 판이 세지 않고 잇는다 · 직전 기록 한 번 읽기 · 사람이 다시 세면 바뀐다 · 10-03 패널 항목의 경고를 ⚰️ 로
+```
+```
+🔴 한 줄 — 고친 뒤에도 패널이 빨갛다. 이 착지가 그 상태를 «오래» 만든다
+   retranslate_drifted(--drifted --apply)는 rescope 만 부르고 census 기록을 안 쓴다 — 기록의 rows_drifted 는 «고치기 전» N 그대로
+   전: 다음 주기 census 가 기록을 지워 Not measured · next_step = census 로 돌아갔다(우연히 맞는 다음 행동)
+   지금: 주기 census 가 그 N 을 그때 시각 그대로 «잇는다» -> 사람이 census 를 다시 돌릴 때까지 빨간 N 과 「--drifted」가 계속 선다
+      그 명령을 다시 돌리면 「scope_values: 0」 이 나오는데 화면은 그대로 — 조작자는 «고쳤는데 안 고쳐졌다»로 읽는다
+   그리고 next_step 이 싣는 것은 «미리보기»(--drifted, 아무것도 안 씀)다 — 0fd998b70 에 올린 물음 그대로 남음
+   고칠 자리 후보(안 쟀다): --drifted --apply 가 끝에 그 소스의 사람 census(measure_and_store exact)를 한 번 — 그러면 기록이 «고친 뒤 수»가 된다
+   여쭐 것: ① apply 뒤 다시 세기를 넣을지 ② next_step 을 미리보기로 둘지, 적용 명령까지 실을지
+```
