@@ -71787,3 +71787,50 @@ PG 전체                         5 failed, 281 passed, 7804 deselected, 245 war
 ```
 
 다음: 4b90a8d23 재기(세상을 넘는 엣지 · 어휘)
+
+---
+
+## [10-03] 4b90a8d23 + 75471de2c 재기 — 세상을 넘는 엣지 · 어휘 · 파티션 · 노드 키 모양 (짓지 않음)
+
+어느 DB · 어느 스키마 · 지운 것 — PG assy_test 시험 스크래치 스키마 + 재기가 만든 w_ 스키마(끝에 이름으로 DROP, 뒤 남은 것 0 확인) · 운영 DB 안 씀
+명령(저장소 밖 재기 파일): server 폴더에서 PROBE_OUT=<json> python -m pytest -q -p no:cacheprovider -m pg tests/test_zz_probe_cross_world.py
+   파일은 빌드 트리에서 지우고 C:/Users/kk980/AppData/Local/Temp/claude/C--Users-kk980-Developments-assyManager/bb9c475d-6f85-4fe4-bc97-76584eed703b/scratchpad/test_zz_probe_cross_world.py 에 둠 · 결과 C:/Users/kk980/AppData/Local/Temp/claude/C--Users-kk980-Developments-assyManager/bb9c475d-6f85-4fe4-bc97-76584eed703b/scratchpad/probe_cross_world.json
+
+**칸마다 한 줄** (A = 기본 세상, 샘플 선언 · 걷기 = wafer W1 에서 2 홉)
+```
+① B 가 [A] 위 · B 소스가 wafer -> void   B 에서 엣지 has_wafer/processed_with/voids · 노드 lot_slot/recipe/void/wafer  -> 간다: B 의 엣지가 A 의 wafer 노드에 id 로 이어지고 A 의 엣지도 같이
+② B 가 독립(밑 없음)                    엣지 voids · 노드 void/wafer  -> void 로는 간다(엣지가 B 원장에 있고 노드 id 는 세상과 무관) · A 의 엣지는 안 보임
+③ B 를 만든 뒤 A 가 tool 타입 · processed_on · wafer_tool 소스를 더함
+   B 뷰 다시 짓기 전   걷기 엣지 has_wafer/processed_on/processed_with · 노드 lot_slot/recipe/tool/wafer · 검색(key-values type=tool) 422 type_declares_no_keys · 선언 답 노드 목록에 tool 없음
+   B 뷰 다시 지은 뒤   걷기 엣지 has_wafer/processed_with · 노드 lot_slot/recipe/wafer · 검색 422 type_declares_no_keys · B 의 followed_by 에서 B 가 wafer_tool 을 말함 -> A 의 그 원자가 B 에서 사라짐
+   (A 에서는 걷기 엣지 has_wafer/processed_on/processed_with · 노드 lot_slot/recipe/tool/wafer · 검색 노드 1)
+④ C 가 [A2, B2] 위 · A2 = proc_plain(일반 웨이퍼) · B2 = proc_dt(DT 웨이퍼), 같은 표 다른 거름
+   C 뷰 proc_plain(x 다리) 1 -> 둘 다 보이지 않는다: A2 가 proc_dt 를 «말함»으로 잡혀(followed_by A2 frozenset({'proc_plain', 'proc_dt'})) B2 의 원자를 가림
+   같은 소스 id(proc) 를 둘이 -> C 뷰 proc(q 다리) 1 -> 위 것만(예상대로)
+⑤ 노드 키   숫자 칸 1 · 글자 칸 "1" -> 둘 다 "1" · 이어짐   /   숫자 칸 2 · 글자 칸 "2.0" -> "2" 와 "2.0" · 안 이어짐
+   원장 노드 키는 늘 글자: kp_num {"wafer": "1"} · kp_num {"wafer": "2"} · kp_txt {"wafer": "2.0"} · 숫자 JSON 키(1)로 만든 노드 id 로 걸으면 엣지 없음 · 노드 wafer
+   덤: 두 소스가 같은 사실을 말하면 원자 하나 — 글자 "1" 행은 숫자 행과 같은 사실이라 dedupe (kp_num 넣음 3 dedupe 1 · kp_txt 넣음 0 dedupe 0)
+```
+**원인 한 줄과 고칠 자리 (짓지 않음)**
+```
+③ ④  ledger/schema.py _differing — 「한쪽에만 있는 소스는 지문이 없어 다르다」. 위 세상이 «안 가진» 소스를 위 세상이 «말하는» 것으로 쳐서
+     밑의 그 소스 원자를 뷰에서 거름. 판정 인용: changed_sources 설명 "A source on one side only, or one a loader refused on one side,
+     has no fingerprint there and so differs" (총괄 60d7e8e42 1 · e67ef53f3 ④ · 10-01) — 판정이 있어 뒤집지 않고 여쭘
+     ③ 은 시각에 걸림: 뷰 설명(comment)에 적힌 말하는 세상은 뷰를 지을 때 정해지므로, 다시 짓기 전에는 보이고 짓고 나면 사라짐
+③   검색 거절 문구가 거짓 — B 선언에 tool 이 «없는» 것을 「'tool' declares no keys」 로 말함(trace_router.ledger_key_values, 키 목록이 비면 그 사유).
+     미선언 타입과 키 없는 타입이 같은 사유
+⑤   map_overlay.canonical_key_value(값, 선언 칼럼 타입) — 숫자 칸 1 · 1.0 · '01' -> '1', 글자 칸은 철자 그대로 — 판정 7233a7a31
+     (소유자 「die 가 x,y 를 1 로 읽은 것 1.0 으로 읽은 게 뒤섞여서 중복」, 글자 칸의 철자는 뜻). 숫자 2 와 글자 "2.0" 이 안 이어지는 것은 그 판정대로
+     key_part 와 같은 좌석이어야 하나: 숫자 · 글자는 뜻이 같음(숫자 정수 -> 1, 글자는 다듬기만). 시각은 다름 —
+       '2026-09-30 10:00:00' -> 원장 노드 키 '2026-09-30 10:00:00' · key_part '2026-09-30 10:00:00'
+       '2026-09-30T10:00:00+09:00' -> 원장 노드 키 '2026-09-30T10:00:00+09:00' · key_part '2026-09-30 01:00:00'
+       datetime.datetime(2026, 9, 30, 1, 0, tzinfo=datetime.timezone.utc) -> 원장 노드 키 '2026-09-30 01:00:00+00:00' · key_part '2026-09-30 01:00:00'
+     같은 순간을 두 철자로 받으면 원장 노드 둘(업무 키는 하나). 고칠 자리: canonical_key_value 의 «그 밖» 갈래에 datetime 칸을
+     time_format.instant_text 로(= key_part 의 시각 갈래) — 한 함수로 접는 것. 운영에 시각 키 칼럼이 있는지는 안 셈
+```
+**알릴 것 (묻지 않은 것 — 재다가 봄)**
+```
+기본 세상에서 새 소스(wafer_tool)를 backfill 하면 같은 표의 다른 소스(wafer_process_recipe)도 다시 번역되고(backfill 결과 읽은 행 1 · 넣음 2 · dedupe 0),
+선언 파일이 바뀌어 그 소스의 지문이 달라져 같은 사실 원자가 하나 더 생김 — 전 1 -> 후 2 (둘 다 supersedes 없음)
+원인: run() 은 표 단위로 큐에 넣고, 기본 세상(밑 없음)은 거르는 소스가 없음(followed_by 맨 위 = None). 운영에서 몇 개인지는 안 셈
+```
