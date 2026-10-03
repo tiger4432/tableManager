@@ -1231,7 +1231,9 @@ const FLOORS = new Map([
   // screen that omits it makes that promise on the server's behalf. H5/H6 hold the two
   // silent states, and I3 holds that a code-less issue draws no code rather than a blank.
   // 94 -> 95 (lead 810d0044b ②): E3 counts action lines with words in them, E9 no empty action line.
-  ['ontology_authoring_panel_harness.mjs', 110],
+  // 110 -> 105 (map.input_columns retired, server 97101fd2e): the locked-chip cells H4-H6 · H9 · H12-H14
+  // went with the field, H8 now scores read.order_by's own default; H18 (an old file draws nothing) and E10 came.
+  ['ontology_authoring_panel_harness.mjs', 105],
   // New with the N2 round (overlay markers coloured by the overlay cell's own value). Same
   // rule: floor is the count it reports on the commit that introduces it.
   // 70 as of 2026-08-04: A12 (loading an overlay REGISTERS its values, so the colouring this

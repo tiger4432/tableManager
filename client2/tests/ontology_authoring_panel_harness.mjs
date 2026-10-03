@@ -95,12 +95,8 @@ const inside = (root, container, name) => {
 
 // --- a plan shaped exactly like `authoring_plan()` output --------------------------
 const CANDIDATES = ['dt_cell_key', 'dt_index', 'dt_job', 'event_time'];
-// 🔴 THE COLUMNS THE READ BRINGS IN ANYWAY, AS THE SERVER SENDS THEM. `locked` is a
-// SUBSET of `candidates` and arrives on the row; the client draws it and never computes
-// it, so this fixture is the only place the membership is stated. Two of the four, so the
-// block below can tell a locked toggle from a free one -- one of each would let a probe
-// that finds "some pressed chip" pass while looking at the wrong kind.
-const LOCKED = ['dt_job', 'event_time'];
+// The derived default of `read.order_by` (the server's shortest declared key), a subset of the candidates.
+const ORDER_DEFAULT = ['dt_job'];
 const field = (over) => ({
   path: 'bundle.x', step: 'sources', label: '칸', state: 'answered',
   tier: 'constrained_input', value: null, declared: null, has_declared: false,
@@ -142,26 +138,22 @@ const PLAN = {
         from_value: ['dt_job'],
       },
     }),
-    // 🔴 THE ROW CARRIES `candidates` AND `locked` SINCE 2026-08-22, and the fixture was
-    // changed to the new contract rather than left describing the old one. The square is a
-    // PICKER now (owner: 「차라리 컬럼 선택 하는거로 하고, 저 디폴트 컬럼들은 클릭 불가능한
-    // 클릭되어 있는 버튼으로 둬」), so the row has to carry the set to pick from and the
-    // subset that is not a choice. `value` is the server's default as `a13eeed4` computes
-    // it: every candidate EXCEPT the locked ones, because a locked column is already coming
-    // and `input_columns` means "on top of the read".
+    // The derived row the author may change: `read.order_by`, as `config_authoring` builds it
+    // (ordering_default_from_catalog_key). It carried `map.input_columns` until that field
+    // retired (owner, server 97101fd2e); the properties scored on it here are the list
+    // picker's, not that field's.
     field({
-      path: 'bundle.sources.dt_job.map.input_columns', label: '매퍼 input_columns',
+      path: 'bundle.sources.dt_job.read.order_by', label: 'order_by',
       step: 'sources', state: 'derived', tier: 'derivation',
-      value: CANDIDATES.filter((column) => !LOCKED.includes(column)),
-      candidates: CANDIDATES, locked: LOCKED,
+      value: ORDER_DEFAULT, candidates: CANDIDATES,
       declared: ['lot'], has_declared: true, conflicts: true,
       comparison: 'superset', disposition: 'default_overridable',
       ground: {
-        rule: 'mapper_inputs_from_profile_bindings',
-        text: '채움: 소스 dt_job의 프로필이 바인딩한 컬럼 3개',
-        from_paths: ['bundle.sources.dt_job.bind.mappings[0].bind.subject.keys.dt_job.column'],
-        from_keys: ['source_plan|dt_job'],
-        from_value: ['dt_index', 'dt_job', 'event_time'],
+        rule: 'ordering_default_from_catalog_key',
+        text: "Default: the declared key of dt_job_rollup in table_config.json ['dt_job']",
+        from_paths: ['table_config.json:dt_job_rollup'],
+        from_keys: [],
+        from_value: [['dt_job']],
       },
     }),
     // 🔴 A MAP KEY, NOT AN INDEX, AND THE ROLE IS THE ONE THE PREDICATE FORCES.
@@ -233,16 +225,11 @@ const SKELETON = {
               { key: 'column', required: true, label: '컬럼',
                 node: { kind: 'leaf', hint: 'free' } },
             ] } },
-        ] } },
-        // The mapper clause, exactly as `ledger_skeleton.json` declares it: an index-keyed
-        // map of column names. It is here because the picker only exists on the TREE --
-        // the buckets call `editableFor` without a node, and the node is what says this
-        // absent value is a list. A fixture with no `map` could not reach the control at
-        // all, which is how the two `input_columns` squares went unscored until now.
-        { key: 'map', required: true, label: '매퍼', node: { kind: 'record', fields: [
-          { key: 'input_columns', required: true, label: '매퍼 input_columns',
-            node: { kind: 'map', keyed_by: 'index', member: '컬럼',
-                    of: { kind: 'leaf', hint: 'free' } } },
+          // `read.order_by` as `ledger_skeleton.json` declares it: an index-keyed map of column
+          // names. The picker only exists on the TREE -- the buckets call `editableFor` without a
+          // node, and the node is what says an absent value is a list.
+          { key: 'order_by', required: true, node: { kind: 'map', keyed_by: 'index', member: 'Column',
+            of: { kind: 'leaf', hint: 'free' } } },
         ] } },
         { key: 'bind', required: true, label: '결선', node: { kind: 'record', fields: [
           { key: 'mappings', required: true, node: { kind: 'map', keyed_by: 'name',
@@ -453,67 +440,38 @@ const renderDraft = (plan) => {
     slots.length === 3, slots.join(','));  // was 2: the predicate opens three roles
 }
 
-// ── H. input_columns is a picker; the columns the read already brings are inert ────
+// ── H. a derived default the author may change is a picker (read.order_by) ──────────
 //
-// Owner, 2026-08-21: 「차라리 컬럼 선택 하는거로 하고, 저 디폴트 컬럼들은 클릭 불가능한
-// 「클릭되어 있는」 버튼으로 둬」 -- and minutes later, 「그러면 그냥 디폴트 전체 입력해도
-// 되지?」. The two halves are ONE landing: an everything-default makes a source sensitive to
-// columns it does not use, and the only thing that makes that safe is being able to SEE
-// which of the pressed ones you may turn off. So the assertions below score the difference
-// between the two kinds of pressed, not the pressing.
-//
+// ⚰️ H4-H6, H9 and H12-H14 scored the inert «read anyway» chip, and H8 the everything-default; both
+//    were `map.input_columns`' alone and retired with it (owner, server 97101fd2e). H18 is the control.
 // 🔴 EVERY COUNT IS TAKEN INSIDE THE ROW'S OWN `oe-node`. The legend, the other rows and
 // the map reuse `oe-chip` and `oe-pick`, and a panel-wide count has already passed here
 // while the rows it was about were empty.
 {
   const root = renderDraft(PLAN);
   const rows = byClass(root, 'oe-node').filter(
-    (node) => node.dataset.path === 'map.input_columns');
-  eq('H1 the mapper input_columns square is drawn exactly once', rows.length, 1);
+    (node) => node.dataset.path === 'read.order_by');
+  eq('H1 the order_by square is drawn exactly once', rows.length, 1);
   const picks = byClass(at(rows, 0), 'oe-picks');
   const chips = picks.length ? byClass(at(picks, 0), 'oe-pick') : [];
   eq('H2 one toggle per server candidate, inside that row', chips.length, CANDIDATES.length);
   check('H3 the toggles ARE the server list, element for element',
     chips.every((chip, i) => chip.textContent === CANDIDATES[i]),
     chips.map((c) => c.textContent).join(','));
-  const held = chips.filter((chip) => chip.dataset.locked === 'true');
-  check('H4 the locked toggles are the server list, element for element',
-    held.map((chip) => chip.textContent).join(',') === LOCKED.join(','),
-    held.map((c) => c.textContent).join(','));
-  check('H5 a locked toggle is pressed',
-    held.length === LOCKED.length
-      && held.every((chip) => chip.getAttribute('aria-pressed') === 'true'));
-  // 🔴 THE ONE THAT IS ACTUALLY MINE. With everything pressed by default, "the toggles are
-  // pressed" is true even of code that does nothing, so the probe has to bite on the
-  // difference: a locked one carries NOTHING for the click delegate or the Enter/Space
-  // handler to find (`[data-action]` / `button[data-action]`), while a free one carries the
-  // action and the payload.
-  check('H6 a locked toggle cannot be pressed by mouse, by key, or by a dispatched click',
-    held.every((chip) => chip.dataset.action === undefined && chip.tagName !== 'BUTTON'),
-    held.map((c) => `${c.tagName}:${c.dataset.action}`).join(','));
-  const free = chips.filter((chip) => chip.dataset.locked === undefined);
-  check('H7 every other candidate IS a toggle that presses',
-    free.length === CANDIDATES.length - LOCKED.length
-      && free.every((chip) => chip.tagName === 'BUTTON'
-        && chip.dataset.action === 'pick-candidate'),
-    free.map((c) => `${c.tagName}:${c.dataset.action}`).join(','));
-  check('H8 and every other candidate starts pressed (the server default is everything)',
-    free.every((chip) => chip.getAttribute('aria-pressed') === 'true'),
-    free.map((c) => c.getAttribute('aria-pressed')).join(','));
+  check('H7 every candidate IS a toggle that presses',
+    chips.length === CANDIDATES.length
+      && chips.every((chip) => chip.tagName === 'BUTTON' && chip.dataset.action === 'pick-candidate'),
+    chips.map((c) => `${c.tagName}:${c.dataset.action}`).join(','));
+  check('H8 the server\'s default starts pressed, and only it',
+    chips.filter((chip) => chip.getAttribute('aria-pressed') === 'true')
+      .map((chip) => chip.textContent).join(',') === ORDER_DEFAULT.join(','),
+    chips.map((c) => `${c.textContent}:${c.getAttribute('aria-pressed')}`).join(','));
   // 🔴 THE PAYLOAD, NOT THE PAINT. The chip carries the WHOLE next value and the document
-  // gets what it says, so a chip that looks right and writes a locked name is still the
-  // defect. Red the moment a locked candidate stops being recognised as one: it would join
-  // `free`, and its payload is its own name appended.
-  const payloads = free.map((chip) => JSON.parse(chip.dataset.pick));
-  check('H9 no toggle ever puts a locked column into the document',
-    payloads.every((list) => LOCKED.every((column) => !list.includes(column))),
-    JSON.stringify(payloads));
-  check('H10 pressing a pressed toggle takes exactly that column back out',
-    payloads.every((list, index) => {
-      const want = free.filter((_, other) => other !== index)
-        .map((chip) => chip.textContent);
-      return JSON.stringify(list) === JSON.stringify(want);
-    }), JSON.stringify(payloads));
+  // gets what it says.
+  const pick = (name) => (chips.find((chip) => chip.textContent === name) || { dataset: {} }).dataset.pick;
+  check('H10 pressing the pressed toggle takes exactly it out; pressing another adds exactly it',
+    pick('dt_job') === JSON.stringify([]) && pick('dt_index') === JSON.stringify(['dt_job', 'dt_index']),
+    `${pick('dt_job')} / ${pick('dt_index')}`);
   // 🔴 A PICKER THE PERSON CANNOT SEE IS A PICKER THAT IS NOT THERE. `renderDraft` opens
   // every row by hand, so everything above would pass on a row that folds shut by default
   // -- and `foldDecision` folds `answered`, `unanswered` and single-candidate rows before
@@ -525,67 +483,10 @@ const renderDraft = (plan) => {
     editorText: JSON.stringify(DOCUMENT),
   });
   const shut = byClass(plain, 'oe-node').filter(
-    (node) => node.dataset.path === 'map.input_columns');
+    (node) => node.dataset.path === 'read.order_by');
   const shutChips = byClass(at(shut, 0), 'oe-pick');
   eq('H11 the square shows its toggles with nothing expanded by hand',
     shutChips.length, CANDIDATES.length);
-
-  // 🔴 A LOCKED COLUMN THE FILE ALREADY DECLARES IS CARRIED, NOT STRIPPED, and the reason
-  // is the validator rather than a preference: `setup_bundle` refuses `invalid_mapper` --
-  // "Profile column 'x' at … is missing" -- for every column a binding names that
-  // `map.input_columns` does not declare, and the binding columns include the identity.
-  // Measured on the live file 2026-08-22: `dt_job.map` declares `dt_job`,
-  // `lot_event.map` declares `event_time` and `event_group_key`, all locked. A screen that
-  // took them back out on the next press would refuse the owner's own config as the side
-  // effect of an unrelated click.
-  const declaring = element('div');
-  renderOntologyExplorer(declaring, {
-    ...stateWith(PLAN),
-    draft: { target_kind: 'source_plan', target_id: 'dt_job' },
-    editorText: JSON.stringify({ ...DOCUMENT, map: { input_columns: ['dt_index', 'dt_job'] } }),
-    expandedFields: Object.fromEntries(
-      (PLAN.fields || []).map((row) => [row.path, true])),
-  });
-  const held2 = byClass(declaring, 'oe-node').filter(
-    (node) => node.dataset.path === 'map.input_columns');
-  const chips2 = byClass(at(held2, 0), 'oe-pick');
-  const free2 = chips2.filter((chip) => chip.dataset.locked === undefined);
-  check('H12 a locked column the document declares survives a press on another toggle',
-    free2.length === CANDIDATES.length - LOCKED.length
-      && free2.every((chip) => JSON.parse(chip.dataset.pick).includes('dt_job')),
-    free2.map((chip) => chip.dataset.pick).join(' | '));
-  check('H13 and it is still drawn as locked, not as a toggle the person may switch off',
-    chips2.filter((chip) => chip.dataset.locked === 'true')
-      .map((chip) => chip.textContent).join(',') === LOCKED.join(','),
-    chips2.map((chip) => `${chip.textContent}:${chip.dataset.locked}`).join(','));
-
-  // 🔴 NOTHING LOCKED IS NOT NOTHING TO DRAW. A source whose `read` says nothing yet locks
-  // no column at all, and the server sends `[]` rather than omitting the key. That has to
-  // be the picker it always was -- a row that answers an empty list with "no control" is
-  // the defect this panel paid a round for once already, an absence nobody can tell from
-  // an emptiness.
-  const none = element('div');
-  renderOntologyExplorer(none, {
-    ...stateWith({
-      ...PLAN,
-      fields: PLAN.fields.map((row) => (
-        row.path === 'bundle.sources.dt_job.map.input_columns'
-          ? { ...row, locked: [] } : row)),
-    }),
-    draft: { target_kind: 'source_plan', target_id: 'dt_job' },
-    editorText: JSON.stringify(DOCUMENT),
-    expandedFields: Object.fromEntries(
-      (PLAN.fields || []).map((row) => [row.path, true])),
-  });
-  const open = byClass(none, 'oe-node').filter(
-    (node) => node.dataset.path === 'map.input_columns');
-  const chips3 = byClass(at(open, 0), 'oe-pick');
-  check('H14 an empty locked list still draws the whole picker, every chip pressable',
-    chips3.length === CANDIDATES.length
-      && chips3.every((chip) => chip.tagName === 'BUTTON'
-        && chip.dataset.action === 'pick-candidate'
-        && chip.dataset.locked === undefined),
-    `${chips3.length} chips: ${chips3.map((c) => `${c.tagName}:${c.dataset.locked}`).join(',')}`);
 
   // 🔴 ONE WORD IN A LIST OF WORDS IS A ONE-ITEM LIST ON THE PLAN ROW TOO (order 8c0a2eeed).
   // The skeleton form already reads it so (`asList`); the plan row used to take the word as
@@ -594,12 +495,12 @@ const renderDraft = (plan) => {
   renderOntologyExplorer(worded, {
     ...stateWith(PLAN),
     draft: { target_kind: 'source_plan', target_id: 'dt_job' },
-    editorText: JSON.stringify({ ...DOCUMENT, map: { input_columns: 'dt_index' } }),
+    editorText: JSON.stringify({ ...DOCUMENT, read: { ...DOCUMENT.read, order_by: 'dt_index' } }),
     expandedFields: Object.fromEntries(
       (PLAN.fields || []).map((row) => [row.path, true])),
   });
   const wordRow = byClass(worded, 'oe-node').filter(
-    (node) => node.dataset.path === 'map.input_columns');
+    (node) => node.dataset.path === 'read.order_by');
   const wordChips = byClass(at(wordRow, 0), 'oe-pick');
   const chipFor = (name) => wordChips.find((chip) => chip.textContent === name);
   check('H15 a word held at a list of words draws the same toggles, that word pressed',
@@ -619,11 +520,26 @@ const renderDraft = (plan) => {
     .filter(Boolean);
   const countOf = (name) => wordActions.filter((a) => a === name).length;
   check('H17 ...and the row is the list-held row: one list box with its x and +, no text box, no [0] row',
-    everyNode(worded).every((n) => !n.dataset || n.dataset.path !== 'map.input_columns[0]')
+    everyNode(worded).every((n) => !n.dataset || n.dataset.path !== 'read.order_by[0]')
       && countOf('edit-field') === 0 && countOf('edit-shape') === 0
       && countOf('edit-field-item') === 1 && countOf('remove-field-item') === 1
       && countOf('add-field-item') === 1,
     wordActions.join(','));
+
+  // ⚰️ CONTROL: an old file still writes `map.input_columns`. The server reads it and ignores it, and
+  //    no plan row or skeleton field names it, so the form draws nothing for it.
+  const old = element('div');
+  renderOntologyExplorer(old, {
+    ...stateWith(PLAN),
+    draft: { target_kind: 'source_plan', target_id: 'dt_job' },
+    editorText: JSON.stringify({ ...DOCUMENT, map: { input_columns: ['dt_index', 'dt_job'] } }),
+    expandedFields: Object.fromEntries(
+      (PLAN.fields || []).map((row) => [row.path, true])),
+  });
+  const oldRows = everyNode(old).filter((n) => n.dataset && String(n.dataset.path || '').startsWith('map'));
+  check('H18 an old file\'s map.input_columns draws no row, no chip and no word',
+    oldRows.length === 0 && !everyNode(old).some((n) => /input_columns/.test(n.textContent || '')),
+    oldRows.map((n) => n.dataset.path).join(','));
 }
 
 // ── D. the counts bite: delete the rows and the numbers must move ─────────────────
@@ -682,12 +598,16 @@ const renderDraft = (plan) => {
     at(acts[1], 0).textContent.includes('can be overridden'));
 
   const jumps = byClass(panel, 'oe-jump');
+  // The `source_plan|dt_job` jump came from `map.input_columns`' ground, retired (server 97101fd2e).
   check('E6 the ground is reachable, so the real lever is one click away',
-    jumps.length >= 2);
+    jumps.length >= 1);
   check('E7 the jump targets the declaration the value came from',
-    jumps.some((node) => node.dataset.value === 'source_plan|dt_job')
-      && jumps.some((node) => node.dataset.value === 'entity|DTJob@1'),
+    jumps.some((node) => node.dataset.value === 'entity|DTJob@1'),
     jumps.map((n) => n.dataset.value).join(','));
+  // `read.order_by`'s ground is the physical catalog, which is no declaration: the server sends no key.
+  check('E10 a default grounded in the catalog draws no jump',
+    byClass(at(derivedRows, 1), 'oe-jump').length === 0,
+    byClass(at(derivedRows, 1), 'oe-jump').map((n) => n.dataset.value).join(','));
   check('E8 the blocked structural tier is counted on screen, not absorbed',
     byClass(panel, 'oe-note').length === 1
       && at(byClass(panel, 'oe-note'), 0).textContent.includes('1 cell with'));

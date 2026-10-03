@@ -1089,7 +1089,7 @@ console.log('\n[9] the source form writes only what was picked');
   };
   const SLIM = { relation: 't' };
   const row = (over) => ({ step: 'sources', tier: 'constrained_input', declared: null, has_declared: false,
-    conflicts: false, ground: null, candidates: null, universe: null, universe_note: '', locked: [],
+    conflicts: false, ground: null, candidates: null, universe: null, universe_note: '',
     comparison: 'equal', reshapes: false, disposition: '', forbidden: [], note: '', refusals: [], ...over });
   const planOf = (raw) => {
     const held = raw.read && raw.read.exclude_when;

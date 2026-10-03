@@ -1,6 +1,6 @@
 {
  "captured_by": "client2/tests/fixtures/capture_authoring_skeleton.py",
- "server_at": "d6bf51a8407ba31ada012ec13b316983c2b1e12c",
+ "server_at": "fc9a122faa1a463118479cfced58875fd0ffb456",
  "authorable_kinds": [
   {
    "id": "entity",
@@ -251,6 +251,89 @@
          }
         },
         {
+         "key": "references",
+         "required": false,
+         "label": "References",
+         "node": {
+          "kind": "map",
+          "keyed_by": "index",
+          "member": "Reference",
+          "of": {
+           "kind": "record",
+           "fields": [
+            {
+             "key": "edge",
+             "required": true,
+             "label": "Predicate",
+             "node": {
+              "kind": "leaf",
+              "hint": "ref",
+              "section": "vocabulary"
+             }
+            },
+            {
+             "key": "to",
+             "required": true,
+             "label": "Points at",
+             "node": {
+              "kind": "record",
+              "fields": [
+               {
+                "key": "entity",
+                "required": true,
+                "label": "Entity",
+                "node": {
+                 "kind": "leaf",
+                 "hint": "ref",
+                 "section": "entities"
+                }
+               },
+               {
+                "key": "keys",
+                "required": true,
+                "label": "Its keys - from this entity's key",
+                "node": {
+                 "kind": "map",
+                 "keyed_by": "name",
+                 "member": "Key",
+                 "of": {
+                  "kind": "leaf",
+                  "hint": "free"
+                 }
+                }
+               }
+              ]
+             }
+            },
+            {
+             "key": "from",
+             "required": false,
+             "label": "Only when",
+             "node": {
+              "kind": "record",
+              "fields": [
+               {
+                "key": "when",
+                "required": false,
+                "label": "This entity's key equals",
+                "node": {
+                 "kind": "map",
+                 "keyed_by": "name",
+                 "member": "Key",
+                 "of": {
+                  "kind": "leaf",
+                  "hint": "free"
+                 }
+                }
+               }
+              ]
+             }
+            }
+           ]
+          }
+         }
+        },
+        {
          "key": "status",
          "required": false,
          "label": "Status",
@@ -399,6 +482,16 @@
          "key": "absence_confirmed_by",
          "required": false,
          "label": "Absence confirmed by - present without this predicate reads as seen and absent (blank = unknown)",
+         "node": {
+          "kind": "leaf",
+          "hint": "ref",
+          "section": "vocabulary"
+         }
+        },
+        {
+         "key": "inverse_of",
+         "required": false,
+         "label": "Inverse of - the predicate that says this link the other way; the walk does not step back down either (blank = none)",
          "node": {
           "kind": "leaf",
           "hint": "ref",
@@ -673,19 +766,6 @@
                }
               }
              ]
-            }
-           },
-           {
-            "key": "input_columns",
-            "required": true,
-            "node": {
-             "kind": "map",
-             "keyed_by": "index",
-             "member": "Column",
-             "of": {
-              "kind": "leaf",
-              "hint": "free"
-             }
             }
            }
           ]
