@@ -906,7 +906,8 @@ def ledger_gap_catalogue(name: str = Query(None),
 
 
 def _row_census_by_source(world=None):
-    """Every source's stored census, by source id. ONE query, no counting.
+    """Every source's stored census, by source id - one query per world of the chain, no
+    counting.
 
     ⚠️ FAILURE HERE COSTS THE CENSUS AND NOT THE CATALOGUE. The declaration answers from the
     DECLARATION; the census is a ledger table that may not exist yet on a fresh install, and
@@ -914,20 +915,19 @@ def _row_census_by_source(world=None):
     down with it.
     """
     try:
+        from sqlalchemy import text
+
         from database.database import engine
         from ledger import schema
 
-        connection = engine.raw_connection()
-        try:
-            with connection.cursor() as cursor:
-                cursor.execute(
-                    f"SELECT source, {schema.ROW_CENSUS_COLUMN} "
-                    f"  FROM {_world(world).cursor} "
-                    f" WHERE {schema.ROW_CENSUS_COLUMN} IS NOT NULL")
-                return {row[0]: row[1] for row in cursor.fetchall()}
-        finally:
-            connection.rollback()
-            connection.close()
+        # Each source from the world that speaks for it in this world's chain, which the
+        # census names (총괄 8b81e79a0).
+        chain = schema.followed_by(engine, _world(world))
+        with engine.connect() as connection:
+            rows = schema.speaking_cursor(
+                chain, lambda sql: connection.execute(text(sql)).all(),
+                (schema.ROW_CENSUS_COLUMN,), f"WHERE {schema.ROW_CENSUS_COLUMN} IS NOT NULL")
+        return {source: {**census, "world": speaking} for source, (speaking, census) in rows.items()}
     except Exception as exc:                       # noqa: BLE001 - see the docstring
         logger.warning("row census unavailable: %s", exc)
         return {}

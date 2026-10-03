@@ -63,6 +63,11 @@ def seen(retro_env, monkeypatch):
     monkeypatch.setattr(ledger_backfill, "rescope", direct("rescope", {}))
     monkeypatch.setattr(ledger_setup, "load_setup", lambda *a: None)
     monkeypatch.setattr(ledger_backfill, "beat", lambda result: None)
+    # The world a ledger job runs in is the one that speaks for its source (총괄 8b81e79a0) -
+    # scored in the worlds test; here it is the one named, or the default by name.
+    import ledger.schema as ledger_schema
+    monkeypatch.setattr(ledger_schema, "speaking_world",
+                        lambda engine, source, world=None: world or ledger_schema.DEFAULT_WORLD)
     return calls
 
 
@@ -114,10 +119,11 @@ CASES = [
     ("confirm dry", "insights", ["confirm", "e"], [], ["sweep"]),
     ("ledger forward", "ledger", ["--source", "s", "--max-batches", "0"],
      [("ledger_backfill", {"source": "s", "fetch_rows": ledger_backfill.DEFAULT_FETCH_ROWS,
-                           "max_batches": 0})], []),
+                           "max_batches": 0, "world": "default"})], []),
     ("ledger rescope --apply", "ledger",
      ["--source", "s", "--scope-column", "c", "--scope-values", "a,b", "--apply"],
-     [("ledger_rescope", {"source": "s", "scope_column": "c", "scope_values": ["a", "b"]})],
+     [("ledger_rescope", {"source": "s", "scope_column": "c", "scope_values": ["a", "b"],
+                          "world": "default"})],
      []),
     ("ledger rescope dry", "ledger",
      ["--source", "s", "--scope-column", "c", "--scope-values", "a,b"], [], ["rescope"]),

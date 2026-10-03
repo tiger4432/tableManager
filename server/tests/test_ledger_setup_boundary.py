@@ -338,8 +338,9 @@ def test_operator_cli_has_no_legacy_escape_hatch(monkeypatch):
         backfill, "run", lambda engine, **kwargs: calls.append(kwargs) or {})
 
     assert backfill.main(["--max-batches", "0"]) == 0
-    # the default world is named by no argument at all (총괄 3b6dacd2f retired the root)
-    assert "world" not in calls[-1] and "ontology_root" not in calls[-1]
+    # the world is named, never a root (총괄 3b6dacd2f retired the root) - and named always,
+    # the one that speaks for the source (총괄 8b81e79a0 · 6c266e56b ⑤)
+    assert calls[-1]["world"] == "default" and "ontology_root" not in calls[-1]
     assert "cfg" not in calls[-1]
 
     for argv in (["--legacy"], ["--config", "legacy.json"]):

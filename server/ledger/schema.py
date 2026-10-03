@@ -1037,13 +1037,6 @@ def _declared_speakers(names) -> list:
     return spoken
 
 
-def speaks_for(names):
-    """The sources a world's translation writes: `None` - every source that reads the table -
-    for a world standing on nothing (the default too); else only its `changed_sources`
-    (총괄 c23b02aeb ③)."""
-    return changed_sources(names) if names.beneath else None
-
-
 def world_deletion(engine, world: str) -> dict:
     """What deleting a ledger branch takes - its schema, with every atom, cursor and index row
     in it, and its declaration and draft files. READ ONLY. The default is no branch and is
@@ -1211,6 +1204,46 @@ def followed_by(engine, names: WorldNames | None = None) -> list:
     finally:
         connection.rollback()
         connection.close()
+
+
+def speaker(chain, source) -> str:
+    """The world of `chain` - `followed_by`'s answer, top first - that speaks for `source`: the
+    topmost that names it, else the bottom, which speaks for the rest. Where the live follow-up
+    writes it, and so where a census measures it and a backfill writes it (총괄 8b81e79a0)."""
+    for world, spoken in chain:
+        if spoken is None or source in spoken:
+            return world
+
+
+def speaking_world(engine, source, world=None) -> str:
+    """The world `source` is translated and counted in, by name (총괄 8b81e79a0): not named,
+    the one that speaks for it in the operating world's chain (`speaker`), as the live
+    follow-up writes it; named, it must be the one that speaks for it in its own chain -
+    refused by name with the one that does. A world that does not speak for a source would
+    write nothing for it, and say nothing."""
+    from .setup import LedgerSetupError
+
+    names = require_world(world)
+    said = speaker(followed_by(engine, names), source)
+    if world is not None and said != (names.world or DEFAULT_WORLD):
+        raise LedgerSetupError(
+            "world_does_not_speak", "world",
+            f"{source} is spoken for by {said}, not {world} - run with --world {said}, or "
+            f"without --world")
+    return said
+
+
+def speaking_cursor(chain, read, columns, where="") -> dict:
+    """{source: (world, *columns)}: each source's cursor row from the world that speaks for it
+    in `chain` (`followed_by`'s answer), `read(sql)` giving the rows. Its census is measured and
+    stored there (총괄 8b81e79a0); a row another world holds for it is not its answer."""
+    rows = {}
+    for world, _spoken in chain:
+        for row in read(f"SELECT source, {', '.join(columns)} "
+                        f"FROM {world_names(world).cursor} {where}"):
+            if speaker(chain, row[0]) == world:
+                rows[row[0]] = (world, *row[1:])
+    return rows
 
 
 def _made_with(connection, names: WorldNames):

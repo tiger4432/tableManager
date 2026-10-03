@@ -93,7 +93,8 @@ def fixture_config(tmp_path, monkeypatch):
 def test_no_layout_is_today(config):
     assert schema.operating_world() == schema.DEFAULT_WORLD
     assert schema.world_names() == schema.world_names(schema.DEFAULT_WORLD)
-    assert schema.world_names().world is None and schema.speaks_for(schema.world_names()) is None
+    assert schema.world_names().world is None
+    assert schema.followed_by(None) == [(schema.DEFAULT_WORLD, None)]  # it speaks for all
     _declare(B1, _sample("ledger_config.json.sample"))
     names = schema.world_names(B1)
     assert names.beneath == (schema.DEFAULT_WORLD,)
@@ -156,12 +157,11 @@ def test_each_source_is_spoken_for_by_the_topmost_world_whose_declaration_differ
     assert names.beneath == (B1, schema.DEFAULT_WORLD)
     assert names.base_root == schema.world_names(B1).declaration_root
     assert schema._declared_speakers(names) == [{KEPT}, {CHANGED}, None]
-    assert schema.changed_sources(names) == schema.speaks_for(names) == {KEPT}
+    assert schema.changed_sources(names) == {KEPT}
 
     schema.stand(N, [])
     _declare(N, _sample("ledger_config.json.sample"))
     assert schema.world_names(N).base_root is None
-    assert schema.speaks_for(schema.require_world(N)) is None         # it speaks for all
     with pytest.raises(LookupError):
         schema.require_world("undeclared")
 
@@ -414,6 +414,71 @@ def test_a_source_two_worlds_say_otherwise_is_the_topmost_ones_alone(world):
     assert _saying(world, w.ledger, "RCP-3") == {CHANGED}
     assert _saying(world, b1.ledger, "RCP-3") == set()
     assert _saying(world, schema.LEDGER_TABLE, "RCP-3") == set()
+
+
+@pytest.mark.pg
+def test_a_source_is_counted_and_written_in_the_world_that_speaks_for_it(world, monkeypatch, capsys):
+    """총괄 8b81e79a0: B1 operates on the default and speaks for the recipe source. The load
+    source is the default's: its census is measured and read there and says so, its next step
+    names it, a backfill naming no world writes it there, and naming B1 for it is refused by
+    name. Once B1 has written the load source too, B1 speaks for it and a backfill writes there."""
+    import database.database as database_module
+    from admin import retroactive
+    from chain import ingestion_worker
+    from ledger import admin, census_cli, trace_router
+    from ledger.setup import LedgerSetupError
+    from tests.support.retro_door import run_without_a_record
+
+    monkeypatch.setattr(retroactive, "run_here", run_without_a_record(world["engine"]))
+    monkeypatch.setattr(backfill, "beat", lambda result: None)
+    _seed(world)
+    _b1(world)
+    _operate(world, B1)
+    default = schema.DEFAULT_WORLD
+
+    for source in (CHANGED, KEPT):                                   # the paced tick
+        ingestion_worker._measure_one_source_sync(world["maker"], source)
+    census = trace_router._row_census_by_source()
+    assert {source: (census[source]["world"], census[source]["next_step"]) for source in census} == {
+        CHANGED: (B1, "python -m ledger census --source %s --world %s" % (CHANGED, B1)),
+        KEPT: (default, "python -m ledger census --source %s --world %s" % (KEPT, default))}
+    monkeypatch.setattr(backfill, "census_sources", lambda setup: ([CHANGED, KEPT], []))
+    assert census_cli.main([]) == 0                                  # a person's count, all
+    counted = trace_router._row_census_by_source()
+    assert all("rows_drifted" in counted[source] for source in (CHANGED, KEPT))  # in its world
+    assert census_cli.main(["--source", KEPT, "--world", default]) == 0
+    assert census_cli.main(["--source", KEPT, "--world", B1]) == 2
+    assert "%s is spoken for by %s, not %s" % (KEPT, default, B1) in capsys.readouterr().err
+    panel = {row["source"]: row for row in admin.ingestion_view(world["db"], [CHANGED, KEPT])["sources"]}
+    assert {source: (row["world"], row["state"]) for source, row in panel.items()} == {
+        CHANGED: (B1, admin.SOURCE_RAN_AND_WROTE), KEPT: (default, admin.SOURCE_RAN_AND_WROTE)}
+    assert trace_router._row_census_by_source()[KEPT]["not_yet"]["estimate"] == 0
+
+    _write(world, "lot_slot_wafer", [{"lot_slot_wafer_key": "K2", "lot": "L1", "slot": "2",
+                                      "wafer": "W2", "event_type": "load",
+                                      "event_time": EVENT_TIME}])
+    with pytest.raises(LedgerSetupError, match="%s is spoken for by %s" % (KEPT, default)):
+        backfill.main(["--source", KEPT, "--world", B1])
+    assert backfill.main(["--source", KEPT]) == 0
+    b1 = schema.require_world(B1)
+    assert (_saying(world, schema.LEDGER_TABLE, "W2"), _saying(world, b1.ledger, "W2")) == ({KEPT}, set())
+    _write(world, "lot_slot_wafer", [{"lot_slot_wafer_key": "K4", "lot": "L1", "slot": "4",
+                                      "wafer": "W4", "event_type": "load",
+                                      "event_time": EVENT_TIME}])
+    retroactive.run_here("ledger_backfill", {"source": KEPT})       # the board's redo: no world
+    assert (_saying(world, schema.LEDGER_TABLE, "W4"), _saying(world, b1.ledger, "W4")) == ({KEPT}, set())
+
+    backfill.rescope(world["engine"], load_setup(b1.declaration_root), KEPT, None, None,
+                     apply=True, page_rows=backfill.RESCOPE_PAGE_ROWS, whole_source=True,
+                     world=B1)                                        # B1 writes it: B1 speaks
+    backfill.refresh_world_view(world["engine"], B1)
+    assert schema.speaker(schema.followed_by(world["engine"]), KEPT) == B1
+    _write(world, "lot_slot_wafer", [{"lot_slot_wafer_key": "K3", "lot": "L1", "slot": "3",
+                                      "wafer": "W3", "event_type": "load",
+                                      "event_time": EVENT_TIME}])
+    assert backfill.main(["--source", KEPT]) == 0
+    assert (_saying(world, b1.ledger, "W3"), _saying(world, schema.LEDGER_TABLE, "W3")) == ({KEPT}, set())
+    assert database_module.engine is world["engine"]                 # canary: the fixture's
 
 
 @pytest.mark.pg

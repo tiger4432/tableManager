@@ -3204,7 +3204,7 @@ def _file_stamp(path):
     return status.st_mtime_ns, status.st_size
 
 
-def _measure_one_source_sync(db_session_factory, source, setup=None):
+def _measure_one_source_sync(db_session_factory, source):
     """One source's census, in a thread. The session is this call's and closes with it.
 
     🔴 THE PACED TICK DOES NOT SCAN (S-122). `exact_rows=False` makes the relation count
@@ -3214,20 +3214,21 @@ def _measure_one_source_sync(db_session_factory, source, setup=None):
     behind it. The number is published AS an estimate; the exact count belongs to the
     command a person runs.
 
-    ⚠️ `setup` IS PASSED IN, NOT LOADED HERE. Compiling the whole declaration costs 91 ms
-    on this box and it was being done once per SOURCE - fifteen times a lap for an answer
-    that cannot change inside one lap.
+    It is measured in the world that speaks for it, as the live follow-up writes it (총괄
+    8b81e79a0); that world's declaration comes from the compile cache (`_compiled_setup`) -
+    compiling it costs 91 ms on this box, and it was once done for every source of a lap.
     """
     from ledger import backfill as ledger_backfill
-    from ledger.setup import load_setup
+    from ledger import schema as ledger_schema
     from ledger.store import LedgerStore
 
     db = db_session_factory()
     try:
         engine = db.get_bind()
+        world = ledger_schema.speaking_world(engine, source)
         return ledger_backfill.measure_and_store(
-            engine, setup if setup is not None else load_setup(), source,
-            LedgerStore(engine), exact_rows=False)
+            engine, _compiled_setup(world), source, LedgerStore(engine, world=world),
+            exact_rows=False)
     finally:
         db.close()
 
@@ -3289,7 +3290,7 @@ async def run_ledger_row_census(db_session_factory):
             census = None
             try:
                 census = await asyncio.to_thread(_measure_one_source_sync, db_session_factory,
-                                                 source, setup)
+                                                 source)
             except Exception as exc:
                 logger.warning("[LedgerCensus] %s failed: %s", source, exc)
             # ⚠️ THE FAILING SOURCE COSTS THE DATABASE TOO, so it is timed like any
