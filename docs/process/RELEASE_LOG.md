@@ -881,7 +881,7 @@ key	key
 
 - **화면에서** — R&D 보드(`/rnd-board.html`) → 결함 웨이퍼를 마킹(마킹 1)하고 비교군을 고름 → `Save contrast` → 저장 목록에 「Not computed yet」, 계산되면 「factors N · computed HH:MM」(`Refresh` 로 다시 읽음).
 - **필요한 조건** — 표 설정에 두 표, 체인 규칙에 위 규칙, 맵퍼 `server/mappers/contrast_walk.py`(저장소에 있음). 서버 · 체인 워커 재기동.
-- **바뀐 동작** — 새 기능입니다.
+- **바뀐 동작** — 새 기능입니다. 2026-10-03(총괄 0c918c2eb): 세상 이름 없이 저장한 대조는 체인이 운영 세상을 이름으로 걷고 그 이름을 `contrast_run.world` 에 적습니다 — 그 전에 빈 칸으로 남은 행은 그때의 운영 세상(세상 착지 전이면 기본)에서 걸은 것이고, 다시 계산되면 그때의 운영 세상 이름이 적힙니다.
 - **자세히** — [config/chain_rules.md](../guide/config/chain_rules.md) · `RUN.md` · 커밋 cd069102e · 2005c0649 · e352d71a3 · 247c0aba6 · c35c28ba9
 
 ## 2026-09-30 · 시간 칸 — 체인이 옮긴 시간이 표에 다시 보이고, 같은 순간은 같은 값

@@ -1190,7 +1190,7 @@
     ]
   },
   "contrast_run": {
-    "__comment": "3a262cc76 - one saved contrast: the walk route's own arguments (GET /api/ledger/subgraph). positive/negative/follow are JSON lists. computed_at, candidates, contrast and complete are written back by the chain (2dd93d4a9): all four empty = not computed yet; computed_at with candidates 0 = computed, nothing found. world (60d7e8e42): the ledger world the walk read - empty = the default.",
+    "__comment": "3a262cc76 - one saved contrast: the walk route's own arguments (GET /api/ledger/subgraph). positive/negative/follow are JSON lists. computed_at, candidates, contrast and complete are written back by the chain (2dd93d4a9): all four empty = not computed yet; computed_at with candidates 0 = computed, nothing found. world (60d7e8e42 · 0c918c2eb): the ledger world the walk read - saved empty, the chain walks the operating world and writes its name back; a row left empty before that was walked on the default.",
     "business_key": "run_id",
     "column_types": {
       "run_id": "string",

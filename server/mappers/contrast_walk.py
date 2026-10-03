@@ -18,7 +18,7 @@ every process at start, and nothing it pulls in at import time should be a route
 🔴 THE RUN ROW SAYS IT WAS COMPUTED (총괄 2dd93d4a9 1): the same call writes back to the run
 row - computed_at, candidates, and the two facts of the whole walk (contrast, complete), which
 the factor rows no longer repeat. A run never walked has all four empty; one that found nothing
-has computed_at and candidates 0.
+has computed_at and candidates 0. A run saved naming no world gets the world it walked.
 """
 from __future__ import annotations
 
@@ -33,7 +33,7 @@ logger = logging.getLogger("Mappers.ContrastWalk")
 LIST_CELLS = ("positive", "negative", "follow")
 #: Run cells passed to the walk route as they are (blank -> the route's own default).
 NUMBER_CELLS = ("hops", "node_limit", "edge_limit", "backbone_hops", "seed_limit")
-TEXT_CELLS = ("direction", "seed_type", "world")
+TEXT_CELLS = ("direction", "seed_type")
 
 
 def _route():
@@ -75,6 +75,15 @@ def _walk_arguments(row) -> tuple:
     for cell in TEXT_CELLS:
         raw = getattr(row, cell, None)
         args[cell] = _route_default(cell) if _blank(raw) else str(raw).strip()
+    # A run naming no world walks the operating one BY NAME, and the run row is told which
+    # (총괄 71ecd8223 · 0c918c2eb): left empty it would read as whatever operates later.
+    raw = getattr(row, "world", None)
+    if _blank(raw):
+        from ledger import schema
+
+        args["world"] = schema.operating_world()
+    else:
+        args["world"] = str(raw).strip()
     raw = getattr(row, "include_superseded", None)
     if _blank(raw):
         args["include_superseded"] = _route_default("include_superseded")
@@ -146,7 +155,9 @@ def contrast_walk(db, payload, rule=None):
             row_id=row.row_id,
             updates={"run_id": run_id, "computed_at": datetime.now(timezone.utc),
                      "candidates": len(ranked), "contrast": block.get("contrast"),
-                     "complete": crud.boolean_text_value(block.get("complete"))},
+                     "complete": crud.boolean_text_value(block.get("complete")),
+                     **({"world": args["world"]} if _blank(getattr(row, "world", None))
+                        else {})},
             origin_row_id=row.row_id, source_name=crud.CHAIN_SOURCE, updated_by=name))
         for item in ranked:
             reach = list(item.get("reach") or [None, None])
