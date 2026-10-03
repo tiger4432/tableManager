@@ -35499,3 +35499,146 @@ RELEASE_LOG 맞음 — 주기 판이 세지 않고 잇는다 · 직전 기록 �
    그 사이가 죽거나 단계가 터지면(except 가 ERROR 한 줄로 삼킴) 층은 거둬졌는데 EDIT 가 없다 — 오늘 고친 «보류가 그대로 남는» 모양 그대로.
    그 DELETE 사건을 다시 돌리는 길은 못 찾았다(이 함수는 원장 뒤따르기가 끝난 뒤 불리고, 실패가 그것을 되돌리지 않게 막혀 있다). 드문 창 — 크기는 안 쟀다
 ```
+
+---
+
+## [C 응용] 10-03 4e0950f3d(조합키만 표도 키를 다시 짓는다) 검수 · 문서 @`ea14fb6d0` · 50829cc6b 다시 돌림
+
+```
+검수 (박스, assy_test)  run_pg_tests -k composite_key_is_rebuilt_alike 7 passed
+                       RELEASE_LOG 맞음 — 문이 조합키 표 전부로 · 키 칸은 선언된 표에서만 · 바뀐 동작(조각을 고치면 다시 짓고 비우면 NULL)과 표 이름 · 수
+문서                   CODE_MAP crud — 한 쌍 rebuilt_business_key · put_business_key 줄을 새로, 핀 줄에 한 마디. data_model 은 구현자가 같은 커밋에
+50829cc6b(키 둘에 행 셋)  test_a_count_that_moved_is_refused_and_nothing_goes 단독 여섯 번 — 6 passed. 오늘 앞서 묶음으로 세 번 — 3 passed
+   전엔 다섯 번에 한 번이었다. 아홉 번 연속 초록은 «닫혔다»의 증거로 약하다(그 빈도면 우연히 아홉 번 초록일 확률이 열에 하나 남짓) —
+   그래서 «닫힘»이라 쓰지 않는다. 다시 나면 출력 전체를 남기겠다(cd5ee37e2 그대로)
+```
+
+---
+
+## [C 응용] 10-03 1495534c9 곁 — 제 4e0950f3d · a396f64a0 검수가 이 결함을 놓쳤다
+
+```
+확인   a396f64a0 의 _merge_into_key_holder 층 dict 둘(cell_sources_to_upsert[backup_key] · [src_key])에 origin_row_id 키가 없다 — 총괄 문장 그대로
+놓친 까닭  4e0950f3d 가 병합 문을 조합키 표 전부(박스 dt_map 1,006,147 행 등)로 넓혔는데, 저는 diff 만 보고 그 문이 «새로 닿게 한» 옛 몸통을 안 열었다.
+          a396f64a0 은 「그대로 옮김」이라 더 안 봤다 — 옮긴 것은 결함도 같이 옮긴다
+고침(제 쪽)  넓어진 문 뒤의 옛 코드를 연다 · 대량 쓰기에 먹는 dict 는 생산자마다 키 집합을 견준다 — 제 기억에 남겼다
+착지하면   전수 표(dict 를 짓는 자리 × 키 집합)를 제가 다시 세어 대조하겠다
+```
+
+---
+
+## [C 응용] 10-03 fb9a0b649(병합 층의 origin_row_id · 한 좌석이 키를 맞춤) 검수 — 약속한 전후 셈 · 문서 @`071c02bf7`
+
+```
+셈 (AST, 추적 server/*.py 278 파일, 시험 · 이주 뺌, 카나리아: 파일 > 100 · crud 에 생산자 있음)
+   cell_sources 모양 dict 리터럴   전 25057f357: 셋 중 둘(병합 몸통)에 origin_row_id 없음 -> 후 fb9a0b649: 셋 다 한 키 집합
+   cell_overwrites 모양          전 · 후 넷, 한 키 집합
+   감사 dict                     키 집합이 넷으로 갈리지만 bulk_insert_audit_logs 가 매핑마다 칸을 다시 지어 같은 모양으로 보낸다 — 들쭉날쭉이 싱크에 안 닿음
+   리터럴이 아닌 생산자           병합의 「캐시 옮기기」(src_data) 는 이미 든 매핑을 옮기는 것이라 키가 그대로 — 열어 봄
+   구현자 커밋의 셈 문장과 같다
+채움이 덮어쓰기를 바꾸나        CELL_SOURCE_UPDATE_COLS 에 origin_row_id 가 있다 — 빠진 키를 None 으로 채우면 충돌 시 NULL 로 갱신.
+                              전에도 키 없는 매핑은 excluded 가 NULL 이라 같은 값 — 새 손실 없음
+시험 (박스)                   run_pg_tests -k (merge_and_a_write · set_based · collision · composite_key) 13 passed · 두 파일 pytest 30 passed 2 skipped
+문서                          CODE_MAP crud 두 줄 — 「들쭉날쭉은 어느 길에서도 거절」이 반만 참이었다는 것과 채움. 덮어쓰기 업서트는 채우지 않는다는 것도
+남은 것                       e243d6abf · d5cf3a954(키 철자 둘 — 숫자 · 시각) 착지 뒤: 같은 데이터 두 번 쓰기 × 값 모양 표로 행 1 · 합치기 0 을 따로 재겠다
+```
+
+---
+
+## [C 응용] 10-03 829e3fe20 곁 — 제 fb9a0b649 검수(ab7d050ca)도 유령 행을 못 봤다
+
+```
+제 검수가 잰 것    dict 키 집합 전후 · 충돌 갱신 칸 · 시험 통과 — 수리 «자기 줄»만
+못 잰 것          오류가 사라진 뒤 «처음으로 끝까지 도는» 같은 배치 — 전에는 CompileError 가 배치를 되돌려 껍데기 행이 안 보였다
+                 제 보고의 「새 손실 없음」은 origin_row_id 갱신 값에 대한 문장이다 — 행 수에 대한 문장이 아니다
+오늘 셋째        4e0950f3d(넓어진 문) · a396f64a0(옮긴 몸통) · fb9a0b649(없어진 오류) — 셋 다 «새로 닿게 된 코드»를 안 돌렸다
+③ ④ 착지 뒤      총괄 프로브 모양(같은 페이로드 두 번 × 값 모양 표 × 두 표 모양)으로 행 수 · 층 0 행 수까지 세겠다
+```
+
+---
+
+## [C 응용] 10-03 843bcfd11(키 철자 한 자리 · 병합된 새 껍데기 안 넣음) 검수 — 수리 «밖»까지 끝까지 돌림 · 문서 @`20a407bd5`
+
+```
+어디서     제 사본(git worktree C:/wt-app, bb97e334c, 무시된 server/config 만 복사) — 공유 트리 0 수정. 끝나고 지움
+           DB assy_test · 스키마 run_pg_tests 의 스크래치 · 지운 것: 시험 표 둘(fixture 가 만들고 지움)
+출하 시험   -k (key_part_is_spelled · composite_key_is_rebuilt · collision_merge_leaves) 35 passed
+           (그 사본에 무시된 server/mappers/*.py 가 없어 다른 파일 수집 오류 다섯 — 이 시험과 무관)
+제가 더 잰 것  출하 행렬은 «쓰기마다 따로 배치»다. 그래서 둘을 더했다(시험 파일 전문 + 덧붙임, 사본에서만):
+   ㄱ «한 배치»에 같은 행을 두 철자로 · ㄴ 같은 페이로드 «두 배치»(총괄 프로브 모양)
+   값 셋: ("1.0", 초 없는 시각 | "1", 초 있는 시각) · ("01", +09:00 | 1.0, Z 같은 순간) · (똑같은 페이로드 두 번) × 두 표 모양
+   셈: 행 수 · collision_merge 감사 줄 · 층이 하나도 없는 행 · 저장 키 = 다시 지은 키
+결과       843bcfd11: 12 / 12 — 행 1 · 병합 0 · 층 없는 행 0 · 저장 = 다시 지은 키
+공허 검사   같은 덧붙임을 수리 «전» 판(a8d483ea4 의 crud · time_format · mapper · replay · main)으로: 12 / 12 빨강 — 행 2.
+           «똑같은 페이로드 두 번»은 병합 1 · 층 없는 유령 행 1 — 초 없는 시각 "2026-10-03 12:00" 하나로도 운영 재기동 전 판은 이 길을 탔다
+문서        CODE_MAP crud — compose_business_key · key_part(철자 한 자리, 부르는 자리 전부) 줄 새로, 병합의 pending 껍데기 expunge, time_format 절(instant_key · instant_text · 줄 수)
+```
+
+---
+
+## [C 응용] 10-03 867c693d1(--apply 가 부딪힌 옛 철자 행을 병합) 검수 — 🔴 병합된 «저장된» 껍데기의 층 · 덮어쓰기 줄이 남는다 (쓰기 길도 같다)
+
+```
+어디서   제 사본(git worktree C:/wt-app @1da6ec76d, 무시된 server/config 만 복사, 끝나고 지움) · DB assy_test 스크래치 · 지운 것: 시험 표(fixture)
+출하 시험 -k old_spelled_key_is_rewritten 10 passed (사본 수집 오류 다섯은 무시된 server/mappers/*.py 부재 — 무관)
+더 잰 것  (시험 파일 전문 + 덧붙임, 사본에서만) 병합 «뒤에» 껍데기가 남긴 것 · 아웃박스가 들은 것
+```
+| 경우 (두 표 모양 모두) | 행 | 아웃박스 | 껍데기 row_id 의 cell_sources · cell_overwrites | 층 없는 행 |
+|---|---|---|---|---|
+| ① --apply 병합(사람 값 + 기계 값) | 1 | DELETE 1 · EDIT 1 | 남음 4·4 (키 칸 표 5·5) | 0 |
+| ② 쓰기 길 — 저장된 행의 키 조각을 남의 키로 고침 | 1 | — | 남음 4·0 (키 칸 표 5·0) | 0 |
+
+```
+원인     _merge_into_key_holder 는 «대기 중» 캐시만 주인에게 옮기고, 저장된 껍데기는 행만 db.delete 한다.
+         그 행의 cell_sources · cell_overwrites 줄은 안 지운다 — 지우는 문(delete_rows_batch)은 같은 두 표를 row_id 로 지운다
+         그 사이 층은 주인에게 «복사»돼 있으므로 값은 안 잃는다. 남는 것은 사라진 row_id 를 가리키는 줄
+누가 밟나  --apply 는 병합이 «전부» 저장된 행이라 병합마다 남는다(운영 미리보기의 collides 수만큼). 쓰기 · 핀의 병합은 저장된 행일 때(키 조각 수정)
+모르는 것  그 줄이 무엇을 틀리게 하나 — withdraw_by_origin 이 origin_row_id 로 이 줄을 찾아 없는 행에 거두려 할 수 있다. 안 쟀다.
+         언제부터인지 — 옮긴 몸통 그대로라 a396f64a0 이전 쓰기 길 병합도 같았을 것, 안 쟀다
+제안(한 자리)  병합 몸통이 저장된 껍데기를 지울 때 delete_rows_batch 와 같은 두 줄(그 row_id 의 cell_sources · cell_overwrites)을 지운다 —
+         「행이 표를 떠난다」의 메타 정리가 두 벌이면 다시 갈린다. 운영 --apply 를 돌리기 «전»에 넣을지 여쭐 것
+```
+
+---
+
+## [C 응용] 10-03 fd6d957c4(병합된 저장 행의 층 · 덮어쓰기도 같이 지움) 검수 — 6ec20c95e 의 두 줄이 이제 초록 · 문서 @`c68909ae3`
+
+```
+어디서   제 사본(git worktree C:/wt-app @1f8b90acc, 끝나고 지움) · DB assy_test 스크래치 · 지운 것: 시험 표(fixture)
+시험     -k (old_spelled_key · composite_key_is_rebuilt · collision_merge_leaves · map_purge_is_visible · key_part_is_spelled) 37 passed
+         (사본 수집 오류 다섯은 무시된 server/mappers/*.py 부재 — 무관)
+제 두 줄  6ec20c95e 에서 빨갛던 그대로 다시
+   ① --apply 병합       껍데기 row_id 의 층 · 덮어쓰기 0 · 0 (전 4 · 4) · 층 없는 행 0 · 아웃박스 DELETE 1 · EDIT 1
+   ② 쓰기 길 저장 행 병합  0 · 0 (전 4 · 0) · 행 1
+코드     delete_row_layers 부르는 자리 셋(삭제 문 · 맵 정리 · 병합의 저장된 껍데기) — 종전 두 사본이 하나로. 병합 몸통 «끝»에서 부른다(주인이 넘겨받은 뒤)
+         배치 세션은 autoflush=False(SessionLocal) — 몸통 안의 대량 DELETE 가 대기 행을 미리 밀어내지 않는다
+문서     CODE_MAP crud — delete_row_layers 줄 새로, 병합 줄에 한 마디
+```
+
+---
+
+## [C 응용] 10-03 6bfb6d4be(세상 — 운영 세상 · 밑에 깔 세상) 검수 · 문서 @`956d1eca6` · 🔴 넓어진 문 하나: 데몬의 «기본 원장 돌보기» 셋이 운영 세상만 본다
+
+```
+시험 (박스, assy_test)  run_pg_tests -k (world · branch · deleted_row_takes_its_facts · catalogue_kind · index_can_be_recovered) 22 passed ·
+                       pytest -k (world · branch · admin_auth · catalogue_kind) 200 passed 20 skipped
+문서                   CODE_MAP schema 줄(이름 없음 = 운영 세상 · layout · operate · stand · chain_speakers · followed_by · ensure_world) ·
+                       RUNTIME_MAP ④(소스마다 말하는 세상에 씀) · LEDGER_GUIDE 4.9 새 절(파일 · 라우트 · 따르는 자리 · 거절 · 되돌리면)
+                       — 구현자 커밋은 RUN.md · RELEASE_LOG 만 고쳤다. 세상을 운영자에게 설명한 안내서가 없었다
+```
+```
+🔴 넓어진 문 — 「이름 없는 자리 = 운영 세상」이 데몬의 기본 원장 돌보기 셋도 데려갔다 (코드로 읽음, 가지 운영으로 «돌려» 보지는 않았다)
+   운영이 가지일 때도 후속은 가지가 말하지 않는 소스를 «기본»에 쓴다(_follow_chain 의 바닥). 그런데
+   ① 기동 스키마   ingestion_worker._ensure_ledger_schema_sync -> LedgerStore(engine).ensure_schema() = 운영 세상만.
+                   그 docstring: 「a column must reach live WITHOUT a person running one line by hand」(S-88) — 기본에 칸을 더하는 업그레이드 뒤,
+                   가지가 운영 중이면 기본 표는 안 맞춰지고 기본에 쓰는 후속이 그 칸에서 선다. ensure_world 는 기본에 «아무것도 안 함»(가지만)
+   ② 지문 다시 찍기  _restamp_moved_fingerprints_sync -> load_setup() + LedgerStore() = 운영 세상의 커서만. 기본 소스의 지문이 움직이면 기본 커서는 그대로 선다
+   ③ 주기 census    measure_and_store(..., LedgerStore(engine)) = 운영 세상의 기록만 — 기본에 쓰이는 소스의 census 는 안 새로워진다
+   제안(한 자리)    셋 다 «운영 사슬의 세상 전부»(followed_by 가 쓰는 세상들)를 돌게 — 후속이 쓰는 곳과 돌보는 곳이 같은 목록을 지나게
+   여쭐 것          이 셋을 세상 짓기 «다음 착지»에 넣을지 · 오늘 운영은 파일이 없어 운영 = 기본이라 아무것도 안 바뀐다(코드: layout() 없으면 default)
+```
+```
+한 줄 — 레이아웃이 없어진 세상을 운영으로 적고 있을 때
+   읽기 라우트는 require_world 가 이름 대어 거절한다. 후속은 world_names(이름만)로 가서 보기 주석 · 선언 파일을 읽다 실패할 것으로 읽힌다 — 안 돌렸다.
+   기본으로 떨어지지 않는 것은 문서의 원칙과 같다. 다만 «후속이 매 배치 실패»라면 이름 대는 한 줄이 맞는지 여쭐 것
+```

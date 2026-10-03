@@ -441,9 +441,10 @@ def screen_all(atoms):
 
 def write_atoms(atoms):
     from database.database import engine
+    from ledger.schema import DEFAULT_WORLD
     from ledger.store import LedgerStore
 
-    store = LedgerStore(engine, who=SOURCE)
+    store = LedgerStore(engine, who=SOURCE, world=DEFAULT_WORLD)
     store.ensure_schema()
     return store.write_batch(
         SOURCE, TRANSLATOR_BASE, atoms, cursor_value={"written": len(atoms)},

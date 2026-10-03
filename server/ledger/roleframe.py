@@ -37,7 +37,7 @@ from .ledger_frame import (
     ledger_frame_of,
     validate_ledger_rows,
 )
-from .setup_bundle import OCCURRED_AT_ROLE, is_event_time_role
+from .setup_bundle import DECLARATIVE_ROLE, OCCURRED_AT_ROLE, is_event_time_role
 from .setup_registry import (
     ClaimDescriptor,
     ImplementationKey,
@@ -338,7 +338,7 @@ class DeclarativeRoleMapper(BaseLedgerMapper):
     expressible as bindings needs no mapper code at all -- it names this implementation.
     """
 
-    implementation_id = "declarative-role"
+    implementation_id = DECLARATIVE_ROLE
     implementation_version = 1
 
     def interpret_unit(

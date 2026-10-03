@@ -154,7 +154,7 @@ class LedgerStore:
     def __init__(self, engine, who: str = "ledger", world: str | None = None):
         self.engine = engine
         self.who = who
-        #: Every table this store reads and writes, for ONE ledger world (the default when
+        #: Every table this store reads and writes, for ONE ledger world (the operating one when
         #: `world` is None). Answered by the one seat, `schema.world_names`.
         self.names = schema.world_names(world)
         self._known_partitions = set()

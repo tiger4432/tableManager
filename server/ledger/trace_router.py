@@ -32,7 +32,7 @@ router = APIRouter(prefix="/api/ledger", tags=["ledger"])
 def _world(world):
     """The names of the ledger world a request asked for (총괄 60d7e8e42) - the relation the
     walk reads, the tables it counts, the declaration it reads. None, blank or FastAPI's `Query`
-    sentinel (a direct call) is the default. An unknown world is refused by name with the list,
+    sentinel (a direct call) is the operating world. An unknown world is refused by name with the list,
     never answered from the default: the same posture as an undeclared predicate."""
     from ledger import schema
 
@@ -85,7 +85,7 @@ def evidence_subgraph(
     node_id: str | None = Query(None, alias="id",
                          description="Entity/Event/Claim/Collection/Point/Value/Action의 불투명 id"),
     world: str | None = Query(
-        None, description="A ledger world (branch) to walk; none = the default"),
+        None, description="A ledger world (branch) to walk; none = the operating world"),
     hops: int = Query(12, ge=1, le=40, description="증거 그래프 탐색 깊이"),
     direction: str = Query("both", pattern="^(outgoing|incoming|both)$",
                            description="Entity 주장 방향; 구조 엣지는 항상 양쪽 보존"),
@@ -653,7 +653,7 @@ def ledger_key_values(
                            "수» 있고, 응답의 `seedable` 이 그것을 말한다")),
     limit: int = Query(KEY_VALUE_DEFAULT_LIMIT, ge=1, le=KEY_VALUE_MAX_LIMIT),
     world: str | None = Query(
-        None, description="A ledger world (branch); none = the default"),
+        None, description="A ledger world (branch); none = the operating world"),
     db: Session = Depends(get_db),
 ):
     """이 타입의 이 키에 «오늘 원장에 있는» 값들. 씨앗을 고르기 위한 목록이다.
@@ -853,7 +853,7 @@ def _relation_absent(relation) -> HTTPException:
 @router.get("/gaps")
 def ledger_gap_catalogue(name: str = Query(None),
                          world: str | None = Query(
-                             None, description="A ledger world (branch); none = the default")):
+                             None, description="A ledger world (branch); none = the operating world")):
     """선언이 「있어야 한다」고 말한 자리 중 원장이 «비어 있는» 곳.
 
     🔴 라우트는 «하나»이고 인자가 둘로 가릅니다 — 새 라우트가 아니라 «같은 질문의 두 배율»입니다.
@@ -936,7 +936,7 @@ def _row_census_by_source(world=None):
 @router.get("/declaration")
 def ledger_declaration_catalog(
         world: str | None = Query(
-            None, description="A ledger world (branch); none = the default")):
+            None, description="A ledger world (branch); none = the operating world")):
     """무엇을 물을 수 있나 — 노드 타입 · 그 타입의 키 · 따라갈 술어 · 모을 노드 종류.
 
     🔴 데이터 라우트가 «아니다». 원장을 한 줄도 읽지 않는다 — 답은 «선언»이고, 그래서

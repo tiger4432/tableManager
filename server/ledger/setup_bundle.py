@@ -608,6 +608,19 @@ TARGET_ROLE = "target"
 VALUE_ROLE = "value"
 
 
+#: The mapper implementation that EXECUTES a source's declared bindings and reads nothing else.
+DECLARATIVE_ROLE = "declarative-role"
+
+
+def executes_the_bindings(implementation_id: Any) -> bool:
+    """THE one answer to 「does this source's mapper read only what its declaration names」. A
+    `declarative-role` mapper executes the bindings, so the declaration's columns are every column
+    it reads; a Python mapper receives the whole row and decides for itself. Asked by the
+    self-edge check (scored only where bindings run), the delegation line beside it, and the
+    ledger follow-up (a change no named column saw is skipped only here)."""
+    return implementation_id == DECLARATIVE_ROLE
+
+
 def is_event_time_role(role_id: Any) -> bool:
     """THE one answer to 「is this the role filled with the event's time」 - by NAME (총괄
     0c9b6e3c0 ③ · 015ef2aab ②). A `timestamp` value role is kind `time` too, and its column
@@ -2590,7 +2603,7 @@ def _cross_validate(bundle: Mapping[str, Any], catalog: Mapping[str, Any],
             _mapper = source.get("map") if isinstance(source.get("map"), Mapping) else {}
             _validate_no_self_edge(
                 profile, path, problems,
-                executed=_mapper.get("implementation_id") == "declarative-role")
+                executed=executes_the_bindings(_mapper.get("implementation_id")))
             profile_mappings = profile.get("mappings")
             for sentence in sorted(profile_mappings if isinstance(profile_mappings, Mapping)
                                    else {}, key=str):

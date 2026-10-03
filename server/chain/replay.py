@@ -894,7 +894,8 @@ def fold_written_notation(db, table_name: str, apply: bool = False,
                     continue
                 before, after = (
                     None if any(crud.is_blank_key_part(p) for p in parts)
-                    else crud.compose_business_key(table_name, parts) if composite_src
+                    else crud.compose_business_key(table_name, parts, parts_of_key)
+                    if composite_src
                     else crud.clean_str_value(parts[0])
                     for parts in ([getattr(row, c, None) for c in parts_of_key],
                                   [cells[c][1] if c in cells else getattr(row, c, None)

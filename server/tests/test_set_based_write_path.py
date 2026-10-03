@@ -509,13 +509,15 @@ def test_bulk_upsert_falls_back_when_a_mapping_holds_a_sql_expression(db_session
     assert all(s.ingested_at is not None for s in stored)
 
 
-def test_a_ragged_mapping_list_is_still_refused(db_session):
+def test_a_ragged_mapping_list_is_filled_not_refused(db_session):
     """Different key sets across mappings.
 
-    Measured, not assumed: SQLAlchemy 2.0's `.values(ragged_list)` refuses this too
-    (`CompileError`), so the contract has always been "a ragged list is REFUSED".
-    The uniformity half of `_is_executemany_safe` exists to keep that refusal
-    identical rather than replace it with a driver-level error from the batched path.
+    🔴 THIS USED TO ASSERT 「a ragged list is REFUSED」, AND THAT WAS HALF TRUE (총괄
+    1495534c9). `.values(ragged_list)` raises `CompileError` only when the FIRST mapping has
+    the key another lacks; when the first is the one lacking it, the whole chunk is sent
+    without that key - NULL, without a word. A merge's layers lacked `origin_row_id` beside a
+    write's, and both faces reached production. The seat now gives every mapping the same
+    keys, a missing one None: no error, and the value a mapping did carry stays.
     """
     rows = [
         {"table_name": TABLE, "row_id": "RG_1", "column_name": "bn",
@@ -523,10 +525,13 @@ def test_a_ragged_mapping_list_is_still_refused(db_session):
         {"table_name": TABLE, "row_id": "RG_2", "column_name": "bn",
          "source_name": "probe.csv", "value": "b"},
     ]
-    with pytest.raises(Exception):
-        crud.bulk_upsert_cell_sources(db_session, rows)
+    for ordered in (rows, rows[::-1]):
+        crud.bulk_upsert_cell_sources(db_session, ordered)
         db_session.flush()
-    db_session.rollback()
+        stored = dict(db_session.query(models.CellSource.row_id, models.CellSource.updated_by)
+                      .filter(models.CellSource.row_id.like("RG_%")).all())
+        assert stored == {"RG_1": "p3", "RG_2": None}, stored
+        db_session.rollback()
 
 
 def test_bulk_upsert_fallback_still_updates_on_conflict(db_session):

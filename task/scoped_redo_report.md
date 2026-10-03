@@ -71185,3 +71185,410 @@ pg 전체                     3 failed, 237 passed, 7781 deselected, 157 warning
 **남는 것 (안 고침)** — 원장 따라가기가 DELETE 사건을 «처리 끝»으로 적은 «뒤»에 거두기가 돕니다. 그 사이에 프로세스가 죽으면 거두기 자체가 다시 돌지 않습니다(오늘도 그렇고, 이 착지는 같은 틈에 커밋 하나를 더 둡니다).
 
 다음: a61d32f4f 답 ㄱ (조합키만 선언한 표도 같은 재조립) — 세어 보니 키를 다시 짓는 자리가 «둘»입니다: apply_row_update_internal 의 블록 · set_cell_manual_priority_batch(핀으로 보이는 값이 바뀔 때). 둘 다 `composite_src and key_col` 이라 둘 다 넓힙니다
+
+---
+
+## [10-03] a61d32f4f ㄱ 착지 4e0950f3d — 조합키만 선언한 표도 같은 기제 · 같은 함수로 키를 다시 짓는다
+
+어느 DB · 어느 스키마 · 지운 것 — 박스 DB 는 읽기만(지난 보고의 박스 수). 시험 · 재기는 assy_test 의 시험 스크래치 스키마(표는 픽스처 · 프로브가 만들고 지움) · 지운 것 0
+
+**고친 것**
+```
+자리 둘    apply_row_update_internal 의 «2.» (키 조각이 바뀐 쓰기) · set_cell_manual_priority_batch (핀으로 보이는 조각이 바뀜)
+문        `composite_src and key_col` -> `composite_src` (둘 다)
+같은 함수   crud.rebuilt_business_key (조각이 짓는 키, 조각이 비면 None) · crud.put_business_key (업무키 칸이 있는 표인지 묻는 «한» 자리)
+그대로     쓰기 자리의 «새 행 · 조각 빔 -> 항목이 준 키» 폴백 · 두 자리의 병합 본문(아래 «남는 것»)
+```
+**게이트**
+```
+두 표 모양 같은 답   업무키 칸 있음 · 조합키만, 각자 uq_bk_ 색인 — 같은 픽스처 일곱 갈래:
+                    키로 만들기 · 이름 붙인 id 로 만들기 · 그리드 새 행(행 1) · 조각 고침 · 조각 비움(키 NULL) · 남의 키로 고침(병합, 행 1) · 핀으로 세 번째 값
+                    고치기 전 6 failed, 1 passed, 18 warnings in 17.19s (빨강: edited_onto_a_key · grid · named · part_blanked · part_edited · pinned) -> 고친 뒤 7 통과
+변이 셋             쓰기 자리 옛 문 RED · 핀 자리 옛 문 RED · 업무키 칸 없는데 그 칸을 씀 RED
+맵 편집기 밀어넣기    tracked 샘플의 dt_map 선언(조합키만 · map_key_columns · '|') · replace_map
+                    첫 밀기 · 같은 것 다시 · 값 바꾸고 한 줄 자름 · 다른 슬롯 · 새 다이 1,000
+                    행 1780 · 층 8900 · 덮어쓰기 0 · 감사 1830 · 아웃박스 1811 — 전후 같음(전 여섯 · 후 여섯 · 접은 판 한 번)
+                    질의 수 같음(새 1,000: 12 · 12) · 늘어난 일은 새 행마다 키 조립 한 번(2000 -> 3000 번)
+                    시간 새 1,000 행: 전 1.06–1.22 s · 후 1.09–1.41 s — 조립 자체는 1,000 번에 약 5 ms. 프로파일상 나머지 차이는 객체 생성 · 커밋 쪽이라 원인 미확정
+sqlite 전체         5 failed, 7732 passed, 288 skipped, 3 xfailed, 13003 warnings in 791.08s
+                    남은 5: 박스 체크아웃 사유 다섯 그대로
+pg 전체             3 failed, 244 passed, 7781 deselected, 168 warnings in 1028.77s
+                    남은 3: 지난 두 착지와 같은 셋 — test_an_install_that_predates_attributes_is_widened_once · test_the_live_door_writes_the_refusal_breakdown_to_the_registry_row · test_two_independent_refusals_are_counted_and_named_in_one_run
+```
+**말씀하신 한 줄 — 「chain_ingestion 이름을 체인으로 읽는 가드」** 사는 자리 1(chain/ingestion_worker._rule_accepts_event, 채널이 없고 source_name 이 chain_ingestion 인 사건). 은퇴 조건은 그 자리 주석대로 «처리 안 된 사건 중 채널 없는 것 0» — 체인 워커 박동 줄의 「N event(s) read by source name (no channel)」이 계속 안 뜨면 됩니다. e11bb4de0 의 사건은 채널을 싣습니다.
+
+**남는 것 (안 고침)** — 두 자리의 «병합 본문»은 아직 둘입니다. 쓰기 자리는 사람 수정 보호 · 층 계승 · 캐시 옮기기를 하고, 핀 자리는 따로 적힌 병합입니다. 핀으로 남의 키가 되는 갈래는 오늘 시험에 없어서 둘이 갈리는지는 재지 않았습니다. 접으려면 핀 자리가 쓰기 자리의 병합을 부르게 하는 별도 라운드입니다 — 하라시면 하겠습니다.
+
+다음: 원장 따라가기가 «소스가 안 읽는 칸»만 바뀐 수정을 건너뛰기
+
+---
+
+## [10-03] «소스가 안 읽는 칸» 착지 ba9ab1c97 — 원장 따라가기가 안 읽는 칸만 바뀐 수정을 건너뛰고, 아웃박스 칸에 남긴다
+
+어느 DB · 어느 스키마 · 지운 것 — 박스 DB 안 씀. 시험 · 재기는 assy_test 의 시험 스크래치 스키마. 🔴 지운 것 둘: 전체 시험을 셸 «&» 로 잘못 띄운 것 하나, 그리고 sqlite 에서 새 실패가 나와 고치려고 멈춘 PG 실행 하나 — 둘 다 제 pytest 를 끄고 그것이 남긴 스키마를 이름으로 지움 — db=assy_test leftover=['assy_pytest_pg_42668_gw0'] · dropped schema assy_pytest_pg_42668_gw0 in assy_test · left after: 0 · db=assy_test leftover=['assy_pytest_pg_41620_gw0'] · dropped schema assy_pytest_pg_41620_gw0 in assy_test · left after: 0
+
+**고친 것**
+```
+판정       EDIT 이고 · 사건이 바뀐 칸을 말하고 · 그중 어느 것도 그 소스가 읽는 칸(event_frame.named_columns)이 아니고 · 맵퍼가 선언을 실행하는 것(declarative-role)일 때만 건너뜀
+같은 함수   event_constants.columns_meet(바라는 칸, 바뀐 칸) — None = 모른다 = 예. 체인 rule_watches_changed_columns 와 원장 따라가기가 둘 다 이것을 묻는다
+           event_constants.changed_columns_of — 사건의 columns 를 읽는 자리 하나
+한 자리     setup_bundle.executes_the_bindings — 「선언이 그 맵퍼가 읽는 칸 전부인가」. 낱말을 견주던 자리 둘(self-edge 검사 · 그 옆 위임 줄)도 이것을 부름 · DeclarativeRoleMapper 는 그 상수
+남김       아웃박스 원장 칸 「done · skipped: <소스>」 · `python -m ledger followup` 이 소스별 「건너뜀 N 사건」 · 랩 로그 줄 끝 skipped <소스>=<사건 수>
+```
+**게이트**
+```
+1만 행 (hold world 모양, 시험 스키마)   읽지 않는 칸(note)만 바꾼 10,000 행 = 사건 10
+                                     건너뛰기 켬   다시 번역 0 · 원자 10,000 -> 10,000 · 따라가기 2.0 s · 칸 「done · skipped: hc_official」 10
+                                     건너뛰기 끔   다시 번역 10 · 원자 10,000 -> 10,000 · 따라가기 45.9 s
+갈래 (pg)     note 만 -> 건너뜀 · 원자 그대로 · 칸에 남음 · CLI 가 소스별 1   ·   note + netdie -> 다시 번역 · 원자 움직임
+              칸을 안 말하는 사건 -> 다시 번역   ·   CREATE(칸이 note 뿐이어도) -> 다시 번역   ·   행 전체를 받는 맵퍼 -> 건너뛰지 않음
+칸 읽는 자리   followup.py 밖에서 칸을 읽는 자리 4(체인 워커 1 · 색인 1 · 아웃박스 정리 스크립트 2) — 전부 IS NULL / IS NOT NULL (시험 한 칸)
+              ⚠️ 이주 스크립트의 보고는 칸을 ':' 앞으로 묶어 보여 줌 — 「done · skipped」가 한 묶음으로 따로 뜸(표시일 뿐, 판단 없음)
+변이 일곱      건너뛰지 않음 RED · 바뀐 칸을 안 실어 나름 RED · 칸을 안 말하는 사건을 «안 바뀜»으로 읽음 RED · 행 전체를 받는 맵퍼도 건너뜀 RED · CREATE 도 건너뜀 RED · 건너뜀을 아웃박스 칸에 안 남김 RED · 다른 자리가 칸 값을 견줌 RED
+sqlite 전체    5 failed, 7733 passed, 293 skipped, 3 xfailed, 13030 warnings in 703.07s
+              남은 5: 박스 체크아웃 사유 다섯
+pg 전체        3 failed, 249 passed, 7782 deselected, 179 warnings in 1066.33s
+              남은 3: 지난 착지들과 같은 셋
+```
+**한 번 막혔던 것** — 첫 sqlite 전체에서 새 실패 여섯: 따라가기 큐 항목에 칸 하나(바뀐 칸)가 늘어 그것을 풀어 읽던 시험 하나, 그리고 «칸을 모름»인 사건에도 소스 계획을 먼저 들여다봐 계획 대역(FakePlan)에서 터진 시험 다섯. 판정이 «모름»을 먼저 묻게 고침(모르면 계획을 아무것도 계산하지 않음)
+
+다음: 6e041f4cb 답 ① — 병합 본문 둘(쓰기 · 핀) 접기. 먼저 «핀으로 키가 남의 키와 부딪히는 갈래»가 지금 무엇을 하는지 재고, 접은 뒤 같은 답인지
+
+---
+
+## [10-03] 6e041f4cb ① 착지 a396f64a0 — 병합 본문 하나를 쓰기 자리 · 핀 자리가 같이 부른다 · 사람 값은 사람이 쓴 칸에서만 이긴다 (핀 충돌이 터지던 것 고침)
+
+어느 DB · 어느 스키마 · 지운 것 — 박스 DB 안 씀. 시험 · 재기는 assy_test 의 시험 스크래치 스키마(표는 픽스처 · 프로브가 만들고 지움) · 지운 것 0
+
+**먼저 잰 것 — 핀으로 키가 남의 키와 같아지는 갈래, 착지 전**
+```
+두 표 모양 다    NameError: name 'changed_cols' is not defined — 핀 전체가 되돌려짐(행 · 층 · 덮어쓰기 · 감사 모두 핀 전 그대로)
+원인            핀 자리의 병합 사본이 그 함수에 없는 changed_cols 에 칸을 붙임 — a65640ca8(2026-07-17)부터
+닿는 표          업무키 칸이 있는 표는 그때부터 · 조합키만 선언한 표는 4e0950f3d(ㄱ)부터
+```
+**고친 것**
+```
+한 본문       쓰기 자리의 병합을 crud._merge_into_key_holder 로 «그대로» 옮김(update_item 읽기 셋만 인자로) · 두 자리가 행을 바꿔 든 뒤 부름 · 핀 자리 사본 지움
+             핀 자리는 층 dict 를 넘기고, 덮어쓰기를 흘려 넣는 자리에서 같이 흘려 넣음
+사람 칸       human_columns 를 부르는 쪽이 줌 — 이번에 사람이 «쓴» 칸뿐: 쓰기 = 사람 항목이 실은 칸 · 핀 = 핀 걸린 칸 (총괄 답 둘)
+계기          AST 로 세 함수의 «정의 안 된 이름» 0 — 같은 검사가 착지 전 핀 자리의 changed_cols 를 잡음
+```
+**게이트**
+```
+핀 충돌 (두 표 모양)    합쳐짐 · 행 1 · 지운 쪽 행 사라짐 · 행 · 층 · 덮어쓰기 두 모양 같음
+                      결과 행 [['J1_1_2', 'J1', '9.0', 'mine']] — 임자 행의 사람 값(netdie 9) 남음 · 지운 쪽 행의 사람 값(note) 넘어옴
+쓰기 충돌 (두 표 모양)   임자 행에 사람 값이 없으면: 접기 전후 행 · 층 · 덮어쓰기 · 감사 같음
+                      임자 행에 사람 값(netdie 9)이 있고 사람이 키 조각 · note 만 썼으면(총괄이 고치라 한 갈래): 전 [['J1_1_2', 'J1', '1.0', 'typed']] -> 후 [['J1_1_2', 'J1', '9.0', 'typed']]
+두 모양 시험            갈래 열하나 — 추가 넷: 핀으로 남의 키 · 핀 & 임자의 사람 값 · 쓰기 & 임자의 사람 값 · 쓰기 사람 대 사람
+변이 여섯              공유 병합이 값을 안 옮김 RED · 핀 자리가 병합을 안 부름 RED · 핀 자리가 이어받은 층을 안 흘려 넣음 RED · 핀이 모든 칸을 사람 것으로 셈 RED · 쓰기가 사람 항목의 모든 칸을 사람 것으로 셈(옛 규칙) RED · 쓰기가 사람 칸을 하나도 안 셈 GREEN
+                      «쓰기가 사람 칸을 하나도 안 셈»만 초록 — 사람이 쓴 칸에는 이미 그 쓴 이의 덮어쓰기 표시가 남아,
+                      병합이 그 표시로 사람 것을 알아봄. human_columns 는 그 표시가 없는 쓰기에서만 차이가 나는데 그런 쓰기는 시험에 없음
+sqlite 전체            6 failed, 7732 passed, 297 skipped, 3 xfailed, 12997 warnings in 704.27s
+                      남은 6: 박스 체크아웃 사유 다섯 + test_inv_9_1_atomic_save_event_applies_physical_alter (그 파일만 다시 돌리면 32 passed, 6 warnings in 33.89s — 파일 감시 시간)
+pg 전체                3 failed, 253 passed, 7782 deselected, 187 warnings in 1063.72s
+                      남은 3: 지난 착지들과 같은 셋
+```
+**ba9ab1c97 확인 물음의 답** — 원장 쪽 «모름 먼저 거르기»를 빼는 변이: RED (test_a_collapsed_event_is_one_scope_and_not_a_thousand · test_a_create_is_translated_once_and_an_edit_twice · test_a_failed_batch_is_named_and_not_requeued · test_rows_that_are_gone_ask_for_no_rescope · test_the_same_event_twice_asks_for_the_same_scope). 그 가드는 결과를 바꾸지 않음(빼도 columns_meet 가 None 을 «예»로 답함) — 하는 일은 «모를 때 계획을 계산하지 않음»뿐이라, 위 시험들은 계획 대역에 맵퍼가 없어 터지는 것으로 잡음
+
+**알려 드릴 것 · 물음**
+```
+① 지운 행(껍데기)이 DB 에 이미 갖고 있던 층 · 덮어쓰기는 지워지지 않음 — 임자 행에 «합친 이름»으로 복사될 뿐. 이 핀 시나리오에서 남은 것: 층 6 · 덮어쓰기 1 (두 자리 다 전부터 그랬음)
+② 제 0185cbd8a 오라클 시험(test_a_row_the_batch_made_reads_what_the_database_would_say)이 병합 시험 묶음과 같이 돌 때 가끔 빨강 — 접기 «전» 코드에서도 봤고 접은 뒤에도 봤음(묶음을 여러 번 돌린 가운데 가끔). 혼자 돌리면 초록. 원인 아직 못 짚음(차이를 덤프하게 걸어 둔 판들은 다 초록이라 차이를 못 잡음)
+③ 사실 한 줄(RELEASE_LOG 에도) 2026-07-17 부터 이 착지까지 핀 충돌은 오류로 되돌려졌음 — 운영에서 그런 핀이 먹지 않았을 수 있음
+```
+다음: 파서 모양 성능 재기(1,000 행당 2 s 넘음)
+
+---
+
+## [10-03] ②' 파서 모양 성능 — 재기만 (고친 것 없음)
+
+어느 DB · 어느 스키마 · 지운 것 — 박스 DB 안 씀. 재기는 assy_test 의 시험 스크래치 스키마(hold world 원천 표) · 지운 것 0
+
+**먼저 바로잡을 것** — 0185cbd8a 보고 ②의 「파서 모양 1,000 행당 2 s 넘음」은 «제품의 파서 모양이 아니었습니다». 그 표본은 2,000 항목 한 묶음 · 사건을 행마다 쌓는 모드 · 앞 표본들로 커진 표였고, 파서는 파일 전체를 묶음 사건 모드로 · 1,000 항목 청크마다 새 세션으로 · business_key_val 을 실어 씁니다(parsers/directory_watcher.py).
+
+**제품 모양으로 다시 잼 (두 번 돌린 청크 순서대로, 청크 하나 = 1,000 항목, 초)**
+```
+파일 1  새 행 2,000                       1.09 · 1.01 · 1.04 · 1.09
+파일 2  있던 행 1,000 갱신 + 새 행 1,000     0.89 · 1.02 · 0.92 · 1.03   (한 번에 청크 둘: 갱신 · 새 행)
+비교    10-03 표본 모양(2,000 한 묶음, 행마다 사건)  2.34 · 2.10
+청크당 질의   11 개 (새 행 청크) · 9 개 (갱신 청크)
+쓰기 단계(새 행 청크, 초)   prefetch 0.09–0.16 · row build 0.27–0.39 · cell sources 0.25–0.31 · audit logs 0.11–0.14 · flush 0.11–0.25
+쓰기 단계(갱신 청크, 초)    audit logs 0.09 · cell sources 0.08 · flush 0.31 · prefetch 0.20 · row build 0.19
+```
+**새 행 청크 하나의 프로파일** (프로파일러 아래 1.346 s)
+```
+DB 실행        11 문장 · 0.373 s  — 행 1,000 · 칸 층 5,000 · 감사 · 아웃박스가 여러 행 한 문장으로
+행 짓기(Python)  apply_row_update_internal 1,000 번 · 누적 0.493 s
+층 흘려 넣기     _pg_multirow_upsert 누적 0.286 s
+새 연결         0.079 s — 프로브가 청크마다 새 세션을 열어서(파서도 청크마다 SessionLocal 을 열지만 연결 풀에서 받음 — 운영에서 매번 새 연결인지는 안 쟀다)
+```
+**판단** — 제품 모양에서 1,000 행당 약 1 s 이고, 그 가운데 DB 는 0.4 s 안팎입니다(규격 「IO ≤ 1.3 s/1k」 안). 질의 수는 청크당 열 개 남짓이라 왕복이 원인이 아닙니다. 지금 고칠 것은 찾지 못했습니다. 더 줄인다면 다음 자리는 행 짓기(Python, 행마다 칸마다 층 판정 — 이 표는 칸 다섯)입니다 — 운영 파일로 재기 전에는 권하지 않습니다(운영은 안 쟀다).
+
+다음: 대기열 끝 — 다음 지시를 기다립니다
+
+---
+
+## [10-03] 338abb9f3 착지 173db0bce — table_config 를 다시 쓰는 스크립트 둘이 자기가 안 쓰는 칸을 남긴다
+
+어느 DB · 어느 스키마 · 지운 것 — DB 안 씀(명령줄 도구 · 시험은 임시 파일) · 지운 것 0
+
+**고친 것**
+```
+install_product_tables --overwrite-drift   항목 «통째» 교체 -> 제품이 말하는 칸(missing · changed)만 되돌리고 나머지는 그대로
+                                           (diff_declaration 과 같은 읽기의 _overlay · 현장이 더한 것만 다른 항목은 다시 안 씀)
+                                           쓴 뒤 확인도 «계획한 모양»과 견줌 · tracked 샘플(--sample, strict)은 전처럼 정의 그대로
+table_config_from_schema --merge           세 칸만 남기고 다시 짓던 것 -> SHEET_CELLS(column_types · display_columns)만 시트로, 나머지 칸 그대로
+칸 목록                                    스크립트마다 «보존 목록»을 적지 않음 — install 은 제품 정의가 곧 「고치는 칸」, merge 는 SHEET_CELLS 한 목록
+```
+**게이트**
+```
+install   제품 항목에 group · kind · indexes · smart_paste · decision_key · 더한 열 + 구분자 바뀜 -> 구분자만 되돌아오고 나머지 그대로
+          현장이 더한 칸만 다른 항목 -> 파일 바이트 그대로 · 백업 없음
+merge     기존 표에 그 칸들 + 사람 칸 -> 그대로 · column_types · display_columns 는 시트대로 · 시트에 없는 표 그대로
+변이 둘    --overwrite-drift 가 항목 통째를 바꿈(옛 동작) RED · --merge 가 이름 댄 칸만 남김(옛 동작) RED
+sqlite 전체 5 failed, 7736 passed, 297 skipped, 3 xfailed, 12983 warnings in 707.51s
+          남은 5: 박스 체크아웃 사유 다섯
+pg        안 돌림 — 바뀐 것이 명령줄 스크립트 둘뿐(DB 경로 무관)
+```
+**뒤집은 것 한 줄** — 기존 시험 test_overwrite_drift_flag_replaces_the_entry 가 「a full replacement drops extras」를 단언하고, 보고 문구도 「drops the 'extra' items」를 알렸습니다. 지시(«모르는 칸은 손대지 않는다»)대로 뒤집었고, 그 시험은 반대를 단언합니다. 중첩된 칸(예: column_types 안에 현장이 더한 열)도 «모르는 칸»으로 읽어 남깁니다.
+
+**물음 하나** — --merge 의 column_types 는 시트가 주인이라, 시트에 없는 열(사람이 손으로 더한 열)은 지금도 빠집니다. 이것도 남겨야 하면 말씀 주세요.
+
+다음: 세상 짓기(계획 확인 뒤 — 계획을 먼저 올립니다)
+
+---
+
+## [10-03] 3a8c89f28 착지 0959b3a15 — --merge 는 시트로 더하고 고칠 뿐 지우지 않는다 · --overwrite-drift 의 덧붙인 열에 시험 칸
+
+어느 DB · 어느 스키마 · 지운 것 — DB 안 씀(명령줄 도구 · 시험은 메모리 · 임시 파일) · 지운 것 0
+
+**고친 것**
+```
+--merge column_types       기존 선언 + 시트(시트의 열은 시트 타입으로) — 시트에 없는 열은 남고 보고에 「[시트에 없음, 남겨 둠]  · 표: a, b」
+--merge display_columns    기존 목록(사람이 정한 순서 · 숨김) 그대로 + 기존 column_types 에 없던 시트 열만 끝에
+                           기존 선언에 목록이 아예 없던 표는 전처럼 시트 순서(바뀌지 않음 — 아래 물음)
+--overwrite-drift 시험     현장이 열을 column_types 와 display_columns 에 더하고 다른 칸이 어긋난 채 -> 더한 열이 display_columns 끝에 남음
+build()                    남긴 열을 다섯째 값으로 돌려줌 — 부르는 곳은 main() 과 그 시험 파일뿐
+```
+**게이트**
+```
+변이 여섯  --overwrite-drift 가 현장이 덧붙인 display_columns 를 버림 RED · column_types 를 시트로만(옛 동작) RED · 숨긴 열이 돌아옴 RED · 새 열이 안 붙음 RED · display_columns 가 시트 순서(옛 동작) RED · 보고가 남긴 열을 안 댐 RED
+sqlite 전체 5 failed, 7739 passed, 297 skipped, 3 xfailed, 13009 warnings in 758.40s
+          남은 5: 박스 체크아웃 사유 다섯
+pg        안 돌림 — 바뀐 것이 명령줄 스크립트와 그 시험뿐(DB 경로 무관)
+문서       RELEASE_LOG 같은 항목에 한 줄(덧) · RUN.md 같은 절에 한 줄
+```
+**물음 하나** — 기존 선언에 display_columns 가 «없던» 표(그리드는 그때 표의 모든 열을 보임)에 --merge 를 돌리면 지금도 시트 순서 목록을 씁니다. 그러면 기존 column_types 에만 있던 열이 그리드에서 안 보이게 됩니다. 이대로 둘지, 목록을 안 쓸지(모든 열 보임 유지), 기존 column_types 순서 + 새 열로 쓸지 말씀 주세요.
+
+다음: 세상 짓기 — 원장 후속은 86d5061a0 답(ㄱ: 소스마다 사슬에서 그 소스를 말하는 세상에)대로
+
+---
+
+## [10-03] 1495534c9 착지 fb9a0b649 — 병합과 쓰기가 한 배치에 섞여도 인제션이 실패하지 않고 층의 원천 행을 잃지 않는다
+
+어느 DB · 어느 스키마 · 지운 것 — 시험만: sqlite(메모리) · PG assy_test 의 시험 스크래치 스키마(카나리아: pg_namespace 에 그 스키마 1) · 지운 것은 그 스키마 안의 시험 표와 그 표 이름의 층 행뿐
+
+**전수 (AST, 추적 server/*.py 293 파일, 시험 제외)**
+```
+cell_sources dict   3 자리 — 쓰기 1 은 origin_row_id 있음 · 병합 몸통 2(사람 백업 · 계승)는 없음
+cell_overwrites dict 4 자리 — 키 집합 1 가지(모두 같음) — 고칠 것 없음
+```
+**고친 것**
+```
+①  계승 층은 껍데기 층의 origin_row_id 그대로 · 사람 백업 · 폴백은 None
+②  bulk_upsert_cell_sources 한 좌석: 모든 매핑을 키 합집합으로 맞춤(빠진 키 None)
+뒤집은 것  test_set_based_write_path 의 「들쭉날쭉한 목록은 거절된다」 시험과 _is_executemany_safe 설명 —
+           반쪽만 참이었음(첫 매핑에 키가 있을 때만 거절, 없으면 조용히 NULL). 지시 ② 대로 «채워서 받는다»로 뒤집고 두 순서를 단언
+```
+**게이트**
+```
+새 시험     한 배치에 쓰기 + 병합 · 정렬 두 순서 · sqlite 와 PG: 오류 0 · 쓰기의 origin 남음 · 계승 층 = 껍데기의 origin
+           좌석 시험: 들쭉날쭉한 목록 두 순서 -> 오류 0 · 실린 origin 남음
+옛 코드     정렬에 따라 CompileError 셋 · 쓰기의 origin 이 조용히 None 둘 (새 시험을 옛 crud 로 돌림)
+변이        ① 계승 층이 origin 을 안 실음 RED · ① 사람 백업이 origin 을 안 실음 GREEN · ② 좌석이 목록을 그대로 보냄 RED · ①+② 이 착지 전 코드 RED
+           사람 백업 줄은 ② 아래에서 같은 None 이 되는 «같은 값 변이»라 초록 — ① 의 계승 줄은 따로 꺼도 빨강
+PG 병합·층   37 passed, 60 deselected, 73 warnings in 196.01s (0:03:16)
+sqlite 전체 7 failed, 7741 passed, 299 skipped, 3 xfailed, 13043 warnings in 764.90s
+           박스 체크아웃 사유 다섯 + test_config_reload_integrity(파일 감시 시간, 따로 돌리면 통과) + 뒤집은 시험 1 — 뒤집은 뒤 그 파일 통과
+```
+**RUN.md** — 재기동 한 줄 · 운영에서 조용히 origin 을 잃었을 수 있는 체인 층을 표마다 세는 SQL · 그 수의 뜻(상한 — 원천 행을 못 대는 쓰기도 NULL · 층 이름으로는 못 되살림 · 값이 같으면 다시 써도 층이 안 바뀌어 리플레이로도 안 채워지고, 원천 행이 바뀌어 새 값이 오면 그때 채워짐)
+
+다음: e243d6abf ③ · d5cf3a954(키 철자) — 짓고 있음, 미리보기(원인별 · 부딪힘 견본)까지 같은 착지 · 그 뒤 53995f058 · 세상 짓기
+
+---
+
+## [10-03] e243d6abf ③ · d5cf3a954 · 829e3fe20 ④ 착지 843bcfd11 — 키 조각은 칸이 저장하는 철자로 · 병합된 새 행 껍데기는 표에 안 남는다
+
+어느 DB · 어느 스키마 · 지운 것 — 시험만: sqlite(메모리) · PG assy_test 의 시험 스크래치 스키마(카나리아: pg_namespace 그 스키마 1 · 세션 존이 읽혔는지) · 지운 것은 그 스키마 안의 시험 표와 그 표 이름의 행뿐
+
+**고친 것**
+```
+③  crud.key_part 하나 — 숫자 · 글자는 cast_value_by_type 가 저장하는 값, 시각은 time_format.instant_text(instant_key 의 순간 -> 세션 존 벽시계,
+    마이크로초가 있으면 .ffffff). 칸이 거절할 값 · ISO 로 안 읽히는 시각 글자는 글자 그대로
+    compose_business_key 가 칸 이름을 같이 받아 모든 조각을 이 함수로 — 맞추기 · 다시 짓기 · 원래 철자 키 · 풍부화 맵퍼 · 리플레이 · main 의 뷰 표시 id
+④  병합된 껍데기가 이 배치에서 새로 만든 행이면 db.expunge(INSERT 없음 · 아웃박스 없음), 저장된 행이면 db.delete — 지우기 거절을 삼키던 except 없앰
+    원인: 새 행은 대기(pending) 상태라 db.delete 가 거절했고 그 거절을 말없이 넘겨 flush 때 층 없이 들어갔다
+미리보기  rebuild_blank_business_keys.py(이미 «관문 없이 전부 다시 짓고 옛 키와 다른 행만»)에 원인별 수(number · datetime · not_iso · split)와
+          부딪힘 견본(이 행 -> 그 키를 가진 행 · 다시 지은 키) — --apply 는 손대지 않음(소유자 답 대기)
+```
+**게이트**
+```
+값 모양 × 두 표 모양(PG)  숫자 6 모양 × 시각 8 모양(초 · 마이크로초 두 순간)을 번갈아 써도 행 1 · 병합 0 · 저장 키 = 다시 읽은 행으로 지은 키
+                         키 조각을 다른 행 값으로 고친 쓰기는 여전히 병합 1 · 빈 조각은 키 없음 · 병합 0
+                         ISO 로 안 읽히는 시각 글자 세 번: 행 1 · 병합 0 — 단 저장 키는 글자 철자, 다시 읽으면 달라 미리보기가 not_iso 로 센다
+총괄 프로브 여덟 모양       모두 행 1 · 병합 0 · 오류 없음 (plain · "1.0" · 초 없는 시각 · 1.0 × 두 표 모양 — 전: 껍데기 + 병합 + origin 오류)
+④ 갈래 둘(두 표 모양)     한 배치에서 새 id 로 만든 행이 남의 키 · 앞 항목이 만든 행을 뒤 항목이 남의 키로 -> 행 1 · collision_merge 줄
+변이                     ③ 페이로드 철자 그대로(옛 맞추기) RED · ③ 숫자를 안 바꿈 RED · 시각을 글자 그대로 RED · 시각을 UTC 로(세션 벽시계 아님) RED · 마이크로초 버림 RED · 미리보기가 시각 조각을 못 댐 RED · ④ 옛 몸통(지우기 거절을 삼킴) RED · ④ 대기 행도 지우기로(expunge 없음) RED
+PG 키 · 병합 · 체인       55 passed, 889 deselected, 71 warnings in 168.37s (0:02:48)
+sqlite 전체              6 failed, 7744 passed, 311 skipped, 3 xfailed, 13002 warnings in 718.88s
+                         남은 6: 박스 체크아웃 사유 다섯 + test_the_sweep_still_runs_when_there_is_nothing_to_do
+                         test_the_sweep_still_runs_when_there_is_nothing_to_do 은 워커 루프 시간 시험(키 함수를 안 부름) — 따로 세 번 통과
+```
+**알릴 것**
+```
+뷰 표시 id   main 의 뷰 행 id(키 칸을 이어 붙인 것)도 같은 철자 — 시각 조각이 offset 없이 세션 벽시계로 보인다(화면에 보이는 글자가 바뀜)
+세션 존      시각 철자는 프로세스가 PG 에 붙어 TimeZone 을 읽은 뒤의 것 — 못 읽으면(또는 붙기 전) naive 는 벽시계, offset 붙은 것은 UTC 로 적혀 갈린다
+            RUN.md 에 SHOW TimeZone 한 줄
+not_iso     「2026/10/03 12:00」 같은 글자는 지시대로 그대로 — 같은 글자로 다시 오면 찾지만, 다른 조각을 그리드에서 고쳐 다시 지어지면 철자가 바뀐다(미리보기가 센다)
+--apply     지금의 --apply 는 business_key_val 만 고친다 — 업무키 칸(business_key)이 있는 표는 그 칸이 옛 철자로 남는다. 부딪힘 답과 같이 정할 것
+```
+**RUN.md** — 맨 위 절: 재기동(a8d483ea4 의 보류가 이것으로 풀림) · 재기동 전 미리보기 명령과 수의 뜻 · SHOW TimeZone · fb9a0b649 로 이미 재기동한 경우 «키 있고 층 0» 행을 세는 SQL
+
+다음: 53995f058(목록 없던 기존 표) 작게 · 그 뒤 세상 짓기(로컬 가지에 세워 둔 것을 이 위로)
+
+---
+
+## [10-03] 53995f058 착지 81dc9c632 — --merge 는 목록 없던 기존 항목에 display_columns 를 쓰지 않는다
+
+어느 DB · 어느 스키마 · 지운 것 — DB 안 씀(명령줄 도구 · 시험은 메모리) · 지운 것 0
+
+```
+고친 것   기존 항목에 display_columns 가 없으면 쓰지 않음(모든 열 보임 유지) · 기존 항목이 없는 새 표는 전처럼 시트 순서
+한 가장자리  기존 항목이 빈 객체 {} 이면 «없는 항목»과 같이 읽어 시트 순서를 씀 — prior = existing.get(table) or {} 그대로 둠
+시험      목록 없던 기존 항목 -> 전후 목록 없음(뒤집은 칸 하나: 전엔 시트 순서를 단언) · 두 시험 파일 통과
+변이      목록 없던 기존 항목에 시트 순서(옛 동작) RED · 새 표에 목록 없음 RED
+문서      RELEASE_LOG 같은 항목의 반 줄
+```
+
+다음: 세상 짓기 — 로컬 가지에 세워 둔 것을 새 기준 위로 옮겨 잇는다
+
+---
+
+## [10-03] 6e2a93ef9 착지 5416d3020 — 옛 철자 키 고치기(--apply): 업무키 칸까지 · 감사 줄 · 부딪히는 행은 건너뛰고 이름
+
+어느 DB · 어느 스키마 · 지운 것 — 시험만: PG assy_test 의 시험 스크래치 스키마(카나리아 pg_namespace 1) · 지운 것은 그 스키마의 시험 표와 그 표 이름의 행뿐
+
+```
+고친 것   --apply 가 옛 raw UPDATE(business_key_val 만) 대신 crud.put_business_key — business_key_val + 선언된 업무키 칸
+          행마다 감사 줄(source rebuild_business_keys · --by) · CHUNK 행마다 커밋 · 끝에 「고친 행 N / 미리보기 N」
+          부딪히는 행은 오늘 규칙 그대로(건너뛰고 견본에 이름) — 소유자 답이 ㄴ 이면 병합 갈래만 더함
+          행 고르기 = plan_rekeys · 쓰기 = apply_rekeys 로 빼서 시험이 직접 부름(실행 경로는 그대로 run -> 둘)
+게이트    두 표 모양(PG): 옛 철자(숫자 · 시각) 행 -> --apply -> 두 키 칸 새 철자 · 감사 줄 1 -> 같은 데이터 다시 씀 -> 행 1 · 병합 0
+          부딪히는 쌍(옛 철자 행과 새 철자 행이 같은 값)은 건너뛰고 견본에 이름 · 고친 뒤 미리보기 pending 0 · collides 1 남음
+변이      business_key_val 만 씀(옛 UPDATE) RED · 부딪히는 행도 씀 RED · 감사 줄 없음 RED
+같이 돈 것  test_readonly_guard · 키 철자 시험 — 통과
+RUN.md    맨 위 절: ① 미리보기 -> ② 재기동 -> ③ --apply --by <이름> -> ④ 미리보기 rebuildable 0 · collides 는 «남은 수»
+RELEASE_LOG  ③ 항목의 「필요한 조건」에 고치는 법
+```
+
+다음: 세상 짓기 착지(지어 두고 변이 열하나 빨강까지 잰 것을 로컬 가지에서 올림 — 전체 시험 뒤)
+
+---
+
+## [10-03] ab1b9a98c 착지 867c693d1 — --apply 가 부딪히는 옛 철자 행을 임자 행에 합친다 (소유자 10-03 「ㄴ」)
+
+어느 DB · 어느 스키마 · 지운 것 — 시험만: PG assy_test 의 시험 스크래치 스키마(카나리아 pg_namespace 1) · 멈춘 세상 시험(pytest 41708)이 남긴 스크래치 스키마 assy_pytest_pg_41708_gw0 를 이름으로 지움(남은 것 0) · 운영 DB 안 씀
+
+```
+고친 것   부딪힘 = (행, 임자) 전부를 모아 apply_rekeys 뒤에 merge_rekeys — crud._merge_into_key_holder 하나(새 몸통 없음)
+          human_columns 빈 집합 · 한 트랜잭션 id · 병합 감사 줄 · 층 · 덮어쓰기 쓰기(핀 자리가 병합 뒤 하는 그대로)
+          행을 row_id 순으로 걸음 — 임자 없는 두 행이면 작은 row_id 가 새 키를 받고 다른 쪽이 합쳐짐
+미리보기  collides 수 · 견본 그대로, 문구만 「--apply 하면 합쳐진다 · 되돌릴 수 없다」 · 끝 줄 「합친 행 M / 부딪힘 M」
+게이트    두 표 모양: 사람 값이 껍데기 쪽 · 임자 쪽 어느 쪽이든 남음 · 껍데기 층이 병합 몸통 이름(user (키_행 id 앞자리))으로 임자에
+          셋 모이기 · 임자 없는 둘은 작은 row_id 로 · 다시 돌리면 0 · 같은 파일 10 통과 · 이웃(test_readonly_guard · 키 철자) 통과
+변이      합치지 않음 RED · 모든 칸을 사람 것으로 셈 RED · row_id 순서 뒤집음 RED
+RUN.md    ③ 이 합친다 · ④ rebuildable 0 · collides 0 · 앞 판(5416d3020)으로 ③ 을 돌렸으면 한 번 더
+알릴 것   병합 몸통은 지워진 껍데기 행의 저장된 층 · 덮어쓰기 행을 지우지 않는다(쓰기 자리의 병합도 같음) — 소유자께 여쭙는 중인 일이라 손대지 않음
+```
+
+다음: 세상 짓기 착지(세워 둔 것을 이 위로 · 전체 시험 다시)
+
+---
+
+## [10-03] a13fcf00c 착지 fd6d957c4 — 합쳐져 사라진 행의 층 · 덮어쓰기 행도 같이 지운다
+
+어느 DB · 어느 스키마 · 지운 것 — 시험만: PG assy_test 시험 스크래치 스키마(카나리아 1) · 운영 DB 안 씀
+
+```
+고친 것   행 지우기(delete_rows_batch)와 지도 비우기(purge_map_rows)의 같은 두 줄 -> delete_row_layers 하나로 접고 둘 다 부름
+          병합 몸통이 저장된 껍데기를 지울 때 끝에서 그 함수로 — 임자가 읽고 넘겨받은 «뒤» · 이 배치의 대기 행(expunge)은 그대로
+          쓰기 · 핀 · --apply 세 길이 모두 이 몸통을 지남
+게이트    두 표 모양 시험의 모든 갈래(쓰기 · 핀 병합 포함) 끝에 «행 없는 row_id 의 층 · 덮어쓰기 0» · --apply 병합 뒤 껍데기 row_id 0 0
+          임자의 층과 사람 값은 기존 단언 그대로
+변이      껍데기 층을 안 지움(옛 몸통) RED · 넘기기 전에 지움 RED
+PG 지움·병합·지도 37 passed, 282 deselected, 67 warnings in 86.10s (0:01:26)
+sqlite 전체  7 failed, 7743 passed, 321 skipped, 3 xfailed, 13093 warnings in 713.89s
+          남은 7: 박스 체크아웃 사유 다섯 + test_the_helper_still_clears_the_cell_metadata · test_the_merge_reads_the_overwrites_in_one_statement
+시험 둘    오늘 모양을 붙잡던 것 — 병합의 «한 번 읽기» 세기를 SELECT 만으로 · 지도 비우기 글자 시험이 한 함수와 그 두 지우기를 봄
+RUN.md    표마다 «행 없는 row_id 의 층 · 덮어쓰기» 세는 SQL -> 같은 조건으로 지우는 SQL (소유자가 돌림)
+RELEASE_LOG  병합 항목에 반 줄
+```
+
+다음: 세상 짓기 착지(세워 둔 것을 이 위로 · 전체 시험)
+
+---
+
+## [10-03] 세상 짓기 착지 6bfb6d4be — 운영 세상 한 칸 · 세상마다 «밑에 깔 세상» · 후속은 소스마다 말하는 세상에 · 그리드 세상 탭 (총괄 e1f54cd72 · e67ef53f3 · 86d5061a0 · 2bb20ff56)
+
+어느 DB · 어느 스키마 · 지운 것 — 시험만: PG assy_test 의 시험 스크래치 스키마 + 시험이 만드는 w_<run 토큰> 스키마(오늘 가지 시험과 같은 모양, 끝에 이름으로 DROP) · 박스 운영 DB 안 씀
+
+**지은 것**
+```
+한 좌석       schema.world_names: 이름 없음 = 운영 세상(배치 파일 worlds.json, 바뀌면 다시 읽음 · 없으면 기본) · "default" = 기본
+             세상마다 beneath(위 -> 아래, 자기 · 두 번 · 이름 아닌 것 거절) · base_root = 밑의 첫 세상(없음 = 뼈대)
+             _DEFAULT · setup.DEFAULT_ONTOLOGY_ROOT 는 이름으로 기본 · load_setup / setup_from_document / setup CLI 는 부를 때 운영 세상
+말하는 세상    chain_speakers 한 좌석: 선언 지문이 «밑에서 그 소스를 말하는 세상»과 다르거나 그 세상이 쓴 소스 · 맨 아래가 나머지
+             뷰 = 세상마다 다리 하나(거름은 합집합 밖) · 뷰를 지을 때 그 답을 뷰 설명(comment)에 같이 적음
+원장 후속      followed_by 가 그 설명을 한 번 읽고(카탈로그 한 줄) 소스마다 그 세상에 씀 — 운영 = 기본이면 오늘과 같음
+             세상 선언은 파일 · 카탈로그가 바뀔 때만 다시 컴파일 · 이미 말하는 소스를 쓴 배치는 뷰를 안 다시 지음
+             ensure_world 는 프로세스마다 한 번(그 세상 원장이 있으면)
+라우트        GET /worlds · PUT /worlds/operating(엄격 토큰, X-User = 이력의 by) · bootstrap ?beneath=
+             운영 세상 · 남이 밑으로 쓰는 세상 지우기 거절(이름) · 지운 세상의 배치 줄도 지움
+그리드        data · count · row_ids/target · export · schema · 한 행 라우트에 ?world= (원자 보기) · /tables 에 worlds · operating · per_world
+결함 고침      가지 후속의 지움 갈래가 world 를 안 넘겨 운영 세상(오늘은 기본)에서 거두던 것
+짓다가 찾은 것  뷰가 아직 없는 세상에 소스를 처음 쓰면 «이미 말함»으로 보고 뷰를 안 지었다 — 건너뛰기는 «뷰가 있고 그 설명에 있을 때만»으로
+전수 자리      원장 관리 화면의 커서 읽기 · index_existing_refs 는 운영 세상 · 시드 스크립트 · empty_table · add_ledger_atom_rows 는 이름으로 기본
+             「none = the default」 도움말 · 설명은 운영 세상으로 · 세상 전 retroactive 작업은 이름으로 기본
+             기본 원장 이름을 글자로 적은 제품 자리(D)는 열어 보니 설명 글뿐(위 둘 말고 고칠 자리 없음)
+뷰 다리 표지   'branch' 대신 세상 이름 — 제품에서 읽는 자리 없음, 가지 시험 두 줄 고침
+```
+**게이트 (⑧ + 86d5061a0)**
+```
+배치 없음                 오늘과 같음 · 기본 이름 그대로
+운영 = W                 세상 이름 없는 자리(world_names · LedgerStore · load_setup · config 경로 · 선언 엔티티 경로 · 걷기 라우트) 가 W, 기본 상수는 기본
+사슬 [W, B1, 기본]         W 가 쓴 소스는 W · B1 이 바꾼 소스는 B1 · 세 겹 계획에 Subquery Scan 0 · 밑 없음 세상의 뷰 = 기본 원자 0
+후속 (운영 = 기본)          오늘과 같음(기본에 씀)
+후속 (운영 = B1)           B1 이 안 말하는 소스의 고친 행 -> 기본에 새 원자 · B1 뷰에 보임 / B1 이 말하는 소스 -> B1 에만
+되돌림 (운영 = 기본)         그동안 B1 만 따라간 소스는 기본 census 에 «어긋남 1» -> --drifted 로 0 (RUN.md 에 명령 셋)
+지우기                    운영 세상 · 남의 밑 세상 거절(이름) · 기본 거절
+가지 지움                  B1 의 원자만 거두고 기본 원자 그대로
+그리드 world=B1           세기 · 데이터가 B1 의 원자 보기 · 모르는 세상 404(이름) · world 없이 = 운영 세상 · /tables 에 세상 목록
+AST                      「어느 세상인가」 묻는 자리가 schema.py 밖에 0 — beneath 도 그 물음에 넣음
+변이 열하나               이름 없음 = 기본(운영 무시) RED · 맨 아래와만 견줌 RED · 아래 다리 거름 없음 RED · 운영 세상 지우기 허용 RED · 남의 밑 세상 지우기 허용 RED · 자기 · 두 번 허용 RED · 소스 단 쓰기는 뷰 안 다시 지음 RED · 후속 ㄴ(맨 위만) RED · 후속 ㄷ(전부 맨 위에) RED · 가지 지움을 운영 세상에서 거둠 RED · 그리드가 세상 무시 RED
+PG 원장 묶음               2 failed, 76 passed, 995 deselected, 77 warnings in 789.99s (0:13:09) — 실패(지난 착지들과 같은 알려진 l1_pg 둘) test_the_live_door_writes_the_refusal_breakdown_to_the_registry_row · test_two_independent_refusals_are_counted_and_named_in_one_run
+sqlite 전체               5 failed, 7750 passed, 325 skipped, 3 xfailed, 13086 warnings in 786.09s
+                         남은 5: 박스 체크아웃 사유 다섯
+첫 전체 실행               20 failed, 7735 passed, 325 skipped, 3 xfailed, 13038 warnings in 792.04s — 위 다섯 밖은 오늘 모양을 붙잡던 시험 네 파일(test_a_deleted_row_takes_its_facts_with_it.py · test_admin_auth.py · test_the_catalogue_kind_reaches_the_wire.py · test_the_index_can_be_recovered_for_atoms_that_predate_it.py)
+                         가짜 저장소에 세상 이름 · 지움 후속 가짜가 world 를 받음 · 엄격 라우트 목록과 /tables 키에 새것 — 고친 뒤 위 줄
+```
+**여쭐 것 · 알릴 것**
+```
+물음  census · 원장 관리 화면(커서) 은 운영 세상 «맨 위»를 잰다 — 운영 = W(밑 기본)면 W 가 안 말하는 소스가 W 에서 «Not yet» 으로 보인다
+      후속처럼 소스마다 그 소스를 말하는 세상에서 잴까요? (짓지 않음)
+한계  운영 = W 일 때 world 없이 `python -m ledger.backfill --source X` 를 돌리면 W 가 안 말하는 소스는 아무것도 안 한다(말없이)
+      그 소스는 --world default(또는 말하는 세상)로 — 거절을 더할지 여쭙니다(짓지 않음)
+안 잰 것  세상 선언 컴파일 캐시(파일이 바뀌면 다시)는 시험이 없다 · 사슬 «가운데» 에 기본이 오면 뷰를 다시 지을 때 기본 원장 DISTINCT 훑기
+전수 수  세상 이름 없이 부르는 자리 전수(짓기 전 코드에서 센 것, AST): A 9 · B 36 · C 54 · D 88 — 판정은 계획(e1f54cd72) 그대로
+```
+
+다음: 0185cbd8a 오라클 시험의 가끔 빨강 원인 조사(원인 한 줄 먼저)

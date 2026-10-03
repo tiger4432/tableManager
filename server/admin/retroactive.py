@@ -1152,18 +1152,21 @@ def _judge_table(params):
 
 def _ledger_world(params):
     """The ledger world a job names (총괄 3b6dacd2f). A job stored before worlds carries the
-    root it read instead: the default root IS the default world, and any other root is
-    refused by name - reading it as the default would read a different declaration."""
+    root it read instead: the default root IS the default world - by name, whichever world
+    operates now - and any other root is refused by name - reading it as the default would
+    read a different declaration. A job naming neither runs in the operating world."""
     from ledger import schema
 
     root = params.get("ontology_root")
-    if root is not None and (os.path.normcase(os.path.normpath(str(root)))
-                             != os.path.normcase(os.path.normpath(
-                                 schema.world_names().declaration_root))):
+    if root is None:
+        return params.get("world")
+    if (os.path.normcase(os.path.normpath(str(root)))
+            != os.path.normcase(os.path.normpath(
+                schema.world_names(schema.DEFAULT_WORLD).declaration_root))):
         raise RetroactiveRefused(
             f"this job reads the declaration at {root}, which is no ledger world's root - "
             f"run it again naming a world (--world)")
-    return params.get("world")
+    return params.get("world") or schema.DEFAULT_WORLD
 
 
 def _ledger_setup(params):
@@ -1411,7 +1414,7 @@ OPERATIONS = {
                    _p("max_batches", required=False, kind="int", form=False,
                       help="stop after this many pages"),
                    _p("world", required=False, form=False,
-                      help="a ledger world (branch) by name; none = the default")],
+                      help="a ledger world (branch) by name; none = the operating world")],
         "count": _count_ledger_backfill,
         "run": _run_ledger_backfill,
         "judge": _judge_ledger_backfill,
@@ -1440,7 +1443,7 @@ OPERATIONS = {
                    _p("whole_source", required=False, kind="bool", form=False,
                       help="every row of the source instead of a scope"),
                    _p("world", required=False, form=False,
-                      help="a ledger world (branch) by name; none = the default")],
+                      help="a ledger world (branch) by name; none = the operating world")],
         "count": _count_ledger_rescope,
         "run": _run_ledger_rescope,
         "judge": _judge_ledger_rescope,

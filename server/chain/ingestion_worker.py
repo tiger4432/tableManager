@@ -990,10 +990,8 @@ def rule_watches_changed_columns(rule, event) -> bool:
     wanted = wake_columns(rule)
     if not wanted:
         return True
-    changed = get_payload_dict(event).get("columns")
-    if changed is None:
-        return True
-    return bool(set(wanted) & set(changed))
+    return event_constants.columns_meet(
+        wanted, event_constants.changed_columns_of(get_payload_dict(event)))
 
 
 def wake_columns(rule) -> list:
@@ -3148,12 +3146,19 @@ def _ledger_outbox_depth_sync(db_session_factory):
 
 
 def _drain_ledger_followup_sync(db_session_factory):
-    """One follow-up batch, in a thread. The session is this call's and closes with it."""
-    from ledger.setup import load_setup
+    """One follow-up batch, in a thread. The session is this call's and closes with it.
+
+    🔴 EACH SOURCE INTO THE WORLD OF THE OPERATING CHAIN THAT SPEAKS FOR IT (총괄 86d5061a0) -
+    as the operating world's view shows it, asked of the one seat (`schema.followed_by`), so
+    switching the operating world takes the next batch with it."""
+    from ledger import schema
 
     db = db_session_factory()
     try:
-        done = ledger_followup.drain_outbox_once(db.get_bind(), load_setup())
+        engine = db.get_bind()
+        chain = [(world, _compiled_setup(world), spoken)
+                 for world, spoken in schema.followed_by(engine)]
+        done = ledger_followup.drain_outbox_once(engine, None, chain)
         # ⚰️ [소유자 정본] `_run_the_follow_up_pass(db, done)` STOOD HERE and ran the deferred
         #   rules on the drained rows. That lap is not in 「트랜잭션 - 아웃박스 - 트리거 -
         #   맵퍼 실행 - 페이로드 및 업서트」, so those rules run on the trigger path like every
@@ -3170,6 +3175,33 @@ def _drain_ledger_followup_sync(db_session_factory):
         return done
     finally:
         db.close()
+
+
+#: {declaration root: (the stamps it was compiled at, the compiled declaration)}
+_COMPILED = {}
+
+
+def _compiled_setup(world):
+    """A world's declaration, compiled again only when its file or the catalogue changed -
+    not every batch (총괄 86d5061a0)."""
+    from ledger import schema
+    from ledger.setup import load_setup, physical_catalog_path
+
+    names = schema.world_names(world)
+    stamp = tuple(_file_stamp(path)
+                  for path in (names.declaration_path, physical_catalog_path()))
+    held = _COMPILED.get(names.declaration_root)
+    if held is None or held[0] != stamp:
+        held = _COMPILED[names.declaration_root] = (stamp, load_setup(names.declaration_root))
+    return held[1]
+
+
+def _file_stamp(path):
+    try:
+        status = os.stat(path)
+    except FileNotFoundError:
+        return None
+    return status.st_mtime_ns, status.st_size
 
 
 def _measure_one_source_sync(db_session_factory, source, setup=None):
@@ -3332,6 +3364,7 @@ async def run_ledger_followup(db_session_factory):
             units, rest = None, FOLLOWUP_IDLE_SECONDS
         drained = 0
         confirmed_total = refused_total = 0
+        skipped = {}
         lap_started = time.monotonic()
         while units is None or drained < units:
             try:
@@ -3349,6 +3382,9 @@ async def run_ledger_followup(db_session_factory):
                 break
             confirmed_total += done.get("auto_confirmed") or 0
             refused_total += done.get("auto_refused") or 0
+            for source, said in (done.get("sources") or {}).items():
+                if (said or {}).get("skipped"):
+                    skipped[source] = skipped.get(source, 0) + 1
             drained += 1
         # 🔴 A SUCCESSFUL DRAIN USED TO SAY NOTHING, and that silence cost a measurement
         # (S-160, 판정 269). Asked whether the drain was working DURING a reproduction
@@ -3364,7 +3400,9 @@ async def run_ledger_followup(db_session_factory):
             lap_seconds = time.monotonic() - lap_started
             depth_left = await asyncio.to_thread(_ledger_outbox_depth_sync, db_session_factory)
             logger.info("[LedgerFollowUp] lap: %d item(s) in %.3fs, %d left in the queue "
-                        "(rest %.0fs between)", drained, lap_seconds, depth_left, rest)
+                        "(rest %.0fs between)%s", drained, lap_seconds, depth_left, rest,
+                        "".join(" · skipped %s=%d (no column it reads changed)" % (s, n)
+                                for s, n in sorted(skipped.items())))
             # S-176: the same three numbers, carried instead of dropped. No new
             # measurement -- `lap_seconds` and `depth_left` are the log line's own.
             heartbeat.record_lap("chain", "ledger_followup", seconds=lap_seconds,
@@ -3374,7 +3412,8 @@ async def run_ledger_followup(db_session_factory):
                                  # that confirmed nothing and a lap where the sweep never
                                  # ran are different facts — both are values here.
                                  auto_confirmed=confirmed_total,
-                                 auto_refused=refused_total)
+                                 auto_refused=refused_total,
+                                 skipped=skipped or None)
         await asyncio.sleep(rest if drained else max(rest, FOLLOWUP_IDLE_SECONDS))
 
 

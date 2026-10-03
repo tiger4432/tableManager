@@ -24,7 +24,7 @@ import pytest
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from ledger import backfill                                          # noqa: E402
+from ledger import backfill, schema                                  # noqa: E402
 
 RELATION = "dt_log"
 
@@ -93,6 +93,8 @@ class FakeConnection:
 class FakeStore:
     def __init__(self, world):
         self.world = world
+        # The real store's world - the job reads and writes the tables it names.
+        self.names = schema.world_names()
 
     def connection(self):
         return FakeConnection(self.world)

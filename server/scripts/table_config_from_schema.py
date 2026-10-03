@@ -25,9 +25,13 @@ USAGE
 -----
     python table_config_from_schema.py <sheet.xlsx|.csv|.tsv> [-o out.json] [--merge existing.json]
 
-`--merge` keeps declarations already made for tables the sheet does not mention, and
-never overwrites a non-empty `business_key` / `composite_key_source` / `__comment` that a
-human already filled in -- so re-running after an edit does not undo the edit.
+`--merge` keeps declarations already made for tables the sheet does not mention, and for a
+table it does mention writes only `column_types` and `display_columns` from the sheet: every
+other cell a human already wrote (`business_key`, `__comment`, `composite_key_source`, `kind`,
+`group`, `indexes`, ...) stays as it is -- so re-running after an edit does not undo the edit.
+Those two the sheet adds to and changes but never takes from: a column only the declaration
+has stays (and the report names it), a person's display order and hidden columns stay, and a
+column new to the declaration joins the end of `display_columns` - an entry with none keeps none.
 """
 from __future__ import annotations
 
@@ -147,6 +151,13 @@ def key_candidates(table: str, columns):
     return hits[:4]
 
 
+#: The cells this generator writes from the sheet. Every other cell of an existing entry is a
+#: human's and stays as it stands (총괄 338abb9f3 - a re-run used to keep three named cells and
+#: drop the rest: `kind`, `decision_key`, `indexes`, `smart_paste`, `group`). Even these two the
+#: sheet only adds to and changes, never takes from (총괄 3a8c89f28).
+SHEET_CELLS = ("column_types", "display_columns")
+
+
 def build(rows, existing=None):
     existing = existing or {}
     tables = {}
@@ -158,17 +169,22 @@ def build(rows, existing=None):
         tables[table].append((column, raw))
 
     config = dict(existing)
-    guesses, decisions = [], []
+    guesses, decisions, kept = [], [], []
 
     for table in order:
         cols = tables[table]
         prior = existing.get(table) or {}
+        prior_types = prior.get("column_types") or {}
+        shown = prior.get("display_columns")
         column_types = {}
         for column, raw in cols:
             kind, basis = infer_type(column, raw)
             column_types[column] = kind
             if basis == "name":
                 guesses.append((table, column, kind, raw or "(타입 칸 비어 있음)"))
+        held = [c for c in prior_types if c not in column_types]
+        if held:
+            kept.append((table, held))
 
         decl = {
             # A comment is what tells the next reader what the table is FOR, and no sheet
@@ -176,13 +192,17 @@ def build(rows, existing=None):
             "__comment": prior.get("__comment", ""),
             # The single decision this generator must not make.
             "business_key": prior.get("business_key"),
-            "column_types": column_types,
-            # Sheet order is the honest default: it loses nothing and hides nothing.
-            "display_columns": [c for c, _ in cols],
+            **{cell: value for cell, value in prior.items() if cell not in SHEET_CELLS},
+            "column_types": {**prior_types, **column_types},
         }
-        for optional in ("composite_key_source", "composite_key_separator", "map_key_columns"):
-            if optional in prior:
-                decl[optional] = prior[optional]
+        # A person's order and hidden columns stay; only a column the declaration did not type
+        # before joins the end. An entry with no list keeps none - every column shows (총괄
+        # 53995f058); a new table gets the sheet order.
+        if isinstance(shown, list):
+            decl["display_columns"] = shown + [c for c in column_types
+                                               if c not in prior_types and c not in shown]
+        elif not prior:
+            decl["display_columns"] = [c for c, _ in cols]
 
         if not decl["business_key"]:
             decisions.append((table, "business_key", key_candidates(table, [c for c, _ in cols])))
@@ -191,10 +211,10 @@ def build(rows, existing=None):
 
         config[table] = decl
 
-    return config, guesses, decisions, order
+    return config, guesses, decisions, order, kept
 
 
-def report(order, guesses, decisions, out_path):
+def report(order, guesses, decisions, out_path, kept=()):
     lines = []
     lines.append(f"테이블 {len(order)}개 초안 작성 → {out_path}")
     lines.append("")
@@ -205,6 +225,11 @@ def report(order, guesses, decisions, out_path):
         lines.append("")
     else:
         lines.append("[추정 없음] 모든 타입이 시트에서 나왔거나 기본값 string입니다.")
+        lines.append("")
+    if kept:
+        lines.append("[시트에 없음, 남겨 둠] 열을 빼려면 table_config 를 손으로 고치십시오.")
+        for table, columns in kept:
+            lines.append(f"  · {table}: {', '.join(columns)}")
         lines.append("")
 
     need_key = [(t, c) for t, field, c in decisions if field == "business_key"]
@@ -237,12 +262,12 @@ def main(argv=None):
         with io.open(args.merge, "r", encoding="utf-8") as handle:
             existing = json.load(handle) or {}
 
-    config, guesses, decisions, order = build(rows, existing)
+    config, guesses, decisions, order, kept = build(rows, existing)
     with io.open(args.out, "w", encoding="utf-8") as handle:
         json.dump(config, handle, ensure_ascii=False, indent=2)
         handle.write("\n")
 
-    text = report(order, guesses, decisions, args.out)
+    text = report(order, guesses, decisions, args.out, kept)
     try:
         print(text)
     except UnicodeEncodeError:                                     # pragma: no cover

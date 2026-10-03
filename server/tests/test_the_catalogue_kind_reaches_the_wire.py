@@ -84,7 +84,9 @@ def test_the_list_route_says_the_kind_of_every_table(client):
 def test_the_list_route_moved_nothing_else(client):
     """🔴 THE REGRESSION LINE, scored against the keys the route answered at the parent
     commit rather than against my memory of them."""
-    assert set(client.get("/tables").json()) == TABLES_KEYS_BEFORE | {"kinds", "groups"}  # groups: 685f236d7
+    assert set(client.get("/tables").json()) == TABLES_KEYS_BEFORE | {
+        "kinds", "groups",                                          # groups: 685f236d7
+        "per_world", "worlds", "operating"}                         # 총괄 2bb20ff56
 
 
 def test_the_schema_route_says_the_same_thing_for_one_table(client):

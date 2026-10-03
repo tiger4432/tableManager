@@ -367,6 +367,18 @@ conda run -n assy_manager python scripts/ledger_restamp_cursor.py
 - 읽기 전용 보기입니다. 표에 쓰지 않습니다.
 - 마이그레이션은 더하기만 하고 다시 돌려도 됩니다 — 원천 행 참조 표에 인덱스 둘(쓰기를 멈추지 않고 만듦)과 보기 하나, 원장 표 자체에는 아무것도 안 더합니다. 🆕 보기가 이미 있으면 그 자리에서 다시 만들어 새 칸을 끝에 붙입니다 — `table_config.json` 의 그 항목에도 `"occurred_at_basis": "string"` 한 줄을 더합니다(출하 샘플에 있음).
 
+### 4.9 원장 세상 — 운영 세상과 «밑에 깔 세상» (10-03 `6bfb6d4be`)
+```
+운영에서는 config/ontology_worlds/worlds.json 의 operating 에 세상 이름을 적으면(아래 PUT 이 적습니다) 이름 없이 읽고 쓰는 자리가 다 그 세상을 씁니다.
+파일이 없으면 오늘과 같습니다 — 운영 = 기본(default).
+```
+- **세상** — 기본(`default`)과 가지들. 가지는 `config/ontology_worlds/<이름>/` 의 선언 하나와 DB 스키마 `w_<이름>` 입니다. 이름은 영문 소문자 · 숫자 · `_`.
+- **밑에 깔 세상** — 가지를 만들 때 고릅니다: 없음 · 기본 · 다른 세상들(위가 먼저). 그 세상의 걷기는 소스마다 그 소스를 «말하는» 가장 위 세상의 원자를 봅니다(칸 층처럼 위가 이긴다). 만든 뒤에는 바꾸지 않습니다.
+- **이름 없이 따르는 자리** — 원장 후속(실시간) · 걷기 · 그리드 원자 보기 · 선언 읽기 · census · 백필 CLI 기본값. 바꾸면 다음 요청 · 다음 후속 배치부터.
+- **라우트** — `GET /admin/ontology-explorer/worlds` · `PUT /admin/ontology-explorer/worlds/operating` 본문 `{"world": "…"}`(엄격 관리자, `X-User` 가 이력의 by) · 만들기 `POST /admin/ontology-explorer/bootstrap?world=…&beneath=default`(쉼표 목록, 빈 값 = 없음) · 그리드 데이터 · 세기 · 내보내기 · 스키마 · 한 행 라우트의 `?world=` · `/tables` 의 `worlds` · `operating` · `per_world`.
+- **거절** — 운영 중인 세상, 다른 세상이 밑으로 쓰는 세상은 지우지 않습니다(기대는 세상 이름을 댑니다). 모르는 세상 이름은 이름 대어 거절 — 기본으로 바꿔 읽지 않습니다. 운영 세상은 `PUT …/worlds/operating` 으로만 바꿉니다(이력이 남습니다).
+- **운영을 되돌리면** — 그동안 가지만 따라간 소스는 기본 세상 census 에 `Edited, not followed` 로 잡히고 `--drifted` 로 닫습니다.
+
 ## 5. 원장이 «일부러» 하지 않는 것
 
 - 원천 데이터를 정규화해 고쳐 쓰지 않는다.

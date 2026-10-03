@@ -830,9 +830,10 @@ def screen_all(atoms):
 def write_atoms(atoms, batch_size: int = 2000) -> dict:
     """Through `LedgerStore.write_batch` - same store, same transaction discipline."""
     from database.database import engine
+    from ledger.schema import DEFAULT_WORLD
     from ledger.store import LedgerStore
 
-    store = LedgerStore(engine, who=SOURCE)
+    store = LedgerStore(engine, who=SOURCE, world=DEFAULT_WORLD)
     store.ensure_schema()
     totals = {"attempted": 0, "inserted": 0, "deduped": 0}
     for start in range(0, len(atoms), batch_size):

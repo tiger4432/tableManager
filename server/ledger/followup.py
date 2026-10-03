@@ -159,7 +159,7 @@ def enqueue(table_name, row_ids, event_type, transaction_id=None, chain_depth=No
             return False
         _queue.append((str(table_name), ids, str(event_type), time.time(),
                        str(transaction_id) if transaction_id else None,
-                       chain_depth))
+                       chain_depth, None))
     return True
 
 
@@ -235,6 +235,23 @@ def sources_for_table(setup, table_name):
     # means. A ledger appends; it does not forget.
     return tuple(sorted(name for name, plan in plans.items()
                         if plan.relation == table_name and plan.runs))
+
+
+def reads_none_of(plan, columns) -> bool:
+    """An edit that set `columns` - known, and not one of them a column this source reads - can
+    move none of its atoms (판정 201), so re-translating it is cost for nothing (총괄 «소스가 안 읽는
+    칸»). False whenever that cannot be told: `columns` is `None` (모른다), or the source's mapper
+    reads more than its declaration names (`setup_bundle.executes_the_bindings`)."""
+    import event_constants
+
+    from .event_frame import named_columns
+    from .setup_bundle import executes_the_bindings
+
+    # `columns is not None` is `columns_meet`'s own 모른다, asked first so nothing about the plan
+    # is computed for an event that does not say (every item of the backfill's memory queue).
+    return (columns is not None
+            and executes_the_bindings(plan.driver.mapper.implementation.implementation_id)
+            and not event_constants.columns_meet(named_columns(plan), columns))
 
 
 def scope_column(plan):
@@ -334,7 +351,7 @@ def drain_once(engine, setup, world=None, sources=None):
 def _follow(item, engine, setup, world=None, sources=None):
     """One queued event, followed - whichever queue it came from (memory or the outbox row)."""
     global _failed
-    table, row_ids, event_type, queued_at, transaction_id, chain_depth = item
+    table, row_ids, event_type, queued_at, transaction_id, chain_depth, columns = item
     from . import backfill
 
     # 🔴 `row_ids` IS RETURNED AS A VALUE so a caller can act on the rows this batch
@@ -358,7 +375,7 @@ def _follow(item, engine, setup, world=None, sources=None):
         # every source that read that table.
         try:
             withdrawn = backfill.withdraw_deleted_rows(engine, setup, table, list(row_ids),
-                                                       apply=True)
+                                                       apply=True, world=world)
             done["sources"] = withdrawn["sources"]
             done["forgotten"] = withdrawn["forgotten"]
         except Exception as exc:
@@ -380,6 +397,14 @@ def _follow(item, engine, setup, world=None, sources=None):
     # walking, so a source that had not already been marked would have had its new rows
     # skipped forever: a gate whose input is never produced fails closed, and silently.
     # The column itself is retired now (판정 173) -- `ledger/schema.py` says where it went.
+    # 🔴 [총괄 «소스가 안 읽는 칸»] ONLY AN EDIT, and only when it says which columns it set: a
+    #   CREATE is a row to translate whatever it set, and 모름 is today's full re-translation.
+    #   Said per source in this record, and the lap counts it.
+    if event_type == "EDIT":
+        for source in [s for s in table_sources
+                       if reads_none_of(setup.snapshot.source_plans[s], columns)]:
+            done["sources"][source] = {"skipped": "columns"}
+            table_sources.remove(source)
     targets = [(source, scope_column(setup.snapshot.source_plans[source]))
                for source in table_sources]
     if not targets:
@@ -430,6 +455,28 @@ def _follow(item, engine, setup, world=None, sources=None):
     return done
 
 
+def _follow_chain(item, engine, chain):
+    """One event, followed in each world of `chain`: there, the sources it speaks for - at the
+    bottom, the rest. One record; a source said twice (a deletion) keeps its error."""
+    done, above = None, set()
+    for world, setup, spoken in chain:
+        sources = (spoken if spoken is not None
+                   else frozenset(setup.snapshot.source_plans) - above if above else None)
+        said = _follow(item, engine, setup, world=world, sources=sources)
+        above |= set(spoken or ())
+        if done is None:
+            done = said
+            continue
+        for source, outcome in said["sources"].items():
+            if source not in done["sources"] or "error" in (outcome or {}):
+                done["sources"][source] = outcome
+        if said.get("error") and not done.get("error"):
+            done["error"] = said["error"]
+        if "forgotten" in said:
+            done["forgotten"] = done.get("forgotten", 0) + said["forgotten"]
+    return done
+
+
 # ------------------------------------------------------------------- the outbox row's mark
 #: 🔴 THE LIVE QUEUE IS THE OUTBOX ROW ITSELF (총괄 bb9b1c19c (가), 소유자 10-02 「누락 절대 없고」).
 #: The memory deque above lost every event a restart caught between the chain group's commit
@@ -440,6 +487,9 @@ def _follow(item, engine, setup, world=None, sources=None):
 #: The memory deque stays for the backfill, which fills and drains it in its own process.
 LEDGER_DONE = "done"
 LEDGER_FAILED = "failed: "
+#: Followed, and these sources skipped it - no column they read changed (총괄 6e041f4cb ②). Still
+#: done: every reader outside this module asks only IS NULL / IS NOT NULL of the cell.
+LEDGER_SKIPPED = LEDGER_DONE + " · skipped: "
 #: Taken when the chain has processed the event - the moment the group step used to queue it.
 _PENDING = "processed_chain = true AND ledger_state IS NULL"
 
@@ -455,12 +505,17 @@ def _payload(value):
     return value if isinstance(value, dict) else {}
 
 
-def drain_outbox_once(engine, setup):
+def drain_outbox_once(engine, setup, chain=None):
     """Follow the oldest outbox event the chain processed and the ledger has not. Or `None`.
 
     Marked after the follow, in its own statement: a process that dies inside a follow leaves
     the event unmarked and the next run follows it again (`rescope` is idempotent). An event
     of a kind the ledger does not follow is marked DONE on the way past.
+
+    `chain` - the operating world's, top first: (world, its compiled declaration, the sources
+    it speaks for; None at the bottom) as `schema.followed_by` answers. Each source is followed
+    into the world that speaks for it, so the operating world's view stays live in every source
+    (총괄 86d5061a0); a deletion is withdrawn in each. None: `setup`, in the operating world.
     """
     from sqlalchemy import text
     import event_constants
@@ -478,19 +533,23 @@ def drain_outbox_once(engine, setup):
     payload = _payload(row.payload)
     ids = tuple(str(item) for item in row_ids_of(payload))
     queued_at = row.created_at.timestamp() if row.created_at is not None else time.time()
-    done = (_follow((str(row.table_name), ids, str(row.event_type), queued_at,
-                     payload.get("transaction_id"), event_constants.chain_depth_of(payload)),
-                    engine, setup)
+    done = (_follow_chain((str(row.table_name), ids, str(row.event_type), queued_at,
+                           payload.get("transaction_id"), event_constants.chain_depth_of(payload),
+                           event_constants.changed_columns_of(payload)),
+                          engine, chain or ((None, setup, None),))
             if ids else {"table": row.table_name, "event_type": row.event_type, "rows": 0,
                          "row_ids": [], "sources": {}})
     errors = [done["error"]] if done.get("error") else []
     errors += ["%s: %s" % (source, said["error"])
                for source, said in sorted((done.get("sources") or {}).items())
                if "error" in (said or {})]
+    skipped = [source for source, said in sorted((done.get("sources") or {}).items())
+               if (said or {}).get("skipped")]
+    state = (LEDGER_FAILED + " | ".join(errors) if errors
+             else LEDGER_SKIPPED + ", ".join(skipped) if skipped else LEDGER_DONE)
     with engine.begin() as connection:
         connection.execute(text("UPDATE database_outbox SET ledger_state = :state WHERE id = :id"),
-                           {"state": (LEDGER_FAILED + " | ".join(errors))[:1000] if errors
-                            else LEDGER_DONE, "id": row.id})
+                           {"state": state[:1000], "id": row.id})
     done["outbox_id"] = row.id
     return done
 
@@ -519,6 +578,20 @@ def failed_events(engine, limit=50):
     return total, [tuple(row) for row in rows]
 
 
+def skipped_by_source(engine):
+    """{source: events it skipped} over what the outbox still keeps (`LEDGER_SKIPPED`)."""
+    from sqlalchemy import text
+
+    counts = {}
+    with engine.connect() as connection:
+        for (state,) in connection.execute(text(
+                "SELECT ledger_state FROM database_outbox WHERE ledger_state LIKE :s"),
+                {"s": LEDGER_SKIPPED + "%"}):
+            for source in state[len(LEDGER_SKIPPED):].split(", "):
+                counts[source] = counts.get(source, 0) + 1
+    return counts
+
+
 def requeue_failed(engine):
     """Put every failed event back on the queue. Returns how many."""
     from sqlalchemy import text
@@ -545,6 +618,8 @@ def main(argv=None) -> int:
         return 0
     total, rows = failed_events(engine)
     print("따라갈 일 %d · 실패 %d" % (outbox_depth(engine), total))
+    for source, count in sorted(skipped_by_source(engine).items()):
+        print("  건너뜀 %s %d 사건 — 그 소스가 읽는 칸이 안 바뀜" % (source, count))
     for outbox_id, table, event_type, state in rows:
         print("  %s %s %s — %s" % (outbox_id, table, event_type, state[len(LEDGER_FAILED):]))
     if total > len(rows):

@@ -1,5 +1,168 @@
 # 지금 돌리면 되는 것
 
+> ## [10-03] **원장 세상 — 운영 세상 한 칸 · 세상마다 «밑에 깔 세상» (총괄 e1f54cd72 · e67ef53f3 · 86d5061a0 · 2bb20ff56) — 이주 «불필요» · 재기동 «필요»(서버 + 워커 — 위 절과 같은 재기동이면 한 번)**
+>
+> ```
+> 무엇이 바뀌나  세상 이름 없이 읽고 쓰는 자리 전부(원장 후속 · 걷기 · 그리드 원자 보기 · 선언 읽기 · census)가 «운영 세상»을 따른다
+>              원장 후속은 소스마다 운영 세상의 사슬에서 «그 소스를 말하는 세상»에 쓴다 — 운영 = 기본이면 오늘과 같다
+>              배치 파일 config/ontology_worlds/worlds.json 이 없으면 운영 = 기본 · 가지의 밑 = 기본 (오늘 그대로)
+> 확인         GET /admin/ontology-explorer/worlds
+> 뜻           "operating": "default" 이면 오늘과 같다 · "beneath" 는 세상마다 밑 사슬(위 -> 아래) · "history" 는 누가 언제 바꿨나
+> 운영 바꾸기   PUT /admin/ontology-explorer/worlds/operating   본문 {"world": "<이름>"}   (엄격 관리자 토큰 · X-User 머리가 이력의 by)
+>              되돌리기 = 같은 PUT 에 "default"
+> 되돌린 뒤     그동안 그 세상만 따라간 소스는 기본 세상에서 «Edited, not followed» 로 잡힌다 — 소스마다
+>   python -m ledger census --source <소스>                       (사람의 census 가 어긋남을 센다)
+>   python -m ledger.backfill --source <소스> --drifted            (미리보기)
+>   python -m ledger.backfill --source <소스> --drifted --apply    (그 행만 다시 번역)
+> 급할 때       worlds.json 의 "operating" 을 "default" 로 고치거나 파일을 지운다 -> 다음 요청 · 다음 후속 배치부터 기본
+> ```
+
+---
+
+> ## [10-03] **합쳐져 사라진 행의 층 · 덮어쓰기 행도 같이 지운다 (소유자 10-03 · 총괄 a13fcf00c) — 이주 «불필요» · 재기동 «필요»(위 절과 같은 재기동이면 한 번)**
+>
+> ```
+> 무엇이 바뀌나  두 행이 한 키로 합쳐질 때(쓰기 · 핀 · rebuild_blank_business_keys --apply) 지워지는 행의 cell_sources · cell_overwrites 행도 지운다
+>              전: 그 행의 층과 덮어쓰기가 행 없는 row_id 아래 남았다 — 아무도 안 읽음
+> 운영에 쌓인 것  표마다, 먼저 센다 (PG)
+>   SELECT 'cell_sources' AS side, count(*) FROM cell_sources m
+>    WHERE m.table_name = '<표>' AND NOT EXISTS (SELECT 1 FROM "<표>" r WHERE r.row_id = m.row_id)
+>   UNION ALL
+>   SELECT 'cell_overwrites', count(*) FROM cell_overwrites m
+>    WHERE m.table_name = '<표>' AND NOT EXISTS (SELECT 1 FROM "<표>" r WHERE r.row_id = m.row_id);
+> 뜻           행이 없는 row_id 의 층 · 덮어쓰기 — 병합(7월부터)과 오늘 --apply 의 병합이 남긴 것. 값은 이미 임자 행에 있다
+> 지우기        같은 조건으로 (센 뒤에)
+>   DELETE FROM cell_sources m WHERE m.table_name = '<표>' AND NOT EXISTS (SELECT 1 FROM "<표>" r WHERE r.row_id = m.row_id);
+>   DELETE FROM cell_overwrites m WHERE m.table_name = '<표>' AND NOT EXISTS (SELECT 1 FROM "<표>" r WHERE r.row_id = m.row_id);
+> 급할 때       git revert <이 커밋> -> 재기동 (되돌리면 병합이 다시 층을 남긴다 · 지운 행은 돌아오지 않는다)
+> ```
+
+---
+
+> ## [10-03] **같은 데이터를 다시 써도 행이 하나 더 생기거나 합쳐지지 않고, 합쳐진 껍데기 행은 표에 안 남는다 (총괄 e243d6abf ③ · d5cf3a954 · 829e3fe20 ④) — 이주 «불필요» · 재기동 «필요»(run_app.bat 전체 — 아래 절의 보류도 이것으로 풀린다)**
+>
+> ```
+> 무엇이 바뀌나  ③ 조합키를 지을 때 각 조각을 그 칸이 저장하는 철자로 바꾼 뒤 잇는다
+>                숫자 "1.0" · "01" · 1.0 -> 1   시각 -> 세션 존 벽시계 'YYYY-MM-DD HH:MM:SS'(마이크로초가 있으면 .ffffff)
+>                전: 페이로드 철자로 지은 키와 저장된 값으로 다시 지은 키가 달라, 같은 행을 두 번 쓰면 껍데기 행이 생기고 합쳐졌다
+>              ④ 이 배치에서 새로 만든 행이 병합되면 그 행은 표에 들어가지 않는다
+>                전(fb9a0b649 만 재기동한 경우): 층이 하나도 없는 껍데기 행이 남았다
+> 순서 (표마다)  ① 미리보기 — 읽기 전용, 아무것도 안 씀
+>   python server/scripts/rebuild_blank_business_keys.py --table <표>
+>              ② 재기동
+>              ③ 고치기 — 키와 업무키 칸을 새 철자로 · 부딪히는 행은 그 키를 가진 행에 합침 · 행마다 감사 줄
+>                 끝에 「고친 행 N / 미리보기 N · 합친 행 M / 부딪힘 M」 — 두 쌍이 같아야 한다
+>   python server/scripts/rebuild_blank_business_keys.py --table <표> --apply --by <이름>
+>              ④ 미리보기 다시 — rebuildable 0 · collides 0 이어야 한다
+> 뜻           rebuildable  옛 철자 키를 가진 행 — 고치기 전에 같은 데이터가 오면 그 행을 못 찾고 «새 행이 하나 더» 생긴다
+>              「키가 바뀌는 행 - 어느 조각」  number · datetime = 그 조각의 철자 때문 · not_iso = ISO 로 안 읽히는 시각 글자(그대로 둔다)
+>                                            split = 저장 키가 조각 수대로 안 나뉨(구분자가 값 안에 있음)
+>              collides     다시 지으면 다른 행과 같은 키 — --apply 가 그 키를 가진 행에 합친다 · 🔴 되돌릴 수 없다
+>                           (견본 「이 행 -> 그 키를 가진 행 · 다시 지은 키」 · 셋 이상이면 row_id 순으로 하나로)
+>                           앞 판(5416d3020)으로 ③ 을 이미 돌렸다면 남은 collides 가 있다 — 이 판에서 ③ 을 한 번 더 돌려 합친다
+> 유령 행       fb9a0b649 로 이미 재기동했다면만 — 키가 있는데 층이 하나도 없는 행 (PG, 표마다)
+>   SELECT count(*) FROM "<표>" r
+>    WHERE r.business_key_val IS NOT NULL
+>      AND NOT EXISTS (SELECT 1 FROM cell_sources s WHERE s.table_name = '<표>' AND s.row_id = r.row_id);
+>              0 이 아니면 그 행의 값은 임자 행으로 이미 넘어가 있다 — 지울지는 총괄에게 올린다(이 착지는 지우지 않는다)
+> 세션 존       psql 에서 SHOW TimeZone;  -> 'Asia/Seoul' 같은 이름이어야 한다
+>              파이썬이 못 읽는 이름이면 시각 조각은 고쳐지지 않는다(naive 는 벽시계 그대로, offset 붙은 것은 UTC 로 적혀 둘이 갈린다)
+> 급할 때       git revert <이 커밋> -> 재기동 (되돌리면 같은 행 두 번 쓰기가 다시 껍데기 · 합치기로 간다)
+> ```
+
+---
+
+> ## [10-03] **병합과 쓰기가 한 배치에 섞여도 인제션이 터지지 않고, 층의 원천 행(origin_row_id)을 잃지 않는다 (총괄 1495534c9) — 이주 «불필요» · 🔴 재기동 «보류»**
+>
+> ```
+> 🔴 지금 재기동하지 않는다 (총괄 829e3fe20) — 이 커밋만으로 재기동하면, 숫자 칸에 "1.0" 처럼 저장 철자와 다르게
+>    온 같은 데이터를 두 번 쓸 때 인제션 오류 대신 «층이 하나도 없는 껍데기 행»이 표에 남는다
+>    재기동은 키 철자(총괄 e243d6abf ③) + 껍데기 행 지우기(④)가 함께 착지한 뒤 한 번 — 그 절이 이 위에 올라온다
+> 무엇이 바뀌나  키 조각이 다른 행의 키가 되어 병합이 나는 쓰기와 보통 쓰기가 한 배치에 있으면
+>              전: CompileError「origin_row_id is explicitly rendered as a boundparameter」로 배치 실패, 또는
+>                  오류 없이 그 청크 전부의 origin_row_id 가 NULL — 09-16 부터
+>              뒤: 오류 0 · 쓰기의 origin 남음 · 병합이 넘겨받은 층은 껍데기 행 층의 origin 을 그대로 가짐
+> 재기동 뒤     인제션 로그에 위 CompileError 가 더 안 나와야 한다
+> 세는 SQL     조용히 잃었을 수 있는 체인 층 (PG, 표마다)
+>   SELECT table_name,
+>          count(*) FILTER (WHERE source_name = 'chain_ingestion') AS chain_layers,
+>          count(*) FILTER (WHERE source_name LIKE 'chain_ingestion (%') AS merged_chain_layers
+>     FROM cell_sources
+>    WHERE origin_row_id IS NULL AND source_name LIKE 'chain_ingestion%'
+>      AND ingested_at >= '2026-09-16'
+>    GROUP BY table_name ORDER BY 2 DESC;
+> 뜻           원천 행 하나를 못 대는 체인 쓰기도 NULL 이라, 이 수는 «잃었을 수 있는» 상한이다
+>              NULL 인 칸은 원천 행이 지워져도 거둬지지 않는다(그 층이 남는다)
+>              층 이름으로는 못 되살린다 — 병합 층의 괄호 속은 합쳐진 행의 키와 행 id 앞 6자이지 원천 행이 아니다
+>              같은 값을 다시 써도 층은 다시 쓰이지 않아(값이 같으면 손대지 않음) 리플레이로도 안 채워진다
+>              그 원천 행이 바뀌어 새 값이 오면 그때 채워진다
+> 급할 때       git revert <이 커밋> -> 재기동 (되돌리면 섞인 배치가 다시 실패한다)
+> ```
+
+---
+
+> ## [10-03] **table_config 를 다시 쓰는 스크립트 둘이 운영자가 적은 칸을 지우지 않는다 (총괄 338abb9f3) — 이주 «불필요» · 재기동 «불필요»(명령줄 도구)**
+>
+> ```
+> 무엇이 바뀌나  install_product_tables.py --overwrite-drift — 제품이 말하는 칸만 되돌리고 group · kind · indexes · 더한 열은 남김
+>              table_config_from_schema.py --merge     — 시트에 있는 표는 column_types · display_columns 만 바꾸고 나머지 칸은 그대로
+>                                                        그 두 칸도 더하고 고칠 뿐 안 지움 — 시트에 없는 열은 남고(보고 「시트에 없음, 남겨 둠」) · 순서 · 숨긴 열 그대로 · 새 열은 끝에
+> 확인         python server/scripts/install_product_tables.py            (드라이런, 아무것도 안 씀)
+> 뜻           DRIFT 줄의 extra 는 현장이 더한 칸 — --overwrite-drift 로도 지워지지 않는다 · missing / changed 만 되돌아간다
+> 급할 때       없음 — 두 스크립트 다 쓰기 전에 백업을 남긴다(install) · --merge 는 -o 초안 파일에만 쓴다
+> ```
+
+---
+
+> ## [10-03] **두 행이 한 키로 합쳐질 때 — 핀은 터지지 않고, 사람 값은 사람이 쓴 칸에서만 이긴다 (총괄 6e041f4cb ①) — 이주 «불필요» · 재기동 «필요»(run_app.bat 전체, 위 절들과 같은 재기동이면 한 번)**
+>
+> ```
+> 무엇이 바뀌나  셀 핀이 키 조각의 보이는 값을 바꿔 키가 다른 행의 것과 같아지면 → 그 행에 합침(쓰기에서 부딪힐 때와 같은 한 병합)
+>              전: 합칠 칸이 하나라도 있으면 오류(NameError: changed_cols) · 핀 전체가 되돌려짐 — 2026-07-17 부터
+>              합칠 때 사람이 쓴 칸은 «이번에 쓴 칸»뿐(핀 = 핀 걸린 칸, 쓰기 = 그 항목의 칸) — 임자 행에 사람이 적은 값은 남는다
+>              전: 사람이 키 조각만 고친 쓰기도 그 항목의 모든 칸을 사람 것으로 세어, 임자 행의 사람 값을 기계 값으로 덮을 수 있었다
+> 확인         그리드에서 키 조각 칸의 숨은 층을 핀으로 골라 다른 행의 키와 같게 → 행이 하나로, 오류 없음
+> 뜻           합쳐진 행: 핀 걸린 칸 = 핀이 고른 층 · 임자 행에 사람이 적은 값 = 그대로 · 지운 쪽 행에 사람이 적은 값 = 넘어옴
+>              사람이 쓴 칸이 임자 행의 사람 값과 부딪히면 쓴 값이 보이고 옛 값은 그 칸의 user (old_exist_…) 층
+>              그 전에 «먹지 않은» 핀이 있었을 수 있다 — 그 칸은 핀 전 층을 보이는 채. 다시 핀하면 이제 합쳐진다
+> 급할 때       git revert <이 커밋> -> 재기동 (되돌리면 핀 충돌은 다시 오류로 되돌려짐)
+> ```
+
+---
+
+> ## [10-03] **원장이 «소스가 안 읽는 칸»만 바뀐 수정을 다시 번역하지 않는다 (총괄 «소스가 안 읽는 칸» · 6e041f4cb ②) — 이주 «불필요» · 재기동 «필요»(run_app.bat 전체, 위 절들과 같은 재기동이면 한 번)**
+>
+> ```
+> 무엇이 바뀌나  그리드 · 체인 · 파서가 고친 칸을 사건에 싣는다(오늘도) — 그 칸 중 어느 것도 원장 소스가 읽는 칸이 아니면 그 소스를 건너뜀
+>              다시 번역은 오늘처럼: 읽는 칸이 섞임 · 칸을 안 말하는 사건 · 새 행 · 지움 · 파이썬 맵퍼 소스
+> 확인         python -m ledger followup        (server 폴더)
+>              뜻: 「따라갈 일 N · 실패 M」 아래 「건너뜀 <소스> N 사건」 — 아웃박스가 지닌 동안(보관 7일) 그 소스가 건너뛴 사건 수
+>              체인 워커 로그  [LedgerFollowUp] lap: … · skipped <소스>=<사건 수> (no column it reads changed)
+> 뜻           원장에 있어야 할 값이 안 바뀌었는데 그 소스가 건너뜀에 있으면: 그 값의 칸을 선언(bind · read)이 이름 부르지 않는 것 — 선언을 고친 뒤
+>                 python -m ledger.backfill --source <소스> --whole-source --apply     (server 폴더, 그 소스를 다시 번역)
+> 급할 때       git revert <이 커밋> -> 재기동 (되돌릴 이주 없음 — 칸에 남은 «done · skipped» 는 «done» 과 같이 읽힌다)
+> ```
+
+---
+
+> ## [10-03] **조합키만 선언한 표도 키 조각이 바뀌면 키를 다시 짓는다 (총괄 a3cd662d9 · a61d32f4f ㄱ) — 이주 «불필요» · 재기동 «필요»(run_app.bat 전체, 위 절들과 같은 재기동이면 한 번)**
+>
+> ```
+> 무엇이 바뀌나  business_key 칸 없이 composite_key_source 만 선언한 표 — 키 조각을 고치면 키를 다시 짓고 · 비우면 NULL · 남의 키와 부딪히면 병합
+>              그리드 «행 추가» 빈 행에 키 칸을 채우면 키가 생긴다(전: 안 생겨서 다음 키 쓰기가 행을 하나 더 만듦)
+> 확인         조합키만 선언한 표에서 «행 추가» -> 키 칸을 다 채움 -> 같은 키로 파일 · 체인이 한 번 쓰면 행이 하나 그대로
+>              이 병이 남긴 행 수(읽기만):
+>              SELECT count(*) FROM <표> WHERE business_key_val IS NULL AND <조각 칸마다 IS NOT NULL AND btrim(칸::text) <> ''>
+>              박스 오늘: 키를 선언한 표 32 · 겹친 키 그룹 0 · 이 병의 행 0
+> 뜻           0 이 아니면 그 행은 키 없이 남은 것 — 고치는 것은 소유자가 돌린다(지우거나 접는 명령, 기본은 읽기만):
+>                 python server/scripts/rebuild_blank_business_keys.py --table <표>            (키를 다시 조립 — 부딪히는 키는 collides 로 냄)
+>                 python server/scripts/dedupe_business_key_rows.py --table <표>               (그다음 겹친 행 접기 — 값이 다른 그룹은 건너뜀)
+>              각각 --apply 를 붙여야 쓴다. 순서는 rebuild 먼저
+> 급할 때       git revert <이 커밋> -> 재기동 (되돌릴 이주 없음)
+> ```
+
+---
+
 > ## [10-03] **원천 행을 지우면 «가려진 값»이었어도 보류를 다시 센다 (총괄 e11bb4de0 (나)) — 이주 «불필요» · 재기동 «필요»(체인 워커 — 위 절들과 같은 재기동이면 한 번)**
 >
 > ```

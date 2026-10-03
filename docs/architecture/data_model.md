@@ -382,6 +382,7 @@ SOURCE_PRIORITY = { user: 0, collision_merge: 1, pipeline_parser: 2, custom_scri
   - 원천에 별도의 합성 키 물리 컬럼이 **없으면 `business_key`를 생략**합니다. 조립값은 프레임워크 소유 `business_key_val`에만 저장되고 원천 컬럼 집합은 바뀌지 않습니다.
   - 제품 소유 표처럼 합성 키 물리 컬럼(`map_pk`, `cell_key`)이 실제로 있으면 `business_key`도 함께 선언하며, 그 컬럼에도 같은 조립값을 씁니다.
   - 예: 원천 `bonding_map`은 `(base_wafer_id, base_x, base_y)`만 선언하고, 제품 소유 `wafer_map_metadata`는 `map_pk = target_table_map_id`를 함께 저장합니다.
+  - 🆕 [2026-10-03 총괄 a61d32f4f ㄱ] **키 조각이 바뀌면 키를 다시 짓는 기제는 두 모양에 같습니다** — 조각을 고치면 다시 짓고, 비우면 NULL, 남의 키와 부딪히면 §4 병합. `business_key` 칸이 없는 표는 그 칸만 안 씁니다. 자리는 둘: `crud.apply_row_update_internal` 의 「2. 복합 비즈니스 키 실시간 재계산」 · `crud.set_cell_manual_priority_batch`(핀으로 보이는 조각이 바뀔 때) — 둘 다 `crud.rebuilt_business_key`(조각이 짓는 키) · `crud.put_business_key`(그 칸이 있는 표인지 묻는 «한» 자리)를 지난다. 부딪히면 둘 다 `crud._merge_into_key_holder`(§4 의 «한» 병합 본문)를 부른다 — 핀 자리의 사본은 없는 이름을 써 합칠 칸이 있으면 터지고 있었다(07-17 ~ 10-03). 전에는 둘 다 `business_key` 칸이 있는 표만 들어가서, 조합키만 선언한 표는 id 로 부르며 조각을 채운 행(이름 붙인 id 로 만들기 · 그리드 새 행)이 키 없이 남고 다음 키 쓰기가 행을 하나 더 만들었습니다.
 - `map_key_columns` — 맵 저장(`replace_map`) 시 어떤 행 집합을 purge할지 범위 결정.
 
 ### 3.1 「업무 키 하나에 행 하나」는 **데이터베이스가 강제한다** · 2026-08-07 D3
@@ -494,6 +495,7 @@ SOURCE_PRIORITY = { user: 0, collision_merge: 1, pipeline_parser: 2, custom_scri
 - 충돌 대상 행에 유효한 사용자 오버라이트가 있고 이번 요청에서 그 셀을 직접 고치지 않았다면 → **기존 값 보존**.
 - 원천 소스명은 하드코딩 교체하지 말고 **원본 소스명을 계승**(`_load_metadata_row_cell`).
 - 병합 흔적은 `CellOverwrite.updated_by="collision_merge"`로 이중 추적.
+- 🆕 [10-03 총괄 6e041f4cb ①] 병합 본문은 `crud._merge_into_key_holder` «하나» — 쓰기(키 조각을 쓴 행)와 핀(핀이 키 조각의 보이는 값을 바꾼 행) 둘 다 이것을 부르고, 행 바꿔 들기는 부르는 쪽이 한다. «사람이 쓴 칸»(`human_columns`)도 부르는 쪽이 준다 — 이번에 사람이 «쓴» 칸뿐: 쓰기는 사람이 쓴 항목이 실은 칸, 핀은 핀 걸린 칸(핀은 층 고르기이지 사람 값이 아니다). 나머지 칸은 그 층을 쓴 이로 읽으므로 키 임자 행의 사람 값은 남는다(10-03 전 쓰기는 사람 항목의 «모든 칸»을 사람 것으로 셌다). ⚠️ 지운 행(껍데기)이 DB 에 이미 갖고 있던 층 · 덮어쓰기 행은 지우지 않는다 — 키 임자 행에 «합친 이름»으로 복사될 뿐(두 자리 다 그랬고 그대로).
 
 전체 규율: [data_preservation_and_signature_change](../guide/data_preservation_and_signature_change.md) **(필독)**
 

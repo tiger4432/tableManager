@@ -50,6 +50,7 @@ from .setup_bundle import (
     LedgerSetupBundle,
     LedgerSetupValidationError,
     bundle_readiness_errors,
+    executes_the_bindings,
     load_physical_catalog,
     load_setup_bundle,
     require_ready_bundle,
@@ -63,8 +64,10 @@ from .setup_registry import (
 
 #: The default world's declaration root, from the one seat - through `paths`, like the
 #: catalogue beside it (총괄 e61194b1a ㉥). A stack that sets `ASSY_DATA_ROOT` reads its OWN
-#: declaration; one that does not reads `server/config/ontology`, as before.
-DEFAULT_ONTOLOGY_ROOT = Path(schema.world_names().declaration_root)
+#: declaration; one that does not reads `server/config/ontology`, as before. The default BY
+#: NAME: a seat that names no root asks `schema.world_names()` - the operating world - when it
+#: is called (총괄 e67ef53f3), not this.
+DEFAULT_ONTOLOGY_ROOT = Path(schema.world_names(schema.DEFAULT_WORLD).declaration_root)
 
 
 def physical_catalog_path() -> Path:
@@ -197,7 +200,7 @@ def _unscored_self_edge_sentences(sources):
         mapper = source.get("map")
         implementation = (mapper.get("implementation_id")
                           if isinstance(mapper, Mapping) else None)
-        if implementation == "declarative-role":
+        if executes_the_bindings(implementation):
             continue
         profile = source.get("bind")
         mappings = profile.get("mappings") if isinstance(profile, Mapping) else None
@@ -353,7 +356,7 @@ def _resolve_refused_declarations(root_path: Path, catalog: Mapping[str, Any],
 
 
 def load_setup(
-    root: str | Path = DEFAULT_ONTOLOGY_ROOT,
+    root: str | Path | None = None,
     *,
     catalog: Mapping[str, Any] | None = None,
 ) -> LedgerSetup:
@@ -369,7 +372,8 @@ def load_setup(
     in production that is one mistake standing fourteen ledgers up. The broken declaration
     now falls alone and BY NAME; see `_resolve_refused_declarations`.
     """
-    root_path = Path(root).resolve(strict=True)
+    root_path = Path(schema.world_names().declaration_root if root is None
+                     else root).resolve(strict=True)
     resolved_catalog = (
         dict(live_physical_catalog()) if catalog is None else dict(catalog))
     refused: Mapping[str, Any] = {}
@@ -399,7 +403,7 @@ def load_setup(
 def setup_from_document(
     document: Mapping[str, Any],
     *,
-    config_root: str | Path = DEFAULT_ONTOLOGY_ROOT,
+    config_root: str | Path | None = None,
     catalog: Mapping[str, Any] | None = None,
     refused_sources: Mapping[str, Any] | None = None,
 ) -> LedgerSetup:
@@ -422,7 +426,8 @@ def setup_from_document(
         bundle, trusted_implementations(), catalog=resolved_catalog,
         refused_sources=refused_sources)
     return LedgerSetup(
-        config_root=Path(config_root),
+        config_root=Path(schema.world_names().declaration_root if config_root is None
+                         else config_root),
         bundle=bundle,
         snapshot=snapshot,
         mappers=role_mapper_registry(),
@@ -533,7 +538,7 @@ def _resolve_cli_root(value: str | None) -> Path:
     word "root" does not obviously exclude.
     """
     if value is None:
-        return DEFAULT_ONTOLOGY_ROOT
+        return Path(schema.world_names().declaration_root)
     candidate = Path(value).expanduser()
     if not candidate.exists():
         raise LedgerSetupError(
@@ -556,8 +561,8 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     `--root` exists because the setup guide tells an operator to verify BEFORE editing,
     and without it the only way to verify a draft was to overwrite the live file first —
-    exactly what the guide forbids. Omitting it keeps the previous behaviour: the live
-    `DEFAULT_ONTOLOGY_ROOT`. The report already carries `config_root`, so the answer says
+    exactly what the guide forbids. Omitting it reads the operating world's root. The
+    report already carries `config_root`, so the answer says
     which file it is about and a draft run cannot be mistaken for a live one.
     """
     import argparse
@@ -568,8 +573,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                     "write-free readiness report. Nothing is written or migrated.")
     parser.add_argument(
         "--root", default=None, metavar="PATH",
-        help=f"directory holding {CONFIG_FILENAME}. Default: the live config root "
-             f"({DEFAULT_ONTOLOGY_ROOT.as_posix()}). Use this to verify a DRAFT "
+        help=f"directory holding {CONFIG_FILENAME}. Default: the operating world's "
+             f"config root. Use this to verify a DRAFT "
              f"without touching the live file.")
     args = parser.parse_args(list(argv) if argv is not None else None)
 

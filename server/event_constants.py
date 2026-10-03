@@ -491,6 +491,22 @@ def cascade_of(payload) -> bool:
     return isinstance(payload, dict) and payload.get(CASCADE_KEY) is True
 
 
+def changed_columns_of(payload):
+    """The columns an event says its write set (`database.stage_collapsed_event`'s `columns`), or
+    `None` when it does not say - a per-row event, or one staged before the key existed."""
+    value = payload.get("columns") if isinstance(payload, dict) else None
+    return value if isinstance(value, list) else None
+
+
+def columns_meet(wanted, changed) -> bool:
+    """Does a write that set `changed` reach `wanted`?  🔴 `None` IS 「모른다」, NOT 「nothing」:
+    it answers yes, so a reader that cannot tell never skips. The one question the chain (a rule's
+    wake columns) and the ledger follow-up (the columns a source reads) both ask."""
+    if changed is None:
+        return True
+    return bool(set(wanted) & set(changed))
+
+
 def written_by_of(payload) -> frozenset:
     """The declarations that wrote what this event names - empty when it does not say."""
     value = payload.get(WRITTEN_BY_KEY) if isinstance(payload, dict) else None

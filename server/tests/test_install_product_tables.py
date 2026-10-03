@@ -364,21 +364,45 @@ class TestDrift:
         assert code == 1, "a business-key change must never be classed as additive"
         assert "changed  composite_key_source" in report
 
-    def test_overwrite_drift_flag_replaces_the_entry(self, tmp_path):
+    def test_overwrite_drift_puts_back_the_product_and_keeps_what_the_site_added(self, tmp_path):
+        """총괄 338abb9f3: --overwrite-drift used to replace the WHOLE entry, so every cell an
+        operator had added went with the drift, without a word."""
+        site_cells = {"group": "maps", "kind": "table", "indexes": [["split_desc"]],
+                      "smart_paste": {"enabled": True}, "decision_key": ["split_desc"]}
+
         def mutate(cfg):
             cfg["map_split_registry"]["composite_key_separator"] = "_"
             cfg["map_split_registry"]["column_types"]["site_tag"] = "string"
+            cfg["map_split_registry"]["display_columns"].append("site_tag")
+            cfg["map_split_registry"].update(site_cells)
         path = _config_with_modified_product_entry(tmp_path, mutate)
 
         code, report = run(path, apply_mode=True, overwrite_drift=True)
 
         assert code == 0, report
         parsed = json.loads(read_bytes(path).decode("utf-8"))
-        assert parsed["map_split_registry"] == product_tables.PRODUCT_TABLES["map_split_registry"]
-        assert ("site_tag" not in parsed["map_split_registry"]["column_types"]), \
-            "a full replacement drops extras"
+        entry = parsed["map_split_registry"]
+        product = product_tables.PRODUCT_TABLES["map_split_registry"]
+        assert entry["composite_key_separator"] == product["composite_key_separator"]
+        assert entry["column_types"]["site_tag"] == "string", "the column the site added stays"
+        assert entry["display_columns"] == product["display_columns"] + ["site_tag"], \
+            "the column the site appended stays shown"
+        assert {k: entry.get(k) for k in site_cells} == site_cells, "the cells the site added stay"
+        assert {k: entry[k] for k in product if k not in ("column_types", "display_columns")} == \
+            {k: v for k, v in product.items() if k not in ("column_types", "display_columns")}
         assert parsed["pti_site_log"] == {"business_key": "lot_id"}, "site entry untouched"
         assert len(backups(tmp_path)) == 1
+
+    def test_an_entry_whose_only_drift_is_what_the_site_added_is_not_rewritten(self, tmp_path):
+        def mutate(cfg):
+            cfg["map_split_registry"]["group"] = "maps"
+        path = _config_with_modified_product_entry(tmp_path, mutate)
+        before = read_bytes(path)
+
+        code, report = run(path, apply_mode=True, overwrite_drift=True)
+
+        assert code == 0, report
+        assert read_bytes(path) == before and backups(tmp_path) == []
 
     def test_overwrite_drift_leaves_site_entries_byte_identical(self, tmp_path):
         path = config_with_site_only(tmp_path)

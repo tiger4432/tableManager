@@ -1072,7 +1072,8 @@ def fetch_and_merge_metadata(db: Session, table_name: str, rows: list, user_cols
             out.append({
                 "row_id": (getattr(row, key_names[0], None) if len(key_names) == 1
                            else crud.compose_business_key(
-                               table_name, [getattr(row, name, None) for name in key_names])),
+                               table_name, [getattr(row, name, None) for name in key_names],
+                               key_names)),
                 "table_name": table_name,
                 "data": cells,
                 "created_at": to_local_str(getattr(row, "created_at", None)),
@@ -1229,6 +1230,7 @@ def list_tables():
     than present with an empty list -- "no map key" and "a map key of nothing" are not the
     same sentence, and `tables` itself is untouched for every existing reader.
     """
+    from ledger import schema as ledger_schema
     from ledger.setup_bundle import catalog_kind
 
     return {
@@ -1255,6 +1257,11 @@ def list_tables():
         "groups": {name: crud.clean_str_value(entry.get("group"))
                    for name, entry in crud.TABLE_CONFIG.items()
                    if isinstance(entry, dict) and not crud.is_blank_value(entry.get("group"))},
+        # The tables each ledger world has its own of, the worlds and the operating one (총괄
+        # 2bb20ff56) - the grid's world tab reads these rather than asking by a table's name.
+        "per_world": [name for name in (ledger_schema.ATOM_ROWS_VIEW,) if name in crud.TABLE_CONFIG],
+        "worlds": [ledger_schema.DEFAULT_WORLD, *ledger_schema.worlds()],
+        "operating": ledger_schema.operating_world(),
     }
 
 def get_deleted_row_business_key(db: Session, table_name: str, row_id: str):
@@ -2310,6 +2317,36 @@ def _table_data_response(payload, table_name: str):
         return JSONResponse(content=jsonable_encoder(payload))
 
 
+#: {(relation, its columns): the grid model bound to one world's copy of a per-world relation}
+_WORLD_MODELS = {}
+
+
+def grid_model(table_name, world=None):
+    """The model a grid route reads `table_name` through - in `world` for a relation each world
+    has its own of (`schema.world_relation`), else the table's own. None: no such table. A
+    world that is not declared is refused by name (404)."""
+    from sqlalchemy import MetaData
+    from sqlalchemy.orm import registry
+    from ledger import schema as ledger_schema
+
+    try:
+        relation = ledger_schema.world_relation(table_name, world or None)
+    except (LookupError, ValueError) as exc:
+        raise HTTPException(status_code=404, detail={
+            "reason": "world_unknown", "world": world, "message": str(exc)})
+    model = models.DYNAMIC_TABLES.get(table_name)
+    if model is None or relation == table_name:
+        return model
+    key = (relation, tuple(model.__table__.columns.keys()))
+    if key not in _WORLD_MODELS:
+        space, _, name = relation.rpartition(".")
+        table = model.__table__.to_metadata(MetaData(), schema=space, name=name)
+        bound = type(model.__name__, (object,), {"__table__": table})
+        registry().map_imperatively(bound, table)
+        _WORLD_MODELS[key] = bound
+    return _WORLD_MODELS[key]
+
+
 def narrowed_table_query(db, table_name, table_model, *, q=None, cols=None,
                          transaction_id=None, filters=None,
                          enrichment_queue=None, enrichment_queue_scope=None,
@@ -2366,6 +2403,9 @@ def narrowed_table_query(db, table_name, table_model, *, q=None, cols=None,
     # 0% with everything answered, which is N36 wearing the other face.
     if enrichment_queue:
         cache_key_parts.append(f"eq:{enrichment_queue}:{enrichment_queue_scope or ''}")
+    # One world's copy of a per-world relation counts its own rows (`grid_model`).
+    if table_model.__table__.schema:
+        cache_key_parts.append(f"in:{table_model.__table__.schema}")
     # 🔴 키 철자는 `build_count_cache_key` 하나뿐이다. 여기서 `"|".join(...)`을 다시
     #    쓰면 무효화 쪽 판정과 갈라져 여덟 개 호출 지점이 전부 죽는다(그 사고의 재발).
     return query, build_count_cache_key(table_name, *cache_key_parts)
@@ -2425,6 +2465,7 @@ def get_table_data(
     enrichment_queue: str = None,       # [2026-08-05] 이름으로 요청하는 큐 술어 (규칙명)
     enrichment_queue_scope: str = None, # queue(기본) | keyed | blank_key | resolved
     defer_total: bool = False,          # [2026-09-02] 세는 것을 GET .../data/count 로 미룬다
+    world: str = None,                  # 세상마다 있는 표를 그 세상에서 (총괄 2bb20ff56)
     db: Session = Depends(get_db)
 ):
     """
@@ -2449,7 +2490,7 @@ def get_table_data(
     t_target = 0.0
     t_count = 0.0
     
-    table_model = models.DYNAMIC_TABLES.get(table_name)
+    table_model = grid_model(table_name, world)
     if not table_model:
         raise HTTPException(status_code=404, detail=f"Table '{table_name}' not found")
         
@@ -2691,6 +2732,7 @@ def get_table_data_count(
     filters: str = None,
     enrichment_queue: str = None,
     enrichment_queue_scope: str = None,
+    world: str = None,
     db: Session = Depends(get_db)
 ):
     """`GET .../data?defer_total=true`가 미룬 그 수. **정확한 전수 count다.**
@@ -2707,7 +2749,7 @@ def get_table_data_count(
     보여줄지를 정할 뿐 몇 개인지를 바꾸지 않으므로 받지 않는다. 받으면 「정렬을 바꿨더니
     개수가 달라졌다」가 물어볼 수 있는 질문이 된다.
     """
-    table_model = models.DYNAMIC_TABLES.get(table_name)
+    table_model = grid_model(table_name, world)
     if not table_model:
         raise HTTPException(status_code=404, detail=f"Table '{table_name}' not found")
 
@@ -2817,9 +2859,9 @@ async def delete_rows_batch_endpoint(table_name: str, batch: schemas.RowDeleteBa
     return {"status": "success", "deleted_count": deleted_count, "transaction_id": transaction_id}
 
 @app.post("/tables/{table_name}/row_ids/target")
-def get_target_row_ids(table_name: str, req: schemas.TargetedRowIdRequest, transaction_id: str = None, db: Session = Depends(get_db)):
+def get_target_row_ids(table_name: str, req: schemas.TargetedRowIdRequest, transaction_id: str = None, world: str = None, db: Session = Depends(get_db)):
     """Targeted RowID Scanner: 오프셋 리스트 기반 초고속 UUID 추출"""
-    table_model = models.DYNAMIC_TABLES.get(table_name)
+    table_model = grid_model(table_name, world)
     if not table_model:
         raise HTTPException(status_code=404, detail=f"Table '{table_name}' not found")
     refuse_row_address(table_name)
@@ -2924,6 +2966,7 @@ def export_table_csv(
     order_desc: bool = False,
     transaction_id: str = None, # [NEW] 트랜잭션 필터
     filters: str = None, # [NEW] 필터 지원
+    world: str = None,
     db: Session = Depends(get_db)
 ):
     """
@@ -2935,7 +2978,7 @@ def export_table_csv(
     반쯤 쓰인 파일도 남지 않습니다. (같은 이유로 이 라우트는 컬럼이 밀린 CSV도
     내보내지 않고 500으로 거절합니다.)
     """
-    table_model = models.DYNAMIC_TABLES.get(table_name)
+    table_model = grid_model(table_name, world)
     if not table_model:
         raise HTTPException(status_code=404, detail=f"Table '{table_name}' not found")
         
@@ -3136,7 +3179,7 @@ def _map_push_ok(table_name, config):
 
 
 @app.get("/tables/{table_name}/schema")
-def get_table_schema(table_name: str, db: Session = Depends(get_db)):
+def get_table_schema(table_name: str, world: str = None, db: Session = Depends(get_db)):
     """
     테이블의 컬럼 스키마 정보를 반환합니다.
     """
@@ -3146,7 +3189,7 @@ def get_table_schema(table_name: str, db: Session = Depends(get_db)):
 
     if not columns:
         # 데이터에서 동적 추출 (Fallback)
-        table_model = models.DYNAMIC_TABLES.get(table_name)
+        table_model = grid_model(table_name, world)
         if table_model:
             columns = [c.name for c in table_model.__table__.columns if c.name not in ["row_id", "business_key_val", "created_at", "updated_at", "is_graph_synced", "needs_graph_rollback", "graph_synced_at"]]
         else:
@@ -3164,7 +3207,7 @@ def get_table_schema(table_name: str, db: Session = Depends(get_db)):
     # `row_id` joins them at the end (owner 10-02, lead e67ef53f3): the grid finds a row by it -
     # where the relation's model has one; a view that does not declare it has none (d692af408).
     system_cols = ["created_at", "updated_at"] + (
-        ["row_id"] if model_has_row_id(models.DYNAMIC_TABLES.get(table_name)) else [])
+        ["row_id"] if model_has_row_id(grid_model(table_name, world)) else [])
     for sc in system_cols:
         if sc not in columns:
             columns.append(sc)
@@ -3253,11 +3296,11 @@ def get_column_unique_values(
 
 
 @app.get("/tables/{table_name}/{row_id}", response_model=schemas.DataRowResponse)
-def get_row_data(table_name: str, row_id: str, db: Session = Depends(get_db)):
+def get_row_data(table_name: str, row_id: str, world: str = None, db: Session = Depends(get_db)):
     """
     특정 행의 데이터를 가져옵니다.
     """
-    table_model = models.DYNAMIC_TABLES.get(table_name)
+    table_model = grid_model(table_name, world)
     if not table_model:
         raise HTTPException(status_code=404, detail="Table not found")
     refuse_row_address(table_name)

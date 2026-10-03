@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Query
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 
 from admin.auth import require_admin_token, require_admin_token_strict
@@ -65,6 +65,44 @@ def delete_world(world: str, confirm_atoms: int | None = Query(default=None)):
             "reason": "world_not_deleted", "world": world, "message": str(exc)})
     _services.pop(world, None)
     return deleted
+
+
+def _worlds() -> dict:
+    from ledger import schema
+
+    return {"worlds": [schema.DEFAULT_WORLD, *schema.worlds()],
+            "operating": schema.operating_world(),
+            "beneath": {world: list(schema.world_names(world).beneath)
+                        for world in schema.worlds()},
+            "history": list(schema.layout().get("history", []))}
+
+
+@router.get("/worlds", dependencies=[Depends(require_admin_token)])
+def list_worlds():
+    """The worlds, the operating one, what each stands on, and who operated which when."""
+    return _worlds()
+
+
+@router.put("/worlds/operating", dependencies=[Depends(require_admin_token_strict)])
+def operate_world(request: Request, payload: dict[str, Any] = Body(...)):
+    """Every seat that names no world reads and writes `payload.world` from the next request
+    and the next follow-up batch on (총괄 e67ef53f3 ②); back = the same with the old name. Its
+    schema and view are made first, so the follow-up has somewhere to write."""
+    from database.database import engine
+    from ledger import backfill, schema
+
+    world = payload.get("world")
+    if not isinstance(world, str) or not world.strip():
+        raise HTTPException(status_code=400, detail={
+            "reason": "world_required", "message": "Name the world to operate."})
+    try:
+        schema.ensure_world(engine, schema.require_world(world))
+        backfill.refresh_world_view(engine, world)
+        schema.operate(world, request.headers.get("X-User"))
+    except (LookupError, ValueError) as exc:
+        raise HTTPException(status_code=404, detail={
+            "reason": "world_unknown", "world": world, "message": str(exc)})
+    return _worlds()
 
 
 def _refusal(exc: ConfigExplorerError | ColumnStatsError) -> HTTPException:
@@ -251,14 +289,32 @@ def create_draft(payload: dict[str, Any] = Body(...), world: str | None = Query(
 
 
 @router.post("/bootstrap", dependencies=[Depends(require_admin_token_strict)])
-def bootstrap_config(world: str | None = Query(default=None)):
+def bootstrap_config(world: str | None = Query(default=None),
+                     beneath: str | None = Query(default=None)):
     """Create the smallest config that validates, so a setup can start from nothing.
 
     A write, and the only one this screen performs without a draft -- so it is a POST the
     operator confirms, never something the screen does on its own when it notices the file
     is missing. Refuses if anything exists at the path, including a file that fails to
     parse: an unreadable config is somebody's work with a bad comma in it, not an absence.
+
+    `beneath` - a new branch's worlds to stand on, top first, comma separated (총괄
+    e67ef53f3): empty = nothing (it starts empty, no atom from below shows); not given = the
+    default. Its declaration starts as the first of them.
     """
+    if isinstance(beneath, str):
+        from ledger import schema
+
+        try:
+            stood = schema.stand(world, [name.strip() for name in beneath.split(",")
+                                         if name.strip()])
+        except LookupError as exc:
+            raise HTTPException(status_code=404, detail={
+                "reason": "world_unknown", "world": world, "message": str(exc)})
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail={
+                "reason": "world_not_stood", "world": world, "message": str(exc)})
+        _services.pop(world, None)
     try:
         made = _service_for(world).bootstrap_config()
     except ConfigExplorerError as exc:

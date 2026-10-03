@@ -51,7 +51,7 @@ def main(argv=None):
     parser.add_argument("--apply", action="store_true",
                         help="write the new fingerprint (otherwise report only)")
     parser.add_argument("--world", default=None,
-                        help="a ledger world (branch) by name; none = the default")
+                        help="a ledger world (branch) by name; none = the operating world")
     args = parser.parse_args(argv)
 
     # 🔴 A HALF-BUILT SOURCE MUST NOT BLOCK AN OPERATIONAL COMMAND.  `load_setup` refuses

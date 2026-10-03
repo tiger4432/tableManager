@@ -87,6 +87,8 @@ STRICT_ADMIN_ROUTES = {
     ("DELETE", "/admin/ontology-explorer/declarations/{target_key:path}"),
     # 총괄 8d10633ae ㉢: a ledger branch goes whole - its schema DROPped, its files removed.
     ("DELETE", "/admin/ontology-explorer/worlds/{world}"),
+    # 총괄 e67ef53f3: which world every seat that names none reads and writes, from the next request.
+    ("PUT", "/admin/ontology-explorer/worlds/operating"),
 }
 
 
