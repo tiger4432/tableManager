@@ -63659,3 +63659,25 @@ DB      스크래치 스키마 + 카나리아(ed582bd92)
 ---
 
 > **[총괄 -> 구현자] 0959b3a15 확인 — 45 통과 · 내 변이 넷 + 전에 초록이던 ADDITIVE 갈래 모두 빨강. 물음 답: 기존 항목에 display_columns 가 «없으면» 쓰지 않는다(모든 열 보임 유지). 「없음」도 사람이 둔 상태이고, 목록을 새로 쓰면 그 표에서 열이 사라진다 — «지우지 않는다»와 같은 판정. 새 표(기존 항목 없음)는 오늘처럼 시트 순서. 게이트: 시험 칸 하나(목록 없던 기존 표 -> 전후 목록 없음) · 변이 · RELEASE_LOG 같은 항목에 반 줄. 세상 짓기 사이에 작게 끼워 착지해도 된다.**
+
+---
+
+> **[총괄 -> 구현자] 🔴 긴급 — 세상 짓기 멈추고 이것 먼저. 소유자 운영: 인제션이 cell_sources origin_row_id 바인드 파라미터 오류로 실패**
+
+```
+원인(총괄이 코드로 보고 sqlite 로 재현 — scratchpad probe_ragged_sources.py)
+   쓰기 자리의 층 dict 는 09-16(e1318d28d)부터 origin_row_id 를 «항상» 싣는다
+   병합 몸통(_merge_into_key_holder)의 층 dict 둘(옛 사람 값 백업 · 껍데기 층 계승)은 그 키가 «없다»
+   한 배치에 병합과 보통 쓰기가 같이 있으면 bulk_upsert_cell_sources 의 목록이 들쭉날쭉 -> .values(chunk)
+      정렬 뒤 첫 dict 에 키가 있으면  CompileError「origin_row_id is explicitly rendered as a boundparameter」 <- 소유자가 본 것
+      첫 dict 에 키가 없으면          오류 없이 그 청크 «전부»의 origin_row_id 가 NULL 로 들어감 <- 조용한 쪽, 원천 행 지움이 그 칸을 못 거둔다
+   오늘 드러난 이유(추정, 안 잼)  조합키 표의 키 다시 짓기(4e0950f3d) · 운영의 키 변경으로 병합이 처음 자주 남
+고칠 것(한 착지)
+   ① 병합 dict 가 origin_row_id 를 싣는다 — 계승 층은 껍데기 층의 origin_row_id 그대로(old_srcs 에서), 사람 백업 · 폴백은 None
+   ② bulk_upsert_cell_sources 한 좌석에서 모든 매핑이 같은 키를 갖게 한다(빠진 origin_row_id = None) — 들쭉날쭉이 다시 생겨도 오류 · 조용한 유실 둘 다 안 난다
+   전수  cell_sources · cell_overwrites dict 를 짓는 자리 전부의 키 집합을 세어 표로(카나리아 포함). 다른 키가 또 갈리면 같은 착지
+게이트  한 배치에 쓰기 + 병합, 정렬 순서 두 가지 · sqlite · PG: 오류 0 · 쓰기의 origin_row_id 남음 · 계승 층이 껍데기의 origin 을 가짐 · ①② 각각 변이 빨강
+RUN.md   재기동 한 줄 · 운영에서 «조용한 쪽»으로 origin 을 잃은 칸을 세는 SQL 과 그 수의 뜻(층 이름에 행 id 가 있으면 되살릴 수 있는지 한 줄)
+RELEASE_LOG  사실 한 줄 — 09-16 부터 병합과 쓰기가 한 배치에 섞이면 실패하거나 origin_row_id 가 빠졌다
+끝나면 세상 짓기로 돌아간다
+```
