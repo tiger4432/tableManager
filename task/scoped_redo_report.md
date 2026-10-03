@@ -71834,3 +71834,36 @@ PG 전체                         5 failed, 281 passed, 7804 deselected, 245 war
 선언 파일이 바뀌어 그 소스의 지문이 달라져 같은 사실 원자가 하나 더 생김 — 전 1 -> 후 2 (둘 다 supersedes 없음)
 원인: run() 은 표 단위로 큐에 넣고, 기본 세상(밑 없음)은 거르는 소스가 없음(followed_by 맨 위 = None). 운영에서 몇 개인지는 안 셈
 ```
+
+---
+
+## [10-03] 152f4bb0b 착지 919ce6436 — 부팅 때 커서 지문 다시 찍기도 소스마다 말하는 세상의 커서를
+
+어느 DB · 어느 스키마 · 지운 것 — 시험만: PG assy_test 시험 스크래치 스키마 + 시험이 만드는 w_ 스키마(끝에 이름으로 DROP) · 운영 DB 안 씀 · 지운 것 0
+
+**안 찍으면 무엇이 틀리나 (한 줄)**
+```
+운영 = W 이면 기본이 말하는 소스의 커서는 기본에 있는데(8b81e79a0) 부팅 다시 찍기는 W 커서만 봐서, 문법만 바뀐 그 커서가 옛 지문으로 남는다 —
+원장 관리 화면에 그 소스가 «안 올라간 선언 위»로 보이고, 거기 v1 모양 커서가 있어도 «안 찍음»으로 이름이 안 불린다.
+번역이 막히지는 않는다: 지문이 다른 커서를 거절하는 쓰기가 없다(enforce_translator_version 을 켜는 제품 자리 0 — git grep)
+```
+**지은 것**
+```
+_restamp_moved_fingerprints_sync   도는 소스마다 schema.speaking_world -> 그 세상의 LedgerStore · 그 세상 선언의 지문(_compiled_setup)
+                                   소스 목록은 운영 세상 것 그대로 · 로그 줄에 세상 이름
+```
+**게이트**
+```
+B1 운영     레시피 소스 커서는 B1 에서 · 적재 소스 커서는 기본에서 다시 찍힘(각 세상 선언의 지문)
+기본 운영    둘 다 기본에서(전과 같음)
+변이 2      운영 세상에 물음(전) RED · 세상은 묻고 운영 세상 저장소를 엶 RED
+sqlite 전체  6 failed, 7754 passed, 328 skipped, 3 xfailed, 13047 warnings in 760.86s — 박스 체크아웃 사유 다섯 밖: test_inv_9_1_atomic_save_event_applies_physical_alter (그 파일만 다시 돌리면 32 passed, 6 warnings in 33.92s — 파일 감시 시간)
+PG 전체      3 failed, 284 passed, 7804 deselected, 248 warnings in 1263.19s (0:21:03) — 지난 전체 실행과 같은 알려진 셋만
+오늘 모양    부팅 다시 찍기 단위 시험의 저장소 대역이 world 를 받음 · 그 시험의 설정 폴더를 빈 임시 폴더로(배치 없음)
+```
+**알릴 것**
+```
+같은 일의 사람 손 도구 scripts/ledger_restamp_cursor.py 는 --world 를 받고, 없으면 운영 세상 커서만 — 지시 밖이라 안 건드림
+ledger/trace.py 의 CURSOR_FIELDS · CURSOR_TIME_FIELDS 는 부르는 자리가 없음(git grep) — 지시 밖
+순서: 지시는 4b90a8d23 재기 «앞»이었으나 재기를 먼저 마친 뒤 받았음(de7bd083a)
+```
