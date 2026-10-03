@@ -35703,3 +35703,19 @@ RELEASE_LOG 맞음 — 주기 판이 세지 않고 잇는다 · 직전 기록 �
                   ① 워커 기동 스키마(_ensure_ledger_schema_sync -> LedgerStore(engine).ensure_schema() = 운영 세상만) — 아직 어느 지시에도 없다.
                   운영 = 가지(밑 기본)일 때 기본이 말하는 소스는 기본에 쓰이는데, 기본에 칸을 더하는 업그레이드 뒤 재기동은 가지만 맞춘다. 같은 원칙(사슬의 세상 전부)으로 넣을지 여쭐 것
 ```
+
+---
+
+## [C 응용] 10-03 919ce6436(부팅 지문 다시 찍기를 소스를 말하는 세상에서) 곁 — 「지문이 움직이면 커서가 선다」가 09-09 부터 거짓이었다 · 문서 넷 고침
+
+```
+계기     구현자 커밋 문장 「No writer is refused by a stale cursor (no caller enforces the version)」
+셈       server(시험 뺌)에서 cursor_snapshot_reset_required 낱말 5 줄 — 전부 주석 · 독스트링, 던지는 줄 0(raise · LedgerSetupError( 0)
+         test_ledger_v2_pg.py:387 이 이미 적는다: 「the live path does not compare fingerprints at all - nothing raises …」(S-113 셈) · 은퇴는 09-09 d91fba431
+고친 문서  LEDGER_GUIDE 4.2(제목 · 본문: 거절 없음, 패널이 «어느 선언 위인가»를 보임, 부팅이 내용 같은 지문만 다시 찍음) ·
+          ONTOLOGY_LEDGER_SETUP 두 줄 · PRIMITIVES 「커서를 세운다」 줄에 ⚰️ · SYSTEM_FLOWS L-14(은퇴한 _run_v2_lineage) ⚰️
+코드에 남은 옛말(구현자 몫, 안 고침)  ingestion_worker._restamp_moved_fingerprints_sync 독스트링 「… is REFUSED (cursor_snapshot_reset_required)」 ·
+          scripts/ledger_deploy_preflight.py 출력 「v2 백필은 legacy_cursor_reset_required 로 거절됩니다」 — 운영자가 «읽는» 문장이라 다음에 그 파일을 만질 때
+남은 물음  test_ledger_v2_pg.py 가 적은 S-113 ⓔ 의 열린 반쪽 — 「부팅 재스탬프(고침)로 충분한가, 거절이 다시 있어야 하나」 — 제 판정 아님
+919ce6436 검수  -k world PG 는 위 279d04475 와 같은 묶음이 초록이었다(32). 이 착지의 새 시험 줄은 따로 안 돌렸다
+```

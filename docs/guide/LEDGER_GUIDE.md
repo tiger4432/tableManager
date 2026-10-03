@@ -256,11 +256,13 @@ conda run -n assy_manager python -m ledger.backfill --source <source> \
 - ⚰️ ~~회수와 재생성이 «두 커밋»이라 취소 불가~~ — 09-25 `3bf01b96` — `ledger_rescope` 는 범위를 페이지 열쇠 순서로 한 페이지씩 읽고(마지막 열쇠의 행을 다 가져가 그룹을 안 쪼갬), 페이지마다 회수와 재작성이 «한 커밋»(S-60 부터)이며 페이지 사이에서 멈춘다 — `cancellable: True`. 멈춘 뒤 나머지는 같은 범위를 다시 돌리면 된다.
 - 어드민 표면(연산 `ledger_rescope`)·취소 규약은 [BACKFILL_GUIDE §7](./BACKFILL_GUIDE.md), 재사용 관점은 [PRIMITIVES §1](../architecture/PRIMITIVES.md).
 
-### 4.2 커서 지문 — 선언을 고치면 커서가 서는 자리
+### 4.2 커서 지문 — 그 소스가 «어느 선언 위에서» 번역됐나
 
 소스마다 **cursor fingerprint** 가 있다(`setup_registry.source_cursor_fingerprint`).
-저장된 지문과 현재 선언의 지문이 다르면 그 소스의 커서는 `cursor_snapshot_reset_required` 로
-**선다** — 「원자를 다르게 만들 수 있는 선언이 바뀌었으니 사람이 보라」는 뜻이다.
+~~저장된 지문과 현재 선언의 지문이 다르면 그 소스의 커서는 `cursor_snapshot_reset_required` 로 선다~~ —
+🔴 09-09 `d91fba431` 부터 쓰는 길은 지문을 견주지 않는다(그 거절을 던지는 코드 0, 10-03 셈). 저장된 지문은 «그 소스가
+어느 선언 위에서 번역됐나»를 말하고, 번역기 패널에 그 이름으로 보인다. 워커는 부팅 때 «선언 내용은 같은데» 움직인
+지문만 다시 찍는다(S-87 · 10-03 `919ce6436` 부터 소스마다 그 소스를 말하는 세상에서).
 
 🔴 **지문은 «크게» 잡는 것이 기본이고, 선언한 키 중 예외는 «없다»**(🆕 10-03 `2a8d9073c` — 마지막 예외였던
 `map.input_columns` 가 칸째 은퇴). 재료가 아닌 것은 컴파일러가 «지은» 칸뿐이다(`_NOT_ATOM_MATERIAL`:
