@@ -817,12 +817,17 @@ def _partition_units(
         unit.attrs[UNIT_SOURCE_ROW_REFS_ATTR] = _frame_row_refs(frame)
         return (unit,)
     if kind == "row":
+        from .event_frame import named_columns
+
         frame_columns = read_columns_once(frame)
+        # 총괄 164553a6f ①: ordered by the named columns and row_id only - a column the
+        # declaration does not name may hold a value with no canonical form (NUMERIC, DATE).
+        keyed = [name for name in named_columns(context.source_plan) if name in frame.columns]
         ordered = sorted(
             range(len(frame)),
             key=lambda position: _row_sort_token(
                 {name: values[position] for name, values in frame_columns.items()},
-                frame.columns),
+                keyed),
         )
         units = []
         refs = _frame_row_refs(frame)

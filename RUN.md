@@ -1,6 +1,6 @@
 # 지금 돌리면 되는 것
 
-> ## [10-03] **원장 — 맵퍼는 그 표의 칸을 전부 받는다 · `map.input_columns` 은퇴 (소유자 · 총괄 2a8d9073c) — 이주 «불필요» · 재기동 «필요»(run_app.bat 전체)**
+> ## [10-03] **원장 — 맵퍼는 그 표의 칸을 전부 받는다 · `map.input_columns` 은퇴 (소유자 · 총괄 2a8d9073c · 멈춤 둘 닫음 164553a6f) — 이주 «불필요» · 재기동 «필요»(run_app.bat 전체)**
 >
 > ```
 > 무엇이 바뀌나  원장 읽기가 소스 표의 칸 전부(table_config.json 의 그 표)를 가져와 맵퍼에 넘긴다
@@ -9,8 +9,10 @@
 >              (박스: 소스 다섯 · 샘플 소스 셋 모두 지문이 그대로 · 같은 2,000 행에서 원자가 같음)
 >              python -m ledger census --source <소스>   (server 폴더) — 수가 재기동 전과 같다
 > 뜻           re-stamped 줄이 나오면 지문이 움직인 것 — 원자는 같아도 그 소스 커서가 한 번 다시 찍힌다(자리 그대로, 다시 읽는 행 없음)
->              어느 소스가 「column ... does not exist」 로 서면 table_config.json 에는 있는데 DB 표에 없는 칸이 있는 것
->                 (전에는 input_columns 에 적은 칸만 그랬다) — table_config.json 과 DB 표를 맞춘다
+>              로그 [Ledger] <표>: table_config declares <칸>, the table has no such column - not read (프로세스마다 한 번)
+>                 = table_config.json 에는 있는데 DB 표에 없는 칸. 그 칸만 안 읽고 소스는 돈다 — 맞추려면 둘 중 한쪽을 고친다
+>                 「column ... does not exist」 로 서는 것은 바인딩이 그 칸을 부를 때뿐(전과 같다)
+>              행 단위 소스의 행 순서는 선언이 부르는 칸과 row_id 로만 — 다른 칸의 NUMERIC · DATE 값이 소스를 세우지 않는다
 >              원자의 번역 버전(선언 전체 해시)은 재기동 뒤 새 원자부터 한 번 바뀐다 — 선언을 고칠 때마다 생기는 것과 같다
 > 급할 때       git revert <이 커밋> -> 재기동 (되돌릴 이주 없음 · 옛 코드는 안 적은 input_columns 를 [] 로 채운다)
 > ```

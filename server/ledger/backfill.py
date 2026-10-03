@@ -1899,6 +1899,34 @@ def _scope_predicate(plan, scope):
     return column, values
 
 
+#: (relation, columns) already named, so the line is said once per process, not per page.
+_SKIPPED_SAID = set()
+
+
+def _readable_columns(connection, plan):
+    """`base_select_columns`, less the catalogue columns the table does not have (총괄 164553a6f
+    ②). Such a column is not read and is named once; a column the declaration names stays in
+    the SELECT, so the read stops on it as it always did."""
+    from .event_frame import base_select_columns, named_columns
+
+    parts = plan.relation.split(".")
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT column_name FROM information_schema.columns "
+            "WHERE table_schema = COALESCE(%s, current_schema()) AND table_name = %s",
+            (parts[0] if len(parts) == 2 else None, parts[-1]))
+        live = {row[0] for row in cursor.fetchall()}
+    named = set(named_columns(plan))
+    wanted = base_select_columns(plan)
+    skipped = tuple(column for column in wanted if column not in live and column not in named)
+    if skipped and (plan.relation, skipped) not in _SKIPPED_SAID:
+        _SKIPPED_SAID.add((plan.relation, skipped))
+        logger.warning("[Ledger] %s: table_config declares %s, the table has no such column - "
+                       "not read. A binding naming it is still refused", plan.relation,
+                       ", ".join(skipped))
+    return tuple(column for column in wanted if column not in skipped)
+
+
 def _fetch_v2_lineage_rows(connection, plan, *, after=None, group_value=None,
                            limit=None, scope=None):
     """Read physical catalog columns with identifier-safe psycopg2 composition.
@@ -1911,8 +1939,7 @@ def _fetch_v2_lineage_rows(connection, plan, *, after=None, group_value=None,
     """
     from psycopg2 import sql
 
-    from .event_frame import base_select_columns
-    columns = base_select_columns(plan)
+    columns = _readable_columns(connection, plan)
     scoped = _scope_predicate(plan, scope)
     # The page key leads the ORDER BY so that its groups are CONTIGUOUS -- that
     # contiguity is the whole basis on which `_cut_on_group_boundary` may drop a trailing
