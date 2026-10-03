@@ -71325,3 +71325,33 @@ DB 실행        11 문장 · 0.373 s  — 행 1,000 · 칸 층 5,000 · 감사 
 **판단** — 제품 모양에서 1,000 행당 약 1 s 이고, 그 가운데 DB 는 0.4 s 안팎입니다(규격 「IO ≤ 1.3 s/1k」 안). 질의 수는 청크당 열 개 남짓이라 왕복이 원인이 아닙니다. 지금 고칠 것은 찾지 못했습니다. 더 줄인다면 다음 자리는 행 짓기(Python, 행마다 칸마다 층 판정 — 이 표는 칸 다섯)입니다 — 운영 파일로 재기 전에는 권하지 않습니다(운영은 안 쟀다).
 
 다음: 대기열 끝 — 다음 지시를 기다립니다
+
+---
+
+## [10-03] 338abb9f3 착지 173db0bce — table_config 를 다시 쓰는 스크립트 둘이 자기가 안 쓰는 칸을 남긴다
+
+어느 DB · 어느 스키마 · 지운 것 — DB 안 씀(명령줄 도구 · 시험은 임시 파일) · 지운 것 0
+
+**고친 것**
+```
+install_product_tables --overwrite-drift   항목 «통째» 교체 -> 제품이 말하는 칸(missing · changed)만 되돌리고 나머지는 그대로
+                                           (diff_declaration 과 같은 읽기의 _overlay · 현장이 더한 것만 다른 항목은 다시 안 씀)
+                                           쓴 뒤 확인도 «계획한 모양»과 견줌 · tracked 샘플(--sample, strict)은 전처럼 정의 그대로
+table_config_from_schema --merge           세 칸만 남기고 다시 짓던 것 -> SHEET_CELLS(column_types · display_columns)만 시트로, 나머지 칸 그대로
+칸 목록                                    스크립트마다 «보존 목록»을 적지 않음 — install 은 제품 정의가 곧 「고치는 칸」, merge 는 SHEET_CELLS 한 목록
+```
+**게이트**
+```
+install   제품 항목에 group · kind · indexes · smart_paste · decision_key · 더한 열 + 구분자 바뀜 -> 구분자만 되돌아오고 나머지 그대로
+          현장이 더한 칸만 다른 항목 -> 파일 바이트 그대로 · 백업 없음
+merge     기존 표에 그 칸들 + 사람 칸 -> 그대로 · column_types · display_columns 는 시트대로 · 시트에 없는 표 그대로
+변이 둘    --overwrite-drift 가 항목 통째를 바꿈(옛 동작) RED · --merge 가 이름 댄 칸만 남김(옛 동작) RED
+sqlite 전체 5 failed, 7736 passed, 297 skipped, 3 xfailed, 12983 warnings in 707.51s
+          남은 5: 박스 체크아웃 사유 다섯
+pg        안 돌림 — 바뀐 것이 명령줄 스크립트 둘뿐(DB 경로 무관)
+```
+**뒤집은 것 한 줄** — 기존 시험 test_overwrite_drift_flag_replaces_the_entry 가 「a full replacement drops extras」를 단언하고, 보고 문구도 「drops the 'extra' items」를 알렸습니다. 지시(«모르는 칸은 손대지 않는다»)대로 뒤집었고, 그 시험은 반대를 단언합니다. 중첩된 칸(예: column_types 안에 현장이 더한 열)도 «모르는 칸»으로 읽어 남깁니다.
+
+**물음 하나** — --merge 의 column_types 는 시트가 주인이라, 시트에 없는 열(사람이 손으로 더한 열)은 지금도 빠집니다. 이것도 남겨야 하면 말씀 주세요.
+
+다음: 세상 짓기(계획 확인 뒤 — 계획을 먼저 올립니다)
