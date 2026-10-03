@@ -71747,3 +71747,43 @@ sqlite 전체  5 failed, 7754 passed, 326 skipped, 3 xfailed, 13031 warnings in 
 ```
 
 다음: 8b81e79a0(계획 답 6c266e56b — 이름은 늘 싣는다) -> 4b90a8d23 재기
+
+---
+
+## [10-03] 8b81e79a0 착지 279d04475 — census · 원장 관리 화면 · backfill 이 소스마다 말하는 세상을 따른다 (계획 답 6c266e56b)
+
+어느 DB · 어느 스키마 · 지운 것 — 시험만: PG assy_test 시험 스크래치 스키마 + 시험이 만드는 w_ 스키마(끝에 이름으로 DROP) · 운영 DB 안 씀
+지운 것 — 코드를 바꾸는 사이에 걸쳐 돌던 내 PG 전체 실행을 멈췄고, 그 스키마를 이름으로 DROP: assy_pytest_pg_29296_gw0 (전 1 · 후 0 · pid 가 살아 있는 것 0)
+
+```
+한 좌석     schema.speaker(chain, source) — followed_by 답에서 그 소스를 말하는 세상(맨 위부터, 없으면 맨 아래) = 후속이 쓰는 곳
+           schema.speaking_cursor(chain, read, columns) — 소스마다 그 세상의 커서 줄
+           schema.speaking_world(engine, source, world=None) — 없음: 운영 사슬의 말하는 세상 / 적음: 그 세상이 말해야 함, 아니면 이름 대어 거절
+           (세상 좌석 안 — 「어느 세상인가」 묻는 자리가 schema.py 밖에 0 인 AST 시험 그대로)
+census 쓰기  워커 틱(_compiled_setup) · 훑기(measure_every_source — store 는 세상별 공장) · census CLI 셋 다 말하는 세상에서
+           measure_and_store 는 저장소의 세상으로 잼 · 기록에 world · 세는 셋(rows_not_yet_translated · count_excluded_but_indexed(이번에 world 받음) · rows_drifted)에 world
+           next_step 은 늘 --world <세상> (6c266e56b ⑤)
+census 읽기  원장 관리 화면(admin.ingestion_view) · 선언 답 census — 소스마다 말하는 세상의 줄 · 줄에 world
+backfill    CLI 가 모든 갈래 전에 세상을 정함 · 작업 기록에 이름 · 작업 좌석(retroactive._ledger_world)도 같은 함수 — 화면의 다시 번역(세상 없는 작업)도 말하는 세상에
+           run() 거르기 = followed_by 맨 위 답 · schema.speaks_for(선언 차이만) 은퇴 — «써서» 말하는 소스도 그 세상에 씀
+census CLI  --world: --source 와 같이면 그 소스를, 없으면 훑기를 그 세상에서(그 세상이 안 말하는 소스는 이름 대어 거절, 소스 하나씩) · 줄에 세상 이름
+```
+**게이트** (B1 이 기본 위에서 운영 · 레시피 소스만 말함)
+```
+운영 세상이 안 말하는 소스(적재 소스)  틱 · 훑기 · 한 소스 census 모두 기본에서 · 관리 화면 줄 (default, Translated) · 선언 census world default · 남은 0
+next_step                       레시피 «--world B1» · 적재 «--world default»
+backfill                        --world 없이 -> 새 행이 기본에 (B1 0) · 화면의 다시 번역 작업(세상 없음) -> 기본에 · --world B1 -> 「… is spoken for by default, not B1」 거절(두 CLI)
+B1 이 적재 소스를 쓴 뒤          말하는 세상 = B1 · backfill 이 B1 에 (기본 0)
+변이 9                         틱이 운영 세상에서 잼 RED · 훑기가 운영 세상에서 잼 RED · 관리 화면이 운영 세상 커서만 RED · 선언 census 가 한 세상만 RED · next_step 에 세상 없음 RED · backfill CLI 가 받은 world 그대로 RED · 안 말하는 세상을 적어도 거절 없음 RED · run() 거르기가 선언 차이만(speaks_for) RED · 세상 없는 작업이 운영 세상에서 RED
+sqlite 전체                      5 failed, 7755 passed, 327 skipped, 3 xfailed, 13107 warnings in 757.66s — 박스 체크아웃 사유 다섯만
+PG 전체                         5 failed, 281 passed, 7804 deselected, 245 warnings in 1249.54s (0:20:49) — 알려진 셋 밖: test_a_source_no_person_counted_names_the_census_as_its_next_step · test_an_edit_behind_the_chain_is_counted_and_redone — next_step 글자를 붙잡던 시험, 고친 뒤 그 파일 6 passed, 16 warnings in 26.42s
+오늘 모양을 붙잡던 시험            next_step 의 인자 · 훑기 시험의 저장소 대역 · 관리 화면 시험의 가짜 세션(bind · 배치 없음) · 세상 시험의 speaks_for 단언
+                               CLI 문 시험 · CLI 옵션 시험 · 경계 시험 — 작업 기록에 world 가 늘 이름(6c266e56b ⑤ · 전: 안 주면 안 실음). 세상 정하기는 세상 시험이 재고 이 셋은 좌석 답을 받음
+```
+**알릴 것**
+```
+은퇴 약속   CODE_MAP 의 schema.py · followup.py 행이 speaks_for 를 적고 있음(응용 세션 몫) · 지난 보고 안의 speaks_for 는 이력
+같은 물음   부팅 때 커서 지문 다시 찍기(_restamp_moved_fingerprints_sync)는 운영 세상 커서만 봄 — 지시 밖이라 안 건드림
+```
+
+다음: 4b90a8d23 재기(세상을 넘는 엣지 · 어휘)
