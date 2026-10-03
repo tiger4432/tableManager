@@ -71220,3 +71220,36 @@ pg 전체             3 failed, 244 passed, 7781 deselected, 168 warnings in 102
 **남는 것 (안 고침)** — 두 자리의 «병합 본문»은 아직 둘입니다. 쓰기 자리는 사람 수정 보호 · 층 계승 · 캐시 옮기기를 하고, 핀 자리는 따로 적힌 병합입니다. 핀으로 남의 키가 되는 갈래는 오늘 시험에 없어서 둘이 갈리는지는 재지 않았습니다. 접으려면 핀 자리가 쓰기 자리의 병합을 부르게 하는 별도 라운드입니다 — 하라시면 하겠습니다.
 
 다음: 원장 따라가기가 «소스가 안 읽는 칸»만 바뀐 수정을 건너뛰기
+
+---
+
+## [10-03] «소스가 안 읽는 칸» 착지 ba9ab1c97 — 원장 따라가기가 안 읽는 칸만 바뀐 수정을 건너뛰고, 아웃박스 칸에 남긴다
+
+어느 DB · 어느 스키마 · 지운 것 — 박스 DB 안 씀. 시험 · 재기는 assy_test 의 시험 스크래치 스키마. 🔴 지운 것 둘: 전체 시험을 셸 «&» 로 잘못 띄운 것 하나, 그리고 sqlite 에서 새 실패가 나와 고치려고 멈춘 PG 실행 하나 — 둘 다 제 pytest 를 끄고 그것이 남긴 스키마를 이름으로 지움 — db=assy_test leftover=['assy_pytest_pg_42668_gw0'] · dropped schema assy_pytest_pg_42668_gw0 in assy_test · left after: 0 · db=assy_test leftover=['assy_pytest_pg_41620_gw0'] · dropped schema assy_pytest_pg_41620_gw0 in assy_test · left after: 0
+
+**고친 것**
+```
+판정       EDIT 이고 · 사건이 바뀐 칸을 말하고 · 그중 어느 것도 그 소스가 읽는 칸(event_frame.named_columns)이 아니고 · 맵퍼가 선언을 실행하는 것(declarative-role)일 때만 건너뜀
+같은 함수   event_constants.columns_meet(바라는 칸, 바뀐 칸) — None = 모른다 = 예. 체인 rule_watches_changed_columns 와 원장 따라가기가 둘 다 이것을 묻는다
+           event_constants.changed_columns_of — 사건의 columns 를 읽는 자리 하나
+한 자리     setup_bundle.executes_the_bindings — 「선언이 그 맵퍼가 읽는 칸 전부인가」. 낱말을 견주던 자리 둘(self-edge 검사 · 그 옆 위임 줄)도 이것을 부름 · DeclarativeRoleMapper 는 그 상수
+남김       아웃박스 원장 칸 「done · skipped: <소스>」 · `python -m ledger followup` 이 소스별 「건너뜀 N 사건」 · 랩 로그 줄 끝 skipped <소스>=<사건 수>
+```
+**게이트**
+```
+1만 행 (hold world 모양, 시험 스키마)   읽지 않는 칸(note)만 바꾼 10,000 행 = 사건 10
+                                     건너뛰기 켬   다시 번역 0 · 원자 10,000 -> 10,000 · 따라가기 2.0 s · 칸 「done · skipped: hc_official」 10
+                                     건너뛰기 끔   다시 번역 10 · 원자 10,000 -> 10,000 · 따라가기 45.9 s
+갈래 (pg)     note 만 -> 건너뜀 · 원자 그대로 · 칸에 남음 · CLI 가 소스별 1   ·   note + netdie -> 다시 번역 · 원자 움직임
+              칸을 안 말하는 사건 -> 다시 번역   ·   CREATE(칸이 note 뿐이어도) -> 다시 번역   ·   행 전체를 받는 맵퍼 -> 건너뛰지 않음
+칸 읽는 자리   followup.py 밖에서 칸을 읽는 자리 4(체인 워커 1 · 색인 1 · 아웃박스 정리 스크립트 2) — 전부 IS NULL / IS NOT NULL (시험 한 칸)
+              ⚠️ 이주 스크립트의 보고는 칸을 ':' 앞으로 묶어 보여 줌 — 「done · skipped」가 한 묶음으로 따로 뜸(표시일 뿐, 판단 없음)
+변이 일곱      건너뛰지 않음 RED · 바뀐 칸을 안 실어 나름 RED · 칸을 안 말하는 사건을 «안 바뀜»으로 읽음 RED · 행 전체를 받는 맵퍼도 건너뜀 RED · CREATE 도 건너뜀 RED · 건너뜀을 아웃박스 칸에 안 남김 RED · 다른 자리가 칸 값을 견줌 RED
+sqlite 전체    5 failed, 7733 passed, 293 skipped, 3 xfailed, 13030 warnings in 703.07s
+              남은 5: 박스 체크아웃 사유 다섯
+pg 전체        3 failed, 249 passed, 7782 deselected, 179 warnings in 1066.33s
+              남은 3: 지난 착지들과 같은 셋
+```
+**한 번 막혔던 것** — 첫 sqlite 전체에서 새 실패 여섯: 따라가기 큐 항목에 칸 하나(바뀐 칸)가 늘어 그것을 풀어 읽던 시험 하나, 그리고 «칸을 모름»인 사건에도 소스 계획을 먼저 들여다봐 계획 대역(FakePlan)에서 터진 시험 다섯. 판정이 «모름»을 먼저 묻게 고침(모르면 계획을 아무것도 계산하지 않음)
+
+다음: 6e041f4cb 답 ① — 병합 본문 둘(쓰기 · 핀) 접기. 먼저 «핀으로 키가 남의 키와 부딪히는 갈래»가 지금 무엇을 하는지 재고, 접은 뒤 같은 답인지
