@@ -71471,3 +71471,24 @@ not_iso     「2026/10/03 12:00」 같은 글자는 지시대로 그대로 — �
 ```
 
 다음: 세상 짓기 — 로컬 가지에 세워 둔 것을 새 기준 위로 옮겨 잇는다
+
+---
+
+## [10-03] 6e2a93ef9 착지 5416d3020 — 옛 철자 키 고치기(--apply): 업무키 칸까지 · 감사 줄 · 부딪히는 행은 건너뛰고 이름
+
+어느 DB · 어느 스키마 · 지운 것 — 시험만: PG assy_test 의 시험 스크래치 스키마(카나리아 pg_namespace 1) · 지운 것은 그 스키마의 시험 표와 그 표 이름의 행뿐
+
+```
+고친 것   --apply 가 옛 raw UPDATE(business_key_val 만) 대신 crud.put_business_key — business_key_val + 선언된 업무키 칸
+          행마다 감사 줄(source rebuild_business_keys · --by) · CHUNK 행마다 커밋 · 끝에 「고친 행 N / 미리보기 N」
+          부딪히는 행은 오늘 규칙 그대로(건너뛰고 견본에 이름) — 소유자 답이 ㄴ 이면 병합 갈래만 더함
+          행 고르기 = plan_rekeys · 쓰기 = apply_rekeys 로 빼서 시험이 직접 부름(실행 경로는 그대로 run -> 둘)
+게이트    두 표 모양(PG): 옛 철자(숫자 · 시각) 행 -> --apply -> 두 키 칸 새 철자 · 감사 줄 1 -> 같은 데이터 다시 씀 -> 행 1 · 병합 0
+          부딪히는 쌍(옛 철자 행과 새 철자 행이 같은 값)은 건너뛰고 견본에 이름 · 고친 뒤 미리보기 pending 0 · collides 1 남음
+변이      business_key_val 만 씀(옛 UPDATE) RED · 부딪히는 행도 씀 RED · 감사 줄 없음 RED
+같이 돈 것  test_readonly_guard · 키 철자 시험 — 통과
+RUN.md    맨 위 절: ① 미리보기 -> ② 재기동 -> ③ --apply --by <이름> -> ④ 미리보기 rebuildable 0 · collides 는 «남은 수»
+RELEASE_LOG  ③ 항목의 「필요한 조건」에 고치는 법
+```
+
+다음: 세상 짓기 착지(지어 두고 변이 열하나 빨강까지 잰 것을 로컬 가지에서 올림 — 전체 시험 뒤)
