@@ -35380,3 +35380,32 @@ RELEASE_LOG 맞음 — 마운트 둘(admin.js refreshLedgerSources 의 두 id) �
    화면의 잠긴 칩(ontology_explorer_view 의 row.locked · .oe-pick.is-locked)은 서버가 더는 locked 를 안 보내 «아무도 안 탄다» = 8d3890d86
 안 잰 것  넓은 표에서 읽기 시간 — 박스의 「2,000 행 0.1 s 안쪽」 밖은 모른다
 ```
+
+---
+
+## [C 응용] 10-03 2c0a2e3aa 착지 — map.input_columns 를 약속하던 문장 걷어냄 @`44fc898d4` · 9e64dbdeb 검수
+
+```
+셈   살아 있는 문서 = docs/ 의 추적 .md 중 history · _archive · RELEASE_LOG 뺀 124 개. input_columns 대소문자 무시, 백틱 안 포함
+     (git ls-files + 파이썬 re, 카나리아: 문서 수 > 100 · 'ledger' 수 > 100)
+전   46 번 · 33 줄 · 8 문서 (디자인 목록은 «줄» 수 — CODE_MAP 11 은 줄, 번은 19)
+고침  13 곳 · 6 문서 — 은퇴 규칙 「맵퍼는 그 관계의 칸 전부를 받고, 적힌 값은 읽고 무시」로
+     CODE_MAP 7(setup_bundle 줄 셋 · config_authoring 의 잠금 줄 · 「둘의 기본값」 줄 둘 · 교훈 표 한 줄) · LEDGER_SCHEMA_COMPLETENESS 1(D-10-4 머리에 닫힘) ·
+     ONTOLOGY_LEDGER_SETUP 1(unknown_column 행) · by_example 1(read 기본값 목록) · DOC_OWNERSHIP 1(「뺀다」→ 그 전) · SERVER_DEFECT_QUEUE 2(S-52-c ⏸ → ✅, 소유자 말로 닫힘)
+후   47 번 · 34 줄 — 낱말은 «은퇴 표시»로 남아 줄지 않는다(D-10-4 머리에 하나 늘었다). 줄마다 다시 읽은 갈래:
+     은퇴 · 닫힘 표시가 있는 줄 28 · 표시 없이 남은 줄 6 — 전부 그때 기록: CODE_MAP 08-22 지문 변경 문단(위 줄이 「그 전의 기록」) ·
+     COMPLETENESS D-9 의 옛 거절 문구 인용 · D-10-2(기록) 두 줄 · D-10-4 초안 본문(머리에 닫힘) · SETUP 08-20 판정의 «준비기» input_columns(절째 10-01 은퇴)
+     ⚠️ 「표시 있는 줄」은 낱말(⚰️ · ~~ · 은퇴 · 기록 · 그 전 · ✅)로 가른 «자리» 셈이라, 표시가 있어도 같은 줄에 약속이 남은 것(setup_bundle · config_authoring ·
+        「둘의 기본값」 · DOC_OWNERSHIP)은 손으로 읽어 고쳤다
+안 고침  closed ✅ 큐 행 넷(S-105 · S-196 · S-81 · S-65-b)은 그때 기록. SERVER_DEFECT_QUEUE 는 지시 목록에 있어 S-52-c 만 닫음
+```
+```
+9e64dbdeb(선언 밖 칸이 소스를 세우지 않는다) 검수 (박스)
+   run_pg_tests -k (새 파일 · 몰큘 시험) 2 passed · 같은 두 파일 pytest 11 passed 2 skipped(PG 는 위에서)
+   읽는 곳 전부가 _readable_columns 를 지난다 — _fetch_v2_lineage_rows 하나이고, 체인 뒤따르기(followup → rescope) · 백필 · 미리보기가 그것을 부른다
+   변이 안 함 — 공유 트리
+한 줄 — 범위(scope) 칸 허용 목록이 «DB 에 없는 카탈로그 칸»도 받는다
+   backfill._scope_predicate 의 허용 목록과 census 다시하기 배너의 scope_columns(trace_router) 둘 다 base_select_columns 다.
+   그 칸을 고르면 WHERE "<칸>" = ANY(…) 가 UndefinedColumn 으로 터진다 — 이름 대는 거절이 아니다(그 칸은 읽기에서는 빠지는데 범위에서는 안 빠진다)
+   c8d6a8597(물리 칸 묻는 자리 셋을 한 함수로)이 접을 때 이 둘도 그 함수를 지나면 같이 닫힌다 — 그 순서에 넣을지 여쭐 것
+```
