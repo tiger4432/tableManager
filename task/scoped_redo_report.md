@@ -71652,3 +71652,35 @@ assy_test 에 끝난 프로세스의 pytest 스키마가 남아 있음 — 제 �
 ```
 
 다음: 위 안 판정을 기다림(지시서 머리 a13fcf00c 뒤 새 일 없음)
+
+---
+
+## [10-03] e51e3e417 + 94e925b57 착지 9e9a9015a — 세상 목록 한 모양 · 두 세상이 한 소스를 다르게 말하는 사슬 시험
+
+어느 DB · 어느 스키마 · 지운 것 — 시험만: PG assy_test 시험 스크래치 스키마(카나리아 1) + 시험이 만든 w_ 스키마(끝에 이름으로 DROP) · 운영 DB 안 씀
+
+```
+지은 것    schema.world_listing() -> {worlds: [default, *가지], operating} 하나를 셋이 부름
+          걷기 선언 답(/api/ledger/declaration) · /tables · 세상 목록 라우트(explorer 는 beneath · history 를 더함)
+          선언 답은 가지만 싣고 operating 이 없었다 -> 이제 default 먼저 + operating
+시험      같은 픽스처(B1 운영)에서 세 답의 worlds · operating 같음 = [default, B1] · B1
+          W 가 [B1, default] 위 · W 와 B1 이 레시피 소스를 서로 다르게 말함 -> W 뷰에 그 소스는 W 원자만
+          followed_by 는 B1 에 아무것도 안 줌 · 운영 = W 에서 후속은 W 에만 씀(B1 · 기본 0)
+변이 셋    chain_speakers 의 「- above」 지움(총괄 초록이던 것) RED · 선언 답이 옛 모양(가지만) RED · 목록이 default 를 뺌 RED
+PG 두 파일  14 passed, 6 deselected, 38 warnings in 93.95s (0:01:33)
+sqlite 두 파일 6 passed, 14 skipped, 6 warnings in 1.44s
+sqlite 전체  6 failed, 7750 passed, 326 skipped, 3 xfailed, 13059 warnings in 774.84s
+          남은 6: 박스 체크아웃 사유 다섯 + test_h3_cross_directory_replace_applies_physical_alter
+          test_h3_cross_directory_replace_applies_physical_alter 는 그 파일만 다시 돌리면 32 passed, 6 warnings in 34.43s — 파일 감시 시간(지난번 test_inv_9_1 과 같은 부류)
+시험 한 줄  오늘 모양을 붙잡던 것 — 가지 시험의 선언 답 worlds == [WORLD] -> [default, WORLD]
+RELEASE_LOG  세상 항목에 한 문장 · RUN.md 재기동 뒤 볼 명령
+```
+**알릴 것 · 물음**
+```
+순서   e5be77136 의 순서는 시계 동률 먼저였으나, 그 지시가 닿기 전에 이 둘을 짓고 시험까지 마친 상태여서 지은 그대로 착지했습니다
+       내용은 e5be77136 과 같음(beneath 는 explorer 답에 그대로) — 다음은 시계 동률(9280922aa)
+넷째 자리  세상 목록을 싣는 자리가 하나 더 있음 — trace_router._world 의 world_unknown 거절이 「pick one from 'worlds'」 와 함께 가지만 싣는다
+       지시가 셋이라 안 바꿈. 거절도 world_listing 의 worlds 를 실을까요?
+```
+
+다음: 9280922aa 시계 동률(뒤 항목이 이김) -> 8b81e79a0
