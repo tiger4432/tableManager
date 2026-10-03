@@ -1,5 +1,18 @@
 # 지금 돌리면 되는 것
 
+> ## [10-03] **세상 목록은 어느 답에서나 한 모양 (총괄 e51e3e417) — 이주 «불필요» · 재기동 «필요»**
+>
+> ```
+> 무엇이 바뀌나  걷기 선언 답(/api/ledger/declaration)의 worlds 가 default 를 먼저 품고 operating 을 같이 싣는다
+>              /tables · GET /admin/ontology-explorer/worlds 와 같은 함수(schema.world_listing)에서 나옴
+> 재기동 뒤 볼 것  curl -s http://localhost:8080/api/ledger/declaration | python -c "import json,sys; d=json.load(sys.stdin); print(d['worlds'], d['operating'])"
+> 뜻           ['default', ...가지] 와 운영 세상 이름 — 세상 목록 라우트 · /tables 의 같은 두 칸과 같아야 한다
+>              worlds 에 default 가 없으면 재기동 전 코드가 돌고 있다
+> 급할 때       git revert <이 커밋> -> 재기동 (선언 답이 가지만 싣던 모양으로 돌아감)
+> ```
+
+---
+
 > ## [10-03] **원장 세상 — 운영 세상 한 칸 · 세상마다 «밑에 깔 세상» (총괄 e1f54cd72 · e67ef53f3 · 86d5061a0 · 2bb20ff56) — 이주 «불필요» · 재기동 «필요»(서버 + 워커 — 위 절과 같은 재기동이면 한 번)**
 >
 > ```

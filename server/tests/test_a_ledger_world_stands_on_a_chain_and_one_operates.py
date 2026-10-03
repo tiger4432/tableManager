@@ -64,6 +64,13 @@ def _refused(document, source):
     return document
 
 
+def _said_otherwise():
+    """The changed document, its recipe sentence carrying no `step` - a third way to say it."""
+    document = _changed_document()
+    document["sources"][CHANGED]["bind"]["mappings"]["wafer-processed-with-recipe"]["bind"].pop("step")
+    return document
+
+
 def _declare(world, document):
     root = Path(paths.config_path("ontology_worlds", world))
     root.mkdir(parents=True, exist_ok=True)
@@ -174,6 +181,21 @@ def test_the_operating_world_and_a_world_stood_on_are_not_deleted(config):
         schema.world_deletion(None, B1)                              # W still stands on it
     with pytest.raises(ValueError):
         schema.world_deletion(None, schema.DEFAULT_WORLD)
+
+
+def test_every_answer_that_lists_the_worlds_carries_one_shape(config):
+    """총괄 e51e3e417: the declaration answer, /tables and the explorer's list."""
+    import main
+    from ledger import trace_router
+    from ledger_api import ontology_config_explorer_router as explorer_router
+
+    schema.stand(B1, [schema.DEFAULT_WORLD])
+    _declare(B1, _sample("ledger_config.json.sample"))
+    schema.operate(B1)
+    expected = {"worlds": [schema.DEFAULT_WORLD, B1], "operating": B1}
+    for answer in (trace_router.ledger_declaration_catalog(world=None), main.list_tables(),
+                   explorer_router.list_worlds()):
+        assert {key: answer[key] for key in expected} == expected
 
 
 # ------------------------------------------------------------------ on PostgreSQL
@@ -363,6 +385,31 @@ def test_the_live_follow_up_writes_each_source_where_the_operating_view_shows_it
     backfill.retranslate_drifted(world["engine"], default, CHANGED, apply=True)
     assert backfill.rows_drifted(world["engine"], default, CHANGED)["rows_drifted"] == 0
     assert _saying(world, schema.LEDGER_TABLE, "RCP-2") == {CHANGED}
+
+
+@pytest.mark.pg
+def test_a_source_two_worlds_say_otherwise_is_the_topmost_ones_alone(world):
+    """총괄 94e925b57: W on [B1, default], W and B1 each saying the recipe source their own way."""
+    _seed(world)
+    b1 = _b1(world)
+    schema.stand(W, [B1, schema.DEFAULT_WORLD])
+    _declare(W, _said_otherwise())
+    LedgerStore(world["engine"], world=W).ensure_schema()
+    backfill.run(world["engine"], source=CHANGED, world=W)
+    w = schema.require_world(W)
+    assert schema._declared_speakers(w) == [{CHANGED}, {CHANGED}, None]   # both say it
+    assert _rows(world, b1.ledger, "source_who") and _rows(world, w.ledger, "source_who")
+    assert {leg for who, leg in _rows(world, w.read_relation, "source_who", "world_leg")
+            if who == CHANGED} == {W}
+    assert schema.followed_by(world["engine"], w) == [
+        (W, {CHANGED}), (B1, set()), (schema.DEFAULT_WORLD, None)]
+
+    _operate(world, W)
+    _write(world, "wafer_process", [{"proc_id": "P1", "recipe_id": "RCP-3"}], key="P1")
+    _follow(world)
+    assert _saying(world, w.ledger, "RCP-3") == {CHANGED}
+    assert _saying(world, b1.ledger, "RCP-3") == set()
+    assert _saying(world, schema.LEDGER_TABLE, "RCP-3") == set()
 
 
 @pytest.mark.pg

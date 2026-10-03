@@ -211,6 +211,12 @@ def worlds() -> list[str]:
             and os.path.isfile(os.path.join(_declaration_root(name), CONFIG_FILENAME))]
 
 
+def world_listing() -> dict:
+    """The worlds a screen picks from - the default first, then the branches - and the one that
+    operates: the one shape every answer that lists them carries (총괄 e51e3e417)."""
+    return {"worlds": [DEFAULT_WORLD, *worlds()], "operating": operating_world()}
+
+
 def operate(world: str, by=None) -> dict:
     """Make `world` the operating world from the next read on; the history keeps who and when.
     A world not declared is refused by name (`require_world`)."""

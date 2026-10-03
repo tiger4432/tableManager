@@ -179,7 +179,7 @@ def test_the_branch_translates_what_it_changed_and_walks_the_rest_from_the_defau
         planned = _Plan(conn, relation=names.read_relation)
         planned.claims_for_entities([("wafer", {"wafer": "W1"})], "outgoing", 50)
     assert "Subquery Scan" not in planned.plan, planned.plan
-    assert trace_router.ledger_declaration_catalog(world=None)["worlds"] == [WORLD]
+    assert trace_router.ledger_declaration_catalog(world=None)["worlds"] == [schema.DEFAULT_WORLD, WORLD]
     with pytest.raises(HTTPException) as refused:
         trace_router._world("nowhere")
     assert refused.value.status_code == 404

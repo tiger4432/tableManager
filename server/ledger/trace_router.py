@@ -1096,10 +1096,11 @@ def ledger_declaration_catalog(
         ]
     except Exception as exc:                       # noqa: BLE001 - see the note above
         logger.error("declaration sources unavailable: %s", exc)
-    # 총괄 8d10633ae ㉢: the worlds there are ride the response the screen already reads.
+    # 총괄 8d10633ae ㉢ · e51e3e417: the worlds there are and the operating one ride the
+    # response the screen already reads.
     from ledger import schema
 
-    catalogue["worlds"] = schema.worlds()
+    catalogue.update(schema.world_listing())
     return catalogue
 
 
