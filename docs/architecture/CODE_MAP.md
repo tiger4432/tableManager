@@ -1346,6 +1346,7 @@ FastAPI 웹서버. 모든 REST/WS의 단일 진입점. 워커·워처와는 outb
 | `delete_cell_source(db, ...)` | 단일 소스 삭제(배치 위임) |
 | `set_cell_manual_priority_batch(db, table_name, updates, source_name, updated_by)` | 수동 Pin 일괄(§크고 복잡 — 표시값 재계산·감사 포함) · 🆕 10-03 `4e0950f3d` 핀이 키 조각의 보이는 값을 바꾸면 아래 한 쌍으로 키를 다시 짓는다(하나라도 비면 NULL) |
 | 🆕 `rebuilt_business_key(table_name, row)` · `put_business_key(table_name, row, key)` | 10-03 `4e0950f3d` 키 다시 짓기의 «한 쌍» — 부르는 자리 둘(`apply_row_update_internal` 의 «2.» 조합 블록 · 위 핀). 문은 `composite_key_source` 를 선언한 표 «전부»(~~`business_key` 칸도 있는 표만~~ — 조합키만 표에서 이름 붙인 id 로 만든 행 · 그리드 새 행이 키 없이 남아 다음 키 쓰기가 행을 하나 더 만들었다). 앞은 조각이 하나라도 비면 None(`is_blank_key_part`), 뒤는 `business_key_val` 은 늘, `business_key` 칸은 선언된 표에서만 쓴다 — 두 모양을 묻는 자리는 뒤 하나. 새 행의 «조각이 비면 항목의 키» 폴백은 쓰기 쪽에 남음 |
+| 🆕 `_merge_into_key_holder(db, table_name, table_model, row_to_delete, row, *, explicit, human_columns, source_name, updated_by, transaction_id, changed_cols, …)` | 10-03 `a396f64a0` 다시 지은 키를 남의 행이 이미 쥐었을 때의 «병합 본문 하나» — 값 · 사람 값 보호 · 층 상속 · 캐시 · 감사 이동 · 껍데기 행 지우기. 부르는 자리 2(쓰기 «2.» · 핀), 행을 바꿔 넣는 것은 부르는 쪽. ~~핀 자리의 사본~~은 정의 안 된 `changed_cols` 에 붙여 07-17(`a65640ca8`) 부터 병합이 칸을 바꾸면 터져 핀 전체가 되감겼다. `human_columns` = 이 쓰기가 «사람 것»으로 세는 칸 — 사람이 쓴 항목은 그 항목의 칸만, 핀은 핀 꽂은 칸만(종전: 사람 항목이면 칸 «전부» — 키 조각만 쓴 사람이 키 주인의 사람 값을 껍데기의 기계 값으로 덮을 수 있었다) |
 | `set_cell_manual_priority(db, ...)` | 단일 Pin(배치 위임) |
 | `get_ontology_mapping()` / `check_needs_rollback(table_name, modified_cols)` | 그래프 보조 — v2 검증+enrichment 승격 적용 결과 캐시 / v2 매핑 인식 rollback 신호(v1 폴백) |
 
