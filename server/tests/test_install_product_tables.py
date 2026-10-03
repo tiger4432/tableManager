@@ -373,6 +373,7 @@ class TestDrift:
         def mutate(cfg):
             cfg["map_split_registry"]["composite_key_separator"] = "_"
             cfg["map_split_registry"]["column_types"]["site_tag"] = "string"
+            cfg["map_split_registry"]["display_columns"].append("site_tag")
             cfg["map_split_registry"].update(site_cells)
         path = _config_with_modified_product_entry(tmp_path, mutate)
 
@@ -384,9 +385,11 @@ class TestDrift:
         product = product_tables.PRODUCT_TABLES["map_split_registry"]
         assert entry["composite_key_separator"] == product["composite_key_separator"]
         assert entry["column_types"]["site_tag"] == "string", "the column the site added stays"
+        assert entry["display_columns"] == product["display_columns"] + ["site_tag"], \
+            "the column the site appended stays shown"
         assert {k: entry.get(k) for k in site_cells} == site_cells, "the cells the site added stay"
-        assert {k: entry[k] for k in product if k != "column_types"} == \
-            {k: v for k, v in product.items() if k != "column_types"}
+        assert {k: entry[k] for k in product if k not in ("column_types", "display_columns")} == \
+            {k: v for k, v in product.items() if k not in ("column_types", "display_columns")}
         assert parsed["pti_site_log"] == {"business_key": "lot_id"}, "site entry untouched"
         assert len(backups(tmp_path)) == 1
 

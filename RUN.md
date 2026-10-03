@@ -5,6 +5,7 @@
 > ```
 > 무엇이 바뀌나  install_product_tables.py --overwrite-drift — 제품이 말하는 칸만 되돌리고 group · kind · indexes · 더한 열은 남김
 >              table_config_from_schema.py --merge     — 시트에 있는 표는 column_types · display_columns 만 바꾸고 나머지 칸은 그대로
+>                                                        그 두 칸도 더하고 고칠 뿐 안 지움 — 시트에 없는 열은 남고(보고 「시트에 없음, 남겨 둠」) · 순서 · 숨긴 열 그대로 · 새 열은 끝에
 > 확인         python server/scripts/install_product_tables.py            (드라이런, 아무것도 안 씀)
 > 뜻           DRIFT 줄의 extra 는 현장이 더한 칸 — --overwrite-drift 로도 지워지지 않는다 · missing / changed 만 되돌아간다
 > 급할 때       없음 — 두 스크립트 다 쓰기 전에 백업을 남긴다(install) · --merge 는 -o 초안 파일에만 쓴다
