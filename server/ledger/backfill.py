@@ -1127,6 +1127,43 @@ CENSUS_NAMES = {
     "rows_unprinted": "Not yet printed",
 }
 
+#: The boxes only a person's census counts - both are scans (S-122). A paced tick that does not
+#: count them carries the last person's count forward with its own `measured_at` (총괄 5baab7b8d):
+#: replacing the record dropped them, and the panel went back to Not measured on the next tick.
+PERSON_ONLY_BOXES = ("rows_drifted", "rows_unprinted")
+
+#: `python -m ledger.backfill` and its redo flag - the parser below takes these very strings.
+PROG = "python -m ledger.backfill"
+DRIFTED_FLAG = "--drifted"
+
+
+def next_step(source, census):
+    """What a person runs next for this record (총괄 e1648e884), or None: the redo of the rows
+    edited behind the chain when there are some, a person's census when the drift was never
+    counted. A refused source has neither - its refusal already says nothing was counted."""
+    from .census_cli import PROG as CENSUS_PROG
+
+    if census.get("refused"):
+        return None
+    drifted = census.get("rows_drifted")
+    if not isinstance(drifted, dict):
+        return f"{CENSUS_PROG} --source {source}"
+    if drifted.get("estimate"):
+        return f"{PROG} --source {source} {DRIFTED_FLAG}"
+    return None
+
+
+def _person_counts(store, source):
+    """The person-only boxes of the record this source has now, or {}."""
+    connection = store.connection()
+    try:
+        row = store.read_cursor(connection, source) or {}
+    finally:
+        connection.close()
+    last = row.get("row_census")
+    last = last if isinstance(last, dict) else {}
+    return {box: last[box] for box in PERSON_ONLY_BOXES if box in last}
+
 
 def measure_row_census(engine, setup, source, now=None, *, exact_rows=True):
     """One source's census, STAMPED -- what was counted, how, and when.
@@ -1231,6 +1268,11 @@ def measure_and_store(engine, setup, source, store, now=None, *, exact_rows=True
     from .setup_registry import cursor_translator_version
 
     census = measure_row_census(engine, setup, source, now=now, exact_rows=exact_rows)
+    if not exact_rows:
+        census = {**_person_counts(store, source), **census}
+    step = next_step(source, census)
+    if step:
+        census["next_step"] = step
     if census.get("refused"):
         # 🔴 [총괄 7426f76b0 ㉤ ㄱ] A SOURCE THE LOADER REFUSED HAS NO FINGERPRINT - asking
         #    for one raised, and the census it had before the refusal stood as its answer.
@@ -1899,6 +1941,34 @@ def _scope_predicate(plan, scope):
     return column, values
 
 
+#: (relation, columns) already named, so the line is said once per process, not per page.
+_SKIPPED_SAID = set()
+
+
+def _readable_columns(connection, plan):
+    """`base_select_columns`, less the catalogue columns the table does not have (총괄 164553a6f
+    ②). Such a column is not read and is named once; a column the declaration names stays in
+    the SELECT, so the read stops on it as it always did."""
+    from .event_frame import base_select_columns, named_columns
+
+    parts = plan.relation.split(".")
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT column_name FROM information_schema.columns "
+            "WHERE table_schema = COALESCE(%s, current_schema()) AND table_name = %s",
+            (parts[0] if len(parts) == 2 else None, parts[-1]))
+        live = {row[0] for row in cursor.fetchall()}
+    named = set(named_columns(plan))
+    wanted = base_select_columns(plan)
+    skipped = tuple(column for column in wanted if column not in live and column not in named)
+    if skipped and (plan.relation, skipped) not in _SKIPPED_SAID:
+        _SKIPPED_SAID.add((plan.relation, skipped))
+        logger.warning("[Ledger] %s: table_config declares %s, the table has no such column - "
+                       "not read. A binding naming it is still refused", plan.relation,
+                       ", ".join(skipped))
+    return tuple(column for column in wanted if column not in skipped)
+
+
 def _fetch_v2_lineage_rows(connection, plan, *, after=None, group_value=None,
                            limit=None, scope=None):
     """Read physical catalog columns with identifier-safe psycopg2 composition.
@@ -1911,8 +1981,7 @@ def _fetch_v2_lineage_rows(connection, plan, *, after=None, group_value=None,
     """
     from psycopg2 import sql
 
-    from .event_frame import base_select_columns
-    columns = base_select_columns(plan)
+    columns = _readable_columns(connection, plan)
     scoped = _scope_predicate(plan, scope)
     # The page key leads the ORDER BY so that its groups are CONTIGUOUS -- that
     # contiguity is the whole basis on which `_cut_on_group_boundary` may drop a trailing
@@ -2056,7 +2125,7 @@ def main(argv=None):
     from . import schema
     from .setup import LedgerSetupError, load_setup
 
-    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser = argparse.ArgumentParser(prog=PROG, description=__doc__.splitlines()[0])
     parser.add_argument("--source", default="lot_event")
     parser.add_argument("--reset-cursor", action="store_true",
                         help="re-read work already done (exercises the unique index)")
@@ -2082,7 +2151,7 @@ def main(argv=None):
     parser.add_argument(
         "--via-events", action="store_true",
         help="retired - the same job as the plain load; run without it")
-    parser.add_argument("--drifted", action="store_true",
+    parser.add_argument(DRIFTED_FLAG, action="store_true",
                         help="translate again only the rows of --source whose read columns no "
                              "longer match what was translated (python -m ledger census "
                              "counts them). Without --apply: how many and what would change")

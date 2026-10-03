@@ -117,7 +117,7 @@ Link type    inspected  Wafer -> Die                              backing datase
 🆕 10-03 `2a8d9073c` — 맵퍼는 그 표의 칸을 전부 받습니다. `map.input_columns` 는 은퇴했고, 적혀 있으면 읽고 무시합니다
 ```
 
-🆕 **10-02 `3a2d79ff9` — `read` 는 안 적어도 됩니다.** 위 예시의 `read` 를 지우면 제품이 같은 값을 채웁니다(`unit`(group_by 가 있으면 group, 없으면 row) · `identity` · `order_by`(표 선언의 가장 짧은 유일 키) · `group_by`(`unit: group` 이면 `identity`) · `occurred_at`(사건 엣지들이 적은 칼럼과 시간대 — 사건 엣지가 없으면 행의 저장 시각, `ingested` · UTC) · `registration_probe`(등록하는 주어마다 그 키 칼럼 하나) · `map.unit` · `map.input_columns`(`[]`)). 시각은 그 시각을 담은 매핑에만 적습니다(`bind.occurred_at` — 사건 엣지). 안 적은 매핑의 원자는 «사건 시각 아님»입니다.
+🆕 **10-02 `3a2d79ff9` — `read` 는 안 적어도 됩니다.** 위 예시의 `read` 를 지우면 제품이 같은 값을 채웁니다(`unit`(group_by 가 있으면 group, 없으면 row) · `identity` · `order_by`(표 선언의 가장 짧은 유일 키) · `group_by`(`unit: group` 이면 `identity`) · `occurred_at`(사건 엣지들이 적은 칼럼과 시간대 — 사건 엣지가 없으면 행의 저장 시각, `ingested` · UTC) · `registration_probe`(등록하는 주어마다 그 키 칼럼 하나) · `map.unit`(⚰️ `map.input_columns` 는 10-03 은퇴 — 맵퍼는 표의 칸을 전부 받습니다)). 시각은 그 시각을 담은 매핑에만 적습니다(`bind.occurred_at` — 사건 엣지). 안 적은 매핑의 원자는 «사건 시각 아님»입니다.
 
 ## 3. 이 예시가 «안» 보여 주는 것 (일부러)
 ```

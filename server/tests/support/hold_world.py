@@ -100,6 +100,9 @@ def build(pg_engine, monkeypatch, tmp_path, batch=False):
             for table in (schema.LEDGER_TABLE, schema.ROW_REF_TABLE):
                 conn.execute(text('DELETE FROM "%s".%s WHERE source_who = :s'
                                   % (PG_TEST_SCHEMA, table)), {"s": SOURCE})
+            # the source's census lives on its cursor row - one test's must not reach the next
+            conn.execute(text('DELETE FROM "%s".%s WHERE source = :s'
+                              % (PG_TEST_SCHEMA, schema.CURSOR_TABLE)), {"s": SOURCE})
 
     raw = pg_engine.raw_connection()
     try:

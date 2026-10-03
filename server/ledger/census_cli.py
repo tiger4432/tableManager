@@ -27,9 +27,14 @@ if SERVER not in sys.path:
     sys.path.insert(0, SERVER)
 
 
+#: How a person runs this - the parser's own `prog`, and what a census record names as its next
+#: step when it was never counted by a person (`backfill.next_step`).
+PROG = "python -m ledger census"
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(
-        prog="python -m ledger census",
+        prog=PROG,
         description=__doc__.splitlines()[0])
     parser.add_argument(
         "--source", default=None,

@@ -693,7 +693,7 @@ Vocabulary는 “어떤 문장이 문법적으로 가능한가”를 정한다. 
 | `implementation_id/version` | trusted mapper 코드 선택 |
 | `unit.kind` | `event`, `row`, `group_by` 중 하나 |
 | `unit.columns` | `group_by` mapper에서만 필요한 grouping columns |
-| ~~`input_columns`~~ | ⚰️ 10-03 은퇴(소유자, 총괄 2a8d9073c) — 맵퍼는 그 관계(`table_config.json`)의 칸을 **전부** 받는다. 적혀 있으면 읽고 무시한다(거절 아님). 지문 · 스냅샷 재료가 아니라 표에 칸이 늘어도 다시 번역 0 |
+| ~~`input_columns`~~ | ⚰️ 10-03 은퇴(소유자, 총괄 2a8d9073c) — 맵퍼는 그 관계(`table_config.json`)의 칸을 **전부** 받는다(DB 표에 없는 칸은 읽지 않고 로그 한 줄 — 164553a6f). 적혀 있으면 읽고 무시한다(거절 아님). 지문 · 스냅샷 재료가 아니라 표에 칸이 늘어도 다시 번역 0 |
 
 Mapper는 Atom, predicate payload, Ledger 7컬럼을 직접 만들지 않는다. 공통
 `BaseLedgerMapper.map()` 경계를 통해 `RoleEmission`만 반환한다. subject/object/time/qualifier
@@ -1761,7 +1761,7 @@ PostgreSQL E2E는 `ASSY_PG_TEST_DATABASE_URL`이 안전한 격리 DB를 가리�
 
 | 증상 | 원인 | 해결 |
 |---|---|---|
-| `unknown_column` (`column ... is not in EventFrame schema` · `is not in relation ...`) | 바인딩 · 묶음 · `when` 이 관계에 없는 컬럼을 부름 | 🔴 **`bind`가 binding할 수 있는 컬럼 집합은 그 소스 관계(`table_config.json`)의 컬럼이다.** 부른 컬럼은 읽기가 저절로 싣는다 — `map.input_columns` 에 다시 적지 않는다(총괄 c38eae7cf, 전에는 `invalid_mapper` 「Profile column … is missing」) |
+| `unknown_column` (`column ... is not in EventFrame schema` · `is not in relation ...`) | 바인딩 · 묶음 · `when` 이 관계에 없는 컬럼을 부름 | 🔴 **`bind`가 binding할 수 있는 컬럼 집합은 그 소스 관계(`table_config.json`)의 컬럼이다.** 부른 컬럼은 읽기가 저절로 싣는다(총괄 c38eae7cf, 전에는 `invalid_mapper` 「Profile column … is missing」). ⚰️ 10-03 `map.input_columns` 은퇴 — 맵퍼는 그 관계의 칸 전부를 받고, 적힌 값은 읽고 무시 |
 | `invalid_cursor` | order/cursor가 UNIQUE key 전체를 안 포함 | business/composite/UNIQUE index 전체 컬럼 추가 |
 | 조인 값이 소스에 안 보인다 | 쓰는 조인이 아직 왼쪽 표에 칼럼을 안 썼거나, `table_config.json` 의 왼쪽 표에 그 칼럼이 없다 | 조인 규칙 실행 확인 · `table_config.json` 의 왼쪽 표 칼럼 |
 | `untrusted_implementation` | sample ID를 production에 복사 | 코드에 그 클래스가 있는지 확인 또는 기존 구현 재사용 |

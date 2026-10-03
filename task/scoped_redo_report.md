@@ -70969,3 +70969,67 @@ RUN.md — 옛 절의 이력 줄 · 10-02 확인 줄은 ⚰️ 표시 — 1 파�
 ```
 
 다음: 5baab7b8d + e1648e884(주기 census 가 사람이 잰 두 수를 그 measured_at 그대로 잇고 · 다음 행동 명령을 싣는다) -> bce43236b
+
+---
+
+## [10-03] 164553a6f 착지 9e64dbdeb — 97101fd2e 가 낳은 멈춤 둘을 닫음 (선언이 안 부르는 칸은 소스를 세울 수 없다)
+
+어느 DB · 어느 스키마 · 지운 것 — 박스 assy_manager 는 읽기만. pg 시험은 assy_test 의 시험 스크래치 스키마(픽스처가 만들고 지움). 지운 것 0
+
+```
+① 행 순서 열쇠   event_frame.named_columns(plan) = 선언이 부르는 칸 + row_id. 행 단위의 순서 열쇠(roleframe._partition_units)와
+                프레임 결손 검사(_validate_base_frame)가 이것만 본다 — 다른 칸의 NUMERIC · DATE · 시간대 없는 TIMESTAMP 값이 소스를 안 세움
+② 읽기           backfill._readable_columns — base_select_columns 에서 «DB 표에 없는 카탈로그 칸»을 빼고 SELECT,
+                그 칸은 프로세스마다 한 번 경고: [Ledger] <표>: table_config declares <칸>, the table has no such column - not read
+                선언이 부르는 칸은 SELECT 에 남아 전처럼 읽기가 선다
+읽는 것         «관계의 칸 전부» = 카탈로그 칸 중 DB 에 있는 것 (DB 에만 있고 카탈로그에 없는 칸은 전처럼 안 읽음)
+```
+**전후 — 97101fd2e 판(main) vs 이 판, 같은 박스 행 · 같은 비교**
+```
+box     die_inspection         칸 11 · 원자 4000 -> 4000 · 같음 True
+box     dt_job                 칸 24 · 원자 56 -> 56 · 같음 True
+box     lot_slot_wafer         칸 7 · 원자 2000 -> 2000 · 같음 True
+box     transfer_event         칸 13 · 원자 2810 -> 2810 · 같음 True
+box     wafer_process_recipe   칸 15 · 원자 2000 -> 2000 · 같음 True
+sample  die_inspection         칸 11 · 원자 2000 -> 2000 · 같음 True
+sample  lot_slot_wafer         칸 7 · 원자 2000 -> 2000 · 같음 True
+sample  transfer_event         칸 13 · 원자 1405 -> 1405 · 같음 True
+```
+원자 · 사건 id 같음 8/8(원자 해시에 source_event_id 포함) · 지문 8/8 · 커서 버전 8/8 · 스냅샷 그대로
+샘플 카탈로그 · 돌아가는 샘플 소스 6 개 전부 원자 같음: True
+
+**게이트**
+```
+① 묶이지 않은 칸에 Decimal · date · 시간대 없는 datetime 을 넣은 행 단위 소스 — 원자가 그 값 없이와 같음 (sqlite)
+② 카탈로그에만 있는 칸 ghost — 소스 돎 · 같은 원자 · 경고 한 줄(두 번 읽어도 한 줄) · 바인딩이 ghost 를 부르면 읽기가 섬 (pg 2 통과)
+변이  the row key reads every column again -> RED · the read asks for a column the table lacks -> RED · the frame must carry every relation column again -> RED
+sqlite 전체  16 failed, 7717 passed, 41 skipped, 229 deselected, 3 xfailed, 12989 warnings in 804.74s
+   test_the_test_run_reads_until_it_has_a_molecule 10 — 가짜 연결이 새 카탈로그 질의를 몰랐다. 그 질의에 표의 칸으로 답하게 고쳐 11 통과
+   test_config_reload_integrity::test_h3 1 — 파일 감시 시점 시험, 그 파일만 돌리면 32/32. 원장 길과 무관
+   나머지 5 — 지난 보고의 박스 체크아웃 사유 그대로(샘플 서식 CRLF · 라이브 맵퍼 사본 셋 · .git 폴더 없음)
+```
+**새로 한 일 하나** — 읽기가 페이지마다 information_schema 질의를 하나 더 한다(표의 칸 묻기, 행을 안 셈). 물리 칸을 묻는 자리가 이제 셋이다:
+admin.relation_columns · column_stats.physical_columns(둘 다 SQLAlchemy 연결) · 이 읽기(원장 읽기의 DBAPI 연결). 접을지 여쭙니다
+RUN.md 맨 위 절의 «새 위험 둘» 줄을 닫힘으로 바꿈(같은 재기동) · RELEASE_LOG 10-03 항목의 거짓이 된 문장 고침
+
+다음: 5baab7b8d + e1648e884 (주기 census 두 수 잇기 · 다음 행동 명령) — 짓던 것을 패치로 세워 둠
+
+---
+
+## [10-03] 5baab7b8d + e1648e884 착지 66570d724 — 주기 census 가 사람이 센 두 수를 그 시각 그대로 잇고, 기록이 다음 할 명령을 싣는다
+
+어느 DB · 어느 스키마 · 지운 것 — 박스 DB 안 씀. pg 시험은 assy_test 의 시험 스크래치 스키마(픽스처가 만들고 지움). 지운 것 0
+
+```
+잇기      measure_and_store 주기 판(exact_rows=False)이 그 소스의 직전 기록을 한 번 읽어 rows_drifted · rows_unprinted 를 measured_at 째 싣는다
+         (PERSON_ONLY_BOXES 한 상수). 주기 판은 여전히 세지 않는다
+명령      census 기록의 next_step — 누락 > 0: python -m ledger.backfill --source <s> --drifted · 센 적 없음: python -m ledger census --source <s>
+         · 0 또는 거절된 소스: 없음. 철자는 두 파서가 받는 상수(backfill PROG · DRIFTED_FLAG · census_cli.PROG)에서, 시험이 두 파서의 usage 를 읽어 견줌
+시험 픽스처 hold_world 의 정리가 그 소스의 커서 행(=census 가 사는 곳)도 지운다 — 앞 시험의 census 가 다음 시험으로 넘어오던 것
+6b698fe2d 의 「paced 에 rows_drifted 없음」 단언 -> 「주기 판은 다시 세지 않는다」: 사람 census 뒤 표가 다시 어긋나도(누락 1 -> 2) 주기 판은 사람이 센 1 과 그 시각,
+         사람이 다시 세면 2 와 새 시각
+```
+**시험** — hold world 를 쓰는 pg 시험 전부(느린 재기동 하나 뺌): 40 passed, 2 deselected, 84 warnings in 191.45s (0:03:11) · 변이 the paced tick replaces the record again -> RED · the paced tick counts drift -> RED · the redo is spelled apart from the parser -> RED · a never-counted source names no step -> RED
+**클라 몫** — c965f6206 이 들고 있는 --drifted 명령 상수를 서버 기록의 next_step 으로(총괄 지시 대기)
+
+다음: c8d6a8597 — «표의 물리 칸» 묻는 세 자리를 한 함수로, 원장 읽기는 한 번의 읽기마다 한 번

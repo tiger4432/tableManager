@@ -271,15 +271,19 @@ def bound_select_columns(source_plan: SourcePlan) -> tuple[str, ...]:
     )
 
 
+def named_columns(source_plan: SourcePlan) -> tuple[str, ...]:
+    """What the declaration names, and the engine's `row_id` (every planned source reads a table
+    that has it, 총괄 f3bc02f6e) - what a frame must carry and what a row unit is ordered by
+    (총괄 164553a6f). A column outside it reaches no atom (판정 201), so neither its absence nor
+    its type may stop a source."""
+    return tuple(sorted({*bound_select_columns(source_plan), source_plan.frame_row_id}))
+
+
 def base_select_columns(source_plan: SourcePlan) -> tuple[str, ...]:
-    """Physical columns the existing cursor must SELECT: every column of the relation (소유자
-    10-03 - the mapper receives them all), the declared ones, and `row_id`."""
-    columns = set(bound_select_columns(source_plan))
-    columns.update(source_plan.relation_columns)
-    # The engine's own column, on every planned source - each reads a table that has `row_id`
-    # (a view source is refused at load, 총괄 f3bc02f6e).
-    columns.add(source_plan.frame_row_id)
-    return tuple(sorted(columns))
+    """Physical columns the cursor asks for: every column of the relation (소유자 10-03 - the
+    mapper receives them all) and the named ones. The read leaves out a catalogue column the
+    table does not have (`backfill._readable_columns`)."""
+    return tuple(sorted({*named_columns(source_plan), *source_plan.relation_columns}))
 
 
 def _validate_base_frame(
@@ -296,7 +300,7 @@ def _validate_base_frame(
         raise SourcePreparationError(
             "invalid_source_batch", "source_batch.columns",
             "duplicate source columns are forbidden")
-    missing = [column for column in base_select_columns(context.source_plan)
+    missing = [column for column in named_columns(context.source_plan)
                if column not in frame.columns]
     if missing:
         raise SourcePreparationError(
