@@ -990,10 +990,8 @@ def rule_watches_changed_columns(rule, event) -> bool:
     wanted = wake_columns(rule)
     if not wanted:
         return True
-    changed = get_payload_dict(event).get("columns")
-    if changed is None:
-        return True
-    return bool(set(wanted) & set(changed))
+    return event_constants.columns_meet(
+        wanted, event_constants.changed_columns_of(get_payload_dict(event)))
 
 
 def wake_columns(rule) -> list:
@@ -3332,6 +3330,7 @@ async def run_ledger_followup(db_session_factory):
             units, rest = None, FOLLOWUP_IDLE_SECONDS
         drained = 0
         confirmed_total = refused_total = 0
+        skipped = {}
         lap_started = time.monotonic()
         while units is None or drained < units:
             try:
@@ -3349,6 +3348,9 @@ async def run_ledger_followup(db_session_factory):
                 break
             confirmed_total += done.get("auto_confirmed") or 0
             refused_total += done.get("auto_refused") or 0
+            for source, said in (done.get("sources") or {}).items():
+                if (said or {}).get("skipped"):
+                    skipped[source] = skipped.get(source, 0) + 1
             drained += 1
         # 🔴 A SUCCESSFUL DRAIN USED TO SAY NOTHING, and that silence cost a measurement
         # (S-160, 판정 269). Asked whether the drain was working DURING a reproduction
@@ -3364,7 +3366,9 @@ async def run_ledger_followup(db_session_factory):
             lap_seconds = time.monotonic() - lap_started
             depth_left = await asyncio.to_thread(_ledger_outbox_depth_sync, db_session_factory)
             logger.info("[LedgerFollowUp] lap: %d item(s) in %.3fs, %d left in the queue "
-                        "(rest %.0fs between)", drained, lap_seconds, depth_left, rest)
+                        "(rest %.0fs between)%s", drained, lap_seconds, depth_left, rest,
+                        "".join(" · skipped %s=%d (no column it reads changed)" % (s, n)
+                                for s, n in sorted(skipped.items())))
             # S-176: the same three numbers, carried instead of dropped. No new
             # measurement -- `lap_seconds` and `depth_left` are the log line's own.
             heartbeat.record_lap("chain", "ledger_followup", seconds=lap_seconds,
@@ -3374,7 +3378,8 @@ async def run_ledger_followup(db_session_factory):
                                  # that confirmed nothing and a lap where the sweep never
                                  # ran are different facts — both are values here.
                                  auto_confirmed=confirmed_total,
-                                 auto_refused=refused_total)
+                                 auto_refused=refused_total,
+                                 skipped=skipped or None)
         await asyncio.sleep(rest if drained else max(rest, FOLLOWUP_IDLE_SECONDS))
 
 

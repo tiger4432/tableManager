@@ -31,7 +31,7 @@ def test_the_queue_carries_the_transaction_of_the_event_it_followed():
     try:
         assert followup.enqueue("t", ["r1"], "EDIT", "tx-9", 2)
         item = followup._take()
-        table, row_ids, event_type, _queued_at, transaction_id, chain_depth = item
+        table, row_ids, event_type, _queued_at, transaction_id, chain_depth, columns = item
 
         assert (table, row_ids, event_type) == ("t", ("r1",), "EDIT")
         assert transaction_id == "tx-9"
@@ -40,6 +40,7 @@ def test_the_queue_carries_the_transaction_of_the_event_it_followed():
         # lap wrote carried none and could never meet `max_chain_depth` - a loop through the
         # lap was unbounded while the same loop inside the group step was bounded.
         assert chain_depth == 2
+        assert columns is None              # an enqueued event does not say what it set (모른다)
     finally:
         followup._queue.clear()
 

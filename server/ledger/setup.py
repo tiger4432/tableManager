@@ -50,6 +50,7 @@ from .setup_bundle import (
     LedgerSetupBundle,
     LedgerSetupValidationError,
     bundle_readiness_errors,
+    executes_the_bindings,
     load_physical_catalog,
     load_setup_bundle,
     require_ready_bundle,
@@ -197,7 +198,7 @@ def _unscored_self_edge_sentences(sources):
         mapper = source.get("map")
         implementation = (mapper.get("implementation_id")
                           if isinstance(mapper, Mapping) else None)
-        if implementation == "declarative-role":
+        if executes_the_bindings(implementation):
             continue
         profile = source.get("bind")
         mappings = profile.get("mappings") if isinstance(profile, Mapping) else None
