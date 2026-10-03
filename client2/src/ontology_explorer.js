@@ -11,6 +11,7 @@ import {
 import { renderOntologyExplorer, nodeTrail } from './ontology_explorer_view.js';
 import { PathBar } from './path_bar.js';
 import { withWorld } from './world.js';
+import { CURRENT_USER } from './config.js';
 import { BranchPicker } from './branch_picker.js';
 import {
   splitBundlePath, setAtPath, getAtPath, deleteAtPath, writeShapeAtPath, addMember,
@@ -453,12 +454,13 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
   };
 
   // The world being read made the operating one (lead 120450931 ③): asked once, sent once, and the answer is
-  // the worlds as they now stand. The door wants the strict token; a refusal is the server's sentence.
+  // the worlds as they now stand. Who switched is the page's user, the seat the grid's writes name (lead 71ecd8223).
+  // The door wants the strict token; a refusal is the server's sentence.
   const operateWorld = async (name) => {
     if (!window.confirm(`Make ${name} the operating world?`)) return;
     try {
       const body = await jsonRequest('/worlds/operating', { method: 'PUT',
-        headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ world: name }) });
+        headers: { 'Content-Type': 'application/json', 'X-User': CURRENT_USER }, body: JSON.stringify({ world: name }) });
       dispatch({ type: 'WORLDS_RECEIVED', worlds: body.worlds, operating: body.operating, history: body.history });
       showToast?.(`${name} operating`, 'success');
     } catch (error) {

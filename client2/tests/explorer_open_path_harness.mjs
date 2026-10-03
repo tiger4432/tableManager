@@ -770,6 +770,8 @@ failed += pathBarBase.failures.length;
 console.log('\n[8] the branch the screen reads');
 const REQUESTS_BEFORE = JSON.parse(readFileSync(join(HERE, 'fixtures', 'explorer_requests.before.json'), 'utf8'));
 const PREVIEW = { world: 'w2', schema: 'ledger_w2', atoms: 7, files: ['a.json', 'b.json'] };
+// Who operated is the page's user - the one seat the grid's writes name too (lead 71ecd8223).
+const { CURRENT_USER } = await import('../src/config.js');
 // GET /worlds as the server shapes it (6bfb6d4be), the operating world NOT the default - so an empty pick
 // and a pick of `default` are different requests (lead 120450931 ①). History is oldest first, as written.
 const WORLDS = { worlds: ['default', 'w1'], operating: 'w1', beneath: { w1: ['default'] },
@@ -783,6 +785,7 @@ async function branchWalk(create, { confirmDelete = true, typed = null, refuseKe
   const urls = [];
   const puts = [];
   const operated = [];
+  const users = [];
   const toasts = [];
   const clicks = [];
   const inputs = [];
@@ -808,6 +811,7 @@ async function branchWalk(create, { confirmDelete = true, typed = null, refuseKe
     if (path.endsWith('/worlds/operating')) {
       const world = JSON.parse(init.body).world;
       operated.push(world);
+      users.push((init.headers || {})['X-User']);
       if (refuseOperate) return { ok: false, status: 401, json: async () => ({ detail: TOKEN_REFUSED }) };
       return reply({ ...WORLDS, operating: world,
         history: [...WORLDS.history, { world, by: 'operator', at: '2026-10-03T00:00:00+00:00' }] });
@@ -894,7 +898,8 @@ async function branchWalk(create, { confirmDelete = true, typed = null, refuseKe
     const go = part('branch-picker__operate');
     if (go) fire(go, 'click');
     await settle();
-    out.operated = { asks: asks.splice(0), sent: operated.splice(0), urls: urls.splice(0), toasts: toasts.splice(0),
+    out.operated = { asks: asks.splice(0), sent: operated.splice(0), users: users.splice(0), urls: urls.splice(0),
+      toasts: toasts.splice(0),
       operating: texts('branch-picker__operating').join('|'),
       history: walkAll(mount).filter((n) => n.tagName === 'LI').length };
     const drop = part('branch-picker__delete');
@@ -986,8 +991,9 @@ function branchSuite({ yes, no, byName, under, nothing, declined, tokenless, und
       && nothing.made.urls[0] === 'admin POST /admin/ontology-explorer/bootstrap?beneath=&world=w2'
       && yes.made.urls[0] === 'admin POST /admin/ontology-explorer/bootstrap?world=w2',
     `${under.made.urls[0]} | ${nothing.made.urls[0]} | ${yes.made.urls[0]}`);
-  say('Z18 Operate asks once and sends one PUT naming the world read; declined, it sends none',
+  say('Z18 Operate asks once and sends one PUT naming the world read and who (the page\'s user); declined, it sends none',
     yes.operated.asks.length === 1 && JSON.stringify(yes.operated.sent) === '["w2"]'
+      && JSON.stringify(yes.operated.users) === JSON.stringify([CURRENT_USER]) && Boolean(CURRENT_USER)
       && yes.operated.urls.filter((u) => u.startsWith('admin PUT')).length === 1
       && declined.operated.asks.length === 1 && declined.operated.sent.length === 0
       && declined.operated.urls.length === 0,
@@ -1052,6 +1058,8 @@ failed += branchBase.failures.length;
       mutate: (text) => swap(text, "      const body = await jsonRequest('/worlds/operating', { method: 'PUT',",
         "      await jsonRequest('/worlds/operating', { method: 'PUT', body: JSON.stringify({ world: name }) });\n"
         + "      const body = await jsonRequest('/worlds/operating', { method: 'PUT',") },
+    { id: 'M37', what: 'Operate does not say who', catches: 'Z18',
+      mutate: (text) => swap(text, ", 'X-User': CURRENT_USER }", ' }') },
     { id: 'M31', what: 'what a new branch stands on is dropped', catches: 'Z17',
       mutate: (text) => swap(text,
         "    const under = Array.isArray(beneath) ? `?beneath=${beneath.map(encodeURIComponent).join(',')}` : '';",
