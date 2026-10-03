@@ -35719,3 +35719,16 @@ RELEASE_LOG 맞음 — 주기 판이 세지 않고 잇는다 · 직전 기록 �
 남은 물음  test_ledger_v2_pg.py 가 적은 S-113 ⓔ 의 열린 반쪽 — 「부팅 재스탬프(고침)로 충분한가, 거절이 다시 있어야 하나」 — 제 판정 아님
 919ce6436 검수  -k world PG 는 위 279d04475 와 같은 묶음이 초록이었다(32). 이 착지의 새 시험 줄은 따로 안 돌렸다
 ```
+
+---
+
+## [C 응용] 10-03 919ce6436 시험 — 첫 실행 1 failed, 다시 7 passed · 공유 트리에서 파일이 바뀐 셋째 흔적 (시각만 적는다)
+
+```
+시험     run_pg_tests -k (stands_on_a_chain_and_one_operates · fingerprint_closes_over_content) 첫 실행 6 passed 1 failed -> 다시 7 passed · pytest 9 passed
+실패 모양  낡은 커서 'ledger-v2:stale' 가 다시 안 찍힘 — 이 착지의 «옛 몸통»(운영 세상만 묻기) 변이와 같은 모양
+파일 시각  server/chain/ingestion_worker.py mtime 23:28:30 — 그 파일의 커밋(919ce6436 23:25)보다 «뒤», 제 첫 실행 «안». 지금 내용은 HEAD 와 같다
+같은 분    총괄 8e8ee2dcf(「919ce6436 checked」) 23:28 — 그 확인의 변이를 공유 트리에서 돌린 것으로 보인다. 확인은 못 했다
+오늘 셋   10:07(8bbeb1aee) · 12:36(4761be755) · 23:28(919ce6436) — 셋 다 «방금 착지한 수리가 빠진» 모양으로 남의 실행이 빨개졌다
+여쭐 것   변이는 사본(git worktree)에서 — 37df8cb57 · a45ef40cc 와 같은 물음. 저는 오늘 오후부터 제 확인을 C:/wt-app 사본에서 돌린다
+```
