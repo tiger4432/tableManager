@@ -35614,3 +35614,31 @@ RELEASE_LOG 맞음 — 주기 판이 세지 않고 잇는다 · 직전 기록 �
          배치 세션은 autoflush=False(SessionLocal) — 몸통 안의 대량 DELETE 가 대기 행을 미리 밀어내지 않는다
 문서     CODE_MAP crud — delete_row_layers 줄 새로, 병합 줄에 한 마디
 ```
+
+---
+
+## [C 응용] 10-03 6bfb6d4be(세상 — 운영 세상 · 밑에 깔 세상) 검수 · 문서 @`956d1eca6` · 🔴 넓어진 문 하나: 데몬의 «기본 원장 돌보기» 셋이 운영 세상만 본다
+
+```
+시험 (박스, assy_test)  run_pg_tests -k (world · branch · deleted_row_takes_its_facts · catalogue_kind · index_can_be_recovered) 22 passed ·
+                       pytest -k (world · branch · admin_auth · catalogue_kind) 200 passed 20 skipped
+문서                   CODE_MAP schema 줄(이름 없음 = 운영 세상 · layout · operate · stand · chain_speakers · followed_by · ensure_world) ·
+                       RUNTIME_MAP ④(소스마다 말하는 세상에 씀) · LEDGER_GUIDE 4.9 새 절(파일 · 라우트 · 따르는 자리 · 거절 · 되돌리면)
+                       — 구현자 커밋은 RUN.md · RELEASE_LOG 만 고쳤다. 세상을 운영자에게 설명한 안내서가 없었다
+```
+```
+🔴 넓어진 문 — 「이름 없는 자리 = 운영 세상」이 데몬의 기본 원장 돌보기 셋도 데려갔다 (코드로 읽음, 가지 운영으로 «돌려» 보지는 않았다)
+   운영이 가지일 때도 후속은 가지가 말하지 않는 소스를 «기본»에 쓴다(_follow_chain 의 바닥). 그런데
+   ① 기동 스키마   ingestion_worker._ensure_ledger_schema_sync -> LedgerStore(engine).ensure_schema() = 운영 세상만.
+                   그 docstring: 「a column must reach live WITHOUT a person running one line by hand」(S-88) — 기본에 칸을 더하는 업그레이드 뒤,
+                   가지가 운영 중이면 기본 표는 안 맞춰지고 기본에 쓰는 후속이 그 칸에서 선다. ensure_world 는 기본에 «아무것도 안 함»(가지만)
+   ② 지문 다시 찍기  _restamp_moved_fingerprints_sync -> load_setup() + LedgerStore() = 운영 세상의 커서만. 기본 소스의 지문이 움직이면 기본 커서는 그대로 선다
+   ③ 주기 census    measure_and_store(..., LedgerStore(engine)) = 운영 세상의 기록만 — 기본에 쓰이는 소스의 census 는 안 새로워진다
+   제안(한 자리)    셋 다 «운영 사슬의 세상 전부»(followed_by 가 쓰는 세상들)를 돌게 — 후속이 쓰는 곳과 돌보는 곳이 같은 목록을 지나게
+   여쭐 것          이 셋을 세상 짓기 «다음 착지»에 넣을지 · 오늘 운영은 파일이 없어 운영 = 기본이라 아무것도 안 바뀐다(코드: layout() 없으면 default)
+```
+```
+한 줄 — 레이아웃이 없어진 세상을 운영으로 적고 있을 때
+   읽기 라우트는 require_world 가 이름 대어 거절한다. 후속은 world_names(이름만)로 가서 보기 주석 · 선언 파일을 읽다 실패할 것으로 읽힌다 — 안 돌렸다.
+   기본으로 떨어지지 않는 것은 문서의 원칙과 같다. 다만 «후속이 매 배치 실패»라면 이름 대는 한 줄이 맞는지 여쭐 것
+```
