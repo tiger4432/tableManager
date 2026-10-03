@@ -382,6 +382,7 @@ SOURCE_PRIORITY = { user: 0, collision_merge: 1, pipeline_parser: 2, custom_scri
   - 원천에 별도의 합성 키 물리 컬럼이 **없으면 `business_key`를 생략**합니다. 조립값은 프레임워크 소유 `business_key_val`에만 저장되고 원천 컬럼 집합은 바뀌지 않습니다.
   - 제품 소유 표처럼 합성 키 물리 컬럼(`map_pk`, `cell_key`)이 실제로 있으면 `business_key`도 함께 선언하며, 그 컬럼에도 같은 조립값을 씁니다.
   - 예: 원천 `bonding_map`은 `(base_wafer_id, base_x, base_y)`만 선언하고, 제품 소유 `wafer_map_metadata`는 `map_pk = target_table_map_id`를 함께 저장합니다.
+  - 🆕 [2026-10-03 총괄 a61d32f4f ㄱ] **키 조각이 바뀌면 키를 다시 짓는 기제는 두 모양에 같습니다** — 조각을 고치면 다시 짓고, 비우면 NULL, 남의 키와 부딪히면 §4 병합. `business_key` 칸이 없는 표는 그 칸만 안 씁니다. 자리는 둘: `crud.apply_row_update_internal` 의 「2. 복합 비즈니스 키 실시간 재계산」 · `crud.set_cell_manual_priority_batch`(핀으로 보이는 조각이 바뀔 때) — 둘 다 `crud.rebuilt_business_key`(조각이 짓는 키) · `crud.put_business_key`(그 칸이 있는 표인지 묻는 «한» 자리)를 지난다. 전에는 둘 다 `business_key` 칸이 있는 표만 들어가서, 조합키만 선언한 표는 id 로 부르며 조각을 채운 행(이름 붙인 id 로 만들기 · 그리드 새 행)이 키 없이 남고 다음 키 쓰기가 행을 하나 더 만들었습니다.
 - `map_key_columns` — 맵 저장(`replace_map`) 시 어떤 행 집합을 purge할지 범위 결정.
 
 ### 3.1 「업무 키 하나에 행 하나」는 **데이터베이스가 강제한다** · 2026-08-07 D3

@@ -2800,6 +2800,35 @@ def compose_business_key(table_name: str, values) -> str:
     return separator.join(clean_str_value(v) for v in values)
 
 
+def rebuilt_business_key(table_name: str, row) -> Optional[str]:
+    """The key this row's own parts compose to, or None when a part is blank - what both seats
+    that rebuild a key ask: the write's (`apply_row_update_internal` «2.») and the pin's
+    (`set_cell_manual_priority_batch`) (총괄 a61d32f4f ㄱ). The write's fallback for a new row
+    with blank parts stays the write's.
+
+    🔴 `is_blank_key_part`, because this MAKES an identity: NaN passes `is_blank_value`, becomes
+    the text 'nan' through `clean_str_value`, and rows missing different things collide on one
+    key (2026-09-04).
+    """
+    parts = TABLE_CONFIG.get(table_name, {}).get("composite_key_source") or ()
+    values = [getattr(row, column, None) for column in parts]
+    if not values or any(is_blank_key_part(v) for v in values):
+        return None
+    return compose_business_key(table_name, values)
+
+
+def put_business_key(table_name: str, row, key) -> tuple:
+    """Write a rebuilt key onto the row: `business_key_val` always, the declared `business_key`
+    column only on a table that has one - the one seat that asks which of the two shapes this
+    is (총괄 a61d32f4f ㄱ). Returns (that column, its old value), or (None, None)."""
+    column = TABLE_CONFIG.get(table_name, {}).get("business_key")
+    old = getattr(row, column, None) if column else None
+    row.business_key_val = key
+    if column:
+        setattr(row, column, key)
+    return column, old
+
+
 def assemble_composite_business_key(table_name: str, update_item: schemas.GeneralUpdateItem) -> bool:
     """Fill in `business_key_val` from the payload's own column values, for a table
     whose business key is a join of other columns (`composite_key_source`).
@@ -3751,7 +3780,11 @@ def apply_row_update_internal(
     # See `notation_norm`'s module docstring for the measurements that forced it.
 
     # 2. 복합 비즈니스 키 실시간 재계산 및 동기화, 유일성 검사
-    if composite_src and key_col:
+    # 🔴 [총괄 a61d32f4f ㄱ] 조합키를 선언한 표 «전부»다. `business_key` 칸이 없는 표(신원이
+    #   `business_key_val` 에만 산다)가 이 문 밖에 있어서, id 로 부르며 키 조각을 처음 채운
+    #   행(이름 붙인 id 로 만들기 · 그리드 새 행)이 키 없이 남고 다음 키 쓰기가 행을 하나 더
+    #   만들었다. 그 칸을 쓰는 줄만 그 칸이 있을 때.
+    if composite_src:
         is_src_changed = any(col in changed_cols for col in composite_src)
         # ⛔ `or is_new` IS GONE (판정 190 B), NOT THE WHOLE BRANCH. Since A assembles
         # before the lookup, a new row already ARRIVES carrying its assembled key, so
@@ -3759,18 +3792,10 @@ def apply_row_update_internal(
         # What remains is a DIFFERENT event: an edit that changes a key PART re-keys an
         # existing row, and that path's collision merge is still needed.
         if is_src_changed:
-            raw_vals = [getattr(row, col, None) for col in composite_src]
-            # 🔴 이 자리의 빈 값 판정은 `all(v != "")` 이고, 그것이 «이 호출자의 정책»이다.
-            #    ①은 is_blank_value 로 묻는다 - 두 술어를 하나로 맞추는 것은 별건(S2)이고
-            #    여기서 손대면 이 라운드가 「조립 통합」이 아니라 «동작 변경»이 된다.
-            # 🔴 신원을 «만드는» 자리이므로 `is_blank_key_part` 다. NaN 은 `is_blank_value`
-            #    에는 안 걸리고 `clean_str_value` 를 지나 «'nan'» 이라는 글자가 되어,
-            #    결측이 든 서로 다른 행들이 «같은 키»로 겹친다 (2026-09-04 판정).
-            if not any(is_blank_key_part(v) for v in raw_vals):
-                new_bk_val = compose_business_key(table_name, raw_vals)
-            else:
+            new_bk_val = rebuilt_business_key(table_name, row)
+            if new_bk_val is None and is_new and update_item.business_key_val:
                 # 조합 소스 컬럼들이 누락되었으나 신규 생성 시 business_key_val이 유효하게 주어져 있다면 폴백 사용
-                new_bk_val = update_item.business_key_val if (is_new and update_item.business_key_val) else None
+                new_bk_val = update_item.business_key_val
 
             current_bk = getattr(row, "business_key_val", None)
             if current_bk != new_bk_val:
@@ -4013,22 +4038,18 @@ def apply_row_update_internal(
                             if row_to_delete.business_key_val:
                                 row_cache.pop(row_to_delete.business_key_val, None)
 
-                old_bk_col_val = getattr(row, key_col, None)
-                
-                row.business_key_val = new_bk_val
+                written_col, old_bk_col_val = put_business_key(table_name, row, new_bk_val)
                 if row_cache is not None:
                     if current_bk in row_cache and row_cache[current_bk] == row:
                         del row_cache[current_bk]
                     if new_bk_val is not None:
                         row_cache[new_bk_val] = row
 
-                setattr(row, key_col, new_bk_val)
-                
-                if old_bk_col_val != new_bk_val:
-                    changed_cols.append(key_col)
+                if written_col and old_bk_col_val != new_bk_val:
+                    changed_cols.append(written_col)
                     if update_item.source_name == "user":
                         log_dict = create_audit_log(
-                            db, table_name, row.row_id, key_col, old_bk_col_val, new_bk_val, 
+                            db, table_name, row.row_id, written_col, old_bk_col_val, new_bk_val, 
                             update_item.source_name, (update_item.updated_by or "user"), 
                             transaction_id=transaction_id, business_key=row.business_key_val,
                             add_to_cache=(logs_to_cache is None)
@@ -5969,15 +5990,10 @@ def set_cell_manual_priority_batch(db: Session, table_name: str, updates: list[d
         composite_src = table_info.get("composite_key_source")
         key_col = table_info.get("business_key")
 
-        if composite_src and key_col and col_name in composite_src:
-            raw_vals = [getattr(row, col, None) for col in composite_src]
-            # 이 호출자의 정책은 「하나라도 비면 None」이다 - 위 ②의 폴백과 다르고,
-            # 다른 채로 두는 것이 이 라운드의 요구다.
-            # 🔴 «무엇이 비었나»는 신원 술어로 묻는다 (위와 같은 이유). 정책은 그대로다.
-            if not any(is_blank_key_part(v) for v in raw_vals):
-                new_bk_val = compose_business_key(table_name, raw_vals)
-            else:
-                new_bk_val = None
+        # 🔴 [총괄 a61d32f4f ㄱ] 위 «2.» 와 같은 문 · 같은 함수 — `business_key` 칸이 없는 표도
+        #   들어온다. 이 호출자의 정책은 「하나라도 비면 None」(위 «2.» 의 새 행 폴백 없음).
+        if composite_src and col_name in composite_src:
+            new_bk_val = rebuilt_business_key(table_name, row)
 
             current_bk = getattr(row, "business_key_val", None)
             if current_bk != new_bk_val:
@@ -6158,17 +6174,16 @@ def set_cell_manual_priority_batch(db: Session, table_name: str, updates: list[d
                         if row not in changed_rows:
                             changed_rows.append(row)
 
-                row.business_key_val = new_bk_val
-                setattr(row, key_col, new_bk_val)
-                
-                # 감사 로그 생성
-                log_dict = create_audit_log(
-                    db, table_name, r_id, key_col, current_bk, new_bk_val,
-                    "set_priority_sync", updated_by,
-                    transaction_id=tx_id, business_key=new_bk_val,
-                    add_to_cache=False
-                )
-                logs_to_cache.append(log_dict)
+                written_col, _ = put_business_key(table_name, row, new_bk_val)
+                if written_col:
+                    # 감사 로그 생성
+                    log_dict = create_audit_log(
+                        db, table_name, r_id, written_col, current_bk, new_bk_val,
+                        "set_priority_sync", updated_by,
+                        transaction_id=tx_id, business_key=new_bk_val,
+                        add_to_cache=False
+                    )
+                    logs_to_cache.append(log_dict)
             
         if row not in changed_rows:
             changed_rows.append(row)

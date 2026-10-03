@@ -95,7 +95,9 @@ def row_item_by_id(row_id, values, *, source_name, updated_by=None):
     rewritten cannot be addressed by the identity it is losing, and `row_id` does not move.
     Note that `assemble_composite_business_key` returns early when an item carries a
     `row_id`, so a composite key is NOT recomputed here - the caller sends the new key
-    columns explicitly, which is exactly what a rename means.
+    columns explicitly, which is exactly what a rename means. The rebuild AFTER the write
+    composes the new key from those columns, on every table that declares a composite key
+    (10-03, 총괄 a61d32f4f ㄱ - before, only where a `business_key` column was declared too).
 
     ✅ STILL TRUE AFTER RULING 190 (verified 2026-09-09 at `crud.py`'s guard). That ruling
     moved the assembly ahead of the lookup and narrowed the guard from
