@@ -35361,3 +35361,22 @@ RELEASE_LOG 맞음 — 마운트 둘(admin.js refreshLedgerSources 의 두 id) �
    쓰는 것은 `--drifted --apply`. 그리고 둘 다 server 폴더에서 돌려야 한다 — 줄에 그 말은 없다
    서버가 철자를 정할 때 미리보기 하나를 실을지, 미리보기와 적용 둘을 실을지 정해 주십시오
 ```
+
+---
+
+## [C 응용] 10-03 97101fd2e(map.input_columns 은퇴) 검수 + 남은 두 줄 — @`315413e3e`
+
+```
+구현자가 문서 여섯을 같은 커밋에 고쳤다. 남아 있던 것 둘만 고침:
+   CODE_MAP 지문 절의 「카브아웃은 «하나» … 지운다」(바로 위 줄이 「카브아웃 0」) · PRIMITIVES 「어디」 줄 —
+   둘 다 은퇴로 적고, 재료가 아닌 것은 _NOT_ATOM_MATERIAL 한 자리라고
+검수 (박스, 읽기만)
+   RELEASE_LOG 예시(lot_slot_wafer)를 출하 샘플 묶음에 넣어 제품 검증기(validate_bundle, 샘플 table_config)로 — 통과
+   같은 소스에 없는 칸을 든 map.input_columns 를 적어도 — 통과(읽고 무시, 거절 아님. 항목 문장 그대로)
+   census 범위 칸 = base_select_columns 그대로라 «표의 칸 전부» — 항목 문장 그대로
+따로 안 올림 — 총괄이 이미 지시
+   표 선언에만 있고 DB 에 없는 칸이면 소스가 선다 = 164553a6f ② (스키마 동기는 ALTER 실패 · 대소문자 차이를 «영영» 남길 수 있다고
+   schema_drift 가 스스로 적는다 — 운영에서 날 수 있는 모양)
+   화면의 잠긴 칩(ontology_explorer_view 의 row.locked · .oe-pick.is-locked)은 서버가 더는 locked 를 안 보내 «아무도 안 탄다» = 8d3890d86
+안 잰 것  넓은 표에서 읽기 시간 — 박스의 「2,000 행 0.1 s 안쪽」 밖은 모른다
+```
