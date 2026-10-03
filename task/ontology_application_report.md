@@ -35732,3 +35732,20 @@ RELEASE_LOG 맞음 — 주기 판이 세지 않고 잇는다 · 직전 기록 �
 오늘 셋   10:07(8bbeb1aee) · 12:36(4761be755) · 23:28(919ce6436) — 셋 다 «방금 착지한 수리가 빠진» 모양으로 남의 실행이 빨개졌다
 여쭐 것   변이는 사본(git worktree)에서 — 37df8cb57 · a45ef40cc 와 같은 물음. 저는 오늘 오후부터 제 확인을 C:/wt-app 사본에서 돌린다
 ```
+
+---
+
+## [C 응용] 10-04 3248055ff 착지 — 지운 이름 둘 · 은퇴한 speaks_for 를 약속하던 줄 · a9f877ed3 문서 동기
+
+```
+셈       살아 있는 문서 124(docs .md 중 history · _archive · RELEASE_LOG 뺌), 낱말 경계로 셈, 카나리아 'ledger' > 100
+전       CURSOR_FIELDS 3 · CURSOR_TIME_FIELDS 3 · speaks_for 3 (번)
+         약속하던 줄: CODE_MAP 「고아 다섯」 행 · SERVER_DEFECT_QUEUE S-267 · CODE_MAP followup 행(「backfill._run_via_events 가 schema.speaks_for 의 답을 넘긴다」)
+고침     그 셋 — 두 상수는 ~~지움~~ 표시(S-267 의 나머지 셋 DEFAULT_SAMPLE_SIZE · SAMPLE_CANDIDATE_WINDOW · UUID7_MS_SQL 은 그대로),
+         followup 행은 「그 소스 하나를, 그 세상이 말할 때만」(backfill.py 의 only = {source} & followed_by 맨 위)
+후       같은 수 3 · 3 · 3 — 낱말은 은퇴 표시로 남는다. 약속하던 줄 3 -> 0
+남긴 것   CODE_MAP 3658(S-261 묘비 — 은퇴한 _cursor_rows 가 그 둘을 썼다는 기록) · CODE_MAP schema 행의 ⚰️ speaks_for(제가 279d04475 때 적은 은퇴 표시)
+SYSTEM_FLOWS L-17  두 이름을 «안» 든다(셈 0) — 구현자 585f145d4 가 든 셋 중 이것은 고칠 줄이 없었다. 비슷한 이름 admin._CURSOR_FIELDS(L-13)는 살아 있는 다른 상수
+a9f877ed3 동기  BACKFILL_GUIDE ⓖ 줄(그 소스만 번역 · 이미 쌓인 중복은 RUN.md SQL -> --whole-source) · LEDGER_GUIDE 4.2(지문 스크립트가 말하는 세상을 따름) ·
+               CODE_MAP key-values(이름 댄 세상에 물음 · node_type_not_declared). 시험(박스) run_pg_tests -k (writes_no_other_sources_fact_twice · stands_on_a_chain · restamp) 10 passed
+```
