@@ -13,6 +13,14 @@ itself is the only thing one shape has and the other has not.
   part blanked         a key part blanked by id                      key NULL
   edited onto a key    another row holds the new key                 merged, one row
   pinned               a pin moves a key part's shown value          key rebuilt
+  pinned onto a key    the pin's key is another row's                merged into it, one row - through
+                                                                     the write seat's merge (총괄 6e041f4cb ①)
+  ... onto a person's  the holder carries a person's value           it stays: a pin is a choice of
+                                                                     layer, not a person's value
+  written onto one     a person writes only R's key part (and a note)  the holder's human value stays,
+                                                                     what the person wrote moves over
+  written over one     ... and the very column the holder's person    person vs person: the write shows,
+                       wrote                                         the holder's value kept as a layer
 """
 import os
 import sys
@@ -29,7 +37,7 @@ from database import crud, models, schemas                           # noqa: E40
 
 pytestmark = pytest.mark.pg
 PARTS = ["job", "x", "y"]
-COLUMNS = {"job": "string", "x": "number", "y": "number", "netdie": "number"}
+COLUMNS = {"job": "string", "x": "number", "y": "number", "netdie": "number", "note": "string"}
 SHAPES = {
     "rk_key": {"business_key": "k", "composite_key_source": PARTS,
                "column_types": {"k": "string", **COLUMNS}},
@@ -136,23 +144,78 @@ def _pinned(db, table):
     db.commit()
 
 
+def _pinned_onto_a_key(db, table):
+    """R's hidden layer says J1; the pin shows it while P holds J1_1_2. R's own human value
+    travels to P. Until the pin seat called the write seat's merge this raised (an unbound name,
+    a65640ca8 .. 10-03) and the pin rolled back."""
+    _write(db, table, [(None, _part("J1", 1), "chain:a")])
+    row = _ids(db, table)[0]
+    _write(db, table, [(row, {"job": "J2"}, "chain:b")])
+    _write(db, table, [(row, {"netdie": 3}, "user")])
+    _write(db, table, [(None, _part("J1", 5), "chain:c")])
+    crud.set_cell_manual_priority_batch(db, table, [{"row_id": row, "column_name": "job"}],
+                                        "chain:a")
+    db.commit()
+
+
+def _pinned_onto_a_persons_value(db, table):
+    """P, the key's holder, carries a person's netdie; R's is a machine's. Only the pinned cell
+    counts as the person's in the merge (총괄 6e041f4cb ① 답), so P's value stays."""
+    _write(db, table, [(None, _part("J1", 1), "chain:a")])
+    row = _ids(db, table)[0]
+    _write(db, table, [(row, {"job": "J2"}, "chain:b")])
+    _write(db, table, [(None, _part("J1", 5), "chain:c")])
+    holder = [r for r in _ids(db, table) if r != row][0]
+    _write(db, table, [(holder, {"netdie": 9}, "user")])
+    crud.set_cell_manual_priority_batch(db, table, [{"row_id": row, "column_name": "job"}],
+                                        "chain:a")
+    db.commit()
+
+
+def _written_onto_a_persons_value(db, table):
+    """A person writes R's key part and a note - nothing else - onto P's key; P carries a person's
+    netdie, R a machine's. Only what the person wrote counts as the person's (총괄 6e041f4cb ① 답),
+    so P's netdie stays and the note moves over. It used to count every column."""
+    _write(db, table, [(None, _part("J2", 1), "chain:a")])
+    row = _ids(db, table)[0]
+    _write(db, table, [(None, _part("J1", 5), "chain:c")])
+    holder = [r for r in _ids(db, table) if r != row][0]
+    _write(db, table, [(holder, {"netdie": 9}, "user")])
+    _write(db, table, [(row, {"job": "J1", "note": "typed"}, "user")])
+
+
+def _written_over_a_persons_value(db, table):
+    """The person writes R's key part AND netdie, the column P's person wrote: person against
+    person - the write shows, and P's value is kept as a `user (old_exist_…)` layer."""
+    _write(db, table, [(None, _part("J2", 1), "chain:a")])
+    row = _ids(db, table)[0]
+    _write(db, table, [(None, _part("J1", 5), "chain:c")])
+    holder = [r for r in _ids(db, table) if r != row][0]
+    _write(db, table, [(holder, {"netdie": 9}, "user")])
+    _write(db, table, [(row, {"job": "J1", "netdie": 3}, "user")])
+
+
 BRANCHES = {"by_key": (_by_key, ["J1_1_2"]), "named": (_named, ["J1_1_2"]),
             "grid": (_grid, ["J1_1_2"]), "part_edited": (_part_edited, ["J2_1_2"]),
             "part_blanked": (_part_blanked, [None]),
             "edited_onto_a_key": (_edited_onto_a_key, ["J1_1_2"]),
-            "pinned": (_pinned, ["J2_1_2"])}
+            "pinned": (_pinned, ["J2_1_2"]),
+            "pinned_onto_a_key": (_pinned_onto_a_key, ["J1_1_2"]),
+            "pinned_onto_a_persons_value": (_pinned_onto_a_persons_value, ["J1_1_2"]),
+            "written_onto_a_persons_value": (_written_onto_a_persons_value, ["J1_1_2"]),
+            "written_over_a_persons_value": (_written_over_a_persons_value, ["J1_1_2"])}
 
 
 def _answer(world, table):
     """Rows (key and values) and layers, by key rather than by row_id - ids differ per run."""
     with world["engine"].connect() as conn:
-        rows = conn.execute(text('SELECT row_id, business_key_val, job, x, y, netdie FROM "%s"."%s"'
+        rows = conn.execute(text('SELECT row_id, business_key_val, job, x, y, netdie, note FROM "%s"."%s"'
                                  % (PG_TEST_SCHEMA, table))).all()
         key_of = {r[0]: r[1] for r in rows}
         layers = conn.execute(text(
             'SELECT row_id, column_name, source_name, value FROM "%s".cell_sources '
             "WHERE table_name = :t AND column_name <> 'k'" % PG_TEST_SCHEMA), {"t": table}).all()
-    return (sorted((r[1] or "", r[2] or "", str(r[3]), str(r[4]), str(r[5])) for r in rows),
+    return (sorted((r[1] or "", r[2] or "", str(r[3]), str(r[4]), str(r[5]), r[6] or "") for r in rows),
             sorted((key_of.get(l[0]) or "", l[1], l[2], l[3] or "") for l in layers))
 
 
@@ -165,3 +228,17 @@ def test_both_shapes_give_one_answer(world, branch):
         answers[table] = _answer(world, table)
         assert [r[0] or None for r in answers[table][0]] == keys, (table, answers[table][0])
     assert answers["rk_key"] == answers["rk_parts"]
+    if branch == "pinned_onto_a_key":
+        rows, layers = answers["rk_parts"]
+        assert rows[0][4] == "3.0"                                  # R's human value, on P
+        assert any(layer[:2] == ("J1_1_2", "job") and layer[2].startswith("chain:b (")
+                   for layer in layers)                             # R's layers, inherited
+    if branch == "pinned_onto_a_persons_value":
+        assert answers["rk_parts"][0][0][4] == "9.0"                # the holder's person value
+    if branch == "written_onto_a_persons_value":
+        assert answers["rk_parts"][0][0][4:] == ("9.0", "typed")    # stays · what was written moves
+    if branch == "written_over_a_persons_value":
+        rows, layers = answers["rk_parts"]
+        assert rows[0][4] == "3.0"                                  # the write shows
+        assert any(layer[:2] == ("J1_1_2", "netdie") and layer[2].startswith("user (old_exist_")
+                   and layer[3] == "9" for layer in layers)         # the holder's, kept

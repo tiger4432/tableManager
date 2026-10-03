@@ -3336,6 +3336,255 @@ def batch_write_instant(db):
         return None
 
 
+def _merge_into_key_holder(db, table_name, table_model, row_to_delete, row, *, explicit,
+                           human_columns, source_name, updated_by, transaction_id, changed_cols,
+                           overwrites_cache=None, sources_cache=None, prefetched_row_ids=None,
+                           cell_sources_to_upsert=None, cell_overwrites_to_upsert=None,
+                           cell_overwrites_to_delete=None, logs_to_cache=None,
+                           deleted_row_ids=None, row_cache=None):
+    """[대안 B: Silent Merge & Overwrite] A row whose rebuilt key another row already holds: its
+    values, layers and pending caches move onto that row (`row`) and the shell (`row_to_delete`)
+    is deleted. The ONE merge body (총괄 6e041f4cb ①) - the write seat (a key part written) and the
+    pin seat (a pin that moves a key part's shown value) both call it; the caller swaps the rows.
+
+    `explicit` is what the caller wrote this time, column -> value: those columns are «directly
+    edited» (a human value on the key's holder does not protect them) and their value wins.
+    `human_columns` are the columns this write counts as a PERSON's - only those it wrote: the
+    write seat's item, when a person wrote it, in the columns it carries; a pin, only the pinned
+    cells (a pin is a person choosing which layer a cell shows, not a person's value). Every other
+    cell is read by the writer of its layer, so the key holder's own human value stays (총괄
+    6e041f4cb ① 답 · the write seat counted EVERY column of a person's item, which let a write of
+    a key part alone overwrite the holder's human values with the shell's machine ones). `source_name` / `updated_by` name the writer on the fallback
+    layer and the merge's audit lines.
+    """
+    key_col = TABLE_CONFIG.get(table_name, {}).get("business_key")
+    column_types = TABLE_CONFIG.get(table_name, {}).get("column_types") or {}
+    # 3. 임시 행(row_to_delete)에 채워진 모든 실제 값을 충돌 행(row)에 덮어쓰기 병합
+    columns_to_merge = [c.name for c in table_model.__table__.columns]
+    # [P-4] 두 행의 덮어쓰기를 «한 번에» 읽는다. 종전에는 컬럼마다 두 번씩
+    # 물었고 그 대다수가 「덮어쓰기가 «없는» 컬럼」이었다 — 없는 것을 확인하려고
+    # 컬럼 수만큼 왕복했다. `overwrites_cache` 가 None 인 호출자를 위해 지역
+    # dict 로 떨어지므로 «판정은 한 글자도 바뀌지 않는다».
+    merge_ow = overwrites_cache if overwrites_cache is not None else {}
+    prime_merge_overwrites(db, table_name, merge_ow,
+                           [row.row_id, row_to_delete.row_id],
+                           columns_to_merge)
+    for col_name in columns_to_merge:
+        if col_name in [key_col, "row_id", "business_key_val", "created_at", "updated_at"]:
+            continue
+
+        is_explicitly_edited = (col_name in explicit)
+
+        # [병합 보호 정책] 충돌 행(row)에 이미 사용자 수정(user)이나 핀이 들어있고, 이번에 직접 수정하는 셀이 아니면 기존 값 보존
+        old_ow = merge_ow.get((row.row_id, col_name))
+
+        is_old_user_overwritten = False
+        if old_ow:
+            # collision_merge인 경우는 단순 병합 충돌 메타이므로 보호 가드 대상에서 제외
+            if old_ow.updated_by != "collision_merge" and old_ow.manual_priority_source != "collision_merge":
+                is_old_user_overwritten = old_ow.is_overwrite or (old_ow.manual_priority_source is not None)
+
+        # 새 값이 사용자 입력값인지 판단
+        is_new_user_overwritten = col_name in human_columns
+        new_ow = merge_ow.get((row_to_delete.row_id, col_name))
+        if new_ow:
+            if new_ow.updated_by != "collision_merge" and new_ow.manual_priority_source != "collision_merge":
+                is_new_user_overwritten = is_new_user_overwritten or new_ow.is_overwrite or (new_ow.manual_priority_source is not None)
+
+        if is_old_user_overwritten and is_new_user_overwritten:
+            # User vs User collision: apply the newly overwritten value
+            is_value_protected = False
+        else:
+            is_value_protected = is_old_user_overwritten and not is_explicitly_edited
+
+        new_val = getattr(row_to_delete, col_name, None)
+
+        # explicit에도 명시적으로 새로 기입된 값이 있으면 그 값을 우선적으로 선정
+        if col_name in explicit:
+            new_val = explicit[col_name]
+
+        old_val = getattr(row, col_name, None)
+
+        has_cell_changed = new_val is not None and values_differ(
+            old_val, new_val,
+            column_types.get(col_name, "string"))
+
+        if has_cell_changed and not is_value_protected:
+            setattr(row, col_name, new_val)
+            if col_name not in changed_cols:
+                changed_cols.append(col_name)
+
+            # 중복키 충돌 병합이 발생했음을 가벼운 Overwrite 테이블에도 기록하여 그리드 성능 최적화 지원
+            if cell_overwrites_to_upsert is not None:
+                # [P3] A real datetime, not `func.now()`. Every other
+                # producer of these dicts already writes
+                # `datetime.now()` (see the source/overwrite blocks
+                # above), and a SQL expression in ONE mapping forces
+                # the whole bulk upsert off its batched path -
+                # `_is_executemany_safe` refuses a `ClauseElement`.
+                ow_key = (table_name, row.row_id, col_name)
+                cell_overwrites_to_upsert[ow_key] = {
+                    "table_name": table_name,
+                    "row_id": row.row_id,
+                    "column_name": col_name,
+                    "is_overwrite": True,
+                    "updated_by": "collision_merge",
+                    "updated_at": datetime.now(),
+                    "manual_priority_source": "collision_merge"
+                }
+                if cell_overwrites_to_delete is not None:
+                    cell_overwrites_to_delete.discard(ow_key)
+
+            # AuditLog 기록
+            # 🔴 THE RETURN IS KEPT, AND THAT IS THE WHOLE FIX. This
+            # was the ONE call of ten that dropped it. When
+            # `logs_to_cache` is a list, `add_to_cache` is False and
+            # `create_audit_log` skips `db.add` as well as the cache
+            # (its own docstring says so) - so a discarded return meant
+            # the row reached NEITHER. The sole live caller of this
+            # function always passes a list, so this merge's history
+            # was not sometimes lost, it was always lost.
+            # The sibling collision_merge site does exactly this.
+            log_dict = create_audit_log(
+                db, table_name, row.row_id, col_name, old_val, new_val,
+                "collision_merge", (updated_by or "system"),
+                transaction_id=transaction_id, business_key=row.business_key_val,
+                add_to_cache=(logs_to_cache is None)
+            )
+            if logs_to_cache is not None:
+                logs_to_cache.append(log_dict)
+
+        # [소스 이력 적재] 값 덮어쓰기 보호 여부와 상관없이, 껍데기 행이 가졌던 오리지널 소스 목록은 무조건 적재(Append)
+        if cell_sources_to_upsert is not None:
+            # 껍데기 행이 원래 가졌던 소스 명칭 추적 계승
+            old_srcs, _ = _load_metadata_row_cell(
+                db, table_name, row_to_delete.row_id, col_name,
+                is_new=False,
+                sources_cache=sources_cache,
+                overwrites_cache=overwrites_cache,
+                cell_sources_to_upsert=cell_sources_to_upsert,
+                cell_overwrites_to_upsert=cell_overwrites_to_upsert,
+                prefetched_row_ids=prefetched_row_ids
+            )
+
+            # 대상 행(row)에 이미 등록되어 있거나 upsert 대기 중인 소스명 목록 추출
+            # [P2] `row` here is the CONFLICT row this merge switched onto,
+            # found by business key inside this loop. It is routinely absent
+            # from the prefetched set, and the membership test below is what
+            # keeps it being read instead of assumed empty.
+            target_srcs, _ = _load_metadata_row_cell(
+                db, table_name, row.row_id, col_name,
+                is_new=False,
+                sources_cache=sources_cache,
+                overwrites_cache=overwrites_cache,
+                cell_sources_to_upsert=cell_sources_to_upsert,
+                cell_overwrites_to_upsert=cell_overwrites_to_upsert,
+                prefetched_row_ids=prefetched_row_ids
+            )
+            existing_names = {s.source_name for s in target_srcs} if target_srcs else set()
+            for (t, r, c, s_name) in (cell_sources_to_upsert or {}).keys():
+                if t == table_name and r == row.row_id and c == col_name:
+                    existing_names.add(s_name)
+
+            # user 간 충돌 시 기존의 standard "user" 값을 "user (old_exist_xyz)"로 백업하여 원천에 기존 user값을 보존
+            if is_old_user_overwritten and is_new_user_overwritten:
+                old_user_src = next((s for s in target_srcs if s.source_name == "user"), None) if target_srcs else None
+                pending_user_key = (table_name, row.row_id, col_name, "user")
+                pending_user_data = cell_sources_to_upsert.get(pending_user_key) if cell_sources_to_upsert else None
+
+                old_val_to_backup = pending_user_data["value"] if pending_user_data else (old_user_src.value if old_user_src else None)
+                old_by_to_backup = pending_user_data["updated_by"] if pending_user_data else (old_user_src.updated_by if old_user_src else "system")
+
+                if old_val_to_backup is not None:
+                    backup_src_name = merged_layer_name(USER_SOURCE, f"old_exist_{row.row_id[:6]}")
+                    backup_key = (table_name, row.row_id, col_name, backup_src_name)
+                    cell_sources_to_upsert[backup_key] = {
+                        "table_name": table_name,
+                        "row_id": row.row_id,
+                        "column_name": col_name,
+                        "source_name": backup_src_name,
+                        "value": clean_str_value(old_val_to_backup),
+                        "updated_by": old_by_to_backup,
+                        # [P3] see the collision-merge overwrite dict
+                        # above: a real datetime keeps the bulk upsert
+                        # on its batched path.
+                        "ingested_at": datetime.now()
+                    }
+
+            src_list = []
+            if old_srcs:
+                for s in old_srcs:
+                    src_list.append((s.source_name, s.value, s.updated_by))
+            else:
+                # 폴백 소스
+                src_list.append((source_name or "user", new_val, updated_by or "system"))
+
+            for s_name, s_val, s_by in src_list:
+                effective_src_name = s_name
+                if s_name == "user" and is_old_user_overwritten and is_new_user_overwritten:
+                    effective_src_name = "user"
+                else:
+                    r_id_6 = row_to_delete.row_id[:6] if row_to_delete.row_id else "merged"
+                    tag = f"{row_to_delete.business_key_val}_{r_id_6}" if getattr(row_to_delete, "business_key_val", None) else r_id_6
+                    effective_src_name = merged_layer_name(effective_src_name, tag)
+
+                src_key = (table_name, row.row_id, col_name, effective_src_name)
+                cell_sources_to_upsert[src_key] = {
+                    "table_name": table_name,
+                    "row_id": row.row_id,
+                    "column_name": col_name,
+                    "source_name": effective_src_name,
+                    "value": clean_str_value(s_val),
+                    "updated_by": s_by or "system",
+                    # [P3] real datetime - see above.
+                    "ingested_at": datetime.now()
+                }
+
+    # 4. 캐시 맵 마이그레이션 (row_to_delete.row_id ➡️ conflict_row.row_id)
+    if cell_sources_to_upsert is not None:
+        keys_to_migrate = [k for k in cell_sources_to_upsert.keys() if k[1] == row_to_delete.row_id]
+        for k in keys_to_migrate:
+            src_data = cell_sources_to_upsert.pop(k)
+            new_k = (k[0], row.row_id, k[2], k[3])
+            src_data["row_id"] = row.row_id
+            cell_sources_to_upsert[new_k] = src_data
+
+    if cell_overwrites_to_upsert is not None:
+        keys_to_migrate = [k for k in cell_overwrites_to_upsert.keys() if k[1] == row_to_delete.row_id]
+        for k in keys_to_migrate:
+            ow_data = cell_overwrites_to_upsert.pop(k)
+            new_k = (k[0], row.row_id, k[2])
+            ow_data["row_id"] = row.row_id
+            cell_overwrites_to_upsert[new_k] = ow_data
+
+    if cell_overwrites_to_delete is not None:
+        keys_to_migrate = [k for k in cell_overwrites_to_delete if k[1] == row_to_delete.row_id]
+        for k in keys_to_migrate:
+            cell_overwrites_to_delete.discard(k)
+            cell_overwrites_to_delete.add((k[0], row.row_id, k[2]))
+
+    if logs_to_cache is not None:
+        for log in logs_to_cache:
+            if log.get("row_id") == row_to_delete.row_id:
+                log["row_id"] = row.row_id
+
+    for obj in db.new:
+        if isinstance(obj, models.AuditLog) and obj.row_id == row_to_delete.row_id:
+            obj.row_id = row.row_id
+
+    # 5. 무의미한 껍데기 행을 DB 세션 및 메모리 캐시에서 완전 소거
+    try:
+        db.delete(row_to_delete)
+        if deleted_row_ids is not None:
+            deleted_row_ids.append(row_to_delete.row_id)
+    except Exception:
+        pass
+    if row_cache is not None:
+        row_cache.pop(row_to_delete.row_id, None)
+        if row_to_delete.business_key_val:
+            row_cache.pop(row_to_delete.business_key_val, None)
+
+
 def apply_row_update_internal(
     db: Session, 
     table_name: str, 
@@ -3813,230 +4062,24 @@ def apply_row_update_internal(
                         row = conflict_row
                         is_new = False
                         
-                        # 3. 임시 행(row_to_delete)에 채워진 모든 실제 값을 충돌 행(row)에 덮어쓰기 병합
-                        columns_to_merge = [c.name for c in table_model.__table__.columns]
-                        # [P-4] 두 행의 덮어쓰기를 «한 번에» 읽는다. 종전에는 컬럼마다 두 번씩
-                        # 물었고 그 대다수가 「덮어쓰기가 «없는» 컬럼」이었다 — 없는 것을 확인하려고
-                        # 컬럼 수만큼 왕복했다. `overwrites_cache` 가 None 인 호출자를 위해 지역
-                        # dict 로 떨어지므로 «판정은 한 글자도 바뀌지 않는다».
-                        merge_ow = overwrites_cache if overwrites_cache is not None else {}
-                        prime_merge_overwrites(db, table_name, merge_ow,
-                                               [row.row_id, row_to_delete.row_id],
-                                               columns_to_merge)
-                        for col_name in columns_to_merge:
-                            if col_name in [key_col, "row_id", "business_key_val", "created_at", "updated_at"]:
-                                continue
-
-                            is_explicitly_edited = (col_name in update_item.updates)
-
-                            # [병합 보호 정책] 충돌 행(row)에 이미 사용자 수정(user)이나 핀이 들어있고, 이번에 직접 수정하는 셀이 아니면 기존 값 보존
-                            old_ow = merge_ow.get((row.row_id, col_name))
-                                
-                            is_old_user_overwritten = False
-                            if old_ow:
-                                # collision_merge인 경우는 단순 병합 충돌 메타이므로 보호 가드 대상에서 제외
-                                if old_ow.updated_by != "collision_merge" and old_ow.manual_priority_source != "collision_merge":
-                                    is_old_user_overwritten = old_ow.is_overwrite or (old_ow.manual_priority_source is not None)
-                                
-                            # 새 값이 사용자 입력값인지 판단
-                            is_new_user_overwritten = (update_item.source_name == "user" or (update_item.updated_by and update_item.updated_by != "system" and "parser" not in str(update_item.updated_by).lower()))
-                            new_ow = merge_ow.get((row_to_delete.row_id, col_name))
-                            if new_ow:
-                                if new_ow.updated_by != "collision_merge" and new_ow.manual_priority_source != "collision_merge":
-                                    is_new_user_overwritten = is_new_user_overwritten or new_ow.is_overwrite or (new_ow.manual_priority_source is not None)
-
-                            if is_old_user_overwritten and is_new_user_overwritten:
-                                # User vs User collision: apply the newly overwritten value
-                                is_value_protected = False
-                            else:
-                                is_value_protected = is_old_user_overwritten and not is_explicitly_edited
-
-                            new_val = getattr(row_to_delete, col_name, None)
-                            
-                            # update_item.updates에도 명시적으로 새로 기입된 값이 있으면 그 값을 우선적으로 선정
-                            if col_name in update_item.updates:
-                                new_val = update_item.updates[col_name]
-                                
-                            old_val = getattr(row, col_name, None)
-                            
-                            has_cell_changed = new_val is not None and values_differ(
-                                old_val, new_val,
-                                (config.get("column_types") or {}).get(col_name, "string"))
-                                
-                            if has_cell_changed and not is_value_protected:
-                                setattr(row, col_name, new_val)
-                                if col_name not in changed_cols:
-                                    changed_cols.append(col_name)
-
-                                # 중복키 충돌 병합이 발생했음을 가벼운 Overwrite 테이블에도 기록하여 그리드 성능 최적화 지원
-                                if cell_overwrites_to_upsert is not None:
-                                    # [P3] A real datetime, not `func.now()`. Every other
-                                    # producer of these dicts already writes
-                                    # `datetime.now()` (see the source/overwrite blocks
-                                    # above), and a SQL expression in ONE mapping forces
-                                    # the whole bulk upsert off its batched path -
-                                    # `_is_executemany_safe` refuses a `ClauseElement`.
-                                    ow_key = (table_name, row.row_id, col_name)
-                                    cell_overwrites_to_upsert[ow_key] = {
-                                        "table_name": table_name,
-                                        "row_id": row.row_id,
-                                        "column_name": col_name,
-                                        "is_overwrite": True,
-                                        "updated_by": "collision_merge",
-                                        "updated_at": datetime.now(),
-                                        "manual_priority_source": "collision_merge"
-                                    }
-                                    if cell_overwrites_to_delete is not None:
-                                        cell_overwrites_to_delete.discard(ow_key)
-                                    
-                                # AuditLog 기록
-                                # 🔴 THE RETURN IS KEPT, AND THAT IS THE WHOLE FIX. This
-                                # was the ONE call of ten that dropped it. When
-                                # `logs_to_cache` is a list, `add_to_cache` is False and
-                                # `create_audit_log` skips `db.add` as well as the cache
-                                # (its own docstring says so) - so a discarded return meant
-                                # the row reached NEITHER. The sole live caller of this
-                                # function always passes a list, so this merge's history
-                                # was not sometimes lost, it was always lost.
-                                # The sibling collision_merge site does exactly this.
-                                log_dict = create_audit_log(
-                                    db, table_name, row.row_id, col_name, old_val, new_val,
-                                    "collision_merge", (update_item.updated_by or "system"),
-                                    transaction_id=transaction_id, business_key=row.business_key_val,
-                                    add_to_cache=(logs_to_cache is None)
-                                )
-                                if logs_to_cache is not None:
-                                    logs_to_cache.append(log_dict)
-
-                            # [소스 이력 적재] 값 덮어쓰기 보호 여부와 상관없이, 껍데기 행이 가졌던 오리지널 소스 목록은 무조건 적재(Append)
-                            if cell_sources_to_upsert is not None:
-                                # 껍데기 행이 원래 가졌던 소스 명칭 추적 계승
-                                old_srcs, _ = _load_metadata_row_cell(
-                                    db, table_name, row_to_delete.row_id, col_name,
-                                    is_new=False,
-                                    sources_cache=sources_cache,
-                                    overwrites_cache=overwrites_cache,
-                                    cell_sources_to_upsert=cell_sources_to_upsert,
-                                    cell_overwrites_to_upsert=cell_overwrites_to_upsert,
-                                    prefetched_row_ids=prefetched_row_ids
-                                )
-
-                                # 대상 행(row)에 이미 등록되어 있거나 upsert 대기 중인 소스명 목록 추출
-                                # [P2] `row` here is the CONFLICT row this merge switched onto,
-                                # found by business key inside this loop. It is routinely absent
-                                # from the prefetched set, and the membership test below is what
-                                # keeps it being read instead of assumed empty.
-                                target_srcs, _ = _load_metadata_row_cell(
-                                    db, table_name, row.row_id, col_name,
-                                    is_new=False,
-                                    sources_cache=sources_cache,
-                                    overwrites_cache=overwrites_cache,
-                                    cell_sources_to_upsert=cell_sources_to_upsert,
-                                    cell_overwrites_to_upsert=cell_overwrites_to_upsert,
-                                    prefetched_row_ids=prefetched_row_ids
-                                )
-                                existing_names = {s.source_name for s in target_srcs} if target_srcs else set()
-                                for (t, r, c, s_name) in (cell_sources_to_upsert or {}).keys():
-                                    if t == table_name and r == row.row_id and c == col_name:
-                                        existing_names.add(s_name)
-
-                                # user 간 충돌 시 기존의 standard "user" 값을 "user (old_exist_xyz)"로 백업하여 원천에 기존 user값을 보존
-                                if is_old_user_overwritten and is_new_user_overwritten:
-                                    old_user_src = next((s for s in target_srcs if s.source_name == "user"), None) if target_srcs else None
-                                    pending_user_key = (table_name, row.row_id, col_name, "user")
-                                    pending_user_data = cell_sources_to_upsert.get(pending_user_key) if cell_sources_to_upsert else None
-                                    
-                                    old_val_to_backup = pending_user_data["value"] if pending_user_data else (old_user_src.value if old_user_src else None)
-                                    old_by_to_backup = pending_user_data["updated_by"] if pending_user_data else (old_user_src.updated_by if old_user_src else "system")
-                                    
-                                    if old_val_to_backup is not None:
-                                        backup_src_name = merged_layer_name(USER_SOURCE, f"old_exist_{row.row_id[:6]}")
-                                        backup_key = (table_name, row.row_id, col_name, backup_src_name)
-                                        cell_sources_to_upsert[backup_key] = {
-                                            "table_name": table_name,
-                                            "row_id": row.row_id,
-                                            "column_name": col_name,
-                                            "source_name": backup_src_name,
-                                            "value": clean_str_value(old_val_to_backup),
-                                            "updated_by": old_by_to_backup,
-                                            # [P3] see the collision-merge overwrite dict
-                                            # above: a real datetime keeps the bulk upsert
-                                            # on its batched path.
-                                            "ingested_at": datetime.now()
-                                        }
-
-                                src_list = []
-                                if old_srcs:
-                                    for s in old_srcs:
-                                        src_list.append((s.source_name, s.value, s.updated_by))
-                                else:
-                                    # 폴백 소스
-                                    src_list.append((update_item.source_name or "user", new_val, update_item.updated_by or "system"))
-
-                                for s_name, s_val, s_by in src_list:
-                                    effective_src_name = s_name
-                                    if s_name == "user" and is_old_user_overwritten and is_new_user_overwritten:
-                                        effective_src_name = "user"
-                                    else:
-                                        r_id_6 = row_to_delete.row_id[:6] if row_to_delete.row_id else "merged"
-                                        tag = f"{row_to_delete.business_key_val}_{r_id_6}" if getattr(row_to_delete, "business_key_val", None) else r_id_6
-                                        effective_src_name = merged_layer_name(effective_src_name, tag)
-                                        
-                                    src_key = (table_name, row.row_id, col_name, effective_src_name)
-                                    cell_sources_to_upsert[src_key] = {
-                                        "table_name": table_name,
-                                        "row_id": row.row_id,
-                                        "column_name": col_name,
-                                        "source_name": effective_src_name,
-                                        "value": clean_str_value(s_val),
-                                        "updated_by": s_by or "system",
-                                        # [P3] real datetime - see above.
-                                        "ingested_at": datetime.now()
-                                    }
-
-                        # 4. 캐시 맵 마이그레이션 (row_to_delete.row_id ➡️ conflict_row.row_id)
-                        if cell_sources_to_upsert is not None:
-                            keys_to_migrate = [k for k in cell_sources_to_upsert.keys() if k[1] == row_to_delete.row_id]
-                            for k in keys_to_migrate:
-                                src_data = cell_sources_to_upsert.pop(k)
-                                new_k = (k[0], row.row_id, k[2], k[3])
-                                src_data["row_id"] = row.row_id
-                                cell_sources_to_upsert[new_k] = src_data
-                                
-                        if cell_overwrites_to_upsert is not None:
-                            keys_to_migrate = [k for k in cell_overwrites_to_upsert.keys() if k[1] == row_to_delete.row_id]
-                            for k in keys_to_migrate:
-                                ow_data = cell_overwrites_to_upsert.pop(k)
-                                new_k = (k[0], row.row_id, k[2])
-                                ow_data["row_id"] = row.row_id
-                                cell_overwrites_to_upsert[new_k] = ow_data
-                                
-                        if cell_overwrites_to_delete is not None:
-                            keys_to_migrate = [k for k in cell_overwrites_to_delete if k[1] == row_to_delete.row_id]
-                            for k in keys_to_migrate:
-                                cell_overwrites_to_delete.discard(k)
-                                cell_overwrites_to_delete.add((k[0], row.row_id, k[2]))
-                                
-                        if logs_to_cache is not None:
-                            for log in logs_to_cache:
-                                if log.get("row_id") == row_to_delete.row_id:
-                                    log["row_id"] = row.row_id
-                                    
-                        for obj in db.new:
-                            if isinstance(obj, models.AuditLog) and obj.row_id == row_to_delete.row_id:
-                                obj.row_id = row.row_id
-
-                        # 5. 무의미한 껍데기 행을 DB 세션 및 메모리 캐시에서 완전 소거
-                        try:
-                            db.delete(row_to_delete)
-                            if deleted_row_ids is not None:
-                                deleted_row_ids.append(row_to_delete.row_id)
-                        except Exception:
-                            pass
-                        if row_cache is not None:
-                            row_cache.pop(row_to_delete.row_id, None)
-                            if row_to_delete.business_key_val:
-                                row_cache.pop(row_to_delete.business_key_val, None)
+                        _merge_into_key_holder(
+                            db, table_name, table_model, row_to_delete, row,
+                            explicit=update_item.updates,
+                            human_columns=(
+                                set(update_item.updates)
+                                if (update_item.source_name == "user" or (
+                                    update_item.updated_by and update_item.updated_by != "system"
+                                    and "parser" not in str(update_item.updated_by).lower()))
+                                else set()),
+                            source_name=update_item.source_name,
+                            updated_by=update_item.updated_by, transaction_id=transaction_id,
+                            changed_cols=changed_cols, overwrites_cache=overwrites_cache,
+                            sources_cache=sources_cache, prefetched_row_ids=prefetched_row_ids,
+                            cell_sources_to_upsert=cell_sources_to_upsert,
+                            cell_overwrites_to_upsert=cell_overwrites_to_upsert,
+                            cell_overwrites_to_delete=cell_overwrites_to_delete,
+                            logs_to_cache=logs_to_cache, deleted_row_ids=deleted_row_ids,
+                            row_cache=row_cache)
 
                 written_col, old_bk_col_val = put_business_key(table_name, row, new_bk_val)
                 if row_cache is not None:
@@ -5924,6 +5967,7 @@ def set_cell_manual_priority_batch(db: Session, table_name: str, updates: list[d
     
     cell_overwrites_to_upsert = {}
     cell_overwrites_to_delete = set()
+    cell_sources_to_upsert = {}
     
     for item in updates:
         r_id = item["row_id"]
@@ -6005,171 +6049,23 @@ def set_cell_manual_priority_batch(db: Session, table_name: str, updates: list[d
                     ).first()
                     
                     if conflict_row:
-                        # [Silent Merge & Overwrite] 그냥 덮어씌우고 기존 껍데기 행은 삭제
+                        # [대안 B] the write seat's merge, the one body (총괄 6e041f4cb ①). Its
+                        # own copy stood here and named a `changed_cols` this function never
+                        # had, so any merge that changed a cell raised (a65640ca8 .. 10-03).
                         row_to_delete = row
                         row = conflict_row
-                        
-                        # 1. 임시 행의 모든 실제 값을 충돌 행에 덮어쓰기 병합
-                        columns_to_merge = [c.name for c in table_model.__table__.columns]
-                        # [P-4] 형제 자리(`apply_row_update_internal`)와 «같은 헬퍼»를 지난다.
-                        # 두 자리가 각자 이 읽기를 손으로 적고 있었고, 그것이 한쪽만 고쳐질 수
-                        # 있는 상태였다.
-                        merge_ow = overwrites_cache if overwrites_cache is not None else {}
-                        prime_merge_overwrites(db, table_name, merge_ow,
-                                               [row.row_id, row_to_delete.row_id],
-                                               columns_to_merge)
-                        for c_name in columns_to_merge:
-                            if c_name in [key_col, "row_id", "business_key_val", "created_at", "updated_at"]:
-                                continue
+                        _merge_into_key_holder(
+                            db, table_name, table_model, row_to_delete, row,
+                            explicit={u["column_name"]: getattr(row_to_delete, u["column_name"], None)
+                                      for u in updates},
+                            human_columns={u["column_name"] for u in updates},
+                            source_name=source_name, updated_by=updated_by, transaction_id=tx_id,
+                            changed_cols=[], overwrites_cache=overwrites_cache,
+                            cell_sources_to_upsert=cell_sources_to_upsert,
+                            cell_overwrites_to_upsert=cell_overwrites_to_upsert,
+                            cell_overwrites_to_delete=cell_overwrites_to_delete,
+                            logs_to_cache=logs_to_cache, deleted_row_ids=deleted_row_ids)
 
-                            is_explicitly_edited = any(u["column_name"] == c_name for u in updates)
-
-                            # [병합 보호 정책] 충돌 행(row)에 이미 사용자 수정(user)이나 핀이 들어있고, 이번에 직접 핀 고정 수정하는 셀이 아니면 기존 값 보존
-                            old_ow = merge_ow.get((row.row_id, c_name))
-                                
-                            is_old_user_overwritten = False
-                            if old_ow:
-                                # collision_merge인 경우는 단순 병합 충돌 메타이므로 보호 가드 대상에서 제외
-                                if old_ow.updated_by != "collision_merge" and old_ow.manual_priority_source != "collision_merge":
-                                    is_old_user_overwritten = old_ow.is_overwrite or (old_ow.manual_priority_source is not None)
-                                
-                            # 새 값이 사용자 입력값인지 판단
-                            is_new_user_overwritten = (source_name == "user" or (updated_by and updated_by != "system" and "parser" not in str(updated_by).lower()))
-                            new_ow = merge_ow.get((row_to_delete.row_id, c_name))
-                            if new_ow:
-                                if new_ow.updated_by != "collision_merge" and new_ow.manual_priority_source != "collision_merge":
-                                    is_new_user_overwritten = is_new_user_overwritten or new_ow.is_overwrite or (new_ow.manual_priority_source is not None)
-
-                            if is_old_user_overwritten and is_new_user_overwritten:
-                                # User vs User collision: apply the newly overwritten value
-                                is_value_protected = False
-                            else:
-                                is_value_protected = is_old_user_overwritten and not is_explicitly_edited
-
-                            new_v = getattr(row_to_delete, c_name, None)
-                            
-                            old_v = getattr(row, c_name, None)
-                            has_changed = new_v is not None and values_differ(
-                                old_v, new_v,
-                                (table_info.get("column_types") or {}).get(c_name, "string"))
-                                    
-                            if has_changed and not is_value_protected:
-                                setattr(row, c_name, new_v)
-                                
-                                # cell_overwrites_to_upsert 에 충돌 병합 기록
-                                ow_key = (table_name, row.row_id, c_name)
-                                cell_overwrites_to_upsert[ow_key] = {
-                                    "table_name": table_name,
-                                    "row_id": row.row_id,
-                                    "column_name": c_name,
-                                    "is_overwrite": True,
-                                    "updated_by": "collision_merge",
-                                    "updated_at": datetime.now(),
-                                    "manual_priority_source": "collision_merge"
-                                }
-                                cell_overwrites_to_delete.discard(ow_key)
-                                
-                                # Audit Log 기록
-                                log_dict = create_audit_log(
-                                    db, table_name, row.row_id, c_name, old_v, new_v,
-                                    "collision_merge", updated_by,
-                                    transaction_id=tx_id, business_key=row.business_key_val,
-                                    add_to_cache=False
-                                )
-                                logs_to_cache.append(log_dict)
-                                
-                                if c_name not in changed_cols:
-                                    changed_cols.append(c_name)
-
-                            # [소스 이력 적재] 값 덮어쓰기 보호 여부와 상관없이, 껍데기 행이 가졌던 오리지널 소스 목록은 무조건 적재(Append)
-                            from database.models import CellSource
-                            # 껍데기 행이 원래 가졌던 진짜 소스 추적
-                            old_srcs, _ = _load_metadata_row_cell(
-                                db, table_name, row_to_delete.row_id, c_name,
-                                is_new=False,
-                                sources_cache=None,
-                                overwrites_cache=overwrites_cache,
-                                cell_sources_to_upsert=None,
-                                cell_overwrites_to_upsert=cell_overwrites_to_upsert
-                            )
-                            
-                            # 대상 행에 이미 등록되어 있는 소스명 목록 추출
-                            target_srcs, _ = _load_metadata_row_cell(
-                                db, table_name, row.row_id, c_name,
-                                is_new=False,
-                                sources_cache=None,
-                                overwrites_cache=overwrites_cache,
-                                cell_sources_to_upsert=None,
-                                cell_overwrites_to_upsert=cell_overwrites_to_upsert
-                            )
-                            existing_names = {s.source_name for s in target_srcs} if target_srcs else set()
-
-                            # user 간 충돌 시 기존의 standard "user" 값을 "user (old_exist_xyz)"로 백업하여 원천에 기존 user값을 보존
-                            if is_old_user_overwritten and is_new_user_overwritten:
-                                old_user_src = next((s for s in target_srcs if s.source_name == "user"), None) if target_srcs else None
-                                old_val_to_backup = old_user_src.value if old_user_src else None
-                                old_by_to_backup = old_user_src.updated_by if old_user_src else "system"
-                                
-                                if old_val_to_backup is not None:
-                                    backup_src_name = merged_layer_name(USER_SOURCE, f"old_exist_{row.row_id[:6]}")
-                                    # 중복 삽입 방지를 위한 선제 삭제
-                                    db.query(CellSource).filter(
-                                        CellSource.table_name == table_name,
-                                        CellSource.row_id == row.row_id,
-                                        CellSource.column_name == c_name,
-                                        CellSource.source_name == backup_src_name
-                                    ).delete()
-                                    
-                                    backup_src = CellSource(
-                                        table_name=table_name,
-                                        row_id=row.row_id,
-                                        column_name=c_name,
-                                        source_name=backup_src_name,
-                                        value=clean_str_value(old_val_to_backup),
-                                        updated_by=old_by_to_backup
-                                    )
-                                    db.add(backup_src)
-
-                            src_list = []
-                            if old_srcs:
-                                for s in old_srcs:
-                                    src_list.append((s.source_name, s.value, s.updated_by))
-                            else:
-                                src_list.append((source_name or "user", new_v, updated_by or "user"))
-
-                            for s_name, s_val, s_by in src_list:
-                                effective_src_name = s_name
-                                if s_name == "user" and is_old_user_overwritten and is_new_user_overwritten:
-                                    effective_src_name = "user"
-                                else:
-                                    r_id_6 = row_to_delete.row_id[:6] if row_to_delete.row_id else "merged"
-                                    tag = f"{row_to_delete.business_key_val}_{r_id_6}" if getattr(row_to_delete, "business_key_val", None) else r_id_6
-                                    effective_src_name = merged_layer_name(effective_src_name, tag)
-
-                                db.query(CellSource).filter(
-                                    CellSource.table_name == table_name,
-                                    CellSource.row_id == row.row_id,
-                                    CellSource.column_name == c_name,
-                                    CellSource.source_name == effective_src_name
-                                ).delete()
-                                
-                                new_src = CellSource(
-                                    table_name=table_name,
-                                    row_id=row.row_id,
-                                    column_name=c_name,
-                                    source_name=effective_src_name,
-                                    value=clean_str_value(s_val),
-                                    updated_by=s_by or "user"
-                                )
-                                db.add(new_src)
-                                    
-                        # 2. 임시 껍데기 행 삭제
-                        try:
-                            db.delete(row_to_delete)
-                            deleted_row_ids.append(row_to_delete.row_id)
-                        except Exception:
-                            pass
-                            
                         # 3. 변경 대상 변경사항 캐시 스위칭
                         if row not in changed_rows:
                             changed_rows.append(row)
@@ -6191,6 +6087,7 @@ def set_cell_manual_priority_batch(db: Session, table_name: str, updates: list[d
     # 3. 벌크 갱신 및 삭제 수행
     if logs_to_cache:
         bulk_insert_audit_logs(db, logs_to_cache)
+    bulk_upsert_cell_sources(db, list(cell_sources_to_upsert.values()))
     bulk_upsert_cell_overwrites(db, list(cell_overwrites_to_upsert.values()))
     bulk_delete_cell_overwrites(db, list(cell_overwrites_to_delete))
 

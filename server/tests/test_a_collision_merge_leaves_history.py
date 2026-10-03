@@ -264,17 +264,20 @@ def test_an_unpinned_cell_still_merges(db_session):
 
 
 def test_both_collision_sites_go_through_the_one_helper():
-    """⛔ TWO SITES, ONE READ. They each spelled this lookup by hand, which is how one of
-    them gets repaired and the other keeps the old cost."""
+    """⛔ TWO SITES, ONE READ - and since 총괄 6e041f4cb ①, ONE MERGE BODY. They each spelled this
+    lookup by hand, which is how one of them gets repaired and the other keeps the old cost; the
+    pin site's own copy of the whole merge named a variable it never had (a65640ca8 .. 10-03)."""
     import inspect
 
     module = inspect.getsource(crud)
-    assert module.count("prime_merge_overwrites(db, table_name, merge_ow,") == 2
-    # Scoped to the two merge functions: `column_name ==` is still correct elsewhere
-    # (the chunked delete builds an `or_()` of exactly those comparisons), so asserting
-    # its absence module-wide would assert something untrue about other code.
+    assert module.count("prime_merge_overwrites(db, table_name, merge_ow,") == 1
+    merge = inspect.getsource(crud._merge_into_key_holder)
+    assert "prime_merge_overwrites(" in merge
+    # Scoped to the merge function: `column_name ==` is still correct elsewhere (the chunked
+    # delete builds an `or_()` of exactly those comparisons), so asserting its absence
+    # module-wide would assert something untrue about other code.
+    assert "CellOverwrite.column_name == col_name" not in merge
     for fn in (crud.apply_row_update_internal, crud.set_cell_manual_priority_batch):
         body = inspect.getsource(fn)
-        assert "CellOverwrite.column_name == col_name" not in body
-        assert "CellOverwrite.column_name == c_name" not in body
-        assert "prime_merge_overwrites(" in body
+        assert "_merge_into_key_holder(" in body
+        assert "prime_merge_overwrites(" not in body
