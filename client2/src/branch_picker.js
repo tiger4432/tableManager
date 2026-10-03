@@ -47,7 +47,7 @@ export class BranchPicker {
   show({ worlds, current, operating, history } = {}) {
     this.worlds = Array.isArray(worlds) ? worlds.slice() : [];
     this.current = current || null;
-    this.operating = typeof operating === 'string' && operating ? operating : null;
+    this.operating = typeof operating === 'string' ? operating : '';
     this.history = Array.isArray(history) ? history.slice() : [];
     this.render();
   }
@@ -65,7 +65,7 @@ export class BranchPicker {
     select.className = 'branch-picker__select';
     // The one being read is listed even before the list names it (a branch just made).
     const names = this.current && !this.worlds.includes(this.current) ? [...this.worlds, this.current] : this.worlds;
-    const empty = this.operating ? `Operating · ${this.operating}` : 'Operating';
+    const empty = `Operating · ${this.operating}`;
     for (const [value, text] of [['', empty], ...names.map((name) => [name, name])]) {
       const option = doc.createElement('option');
       option.value = value;
@@ -153,7 +153,7 @@ export class BranchPicker {
     if (this.current) {
       const now = doc.createElement('span');
       now.className = 'branch-picker__operating';
-      now.textContent = this.operating ? `Operating · ${this.operating}` : 'Operating';
+      now.textContent = `Operating · ${this.operating}`;
       parts.push(now);
     }
     const go = doc.createElement('button');

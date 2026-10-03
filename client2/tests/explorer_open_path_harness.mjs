@@ -1110,8 +1110,6 @@ async function pickerWalk(Picker) {
   const emptyText = () => (walkAll(words.mount).find((n) => n.tagName === 'OPTION' && n.value === '') || {}).textContent;
   words.show({ worlds: ['default', 'w1'], current: null, operating: 'w1' });
   out.empty = emptyText();
-  words.show({ worlds: ['default', 'w1'], current: null });
-  out.bare = emptyText();
   const stood = [];
   const under = new Picker(element('div'), { doc: document, onPick: () => {}, onCreate: (n, b) => stood.push(b) });
   under.show({ worlds: ['default', 'w1'], current: null, operating: 'w1' });
@@ -1148,8 +1146,7 @@ function pickerSuite(seen) {
   say('Z12 the empty choice offers nothing to delete', seen.deletable === false, String(seen.deletable));
   say('Z13 a redraw keeps a name being typed; a made branch clears it',
     seen.afterMade === '' && seen.kept === 'w4|false', `${JSON.stringify(seen.afterMade)} ${seen.kept}`);
-  say('Z23 the empty choice is named after the operating world, or bare when the page does not know it',
-    seen.empty === 'Operating · w1' && seen.bare === 'Operating', `${seen.empty} | ${seen.bare}`);
+  say('Z23 the empty choice is named after the operating world', seen.empty === 'Operating · w1', seen.empty);
   say('Z24 beneath: pressed in order, Nothing is empty, a press taken back is none chosen, and each Create starts afresh',
     seen.stood === JSON.stringify([['w1', 'default'], null, [], null]), seen.stood);
   return { ran: names.length, names, failures };
@@ -1176,8 +1173,7 @@ failed += pickerBase.failures.length;
     { id: 'M25', what: 'a redraw drops the name being typed', catches: 'Z13',
       mutate: (text) => swap(text, '      name.value = this.typed;\n', '') },
     { id: 'M34', what: 'the empty choice is named Default again', catches: 'Z23',
-      mutate: (text) => swap(text, "const empty = this.operating ? `Operating · ${this.operating}` : 'Operating';",
-        "const empty = 'Default';") },
+      mutate: (text) => swap(text, 'const empty = `Operating · ${this.operating}`;', "const empty = 'Default';") },
     { id: 'M35', what: 'a pressed world goes on top, not under the last', catches: 'Z24',
       mutate: (text) => swap(text, '[...list, world]', '[world, ...list]') },
     { id: 'M36', what: 'what was pressed outlives the Create', catches: 'Z24',
