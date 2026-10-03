@@ -47,13 +47,13 @@
 
   ① 재료가 있는가   — `composite_key_source` 컬럼이 비어 있으면 어떤 스크립트도 못 만든다
   ② 값이 바뀌는가   — 새 키가 옛 키와 같으면 그 행은 이 결함이 아니다
-  ③ 충돌하는가      — 새 키가 **다른 행**의 키와 같으면 그 둘은 진짜 중복이고,
-                      **사람이 어느 쪽을 남길지 정해야 한다.** 그런 행은 건너뛴다
+  ③ 충돌하는가      — 새 키가 **다른 행**의 키와 같으면 그 둘은 같은 행이다. `--apply` 는
+                      그 키를 가진 행에 합친다(소유자 10-03 「ㄴ」 · 총괄 ab1b9a98c) - 되돌릴 수 없다
 
 🔴 옛 철자 키도 이 문으로 (총괄 e243d6abf ③ · 6e2a93ef9). 키 조각을 칸이 저장하는 철자로
    짓게 된 뒤, 그 전에 페이로드 철자로 지은 키는 «다시 지은 키 ≠ 저장 키»라 여기서 걸린다.
    미리보기가 어느 조각 때문인지 세고, `--apply` 는 `crud.put_business_key` 로 business_key_val
-   과 (선언됐으면) 업무키 칸을 같이 고치고 행마다 감사 줄을 남긴다. ③ 은 오늘처럼 건너뛴다.
+   과 (선언됐으면) 업무키 칸을 같이 고치고 행마다 감사 줄을 남긴다. ③ 은 합친다.
 
 Usage
 -----
@@ -174,6 +174,35 @@ def apply_rekeys(db, table: str, pending: list, by: str = REKEY_BY) -> int:
     return written
 
 
+def merge_rekeys(db, table: str, collisions: list, by: str = REKEY_BY) -> list:
+    """Each (row, holder) - a row whose rebuilt key the holder already carries - merged into the
+    holder through the ONE merge body, `crud._merge_into_key_holder` (소유자 10-03 「ㄴ」, 총괄
+    ab1b9a98c). Nothing is written here, so no cell counts as a person's (`human_columns` empty):
+    both rows' overwrite marks keep a person's value. Run after `apply_rekeys`, so a holder that
+    was itself rekeyed already carries the key. Returns the merged rows' ids. Not undone."""
+    import uuid
+
+    model = models.DYNAMIC_TABLES[table]
+    tx = "%s_%s" % (REKEY_SOURCE, uuid.uuid4().hex[:8])
+    sources, overwrites, overwrites_gone, logs, merged = {}, {}, set(), [], []
+    for row_id, holder_id in collisions:
+        shell = db.query(model).filter(model.row_id == row_id).one()
+        holder = db.query(model).filter(model.row_id == holder_id).one()
+        crud._merge_into_key_holder(
+            db, table, model, shell, holder, explicit={}, human_columns=set(),
+            source_name=REKEY_SOURCE, updated_by=by, transaction_id=tx, changed_cols=[],
+            overwrites_cache={}, cell_sources_to_upsert=sources,
+            cell_overwrites_to_upsert=overwrites, cell_overwrites_to_delete=overwrites_gone,
+            logs_to_cache=logs, deleted_row_ids=merged)
+    if logs:
+        crud.bulk_insert_audit_logs(db, logs)
+    crud.bulk_upsert_cell_sources(db, list(sources.values()))
+    crud.bulk_upsert_cell_overwrites(db, list(overwrites.values()))
+    crud.bulk_delete_cell_overwrites(db, list(overwrites_gone))
+    db.commit()
+    return merged
+
+
 def plan_rekeys(table: str, rows, sources: list, sep: str) -> dict:
     """Every row rebuilt (no gate), the ones whose stored key is not the rebuilt one picked: what
     `--apply` writes (`pending`), what it skips because another row holds that key (`collides`),
@@ -184,9 +213,10 @@ def plan_rekeys(table: str, rows, sources: list, sep: str) -> dict:
     stat = {"scanned": len(rows), "null_key": 0, "blank_shape": 0,
             "no_material": 0, "unchanged": 0, "collides": 0,
             "rebuilt": 0, "failed": 0}
-    collide_sample, pending, empty_by_col, moved_by = [], [], {}, {}
+    collide_sample, pending, empty_by_col, moved_by, collisions = [], [], {}, {}, []
 
-    for r in rows:
+    # In row_id order, so three rows that rebuild to one key come together the same way every run.
+    for r in sorted(rows, key=lambda row: str(row["row_id"])):
         # 🔴 관문 없이 전부 재조립한다. 손상의 모양을 미리 맞히려 들면
         #    (예: "빈 컴포넌트가 남았을 것") 그 모양이 아닌 손상을 통째로 놓친다.
         if r["business_key_val"] is None:
@@ -212,14 +242,15 @@ def plan_rekeys(table: str, rows, sources: list, sep: str) -> dict:
             moved_by[moved] = moved_by.get(moved, 0) + 1
         holder = owner.get(new)
         if holder is not None and holder != r["row_id"]:
-            stat["collides"] += 1             # ③ 진짜 중복 - 사람이 정한다
+            stat["collides"] += 1             # ③ 같은 키 - --apply 가 합친다(총괄 ab1b9a98c)
+            collisions.append((r["row_id"], holder))
             if len(collide_sample) < 5:
                 collide_sample.append((r["row_id"], holder, new))
             continue
         pending.append((r["row_id"], new))
         owner[new] = r["row_id"]              # 같은 실행 안에서의 충돌도 잡는다
     return {"stat": stat, "pending": pending, "collide_sample": collide_sample,
-            "moved_by": moved_by, "empty_by_col": empty_by_col}
+            "moved_by": moved_by, "empty_by_col": empty_by_col, "collisions": collisions}
 
 
 def run(table: str, apply: bool, by: str = REKEY_BY) -> dict:
@@ -285,7 +316,9 @@ def run(table: str, apply: bool, by: str = REKEY_BY) -> dict:
             from sqlalchemy.orm import Session
             with Session(write_engine) as w:
                 stat["rebuilt"] = apply_rekeys(w, table, pending, by)
-            print(f"\n고친 행 {stat['rebuilt']} / 미리보기 {len(pending)}")
+                stat["merged"] = len(merge_rekeys(w, table, plan["collisions"], by))
+            print(f"\n고친 행 {stat['rebuilt']} / 미리보기 {len(pending)} · "
+                  f"합친 행 {stat['merged']} / 부딪힘 {stat['collides']}")
         else:
             stat["rebuilt"] = 0
 
@@ -302,8 +335,8 @@ def run(table: str, apply: bool, by: str = REKEY_BY) -> dict:
                 print(f"     {moved:24s} {n:10d}")
         stat["moved_by"] = moved_by
         if stat["collides"]:
-            print(f"\n🔴 충돌 {stat['collides']}건은 건너뛰었다 - 재조립해도 다른 행과 같은 "
-                  f"키가 되므로 **진짜 중복**이다. 어느 쪽을 남길지는 사람이 정한다.")
+            print(f"\n🔴 부딪힘 {stat['collides']}건 - 다시 지으면 다른 행과 같은 키다. --apply 하면 "
+                  f"그 키를 가진 행에 합쳐진다(되돌릴 수 없다).")
             print(f"   견본(이 행 -> 그 키를 가진 행 · 다시 지은 키):")
             for row_id, holder, key in collide_sample:
                 print(f"     {row_id} -> {holder}   {key}")

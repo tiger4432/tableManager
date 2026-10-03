@@ -11,14 +11,16 @@
 > 순서 (표마다)  ① 미리보기 — 읽기 전용, 아무것도 안 씀
 >   python server/scripts/rebuild_blank_business_keys.py --table <표>
 >              ② 재기동
->              ③ 고치기 — 부딪히지 않는 행만: 키와 업무키 칸을 새 철자로 · 행마다 감사 줄 · 끝에 「고친 행 N / 미리보기 N」(두 수가 같아야 한다)
+>              ③ 고치기 — 키와 업무키 칸을 새 철자로 · 부딪히는 행은 그 키를 가진 행에 합침 · 행마다 감사 줄
+>                 끝에 「고친 행 N / 미리보기 N · 합친 행 M / 부딪힘 M」 — 두 쌍이 같아야 한다
 >   python server/scripts/rebuild_blank_business_keys.py --table <표> --apply --by <이름>
->              ④ 미리보기 다시 — rebuildable 0 이어야 한다
+>              ④ 미리보기 다시 — rebuildable 0 · collides 0 이어야 한다
 > 뜻           rebuildable  옛 철자 키를 가진 행 — 고치기 전에 같은 데이터가 오면 그 행을 못 찾고 «새 행이 하나 더» 생긴다
 >              「키가 바뀌는 행 - 어느 조각」  number · datetime = 그 조각의 철자 때문 · not_iso = ISO 로 안 읽히는 시각 글자(그대로 둔다)
 >                                            split = 저장 키가 조각 수대로 안 나뉨(구분자가 값 안에 있음)
->              collides     남은 수 — 다시 지으면 다른 행과 같은 키라 --apply 가 건너뛰고 이름을 댄다(견본 「이 행 -> 그 키를 가진 행 · 다시 지은 키」)
->                           합칠지는 소유자 답을 기다린다 — 그 답이 오면 이 줄을 고친다
+>              collides     다시 지으면 다른 행과 같은 키 — --apply 가 그 키를 가진 행에 합친다 · 🔴 되돌릴 수 없다
+>                           (견본 「이 행 -> 그 키를 가진 행 · 다시 지은 키」 · 셋 이상이면 row_id 순으로 하나로)
+>                           앞 판(5416d3020)으로 ③ 을 이미 돌렸다면 남은 collides 가 있다 — 이 판에서 ③ 을 한 번 더 돌려 합친다
 > 유령 행       fb9a0b649 로 이미 재기동했다면만 — 키가 있는데 층이 하나도 없는 행 (PG, 표마다)
 >   SELECT count(*) FROM "<표>" r
 >    WHERE r.business_key_val IS NOT NULL
