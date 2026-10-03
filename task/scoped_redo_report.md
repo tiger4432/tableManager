@@ -71728,3 +71728,22 @@ assy_pytest_pg_18160_gw0 · assy_pytest_pg_19512_gw0 · assy_pytest_pg_32256_gw0
 이미 저장된 동률   재기동 전에 같은 눈금으로 찍힌 층은 그대로 — 그 칸들은 이름 순 값을 보이고 있을 수 있음. 고치지 않음(RUN.md 에 세는 SQL)
 다음              71ecd8223 대조 저장의 빈 world -> 맵퍼가 걸은 세상 이름(총괄 답 0c918c2eb) · 그다음 8b81e79a0
 ```
+
+---
+
+## [10-03] 71ecd8223 착지 954112801 — 세상 없이 저장한 대조는 운영 세상을 이름으로 걷고 그 이름을 행에 적는다 (총괄 답 0c918c2eb)
+
+어느 DB · 어느 스키마 · 지운 것 — 시험만: PG assy_test 시험 스크래치 스키마 · 운영 DB 안 씀 · 지운 것 0
+
+```
+지은 것    contrast_walk: world 빈 행은 schema.operating_world() 를 이름으로 걸음(전: 라우트 기본값 None = 읽는 때의 운영 세상)
+          computed_at 과 같은 되쓰기에 world — 빈 행만. world 를 적은 행은 그 세상을 걷고 칸은 그대로. 저자는 걷는 맵퍼 하나
+시험      운영 = b1 · 빈 행 -> 되쓴 world b1 · 걸은 세상 b1 / world=default 행 -> 걸은 세상 default · 되쓰기에 world 없음
+변이 3    행에 world 를 안 되씀 RED · 빈 행이 라우트 기본값으로 걸음 RED · world 를 적은 행에도 되씀 RED
+대조 파일   sqlite 11 passed, 4 skipped, 19 warnings in 3.51s · PG 4 passed, 11 deselected, 12 warnings in 51.68s
+sqlite 전체  5 failed, 7754 passed, 326 skipped, 3 xfailed, 13031 warnings in 767.15s — 박스 체크아웃 사유 다섯만
+말         샘플 contrast_run 설명(「empty = the default」) · 맵퍼 설명 · RELEASE_LOG 대조 항목 바뀐 동작 · RUN.md
+알릴 것    빈 칸으로 남은 옛 행은 그대로 — 다시 계산(리플레이)되면 그때의 운영 세상 이름이 적힘(걷기도 그 세상, 오늘과 같음)
+```
+
+다음: 8b81e79a0(계획 답 6c266e56b — 이름은 늘 싣는다) -> 4b90a8d23 재기
