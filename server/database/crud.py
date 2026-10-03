@@ -5250,6 +5250,13 @@ def _apply_batch_updates_once(db: Session, table_name: str,
                     )
                     prev_row, prev_is_new = unique_results.get(row.row_id, (None, False))
                     unique_results[row.row_id] = (row, is_new or prev_is_new)
+                    # 총괄 bce43236b: a row THIS batch created has no stored cell history -
+                    # the creating item already reads it so (`is_new`), and nothing is
+                    # flushed inside this loop. Its later items (a copy rule's value, then
+                    # its hold) read the caches like a prefetched row's instead of one
+                    # SELECT per cell: ~2,000 of them for a 1,000-row chain group, measured.
+                    if is_new:
+                        prefetched_row_ids.add(row.row_id)
 
                     if changed_cols:
                         rows_with_content.add(row.row_id)

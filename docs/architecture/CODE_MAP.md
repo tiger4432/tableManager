@@ -1356,7 +1356,7 @@ FastAPI 웹서버. 모든 REST/WS의 단일 진입점. 워커·워처와는 outb
 
 **무엇을**: 조회 **셋** — ① 데이터 테이블 `SELECT … WHERE row_id IN (…) OR business_key_val IN (…)` ② `cell_sources` ③ `cell_overwrites`, 둘 다 그 row_id들에 한정.
 
-🔴 **`prefetched_row_ids = set(all_row_ids)`가 하중을 진다.** 이것은 「어느 id를 조회가 덮었는가」의 스냅샷이고, `_load_metadata_row_cell`은 **그 집합의 원소에 대한 캐시 미스를 「모름」이 아니라 「없음이 증명됨」으로 읽는다**. 그래서 저장된 메타가 없는 셀이 더는 셀당 `SELECT`로 떨어지지 않는다. ⚠️ **루프 중간에 해석되는 행**(중간에 조립된 복합 키·충돌 병합 행)은 **정당하게 이 집합 밖**이고 여전히 조회된다 — 이 집합을 「행이 존재한다」로 대체할 수 없는 이유가 그것이다.
+🆕 [10-03 bce43236b] 이 묶음이 «만든» 행도 그 집합에 든다(`is_new` 이면 `prefetched_row_ids.add`) — 만든 항목 자신이 이미 `is_new` 로 «없음»을 읽고, 루프 중엔 flush 가 없어 DB 답도 «없음». 같은 행의 다음 항목(값 다음 보류)이 칸마다 SELECT 하던 것이 사라짐 · 🔴 **`prefetched_row_ids = set(all_row_ids)`가 하중을 진다.** 이것은 「어느 id를 조회가 덮었는가」의 스냅샷이고, `_load_metadata_row_cell`은 **그 집합의 원소에 대한 캐시 미스를 「모름」이 아니라 「없음이 증명됨」으로 읽는다**. 그래서 저장된 메타가 없는 셀이 더는 셀당 `SELECT`로 떨어지지 않는다. ⚠️ **루프 중간에 해석되는 행**(중간에 조립된 복합 키·충돌 병합 행)은 **정당하게 이 집합 밖**이고 여전히 조회된다 — 이 집합을 「행이 존재한다」로 대체할 수 없는 이유가 그것이다.
 
 **채점자**: `server/tests/test_composite_key_prefetch_budget.py`가 고정하는 것 — ① 복합 키 200행 갱신 배치의 데이터 테이블 `SELECT` **정확히 1** ② `cell_sources`·`cell_overwrites` 각 **정확히 1**, 총 문장 **< 500**(종전 2,604) ③ 🆕 ✅ **[`4738d84`에서 고쳐졌다 — 「일부러 안 고친 경우」가 아니다]** `_get_or_create_row`가 이제 `ProbedIdentity`를 읽으므로 신규 행 삽입의 `ROWS + 1` 예산은 더는 참이 아니다. **이 항목의 현행 기댓값은 소스에서 확인하라**(`server/tests/test_composite_key_prefetch_budget.py`는 `818c9c0`에서도 손댔다) ④ 충돌 병합 행은 여전히 읽혀야 한다(`cell_sources` select **≥ 2**). 같은 파일이 `replace_map` 스코프 의미론(`report["filters"] == {"base": "A"}` · `report["deleted"] == 7`)도 고정하고, `87a944e`가 **셀별 행 정체성 생존**을 추가했다. 🆕 **`server/tests/test_replace_map_scope_diff.py`**(신설 280줄)가 diff 경로 전용 채점자다.
 
