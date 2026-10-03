@@ -35429,3 +35429,22 @@ RELEASE_LOG 맞음 — 주기 판이 세지 않고 잇는다 · 직전 기록 �
    고칠 자리 후보(안 쟀다): --drifted --apply 가 끝에 그 소스의 사람 census(measure_and_store exact)를 한 번 — 그러면 기록이 «고친 뒤 수»가 된다
    여쭐 것: ① apply 뒤 다시 세기를 넣을지 ② next_step 을 미리보기로 둘지, 적용 명령까지 실을지
 ```
+
+---
+
+## [C 응용] 10-03 8bbeb1aee(표의 물리 칸 = 함수 하나 · 읽기마다 한 번) 검수 + 줄 수 — @`d4406195d`
+
+```
+검수 (박스)  바뀐 시험 열 파일 pytest 108 passed 6 skipped · PG -k(같은 묶음) 6 passed
+            cb9082b79(패널이 기록의 next_step 을 그림) 패널 하니스 132 passed — 문서 2034f9040
+문서        CODE_MAP column_stats 줄 수(「287(신설)」이 남아 있었다)만. 나머지는 구현자가 같은 커밋에
+자리 셈      server/ledger 안 information_schema.columns 글자: column_stats.physical_columns 하나 + admin.relations_view(여러 표 한 번, 픽커) —
+            구현자 CODE_MAP 문장 그대로. server/ 전체엔 schema_drift · models 의 inspector · main 의 이주 확인이 더 있다(다른 물음 — 표 동기 · 칸 하나 존재)
+아직 열림    범위(scope) 칸 허용 목록(_scope_predicate · 다시하기 배너의 scope_columns)은 여전히 base_select_columns — ed333c401 의 한 줄 그대로
+```
+```
+⚠️ 한 줄 — 첫 PG 실행(10:07 쯤)에서 같은 묶음이 2 failed, 다시 돌리니 6 passed · 그 둘만 따로도 passed
+   실패 모양 둘이 «_readable_columns 가 칸을 묻지 않는 변이»와 꼭 같다: SELECT 에 "ghost" 가 실림(UndefinedColumn) · physical_columns 호출 0
+   그 시각 공유 트리에서 누가 그 자리를 바꿔 돌렸는지는 확인 못 했다(제가 본 git status 는 깨끗했다 — 뒤에 본 것). 변이를 공유 트리에서 돌리면
+   다른 레인의 실행이 그 변이를 잰다 — 그런 일이 있었다면 사본에서 돌리게 하는 것이 맞는지 여쭐 것
+```
