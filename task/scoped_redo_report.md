@@ -71867,3 +71867,53 @@ PG 전체      3 failed, 284 passed, 7804 deselected, 248 warnings in 1263.19s (
 ledger/trace.py 의 CURSOR_FIELDS · CURSOR_TIME_FIELDS 는 부르는 자리가 없음(git grep) — 지시 밖
 순서: 지시는 4b90a8d23 재기 «앞»이었으나 재기를 먼저 마친 뒤 받았음(de7bd083a)
 ```
+
+---
+
+## [10-03] 5fec118bb ① ② · 8e8ee2dcf 착지 a9f877ed3 · ③ 재기 — 새 소스 backfill 이 다른 소스 사실을 한 번 더 쓰지 않는다 · 검색 거절 문구 · 커서 다시 찍기 스크립트도 소스마다 그 세상 · 시각 키 전수
+
+어느 DB · 어느 스키마 · 지운 것 — 시험: PG assy_test 시험 스크래치 스키마(+ 시험 w_ 스키마, 이름으로 DROP) · ③ 은 박스 DB assy_manager 를 «읽기만»(SET TRANSACTION READ ONLY) · 지운 것 0
+
+**① 원인 둘 (따로)**
+```
+(a) 원자 버전 = ledger-v2:{snapshot_sha256}#{문장}(roleframe) — 선언 «전체» 해시라 X 를 더하면 Y 원자의 버전 글자가 바뀜
+    Y 의 커서 지문(소스 재료만)은 그대로: 전 b6d9… · 후 b6d9… (재료 차이 0 줄) — 바뀐 것은 원자 버전뿐. 그 버전이 uq_ledger_atom 에 들어가 dedupe 안 됨
+    총괄 답 ㄱ(8e8ee2dcf) — 그대로 둠(그 사실이 «어느 선언»에서 나왔는지의 기록). 손대지 않음
+(b) backfill.run 이 X 의 색인에 없는 행을 표 단위 CREATE 로 넣고, 후속이 그 표를 읽는 소스 전부를 CREATE 로(거두지 않음, 판정 166) 번역 — Y 에겐 새 행이 아님
+```
+**① 지은 것 · ② · 게이트**
+```
+run()          X 만 번역(그 세상이 X 를 말할 때만) — 나머지 다시 번역(후속 고침 · drifted · whole-source · 범위)은 rescope 를 거두며 지남
+메모리 CREATE   넣는 자리 1: ledger/backfill.py:349 'CREATE' · 큐에 직접 쓰는 줄 1: ledger/followup.py:160(enqueue 안)
+ 센 명령        server 폴더에서  OUT=<결과.json> python C:/Users/kk980/AppData/Local/Temp/claude/C--Users-kk980-Developments-assyManager/bb9c475d-6f85-4fe4-bc97-76584eed703b/scratchpad/census_enqueue_create.py
+               AST · 추적 .py 278 파일(tests · migrations 뺌) · 이름이 enqueue 인 호출과 _queue 에 붙이는 호출 · 카나리아: enqueue 정의가 ledger/followup.py
+스크립트        scripts/ledger_restamp_cursor.py — --world 없으면 소스마다 그 소스를 말하는 세상의 커서를 그 세상 선언으로(부팅 단계와 같음) · 줄마다 [세상]
+               기본 목록은 «아직 읽히는» 소스만 — 은퇴 소스의 지문을 묻다가 첫 커서 전에 멈추던 것(이번 이전부터, 새 시험이 찾음)
+trace.py       부르는 자리 0 인 CURSOR_FIELDS 와 같이 쓰이던 CURSOR_TIME_FIELDS(부르는 자리 0) 지움
+② 검색 거절     /api/ledger/key-values 가 «물은 세상»의 선언으로 타입을 판정(전: 운영 세상 선언) -> node_type_not_declared · "type 'tool' is not declared in world <세상>" · detail 에 world
+게이트          두 소스 한 표 · X 추가 후 backfill X -> Y 원자 수 그대로 · Y 통째 다시 번역 -> 그대로 · 고침을 후속이 따라감 -> 그대로
+               옛 backfill 이 둘로 만든 원장 -> RUN.md 의 셈 SQL 이 1 -> --whole-source --apply 뒤 0 (RUN.md 고칠 명령을 시험으로 확인)
+               ②: 기본은 tool 선언 · B1 은 안 함 -> B1 에 물으면 그 문구
+변이 5          backfill 이 표의 소스 전부(전) RED · 후속이 고침을 거두지 않고 씀 RED · 검색이 운영 세상 선언에 물음(전 · 거절 없이 키 조회로 내려감) RED · 스크립트가 운영 세상 커서(전) RED · 스크립트가 은퇴 소스까지 물음(전) RED
+새 시험 · 세상 시험  11 passed, 29 warnings in 64.73s (0:01:04) (스크립트 시험만: 2 passed, 13 deselected, 11 warnings in 19.52s)
+sqlite 전체      5 failed, 7756 passed, 331 skipped, 3 xfailed, 13093 warnings in 732.97s — 박스 체크아웃 사유 다섯만
+PG 전체          3 failed, 287 passed, 7805 deselected, 255 warnings in 1211.67s (0:20:11) — 지난 전체 실행과 같은 알려진 셋만
+```
+**③ 재기 — 노드 키에 시각 조각이 있는 선언 타입 (짓지 않음)**
+```
+선언          박스 라이브 선언: 칼럼에서 오는 키 64 개 중 datetime 칸 0 · 추적 샘플: 29 개 중 0 — 시각 칸으로 노드 키를 짓는 선언 없음
+              (코드 맵퍼 소스 dt_job · lot_event 는 선언으로 안 보여 원장에서 직접 봄)
+박스 원장      원자 2380869 · (소스, 타입, 키) 무리 주어 38 · 목적어 34 — 키 «전체»가 시각인 것 0
+              키 «안에» 시각 조각이 든 것(아이디 글자):
+             void_observation defect.void_uid · 값 103863 중 시각 조각 103863 · 모양 9999-99-99T99:99:99+99:99 · 같은 키 두 철자 0
+             dt_job dtjob.dt_job · 값 433095 중 시각 조각 120 · 모양 99999999T9999 · 같은 키 두 철자 0
+             dt_transfer die.mat_id · 값 1217 중 시각 조각 80 · 모양 99999999T9999 · 같은 키 두 철자 0
+같은 순간 두 철자  0 — 3 무리 모두 한 모양씩. 셋 다 글자 칸에 저장된 아이디라 두 키 철자 함수(원장 · key_part) 어느 것도 손대지 않는 자리
+소급 비용       시각 갈래를 key_part 와 한 함수로 접어도 이 박스에서 다시 번역할 원자 0(datetime 키 칸이 없음). 운영은 안 잼(선언이 다를 수 있음)
+```
+**알릴 것**
+```
+걷기 collect 의 거절(같은 사유 node_type_not_declared)은 문구가 「Not a declared node type: …」 그대로 — 지시가 key-values 라 안 바꿈
+S-267 의 고아 상수 다섯 중 나머지 셋(DEFAULT_SAMPLE_SIZE · SAMPLE_CANDIDATE_WINDOW · UUID7_MS_SQL)은 그대로 — 코드에선 trace.py 밖 히트 0(git grep), 지시 밖
+지운 두 상수를 «있는 것»으로 적는 문서 줄: CODE_MAP 「커버리지가 가져간 고아 다섯」 행 · SYSTEM_FLOWS_A 의 L-17 행 · SERVER_DEFECT_QUEUE S-267 — 문서 몫이라 안 고침
+```
