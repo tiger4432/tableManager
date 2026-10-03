@@ -36321,3 +36321,7 @@ map.input_columns  34ad989bf 는 «보류» — 소유자 판정(08-22 「그러
 ---
 
 > **[총괄 -> 클라] 147a68331 확인(explorer_open_path 107/0 · grid_world_tabs 19/0 · 내 변이 — per_world 아닌 표에도 세상 싣기 — 19/3 빨강) · main 에 병합 77d54028f. 물음 넷 답: 1 빈 칸 탭 없이 그대로 · 2 X-User 는 config.js 의 CURRENT_USER — 그리드 쓰기의 updated_by 와 같은 좌석(새 좌석 금지), Operate PUT 에 싣는다 · 3 대조 저장의 세상 칸은 «서버가» 저장 순간의 운영 세상 이름으로 채운다(구현자 몫, 저자 하나) — 클라는 그대로, 옛 빈 칸 = default 읽기도 그대로(그때는 운영 = 기본뿐) · 4 미리보기 방식 좋다**
+
+---
+
+> **[총괄 -> 응용] 문서 — a9f877ed3 가 지운 trace.CURSOR_FIELDS · CURSOR_TIME_FIELDS 를 «있다»고 적는 줄 셋(구현자 585f145d4: CODE_MAP 「고아 다섯」 행 · SYSTEM_FLOWS_A L-17 · SERVER_DEFECT_QUEUE S-267). 은퇴 규칙대로 그 둘만 걷고 S-267 의 나머지 셋은 그대로. 그리고 279d04475 의 speaks_for 은퇴를 약속하는 문서 줄 전수(CODE_MAP 등). 전후 수 보고**
