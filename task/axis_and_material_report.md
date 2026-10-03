@@ -1,3 +1,32 @@
+> ## [09:23 디자인] map.input_columns 은퇴의 화면 몫 — 잠긴 칩 · 픽스처 둘 · 하니스 · 약속하던 말 — 총괄 8d3890d86 · 서버 97101fd2e · 0693d78d4
+
+**결론** 화면에서 `input_columns` 와 잠긴 칩(`locked`)을 걷어냈습니다. 옛 파일에 적힌 `map.input_columns` 는 폼에 아무것도 안 그립니다 — 그것을 대조군 칸(H18)으로 남겼습니다.
+
+**걷어낸 것**
+- 뷰(`ontology_explorer_view.js`): `row.locked` 집합과 «누를 수 없는 눌린 칩»(`<i>`) 갈래, 그것을 설명하던 주석. 잠긴 칩은 이 칸 하나만의 것이었습니다(소유자 08-21 「클릭 불가능한 클릭되어 있는 버튼」 은 이 칸의 기본 칸들에 대한 것). 칸째 소유자 판정으로 은퇴했으니 같이 갑니다.
+- 캐논 CSS: `.oe-pick.is-locked` 규칙 3 개.
+- 픽스처 둘: `authoring_inherited_plan.json` · `authoring_skeleton.json` 를 각자의 캡처 스크립트로 이 트리에서 다시 떴습니다(손으로 고치지 않음). 스켈레톤은 옛 캡처가 서버의 `references` 칸보다 오래돼서 그만큼도 같이 바뀌었습니다 — 그 픽스처를 읽는 하니스 3 개는 그대로 초록입니다.
+- `explorer_open_path_harness`: 가짜 계획 행의 `locked: []`.
+
+**하니스 — 칸째 지우지 않고 «옮긴» 것**
+- 저작 패널 하니스의 H 절은 이 칸의 행이었는데, 그 안에 «목록 칸 고르개» 일반의 성질도 살고 있었습니다(서버 후보마다 토글 하나 · 기본값만 눌림 · 누르면 정확히 하나 빠지고 하나 더해짐 · 손으로 안 펴도 보임 · 목록 칸에 낱말 하나면 한 칸짜리 목록 — 8c0a2eeed). 칸이 은퇴했다고 이 성질들을 같이 지우면 은퇴 규칙(축과 값을 같이 죽이지 않는다)을 어깁니다. 그래서 `read.order_by` 로 옮겼습니다 — 서버가 «작성자가 바꿀 수 있는 파생 기본값»으로 짓는 목록 칸입니다(`ordering_default_from_catalog_key`).
+- 은퇴: 잠긴 칩 칸 H4–H6 · H9 · H12–H14. H8 은 «다 눌림» 대신 «order_by 자기 기본값만 눌림»으로 바뀌었습니다.
+- 대조군 H18: 옛 파일의 `map.input_columns` → 행 0 · 칩 0 · 낱말 0. 스켈레톤에 그 칸을 도로 넣은 버림 사본에서는 H18 이 빨갛습니다(`map,map.input_columns` 를 짚음) — 공허하지 않습니다.
+- B1 · B7(파생 행 수 · 파일과 다른 파생 행이 그렇다고 말함)은 옮긴 행 위에서 그대로입니다. E6 · E7 의 `source_plan|dt_job` 이동은 은퇴한 칸의 근거에서 왔습니다. order_by 의 근거는 물리 카탈로그라 서버가 선언 키를 안 보냅니다(`ground_node_key('table_config.json:…')` = None, 서버 함수로 확인). 그래서 E7 은 남은 entity 이동만 보고, E10 「카탈로그 근거 기본값은 이동을 안 그린다」를 더했습니다.
+- `ontology_authoring_panel_harness` 105 칸 실패 0(바닥 110 → 105, 줄어든 이유를 바닥 옆에 적음) · open_path 90 칸 실패 0 · form_grammar 21 칸 실패 0 · inherited_attributes 8 칸 실패 0 · path_bar 20 칸 실패 0 · 탐색기 83 칸 실패 0 · 러너 초록 · 계약 13 개 어긋남 0.
+
+**약속하던 말 전수(클라)** `client2/src` · `client2/tests` · 페이지 · 스킬에서 `input_columns` · `locked` 를 셌습니다 — 이 칸에 대한 것으로 남은 것은 은퇴 표시와 대조군뿐입니다. 센 수(낱말 `locked` 를 다른 뜻으로 쓴 두 하니스 포함 — 종류에 묶인 속성 칸, 보기 화면에서 꺼진 쓰기 버튼): (ontology_explorer_view.js 3 · declaration_attribute_seats_harness.mjs 1 · grid_view_readonly_harness.mjs 4 · ontology_authoring_panel_harness.mjs 7). 화면이 스스로 그리던 글자는 없었습니다(행 이름표는 서버의 것). 스킬에는 잠긴 칩 문장이 없었습니다.
+- 클라 밖(제 레인이 아님, 손대지 않음) — 문서에 남은 수: CODE_MAP.md 11 · LEDGER_SCHEMA_COMPLETENESS.md 5 · PRIMITIVES.md 1 · LEDGER_GUIDE.md 2 · ONTOLOGY_LEDGER_SETUP.md 6 · ledger_declaration_by_example.md 2 · DOC_OWNERSHIP.md 1 · RELEASE_LOG.md 8 · SERVER_DEFECT_QUEUE.md 5 · 기록(history · _archive) 33. history · _archive 는 그때의 기록이라 남는 것이 맞고, 나머지는 문서 정비 몫입니다.
+
+**미리보기** 안 했습니다. 소스 폼은 쓰기에 토큰이 필요하고, 박스 서버가 옛 코드라 은퇴한 행을 아직 보내서 새 모양을 볼 수 없습니다. 새 모양은 다시 뜬 픽스처와 하니스가 잽니다.
+
+**새 함수 · 새 if 중 기존 것과 같은 일** 새 함수 0 · 새 if 0 — 뷰에서 갈래 하나와 집합 하나가 빠졌습니다.
+
+- RELEASE_LOG: 서버 항목이 이미 화면을 적었습니다(「탐색기 소스 폼에서 `Mapper input_columns` 칸이 사라집니다」). 이건 그 뒤의 정리라 새 항목을 안 냈습니다.
+- 어느 DB · 어느 스키마 · 지운 것 0 — 화면과 시험만.
+
+**다음** 서버 census 명령 착지(e1648e884) 뒤 클라 상수 지우기 · 세상 서브탭(세상 짓기 뒤).
+
 > ## [08:54 디자인] UI 제안 표 — 오늘 착지한 화면을 실제로 써 보고 짜증난 것(짓지 않음) — 총괄 33c047a9f 확인의 지시
 
 **어떻게 쟀나** 미리보기(이 박스)에서 걷기 화면은 다이 픽스처로 걸어 표 · 그림 · 접기를 써 봤고, 원장 소스 패널은 토큰 없이 열었습니다. 수는 그때 페이지에서 잰 것이고, 미리보기 창 크기(920×585)에서의 수입니다. GET 이 아닌 요청 0. 소스 폼(d06199e6a)은 쓰기에 토큰이 필요해 이번에 안 열었습니다.
