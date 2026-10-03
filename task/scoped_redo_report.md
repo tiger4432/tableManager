@@ -70886,3 +70886,86 @@ origin/main 1e89e9879    outbox           따라가기 20 번 30.29 s
 **RUN.md** — 오늘 순서 9(다시 채우기) 시간을 (가) 위의 수로: 체인 64.89 s · 원장 21.59 s / 1만 -> 100만 어림 약 2.4 시간 (운영은 안 쟀다)
 
 다음: 2a8d9073c input_columns 은퇴 — 먼저 잰 것: 박스에서 돌고 있는 소스 다섯, «선언대로» 와 «관계의 칸 전부» 읽기의 원자가 번역 버전 문자열 말고 같다 · 소스 지문 · 커서 버전도 같다(다시 번역 0) · 읽기 시간 차이 없음(7 -> 24 칸 0.035 -> 0.036 s). 번역 버전 문자열(원자에 찍히는 것)은 선언 «전체»의 해시라 어느 칸이 바뀌어도 움직인다 — input_columns 만의 일이 아니다. 샘플 소스와 자리 전수는 이어서
+
+---
+
+## [10-03] 2a8d9073c 착지 97101fd2e — 맵퍼는 그 표의 칸을 전부 받는다 · `map.input_columns` 은퇴
+
+어느 DB · 어느 스키마 · 지운 것 — 박스 assy_manager 는 읽기만(SELECT · information_schema). 시험은 assy_test 의 시험 스크래치 스키마(픽스처가 만들고 DROP) — 단 `test_ledger_v2_pg` 는 «기존 픽스처»가 assy_test 의 `public` 에 토큰 이름 표 둘(`v2s6_input_rows_<토큰>` · 오른쪽 표)을 만들고 DROP 한다(내가 만든 자리 아님, 이번에 두 번 돌림). 내가 지운 것 0
+
+**먼저 잰 것 ① — 같은 행을 착지 전 판(main 트리)과 착지 판(wt-impl)이 번역 · 박스 선언 · 박스 DB · 소스마다 첫 2,000 행**
+```
+box     die_inspection         칸  7 -> 11 · 원자  4000 ->  4000 · 같음 True · 지문 True · 커서 버전 True · read_s 0.202 -> 0.226 · map_s 4.639 -> 4.761
+box     dt_job                 칸  7 -> 24 · 원자    56 ->    56 · 같음 True · 지문 True · 커서 버전 True · read_s 0.036 -> 0.05 · map_s 0.414 -> 0.44
+box     lot_slot_wafer         칸  7 ->  7 · 원자  2000 ->  2000 · 같음 True · 지문 True · 커서 버전 True · read_s 0.019 -> 0.019 · map_s 4.572 -> 4.449
+box     transfer_event         칸 13 -> 13 · 원자  2810 ->  2810 · 같음 True · 지문 True · 커서 버전 True · read_s 0.024 -> 0.023 · map_s 3.266 -> 3.542
+box     wafer_process_recipe   칸  5 -> 15 · 원자  2000 ->  2000 · 같음 True · 지문 True · 커서 버전 True · read_s 0.018 -> 0.028 · map_s 3.406 -> 4.31
+sample  die_inspection         칸  7 -> 11 · 원자  2000 ->  2000 · 같음 True · 지문 True · 커서 버전 True · read_s 0.146 -> 0.327 · map_s 3.642 -> 4.578
+sample  lot_slot_wafer         칸  7 ->  7 · 원자  2000 ->  2000 · 같음 True · 지문 True · 커서 버전 True · read_s 0.017 -> 0.018 · map_s 4.451 -> 4.671
+sample  transfer_event         칸 13 -> 13 · 원자  1405 ->  1405 · 같음 True · 지문 True · 커서 버전 True · read_s 0.025 -> 0.021 · map_s 3.677 -> 3.403
+```
+원자 같음 8/8 · 소스 지문 같음 8/8 · 커서 번역 버전 같음 8/8 -> 재기동 restamp 0 · 다시 번역 0
+원자에 찍히는 번역 버전(선언 전체 해시)은 한 번 바뀐다(박스 움직임 · 샘플 움직임) — 새 원자부터, 있는 원자는 그대로. 선언을 고칠 때마다 생기는 것과 같다
+
+**먼저 잰 것 ② — 샘플 소스 «전부»: 샘플 카탈로그 · 만든 행 6 개 · 각 판이 «자기» 샘플 선언으로 (DB 없음)**
+```
+die_inspection         칸  7 -> 11 · 원자 6 -> 6 · 같음 True · 거절 같음 True
+dt_job                 칸  6 ->  6 · 원자 8 -> 8 · 같음 True · 거절 같음 True
+lot_event              not running
+lot_lineage            칸  6 ->  6 · 원자 6 -> 6 · 같음 True · 거절 같음 True
+lot_slot_wafer         칸  7 ->  7 · 원자 6 -> 6 · 같음 True · 거절 같음 True
+transfer_event         칸 13 -> 13 · 원자 6 -> 6 · 같음 True · 거절 같음 True
+wafer_process_recipe   칸  6 -> 16 · 원자 6 -> 6 · 같음 True · 거절 같음 True
+```
+①에서 박스로 못 읽은 샘플 소스(dt_job_rollup · lot_lineage 표가 박스 카탈로그에 없음 · wafer_process_recipe 는 박스 칸 부족)도 여기서 전후가 같다. lot_event 는 샘플에서 은퇴라 안 돈다
+
+**넓은 프레임의 비용 — 착지 전 판, 같은 2,000 행 · 같은 맵퍼, 적은 칸만 vs 칸 전부, 5 번씩 번갈아 중앙값**
+```
+wafer_process_recipe   2000 행 · 칸 5 -> 15 · 4.257 s -> 4.615 s (+8%) · 1,000 행당 +0.18 s
+die_inspection         2000 행 · 칸 7 -> 11 · 4.837 s -> 5.036 s (+4%) · 1,000 행당 +0.10 s
+dt_job                 2024 행 · 칸 7 -> 24 · 0.365 s -> 0.431 s (+18%) · 1,000 행당 +0.03 s
+```
+읽기(SELECT)는 ① 표의 read_s(한 번씩 잰 값). 늘어난 몫은 주로 맵퍼 단계 — 규격의 «맵퍼 고유 로직» 쪽
+
+**새로 생긴 위험 — 행 단위 소스의 정렬 열쇠가 프레임의 칸 «전부»를 정본 JSON 으로 만든다(`roleframe._row_sort_token`)**
+```
+그래서 전에 안 읽던 칸에 정본 JSON 이 못 되는 값(NUMERIC -> Decimal · DATE · 시간대 없는 TIMESTAMP · BYTEA)이 있으면 그 소스가 invalid_role_value 로 선다
+제품이 만드는 표는 해당 없음 — models 가 number -> float · datetime -> timestamptz · 나머지 -> 문자열만 만든다
+박스(운영 주장 아님): 소스가 읽는 표 15 개 · 카탈로그 칸 188 개의 DB 타입 = character varying 127 · double precision 49 · text 6 · timestamp with time zone 6 · 위험 타입 0 · DB 에 없는 칸 0
+같은 뿌리의 다른 모양: table_config 에는 있는데 DB 표에 없는 칸 -> 그 소스 읽기가 UndefinedColumn 으로 선다(전에는 적은 칸만). RUN.md 에 증상과 처방
+```
+
+**내가 고른 것 — 지시문이 낱말로 안 정한 자리 (뒤집으실 수 있게 한 묶음으로)**
+```
+㉠ 폼 계획의 input_columns 행을 서버에서 «지금» 뺐다(클라 몫으로 남기지 않음) · 그 행만 쓰던 Field.locked 와 계획의 locked 키도 같이
+㉡ 관계 칸 목록은 SourcePlan.relation_columns(컴파일 때 카탈로그에서) · _NOT_ATOM_MATERIAL 에 frame_row_id 와 같은 자리 — 표에 칸이 늘어도 지문 · 스냅샷 그대로
+㉢ 검사기는 ignored=(read.cursor 가 은퇴한 같은 문) — 적힌 값은 모양이 무엇이든 거절 없음 · 검사 없음 · 기본값 없음
+㉣ base_select_columns 를 부르는 곳 넷 전수: 커서 SELECT · 프레임 결손 검사 · rescope 범위 허용 목록 · 탐색기 scope_columns — 뒤 둘은 이제 표의 칸 전부를 고를 수 있다
+㉤ v6 이주 시험은 은퇴 칸을 빼고 «출고 샘플과 같음»을 견준다 — 이주는 적힌 input_columns 를 지우지 않는다(파일을 고쳐 쓰지 않는다)
+㉥ 손으로 짠 프레임 시험 넷은 support/read_frame.as_read 한 함수로(커서 읽기가 넘기는 모양, 없는 칸은 NULL)
+```
+
+**시험**
+```
+sqlite 전체  25 failed, 7709 passed, 41 skipped, 227 deselected, 3 xfailed, 13073 warnings in 901.84s
+   그중 20 은 실행이 시작된 «뒤»에 고친 파일의 옛 판이 돈 것 — 그 파일들을 다시 돌려 초록
+   나머지 5 는 박스 체크아웃 탓(이유를 열어 봄): 샘플 서식 시험 CRLF(바뀌지 않은 main 에서도 빨강) · 라이브 맵퍼 사본 셋 · wt-impl 에 .git 폴더 없음
+pg (영향 받는 18 파일만 · 전체 pg 는 안 돌림)  5 failed, 33 passed, 125 deselected, 34 warnings in 629.90s
+   test_ledger_v2_pg 3 은 옛 판 — 표 픽스처에 카탈로그 칸(row_id · unselected_note)을 더해 4/4. 오래 알려진 row_id 누락 실패 둘이 이것으로 같이 풀림
+   test_ledger_l1_pg 2 는 바뀌지 않은 main 에서도 같은 이유로 빨강(샘플에 없는 소스 process_param_num_measure)
+변이  relation_columns back in the material -> RED(1 failed) · the read stops bringing the relation's columns -> RED(2 failed) · a written input_columns is refused again -> RED(6 failed)
+RELEASE_LOG 예시 둘(새 항목 · 10-02 항목)을 제품 로더로 읽어 봄 — 둘 다 로드 · 커밋된 샘플 바이트 = 쓰는 쪽 서식
+```
+
+**은퇴 전수** — `git grep -n input_columns -- . ':!task/' ':!docs/history/' ':!docs/_archive/'` (착지 판, 카나리아 `def base_select_columns` 1)
+```
+남은 파일 25 · 줄 121
+클라 몫(총괄 지시 대기) — 4 파일 22 줄: ontology_explorer_view.js 3 · authoring_inherited_plan.json 2 · authoring_skeleton.json 1 · ontology_authoring_panel_harness.mjs 16
+옛 파일을 «읽고 무시»하는지 재는 픽스처 — 4 파일 15 줄: ledger_config.json 12 · test_ledger_registration_probe.py 1 · test_ledger_zero_python_source.py 1 · test_retired_declaration_is_not_validated.py 1
+은퇴 시험 · 은퇴 표시 주석 — 7 파일 33 줄: setup_bundle.py 3 · test_a_column_the_declaration_names_is_read_without_repeating_it.py 9 · test_a_sentence_says_itself_only_for_the_rows_it_names.py 1 · test_ledger_setup_bundle.py 8 · test_ledger_setup_registry.py 3 · test_ontology_config_explorer.py 4 · test_the_v6_migration_moves_descent_to_the_chain.py 5
+총괄 파일(안 건드림) — 1 파일 5 줄: SERVER_DEFECT_QUEUE.md 5
+RUN.md — 옛 절의 이력 줄 · 10-02 확인 줄은 ⚰️ 표시 — 1 파일 10 줄: RUN.md 10
+문서 — ⚰️ 은퇴 표시 · 이력 — 8 파일 36 줄: CODE_MAP.md 11 · LEDGER_SCHEMA_COMPLETENESS.md 5 · PRIMITIVES.md 1 · LEDGER_GUIDE.md 2 · ONTOLOGY_LEDGER_SETUP.md 6 · ledger_declaration_by_example.md 2 · DOC_OWNERSHIP.md 1 · RELEASE_LOG.md 8
+```
+
+다음: 5baab7b8d + e1648e884(주기 census 가 사람이 잰 두 수를 그 measured_at 그대로 잇고 · 다음 행동 명령을 싣는다) -> bce43236b
