@@ -1,3 +1,18 @@
+> ## [20:23 디자인] 120450931 보충 — 늦게 닿은 총괄 메시지 둘에 맞춤: 이름 없는 Operating 갈래 뺌 · 선언 화면 미리보기를 실제 화면으로, 보냈을 것 기록 — fe512051e
+
+**결론** 앞 보고(147a68331) 뒤에 총괄 메시지 넷이 한꺼번에 닿았고, 그중 둘이 제 착지와 어긋나 고쳤습니다.
+
+**① «이름 없는 Operating» 갈래는 만들지 마라** 고르기의 빈 칸과 운영 표시는 이제 늘 `Operating · <운영 세상>` 입니다(앞 보고의 「이름을 모르는 답이면 `Operating`」은 지웠습니다). 세상 목록 한 모양이 서버에 착지한 뒤(9e9a9015a)라 세 답 모두 operating 을 싣습니다. 그 전 서버에서는 이름 자리가 빈 채로 보입니다(RELEASE_LOG 같은 항목 고침). `explorer_open_path_harness` 107 칸 실패 0 — Z23 은 이름 있는 경우만, M34 잡힘. `rnd_board_contrast_save_harness` 72 칸 실패 0.
+
+**② 미리보기 — GET 은 페이지 안에서, PUT · bootstrap 은 막고 보냈을 것 기록** 박스에 가지를 만들지 않고 운영 세상도 안 바꿨습니다. 실제 선언 화면(컨트롤러 그대로)에서 탐색기의 관리자 GET 만 페이지 안에서 대답했습니다(세상 `default` · `w1`, 운영 `w1`). 라이트 · 다크 같은 결과:
+- 처음 열 때 GET 4개, 그중 세상 목록 `/admin/ontology-explorer/worlds`. 고르기 칸 `Operating · w1` · `default` · `w1`.
+- `w1` 을 읽으면 Operate 꺼짐(`Already the operating world`). `default` 를 이름으로 고르면 GET 전부에 `world=default` (4개).
+- 새 가지 `w3`, 밑에 `w1` 다음 `default` 를 누르고 Create — 막고 적은 것: `POST /admin/ontology-explorer/bootstrap?beneath=w1,default&world=w3` 본문 `{}`.
+- Operate — 확인 1번(`Make w3 the operating world?`), 막고 적은 것: `PUT /admin/ontology-explorer/worlds/operating?world=w3` 본문 `{"world":"w3"}`. 막은 요청 전부 2개.
+- 그 뒤 운영 표시 `Operating · w3`, 이력 맨 위 `w3 · operator · 10-03 20:00:00`(페이지가 지은 답이고 서버는 안 바뀜).
+
+- 어느 DB · 어느 스키마 · 지운 것 0 — 화면만.
+
 > ## [20:11 디자인] 세상 화면 ①②③ 한 착지 — 빈 고르기는 운영 세상 · 그리드 세상 탭 · 선언 화면의 밑 고르기와 운영 바꾸기 — 총괄 120450931 · 147a68331
 
 **결론** ①②③ 이 한 커밋에 착지했습니다. 보류 풀림(e5be77136) 그대로 — 밑 «Nothing» 이 독립 세상입니다.
