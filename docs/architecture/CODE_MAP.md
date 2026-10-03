@@ -1344,7 +1344,8 @@ FastAPI 웹서버. 모든 REST/WS의 단일 진입점. 워커·워처와는 outb
 | `delete_row(db,...)` / `delete_rows_batch(db, table_name, row_ids, user_name)` | 행 삭제(+감사·메타 정리) |
 | `delete_cell_source_batch(db, table_name, cells, source_name)` | 소스 레이어 일괄 삭제 + 표시값 재계산 |
 | `delete_cell_source(db, ...)` | 단일 소스 삭제(배치 위임) |
-| `set_cell_manual_priority_batch(db, table_name, updates, source_name, updated_by)` | 수동 Pin 일괄(§크고 복잡 — 표시값 재계산·감사 포함) |
+| `set_cell_manual_priority_batch(db, table_name, updates, source_name, updated_by)` | 수동 Pin 일괄(§크고 복잡 — 표시값 재계산·감사 포함) · 🆕 10-03 `4e0950f3d` 핀이 키 조각의 보이는 값을 바꾸면 아래 한 쌍으로 키를 다시 짓는다(하나라도 비면 NULL) |
+| 🆕 `rebuilt_business_key(table_name, row)` · `put_business_key(table_name, row, key)` | 10-03 `4e0950f3d` 키 다시 짓기의 «한 쌍» — 부르는 자리 둘(`apply_row_update_internal` 의 «2.» 조합 블록 · 위 핀). 문은 `composite_key_source` 를 선언한 표 «전부»(~~`business_key` 칸도 있는 표만~~ — 조합키만 표에서 이름 붙인 id 로 만든 행 · 그리드 새 행이 키 없이 남아 다음 키 쓰기가 행을 하나 더 만들었다). 앞은 조각이 하나라도 비면 None(`is_blank_key_part`), 뒤는 `business_key_val` 은 늘, `business_key` 칸은 선언된 표에서만 쓴다 — 두 모양을 묻는 자리는 뒤 하나. 새 행의 «조각이 비면 항목의 키» 폴백은 쓰기 쪽에 남음 |
 | `set_cell_manual_priority(db, ...)` | 단일 Pin(배치 위임) |
 | `get_ontology_mapping()` / `check_needs_rollback(table_name, modified_cols)` | 그래프 보조 — v2 검증+enrichment 승격 적용 결과 캐시 / v2 매핑 인식 rollback 신호(v1 폴백) |
 
