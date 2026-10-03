@@ -71153,3 +71153,35 @@ uq_bk_ 색인     32 / 32 표
 제 추천은 ㄱ 입니다 — 「만드는 길이 어느 쪽이든 같은 답」에 그리드 길이 들어오고, 지금 두 모양(업무키 칸 유무)이 키 조각 편집에 서로 다른 답을 내는 것이 하나로 접힙니다.
 
 답을 기다리는 동안 e11bb4de0 (지운 행의 원장 사건 (나))으로 갑니다.
+
+---
+
+## [10-03] e11bb4de0 (나) 착지 4761be755 — 원천 행을 지우면 층을 거둔 행마다 EDIT 하나 (가려진 값이었어도 보류를 다시 센다)
+
+어느 DB · 어느 스키마 · 지운 것 — 박스 DB 안 씀. 시험은 assy_test 의 시험 스크래치 스키마(픽스처가 만들고 지움) · 지운 것 0
+
+**고친 것**
+```
+자리     _retract_what_those_rows_fed 한 곳 — 거둔 뒤 stage_collapsed_event(EDIT, 표, 행들, 칸 = 층을 거둔 칸)
+봉투     거두기 사건과 같음 — 체인 채널 · chain_ingestion · chain_replay_withdraw (allow_chain_trigger 규칙만 깸)
+그대로   withdraw_source 와 그 다른 호출자. withdraw_by_origin 은 lost_a_layer(표 · 칸 · 행)만 돌려줌 — 사람 층 묶음은 안 실음
+로그     [ChainRetract] 줄 끝에 rows_told=<행 수>
+```
+**게이트 (hold world, 묶음 · 한 행 둘 다)**
+```
+가려진 값의 행을 지움        보류 빈 값 -> agreed · 원장에 값 · 다시 세기 쓰기 1   (고치기 전: 2 failed, 20 passed, 48 warnings in 132.06s — 그 시험만 빨강)
+보이던 값의 행을 지움        거두기 사건 2(값 바뀐 사건 + 이것) · 다시 세기 쓰기 1 — 두 번째는 쓰기 0 · 사건 0 · 루프 0
+아무것도 안 먹인 행을 지움    사건 0
+사건 모양                   행 = 공식 행 · 칸 = 그 행에 층을 남긴 칸(사람 층 칸 없음) · 체인 채널
+                           옵트인 규칙은 깸 · 옵트인 안 한 규칙은 「chain-produced event」로 안 깸 (제품의 fire_refusal 로 판정)
+변이 넷                     사건을 안 냄 RED · 체인 채널을 뺌 RED · 칸 이름을 뺌 RED · 사람 층 묶음까지 알림 RED
+sqlite 전체                 6 failed, 7731 passed, 281 skipped, 3 xfailed, 13055 warnings in 718.45s
+                           남은 6: 박스 체크아웃 사유 다섯 그대로 + test_config_reload_integrity h2(그 파일만 다시 돌리면 32 통과 — 파일 감시 시간)
+pg 전체                     3 failed, 237 passed, 7781 deselected, 157 warnings in 1121.43s
+                           남은 3: 지난 착지(0185cbd8a)와 같은 셋 — l1_pg 둘(오래 알려짐) · test_an_install_that_predates_attributes_is_widened_once(그 파일 순서 탓)
+```
+**한 번 막혔던 것** — 변이 「체인 채널을 뺌」이 처음엔 초록이었습니다. 채널이 없어도 소스 이름 chain_ingestion 을 체인으로 읽는 «은퇴 예정 가드»(_rule_accepts_event)가 받아 줘서입니다. 그 가드가 은퇴하는 날 채널이 하중을 지므로 시험이 채널을 직접 봅니다.
+
+**남는 것 (안 고침)** — 원장 따라가기가 DELETE 사건을 «처리 끝»으로 적은 «뒤»에 거두기가 돕니다. 그 사이에 프로세스가 죽으면 거두기 자체가 다시 돌지 않습니다(오늘도 그렇고, 이 착지는 같은 틈에 커밋 하나를 더 둡니다).
+
+다음: a61d32f4f 답 ㄱ (조합키만 선언한 표도 같은 재조립) — 세어 보니 키를 다시 짓는 자리가 «둘»입니다: apply_row_update_internal 의 블록 · set_cell_manual_priority_batch(핀으로 보이는 값이 바뀔 때). 둘 다 `composite_src and key_col` 이라 둘 다 넓힙니다
