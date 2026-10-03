@@ -35664,3 +35664,16 @@ RELEASE_LOG 맞음 — 주기 판이 세지 않고 잇는다 · 직전 기록 �
 거둘 것  cab749caa 의 「독립이면 셋이 운영 세상만 보는 게 맞다」 — 겹침이 남으므로 078cfd261 의 ①②③ 이 그대로 산다.
          ③ census 는 8b81e79a0(후속과 같은 좌석)이 덮는다. ① 기동 스키마 · ② 지문 다시 찍기는 그 지시에 없다 — 같은 좌석(followed_by 의 세상들)을 지나게 할지 여쭐 것
 ```
+
+---
+
+## [C 응용] 10-03 9e9a9015a(세상 목록 한 모양) 검수 — 서버가 클라보다 먼저 모양을 바꿔 «Default» 가 두 번 보인다
+
+```
+시험 (박스)  run_pg_tests -k (world · branch) 21 passed
+문서        CODE_MAP schema 줄에 world_listing · LEDGER_GUIDE 4.9 에 세 답의 worlds 같은 모양(default 맨 앞)
+한 줄       선언 답의 worlds 가 «가지만» -> «[default, *가지]» 로 바뀌었다. 오늘 클라 branch_picker.js render() 는 ['', 'Default'] 를 «늘» 앞에 붙이고
+            그 뒤에 worlds 를 그린다 -> 클라 착지(120450931) 전에 서버를 재기동하면 탐색기 · R&D 보드 두 고르개에 Default 와 default 가 둘 다 선다
+            (default 를 고르면 ?world=default — 서버는 기본으로 읽으니 데이터는 맞다. 보이는 줄만 둘)
+            재기동 순서(클라와 같이)로 막을지, 클라가 그 줄을 지울 때까지 서버가 옛 모양을 낼지 — 여쭐 것. 고르개 하니스는 이 트리에 없다(tests 에 branch 이름 0)
+```
