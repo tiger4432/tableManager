@@ -1127,6 +1127,43 @@ CENSUS_NAMES = {
     "rows_unprinted": "Not yet printed",
 }
 
+#: The boxes only a person's census counts - both are scans (S-122). A paced tick that does not
+#: count them carries the last person's count forward with its own `measured_at` (총괄 5baab7b8d):
+#: replacing the record dropped them, and the panel went back to Not measured on the next tick.
+PERSON_ONLY_BOXES = ("rows_drifted", "rows_unprinted")
+
+#: `python -m ledger.backfill` and its redo flag - the parser below takes these very strings.
+PROG = "python -m ledger.backfill"
+DRIFTED_FLAG = "--drifted"
+
+
+def next_step(source, census):
+    """What a person runs next for this record (총괄 e1648e884), or None: the redo of the rows
+    edited behind the chain when there are some, a person's census when the drift was never
+    counted. A refused source has neither - its refusal already says nothing was counted."""
+    from .census_cli import PROG as CENSUS_PROG
+
+    if census.get("refused"):
+        return None
+    drifted = census.get("rows_drifted")
+    if not isinstance(drifted, dict):
+        return f"{CENSUS_PROG} --source {source}"
+    if drifted.get("estimate"):
+        return f"{PROG} --source {source} {DRIFTED_FLAG}"
+    return None
+
+
+def _person_counts(store, source):
+    """The person-only boxes of the record this source has now, or {}."""
+    connection = store.connection()
+    try:
+        row = store.read_cursor(connection, source) or {}
+    finally:
+        connection.close()
+    last = row.get("row_census")
+    last = last if isinstance(last, dict) else {}
+    return {box: last[box] for box in PERSON_ONLY_BOXES if box in last}
+
 
 def measure_row_census(engine, setup, source, now=None, *, exact_rows=True):
     """One source's census, STAMPED -- what was counted, how, and when.
@@ -1231,6 +1268,11 @@ def measure_and_store(engine, setup, source, store, now=None, *, exact_rows=True
     from .setup_registry import cursor_translator_version
 
     census = measure_row_census(engine, setup, source, now=now, exact_rows=exact_rows)
+    if not exact_rows:
+        census = {**_person_counts(store, source), **census}
+    step = next_step(source, census)
+    if step:
+        census["next_step"] = step
     if census.get("refused"):
         # 🔴 [총괄 7426f76b0 ㉤ ㄱ] A SOURCE THE LOADER REFUSED HAS NO FINGERPRINT - asking
         #    for one raised, and the census it had before the refusal stood as its answer.
@@ -2083,7 +2125,7 @@ def main(argv=None):
     from . import schema
     from .setup import LedgerSetupError, load_setup
 
-    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser = argparse.ArgumentParser(prog=PROG, description=__doc__.splitlines()[0])
     parser.add_argument("--source", default="lot_event")
     parser.add_argument("--reset-cursor", action="store_true",
                         help="re-read work already done (exercises the unique index)")
@@ -2109,7 +2151,7 @@ def main(argv=None):
     parser.add_argument(
         "--via-events", action="store_true",
         help="retired - the same job as the plain load; run without it")
-    parser.add_argument("--drifted", action="store_true",
+    parser.add_argument(DRIFTED_FLAG, action="store_true",
                         help="translate again only the rows of --source whose read columns no "
                              "longer match what was translated (python -m ledger census "
                              "counts them). Without --apply: how many and what would change")

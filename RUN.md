@@ -1,5 +1,21 @@
 # 지금 돌리면 되는 것
 
+> ## [10-03] **원장 census — 사람이 센 두 수가 주기 census 뒤에도 남고 · 기록이 다음 할 명령을 싣는다 (총괄 5baab7b8d · e1648e884) — 이주 «불필요» · 재기동 «필요»(run_app.bat 전체, 위 절과 같은 재기동이면 한 번)**
+>
+> ```
+> 무엇이 바뀌나  주기 census 가 기록을 쓸 때 사람이 센 rows_drifted · rows_unprinted 를 그때 시각 그대로 잇는다(전엔 지워져 Not measured)
+>              census 기록에 next_step — 누락 있음: python -m ledger.backfill --source <소스> --drifted
+>                                        사람이 센 적 없음: python -m ledger census --source <소스>   · 누락 0: 없음
+> 확인         python -m ledger census --source <소스>   (server 폴더) -> 몇 분 뒤(주기 census 한 바퀴) 대시보드 원장 소스 패널
+>              Edited, not followed 의 수와 Measured 시각이 사람이 센 그대로 남아 있어야 한다
+>              python -m ledger census --source <소스> --json 의 그 소스 기록에 next_step
+> 뜻           주기 뒤 Not measured 로 돌아가면 이 판이 아닌 것(재기동 안 됨) — 체인 워커 재기동 확인
+>              Measured 시각이 주기마다 바뀌면 주기 census 가 두 수를 «다시 센» 것 — 표를 훑는 일이라 그러면 안 된다(보고)
+> 급할 때       git revert <이 커밋> -> 재기동 (되돌릴 이주 없음 · 기록은 다음 census 가 다시 쓴다)
+> ```
+
+---
+
 > ## [10-03] **원장 — 맵퍼는 그 표의 칸을 전부 받는다 · `map.input_columns` 은퇴 (소유자 · 총괄 2a8d9073c · 멈춤 둘 닫음 164553a6f) — 이주 «불필요» · 재기동 «필요»(run_app.bat 전체)**
 >
 > ```
