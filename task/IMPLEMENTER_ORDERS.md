@@ -63808,3 +63808,18 @@ RUN.md      부딪힘 줄을 «합쳐짐»으로, 되돌릴 수 없다는 한 �
    next_step 명령(census 기록)도 같은 좌석이 정한 세상을 싣는다
 게이트  운영 = W(밑 기본) · W 가 안 말하는 소스: census 가 «Not yet» 아님 · backfill 이 기본에 씀 · --world W 는 거절 문구 · 운영 = 기본이면 전후 같음 · 변이
 ```
+
+---
+
+> **[총괄 -> 구현자] 작게, 지금(8b81e79a0 보다 앞) — 세상 목록의 «한 모양» (클라 물음에서)**
+
+```
+지금  세상 목록을 짓는 자리가 셋이고 모양이 갈린다(총괄이 코드로 봄)
+        trace_router 선언 답(1102 줄 근처)    catalogue["worlds"] = schema.worlds()            가지만 · operating 없음
+        main /tables                         worlds = [default, *가지] · operating
+        explorer _worlds()                   worlds = [default, *가지] · operating · beneath · history
+      -> R&D 보드(선언 답을 읽음)는 운영 세상 이름을 얻을 데가 없다
+고칠 것  schema 에 함수 하나: {worlds: [default, *가지], operating} — 셋이 그것을 부른다(explorer 는 거기에 beneath · history 를 더한다)
+        선언 답의 worlds 가 default 를 품게 된다 — 그 목록을 읽는 곳은 클라 고르기 둘뿐이고(총괄 git grep), 클라가 같은 라운드에 그 모양으로 짓는다(120450931)
+게이트  세 답의 worlds · operating 이 같은 픽스처에서 같음 · 변이 · 착지하면 클라에게도 메시지
+```
