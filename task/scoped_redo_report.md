@@ -71535,3 +71535,60 @@ RELEASE_LOG  병합 항목에 반 줄
 ```
 
 다음: 세상 짓기 착지(세워 둔 것을 이 위로 · 전체 시험)
+
+---
+
+## [10-03] 세상 짓기 착지 6bfb6d4be — 운영 세상 한 칸 · 세상마다 «밑에 깔 세상» · 후속은 소스마다 말하는 세상에 · 그리드 세상 탭 (총괄 e1f54cd72 · e67ef53f3 · 86d5061a0 · 2bb20ff56)
+
+어느 DB · 어느 스키마 · 지운 것 — 시험만: PG assy_test 의 시험 스크래치 스키마 + 시험이 만드는 w_<run 토큰> 스키마(오늘 가지 시험과 같은 모양, 끝에 이름으로 DROP) · 박스 운영 DB 안 씀
+
+**지은 것**
+```
+한 좌석       schema.world_names: 이름 없음 = 운영 세상(배치 파일 worlds.json, 바뀌면 다시 읽음 · 없으면 기본) · "default" = 기본
+             세상마다 beneath(위 -> 아래, 자기 · 두 번 · 이름 아닌 것 거절) · base_root = 밑의 첫 세상(없음 = 뼈대)
+             _DEFAULT · setup.DEFAULT_ONTOLOGY_ROOT 는 이름으로 기본 · load_setup / setup_from_document / setup CLI 는 부를 때 운영 세상
+말하는 세상    chain_speakers 한 좌석: 선언 지문이 «밑에서 그 소스를 말하는 세상»과 다르거나 그 세상이 쓴 소스 · 맨 아래가 나머지
+             뷰 = 세상마다 다리 하나(거름은 합집합 밖) · 뷰를 지을 때 그 답을 뷰 설명(comment)에 같이 적음
+원장 후속      followed_by 가 그 설명을 한 번 읽고(카탈로그 한 줄) 소스마다 그 세상에 씀 — 운영 = 기본이면 오늘과 같음
+             세상 선언은 파일 · 카탈로그가 바뀔 때만 다시 컴파일 · 이미 말하는 소스를 쓴 배치는 뷰를 안 다시 지음
+             ensure_world 는 프로세스마다 한 번(그 세상 원장이 있으면)
+라우트        GET /worlds · PUT /worlds/operating(엄격 토큰, X-User = 이력의 by) · bootstrap ?beneath=
+             운영 세상 · 남이 밑으로 쓰는 세상 지우기 거절(이름) · 지운 세상의 배치 줄도 지움
+그리드        data · count · row_ids/target · export · schema · 한 행 라우트에 ?world= (원자 보기) · /tables 에 worlds · operating · per_world
+결함 고침      가지 후속의 지움 갈래가 world 를 안 넘겨 운영 세상(오늘은 기본)에서 거두던 것
+짓다가 찾은 것  뷰가 아직 없는 세상에 소스를 처음 쓰면 «이미 말함»으로 보고 뷰를 안 지었다 — 건너뛰기는 «뷰가 있고 그 설명에 있을 때만»으로
+전수 자리      원장 관리 화면의 커서 읽기 · index_existing_refs 는 운영 세상 · 시드 스크립트 · empty_table · add_ledger_atom_rows 는 이름으로 기본
+             「none = the default」 도움말 · 설명은 운영 세상으로 · 세상 전 retroactive 작업은 이름으로 기본
+             기본 원장 이름을 글자로 적은 제품 자리(D)는 열어 보니 설명 글뿐(위 둘 말고 고칠 자리 없음)
+뷰 다리 표지   'branch' 대신 세상 이름 — 제품에서 읽는 자리 없음, 가지 시험 두 줄 고침
+```
+**게이트 (⑧ + 86d5061a0)**
+```
+배치 없음                 오늘과 같음 · 기본 이름 그대로
+운영 = W                 세상 이름 없는 자리(world_names · LedgerStore · load_setup · config 경로 · 선언 엔티티 경로 · 걷기 라우트) 가 W, 기본 상수는 기본
+사슬 [W, B1, 기본]         W 가 쓴 소스는 W · B1 이 바꾼 소스는 B1 · 세 겹 계획에 Subquery Scan 0 · 밑 없음 세상의 뷰 = 기본 원자 0
+후속 (운영 = 기본)          오늘과 같음(기본에 씀)
+후속 (운영 = B1)           B1 이 안 말하는 소스의 고친 행 -> 기본에 새 원자 · B1 뷰에 보임 / B1 이 말하는 소스 -> B1 에만
+되돌림 (운영 = 기본)         그동안 B1 만 따라간 소스는 기본 census 에 «어긋남 1» -> --drifted 로 0 (RUN.md 에 명령 셋)
+지우기                    운영 세상 · 남의 밑 세상 거절(이름) · 기본 거절
+가지 지움                  B1 의 원자만 거두고 기본 원자 그대로
+그리드 world=B1           세기 · 데이터가 B1 의 원자 보기 · 모르는 세상 404(이름) · world 없이 = 운영 세상 · /tables 에 세상 목록
+AST                      「어느 세상인가」 묻는 자리가 schema.py 밖에 0 — beneath 도 그 물음에 넣음
+변이 열하나               이름 없음 = 기본(운영 무시) RED · 맨 아래와만 견줌 RED · 아래 다리 거름 없음 RED · 운영 세상 지우기 허용 RED · 남의 밑 세상 지우기 허용 RED · 자기 · 두 번 허용 RED · 소스 단 쓰기는 뷰 안 다시 지음 RED · 후속 ㄴ(맨 위만) RED · 후속 ㄷ(전부 맨 위에) RED · 가지 지움을 운영 세상에서 거둠 RED · 그리드가 세상 무시 RED
+PG 원장 묶음               2 failed, 76 passed, 995 deselected, 77 warnings in 789.99s (0:13:09) — 실패(지난 착지들과 같은 알려진 l1_pg 둘) test_the_live_door_writes_the_refusal_breakdown_to_the_registry_row · test_two_independent_refusals_are_counted_and_named_in_one_run
+sqlite 전체               5 failed, 7750 passed, 325 skipped, 3 xfailed, 13086 warnings in 786.09s
+                         남은 5: 박스 체크아웃 사유 다섯
+첫 전체 실행               20 failed, 7735 passed, 325 skipped, 3 xfailed, 13038 warnings in 792.04s — 위 다섯 밖은 오늘 모양을 붙잡던 시험 네 파일(test_a_deleted_row_takes_its_facts_with_it.py · test_admin_auth.py · test_the_catalogue_kind_reaches_the_wire.py · test_the_index_can_be_recovered_for_atoms_that_predate_it.py)
+                         가짜 저장소에 세상 이름 · 지움 후속 가짜가 world 를 받음 · 엄격 라우트 목록과 /tables 키에 새것 — 고친 뒤 위 줄
+```
+**여쭐 것 · 알릴 것**
+```
+물음  census · 원장 관리 화면(커서) 은 운영 세상 «맨 위»를 잰다 — 운영 = W(밑 기본)면 W 가 안 말하는 소스가 W 에서 «Not yet» 으로 보인다
+      후속처럼 소스마다 그 소스를 말하는 세상에서 잴까요? (짓지 않음)
+한계  운영 = W 일 때 world 없이 `python -m ledger.backfill --source X` 를 돌리면 W 가 안 말하는 소스는 아무것도 안 한다(말없이)
+      그 소스는 --world default(또는 말하는 세상)로 — 거절을 더할지 여쭙니다(짓지 않음)
+안 잰 것  세상 선언 컴파일 캐시(파일이 바뀌면 다시)는 시험이 없다 · 사슬 «가운데» 에 기본이 오면 뷰를 다시 지을 때 기본 원장 DISTINCT 훑기
+전수 수  세상 이름 없이 부르는 자리 전수(짓기 전 코드에서 센 것, AST): A 9 · B 36 · C 54 · D 88 — 판정은 계획(e1f54cd72) 그대로
+```
+
+다음: 0185cbd8a 오라클 시험의 가끔 빨강 원인 조사(원인 한 줄 먼저)
