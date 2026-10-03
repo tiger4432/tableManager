@@ -71053,3 +71053,50 @@ RUN.md 맨 위 절의 «새 위험 둘» 줄을 닫힘으로 바꿈(같은 재�
 **알려 드릴 것** — 이 물음을 하는 자리가 ledger 밖에 더 있다: scripts/list_undeclared_tables.py 의 physical_columns(스키마 · 표 단위, 스크립트) · main.py 의 칸 하나 있는지 묻기 둘 · 이주 스크립트들. 이번엔 안 접음(지시 범위 밖)
 
 다음: bce43236b — 쓰기 문 성능(apply_batch_updates 1,000 행 ≤ 5 s)
+
+---
+
+## [10-03] bce43236b 착지 0185cbd8a — 쓰기 문: 같은 묶음에서 만든 행을 다시 쓸 때 칸마다 묻지 않는다
+
+어느 DB · 어느 스키마 · 지운 것 — 박스 DB 안 씀. 재기 · 시험은 assy_test 의 시험 스크래치 스키마(픽스처가 만들고 지움).
+🔴 지운 것 하나: 제 비교 장치가 연결을 안 닫아 teardown 의 DROP SCHEMA 가 멈췄고, 제 pytest(pid 26100)를 끈 뒤 그 스키마를 이름으로 지움 — db=assy_test leftover=['assy_pytest_pg_26100_gw0'] · dropped schema assy_pytest_pg_26100_gw0 in assy_test · left after: 0
+   (장치 고침: 연결 하나로 읽고 닫음. 박스 · public 은 안 건드림)
+
+**먼저 잰 것 — 문 자신의 단계 계측(write_step), hold world 체인 그룹 1,000 행**
+```
+맵퍼가 문에 넘긴 항목 2000 개(행마다 값 + 보류) · 문 3.97 s
+단계  prefetch(행 찾기) 0.03 · row build 2.81 · cell sources 0.45 · 감사 0.20 · flush 0.20
+row build 안  _load_metadata_row_cell 8000 번 불림 · 누적 1.935 s · 한 줄 SELECT 약 2,000(.first · .all)
+원인  첫 항목(값)이 만든 행에 둘째 항목(보류)이 오면 그 행이 prefetch 집합에 없어 칸 이력을 칸마다 DB 에 물음 — 답은 늘 «없음»(묶음이 방금 만들었고 루프 중 flush 없음)
+```
+**고친 것** — _apply_batch_updates_once 에서 is_new 이면 prefetched_row_ids 에 그 행을 넣는 한 줄. 판정(병합 보호 · 핀 · collision_merge · 사람 층)은 그대로. 한 행 쓰기 길은 원래 하나(apply_row_update_internal 은 이 함수만 부름)
+
+**전후 결과 — 같은 장치를 전 판 · 이 판에서 (시험 스키마)**
+```
+표본   A 체인 그룹 1,000 행 · B 그리드 붙여넣기 1만 행 · C 파서 모양(한 파일 tx · silent · 있던 행 1,000 + 새 행 1,000)
+같음   rows True · cell_sources True · cell_overwrites True · outbox True · audit True  (표본 합 행 13000 · 칸 출처 69000 · 덮어쓰기 50000 · 아웃박스 13001 · 감사 55000 — 실행마다 새로 나는 UUID 는 접어서 견줌: 출처 4000 줄 · 감사 1000 줄 · 아웃박스 1 줄)
+시간   A 4.23 -> 3.04 s · B 18.09 -> 18.08 s · C 5.16 -> 4.41 s
+```
+**넓은 표 — 새 행 1,000 개에 값 + 보류(복사 규칙 모양), 같은 프로세스에서 두 번씩**
+```
+pw_narrow   6 칸 · 1,000 행 값 + 보류 · 전 2.60 / 2.62 s -> 후 1.36 / 1.30 s · 칸 이력 SELECT 2000 -> 0
+pw_wide    24 칸 · 1,000 행 값 + 보류 · 전 4.24 / 4.19 s -> 후 2.79 / 2.95 s · 칸 이력 SELECT 2000 -> 0
+```
+(«전»은 칸 이력을 칸마다 DB 에 묻는 문 — 새 행뿐인 묶음에선 수리 전 판과 같은 길)
+
+**게이트**
+```
+시험 둘(pg)   ① 핀 · 사람 층 · 충돌 병합(Q -> P)이 있는 상태에서 한 묶음이 N 을 만들고 사용자 · 기계가 다시 쓰고, P 를 쓰고, 이름 붙인 id 로 M 을 만들고 다시 씀
+                -> «칸마다 DB 에 묻는 문»(오라클)과 행 · 층 · 덮어쓰기 · 아웃박스 · 감사가 같음 (수리 전 판에서도 같음)
+              ② 새 행 200 개에 값 + 보류 -> 칸 이력 SELECT ≤ 2
+변이          the line removed · a_rows_later_items_ask_the_stored_history_nothing -> RED · the line removed · a_row_the_batch_made_reads_what_the_database_would_say -> GREEN
+sqlite 전체   5 failed, 7732 passed, 41 skipped, 234 deselected, 3 xfailed, 12999 warnings in 706.08s (남은 5 는 박스 체크아웃 사유 그대로)
+pg 전체       3 failed, 231 passed, 7781 deselected, 145 warnings in 988.52s
+              남은 3: l1_pg 둘(오래 알려짐) · test_an_install_that_predates_attributes_is_widened_once(그 파일을 통째로 돌리면 바뀌지 않은 main 에서도 같은 실패 — 순서 탓)
+```
+**알려 드릴 것(이번엔 안 고침)**
+```
+① 항목이 «새 uuid7 row_id» 를 이름 붙여 행을 만들면 그 행의 business_key_val 이 비고, 같은 키의 다음 항목이 행을 하나 더 만든다(이 수리 전 판에서도 같음 — 시나리오 짜다 봄)
+② 파서 모양(있던 행 1,000 갱신 + 새 1,000)이 1,000 행당 2 s 넘게 걸림 · 그리드 붙여넣기 1만 행 18 s — 이번 원인과 다른 자리(쓰기 단계 계측으로 다음에 나눌 수 있음)
+```
+다음: e11bb4de0 (지운 행의 원장 사건 (나))
