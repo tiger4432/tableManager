@@ -70,8 +70,7 @@ def delete_world(world: str, confirm_atoms: int | None = Query(default=None)):
 def _worlds() -> dict:
     from ledger import schema
 
-    return {"worlds": [schema.DEFAULT_WORLD, *schema.worlds()],
-            "operating": schema.operating_world(),
+    return {**schema.world_listing(),
             "beneath": {world: list(schema.world_names(world).beneath)
                         for world in schema.worlds()},
             "history": list(schema.layout().get("history", []))}

@@ -1260,8 +1260,7 @@ def list_tables():
         # The tables each ledger world has its own of, the worlds and the operating one (총괄
         # 2bb20ff56) - the grid's world tab reads these rather than asking by a table's name.
         "per_world": [name for name in (ledger_schema.ATOM_ROWS_VIEW,) if name in crud.TABLE_CONFIG],
-        "worlds": [ledger_schema.DEFAULT_WORLD, *ledger_schema.worlds()],
-        "operating": ledger_schema.operating_world(),
+        **ledger_schema.world_listing(),
     }
 
 def get_deleted_row_business_key(db: Session, table_name: str, row_id: str):
