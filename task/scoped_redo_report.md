@@ -71033,3 +71033,23 @@ RUN.md 맨 위 절의 «새 위험 둘» 줄을 닫힘으로 바꿈(같은 재�
 **클라 몫** — c965f6206 이 들고 있는 --drifted 명령 상수를 서버 기록의 next_step 으로(총괄 지시 대기)
 
 다음: c8d6a8597 — «표의 물리 칸» 묻는 세 자리를 한 함수로, 원장 읽기는 한 번의 읽기마다 한 번
+
+---
+
+## [10-03] c8d6a8597 착지 8bbeb1aee — «표의 물리 칸» 은 한 함수가 답하고, 원장 읽기는 읽기마다 한 번 묻는다
+
+어느 DB · 어느 스키마 · 지운 것 — 박스 assy_manager 는 읽기만. pg 시험은 assy_test 의 시험 스크래치 스키마(픽스처가 만들고 지움 · test_ledger_v2_pg 는 기존 픽스처가 public 에 토큰 이름 표 둘). 지운 것 0
+
+```
+한 자리    column_stats.physical_columns — admin.relation_columns 은퇴(선언 검사의 columns_of 가 부름) · 원장 읽기의 자기 질의 지움
+          schema.table 이름은 그 스키마에서. ledger/ 에 남은 information_schema.columns 글자: column_stats 하나 + admin 의 «모든 표 한 번» 질의(relations view, 다른 물음)
+한 번      backfill._readable_columns(engine, plan) 을 읽기 다섯(rescope 미리보기 · 범위 페이지 · 첫 배치 미리보기 · 셈 둘)이 «시작에 한 번» 묻고 답을 페이지마다 넘긴다
+          pg 시험의 한 읽기(3 페이지): 전 판은 fetch 마다 = 7 번 · 이 판 1 번
+가짜      읽기를 통째로 흉내 내는 시험 6 개는 이 물음도 흉내(_readable_columns) · 진짜 fetch 위 가짜 엔진 하나는 샘플 카탈로그로 답(CatalogConnection)
+```
+전후(박스 소스 다섯 · 샘플 소스 셋, 같은 첫 2,000 행): 원자 · 지문 · 커서 버전 같음 8/8
+**시험** — sqlite 전체 5 failed, 7732 passed, 41 skipped, 232 deselected, 3 xfailed, 12962 warnings in 771.39s(남은 5 은 지난 보고의 박스 체크아웃 사유 그대로) · pg 묶음 2 failed, 70 passed, 128 deselected, 86 warnings in 256.56s(남은 2 은 test_ledger_l1_pg 의 오래 알려진 둘)
+**변이** — the read asks again every page -> RED · a second spelling of the question -> RED
+**알려 드릴 것** — 이 물음을 하는 자리가 ledger 밖에 더 있다: scripts/list_undeclared_tables.py 의 physical_columns(스키마 · 표 단위, 스크립트) · main.py 의 칸 하나 있는지 묻기 둘 · 이주 스크립트들. 이번엔 안 접음(지시 범위 밖)
+
+다음: bce43236b — 쓰기 문 성능(apply_batch_updates 1,000 행 ≤ 5 s)
