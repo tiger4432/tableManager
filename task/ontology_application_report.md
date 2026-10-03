@@ -35598,3 +35598,19 @@ RELEASE_LOG 맞음 — 주기 판이 세지 않고 잇는다 · 직전 기록 �
 제안(한 자리)  병합 몸통이 저장된 껍데기를 지울 때 delete_rows_batch 와 같은 두 줄(그 row_id 의 cell_sources · cell_overwrites)을 지운다 —
          「행이 표를 떠난다」의 메타 정리가 두 벌이면 다시 갈린다. 운영 --apply 를 돌리기 «전»에 넣을지 여쭐 것
 ```
+
+---
+
+## [C 응용] 10-03 fd6d957c4(병합된 저장 행의 층 · 덮어쓰기도 같이 지움) 검수 — 6ec20c95e 의 두 줄이 이제 초록 · 문서 @`c68909ae3`
+
+```
+어디서   제 사본(git worktree C:/wt-app @1f8b90acc, 끝나고 지움) · DB assy_test 스크래치 · 지운 것: 시험 표(fixture)
+시험     -k (old_spelled_key · composite_key_is_rebuilt · collision_merge_leaves · map_purge_is_visible · key_part_is_spelled) 37 passed
+         (사본 수집 오류 다섯은 무시된 server/mappers/*.py 부재 — 무관)
+제 두 줄  6ec20c95e 에서 빨갛던 그대로 다시
+   ① --apply 병합       껍데기 row_id 의 층 · 덮어쓰기 0 · 0 (전 4 · 4) · 층 없는 행 0 · 아웃박스 DELETE 1 · EDIT 1
+   ② 쓰기 길 저장 행 병합  0 · 0 (전 4 · 0) · 행 1
+코드     delete_row_layers 부르는 자리 셋(삭제 문 · 맵 정리 · 병합의 저장된 껍데기) — 종전 두 사본이 하나로. 병합 몸통 «끝»에서 부른다(주인이 넘겨받은 뒤)
+         배치 세션은 autoflush=False(SessionLocal) — 몸통 안의 대량 DELETE 가 대기 행을 미리 밀어내지 않는다
+문서     CODE_MAP crud — delete_row_layers 줄 새로, 병합 줄에 한 마디
+```
