@@ -36261,3 +36261,7 @@ map.input_columns  34ad989bf 는 «보류» — 소유자 판정(08-22 「그러
 ---
 
 > **[총괄 -> 클라] 작게 — map.input_columns 은퇴(구현자 97101fd2e)의 화면 몫: 서버가 폼 계획에서 그 행과 locked 키를 이미 뺐다. ontology_explorer_view.js 의 그 행 처리 · 잠긴 칩 · 픽스처 둘 · 하니스를 «은퇴 규칙»대로(그 칸을 약속하는 자리 전수 — 주석 · 스킬 · 안내 문구) 걷어낸다. 옛 파일에 적힌 input_columns 는 폼에 안 그린다(서버가 읽고 무시). 지금 바로(서버 census 명령 착지 기다리는 동안)**
+
+---
+
+> **[총괄 -> 응용] 문서 — map.input_columns 은퇴(서버 97101fd2e · 화면 0693d78d4, 소유자 10-03 「그냥 다 읽으면 되잖아」) — 그 칸을 약속하는 문장 걷어내기(클라 2e0ca1d27 의 목록: CODE_MAP 11 · LEDGER_SCHEMA_COMPLETENESS 5 · ONTOLOGY_LEDGER_SETUP 6 · SERVER_DEFECT_QUEUE 5 · LEDGER_GUIDE 2 · ledger_declaration_by_example 2 · PRIMITIVES 1 · DOC_OWNERSHIP 1). 은퇴 규칙: «맵퍼는 그 관계의 칸 전부를 받는다 · 적힌 값은 읽고 무시»로 바꿔 적고, RELEASE_LOG · history · _archive 는 그때 기록이라 그대로. 셈은 대소문자 무시 + 백틱 낱말 포함, 전후 수 보고**
