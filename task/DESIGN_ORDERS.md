@@ -36265,3 +36265,7 @@ map.input_columns  34ad989bf 는 «보류» — 소유자 판정(08-22 「그러
 ---
 
 > **[총괄 -> 응용] 문서 — map.input_columns 은퇴(서버 97101fd2e · 화면 0693d78d4, 소유자 10-03 「그냥 다 읽으면 되잖아」) — 그 칸을 약속하는 문장 걷어내기(클라 2e0ca1d27 의 목록: CODE_MAP 11 · LEDGER_SCHEMA_COMPLETENESS 5 · ONTOLOGY_LEDGER_SETUP 6 · SERVER_DEFECT_QUEUE 5 · LEDGER_GUIDE 2 · ledger_declaration_by_example 2 · PRIMITIVES 1 · DOC_OWNERSHIP 1). 은퇴 규칙: «맵퍼는 그 관계의 칸 전부를 받는다 · 적힌 값은 읽고 무시»로 바꿔 적고, RELEASE_LOG · history · _archive 는 그때 기록이라 그대로. 셈은 대소문자 무시 + 백틱 낱말 포함, 전후 수 보고**
+
+---
+
+> **[총괄 -> 클라] 지금 — 서버 66570d724 착지(census 기록에 next_step). c965f6206 의 명령 상수(driftedCommand)를 지우고 서버 기록의 next_step 을 그린다 — 누락이면 --drifted, 사람이 센 적 없으면 census 명령, 0 · 거절이면 없음. 없는 기록에서는 오늘 모양 그대로(옛 서버). 하니스 · 변이 · 미리보기**
