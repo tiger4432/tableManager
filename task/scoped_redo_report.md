@@ -71185,3 +71185,38 @@ pg 전체                     3 failed, 237 passed, 7781 deselected, 157 warning
 **남는 것 (안 고침)** — 원장 따라가기가 DELETE 사건을 «처리 끝»으로 적은 «뒤»에 거두기가 돕니다. 그 사이에 프로세스가 죽으면 거두기 자체가 다시 돌지 않습니다(오늘도 그렇고, 이 착지는 같은 틈에 커밋 하나를 더 둡니다).
 
 다음: a61d32f4f 답 ㄱ (조합키만 선언한 표도 같은 재조립) — 세어 보니 키를 다시 짓는 자리가 «둘»입니다: apply_row_update_internal 의 블록 · set_cell_manual_priority_batch(핀으로 보이는 값이 바뀔 때). 둘 다 `composite_src and key_col` 이라 둘 다 넓힙니다
+
+---
+
+## [10-03] a61d32f4f ㄱ 착지 4e0950f3d — 조합키만 선언한 표도 같은 기제 · 같은 함수로 키를 다시 짓는다
+
+어느 DB · 어느 스키마 · 지운 것 — 박스 DB 는 읽기만(지난 보고의 박스 수). 시험 · 재기는 assy_test 의 시험 스크래치 스키마(표는 픽스처 · 프로브가 만들고 지움) · 지운 것 0
+
+**고친 것**
+```
+자리 둘    apply_row_update_internal 의 «2.» (키 조각이 바뀐 쓰기) · set_cell_manual_priority_batch (핀으로 보이는 조각이 바뀜)
+문        `composite_src and key_col` -> `composite_src` (둘 다)
+같은 함수   crud.rebuilt_business_key (조각이 짓는 키, 조각이 비면 None) · crud.put_business_key (업무키 칸이 있는 표인지 묻는 «한» 자리)
+그대로     쓰기 자리의 «새 행 · 조각 빔 -> 항목이 준 키» 폴백 · 두 자리의 병합 본문(아래 «남는 것»)
+```
+**게이트**
+```
+두 표 모양 같은 답   업무키 칸 있음 · 조합키만, 각자 uq_bk_ 색인 — 같은 픽스처 일곱 갈래:
+                    키로 만들기 · 이름 붙인 id 로 만들기 · 그리드 새 행(행 1) · 조각 고침 · 조각 비움(키 NULL) · 남의 키로 고침(병합, 행 1) · 핀으로 세 번째 값
+                    고치기 전 6 failed, 1 passed, 18 warnings in 17.19s (빨강: edited_onto_a_key · grid · named · part_blanked · part_edited · pinned) -> 고친 뒤 7 통과
+변이 셋             쓰기 자리 옛 문 RED · 핀 자리 옛 문 RED · 업무키 칸 없는데 그 칸을 씀 RED
+맵 편집기 밀어넣기    tracked 샘플의 dt_map 선언(조합키만 · map_key_columns · '|') · replace_map
+                    첫 밀기 · 같은 것 다시 · 값 바꾸고 한 줄 자름 · 다른 슬롯 · 새 다이 1,000
+                    행 1780 · 층 8900 · 덮어쓰기 0 · 감사 1830 · 아웃박스 1811 — 전후 같음(전 여섯 · 후 여섯 · 접은 판 한 번)
+                    질의 수 같음(새 1,000: 12 · 12) · 늘어난 일은 새 행마다 키 조립 한 번(2000 -> 3000 번)
+                    시간 새 1,000 행: 전 1.06–1.22 s · 후 1.09–1.41 s — 조립 자체는 1,000 번에 약 5 ms. 프로파일상 나머지 차이는 객체 생성 · 커밋 쪽이라 원인 미확정
+sqlite 전체         5 failed, 7732 passed, 288 skipped, 3 xfailed, 13003 warnings in 791.08s
+                    남은 5: 박스 체크아웃 사유 다섯 그대로
+pg 전체             3 failed, 244 passed, 7781 deselected, 168 warnings in 1028.77s
+                    남은 3: 지난 두 착지와 같은 셋 — test_an_install_that_predates_attributes_is_widened_once · test_the_live_door_writes_the_refusal_breakdown_to_the_registry_row · test_two_independent_refusals_are_counted_and_named_in_one_run
+```
+**말씀하신 한 줄 — 「chain_ingestion 이름을 체인으로 읽는 가드」** 사는 자리 1(chain/ingestion_worker._rule_accepts_event, 채널이 없고 source_name 이 chain_ingestion 인 사건). 은퇴 조건은 그 자리 주석대로 «처리 안 된 사건 중 채널 없는 것 0» — 체인 워커 박동 줄의 「N event(s) read by source name (no channel)」이 계속 안 뜨면 됩니다. e11bb4de0 의 사건은 채널을 싣습니다.
+
+**남는 것 (안 고침)** — 두 자리의 «병합 본문»은 아직 둘입니다. 쓰기 자리는 사람 수정 보호 · 층 계승 · 캐시 옮기기를 하고, 핀 자리는 따로 적힌 병합입니다. 핀으로 남의 키가 되는 갈래는 오늘 시험에 없어서 둘이 갈리는지는 재지 않았습니다. 접으려면 핀 자리가 쓰기 자리의 병합을 부르게 하는 별도 라운드입니다 — 하라시면 하겠습니다.
+
+다음: 원장 따라가기가 «소스가 안 읽는 칸»만 바뀐 수정을 건너뛰기
