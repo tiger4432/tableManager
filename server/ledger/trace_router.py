@@ -668,13 +668,18 @@ def ledger_key_values(
     하나라 둘은 대개 같이 켜진다 -- 축 하나로 묶을 때 갈린다.
     """
     wanted_type = str(type).split("@", 1)[0]
-    collectable = _collectable_types()
+    # The world asked is the declaration asked (총괄 5fec118bb ②): a type another world
+    # declares used to pass here and be refused below as 「declares no keys」.
+    collectable = _collectable_types(world)
     if wanted_type not in collectable:
+        from ledger import schema
+
+        named = _world(world).world or schema.DEFAULT_WORLD
         raise HTTPException(status_code=422, detail={
             "reason": "node_type_not_declared", "unknown": [wanted_type],
-            "declared": sorted(collectable),
-            "message": "Not a declared node type: " + wanted_type
-                       + " - pick one from 'declared'"})
+            "declared": sorted(collectable), "world": named,
+            "message": "type '%s' is not declared in world %s - pick one from 'declared'"
+                       % (wanted_type, named)})
 
     declared_keys = _declared_keys(wanted_type, world)
     # 🔴 [판정 524] SIBLING OF THE SEAT 521 FOLDED, IN THIS SAME FILE. Folding one seat and

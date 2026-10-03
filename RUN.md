@@ -1,5 +1,26 @@
 # 지금 돌리면 되는 것
 
+> ## [10-03] **새 소스 backfill 이 같은 표의 다른 소스 사실을 한 번 더 쓰지 않는다 (총괄 5fec118bb) — 이주 «불필요» · 재기동 «필요»(API · 체인 데몬)**
+>
+> ```
+> 무엇이 바뀌나  python -m ledger.backfill --source X (와 화면의 다시 번역)가 X 만 번역 — 전: 그 표를 읽는 소스 전부를 거두지 않고 한 번 더
+> 운영에 쌓인 것  먼저 센다 (PG · 원장 전체를 훑음 — 한가할 때)
+>   SELECT source_who, sum(n - 1) AS extra FROM (
+>     SELECT source_who, count(*) AS n FROM ledger_events WHERE supersedes IS NULL
+>      GROUP BY source_who, source_raw_ref, occurred_at, predicate, subject_type, subject_keys,
+>               coalesce(object_payload, '{}'::jsonb)
+>     HAVING count(*) > 1) d GROUP BY source_who ORDER BY 2 DESC;
+> 뜻           소스마다 «같은 행 · 같은 사실을 이미 말한 원자가 있는데 하나 더» 의 수 — 줄이 없으면 끝
+> 고치기        센 소스마다 (server 폴더에서, 먼저 미리보기)
+>   python -m ledger.backfill --source <소스> --whole-source
+>   python -m ledger.backfill --source <소스> --whole-source --apply
+> 뜻           그 소스의 원자를 거두고 행마다 한 번씩 다시 씀 — 위 SQL 을 다시 돌려 그 소스 줄이 사라지면 끝
+> 함께         scripts/ledger_restamp_cursor.py 를 --world 없이 돌리면 소스마다 그 소스를 말하는 세상의 커서를 봄(줄 앞에 [세상])
+> 급할 때       git revert <이 커밋> -> 재기동 (backfill 이 다시 표 단위 — 선언이 바뀐 뒤면 중복이 다시 생김)
+> ```
+
+---
+
 > ## [10-03] **부팅 때 커서 지문 다시 찍기도 소스마다 말하는 세상의 커서를 (총괄 152f4bb0b) — 이주 «불필요» · 재기동 «필요»(체인 데몬)**
 >
 > ```

@@ -331,10 +331,13 @@ def _run_via_events(engine, setup, source, page_rows=DEFAULT_FETCH_ROWS,
     pages_per_cycle, rest_seconds = resolve_pace(pace)
     started = time.perf_counter()
     after = None
-    # A world translates only the sources it speaks for in its chain - `followed_by`'s top
-    # entry, what the live follow-up reads (총괄 c23b02aeb ③ · 8b81e79a0): the rows are queued
-    # by TABLE, and a source a world beneath speaks for must stay that world's in its view.
-    speaks_for = schema.followed_by(engine, schema.world_names(world))[0][1]
+    # 🔴 THIS SOURCE ONLY (총괄 5fec118bb). The rows are queued by TABLE, and they are new to
+    # ITS index alone: another source reading the table has them already, and a CREATE is
+    # translated without withdrawing (판정 166) - so it wrote that source's facts twice, once
+    # more each time the declaration had moved. And only where this world speaks for it -
+    # `followed_by`'s top entry, what the live follow-up reads (총괄 c23b02aeb ③ · 8b81e79a0).
+    speaks = schema.followed_by(engine, schema.world_names(world))[0][1]
+    only = frozenset({source}) & (speaks if speaks is not None else {source})
     while max_pages is None or report["batches"] < max_pages:
         page = rows_missing_from_the_index(engine, setup, source, page_rows, after,
                                            world=world)
@@ -347,7 +350,7 @@ def _run_via_events(engine, setup, source, page_rows=DEFAULT_FETCH_ROWS,
         report["max_queue_depth"] = max(report["max_queue_depth"],
                                         followup.queue_depth())
         while followup.queue_depth() >= EVENT_LOAD_QUEUE_LIMIT:
-            _drain_into(engine, setup, report, world=world, sources=speaks_for)
+            _drain_into(engine, setup, report, world=world, sources=only)
         if pages_per_cycle and rest_seconds and (
                 report["batches"] % pages_per_cycle == 0):
             time.sleep(rest_seconds)
@@ -356,7 +359,7 @@ def _run_via_events(engine, setup, source, page_rows=DEFAULT_FETCH_ROWS,
             logger.info("[Ledger] stopped by request after %d rows", report["rows_read"])
             break
     while followup.queue_depth():
-        _drain_into(engine, setup, report, world=world, sources=speaks_for)
+        _drain_into(engine, setup, report, world=world, sources=only)
     # 🔴 THE REFUSAL COUNTS COME WITH THE KEYS (판정 171: keep the names).
     # These three were published by the cursor driver and were LOST when the load
     # moved here, silently -- the only test of them inspected that driver's source, so

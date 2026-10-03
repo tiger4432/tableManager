@@ -202,6 +202,26 @@ def test_every_answer_that_lists_the_worlds_carries_one_shape(config):
     assert refused.value.detail["worlds"] == expected["worlds"]
 
 
+def test_a_type_the_named_world_does_not_declare_is_refused_by_that_world(config):
+    """총괄 5fec118bb ②: the default declares tool, B1 does not - asked in B1, the key search
+    refuses it as not declared THERE (it said 「'tool' declares no keys」)."""
+    from fastapi import HTTPException
+    from ledger import trace_router
+
+    document = _sample("ledger_config.json.sample")
+    document["entities"]["tool@1"] = {"keys": ["tool"]}
+    (config / "ontology" / "ledger_config.json").write_text(json.dumps(document), encoding="utf-8")
+    schema.stand(B1, [schema.DEFAULT_WORLD])
+    _declare(B1, _sample("ledger_config.json.sample"))
+    with pytest.raises(HTTPException) as refused:
+        trace_router.ledger_key_values(type="tool", key=None,
+                                       limit=trace_router.KEY_VALUE_DEFAULT_LIMIT, world=B1, db=None)
+    detail = refused.value.detail
+    assert (refused.value.status_code, detail["reason"], detail["world"]) == (
+        422, "node_type_not_declared", B1)
+    assert detail["message"].startswith("type 'tool' is not declared in world %s" % B1)
+
+
 # ------------------------------------------------------------------ on PostgreSQL
 
 @pytest.fixture(name="world")
@@ -481,44 +501,67 @@ def test_a_source_is_counted_and_written_in_the_world_that_speaks_for_it(world, 
     assert database_module.engine is world["engine"]                 # canary: the fixture's
 
 
-@pytest.mark.pg
-def test_the_boot_restamp_moves_each_cursor_in_the_world_that_speaks_for_it(world):
-    """총괄 152f4bb0b: B1 operating - the load source's cursor is the default's, the recipe
-    source's B1's; a fingerprint only the grammar moved is restamped in each. The default
-    operating: both in the default, as before."""
-    from chain import ingestion_worker
+def _stale_then_restamp(world, where, restamp):
+    """Each cursor of `where` (source -> world) given a fingerprint only the grammar moved, then
+    `restamp()`: -> what each cursor carries after, and what its world's declaration wants."""
     from ledger.setup_registry import cursor_translator_version
 
-    def stale_then_restamp(where):
-        for source, name in where.items():
-            with world["engine"].begin() as conn:
-                conn.execute(text("UPDATE %s SET translator_ver = 'ledger-v2:stale' WHERE source = :s"
-                                  % schema.world_names(name).cursor), {"s": source})
-        ingestion_worker._restamp_moved_fingerprints_sync(world["maker"])
-        stamped = {}
-        for source, name in where.items():
-            with world["engine"].connect() as conn:
-                stamped[source] = conn.execute(text(
-                    "SELECT translator_ver FROM %s WHERE source = :s"
-                    % schema.world_names(name).cursor), {"s": source}).scalar()
-        return stamped
-
-    def wanted(source, name):
-        return cursor_translator_version(
+    for source, name in where.items():
+        with world["engine"].begin() as conn:
+            conn.execute(text("UPDATE %s SET translator_ver = 'ledger-v2:stale' WHERE source = :s"
+                              % schema.world_names(name).cursor), {"s": source})
+    restamp()
+    stamped, wanted = {}, {}
+    for source, name in where.items():
+        with world["engine"].connect() as conn:
+            stamped[source] = conn.execute(text(
+                "SELECT translator_ver FROM %s WHERE source = :s"
+                % schema.world_names(name).cursor), {"s": source}).scalar()
+        wanted[source] = cursor_translator_version(
             load_setup(schema.world_names(name).declaration_root).snapshot, source)
+    return stamped, wanted
+
+
+def _b1_operating_with_both_cursors(world):
+    from chain import ingestion_worker
 
     _seed(world)
     _b1(world)
     _operate(world, B1)
     for source in (CHANGED, KEPT):                                   # the census makes the rows
         ingestion_worker._measure_one_source_sync(world["maker"], source)
-    where = {CHANGED: B1, KEPT: schema.DEFAULT_WORLD}
-    assert stale_then_restamp(where) == {source: wanted(source, name) for source, name in where.items()}
+    return {CHANGED: B1, KEPT: schema.DEFAULT_WORLD}
+
+
+@pytest.mark.pg
+def test_the_boot_restamp_moves_each_cursor_in_the_world_that_speaks_for_it(world):
+    """총괄 152f4bb0b: B1 operating - the load source's cursor is the default's, the recipe
+    source's B1's; a fingerprint only the grammar moved is restamped in each. The default
+    operating: both in the default, as before."""
+    from chain import ingestion_worker
+
+    def boot():
+        ingestion_worker._restamp_moved_fingerprints_sync(world["maker"])
+
+    stamped, wanted = _stale_then_restamp(world, _b1_operating_with_both_cursors(world), boot)
+    assert stamped == wanted
 
     _operate(world, schema.DEFAULT_WORLD)
     ingestion_worker._measure_one_source_sync(world["maker"], CHANGED)
-    where = {CHANGED: schema.DEFAULT_WORLD, KEPT: schema.DEFAULT_WORLD}
-    assert stale_then_restamp(where) == {source: wanted(source, name) for source, name in where.items()}
+    stamped, wanted = _stale_then_restamp(
+        world, {CHANGED: schema.DEFAULT_WORLD, KEPT: schema.DEFAULT_WORLD}, boot)
+    assert stamped == wanted
+
+
+@pytest.mark.pg
+def test_the_restamp_script_naming_no_world_moves_each_cursor_where_it_is_spoken_for(world):
+    """총괄 8e8ee2dcf: the person's tool, without --world, as the boot step."""
+    from scripts import ledger_restamp_cursor
+
+    stamped, wanted = _stale_then_restamp(
+        world, _b1_operating_with_both_cursors(world),
+        lambda: ledger_restamp_cursor.main(["--apply"]))
+    assert stamped == wanted
 
 
 @pytest.mark.pg
