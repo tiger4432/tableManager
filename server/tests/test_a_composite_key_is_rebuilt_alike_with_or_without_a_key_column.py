@@ -235,6 +235,16 @@ def _answer(world, table):
             sorted((key_of.get(l[0]) or "", l[1], l[2], l[3] or "") for l in layers))
 
 
+def _outliving(world, table):
+    """Layers and overwrite marks under a row_id the table no longer has - a merged-away shell's."""
+    with world["engine"].connect() as conn:
+        return tuple(conn.execute(text(
+            'SELECT count(*) FROM "%s".%s m WHERE m.table_name = :t AND NOT EXISTS '
+            '(SELECT 1 FROM "%s"."%s" r WHERE r.row_id = m.row_id)'
+            % (PG_TEST_SCHEMA, side, PG_TEST_SCHEMA, table)), {"t": table}).scalar()
+                     for side in ("cell_sources", "cell_overwrites"))
+
+
 @pytest.mark.parametrize("branch", list(BRANCHES))
 def test_both_shapes_give_one_answer(world, branch):
     build, keys = BRANCHES[branch]
@@ -242,6 +252,7 @@ def test_both_shapes_give_one_answer(world, branch):
     for table in SHAPES:
         build(world["db"], table)
         answers[table] = _answer(world, table)
+        assert _outliving(world, table) == (0, 0), (table, branch)      # 총괄 a13fcf00c
         assert [r[0] or None for r in answers[table][0]] == keys, (table, answers[table][0])
     assert answers["rk_key"] == answers["rk_parts"]
     if branch.startswith("made"):

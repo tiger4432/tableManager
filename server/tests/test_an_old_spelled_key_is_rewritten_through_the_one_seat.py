@@ -176,6 +176,10 @@ def test_a_colliding_row_is_merged_into_the_holder_and_a_persons_value_stays(db,
     assert "chain:a" in layers and any(                               # the shell's layer came over,
         layer.startswith("user (") for layer in layers), layers       # named by the merge body
     assert merges >= 1
+    with db["engine"].connect() as conn:                               # 총괄 a13fcf00c
+        assert [conn.execute(text('SELECT count(*) FROM "%s".%s WHERE table_name = :t AND row_id = :r'
+                                  % (PG_TEST_SCHEMA, side)), {"t": table, "r": shell}).scalar()
+                for side in ("cell_sources", "cell_overwrites")] == [0, 0]  # the shell's are gone
     again = _plan(db, table)
     assert (again["pending"], again["collisions"]) == ([], [])          # run again: nothing
 

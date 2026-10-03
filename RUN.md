@@ -1,5 +1,25 @@
 # 지금 돌리면 되는 것
 
+> ## [10-03] **합쳐져 사라진 행의 층 · 덮어쓰기 행도 같이 지운다 (소유자 10-03 · 총괄 a13fcf00c) — 이주 «불필요» · 재기동 «필요»(위 절과 같은 재기동이면 한 번)**
+>
+> ```
+> 무엇이 바뀌나  두 행이 한 키로 합쳐질 때(쓰기 · 핀 · rebuild_blank_business_keys --apply) 지워지는 행의 cell_sources · cell_overwrites 행도 지운다
+>              전: 그 행의 층과 덮어쓰기가 행 없는 row_id 아래 남았다 — 아무도 안 읽음
+> 운영에 쌓인 것  표마다, 먼저 센다 (PG)
+>   SELECT 'cell_sources' AS side, count(*) FROM cell_sources m
+>    WHERE m.table_name = '<표>' AND NOT EXISTS (SELECT 1 FROM "<표>" r WHERE r.row_id = m.row_id)
+>   UNION ALL
+>   SELECT 'cell_overwrites', count(*) FROM cell_overwrites m
+>    WHERE m.table_name = '<표>' AND NOT EXISTS (SELECT 1 FROM "<표>" r WHERE r.row_id = m.row_id);
+> 뜻           행이 없는 row_id 의 층 · 덮어쓰기 — 병합(7월부터)과 오늘 --apply 의 병합이 남긴 것. 값은 이미 임자 행에 있다
+> 지우기        같은 조건으로 (센 뒤에)
+>   DELETE FROM cell_sources m WHERE m.table_name = '<표>' AND NOT EXISTS (SELECT 1 FROM "<표>" r WHERE r.row_id = m.row_id);
+>   DELETE FROM cell_overwrites m WHERE m.table_name = '<표>' AND NOT EXISTS (SELECT 1 FROM "<표>" r WHERE r.row_id = m.row_id);
+> 급할 때       git revert <이 커밋> -> 재기동 (되돌리면 병합이 다시 층을 남긴다 · 지운 행은 돌아오지 않는다)
+> ```
+
+---
+
 > ## [10-03] **같은 데이터를 다시 써도 행이 하나 더 생기거나 합쳐지지 않고, 합쳐진 껍데기 행은 표에 안 남는다 (총괄 e243d6abf ③ · d5cf3a954 · 829e3fe20 ④) — 이주 «불필요» · 재기동 «필요»(run_app.bat 전체 — 아래 절의 보류도 이것으로 풀린다)**
 >
 > ```

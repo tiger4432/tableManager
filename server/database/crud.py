@@ -3615,6 +3615,10 @@ def _merge_into_key_holder(db, table_name, table_model, row_to_delete, row, *, e
     if row_to_delete in db.new:
         db.expunge(row_to_delete)
     else:
+        # 🔴 ITS STORED LAYERS AND MARKS GO WITH IT (소유자 10-03, 총괄 a13fcf00c) - here, after
+        #    the holder took what it takes above; earlier, a person's value would go with them.
+        #    They stayed under a row_id no row had, read by nothing, since the merge was written.
+        delete_row_layers(db, table_name, [row_to_delete.row_id])
         db.delete(row_to_delete)
     if deleted_row_ids is not None:
         deleted_row_ids.append(row_to_delete.row_id)
@@ -4259,14 +4263,7 @@ def purge_map_rows(db, table_model, table_name: str, row_ids):
         request_user.get() or "system",
         request_transaction_id.get() or str(uuid6.uuid7()))
 
-    db.query(models.CellSource).filter(
-        models.CellSource.table_name == table_name,
-        models.CellSource.row_id.in_(row_ids)
-    ).delete(synchronize_session=False)
-    db.query(models.CellOverwrite).filter(
-        models.CellOverwrite.table_name == table_name,
-        models.CellOverwrite.row_id.in_(row_ids)
-    ).delete(synchronize_session=False)
+    delete_row_layers(db, table_name, row_ids)
     db.query(table_model).filter(
         table_model.row_id.in_(row_ids)
     ).delete(synchronize_session=False)
@@ -5697,6 +5694,19 @@ def record_row_deletions(db: Session, table_name: str, rows, user_name: str,
     return logs
 
 
+def delete_row_layers(db: Session, table_name: str, row_ids: list) -> None:
+    """Rows' cell layers and overwrite marks, gone with the rows - the one place a row's metadata
+    is deleted: a row delete, a map purge, and a merge's stored shell (총괄 a13fcf00c)."""
+    db.query(models.CellOverwrite).filter(
+        models.CellOverwrite.table_name == table_name,
+        models.CellOverwrite.row_id.in_(row_ids)
+    ).delete(synchronize_session=False)
+    db.query(models.CellSource).filter(
+        models.CellSource.table_name == table_name,
+        models.CellSource.row_id.in_(row_ids)
+    ).delete(synchronize_session=False)
+
+
 def delete_rows_batch(db: Session, table_name: str, row_ids: list[str], user_name: str):
     """여러 행을 일괄 삭제하고 개별 히스토리를 남기며 메타데이터도 연쇄 삭제합니다."""
     # ⛔ A VIEW FIRST — and BEFORE the empty-list shortcut, so the answer does not depend
@@ -5721,15 +5731,7 @@ def delete_rows_batch(db: Session, table_name: str, row_ids: list[str], user_nam
         ).all()
             
         # 메타데이터 연쇄 삭제
-        db.query(models.CellOverwrite).filter(
-            models.CellOverwrite.table_name == table_name,
-            models.CellOverwrite.row_id.in_(row_ids)
-        ).delete(synchronize_session=False)
-
-        db.query(models.CellSource).filter(
-            models.CellSource.table_name == table_name,
-            models.CellSource.row_id.in_(row_ids)
-        ).delete(synchronize_session=False)
+        delete_row_layers(db, table_name, row_ids)
 
         # 기본 데이터 삭제
         deleted_count = db.query(table_model).filter(

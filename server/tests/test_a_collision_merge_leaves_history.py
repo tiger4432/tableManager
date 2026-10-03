@@ -188,8 +188,10 @@ def test_a_merge_that_changes_nothing_writes_no_history(db_session):
 def overwrite_selects(recorded):
     """Statements that read `cell_overwrites`, which is what the merge loop used to
     issue once per column per row."""
-    return [c for c in recorded
-            if "FROM cell_overwrites" in c.sql or "from cell_overwrites" in c.sql]
+    # A SELECT only: the merge now DELETEs a stored shell's marks too (총괄 a13fcf00c), which
+    # names the same table and is not a read.
+    return [c for c in recorded if c.sql.lstrip().upper().startswith("SELECT")
+            and ("FROM cell_overwrites" in c.sql or "from cell_overwrites" in c.sql)]
 
 
 def pin(db, row, column, by="user"):

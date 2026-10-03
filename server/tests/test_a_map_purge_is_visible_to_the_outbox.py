@@ -120,9 +120,14 @@ def test_neither_purge_site_spells_the_deletes_by_hand_any_more():
 def test_the_helper_still_clears_the_cell_metadata(db_session, model):
     """The rows' sources and overwrites must go with them; leaving them would make the map
     rows immortal in the two side tables."""
+    import inspect
+
     body = helper_code()
-    assert "models.CellSource" in body and "models.CellOverwrite" in body
-    assert body.count("synchronize_session=False") == 3
+    layers = inspect.getsource(crud.delete_row_layers)
+    # 총괄 a13fcf00c: through the one function a row delete and a merge's shell also use
+    assert "delete_row_layers(db, table_name, row_ids)" in body
+    assert "models.CellSource" in layers and "models.CellOverwrite" in layers
+    assert body.count("synchronize_session=False") + layers.count("synchronize_session=False") == 3
 
 
 # ------------------------------------------------------- what this does NOT claim to do
