@@ -1,3 +1,34 @@
+> ## [09:56 디자인] 원장 소스 패널 — 다음 명령은 census 기록의 next_step 그대로 · 클라 상수 지움 — 총괄 9060ad7dd · 서버 66570d724 · cb9082b79
+
+**결론** 패널이 명령을 짓지 않습니다. 기록의 `next_step` 을 그대로 그립니다 — 누락이면 `--drifted` 다시 번역, 사람이 센 적 없으면 census 명령, 0 · 거절이면 없음(서버 `backfill.next_step` 의 규칙).
+
+**지시 읽기 하나** 「없는 기록에서는 오늘 모양 그대로(옛 서버)」를 «줄의 수 · 색 · 시각은 오늘 그대로, 명령 줄은 없음»으로 읽었습니다. 같은 지시가 상수를 지우라고 했고(저자 하나), 옛 서버 기록에 명령을 그리려면 그 상수가 남아야 하기 때문입니다. 다르게 뜻하셨으면 말씀 주십시오.
+
+**고친 것**
+- `source_backlog.js`: `driftedCommand` 삭제. `driftLine(census, names)` 가 `next_step` 을 읽습니다(문자열일 때만).
+- `ledger_sources_panel.js`: `censusOf(census, names)` — 명령 철자에만 쓰던 `source` 인자를 c965f6206 전 모양으로 되돌렸습니다.
+
+**게이트**
+- `ledger_sources_panel_harness` 132 칸 실패 0(바닥 128 → 132). 픽스처의 `next_step` 은 서버 철자 그대로입니다. 새 칸 3 개(P9 · P10 · R9): 센 적 없는 소스는 그 기록의 census 명령(P4 · R9), 옛 기록은 명령 없음(P9), 클라가 지을 법한 것과 달라도 기록의 문자열이 그려짐(P10).
+- 변이 13 개 중 13 개 잡힘 — 새 X7(화면이 다시 명령을 지음) · X8(기록의 명령을 누락일 때만 그림).
+- `source_backlog_harness` 40 칸 실패 0 · `--mutate` 16/16. 러너 초록 · 계약 13 개 어긋남 0.
+- 미리보기(이 박스, 토큰 없음. 공개 선언 GET 만 바꿈 — 커밋된 서버가 보낼 모양으로 두 수 · 이름표 · `next_step` 을 얹고, 소스 하나는 옛 서버 모양으로 둠. 박스 서버가 이미 `next_step` 을 보낸 소스 0. GET 아닌 요청 0):
+
+| 소스 | 줄 | 명령 줄 |
+|---|---|---|
+| die_inspection (누락 있음) | Edited, not followed 3 · Not yet printed 1200 · Measured 10-03 09:42:04 | python -m ledger.backfill --source die_inspection --drifted |
+| dt_job (누락 0) | Edited, not followed 0 · Not yet printed 0 · Measured 10-03 09:36:04 | 없음 |
+| lot_event (센 적 없음) | Edited, not followed Not measured · Not yet printed Not measured | python -m ledger census --source lot_event |
+| lot_slot_wafer (옛 서버 기록) | Edited, not followed 2 · Not yet printed 0 · Measured 10-03 09:38:04 | 없음 |
+| 거절된 소스 9 개 | 거절 줄만 | 없음 |
+
+**새 함수 · 새 if 중 기존 것과 같은 일** 새 함수 0, 지운 함수 1(`driftedCommand`). 새 if 0 — 명령 줄을 세우는 조건이 «경보가 있나»에서 «기록이 말했나»로 바뀌었을 뿐입니다.
+
+- RELEASE_LOG 한 항목, 그리고 c965f6206 항목의 명령 문장이 그 항목을 가리키게 했습니다.
+- 어느 DB · 어느 스키마 · 지운 것 0 — 화면만.
+
+**다음** 세상 서브탭(세상 짓기 뒤). 그 밖의 클라 몫은 없습니다.
+
 > ## [09:23 디자인] map.input_columns 은퇴의 화면 몫 — 잠긴 칩 · 픽스처 둘 · 하니스 · 약속하던 말 — 총괄 8d3890d86 · 서버 97101fd2e · 0693d78d4
 
 **결론** 화면에서 `input_columns` 와 잠긴 칩(`locked`)을 걷어냈습니다. 옛 파일에 적힌 `map.input_columns` 는 폼에 아무것도 안 그립니다 — 그것을 대조군 칸(H18)으로 남겼습니다.
