@@ -100,7 +100,9 @@ def test_admin_save_gate_rejects_translator_vocabulary_conflict_before_dry_run(
     }
     columns = {"created_at", "updated_at", "id", "product", "run"}
     monkeypatch.setattr(admin, "declared_tables", lambda: ["product_registry"])
-    monkeypatch.setattr(admin, "relation_columns", lambda _db, _name: columns)
+    from ledger import column_stats
+    monkeypatch.setattr(column_stats, "physical_columns",
+                        lambda _db, _name: {name: "text" for name in columns})
 
     violations = admin.check_source_declaration(
         object(), "product_registry", source)

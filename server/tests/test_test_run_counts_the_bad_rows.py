@@ -61,7 +61,8 @@ class _Engine:
 def page(monkeypatch):
     def install(rows):
         monkeypatch.setattr(backfill, "_fetch_v2_lineage_page",
-                            lambda connection, plan, after, limit: rows)
+                            lambda connection, plan, columns, after, limit: rows)
+        monkeypatch.setattr(backfill, "_readable_columns", lambda engine, plan: ())   # the read is faked, so is its catalogue question
         return _Engine(rows)
     return install
 
@@ -105,12 +106,13 @@ def test_a_blank_string_is_empty_too():
             return _C()
 
     import ledger.backfill as bf
-    original = bf._fetch_v2_lineage_page
+    original = bf._fetch_v2_lineage_page, bf._readable_columns
     bf._fetch_v2_lineage_page = lambda *a, **k: rows
+    bf._readable_columns = lambda engine, plan: ()      # the read is faked, so is its question
     try:
         missing, read = bf.count_rows_missing(_E(), _Setup(), "probe", "t")
     finally:
-        bf._fetch_v2_lineage_page = original
+        bf._fetch_v2_lineage_page, bf._readable_columns = original
     assert (missing, read) == (1, 2)
 
 
