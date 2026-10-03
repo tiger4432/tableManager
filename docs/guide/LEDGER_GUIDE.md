@@ -373,7 +373,7 @@ conda run -n assy_manager python scripts/ledger_restamp_cursor.py
 파일이 없으면 오늘과 같습니다 — 운영 = 기본(default).
 ```
 - **세상** — 기본(`default`)과 가지들. 가지는 `config/ontology_worlds/<이름>/` 의 선언 하나와 DB 스키마 `w_<이름>` 입니다. 이름은 영문 소문자 · 숫자 · `_`.
-- ⏸ **밑에 깔 세상 — 보류(소유자 10-03 「세상은 서로 겹치지 않는 독립」, 총괄 54a99c755).** 아래 동작은 코드에 있지만 쓰지 않습니다 — 은퇴 여부는 소유자 답 뒤. 가지는 밑 없이(`beneath=` 빈 값) 만듭니다.
+- **독립이냐 겹침이냐는 밑으로 고릅니다**(소유자 10-03 「겹치는 것도 괜찮은 듯」, 총괄 e5be77136) — 밑 «없음»(`beneath=` 빈 값)이면 자기 선언 · 자기 원자만 보는 독립 세상, 밑이 있으면 겹치는 세상입니다.
 - **밑에 깔 세상** — 가지를 만들 때 고릅니다: 없음 · 기본 · 다른 세상들(위가 먼저). 그 세상의 걷기는 소스마다 그 소스를 «말하는» 가장 위 세상의 원자를 봅니다(칸 층처럼 위가 이긴다). 만든 뒤에는 바꾸지 않습니다.
 - **이름 없이 따르는 자리** — 원장 후속(실시간) · 걷기 · 그리드 원자 보기 · 선언 읽기 · census · 백필 CLI 기본값. 바꾸면 다음 요청 · 다음 후속 배치부터.
 - **라우트** — `GET /admin/ontology-explorer/worlds` · `PUT /admin/ontology-explorer/worlds/operating` 본문 `{"world": "…"}`(엄격 관리자, `X-User` 가 이력의 by) · 만들기 `POST /admin/ontology-explorer/bootstrap?world=…&beneath=default`(쉼표 목록, 빈 값 = 없음) · 그리드 데이터 · 세기 · 내보내기 · 스키마 · 한 행 라우트의 `?world=` · `/tables` 의 `worlds` · `operating` · `per_world`.
