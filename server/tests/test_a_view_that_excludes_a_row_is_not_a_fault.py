@@ -60,8 +60,9 @@ def test_a_scope_that_selects_nothing_returns_instead_of_refusing(monkeypatch):
     import ledger.store as store_module
 
     monkeypatch.setattr(backfill, "_fetch_v2_lineage_rows",
-                        lambda read, plan, **k: [])
+                        lambda read, plan, columns, **k: [])
     monkeypatch.setattr(backfill, "_scope_predicate", lambda plan, scope: scope)
+    monkeypatch.setattr(backfill, "_readable_columns", lambda engine, plan: ())   # the read is faked, so is its catalogue question
     monkeypatch.setattr(setup_module, "_require_declared_source", lambda setup, source: source)
     monkeypatch.setattr(store_module, "LedgerStore", lambda engine, **_: object())
     called = []

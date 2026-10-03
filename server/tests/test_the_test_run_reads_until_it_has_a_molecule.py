@@ -64,11 +64,6 @@ class _StubCursor:
         return False
 
     def execute(self, query, params=None):
-        # The read first asks which columns the table has (총괄 164553a6f): the relation's own.
-        if "information_schema" in str(query):
-            self._rows = [{"column_name": name}
-                          for name in (self._relation[0].keys() if self._relation else ())]
-            return
         # The reader composes `... WHERE key > %s ... LIMIT %s`; the stub reads the two
         # values it binds rather than the SQL, and serves the same window a relation would.
         params = list(params or ())
@@ -103,12 +98,35 @@ class _StubConnection:
         pass
 
 
+class _StubCatalog:
+    """What `engine.connect()` hands `column_stats.physical_columns`: the relation's own columns."""
+
+    def __init__(self, relation):
+        self._names = list(relation[0].keys()) if relation else []
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def execute(self, *_args, **_kwargs):
+        return self
+
+    def fetchall(self):
+        return [(name, "text") for name in self._names]
+
+
 class _StubEngine:
     def __init__(self, relation, page_key):
         self.connection = _StubConnection(relation, page_key)
+        self._relation = relation
 
     def raw_connection(self):
         return self.connection
+
+    def connect(self):
+        return _StubCatalog(self._relation)
 
 
 @pytest.fixture(scope="module")

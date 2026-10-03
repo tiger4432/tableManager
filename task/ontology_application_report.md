@@ -35429,3 +35429,48 @@ RELEASE_LOG 맞음 — 주기 판이 세지 않고 잇는다 · 직전 기록 �
    고칠 자리 후보(안 쟀다): --drifted --apply 가 끝에 그 소스의 사람 census(measure_and_store exact)를 한 번 — 그러면 기록이 «고친 뒤 수»가 된다
    여쭐 것: ① apply 뒤 다시 세기를 넣을지 ② next_step 을 미리보기로 둘지, 적용 명령까지 실을지
 ```
+
+---
+
+## [C 응용] 10-03 8bbeb1aee(표의 물리 칸 = 함수 하나 · 읽기마다 한 번) 검수 + 줄 수 — @`d4406195d`
+
+```
+검수 (박스)  바뀐 시험 열 파일 pytest 108 passed 6 skipped · PG -k(같은 묶음) 6 passed
+            cb9082b79(패널이 기록의 next_step 을 그림) 패널 하니스 132 passed — 문서 2034f9040
+문서        CODE_MAP column_stats 줄 수(「287(신설)」이 남아 있었다)만. 나머지는 구현자가 같은 커밋에
+자리 셈      server/ledger 안 information_schema.columns 글자: column_stats.physical_columns 하나 + admin.relations_view(여러 표 한 번, 픽커) —
+            구현자 CODE_MAP 문장 그대로. server/ 전체엔 schema_drift · models 의 inspector · main 의 이주 확인이 더 있다(다른 물음 — 표 동기 · 칸 하나 존재)
+아직 열림    범위(scope) 칸 허용 목록(_scope_predicate · 다시하기 배너의 scope_columns)은 여전히 base_select_columns — ed333c401 의 한 줄 그대로
+```
+```
+⚠️ 한 줄 — 첫 PG 실행(10:07 쯤)에서 같은 묶음이 2 failed, 다시 돌리니 6 passed · 그 둘만 따로도 passed
+   실패 모양 둘이 «_readable_columns 가 칸을 묻지 않는 변이»와 꼭 같다: SELECT 에 "ghost" 가 실림(UndefinedColumn) · physical_columns 호출 0
+   그 시각 공유 트리에서 누가 그 자리를 바꿔 돌렸는지는 확인 못 했다(제가 본 git status 는 깨끗했다 — 뒤에 본 것). 변이를 공유 트리에서 돌리면
+   다른 레인의 실행이 그 변이를 잰다 — 그런 일이 있었다면 사본에서 돌리게 하는 것이 맞는지 여쭐 것
+```
+
+---
+
+## [C 응용] 10-03 a3cd662d9(이름 붙인 row_id 로 만든 행의 빈 업무키) 곁 — 제 50829cc6b 「키 둘에 행 셋」과 같은 병인가: 읽어 보니 «길이 다르다»
+
+```
+0185cbd8a 검수  run_pg_tests -k 새 시험 둘 2 passed. 문서는 구현자가 같은 커밋에(CODE_MAP 1359). 결함 못 찾음
+50829cc6b 다시 읽음  test_a_count_that_moved_is_refused_and_nothing_goes 가 다섯 번에 한 번 hc_official 행 셋(키 둘)
+   그 시험의 씨앗(_seeded)은 hold_world.push(키로 씀)로 만들고, 이름 붙인 row_id 는 «있는 행»을 고칠 때만 쓴다(행을 DB 에서 찾아 그 id 로 netdie 갱신)
+   체인 복사 규칙(hold_copy)도 df_to_updates(키 + 칸)로 쓰고 row_id 는 origin_row_id 로만 싣는다 — «이름 붙인 id 로 만들기» 길이 아니다
+=> a3cd662d9 의 수리가 그 빨강을 닫는다고 «기대하지 않는다». 같은 표에 같은 키 행이 둘 생기는 길이 하나 더 있을 수 있다 — 원인은 여전히 모른다
+   ② 박스 셈(같은 키 둘 이상인 그룹 수)을 할 때 assy_test 의 그 시험 스키마는 실행마다 지워져 남지 않는다 — 다시 나면 출력 전체를 남기겠다
+```
+
+---
+
+## [C 응용] 10-03 정정 — c0648c104 의 「길이 다르다 · 그 수리가 닫으리라 기대하지 않는다」는 너무 셌다. «모른다»가 맞다
+
+```
+구현 a61d32f4f 가 보인 것  이름 붙인 row_id 로 «만들기»는 부르던 행이 그 사이 지워졌을 때 난다 · 조합키만 선언한 표에서 그 행은 키가 NULL ·
+                        hold world 공식 표(hc_official)가 바로 그 모양
+제 시험의 씨앗           _seeded 가 J2 공식 행의 row_id 를 읽고 «그 id 로» 사람 쓰기를 한다 — 그 사이 그 행이 지워졌다면 바로 이 길이고,
+                        그러면 키 NULL 행이 하나 더 생겨 행 셋 · confirm_rows=3 이 맞아 「DID NOT RAISE」 — 제가 본 실패 모양과 같다
+모르는 것               settle 과 그 쓰기 사이에 그 행이 지워질 수 있는가 — 확인 못 했다. 그래서 «같은 병일 수 있다»까지만
+따름                    6d6eaa157(키 재조립을 조합키 표 전부로)이 착지하면 그 시험을 여러 번 돌려 보겠다 — 다섯 번에 한 번이던 빨강이 남는지
+```

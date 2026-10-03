@@ -38,7 +38,7 @@ class _Connection:
 _ENGINE = SimpleNamespace(raw_connection=_Connection)
 
 
-def _fetch(connection, plan, *, after=None, group_value=None, limit=None, scope=None):
+def _fetch(connection, plan, columns, *, after=None, group_value=None, limit=None, scope=None):
     rows = [{"k": k, "row_id": r} for k, r in ROWS]
     if group_value is not None:
         rows = [row for row in rows if row["k"] == group_value]
@@ -54,6 +54,7 @@ def test_every_registered_operation_takes_a_cancel():
 
 def test_a_rescope_page_ends_on_a_group_boundary(monkeypatch):
     monkeypatch.setattr(backfill, "_fetch_v2_lineage_rows", _fetch)
+    monkeypatch.setattr(backfill, "_readable_columns", lambda engine, plan: ())   # the read is faked, so is its catalogue question
     pages = [list(frame["k"]) for frame in backfill._scope_pages(_ENGINE, _Plan(), None, 2)]
     assert pages == [["a", "a"], ["b", "b", "b"], ["c"]], "a group read whole, never cut"
 
@@ -68,6 +69,7 @@ def rescope_doors(monkeypatch):
     store = SimpleNamespace(row_refs_for=lambda relation, ids: [],
                             forget_row_refs=lambda relation, ids, source=None: 0)
     monkeypatch.setattr(backfill, "_fetch_v2_lineage_rows", _fetch)
+    monkeypatch.setattr(backfill, "_readable_columns", lambda engine, plan: ())   # the read is faked, so is its catalogue question
     monkeypatch.setattr(backfill, "_scope_predicate", lambda plan, scope: scope)
     monkeypatch.setattr(setup_module, "_require_declared_source", lambda setup, source: source)
     monkeypatch.setattr(backfill, "_v2_registration_subjects", lambda plan, frame: None)

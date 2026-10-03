@@ -34,6 +34,7 @@ from ledger.setup_bundle import (load_physical_catalog,          # noqa: E402
                                  require_ready_bundle, validate_bundle)
 from ledger.implementations import role_mapper_registry         # noqa: E402
 from ledger.setup import LedgerSetup                             # noqa: E402
+from support.read_frame import CatalogConnection                 # noqa: E402
 from ledger.setup_registry import compile_setup_snapshot         # noqa: E402
 from pathlib import Path                                         # noqa: E402
 
@@ -86,6 +87,11 @@ class FakeConnection:
 class FakeEngine:
     def raw_connection(self):
         return FakeConnection()
+
+    def connect(self):
+        """The read's one catalogue question (총괄 c8d6a8597): the sample's tables, whole."""
+        return CatalogConnection(load_physical_catalog(
+            os.path.join(SAMPLE, "table_config.json.sample")))
 
 
 @pytest.fixture

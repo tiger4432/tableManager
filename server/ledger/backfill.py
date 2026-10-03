@@ -418,9 +418,10 @@ def preview_rescope(engine, setup, source, scope_column, scope_values, world=Non
     reporting the second under the first's name would be a number that lies.
     """
     plan, scoped = rescope_scope(setup, source, scope_column, scope_values)
+    readable = _readable_columns(engine, plan)
     read = engine.raw_connection()
     try:
-        rows = _fetch_v2_lineage_rows(read, plan, scope=scoped)
+        rows = _fetch_v2_lineage_rows(read, plan, readable, scope=scoped)
     finally:
         read.rollback()
         read.close()
@@ -822,15 +823,16 @@ def _scope_pages(engine, plan, scoped, page_rows):
     `page_rows=None` is the whole scope, one read."""
     key = None if page_rows is None else _page_key(plan)
     after = None
+    readable = _readable_columns(engine, plan)
     while True:
         read = engine.raw_connection()
         try:
-            rows = _fetch_v2_lineage_rows(read, plan, after=after, limit=page_rows,
+            rows = _fetch_v2_lineage_rows(read, plan, readable, after=after, limit=page_rows,
                                           scope=scoped)
             if page_rows is not None and len(rows) >= page_rows:
                 last = rows[-1][key]
                 rows = [row for row in rows if row[key] != last] + _fetch_v2_lineage_rows(
-                    read, plan, group_value=last, scope=scoped)
+                    read, plan, readable, group_value=last, scope=scoped)
         finally:
             read.rollback()
             read.close()
@@ -1684,10 +1686,11 @@ def preview_first_batch(engine, setup, source, fetch_rows=PREVIEW_FETCH_ROWS,
     excluded = None
     answered = None
     after = None
+    readable = _readable_columns(engine, plan)
     read = engine.raw_connection()
     try:
         while pages < PREVIEW_MAX_PAGES:
-            rows = _fetch_v2_lineage_page(read, plan, after, fetch_rows)
+            rows = _fetch_v2_lineage_page(read, plan, readable, after, fetch_rows)
             if not rows:
                 break
             complete, dropped = _cut_on_group_boundary(rows, fetch_rows, key=page_key)
@@ -1695,7 +1698,7 @@ def preview_first_batch(engine, setup, source, fetch_rows=PREVIEW_FETCH_ROWS,
             # whole, so a molecule is never previewed
             # in halves.
             if not complete and dropped is not None:
-                complete = _fetch_v2_lineage_group(read, plan, dropped)
+                complete = _fetch_v2_lineage_group(read, plan, readable, dropped)
             if not complete:
                 break
             pages += 1
@@ -1758,9 +1761,10 @@ def count_rows_missing(engine, setup, source, column, fetch_rows=PREVIEW_FETCH_R
     from .event_frame import is_blank_source_value
 
     plan = setup.snapshot.source_plans[source]
+    readable = _readable_columns(engine, plan)
     read = engine.raw_connection()
     try:
-        rows = _fetch_v2_lineage_page(read, plan, None, fetch_rows)
+        rows = _fetch_v2_lineage_page(read, plan, readable, None, fetch_rows)
     finally:
         read.rollback()
         read.close()
@@ -1805,9 +1809,10 @@ def count_excluded_but_indexed(engine, setup, source, fetch_rows=PREVIEW_FETCH_R
                if isinstance(clause, Mapping) and clause.get("column")]
     if not columns:
         return 0, 0
+    readable = _readable_columns(engine, plan)
     read = engine.raw_connection()
     try:
-        rows = _fetch_v2_lineage_page(read, plan, None, fetch_rows)
+        rows = _fetch_v2_lineage_page(read, plan, readable, None, fetch_rows)
     finally:
         read.rollback()
         read.close()
@@ -1882,13 +1887,13 @@ def _page_key(plan):
     return plan.driver.cursor_columns[0]
 
 
-def _fetch_v2_lineage_page(connection, plan, after, limit):
-    return _fetch_v2_lineage_rows(connection, plan, after=after, limit=limit)
+def _fetch_v2_lineage_page(connection, plan, columns, after, limit):
+    return _fetch_v2_lineage_rows(connection, plan, columns, after=after, limit=limit)
 
 
-def _fetch_v2_lineage_group(connection, plan, page_value):
+def _fetch_v2_lineage_group(connection, plan, columns, page_value):
     return _fetch_v2_lineage_rows(
-        connection, plan, group_value=page_value, limit=None)
+        connection, plan, columns, group_value=page_value, limit=None)
 
 
 def rescope_scope(setup, source, scope_column, scope_values, whole_source=False):
@@ -1945,19 +1950,16 @@ def _scope_predicate(plan, scope):
 _SKIPPED_SAID = set()
 
 
-def _readable_columns(connection, plan):
+def _readable_columns(engine, plan):
     """`base_select_columns`, less the catalogue columns the table does not have (총괄 164553a6f
     ②). Such a column is not read and is named once; a column the declaration names stays in
-    the SELECT, so the read stops on it as it always did."""
+    the SELECT, so the read stops on it as it always did. Asked ONCE per read - the caller
+    passes the answer to every page (총괄 c8d6a8597)."""
+    from . import column_stats
     from .event_frame import base_select_columns, named_columns
 
-    parts = plan.relation.split(".")
-    with connection.cursor() as cursor:
-        cursor.execute(
-            "SELECT column_name FROM information_schema.columns "
-            "WHERE table_schema = COALESCE(%s, current_schema()) AND table_name = %s",
-            (parts[0] if len(parts) == 2 else None, parts[-1]))
-        live = {row[0] for row in cursor.fetchall()}
+    with engine.connect() as connection:
+        live = set(column_stats.physical_columns(connection, plan.relation))
     named = set(named_columns(plan))
     wanted = base_select_columns(plan)
     skipped = tuple(column for column in wanted if column not in live and column not in named)
@@ -1969,7 +1971,7 @@ def _readable_columns(connection, plan):
     return tuple(column for column in wanted if column not in skipped)
 
 
-def _fetch_v2_lineage_rows(connection, plan, *, after=None, group_value=None,
+def _fetch_v2_lineage_rows(connection, plan, columns, *, after=None, group_value=None,
                            limit=None, scope=None):
     """Read physical catalog columns with identifier-safe psycopg2 composition.
 
@@ -1981,7 +1983,6 @@ def _fetch_v2_lineage_rows(connection, plan, *, after=None, group_value=None,
     """
     from psycopg2 import sql
 
-    columns = _readable_columns(connection, plan)
     scoped = _scope_predicate(plan, scope)
     # The page key leads the ORDER BY so that its groups are CONTIGUOUS -- that
     # contiguity is the whole basis on which `_cut_on_group_boundary` may drop a trailing

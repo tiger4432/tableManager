@@ -161,9 +161,12 @@ def withdraw_by_origin(db, origin_row_ids, apply: bool = False, log=logger.info)
     source outright, and one such group would otherwise abort the withdrawal of every other
     group in the same deletion. A human's value carrying a chain's origin stamp is a
     contradiction worth a line, not a reason to leave the rest standing.
+
+    `lost_a_layer` is {table: (columns, row ids)} of the groups handed to `withdraw_source` - what
+    the delete path tells the rules (총괄 e11bb4de0 (나)).
     """
     stats = {"mode": "apply" if apply else "dry-run", "groups": 0, "cells_withdrawn": 0,
-             "protected_skipped": 0}
+             "protected_skipped": 0, "lost_a_layer": {}}
     for (table_name, source_name), (columns, row_ids) in sorted(
             cells_stamped_by(db, origin_row_ids).items()):
         if source_name in PROTECTED_SOURCES:
@@ -176,6 +179,9 @@ def withdraw_by_origin(db, origin_row_ids, apply: bool = False, log=logger.info)
         one = withdraw_source(db, table_name, source_name, columns=sorted(columns),
                               row_ids=sorted(row_ids), apply=apply, log=log)
         stats["cells_withdrawn"] += one.get("cells_withdrawn", 0)
+        lost_columns, lost_rows = stats["lost_a_layer"].setdefault(table_name, (set(), set()))
+        lost_columns.update(columns)
+        lost_rows.update(row_ids)
     return stats
 
 

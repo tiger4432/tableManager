@@ -71033,3 +71033,155 @@ RUN.md 맨 위 절의 «새 위험 둘» 줄을 닫힘으로 바꿈(같은 재�
 **클라 몫** — c965f6206 이 들고 있는 --drifted 명령 상수를 서버 기록의 next_step 으로(총괄 지시 대기)
 
 다음: c8d6a8597 — «표의 물리 칸» 묻는 세 자리를 한 함수로, 원장 읽기는 한 번의 읽기마다 한 번
+
+---
+
+## [10-03] c8d6a8597 착지 8bbeb1aee — «표의 물리 칸» 은 한 함수가 답하고, 원장 읽기는 읽기마다 한 번 묻는다
+
+어느 DB · 어느 스키마 · 지운 것 — 박스 assy_manager 는 읽기만. pg 시험은 assy_test 의 시험 스크래치 스키마(픽스처가 만들고 지움 · test_ledger_v2_pg 는 기존 픽스처가 public 에 토큰 이름 표 둘). 지운 것 0
+
+```
+한 자리    column_stats.physical_columns — admin.relation_columns 은퇴(선언 검사의 columns_of 가 부름) · 원장 읽기의 자기 질의 지움
+          schema.table 이름은 그 스키마에서. ledger/ 에 남은 information_schema.columns 글자: column_stats 하나 + admin 의 «모든 표 한 번» 질의(relations view, 다른 물음)
+한 번      backfill._readable_columns(engine, plan) 을 읽기 다섯(rescope 미리보기 · 범위 페이지 · 첫 배치 미리보기 · 셈 둘)이 «시작에 한 번» 묻고 답을 페이지마다 넘긴다
+          pg 시험의 한 읽기(3 페이지): 전 판은 fetch 마다 = 7 번 · 이 판 1 번
+가짜      읽기를 통째로 흉내 내는 시험 6 개는 이 물음도 흉내(_readable_columns) · 진짜 fetch 위 가짜 엔진 하나는 샘플 카탈로그로 답(CatalogConnection)
+```
+전후(박스 소스 다섯 · 샘플 소스 셋, 같은 첫 2,000 행): 원자 · 지문 · 커서 버전 같음 8/8
+**시험** — sqlite 전체 5 failed, 7732 passed, 41 skipped, 232 deselected, 3 xfailed, 12962 warnings in 771.39s(남은 5 은 지난 보고의 박스 체크아웃 사유 그대로) · pg 묶음 2 failed, 70 passed, 128 deselected, 86 warnings in 256.56s(남은 2 은 test_ledger_l1_pg 의 오래 알려진 둘)
+**변이** — the read asks again every page -> RED · a second spelling of the question -> RED
+**알려 드릴 것** — 이 물음을 하는 자리가 ledger 밖에 더 있다: scripts/list_undeclared_tables.py 의 physical_columns(스키마 · 표 단위, 스크립트) · main.py 의 칸 하나 있는지 묻기 둘 · 이주 스크립트들. 이번엔 안 접음(지시 범위 밖)
+
+다음: bce43236b — 쓰기 문 성능(apply_batch_updates 1,000 행 ≤ 5 s)
+
+---
+
+## [10-03] bce43236b 착지 0185cbd8a — 쓰기 문: 같은 묶음에서 만든 행을 다시 쓸 때 칸마다 묻지 않는다
+
+어느 DB · 어느 스키마 · 지운 것 — 박스 DB 안 씀. 재기 · 시험은 assy_test 의 시험 스크래치 스키마(픽스처가 만들고 지움).
+🔴 지운 것 하나: 제 비교 장치가 연결을 안 닫아 teardown 의 DROP SCHEMA 가 멈췄고, 제 pytest(pid 26100)를 끈 뒤 그 스키마를 이름으로 지움 — db=assy_test leftover=['assy_pytest_pg_26100_gw0'] · dropped schema assy_pytest_pg_26100_gw0 in assy_test · left after: 0
+   (장치 고침: 연결 하나로 읽고 닫음. 박스 · public 은 안 건드림)
+
+**먼저 잰 것 — 문 자신의 단계 계측(write_step), hold world 체인 그룹 1,000 행**
+```
+맵퍼가 문에 넘긴 항목 2000 개(행마다 값 + 보류) · 문 3.97 s
+단계  prefetch(행 찾기) 0.03 · row build 2.81 · cell sources 0.45 · 감사 0.20 · flush 0.20
+row build 안  _load_metadata_row_cell 8000 번 불림 · 누적 1.935 s · 한 줄 SELECT 약 2,000(.first · .all)
+원인  첫 항목(값)이 만든 행에 둘째 항목(보류)이 오면 그 행이 prefetch 집합에 없어 칸 이력을 칸마다 DB 에 물음 — 답은 늘 «없음»(묶음이 방금 만들었고 루프 중 flush 없음)
+```
+**고친 것** — _apply_batch_updates_once 에서 is_new 이면 prefetched_row_ids 에 그 행을 넣는 한 줄. 판정(병합 보호 · 핀 · collision_merge · 사람 층)은 그대로. 한 행 쓰기 길은 원래 하나(apply_row_update_internal 은 이 함수만 부름)
+
+**전후 결과 — 같은 장치를 전 판 · 이 판에서 (시험 스키마)**
+```
+표본   A 체인 그룹 1,000 행 · B 그리드 붙여넣기 1만 행 · C 파서 모양(한 파일 tx · silent · 있던 행 1,000 + 새 행 1,000)
+같음   rows True · cell_sources True · cell_overwrites True · outbox True · audit True  (표본 합 행 13000 · 칸 출처 69000 · 덮어쓰기 50000 · 아웃박스 13001 · 감사 55000 — 실행마다 새로 나는 UUID 는 접어서 견줌: 출처 4000 줄 · 감사 1000 줄 · 아웃박스 1 줄)
+시간   A 4.23 -> 3.04 s · B 18.09 -> 18.08 s · C 5.16 -> 4.41 s
+```
+**넓은 표 — 새 행 1,000 개에 값 + 보류(복사 규칙 모양), 같은 프로세스에서 두 번씩**
+```
+pw_narrow   6 칸 · 1,000 행 값 + 보류 · 전 2.60 / 2.62 s -> 후 1.36 / 1.30 s · 칸 이력 SELECT 2000 -> 0
+pw_wide    24 칸 · 1,000 행 값 + 보류 · 전 4.24 / 4.19 s -> 후 2.79 / 2.95 s · 칸 이력 SELECT 2000 -> 0
+```
+(«전»은 칸 이력을 칸마다 DB 에 묻는 문 — 새 행뿐인 묶음에선 수리 전 판과 같은 길)
+
+**게이트**
+```
+시험 둘(pg)   ① 핀 · 사람 층 · 충돌 병합(Q -> P)이 있는 상태에서 한 묶음이 N 을 만들고 사용자 · 기계가 다시 쓰고, P 를 쓰고, 이름 붙인 id 로 M 을 만들고 다시 씀
+                -> «칸마다 DB 에 묻는 문»(오라클)과 행 · 층 · 덮어쓰기 · 아웃박스 · 감사가 같음 (수리 전 판에서도 같음)
+              ② 새 행 200 개에 값 + 보류 -> 칸 이력 SELECT ≤ 2
+변이          the line removed · a_rows_later_items_ask_the_stored_history_nothing -> RED · the line removed · a_row_the_batch_made_reads_what_the_database_would_say -> GREEN
+sqlite 전체   5 failed, 7732 passed, 41 skipped, 234 deselected, 3 xfailed, 12999 warnings in 706.08s (남은 5 는 박스 체크아웃 사유 그대로)
+pg 전체       3 failed, 231 passed, 7781 deselected, 145 warnings in 988.52s
+              남은 3: l1_pg 둘(오래 알려짐) · test_an_install_that_predates_attributes_is_widened_once(그 파일을 통째로 돌리면 바뀌지 않은 main 에서도 같은 실패 — 순서 탓)
+```
+**알려 드릴 것(이번엔 안 고침)**
+```
+① 항목이 «새 uuid7 row_id» 를 이름 붙여 행을 만들면 그 행의 business_key_val 이 비고, 같은 키의 다음 항목이 행을 하나 더 만든다(이 수리 전 판에서도 같음 — 시나리오 짜다 봄)
+② 파서 모양(있던 행 1,000 갱신 + 새 1,000)이 1,000 행당 2 s 넘게 걸림 · 그리드 붙여넣기 1만 행 18 s — 이번 원인과 다른 자리(쓰기 단계 계측으로 다음에 나눌 수 있음)
+```
+다음: e11bb4de0 (지운 행의 원장 사건 (나))
+
+---
+
+## [10-03] a3cd662d9 데이터 가드 — 잰 것 · 물음 하나 (짓지 않고 기다림)
+
+어느 DB · 어느 스키마 · 지운 것 — 재현은 assy_test 의 시험 스크래치 스키마(표는 프로브가 만들고 지움) · 박스 수는 assy_manager 의 public 을 «읽기 전용 트랜잭션»으로 · 지운 것 0
+
+**먼저 바로잡을 것** — 0185cbd8a 보고 ①(「이름 붙인 row_id 로 만들면 키가 빈다」)은 «조합키만 선언한 표»(composite_key_source 만 있고 business_key 칸이 없는 표)에서 본 것이었습니다. 그때 시나리오가 hold world 공식 표였고 그 표가 그 모양입니다. 업무키 칸도 선언한 표는 오늘 재현에서 행 1 입니다.
+
+**재현 — 첫 쓰기 뒤 같은 키로 다시 쓰기 · 행 수(묶음 둘 · 묶음 하나)**
+```
+                    이름 붙여 만들기         키로 만들기   그리드 새 행 -> 키 칸 입력
+업무키 칸 + 조합키   1 · 1                     1 · 1         1 · 1
+조합키만             2 · 2 (첫 행 키 NULL)   1 · 1         2 · 2 (첫 행 키 NULL)
+```
+업무키 칸만(조합 없음)은 셋 다 2 로 나왔지만 «이 병이 아닙니다» — 프로브 항목이 business_key_val 을 안 실었고(제품 호출자 mapper_sdk · product_door 는 싣습니다), 시험 표엔 uq_bk_ 색인이 없습니다.
+
+**원인 (구조)** — 조립기(assemble_composite_business_key)는 row_id 를 단 항목을 건너뜁니다(「id 로 부르는 호출자는 신원을 묻지 않는다」). 그 빈자리는 행을 쓴 뒤의 «키 재조립 블록»(키 조각이 바뀌면 키를 다시 짓고, 남의 키와 부딪히면 병합)이 메우는데, 그 블록의 문이 `composite_src and key_col` 이라 업무키 칸이 없는 표는 들어가지 못합니다. 그래서 «id 로 부르며 키 조각을 처음 채우는» 두 길이 그 표에서만 키 없이 남고, 다음 키 쓰기가 행을 하나 더 만듭니다.
+
+**① 누가 이름 붙인 row_id 로 행을 만드나** (git grep · 카나리아 `def _engine_minted_row_id` 1 · `def apply_batch_updates` 1)
+```
+만드는 자리     하나 — _get_or_create_row 가 부른 id 의 행을 못 찾으면 그 id 로 만든다
+쓰기 문 호출자  제품 6 파일: chain/enrichment/backfill.py · chain/enrichment/candidates.py · chain/ingestion_worker.py · main.py · maps/frame_confirmation.py · parsers/directory_watcher.py
+uuid7 을 지어 row_id 로 넣는 제품 호출자 0 — 서버의 uuid7 은 트랜잭션 · 원장 · 감사 id 이고, 시드 둘은 row_id 를 빼거나(pop) updates 에 둬 문이 버림 · client2 의 uuid7 생성 0
+그래서 이름 붙여 «만들기»는 «부르던 행이 그 사이 지워졌을 때»만 난다(그리드 편집 · enrichment 는 행을 이름으로 부름 · enrichment 은 키도 실음)
+실제 길은 «그리드 새 행» — 행 추가 버튼이 엔진 id · 키 NULL 로 만들고, 사람이 키 칸을 id 로 채운다. 조합키만 표에선 키가 끝내 안 생긴다(위 표)
+```
+**② 박스** (카나리아: 키를 선언한 표 32 · 행 3,850,091)
+```
+겹친 키 그룹     0
+빈 키           134 = dt_log 124 (조각이 다 있는 것 0) · production_plan 10 (조각이 다 있는 것 —)
+이 병의 행       0 (키 조각이 다 있는데 키가 빈 행)
+uq_bk_ 색인     32 / 32 표
+조합키만 표      dt_map 1,006,147 · bonding_log 380,353 · bonding_map 5,411 · bonding_inventory 0 · slot_trace_for_bonding 0 · slot_trace_for_dt 0
+```
+**③ 있는 도구와의 관계** — 둘은 818c9c0 의 병(키 조각이 비던 시절의 재입고)을 뒤처리하려고 지어졌습니다. rebuild_blank_business_keys 는 NULL 키 행도 «전부 재조립»하므로 이 병이 남긴 행도 고치고, 재조립한 키가 남의 키와 부딪히는 행은 collides 로 냅니다 — 그 겹침을 dedupe_business_key_rows 가 접습니다. 오늘 박스엔 돌릴 것이 없습니다(이 병의 행 0). 착지 때 RUN.md 에 «세는 명령과 0»을 적습니다.
+
+**물음 — 어느 쪽으로 짓나**
+```
+ㄱ 키 재조립 블록의 문을 «조합키를 선언한 표 전부»로 넓힌다 (업무키 칸을 쓰는 줄은 그 칸이 있을 때만)
+   이름 붙여 만들기 · 그리드 새 행 둘 다 키가 생기고, 남의 키와 부딪히면 업무키 칸 표가 오늘 하는 병합으로 행 1
+   대신 조합키만 표에서 «있는 행의 키 조각을 고치면» 키가 다시 지어지고, «조각을 비우면» 키가 NULL 이 된다
+   (오늘은 둘 다 옛 키 그대로 — 업무키 칸 표가 오늘 하는 것과 같아진다)
+   크기: crud.py 한 블록. 새 행마다 조립 한 번(키가 이미 같아 쓰기 0) — 비용은 안 쟀다. dt_map 모양 1,000 행으로 재고 착지
+ㄴ 이름 붙여 만들 때만 그 자리에서 조립 — 만들기 전에 조립한 키로 먼저 찾고(있으면 그 행으로) 없을 때만 만든다
+   있는 행의 조각 고치기 · 비우기는 오늘 그대로
+   그리드 새 행 길은 남는다(조합키만 표에서 키 안 생김)
+   크기: _get_or_create_row 한 곳
+```
+「키 칸이 빈 항목은 오늘처럼」이 «만드는 항목»만인가요, «있는 행의 키 조각을 비우는 편집»까지인가요 — 앞이면 ㄱ, 뒤면 ㄴ(그리드 길은 남는 것으로)입니다.
+제 추천은 ㄱ 입니다 — 「만드는 길이 어느 쪽이든 같은 답」에 그리드 길이 들어오고, 지금 두 모양(업무키 칸 유무)이 키 조각 편집에 서로 다른 답을 내는 것이 하나로 접힙니다.
+
+답을 기다리는 동안 e11bb4de0 (지운 행의 원장 사건 (나))으로 갑니다.
+
+---
+
+## [10-03] e11bb4de0 (나) 착지 4761be755 — 원천 행을 지우면 층을 거둔 행마다 EDIT 하나 (가려진 값이었어도 보류를 다시 센다)
+
+어느 DB · 어느 스키마 · 지운 것 — 박스 DB 안 씀. 시험은 assy_test 의 시험 스크래치 스키마(픽스처가 만들고 지움) · 지운 것 0
+
+**고친 것**
+```
+자리     _retract_what_those_rows_fed 한 곳 — 거둔 뒤 stage_collapsed_event(EDIT, 표, 행들, 칸 = 층을 거둔 칸)
+봉투     거두기 사건과 같음 — 체인 채널 · chain_ingestion · chain_replay_withdraw (allow_chain_trigger 규칙만 깸)
+그대로   withdraw_source 와 그 다른 호출자. withdraw_by_origin 은 lost_a_layer(표 · 칸 · 행)만 돌려줌 — 사람 층 묶음은 안 실음
+로그     [ChainRetract] 줄 끝에 rows_told=<행 수>
+```
+**게이트 (hold world, 묶음 · 한 행 둘 다)**
+```
+가려진 값의 행을 지움        보류 빈 값 -> agreed · 원장에 값 · 다시 세기 쓰기 1   (고치기 전: 2 failed, 20 passed, 48 warnings in 132.06s — 그 시험만 빨강)
+보이던 값의 행을 지움        거두기 사건 2(값 바뀐 사건 + 이것) · 다시 세기 쓰기 1 — 두 번째는 쓰기 0 · 사건 0 · 루프 0
+아무것도 안 먹인 행을 지움    사건 0
+사건 모양                   행 = 공식 행 · 칸 = 그 행에 층을 남긴 칸(사람 층 칸 없음) · 체인 채널
+                           옵트인 규칙은 깸 · 옵트인 안 한 규칙은 「chain-produced event」로 안 깸 (제품의 fire_refusal 로 판정)
+변이 넷                     사건을 안 냄 RED · 체인 채널을 뺌 RED · 칸 이름을 뺌 RED · 사람 층 묶음까지 알림 RED
+sqlite 전체                 6 failed, 7731 passed, 281 skipped, 3 xfailed, 13055 warnings in 718.45s
+                           남은 6: 박스 체크아웃 사유 다섯 그대로 + test_config_reload_integrity h2(그 파일만 다시 돌리면 32 통과 — 파일 감시 시간)
+pg 전체                     3 failed, 237 passed, 7781 deselected, 157 warnings in 1121.43s
+                           남은 3: 지난 착지(0185cbd8a)와 같은 셋 — l1_pg 둘(오래 알려짐) · test_an_install_that_predates_attributes_is_widened_once(그 파일 순서 탓)
+```
+**한 번 막혔던 것** — 변이 「체인 채널을 뺌」이 처음엔 초록이었습니다. 채널이 없어도 소스 이름 chain_ingestion 을 체인으로 읽는 «은퇴 예정 가드»(_rule_accepts_event)가 받아 줘서입니다. 그 가드가 은퇴하는 날 채널이 하중을 지므로 시험이 채널을 직접 봅니다.
+
+**남는 것 (안 고침)** — 원장 따라가기가 DELETE 사건을 «처리 끝»으로 적은 «뒤»에 거두기가 돕니다. 그 사이에 프로세스가 죽으면 거두기 자체가 다시 돌지 않습니다(오늘도 그렇고, 이 착지는 같은 틈에 커밋 하나를 더 둡니다).
+
+다음: a61d32f4f 답 ㄱ (조합키만 선언한 표도 같은 재조립) — 세어 보니 키를 다시 짓는 자리가 «둘»입니다: apply_row_update_internal 의 블록 · set_cell_manual_priority_batch(핀으로 보이는 값이 바뀔 때). 둘 다 `composite_src and key_col` 이라 둘 다 넓힙니다

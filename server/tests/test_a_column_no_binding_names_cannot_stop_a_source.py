@@ -7,6 +7,7 @@ ABSENCE may stop a source.
                                    TIMESTAMP cell elsewhere leaves the atoms as they were
   a column only table_config has   not read, named once; the source goes on
   a binding naming that column     the read still stops on it, as it always did
+  which columns a table has        one function answers it (총괄 c8d6a8597), asked once per read
 """
 import copy
 import datetime as dt
@@ -123,6 +124,45 @@ def test_a_column_only_table_config_names_is_not_read_and_said_once(world, caplo
     lines = [r.getMessage() for r in caplog.records if "ghost" in r.getMessage()]
     assert len(lines) == 1, lines
     assert hw.OFFICIAL in lines[0] and "not read" in lines[0]
+
+
+def test_one_function_answers_which_columns_a_table_has():
+    """Three functions answered it (admin, column_stats, the read). The text of the question is
+    read here because the text IS the subject: a second spelling is a second answer. The admin
+    relations view's one query over EVERY table at once is the named exception."""
+    ledger = os.path.join(os.path.dirname(__file__), "..", "ledger")
+    hits = {}
+    for name in sorted(os.listdir(ledger)):
+        if name.endswith(".py"):
+            with open(os.path.join(ledger, name), encoding="utf-8") as fh:
+                count = fh.read().count("FROM information_schema.columns")
+            if count:
+                hits[name] = count
+    assert hits == {"column_stats.py": 1, "admin.py": 1}, hits
+
+
+@pg
+def test_the_read_asks_which_columns_the_table_has_once(world, monkeypatch):
+    from ledger import column_stats
+
+    asked, fetched = [], []
+    real_ask, real_fetch = column_stats.physical_columns, backfill._fetch_v2_lineage_rows
+    monkeypatch.setattr(column_stats, "physical_columns",
+                        lambda db, relation: asked.append(relation) or real_ask(db, relation))
+    monkeypatch.setattr(backfill, "_fetch_v2_lineage_rows",
+                        lambda *a, **k: fetched.append(1) or real_fetch(*a, **k))
+    hw.push(world, [{"log_id": "L%d" % i, "dt_job": "J%d" % i, "dt_x": i, "dt_y": i, "netdie": i}
+                    for i in range(3)])
+    hw.settle(world)
+    plan, scoped = backfill.rescope_scope(world["setup"], hw.SOURCE, None, (), whole_source=True)
+    asked.clear()
+    fetched.clear()
+
+    pages = list(backfill._scope_pages(world["engine"], plan, scoped, 1))
+
+    assert len(pages) == 3, "canary: one row a page, three pages"
+    assert asked == [hw.OFFICIAL]          # once for the read - the build before asked per fetch
+    assert len(fetched) >= len(pages)
 
 
 @pg

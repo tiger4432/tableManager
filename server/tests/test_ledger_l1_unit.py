@@ -1011,7 +1011,7 @@ def test_a_scoped_redo_re_reads_the_row_so_a_humans_correction_reaches_the_ledge
     class _Setup:
         snapshot = type("S", (), {"source_plans": {"src": _Plan()}})()
 
-    def _fetch(connection, plan, **kwargs):
+    def _fetch(connection, plan, columns, **kwargs):
         # The live read. It answers with the CORRECTED value, so a writer that used the
         # preview's rows instead would be visible as the stale one below.
         events.append("fetch")
@@ -1044,6 +1044,7 @@ def test_a_scoped_redo_re_reads_the_row_so_a_humans_correction_reaches_the_ledge
     monkeypatch.setattr(ledger_setup_module, "_require_declared_source",
                         lambda setup, source: source)
     monkeypatch.setattr(ledger_backfill, "_fetch_v2_lineage_rows", _fetch)
+    monkeypatch.setattr(ledger_backfill, "_readable_columns", lambda engine, plan: ())   # the read is faked, so is its catalogue question
     monkeypatch.setattr(ledger_backfill, "_v2_frame", pd.DataFrame)
     monkeypatch.setattr(ledger_backfill, "_v2_registration_subjects",
                         lambda plan, frame: None)

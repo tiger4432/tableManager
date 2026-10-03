@@ -3097,16 +3097,32 @@ def _retract_what_those_rows_fed(db, table, row_ids):
     already succeeded, nor propagate into the drain loop.
     """
     from chain import cell_layer
+    from database import crud
     from database.context import channel
+    from database.database import stage_collapsed_event
 
     try:
         # The follow-up lap is the chain's own write - said, so it does not lean on the
         # source name the way events queued before the channel do.
         with channel(event_constants.CHANNEL_CHAIN):
             stats = cell_layer.withdraw_by_origin(db, row_ids, apply=True)
+            # 🔴 [총괄 e11bb4de0 (나)] A layer that was not the shown one goes without changing a
+            #   cell, so no edit event left and a rule that counts layers (the hold recount)
+            #   never heard. One EDIT per row that lost a layer, by the door an ordinary edit
+            #   writes, in the withdrawal's own envelope - so only rules that opt into chain
+            #   events wake. A row whose shown value moved gets this beside its own edit.
+            tx_id = "%s_%s" % (cell_layer.R2_AUDIT_SOURCE, uuid.uuid4().hex[:8])
+            told = 0
+            with crud.transaction_context(cell_layer.R2_AUDIT_SOURCE, tx_id,
+                                          cell_layer.R1_SOURCE_NAME):
+                for target, (columns, ids) in sorted(stats["lost_a_layer"].items()):
+                    stage_collapsed_event(db, "EDIT", target, sorted(ids), sorted(columns))
+                    told += len(ids)
+                db.commit()
         logger.info("[ChainRetract] table=%s deleted_rows=%d groups=%d cells_withdrawn=%d "
-                    "protected_skipped=%d", table, len(row_ids), stats.get("groups", 0),
-                    stats.get("cells_withdrawn", 0), stats.get("protected_skipped", 0))
+                    "protected_skipped=%d rows_told=%d", table, len(row_ids),
+                    stats.get("groups", 0), stats.get("cells_withdrawn", 0),
+                    stats.get("protected_skipped", 0), told)
         # ⚰️ [소유자 정본] THIS WALKED `_rules_for_the_follow_up_pass()`, the deferred set.
         #   There is one set now, so it walks the loader's - and that is WIDER, which is
         #   right: a rule that cannot be reverted is worth naming whichever path runs it.

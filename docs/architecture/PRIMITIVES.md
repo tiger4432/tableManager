@@ -75,7 +75,7 @@
 
 ### ⭐⭐ **셀을 쓸 때 «어느 행에서 읽었나»를 도장 찍어 둔다 — 그 행이 지워지면 그 도장으로 겨냥한다** (2026-09-16 등록 · S-280 `e1318d28` · 판정 434)
 - **무엇**: 「이 값은 저 행에서 읽었다」를 셀 옆에 적어 두면, 그 행이 DELETE 될 때 **그 셀들만** 철회할 수 있다. 단위가 «셀»이라 번역 단계가 없다 — 키 단위 도장은 「키→셀」을 풀어 줄 조인이 따로 있어야 한다. 핵심은 **도장을 «소스 이름»으로 철자하지 않는 것**이다 — 그러면 우선순위 사전이 미등재를 99 로 돌려 **도장이 자기가 찍은 값을 강등시킨다.**
-- **어디**: 컬럼 `cell_sources.origin_row_id` (`database/models.py:556` · 부분 인덱스 `idx_sources_by_origin` 은 **그 컬럼을 앞에 둔다** — 철회는 row id 만 들고 시작한다) · 실어 나르기 `schemas.GeneralUpdateItem.origin_row_id` → `crud.apply_row_update_internal` · 되읽기·철회 `chain/cell_layer.py::cells_stamped_by` · `::withdraw_by_origin` · 배선 `chain/ingestion_worker.py::_retract_what_those_rows_fed`(후속 드레인의 DELETE 갈래) · 「이 종류는 도장을 안 찍는다」의 좌석 `chain/rule_run.py::retraction_refusal` · 마이그레이션 `migrations/add_cell_source_origin_row.sql`.
+- **어디**: 컬럼 `cell_sources.origin_row_id` (`database/models.py:556` · 부분 인덱스 `idx_sources_by_origin` 은 **그 컬럼을 앞에 둔다** — 철회는 row id 만 들고 시작한다) · 실어 나르기 `schemas.GeneralUpdateItem.origin_row_id` → `crud.apply_row_update_internal` · 되읽기·철회 `chain/cell_layer.py::cells_stamped_by` · `::withdraw_by_origin` · 배선 `chain/ingestion_worker.py::_retract_what_those_rows_fed`(후속 드레인의 DELETE 갈래 — 🆕 10-03 거둔 뒤 층을 잃은 행마다 EDIT 하나, `withdraw_by_origin` 의 `lost_a_layer`) · 「이 종류는 도장을 안 찍는다」의 좌석 `chain/rule_run.py::retraction_refusal` · 마이그레이션 `migrations/add_cell_source_origin_row.sql`.
 - **언제 재사용**: 「A 가 B 를 읽어 쓴 것을 B 가 사라지면 거둬야 한다」가 필요한 **모든** 쓰기. 회수 문을 새로 만들지 말고 `withdraw_source` 에 `columns`+`row_ids`+`apply` 셋을 **다 넘겨** 재사용한다.
 - **함정**:
   - 🔴 **마이그레이션은 «선행 조건»이지 최적화가 아니다.** `create_all` 은 있는 표에 컬럼을 안 더하므로, 안 돌리면 `apply_batch_updates` 를 지나는 쓰기가 **전부** `UndefinedColumn` 으로 죽는다.

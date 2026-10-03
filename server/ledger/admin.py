@@ -192,23 +192,6 @@ def _column_refs(node, path="") -> list:
     return out
 
 
-def relation_columns(db, relation: str) -> set:
-    """`information_schema`에서 컬럼 이름 집합. 관계가 없으면 `None`.
-
-    **카탈로그만 읽는다** — 행을 세지 않으므로 비용이 테이블 크기와 무관하다. 1,000만 행
-    테이블에서도 요청 경로에 앉아도 되는 이유이고, `/admin/chain/join/verify`가
-    같은 자세로 서 있는 근거와 같다.
-    """
-    from sqlalchemy import text
-    rows = db.execute(text(
-        "SELECT column_name FROM information_schema.columns "
-        "WHERE table_schema = current_schema() AND table_name = :t"),
-        {"t": relation}).fetchall()
-    if not rows:
-        return None
-    return {row[0] for row in rows}
-
-
 def check_source_declaration(db, source: str, declaration: dict) -> list:
     """소스 선언 1건의 문법 위반 전부. 빈 목록 = 저장해도 된다."""
     from ledger import config as ledger_config
@@ -265,8 +248,14 @@ def check_source_declaration(db, source: str, declaration: dict) -> list:
     cache = {}
 
     def columns_of(relation):
+        """The table's columns, or None when it does not exist (`column_stats` - the one seat)."""
+        from .column_stats import ColumnStatsError, physical_columns
+
         if relation not in cache:
-            cache[relation] = relation_columns(db, relation)
+            try:
+                cache[relation] = set(physical_columns(db, relation))
+            except ColumnStatsError:
+                cache[relation] = None
         return cache[relation]
 
     missing_relations = set()

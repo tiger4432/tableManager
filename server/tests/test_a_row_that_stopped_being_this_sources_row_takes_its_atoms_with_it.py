@@ -174,6 +174,7 @@ def run(setup, monkeypatch, store, relation_rows, withdraw=True):
     """
     monkeypatch.setattr(backfill, "_fetch_v2_lineage_rows",
                         lambda *a, **k: relation_rows)
+    monkeypatch.setattr(backfill, "_readable_columns", lambda engine, plan: ())   # the read is faked, so is its catalogue question
     monkeypatch.setattr("ledger.store.LedgerStore", lambda engine, **_: store)
     engine = SimpleNamespace(raw_connection=Reader)
     return backfill.rescope(engine, setup, SOURCE, "dt_job", list(JOBS),
@@ -317,6 +318,7 @@ class CensusStore(IndexStore):
 
 def count(setup, monkeypatch, store, page):
     monkeypatch.setattr(backfill, "_fetch_v2_lineage_page", lambda *a, **k: page)
+    monkeypatch.setattr(backfill, "_readable_columns", lambda engine, plan: ())   # the read is faked, so is its catalogue question
     monkeypatch.setattr("ledger.store.LedgerStore", lambda engine, **_: store)
     return backfill.count_excluded_but_indexed(
         SimpleNamespace(raw_connection=Reader), setup, SOURCE)

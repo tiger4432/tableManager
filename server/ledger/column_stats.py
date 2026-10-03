@@ -63,11 +63,15 @@ def physical_columns(db: Any, relation: str) -> dict[str, str]:
     the declaration would hide 17 real columns -- including, on 2026-08-18, the one that
     actually held the values.  `relations_view` already ruled this way for its own column
     list; this is the same rule, not a second one.
+
+    🔴 THE ONE SEAT (총괄 c8d6a8597): `ledger.admin`'s declaration check and the ledger read
+    ask here too - three functions answered this. A `schema.table` name is asked in that schema.
     """
+    schema, _, table = relation.rpartition(".")
     rows = db.execute(text(
         "SELECT column_name, data_type FROM information_schema.columns "
-        "WHERE table_schema = current_schema() AND table_name = :relation"),
-        {"relation": relation}).fetchall()
+        "WHERE table_schema = COALESCE(:schema, current_schema()) AND table_name = :relation"),
+        {"schema": schema or None, "relation": table}).fetchall()
     if not rows:
         raise ColumnStatsError(
             "unknown_relation", "relation",
