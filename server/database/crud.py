@@ -2782,7 +2782,7 @@ def _find_business_key_conflict(db: Session, table_model: Any, new_bk_val: str, 
     ).first()
 
 
-def compose_business_key(table_name: str, values) -> str:
+def compose_business_key(table_name: str, values, columns) -> str:
     """These values, joined the way THIS table declares - the one spelling of an identity.
 
     🔴 THIS IS A DATA-INTEGRITY FUNCTION, NOT A TIDINESS ONE. Four places used to compose
@@ -2800,10 +2800,32 @@ def compose_business_key(table_name: str, values) -> str:
 
     `values` arrives already ordered by `composite_key_source`, because the material
     differs per caller (a payload, a row, a decision-key map) and unifying THAT would mean
-    telling three callers to fetch what they already have.
+    telling three callers to fetch what they already have. `columns` says which column each
+    one is, and each is spelled as that column STORES it (`key_part`) - so a payload's part
+    and the same part read back from the row compose one key (총괄 e243d6abf ③).
     """
     separator = TABLE_CONFIG.get(table_name, {}).get("composite_key_separator", "_")
-    return separator.join(clean_str_value(v) for v in values)
+    return separator.join(clean_str_value(key_part(table_name, column, value))
+                          for column, value in zip(columns, values))
+
+
+def key_part(table_name: str, column: str, value):
+    """🔴 ONE KEY PART AS ITS COLUMN STORES IT - the one spelling a payload's part and a stored
+    row's part share (총괄 e243d6abf ③ · d5cf3a954). A number is what `cast_value_by_type`
+    stores ("1.0" · "01" · 1.0 -> 1); a time is its instant (`time_format.instant_text`), since
+    the write door passes its text and PostgreSQL gives back a datetime - so a time does not go
+    through `cast_value_by_type`, which passes text and counts naive times for the write door,
+    not for keys. A part the column would refuse, or a time that is not ISO-8601, keeps its
+    text - as the key did before."""
+    if is_blank_value(value):
+        return None
+    col_type = (TABLE_CONFIG.get(table_name, {}).get("column_types") or {}).get(column)
+    if col_type == "datetime":
+        return time_format.instant_text(value) or value
+    try:
+        return cast_value_by_type(value, col_type, column, table_name)
+    except CellRefused:
+        return value
 
 
 def rebuilt_business_key(table_name: str, row) -> Optional[str]:
@@ -2820,7 +2842,7 @@ def rebuilt_business_key(table_name: str, row) -> Optional[str]:
     values = [getattr(row, column, None) for column in parts]
     if not values or any(is_blank_key_part(v) for v in values):
         return None
-    return compose_business_key(table_name, values)
+    return compose_business_key(table_name, values, parts)
 
 
 def put_business_key(table_name: str, row, key) -> tuple:
@@ -2890,7 +2912,7 @@ def assemble_composite_business_key(table_name: str, update_item: schemas.Genera
 
     # The blank check above is THIS caller's policy; the join below is everyone's.
     computed_key = compose_business_key(
-        table_name, [update_item.updates.get(col) for col in composite_src])
+        table_name, [update_item.updates.get(col) for col in composite_src], composite_src)
 
     # 🔴 판정 191. THE SUPPLIED KEY MOVES ASIDE; IT IS NOT DISCARDED. 190 made the
     # assembled key the identity, and the line below overwrites whatever the caller sent.
@@ -3584,12 +3606,18 @@ def _merge_into_key_holder(db, table_name, table_model, row_to_delete, row, *, e
             obj.row_id = row.row_id
 
     # 5. 무의미한 껍데기 행을 DB 세션 및 메모리 캐시에서 완전 소거
-    try:
+    # 🔴 A ROW THIS BATCH MADE IS TAKEN OUT, NOT DELETED (총괄 829e3fe20). It is pending -
+    #    never written - and `db.delete` refuses it; the refusal was swallowed here, so the
+    #    shell was INSERTED at the flush with every layer gone to the holder. `expunge`, as a
+    #    new row with nothing to say is taken out in `_apply_batch_updates_once`: no INSERT, no
+    #    outbox event. Its id still goes on `deleted_row_ids` - an earlier item of the batch may
+    #    already be answering for it.
+    if row_to_delete in db.new:
+        db.expunge(row_to_delete)
+    else:
         db.delete(row_to_delete)
-        if deleted_row_ids is not None:
-            deleted_row_ids.append(row_to_delete.row_id)
-    except Exception:
-        pass
+    if deleted_row_ids is not None:
+        deleted_row_ids.append(row_to_delete.row_id)
     if row_cache is not None:
         row_cache.pop(row_to_delete.row_id, None)
         if row_to_delete.business_key_val:
@@ -4961,7 +4989,8 @@ def _fold_written_notation(db, table_name: str, batch, notation_report=None):
         # moves aside the way a supplied key does (판정 191), and the write re-keys that row.
         if composite_src:
             raw_key = (compose_business_key(table_name,
-                                            [raw_updates.get(col) for col in composite_src])
+                                            [raw_updates.get(col) for col in composite_src],
+                                            composite_src)
                        if any(col in arrived for col in composite_src)
                        and not _unfilled_composite_parts(composite_src, raw_updates)
                        else None)

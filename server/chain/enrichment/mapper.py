@@ -399,7 +399,7 @@ def map_enrichment_dedup(db, payloads, rule=None):
             #    빈 성분 판정은 «하지 않는다» — 부분 키를 그대로 조립하는 것이
             #    2026-08-05 소유자 재정이고, 그 판정은 위 `blank_key_cols` 가 «세기만» 한다.
             joined = crud.compose_business_key(
-                derived_table, [key_map.get(c) for c in comp_src])
+                derived_table, [key_map.get(c) for c in comp_src], comp_src)
         elif bk_col and bk_col in key_map:
             joined = key_map[bk_col]
         else:

@@ -119,7 +119,7 @@ def merge_pair(db, *, shell_bn="NEW", conflict_bn="OLD"):
     model = models.DYNAMIC_TABLES[TABLE]
 
     def add(lot, slot, cx, cy, bn):
-        key = crud.compose_business_key(TABLE, [lot, slot, cx, cy])
+        key = crud.compose_business_key(TABLE, [lot, slot, cx, cy], ["lot", "slot", "cx", "cy"])
         row = model(row_id=str(uuid.uuid4()), business_key_val=key, cell_key=key,
                     lot=lot, slot=slot, cx=cx, cy=cy, bn=bn)
         db.add(row)

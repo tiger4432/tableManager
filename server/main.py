@@ -1072,7 +1072,8 @@ def fetch_and_merge_metadata(db: Session, table_name: str, rows: list, user_cols
             out.append({
                 "row_id": (getattr(row, key_names[0], None) if len(key_names) == 1
                            else crud.compose_business_key(
-                               table_name, [getattr(row, name, None) for name in key_names])),
+                               table_name, [getattr(row, name, None) for name in key_names],
+                               key_names)),
                 "table_name": table_name,
                 "data": cells,
                 "created_at": to_local_str(getattr(row, "created_at", None)),

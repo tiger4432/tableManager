@@ -181,6 +181,17 @@ def instant_key(value):
 
 TS_FMT = "%Y-%m-%d %H:%M:%S"
 
+
+def instant_text(value):
+    """A time as a key spells it (총괄 d5cf3a954): its instant on the session zone's wall clock,
+    `TS_FMT` (+ `.ffffff` when it carries them) - one text for every spelling of one instant,
+    read by `instant_key`. `None`: not ISO-8601; the caller keeps the text."""
+    key = instant_key(value)
+    if key is None:
+        return None
+    moment = key[1].astimezone(_SESSION_ZONE[0]) if key[0] == "t" and _SESSION_ZONE else key[1]
+    return moment.strftime(TS_FMT + (".%f" if moment.microsecond else ""))
+
 # Value memo. Rows are bulk-ingested, so a page of them shares a handful of
 # timestamps: measured on a 10,000-row `dt_log` grid page, this function is called
 # 20,000 times (created_at + updated_at per row) across 146 DISTINCT values.
@@ -241,9 +252,9 @@ def to_local_str(dt):
     what it means. Which zone a HUMAN sees is the display side's question, and the display
     side has its own declaration (`display_timezone`) - it is not this function's to guess.
 
-    ⚠️ THE NAME IS NOW STALE and is kept deliberately: renaming it would touch 31 call
-    sites in four modules for no behaviour, against 「바뀌는 층만 바꾼다」. Named in the
-    S-182 report as debt rather than left to be discovered.
+    ⚠️ THE NAME IS NOW STALE and is kept deliberately: renaming it would touch every call
+    site for no behaviour, against 「바뀌는 층만 바꾼다」. Named in the S-182 report as debt
+    rather than left to be discovered.
 
     Memoised on the argument - see `_LOCAL_STR_MEMO` for why that is sound.
     """

@@ -195,7 +195,23 @@ def _written_over_a_persons_value(db, table):
     _write(db, table, [(row, {"job": "J1", "netdie": 3}, "user")])
 
 
+def _made_onto_a_key(db, table):
+    """총괄 829e3fe20: a row this batch makes under a new id lands on P's key - the merge took
+    its layers and left the pending row to be INSERTED, a shell with none."""
+    _write(db, table, [(None, _part("J1", 1), "chain:a")])
+    _write(db, table, [(str(uuid6.uuid7()), _part("J1", 2), "chain:b")])
+
+
+def _made_then_moved_onto_a_key(db, table):
+    """... and a row an earlier item of the same batch made, moved onto P's key by a later one."""
+    _write(db, table, [(None, _part("J1", 1), "chain:a")])
+    made = str(uuid6.uuid7())
+    _write(db, table, [(made, _part("J2", 2), "chain:b"), (made, {"job": "J1"}, "user")])
+
+
 BRANCHES = {"by_key": (_by_key, ["J1_1_2"]), "named": (_named, ["J1_1_2"]),
+            "made_onto_a_key": (_made_onto_a_key, ["J1_1_2"]),
+            "made_then_moved_onto_a_key": (_made_then_moved_onto_a_key, ["J1_1_2"]),
             "grid": (_grid, ["J1_1_2"]), "part_edited": (_part_edited, ["J2_1_2"]),
             "part_blanked": (_part_blanked, [None]),
             "edited_onto_a_key": (_edited_onto_a_key, ["J1_1_2"]),
@@ -228,6 +244,12 @@ def test_both_shapes_give_one_answer(world, branch):
         answers[table] = _answer(world, table)
         assert [r[0] or None for r in answers[table][0]] == keys, (table, answers[table][0])
     assert answers["rk_key"] == answers["rk_parts"]
+    if branch.startswith("made"):
+        with world["engine"].connect() as conn:
+            merged = conn.execute(text(
+                'SELECT count(*) FROM "%s".audit_logs WHERE table_name = :t '
+                "AND source_name = 'collision_merge'" % PG_TEST_SCHEMA), {"t": "rk_parts"}).scalar()
+        assert merged >= 1                                          # the merge left its line
     if branch == "pinned_onto_a_key":
         rows, layers = answers["rk_parts"]
         assert rows[0][4] == "3.0"                                  # R's human value, on P

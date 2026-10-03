@@ -122,6 +122,28 @@ def _compose(table: str, row: dict, sources: list):
     return item.business_key_val
 
 
+def _moved_parts(table: str, old, new, sources: list, sep: str) -> str:
+    """Which part's spelling moved between the stored key and the rebuilt one, by the column's
+    type (총괄 e243d6abf ③ · d5cf3a954): `number` · `datetime` · `string`, joined; `not_iso`
+    when the stored time part does not read as ISO-8601 (its text is kept as it came); `split`
+    when the stored key does not split into one part per column."""
+    from utils import time_format
+
+    olds, news = str(old).split(sep), str(new).split(sep)
+    if len(olds) != len(sources) or len(news) != len(sources):
+        return "split"
+    types = (crud.TABLE_CONFIG.get(table, {}).get("column_types") or {})
+    moved = []
+    for column, before, after in zip(sources, olds, news):
+        if before == after:
+            continue
+        kind = types.get(column) or "string"
+        if kind == "datetime" and time_format.instant_key(before) is None:
+            kind = "not_iso"
+        moved.append(kind)
+    return " + ".join(sorted(set(moved))) or "none"
+
+
 def run(table: str, apply: bool) -> dict:
     cfg = crud.TABLE_CONFIG.get(table) or {}
     sources = cfg.get("composite_key_source") or []
@@ -181,7 +203,7 @@ def run(table: str, apply: bool) -> dict:
         stat = {"scanned": len(rows), "null_key": 0, "blank_shape": 0,
                 "no_material": 0, "unchanged": 0, "collides": 0,
                 "rebuilt": 0, "failed": 0}
-        collide_sample, pending, empty_by_col = [], [], {}
+        collide_sample, pending, empty_by_col, moved_by = [], [], {}, {}
 
         for r in rows:
             # 🔴 관문 없이 전부 재조립한다. 손상의 모양을 미리 맞히려 들면
@@ -204,11 +226,14 @@ def run(table: str, apply: bool) -> dict:
             if new == r["business_key_val"]:
                 stat["unchanged"] += 1
                 continue
+            if r["business_key_val"] is not None:
+                moved = _moved_parts(table, r["business_key_val"], new, sources, sep)
+                moved_by[moved] = moved_by.get(moved, 0) + 1
             holder = owner.get(new)
             if holder is not None and holder != r["row_id"]:
                 stat["collides"] += 1             # ③ 진짜 중복 - 사람이 정한다
                 if len(collide_sample) < 5:
-                    collide_sample.append(r["row_id"])
+                    collide_sample.append((r["row_id"], holder, new))
                 continue
             pending.append((r["row_id"], new))
             owner[new] = r["row_id"]              # 같은 실행 안에서의 충돌도 잡는다
@@ -236,10 +261,17 @@ def run(table: str, apply: bool) -> dict:
         print(f"{'rebuildable' if not apply else 'rebuilt':22s} "
               f"{len(pending) if not apply else stat['rebuilt']:10d}")
 
+        if moved_by:
+            print(f"\n키가 바뀌는 행 - 어느 조각의 철자가 달라서인지(칸의 타입):")
+            for moved, n in sorted(moved_by.items(), key=lambda x: -x[1]):
+                print(f"     {moved:24s} {n:10d}")
+        stat["moved_by"] = moved_by
         if stat["collides"]:
             print(f"\n🔴 충돌 {stat['collides']}건은 건너뛰었다 - 재조립해도 다른 행과 같은 "
                   f"키가 되므로 **진짜 중복**이다. 어느 쪽을 남길지는 사람이 정한다.")
-            print(f"   예시 row_id: {collide_sample}")
+            print(f"   견본(이 행 -> 그 키를 가진 행 · 다시 지은 키):")
+            for row_id, holder, key in collide_sample:
+                print(f"     {row_id} -> {holder}   {key}")
         if stat["no_material"]:
             print(f"\n⚠️ 재료 없음 {stat['no_material']}건 - 어느 컬럼이 비어서인지:")
             for c, n in sorted(empty_by_col.items(), key=lambda x: -x[1]):
