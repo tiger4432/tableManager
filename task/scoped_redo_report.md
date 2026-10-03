@@ -71013,3 +71013,23 @@ admin.relation_columns · column_stats.physical_columns(둘 다 SQLAlchemy 연�
 RUN.md 맨 위 절의 «새 위험 둘» 줄을 닫힘으로 바꿈(같은 재기동) · RELEASE_LOG 10-03 항목의 거짓이 된 문장 고침
 
 다음: 5baab7b8d + e1648e884 (주기 census 두 수 잇기 · 다음 행동 명령) — 짓던 것을 패치로 세워 둠
+
+---
+
+## [10-03] 5baab7b8d + e1648e884 착지 66570d724 — 주기 census 가 사람이 센 두 수를 그 시각 그대로 잇고, 기록이 다음 할 명령을 싣는다
+
+어느 DB · 어느 스키마 · 지운 것 — 박스 DB 안 씀. pg 시험은 assy_test 의 시험 스크래치 스키마(픽스처가 만들고 지움). 지운 것 0
+
+```
+잇기      measure_and_store 주기 판(exact_rows=False)이 그 소스의 직전 기록을 한 번 읽어 rows_drifted · rows_unprinted 를 measured_at 째 싣는다
+         (PERSON_ONLY_BOXES 한 상수). 주기 판은 여전히 세지 않는다
+명령      census 기록의 next_step — 누락 > 0: python -m ledger.backfill --source <s> --drifted · 센 적 없음: python -m ledger census --source <s>
+         · 0 또는 거절된 소스: 없음. 철자는 두 파서가 받는 상수(backfill PROG · DRIFTED_FLAG · census_cli.PROG)에서, 시험이 두 파서의 usage 를 읽어 견줌
+시험 픽스처 hold_world 의 정리가 그 소스의 커서 행(=census 가 사는 곳)도 지운다 — 앞 시험의 census 가 다음 시험으로 넘어오던 것
+6b698fe2d 의 「paced 에 rows_drifted 없음」 단언 -> 「주기 판은 다시 세지 않는다」: 사람 census 뒤 표가 다시 어긋나도(누락 1 -> 2) 주기 판은 사람이 센 1 과 그 시각,
+         사람이 다시 세면 2 와 새 시각
+```
+**시험** — hold world 를 쓰는 pg 시험 전부(느린 재기동 하나 뺌): 40 passed, 2 deselected, 84 warnings in 191.45s (0:03:11) · 변이 the paced tick replaces the record again -> RED · the paced tick counts drift -> RED · the redo is spelled apart from the parser -> RED · a never-counted source names no step -> RED
+**클라 몫** — c965f6206 이 들고 있는 --drifted 명령 상수를 서버 기록의 next_step 으로(총괄 지시 대기)
+
+다음: c8d6a8597 — «표의 물리 칸» 묻는 세 자리를 한 함수로, 원장 읽기는 한 번의 읽기마다 한 번
