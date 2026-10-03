@@ -35690,3 +35690,16 @@ RELEASE_LOG 맞음 — 주기 판이 세지 않고 잇는다 · 직전 기록 �
          판정(나중 항목)은 파이썬에서 순위를 셀 때 나서 DB 와 무관해 보인다 — 다만 PG 의 다중 행 업서트 길(_pg_multirow_upsert)로 끝까지 도는 시험은 없다. 안 쟀다
 문서     CODE_MAP crud — layer_instant 줄(부르는 자리 5 · 병합 사본은 도착 순서대로 하나씩 · ⚠️ 프로세스 «안»에서만 단조: API 와 워커가 같은 µs 에 같은 칸을 쓰면 여전히 동률)
 ```
+
+---
+
+## [C 응용] 10-03 279d04475(census · 번역기 패널 · 백필이 소스를 말하는 세상으로) 검수 · 문서 @`f0d825016` — 078cfd261 의 셋 중 남은 하나
+
+```
+시험 (박스)  run_pg_tests -k (world · branch · census · next_step · counts_were_taken · never_saw) 32 passed · 바뀐 시험 일곱 파일 pytest 89 passed 6 skipped
+문서        CODE_MAP schema 줄(speaker · speaking_world · speaking_cursor, ⚰️ speaks_for) · RUNTIME_MAP ⑤(소스마다 말하는 세상에서 잼) ·
+            BACKFILL_GUIDE(next_step 이 늘 --world) · LEDGER_GUIDE 4.9(이름 없이 따르는 자리에서 census · 백필을 빼고 «소스마다 말하는 세상» 줄 · 거절 문구)
+078cfd261 의 셋   ③ census — 이 착지로 닫힘(_measure_one_source_sync 가 speaking_world 로) · ② 부팅 지문 다시 찍기 — 152f4bb0b 가 같은 원칙으로 지시
+                  ① 워커 기동 스키마(_ensure_ledger_schema_sync -> LedgerStore(engine).ensure_schema() = 운영 세상만) — 아직 어느 지시에도 없다.
+                  운영 = 가지(밑 기본)일 때 기본이 말하는 소스는 기본에 쓰이는데, 기본에 칸을 더하는 업그레이드 뒤 재기동은 가지만 맞춘다. 같은 원칙(사슬의 세상 전부)으로 넣을지 여쭐 것
+```
