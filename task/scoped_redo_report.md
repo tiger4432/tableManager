@@ -71684,3 +71684,47 @@ RELEASE_LOG  세상 항목에 한 문장 · RUN.md 재기동 뒤 볼 명령
 ```
 
 다음: 9280922aa 시계 동률(뒤 항목이 이김) -> 8b81e79a0
+
+---
+
+## [10-03] 9280922aa 착지 22ea53fa3 — 한 배치 안에서도 뒤 항목이 이긴다 · 병합 사본은 껍데기의 원래 시각 순 (총괄 9280922aa · 544c758c6 · f1ad96964 ①)
+
+어느 DB · 어느 스키마 · 지운 것 — PG assy_test 시험 스크래치 스키마(카나리아 1) · 운영 DB 안 씀 · 끝난 pytest 스키마 7 개를 이름으로 DROP(아래)
+
+**층 시각을 찍는 자리 — 전수 (AST, server/ 시험 밖 293 파일, 카나리아 = crud 의 src_obj.ingested_at = datetime.now() 1)**
+```
+찍던 자리(지금으로)   database/crud.py:3541 _merge_into_key_holder · database/crud.py:3573 _merge_into_key_holder · database/crud.py:3874 apply_row_update_internal · setup/seed_data.py:68 seed_row
+                    + migrations/normalize_schema.py 의 «읽을 수 없는 시각» 대체(지역 변수에 먼저 담아 AST 키로는 안 잡혀 읽어서 찾음)
+지금                 database/crud.py _merge_into_key_holder · database/crud.py _merge_into_key_holder · database/crud.py apply_row_update_internal · setup/seed_data.py seed_row — 전부 crud.layer_instant() 를 지남
+받아 오는 자리(그대로)  DB 에서 읽은 층(LightCellSource) · 캐시 옮기기 · upsert 사전에 그 층의 시각 · 마이그레이션의 저장된 시각
+                    전달 자신의 시각을 층에 싣는 제품 자리는 못 찾음
+```
+**지은 것**
+```
+crud.layer_instant()   지금, 그리고 이 프로세스가 준 마지막 시각보다 반드시 뒤(같거나 앞이면 +1 µs, 잠금 안에서)
+병합 사본              껍데기 안의 원래 시각 순(오래된 것 먼저 · 같은 시각이면 이름 내림차순)으로 하나씩 찍음 (544c758c6)
+설명 문장              compute_priority_value 의 「한 배치는 한 datetime.now()」 -> 「두 프로세스가 같은 눈금 · 함수 전에 저장된 층」
+거절 목록              world_unknown 의 worlds = world_listing 의 worlds(default 먼저) (f1ad96964 ①)
+```
+**게이트**
+```
+오라클 시험 300 판   초록 300 · M 의 두 층 시각 같음 0 · 1 µs 로 밀린 판 33 (전이면 같은 눈금이던 것)
+한 배치 200 쌍        고친 뒤 3 번 모두 앞 값 0 · 감사 빠짐 0 / 옛 찍기면 169~176 쌍이 앞 값 · 감사 빠짐 (두 배치로 나누면 0)
+병합                 chain:a 1 먼저 · chain:b 2 나중 -> 임자 칸 2 · 사본 사이 해석도 2
+                    이름 순서가 반대(chain:b x 먼저 · chain:a y 나중) -> y · 같은 시각에 저장된 두 층 -> 껍데기가 보이던 값
+변이 7            보통 쓰기가 datetime.now()(전) RED · 앞보다 뒤로 미는 줄 없음 RED · 사본이 시각 하나를 나눔(ㄴ) RED · 사본을 읽힌 순서로(ㄱ) RED · 같은 시각을 이름 오름차순으로 RED · 사본이 datetime.now()(전) RED · 거절 목록이 가지만 RED
+병합 묶음            sqlite 281 passed, 15 skipped, 905 warnings in 33.17s · PG 25 passed, 279 deselected, 49 warnings in 55.31s
+PG 전체              3 failed, 282 passed, 7802 deselected, 241 warnings in 1259.00s (0:20:58) — 실패(지난 전체 실행들과 같은 셋) test_an_install_that_predates_attributes_is_widened_once · test_the_live_door_writes_the_refusal_breakdown_to_the_registry_row · test_two_independent_refusals_are_counted_and_named_in_one_run
+sqlite 전체           7 failed, 7751 passed, 326 skipped, 3 xfailed, 13022 warnings in 796.82s
+                    남은: 박스 체크아웃 사유 다섯 + test_h3_cross_directory_replace_applies_physical_alter · test_the_sweep_still_runs_when_there_is_nothing_to_do — 그 둘만 다시 돌리면 35 passed, 6 warnings in 38.30s (파일 감시 · 빈 루프 타이밍)
+```
+**지운 스키마 (총괄 허락 — pid 가 살아 있지 않은 것만, 이름으로)**
+```
+전 7 · 지움 7 · 살아 있어 둔 것 0 · 후 0
+assy_pytest_pg_18160_gw0 · assy_pytest_pg_19512_gw0 · assy_pytest_pg_32256_gw0 · assy_pytest_pg_36032_gw0 · assy_pytest_pg_41368_gw0 · assy_pytest_pg_41932_gw0 · assy_pytest_pg_43164_gw0
+```
+**알릴 것**
+```
+이미 저장된 동률   재기동 전에 같은 눈금으로 찍힌 층은 그대로 — 그 칸들은 이름 순 값을 보이고 있을 수 있음. 고치지 않음(RUN.md 에 세는 SQL)
+다음              71ecd8223 대조 저장의 빈 world -> 맵퍼가 걸은 세상 이름(총괄 답 0c918c2eb) · 그다음 8b81e79a0
+```
