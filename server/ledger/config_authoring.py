@@ -69,8 +69,7 @@ from .implementations import (
     implementation_choices,
     mapper_declarations,
 )
-from .setup_registry import OCCURRED_AT_BASIS_COLUMNS, with_source_attributes
-from .event_frame import locked_select_columns
+from .setup_registry import relation_columns, with_source_attributes
 from .setup_bundle import (
     _profile_binding_columns as _setup_bundle_profile_binding_columns,
     _MAPPER_UNITS,
@@ -232,22 +231,10 @@ class Field:
     ground: Ground | None = None
     candidates: tuple[Any, ...] | None = None
     universe: str | None = None
-    #: 🔴 CANDIDATES THE READ ALREADY BRINGS IN -- drawn PRESSED AND UNPRESSABLE, and never
-    #: written to the file.  Owner, 2026-08-22: 「저 디폴트 컬럼들은 클릭 불가능한 «클릭되어
-    #: 있는» 버튼으로 둬」.  A subset of `candidates`, published BESIDE them rather than
-    #: folded into them or into `value`: the two lists answer different questions ("may I
-    #: pick this" vs "is it already coming"), and a screen that could not tell them apart
-    #: would either hide half the picker or write locked names into `input_columns`.
-    #:
-    #: The set is `event_frame.locked_select_columns` -- computed HERE and shipped,
-    #: because a client that re-derived it would be a second vocabulary for one sentence.
-    locked: tuple[str, ...] = dataclass_field(default_factory=tuple)
     note: str = ""
     #: How the derived value relates to what the file says.  ``equal`` is the zero-freedom
     #: case; ``superset`` is a derived MINIMUM that a wider declaration still satisfies.
-    #: Getting this wrong paints a legal declaration red -- measured on
-    #: `lot-event-role@1.input_columns`, where the file declares 10 and the bindings need
-    #: 4, and an equality comparison called that a conflict.
+    #: Getting this wrong paints a legal declaration red.
     comparison: str = "equal"
     #: 🔴 THIS VALUE DECIDES WHICH SQUARES EXIST OR WHAT THEY OFFER (총괄 791c0f45e 1) - the
     #: screen asks for the plan again, over the unsaved body, when such a leaf changes. Set
@@ -312,9 +299,6 @@ class Field:
                 _plain(item) for item in self.candidates],
             "universe": self.universe,
             "universe_note": _UNIVERSE_NOTE.get(self.universe or "", ""),
-            # Always a list, never `None`: "nothing is locked" and "this field has no such
-            # notion" are the same instruction to the screen -- draw no locked chips.
-            "locked": [_plain(item) for item in self.locked],
             "comparison": self.comparison,
             "reshapes": self.reshapes,
             "disposition": self.disposition,
@@ -729,12 +713,6 @@ def closed_lists(sources: Any = None) -> dict[str, Any]:
 # --------------------------------------------------------------------------- universes
 
 
-def relation_columns(catalog: Mapping[str, Any], relation: Any) -> tuple[str, ...]:
-    table = catalog.get(relation) if isinstance(relation, str) else None
-    columns = table.get("columns") if isinstance(table, Mapping) else None
-    return tuple(sorted(columns)) if isinstance(columns, Mapping) else ()
-
-
 def _column_types(catalog: Mapping[str, Any], relation: Any) -> Mapping[str, str]:
     table = catalog.get(relation) if isinstance(relation, str) else None
     columns = table.get("columns") if isinstance(table, Mapping) else None
@@ -758,59 +736,6 @@ def _driver_relation(source: Any) -> Any:
 def _mapper(source: Any) -> Mapping[str, Any]:
     mapper = source.get("map") if isinstance(source, Mapping) else None
     return mapper if isinstance(mapper, Mapping) else {}
-
-
-def _locked_read_columns(source: Any) -> tuple[str, ...]:
-    """Columns this source's `read` brings in before either `input_columns` says a word.
-
-    🔴 THE RUNTIME'S OWN FORMULA, FED FROM THE DECLARATION.  The set is
-    `event_frame.locked_select_columns`, which `base_select_columns` also calls --
-    the screen and the cursor say ONE sentence about what arrives anyway.  What this
-    function does is the part the runtime does not need: read the terms off a bundle that
-    has not compiled, because a source someone is still building never has.
-
-    `basis` is resolved the way `setup_registry._occurred_at_plan` resolves it, so the
-    screen locks what the read will actually select rather than what the file spells.
-    Everything is tolerant of the wrong shape: a half-written `read` yields fewer terms,
-    and a source that has declared nothing yet locks NOTHING -- correctly, because nothing
-    arrives anyway until something is declared.
-
-    🔴 BOUND, GROUPED AND `when` COLUMNS ARE LOCKED TOO (총괄 c38eae7cf). The read fetched them
-    and this did not say so, so a key column a binding named was a locked chip the validator
-    demanded in `input_columns` - the owner could neither add it nor pass.
-    """
-    driver = _driver(source)
-    occurred = driver.get("occurred_at")
-    occurred = occurred if isinstance(occurred, Mapping) else {}
-    basis = occurred.get("basis")
-    column = (OCCURRED_AT_BASIS_COLUMNS.get(basis) if isinstance(basis, str)
-              else occurred.get("column"))
-    cursor = driver.get("cursor")
-    cursor = cursor if isinstance(cursor, Mapping) else {}
-    excluded = driver.get("exclude_when")
-    profile = source.get("bind") if isinstance(source, Mapping) else None
-    mappings = profile.get("mappings") if isinstance(profile, Mapping) else None
-    return locked_select_columns(
-        identity=[str(name) for name in _listed(driver.get("identity"))],
-        group_by=[str(name) for name in (*_listed(read_group_by(driver)),
-                                         *unit_group_columns(_mapper(source)))],
-        order_by=[str(name) for name in _listed(driver.get("order_by"))],
-        cursor_columns=[str(name) for name in _listed(cursor.get("columns"))],
-        occurred_at_column=column if isinstance(column, str) else None,
-        # S-91. A half-written declaration may hold anything here, so each clause is
-        # read defensively - this screen draws bundles that do not compile.
-        exclude_when_columns=[
-            str(clause["column"]) for clause in (excluded or ())
-            if isinstance(clause, Mapping) and isinstance(clause.get("column"), str)
-        ],
-        condition_columns=[
-            str(name) for mapping in (mappings.values() if isinstance(mappings, Mapping) else ())
-            if isinstance(mapping, Mapping) and isinstance(mapping.get("when"), Mapping)
-            for name in mapping["when"]
-        ],
-        binding_columns=[column for column, _where in
-                         _setup_bundle_profile_binding_columns("", profile)],
-    )
 
 
 #: 🔴 ONE IMPLEMENTATION (S-196, 판정 306-b 되돌림). This module carried its own copy of the
@@ -994,16 +919,6 @@ def _implementation_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
             continue
         profile = source.get("bind") if isinstance(source.get("bind"), Mapping) else None
         profile_base = f"bundle.sources.{source_id}.bind"
-        relation = _driver_relation(source)
-        physical = relation_columns(catalog, relation)
-        # 🔴 THE SET THE READ ALREADY CARRIES.  One call, one sentence: `locked_select_columns` is the runtime's own first five terms, and it
-        # is fed here from the DECLARATION because the source being authored does not
-        # compile.  Intersected with each square's candidates before it ships, since a
-        # locked chip that is not in the picker is a chip the screen cannot draw --
-        # `occurred_at.basis` resolves to `created_at`, which the schema builder puts on
-        # every table and `table_config.json` lists on none of them.
-        locked_all = set(_locked_read_columns(source))
-
         # -------------------------------------------------------------------- mapper
         mapper = _mapper(source)
         base = f"bundle.sources.{source_id}.map"
@@ -1016,72 +931,6 @@ def _implementation_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
         # `MapperDescriptor.emits` is compiled from `bind.mappings.<sentence>.use` and there is
         # nothing left to show.
         binding_columns = profile_binding_columns(profile_base, profile) if profile else ()
-        # 🔴 THE TABLE, NOT THE BINDINGS.  Deriving this from `bind.mappings` made the PROFILE
-        # the gate, so a source with no mappings yet -- which is what a half-built one looks
-        # like -- got no row at all, and the ruling says the square comes up full on a new
-        # source.
-        if physical:
-            # 🔴 EMPTY IS UNANSWERED HERE, AND THAT IS A RULING, NOT AN OVERSIGHT.  Do not
-            # "fix" this back to a membership test.  A membership test stood here earlier on
-            # 2026-08-22 and was correct on its own terms: `_nonblank_list` passes
-            # `allow_empty=True` for this key, so `[]` IS a legal declaration, and reading it
-            # as absent hands the square to the default and overwrites what somebody wrote.
-            # The owner was told exactly that -- including that `dt_job`'s list would change
-            # and its cursor would stop -- and ruled the other way: 「그냥 다 갈아버린다」.
-            #
-            # So `[]` means UNANSWERED for this key regardless of who left it there, and the
-            # default wins.  The provenance split that would have kept a saved `[]` while
-            # treating a create draft's seed as unanswered was designed and CANCELLED in the
-            # same breath; it is not a smaller version of this and must not be reintroduced
-            # as one.
-            #
-            # 🔴 SCOPE IS THIS KEY, NOWHERE ELSE.  The same rule at
-            # `authoring_plan`'s class-level branch would catch `read.group_by`, where `[]`
-            # is a legal value (`allow_empty`) and overwriting it would be a defect.
-            # That is why the test lives here at the producer instead.
-            map_locked = tuple(name for name in physical if name in locked_all)
-            mapper_inputs = list(_listed(mapper.get("input_columns")))
-            declared_mapper_inputs = mapper_inputs if mapper_inputs else _ABSENT
-            # 🔴 EVERYTHING ON, MINUS WHAT IS ALREADY COMING (owner, 2026-08-22: 「그러면 그냥
-            # 디폴트 전체 입력해도 되지?」, on top of the locked-chip ruling minutes earlier).
-            # The default is the candidates the locks do NOT already cover, because a locked
-            # column arrives whether or not this key names it and the key must not name it:
-            # `input_columns` still means "on top of the read", and putting a locked name in
-            # it would move a fingerprint to say something the file already said.
-            #
-            # The cost, chosen knowingly and twice: the saved list names columns this source
-            # does not read, so dropping one of them from the table stops this source too.
-            # The mitigation IS the control -- the person turns the chip off -- which is why
-            # the locks and the everything-default had to land together.
-            #
-            # ⚰️ `_with_required_columns` added the bound and grouped columns back on top
-            # (S-196) because the validator demanded them; it demands nothing now and they
-            # are locked (총괄 c38eae7cf), so the default is the sentence above and nothing else.
-            unlocked = [name for name in physical if name not in locked_all]
-            yield Field(
-                path=f"{base}.input_columns", step="sources",
-                label="Mapper input_columns", state="derived", tier=TIER_DERIVATION,
-                value=unlocked,
-                declared=declared_mapper_inputs,
-                ground=Ground(
-                    "mapper_inputs_from_relation_minus_locked",
-                    f"Default: the {len(physical)} columns of relation {relation} minus the "
-                    f"{len(map_locked)} that read already reads",
-                    (f"{PHYSICAL_CATALOG_FILENAME}:{relation}",),
-                    unlocked),
-                # 🔴 STATED, NOT MEASURED, AND `comparison` IS NOT THE LEVER FOR IT.  The
-                # derived value is a MAXIMUM a person narrows, which is neither of the two
-                # things `comparison` can say (`equal` = zero freedom, `superset` = a
-                # derived MINIMUM a wider declaration satisfies).  `superset` is the word
-                # that already produced a false red on `input_columns` once, so the row
-                # states its own disposition, as `_source_fields`' `group_by` does.  That
-                # word is also what routes this row through `authoring_plan`'s
-                # withholding: a square that already answers keeps its answer.
-                disposition="default_overridable",
-                candidates=tuple(physical), universe=UNIVERSE_RELATION,
-                locked=map_locked,
-                note="Locked = columns read already reads · the rest toggle",
-            )
         unit = mapper.get("unit") if isinstance(mapper.get("unit"), Mapping) else {}
         kind = unit.get("kind")
         # A unit the file leaves out is the loader's (`source_defaults`), shown as the read cells
@@ -1586,8 +1435,8 @@ def _source_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
             # and the validator binds them ONE WAY ONLY -- `invalid_driver: group_by columns
             # must be included in identity` -- so a strict SUBSET is legal and common.
             # Deriving unconditionally would compare the whole of `identity` against such a
-            # declaration and call it a conflict, which is the `input_columns` mistake the
-            # `comparison` docstring was written for.  A declared `group_by` therefore stays
+            # declaration and call it a conflict - the mistake the `comparison` docstring
+            # was written for.  A declared `group_by` therefore stays
             # exactly as answered as it was; only the empty box gets filled.
             #
             # 🔴 THE DISPOSITION IS STATED RATHER THAN MEASURED, and it has to be.  This row
@@ -1951,8 +1800,7 @@ def authoring_plan(bundle: Mapping[str, Any], catalog: Mapping[str, Any], *,
         # seeded -- would otherwise read as "answered", withhold the default, AND still
         # carry `invalid_type: must be a list with at least one item`.  Keying on
         # emptiness alone would be wrong in the other direction: `_nonblank_list` passes
-        # `allow_empty=True` for `map.input_columns` and
-        # `read.group_by`, so `[]` IS an answer there, and `_says_nothing`'s own docstring
+        # `allow_empty=True` for `read.group_by`, so `[]` IS an answer there, and `_says_nothing`'s own docstring
         # records the same thing for a declared `false`.  So: nothing in the box AND the
         # validator objecting to this square.
         if payload["disposition"] == "default_overridable" and payload["has_declared"]:

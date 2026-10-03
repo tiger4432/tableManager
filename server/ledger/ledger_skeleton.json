@@ -747,19 +747,6 @@
                           }
                         ]
                       }
-                    },
-                    {
-                      "key": "input_columns",
-                      "required": true,
-                      "node": {
-                        "kind": "map",
-                        "keyed_by": "index",
-                        "member": "Column",
-                        "of": {
-                          "kind": "leaf",
-                          "hint": "free"
-                        }
-                      }
                     }
                   ]
                 }

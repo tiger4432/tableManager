@@ -9,6 +9,86 @@
 
 ---
 
+## 2026-10-03 · 원장 — 맵퍼는 그 표의 칸을 전부 받는다 (`map.input_columns` 은퇴)
+
+- **무엇** — 원장 소스의 맵퍼가 그 소스 표(`relation`)의 칸을 전부 받습니다. 표 선언(`table_config.json`)에 있는 칸이면 무엇을 읽을지 적지 않습니다. `map.input_columns` 는 은퇴했습니다 — 파일에 적혀 있어도 읽고 무시합니다(거절하지 않고 파일을 고쳐 쓰지도 않습니다).
+- **선언 예시** — `config/ontology/ledger_config.json` 의 `sources` 에서. `map` 에는 구현과 단위만 적습니다:
+
+<!-- example: ledger_sources -->
+```json
+{
+  "lot_slot_wafer": {
+    "relation": "lot_slot_wafer",
+    "read": {
+      "unit": "row",
+      "identity": [
+        "lot_slot_wafer_key"
+      ],
+      "order_by": [
+        "lot_slot_wafer_key"
+      ],
+      "cursor": {
+        "columns": [
+          "lot_slot_wafer_key"
+        ]
+      },
+      "occurred_at": {
+        "column": "event_time",
+        "timezone": "Asia/Seoul"
+      }
+    },
+    "map": {
+      "implementation_id": "declarative-role",
+      "implementation_version": 1,
+      "unit": {
+        "kind": "row"
+      }
+    },
+    "bind": {
+      "mappings": {
+        "seat-holds-wafer": {
+          "predicate": "has_wafer@1",
+          "bind": {
+            "occurred_at": {
+              "kind": "column",
+              "column": "event_time"
+            },
+            "subject": {
+              "kind": "entity",
+              "entity_type": "lot_slot@1",
+              "keys": {
+                "lot": {
+                  "kind": "column",
+                  "column": "lot"
+                },
+                "slot": {
+                  "kind": "column",
+                  "column": "slot"
+                }
+              }
+            },
+            "target": {
+              "kind": "entity",
+              "entity_type": "wafer@1",
+              "keys": {
+                "wafer": {
+                  "kind": "column",
+                  "column": "wafer"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+```
+- **화면에서** — 탐색기 소스 폼에서 `Mapper input_columns` 칸이 사라집니다. 원장 census 의 범위 칸(`scope_columns`)은 그 표의 칸 전부를 고를 수 있습니다.
+- **필요한 조건** — 재기동만 하면 됩니다. 이주 · 다시 번역 없음.
+- **바뀐 동작** — 읽기가 그 표의 칸 전부를 가져옵니다(박스에서 잰 읽기 시간 차이: 2,000 행에 0.1 s 안쪽). 원자는 같습니다 — 박스의 소스 다섯과 박스에서 읽히는 샘플 소스 셋을, 적힌 칸만 읽을 때와 전부 읽을 때로 미리보기해서 같은 원자를 확인했습니다. 소스 지문은 안 바뀌어 재기동 때 다시 찍히는 커서가 없습니다. 원자에 찍히는 번역 버전(선언 전체의 해시)은 재기동 뒤 새 원자부터 한 번 바뀝니다 — 어느 선언을 고쳐도 일어나는 것과 같고, 이미 있는 원자는 그대로입니다. 표에 칸이 늘어도 지문 · 번역 버전이 안 움직입니다. 표 선언에는 있는데 DB 표에 없는 칸이 있으면 그 소스의 읽기가 멈춥니다(전에는 적은 칸만 그랬습니다).
+- **자세히** — [ONTOLOGY_LEDGER_SETUP.md](../guide/ONTOLOGY_LEDGER_SETUP.md)(mapper 칸 표) · 이 항목과 같은 커밋
+
 ## 2026-10-03 · 원장 소스 패널 — 소스 줄에 수정 누락 · 지문 없음
 
 - **무엇** — 대시보드의 원장 소스 패널(`Ontology Explorer` 탭, 그리고 `Overview` 의 Ledger 자리)이 소스마다 census 기록의 «수정 누락»(원장이 못 본 수정)과 «지문 없음»을, 그 둘을 잰 시각과 함께 보입니다. 수는 서버 기록 그대로이고 화면이 세지 않습니다. 누락이 0 이 아니면 빨간 굵은 글자이고, 그 아래에 그 소스의 `--drifted` 명령 한 줄이 섭니다. 지문 없음은 누락이 아니므로 따로, 흐린 글자입니다. 기록에 그 수가 없으면 이름 옆에 `Not measured` 가 섭니다. 거절된 소스는 거절 줄만 섭니다.
@@ -254,7 +334,7 @@ python server/scripts/empty_table.py official_dt --apply --confirm-rows 1000000 
 
 ## 2026-10-02 · 바인딩에 적은 칸은 맵퍼 입력 칸에 다시 적지 않는다
 
-- **무엇** — 바인딩 · `bind.entities` 의 속성 · 맵퍼 묶음(`map.unit.columns`) · `when` 이 부르는 칸은 읽기가 저절로 싣습니다. 검증기가 그 칸을 `map.input_columns` 에 다시 적으라고 하지 않습니다(전에는 「Profile column 'X' at … is missing」 으로 거절). `input_columns` 에는 코드 맵퍼가 선언 밖에서 직접 읽는 칸만 적습니다.
+- **무엇** — 바인딩 · `bind.entities` 의 속성 · 맵퍼 묶음(`map.unit.columns`) · `when` 이 부르는 칸은 읽기가 저절로 싣습니다. 검증기가 그 칸을 `map.input_columns` 에 다시 적으라고 하지 않습니다(전에는 「Profile column 'X' at … is missing」 으로 거절). ⚰️ 10-03 부터 `input_columns` 는 은퇴 — 맵퍼가 표의 칸을 전부 받습니다(위 10-03 항목).
 - **선언 예시** — `config/ontology/ledger_config.json` 의 `sources` 에서. 입력 칸이 비어 있어도 `dt_eqp`(엔티티 속성) · `netdie_count` · `event_time` · `dt_job` 이 읽힙니다:
 
 <!-- example: ledger_sources -->
@@ -266,7 +346,7 @@ python server/scripts/empty_table.py official_dt --apply --confirm-rows 1000000 
              "cursor": {"columns": ["dt_job"]},
              "occurred_at": {"basis": "ingested", "timezone": "Asia/Seoul"}},
     "map": {"implementation_id": "declarative-role", "implementation_version": 1,
-            "unit": {"kind": "row"}, "input_columns": []},
+            "unit": {"kind": "row"}},
     "bind": {
       "entities": {"dtjob@1": {"attributes": {"dt_eqp": {"kind": "column", "column": "dt_eqp"}}}},
       "mappings": {
@@ -280,7 +360,7 @@ python server/scripts/empty_table.py official_dt --apply --confirm-rows 1000000 
   }
 }
 ```
-- **화면에서** — 탐색기 소스 폼의 `Mapper input_columns` 에서 그 칸들이 눌린 채 잠긴 칩으로 나옵니다(전에는 키 · 묶음 · 정렬 · 커서 · 시각 칸만). 기본값은 잠기지 않은 칸 전부입니다.
+- **화면에서** — ⚰️ 10-03 에 `Mapper input_columns` 칸째 사라졌습니다(그 전에는 그 칸들이 눌린 채 잠긴 칩으로 나왔습니다).
 - **바뀐 동작** — 이미 두 곳에 적힌 선언은 그대로 통과하고 같은 원자를 씁니다. `bind.entities` 속성 칸은 전에는 `input_columns` 에서 빠지면 검증은 통과하고 번역에서 `missing_binding_column` 으로 멈췄는데, 이제 저절로 읽힙니다. 그런 속성이 있는 소스는 재기동 때 커서 지문이 한 번 다시 찍힙니다(자리 그대로, 다시 읽는 행 없음). 맵퍼 묶음 칸이 관계에 없으면 `unknown_column`(`map.unit.columns`)으로 거절합니다.
 - **자세히** — [ONTOLOGY_LEDGER_SETUP.md](../guide/ONTOLOGY_LEDGER_SETUP.md)(잠긴 칩 절 · 증상표) · 이 항목과 같은 커밋
 

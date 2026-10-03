@@ -87,7 +87,13 @@ def _plain(value: Any) -> Any:
 #: they say what the LOADER did, not what the author declared, so a healthy source's
 #: fingerprint must not move because a DIFFERENT source was refused. That is not a nicety -
 #: a moved fingerprint stops that source's cursor, which is the disease this round cures.
-_NOT_ATOM_MATERIAL = frozenset({"config_path", "frame_row_id", "planned", "refusal"})
+#: 🔴 `relation_columns` IS WHAT THE READ BRINGS, NOT WHAT A SENTENCE SAYS (소유자 10-03, 총괄
+#: 2a8d9073c). A column reaches an atom only through a binding (판정 201), so a table that
+#: grows a column moves no fingerprint and no snapshot. MEASURED before it landed: every box
+#: source and every sample source the box can read, previewed with the declared columns and
+#: with all of them - the same atoms.
+_NOT_ATOM_MATERIAL = frozenset({"config_path", "frame_row_id", "planned", "refusal",
+                                "relation_columns"})
 
 
 def _is_unfilled(value: Any) -> bool:
@@ -301,7 +307,6 @@ class MapperDescriptor:
     implementation: ImplementationKey
     unit_kind: str
     unit_columns: tuple[str, ...]
-    input_columns: tuple[str, ...]
     emits: tuple[str, ...]
     config_path: str
 
@@ -432,6 +437,9 @@ class SourcePlan:
     #: where the catalogue is already resolved - so `base_select_columns` keeps its contract
     #: of never consulting one at run time.
     binding_select_columns: tuple = ()
+    #: Every column the catalogue declares for the relation - what the read brings and the
+    #: mapper receives (소유자 10-03 「그냥 다 읽으면 되잖아」). Not atom material.
+    relation_columns: tuple = ()
     #: The engine's `row_id` column WHEN THIS RELATION HAS ONE, else `None` (판정 136).
     #:
     #: ⚰️ [총괄 f3bc02f6e] `None` MEANT 「A VIEW WITH NO row_id」 (판정 136). A view source is
@@ -768,9 +776,7 @@ def source_cursor_fingerprint(
     The closure is transitive and deliberately errs LARGE:
 
         the source plan       relation, read, map (mapper), bind (profile) -- all of it
-                              EXCEPT the mapper's `input_columns`, which is the one
-                              carve-out and is deleted below with the measurement that
-                              earned it
+                              but `_NOT_ATOM_MATERIAL`
         the predicates        every predicate a `bind.mappings.<sentence>.predicate`
                               names.  This used to be "the packs, WHOLE, plus the
                               predicates their claims emitted".  The packs went on
@@ -812,40 +818,6 @@ def source_cursor_fingerprint(
         mapping.predicate_id for mapping in plan.profile.mappings.values()
     })
     source = _semantic_plain(plan)
-    # 🔴 THE ONE CARVE-OUT, AND IT IS A CARVE-OUT WITH A REASON RATHER THAN AN OVERSIGHT.
-    # Everything else above stays: the closure errs LARGE on purpose, because a source
-    # that should have been refused and is not re-reads under a stale contract silently.
-    # This key is the documented exception, measured 2026-08-22, because neither direction
-    # of changing it can produce a WRONG atom:
-    #
-    #   WIDENING carries columns nobody reads.  A column reaches a Role only through a
-    #     binding, and bound columns are read because they are bound (판정 201). Measured on
-    #     `dt_job` (then on the retired `prepare.input_columns`): [] -> 22 widened the SELECT
-    #     5 -> 25 and the atoms were the same atoms.
-    #   NARROWING is refused before it can write.  `roleframe` raises
-    #     `missing_mapper_input` when a bound column is not in the frame -- a STOP, which
-    #     the fingerprint is not needed to cause and cannot make safer.
-    #
-    # So they fail the closure's own stated test, "material that could change an atom",
-    # and keeping them in cost a cursor stop for every edit that cannot move a row.  The
-    # subscripts are bare on purpose: the day this shape is renamed, the carve-out must
-    # fail loudly at compile time rather than quietly stop applying and stop every cursor.
-    #
-    # ⚠️ REMOVING THESE MOVED EVERY FINGERPRINT ONCE, at the commit that did it -- the
-    # canonical JSON carried `"input_columns":[...]`, so dropping the key changed the hash
-    # even where the value had not. That one-time stop is cleared by
-    # `chain_ingestion_worker`'s boot re-stamp (S-87), which moves the stored string and NOT
-    # the cursor position, so no atom is re-read or re-emitted.
-    #
-    # 🔴 LOUD ON A RENAME, QUIET ON AN EMPTY VALUE, and the two halves are separate
-    # since S-87. The subscript used to be bare so that renaming this shape would fail at
-    # compile time rather than quietly stop applying and stop every cursor -- but S-87 made
-    # `_semantic_plain` DROP unfilled fields, so a source that declares no input columns no
-    # longer has the key at all and a bare `del` raised on it. `getattr` keeps the rename
-    # loud (AttributeError, naming the field) while the `pop` tolerates the absence that is
-    # now ordinary.
-    getattr(plan.driver.mapper, "input_columns")
-    source["driver"]["mapper"].pop("input_columns", None)
     material: dict[str, Any] = {
         "compiler_contract_version": snapshot.compiler_contract_version,
         "setup_version": snapshot.setup_version,
@@ -1040,7 +1012,6 @@ def _compile_mappers(section: Mapping[str, Any]) -> MapperRegistry:
                 item["implementation_id"], item["implementation_version"]),
             unit_kind=item["unit"]["kind"],
             unit_columns=tuple(item["unit"].get("columns", ())),
-            input_columns=tuple(item["input_columns"]),
             emits=tuple(sorted({
                 mapping["predicate"]
                 for mapping in source["bind"]["mappings"].values()})),
@@ -1148,24 +1119,25 @@ def _compile_registration_probe(
     return tuple(sorted(out, key=lambda probe: probe.entity_type))
 
 
+def relation_columns(catalog: Mapping[str, Any] | None, relation: Any) -> tuple[str, ...]:
+    """The columns `table_config` declares for `relation`, sorted; `()` when it declares none."""
+    table = (catalog or {}).get(relation) if isinstance(relation, str) else None
+    columns = table.get("columns") if isinstance(table, Mapping) else None
+    return tuple(sorted(columns)) if isinstance(columns, Mapping) else ()
+
+
 def _binding_select_columns(catalog, relation, item):
     """Physical columns of `relation` that this source's `bind` names (판정 201).
 
-    🔴 SO THAT NAMING A COLUMN IN A BINDING IS ENOUGH. A bound column also had to be
-    repeated in `map.input_columns`, and forgetting the second place PASSED validation and
-    then failed at run time with `missing_binding_column` - which is how the shipped sample
-    broke. `bind.entities.<type>.attributes` is a binding too (총괄 33c930e98) - the
-    enumeration is `setup_bundle._profile_binding_columns`, the one the form locks by.
+    What the row print covers (`event_frame.bound_select_columns`). `bind.entities.<type>
+    .attributes` is a binding too (총괄 33c930e98) - the enumeration is
+    `setup_bundle._profile_binding_columns`.
 
     ⚠️ INTERSECTED WITH THE CATALOGUE ON PURPOSE. Asking the RELATION for a column it does
     not have would be `UndefinedColumn` on the cursor path.
     """
-    entry = (catalog or {}).get(relation) or {}
-    physical = entry.get("columns") if isinstance(entry, Mapping) else None
-    if not isinstance(physical, Mapping):
-        return ()
     named = {column for column, _where in _profile_binding_columns("", item.get("bind"))}
-    return tuple(sorted(named & set(physical)))
+    return tuple(sorted(named & set(relation_columns(catalog, relation))))
 
 
 def _declared_row_id(catalog, relation):
@@ -1240,6 +1212,7 @@ def _compile_source_plans(
             frame_row_id=_declared_row_id(catalog, item["relation"]),
             binding_select_columns=_binding_select_columns(
                 catalog, item["relation"], item),
+            relation_columns=relation_columns(catalog, item["relation"]),
             driver=SourceDriverPlan(
                 unit=driver["unit"],
                 identity=tuple(driver["identity"]),

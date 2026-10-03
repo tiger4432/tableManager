@@ -113,8 +113,8 @@ source rows
 ### ② 선언 작성
 
 [ONTOLOGY_LEDGER_SETUP §10](./ONTOLOGY_LEDGER_SETUP.md) 을 따른다.
-물리 컬럼명은 `sources.<id>` 의 `relation`·`read` 와 `map` 의 `input_columns` 에만
-두고 **구현 코드에는 넣지 않는다.**
+물리 컬럼명은 `sources.<id>` 의 `relation`·`read`·`bind` 에만 두고 **구현 코드에는 넣지 않는다.**
+맵퍼는 그 관계의 칸을 전부 받는다(🆕 10-03 `2a8d9073c` — `map.input_columns` 은퇴, 적혀 있으면 읽고 무시).
 
 ### ③ 전용 mapper — 파일 하나
 
@@ -262,10 +262,11 @@ conda run -n assy_manager python -m ledger.backfill --source <source> \
 저장된 지문과 현재 선언의 지문이 다르면 그 소스의 커서는 `cursor_snapshot_reset_required` 로
 **선다** — 「원자를 다르게 만들 수 있는 선언이 바뀌었으니 사람이 보라」는 뜻이다.
 
-🔴 **지문은 «크게» 잡는 것이 기본이고, 예외는 ~~둘~~ 하나뿐이다**(🆕 setup_version 6 에서 `prepare.input_columns` 가 절째 은퇴, `0b59a2f30`).
-`map.input_columns` 는 해시 재료에서 빠져 있다 — 넓히면 SELECT 만
-넓어지고 매퍼 입력은 그대로라 «원자가 같은 원자»이고, 좁히면 지문이 아니라 `roleframe` 의
-`missing_mapper_input` 이 **쓰기 전에** 이름 대어 거절하기 때문이다.
+🔴 **지문은 «크게» 잡는 것이 기본이고, 선언한 키 중 예외는 «없다»**(🆕 10-03 `2a8d9073c` — 마지막 예외였던
+`map.input_columns` 가 칸째 은퇴). 재료가 아닌 것은 컴파일러가 «지은» 칸뿐이다(`_NOT_ATOM_MATERIAL`:
+`config_path` · `frame_row_id` · `planned` · `refusal` · `relation_columns`). `relation_columns` 는 맵퍼가 받는
+관계의 칸 전부다 — 표에 칸이 늘면 아무도 안 묶은 칸이 실려 올 뿐이라 «원자가 같은 원자»이고(박스 소스
+다섯 · 샘플 소스 셋에서 잼), 줄면 묶인 칸은 검증기가 `unknown_column` 으로 거절한다.
 **다른 키를 여기 더하지 마라** — 예외마다 코드에 그 두 방향 증명이 붙어 있다.
 
 지문만 교체하는 전용 도구:

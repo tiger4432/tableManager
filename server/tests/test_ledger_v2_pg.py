@@ -139,7 +139,10 @@ def pg_v2(tmp_path_factory):
                     source_id TEXT NOT NULL,
                     target_id TEXT,
                     event_at TIMESTAMPTZ NOT NULL,
-                    event_key TEXT NOT NULL
+                    event_key TEXT NOT NULL,
+                    -- every column the catalogue declares: the read selects them all (2a8d9073c)
+                    row_id TEXT,
+                    unselected_note TEXT
                 )'''))
             connection.execute(text(f'''
                 CREATE TABLE public."{RIGHT_TABLE}" (
@@ -245,8 +248,8 @@ def _seed(case, *, with_right=True):
     with case["admin"].begin() as connection:
         connection.execute(text(f'''
             INSERT INTO public."{SOURCE_TABLE}"
-                (record_id, join_id, source_id, target_id, event_at, event_key)
-            VALUES ('R-0001', 'J-0001', 'IN-0001', 'OUT-J-0001', :event_at, 'E-0001')
+                (record_id, join_id, source_id, target_id, event_at, event_key, row_id)
+            VALUES ('R-0001', 'J-0001', 'IN-0001', 'OUT-J-0001', :event_at, 'E-0001', 'RID-0001')
         '''), {"event_at": NOW})
         if with_right:
             connection.execute(text(f'''
@@ -257,13 +260,9 @@ def _seed(case, *, with_right=True):
 
 
 def _base_batch(case):
-    columns = case["compiled"].source_plans["input_rows"]
-    physical = tuple(sorted({
-        *columns.driver.identity, *columns.driver.group_by,
-        *columns.driver.order_by, *columns.driver.cursor_columns,
-        columns.driver.occurred_at.column,
-        *columns.driver.mapper.input_columns,
-    }))
+    from ledger.event_frame import base_select_columns
+
+    physical = base_select_columns(case["compiled"].source_plans["input_rows"])
     selected = ", ".join(f'"{column}"' for column in physical)
     with case["admin"].connect() as connection:
         rows = connection.execute(text(

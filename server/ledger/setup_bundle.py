@@ -868,7 +868,6 @@ def source_defaults(source: Any, catalog: Mapping[str, Any]) -> Any:
     group_by = read_group_by(read)
     mapper.setdefault("unit", {"kind": "group_by", "columns": list(group_by)}
                       if _is_list(group_by) and group_by else {"kind": "row"})
-    mapper.setdefault("input_columns", [])
     return {**source, "read": read, "map": mapper}
 
 
@@ -1944,10 +1943,12 @@ def _validate_mapper(item: Any, path: str, problems: _Problems) -> None:
     is now DERIVED from those same `use` values, which is why the two could never disagree
     and why the rule that compared them is not written here any more.
     """
+    # ⚰️ `input_columns` (소유자 10-03, 총괄 2a8d9073c): the read brings every column of the
+    # relation, so a written list is read and ignored - never refused, never checked.
     if not problems.exact(
             item, path,
-            required=("implementation_id", "implementation_version", "unit",
-                      "input_columns")):
+            required=("implementation_id", "implementation_version", "unit"),
+            ignored=("input_columns",)):
         return
     _implementation(item, path, problems)
     if problems.exact(
@@ -1964,14 +1965,11 @@ def _validate_mapper(item: Any, path: str, problems: _Problems) -> None:
                     "missing_field", f"{path}.unit.columns",
                     "group_by mapper unit requires columns")
             else:
-                # Not repeated in `input_columns`: the read fetches them (총괄 c38eae7cf).
                 _nonblank_list(columns, f"{path}.unit.columns", problems)
         elif columns is not None:
             problems.add(
                 "invalid_mapper", f"{path}.unit.columns",
                 "unit.columns is only valid for group_by")
-    _nonblank_list(item.get("input_columns"), f"{path}.input_columns", problems,
-                   allow_empty=True)
 
 
 def _validate_profile(profile: Any, path: str, problems: _Problems) -> None:
@@ -2479,7 +2477,7 @@ def _cross_validate(bundle: Mapping[str, Any], catalog: Mapping[str, Any],
 
     # 🔴 THE UNDECLARED RELATION IS THE ROOT REFUSAL, SO IT IS ANSWERED FIRST AND ALONE.
     # Measured while wiring this: with the relation missing from the catalog, the first
-    # error an operator saw was `unknown_column` on a MAPPER's `input_columns` -- because
+    # error an operator saw was `unknown_column` on a MAPPER's column list -- because
     # `_Problems.finish()` sorted by path and `bundle.mappers.` preceded `bundle.sources.`.
     # (Both bodies now sit UNDER the source, so that particular ordering no longer applies;
     # the skip below is still what keeps the column complaints from burying the root.)
@@ -2573,12 +2571,7 @@ def _cross_validate(bundle: Mapping[str, Any], catalog: Mapping[str, Any],
         mapper = source.get("map") if isinstance(source.get("map"), Mapping) else None
         mapper_path = f"{path}.map"
         if mapper is not None:
-            for column in mapper.get("input_columns", []):
-                if column not in available:
-                    problems.add("unknown_column", f"{mapper_path}.input_columns",
-                                 f"column {column!r} is not in EventFrame schema")
-            # The read fetches the group columns now (총괄 c38eae7cf), so they are asked to
-            # exist here - before, being in `input_columns` asked it for them.
+            # The read fetches the group columns (총괄 c38eae7cf), so they are asked to exist.
             for column in unit_group_columns(mapper):
                 if column not in available:
                     problems.add("unknown_column", f"{mapper_path}.unit.columns",
@@ -2617,10 +2610,7 @@ def _cross_validate(bundle: Mapping[str, Any], catalog: Mapping[str, Any],
             _cross_profile_source(profile_path, profile, entities, vocabulary,
                                   available, problems)
         # ⚰️ 「Profile column X at … is missing」 (S-196) stood here: it demanded that every
-        # bound and grouped column be written again in `map.input_columns`, while the read
-        # already fetched it and the form drew it as a locked chip it would not let anyone
-        # add - the owner was stuck between the two (총괄 c38eae7cf). `input_columns` is only
-        # what a code mapper reads beyond the declaration; nothing here can know that set.
+        # bound and grouped column be written again in `map.input_columns` (총괄 c38eae7cf).
 
 
 def _cross_vocabulary(vocabulary: Mapping[str, Any], entities: Mapping[str, Any],
@@ -2991,16 +2981,14 @@ def _profile_binding_columns(path: str, profile: Mapping[str, Any]
                              ) -> tuple[tuple[str, str], ...]:
     """Every column a source's `bind` names, with where each is named.
 
-    🔴 ONE ENUMERATION: the read fetches these (`setup_registry._binding_select_columns`) and
-    the form draws them locked (`config_authoring._locked_read_columns`).
+    🔴 ONE ENUMERATION: the row print covers these (`setup_registry._binding_select_columns`)
+    and the form reads them (`config_authoring.profile_binding_columns`).
 
     🔴 TOLERANT OF A HALF-BUILT PROFILE (S-196): the authoring form runs on a bundle being
     written, and `{}`, a mapping with no `bind`, a `bind` of `None` raised and blanked it.
 
     🔴 `bind.entities.<type>.attributes` IS A BINDING TOO (총괄 33c930e98). It was left out, so
-    the read never fetched those columns and an `input_columns` without them passed the
-    validator and failed at translation with `missing_binding_column` (box: `dt_job` without
-    `dt_eqp`).
+    the row print missed those columns.
     """
     out: list[tuple[str, str]] = []
     if not isinstance(profile, Mapping):

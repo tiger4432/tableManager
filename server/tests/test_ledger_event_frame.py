@@ -15,7 +15,7 @@ import pandas as pd
 import pytest
 
 from ledger.backfill import prepare_v2_cursor_batch
-from ledger.event_frame import base_select_columns
+from ledger.event_frame import base_select_columns, bound_select_columns
 from ledger.roleframe import (
     DeclarativeRoleMapper,
     MapperContext,
@@ -52,6 +52,8 @@ def base_rows(count=1):
         "target_id": f"OUT-J-{index:04d}",
         "event_at": NOW + timedelta(seconds=index),
         "event_key": f"E-{index:04d}",
+        # The read brings every column of the relation (소유자 10-03, 총괄 2a8d9073c).
+        "unselected_note": None,
     } for index in range(count)])
 
 
@@ -70,16 +72,15 @@ def mappers():
 # compiler, and the sealed preparer registry.
 
 
-def test_existing_cursor_selects_only_base_physical_columns():
-    compiled = snapshot()
+def test_the_cursor_selects_every_column_of_the_relation():
+    """소유자 10-03 「그냥 다 읽으면 되잖아」 (총괄 2a8d9073c): the mapper receives every column the
+    catalogue declares for its relation, `row_id` among them (총괄 f3bc02f6e)."""
+    from test_ledger_setup_bundle import DEFAULT_CATALOG
 
-    columns = base_select_columns_of(compiled, "input_rows")
+    columns = base_select_columns_of(snapshot(), "input_rows")
 
-    # 🔴 [총괄 f3bc02f6e] every source reads `row_id` - a relation without one is a view,
-    #   and a view source is refused at load. (판정 136's 「asks for none」 was that view case.)
-    # setup_version 6: `target_id` is the relation's own (the write join puts it there)
-    # and `join_id` is read by nothing any more.
-    assert columns == ("event_at", "event_key", "record_id", "row_id", "source_id", "target_id")
+    assert columns == tuple(sorted(DEFAULT_CATALOG["input_rows"]["columns"]))
+    assert "unselected_note" in columns
 
 
 def test_an_event_frame_feeds_the_stage4_compiler_path():
@@ -322,22 +323,18 @@ def test_runtime_module_has_no_cursor_store_gate_atom_or_transaction_capability(
     assert "atoms_from_ledger_frame" not in text
 
 
-def test_a_bound_attribute_column_is_read_without_a_third_place():
-    """⚰️ WAS `…_must_be_declared_like_every_other_bound_column`, which pinned 「the name is
-    written in three places — the entity's list · the source's bind · `map.input_columns`」
-    and said it would go red the day a ruling removed the third. 총괄 c38eae7cf + 33c930e98
-    is that ruling: the read fetches an attribute column because it is bound.
-
-    `unselected_note` is the fixture's one column nothing else selects, so the assertion can
-    fail."""
+def test_a_bound_attribute_column_is_named_by_its_binding():
+    """총괄 c38eae7cf + 33c930e98: an attribute column is a binding, so it is in the named set
+    (`bound_select_columns`, what the row print covers). `unselected_note` is the fixture's one
+    column nothing else names, so the assertion can fail."""
     raw = logical_bundle()
     raw["entities"]["InputEntity@1"]["attributes"] = ["product"]
     raw["sources"]["input_rows"]["bind"]["entities"] = {
         "InputEntity@1": {"attributes": {"product": {"kind": "column",
                                                      "column": "unselected_note"}}}}
-    assert "unselected_note" not in raw["sources"]["input_rows"]["map"]["input_columns"]
+    assert "unselected_note" not in bound_select_columns(snapshot().source_plans["input_rows"])
 
-    assert "unselected_note" in base_select_columns_of(snapshot(raw), "input_rows")
+    assert "unselected_note" in bound_select_columns(snapshot(raw).source_plans["input_rows"])
 
 
 def test_the_declared_column_is_then_selected_by_the_cursor():
@@ -355,6 +352,6 @@ def test_the_declared_column_is_then_selected_by_the_cursor():
 
 def test_a_source_binding_no_attribute_selects_exactly_what_it_always_did():
     """㉥ 무회귀 — 이 축은 «적은 선언에서만» 무언가를 한다."""
-    plain = base_select_columns_of(snapshot(), "input_rows")
+    plain = bound_select_columns(snapshot().source_plans["input_rows"])
 
-    assert plain == ("event_at", "event_key", "record_id", "row_id", "source_id", "target_id")
+    assert plain == ("event_at", "event_key", "record_id", "source_id", "target_id")

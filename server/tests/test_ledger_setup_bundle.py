@@ -193,7 +193,6 @@ def logical_bundle(*, source_name="input_rows", prefix=""):
                     "implementation_id": "map-transition-role",
                     "implementation_version": 1,
                     "unit": {"kind": "event"},
-                    "input_columns": [source_key, target_key, occurred, event],
                 },
                 "bind": {
                     "mappings": {"main_transition": {
@@ -464,8 +463,10 @@ def test_same_bundle_normalizes_and_serializes_deterministically():
     # declare. The movement is those two keys and nothing else.
     # 2026-10-01 (setup_version 6, 총괄 e14416950): 2f78cf2f... -> the version reads 6, the
     # source's `prepare` record left, and the catalog's `target_id` is the relation's own.
+    # 2026-10-03 (소유자, 총괄 2a8d9073c): 748b3a96... -> the fixture's `map.input_columns`
+    # left; the read brings every column of the relation. That key and nothing else.
     assert hashlib.sha256(first.serialize().encode()).hexdigest() == (
-        "748b3a96028b32556f92e6441d2ed2240c8a925a7185848e0e9cd3234d97f092")
+        "e3b39e902d32d5478a45c6103d66f6b12608fce983781fab0659941ef5ce5df7")
 
 
 def test_list_order_is_preserved_but_object_order_is_not():
@@ -902,13 +903,13 @@ def test_the_only_place_a_source_names_a_predicate_is_its_bind_mapping():
     assert set(validated.to_mapping()["sources"]["input_rows"]["bind"]) == {"mappings"}
 
 
-def test_a_bound_column_need_not_be_repeated_in_mapper_inputs():
-    """⚰️ WAS `test_mapper_inputs_cover_profile_columns` (「Profile column 'event_key' … is
-    missing」). 총괄 c38eae7cf reverses it: the read fetches a bound column, so `input_columns`
-    is not asked to name it again. That it IS read is
-    `test_a_column_the_declaration_names_is_read_without_repeating_it.py`."""
+@pytest.mark.parametrize("written", [[], ["event_key"], ["absent_column"], "record_id", 5, None])
+def test_a_written_input_columns_is_read_and_ignored(written):
+    """⚰️ `map.input_columns` (소유자 10-03, 총괄 2a8d9073c): the read brings every column of the
+    relation, so a file that still says it is neither refused nor checked - whatever it says."""
     bundle = logical_bundle()
-    driver_mapper(bundle)["input_columns"].remove("event_key")
+    assert validate_bundle_errors(bundle) == ()
+    driver_mapper(bundle)["input_columns"] = written
     assert validate_bundle_errors(bundle) == ()
 
 
@@ -1308,7 +1309,9 @@ def test_every_json_node_shape_mutation_returns_only_structured_errors():
     # stopped producing an error, which is how the subtraction was taken.
     # 94 -> 86 on 2026-10-01, when the source's `prepare` record left (setup_version 6).
     # MEASURED both sides: 94 before, 86 after.
-    assert checked >= 86
+    # 86 -> 81 on 2026-10-03, when the fixture's `map.input_columns` left (the list and its
+    # four items; 총괄 2a8d9073c). MEASURED both sides: 86 before, 81 after.
+    assert checked >= 81
 
 
 def test_every_json_node_accepts_or_structurally_rejects_all_json_value_kinds():
@@ -1331,9 +1334,9 @@ def test_every_json_node_accepts_or_structurally_rejects_all_json_value_kinds():
     # `tables`, 894 while the preparer and mapper had their own sections; 816 while it
     # still carried `packs`. 660 while the vocabulary still declared `layer`. 654 while
     # the bindings still declared their origin and approval and the source its cursor.
-    # 564 (94 x 6) -- the net fifteen nodes from above, times six. 516 today (86 x 6),
-    # since `prepare` left.
-    assert checked >= 516
+    # 564 (94 x 6) -- the net fifteen nodes from above, times six. 516 (86 x 6) since
+    # `prepare` left; 486 (81 x 6) since `map.input_columns` left.
+    assert checked >= 486
 
 
 def test_common_module_has_no_domain_source_branches_or_runtime_imports():
@@ -1532,7 +1535,7 @@ def test_authoring_reports_every_problem_while_the_runtime_stops_at_the_first(tm
     differ rather than that each is separately plausible.
     """
     raw = logical_bundle()
-    driver_mapper(raw)["input_columns"] = "record_id"
+    driver_mapper(raw)["colour"] = "blue"
     # was `packs.movement@1.claims.transition.emit.object.payload = 1` until the section
     # went on 2026-08-21.  The point of this leg is a fifth INDEPENDENT check firing in
     # the same read, so it moved to the deepest record a config still nests.
@@ -1549,7 +1552,7 @@ def test_authoring_reports_every_problem_while_the_runtime_stops_at_the_first(tm
     # All five mistakes, from one read. Named individually so a regression that drops one
     # kind of check cannot hide behind the count.
     for expected in (
-        f"{MAPPER_PATH}.input_columns",
+        f"{MAPPER_PATH}.colour",
         f"{PROFILE_PATH}.mappings.main_transition.colour",
         "bundle.vocabulary.moves_to@1.colour",
         "bundle.entities.InputEntity@1.allow_null",
@@ -1592,7 +1595,7 @@ def test_a_root_shape_problem_is_reported_without_its_downstream_consequences(tm
 
 def test_a_column_name_is_judged_against_the_relation():
     """RELATION = the catalog's columns -- order_by, occurred_at.column, driver.identity,
-    driver.group_by, mapper input_columns and unit.columns, registration_probe, bindings.
+    driver.group_by, mapper unit.columns, registration_probe, bindings.
 
     ⚰️ A second universe, MAPPER IN (a profile binds only what `input_columns` names), was
     retired by 총괄 c38eae7cf - the read fetches a bound column. ⚰️ A third, PREPARED, left
@@ -1610,11 +1613,6 @@ def test_a_column_name_is_judged_against_the_relation():
     ]
     assert refused, "order_by reads the RELATION, so a column it lacks must be refused"
     assert "is not in relation" in refused[0].message
-
-    # The retired second universe: narrowing `input_columns` refuses nothing now.
-    narrowed = copy.deepcopy(base)
-    driver_mapper(narrowed)["input_columns"] = ["source_id"]
-    assert validate_bundle_errors(narrowed) == ()
 
 
 # ---------------------------------------------------------------------------

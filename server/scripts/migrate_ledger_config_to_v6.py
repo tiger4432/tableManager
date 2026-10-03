@@ -45,7 +45,6 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 LINEAGE = "lot_lineage"
 LINEAGE_RULE = "lot_event_to_lot_lineage"
-LINEAGE_COLUMNS = ["parent_lot", "child_lot", "event_type", "event_time", "lot_lineage_key"]
 #: The event types the retired `lot-event-role` mapper said a descent for - its own rule
 #: (`event_type in {"split", "merge"}`), written into the declaration instead.
 DESCENT_KINDS = ("split", "merge")
@@ -109,7 +108,7 @@ def descent_to_lineage(document: dict[str, Any]) -> list[str]:
                      "cursor": {"columns": ["event_time", "lot_lineage_key"]},
                      "occurred_at": occurred_at},
             "map": {"implementation_id": "declarative-role", "implementation_version": 1,
-                    "input_columns": list(LINEAGE_COLUMNS), "unit": {"kind": "row"}},
+                    "unit": {"kind": "row"}},
             "bind": {"mappings": {
                 f"descent_{kind}": {
                     "predicate": descent["predicate"], "when": {"event_type": kind},

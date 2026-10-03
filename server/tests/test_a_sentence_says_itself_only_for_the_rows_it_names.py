@@ -261,8 +261,8 @@ def test_the_shipped_sample_loads_through_the_product_loader(tmp_path):
     answer: does the product loader accept it?
 
     ⚠️ AND IT CATCHES ONE OF THE TWO DEFECTS, NOT BOTH - measured, because I first wrote
-    that it caught both. Reintroducing the missing `map.input_columns` entry turns this
-    red. Reintroducing the SELF-EDGE does not, and that is correct: `lot_event`'s role
+    that it caught both. Reintroducing the missing `map.input_columns` entry turned this
+    red (⚰️ that defect cannot recur - the key retired on 10-03, 총괄 2a8d9073c). Reintroducing the SELF-EDGE does not, and that is correct: `lot_event`'s role
     mapper is python, so its bindings are placeholders nobody executes and the self-edge
     check deliberately does not score them. That class is caught by
     `test_a_sentence_may_not_read_the_same_identity_at_both_ends` on a source whose mapper

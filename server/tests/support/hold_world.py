@@ -61,9 +61,8 @@ SOURCE = "hc_official"
 LEDGER_SOURCE = {
     "relation": OFFICIAL,
     "read": {"exclude_when": [{"column": "hold", "blank": True}]},
-    # `note` is named as an input and bound by nothing - an edit there moves no atom (판정 201)
-    "map": {"implementation_id": "declarative-role", "implementation_version": 1,
-            "input_columns": ["netdie", "note"]},
+    # `note` is read (every column is) and bound by nothing - an edit there moves no atom (판정 201)
+    "map": {"implementation_id": "declarative-role", "implementation_version": 1},
     "bind": {"mappings": {"counted": {
         "predicate": "has_netdie@1",
         "bind": {"subject": {"kind": "entity", "entity_type": "dtjob@1",

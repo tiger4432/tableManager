@@ -54,8 +54,7 @@ Link type    inspected  Wafer -> Die                              backing datase
         "cursor": { "columns": ["wafer_id"] },
         "occurred_at": { "column": "updated_at", "timezone": "Asia/Seoul" }
       },
-      "map":     { "implementation_id": "declarative-role", "implementation_version": 1, "unit": { "kind": "row" },
-                   "input_columns": ["wafer_id", "product_code", "lot_id", "updated_at"] },
+      "map":     { "implementation_id": "declarative-role", "implementation_version": 1, "unit": { "kind": "row" } },
       "bind": {
         "entities": {
           "wafer@1": { "attributes": {
@@ -81,8 +80,7 @@ Link type    inspected  Wafer -> Die                              backing datase
         "cursor": { "columns": ["row_id"] },
         "occurred_at": { "column": "inspected_at", "timezone": "Asia/Seoul" }
       },
-      "map":     { "implementation_id": "declarative-role", "implementation_version": 1, "unit": { "kind": "row" },
-                   "input_columns": ["row_id", "wafer_id", "die_x", "die_y", "inspected_at"] },
+      "map":     { "implementation_id": "declarative-role", "implementation_version": 1, "unit": { "kind": "row" } },
       "bind": {
         "mappings": {
           "wafer-inspected-die": {
@@ -116,7 +114,7 @@ Link type    inspected  Wafer -> Die                              backing datase
 ## 2. 두 줄 (완성의 정의)
 ```
 「운영에서는 엔티티 선언에 attributes 이름을 적고, 소스의 bind.entities 에서 그 이름에 컬럼을 «한 번» 매기면 됩니다」
-🆕 10-02 `a5fe51b3f` — 그 컬럼을 `map.input_columns` 에 다시 적지 않습니다. 읽기가 저절로 싣고 검증기도 요구하지 않습니다(전에는 「Profile column … is missing」)
+🆕 10-03 `2a8d9073c` — 맵퍼는 그 표의 칸을 전부 받습니다. `map.input_columns` 는 은퇴했고, 적혀 있으면 읽고 무시합니다
 ```
 
 🆕 **10-02 `3a2d79ff9` — `read` 는 안 적어도 됩니다.** 위 예시의 `read` 를 지우면 제품이 같은 값을 채웁니다(`unit`(group_by 가 있으면 group, 없으면 row) · `identity` · `order_by`(표 선언의 가장 짧은 유일 키) · `group_by`(`unit: group` 이면 `identity`) · `occurred_at`(사건 엣지들이 적은 칼럼과 시간대 — 사건 엣지가 없으면 행의 저장 시각, `ingested` · UTC) · `registration_probe`(등록하는 주어마다 그 키 칼럼 하나) · `map.unit` · `map.input_columns`(`[]`)). 시각은 그 시각을 담은 매핑에만 적습니다(`bind.occurred_at` — 사건 엣지). 안 적은 매핑의 원자는 «사건 시각 아님»입니다.

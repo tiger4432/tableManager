@@ -1,15 +1,14 @@
 # -*- coding: utf-8 -*-
 """총괄 c38eae7cf + 33c930e98 (소유자 「바인드 컬럼 다 채웠는데 자꾸 안채웠다고 에러남」): a column a
-binding, `bind.entities.<type>.attributes`, a mapper's group or a `when` names is READ because it is
-named - `map.input_columns` is not asked to name it again, and the form draws it as a locked chip.
+binding, `bind.entities.<type>.attributes`, a mapper's group or a `when` names is in the named set
+(`bound_select_columns`, what the row print covers).
 
-⚰️ Replaces `test_a_derived_input_column_list_covers_the_group.py` (S-196), whose rule - the
-validator demands those columns in `input_columns`, the form adds them back to its default - is the
-one reversed. Its symptom stays as a control: a bundle rebuilt from the form's default is accepted
-by its own validator.
+⚰️ `map.input_columns` retired (소유자 10-03, 총괄 2a8d9073c): the read brings every column of the
+relation, so a file that writes the list - even an empty one - gets the atoms one that does not.
+The form rows this file measured (locked chips, the everything-default) retired with it.
 
-The frame a preview gets is the rows cut to `base_select_columns(plan)` - what the cursor SELECTs.
-Handing it every column would let a column nobody reads pass for one that is read.
+The frame a preview gets is the rows laid out as the cursor SELECTs them (`base_select_columns`),
+a column the fixture row does not carry arriving as NULL.
 """
 import copy
 import json
@@ -20,9 +19,9 @@ import pytest
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from ledger.backfill import _v2_frame                                   # noqa: E402
+from support.read_frame import as_read                                  # noqa: E402
 from ledger.config_authoring import authoring_plan                      # noqa: E402
-from ledger.event_frame import base_select_columns                      # noqa: E402
+from ledger.event_frame import base_select_columns, bound_select_columns  # noqa: E402
 from ledger.implementations import role_mapper_registry, trusted_implementations  # noqa: E402
 from ledger.runtime_v2 import last_cursor, preview_cursor_batch          # noqa: E402
 from ledger.setup_bundle import (                                        # noqa: E402
@@ -79,7 +78,15 @@ def _document(with_group=False):
 
 
 def _stripped(document):
-    """Every source's `input_columns` emptied - nothing is repeated there any more."""
+    """No source writes `input_columns`."""
+    out = copy.deepcopy(document)
+    for source in out["sources"].values():
+        source["map"].pop("input_columns", None)
+    return out
+
+
+def _written(document):
+    """Every source writes `input_columns: []` - what read only the named columns before."""
     out = copy.deepcopy(document)
     for source in out["sources"].values():
         source["map"]["input_columns"] = []
@@ -116,8 +123,7 @@ def _named(source):
 
 def _semantics(snapshot, source):
     plan = snapshot.source_plans[source]
-    selected = set(base_select_columns(plan))
-    frame = _v2_frame([{k: v for k, v in row.items() if k in selected} for row in ROWS[source]])
+    frame = as_read(plan, ROWS[source])
     preview = preview_cursor_batch(snapshot, source, frame, last_cursor(plan, frame),
                                    role_mapper_registry(), known_registrations=())
     fields = ("predicate", "subject_type", "subject_keys", "object_kind", "object_payload",
@@ -131,7 +137,7 @@ SOURCES = ("transfer_event", "dt_job", "wafer_process_recipe", "dt_job_group")
 
 @pytest.fixture(scope="module", name="declared")
 def fixture_declared():
-    return _snapshot(_document(with_group=True))
+    return _snapshot(_written(_document(with_group=True)))
 
 
 @pytest.fixture(scope="module", name="stripped")
@@ -139,22 +145,25 @@ def fixture_stripped():
     return _snapshot(_stripped(_document(with_group=True)))
 
 
-def test_a_declaration_that_repeats_nothing_in_input_columns_is_accepted():
+def test_a_declaration_with_or_without_input_columns_is_accepted():
     """The owner's case: a key column bound (transfer_event's b_wx), an entity attribute
-    (dt_job's dt_eqp), a group read by a code mapper, a `when` column - none in `input_columns`."""
+    (dt_job's dt_eqp), a group read by a code mapper, a `when` column."""
     assert validate_bundle_errors(_stripped(_document(with_group=True)), catalog=CATALOG) == ()
+    assert validate_bundle_errors(_written(_document(with_group=True)), catalog=CATALOG) == ()
 
 
 @pytest.mark.parametrize("source", SOURCES)
 def test_every_column_the_declaration_names_is_selected(stripped, source):
     named = _named(_document(with_group=True)["sources"][source])
     assert named, "canary: the source names columns"
-    assert named <= set(base_select_columns(stripped.source_plans[source]))
+    plan = stripped.source_plans[source]
+    assert named <= set(bound_select_columns(plan))
+    assert set(CATALOG[plan.relation]["columns"]) <= set(base_select_columns(plan))
 
 
 @pytest.mark.parametrize("source", SOURCES)
 def test_the_atoms_are_the_ones_the_repeating_declaration_writes(declared, stripped, source):
-    """No `missing_binding_column`, and nothing else moves."""
+    """A written `input_columns: []` narrows nothing: the same atoms, the same refusals."""
     before, before_refused = _semantics(declared, source)
     after, after_refused = _semantics(stripped, source)
     assert before, "canary: the source writes atoms"
@@ -166,42 +175,17 @@ def test_a_column_only_the_mappers_group_names_is_selected_and_must_exist():
     document = _stripped(_document(with_group=True))
     document["sources"]["dt_job_group"]["map"]["unit"]["columns"] = ["dt_job", "dt_lot"]
     plan = _snapshot(document).source_plans["dt_job_group"]
-    assert "dt_lot" in base_select_columns(plan)
-    assert "dt_lot" in _input_rows(document)["dt_job_group"]["locked"]
+    assert "dt_lot" in bound_select_columns(plan)
     document["sources"]["dt_job_group"]["map"]["unit"]["columns"] = ["dt_job", "no_such_column"]
     assert [(e.code, e.path) for e in validate_bundle_errors(document, catalog=CATALOG)] == [
         ("unknown_column", "bundle.sources.dt_job_group.map.unit.columns")]
 
 
-def _input_rows(document):
-    plan = authoring_plan(document, CATALOG)
-    return {row["path"].split(".")[2]: row for row in plan["fields"]
-            if row["path"].endswith(".map.input_columns")}
-
-
-def test_the_form_locks_the_named_columns_and_leaves_them_out_of_its_default():
-    document = _document(with_group=True)
-    rows = _input_rows(_stripped(document))
-    for source in SOURCES:
-        physical = set(CATALOG[document["sources"][source]["relation"]]["columns"])
-        named = _named(document["sources"][source]) & physical
-        assert named <= set(rows[source]["locked"]), source
-        assert not named & set(rows[source]["value"]), source
-
-
-def test_a_bundle_rebuilt_from_the_forms_default_is_accepted_by_its_validator():
-    """⚰️ S-196's symptom, kept as the control: the default once left out what the validator
-    demanded, and a bundle rebuilt from it was refused by its own validator."""
-    document = _stripped(_document(with_group=True))
-    rows = _input_rows(document)
-    for source in SOURCES:
-        document["sources"][source]["map"]["input_columns"] = list(rows[source]["value"])
-    assert validate_bundle_errors(document, catalog=CATALOG) == ()
-
-
 @pytest.mark.parametrize("profile", [{}, {"mappings": {"s": {}}}, {"mappings": {"s": {"bind": None}}},
                                      {"entities": {"dtjob@1": None}}])
 def test_a_half_built_profile_does_not_blank_the_form(profile):
+    """S-196: a half-built `bind` raised inside the form plan and blanked it."""
     document = _document()
     document["sources"]["dt_job"]["bind"] = profile
-    assert "dt_job" in _input_rows(document)
+    paths = [row["path"] for row in authoring_plan(document, CATALOG)["fields"]]
+    assert any(path.startswith("bundle.sources.dt_job.map.") for path in paths)

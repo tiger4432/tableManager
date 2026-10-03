@@ -136,24 +136,7 @@
         "implementation_version": 1,
         "unit": {
           "kind": "row"
-        },
-        "input_columns": [
-          "record_id",
-          "event_time",
-          "dt_job_id",
-          "core_wafer",
-          "core_x",
-          "core_y",
-          "dt_lot",
-          "dt_slot",
-          "dt_offset_x",
-          "dt_offset_y",
-          "bond_wafer",
-          "bond_offset_x",
-          "bond_offset_y",
-          "bond_layer",
-          "final_chip"
-        ]
+        }
       },
       "bind": {
         "mappings": {

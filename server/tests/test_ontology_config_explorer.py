@@ -1797,13 +1797,10 @@ def test_derivations_rebuild_by_force_what_the_operator_typed_by_hand():
     original = json.loads((SAMPLE_ROOT / "ledger_config.json").read_text(encoding="utf-8"))
     assert not validate_bundle_errors(original, catalog=catalog)
 
+    # `bind.packs`, `map.emits` and `map.input_columns` were fields this test deleted and
+    # put back. None is a field any more (2026-08-21; 2026-10-03 총괄 2a8d9073c), so a
+    # bundle without them IS the live bundle and there is nothing to rebuild.
     reduced = copy.deepcopy(original)
-    for source in reduced["sources"].values():
-        # `bind.packs` and `map.emits` were two of the four fields this test used to
-        # delete and put back.  They are not fields any more -- 2026-08-21 took the
-        # strongest available fix rather than the second strongest -- so a bundle without
-        # them IS the live bundle and there is nothing to rebuild.
-        source["map"].pop("input_columns", None)
     # The second thing this used to delete and put back was
     # `packs.*.claims.*.emit.object.kind`.  It is not a field any more either -- the whole
     # section went on 2026-08-21 and `predicate_claim` derives the emission -- so, like
@@ -1817,13 +1814,7 @@ def test_derivations_rebuild_by_force_what_the_operator_typed_by_hand():
         assert row["ground"], f"{path} filled a value without naming what filled it"
         assert row["ground"]["text"] and row["ground"]["from_paths"]
 
-    rebuilt = copy.deepcopy(reduced)
-    for source_id, source in rebuilt["sources"].items():
-        base = f"bundle.sources.{source_id}.map"
-        source["map"]["input_columns"] = derived[
-            f"{base}.input_columns"]["value"]
-
-    assert not validate_bundle_errors(rebuilt, catalog=catalog)
+    assert not validate_bundle_errors(reduced, catalog=catalog)
 
 
 def test_a_derivation_that_cannot_state_its_ground_refuses_to_fill():
@@ -1852,12 +1843,8 @@ def test_a_derivation_that_cannot_state_its_ground_refuses_to_fill():
 
 
 def test_a_wider_declaration_is_not_a_conflict_when_the_rule_is_containment():
-    """`input_columns` is a derived MINIMUM; calling a legal wider one red is a false red.
-
-    Measured on the live root: `lot-event-role@1` declares ten input columns and the
-    profile binds four, because a custom mapper reads columns no binding names.  An
-    equality comparison painted that legal declaration as a defect.
-    """
+    """A derived MINIMUM; calling a legal wider one red is a false red. (Measured on the
+    retired `map.input_columns`: a file declared ten, the profile bound four.)"""
     from ledger.config_authoring import Field, Ground
 
     ground = Ground("r", "fill", ("bundle.y",))

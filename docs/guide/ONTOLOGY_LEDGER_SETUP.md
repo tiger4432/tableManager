@@ -383,7 +383,7 @@ SQLAlchemy에 매핑된 표 전부를 훑는데, 여기에 `table_config.json`�
 
 | `table_config.json` 키 | 원장이 쓰는 곳 |
 |---|---|
-| `column_types` | mapper `input_columns`·`order_by`·`cursor.columns`·`occurred_at.column`·registration probe 컬럼이 **실재하는 컬럼인지** |
+| `column_types` | `order_by`·`cursor.columns`·`occurred_at.column`·registration probe 컬럼이 **실재하는 컬럼인지** · 🆕 10-03 맵퍼가 받는 칸 전부(그 표의 칸) |
 | `composite_key_source` | 그 컬럼 묶음이 **행의 유일 키**다. cursor 전순서 증거로 인정된다 |
 | `business_key` | 그 컬럼이 `column_types`에 실재할 때만 유일 키로 인정된다 |
 
@@ -684,8 +684,7 @@ Vocabulary는 “어떤 문장이 문법적으로 가능한가”를 정한다. 
 "map": {
   "implementation_id": "declarative-role",
   "implementation_version": 1,
-  "unit": {"kind": "row"},
-  "input_columns": ["lot", "slot", "wafer", "event_type", "event_time", "lot_slot_wafer_key"]
+  "unit": {"kind": "row"}
 }
 ```
 
@@ -694,7 +693,7 @@ Vocabulary는 “어떤 문장이 문법적으로 가능한가”를 정한다. 
 | `implementation_id/version` | trusted mapper 코드 선택 |
 | `unit.kind` | `event`, `row`, `group_by` 중 하나 |
 | `unit.columns` | `group_by` mapper에서만 필요한 grouping columns |
-| `input_columns` | 코드 맵퍼가 선언 «밖»에서 읽는 컬럼 — 🆕 10-02 `a5fe51b3f` 바인딩 · 엔티티 속성 · 묶음 · `when` 칸은 읽기가 저절로 싣는다(~~읽을 컬럼 전수~~) |
+| ~~`input_columns`~~ | ⚰️ 10-03 은퇴(소유자, 총괄 2a8d9073c) — 맵퍼는 그 관계(`table_config.json`)의 칸을 **전부** 받는다. 적혀 있으면 읽고 무시한다(거절 아님). 지문 · 스냅샷 재료가 아니라 표에 칸이 늘어도 다시 번역 0 |
 
 Mapper는 Atom, predicate payload, Ledger 7컬럼을 직접 만들지 않는다. 공통
 `BaseLedgerMapper.map()` 경계를 통해 `RoleEmission`만 반환한다. subject/object/time/qualifier
@@ -998,7 +997,7 @@ subject/object entity type으로 모양을 계산해 후보를 골랐고, 그래
 그건 정규 해시 재료라서 고치지 않는다 — **읽는 순서는 스켈레톤이 만든다**(화면 라벨
 읽기 · 준비 · 매핑 · 연결. 키는 영어 그대로).
 
-🆕 **[10-02 `3a2d79ff9`] `read` 칸은 안 적으면 제품이 채운다**(`setup_bundle.with_read_defaults` 한 자리, 적은 칸은 그대로 — 같은 값을 손으로 적은 소스와 같은 번들): `unit`(group_by 가 있으면 group, 없으면 row) · `identity` · `order_by`(표 선언의 가장 짧은 유일 키) · `group_by`(`unit: group` 이면 `identity`) · `occurred_at`(사건 엣지들이 적은 칼럼과 시간대 — 사건 엣지가 없으면 행의 저장 시각, `ingested` · UTC) · `registration_probe`(등록하는 주어마다 그 키 칼럼 하나) · `map.unit` · `map.input_columns`(`[]`). 사건 엣지들이 서로 다른 칼럼을 적거나 시간대 없이 적으면 `missing_time` 으로 거절한다(시각을 짐작하지 않는다). 폼에는 접힌 한 줄(`Defaults · N`)로 보이고, 펼치면 칸마다 기본값(`Default: …`)이다(10-02 `d06199e6a`). 초안은 파일에 적힌 선언 그대로 열리고, 저장은 로더가 채우는 칸을 파일에 적지 않는다. 소스 시각을 사건 엣지로 옮기는 이주는 `python -m scripts.migrate_ledger_slim_sources`(미리보기) → `--apply --source <소스>`.
+🆕 **[10-02 `3a2d79ff9`] `read` 칸은 안 적으면 제품이 채운다**(`setup_bundle.with_read_defaults` 한 자리, 적은 칸은 그대로 — 같은 값을 손으로 적은 소스와 같은 번들): `unit`(group_by 가 있으면 group, 없으면 row) · `identity` · `order_by`(표 선언의 가장 짧은 유일 키) · `group_by`(`unit: group` 이면 `identity`) · `occurred_at`(사건 엣지들이 적은 칼럼과 시간대 — 사건 엣지가 없으면 행의 저장 시각, `ingested` · UTC) · `registration_probe`(등록하는 주어마다 그 키 칼럼 하나) · `map.unit`(⚰️ `map.input_columns` 기본값 `[]` 은 10-03 에 같이 은퇴). 사건 엣지들이 서로 다른 칼럼을 적거나 시간대 없이 적으면 `missing_time` 으로 거절한다(시각을 짐작하지 않는다). 폼에는 접힌 한 줄(`Defaults · N`)로 보이고, 펼치면 칸마다 기본값(`Default: …`)이다(10-02 `d06199e6a`). 초안은 파일에 적힌 선언 그대로 열리고, 저장은 로더가 채우는 칸을 파일에 적지 않는다. 소스 시각을 사건 엣지로 옮기는 이주는 `python -m scripts.migrate_ledger_slim_sources`(미리보기) → `--apply --source <소스>`.
 
 | 필드 | 설명 |
 |---|---|
@@ -1168,9 +1167,8 @@ sentences = ProfileSentences(context, profile,
                              occurred_at=unit.iloc[0][SOURCE_OCCURRED_AT_COLUMN])
 ```
 
-`__source_row_ref`와 같은 부류다 — **엔진이 얹는 컬럼이라 선언하지 않는다.** `input_columns`에
-적으면 `column '__occurred_at' is not in EventFrame schema`로 거절된다(EventFrame 스키마는
-물리 컬럼이고 이 컬럼은 거기 없다).
+`__source_row_ref`와 같은 부류다 — **엔진이 얹는 컬럼이라 선언하지 않는다.** 바인딩에 적으면
+`unknown_column` 으로 거절된다(관계의 물리 컬럼이 아니다).
 
 ## 8. 선언이 곧 활성화다 — 실행 스위치는 없다
 
@@ -1664,28 +1662,9 @@ timezone이 빈 채로 남아, 화면은 빨강 0인데 소스는 컴파일을 �
 서울 밖 공장은 **첫 소스에서 한 번 타이핑하면** 이후 소스가 그 답을 제안받는다(코드 0줄).
 timezone은 **자기 행을 유지한다** — 채워지는 것과 바꿀 수 있는 것은 다르다.
 
-**③ `map.input_columns` 는 「전부 켜짐 + 잠긴 칩」으로 도착한다** (⚰️ 둘째였던 `prepare.input_columns` 는 setup_version 6 에서 은퇴)
-(`a13eeed4`+`e21e990f`+`4a42f393`). 소유자 판정: 「그러면 그냥 디폴트 전체 입력해도 되지?」
-- **기본값** = 그 칸의 후보 전부에서 **읽기가 어차피 데려오는 컬럼을 뺀 나머지**.
-  후보 우주는 `relation`의 컬럼이다.
-- **잠긴 칩** = `identity`·`group_by`·`order_by`·`cursor.columns`·`occurred_at`이 이미 SELECT에
-  넣는 컬럼(`event_frame.locked_select_columns` — **런타임 자신의 식**을 선언에서 먹여
-  계산한다. 컴파일 안 된 소스도 답을 받는다). 눌린 채로 그려지고 **버튼이 아니다** —
-  `data-action`이 없어 마우스·키보드·합성 클릭 어느 쪽으로도 닿지 않는다. `disabled` 속성을
-  안 쓴 것이 판정이다(회색이지만 선택처럼 보이는 컨트롤을 소유자가 기각했다).
-- 🔴 **화면은 잠긴 컬럼을 문서에 «넣지도 빼지도» 않는다.** `input_columns`는 여전히
-  「읽기 위에 더하는 것」이라 이미 오는 이름을 적으면 파일이 이미 한 말을 다시 해서 **지문만
-  움직인다.** 반대로 지우는 쪽도 안 한다 — 이미 적힌 선언은 그대로 통과한다.
-- 🔴 **바인딩 · `bind.entities` 속성 · 맵퍼 묶음(`map.unit.columns`) · `when` 이 부르는 컬럼도 잠긴다**
-  (총괄 c38eae7cf). 읽기가 저절로 싣고, 검증기는 그 컬럼을 `map.input_columns` 에 다시 적으라고
-  요구하지 않는다. `input_columns` 는 코드 맵퍼가 선언 «밖»에서 직접 읽는 컬럼만 적는 자리다.
-- 🔴 **이 키에서는 `[]`가 «미응답»이다**(소유자 판정: 「그냥 다 갈아버린다」). `[]`는 문법상
-  합법인 선언이지만 **읽는 쪽이 그것을 부재로 보고 기본값을 씌운다.** 대가를 알고 고른 것이다 —
-  `dt_job.prepare.input_columns`(setup_version 5 시절의 칸)가 빈 목록이었으므로 22컬럼이 되고 그 소스의 지문이 움직였다.
-  ⚠️ **이 규칙은 그 키에만 있다** — 한 층 위에 두면 `read.group_by`까지 잡는데 거기서는
-  `unit: row`일 때 `[]`가 **정답**이다. 그래서 판정이 클래스 분기가 아니라 생산자 자리에 있다.
-- ⚠️ **대가는 이름 대어 적는다**: 저장된 목록이 이 소스가 읽지도 않는 컬럼을 이름 대므로,
-  그중 하나를 표에서 지우면 이 소스도 선다. 완화책이 바로 그 컨트롤이다 — **사람이 칩을 끈다.**
+**③ ⚰️ `map.input_columns` 행은 10-03 에 은퇴했다** (소유자 「그냥 다 읽으면 되잖아」, 총괄
+2a8d9073c). 맵퍼는 관계의 칸을 전부 받으므로 고를 것이 없다 — 「전부 켜짐 + 잠긴 칩」 행과 그
+잠금 계산(`_locked_read_columns`)이 같이 갔다. 적혀 있는 목록은 읽고 무시한다.
 
 **④ 기본값이 「이미 답한 칸」과 싸우지 않는다** (`0a44069c`). `default_overridable` 행이 선언을
 들고 있으면 그 행은 **답한 것**으로 선다(기본값은 주석에 남고 논쟁을 그만둔다). 종전에는
@@ -1703,7 +1682,7 @@ timezone은 **자기 행을 유지한다** — 채워지는 것과 바꿀 수 �
 그 표지를 달고 있다.
 
 ⚠️ **알려진 구멍 — 「+ New」 직후 첫 저장 전에는 계획 행이 0개다.** 초안의 본문은 config 파일에
-없고 계획 엔드포인트는 그 파일만 읽으므로, **만들어지는 중인 소스는 잠긴 칩도 전체선택도 못
+없고 계획 엔드포인트는 그 파일만 읽으므로, **만들어지는 중인 소스는 계획 행을 못
 본다** — 스켈레톤의 `+ 컬럼` 버튼만 보인다. 위 ①~⑤는 전부 **첫 저장 이후**의 이야기다.
 
 ### 13.4 실제 execute — 쓰기 경계
@@ -1784,7 +1763,7 @@ PostgreSQL E2E는 `ASSY_PG_TEST_DATABASE_URL`이 안전한 격리 DB를 가리�
 |---|---|---|
 | `unknown_column` (`column ... is not in EventFrame schema` · `is not in relation ...`) | 바인딩 · 묶음 · `when` 이 관계에 없는 컬럼을 부름 | 🔴 **`bind`가 binding할 수 있는 컬럼 집합은 그 소스 관계(`table_config.json`)의 컬럼이다.** 부른 컬럼은 읽기가 저절로 싣는다 — `map.input_columns` 에 다시 적지 않는다(총괄 c38eae7cf, 전에는 `invalid_mapper` 「Profile column … is missing」) |
 | `invalid_cursor` | order/cursor가 UNIQUE key 전체를 안 포함 | business/composite/UNIQUE index 전체 컬럼 추가 |
-| 조인 값이 소스에 안 보인다 | 쓰는 조인이 아직 왼쪽 표에 칼럼을 안 썼거나, 그 칼럼이 `map.input_columns` 에 없다 | 조인 규칙 실행 확인 · `table_config.json` 의 왼쪽 표 칼럼 · `map.input_columns` |
+| 조인 값이 소스에 안 보인다 | 쓰는 조인이 아직 왼쪽 표에 칼럼을 안 썼거나, `table_config.json` 의 왼쪽 표에 그 칼럼이 없다 | 조인 규칙 실행 확인 · `table_config.json` 의 왼쪽 표 칼럼 |
 | `untrusted_implementation` | sample ID를 production에 복사 | 코드에 그 클래스가 있는지 확인 또는 기존 구현 재사용 |
 | `missing_required_role` | 술어가 강제하는 Role과 `bind` 불일치 | §7.5의 도출 표를 기준으로 binding 추가 |
 | 🆕 `missing_time` | `read.occurred_at` 을 안 적은 소스에서 사건 엣지들(매핑의 `bind.occurred_at`)이 서로 다른 칼럼을 적었거나 시간대 없이 적음 — 한 분자의 시각은 하나다 | 엣지들의 `occurred_at` 을 한 칼럼 · 한 시간대로 맞추거나 `read.occurred_at` 을 적는다 |
