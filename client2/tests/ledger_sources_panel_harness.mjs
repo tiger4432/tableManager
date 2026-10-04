@@ -499,8 +499,8 @@ async function driftSuite(panelMod, backlogMod) {
   const texts = (d) => d.cells.map((c) => c.text).join('|');
   const alarms = (d) => d.cells.map((c) => Boolean(c.alarm)).join('|');
 
-  say('P1 counted: the four as recorded, in the server\'s order, only the edited one alarms, its own time, the command',
-    texts(drift(N, 'n')) === `2|3|1|${localeCountText(1200)}` && alarms(drift(N, 'n')) === 'false|true|false|false'
+  say('P1 counted: the four as recorded, in the server\'s order, new, edited and gone alarm, its own time, the command',
+    texts(drift(N, 'n')) === `2|3|1|${localeCountText(1200)}` && alarms(drift(N, 'n')) === 'true|true|true|false'
       && drift(N, 'n').at === localShort(LATER) && drift(N, 'n').next === COMMAND,
     JSON.stringify(drift(N, 'n')));
   say('P2 drift 0: a counted zero is a zero, not Not measured, and nothing to do',
@@ -551,9 +551,9 @@ async function driftSuite(panelMod, backlogMod) {
     .map((n) => n.className);
   const nextOf = (host, source) => byClass(rowOf(host, source) || {}, 'ledger-sources-next').map((n) => n.textContent);
 
-  say('R1 counted, on screen: the four by name, its own time, and only the edited count alarms',
+  say('R1 counted, on screen: the four by name, its own time, and new, edited and gone alarm',
     textOfLine(gated, 'n') === `New, not translated 2 · Edited, not followed 3 · Gone, atoms remain 1 · Not yet printed ${localeCountText(1200)} · Measured ${localShort(LATER)}`
-      && JSON.stringify(alarmed(gated, 'n')) === JSON.stringify(['ledger-sources-rows_drifted']),
+      && JSON.stringify(alarmed(gated, 'n')) === JSON.stringify(['ledger-sources-rows_new', 'ledger-sources-rows_drifted', 'ledger-sources-rows_gone']),
     JSON.stringify({ text: textOfLine(gated, 'n'), alarmed: alarmed(gated, 'n') }));
   say('R2 the next action is one line: the record\'s --catch-up command', JSON.stringify(nextOf(gated, 'n')) === JSON.stringify([COMMAND]),
     JSON.stringify(nextOf(gated, 'n')));
@@ -604,7 +604,9 @@ async function driftSuite(panelMod, backlogMod) {
     M('X1', 'a counted zero is drawn as Not measured', 'P2', BACKLOG,
       "    const counted = cell.text !== '';\n", "    const counted = cell.text !== '' && cell.text !== '0';\n"),
     M('X2', 'not yet printed alarms like an edit nobody followed', 'P3', BACKLOG,
-      'alarm: name === DRIFT_ALARM && counted &&', 'alarm: counted &&'),
+      'alarm: DRIFT_ALARMS.includes(name) && counted &&', 'alarm: counted &&'),
+    M('X10', 'only the edited count alarms, so new and gone rows the catch-up names pass unseen', 'P1', BACKLOG,
+      'alarm: DRIFT_ALARMS.includes(name) && counted &&', "alarm: name === 'rows_drifted' && counted &&"),
     M('X3', 'the time is the census\'s, not the drift counts\'', 'P7', BACKLOG,
       '  const stamped = DRIFT_FIELDS.map((name) => src[name])\n', '  const stamped = [src]\n'),
     M('X4', 'drift asks for no command', 'P1', BACKLOG,

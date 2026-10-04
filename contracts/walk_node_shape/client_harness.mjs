@@ -70,14 +70,19 @@ try {
   process.exit(2);
 }
 
-/** The node as the CLIENT holds it: the server's payload, through the real reader. */
-async function readBack(node) {
+/** The walk as the CLIENT holds it: the server's payload, through the real reader. */
+async function readWalk(node) {
   const walk = boardApi.createWalkBoxWalk({
     apiBase: '',
     fetchImpl: async () => ({ ok: true, status: 200,
       json: async () => ({ nodes: [node], edges: [], truncated: null }) }),
   });
-  const out = await walk({ type: 'shape@1', keys: { k: '1' } });
+  return walk({ type: 'shape@1', keys: { k: '1' } });
+}
+
+/** The node as the CLIENT holds it. */
+async function readBack(node) {
+  const out = await readWalk(node);
   return out.ok && out.nodes && out.nodes.length ? out.nodes[0] : null;
 }
 
@@ -98,24 +103,30 @@ const declarationFor = (vcase) => ([{
   attributes: [...(vcase.declared_attributes || [])],
 }]);
 
-/** The walk node this case's server half must build — the client's INPUT is that output. */
-const nodeFor = (vcase) => ({
-  id: `ledger-entity:v1:${TYPE}:1`, type: TYPE, depth: 0, label: '1',
-  keys: { [IDENTITY_KEY]: '1' },
-  attributes: { ...((vcase.expect || {}).attributes || {}) },
-  attribute_conflicts: (vcase.expect || {}).attribute_conflicts,
-});
+/** The walk node this case's server half must build — the client's INPUT is that output, exactly: a map the file
+ *  leaves out is left out (the server sends no `attributes` for a node the walk did not reach, lead 0cde56e07). */
+const nodeFor = (vcase) => {
+  const expect = vcase.expect || {};
+  const node = { id: `ledger-entity:v1:${TYPE}:1`, type: TYPE, depth: 0, label: '1',
+    keys: { [IDENTITY_KEY]: '1' }, attribute_conflicts: expect.attribute_conflicts };
+  for (const key of ['attributes', 'attributes_by_world']) {
+    if (Object.prototype.hasOwnProperty.call(expect, key)) node[key] = expect[key];
+  }
+  return node;
+};
 
 const CASES = Array.isArray(VECTORS.cases) ? VECTORS.cases : [];
 const ALL_NAMES = [...new Set(CASES.flatMap((c) => c.declared_attributes || []))];
 
 // ══ ① THE FILE IS THE AUTHORITY, AND IT STILL SAYS WHAT IT SAID ═════════════════════════
 console.log('\n[1] the shared vectors');
-eq('A1 four shapes, because four are what an operator can meet', 4, CASES.length);
-ok('A2 each case declares names, an expected map and an expected count',
-  CASES.every((c) => Array.isArray(c.declared_attributes)
-    && c.expect && typeof c.expect.attributes === 'object'
-    && Number.isInteger(c.expect.attribute_conflicts)));
+eq('A1 five shapes: the four an operator meets in one world, and two worlds saying a name apart', 5, CASES.length);
+// A map is an object, or absent where the walk did not reach the node (lead 0cde56e07).
+const mapOrAbsent = (v) => v === undefined || (v !== null && typeof v === 'object' && !Array.isArray(v));
+ok('A2 each case declares names, an expected count, and its two maps as objects or absent',
+  CASES.every((c) => Array.isArray(c.declared_attributes) && c.expect
+    && Number.isInteger(c.expect.attribute_conflicts)
+    && mapOrAbsent(c.expect.attributes) && mapOrAbsent(c.expect.attributes_by_world)));
 ok('A3 identity stays keys-only — an attribute never makes a node new',
   (VECTORS.identity || {}).keys_only === true);
 // 🔴 The pair that decides the COUNT. If these two ever expected the same number the file
@@ -204,7 +215,7 @@ for (const c of CASES) {
   ok(`D0 «${c.name}» survives the client's own read of the response`, node !== null);
   if (!node) continue;
   for (const name of c.declared_attributes || []) {
-    const want = Object.prototype.hasOwnProperty.call(node.attributes, name)
+    const want = node.attributes && Object.prototype.hasOwnProperty.call(node.attributes, name)
       ? node.attributes[name] : undefined;
     const got = derive.cellSource({ kind: 'attribute', key: name }, node, {});
     // ⚠️ `declared_but_not_reached` is the case that matters here: the expectation is
@@ -238,6 +249,38 @@ for (const c of CASES) {
   ok('E2 agreed-on and never-reached differ in the row, though not in this cell',
     derive.cellSource({ kind: 'attribute', key: name }, await readBack(nodeFor(reached)), {}) !== undefined
     && derive.cellSource({ kind: 'attribute', key: name }, await readBack(nodeFor(never)), {}) === undefined);
+}
+
+// ══ ⑤ EACH WORLD'S VALUE — what the walk's facts box reads (lead 5788bd81c) ════════════════
+// 🔴 Read back through the client's reader and laid out as the picture lays it out; the facts box draws a row
+//    per entry of exactly this (subgraph_view_harness W5). Equal to the file's expectation, case by case.
+console.log('\n[5] each world\'s value, as the facts box holds it');
+{
+  const sg = await import(pathToFileURL(join(WALK_SRC, 'subgraph_view.js')).href);
+  for (const c of CASES) {
+    const out = await readWalk(nodeFor(c));
+    const id = out.ok && out.nodes && out.nodes.length ? out.nodes[0].id : null;
+    const facts = id ? sg.nodeFacts(sg.subgraphLayout([{ results: [out] }], declarationFor(c)), id) : null;
+    // A map the server leaves out is held as none: no world rows to draw.
+    eq(`F «${c.name}» holds each world's value as sent`, JSON.stringify(c.expect.attributes_by_world || {}),
+      JSON.stringify(facts && facts.node.attributesByWorld));
+  }
+  // 🔴 ABSENCE AS THE SERVER SENDS IT (lead 0cde56e07): the never-reached case with both maps left out - no
+  //    attribute value, no conflict, nothing in the facts box for any declared name. Built from the file's case.
+  const never = CASES.find((c) => c.name === 'declared_but_not_reached');
+  const { attributes: _a, attributes_by_world: _w, ...bare } = never.expect;
+  const absent = { ...never, expect: bare };
+  const out = await readWalk(nodeFor(absent));
+  const node = out.ok && out.nodes && out.nodes.length ? out.nodes[0] : null;
+  const facts = node ? sg.nodeFacts(sg.subgraphLayout([{ results: [out] }], declarationFor(absent)), node.id) : null;
+  ok('G1 a node sent with no attributes key reaches the client without one, and reads no value for any declared name',
+    !!node && node.attributes === undefined
+      && (never.declared_attributes || []).every((n) => derive.cellSource({ kind: 'attribute', key: n }, node, {}) === undefined),
+    JSON.stringify(node));
+  ok('G2 ...draws no conflict', !!node && derive.cellSource({ kind: 'conflicts' }, node, {}) === undefined);
+  ok('G3 ...and its facts hold no attribute and no world row', !!facts
+    && Object.keys(facts.node.attributes).length === 0 && Object.keys(facts.node.attributesByWorld).length === 0,
+    JSON.stringify(facts && facts.node));
 }
 
 console.log(`\n${failures.length === 0 ? 'OK' : 'DIVERGED'}: ${pass} passed, `

@@ -188,6 +188,30 @@ console.log('\n[5] the world a receipt was written into - only when this install
   ok('...and on a one-world install the same row draws it without', one.includes(counts) && !one.includes(`${c.logs[0].new_value.world} · `), one);
 }
 
+console.log('\n[6] the value cell is read at the panel\'s width (lead 3e8b6171f) - the stylesheet is the subject');
+{
+  // Measured in the preview (1440 and 375): the change line takes the row's width. Here, the rule that makes it so.
+  const CSS = readFileSync(join(HERE, '..', 'src', 'style.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, ' ');
+  const bodiesOf = (selector) => [...CSS.matchAll(/([^{}]+)\{([^}]*)\}/g)]
+    .filter((m) => m[1].split(/,(?![^(]*\))/).map((x) => x.trim().replace(/\s+/g, ' ')).includes(selector))
+    .map((m) => m[2].replace(/\s+/g, ' ').trim());
+  const grid = bodiesOf('.audit-table .timeline-card').join(' ');
+  ok('S1 the row\'s second line is the change, across every column',
+    /grid-template-areas: "time user kind target tx" "change change change change change"/.test(grid), grid);
+  ok('S2 ...the five on the first line keep their widths, the target at 110px',
+    /grid-template-columns: 70px 62px 74px 110px minmax\(120px, 1fr\)/.test(grid), grid);
+  ok('S3 the change cell sits in that line', bodiesOf('.audit-table .timeline-card > .audit-change')
+    .some((body) => /grid-area: change/.test(body)));
+  ok('S4 the header\'s Change gives way to the line it heads', bodiesOf('.timeline-container > .audit-head > .audit-change')
+    .some((body) => /display: none/.test(body)));
+  const shared = [...CSS.matchAll(/([^{}]+)\{([^}]*)\}/g)].find((m) => {
+    const sel = m[1].split(/,(?![^(]*\))/).map((x) => x.trim().replace(/\s+/g, ' '));
+    return sel.includes('.timeline-container > .audit-head') && sel.includes('.audit-table .timeline-card')
+      && /grid-template-areas/.test(m[2]);
+  });
+  ok('S5 the header wears the same columns as the row - one rule for both', Boolean(shared));
+}
+
 console.log(`\n════ RESULT: ${ran - failed} passed, ${failed} failed ════`);
 console.log(`ASSERTIONS ${ran} ${failed}`);
 process.exit(failed === 0 ? 0 : 1);

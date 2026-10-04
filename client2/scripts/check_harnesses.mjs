@@ -259,7 +259,7 @@ const FLOORS = new Map([
   // said which of them is bad and a screen deciding that would be inventing a judgement.
   // 86 -> 89 (lead 909ea2052 ①): the state's short name comes from the server's one seat and is drawn.
   // 89 -> 100 (lead bed890af2): census and reason names from the server, one local clock, a short hash.
-  ['ledger_sources_panel_harness.mjs', 137],
+  ['ledger_sources_panel_harness.mjs', 138],
   // TABLE CONFIG. The two it exists for: the `base` fingerprint survives the round trip
   // (drop it and two operators editing one file erase each other silently, which is the
   // guard the server made part of the ruling), and a refusal keeps the server's own code,
@@ -959,7 +959,7 @@ const FLOORS = new Map([
   // commit that introduces it. 🔴 THE FIXTURE IS THE CONTRACT VECTOR, captured off the live
   // route: the receipt has TWO envelopes and the failed one carries no counts at all, so a
   // harness built from the description would have scored three blanks and called it correct.
-  ['ledger_receipt_timeline_harness.mjs', 31],
+  ['ledger_receipt_timeline_harness.mjs', 36],
   // New 2026-09-10 with C-59 (S-92's screen half). Floor is the count it reports on the
   // commit that introduces it. 🔴 THE TWO CASES HAVE DIFFERENT COLUMNS -- that is the whole
   // discriminant: a hard-coded table passes one and dies on the other, and the columns come
@@ -1430,7 +1430,7 @@ const FLOORS = new Map([
   // counts equal the table's, a column per depth, static squares, facts on a press, two on one page apart;
   // a press marks into the store, Continue walks that marking onto the same picture; bundle chips
   // (lead 1d07f1dae): one per bundle answered, a press expands it on the same picture.
-  ['subgraph_view_harness.mjs', 81],
+  ['subgraph_view_harness.mjs', 88],
   // New (lead 65754c39a): the one layered-SVG template - both screens draw their pinned pictures, two
   // declarations on one page apart, the template's own slots/shapes/texts/presses; (lead 2cbd0756d) the nine
   // category colours of their own, measured, and seven token mutants.

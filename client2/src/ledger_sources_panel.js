@@ -296,8 +296,8 @@ export class LedgerSourcesPanel {
   }
 
   /**
-   * «수정 누락» 줄과, 기록이 다음 명령(`next_step`)을 실으면 그 한 줄 (총괄 c21cba507 · 9060ad7dd). 두 수는 칸 «따로»이고 누락만
-   * `data-alarm` 으로 눈에 띕니다 — 칸 이름 옆에 값이 서므로 「Not measured」는 그 수의 것입니다.
+   * «사람이 센 수» 줄과, 기록이 다음 명령(`next_step`)을 실으면 그 한 줄 (총괄 c21cba507 · 9060ad7dd). 수는 칸 «따로»이고
+   * 새 · 고침 · 지움이 `data-alarm` 으로 눈에 띕니다 — 칸 이름 옆에 값이 서므로 「Not measured」는 그 수의 것입니다.
    */
   _driftLines(drift) {
     if (!drift) return [];

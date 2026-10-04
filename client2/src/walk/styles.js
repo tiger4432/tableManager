@@ -210,8 +210,8 @@ export const WALK_CSS = `
 .sg-mark[disabled] { opacity: 0.5; cursor: not-allowed; }
 .sg-facts-head { font-weight: 600; }
 .sg-fact { font-family: 'JetBrains Mono', monospace; font-size: var(--fs-label); overflow-wrap: anywhere; }
-/* Which world says an edge, when the walk reads several (leads 99032248f, ee0f66e7b): one row per world under
-   the edge, its chip first, then that world's evidence. */
+/* Which world says an edge or an attribute, when the walk reads several (leads 99032248f, ee0f66e7b, 4e1e49fe9):
+   one row per world under it, its chip first, then what that world says. */
 .sg-fact--world { padding-left: var(--space-4); color: var(--text-muted); }
 .sg-world { display: inline-block; margin-right: var(--space-2); padding: 0 var(--space-1); border: 1px solid var(--border);
   font-family: var(--font-sans); font-size: var(--fs-tag); color: var(--text); }

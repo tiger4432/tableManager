@@ -71,7 +71,8 @@ async function suite(m, makeWalk = createWalkBoxWalk, css = REAL_CSS) {
     const markings = opts.markings || new MarkingStore();
     const chain = opts.chain || ['s0', 's1', 's2'];
     if (!opts.keepStart) markings.replace(chain[0], [[startId(bodies[0]), SIGN.CASE]]);
-    const view = new m.SubgraphView(host, { doc, walk: wire(bodies, urls), entities: () => ENTITIES, markings, chain });
+    const view = new m.SubgraphView(host, { doc, walk: wire(bodies, urls), entities: () => ENTITIES, markings, chain,
+      worldChips: opts.worldChips });
     await view.show();
     return { doc, host, view, urls, markings, chain };
   };
@@ -437,6 +438,40 @@ async function suite(m, makeWalk = createWalkBoxWalk, css = REAL_CSS) {
       && byClass((await seat([DIE])).host, 'sg-facts').every((b) => b.children.length === 0));
   }
 
+  console.log('\n[W] several worlds read: under each attribute and each edge, a row per world that says it (leads ee0f66e7b, 4e1e49fe9)');
+  {
+    // As the server answers (351b23ef8, ec6874b28): a node's attributes_by_world beside its one value, an edge's by_world.
+    const body = JSON.parse(JSON.stringify(DIE));
+    const touching = (id) => body.edges.filter((e) => e.source === id || e.target === id).length;
+    const target = body.nodes.find((n) => touching(n.id) > 0);
+    target.attributes = { grade: 'B' };
+    target.attributes_by_world = { grade: [
+      { world: 'default', value: 'A', occurred_at: null, source_who: 'src_a' },
+      { world: 'w1', value: 'B', occurred_at: '2026-10-01T09:00:00', source_who: 'src_b' }] };
+    for (const e of body.edges) e.by_world = [{ world: 'w1', claim_id: `${e.id}:w1`, occurred_at: null, source_who: 'src_e' }];
+    const factsOf = async (worldChips) => {
+      const { host } = await seat([body], { worldChips });
+      press(host, target.id);
+      const kids = (byClass(host, 'sg-facts')[0] || { children: [] }).children;
+      const at = kids.findIndex((k) => k.className === 'sg-fact' && k.textContent === 'grade B');
+      const under = [];
+      for (let i = at + 1; at >= 0 && i < kids.length && kids[i].className === 'sg-fact sg-fact--world'; i += 1) {
+        under.push(kids[i].children.map((c) => c.textContent));
+      }
+      const edgeRows = kids.filter((k) => k.className === 'sg-fact sg-fact--world'
+        && (k.children[1] || {}).textContent === 'src_e').length;
+      return { at, under, edgeRows };
+    };
+    const many = await factsOf(true);
+    const one = await factsOf(false);
+    say('W5 the attribute line, then a row per world: its chip, that world\'s own value, who and when',
+      many.at >= 0 && JSON.stringify(many.under)
+        === JSON.stringify([['default', 'A · src_a'], ['w1', 'B · src_b · 2026-10-01T09:00:00']]), JSON.stringify(many));
+    say('W6 ...and each edge still its rows', many.edgeRows === touching(target.id), JSON.stringify(many));
+    say('W7 one world read: the attribute line alone, no world rows', one.at >= 0 && one.under.length === 0
+      && one.edgeRows === 0, JSON.stringify(one));
+  }
+
   return { ran: names.length, names, failures: fails };
 }
 
@@ -548,6 +583,14 @@ const failures = [];
       "    if (shown.hidden) this.root.appendChild(this._el('div', 'sg-note', `Folded · ${unitText(shown.hidden, 'node')}`));\n", ''),
     M('F9', 'the picture draws the folded nodes anyway', 'N3',
       '      nodes: shown.nodes.map((node) => ({', '      nodes: view.nodes.map((node) => ({'),
+    M('A1m', 'an attribute gets no world rows', 'W5',
+      '      this._worldRows(box, facts.node.attributesByWorld[name], (said) => [said.value, said.source_who, said.occurred_at]);\n', ''),
+    M('A2m', 'each world row repeats the one value', 'W5',
+      '(said) => [said.value, said.source_who, said.occurred_at]', '(said) => [value, said.source_who, said.occurred_at]'),
+    M('A3m', 'an edge gets no world rows', 'W6',
+      '      this._worldRows(box, edge.byWorld, (said) => [said.source_who, said.occurred_at]);\n', ''),
+    M('A4m', 'the world rows are drawn whatever the walk reads', 'W7',
+      '    if (!this.worldChips) return;\n', ''),
   ];
   const scored = await scoreMutants(MUTANTS, async (mu) => {
     const loaded = (await loadWithProbe(mu.file || SUBJECT, { mutate: (t) => swap(t, mu.from, mu.to) })).module;

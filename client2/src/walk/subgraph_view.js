@@ -103,6 +103,8 @@ export function subgraphLayout(steps, entities) {
           colour: colourOf.get(type) % TYPE_COLOURS,
           keys: node.keys || {},
           attributes: node.attributes || {},
+          // Each world's value of each attribute (server 351b23ef8), drawn like an edge's worlds.
+          attributesByWorld: node.attributes_by_world || {},
         };
         at.set(node.id, one);
         placed.push(one);
@@ -468,21 +470,30 @@ export class SubgraphView {
       acts.appendChild(fold);
     }
     box.appendChild(acts);
-    for (const [name, value] of [...Object.entries(facts.node.keys), ...Object.entries(facts.node.attributes)]) {
+    for (const [name, value] of Object.entries(facts.node.keys)) {
       box.appendChild(this._el('div', 'sg-fact', `${name} ${value}`));
+    }
+    for (const [name, value] of Object.entries(facts.node.attributes)) {
+      box.appendChild(this._el('div', 'sg-fact', `${name} ${value}`));
+      this._worldRows(box, facts.node.attributesByWorld[name], (said) => [said.value, said.source_who, said.occurred_at]);
     }
     for (const edge of facts.edges) {
       box.appendChild(this._el('div', 'sg-fact',
         `${edge.out ? '→' : '←'} ${edge.predicate} · ${edge.other}${edge.occurredAt ? ` · ${edge.occurredAt}` : ''}`));
-      if (!this.worldChips) continue;
-      for (const said of edge.byWorld || []) {
-        const row = this._el('div', 'sg-fact sg-fact--world');
-        row.appendChild(this._el('span', 'sg-world', said.world));
-        row.appendChild(this._el('span', '', [said.source_who, said.occurred_at].filter(Boolean).join(' · ')));
-        box.appendChild(row);
-      }
+      this._worldRows(box, edge.byWorld, (said) => [said.source_who, said.occurred_at]);
     }
     return box;
+  }
+
+  /** Under a fact, when the walk reads several worlds, a row per world that says it: its chip, then what it says. */
+  _worldRows(box, saids, words) {
+    if (!this.worldChips) return;
+    for (const said of saids || []) {
+      const row = this._el('div', 'sg-fact sg-fact--world');
+      row.appendChild(this._el('span', 'sg-world', said.world));
+      row.appendChild(this._el('span', '', words(said).filter((word) => word != null && word !== '').join(' · ')));
+      box.appendChild(row);
+    }
   }
 
   /** The marks, the pick and Continue follow the store without redrawing the picture (the box keeps its scroll). */

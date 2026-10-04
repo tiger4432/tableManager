@@ -123,8 +123,8 @@ export function backlogCells(census, names = {}) {
  */
 export const DRIFT_FIELDS = Object.freeze(['rows_new', 'rows_drifted', 'rows_gone', 'rows_unprinted']);
 
-/** 0 이 아니면 «눈에 띄는» 수 — 누락 쪽 하나뿐입니다(총괄 c21cba507). */
-const DRIFT_ALARM = 'rows_drifted';
+/** 0 이 아니면 «눈에 띄는» 수 — `--catch-up` 을 부르는 셋입니다: 새 · 고침 · 지움(총괄 c21cba507 · 3e8b6171f). 지문 없음은 아닙니다. */
+const DRIFT_ALARMS = Object.freeze(['rows_new', 'rows_drifted', 'rows_gone']);
 
 /**
  * 한 소스의 «사람이 센 수» 줄 (총괄 c21cba507). 수는 서버 기록 그대로이고, 안 센 수는 `NOT_MEASURED`.
@@ -142,7 +142,7 @@ export function driftLine(census, names = {}) {
     const cell = countCell(src, name);
     const counted = cell.text !== '';
     return { ...cell, text: counted ? cell.text : NOT_MEASURED, counted, label: nameOf(names, name),
-      alarm: name === DRIFT_ALARM && counted && Number(src[name].estimate) > 0 };
+      alarm: DRIFT_ALARMS.includes(name) && counted && Number(src[name].estimate) > 0 };
   });
   const stamped = DRIFT_FIELDS.map((name) => src[name])
     .find((box) => box && typeof box === 'object' && box.measured_at != null);
