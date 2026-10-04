@@ -1,8 +1,8 @@
 {
-  "$comment": "WALK NODE SHAPE -- the seam between the server that BUILDS a walk node and the client that READS one. Ruling 123 adds `attributes` to {id,type,label,keys}; identity stays keys-only. Ruling 124 puts the binding ONCE PER SOURCE (bind.entities.<type>.attributes, a sibling of mappings) with role-level allowed only as an override, and defines a conflict as a DIFFERING value: the same value arriving at two times is not one. Both sides are scored against the `expect` recorded here rather than against each other, because server-vs-client alone stays green when both drift the same wrong way. Four shapes are scored because they are the four an operator can meet -- an attribute that arrived, one declared and never reached, two differing values, and the same value twice. The last two are the pair that decides the count.",
-  "version": 1,
+  "$comment": "WALK NODE SHAPE -- the seam between the server that BUILDS a walk node and the client that READS one. Ruling 123 adds `attributes` to {id,type,label,keys}; identity stays keys-only. Ruling 124 puts the binding ONCE PER SOURCE (bind.entities.<type>.attributes, a sibling of mappings) with role-level allowed only as an override, and defines a conflict as a DIFFERING value: the same value arriving at two times is not one. Both sides are scored against the `expect` recorded here rather than against each other, because server-vs-client alone stays green when both drift the same wrong way. Five shapes are scored because they are the five an operator can meet -- an attribute that arrived, one declared and never reached, two differing values, the same value twice, and two worlds saying it differently. Two differing values and the same value twice are the pair that decides the count. Version 2 (lead 5788bd81c) adds `attributes_by_world`: per name, one line per world that said it - {world, value, occurred_at, source_who}, ordered by world name, the value by the same rule as `attributes` within that world, occurred_at as the wire spells an event time.",
+  "version": 2,
   "seam": {
-    "server": "walk node builder (S-52) -- server/ledger_trace_router.py :: /subgraph node payload",
+    "server": "walk node builder (S-52) -- server/ledger_api/ledger_subgraph.py :: _apply_registrations, the /subgraph node payload",
     "client": "walk node reader (C-40) -- the walk table's attribute columns",
     "why": "An attribute that was never reached must be ABSENT, not null. If 'no value' and 'not walked' render as the same pixel the caller cannot tell them apart, and the operator reads a gap in the data as a gap in the walk. `attribute_conflicts` is a NUMBER, not a list: the list is the atoms themselves and a second copy of them on the node would be a second author."
   },
@@ -21,14 +21,26 @@
         {
           "attribute": "lot",
           "value": "L-1",
-          "occurred_at": "2026-09-01T01:00:00Z"
+          "occurred_at": "2026-09-01T01:00:00Z",
+          "world": "w1",
+          "source_who": "src"
         }
       ],
       "expect": {
         "attributes": {
           "lot": "L-1"
         },
-        "attribute_conflicts": 0
+        "attribute_conflicts": 0,
+        "attributes_by_world": {
+          "lot": [
+            {
+              "world": "w1",
+              "value": "L-1",
+              "occurred_at": "2026-09-01T01:00:00+00:00",
+              "source_who": "src"
+            }
+          ]
+        }
       }
     },
     {
@@ -40,7 +52,8 @@
       "atoms": [],
       "expect": {
         "attributes": {},
-        "attribute_conflicts": 0
+        "attribute_conflicts": 0,
+        "attributes_by_world": {}
       }
     },
     {
@@ -52,19 +65,33 @@
         {
           "attribute": "lot",
           "value": "L-1",
-          "occurred_at": "2026-09-01T01:00:00Z"
+          "occurred_at": "2026-09-01T01:00:00Z",
+          "world": "w1",
+          "source_who": "src"
         },
         {
           "attribute": "lot",
           "value": "L-2",
-          "occurred_at": "2026-09-02T01:00:00Z"
+          "occurred_at": "2026-09-02T01:00:00Z",
+          "world": "w1",
+          "source_who": "src"
         }
       ],
       "expect": {
         "attributes": {
           "lot": "L-2"
         },
-        "attribute_conflicts": 1
+        "attribute_conflicts": 1,
+        "attributes_by_world": {
+          "lot": [
+            {
+              "world": "w1",
+              "value": "L-2",
+              "occurred_at": "2026-09-02T01:00:00+00:00",
+              "source_who": "src"
+            }
+          ]
+        }
       }
     },
     {
@@ -76,19 +103,77 @@
         {
           "attribute": "lot",
           "value": "L-1",
-          "occurred_at": "2026-09-01T01:00:00Z"
+          "occurred_at": "2026-09-01T01:00:00Z",
+          "world": "w1",
+          "source_who": "src"
         },
         {
           "attribute": "lot",
           "value": "L-1",
-          "occurred_at": "2026-09-02T01:00:00Z"
+          "occurred_at": "2026-09-02T01:00:00Z",
+          "world": "w1",
+          "source_who": "src"
         }
       ],
       "expect": {
         "attributes": {
           "lot": "L-1"
         },
-        "attribute_conflicts": 0
+        "attribute_conflicts": 0,
+        "attributes_by_world": {
+          "lot": [
+            {
+              "world": "w1",
+              "value": "L-1",
+              "occurred_at": "2026-09-02T01:00:00+00:00",
+              "source_who": "src"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "two_worlds_differing",
+      "declared_attributes": [
+        "lot"
+      ],
+      "atoms": [
+        {
+          "attribute": "lot",
+          "value": "L-2",
+          "occurred_at": "2026-09-01T01:00:00Z",
+          "world": "w2",
+          "source_who": "src-b"
+        },
+        {
+          "attribute": "lot",
+          "value": "L-1",
+          "occurred_at": "2026-09-02T01:00:00Z",
+          "world": "w1",
+          "source_who": "src-a"
+        }
+      ],
+      "expect": {
+        "attributes": {
+          "lot": "L-1"
+        },
+        "attribute_conflicts": 1,
+        "attributes_by_world": {
+          "lot": [
+            {
+              "world": "w1",
+              "value": "L-1",
+              "occurred_at": "2026-09-02T01:00:00+00:00",
+              "source_who": "src-a"
+            },
+            {
+              "world": "w2",
+              "value": "L-2",
+              "occurred_at": "2026-09-01T01:00:00+00:00",
+              "source_who": "src-b"
+            }
+          ]
+        }
       }
     }
   ],
