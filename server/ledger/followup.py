@@ -330,8 +330,8 @@ def _take():
 def drain_once(engine, setup, world=None, sources=None):
     """Follow ONE queued event: all of its rows, one `rescope` per source. Or `None`.
 
-    `sources`, when given, is the only ones to translate - a branch speaks only for what its
-    declaration changed, not for every source that reads the table (총괄 c23b02aeb ③).
+    `sources`, when given, is the only ones to translate - a backfill of one source translates
+    that source alone (총괄 5fec118bb).
 
     🔴 ONE BATCH IS ONE EVENT, NOT ONE ROW (ruling 129 ㉥). A collapsed event names up to
     1,000 rows; they go into a single scope, so a chain batch that touched a thousand rows
@@ -382,8 +382,8 @@ def _follow(item, engine, setup, world=None, sources=None):
             with _lock:
                 _failed += 1
             done["error"] = f"{type(exc).__name__}: {exc}"
-            logger.warning("[LedgerFollowUp] delete on %s (%d rows) failed: %s",
-                           table, len(row_ids), exc)
+            logger.warning("[LedgerFollowUp] delete on %s (%d rows) failed in world %s: %s",
+                           table, len(row_ids), _named(world), exc)
         return done
     table_sources = [source for source in sources_for_table(setup, table)
                      if sources is None or source in sources]
@@ -450,20 +450,32 @@ def _follow(item, engine, setup, world=None, sources=None):
             # path, used here because here there is nothing left to ride.
             _write_failure_receipt(engine, table, source, transaction_id, exc)
             logger.warning(
-                "[LedgerFollowUp] %s <- %s (%d rows) failed: %s",
-                source, table, len(row_ids), exc)
+                "[LedgerFollowUp] %s <- %s (%d rows) failed in world %s: %s",
+                source, table, len(row_ids), _named(world), exc)
     return done
 
 
-def _follow_chain(item, engine, chain):
-    """One event, followed in each world of `chain`: there, the sources it speaks for - at the
-    bottom, the rest. One record; a source said twice (a deletion) keeps its error."""
-    done, above = None, set()
-    for world, setup, spoken in chain:
-        sources = (spoken if spoken is not None
-                   else frozenset(setup.snapshot.source_plans) - above if above else None)
-        said = _follow(item, engine, setup, world=world, sources=sources)
-        above |= set(spoken or ())
+def _named(world):
+    """`world` by name - the operating one when None."""
+    from . import schema
+
+    return schema.world_names(world).name
+
+
+def _follow_worlds(item, engine, followers):
+    """One event, followed in each of `followers` - (world, its compiled declaration) - with that
+    world's declaration into that world's ledger: every source of its own that reads the table
+    (총괄 092a6f9e5 - worlds are independent). One record; a source two worlds follow keeps an
+    error, and every error names the world it happened in."""
+    done = None
+    for world, setup in followers:
+        said = _follow(item, engine, setup, world=world)
+        named = _named(world)
+        for outcome in said["sources"].values():
+            if "error" in (outcome or {}):
+                outcome["error"] = "%s: %s" % (named, outcome["error"])
+        if said.get("error"):
+            said["error"] = "%s: %s" % (named, said["error"])
         if done is None:
             done = said
             continue
@@ -505,17 +517,16 @@ def _payload(value):
     return value if isinstance(value, dict) else {}
 
 
-def drain_outbox_once(engine, setup, chain=None):
+def drain_outbox_once(engine, setup, followers=None):
     """Follow the oldest outbox event the chain processed and the ledger has not. Or `None`.
 
     Marked after the follow, in its own statement: a process that dies inside a follow leaves
     the event unmarked and the next run follows it again (`rescope` is idempotent). An event
     of a kind the ledger does not follow is marked DONE on the way past.
 
-    `chain` - the operating world's, top first: (world, its compiled declaration, the sources
-    it speaks for; None at the bottom) as `schema.followed_by` answers. Each source is followed
-    into the world that speaks for it, so the operating world's view stays live in every source
-    (총괄 86d5061a0); a deletion is withdrawn in each. None: `setup`, in the operating world.
+    `followers` - (world, its compiled declaration) for each world that follows its tables live
+    (`schema.live_worlds`, 총괄 092a6f9e5); a deletion is withdrawn in each. None: `setup`, in the
+    operating world.
     """
     from sqlalchemy import text
     import event_constants
@@ -533,10 +544,10 @@ def drain_outbox_once(engine, setup, chain=None):
     payload = _payload(row.payload)
     ids = tuple(str(item) for item in row_ids_of(payload))
     queued_at = row.created_at.timestamp() if row.created_at is not None else time.time()
-    done = (_follow_chain((str(row.table_name), ids, str(row.event_type), queued_at,
-                           payload.get("transaction_id"), event_constants.chain_depth_of(payload),
-                           event_constants.changed_columns_of(payload)),
-                          engine, chain or ((None, setup, None),))
+    done = (_follow_worlds((str(row.table_name), ids, str(row.event_type), queued_at,
+                            payload.get("transaction_id"), event_constants.chain_depth_of(payload),
+                            event_constants.changed_columns_of(payload)),
+                           engine, followers or ((None, setup),))
             if ids else {"table": row.table_name, "event_type": row.event_type, "rows": 0,
                          "row_ids": [], "sources": {}})
     errors = [done["error"]] if done.get("error") else []

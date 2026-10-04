@@ -1,5 +1,20 @@
 # 지금 돌리면 되는 것
 
+> ## [10-04] **세상은 따로 · 겹침은 걸을 때 · 실시간은 켜진 세상 전부 (총괄 092a6f9e5 · 71880678a · ee0f66e7b) — 이주 «불필요» · 재기동 «필요»(API · 체인 데몬)**
+>
+> ```
+> 재기동 뒤 볼 것  GET /admin/ontology-explorer/worlds -> live: {세상: true|false} (가지는 모두 true 로 시작)
+>              체인 데몬 로그 [LedgerFollowUp] ... failed in world <세상> — 실패가 있으면 어느 세상인지 붙음
+> 후속 비용      켜진 세상 수만큼 후속이 한 벌씩 — 이 박스 1,000 행 한 그룹에 세상 하나 ≈ 만들기 2.8 s · 고치기 4.9 s
+> 뜻           큐가 밀리면 쓰지 않는 세상을 끈다 (화면 Live 끄기 = PUT /admin/ontology-explorer/worlds/<세상>/live {"live": false})
+> 켤 때         화면 Live 켜기 -> 응답 run_id = 따라잡기 작업(ledger_catch_up) — 관리 화면 소급 작업 줄에서 끝 확인
+>              손으로 (server 폴더에서)  python -m ledger.backfill --world <세상> --catch-up
+> 뜻           꺼진 동안 생긴 행 · 고친 행 · 지운 행을 맞춤 — 끝나면 python -m ledger census --world <세상> 이 남은 0 · 수정 누락 0
+> 급할 때       git revert <이 커밋> -> 재기동 (live 칸은 읽히지 않고, 이 커밋 뒤 만든 가지는 기본 세상 위에 선 것으로 읽힘)
+> ```
+
+---
+
 > ## [10-03] **새 소스 backfill 이 같은 표의 다른 소스 사실을 한 번 더 쓰지 않는다 (총괄 5fec118bb) — 이주 «불필요» · 재기동 «필요»(API · 체인 데몬)**
 >
 > ```
@@ -15,40 +30,7 @@
 >   python -m ledger.backfill --source <소스> --whole-source
 >   python -m ledger.backfill --source <소스> --whole-source --apply
 > 뜻           그 소스의 원자를 거두고 행마다 한 번씩 다시 씀 — 위 SQL 을 다시 돌려 그 소스 줄이 사라지면 끝
-> 함께         scripts/ledger_restamp_cursor.py 를 --world 없이 돌리면 소스마다 그 소스를 말하는 세상의 커서를 봄(줄 앞에 [세상])
 > 급할 때       git revert <이 커밋> -> 재기동 (backfill 이 다시 표 단위 — 선언이 바뀐 뒤면 중복이 다시 생김)
-> ```
-
----
-
-> ## [10-03] **부팅 때 커서 지문 다시 찍기도 소스마다 말하는 세상의 커서를 (총괄 152f4bb0b) — 이주 «불필요» · 재기동 «필요»(체인 데몬)**
->
-> ```
-> 무엇이 바뀌나  체인 데몬이 부팅 때 지문(translator_ver)만 바뀐 커서를 다시 찍을 때, 소스마다 그 소스를 말하는 세상의 커서를 그 세상 선언의 지문으로
->              전: 운영 세상 커서만 — 운영 = W 이면 기본이 말하는 소스의 커서는 옛 지문으로 남아 원장 관리 화면에 옛 선언 위로 보였다
-> 재기동 뒤 볼 로그 줄
->   [Ledger] re-stamped N cursor(s) whose declaration did not change: <소스> (<세상>): <전> -> <후> (position stays ...)
->   [Ledger] N cursor(s) were NOT re-stamped: <소스> (<세상>) (<사유>)
-> 뜻           줄마다 괄호 안이 그 커서의 세상 — 운영 = 기본이면 전부 (default) · 줄이 없으면 옮길 커서가 없었다
-> 급할 때       git revert <이 커밋> -> 체인 데몬 재기동 (운영 세상 커서만 다시 찍음 · 이미 찍힌 지문은 그대로)
-> ```
-
----
-
-> ## [10-03] **census · 원장 관리 화면 · backfill 이 소스마다 그 소스를 말하는 세상을 따른다 (총괄 8b81e79a0 · 6c266e56b) — 이주 «불필요» · 재기동 «필요»(API · 체인 데몬)**
->
-> ```
-> 무엇이 바뀌나  운영 세상의 사슬에서 소스마다 «말하는 세상»(원장 후속이 쓰는 곳)에서 census 를 재고 · 읽고 · backfill 이 쓴다
->              원장 관리 화면 줄 · 선언 답 census · python -m ledger census 출력에 세상 이름
->              census 기록의 next_step 명령에 늘 --world <세상>
-> 재기동 뒤 볼 것 (server 폴더에서)
->   python -m ledger census
-> 뜻           줄마다 「<소스> (<세상>): 표 … · 색인 … · 남은 …」 — 운영 = 기본이면 전부 (default)
->              운영 = W(밑 기본)이면 W 가 말하는 소스만 (W), 나머지는 (default) — 그 줄의 «남은» 이 기본 세상의 수
->   python -m ledger.backfill --source <소스> --world <그 소스를 안 말하는 세상>
-> 뜻           거절 「<소스> is spoken for by <세상>, not <적은 세상>」 — 적힌 세상으로 다시 돌리거나 --world 없이
->              --world 없이 돌리면 말하는 세상에 쓴다(전: 운영 세상에 — 말하지 않으면 아무것도 안 하고 조용했다)
-> 급할 때       git revert <이 커밋> -> 재기동 (census 는 운영 세상 맨 위에서 · backfill 은 운영 세상에 · 거절 없음)
 > ```
 
 ---
@@ -97,20 +79,15 @@
 
 ---
 
-> ## [10-03] **원장 세상 — 운영 세상 한 칸 · 세상마다 «밑에 깔 세상» (총괄 e1f54cd72 · e67ef53f3 · 86d5061a0 · 2bb20ff56) — 이주 «불필요» · 재기동 «필요»(서버 + 워커 — 위 절과 같은 재기동이면 한 번)**
+> ## [10-03] **원장 세상 — 운영 세상 한 칸 (총괄 e1f54cd72 · e67ef53f3 · 86d5061a0 · 2bb20ff56) — 이주 «불필요» · 재기동 «필요»(서버 + 워커 — 위 절과 같은 재기동이면 한 번)**
 >
 > ```
 > 무엇이 바뀌나  세상 이름 없이 읽고 쓰는 자리 전부(원장 후속 · 걷기 · 그리드 원자 보기 · 선언 읽기 · census)가 «운영 세상»을 따른다
->              원장 후속은 소스마다 운영 세상의 사슬에서 «그 소스를 말하는 세상»에 쓴다 — 운영 = 기본이면 오늘과 같다
->              배치 파일 config/ontology_worlds/worlds.json 이 없으면 운영 = 기본 · 가지의 밑 = 기본 (오늘 그대로)
+>              배치 파일 config/ontology_worlds/worlds.json 이 없으면 운영 = 기본 (오늘 그대로)
 > 확인         GET /admin/ontology-explorer/worlds
-> 뜻           "operating": "default" 이면 오늘과 같다 · "beneath" 는 세상마다 밑 사슬(위 -> 아래) · "history" 는 누가 언제 바꿨나
+> 뜻           "operating": "default" 이면 오늘과 같다 · "history" 는 누가 언제 바꿨나
 > 운영 바꾸기   PUT /admin/ontology-explorer/worlds/operating   본문 {"world": "<이름>"}   (엄격 관리자 토큰 · X-User 머리가 이력의 by)
 >              되돌리기 = 같은 PUT 에 "default"
-> 되돌린 뒤     그동안 그 세상만 따라간 소스는 기본 세상에서 «Edited, not followed» 로 잡힌다 — 소스마다
->   python -m ledger census --source <소스>                       (사람의 census 가 어긋남을 센다)
->   python -m ledger.backfill --source <소스> --drifted            (미리보기)
->   python -m ledger.backfill --source <소스> --drifted --apply    (그 행만 다시 번역)
 > 급할 때       worlds.json 의 "operating" 을 "default" 로 고치거나 파일을 지운다 -> 다음 요청 · 다음 후속 배치부터 기본
 > ```
 

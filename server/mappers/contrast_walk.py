@@ -76,14 +76,15 @@ def _walk_arguments(row) -> tuple:
         raw = getattr(row, cell, None)
         args[cell] = _route_default(cell) if _blank(raw) else str(raw).strip()
     # A run naming no world walks the operating one BY NAME, and the run row is told which
-    # (총괄 71ecd8223 · 0c918c2eb): left empty it would read as whatever operates later.
+    # (총괄 71ecd8223 · 0c918c2eb): left empty it would read as whatever operates later. Several,
+    # comma separated, are walked together (총괄 092a6f9e5).
     raw = getattr(row, "world", None)
     if _blank(raw):
         from ledger import schema
 
-        args["world"] = schema.operating_world()
+        args["world"] = [schema.operating_world()]
     else:
-        args["world"] = str(raw).strip()
+        args["world"] = [name.strip() for name in str(raw).split(",") if name.strip()]
     raw = getattr(row, "include_superseded", None)
     if _blank(raw):
         args["include_superseded"] = _route_default("include_superseded")
@@ -156,8 +157,8 @@ def contrast_walk(db, payload, rule=None):
             updates={"run_id": run_id, "computed_at": datetime.now(timezone.utc),
                      "candidates": len(ranked), "contrast": block.get("contrast"),
                      "complete": crud.boolean_text_value(block.get("complete")),
-                     **({"world": args["world"]} if _blank(getattr(row, "world", None))
-                        else {})},
+                     **({"world": ",".join(args["world"])}
+                        if _blank(getattr(row, "world", None)) else {})},
             origin_row_id=row.row_id, source_name=crud.CHAIN_SOURCE, updated_by=name))
         for item in ranked:
             reach = list(item.get("reach") or [None, None])

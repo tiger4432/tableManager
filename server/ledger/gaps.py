@@ -250,7 +250,7 @@ def _nodes_of_type_sql():
     """
     return """
         WITH RECURSIVE subject_side(keys, n) AS (
-            (SELECT subject_keys, 1 FROM {table} WHERE subject_type = %(bare)s
+            (SELECT subject_keys, 1 FROM {table} f WHERE subject_type = %(bare)s
               ORDER BY subject_keys LIMIT 1)
             UNION ALL
             SELECT (SELECT s.subject_keys FROM {table} s
@@ -258,7 +258,7 @@ def _nodes_of_type_sql():
                      ORDER BY s.subject_keys LIMIT 1), n + 1
               FROM subject_side WHERE subject_side.keys IS NOT NULL AND n < %(scan)s
         ), object_side(keys, n) AS (
-            (SELECT object_payload->'keys', 1 FROM {table}
+            (SELECT object_payload->'keys', 1 FROM {table} f
               WHERE object_kind = 'entity_ref' AND object_payload->>'type' = %(bare)s
               ORDER BY object_payload->'keys' LIMIT 1)
             UNION ALL
@@ -349,8 +349,8 @@ def measure(engine, declaration, names=None, scan_limit=NODE_SCAN_LIMIT, only=No
             raise GapQuestionUnknown(
                 f"no gap is named {only!r}. The names come from "
                 f"docs/spec/APPLICATION_GAP_SPEC.md - ask GET /api/ledger/gaps for the list.")
-    # `relation`: the walk relation of the world asked about (the router's `_world`)
-    relation = relation or schema.world_names().read_relation
+    # `relation`: the walk relation of the worlds asked about (the router's `_worlds`)
+    relation = relation or schema.walk_relation((schema.world_names(),))
     node_sql = _nodes_of_type_sql().replace("{table}", relation)
     has_sql = _has_predicate_sql().replace("{table}", relation)
 

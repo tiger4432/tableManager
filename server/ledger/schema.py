@@ -73,13 +73,14 @@ class WorldNames:
     ledger: str
     cursor: str
     row_ref: str
-    view: str | None                # the branch's walk relation; the default has none
-    read_relation: str              # what the walk reads
     declaration_root: str
     draft_root: str                 # the explorer's drafts of THIS world's declaration
-    base_root: str | None           # the declaration of the first world beneath; None: none
     space_statements: tuple         # what makes the world's own namespace; () for the default
-    beneath: tuple = ()             # the worlds it stands on, top first, by name
+
+    @property
+    def name(self) -> str:
+        """The world by name - `DEFAULT_WORLD` for the default."""
+        return self.world or DEFAULT_WORLD
 
     @property
     def declaration_path(self) -> str:
@@ -94,13 +95,13 @@ _WORLD_NAME = re.compile(r"^[a-z][a-z0-9_]{0,40}$")
 #: Where the branches' declaration roots live, one folder each, in the config directory.
 _BRANCH_ROOTS = "ontology_worlds"
 
-#: The default world's name where one is written - the layout's «operating» and «beneath»
+#: The default world's name where one is written - the layout's «operating» and «live»
 #: (총괄 e67ef53f3). No branch is ever made under it.
 DEFAULT_WORLD = "default"
 
-#: Which world operates and what each stands on, ONE file beside the branches (총괄 e67ef53f3
-#: ㄱ): {"operating": name, "beneath": {name: [name, ...]}, "history": [...]}. Absent, or a
-#: world it does not name: the default operates and a branch stands on the default.
+#: Which world operates and which follow their tables live, ONE file beside the branches (총괄
+#: e67ef53f3 ㄱ · 092a6f9e5): {"operating": name, "live": {name: false}, "history": [...]}.
+#: Absent: the default operates; a world it does not switch off follows live.
 _LAYOUT_FILE = "worlds.json"
 _layouts = {}
 
@@ -145,17 +146,6 @@ def _declaration_root(world: str) -> str:
             else paths.config_path(_BRANCH_ROOTS, world))
 
 
-def _beneath(world: str) -> tuple:
-    """What `world` stands on, top first, as the layout writes it - the default when it does
-    not. Itself, one world twice, or a name that is no world name is refused."""
-    chain = tuple(layout().get("beneath", {}).get(world, (DEFAULT_WORLD,)))
-    if (world in chain or len(set(chain)) != len(chain)
-            or any(name != DEFAULT_WORLD and not _WORLD_NAME.match(str(name)) for name in chain)):
-        raise ValueError(f"ledger world {world!r} cannot stand on {list(chain)}: itself, a "
-                         f"world twice, or a name that is not a world name")
-    return chain
-
-
 def world_names(world: str | None = None) -> WorldNames:
     """🔴 THE ONE SEAT FOR 「WHICH WORLD -> WHICH NAMES」 (총괄 60d7e8e42 · fb7ece9a3). Every
     other seat asks this; one that tests which world it is in anywhere else is a second door.
@@ -164,20 +154,18 @@ def world_names(world: str | None = None) -> WorldNames:
     another - so every seat that names none follows it; `DEFAULT_WORLD` is the default by name.
     The default is the ledger as it always was - bare names through `search_path` - so an
     install with no branch issues the statements it always did (the drift oracle in
-    `test_a_ledger_world_is_a_set_of_names`). A branch `w_<name>` is its own schema holding
-    the sources it speaks for, and the walk reads its view: its atoms over those of the worlds
-    it stands on (`ensure_view`). A branch name that is not a name is refused, never folded.
+    `test_a_ledger_world_is_a_set_of_names`). A branch `w_<name>` is its own schema with its
+    own declaration and atoms, referring to no other world (총괄 092a6f9e5); worlds meet only
+    in a walk that picks several (`walk_relation`). A name that is not a name is refused.
     """
     world = world or operating_world()
     if world == DEFAULT_WORLD:
         return WorldNames(None, None, "ledger_events", "ledger_translator_cursor",
-                          "ledger_source_row_ref", None, "ledger_events",
-                          _declaration_root(DEFAULT_WORLD),
-                          paths.config_path("backup", "ontology_drafts"), None, ())
+                          "ledger_source_row_ref", _declaration_root(DEFAULT_WORLD),
+                          paths.config_path("backup", "ontology_drafts"), ())
     if not _WORLD_NAME.match(str(world)):
         raise ValueError(
             f"a ledger world is named by lower-case letters, digits and _: {world!r}")
-    beneath = _beneath(world)
     space = f"w_{world}"
     # 🔴 BESIDE THE DEFAULT'S ROOT, NEVER INSIDE IT, and the drafts beside the default's
     # drafts: a declaration root holds ONE json (`setup_bundle.load_setup_bundle` refuses any
@@ -185,10 +173,9 @@ def world_names(world: str | None = None) -> WorldNames:
     # the default itself unloadable.
     return WorldNames(world, space, f"{space}.ledger_events",
                       f"{space}.ledger_translator_cursor", f"{space}.ledger_source_row_ref",
-                      f"{space}.ledger_view", f"{space}.ledger_view", _declaration_root(world),
+                      _declaration_root(world),
                       paths.config_path("backup", "ontology_world_drafts", world),
-                      _declaration_root(beneath[0]) if beneath else None,
-                      (f"CREATE SCHEMA IF NOT EXISTS {space}",), beneath)
+                      (f"CREATE SCHEMA IF NOT EXISTS {space}",))
 
 
 def require_world(world: str | None = None) -> WorldNames:
@@ -230,25 +217,28 @@ def operate(world: str, by=None) -> dict:
     return entry
 
 
-def stand(world: str, beneath) -> tuple:
-    """What a world about to be made stands on - written before its declaration, which starts
-    as the first of them (nothing: the skeleton). Each must be declared - so not itself - and
-    none twice; a world already made is refused."""
-    names = world_names(world)
-    if names.world is None or names.world in worlds():
-        raise ValueError(f"ledger world {names.world or DEFAULT_WORLD!r} is already made; it "
-                         f"stands where it stands")
-    chain = tuple(beneath)
-    unknown = [name for name in chain if name != DEFAULT_WORLD and name not in worlds()]
-    if unknown:
-        raise LookupError(f"no ledger world {unknown}; declared: {worlds() or 'none'}")
-    if len(set(chain)) != len(chain):
-        raise ValueError(f"ledger world {names.world!r} cannot stand on {list(chain)}: a world "
-                         f"twice")
+def live(world: str | None = None) -> bool:
+    """Whether `world` translates its tables' changes as they happen (총괄 092a6f9e5) - on unless
+    the layout switched it off."""
+    return layout().get("live", {}).get(world_names(world).name, True) is not False
+
+
+def live_worlds() -> list[str]:
+    """The worlds the live follow-up translates each change into, the default first."""
+    return [name for name in world_listing()["worlds"] if live(name)]
+
+
+def set_live(world: str, on: bool, by=None) -> dict:
+    """Switch `world`'s live follow-up on or off from the next batch on; the history keeps who and
+    when. A world not declared is refused by name (`require_world`)."""
+    name = require_world(world).name
+    entry = {"world": name, "live": bool(on), "by": str(by or "operator"),
+             "at": datetime.now(timezone.utc).isoformat(timespec="seconds")}
     data = dict(layout())
-    data["beneath"] = {**data.get("beneath", {}), names.world: list(chain)}
+    data["live"] = {**data.get("live", {}), name: bool(on)}
+    data["history"] = [*data.get("history", []), entry]
     _write_layout(data)
-    return chain
+    return entry
 
 
 _DEFAULT = world_names(DEFAULT_WORLD)
@@ -440,6 +430,24 @@ def world_relation(table: str, world: str | None = None) -> str:
     table. A world named and not declared is refused by name, never folded to the default."""
     names = require_world(world) if world or table == ATOM_ROWS_VIEW else None
     return atom_rows_view_name(names) if table == ATOM_ROWS_VIEW else table
+
+
+#: A ledger's columns by name, as the walk reads them - every world's table has them.
+LEDGER_COLUMNS = ("id", "subject_type", "subject_keys", "predicate", "object_kind",
+                  "object_payload", "occurred_at", "source_who", "source_translator_ver",
+                  "source_raw_ref", "supersedes", "source_event_id", "source_event_state",
+                  "occurred_at_basis")
+
+
+def walk_relation(names) -> str:
+    """🔴 WHAT A WALK READS (총괄 092a6f9e5): the ledgers of the worlds picked (`names`, in the
+    order picked), one leg each labelled `world`, nothing filtered - a source two worlds
+    translated shows from both. The columns are named: two tables grown by different histories
+    of `ALTER` need not agree on `*`. One world is one leg, the same shape."""
+    columns = ", ".join(LEDGER_COLUMNS)
+    return "(%s)" % " UNION ALL ".join(
+        f"SELECT '{each.name}'::text AS world, {columns} FROM {each.ledger}"
+        for each in names)
 
 
 def _plain(column):
@@ -981,75 +989,16 @@ def ensure_schema(connection, names: WorldNames = _DEFAULT):
     connection.commit()
 
 
-def changed_sources(names) -> frozenset:
-    """The sources a world speaks for because its declaration differs from that of the world
-    beneath it that speaks for each (총괄 60d7e8e42 1 · e67ef53f3 ④) - no new judge: each
-    source's cursor fingerprint (the material that can change ITS atoms) compared by
-    `LedgerStore.restamp_decision`, the one seat that says two fingerprints are the same. A
-    source on one side only, or one a loader refused on one side, has no fingerprint there and
-    so differs; refused on BOTH, there is nothing new to say and the atoms beneath stay in the
-    view (총괄 10-01). A world standing on nothing - the default too - has nothing to differ
-    from."""
-    return _declared_speakers(names)[0] if names.beneath else frozenset()
-
-
-def _fingerprints(root) -> dict:
-    from .setup import load_setup
-    from .setup_bundle import LedgerSetupValidationError
-    from .setup_registry import cursor_translator_version
-
-    snapshot = load_setup(root).snapshot
-    out = {}
-    for source_id in snapshot.source_plans:
-        try:
-            out[source_id] = cursor_translator_version(snapshot, source_id)
-        except LedgerSetupValidationError:
-            out[source_id] = None
-    return out
-
-
-def _differing(base: dict, this: dict) -> frozenset:
-    from .store import LedgerStore
-
-    refused_on_both = {source_id for source_id in set(base) & set(this)
-                       if base[source_id] is None and this[source_id] is None}
-    return frozenset(
-        source_id for source_id in (set(base) | set(this)) - refused_on_both
-        if LedgerStore.restamp_decision(base.get(source_id), this.get(source_id))[0]
-        != "already")
-
-
-def _declared_speakers(names) -> list:
-    """Per world of the chain, top first: the sources its declaration speaks for - those whose
-    fingerprint differs from the world beneath it in the chain that speaks for them, as the
-    cell layers' «the upper one wins». The bottom speaks for all of its own (None)."""
-    prints = [_fingerprints(root) for root in
-              (names.declaration_root, *(_declaration_root(b) for b in names.beneath))]
-    below, spoken = dict(prints[-1]), [None]
-    for this in reversed(prints[:-1]):
-        differs = _differing(below, this)
-        spoken.insert(0, differs)
-        for source_id in differs:
-            if source_id in this:
-                below[source_id] = this[source_id]
-            else:
-                below.pop(source_id, None)
-    return spoken
-
-
 def world_deletion(engine, world: str) -> dict:
     """What deleting a ledger branch takes - its schema, with every atom, cursor and index row
     in it, and its declaration and draft files. READ ONLY. The default is no branch and is
     never deleted (총괄 8d10633ae ㉢: the preview comes first because a DROP is not undone);
-    nor is the operating world, or one another world stands on (총괄 e67ef53f3) - by name."""
+    nor is the operating world (총괄 e67ef53f3) - by name."""
     names = require_world(world)
     if names.world is None:
         raise ValueError("the default ledger world is not a branch and is never deleted")
     if names.world == operating_world():
         raise ValueError(f"ledger world {world!r} is the operating world - operate another first")
-    standing = [other for other in worlds() if names.world in _beneath(other)]
-    if standing:
-        raise ValueError(f"ledger world {world!r} is beneath {standing} - they stand on it")
     connection = engine.raw_connection()
     try:
         with connection.cursor() as cursor:
@@ -1086,8 +1035,8 @@ def drop_world(engine, world: str, expect_atoms: int) -> dict:
             shutil.rmtree(root)
     _ensured.discard(names.schema)
     data = dict(layout())
-    if names.world in data.get("beneath", {}):
-        data["beneath"] = {k: v for k, v in data["beneath"].items() if k != names.world}
+    if names.world in data.get("live", {}):
+        data["live"] = {k: v for k, v in data["live"].items() if k != names.world}
         _write_layout(data)
     return {**preview, "deleted": True}
 
@@ -1097,7 +1046,7 @@ def ensure_world(engine, names: WorldNames) -> None:
     default has no namespace of its own to make, and its tables are the daemon's and the
     CLI's to ensure (S-88) - so a library call on the default does nothing here. Once made in
     this process, a world whose ledger is still there is not made again: the live follow-up
-    writes an operating branch every batch."""
+    writes every live branch every batch."""
     if not names.space_statements:
         return
     connection = engine.raw_connection()
@@ -1115,145 +1064,6 @@ def ensure_world(engine, names: WorldNames) -> None:
 
 
 _ensured = set()
-
-
-def ensure_view(engine, names: WorldNames, source=None) -> None:
-    """A branch's walk relation: one leg per world of its chain, top first, each leg minus the
-    atoms of every source a leg above it speaks for (`chain_speakers`), so translating an
-    unchanged source there cannot double it. Standing on nothing: its own leg alone. The
-    default has no view. A write that names its `source` keeps a view that already shows that
-    source from this world - its speakers cannot have moved; the live follow-up writes so.
-
-    🔴 THE FILTER SITS OUTSIDE THE UNION, ON A LEG MARKER. Box EXPLAIN 09-30: a `WHERE` on
-    the partitioned default's leg keeps the planner from flattening the union, and every
-    walk read seq-scanned every partition (0.43 ms -> 775 ms); outside, both legs keep their
-    indexes. The columns are named - the default's own, in its order - because two tables
-    grown by different histories of `ALTER` need not agree on `*`. Dropped and made again in
-    one commit: a view's column list is fixed when it is created.
-    """
-    if not names.view:
-        return
-    connection = engine.raw_connection()
-    try:
-        made = _made_with(connection, names)
-        if source is not None and made and source in (made[0][1] or ()):
-            connection.rollback()
-            return
-        _write_view(connection, names)
-    finally:
-        connection.close()
-
-
-def _write_view(connection, names: WorldNames) -> None:
-    speakers = chain_speakers(connection, names)
-    with connection.cursor() as cursor:
-        cursor.execute(
-            "SELECT attname FROM pg_attribute WHERE attrelid = to_regclass(%s) "
-            "AND attnum > 0 AND NOT attisdropped ORDER BY attnum", (_DEFAULT.ledger,))
-        columns = ", ".join('"%s"' % row[0] for row in cursor.fetchall())
-        # The leg label is the world's name - checked by `_WORLD_NAME`, so it is spelled inline.
-        selects, conditions, excluded, above = [], [], [], set()
-        for world, spoken in speakers:
-            selects.append(f"SELECT '{world}'::text AS world_leg, {columns} "
-                           f"FROM {world_names(world).ledger}")
-            if above:
-                conditions.append(f"NOT (world_leg = '{world}' AND source_who = ANY (%s::text[]))")
-                excluded.append(sorted(above))
-            above |= set(spoken or ())
-        cursor.execute(f"DROP VIEW IF EXISTS {names.view}")
-        cursor.execute(
-            f"CREATE VIEW {names.view} AS SELECT * FROM ({' UNION ALL '.join(selects)}) legs"
-            + (f" WHERE {' AND '.join(conditions)}" if conditions else ""), excluded or None)
-        # What it was made from rides on it, so the live follow-up reads the same answer.
-        cursor.execute(f"COMMENT ON VIEW {names.view} IS %s", (json.dumps(
-            [[world, None if spoken is None else sorted(spoken)] for world, spoken in speakers]),))
-    connection.commit()
-
-
-def chain_speakers(connection, names: WorldNames) -> list:
-    """🔴 WHICH WORLD OF A CHAIN SPEAKS FOR WHICH SOURCE - the one seat (총괄 e67ef53f3 ④ ·
-    86d5061a0). Per world, top first: (its name, the sources it speaks for in this chain) - its
-    declaration differs from that of the world beneath that speaks for each, or it has written
-    them; each source once, in the topmost. The bottom (None) speaks for the rest. The view
-    shows each source from that world, and the live follow-up writes it there."""
-    legs = (names.world or DEFAULT_WORLD, *names.beneath)
-    declared = _declared_speakers(names) if names.beneath else [None]
-    out, above = [], set()
-    with connection.cursor() as cursor:
-        for world, said in zip(legs, declared):
-            if said is None:
-                out.append((world, None))
-                continue
-            cursor.execute(f"SELECT DISTINCT source_who FROM {world_names(world).ledger}")
-            spoken = frozenset((set(said) | {row[0] for row in cursor.fetchall()}) - above)
-            out.append((world, spoken))
-            above |= spoken
-    return out
-
-
-def followed_by(engine, names: WorldNames | None = None) -> list:
-    """`chain_speakers` of a world - the operating one when none is named - as its view was
-    last made with them: one catalogue read, so the live follow-up writes each source into the
-    world the view shows it from. A view made before they rode on it is answered afresh."""
-    names = names or world_names()
-    if not names.view:
-        return [(names.world or DEFAULT_WORLD, None)]
-    connection = engine.raw_connection()
-    try:
-        return _made_with(connection, names) or chain_speakers(connection, names)
-    finally:
-        connection.rollback()
-        connection.close()
-
-
-def speaker(chain, source) -> str:
-    """The world of `chain` - `followed_by`'s answer, top first - that speaks for `source`: the
-    topmost that names it, else the bottom, which speaks for the rest. Where the live follow-up
-    writes it, and so where a census measures it and a backfill writes it (총괄 8b81e79a0)."""
-    for world, spoken in chain:
-        if spoken is None or source in spoken:
-            return world
-
-
-def speaking_world(engine, source, world=None) -> str:
-    """The world `source` is translated and counted in, by name (총괄 8b81e79a0): not named,
-    the one that speaks for it in the operating world's chain (`speaker`), as the live
-    follow-up writes it; named, it must be the one that speaks for it in its own chain -
-    refused by name with the one that does. A world that does not speak for a source would
-    write nothing for it, and say nothing."""
-    from .setup import LedgerSetupError
-
-    names = require_world(world)
-    said = speaker(followed_by(engine, names), source)
-    if world is not None and said != (names.world or DEFAULT_WORLD):
-        raise LedgerSetupError(
-            "world_does_not_speak", "world",
-            f"{source} is spoken for by {said}, not {world} - run with --world {said}, or "
-            f"without --world")
-    return said
-
-
-def speaking_cursor(chain, read, columns, where="") -> dict:
-    """{source: (world, *columns)}: each source's cursor row from the world that speaks for it
-    in `chain` (`followed_by`'s answer), `read(sql)` giving the rows. Its census is measured and
-    stored there (총괄 8b81e79a0); a row another world holds for it is not its answer."""
-    rows = {}
-    for world, _spoken in chain:
-        for row in read(f"SELECT source, {', '.join(columns)} "
-                        f"FROM {world_names(world).cursor} {where}"):
-            if speaker(chain, row[0]) == world:
-                rows[row[0]] = (world, *row[1:])
-    return rows
-
-
-def _made_with(connection, names: WorldNames):
-    """The speakers a world's view was last made with - None when there is no view, or it was
-    made before they rode on it."""
-    with connection.cursor() as cursor:
-        cursor.execute("SELECT obj_description(to_regclass(%s), 'pg_class')", (names.view,))
-        said = cursor.fetchone()[0]
-    return ([(world, None if spoken is None else frozenset(spoken))
-             for world, spoken in json.loads(said)] if said else None)
 
 
 def ensure_partition(connection, when: datetime, known=None,

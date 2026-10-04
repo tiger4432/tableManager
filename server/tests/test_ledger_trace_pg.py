@@ -187,7 +187,7 @@ def lot_seed(lot):
     return explorer.entity_id("Lot", {"lot": lot})
 
 
-def walk_on(conn, lot, relation="ledger_events", **kw):
+def walk_on(conn, lot, **kw):
     """The live seat, in process: the walk over the ledger through the SQL lookup —
     exactly what `GET /api/ledger/subgraph` hands `subgraph` (minus the declaration
     lookups the route adds, which are not what PostgreSQL is asked here).
@@ -201,7 +201,7 @@ def walk_on(conn, lot, relation="ledger_events", **kw):
     kw.setdefault("registration_follow", {"register"})
     return ledger_subgraph.subgraph(
         lot_seed(lot),
-        ledger_subgraph.SqlEvidenceLookup(conn, relation=relation), **kw)
+        ledger_subgraph.SqlEvidenceLookup(conn), **kw)
 
 
 def lots_of(body):
@@ -520,25 +520,6 @@ def test_a_diamond_genealogy_does_not_duplicate_claims(ledger):
     assert a_node["claim_count"] == 5
 
 
-def test_the_relation_name_is_the_only_thing_that_moves(ledger):
-    """Pointing the walk at a different relation is one constructor argument.
-    Here that relation is a VIEW, which is the crudest possible stand-in for a
-    materialised projection."""
-    with ledger.begin() as conn:
-        insert(conn, straight_chain(LOTS, SLOTS, WAFERS))
-        conn.execute(text(
-            "CREATE OR REPLACE VIEW ledger_projection AS "
-            "SELECT * FROM ledger_events"))
-        try:
-            direct = walk_on(conn, "L-D", hops=12, direction="outgoing")
-            swapped = walk_on(conn, "L-D", relation="ledger_projection",
-                              hops=12, direction="outgoing")
-        finally:
-            conn.execute(text("DROP VIEW IF EXISTS ledger_projection"))
-    for key in ("nodes", "edges", "state", "walk", "truncated"):
-        assert direct[key] == swapped[key], key
-
-
 # ---------------------------------------------------------------------------
 # The route — over HTTP, against the same PostgreSQL
 # ---------------------------------------------------------------------------
@@ -610,10 +591,10 @@ def test_the_route_names_an_absent_ledger_in_a_field_not_in_prose(
     from dataclasses import replace
 
     from ledger import schema
-    # the relation the walk reads is the world seat's answer; make it name a missing table
+    # the ledger the walk reads is the world seat's answer; make it name a missing table
     real = schema.world_names
     monkeypatch.setattr(schema, "world_names", lambda world=None: replace(
-        real(world), read_relation="ledger_events_not_migrated"))
+        real(world), ledger="ledger_events_not_migrated"))
 
     resp = ledger_client.get(WALK_ROUTE, params={"id": lot_seed("L-D"), "hops": 3})
     assert resp.status_code == 503, resp.text

@@ -226,7 +226,7 @@ def test_one_source_failing_does_not_silence_the_rest(monkeypatch):
 
     monkeypatch.setattr(backfill, "measure_row_census", census)
     store = _Store()
-    done = backfill.measure_every_source(_Broken([]), setup, store=lambda world: store)
+    done = backfill.measure_every_source(_Broken([]), setup, store=store)
 
     assert done == ["a", "c"] and store.written == ["a", "c"]
 
@@ -298,7 +298,7 @@ def test_the_sweep_skips_a_retired_source_and_says_which(monkeypatch, caplog):
                         {"source": source, "relation": "rel_" + source, "measured_at": "now"})
     store = _Store()
     with caplog.at_level(logging.INFO):
-        done = backfill.measure_every_source(_Engine([]), setup, store=lambda world: store)
+        done = backfill.measure_every_source(_Engine([]), setup, store=store)
 
     assert done == ["a", "c"] and store.written == ["a", "c"]
     assert "gone" in chr(10).join(r.getMessage() for r in caplog.records)
@@ -355,7 +355,7 @@ def test_a_refused_source_is_measured_and_stored_without_a_fingerprint(monkeypat
     _real_census_for_the_refused(monkeypatch)
     store = _Store()
     with caplog.at_level(logging.INFO):
-        done = backfill.measure_every_source(_Engine([]), _one_of_each(), store=lambda world: store)
+        done = backfill.measure_every_source(_Engine([]), _one_of_each(), store=store)
 
     assert done == ["a", "r"]
     assert store.written == [("a", None, "ledger-v2:a"), ("r", "source_refused", None)]

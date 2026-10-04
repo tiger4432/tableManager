@@ -2161,11 +2161,10 @@ def test_a_branch_starts_from_a_base_that_has_a_refused_source(
     branch = tmp_path / "branch"
     service = OntologyExplorerService(
         config_root=branch, draft_root=tmp_path / "branch_drafts",
-        seed_root=shipped_root_with_a_refused_source,
         setup_loader=lambda root: load_setup(root, catalog=catalog),
         catalog_loader=lambda: catalog)
 
-    service.bootstrap_config()
+    service.bootstrap_config(seed_root=shipped_root_with_a_refused_source)
     setup, index, _ = service.active()
     draft = service.create_declaration_draft(
         kind="entity", canonical_id="zz_probe@1", base_snapshot_hash=index.snapshot_hash)
@@ -2182,8 +2181,7 @@ def test_a_branch_not_made_yet_is_refused_by_name_with_the_next_action_first(tmp
     """총괄 204a50bd2 ②: no declaration root reached the loader's strict resolve and answered
     500 from every route that reads the setup."""
     service = OntologyExplorerService(
-        config_root=tmp_path / "never_made", draft_root=tmp_path / "drafts",
-        seed_root=tmp_path / "base")
+        config_root=tmp_path / "never_made", draft_root=tmp_path / "drafts")
 
     for reads in (service.view, lambda: service.create_declaration_draft(
             kind="entity", canonical_id="zz_probe@1", base_snapshot_hash="")):

@@ -135,6 +135,7 @@ NAME_OPS = {
     "withdraw": ({"table": "no_such_table", "source": "retro_src"},
                  {"table": "retro_test_target", "source": "retro_src"}),
     "ledger_backfill": ({"source": "no_such_source"}, {"source": "dt_job"}),
+    "ledger_catch_up": ({"world": "no_such_world"}, {"world": "default"}),
     "ledger_rescope": ({"source": "no_such_source", "scope_column": "row_id",
                         "scope_values": "a"},
                        {"source": "dt_job", "scope_column": "row_id", "scope_values": "a"}),

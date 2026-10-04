@@ -98,7 +98,7 @@ def test_an_install_with_no_branch_issues_the_statements_it_always_did():
 
 #: The seat's answers that say WHICH KIND of world it is. Testing one of them is asking the
 #: world; `ledger/schema.py` is the one place that may.
-_KIND = {"world", "base_root", "space_statements", "beneath"}
+_KIND = {"world", "space_statements"}
 
 
 def _asks_the_world(path):
@@ -189,7 +189,7 @@ def test_the_four_declaration_roots_are_one_path(tmp_path, data_root):
 
 def test_the_default_names_are_the_names_the_ledger_always_had():
     names = schema.world_names()
-    assert (names.ledger, names.cursor, names.row_ref, names.read_relation) == (
-        "ledger_events", "ledger_translator_cursor", "ledger_source_row_ref", "ledger_events")
+    assert (names.ledger, names.cursor, names.row_ref) == (
+        "ledger_events", "ledger_translator_cursor", "ledger_source_row_ref")
     assert (schema.LEDGER_TABLE, schema.CURSOR_TABLE, schema.ROW_REF_TABLE) == (
         names.ledger, names.cursor, names.row_ref)

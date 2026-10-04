@@ -423,6 +423,25 @@ def load(path: str = None, catalog=None) -> dict:
     return raw
 
 
+def merged(documents) -> tuple[dict, dict]:
+    """🔴 THE DECLARATIONS OF SEVERAL WORLDS AS ONE (총괄 092a6f9e5) - what a walk that picks
+    several reads its vocabulary from. `documents`: (world, declaration), in the order picked.
+    A name two of them declare in one section is the FIRST one's; `whose` says, per section,
+    which world each name came from. One document comes back as it is."""
+    out, whose = {}, {}
+    for world, document in documents:
+        for section, value in (document or {}).items():
+            if not isinstance(value, dict):
+                out.setdefault(section, value)
+                continue
+            into = out.setdefault(section, {})
+            for name, spec in value.items():
+                if name not in into:
+                    into[name] = spec
+                    whose.setdefault(section, {})[name] = world
+    return out, whose
+
+
 def _validate_for_version(raw: dict, origin: str, catalog=None):
     """Check the declaration with the validator that speaks ITS grammar.
 

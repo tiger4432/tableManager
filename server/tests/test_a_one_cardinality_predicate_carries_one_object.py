@@ -39,7 +39,7 @@ def test_the_router_reads_cardinality_from_the_same_declaration_as_its_siblings(
 
     body = inspect.getsource(trace_router._predicate_cardinalities)
 
-    assert "from ledger import config as _config" in body
+    assert "_declaration(world)" in body          # the one reader its siblings ask (092a6f9e5)
     assert '(declared.get("vocabulary") or {})' in body
     # Keyed by the unversioned name, which is the spelling the edges use.
     assert 'str(key).split("@", 1)[0]' in body
