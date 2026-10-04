@@ -136,6 +136,9 @@ def _batch_receipt(store, plan, preview, rows: int, batch_id: str):
                 "reasons": _refusal_reasons(preview.refusals),
                 "unsaid": sum(preview.unsaid.values()),
                 "translator_ver": preview.translator_version,
+                # the world it was written into - one event is followed in every live world
+                # (총괄 6091a7ae3 ③)
+                "world": store.names.name,
                 "status": "ok",
                 "error": None,
             },

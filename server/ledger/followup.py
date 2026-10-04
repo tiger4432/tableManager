@@ -291,7 +291,7 @@ def _scope_values_from(connection, relation_name, column, row_ids):
         return [row[0] for row in cursor.fetchall() if row[0] is not None]
 
 
-def _write_failure_receipt(engine, relation, source, transaction_id, exc):
+def _write_failure_receipt(engine, relation, source, transaction_id, exc, world):
     """One audit row saying this batch failed, in a commit of its own. Never raises.
 
     ⚠️ A RECEIPT THAT CAN TAKE THE DRAIN DOWN WITH IT IS WORSE THAN NO RECEIPT. This runs
@@ -307,7 +307,7 @@ def _write_failure_receipt(engine, relation, source, transaction_id, exc):
 
         row = crud.create_audit_log(
             None, relation, str(uuid6.uuid7()), RECEIPT_COLUMN, None,
-            {"source": source, "status": "failed",
+            {"source": source, "world": world, "status": "failed",
              "error": f"{type(exc).__name__}: {exc}"},
             RECEIPT_SOURCE, RECEIPT_WRITER,
             transaction_id=transaction_id, add_to_cache=False)
@@ -448,7 +448,7 @@ def _follow(item, engine, setup, world=None, sources=None):
             # was rolled back, taking any receipt inside it with it - so this one is
             # written afterwards, on its own. That is the shape rejected for the success
             # path, used here because here there is nothing left to ride.
-            _write_failure_receipt(engine, table, source, transaction_id, exc)
+            _write_failure_receipt(engine, table, source, transaction_id, exc, _named(world))
             logger.warning(
                 "[LedgerFollowUp] %s <- %s (%d rows) failed in world %s: %s",
                 source, table, len(row_ids), _named(world), exc)

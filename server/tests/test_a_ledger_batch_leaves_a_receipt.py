@@ -82,9 +82,10 @@ class _Plan:
 
 
 class _Writer:
-    """Only the field the receipt reads: who the store says is writing."""
+    """Only the fields the receipt reads: who the store says is writing, and into which world."""
 
     who = "ledger"
+    names = type("Names", (), {"name": "w1"})()
 
 
 def test_the_receipt_carries_this_batchs_own_counts():
@@ -103,6 +104,7 @@ def test_the_receipt_carries_this_batchs_own_counts():
     assert row["new_value"]["atoms_deduped"] == 2
     assert row["new_value"]["status"] == "ok"
     assert row["new_value"]["translator_ver"] == "v-3"
+    assert row["new_value"]["world"] == "w1"              # 총괄 6091a7ae3 ③
 
 
 def test_the_receipt_takes_the_transaction_of_whatever_batch_is_running():
@@ -251,7 +253,7 @@ def test_a_failure_receipt_says_failed_and_never_raises():
             raise RuntimeError("no database here")
 
     followup._write_failure_receipt(_Engine(), "t", "src", "tx-9",
-                                    ValueError("the reason"))
+                                    ValueError("the reason"), "w1")
 
     connection = _Connection()
 
@@ -260,11 +262,12 @@ def test_a_failure_receipt_says_failed_and_never_raises():
             return connection
 
     followup._write_failure_receipt(_Working(), "t", "src", "tx-9",
-                                    ValueError("the reason"))
+                                    ValueError("the reason"), "w1")
 
     (statement, params), = connection.calls
     assert 'INSERT INTO "audit_logs"' in statement
     assert any("failed" in str(p) for p in params), params
+    assert any('"world": "w1"' in str(p) for p in params), params     # 총괄 6091a7ae3 ③
     assert "tx-9" in params
     assert connection.committed == 1
 

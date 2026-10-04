@@ -514,6 +514,30 @@ def test_an_edit_is_translated_once_and_writes_what_two_translations_wrote(world
 
 
 @pytest.mark.pg
+def test_each_live_world_leaves_its_own_receipt_and_says_which(world):
+    """총괄 6091a7ae3 ③: one event followed in two live worlds leaves two batch receipts on the
+    timeline, each naming the world it wrote into."""
+    from ledger import runtime_v2
+
+    _seed(world)
+    _make(world, A, _only(CHANGED), CHANGED)
+    _follow(world)                                               # the seed's own events first
+    _write(world, "wafer_process", [{"proc_id": "P1", "recipe_id": "RCP-2"}], key="P1")
+    with world["engine"].connect() as conn:
+        (tx,) = conn.execute(text(
+            'SELECT payload->>\'transaction_id\' FROM "%s".database_outbox WHERE table_name = '
+            "'wafer_process' AND ledger_state IS NULL ORDER BY id DESC LIMIT 1"
+            % PG_TEST_SCHEMA)).one()
+    _follow(world)
+    with world["engine"].connect() as conn:
+        said = sorted((row[0] for row in conn.execute(text(
+            'SELECT new_value->>\'world\' FROM "%s".audit_logs WHERE column_name = :c '
+            "AND transaction_id = :t" % PG_TEST_SCHEMA),
+            {"c": runtime_v2.RECEIPT_COLUMN, "t": tx})), key=str)
+    assert tx and said == sorted([DEFAULT, A]), said
+
+
+@pytest.mark.pg
 def test_with_no_branch_the_follow_up_and_the_walk_are_todays(world):
     _seed(world)
     _write(world, "lot_slot_wafer", [{"lot_slot_wafer_key": "K1", "wafer": "W5"}], key="K1")
