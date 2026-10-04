@@ -35861,3 +35861,18 @@ f36723a70  worldList 는 글자만 거른다 — /tables 의 worlds 는 schema.w
 화면  세상 칩                  고른 순서로 번호
 -> 사실 상자가 엣지 줄과 속성 줄을 «엣지처럼» 그리면(총괄 지시) 같은 두 세상이 줄마다 다른 순서로 나올 수 있다. 하나로 맞출지 — 맞춘다면 이름순인지 고른 순서인지
 ```
+
+---
+
+## [C 응용] 10-04 4b2cbc9a5 QA · 문서 bc88374d3 — 결함 없음
+
+```
+하니스(내가 다시 돌림, 공유 트리 client2 미커밋 0)
+  subgraph_view_harness.mjs  ASSERTIONS 88 0  exit 0
+  ledger_sources_panel_harness.mjs  ASSERTIONS 138 0  exit 0
+  ledger_receipt_timeline_harness.mjs  ASSERTIONS 36 0  exit 0
+  source_backlog_harness.mjs  ASSERTIONS 45 0  exit 0
+  client_harness.mjs  OK: 47 passed, 0 failed, 0 pending  exit 0
+문서  CODE_MAP subgraph_view(_worldRows — 엣지 · 속성이 같은 함수) · source_backlog(DRIFT_ALARMS 셋) · BACKFILL_GUIDE 60행 · LEDGER_GUIDE 4.9 화면 · WALK.md §4
+남은 물음  fad8f5e22 의 «순서 둘» — 이제 화면에 보인다: 사실 상자는 서버 순서 그대로 그려서 엣지 줄은 만난 순, 속성 줄은 세상 이름순
+```
