@@ -72084,3 +72084,39 @@ not_yet 상쇄   인구조사의 «남은 수»는 표 행 − 색인 행이라,
 ㄷ not_yet 만 «표 행 − 색인 행 + 지운 행»으로 — 지운 행 수를 틱에서 모르면 같은 문제
 ```
 **③ — 짓는 중**: 성공 · 실패 영수증에 world 를 싣습니다(서버). 타임라인 한 줄(client2 timeline.js ledgerReceiptLine)과 계약 벡터(contracts/ledger_receipt)에 world 를 보이는 일은 클라 몫으로 메시지 드립니다.
+
+---
+
+## [10-04] 6091a7ae3 ② · ③ 착지 5e41fa599 · 6922cd6cb — 인구조사가 새 · 고침 · 지움을 따로 · 영수증에 세상 · ① 이 남긴 빨간 시험 셋 57aed165d
+
+어느 DB · 어느 스키마 · 지운 것 — PG assy_test 시험 스크래치 스키마만 · 지운 것 0
+
+**②**
+```
+한 함수      backfill.rows_to_catch_up = 새 행(표 − 색인 + 지운 행) · 수정 누락 · 지운 행 · 지문 없음 — 사람의 census · 따라잡기 셈 · ledger_backfill 작업 셈이 같이 부름
+기록         사람(정확): rows_new · rows_drifted · rows_gone · rows_unprinted / 틱: 그 넷을 이어 가져감(훑지 않음, S-122) · 틱 자신의 수는 difference(부호 있음, 전 not_yet)
+next_step    셋 중 하나라도 0 아님 -> python -m ledger.backfill --world W --catch-up · 사람 수 없음 -> census 한 줄
+게이트        꺼진 동안 새 1 · 고침 1 · 지움 1 -> 사람 census: difference 0 · 새 1 · 고침 1 · 지움 1 · next_step catch-up -> 틱이 그대로 이어 감 -> 작업 뒤 넷 0 · next_step 없음
+변이 3       지운 행을 다시 안 더함 RED · 다음 걸음이 옛 --drifted RED · 틱이 사람 수를 안 이어 감 RED
+```
+**③**
+```
+성공 · 실패 영수증 new_value 에 "world" — 켜진 세상 둘에서 고침 하나 -> 같은 트랜잭션에 영수증 둘, 세상마다 하나(PG)
+변이 2       실패 영수증에 world 없음 RED · 성공 영수증에 world 없음 RED
+```
+**① 이 남긴 것 — 제 잘못**
+```
+a85131717 을 키워드로 고른 시험(다시 번역 · 후속 · 따라잡기)만 돌리고 착지 — sqlite 전체가 뒤에 셋을 찾음(가짜 _preview_frame 이 preview 를 안 돌려줌)
+57aed165d 에서 가짜만 고침(코드 변경 없음)
+```
+**시험**
+```
+sqlite 전체    8 failed, 7757 passed, 329 skipped, 3 xfailed, 13007 warnings in 782.03s (0:13:02) — 박스 사유 다섯 밖: test_a_scoped_redo_re_reads_the_row_so_a_humans_correction_reaches_the_ledger · test_a_write_that_raises_takes_the_withdrawal_down_with_it · test_the_refs_reach_the_store_instead_of_a_delete_of_our_own
+              (그 셋은 위 가짜 고침 뒤 그 두 파일만 다시: 통과)
+PG 관련 묶음    2 failed, 55 passed, 8040 deselected, 106 warnings in 838.77s (0:13:58) — test_an_edit_behind_the_chain_is_counted_and_redone · test_two_independent_refusals_are_counted_and_named_in_one_run (앞은 next_step 문구를 옛것으로 든 시험 — 고친 뒤 그 파일 PG 6 통과, 뒤는 알려진 것)
+```
+**클라에 보낼 칸 이름 (이 보고와 같이 메시지)**
+```
+census       not_yet -> difference · 새 칸 rows_new · rows_gone (rows_drifted · rows_unprinted 그대로) · 이름표는 census_names 에
+영수증        timeline 의 LEDGER 줄: new_value.world
+```
