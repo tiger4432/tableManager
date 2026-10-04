@@ -58,6 +58,21 @@ def _only(*sources, one=False):
     return document
 
 
+def _registering(column):
+    """`_only(CHANGED)`, and each wafer registered with one attribute `label` read from `column`."""
+    document = _only(CHANGED)
+    if "wafer@1" not in document["vocabulary"]["register@1"]["subjects"]:
+        document["vocabulary"]["register@1"]["subjects"].append("wafer@1")
+    document["entities"]["wafer@1"]["attributes"] = ["label"]
+    bind = document["sources"][CHANGED]["bind"]
+    bind["entities"] = {"wafer@1": {"attributes": {"label": {"kind": "column", "column": column}}}}
+    bind["mappings"]["wafer-registered"] = {"predicate": "register@1", "bind": {
+        "occurred_at": {"kind": "column", "column": "eventtime"},
+        "subject": {"kind": "entity", "entity_type": "wafer@1",
+                    "keys": {"wafer": {"kind": "column", "column": "wafer_id"}}}}}
+    return document
+
+
 def _declare(world, document):
     root = Path(paths.config_path("ontology_worlds", world))
     root.mkdir(parents=True, exist_ok=True)
@@ -335,11 +350,15 @@ def _follow(world):
     raise AssertionError("the follow-up did not drain")
 
 
-def _edges(world, worlds, node_type, keys, hops=2):
+def _graph(world, worlds, node_type, keys, hops=2):
     with world["engine"].connect() as conn:
-        payload = trace_router._evidence_graph(
+        return trace_router._evidence_graph(
             conn, node_id=explorer.entity_id(node_type, keys), hops=hops, direction="both",
             node_limit=200, edge_limit=400, world=worlds)
+
+
+def _edges(world, worlds, node_type, keys, hops=2):
+    payload = _graph(world, worlds, node_type, keys, hops)
     keys_of = {node["id"]: node.get("keys") for node in payload["nodes"]}
     return [{**edge, "far": json.dumps(keys_of.get(edge["target"]), sort_keys=True)}
             for edge in payload["edges"]]
@@ -383,6 +402,35 @@ def test_two_worlds_are_independent_and_meet_only_in_a_walk_that_picks_both(worl
     (alone,) = [e for e in _edges(world, [C], "wafer", {"wafer": "W1"}, hops=1)
                 if e["predicate"] == "processed_with"]
     assert (alone["id"], alone["worlds"]) == (edge["id"], [C])      # the id does not move
+
+
+@pytest.mark.pg
+def test_a_nodes_attribute_shows_each_worlds_value_beside_the_one(world):
+    """총괄 4e1e49fe9: two worlds say one wafer's `label` differently -> a walk over both shows each
+    world's value with when and who; the one value and the conflict count are today's."""
+    _seed(world)
+    _make(world, A, _registering("step"), CHANGED)
+    _make(world, C, _registering("recipe_id"), CHANGED)
+    seed = explorer.entity_id("wafer", {"wafer": "W1"})
+
+    def node_and_when(worlds):
+        payload = _graph(world, worlds, "wafer", {"wafer": "W1"}, hops=1)
+        when = {said["world"]: said["occurred_at"] for edge in payload["edges"]
+                if edge["predicate"] == "processed_with" for said in edge["by_world"]}
+        (node,) = [node for node in payload["nodes"] if node["id"] == seed]
+        return node, when
+
+    node, when = node_and_when([A, C])
+    assert set(when) == {A, C} and None not in when.values()        # canary: an event time each
+    assert node["attributes_by_world"] == {"label": [
+        {"world": A, "value": "S1", "occurred_at": when[A], "source_who": CHANGED},
+        {"world": C, "value": "RCP-1", "occurred_at": when[C], "source_who": CHANGED}]}
+    assert node["attributes"]["label"] in ("S1", "RCP-1") and node["attribute_conflicts"] == 1
+
+    alone, when = node_and_when([C])
+    assert alone["attributes_by_world"] == {"label": [
+        {"world": C, "value": "RCP-1", "occurred_at": when[C], "source_who": CHANGED}]}
+    assert (alone["attributes"], alone["attribute_conflicts"]) == ({"label": "RCP-1"}, 0)
 
 
 @pytest.mark.pg
