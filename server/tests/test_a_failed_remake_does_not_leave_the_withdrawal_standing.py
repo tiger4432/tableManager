@@ -130,7 +130,7 @@ def run_rescope(setup, monkeypatch, store, rows):
 
     # The apply path previews each page it read (총괄 8d8abfb5d) - the seat for the refs.
     monkeypatch.setattr(backfill, "_preview_frame", lambda *a, **k: {
-        "withdraw": 2, "remake": 2, "refs": list(REFS)})
+        "withdraw": 2, "remake": 2, "refs": list(REFS), "preview": None})
     monkeypatch.setattr(backfill, "_fetch_v2_lineage_rows",
                         lambda *a, **k: rows)
     monkeypatch.setattr(backfill, "_readable_columns", lambda engine, plan: ())   # the read is faked, so is its catalogue question
@@ -194,7 +194,7 @@ def test_nothing_is_withdrawn_when_neither_the_preview_nor_the_index_names_a_ref
     store = SpyStore()
     statements = []
     monkeypatch.setattr(backfill, "_preview_frame", lambda *a, **k: {
-        "withdraw": 0, "remake": 0, "refs": []})
+        "withdraw": 0, "remake": 0, "refs": [], "preview": None})
     monkeypatch.setattr(backfill, "_fetch_v2_lineage_rows", lambda *a, **k: dt_log_rows(3))
     monkeypatch.setattr(backfill, "_readable_columns", lambda engine, plan: ())   # the read is faked, so is its catalogue question
     monkeypatch.setattr("ledger.store.LedgerStore", lambda engine, **_: store)

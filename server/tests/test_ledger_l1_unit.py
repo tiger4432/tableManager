@@ -1020,13 +1020,13 @@ def test_a_scoped_redo_re_reads_the_row_so_a_humans_correction_reaches_the_ledge
     def _preview(engine, setup, source, plan, frame, world=None):
         # The page's preview (총괄 8d8abfb5d) is handed the frame just read; a writer that
         # got its rows anywhere else would show the stale value below.
-        return {"withdraw": 1, "remake": 1, "refs": ["REF-1"],
+        return {"withdraw": 1, "remake": 1, "refs": ["REF-1"], "preview": None,
                 "stale_rows": [{"core_wafer": "C1", "value": STALE}]}
 
     written = {}
 
     def _write(setup, source, frame, scope, store, known_registrations=None,
-               withdraw_refs=None):
+               withdraw_refs=None, preview=None):
         events.append("write")
         written["frame"] = frame
         written["scope"] = scope
