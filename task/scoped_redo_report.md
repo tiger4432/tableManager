@@ -71917,3 +71917,87 @@ PG 전체          3 failed, 287 passed, 7805 deselected, 255 warnings in 1211.6
 S-267 의 고아 상수 다섯 중 나머지 셋(DEFAULT_SAMPLE_SIZE · SAMPLE_CANDIDATE_WINDOW · UUID7_MS_SQL)은 그대로 — 코드에선 trace.py 밖 히트 0(git grep), 지시 밖
 지운 두 상수를 «있는 것»으로 적는 문서 줄: CODE_MAP 「커버리지가 가져간 고아 다섯」 행 · SYSTEM_FLOWS_A 의 L-17 행 · SERVER_DEFECT_QUEUE S-267 — 문서 몫이라 안 고침
 ```
+
+---
+
+## [10-04] 092a6f9e5 ① 세상 다시 — 은퇴 자리 전수 · 후속 시간 · 바뀌는 라우트 (짓기 전)
+
+어느 DB · 어느 스키마 · 지운 것 — 후속 재기: PG assy_test 시험 스크래치 스키마 + w_x… · w_y… (이름으로 DROP) · 멈춘 첫 실행이 남긴 assy_pytest_pg_6124_gw0 · w_x6124gw0 · w_y6124gw0 를 이름으로 지움 · 그 밖 0
+
+**후속 시간 — 체인 한 그룹 1000 행(묶인 사건 하나), 세상마다 같은 선언(샘플) · 박스 시험 DB**
+```
+세상 1 켜짐   만들기 2.84 s · 고치기 4.92 s   (원자 1000 · 0 · 0)
+세상 2 켜짐   만들기 5.70 s · 고치기 10.05 s   (원자 1000 · 1000 · 0)
+세상 3 켜짐   만들기 8.34 s · 고치기 15.14 s   (원자 1000 · 1000 · 1000)
+반복        세상 1 켜짐   만들기 3.39 s · 고치기 4.71 s   (원자 1000 · 0 · 0)
+모양        세상마다 «거의 그대로 더해짐» — 만들기 ≈ 세상당 2.8 s · 고치기 ≈ 세상당 5.1 s
+규격(5 s/1k) 넘음 — 세상 2 부터 둘 다, 세상 1 의 고치기는 규격 언저리
+박스 수     표를 읽는 소스 하나 · 행마다 원자 하나 — 운영 선언(소스 여럿 · 원자 여럿)이면 세상마다 더 무거움
+재는 법     오늘 drain_outbox_once 에 세상 목록을 넘기고 세상마다 «전부 말함»(새 설계와 같은 고리) · 세상은 차례로
+⚠️ 첫 실행은 쓰기를 묶음 없이 해서 사건 1,000 개(행마다 하나)를 재고 있었음 — 멈추고 체인의 묶음 모양(outbox_mode collapsed)으로 다시
+```
+**은퇴 자리 — AST, 추적 .py 891 파일 (카나리아: 은퇴 함수 정의 15 개 모두 찾음)**
+```
+stand              운영  1 (1 파일) · 시험 16 (2 파일)
+_beneath           운영  2 (1 파일) · 시험  0 (0 파일)
+chain_speakers     운영  2 (1 파일) · 시험  0 (0 파일)
+_declared_speakers 운영  2 (1 파일) · 시험  2 (1 파일)
+changed_sources    운영  0 (0 파일) · 시험  6 (2 파일)
+speaker            운영  3 (2 파일) · 시험  1 (1 파일)
+speaking_world     운영  7 (5 파일) · 시험  0 (0 파일)
+speaking_cursor    운영  2 (2 파일) · 시험  0 (0 파일)
+followed_by        운영  5 (5 파일) · 시험  5 (1 파일)
+ensure_view        운영  1 (1 파일) · 시험  0 (0 파일)
+_write_view        운영  1 (1 파일) · 시험  0 (0 파일)
+_made_with         운영  2 (1 파일) · 시험  0 (0 파일)
+_fingerprints      운영  1 (1 파일) · 시험  3 (1 파일)
+_differing         운영  1 (1 파일) · 시험  0 (0 파일)
+_follow_chain      운영  1 (1 파일) · 시험  0 (0 파일)
+.beneath           운영  5 (2 파일) · 시험  2 (1 파일)
+.base_root         운영  1 (1 파일) · 시험  3 (1 파일)
+.read_relation     운영  8 (2 파일) · 시험 15 (3 파일)
+.view              운영  6 (1 파일) · 시험  0 (0 파일)
+param beneath      운영  2 (2 파일) · 시험  0 (0 파일)
+kw beneath         운영  0 (0 파일) · 시험  0 (0 파일)
+str beneath        운영  7 (2 파일) · 시험  2 (2 파일)
+str world_leg      운영  0 (0 파일) · 시험  6 (2 파일)
+운영 파일 11   server/admin/retroactive.py · server/chain/ingestion_worker.py · server/ledger/admin.py · server/ledger/backfill.py · server/ledger/census_cli.py · server/ledger/followup.py · server/ledger/gaps.py · server/ledger/schema.py · server/ledger/trace_router.py · server/ledger_api/ontology_config_explorer_router.py · server/scripts/ledger_restamp_cursor.py
+시험 파일 5   server/tests/test_a_ledger_branch_speaks_only_for_what_it_changed.py · server/tests/test_a_ledger_world_is_a_set_of_names.py · server/tests/test_a_ledger_world_stands_on_a_chain_and_one_operates.py · server/tests/test_a_row_source_has_no_group_by_to_write.py · server/tests/test_a_saved_contrast_is_the_walks_own_ranking.py
+약속 줄(낱말, task/ 뺌)  beneath RUN.md 1 · client 33 · docs 8 · py 35
+  followed_by docs 3 · py 16
+  speaking_world docs 2 · py 12
+  chain_speakers docs 1 · py 5
+  changed_sources docs 1 · py 7
+  ensure_view docs 1 · py 4
+  world_leg docs 1 · py 9
+  speaks for client 5 · docs 1 · py 52
+  stands on client 22 · other 1 · py 25
+  read_relation py 25
+더 은퇴할 것   backfill.refresh_world_view · 탐색기 _world_after_write 의 뷰 다시 짓기(지시 목록 밖, 뷰가 없어지면 같이 감)
+```
+**바뀌는 라우트 모양**
+```
+/api/ledger/subgraph · key-values · gaps · declaration   world 를 여럿(world=a&world=c), 없으면 운영 세상
+   걷기는 고른 세상 원장을 UNION ALL(거름 없음) · 엣지 · 원자에 world · declaration 항목에 «어느 세상 선언»
+   걷기 SQL 의 관계가 «맨 이름»만 받던 자리(SqlEvidenceLookup · gaps 의 별칭 없는 FROM 둘)를 넓힘
+POST /admin/ontology-explorer/bootstrap   beneath -> copy_from=<세상> (없음 = 빈 뼈대; 오늘은 없음 = 기본 세상 사본)
+PUT  /admin/ontology-explorer/worlds/{world}/live {live}   새것 (엄격 토큰, history)
+GET  /admin/ontology-explorer/worlds      beneath 칸 -> live 칸
+PUT  /worlds/operating · DELETE /worlds/{w}   뷰 짓기 · 「밑에 선 세상」 거절 없어짐
+CLI census · backfill · ledger_restamp_cursor   --world 그대로, 없으면 운영 세상 · world_does_not_speak 거절 없어짐
+contrast_run.world   쉼표로 여러 세상
+```
+**꺼진 세상을 켤 때 — 지시의 「--drifted」 한 줄로는 둘이 빠짐**
+```
+고친 행      backfill --world W --source S --drifted        (색인 지문 어긋남)
+새로 생긴 행  backfill --world W --source S                  (색인에 없는 행 — 메모리 CREATE 자리)
+지워진 행    오늘은 --whole-source 만 거둠(행마다 다시 번역 포함)
+```
+**여쭐 것 (이것만 세우고 나머지는 짓는 중)**
+```
+① 후속 시간 — 세상마다 더해져 세상 2 부터 5 s/1k 를 넘음. 셋 중 무엇으로 갈지
+   ㄱ 지시대로(전 세상 기본 켜짐) — 켜진 세상 수가 곧 후속 비용, 스위치가 손잡이. RELEASE_LOG · RUN.md 에 «세상 하나 = 후속 한 벌» 적음
+   ㄴ 세상을 «나란히»(세상마다 연결 하나) — 기다림은 가장 느린 세상 하나, DB 일은 그대로. 크기 안 잼
+   ㄷ 새 세상 기본 꺼짐 — 소유자 말(「다 하는 걸 기본으로」)과 다름, 그래서 제가 고르지 않음
+② 켤 때 따라잡기 — 새 행 · 지워진 행까지 «한 명령»(예: --drifted 가 셋을 다)으로 할지, 명령 셋을 RUN.md 에 적을지
+```
