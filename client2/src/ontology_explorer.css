@@ -182,14 +182,6 @@
   font-size: var(--fs-label); color: var(--oe-muted); white-space: nowrap; }
 #ontology-explorer-root .branch-picker__name { width: 9rem; }
 #ontology-explorer-root .branch-picker { flex-wrap: wrap; }
-/* What a new branch stands on, pressed in order (lead 120450931 ③); a pressed one is filled, as `.oe-pick`. */
-#ontology-explorer-root .branch-picker__beneath { display: flex; align-items: center; gap: var(--space-1); flex-wrap: wrap; }
-#ontology-explorer-root .branch-picker__beneath-label { font-size: var(--fs-label); color: var(--oe-muted); }
-#ontology-explorer-root .branch-picker__chip { min-height: var(--control-h); padding: 0 var(--space-3);
-  border: 1px solid var(--oe-line); background: transparent; color: var(--oe-text); font-size: var(--fs-button); cursor: pointer; }
-#ontology-explorer-root .branch-picker__chip:hover { border-color: var(--oe-accent); color: var(--oe-accent); }
-#ontology-explorer-root .branch-picker__chip.is-on { border-color: var(--oe-accent); color: var(--oe-surface);
-  background: var(--oe-accent); font-weight: 600; }
 #ontology-explorer-root .branch-picker__operating { font-size: var(--fs-label); color: var(--oe-ok); white-space: nowrap; }
 /* Who operated which when: a popover under its own summary, as the canon's popovers hang. */
 #ontology-explorer-root .branch-picker__history { position: relative; font-size: var(--fs-label); color: var(--oe-muted); }

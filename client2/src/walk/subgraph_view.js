@@ -138,6 +138,8 @@ export function subgraphLayout(steps, entities) {
           id: edge.id, source: edge.source, target: edge.target,
           predicate: edge.predicate_label || edge.predicate || '',
           occurredAt: edge.occurred_at || '',
+          // Each world that says it, with its evidence (lead ee0f66e7b): one line in the picture, one row each here.
+          byWorld: Array.isArray(edge.by_world) ? edge.by_world : [],
           x1: from.x, y1: from.y, x2: to.x, y2: to.y,
         });
       }
@@ -242,6 +244,7 @@ export function nodeFacts(layout, id) {
       predicate: e.predicate,
       other: labelOf.get(e.source === id ? e.target : e.source),
       occurredAt: e.occurredAt,
+      byWorld: e.byWorld,
     }));
   return { node, edges };
 }
@@ -251,10 +254,11 @@ export class SubgraphView {
    * @param {HTMLElement} mount
    * @param {{doc?: Document, walk: Function, entities?: () => object[],
    *          markings: import('../rnd_board/marking_store.js').MarkingStore, chain: string[],
-   *          fanoutLimit?: number}} deps
+   *          fanoutLimit?: number, worldChips?: boolean}} deps
    *   `walk` is the page's `createWalkBoxWalk` function; `entities` reads the declaration the page holds;
    *   `chain` names the markings: the first is the start, each next one takes the marks of a step.
    *   `fanoutLimit` (declaration, default DEFAULT_FANOUT_LIMIT): a fan-out over it comes back as a bundle chip.
+   *   `worldChips`: the page reads several worlds, so each fact says which (lead 99032248f).
    */
   constructor(mount, deps = {}) {
     if (!mount) throw new Error('SubgraphView needs a mount element');
@@ -268,6 +272,7 @@ export class SubgraphView {
     this.markings = deps.markings;
     this.chain = deps.chain.slice();
     this.fanoutLimit = Number.isFinite(deps.fanoutLimit) ? deps.fanoutLimit : DEFAULT_FANOUT_LIMIT;
+    this.worldChips = Boolean(deps.worldChips);
     ensureWalkStyles(this.doc);
     this.root = this.doc.createElement('div');
     this.root.className = 'sg-view';
@@ -469,6 +474,13 @@ export class SubgraphView {
     for (const edge of facts.edges) {
       box.appendChild(this._el('div', 'sg-fact',
         `${edge.out ? '→' : '←'} ${edge.predicate} · ${edge.other}${edge.occurredAt ? ` · ${edge.occurredAt}` : ''}`));
+      if (!this.worldChips) continue;
+      for (const said of edge.byWorld || []) {
+        const row = this._el('div', 'sg-fact sg-fact--world');
+        row.appendChild(this._el('span', 'sg-world', said.world));
+        row.appendChild(this._el('span', '', [said.source_who, said.occurred_at].filter(Boolean).join(' · ')));
+        box.appendChild(row);
+      }
     }
     return box;
   }

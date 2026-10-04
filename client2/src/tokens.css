@@ -325,6 +325,27 @@ body {
 :root:not([data-theme]) .theme-toggle-btn .icon-moon { display: block; }
 
 /* ============================================================
+   세상 여럿 고르기 (branch_picker.js 의 setRow · 걷기 · R&D 보드, 총괄 99032248f)
+   한 부품이 세 페이지에 앉으므로 규칙도 세 페이지가 다 읽는 이 파일에 한 벌.
+   누른 칩은 채워 그립니다 — 어느 세상을 몇 번째로 골랐는지 글을 안 읽고 보이게.
+   ============================================================ */
+.branch-picker__set { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-1); }
+.branch-picker__set-label { margin-right: var(--space-1); font-size: var(--fs-label); color: var(--text-muted); }
+.branch-picker__chip {
+  min-height: var(--control-h);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: 0;
+  background: transparent;
+  color: var(--text);
+  font-size: var(--fs-button);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.branch-picker__chip:hover { border-color: var(--accent); color: var(--accent); }
+.branch-picker__chip.is-on { border-color: var(--accent); background: var(--accent); color: var(--bg-surface); font-weight: 600; }
+
+/* ============================================================
    토스트 (구 style.css/enrichment.html/admin.html 3중 복제 → 단일화)
    계약: utils.js showToast → #toast-container + .toast.toast-{type}
         admin.js showToast → .toast.success / .toast.error (하위 호환 병기)

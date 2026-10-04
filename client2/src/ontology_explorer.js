@@ -156,8 +156,9 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
   const pathBar = new PathBar(null, { doc: document, action: 'map-goto' });
   const branchPicker = new BranchPicker(null, { doc: document,
     onPick: (name) => void pickWorld(name),
-    onCreate: (name, beneath) => void pickWorld(name, { create: true, beneath }),
-    onDelete: (name) => void deleteWorld(name), onOperate: (name) => void operateWorld(name) });
+    onCreate: (name, copyFrom) => void pickWorld(name, { create: true, copyFrom }),
+    onDelete: (name) => void deleteWorld(name), onOperate: (name) => void operateWorld(name),
+    onLive: (name, live) => void liveWorld(name, live) });
   // The section the field being edited sits in — its parent node, found in the drawn tree.
   const markFormCursor = () => {
     for (const node of root.querySelectorAll('.oe-node.is-editing-parent')) {
@@ -173,7 +174,7 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
     pathBar.show(trailNow());
     branchPicker.attach(root.querySelector('.oe-branch-mount'));
     branchPicker.show({ worlds: state.worlds, current: state.world, operating: state.operating,
-      history: state.history });
+      history: state.history, live: state.live });
     markFormCursor();
   };
 
@@ -385,12 +386,12 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
   // draft, so it happens on a press and never because the screen noticed the file was
   // missing. The server refuses if anything is at the path -- including a file that will
   // not parse, which is somebody's work with a bad comma in it rather than an absence.
-  // `beneath` - a new branch's worlds to stand on, top first: not given, the server's own; [] nothing.
+  // `copyFrom` - the world whose declaration a new branch starts as, copied once (lead 99032248f); none: empty.
   // Answers the server's refusal sentence, or '' when the config was made; the caller says where it shows.
-  const bootstrapConfig = async (beneath) => {
-    const under = Array.isArray(beneath) ? `?beneath=${beneath.map(encodeURIComponent).join(',')}` : '';
+  const bootstrapConfig = async (copyFrom) => {
+    const from = copyFrom ? `?copy_from=${encodeURIComponent(copyFrom)}` : '';
     try {
-      const body = await jsonRequest(`/bootstrap${under}`, {
+      const body = await jsonRequest(`/bootstrap${from}`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}',
       });
       showToast?.(`${body.created} created`);
@@ -409,8 +410,8 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
   // one decision, as `select` does. The draft belongs to the world it was typed in: Keep stores the typing
   // in that world's draft store before the screen leaves it (lead ccf374d48 answer 2), Discard deletes it
   // there as `select`'s Discard does, and a refused store stays. A new branch is made by the existing
-  // bootstrap, sent on the new name with what it stands on.
-  const pickWorld = async (name, { create = false, beneath = null } = {}) => {
+  // bootstrap, sent on the new name with the world it starts as a copy of.
+  const pickWorld = async (name, { create = false, copyFrom = null } = {}) => {
     const next = name || null;
     if (next === state.world && !create) return;
     const choice = state.dirty ? await chooseDirtyNavigation(root) : 'keep';
@@ -422,12 +423,12 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
     if (decision === 'discard' && state.draft && !(await discardDraft({ ask: false }))) return;
     const before = state;
     state = { ...initialExplorerState, navigation: { back: [], forward: [] }, world: next, worlds: state.worlds,
-      operating: state.operating, history: state.history };
+      operating: state.operating, history: state.history, live: state.live };
     render();
     if (!create) { await load({ allowContextSwitch: true }); return; }
     // A refused make leaves the screen on the world it was on, saying why (lead 4fde8b04e, owner 10-04): the
     // world was not made, and an empty screen on its name read nothing and offered nothing to add.
-    const refused = await bootstrapConfig(beneath);
+    const refused = await bootstrapConfig(copyFrom);
     if (!refused) return;
     state = before;
     render();
@@ -459,8 +460,25 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
     try {
       const body = await jsonRequest('/worlds/operating', { method: 'PUT',
         headers: { 'Content-Type': 'application/json', 'X-User': CURRENT_USER }, body: JSON.stringify({ world: name }) });
-      dispatch({ type: 'WORLDS_RECEIVED', worlds: body.worlds, operating: body.operating, history: body.history });
+      dispatch({ type: 'WORLDS_RECEIVED', worlds: body.worlds, operating: body.operating, history: body.history,
+        live: body.live });
       showToast?.(`${name} operating`, 'success');
+    } catch (error) {
+      showToast?.(errorMessage(error), 'error');
+    }
+  };
+
+  // A world's live translation paused or resumed (lead 99032248f): asked once, sent once, by the page's user;
+  // then the worlds are read again. A refusal is the server's sentence.
+  const liveWorld = async (name, live) => {
+    if (!window.confirm(`${live ? 'Resume' : 'Pause'} live translation in ${name}?`)) return;
+    try {
+      const body = await jsonRequest(`/worlds/${encodeURIComponent(name)}/live`, { method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'X-User': CURRENT_USER }, body: JSON.stringify({ live }) });
+      // Resumed, what it missed is caught up by a job (server 71880678a); the toast names its run.
+      showToast?.(live ? `${name} live${body && body.run_id ? ` · catch-up ${body.run_id}` : ''}` : `${name} paused`,
+        'success');
+      await loadWorlds();
     } catch (error) {
       showToast?.(errorMessage(error), 'error');
     }
@@ -889,7 +907,8 @@ No effect`;
   const loadWorlds = async () => {
     try {
       const body = await jsonRequest('/worlds');
-      dispatch({ type: 'WORLDS_RECEIVED', worlds: body.worlds, operating: body.operating, history: body.history });
+      dispatch({ type: 'WORLDS_RECEIVED', worlds: body.worlds, operating: body.operating, history: body.history,
+        live: body.live });
     } catch (error) {
       void error;
     }

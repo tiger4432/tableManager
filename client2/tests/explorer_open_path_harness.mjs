@@ -774,7 +774,7 @@ const PREVIEW = { world: 'w2', schema: 'ledger_w2', atoms: 7, files: ['a.json', 
 const { CURRENT_USER } = await import('../src/config.js');
 // GET /worlds as the server shapes it (6bfb6d4be), the operating world NOT the default - so an empty pick
 // and a pick of `default` are different requests (lead 120450931 ①). History is oldest first, as written.
-const WORLDS = { worlds: ['default', 'w1'], operating: 'w1', beneath: { w1: ['default'] },
+const WORLDS = { worlds: ['default', 'w1'], operating: 'w1', live: {},
   history: [{ world: 'default', by: 'operator', at: '2026-10-01T00:00:00+00:00' },
     { world: 'w1', by: 'operator', at: '2026-10-02T00:00:00+00:00' }] };
 // The token gate answers with a bare sentence; a delete refusal with the route's own object.
@@ -786,11 +786,13 @@ const MAKE_REFUSED = "ledger world 'w2' is already made; it stands where it stan
 const KINDS = [{ id: 'entity', section: 'entities' }, { id: 'predicate', section: 'vocabulary' },
   { id: 'source_plan', section: 'sources' }];
 async function branchWalk(create, { confirmDelete = true, typed = null, refuseKeep = false, pick = 'w1',
-  beneath = null, confirmOperate = true, refuseOperate = false, refuseDelete = false, refuseBootstrap = false } = {}) {
+  copyFrom = null, confirmOperate = true, refuseOperate = false, refuseDelete = false, confirmLive = true,
+  refuseBootstrap = false } = {}) {
   const urls = [];
   const puts = [];
   const operated = [];
   const users = [];
+  const lived = [];
   const toasts = [];
   const clicks = [];
   const inputs = [];
@@ -821,6 +823,10 @@ async function branchWalk(create, { confirmDelete = true, typed = null, refuseKe
       return reply({ ...WORLDS, operating: world,
         history: [...WORLDS.history, { world, by: 'operator', at: '2026-10-03T00:00:00+00:00' }] });
     }
+    if (path.endsWith('/live') && method === 'PUT') {
+      lived.push({ path, body: JSON.parse(init.body), user: (init.headers || {})['X-User'] });
+      return reply({});
+    }
     if (path.endsWith('/worlds')) return reply(WORLDS);
     if (method === 'PUT') {
       puts.push(JSON.parse(init.body));
@@ -846,8 +852,10 @@ async function branchWalk(create, { confirmDelete = true, typed = null, refuseKe
     return reply({ ...DECLARATION, worlds: ['w1'] });
   };
   const asks = [];
+  const liveAsks = [];
   globalThis.window.confirm = (text) => {
     if (String(text).startsWith('Make ')) { asks.push(String(text)); return confirmOperate; }
+    if (/^(Pause|Resume) live/.test(String(text))) { liveAsks.push(String(text)); return confirmLive; }
     confirms.push(String(text));
     return confirmDelete;
   };
@@ -869,7 +877,8 @@ async function branchWalk(create, { confirmDelete = true, typed = null, refuseKe
     const out = { onDefault: urls.splice(0).sort(), offer };
     const opened = controller.getState();
     out.open = `${Boolean(opened.selection)}|${Boolean(opened.draft)}`;
-    out.listed = walkAll(mount).filter((n) => n.tagName === 'OPTION').map((n) => n.value || '(operating)');
+    out.listed = walkAll(part('branch-picker__select') || mount).filter((n) => n.tagName === 'OPTION')
+      .map((n) => n.value || '(operating)');
     out.emptyText = (walkAll(mount).find((n) => n.tagName === 'OPTION' && n.value === '') || {}).textContent;
     const offNow = part('branch-picker__operate');
     out.operateOff = `${offNow && offNow.disabled}|${offNow && offNow.getAttribute('title')}`;
@@ -899,11 +908,9 @@ async function branchWalk(create, { confirmDelete = true, typed = null, refuseKe
     out.onBranch = urls.splice(0);
     const name = part('branch-picker__name');
     if (name) { name.value = 'w2'; fire(name, 'input'); }
-    // What the new branch stands on, pressed in order; each press redraws the part.
-    for (const label of beneath || []) {
-      const chip = walkAll(mount).find((n) => n._classes.includes('branch-picker__chip') && n.textContent === label);
-      if (chip) fire(chip, 'click');
-    }
+    // What the new branch starts from: Empty, or a copy of a world's declaration.
+    const from = part('branch-picker__copy');
+    if (from && copyFrom) { from.value = copyFrom; fire(from, 'change'); }
     const make = part('branch-picker__create');
     if (make) fire(make, 'click');
     await settle();
@@ -930,6 +937,12 @@ async function branchWalk(create, { confirmDelete = true, typed = null, refuseKe
       toasts: toasts.splice(0),
       operating: texts('branch-picker__operating').join('|'),
       history: walkAll(mount).filter((n) => n.tagName === 'LI').length };
+    // Live translation of the world read, paused: asked once, one PUT by the page's user, then the worlds again.
+    const live = part('branch-picker__live');
+    out.liveWords = live ? live.textContent : null;
+    if (live) fire(live, 'click');
+    await settle();
+    out.lived = { asks: liveAsks.splice(0), sent: lived.splice(0), urls: urls.splice(0), toasts: toasts.splice(0) };
     const drop = part('branch-picker__delete');
     if (drop) fire(drop, 'click');
     await settle();
@@ -943,9 +956,9 @@ async function branchWalk(create, { confirmDelete = true, typed = null, refuseKe
 const branchSeen = async (create) => ({ yes: await branchWalk(create),
   no: await branchWalk(create, { confirmDelete: false }),
   byName: await branchWalk(create, { pick: 'default' }),
-  under: await branchWalk(create, { beneath: ['w1', 'default'] }),
-  nothing: await branchWalk(create, { beneath: ['Nothing'] }),
+  copied: await branchWalk(create, { copyFrom: 'w1' }),
   declined: await branchWalk(create, { confirmOperate: false }),
+  unpaused: await branchWalk(create, { confirmLive: false }),
   tokenless: await branchWalk(create, { refuseOperate: true }),
   undeleted: await branchWalk(create, { refuseDelete: true }),
   unmade: await branchWalk(create, { refuseBootstrap: true }),
@@ -953,7 +966,7 @@ const branchSeen = async (create) => ({ yes: await branchWalk(create),
   stay: (await branchWalk(create, { typed: 'cancel' })).typed,
   keep: (await branchWalk(create, { typed: 'keep' })).typed,
   refused: (await branchWalk(create, { typed: 'keep', refuseKeep: true })).typed });
-function branchSuite({ yes, no, byName, under, nothing, declined, tokenless, undeleted, unmade, discard, stay, keep,
+function branchSuite({ yes, no, byName, copied, declined, unpaused, tokenless, undeleted, unmade, discard, stay, keep,
   refused }) {
   const names = [];
   const failures = [];
@@ -1016,11 +1029,18 @@ function branchSuite({ yes, no, byName, under, nothing, declined, tokenless, und
   say('Z16 the default is picked by its name: every request then carries world=default',
     byName.picked === 'default|false|false' && byName.onBranch.length > 0
       && byName.onBranch.every((u) => u.includes('world=default')), `${byName.picked} ${byName.onBranch.join(' | ')}`);
-  say('Z17 a new branch stands on what was pressed, in that order; Nothing sends it empty; untouched sends none',
-    under.made.urls[0] === 'admin POST /admin/ontology-explorer/bootstrap?beneath=w1,default&world=w2'
-      && nothing.made.urls[0] === 'admin POST /admin/ontology-explorer/bootstrap?beneath=&world=w2'
+  say('Z17 a new branch made as a copy of w1 sends copy_from=w1; Empty sends none and nothing else',
+    copied.made.urls[0] === 'admin POST /admin/ontology-explorer/bootstrap?copy_from=w1&world=w2'
       && yes.made.urls[0] === 'admin POST /admin/ontology-explorer/bootstrap?world=w2',
-    `${under.made.urls[0]} | ${nothing.made.urls[0]} | ${yes.made.urls[0]}`);
+    `${copied.made.urls[0]} | ${yes.made.urls[0]}`);
+  say('Z25 Pause live on the world read: asked once, one PUT {live: false} by the page\'s user, then the worlds read again; declined, none',
+    yes.liveWords === 'Pause live' && yes.lived.asks.length === 1
+      && JSON.stringify(yes.lived.sent) === JSON.stringify([{ path: '/admin/ontology-explorer/worlds/w2/live',
+        body: { live: false }, user: CURRENT_USER }])
+      && yes.lived.urls.filter((u) => u.startsWith('admin PUT')).length === 1
+      && yes.lived.urls.some((u) => u.startsWith('admin GET /admin/ontology-explorer/worlds'))
+      && unpaused.lived.asks.length === 1 && unpaused.lived.sent.length === 0 && unpaused.lived.urls.length === 0,
+    `${yes.liveWords} ${JSON.stringify(yes.lived)} :: ${JSON.stringify(unpaused.lived)}`);
   say('Z18 Operate asks once and sends one PUT naming the world read and who (the page\'s user); declined, it sends none',
     yes.operated.asks.length === 1 && JSON.stringify(yes.operated.sent) === '["w2"]'
       && JSON.stringify(yes.operated.users) === JSON.stringify([CURRENT_USER]) && Boolean(CURRENT_USER)
@@ -1081,7 +1101,7 @@ failed += branchBase.failures.length;
       mutate: (text) => swap(text, 'if (!window.confirm(', 'if (void window.confirm(') },
     { id: 'M19', what: 'the seat sends a world when none is picked', catches: 'Z1 no world',
       load: async () => {
-        const loud = (await loadWithProbe(WORLD, { mutate: (t) => swap(t, '    if (!world) return fetchImpl(url, init);\n', '') }))
+        const loud = (await loadWithProbe(WORLD, { mutate: (t) => swap(t, '    if (!worlds.length) return fetchImpl(url, init);\n', '') }))
           .module.withWorld;
         return (await loadWithProbe(SUBJECT, { stubs: { './world.js': { withWorld: loud } } })).module.createOntologyExplorerController;
       } },
@@ -1109,11 +1129,17 @@ failed += branchBase.failures.length;
         "      await jsonRequest('/worlds/operating', { method: 'PUT', body: JSON.stringify({ world: name }) });\n"
         + "      const body = await jsonRequest('/worlds/operating', { method: 'PUT',") },
     { id: 'M37', what: 'Operate does not say who', catches: 'Z18',
-      mutate: (text) => swap(text, ", 'X-User': CURRENT_USER }", ' }') },
-    { id: 'M31', what: 'what a new branch stands on is dropped', catches: 'Z17',
+      mutate: (text) => swap(text, ", 'X-User': CURRENT_USER }, body: JSON.stringify({ world: name })",
+        ' }, body: JSON.stringify({ world: name })') },
+    { id: 'M31', what: 'the world a new branch copies is dropped', catches: 'Z17',
       mutate: (text) => swap(text,
-        "    const under = Array.isArray(beneath) ? `?beneath=${beneath.map(encodeURIComponent).join(',')}` : '';",
-        "    const under = '';") },
+        "    const from = copyFrom ? `?copy_from=${encodeURIComponent(copyFrom)}` : '';", "    const from = '';") },
+    { id: 'M38', what: 'Pause live goes without asking', catches: 'Z25',
+      mutate: (text) => swap(text, "    if (!window.confirm(`${live ? 'Resume' : 'Pause'} live translation in ${name}?`)) return;\n", '') },
+    { id: 'M39', what: 'Pause live does not say who', catches: 'Z25',
+      mutate: (text) => swap(text, ", 'X-User': CURRENT_USER }, body: JSON.stringify({ live })", ' }, body: JSON.stringify({ live })') },
+    { id: 'M40', what: 'the worlds are not read again after a pause', catches: 'Z25',
+      mutate: (text) => swap(text, "        'success');\n      await loadWorlds();\n", "        'success');\n") },
     { id: 'M32', what: 'the token gate\'s sentence is folded into a status line', catches: 'Z19',
       mutate: (text) => swap(text, "(typeof detail === 'string' ? detail : detail.message)", 'detail.message') },
     { id: 'M33', what: 'the worlds are not read', catches: 'Z1 no world',
@@ -1163,30 +1189,47 @@ async function pickerWalk(Picker) {
   if (typing) { typing.value = 'w4'; fire(typing, 'input'); }
   picker.show({ worlds: ['w1'], current: null });
   out.kept = `${(part('branch-picker__name') || {}).value}|${(part('branch-picker__create') || {}).disabled}`;
-  // The empty choice's name (lead 120450931 ①), and what a new branch stands on, pressed in order (③).
-  const words = new Picker(element('div'), { doc: document, onPick: () => {} });
-  const emptyText = () => (walkAll(words.mount).find((n) => n.tagName === 'OPTION' && n.value === '') || {}).textContent;
+  // The empty choice's name (lead 120450931 ①), and a paused world's (lead 99032248f).
+  const words = new Picker(element('div'), { doc: document, onPick: () => {}, onLive: () => {} });
+  const optionTexts = () => walkAll(words.mount).filter((n) => n.tagName === 'OPTION').map((n) => n.textContent);
   words.show({ worlds: ['default', 'w1'], current: null, operating: 'w1' });
-  out.empty = emptyText();
-  const stood = [];
-  const under = new Picker(element('div'), { doc: document, onPick: () => {}, onCreate: (n, b) => stood.push(b) });
-  under.show({ worlds: ['default', 'w1'], current: null, operating: 'w1' });
-  const press = (label) => {
-    const chip = walkAll(under.mount).find((n) => n._classes.includes('branch-picker__chip') && n.textContent === label);
-    if (chip) fire(chip, 'click');
-  };
-  const create = (presses) => {
-    for (const label of presses) press(label);
-    const field = walkAll(under.mount).find((n) => n._classes.includes('branch-picker__name'));
+  out.empty = optionTexts()[0];
+  words.show({ worlds: ['default', 'w1'], current: null, operating: 'w1', live: { w1: false } });
+  out.paused = `${optionTexts().join(',')}|${(walkAll(words.mount).find((n) => n._classes.includes('branch-picker__live')) || {}).textContent}`;
+  // What a new branch starts from: a copy picked goes with that Create only.
+  const started = [];
+  const maker = new Picker(element('div'), { doc: document, onPick: () => {}, onCreate: (n, from) => started.push(from) });
+  maker.show({ worlds: ['default', 'w1'], current: null, operating: 'w1' });
+  const create = (from) => {
+    const copy = walkAll(maker.mount).find((n) => n._classes.includes('branch-picker__copy'));
+    if (copy && from) { copy.value = from; fire(copy, 'change'); }
+    const field = walkAll(maker.mount).find((n) => n._classes.includes('branch-picker__name'));
     if (field) { field.value = 'w3'; fire(field, 'input'); }
-    const go = walkAll(under.mount).find((n) => n._classes.includes('branch-picker__create'));
+    const go = walkAll(maker.mount).find((n) => n._classes.includes('branch-picker__create'));
     if (go) fire(go, 'click');
   };
-  create(['w1', 'default']);
-  create([]);
-  create(['Nothing']);
-  create(['w1', '1 · w1']);
-  out.stood = JSON.stringify(stood);
+  create('w1');
+  create(null);
+  out.started = JSON.stringify(started);
+  // The worlds a walk reads (the walk and the board): each press hands the page the whole new list.
+  const handed = [];
+  const set = new Picker(element('div'), { doc: document, onPickSet: (names) => handed.push(names) });
+  const press = (current, label) => {
+    set.show({ worlds: ['default', 'w1'], current, operating: 'w1' });
+    const chip = walkAll(set.mount).find((n) => n._classes.includes('branch-picker__chip') && n.textContent === label);
+    if (chip) fire(chip, 'click');
+  };
+  press([], 'w1');
+  press(['w1'], 'default');
+  press(['w1', 'default'], '1 · w1');
+  press(['default'], 'Operating · w1');
+  out.handed = JSON.stringify(handed);
+  // One history list holds both switches (server ec6874b28): each line says which it was.
+  const logged = new Picker(element('div'), { doc: document, onPick: () => {}, onOperate: () => {} });
+  logged.show({ worlds: ['default', 'w1'], current: 'w1', operating: 'default', history: [
+    { world: 'w1', by: 'a', at: '2026-10-01T00:00:00+00:00' }, { world: 'w1', live: false, by: 'b', at: '2026-10-02T00:00:00+00:00' },
+    { world: 'w1', live: true, by: 'c', at: '2026-10-03T00:00:00+00:00' }] });
+  out.logged = walkAll(logged.mount).filter((n) => n.tagName === 'LI').map((n) => n.textContent.split(' · ').slice(0, 3).join(' · '));
   return out;
 }
 function pickerSuite(seen) {
@@ -1205,8 +1248,15 @@ function pickerSuite(seen) {
   say('Z13 a redraw keeps a name being typed; a made branch clears it',
     seen.afterMade === '' && seen.kept === 'w4|false', `${JSON.stringify(seen.afterMade)} ${seen.kept}`);
   say('Z23 the empty choice is named after the operating world', seen.empty === 'Operating · w1', seen.empty);
-  say('Z24 beneath: pressed in order, Nothing is empty, a press taken back is none chosen, and each Create starts afresh',
-    seen.stood === JSON.stringify([['w1', 'default'], null, [], null]), seen.stood);
+  say('Z24 the walk\'s worlds: a press adds under the last, a picked one comes out, the empty choice clears them',
+    seen.handed === JSON.stringify([['w1'], ['w1', 'default'], ['default'], []]), seen.handed);
+  say('Z26 a copy picked goes with its Create only; the next starts Empty',
+    seen.started === JSON.stringify(['w1', null]), seen.started);
+  say('Z31 each history line says what was switched - Live, Paused or Operating - newest first',
+    JSON.stringify(seen.logged) === JSON.stringify(['w1 · Live · c', 'w1 · Paused · b', 'w1 · Operating · a']),
+    JSON.stringify(seen.logged));
+  say('Z27 a paused world reads Paused, and its switch offers to resume',
+    seen.paused === 'Operating · w1,default,w1 · Paused|Resume live', seen.paused);
   return { ran: names.length, names, failures };
 }
 const { BranchPicker } = await import('../src/branch_picker.js');
@@ -1234,10 +1284,14 @@ failed += pickerBase.failures.length;
       mutate: (text) => swap(text, 'const empty = `Operating · ${this.operating}`;', "const empty = 'Default';") },
     { id: 'M35', what: 'a pressed world goes on top, not under the last', catches: 'Z24',
       mutate: (text) => swap(text, '[...list, world]', '[world, ...list]') },
-    { id: 'M36', what: 'what was pressed outlives the Create', catches: 'Z24',
-      mutate: (text) => swap(text, "        this.typed = '';\n        this.beneath = null;\n", "        this.typed = '';\n") },
+    { id: 'M36', what: 'the copy picked outlives the Create', catches: 'Z26',
+      mutate: (text) => swap(text, "        this.typed = '';\n        this.copyFrom = '';\n", "        this.typed = '';\n") },
+    { id: 'M46', what: 'a live switch reads as an operating one in the history', catches: 'Z31',
+      mutate: (text) => swap(text, "typeof entry.live === 'boolean' ? (entry.live ? 'Live' : 'Paused') : 'Operating'", "'Operating'") },
+    { id: 'M41', what: 'a paused world is not said so', catches: 'Z27',
+      mutate: (text) => swap(text, "return this.live[world] === false ? `${world} · Paused` : world;", 'return world;') },
     { id: 'M26', what: 'a made branch leaves its name in the field', catches: 'Z13',
-      mutate: (text) => swap(text, "        this.typed = '';\n        this.beneath = null;\n", "        this.beneath = null;\n") },
+      mutate: (text) => swap(text, "        this.typed = '';\n        this.copyFrom = '';\n", "        this.copyFrom = '';\n") },
   ];
   const scored = await scoreMutants(MUTANTS, async (m) => pickerSuite(await pickerWalk(
     (await loadWithProbe(PICKER, { mutate: m.mutate })).module.BranchPicker)),

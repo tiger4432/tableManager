@@ -933,7 +933,9 @@ const FLOORS = new Map([
   // 107 -> 108 (lead 71ecd8223): Operate says who - the page's CURRENT_USER - and M37 drops it.
   // 108 -> 114 (lead 4fde8b04e): a world just made offers its three "+ New" and a declaration made there names it;
   // a refused make stays on the world it was on and says why; the setup offer keeps its own refusal.
-  ['explorer_open_path_harness.mjs', 114],
+  // 114 -> 123 (lead 99032248f): beneath gives way to Empty / Copy of (copy_from), the walk's world set row, Live
+  // paused and resumed (asked once, one PUT, the worlds read again), Paused said, each history line says what.
+  ['explorer_open_path_harness.mjs', 123],
   // New with lead 619befe8c: where an edit sits in the ledger form — a guide per ancestor on every
   // row of the real skeleton's form, the trail as the declaration path's own words, the path bar
   // part, and no skeleton word in the bar's code.
@@ -1389,6 +1391,9 @@ const FLOORS = new Map([
   // New with lead 120450931 ②: the grid's world tabs - only over a per-world table, the operating one marked,
   // a pick reads again and every read after it carries the world, other tables byte for byte. Floor = first run.
   ['grid_world_tabs_harness.mjs', 19],
+  // New with lead 99032248f: the worlds a walk reads - one world= per pick in order, none for none, the walk page's
+  // every request through the seat, its picker's list, and a row per world under an edge only when two are read.
+  ['walk_worlds_harness.mjs', 14],
   // New 2026-09-13 with C-86 (the chain tab can add a rule it did not have). Floor is the
   // count it reports on the commit that introduces it.
   // 🔴 IT CARRIES A DECOY SKELETON. 「the fields come from the declaration」 cannot be scored by
@@ -1543,7 +1548,8 @@ const FLOORS = new Map([
   // saved row and the saved list; a blank branch in the address is Default.
   // 70 -> 71 (lead ccf374d48 answer 1): Default's saved list reads the runs with no world.
   // 71 -> 72 (lead 120450931 ①): the empty choice is named after the operating world; the default by its name.
-  ['rnd_board_contrast_save_harness.mjs', 72],
+  // 72 -> 73 (lead 99032248f): two worlds - every request carries both in order, the run names them comma-joined.
+  ['rnd_board_contrast_save_harness.mjs', 73],
   // the board part: the walk itself. 32 -> 34 (D5 and its mutant X11, lead d4a949a8c ㉱): the two
   // lists walk through one prelude. 34 -> 39 (H0-H2 and X12 X13, lead 9dd1e378b): measured reads the
   // hops' predicates, the same answer the retired pairing function gave on the same fixture.

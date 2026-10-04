@@ -16,7 +16,7 @@
   <link
     href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
     rel="stylesheet">
-  <!-- 색 토큰. 폼의 규칙은 여기 «없습니다» — `src/walk/styles.js` 가 부품과 같이 다닙니다. -->
+  <!-- 색 토큰. 폼의 규칙은 여기 «없습니다» — `src/walk/styles.js` 가 부품과 같이 다닙니다. -->
   <style>
     /* 🔴 이 페이지가 소유하는 것은 «페이지»뿐입니다: 여백 · 배경 · 노치 · 한 칸 배치.
        폼의 겉모양(`.wk-*`)은 «부품이 들고 옵니다» — 총괄 판정 2026-09-06.
@@ -49,6 +49,10 @@
       color: var(--text-dim);
     }
     .wk-head b { color: var(--text); font-size: 1rem; }
+    /* The worlds the walk reads (lead 99032248f), pushed to the head's end, as the board's; the head wraps
+       rather than cut chips off - the page itself does not scroll sideways. */
+    .wk-head { flex-wrap: wrap; }
+    #wk-branch { margin-left: auto; align-self: center; min-width: 0; }
     /* Layout A (lead 2b5819e1d · owner 「걷기는 A로」): the form rail on the left, the result on the
        right, the page itself does not scroll - each part scrolls inside itself. */
     html, body { overflow: hidden; }
@@ -66,21 +70,21 @@
       #wk-host > .wk-rail > .wk-form, #wk-host > .wk-main { overflow: visible; }
     }
   </style>
-  <script type="module" crossorigin src="/assets/walk-BoMjJPKH.js"></script>
-  <link rel="modulepreload" crossorigin href="/assets/tokens-9BqUObJc.js">
+  <script type="module" crossorigin src="/assets/walk-DDQlXuQ4.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/tokens-DOzbin0I.js">
   <link rel="modulepreload" crossorigin href="/assets/preload-helper-zJ_50EbN.js">
   <link rel="modulepreload" crossorigin href="/assets/absent-o9jpRT19.js">
-  <link rel="modulepreload" crossorigin href="/assets/disabled_reason-BP_E0n0W.js">
+  <link rel="modulepreload" crossorigin href="/assets/server_time-BtxF7Pd1.js">
+  <link rel="modulepreload" crossorigin href="/assets/branch_picker-BEQBEtqe.js">
   <link rel="modulepreload" crossorigin href="/assets/layered_graph-CRAuzeQO.js">
-  <link rel="modulepreload" crossorigin href="/assets/api-BAISxRWL.js">
-  <link rel="stylesheet" crossorigin href="/assets/tokens-B2XGyiZU.css">
+  <link rel="stylesheet" crossorigin href="/assets/tokens-CuWep6Ka.css">
 </head>
 
 <body>
   <div class="wk-page">
-    <header class="wk-head"><b>Walk</b><span>GET /api/ledger/subgraph</span></header>
+    <header class="wk-head"><b>Walk</b><span>GET /api/ledger/subgraph</span><div id="wk-branch"></div></header>
     <div id="wk-host"></div>
-  </div>
+  </div>
 </body>
 
 </html>

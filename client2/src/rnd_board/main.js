@@ -29,8 +29,7 @@
 // `API_BASE` still has exactly one definition; this file just does not ask for it until there
 // is a document to ask on behalf of.
 import { MarkingStore } from './marking_store.js';
-import { withWorld } from '../world.js';
-import { isBlank } from '../absent.js';
+import { withWorld, worldList, addressFor } from '../world.js';
 import { BranchPicker } from '../branch_picker.js';
 import { intersectMarkings } from './marking_intersection.js';
 import { GridShell } from './grid_shell.js';
@@ -990,22 +989,23 @@ export function boot(doc, host, deps) {
     observeSize: options.observeSize,
   });
   const layout = options.layout || BOARD;
-  // THE BOARD'S ONE WORLD SEAT (lead 64c380aeb): the page names it and every request of the board goes
-  // through the one fetch built here. The default sends today's requests.
-  const world = isBlank(options.world) ? null : options.world;
-  const fetchImpl = withWorld(options.fetchImpl || ((url, init) => globalThis.fetch(url, init)), () => world);
+  // THE BOARD'S ONE WORLD SEAT (lead 64c380aeb): the page names its worlds - several, in the order picked (lead
+  // 99032248f) - and every request of the board goes through the one fetch built here. None sends today's
+  // requests. A saved run says the worlds it walked, comma-joined in that order.
+  const worlds = worldList(options.world);
+  const fetchImpl = withWorld(options.fetchImpl || ((url, init) => globalThis.fetch(url, init)), () => worlds);
   const bound = bindLoaders(layout, {
     apiBase: options.apiBase || '',
     fetchImpl,
     dpr: options.dpr || 1,
     user: options.user,
-    world,
+    world: worlds.length ? worlds.join(',') : null,
   });
   shell.render(bound);
   if (options.branchMount) {
-    const picker = new BranchPicker(options.branchMount, { doc, onPick: options.pickWorld });
-    picker.show({ current: world });
-    bound.loadDeclaration().then((got) => picker.show({ worlds: (got && got.worlds) || [], current: world,
+    const picker = new BranchPicker(options.branchMount, { doc, onPickSet: options.pickWorld });
+    picker.show({ current: worlds });
+    bound.loadDeclaration().then((got) => picker.show({ worlds: (got && got.worlds) || [], current: worlds,
       operating: got && got.operating }));
   }
   // Installed AFTER the seats, so a part that reads a derived name gets its first value from
@@ -1018,19 +1018,14 @@ if (typeof document !== 'undefined') {
   const host = document.getElementById('rb-board');
   if (host) {
     import('../config.js').then(({ API_BASE, CURRENT_USER }) => {
-      // A branch is a page: picking one loads the board again on it, so no marking crosses worlds.
-      const page = new URL(location.href);
+      // The worlds are the page: picking loads the board again on them, so no marking crosses worlds.
       boot(document, host, {
         apiBase: API_BASE,
         user: CURRENT_USER,
         dpr: (typeof window !== 'undefined' && window.devicePixelRatio) || 1,
-        world: page.searchParams.get('world'),
+        world: new URL(location.href).searchParams.getAll('world'),
         branchMount: document.getElementById('rb-branch'),
-        pickWorld: (name) => {
-          if (name) page.searchParams.set('world', name);
-          else page.searchParams.delete('world');
-          location.assign(page.toString());
-        },
+        pickWorld: (names) => { location.assign(addressFor(location.href, names)); },
       });
     });
   }

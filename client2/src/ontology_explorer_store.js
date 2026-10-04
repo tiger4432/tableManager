@@ -5,11 +5,13 @@ import { saysTruncated } from './truncation.js';
 
 export const initialExplorerState = Object.freeze({
   // The ledger world this screen reads (null = the operating one) and the worlds there are (lead 64c380aeb);
-  // the operating one and who operated which when (lead 120450931 ③) - all from `GET /worlds`.
+  // the operating one, who operated which when (lead 120450931 ③) and which worlds follow their tables live
+  // ({world: false} paused, lead 99032248f) - all from `GET /worlds`.
   world: null,
   worlds: [],
   operating: null,
   history: [],
+  live: {},
   activeSnapshot: null,
   viewContext: null,
   selection: null,
@@ -163,7 +165,8 @@ export function reduceExplorerState(state = initialExplorerState, action) {
     case 'WORLDS_RECEIVED':
       return { ...state, worlds: Array.isArray(action.worlds) ? action.worlds : [],
         operating: typeof action.operating === 'string' ? action.operating : null,
-        history: Array.isArray(action.history) ? action.history : [] };
+        history: Array.isArray(action.history) ? action.history : [],
+        live: action.live && typeof action.live === 'object' ? action.live : {} };
     case 'REQUEST_FAILED':
       if (action.generation !== state.requestGeneration) return state;
       if (action.code === 'unknown_selection' || action.code === 'context_mismatch') {

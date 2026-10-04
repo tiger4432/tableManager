@@ -2142,7 +2142,8 @@ export function createContrastStore(deps) {
   };
   return {
     async save(run) {
-      // A run walked on a branch says which (lead 64c380aeb); the default's row is today's.
+      // A run walked on branches says which, comma-joined in the order picked (leads 64c380aeb, 99032248f);
+      // one walked on no world names none.
       const row = { ...contrastRunRow(run), ...(world ? { world } : {}) };
       try {
         const res = await doFetch(`${table(CONTRAST.runTable)}/data/updates`, {

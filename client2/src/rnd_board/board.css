@@ -50,14 +50,6 @@ body {
   margin-left: auto;
 }
 
-.rb-page__branch .branch-picker__label {
-  display: flex;
-  align-items: center;
-  gap: var(--space-1);
-  font-size: var(--fs-label);
-  color: var(--text-muted);
-}
-
 .rb-board {
   padding: 10px;
   min-height: 0;

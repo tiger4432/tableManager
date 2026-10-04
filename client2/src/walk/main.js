@@ -45,6 +45,9 @@ import { entitySeedId } from '../rnd_board/api.js';
 // The words other screens already draw for the same facts, spelled once.
 import { CHOOSE, FAILED, LOADING, WALKING, unitText } from '../ui_words.js';
 import { UNKNOWN, UNPICKED } from '../absent.js';
+// The worlds the walk reads (lead 99032248f): one seat, every request through it; the picker is a part.
+import { withWorld, worldList, addressFor } from '../world.js';
+import { BranchPicker } from '../branch_picker.js';
 
 /** The graph's chain of markings: the start, then one per Continue. Its length is the chain's length. */
 const GRAPH_CHAIN = Object.freeze(['walk-start', 'walk-2', 'walk-3', 'walk-4']);
@@ -69,14 +72,19 @@ const el = (doc, tag, cls, text) => {
 /**
  * @param {Document} doc
  * @param {HTMLElement} host
- * @param {{apiBase?: string, fetchImpl?: Function}} [deps]
+ * @param {{apiBase?: string, fetchImpl?: Function, world?: string|string[], branchMount?: HTMLElement,
+ *          pickWorld?: Function}} [deps]
+ *   `world` - the worlds the walk reads, in the order picked (none: the operating one); `pickWorld(names)`.
  */
 export function boot(doc, host, deps) {
   const options = deps || {};
   const apiBase = options.apiBase || '';
   // 자기 규칙을 «자기가» 들고 앉습니다. 호스트는 아무것도 안 챙깁니다.
   ensureWalkStyles(doc);
-  const walk = createWalkBoxWalk({ apiBase, fetchImpl: options.fetchImpl });
+  // THE WALK'S ONE WORLD SEAT (lead 99032248f), as the board's: every request goes through this fetch.
+  const worlds = worldList(options.world);
+  const fetchImpl = withWorld(options.fetchImpl || ((url, init) => globalThis.fetch(url, init)), () => worlds);
+  const walk = createWalkBoxWalk({ apiBase, fetchImpl });
 
   const state = {
     decl: null, declState: 'loading', declReason: '',
@@ -111,7 +119,8 @@ export function boot(doc, host, deps) {
   // Made once and kept across renders (`render` empties the host); it walks through the same wire.
   const markings = new MarkingStore();
   const graphMount = el(doc, 'div', 'wk-graph');
-  const graph = new SubgraphView(graphMount, { doc, walk, entities, markings, chain: GRAPH_CHAIN });
+  const graph = new SubgraphView(graphMount, { doc, walk, entities, markings, chain: GRAPH_CHAIN,
+    worldChips: worlds.length > 1 });
   /** The form's subject becomes the chain's first marking; no subject, no mark (the part says so). */
   const showGraph = (opts) => {
     const named = Object.keys(state.keys || {}).length > 0;
@@ -627,7 +636,7 @@ export function boot(doc, host, deps) {
     if (!state.type) { state.subjectsState = 'idle'; state.subjects = null; return; }
     const forType = state.type;
     state.subjectsState = 'loading'; state.subjects = null; render();
-    const got = await fetchKeyValues({ apiBase, fetchImpl: options.fetchImpl, type: forType });
+    const got = await fetchKeyValues({ apiBase, fetchImpl, type: forType });
     // 타입이 그새 바뀌었으면 «옛 답»을 앉히지 않습니다.
     if (state.type !== forType) return;
     if (got && got.ok) {
@@ -645,12 +654,15 @@ export function boot(doc, host, deps) {
 
   async function load() {
     state.declState = 'loading'; render();
-    const got = await fetchDeclaration({ apiBase, fetchImpl: options.fetchImpl });
+    const got = await fetchDeclaration({ apiBase, fetchImpl });
     if (got && got.ok) { state.decl = got; state.declState = 'ready'; }
     else { state.declState = 'failed'; state.declReason = (got && got.message) || UNKNOWN; }
+    if (picker) picker.show({ worlds: (got && got.worlds) || [], current: worlds, operating: got && got.operating });
     render();
   }
 
+  const picker = options.branchMount ? new BranchPicker(options.branchMount, { doc, onPickSet: options.pickWorld }) : null;
+  if (picker) picker.show({ current: worlds });
   load();
   return { state, spec, fire, render };
 }
@@ -661,7 +673,10 @@ if (typeof document !== 'undefined') {
   const host = document.getElementById('wk-host');
   if (host) {
     import('../config.js').then(({ API_BASE }) => {
-      boot(document, host, { apiBase: API_BASE });
+      // The worlds are the page: picking loads the walk again on them.
+      boot(document, host, { apiBase: API_BASE, world: new URL(location.href).searchParams.getAll('world'),
+        branchMount: document.getElementById('wk-branch'),
+        pickWorld: (names) => { location.assign(addressFor(location.href, names)); } });
     });
   }
 }

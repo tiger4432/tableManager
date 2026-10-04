@@ -50,6 +50,10 @@
       color: var(--text-dim);
     }
     .wk-head b { color: var(--text); font-size: 1rem; }
+    /* The worlds the walk reads (lead 99032248f), pushed to the head's end, as the board's; the head wraps
+       rather than cut chips off - the page itself does not scroll sideways. */
+    .wk-head { flex-wrap: wrap; }
+    #wk-branch { margin-left: auto; align-self: center; min-width: 0; }
     /* Layout A (lead 2b5819e1d · owner 「걷기는 A로」): the form rail on the left, the result on the
        right, the page itself does not scroll - each part scrolls inside itself. */
     html, body { overflow: hidden; }
@@ -71,7 +75,7 @@
 
 <body>
   <div class="wk-page">
-    <header class="wk-head"><b>Walk</b><span>GET /api/ledger/subgraph</span></header>
+    <header class="wk-head"><b>Walk</b><span>GET /api/ledger/subgraph</span><div id="wk-branch"></div></header>
     <div id="wk-host"></div>
   </div>
   <script type="module" src="/src/walk/main.js"></script>
