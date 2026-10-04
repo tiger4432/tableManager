@@ -149,6 +149,45 @@ console.log('\n[4] the rows that were already there do not move');
   eq('the chainless bucket is the route\'s own value', 'no_tid', NO_TRANSACTION_BUCKET);
 }
 
+console.log('\n[5] the world a receipt was written into - only when this install has more than one');
+{
+  // Captured (server 6922cd6cb): one edit followed in two live worlds, and the same with the branch world failing.
+  const receipts = (name) => VECTORS.cases[name].logs.filter((log) => log.column_name === LEDGER_BATCH_COLUMN);
+  const two = receipts('followed_in_two_worlds');
+  const half = receipts('one_world_failed');
+  const branch = two.map((log) => log.new_value.world).find((world) => world !== 'default');
+  const WORLDS = ['default', branch];
+  ok('CANARY: the capture holds a receipt per world, each naming it',
+    two.length === 2 && JSON.stringify(two.map((log) => log.new_value.world).sort()) === JSON.stringify(WORLDS.slice().sort()),
+    JSON.stringify(two.map((log) => log.new_value)));
+  const counts = 'atoms_written 1 · atoms_deduped 0 · refused 0 · ok';
+  eq('two worlds: a success line starts with its world', `${branch} · ${counts}`,
+    ledgerReceiptLine(two.find((log) => log.new_value.world === branch).new_value, WORLDS));
+  eq('...and the other receipt of the same event names the other', `default · ${counts}`,
+    ledgerReceiptLine(two.find((log) => log.new_value.world === 'default').new_value, WORLDS));
+  eq('two worlds: a failure line starts with its world too', `${branch} · failed · wafer_process_recipe · RuntimeError`,
+    ledgerReceiptLine(half.find((log) => log.new_value.status === 'failed').new_value, WORLDS));
+  eq('one world: no world drawn', counts, ledgerReceiptLine(two[0].new_value, ['default']));
+  eq('no world list (a page that never read /tables): no world drawn', counts, ledgerReceiptLine(two[0].new_value));
+  eq('two worlds, a receipt from before the world was written: no segment, not a blank one',
+    'atoms_written 10 · atoms_deduped 0 · refused 0 · ok',
+    ledgerReceiptLine(VECTORS.cases.followed_success.logs[0].new_value, WORLDS));
+
+  // The row: the route's group carries the event's first log, a receipt (total 3 - two receipts and the edit).
+  const { state } = await import('../src/state.js');
+  const c = VECTORS.cases.followed_in_two_worlds;
+  const group = { transaction_id: c.transaction_id, total_count: c.total_count, logs: [c.logs[0]] };
+  const said = `${c.logs[0].new_value.world} · ${counts}`;
+  const saved = state.tableList;
+  state.tableList = { tables: [], worlds: WORLDS, operating: 'default' };
+  const many = createGlobalTimelineItemDom(group).innerHTML;
+  state.tableList = { tables: [], worlds: ['default'], operating: 'default' };
+  const one = createGlobalTimelineItemDom(group).innerHTML;
+  state.tableList = saved;
+  ok('the row on a two-world install draws the line with its world', many.includes(said), many);
+  ok('...and on a one-world install the same row draws it without', one.includes(counts) && !one.includes(`${c.logs[0].new_value.world} · `), one);
+}
+
 console.log(`\n════ RESULT: ${ran - failed} passed, ${failed} failed ════`);
 console.log(`ASSERTIONS ${ran} ${failed}`);
 process.exit(failed === 0 ? 0 : 1);

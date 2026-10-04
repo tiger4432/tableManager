@@ -1,3 +1,40 @@
+> ## [11:41 디자인] 영수증 줄의 세상 이름 + 원장 소스 패널의 새 census 칸 (총괄 f8c8bda8e, 한 착지) — f36723a70
+
+**결론** 둘 다 착지했습니다. 서버 6922cd6cb(영수증 world)와 5e41fa599(census difference · rows_new · rows_gone)의 칸을 서버 이름 그대로 그립니다.
+
+**영수증 줄**
+- 세상 이름이 줄 맨 앞에 섭니다(성공 · 실패 둘 다). 「세상 하나뿐이면 표시 없음」은 이 설치의 세상 목록(메인 화면이 이미 읽는 `/tables` 의 `worlds`)이 하나일 때로 읽었습니다. 세상 이름이 없는 옛 영수증은 칸이 안 생깁니다.
+- 계약 벡터: 상자 서버는 6922cd6cb 전 코드라, 격리 시험 DB 의 임시 스키마(시험 틀이 만들고 지움)에서 실제 후속을 돌려 감사 라우트 함수로 읽었습니다 — 세상 둘이 켜진 채 고친 한 행(영수증 2개 · 세상 `a44300gw0` · `default` · 고친 행 하나, 한 트랜잭션)과 가지 세상 번역이 터지게 한 같은 고침(실패 영수증도 세상을 댐). 두 사례를 `followed_in_two_worlds` · `one_world_failed` 로 그대로 넣었습니다.
+- 하니스 `ledger_receipt_timeline` 31 칸 실패 0 (바닥 22 → 31). 변이 5/5 잡힘.
+- 미리보기(빌드된 메인 화면, `/tables` 의 세상과 `/audit_logs/recent` 를 위 캡처로 답함, 쓰기 0): 세상 둘 → `a44300gw0 · atoms_written 1 · atoms_deduped 0 · refused 0 · ok` / `a44300gw0 · failed · wafer_process_recipe · RuntimeError` / `a44300gw0 · failed · wafer_process_recipe · RuntimeError`. 세상 하나 → `atoms_written 1 · atoms_deduped 0 · refused 0 · ok` / `failed · wafer_process_recipe · RuntimeError` / `failed · wafer_process_recipe · RuntimeError`.
+
+**census 칸**
+- 셋째 칸 `difference`(부호 있음, 이름표 `Table less indexed`). 5e41fa599 전 기록(`not_yet` 만)은 그 칸 이름 그대로 그립니다.
+- 사람이 센 줄은 서버 순서대로 넷: `New, not translated` · `Edited, not followed` · `Gone, atoms remain` · `Not yet printed`. 다음 명령은 기록의 글자 그대로입니다.
+- 하니스 `source_backlog` 45 칸 실패 0 (바닥 41 → 45) · 변이 18/18 잡힘. `ledger_sources_panel` 137 칸 실패 0 (바닥 136 → 137) · 변이 14/14 잡힘.
+- 미리보기(빌드된 관리자 화면, 선언 GET 을 서버 이름표 · 세 가지 기록으로 답함, 쓰기 막음 — 보냈을 것 0건): 사람이 센 기록 `Table rows 478,720 · Indexed 478,719 · Table less indexed 1 · Measured 10-04 11:00:00` / `New, not translated 2 · Edited, not followed 1 · Gone, atoms remain 1 · Not yet printed 0 · Measured 10-04 11:00:00` / `python -m ledger.backfill --world default --catch-up`. 틱 기록 `Table rows ≈37,320 · Indexed 37,325 · Table less indexed ≈-5 · Measured 10-04 11:00:00`. 옛 기록 `Table rows ≈1,405 · Indexed 1,405 · not_yet 0 · Measured 10-04 11:00:00`. 눈에 띄는 칸 `Edited, not followed 1`.
+- 선언 화면 인스펙터는 같은 함수(`backlogCells`)를 지나며, 따로 열어 보지는 않았습니다.
+
+- 러너 초록 · 계약 13 개 어긋남 0. RELEASE_LOG 두 항목.
+
+**총괄께 여쭐 것**
+1. 눈에 띄는 표시가 지금은 `Edited, not followed` 하나뿐입니다(c21cba507). 다음 명령(--catch-up)은 새 · 고침 · 지움 셋 중 하나만 있어도 뜨는데, `New, not translated` · `Gone, atoms remain` 은 0 이 아니어도 눈에 안 띕니다. 셋 다 띄울지 여쭙니다.
+2. 새 서버의 `census_names` 에 `not_yet` 이 없어, 서버를 재기동한 뒤 틱이 다시 찍기 전까지 옛 기록의 셋째 칸 이름이 키 그대로 `not_yet` 으로 보입니다(미리보기에서 봄). 화면이 이름을 짓지 않으니, 서버 이름표에 `not_yet` 을 남길지는 구현자 몫으로 올립니다.
+3. 속성의 세상마다 값(1번)은 구현자 착지 메시지를 받고 하겠습니다.
+
+**발견(고치지 않음)**
+- 변경 이력의 값 칸이 1440px 창에서 29px 라 영수증 줄이 세상 이름이 붙기 전에도 잘려 보였습니다. 지금은 보이는 머리가 세상 이름입니다.
+- 고친 행을 세상 둘이 따라간 트랜잭션(로그 셋: 영수증 둘 + 고친 행)의 접힌 줄이 `📒 Ledger batch 3` · `LEDGER` 로 그려집니다 — 목록 라우트가 그룹의 첫 로그만 실어 화면이 «전부 영수증»으로 셉니다.
+
+**UI 제안**(짓지 않음)
+
+| 항목 | 왜 | 크기 |
+|---|---|---|
+| 영수증 줄을 툴팁으로 전부 | 값 칸이 좁아 수가 안 보입니다 | 작음 |
+| 접힌 줄의 종류를 그룹 전체로 | 고친 행이 섞여도 `LEDGER` 로 읽힙니다 | 안 쟀다 |
+
+- 어느 DB · 어느 스키마: 격리 시험 DB 의 임시 스키마(시험 틀이 만들고 지움, 캡처 시험 파일은 지움) · 박스 DB 쓰기 0 · 소유자 config 손대지 않음.
+
 > ## [10:57 디자인] 99032248f — 세상 다시: 걷기 · 보드는 여럿 고르기, 선언 화면은 빈 것 / 복사 · 세상마다 Live — 6f42994f5
 
 **결론** 착지했습니다. 서버 ec6874b28 의 모양(엣지의 `worlds` · `by_world`, `GET /worlds` 의 `live`, `PUT /worlds/{world}/live`, `bootstrap?copy_from=`)에 맞췄습니다.
