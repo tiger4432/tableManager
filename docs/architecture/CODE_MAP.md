@@ -4522,6 +4522,7 @@ python -m chain  replay    [옵션]   -> scripts/chain_replay_cli.py        main
 > test_*_contract.py          9                 ⚠️ 그중 «둘»(test_ledger_source_contract.py ·
 >                                              test_ledger_trace_contract.py)은 contracts/ 디렉터리가 «없다»
 >                                              -- 파일 «이름»으로 세면 계약 아닌 것을 센다
+>                                              🆕 10-04 `e71cde056` +1 test_walk_node_shape_contract.py — walk_node_shape 의 서버 쪽(전엔 클라만 채점)
 > client2/tests 최상위 .mjs 117   (구 표기 82)  <- check_harnesses.mjs 가 실제로 «도는» 수
 > 하위까지 세면             127   (구 표기 89)  <- 러너는 lib/·oracle/·fixtures/ 를 «안 돈다»
 > ```
