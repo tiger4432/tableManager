@@ -449,7 +449,22 @@ def test_every_live_world_follows_an_edit_and_one_switched_on_again_catches_up(w
                                                 rollback=lambda: None),
                                 "ledger_catch_up", {"world": C})
     assert counted["affected"] == 3 and counted["extra"]["sources"][CHANGED] == {
-        "new_rows": 1, "edited_rows": 1, "gone_rows": 1}
+        "rows_new": 1, "rows_drifted": 1, "rows_gone": 1}
+
+    # 총괄 6091a7ae3 ②: a person's census says the three apart - the table less the index nets
+    # the new row against the lost one - and names the catch-up; the paced tick carries them
+    store = LedgerStore(world["engine"], world=C)
+
+    def person_census(exact=True):
+        said = backfill.measure_and_store(world["engine"], setup, CHANGED, store,
+                                          exact_rows=exact)
+        return ({box: said[box]["estimate"] for box in
+                 ("difference", "rows_new", "rows_drifted", "rows_gone")}, said.get("next_step"))
+
+    behind = ({"difference": 0, "rows_new": 1, "rows_drifted": 1, "rows_gone": 1},
+              "python -m ledger.backfill --world %s --catch-up" % C)
+    assert person_census() == behind
+    assert person_census(exact=False) == behind
     answer = world["router"].set_world_live(
         C, SimpleNamespace(headers={"X-User": "tester"}), {"live": True}, db=world["db"])
     queued = world["db"].query(models.RetroactiveRun).filter(
@@ -461,6 +476,8 @@ def test_every_live_world_follows_an_edit_and_one_switched_on_again_catches_up(w
         assert left() == (0, 0, 0)
         census = backfill.rows_not_yet_translated(world["engine"], setup, CHANGED, world=C)
         assert (census["not_yet"], _saying(world, c.ledger, "RCP-4")) == (0, set())
+        assert person_census() == ({"difference": 0, "rows_new": 0, "rows_drifted": 0,
+                                    "rows_gone": 0}, None)
         assert (_saying(world, c.ledger, "RCP-3"), _saying(world, c.ledger, "RCP-7")) == (
             {CHANGED}, {CHANGED})
     finally:

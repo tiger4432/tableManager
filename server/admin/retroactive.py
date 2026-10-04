@@ -413,8 +413,8 @@ def _count_ledger_backfill(db, params, scan_limit):
     from ledger.setup import load_setup
 
     source = params["source"]
-    census = backfill.rows_not_yet_translated(db.get_bind(), _ledger_setup(params), source,
-                                              world=_ledger_world(params))
+    engine, setup, world = db.get_bind(), _ledger_setup(params), _ledger_world(params)
+    census = backfill.rows_not_yet_translated(engine, setup, source, world=world)
 
     if census.get("refused"):
         return {
@@ -430,8 +430,19 @@ def _count_ledger_backfill(db, params, scan_limit):
             "extra": {"source": source, "refused": census["refused"]},
         }
 
-    rows = census["not_yet"]
+    # The rows this run translates are the ones the index does not name - counted apart from
+    # the rows the table lost, which the table less the index nets them against (총괄 6091a7ae3
+    # ②, the catch-up's own count).
+    behind = backfill.rows_to_catch_up(engine, setup, source, world=world, census=census)
+    rows, gone = behind["rows_new"], behind["rows_gone"]
     total, indexed = census["relation_rows"], census["indexed_rows"]
+    if rows is None:
+        return {
+            "affected": 0, "affected_label": "rows not yet translated",
+            "absence": ABSENCE_NOT_APPLICABLE, "count_kind": COUNT_EXACT, "scanned": total,
+            "scan_limit": None, "truncated": False, "detail": census["not_comparable"],
+            "extra": {"source": source, "relation_rows": total, "indexed_rows": indexed},
+        }
     if not rows:
         detail = (f"'{source}' has NO rows left to translate - {total} row(s) in "
                   f"the table, {indexed} in the index. Running it now does nothing "
@@ -440,10 +451,9 @@ def _count_ledger_backfill(db, params, scan_limit):
         detail = (f"'{source}' has {rows} row(s) not yet translated - {total} "
                   f"row(s) in the table, {indexed} in the index. This number is the "
                   f"WHOLE set, not a sample. The run can be stopped while it goes.")
-    if census.get("index_names_absent_rows"):
-        detail += (f" ⚠ The index names {census['index_names_absent_rows']} "
-                   f"row(s) that are NOT in the table - deletions that were never "
-                   f"swept.")
+    if gone:
+        detail += (f" ⚠ The index names {gone} row(s) that are NOT in the table - deletions "
+                   f"that were never swept.")
     return {
         "affected": rows,
         "affected_label": "rows not yet translated",
@@ -458,7 +468,7 @@ def _count_ledger_backfill(db, params, scan_limit):
         "truncated": False,
         "detail": detail,
         "extra": {"source": source, "relation_rows": total, "indexed_rows": indexed,
-                  "not_yet_translated": rows},
+                  "not_yet_translated": rows, "gone_rows": gone},
     }
 
 
@@ -489,16 +499,11 @@ def _count_ledger_catch_up(db, params, scan_limit):
     engine, setup, world = db.get_bind(), _ledger_setup(params), _ledger_world(params)
     sources, total, uncounted = {}, 0, []
     for source in sorted(name for name, plan in setup.snapshot.source_plans.items() if plan.runs):
-        left = backfill.rows_not_yet_translated(engine, setup, source, world=world).get("not_yet")
-        edited = backfill.rows_drifted(engine, setup, source, world=world)["rows_drifted"]
-        gone = len(backfill.rows_gone_from_the_source(engine, setup, source, world=world))
-        # `not_yet` is the table's rows less the index's, and a lost row is still in the
-        # index - so it hides one new row; added back, the new rows are counted.
-        new = None if left is None else left + gone
-        if new is None:
+        behind = backfill.rows_to_catch_up(engine, setup, source, world=world)
+        if behind["rows_new"] is None:
             uncounted.append(source)
-        sources[source] = {"new_rows": new, "edited_rows": edited, "gone_rows": gone}
-        total += (new or 0) + edited + gone
+        sources[source] = {box: behind[box] for box in ("rows_new", "rows_drifted", "rows_gone")}
+        total += (behind["rows_new"] or 0) + behind["rows_drifted"] + behind["rows_gone"]
     detail = (f"world {world}: {total} row(s) to catch up - made, edited or lost while it did "
               f"not follow live, over {len(sources)} source(s).")
     if uncounted:

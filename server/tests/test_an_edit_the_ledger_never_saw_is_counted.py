@@ -11,8 +11,8 @@ SQL so no outbox event carries it - the follow-up never sees it.
   a column no binding names             not drifted - read, but no binding reaches it (판정 201)
   '' and NULL                            one print
   an index line with no print            counted apart, not as drift
-  a paced census after a person's        carries the person's two counts and their time; counts nothing
-  the record's next step                 the --drifted redo while edits are missed · the census when never counted
+  a paced census after a person's        carries the person's counts and their time; counts nothing
+  the record's next step                 the catch-up while rows are new, edited or gone · the census when never counted
 """
 import os
 import sys
@@ -62,7 +62,7 @@ def test_an_edit_behind_the_chain_is_counted_and_redone(world):
     assert census["rows_drifted"]["measured_at"] == census["measured_at"]   # when it was counted
     assert census["rows_unprinted"]["estimate"] == 0                         # counted apart
     # the world it was measured in, named always (총괄 6c266e56b ⑤)
-    assert census["next_step"] == "python -m ledger.backfill --source %s --world default --drifted" % hw.SOURCE
+    assert census["next_step"] == "python -m ledger.backfill --world default --catch-up"
     backfill.retranslate_drifted(world["engine"], world["setup"], hw.SOURCE, apply=True)
     assert _drift(world) == {"rows_drifted": 0, "rows_unprinted": 0}
     assert [(job, float(value)) for job, value in hw.said(world)] == [("J1", 8.0)]

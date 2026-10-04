@@ -29,10 +29,11 @@ import pytest                                                        # noqa: E40
 
 @pytest.fixture(autouse=True)
 def _no_drift_scan(monkeypatch):
-    """(나) The drift count scans the relation through a real plan; this file's fakes
-    stand in for the counts around it, and its own file measures it."""
+    """(나) The drift and gone counts scan the relation through a real plan; this file's
+    fakes stand in for the counts around them, and their own files measure them."""
     monkeypatch.setattr(backfill, "rows_drifted",
                         lambda *a, **k: {"rows_drifted": 0, "rows_unprinted": 0})
+    monkeypatch.setattr(backfill, "rows_gone_from_the_source", lambda *a, **k: [])
 
 
 class _Plan:
@@ -151,9 +152,9 @@ def test_the_three_numbers_come_from_one_measurement():
 
     assert census["relation_rows"]["estimate"] == 478035
     assert census["indexed_rows"]["estimate"] == 470000
-    assert census["not_yet"]["estimate"] == 8035
+    assert census["difference"]["estimate"] == 8035
     stamps = {census[key]["measured_at"] for key in
-              ("relation_rows", "indexed_rows", "not_yet")}
+              ("relation_rows", "indexed_rows", "difference")}
     assert stamps == {census["measured_at"]}, "the three must share one instant"
 
 
@@ -163,9 +164,9 @@ def test_each_number_names_how_it_was_obtained():
 
     assert census["relation_rows"]["method"] == "count(*)"
     assert census["indexed_rows"]["method"] == "count(distinct row_id)"
-    assert census["not_yet"]["method"] == "relation_rows - indexed_rows"
+    assert census["difference"]["method"].startswith("relation_rows - indexed_rows")
     assert all(census[key]["exact"] for key in
-               ("relation_rows", "indexed_rows", "not_yet"))
+               ("relation_rows", "indexed_rows", "difference"))
 
 
 def test_a_source_that_cannot_be_counted_is_stamped_refused_and_not_zero():
@@ -176,7 +177,7 @@ def test_a_source_that_cannot_be_counted_is_stamped_refused_and_not_zero():
     census = backfill.measure_row_census(object(), setup, "void_observation")
 
     assert census["refused"] == "source_refused"
-    assert "not_yet" not in census
+    assert "difference" not in census
     assert census["measured_at"], "even a refusal says when it was found"
 
 
@@ -262,7 +263,7 @@ def test_a_group_source_is_stamped_without_a_remainder_rather_than_crashing():
 
     assert census["relation_rows"]["method"].endswith("[rows]")
     assert census["indexed_rows"]["method"].endswith("[groups]")
-    assert "not_yet" not in census
+    assert "difference" not in census and "rows_new" not in census
     assert "event_group_key" in census["not_comparable"]
 
 

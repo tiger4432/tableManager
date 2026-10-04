@@ -1103,6 +1103,22 @@ def retranslate_drifted(engine, setup, source, apply=False, world=None):
     return rescope(engine, setup, source, column, values, apply=apply, world=world)
 
 
+def rows_to_catch_up(engine, setup, source, world=None, census=None):
+    """🔴 WHAT A SOURCE IS BEHIND BY, THREE WAYS APART (총괄 6091a7ae3 ②): rows not yet
+    translated, rows edited since, rows the table lost that the index still names - and the
+    index lines with no print. Scans: a person's census and the catch-up's count ask it, the
+    paced tick never (S-122). The table less the index (`census`, one measurement) nets a lost
+    row against a new one, so the lost rows, counted, are added back; `rows_new` is None where
+    the index counts groups and the table rows."""
+    census = census or rows_not_yet_translated(engine, setup, source, world=world)
+    gone = len(rows_gone_from_the_source(engine, setup, source, world=world))
+    drift = rows_drifted(engine, setup, source, world=world)
+    new = (census["relation_rows"] - census["indexed_rows"] + gone
+           if census.get("counts") == "rows" else None)
+    return {"rows_new": new, "rows_drifted": drift["rows_drifted"], "rows_gone": gone,
+            "rows_unprinted": drift["rows_unprinted"]}
+
+
 def catch_up(engine, setup, world=None, checkpoint=None, pace=None):
     """🔴 WHAT A WORLD MISSED WHILE IT DID NOT FOLLOW LIVE (총괄 71880678a) - per source it reads,
     the three that already exist, in turn: the rows not yet translated (`run`), the rows edited
@@ -1145,38 +1161,42 @@ ROW_CENSUS_JOB = "ledger_row_census"
 CENSUS_NAMES = {
     "relation_rows": "Table rows",
     "indexed_rows": "Indexed",
-    "not_yet": "Not yet",
+    "difference": "Table less indexed",
     "measured_at": "Measured",
     "source_refused": "Refused by the loader",
+    "rows_new": "New, not translated",
     "rows_drifted": "Edited, not followed",
+    "rows_gone": "Gone, atoms remain",
     "rows_unprinted": "Not yet printed",
 }
 
 #: The boxes only a person's census counts - both are scans (S-122). A paced tick that does not
 #: count them carries the last person's count forward with its own `measured_at` (총괄 5baab7b8d):
 #: replacing the record dropped them, and the panel went back to Not measured on the next tick.
-PERSON_ONLY_BOXES = ("rows_drifted", "rows_unprinted")
+PERSON_ONLY_BOXES = ("rows_new", "rows_drifted", "rows_gone", "rows_unprinted")
 
-#: `python -m ledger.backfill` and its redo flag - the parser below takes these very strings.
+#: `python -m ledger.backfill` and its redo flags - the parser below takes these very strings.
 PROG = "python -m ledger.backfill"
 DRIFTED_FLAG = "--drifted"
+CATCH_UP_FLAG = "--catch-up"
 
 
 def next_step(source, census, world):
-    """What a person runs next for this record (총괄 e1648e884), or None: the redo of the rows
-    edited behind the chain when there are some, a person's census when the drift was never
-    counted. A refused source has neither - its refusal already says nothing was counted.
+    """What a person runs next for this record (총괄 e1648e884), or None: the catch-up when a
+    person's count found rows new, edited or gone (총괄 6091a7ae3 ② - one command takes all
+    three), a person's census when nobody counted them. A refused source has neither - its
+    refusal already says nothing was counted.
     It names the world the record was measured in, always: it runs later, and the world
     that operates then may be another (총괄 6c266e56b ⑤)."""
     from .census_cli import PROG as CENSUS_PROG
 
     if census.get("refused"):
         return None
-    drifted = census.get("rows_drifted")
-    if not isinstance(drifted, dict):
+    if not all(isinstance(census.get(box), dict) for box in ("rows_drifted", "rows_gone")):
         return f"{CENSUS_PROG} --source {source} --world {world}"
-    if drifted.get("estimate"):
-        return f"{PROG} --source {source} --world {world} {DRIFTED_FLAG}"
+    if any((census.get(box) or {}).get("estimate")
+           for box in ("rows_new", "rows_drifted", "rows_gone")):
+        return f"{PROG} --world {world} {CATCH_UP_FLAG}"
     return None
 
 
@@ -1230,16 +1250,17 @@ def measure_row_census(engine, setup, source, now=None, *, exact_rows=True, worl
             excluded, exact=False,
             method=f"exclude_when over the first {page} rows, joined to the row index",
             measured_at=stamp)
-    # (나) A SCAN, so the operator's census and never the paced tick (S-122). Rows, whatever
-    # the unit, so before the grouped return like the number above.
+    # (나) SCANS, so the operator's census and never the paced tick (S-122) - the three a
+    # source can be behind by, apart, as the catch-up counts them (총괄 6091a7ae3 ②).
     if exact_rows:
-        drift = rows_drifted(engine, setup, census["source"], world=world)
-        stamped["rows_drifted"] = measured(
-            drift["rows_drifted"], exact=True,
-            method="index print <> print of the row's read columns now", measured_at=stamp)
-        stamped["rows_unprinted"] = measured(
-            drift["rows_unprinted"], exact=True, method="index lines with no print",
-            measured_at=stamp)
+        behind = rows_to_catch_up(engine, setup, census["source"], world=world, census=census)
+        for box, method in (("rows_new", "relation rows the index does not name"),
+                            ("rows_drifted", "index print <> print of the row's read columns now"),
+                            ("rows_gone", "index rows the relation no longer holds"),
+                            ("rows_unprinted", "index lines with no print")):
+            if behind[box] is not None:
+                stamped[box] = measured(behind[box], exact=True, method=method,
+                                        measured_at=stamp)
     grouped = census.get("counts") == "rows vs groups"
     # ⚠️ THE METHOD IS PART OF THE NUMBER (S-122). A paced tick reads the planner's free
     # estimate and a person's `census` command counts; publishing both as `exact=True`
@@ -1274,11 +1295,12 @@ def measure_row_census(engine, setup, source, now=None, *, exact_rows=True, worl
     if grouped:
         stamped["not_comparable"] = census["not_comparable"]
         return stamped
-    stamped["not_yet"] = measured(
-        census["not_yet"], exact=True, method="relation_rows - indexed_rows",
+    # 🔴 A DIFFERENCE, NAMED AS ONE (총괄 6091a7ae3 ②): a lost row still in the index nets out
+    #    a new one, so 0 here is not 「nothing left」 - the person's boxes above say that.
+    stamped["difference"] = measured(
+        census["relation_rows"] - census["indexed_rows"], exact=not estimated,
+        method="relation_rows - indexed_rows (a new row and a lost one net out)",
         measured_at=stamp)
-    if census.get("index_names_absent_rows"):
-        stamped["index_names_absent_rows"] = census["index_names_absent_rows"]
     return stamped
 
 
@@ -2197,7 +2219,7 @@ def main(argv=None):
     parser.add_argument("--apply", action="store_true",
                         help="with --scope-column: withdraw and remake for real. Without "
                              "it the scope is a dry-run and writes nothing")
-    parser.add_argument("--catch-up", action="store_true",
+    parser.add_argument(CATCH_UP_FLAG, action="store_true",
                         help="what --world missed while it did not follow live, every source "
                              "it reads: rows not yet translated, rows edited since, rows the "
                              "table lost (--source is not read)")

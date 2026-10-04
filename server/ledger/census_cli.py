@@ -111,12 +111,13 @@ def main(argv=None) -> int:
             continue
         rows = (census.get("relation_rows") or {}).get("estimate")
         indexed = (census.get("indexed_rows") or {}).get("estimate")
-        not_yet = (census.get("not_yet") or {}).get("estimate")
+        difference = (census.get("difference") or {}).get("estimate")
         # 「셀 수 없다」와 「한 것이 없다」는 다른 문장이므로 빈 칸은 빈 칸으로 둔다.
-        tail = "" if not_yet is None else f" · 남은 {not_yet}"
-        if census.get("rows_drifted") is not None:
-            tail += (f" · 수정 누락 {census['rows_drifted']['estimate']}"
-                     f" · 지문 없음 {census['rows_unprinted']['estimate']}")
+        tail = "" if difference is None else f" · 차이 {difference}"
+        for box, word in (("rows_new", "새 행"), ("rows_drifted", "수정 누락"),
+                          ("rows_gone", "지워진 행"), ("rows_unprinted", "지문 없음")):
+            if census.get(box) is not None:
+                tail += f" · {word} {census[box]['estimate']}"
         print(f"{source} ({census.get('world')}): 표 {rows} · 색인 {indexed}{tail}")
     return 0
 
