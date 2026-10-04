@@ -430,8 +430,9 @@ def preview_rescope(engine, setup, source, scope_column, scope_values, world=Non
               "scope_values": len(scoped[1]), "rows_in_scope": len(rows),
               "withdraw": 0, "remake": 0, "refs": []}
     if rows:
-        result.update(_preview_frame(engine, setup, source, plan, _v2_frame(rows),
-                                     world=world))
+        previewed = _preview_frame(engine, setup, source, plan, _v2_frame(rows), world=world)
+        previewed.pop("preview")                 # the translation itself is not an answer
+        result.update(previewed)
     return result
 
 
@@ -465,6 +466,7 @@ def _preview_frame(engine, setup, source, plan, frame, world=None):
     refs = sorted({str(atom.source_raw_ref) for atom in atoms})
     result["remake"] = len(atoms)
     result["refs"] = refs
+    result["preview"] = preview          # the remake writes this translation (6091a7ae3 ①)
 
     result["withdraw"] = LedgerStore(engine, world=world).atoms_for_refs(source, refs)
     return result
@@ -741,7 +743,7 @@ def rescope(engine, setup, source, scope_column, scope_values, apply=False,
         result["rows_in_scope"] += len(frame)
         result["pages"] += 1
         scope_row_ids = _scope_row_ids(plan, frame)
-        aimed = None
+        aimed = previewed = None
         if withdraw:
             previewed = _preview_frame(engine, setup, source, plan, frame, world=world)
             result["withdraw"] += previewed["withdraw"]
@@ -760,7 +762,7 @@ def rescope(engine, setup, source, scope_column, scope_values, apply=False,
             executed = execute_selected_scoped_batch(
                 setup, source, frame, scoped or (plan.frame_row_id, scope_row_ids), store,
                 known_registrations=None if subjects is None else (),
-                withdraw_refs=aimed)
+                withdraw_refs=aimed, preview=previewed and previewed["preview"])
             written = executed.store_result
             for key in ("withdrawn", "attempted", "inserted", "deduped"):
                 result[key] += int(written.get(key, 0))

@@ -74,11 +74,12 @@ def rescope_doors(monkeypatch):
     monkeypatch.setattr(setup_module, "_require_declared_source", lambda setup, source: source)
     monkeypatch.setattr(backfill, "_v2_registration_subjects", lambda plan, frame: None)
     monkeypatch.setattr(backfill, "_preview_frame", lambda e, s, src, plan, frame, **_: {
-        "withdraw": len(frame), "remake": len(frame), "refs": list(frame["row_id"])})
+        "withdraw": len(frame), "remake": len(frame), "refs": list(frame["row_id"]),
+        "preview": None})
     monkeypatch.setattr(store_module, "LedgerStore", lambda engine, **_: store)
 
     def _write(setup, source, frame, scope, store, known_registrations=None,
-               withdraw_refs=None):
+               withdraw_refs=None, preview=None):
         written.append(list(frame["row_id"]))
         return SimpleNamespace(
             store_result={"attempted": len(frame), "inserted": len(frame),

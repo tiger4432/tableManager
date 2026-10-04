@@ -463,6 +463,7 @@ def execute_selected_scoped_batch(
     *,
     known_registrations: Any = None,
     withdraw_refs: Any = None,
+    preview: Any = None,
 ) -> CursorBatchExecutionResult:
     """The same gate and store transaction for a NAMED PART of an approved v2 source.
 
@@ -475,6 +476,7 @@ def execute_selected_scoped_batch(
         setup.snapshot, source_id, base_rows, scope, setup.mappers, store,
         known_registrations=known_registrations,
         withdraw_refs=withdraw_refs,
+        preview=preview,
     )
 
 

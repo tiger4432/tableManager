@@ -391,16 +391,17 @@ def test_the_follow_up_starts_on_the_slowest_declared_pace():
     assert rest[jobs["ledger_row_census"]] > rest[slowest]
 
 
-# ------------------------------------------------------- 판정 166: a CREATE translates once
+# ------------------------------------------------------- 판정 166: a CREATE withdraws nothing
 
-def test_a_create_is_translated_once_and_an_edit_twice(monkeypatch):
+def test_a_create_withdraws_nothing_and_an_edit_withdraws(monkeypatch):
     """🔴 THE PREVIEW EXISTS TO AIM A WITHDRAWAL, and a row that has just appeared holds
     nothing to withdraw -- so for a CREATE that first translation answers a question with no
     content. Measured 2026-09-09 on `lot_event`: 27.16 ms per molecule became 10.61, which is
     also below the cursor path's 15.66.
 
     ⚠️ AN EDIT STILL WITHDRAWS. A corrected row DOES hold atoms, and remaking without
-    withdrawing would leave the old generation standing beside the new one."""
+    withdrawing would leave the old generation standing beside the new one. The translation
+    that aims it is the one written (총괄 6091a7ae3 ①, scored on PostgreSQL in the worlds test)."""
     seen = calls_to_rescope(monkeypatch)
     engine = FakeEngine([("J1",)])
     followup.enqueue("dt_log", ["r1"], "CREATE")

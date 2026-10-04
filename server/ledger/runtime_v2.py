@@ -318,8 +318,13 @@ def execute_scoped_batch(
     *,
     known_registrations: Any = None,
     withdraw_refs: Any = None,
+    preview: Any = None,
 ) -> CursorBatchExecutionResult:
     """Redo ONE NAMED PART of a source. Same gate, same translation, CURSOR UNTOUCHED.
+
+    `preview`: this batch already translated, on the same registrations - the withdrawal it
+    aimed (`backfill._preview_frame`) is written as it is, not translated a second time
+    (총괄 6091a7ae3 ①).
 
     🔴 WHY THE POSITION MUST NOT MOVE, EITHER WAY. Writing the batch's last row as the
     cursor makes the watermark say "read this far" about a source that was read further; and
@@ -354,9 +359,10 @@ def execute_scoped_batch(
     # be a read-then-write race with any concurrent forward scan, which is the same silent
     # rewind by a longer route.
     unwritten_cursor = last_cursor(plan, base_rows)
-    preview = preview_cursor_batch(
-        snapshot, source_id, base_rows, unwritten_cursor, mappers,
-        known_registrations=known_registrations)
+    if preview is None:
+        preview = preview_cursor_batch(
+            snapshot, source_id, base_rows, unwritten_cursor, mappers,
+            known_registrations=known_registrations)
     kept_all = _screened_atoms(snapshot, source_id, preview)
     batch_id = str(uuid6.uuid7())
     try:
