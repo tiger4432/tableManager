@@ -22,8 +22,11 @@ from ledger import admin, backfill, gate, trace_router                  # noqa: 
 from ledger import config as _config                                   # noqa: E402
 
 HANGUL = re.compile("[가-힣]")
-#: The census cells a screen draws (`client2/src/source_backlog.js` BACKLOG_FIELDS + MEASURED_AT).
-DRAWN = {"relation_rows", "indexed_rows", "not_yet", "measured_at"}
+#: The census cells a screen draws (`client2/src/source_backlog.js` BACKLOG_FIELDS + MEASURED_AT) -
+#: `not_yet` became `difference` and the person's three are apart (총괄 6091a7ae3 ②, the client's
+#: cells follow).
+DRAWN = {"relation_rows", "indexed_rows", "difference", "measured_at", "rows_new", "rows_drifted",
+         "rows_gone"}
 
 
 class _Cursor:

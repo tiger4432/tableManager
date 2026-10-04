@@ -72084,3 +72084,124 @@ not_yet 상쇄   인구조사의 «남은 수»는 표 행 − 색인 행이라,
 ㄷ not_yet 만 «표 행 − 색인 행 + 지운 행»으로 — 지운 행 수를 틱에서 모르면 같은 문제
 ```
 **③ — 짓는 중**: 성공 · 실패 영수증에 world 를 싣습니다(서버). 타임라인 한 줄(client2 timeline.js ledgerReceiptLine)과 계약 벡터(contracts/ledger_receipt)에 world 를 보이는 일은 클라 몫으로 메시지 드립니다.
+
+---
+
+## [10-04] 6091a7ae3 ② · ③ 착지 5e41fa599 · 6922cd6cb — 인구조사가 새 · 고침 · 지움을 따로 · 영수증에 세상 · ① 이 남긴 빨간 시험 셋 57aed165d
+
+어느 DB · 어느 스키마 · 지운 것 — PG assy_test 시험 스크래치 스키마만 · 지운 것 0
+
+**②**
+```
+한 함수      backfill.rows_to_catch_up = 새 행(표 − 색인 + 지운 행) · 수정 누락 · 지운 행 · 지문 없음 — 사람의 census · 따라잡기 셈 · ledger_backfill 작업 셈이 같이 부름
+기록         사람(정확): rows_new · rows_drifted · rows_gone · rows_unprinted / 틱: 그 넷을 이어 가져감(훑지 않음, S-122) · 틱 자신의 수는 difference(부호 있음, 전 not_yet)
+next_step    셋 중 하나라도 0 아님 -> python -m ledger.backfill --world W --catch-up · 사람 수 없음 -> census 한 줄
+게이트        꺼진 동안 새 1 · 고침 1 · 지움 1 -> 사람 census: difference 0 · 새 1 · 고침 1 · 지움 1 · next_step catch-up -> 틱이 그대로 이어 감 -> 작업 뒤 넷 0 · next_step 없음
+변이 3       지운 행을 다시 안 더함 RED · 다음 걸음이 옛 --drifted RED · 틱이 사람 수를 안 이어 감 RED
+```
+**③**
+```
+성공 · 실패 영수증 new_value 에 "world" — 켜진 세상 둘에서 고침 하나 -> 같은 트랜잭션에 영수증 둘, 세상마다 하나(PG)
+변이 2       실패 영수증에 world 없음 RED · 성공 영수증에 world 없음 RED
+```
+**① 이 남긴 것 — 제 잘못**
+```
+a85131717 을 키워드로 고른 시험(다시 번역 · 후속 · 따라잡기)만 돌리고 착지 — sqlite 전체가 뒤에 셋을 찾음(가짜 _preview_frame 이 preview 를 안 돌려줌)
+57aed165d 에서 가짜만 고침(코드 변경 없음)
+```
+**시험**
+```
+sqlite 전체    8 failed, 7757 passed, 329 skipped, 3 xfailed, 13007 warnings in 782.03s (0:13:02) — 박스 사유 다섯 밖: test_a_scoped_redo_re_reads_the_row_so_a_humans_correction_reaches_the_ledger · test_a_write_that_raises_takes_the_withdrawal_down_with_it · test_the_refs_reach_the_store_instead_of_a_delete_of_our_own
+              (그 셋은 위 가짜 고침 뒤 그 두 파일만 다시: 통과)
+PG 관련 묶음    2 failed, 55 passed, 8040 deselected, 106 warnings in 838.77s (0:13:58) — test_an_edit_behind_the_chain_is_counted_and_redone · test_two_independent_refusals_are_counted_and_named_in_one_run (앞은 next_step 문구를 옛것으로 든 시험 — 고친 뒤 그 파일 PG 6 통과, 뒤는 알려진 것)
+```
+**클라에 보낼 칸 이름 (이 보고와 같이 메시지)**
+```
+census       not_yet -> difference · 새 칸 rows_new · rows_gone (rows_drifted · rows_unprinted 그대로) · 이름표는 census_names 에
+영수증        timeline 의 LEDGER 줄: new_value.world
+```
+
+---
+
+## [10-04] 총괄 4e1e49fe9 착지 351b23ef8 — 걷기 응답의 노드 속성이 세상마다
+
+어느 DB · 어느 스키마 · 지운 것 — PG assy_test 시험 스크래치 스키마만 · 지운 것 0
+
+```
+칸           nodes[].attributes_by_world = {속성 이름: [{world, value, occurred_at, source_who}]} — 세상 이름순, 세상마다 한 줄
+값           그 세상의 원자에서(보통 이름 최신 값 · many 이름 서로 다른 값 목록) — attributes 와 같은 함수(_read_attribute)
+many 여부     attributes 와 같이 걷기가 합친 선언이 정함(처음 고른 세상 우선) — 세상마다 따로 묻지 않음
+시각         관계 선과 같은 규칙 — 사건 시각일 때만, 아니면 null
+그대로        attributes(세상들 가운데 한 값) · attribute_conflicts · 등록 원자에 안 닿은 노드는 칸 없음
+게이트(PG)    두 세상이 웨이퍼 하나의 속성을 다른 컬럼에서 읽게 선언 -> 둘 다 걸으면 두 줄(값 · 관계 선과 같은 시각 · 출처), 충돌 1
+             C 만 걸으면 C 한 줄, 충돌 0
+변이 4       세상을 안 가름 RED · 세상 값을 모든 세상에서 읽음 RED · 시각이 관계 선의 것이 아님 RED · 출처를 안 실음 RED
+```
+**시험**
+```
+sqlite 전체    5 failed, 7760 passed, 330 skipped, 3 xfailed, 13048 warnings in 858.89s (0:14:18) — 박스 사유 밖: 없음
+PG 관련 묶음    세상 · 걷기 · 추적 파일 셋: 35 passed, 45 deselected, 47 warnings in 210.88s (0:03:30) — 실패 없음
+위 둘 뒤에 바뀐 것은 독스트링 한 단락(many 여부의 주어) — 그 뒤 여러 값 이름 파일 · PG 게이트를 다시 돌려 통과
+```
+**클라에 보낸 칸 이름 (이 보고와 같이 메시지)**
+```
+attributes_by_world — 위 모양. RELEASE_LOG 세상 화면 항목의 「서버가 최신 값 하나만 보냅니다」를 「화면은 하나를 그립니다(서버는 세상마다도 보냄)」로 고침
+```
+**물음 하나**
+```
+contracts/walk_node_shape(걷기 노드 모양 계약 벡터)에 이 칸이 없습니다 — 계약에 넣을지 판정 부탁드립니다 (안 넣어도 지금 시험은 초록)
+```
+
+---
+
+## [10-04] 총괄 4eb1fe98f — 노드 · 엣지 이름의 @1 은퇴: 짓기 전 재기 넷 (짓지 않음)
+
+어느 DB · 어느 스키마 · 지운 것 — 박스 assy_manager · 스키마 public · 읽기 전용(SET TRANSACTION READ ONLY) · 지운 것 0. 운영 DB 는 못 봄
+
+**결론 먼저**
+```
+다시 번역 0 — 접으면 도는 소스의 지문이 «한 번» 다 움직이지만, 부팅 재도장이 위치 · 원자를 안 건드리고 도장만 옮긴다
+남는 글자 하나 — 참조 원자의 버전 글자 꼬리(«#entity-reference:die@1#0»). 옛 원자는 그대로, 새 원자부터 맨이름
+```
+**① @ 를 다루는 자리** (센 트리 fb6321c83 · server 파이썬 278 파일 · AST · 뜻으로 · tests · migrations 뺌 · 카나리아: bare_name 정의 · VERSION_SEPARATOR 잡힘)
+```
+벗기기 51 자리 (17 파일) + bare_name 부름 6 · 붙이기 36 (14) · 검사 2 (2) · 정규식 3 (3) · 코드에 적힌 x@N 3 (2)
+client2 는 AST 로 안 셈 (총괄의 grep 8 그대로)
+```
+**② 두 버전이 같이 사는 길**
+```
+선언     x@1 · x@2 를 다른 id 로 받는다 (레지스트리 키가 전체 id · setup_bundle._VERSIONED_ID 가 name@N 을 «요구»)
+원자     맨이름 — 두 버전의 원자가 원장에서 «이미» 섞인다. 공존은 선언에서만 되고 걷기에선 하나다
+         박스 원자 술어 · 주어 타입 칸에 @숫자 0 (④ 훑기에서 그 칸은 안 걸림)
+버전 숫자(.version)를 읽는 코드 0 (앞서 셈)
+박스 선언  어휘 14 · 엔티티 9 · 같은 맨이름 두 버전 0 · 가장 큰 N 1
+```
+**③ 소급 비용**
+```
+지문     커서 지문이 그 소스가 부르는 술어 id 와 닿는 엔티티 id 를 해시한다 -> 맨이름으로 접으면 지문이 움직인다
+         박스 운영 선언: 도는 소스 5 중 5 의 재료에 @ 붙은 id (09-09 쓰지 않는 칸 하나 지운 것과 같은 종류)
+다시 번역 0 — 도장은 이제 아무것도 막지 않는다: 도장을 견주는 쓰기(enforce_translator_version=True)를 넘기는 제품 자리 0
+         (시험 3 자리는 잡힘 — 카나리아) · 다른 도장에 CursorVersionConflict 를 올리는 자리는 그 쓰기 안 1 곳뿐
+         부팅 재도장(체인 데몬 부팅 때)은 운영 세상 커서의 도장 글자만 바꾸고 위치 · 원자는 안 건드림
+         옛 원자는 옛 글자 그대로(원장은 쌓기). 운영 아닌 세상의 도장은 낡은 채 남음(막는 것 없음 · 사람이 --world 재도장)
+원자 버전 글자  앞(ledger-v2:<스냅샷 해시>)은 선언을 고칠 때마다 바뀌는 그것 · 뒤의 참조 유도 이름이 die@1 -> die
+         박스 원자 2,380,869 중 119,147 이 그 꼬리에 @ — 그대로 남고, 그 글자로 LIKE 찾는 질의만 옛 · 새로 갈린다
+         (그 글자를 SQL 로 견주는 자리: ledger · ledger_api · admin · chain 에는 주석뿐, scripts 의 운영 · 이주 · 씨앗 스크립트에만 — git grep 정규식으로 셈)
+         옛 원자의 그 글자 «안»을 파이썬이 읽는 자리(ledger · ledger_api · admin · chain · mappers · main.py 의 속성 읽기 정규식):
+         trace.claim_basis 하나 — 마지막 «#» 뒤만 읽어 참조 원자는 접기 전후 모두 «0». 엔티티 id 를 꺼내 읽는 자리 없음
+         gate · runtime_v2 의 derivation 견주기는 «새로 쓰는» 원자만(같은 스냅샷에서 나온 이름끼리)
+         곁가지 — 참조 원자의 근거가 유도 이름이 아니라 번호 «0» 으로 읽힌다(접기와 무관, 원래부터). 짓지 않고 말씀만
+⚠️ 오늘 코드로 계산한 도장과 박스에 저장된 도장이 5 중 0 일치 — 위와 맞는다(낡은 도장이 아무것도 안 막음).
+   박스 체인 데몬이 이 코드로 재기동 안 돼서로 보이나 이유는 안 쟀다
+```
+**④ 저장된 것** (박스 DB 의 파티션 아닌 표 59 개 · 52,905,197 행 전부 · '@숫자' 정규식 · 카나리아 정규식 참)
+```
+ledger_events.source_translator_ver 119,147 행 — ③ 의 참조 꼬리. 그 밖 원자 칸 0
+커서(15 행) · 행 색인 · census 기록 · 작업 기록 · 그 밖 표 0
+public.ledger_events_pre_rebuild.source_raw_ref 10,486 행 — 머리별 recipe_book 10,486 · 견본 «recipe_book:SYN-RCP-BOND@4» — 레시피 값에 든 @숫자, 버전 아님
+```
+**여쭐 것**
+```
+1  이 비용(지문 한 번 이동 · 다시 번역 0)으로 짓기 진행해도 되나
+2  참조 원자의 버전 글자 꼬리도 맨이름으로 — 옛 119,147 원자는 그대로 두고 새 원자부터 (LIKE 질의만 갈림)
+```

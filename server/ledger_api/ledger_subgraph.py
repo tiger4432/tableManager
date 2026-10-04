@@ -1010,28 +1010,49 @@ def _apply_registrations(nodes, registrations):
     A node this walk reached no registration for gets NO KEY, not an empty object: "this
     entity carries no values" and "this walk did not reach its registration" are different
     answers.
+
+    🔴 EACH WORLD'S VALUE BESIDE THE ONE (총괄 4e1e49fe9): `attributes_by_world` - per name, per
+    world that said it (by name), that world's atoms read by the rule, with when and who - so a
+    walk over several worlds can draw both. Whether a name is `many` is the walk's merged
+    declaration's answer (the first world picked wins), as for `attributes`, which stays the
+    one value across them. `seen`: (instant, value, world, source, the instant shown).
     """
     for node_id, by_name in registrations.items():
         node = nodes.get(node_id)
         if node is None:
             continue
         plural = _declared_plural_attributes(str(node.get("type") or ""))
-        values, conflicts = {}, 0
+        values, conflicts, by_world = {}, 0, {}
         for name, seen in by_name.items():
-            if name in plural:
-                # Ordered by instant, and the same value at two instants is ONE value -
-                # exactly the rule the conflict count already used: that is one fact
-                # stated twice, not two facts.
-                distinct = {}
-                for _at, value in sorted(seen, key=lambda item: item[0]):
-                    distinct.setdefault(_canonical(value), value)
-                values[name] = list(distinct.values())
-                continue
-            values[name] = max(seen, key=lambda item: item[0])[1]
-            if len({_canonical(value) for _at, value in seen}) > 1:
+            by_world[name] = [
+                {"world": world, "value": _read_attribute(said, name in plural),
+                 "occurred_at": latest[4], "source_who": latest[3]}
+                for world, said in sorted(_by_world(seen).items(), key=lambda kv: str(kv[0]))
+                for latest in [max(said, key=lambda item: item[0])]]
+            values[name] = _read_attribute(seen, name in plural)
+            if name not in plural and len({_canonical(item[1]) for item in seen}) > 1:
                 conflicts += 1
         node["attributes"] = values
         node["attribute_conflicts"] = conflicts
+        node["attributes_by_world"] = by_world
+
+
+def _by_world(seen):
+    out = {}
+    for item in seen:
+        out.setdefault(item[2], []).append(item)
+    return out
+
+
+def _read_attribute(seen, plural):
+    """One name's value by the declared rule: a `many` name, its distinct values by instant (the
+    same value at two instants is one fact stated twice); otherwise the latest."""
+    if not plural:
+        return max(seen, key=lambda item: item[0])[1]
+    distinct = {}
+    for item in sorted(seen, key=lambda item: item[0]):
+        distinct.setdefault(_canonical(item[1]), item[1])
+    return list(distinct.values())
 
 
 def one_predicates(cardinalities):
@@ -2096,9 +2117,11 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
         sweep's `registration_follow`, rather than restated as a predicate check here.
         """
         subject_id = explorer.entity_id(atom.subject_type, atom.subject_keys)
+        # the instant shown is an event time's only, as an edge shows it (총괄 29047aedc)
+        shown = _instant(atom.occurred_at) if reads_as_event_time(atom.occurred_at_basis) else None
         for name, value in ((atom.object_payload or {}).get("qualifiers") or {}).items():
             registrations.setdefault(subject_id, {}).setdefault(name, []).append(
-                (atom.occurred_at, value))
+                (atom.occurred_at, value, atom.world, atom.source_who, shown))
 
     def _step(atom, depth, frontier_entities):
         """One atom's step: its two ends, which one is far, and `None` when a guard refuses it.

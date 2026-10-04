@@ -35782,3 +35782,55 @@ ec6874b28  run_pg_tests -k (world · branch · trace_pg · saved_contrast · cou
 a85131717  run_pg_tests -k (independent_and_meet · follows_the_table_it_reads · stops_between_pages) 12 passed · 두 파일 pytest 27 passed
 문서        LEDGER_GUIDE 4.9 · RUNTIME_MAP ④ 의 «세상당 고치기 4.9 s» -> 3.5–4.0 s(구현자 박스 잼 4.55/5.17 -> 3.48/3.99) — 제가 한 시간 전에 적은 수가 이 착지로 낡았다
 ```
+
+---
+
+## [C 응용] 10-04 🔴 5e41fa599(census 가 새 · 고침 · 사라짐을 따로) — 서버가 칸 이름을 바꿔, 클라 전에 재기동하면 패널의 「Not yet」 이 빈다
+
+```
+서버     census 기록에서 not_yet 이 «없어지고» difference(부호 있는 표 − 색인)가 들어섰다. CENSUS_NAMES 도 "not_yet" 줄이 지워짐.
+         사람 census 는 rows_new · rows_drifted · rows_gone · rows_unprinted, 주기 tick 은 그 넷을 잇고 difference 를 찍는다
+클라     client2/src/source_backlog.js BACKLOG_FIELDS = ['relation_rows', 'indexed_rows', 'not_yet'] · DRIFT_FIELDS = rows_drifted · rows_unprinted 둘
+         -> 이 착지로 재기동한 뒤 첫 tick 부터 원장 소스 패널의 「Not yet」 칸이 비고(키가 없음), rows_new · rows_gone 은 안 그려진다.
+         next_step 은 --catch-up 으로 바뀌어 그대로 그려진다(문장 그대로 그리므로)
+DESIGN_ORDERS  마지막 지시 4e1e49fe9(11:03) 에 이 칸 이름이 없다 — 구현자는 「the screen's cells are the client's (told through the lead)」
+여쭐 것   재기동을 클라 착지와 묶을지(9e9a9015a 의 Default 두 번과 같은 모양) — 그 사이 패널의 «남은 수» 가 안 보인다
+시험     5e41fa599 PG · sqlite 는 도는 중 — 끝나면 덧붙임
+```
+
+---
+
+## [C 응용] 10-04 5e41fa599 QA · 문서 347cb79b3 — 따라잡기가 끝나도 패널은 「--catch-up 을 돌려라」를 계속 말한다(잼)
+
+```
+정정     073a6647c 의 「이 칸 이름을 다루는 지시가 없다」는 틀림 — 총괄 f8c8bda8e(11:13:28)가 내 보고(11:13:59)보다 31 초 먼저 섰다. 거둔다
+시험     떼어 둔 작업 트리 /c/wt-app @073a6647c (공유 트리 backfill.py 에 누군가의 미커밋 변이 「+ gone 지움」이 떠 있어서 — 지금은 사라짐)
+         sqlite 착지 시험 여섯 + retroactive + rule_name : 144 passed, 19 skipped, 448 warnings in 17.40s
+         pg -k census·counts_were_taken·never_saw·independent_and_meet·stopped_being·panel_words·retroactive : 24 passed, 8039 deselected, 56 warnings, 5 errors in 222.54s (0:03:42)
+         실패 줄 0 개  (오류 5 는 무시된 server/mappers/*.py 수집 — 환경)
+문서     347cb79b3 — BACKFILL_GUIDE 60행(census 줄 · 고치기 --catch-up · next_step · 패널 칸이 클라 전까지 옛 이름) · RUNTIME_MAP ⑤(넷을 잇고 자기 수는 difference) ·
+         CODE_MAP backfill(rows_to_catch_up · PERSON_ONLY_BOXES 넷 · CATCH_UP_FLAG) · source_backlog(서버 이름 바뀜 ⚠️)
+```
+
+**🔴 찾은 것 — 따라잡기 뒤의 기록이 낡은 채 «다음 명령»을 계속 낸다 (박스 assy_test · 하니스 스크래치 스키마 · 지운 것 0)**
+```
+잰 것    착지 시험(세상 끄고 새 · 고침 · 지움 하나씩 → 켜기 → 따라잡기 작업)의 사본에 한 줄: 작업 직후 left() == (0, 0, 0) 다음에 주기 틱 한 번
+결과     ({'difference': 0, 'rows_new': 1, 'rows_drifted': 1, 'rows_gone': 1}, 'python -m ledger.backfill --world c43732gw0 --catch-up')
+         (사본 시험 1 passed, 8084 deselected, 8 warnings, 5 errors in 43.49s)
+왜      measure_and_store 의 틱은 {**_person_counts(...), **census} 뒤에 next_step 을 낸다 — 사람이 센 넷을 잇고, 그 넷으로 다음 명령을 고른다
+         따라잡기(backfill.catch_up)는 소스마다 셋을 이미 세고 고치지만 census 기록은 안 건드린다
+운영자    세상을 다시 켜면 따라잡기 작업이 자동으로 돈다 -> 끝난 뒤 패널은 같은 세상에 「--catch-up」 을 계속 보인다. 사람이 census 를 다시 돌릴 때까지 «매 주기»
+         (전에도 --drifted 로 같은 모양이었고 BACKFILL_GUIDE ⚠️ 로 적혀 있었다 — 이번에 셋으로 넓어졌고, 그 명령을 켜기가 «스스로» 돈다)
+여쭐 것   따라잡기 작업이 끝에 소스마다 사람 census 한 번(measure_and_store exact)을 찍을지 — 그 작업은 이미 표를 훑는 자리다. 안 지었다
+```
+
+**작은 것 둘**
+```
+① 같은 셋의 이름이 둘 — 따라잡기 «미리보기»(retroactive _count_ledger_catch_up)는 5e41fa599 부터 rows_new · rows_drifted · rows_gone,
+   따라잡기 «결과»(backfill.catch_up 보고)는 그대로 new_rows · edited_rows · gone_rows. 같은 작업의 앞과 뒤. client2/src 독자 0 (git grep) — 아직 아무도 안 그린다
+② RELEASE_LOG 항목 「사람이 센 세 수를 다음 주기까지 이어 갑니다」 — 코드는 넷(지문 없음 포함)을 «사람이 다시 셀 때까지 매 주기» 잇는다. 고치는 건 착지 레인
+```
+
+**클라 전까지 패널이 보이는 것 (코드 읽음)** — 셋째 칸은 이름이 날 키 `not_yet`(서버 census_names 에 이름이 없어 nameOf 가 키로 떨어짐)에 값이 빈다. hasBacklog 는 표 · 색인 칸으로 참이라 칸이 숨지는 않는다. 다음 명령 줄은 서버 글자 그대로 `--catch-up`.
+
+**내 것** — 57aed165d: a85131717 QA 때 -k 로 고른 시험만 돌려 rescope 대역 셋의 빨강을 못 봤다. 착지가 바꾼 함수를 부르는 시험 파일을 «전부» 돌린다.
