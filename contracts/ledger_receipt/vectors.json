@@ -4,7 +4,8 @@
   "grouping": "`transaction_id` is the transaction of the change that CAUSED the batch, so a receipt appears in the same group as the edit that triggered it.",
   "empty_transaction_id": "The log's `transaction_id` is null and the ROUTE buckets it under the group key 'no_tid'. That null is a VALUE, not a gap: it says a backfill or a retroactive run produced this batch rather than somebody's edit. Do not fold it in with rows that are missing data.",
   "is_row_deleted": "true on every receipt, and it is not about deletion: `row_id` is the BATCH's id, so no row of the table carries it and the existence probe says so. A receipt must not be drawn as a deleted row.",
-  "failed": "one receipt PER SOURCE that could not be followed, sharing the transaction id of the event. Written in a commit of its own, because the batch's own rolled back and took any receipt inside it."
+  "failed": "one receipt PER SOURCE that could not be followed, sharing the transaction id of the event. Written in a commit of its own, because the batch's own rolled back and took any receipt inside it.",
+  "worlds": "followed_in_two_worlds and one_world_failed (2026-10-04): captured on the isolated PostgreSQL scratch schema (server 6922cd6cb) through the route functions behind /audit_logs/transaction/{tx}, not the box: one edit followed in two live worlds - a receipt per world, each with `world`, beside the edit itself - and the same edit with the branch world's translation made to raise (its failure receipt names the world too). The branch world's name is the test's own. `is_row_deleted` is false on a receipt since 218f907f5."
  },
  "cases": {
   "followed_success": {
@@ -99,6 +100,154 @@
      "business_key": null,
      "timestamp": "2026-09-10T12:14:03.806942+09:00",
      "is_row_deleted": true
+    }
+   ]
+  },
+  "followed_in_two_worlds": {
+   "transaction_id": "01a104ab-39cf-7687-a1c9-270f2a9a0ef0",
+   "total_count": 3,
+   "summary_columns": [
+    "ledger_batch",
+    "recipe_id"
+   ],
+   "logs": [
+    {
+     "id": 20,
+     "table_name": "wafer_process",
+     "row_id": "01a104ab-4021-7724-a9c4-091c6fdaa40f",
+     "column_name": "ledger_batch",
+     "old_value": null,
+     "new_value": {
+      "rows": 1,
+      "molecules": 1,
+      "atoms_written": 1,
+      "atoms_deduped": 0,
+      "atoms_withdrawn": 1,
+      "refused": 0,
+      "reasons": {},
+      "unsaid": 0,
+      "translator_ver": "ledger-v2:b6d91cde8aabea91e32d1ddc7d141d2947529f8e64d53f01e2493c38dc7f4e03",
+      "world": "a44300gw0",
+      "status": "ok",
+      "error": null
+     },
+     "source_name": "ledger",
+     "updated_by": "ledger",
+     "transaction_id": "01a104ab-39cf-7687-a1c9-270f2a9a0ef0",
+     "business_key": null,
+     "timestamp": "2026-10-04T11:08:14.483669+09:00",
+     "is_row_deleted": false
+    },
+    {
+     "id": 19,
+     "table_name": "wafer_process",
+     "row_id": "01a104ab-3d41-79b8-9145-9b6c48cf3fd1",
+     "column_name": "ledger_batch",
+     "old_value": null,
+     "new_value": {
+      "rows": 1,
+      "molecules": 1,
+      "atoms_written": 1,
+      "atoms_deduped": 0,
+      "atoms_withdrawn": 1,
+      "refused": 0,
+      "reasons": {},
+      "unsaid": 0,
+      "translator_ver": "ledger-v2:b6d91cde8aabea91e32d1ddc7d141d2947529f8e64d53f01e2493c38dc7f4e03",
+      "world": "default",
+      "status": "ok",
+      "error": null
+     },
+     "source_name": "ledger",
+     "updated_by": "ledger",
+     "transaction_id": "01a104ab-39cf-7687-a1c9-270f2a9a0ef0",
+     "business_key": null,
+     "timestamp": "2026-10-04T11:08:13.752305+09:00",
+     "is_row_deleted": false
+    },
+    {
+     "id": 18,
+     "table_name": "wafer_process",
+     "row_id": "01a104ab-136b-759f-be18-b43f9e42281e",
+     "column_name": "recipe_id",
+     "old_value": "RCP-1",
+     "new_value": "RCP-2",
+     "source_name": "user",
+     "updated_by": "probe",
+     "transaction_id": "01a104ab-39cf-7687-a1c9-270f2a9a0ef0",
+     "business_key": "P1",
+     "timestamp": "2026-10-04T11:08:12.854927+09:00",
+     "is_row_deleted": false
+    }
+   ]
+  },
+  "one_world_failed": {
+   "transaction_id": "01a104ab-416a-7234-a8d3-20fabcef9f05",
+   "total_count": 3,
+   "summary_columns": [
+    "ledger_batch",
+    "recipe_id"
+   ],
+   "logs": [
+    {
+     "id": 23,
+     "table_name": "wafer_process",
+     "row_id": "01a104ab-4677-7561-988b-b7908903844e",
+     "column_name": "ledger_batch",
+     "old_value": null,
+     "new_value": {
+      "source": "wafer_process_recipe",
+      "world": "a44300gw0",
+      "status": "failed",
+      "error": "RuntimeError: a translator blew up"
+     },
+     "source_name": "ledger",
+     "updated_by": "ledger",
+     "transaction_id": "01a104ab-416a-7234-a8d3-20fabcef9f05",
+     "business_key": null,
+     "timestamp": "2026-10-04T11:08:15.991976+09:00",
+     "is_row_deleted": false
+    },
+    {
+     "id": 22,
+     "table_name": "wafer_process",
+     "row_id": "01a104ab-45a4-7434-a9cb-17daa3e51ff0",
+     "column_name": "ledger_batch",
+     "old_value": null,
+     "new_value": {
+      "rows": 1,
+      "molecules": 1,
+      "atoms_written": 1,
+      "atoms_deduped": 0,
+      "atoms_withdrawn": 1,
+      "refused": 0,
+      "reasons": {},
+      "unsaid": 0,
+      "translator_ver": "ledger-v2:b6d91cde8aabea91e32d1ddc7d141d2947529f8e64d53f01e2493c38dc7f4e03",
+      "world": "default",
+      "status": "ok",
+      "error": null
+     },
+     "source_name": "ledger",
+     "updated_by": "ledger",
+     "transaction_id": "01a104ab-416a-7234-a8d3-20fabcef9f05",
+     "business_key": null,
+     "timestamp": "2026-10-04T11:08:15.883747+09:00",
+     "is_row_deleted": false
+    },
+    {
+     "id": 21,
+     "table_name": "wafer_process",
+     "row_id": "01a104ab-136b-759f-be18-b43f9e42281e",
+     "column_name": "recipe_id",
+     "old_value": "RCP-2",
+     "new_value": "RCP-3",
+     "source_name": "user",
+     "updated_by": "probe",
+     "transaction_id": "01a104ab-416a-7234-a8d3-20fabcef9f05",
+     "business_key": "P1",
+     "timestamp": "2026-10-04T11:08:15.020657+09:00",
+     "is_row_deleted": false
     }
    ]
   }

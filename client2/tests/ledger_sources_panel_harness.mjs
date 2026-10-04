@@ -412,15 +412,19 @@ console.log('\n[8] inner lines: server names, one local clock, a short hash');
     a: { source: 'a', relation: 'r', measured_at: AT,
          relation_rows: box(10), indexed_rows: box(9), not_yet: box(1) },
     b: { source: 'b', relation: 'q', measured_at: AT, refused: 'source_refused', remedy: 'fix' },
+    // The server's record since 5e41fa599: the third count is a signed difference.
+    c: { source: 'c', relation: 's', measured_at: AT,
+         relation_rows: box(10), indexed_rows: box(12), difference: box(-2) },
   };
   const NAMES = { relation_rows: 'Table rows', indexed_rows: 'Indexed', not_yet: 'Not yet',
+                  difference: 'Table less indexed',
                   measured_at: 'Measured', source_refused: 'Refused by the loader' };
   const HASH = 'ledger-v2:' + '0123456789abcdef'.repeat(4);
   const payload = { ingestion: { note: NOTE, unavailable: null, states: STATE_WORDS,
     state_names: STATE_NAMES, reason_names: { no_identity: 'No identity' },
     sources: [row('a', 'ran_and_wrote', { translator_ver: HASH, updated_at: AT, refusals: 'named',
       refusal_reasons: { no_identity: { count: 2 }, brand_new: { count: 1 } } }),
-      row('b', 'ran_and_wrote')] } };
+      row('b', 'ran_and_wrote'), row('c', 'ran_and_wrote')] } };
   const doc = makeDoc();
   const host = doc.createElement('div');
   new LedgerSourcesPanel(host, { doc }).render(payload, {}, CENSUS, NAMES);
@@ -429,6 +433,10 @@ console.log('\n[8] inner lines: server names, one local clock, a short hash');
   ok('census cells draw the server names', /Table rows 10/.test(line.textContent)
     && /Not yet 1/.test(line.textContent) && !/relation_rows/.test(line.textContent), line.textContent);
   eq('the census stamp is on the local clock', line.textContent.endsWith(`Measured ${local}`), true);
+  const rowC = rowsOf(host).find((r) => r.getAttribute && r.getAttribute('data-source') === 'c') || rowsOf(host)[2];
+  const signed = byClass(rowC || {}, 'ledger-sources-census')[0];
+  eq('a difference is drawn by its server name, signed', signed && signed.textContent,
+    `Table rows 10 · Indexed 12 · Table less indexed -2 · Measured ${local}`);
   eq('...and so is Last — one fact, one clock', rowsOf(host)[0].children[3].textContent, local);
   eq('a refused census draws its server name', byClass(host, 'ledger-sources-census-refused')[0].textContent,
     'Refused by the loader');
@@ -465,54 +473,63 @@ async function driftSuite(panelMod, backlogMod) {
   const LATER = '2026-10-03T01:20:00+00:00';
   const box = (estimate, method, at = LATER) => ({ estimate, exact: true, method, measured_at: at });
   const base = { relation: 'r', measured_at: AT, relation_rows: box(10, 'count(*)', AT),
-    indexed_rows: box(10, 'count(distinct row_id)', AT), not_yet: box(0, 'relation_rows - indexed_rows', AT) };
+    indexed_rows: box(10, 'count(distinct row_id)', AT),
+    difference: box(0, 'relation_rows - indexed_rows (a new row and a lost one net out)', AT) };
   const DRIFT_M = "index print <> print of the row's read columns now";
-  // `next_step` as the server's `backfill.next_step` spells it (66570d724): the redo when edits were
-  // missed, a person's census when the drift was never counted, nothing for 0 or a refusal.
-  const COMMAND = 'python -m ledger.backfill --source n --drifted';
-  const CENSUS_CMD = 'python -m ledger census --source x';
-  const N = { ...base, source: 'n', rows_drifted: box(3, DRIFT_M), rows_unprinted: box(1200, 'index lines with no print'),
-    next_step: COMMAND };
-  const ZERO = { ...base, source: 'z', rows_drifted: box(0, DRIFT_M), rows_unprinted: box(0, 'index lines with no print') };
-  const UNPRINTED = { ...base, source: 'u', rows_drifted: box(0, DRIFT_M), rows_unprinted: box(1200, 'index lines with no print') };
+  const NEW_M = 'relation rows the index does not name';
+  const GONE_M = 'index rows the relation no longer holds';
+  const UNPRINTED_M = 'index lines with no print';
+  // `next_step` as the server's `backfill.next_step` spells it (5e41fa599): the catch-up when a person's
+  // count found rows new, edited or gone, a person's census when nobody counted them, nothing for 0.
+  const COMMAND = 'python -m ledger.backfill --world default --catch-up';
+  const CENSUS_CMD = 'python -m ledger census --source x --world default';
+  const four = (fresh, drifted, gone, unprinted) => ({ rows_new: box(fresh, NEW_M), rows_drifted: box(drifted, DRIFT_M),
+    rows_gone: box(gone, GONE_M), rows_unprinted: box(unprinted, UNPRINTED_M) });
+  const N = { ...base, source: 'n', ...four(2, 3, 1, 1200), next_step: COMMAND };
+  const ZERO = { ...base, source: 'z', ...four(0, 0, 0, 0) };
+  const UNPRINTED = { ...base, source: 'u', ...four(0, 0, 0, 1200) };
   const NONE = { ...base, source: 'x', next_step: CENSUS_CMD };
   const REFUSED = { source: 'b', relation: 'q', measured_at: AT, refused: 'source_refused', remedy: 'fix' };
-  // An older server's record: drift counted, no `next_step` key.
-  const { next_step: _gone, ...OLD } = N;
-  const NAMES = { rows_drifted: 'Edited, not followed', rows_unprinted: 'Not yet printed', measured_at: 'Measured' };
+  // An older server's record (before 5e41fa599): edits and unprinted counted, no new or gone, no `next_step`.
+  const { next_step: _gone, rows_new: _new, rows_gone: _lost, ...OLD } = N;
+  const NAMES = { rows_new: 'New, not translated', rows_drifted: 'Edited, not followed', rows_gone: 'Gone, atoms remain',
+    rows_unprinted: 'Not yet printed', measured_at: 'Measured' };
+  const NM = NOT_MEASURED;
   const drift = (census) => backlogMod.driftLine(census, NAMES) || { cells: [] };
   const texts = (d) => d.cells.map((c) => c.text).join('|');
   const alarms = (d) => d.cells.map((c) => Boolean(c.alarm)).join('|');
 
-  say('P1 drift N: both counts as recorded, only the edited one alarms, its own time, the command',
-    texts(drift(N, 'n')) === `3|${localeCountText(1200)}` && alarms(drift(N, 'n')) === 'true|false'
+  say('P1 counted: the four as recorded, in the server\'s order, only the edited one alarms, its own time, the command',
+    texts(drift(N, 'n')) === `2|3|1|${localeCountText(1200)}` && alarms(drift(N, 'n')) === 'false|true|false|false'
       && drift(N, 'n').at === localShort(LATER) && drift(N, 'n').next === COMMAND,
     JSON.stringify(drift(N, 'n')));
   say('P2 drift 0: a counted zero is a zero, not Not measured, and nothing to do',
-    texts(drift(ZERO, 'z')) === '0|0' && drift(ZERO, 'z').cells.every((c) => c.counted)
-      && alarms(drift(ZERO, 'z')) === 'false|false' && drift(ZERO, 'z').next === '',
+    texts(drift(ZERO, 'z')) === '0|0|0|0' && drift(ZERO, 'z').cells.every((c) => c.counted)
+      && alarms(drift(ZERO, 'z')) === 'false|false|false|false' && drift(ZERO, 'z').next === '',
     JSON.stringify(drift(ZERO, 'z')));
   say('P3 not yet printed is counted apart: 1200 of them alarm nothing and ask for nothing',
-    texts(drift(UNPRINTED, 'u')) === `0|${localeCountText(1200)}` && alarms(drift(UNPRINTED, 'u')) === 'false|false'
+    texts(drift(UNPRINTED, 'u')) === `0|0|0|${localeCountText(1200)}` && alarms(drift(UNPRINTED, 'u')) === 'false|false|false|false'
       && drift(UNPRINTED, 'u').next === '', JSON.stringify(drift(UNPRINTED, 'u')));
   say('P4 a record with no drift keys says Not measured for each, no time, and the census command its record names',
-    texts(drift(NONE, 'x')) === `${NOT_MEASURED}|${NOT_MEASURED}` && drift(NONE, 'x').cells.every((c) => !c.counted)
+    texts(drift(NONE, 'x')) === `${NM}|${NM}|${NM}|${NM}` && drift(NONE, 'x').cells.every((c) => !c.counted)
       && drift(NONE, 'x').at === '' && drift(NONE, 'x').next === CENSUS_CMD, JSON.stringify(drift(NONE, 'x')));
   say('P5 no census at all is the same Not measured',
-    texts(drift(undefined, 'c')) === `${NOT_MEASURED}|${NOT_MEASURED}`, JSON.stringify(drift(undefined, 'c')));
+    texts(drift(undefined, 'c')) === `${NM}|${NM}|${NM}|${NM}`, JSON.stringify(drift(undefined, 'c')));
   say('P6 a refused census has no drift line: the refusal already says nothing was counted',
     backlogMod.driftLine(REFUSED, NAMES, 'b') === null, JSON.stringify(backlogMod.driftLine(REFUSED, NAMES, 'b')));
   say('P7 the time is the drift counts\' own stamp, not the census\'s',
     localShort(LATER) !== localShort(AT) && drift(N, 'n').at === localShort(LATER), drift(N, 'n').at);
   say('P8 the names are the server\'s, and a name it does not send draws its key',
-    drift(N, 'n').cells.map((c) => c.label).join('|') === 'Edited, not followed|Not yet printed'
-      && (backlogMod.driftLine(N, {}) || { cells: [] }).cells.map((c) => c.label).join('|') === 'rows_drifted|rows_unprinted');
-  say('P9 an older server\'s record (drift, no next_step) draws its counts and no command - the screen spells no CLI',
-    texts(drift(OLD)) === `3|${localeCountText(1200)}` && alarms(drift(OLD)) === 'true|false' && drift(OLD).next === '',
+    drift(N, 'n').cells.map((c) => c.label).join('|') === 'New, not translated|Edited, not followed|Gone, atoms remain|Not yet printed'
+      && (backlogMod.driftLine(N, {}) || { cells: [] }).cells.map((c) => c.label).join('|')
+        === 'rows_new|rows_drifted|rows_gone|rows_unprinted');
+  say('P9 an older server\'s record (no new, no gone, no next_step) draws what it counted, Not measured for the rest, no command',
+    texts(drift(OLD)) === `${NM}|3|${NM}|${localeCountText(1200)}` && alarms(drift(OLD)) === 'false|true|false|false'
+      && drift(OLD).next === '',
     JSON.stringify(drift(OLD)));
   say('P11 a count of four digits or more is grouped by the panel\'s count speller (lead 9dc2a5695 ⑦)',
-    drift(N).cells[1].text === localeCountText(1200) && drift(N).cells[1].text !== '1200',
-    drift(N).cells[1].text);
+    drift(N).cells[3].text === localeCountText(1200) && drift(N).cells[3].text !== '1200',
+    drift(N).cells[3].text);
   const OTHER = 'python -m ledger.backfill --source spelled_elsewhere --drifted';
   say('P10 the command is the record\'s string as sent, whatever the client would have built',
     drift({ ...N, next_step: OTHER }).next === OTHER, drift({ ...N, next_step: OTHER }).next);
@@ -534,31 +551,34 @@ async function driftSuite(panelMod, backlogMod) {
     .map((n) => n.className);
   const nextOf = (host, source) => byClass(rowOf(host, source) || {}, 'ledger-sources-next').map((n) => n.textContent);
 
-  say('R1 drift N on screen: the two counts, its own time, and only the edited count alarms',
-    textOfLine(gated, 'n') === `Edited, not followed 3 · Not yet printed ${localeCountText(1200)} · Measured ${localShort(LATER)}`
+  say('R1 counted, on screen: the four by name, its own time, and only the edited count alarms',
+    textOfLine(gated, 'n') === `New, not translated 2 · Edited, not followed 3 · Gone, atoms remain 1 · Not yet printed ${localeCountText(1200)} · Measured ${localShort(LATER)}`
       && JSON.stringify(alarmed(gated, 'n')) === JSON.stringify(['ledger-sources-rows_drifted']),
     JSON.stringify({ text: textOfLine(gated, 'n'), alarmed: alarmed(gated, 'n') }));
-  say('R2 the next action is one line: the record\'s --drifted command', JSON.stringify(nextOf(gated, 'n')) === JSON.stringify([COMMAND]),
+  say('R2 the next action is one line: the record\'s --catch-up command', JSON.stringify(nextOf(gated, 'n')) === JSON.stringify([COMMAND]),
     JSON.stringify(nextOf(gated, 'n')));
   say('R9 a source nobody counted shows the census command its record names',
     JSON.stringify(nextOf(gated, 'x')) === JSON.stringify([CENSUS_CMD]), JSON.stringify(nextOf(gated, 'x')));
   say('R3 drift 0 and only-unprinted draw their counts with no alarm and no command',
-    String(textOfLine(gated, 'z') || '').startsWith('Edited, not followed 0 · Not yet printed 0') && alarmed(gated, 'z').length === 0
+    String(textOfLine(gated, 'z') || '').startsWith('New, not translated 0 · Edited, not followed 0 · Gone, atoms remain 0 · Not yet printed 0')
+      && alarmed(gated, 'z').length === 0
       && alarmed(gated, 'u').length === 0 && nextOf(gated, 'z').length === 0 && nextOf(gated, 'u').length === 0,
     JSON.stringify({ z: textOfLine(gated, 'z'), u: alarmed(gated, 'u') }));
   say('R4 a record with no drift keys reads Not measured beside each name, not a blank',
-    textOfLine(gated, 'x') === `Edited, not followed ${NOT_MEASURED} · Not yet printed ${NOT_MEASURED}`, textOfLine(gated, 'x'));
+    textOfLine(gated, 'x') === `New, not translated ${NM} · Edited, not followed ${NM} · Gone, atoms remain ${NM} · Not yet printed ${NM}`,
+    textOfLine(gated, 'x'));
   say('R5 a refused source draws its refusal and no drift line', !lineOf(gated, 'b')
     && byClass(rowOf(gated, 'b') || {}, 'ledger-sources-census-refused').length === 1);
   const full = draw({ ingestion: { note: NOTE, unavailable: null, sources: [row('n', 'ran_and_wrote'), row('c', 'ran_and_wrote')] } }, {}, CENSUS);
   const fullLine = (i) => (byClass(rowsOf(full)[i] || {}, 'ledger-sources-drift')[0] || {}).textContent;
   say('R6 the ledger table draws the same drift line as the census-only table, and a source with no census reads Not measured',
-    fullLine(0) === textOfLine(gated, 'n') && fullLine(1) === `Edited, not followed ${NOT_MEASURED} · Not yet printed ${NOT_MEASURED}`,
+    fullLine(0) === textOfLine(gated, 'n')
+      && fullLine(1) === `New, not translated ${NM} · Edited, not followed ${NM} · Gone, atoms remain ${NM} · Not yet printed ${NM}`,
     JSON.stringify([fullLine(0), fullLine(1)]));
   const spans = byClass(lineOf(gated, 'n') || {}, 'ledger-sources-rows_unprinted');
-  say('R7 not yet printed is its own span, apart from the edited count',
+  say('R7 each count is its own span - new, edited, gone, not yet printed',
     spans.length === 1 && spans[0].textContent === `Not yet printed ${localeCountText(1200)}`
-      && byClass(lineOf(gated, 'n') || {}, 'ledger-sources-rows_drifted').length === 1);
+      && ['rows_new', 'rows_drifted', 'rows_gone'].every((name) => byClass(lineOf(gated, 'n') || {}, `ledger-sources-${name}`).length === 1));
   say('R8 how each count was taken rides in the tooltip',
     String((lineOf(gated, 'n') || {}).title).includes(DRIFT_M), String((lineOf(gated, 'n') || {}).title));
   return { ran: names.length, names, failures: fails };

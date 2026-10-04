@@ -8,7 +8,8 @@
 // 🔴 THE SHAPE IS THE ONE THE ROUTE ACTUALLY SENDS, read off `GET /api/ledger/declaration`
 //    on 2026-09-09 rather than off the sentence describing it. Per source, `sources[].census`:
 //        counted   {source, relation, measured_at,
-//                   relation_rows: {estimate, exact, method, measured_at}, indexed_rows: …, not_yet: …}
+//                   relation_rows: {estimate, exact, method, measured_at}, indexed_rows: …, difference: …}
+//        (서버 5e41fa599 전의 기록은 difference 대신 not_yet)
 //        refused   {source, relation, measured_at, refused: "source_refused", remedy: "<the loader's sentence>"}
 //        absent    no `census` key at all
 //    Measured on this box: 15 sources, 11 counted, 4 REFUSED. The refusal is a third of the
@@ -43,8 +44,17 @@ const ESTIMATE_MARK = '≈';
  *
  * 🔴 화면이 이름을 «번역하지 않습니다». 라벨은 서버의 키 그대로이고(판정 177), 옮기면 서버가
  *    키를 바꾸는 날 화면이 «옛 이름으로» 옳아 보입니다.
+ * 셋째는 표 − 색인의 «차이»이고 부호가 있습니다 — 새 행과 지운 행이 상쇄되니 «남은 수»가 아닙니다(서버 5e41fa599).
  */
-export const BACKLOG_FIELDS = Object.freeze(['relation_rows', 'indexed_rows', 'not_yet']);
+const DIFFERENCE = 'difference';
+export const BACKLOG_FIELDS = Object.freeze(['relation_rows', 'indexed_rows', DIFFERENCE]);
+
+/** 옛 서버(5e41fa599 전)의 기록이 셋째 칸을 든 이름 — 그런 기록은 그 이름 그대로 그립니다(총괄). */
+const OLD_DIFFERENCE = 'not_yet';
+
+const own = (src, name) => Object.prototype.hasOwnProperty.call(src, name);
+const fieldOf = (src, name) => (name === DIFFERENCE && !own(src, DIFFERENCE) && own(src, OLD_DIFFERENCE)
+  ? OLD_DIFFERENCE : name);
 
 /** 「언제 잰 값인가」 — 네 번째 칸. 수가 아니라 «그 수의 시각»입니다. */
 export const MEASURED_AT = 'measured_at';
@@ -68,7 +78,7 @@ const nameOf = (names, key) => (names && typeof names[key] === 'string' && names
 function countCell(src, name) {
   // ⚠️ 「키가 있나」로 봅니다. 참/거짓으로 보면 «0 이 사라집니다» — 그리고 0 은 이 화면이
   //    가장 말하고 싶어 하는 답(「다 돌았다」)입니다.
-  const box = Object.prototype.hasOwnProperty.call(src, name) ? src[name] : undefined;
+  const box = own(src, name) ? src[name] : undefined;
   if (!box || typeof box !== 'object') return { name, text: '', method: '' };
   // 🔴 「어떻게 잰 수인가」는 «수와 같이» 나릅니다. `count(*)` 와 `pg_class.reltuples` 는
   //    같은 픽셀로 그리면 안 되는 두 사실이고, `≈` 는 그중 «추정이라는 것»만 말합니다 —
@@ -100,24 +110,25 @@ export function censusNames(body) {
  */
 export function backlogCells(census, names = {}) {
   const src = census && typeof census === 'object' ? census : {};
-  const cells = BACKLOG_FIELDS.map((name) => countCell(src, name));
+  const cells = BACKLOG_FIELDS.map((name) => countCell(src, fieldOf(src, name)));
   const at = src[MEASURED_AT];
   cells.push({ name: MEASURED_AT, text: at == null ? '' : localShortOrAsSent(at), method: '' });
   return cells.map((cell) => ({ ...cell, label: nameOf(names, cell.name) }));
 }
 
 /**
- * «원장이 못 본 수정»의 두 수(서버 `rows_drifted` · `rows_unprinted`, 구현자 6b698fe2d). 사람이 돌린
- * census 만 셉니다 — 주기 census 는 안 셉니다. 둘은 «따로» 그립니다: 지문 없음은 누락이 아닙니다.
+ * 사람이 돌린 census 만 세는 네 수 — 서버 `PERSON_ONLY_BOXES` 순서(5e41fa599): 번역 안 된 새 행 · 원장이 못 본
+ * 수정 · 표에서 지워졌는데 원자가 남은 행 · 지문 없음. 주기 census 는 안 세고 사람의 수를 이어 갑니다.
+ * 넷은 «따로» 그립니다: 지문 없음은 누락이 아닙니다.
  */
-export const DRIFT_FIELDS = Object.freeze(['rows_drifted', 'rows_unprinted']);
+export const DRIFT_FIELDS = Object.freeze(['rows_new', 'rows_drifted', 'rows_gone', 'rows_unprinted']);
 
 /** 0 이 아니면 «눈에 띄는» 수 — 누락 쪽 하나뿐입니다(총괄 c21cba507). */
 const DRIFT_ALARM = 'rows_drifted';
 
 /**
- * 한 소스의 «수정 누락» 줄 (총괄 c21cba507). 수는 서버 기록 그대로이고, 안 센 수는 `NOT_MEASURED`.
- * 시각은 «그 두 수의» `measured_at` 입니다 — census 전체의 시각이 아닙니다.
+ * 한 소스의 «사람이 센 수» 줄 (총괄 c21cba507). 수는 서버 기록 그대로이고, 안 센 수는 `NOT_MEASURED`.
+ * 시각은 «그 수들의» `measured_at` 입니다 — census 전체의 시각이 아닙니다.
  * 다음 명령은 기록의 `next_step` 그대로입니다(서버 66570d724, 저자 하나). 그것이 없는 기록(옛 서버)은
  * 명령 줄이 없습니다 — 화면이 CLI 를 철자하지 않습니다.
  *

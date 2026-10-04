@@ -2,6 +2,7 @@ import { API_BASE, pageLimit } from './config.js';
 import { ABSENT, isCount } from './absent.js';
 import { LOADING, unitText } from './ui_words.js';
 import { escapeHtml } from './utils.js';
+import { worldList } from './world.js';
 import { narrowingTail } from './narrowing.js';
 import { state, gridFetch } from './state.js';
 import { elements } from './dom.js';
@@ -295,8 +296,8 @@ export const NO_TRANSACTION_BUCKET = 'no_tid';
  *
  * 🔴 봉투가 «둘»입니다. 실측 픽스처(`contracts/ledger_receipt/vectors.json`, 라이브에서 뜬 것):
  *      ok      {rows, molecules, atoms_written, atoms_deduped, atoms_withdrawn, refused,
- *               reasons, translator_ver, status:'ok', error:null}
- *      failed  {source, status:'failed', error:'RuntimeError: …'}   ← «수가 하나도 없습니다»
+ *               reasons, translator_ver, world, status:'ok', error:null}
+ *      failed  {source, world, status:'failed', error:'RuntimeError: …'}   ← «수가 하나도 없습니다»
  *    실패 쪽을 수 자리로 그리면 셋이 빈 칸이 되고, 빈 칸은 「안 쟀다」로 읽힙니다 — 그래서
  *    가르는 것은 `status` 이고, 실패는 «상태와 사유»로 그립니다(C-42 의 거절과 같은 부류).
  *
@@ -304,18 +305,21 @@ export const NO_TRANSACTION_BUCKET = 'no_tid';
  *    «옛 이름으로» 옳아 보입니다.
  * ⛔ `error` 는 «이름»만 — 문장 전체를 타임라인 줄에 펴면 그 줄이 설명문이 됩니다
  *    (소유자 상설 2026-09-04). 전문이 필요하면 펼친 자리에 있습니다.
+ * `world` 는 세상이 둘 이상일 때만 맨 앞에 — 한 이벤트가 켜진 세상마다 영수증을 남깁니다(서버 6922cd6cb).
+ *    `worlds` 는 이 설치의 세상 목록(`/tables`)이고, 하나뿐이면 안 그립니다(총괄).
  */
-export function ledgerReceiptLine(newValue) {
+export function ledgerReceiptLine(newValue, worlds) {
   const v = newValue && typeof newValue === 'object' && !Array.isArray(newValue) ? newValue : null;
   if (!v) return '';
+  const world = worldList(worlds).length > 1 ? worldList(v.world)[0] || '' : '';
   const status = v.status == null ? '' : String(v.status);
   if (status && status !== 'ok') {
     // 🔴 「RuntimeError: a translator blew up」 -> 「RuntimeError」. 이름이 조작자가 찾는 것이고,
     //    문장은 이 줄의 자리가 아닙니다.
     const name = v.error == null ? '' : String(v.error).split(':')[0].trim();
-    return [status, v.source == null ? '' : String(v.source), name].filter(Boolean).join(' · ');
+    return [world, status, v.source == null ? '' : String(v.source), name].filter(Boolean).join(' · ');
   }
-  const parts = [];
+  const parts = world ? [world] : [];
   for (const key of ['atoms_written', 'atoms_deduped', 'refused']) {
     // ⚠️ 「수가 아니면」 그 마디를 «안 만듭니다» — 0 으로 그리면 「세 봤더니 0」이 되고,
     //    이 봉투에서 키가 없는 것은 「안 보냈다」입니다. 철자는 `absent.js` 하나뿐입니다.
@@ -474,7 +478,7 @@ export function createGlobalTimelineItemDom(group) {
   // 🔴 C-55 ②. 원장 배치의 영수증만 이 줄을 얻습니다. 다른 종류는 «한 글자도» 안 바뀝니다 —
   //    빈 문자열이면 아래가 종전 값 칸을 그대로 그립니다.
   const receiptLine = baseLog.column_name === LEDGER_BATCH_COLUMN
-    ? ledgerReceiptLine(baseLog.new_value) : '';
+    ? ledgerReceiptLine(baseLog.new_value, state.tableList && state.tableList.worlds) : '';
   // △소유자: 「변경이력 문구에서 맨앞에 ., -, -> 빼줘」. A row that CREATED a value has no
   // 「from」, so a dash and an arrow in front of it are punctuation standing in for nothing.
   const hadOldValue = baseLog.old_value !== null && baseLog.old_value !== undefined && baseLog.old_value !== '';

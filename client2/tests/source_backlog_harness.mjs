@@ -34,13 +34,18 @@ const eq = (name, expected, actual) => ok(name, actual === expected,
 
 const AT = '2026-09-09T01:30:31.658998+00:00';
 const box = (estimate, method, exact = true) => ({ estimate, exact, method, measured_at: AT });
-// `die_inspection`, verbatim in shape — a source that is fully translated.
+// `die_inspection`, verbatim in shape — a source that is fully translated. The third count as the server
+// stamps it since 5e41fa599: a signed difference.
+const DIFF_M = 'relation_rows - indexed_rows (a new row and a lost one net out)';
 const COUNTED = { source: 'die_inspection', relation: 'inspection_run', measured_at: AT,
   relation_rows: box(117742, 'count(*)'),
   indexed_rows: box(117742, 'count(distinct row_id)'),
-  not_yet: box(0, 'relation_rows - indexed_rows') };
+  difference: box(0, DIFF_M) };
 const BEHIND = { ...COUNTED, indexed_rows: box(117000, 'count(distinct row_id)'),
-  not_yet: box(742, 'relation_rows - indexed_rows') };
+  difference: box(742, DIFF_M) };
+// An older server's record (before 5e41fa599): the third count was `not_yet`.
+const { difference: _diff, ...OLD_BASE } = COUNTED;
+const OLD = { ...OLD_BASE, not_yet: box(5, 'relation_rows - indexed_rows') };
 // `bonded_from`, verbatim in shape — the loader refused the source, so the census was not taken.
 const REFUSED = { source: 'bonded_from', relation: 'bonding_die_from_core', measured_at: AT,
   refused: 'source_refused',
@@ -66,7 +71,7 @@ async function score(mutate) {
 
   // ══ ① 계약의 이름과 그 순서 ═════════════════════════════════════════════════════════
   eq('A1 the three counts are the contract, in order',
-    'relation_rows,indexed_rows,not_yet', probe.BACKLOG_FIELDS.join(','));
+    'relation_rows,indexed_rows,difference', probe.BACKLOG_FIELDS.join(','));
   eq('A2 four cells: the three counts and WHEN they were taken', 4, cells(COUNTED).length);
   eq('A3 the fourth is the stamp', probe.MEASURED_AT, cells(COUNTED)[3].name);
   ok('A4 no cursor-world name survives',
@@ -77,8 +82,17 @@ async function score(mutate) {
   //    which this file renders as a blank — safe, and permanently empty. That is what the
   //    first wiring did, and only reading the real response caught it.
   eq('B1 the count comes out of the envelope', localeCountText(117742), textOf(COUNTED, 'relation_rows'));
-  eq('B2 a measured ZERO is drawn as zero — somebody counted', '0', textOf(COUNTED, 'not_yet'));
-  eq('B3 ...and a real remainder is drawn', '742', textOf(BEHIND, 'not_yet'));
+  eq('B2 a measured ZERO is drawn as zero — somebody counted', '0', textOf(COUNTED, 'difference'));
+  eq('B3 ...and a real difference is drawn', '742', textOf(BEHIND, 'difference'));
+  // 🔴 A DIFFERENCE HAS A SIGN (5e41fa599): more index rows than table rows is a fact, not a blank.
+  eq('B6 a negative difference is drawn with its sign', localeCountText(-3),
+    textOf({ ...COUNTED, difference: box(-3, DIFF_M) }, 'difference'));
+  // 총괄: an older server's record is drawn as it is today - its third count under its own name.
+  eq('B7 an older record\'s not_yet is the third cell, under its own name', 'relation_rows,indexed_rows,not_yet',
+    cells(OLD).slice(0, 3).map((c) => c.name).join(','));
+  eq('B8 ...with its count', '5', textOf(OLD, 'not_yet'));
+  eq('B9 a record that carries both draws the difference', '742',
+    textOf({ ...BEHIND, not_yet: box(5, 'x') }, 'difference'));
   // 🔴 총괄 bed890af2 — the stamp is moved onto the viewer's clock by `server_time` (one author);
   //    an unreadable one is carried as sent. This line used to say 「carried as sent, never reworded」.
   eq('B4 the stamp is on the viewer\'s clock, by server_time', localShort(AT), textOf(COUNTED, 'measured_at'));
@@ -214,8 +228,12 @@ const MUTATIONS = [
   ['M9 the stamp is drawn as sent, so one fact keeps two clocks',
    s => s.replace('localShortOrAsSent(at)', 'String(at)')],
   ['M10 the labels are translated, so a renamed field keeps the old name',
-   s => s.replace("Object.freeze(['relation_rows', 'indexed_rows', 'not_yet'])",
+   s => s.replace("Object.freeze(['relation_rows', 'indexed_rows', DIFFERENCE])",
                   "Object.freeze(['전체', '색인', '남음'])")],
+  ['M17 an older record\'s not_yet is dropped, so its third cell goes blank',
+   s => s.replace('countCell(src, fieldOf(src, name))', 'countCell(src, name)')],
+  ['M18 the older name wins over the server\'s own when both are there',
+   s => s.replace('!own(src, DIFFERENCE) && own(src, OLD_DIFFERENCE)', 'own(src, OLD_DIFFERENCE)')],
   ['M11 the method is dropped, so an estimate cannot be told from an exact count',
    s => s.replace('  const method = box.method == null ? \'\' : String(box.method);',
                   "    const method = '';")],
