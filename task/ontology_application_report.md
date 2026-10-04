@@ -35772,3 +35772,13 @@ a9f877ed3 동기  BACKFILL_GUIDE ⓖ 줄(그 소스만 번역 · 이미 쌓인 �
    (ensure_world 는 독스트링대로 기본에 «아무것도 안 함» — 「the default's tables are the daemon's」). 기본에 칸을 더하는 업그레이드 뒤 재기동 -> 기본 쓰기가 그 칸에서 선다
    제안  기동 때 «켜진 세상 전부 + 기본»을 ensure — live_worlds 가 이미 그 목록. 여쭐 것
 ```
+
+---
+
+## [C 응용] 10-04 덧붙임 — ec6874b28 시험 · a85131717(고치기는 한 번만 번역) 검수 · 수 고침
+
+```
+ec6874b28  run_pg_tests -k (world · branch · trace_pg · saved_contrast · counts_were_taken · retroactive) 46 passed (f57823d35 에 「도는 중」이라 적은 것)
+a85131717  run_pg_tests -k (independent_and_meet · follows_the_table_it_reads · stops_between_pages) 12 passed · 두 파일 pytest 27 passed
+문서        LEDGER_GUIDE 4.9 · RUNTIME_MAP ④ 의 «세상당 고치기 4.9 s» -> 3.5–4.0 s(구현자 박스 잼 4.55/5.17 -> 3.48/3.99) — 제가 한 시간 전에 적은 수가 이 착지로 낡았다
+```

@@ -472,6 +472,72 @@ def test_every_live_world_follows_an_edit_and_one_switched_on_again_catches_up(w
 
 
 @pytest.mark.pg
+def test_an_edit_is_translated_once_and_writes_what_two_translations_wrote(world, monkeypatch):
+    """총괄 6091a7ae3 ①: the translation that aims an edit's withdrawal is the one written - one
+    per source per world, not two - and what it writes is what the second translation wrote."""
+    from ledger import runtime_v2, setup as ledger_setup
+
+    _seed(world)
+    _follow(world)                                               # the seed's own events first
+    calls = []
+    real = runtime_v2.preview_cursor_batch
+
+    def counted(*args, **kwargs):
+        calls.append(args[1])
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(runtime_v2, "preview_cursor_batch", counted)
+    monkeypatch.setattr(ledger_setup, "preview_cursor_batch", counted)
+    _write(world, "wafer_process", [{"proc_id": "P1", "recipe_id": "RCP-2"}], key="P1")
+    _follow(world)
+    assert calls == [CHANGED]
+
+    def said():
+        return _rows(world, schema.LEDGER_TABLE, "predicate", "subject_keys::text",
+                     "coalesce(object_payload::text, '')", "occurred_at", "source_raw_ref",
+                     where="AND source_who = :a")
+
+    once = said()
+    assert once and _saying(world, schema.LEDGER_TABLE, "RCP-2") == {CHANGED}
+    # the same row remade the old way - translated to aim the withdrawal, then again to write
+    aim = backfill._preview_frame
+    monkeypatch.setattr(backfill, "_preview_frame", lambda *a, **k: {**aim(*a, **k), "preview": None})
+    setup = load_setup(schema.world_names().declaration_root)
+    column = followup.scope_column(setup.snapshot.source_plans[CHANGED])
+    with world["engine"].connect() as conn:
+        values = [row[0] for row in conn.execute(text(
+            'SELECT "%s" FROM "%s".wafer_process WHERE proc_id = :p' % (column, PG_TEST_SCHEMA)),
+            {"p": "P1"})]
+    backfill.rescope(world["engine"], setup, CHANGED, column, values, apply=True)
+    assert calls == [CHANGED, CHANGED, CHANGED]                  # canary: that way was twice
+    assert said() == once
+
+
+@pytest.mark.pg
+def test_each_live_world_leaves_its_own_receipt_and_says_which(world):
+    """총괄 6091a7ae3 ③: one event followed in two live worlds leaves two batch receipts on the
+    timeline, each naming the world it wrote into."""
+    from ledger import runtime_v2
+
+    _seed(world)
+    _make(world, A, _only(CHANGED), CHANGED)
+    _follow(world)                                               # the seed's own events first
+    _write(world, "wafer_process", [{"proc_id": "P1", "recipe_id": "RCP-2"}], key="P1")
+    with world["engine"].connect() as conn:
+        (tx,) = conn.execute(text(
+            'SELECT payload->>\'transaction_id\' FROM "%s".database_outbox WHERE table_name = '
+            "'wafer_process' AND ledger_state IS NULL ORDER BY id DESC LIMIT 1"
+            % PG_TEST_SCHEMA)).one()
+    _follow(world)
+    with world["engine"].connect() as conn:
+        said = sorted((row[0] for row in conn.execute(text(
+            'SELECT new_value->>\'world\' FROM "%s".audit_logs WHERE column_name = :c '
+            "AND transaction_id = :t" % PG_TEST_SCHEMA),
+            {"c": runtime_v2.RECEIPT_COLUMN, "t": tx})), key=str)
+    assert tx and said == sorted([DEFAULT, A]), said
+
+
+@pytest.mark.pg
 def test_with_no_branch_the_follow_up_and_the_walk_are_todays(world):
     _seed(world)
     _write(world, "lot_slot_wafer", [{"lot_slot_wafer_key": "K1", "wafer": "W5"}], key="K1")
