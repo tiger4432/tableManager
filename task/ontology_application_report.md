@@ -35834,3 +35834,30 @@ DESIGN_ORDERS  마지막 지시 4e1e49fe9(11:03) 에 이 칸 이름이 없다 �
 **클라 전까지 패널이 보이는 것 (코드 읽음)** — 셋째 칸은 이름이 날 키 `not_yet`(서버 census_names 에 이름이 없어 nameOf 가 키로 떨어짐)에 값이 빈다. hasBacklog 는 표 · 색인 칸으로 참이라 칸이 숨지는 않는다. 다음 명령 줄은 서버 글자 그대로 `--catch-up`.
 
 **내 것** — 57aed165d: a85131717 QA 때 -k 로 고른 시험만 돌려 rescope 대역 셋의 빨강을 못 봤다. 착지가 바꾼 함수를 부르는 시험 파일을 «전부» 돌린다.
+
+---
+
+## [C 응용] 10-04 351b23ef8 · f36723a70 · e71cde056 QA · 문서 셋 — 결함 없음, 물음 하나(세상마다 목록의 «순서»가 둘)
+
+```
+351b23ef8  떼어 둔 트리 /c/wt-app
+           sqlite (걷기 · several_values · 세상 시험) : 151 passed, 19 skipped, 20 warnings in 9.67s
+           pg -k several_values·independent_and_meet·attribute : 1 failed, 23 passed, 8040 deselected, 47 warnings, 5 errors in 143.98s (0:02:23)
+           실패 하나 = test_an_install_that_predates_attributes_is_widened_once — 이 착지와 무관, 총괄 a3c596b2d(09-23)가 «이름으로 둔» 그 빨강
+             착지 전 36148474c 에서 같은 고르기 : 1 failed, 22 passed, 8040 deselected, 44 warnings, 5 errors in 133.26s (0:02:13)
+             착지 뒤 06f4a3cfb 에서 그 시험 혼자 : 1 passed, 8068 deselected, 6 warnings, 5 errors in 8.94s
+             그 파일 혼자서도 빨강 — 같은 파일 앞 시험(_is_accepted)이 «목적어 없음 + qualifiers» 행을 남기고 픽스처는 표를 안 비움
+f36723a70  worldList 는 글자만 거른다 — /tables 의 worlds 는 schema.world_listing 의 [기본, *가지] 글자 목록이라 맞는다
+문서       e2e5a35f9  WALK.md §4 — 노드 attributes_by_world · 🔴 엣지 worlds · by_world(ec6874b28) 도. WALK.md 에 «세상»이 한 낱말도 없었다 —
+                      내 ec6874b28 동기화가 WALK.md 와 CODE_MAP ledger_subgraph 줄을 빼먹었다(내 것)
+           428cb57c1  패널 네 수 · difference 칸 · 영수증 줄의 세상(f36723a70)
+           06f4a3cfb  걷기 노드 계약이 서버에서도 채점됨(e71cde056)
+```
+
+**여쭐 것 — 「세상마다」 목록의 순서가 둘이다 (코드 읽음)**
+```
+엣지  worlds · by_world        만난 순 — add_edge 가 같은 id 의 다른 세상 근거를 append (정렬 없음)
+노드  attributes_by_world      세상 이름순 — _apply_registrations 가 str(world) 로 정렬, 계약 walk_node_shape 가 이 순서를 못 박음
+화면  세상 칩                  고른 순서로 번호
+-> 사실 상자가 엣지 줄과 속성 줄을 «엣지처럼» 그리면(총괄 지시) 같은 두 세상이 줄마다 다른 순서로 나올 수 있다. 하나로 맞출지 — 맞춘다면 이름순인지 고른 순서인지
+```
