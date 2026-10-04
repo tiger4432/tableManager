@@ -780,8 +780,13 @@ const WORLDS = { worlds: ['default', 'w1'], operating: 'w1', beneath: { w1: ['de
 // The token gate answers with a bare sentence; a delete refusal with the route's own object.
 const TOKEN_REFUSED = 'Admin token required.';
 const DELETE_REFUSED = "ledger world 'w2' is what 'w3' stands on";
+// A make the server refuses (lead 4fde8b04e: the owner's box answered 400 to a new world), and the kinds a
+// world offers to make - the authoring schema's own list.
+const MAKE_REFUSED = "ledger world 'w2' is already made; it stands where it stands";
+const KINDS = [{ id: 'entity', section: 'entities' }, { id: 'predicate', section: 'vocabulary' },
+  { id: 'source_plan', section: 'sources' }];
 async function branchWalk(create, { confirmDelete = true, typed = null, refuseKeep = false, pick = 'w1',
-  beneath = null, confirmOperate = true, refuseOperate = false, refuseDelete = false } = {}) {
+  beneath = null, confirmOperate = true, refuseOperate = false, refuseDelete = false, refuseBootstrap = false } = {}) {
   const urls = [];
   const puts = [];
   const operated = [];
@@ -793,8 +798,8 @@ async function branchWalk(create, { confirmDelete = true, typed = null, refuseKe
   root.addEventListener = (type, fn) => { if (type === 'click') clicks.push(fn); if (type === 'input') inputs.push(fn); };
   const mount = element('div');
   root.querySelector = (sel) => (sel === '.oe-branch-mount' ? mount : null);
-  const click = async (action) => {
-    const target = { dataset: { action }, disabled: false };
+  const click = async (action, value) => {
+    const target = { dataset: value === undefined ? { action } : { action, value }, disabled: false };
     target.closest = () => target;
     for (const fn of clicks) await fn({ target });
   };
@@ -822,8 +827,11 @@ async function branchWalk(create, { confirmDelete = true, typed = null, refuseKe
       if (refuseKeep) return { ok: false, status: 409, json: async () => ({ detail: { code: 'stale_revision',
         path: 'expected_revision', message: 'the draft moved on' } }) };
     }
+    if (path.endsWith('/authoring/schema')) return reply({ ...AUTHORING, authorable_kinds: KINDS });
     if (u.includes('/authoring')) return reply(AUTHORING);
     if (/\/drafts$/.test(path) && method === 'POST') return reply(DRAFT);
+    if (path.endsWith('/bootstrap') && refuseBootstrap) return { ok: false, status: 409, json: async () => ({
+      detail: { reason: 'world_not_stood', world: 'w2', message: MAKE_REFUSED } }) };
     if (path.endsWith('/bootstrap')) return reply({ created: 'ledger_config.json' });
     if (path.includes('/worlds/') && refuseDelete) return { ok: false, status: 409, json: async () => ({
       detail: { reason: 'world_not_deleted', world: 'w2', message: DELETE_REFUSED } }) };
@@ -848,9 +856,17 @@ async function branchWalk(create, { confirmDelete = true, typed = null, refuseKe
     const controller = create({ root, apiBase: '', adminFetch: adminOf, showToast: (t) => toasts.push(String(t)) });
     await controller.refresh();
     await settle();
+    let offer = null;
+    if (refuseBootstrap) {
+      // The setup offer's own Create (a world with no config): a refusal is kept on the offer, not toasted.
+      await click('bootstrap-config');
+      await settle();
+      offer = `${(controller.getState().authoring || {}).bootstrapError}|${toasts.splice(0).length}`;
+      urls.splice(0);
+    }
     await click('create-draft');
     await settle();
-    const out = { onDefault: urls.splice(0).sort() };
+    const out = { onDefault: urls.splice(0).sort(), offer };
     const opened = controller.getState();
     out.open = `${Boolean(opened.selection)}|${Boolean(opened.draft)}`;
     out.listed = walkAll(mount).filter((n) => n.tagName === 'OPTION').map((n) => n.value || '(operating)');
@@ -891,10 +907,22 @@ async function branchWalk(create, { confirmDelete = true, typed = null, refuseKe
     const make = part('branch-picker__create');
     if (make) fire(make, 'click');
     await settle();
-    toasts.splice(0);
+    out.makeToasts = toasts.splice(0);
+    const madeState = controller.getState();
+    out.madeState = `${madeState.world}|${Boolean(madeState.selection)}|${Boolean(madeState.draft)}`;
+    // The world the screen is on offers its three "+ New"; a declaration made there names that world.
+    out.news = walkAll(root).filter((n) => n.dataset && n.dataset.action === 'new-declaration').map((n) => n.dataset.value);
     out.made = { world: controller.getState().world, urls: urls.splice(0),
       operating: texts('branch-picker__operating').join('|'),
       history: walkAll(mount).filter((n) => n.tagName === 'LI').map((n) => n.textContent.split(' · ')[0]).join(',') };
+    if (out.news.includes('entity')) {
+      await click('new-declaration', 'entity');
+      for (const fn of inputs) fn({ target: { dataset: { action: 'new-declaration-id' }, value: 'probe_thing' } });
+      await click('create-declaration', 'entity');
+      await settle();
+    }
+    out.declared = urls.splice(0).filter((u) => u.includes('/drafts/new'));
+    toasts.splice(0);
     const go = part('branch-picker__operate');
     if (go) fire(go, 'click');
     await settle();
@@ -920,11 +948,13 @@ const branchSeen = async (create) => ({ yes: await branchWalk(create),
   declined: await branchWalk(create, { confirmOperate: false }),
   tokenless: await branchWalk(create, { refuseOperate: true }),
   undeleted: await branchWalk(create, { refuseDelete: true }),
+  unmade: await branchWalk(create, { refuseBootstrap: true }),
   discard: (await branchWalk(create, { typed: 'discard' })).typed,
   stay: (await branchWalk(create, { typed: 'cancel' })).typed,
   keep: (await branchWalk(create, { typed: 'keep' })).typed,
   refused: (await branchWalk(create, { typed: 'keep', refuseKeep: true })).typed });
-function branchSuite({ yes, no, byName, under, nothing, declined, tokenless, undeleted, discard, stay, keep, refused }) {
+function branchSuite({ yes, no, byName, under, nothing, declined, tokenless, undeleted, unmade, discard, stay, keep,
+  refused }) {
   const names = [];
   const failures = [];
   const say = (name, cond, detail) => {
@@ -1010,6 +1040,18 @@ function branchSuite({ yes, no, byName, under, nothing, declined, tokenless, und
     `${yes.made.operating} ${yes.made.history} -> ${yes.operated.operating} ${yes.operated.history}`);
   say('Z22 on the empty choice Operate is off, with the reason', yes.operateOff === 'true|Already the operating world',
     yes.operateOff);
+  say('Z28 a world just made offers its three "+ New", and a declaration made there names the new world',
+    JSON.stringify(yes.news) === '["entity","predicate","source_plan"]'
+      && JSON.stringify(yes.declared) === '["admin POST /admin/ontology-explorer/drafts/new?world=w2"]',
+    `${JSON.stringify(yes.news)} ${JSON.stringify(yes.declared)}`);
+  say('Z30 the setup offer\'s refused Create is kept on the offer, in the server\'s words, not toasted',
+    unmade.offer === `${MAKE_REFUSED}|0`, unmade.offer);
+  say('Z29 a refused make stays on the world it was on - its selection, its draft, its "+ New" - and says the server\'s sentence',
+    unmade.madeState === 'w1|true|true' && JSON.stringify(unmade.makeToasts) === JSON.stringify([MAKE_REFUSED])
+      && JSON.stringify(unmade.made.urls) === '["admin POST /admin/ontology-explorer/bootstrap?world=w2"]'
+      && JSON.stringify(unmade.news) === '["entity","predicate","source_plan"]'
+      && JSON.stringify(unmade.declared) === '["admin POST /admin/ontology-explorer/drafts/new?world=w1"]',
+    `${unmade.madeState} ${JSON.stringify(unmade.makeToasts)} ${JSON.stringify(unmade.made.urls)} ${JSON.stringify(unmade.news)}`);
   return { ran: names.length, names, failures };
 }
 const branchBase = branchSuite(await branchSeen(createOntologyExplorerController));
@@ -1031,9 +1073,6 @@ failed += branchBase.failures.length;
     { id: 'M15', what: 'the census goes round the seat', catches: 'Z4',
       mutate: (text) => swap(text, "      const res = await askPublic(`${apiBase}/api/ledger/declaration`);",
         "      const res = await fetch(`${apiBase}/api/ledger/declaration`);") },
-    { id: 'M16', what: 'a new branch is bootstrapped with no world (the operating one)', catches: 'Z6',
-      mutate: (text) => swap(text, "      const res = await ask(`${apiBase}/admin/ontology-explorer/bootstrap${under}`, {",
-        "      const res = await adminFetch(`${apiBase}/admin/ontology-explorer/bootstrap${under}`, {") },
     { id: 'M17', what: 'a pick keeps the selection and the draft', catches: 'Z3',
       mutate: (text) => swap(text,
         '    state = { ...initialExplorerState, navigation: { back: [], forward: [] }, world: next, worlds: state.worlds,',
@@ -1050,8 +1089,19 @@ failed += branchBase.failures.length;
       mutate: (text) => swap(text, "    if (decision === 'cancel') { render(); return; }\n", '') },
     { id: 'M21', what: 'Discard leaves the draft in the world it was typed in', catches: 'Z9',
       mutate: (text) => swap(text,
-        "    if (decision === 'discard' && state.draft && !(await discardDraft({ ask: false }))) return;\n    state = {",
-        '    state = {') },
+        "    if (decision === 'discard' && state.draft && !(await discardDraft({ ask: false }))) return;\n    const before = state;\n",
+        '    const before = state;\n') },
+    { id: 'M42', what: 'a refused make stays on the empty new world', catches: 'Z29',
+      mutate: (text) => swap(text, "    state = before;\n    render();\n    showToast?.(refused, 'error');\n",
+        "    showToast?.(refused, 'error');\n") },
+    { id: 'M44', what: 'the setup offer forgets its refusal', catches: 'Z30',
+      mutate: (text) => swap(text, "        state = { ...state, authoring: { ...(state.authoring || {}), bootstrapError: refused } };\n", '') },
+    { id: 'M45', what: 'a declaration made in the new world goes round the seat', catches: 'Z28',
+      mutate: (text) => swap(text,
+        "    if (!canonicalId) return;\n    try {\n      const res = await ask(`${apiBase}/admin/ontology-explorer/drafts/new`, {",
+        "    if (!canonicalId) return;\n    try {\n      const res = await adminFetch(`${apiBase}/admin/ontology-explorer/drafts/new`, {") },
+    { id: 'M43', what: 'a refused make says nothing', catches: 'Z29',
+      mutate: (text) => swap(text, "    showToast?.(refused, 'error');\n", '') },
     { id: 'M29', what: 'Operate goes without asking', catches: 'Z18',
       mutate: (text) => swap(text, "    if (!window.confirm(`Make ${name} the operating world?`)) return;\n", '') },
     { id: 'M30', what: 'Operate is sent twice', catches: 'Z18',

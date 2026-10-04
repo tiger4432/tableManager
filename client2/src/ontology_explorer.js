@@ -386,30 +386,21 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
   // missing. The server refuses if anything is at the path -- including a file that will
   // not parse, which is somebody's work with a bad comma in it rather than an absence.
   // `beneath` - a new branch's worlds to stand on, top first: not given, the server's own; [] nothing.
+  // Answers the server's refusal sentence, or '' when the config was made; the caller says where it shows.
   const bootstrapConfig = async (beneath) => {
     const under = Array.isArray(beneath) ? `?beneath=${beneath.map(encodeURIComponent).join(',')}` : '';
     try {
-      const res = await ask(`${apiBase}/admin/ontology-explorer/bootstrap${under}`, {
+      const body = await jsonRequest(`/bootstrap${under}`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}',
       });
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        const detail = body?.detail || body;
-        // Kept on the offer, not floated as a toast: the next move is to read it and act.
-        state = { ...state, authoring: { ...(state.authoring || {}),
-          bootstrapError: detail?.message || `HTTP ${res.status}` } };
-        render();
-        return;
-      }
       showToast?.(`${body.created} created`);
       // A config coming into existence while the screen is open is not a special case; it
       // is the ordinary "the server changed, re-read". If this ever needs its own bespoke
       // refresh again, the mirror has stopped being the single path.
       await readMirror({ selection: null });
+      return '';
     } catch (error) {
-      state = { ...state, authoring: { ...(state.authoring || {}),
-        bootstrapError: errorMessage(error) } };
-      render();
+      return errorSentence(error);
     }
   };
 
@@ -429,11 +420,18 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
       try { await putDraft(); } catch (error) { showToast(errorMessage(error), 'error'); render(); return; }
     }
     if (decision === 'discard' && state.draft && !(await discardDraft({ ask: false }))) return;
+    const before = state;
     state = { ...initialExplorerState, navigation: { back: [], forward: [] }, world: next, worlds: state.worlds,
       operating: state.operating, history: state.history };
     render();
-    if (create) await bootstrapConfig(beneath);
-    else await load({ allowContextSwitch: true });
+    if (!create) { await load({ allowContextSwitch: true }); return; }
+    // A refused make leaves the screen on the world it was on, saying why (lead 4fde8b04e, owner 10-04): the
+    // world was not made, and an empty screen on its name read nothing and offered nothing to add.
+    const refused = await bootstrapConfig(beneath);
+    if (!refused) return;
+    state = before;
+    render();
+    showToast?.(refused, 'error');
   };
 
   // The server's preview first (what goes: atoms and files), confirmed, then the delete with the atom
@@ -1119,7 +1117,12 @@ No effect`;
     );
     else if (action === 'tab') dispatch({ type: 'TAB_CHANGED', tab: target.dataset.value });
     else if (action === 'bootstrap-config') {
-      await bootstrapConfig();
+      // A refusal is kept on the offer, not floated as a toast: the next move is to read it and act.
+      const refused = await bootstrapConfig();
+      if (refused) {
+        state = { ...state, authoring: { ...(state.authoring || {}), bootstrapError: refused } };
+        render();
+      }
     }
     else if (action === 'start-field-text' || action === 'start-field-list'
              || action === 'start-field-object') {

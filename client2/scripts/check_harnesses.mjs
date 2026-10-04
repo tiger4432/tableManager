@@ -931,7 +931,9 @@ const FLOORS = new Map([
   // picked by its name, the worlds are read beside the census, beneath in pressed order, Operate asked once
   // and sent once, the token's and a delete's refusal as sent, the operating world and its history shown.
   // 107 -> 108 (lead 71ecd8223): Operate says who - the page's CURRENT_USER - and M37 drops it.
-  ['explorer_open_path_harness.mjs', 108],
+  // 108 -> 114 (lead 4fde8b04e): a world just made offers its three "+ New" and a declaration made there names it;
+  // a refused make stays on the world it was on and says why; the setup offer keeps its own refusal.
+  ['explorer_open_path_harness.mjs', 114],
   // New with lead 619befe8c: where an edit sits in the ledger form — a guide per ancestor on every
   // row of the real skeleton's form, the trail as the declaration path's own words, the path bar
   // part, and no skeleton word in the bar's code.
