@@ -72120,3 +72120,34 @@ PG 관련 묶음    2 failed, 55 passed, 8040 deselected, 106 warnings in 838.77
 census       not_yet -> difference · 새 칸 rows_new · rows_gone (rows_drifted · rows_unprinted 그대로) · 이름표는 census_names 에
 영수증        timeline 의 LEDGER 줄: new_value.world
 ```
+
+---
+
+## [10-04] 총괄 4e1e49fe9 착지 351b23ef8 — 걷기 응답의 노드 속성이 세상마다
+
+어느 DB · 어느 스키마 · 지운 것 — PG assy_test 시험 스크래치 스키마만 · 지운 것 0
+
+```
+칸           nodes[].attributes_by_world = {속성 이름: [{world, value, occurred_at, source_who}]} — 세상 이름순, 세상마다 한 줄
+값           그 세상의 원자에서(보통 이름 최신 값 · many 이름 서로 다른 값 목록) — attributes 와 같은 함수(_read_attribute)
+many 여부     attributes 와 같이 걷기가 합친 선언이 정함(처음 고른 세상 우선) — 세상마다 따로 묻지 않음
+시각         관계 선과 같은 규칙 — 사건 시각일 때만, 아니면 null
+그대로        attributes(세상들 가운데 한 값) · attribute_conflicts · 등록 원자에 안 닿은 노드는 칸 없음
+게이트(PG)    두 세상이 웨이퍼 하나의 속성을 다른 컬럼에서 읽게 선언 -> 둘 다 걸으면 두 줄(값 · 관계 선과 같은 시각 · 출처), 충돌 1
+             C 만 걸으면 C 한 줄, 충돌 0
+변이 4       세상을 안 가름 RED · 세상 값을 모든 세상에서 읽음 RED · 시각이 관계 선의 것이 아님 RED · 출처를 안 실음 RED
+```
+**시험**
+```
+sqlite 전체    5 failed, 7760 passed, 330 skipped, 3 xfailed, 13048 warnings in 858.89s (0:14:18) — 박스 사유 밖: 없음
+PG 관련 묶음    세상 · 걷기 · 추적 파일 셋: 35 passed, 45 deselected, 47 warnings in 210.88s (0:03:30) — 실패 없음
+위 둘 뒤에 바뀐 것은 독스트링 한 단락(many 여부의 주어) — 그 뒤 여러 값 이름 파일 · PG 게이트를 다시 돌려 통과
+```
+**클라에 보낸 칸 이름 (이 보고와 같이 메시지)**
+```
+attributes_by_world — 위 모양. RELEASE_LOG 세상 화면 항목의 「서버가 최신 값 하나만 보냅니다」를 「화면은 하나를 그립니다(서버는 세상마다도 보냄)」로 고침
+```
+**물음 하나**
+```
+contracts/walk_node_shape(걷기 노드 모양 계약 벡터)에 이 칸이 없습니다 — 계약에 넣을지 판정 부탁드립니다 (안 넣어도 지금 시험은 초록)
+```
