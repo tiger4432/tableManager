@@ -35782,3 +35782,18 @@ ec6874b28  run_pg_tests -k (world · branch · trace_pg · saved_contrast · cou
 a85131717  run_pg_tests -k (independent_and_meet · follows_the_table_it_reads · stops_between_pages) 12 passed · 두 파일 pytest 27 passed
 문서        LEDGER_GUIDE 4.9 · RUNTIME_MAP ④ 의 «세상당 고치기 4.9 s» -> 3.5–4.0 s(구현자 박스 잼 4.55/5.17 -> 3.48/3.99) — 제가 한 시간 전에 적은 수가 이 착지로 낡았다
 ```
+
+---
+
+## [C 응용] 10-04 🔴 5e41fa599(census 가 새 · 고침 · 사라짐을 따로) — 서버가 칸 이름을 바꿔, 클라 전에 재기동하면 패널의 「Not yet」 이 빈다
+
+```
+서버     census 기록에서 not_yet 이 «없어지고» difference(부호 있는 표 − 색인)가 들어섰다. CENSUS_NAMES 도 "not_yet" 줄이 지워짐.
+         사람 census 는 rows_new · rows_drifted · rows_gone · rows_unprinted, 주기 tick 은 그 넷을 잇고 difference 를 찍는다
+클라     client2/src/source_backlog.js BACKLOG_FIELDS = ['relation_rows', 'indexed_rows', 'not_yet'] · DRIFT_FIELDS = rows_drifted · rows_unprinted 둘
+         -> 이 착지로 재기동한 뒤 첫 tick 부터 원장 소스 패널의 「Not yet」 칸이 비고(키가 없음), rows_new · rows_gone 은 안 그려진다.
+         next_step 은 --catch-up 으로 바뀌어 그대로 그려진다(문장 그대로 그리므로)
+DESIGN_ORDERS  마지막 지시 4e1e49fe9(11:03) 에 이 칸 이름이 없다 — 구현자는 「the screen's cells are the client's (told through the lead)」
+여쭐 것   재기동을 클라 착지와 묶을지(9e9a9015a 의 Default 두 번과 같은 모양) — 그 사이 패널의 «남은 수» 가 안 보인다
+시험     5e41fa599 PG · sqlite 는 도는 중 — 끝나면 덧붙임
+```
