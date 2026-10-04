@@ -72057,3 +72057,30 @@ not_yet 상쇄   인구조사의 «남은 수»는 표 행 − 색인 행이라,
 영수증        후속 성공 · 실패 영수증(감사 행)에 세상 칸이 없음 — 세상이 여럿 켜지면 한 사건에 영수증이 세상 수만큼, 구분 안 됨. 지시 밖이라 안 지음
 문서 줄        은퇴 낱말을 아직 적는 줄 (git grep -w, task/ 뺌): docs/_archive/agent_workspace_20260823/reports/R2_server_persistence.md 1 · docs/_archive/agent_workspace_20260823/reports/Server_align_placement_value_axis.md 1 · docs/architecture/CODE_MAP.md 13 · docs/architecture/RUNTIME_MAP.md 2 · docs/guide/LEDGER_GUIDE.md 2 · docs/history/20260809_190000_dt_standard_map_chain.md 1 · docs/process/RELEASE_LOG.md 5 · 클라 18 (클라 지시가 걷어냄)
 ```
+
+---
+
+## [10-04] 6091a7ae3 ① 착지 a85131717 — 고치기 후속이 같은 행을 한 번만 번역한다 · ② 여쭘 · ③ 짓는 중
+
+어느 DB · 어느 스키마 · 지운 것 — PG assy_test 시험 스크래치 스키마(시험 끝에 비움) · 지운 것 0
+
+**①**
+```
+무엇          거둘 것을 겨누는 미리보기의 번역을 실제 쓰기가 그대로 씀(execute_scoped_batch 가 preview 를 받음) — 미리보기 답(preview_rescope)은 그대로
+세상 하나 1,000 행 고치기   4.55 s / 5.17 s -> 3.48 s / 3.99 s   (쓰기 쪽 번역 1.75 / 1.90 s -> 0.06 / 0.06 s)
+게이트         고치기 하나 = 그 소스 번역 1 번 · 옛 방식으로 같은 행을 다시 하면 2 번이고 쓰는 원자(술어 · 키 · 값 · 시각 · 근거)가 같음
+변이 1         넘겨받은 번역을 무시하고 다시 번역 RED
+시험           다시 번역 · 후속 · 따라잡기 PG: 38 passed, 8058 deselected, 76 warnings in 650.16s (0:10:50)
+```
+**② 여쭐 것 — 인구조사 «남은 수» 를 새 행 · 지운 행으로 나누는 자리**
+```
+사실   «남은 수»(not_yet) = 표 행 − 색인 행. 주기 틱은 둘 다 «훑지 않는» 값(표는 pg_class 추정 · 색인은 커서에 쌓은 수, S-122)
+       새 행(색인 밖 표 행)과 지운 행(표 밖 색인 행)을 «따로» 세려면 둘 다 반조인 훑기 — 틱에서는 못 함
+       지금 화면은 칸을 고정 목록으로 그림(source_backlog.js 의 BACKLOG_FIELDS · DRIFT_FIELDS) — 새 칸이면 클라 몫
+ㄱ (추천) 사람의 census(정확 모드)가 새 행 · 지운 행을 따로 셈 — 따라잡기 셈과 «같은 함수» 하나(셋: 새 · 고침 · 지움)
+         주기 틱은 그 두 칸을 사람 수로 이어 가져감(rows_drifted 와 같은 방식) · 틱의 not_yet 은 «차이»라는 이름으로(거짓 0 을 «남은 0» 으로 안 부름)
+         next_step: 새 · 고침 · 지움 중 하나라도 있으면 --catch-up 한 줄, 사람 수가 없으면 census 한 줄
+ㄴ 주기 틱도 두 반조인을 훑음 — 거짓 0 은 없어지나 S-122(틱은 안 훑는다)를 뒤집음, 큰 표에서 틱마다 수 초
+ㄷ not_yet 만 «표 행 − 색인 행 + 지운 행»으로 — 지운 행 수를 틱에서 모르면 같은 문제
+```
+**③ — 짓는 중**: 성공 · 실패 영수증에 world 를 싣습니다(서버). 타임라인 한 줄(client2 timeline.js ledgerReceiptLine)과 계약 벡터(contracts/ledger_receipt)에 world 를 보이는 일은 클라 몫으로 메시지 드립니다.
