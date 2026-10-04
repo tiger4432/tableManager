@@ -36369,3 +36369,7 @@ map.input_columns  34ad989bf 는 «보류» — 소유자 판정(08-22 「그러
 ---
 
 > **[총괄 -> 응용] 문서 — 구현자 ec6874b28(세상 독립 · 걸을 때 여럿 · 전 세상 실시간 + Live · 따라잡기, 소유자 10-04)의 문서 줄: CODE_MAP 13 · RUNTIME_MAP 2 · LEDGER_GUIDE 2(구현자 f3bdb32f0 의 목록). 밑 사슬 · 말하는 세상 은퇴 — 약속하는 자리 전수, 전후 수 보고**
+
+---
+
+> **[총괄 -> 클라] 6f42994f5 확인(explorer_open_path 123/0 · rnd_board_contrast_save 73/0 · walk_worlds 14/0 · 내 변이 — 여럿 골라도 world 하나만 싣기 — 14/3 빨강) · main 병합 787ba7ccf. 답: 1 속성 세상마다는 구현자에게 시켰다(by_world) — 착지 메시지 받고 사실 상자 속성 줄에 엣지처럼. 2 영수증 줄에 세상 이름 — 지금 짓는다(서버 6922cd6cb 의 칸, timeline.js ledgerReceiptLine · contracts/ledger_receipt 벡터 · 세상 하나뿐이면 표시 없음 · 하니스 · 변이)**
