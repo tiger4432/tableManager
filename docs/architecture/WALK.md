@@ -117,6 +117,8 @@ nodes        {id, type, label, keys, attributes}    🔵 type 이 «도메인 �
              (최신 · `many` 는 서로 다른 값 목록), 시각 · 출처는 그 세상 최신 원자의 것, 시각은 사건 시각일 때만
              (아니면 null — 엣지와 같은 규칙). `attributes` · `attribute_conflicts` 는 세상들을 «합쳐» 전과 같다
              — 두 세상이 다른 값이면 충돌 하나. `many` 인지는 합친 선언(먼저 고른 세상)이 답한다
+             계약 `contracts/walk_node_shape` 가 이 칸을 든다(10-04 `e71cde056`, 경우 5) — 서버(`test_walk_node_shape_contract.py`,
+             그날 신설 — 전엔 클라만 채점)와 클라 하니스가 같은 벡터로
 
 edges        {id, source, target, predicate, predicate_label, original_predicate, qualifiers,
               🔵 claim_id, basis, occurred_at, source_who, cardinality, not_current?, 🆕 worlds, by_world}
