@@ -183,13 +183,9 @@ class OntologyExplorerService:
         setup_loader: Callable[[str | Path], Any] = load_setup,
         catalog_loader: Callable[[], Mapping[str, Any]] = live_physical_catalog,
         convergence_probe: Callable[[str], dict[str, str]] | None = None,
-        seed_root: str | Path | None = None,
     ):
         self._catalog_loader = catalog_loader
         self.config_root = Path(config_root)
-        #: The declaration a ledger branch starts from (its base's root, `schema.world_names`);
-        #: None - the default world - starts from the smallest file that validates.
-        self.seed_root = None if seed_root is None else Path(seed_root)
         self.draft_store = OntologyDraftStore(
             draft_root or self.config_root.parent / "backup" / "ontology_drafts")
         #: Which source declarations have been through a real batch, and against WHICH
@@ -1031,7 +1027,7 @@ class OntologyExplorerService:
         payload["dropped_fields"] = dropped
         return payload
 
-    def bootstrap_config(self) -> dict[str, Any]:
+    def bootstrap_config(self, seed_root: str | Path | None = None) -> dict[str, Any]:
         """Write the smallest file that validates, so a setup can start from nothing.
 
         Until this existed the screen could not be used from a blank root at all: every
@@ -1062,10 +1058,10 @@ class OntologyExplorerService:
                 f"does not load, fix the reported parse error -- a file that cannot be "
                 f"read is still a file somebody wrote",
             )
-        # 총괄 60d7e8e42: a branch starts as its base - the declaration it will differ from -
-        # so it speaks for no source until one of its declarations is changed.
-        skeleton = (json.loads((self.seed_root / CONFIG_FILENAME).read_text(encoding="utf-8"))
-                    if self.seed_root is not None else {
+        # `seed_root`: a world copied - its declaration, once; after that the two are
+        # independent (총괄 092a6f9e5). None: the smallest file that validates.
+        skeleton = (json.loads((Path(seed_root) / CONFIG_FILENAME).read_text(encoding="utf-8"))
+                    if seed_root is not None else {
                         "setup_version": SETUP_VERSION,
                         **{name: {} for name in LOGICAL_SECTIONS},
                     })

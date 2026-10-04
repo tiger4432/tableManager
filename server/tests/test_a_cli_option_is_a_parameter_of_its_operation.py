@@ -51,10 +51,6 @@ def _rule_r_is_found(monkeypatch):
     monkeypatch.setattr(ledger_backfill, "rescope_scope", lambda *a, **k: (None, None))
     # one ledger world this file names, declared by the seat's own list (총괄 3b6dacd2f)
     monkeypatch.setattr(ledger_schema, "worlds", lambda: ["w1"])
-    # ... and the one that speaks for every source here: the one named, or the default by name
-    # (총괄 8b81e79a0 - resolving it is scored in the worlds test)
-    monkeypatch.setattr(ledger_schema, "speaking_world",
-                        lambda engine, source, world=None: world or ledger_schema.DEFAULT_WORLD)
 
 
 def test_the_form_does_not_offer_them_and_the_record_accepts_them():
@@ -152,7 +148,7 @@ def test_an_option_not_given_leaves_the_operations_default(calls, op):
     assert not (set(names) - {"world"}) & set(calls[fn][-1]), calls[fn][-1]
 
 
-def test_a_ledger_job_naming_no_world_names_the_one_that_speaks(calls):
+def test_a_ledger_job_naming_no_world_names_the_operating_one(calls):
     _run("ledger_backfill", REQUIRED["ledger_backfill"])
     assert calls["run"][-1]["world"] == ledger_schema.DEFAULT_WORLD
 

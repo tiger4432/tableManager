@@ -35749,3 +35749,26 @@ SYSTEM_FLOWS L-17  두 이름을 «안» 든다(셈 0) — 구현자 585f145d4 �
 a9f877ed3 동기  BACKFILL_GUIDE ⓖ 줄(그 소스만 번역 · 이미 쌓인 중복은 RUN.md SQL -> --whole-source) · LEDGER_GUIDE 4.2(지문 스크립트가 말하는 세상을 따름) ·
                CODE_MAP key-values(이름 댄 세상에 물음 · node_type_not_declared). 시험(박스) run_pg_tests -k (writes_no_other_sources_fact_twice · stands_on_a_chain · restamp) 10 passed
 ```
+
+---
+
+## [C 응용] 10-04 6091a7ae3 착지 — 세상 독립(ec6874b28)의 문서 · 밑 사슬 · 말하는 세상 은퇴 @`8aacb6e3f`
+
+```
+셈        살아 있는 문서 124(docs .md 중 history · _archive · RELEASE_LOG 뺌). 낱말 17 — 은퇴 함수 열넷(stand( · changed_sources · chain_speakers · followed_by ·
+          speaking_world · speaking_cursor · speaker( · ensure_view · speaks_for · refresh_world_view · _declared_speakers · read_relation · base_root · world_leg)와
+          beneath, 한국어 「밑에 깔」 · 「말하는 세상」. 카나리아 'ledger' > 100
+전        33 번 · 15 줄 · 4 문서(CODE_MAP 5 · RUNTIME_MAP 2 · BACKFILL_GUIDE 1 · LEDGER_GUIDE 7) — 15 줄 다 은퇴한 동작을 현재로 적음
+후        35 번 · 10 줄(CODE_MAP 5 · RUNTIME_MAP 2 · LEDGER_GUIDE 3) — 10 줄 다 ⚰️ · ~~ · 은퇴 표시를 단 줄(줄 전체로 셈, 표시 없는 줄 0). 번이 는 것은 schema 줄의 은퇴 목록
+          (구현자 f3bdb32f0 의 「CODE_MAP 13」 은 다른 낱말 목록의 수로 보인다 — 같은 git grep -w 로 위 열넷 + beneath 를 세면 CODE_MAP 5 줄 · RUNTIME_MAP 2 · LEDGER_GUIDE 2)
+고친 것    LEDGER_GUIDE 4.9 통째로(만들기 copy_from · 실시간 켜기/끄기 · 다시 켜면 따라잡기 run_id · --catch-up · 걷기 world 여럿 · 엣지 worlds/by_world ·
+          세상 하나를 묻는 자리 · 거절은 기본 · 운영 세상만) · 4.2 지문 다시 찍기 두 줄(세상 하나) · BACKFILL_GUIDE --world · RUNTIME_MAP ④⑤ ·
+          CODE_MAP schema 줄(독립 · live · walk_relation · ⚰️ 목록) · followup 줄(_follow_worlds) · 탐색기 라우트 셋의 refresh_world_view ⚰️
+시험      run_pg_tests -k (world · branch · trace_pg · saved_contrast · counts_were_taken · retroactive) — 도는 중, 끝나면 한 줄 덧붙임
+```
+```
+🔴 078cfd261 의 ① 이 이제 «늘» 걸린다 — 워커 기동 스키마(_ensure_ledger_schema_sync -> LedgerStore(engine).ensure_schema())는 운영 세상만 맞춘다
+   ec6874b28 뒤로 후속은 «켜진 세상 전부»에 쓰고, 기본은 기본 켜짐이다. 가지가 운영이면 기본에도 쓰는데, 기본 표는 기동이 안 맞춘다
+   (ensure_world 는 독스트링대로 기본에 «아무것도 안 함» — 「the default's tables are the daemon's」). 기본에 칸을 더하는 업그레이드 뒤 재기동 -> 기본 쓰기가 그 칸에서 선다
+   제안  기동 때 «켜진 세상 전부 + 기본»을 ensure — live_worlds 가 이미 그 목록. 여쭐 것
+```

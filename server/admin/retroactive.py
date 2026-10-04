@@ -481,6 +481,51 @@ def _run_ledger_backfill(db, params, log, control=None):
             "cursor_after": s.get("cursor_after")}
 
 
+def _count_ledger_catch_up(db, params, scan_limit):
+    """What the world missed, per source it reads - the three the run takes, each counted by the
+    seat that takes it (총괄 71880678a)."""
+    from ledger import backfill
+
+    engine, setup, world = db.get_bind(), _ledger_setup(params), _ledger_world(params)
+    sources, total, uncounted = {}, 0, []
+    for source in sorted(name for name, plan in setup.snapshot.source_plans.items() if plan.runs):
+        left = backfill.rows_not_yet_translated(engine, setup, source, world=world).get("not_yet")
+        edited = backfill.rows_drifted(engine, setup, source, world=world)["rows_drifted"]
+        gone = len(backfill.rows_gone_from_the_source(engine, setup, source, world=world))
+        # `not_yet` is the table's rows less the index's, and a lost row is still in the
+        # index - so it hides one new row; added back, the new rows are counted.
+        new = None if left is None else left + gone
+        if new is None:
+            uncounted.append(source)
+        sources[source] = {"new_rows": new, "edited_rows": edited, "gone_rows": gone}
+        total += (new or 0) + edited + gone
+    detail = (f"world {world}: {total} row(s) to catch up - made, edited or lost while it did "
+              f"not follow live, over {len(sources)} source(s).")
+    if uncounted:
+        detail += f" New rows of {', '.join(uncounted)} cannot be counted here."
+    return {
+        "affected": total,
+        "affected_label": "rows to catch up",
+        "absence": (ABSENCE_NOT_EXHAUSTIVE if uncounted
+                    else ABSENCE_TRULY_NONE if not total else None),
+        "count_kind": COUNT_EXACT,
+        "scanned": None,
+        "scan_limit": None,
+        "truncated": False,
+        "detail": detail,
+        "extra": {"world": world, "sources": sources},
+    }
+
+
+def _run_ledger_catch_up(db, params, log, control=None):
+    from ledger import backfill
+
+    s = backfill.catch_up(db.get_bind(), _ledger_setup(params), world=_ledger_world(params),
+                          checkpoint=_checkpoint(control), pace=params.get("pace"))
+    _final_progress(control, s.get("rows"), s)
+    return s
+
+
 def _rescope_absence(withdraw, remake, rows):
     """Which of the six a scoped redo's numbers mean. Chosen from the PAIR, not from one.
 
@@ -1150,16 +1195,13 @@ def _judge_table(params):
 
 
 def _ledger_world(params):
-    """The ledger world a job runs in, by name (총괄 3b6dacd2f · 8b81e79a0). A job stored before
-    worlds carries the root it read instead: the default root IS the default world - by name,
+    """The ledger world a job runs in, by name (총괄 3b6dacd2f). A job stored before worlds
+    carries the root it read instead: the default root IS the default world - by name,
     whichever world operates now - and any other root is refused by name - reading it as the
-    default would read a different declaration. A job naming no world runs in the one that
-    speaks for its source in the operating chain; one naming a world that does not speak for
-    it is refused by name (`schema.speaking_world`).
+    default would read a different declaration. A job naming no world runs in the operating
+    one; a world not declared is refused by name.
     """
-    from database.database import engine
     from ledger import schema
-    from ledger.setup import LedgerSetupError
 
     root = params.get("ontology_root")
     world = params.get("world")
@@ -1172,8 +1214,8 @@ def _ledger_world(params):
                 f"run it again naming a world (--world)")
         world = world or schema.DEFAULT_WORLD
     try:
-        return schema.speaking_world(engine, params["source"], world)
-    except LedgerSetupError as exc:
+        return schema.require_world(world).name
+    except (LookupError, ValueError) as exc:
         raise RetroactiveRefused(str(exc)) from None
 
 
@@ -1194,6 +1236,11 @@ def _judge_ledger_backfill(params):
         _ledger_setup(params).require_source(params["source"])
     except LedgerSetupError as e:
         raise RetroactiveRefused(str(e)) from None
+
+
+def _judge_ledger_catch_up(params):
+    """The world is declared - `_ledger_world` refuses it by name otherwise."""
+    _ledger_world(params)
 
 
 def _judge_ledger_rescope(params):
@@ -1438,6 +1485,25 @@ OPERATIONS = {
         "restartable": True,
         "commit_granularity": "atoms and the row index in one commit per page",
         "cli_only": ["--scope-column/--scope-values (that is `ledger_rescope` here)"],
+    },
+    "ledger_catch_up": {
+        "label": "Catch a ledger world up",
+        "what_is_missing": ("the world did not follow its tables live for a while, so rows "
+                            "made, edited or deleted meanwhile are not in its ledger"),
+        "params": [_p("world", help="a ledger world by name (GET /admin/ontology-explorer/worlds)"),
+                   _pace_param()],
+        "count": _count_ledger_catch_up,
+        "run": _run_ledger_catch_up,
+        "judge": _judge_ledger_catch_up,
+        "cli": "server/ledger/backfill.py --world <world> --catch-up [--pace slow]",
+        "deletes": ("ledger_events rows (the atoms of rows the table lost, and the old atoms of "
+                    "rows edited since)"),
+        "reads_as": "number",
+        "cancellable": True,
+        "restartable": True,
+        "commit_granularity": ("each step's own - one commit per page of rows; a stop lands "
+                               "between pages and sources, and a re-run finds only what is left"),
+        "cli_only": [],
     },
     "ledger_rescope": {
         "label": "Re-translate a ledger scope",

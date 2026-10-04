@@ -3148,17 +3148,16 @@ def _ledger_outbox_depth_sync(db_session_factory):
 def _drain_ledger_followup_sync(db_session_factory):
     """One follow-up batch, in a thread. The session is this call's and closes with it.
 
-    🔴 EACH SOURCE INTO THE WORLD OF THE OPERATING CHAIN THAT SPEAKS FOR IT (총괄 86d5061a0) -
-    as the operating world's view shows it, asked of the one seat (`schema.followed_by`), so
-    switching the operating world takes the next batch with it."""
+    🔴 INTO EVERY WORLD THAT FOLLOWS LIVE, EACH ON ITS OWN DECLARATION (총괄 092a6f9e5) - asked
+    of the layout every batch (`schema.live_worlds`), so a world switched on or off takes the
+    next batch with it."""
     from ledger import schema
 
     db = db_session_factory()
     try:
         engine = db.get_bind()
-        chain = [(world, _compiled_setup(world), spoken)
-                 for world, spoken in schema.followed_by(engine)]
-        done = ledger_followup.drain_outbox_once(engine, None, chain)
+        followers = [(world, _compiled_setup(world)) for world in schema.live_worlds()]
+        done = ledger_followup.drain_outbox_once(engine, None, followers)
         # ⚰️ [소유자 정본] `_run_the_follow_up_pass(db, done)` STOOD HERE and ran the deferred
         #   rules on the drained rows. That lap is not in 「트랜잭션 - 아웃박스 - 트리거 -
         #   맵퍼 실행 - 페이로드 및 업서트」, so those rules run on the trigger path like every
@@ -3214,21 +3213,18 @@ def _measure_one_source_sync(db_session_factory, source):
     behind it. The number is published AS an estimate; the exact count belongs to the
     command a person runs.
 
-    It is measured in the world that speaks for it, as the live follow-up writes it (총괄
-    8b81e79a0); that world's declaration comes from the compile cache (`_compiled_setup`) -
-    compiling it costs 91 ms on this box, and it was once done for every source of a lap.
+    It is measured in the operating world (총괄 092a6f9e5); its declaration comes from the
+    compile cache (`_compiled_setup`) - compiling it costs 91 ms on this box, and it was once
+    done for every source of a lap.
     """
     from ledger import backfill as ledger_backfill
-    from ledger import schema as ledger_schema
     from ledger.store import LedgerStore
 
     db = db_session_factory()
     try:
         engine = db.get_bind()
-        world = ledger_schema.speaking_world(engine, source)
         return ledger_backfill.measure_and_store(
-            engine, _compiled_setup(world), source, LedgerStore(engine, world=world),
-            exact_rows=False)
+            engine, _compiled_setup(None), source, LedgerStore(engine), exact_rows=False)
     finally:
         db.close()
 
@@ -3477,6 +3473,10 @@ def _restamp_moved_fingerprints_sync(db_session_factory):
     try:
         engine = db.get_bind()
         setup = _compiled_setup(None)
+        # The operating world's cursors, on its declaration (총괄 092a6f9e5): another world's
+        # are a person's `--world` restamp.
+        world = schema.world_names().name
+        store = LedgerStore(engine, world=world)
         moved, refused = [], []
         # 🔴 ONLY WHAT IS STILL READ IS RE-STAMPED (S-177 ①②). The stamp says which
         # declaration a source is translating on; a source that is retired or that the
@@ -3485,16 +3485,12 @@ def _restamp_moved_fingerprints_sync(db_session_factory):
         # per-source guard, which would take every source AFTER it down too.
         for source in sorted(name for name, plan in setup.snapshot.source_plans.items()
                              if plan.runs):
-            # The cursor of the world that speaks for it, on that world's declaration (총괄
-            # 152f4bb0b) - where the follow-up writes it and the census counts it.
-            world = schema.speaking_world(engine, source)
-            store = LedgerStore(engine, world=world)
             read = store.connection()
             try:
                 existing = store.read_cursor(read, source)
             finally:
                 read.close()
-            wanted = cursor_translator_version(_compiled_setup(world).snapshot, source)
+            wanted = cursor_translator_version(setup.snapshot, source)
             stored = existing.get("translator_ver") if existing else None
             verdict, reason = store.restamp_decision(stored, wanted)
             if verdict == "refused":

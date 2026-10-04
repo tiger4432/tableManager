@@ -304,7 +304,6 @@ def run(engine, source="lot_event", fetch_rows=DEFAULT_FETCH_ROWS,
     report = _run_via_events(
         engine, cutover, source=source, page_rows=fetch_rows,
         max_pages=max_batches, checkpoint=checkpoint, pace=pace, world=world)
-    refresh_world_view(engine, world)
     return report
 
 
@@ -334,10 +333,8 @@ def _run_via_events(engine, setup, source, page_rows=DEFAULT_FETCH_ROWS,
     # 🔴 THIS SOURCE ONLY (총괄 5fec118bb). The rows are queued by TABLE, and they are new to
     # ITS index alone: another source reading the table has them already, and a CREATE is
     # translated without withdrawing (판정 166) - so it wrote that source's facts twice, once
-    # more each time the declaration had moved. And only where this world speaks for it -
-    # `followed_by`'s top entry, what the live follow-up reads (총괄 c23b02aeb ③ · 8b81e79a0).
-    speaks = schema.followed_by(engine, schema.world_names(world))[0][1]
-    only = frozenset({source}) & (speaks if speaks is not None else {source})
+    # more each time the declaration had moved.
+    only = frozenset({source})
     while max_pages is None or report["batches"] < max_pages:
         page = rows_missing_from_the_index(engine, setup, source, page_rows, after,
                                            world=world)
@@ -787,8 +784,8 @@ def rescope(engine, setup, source, scope_column, scope_values, apply=False,
             break
     if whole_source and not result.get("stopped"):
         # 🔴 THE PAGES CAN ONLY REMAKE ROWS THAT ARE STILL THERE (총괄 3a109bfd9 ③). What the
-        #    relation lost is withdrawn the way a delete is, in every world: the default's
-        #    follow-up has usually taken it already (then 0), a branch has no follow-up.
+        #    relation lost is withdrawn the way a delete is: a live world's follow-up has
+        #    usually taken it already (then 0), a world switched off has not.
         gone = rows_gone_from_the_source(engine, setup, source, world=world)
         taken = withdraw_deleted_rows(engine, setup, plan.relation, gone, apply=True,
                                       world=world)
@@ -800,17 +797,7 @@ def rescope(engine, setup, source, scope_column, scope_values, apply=False,
         # refused it as `scope.row_id: the batch does not carry 'row_id'`; it repeated every
         # three seconds and the drain DROPPED each event.
         result["scope_empty"] = True
-    refresh_world_view(engine, world, source)
     return result
-
-
-def refresh_world_view(engine, world, source=None):
-    """Make the branch's walk view again after its atoms moved - the sources it speaks for
-    may have changed; a write of one `source` it already speaks for leaves it (`ensure_view`).
-    The default has no view."""
-    from . import schema
-
-    schema.ensure_view(engine, schema.world_names(world), source)
 
 
 #: Scope rows one page of an operator's rescope reads - a stop lands between two of them.
@@ -1114,6 +1101,36 @@ def retranslate_drifted(engine, setup, source, apply=False, world=None):
     return rescope(engine, setup, source, column, values, apply=apply, world=world)
 
 
+def catch_up(engine, setup, world=None, checkpoint=None, pace=None):
+    """🔴 WHAT A WORLD MISSED WHILE IT DID NOT FOLLOW LIVE (총괄 71880678a) - per source it reads,
+    the three that already exist, in turn: the rows not yet translated (`run`), the rows edited
+    since (`retranslate_drifted`) and the rows the table lost (`rows_gone_from_the_source` ->
+    `withdraw_deleted_rows`, the follow-up's own delete). A stop lands between pages and
+    sources; a rerun finds only what is left."""
+    from . import schema
+
+    report, rows = {"world": schema.world_names(world).name, "sources": {}, "stopped": False}, 0
+    for source in sorted(name for name, plan in setup.snapshot.source_plans.items() if plan.runs):
+        plan = setup.snapshot.source_plans[source]
+        new = run(engine, source=source, world=world, checkpoint=checkpoint, pace=pace)
+        if new.get("stopped"):
+            report["stopped"] = True
+            break
+        edited = retranslate_drifted(engine, setup, source, apply=True, world=world)
+        gone = rows_gone_from_the_source(engine, setup, source, world=world)
+        taken = withdraw_deleted_rows(engine, setup, plan.relation, gone, apply=True, world=world)
+        report["sources"][source] = {
+            "new_rows": new.get("rows_read", 0), "edited_rows": edited.get("rows_in_scope", 0),
+            "gone_rows": len(gone),
+            "gone_withdrawn": sum(item.get("withdrawn", 0) for item in taken["sources"].values())}
+        rows += new.get("rows_read", 0) + edited.get("rows_in_scope", 0) + len(gone)
+        if checkpoint is not None and checkpoint(rows):
+            report["stopped"] = True
+            break
+    report["rows"] = rows
+    return report
+
+
 #: The paced job that measures 「table rows · indexed rows · remainder」 for every source.
 #: A NAME, because `pacing.json` is keyed by one and an operator who needs this to stop
 #: crowding the database at 2am edits a cell there rather than a constant.
@@ -1333,21 +1350,17 @@ def census_sources(setup):
             sorted(n for n, p in plans.items() if p.status != "active"))
 
 
-def measure_every_source(engine, setup, store=None, now=None, world=None):
-    """Measure each declared source in turn, in the world that speaks for it
-    (`schema.speaking_world` - `world` named: there, and a source it does not speak for is
-    refused by name), and store what it found there. `setup` is the operating world's;
-    `store(world)` gives the writer for a world (none: that world's `LedgerStore`).
+def measure_every_source(engine, setup, store=None, now=None):
+    """Measure each declared source in turn and store what it found - `setup` and `store` of one
+    world (none: the operating world's `LedgerStore`).
 
     ⛔ ONE SOURCE'S FAILURE DOES NOT END THE SWEEP. A relation that was dropped, or a
     permission that changed, must cost that source's number and not every source after it --
     the shape the follow-up loop already carries, for the same reason.
     """
-    from . import schema
-    from .setup import load_setup
     from .store import LedgerStore
 
-    setups = {schema.operating_world(): setup}
+    writer = LedgerStore(engine) if store is None else store
     done = []
     measured, retired = census_sources(setup)
     # ⛔ NAMED, NOT SILENT (S-103) - a sweep that returns fewer sources than the declaration
@@ -1356,12 +1369,7 @@ def measure_every_source(engine, setup, store=None, now=None, world=None):
         logger.info("[Ledger] census skips %s: retired (content unvalidated)", source)
     for source in measured:
         try:
-            speaking = schema.speaking_world(engine, source, world)
-            if speaking not in setups:
-                setups[speaking] = load_setup(schema.world_names(speaking).declaration_root)
-            measure_and_store(engine, setups[speaking], source,
-                              LedgerStore(engine, world=speaking) if store is None
-                              else store(speaking), now=now)
+            measure_and_store(engine, setup, source, writer, now=now)
         except Exception as exc:
             logger.warning("[Ledger] census of %s failed: %s", source, exc)
             continue
@@ -2187,6 +2195,10 @@ def main(argv=None):
     parser.add_argument("--apply", action="store_true",
                         help="with --scope-column: withdraw and remake for real. Without "
                              "it the scope is a dry-run and writes nothing")
+    parser.add_argument("--catch-up", action="store_true",
+                        help="what --world missed while it did not follow live, every source "
+                             "it reads: rows not yet translated, rows edited since, rows the "
+                             "table lost (--source is not read)")
     args = parser.parse_args(argv)
 
     # This is the public operator boundary.  Until a separate destructive approval
@@ -2218,13 +2230,16 @@ def main(argv=None):
     from .store import LedgerStore
 
     LedgerStore(engine, world=args.world).ensure_schema()
-    # Written in the world that speaks for the source, by name - the one the live follow-up
-    # writes it into - and a world named here that does not speak for it is refused by name
-    # (총괄 8b81e79a0). Read from the chain whose schema the line above made sure of.
-    world = schema.speaking_world(engine, args.source, args.world)
-    names = schema.require_world(world)
-    LedgerStore(engine, world=world).ensure_schema()
+    # By name, always - the job record and its next step run later (총괄 6c266e56b ⑤).
+    names = schema.require_world(args.world)
+    world = names.name
 
+    if args.catch_up:
+        caught = _written("ledger_catch_up", {"world": world, "pace": args.pace})
+        if caught is None:
+            return 2
+        logger.info("[Ledger] caught up %s: %s", world, caught)
+        return 0
     if args.drifted:
         result = retranslate_drifted(engine, load_setup(names.declaration_root), args.source,
                                      apply=args.apply,

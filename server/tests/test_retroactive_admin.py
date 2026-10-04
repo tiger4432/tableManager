@@ -208,10 +208,12 @@ class TestInventory:
         # `collector_backfill` joined on 2026-09-26 - a collector run one day at a time;
         # `fold_file_layers` the same day - file layers that repeat a newer one (총괄 225b2c658);
         # `set_aside` / `rerun_set_aside` the same evening - the emergency stop (3840af307).
+        # `ledger_catch_up` joined on 2026-10-04 - a world switched back on (총괄 71880678a).
         assert {o["op"] for o in body["operations"]} == {
             "chain_replay", "withdraw", "enrichment_backfill", "enrichment_confirm",
             "ledger_rescope", "ledger_backfill", "resolve", "collector_backfill",
-            "fold_file_layers", "set_aside", "rerun_set_aside", "fold_written_notation"}
+            "fold_file_layers", "set_aside", "rerun_set_aside", "fold_written_notation",
+            "ledger_catch_up"}
 
     def test_the_run_list_and_the_cancel_request_are_actually_reachable(self, client):
         """🔴 A CONVENTION WITH NO ROUTE IS A FUNCTION NOBODY CAN CALL.

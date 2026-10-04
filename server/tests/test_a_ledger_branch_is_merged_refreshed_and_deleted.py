@@ -1,14 +1,12 @@
 # -*- coding: utf-8 -*-
-"""총괄 60d7e8e42 · 8d10633ae — a ledger branch, end to end on PostgreSQL, on the shipped sample.
+"""총괄 60d7e8e42 · 8d10633ae · 092a6f9e5 — a ledger branch, end to end on PostgreSQL, on the
+shipped sample.
 
-The default world and a branch `w_<name>` share every source table. The branch changes ONE
-source's declaration (wafer_process_recipe); translating it writes only that source into the
-branch, and the walk reads the branch's view: the branch's atoms of that source and the
-default's atoms of every other one - including a default row written after the branch was
-made. Merging promotes the declaration and a whole-source rescope leaves no atom of the old
-declaration; deleting the branch leaves no schema and no file.
+The default world and a branch `w_<name>` share every source table and nothing else: the branch
+says ONE source otherwise (wafer_process_recipe) and translates into its own ledger. Merging
+promotes its declaration and a whole-source rescope leaves no atom of the old one; a whole-source
+refresh takes the atoms of a row the source lost; deleting the branch leaves no schema and no file.
 """
-import copy
 import json
 import os
 import shutil
@@ -31,13 +29,11 @@ from database import crud, models, schemas                          # noqa: E402
 from database.context import channel                                # noqa: E402
 from ledger import backfill, schema                                 # noqa: E402
 from ledger.store import LedgerStore                                # noqa: E402
-from ledger_api import ledger_subgraph                              # noqa: E402
 
 pytestmark = pytest.mark.pg
 SAMPLE = os.path.join(SERVER_DIR, "config", "sample")
 TABLES = ("wafer_process", "lot_slot_wafer")
 CHANGED, KEPT = "wafer_process_recipe", "lot_slot_wafer"
-ADDED = "zz_wafer_at_step"
 WORLD = "exp" + "".join(ch for ch in RUN_TOKEN.lower() if ch.isalnum())[:20]
 EVENT_TIME = "2026-09-30 10:00:00"
 
@@ -137,65 +133,6 @@ def _rows(world, relation, *columns):
             {"a": CHANGED, "b": KEPT}))
 
 
-def test_the_branch_translates_what_it_changed_and_walks_the_rest_from_the_default(world):
-    _seed(world)
-    names = schema.require_world(WORLD)
-    default_before = _rows(world, schema.LEDGER_TABLE, "source_who", "source_translator_ver")
-
-    assert schema.changed_sources(names) == {CHANGED}
-    LedgerStore(world["engine"], world=WORLD).ensure_schema()     # what the CLI entry does
-    backfill.run(world["engine"], source=CHANGED, world=WORLD)
-
-    assert _rows(world, schema.LEDGER_TABLE, "source_who", "source_translator_ver") == default_before
-    assert {who for (who,) in _rows(world, names.ledger, "source_who")} == {CHANGED}
-    legs = set(_rows(world, names.read_relation, "source_who", "world_leg"))
-    assert legs == {(CHANGED, WORLD), (KEPT, "default")}, legs   # a leg is named by its world
-
-    with world["engine"].connect() as conn:
-        lookup = ledger_subgraph.SqlEvidenceLookup(conn, relation=names.read_relation)
-        claims, _cut = lookup.claims_for_entities([("wafer", {"wafer": "W1"})], "both", 50)
-    assert {claim.source_who for claim in claims} == {CHANGED, KEPT}
-
-    # and through the walk route's own door, naming the world with one argument
-    from fastapi import HTTPException
-    from ledger import explorer, trace_router
-
-    with world["engine"].connect() as conn:
-        payload = trace_router._evidence_graph(
-            conn, node_id=explorer.entity_id("wafer", {"wafer": "W1"}), hops=3,
-            direction="both", node_limit=100, edge_limit=200, world=WORLD)
-    predicates = {edge.get("predicate") for edge in payload["edges"]}
-    assert {"processed_with", "has_wafer"} <= predicates, predicates
-
-    # 🔴 THE VIEW'S SHAPE, BY PLAN: a filter on the partitioned default's leg keeps the union
-    # from flattening (a Subquery Scan over every partition - box 09-30: 0.43 ms -> 775 ms).
-    class _Plan(ledger_subgraph.SqlEvidenceLookup):
-        def _execute(self, sql, params):
-            self.plan = "\n".join(row[0] for row in trace_router.trace._fetch(
-                self.connection, "EXPLAIN " + sql, params))
-            return []
-
-    with world["engine"].connect() as conn:
-        planned = _Plan(conn, relation=names.read_relation)
-        planned.claims_for_entities([("wafer", {"wafer": "W1"})], "outgoing", 50)
-    assert "Subquery Scan" not in planned.plan, planned.plan
-    assert trace_router.ledger_declaration_catalog(world=None)["worlds"] == [schema.DEFAULT_WORLD, WORLD]
-    with pytest.raises(HTTPException) as refused:
-        trace_router._world("nowhere")
-    assert refused.value.status_code == 404
-    assert refused.value.detail["reason"] == "world_unknown"
-
-    # a default row written AFTER the branch was made is seen through the branch
-    _write(world, "lot_slot_wafer", [{"lot_slot_wafer_key": "K2", "lot": "L1", "slot": "2",
-                                      "wafer": "W2", "event_type": "load",
-                                      "event_time": EVENT_TIME}])
-    backfill.run(world["engine"], source=KEPT)
-    walked = [(kind, json.loads(keys))
-              for kind, keys in _rows(world, names.read_relation, "subject_type",
-                                      "subject_keys::text")]
-    assert ("lot_slot", {"lot": "L1", "slot": "2"}) in walked, walked
-
-
 def _branch_translated(world):
     _seed(world)
     LedgerStore(world["engine"], world=WORLD).ensure_schema()
@@ -242,8 +179,9 @@ def test_a_merge_promotes_the_declaration_and_leaves_no_atom_of_the_old_one(worl
 
 
 def test_a_whole_source_refresh_takes_the_atoms_of_a_row_the_source_lost(world):
-    """총괄 3a109bfd9 ③: a branch has no follow-up, and the default's can miss a delete. A
-    whole-source refresh withdraws what the relation lost, in every world, the way a delete is."""
+    """총괄 3a109bfd9 ③: a world switched off has no follow-up, and a live one can miss a delete.
+    A whole-source refresh withdraws what the relation lost, in the world it runs in, the way a
+    delete is."""
     from ledger.setup import load_setup
 
     names = _branch_translated(world)
@@ -282,30 +220,6 @@ def test_a_whole_source_refresh_takes_the_atoms_of_a_row_the_source_lost(world):
         assert (said["gone_rows"], said["gone_atoms"]) == (0, 0), (name, said)
 
 
-def _refuse(path, source):
-    """`source` read by an order that is not a column: the loader leaves it out alone."""
-    with open(path, encoding="utf-8") as fh:
-        document = json.load(fh)
-    document["sources"][source]["read"]["order_by"] = ["no_such_column"]
-    with open(path, "w", encoding="utf-8") as fh:
-        json.dump(document, fh)
-
-
-def test_a_source_refused_on_both_sides_is_the_defaults_and_on_one_side_the_branchs(world):
-    """총괄 (10-01) 가: refused on both sides, the branch has nothing new to say about a source,
-    so its view keeps the default's atoms (it spoke of LESS than the default before);
-    refused on one side only, the two declarations differ."""
-    names = _branch_translated(world)
-    default = schema.world_names()
-    _refuse(names.declaration_path, KEPT)
-    assert KEPT in schema.changed_sources(names)                  # one side: changed
-    _refuse(default.declaration_path, KEPT)
-    assert schema.changed_sources(names) == {CHANGED}             # both sides: not
-    backfill.refresh_world_view(world["engine"], WORLD)
-    legs = set(_rows(world, names.read_relation, "source_who", "world_leg"))
-    assert (KEPT, "default") in legs, legs
-
-
 def test_deleting_the_branch_leaves_no_schema_and_no_file(world):
     names = _branch_translated(world)
     preview = schema.world_deletion(world["engine"], WORLD)
@@ -321,110 +235,3 @@ def test_deleting_the_branch_leaves_no_schema_and_no_file(world):
     assert WORLD not in schema.worlds()
     with pytest.raises(ValueError):
         schema.world_deletion(world["engine"], None)                     # the default: never
-
-
-def test_a_branch_that_adds_a_source_writes_only_that_source(world):
-    """총괄 c23b02aeb ③ — rows are queued by TABLE, so translating a NEW source that reads
-    wafer_process also wrote wafer_process_recipe into the branch, and the view then hid that
-    source's default atoms (box: 10 -> 8 on a partly translated branch). A branch writes only
-    the sources it speaks for; the one it did not change stays the default's in its view."""
-    _seed(world)
-    document = _sample("ledger_config.json.sample")
-    document["entities"]["stepno@1"] = {"keys": ["step"]}
-    document["vocabulary"]["at_step@1"] = {
-        "status": "active", "subjects": ["wafer@1"],
-        "object": {"kind": "entity_ref", "types": ["stepno@1"],
-                   "qualifiers": {"required": [], "optional": []}}}
-    added = copy.deepcopy(document["sources"][CHANGED])
-    said = added["bind"]["mappings"]["wafer-processed-with-recipe"]["bind"]
-    added["bind"]["mappings"] = {"wafer-at-step": {"predicate": "at_step@1", "bind": {
-        "occurred_at": said["occurred_at"], "subject": said["subject"],
-        "target": {"kind": "entity", "entity_type": "stepno@1",
-                   "keys": {"step": {"kind": "column", "column": "step"}}}}}}
-    document["sources"][ADDED] = added
-    (world["config"] / "ontology_worlds" / WORLD / "ledger_config.json").write_text(
-        json.dumps(document), encoding="utf-8")
-    names = schema.require_world(WORLD)
-    assert schema.changed_sources(names) == {ADDED}
-
-    LedgerStore(world["engine"], world=WORLD).ensure_schema()
-    backfill.run(world["engine"], source=ADDED, world=WORLD)
-
-    with world["engine"].connect() as conn:
-        written = {who for (who,) in conn.execute(text(
-            "SELECT DISTINCT source_who FROM %s" % names.ledger))}
-        legs = set(conn.execute(text(
-            "SELECT source_who, world_leg FROM %s WHERE source_who IN (:a, :b)"
-            % names.read_relation), {"a": CHANGED, "b": ADDED}).fetchall())
-    assert written == {ADDED}, written
-    assert legs == {(ADDED, WORLD), (CHANGED, "default")}, legs
-
-
-# ── 총괄 c23b02aeb ② — the view is made again at the doors that make and save a branch ──
-# Only backfill made a branch's view, so a branch whose change moves no source (a `static` flip)
-# had none and its walk answered 503, and a save that changed which sources the branch speaks
-# for left the view excluding the old set.
-
-@pytest.fixture(name="doors")
-def fixture_doors(world, monkeypatch):
-    import database.database as database_module
-    from ledger_api import ontology_config_explorer_router as explorer_router
-    from runtime import system_reload
-
-    monkeypatch.setattr(database_module, "engine", world["engine"])
-    monkeypatch.setattr(system_reload, "reload_system_configs", lambda db: None)
-    monkeypatch.setattr(explorer_router, "_services", {})
-    _seed(world)
-    return explorer_router
-
-
-def test_a_branch_made_through_bootstrap_is_walked_before_anything_is_translated(world, doors):
-    from ledger import explorer, trace_router
-
-    made = "v" + WORLD[1:]
-    try:
-        doors.bootstrap_config(world=made)
-        with world["engine"].connect() as conn:
-            payload = trace_router._evidence_graph(
-                conn, node_id=explorer.entity_id("wafer", {"wafer": "W1"}), hops=2,
-                direction="both", node_limit=100, edge_limit=200, world=made)
-        assert {"processed_with", "has_wafer"} <= {e.get("predicate") for e in payload["edges"]}
-    finally:
-        if made in schema.worlds():
-            preview = schema.world_deletion(world["engine"], made)
-            schema.drop_world(world["engine"], made, preview["atoms"])
-
-
-def _saved_legs(world):
-    names = schema.require_world(WORLD)
-    return schema.changed_sources(names), set(_rows(world, names.read_relation,
-                                                    "source_who", "world_leg"))
-
-
-def test_a_save_that_changes_a_source_takes_its_default_atoms_out_of_the_view(world, doors):
-    service = doors._service_for(WORLD)
-    _setup, index, *_rest = service.active()
-    draft = service.create_draft(target_key="source_plan|" + KEPT,
-                                 base_snapshot_hash=index.snapshot_hash)
-    source = _branch_document()["sources"][KEPT]
-    source["bind"]["mappings"]["seat-holds-wafer-saved"] = source["bind"]["mappings"].pop(
-        "seat-holds-wafer")
-    saved = service.save_draft(draft["draft_id"], expected_revision=0, raw=json.dumps(source))
-    assert saved["preview_valid"] is True, saved.get("validation_errors")
-    doors.activate_draft(draft["draft_id"], payload={"expected_revision": 1},
-                         db=world["db"], world=WORLD)
-
-    changed, legs = _saved_legs(world)
-    assert changed == {CHANGED, KEPT}
-    assert (KEPT, "default") not in legs and (CHANGED, "default") not in legs, legs
-
-
-def test_a_deleted_declaration_takes_its_default_atoms_out_of_the_view(world, doors):
-    service = doors._service_for(WORLD)
-    _setup, index, *_rest = service.active()
-    doors.delete_declaration("source_plan|" + KEPT, base_snapshot_hash=index.snapshot_hash,
-                             db=world["db"], world=WORLD)
-
-    changed, legs = _saved_legs(world)
-    assert KEPT in changed
-    assert (KEPT, "default") not in legs, legs

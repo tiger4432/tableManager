@@ -37,7 +37,7 @@ from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 
 from ledger import explorer
-from ledger.schema import event_time_sql, reads_as_event_time
+from ledger.schema import LEDGER_COLUMNS, event_time_sql, reads_as_event_time
 from utils.wire_format import wire_text
 from declaration_names import bare_name as _bare_name
 from ledger import trace
@@ -313,10 +313,6 @@ EVENT_STATES = {"source_molecule", "source_record", "legacy_atom"}
 #: A projection that emits ONE kind needs no roster of kinds, and the two retired
 #: names existed only so `collect` could refuse them by name. `collect` went too.
 
-#: A SQL identifier, so a caller-named relation cannot smuggle anything else in - the one
-#: guard, `trace`'s, which also admits a ledger world's `w_<name>.<table>`.
-_IDENTIFIER = trace._IDENTIFIER
-
 
 def _canonical(value):
     return json.dumps(value, ensure_ascii=False, sort_keys=True,
@@ -411,6 +407,8 @@ class EvidenceAtom:
     not_current: bool = False
     #: Where `occurred_at` came from - empty for an event time (`schema.reads_as_event_time`).
     occurred_at_basis: str | None = None
+    #: The ledger world it was read from (총괄 092a6f9e5) - a walk may pick several.
+    world: str | None = None
 
     @property
     def event_identity(self):
@@ -421,11 +419,7 @@ class EvidenceAtom:
         return str(self.id), "legacy_atom"
 
 
-ATOM_COLUMNS = (
-    "id, subject_type, subject_keys, predicate, object_kind, object_payload, "
-    "occurred_at, source_who, source_translator_ver, source_raw_ref, supersedes, "
-    "source_event_id, source_event_state, occurred_at_basis"
-)
+ATOM_COLUMNS = ", ".join((*LEDGER_COLUMNS, "world"))
 EVIDENCE_COLUMNS = ", ".join(f"e.{name.strip()}" for name in ATOM_COLUMNS.split(","))
 
 
@@ -440,18 +434,22 @@ def _atom_from_row(row):
         source_event_id=str(row[11]) if row[11] else None,
         source_event_state=str(row[12]) if row[12] else None,
         occurred_at_basis=row[13] if len(row) > 13 else None,
-        not_current=bool(row[14]) if len(row) > 14 else False)
+        world=row[14] if len(row) > 14 else None,
+        not_current=bool(row[15]) if len(row) > 15 else False)
 
 
 class SqlEvidenceLookup:
     """Exact, batched reads against the ledger; no ranking or inference."""
 
-    def __init__(self, connection, relation="ledger_events", since=None, until=None,
+    def __init__(self, connection, worlds=None, since=None, until=None,
                  one=(), current_only=True):
-        if not _IDENTIFIER.match(relation or ""):
-            raise ValueError("relation must be a bare identifier")
+        from ledger import schema
+
         self.connection = connection
-        self.relation = relation
+        # The ledgers of the worlds walked (`schema.walk_relation`; none: the default's) -
+        # never a relation handed in.
+        self.relation = schema.walk_relation(
+            worlds or (schema.world_names(schema.DEFAULT_WORLD),))
         # 🔴 S-98. THE INTERVAL LIVES ON THE LOOKUP, not on each method. The walk asks
         # three different queries, and an argument threaded through each would let them hold
         # three different intervals for one request.
@@ -517,8 +515,11 @@ class SqlEvidenceLookup:
         if self.until is not None:
             params["until"] = self.until
             bound = " AND n.occurred_at < %(until)s"
+        # A later fact of ANOTHER world does not make this one old (총괄 092a6f9e5: a source
+        # two worlds translated shows from both).
         return (f"(e.predicate = ANY(%(one)s) AND EXISTS (SELECT 1 FROM {self.relation} n "
-                f"WHERE n.subject_type = e.subject_type AND n.subject_keys = e.subject_keys "
+                f"WHERE n.world = e.world "
+                f"AND n.subject_type = e.subject_type AND n.subject_keys = e.subject_keys "
                 f"AND n.predicate = e.predicate AND n.occurred_at > e.occurred_at{bound}))")
 
     def _execute(self, sql, params):
@@ -806,14 +807,20 @@ def _read_entity_declaration():
     from ledger.schema import world_names
     from ledger.setup_bundle import ATTRIBUTE_CARDINALITY_MANY
 
-    path = _WALK_DECLARATION.get() or world_names().declaration_path
-    facts = _declaration_facts.get(path)
+    from ledger.config import merged
+
+    paths = _WALK_DECLARATION.get() or (world_names().declaration_path,)
+    facts = _declaration_facts.get(paths)
     if facts is not None:
         return facts
     order, plural_by_type, confirmers, inverses = {}, {}, {}, {}
     try:
-        with open(path, "r", encoding="utf-8") as handle:
-            document = json.load(handle) or {}
+        documents = []
+        for path in paths:
+            with open(path, "r", encoding="utf-8") as handle:
+                documents.append((path, json.load(handle) or {}))
+        # the worlds walked, merged as the route merges them (총괄 092a6f9e5)
+        document = merged(documents)[0]
         declared = document.get("entities") or {}
         # 🔴 THE THIRD FACT, ON THE SAME READ AND THE SAME SENTINEL (S-149). A separate
         # cached read would be a second thing to forget on reload -- which is exactly the
@@ -844,7 +851,7 @@ def _read_entity_declaration():
                     plural_by_type[bare] = plural
     except Exception:
         order, plural_by_type, confirmers, inverses = {}, {}, {}, {}
-    facts = _declaration_facts[path] = (order, plural_by_type, confirmers, inverses)
+    facts = _declaration_facts[paths] = (order, plural_by_type, confirmers, inverses)
     return facts
 
 
@@ -1806,11 +1813,11 @@ def rows_projection(payload, nodes, edges, seed_signs, entities,
     return "\n".join(lines) + "\n"
 
 
-def subgraph(seed_id, lookup, *, declaration_path=None, **arguments):
-    """`_walk` over the declaration of the world it walks (`declaration_path`; None: the
-    default's) - bound for this walk alone, so a concurrent walk of another world reads its
-    own file."""
-    token = _WALK_DECLARATION.set(declaration_path)
+def subgraph(seed_id, lookup, *, declaration_paths=None, **arguments):
+    """`_walk` over the declarations of the worlds it walks (`declaration_paths`, in the order
+    picked; None: the operating world's) - bound for this walk alone, so a concurrent walk of
+    other worlds reads their own files."""
+    token = _WALK_DECLARATION.set(declaration_paths)
     try:
         return _walk(seed_id, lookup, **arguments)
     finally:
@@ -2016,6 +2023,13 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
         if row["source"] not in nodes or row["target"] not in nodes:
             return False
         if row["id"] in edges:
+            # 🔴 ONE RELATION, EACH WORLD THAT SAYS IT (총괄 ee0f66e7b): the edge keeps its id and
+            # gains the other world's evidence - the world is where the relation came from. A
+            # world said twice keeps its first, as an edge always did.
+            held, said = edges[row["id"]], row["by_world"][0]
+            if said["world"] not in held["worlds"]:
+                held["worlds"].append(said["world"])
+                held["by_world"].append(said)
             return True
         if budgeted_edges >= edge_limit:
             edge_cut = True
@@ -2062,6 +2076,11 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
         # 지금 것 아닌 사실을 애초에 안 가져오므로 이 키가 없고, 있으면 「지금 값이 아님」이다.
         if atom.not_current:
             edge["not_current"] = True
+        said = {"world": atom.world, "claim_id": atom.id, "occurred_at": edge["occurred_at"],
+                "source_who": atom.source_who, "basis": atom.source_raw_ref}
+        if atom.not_current:
+            said["not_current"] = True
+        edge["worlds"], edge["by_world"] = [atom.world], [said]
         return edge
 
     def _record_registration(atom):

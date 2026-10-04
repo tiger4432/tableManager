@@ -23,7 +23,7 @@ import paths                                                        # noqa: E402
 from conftest import PG_TEST_SCHEMA                                 # noqa: E402
 from ledger import backfill, schema                                 # noqa: E402
 from ledger.setup import load_setup                                 # noqa: E402
-from test_a_ledger_world_stands_on_a_chain_and_one_operates import (  # noqa: E402,F401
+from test_ledger_worlds_are_independent_and_meet_in_a_walk import (  # noqa: E402,F401
     CHANGED, _follow, _sample, _seed, _write, fixture_config, fixture_world)
 
 pytestmark = pytest.mark.pg

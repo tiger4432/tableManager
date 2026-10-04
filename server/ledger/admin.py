@@ -1489,20 +1489,19 @@ def ingestion_view(db, declared) -> dict:
     declared names are already in the response beside this.
     """
     declared = list(declared or [])
-    cursor, unavailable, chain = {}, None, None
+    cursor, unavailable, world = {}, None, None
     if db is None:
         unavailable = "no database session"
     else:
         try:
             from sqlalchemy import text
             from ledger import schema as ledger_schema
-            # Each source from the world that speaks for it - its census lives there (총괄
-            # 8b81e79a0) - and the line says which.
-            chain = ledger_schema.followed_by(db.get_bind())
-            rows = ledger_schema.speaking_cursor(chain, lambda sql: db.execute(text(sql)),
-                                                 _CURSOR_FIELDS)
-            for source, (_speaking, *values) in rows.items():
-                cursor[source] = dict(zip(_CURSOR_FIELDS, values))
+            # The operating world's cursors, and the line says which world (총괄 092a6f9e5).
+            names = ledger_schema.world_names()
+            world = names.name
+            columns = ", ".join(("source",) + _CURSOR_FIELDS)
+            for row in db.execute(text(f"SELECT {columns} FROM {names.cursor}")):
+                cursor[row[0]] = dict(zip(_CURSOR_FIELDS, row[1:]))
         except Exception as exc:
             logger.warning("ledger translator cursor unreadable: %s", exc)
             unavailable = f"{exc.__class__.__name__}: {exc}"
@@ -1510,8 +1509,7 @@ def ingestion_view(db, declared) -> dict:
     rows = []
     if unavailable is None:
         for name in sorted(set(declared) | set(cursor)):
-            entry = {"source": name, "declared": name in declared,
-                     "world": ledger_schema.speaker(chain, name)}
+            entry = {"source": name, "declared": name in declared, "world": world}
             row = cursor.get(name)
             if row is None:
                 # 🔴 AN ABSENT ROW IS NO LONGER A STATE (S-113 ⓒ). It used to mean

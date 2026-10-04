@@ -40,8 +40,7 @@ def _service_for(world) -> OntologyExplorerService:
             "reason": "world_unknown", "world": world, "message": str(exc)})
     if names.world not in _services:
         _services[names.world] = OntologyExplorerService(
-            config_root=names.declaration_root, draft_root=names.draft_root,
-            seed_root=names.base_root)
+            config_root=names.declaration_root, draft_root=names.draft_root)
     return _services[names.world]
 
 
@@ -70,25 +69,52 @@ def delete_world(world: str, confirm_atoms: int | None = Query(default=None)):
 def _worlds() -> dict:
     from ledger import schema
 
-    return {**schema.world_listing(),
-            "beneath": {world: list(schema.world_names(world).beneath)
-                        for world in schema.worlds()},
+    listing = schema.world_listing()
+    return {**listing, "live": {world: schema.live(world) for world in listing["worlds"]},
             "history": list(schema.layout().get("history", []))}
 
 
 @router.get("/worlds", dependencies=[Depends(require_admin_token)])
 def list_worlds():
-    """The worlds, the operating one, what each stands on, and who operated which when."""
+    """The worlds, the operating one, which follow their tables live, and who switched what
+    when."""
     return _worlds()
+
+
+@router.put("/worlds/{world}/live", dependencies=[Depends(require_admin_token_strict)])
+def set_world_live(world: str, request: Request, payload: dict[str, Any] = Body(...),
+                   db: Session = Depends(get_db)):
+    """Switch `world`'s live follow-up on or off from the next batch on (총괄 092a6f9e5); the
+    history keeps who and when. On: what it missed while off is caught up by a job through the
+    job door (`ledger_catch_up`, 총괄 71880678a), and the answer carries its `run_id`."""
+    from admin import retroactive
+    from ledger import schema
+
+    live = payload.get("live")
+    if not isinstance(live, bool):
+        raise HTTPException(status_code=400, detail={
+            "reason": "live_required", "message": "Send live: true or false."})
+    by = request.headers.get("X-User")
+    try:
+        schema.set_live(world, live, by)
+    except (LookupError, ValueError) as exc:
+        raise HTTPException(status_code=404, detail={
+            "reason": "world_unknown", "world": world, "message": str(exc)})
+    answer = _worlds()
+    if live:
+        answer["run_id"] = retroactive.publish(
+            db, "ledger_catch_up", {"world": schema.world_names(world).name},
+            requested_by=by)["run_id"]
+    return answer
 
 
 @router.put("/worlds/operating", dependencies=[Depends(require_admin_token_strict)])
 def operate_world(request: Request, payload: dict[str, Any] = Body(...)):
     """Every seat that names no world reads and writes `payload.world` from the next request
     and the next follow-up batch on (총괄 e67ef53f3 ②); back = the same with the old name. Its
-    schema and view are made first, so the follow-up has somewhere to write."""
+    schema is made first, so the follow-up has somewhere to write."""
     from database.database import engine
-    from ledger import backfill, schema
+    from ledger import schema
 
     world = payload.get("world")
     if not isinstance(world, str) or not world.strip():
@@ -96,7 +122,6 @@ def operate_world(request: Request, payload: dict[str, Any] = Body(...)):
             "reason": "world_required", "message": "Name the world to operate."})
     try:
         schema.ensure_world(engine, schema.require_world(world))
-        backfill.refresh_world_view(engine, world)
         schema.operate(world, request.headers.get("X-User"))
     except (LookupError, ValueError) as exc:
         raise HTTPException(status_code=404, detail={
@@ -114,14 +139,13 @@ def _refusal(exc: ConfigExplorerError | ColumnStatsError) -> HTTPException:
 
 
 def _world_after_write(world) -> None:
-    """After a door writes a world's declaration - bootstrap, activate, delete - its schema and
-    walk view are made again (총괄 c23b02aeb ②): without it a branch whose change moves no
-    source has no view and its walk answers 503. The default has neither, so nothing happens."""
+    """After a door writes a world's declaration - bootstrap, activate, delete - its schema is
+    made (총괄 c23b02aeb ②): without it a branch nothing has translated into yet has no ledger
+    and its walk answers 503. The default's tables are the daemon's, so nothing happens."""
     from database.database import engine
-    from ledger import backfill, schema
+    from ledger import schema
 
     schema.ensure_world(engine, schema.world_names(world))
-    backfill.refresh_world_view(engine, world)
 
 
 @router.get("/view", dependencies=[Depends(require_admin_token)])
@@ -289,7 +313,7 @@ def create_draft(payload: dict[str, Any] = Body(...), world: str | None = Query(
 
 @router.post("/bootstrap", dependencies=[Depends(require_admin_token_strict)])
 def bootstrap_config(world: str | None = Query(default=None),
-                     beneath: str | None = Query(default=None)):
+                     copy_from: str | None = Query(default=None)):
     """Create the smallest config that validates, so a setup can start from nothing.
 
     A write, and the only one this screen performs without a draft -- so it is a POST the
@@ -297,25 +321,20 @@ def bootstrap_config(world: str | None = Query(default=None),
     is missing. Refuses if anything exists at the path, including a file that fails to
     parse: an unreadable config is somebody's work with a bad comma in it, not an absence.
 
-    `beneath` - a new branch's worlds to stand on, top first, comma separated (총괄
-    e67ef53f3): empty = nothing (it starts empty, no atom from below shows); not given = the
-    default. Its declaration starts as the first of them.
+    `copy_from` - a world whose declaration the new one starts as, once; after that the two
+    are independent (총괄 092a6f9e5). Not given: the smallest file that validates.
     """
-    if isinstance(beneath, str):
+    seed = None
+    if isinstance(copy_from, str) and copy_from.strip():
         from ledger import schema
 
         try:
-            stood = schema.stand(world, [name.strip() for name in beneath.split(",")
-                                         if name.strip()])
-        except LookupError as exc:
+            seed = schema.require_world(copy_from.strip()).declaration_root
+        except (LookupError, ValueError) as exc:
             raise HTTPException(status_code=404, detail={
-                "reason": "world_unknown", "world": world, "message": str(exc)})
-        except ValueError as exc:
-            raise HTTPException(status_code=409, detail={
-                "reason": "world_not_stood", "world": world, "message": str(exc)})
-        _services.pop(world, None)
+                "reason": "world_unknown", "world": copy_from, "message": str(exc)})
     try:
-        made = _service_for(world).bootstrap_config()
+        made = _service_for(world).bootstrap_config(seed_root=seed)
     except ConfigExplorerError as exc:
         raise _refusal(exc) from exc
     _world_after_write(world)

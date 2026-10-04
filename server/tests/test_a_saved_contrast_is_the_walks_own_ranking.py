@@ -66,7 +66,7 @@ def _walk_on_the_fixture_ledger(monkeypatch):
         monkeypatch.setattr(trace_router, name, lambda *a, **k: frozenset())
     monkeypatch.setattr(trace_router, "_predicate_cardinalities", lambda *a, **k: {})
     monkeypatch.setattr(ledger_subgraph, "SqlEvidenceLookup",
-                        lambda connection, relation=None, **window:
+                        lambda connection, worlds=None, **window:
                         ledger_subgraph.InMemoryEvidenceLookup(ATOMS, **window))
 
 
@@ -221,7 +221,6 @@ def test_a_run_naming_no_world_walks_the_operating_one_and_is_told_which(db, tmp
     shutil.copy(os.path.join(SAMPLE, "ledger_config.json.sample"),
                 config / "ontology" / "ledger_config.json")
     monkeypatch.setattr(paths, "CONFIG_DIR", str(config))
-    schema.stand("b1", [schema.DEFAULT_WORLD])
     (config / "ontology_worlds" / "b1").mkdir(parents=True)
     shutil.copy(os.path.join(SAMPLE, "ledger_config.json.sample"),
                 config / "ontology_worlds" / "b1" / "ledger_config.json")
@@ -237,10 +236,12 @@ def test_a_run_naming_no_world_walks_the_operating_one_and_is_told_which(db, tmp
 
     positive, negative = [_lot("P1"), _lot("P2")], [_lot("N1")]
     facts = _run_facts(_chain(db, _save_run(db, "W1", positive, negative),
-                              _save_run(db, "W2", positive, negative, world="default")))
+                              _save_run(db, "W2", positive, negative, world="default"),
+                              _save_run(db, "W3", positive, negative, world="b1, default")))
 
-    assert (facts["W1"].get("world"), "world" in facts["W2"]) == ("b1", False)
-    assert sorted(walked) == ["b1", "default"]
+    assert (facts["W1"].get("world"), "world" in facts["W2"], "world" in facts["W3"]) == (
+        "b1", False, False)
+    assert sorted(walked) == [["b1"], ["b1", "default"], ["default"]]   # several: walked together
     assert facts["W1"]["candidates"] == facts["W2"]["candidates"] > 0     # both walked
 
 

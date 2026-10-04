@@ -351,7 +351,8 @@ def test_the_budget_reaches_the_database_and_asks_for_one_more():
     """⚠️ SCORED ON THE STATEMENT THAT RUNS, not on the source — measured today that a
     source oracle passes a commented-out clause."""
     connection = _SqlAlchemyShapedConnection([])
-    ledger_subgraph.SqlEvidenceLookup(connection).subjects_of_type("wafer", 25)
+    lookup = ledger_subgraph.SqlEvidenceLookup(connection)
+    lookup.subjects_of_type("wafer", 25)
 
     statement, params = connection.seen[0]
     assert "--" not in statement, "a commented-out clause still reads as present"
@@ -359,7 +360,8 @@ def test_the_budget_reaches_the_database_and_asks_for_one_more():
     assert "WITH RECURSIVE" in statement, "a skip scan - the budget is what it costs (총괄 ㄱ)"
     assert params["scan"] == 26, "one row past the budget makes 「there were more」 a fact"
     assert params["bare"] == "wafer", "the version is folded before the index"
-    assert "predicate" not in statement, "any atom names a node - not only a register"
+    assert "predicate" not in statement.replace(lookup.relation, ""), (
+        "any atom names a node - not only a register")
     assert "object_payload->>'type' = %(bare)s" in statement, "the object side names it too"
 
 

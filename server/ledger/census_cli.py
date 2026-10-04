@@ -41,8 +41,7 @@ def main(argv=None) -> int:
         help="이 소스 하나만. 없으면 선언된 소스 전부")
     parser.add_argument(
         "--world", default=None,
-        help="이 세상에서. 없으면 소스마다 그 소스를 말하는 세상(운영 세상의 사슬에서) — "
-             "그 세상이 말하지 않는 소스는 이름 대어 거절")
+        help="이 세상에서. 없으면 운영 세상")
     parser.add_argument(
         "--json", action="store_true",
         help="사람 대신 기계가 읽을 모양으로")
@@ -50,10 +49,15 @@ def main(argv=None) -> int:
 
     from database.database import engine
     from ledger import backfill, schema
-    from ledger.setup import LedgerSetupError, load_setup
+    from ledger.setup import load_setup
     from ledger.store import LedgerStore
 
-    setup = load_setup()
+    try:
+        names = schema.require_world(args.world)
+    except (LookupError, ValueError) as refused:
+        print(f"{args.world}: {refused}", file=sys.stderr)
+        return 2
+    setup = load_setup(names.declaration_root)
     if args.source is not None and args.source not in setup.snapshot.source_plans:
         # A typo answered with "0 rows" reads as "nothing to measure here", which is the
         # silent-zero shape every refusal in this family exists to stop.
@@ -81,29 +85,21 @@ def main(argv=None) -> int:
 
         def __init__(self, inner):
             self._inner = inner
+            self.written = {}
 
         def write_row_census(self, source, census, **kwargs):
-            measured[source] = census
+            self.written[source] = census
             return self._inner.write_row_census(source, census, **kwargs)
 
         def __getattr__(self, name):
             return getattr(self._inner, name)
 
-    # Each source in the world that speaks for it, as the paced job measures it (총괄 8b81e79a0).
-    measured = {}
+    store = _Recording(LedgerStore(engine, world=args.world))
     if args.source is None:
-        backfill.measure_every_source(
-            engine, setup, store=lambda world: _Recording(LedgerStore(engine, world=world)),
-            world=args.world)
+        backfill.measure_every_source(engine, setup, store=store)
     else:
-        try:
-            world = schema.speaking_world(engine, args.source, args.world)
-        except LedgerSetupError as refused:
-            print(f"{args.source}: {refused}", file=sys.stderr)
-            return 2
-        backfill.measure_and_store(
-            engine, load_setup(schema.world_names(world).declaration_root), args.source,
-            _Recording(LedgerStore(engine, world=world)))
+        backfill.measure_and_store(engine, setup, args.source, store)
+    measured = store.written
 
     if args.json:
         print(json.dumps(measured, ensure_ascii=False, indent=1, default=str))

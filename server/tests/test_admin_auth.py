@@ -89,6 +89,8 @@ STRICT_ADMIN_ROUTES = {
     ("DELETE", "/admin/ontology-explorer/worlds/{world}"),
     # 총괄 e67ef53f3: which world every seat that names none reads and writes, from the next request.
     ("PUT", "/admin/ontology-explorer/worlds/operating"),
+    # 총괄 092a6f9e5 · 71880678a: a world's live follow-up on or off - on queues its catch-up job.
+    ("PUT", "/admin/ontology-explorer/worlds/{world}/live"),
 }
 
 

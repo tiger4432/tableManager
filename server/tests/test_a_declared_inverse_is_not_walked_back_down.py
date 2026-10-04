@@ -139,7 +139,7 @@ def declared(request, tmp_path):
 
 def _walk(path):
     return ledger_subgraph.subgraph(SEED, ledger_subgraph.InMemoryEvidenceLookup(ATOMS),
-                                    hops=2, declaration_path=path)
+                                    hops=2, declaration_paths=(path,))
 
 
 def test_a_declared_inverse_stops_the_siblings_and_nothing_else(declared):
@@ -162,7 +162,7 @@ def test_the_reach_asks_the_same_function(declared):
         nodes[near] = {"id": near, "type": a.subject_type}
         nodes[far] = {"id": far, "type": a.object_payload["type"]}
         edges.append({"source": near, "target": far, "predicate": a.predicate})
-    token = ledger_subgraph._WALK_DECLARATION.set(path)
+    token = ledger_subgraph._WALK_DECLARATION.set((path,))
     try:
         reach, _, _ = ledger_subgraph._reach(nodes, edges, {SEED: 1})
     finally:
@@ -183,7 +183,7 @@ def test_a_step_back_to_another_type_is_walked_and_to_the_same_type_is_not(tmp_p
     ledger_subgraph.reset_declaration_cache()
     try:
         body = ledger_subgraph.subgraph(SEED, ledger_subgraph.InMemoryEvidenceLookup(atoms),
-                                        hops=2, declaration_path=str(path))
+                                        hops=2, declaration_paths=(str(path),))
     finally:
         ledger_subgraph.reset_declaration_cache()
     assert sorted(n["type"] for n in body["nodes"]) == ["die", "seat", "wafer"]
