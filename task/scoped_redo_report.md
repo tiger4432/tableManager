@@ -72001,3 +72001,59 @@ contrast_run.world   쉼표로 여러 세상
    ㄷ 새 세상 기본 꺼짐 — 소유자 말(「다 하는 걸 기본으로」)과 다름, 그래서 제가 고르지 않음
 ② 켤 때 따라잡기 — 새 행 · 지워진 행까지 «한 명령»(예: --drifted 가 셋을 다)으로 할지, 명령 셋을 RUN.md 에 적을지
 ```
+
+---
+
+## [10-04] 092a6f9e5 · 71880678a · ee0f66e7b 착지 ec6874b28 — 세상은 따로 · 겹침은 걸을 때 · 실시간은 켜진 세상 전부 · 켤 때 따라잡기 작업
+
+어느 DB · 어느 스키마 · 지운 것 — 시험: PG assy_test 시험 스크래치 스키마 + 시험 w_ 스키마(이름으로 DROP) · 상자 재기: assy_manager «읽기만»(SET TRANSACTION READ ONLY, EXPLAIN ANALYZE) · 지운 것: 멈춘 첫 탐침이 남긴 assy_pytest_pg_6124_gw0 · w_x6124gw0 · w_y6124gw0 (이름으로) · 그 밖 0
+
+**지은 것**
+```
+세상 좌석     세상마다 선언 · 원장 따로. worlds.json 에 live 칸(없으면 켜짐) · live · live_worlds · set_live
+             walk_relation = 고른 세상 원장을 고른 순서대로 UNION ALL, 다리마다 world 표지, 거름 없음
+은퇴          운영 코드에서 부르는 자리 31 -> 0 (AST 전수 · 함수 15 개, 카나리아: 직전 커밋의 schema.py 에 정의 15)
+걷기          subgraph · key-values · gaps · declaration 이 world 를 여럿. 선언은 고른 순서의 앞(config.merged 한 함수 — 라우트와 걷기 본체가 같이 부름)
+             원자에 world · «지금 값»은 세상 안에서만(n.world = e.world) · 엣지 id 그대로 + worlds + by_world(세상마다 근거)
+실시간 후속    사건 하나 -> 켜진 세상마다 그 세상 선언으로 · 실패 문구와 경고 로그가 세상을 댐
+한 세상 자리   인구조사 틱 · 부팅 다시 찍기 · 패널 · census/backfill CLI · 다시 찍기 스크립트 · 소급 작업 = 이름 댄 세상, 없으면 운영 세상(기록엔 늘 이름)
+따라잡기       backfill.catch_up = 색인에 없는 행(run) · 고친 행(retranslate_drifted) · 지워진 행(rows_gone_from_the_source -> withdraw_deleted_rows) 차례로
+             작업 문 ledger_catch_up · python -m ledger.backfill --world W --catch-up · PUT .../worlds/{w}/live {live:true} 가 넣고 run_id
+화면 라우터    GET /worlds: beneath -> live · bootstrap: beneath -> copy_from(한 번 복사, 없으면 빈 뼈대) · 뷰 짓기 없어짐
+대조 저장      world 칸에 세상 여럿(쉼표)
+```
+**잰 것**
+```
+후속 — 세상 수 (1,000 행 한 그룹, 같은 샘플 선언, 시험 DB)
+   세상 1   만들기 2.84 s · 고치기 4.92 s
+   세상 2   만들기 5.70 s · 고치기 10.05 s
+   세상 3   만들기 8.34 s · 고치기 15.14 s
+후속 — 세상 하나 쪼개기 (71880678a ①)
+   만들기  2.77 s = 읽기 0.19 · 번역 1.94 · 쓰기 0.31
+           3.47 s = 읽기 0.35 · 번역 2.04 · 쓰기 0.33
+   고치기  4.55 s = 읽기 0.28 · 번역 3.61 · 쓰기 0.33
+           5.17 s = 읽기 0.46 · 번역 4.02 · 쓰기 0.33
+   -> 행 읽기는 1 할이 안 되고 번역이 대부분 — 읽기 나눠 쓰기는 «조건 안 맞음»이라 안 지음
+   -> 고치기는 같은 행을 «두 번» 번역(거둘 것 겨누기 미리보기 + 실제) — 지시 밖, 짓지 않음
+상자 걷기 (assy_manager 읽기만, 기본 세상 하나, 중앙값 3 번)
+   사실 가져오기      오늘 5.79 ms -> 바뀐 뒤 5.96 ms
+   key-values 훑기    오늘 405.8 ms -> 바뀐 뒤 403.9 ms   (UNION 으로 감싸도 계획 납작 — 세상 둘 납작은 시험이 EXPLAIN 으로 잼)
+```
+**게이트 · 변이**
+```
+새 세상 시험   세상 둘 독립 · A 에 소스 더해도 C 안 움직임 · world=A&world=C 세상 넘는 엣지 · world=C 만 A 원자 0
+             같은 소스 둘 -> 엣지 하나 worlds 둘 근거 둘(id 그대로) · 다른 세상 늦은 사실이 안 가림 · 고침 -> 켜진 세상 전부
+             꺼진 동안 새 행 · 고친 행 · 지운 행 하나씩 -> Live 켜기 -> 작업 1 개(run_id) -> 끝나면 색인 밖 0 · 어긋남 0 · 지운 행 원자 0 · census 남은 0
+             가지 없음 = 오늘 · 지우기는 켜진 세상만 · 운영 세상 = 인구조사 · 패널 · CLI · 부팅 다시 찍기 · 스크립트
+             클라 3c2d62f28 칸: 합치기 SQL 은 열을 상수 LEDGER_COLUMNS 에서 읽고 원장 카탈로그를 안 읽음 — 가지 하나만으로도 지어짐 · 그 상수 = 실제 표 칸(기본 · 가지, PG)
+변이 12        걷기가 뒤 세상의 다리를 앞 세상 소스로 거름(옛 사슬 거름) RED · 다른 세상의 더 늦은 사실이 이 세상 것을 가림 RED · 후속이 운영 세상만 따라감 RED · Live 스위치를 안 읽음 RED · 엣지가 먼저 온 세상만 둠(전) RED · 따라잡기가 지워진 행을 남김 RED · 따라잡기 셈이 not_yet 을 새 행으로 읽음 RED · Live 켜기가 작업을 안 넣음 RED · 두 세상이 같은 이름을 선언하면 뒤 세상 것 RED · copy_from 을 안 읽음 RED · 인구조사 틱이 운영 세상 아닌 기본 세상을 잼 RED · 부팅 다시 찍기가 운영 세상 아닌 기본 세상 커서를 찍음 RED
+sqlite 전체    9 failed, 7753 passed, 326 skipped, 3 xfailed, 13082 warnings in 743.29s — 박스 사유 다섯 밖 4: test_every_operation_is_judged_before_it_is_recorded · test_it_lists_every_registered_operation · test_the_code_execution_routes_are_strict · test_the_router_reads_cardinality_from_the_same_declaration_as_its_siblings
+               그 넷은 시험 쪽 목록(새 작업 · 새 엄격 라우트 · 판정 묶음 · 선언 읽는 자리 글자)을 고친 뒤 그 파일들과 세상 파일만 다시: 261 passed, 36 skipped, 641 warnings in 20.09s · PG 36 passed, 45 deselected, 50 warnings in 172.73s (0:02:52)
+PG 전체        3 failed, 283 passed, 7807 deselected, 252 warnings in 1192.78s (0:19:52) — 알려진 셋만
+```
+**알릴 것**
+```
+not_yet 상쇄   인구조사의 «남은 수»는 표 행 − 색인 행이라, 꺼진 동안 생긴 새 행과 색인에 남은 지워진 행이 서로 지움(이 박스 시험: 새 1 · 지움 1 -> 0). 따라잡기 셈은 지워진 행을 더해 바로잡음, 인구조사 자체는 그대로
+영수증        후속 성공 · 실패 영수증(감사 행)에 세상 칸이 없음 — 세상이 여럿 켜지면 한 사건에 영수증이 세상 수만큼, 구분 안 됨. 지시 밖이라 안 지음
+문서 줄        은퇴 낱말을 아직 적는 줄 (git grep -w, task/ 뺌): docs/_archive/agent_workspace_20260823/reports/R2_server_persistence.md 1 · docs/_archive/agent_workspace_20260823/reports/Server_align_placement_value_axis.md 1 · docs/architecture/CODE_MAP.md 13 · docs/architecture/RUNTIME_MAP.md 2 · docs/guide/LEDGER_GUIDE.md 2 · docs/history/20260809_190000_dt_standard_map_chain.md 1 · docs/process/RELEASE_LOG.md 5 · 클라 18 (클라 지시가 걷어냄)
+```
