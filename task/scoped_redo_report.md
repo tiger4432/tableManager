@@ -72205,3 +72205,18 @@ public.ledger_events_pre_rebuild.source_raw_ref 10,486 행 — 머리별 recipe_
 1  이 비용(지문 한 번 이동 · 다시 번역 0)으로 짓기 진행해도 되나
 2  참조 원자의 버전 글자 꼬리도 맨이름으로 — 옛 119,147 원자는 그대로 두고 새 원자부터 (LIKE 질의만 갈림)
 ```
+
+---
+
+## [10-04] 총괄 5788bd81c ① 착지 e71cde056 — 걷기 노드 모양 계약에 attributes_by_world · 서버도 같은 벡터로 채점
+
+어느 DB · 어느 스키마 · 지운 것 — DB 안 씀 · 지운 것 0
+
+```
+벡터 v2       atom 마다 world · source_who · expect 마다 attributes_by_world · 사례 5 (다섯째 two_worlds_differing)
+서버 채점      server/tests/test_walk_node_shape_contract.py — 벡터의 주석이 이미 «양쪽 채점»이라 했는데 서버 쪽이 없었다. 5 passed, 6 warnings in 0.42s
+변이 3        세상 줄을 시각순으로 RED · 세상을 안 가름 RED · 충돌을 도착 수로 셈 RED
+클라 하니스     바꾸기 전 OK: 34 passed, 0 failed, 0 pending / 뒤 DIVERGED: 38 passed, 1 failed, 0 pending
+              실패 줄: FAIL A1 four shapes, because four are what an operator can meet — expected 4, got 5 — 클라 몫(메시지 보냄, 칸 모양 같이)
+안 닿은 노드    서버는 attributes 키를 안 보내고 벡터는 {} — 서버 쪽은 이름 단위로 채점(선언 이름이 전부 없음)
+```

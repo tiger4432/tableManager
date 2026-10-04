@@ -112,9 +112,17 @@ nodes        {id, type, label, keys, attributes}    🔵 type 이 «도메인 �
              🔵 `current_conflicts` = 같은 모양의 수 — `one` 술어 중 «지금 사실»(가장 늦은 시각)의 목적어가
              둘 이상인 것의 수(목적어는 qualifiers 를 뺀 것 — 엣지 id 와 같다). `one` 사실이 하나도
              안 닿은 노드엔 키가 없다 (총괄 22ebdd153)
+             🆕 `attributes_by_world` (10-04 `351b23ef8`) = 이름마다, 그 이름을 말한 세상마다 한 줄
+             `{world, value, occurred_at, source_who}` — 세상 이름순. 값은 «그 세상 원자만» 같은 규칙으로
+             (최신 · `many` 는 서로 다른 값 목록), 시각 · 출처는 그 세상 최신 원자의 것, 시각은 사건 시각일 때만
+             (아니면 null — 엣지와 같은 규칙). `attributes` · `attribute_conflicts` 는 세상들을 «합쳐» 전과 같다
+             — 두 세상이 다른 값이면 충돌 하나. `many` 인지는 합친 선언(먼저 고른 세상)이 답한다
 
 edges        {id, source, target, predicate, predicate_label, original_predicate, qualifiers,
-              🔵 claim_id, basis, occurred_at, source_who, cardinality, not_current?}
+              🔵 claim_id, basis, occurred_at, source_who, cardinality, not_current?, 🆕 worlds, by_world}
+              🆕 10-04 `ec6874b28` 걷기는 `world=a&world=c` 로 고른 세상들의 원자를 합쳐 걷는다(없으면 운영 세상 하나).
+              같은 엣지 id 를 두 세상이 말하면 엣지는 «하나»이고 `worlds`(만난 순) 와 `by_world`
+              (세상마다 `{world, claim_id, occurred_at, source_who, basis, not_current?}`)가 는다 — 한 세상이 두 번 말하면 먼저 것
               — 🔴 «근거가 여기 실린다»(S-75 B11, 2026-09-09):
               원자에서 온 엣지는 `claim_id` = 그 원자의 id · `basis` = 그 원자의 `source_raw_ref`(어느 «물리 행»)
               를 달고, 응답은 이 dict 를 «투영 없이» 그대로 낸다(`_edge` 가 짓고 `_claim_edge` 가 원자 것을 더한다)
