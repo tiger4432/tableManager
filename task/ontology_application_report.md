@@ -35876,3 +35876,13 @@ f36723a70  worldList 는 글자만 거른다 — /tables 의 worlds 는 schema.w
 문서  CODE_MAP subgraph_view(_worldRows — 엣지 · 속성이 같은 함수) · source_backlog(DRIFT_ALARMS 셋) · BACKFILL_GUIDE 60행 · LEDGER_GUIDE 4.9 화면 · WALK.md §4
 남은 물음  fad8f5e22 의 «순서 둘» — 이제 화면에 보인다: 사실 상자는 서버 순서 그대로 그려서 엣지 줄은 만난 순, 속성 줄은 세상 이름순
 ```
+
+---
+
+## [C 응용] 10-06 순서 답 받음 (총괄 메시지 · 4be010312) — @1 착지 때 문서
+
+```
+받은 답   엣지 worlds · by_world 와 노드 attributes_by_world 둘 다 «고른 순서» 하나 — 구현자 @1 착지에 같이
+내 일     그 착지 때 WALK.md §4 · CODE_MAP ledger_subgraph · LEDGER_GUIDE 4.9 의 「만난 순」·「세상 이름순」 두 줄을 고른 순서로
+메시지    내 상설이 「send_message 안 씀」이라 물음은 이 채널에만 둔다 — 메시지로도 받으시려면 소유자께서 그 상설을 바꿔 주셔야 한다
+```
