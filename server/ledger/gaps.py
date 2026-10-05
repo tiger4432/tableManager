@@ -24,7 +24,7 @@ from pathlib import Path
 #: Ruled by the spec §1 exclusion ③ and not derivable from the declaration: the predicate
 #: whose ABSENCE is the good outcome - a die with no defect is a good die. Cited here, not
 #: decided here; this is the only predicate named in this file.
-SPEC_EXCLUDED = ("observed@1",)
+SPEC_EXCLUDED = ("observed",)
 
 NAMES_PATH = Path(__file__).with_name("gap_names.json")
 

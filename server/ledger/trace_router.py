@@ -24,6 +24,7 @@ from database.database import get_db
 
 from ledger_api import ledger_subgraph
 from ledger import gaps, schema, trace
+from declaration_names import bare_name as _bare_name
 
 logger = logging.getLogger(__name__)
 
@@ -208,7 +209,7 @@ def evidence_subgraph(
     # here" hands back and the caller cannot tell a typo from a fact.
     if collect:
         collectable = _collectable_types(world)
-        unknown = sorted({str(name).split("@", 1)[0] for name in collect
+        unknown = sorted({_bare_name(name) for name in collect
                           if str(name).strip()} - collectable)
         if unknown:
             raise HTTPException(status_code=422, detail={
@@ -378,7 +379,7 @@ def _predicate_classes(world=None) -> dict:
     out = {}
     for key, spec in vocabulary.items():
         for word in setup_bundle.class_words(spec):
-            out.setdefault(word, set()).add(str(key).split("@", 1)[0])
+            out.setdefault(word, set()).add(_bare_name(key))
     return {word: sorted(names) for word, names in out.items()}
 
 
@@ -436,7 +437,7 @@ def _predicate_cardinalities(world=None) -> dict:
     for key, rule in (declared.get("vocabulary") or {}).items():
         declared_value = (rule or {}).get("cardinality")
         if declared_value in ("one", "many"):
-            cardinalities[str(key).split("@", 1)[0]] = declared_value
+            cardinalities[_bare_name(key)] = declared_value
     return cardinalities
 
 
@@ -470,7 +471,7 @@ def _self_describing_predicates(world=None):
     names = set()
     for key, rule in (declared.get("vocabulary") or {}).items():
         if str((((rule or {}).get("object") or {}).get("kind")) or "") == "none":
-            names.add(str(key).split("@", 1)[0])
+            names.add(_bare_name(key))
     return names
 
 
@@ -501,7 +502,7 @@ def _followable_predicates(world=None):
     names = set()
     try:
         declared = (_declaration(world) or {}).get("vocabulary") or {}
-        names |= {str(key).split("@", 1)[0] for key in declared}
+        names |= {_bare_name(key) for key in declared}
     except Exception:      # an unreadable declaration refuses everything rather than guessing
         return set()
     return names
@@ -525,7 +526,7 @@ def _static_types(world=None):
         return set()
     from ledger import setup_bundle
 
-    return {str(key).split("@", 1)[0] for key, rule in declared.items()
+    return {_bare_name(key) for key, rule in declared.items()
             if setup_bundle.has_class(rule, "static")}
 
 
@@ -556,17 +557,17 @@ def _static_step_predicates(world=None):
     from ledger import setup_bundle
 
     entities = declared.get("entities") or {}
-    static = {str(key).split("@", 1)[0] for key, rule in entities.items()
+    static = {_bare_name(key) for key, rule in entities.items()
               if setup_bundle.has_class(rule, "static")}
     names = set()
     for key, rule in (declared.get("vocabulary") or {}).items():
-        subjects = [str(item).split("@", 1)[0] for item in ((rule or {}).get("subjects") or [])]
-        targets = [str(item).split("@", 1)[0]
+        subjects = [_bare_name(item) for item in ((rule or {}).get("subjects") or [])]
+        targets = [_bare_name(item)
                    for item in (((rule or {}).get("object") or {}).get("types") or [])]
         if not subjects or not targets:
             continue
         if all(item in static for item in subjects) and all(item in static for item in targets):
-            names.add(str(key).split("@", 1)[0])
+            names.add(_bare_name(key))
     return names
 
 
@@ -679,7 +680,7 @@ def ledger_key_values(
     `values_truncated` 는 「값이 더 있는데 안 실었다」다. 모든 키로 묶으면 노드 하나가 값
     하나라 둘은 대개 같이 켜진다 -- 축 하나로 묶을 때 갈린다.
     """
-    wanted_type = str(type).split("@", 1)[0]
+    wanted_type = _bare_name(type)
     # The world asked is the declaration asked (총괄 5fec118bb ②): a type another world
     # declares used to pass here and be refused below as 「declares no keys」.
     collectable = _collectable_types(world)
@@ -790,7 +791,7 @@ def _declared_keys(bare_type: str, world=None) -> set:
             "reason": "declaration_unreadable",
             "message": f"The declaration could not be read: {exc} - fix the declaration and reload"})
     for name, spec in declared.items():
-        if str(name).split("@", 1)[0] == bare_type:
+        if _bare_name(name) == bare_type:
             return {str(k) for k in ((spec or {}).get("keys") or [])}
     return set()
 
@@ -813,7 +814,7 @@ def _collectable_types(world=None):
         raise HTTPException(status_code=503, detail={
             "reason": "declaration_unreadable",
             "message": f"The declaration could not be read: {exc} - fix the declaration and reload"})
-    return {str(name).split("@", 1)[0] for name in declared}
+    return {_bare_name(name) for name in declared}
 
 
 

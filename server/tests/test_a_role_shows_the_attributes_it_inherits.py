@@ -16,7 +16,7 @@ from ledger.setup import load_setup
 from ledger.setup_bundle import load_physical_catalog
 
 SHIPPED = Path(__file__).resolve().parent.parent / "config" / "sample"
-SOURCE, TYPE = "dt_job", "dtjob@1"
+SOURCE, TYPE = "dt_job", "dtjob"          # the plan names it bare (4eb1fe98f)
 BASE = "bundle.sources.%s.bind" % SOURCE
 SAMPLE = json.loads((SHIPPED / "ledger_config.json.sample").read_text(encoding="utf-8"))
 CATALOG = load_physical_catalog(SHIPPED / "table_config.json.sample")

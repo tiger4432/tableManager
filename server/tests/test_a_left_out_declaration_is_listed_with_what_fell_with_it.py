@@ -17,7 +17,7 @@ from ledger.config_explorer_service import OntologyExplorerService
 from ledger.setup import load_setup
 from test_a_declared_thing_carries_classes import _catalog, _sample
 
-LEFT_WITH_QUANTITY = {"predicate|leads_to@1", "predicate|measures@1"}
+LEFT_WITH_QUANTITY = {"predicate|leads_to", "predicate|measures"}
 
 
 @pytest.fixture
@@ -57,44 +57,44 @@ def _unread(service):
 
 
 def test_a_predicate_saved_unreadable_stays_on_the_list_with_its_reason(service):
-    _save(service, "predicate|derived_from@1", lambda raw: raw.__setitem__("class", 3))
+    _save(service, "predicate|derived_from", lambda raw: raw.__setitem__("class", 3))
 
     invalid, listed = _unread(service)
 
-    record = invalid["predicate|derived_from@1"]
+    record = invalid["predicate|derived_from"]
     assert record["blames_itself"] is True
-    assert record["reasons"][0]["path"].endswith("derived_from@1.class")
-    assert "predicate|derived_from@1" in listed
+    assert record["reasons"][0]["path"].endswith("derived_from.class")
+    assert "predicate|derived_from" in listed
     # What named it fell with it, and says so in words that point at the right place.
     fell = {key: value for key, value in invalid.items() if not value["blames_itself"]}
-    assert fell and all(reason["message"] == "predicate derived_from@1 left out"
+    assert fell and all(reason["message"] == "predicate derived_from left out"
                         for value in fell.values() for reason in value["reasons"])
 
 
 def test_an_entity_saved_unreadable_takes_the_predicates_that_name_it_onto_the_list(service):
-    saved = _save(service, "entity|quantity@1", lambda raw: raw.__setitem__("class", 3))
+    saved = _save(service, "entity|quantity", lambda raw: raw.__setitem__("class", 3))
 
     invalid, listed = _unread(service)
 
-    assert invalid["entity|quantity@1"]["blames_itself"] is True
+    assert invalid["entity|quantity"]["blames_itself"] is True
     fell = {key for key, value in invalid.items() if not value["blames_itself"]}
     assert fell == LEFT_WITH_QUANTITY
-    assert {"entity|quantity@1", *LEFT_WITH_QUANTITY} <= listed
+    assert {"entity|quantity", *LEFT_WITH_QUANTITY} <= listed
     for key in LEFT_WITH_QUANTITY:
-        assert {r["message"] for r in invalid[key]["reasons"]} == {"entity quantity@1 left out"}
+        assert {r["message"] for r in invalid[key]["reasons"]} == {"entity quantity left out"}
         assert all(r["code"] == "blocked_by_unread_declaration" for r in invalid[key]["reasons"])
 
     # 🔴 THE SAVE ANSWER NAMES THEM TOO - from the same seat, before anything was activated.
     said = [(error["path"], error["message"]) for error in saved["validation_errors"]]
-    assert any(path.endswith("quantity@1.class") for path, _ in said), said
-    fell_said = [path for path, message in said if message == "entity quantity@1 left out"]
-    assert sorted({p.split(".")[2] for p in fell_said}) == ["leads_to@1", "measures@1"], said
+    assert any(path.endswith("quantity.class") for path, _ in said), said
+    fell_said = [path for path, message in said if message == "entity quantity left out"]
+    assert sorted({p.split(".")[2] for p in fell_said}) == ["leads_to", "measures"], said
 
 
 def test_the_row_the_tag_and_the_save_answer_say_one_sentence(service):
     """[총괄 ef6d01cba] One fact, one sentence: the list row (its popover text), the tag under
     it and the form's head (the save answer) - never the working copy's raw text."""
-    saved = _save(service, "entity|quantity@1", lambda raw: raw.__setitem__("class", 3))
+    saved = _save(service, "entity|quantity", lambda raw: raw.__setitem__("class", 3))
     payload = service.view(limit=500)
     rows = {item["key"]: item["description"] for item in payload["items"]}
     answer = {error["path"].split(".")[2]: error["message"] for error in saved["validation_errors"]
@@ -102,15 +102,15 @@ def test_the_row_the_tag_and_the_save_answer_say_one_sentence(service):
 
     for key in LEFT_WITH_QUANTITY:
         tag = payload["invalid"][key]["reasons"][0]["message"]
-        assert rows[key] == tag == answer[key.partition("|")[2]] == "entity quantity@1 left out"
+        assert rows[key] == tag == answer[key.partition("|")[2]] == "entity quantity left out"
 
 
 def test_fixing_it_takes_it_off_the_list(service):
     """Through the unread row's own door - a new-declaration draft with the row's text -
     because an unread declaration is not in the index to be selected."""
-    _save(service, "entity|quantity@1", lambda raw: raw.__setitem__("class", 3))
+    _save(service, "entity|quantity", lambda raw: raw.__setitem__("class", 3))
     row = next(item for item in service.view(limit=500)["items"]
-               if item["key"] == "entity|quantity@1")
+               if item["key"] == "entity|quantity")
 
     _, index, _ = service.active()
     draft = service.create_declaration_draft(

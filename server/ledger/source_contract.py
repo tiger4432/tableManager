@@ -13,6 +13,7 @@ source say?" identical in the form, the preview, and the save path.
 from __future__ import annotations
 
 from . import config
+from declaration_names import bare_name as _bare_name
 
 
 PROFILE_META = {
@@ -62,17 +63,17 @@ def _declared_signature(predicate):
     """One predicate's declared shape, or `None`. 🔴 REPLACES `vocabulary.signature`.
 
     The declaration is the authority since 2026-08-27 and carries the same three things this
-    module reads - `subjects`, `object`, `status`. Ids are versioned there (`observed@1`) and
-    bare on an atom, so the version comes off on the way past, exactly as `bare_name` does
-    it for the emit path. An unreadable declaration answers `None`, which this module already
-    treats as「undeclared」rather than as an error.
+    module reads - `subjects`, `object`, `status`. Ids are bare there since 10-04 (4eb1fe98f);
+    a source's own text may still say `observed@1`, so the version comes off on the way past,
+    exactly as `bare_name` does it for the emit path. An unreadable declaration answers `None`,
+    which this module already treats as「undeclared」rather than as an error.
     """
     try:
         declared = (config.load() or {}).get("vocabulary") or {}
     except Exception:
         return None
     for key, item in declared.items():
-        if str(key).split("@", 1)[0] == predicate:
+        if _bare_name(key) == predicate:
             return item
     return None
 
@@ -84,7 +85,7 @@ def _declared_subjects(signature):
     address and the spelling on an atom are the same name at different depths, and a
     declaration written `"Lot"` must not be a different type from `lot@1`.
     """
-    return {str(name).split("@", 1)[0].strip().lower()
+    return {_bare_name(name).lower()
             for name in (signature.get("subjects") or ())}
 
 
@@ -289,8 +290,9 @@ def _compatibility(source, source_cfg, emission):
                           f"vocabulary 서명은 {declared_kind!r}입니다."),
         })
     elif declared_kind == "entity_ref":
-        allowed_types = set(declared_object.get("types") or ())
-        missing_types = set(emission["object_types"]) - allowed_types
+        # bare on both sides, as subjects are: a source's own text may still say `x@1`
+        allowed_types = {_bare_name(t) for t in declared_object.get("types") or ()}
+        missing_types = {_bare_name(t) for t in emission["object_types"]} - allowed_types
         if missing_types:
             issues.append({
                 "code": "object_type_signature_mismatch",

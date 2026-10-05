@@ -375,14 +375,14 @@ def test_objectless_predicate_and_its_derived_emission_have_one_closed_spelling(
     validated = validate_bundle(objectless_register_bundle())
     normalized = validated.to_mapping()
 
-    assert normalized["vocabulary"]["register@1"]["object"] == {
+    assert normalized["vocabulary"]["register"]["object"] == {
         "kind": "none", "qualifiers": {"required": [], "optional": []}}
     # The second half of this used to read
     # `packs.registration@1.claims.register.emit.object`.  Nobody AUTHORS that any more;
     # `predicate_claim` derives it, so the closed spelling is a property of the derivation
     # instead of a property of what a hand-written pack was permitted to say.
     assert predicate_claim(
-        "register@1", normalized["vocabulary"]["register@1"])["emit"]["object"] == {
+        "register", normalized["vocabulary"]["register"])["emit"]["object"] == {
             "kind": "none"}
 
 
@@ -391,10 +391,10 @@ def test_objectless_predicate_and_its_derived_emission_have_one_closed_spelling(
     [
         (lambda raw: raw["vocabulary"]["register@1"]["object"].update(
             {"types": ["InputEntity@1"]}),
-         "bundle.vocabulary.register@1.object.types"),
+         "bundle.vocabulary.register.object.types"),
         (lambda raw: raw["vocabulary"]["register@1"]["object"][
             "qualifiers"]["optional"].append("unexpected"),
-         "bundle.vocabulary.register@1.object.qualifiers"),
+         "bundle.vocabulary.register.object.qualifiers"),
         # DELETED 2026-08-21: a third case put `value: "$subject"` into
         # `packs.registration@1.claims.register.emit.object` and expected
         # `invalid_emission`.  Nobody writes an `emit` clause now -- `predicate_claim`
@@ -466,7 +466,7 @@ def test_same_bundle_normalizes_and_serializes_deterministically():
     # 2026-10-03 (소유자, 총괄 2a8d9073c): 748b3a96... -> the fixture's `map.input_columns`
     # left; the read brings every column of the relation. That key and nothing else.
     assert hashlib.sha256(first.serialize().encode()).hexdigest() == (
-        "e3b39e902d32d5478a45c6103d66f6b12608fce983781fab0659941ef5ce5df7")
+        "f66a1ae5df01ad84e4f0f1bedafc9968c2a91e0fdc3c8063b81f473f76decc07")
 
 
 def test_list_order_is_preserved_but_object_order_is_not():
@@ -824,7 +824,7 @@ def test_unused_vocabulary_is_still_cross_validated():
     }
     errors = validate_bundle_errors(bundle)
     assert any(error.code == "unknown_entity_type"
-               and error.path.startswith("bundle.vocabulary.unused@1") for error in errors)
+               and error.path.startswith("bundle.vocabulary.unused.") for error in errors)
 
 
 # RETIRED 2026-08-20 with the declaration they measured, not because they stopped passing:
@@ -1368,7 +1368,9 @@ def test_common_module_has_no_domain_source_branches_or_runtime_imports():
     # this module writes. Neither reads data or knows a source.
     STDLIB_ONLY = {"__future__", "collections", "copy", "dataclasses", "difflib", "json",
                    "logging", "pathlib", "re", "types", "typing", "zoneinfo"}
-    assert imported <= STDLIB_ONLY | {"validation"}
+    # `declaration_names` joined on 2026-10-04 (총괄 4eb1fe98f): `fold_versions` spells an old
+    # `x@1` bare at every read - `re` and strings only, no I/O, no domain - on `validation`'s terms.
+    assert imported <= STDLIB_ONLY | {"validation", "declaration_names"}
     for forbidden in ("database", "sqlalchemy", "psycopg2", "backfill", "store",
                       "translator", "chain_mapper"):
         assert forbidden not in imported
@@ -1457,7 +1459,7 @@ def test_an_unknown_field_refusal_names_what_the_object_does_take(tmp_path):
     raw["vocabulary"]["moves_to@1"]["object"]["payload"] = {"n": 1}
     refused = issue(raw, "unknown_field")
 
-    assert refused.path == "bundle.vocabulary.moves_to@1.object.payload"
+    assert refused.path == "bundle.vocabulary.moves_to.object.payload"
     assert refused.message.startswith("field is not allowed")
     # Every allowed name, and which ones are not optional. Scored as a SET so the assertion
     # does not pin the join text of the sentence.
@@ -1498,13 +1500,13 @@ def test_an_unknown_reference_separates_a_typo_from_a_declaration_not_written_ye
     typo = logical_bundle()
     source_profile(typo)["mappings"]["main_transition"]["predicate"] = "movs_to@1"
     near = issue(typo, "unknown_predicate")
-    assert "did you mean 'moves_to@1'?" in near.message
+    assert "did you mean 'moves_to'?" in near.message
 
     absent = logical_bundle()
     source_profile(absent)["mappings"]["main_transition"]["predicate"] = "shipment@9"
     far = issue(absent, "unknown_predicate")
     assert "did you mean" not in far.message
-    assert "declared predicates: 'moves_to@1'" in far.message
+    assert "declared predicates: 'moves_to'" in far.message
 
     # Nothing declared at all reads as neither of the above.
     empty = logical_bundle()
@@ -1554,8 +1556,8 @@ def test_authoring_reports_every_problem_while_the_runtime_stops_at_the_first(tm
     for expected in (
         f"{MAPPER_PATH}.colour",
         f"{PROFILE_PATH}.mappings.main_transition.colour",
-        "bundle.vocabulary.moves_to@1.colour",
-        "bundle.entities.InputEntity@1.allow_null",
+        "bundle.vocabulary.moves_to.colour",
+        "bundle.entities.InputEntity.allow_null",
         "bundle.sources.input_rows.read.unit",
     ):
         assert expected in paths, expected
@@ -1641,7 +1643,7 @@ def test_an_entity_may_declare_attributes_beside_its_keys(tmp_path):
 
     bundle = load_setup_bundle(tmp_path)
     # 적재된 번들은 섹션을 «불변»으로 얼린다 — 목록이 튜플로 온다.
-    assert tuple(bundle.section("entities")["InputEntity@1"]["attributes"]) == ("product",)
+    assert tuple(bundle.section("entities")["InputEntity"]["attributes"]) == ("product",)
 
 
 def test_a_bound_attribute_the_type_never_declared_is_refused_by_name_and_path(tmp_path):
@@ -1668,7 +1670,7 @@ def test_an_attribute_may_not_wear_an_identity_keys_name(tmp_path):
     with pytest.raises(LedgerSetupValidationError) as caught:
         load_setup_bundle(tmp_path)
     assert caught.value.code == "duplicate_id"
-    assert caught.value.path == "bundle.entities.InputEntity@1.attributes"
+    assert caught.value.path == "bundle.entities.InputEntity.attributes"
     assert "input_id" in caught.value.message
 
 
@@ -1690,7 +1692,7 @@ def test_a_declaration_with_no_attributes_is_accepted_exactly_as_before(tmp_path
     """㉤ 무회귀. 이 축은 «적은 선언에서만» 무언가를 한다."""
     write_tree(tmp_path)
     bundle = load_setup_bundle(tmp_path)
-    assert "attributes" not in bundle.section("entities")["InputEntity@1"]
+    assert "attributes" not in bundle.section("entities")["InputEntity"]
 
 
 # ---------------------------------------------------------------------------
@@ -1731,7 +1733,7 @@ def test_a_source_binds_an_entitys_attributes_once(tmp_path):
 
     bundle = load_setup_bundle(tmp_path)
     bound = bundle.section("sources")["input_rows"]["bind"]["entities"]
-    assert set(bound["InputEntity@1"]["attributes"]) == {"product"}
+    assert set(bound["InputEntity"]["attributes"]) == {"product"}
 
 
 def test_a_source_level_name_the_type_never_declared_is_refused_with_its_own_path(tmp_path):
@@ -1743,7 +1745,7 @@ def test_a_source_level_name_the_type_never_declared_is_refused_with_its_own_pat
         load_setup_bundle(tmp_path)
     assert caught.value.code == "unknown_entity_attribute"
     assert caught.value.path == (
-        "bundle.sources.input_rows.bind.entities.InputEntity@1.attributes.prodcut")
+        "bundle.sources.input_rows.bind.entities.InputEntity.attributes.prodcut")
     assert "product" in caught.value.message
 
 
@@ -1860,14 +1862,14 @@ def test_a_sentence_about_a_retired_entity_type_is_refused_by_the_type_it_names(
     bundle["entities"]["OutputEntity@1"] = {"keys": ["output_id"], "status": "retired"}
 
     found = issue(bundle, "inactive_entity_type")
-    assert "OutputEntity@1" in found.message, found.message
+    assert "'OutputEntity'" in found.message, found.message
     assert found.path.endswith(".predicate"), found.path
 
     # The subject side is the one every sentence has, and it is refused the same way.
     bundle["entities"]["InputEntity@1"] = {"keys": ["input_id"], "status": "retired"}
     named = {item.message for item in validate_bundle_errors(bundle)
              if item.code == "inactive_entity_type"}
-    assert any("InputEntity@1" in message for message in named), named
+    assert any("'InputEntity'" in message for message in named), named
 
 
 def test_an_active_declaration_says_nothing_about_retirement():

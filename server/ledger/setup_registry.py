@@ -14,6 +14,8 @@ import json
 from types import MappingProxyType
 from typing import Any, Generic, TypeVar
 
+from declaration_names import bare_name
+
 from .setup_bundle import (
     NOT_AN_EVENT_BASIS,
     DEFAULT_CARDINALITY,
@@ -38,11 +40,6 @@ _DescriptorT = TypeVar("_DescriptorT")
 #: would call the setup unchanged and keep stacking new-reading atoms onto old-reading
 #: ones with nothing recording which is which.
 SNAPSHOT_COMPILER_VERSION = 4
-
-
-def _versioned_parts(identifier: str) -> tuple[str, int]:
-    name, version = identifier.rsplit("@", 1)
-    return name, int(version)
 
 
 def _freeze(value: Any) -> Any:
@@ -182,7 +179,6 @@ class TrustedImplementationCatalog:
 @dataclass(frozen=True)
 class PredicateDescriptor:
     predicate_id: str
-    version: int
     status: str
     subject_entity_types: tuple[str, ...]
     object_kind: str
@@ -202,7 +198,6 @@ class PredicateDescriptor:
 @dataclass(frozen=True)
 class EntityTypeDescriptor:
     entity_type_id: str
-    version: int
     identity_keys: tuple[str, ...]
     allow_null: bool
     config_path: str
@@ -394,8 +389,8 @@ class RegistrationProbePlan:
 
     @property
     def subject_type(self) -> str:
-        """The unversioned name atoms carry, e.g. ``Lot@1`` -> ``Lot``."""
-        return self.entity_type.split("@", 1)[0]
+        """The name atoms carry."""
+        return bare_name(self.entity_type)
 
 
 @dataclass(frozen=True)
@@ -879,14 +874,12 @@ def _compile_vocabulary(section: Mapping[str, Any],
     """
     builder = _RegistryBuilder(VocabularyRegistry)
     for predicate_id, item in section.items():
-        _, version = _versioned_parts(predicate_id)
         obj = item["object"]
         roles = predicate_claim(predicate_id, item, entities)["roles"]
         qualifiers = [(name, role) for name, role in roles.items()
                       if role.get("kind") == "attribute"]
         builder.add(predicate_id, PredicateDescriptor(
             predicate_id=predicate_id,
-            version=version,
             status=item["status"],
             subject_entity_types=tuple(item["subjects"]),
             object_kind=obj["kind"],
@@ -904,10 +897,8 @@ def _compile_vocabulary(section: Mapping[str, Any],
 def _compile_entities(section: Mapping[str, Any]) -> EntityTypeRegistry:
     builder = _RegistryBuilder(EntityTypeRegistry)
     for entity_id, item in section.items():
-        _, version = _versioned_parts(entity_id)
         builder.add(entity_id, EntityTypeDescriptor(
             entity_type_id=entity_id,
-            version=version,
             identity_keys=tuple(item["keys"]),
             allow_null=item.get("allow_null", False),
             config_path=f"bundle.entities.{entity_id}",

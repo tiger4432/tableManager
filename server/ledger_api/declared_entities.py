@@ -22,7 +22,7 @@ import json
 import logging
 import os
 import threading
-from declaration_names import bare_name as _bare_name
+from declaration_names import bare_name as _bare_name, fold_versions
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +54,7 @@ def load(force_reload=False):
         keys = {}
         try:
             with open(path, "r", encoding="utf-8") as handle:
-                raw = json.load(handle)
+                raw = fold_versions(json.load(handle))
             for name, spec in (raw.get("entities") or {}).items():
                 declared = (spec or {}).get("keys")
                 if isinstance(declared, list):

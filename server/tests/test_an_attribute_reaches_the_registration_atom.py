@@ -150,7 +150,7 @@ def test_a_vocabulary_that_declares_no_attribute_compiles_the_arrays_it_declares
     declared = without_attributes(shipped)["vocabulary"]
     assert declared, "the sample declares a vocabulary"
     for predicate_id, item in declared.items():
-        compiled_predicate = snapshot.vocabulary[predicate_id]
+        compiled_predicate = snapshot.vocabulary[predicate_id.split("@")[0]]   # the sample is old-spelled
         qualifiers = item["object"]["qualifiers"]
         assert list(compiled_predicate.required_qualifiers) == list(qualifiers["required"])
         assert list(compiled_predicate.optional_qualifiers) == list(qualifiers["optional"])
@@ -199,7 +199,7 @@ def test_a_mapper_that_passes_the_name_is_refused(shipped, catalog):
         def interpret_unit(self, context, unit, profile):
             return [RoleEmission(
                 sentence="register",
-                roles={"subject": {"type": "dtjob@1",
+                roles={"subject": {"type": "dtjob",
                                    "keys": {"dt_job": unit.iloc[0]["dt_job"]}},
                        "occurred_at": unit.iloc[0][SOURCE_OCCURRED_AT_COLUMN],
                        "dt_eqp": "MINE"},
@@ -210,4 +210,4 @@ def test_a_mapper_that_passes_the_name_is_refused(shipped, catalog):
             context, event_frame(snapshot, "dt_job", [dict(ROW, dt_eqp="EQP-7")]),
             context.source_plan.driver.mapper, context.source_plan.profile)
     assert caught.value.code == "attribute_has_two_owners"
-    assert "dt_eqp" in caught.value.message and "dtjob@1" in caught.value.message
+    assert "dt_eqp" in caught.value.message and "'dtjob'" in caught.value.message

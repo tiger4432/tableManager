@@ -3,9 +3,9 @@
 rule, `_apply_registrations`, over each case's atoms gives the case's `expect`. The client half is
 `contracts/walk_node_shape/client_harness.mjs`; both answer to the vector, not to each other.
 
-⚠️ «Declared but not reached» is scored by name: a node no registration reached carries no
-`attributes` key at all (test_a_nodes_own_columns_do_not_come_through_follow), the vector writes
-`{}` - both say every declared name is absent, which is the property the vector pins.
+Scored EXACTLY (총괄 0cde56e07): the keys of the three a node carries are the case's `expect` -
+an unreached node carries none of them, as the server sends it. Each-world lines are in the
+order the case `picked` (총괄 4be010312).
 """
 import json
 import os
@@ -21,6 +21,7 @@ from ledger_api import ledger_subgraph                            # noqa: E402
 VECTORS = os.path.abspath(os.path.join(
     os.path.dirname(__file__), "..", "..", "contracts", "walk_node_shape", "vectors.json"))
 TYPE, KEY = "shape@1", "k"                                        # the client half's own
+FIELDS = ("attributes", "attribute_conflicts", "attributes_by_world")
 
 
 def _cases():
@@ -46,9 +47,9 @@ def test_the_server_reads_the_shared_vector(case, tmp_path, monkeypatch, request
         seen.setdefault(atom["attribute"], []).append(
             (at, atom["value"], atom["world"], atom["source_who"], ledger_subgraph._instant(at)))
     nodes = {"n1": {"id": "n1", "type": TYPE}}
-    ledger_subgraph._apply_registrations(nodes, {"n1": seen} if seen else {})
-    node, expect = nodes["n1"], case["expect"]
+    ledger_subgraph._apply_registrations(
+        nodes, {"n1": seen} if seen else {},
+        ledger_subgraph._in_picked_order(case.get("picked", ())))
+    node = nodes["n1"]
 
-    assert node.get("attributes", {}) == expect["attributes"]
-    assert node.get("attribute_conflicts", 0) == expect["attribute_conflicts"]
-    assert node.get("attributes_by_world", {}) == expect["attributes_by_world"]
+    assert {name: node[name] for name in FIELDS if name in node} == case["expect"]

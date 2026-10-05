@@ -15,6 +15,8 @@ import re
 import shutil
 import tempfile
 from threading import RLock
+
+from declaration_names import bare_name, fold_versions
 from types import SimpleNamespace
 from typing import Any, Callable, Mapping, Sequence
 from uuid import uuid4
@@ -476,6 +478,7 @@ class OntologyDraftStore:
         The record stores `target_bundle_path` because there is no node to ask later; see
         `draft_target`.
         """
+        canonical_id = bare_name(canonical_id)     # an old client still sends `x@1` (4eb1fe98f)
         section, name = authorable_bundle_path(kind, canonical_id)
         key = node_key(kind, canonical_id)
         if key in index.nodes:
@@ -905,13 +908,17 @@ class OntologyDraftStore:
         try:
             os.write(lock_fd, str(os.getpid()).encode("ascii"))
             os.close(lock_fd)
+            # 🔴 folded BEFORE the operations: their paths are the bare names the explorer
+            # reads, and an old `x@1` key left beside a new `x` is two spellings of one
+            # name - refused at the next load (4eb1fe98f). The file is written bare.
             with path.open("r", encoding="utf-8") as handle:
-                document = json.load(handle)
+                document = fold_versions(json.load(handle))
             for op_path, op_value in operations:
                 if isinstance(op_value, _Remove):
                     _delete_path(document, op_path)
                 else:
                     _set_path(document, op_path, op_value)
+            document = fold_versions(document)    # and the bodies the operations brought
             backup_dir = Path(config_backup.backup_dir_for(str(path)))
             backup_dir.mkdir(parents=True, exist_ok=True)
             backup = backup_dir / (

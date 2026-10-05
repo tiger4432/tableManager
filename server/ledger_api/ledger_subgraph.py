@@ -39,7 +39,7 @@ from datetime import datetime, timezone
 from ledger import explorer
 from ledger.schema import LEDGER_COLUMNS, event_time_sql, reads_as_event_time
 from utils.wire_format import wire_text
-from declaration_names import bare_name as _bare_name
+from declaration_names import bare_name as _bare_name, fold_versions
 from ledger import trace
 
 
@@ -448,8 +448,10 @@ class SqlEvidenceLookup:
         self.connection = connection
         # The ledgers of the worlds walked (`schema.walk_relation`; none: the default's) -
         # never a relation handed in.
-        self.relation = schema.walk_relation(
-            worlds or (schema.world_names(schema.DEFAULT_WORLD),))
+        picked = worlds or (schema.world_names(schema.DEFAULT_WORLD),)
+        self.relation = schema.walk_relation(picked)
+        #: the worlds in the order picked - every «each world» list is in this order
+        self.worlds = tuple(each.name for each in picked)
         # 🔴 S-98. THE INTERVAL LIVES ON THE LOOKUP, not on each method. The walk asks
         # three different queries, and an argument threaded through each would let them hold
         # three different intervals for one request.
@@ -643,7 +645,7 @@ class SqlEvidenceLookup:
         """
         from ledger import gaps
 
-        bare = str(entity_type or "").split("@", 1)[0]
+        bare = _bare_name(entity_type)
         # Keys only: the walk does not read the first instant, and selecting just `keys`
         # leaves its per-key lookups out of the plan.
         rows = self._execute(
@@ -705,14 +707,14 @@ class InMemoryEvidenceLookup:
         `gaps._nodes_of_type_sql`, not a looser one: a node is any atom naming it, subject
         side or an `entity_ref` object (총괄 819726624 ㄹ - reverses S-148-a / 판정 337
         「registered subjects only」)."""
-        bare = str(entity_type or "").split("@", 1)[0]
+        bare = _bare_name(entity_type)
         named = []
         for atom in self.atoms:
-            if str(atom.subject_type).split("@", 1)[0] == bare:
+            if _bare_name(atom.subject_type) == bare:
                 named.append((atom.subject_type, atom.subject_keys))
             payload = atom.object_payload or {}
             if (atom.object_kind == "entity_ref"
-                    and str(payload.get("type")).split("@", 1)[0] == bare):
+                    and _bare_name(payload.get("type")) == bare):
                 named.append((payload.get("type"), payload.get("keys")))
         seen, ids = set(), []
         for node_type, keys in sorted(named, key=str):
@@ -818,7 +820,7 @@ def _read_entity_declaration():
         documents = []
         for path in paths:
             with open(path, "r", encoding="utf-8") as handle:
-                documents.append((path, json.load(handle) or {}))
+                documents.append((path, fold_versions(json.load(handle) or {})))
         # the worlds walked, merged as the route merges them (총괄 092a6f9e5)
         document = merged(documents)[0]
         declared = document.get("entities") or {}
@@ -829,16 +831,16 @@ def _read_entity_declaration():
         for predicate, spec in vocabulary.items():
             confirmer = (spec or {}).get("absence_confirmed_by")
             if isinstance(confirmer, str) and confirmer.strip():
-                confirmers[str(predicate).rsplit("@", 1)[0]] = (
-                    confirmer.rsplit("@", 1)[0], confirmer in vocabulary)
+                confirmers[_bare_name(predicate)] = (
+                    _bare_name(confirmer), confirmer in vocabulary)
             # The fourth: a declared inverse pair, read both ways (총괄 739edd59c).
             other = (spec or {}).get("inverse_of")
             if isinstance(other, str) and other in vocabulary:
-                mine, theirs = str(predicate).rsplit("@", 1)[0], other.rsplit("@", 1)[0]
+                mine, theirs = _bare_name(predicate), _bare_name(other)
                 inverses[mine], inverses[theirs] = theirs, mine
         for name, spec in declared.items():
             spec = spec or {}
-            bare = str(name).rsplit("@", 1)[0]
+            bare = _bare_name(name)
             keys = [str(key) for key in (spec.get("keys") or [])]
             if keys:
                 order[bare] = keys
@@ -988,7 +990,7 @@ def _absence_verdicts(nodes, complete, cut_reason):
         node["absence"] = verdicts
 
 
-def _apply_registrations(nodes, registrations):
+def _apply_registrations(nodes, registrations, order=None):
     """Fold every registration this walk reached onto its node, by the DECLARED rule.
 
     🔴 LATEST WINS, AND A DISAGREEMENT IS COUNTED RATHER THAN HIDDEN (S-52 ③, ruling 124).
@@ -1012,11 +1014,12 @@ def _apply_registrations(nodes, registrations):
     answers.
 
     🔴 EACH WORLD'S VALUE BESIDE THE ONE (총괄 4e1e49fe9): `attributes_by_world` - per name, per
-    world that said it (by name), that world's atoms read by the rule, with when and who - so a
-    walk over several worlds can draw both. Whether a name is `many` is the walk's merged
+    world that said it (in `order`, `_in_picked_order`), that world's atoms read by the rule,
+    with when and who - so a walk over several worlds can draw both. Whether a name is `many` is the walk's merged
     declaration's answer (the first world picked wins), as for `attributes`, which stays the
     one value across them. `seen`: (instant, value, world, source, the instant shown).
     """
+    order = order or _in_picked_order(())
     for node_id, by_name in registrations.items():
         node = nodes.get(node_id)
         if node is None:
@@ -1027,7 +1030,7 @@ def _apply_registrations(nodes, registrations):
             by_world[name] = [
                 {"world": world, "value": _read_attribute(said, name in plural),
                  "occurred_at": latest[4], "source_who": latest[3]}
-                for world, said in sorted(_by_world(seen).items(), key=lambda kv: str(kv[0]))
+                for world, said in sorted(_by_world(seen).items(), key=lambda kv: order(kv[0]))
                 for latest in [max(said, key=lambda item: item[0])]]
             values[name] = _read_attribute(seen, name in plural)
             if name not in plural and len({_canonical(item[1]) for item in seen}) > 1:
@@ -1035,6 +1038,15 @@ def _apply_registrations(nodes, registrations):
         node["attributes"] = values
         node["attribute_conflicts"] = conflicts
         node["attributes_by_world"] = by_world
+
+
+def _in_picked_order(picked):
+    """🔴 ONE ORDER FOR EVERY «EACH WORLD» LIST (총괄 4be010312): the worlds as the walk picked
+    them (`world=`) - the order a name two worlds declare is settled in and the screen numbers
+    its chips in. An edge's `worlds` and `by_world` and a node's `attributes_by_world` all pass
+    here. A world the walk did not pick (a lookup that names none) comes after, by name."""
+    rank = {world: index for index, world in enumerate(picked)}
+    return lambda world: (rank.get(world, len(rank)), str(world))
 
 
 def _by_world(seen):
@@ -1271,10 +1283,10 @@ def _reach(nodes, edges, seed_signs, static_types=()):
         predicate = edge.get("predicate")
         adjacency.setdefault(edge["source"], []).append((edge["target"], predicate, "outgoing"))
         adjacency.setdefault(edge["target"], []).append((edge["source"], predicate, "incoming"))
-    static = {str(name).split("@", 1)[0] for name in (static_types or ())}
+    static = {_bare_name(name) for name in (static_types or ())}
 
     def _kind(node_id):
-        return str((nodes.get(node_id) or {}).get("type") or "").split("@", 1)[0]
+        return _bare_name((nodes.get(node_id) or {}).get("type"))
 
     reach, parents, kinds = {}, {}, {}
     for seed, sign in seed_signs.items():
@@ -1534,7 +1546,7 @@ def _propagation(nodes, edges, seed_signs, complete, static_types=()):
                 if verdict in (VERDICT_TRUE, VERDICT_FALSE):
                     pair[0 if sign > 0 else 1] += 1
             return pair
-        bare = str(node_type or "").split("@", 1)[0]
+        bare = _bare_name(node_type)
         pair = [0, 0]
         for seed, sign in seed_signs.items():
             if bare and bare in kinds.get(seed, ()):
@@ -1939,11 +1951,11 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
     # carries the bare one.
     backbone_hops = max(0, min(int(backbone_hops), MAX_HOPS))
     budget_hops = hops + backbone_hops
-    static_types = {str(name).split("@", 1)[0] for name in (static_types or ())}
+    static_types = {_bare_name(name) for name in (static_types or ())}
     # 🔴 AND THE STEPS A NAME MAY TAKE, from the same caller and the same declaration.
     # Empty means a static node is not expanded at all, which is what an unreadable
     # declaration should do: refuse the step rather than guess which hub is safe.
-    static_follow = {str(name).split("@", 1)[0] for name in (static_follow or ())}
+    static_follow = {_bare_name(name) for name in (static_follow or ())}
     # 🔴 THE CONTEXT IS TAKEN FROM THE SEEDS, ONCE, AND NEVER CHANGES. The owner's sentence
     # is "an edge carrying those keys walks only to nodes whose keys match THE SEED", so the
     # comparison has a fixed right-hand side. Deriving it from the previous node instead
@@ -1969,7 +1981,7 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
                     f"cannot carry the key would match nothing, and an empty graph reads "
                     f"as 'there is nothing here'.")
             wanted.append(tuple(_json_key(keys[name]) for name in key_names))
-        seed_key_sets[str(predicate).split("@", 1)[0]] = (tuple(key_names), set(wanted))
+        seed_key_sets[_bare_name(predicate)] = (tuple(key_names), set(wanted))
     node_limit = max(10, min(int(node_limit), MAX_NODE_LIMIT))
     edge_limit = max(20, min(int(edge_limit), MAX_EDGE_LIMIT))
     if direction not in {"outgoing", "incoming", "both"}:
@@ -2039,6 +2051,8 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
         depths[node_id] = depth
         return True
 
+    order = _in_picked_order(getattr(lookup, "worlds", ()))
+
     def add_edge(row):
         nonlocal edge_cut, budgeted_edges
         if row["source"] not in nodes or row["target"] not in nodes:
@@ -2051,6 +2065,8 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
             if said["world"] not in held["worlds"]:
                 held["worlds"].append(said["world"])
                 held["by_world"].append(said)
+                held["worlds"].sort(key=order)
+                held["by_world"].sort(key=lambda each: order(each["world"]))
             return True
         if budgeted_edges >= edge_limit:
             edge_cut = True
@@ -2085,7 +2101,7 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
         edge = _edge(edge_type, source_id, target_id,
                      original_predicate=atom.predicate,
                      cardinality=(cardinalities or {}).get(
-                         str(atom.predicate).split("@", 1)[0]))
+                         _bare_name(atom.predicate)))
         edge["claim_id"] = atom.id
         # an atom whose time is not an event time shows none (총괄 29047aedc)
         edge["occurred_at"] = (_instant(atom.occurred_at)
@@ -2486,7 +2502,7 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
     # different answers.
     from ledger.setup_bundle import ATTRIBUTE_CARDINALITY_MANY
 
-    _apply_registrations(nodes, registrations)
+    _apply_registrations(nodes, registrations, order)
     _apply_current_conflicts(nodes, fetched, cardinalities)
     ordered_nodes = sorted(nodes.values(), key=lambda item: (
         item["depth"], item["node_kind"], item["label"], item["id"]))
@@ -2497,9 +2513,9 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
     # form to ask a question.
     visible_nodes = ordered_nodes
     if collect:
-        wanted = {str(name).split("@", 1)[0] for name in collect if str(name).strip()}
+        wanted = {_bare_name(name) for name in collect if str(name).strip()}
         visible_nodes = [item for item in ordered_nodes
-                         if str(item.get("type") or "").split("@", 1)[0] in wanted]
+                         if _bare_name(item.get("type")) in wanted]
     ordered_edges = sorted(edges.values(), key=lambda item: (
         min(depths[item["source"]], depths[item["target"]]),
         item["predicate"], item["id"]))

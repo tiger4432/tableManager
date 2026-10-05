@@ -35,7 +35,7 @@ import validation                                                 # noqa: E402
 def _entity_problems(entity):
     """Score ONE entity declaration through the real validator."""
     problems = validation.Problems()
-    setup_bundle._validate_entities({"wafer@1": entity}, problems)
+    setup_bundle._validate_entities({"wafer": entity}, problems)
     return [issue.to_mapping() for issue in problems.finish()]
 
 
@@ -58,7 +58,7 @@ def test_a_word_outside_the_closed_set_is_refused():
     problems = _entity_problems({
         "keys": ["wid"], "attributes": ["product"],
         "attribute_cardinality": {"product": "several"}})
-    assert [p["path"] for p in problems] == ["bundle.entities.wafer@1.attribute_cardinality.product"]
+    assert [p["path"] for p in problems] == ["bundle.entities.wafer.attribute_cardinality.product"]
 
 
 def test_a_name_that_is_not_an_attribute_is_REFUSED_rather_than_ignored():

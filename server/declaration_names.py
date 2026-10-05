@@ -1,9 +1,10 @@
 # -*- coding: utf-8 -*-
 """선언의 이름을 «원장이 쓰는 이름»으로 — 한 자리.
 
-🔴 버전은 «선언»의 것이지 «이름»의 것이 아니다. 표는 술어와 타입을 «맨»으로 쓰고
-(`of_kind` · `wafer`), 선언이 거기에 버전을 붙인다(`of_kind@1` · `wafer@1`). 그래서 선언에서
-읽은 이름을 원장에 대고 쓰려면 «버전을 버려야» 한다.
+🔴 이름은 «맨이름» 하나다(소유자 10-04 「노드 엣지 명칭에 @1 요고 필요 없어 보이는데」, 총괄
+4eb1fe98f). 원장은 처음부터 맨이름(`of_kind` · `wafer`)을 썼고, 선언만 버전을 붙였다(`of_kind@1`).
+그 차이가 결함 둘을 낳았다. 이제 옛 파일의 `x@1` 은 «읽을 때» `fold_versions` 가 접고, 저장은
+맨이름으로 된다 — 운영자가 파일을 고칠 일은 없다.
 
 실측 2026-09-07 — 이 번역을 하는 자리가 «서른둘»이었고, 그중 «넷»이 `_bare` 라는 «같은
 이름»에 «다른 본체»를 갖고 있었다:
@@ -26,8 +27,12 @@
    않는다. 판별식은 「버린 버전을 «쓰나»」이고, 쓰면 파싱이다.
 """
 
-#: 선언이 이름에 버전을 붙일 때 쓰는 글자. 여기 말고 다른 곳에서 이 글자를 «의미로» 쓰지 않는다.
+import re
+
+#: 옛 선언이 이름에 버전을 붙일 때 쓰던 글자. 여기 말고 다른 곳에서 이 글자를 «의미로» 쓰지 않는다.
 VERSION_SEPARATOR = "@"
+#: `name@N` - the spelling a declaration gave its names until 10-04.
+_VERSIONED = re.compile(r"^([^@/\s]+)@[1-9][0-9]*$")
 
 
 def bare_name(value):
@@ -41,3 +46,44 @@ def bare_name(value):
     기대고 있었다 — 그 전제는 선언이 «사람이 쓰는 파일»이 되는 날 깨진다.
     """
     return str(value or "").split(VERSION_SEPARATOR, 1)[0].strip()
+
+
+def fold_versions(document):
+    """A declaration with its names spelled bare - THE ONE FOLD, at every read of a declaration.
+
+    Every dict key and every string that is `name@N` of a name `vocabulary` or `entities`
+    declares becomes `name`, wherever it sits (subjects, object types, a mapping's predicate, an
+    `entity_type`, `bind.entities`, references). A string naming nothing declared is left alone -
+    `SYN-RCP-BOND@4` is a value. Not a declaration (neither section) -> returned as given.
+
+    ⛔ Two spellings of one name in one section (`x@1` and `x@2`, or `x` beside `x@1`) are not
+    merged - which one a source meant is not this function's to guess. The document comes back
+    unfolded and the validator refuses each `@` name by its path.
+    """
+    if not isinstance(document, dict):
+        return document
+    declared = set()
+    for section in ("vocabulary", "entities"):
+        names = document.get(section)
+        if not isinstance(names, dict):
+            continue
+        spellings = {}
+        for name in names:
+            spellings.setdefault(bare_name(name), []).append(str(name))
+        if any(len(each) > 1 for each in spellings.values()):
+            return document
+        declared |= set(spellings)
+    if not declared:
+        return document
+
+    def fold(value):
+        if isinstance(value, dict):
+            return {fold(key): fold(item) for key, item in value.items()}
+        if isinstance(value, list):
+            return [fold(item) for item in value]
+        if isinstance(value, str):
+            match = _VERSIONED.match(value)
+            if match and match.group(1) in declared:
+                return match.group(1)
+        return value
+    return fold(document)

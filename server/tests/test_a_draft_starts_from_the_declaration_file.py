@@ -13,6 +13,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from admin.auth import require_admin_token, require_admin_token_strict
+from declaration_names import fold_versions
 from ledger.config_explorer_service import OntologyExplorerService
 from ledger.setup import load_setup
 from ledger.setup_bundle import load_physical_catalog
@@ -67,13 +68,13 @@ def _opened(tmp_path, document=None):
 def test_a_slim_source_opens_its_draft_as_the_file_holds_it(tmp_path):
     _, _, _, index, _, draft = _opened(tmp_path)
     assert "read" in index.node(KEY).raw           # the filled bundle the draft used to start from
-    assert draft["raw"] == _document()["sources"][SLIM]
+    assert draft["raw"] == fold_versions(_document())["sources"][SLIM]     # names bare
 
 
 def test_a_version_5_file_opens_its_draft_as_the_loader_reads_it(tmp_path):
     """The file's text would carry `prepare`, which the save refuses as `prepare_retired`."""
     http, _, _, _, _, draft = _opened(tmp_path, _version_5())
-    assert draft["raw"] == _document()["sources"][SLIM]
+    assert draft["raw"] == fold_versions(_document())["sources"][SLIM]     # names bare
     saved = http.put("%s/%s" % (DRAFTS, draft["draft_id"]),
                      json={"expected_revision": 0, "raw": json.dumps(draft["raw"])})
     assert saved.status_code == 200 and saved.json()["lifecycle_status"] == "saved", saved.text

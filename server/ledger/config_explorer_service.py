@@ -7,6 +7,8 @@ from pathlib import Path
 from threading import RLock
 from typing import Any, Callable, Mapping, Sequence
 
+from declaration_names import bare_name as _bare_name, fold_versions
+
 from .column_stats import (
     ColumnStatsError, combination_uniqueness, estimated_rows, ordering_candidates,
     population,
@@ -58,8 +60,8 @@ def _atoms_per_sentence(preview: Any, plan: Any) -> list[dict[str, Any]]:
     predicates: dict[str, str] = {}
     for sentence, mapping in getattr(plan.profile, "mappings", {}).items():
         counts[str(sentence)] = 0
-        predicates[str(sentence)] = str(
-            getattr(mapping, "predicate_id", "") or "").rsplit("@", 1)[0]
+        predicates[str(sentence)] = _bare_name(
+            getattr(mapping, "predicate_id", ""))
     for atom in preview.candidate_semantics:
         sentence = str(atom.get("derivation") or "")
         counts[sentence] = counts.get(sentence, 0) + 1
@@ -161,10 +163,10 @@ def read_config_document(config_root: str | Path) -> Mapping[str, Any]:
     except (OSError, ValueError):
         document = None
     if isinstance(document, Mapping):
-        return document
-    return _read_json(_resolve_config_path(
+        return fold_versions(document)
+    return fold_versions(_read_json(_resolve_config_path(
         Path(config_root).resolve(), CONFIG_FILENAME, "config_root", require_json=True),
-        "ledger_config")
+        "ledger_config"))
 
 
 def _setup_refusal(exc: LedgerSetupValidationError) -> ConfigExplorerError:
@@ -1060,7 +1062,8 @@ class OntologyExplorerService:
             )
         # `seed_root`: a world copied - its declaration, once; after that the two are
         # independent (총괄 092a6f9e5). None: the smallest file that validates.
-        skeleton = (json.loads((Path(seed_root) / CONFIG_FILENAME).read_text(encoding="utf-8"))
+        skeleton = (fold_versions(json.loads(
+                        (Path(seed_root) / CONFIG_FILENAME).read_text(encoding="utf-8")))
                     if seed_root is not None else {
                         "setup_version": SETUP_VERSION,
                         **{name: {} for name in LOGICAL_SECTIONS},

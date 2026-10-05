@@ -443,7 +443,10 @@ def test_verify_reports_every_problem_not_only_the_first(tmp_path, capsys, monke
 
     root = tmp_path / "draft"
     root.mkdir()
-    raw = json.loads((SAMPLE_ROOT / "ledger_config.json").read_text(encoding="utf-8"))
+    from declaration_names import fold_versions
+
+    # the names the refusals print are bare (4eb1fe98f)
+    raw = fold_versions(json.loads((SAMPLE_ROOT / "ledger_config.json").read_text(encoding="utf-8")))
     predicate = sorted(raw["vocabulary"])[0]
     entity_type = sorted(raw["entities"])[0]
     source = sorted(raw["sources"])[0]

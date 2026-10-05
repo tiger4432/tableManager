@@ -177,5 +177,5 @@ def test_an_object_kind_say_does_not_answer_is_refused_by_name(monkeypatch):
 
     assert caught.value.code == "unsupported_object_kind"
     # The Claim's `config_path` is the predicate's declaration now, not a pack position.
-    assert caught.value.path == "bundle.vocabulary.moves_to@1.object.kind"
+    assert caught.value.path == "bundle.vocabulary.moves_to.object.kind"
     assert "'tally'" in caught.value.message

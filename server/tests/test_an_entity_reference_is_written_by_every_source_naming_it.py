@@ -143,11 +143,11 @@ def test_one_entity_named_twice_is_one_atom_backed_by_every_row_that_named_it(sn
             "object_payload": {"type": "die", "keys": die}, "occurred_at": "t", "source_who": "s",
             "source_translator_ver": "v", "source_raw_ref": "r", "supersedes": None, "molecule_ref": "m",
             "derivation": "die-inspected"}
-    named = [("die@1", die, base, ("row-1",)), ("die@1", dict(die), dict(base), ("row-2",))]
+    named = [("die", die, base, ("row-1",)), ("die", dict(die), dict(base), ("row-2",))]
     made = roleframe._reference_rows(SimpleNamespace(snapshot=snapshot), named, [base], "event-ref", "p#")
     assert len(made) == 1
     assert json.loads(made[0]["source_raw_ref"])["rows"] == ["row-1", "row-2"]
-    assert made[0]["derivation"].startswith("entity-reference:die@1")
+    assert made[0]["derivation"].startswith("entity-reference:die#")
 
 
 def test_the_reference_moves_only_the_cursors_of_sources_that_name_the_entity(snapshot):
@@ -184,4 +184,4 @@ def test_a_wrong_reference_is_refused_by_name(change, path, code):
         document = json.load(fh)
     document["entities"]["die@1"]["references"] = dict(REFERENCE, **change)
     errors = validate_bundle_errors(document, catalog=catalog)
-    assert ("bundle.entities.die@1." + path, code) in {(e.path, e.code) for e in errors}, errors
+    assert ("bundle.entities.die." + path, code) in {(e.path, e.code) for e in errors}, errors

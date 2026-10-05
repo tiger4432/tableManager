@@ -4,7 +4,7 @@
   "_why_names_live_outside_the_code": "A label in code is a second authority that goes stale without anybody noticing. The detector emits declaration names and looks the label up here, so a spec revision is a data change.",
   "pairs": [
     {
-      "type": "defect_kind@1",
+      "type": "defect_kind",
       "side_a": ["of_kind"],
       "side_b": ["leads_to"],
       "a_only": "기전 없는 결함 종류",
@@ -13,7 +13,7 @@
       "b_only_meaning": "그렇다고 했는데 아직 못 봤습니다"
     },
     {
-      "type": "quantity@1",
+      "type": "quantity",
       "side_a": ["measures"],
       "side_b": ["leads_to"],
       "a_only": "어디에도 안 쓰이는 계측 항목",
@@ -22,7 +22,7 @@
       "b_only_meaning": "기전이 이름을 대는데 계측이 없습니다"
     },
     {
-      "type": "wafer@1",
+      "type": "wafer",
       "side_a": ["has_wafer"],
       "side_b": ["in_container"],
       "a_only": "속을 모르는 웨이퍼",
@@ -31,7 +31,7 @@
       "b_only_meaning": "무엇이 담겼는지는 아는데 어느 자리인지 모릅니다"
     },
     {
-      "type": "die@1",
+      "type": "die",
       "side_a": ["transfer", "bonded_from"],
       "side_b": ["inspected"],
       "a_only": "검사 기록이 없는 자리",
@@ -41,27 +41,27 @@
     }
   ],
   "subject_sides": [
-    {"predicate": "of_kind", "type": "defect@1", "name": "종류가 안 붙은 결함",
+    {"predicate": "of_kind", "type": "defect", "name": "종류가 안 붙은 결함",
      "action": "Ⅱ 원천 — 분류 결과를 가져옵니다"},
-    {"predicate": "processed_with", "type": "wafer@1", "name": "공정 이력이 없는 웨이퍼",
+    {"predicate": "processed_with", "type": "wafer", "name": "공정 이력이 없는 웨이퍼",
      "action": "Ⅱ 원천 — 공정 기록을 가져옵니다"},
-    {"predicate": "in_container", "type": "die@1", "name": "담긴 데 없는 자리",
+    {"predicate": "in_container", "type": "die", "name": "담긴 데 없는 자리",
      "action": "Ⅱ 원천 — 컨테이너 기록을 가져옵니다"},
-    {"predicate": "has_wafer", "type": "lot_slot@1", "name": "웨이퍼가 안 걸린 자리",
+    {"predicate": "has_wafer", "type": "lot_slot", "name": "웨이퍼가 안 걸린 자리",
      "action": "Ⅱ 원천 — 그 자리의 적재 기록을 가져옵니다"},
-    {"predicate": "inspected", "type": "wafer@1", "name": "검사 안 된 웨이퍼",
+    {"predicate": "inspected", "type": "wafer", "name": "검사 안 된 웨이퍼",
      "action": "Ⅲ 세상 — 검사를 겁니다"},
-    {"predicate": "measures", "type": "wafer@1", "name": "계측 없는 웨이퍼",
+    {"predicate": "measures", "type": "wafer", "name": "계측 없는 웨이퍼",
      "action": "Ⅲ 세상 — 계측을 겁니다"},
-    {"predicate": "has_netdie", "type": "dtjob@1", "name": "넷다이가 안 적힌 DT 작업",
+    {"predicate": "has_netdie", "type": "dtjob", "name": "넷다이가 안 적힌 DT 작업",
      "action": "Ⅱ 원천 — 그 수를 원천에서 가져옵니다"},
-    {"predicate": "register", "type": "dtjob@1", "name": "등록되지 않은 DT 작업",
+    {"predicate": "register", "type": "dtjob", "name": "등록되지 않은 DT 작업",
      "action": "Ⅱ 원천 — 등록 기록을 원천에서 가져옵니다"}
   ],
   "object_sides": [
-    {"predicate": "observed", "type": "defect@1", "name": "어디서 봤는지 모르는 결함",
+    {"predicate": "observed", "type": "defect", "name": "어디서 봤는지 모르는 결함",
      "action": "Ⅱ 원천 — 어느 자리에서 봤는지를 원천에서 가져옵니다"},
-    {"predicate": "processed_with", "type": "recipe@1", "name": "해당 없음",
+    {"predicate": "processed_with", "type": "recipe", "name": "해당 없음",
      "action": "없음 — 아래 사유를 화면에 적습니다",
      "_kept_on_purpose": "APPLICATION_GAP_SPEC: dropping the row sends the next person to ask the same question again. `gaps.vacuous_types` marks it not-applicable MECHANICALLY - processed_with is recipe@1's only appearance in the vocabulary, so a recipe without one cannot exist - and the row is what carries that reason to the screen."}
   ]

@@ -56,6 +56,7 @@ import os
 #    ⚠️ 이 모듈을 «모듈 수준»에서 읽는 제품 코드는 없다(실측: `main.py` 셋 다 함수 안). 그래서
 #    이 import 들의 비용은 보고서를 «처음 부르는» 요청에 붙고, 기동 경로에는 붙지 않는다.
 import chain_bindings
+from declaration_names import bare_name as _bare_name, fold_versions
 import validation
 from chain import ingestion_worker as worker
 import mapper_sdk
@@ -1048,7 +1049,7 @@ def _resolve_ledger() -> dict:
         read_path = sample_path
     try:
         with open(read_path, "r", encoding="utf-8") as handle:
-            document = json.load(handle)
+            document = fold_versions(json.load(handle))
     except FileNotFoundError:
         document = {}
     except Exception as e:
@@ -1103,7 +1104,7 @@ def _resolve_ledger() -> dict:
 
         emitters = _ledger_emitted_predicates(document)
         for key in sorted(declared_vocabulary):
-            name = str(key).split("@", 1)[0]
+            name = _bare_name(key)
             # [총괄 e6dd72526] the classes it was given, read by the one reader - only when written
             classes = list(setup_bundle.class_words(declared_vocabulary[key]))
             effective.append(entry(
@@ -1114,7 +1115,7 @@ def _resolve_ledger() -> dict:
                         **({"class": classes} if classes else {})}))
         # 「낱말은 실렸는데 아무도 발화하지 않는다」 — 선언은 섰지만 여정이 안 끝난 상태.
         # 조용히 두면 운영자는 술어를 등재해 놓고 원자가 안 생기는 이유를 어디서도 못 읽는다.
-        silent = sorted({str(k).split("@", 1)[0] for k in declared_vocabulary} - emitters)
+        silent = sorted({_bare_name(k) for k in declared_vocabulary} - emitters)
         if silent:
             ineffective.append(entry(
                 SCOPE_RULE, ", ".join(silent),

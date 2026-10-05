@@ -119,8 +119,8 @@ def test_the_sample_reads_derived_from_from_the_lineage_table_only(sample_snapsh
     said = {name: {m.predicate_id for m in plan.profile.mappings.values()}
             for name, plan in sample_snapshot.source_plans.items() if plan.runs}
 
-    assert said["lot_lineage"] == {"derived_from@1"}
-    assert [name for name, predicates in said.items() if "derived_from@1" in predicates] == [
+    assert said["lot_lineage"] == {"derived_from"}
+    assert [name for name, predicates in said.items() if "derived_from" in predicates] == [
         "lot_lineage"]
 
 
