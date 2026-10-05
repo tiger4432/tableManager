@@ -1,10 +1,28 @@
 # 지금 돌리면 되는 것
 
+> ## [10-06] **노드 · 엣지 이름에서 @1 은퇴 · 세상마다 목록은 고른 순서 (총괄 4eb1fe98f · 5788bd81c · 4be010312) — 이주 «불필요» · 재기동 «필요»(API · 체인 데몬)**
+>
+> ```
+> 재기동 뒤 체인 데몬 로그   [Ledger] re-stamped N cursor(s) whose declaration did not change: ...
+> 뜻          N = 운영 세상에서 도는 소스 수. 줄마다 (position stays ...) — 위치 · 원자는 그대로, 다시 번역 없음
+>             다른 켜진 세상의 도장은 낡은 채 남지만 아무것도 막지 않는다
+>             (맞추려면 python scripts/ledger_restamp_cursor.py --world <세상> --apply)
+> 패널         원장 인입의 소스마다 도장(translator_ver)이 바뀌고, 차이 · 새 행 · 지워진 행은 재기동 전과 같다
+> 확인         python -m ledger census   -> 새 행 · 수정 누락 · 지워진 행이 재기동 전과 같다
+>             curl "http://<서버>:<포트>/api/ledger/declaration"   -> entities[].type 이 wafer 모양 (@1 없음)
+> 걷기         world=<가>&world=<나> 로 걸으면 엣지 worlds · by_world 와 노드 attributes_by_world 가 둘 다 <가>, <나> 순서
+> 파일         ledger_config.json 은 다음 저장 때 맨이름으로 다시 쓰인다 (그 전에도 읽기는 맨이름)
+> 급할 때       git revert <이 커밋> -> 재기동. ⚠️ 그 사이 저장이 있었으면 파일이 맨이름이라 옛 코드가 거절한다
+>             -> ledger_config.json 옆 backup 폴더의 저장 직전 파일을 같이 돌려놓는다
+> ```
+
+---
+
 > ## [10-04] **걷기 응답의 노드 속성이 세상마다 (총괄 4e1e49fe9) — 이주 «불필요» · 재기동 «필요»(API)**
 >
 > ```
 > 재기동 뒤     curl "http://<서버>:<포트>/api/ledger/subgraph?id=<노드 id>&world=<세상1>&world=<세상2>&hops=1"
-> 뜻           nodes[].attributes_by_world = 속성마다 [{world, value, occurred_at, source_who}] — 세상 이름순, 세상마다 한 줄
+> 뜻           nodes[].attributes_by_world = 속성마다 [{world, value, occurred_at, source_who}] — 고른 순서, 세상마다 한 줄
 >              값은 그 세상의 원자에서 · 이름이 many(목록)인지는 걷기가 합친 선언(처음 고른 세상 우선)
 >              attributes · attribute_conflicts 는 전과 같다 (세상들 가운데 한 값 · 값이 갈린 이름 수)
 >              occurred_at null = 그 원자의 시각이 사건 시각이 아니다 (관계 선과 같은 규칙)

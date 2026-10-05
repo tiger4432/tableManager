@@ -83,21 +83,21 @@ def snapshot(bundle=None, trusted=None, *, catalog=None):
 def test_registry_tree_compiles_predicate_claim_role_and_source_plan():
     compiled = snapshot()
 
-    predicate = compiled.vocabulary["moves_to@1"]
-    entity = compiled.entities["InputEntity@1"]
+    predicate = compiled.vocabulary["moves_to"]
+    entity = compiled.entities["InputEntity"]
     # `compiled.packs["movement@1"].claims["transition"]` until 2026-08-21. One registry,
     # keyed by the PREDICATE, because that is the declaration the Claim is derived from.
-    claim = compiled.claims["moves_to@1"]
+    claim = compiled.claims["moves_to"]
     role = claim.roles["subject"]
     source = compiled.source_plans["input_rows"]
 
     assert isinstance(predicate, PredicateDescriptor)
-    assert predicate.version == 1
+    assert not hasattr(predicate, "version")          # the @N axis retired (4eb1fe98f)
     assert isinstance(entity, EntityTypeDescriptor)
     assert entity.identity_keys == ("input_id",)
     assert isinstance(claim, ClaimDescriptor)
-    assert claim.claim_id == "moves_to@1"
-    assert claim.config_path == "bundle.vocabulary.moves_to@1"
+    assert claim.claim_id == "moves_to"
+    assert claim.config_path == "bundle.vocabulary.moves_to"
     assert isinstance(role, RoleDescriptor)
     assert role.allowed_binding_kinds == ("entity",)
     assert isinstance(source, SourcePlan)
@@ -109,10 +109,10 @@ def test_registry_tree_compiles_predicate_claim_role_and_source_plan():
 
 def test_objectless_emission_compiles_without_an_object_role():
     compiled = snapshot(objectless_register_bundle())
-    emission = compiled.claims["register@1"].emission
+    emission = compiled.claims["register"].emission
 
     assert compiled.compiler_contract_version == 4
-    assert compiled.vocabulary["register@1"].object_kind == "none"
+    assert compiled.vocabulary["register"].object_kind == "none"
     assert emission.object_kind == "none"
     assert emission.object_role is None
 
@@ -127,7 +127,7 @@ def test_role_binding_kinds_use_the_same_predicate_contract_as_validation():
     """
     compiled = snapshot()
 
-    roles = compiled.claims["moves_to@1"].roles
+    roles = compiled.claims["moves_to"].roles
     assert roles["event_key"].kind == "attribute"
     assert roles["event_key"].allowed_binding_kinds == ("column", "constant")
     assert roles["subject"].allowed_binding_kinds == ("entity",)
@@ -150,11 +150,11 @@ def test_vocabulary_qualifier_contract_survives_compilation():
     }
 
     compiled = snapshot(bundle)
-    predicate = compiled.vocabulary["moves_to@1"]
+    predicate = compiled.vocabulary["moves_to"]
 
     assert predicate.required_qualifiers == ()
     assert predicate.optional_qualifiers == ("event_key", "movement_kind")
-    role = compiled.claims["moves_to@1"].roles["movement_kind"]
+    role = compiled.claims["moves_to"].roles["movement_kind"]
     assert role.kind == "attribute"
     assert role.required is False
     assert role.allowed_values == ()
@@ -164,17 +164,17 @@ def test_registries_and_descriptors_are_recursively_immutable():
     compiled = snapshot()
 
     with pytest.raises(TypeError):
-        compiled.entities._items["Other@1"] = compiled.entities["InputEntity@1"]
+        compiled.entities._items["Other@1"] = compiled.entities["InputEntity"]
     with pytest.raises(TypeError):
         # `key_types` was retired 2026-09-09 (no reader, ever). `keys` is its
         # replacement HERE for the reason that matters to this test: it is a frozen
         # SEQUENCE on the same descriptor, so the recursive-immutability claim is still
         # scored one level below the entity rather than at it.
-        compiled.entities["InputEntity@1"].identity_keys[0] = "integer"
+        compiled.entities["InputEntity"].identity_keys[0] = "integer"
     with pytest.raises(TypeError):
         compiled.profiles["input_rows"].mappings["main_transition"].bindings["new"] = {}
     with pytest.raises(FrozenInstanceError):
-        compiled.claims["moves_to@1"].claim_id = "other@1"
+        compiled.claims["moves_to"].claim_id = "other@1"
 
 
 def test_snapshot_hash_and_serialization_are_deterministic():
@@ -373,32 +373,23 @@ def test_new_config_entity_and_predicate_need_no_compiler_change():
     compiled = snapshot(bundle)
 
     assert isinstance(compiled.entities, EntityTypeRegistry)
-    assert compiled.entities["NewSubject@1"].config_path == (
-        "bundle.entities.NewSubject@1")
-    assert compiled.vocabulary["links_to@1"].config_path == (
-        "bundle.vocabulary.links_to@1")
-    assert compiled.claims["links_to@1"].config_path == "bundle.vocabulary.links_to@1"
-    assert set(compiled.claims["links_to@1"].roles) == {
+    assert compiled.entities["NewSubject"].config_path == (
+        "bundle.entities.NewSubject")
+    assert compiled.vocabulary["links_to"].config_path == (
+        "bundle.vocabulary.links_to")
+    assert compiled.claims["links_to"].config_path == "bundle.vocabulary.links_to"
+    assert set(compiled.claims["links_to"].roles) == {
         "subject", "target", "occurred_at"}
 
 
-def test_registry_keeps_multiple_versions_as_distinct_keys():
-    bundle = logical_bundle()
-    bundle["entities"]["VersionedEntity@1"] = {"keys": ["id"]}
-    bundle["entities"]["VersionedEntity@2"] = {"keys": ["id"]}
-
-    compiled = snapshot(bundle)
-
-    assert compiled.entities["VersionedEntity@1"].version == 1
-    assert compiled.entities["VersionedEntity@2"].version == 2
-    assert list(key for key in compiled.entities if key.startswith("VersionedEntity@")) == [
-        "VersionedEntity@1", "VersionedEntity@2"]
+# ⚰️ `test_registry_keeps_multiple_versions_as_distinct_keys` retired with the `@N` axis
+# (총괄 4eb1fe98f): one name in two spellings is refused -
+# test_a_name_carries_no_version::test_one_name_in_two_spellings_is_refused_at_the_spelling
 
 
 def test_registry_builder_refuses_add_after_seal():
     descriptor = EntityTypeDescriptor(
         entity_type_id="Example@1",
-        version=1,
         identity_keys=("id",),
         allow_null=False,
         config_path="bundle.entities.Example@1",
@@ -675,4 +666,4 @@ def test_an_entity_types_retirement_reaches_the_compiled_plan():
     what is asserted here is that the compiler does not silently drop the field on the
     path that runs when the contract has already passed."""
     bundle = logical_bundle()
-    assert snapshot(bundle).entities["OutputEntity@1"].status == "active"
+    assert snapshot(bundle).entities["OutputEntity"].status == "active"

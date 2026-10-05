@@ -1,6 +1,6 @@
 {
-  "$comment": "WALK NODE SHAPE -- the seam between the server that BUILDS a walk node and the client that READS one. Ruling 123 adds `attributes` to {id,type,label,keys}; identity stays keys-only. Ruling 124 puts the binding ONCE PER SOURCE (bind.entities.<type>.attributes, a sibling of mappings) with role-level allowed only as an override, and defines a conflict as a DIFFERING value: the same value arriving at two times is not one. Both sides are scored against the `expect` recorded here rather than against each other, because server-vs-client alone stays green when both drift the same wrong way. Five shapes are scored because they are the five an operator can meet -- an attribute that arrived, one declared and never reached, two differing values, the same value twice, and two worlds saying it differently. Two differing values and the same value twice are the pair that decides the count. Version 2 (lead 5788bd81c) adds `attributes_by_world`: per name, one line per world that said it - {world, value, occurred_at, source_who}, ordered by world name, the value by the same rule as `attributes` within that world, occurred_at as the wire spells an event time.",
-  "version": 2,
+  "$comment": "WALK NODE SHAPE -- the seam between the server that BUILDS a walk node and the client that READS one. Ruling 123 adds `attributes` to {id,type,label,keys}; identity stays keys-only. Ruling 124 puts the binding ONCE PER SOURCE (bind.entities.<type>.attributes, a sibling of mappings) with role-level allowed only as an override, and defines a conflict as a DIFFERING value: the same value arriving at two times is not one. Both sides are scored against the `expect` recorded here rather than against each other, because server-vs-client alone stays green when both drift the same wrong way. Five shapes are scored because they are the five an operator can meet -- an attribute that arrived, one declared and never reached, two differing values, the same value twice, and two worlds saying it differently. Two differing values and the same value twice are the pair that decides the count. Version 2 (lead 5788bd81c) adds `attributes_by_world`: per name, one line per world that said it - {world, value, occurred_at, source_who}, in the order the walk picked the worlds (a case's `picked`; an edge's `worlds` and `by_world` follow the same order), the value by the same rule as `attributes` within that world, occurred_at as the wire spells an event time. Version 3 (lead 0cde56e07, 4be010312): an unreached node is scored as the server sends it - none of the three keys at all - and both halves score every case exactly.",
+  "version": 3,
   "seam": {
     "server": "walk node builder (S-52) -- server/ledger_api/ledger_subgraph.py :: _apply_registrations, the /subgraph node payload",
     "client": "walk node reader (C-40) -- the walk table's attribute columns",
@@ -50,11 +50,7 @@
         "product"
       ],
       "atoms": [],
-      "expect": {
-        "attributes": {},
-        "attribute_conflicts": 0,
-        "attributes_by_world": {}
-      }
+      "expect": {}
     },
     {
       "name": "two_differing_values",
@@ -161,20 +157,24 @@
         "attributes_by_world": {
           "lot": [
             {
-              "world": "w1",
-              "value": "L-1",
-              "occurred_at": "2026-09-02T01:00:00+00:00",
-              "source_who": "src-a"
-            },
-            {
               "world": "w2",
               "value": "L-2",
               "occurred_at": "2026-09-01T01:00:00+00:00",
               "source_who": "src-b"
+            },
+            {
+              "world": "w1",
+              "value": "L-1",
+              "occurred_at": "2026-09-02T01:00:00+00:00",
+              "source_who": "src-a"
             }
           ]
         }
-      }
+      },
+      "picked": [
+        "w2",
+        "w1"
+      ]
     }
   ],
   "conflict": {

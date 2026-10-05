@@ -14,6 +14,7 @@ import logging
 
 import validation
 import json
+from declaration_names import bare_name, fold_versions
 from pathlib import Path
 import re
 from types import MappingProxyType
@@ -90,7 +91,11 @@ ALL_SECTIONS = (*LOGICAL_SECTIONS, *OPTIONAL_SECTIONS)
 #: verifiers that can disagree.
 PHYSICAL_CATALOG_FILENAME = "table_config.json"
 
-_VERSIONED_ID = re.compile(r"^[^@/\s]+@[1-9][0-9]*$")
+#: A declared name - no `@N` since 10-04 (`declaration_names.fold_versions` reads an old one bare).
+_NAME = re.compile(r"^[^@/\s]+$")
+#: A name REFERRED to may still carry an old `@N`: a declared name's is folded before this, so one
+#: left names nothing declared - and the cross-check refuses it as unknown, with its suggestion.
+_REFERENCE = re.compile(r"^[^@/\s]+(?:@[1-9][0-9]*)?$")
 _FORBIDDEN_DECLARATION_KEYS = frozenset({
     "module", "function", "path", "python", "sql", "javascript",
     "expression", "eval", "exec", "lookup", "lookups", "declared_lookup",
@@ -829,7 +834,7 @@ def registering_sentences(source: Any) -> tuple[tuple[str, Mapping[str, Any]], .
         (sentence, mapping) for sentence, mapping in sorted(
             (mappings or {}).items() if isinstance(mappings, Mapping) else (), key=lambda p: str(p[0]))
         if isinstance(mapping, Mapping) and isinstance(mapping.get("predicate"), str)
-        and mapping["predicate"].rsplit("@", 1)[0] == REGISTER_PREDICATE)
+        and bare_name(mapping["predicate"]) == REGISTER_PREDICATE)
 
 
 def default_ordering_key(catalog: Mapping[str, Any], relation: Any) -> tuple[str, ...]:
@@ -930,7 +935,7 @@ def _registered_subject_columns(source: Any) -> list:
 
 def validate_bundle(value: Mapping[str, Any], *,
                     catalog: Mapping[str, Any] | None = None) -> LedgerSetupBundle:
-    value = upgrade_setup(value)
+    value = fold_versions(upgrade_setup(value))
     issues = validate_bundle_errors(value, catalog=catalog)
     if issues:
         raise issues[0]
@@ -959,7 +964,7 @@ def validate_bundle_errors(value: Mapping[str, Any], *,
     It is a parameter for the same reason `trusted_implementations()` is a parameter on
     `compile_setup_snapshot`: the caller states which world it is judging against.  Production resolves it once, in `ledger.setup`.
     """
-    value = upgrade_setup(value)
+    value = fold_versions(upgrade_setup(value))
     problems = _Problems()
     if catalog is None:
         return (LedgerSetupValidationError(
@@ -1081,7 +1086,7 @@ def load_setup_bundle(root: str | Path, *, config_name: str = CONFIG_FILENAME,
             f"the setup is one file ({config_name}); this root also contains "
             f"{relative!r} — move it outside the config root")
 
-    document = upgrade_setup(_read_json(config_path, "ledger_config"))
+    document = fold_versions(upgrade_setup(_read_json(config_path, "ledger_config")))
     issues = _root_document_errors(document)
     if issues:
         raise issues[0]
@@ -1170,7 +1175,7 @@ def setup_bundle_errors(root: str | Path, *, config_name: str = CONFIG_FILENAME,
             "invalid_config_root", "config_root", "must be a directory")
     config_path = _resolve_config_path(
         root_path, config_name, "config_root", require_json=True)
-    document = upgrade_setup(_read_json(config_path, "ledger_config"))
+    document = fold_versions(upgrade_setup(_read_json(config_path, "ledger_config")))
     root_issues = _root_document_errors(document)
     if root_issues:
         # The section-level validator would read sections this one just called absent or
@@ -1210,9 +1215,9 @@ def _resolve_config_path(root: Path, relative: Any, path: str, *, require_json: 
     return resolved
 
 
-def _versioned_id(value: Any, path: str, problems: _Problems) -> None:
-    if not isinstance(value, str) or not _VERSIONED_ID.fullmatch(value):
-        problems.add("invalid_versioned_id", path, "must use nonblank-id@positive-version")
+def _declared_name(value: Any, path: str, problems: _Problems, shape=_NAME) -> None:
+    if not isinstance(value, str) or not shape.fullmatch(value):
+        problems.add("invalid_name", path, "must be a name without '@', '/' or spaces")
 
 
 def _role_ref(value: Any, path: str, problems: _Problems, *, optional: bool = False) -> None:
@@ -1541,7 +1546,7 @@ def _validate_inverse(predicate_id: str, item: Mapping[str, Any], section: Mappi
 def _validate_vocabulary(section: Mapping[str, Any], problems: _Problems) -> None:
     for predicate_id in sorted(section, key=str):
         path = f"bundle.vocabulary.{predicate_id}"
-        _versioned_id(predicate_id, path, problems)
+        _declared_name(predicate_id, path, problems)
         item = section[predicate_id]
         #: 🗄️ `continues` LEFT THIS TUPLE ON 2026-08-30, WITH THE CLEANUP IT WAS WAITING FOR.
         #: It said the walk stays on the same material across a predicate, so a step over it
@@ -1671,7 +1676,7 @@ def _validate_vocabulary(section: Mapping[str, Any], problems: _Problems) -> Non
 def _validate_entities(section: Mapping[str, Any], problems: _Problems) -> None:
     for entity_id in sorted(section, key=str):
         path = f"bundle.entities.{entity_id}"
-        _versioned_id(entity_id, path, problems)
+        _declared_name(entity_id, path, problems)
         item = section[entity_id]
         #: `class` says whether this entity is a THING THAT HAPPENS or a NAME THINGS POINT
         #: AT. Owner ruling 2026-08-29 reviving `ONTOLOGY_GRAPH_SPEC` §7.5c: a walk may
@@ -1988,7 +1993,7 @@ def _validate_mapper(item: Any, path: str, problems: _Problems) -> None:
 def _validate_profile(profile: Any, path: str, problems: _Problems) -> None:
     """One source's bind clause, at `sources.<id>.bind`.
 
-    No `_versioned_id` here and no id at all -- the same retirement `_validate_preparation`
+    No `_declared_name` here and no id at all -- the same retirement `_validate_preparation`
     took earlier the same day.  `source` is gone with the section for a sharper reason than
     tidiness: it was a REPEAT of the key one level up, and `_cross_validate` refused every
     value except that key, so the only thing an author could do with the field was get it
@@ -2035,7 +2040,7 @@ def _validate_profile(profile: Any, path: str, problems: _Problems) -> None:
                               optional=("when",)):
             continue
         _validate_when(mapping.get("when"), f"{mpath}.when", problems)
-        _versioned_id(mapping.get("predicate"), f"{mpath}.predicate", problems)
+        _declared_name(mapping.get("predicate"), f"{mpath}.predicate", problems, _REFERENCE)
         bindings = mapping.get("bind")
         if not isinstance(bindings, Mapping) or not bindings:
             problems.add("invalid_profile", f"{mpath}.bind", "must be non-empty")
@@ -2176,7 +2181,7 @@ def _validate_binding(value: Any, path: str, problems: _Problems) -> None:
     elif kind == "constant" and "value" in value:
         _deterministic_json(value["value"], f"{path}.value", problems)
     elif kind == "entity":
-        _versioned_id(value.get("entity_type"), f"{path}.entity_type", problems)
+        _declared_name(value.get("entity_type"), f"{path}.entity_type", problems, _REFERENCE)
         keys = value.get("keys")
         if not isinstance(keys, Mapping) or not keys:
             problems.add("invalid_entity_ref", f"{path}.keys", "must be non-empty")
@@ -2384,7 +2389,7 @@ def _validate_registration_probe(value: Any, path: str, problems: _Problems) -> 
                 optional=("list_separator",)):
             continue
         entity_type = item.get("entity_type")
-        _versioned_id(entity_type, f"{item_path}.entity_type", problems)
+        _declared_name(entity_type, f"{item_path}.entity_type", problems, _REFERENCE)
         if isinstance(entity_type, str):
             if entity_type in seen:
                 problems.add(
@@ -2696,7 +2701,7 @@ def _validate_bind_entities(section: Any, path: str, problems: _Problems) -> Non
         return
     for entity_type in sorted(section, key=str):
         epath = f"{path}.{entity_type}"
-        _versioned_id(entity_type, epath, problems)
+        _declared_name(entity_type, epath, problems, _REFERENCE)
         item = section[entity_type]
         if not problems.exact(item, epath, required=("attributes",)):
             continue

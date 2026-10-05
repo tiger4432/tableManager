@@ -48,6 +48,8 @@ logger = logging.getLogger("EnrichmentConfig")
 
 from paths import CONFIG_DIR  # single override point (ASSY_DATA_ROOT)
 from chain import rule_shape
+from declaration_names import bare_name as _bare_name
+
 QUERY_REF_DIR = os.path.join(CONFIG_DIR, "enrichment_queries")
 
 # ---------------------------------------------------------------------------
@@ -142,7 +144,7 @@ def _declared_predicates():
         declared = (_config.load() or {}).get("vocabulary") or {}
     except Exception:
         return set()
-    return {str(key).split("@", 1)[0] for key in declared}
+    return {_bare_name(key) for key in declared}
 
 
 def _load_ingestion_settings() -> dict:

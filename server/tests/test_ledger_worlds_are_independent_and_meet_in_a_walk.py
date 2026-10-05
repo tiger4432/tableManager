@@ -202,10 +202,10 @@ def test_a_name_two_worlds_declare_is_the_first_picked(config):
     document["entities"]["tool@1"] = {"keys": ["tool", "site"]}
     _declare(C, document)
     declared, whose = trace_router._declaration_and_whose([C, A])
-    assert (declared["entities"]["tool@1"]["keys"], whose["entities"]["tool@1"]) == (
+    assert (declared["entities"]["tool"]["keys"], whose["entities"]["tool"]) == (
         ["tool", "site"], C)
     catalogue = trace_router.ledger_declaration_catalog(world=[A, C])
-    (tool,) = [item for item in catalogue["entities"] if item["type"] == "tool@1"]
+    (tool,) = [item for item in catalogue["entities"] if item["type"] == "tool"]
     assert (tool["keys"], tool["world"]) == (["tool"], A)
     assert {item["world"] for item in catalogue["predicates"]} == {A}
 
@@ -399,6 +399,11 @@ def test_two_worlds_are_independent_and_meet_only_in_a_walk_that_picks_both(worl
     assert sorted(edge["worlds"]) == sorted([A, C])
     assert sorted(said["world"] for said in edge["by_world"]) == sorted([A, C])
     assert len({said["claim_id"] for said in edge["by_world"]}) == 2
+    # both lists in the order picked, through one ordering (총괄 4be010312)
+    assert [said["world"] for said in edge["by_world"]] == edge["worlds"] == [A, C]
+    (back,) = [e for e in _edges(world, [C, A], "wafer", {"wafer": "W1"}, hops=1)
+               if e["predicate"] == "processed_with"]
+    assert [said["world"] for said in back["by_world"]] == back["worlds"] == [C, A]
     (alone,) = [e for e in _edges(world, [C], "wafer", {"wafer": "W1"}, hops=1)
                 if e["predicate"] == "processed_with"]
     assert (alone["id"], alone["worlds"]) == (edge["id"], [C])      # the id does not move
@@ -426,6 +431,9 @@ def test_a_nodes_attribute_shows_each_worlds_value_beside_the_one(world):
         {"world": A, "value": "S1", "occurred_at": when[A], "source_who": CHANGED},
         {"world": C, "value": "RCP-1", "occurred_at": when[C], "source_who": CHANGED}]}
     assert node["attributes"]["label"] in ("S1", "RCP-1") and node["attribute_conflicts"] == 1
+
+    back, _ = node_and_when([C, A])                                 # in the order picked (4be010312)
+    assert [line["world"] for line in back["attributes_by_world"]["label"]] == [C, A]
 
     alone, when = node_and_when([C])
     assert alone["attributes_by_world"] == {"label": [

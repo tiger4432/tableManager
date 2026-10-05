@@ -62,8 +62,8 @@ def test_declared_contract_catches_a_signature_conflict_before_a_row_hits_that_r
             # `entity_ref` to `defect@1`, and the contract then reported TWO issues - the
             # subject conflict this test is about, and a real object-kind conflict the
             # fixture had stopped matching. The checker was right both times; what aged is
-            # the fixture. The type carries its version because `object_types` is compared
-            # to the declared list verbatim, while subjects are compared bare.
+            # the fixture. The type keeps its old `@1`: object types are compared bare, as
+            # subjects are (4eb1fe98f).
             "object": {"kind": "entity_ref", "type": "defect@1",
                        "keys": {"defect": "$defect"}},
         }],

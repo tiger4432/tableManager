@@ -272,11 +272,13 @@ def test_the_shipped_declaration_and_the_shipped_table_agree_without_a_skip():
 
     sample = os.path.join(os.path.dirname(__file__), "..", "config", "sample",
                           "ledger_config.json.sample")
+    from declaration_names import fold_versions
+
     with open(sample, encoding="utf-8") as handle:
-        declared = json.load(handle)
+        declared = fold_versions(json.load(handle))     # as `config.load` reads it
 
     produced = gaps.questions(declared, names=gaps.load_names())
 
     asked = {(item["type"], tuple(item["absent"])) for item in produced}
-    assert ("dtjob@1", ("register@1",)) in asked
-    assert not {("wafer@1", ("register@1",)), ("lot@1", ("register@1",))} & asked
+    assert ("dtjob", ("register",)) in asked
+    assert not {("wafer", ("register",)), ("lot", ("register",))} & asked

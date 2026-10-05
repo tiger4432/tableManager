@@ -58,6 +58,8 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
 
+from declaration_names import fold_versions
+
 from .column_stats import declared_unique_keys
 from .config_explorer import AUTHORABLE_SECTIONS, ISOLATION_ROOTS
 from .implementations import (
@@ -593,46 +595,6 @@ def _drop_switched_off(value: Any, node: Any, defs: Mapping[str, Any], path: str
             _drop_switched_off(member, shape.get("of"), defs, "%s.%s" % (path, name), dropped)
 
 
-@lru_cache(maxsize=1)
-def versioned_sections() -> frozenset[str]:
-    """Which sections does the validator require `id@version` of? ASKED, not listed.
-
-    🔴 FOUR OF THE FIVE REQUIRE IT AND ONE DOES NOT -- sources are keyed `dt_job`, no `@`.
-    So "always append @1" breaks sources, and a hand-written list of the other four is the
-    hardcode this round keeps removing: it would go stale the day the grammar changes its
-    mind, and go stale SILENTLY.
-
-    So the answer is measured. Each section is handed a declaration named without a version
-    and the validator is asked what it thinks; the sections that come back with
-    `invalid_versioned_id` against that name are the ones that carry versions. The screen
-    never decides this -- it reads the answer.
-
-    🔴 AND THE 2026-08-20 MERGE IS THE PROOF THAT WAS WORTH IT. `source_preparers` and
-    `mappers` were two of the six; both moved inside a source plan and stopped having ids
-    at all. This function was not edited, no list of kinds was edited, and the answer went
-    from six sections to four on its own. A hardcoded list would have kept publishing
-    `versioned: true` for two kinds that no longer exist.
-    """
-    from .setup_bundle import validate_bundle_errors
-
-    probe = "zzprobeid"                      # deliberately unversioned
-    carries: set[str] = set()
-    for section in AUTHORABLE_SECTIONS.values():
-        # `catalog` is required by name -- omitting it refuses before any section is read,
-        # which is how the first version of this probe measured 0 for all of them.
-        errors = validate_bundle_errors(
-            {section: {probe: empty_declaration(section)}}, catalog={})
-        # The path must END at the declaration's own name. A source refuses a versioned id
-        # at `...zzprobeid.read.registration_probe[0].entity_type` and, until 2026-08-20,
-        # at `...zzprobeid.profile_id` -- those are REFERENCES it holds, not its own key,
-        # and counting them would have made every section look versioned.
-        if any(error.code == "invalid_versioned_id"
-               and error.path == f"bundle.{section}.{probe}"
-               for error in errors):
-            carries.add(section)
-    return frozenset(carries)
-
-
 def closed_lists(sources: Any = None) -> dict[str, Any]:
     """Every closed list the authoring screen may offer, from the code that enforces it.
 
@@ -681,13 +643,10 @@ def closed_lists(sources: Any = None) -> dict[str, Any]:
         # at all -- you could not create the first pack because there was nowhere to click.
         # Sourced from `AUTHORABLE_SECTIONS`, which is also what `deletion_plan` reads, so
         # the screen cannot offer to create something it could not then remove.
-        # 🔴 `versioned` RIDES ALONG SO THE SCREEN NEVER HOLDS THE LIST. Four of the five
-        # need `id@version` and sources do not, so "always append @1" breaks sources and a
-        # list of the other four in the client is a hardcode that goes stale in silence.
-        # `versioned_sections()` asks the validator instead of asserting -- see its comment.
+        # ⚰️ `versioned` retired with the `@N` it answered for (총괄 4eb1fe98f): no section
+        # carries a version, so the screen names what it creates as typed.
         "authorable_kinds": [
-            {"id": kind, "section": section,
-             "versioned": section in versioned_sections()}
+            {"id": kind, "section": section}
             for kind, section in sorted(AUTHORABLE_SECTIONS.items())
         ],
         # 🔴 THE NAME THE OPERATOR CANNOT INVENT, FROM THE REGISTRY THAT ENFORCES IT.
@@ -1741,6 +1700,8 @@ def authoring_plan(bundle: Mapping[str, Any], catalog: Mapping[str, Any], *,
     """
     if not isinstance(bundle, Mapping):
         raise TypeError("bundle must be a mapping")
+    # rows at the paths the refusals name: both bare (총괄 4eb1fe98f)
+    bundle = fold_versions(dict(bundle))
     fields: list[Field] = [
         *_entities_fields(bundle),
         *_vocabulary_fields(bundle),

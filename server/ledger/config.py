@@ -123,6 +123,8 @@ import logging
 import os
 from collections.abc import Mapping
 
+from declaration_names import bare_name as _bare_name, fold_versions
+
 logger = logging.getLogger("Ledger.Config")
 #: `(origin, declaration)` pairs already said to be NOT read, this process.
 _SAID_NOT_READ = set()
@@ -417,7 +419,7 @@ def load(path: str = None, catalog=None) -> dict:
                 f"no ledger configuration at {path} (and no sample at {sample}). The "
                 f"translator refuses to run rather than guess a time column.")
     with open(path, "r", encoding="utf-8") as handle:
-        raw = json.load(handle)
+        raw = fold_versions(json.load(handle))
     raw = _validate_for_version(raw, origin=path, catalog=catalog)
     raw["__origin__"] = path
     return raw
@@ -1228,7 +1230,7 @@ def sources_binding(cfg: dict, name: str) -> tuple:
     An EMPTY tuple is an answer - no source utters this word - and is not the same fact as
     「not counted here」. The caller keeps those apart.
     """
-    wanted = str(name or "").split("@", 1)[0].strip()
+    wanted = _bare_name(name)
     if not wanted:
         return tuple()
 
@@ -1240,7 +1242,7 @@ def sources_binding(cfg: dict, name: str) -> tuple:
         words = set()
         for mapping in (mappings.values() if isinstance(mappings, Mapping) else ()):
             words |= _bound_words(mapping)
-        if any(str(word).split("@", 1)[0] == wanted for word in words):
+        if any(_bare_name(word) == wanted for word in words):
             hits.append(str(source_name))
     return tuple(hits)
 

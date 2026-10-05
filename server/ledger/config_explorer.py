@@ -9,11 +9,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from hashlib import sha256
 import json
-import re
 from types import MappingProxyType
 from typing import Any, Iterable, Mapping, Sequence
 
 import event_constants
+from declaration_names import fold_versions
 
 from . import setup_bundle
 
@@ -33,9 +33,6 @@ KIND_ORDER = {
     "verified_join": 10,
     "table": 11,
 }
-
-_VERSIONED_ID = re.compile(r"^(?P<prefix>.+)@(?P<version>[0-9]+)(?P<suffix>(?:[/#].*)?)$")
-
 
 class ConfigExplorerError(ValueError):
     """A refusal.  `details` carries the rows an operator needs in order to ACT on it.
@@ -526,36 +523,11 @@ def _hash(value: Any) -> str:
     return sha256(material.encode("utf-8")).hexdigest()
 
 
-def _version_family(canonical_id: str) -> tuple[str, str] | None:
-    match = _VERSIONED_ID.match(str(canonical_id))
-    if match is None:
-        return None
-    return match.group("prefix"), match.group("suffix")
-
-
-def _has_other_version(
-    canonical_by_kind: Mapping[tuple[str, str], str],
-    expected_kind: str,
-    target_id: str,
-) -> bool:
-    family = _version_family(target_id)
-    if family is None:
-        return False
-    return any(
-        kind == expected_kind
-        and candidate != target_id
-        and _version_family(candidate) == family
-        for kind, candidate in canonical_by_kind
-    )
-
-
 def _edge_status_message(status: str, target_id: str, expected_kind: str) -> str:
     if status == "resolved":
         return "Resolved in the same compiled snapshot"
     if status == "wrong_kind":
         return f"{target_id!r} exists but is not a {expected_kind} declaration"
-    if status == "wrong_version":
-        return f"The requested version of {expected_kind} {target_id!r} is not registered"
     if status == "signature_mismatch":
         return f"The signature of the reference {target_id!r} does not match its declaration"
     return f"{expected_kind} {target_id!r} is not in the same snapshot"
@@ -593,7 +565,6 @@ class ExplorerNode:
     key: str
     canonical_id: str
     kind: str
-    version: int | None
     config_file: str
     json_pointer: str
     config_path: str
@@ -607,7 +578,6 @@ class ExplorerNode:
             "key": self.key,
             "canonical_id": self.canonical_id,
             "kind": self.kind,
-            "version": self.version,
             "config_file": self.config_file,
             "json_pointer": self.json_pointer,
             "config_path": self.config_path,
@@ -683,7 +653,6 @@ class _IndexBuilder:
         *,
         config_file: str,
         json_pointer: str,
-        version: int | None = None,
     ) -> str:
         key = node_key(kind, canonical_id)
         if key in self.nodes:
@@ -695,7 +664,6 @@ class _IndexBuilder:
             key=key,
             canonical_id=canonical_id,
             kind=kind,
-            version=version,
             config_file=config_file,
             json_pointer=json_pointer,
             config_path=f"{config_file}#{json_pointer}",
@@ -740,8 +708,6 @@ class _IndexBuilder:
                 status = "resolved"
             elif target_id in keys_by_canonical:
                 status = "wrong_kind"
-            elif _has_other_version(canonical_by_kind, expected_kind, target_id):
-                status = "wrong_version"
             else:
                 status = "unresolved"
             identity = (from_key, ref_kind, ref_pointer)
@@ -837,7 +803,7 @@ def build_explorer_index(setup: Any, *, snapshot_hash: str | None = None) -> Exp
         key = builder.add_node(
             "predicate", predicate_id, raw, compiled,
             ("vocabulary", predicate_id), config_file=ledger_file,
-            json_pointer=p, version=compiled.get("version"),
+            json_pointer=p,
         )
         for index, entity_id in enumerate(raw.get("subjects", [])):
             builder.add_edge(
@@ -856,7 +822,6 @@ def build_explorer_index(setup: Any, *, snapshot_hash: str | None = None) -> Exp
         builder.add_node(
             "entity", entity_id, raw, compiled, ("entities", entity_id),
             config_file=ledger_file, json_pointer=pointer("entities", entity_id),
-            version=compiled.get("version"),
         )
 
     # `pack` and `claim` NODES STOPPED BEING BUILT ON 2026-08-21 with the section they
@@ -1298,7 +1263,8 @@ def resolve_declarations(document: Mapping[str, Any], *,
     """
     from .config_authoring import isolation_key
 
-    working = json.loads(json.dumps(document, ensure_ascii=False))
+    # names spelled bare BEFORE the first round, so a blamed path finds its key (4eb1fe98f)
+    working = fold_versions(json.loads(json.dumps(document, ensure_ascii=False)))
     invalid: dict[str, dict[str, Any]] = {}
     config_level: list = []
     rounds = 0

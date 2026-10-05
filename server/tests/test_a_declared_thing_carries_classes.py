@@ -70,7 +70,7 @@ def test_the_save_gate_takes_a_predicate_class_as_a_word_or_a_list():
 def test_a_predicate_class_that_is_not_words_is_refused(value):
     document = _sample()
     document["vocabulary"]["measures@1"]["class"] = value
-    assert ("bundle.vocabulary.measures@1.class", "invalid_predicate") in _issues(document)
+    assert ("bundle.vocabulary.measures.class", "invalid_predicate") in _issues(document)
 
 
 #: (the entity's `class`, whether the grammar refuses it). 🔴 [총괄 022dcf17a] An entity's words
@@ -88,11 +88,11 @@ def test_the_save_verdict_and_the_loader_give_one_answer(value, refused, tmp_pat
     the grammar accepts stays in what the loader returns; one it refuses is the one it drops."""
     document = _sample()
     document["entities"]["quantity@1"]["class"] = value
-    saved_refuses = ("bundle.entities.quantity@1.class", "invalid_entity_ref") in _issues(document)
+    saved_refuses = ("bundle.entities.quantity.class", "invalid_entity_ref") in _issues(document)
     path = tmp_path / "ledger_config.json"
     path.write_text(json.dumps(document), encoding="utf-8")
     loaded = ledger_config.load(str(path), catalog=_catalog())
-    loader_drops = "quantity@1" not in (loaded.get("entities") or {})
+    loader_drops = "quantity" not in (loaded.get("entities") or {})
     assert (saved_refuses, loader_drops) == (refused, refused)
 
 
@@ -183,7 +183,7 @@ def test_the_window_writes_a_predicate_class_and_reads_it_back(tmp_path):
 
     first = service()
     _, index, _ = first.active()
-    draft = first.create_draft(target_key="predicate|derived_from@1",
+    draft = first.create_draft(target_key="predicate|derived_from",
                                base_snapshot_hash=index.snapshot_hash)
     raw = dict(draft["raw"])
     raw["class"] = ["lineage", "model"]
@@ -193,13 +193,13 @@ def test_the_window_writes_a_predicate_class_and_reads_it_back(tmp_path):
     first.activate_draft(draft["draft_id"], expected_revision=1, reload_callback=lambda: None)
 
     written = json.loads((root / "ledger_config.json").read_text(encoding="utf-8"))
-    assert written["vocabulary"]["derived_from@1"]["class"] == ["lineage", "model"]
-    assert written["entities"]["quantity@1"]["class"] == "static", \
+    assert written["vocabulary"]["derived_from"]["class"] == ["lineage", "model"]
+    assert written["entities"]["quantity"]["class"] == "static", \
         "a word written alone is not rewritten into a list"
 
     again = service()
     _, index, _ = again.active()
-    reopened = again.create_draft(target_key="predicate|derived_from@1",
+    reopened = again.create_draft(target_key="predicate|derived_from",
                                   base_snapshot_hash=index.snapshot_hash)
     assert reopened["raw"]["class"] == ["lineage", "model"]
 
@@ -218,7 +218,7 @@ def test_an_entity_saved_with_an_operator_word_stays_in_the_declaration(tmp_path
         convergence_probe=lambda expected: {
             "ontology-explorer-api": expected, "ledger-persistent-reader": expected})
     _, index, _ = service.active()
-    draft = service.create_draft(target_key="entity|quantity@1",
+    draft = service.create_draft(target_key="entity|quantity",
                                  base_snapshot_hash=index.snapshot_hash)
     raw = dict(draft["raw"])
     raw["class"] = ["static", "probe"]
@@ -231,5 +231,5 @@ def test_an_entity_saved_with_an_operator_word_stays_in_the_declaration(tmp_path
     monkeypatch.setattr(ledger_config, "load", lambda *_args, **_kwargs: real_load(path, catalog=catalog))
     served = {item["type"]: item["class"]
               for item in trace_router.ledger_declaration_catalog()["entities"]}
-    assert served["quantity@1"] == ["static", "probe"]
+    assert served["quantity"] == ["static", "probe"]
     assert "quantity" in trace_router._static_types()

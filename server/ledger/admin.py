@@ -36,7 +36,7 @@ import os
 import re
 import shutil
 
-from declaration_names import bare_name as _bare_name
+from declaration_names import bare_name as _bare_name, fold_versions
 from datetime import datetime
 
 import config_backup
@@ -1246,7 +1246,7 @@ def _read_json(path: str, default: dict) -> dict:
     if not os.path.exists(path):
         return copy.deepcopy(default)
     with open(path, "r", encoding="utf-8") as handle:
-        return json.load(handle)
+        return fold_versions(json.load(handle))     # names bare at every read (4eb1fe98f)
 
 
 def sources_path() -> str:
@@ -1283,7 +1283,7 @@ def save_source(source: str, declaration: dict) -> dict:
         document["sources"] = {}
     replaced = source in document["sources"]
     document["sources"][source] = declaration
-    backup = _atomic_write(path, document)
+    backup = _atomic_write(path, fold_versions(document))
     return {"path": path, "backup": backup, "replaced": replaced}
 
 

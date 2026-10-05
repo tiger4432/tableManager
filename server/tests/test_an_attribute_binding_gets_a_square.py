@@ -25,7 +25,7 @@ from ledger.config_authoring import authoring_plan            # noqa: E402
 from ledger.setup_bundle import load_physical_catalog          # noqa: E402
 
 SAMPLE = os.path.join(os.path.dirname(__file__), "..", "config", "sample")
-BIND = "bundle.sources.dt_job.bind.entities.dtjob@1.attributes"
+BIND = "bundle.sources.dt_job.bind.entities.dtjob.attributes"
 ROLE = "bundle.sources.dt_job.bind.mappings.counted.bind.subject.attributes"
 
 
@@ -54,7 +54,7 @@ def test_each_of_the_three_seats_has_a_row(shipped, catalog):
     """🔴 THE ADDRESSES ARE THE VALIDATOR'S, NOT THIS TEST'S.  Each one below is a path
     `setup_bundle` writes a refusal at; that is the whole reason a row has to exist there."""
     plan = rows(shipped, catalog)
-    assert plan["bundle.entities.dtjob@1.attributes"]["value"] == ["dt_eqp"]
+    assert plan["bundle.entities.dtjob.attributes"]["value"] == ["dt_eqp"]
     assert plan[f"{BIND}.dt_eqp"]["state"] == "answered"
     assert plan[f"{BIND}.dt_eqp"]["value"] == {"kind": "column", "column": "dt_eqp"}
     role = copy.deepcopy(shipped)
@@ -73,7 +73,7 @@ def test_each_of_the_three_seats_has_a_row(shipped, catalog):
      f"{BIND}.nope", "unknown_entity_attribute"),
     ("the type declares an empty list",
      lambda c: c["entities"]["dtjob@1"].__setitem__("attributes", []),
-     "bundle.entities.dtjob@1.attributes", "invalid_type"),
+     "bundle.entities.dtjob.attributes", "invalid_type"),
     ("a role overrides with a name the type never declared",
      lambda c: c["sources"]["dt_job"]["bind"]["mappings"]["counted"]["bind"][
          "subject"].__setitem__("attributes", {"nope": {"kind": "column",

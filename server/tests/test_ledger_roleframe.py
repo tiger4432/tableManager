@@ -94,8 +94,8 @@ def test_declarative_column_constant_entity_bindings_make_role_frame():
     assert tuple(frame.columns) == ROLE_FRAME_COLUMNS
     assert len(frame) == 1
     roles = frame.iloc[0]["roles"]
-    assert roles["subject"] == {"type": "InputEntity@1", "keys": {"input_id": "IN-1"}}
-    assert roles["target"] == {"type": "OutputEntity@1", "keys": {"output_id": "OUT-1"}}
+    assert roles["subject"] == {"type": "InputEntity", "keys": {"input_id": "IN-1"}}
+    assert roles["target"] == {"type": "OutputEntity", "keys": {"output_id": "OUT-1"}}
     assert roles["occurred_at"] == OCCURRED_AT
     assert roles["event_key"] == "fixed-event"
 
@@ -107,9 +107,9 @@ class EquivalentPythonMapper(BaseLedgerMapper):
         return [RoleEmission(
             sentence=sentence,
             roles={
-                "subject": {"type": "InputEntity@1",
+                "subject": {"type": "InputEntity",
                             "keys": {"input_id": row["source_id"]}},
-                "target": {"type": "OutputEntity@1",
+                "target": {"type": "OutputEntity",
                            "keys": {"output_id": row["target_id"]}},
                 "occurred_at": row["event_at"],
                 "event_key": row["event_key"],
@@ -220,7 +220,7 @@ def test_claim_compiler_supports_closed_scalar_object_kinds(
     mapping["bind"].pop("event_key")
     mapping["bind"]["value"] = constant(value)
     compiled = snapshot(raw)
-    assert compiled.claims["moves_to@1"].roles["value"].kind == role_kind
+    assert compiled.claims["moves_to"].roles["value"].kind == role_kind
 
     result = dry_run_event_frame(
         mapper_context(compiled, "input_rows"), event_frame(compiled),
@@ -234,7 +234,7 @@ class InvalidEntityMapper(EquivalentPythonMapper):
     def interpret_unit(self, context, unit, profile):
         emission = super().interpret_unit(context, unit, profile)[0]
         roles = dict(emission.roles)
-        roles["target"] = {"type": "OutputEntity@1", "keys": {"wrong": "OUT-1"}}
+        roles["target"] = {"type": "OutputEntity", "keys": {"wrong": "OUT-1"}}
         return [RoleEmission(
             sentence=emission.sentence,
             roles=roles,
@@ -258,7 +258,7 @@ class WrongStageEntityMapper(EquivalentPythonMapper):
         emission = super().interpret_unit(context, unit, profile)[0]
         roles = dict(emission.roles)
         roles["subject"] = {
-            "type": "OutputEntity@1", "keys": {"output_id": "OUT-1"}}
+            "type": "OutputEntity", "keys": {"output_id": "OUT-1"}}
         return [RoleEmission(
             sentence=emission.sentence,
             roles=roles,
@@ -775,7 +775,7 @@ def test_a_declaration_that_binds_no_attribute_produces_the_payload_it_always_di
     이 축이 있고 «안 적은» 선언의 원자가 «같은 바이트»여야 한다."""
     subject = _subject_of(logical_bundle())
 
-    assert subject == {"type": "InputEntity@1", "keys": {"input_id": "IN-1"}}
+    assert subject == {"type": "InputEntity", "keys": {"input_id": "IN-1"}}
     assert "attributes" not in subject
 
 

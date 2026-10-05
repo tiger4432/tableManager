@@ -42,6 +42,7 @@ import sys
 from typing import Any
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from declaration_names import bare_name as _bare_name                    # noqa: E402
 
 LINEAGE = "lot_lineage"
 LINEAGE_RULE = "lot_event_to_lot_lineage"
@@ -141,9 +142,9 @@ def retire_lot_event_role(document: dict[str, Any]) -> list[str]:
         ((mapping.get("bind") or {}).get("subject") or {}).get("entity_type")
         for source in (document.get("sources") or {}).values() if not is_retired(source)
         for mapping in ((source.get("bind") or {}).get("mappings") or {}).values()
-        if str(mapping.get("predicate", "")).split("@", 1)[0] == REGISTER_PREDICATE}
+        if _bare_name(mapping.get("predicate", "")) == REGISTER_PREDICATE}
     for predicate_id, spec in (document.get("vocabulary") or {}).items():
-        if predicate_id.split("@", 1)[0] != REGISTER_PREDICATE or not isinstance(spec, dict):
+        if _bare_name(predicate_id) != REGISTER_PREDICATE or not isinstance(spec, dict):
             continue
         dropped = [kind for kind in spec.get("subjects") or () if kind not in registered]
         if dropped:

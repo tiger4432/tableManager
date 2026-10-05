@@ -42,7 +42,7 @@ def test_the_router_reads_cardinality_from_the_same_declaration_as_its_siblings(
     assert "_declaration(world)" in body          # the one reader its siblings ask (092a6f9e5)
     assert '(declared.get("vocabulary") or {})' in body
     # Keyed by the unversioned name, which is the spelling the edges use.
-    assert 'str(key).split("@", 1)[0]' in body
+    assert '_bare_name(key)' in body
 
 
 def test_a_declaration_that_cannot_be_read_still_draws_the_graph():

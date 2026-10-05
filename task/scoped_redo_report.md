@@ -72220,3 +72220,67 @@ public.ledger_events_pre_rebuild.source_raw_ref 10,486 행 — 머리별 recipe_
               실패 줄: FAIL A1 four shapes, because four are what an operator can meet — expected 4, got 5 — 클라 몫(메시지 보냄, 칸 모양 같이)
 안 닿은 노드    서버는 attributes 키를 안 보내고 벡터는 {} — 서버 쪽은 이름 단위로 채점(선언 이름이 전부 없음)
 ```
+
+---
+
+## [10-06] 총괄 4eb1fe98f · 5788bd81c · 0cde56e07 · 4be010312 착지 f34f16892 — @1 은퇴 · 세상마다 목록은 고른 순서 · 걷기 노드 계약 v3
+
+어느 DB · 어느 스키마 · 지운 것 — PG assy_test 시험 스크래치 스키마만(전후 걷기 재기는 시험 고정틀의 자기 스키마) · 박스 assy_manager 읽기 전용(SET TRANSACTION READ ONLY, 따라잡기 셈) · 지운 것 0
+
+**결론 먼저**
+```
+옛 x@1 파일은 읽을 때마다 접히고, 다음 저장 때 맨이름으로 다시 쓰인다 — 운영자가 고칠 것 없음
+다시 번역 0 (잰 수 아래) · 지문 한 번 이동 · 참조 원자 꼬리는 새 원자부터 die
+```
+**게이트**
+```
+옛 파일 = 맨이름 파일     스냅샷 해시 · 도는 소스 지문 모두 같음 (test_a_name_carries_no_version)
+두 철자               한 절에 x@1 과 x -> 그 철자 자리에서 invalid_name
+응답에 @ 0            /declaration · /gaps (전에 @ 있던 둘) — 시험. 걷기 · key-values 는 전에도 0
+저장                 폼 저장 · 탐색기 활성화 모두 파일 전체를 맨이름으로, 이름마다 키 하나
+전후 번역(DB 없이)      원자 10 개 · @ 6 -> 0 · 해시 자리 빼고 남는 차이 6 — 스냅샷 해시 1 · 소스 지문 5/5 이동
+전후 걷기(PG)          @ 116 -> 0 · 회차마다 바뀌는 uuid · 생성 시각을 가리면 남는 차이 0
+다시 번역 0(박스)       행 단위로 세는 소스 4 개: 전후 새 행 · 지워진 행 · 표 행 · 색인 행 같음 5/5 · (새 행, 지운 행) = [(0, 0)]
+                     수정 누락은 이 박스에서 못 잼 — 박스 행 색인에 지문 칸이 없음(박스 데몬이 옛 코드)
+참조 꼬리 LIKE 전수     제품 자리(ledger · ledger_api · admin · chain · main.py)에서 번역 버전 글자를 LIKE 로 견주는 줄 2 — 그중 참조 꼬리 0
+                     (전부 주석의 «%#<rule>» 안내 — 규칙 이름은 버전이 없어 접기와 무관). scripts 의 LIKE 는 접두어 질의뿐
+변이 10 빨강          로더가 옛 파일을 안 접음 · 접기가 키를 그대로 둠 · 두 철자를 합침 · 폼 저장이 파일을 그대로 씀 · 활성화가 안 접은 파일에 씀 · 작성 계획이 받은 그대로 걸음 · 옛 꼬리 참조를 철자로 거절 · 노드 세상 줄을 이름순으로 · 엣지 세상을 만난 순으로 · 출처 목적어 타입을 글자 그대로 비교(출처 쪽)
+초록이던 변이 2       저장 전 본문 계획을 안 접음 -> 그 자리가 하는 일 없음(작성 계획이 스스로 접음) — 자리를 지움 · 출처 목적어 타입을 글자 그대로 비교(받는 쪽) -> 받는 쪽만 건 변이 — 출처 쪽 줄로 다시 걸어 빨강
+```
+**순서 (4be010312)**
+```
+_in_picked_order 하나 — 엣지 worlds · by_world 와 노드 attributes_by_world 가 같은 함수로 걷기가 고른 순서
+PG: [C, A] 로 고르면 둘 다 C, A
+```
+**계약 v3 (0cde56e07)**
+```
+안 닿은 노드 expect {} — 서버가 내는 그대로(세 칸 다 없음), 서버 쪽 정확 비교
+다섯째 사례 picked [w2, w1] — 세상 줄 순서도 계약에
+클라 하니스(v3 벡터): DIVERGED: 46 passed, 1 failed, 0 pending
+   실패 줄: FAIL A2 each case declares names, an expected count, and its two maps as objects or absent — 안 닿은 노드에 정수 수를 요구하는 줄. 서버는 그 칸도 안 보냄 — 클라 몫(메시지)
+```
+**claim_basis «0» (짓지 않음 — 한 줄)**
+```
+읽는 자리: is_convention_backed · is_confirmed_derivation(등급 1 · 3) · hop_basis · 걸음 사유 글자
+참조 원자는 «0» 으로 읽혀 걸음 근거가 «basis=0» 이고, 참조 유도를 등급 목록에 적어도 영영 안 맞아 늘 «측정»으로 센다
+```
+**곁에서 찾은 것 (같은 착지에서 닫음)**
+```
+upgrade_setup 안에 접기를 넣었더니 v6 이주가 가짜 «6 -> 6» 을 냄 — 그 문의 「v5 아니면 그대로」 약속 때문. 접기를 그 문 «곁»으로 옮김
+탐색기 활성화가 경로로 쓰는데 옛 파일엔 x@1 키 — 접지 않으면 x 와 x@1 이 같이 남아 다음 로드가 둘 다 거절. 쓰기 앞뒤로 접음
+출처 계약이 목적어 타입을 글자 그대로 비교 — 옛 철자 출처가 가짜 «타입 불허». 주어처럼 맨이름 비교
+옛 꼬리 참조(ghost@1) 거절이 «철자»로 바뀔 뻔 — 참조 자리는 옛 꼬리 모양을 받아 «모르는 이름 · 혹시 이것?» 그대로
+```
+**시험**
+```
+sqlite 전체    6 failed, 7770 passed, 330 skipped, 3 xfailed, 13080 warnings in 874.36s (0:14:34) — 박스 사유 밖: test_an_entity_role_without_its_own_attributes_shows_what_translation_binds
+              (그 하나는 origin 에서 온 새 시험 — 기대 경로가 dtjob@1. 맞춘 뒤 그 파일 통과)
+PG 전체        3 failed, 286 passed, 7820 deselected, 262 warnings in 1440.52s (0:24:00) — test_an_install_that_predates_attributes_is_widened_once · test_the_live_door_writes_the_refusal_breakdown_to_the_registry_row · test_two_independent_refusals_are_counted_and_named_in_one_run
+              셋 따로: 2 failed, 1 passed, 26 deselected, 6 warnings in 4.65s — l1_pg 둘은 origin/main 그대로인 기준 트리에서도 같은 오류(출고 견본에 그 소스가 없음),
+              등록 속성 하나는 혼자 돌리면 통과
+바뀐 시험 파일  22 (입력은 옛 철자 그대로 — 출고 견본이 옛 파일이라 그 자체가 «옛 파일 로드» 게이트, 출력만 맨이름)
+```
+**되돌리기 ⚠️**
+```
+맨이름으로 한 번 저장된 뒤 이 커밋을 되돌리면 옛 코드가 맨이름을 거절 — 파일 옆 backup 폴더의 저장 직전 파일을 같이 돌려놓기 (RUN.md 같은 절)
+```

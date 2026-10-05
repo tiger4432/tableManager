@@ -12,6 +12,7 @@ from fastapi.testclient import TestClient
 import pytest
 
 from admin.auth import require_admin_token, require_admin_token_strict
+from declaration_names import fold_versions
 from ledger.config_explorer import (
     ConfigExplorerError,
     ExplorerIndex,
@@ -176,8 +177,8 @@ def test_actual_snapshot_enumerates_every_registry_and_declaration(
         for profile in profiles
         for mapping in profile["mappings"].values())
     expected = {
-        "predicate|has_wafer@1",
-        "entity|lot@1",
+        "predicate|has_wafer",
+        "entity|lot",
         "profile|lot_slot_wafer#profile",
         "mapping|lot_slot_wafer#profile#mapping:seat-holds-wafer",
         "mapper|lot_slot_wafer#mapper",
@@ -227,7 +228,7 @@ def test_every_resolved_edge_has_symmetric_used_by_and_exact_pointer(active_setu
     split = next(edge for edge in index.edges if
                  edge.from_key == "mapping|lot_slot_wafer#profile#mapping:seat-holds-wafer"
                  and edge.reference_kind == "mapping_predicate")
-    assert split.to_key == "predicate|has_wafer@1"
+    assert split.to_key == "predicate|has_wafer"
     assert split.json_pointer == (
         "/sources/lot_slot_wafer/bind/mappings/seat-holds-wafer/predicate")
 
@@ -243,7 +244,7 @@ def test_actual_round_trip_source_profile_mapping_predicate(active_setup):
     # and it carried nothing the mapping does not already name.
     assert (
         "mapping|lot_slot_wafer#profile#mapping:seat-holds-wafer",
-        "predicate|has_wafer@1",
+        "predicate|has_wafer",
         "mapping_predicate",
     ) in edges
     assert (
@@ -253,20 +254,18 @@ def test_actual_round_trip_source_profile_mapping_predicate(active_setup):
     ) in edges
 
 
-def test_reference_statuses_are_closed_and_version_aware():
+def test_reference_statuses_are_closed():
     builder = _IndexBuilder("a" * 64, "b" * 64)
     source = builder.add_node(
         "mapping", "source@1", {}, {}, ("source",),
-        config_file="ledger_config.json", json_pointer="/source", version=1)
+        config_file="ledger_config.json", json_pointer="/source")
     builder.add_node(
         "entity", "Target@1", {"keys": ["id"]}, {"keys": ["id"]},
         ("entities", "Target@1"), config_file="ledger_config.json",
-        json_pointer="/entities/Target@1", version=1)
+        json_pointer="/entities/Target@1")
     builder.add_node(
         "predicate", "WrongKind@1", {}, {}, ("vocabulary", "WrongKind@1"),
-        config_file="ledger_config.json", json_pointer="/vocabulary/WrongKind@1",
-        version=1)
-    builder.add_edge(source, "Target@2", "entity", "version", "/ref/version")
+        config_file="ledger_config.json", json_pointer="/vocabulary/WrongKind@1")
     builder.add_edge(source, "WrongKind@1", "entity", "kind", "/ref/kind")
     builder.add_edge(source, "Missing@1", "entity", "missing", "/ref/missing")
     builder.add_edge(
@@ -279,7 +278,6 @@ def test_reference_statuses_are_closed_and_version_aware():
         "kind": "wrong_kind",
         "missing": "unresolved",
         "signature": "signature_mismatch",
-        "version": "wrong_version",
     }
     assert all(edge.message for edge in index.edges)
 
@@ -289,7 +287,7 @@ def test_definition_and_reference_diff_keep_all_four_normalized_states():
         nodes = {
             key: ExplorerNode(
                 key=key, canonical_id=key.split("|", 1)[1], kind=key.split("|", 1)[0],
-                version=1, config_file="ledger_config.json", json_pointer=f"/{key}",
+                config_file="ledger_config.json", json_pointer=f"/{key}",
                 config_path=f"ledger_config.json#/{key}", raw={}, compiled={},
                 definition_hash=digest, bundle_path=(key,),
             )
@@ -368,7 +366,7 @@ def test_view_uses_one_context_token_and_kind_specific_integrity(active_setup):
     index = build_explorer_index(active_setup)
     token = f"active:{index.snapshot_hash}"
     payload = explorer_view(
-        index, context_token=token, selection="entity|lot@1", limit=50)
+        index, context_token=token, selection="entity|lot", limit=50)
     assert payload["context_token"] == token
     assert payload["selection"]["context_token"] == token
     assert all(item["context_token"] == token for item in payload["items"])
@@ -412,7 +410,7 @@ def test_large_registry_search_and_used_by_payload_are_bounded():
         key = f"entity|Synthetic{index:05d}@1"
         nodes[key] = ExplorerNode(
             key=key, canonical_id=f"Synthetic{index:05d}@1", kind="entity",
-            version=1, config_file="ledger_config.json",
+            config_file="ledger_config.json",
             json_pointer=f"/entities/Synthetic{index:05d}@1",
             config_path=f"bundle.entities.Synthetic{index:05d}@1",
             raw={"keys": ["id"]}, compiled={"keys": ["id"]},
@@ -507,9 +505,9 @@ def test_reference_extraction_is_registry_driven_for_transfer_fixture(active_set
                 edge.from_key ==
                 "mapping|dt_job#profile#mapping:material_to_cell"
                 and edge.reference_kind == "mapping_predicate")
-    assert edge.to_key == "predicate|transferred_to@1"
+    assert edge.to_key == "predicate|transferred_to"
     assert index.inbound[edge.to_key] == (edge,)
-    assert index.nodes["entity|CoreDie@1"].kind == "entity"
+    assert index.nodes["entity|CoreDie"].kind == "entity"
 
 
 def test_file_backed_transfer_sample_round_trip_covers_required_registry_kinds(
@@ -517,16 +515,16 @@ def test_file_backed_transfer_sample_round_trip_covers_required_registry_kinds(
 ):
     index = build_explorer_index(transfer_sample_setup)
     required = {
-        "predicate|transferred_to@1",
-        "entity|CoreDie@1",
-        "entity|DTDie@1",
-        "entity|DTJob@1",
-        "entity|LotSlot@1",
+        "predicate|transferred_to",
+        "entity|CoreDie",
+        "entity|DTDie",
+        "entity|DTJob",
+        "entity|LotSlot",
         # `pack|dt-assembly@1` and its two `claim|…` nodes were required here until
         # 2026-08-21.  Neither kind is built any more; `predicate|component_of@1` joins
         # the list in their place, because what those claims were REACHED FOR was the
         # predicate they emitted and a mapping names that directly now.
-        "predicate|component_of@1",
+        "predicate|component_of",
         "profile|dt_log#profile",
         # The sample names the GENERIC implementations the repository ships.  Before
         # self-registration it named "sample-*" ids no class declared, so this round trip
@@ -543,15 +541,15 @@ def test_file_backed_transfer_sample_round_trip_covers_required_registry_kinds(
         "source_plan|dt_log", "profile|dt_log#profile", "source_profile") in edges
     assert (
         "mapping|dt_log#profile#mapping:core_to_dt",
-        "predicate|transferred_to@1", "mapping_predicate") in edges
+        "predicate|transferred_to", "mapping_predicate") in edges
     # ⚰️ The `source_verified_join` edge drew `prepare.inherit_virtual_join_rules`, which
     # retired with the prepare clause (setup_version 6) - the join rule stands alone.
     assert not [edge for edge in edges if edge[2] == "source_verified_join"]
     assert (
         "mapping|dt_log#profile#mapping:bond_component",
-        "predicate|component_of@1", "mapping_predicate") in edges
-    assert index.nodes["predicate|transferred_to@1"].config_path == (
-        "ledger_config.json#/vocabulary/transferred_to@1")
+        "predicate|component_of", "mapping_predicate") in edges
+    assert index.nodes["predicate|transferred_to"].config_path == (
+        "ledger_config.json#/vocabulary/transferred_to")
 
     logical = transfer_sample_setup.bundle.to_mapping()
     mappings = logical["sources"]["dt_log"]["bind"]["mappings"]
@@ -563,22 +561,22 @@ def test_file_backed_transfer_sample_round_trip_covers_required_registry_kinds(
         for mapping_id in ("core_to_dt", "dt_to_bond", "bond_component")
     ]
     assert lineage == [
-        ("CoreDie@1", "DTDie@1"),
-        ("DTDie@1", "BondComponent@1"),
-        ("BondComponent@1", "FinalChip@1"),
+        ("CoreDie", "DTDie"),
+        ("DTDie", "BondComponent"),
+        ("BondComponent", "FinalChip"),
     ]
-    assert ("CoreDie@1", "FinalChip@1") not in lineage
+    assert ("CoreDie", "FinalChip") not in lineage
     bond_subject = mappings["bond_component"]["bind"]["subject"]
     assert set(bond_subject["keys"]) == {
         "bond_wafer", "bond_x", "bond_y", "layer",
     }
-    assert logical["vocabulary"]["component_of@1"]["subjects"] == [
-        "BondComponent@1"]
+    assert logical["vocabulary"]["component_of"]["subjects"] == [
+        "BondComponent"]
 
     token = f"active:{index.snapshot_hash}"
     view = explorer_view(
         index, context_token=token,
-        selection="predicate|transferred_to@1", query="transferred")
+        selection="predicate|transferred_to", query="transferred")
     assert view["total"] == 1
     # WAS `len(view["path_candidates"]) >= 2`. The enumeration was retired on 2026-08-20;
     # the fact it pinned -- this predicate is reached from more than one place -- is now
@@ -595,7 +593,7 @@ def test_draft_save_keeps_active_bytes_and_valid_preview_is_separate(copied_root
     active_path = copied_root / "ledger_config.json"
     before = active_path.read_bytes()
     draft = service.create_draft(
-        target_key="predicate|derived_from@1",
+        target_key="predicate|derived_from",
         base_snapshot_hash=index.snapshot_hash)
     raw = dict(draft["raw"])
     raw["object"] = dict(raw["object"])
@@ -610,7 +608,7 @@ def test_draft_save_keeps_active_bytes_and_valid_preview_is_separate(copied_root
     assert saved["preview_snapshot_hash"] != index.snapshot_hash
     view = service.view(
         draft_id=draft["draft_id"], revision=1,
-        selection="predicate|derived_from@1", view_mode="draft_preview")
+        selection="predicate|derived_from", view_mode="draft_preview")
     assert view["view_context"]["mode"] == "draft_preview"
     assert view["context_token"].startswith(f"draft:{draft['draft_id']}:1:")
     assert view["active_snapshot"]["snapshot_hash"] == index.snapshot_hash
@@ -625,7 +623,7 @@ def test_draft_save_keeps_active_bytes_and_valid_preview_is_separate(copied_root
 
     active_view = service.view(
         draft_id=draft["draft_id"], revision=1,
-        selection="predicate|derived_from@1", view_mode="active")
+        selection="predicate|derived_from", view_mode="active")
     assert active_view["view_context"]["mode"] == "active"
     assert active_view["context_token"] == f"active:{index.snapshot_hash}"
     assert active_view["draft"]["draft_id"] == draft["draft_id"]
@@ -637,7 +635,7 @@ def test_invalid_signature_is_classified_with_json_pointer(copied_root, tmp_path
         config_root=copied_root, draft_root=tmp_path / "drafts")
     _, index, _ = service.active()
     draft = service.create_draft(
-        target_key="predicate|has_wafer@1", base_snapshot_hash=index.snapshot_hash)
+        target_key="predicate|has_wafer", base_snapshot_hash=index.snapshot_hash)
     raw = json.loads(json.dumps(draft["raw"]))
     raw["object"]["qualifiers"]["required"].append("new_required_value")
     saved = service.save_draft(
@@ -668,7 +666,7 @@ def test_catalog_declaration_is_read_only_and_unknown_selection_fails_closed(
         "message": "this declaration is read-only in the current explorer",
     }
     with pytest.raises(ConfigExplorerError) as missing:
-        service.view(selection="entity|Removed@1")
+        service.view(selection="entity|Removed")
     assert missing.value.code == "unknown_selection"
     assert missing.value.path == "selection"
 
@@ -678,7 +676,7 @@ def test_invalid_draft_falls_back_to_active_without_fake_preview(copied_root, tm
         config_root=copied_root, draft_root=tmp_path / "drafts")
     _, index, _ = service.active()
     draft = service.create_draft(
-        target_key="predicate|derived_from@1",
+        target_key="predicate|derived_from",
         base_snapshot_hash=index.snapshot_hash)
     saved = service.save_draft(
         draft["draft_id"], expected_revision=0,
@@ -687,7 +685,7 @@ def test_invalid_draft_falls_back_to_active_without_fake_preview(copied_root, tm
     assert saved["preview_valid"] is False
     view = service.view(
         draft_id=draft["draft_id"], revision=1,
-        selection="predicate|derived_from@1", view_mode="draft_preview")
+        selection="predicate|derived_from", view_mode="draft_preview")
     assert view["context_token"] == f"active:{index.snapshot_hash}"
     assert view["view_context"]["mode"] == "active_fallback"
     assert view["view_context"]["preview_snapshot_hash"] is None
@@ -699,7 +697,7 @@ def test_stale_draft_is_labeled_stale_in_active_fallback(copied_root, tmp_path):
         config_root=copied_root, draft_root=tmp_path / "drafts")
     _, index, _ = service.active()
     draft = service.create_draft(
-        target_key="predicate|derived_from@1",
+        target_key="predicate|derived_from",
         base_snapshot_hash=index.snapshot_hash)
     record_path = service.draft_store._record_path(draft["draft_id"])
     record = json.loads(record_path.read_text(encoding="utf-8"))
@@ -708,7 +706,7 @@ def test_stale_draft_is_labeled_stale_in_active_fallback(copied_root, tmp_path):
 
     view = service.view(
         draft_id=draft["draft_id"], revision=0,
-        selection="predicate|derived_from@1", view_mode="draft_preview")
+        selection="predicate|derived_from", view_mode="draft_preview")
 
     assert view["view_context"]["mode"] == "active_fallback"
     assert view["view_context"]["fallback_reason"] == "stale_draft"
@@ -720,7 +718,7 @@ def test_changed_target_is_labeled_conflict_not_plain_stale(copied_root, tmp_pat
         config_root=copied_root, draft_root=tmp_path / "drafts")
     _, index, _ = service.active()
     draft = service.create_draft(
-        target_key="predicate|derived_from@1", base_snapshot_hash=index.snapshot_hash)
+        target_key="predicate|derived_from", base_snapshot_hash=index.snapshot_hash)
     record_path = service.draft_store._record_path(draft["draft_id"])
     record = json.loads(record_path.read_text(encoding="utf-8"))
     record["base_snapshot_hash"] = "0" * 64
@@ -729,7 +727,7 @@ def test_changed_target_is_labeled_conflict_not_plain_stale(copied_root, tmp_pat
 
     view = service.view(
         draft_id=draft["draft_id"], revision=0,
-        selection="predicate|derived_from@1", view_mode="draft_preview")
+        selection="predicate|derived_from", view_mode="draft_preview")
     assert view["view_context"]["mode"] == "active_fallback"
     assert view["view_context"]["fallback_reason"] == "conflict_draft"
     assert view["draft"]["lifecycle_status"] == "conflict"
@@ -740,7 +738,7 @@ def test_review_revision_is_immutable(copied_root, tmp_path):
         config_root=copied_root, draft_root=tmp_path / "drafts")
     _, index, _ = service.active()
     draft = service.create_draft(
-        target_key="predicate|derived_from@1",
+        target_key="predicate|derived_from",
         base_snapshot_hash=index.snapshot_hash)
     saved = service.save_draft(
         draft["draft_id"], expected_revision=0,
@@ -780,7 +778,7 @@ def test_activation_is_cas_atomic_and_matches_reviewed_preview(
         })
     _, index, _ = service.active()
     draft = service.create_draft(
-        target_key="predicate|derived_from@1",
+        target_key="predicate|derived_from",
         base_snapshot_hash=index.snapshot_hash)
     raw = dict(draft["raw"])
     raw["object"] = dict(raw["object"])
@@ -835,7 +833,7 @@ def test_a_refused_convergence_still_keeps_what_was_written(
     active_path = copied_root / "ledger_config.json"
     before = active_path.read_bytes()
     draft = service.create_draft(
-        target_key="predicate|derived_from@1", base_snapshot_hash=index.snapshot_hash)
+        target_key="predicate|derived_from", base_snapshot_hash=index.snapshot_hash)
     raw = json.loads(json.dumps(draft["raw"]))
     raw["object"]["qualifiers"]["optional"] = ["reason"]
     service.save_draft(
@@ -848,7 +846,7 @@ def test_a_refused_convergence_still_keeps_what_was_written(
     assert refused.value.code == expected_code
     assert active_path.read_bytes() != before
     kept = json.loads(active_path.read_text(encoding="utf-8"))
-    assert kept["vocabulary"]["derived_from@1"]["object"]["qualifiers"]["optional"] == [
+    assert kept["vocabulary"]["derived_from"]["object"]["qualifiers"]["optional"] == [
         "reason"]
 
 
@@ -864,10 +862,10 @@ def test_api_returns_structured_context_and_strict_draft_contract(copied_root, t
 
     view = client.get(
         "/admin/ontology-explorer/view",
-        params={"selection": "predicate|slot_map@1"}).json()
+        params={"selection": "predicate|slot_map"}).json()
     assert view["context_token"].startswith("active:")
     created = client.post("/admin/ontology-explorer/drafts", json={
-        "target_key": "predicate|slot_map@1",
+        "target_key": "predicate|slot_map",
         "base_snapshot_hash": view["snapshot_hash"],
     })
     assert created.status_code == 200
@@ -995,11 +993,11 @@ def test_an_already_dangling_inbound_edge_does_not_make_a_declaration_undeletabl
         builder = _IndexBuilder("a" * 64, "b" * 64)
         source = builder.add_node(
             "mapping", "source@1", {}, {}, ("source",),
-            config_file="ledger_config.json", json_pointer="/source", version=1)
+            config_file="ledger_config.json", json_pointer="/source")
         builder.add_node(
             "entity", "Target@1", {"keys": ["id"]}, {"keys": ["id"]},
             ("entities", "Target@1"), config_file="ledger_config.json",
-            json_pointer="/entities/Target@1", version=1)
+            json_pointer="/entities/Target@1")
         builder.add_edge(
             source, "Target@1", "entity", "subject", "/ref/subject", status=status)
         return builder.finish()
@@ -1553,7 +1551,7 @@ def test_the_screen_can_author_a_declaration_that_does_not_exist_yet(
     # The creatable kind was `pack` until 2026-08-21, when the section went.  What this
     # test needs is any kind in `AUTHORABLE_SECTIONS` the fixture does not already declare
     # under that name; `predicate` is the one that took the pack's place in that map.
-    assert node_key("predicate", "brand-new@1") not in index.nodes, (
+    assert node_key("predicate", "brand-new") not in index.nodes, (
         "fixture must not have it")
 
     made = client.post("/admin/ontology-explorer/drafts/new", json={
@@ -1561,13 +1559,13 @@ def test_the_screen_can_author_a_declaration_that_does_not_exist_yet(
         "base_snapshot_hash": snapshot})
     assert made.status_code == 200, made.text
     draft = made.json()
-    assert draft["target_key"] == "predicate|brand-new@1"
+    assert draft["target_key"] == "predicate|brand-new"
     assert draft["creates_declaration"] is True
 
     # 🔴 The path has to reach the wire. `public()` is a WHITELIST, so a field added to the
     # record is invisible until it is named there -- and invisible reads to the screen as
     # absent, not as missing. Measured: the first version answered `null` here.
-    assert draft["target_bundle_path"] == ["vocabulary", "brand-new@1"], (
+    assert draft["target_bundle_path"] == ["vocabulary", "brand-new"], (
         "the draft must know where it will be written, and say so")
 
     # It lands in the real bundle at that path: saving an EMPTY predicate must be refused
@@ -1576,7 +1574,7 @@ def test_the_screen_can_author_a_declaration_that_does_not_exist_yet(
         "expected_revision": 0, "raw": "{}"})
     assert saved.status_code == 200, saved.text
     errors = saved.json()["validation_errors"]
-    assert any("brand-new@1" in str(item.get("path", "")) for item in errors), (
+    assert any("brand-new" in str(item.get("path", "")) for item in errors), (
         f"the refusal must name the new declaration; got {errors}")
 
 
@@ -1755,8 +1753,8 @@ def test_deletion_preview_names_the_declaration_that_stops_being_read(
     out does not stop being read, and since the unread list holds what the loader left
     out, the preview no longer names it - so the pair is taken from a planned source.
     """
-    document = json.loads(
-        (copied_root / "ledger_config.json").read_text(encoding="utf-8"))
+    document = fold_versions(json.loads(
+        (copied_root / "ledger_config.json").read_text(encoding="utf-8")))
     service = OntologyExplorerService(
         config_root=copied_root, draft_root=tmp_path / "drafts")
     setup, _, _ = service.active()
@@ -2172,7 +2170,8 @@ def test_a_branch_starts_from_a_base_that_has_a_refused_source(
     def read(root):
         return json.loads((root / "ledger_config.json").read_text(encoding="utf-8"))
 
-    assert read(branch) == read(shipped_root_with_a_refused_source), "the base, as written"
+    assert read(branch) == fold_versions(read(shipped_root_with_a_refused_source)), (
+        "the base, as written - its names spelled bare (4eb1fe98f)")
     assert f"source_plan|{REFUSED_SOURCE}" in setup.left_out, "left out by name, as in the base"
     assert draft["draft_id"]
 
@@ -2299,7 +2298,7 @@ def test_the_whole_walk_works_on_a_freshly_bootstrapped_config(tmp_path):
     made = client.post(f"{base}/drafts/new", json={
         "kind": "entity", "canonical_id": "DTJob@1", "base_snapshot_hash": snapshot})
     assert made.status_code == 200, f"creating into a skeleton must work: {made.text}"
-    assert made.json()["target_bundle_path"] == ["entities", "DTJob@1"]
+    assert made.json()["target_bundle_path"] == ["entities", "DTJob"]
 
     # 🔴 AND THE STEP AFTER THE CREATE, which is where the walk broke next. The client
     # re-reads the mirror as soon as a create succeeds. Asking for the declaration it just

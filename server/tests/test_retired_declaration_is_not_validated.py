@@ -180,7 +180,7 @@ def test_an_active_entity_may_not():
     errors = validate_bundle_errors(
         entity_bundle_pointing_at_a_deleted_type(status="active"))
     assert errors, "an active entity referencing an undeclared type must be refused"
-    assert all(error.path.startswith("bundle.entities.RetiredEntity@1.references")
+    assert all(error.path.startswith("bundle.entities.RetiredEntity.references")
                for error in errors), errors
 
 
