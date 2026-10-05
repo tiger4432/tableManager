@@ -273,12 +273,12 @@ export const BOARD = Object.freeze({
       // 🔴 C-90 ②. 접는 것은 «서버»이고(S-146), 무엇을 어떻게 접을지는 «좌석»이 선언합니다.
       //    읽는 코드(`trendFromWalk`)에 도메인 낱말이 «하나도» 없는 것이 이 세 줄의 값입니다 --
       //    이 좌석은 이미 `follow` 와 `start.groupby` 로 그 낱말들을 들고 있었습니다.
-      // ⚠️ 이름은 «선언된 철자»입니다(`inspected@1`): 무리 값은 노드가 든 `predicates[].count`
-      //    에서 오고 그 목록은 선언의 철자를 씁니다 (WALK.md 「이름 찾기」, S-146-c).
+      // ⚠️ 이름은 맨이름입니다: 무리 값은 노드가 든 `predicates[].count` 에서 오고, 서버가 그 이름을 맨이름으로
+      //    내며(f34f16892) 이름을 그대로 견줍니다 — `inspected@1` 로 물으면 값이 비어 옵니다 (WALK.md 「이름 찾기」).
       group_by: 'wafer',
-      measure: ['sum:inspected@1', 'sum:observed@1'],
+      measure: ['sum:inspected', 'sum:observed'],
       // 비율의 분자·분모. 나누는 것은 «화면»의 일입니다 — 서버는 접는 규칙을 지어내지 않습니다.
-      ratio: { found: 'sum:observed@1', of: 'sum:inspected@1' },
+      ratio: { found: 'sum:observed', of: 'sum:inspected' },
       // Y 축 알약이 고를 수 있는 «종류»가 어느 타입의 어느 키에 사는지. 이것도 선언입니다.
       kinds: { type: 'defect_kind', key: 'defect_kind' },
       // 🔴 방향을 «선언»합니다 (라운드 ⓪, 2026-08-29). 서버 기본 `both` 는 이 씨앗에서
@@ -369,12 +369,12 @@ export const BOARD = Object.freeze({
       // 🔴 C-90 ②. 접는 것은 «서버»이고(S-146), 무엇을 어떻게 접을지는 «좌석»이 선언합니다.
       //    읽는 코드(`trendFromWalk`)에 도메인 낱말이 «하나도» 없는 것이 이 세 줄의 값입니다 --
       //    이 좌석은 이미 `follow` 와 `start.groupby` 로 그 낱말들을 들고 있었습니다.
-      // ⚠️ 이름은 «선언된 철자»입니다(`inspected@1`): 무리 값은 노드가 든 `predicates[].count`
-      //    에서 오고 그 목록은 선언의 철자를 씁니다 (WALK.md 「이름 찾기」, S-146-c).
+      // ⚠️ 이름은 맨이름입니다: 무리 값은 노드가 든 `predicates[].count` 에서 오고, 서버가 그 이름을 맨이름으로
+      //    내며(f34f16892) 이름을 그대로 견줍니다 — `inspected@1` 로 물으면 값이 비어 옵니다 (WALK.md 「이름 찾기」).
       group_by: 'wafer',
-      measure: ['sum:inspected@1', 'sum:observed@1'],
+      measure: ['sum:inspected', 'sum:observed'],
       // 비율의 분자·분모. 나누는 것은 «화면»의 일입니다 — 서버는 접는 규칙을 지어내지 않습니다.
-      ratio: { found: 'sum:observed@1', of: 'sum:inspected@1' },
+      ratio: { found: 'sum:observed', of: 'sum:inspected' },
       // Y 축 알약이 고를 수 있는 «종류»가 어느 타입의 어느 키에 사는지. 이것도 선언입니다.
       kinds: { type: 'defect_kind', key: 'defect_kind' },
       // 🔴 방향을 «선언»합니다 (라운드 ⓪, 2026-08-29). 서버 기본 `both` 는 이 씨앗에서
