@@ -391,6 +391,8 @@ GET /api/ledger/subgraph?…&group_by=<type|값 이름>&measure=<일곱 중 하�
 measure     «여러 번» 줄 수 있습니다 — 각각이 value 의 키가 됩니다 (같은 걷기·같은 예산)
 이름 찾기    attributes → qualifiers → «노드가 든 predicates[].count»  (S-146-c, 판정 336)
            🔴 그래서 `sum:<술어 id>` = 「이 무리의 노드들이 든 그 술어의 claim 수」입니다 —
+              🆕 10-06 이름은 맨이름(`sum:inspected`). 옛 `sum:inspected@1` 은 접히지도 거절되지도 않고 값이 빈다
+              (`f34f16892` 뒤 노드의 predicates 이름이 맨이름 · R&D 보드 추세 좌석이 그렇게 비었다 `6d938a2ef`)
               비율 축의 분자·분모가 «둘 다 노드 쪽 사실»이라 엣지를 다시 걸 필요가 없습니다
            ⛔ 두 출처가 같은 이름에 답하면 «거절»(`ambiguous_value_name`) — 한쪽을 고르면
               그 선택이 답을 정합니다. 순서는 응답의 `value_sources` 가 말합니다
