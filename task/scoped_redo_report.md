@@ -72284,3 +72284,30 @@ PG 전체        3 failed, 286 passed, 7820 deselected, 262 warnings in 1440.52s
 ```
 맨이름으로 한 번 저장된 뒤 이 커밋을 되돌리면 옛 코드가 맨이름을 거절 — 파일 옆 backup 폴더의 저장 직전 파일을 같이 돌려놓기 (RUN.md 같은 절)
 ```
+
+---
+
+## [10-06] 총괄 3e8b6171f — ① 착지 9ea93f6fd · ② 재 보니 목록 라우트는 이미 영수증 전부를 싣는다 (짓지 않음, 물음)
+
+어느 DB · 어느 스키마 · 지운 것 — PG assy_test 시험 스크래치 스키마만(재기는 시험 고정틀의 자기 스키마, 잴 때만 둔 탐침 파일은 지움) · 지운 것 0
+
+**① census_names 의 옛 칸**
+```
+CENSUS_NAMES["not_yet"] = CENSUS_NAMES["difference"] — 같은 수(표 행 − 색인 행)의 옛 이름, 다음 틱이 다시 찍을 때까지
+변이 1       옛 칸 이름표를 뺌 RED
+sqlite 전체    5 failed, 7772 passed, 330 skipped, 3 xfailed, 13014 warnings in 865.08s (0:14:25) — 박스 사유 밖: 없음
+```
+**② 변경 이력 목록 — 짓지 않음**
+```
+잰 것: 고친 행 하나를 켜진 세상 둘이 따라간 트랜잭션 — audit 줄 3 (recipe_id · ledger_batch · ledger_batch)
+  목록 라우트가 읽는 투영(audit_cache)의 그 그룹
+    처음 읽을 때        total_count 3 · logs 3 (ledger_batch · ledger_batch · recipe_id)
+    읽은 뒤 영수증이 다른 프로세스에서 들어와 합칠 때  total_count 3 · logs 3 (ledger_batch · ledger_batch · recipe_id)
+  -> 라우트는 그룹의 로그를 «전부»(그룹당 상한은 설정 recent_logs_per_group) 싣고, 영수증마다 new_value.world 가 있다
+클라 timeline.js 는 group.logs 가 «모두» ledger_batch 일 때만 「📒 Ledger batch N」 으로 접는다 — 위 그룹이면 그 갈래를 안 탄다
+```
+**여쭐 것**
+```
+화면의 「Ledger batch 3 · LEDGER」 가 어느 데이터에서 나왔는지(박스 그룹인지, 클라 시험 고정틀인지) — 서버가 첫 로그만 싣는 길을 저는 못 찾았습니다.
+박스 그룹이면 그 트랜잭션 id 를 주시면 그 그룹을 읽기 전용으로 열어 보겠습니다
+```

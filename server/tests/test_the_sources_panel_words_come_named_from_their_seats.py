@@ -74,6 +74,12 @@ def test_the_census_refusal_code_is_one_the_names_table_knows():
     assert backfill._loader_refusal(_Refused())["refused"] in backfill.CENSUS_NAMES
 
 
+def test_an_old_record_s_difference_is_named_as_the_difference():
+    """총괄 3e8b6171f ①: a record stamped before the census split calls the difference `not_yet`
+    until the next tick re-stamps it - the panel draws it by this table, not as a bare key."""
+    assert backfill.CENSUS_NAMES.get("not_yet") == backfill.CENSUS_NAMES["difference"]
+
+
 @pytest.mark.parametrize("table", ["census", "reasons"])
 def test_every_name_is_english_and_not_blank(table):
     names = backfill.CENSUS_NAMES if table == "census" else gate.REFUSAL_REASON_NAMES

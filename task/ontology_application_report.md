@@ -35886,3 +35886,39 @@ f36723a70  worldList 는 글자만 거른다 — /tables 의 worlds 는 schema.w
 내 일     그 착지 때 WALK.md §4 · CODE_MAP ledger_subgraph · LEDGER_GUIDE 4.9 의 「만난 순」·「세상 이름순」 두 줄을 고른 순서로
 메시지    내 상설이 「send_message 안 씀」이라 물음은 이 채널에만 둔다 — 메시지로도 받으시려면 소유자께서 그 상설을 바꿔 주셔야 한다
 ```
+
+---
+
+## [C 응용] 10-06 f34f16892(이름에서 @N 은퇴 · 세상마다 고른 순서) QA · 문서 838bafd89 — 결함 없음, 물음 하나
+
+```
+시험     떼어 둔 트리 /c/wt-app @f34f16892
+         sqlite (no_version · walk_node_shape 계약 · gaps · 탐색기 · setup_registry · setup_bundle) : 219 passed, 3 skipped, 6 warnings in 10.19s
+         pg -k no_version·independent_and_meet·node_shape : 14 passed, 8061 deselected, 47 warnings, 5 errors in 169.70s (0:02:49)
+문서     838bafd89 — «지금 @N 으로 답한다»는 현재형 줄만: CODE_MAP(SPEC_EXCLUDED · gap 이름 · /declaration subjects · versioned_sections ⚰️ ·
+         ledger_subgraph 비교 줄 · derive.js bareName 사유 · _in_picked_order) · backend.md subjects · WALK.md(세상 줄 고른 순서 · §6 「씨앗 철자」 를 닫힘으로) ·
+         LEDGER_GUIDE 4.9 순서 · SERVER_DEFECT_QUEUE C-25 「원인 사라짐」(닫기는 총괄)
+```
+
+**여쭐 것 — 예시가 아직 옛 철자 `x@1` 로 적혀 있다 (틀린 줄은 아니다 — 읽을 때 접힌다)**
+```
+선언된 이름의 @N 표기  218 개 · 파일 19 (살아 있는 문서, 샘플 선언 둘의 vocabulary · entities 이름만 셈 — declarative-role@1 같은 매퍼 이름 34 개는 뺌)
+  spec/APPLICATION_GAP_SPEC.md 43 · guide/config/ledger_declaration_by_example.md 27 · architecture/CODE_MAP.md 24 · guide/ledger/PRIMER.md 21 · spec/LEDGER_EVIDENCE_SUBGRAPH_SPEC.md 20 · guide/ONTOLOGY_LEDGER_SETUP.md 17 · spec/LEDGER_TECHNICAL_SPEC.md 14 · process/SERVER_DEFECT_QUEUE.md 11 · architecture/LEDGER_SCHEMA_COMPLETENESS.md 8 · architecture/WALK.md 7 · spec/ONTOLOGY_GRAPH_SPEC.md 6 · spec/RND_ONTOLOGY_REFERENT_MODEL.md 6 · architecture/BASIS.md 3 · architecture/PRIMITIVES.md 3 · spec/TREND_DECLARATION_GUIDE.md 3 · README.md 2 · architecture/LEDGER_FRAME_CHAIN_MAPPER.md 1 · architecture/backend.md 1 · spec/RND_ONTOLOGY_USE_CASES.md 1
+성질      운영자가 예시대로 적으면 돈다 — 다만 저장하면 파일이 맨이름으로 다시 쓰여 예시와 파일이 달라진다
+안        운영자 안내서(ONTOLOGY_LEDGER_SETUP · config/ledger_declaration_by_example · ledger/PRIMER · LEDGER_GUIDE)의 예시만 맨이름으로, 줄마다 읽고.
+          날짜 붙은 기록 줄(「09-10 출하 선언은 lot_slot@1 …」)과 스펙의 옛 기록은 그대로
+크기      안 쟀다(줄마다 판단). 지시가 있으면 한다
+```
+
+**코드 주석 — 「선언이 버전을 붙인다」 가 남은 줄 (구현자 몫, 지나는 김에)**
+```
+git grep -n -E "<아래 낱말들>" -- server/*.py ':!server/tests'
+  server/ledger/roleframe.py:1638:    #: (versioned entity type, keys, the row naming it, that row's source rows) - what the
+  server/ledger/setup_bundle.py:2008:    versioned vocabulary id, not a `<pack>/<claim>` pair, so the pattern that parsed one
+  server/ledger/setup_registry.py:745:    Keys are matched as well as values because an entity id is a versioned name
+  server/ledger/trace_router.py:456:    only authority, bare names because the declaration versions its ids, and a second
+  server/ledger/trace_router.py:520:    Bare names, because the declaration versions its ids (`defect_kind@1`) and a projected
+  server/ledger/trace_router.py:1034:    # anyone who needs it; nobody has to look. `subjects` stays VERSIONED (`die@1`) because
+  server/ledger_api/ledger_subgraph.py:1729:    # declaration is keyed with its version (`wafer@1`), so looking the node up in the
+  server/ledger_api/ledger_subgraph.py:1950:    # names because the declaration versions its ids (`defect_kind@1`) and a projected node
+```

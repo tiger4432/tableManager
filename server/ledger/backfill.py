@@ -1169,6 +1169,9 @@ CENSUS_NAMES = {
     "rows_gone": "Gone, atoms remain",
     "rows_unprinted": "Not yet printed",
 }
+#: A record stamped before 5e41fa599 calls the difference `not_yet` until the next tick re-stamps it;
+#: the panel draws this table's names, so the old key keeps the same figure's name (총괄 3e8b6171f ①).
+CENSUS_NAMES["not_yet"] = CENSUS_NAMES["difference"]
 
 #: The boxes only a person's census counts - both are scans (S-122). A paced tick that does not
 #: count them carries the last person's count forward with its own `measured_at` (총괄 5baab7b8d):
