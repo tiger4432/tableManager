@@ -119,6 +119,7 @@ nodes        {id, type, label, keys, attributes}    🔵 type 이 «도메인 �
              — 두 세상이 다른 값이면 충돌 하나. `many` 인지는 합친 선언(먼저 고른 세상)이 답한다
              계약 `contracts/walk_node_shape` 가 이 칸을 든다(10-04 `e71cde056`, 경우 5) — 서버(`test_walk_node_shape_contract.py`,
              그날 신설 — 전엔 클라만 채점)와 클라 하니스가 같은 벡터로
+             클라 사실 상자는 속성 줄 밑에 세상마다 한 줄(값 · 출처 · 시각) — 엣지의 세상 줄과 같은 함수, 세상 둘 이상일 때만(10-04 `4b2cbc9a5`)
 
 edges        {id, source, target, predicate, predicate_label, original_predicate, qualifiers,
               🔵 claim_id, basis, occurred_at, source_who, cardinality, not_current?, 🆕 worlds, by_world}
