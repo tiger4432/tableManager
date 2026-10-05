@@ -467,6 +467,29 @@ def test_k_only_a_table_that_has_row_id_is_asked_for_its_rows(monkeypatch):
     assert asked == ["k_rows"]
 
 
+def test_m_a_group_names_the_worlds_its_receipts_were_written_into(client, db_session, knobs):
+    """총괄 3e8b6171f ②: a group carries ONE representative log, so an edit followed in two
+    worlds read as three receipts on the screen. The receipts behind it are counted per world."""
+    from ledger.runtime_v2 import RECEIPT_COLUMN
+
+    seed(db_session, [("edit-tx", 1)])                       # the edited row's own log
+    for minute, said in ((5, {"world": "default"}), (6, {"world": "w2"}), (7, {})):
+        db_session.add(models.AuditLog(
+            table_name=TABLE, row_id="batch-%d" % minute, column_name=RECEIPT_COLUMN,
+            old_value=None, new_value={"rows": 1, **said}, source_name="ledger",
+            updated_by="ledger", transaction_id="edit-tx", timestamp=BASE + timedelta(minutes=minute)))
+    db_session.commit()
+    knobs(recent_max_scan_rows=10_000, recent_scan_chunk_rows=50)
+    audit_cache.audit_cache.__init__()
+
+    (group,) = [g for g in client.get("/audit_logs/recent?limit_groups=5").json()["groups"]
+                if g["transaction_id"] == "edit-tx"]
+    assert (len(group["logs"]), group["total_count"]) == (1, 4)    # canary: one representative
+    assert group["receipt_worlds"] == [{"world": "default", "receipts": 1},
+                                       {"world": "w2", "receipts": 1},
+                                       {"world": None, "receipts": 1}]
+
+
 def test_l_a_ledger_receipt_is_not_a_deleted_row(client, db_session, knobs):
     """총괄 218f907f5 — a receipt's `row_id` is its batch's id, so 「deleted row」 was false."""
     from ledger.runtime_v2 import RECEIPT_COLUMN

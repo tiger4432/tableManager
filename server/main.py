@@ -1517,11 +1517,19 @@ def _shape_recent_groups(db: Session, cache_groups, truncated, next_cursor,
         if is_deleted and not repr_log.business_key:
             repr_log.business_key = get_deleted_row_business_key(db, repr_log.table_name, repr_log.row_id)
                 
+        # the receipts behind the one representative, per world, in the order written (3e8b6171f ②)
+        receipts = {}
+        for l in reversed(logs):
+            if l.column_name == RECEIPT_COLUMN:
+                world = l.new_value.get("world") if isinstance(l.new_value, dict) else None
+                receipts[world] = receipts.get(world, 0) + 1
+
         groups.append({
             "transaction_id": g.get("transaction_id"),
             "total_count": g.get("total_count", len(logs)),
             "summary_columns": cols,
-            "logs": [repr_log] # 대표 로그 1건만 포함
+            "logs": [repr_log], # 대표 로그 1건만 포함
+            "receipt_worlds": [{"world": world, "receipts": n} for world, n in receipts.items()],
         })
     return {
         "groups": groups,
