@@ -108,8 +108,8 @@ const declarationFor = (vcase) => ([{
 const nodeFor = (vcase) => {
   const expect = vcase.expect || {};
   const node = { id: `ledger-entity:v1:${TYPE}:1`, type: TYPE, depth: 0, label: '1',
-    keys: { [IDENTITY_KEY]: '1' }, attribute_conflicts: expect.attribute_conflicts };
-  for (const key of ['attributes', 'attributes_by_world']) {
+    keys: { [IDENTITY_KEY]: '1' } };
+  for (const key of ['attributes', 'attribute_conflicts', 'attributes_by_world']) {
     if (Object.prototype.hasOwnProperty.call(expect, key)) node[key] = expect[key];
   }
   return node;
@@ -121,12 +121,14 @@ const ALL_NAMES = [...new Set(CASES.flatMap((c) => c.declared_attributes || []))
 // ══ ① THE FILE IS THE AUTHORITY, AND IT STILL SAYS WHAT IT SAID ═════════════════════════
 console.log('\n[1] the shared vectors');
 eq('A1 five shapes: the four an operator meets in one world, and two worlds saying a name apart', 5, CASES.length);
-// A map is an object, or absent where the walk did not reach the node (lead 0cde56e07).
-const mapOrAbsent = (v) => v === undefined || (v !== null && typeof v === 'object' && !Array.isArray(v));
-ok('A2 each case declares names, an expected count, and its two maps as objects or absent',
-  CASES.every((c) => Array.isArray(c.declared_attributes) && c.expect
-    && Number.isInteger(c.expect.attribute_conflicts)
-    && mapOrAbsent(c.expect.attributes) && mapOrAbsent(c.expect.attributes_by_world)));
+// The three are there, or all absent where the walk did not reach the node - as the server sends it (v3, lead 0cde56e07).
+const isMap = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
+const THREE = ['attributes', 'attribute_conflicts', 'attributes_by_world'];
+ok('A2 each case declares names; its map, count and each world\'s values are all there or all absent',
+  CASES.every((c) => Array.isArray(c.declared_attributes) && isMap(c.expect)
+    && (THREE.every((k) => c.expect[k] === undefined)
+      || (isMap(c.expect.attributes) && Number.isInteger(c.expect.attribute_conflicts)
+        && isMap(c.expect.attributes_by_world)))));
 ok('A3 identity stays keys-only — an attribute never makes a node new',
   (VECTORS.identity || {}).keys_only === true);
 // 🔴 The pair that decides the COUNT. If these two ever expected the same number the file
@@ -265,11 +267,10 @@ console.log('\n[5] each world\'s value, as the facts box holds it');
     eq(`F «${c.name}» holds each world's value as sent`, JSON.stringify(c.expect.attributes_by_world || {}),
       JSON.stringify(facts && facts.node.attributesByWorld));
   }
-  // 🔴 ABSENCE AS THE SERVER SENDS IT (lead 0cde56e07): the never-reached case with both maps left out - no
-  //    attribute value, no conflict, nothing in the facts box for any declared name. Built from the file's case.
+  // 🔴 ABSENCE AS THE SERVER SENDS IT (lead 0cde56e07): the never-reached case carries none of the three (v3) -
+  //    no attribute value, no conflict, nothing in the facts box for any declared name. The file's case, as it is.
   const never = CASES.find((c) => c.name === 'declared_but_not_reached');
-  const { attributes: _a, attributes_by_world: _w, ...bare } = never.expect;
-  const absent = { ...never, expect: bare };
+  const absent = never;
   const out = await readWalk(nodeFor(absent));
   const node = out.ok && out.nodes && out.nodes.length ? out.nodes[0] : null;
   const facts = node ? sg.nodeFacts(sg.subgraphLayout([{ results: [out] }], declarationFor(absent)), node.id) : null;
