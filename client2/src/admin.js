@@ -1135,10 +1135,6 @@ async function refreshChainRule(name, extra = {}) {
   // C-101 ③. 목록 «밖»의 줄들 — 서버가 그 칸들을 낼 때만 섭니다(S-223). 없으면 빈 배열이고
   // 패널은 아무것도 안 그립니다: 「못 읽음」을 「없음」으로 그리지 않는 자리입니다.
   chainRulePanel.setNotes(mapperNotes(mapperBody));
-  chainRulePanel.setLists({
-    ...(mappers === null ? {} : { mappers }),
-    ...(tables === null ? {} : { tables }),
-  });
   let body = null;
   let opts = { ...extra };
   // 🔴 C-101 ①. 이름을 «안 댄» 읽기는 «목록»입니다 — 30초 자동 갱신(:408)과 탭 전환이 그렇게
@@ -1156,6 +1152,13 @@ async function refreshChainRule(name, extra = {}) {
   } catch (e) {                                              // noqa
     opts.unavailable = fetchFailureLine(null, 'Rule registry read failed');
   }
+  // The `run_in` list rides on this answer, as the ledger's `occurred_at_basis` rides on its
+  // authoring answer: the skeleton's `list` names it. No list in the answer, nothing added.
+  chainRulePanel.setLists({
+    ...(mappers === null ? {} : { mappers }),
+    ...(tables === null ? {} : { tables }),
+    ...(body && Array.isArray(body.run_in) ? { run_in: body.run_in } : {}),
+  });
   const view = chainRulePanel.render(body, opts);
   const count = byId('chain-rule-editor-count');
   if (count) count.textContent = view.count;

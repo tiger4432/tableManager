@@ -1422,7 +1422,7 @@ const FLOORS = new Map([
   // 75 -> 76 (Q): a queue body with loop_seen_via null says 「not seen」.
   // 76 -> 83 (lead c6a8c069c: from on the wire, none for a new rule, a refused rename re-read by the name opened (E, G, R)).
   // 83 -> 87 (lead 43f4823dc: a rename answered in place - picked, one line, its note; rule_name_held in its own words).
-  ['chain_rule_user_path_harness.mjs', 87],
+  ['chain_rule_user_path_harness.mjs', 90],
   // New (lead a2c41fed3): the table registry walked through admin.js - + Add table opens a name box,
   // a paste, a save with no from; a picked table as today. The panel harness hands forNew directly.
   ['table_config_user_path_harness.mjs', 15],
