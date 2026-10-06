@@ -1,5 +1,17 @@
 # 지금 돌리면 되는 것
 
+> ## [10-06] **새 체크아웃 · main 트리 — client2 에서 npm ci 한 번 (총괄 10-06 · 걷기 그래프 Cytoscape 132d4c6ee 뒤) — 이주 «불필요» · 재기동 «불필요»**
+>
+> ```
+> 돌릴 것          cd client2 ; npm ci      (package-lock.json 그대로 설치)
+> 뜻             걷기 그래프가 cytoscape · cytoscape-dagre 를 import 한다. 설치 전에는 그것을 부르는 하니스가 ERR_MODULE_NOT_FOUND
+>                러너(check_harnesses.mjs)가 package.json 에 적혔는데 node_modules 에 없는 패키지를 이름으로 대고 이 명령을 낸다
+>                node_modules 가 있는데 빠졌으면 빨강(BLOCKING) · node_modules 가 아예 없으면 「이 트리에서 못 잼」
+> 급할 때          dist 는 커밋돼 있어 화면은 설치 없이 뜬다 — 설치가 필요한 것은 하니스와 빌드뿐
+> ```
+
+---
+
 > ## [10-06] **엔티티 label — 노드가 키 대신 선언한 이름으로 보인다 · 선언 초안의 «다시 도는 소스»가 지문으로 (총괄 03bc94b6b) — 이주 «불필요» · 재기동 «필요»(API)**
 >
 > ```

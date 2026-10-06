@@ -1914,6 +1914,14 @@ if (harnesses.length === 0) {
 // broken harness can climb through.
 const HAS_NODE_MODULES = existsSync(path.join(REPO_ROOT, 'client2', 'node_modules'));
 const UNRESOLVED_IMPORT_RE = /ERR_MODULE_NOT_FOUND|Cannot find package|Cannot find module/;
+// What package.json declares and this checkout has not installed (a tree made before cytoscape came, 10-06): the
+// blocking and unmeasured lines name them, because the fix is one command and the harness's own error does not say it.
+const PACKAGE = JSON.parse(readFileSync(path.join(REPO_ROOT, 'client2', 'package.json'), 'utf8'));
+const NOT_INSTALLED = Object.keys({ ...PACKAGE.dependencies, ...PACKAGE.devDependencies })
+  .filter(n => !existsSync(path.join(REPO_ROOT, 'client2', 'node_modules', n, 'package.json')));
+const INSTALL = NOT_INSTALLED.length > 0
+  ? `client2/node_modules lacks ${NOT_INSTALLED.join(', ')} (declared in client2/package.json): run \`npm ci\` once in client2. `
+  : '';
 
 const blocking = [];
 const unavailable = [];
@@ -2146,7 +2154,7 @@ if (blocking.length > 0) {
     process.stderr.write(b.run.stderr || '');
     if (b.run.error) console.error(String(b.run.error));
   }
-  fail(`${blocking.length} harness(es) that were green went red: `
+  fail(`${INSTALL}${blocking.length} harness(es) that were green went red: `
      + `${blocking.map(b => b.name).join(', ')}. Fix the code, or ― if the contract is what `
      + `changed ― take it to the Lead PM. Adding it to KNOWN_RED to get a green build is how `
      + `this directory went 14/15 unrun in the first place.`);
@@ -2158,7 +2166,7 @@ if (blocking.length > 0) {
 if (unavailable.length > 0) {
   console.log(`✓ every gated harness that COULD run in this tree is green ― but `
     + `${unavailable.length} was not measured here (${unavailable.join(', ')}). This is not a `
-    + `green build for those; run the gate in the main checkout before merging.\n`);
+    + `green build for those; run the gate in the main checkout before merging. ${INSTALL}\n`);
 } else {
   console.log(`✓ every gated harness is green.\n`);
 }
