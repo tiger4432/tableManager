@@ -25,6 +25,7 @@ import { loadWithProbe } from './lib/probe.mjs';
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, '..', '..');
 const SRC = join(HERE, '..', 'src', 'ontology_skeleton.js');
+const ABSENT = join(HERE, '..', 'src', 'absent.js');
 const CHAIN_FILE = join(ROOT, 'server', 'chain_skeleton.json');
 
 let pass = 0, quiet = false;
@@ -37,10 +38,12 @@ const show = (v) => (v === null || v === undefined ? String(v) : JSON.stringify(
 
 const CHAIN = JSON.parse(readFileSync(CHAIN_FILE, 'utf8'));
 const LEDGER = JSON.parse(readFileSync(join(ROOT, 'server', 'ledger', 'ledger_skeleton.json'), 'utf8'));
-// The entity binding's type as the implementer spelled it for lead 068c904a6 ② (10-06).
-const SPELLED = { kind: 'oneOf', hint: 'choice', pick: 'shape',
+// The entity binding's type as the implementer spelled it for lead 068c904a6 ② (10-06). Made
+// fresh for every run: a mutant that hands out the skeleton's own empty would otherwise let S5's
+// edit outlive that run and redden the runs after it.
+const spelled = () => ({ kind: 'oneOf', hint: 'choice', pick: 'shape',
   branches: { name: { kind: 'leaf', hint: 'ref', section: 'entities' }, column: { use: 'entity_type_column' } },
-  empty: { name: '', column: { kind: 'column', column: '' } } };
+  empty: { name: '', column: { kind: 'column', column: '' } } });
 
 // ── the nesting fixture ─────────────────────────────────────────────────────────────────
 // A oneOf under a oneOf, one branch of which is a `{use}` -- the shipped grammar allows both
@@ -186,6 +189,7 @@ function suite(M) {
   // until that lands the shipped node is the name leaf, so the spelling is put in here.
   {
     const LDEFS = LEDGER.defs;
+    const SPELLED = spelled();
     const BINDING = { ...LDEFS.binding, fields: LDEFS.binding.fields.map(
       (f) => (f.key === 'entity_type' ? { ...f, node: SPELLED } : f)) };
     const COL = { kind: 'column', column: 'type_col' };
@@ -268,11 +272,10 @@ const DEFECTS = [
   ['required inside the picked branch is named under the branch key',
     (s) => s.replace('      return picked ? missingRequired(branches[picked], held, defs, at) : out;',
                      '      return picked ? missingRequired(branches[picked], held, defs, `${at}.${picked}`) : out;')],
-  ['a blank is never blank, so the window saves a declaration that cannot run',
-    (s) => s.replace('function isBlank(value) {', 'function isBlank(value) {\n  return false;')],
-  ['an empty record counts as filled, so `into: {}` passes the gate that exists for it',
-    (s) => s.replace("  if (typeof value === 'object') return Object.keys(value).length === 0;",
-                     '')],
+  // The blank rule lives in absent.js now: mutated there and handed to this module through the
+  // probe's stub of its import. (An empty record counting as filled is blank_rule's own mutant.)
+  ['a blank is never blank, so the window saves a declaration that cannot run', null,
+    (s) => s.replace('export function isBlank(value) {', 'export function isBlank(value) {\n  return false;')],
   ['a required cell is only looked for at the top, so `on.table` is never asked for',
     (s) => s.replace('      for (const deeper of missingRequired(field.node, value, defs, path)) out.push(deeper);',
                      '')],
@@ -288,9 +291,14 @@ if (process.argv.includes('--mutate')) {
   quiet = true;
   let caught = 0; const wrong = [];
   console.log('\n-- defect mutants (each must be CAUGHT) ------------------------------');
-  for (const [name, mutate] of DEFECTS) {
+  for (const [name, mutate, absentMutate] of DEFECTS) {
     let r;
-    try { r = suite((await loadWithProbe(SRC, { mutate, tag: 'oneofd' })).module); }
+    try {
+      const stubs = absentMutate ? { './absent.js': { isBlank:
+        (await loadWithProbe(ABSENT, { mutate: absentMutate, tag: 'oneofa' })).module.isBlank } } : null;
+      r = suite((await loadWithProbe(SRC, { ...(mutate ? { mutate } : {}), ...(stubs ? { stubs } : {}),
+        tag: 'oneofd' })).module);
+    }
     catch (e) {
       if (/did not mutate|unchanged/.test(String(e && e.message))) {
         quiet = false; console.error(`  anchor GONE: ${name} — ${e.message}`); process.exit(2);
