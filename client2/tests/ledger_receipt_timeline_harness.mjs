@@ -204,7 +204,7 @@ console.log('\n[7] the list\'s group: one representative log, the kind from the 
   state.tableList = { tables: [], worlds: ['default'], operating: 'default' };
   const one = createGlobalTimelineItemDom(group).innerHTML;
   state.tableList = saved;
-  // The representative is the transaction's first log that is not a receipt (server, lead 9cdbda108 proposal).
+  // The representative is the transaction's first log that is not a receipt (server, lead a40ec0283).
   ok('CANARY: the list carried one log of three, the edit rather than a receipt, and named two worlds',
     c.logs.length === 1 && c.total_count === 3 && c.logs[0].column_name !== LEDGER_BATCH_COLUMN
       && c.summary_columns.includes(LEDGER_BATCH_COLUMN) && written.length === 2,
@@ -213,6 +213,8 @@ console.log('\n[7] the list\'s group: one representative log, the kind from the 
     !/kind-ledger">LEDGER</.test(many) && /kind-batch">BATCH</.test(many), many.slice(0, 300));
   ok('W1 two worlds on the install: the row says the worlds its receipts were written into, in that order',
     many.includes(`Ledger · ${written.join(' · ')}`), many);
+  ok('W5 ...and the edit\'s old value does not stand before that line - it was never the line\'s old value',
+    !many.includes('val-old') && !many.includes(String(c.logs[0].old_value)), many);
   ok('W2 one world on the install: no worlds line - the edit the row carries, old to new',
     !one.includes('Ledger · ') && !one.includes('atoms_written')
       && one.includes(String(c.logs[0].old_value)) && one.includes(String(c.logs[0].new_value)), one);
@@ -220,6 +222,13 @@ console.log('\n[7] the list\'s group: one representative log, the kind from the 
     `Ledger · default ×3 · ${ABSENT}`,
     T.receiptWorldsLine({ receipt_worlds: [{ world: 'default', receipts: 3 }, { world: null, receipts: 1 }] },
       ['default', 'w1']));
+  // A world whose translation failed says so on the line (server: receipt_worlds[].failed, lead a40ec0283).
+  const f = VECTORS.cases.recent_group_one_world_failed;
+  const failedIn = f.receipt_worlds.filter((row) => row.failed > 0);
+  const failedLine = T.receiptWorldsLine(f, ['default', ...f.receipt_worlds.map((row) => row.world)]);
+  ok('W4 two worlds, one failed: that world carries its failed count, the other none',
+    failedIn.length === 1 && failedLine.includes(`${failedIn[0].world} (${failedIn[0].failed} failed)`)
+      && (failedLine.match(/failed\)/g) || []).length === 1, failedLine);
 }
 
 console.log('\n[6] the value cell is read at the panel\'s width (lead 3e8b6171f) - the stylesheet is the subject');

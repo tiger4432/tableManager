@@ -347,7 +347,8 @@ export function receiptWorldsLine(group, worlds) {
   const rows = Array.isArray(group && group.receipt_worlds) ? group.receipt_worlds : [];
   if (!rows.length || worldList(worlds).length < 2) return '';
   return ['Ledger', ...rows.map((row) => `${row.world == null ? ABSENT : row.world}`
-    + `${row.receipts > 1 ? ` ×${row.receipts}` : ''}`)].join(' · ');
+    + `${row.receipts > 1 ? ` ×${row.receipts}` : ''}`
+    + `${row.failed > 0 ? ` (${row.failed} failed)` : ''}`)].join(' · ');
 }
 
 function auditKind(group, baseLog, isSummary) {
@@ -503,7 +504,10 @@ export function createGlobalTimelineItemDom(group) {
     || (baseLog.column_name === LEDGER_BATCH_COLUMN ? ledgerReceiptLine(baseLog.new_value, installWorlds) : '');
   // △소유자: 「변경이력 문구에서 맨앞에 ., -, -> 빼줘」. A row that CREATED a value has no
   // 「from」, so a dash and an arrow in front of it are punctuation standing in for nothing.
-  const hadOldValue = baseLog.old_value !== null && baseLog.old_value !== undefined && baseLog.old_value !== '';
+  // An old value belongs to its own log's new value: where the receipt line stands instead, no arrow
+  // (the folded row's log is the person's edit since 67f156c11 - 「RCP-1 → Ledger · …」 was false).
+  const hadOldValue = !receiptLine
+    && baseLog.old_value !== null && baseLog.old_value !== undefined && baseLog.old_value !== '';
   // `toLocaleTimeString()` writes 「오후 11:31:31」 in this locale, which does not fit 58px and
   // wrapped the cell to two lines. The mockup's `09:31:12` is what a scan needs: fixed width,
   // no marker to read past. Built from the parts rather than a locale option so the width is
