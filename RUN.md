@@ -9,6 +9,7 @@
 >                node_modules 가 있는데 빠졌으면 빨강(BLOCKING) · node_modules 가 아예 없으면 「이 트리에서 못 잼」
 >                빌드는 devDependency @dagrejs/dagre 도 읽는다(라이선스 파일) — 없으면 빌드가 그 이름을 대고 멈춘다
 > 급할 때          dist 는 커밋돼 있어 화면은 설치 없이 뜬다 — 설치가 필요한 것은 하니스와 빌드뿐
+>                미리보기 · dev 서버가 그 트리의 node_modules 로 떠 있으면 npm ci 가 EPERM 으로 멈추고 반쯤 지운다 — 그때는 npm install
 > ```
 
 ---
