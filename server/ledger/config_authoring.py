@@ -402,7 +402,11 @@ SKELETON_PATH = Path(__file__).parent / "ledger_skeleton.json"
 #: chain grammar has two 「pick one」 axes (`derive` of three kinds, `into` of two) and the
 #: vocabulary could not say so - `hint: choice` picks a VALUE, not a SHAPE. A form drawing
 #: that by hand would be a second author of the grammar.
-SKELETON_NODE_KINDS = ("record", "map", "leaf", "oneOf")
+#: `either` (총괄 7255b4918 ④): one value of several shapes told apart by the value's own form -
+#: a text for a leaf, an object for a record (`{of: [<node>, ...]}`). An entity binding's type
+#: is a declared name or `{kind: column, column}`; `oneOf` keys its branches by a name the
+#: value carries, and a name has no key to carry.
+SKELETON_NODE_KINDS = ("record", "map", "leaf", "oneOf", "either")
 
 
 @lru_cache(maxsize=1)
@@ -522,8 +526,8 @@ def empty_value(node: Any, defs: Mapping[str, Any],
             child = _deref(field.get("node"), defs, seen)
             if not isinstance(child, Mapping):
                 continue
-            if child.get("kind") == "leaf" and child.get("hint") != "flag":
-                continue
+            if child.get("kind") in ("leaf", "either") and child.get("hint") != "flag":
+                continue                 # an `either` starts unchosen, as a leaf does
             seeded[field["key"]] = empty_value(field.get("node"), defs, seen)
         return seeded
     return False if shape.get("hint") == "flag" else ""

@@ -18,6 +18,8 @@ from declaration_names import bare_name
 
 from .setup_bundle import (
     NOT_AN_EVENT_BASIS,
+    SUBJECT_ROLE,
+    TARGET_ROLE,
     DEFAULT_CARDINALITY,
     DEFAULT_LIFECYCLE,
     LedgerSetupBundle,
@@ -193,6 +195,12 @@ class PredicateDescriptor:
     #: then dropped before any reader could stand anywhere. `many` when absent, which
     #: is what every declaration on disk means today.
     cardinality: str = DEFAULT_CARDINALITY
+
+    def entity_types_of(self, role: str) -> tuple[str, ...]:
+        """The entity types this predicate admits in `role` - what a type read per row must be
+        one of (총괄 7255b4918 ④)."""
+        return {SUBJECT_ROLE: self.subject_entity_types,
+                TARGET_ROLE: self.object_entity_types}.get(role, ())
 
 
 @dataclass(frozen=True)
@@ -1027,6 +1035,8 @@ def with_source_attributes(bind: Mapping[str, Any],
             continue
         if isinstance(binding.get("attributes"), Mapping):
             continue                     # the role said it itself; the role wins
+        if not isinstance(binding.get("entity_type"), str):
+            continue                     # a type read per row inherits nothing (refused at load)
         inherited = (by_type.get(binding.get("entity_type")) or {}).get("attributes")
         if isinstance(inherited, Mapping) and inherited:
             out[role] = dict(binding, attributes=dict(inherited))

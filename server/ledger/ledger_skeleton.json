@@ -79,9 +79,17 @@
             "is": "entity"
           },
           "node": {
-            "kind": "leaf",
-            "hint": "ref",
-            "section": "entities"
+            "kind": "either",
+            "of": [
+              {
+                "kind": "leaf",
+                "hint": "ref",
+                "section": "entities"
+              },
+              {
+                "use": "entity_type_column"
+              }
+            ]
           }
         },
         {
@@ -98,6 +106,30 @@
             "of": {
               "use": "identity_binding"
             }
+          }
+        }
+      ]
+    },
+    "entity_type_column": {
+      "kind": "record",
+      "note": "An entity binding's type read from a column of each row - the row's value must be a type the predicate admits in that role, or that row is refused (type_not_admitted).",
+      "fields": [
+        {
+          "key": "kind",
+          "required": true,
+          "label": "Type from",
+          "node": {
+            "kind": "leaf",
+            "hint": "choice",
+            "list": "entity_type_binding_kinds"
+          }
+        },
+        {
+          "key": "column",
+          "required": true,
+          "node": {
+            "kind": "leaf",
+            "hint": "free"
           }
         }
       ]

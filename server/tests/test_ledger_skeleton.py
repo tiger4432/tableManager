@@ -75,6 +75,8 @@ ANCHORS = {
     ("_validate_bind_entities", "epath"): "sources.*.bind.entities.*",
     ("_validate_profile", "mpath"): "sources.*.bind.mappings.*",
     ("_validate_binding", "path"): "def:binding",
+    # 총괄 7255b4918 ④ - an entity binding's type read from a column
+    ("_validate_binding", "f'{path}.entity_type'"): "def:entity_type_column",
     ("_validate_sources", "path"): "sources.*",
     ("_validate_sources", "f'{path}.read'"): "sources.*.read",
     ("_validate_sources", "f'{path}.read.occurred_at'"):

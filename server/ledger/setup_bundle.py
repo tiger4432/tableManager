@@ -572,6 +572,9 @@ def public_bundle_schema() -> dict[str, Any]:
         # against each other by feeding every kind to the validator rather than trusting
         # this literal.
         "identity_binding_kinds": ["column", "constant"],
+        # what an entity binding's `entity_type` may be besides a declared name (총괄
+        # 7255b4918 ④) - the tuple `_validate_binding` judges with
+        "entity_type_binding_kinds": list(ENTITY_TYPE_BINDING_KINDS),
         # 🔴 THE WORDS THE CELL ACCEPTS, from the tuple the validator judges with
         # (S-144). Written here so the authoring form OFFERS them rather than
         # inviting free text into a closed set -- the same reason
@@ -835,6 +838,37 @@ def registering_sentences(source: Any) -> tuple[tuple[str, Mapping[str, Any]], .
             (mappings or {}).items() if isinstance(mappings, Mapping) else (), key=lambda p: str(p[0]))
         if isinstance(mapping, Mapping) and isinstance(mapping.get("predicate"), str)
         and bare_name(mapping["predicate"]) == REGISTER_PREDICATE)
+
+
+#: What an entity binding's `entity_type` may be besides a declared name: read per row.
+ENTITY_TYPE_BINDING_KINDS = ("column",)
+
+
+def entity_type_column(binding: Any) -> str | None:
+    """The column an entity binding reads its TYPE from per row, or None when it names the type
+    (총괄 7255b4918 ④: `entity_type` takes the binding shape - a string is the type,
+    `{kind: column, column}` reads it from the row)."""
+    if not isinstance(binding, Mapping) or binding.get("kind") != "entity":
+        return None
+    named = binding.get("entity_type")
+    if isinstance(named, Mapping) and named.get("kind") == "column":
+        column = named.get("column")
+        return column if isinstance(column, str) and column.strip() else None
+    return None
+
+
+def column_typed_bindings(profile: Any) -> tuple:
+    """(sentence, role, type column) for every role of a profile whose type is read from a column."""
+    mappings = profile.get("mappings") if isinstance(profile, Mapping) else None
+    out = []
+    for sentence in sorted(mappings, key=str) if isinstance(mappings, Mapping) else ():
+        mapping = mappings[sentence]
+        bind = mapping.get("bind") if isinstance(mapping, Mapping) else None
+        for role in sorted(bind, key=str) if isinstance(bind, Mapping) else ():
+            column = entity_type_column(bind[role])
+            if column:
+                out.append((sentence, role, column))
+    return tuple(out)
 
 
 def default_ordering_key(catalog: Mapping[str, Any], relation: Any) -> tuple[str, ...]:
@@ -2063,6 +2097,9 @@ def _entity_key_columns(binding: Any) -> set:
             column = inner.get("column")
             if isinstance(column, str):
                 out.add(column)
+    if entity_type_column(binding):
+        # a type read per row is part of which node the row names
+        out.add(entity_type_column(binding))
     return out
 
 
@@ -2181,7 +2218,22 @@ def _validate_binding(value: Any, path: str, problems: _Problems) -> None:
     elif kind == "constant" and "value" in value:
         _deterministic_json(value["value"], f"{path}.value", problems)
     elif kind == "entity":
-        _declared_name(value.get("entity_type"), f"{path}.entity_type", problems, _REFERENCE)
+        named = value.get("entity_type")
+        if isinstance(named, Mapping):
+            # 🔴 총괄 7255b4918 ④ - the binding shape: the type read per row from a column, which
+            # is the one other spelling (a constant IS the string)
+            if problems.exact(named, f"{path}.entity_type", required=("kind", "column")):
+                if named.get("kind") not in ENTITY_TYPE_BINDING_KINDS:
+                    problems.add("invalid_binding", f"{path}.entity_type.kind",
+                                 "a type is a declared name, or {kind: column, column} "
+                                 "to read it from each row")
+                _nonblank_text(named.get("column"), f"{path}.entity_type.column", problems)
+            if "attributes" in value:
+                problems.add("invalid_binding", f"{path}.attributes",
+                             "a type read from a column carries no attributes - an "
+                             "attribute belongs to one named type")
+        else:
+            _declared_name(named, f"{path}.entity_type", problems, _REFERENCE)
         keys = value.get("keys")
         if not isinstance(keys, Mapping) or not keys:
             problems.add("invalid_entity_ref", f"{path}.keys", "must be non-empty")
@@ -2313,6 +2365,15 @@ def _validate_sources(section: Mapping[str, Any], problems: _Problems) -> None:
         _validate_registration_probe(
             read.get("registration_probe"), f"{path}.read.registration_probe",
             problems)
+        # 🔴 총괄 7255b4918 ④: a register sentence whose subject type is read per row gets no
+        # default probe (`_registered_subject_columns` names one type), so it is asked for
+        if "registration_probe" not in read and any(
+                entity_type_column((mapping.get("bind") or {}).get(SUBJECT_ROLE))
+                for _sentence, mapping in registering_sentences(source)
+                if isinstance(mapping.get("bind"), Mapping)):
+            problems.add("registration_probe_required", f"{path}.read.registration_probe",
+                         "a register sentence reads its subject's type from a column, so no "
+                         "probe can be derived - write read.registration_probe")
         # S-91, under `read` since the preparer section retired (소유자 10-01 「남겨」)
         _validate_exclude_when(read.get("exclude_when"), f"{path}.read.exclude_when",
                                problems)
@@ -2609,6 +2670,13 @@ def _cross_validate(bundle: Mapping[str, Any], catalog: Mapping[str, Any],
             _validate_no_self_edge(
                 profile, path, problems,
                 executed=executes_the_bindings(_mapper.get("implementation_id")))
+            if not executes_the_bindings(_mapper.get("implementation_id")):
+                for sentence, role, _column in column_typed_bindings(profile):
+                    problems.add(
+                        "invalid_binding",
+                        f"{path}.bind.mappings.{sentence}.bind.{role}.entity_type",
+                        "a type read from a column is read by the declarative-role mapper "
+                        "only - a code mapper is handed no row to read it from")
             profile_mappings = profile.get("mappings")
             for sentence in sorted(profile_mappings if isinstance(profile_mappings, Mapping)
                                    else {}, key=str):
@@ -2854,13 +2922,14 @@ def _cross_profile_source(path: str, profile: Mapping[str, Any],
         predicate = vocabulary.get(mapping["predicate"])
         if predicate is not None:
             _cross_binding_entity_types(
-                mapping["bind"], predicate, entities, f"{mpath}.bind", problems)
+                mapping["bind"], predicate, entities, f"{mpath}.bind", problems,
+                inherited=profile.get("entities"))
 
 
 def _cross_binding_entity_types(bindings: Mapping[str, Any],
                                 predicate: Mapping[str, Any],
                                 entities: Mapping[str, Any],
-                                path: str, problems: _Problems) -> None:
+                                path: str, problems: _Problems, *, inherited=None) -> None:
     """Do the two entity ENDPOINTS name types this predicate admits?
 
     The endpoints are read by their canonical names rather than through an `emit` clause's
@@ -2868,22 +2937,63 @@ def _cross_binding_entity_types(bindings: Mapping[str, Any],
     indirection had exactly one possible answer.  The refusal moves with them -- it now
     addresses the binding the author wrote instead of a `bundle.packs.…emit` path that no
     longer exists.
+
+    A type read from a column is checked per row against the same lists (`event_frame`);
+    here it is asked what a row of each admitted type needs (`_column_type_refs`).
     """
+    predicate_object = (predicate.get("object", {})
+                        if isinstance(predicate.get("object"), Mapping) else {})
+    for role, admitted in ((SUBJECT_ROLE, predicate.get("subjects", [])),
+                           (TARGET_ROLE, predicate_object.get("types", []))):
+        if entity_type_column(bindings.get(role)):
+            _column_type_refs(bindings[role], admitted, entities, inherited,
+                              f"{path}.{role}", problems)
     subject = bindings.get(SUBJECT_ROLE)
-    if isinstance(subject, Mapping) and subject.get("kind") == "entity":
+    if (isinstance(subject, Mapping) and subject.get("kind") == "entity"
+            and isinstance(subject.get("entity_type"), str)):
         entity_type = subject.get("entity_type")
         if entity_type in entities and entity_type not in predicate.get("subjects", []):
             problems.add("invalid_entity_ref", f"{path}.{SUBJECT_ROLE}.entity_type",
                          f"entity {entity_type!r} is not an allowed predicate subject")
-    predicate_object = (predicate.get("object", {})
-                        if isinstance(predicate.get("object"), Mapping) else {})
     target = bindings.get(TARGET_ROLE)
-    if isinstance(target, Mapping) and target.get("kind") == "entity":
+    if (isinstance(target, Mapping) and target.get("kind") == "entity"
+            and isinstance(target.get("entity_type"), str)):
         entity_type = target.get("entity_type")
         allowed = predicate_object.get("types", [])
         if entity_type in entities and entity_type not in allowed:
             problems.add("invalid_entity_ref", f"{path}.{TARGET_ROLE}.entity_type",
                          f"entity {entity_type!r} is not an allowed predicate object")
+
+
+def _column_type_refs(binding: Mapping[str, Any], admitted, entities: Mapping[str, Any],
+                      inherited, path: str, problems: _Problems) -> None:
+    """A type read from a column (총괄 7255b4918 ④): its keys are every admitted type's keys
+    together - a row uses its own type's - and no admitted type may inherit attributes."""
+    keys = binding.get("keys") if isinstance(binding.get("keys"), Mapping) else {}
+    declared = {name: [str(key) for key in (entities.get(name) or {}).get("keys") or ()]
+                for name in admitted if name in entities}
+    if not admitted:
+        problems.add("invalid_entity_ref", f"{path}.entity_type",
+                     "this role admits no entity type, so none can be read from a column")
+    for name, needed in sorted(declared.items()):
+        missing = sorted(set(needed) - set(keys))
+        if missing:
+            problems.add("invalid_entity_ref", f"{path}.keys",
+                         f"a row of type {name!r} needs its key(s) {missing} - bind every "
+                         f"admitted type's keys")
+    known = set().union(*declared.values()) if declared else set()
+    for key in sorted(set(keys) - known, key=str):
+        problems.add("invalid_entity_ref", f"{path}.keys.{key}",
+                     f"{key!r} is no key of the types this role admits "
+                     f"({', '.join(sorted(declared))})")
+    with_attributes = sorted(
+        name for name in admitted
+        if isinstance((inherited or {}).get(name), Mapping)
+        and (inherited[name].get("attributes")))
+    if with_attributes:
+        problems.add("invalid_binding", f"{path}.entity_type",
+                     f"the source binds attributes for {with_attributes}, and a type read from "
+                     f"a column cannot inherit them - name the type, or move the attributes")
 
 
 def _binding_refs(binding: Any, path: str, entities: Mapping[str, Any],
@@ -2893,9 +3003,18 @@ def _binding_refs(binding: Any, path: str, entities: Mapping[str, Any],
     if binding.get("kind") == "column" and binding.get("column") not in available:
         problems.add("unknown_column", f"{path}.column",
                      f"column {binding.get('column')!r} is not in EventFrame schema")
+    if binding.get("kind") == "entity" and entity_type_column(binding):
+        # the type comes per row: its column must be there; its keys are asked against the
+        # admitted types where the predicate is known (`_column_type_refs`)
+        _binding_refs(binding["entity_type"], f"{path}.entity_type", entities, available,
+                      problems)
+        for key, child in sorted(binding.get("keys", {}).items()) if isinstance(
+                binding.get("keys"), Mapping) else ():
+            _binding_refs(child, f"{path}.keys.{key}", entities, available, problems)
+        return
     if binding.get("kind") == "entity":
         entity_type = binding.get("entity_type")
-        descriptor = entities.get(entity_type)
+        descriptor = entities.get(entity_type) if isinstance(entity_type, str) else None
         if descriptor is None:
             problems.add("unknown_entity_type", f"{path}.entity_type",
                          f"unknown entity type {entity_type!r}")
@@ -2963,7 +3082,8 @@ def _bind_entities_refs(path: str, profile: Mapping[str, Any],
         roles_by_type: dict = {}
         for role in sorted(bindings):
             binding = bindings[role]
-            if isinstance(binding, Mapping) and binding.get("kind") == "entity":
+            if (isinstance(binding, Mapping) and binding.get("kind") == "entity"
+                    and isinstance(binding.get("entity_type"), str)):
                 roles_by_type.setdefault(binding.get("entity_type"), []).append(role)
         for entity_type, roles in sorted(roles_by_type.items(), key=lambda kv: str(kv[0])):
             if len(roles) < 2 or entity_type not in (section or {}):
@@ -3043,6 +3163,8 @@ def _binding_columns(binding: Any, path: str) -> list[tuple[str, str]]:
         return [(column, f"{path}.column")] if isinstance(column, str) else []
     out: list[tuple[str, str]] = []
     if binding.get("kind") == "entity":
+        if entity_type_column(binding):
+            out.extend(_binding_columns(binding["entity_type"], f"{path}.entity_type"))
         keys = binding.get("keys")
         for key in sorted(keys, key=str) if isinstance(keys, Mapping) else ():
             out.extend(_binding_columns(keys[key], f"{path}.keys.{key}"))
