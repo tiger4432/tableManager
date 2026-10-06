@@ -48,5 +48,17 @@ for (const c of CASES) {
   }
 }
 
+// 🔴 THE RETIRED @N AXIS, AS A CONTROL (lead 10-06): the client compares names as held - it folds no `@1`.
+//    The server folds an old `recipe@1` at read, so no such name reaches here; folding it again here
+//    would bring back the second spelling rule the versioned_* cases used to pin.
+{
+  const held = derive.walkTakesStep(new Set(['recipe']), 'recipe@1', 'wafer', 1);
+  if (held === true) console.log('  PASS control: recipe@1 is not the static recipe - no name is folded');
+  else {
+    failures.push('control');
+    console.log(`  FAIL control: recipe@1 was read as the static recipe (got ${held}) - a name is folded again`);
+  }
+}
+
 console.log(`\n${CASES.length - failures.length} passed, ${failures.length} diverged.`);
 process.exit(failures.length ? 1 : 0);

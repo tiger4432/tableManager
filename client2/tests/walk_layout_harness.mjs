@@ -51,12 +51,12 @@ const classes = (e) => String(e.className || '').split(/\s+/);
 
 // The declaration the before-fixture was recorded with.
 const DECL = { ok: true,
-  entities: [{ type: 'die@1', keys: ['mat_id', 'x'] }, { type: 'wafer@1', keys: ['wafer'] }],
+  entities: [{ type: 'die', keys: ['mat_id', 'x'] }, { type: 'wafer', keys: ['wafer'] }],
   predicates: [
-    { name: 'in_container@1', subjects: ['die@1'], object: { types: ['wafer@1'] } },
-    { name: 'transfer@1', subjects: ['die@1'], object: { types: ['die@1'] } },
-    { name: 'observed@1', subjects: ['die@1'], object: { types: ['wafer@1'] } }] };
-const RESULT = { nodes: [{ id: 'n:1', type: 'wafer@1', label: 'W-1', depth: 1, keys: { wafer: 'W-1' } }],
+    { name: 'in_container', subjects: ['die'], object: { types: ['wafer'] } },
+    { name: 'transfer', subjects: ['die'], object: { types: ['die'] } },
+    { name: 'observed', subjects: ['die'], object: { types: ['wafer'] } }] };
+const RESULT = { nodes: [{ id: 'n:1', type: 'wafer', label: 'W-1', depth: 1, keys: { wafer: 'W-1' } }],
   edges: [] };
 
 let ran = 0;
@@ -115,10 +115,10 @@ async function stand(mod) {
 async function suite(mod, css = REAL_CSS) {
   console.log(`${LF}-- the parts: the form is the rail, the result its own --`);
   const page = await stand(mod);
-  await page.act.type('die@1');
+  await page.act.type('die');
   page.act.key('mat_id', 'M-1');
   page.act.key('x', '12');
-  await page.act.add('wafer@1');
+  await page.act.add('wafer');
   await page.act.route();
   await page.act.loop();
   const rail = page.find((e) => e.className === 'wk-rail');
@@ -146,7 +146,7 @@ async function suite(mod, css = REAL_CSS) {
   console.log(`${LF}-- the picked route is the one the fields hold --`);
   const picked = () => page.all().filter((e) => classes(e).includes('wk-route') && classes(e).includes('is-on')).length;
   eq('L5 the route the press filled is marked', picked(), 1);
-  await page.act.tick('observed@1');
+  await page.act.tick('observed');
   eq('L6 a follow ticked by hand takes the mark off - the fields no longer hold that route', picked(), 0);
 
   console.log(`${LF}-- the wire: the same choices send what the old page sent --`);
@@ -157,7 +157,7 @@ async function suite(mod, css = REAL_CSS) {
   const sent = page.asked.filter((u) => u.includes('/subgraph'));
   eq('L7 the full set of choices: the same request as before the layout', sent[0], BEFORE.full);
   const bare = await stand(mod);
-  await bare.act.type('die@1');
+  await bare.act.type('die');
   bare.act.key('mat_id', 'M-1');
   await bare.act.walk();
   eq('L8 a type and a key, nothing else: the same request as before', bare.asked.filter((u) => u.includes('/subgraph'))[0],
@@ -167,12 +167,12 @@ async function suite(mod, css = REAL_CSS) {
   const title = () => (page.find((e) => e.className === 'wk-title') || { textContent: '' }).textContent;
   const asked = title();
   page.act.key('mat_id', 'M-2');
-  await page.act.unchip('wafer@1');
+  await page.act.unchip('wafer');
   ok('L9 the title names the walk that was sent, and stays after the form changes',
     asked === 'die M-1 · 12 → wafer' && title() === asked, `${asked} | ${title()}`);
   ok('L10 × takes a collected type out and + Type offers it again',
-    !page.find((e) => e.attrs && e.attrs['data-collect'] === 'wafer@1')
-      && page.find((e) => e.className === 'wk-add').children.some((o) => o.value === 'wafer@1'));
+    !page.find((e) => e.attrs && e.attrs['data-collect'] === 'wafer')
+      && page.find((e) => e.className === 'wk-add').children.some((o) => o.value === 'wafer'));
 
   console.log(`${LF}-- the words are English --`);
   const korean = page.all().filter((e) => !e.children.length && HANGUL.test(e.textContent || ''))

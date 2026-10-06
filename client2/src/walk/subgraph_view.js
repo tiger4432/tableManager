@@ -13,7 +13,7 @@
 // 🔴 Bundles (lead 1d07f1dae, server b1245bab9): the walk carries `fanout_limit`; a fan-out over it comes back
 //    in `bundles` and stands as a chip under its node; a chip pressed adds `expand` to that step's walk.
 
-import { bareName, staticTypes, cutBudgets } from './derive.js';
+import { staticTypes, cutBudgets } from './derive.js';
 import { drawLayeredGraph, slotXY } from '../layered_graph.js';
 import { SIGN } from '../rnd_board/marking_store.js';
 import { setDisabledReason } from '../disabled_reason.js';
@@ -61,7 +61,7 @@ export function subgraphLayout(steps, entities) {
   const statics = staticTypes(entities);
   // Colour follows the declaration's order, so a type keeps its colour from walk to walk; a type the
   // declaration does not name takes the next index in the order it first appears.
-  const order = (entities || []).map((e) => bareName(e && e.type));
+  const order = (entities || []).map((e) => String((e && e.type) || ''));
   const colourOf = new Map(order.map((type, i) => [type, i]));
   const latest = (step) => {
     const all = (step && step.results) || [];
@@ -85,7 +85,7 @@ export function subgraphLayout(steps, entities) {
     const base = index === 0 || !seedLayers.length ? 0 : Math.max(...seedLayers);
     for (const result of step.results || []) {
       for (const node of (Array.isArray(result.nodes) ? result.nodes : [])) {
-        const type = bareName(node.type);
+        const type = String(node.type || '');
         if (!colourOf.has(type)) colourOf.set(type, colourOf.size);
         if (at.has(node.id)) continue;
         if (!Number.isFinite(node.depth)) { unplaced += 1; continue; }
@@ -112,7 +112,7 @@ export function subgraphLayout(steps, entities) {
         for (const b of bundlesOf.get(node.id) || []) {
           chips.push({
             step: b.step, node: b.node, predicate: b.predicate, direction: b.direction,
-            farType: bareName(b.far_type), count: b.count,
+            farType: b.far_type, count: b.count,
             key: `${b.node}|${b.predicate}|${b.direction}`,
             x: one.x + LABEL_DX, y: slotXY(GEOMETRY, layer, row).y,
           });

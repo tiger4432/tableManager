@@ -20,11 +20,11 @@
  *    `kind` is key/qualifier/attribute and says nothing about the rest. Asserting the full list
  *    would be asserting a shape nobody can satisfy on both sides.
  *
- * 🔴 WHY A DECOY DECLARATION RIDES IN EVERY CASE. The node type is bare (`wafer`) and the
- *    declaration key is versioned (`wafer@1`); the vectors carry that asymmetry on purpose,
- *    because a lookup that matched NOTHING would return the fixed columns only and pass every
- *    case whose expectation is short. With a decoy present, 「matched nothing」 and 「matched the
- *    right one」 stop being the same answer — and 「matched the wrong one」 becomes visible too.
+ * 🔴 WHY A DECOY DECLARATION RIDES IN EVERY CASE. A lookup that matched NOTHING would return the
+ *    fixed columns only and pass every case whose expectation is short. With a decoy present,
+ *    「matched nothing」 and 「matched the right one」 stop being the same answer — and 「matched the
+ *    wrong one」 becomes visible too. (The type and the declaration key are both bare: the server
+ *    answers every name bare since f34f16892.)
  *
  * ⚠️ OVERLAP WITH `walk_node_shape`, NAMED RATHER THAN AVOIDED. That contract scores that
  *    declared attribute NAMES become columns and that a declaration without attributes leaves

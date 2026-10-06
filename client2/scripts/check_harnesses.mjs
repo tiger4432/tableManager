@@ -1452,7 +1452,7 @@ const FLOORS = new Map([
   // New (lead 2b5819e1d): walk layout A - the form is the rail, the result its own part, Follow folded,
   // the same choices send the request recorded before the layout (fixtures/walk_wire_before.json).
   ['walk_layout_harness.mjs', 22],
-  ['walk_route_fill_harness.mjs', 81],
+  ['walk_route_fill_harness.mjs', 80],
   // New 2026-09-08 with C-40 ② (the declaration form's three attribute seats). Floor is
   // the count it reports on the commit that introduces it -- there is no earlier tree to
   // measure it against. 🔴 IT READS THE SHIPPED SKELETON AND THE SHIPPED SAMPLE, so a seat
@@ -1558,7 +1558,7 @@ const FLOORS = new Map([
   // 🔴 the walk REQUEST, not the walk return. `createWalkBoxWalk` accepted `spec.hops` and
   //    never put it on the wire, so the screen wrote 「3홉」 while the server walked 12 -- with
   //    no error and no warning. A harness that scores the RETURN is green throughout that.
-  ['walk_wire_harness.mjs', 94],
+  ['walk_wire_harness.mjs', 95],
   // a cut-off count says it was cut off -- 「끊김 != 없음」
   // 12 -> 32. The floor had not been raised since the file was written; the gate has been
   // naming it as running above its floor for a while. The new assertions are 클라 7 ㉯ — the

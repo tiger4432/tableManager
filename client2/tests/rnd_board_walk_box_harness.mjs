@@ -3,7 +3,7 @@
  *
  * WHAT THIS SCORES (the order's five gates, each woken by a mutant):
  *   A  changing NODE TYPE changes the KEY fields -- their COUNT and their NAMES
- *   B  FOLLOW offers what touches the type from EITHER side (`recipe@1` gets the one entering it),
+ *   B  FOLLOW offers what touches the type from EITHER side (`recipe` gets the one entering it),
  *      the walk page offers the same list, and a type nothing touches says so in a SENTENCE
  *   C  FOLLOW unpicked means `follow` is NOT on the request -- an empty array is the opposite
  *   D  two instances, different type and collect, no interference
@@ -12,8 +12,8 @@
  * 🔴 THE DECLARATION FIXTURE IS THE LEAD PM'S MEASUREMENT, not an invention: six entities, ten
  *    predicates, eight collects, and the `subjects` links they measured off the live
  *    declaration. The `object.types` and recipe's `class` are the shipped sample's (server/config/
- *    sample/ledger_config.json.sample); `defect@1` (an object-only type that is not static) and
- *    `note@1` (no predicate touches it) are HAND-HELD.
+ *    sample/ledger_config.json.sample); `defect` (an object-only type that is not static) and
+ *    `note` (no predicate touches it) are HAND-HELD.
  *
  * 🔴 THE ROUTE DOES NOT EXIST YET. That is why every fetch here is injected and why E scores
  *    「서버가 아직 못 준다」 as its own sentence: a contract adopted before its material blanks
@@ -43,26 +43,26 @@ const CRLF = String.fromCharCode(13, 10);
 const DECL = {
   ok: true,
   entities: [
-    { type: 'die@1', keys: ['mat_id', 'x', 'y', 'mat_type'] },
-    { type: 'wafer@1', keys: ['wafer'] },
-    { type: 'lot@1', keys: ['lot'] },
-    { type: 'lot_slot@1', keys: ['lot', 'slot'] },
-    { type: 'dtjob@1', keys: ['job_id'] },
-    { type: 'recipe@1', keys: ['recipe'], class: ['static'] },
-    { type: 'defect@1', keys: ['defect'] },
-    { type: 'note@1', keys: ['note'] },
+    { type: 'die', keys: ['mat_id', 'x', 'y', 'mat_type'] },
+    { type: 'wafer', keys: ['wafer'] },
+    { type: 'lot', keys: ['lot'] },
+    { type: 'lot_slot', keys: ['lot', 'slot'] },
+    { type: 'dtjob', keys: ['job_id'] },
+    { type: 'recipe', keys: ['recipe'], class: ['static'] },
+    { type: 'defect', keys: ['defect'] },
+    { type: 'note', keys: ['note'] },
   ],
   predicates: [
-    { name: 'transfer@1', subjects: ['die@1'], object: { types: ['die@1'] } },
-    { name: 'observed@1', subjects: ['die@1'], object: { types: ['defect@1'] } },
-    { name: 'bonded_from@1', subjects: ['die@1', 'wafer@1'], object: { types: ['die@1'] } },
-    { name: 'inspected@1', subjects: ['wafer@1'], object: { types: ['die@1'] } },
-    { name: 'processed_with@1', subjects: ['wafer@1'], object: { types: ['recipe@1'] } },
-    { name: 'register@1', subjects: ['wafer@1', 'dtjob@1', 'lot@1'], object: {} },
-    { name: 'has_wafer@1', subjects: ['lot_slot@1'], object: { types: ['wafer@1'] } },
-    { name: 'slot_map@1', subjects: ['lot_slot@1'], object: { types: ['lot_slot@1'] } },
-    { name: 'has_netdie@1', subjects: ['dtjob@1'], object: {} },
-    { name: 'derived_from@1', subjects: ['lot@1'], object: { types: ['lot@1'] } },
+    { name: 'transfer', subjects: ['die'], object: { types: ['die'] } },
+    { name: 'observed', subjects: ['die'], object: { types: ['defect'] } },
+    { name: 'bonded_from', subjects: ['die', 'wafer'], object: { types: ['die'] } },
+    { name: 'inspected', subjects: ['wafer'], object: { types: ['die'] } },
+    { name: 'processed_with', subjects: ['wafer'], object: { types: ['recipe'] } },
+    { name: 'register', subjects: ['wafer', 'dtjob', 'lot'], object: {} },
+    { name: 'has_wafer', subjects: ['lot_slot'], object: { types: ['wafer'] } },
+    { name: 'slot_map', subjects: ['lot_slot'], object: { types: ['lot_slot'] } },
+    { name: 'has_netdie', subjects: ['dtjob'], object: {} },
+    { name: 'derived_from', subjects: ['lot'], object: { types: ['lot'] } },
   ],
   collect: ['entity', 'event', 'claim', 'collection', 'point', 'value', 'quantity', 'action'],
 };
@@ -113,8 +113,8 @@ const textOf = (host) => walkAll(host).map((e) => e._text).join(' ');
 const settle = async () => { for (let i = 0; i < 8; i += 1) await Promise.resolve(); };
 
 const NODES = [
-  { id: 'ledger-entity:v1:AAA', type: 'die@1', label: 'D-1' },
-  { id: 'ledger-entity:v1:BBB', type: 'die@1', label: 'D-2' },
+  { id: 'ledger-entity:v1:AAA', type: 'die', label: 'D-1' },
+  { id: 'ledger-entity:v1:BBB', type: 'die', label: 'D-2' },
 ];
 
 async function suite(mods) {
@@ -137,45 +137,45 @@ async function suite(mods) {
   console.log(`${LF}-- A. the KEY fields follow the type, in count and in name --`);
   const keyNames = () => byAttr(host, 'data-key').map((e) => e.getAttribute('data-key'));
   eq('A1 nothing is chosen, so no key field is drawn', keyNames().length, 0);
-  panel.setType('die@1');
-  eq('A2 die@1 draws FOUR', keyNames().join(','), 'mat_id,x,y,mat_type');
-  panel.setType('wafer@1');
-  eq('A3 wafer@1 draws ONE, and it is named', keyNames().join(','), 'wafer');
-  panel.setType('lot_slot@1');
-  eq('A4 lot_slot@1 draws TWO', keyNames().join(','), 'lot,slot');
-  // 🔴 THE COUNT ALONE DOES NOT DECIDE IT. A fixed four-field form would pass 「four」 on die@1
+  panel.setType('die');
+  eq('A2 die draws FOUR', keyNames().join(','), 'mat_id,x,y,mat_type');
+  panel.setType('wafer');
+  eq('A3 wafer draws ONE, and it is named', keyNames().join(','), 'wafer');
+  panel.setType('lot_slot');
+  eq('A4 lot_slot draws TWO', keyNames().join(','), 'lot,slot');
+  // 🔴 THE COUNT ALONE DOES NOT DECIDE IT. A fixed four-field form would pass 「four」 on die
   //    and fail here, but a form that draws the right COUNT with the wrong NAMES would pass a
   //    count-only assertion everywhere. A2/A3/A4 compare names.
   ok('A5 a value typed under one type does not survive a type that lacks that key',
     (() => {
-      panel.setType('die@1');
+      panel.setType('die');
       panel.keyValues.mat_id = 'M-9';
-      panel.setType('wafer@1');
+      panel.setType('wafer');
       return panel.keyValues.mat_id === undefined;
     })());
 
   console.log(`${LF}-- B. FOLLOW offers what touches the type; a type nothing touches says so --`);
   const drawnFollow = (h) => byAttr(h, 'data-follow').map((e) => e.getAttribute('data-follow')).join(',');
-  panel.setType('die@1');
-  eq('B1 die@1 offers the three that leave it and inspected@1, which enters it',
-    panel.followOptions().join(','), 'transfer@1,observed@1,bonded_from@1,inspected@1');
-  eq('B2 wafer@1 offers its own four and has_wafer@1, which enters it',
+  panel.setType('die');
+  eq('B1 die offers the three that leave it and inspected, which enters it',
+    panel.followOptions().join(','), 'transfer,observed,bonded_from,inspected');
+  eq('B2 wafer offers its own four and has_wafer, which enters it',
     panel.followOptions.call(Object.assign(Object.create(Object.getPrototypeOf(panel)),
-      panel, { nodeType: 'wafer@1' })).join(','),
-    'bonded_from@1,inspected@1,processed_with@1,register@1,has_wafer@1');
-  panel.setType('defect@1');
-  eq('B3 defect@1, only ever an object, offers the predicate that enters it',
-    panel.followOptions().join(','), 'observed@1');
-  eq('B7 ... and draws its checkbox', drawnFollow(host), 'observed@1');
+      panel, { nodeType: 'wafer' })).join(','),
+    'bonded_from,inspected,processed_with,register,has_wafer');
+  panel.setType('defect');
+  eq('B3 defect, only ever an object, offers the predicate that enters it',
+    panel.followOptions().join(','), 'observed');
+  eq('B7 ... and draws its checkbox', drawnFollow(host), 'observed');
   // 🔴 THE SEED'S FIRST STEP IS OPEN (owner 10-02, lead c24ba7d82): a static type gets what enters it.
-  panel.setType('recipe@1');
-  eq('H1 static recipe@1 offers the step in from wafer@1', panel.followOptions().join(','), 'processed_with@1');
-  eq('H2 ... and draws its checkbox', drawnFollow(host), 'processed_with@1');
-  panel.setType('note@1');
+  panel.setType('recipe');
+  eq('H1 static recipe offers the step in from wafer', panel.followOptions().join(','), 'processed_with');
+  eq('H2 ... and draws its checkbox', drawnFollow(host), 'processed_with');
+  panel.setType('note');
   const noteText = textOf(host);
   ok('B4 a type no predicate touches: the screen SAYS so rather than drawing an empty list',
     noteText.includes('No predicate touches'), noteText.slice(0, 90));
-  ok('B5 the sentence names the type it is talking about', noteText.includes('note@1'));
+  ok('B5 the sentence names the type it is talking about', noteText.includes('note'));
   eq('B6 no follow checkbox is drawn', byAttr(host, 'data-follow').length, 0);
   // 🔴 ONE SEAT, SCORED ON BOTH SCREENS (lead 10-02). The walk page is stood up from disk with the
   //    same declaration; for every declared type its drawn follow rows must equal this box's list.
@@ -206,37 +206,37 @@ async function suite(mods) {
     sel.value = type;
     sel.fire('change');
   };
-  pageType('die@1'); wpage.state.follow = new Set(['inspected@1', 'processed_with@1']); pageType('recipe@1');
-  panel.setType('die@1'); panel.follow = new Set(['inspected@1', 'processed_with@1']); panel.setType('recipe@1');
+  pageType('die'); wpage.state.follow = new Set(['inspected', 'processed_with']); pageType('recipe');
+  panel.setType('die'); panel.follow = new Set(['inspected', 'processed_with']); panel.setType('recipe');
   await settle();
   ok('H3 a type change keeps only the ticked follow that touches the new type, on both screens',
-    [...wpage.state.follow].join(',') === 'processed_with@1' && [...panel.follow].join(',') === 'processed_with@1',
+    [...wpage.state.follow].join(',') === 'processed_with' && [...panel.follow].join(',') === 'processed_with',
     `page ${[...wpage.state.follow]} | box ${[...panel.follow]}`);
 
   console.log(`${LF}-- K. the route list leaves out what the walk refuses, as the walk page does --`);
   {
     // Hand-held, in the shipped sample's shape: two ways from wafer to defect, one through the static hub.
     const DECL_R = { ok: true,
-      entities: [{ type: 'wafer@1', keys: ['wafer'] }, { type: 'die@1', keys: ['mat_id'] },
-        { type: 'defect@1', keys: ['defect'] }, { type: 'quantity@1', keys: ['q'], class: ['static'] },
-        { type: 'defect_kind@1', keys: ['kind'], class: ['static'] }],
+      entities: [{ type: 'wafer', keys: ['wafer'] }, { type: 'die', keys: ['mat_id'] },
+        { type: 'defect', keys: ['defect'] }, { type: 'quantity', keys: ['q'], class: ['static'] },
+        { type: 'defect_kind', keys: ['kind'], class: ['static'] }],
       predicates: [
-        { name: 'measures@1', subjects: ['wafer@1'], object: { types: ['quantity@1'] } },
-        { name: 'leads_to@1', subjects: ['quantity@1'], object: { types: ['quantity@1', 'defect_kind@1'] } },
-        { name: 'of_kind@1', subjects: ['defect@1'], object: { types: ['defect_kind@1'] } },
-        { name: 'inspected@1', subjects: ['wafer@1'], object: { types: ['die@1'] } },
-        { name: 'observed@1', subjects: ['die@1'], object: { types: ['defect@1'] } }] };
+        { name: 'measures', subjects: ['wafer'], object: { types: ['quantity'] } },
+        { name: 'leads_to', subjects: ['quantity'], object: { types: ['quantity', 'defect_kind'] } },
+        { name: 'of_kind', subjects: ['defect'], object: { types: ['defect_kind'] } },
+        { name: 'inspected', subjects: ['wafer'], object: { types: ['die'] } },
+        { name: 'observed', subjects: ['die'], object: { types: ['defect'] } }] };
     const rhost = doc.createElement('div');
     const rbox = new WalkBoxPanel(rhost, { doc, markings: new MarkingStore(), reads: 'marking:1', writes: 'marking:2',
       loadDeclaration: () => Promise.resolve(DECL_R), walk: () => Promise.resolve({ ok: true, nodes: [] }) });
     rbox.mount();
     await settle();
     const chains = () => rbox.routes().map((r) => r.chain.join('>')).sort().join(' ; ');
-    rbox.setType('wafer@1'); rbox.destination = 'defect';
-    eq('K1 wafer@1 to defect: the route through die, not the one stepping out of the static hub',
+    rbox.setType('wafer'); rbox.destination = 'defect';
+    eq('K1 wafer to defect: the route through die, not the one stepping out of the static hub',
       chains(), 'wafer>die>defect');
-    rbox.setType('quantity@1'); rbox.destination = 'die';
-    ok('K2 static quantity@1 to die: the first step out to wafer@1 is offered',
+    rbox.setType('quantity'); rbox.destination = 'die';
+    ok('K2 static quantity to die: the first step out to wafer is offered',
       chains().split(' ; ').includes('quantity>wafer>die'), chains());
     const rdoc = makeDoc();
     rdoc.head = rdoc.createElement('head');
@@ -250,9 +250,9 @@ async function suite(mods) {
         .map((e) => e.textContent.split(' → ').join('>')).sort().join(' ; ');
     };
     const boxChains = (type, to) => { rbox.setType(type); rbox.destination = to; return chains(); };
-    const pairs = [['wafer@1', 'defect'], ['quantity@1', 'die'], ['defect@1', 'wafer']];
-    const apart = pairs.filter(([t, to]) => pageChains(t, `${to}@1`) !== boxChains(t, to))
-      .map(([t, to]) => `${t}->${to}: page ${pageChains(t, `${to}@1`)} | box ${boxChains(t, to)}`);
+    const pairs = [['wafer', 'defect'], ['quantity', 'die'], ['defect', 'wafer']];
+    const apart = pairs.filter(([t, to]) => pageChains(t, `${to}`) !== boxChains(t, to))
+      .map(([t, to]) => `${t}->${to}: page ${pageChains(t, `${to}`)} | box ${boxChains(t, to)}`);
     ok('K3 the walk page and this box offer the same routes', apart.length === 0, apart.join(' ; '));
   }
 
@@ -261,11 +261,11 @@ async function suite(mods) {
     // 🔴 THE BOX DECLARATION'S SHAPE (GET /api/ledger/declaration, 10-02): fourteen predicates,
     //    five self-loops (transfer · bonded_from on die, derived_from on lot, slot_map on lot_slot,
     //    leads_to on quantity - which also steps quantity -> defect_kind).
-    const P = (name, subjects, types) => ({ name: `${name}@1`, subjects: subjects.map((s) => `${s}@1`),
-      object: { types: types && types.map((t) => `${t}@1`) } });
+    const P = (name, subjects, types) => ({ name: `${name}`, subjects: subjects.map((s) => `${s}`),
+      object: { types: types && types.map((t) => `${t}`) } });
     const DECL_BOX = { ok: true,
-      entities: ['defect', 'die', 'dtjob', 'lot', 'lot_slot', 'wafer'].map((t) => ({ type: `${t}@1`, keys: ['k'] }))
-        .concat(['defect_kind', 'quantity', 'recipe'].map((t) => ({ type: `${t}@1`, keys: ['k'], class: ['static'] }))),
+      entities: ['defect', 'die', 'dtjob', 'lot', 'lot_slot', 'wafer'].map((t) => ({ type: `${t}`, keys: ['k'] }))
+        .concat(['defect_kind', 'quantity', 'recipe'].map((t) => ({ type: `${t}`, keys: ['k'], class: ['static'] }))),
       predicates: [P('bonded_from', ['die'], ['die']), P('derived_from', ['lot'], ['lot']),
         P('has_netdie', ['dtjob'], null), P('has_wafer', ['lot_slot'], ['wafer']),
         P('in_container', ['die'], ['wafer']), P('inspected', ['wafer'], ['die']),
@@ -354,7 +354,7 @@ async function suite(mods) {
       walk: () => Promise.resolve({ ok: true, nodes: [] }) });
     bbox.mount();
     await settle();
-    bbox.setType('die@1'); bbox.destination = 'wafer'; bbox.render();
+    bbox.setType('die'); bbox.destination = 'wafer'; bbox.render();
     const boxRows = () => walkAll(bhost).filter((e) => String(e.className).startsWith('rb-walkbox-route'));
     const boxChips = () => walkAll(bhost).filter((e) => String(e.className).startsWith('rb-walkbox-loopchip'));
     const pdoc = makeDoc();
@@ -363,7 +363,7 @@ async function suite(mods) {
     const ppage = walkPage.boot(pdoc, phost, { apiBase: '',
       fetchImpl: async () => ({ ok: true, status: 200, json: async () => DECL_BOX }) });
     await settle();
-    ppage.state.type = 'die@1'; ppage.state.collect = new Set(['wafer@1']); ppage.render();
+    ppage.state.type = 'die'; ppage.state.collect = new Set(['wafer']); ppage.render();
     const pageRows = () => walkAll(phost).filter((e) => e.className === 'wk-path');
     const pageChips = () => walkAll(phost).filter((e) => String(e.className).startsWith('wk-loopchip'));
     // the walkable rows (the 4-hop one steps out of a static type and the walk refuses it)
@@ -394,23 +394,23 @@ async function suite(mods) {
   }
 
   console.log(`${LF}-- C. unpicked FOLLOW is ABSENT from the request, not an empty list --`);
-  panel.setType('die@1');
+  panel.setType('die');
   panel.collect = 'quantity';
   await panel.run();
   await settle();
   eq('C1 one walk went out', asked.length, 1);
   ok('C2 and it carries NO follow key at all', !('follow' in asked[0]), JSON.stringify(asked[0]));
-  eq('C3 the type on screen is the one asked', asked[0].type, 'die@1');
+  eq('C3 the type on screen is the one asked', asked[0].type, 'die');
   eq('C3-bis and no collect rides along', 'collect' in asked[0], false);
-  panel.toggleFollow('observed@1');
+  panel.toggleFollow('observed');
   await panel.run();
   await settle();
-  // 🔴 2026-08-29 (round V): 전선의 철자가 «벗겨진 이름»입니다. 선언은 `observed@1` 로
+  // 🔴 2026-08-29 (round V): 전선의 철자가 «벗겨진 이름»입니다. 선언은 `observed` 로
   //    부르고 라우트는 그것을 «422» 로 거절합니다 -- 실측: follow=inspected 200 ·
-  //    follow=inspected@1 «422». 이 단언은 여태 «라우트가 거절하는 값»을 기대하고
+  //    follow=inspected «422». 이 단언은 여태 «라우트가 거절하는 값»을 기대하고
   //    있었습니다. 재는 것(「고른 것이 요청에 실린다」)은 그대로이고 철자만 참으로 옮깁니다.
   eq('C4 picking one puts it on the request', JSON.stringify(asked[1].follow), '["observed"]');
-  panel.toggleFollow('observed@1');
+  panel.toggleFollow('observed');
   await panel.run();
   await settle();
   ok('C5 un-picking it takes the key away again, not leaving []', !('follow' in asked[2]),
@@ -440,14 +440,14 @@ async function suite(mods) {
     // 🔴 MIXED TYPES ON PURPOSE, AND THAT IS THE DISCRIMINANT. This box sends no `collect`, so
     //    the server default returns everything the walk reached. A flat table naming its own
     //    three columns passes a single-type fixture and is WRONG here -- the declared key names
-    //    differ per type, so `wafer@1` under `die@1`'s columns would draw empty cells and raise
-    //    nothing. The old fixture was two `die@1` rows, which could not tell the two apart.
+    //    differ per type, so `wafer` under `die`'s columns would draw empty cells and raise
+    //    nothing. The old fixture was two `die` rows, which could not tell the two apart.
     const MIXED = [
-      { id: 'n:1', type: 'die@1', label: 'D-1',
+      { id: 'n:1', type: 'die', label: 'D-1',
         keys: { mat_id: 'M-1', x: 1, y: 2, mat_type: 'Wafer' } },
-      { id: 'n:2', type: 'die@1', label: 'D-2',
+      { id: 'n:2', type: 'die', label: 'D-2',
         keys: { mat_id: 'M-2', x: 3, y: 4, mat_type: 'Wafer' } },
-      { id: 'n:3', type: 'wafer@1', label: 'W-1', keys: { wafer: 'SYN-1' } },
+      { id: 'n:3', type: 'wafer', label: 'W-1', keys: { wafer: 'SYN-1' } },
     ];
     const doc2 = makeDoc();
     const host2 = doc2.createElement('div');
@@ -458,7 +458,7 @@ async function suite(mods) {
     });
     panel2.mount();
     await settle();
-    panel2.setType('die@1');
+    panel2.setType('die');
     await panel2.run();
     await settle();
 
@@ -483,7 +483,7 @@ async function suite(mods) {
     const cellsOf = (row) => row.children.map((c) => c.textContent);
     eq('P4 a declared key reaches its own cell', cellsOf(rows2[0]).join('|'), 'M-1|1|2|Wafer|D-1');
     // 🔴 THIS ONE FAILS IF THE COLUMNS ARE HARD-CODED ANYWHERE. Under `label · type · id` the
-    //    wafer row reads 「W-1|wafer@1|n:3」; under its OWN declaration it reads its key then
+    //    wafer row reads 「W-1|wafer|n:3」; under its OWN declaration it reads its key then
     //    its label. Same rows, same count, different truth.
     eq('P5 a row of another type is drawn under THAT type\'s declared keys',
       cellsOf(rows2[2]).join('|'), 'SYN-1|W-1');
@@ -500,7 +500,7 @@ async function suite(mods) {
     //    `+`. Measured live 2026-08-27: standard base64 -> HTTP 422, base64url -> 200. This is
     //    a contract the server enforces, not a taste, and it was correct-but-unverified until
     //    an input was MADE that could tell the two apart.
-    const withPlus = entitySeedId('wafer@1', { wafer: 'SYN-BW-101-16>' });
+    const withPlus = entitySeedId('wafer', { wafer: 'SYN-BW-101-16>' });
     ok('S1 the discriminating key really does produce a + under standard base64',
       Buffer.from(JSON.stringify(['wafer', { wafer: 'SYN-BW-101-16>' }]), 'utf8')
         .toString('base64').includes('+'));
@@ -511,7 +511,7 @@ async function suite(mods) {
     eq('S5 the type loses its @version', Buffer.from(withPlus.split(':').pop()
       .replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8').slice(0, 8), '["wafer"');
     eq('S6 a plain key round-trips to the id the board already uses',
-      entitySeedId('wafer@1', { wafer: 'SYN-CX-BW-001' }),
+      entitySeedId('wafer', { wafer: 'SYN-CX-BW-001' }),
       'ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1DWC1CVy0wMDEifV0');
   }
 
@@ -535,13 +535,13 @@ async function suite(mods) {
   });
   a.mount(); b.mount();
   await settle();
-  a.setType('die@1'); a.collect = 'point';
-  b.setType('lot_slot@1'); b.collect = 'event';
-  a.toggleFollow('observed@1');
+  a.setType('die'); a.collect = 'point';
+  b.setType('lot_slot'); b.collect = 'event';
+  a.toggleFollow('observed');
   await a.run(); await b.run();
   await settle();
-  eq('D1 A asked with its own type', askedA[0].type, 'die@1');
-  eq('D2 B asked with its own', askedB[0].type, 'lot_slot@1');
+  eq('D1 A asked with its own type', askedA[0].type, 'die');
+  eq('D2 B asked with its own', askedB[0].type, 'lot_slot');
   // 같은 이음매 (round V) -- 전선은 벗겨진 이름을 받습니다. C4 위의 실측 참조.
   eq('D3 A carried its follow', JSON.stringify(askedA[0].follow), '["observed"]');
   ok('D4 B carried none', !('follow' in askedB[0]));
@@ -567,7 +567,7 @@ async function suite(mods) {
       //    the old shape, so this went red for a change that was correct. It now stubs the
       //    FETCH and lets the real function decode, which is the only version of this test that
       //    can still be true after the decoder changes.
-      // The body is the shape the live route really returns -- measured 2026-08-27, wafer@1
+      // The body is the shape the live route really returns -- measured 2026-08-27, wafer
       // SYN-BW-101-16: depth false, everything else true. A budget cut, not a depth question.
       walk: A.createWalkBoxWalk({
         apiBase: '',
@@ -579,7 +579,7 @@ async function suite(mods) {
     });
     pt.mount();
     await settle();
-    pt.setType('die@1');
+    pt.setType('die');
     await pt.run();
     await settle();
     const cutText = textOf(hostT);
@@ -600,7 +600,7 @@ async function suite(mods) {
     });
     pq.mount();
     await settle();
-    pq.setType('die@1');
+    pq.setType('die');
     await pq.run();
     await settle();
     ok('T4 a walk that was NOT cut stays silent', !textOf(hostQ).includes('Truncated at'),
@@ -636,7 +636,7 @@ async function suite(mods) {
   const before = textOf(hostN);
   ok('E3 nothing chosen yet has its own seat', before.includes(UNPICKED),
     before.slice(-90));
-  pn.setType('die@1');
+  pn.setType('die');
   await pn.run();
   await settle();
   const after = textOf(hostN);
@@ -652,7 +652,7 @@ async function suite(mods) {
   });
   pf.mount();
   await settle();
-  pf.setType('die@1');
+  pf.setType('die');
   await pf.run();
   await settle();
   const refused = textOf(hostF);
@@ -672,7 +672,7 @@ async function suite(mods) {
   //    round exactly as before.
   {
     const sent = {
-      id: 'ledger-entity:v1:WWW', type: 'dtjob@1', label: 'J-1', depth: 1,
+      id: 'ledger-entity:v1:WWW', type: 'dtjob', label: 'J-1', depth: 1,
       keys: { dt_job: 'SYN-DTJ-002-04' },
       attributes: { dt_eqp: 'SYN-DTE-03' }, attribute_conflicts: 0,
       a_field_invented_after_this_test_was_written: 'survives',
@@ -680,7 +680,7 @@ async function suite(mods) {
     const walk = A.createWalkBoxWalk({ apiBase: '',
       fetchImpl: async () => ({ ok: true, status: 200,
         json: async () => ({ nodes: [sent], edges: [], truncated: null }) }) });
-    const got = await walk({ type: 'dtjob@1', keys: { dt_job: 'SYN-DTJ-002-04' } });
+    const got = await walk({ type: 'dtjob', keys: { dt_job: 'SYN-DTJ-002-04' } });
     const node = got.ok && got.nodes ? got.nodes[0] : null;
     ok('W1 the walk read succeeds', !!node, JSON.stringify(got).slice(0, 90));
     ok('W2 a declared value reaches the caller',
@@ -714,13 +714,13 @@ async function suite(mods) {
         json: async () => ({ nodes: [], edges: [], truncated: null }) }; } });
     const query = (i) => new URLSearchParams(String(asked[i]).split('?')[1] || '');
 
-    await walk({ type: 'wafer@1', keys: {} });
+    await walk({ type: 'wafer', keys: {} });
     eq('XS1 타입만 고르면 씨앗을 서술한다 — 버전은 벗겨서',
       query(0).get('seed_type'), 'wafer');
     ok('XS2 ...그리고 `id` 는 «안 실린다» (서버가 둘 다를 거절한다)',
       query(0).get('id') === null, asked[0]);
 
-    await walk({ type: 'wafer@1', keys: { wafer: 'SYN-CX-BW-001' } });
+    await walk({ type: 'wafer', keys: { wafer: 'SYN-CX-BW-001' } });
     eq('XS3 키를 고르면 오늘 그대로 열거된 씨앗이다',
       query(1).get('id'),
       'ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlNZTi1DWC1CVy0wMDEifV0');
@@ -729,7 +729,7 @@ async function suite(mods) {
 
     // 🔴 빈 «문자열» 키는 「안 고름」입니다 -- `run()` 이 이미 그렇게 접고, 이 층도 같은 답을
     //    내야 합니다. 두 층이 갈리면 칸을 비운 사람이 422 를 받습니다.
-    await walk({ type: 'wafer@1' });
+    await walk({ type: 'wafer' });
     eq('XS5 키 칸이 아예 없어도 서술이다', query(2).get('seed_type'), 'wafer');
 
     // ⚠️ CONTROL. 서술된 씨앗도 «씨앗»이라, 관문이 「아직 안 골랐다」로 막으면 안 됩니다.
@@ -749,13 +749,13 @@ async function suite(mods) {
         json: async () => ({ nodes: [], edges: [], truncated }) }) });
 
     const cutSeeds = await walkWith({ depth: false, nodes: false, seeds: 1,
-                                      reason: 'seeds' })({ type: 'wafer@1', keys: {} });
+                                      reason: 'seeds' })({ type: 'wafer', keys: {} });
     ok('Y1 `seeds: 1` 은 잘린 축이다', (cutSeeds.truncatedAxes || []).includes('seeds'),
       JSON.stringify(cutSeeds.truncatedAxes));
     ok('Y2 ...그리고 「잘림」이 서 있다', cutSeeds.cut === true);
 
     const none = await walkWith({ depth: false, nodes: false, seeds: 0, reason: null })(
-      { type: 'wafer@1', keys: {} });
+      { type: 'wafer', keys: {} });
     ok('Y3 `seeds: 0` 은 «안 잘린» 것이다 — 0 은 「전부 걸었다」이지 절단이 아니다',
       !(none.truncatedAxes || []).includes('seeds'), JSON.stringify(none.truncatedAxes));
 
@@ -763,7 +763,7 @@ async function suite(mods) {
     //    안 가져온» 것이고, 자기 독자가 따로 있습니다. 절단 축에 세면 「예산이 모자랐다」를
     //    구간이 한 일에 대고 말하게 됩니다.
     const interval = await walkWith({ depth: false, nodes: false, interval_excluded: 7,
-                                      reason: null })({ type: 'wafer@1', keys: {} });
+                                      reason: null })({ type: 'wafer', keys: {} });
     ok('Y4 `interval_excluded` 는 수여도 절단이 «아니다»',
       !(interval.truncatedAxes || []).includes('interval_excluded'),
       JSON.stringify(interval.truncatedAxes));
@@ -780,7 +780,7 @@ async function suite(mods) {
     const names = () => byAttr(host, 'data-interval').map((e) => e.getAttribute('data-interval'));
     eq('V1 two date boxes, named as the route names them', names().join(','), 'since,until');
     asked.length = 0;
-    panel.setType('wafer@1');
+    panel.setType('wafer');
     await panel.run();
     const bare = asked[asked.length - 1] || {};
     ok('V2 empty boxes put NOTHING in the spec — 「구간 없음」 is not 「1970」',
@@ -813,7 +813,7 @@ async function suite(mods) {
       });
       p.mount();
       await settle();
-      p.setType('wafer@1');
+      p.setType('wafer');
       await p.run();
       return h;
     };

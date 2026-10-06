@@ -29,7 +29,7 @@
     "",
     "⚠️ DRAFT: the server half reads these today (`_declared_columns`). The client half and",
     "the harness that scores it are the lead's to place (S-183 order).",
-    "🔴 THE NODE TYPE IS BARE AND THE DECLARATION KEY IS VERSIONED — `declaration_key` carries that asymmetry, because it is the product's and scoring against a symmetric fixture is how a lookup that matched NOTHING passed every case here."
+    "🔴 THE NODE TYPE AND THE DECLARATION KEY ARE BOTH BARE — the server answers every name bare since f34f16892 (an old `x@1` is folded at read). A lookup that matched NOTHING once passed every case against a symmetric fixture; the client half's decoy declaration is what keeps 「matched nothing」 from passing."
   ],
   "version": 1,
   "per_type_declared_columns": [
@@ -46,7 +46,7 @@
         "mat_id"
       ],
       "$why": "The commonest shape: a type whose identity is its only declared column.",
-      "declaration_key": "wafer@1"
+      "declaration_key": "wafer"
     },
     {
       "name": "keys_in_declared_order",
@@ -65,7 +65,7 @@
         "y"
       ],
       "$why": "Declaration order, never sorted — the order is part of the answer, and a table that alphabetised it would separate x from y.",
-      "declaration_key": "die@1"
+      "declaration_key": "die"
     },
     {
       "name": "qualifiers_follow_keys",
@@ -85,7 +85,7 @@
         "gate"
       ],
       "$why": "A qualifier is what the ANSWER carried, not what the declaration promised, so it cannot come from the same list — but it still sits after identity.",
-      "declaration_key": "die@1"
+      "declaration_key": "die"
     },
     {
       "name": "attributes_come_last",
@@ -104,7 +104,7 @@
         "radius"
       ],
       "$why": "🔴 Attributes are declared values that are NOT identity (setup_bundle says so where the grammar is defined), so they read after both.",
-      "declaration_key": "defect@1"
+      "declaration_key": "defect"
     },
     {
       "name": "all_three_groups",
@@ -130,7 +130,7 @@
         "depth_um"
       ],
       "$why": "The load-bearing case: keys → qualifiers → attributes, each group internally in its own declared order.",
-      "declaration_key": "defect@1"
+      "declaration_key": "defect"
     },
     {
       "name": "no_attributes_declared_adds_nothing",
@@ -146,7 +146,7 @@
         "mat_id"
       ],
       "$why": "⚠️ An empty `attributes` must render byte-identically to a type that declares none — the client's conflicts column keys off `attributes.length` for the same reason.",
-      "declaration_key": "wafer@1"
+      "declaration_key": "wafer"
     },
     {
       "name": "unknown_type_declares_nothing",

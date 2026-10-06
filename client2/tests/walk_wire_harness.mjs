@@ -43,11 +43,11 @@ function recorder(reply) {
 }
 
 const FULL = {
-  type: 'wafer@1', keys: { wafer_id: 'W-1' }, follow: ['inspected@1', 'observed@1'],
+  type: 'wafer', keys: { wafer_id: 'W-1' }, follow: ['inspected', 'observed'],
   direction: 'outgoing', hops: 3, node_limit: 120,
 };
 /** 🔴 R&D 보드가 «실제로» 만드는 모양입니다 (`walk_box_panel.js:225-243`). 지어낸 것이 아닙니다. */
-const PANEL = { type: 'wafer@1', keys: { wafer_id: 'W-1' }, follow: ['inspected@1'], hops: 3 };
+const PANEL = { type: 'wafer', keys: { wafer_id: 'W-1' }, follow: ['inspected'], hops: 3 };
 
 // ═══ ① 계기가 «눈이 멀지» 않았는지 ═══════════════════════════════════════════════════
 //
@@ -74,7 +74,7 @@ console.log('\n[2] all five arguments reach the wire');
   eq('hops is on the wire', q.get('hops'), '3');
   eq('node_limit is on the wire', q.get('node_limit'), '120');
   // follow 는 «여럿»입니다. `get` 하나만 재면 둘째가 사라져도 초록입니다.
-  eq('every follow is on the wire, bare', q.getAll('follow'), ['inspected', 'observed']);
+  eq('every follow is on the wire, as declared', q.getAll('follow'), ['inspected', 'observed']);
 }
 
 // ═══ ③ 🔴 안 준 것은 «안 간다» — 「고르지 않음」과 「0 을 골랐음」은 다릅니다 ══════════
@@ -90,7 +90,7 @@ console.log('\n[3] what the caller did not choose does not go');
 }
 {
   const r = recorder();
-  await createWalkBoxWalk({ apiBase: '', fetchImpl: r.fetchImpl })({ type: 'wafer@1', keys: {} });
+  await createWalkBoxWalk({ apiBase: '', fetchImpl: r.fetchImpl })({ type: 'wafer', keys: {} });
   // 🔴 C-97. 주장은 그대로입니다 — 「안 준 것은 안 간다」. 바뀐 것은 씨앗이 «열거»가 아니라
   //    «서술»이라는 것뿐이고(키를 안 골랐으니까), 그래서 나가는 키는 여전히 «하나»입니다.
   eq('with nothing chosen, only the seed goes', [...r.params().keys()], ['seed_type']);
@@ -371,7 +371,7 @@ const BODY = (truncated) => ({ ok: true, json: async () => ({ nodes: [], edges: 
 async function cutOf(M, spec, truncated) {
   const r = recorder(BODY(truncated));
   return M.createWalkBoxWalk({ apiBase: '', fetchImpl: r.fetchImpl })(
-    { type: 'wafer@1', keys: { wafer: 'W-1' }, ...spec });
+    { type: 'wafer', keys: { wafer: 'W-1' }, ...spec });
 }
 
 async function truncationSuite(M) {
@@ -428,7 +428,7 @@ async function intervalSuite(M) {
   const wire = async (spec) => {
     const r = recorder(BODY(T({})));
     await M.createWalkBoxWalk({ apiBase: '', fetchImpl: r.fetchImpl })(
-      { type: 'wafer@1', keys: { wafer: 'W-1' }, ...spec });
+      { type: 'wafer', keys: { wafer: 'W-1' }, ...spec });
     return r.params();
   };
   const both = await wire({ since: '2026-09-01', until: '2026-09-08' });
@@ -461,7 +461,7 @@ async function refusalSuite(M) {
   const said = async (status, body) => {
     const r = recorder({ ok: false, status, json: async () => body });
     const got = await M.createWalkBoxWalk({ apiBase: '', fetchImpl: r.fetchImpl })(
-      { type: 'wafer@1', keys: { wafer: 'W-1' } });
+      { type: 'wafer', keys: { wafer: 'W-1' } });
     return got.message;
   };
   // 🔴 THE TWO THE SERVER ACTUALLY SENDS (S-98), and they must not be one sentence.
@@ -504,26 +504,30 @@ async function oneBuilderSuite(M) {
     await M.fetchSubgraph({ apiBase: '', fetchImpl: r.fetchImpl, ...params });
     return r.seen[0];
   };
-  const seed = M.entitySeedId('wafer@1', { wafer_id: 'W-1' });
+  const seed = M.entitySeedId('wafer', { wafer_id: 'W-1' });
 
-  const boxUrl = await urlOfSpec({ ...PANEL, since: '2026-09-01', collect: ['defect@1'] });
-  const seatUrl = await urlOfSeat({ nodeId: seed, follow: ['inspected@1'],
-                                    collect: ['defect@1'], hops: 3, since: '2026-09-01' });
+  const boxUrl = await urlOfSpec({ ...PANEL, since: '2026-09-01', collect: ['defect'] });
+  const seatUrl = await urlOfSeat({ nodeId: seed, follow: ['inspected'],
+                                    collect: ['defect'], hops: 3, since: '2026-09-01' });
   ok('G1 the walk box URL IS the canonical builder\'s URL — no second builder',
     boxUrl === seatUrl, `\n        box  ${boxUrl}\n        seat ${seatUrl}`);
 
-  // 🔴 THE PAYOFF, MEASURED: `collect` and the bare-name rule now live in ONE place, so both
-  //    callers carry them. Before C-53 only the walk box stripped `@1`, and a seat that
-  //    declared `inspected@1` was answered 422 with 「서버가 거절」 and nothing else.
-  ok('G2 the version suffix is stripped for BOTH callers',
+  // 🔴 THE PAYOFF, MEASURED: `follow` and `collect` live in ONE place, so both callers carry them.
+  ok('G2 follow goes on the wire as declared for BOTH callers',
     /follow=inspected(&|$)/.test(boxUrl) && /follow=inspected(&|$)/.test(seatUrl),
     `${boxUrl} | ${seatUrl}`);
-  ok('G3 ...and so is `collect`, which only one of them used to know',
+  ok('G3 ...and so does `collect`, which only one of them used to know',
     /collect=defect(&|$)/.test(boxUrl) && /collect=defect(&|$)/.test(seatUrl));
+  // 🔴 THE RETIRED SYMPTOM, AS A CONTROL: the wire once stripped `@1` because the route refused it (422, 2026-08-29).
+  //    The server folds an old `x@1` itself since f34f16892, so the screen sends names as it holds them -
+  //    putting the stripping back turns this line red first.
+  const held = await urlOfSeat({ nodeId: seed, follow: ['inspected@1'], collect: ['defect@1'], hops: 3 });
+  ok('G3b a name the screen holds with @1 goes on the wire as held - the screen rewrites no name',
+    /follow=inspected%401(&|$)/.test(held) && /collect=defect%401(&|$)/.test(held), held);
 
   // ⚠️ 「0 은 안 싣는다」는 걷기 상자의 «화면 규칙»이고, 좌석은 0 을 «값으로» 보냅니다.
   //    합치면서 한쪽 규칙이 조용히 이기면 그것이 「축과 값을 같이 죽이는」 자리입니다.
-  const zeros = await urlOfSpec({ type: 'wafer@1', keys: { wafer_id: 'W-1' }, hops: 0, node_limit: 0 });
+  const zeros = await urlOfSpec({ type: 'wafer', keys: { wafer_id: 'W-1' }, hops: 0, node_limit: 0 });
   ok('G4 the panel still drops its zeros', !/hops=0/.test(zeros) && !/node_limit=0/.test(zeros), zeros);
   const seatZero = await urlOfSeat({ nodeId: seed, hops: 0 });
   // 🔴 C-97. 서술된 씨앗은 «id 없이» 갑니다. 서버가 둘을 «같이» 주는 것을 거절하므로, 둘 다
@@ -531,7 +535,7 @@ async function oneBuilderSuite(M) {
   {
     const rd = recorder();
     await M.createWalkBoxWalk({ apiBase: '', fetchImpl: rd.fetchImpl })(
-      { type: 'wafer@1', keys: {} });
+      { type: 'wafer', keys: {} });
     const q = rd.params();
     ok('G6 a described seed names the type', q.get('seed_type') === 'wafer', String(q.get('seed_type')));
     ok('G7 ... and carries NO id, because the route refuses both together',
@@ -641,12 +645,8 @@ const REFUSAL_DEFECTS = [
 const ONE_BUILDER_DEFECTS = [
   ['the canonical builder forgets `collect`, and BOTH callers must lose it together',
     (src) => src.replace(
-      "  for (const t of Array.isArray(collect) ? collect : []) query.append('collect', String(t).split('@')[0]);",
+      "  for (const t of Array.isArray(collect) ? collect : []) query.append('collect', String(t));",
       '')],
-  ['the bare-name rule is dropped, so a declared `inspected@1` reaches the route as-is',
-    (src) => src.replace(
-      "  for (const p of Array.isArray(follow) ? follow : []) query.append('follow', String(p).split('@')[0]);",
-      "  for (const p of Array.isArray(follow) ? follow : []) query.append('follow', p);")],
   // 🔴 「걷기 상자가 자기 질문을 다시 짓는다」의 대역: 정본을 지나되 «자기만» 인자를 하나
   //    더 실어 보냅니다. 그 순간 두 URL 이 갈라지고, 그것이 둘째 생성기가 하는 일 그대로입니다.
   ['the walk box adds an argument of its own, so the two URLs part again',

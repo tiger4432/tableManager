@@ -2,7 +2,6 @@ import './ontology_explorer.css';
 import {
   initialExplorerState, reduceExplorerState, dirtyNavigationDecision,
   reduceFieldFold, reduceNewDeclaration, restoreDirtyEditorCheckpoint,
-  declarationIdFor,
   // C-82: the draft-leaf reader and the rule that says whose relation the choices follow.
   draftValueAt as storeDraftValueAt, relationInEffect,
   // 791c0f45e: whether the draft moved a leaf the plan marks as shaping the form.
@@ -490,9 +489,7 @@ export function createOntologyExplorerController({ root, apiBase, adminFetch, sh
   // next move is to change the name they just typed, and a message that floats away leaves
   // them retyping against a rule they can no longer read.
   const createDeclaration = async (kind) => {
-    // Same rule the naming box previewed, from the same function -- so what was shown as
-    // 「→ lot@2」 is what gets created, rather than two guesses that agree today.
-    const canonicalId = declarationIdFor(state, kind, state.newDeclaration?.id);
+    const canonicalId = (state.newDeclaration?.id || '').trim();
     if (!canonicalId) return;
     try {
       const res = await ask(`${apiBase}/admin/ontology-explorer/drafts/new`, {
@@ -1536,7 +1533,7 @@ No effect`;
       // the text is the same length; without that, typing into the middle of a name
       // jumps to the end on every keystroke.
       //
-      // Only NEW names. Nothing here renames anything: `Lot@1` in the file stays `Lot@1`,
+      // Only NEW names. Nothing here renames anything: `Lot` in the file stays `Lot`,
       // because entity and predicate spellings are atom identity (`DEDUPE_COLUMNS`).
       const typed = event.target.value;
       const normalised = typed.toLowerCase();

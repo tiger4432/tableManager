@@ -30,7 +30,7 @@ import { fetchDeclaration, createWalkBoxWalk, pathsBetween, routeWith, fetchKeyV
 // 🔴 겉모양은 «부품과 같이» 다닙니다 (총괄 판정 2026-09-06).
 import { ensureWalkStyles } from './styles.js';
 import {
-  bareName, followFromRoute, followChoices, predicatesTouching, noFollowSentence, keepWalkableRoutes,
+  followFromRoute, followChoices, predicatesTouching, noFollowSentence, keepWalkableRoutes,
   cutBudgets,
 } from './derive.js';
 // 🔴 C-72. 표의 «결정»은 전부 여기 있고 이 파일에는 DOM 쓰기만 남습니다.
@@ -104,10 +104,6 @@ export function boot(doc, host, deps) {
   const routeKey = (r) => `${r.to}|${r.follow.slice().sort().join('+')}`;
   const loopsOf = (r) => state.loopsOn.get(routeKey(r)) || new Set();
 
-  // 🔴 `@1` 을 뗍니다. 선언은 타입을 `wafer@1` 로 쓰고 전선과 `pathsBetween` 의 타입 그래프는
-  //    `wafer` 로 씁니다 -- 그 규칙은 `derive.js` 한 곳에 삽니다.
-  const bare = bareName;
-
   const entities = () => (state.decl && state.decl.entities) || [];
   const keysOf = (type) => {
     const found = entities().find((e) => e.type === type);
@@ -143,8 +139,8 @@ export function boot(doc, host, deps) {
     if (!state.decl || !state.type || !state.collect.size) return [];
     const out = [];
     for (const to of state.collect) {
-      for (const r of pathsBetween(state.decl, bare(state.type), bare(to))) {
-        out.push({ ...r, to: bare(to) });
+      for (const r of pathsBetween(state.decl, state.type, to)) {
+        out.push({ ...r, to });
       }
     }
     // 🔴 걷기가 «거절할» 길은 내놓지 않습니다. 규칙과 사유는 `derive.js` 에 있습니다.
@@ -334,13 +330,13 @@ export function boot(doc, host, deps) {
     const found = routes();
     const box = el(doc, 'div', 'wk-field');
     const head = el(doc, 'div', 'wk-routes-head');
-    head.append(el(doc, 'span', 'wk-label', `Route to ${[...state.collect].map(bare).join(', ')}`),
+    head.append(el(doc, 'span', 'wk-label', `Route to ${[...state.collect].join(', ')}`),
       el(doc, 'span', 'wk-note', unitText(found.length, 'route')));
     box.append(head);
     if (!found.length) {
       // 「길이 없다」는 답입니다. 빈 칸으로 두면 「아직 안 셌다」와 같아 보입니다.
       box.append(el(doc, 'div', 'wk-note',
-        `No route from ${bare(state.type)} to ${[...state.collect].map(bare).join(' · ')}`));
+        `No route from ${state.type} to ${[...state.collect].join(' · ')}`));
     }
     // A route with the loop chips that are on fills follow and hops.
     const useRoute = (r, on) => {
@@ -430,7 +426,7 @@ export function boot(doc, host, deps) {
       root.append(box);
       return;
     }
-    const summary = state.follow.size ? [...state.follow].map(bare).join(', ') : SERVER_DEFAULT;
+    const summary = state.follow.size ? [...state.follow].join(', ') : SERVER_DEFAULT;
     const fold = el(doc, 'button', 'wk-fold');
     fold.type = 'button';
     fold.setAttribute('aria-expanded', state.followOpen ? 'true' : 'false');
@@ -513,8 +509,8 @@ export function boot(doc, host, deps) {
   /** What the shown walk asked: the start's type and key values, and the types it collects. */
   function askedTitle(asked) {
     const values = Object.values(asked.keys || {}).map((v) => String(v)).filter((v) => v).join(' · ');
-    const to = (asked.collect || []).map(bare).join(', ');
-    return `${bare(asked.type)}${values ? ' ' + values : ''}${to ? ' → ' + to : ''}`;
+    const to = (asked.collect || []).join(', ');
+    return `${asked.type || ''}${values ? ' ' + values : ''}${to ? ' → ' + to : ''}`;
   }
 
   function renderHead(root) {
@@ -524,7 +520,7 @@ export function boot(doc, host, deps) {
       head.append(el(doc, 'span', 'wk-title', askedTitle(state.asked)));
       // 🔴 두 수가 «다른 모집단»입니다. collect 는 노드를 거르고 엣지는 «안 거릅니다», 그래서
       //    collect 가 걸렸을 때만 «주어»를 답니다.
-      const asked = (state.asked.collect || []).map(bare).join(', ');
+      const asked = (state.asked.collect || []).join(', ');
       head.append(el(doc, 'span', 'wk-counts', asked
         ? `Nodes ${r.nodes.length} (collect: ${asked}) · Edges ${r.edges.length} (all)`
         : `Nodes ${r.nodes.length} · Edges ${r.edges.length}`));
@@ -584,7 +580,7 @@ export function boot(doc, host, deps) {
         const dist = el(doc, 'div', 'wk-dist');
         dist.append(el(doc, 'span', 'wk-distlabel', 'Types'));
         for (const [t, n] of [...byType.entries()].sort((a, b) => b[1] - a[1])) {
-          const chip = el(doc, 'span', 'wk-distchip' + (state.collect.has(t) || state.collect.has(`${t}@1`) ? ' is-asked' : ''));
+          const chip = el(doc, 'span', 'wk-distchip' + (state.collect.has(t) ? ' is-asked' : ''));
           chip.append(el(doc, 'b', '', t), el(doc, 'span', '', ` ${n}`));
           dist.append(chip);
         }

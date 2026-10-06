@@ -3,7 +3,7 @@
 // WHY THIS EXISTS. Measured live 2026-09-06: clicking a derived route filled `hops` and ticked
 // NOTHING. Two independent causes, and neither was visible to any check that existed:
 //   ① the derivation speaks bare names (`observed`) and the checkboxes carry the declared
-//      spelling (`observed@1`), so no name matched;
+//      spelling (`observed`), so no name matched;
 //   ② the second-hop predicate had no checkbox at all, because the list only offers predicates
 //      whose subject is the START type — `observed` belongs to `die`.
 // The import test and the request test were both GREEN through all of it: the wire was correct
@@ -28,11 +28,11 @@ function ok(cond, name) {
 
 // The declaration's own spelling, and a route as `pathsBetween` actually returns it.
 // 🔴 These are the LIVE shapes, not invented ones: the walk screen's follow boxes read
-//    `inspected@1 · measures@1 · processed_with@1 · register@1` for a `wafer@1` seed, and the
+//    `inspected · measures · processed_with · register` for a `wafer` seed, and the
 //    two-hop route to `defect` is `[inspected, observed]`.
-const DECLARED = ['inspected@1', 'measures@1', 'processed_with@1', 'register@1', 'observed@1',
-  'of_kind@1', 'bonded_from@1'];
-const FROM_WAFER = ['inspected@1', 'measures@1', 'processed_with@1', 'register@1'];
+const DECLARED = ['inspected', 'measures', 'processed_with', 'register', 'observed',
+  'of_kind', 'bonded_from'];
+const FROM_WAFER = ['inspected', 'measures', 'processed_with', 'register'];
 const ROUTE_2HOP = ['inspected', 'observed'];
 const ROUTE_3HOP = ['measures', 'leads_to', 'of_kind'];
 
@@ -41,10 +41,10 @@ const ROUTE_3HOP = ['measures', 'leads_to', 'of_kind'];
 //    so it is written as absence rather than as `class: null`. The route serves the words as a
 //    list since lead 07889c83d (`["static"]`).
 const ENTITIES = [
-  { type: 'defect_kind@1' , class: ['static'] }, { type: 'quantity@1', class: ['static'] },
-  { type: 'recipe@1', class: ['static'] },
-  { type: 'defect@1' }, { type: 'die@1' }, { type: 'dtjob@1' },
-  { type: 'lot@1' }, { type: 'lot_slot@1' }, { type: 'wafer@1' },
+  { type: 'defect_kind' , class: ['static'] }, { type: 'quantity', class: ['static'] },
+  { type: 'recipe', class: ['static'] },
+  { type: 'defect' }, { type: 'die' }, { type: 'dtjob' },
+  { type: 'lot' }, { type: 'lot_slot' }, { type: 'wafer' },
 ];
 // Routes as `pathsBetween` returns them; the first is the one measured live to answer with the
 // seed alone (1 node, 0 under a collect) while `wafer>die>defect` answered with 121.
@@ -63,7 +63,7 @@ function suite(M) {
 
   const filled = M.followFromRoute(DECLARED, ROUTE_2HOP);
   ok(filled.length === 2, 'F1 a two-hop route fills TWO predicates, not zero');
-  ok(filled.includes('inspected@1') && filled.includes('observed@1'),
+  ok(filled.includes('inspected') && filled.includes('observed'),
     'F2 ... and they are the DECLARED spellings, matched on the bare name');
 
   // 🔴 The control for F1/F2: a route naming something the declaration does not have must fill
@@ -73,11 +73,11 @@ function suite(M) {
   ok(M.followFromRoute(DECLARED, []).length === 0, 'F4 an empty route fills nothing');
 
   // A three-hop route whose middle predicate is undeclared here: the two that exist still land.
-  ok(M.followFromRoute(DECLARED, ROUTE_3HOP).join() === 'measures@1,of_kind@1',
+  ok(M.followFromRoute(DECLARED, ROUTE_3HOP).join() === 'measures,of_kind',
     'F5 a longer route fills every hop the declaration knows');
 
   const shown = M.followChoices(FROM_WAFER, DECLARED, new Set(filled));
-  ok(shown.includes('observed@1'),
+  ok(shown.includes('observed'),
     'C1 a later-hop predicate that is SELECTED becomes visible, though it does not start here');
   ok(FROM_WAFER.every((n) => shown.includes(n)),
     'C2 ... and the start-type options all stay — the filter is widened, not replaced');
@@ -89,38 +89,35 @@ function suite(M) {
     'C4 with nothing selected the list is exactly the start-type set');
 
   // ── 10-02: the predicates a type can be walked along, from EITHER side ─────────────
-  // Shapes and classes from the shipped sample; `transfer@1` names die on both sides (O2), and
-  // `defect@1` is the object-only type that is NOT static (O1).
+  // Shapes and classes from the shipped sample; `transfer` names die on both sides (O2), and
+  // `defect` is the object-only type that is NOT static (O1).
   const PREDS = [
-    { name: 'inspected@1', subjects: ['wafer@1'], object: { types: ['die@1'] } },
-    { name: 'processed_with@1', subjects: ['wafer@1'], object: { types: ['recipe@1'] } },
-    { name: 'transfer@1', subjects: ['die@1'], object: { types: ['die@1'] } },
-    { name: 'observed@1', subjects: ['die@1'], object: { types: ['defect@1'] } },
-    { name: 'register@1', subjects: ['wafer@1'], object: {} },
-    { name: 'leads_to@1', subjects: ['quantity@1'], object: { types: ['quantity@1', 'defect_kind@1'] } },
+    { name: 'inspected', subjects: ['wafer'], object: { types: ['die'] } },
+    { name: 'processed_with', subjects: ['wafer'], object: { types: ['recipe'] } },
+    { name: 'transfer', subjects: ['die'], object: { types: ['die'] } },
+    { name: 'observed', subjects: ['die'], object: { types: ['defect'] } },
+    { name: 'register', subjects: ['wafer'], object: {} },
+    { name: 'leads_to', subjects: ['quantity'], object: { types: ['quantity', 'defect_kind'] } },
   ];
   const touch = (type) => M.predicatesTouching(PREDS, type, ENTITIES).join();
-  ok(touch('defect@1') === 'observed@1', 'O1 an object-only type gets the predicate that enters it');
-  ok(touch('die@1') === 'inspected@1,transfer@1,observed@1',
+  ok(touch('defect') === 'observed', 'O1 an object-only type gets the predicate that enters it');
+  ok(touch('die') === 'inspected,transfer,observed',
     'O2 a type on both sides gets both, once each, in declaration order');
-  ok(touch('wafer@1') === 'inspected@1,processed_with@1,register@1',
+  ok(touch('wafer') === 'inspected,processed_with,register',
     'O3 a subject-only type gets exactly what the subject-only rule gave it');
-  ok(touch('note@1') === '', 'O4 CONTROL: a type nothing names gets nothing');
+  ok(touch('note') === '', 'O4 CONTROL: a type nothing names gets nothing');
   ok(M.predicatesTouching(PREDS, '', ENTITIES).length === PREDS.length,
     'O5 no type picked offers every declared predicate');
   // 🔴 THE SEED'S FIRST STEP IS OPEN (owner 10-02 「첫걸음은 열어」, lead c24ba7d82).
-  ok(touch('recipe@1') === 'processed_with@1',
-    'O6 a static object-only type gets what enters it — the seed\'s first step goes to wafer@1');
-  ok(touch('defect_kind@1') === 'leads_to@1', 'O7 ... and static -> static too');
+  ok(touch('recipe') === 'processed_with',
+    'O6 a static object-only type gets what enters it — the seed\'s first step goes to wafer');
+  ok(touch('defect_kind') === 'leads_to', 'O7 ... and static -> static too');
   const ST = new Set(['recipe']);
-  ok(M.walkTakesStep(ST, 'recipe@1', 'wafer@1', 0) && !M.walkTakesStep(ST, 'recipe@1', 'wafer@1', 1)
-    && M.walkTakesStep(ST, 'wafer@1', 'recipe@1', 1),
+  ok(M.walkTakesStep(ST, 'recipe', 'wafer', 0) && !M.walkTakesStep(ST, 'recipe', 'wafer', 1)
+    && M.walkTakesStep(ST, 'wafer', 'recipe', 1),
   'O8 the one step seat: static -> not static is taken as the first step only; into a static type always');
-  ok(M.noFollowSentence('note@1') === 'No predicate touches note@1',
+  ok(M.noFollowSentence('note') === 'No predicate touches note',
     'O9 the empty follow says nothing touches the type');
-
-  ok(M.bareName('observed@1') === 'observed' && M.bareName('observed') === 'observed',
-    'B1 the version suffix is dropped, and a bare name survives unchanged');
 
   // 🔴 THE STATIC FILTER. The walk refuses a static -> not-static step, so offering one is
   //    offering a route that answers with the seed alone. The server's predicate is
@@ -153,13 +150,13 @@ function suite(M) {
   //    declaration and the column follows, without editing code" - so the declaration is the
   //    only thing that moves between T1 and T3.
   const colNames = (cols) => cols.map((c) => c.name).join(',');
-  const DIE = [{ type: 'die@1', keys: ['mat_id', 'x', 'y', 'mat_type'] },
-    { type: 'wafer@1', keys: ['wafer'] }];
+  const DIE = [{ type: 'die', keys: ['mat_id', 'x', 'y', 'mat_type'] },
+    { type: 'wafer', keys: ['wafer'] }];
   ok(colNames(M.tableColumns(DIE, 'die', [])) === 'Depth,mat_id,x,y,mat_type,Label,id',
     'T1 the columns are depth, the declared keys in order, label, then id');
   ok(colNames(M.tableColumns(DIE, 'wafer', [])) === 'Depth,wafer,Label,id',
     'T2 a different type brings its OWN keys, which is why sections are per type');
-  const GREW = [{ type: 'die@1', keys: ['mat_id', 'x', 'y', 'mat_type', 'lot'] }];
+  const GREW = [{ type: 'die', keys: ['mat_id', 'x', 'y', 'mat_type', 'lot'] }];
   ok(colNames(M.tableColumns(GREW, 'die', [])).includes('lot'),
     'T3 a key added to the declaration adds a column, with no edit here');
   ok(colNames(M.tableColumns(DIE, 'die', ['gate', 'unit']))
@@ -168,7 +165,7 @@ function suite(M) {
   // 🔴 The control: a type the declaration does not carry must not invent identity columns.
   ok(colNames(M.tableColumns(DIE, 'unknown_type', [])) === 'Depth,Label,id',
     'T5 an undeclared type gets no key columns rather than borrowed ones');
-  ok(colNames(M.tableColumns(DIE, 'die@1', [])).includes('mat_id'),
+  ok(colNames(M.tableColumns(DIE, 'die', [])).includes('mat_id'),
     'T6 the version suffix does not hide the declaration from the lookup');
 
   // 🔴 C-70. 좁은 프리셋과 구획 — 걷기 «검색창»이 이 둘을 불러서 자기 컬럼을 짓습니다. 두 화면이
@@ -183,15 +180,15 @@ function suite(M) {
   ok(colNames(M.tableColumns(DIE, 'die', [])) !== colNames(M.tableColumns(DIE, 'die',
     [], M.COLUMNS.FOR_PICKING)),
     'G4 the two presets really differ — otherwise G1 would pass on a preset that does nothing');
-  const SEC = M.sectionsByType([{ id: 'a', type: 'die@1' }, { id: 'b', type: 'wafer@1' },
-    { id: 'c', type: 'die@1' }]);
-  ok([...SEC.keys()].join(',') === 'die@1,wafer@1',
+  const SEC = M.sectionsByType([{ id: 'a', type: 'die' }, { id: 'b', type: 'wafer' },
+    { id: 'c', type: 'die' }]);
+  ok([...SEC.keys()].join(',') === 'die,wafer',
     'G5 sections keep the order the walk returned, because that order is part of the answer');
-  ok(SEC.get('die@1').length === 2 && SEC.get('wafer@1').length === 1,
+  ok(SEC.get('die').length === 2 && SEC.get('wafer').length === 1,
     'G6 every node lands in exactly one section');
   ok(M.sectionsByType([]).size === 0,
     'G7 nothing walked is NO section rather than one empty one');
-  ok(M.sectionHeading('die@1', 3) === 'die@1 · 3',
+  ok(M.sectionHeading('die', 3) === 'die · 3',
     'G8 the section head is the type and the count, not a sentence');
   ok(M.sectionHeading('', 0) === 'No type · 0',
     'G9 a node whose type is missing still says so, and 0 is still drawn');
@@ -208,7 +205,7 @@ function suite(M) {
   //    today (server/ledger_trace_router.py), so nothing on the live wire carries
   //    `attributes` yet. This is the shape S-52 will publish, written out here so the
   //    layout can be scored BEFORE it lands rather than after it breaks.
-  const WITH_ATTRS = [{ type: 'die@1', keys: ['mat_id', 'x'], attributes: ['grade', 'lot'] }];
+  const WITH_ATTRS = [{ type: 'die', keys: ['mat_id', 'x'], attributes: ['grade', 'lot'] }];
   ok(colNames(M.tableColumns(WITH_ATTRS, 'die', ['gate']))
     === 'Depth,mat_id,x,gate,grade,lot,Conflicts,Label,id',
     'T7 declared attributes are columns of their own, after the qualifiers and before Label');
@@ -231,7 +228,7 @@ function suite(M) {
   //    column that reads the wrong map comes back empty rather than coincidentally right —
   //    which is exactly what the arithmetic did.
   const NODE = { depth: 2, keys: { mat_id: 'M1', x: 3 }, attributes: { grade: 'A' },
-    label: 'die 1', id: 'ledger-entity:v1:die@1:M1' };
+    label: 'die 1', id: 'ledger-entity:v1:die:M1' };
   const QUALS = { gate: 7 };
   const at = (kind, key) => M.cellSource({ kind, key }, NODE, QUALS);
   ok(at('depth') === 2, 'V1 depth reads the node depth');
@@ -240,7 +237,7 @@ function suite(M) {
   ok(at('attribute', 'grade') === 'A', 'V4 an attribute column reads the ATTRIBUTE map');
   ok(at('key', 'grade') === undefined && at('attribute', 'mat_id') === undefined,
     'V5 and neither map answers for the other — the two are not interchangeable');
-  ok(at('label') === 'die 1' && at('id') === 'ledger-entity:v1:die@1:M1',
+  ok(at('label') === 'die 1' && at('id') === 'ledger-entity:v1:die:M1',
     'V6 label and id read themselves');
   // ⚠️ RAW, NOT TEXT. 「the walk never reached this」 must survive as `undefined` so the
   //    caller can tell it from a value; inventing 「」 here would decide that in the wrong file.
@@ -256,11 +253,11 @@ function suite(M) {
   //    an array (a JSON list stored in that column). Choosing by shape would draw that cell as
   //    「registered several times」, a claim nobody made.
   const MANY_NODE = {
-    type: 'wafer@1', keys: { wafer: 'W1' },
+    type: 'wafer', keys: { wafer: 'W1' },
     attributes: { product: ['P1', 'P2'], grade: ['A'], note: ['x', 'y'] },
   };
-  const ENVELOPE = { attribute_cardinality: { 'wafer@1': { product: 'many', grade: 'many' } } };
-  const plural = M.pluralAttributes(ENVELOPE).get('wafer@1');
+  const ENVELOPE = { attribute_cardinality: { 'wafer': { product: 'many', grade: 'many' } } };
+  const plural = M.pluralAttributes(ENVELOPE).get('wafer');
   const many = (key) => M.cellSource({ kind: 'attribute', key }, MANY_NODE, {}, plural);
   ok(many('product') === 'P1 · P2',
     `P1 a declared-many attribute reads as the list it is -- got ${JSON.stringify(many('product'))}`);
@@ -270,7 +267,7 @@ function suite(M) {
     'P3 a name the declaration did NOT call many is left alone, array or not');
   ok(M.pluralAttributes({}).size === 0 && M.pluralAttributes(null).size === 0,
     'P4 an envelope that says nothing about cardinality declares no plural names');
-  ok(M.pluralAttributes({ attribute_cardinality: { 'wafer@1': { product: 'one' } } }).size === 0,
+  ok(M.pluralAttributes({ attribute_cardinality: { 'wafer': { product: 'one' } } }).size === 0,
     'P5 only the server`s word `many` counts -- another word is not a plural declaration');
   ok(M.cellSource({ kind: 'attribute', key: 'product' }, MANY_NODE, {}) !== 'P1 · P2',
     'P6 a caller that was told nothing joins nothing -- the knowledge travels, it is not assumed');
@@ -316,19 +313,19 @@ function suite(M) {
   // 🔴 모집단은 «선언»입니다. 라우트가 술어마다 `absence_confirmed_by` 를 «있을 때만» 싣고
   //    (S-216, 키 생략), 그 이름이 곧 열입니다. 걷기가 그 타입에 못 닿은 날 열이 사라지면
   //    「그런 질문이 없다」로 읽히고, 그게 이 칸이 막으려던 오독입니다.
-  const ENT = [{ type: 'wafer@1', keys: ['wafer'] }];
-  const CONFIRMED = [{ name: 'observed@1', absence_confirmed_by: 'inspected@1' },
-                     { name: 'inspected@1' }];
-  const colsWith = (confirmers) => M.tableColumns(ENT, 'wafer@1', [], undefined, confirmers)
+  const ENT = [{ type: 'wafer', keys: ['wafer'] }];
+  const CONFIRMED = [{ name: 'observed', absence_confirmed_by: 'inspected' },
+                     { name: 'inspected' }];
+  const colsWith = (confirmers) => M.tableColumns(ENT, 'wafer', [], undefined, confirmers)
     .filter((c) => c.kind === 'absence');
   const cellOf = (absence) => M.cellSource(
     { kind: 'absence', key: 'observed' }, { absence }, {}, undefined);
 
   ok(M.confirmedPredicates(CONFIRMED).join(',') === 'observed',
     'A1 선언이 이름 댄 확인 술어만, 버전은 벗겨서');
-  ok(M.confirmedPredicates([{ name: 'observed@1' }]).length === 0,
+  ok(M.confirmedPredicates([{ name: 'observed' }]).length === 0,
     'A2 키가 «없는» 술어는 확인 술어가 아니다 — 라우트가 키를 생략하는 이유 그대로');
-  ok(M.confirmedPredicates([{ name: 'x@1', absence_confirmed_by: '' }]).length === 0,
+  ok(M.confirmedPredicates([{ name: 'x', absence_confirmed_by: '' }]).length === 0,
     'A3 빈 문자열도 «안 댄 것»이다 — 값으로 되살리지 않는다');
 
   ok(colsWith(M.confirmedPredicates(CONFIRMED)).map((c) => c.name).join(',') === 'observed',
@@ -398,13 +395,8 @@ const DEFECTS = [
   ['the section head drops the count and says only the type',
     (s) => s.replace("  return `${type || 'No type'} · ${count}`;",
       "  return `${type || 'No type'}`;")],
-  ['the spellings are compared directly again, so nothing is ticked',
-    (s) => s.replace('  const wanted = new Set((routeFollow || []).map(bareName));\n'
-      + '  return (declaredNames || []).filter((name) => wanted.has(bareName(name)));',
-    '  const wanted = new Set(routeFollow || []);\n'
-      + '  return (declaredNames || []).filter((name) => wanted.has(name));')],
   ['the fill returns nothing at all',
-    (s) => s.replace('  return (declaredNames || []).filter((name) => wanted.has(bareName(name)));',
+    (s) => s.replace('  return (declaredNames || []).filter((name) => wanted.has(name));',
       '  return [];')],
   // ── 10-02. 「이 타입에서 고를 수 있는 술어」 ──────────────────────────────────────────
   ['the object side is not read, so an object-only type offers nothing again',
@@ -418,7 +410,7 @@ const DEFECTS = [
   // 🔴 c24ba7d82. ONE MUTANT, BOTH LISTS: closing the first step again must redden the follow list
   //    (O6) AND the route list (S6) — that is what 「one seat」 means here.
   ['the seed\'s first step is closed again',
-    (s) => s.replace('  return step === 0 || !statics.has(bareName(from))', '  return !statics.has(bareName(from))')],
+    (s) => s.replace('  return step === 0 || !statics.has(from)', '  return !statics.has(from)')],
   ['every step of a route counts as the first, so a later static step is let through',
     (s) => s.replace('walkTakesStep(statics, chain[i], chain[i + 1], i)', 'walkTakesStep(statics, chain[i], chain[i + 1], 0)')],
   ['the follow list asks a later step, so a static type loses its first step',
@@ -494,14 +486,14 @@ const DEFECTS = [
     (s) => s.replace(".filter((e) => e && Array.isArray(e.class) && e.class.includes('static'))",
       ".filter((e) => !e || !(Array.isArray(e.class) && e.class.includes('dynamic')))")],
   ['the filter drops any route that TOUCHES a static type, killing the mechanism chain',
-    (s) => s.replace('  return step === 0 || !statics.has(bareName(from)) || statics.has(bareName(to));',
-      '  return !statics.has(bareName(from)) && !statics.has(bareName(to));')],
+    (s) => s.replace('  return step === 0 || !statics.has(from) || statics.has(to);',
+      '  return !statics.has(from) && !statics.has(to);')],
 ];
 const CONTROLS = [
-  ['a local rename', (s) => s.replace('  const wanted = new Set((routeFollow || []).map(bareName));',
-    '  const want = new Set((routeFollow || []).map(bareName));')
-    .replace('  return (declaredNames || []).filter((name) => wanted.has(bareName(name)));',
-      '  return (declaredNames || []).filter((name) => want.has(bareName(name)));')],
+  ['a local rename', (s) => s.replace('  const wanted = new Set(routeFollow || []);',
+    '  const want = new Set(routeFollow || []);')
+    .replace('  return (declaredNames || []).filter((name) => wanted.has(name));',
+      '  return (declaredNames || []).filter((name) => want.has(name));')],
   ['comments stripped', (s) => s.split('\n').filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l)).join('\n')],
 ];
 

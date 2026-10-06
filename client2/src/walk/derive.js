@@ -7,25 +7,13 @@
 // functions the screen runs.
 //
 // 🔴 BOTH EXIST BECAUSE OF A MEASURED DEFECT, not for symmetry. Clicking a route filled `hops`
-//    and ticked nothing: the derivation speaks bare names (`observed`) and the checkboxes carry
-//    the declared spelling (`observed@1`), and the second-hop predicate had no checkbox at all
-//    because the list only offered predicates whose subject is the START type.
+//    and ticked nothing, and the second-hop predicate had no checkbox at all because the list
+//    only offered predicates whose subject is the START type.
 
-/** `wafer@1` -> `wafer`. The declaration versions its names; the type graph and the wire do not. */
-export function bareName(value) {
-  return String(value || '').split('@')[0];
-}
-
-/**
- * The declared spellings for a route's predicates.
- *
- * 🔴 Matching is on the BARE name in both directions. Comparing the two spellings directly is
- *    the defect this closes, and it fails silently: no name matches, so nothing is ticked and
- *    the screen looks like it simply ignored the click.
- */
+/** The declared predicates a route follows. */
 export function followFromRoute(declaredNames, routeFollow) {
-  const wanted = new Set((routeFollow || []).map(bareName));
-  return (declaredNames || []).filter((name) => wanted.has(bareName(name)));
+  const wanted = new Set(routeFollow || []);
+  return (declaredNames || []).filter((name) => wanted.has(name));
 }
 
 /**
@@ -140,8 +128,7 @@ export function sectionHeading(type, count) {
  *    필요한데, 거기서 키 이름을 «적으면»(`keys.mat_id`) 선언이 바뀌어도 그 화면만 안 따라옵니다.
  */
 export function declaredKeys(entities, type) {
-  const bare = bareName(type);
-  const found = (entities || []).find((e) => e && bareName(e.type) === bare);
+  const found = (entities || []).find((e) => e && e.type === type);
   return (found && found.keys) || [];
 }
 
@@ -157,13 +144,12 @@ export function declaredKeys(entities, type) {
 export function confirmedPredicates(predicates) {
   return (predicates || [])
     .filter((p) => p && typeof p.absence_confirmed_by === 'string' && p.absence_confirmed_by)
-    .map((p) => bareName(p.name));
+    .map((p) => p.name);
 }
 
 export function tableColumns(entities, type, qualifierNames, preset = COLUMNS.FULL,
                              confirmers = []) {
-  const bare = bareName(type);
-  const found = (entities || []).find((e) => e && bareName(e.type) === bare);
+  const found = (entities || []).find((e) => e && e.type === type);
   const declared = declaredKeys(entities, type);
   const attributes = (found && found.attributes) || [];
   const identity = declared.map((key) => ({ name: key, kind: 'key', key }));
@@ -323,7 +309,7 @@ export function cutBudgets(axes, limits) {
 export function staticTypes(entities) {
   return new Set((entities || [])
     .filter((e) => e && Array.isArray(e.class) && e.class.includes('static'))
-    .map((e) => bareName(e.type)));
+    .map((e) => e.type));
 }
 
 /**
@@ -355,5 +341,5 @@ export function keepWalkableRoutes(entities, routes) {
  *    list at every step, so the day the rule moves both lists move with it.
  */
 export function walkTakesStep(statics, from, to, step) {
-  return step === 0 || !statics.has(bareName(from)) || statics.has(bareName(to));
+  return step === 0 || !statics.has(from) || statics.has(to);
 }

@@ -452,17 +452,13 @@ export async function fetchSubgraph(params) {
   //    `processed_with`/`transferred`. So the DECLARATION names it, never this function.
   //    Same shape as the signed sets and the budget above: absent stays absent, so a request
   //    that names neither is byte-identical to the one this boundary sent before.
-  // 🔴 C-53. `follow` 는 «버전을 벗겨서» 나갑니다. 실측(round V, 2026-08-29):
-  //    `follow=inspected` 200 · `follow=inspected@1` «422». 선언은 `inspected@1` 로 부르고
-  //    라우트는 벗은 이름만 받으므로, 벗기는 자리는 «전선 하나»입니다 — 부르는 쪽마다 벗기면
-  //    안 벗긴 좌석이 조용히 422 를 받습니다(그리고 화면엔 「서버가 거절」만 뜹니다).
   // ⚠️ 배열이 «아니면» 아무것도 안 싣습니다. 문자열을 `for…of` 로 돌면 «글자마다» 인자가
   //    하나씩 붙습니다 — 은퇴한 낱말을 문자열로 넘긴 호출이 그 모양을 만들었고(하니스 R3),
   //    그건 「안 실림」보다 나쁩니다: 서버가 «지어낸 질문»에 답합니다.
-  for (const p of Array.isArray(follow) ? follow : []) query.append('follow', String(p).split('@')[0]);
+  for (const p of Array.isArray(follow) ? follow : []) query.append('follow', String(p));
   // 🔴 C-53. `collect` — 「무엇을 «가져오나»」. `follow` 가 길이면 이것이 짐입니다. 걷기 상자만
   //    싣던 것을 «정본 생성기»로 올립니다: 안 고르면 안 싣고, 안 실으면 서버가 전부 줍니다.
-  for (const t of Array.isArray(collect) ? collect : []) query.append('collect', String(t).split('@')[0]);
+  for (const t of Array.isArray(collect) ? collect : []) query.append('collect', String(t));
   if (direction) query.set('direction', direction);
   const url = `${apiBase}${ROUTES.subgraph}?${query.toString()}`;
   const res = await (fetchImpl || fetch)(url);
@@ -1388,7 +1384,7 @@ export function qualifiersFromDeclaration(declaration) {
     const q = (predicate.object || {}).qualifiers || {};
     for (const name of [...(q.required || []), ...(q.optional || [])]) {
       const row = byName.get(name) || { name, predicates: [] };
-      const on = bareType(predicate.name);
+      const on = predicate.name;
       if (!row.predicates.includes(on)) row.predicates.push(on);
       byName.set(name, row);
     }
@@ -1696,19 +1692,14 @@ export function createWalk(deps) {
 //    serves an inference as a fact. The reader picks, and picks by reading the chain.
 // ═══════════════════════════════════════════════════════════════════════════════
 
-/** `wafer@1` -> `wafer`. The declaration versions its names and the ledger does not. */
-function bareType(value) {
-  return String(value || '').split('@')[0];
-}
-
 /** `{types, edges}` from a declaration body. Edges carry the predicate that makes them. */
 export function typeGraph(declaration) {
   const edges = [];
   for (const predicate of (declaration && declaration.predicates) || []) {
-    const froms = (predicate.subjects || []).map(bareType);
-    const tos = ((predicate.object || {}).types || []).map(bareType);
+    const froms = predicate.subjects || [];
+    const tos = (predicate.object || {}).types || [];
     for (const from of froms) {
-      for (const to of tos) edges.push({ from, to, predicate: bareType(predicate.name) });
+      for (const to of tos) edges.push({ from, to, predicate: predicate.name });
     }
   }
   const types = [...new Set(edges.flatMap((e) => [e.from, e.to]))].sort();
@@ -1787,11 +1778,7 @@ export function routeWith(route, on) {
 
 /** `["wafer", {wafer: "SYN-…"}]` -> `ledger-entity:v1:<base64url>`. 서버 `decode_entity_id` 의 짝. */
 export function entitySeedId(type, keys) {
-  // 🔴 «타입은 벗겨서» 보냅니다. 선언은 `wafer@1` 로 버전을 달고 원장은 `wafer` 로 삽니다.
-  //    `wafer@1` 을 그대로 실으면 주어가 하나도 안 맞아 walk 이 «씨앗 하나»를 답하는데,
-  //    그건 거절이 아니라 「닿는 곳이 없다」로 보입니다 (총괄이 오늘 밤 한 번 당했습니다).
-  const bare = String(type || '').split('@')[0];
-  const json = JSON.stringify([bare, keys || {}]);
+  const json = JSON.stringify([String(type || ''), keys || {}]);
   const b64 = btoa(unescape(encodeURIComponent(json)));
   // 🔴 base64URL 은 «서버가 요구하는 것»이지 취향이 아닙니다. 클라 레인 실측 2026-08-27,
   //    키 `SYN-BW-101-16>` (base64 에 `+` 가 들어가는 첫 키):
@@ -1846,8 +1833,7 @@ export async function fetchKeyValues(params) {
   const { apiBase, fetchImpl, type, limit } = params || {};
   if (!type) return { ok: false, message: PICK_TYPE_FIRST };
   const query = new URLSearchParams();
-  // 전선은 «버전 없는» 이름을 씁니다 — follow · collect 와 같은 규율입니다.
-  query.set('type', String(type).split('@')[0]);
+  query.set('type', String(type));
   if (limit) query.set('limit', String(limit));
   try {
     const res = await (fetchImpl || fetch)(`${apiBase || ''}/api/ledger/key-values?${query}`);
@@ -1957,14 +1943,9 @@ export function createWalkBoxWalk(deps) {
       const described = Object.keys(keys || {}).length === 0;
       const got = await fetchSubgraph({
         apiBase: apiBase || '', fetchImpl: doFetch,
-        // 🔴 «버전을 벗겨서» — `entitySeedId` 가 같은 이음매를 이미 그렇게 넘습니다(그 줄의 주석).
-        //    서버는 「선언됐나」를 «벗긴 이름»으로 보고(`_bare`) 주어를 «적힌 그대로» 찾으므로,
-        //    `wafer@1` 을 실으면 선언 검사는 통과하고 주어가 «하나도» 안 맞습니다 — 거절이
-        //    「그 타입의 노드가 원장에 없다」로 나오고, 그건 데이터에 대한 거짓입니다.
-        //    하니스가 제 첫 판을 이 줄에서 잡았습니다.
         ...(marked ? { nodeId: positive[0], positive, negative }
           : (described
-            ? { seed_type: String(type).split('@')[0] }
+            ? { seed_type: String(type) }
             : { nodeId: entitySeedId(type, keys) })),
         follow, collect, direction,
         hops: hops || undefined,
