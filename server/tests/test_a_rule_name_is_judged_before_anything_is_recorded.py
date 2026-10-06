@@ -11,7 +11,9 @@ from database import models
 from tests.test_a_declared_join_can_be_backfilled_like_any_rule import _rules
 from tests.test_retroactive_admin import RULE_MIXED, retro_env  # noqa: F401
 
-RULE_OPS = ["chain_replay", "enrichment_backfill", "enrichment_confirm"]
+RULE_OPS = ["chain_replay", "enrichment_backfill", "enrichment_confirm", "rule_rows"]
+#: What an operation requires besides its rule, so the rule is what gets judged.
+_REQUIRED_TOO = {"rule_rows": {"transaction": "t", "events": "e"}}
 
 
 def _recorded(db):
@@ -39,10 +41,10 @@ def test_the_rule_taking_operations_are_the_three_judged():
 def test_the_publish_the_count_and_a_cli_give_one_refusal_and_record_nothing(
         retro_env, no_enrich_rules, op):
     answers = []
-    for ask in (lambda: retroactive.publish(retro_env, op, {"rule": "no_such_rule"}),
-                lambda: retroactive.count(retro_env, op, {"rule": "no_such_rule"}),
-                lambda: retroactive.run_here(op, {"rule": "no_such_rule"},
-                                             log=lambda *_: None)):
+    params = {"rule": "no_such_rule", **_REQUIRED_TOO.get(op, {})}
+    for ask in (lambda: retroactive.publish(retro_env, op, dict(params)),
+                lambda: retroactive.count(retro_env, op, dict(params)),
+                lambda: retroactive.run_here(op, dict(params), log=lambda *_: None)):
         with pytest.raises(retroactive.RetroactiveRefused) as refused:
             ask()
         answers.append(str(refused.value))

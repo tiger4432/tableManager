@@ -247,6 +247,22 @@
         }
       },
       {
+        "key": "run_in",
+        "required": false,
+        "node": {
+          "kind": "leaf",
+          "hint": "free"
+        }
+      },
+      {
+        "key": "rows_per_run",
+        "required": false,
+        "node": {
+          "kind": "leaf",
+          "hint": "number"
+        }
+      },
+      {
         "key": "companion_of",
         "required": false,
         "node": {
@@ -738,6 +754,22 @@
               "node": {
                 "kind": "leaf",
                 "hint": "flag"
+              }
+            },
+            {
+              "key": "run_in",
+              "required": false,
+              "node": {
+                "kind": "leaf",
+                "hint": "free"
+              }
+            },
+            {
+              "key": "rows_per_run",
+              "required": false,
+              "node": {
+                "kind": "leaf",
+                "hint": "number"
               }
             }
           ]

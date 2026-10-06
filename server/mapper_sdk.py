@@ -603,8 +603,9 @@ def mapper(target_table=None, *, source_name: str = "chain_ingestion",
 # ⚠️ THE NAMES ARE NOT CHOSEN, THEY ARE MEASURED. This is what the owner's live mappers
 # actually import today (`server/mappers/*.py`, gitignored - their files, read but never
 # edited). It is a CONTRACT, not a wish list: shortening it breaks files this repo cannot see.
-# ⚠️ EXCEPT TWO OFFERED RATHER THAN MEASURED - `find_links` · `unknown_words` (총괄 ef3b0caeb):
-# a product helper written FOR mappers enters by this door, not by a second import path.
+# ⚠️ EXCEPT THE ONES OFFERED RATHER THAN MEASURED - `find_links` · `unknown_words` (총괄 ef3b0caeb),
+# `ask_json` · `LlmRefused` · `ask_links` (총괄 b5b335f2e): a product helper written FOR mappers
+# enters by this door, not by a second import path.
 #
 # ⚠️ TWO OF THEM ARE PRIVATE (`_cells_of`, `_load_metas`), and they are here under exactly
 # those spellings (판정 368). A `_name` on an SDK looks wrong, and it is - but it is already
@@ -620,6 +621,7 @@ MAPPER_SURFACE = {
     "DerivationRefused": "dt_map_derivation",
     "FRAME_JOIN_RULE": "dt_map_derivation",
     "INDEX_AXIS_RANKING": "map_alignment",
+    "LlmRefused": "utils.llm",
     "MAX_VALID_DIE_CELLS": "map_overlay",
     "METRIC_INDEX": "map_alignment",
     "PLACEMENT_ANCHOR": "map_alignment",
@@ -631,6 +633,8 @@ MAPPER_SURFACE = {
     "_load_metas": "map_alignment",
     "apply_dt_equations": "dt_frame_transform",
     "apply_valid_die_ref": "map_overlay",
+    "ask_json": "utils.llm",
+    "ask_links": "utils.text_links",
     "basis_cells_for": "map_alignment",
     "compose_map_id": "map_meta_registrar",
     "confirmed_meta_for": "map_alignment",

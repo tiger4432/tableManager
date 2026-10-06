@@ -1933,8 +1933,7 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
     # 🔴 THE CLASSES COME FROM THE CALLER, WHICH READ THEM FROM THE DECLARATION.
     # No type is spelled in this file: an entity becomes a name rather than a happening by
     # being declared `class: "static"`, and nothing here has to be edited for that.  Bare
-    # names because the declaration versions its ids (`defect_kind@1`) and a projected node
-    # carries the bare one.
+    # names: an old `defect_kind@1` from a caller folds to what a projected node carries.
     backbone_hops = max(0, min(int(backbone_hops), MAX_HOPS))
     budget_hops = hops + backbone_hops
     static_types = {_bare_name(name) for name in (static_types or ())}

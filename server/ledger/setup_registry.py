@@ -742,8 +742,9 @@ def _reachable_entity_ids(value: Any, known: frozenset[str], found: set[str]) ->
     a new shape is covered the day it lands, and the worst case is an extra entity in the
     closure, which only ever blocks more than strictly necessary.
 
-    Keys are matched as well as values because an entity id is a versioned name
-    (`Lot@1`), so a coincidental match would have to be that exact string.
+    Keys are matched as well as values, because an entity id appears as either. An id is a
+    bare name (`lot`) that a column can also be called, which only adds an entity to the
+    closure - the direction above that blocks more, never less.
     """
     if isinstance(value, Mapping):
         for key, item in value.items():

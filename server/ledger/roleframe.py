@@ -1635,7 +1635,7 @@ def compile_role_rows(context: MapperContext, role_frame) -> LedgerRows:
     source_id = context.source_plan.source_id
     translator_prefix = f"ledger-v2:{context.snapshot.snapshot_sha256}#"
     rows = []
-    #: (versioned entity type, keys, the row naming it, that row's source rows) - what the
+    #: (entity type, keys, the row naming it, that row's source rows) - what the
     #: entity references below read
     named = []
     for position, row in enumerate(records):

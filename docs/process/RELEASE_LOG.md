@@ -9,6 +9,15 @@
 
 ---
 
+## 2026-10-06 · 체인 규칙을 «작업»으로 돌리기 · 글에서 LLM 으로 원인 -> 현상 후보
+
+- **무엇** — 체인 규칙에 `run_in: operation` 을 적으면, 그 규칙을 깨운 묶음이 맵퍼를 돌리지 않고 작업(`rule_rows`)으로 줄 세운 뒤 다음 묶음으로 갑니다. 작업은 체인과 같은 묶음 함수를 부릅니다 — 맵퍼 호출 · `allow_retraction` · 쓰기 · 실패 기록이 같습니다. 작업 하나가 드는 트리거 행 수는 `rows_per_run`(기본 6). 맵퍼가 LLM 을 부르는 자리 `mapper_sdk.ask_json` 과, 글을 `find_links` 와 같은 후보 행으로 읽는 `mapper_sdk.ask_links` 가 생겼습니다.
+- **선언 예시** — 규칙 파일(`server/config/chain_rules.json`)의 규칙에 `"run_in": "operation"` (작업 크기를 바꾸려면 `"rows_per_run": N`). 맵퍼와 규칙 전체는 `docs/guide/TEXT_LINKS_GUIDE.md` §6.
+- **화면에서** — 관리 화면 Retroactive 에 `Run a rule's queued rows` 작업이 줄 섭니다. 체인 규칙 결과에 `queued:operation` 과 작업 run_id 가 나옵니다.
+- **필요한 조건** — 서버 재기동(API · 체인 데몬 · 스케줄러). LLM 을 쓰려면 `pip install openai` 와 환경변수 넷(`ASSY_LLM_BASE_URL` · `ASSY_LLM_MODEL` · `ASSY_LLM_API_KEY` · `ASSY_LLM_TIMEOUT_S`). 후보 표에 `extractor` · `evidence` 두 칸.
+- **바뀐 동작** — `find_links` 행에 `extractor`(`rules`) · `evidence`(그 문장) 두 칸이 붙습니다. 후보 표에 두 칸이 없으면 쓰기가 그 칸만 버리고 경고를 셉니다. `run_in` 을 안 적은 규칙은 오늘과 같습니다.
+- **자세히** — 이 항목과 같은 커밋 · RUN.md 같은 절.
+
 ## 2026-10-06 · 변경 이력 — 접힌 줄의 종류는 트랜잭션 전체로, 영수증이 쓰인 세상들을 한 줄로
 
 - **무엇** — 변경 이력 목록은 트랜잭션마다 대표 로그 하나만 싣습니다. 접힌 줄의 종류(`LEDGER` · `DELETE` · `CREATE` · `BATCH`)를 그 하나가 아니라 트랜잭션의 칸 이름 전체(`summary_columns`)로 정합니다 — 고친 행 하나를 세상 둘이 따라간 트랜잭션(로그 셋)은 이제 `BATCH` 입니다(전: `📒 Ledger batch 3` · `LEDGER`). 세상이 둘 이상인 설치에서는 접힌 줄의 값 칸에 그 트랜잭션의 영수증이 쓰인 세상들이 쓰인 순서로 섭니다(서버 `receipt_worlds`, c49217a06).

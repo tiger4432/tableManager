@@ -255,6 +255,8 @@ RULE_ROUTING_OPTIONAL = tuple(
     "allow_replace_map", "allow_retraction",
     *COLUMN_BINDING_KEYS,
     "max_group_attempts", "max_group_rows", "group_by", "idempotent", "origin",
+    # 총괄 be0abe305 ②: WHEN the rule runs, and how many rows one queued run carries.
+    "run_in", "rows_per_run",
     # S-270: 로더가 «짝으로 세운» 규칙이 자기가 어느 선언의 둘째 반쪽인지 적는 칸.
     # `origin` 과 «같은 부류»다 — 문법이 받기는 하지만 쓰는 것은 로더다. 여기 없으면
     # `flat_param_cells` 가 이것을 「params 로 옮기라」고 «매 부팅» 경고한다(실측 2026-09-16:
@@ -383,8 +385,11 @@ def rule_refusals(rule, path, *, mapper_resolvable, derived_tables, mapper_param
     # looked, and the operator would have declared a performance handle that quietly does
     # neither. The DEFAULT is a different thing entirely (`NO_GROUP_MERGE`, set by the
     # product when the cell is absent) - what is refused here is a cell somebody WROTE.
-    if MAX_GROUP_ROWS_KEY in candidate:
-        written = candidate.get(MAX_GROUP_ROWS_KEY)
+    for key, code, what in ((MAX_GROUP_ROWS_KEY, "bad_group_rows", "a group-row ceiling"),
+                            (ROWS_PER_RUN_KEY, "bad_rows_per_run", "rows per run")):
+        if key not in candidate:
+            continue
+        written = candidate.get(key)
         # ⚠️ THE CHECK SAYS WHAT THE MESSAGE SAYS. `int(2.5)` is 2, so scoring through a cast
         # would accept 「two and a half rows」 while the refusal below promises a whole number -
         # and an operator reading that sentence would never learn which half was wrong.
@@ -392,8 +397,14 @@ def rule_refusals(rule, path, *, mapper_resolvable, derived_tables, mapper_param
         rows = written if isinstance(written, int) and not isinstance(written, bool) else None
         if rows is None or rows <= 0:
             issues.append(validation.DeclarationValidationError(
-                "bad_group_rows", path + "." + MAX_GROUP_ROWS_KEY,
-                "a group-row ceiling must be a positive whole number, got %r" % (written,)))
+                code, path + "." + key,
+                "%s must be a positive whole number, got %r" % (what, written)))
+
+    if RUN_IN_KEY in candidate and candidate.get(RUN_IN_KEY) not in RUN_IN_VALUES:
+        issues.append(validation.DeclarationValidationError(
+            "bad_run_in", path + "." + RUN_IN_KEY,
+            "run_in must be one of %s, got %r"
+            % (", ".join(RUN_IN_VALUES), candidate.get(RUN_IN_KEY))))
 
     # 🔴 [S-155, 판정 384] IDEMPOTENCE IS A YES OR A NO, and a string 「false」 is a YES
     # to every truth test in Python. The cell decides whether a failed group is fed to the
@@ -553,6 +564,20 @@ GROUP_BY_KEY = "group_by"
 #: S-152 and S-221 each closed once; a `true`-only cell would have been the third.
 IDEMPOTENT_KEY = "idempotent"
 
+#: 총괄 be0abe305 ②: WHEN a rule runs - inside the chain group that woke it (absent: today's
+#: answer), or as an operation that group queues, so a slow mapper holds no other group. HOW
+#: it runs is one either way: `ingestion_worker._process_chain_transaction_group_sync`.
+RUN_IN_KEY = "run_in"
+RUN_IN_CHAIN = "chain"
+RUN_IN_OPERATION = "operation"
+RUN_IN_VALUES = (RUN_IN_CHAIN, RUN_IN_OPERATION)
+#: How many trigger rows one queued run carries - a run holds the operations gate for its
+#: length, and between runs other operations get in (총괄 be0abe305 ③).
+ROWS_PER_RUN_KEY = "rows_per_run"
+#: About a minute a run at the 10 s per text the fake model took (b5b335f2e ③). A real
+#: model's time was not measured.
+DEFAULT_ROWS_PER_RUN = 6
+
 
 #: S-188 ⓔ. The node vocabulary is the LEDGER skeleton's, verbatim: kinds `record`/`map`/
 #: `leaf` and hints `choice`/`free`/`ref`/`number`/`flag`. 🔴 NOTHING NEW IS INVENTED HERE —
@@ -570,6 +595,7 @@ _SKELETON_HINTS = {
     "allow_retraction": "flag",
     "max_group_attempts": "number",
     "max_group_rows": "number",
+    "rows_per_run": "number",
     "idempotent": "flag",
     "trigger_table": "ref",
     "target_table": "ref",

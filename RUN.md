@@ -1,5 +1,25 @@
 # 지금 돌리면 되는 것
 
+> ## [10-06] **체인 규칙을 작업으로 · LLM 으로 후보 뽑기 (총괄 b5b335f2e · be0abe305 · 92d0483e5) — 이주 «불필요» · 재기동 «필요»(API · 체인 데몬 · 스케줄러)**
+>
+> ```
+> 설치            LLM 을 쓸 때만: conda env assy_manager 에서 pip install openai
+> 환경변수         ASSY_LLM_BASE_URL · ASSY_LLM_MODEL · ASSY_LLM_API_KEY · ASSY_LLM_TIMEOUT_S(초, 기본 60)
+>                서버 트리를 띄우는 셸에 — 띄운 뒤에는 못 준다
+> 재기동 뒤        run_in: operation 규칙의 트리거 표에 쓰면 체인 데몬 로그에
+>                [Retroactive] queued run_id=<id> op=rule_rows params={'rule': '<규칙>', ...}
+> 뜻              묶음이 맵퍼 대신 작업을 줄 세우고 다음 묶음으로 갔다. 스케줄러가 작업을 하나씩 돈다
+>                관리 화면 Retroactive 의 Run a rule's queued rows 가 그 작업 — failed 면 error 의 reason 이
+>                체인 격리와 같은 문장(LLM 답이 틀리면 LlmRefused: ...)
+> 키 확인          로그에 키가 없어야 한다: 키 앞 여섯 글자로 grep -c -> 0
+> 후보 표          extractor · evidence 두 칸을 table_config 에 더하기 전까지는 쓰기가 그 둘만 버리고 센다:
+>                [Schema] Column 'extractor' is not declared in column_types for table '<후보 표>' ... DROPPED
+>                (find_links 맵퍼도 같다 — 두 칸을 더하면 그 줄이 멎는다)
+> 급할 때          규칙의 run_in 줄을 지우고 재적재 -> 체인 안에서 돈다(느린 맵퍼면 그 뒤 묶음이 기다린다)
+> ```
+
+---
+
 > ## [10-06] **걷기 요청 이름을 한 자리에서 — 옛 철자 접고, group_by 는 키 이름도, 없는 이름 거절 (총괄 17b6337e4 · a588e5d80) — 이주 «불필요» · 재기동 «필요»(API)**
 >
 > ```

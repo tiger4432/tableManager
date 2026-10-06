@@ -803,6 +803,101 @@ def _run_rerun_set_aside(db, params, log, control=None):
     return {"rows_staged": staged, "tables": len(rows)}
 
 
+#: The run a chain group queues for a `run_in: operation` rule (총괄 be0abe305 ②).
+RULE_ROWS_OP = "rule_rows"
+
+
+def _queued_rule(name):
+    from chain import replay
+
+    rule = next((r for r in replay.load_rules() if r.get("name") == name), None)
+    if rule is None:
+        raise RetroactiveRefused("no enabled chain rule is declared under %r" % (name,))
+    return rule
+
+
+def _judge_rule_rows(params):
+    _queued_rule(params["rule"])
+
+
+def _count_rule_rows(db, params, scan_limit):
+    total = len(params.get("rows") or ()) or len(params["events"])
+    return {"affected": total, "absence": ABSENCE_NOT_APPLICABLE,
+            "affected_label": "queued trigger rows", "count_kind": COUNT_EXACT,
+            "scanned": None, "scan_limit": None, "truncated": False,
+            "detail": "rule %s, transaction %s" % (params["rule"], params["transaction"])}
+
+
+def _narrowed(event, rows):
+    """The queued part of one stored event: a collapsed event keeps only the queued rows, on a
+    copy that is never added to the session; a per-row event is kept or left out whole."""
+    from database import models
+    from utils.payload_helper import get_payload_dict
+
+    payload = get_payload_dict(event)
+    if event_constants.is_collapsed_payload(payload):
+        return models.DatabaseOutbox(
+            event_uuid=event.event_uuid, table_name=event.table_name,
+            event_type=event.event_type, processed_chain=True,
+            payload=dict(payload, row_ids=[r for r in payload.get("row_ids") or ()
+                                           if str(r) in rows]))
+    row = payload.get("row_id")
+    return event if row is None or str(row) in rows else None
+
+
+def _run_rule_rows(db, params, log, control=None):
+    """The rows a chain group queued for a `run_in: operation` rule, through the SAME group body
+    the worker runs - one mapper call, one retraction, one write, one failure sentence; only
+    WHEN differs (총괄 be0abe305 ②). A run is one page: a cancel lands before it."""
+    from chain import ingestion_worker
+    from database import models
+
+    rule = _queued_rule(params["rule"])
+    rows = set(params.get("rows") or ())
+    total = len(rows) or len(params["events"])
+    checkpoint = _checkpoint(control)
+    if checkpoint is not None and checkpoint(0, total):
+        return {"rows": 0, "stopped": True}
+    stored = (db.query(models.DatabaseOutbox)
+              .filter(models.DatabaseOutbox.event_uuid.in_(list(params["events"])))
+              .order_by(models.DatabaseOutbox.id).all())
+    gone = sorted(set(params["events"]) - {e.event_uuid for e in stored})
+    if gone:
+        raise RetroactiveRefused("the queued events are no longer in the outbox: %s" % gone[:5])
+    events = [e for e in (_narrowed(e, rows) for e in stored) if e is not None]
+    ok, error, broadcasts = ingestion_worker._process_chain_transaction_group_sync(
+        params["transaction"], events, db, [rule])
+    if not ok:
+        db.rollback()
+        # the chain's own record of a failed group - the same function, one attempt
+        raise RetroactiveRefused(json.dumps(ingestion_worker._failure_record(
+            events, error, params["transaction"], 1), ensure_ascii=False, default=str))
+    db.commit()
+    _send_broadcasts(broadcasts)
+    log("[Retroactive] %s: rule %s wrote %d queued row(s) of transaction %s"
+        % (RULE_ROWS_OP, rule.get("name"), total, params["transaction"]))
+    stats = {"rows": total}
+    _final_progress(control, total, stats)
+    return stats
+
+
+def _send_broadcasts(messages):
+    """What the group body asks to announce, on the route the worker announces it on. A failed
+    send is logged and swallowed, as the worker's is - the write is already committed."""
+    import internal_event_client
+
+    for message in messages or ():
+        try:
+            _url, res, note = internal_event_client.send_internal_event(
+                internal_event_client.api_base_url(), "/internal/events/broadcast", message,
+                timeout=3)
+            if not res.ok:
+                logger.error("[Retroactive] broadcast failed: %s -> %s %s",
+                             _url, res.status_code, note or "")
+        except Exception as exc:                                   # noqa: BLE001
+            logger.error("[Retroactive] broadcast failed: %s", exc)
+
+
 def _run_withdraw(db, params, log, control=None):
     from chain import replay
 
@@ -1382,6 +1477,30 @@ OPERATIONS = {
         "cli_only": [],
         "downstream_note": ("It replays the rows those events named, each rule once - "
                             "nothing downstream runs; replay a row from the grid to cascade"),
+    },
+    RULE_ROWS_OP: {
+        "label": "Run a rule's queued rows",
+        "what_is_missing": "a rule declared run_in: operation has rows its chain group queued",
+        "params": [_p("rule", help="the chain rule"),
+                   _p("transaction", help="the transaction whose group queued the rows"),
+                   _p("events", kind="csv", help="the outbox events that named the rows"),
+                   _p("rows", required=False, kind="csv",
+                      help="the trigger row ids this run carries")],
+        "count": _count_rule_rows,
+        "run": _run_rule_rows,
+        "judge": _judge_rule_rows,
+        "cli": ("python -c \"from admin import retroactive; retroactive.run_here("
+                "'rule_rows', {'rule': '<rule>', 'transaction': '<tx>', "
+                "'events': '<uuid,...>', 'rows': '<row id,...>'})\" - the chain worker queues "
+                "these; by hand only to run a failed one again"),
+        "deletes": None,
+        "reads_as": "number",
+        "cancellable": True,
+        "restartable": True,
+        "commit_granularity": "one commit for the run - its rows are one group's write",
+        "cli_only": [],
+        "downstream_note": ("What it writes wakes the rules downstream, as the chain's own "
+                            "write does"),
     },
     "resolve": {
         "label": "Recompute shown values from stored layers (R3)",

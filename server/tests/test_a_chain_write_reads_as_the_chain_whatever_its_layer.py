@@ -327,6 +327,9 @@ def test_the_form_says_what_a_run_does_to_the_chain():
     # once and cascades nothing - the grid's click replay is the one that cascades (소유자 09-27).
     assert notes.pop("set_aside").startswith("Events set aside do not run")
     assert "nothing downstream runs" in notes.pop("rerun_set_aside")
+    # A queued rule's run writes through the chain's own write, so it wakes what the chain's
+    # write wakes (총괄 be0abe305) - `test_a_rule_can_run_as_an_operation` reads the channel.
+    assert notes.pop("rule_rows").startswith("What it writes wakes the rules downstream")
     assert notes and set(notes.values()) == {retroactive.DOWNSTREAM_NOTE}
 
 

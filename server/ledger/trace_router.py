@@ -458,7 +458,7 @@ def _self_describing_predicates(world=None):
     attributes an entity carries ride in exactly those atoms' qualifiers.
 
     SAME SHAPE AS `_static_types` and `_predicate_cardinalities`: the declaration is the
-    only authority, bare names because the declaration versions its ids, and a second
+    only authority, read bare (an old `x@1` folds), and a second
     objectless predicate widens this with no edit here.
 
     ⚠️ EMPTY DOES NOT MEAN 「today's walk」 HERE, WHICH IS WHERE THIS SIBLING DIFFERS.
@@ -522,8 +522,7 @@ def _static_types(world=None):
     EMPTY set, which is exactly today's walk rather than a guess about which types are
     hubs.
 
-    Bare names, because the declaration versions its ids (`defect_kind@1`) and a projected
-    node carries the bare one.
+    Bare names: an old `defect_kind@1` folds to what a projected node carries.
     """
     try:
         declared = (_declaration(world) or {}).get("entities") or {}
@@ -1083,8 +1082,8 @@ def ledger_declaration_catalog(
     # 🔴 THE SAME ARRAY, THE SAME SHAPE. A reference edge is followable, so the
     # catalogue must offer it - and in `predicates[]` rather than a second array, because a
     # client that had to read two arrays would grow a branch. `origin` tells them apart for
-    # anyone who needs it; nobody has to look. `subjects` stays VERSIONED (`die@1`) because
-    # the client filters options by subject and a bare spelling would match nothing.
+    # anyone who needs it; nobody has to look. `subjects` are the declaration's names as read -
+    # bare - and the client filters options by them as sent (클라 96855816b).
     from ledger.backfill import CENSUS_NAMES
     catalogue = {
         "state": "ready" if entities else "empty",

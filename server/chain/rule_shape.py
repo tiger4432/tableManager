@@ -20,9 +20,10 @@ CHAIN_MODELLED = ("name", "enabled", "trigger_table", "trigger_columns",
                   chain_bindings.REQUIRE_KEY,
                   "target_table", "mapper", "mapper_module", "mapper_function",
                   "params", "group_by", "max_group_rows", "max_group_attempts",
-                  "idempotent")
+                  "idempotent", "run_in", "rows_per_run")
 
-_LIMIT_KEYS = ("group_by", "max_group_rows", "max_group_attempts", "idempotent")
+_LIMIT_KEYS = ("group_by", "max_group_rows", "max_group_attempts", "idempotent",
+               "run_in", "rows_per_run")
 
 #: The unified declaration's `key` cell (S-240). A translated join carries it beside `params`
 #: under this same name and `chain.synthesis` reads it off the rule, so the chain grammar's

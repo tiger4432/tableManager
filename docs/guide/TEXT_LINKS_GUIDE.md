@@ -11,7 +11,7 @@
 | 글 | `<글 id>` · `<글>` — 회의록 한 건이든 8D 한 섹션이든. 나누는 것은 맵퍼 | 사람 · 수집기 |
 | 부르는 말 | `node_type` · `node_key` · `phrase` — 한 노드에 말 여럿 | 사람 |
 | 연결 말 | `phrase` · `meaning` · `side` | 사람 |
-| 후보 | `<글 id>` · `sentence_no` · `sentence` · `cause_type` · `cause_key` · `cause_phrase` · `phenomenon_type` · `phenomenon_key` · `phenomenon_phrase` · `link` · `polarity` · `certainty` | 맵퍼 |
+| 후보 | `<글 id>` · `sentence_no` · `sentence` · `cause_type` · `cause_key` · `cause_phrase` · `phenomenon_type` · `phenomenon_key` · `phenomenon_phrase` · `link` · `polarity` · `certainty` · `extractor` · `evidence` | 맵퍼 |
 
 | `meaning` | 뜻 | `side` |
 |---|---|---|
@@ -21,7 +21,8 @@
 | `suspected` · `confirmed` | 추정 · 확인 — 문장에 둘 다 있으면 `suspected` | 비움 |
 
 같은 말을 두 행에 적으면 두 뜻이다 — 「무관」 = `cause`(`before`) 한 행 + `negation` 한 행.
-`*_phrase` · `link` 는 글에 «적힌 그대로»다. 후보 표의 키는 `<글 id>` · `sentence_no` · `cause_type` · `cause_key` · `phenomenon_type` · `phenomenon_key` 로 잡는다.
+`*_phrase` · `link` 는 글에 «적힌 그대로»다. 후보 표의 키는 `<글 id>` · `sentence_no` · `cause_type` · `cause_key` · `phenomenon_type` · `phenomenon_key` 로 잡는다(LLM 으로 뽑으면 §6 의 키).
+`extractor` 는 뽑은 쪽 — `rules` 또는 `llm:<모델>`. `evidence` 는 근거 문장. 후보 표에 이 두 칸이 없으면 쓰기가 그 두 칸만 버리고 경고를 센다.
 
 ## 2. 짝짓는 규칙 — 두 줄
 
@@ -79,3 +80,46 @@ conda run -n assy_manager python server/scripts/chain_replay_cli.py replay <규�
 
 - **글 행을 지우면 그 글의 후보가 남는다.** 지움은 규칙을 안 깨운다. 그리드에서 후보 표를 그 글 id 로 걸러 지운다.
 - **한 글의 후보가 20 행 이상이고 이번에 절반 넘게 사라지면 지우기를 거절한다** — 키를 잘못 적은 것과 모양이 같아서다. 로그 `[DtMapRetraction] … DECLINED` 줄이 그 글 id 와 다음 할 일을 적는다.
+
+## 6. LLM 으로 뽑기
+
+1. 맵퍼가 `find_links` 대신 `ask_links(글, 부르는 말 행)` 을 부르고, 규칙에 `"run_in": "operation"` 을 적는다
+2. LLM 은 환경변수 넷으로 고른다 — `ASSY_LLM_BASE_URL` · `ASSY_LLM_MODEL` · `ASSY_LLM_API_KEY` · `ASSY_LLM_TIMEOUT_S`(초, 기본 60). 코드에는 어느 쪽도 없다
+
+```python
+import pandas as pd
+from mapper_sdk import ask_links, mapper, sql
+
+@mapper()
+def text_cause_links_llm(df, db):
+    names = sql(db, "SELECT <타입 칸> AS node_type, <키 칸> AS node_key, <말 칸> AS phrase "
+                    "FROM <부르는 말 표>").to_dict("records")
+    rows = [{"<글 id 칸>": text_id, **row}
+            for text_id, text in zip(df["<글 id 칸>"], df["<글 칸>"])
+            for row in ask_links(text, names)]
+    return pd.DataFrame(rows)
+```
+
+```json
+{
+  "name": "<규칙 이름>",
+  "trigger_table": "<글 표>",
+  "target_table": "<후보 표>",
+  "mapper": "text_cause_links_llm",
+  "is_batch": true,
+  "allow_retraction": true,
+  "trigger_job_column": "<글 id 칸>",
+  "target_job_column": "<글 id 칸>",
+  "run_in": "operation",
+  "rows_per_run": 1
+}
+```
+
+- `run_in: operation` — 글을 넣은 묶음은 LLM 을 안 부르고 작업(`rule_rows`)으로 줄 세운 뒤 다음 묶음으로 간다. LLM 이 다른 표의 체인을 안 막는다([chain_rules](./config/chain_rules.md)).
+- `rows_per_run: 1` — 작업 하나 = 글 하나. 틀린 답은 그 글의 작업만 실패시키고, 다른 글은 다른 작업이라 계속 돈다.
+- 노드 키는 «부르는 말» 사전의 말에서만 온다. 사전에 없는 말이 원인·현상이면 `*_type` · `*_key` 가 비고 `*_phrase` 만 찬다.
+- 체인은 키 칸이 빈 행을 버린다. 그래서 이 후보 표의 키는 `<글 id>` · `sentence_no` · `cause_phrase` · `phenomenon_phrase` 로 잡는다 — 구절은 늘 찬다.
+- `certainty` 는 글이 «확인»이라 하면 `confirmed`, 그 밖에는 `suspected` — 사람이 확정하기 전에 사실로 올리지 않는다.
+- 운영자 지시는 셋째 인자 — `ask_links(text, names, instruction="<지시>")`. 프롬프트에 들어가는 낱말은 사전 행 · 지시 · 글뿐이다.
+- 틀린 답(JSON 아님 · `links` 없음 · 원인/현상/근거 빔 · 근거 문장이 글에 없음)은 `LlmRefused` 로 이름 대어 거절된다. 그 글의 작업이 실패하고, 작업의 error 에 체인 격리와 같은 기록(`error_log` 모양)이 남는다. 관리 화면에서 다시 돌린다.
+- LLM 을 한 번 더 부르는 다른 쓰임새는 `ask_json(프롬프트)` — 답한 JSON 객체를 준다.
