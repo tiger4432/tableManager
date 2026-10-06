@@ -36011,3 +36011,38 @@ rule_rows 는 «소급 실행 자식»(admin/retroactive_run.py)이 체인 묶�
 소유자 09-22~23 「체인 리플레이는 체인 워커에 꽂아」 · 「체인워커에 «다» 넣으라고」 — 이 작업이 그 문장이 말한 것에 드는지 내가 판단하지 않는다.
 be0abe305 「작업 문」 이 소유자께 그 문장과 함께 올라간 것이면 이 물음은 닫힌다
 ```
+
+---
+
+## [C 응용] 10-06 f1238d6ef(엔티티 타입을 칸에서) QA — 결함 없음 · 🔴 내 @N 셈 정정
+
+```
+넓어진 문   entity_type 이 글자 «또는» dict 가 됐다 -> 그것을 글자로 읽던 자리 39 곳(git grep, server · 시험 · _archive 빼고)
+           커밋은 「글자로 키 잡던 자리는 dict 를 건너뛴다」. 건너뛰면 «말없이 빠지는» 자리가 있나를 쟀다 —
+           착지 시험의 document()(출하 샘플 + 후보 소스, import) 를 그대로 먹여 (DB 없음 · 쓰기는 스크래치 임시 폴더 · 공유 트리 server 미커밋 0):
+             == shipped (canary)
+             OK   authoring_plan
+             OK   load_setup
+             OK   build_explorer_index
+             == column-typed
+             OK   authoring_plan
+                  field bundle.sources.cause_candidates.bind.mappings.leads.bind.subject.entity_type | state answered | value {'kind': 'column', 'column': 'cause_t
+                  field bundle.sources.cause_candidates.bind.mappings.leads.bind.target.entity_type | state answered | value {'kind': 'column', 'column': 'phenomen
+             OK   load_setup
+             OK   build_explorer_index
+                  explorer nodes: 113 | cause_candidates present: True | a stringified dict type: False
+           -> 작성 화면 · 로드 · 탐색기 셋 다 답하고, 칸 타입을 글자로 뭉갠 흔적 0. 작성 칸은 바인딩 모양 그대로 「answered」
+           코드 읽음  번들 검증의 글자 전용 검사(:2953 · :3086)는 칸 타입 쪽을 `_column_type_refs` 가 따로 본다 ·
+                     참조 원자(f45c75442)는 바인딩이 아니라 «행에서 나온 역할 값»을 읽어 행마다의 타입이 그대로 간다
+시험       착지 + 이웃 일곱 파일(공유 트리) 274 통과 · 1 건너뜀
+문서       3f8352967 — ONTOLOGY_LEDGER_SETUP binding 줄에 칸 타입 문법 · 거절 둘 · 로드 거절 넷 (예시는 TEXT_LINKS_GUIDE §7)
+           스켈레톤 `either` 는 564a46193 이 oneOf 로 접으라 했으니 그 착지 뒤에 적는다
+```
+
+**🔴 정정 — 3c8b139d4 의 @N 셈이 짧았다**
+```
+나는 「선언된 이름」을 출하 샘플 둘의 소문자 이름으로만 셌다. 그래서 ONTOLOGY_LEDGER_SETUP 의 대문자 예시 타입(Lot@1 · Wafer@1 · Die@1 ·
+CoreDie@1 · DTDie@1 · BondComponent@1 · FinalChip@1 · Missing@1)과 「Entity ID | versioned ID」 규칙 줄을 못 봤다 — 그 파일에서 20 줄
+고침       3f8352967 — 맨이름으로(코드 블록 표는 칸 맞춤), 규칙 줄은 「맨이름 · 옛 x@1 도 접힘」
+지금       살아 있는 문서의 대문자 name@N, 표지 없는 줄 0
+```
