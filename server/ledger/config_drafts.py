@@ -42,7 +42,8 @@ from .setup_bundle import (
     validate_bundle,
     validate_bundle_errors,
 )
-from .setup_registry import compile_setup_snapshot, snapshot_compile_errors
+from .setup_registry import (
+    compile_setup_snapshot, cursor_translator_version, snapshot_compile_errors)
 
 
 _DRAFT_ID = re.compile(r"^[0-9a-f]{32}$")
@@ -169,21 +170,27 @@ REDO_SOURCE_OP = "ledger_backfill"
 SOURCE_NODE_KIND = "source_plan"
 
 
-def _redo_for(active_setup: Any, node: ExplorerNode, db) -> Mapping[str, Any] | None:
+def _redo_for(active_setup: Any, node: ExplorerNode, db,
+              snapshot: Any) -> Mapping[str, Any] | None:
     """What activating this draft would make re-run. `None` when nobody asked (S-143).
+    `snapshot` is the draft's, compiled by the preview.
 
     🔴 THE OUTER SHAPE IS FIXED AND `count` IS THE COUNTER'S ANSWER VERBATIM (판정 323).
     Keys are neither picked nor renamed - a chain rule's extra keys ride along untouched -
     because the screen must learn one name for one number, and `/admin/retroactive/{op}/count`
     already taught it. A second spelling here is the defect this whole seat exists to avoid.
 
-    ⚠️ A WORD IS NOT COUNTED, AND THAT IS A CHOICE RATHER THAN AN INABILITY. Editing a
-    predicate re-runs every source that utters it; counting that means one dry-run PER SOURCE,
-    inline on a preview request, which 「성능 마진 넉넉하게」 forbids. So the sources are named
-    and `absence` says `not_counted_here` - the count is still available on the retroactive
-    route, and that sentence is what makes the refusal actionable.
+    🔴 A WORD'S SOURCES ARE THE ONES WHOSE CURSOR STAMP THE DRAFT MOVES (총괄 03bc94b6b): the
+    running sources whose `cursor_translator_version` - the string a cursor is compared against -
+    differs between the active snapshot and the draft's. Not the sources naming the word: a
+    `label` or an `inverse_of` is compiled into no source's material, so it re-runs nothing.
 
-    ⚠️ AND AN UNUTTERED WORD IS `truly_none`, NOT `not_counted_here`. Two different empties:
+    ⚠️ A WORD IS NOT COUNTED, AND THAT IS A CHOICE RATHER THAN AN INABILITY. Counting means one
+    dry-run PER SOURCE, inline on a preview request, which 「성능 마진 넉넉하게」 forbids. So the
+    sources are named and `absence` says `not_counted_here` - the count is still available on
+    the retroactive route, and that sentence is what makes the refusal actionable.
+
+    ⚠️ AND NO STAMP MOVED IS `truly_none`, NOT `not_counted_here`. Two different empties:
     nothing re-runs, versus something does and this seat declined to count it.
     """
     if db is None:
@@ -197,10 +204,13 @@ def _redo_for(active_setup: Any, node: ExplorerNode, db) -> Mapping[str, Any] | 
                 "sources": [node.canonical_id],
                 "count": retroactive.count(db, REDO_SOURCE_OP, params)}
 
-    from ledger import config as ledger_config
+    def stamps(compiled):
+        return {source: cursor_translator_version(compiled, source)
+                for source, plan in compiled.source_plans.items() if plan.runs}
 
-    sources = list(ledger_config.sources_binding(
-        active_setup.bundle.to_mapping(), node.canonical_id, active_setup.snapshot.vocabulary))
+    active = stamps(active_setup.snapshot)
+    sources = sorted(source for source, stamp in stamps(snapshot).items()
+                     if active.get(source) != stamp)
     absence = (retroactive.ABSENCE_NOT_COUNTED_HERE if sources
                else retroactive.ABSENCE_TRULY_NONE)
     # ⚠️ ONE KEY, NOT A HOLLOWED-OUT COUNT. A `count` carrying nulls under every numeric name
@@ -281,7 +291,7 @@ def compile_draft_preview(active_setup: Any, node: ExplorerNode, raw: Mapping[st
         # put a number beside a refusal.
         return DraftPreview(
             True, preview_setup, build_explorer_index(preview_setup), tuple(),
-            _redo_for(active_setup, node, db))
+            _redo_for(active_setup, node, db, snapshot))
     except (LedgerSetupValidationError, ConfigExplorerError, TypeError, ValueError) as exc:
         return DraftPreview(False, None, None, (_decorate_issue(_issue(exc)),))
 

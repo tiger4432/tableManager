@@ -235,6 +235,20 @@
                 }
               },
               {
+                "key": "label",
+                "required": false,
+                "label": "Label - key or attribute names a node is shown by, in order (blank = the keys)",
+                "node": {
+                  "kind": "map",
+                  "keyed_by": "index",
+                  "member": "Name",
+                  "of": {
+                    "kind": "leaf",
+                    "hint": "free"
+                  }
+                }
+              },
+              {
                 "key": "attribute_cardinality",
                 "required": false,
                 "label": "Values per attribute - only for an attribute that holds several (blank = one)",

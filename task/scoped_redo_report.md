@@ -72830,3 +72830,53 @@ sqlite 전체 5 failed, 7857 passed, 333 skipped, 3 xfailed, 13201 warnings in 8
 
 클라에 건넨 것 하나(짓지 않음): 실시간 경로 `timeline.js appendHistoryLocally` 는 새 로그를 그룹의 logs[0] 에
 unshift 합니다. 영수증이 그 길로 들어오면 화면의 대표가 다시 영수증이 됩니다. 영수증이 WS 로 오는지는 안 쟀습니다.
+
+---
+
+## [10-06] 엔티티 label · 초안의 «다시 도는 소스»를 지문으로 — 착지 54fb4cfd5 (총괄 03bc94b6b · 소유자 10-06)
+
+어느 DB · 어느 스키마 · 지운 것 — 시험은 메모리 sqlite 와 임시 폴더의 샘플 선언만 · 박스 DB 안 씀 · 지운 것 0
+(박스 읽기 하나: 지문 비용을 박스 라이브 선언으로 잼 — 읽기만)
+
+```
+선언     entities.<타입>.label — 그 타입의 keys · attributes 이름 목록, 비우면 키. 아닌 이름은 unknown_id 로 그 이름을 대어 거절
+걷기     ledger_subgraph._node_label 하나가 노드 이름을 짓는다 — 노드를 만들 때 한 번, 속성을 읽은 뒤 한 번 (같은 함수)
+         적힌 순서대로 키는 원장 키 철자 · 속성은 읽은 값(여럿이면 「, 」), 「 · 」로 잇고 값 없는 이름은 뺀다
+         하나도 없거나 label 이 없으면 오늘의 키 이름표(「 / 」). 선언에 없는 타입은 explorer 의 이름표 그대로
+         선언 사실은 맨이름으로 찾는다(label · 키 순서 둘 다) — shape@1 처럼 판을 붙인 타입도 같은 칸
+지문     label 은 어디에도 컴파일되지 않는다 — 샘플에서 die · dtjob 에 label 을 더해도 도는 소스 지문 전부 같음
+         (카나리아: die 키 순서를 뒤집으면 다름)
+초안 비용  엔티티 · 술어 초안의 sources = 도는 소스 중 활성과 초안 사이에 cursor_translator_version 이 다른 것
+         샘플(같은 커밋의 시험이 단언): label 만 -> [] truly_none · die 키 뒤집기 -> die_inspection · transfer_event not_counted_here
+               inspected 에 inverse_of 만 -> [] truly_none
+         비용(BOX 읽기): 도는 소스 5/15 지문 한 번 2.04 ms(20번 평균), 활성+초안 약 4.08 ms — 초안 컴파일은 미리보기가 이미 함
+은퇴     ledger.config.sources_binding · _bound_words 와 그것만 재던 시험 파일 하나
+         이름 git grep -w (server · client2 · contracts): sources_binding 0 · _bound_words 0 (카나리아 def _redo_for 1)
+         CODE_MAP 두 줄 고침. SERVER_DEFECT_QUEUE S-143 줄(총괄 파일)에 「어휘 편집은 sources_binding 목록」이 남음: 1 줄
+폼       스켈레톤 엔티티 레코드에 label(attributes 와 같은 목록 모양) — 클라는 오늘 문법 그대로
+계약     walk_node_shape — 모든 사례의 expect 에 label, declared_but_not_reached 에 declared_label ["lot"](닿은 값 없음 -> 키),
+         새 사례 label_from_declared_names("L-1 · 1"). 클라 하니스는 클라가 고친 파일을 같은 커밋에
+         클라 하니스 OK: 62 passed, 0 failed · check_contracts 13 contracts, no divergence.
+안내서    ONTOLOGY_LEDGER_SETUP §7.2 표에 label 줄 · key_types 를 은퇴로(표 줄과 예시) — 예시 둘을 제품 검증기로 읽음:
+         json blocks in 7.2: 2
+         ['Lot', 'Wafer'] -> []
+         ['Die'] -> []
+변이     11/11 빨강(전부 failed 시험) · md5 전후 같음
+           RED  the draft's stamps are not read - active against itself
+           RED  every running source is named, moved or not
+           RED  the label reaches a compiled entity, so a fingerprint
+           RED  a name the entity does not carry is accepted
+           RED  the label is not rebuilt once the attributes are read
+           RED  the declared values are joined as the keys are
+           RED  a blank attribute value is shown
+           RED  no named value leaves the label to the explorer, not the declared keys
+           RED  a versioned type name misses its label
+           RED  a key name in the label is read as an attribute
+           RED  the form does not offer the label
+크기      18 files changed, 412 insertions(+), 347 deletions(-)
+sqlite 전체 5 failed, 7851 passed, 333 skipped, 3 xfailed, 13227 warnings in 822.88s (0:13:42) — 박스 사유 밖: 없음
+```
+
+말할 것 둘:
+- 내 실수 하나: 벡터 주석을 고치던 셸 명령의 문자열에 백틱이 들어가 Windows 의 label(볼륨 이름) 명령이 두 번 돌았다. 입력이 비어 아무것도 안 바꿨고(바꾸려면 묻는 줄이 나온다), C: 는 그 전에도 이름이 없었다. 그 뒤로는 파일로만 넘겼다.
+- 클라 고정 자료 authoring_skeleton.json 은 서버 스켈레톤을 뜬 것이라 label 줄이 아직 없다(읽는 하니스는 초록). 클라에 다시 뜨기를 건넸다.

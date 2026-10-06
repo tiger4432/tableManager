@@ -5,7 +5,8 @@ rule, `_apply_registrations`, over each case's atoms gives the case's `expect`. 
 
 Scored EXACTLY (총괄 0cde56e07): the keys of the three a node carries are the case's `expect` -
 an unreached node carries none of them, as the server sends it. Each-world lines are in the
-order the case `picked` (총괄 4be010312).
+order the case `picked` (총괄 4be010312). The node is built by the walk's `_entity_node` and its
+`label` is scored too (총괄 03bc94b6b) - a case's `declared_label` is the entity's `label`.
 """
 import json
 import os
@@ -20,8 +21,8 @@ from ledger_api import ledger_subgraph                            # noqa: E402
 
 VECTORS = os.path.abspath(os.path.join(
     os.path.dirname(__file__), "..", "..", "contracts", "walk_node_shape", "vectors.json"))
-TYPE, KEY = "shape@1", "k"                                        # the client half's own
-FIELDS = ("attributes", "attribute_conflicts", "attributes_by_world")
+TYPE, KEY, VALUE = "shape@1", "k", "1"                            # the client half's own
+FIELDS = ("label", "attributes", "attribute_conflicts", "attributes_by_world")
 
 
 def _cases():
@@ -35,8 +36,10 @@ def test_the_server_reads_the_shared_vector(case, tmp_path, monkeypatch, request
 
     root = tmp_path / "ontology"                                  # ⛔ not the box's declaration
     root.mkdir()
-    (root / "ledger_config.json").write_text(json.dumps({"entities": {
-        TYPE: {"keys": [KEY], "attributes": case["declared_attributes"]}}}), encoding="utf-8")
+    entity = {"keys": [KEY], "attributes": case["declared_attributes"]}
+    entity.update({"label": case["declared_label"]} if "declared_label" in case else {})
+    (root / "ledger_config.json").write_text(json.dumps({"entities": {TYPE: entity}}),
+                                             encoding="utf-8")
     monkeypatch.setattr(paths, "config_path", lambda *parts: str(tmp_path.joinpath(*parts)))
     ledger_subgraph.reset_declaration_cache()
     request.addfinalizer(ledger_subgraph.reset_declaration_cache)
@@ -46,10 +49,9 @@ def test_the_server_reads_the_shared_vector(case, tmp_path, monkeypatch, request
         at = datetime.fromisoformat(atom["occurred_at"].replace("Z", "+00:00"))
         seen.setdefault(atom["attribute"], []).append(
             (at, atom["value"], atom["world"], atom["source_who"], ledger_subgraph._instant(at)))
-    nodes = {"n1": {"id": "n1", "type": TYPE}}
+    node = ledger_subgraph._entity_node(TYPE, {KEY: VALUE})
     ledger_subgraph._apply_registrations(
-        nodes, {"n1": seen} if seen else {},
+        {node["id"]: node}, {node["id"]: seen} if seen else {},
         ledger_subgraph._in_picked_order(case.get("picked", ())))
-    node = nodes["n1"]
 
     assert {name: node[name] for name in FIELDS if name in node} == case["expect"]

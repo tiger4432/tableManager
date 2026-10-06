@@ -18,7 +18,7 @@ DECLARED = {"die": ["mat_id", "mat_type", "x", "y"], "wafer": ["wafer"]}
 def declaration():
     fake = "test:label-every-key"
     token = ledger_subgraph._WALK_DECLARATION.set(fake)
-    ledger_subgraph._declaration_facts[fake] = (DECLARED, {}, {}, {})
+    ledger_subgraph._declaration_facts[fake] = (DECLARED, {}, {}, {}, {})
     try:
         yield
     finally:

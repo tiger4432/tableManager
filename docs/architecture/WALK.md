@@ -91,6 +91,9 @@ format              `json`(기본) | `rows` — 아래 「행 투영」 절 (S-1
 
 ```
 nodes        {id, type, label, keys, attributes}    🔵 type 이 «도메인 낱말»(die·wafer·defect…)
+             🆕 10-06 `54fb4cfd5` label 은 선언이 정한다 — `entities.<type>.label`(그 엔티티의 키 · 속성 이름, 아니면 이름 대어 거절)의 값을 순서대로
+             「 · 」로 잇고 값 없는 이름은 뺀다(`ledger_subgraph._node_label` 한 자리 — 노드를 지을 때와 속성을 읽은 뒤). 걷기만 읽고 컴파일 안 함 — 지문 안 움직임.
+             label 을 안 적은 타입은 오늘처럼:
              🆕 label = 선언된 키 «전부»를 선언 순서로, 키마다 원장의 키 철자(`canonical_key_value` — 숫자 1 · 1.0 -> 1, 글자는
              앞뒤 공백 뗌, 빈 키는 뺌). 선언 안 된 타입은 종전 이름표(10-01 `4bedb9c0a` — 전엔 저장된 키 값 앞의 둘이라 다이 278 이
              이름표 42 를 나눠 썼다)
