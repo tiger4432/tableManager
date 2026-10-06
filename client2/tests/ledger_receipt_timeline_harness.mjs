@@ -62,6 +62,7 @@ globalThis.document = { createElement: element, getElementById: () => null,
 globalThis.window = { addEventListener() {} };
 
 const T = await import('../src/timeline.js');
+const { ABSENT } = await import('../src/absent.js');
 const { ledgerReceiptLine, LEDGER_BATCH_COLUMN, NO_TRANSACTION_BUCKET,
         createGlobalTimelineItemDom } = T;
 
@@ -99,7 +100,8 @@ console.log('\n[2] absence is not zero, and a stranger is not a receipt');
 // ── the group shapes, straight out of the vectors ────────────────────────────────────
 const groupOf = (name) => {
   const c = VECTORS.cases[name];
-  return { transaction_id: c.transaction_id, total_count: c.total_count, logs: c.logs };
+  return { transaction_id: c.transaction_id, total_count: c.total_count, summary_columns: c.summary_columns,
+    logs: c.logs };
 };
 const CELL_CHANGE = {
   transaction_id: 'TX-CELL', total_count: 1,
@@ -186,6 +188,35 @@ console.log('\n[5] the world a receipt was written into - only when this install
   state.tableList = saved;
   ok('the row on a two-world install draws the line with its world', many.includes(said), many);
   ok('...and on a one-world install the same row draws it without', one.includes(counts) && !one.includes(`${c.logs[0].new_value.world} · `), one);
+}
+
+console.log('\n[7] the list\'s group: one representative log, the kind from the whole transaction, the worlds its receipts went to');
+{
+  // Captured (server c49217a06, the list route): an edit followed in two live worlds - three logs, one carried.
+  const c = VECTORS.cases.recent_group_followed_in_two_worlds;
+  const group = { transaction_id: c.transaction_id, total_count: c.total_count, summary_columns: c.summary_columns,
+    receipt_worlds: c.receipt_worlds, logs: c.logs };
+  const written = c.receipt_worlds.map((row) => row.world);
+  const { state } = await import('../src/state.js');
+  const saved = state.tableList;
+  state.tableList = { tables: [], worlds: ['default', ...written.filter((w) => w !== 'default')], operating: 'default' };
+  const many = createGlobalTimelineItemDom(group).innerHTML;
+  state.tableList = { tables: [], worlds: ['default'], operating: 'default' };
+  const one = createGlobalTimelineItemDom(group).innerHTML;
+  state.tableList = saved;
+  ok('CANARY: the list carried one log of three, a receipt, and named two worlds',
+    c.logs.length === 1 && c.total_count === 3 && c.logs[0].column_name === LEDGER_BATCH_COLUMN && written.length === 2,
+    JSON.stringify({ logs: c.logs.length, total: c.total_count, written }));
+  ok('K1 an edit with its receipts is not called a ledger batch - the kind reads the whole transaction',
+    !/kind-ledger">LEDGER</.test(many) && /kind-batch">BATCH</.test(many), many.slice(0, 300));
+  ok('W1 two worlds on the install: the row says the worlds its receipts were written into, in that order',
+    many.includes(`Ledger · ${written.join(' · ')}`), many);
+  ok('W2 one world on the install: no worlds line - the representative receipt\'s own line as before',
+    !one.includes('Ledger · ') && one.includes('atoms_written'), one);
+  eq('W3 a receipt from before the world was written reads as absent, several from one world are counted',
+    `Ledger · default ×3 · ${ABSENT}`,
+    T.receiptWorldsLine({ receipt_worlds: [{ world: 'default', receipts: 3 }, { world: null, receipts: 1 }] },
+      ['default', 'w1']));
 }
 
 console.log('\n[6] the value cell is read at the panel\'s width (lead 3e8b6171f) - the stylesheet is the subject');

@@ -329,16 +329,35 @@ export function ledgerReceiptLine(newValue, worlds) {
   return parts.join(' · ');
 }
 
+/**
+ * 이 묶음의 로그가 «전부» 그 칸인가. 목록 라우트는 묶음마다 대표 로그 «1건»만 싣으므로 실린 로그로
+ * 세면 섞인 묶음이 한쪽 이름이 됩니다 — 고친 행 + 세상 둘 영수증(로그 셋)이 「LEDGER」로 접혔습니다
+ * (구현자 c49217a06). 그래서 묶음의 칸 이름들(`summary_columns`)로 답합니다.
+ */
+function allLogsAre(group, column) {
+  const columns = Array.isArray(group && group.summary_columns) ? group.summary_columns : [];
+  return columns.length > 0 && columns.every((name) => name === column);
+}
+
+/**
+ * 그 트랜잭션의 영수증이 쓰인 세상들 — 서버 `receipt_worlds`(쓰인 순서, c49217a06). 세상이 둘 이상인
+ * 설치에서만 그립니다(세상 하나면 표시 없음). 세상 칸 없는 옛 영수증은 `—`.
+ */
+export function receiptWorldsLine(group, worlds) {
+  const rows = Array.isArray(group && group.receipt_worlds) ? group.receipt_worlds : [];
+  if (!rows.length || worldList(worlds).length < 2) return '';
+  return ['Ledger', ...rows.map((row) => `${row.world == null ? ABSENT : row.world}`
+    + `${row.receipts > 1 ? ` ×${row.receipts}` : ''}`)].join(' · ');
+}
+
 function auditKind(group, baseLog, isSummary) {
   if (isSummary) {
     // 🔴 C-55. 원장 배치가 먼저입니다 — 안 그러면 실패 영수증(로그 둘)이 「BATCH」로 접히고,
-    //    종류 필터에서 «표 셀 변경»과 같은 칸에 앉습니다. `every` 인 것은 DELETE·CREATE 와
+    //    종류 필터에서 «표 셀 변경»과 같은 칸에 앉습니다. «전부» 인 것은 DELETE·CREATE 와
     //    같은 이유입니다: 섞인 트랜잭션을 한쪽 이름으로 부르지 않습니다.
-    if (group.logs.every(log => log.column_name === LEDGER_BATCH_COLUMN)) {
-      return { label: 'LEDGER', cls: 'kind-ledger' };
-    }
-    if (group.logs.every(log => log.column_name === 'DELETE')) return { label: 'DELETE', cls: 'kind-delete' };
-    if (group.logs.every(log => log.column_name === 'CREATE')) return { label: 'CREATE', cls: 'kind-create' };
+    if (allLogsAre(group, LEDGER_BATCH_COLUMN)) return { label: 'LEDGER', cls: 'kind-ledger' };
+    if (allLogsAre(group, 'DELETE')) return { label: 'DELETE', cls: 'kind-delete' };
+    if (allLogsAre(group, 'CREATE')) return { label: 'CREATE', cls: 'kind-create' };
     return { label: 'BATCH', cls: 'kind-batch' };
   }
   const col = baseLog.column_name;
@@ -418,11 +437,11 @@ export function createGlobalTimelineItemDom(group) {
   let colorClass = '';
 
   if (isSummary) {
-    const allDeletes = group.logs.every(log => log.column_name === 'DELETE');
-    const allCreates = group.logs.every(log => log.column_name === 'CREATE');
+    const allDeletes = allLogsAre(group, 'DELETE');
+    const allCreates = allLogsAre(group, 'CREATE');
     // 🔴 C-55. 원장 배치가 «먼저»입니다 — 실패 영수증은 로그가 둘이라 여기로 오고,
     //    안 가르면 「N건 변경」으로 접혀 표 셀 변경과 같은 문장이 됩니다.
-    const allLedger = group.logs.every(log => log.column_name === LEDGER_BATCH_COLUMN);
+    const allLedger = allLogsAre(group, LEDGER_BATCH_COLUMN);
 
     if (allLedger) {
       // ③ 'no_tid' 는 «이름»이지 빈 칸이 아닙니다 — 백필·소급은 체인 트랜잭션이 «없는» 것입니다.
@@ -477,8 +496,11 @@ export function createGlobalTimelineItemDom(group) {
   const kind = auditKind(group, baseLog, isSummary);
   // 🔴 C-55 ②. 원장 배치의 영수증만 이 줄을 얻습니다. 다른 종류는 «한 글자도» 안 바뀝니다 —
   //    빈 문자열이면 아래가 종전 값 칸을 그대로 그립니다.
-  const receiptLine = baseLog.column_name === LEDGER_BATCH_COLUMN
-    ? ledgerReceiptLine(baseLog.new_value, state.tableList && state.tableList.worlds) : '';
+  //    접힌 묶음은 그 트랜잭션의 영수증이 «어느 세상들»에 쓰였는지를 그 자리에 — 대표 영수증 하나의 수는
+  //    묶음의 수가 아닙니다(총괄, 서버 c49217a06).
+  const installWorlds = state.tableList && state.tableList.worlds;
+  const receiptLine = (isSummary ? receiptWorldsLine(group, installWorlds) : '')
+    || (baseLog.column_name === LEDGER_BATCH_COLUMN ? ledgerReceiptLine(baseLog.new_value, installWorlds) : '');
   // △소유자: 「변경이력 문구에서 맨앞에 ., -, -> 빼줘」. A row that CREATED a value has no
   // 「from」, so a dash and an arrow in front of it are punctuation standing in for nothing.
   const hadOldValue = baseLog.old_value !== null && baseLog.old_value !== undefined && baseLog.old_value !== '';
