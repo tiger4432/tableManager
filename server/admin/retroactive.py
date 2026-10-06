@@ -974,9 +974,11 @@ def _count_fold_written_notation(db, params, scan_limit):
     if s["keys_not_rebuilt"]:
         detail += (f" {s['keys_not_rebuilt']} row(s) are skipped: the fold moves a key part, and "
                    f"the row's cells no longer spell its stored key, so its identity is left alone.")
-    if s["rows_skipped"]:
-        detail += (f" {s['rows_skipped']} row(s) would take another row's key and are skipped "
-                   f"- fix the alias rows or the rule and run again.")
+    if s["rows_merged"]:
+        sample = "; ".join(f"{m['business_key_val']} -> row {m['into']} ({m['folded_key']})"
+                           for m in s["merged"][:3])
+        detail += (f" {s['rows_merged']} row(s) fold onto another row's key - the run merges "
+                   f"each into that row (e.g. {sample}); a merge cannot be undone.")
     if s["moves_again"]:
         detail += (f" {s['moves_again']} value(s) change again on a second fold - the run "
                    f"stops there; fix the declaration first.")
@@ -995,8 +997,8 @@ def _count_fold_written_notation(db, params, scan_limit):
         "scan_limit": scan_limit,
         "truncated": truncated,
         "detail": detail,
-        "extra": {key: s[key] for key in ("layers_folded", "keys_changed", "rows_skipped",
-                                          "skipped", "keys_not_rebuilt", "not_rebuilt",
+        "extra": {key: s[key] for key in ("layers_folded", "keys_changed", "rows_merged",
+                                          "merged", "keys_not_rebuilt", "not_rebuilt",
                                           "moves_again", "again", "time_left")},
     }
 
@@ -1009,7 +1011,7 @@ def _run_fold_written_notation(db, params, log, control=None):
                                      **_given(params, "limit", "chunk_size", "pace"))
     _final_progress(control, s.get("rows_scanned"), s)
     return {key: s[key] for key in ("cells_folded", "layers_folded", "keys_changed",
-                                    "rows_skipped", "keys_not_rebuilt", "moves_again",
+                                    "rows_merged", "keys_not_rebuilt", "moves_again",
                                     "stopped_on_moves_again", "rows_scanned")}
 
 

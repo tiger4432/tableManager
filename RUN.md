@@ -1,5 +1,18 @@
 # 지금 돌리면 되는 것
 
+> ## [10-06] **표기 소급 — 접은 키가 다른 행의 키면 그 행으로 «합친다» (총괄 5ffa48232 · 소유자 「예」) — 이주 «불필요» · 재기동 «필요»(API · 스케줄러)**
+>
+> ```
+> 순서            1 관리 화면 Retroactive 의 Fold stored values into the declared spelling 를 표 하나로 count(dry run)
+>                2 문장에 N row(s) fold onto another row's key - the run merges each into that row
+>                  (e.g. <옛 키> -> row <그 행> (<접은 키>); ...) 가 있으면 견본 셋을 열어 같은 것인지 본다
+>                3 맞으면 run. 아니면 별칭 행이나 규칙을 고치고 1 부터
+> 되돌릴 수 없음     합쳐진 행은 지워진다. 값 · 층은 받는 행으로 옮겨지고 감사 줄(collision_merge)이 남는다
+>                받는 행에 사람이 적은 값은 그대로 남는다. 그 키를 가진 행이 없으면 모인 행 중 row_id 가 가장 작은 행이 받는다
+> 돌린 뒤          실행 목록의 그 줄 result 의 rows_merged = 합친 행 수
+>                같은 표를 다시 count -> fold onto another row's key 문장이 없어야 한다
+> 급할 때          run 을 누르지 않는다 — count 는 아무것도 쓰지 않는다. 이미 합친 것은 되돌리지 못한다
+> ```
 > ## [10-06] **표기 규칙 collapse_repeats — 연달아 같은 마디는 하나로 (총괄 c1ddec935) — 이주 «불필요» · 재기동 «필요»(API · 체인 데몬 · 수집기)**
 >
 > ```

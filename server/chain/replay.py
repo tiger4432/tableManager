@@ -793,8 +793,10 @@ def fold_written_notation(db, table_name: str, apply: bool = False,
     ⛔ NOT THROUGH THE WRITE DOOR: re-sending a stored layer moves its `ingested_at` ahead of a
     newer layer of its class and changes the shown VALUE, not its spelling (measured, 0d9a69a63).
     Here only a layer's `value` is updated.
-    A row whose folded key is another row's key is SKIPPED and named - joining them is a merge,
-    and a merge cannot be undone. A value a second fold would move again is counted by the dry
+    A row whose folded key another row holds is MERGED into that row (owner 10-06 「예」) through
+    `crud.merge_into_key_holders`, as the write door and the key fix do - after its own cells and
+    layers are folded, so the holder takes folded values; three or more meet in row_id order. A
+    merge cannot be undone; the dry run counts and names them. A value a second fold would move again is counted by the dry
     run and stops the run before the page holding it is written (47aba5d44 ③). One history line
     per shown cell that changes; the rows' outbox events carry the change to the ledger. One
     commit per page.
@@ -818,8 +820,8 @@ def fold_written_notation(db, table_name: str, apply: bool = False,
     stats = {"mode": "apply" if apply else "dry-run", "table": table_name,
              "written_columns": list(written), "text_columns": text_columns,
              "rows_scanned": 0, "pages": 0,
-             "cells_folded": 0, "layers_folded": 0, "keys_changed": 0, "rows_skipped": 0,
-             "skipped": [], "keys_not_rebuilt": 0, "not_rebuilt": [],
+             "cells_folded": 0, "layers_folded": 0, "keys_changed": 0, "rows_merged": 0,
+             "merged": [], "keys_not_rebuilt": 0, "not_rebuilt": [],
              "moves_again": 0, "again": [], "time_left": {},
              "stopped": False, "stopped_on_moves_again": False}
     if not folded:
@@ -827,7 +829,7 @@ def fold_written_notation(db, table_name: str, apply: bool = False,
             f"to fold")
         return stats
     aliases = notation_norm.aliases_by_column(db)
-    claimed = set()
+    claimed = {}                        # folded key -> the row that took it in this run
     tx_id = f"{NOTATION_BACKFILL_SOURCE}_{uuid.uuid4().hex[:8]}"
 
     def fold(column, value, again):
@@ -920,15 +922,16 @@ def fold_written_notation(db, table_name: str, apply: bool = False,
                             "folded_key": plan["not_rebuilt"]})
                     del plans[row_id]
                 elif key and (key in claimed or holders.get(key, row_id) != row_id):
-                    stats["rows_skipped"] += 1
-                    if len(stats["skipped"]) < max_report:
-                        stats["skipped"].append({"row_id": row_id,
-                                                 "business_key_val": plan["row"].business_key_val,
-                                                 "folded_key": key,
-                                                 "held_by": holders.get(key)})
-                    del plans[row_id]
+                    into = (holders[key] if holders.get(key, row_id) != row_id
+                            else claimed[key])
+                    plan["key"], plan["into"] = None, into
+                    stats["rows_merged"] += 1
+                    if len(stats["merged"]) < max_report:
+                        stats["merged"].append({"row_id": row_id,
+                                                "business_key_val": plan["row"].business_key_val,
+                                                "folded_key": key, "into": into})
                 elif key:
-                    claimed.add(key)
+                    claimed[key] = row_id
             stats["moves_again"] += len(again)
             stats["again"].extend(again[:max(0, max_report - len(stats["again"]))])
             if again and apply:
@@ -956,14 +959,21 @@ def fold_written_notation(db, table_name: str, apply: bool = False,
                 layers = [layer for plan in changed for layer in plan["layers"]]
                 if layers:
                     db.bulk_update_mappings(models.CellSource, layers)
+                crud.merge_into_key_holders(
+                    db, table_name,
+                    sorted((row_id, plan["into"]) for row_id, plan in plans.items()
+                           if plan.get("into")),
+                    source_name=NOTATION_BACKFILL_SOURCE,
+                    updated_by=NOTATION_BACKFILL_SOURCE, transaction_id=tx_id)
                 db.commit()
             if pages_per_cycle and rest_seconds and stats["pages"] % pages_per_cycle == 0:
                 time.sleep(rest_seconds)
     log(f"[notation] '{table_name}' {stats['mode']}: {stats['cells_folded']} cell(s) and "
         f"{stats['layers_folded']} layer(s) folded in {stats['rows_scanned']} row(s), "
         f"{stats['keys_changed']} key(s) changed, {stats['keys_not_rebuilt']} row(s) skipped "
-        f"(their cells no longer spell their stored key), {stats['rows_skipped']} row(s) skipped "
-        f"(their folded key is another row's), {stats['moves_again']} value(s) change again")
+        f"(their cells no longer spell their stored key), {stats['rows_merged']} row(s) "
+        f"{'merged' if apply else 'to merge'} into the row holding their folded key, "
+        f"{stats['moves_again']} value(s) change again")
     return stats
 
 

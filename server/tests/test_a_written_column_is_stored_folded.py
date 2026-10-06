@@ -387,17 +387,55 @@ def test_the_backfill_rekeys_a_row_stored_under_the_raw_spelling(env, tmp_path, 
     assert (stats["keys_changed"], row.business_key_val) == (1, folded_key)
 
 
-def test_a_row_whose_folded_key_another_row_holds_is_skipped_and_named(env, tmp_path, monkeypatch):
-    """총괄 2dc2c1baf ①: joining the two is a merge, and a merge cannot be undone."""
+def _layer_rows(db, table):
+    return {r for (r,) in db.query(models.CellSource.row_id).filter(
+        models.CellSource.table_name == table)}
+
+
+def test_a_row_whose_folded_key_another_row_holds_is_merged_into_it(env, tmp_path, monkeypatch):
+    """총괄 5ffa48232 (owner 10-06): the write door's merge body - a person's value on the holder
+    stays, the shell's layers move onto it and the shell goes; the dry run counts and names it."""
+    from admin import retroactive
+
     _stored_then_declared(env, tmp_path, monkeypatch, PLAIN,
-                          [("f01.csv", [{"k": "k-01", "v": "a"}, {"k": "k.1", "v": "wafer.1"},
-                                        {"k": "k_2", "v": "b"}, {"k": "k.2", "v": "c"}])])
+                          [("f01.csv", [{"k": "k-01", "v": "a"}]),
+                           ("user", [{"k": "k-01", "v": "person"}]),
+                           ("f02.csv", [{"k": "k.1", "v": "wafer.1", "note": "hello"}])])
+    holder, shell = (next(r.row_id for r in _rows(env, PLAIN) if r.k == k) for k in ("k-01", "k.1"))
+    dry = retroactive.count(env, "fold_written_notation", {"table": PLAIN})
+    assert (dry["extra"]["rows_merged"], dry["extra"]["merged"]) == (1, [
+        {"row_id": shell, "business_key_val": "k.1", "folded_key": "k-01", "into": holder}])
+    assert "k.1 -> row %s (k-01)" % holder in dry["detail"]
+    assert "a merge cannot be undone" in dry["detail"]
+    assert len(_rows(env, PLAIN)) == 2, "a dry run writes nothing"
+
     stats = replay.fold_written_notation(env, PLAIN, apply=True)
-    assert stats["rows_skipped"] == 2
-    assert sorted(s["folded_key"] for s in stats["skipped"]) == ["k-01", "k-02"]
-    assert sorted((r.k, r.v) for r in _rows(env, PLAIN)) == [
-        ("k-01", "a"), ("k-02", "b"), ("k.1", "wafer.1"), ("k.2", "c")], \
-        "a skipped row keeps every cell as it was stored"
+    (row,) = _rows(env, PLAIN)
+    assert (stats["rows_merged"], row.row_id, row.v, row.note) == (1, holder, "person", "hello")
+    assert [(crud.layer_writer(s), v) for s, v, _ in _layers_of(env, PLAIN, "note")] == [
+        ("f02.csv", "hello")], "the shell's layer moved onto the holder"
+    moved = [(crud.layer_writer(s), v) for s, v, _ in _layers_of(env, PLAIN, "v")]
+    assert ("f02.csv", "wafer-01") in moved, "the shell's layer is folded before it moves"
+    assert _layer_rows(env, PLAIN) == {holder}, "the merged row's own layers are gone"
+    assert ("", "hello", "collision_merge") in [
+        (o or "", n, s) for o, n, s in _fold_lines(env, PLAIN, "note")]
+    again = replay.fold_written_notation(env, PLAIN)
+    assert (again["rows_merged"], again["keys_changed"], again["cells_folded"]) == (0, 0, 0)
+
+
+def test_three_rows_whose_keys_fold_alike_meet_in_row_id_order(env, tmp_path, monkeypatch):
+    _stored_then_declared(env, tmp_path, monkeypatch, PLAIN,
+                          [("f01.csv", [{"k": "k_3", "note": "first"}]),
+                           ("f02.csv", [{"k": "k.3", "v": "b"}]),
+                           ("f03.csv", [{"k": "k-3", "seen": "s"}])])
+    first = min(r.row_id for r in _rows(env, PLAIN))
+    stats = replay.fold_written_notation(env, PLAIN, apply=True)
+    (row,) = _rows(env, PLAIN)
+    assert (stats["rows_merged"], stats["keys_changed"]) == (2, 1)
+    assert {m["into"] for m in stats["merged"]} == {first}
+    assert (row.row_id, row.business_key_val, row.note, row.v, row.seen) == (
+        first, "k-03", "first", "b", "s")
+    assert replay.fold_written_notation(env, PLAIN)["rows_merged"] == 0
 
 
 def test_a_value_a_second_fold_moves_again_stops_the_run_before_it_is_written(
