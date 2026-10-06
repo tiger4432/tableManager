@@ -1799,27 +1799,26 @@ async function scoreAll(src, { verbose = false } = {}) {
 const MUTATIONS = [
   // ── [N] the F8 contract itself: every way the adoption can come back ──────────────────
   ['N1 the designation adopts the reference dimensions again (F6, restored)',
-   s => s.replace(`      dimsDiffer = { here: \`\${hereResolved.cols}x\${hereResolved.rows}\`,`,
-                  `      if (el.gridCols) el.gridCols.value = refResolved.cols;
-      if (el.gridRows) el.gridRows.value = refResolved.rows;
-      boundingBoxCache = {};
-      dimsDiffer = { here: \`\${hereResolved.cols}x\${hereResolved.rows}\`,`)],
+   s => s.replace('      phys_edge_margin: refResolved.edgeMargin,\n    });\n',
+                  '      phys_edge_margin: refResolved.edgeMargin,\n    });\n'
+                  + '    if (el.gridCols) el.gridCols.value = refResolved.cols;\n'
+                  + '    if (el.gridRows) el.gridRows.value = refResolved.rows;\n'
+                  + '    boundingBoxCache = {};\n')],
   ['N2 the designation adopts the reference PHYSICAL spec only (dimensions left alone)',
-   s => s.replace(`      dimsDiffer = { here: \`\${hereResolved.cols}x\${hereResolved.rows}\`,`,
-                  `      applyPresetObject({ phys_chip_x: refResolved.chipX, phys_chip_y: refResolved.chipY,
-        phys_offset_x: refResolved.offsetX, phys_offset_y: refResolved.offsetY,
-        phys_wafer_dia: refResolved.waferDia });
-      boundingBoxCache = {};
-      dimsDiffer = { here: \`\${hereResolved.cols}x\${hereResolved.rows}\`,`)],
+   s => s.replace("        maskFitNote = fitGridToMask(keys, el, currentRotation, currentSide);\n      }\n      boundingBoxCache = {};\n    }\n",
+                  "        maskFitNote = fitGridToMask(keys, el, currentRotation, currentSide);\n      }\n"
+                  + "      if (el.gridCols) el.gridCols.value = fc;\n      if (el.gridRows) el.gridRows.value = fr;\n"
+                  + "      boundingBoxCache = {};\n    }\n")],
   ['N3 the mask is built with the PANEL frame instead of the reference frame (invariant ①)',
-   s => s.replace('    const keys = new Set(projectCellsToPhys(cells, refFrame).keys());',
-                  '    const keys = new Set(projectCellsToPhys(cells, currentFrame()).keys());')],
+   s => s.replace('    const rawKeys = [...projectCellsToPhys(cells, refFrame).keys()];',
+                  '    const rawKeys = [...projectCellsToPhys(cells, currentFrame()).keys()];')],
   ['N4 the offset goes UNANNOUNCED (an offset mask with no visible cause)',
    s => s.replace('    if ((originDiffer || dimsDiffer) && !stale()) {', '    if (false) {')],
   ['N5 a differing grid REFUSES again (the behaviour the user reversed, twice)',
-   s => s.replace(`      dimsDiffer = { here: \`\${hereResolved.cols}x\${hereResolved.rows}\`,
-                     there: \`\${refResolved.cols}x\${refResolved.rows}\` };`,
-                  `      return refuse(ref, \`격자 치수가 다릅니다 — 참조 \${refResolved.cols}x\${refResolved.rows}\`);`)],
+   s => s.replace("    const out = set('ref', keys, '', ref, {",
+                  "    if (refResolved.cols !== hereResolved.cols || refResolved.rows !== hereResolved.rows) {\n"
+                  + "      return refuse(ref, 'grid differs from the reference');\n    }\n"
+                  + "    const out = set('ref', keys, '', ref, {")],
   ['N6 truncation is masked from instead of demoted to a failure (invariant ④)',
    s => s.replace('    if (rows.length > OVERLAY_CELL_LIMIT) {', '    if (false) {')],
   // ── the stale generation guard, RETARGETED to what it now protects ────────────────────
@@ -1870,19 +1869,17 @@ const MUTATIONS = [
                   '    const internal = true;')],
   // -- [O] the alignment alarm: the axis it watches, and every way it can go blind ------
   ['O1 the origin axis is removed (the dimension-only guard, restored)',
-   s => s.replace('    if (oHere.x !== oThere.x || oHere.y !== oThere.y) {', '    if (false) {')],
+   s => s.replace('  if (sx !== refMinX || sy !== refMinY) {', '  if (false) {')],
   ['O2 the origin difference is computed but never announced (silent again at the toast)',
    s => s.replace('    if ((originDiffer || dimsDiffer) && !stale()) {',
                   '    if (dimsDiffer && !stale()) {')],
-  ['O3 the origins are compared as DECLARED STARTS instead of through the projector',
-   s => s.replace('    const oHere = originPhysOf(currentFrame());\n    const oThere = originPhysOf(refFrame);',
-                  '    const oHere = { x: hereResolved.startX, y: hereResolved.startY };\n'
-                  + '    const oThere = { x: refResolved.startX, y: refResolved.startY };')],
+  // O3 (the origins compared as DECLARED STARTS) went: that comparison is now the design --
+  // diagnoseDesignationAlignment solves the origin by the declared START (owner 2026-07-30).
   ['O4 the dimension axis is dropped when the origin axis is added (one blind spot for another)',
-   s => s.replace('    if (refResolved.cols !== hereResolved.cols || refResolved.rows !== hereResolved.rows) {',
-                  '    if (false) {')],
+   s => s.replace('  if (refResolved.cols !== postCols || refResolved.rows !== postRows) {',
+                  '  if (false) {')],
   ['O5 the alarm fires on every designation (a false alarm on an aligned reference)',
-   s => s.replace('    if (oHere.x !== oThere.x || oHere.y !== oThere.y) {', '    if (true) {')],
+   s => s.replace('  if (sx !== refMinX || sy !== refMinY) {', '  if (true) {')],
   // -- [P] the two orientation writes, and every way they can come back ----------------
   //
   // The anchor is the line that REPLACED them. If `applyPresetObject` is reshaped so that
@@ -1973,6 +1970,9 @@ if (process.argv.includes('--mutate')) {
   //    inside a total.
   let applied = 0, notApplied = 0, byAssertion = 0, byCrash = 0, stillGreen = 0;
   const crashed = [], green = [], skipped = [];
+  // 🔴 CAUGHT MEANS A FAILURE THE BASELINE DOES NOT HAVE. While the base is red, `failures > 0`
+  //    held for every mutant -- each one cleared the baseline's own failures and read as caught.
+  const baseNames = new Set(base.failures.map((f) => f.split(':')[0]));
   for (const [name, apply] of MUTATIONS) {
     const mutated = apply(SRC0);
     if (mutated === SRC0) {
@@ -1986,12 +1986,13 @@ if (process.argv.includes('--mutate')) {
       console.log(`  ~ ${name} -> harness THREW (${e && e.message}) — red, but unnamed`);
       byCrash++; crashed.push(name); continue;
     }
-    if (r.failures.length === 0) {
-      console.log(`  ✗ ${name} -> STILL GREEN — this axis is unscored`);
+    const fresh = r.failures.filter((f) => !baseNames.has(f.split(':')[0]));
+    if (fresh.length === 0) {
+      console.log(`  ✗ ${name} -> STILL GREEN — no failure the baseline does not have; this axis is unscored`);
       stillGreen++; green.push(name); continue;
     }
     byAssertion++;
-    console.log(`  ✓ ${name} -> ${r.failures.length} failure(s): ${r.failures[0].split(':')[0]}`);
+    console.log(`  ✓ ${name} -> ${fresh.length} new failure(s): ${fresh[0].split(':')[0]}`);
   }
   console.log(`\nmutations: ${MUTATIONS.length} declared · ${applied} applied · ${notApplied} did `
     + `not apply | caught by a NAMED assertion ${byAssertion} · caught only by a crash ${byCrash} `
