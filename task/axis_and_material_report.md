@@ -1,3 +1,11 @@
+> ## [12:12 디자인] 체인 규칙 폼이 응답의 `run_in` 목록을 받는다 — 서버 ② 보다 먼저 (지시 ac4d3a2ac) — 35afc7f1b
+
+**결론** 착지했습니다. 이제 서버 ② 를 들여도 그 칸이 「No choices」로 막히지 않습니다.
+
+- **바꾼 곳 하나**: `admin.js` 의 `refreshChainRule` 이 목록을 rules/raw 응답을 받은 «뒤», 그리기 «전»에 넣습니다. mappers · tables 는 그대로이고, 응답의 `run_in` 이 배열이면 같은 이름으로 더합니다. 원장 폼이 `occurred_at_basis` 를 자기 응답 맨 위에서 받는 것과 같은 모양입니다(이름은 코드에 `run_in` 으로 적힘 — mappers · tables 와 같은 줄). 응답에 없으면 아무것도 안 더합니다.
+- 하니스 `chain_rule_user_path` 90 칸 실패 0 (바닥 87 → 90) — `admin.js` 를 통째로 불러 사용자 경로로 잽니다. T1 「the answer's run_in list is the cell's two choices [chain,operation]」 · T2 「no list in the answer: today's screen, the cell is the text box」 · T3 「an empty list is a fact: "No choices", no picker (No choices · run_in)」. 변이(목록을 패널에 안 넘김) 잡힘(T1).
+- 미리보기(빌드된 어드민 화면 Chain 탭, 패널의 GET 은 화면 안에서 답함): 다음 모양 → 고르개 `chain / operation`, 들고 있는 값 `operation` · 오늘 모양 → 글자 칸, 값 `operation` · 빈 목록 → `No choices · run_in` 와 들고 있는 값 `operation` · 보내지 않은 비-GET 0. 러너 초록 · 계약 13 개 어긋남 0. RELEASE_LOG 한 항목.
+
 > ## [10:39 디자인] Retroactive 실행 줄 — 체인 실패 기록은 Chain 탭과 같은 다섯 칸으로 (서버 67b2e423b · 총괄 답 «가») — c646e98a9
 
 **결론** 착지했습니다.
