@@ -2948,6 +2948,8 @@ note_naive_time(...)      셈 · `naive_time_counts()` · `naive_time_note()` �
 
 ### 🆕㉛ `server/config_resolve_report.py` — 「내 선언이 먹었나」의 «한 자리», 그리고 셋업 «순서»가 사는 곳 (2026-09-12 S-180)
 
+> 🆕 **[10-06 `7501d2802` · `08392a2c2`] 원장 갈래는 읽은 파일 그 자체를 «한 번» 컴파일해(`load_setup` 그 폴더) 답한다** — 소스 줄마다 로더의 판정(도는 소스 · 은퇴 · 거절이면 로더의 문장 · 컴파일 안 되는 파일은 파일 한 줄 · 선언 파일이 없으면 「샘플을 보일 뿐 아무것도 안 읽는다」 한 줄), «안 쓰는 술어»는 소스마다 `setup_bundle.emitted_predicates`(같은 호출의 어휘). ⚰️ 옛 v3 검증기(`ledger_config.validate`) 호출과 `_ledger_emitted_predicates`(옛 문법만 읽어 출하 샘플의 소스 7 을 전부 「검증 실패」, 안 쓰는 술어를 15 로 — 참은 0 · 7)
+
 | 심볼 | 무엇인가 |
 |---|---|
 | `_RESOLVERS` (도메인 «여덟») | `catalog` · `chain` · `enrichment` · `virtual_join` · `notation` · `binding` · `ledger` · `walk`. 🔴 **이 dict 의 «순서»가 더는 대표를 고르지 않는다**(S-180 ⓐ-0 `9aac0a81`) — 계약 양쪽이 도메인을 «이름»으로 고른다 |
