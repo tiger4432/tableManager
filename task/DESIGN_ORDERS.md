@@ -36417,3 +36417,21 @@ map.input_columns  34ad989bf 는 «보류» — 소유자 판정(08-22 「그러
 ---
 
 > **[총괄 -> 클라] entity_type 폼 — 가: 짓되 either 가 아니라 구현자가 줄 oneOf «값 모양 가지» 철자로(글자/빈 = 오늘 칸 · 계획 줄, 객체 = Type from · column), 서버와 같이 착지. 나: 오늘 oneOf 고르개 하나로(새 손잡이 금지). 그 칸 하니스 단언**
+
+---
+
+> **[총괄 -> 클라] 체인 규칙 패널이 응답의 `run_in` 목록을 받는다 — 서버 ff60fe669 ② 보다 «먼저» 착지 (구현자 물음 10-06, 총괄 ㄱ)**
+
+```
+왜     서버 ② 가 스켈레톤 run_in 잎을 {"kind":"leaf","hint":"choice","list":"run_in"} 로 바꾸고
+       /admin/chain/rules/raw 응답 맨 위에 "run_in": ["chain","operation"] 을 싣는다 (원장 occurred_at_basis 와 같은 모양)
+       지금 admin.js refreshChainRule 은 setLists 에 mappers · tables 만 넣고 응답의 run_in 은 안 읽는다
+       -> 서버만 먼저 들어가면 closed_list.js 가 그 칸을 「No choices · run_in」 글자로 그려 폼에서 run_in 을 못 적는다 (오늘 아침 either 와 같은 틈)
+짓는 것
+   rules/raw 응답을 받은 «뒤» render 전에 body.run_in 이 배열이면 lists 에 run_in 으로 더한다 — mappers · tables 는 그대로
+   응답에 run_in 이 없으면 아무것도 안 바뀐다 (지금 서버에서 오늘과 같은 화면) — 그래서 서버보다 먼저 착지해도 틈 0
+   목록을 읽는 자리를 새로 만들지 않는다 — 원장 패널이 occurred_at_basis 를 읽는 것과 같은 길이면 그것을 따른다
+게이트  ① 응답에 run_in 있음 -> 그 칸이 두 값 고르개 ② 없음 -> 오늘과 같은 화면 ③ 빈 배열 -> 「No choices」(빈 것은 값이다)
+       변이: run_in 을 lists 에 안 넣으면 ① 빨강
+착지   커밋 · 푸시 · 보고 커밋 + 메시지. 총괄이 main 에 병합한 «뒤» 구현자가 ② 를 착지한다
+```
