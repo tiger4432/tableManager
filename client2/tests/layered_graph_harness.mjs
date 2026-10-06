@@ -1,7 +1,8 @@
-// LAYERED GRAPH — one SVG drawer the chain graph and the subgraph viewer both declare into (lead 65754c39a).
+// LAYERED GRAPH — one SVG drawer the chain graph declares into (lead 65754c39a). The subgraph viewer declared
+// into it too until it moved to Cytoscape (lead 5e1d9e372); its pinned trees retired with that.
 //
 // Four questions, in the order's words:
-//   S  「두 화면의 오늘 그림은 그대로」 - both screens, seated as graph_seats seats them, draw the trees pinned by
+//   S  「오늘 그림은 그대로」 - the chain graph, seated as graph_seats seats it, draws the tree pinned by
 //      capture_graph_snapshots.mjs before the template existed, byte for byte.
 //   I  「같은 화면에 두 선언 — 간섭 0」 - the chain and the viewer on one document; a press in one changes
 //      nothing in the other.
@@ -100,12 +101,8 @@ async function screens() {
     fails.push(name);
     console.log(`  FAIL ${name}${detail ? ' -- ' + detail : ''}`);
   };
-  console.log('\n[S] both screens draw today what they drew before the template');
+  console.log('\n[S] the chain graph draws today what it drew before the template');
   say('S1 the chain graph', JSON.stringify(snapshot(seatChain(ChainGraphPanel))) === JSON.stringify(PINNED.chain));
-  for (const [tag, which] of [['S2', 'die'], ['S3', 'continue'], ['S4', 'bundles']]) {
-    say(`${tag} the subgraph viewer, ${which}`,
-      JSON.stringify(snapshot(await seatSubgraph(SubgraphView, which))) === JSON.stringify(PINNED[`subgraph_${which}`]));
-  }
 
   console.log('\n[I] two declarations on one page');
   {
@@ -116,15 +113,15 @@ async function screens() {
     doc.body.appendChild(viewHost);
     const chain = new ChainGraphPanel(chainHost, { doc });
     chain.render(CHAIN_PAYLOAD);
-    const seated = await seatSubgraph(SubgraphView, 'die');
+    const { host: seated, view } = await seatSubgraph(SubgraphView);
     // The viewer's own seat builds its own doc; move its host here, as a page would place a part.
     doc.body.appendChild(seated);
     const before = JSON.stringify(snapshot(seated));
     const node = byClass(chainHost, 'cg-node').find((g) => g.attrs['data-node'] === 'dt_log');
     if (node) node.dispatch('click', {});
     const after = JSON.stringify(snapshot(seated));
-    const viewNode = byClass(seated, 'sg-node')[1];
-    if (viewNode) viewNode.dispatch('click', {});
+    const viewNode = view.cy ? view.cy.nodes('[kind = "node"]')[1] : null;
+    if (viewNode) viewNode.emit('tap');
     await flush();
     const wakes = byClass(chainHost, 'chain-graph-wake').length;
     say('I1 a press in the chain picks its table and leaves the viewer as it was; a press in the viewer leaves the chain\'s list',

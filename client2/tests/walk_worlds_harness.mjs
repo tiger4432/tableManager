@@ -87,8 +87,9 @@ async function seen(M) {
     await wpage.fire();
     await settle();
     const target = body.edges[0].target;
-    const node = walkAll(host).find((n) => n.attrs && n.attrs['data-node'] === target);
-    if (node) node.dispatch('click', {});
+    // The picture is the graph part's Cytoscape (lead 5e1d9e372); a press on a node is a tap there.
+    const node = wpage.graph && wpage.graph.cy ? wpage.graph.cy.getElementById(target) : null;
+    if (node && node.nonempty()) node.emit('tap');
     const lines = walkAll(host).filter((n) => String(n.className || '') === 'sg-fact');
     const rows = walkAll(host).filter((n) => String(n.className || '') === 'sg-fact sg-fact--world');
     const chip = (n) => (n.children || []).find((c) => c.className === 'sg-world');

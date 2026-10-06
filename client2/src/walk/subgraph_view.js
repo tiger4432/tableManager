@@ -8,29 +8,38 @@
 //    the part's declaration (`deps.chain`): the first is read, each next one is written in turn.
 // 🔴 It asks the walk the page already asks, through the same wire (`createWalkBoxWalk`, `deps.walk`) — a
 //    marking and nothing else: no follow, no collect, no budget of its own.
-// 🔴 It judges nothing the server or the declaration already said: the layer is the node's `depth`,
-//    static is `staticTypes(declaration)`, truncation is `cutBudgets` — the doors the table walks through.
-// 🔴 Bundles (lead 1d07f1dae, server b1245bab9): the walk carries `fanout_limit`; a fan-out over it comes back
-//    in `bundles` and stands as a chip under its node; a chip pressed adds `expand` to that step's walk.
+// 🔴 It judges nothing the server or the declaration already said: the column is the node's `depth`,
+//    static is `staticTypes(declaration)`, truncation is `cutBudgets`, the name is the response's `label`.
+// 🔴 Drawn by Cytoscape.js with a dagre layout, left to right (owner 10-06, lead 5e1d9e372). The columns are
+//    held to the depth; dagre only orders inside them. Everything is laid out once — the first draw and Reset;
+//    after that nothing already drawn moves and the view (zoom · pan) is never moved for you (lead 03bc94b6b).
+// 🔴 ONE LUMP (lead e523cfe91): a folded branch, the keys split out of it, and a fan-out the server did not send
+//    (`bundles`) are one node shape keyed like the server's bundle, `node|predicate|direction`. Pressing one
+//    lists what is inside; only what is ticked opens. A lump the server has not sent is walked first (`expand`).
 
+import cytoscape from 'cytoscape';
+import dagre from 'cytoscape-dagre';
 import { staticTypes, cutBudgets } from './derive.js';
-import { drawLayeredGraph, slotXY } from '../layered_graph.js';
 import { SIGN } from '../rnd_board/marking_store.js';
 import { setDisabledReason } from '../disabled_reason.js';
 import { unitText } from '../ui_words.js';
 // The look travels with the part (the walk page's rule): one stamp, one sheet per document.
 import { ensureWalkStyles } from './styles.js';
 
-// Geometry on the 3.4 grid (ui-design-system §3).
-/** The viewer's own geometry (lead 65754c39a: each screen declares it; the template places by it). */
-const GEOMETRY = Object.freeze({ margin: 20.4, gapX: 238, gapY: 27.2, r: 6.8, labelDx: 10.2 });
-const MARGIN = GEOMETRY.margin;
-const LAYER_GAP_X = GEOMETRY.gapX;
-const LABEL_DX = GEOMETRY.labelDx;
+// The layout is registered with the library once per load - the library's registry, not this part's state.
+if (!cytoscape('layout', 'dagre')) cytoscape.use(dagre);
+
+/** The picture's geometry on the 3.4 grid (ui-design-system §3): a node, the gap dagre keeps between columns,
+ *  a stacked row, and the room kept around the picture when it is fitted. */
+const GEOMETRY = Object.freeze({ node: 13.6, rankSep: 224.4, nodeSep: 13.6, row: 27.2, fitPad: 27.2 });
 /** How many type colours there are; a type's colour is its declaration index modulo this. */
 export const TYPE_COLOURS = 9;
 /** The fan-out cap the part walks with unless its declaration says another (lead c9bf53033 · 1d07f1dae). */
 export const DEFAULT_FANOUT_LIMIT = 20;
+/** A list longer than this gets a filter field in the picker (lead 03bc94b6b). */
+const PICK_FILTER_AT = 8;
+/** The first fit never zooms out past this: a 15px name stays at the 12px meta size (「작은 글씨는 없느니만 못하다」). */
+const READABLE_ZOOM = 0.8;
 
 /** The signed ids of a marking, as the walk takes them. */
 export function seedsOf(entries) {
@@ -44,15 +53,13 @@ export function seedsOf(entries) {
 }
 
 /**
- * Where everything goes, decided from the walks' answers and the declaration only.
+ * What the walks answered, decided from the answers and the declaration only.
  *
- * One step is one marking walked; a step may hold more than one answer — each bundle expanded is the
- * same walk asked again with that bundle drawn. Step 1's layer is the node's `depth`; a later step's
- * layers carry on from the marked points: `depth + the furthest column its seeds already stand in`. A
- * node is drawn once, where it was first reached, and remembers that step. Inside a column, arrival order
- * (the server's order, answer after answer); a node's bundles (its step's latest answer) take the rows
- * right under it. Same input, same picture. A node without a depth is counted, not placed — its distance
- * is not this screen's guess.
+ * One step is one marking walked; a step may hold more than one answer — each bundle expanded is the same walk
+ * asked again with that bundle drawn. Step 1's layer is the node's `depth`; a later step's layers carry on from
+ * the marked points: `depth + the furthest layer its seeds already stand in`. A node stands once, where it was
+ * first reached, and remembers that step. A node without a depth is counted, not placed — its distance is not
+ * this screen's guess. The bundles still standing are each step's latest answer's.
  *
  * @param {Array<{results: object[], seeds?: string[]}>} steps
  * @param {object[]} entities  the declaration's entities
@@ -67,18 +74,8 @@ export function subgraphLayout(steps, entities) {
     const all = (step && step.results) || [];
     return all[all.length - 1] || {};
   };
-  // The bundles still standing: each step's latest answer says which fan-outs it did not draw.
-  const bundlesOf = new Map();
-  (steps || []).forEach((step, index) => {
-    for (const b of latest(step).bundles || []) {
-      if (!bundlesOf.has(b.node)) bundlesOf.set(b.node, []);
-      bundlesOf.get(b.node).push({ ...b, step: index });
-    }
-  });
-  const rows = new Map();
   const at = new Map();
   const placed = [];
-  const chips = [];
   let unplaced = 0;
   (steps || []).forEach((step, index) => {
     const seedLayers = (step.seeds || []).map((id) => at.get(id)).filter(Boolean).map((n) => n.layer);
@@ -89,16 +86,13 @@ export function subgraphLayout(steps, entities) {
         if (!colourOf.has(type)) colourOf.set(type, colourOf.size);
         if (at.has(node.id)) continue;
         if (!Number.isFinite(node.depth)) { unplaced += 1; continue; }
-        const layer = base + node.depth;
-        let row = rows.get(layer) || 0;
         const one = {
           id: node.id,
           type,
           label: node.label || node.id,
           depth: node.depth,
-          layer,
+          layer: base + node.depth,
           step: index + 1,
-          ...slotXY(GEOMETRY, layer, row),
           static: statics.has(type),
           colour: colourOf.get(type) % TYPE_COLOURS,
           keys: node.keys || {},
@@ -108,18 +102,16 @@ export function subgraphLayout(steps, entities) {
         };
         at.set(node.id, one);
         placed.push(one);
-        row += 1;
-        for (const b of bundlesOf.get(node.id) || []) {
-          chips.push({
-            step: b.step, node: b.node, predicate: b.predicate, direction: b.direction,
-            farType: b.far_type, count: b.count,
-            key: `${b.node}|${b.predicate}|${b.direction}`,
-            x: one.x + LABEL_DX, y: slotXY(GEOMETRY, layer, row).y,
-          });
-          row += 1;
-        }
-        rows.set(layer, row);
       }
+    }
+  });
+  // The fan-outs a step's latest answer did not send, under the node they leave.
+  const chips = [];
+  (steps || []).forEach((step, index) => {
+    for (const b of latest(step).bundles || []) {
+      if (!at.has(b.node)) continue;
+      chips.push({ step: index, node: b.node, predicate: b.predicate, direction: b.direction,
+        farType: b.far_type, count: b.count, key: `${b.node}|${b.predicate}|${b.direction}` });
     }
   });
   // Edges once every node of every answer stands, so an edge an expansion completes is drawn, not lost.
@@ -131,18 +123,17 @@ export function subgraphLayout(steps, entities) {
     for (const result of step.results || []) {
       for (const edge of (Array.isArray(result.edges) ? result.edges : [])) {
         if (edgeSeen.has(edge.id)) continue;
-        const from = at.get(edge.source);
-        const to = at.get(edge.target);
-        if (!from || !to) { missing.add(edge.id); continue; }
+        if (!at.has(edge.source) || !at.has(edge.target)) { missing.add(edge.id); continue; }
         edgeSeen.add(edge.id);
         missing.delete(edge.id);
         drawn.push({
           id: edge.id, source: edge.source, target: edge.target,
           predicate: edge.predicate_label || edge.predicate || '',
+          // The name a bundle's key spells, so a branch folded here and a fan-out the server held are one key.
+          predicateName: edge.predicate || '',
           occurredAt: edge.occurred_at || '',
           // Each world that says it, with its evidence (lead ee0f66e7b): one line in the picture, one row each here.
           byWorld: Array.isArray(edge.by_world) ? edge.by_world : [],
-          x1: from.x, y1: from.y, x2: to.x, y2: to.y,
         });
       }
     }
@@ -154,84 +145,189 @@ export function subgraphLayout(steps, entities) {
   const legend = [...counts.entries()]
     .sort((a, b) => colourOf.get(a[0]) - colourOf.get(b[0]))
     .map(([type, count]) => ({ type, count, colour: colourOf.get(type) % TYPE_COLOURS, static: statics.has(type) }));
-  return {
-    nodes: placed,
-    edges: drawn,
-    chips,
-    legend,
-    unplaced,
-    loose: missing.size,
-    cut,
-    width: MARGIN * 2 + Math.max(0, ...placed.map((n) => n.x)) + LAYER_GAP_X,
-    height: MARGIN * 2 + Math.max(0, ...placed.map((n) => n.y), ...chips.map((c) => c.y)),
-  };
+  return { nodes: placed, edges: drawn, chips, legend, unplaced, loose: missing.size, cut };
+}
+
+/** The key a lump and a bundle share, taken apart (a node id holds no `|`). */
+const keyParts = (key) => {
+  const [node, predicate, direction] = String(key).split('|');
+  return { node, predicate, direction };
+};
+
+/**
+ * Every step the picture walks: from a node, along one edge, to a node in its layer or a later one (a walk's
+ * depth can stay put along an edge), with the bundle key that step belongs to.
+ */
+function stepsOf(layout) {
+  const layerOf = new Map(layout.nodes.map((n) => [n.id, n.layer]));
+  const steps = new Map();
+  for (const e of layout.edges) {
+    const name = e.predicateName !== undefined ? e.predicateName : e.predicate;
+    for (const [a, b, direction] of [[e.source, e.target, 'outgoing'], [e.target, e.source, 'incoming']]) {
+      if (!(layerOf.get(b) >= layerOf.get(a))) continue;
+      if (!steps.has(a)) steps.set(a, []);
+      steps.get(a).push({ to: b, key: `${a}|${name}|${direction}` });
+    }
+  }
+  return steps;
+}
+
+/** The keys a node's branches leave by: its steps' and its unsent bundles'. Folding it puts all of them in one lump. */
+export function branchKeys(layout, id) {
+  const keys = new Set((stepsOf(layout).get(id) || []).map((s) => s.key));
+  for (const chip of layout.chips || []) if (chip.node === id) keys.add(chip.key);
+  return keys;
+}
+
+/** Where a step's walk stood: its marked points and every node its answers put at depth 0 (a seed's twins). */
+export function startsOf(step) {
+  const twins = ((step && step.results) || []).flatMap((r) => (Array.isArray(r.nodes) ? r.nodes : [])
+    .filter((n) => n.depth === 0).map((n) => n.id));
+  return [...new Set([...((step && step.seeds) || []), ...twins])];
+}
+
+/** A fold that holds nothing: every branch open, no lump but the server's. */
+export function openFold() {
+  return { big: new Map(), lumped: new Map() };
 }
 
 /**
- * What folding hides (lead 43a738d58 ③, view only): walking from where the walks stood — the seeds and every
- * node the server put at depth 0 (a seed can have no edge of its own while a depth-0 twin carries them all) — in
- * the picture's direction (never to a lower layer; a walk's depth can stay put along an edge) over the drawn
- * edges, the nodes no longer reached once the folded nodes are not walked past.
- * A node reached another way stays; a folded node itself stays; a node no start reaches is untouched.
+ * The first picture's rule (owner 10-06, lead): from these points every node one step on is drawn and the points'
+ * own branches open. Whatever else the answer brings is held: behind a node new to the picture as its one big lump,
+ * behind a node already in sight as a small lump that keeps what that node already showed (nothing drawn leaves).
+ * A fan-out the server did not send stays its own dashed lump, as it is today. `fold` is added to and returned.
  */
-export function foldedAway(layout, folded, seeds) {
-  const layerOf = new Map(layout.nodes.map((n) => [n.id, n.layer]));
-  const starts = [...(seeds || []), ...layout.nodes.filter((n) => n.depth === 0).map((n) => n.id)];
-  const next = new Map();
-  for (const e of layout.edges) {
-    for (const [a, b] of [[e.source, e.target], [e.target, e.source]]) {
-      if (!(layerOf.get(b) >= layerOf.get(a))) continue;
-      if (!next.has(a)) next.set(a, []);
-      next.get(a).push(b);
+export function foldBeyond(layout, fold, points, shownBefore) {
+  const steps = stepsOf(layout);
+  const from = new Set(points);
+  const before = shownBefore || new Set();
+  const near = new Set();
+  for (const s of from) {
+    fold.big.delete(s);
+    for (const step of steps.get(s) || []) {
+      fold.lumped.delete(step.key);
+      if (!from.has(step.to)) near.add(step.to);
     }
   }
+  const drawn = new Set([...before, ...from, ...near]);
+  for (const [id, out] of steps) {
+    if (from.has(id)) continue;
+    if (near.has(id) && !before.has(id)) {
+      fold.big.set(id, new Set(out.map((x) => x.key)));
+    } else if (before.has(id)) {
+      for (const step of out) {
+        if (drawn.has(step.to) || fold.lumped.has(step.key)) continue;
+        fold.lumped.set(step.key, new Set(out.filter((x) => x.key === step.key && before.has(x.to)).map((x) => x.to)));
+      }
+    }
+  }
+  return fold;
+}
+
+/**
+ * What the picture shows with this fold (lead e523cfe91 · 03bc94b6b, view only — nothing is walked).
+ *
+ * `fold.big`: node -> the keys still inside its one big lump. `fold.lumped`: key -> the ids opened out of that
+ * small lump; the rest of its members stay inside. Walking from where the walks stood (the seeds and every node
+ * the server put at depth 0) over the steps, a step is not taken when its key is in its node's big lump, or when
+ * its key is a small lump that has not opened its far end. A node no start reaches is left as it is; a node
+ * reached another way stays. Each node still in sight then shows its big lump (the keys left in it, what they
+ * hold), one small lump per key with members still inside, and one per bundle the server has not sent.
+ */
+export function lumpView(layout, fold, seeds) {
+  const big = (fold && fold.big) || new Map();
+  const lumped = (fold && fold.lumped) || new Map();
+  const steps = stepsOf(layout);
+  const ids = new Set(layout.nodes.map((n) => n.id));
+  const starts = [...(seeds || []), ...layout.nodes.filter((n) => n.depth === 0).map((n) => n.id)]
+    .filter((id) => ids.has(id));
+  const closed = (from, s) => ((big.get(from) || new Set()).has(s.key)
+    || (lumped.has(s.key) && !lumped.get(s.key).has(s.to)));
   const reach = (stop) => {
-    const seen = new Set(starts.filter((id) => layerOf.has(id)));
+    const seen = new Set(starts);
     const queue = [...seen];
     while (queue.length) {
       const id = queue.shift();
-      if (stop.has(id)) continue;
-      for (const to of next.get(id) || []) {
-        if (!seen.has(to)) { seen.add(to); queue.push(to); }
+      for (const s of steps.get(id) || []) {
+        if (seen.has(s.to) || stop(id, s)) continue;
+        seen.add(s.to);
+        queue.push(s.to);
       }
     }
     return seen;
   };
-  const kept = reach(folded);
-  return new Set([...reach(new Set())].filter((id) => !kept.has(id)));
-}
-
-/**
- * The «+N» chip on the picture, for both kinds (lead 015ef2aab): a fan-out the walk did not draw (`press`
- * asks the walk again) and a branch this view folded (`press` only opens it). One shape, one look.
- */
-export function plusChip({ x, y, count, word, data, press }) {
-  return { x, y, text: `+${count} ${word}`, attrs: { class: 'sg-bundle', ...data }, onPress: press };
-}
-
-/**
- * The layout as drawn with these nodes folded: the hidden nodes, their edges and their bundles left out, a
- * folded node's own bundles too (they branch from it), and one «+N folded» spot per folded node still in sight
- * — where the first node it hides stood. The counts above the picture stay the walk's.
- */
-export function foldView(layout, folded, seeds) {
-  const hidden = foldedAway(layout, folded, seeds);
-  const gone = (id) => hidden.has(id);
-  const folds = [];
-  for (const id of folded) {
-    if (gone(id)) continue;
-    const under = foldedAway(layout, new Set([id]), seeds);
-    const first = layout.nodes.filter((n) => under.has(n.id))
-      .sort((a, b) => a.layer - b.layer || a.y - b.y)[0];
-    if (first) folds.push({ node: id, count: under.size, x: first.x, y: first.y });
+  const kept = reach(closed);
+  const hidden = new Set([...reach(() => false)].filter((id) => !kept.has(id)));
+  const shown = (id) => ids.has(id) && !hidden.has(id);
+  const typeOf = new Map(layout.nodes.map((n) => [n.id, n.type]));
+  /** Everything hidden that these members lead to, the members included. */
+  const inside = (members) => {
+    const seen = new Set(members);
+    const queue = [...members];
+    while (queue.length) {
+      const id = queue.shift();
+      for (const s of steps.get(id) || []) {
+        if (hidden.has(s.to) && !seen.has(s.to)) { seen.add(s.to); queue.push(s.to); }
+      }
+    }
+    return seen;
+  };
+  const membersOf = (owner, key) => [...new Set((steps.get(owner) || [])
+    .filter((s) => s.key === key && hidden.has(s.to)).map((s) => s.to))];
+  const unsent = new Map((layout.chips || []).map((c) => [c.key, c]));
+  const typesOf = (members) => [...new Set(members.map((m) => typeOf.get(m)))].join(' · ');
+  const lumps = [];
+  for (const node of layout.nodes) {
+    if (!shown(node.id)) continue;
+    const inBig = big.get(node.id) || new Set();
+    const groups = [...inBig].map((key) => {
+      const chip = unsent.get(key);
+      const members = membersOf(node.id, key);
+      return { key, ...keyParts(key), members, farType: chip ? chip.farType : typesOf(members),
+        count: members.length || (chip ? chip.count : 0), unsent: Boolean(chip) && !members.length };
+    }).filter((g) => g.count > 0);
+    if (groups.length) {
+      const held = inside(groups.flatMap((g) => g.members));
+      const mix = new Map();
+      for (const id of held) mix.set(typeOf.get(id), (mix.get(typeOf.get(id)) || 0) + 1);
+      for (const g of groups) if (g.unsent) mix.set(g.farType, (mix.get(g.farType) || 0) + g.count);
+      lumps.push({ id: `big:${node.id}`, level: 'big', owner: node.id, groups,
+        count: held.size + groups.filter((g) => g.unsent).reduce((n, g) => n + g.count, 0),
+        mix: [...mix.entries()].sort((a, b) => b[1] - a[1]).map(([type, count]) => ({ type, count })) });
+    }
+    const keys = new Set([...(steps.get(node.id) || []).map((s) => s.key),
+      ...(layout.chips || []).filter((c) => c.node === node.id).map((c) => c.key)]);
+    for (const key of keys) {
+      if (inBig.has(key)) continue;
+      const members = lumped.has(key) ? membersOf(node.id, key) : [];
+      const chip = unsent.get(key);
+      if (members.length) {
+        lumps.push({ id: `lump:${key}`, level: 'small', owner: node.id, key, ...keyParts(key), members,
+          farType: typesOf(members), count: members.length, more: lumped.get(key).size > 0, unsent: false });
+      } else if (chip) {
+        lumps.push({ id: `lump:${key}`, level: 'small', owner: node.id, key, ...keyParts(key), members: [],
+          farType: chip.farType, count: chip.count, more: false, unsent: true, step: chip.step });
+      }
+    }
   }
   return {
-    nodes: layout.nodes.filter((n) => !gone(n.id)),
-    edges: layout.edges.filter((e) => !gone(e.source) && !gone(e.target)),
-    chips: layout.chips.filter((c) => !gone(c.node) && !folded.has(c.node)),
-    folds,
+    nodes: layout.nodes.filter((n) => shown(n.id)),
+    edges: layout.edges.filter((e) => shown(e.source) && shown(e.target)),
+    lumps,
     hidden: hidden.size,
+    // What a member leaves behind it: everything hidden it leads to, itself not counted.
+    behind: (id) => inside([id]).size - 1,
   };
+}
+
+/**
+ * What folding hides (lead 43a738d58 ③): the nodes no longer reached once every branch of the folded nodes is
+ * one big lump. The same walk the lumps take (`lumpView`), so a fold and a lump cannot disagree.
+ */
+export function foldedAway(layout, folded, seeds) {
+  const big = new Map([...folded].map((id) => [id, branchKeys(layout, id)]));
+  const shown = new Set(lumpView(layout, { big, lumped: new Map() }, seeds).nodes.map((n) => n.id));
+  return new Set(layout.nodes.map((n) => n.id).filter((id) => !shown.has(id)));
 }
 
 /** The facts the walks brought for one node: its keys, its attributes, and every edge touching it. */
@@ -251,6 +347,16 @@ export function nodeFacts(layout, id) {
   return { node, edges };
 }
 
+/** A lump's words: the predicate with its arrow, then what it holds. */
+function lumpLabel(lump) {
+  if (lump.level === 'big') {
+    const mix = lump.mix.slice(0, 3).map((m) => `${m.count} ${m.type}`).join(' · ');
+    return `${lump.count} folded${mix ? `\n${mix}` : ''}`;
+  }
+  return `${arrowed(lump)}\n${lump.count}${lump.more ? ' more' : ''} ${lump.farType}`;
+}
+const arrowed = (g) => (g.direction === 'incoming' ? `← ${g.predicate}` : `${g.predicate} →`);
+
 export class SubgraphView {
   /**
    * @param {HTMLElement} mount
@@ -259,7 +365,7 @@ export class SubgraphView {
    *          fanoutLimit?: number, worldChips?: boolean}} deps
    *   `walk` is the page's `createWalkBoxWalk` function; `entities` reads the declaration the page holds;
    *   `chain` names the markings: the first is the start, each next one takes the marks of a step.
-   *   `fanoutLimit` (declaration, default DEFAULT_FANOUT_LIMIT): a fan-out over it comes back as a bundle chip.
+   *   `fanoutLimit` (declaration, default DEFAULT_FANOUT_LIMIT): a fan-out over it comes back as an unsent lump.
    *   `worldChips`: the page reads several worlds, so each fact says which (lead 99032248f).
    */
   constructor(mount, deps = {}) {
@@ -276,17 +382,32 @@ export class SubgraphView {
     this.fanoutLimit = Number.isFinite(deps.fanoutLimit) ? deps.fanoutLimit : DEFAULT_FANOUT_LIMIT;
     this.worldChips = Boolean(deps.worldChips);
     ensureWalkStyles(this.doc);
-    this.root = this.doc.createElement('div');
-    this.root.className = 'sg-view';
+    this.root = this._el('div', 'sg-view');
     this.mount.appendChild(this.root);
+    // Three boxes, made once: the lines above the picture (redrawn), the picture (kept - Cytoscape lives in it),
+    // and the picked node's facts (swapped).
+    this.head = this._el('div', 'sg-head');
+    this.wrap = this._el('div', 'sg-canvas-wrap is-empty');
+    this.canvas = this._el('div', 'sg-canvas');
+    this.wrap.appendChild(this.canvas);
+    this.factsBox = this._el('div', 'sg-facts');
+    this.root.appendChild(this.head);
+    this.root.appendChild(this.wrap);
+    this.root.appendChild(this.factsBox);
     this.state = 'idle';
     this.reason = '';
     this.steps = [];
     this.layout = null;
     this.selected = null;
     this.asked = '';
-    // The nodes this view folds (lead 43a738d58 ③): this instance's, never a module's, never a marking.
-    this.folded = new Set();
+    // This instance's, never a module's, never a marking: what is folded, and where each node stood.
+    this.fold = openFold();
+    this.pos = new Map();
+    this.cy = null;
+    this.grid = null;
+    this.picker = null;
+    this._from = null;
+    this._relayout = true;
     // Another part writing the same name is seen here: same name, same marking.
     for (const name of this.chain) this.markings.subscribe(name, () => this._restyle());
   }
@@ -302,17 +423,68 @@ export class SubgraphView {
     this.steps = [];
     this.layout = null;
     this.selected = null;
-    this.folded = new Set();
+    this.fold = openFold();
+    this.pos = new Map();
+    this._relayout = true;
+    this._closePicker();
     await this._step(this.chain[0]);
   }
 
   /** Every seed the steps walked from - where the fold's walk starts. */
   _seeds() { return this.steps.flatMap((s) => s.seeds); }
 
-  /** Fold or open the branches beyond one node. The picture is redrawn; nothing is walked again. */
+  /** The view as drawn now. */
+  _view() { return lumpView(this.layout, this.fold, this._seeds()); }
+
+  /** The fold state a node's own presses touch: its big lump and its keys' small lumps. */
+  _isFolded(id) {
+    return this.fold.big.has(id) || [...this.fold.lumped.keys()].some((k) => keyParts(k).node === id);
+  }
+
+  /**
+   * Fold every branch beyond one node into one big lump, or open it all again: that node and everything behind
+   * it in the walk lose their folds, and each node comes back where it stood. Nothing is walked again.
+   */
   toggleFold(id) {
-    if (this.folded.has(id)) this.folded.delete(id); else this.folded.add(id);
+    if (this._isFolded(id)) {
+      const behind = new Set([id]);
+      const steps = stepsOf(this.layout);
+      const queue = [id];
+      while (queue.length) {
+        for (const s of steps.get(queue.shift()) || []) if (!behind.has(s.to)) { behind.add(s.to); queue.push(s.to); }
+      }
+      for (const n of behind) this.fold.big.delete(n);
+      for (const k of [...this.fold.lumped.keys()]) if (behind.has(keyParts(k).node)) this.fold.lumped.delete(k);
+    } else {
+      this.fold.big.set(id, branchKeys(this.layout, id));
+    }
+    this._closePicker();
     this.render();
+  }
+
+  /** The first picture's fold, step by step: each step's points with their one step, the rest folded. */
+  _firstFold() {
+    const fold = openFold();
+    let shown = new Set();
+    for (const step of this.steps) {
+      foldBeyond(this.layout, fold, startsOf(step), shown);
+      shown = new Set(lumpView(this.layout, fold, this._seeds()).nodes.map((n) => n.id));
+    }
+    return fold;
+  }
+
+  /** Back to the first draw: the first picture's fold, everything laid out again and fitted. */
+  reset() {
+    this.fold = this._firstFold();
+    this.pos = new Map();
+    this._relayout = true;
+    this._closePicker();
+    this.render();
+  }
+
+  /** Fit the picture into the box - the one press that moves the view. */
+  fit() {
+    if (this.cy) this.cy.fit(undefined, GEOMETRY.fitPad);
   }
 
   /** Walk from the marking the last step's marks wrote, and draw it on the same picture. */
@@ -330,10 +502,10 @@ export class SubgraphView {
     }
     const step = { marking: name, seeds: [...seeds.positive, ...seeds.negative],
       positive: seeds.positive, negative: seeds.negative, expand: [], results: [] };
-    await this._ask(step, [], (res) => [...this.steps, { ...step, results: [res] }]);
+    await this._ask(step, [], (res) => [...this.steps, { ...step, results: [res] }], true);
   }
 
-  /** Draw one bundle a step left undrawn: the same walk asked again with it expanded, on the same picture. */
+  /** Walk one bundle a step left unsent: the same walk asked again with it expanded, on the same picture. */
   async expandBundle(index, key) {
     const step = this.steps[index];
     if (!step || this.state !== 'done' || step.expand.includes(key)) return;
@@ -342,9 +514,11 @@ export class SubgraphView {
       i === index ? { ...s, expand, results: [...s.results, res] } : s)));
   }
 
-  /** One walk of a step's marking, with the cap this part declares; `next` builds the steps from the answer. */
-  async _ask(step, expand, next) {
+  /** One walk of a step's marking, with the cap this part declares; `next` builds the steps from the answer.
+   *  A new step (`fresh`) draws its points' one step and folds the rest; an expansion changes no fold. */
+  async _ask(step, expand, next, fresh) {
     const steps = this.steps;
+    const before = fresh && this.layout ? new Set(this._view().nodes.map((n) => n.id)) : new Set();
     this.state = 'running';
     this.render();
     const res = await this.walk({ positive: step.positive, negative: step.negative,
@@ -353,12 +527,68 @@ export class SubgraphView {
     if (res && res.ok) {
       this.steps = next(res);
       this.layout = subgraphLayout(this.steps, this.entities());
+      if (fresh) foldBeyond(this.layout, this.fold, startsOf(this.steps[this.steps.length - 1]), before);
       this.state = 'done';
     } else {
       this.state = 'failed';
       this.reason = (res && res.message) || '';
     }
     this.render();
+  }
+
+  /**
+   * A lump pressed: the picker lists what it holds and only what is ticked opens (lead 03bc94b6b). A big lump
+   * lists its keys - those ticked become small lumps; a small lump lists its members - those ticked become nodes,
+   * each folded if it leads anywhere; a lump the server has not sent is walked first, then listed the same way.
+   */
+  async openLump(id) {
+    const lump = this._view().lumps.find((l) => l.id === id);
+    if (!lump || this.state !== 'done') return;
+    if (lump.level === 'big') {
+      const items = lump.groups.map((g) => ({ value: g.key, text: `${arrowed(g)} ${g.farType}`, count: g.count }));
+      this._openPicker(id, items, `Behind ${this._labelOf(lump.owner)}`, `${lump.count} folded`, (keys) => {
+        const inBig = this.fold.big.get(lump.owner);
+        for (const key of keys) {
+          inBig.delete(key);
+          if (lump.groups.find((g) => g.key === key && !g.unsent)) this.fold.lumped.set(key, new Set());
+        }
+        if (!inBig.size) this.fold.big.delete(lump.owner);
+        this._openedFrom(id, keys.map((key) => `lump:${key}`));
+      });
+      return;
+    }
+    if (lump.unsent) {
+      // Held as a lump before the answer comes, so what it brings stays inside until it is ticked.
+      if (!this.fold.lumped.has(lump.key)) this.fold.lumped.set(lump.key, new Set());
+      await this.expandBundle(lump.step, lump.key);
+      if (this._view().lumps.some((l) => l.id === id && !l.unsent)) await this.openLump(id);
+      return;
+    }
+    const view = this._view();
+    const items = lump.members.map((m) => ({ value: m, text: this._labelOf(m), count: view.behind(m) || undefined }));
+    this._openPicker(id, items, `${lump.predicate} · ${lump.farType}`,
+      `${lump.count} not drawn · from ${this._labelOf(lump.owner)}`, (members) => {
+        const opened = this.fold.lumped.get(lump.key);
+        for (const m of members) {
+          opened.add(m);
+          // What it leads to comes out folded, so an opening does not open more (lead 03bc94b6b).
+          this.fold.big.set(m, branchKeys(this.layout, m));
+        }
+        this._openedFrom(id, members);
+      });
+  }
+
+  /** Draw what a lump let out, stacked where the lump stood; the lump, if anything is left in it, goes under. */
+  _openedFrom(lumpId, out) {
+    const at = this.pos.get(lumpId);
+    this._from = at ? { lumpId, x: at.x, y: at.y, out: new Set(out) } : null;
+    this._closePicker();
+    this.render();
+  }
+
+  _labelOf(id) {
+    const node = this.layout && this.layout.nodes.find((n) => n.id === id);
+    return node ? node.label : id;
   }
 
   _el(tag, cls, text) {
@@ -368,39 +598,29 @@ export class SubgraphView {
     return node;
   }
 
-  /** A node's class: type, shape, the step it came from, and whether it is picked, marked or a seed. */
-  _classOf(node) {
-    const name = this.writes();
-    const seeded = this.steps.some((s) => s.seeds.includes(node.id));
-    return `sg-node sg-type-${node.colour} sg-step-${node.step}`
-      + (node.static ? ' is-static' : '')
-      + (seeded ? ' is-seed' : '')
-      + (name && this.markings.signOf(name, node.id) !== SIGN.ABSENT ? ' is-marked' : '')
-      + (node.id === this.selected ? ' is-selected' : '');
-  }
-
   render() {
-    this.root.textContent = '';
-    this._groups = new Map();
+    this.head.textContent = '';
     this.continueButton = null;
-    if (this.state === 'empty') { this.root.appendChild(this._el('div', 'sg-note', 'Nothing marked')); return; }
-    if (this.state === 'failed') { this.root.appendChild(this._el('div', 'sg-fail', `Failed · ${this.reason}`)); }
-    if (this.state === 'running') this.root.appendChild(this._el('div', 'sg-note', 'Walking'));
-    if (!this.layout) return;
-    const view = this.layout;
-    this.root.appendChild(this._el('div', 'sg-counts', `Nodes ${view.nodes.length} · Edges ${view.edges.length}`));
-    for (const one of view.cut) {
+    const drawn = Boolean(this.layout) && this.state !== 'empty';
+    this.wrap.className = `sg-canvas-wrap${drawn ? '' : ' is-empty'}`;
+    if (this.state === 'empty') this.head.appendChild(this._el('div', 'sg-note', 'Nothing marked'));
+    if (this.state === 'failed') this.head.appendChild(this._el('div', 'sg-fail', `Failed · ${this.reason}`));
+    if (this.state === 'running') this.head.appendChild(this._el('div', 'sg-note', 'Walking'));
+    if (!drawn) { this._swapFacts(); return; }
+    const layout = this.layout;
+    this.head.appendChild(this._el('div', 'sg-counts', `Nodes ${layout.nodes.length} · Edges ${layout.edges.length}`));
+    for (const one of layout.cut) {
       const where = this.steps.length > 1 ? `step ${one.step} · ` : '';
-      this.root.appendChild(this._el('div', 'sg-trunc', `Truncated · ${where}${one.budgets.join(' · ')}`));
+      this.head.appendChild(this._el('div', 'sg-trunc', `Truncated · ${where}${one.budgets.join(' · ')}`));
     }
-    if (view.unplaced) this.root.appendChild(this._el('div', 'sg-note', `No depth · ${view.unplaced} nodes`));
-    if (view.loose) this.root.appendChild(this._el('div', 'sg-note', `Not drawn · ${view.loose} edges`));
-    const shown = foldView(view, this.folded, this._seeds());
-    if (shown.hidden) this.root.appendChild(this._el('div', 'sg-note', `Folded · ${unitText(shown.hidden, 'node')}`));
+    if (layout.unplaced) this.head.appendChild(this._el('div', 'sg-note', `No depth · ${layout.unplaced} nodes`));
+    if (layout.loose) this.head.appendChild(this._el('div', 'sg-note', `Not drawn · ${layout.loose} edges`));
+    const view = this._view();
+    if (view.hidden) this.head.appendChild(this._el('div', 'sg-note', `Folded · ${unitText(view.hidden, 'node')}`));
 
     const bar = this._el('div', 'sg-bar');
     const legend = this._el('div', 'sg-legend');
-    for (const item of view.legend) {
+    for (const item of layout.legend) {
       const chip = this._el('span', `sg-chip sg-type-${item.colour}`);
       chip.setAttribute('data-type', item.type);
       chip.appendChild(this._el('span', `sg-swatch${item.static ? ' is-static' : ''}`));
@@ -408,41 +628,340 @@ export class SubgraphView {
       legend.appendChild(chip);
     }
     bar.appendChild(legend);
+    const acts = this._el('div', 'sg-acts');
+    for (const [cls, word, act] of [['sg-fit', 'Fit', () => this.fit()], ['sg-reset', 'Reset', () => this.reset()]]) {
+      const button = this._el('button', `sg-tool ${cls}`, word);
+      button.setAttribute('type', 'button');
+      if (button.addEventListener) button.addEventListener('click', act);
+      acts.appendChild(button);
+    }
     const go = this._el('button', 'sg-continue', 'Continue');
     go.setAttribute('type', 'button');
     if (go.addEventListener) go.addEventListener('click', () => { this.continueWalk(); });
     this.continueButton = go;
-    bar.appendChild(go);
-    this.root.appendChild(bar);
-
-    // Declared into the one layered drawer (lead 65754c39a): the viewer's classes, data, shapes and chips.
-    const { box, groups } = drawLayeredGraph(this.doc, {
-      geometry: GEOMETRY, boxClass: 'sg-box', svgClass: 'sg-graph', width: view.width, height: view.height,
-      edges: shown.edges.map((edge) => ({
-        x1: edge.x1, y1: edge.y1, x2: edge.x2, y2: edge.y2,
-        attrs: { class: 'sg-edge', 'data-predicate': edge.predicate },
-      })),
-      nodes: shown.nodes.map((node) => ({
-        id: node.id, x: node.x, y: node.y, label: node.label,
-        shape: node.static ? 'rect' : 'circle',
-        attrs: { class: this._classOf(node), 'data-node': node.id, 'data-depth': node.depth, 'data-step': node.step },
-        onPress: () => this.press(node.id),
-      })),
-      // A fan-out the walk did not draw, under its node: press it and that bundle is drawn. A folded branch,
-      // where it stood: press it and it opens. Both are one chip (`plusChip`).
-      texts: [
-        ...shown.chips.map((chip) => plusChip({ x: chip.x, y: chip.y, count: chip.count, word: chip.farType,
-          data: { 'data-bundle': chip.key, 'data-step': chip.step + 1 },
-          press: () => { this.expandBundle(chip.step, chip.key); } })),
-        ...shown.folds.map((fold) => plusChip({ x: fold.x, y: fold.y, count: fold.count, word: 'folded',
-          data: { 'data-fold': fold.node }, press: () => { this.toggleFold(fold.node); } })),
-      ],
-    });
-    for (const node of shown.nodes) this._groups.set(node.id, { group: groups.get(node.id), node });
-    this.root.appendChild(box);
-    this.factsBox = this._facts();
-    this.root.appendChild(this.factsBox);
+    acts.appendChild(go);
+    bar.appendChild(acts);
+    this.head.appendChild(bar);
+    this._draw(view);
+    this._swapFacts();
     this._restyle();
+  }
+
+  // ── the picture ─────────────────────────────────────────────────────────────────────────────────────────────
+
+  /** A colour role from tokens.css as the document holds it now, or '' where none is readable. */
+  _token(name) {
+    const view = this.doc.defaultView;
+    if (!view || typeof view.getComputedStyle !== 'function') return '';
+    return String(view.getComputedStyle(this.doc.documentElement).getPropertyValue(name) || '').trim();
+  }
+
+  /** The picture's look, from the tokens (both themes); a role not readable is left to the library's default. */
+  _style() {
+    const t = (name) => this._token(name);
+    const px = (name, fallback) => parseFloat(t(name)) || fallback;
+    const set = (style) => Object.fromEntries(Object.entries(style).filter(([, v]) => v !== ''));
+    const sheet = [
+      { selector: 'node', style: set({ 'font-family': t('--font-sans'), color: t('--text'), 'min-zoomed-font-size': 6 }) },
+      { selector: 'node[kind = "node"]', style: set({
+        width: GEOMETRY.node, height: GEOMETRY.node, shape: 'ellipse', label: 'data(label)',
+        'font-size': px('--fs-body', 15), 'text-valign': 'center', 'text-halign': 'right', 'text-margin-x': 6.8,
+        'border-width': 1.5, 'border-color': t('--bg-surface') }) },
+      { selector: 'node[kind = "node"][?static]', style: { shape: 'rectangle' } },
+      { selector: 'node[kind = "node"][step > 1]', style: set({ 'border-style': 'dashed', 'border-color': t('--text') }) },
+      { selector: 'node.is-seed', style: set({ 'border-width': 2, 'border-style': 'solid', 'border-color': t('--accent') }) },
+      { selector: 'node.is-marked', style: set({ 'border-width': 3.4, 'border-style': 'solid', 'border-color': t('--accent') }) },
+      { selector: 'node.is-selected', style: set({ 'overlay-color': t('--accent'), 'overlay-opacity': 0.16,
+        'overlay-padding': 6.8, 'font-weight': 600 }) },
+      { selector: 'node[kind = "lump"]', style: set({
+        shape: 'rectangle', label: 'data(label)', 'text-wrap': 'wrap', 'text-valign': 'center', 'text-halign': 'center',
+        'font-size': px('--fs-body', 15), 'line-height': 1.3, 'background-color': t('--bg-inset'),
+        'border-width': 1.5, 'border-color': t('--border-strong'),
+        // Its size follows what it holds, so a big one reads as big (lead e523cfe91).
+        width: (n) => 136 + Math.min(68, Math.sqrt(n.data('count')) * 13.6),
+        height: (n) => 54.4 + Math.min(23.8, Math.sqrt(n.data('count')) * 3.4),
+        'text-max-width': (n) => 122.4 + Math.min(68, Math.sqrt(n.data('count')) * 13.6) }) },
+      { selector: 'node[kind = "lump"][level = "big"]', style: set({ 'font-weight': 600, 'border-width': 2.5,
+        'border-color': t('--text') }) },
+      { selector: 'node[kind = "lump"][?unsent]', style: { 'border-style': 'dashed' } },
+      { selector: 'node.is-lit', style: set({ 'overlay-color': t('--accent'), 'overlay-opacity': 0.1, 'overlay-padding': 6.8 }) },
+      { selector: 'edge', style: set({
+        width: 1.4, 'line-color': t('--border-strong'), 'target-arrow-color': t('--border-strong'),
+        'target-arrow-shape': 'triangle', 'arrow-scale': 0.7, 'curve-style': 'unbundled-bezier',
+        'control-point-distances': [-13.6, 13.6], 'control-point-weights': [0.25, 0.75],
+        'font-size': px('--fs-label', 12), color: t('--text-dim'), 'text-background-color': t('--bg-surface'),
+        'text-background-opacity': 1, 'text-background-padding': 2 }) },
+      // The lines that cross the picture sideways or back are the tangle; they stand back until picked (lead 5e1d9e372).
+      { selector: 'edge.is-far', style: set({ 'line-color': t('--border'), 'target-arrow-color': t('--border'),
+        'line-style': 'dashed', width: 1 }) },
+      { selector: 'edge[kind = "lump"]', style: set({ 'line-color': t('--border'), 'target-arrow-shape': 'none',
+        'curve-style': 'straight' }) },
+      { selector: 'edge.is-hot', style: set({ label: 'data(predicate)', width: 2.4, 'line-style': 'solid',
+        'line-color': t('--accent'), 'target-arrow-color': t('--accent') }) },
+      { selector: '.is-faded', style: { opacity: 0.18 } },
+    ];
+    for (let k = 0; k < TYPE_COLOURS; k += 1) {
+      const c = t(`--cat-${k + 1}`);
+      if (c) sheet.splice(2, 0, { selector: `node[kind = "node"][colour = ${k}]`, style: { 'background-color': c } });
+    }
+    return sheet;
+  }
+
+  /** The one Cytoscape instance of this part, made the first time there is something to draw. */
+  _ensureCy() {
+    if (this.cy) return this.cy;
+    // A real element is drawn into; the stub document of the harnesses has none, so the same part runs headless.
+    const canRender = typeof this.canvas.getBoundingClientRect === 'function';
+    this._canRender = canRender;
+    const cy = cytoscape({ container: canRender ? this.canvas : undefined, headless: !canRender, styleEnabled: true,
+      style: this._style(), elements: [], minZoom: 0.1, maxZoom: 3,
+      boxSelectionEnabled: false });
+    // Headless there is no frame to draw; the library's frame loop would only keep a node process from ending.
+    if (!canRender) cy.stopAnimationLoop();
+    cy.on('tap', 'node', (ev) => {
+      const n = ev.target;
+      if (n.data('kind') === 'lump') this.openLump(n.id());
+      else { this._closePicker(); this.press(n.id()); }
+    });
+    cy.on('tap', (ev) => { if (ev.target === cy) this._closePicker(); });
+    cy.on('mouseover', 'node[kind = "node"]', (ev) => {
+      if (this.picker) return;
+      const near = ev.target.closedNeighborhood();
+      cy.elements().not(near).addClass('is-faded');
+    });
+    cy.on('mouseout', 'node', () => { cy.elements().removeClass('is-faded'); });
+    cy.on('dragfree', 'node', (ev) => { this.pos.set(ev.target.id(), { ...ev.target.position() }); });
+    cy.on('viewport', () => { if (this.picker) this._closePicker(); });
+    // A box that gets its size later (the page puts the picture in after the walk answered) gets the first fit then.
+    const Sizer = this.doc.defaultView && this.doc.defaultView.ResizeObserver;
+    if (Sizer && canRender) {
+      this._sizeWatch = new Sizer(() => { if (this._fitPending && this.canvas.clientWidth) this._firstFit(); });
+      this._sizeWatch.observe(this.canvas);
+    }
+    // The site's theme toggle (data-theme on the root) restyles the picture; the instance owns its observer.
+    const Observer = this.doc.defaultView && this.doc.defaultView.MutationObserver;
+    if (Observer) {
+      this._themeWatch = new Observer(() => { if (this.cy) this.cy.style(this._style()); });
+      this._themeWatch.observe(this.doc.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+    }
+    this.cy = cy;
+    return cy;
+  }
+
+  /** The elements a view draws: its nodes, its edges, its lumps and the line from each lump to its node. */
+  _elements(view) {
+    const layerOf = new Map(view.nodes.map((n) => [n.id, n.layer]));
+    const out = [];
+    for (const n of view.nodes) {
+      out.push({ group: 'nodes', data: { id: n.id, kind: 'node', label: n.label, type: n.type, layer: n.layer,
+        depth: n.depth, step: n.step, colour: n.colour, static: n.static } });
+    }
+    for (const l of view.lumps) {
+      out.push({ group: 'nodes', data: { id: l.id, kind: 'lump', level: l.level, owner: l.owner, key: l.key || '',
+        count: l.count, unsent: Boolean(l.unsent), label: lumpLabel(l), layer: (layerOf.get(l.owner) || 0) + 1 } });
+    }
+    for (const e of view.edges) {
+      // A line one column forward is the walk's own step; any other runs sideways or back and stands back.
+      const forward = layerOf.get(e.target) - layerOf.get(e.source) === 1
+        || layerOf.get(e.source) - layerOf.get(e.target) === 1;
+      out.push({ group: 'edges', data: { id: e.id, source: e.source, target: e.target, kind: 'edge',
+        predicate: e.predicate }, classes: forward ? '' : 'is-far' });
+    }
+    for (const l of view.lumps) {
+      const back = l.direction === 'incoming';
+      out.push({ group: 'edges', data: { id: `to:${l.id}`, source: back ? l.id : l.owner, target: back ? l.owner : l.id,
+        kind: 'lump' } });
+    }
+    return out;
+  }
+
+  /**
+   * Bring the picture to this view. What is already drawn stays where it stands; what leaves is taken off; what
+   * comes is placed by `_place`. The first draw and Reset lay the whole walk out and fit it - nothing else does.
+   */
+  _draw(view) {
+    const cy = this._ensureCy();
+    const want = this._elements(view);
+    const wanted = new Set(want.map((e) => e.data.id));
+    const full = this._relayout;
+    this._relayout = false;
+    const added = [];
+    cy.batch(() => {
+      cy.elements().filter((e) => !wanted.has(e.id())).remove();
+      for (const e of want) {
+        const have = cy.getElementById(e.data.id);
+        if (have.nonempty()) { have.data(e.data); have.classes(e.classes || ''); continue; }
+        cy.add({ group: e.group, data: e.data, classes: e.classes || '',
+          position: e.group === 'nodes' ? { x: 0, y: 0 } : undefined });
+        if (e.group === 'nodes') added.push(e.data.id);
+      }
+    });
+    if (full) this._layoutAll(view);
+    else this._place(view, added);
+    cy.nodes().forEach((n) => { this.pos.set(n.id(), { ...n.position() }); });
+    if (!this._canRender) return;
+    // The view moves on the first draw and Reset only (lead 03bc94b6b). A box not yet on the page has no size to
+    // fit into; the fit then waits for the first draw that has one.
+    if (full) this._fitPending = true;
+    if (this._fitPending && this.canvas.clientWidth) this._firstFit();
+  }
+
+  /** The whole walk in the box; if that needs names too small to read, the start at the left, readable instead. */
+  _firstFit() {
+    const cy = this.cy;
+    this._fitPending = false;
+    cy.resize();
+    cy.fit(undefined, GEOMETRY.fitPad);
+    // A first picture of a few nodes is not blown up past its own size.
+    if (cy.zoom() > 1) { cy.zoom(1); cy.center(); }
+    if (cy.zoom() >= READABLE_ZOOM) return;
+    const start = this._seeds().map((id) => cy.getElementById(id)).find((n) => n.nonempty());
+    if (!start) return;
+    // The start at the left; the picture's middle at the middle, so what is around the start's branches shows.
+    const box = cy.elements().boundingBox();
+    cy.zoom(READABLE_ZOOM);
+    cy.pan({ x: GEOMETRY.fitPad * 2 - start.position('x') * READABLE_ZOOM,
+      y: cy.height() / 2 - ((box.y1 + box.y2) / 2) * READABLE_ZOOM });
+  }
+
+  /** The whole walk laid out by dagre, its columns held to the depth; the lumps then stand beside their nodes. */
+  _layoutAll(view) {
+    const cy = this.cy;
+    const layerOf = new Map(view.nodes.map((n) => [n.id, n.layer]));
+    // Layout-only edges, low column to high, as long as the columns between them: dagre may not move a column.
+    const guides = [];
+    const fed = new Set();
+    for (const e of view.edges) {
+      const [a, b] = layerOf.get(e.source) <= layerOf.get(e.target) ? [e.source, e.target] : [e.target, e.source];
+      const span = layerOf.get(b) - layerOf.get(a);
+      if (span < 1) continue;
+      fed.add(b);
+      guides.push({ group: 'edges', data: { id: `guide:${e.id}`, source: a, target: b, span } });
+    }
+    // A node reached only sideways would fall to the first column; a guide from a start holds it in its own.
+    const first = view.nodes.find((n) => n.layer === 0);
+    for (const n of view.nodes) {
+      if (first && n.layer > 0 && !fed.has(n.id)) {
+        guides.push({ group: 'edges', data: { id: `guide:anchor:${n.id}`, source: first.id, target: n.id, span: n.layer } });
+      }
+    }
+    const added = cy.add(guides);
+    added.style('display', 'none');
+    cy.nodes('[kind = "node"]').union(added).layout({ name: 'dagre', rankDir: 'LR', fit: false, animate: false,
+      nodeSep: GEOMETRY.nodeSep, rankSep: GEOMETRY.rankSep, minLen: (edge) => edge.data('span') || 1 }).run();
+    cy.remove(added);
+    // The columns as dagre stood them (a node's border counts in its width), so a later node joins its column.
+    const cols = new Map();
+    cy.nodes('[kind = "node"]').forEach((n) => { if (!cols.has(n.data('layer'))) cols.set(n.data('layer'), n.position('x')); });
+    const layers = [...cols.keys()].sort((p, q) => p - q);
+    const lo = layers[0];
+    const hi = layers[layers.length - 1];
+    const gap = hi > lo ? (cols.get(hi) - cols.get(lo)) / (hi - lo) : GEOMETRY.node + GEOMETRY.rankSep;
+    this.grid = { cols, gap };
+    this._place(view, cy.nodes('[kind = "lump"]').map((n) => n.id()));
+  }
+
+  /** The x of a column, from the first layout's grid. */
+  _colX(layer) {
+    const grid = this.grid || { cols: new Map(), gap: GEOMETRY.node + GEOMETRY.rankSep };
+    if (grid.cols.has(layer)) return grid.cols.get(layer);
+    const known = [...grid.cols.keys()];
+    if (!known.length) return layer * grid.gap;
+    const near = known.reduce((p, q) => (Math.abs(q - layer) < Math.abs(p - layer) ? q : p));
+    return grid.cols.get(near) + (layer - near) * grid.gap;
+  }
+
+  /**
+   * Place what was just added, nothing else (lead 03bc94b6b). What a lump let out comes out where the lump stood,
+   * one row each, and the lump, if anything is left in it, goes under them; a node folded and opened again comes
+   * back where it stood; a node a Continue reached stands in its column at the row of the node it came from, or the
+   * nearest free row to it; a lump stands one column right of its node, at its row or the nearest free one.
+   */
+  _place(view, added) {
+    const cy = this.cy;
+    const gap = (this.grid || { gap: GEOMETRY.node + GEOMETRY.rankSep }).gap;
+    const pending = new Set(added);
+    // What stands, per column, as plain numbers - made the first time a free row is asked for, kept as things land.
+    let columns = null;
+    const columnOf = (x) => Math.round(x / gap);
+    const stand = (x, y, height) => {
+      const c = columnOf(x);
+      if (!columns.has(c)) columns.set(c, []);
+      columns.get(c).push({ x, y, half: height / 2 });
+    };
+    const put = (id, p) => {
+      const el = cy.getElementById(id);
+      el.position(p);
+      pending.delete(id);
+      if (columns) stand(p.x, p.y, el.height());
+    };
+    // The nearest free row to `y` in that column, one row down, one up, two down, ...
+    const clear = (x, y, height) => {
+      if (!columns) {
+        columns = new Map();
+        cy.nodes().forEach((n) => { if (!pending.has(n.id())) stand(n.position('x'), n.position('y'), n.height()); });
+      }
+      const c = columnOf(x);
+      const near = [c - 1, c, c + 1].flatMap((k) => columns.get(k) || []).filter((o) => Math.abs(o.x - x) < gap / 2);
+      const pad = height / 2 + GEOMETRY.row / 4;
+      for (let k = 0; k < 800; k += 1) {
+        const at = y + (k % 2 ? 1 : -1) * Math.ceil(k / 2) * GEOMETRY.row;
+        if (!near.some((o) => Math.abs(o.y - at) < o.half + pad)) return at;
+      }
+      return y;
+    };
+    const layerOf = new Map(view.nodes.map((n) => [n.id, n.layer]));
+    const from = this._from;
+    this._from = null;
+    // 1. what a lump let out, stacked where it stood
+    if (from) {
+      let row = 0;
+      // In the picker's order, the order the person read them in.
+      for (const id of from.out) {
+        if (!pending.has(id)) continue;
+        put(id, { x: layerOf.has(id) ? this._colX(layerOf.get(id)) : from.x, y: from.y + row * GEOMETRY.row });
+        row += 1;
+      }
+      const left = cy.getElementById(from.lumpId);
+      if (left.nonempty() && row) left.position({ x: from.x, y: from.y + row * GEOMETRY.row + left.height() / 2 });
+    }
+    // 2. back where they stood
+    for (const id of added) if (pending.has(id) && this.pos.has(id)) put(id, this.pos.get(id));
+    // 3. nodes new to the picture: their column, the row of the node they came from
+    const around = new Map();
+    for (const e of view.edges) {
+      for (const [a, b] of [[e.source, e.target], [e.target, e.source]]) {
+        if (!around.has(a)) around.set(a, []);
+        around.get(a).push(b);
+      }
+    }
+    for (const n of view.nodes) {
+      if (!pending.has(n.id)) continue;
+      const from1 = (around.get(n.id) || []).find((p) => !pending.has(p) && layerOf.get(p) < n.layer);
+      const x = this._colX(n.layer);
+      put(n.id, { x, y: clear(x, from1 ? cy.getElementById(from1).position('y') : 0, GEOMETRY.node) });
+    }
+    // 4. lumps: one column right of their node
+    for (const l of view.lumps) {
+      if (!pending.has(l.id)) continue;
+      const owner = cy.getElementById(l.owner);
+      const lump = cy.getElementById(l.id);
+      // Its left edge where the next column's nodes stand, so it never covers its own node's name.
+      const x = owner.position('x') + gap + lump.width() / 2 - GEOMETRY.node;
+      put(l.id, { x, y: clear(x, owner.position('y'), lump.height()) });
+    }
+  }
+
+  /** Swap the facts box for the picked node's. */
+  _swapFacts() {
+    const next = this._facts();
+    if (this.factsBox.parentNode === this.root) {
+      this.root.insertBefore(next, this.factsBox);
+      this.root.removeChild(this.factsBox);
+    } else {
+      this.root.appendChild(next);
+    }
+    this.factsBox = next;
   }
 
   _facts() {
@@ -461,8 +980,9 @@ export class SubgraphView {
     if (mark.addEventListener) mark.addEventListener('click', () => { this.toggleMark(id); });
     this.markButton = mark;
     acts.appendChild(mark);
-    const folded = this.folded.has(id);
-    if (folded || foldedAway(this.layout, new Set([id]), this._seeds()).size) {
+    const folded = this._isFolded(id);
+    if (folded || foldedAway(this.layout, new Set([id]), this._seeds()).size
+        || this.layout.chips.some((c) => c.node === id)) {
       const fold = this._el('button', 'sg-fold', folded ? 'Unfold' : 'Fold branches');
       fold.setAttribute('type', 'button');
       fold.setAttribute('data-fold-node', id);
@@ -496,10 +1016,128 @@ export class SubgraphView {
     }
   }
 
-  /** The marks, the pick and Continue follow the store without redrawing the picture (the box keeps its scroll). */
+  // ── the picker: what to open out of a lump (lead 03bc94b6b) ─────────────────────────────────────────────────
+
+  _openPicker(lumpId, items, title, sub, onOpen) {
+    this._closePicker();
+    const box = this._el('div', 'sg-pick');
+    box.setAttribute('role', 'dialog');
+    box.setAttribute('data-lump', lumpId);
+    const head = this._el('div', 'sg-pick-head', title);
+    head.appendChild(this._el('div', 'sg-pick-sub', sub));
+    box.appendChild(head);
+    let filter = null;
+    if (items.length > PICK_FILTER_AT) {
+      filter = this._el('input', 'sg-pick-filter');
+      filter.setAttribute('type', 'search');
+      filter.setAttribute('placeholder', 'Filter');
+      box.appendChild(filter);
+    }
+    const list = this._el('div', 'sg-pick-list');
+    const rows = items.map((item) => {
+      const row = this._el('label', 'sg-pick-row');
+      row.setAttribute('data-value', item.value);
+      const cb = this._el('input');
+      cb.setAttribute('type', 'checkbox');
+      cb.type = 'checkbox';
+      cb.checked = false;
+      row.appendChild(cb);
+      row.appendChild(this._el('span', 'sg-pick-text', item.text));
+      if (item.count !== undefined) row.appendChild(this._el('span', 'sg-pick-n', String(item.count)));
+      list.appendChild(row);
+      return { row, cb, value: item.value, text: String(item.text).toLowerCase() };
+    });
+    box.appendChild(list);
+    const foot = this._el('div', 'sg-pick-foot');
+    const allRow = this._el('label', 'sg-pick-all');
+    const all = this._el('input');
+    all.setAttribute('type', 'checkbox');
+    all.type = 'checkbox';
+    allRow.appendChild(all);
+    allRow.appendChild(this._el('span', '', 'All'));
+    const cancel = this._el('button', 'sg-tool sg-pick-cancel', 'Cancel');
+    cancel.setAttribute('type', 'button');
+    const go = this._el('button', 'sg-continue sg-pick-open', 'Open');
+    go.setAttribute('type', 'button');
+    const ticked = () => rows.filter((r) => r.cb.checked);
+    const sync = () => {
+      const n = ticked().length;
+      go.textContent = n ? `Open ${n}` : 'Open';
+      setDisabledReason(go, n ? '' : 'Tick one');
+    };
+    const visible = (r) => !r.row.hidden;
+    if (all.addEventListener) {
+      all.addEventListener('change', () => { for (const r of rows) if (visible(r)) r.cb.checked = all.checked; sync(); });
+      for (const r of rows) r.cb.addEventListener('change', sync);
+      if (filter) {
+        filter.addEventListener('input', () => {
+          const q = String(filter.value || '').trim().toLowerCase();
+          for (const r of rows) r.row.hidden = Boolean(q) && !r.text.includes(q);
+        });
+      }
+      cancel.addEventListener('click', () => this._closePicker());
+      go.addEventListener('click', () => {
+        const chosen = ticked().map((r) => r.value);
+        if (!chosen.length) return;
+        this._closePicker();
+        onOpen(chosen);
+      });
+    }
+    foot.appendChild(allRow);
+    foot.appendChild(cancel);
+    foot.appendChild(go);
+    box.appendChild(foot);
+    sync();
+    this.wrap.appendChild(box);
+    // Beside the lump, inside the picture's box.
+    const lump = this.cy && this.cy.getElementById(lumpId);
+    if (lump && lump.nonempty()) {
+      const p = lump.renderedPosition();
+      const w = this.wrap.clientWidth || 0;
+      const h = this.wrap.clientHeight || 0;
+      const width = box.offsetWidth || 0;
+      const height = box.offsetHeight || 0;
+      const left = Math.max(6.8, Math.min(p.x + lump.renderedWidth() / 2 + 13.6, w - width - 6.8));
+      const top = Math.max(6.8, Math.min(p.y - 40.8, h - height - 6.8));
+      box.style.left = `${Math.round(left)}px`;
+      box.style.top = `${Math.round(top)}px`;
+      lump.addClass('is-lit');
+    }
+    this._onKey = (ev) => { if (ev && ev.key === 'Escape') this._closePicker(); };
+    if (this.doc.addEventListener) this.doc.addEventListener('keydown', this._onKey);
+    this.picker = { box, lumpId, rows, all, filter, go, cancel };
+    if (filter && filter.focus) filter.focus(); else if (rows[0] && rows[0].cb.focus) rows[0].cb.focus();
+  }
+
+  _closePicker() {
+    if (!this.picker) return;
+    const { box, lumpId } = this.picker;
+    this.picker = null;
+    if (box.parentNode) box.parentNode.removeChild(box);
+    if (this.doc.removeEventListener && this._onKey) this.doc.removeEventListener('keydown', this._onKey);
+    this._onKey = null;
+    const lump = this.cy && this.cy.getElementById(lumpId);
+    if (lump && lump.nonempty()) lump.removeClass('is-lit');
+  }
+
+  // ── marks, the pick and Continue follow the store; the picture is not laid out again ─────────────────────
+
   _restyle() {
-    for (const { group, node } of (this._groups || new Map()).values()) group.setAttribute('class', this._classOf(node));
     const name = this.writes();
+    if (this.cy) {
+      const seeds = new Set(this._seeds());
+      this.cy.batch(() => {
+        this.cy.nodes('[kind = "node"]').forEach((n) => {
+          const id = n.id();
+          n.toggleClass('is-seed', seeds.has(id));
+          n.toggleClass('is-marked', Boolean(name) && this.markings.signOf(name, id) !== SIGN.ABSENT);
+          n.toggleClass('is-selected', id === this.selected);
+        });
+        this.cy.edges('[kind = "edge"]').forEach((e) => {
+          e.toggleClass('is-hot', Boolean(this.selected) && (e.data('source') === this.selected || e.data('target') === this.selected));
+        });
+      });
+    }
     if (this.markButton && this.selected) {
       const on = Boolean(name) && this.markings.signOf(name, this.selected) !== SIGN.ABSENT;
       this.markButton.setAttribute('aria-pressed', String(on));
@@ -521,17 +1159,10 @@ export class SubgraphView {
     if (name) this.markings.toggle(name, id, SIGN.CASE);
   }
 
-  /** Pick a node: the list under the picture is swapped; the picture is not redrawn. */
+  /** Pick a node: the facts box is swapped; the picture is not laid out again. */
   select(id) {
     this.selected = id;
-    const next = this._facts();
-    if (this.factsBox && this.factsBox.parentNode === this.root) {
-      this.root.insertBefore(next, this.factsBox);
-      this.root.removeChild(this.factsBox);
-    } else {
-      this.root.appendChild(next);
-    }
-    this.factsBox = next;
+    this._swapFacts();
     this._restyle();
   }
 }

@@ -641,7 +641,7 @@ export function boot(doc, host, deps) {
   const picker = options.branchMount ? new BranchPicker(options.branchMount, { doc, onPickSet: options.pickWorld }) : null;
   if (picker) picker.show({ current: worlds });
   load();
-  return { state, spec, fire, render };
+  return { state, spec, fire, render, graph };
 }
 
 // 🔴 부팅은 «이 파일 끝»에서만. bare node 로 이 모듈을 읽어도 DOM 을 안 건드려야

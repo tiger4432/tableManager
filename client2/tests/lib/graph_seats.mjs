@@ -1,11 +1,12 @@
-// The two layered-graph screens seated on one stub document, and the tree they draw, serialised - shared by
-// capture_graph_snapshots.mjs (which pinned the pictures before the template, lead 65754c39a) and the
-// harness that compares today's drawing with them. One seat for both, so the capture and the check cannot
-// set the screens up differently.
+// The chain graph seated on a stub document, and the tree it draws, serialised - shared by
+// capture_graph_snapshots.mjs (which pinned the picture before the template, lead 65754c39a) and the
+// harness that compares today's drawing with it. One seat for both, so the capture and the check cannot
+// set the screen up differently. The subgraph viewer left the template for Cytoscape (lead 5e1d9e372); its
+// seat stays for the two-parts-on-one-page check.
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { makeDoc, flush } from './board_dom.mjs';
+import { makeDoc } from './board_dom.mjs';
 import { createWalkBoxWalk, entitySeedId } from '../../src/rnd_board/api.js';
 import { MarkingStore, SIGN } from '../../src/rnd_board/marking_store.js';
 
@@ -78,16 +79,10 @@ const wire = (bodies) => {
   });
 };
 
-/** The subgraph viewer on the walk page's chain of names, in one of three states:
- *  `die` the start alone; `continue` a node marked and Continue pressed; `bundles` a chip pressed and a
- *  point inside the expanded bundle marked. */
-export async function seatSubgraph(SubgraphView, which) {
+/** The subgraph viewer on the walk page's chain of names, the die walk drawn: its host and the part. */
+export async function seatSubgraph(SubgraphView) {
   const DECL = fx('walk_start_declaration.json');
-  const bodies = {
-    die: [fx('walk_start_die.json')],
-    continue: [fx('walk_start_die.json'), fx('walk_start_die_step2.json')],
-    bundles: [fx('walk_bundles_die.json'), fx('walk_bundles_die_expanded.json')],
-  }[which];
+  const bodies = [fx('walk_start_die.json')];
   const doc = makeDoc('light');
   const host = doc.createElement('div');
   doc.body.appendChild(host);
@@ -98,35 +93,5 @@ export async function seatSubgraph(SubgraphView, which) {
   markings.replace(chain[0], [[start, SIGN.CASE]]);
   const view = new SubgraphView(host, { doc, walk: wire(bodies), entities: () => DECL.entities, markings, chain });
   await view.show();
-  const press = (id) => {
-    const node = (view._groups && view._groups.get(id)) || null;
-    if (node) node.group.dispatch('click', {});
-  };
-  if (which === 'continue') {
-    // A press only picks (lead 9dc2a5695 ②); Mark puts it in the marking Continue walks.
-    press(bodies[1]._marked);
-    if (view.markButton) view.markButton.dispatch('click', {});
-    view.continueButton.dispatch('click', {});
-    await flush(); await flush();
-  }
-  if (which === 'bundles') {
-    const x = bodies[1]._expanded;
-    const chip = (view.root.children || []).length ? findBy(host, 'data-bundle', `${x.node}|${x.predicate}|${x.direction}`) : null;
-    if (chip) chip.dispatch('click', {});
-    await flush(); await flush();
-    const firstIds = new Set(first.nodes.map((n) => n.id));
-    const inside = bodies[1].nodes.find((n) => !firstIds.has(n.id));
-    if (inside) press(inside.id);
-    if (inside && view.markButton) view.markButton.dispatch('click', {});
-  }
-  return host;
-}
-
-function findBy(root, key, value) {
-  if (root.attrs && root.attrs[key] === value) return root;
-  for (const kid of root.children || []) {
-    const hit = findBy(kid, key, value);
-    if (hit) return hit;
-  }
-  return null;
+  return { host, view };
 }

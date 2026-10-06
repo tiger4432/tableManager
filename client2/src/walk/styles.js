@@ -170,26 +170,36 @@ export const WALK_CSS = `
   border: 1px solid var(--border); font-family: 'JetBrains Mono', monospace; font-size: var(--fs-label); }
 .sg-swatch { width: 10.2px; height: 10.2px; border-radius: 50%; background: var(--sg-c); }
 .sg-swatch.is-static { border-radius: 0; }
-.sg-box { max-height: var(--graph-max-height); overflow: auto; border: 1px solid var(--border);
-  background: var(--bg-inset); }
-.sg-graph { display: block; }
-.sg-edge { stroke: var(--border-strong); stroke-width: 1; }
-.sg-node circle, .sg-node rect { fill: var(--sg-c); stroke: var(--bg-surface); stroke-width: 1.5; cursor: pointer; }
-/* The step a node came from is its border (lead f6fc6ba66): step 1 the plain halo, later steps dashed. */
-.sg-step-2 > circle, .sg-step-2 > rect { stroke: var(--text); stroke-dasharray: 3.4 1.7; }
-.sg-step-3 > circle, .sg-step-3 > rect { stroke: var(--text); stroke-dasharray: 1.7 1.7; }
-.sg-step-4 > circle, .sg-step-4 > rect { stroke: var(--text); stroke-dasharray: 6.8 1.7 1.7 1.7; }
-.sg-node.is-seed circle, .sg-node.is-seed rect { stroke: var(--accent); stroke-width: 2; stroke-dasharray: none; }
-.sg-node.is-marked circle, .sg-node.is-marked rect { stroke: var(--accent); stroke-width: 3.4; stroke-dasharray: none; }
-.sg-node.is-selected circle, .sg-node.is-selected rect { stroke: var(--text); stroke-width: 3; }
-.sg-bundle text { fill: var(--accent); font-size: var(--fs-label); font-weight: 600; cursor: pointer; }
+/* The picture: Cytoscape draws into a box of the graph height token; it pans and zooms inside it (lead 5e1d9e372). */
+.sg-canvas-wrap { position: relative; height: var(--graph-max-height); border: 1px solid var(--border);
+  background: var(--bg-inset); overflow: hidden; }
+.sg-canvas-wrap.is-empty { display: none; }
+.sg-canvas { position: absolute; inset: 0; }
 .sg-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6.8px; }
+.sg-acts { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.sg-tool { min-height: 44px; padding: 0 var(--space-4); font: inherit; color: var(--text);
+  background: var(--bg-surface); border: 1px solid var(--border); border-radius: 0; cursor: pointer; }
+/* What a lump holds, ticked open (lead 03bc94b6b): beside the lump, inside the picture's box. */
+.sg-pick { position: absolute; z-index: 2; width: 272px; max-width: calc(100% - 13.6px); display: flex;
+  flex-direction: column; background: var(--bg-surface); border: 1px solid var(--border-strong);
+  box-shadow: var(--shadow-pop); }
+.sg-pick-head { padding: var(--space-2) var(--space-3); border-bottom: 1px solid var(--border); font-weight: 600; }
+.sg-pick-sub { font-weight: 400; font-size: var(--fs-meta); color: var(--text-dim); }
+.sg-pick-filter { margin: var(--space-2) var(--space-3) 0; min-height: 36px; padding: 0 var(--space-2); font: inherit;
+  color: var(--text); background: var(--bg-inset); border: 1px solid var(--border); border-radius: 0; }
+.sg-pick-list { max-height: 240px; overflow: auto; padding: var(--space-1) 0; }
+.sg-pick-row { display: flex; align-items: center; gap: var(--space-2); min-height: 36px; padding: 0 var(--space-3);
+  cursor: pointer; }
+.sg-pick-row[hidden] { display: none; }
+.sg-pick-row:hover { background: color-mix(in srgb, var(--text) 7%, transparent); }
+.sg-pick-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sg-pick-n { margin-left: auto; color: var(--text-dim); font-variant-numeric: tabular-nums; }
+.sg-pick-foot { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-2) var(--space-3);
+  border-top: 1px solid var(--border); }
+.sg-pick-all { display: inline-flex; align-items: center; gap: var(--space-1); margin-right: auto; color: var(--text-dim); }
 .sg-continue { min-height: 44px; padding: 0 13.6px; font: inherit; color: var(--accent-contrast);
   background: var(--accent); border: 1px solid var(--accent); border-radius: 0; cursor: pointer; }
 .sg-continue[disabled] { opacity: 0.5; cursor: not-allowed; }
-/* Node names at the body size (lead 9dc2a5695 ⑤): the rows (gapY 27.2) clear it; names longer than a column
-   already ran into the next one at the tag size, and still do. */
-.sg-node text { fill: var(--text); font-size: var(--fs-body); cursor: pointer; }
 /* The picked node's facts stay in sight (lead 9dc2a5695 ①): pinned to the bottom of whatever scrolls the
    picture, capped with a scroll of their own, Mark and Fold first. Nothing picked draws nothing. */
 .sg-facts { display: flex; flex-direction: column; gap: 3.4px; position: sticky; bottom: 0; z-index: 1;

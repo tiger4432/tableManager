@@ -17,6 +17,8 @@
     "vite": "^8.0.12"
   },
   "dependencies": {
-    "ag-grid-community": "^35.3.0"
+    "ag-grid-community": "^35.3.0",
+    "cytoscape": "^3.34.3",
+    "cytoscape-dagre": "^4.0.1"
   }
 }

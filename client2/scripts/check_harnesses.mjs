@@ -1430,11 +1430,14 @@ const FLOORS = new Map([
   // counts equal the table's, a column per depth, static squares, facts on a press, two on one page apart;
   // a press marks into the store, Continue walks that marking onto the same picture; bundle chips
   // (lead 1d07f1dae): one per bundle answered, a press expands it on the same picture.
-  ['subgraph_view_harness.mjs', 88],
+  // 88 -> 138 (leads 5e1d9e372 · e523cfe91 · 03bc94b6b): drawn by Cytoscape, read off the part's instance; one
+  // lump opens only what is ticked, the view and what stands never move; tokens, curves, the pointer, Reset.
+  ['subgraph_view_harness.mjs', 138],
   // New (lead 65754c39a): the one layered-SVG template - both screens draw their pinned pictures, two
   // declarations on one page apart, the template's own slots/shapes/texts/presses; (lead 2cbd0756d) the nine
-  // category colours of their own, measured, and seven token mutants.
-  ['layered_graph_harness.mjs', 33],
+  // category colours of their own, measured, and seven token mutants. 33 -> 30 (lead 5e1d9e372): the subgraph
+  // viewer left the template for Cytoscape, its three pinned trees retired.
+  ['layered_graph_harness.mjs', 30],
   // New (lead 191912ce2): an image cell previews on a dwell and opens from its mark - passing over asks
   // nothing, one at a time, the last let go, the server's refusal said, two previews apart; the grid
   // changes only its image columns.
@@ -1577,7 +1580,7 @@ const FLOORS = new Map([
   ['uniqueness_harness.mjs', 31],
   // 「거절」 and 「진단 못 냄」 are different instructions -- one has a DDL to run and the
   // other has no answer yet -- and shape-level rejections are counted with the rest
-  ['join_verification_harness.mjs', 24],
+  ['join_verification_harness.mjs', 31],   // 24 -> 31 (lead 10-06): the floor is the run
   // 「declared impossible」 and 「merely empty」 are not one row, and the totals keep them
   // apart -- mixing them sends an operator looking for data the declaration forbids
   ['gap_catalogue_harness.mjs', 26],
