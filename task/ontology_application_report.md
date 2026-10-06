@@ -35984,3 +35984,30 @@ CODE_MAP 은퇴 함수 이름, 표지 없는 줄     2      0     declarationIdF
          server/ledger/trace_router.py:1086:    # anyone who needs it; nobody has to look. `subjects` stays VERSIONED (`die@1`) because
          server/ledger_api/ledger_subgraph.py:1936:    # names because the declaration versions its ids (`defect_kind@1`) and a projected node
 ```
+
+---
+
+## [C 응용] 10-06 67b2e423b(규칙이 «언제» 도나 · 언어 모델 자리) QA · 문서 4a34627b7 — 결함 없음, 물음 둘
+
+```
+시험     떼어 둔 트리 /c/wt-app @67b2e423b — 착지 시험 여섯 + 이웃(chain_skeleton · outbox_owner_and_stall · chain_tab 규칙 추가 ·
+         nine_loops · write_path_drop_report) : 260 passed, 599 warnings in 30.52s
+문서     4a34627b7 — CODE_MAP §4 머리(run_in · rows_per_run · runs_as_operation · _queue_operation_runs · 같은 본체) ·
+         retroactive(rule_rows) · text_links(ask_links · utils/llm.ask_json) · RUNTIME_MAP ⑥-b(rule_rows 가 소급 실행 자식에서)
+```
+
+**여쭐 것 ① — 줄 선 작업은 아웃박스 행에 기댄다 (코드 읽음)**
+```
+_run_rule_rows 는 돌 때 params.events 를 database_outbox 에서 다시 읽고, 없으면 「the queued events are no longer in the outbox」 로 거절
+그 행을 지우는 것  체인 안 정리(③-a, OUTBOX_RETENTION_DAYS = 7 · 1 h 마다) · 운영 스크립트 ops_purge_outbox_backlog.py --days N
+-> 소급 실행은 한 번에 하나(RUNTIME_MAP ⑥-b)라 줄이 길면(언어 모델 규칙 = 글 하나에 작업 하나) 7 일 안에 못 돌 수 있고,
+   운영자가 --days 를 짧게 주면 바로 그렇다. 조용히 사라지진 않지만(거절 한 줄) 그 글의 후보는 남지 않는다
+여쭐 것  정리가 «줄 선 작업이 든 사건»을 건너뛰게 할지, 작업이 사건 대신 필요한 것(행 id)을 들고 갈지 — 안 지었다. 줄 깊이 · 수천 행 묶음에서 줄 세우는 비용은 안 쟀다
+```
+
+**여쭐 것 ② — 실행 자리 (소유자 문장 대조)**
+```
+rule_rows 는 «소급 실행 자식»(admin/retroactive_run.py)이 체인 묶음 본체를 부른다 — 체인 워커가 아니다
+소유자 09-22~23 「체인 리플레이는 체인 워커에 꽂아」 · 「체인워커에 «다» 넣으라고」 — 이 작업이 그 문장이 말한 것에 드는지 내가 판단하지 않는다.
+be0abe305 「작업 문」 이 소유자께 그 문장과 함께 올라간 것이면 이 물음은 닫힌다
+```
