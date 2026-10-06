@@ -478,8 +478,8 @@ entities.<개체id>       필수  keys                     선택  key_types · 
                         keys    «비지 않고» 중복 없는 문자열 목록 = 그 개체의 신원
 ```
 
-- **id 는 «버전이 붙는다»** (`wafer@1` · `observed@1`). 원장은 «맨 이름»을 쓰므로 읽는 쪽이
-  접미사를 뗀다. 두 자리가 이 뗌을 서로 다르게 하면 같은 것이 둘로 보인다.
+- ~~**id 는 «버전이 붙는다»** (`wafer@1` · `observed@1`)~~ 🆕 10-06 `f34f16892` **id 는 맨이름**(`wafer` · `observed`) — 옛 파일의 `wafer@1` 은
+  읽을 때 `declaration_names.fold_versions` 한 자리가 접는다. 뗌이 두 자리면 같은 것이 둘로 보인다.
 - **`qualifiers.required` 와 `optional` 은 «다른 답»이다.** `observed` 의 일곱은 전부 optional 이다 —
   발견이 «담을 수 있는» 것이지 «담아야 하는» 것이 아니다. 한 목록으로 접으면 그 구분이 사라진다.
 - **`status: retired` 는 낱말을 지우지 않는다.** 원자가 이미 그 낱말로 누워 있으므로 읽기는 계속

@@ -72311,3 +72311,28 @@ sqlite 전체    5 failed, 7772 passed, 330 skipped, 3 xfailed, 13014 warnings i
 화면의 「Ledger batch 3 · LEDGER」 가 어느 데이터에서 나왔는지(박스 그룹인지, 클라 시험 고정틀인지) — 서버가 첫 로그만 싣는 길을 저는 못 찾았습니다.
 박스 그룹이면 그 트랜잭션 id 를 주시면 그 그룹을 읽기 전용으로 열어 보겠습니다
 ```
+
+---
+
+## [10-06] 총괄 3e8b6171f ② 착지 c49217a06 — 정정과 함께: 목록 라우트는 «대표 로그 1건»만 싣는다, 그래서 그룹마다 receipt_worlds
+
+어느 DB · 어느 스키마 · 지운 것 — PG assy_test 시험 스크래치 스키마만(잴 때만 둔 탐침 파일은 지움) · 지운 것 0
+
+**정정 — fe7167ecd 의 ② 보고는 틀렸다**
+```
+그때 잰 것은 투영(audit_cache)이었고 라우트가 아니었다. 투영은 그룹의 로그를 다 들고 있지만,
+라우트의 _shape_recent_groups 가 그룹마다 대표 로그 1건과 칸 이름(summary_columns)만 보낸다
+클라가 간 길 그대로(audit_cache 초기화 -> main.get_recent_audit_logs) 다시 잼: total_count 3 · logs 1 (ledger_batch)
+```
+**지은 것**
+```
+그룹마다 receipt_worlds [{world, receipts}] — 그룹이 들고 있는 영수증(ledger_batch)을 new_value.world 로, 쓰인 순서
+logs (대표 1건) · summary_columns 는 그대로. 세상 칸 없는 옛 영수증은 world null
+PG 실제 후속(세상 둘)  total_count 3 · logs 1 · receipt_worlds: default 1 · a41656gw0 1
+변이 2       대표 로그만 셈 RED · 영수증의 세상을 안 읽음 RED
+sqlite 전체    5 failed, 7773 passed, 330 skipped, 3 xfailed, 13055 warnings in 851.94s (0:14:11) — 박스 사유 밖: 없음
+```
+**클라에 보낸 칸 이름**
+```
+receipt_worlds — 위 모양. 접힌 줄의 종류는 logs(1건) 말고 summary_columns 로 가려야 «전부 영수증»이 맞게 셈 (클라 몫)
+```

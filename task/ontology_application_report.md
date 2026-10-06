@@ -35922,3 +35922,21 @@ git grep -n -E "<아래 낱말들>" -- server/*.py ':!server/tests'
   server/ledger_api/ledger_subgraph.py:1729:    # declaration is keyed with its version (`wafer@1`), so looking the node up in the
   server/ledger_api/ledger_subgraph.py:1950:    # names because the declaration versions its ids (`defect_kind@1`) and a projected node
 ```
+
+---
+
+## [C 응용] 10-06 6d938a2ef 뒤 — 서버의 요청 이름이 옛 철자 `@1` 을 «자리마다 다르게» 받는다 (잼 · 물음)
+
+```
+잰 것    group_nodes 에 맨이름 술어 수를 든 노드 하나 (DB 없음 · 쓰기 0 · 공유 트리 server 미커밋 0)
+         sum:inspected -> [{'key': 'wafer', 'n': 1, 'value': {'sum:inspected': 3.0}}]
+         sum:inspected@1 -> [{'key': 'wafer', 'n': 1, 'value': {'sum:inspected@1': None}}]
+         -> 옛 철자는 «접히지도 거절되지도 않고» 값이 빈다. 6d938a2ef 의 추세 좌석이 이렇게 점 없이 그려졌다
+자리마다  collect   접는다 — trace_router `_bare_name(name) for name in collect` (그래서 collect=die@1 은 die 와 같은 답)
+         measure   안 접는다 — ledger_subgraph `_split_measure` 가 이름을 그대로, `_source_values` 가 그대로 견줌 (위에서 잼)
+         follow    안 접는다 — `_split_follow` 그대로, `atom.predicate not in follow` (코드 읽음 · 원장은 처음부터 맨이름이라 이건 f34f16892 전에도 같았다)
+변한 것   measure 만 — f34f16892 전에는 노드의 predicates 이름이 선언 철자(@1)라 `sum:x@1` 이 맞았다. 이제 맨이름이라 옛 요청이 조용히 빈다
+여쭐 것   요청 이름을 «한 자리»에서 접을지(collect 처럼 bare_name — measure · follow · group_by), 아니면 아무 선언도 안 하는 이름을 거절할지.
+         둘 다 안 지었다. 저장된 보드 · 북마크에 measure 문자열이 남는 자리가 있는지는 안 셌다
+문서     9534c9ef8 — WALK.md 이름 찾기(맨이름 · @1 은 빈다) · LEDGER_TECHNICAL_SPEC 「id 는 버전이 붙는다」 은퇴(838bafd89 때 빠뜨린 현재형 줄)
+```

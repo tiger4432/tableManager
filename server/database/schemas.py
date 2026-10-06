@@ -105,11 +105,20 @@ class AuditHistoryPage(BaseModel):
     #: pathologically deep row cannot turn a disclosure into an O(depth) scan.
     row_history_truncated: bool = False
 
+class ReceiptWorld(BaseModel):
+    #: the world a ledger receipt says it was written into; None for a receipt from before 6922cd6cb
+    world: Optional[str] = None
+    receipts: int
+
+
 class AuditLogGroupResponse(BaseModel):
     transaction_id: Optional[str] = None
     total_count: int = 0
     summary_columns: list[str] = []
     logs: list[AuditLogResponse]
+    #: 🔴 `logs` carries ONE representative; the ledger receipts behind it, per world, oldest
+    #: written first (총괄 3e8b6171f ②) - an edit followed in two worlds is a row and two receipts.
+    receipt_worlds: list[ReceiptWorld] = []
 
 class AuditLogGroupPage(BaseModel):
     """One page of the recent-transactions projection behind `/audit_logs/recent`.
