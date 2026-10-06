@@ -101,11 +101,14 @@ RULE_OUTCOME_FAILED = "failed"
 #:    상태이고, 그것과 「옛 서버라 이 칸이 없다」는 다른 사실이다 — 부재는 뒤엣것 «하나»만
 #:    뜻해야 한다(판정 45 게이트 ②와 같은 규율).
 RULE_OUTCOME_NEVER_EVALUATED = "never_evaluated"
+#: 총괄 be0abe305: a `run_in: operation` rule its group handed to operation runs - the reason
+#: names the runs. Not 「did not run」: it runs there, in another process.
+RULE_OUTCOME_QUEUED_AS_OPERATION = "queued:operation"
 
 RULE_OUTCOMES = frozenset({
     RULE_OUTCOME_SKIPPED_DISABLED, RULE_OUTCOME_SKIPPED_NOT_TRIGGERED,
     RULE_OUTCOME_RAN_UNCHANGED, RULE_OUTCOME_RAN_CHANGED,
-    RULE_OUTCOME_FAILED, RULE_OUTCOME_NEVER_EVALUATED,
+    RULE_OUTCOME_FAILED, RULE_OUTCOME_NEVER_EVALUATED, RULE_OUTCOME_QUEUED_AS_OPERATION,
 })
 
 #: 규칙 «목록»의 두 상태 — 위의 OUTCOME 과 다른 물음이다. 저쪽은 「한 그룹에 무엇을 했나」,

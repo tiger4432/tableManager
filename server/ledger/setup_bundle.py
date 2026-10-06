@@ -2005,7 +2005,7 @@ def _validate_profile(profile: Any, path: str, problems: _Problems) -> None:
 
     🔴 AND `use` BECAME `predicate` THE SAME DAY, when the `packs` SECTION went too.  A
     mapping named a Claim that named a predicate; it names the predicate.  The value is a
-    versioned vocabulary id, not a `<pack>/<claim>` pair, so the pattern that parsed one
+    vocabulary id, not a `<pack>/<claim>` pair, so the pattern that parsed one
     left with the section.
 
     🔴 AND IT STAYS A RECORD WITH ONE FIELD (owner: 「ㅇㅇ 남겨」).  `bind: [...]` would read

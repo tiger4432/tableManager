@@ -150,4 +150,5 @@ def test_the_vocabulary_is_closed_and_the_causes_are_not_values():
     """⛔ 원인 여섯을 값 여섯으로 만들지 않는다 — 그러면 화면이 그것을 다시 다섯으로 접는다."""
     assert ec.RULE_OUTCOMES == {
         "skipped:disabled", "skipped:not_triggered",
-        "ran:unchanged", "ran:changed", "failed", "never_evaluated"}
+        "ran:unchanged", "ran:changed", "failed", "never_evaluated",
+        "queued:operation"}           # 총괄 be0abe305 - it runs, in another process

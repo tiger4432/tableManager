@@ -375,6 +375,19 @@ def max_group_rows(rule) -> int:
     return rows if rows > 0 else NO_GROUP_MERGE
 
 
+def runs_as_operation(rule) -> bool:
+    """Whether the group that woke this rule queues it as an operation instead of running it
+    (총괄 be0abe305 ②) - the one seat that asks `run_in`. HOW it runs is the same either way."""
+    return (rule or {}).get(chain_bindings.RUN_IN_KEY) == chain_bindings.RUN_IN_OPERATION
+
+
+def rows_per_run(rule) -> int:
+    """How many trigger rows one queued run carries. A bad value is refused at load."""
+    value = (rule or {}).get(chain_bindings.ROWS_PER_RUN_KEY)
+    return (value if isinstance(value, int) and not isinstance(value, bool) and value > 0
+            else chain_bindings.DEFAULT_ROWS_PER_RUN)
+
+
 def _declared_attempts(source, where):
     """One layer's answer, or `None` when that layer did not declare a usable one.
 
@@ -2244,13 +2257,48 @@ def _claimed_group_sync(tx_id, events, db, rules):
         except Exception:                                   # noqa: BLE001 - SQLite has none
             pass
         try:
-            return _process_chain_transaction_group_sync(tx_id, events, db, rules)
+            answer = _process_chain_transaction_group_sync(
+                tx_id, events, db, [r for r in rules if not runs_as_operation(r)])
         except Exception as exc:                            # noqa: BLE001
             # A stop the pause made - its stage boundary, or the query it cancelled - comes
             # back as the group's answer, for `process_pending_groups` to rewind (3840af307).
             if chain_control.paused() is None:
                 raise
             return False, "paused: %s" % (str(exc).strip().splitlines() or [""])[0], []
+        if answer[0]:
+            _queue_operation_runs(tx_id, events, db,
+                                  [r for r in rules if runs_as_operation(r)])
+        return answer
+
+
+def _queue_operation_runs(tx_id, events, db, rules):
+    """Each `run_in: operation` rule's trigger rows, queued as runs of `rows_per_run` rows that
+    call the same group body (총괄 be0abe305). In this group's session, so they commit with it -
+    a failed group queues nothing, and its retry queues once."""
+    from admin import retroactive
+
+    _record_pre_run_outcomes(rules, events)
+    for rule in rules:
+        if _rule_outcome_before_running(rule, events)[0] is not None:
+            continue
+        units = []
+        for event in events:
+            if not (_is_trigger_event(event) and fires(rule, event)):
+                continue
+            payload = get_payload_dict(event)
+            rows = (payload.get("row_ids") if event_constants.is_collapsed_payload(payload)
+                    else [payload.get("row_id")])
+            units.extend((event.event_uuid, row) for row in (rows or [None]))
+        size, runs = rows_per_run(rule), []
+        for start in range(0, len(units), size):
+            chunk = units[start:start + size]
+            runs.append(retroactive.publish(db, retroactive.RULE_ROWS_OP, {
+                "rule": rule.get("name"), "transaction": str(tx_id),
+                "events": list(dict.fromkeys(uuid for uuid, _row in chunk)),
+                "rows": [str(row) for _uuid, row in chunk if row is not None]})["run_id"])
+        activity.registry.record_outcome(
+            rule.get("name") or "<unnamed rule>", event_constants.RULE_OUTCOME_QUEUED_AS_OPERATION,
+            "run_id %s" % ", ".join(runs))
 
 
 #: How long the stalled line's own question may run. It reads two system views and takes

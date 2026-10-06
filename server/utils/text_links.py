@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """Cause -> phenomenon candidates read out of free text with the caller's own dictionaries
-(lead 15a4d8e43 · 9f301f9bc). Pure functions: every word comes from the rows passed in.
+(lead 15a4d8e43 · 9f301f9bc). Every word comes from the rows passed in. `find_links` and
+`unknown_words` are pure; `ask_links` asks a language model (`utils.llm`) for the same rows.
 
     names  {node_type, node_key, phrase}   what a node is called in the text
     links  {phrase, meaning, side}         meaning: cause · and · negation · suspected · confirmed
@@ -136,10 +137,14 @@ def _pairs(sentence, found):
     return out
 
 
+RULES_EXTRACTOR = "rules"
+
+
 def find_links(text, names, links):
     """One row per candidate: sentence_no (from 1) · sentence · cause_type · cause_key ·
     cause_phrase · phenomenon_type · phenomenon_key · phenomenon_phrase · link · polarity ·
-    certainty. The *_phrase cells and `link` are the words as the text wrote them."""
+    certainty · extractor · evidence. The *_phrase cells and `link` are the words as the text
+    wrote them; `extractor` is 'rules' and `evidence` the sentence."""
     index = _dictionary(names, links)
     out = []
     for number, sentence in enumerate(_sentences(text), 1):
@@ -154,7 +159,91 @@ def find_links(text, names, links):
                         "cause_phrase": found[ck][2],
                         "phenomenon_type": effect["node_type"],
                         "phenomenon_key": effect["node_key"], "phenomenon_phrase": found[ek][2],
-                        "link": found[lk][2], "polarity": polarity, "certainty": certainty})
+                        "link": found[lk][2], "polarity": polarity, "certainty": certainty,
+                        "extractor": RULES_EXTRACTOR, "evidence": sentence})
+    return out
+
+
+#: What the model is asked (총괄 b5b335f2e ②). It holds no word of any domain: the words come
+#: from the dictionary rows and the operator's instruction, put where the <<...>> marks stand.
+ASK_LINKS_PROMPT = """Read the text and list every statement that one thing causes another.
+For a cause or an effect, answer one of the dictionary phrases when the text names it; otherwise copy the words from the text.
+Answer with one JSON object and nothing else:
+{"links": [{"cause": "...", "effect": "...", "link": "...", "evidence": "...", "negated": false, "certainty": null}]}
+- link: the words of the text that join the cause to the effect
+- evidence: the sentence of the text that says it, copied exactly
+- negated: true when the text says the cause does not lead to the effect
+- certainty: "confirmed" when the text says it is confirmed, "suspected" when it says it is suspected, null when it says neither
+Dictionary phrases, one per line:
+<<dictionary>>
+<<instruction>>
+Text:
+<<text>>"""
+INSTRUCTION_HEADING = "Instruction from the operator:"
+LLM_EXTRACTOR = "llm:%s"
+
+
+def _named(answered, by_phrase):
+    """(node_type, node_key) of the dictionary row the answered words name, or (None, None)."""
+    row = by_phrase.get(_fold(str(answered))[0])
+    return (row["node_type"], row["node_key"]) if row else (None, None)
+
+
+def ask_links(text, names, instruction=None):
+    """`find_links`' rows, read by the language model `mapper_sdk.ask_json` reaches. A cause or
+    an effect gets a key only when the answer names a phrase of `names`; other words keep their
+    *_phrase and leave type and key empty. `certainty` is what the text says, `suspected` when
+    it says nothing - nothing becomes a fact before a person confirms it.
+
+    Refused by name (`LlmRefused`) when the answer has not this shape, or quotes as evidence a
+    sentence the text does not hold."""
+    from chain.mapper_call import without_missing
+    from database import crud
+    from utils import llm
+
+    rows = [without_missing(dict(row)) for row in names or ()]
+    by_phrase = {}
+    for row in rows:
+        if not crud.is_blank_value(row.get("phrase")):
+            by_phrase.setdefault(_fold(str(row["phrase"]))[0], row)
+    prompt = (ASK_LINKS_PROMPT
+              .replace("<<dictionary>>", "\n".join(str(r["phrase"]) for r in rows
+                                                   if not crud.is_blank_value(r.get("phrase"))))
+              .replace("<<instruction>>", "%s\n%s" % (INSTRUCTION_HEADING, instruction)
+                       if not crud.is_blank_value(instruction) else "")
+              .replace("<<text>>", str(text or "")))
+    answer = llm.ask_json(prompt)
+    links = answer.get("links")
+    if not isinstance(links, list):
+        raise llm.LlmRefused("the answer has no 'links' list: %s" % sorted(answer)[:10])
+    sentences = [(_fold(s)[0], s) for s in _sentences(text)]
+    extractor = LLM_EXTRACTOR % llm.model()
+    out = []
+    for number, item in enumerate(links, 1):
+        said = {name: (item.get(name) if isinstance(item, dict) else None)
+                for name in ("cause", "effect", "evidence")}
+        empty = [name for name, value in said.items()
+                 if not isinstance(value, str) or not value.strip()]
+        if empty:
+            raise llm.LlmRefused("link %d of the answer has no %s" % (number, " or ".join(empty)))
+        quoted = _fold(said["evidence"])[0]
+        found = [(no, s) for no, (folded, s) in enumerate(sentences, 1) if quoted in folded]
+        if not found:
+            raise llm.LlmRefused("link %d quotes evidence the text does not hold: %r"
+                                 % (number, said["evidence"][:120]))
+        (sentence_no, sentence) = found[0]
+        cause_type, cause_key = _named(said["cause"], by_phrase)
+        effect_type, effect_key = _named(said["effect"], by_phrase)
+        certainty = item.get("certainty")
+        out.append({"sentence_no": sentence_no, "sentence": sentence,
+                    "cause_type": cause_type, "cause_key": cause_key,
+                    "cause_phrase": said["cause"].strip(),
+                    "phenomenon_type": effect_type, "phenomenon_key": effect_key,
+                    "phenomenon_phrase": said["effect"].strip(),
+                    "link": item.get("link") if isinstance(item.get("link"), str) else None,
+                    "polarity": NEGATED if item.get("negated") is True else ASSERTED,
+                    "certainty": CONFIRMED if certainty == CONFIRMED else SUSPECTED,
+                    "extractor": extractor, "evidence": said["evidence"]})
     return out
 
 
