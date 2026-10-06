@@ -42,6 +42,8 @@
          · 기본 추세 좌석 둘(client2/src/rnd_board/main.js)이 도메인 낱말을 코드에 박음 — group_by 'wafer' · sum:inspected / sum:observed
            -> 그 좌석이 무엇으로 묶고 무엇의 비율을 내는지를 «사용자가 적는 칸»으로(코드에 도메인 낱말 0)
          · 같은 좌석 주석 「inspected@1 로 물으면 값이 비어 옵니다」는 3ff7341fe 뒤로 거짓(서버가 measure 이름도 접음) — 리빌드 때 같이
+         · 걷기 상자 follow — 걷기 페이지처럼 «엣지 전부 체크가 주 · 경로는 보조»(소유자 10-06). 오늘 보드는 시작 타입에 닿는 술어만(predicatesTouching)
+           그때 두 화면 비교 단언(rnd_board_walk_box_harness B8, 10-06 빠짐)을 되살리고, 타입 바꿀 때 체크 빠짐(F8 · H3)도 페이지처럼 은퇴
 ```
 어휘(`Action` · `applies_to` · `based_on` · `released_by`)는 아직 없다 — §5-bis 는 «제안» 상태. **지시서 없음.**
 
