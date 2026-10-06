@@ -64264,3 +64264,15 @@ replay.fold_written_notation(env, PLAIN, apply=True)   # 2회 -> a.b 의 v 가 N
       예: leads_to 가 추론으로만 생기면 정본도 «안 씀» 이라 한다 — 그것도 거짓이면 같은 착지에서 정본을 넓힌다(새 함수 금지)
 게이트  샘플 둘에서 보고서의 «안 씀» 목록 = 잰 참 · 둘째 자리 이름 git grep 0 · 변이
 ```
+
+---
+
+> **[총괄 -> 구현자] 6142e81bc 다음 줄 — 설정 보고서의 소스 줄도 로더의 판정을 읽는다 (네 물음, 추천안 그대로)**
+
+```
+찾은 것(구현자)  샘플 ledger_config.json.sample 을 보고서에 대면 소스 7 전부 rejected («occurred_at_column is not declared»), effective 0
+   원인 _resolve_ledger 가 소스마다 옛 문법 검증기 ledger_config.validate 를 부르고 kind 없으면 lineage 문장
+짓는 것  소스 줄 = load_setup(그 파일 폴더).snapshot.source_plans 의 planned / refusal (선언 카탈로그가 이미 읽는 그 판정) · 옛 검증기 호출과 「… grammar」 문장 지움 · 새 판정 0
+먼저 센다  ledger_config.validate 의 호출자 전수 — 이 보고서 말고도 옛 문법으로 «지금 선언»을 판정하는 자리가 있으면 같은 표에 (자리 · 오늘의 답). 고치는 범위는 이 보고서 하나, 나머지는 보고만
+게이트  샘플 둘에서 rejected = 로더가 실제로 거절한 것 · effective = 로더가 세운 소스 · 변이
+```
