@@ -1,3 +1,12 @@
+> ## [15:42 디자인] 토스트의 겹친 `!stale()` 지움 (총괄 답) — efe01e8b3
+
+**결론** map_editor.js 한 자리를 고쳤습니다(주석 없음). 그 줄을 겨누던 이 하니스의 변이 셋은 같은 커밋에서 새 줄로 겨눴습니다(N4 · O2 다시 겨눔, M5 는 토스트 바꿔치기를 뺌). 동작은 그대로입니다.
+
+- `valid_die_frame_adoption` 기본 241 칸 중 13 실패 · `--mutate` `25 declared · 25 applied · 0 did not apply · caught by a NAMED assertion 25 · caught only by a crash 0 · undetected 0` — 고치기 전과 같습니다.
+- map_editor.js 를 부르는 다른 하니스(`--mutate`): `geometry_origin_reseat` 62/0 · `valid_die_origin_alignment` 153/0 · `valid_die_authoring` 103/0 · `standard_frame_origin` 19/0 · `offset_pitch_guard` 94/0 · `alignment_verdict` 164/7 (known red).
+- 러너 초록 · 계약 13 개 어긋남 0. M5 주석과 러너 known red 주석의 «지킴이 셋»을 «둘»로 고쳤습니다.
+- 원장 폼을 진짜 `ledger_skeleton.json`(adcd304ff)으로 연 것은 앞서 했습니다: 파일의 노드가 철자와 같고, 이름 타입 · 칼럼 타입 · 새 바인딩이 맞게 섭니다(구현자에게 보냄).
+
 > ## [15:19 디자인] M5 다시 겨눔 + 러너 «--mutate 를 읽는 하니스는 --mutate 로» (총괄 c4ccdeec3) — 10ecf3a4f
 
 **결론** 착지했습니다. 러너가 이제 `--mutate` 를 읽는 하니스 23 개를 `--mutate` 로 띄우고, 전체가 초록입니다(every gated harness is green). M5 는 잡힙니다. 다만 «토스트의 `!stale()` 만 지우면 빨개지는 단언»은 지을 수 없었습니다 — 아래.
