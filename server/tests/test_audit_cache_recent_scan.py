@@ -467,27 +467,55 @@ def test_k_only_a_table_that_has_row_id_is_asked_for_its_rows(monkeypatch):
     assert asked == ["k_rows"]
 
 
-def test_m_a_group_names_the_worlds_its_receipts_were_written_into(client, db_session, knobs):
+def _a_failure_receipt(world):
+    """The value the drain's failure receipt carries - taken from its writer, not typed here."""
+    from database import crud
+    from ledger import followup
+
+    said = []
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(crud, "create_audit_log", lambda *args, **kwargs: said.append(args[5]))
+        followup._write_failure_receipt(None, TABLE, "src", "edit-tx", ValueError("x"), world)
+    (value,) = said
+    return value
+
+
+def test_m_a_group_names_the_worlds_its_receipts_were_written_into(
+        client, db_session, knobs, monkeypatch):
     """총괄 3e8b6171f ②: a group carries ONE representative log, so an edit followed in two
-    worlds read as three receipts on the screen. The receipts behind it are counted per world."""
+    worlds read as three receipts on the screen. The receipts behind it are counted per world,
+    with how many said the translation failed; the representative is the edit, though every
+    receipt was written after it; a group of receipts only shows its newest (총괄 이력 목록 둘)."""
+    import main
     from ledger.runtime_v2 import RECEIPT_COLUMN
 
     seed(db_session, [("edit-tx", 1)])                       # the edited row's own log
-    for minute, said in ((5, {"world": "default"}), (6, {"world": "w2"}), (7, {})):
+    receipts = [("edit-tx", 5, {"world": "default"}), ("edit-tx", 6, {"world": "w2"}),
+                ("edit-tx", 7, _a_failure_receipt("w2")), ("edit-tx", 8, {}),
+                ("receipts-tx", 9, {"world": "default"}), ("receipts-tx", 10, {"world": "default"})]
+    for tx, minute, said in receipts:
         db_session.add(models.AuditLog(
             table_name=TABLE, row_id="batch-%d" % minute, column_name=RECEIPT_COLUMN,
             old_value=None, new_value={"rows": 1, **said}, source_name="ledger",
-            updated_by="ledger", transaction_id="edit-tx", timestamp=BASE + timedelta(minutes=minute)))
+            updated_by="ledger", transaction_id=tx, timestamp=BASE + timedelta(minutes=minute)))
     db_session.commit()
     knobs(recent_max_scan_rows=10_000, recent_scan_chunk_rows=50)
     audit_cache.audit_cache.__init__()
+    asked = []                                               # every row asked about is there
+    monkeypatch.setattr(main, "check_rows_exist", lambda db, keys: asked.extend(keys) or set(keys))
 
-    (group,) = [g for g in client.get("/audit_logs/recent?limit_groups=5").json()["groups"]
-                if g["transaction_id"] == "edit-tx"]
-    assert (len(group["logs"]), group["total_count"]) == (1, 4)    # canary: one representative
-    assert group["receipt_worlds"] == [{"world": "default", "receipts": 1},
-                                       {"world": "w2", "receipts": 1},
-                                       {"world": None, "receipts": 1}]
+    groups = {g["transaction_id"]: g
+              for g in client.get("/audit_logs/recent?limit_groups=5").json()["groups"]}
+    group = groups["edit-tx"]
+    assert (len(group["logs"]), group["total_count"]) == (1, 5)    # canary: one representative
+    (shown,) = group["logs"]
+    assert (shown["column_name"], shown["row_id"], shown["is_row_deleted"]) == (
+        "value", "edit-tx-0", False)
+    assert asked == [(TABLE, "edit-tx-0")]
+    assert group["receipt_worlds"] == [{"world": "default", "receipts": 1, "failed": 0},
+                                       {"world": "w2", "receipts": 2, "failed": 1},
+                                       {"world": None, "receipts": 1, "failed": 0}]
+    assert groups["receipts-tx"]["logs"][0]["row_id"] == "batch-10"
 
 
 def test_l_a_ledger_receipt_is_not_a_deleted_row(client, db_session, knobs):

@@ -93,6 +93,8 @@ def _refusal_reasons(refusals) -> dict:
 #: word, not a domain one: it names what this row is a record OF, and it is the same on
 #: every installation because no declaration decides it.
 RECEIPT_COLUMN = "ledger_batch"
+#: A receipt's `status` when a world's translation failed (`followup._write_failure_receipt`).
+RECEIPT_FAILED = "failed"
 
 #: The layer a ledger receipt is written as. Beside `user` and a parser's file name, so the
 #: existing priority rules already know what to do with it: nothing, because it claims a
