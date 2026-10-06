@@ -3659,6 +3659,32 @@ def _merge_into_key_holder(db, table_name, table_model, row_to_delete, row, *, e
             row_cache.pop(row_to_delete.business_key_val, None)
 
 
+def merge_into_key_holders(db: Session, table_name: str, pairs, *, source_name: str,
+                           updated_by: str, transaction_id: str) -> list:
+    """Each (row_id, holder row_id) - a row whose rebuilt key the holder already carries - merged
+    into the holder through `_merge_into_key_holder`, for a caller that writes no value: no cell
+    is a person's this time (`human_columns` empty), so both rows' overwrite marks keep a
+    person's value. The audit lines, layers and marks are written; the caller commits. Returns
+    the merged rows' ids. Not undone. (rebuild_blank_business_keys --apply, the notation backfill)"""
+    model = models.DYNAMIC_TABLES[table_name]
+    sources, overwrites, overwrites_gone, logs, merged = {}, {}, set(), [], []
+    for row_id, holder_id in pairs:
+        shell = db.query(model).filter(model.row_id == row_id).one()
+        holder = db.query(model).filter(model.row_id == holder_id).one()
+        _merge_into_key_holder(
+            db, table_name, model, shell, holder, explicit={}, human_columns=set(),
+            source_name=source_name, updated_by=updated_by, transaction_id=transaction_id,
+            changed_cols=[], overwrites_cache={}, cell_sources_to_upsert=sources,
+            cell_overwrites_to_upsert=overwrites, cell_overwrites_to_delete=overwrites_gone,
+            logs_to_cache=logs, deleted_row_ids=merged)
+    if logs:
+        bulk_insert_audit_logs(db, logs)
+    bulk_upsert_cell_sources(db, list(sources.values()))
+    bulk_upsert_cell_overwrites(db, list(overwrites.values()))
+    bulk_delete_cell_overwrites(db, list(overwrites_gone))
+    return merged
+
+
 def apply_row_update_internal(
     db: Session, 
     table_name: str, 

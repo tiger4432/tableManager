@@ -496,6 +496,7 @@ SOURCE_PRIORITY = { user: 0, collision_merge: 1, pipeline_parser: 2, custom_scri
 - 원천 소스명은 하드코딩 교체하지 말고 **원본 소스명을 계승**(`_load_metadata_row_cell`).
 - 병합 흔적은 `CellOverwrite.updated_by="collision_merge"`로 이중 추적.
 - 🆕 [10-03 총괄 6e041f4cb ①] 병합 본문은 `crud._merge_into_key_holder` «하나» — 쓰기(키 조각을 쓴 행)와 핀(핀이 키 조각의 보이는 값을 바꾼 행) 둘 다 이것을 부르고, 행 바꿔 들기는 부르는 쪽이 한다. «사람이 쓴 칸»(`human_columns`)도 부르는 쪽이 준다 — 이번에 사람이 «쓴» 칸뿐: 쓰기는 사람이 쓴 항목이 실은 칸, 핀은 핀 걸린 칸(핀은 층 고르기이지 사람 값이 아니다). 나머지 칸은 그 층을 쓴 이로 읽으므로 키 임자 행의 사람 값은 남는다(10-03 전 쓰기는 사람 항목의 «모든 칸»을 사람 것으로 셌다). ⚠️ 지운 행(껍데기)이 DB 에 이미 갖고 있던 층 · 덮어쓰기 행은 지우지 않는다 — 키 임자 행에 «합친 이름»으로 복사될 뿐(두 자리 다 그랬고 그대로).
+  - 🆕 [10-06 `74df5ce00`] 값을 쓰지 않는 셋째 호출자 — `crud.merge_into_key_holders` 가 키 고치기 `--apply` 와 표기 소급에서 이 본체를 «사람 칸 없이» 부른다. 표기 소급은 접은 키가 다른 행의 키면 그 행에 합친다(전엔 건너뛰었다, 소유자 10-06 「예」)
 
 전체 규율: [data_preservation_and_signature_change](../guide/data_preservation_and_signature_change.md) **(필독)**
 

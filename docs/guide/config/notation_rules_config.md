@@ -138,9 +138,13 @@ None                 ->  None         (문자열이 아니면 그대로 통과)
   "wafer_log": {
     "wafer_id":   {"write": true, "rules": {"join": "-", "pad_last_number": 2}},
     "event_time": {"write": true, "rules": {"time": {"from": ["%Y/%m/%d %H:%M:%S", "%d.%m.%Y %H:%M"]}}}
+  },
+  "item_master": {
+    "item_id":    {"write": true, "rules": {"replace": [[" *[.] *", "."]], "collapse_repeats": "."}}
   }
 }
 ```
+`item_id` 는 «a.b.c» 계층을 적되 하위가 없으면 같은 이름을 반복해 적는 표 — `a.a.a` → `a` · `a.b.b` → `a.b` · `a. b` → `a.b`.
 
 | 규칙 | 하는 일 | 비교 때도 접나 |
 |---|---|---|
@@ -148,8 +152,9 @@ None                 ->  None         (문자열이 아니면 그대로 통과)
 | `pad_last_number` | 끝 숫자가 n 자리(1–9)보다 짧으면 앞에 0. 길면 그대로 — `zero_pad`(앞 0 제거)와 반대 방향 | 예 — 두 엔진 |
 | `replace` | `[[패턴, 바꿀 것], ...]` 차례로. 위 둘로 안 되는 경우 | 예 — 두 엔진 |
 | `time` | 적힌 입력 모양 중 맞는 것을 `YYYY-MM-DD HH:MM:SS`로. 그 칸의 유일한 규칙, `write` 필수 | 아니오 — 쓸 때만 |
+| `collapse_repeats` | 이 한 글자로 가른 마디가 바로 앞 마디와 같으면 하나로 — `a.a.b` → `a.b`. `a.b.a` · `ab.b` · 빈 마디(`a..a`)는 그대로. `write` 필수 | 아니오 — 쓸 때만 |
 
-- **순서**: 별칭 표 → `join` → `pad_last_number` → `replace` → `case`.
+- **순서**: 별칭 표 → `join` → `pad_last_number` → `replace` → `case` → `collapse_repeats`. 마디는 마지막 철자로 견줍니다(`case` 와 같이 `A.a.a` → `A`).
 - 🔴 **`write` 칸에서는 적은 규칙만 돕니다**(총괄 47aba5d44) — 기본값 `separator`·`case`는 비교만 하는 칸에만 들어옵니다. 저장값을 바꾸는 접기는 운영자가 적은 것만(칸이나 그 위 테이블·파일 `rules`에). 그래서 위 선언은 `wafer.1` → `wafer-01`(대소문자 그대로), `{"pad_last_number": 2}`만 적은 칸은 `wafer.1` → `wafer.01`.
 - **`write: true`** — 그 칸의 값을 접힌 모양으로 **저장**합니다. 없으면 비교 때만 접습니다. `true`/`false` 가 아닌 값(`"true"` · `1`)은 해석 보고서에 「write must be true or false, … the column is folded for comparison only」로 이름 대고 비교만 접습니다. 파일 · 격자 · 체인 — 모든 쓰기 문이 같은 자리에서 접어 저장합니다.
 - **별칭 표 `notation_alias`**(제품 표, 비어서 출하): 한 행 = 「`table_name`.`column_name`에 정확히 `written`으로 온 값은 `canonical`로」. 규칙보다 먼저, `write` 칸에만.
@@ -162,7 +167,7 @@ None                 ->  None         (문자열이 아니면 그대로 통과)
 - **이력**: 접기가 철자를 바꾸고 그 칸이 **실제로 쓰일 때** 칸마다 한 줄 — `old_value` = 들어온 철자, `new_value` = 저장값, 출처 = 보낸 쪽. 원래 철자는 **처음 쓰일 때** 한 번 남습니다. 같은 철자를 다시 보낸 파일(층 접기로 안 쓰임)은 줄을 안 남깁니다.
 - **키 칸**: 키 칸(평키 · 복합 키의 부분)을 `write` 로 선언해도 새 행이 생기지 않습니다 — 옛 철자로 저장된 행을 그 철자로 찾아 그 행의 키를 접힌 키로 바꿉니다. 쓰기가 안 닿은 옛 행은 소급이 접습니다.
 - **소급(선언 전에 저장된 값)**: 소급 탭 `Fold stored values into the declared spelling`(파라미터 `table` · `pace`) — 층 값 · 보이는 값 · 키를 **제자리에서** 접습니다. 🆕(10-01) 글자 칸에 숫자로 저장된 층도 같은 소급이 `clean_str_value` 의 철자로 접습니다(BACKFILL_GUIDE §2.7). 층의 순서(`ingested_at`)는 안 움직여 **이기는 층이 그대로**이고, 바뀌는 것은 철자뿐입니다. 접은 칸마다 이력 한 줄.
-  - 접은 키가 **다른 행의 키**와 같아지는 행은 **건너뛰고 이름을 댑니다**(병합은 되돌릴 수 없음) — 별칭 행이나 규칙을 고친 뒤 다시 돌립니다.
+  - 접은 키가 **다른 행의 키**와 같아지는 행은 그 행에 **합칩니다** — 쓰기 문 · 키 고치기 `--apply` 와 같은 합치기(`_merge_into_key_holder`). 그 행의 칸 · 층을 먼저 접은 뒤 합치고, 사람이 고친 값은 덮어쓰기 표시가 지킵니다. 셋 이상이 한 키로 모이면 row_id 순으로 하나가 됩니다. 사라진 행은 표와 층에서 빠지고 감사 줄이 남습니다. **되돌릴 수 없으니** 드라이런의 부딪힘 수와 견본(그 행 → 합쳐질 행 · 접힌 키)을 먼저 봅니다.
   - 한 번 더 접으면 또 바뀌는 값이 있으면 **그 자리에서 멈춥니다** — 드라이런이 그 수를 먼저 보여 줍니다.
   - 순서: **표기 소급 → `Fold file layers`(철자만 달랐던 파일 층이 같은 값이 됨) → VACUUM**.
   - 🔴 **맵 키 칸(`map_key_columns`)을 `write` 로 선언하면 소급을 같은 날에** — 첫 `replace_map` 푸시의 범위(접힌 값)가 옛 철자 행을 못 찾아, 그 푸시가 뺀 칸이 남습니다(새 행은 안 생김).
@@ -335,7 +340,7 @@ CREATE UNIQUE INDEX CONCURRENTLY uq_vjoin_..._nf ON "core_wafer_map" (
 | `columns` | 파일 최상위 | `{테이블: {컬럼: true\|false\|{rules}}}` | 🔴 **비어 있으면 이 기능은 완전 무동작** |
 | 컬럼 선언 | `columns.<테이블>` 아래 | `true` / `false` / `{"rules": {...}}` | ~~문자열(파생 컬럼 이름)~~ 은 **거절됩니다** |
 | `write` | 컬럼 선언 객체 안 | `true`, 기본 없음 | 접힌 모양으로 저장(§2.3) |
-| `join` · `pad_last_number` · `replace` · `time` | `rules` 안 | 글자 · 1–9 · `[[패턴, 바꿀 것]]` · `{"from": [모양]}` | §2.3 |
+| `join` · `pad_last_number` · `replace` · `time` · `collapse_repeats` | `rules` 안 | 글자 · 1–9 · `[[패턴, 바꿀 것]]` · `{"from": [모양]}` · 글자 | §2.3 |
 | `_`로 시작하는 이름 | 어디든 | — | **주석**. 로더가 통째로 무시합니다 |
 
 > 2026-08-04 이 환경의 실제 상태: `server/config/notation_rules.json`은 **아직 존재하지 않습니다**(`.sample`만). 파일이 없는 것은 거절이 아니라 「선언 없음」입니다. 출하되는 샘플은 `"columns": {}`라 **그대로 복사해 두면 완전 무동작**입니다.

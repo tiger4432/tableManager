@@ -45,6 +45,9 @@ COUNT_UPPER_BOUND = "upper_bound"
 #: as `main.ENRICHMENT_DRY_RUN_DEFAULT_LIMIT`: a request path gets a sample.
 DEFAULT_SCAN_LIMIT = 200
 MAX_SCAN_LIMIT = 2000
+#: How much of a failed run's error its row keeps (`_mark_run`). A rule run's failure record
+#: gives way in its reason to fit, so the row holds whole JSON (총괄 ff60fe669 ①).
+RUN_ERROR_LIMIT = 2000
 
 
 #: 🔴 THE CLOSED LIST FROM `task/APPLICATION_RUN_WORDS.md`. An operation CHOOSES one of
@@ -870,8 +873,16 @@ def _run_rule_rows(db, params, log, control=None):
     if not ok:
         db.rollback()
         # the chain's own record of a failed group - the same function, one attempt
-        raise RetroactiveRefused(json.dumps(ingestion_worker._failure_record(
-            events, error, params["transaction"], 1), ensure_ascii=False, default=str))
+        record = ingestion_worker._failure_record(events, error, params["transaction"], 1)
+        text = json.dumps(record, ensure_ascii=False, default=str)
+        over = len(text) - RUN_ERROR_LIMIT
+        if over > 0:        # each character cut is at least one less in the JSON; '…' is one.
+            # The middle goes: the head names the rule, the tail is the error raised.
+            reason = record["reason"]
+            keep = max(0, len(reason) - over - 1)
+            record["reason"] = reason[:keep // 2] + "…" + reason[len(reason) - (keep - keep // 2):]
+            text = json.dumps(record, ensure_ascii=False, default=str)
+        raise RetroactiveRefused(text)
     db.commit()
     _send_broadcasts(broadcasts)
     log("[Retroactive] %s: rule %s wrote %d queued row(s) of transaction %s"
@@ -974,9 +985,11 @@ def _count_fold_written_notation(db, params, scan_limit):
     if s["keys_not_rebuilt"]:
         detail += (f" {s['keys_not_rebuilt']} row(s) are skipped: the fold moves a key part, and "
                    f"the row's cells no longer spell its stored key, so its identity is left alone.")
-    if s["rows_skipped"]:
-        detail += (f" {s['rows_skipped']} row(s) would take another row's key and are skipped "
-                   f"- fix the alias rows or the rule and run again.")
+    if s["rows_merged"]:
+        sample = "; ".join(f"{m['business_key_val']} -> row {m['into']} ({m['folded_key']})"
+                           for m in s["merged"][:3])
+        detail += (f" {s['rows_merged']} row(s) fold onto another row's key - the run merges "
+                   f"each into that row (e.g. {sample}); a merge cannot be undone.")
     if s["moves_again"]:
         detail += (f" {s['moves_again']} value(s) change again on a second fold - the run "
                    f"stops there; fix the declaration first.")
@@ -995,8 +1008,8 @@ def _count_fold_written_notation(db, params, scan_limit):
         "scan_limit": scan_limit,
         "truncated": truncated,
         "detail": detail,
-        "extra": {key: s[key] for key in ("layers_folded", "keys_changed", "rows_skipped",
-                                          "skipped", "keys_not_rebuilt", "not_rebuilt",
+        "extra": {key: s[key] for key in ("layers_folded", "keys_changed", "rows_merged",
+                                          "merged", "keys_not_rebuilt", "not_rebuilt",
                                           "moves_again", "again", "time_left")},
     }
 
@@ -1009,7 +1022,7 @@ def _run_fold_written_notation(db, params, log, control=None):
                                      **_given(params, "limit", "chunk_size", "pace"))
     _final_progress(control, s.get("rows_scanned"), s)
     return {key: s[key] for key in ("cells_folded", "layers_folded", "keys_changed",
-                                    "rows_skipped", "keys_not_rebuilt", "moves_again",
+                                    "rows_merged", "keys_not_rebuilt", "moves_again",
                                     "stopped_on_moves_again", "rows_scanned")}
 
 
@@ -3011,7 +3024,7 @@ def _mark_run(run_id, *, state, started=False, finished=False, result=None, erro
         if result is not None:
             values["result"] = json.dumps(result, ensure_ascii=False, default=str)
         if error is not None:
-            values["error"] = str(error)[:2000]
+            values["error"] = str(error)[:RUN_ERROR_LIMIT]
         q = session.query(models.RetroactiveRun).filter(
             models.RetroactiveRun.run_id == run_id)
         if expect_state is not None:

@@ -72513,3 +72513,81 @@ transfer_explorer 견본은 출하 표 설정과 맞지 않아 두 소스 다 �
 변이 10    받지 않는 타입을 안 거절 RED · 그 타입의 키 칸을 안 봄 RED · 행이 모든 타입의 키를 씀 RED · 행 타입을 안 접음 RED · 역할 틀이 행 타입을 바인딩과 견줌 RED · 받는 타입의 빠진 키 안 거절 RED · 어느 타입에도 없는 키 안 거절 RED · 물려받는 속성 안 거절 RED · 코드 맵퍼 허용 RED · register 에 probe 안 요구 RED
 sqlite 전체 5 failed, 7827 passed, 330 skipped, 3 xfailed, 13089 warnings in 795.17s (0:13:15) — 박스 사유 밖: 없음
 ```
+
+---
+
+## [10-06] 긴급 ① 착지 9b4374ec5 (스켈레톤 either 되돌림) · 표기 규칙 collapse_repeats 착지 5ea34762f (총괄 c1ddec935)
+
+어느 DB · 어느 스키마 · 지운 것 — 시험은 메모리 sqlite 만 · 박스 DB 안 씀 · 지운 것 0
+
+**① 되돌림** — f1238d6ef 가 바인딩의 entity_type 노드를 either 로 바꿨고, 폼이 그 모양을 못 그려 재기동하면 타입 칸이 비었습니다(오늘의 이름 타입까지 — 클라가 재서 잡음). 노드를 이름 leaf 로 되돌리고 SKELETON_NODE_KINDS 를 넷으로. config_authoring 은 f1238d6ef 전과 같은 바이트. defs.entity_type_column 은 검증기의 칸 모양 닻이라 남김(어디서도 안 씀, note 에 적음). 문법 · 번역의 칸 타입 받기는 그대로 — 선언 원본으로 적음. 시험 하나: 바인딩 타입 노드가 이름 leaf.
+
+**표기 규칙 collapse_repeats** — write 칸 전용 값 규칙. 값은 마디를 가르는 한 글자.
+```
+a.a.a -> a · a.b.b -> a.b · a.a.b -> a.b · a.b.a · ab.b · a..a · a...a 그대로 · case 와 같이 A.a.a -> A
+차례 맨 끝(별칭 -> join -> pad_last_number -> replace -> case -> 이것) — _write_fold 한 곳이라
+쓰기 문 · 미리보기 · folds_again · 소급(Fold stored values into the declared spelling) 이 같이 지남
+비교 SQL 엔진은 안 씀 — write 칸은 접혀 저장돼 비교 쪽이 날 철자를 안 봄(짓기 전 판단, 엔진 필요한 자리 못 찾음)
+거절(이름 대어) write 없이 · 한 글자 아님 · time 옆 — time 의 「declare write」 문장은 쓰기 전용 규칙 한 고리로 접음
+키 칸에 write 로 적고 옛 철자 행이 있으면 새 행 0 — 쓰기 문이 옛 철자로 찾아 키를 접음(기존 기제)
+```
+**게이트**
+```
+변이 6   쓰기 접기가 안 접음 RED · 빈 마디도 접음 RED · 다른 규칙보다 먼저 접음 RED · write 없이 받음 RED · 두 글자 이상 받음 RED · time 옆에 받음 RED
+sqlite 전체(두 커밋 같이) 5 failed, 7841 passed, 330 skipped, 3 xfailed, 13136 warnings in 742.19s (0:12:22) — 박스 사유 밖: 없음
+```
+
+---
+
+## [10-06] 표기 소급 — 부딪히면 합친다 착지 74df5ce00 (총괄 5ffa48232)
+
+어느 DB · 어느 스키마 · 지운 것 — sqlite 메모리 · PG 증명은 assy_test DB 의 스크래치 스키마 assy_pytest_pg_<실행 토큰>(픽스처가 만들고 지움) · 박스 DB 안 씀 · 지운 것 0
+
+```
+전   접은 키를 다른 행이 가지면 건너뛰고 이름만 댐
+지금  그 행으로 합침 — crud._merge_into_key_holder 그대로. 키 고치기의 merge_rekeys 본문을
+     crud.merge_into_key_holders 로 올려 키 고치기 · 소급이 같이 부름. 새 합치기 0 · 새 판정 0
+순서  행 자기 칸 · 층을 먼저 접고 합침 -> 받는 행이 접힌 값을 받음
+셋 이상  그 키를 가진 행이 없으면 row_id 가 가장 작은 행이 받음(스캔이 row_id 순)
+사람 칸  빈 집합 — 받는 행의 사람 값은 그 행의 표시로 남음
+드라이런  rows_merged · merged(row_id · 옛 키 · 접은 키 · into)
+        count 문장: N row(s) fold onto another row's key - the run merges each into that row (e.g. 견본 셋); a merge cannot be undone.
+이름     rows_skipped/skipped -> rows_merged/merged (count extra · run result)
+        client2/src 에서 rows_skipped 읽는 곳 0 (git grep · 같은 호출 server 의 rows_merged 12 줄)
+```
+**게이트**
+```
+sqlite  두 행: 드라이런 수 · 견본 · 문장 -> 적용 -> 행 1 · 사람 값 남음 · 층 옮김(접힌 값으로) · 사라진 행 층 0 · 감사 줄
+        셋 모이기(row_id 가장 작은 행) · 다시 돌리면 0
+PG      키 고치기 증명 10 passed, 8170 deselected in 25.62s (본문을 옮긴 뒤)
+변이 10  합치지 않음 RED · 이번 소급이 준 키는 받는 행 아님 RED · 합칠 행도 키를 바꿈 RED · 드라이런이 받는 행 안 댐 RED · 문장에 「되돌릴 수 없음」 없음 RED · 모든 칸을 사람 칸으로 RED · 감사 줄 안 남김 RED · 층 안 옮김 RED · 층 접기 전에 합침 RED · 키 고치기가 합치지 않음(PG) RED
+sqlite 전체 5 failed, 7842 passed, 330 skipped, 3 xfailed, 13117 warnings in 747.19s (0:12:27) — 박스 사유 밖: 없음
+```
+RUN.md 절(순서 · 되돌릴 수 없음) · RELEASE_LOG «바뀐 동작» · 표기 가이드 소급 문단 — 같은 커밋.
+
+---
+
+## [10-06] ff60fe669 — ① 착지 330e4c3d3 · ② 들고 있음(총괄 ㄱ)
+
+어느 DB · 어느 스키마 · 지운 것 — 시험은 메모리 sqlite 만 · 박스 DB 안 씀 · 지운 것 0
+
+**① 실패 기록이 2000자 안에서 온전한 JSON**
+```
+한도   retroactive.RUN_ERROR_LIMIT 하나 — _mark_run 이 그것으로 자름
+줄이기  _run_rule_rows 가 기록을 넣을 때 reason 칸의 «가운데»를 … 하나로 (같은 칸, 새 칸 없음)
+       머리 = [rules=<규칙> target=<표>], 꼬리 = 올라온 오류. 끝을 자르면 정작 오류 줄이 사라져서 가운데
+정확히  자른 글자 하나가 JSON 에서 적어도 하나 줄고 … 는 하나 — 한 번에 맞음
+게이트  긴 사유로 실패시켜 «진짜 _mark_run» 을 거친 행의 error 가 JSON.parse 되고 길이 = 한도
+       (자르는 가운데가 평문이어야 한 글자를 본다 — 그 조건 자체를 단언으로)
+변이 4  사유를 안 줄임 RED · 한 글자 모자라게 줄임 RED · 가운데 대신 꼬리를 자름 RED · 행이 다른 수로 자름 RED
+sqlite 전체(① 만) 5 failed, 7843 passed, 330 skipped, 3 xfailed, 13105 warnings in 849.99s (0:14:09) — 박스 사유 밖: 없음
+```
+**② run_in 닫힌 목록 — 지어 두고 들고 있음**
+```
+스켈레톤  _node_for 한 자리에서 {"kind":"leaf","hint":"choice","list":"run_in"}
+         통합 문법의 limits 도 _node_for 를 지나게 (다른 limit 칸의 노드는 오늘 그대로 — 재서 확인)
+응답     /admin/chain/rules/raw 맨 위 "run_in": ["chain","operation"]
+변이 3  run_in 이 자유 입력 RED · 통합 limits 가 한 자리를 건너뜀 RED · 응답에 목록 없음 RED
+착지     클라가 응답의 run_in 을 lists 에 넣는 커밋이 main 에 들어가고 총괄 메시지가 오면
+```
+RUN.md 절 · RELEASE_LOG · chain_rules 안내서 한 줄 — ① 커밋에. 앞선 표기 소급 절 뒤에 빠졌던 RUN.md 구분선도 같이.

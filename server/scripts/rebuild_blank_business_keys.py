@@ -182,23 +182,9 @@ def merge_rekeys(db, table: str, collisions: list, by: str = REKEY_BY) -> list:
     was itself rekeyed already carries the key. Returns the merged rows' ids. Not undone."""
     import uuid
 
-    model = models.DYNAMIC_TABLES[table]
-    tx = "%s_%s" % (REKEY_SOURCE, uuid.uuid4().hex[:8])
-    sources, overwrites, overwrites_gone, logs, merged = {}, {}, set(), [], []
-    for row_id, holder_id in collisions:
-        shell = db.query(model).filter(model.row_id == row_id).one()
-        holder = db.query(model).filter(model.row_id == holder_id).one()
-        crud._merge_into_key_holder(
-            db, table, model, shell, holder, explicit={}, human_columns=set(),
-            source_name=REKEY_SOURCE, updated_by=by, transaction_id=tx, changed_cols=[],
-            overwrites_cache={}, cell_sources_to_upsert=sources,
-            cell_overwrites_to_upsert=overwrites, cell_overwrites_to_delete=overwrites_gone,
-            logs_to_cache=logs, deleted_row_ids=merged)
-    if logs:
-        crud.bulk_insert_audit_logs(db, logs)
-    crud.bulk_upsert_cell_sources(db, list(sources.values()))
-    crud.bulk_upsert_cell_overwrites(db, list(overwrites.values()))
-    crud.bulk_delete_cell_overwrites(db, list(overwrites_gone))
+    merged = crud.merge_into_key_holders(
+        db, table, collisions, source_name=REKEY_SOURCE, updated_by=by,
+        transaction_id="%s_%s" % (REKEY_SOURCE, uuid.uuid4().hex[:8]))
     db.commit()
     return merged
 

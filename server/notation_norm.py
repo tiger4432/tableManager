@@ -151,16 +151,21 @@ RULE_ZERO_PAD = "zero_pad"
 #   pad_last_number  a trailing digit run shorter than n is zero-padded to n (longer: as is)
 #   replace          ordered [[pattern, replacement], ...] - the case the two above cannot say
 #   time             {"from": [input format, ...]} -> TS_FMT. WRITE ONLY: see `fold_time`
+#   collapse_repeats the one character that splits segments; a segment equal to the one before
+#                    it goes (a.a.b -> a.b). WRITE ONLY, last (총괄 c1ddec935, 소유자 「가로 접어」)
 RULE_JOIN = "join"
 RULE_PAD_LAST_NUMBER = "pad_last_number"
 RULE_REPLACE = "replace"
 RULE_TIME = "time"
+RULE_COLLAPSE_REPEATS = "collapse_repeats"
 
 KNOWN_RULES = (RULE_SEPARATOR, RULE_CASE, RULE_ZERO_PAD,
-               RULE_JOIN, RULE_PAD_LAST_NUMBER, RULE_REPLACE, RULE_TIME)
+               RULE_JOIN, RULE_PAD_LAST_NUMBER, RULE_REPLACE, RULE_TIME, RULE_COLLAPSE_REPEATS)
 #: The rules that carry a value; the rest are on/off. A ledger join's `fold` takes only the
 #: on/off ones - the value rules are stored by the write (총괄 5ee9d3bd1), so its keys are folded.
-VALUE_RULES = (RULE_JOIN, RULE_PAD_LAST_NUMBER, RULE_REPLACE, RULE_TIME)
+VALUE_RULES = (RULE_JOIN, RULE_PAD_LAST_NUMBER, RULE_REPLACE, RULE_TIME, RULE_COLLAPSE_REPEATS)
+#: The value rules that fold only when a value is written - a `write` column, refused elsewhere.
+WRITE_ONLY_RULES = (RULE_TIME, RULE_COLLAPSE_REPEATS)
 
 # Rules this module can actually apply. `zero_pad` is deliberately absent - see
 # the module docstring. Membership here is what `_normalize_rules` checks, so
@@ -169,12 +174,14 @@ VALUE_RULES = (RULE_JOIN, RULE_PAD_LAST_NUMBER, RULE_REPLACE, RULE_TIME)
 # ⚠️ `pad_last_number` is NOT `zero_pad`: it ADDS zeros to a short trailing number and never
 #    removes one ('WF010' stays 'WF010'), so it cannot merge 'WF010' with 'WF10'.
 IMPLEMENTED_RULES = (RULE_SEPARATOR, RULE_CASE,
-                     RULE_JOIN, RULE_PAD_LAST_NUMBER, RULE_REPLACE, RULE_TIME)
+                     RULE_JOIN, RULE_PAD_LAST_NUMBER, RULE_REPLACE, RULE_TIME,
+                     RULE_COLLAPSE_REPEATS)
 
 #: Folded in BOTH engines (Python and `fold_sql_text`), scored by `contracts/notation_fold/`.
-#: `time` and the alias table are write-time only - a table lookup and `to_timestamp` cannot
-#: sit in a functional index expression (IMMUTABLE only), and after the write and the backfill
-#: the stored value is already the written one (총괄 5ee9d3bd1 ㄴ).
+#: `time`, `collapse_repeats` and the alias table are write-time only - a table lookup and
+#: `to_timestamp` cannot sit in a functional index expression (IMMUTABLE only), a back-reference
+#: is refused there, and after the write and the backfill the stored value is already the
+#: written one (총괄 5ee9d3bd1 ㄴ).
 BOTH_ENGINE_RULES = (RULE_SEPARATOR, RULE_CASE, RULE_JOIN, RULE_PAD_LAST_NUMBER, RULE_REPLACE)
 
 DEFAULT_RULES = {RULE_SEPARATOR: True, RULE_CASE: True, RULE_ZERO_PAD: False}
@@ -360,6 +367,9 @@ def _value_rule_refusal(name, value):
             if why:
                 return why
         return None
+    if name == RULE_COLLAPSE_REPEATS:
+        return None if isinstance(value, str) and len(value) == 1 else (
+            "must be the one character that splits segments, e.g. \".\"")
     if name == RULE_TIME:
         formats = value.get("from") if isinstance(value, dict) else None
         if not isinstance(formats, list) or not formats:
@@ -911,13 +921,15 @@ def _validate_column(table: str, column: str, spec, table_rules: dict,
         # it - `separator`/`case` from DEFAULT_RULES do not reach a write column.
         said = _said(rules_raw) if rules_raw is not None else table_said
         rules = {n: (v if n in said else False) for n, v in rules.items()}
-    if rules.get(RULE_TIME):
-        if not write:
+    for name in WRITE_ONLY_RULES:
+        if rules.get(name) and not write:
             _record(rejections, SCOPE_COLUMN, subject,
-                    "'time' folds a value when it is written - declare \"write\": true "
-                    "on this column", CODE_SHAPE)
+                    "'%s' folds a value when it is written - declare \"write\": true "
+                    "on this column" % name, CODE_SHAPE)
             return None
-        said = [n for n in BOTH_ENGINE_RULES if (rules_raw or {}).get(n)]
+    if rules.get(RULE_TIME):
+        said = [n for n in BOTH_ENGINE_RULES + (RULE_COLLAPSE_REPEATS,)
+                if (rules_raw or {}).get(n)]
         if said:
             _record(rejections, SCOPE_COLUMN, subject,
                     "'time' is the only rule on a time column; remove %s"
@@ -1152,7 +1164,18 @@ def _write_fold(value: str, rules: dict, column_aliases: dict):
     out = column_aliases.get(value, value)
     if rules.get(RULE_TIME):
         return fold_time(out, rules[RULE_TIME])
-    return fold_notation(out, rules), None
+    out = fold_notation(out, rules)
+    if rules.get(RULE_COLLAPSE_REPEATS):
+        out = collapse_repeats(out, rules[RULE_COLLAPSE_REPEATS])
+    return out, None
+
+
+def collapse_repeats(text: str, mark: str) -> str:
+    """A segment equal to the one before it goes: a.a.a -> a, a.b.b -> a.b, a.a.b -> a.b. Segments
+    split at `mark` and compared as spelled after the other rules; an empty segment stays (a..a)."""
+    parts = text.split(mark)
+    return mark.join(part for index, part in enumerate(parts)
+                     if index == 0 or part == "" or part != parts[index - 1])
 
 
 def join_pair_rules(left_table: str, left_column: str,

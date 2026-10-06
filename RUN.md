@@ -1,5 +1,44 @@
 # 지금 돌리면 되는 것
 
+> ## [10-06] **실패한 규칙 작업의 기록이 잘리지 않음 (총괄 ff60fe669 ①) — 이주 «불필요» · 재기동 «필요»(API · 스케줄러)**
+>
+> ```
+> 실패한 규칙 작업   Retroactive 실행 목록의 그 줄 error 가 JSON 으로 읽힌다(failed_at · reason · rules · tables · rows · row)
+>                reason 이 길면 가운데가 … — 머리에 [rules=<규칙> ...], 꼬리에 올라온 오류
+> 급할 때          쓰는 값을 바꾸지 않는다 — 되돌릴 일 없음
+> ```
+
+---
+
+> ## [10-06] **표기 소급 — 접은 키가 다른 행의 키면 그 행으로 «합친다» (총괄 5ffa48232 · 소유자 「예」) — 이주 «불필요» · 재기동 «필요»(API · 스케줄러)**
+>
+> ```
+> 순서            1 관리 화면 Retroactive 의 Fold stored values into the declared spelling 를 표 하나로 count(dry run)
+>                2 문장에 N row(s) fold onto another row's key - the run merges each into that row
+>                  (e.g. <옛 키> -> row <그 행> (<접은 키>); ...) 가 있으면 견본 셋을 열어 같은 것인지 본다
+>                3 맞으면 run. 아니면 별칭 행이나 규칙을 고치고 1 부터
+> 되돌릴 수 없음     합쳐진 행은 지워진다. 값 · 층은 받는 행으로 옮겨지고 감사 줄(collision_merge)이 남는다
+>                받는 행에 사람이 적은 값은 그대로 남는다. 그 키를 가진 행이 없으면 모인 행 중 row_id 가 가장 작은 행이 받는다
+> 돌린 뒤          실행 목록의 그 줄 result 의 rows_merged = 합친 행 수
+>                같은 표를 다시 count -> fold onto another row's key 문장이 없어야 한다
+> 급할 때          run 을 누르지 않는다 — count 는 아무것도 쓰지 않는다. 이미 합친 것은 되돌리지 못한다
+> ```
+
+---
+
+> ## [10-06] **표기 규칙 collapse_repeats — 연달아 같은 마디는 하나로 (총괄 c1ddec935) — 이주 «불필요» · 재기동 «필요»(API · 체인 데몬 · 수집기)**
+>
+> ```
+> 선언           notation_rules.json 칸에 {"write": true, "rules": {"collapse_repeats": "."}}
+> 먼저 볼 것      그 칸의 미리보기 — 병합군에 a.b.b · a.a.b · a.b 가 한 줄로, folds_again 0
+> 저장된 값       관리 화면 Retroactive 의 Fold stored values into the declared spelling 으로 그 표를 접는다(먼저 dry run)
+> 거절이면        해석 보고서의 그 칸 줄: 'collapse_repeats' folds a value when it is written ...
+>                (write 없음) · must be the one character that splits segments (값) · 'time' is the only rule
+> 급할 때         그 칸의 collapse_repeats 를 지운다 — 몇 초 안에 다시 읽힌다. 이미 접어 저장한 값은 그대로
+> ```
+
+---
+
 > ## [10-06] **선언 화면 — 엔티티 바인딩 타입 칸을 이름 고르개로 되돌림 (f1238d6ef 의 either 되돌리기, 총괄 긴급) — 재기동 «필요»(API)**
 >
 > ```

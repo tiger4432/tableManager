@@ -17,6 +17,34 @@
 - **필요한 조건** — 클라 빌드. 고르개는 서버가 응답에 `run_in` 을 싣는 착지 뒤에 섭니다. 그 전 서버에서는 화면이 오늘과 같습니다.
 - **바뀐 동작** — 없음(서버가 목록을 싣기 전까지).
 - **자세히** — 이 항목과 같은 커밋 (ac4d3a2ac 지시)
+
+## 2026-10-06 · 실패한 규칙 작업의 기록이 잘리지 않는다
+
+- **무엇** — `run_in: operation` 규칙의 작업(Run a rule's queued rows)이 실패하면 그 줄의 error 에 체인의 실패 기록(JSON)이 들어갑니다. 줄이 2000자까지만 담기 때문에 전에는 긴 기록이 JSON 중간에서 끊겼습니다. 이제 기록을 넣을 때 사유(`reason`) 칸의 가운데를 `…` 로 줄여, 2000자 안에서 늘 온전한 JSON 이 됩니다. 머리(규칙 이름)와 꼬리(올라온 오류)는 남습니다. 새 칸은 없습니다.
+- **선언 예시** — 새 선언 없음. `server/config/chain_rules.json` 규칙의 `"limits": {"run_in": "operation"}` 일 때의 일입니다.
+- **화면에서** — 관리 화면 Retroactive 의 실행 목록에서 실패한 그 줄의 error 를 JSON 으로 읽을 수 있습니다.
+- **필요한 조건** — 서버 재기동(API · 스케줄러).
+- **바뀐 동작** — 긴 사유는 가운데가 `…` 로 줄어듭니다. 2000자 안의 기록은 그대로입니다.
+- **자세히** — 이 항목과 같은 커밋 · RUN.md 같은 절.
+
+## 2026-10-06 · 표기 소급 — 접은 키가 다른 행의 키면 그 행으로 합친다
+
+- **무엇** — 관리 화면 Retroactive 의 Fold stored values into the declared spelling 이 키 칸을 접다가 그 키를 이미 다른 행이 가지고 있으면, 그 행으로 합칩니다. 쓰기 문과 키 고치기(`rebuild_blank_business_keys --apply`)가 쓰는 같은 합치기입니다. 행 자기 값과 층을 먼저 접은 뒤 합치고, 셋 이상이 같은 키로 모이면 row_id 순으로 하나가 됩니다.
+- **선언 예시** — 새 선언 없음. `server/config/notation_rules.json` 의 `write` 칸(예: `"k": {"write": true, "rules": {"join": "-", "pad_last_number": 2}}`) 에서 `k.1` 과 `k-01` 두 행이 있으면 소급이 `k.1` 행을 `k-01` 행으로 합칩니다.
+- **화면에서** — count(dry run) 문장에 합쳐질 행 수와 견본 셋(`<옛 키> -> row <받는 행> (<접은 키>)`), 「a merge cannot be undone」.
+- **필요한 조건** — 서버 재기동(API · 스케줄러).
+- **바뀐 동작** — 전에는 그런 행을 건너뛰고 이름만 댔습니다(`rows_skipped`). 이제 합칩니다. 합쳐진 행은 지워지고 되돌릴 수 없습니다. 받는 행에 사람이 적은 값은 그대로 남습니다. count · run 결과 칸 이름이 `rows_skipped`/`skipped` 에서 `rows_merged`/`merged` 로 바뀌었습니다.
+- **자세히** — 이 항목과 같은 커밋 · RUN.md 같은 절 · `docs/guide/config/notation_rules_config.md`.
+
+## 2026-10-06 · 표기 규칙 — 연달아 같은 마디는 하나로 (`collapse_repeats`)
+
+- **무엇** — `write` 칸의 값 규칙 하나: 값을 이 한 글자로 갈라, 바로 앞 마디와 같은 마디를 지웁니다. `a.a.a` → `a` · `a.b.b` → `a.b` · `a.a.b` → `a.b`. `a.b.a` · `ab.b` · 빈 마디(`a..a`)는 그대로. 규칙 차례의 맨 끝이라 마지막 철자로 견줍니다(`case` 와 같이 `A.a.a` → `A`).
+- **선언 예시** — `server/config/notation_rules.json` 의 칸 선언: `"item_id": {"write": true, "rules": {"replace": [[" *[.] *", "."]], "collapse_repeats": "."}}` (`docs/guide/config/notation_rules_config.md` §2.3).
+- **화면에서** — 미리보기의 병합군과 «한 번 더 접으면 또 바뀌는 값», 관리 화면 Retroactive 의 Fold stored values into the declared spelling 이 이 규칙으로 접습니다.
+- **필요한 조건** — 서버 재기동(API · 체인 데몬 · 수집기). 규칙 파일은 몇 초 안에 다시 읽힙니다.
+- **바뀐 동작** — 없음(새 규칙). `write` 없이 적거나 값이 한 글자가 아니거나 `time` 옆에 적으면 이름 대어 거절됩니다.
+- **자세히** — 이 항목과 같은 커밋 · RUN.md 같은 절.
+
 ## 2026-10-06 · 원장 — 엔티티 타입을 행의 칸에서 읽기 (확정한 후보 -> leads_to)
 
 - **무엇** — 원장 선언에서 엔티티 바인딩의 `entity_type` 이 선언된 이름 말고 `{"kind": "column", "column": "<칸>"}` 도 받습니다. 행마다 그 칸의 값이 타입이고, 술어가 그 자리(`subjects` · `object.types`)에 받는 타입이어야 합니다. 받지 않는 타입의 행은 그 행만 `type_not_admitted` 로 거절되고 다른 행은 들어갑니다. `keys` 에는 받는 타입들의 키를 다 적고, 행마다 그 타입의 키만 씁니다.

@@ -36058,3 +36058,17 @@ CoreDie@1 · DTDie@1 · BondComponent@1 · FinalChip@1 · Missing@1)과 「Entit
          모집단에 없었다 — 작성 계획(authoring_plan)이 답하는 것은 쟀지만 그 답을 «그리는» 자리는 안 열었다
 앞으로    값이 넓어지는 착지는 그 커밋이 내보내는 모든 것(스켈레톤 · 닫힌 목록 · 벡터)의 독자를 클라까지 세고, 폼은 연다
 ```
+
+---
+
+## [C 응용] 10-06 9b4374ec5(스켈레톤 either 되돌림) QA — 이번엔 폼 쪽을 잼 · 결함 없음
+
+```
+잰 것    서버가 내는 ledger_skeleton.json 을 폼의 판정 함수(client2/src/ontology_skeleton.js valueFits, import)에 그대로 (공유 트리 client2 · 스켈레톤 미커밋 0)
+         entity_type fields 2 [["leaf","ref"],["leaf","ref"]] | either anywhere false
+         fits "wafer" true | fits {kind: column} false
+         fits "wafer" true | fits {kind: column} false
+         -> 글자 타입은 칸에 들고(고칠 수 있다), 칸 타입 {kind: column} 은 칸에 «안» 든다 -> 폼은 값을 보이기만 하고 「not editable in this form - edit the raw JSON」,
+            입력 칸을 안 낸다(renderSkeletonLeaf 의 unfit 갈래) — 폼이 그 값을 글자로 덮어쓸 길이 없다
+하니스   declaration_attribute_seats_harness.mjs ASSERTIONS 21 0 exit 0 · ontology_authoring_panel_harness.mjs ASSERTIONS 105 0 exit 0
+```

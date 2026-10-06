@@ -66,6 +66,9 @@ def fast(db, payload, rule=None):
 def broken(db, payload, rule=None):
     raise ValueError("this mapper cannot read the text")
 
+def loud(db, payload, rule=None):
+    raise ValueError("x" * 6000 + ' "quoted" end')
+
 def picky(db, payload, rule=None):
     rows = list(_rows(payload))
     if any(n == "two" for _k, n in rows):
@@ -270,6 +273,29 @@ def test_a_failed_run_says_what_the_group_body_says(db, monkeypatch):
     assert "q_broken" in record["reason"] and "this mapper cannot read the text" in record["reason"]
     assert record["rows"] == 1
     assert _values(db, "q_cand") == []
+
+
+def test_a_long_failure_record_stays_whole_json_on_the_run_row(db, monkeypatch):
+    """총괄 ff60fe669 ①: the row keeps `RUN_ERROR_LIMIT` characters - the reason gives way."""
+    rules = [_rule("q_loud", "q_txt", "q_cand", "loud", run_in="operation")]
+    _write(db, "q_txt", TEXTS[:1])
+    _drain(db, rules, monkeypatch)
+    (run,) = (db.query(models.RetroactiveRun)
+              .filter(models.RetroactiveRun.op == retroactive.RULE_ROWS_OP).all())
+    params = retroactive.validate(retroactive.RULE_ROWS_OP, json.loads(run.params))
+    with pytest.raises(retroactive.RetroactiveRefused) as refused:
+        retroactive._run_rule_rows(db, params, log=lambda *_a, **_k: None)
+    retroactive._mark_run(run.run_id, state=retroactive.RUN_FAILED, finished=True,
+                          error=str(refused.value))
+    db.expire_all()
+    error = (db.query(models.RetroactiveRun.error)
+             .filter(models.RetroactiveRun.run_id == run.run_id).scalar())
+    record = json.loads(error)
+    assert set(record) == {"failed_at", "reason", "rules", "tables", "rows", "row"}
+    assert len(error) == retroactive.RUN_ERROR_LIMIT, (
+        "the cut middle must be plain 'x', or this gate stops seeing one character")
+    head, tail = record["reason"].split("…")
+    assert "q_loud" in head and tail.rstrip().endswith('x "quoted" end')
 
 
 def test_one_text_per_run_fails_only_that_text(db, monkeypatch):
