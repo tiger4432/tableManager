@@ -58,13 +58,13 @@ def fixture_stored(db_session):
 def test_the_file_layers_are_counted_and_the_hiding_ones_counted_separately(stored):
     """🔴 THE GATE OF THIS ROUND. Two file NULL layers, of which ONE actually hides a
     value - and the count says both numbers rather than one."""
-    assert counter.count(stored) == [(TABLE, COLUMN, FILE_SOURCE, 2, 1)]
+    assert counter.count(stored) == [(counter.ABSENT, TABLE, COLUMN, FILE_SOURCE, 2, 1)]
 
 
 def test_a_persons_cleared_cell_is_an_answer_and_is_never_counted(stored):
     """⛔ IT IS NOT DEBRIS. 판정 405 keeps that layer on purpose - counting it here would
     put a deliberate blank on a list headed 「지울 후보」."""
-    assert all(entry[2] != crud.USER_SOURCE for entry in counter.count(stored))
+    assert all(entry[3] != crud.USER_SOURCE for entry in counter.count(stored))
 
 
 def test_the_chains_asserted_blank_is_not_counted_either(db_session):
@@ -87,7 +87,7 @@ def test_another_empty_layer_underneath_is_not_something_being_hidden(db_session
 
     found = counter.count(db_session)
 
-    assert sorted((entry[2], entry[3], entry[4]) for entry in found) == [
+    assert sorted((entry[3], entry[4], entry[5]) for entry in found) == [
         ("other_file.csv", 1, 0), (FILE_SOURCE, 1, 0)]
 
 
@@ -127,14 +127,14 @@ def test_nothing_is_written_and_there_is_no_way_to_ask_for_it(stored):
 
 def test_zero_hiding_layers_says_there_is_nothing_to_do():
     """⚠️ 「몇 건 있음」 WITHOUT 「그게 아무것도 안 가림」 SENDS SOMEBODY TO WORK FOR NOTHING."""
-    said = counter.render([(TABLE, COLUMN, FILE_SOURCE, 5, 0)])
+    said = counter.render([(counter.ABSENT, TABLE, COLUMN, FILE_SOURCE, 5, 0)])
 
     assert "→ 다음: " in said
     assert "없음" in said.split("→ 다음: ")[1]
 
 
 def test_a_hiding_count_names_the_number_and_the_next_step():
-    said = counter.render([(TABLE, COLUMN, FILE_SOURCE, 5, 3)])
+    said = counter.render([(counter.ABSENT, TABLE, COLUMN, FILE_SOURCE, 5, 3)])
 
     action = said.split("→ 다음: ")[1]
     assert "3" in action and "S-243-c" in action
@@ -160,5 +160,65 @@ def test_the_biggest_hider_is_reported_first(db_session):
 
     found = counter.count(db_session)
 
-    assert [entry[1] for entry in found] == ["part_no", "category"]
-    assert (found[0][4], found[1][4]) == (1, 0)
+    assert [entry[2] for entry in found] == ["part_no", "category"]
+    assert (found[0][5], found[1][5]) == (1, 0)
+
+
+# ---------------------------------------------------------------------------
+# 🔴 ⓓ — 총괄 c773b0fed ③: one blank predicate, and the merge's copies by who wrote them
+# ---------------------------------------------------------------------------
+
+def test_an_empty_string_and_a_null_are_the_same_absence(db_session):
+    """The merge left "" where the door leaves null - one predicate gives both one answer."""
+    _layer(db_session, "e1", FILE_SOURCE, None)
+    _layer(db_session, "e2", FILE_SOURCE, "")
+    _layer(db_session, "e3", FILE_SOURCE, "kept")
+    db_session.commit()
+
+    assert counter.count(db_session) == [(counter.ABSENT, TABLE, COLUMN, FILE_SOURCE, 2, 0)]
+
+
+def test_a_merges_copy_is_counted_under_its_own_kind_by_who_wrote_it(db_session):
+    machine = crud.merged_layer_name(FILE_SOURCE, "K_01a10f")
+    person = crud.merged_layer_name(crud.USER_SOURCE, "K_01a10f")
+    _layer(db_session, "m1", machine, "")
+    _layer(db_session, "m1", crud.CHAIN_SOURCE, "W")      # the copy hides this
+    _layer(db_session, "m2", person, "")
+    _layer(db_session, "m3", crud.USER_SOURCE, "")        # a person's own: an answer
+    db_session.commit()
+
+    assert counter.count(db_session) == [
+        (counter.MERGED_ABSENT, TABLE, COLUMN, machine, 1, 1),
+        (counter.MERGED_UNSURE, TABLE, COLUMN, person, 1, 0)]
+
+
+def test_each_kind_says_what_its_number_means():
+    said = counter.render([(counter.MERGED_UNSURE, TABLE, COLUMN, "user (K_01a10f)", 2, 1)])
+
+    for kind in counter.KINDS:
+        assert counter.MEANING[kind] in said
+    assert "구별이 안 된다" in said and "가림 1" in said
+
+
+@pytest.mark.pg
+def test_postgres_gives_the_same_answer(pg_engine):
+    """The layers live in PostgreSQL's JSON column, where "" is not null - the funnel unquotes
+    the scalar (`column_text_sql`), so both are the one absence there too."""
+    from sqlalchemy.orm import sessionmaker
+
+    db = sessionmaker(bind=pg_engine)()
+    try:
+        _layer(db, "p1", FILE_SOURCE, None)
+        _layer(db, "p2", FILE_SOURCE, "")
+        _layer(db, "p2", crud.CHAIN_SOURCE, "W")
+        _layer(db, "p3", crud.merged_layer_name(crud.USER_SOURCE, "K_01a10f"), "")
+        _layer(db, "p4", FILE_SOURCE, "kept")
+        db.commit()
+        assert [entry for entry in counter.count(db) if entry[1] == TABLE] == [
+            (counter.ABSENT, TABLE, COLUMN, FILE_SOURCE, 2, 1),
+            (counter.MERGED_UNSURE, TABLE, COLUMN, "user (K_01a10f)", 1, 0)]
+    finally:
+        db.rollback()
+        db.query(models.CellSource).filter(models.CellSource.table_name == TABLE).delete()
+        db.commit()
+        db.close()

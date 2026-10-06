@@ -1548,6 +1548,10 @@ def column_text_sql(col_expr):
         return boolean_text_sql(col_expr)
     if isinstance(col_type, (sqltypes.DateTime, sqltypes.Date, sqltypes.Time)):
         return temporal_text_sql(col_expr)
+    if isinstance(col_type, sqltypes.JSON):
+        # The scalar itself (`#>> '{}'` / `json_extract(.., '$')`): a CAST reads JSON null as
+        # 'null' and "" as '""', neither of them blank (총괄 c773b0fed ③ - a layer's value).
+        return blank_to_null(col_expr[()].as_string())
     if isinstance(col_type, sqltypes.String) and not isinstance(col_type, sqltypes.Enum):
         return blank_to_null(col_expr)
     # Unknown, or text-shaped but not text-typed. Cast FIRST so `blank_sql_condition`'s
@@ -3576,8 +3580,9 @@ def _merge_into_key_holder(db, table_name, table_model, row_to_delete, row, *, e
                 for s in sorted(sorted(old_srcs, key=lambda layer: layer.source_name,
                                        reverse=True), key=delivered):
                     src_list.append((s.source_name, s.value, s.updated_by, s.origin_row_id))
-            else:
-                # 폴백 소스
+            elif not is_blank_value(new_val):
+                # 폴백 소스 - only a value the shell holds: absence makes no layer (판정 405 ·
+                # 총괄 c773b0fed - an empty one was the newest layer and won the next resolve)
                 src_list.append((source_name or "user", new_val, updated_by or "system", None))
 
             for s_name, s_val, s_by, s_origin in src_list:

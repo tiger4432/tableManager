@@ -31,14 +31,29 @@ T_ZERO_TEXT = "1999-01-02 03:04:05.000000"
 def test_a_type_the_funnel_has_never_heard_of_is_cast_not_passed_through():
     """The no-crash floor. `column_text_sql` decides by asking "is this ALREADY text",
     so a type added tomorrow gets a CAST rather than reopening N7/N8 a third time."""
-    from sqlalchemy import Column, LargeBinary, JSON, Enum
+    from sqlalchemy import Column, LargeBinary, Enum
     from sqlalchemy.sql import sqltypes
-    for col in (Column("blob_col", LargeBinary), Column("json_col", JSON),
+    for col in (Column("blob_col", LargeBinary),
                 Column("enum_col", Enum("a", "b", name="probe_enum"))):
         expr = crud.column_text_sql(col)
         assert isinstance(expr.type, sqltypes.String), f"{col.name} was not rendered to text"
         assert "CAST" in str(expr.compile(compile_kwargs={"literal_binds": True})).upper(), (
             f"{col.name} reached the COALESCE without a cast - this is the N7/N8 shape")
+
+
+def test_a_json_value_is_rendered_as_its_scalar_not_its_cast():
+    """총괄 c773b0fed ③: a CAST reads JSON null as 'null' and "" as '""', neither blank - a
+    layer's empty value counted as nothing. The funnel takes the scalar on both dialects."""
+    from sqlalchemy import Column, JSON
+    from sqlalchemy.dialects import postgresql, sqlite
+    from sqlalchemy.sql import sqltypes
+
+    expr = crud.column_text_sql(Column("json_col", JSON))
+    assert isinstance(expr.type, sqltypes.String)
+    on_pg, on_sqlite = (str(expr.compile(dialect=d)) for d in (postgresql.dialect(),
+                                                                sqlite.dialect()))
+    assert "json_col #>>" in on_pg and "JSON_EXTRACT(json_col," in on_sqlite
+    assert "CAST(json_col AS" not in on_pg + on_sqlite
 
 
 def test_the_type_bridge_still_spells_a_bool_and_a_timestamp_the_way_sql_does():

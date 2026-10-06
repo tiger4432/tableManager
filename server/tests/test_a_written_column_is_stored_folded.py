@@ -438,6 +438,71 @@ def test_three_rows_whose_keys_fold_alike_meet_in_row_id_order(env, tmp_path, mo
     assert replay.fold_written_notation(env, PLAIN)["rows_merged"] == 0
 
 
+#: The owner's item_id declaration (총괄 c773b0fed).
+OWNER_ITEM = {"replace": [[" *[.] *", "."], [" *[(][0-9]+[)]\\Z", ""]], "collapse_repeats": "."}
+
+
+def _blank_layers(db, table):
+    return sorted((s.row_id, s.column_name, s.source_name) for s in db.query(models.CellSource)
+                  .filter(models.CellSource.table_name == table)
+                  if crud.is_blank_value(s.value))
+
+
+def test_a_second_backfill_after_merges_changes_nothing(env, tmp_path, monkeypatch):
+    """총괄 c773b0fed: a merge left an empty fallback layer for every cell the shell did not
+    hold, and the second run let it win - the holder's value went."""
+    _stored_then_declared(env, tmp_path, monkeypatch, PLAIN, [("f01.csv", [
+        {"k": "a.b", "v": "holder-ab"}, {"k": "a. b", "note": "from a. b"},
+        {"k": "x", "v": "holder-x"}, {"k": "x (2)", "note": "from x (2)"},
+        {"k": "c.c.c", "v": "c"}, {"k": "d . d (2)", "v": "d"}, {"k": "y (2)", "v": "y"},
+        {"k": "a.b.a", "v": "aba"}])], declared={PLAIN: {"k": {"write": True, "rules": OWNER_ITEM}}})
+    first = replay.fold_written_notation(env, PLAIN, apply=True)
+    assert (first["rows_merged"], first["keys_changed"]) == (2, 3)
+    shown = sorted((r.k, r.v, r.note) for r in _rows(env, PLAIN))
+    assert ("a.b", "holder-ab", "from a. b") in shown and ("x", "holder-x", "from x (2)") in shown
+    assert _blank_layers(env, PLAIN) == [], "absence makes no layer (판정 405)"
+    again = replay.fold_written_notation(env, PLAIN)
+    assert (again["cells_folded"], again["layers_folded"], again["rows_merged"]) == (0, 0, 0)
+    replay.fold_written_notation(env, PLAIN, apply=True)
+    assert sorted((r.k, r.v, r.note) for r in _rows(env, PLAIN)) == shown
+
+
+def _item(row_id, cells, source):
+    return schemas.GeneralUpdateItem(row_id=row_id, updates=cells, source_name=source,
+                                     updated_by="t")
+
+
+def _rekey_onto_the_holder(db, source, cleared_by_person=False):
+    """The write door's merge: a write that moves a row's key part onto another row's key."""
+    _write(db, COMP, [{"lot": "L1", "wafer": "wafer-01", "x": "holder"},
+                      {"lot": "L1", "wafer": "wafer-02"}])
+    db.commit()
+    shell = next(r for r in _rows(db, COMP) if r.wafer == "wafer-02")
+    for cells, by in ([({"x": ""}, "user")] if cleared_by_person else []) + [
+            ({"wafer": "wafer-01"}, source)]:
+        crud.apply_batch_updates(db, COMP, schemas.GeneralUpdateBatch(
+            updates=[_item(shell.row_id, cells, by)], silent=True))
+        db.commit()
+    (row,) = _rows(db, COMP)
+    return row
+
+
+@pytest.mark.parametrize("source", ["f09.csv", "user"])
+def test_a_write_that_merges_leaves_no_empty_layer_for_a_cell_the_row_did_not_hold(env, source):
+    """총괄 c773b0fed ④: the same fallback, through the write door."""
+    row = _rekey_onto_the_holder(env, source)
+    assert (row.business_key_val, row.x) == ("L1_wafer-01", "holder")
+    assert _blank_layers(env, COMP) == []
+
+
+def test_a_persons_cleared_cell_still_goes_with_the_merged_row(env):
+    """The control: a person's '' is an answer (판정 405) - the merge carries it."""
+    row = _rekey_onto_the_holder(env, "f09.csv", cleared_by_person=True)
+    assert [crud.layer_writer(name) for _row, column, name in _blank_layers(env, COMP)
+            if column == "x"] == ["user"]
+    assert row.business_key_val == "L1_wafer-01"
+
+
 def test_a_value_a_second_fold_moves_again_stops_the_run_before_it_is_written(
         env, tmp_path, monkeypatch):
     _stored_then_declared(env, tmp_path, monkeypatch, PLAIN,

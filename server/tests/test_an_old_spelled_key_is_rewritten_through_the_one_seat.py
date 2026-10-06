@@ -226,3 +226,19 @@ def test_with_no_holder_the_first_row_id_holds_and_the_rest_merge_into_it(db, ta
     first = min(r[0] for r in _rows(db, table, "L5"))
     _apply(db, table)
     assert [(r[0], r[1]) for r in _rows(db, table, "L5")] == [(first, "L5_1_2026-10-03 12:00:00")]
+
+
+@pytest.mark.parametrize("table", [T_ONLY, T_KEY])
+def test_a_merge_leaves_no_empty_layer_for_a_cell_the_merged_row_did_not_hold(db, table):
+    """lead c773b0fed: the fallback layer was written for every cell the shell lacked, empty."""
+    _write(db["db"], table, {"lot": "L6", "wafer": "1", "t": WHEN})
+    _old_spelling(db, table, "L6", "L6_1.0_2026-10-03 12:00")
+    _write(db["db"], table, {"lot": "L6", "wafer": "1", "t": WHEN, "v": "holder"})
+    assert len(_apply(db, table)[1]) == 1
+    with db["engine"].connect() as conn:
+        shown = conn.execute(text('SELECT v FROM "%s"."%s" WHERE lot = :l'
+                                  % (PG_TEST_SCHEMA, table)), {"l": "L6"}).scalars().all()
+        layers = conn.execute(text('SELECT source_name, value FROM "%s".cell_sources '
+                                   "WHERE table_name = :t" % PG_TEST_SCHEMA), {"t": table}).all()
+    assert shown == ["holder"]
+    assert [name for name, value in layers if crud.is_blank_value(value)] == []
