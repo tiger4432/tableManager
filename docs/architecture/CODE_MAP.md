@@ -3106,6 +3106,7 @@ note_naive_time(...)      셈 · `naive_time_counts()` · `naive_time_note()` �
 | 🔴 **거절 어휘 — 전건 열거**(개수를 적지 않는다): `CODE_SHAPE` · `CODE_ZERO_PAD_UNIMPLEMENTED` · `CODE_UNKNOWN_RULE` · `CODE_UNDECLARED` · `CODE_NOT_TEXT` | ⚠️ **종전 지도는 이 목록을 「6종」이라 적으면서 `CODE_WOULD_REWRITE_RAW`·`CODE_KEY_COLUMN`을 들었는데 둘 다 소스에 없고, 실재하는 `CODE_NOT_TEXT`는 빠져 있었다.** 개수도 구성원도 틀린 전형이다. `config_resolve_report._NOTATION_CODE_TO_REASON`이 이 어휘를 닫힌 집합으로 받는다 |
 | `SCOPE_FILE`·`SCOPE_TABLE`·`SCOPE_COLUMN` | 거절의 스코프 |
 | `RULES_CACHE_TTL = 5.0` / `_RULES_CACHE` / `reset_cache()` | `virtual_join_executor`와 **같은 규율**의 TTL / 웹서버 config 핫리로드 훅(`main.py` |
+| 🆕 [10-06 `5ea34762f` · 1370 줄] **`collapse_repeats(text, mark)`** · `RULE_COLLAPSE_REPEATS` · **`WRITE_ONLY_RULES = (RULE_TIME, RULE_COLLAPSE_REPEATS)`** | 쓰기 칸의 값을 글자 하나로 갈라 바로 앞과 같은 마디를 뺀다(`a.a.b` → `a.b`, 빈 마디는 남김, 견주기는 최종 철자로). 순서 맨 끝 · 쓰기 전용 — `_write_fold` 가 `fold_notation` 뒤에 부르므로 쓰기 깔때기 · 미리보기 · `folds_again` · 저장값 소급이 같이 접는다. 두 엔진 규칙이 아니다(저장이 접힌 값이라 날 값을 견주는 자리가 없다). `write` 없이 · 글자 하나가 아닌 값은 이름 대어 거절 |
 | **`fold_notation(text, rules: dict)`** | **규칙마다 독립 분기다** — `{}`를 주면 입력이 그대로 나온다. 그 성질이 「각 규칙이 혼자 켜지고 꺼지는가」를 **진짜 테스트로** 만든다. 비-문자열은 통과 |
 | `enabled_rule_names(rules) -> list` / `folds_anything(rules) -> bool` | 켜진 규칙 이름 / 이 규칙 집합이 무언가를 실제로 바꾸는가 |
 | 🔴 **`SQL_FOLD_FUNCTION = "assy_fold_notation"`** / **`fold_sql_text(inner_sql, rules) -> str`** / `_install_notation_fold_construct()` / **`fold_notation_sql(text_expr, rules)`** | **접기가 실제로 일어나는 자리 — 질의 시점의 SQL이다.** 저장된 파생 컬럼이 아니라 **조인·비교가 쓰는 바로 그 식**이 접는다 |
