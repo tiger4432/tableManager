@@ -379,13 +379,12 @@ def test_subject_keys_arrive_as_text_or_as_a_mapping():
 def test_an_undeclared_type_is_refused_before_the_query_runs(route_client, monkeypatch):
     """⛔ ASKING THE LEDGER FOR A TYPE THE DECLARATION NEVER NAMED RETURNS ZERO ROWS, which
     would read as 「that type has no subjects」 — a fact about the data rather than about the
-    request. The walk already refuses an undeclared `collect` this way."""
-    monkeypatch.setattr(ledger_subgraph, "_declared_entity_facts_names",
-                        lambda: frozenset({"wafer"}))
-
+    request. Refused at the route's one seat for a request's names, as `collect` is
+    (총괄 17b6337e4)."""
     answer = route_client.get("/api/ledger/subgraph",
                               params={"seed_type": "nosuchtype", "hops": 1})
 
     assert answer.status_code == 422, answer.text
-    assert answer.json()["detail"]["reason"] == "seed_type_not_declared"
-    assert "wafer" in answer.json()["detail"]["choices"]
+    detail = answer.json()["detail"]
+    assert (detail["reason"], detail["unknown"]) == ("seed_type_not_declared", ["nosuchtype"])
+    assert detail["declared"], "the refusal says what IS declared"

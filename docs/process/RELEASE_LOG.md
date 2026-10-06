@@ -9,6 +9,15 @@
 
 ---
 
+## 2026-10-06 · 걷기 요청 — 옛 철자 이름도 맞고, group_by 는 키 이름도, 선언에 없는 이름은 이름 대어 거절
+
+- **무엇** — 걷기(`/api/ledger/subgraph`)와 키 값(`/api/ledger/key-values`)이 받는 이름 — `collect` · `follow` · `expand` 의 술어 · `seed_type` · `group_by` · `measure` 의 이름 · `type` — 이 한 자리에서 맨이름으로 접히고, 고른 세상들의 선언에 없는 이름은 422 로 거절됩니다. 거절은 그 이름 · 칸(`argument`) · 세상(`world`) · 고를 수 있는 이름(`declared`)을 말합니다. `group_by` · `measure` 는 엔티티가 «키»로 선언한 이름(예: `wafer`)도 노드의 `keys` 에서 읽습니다.
+- **선언 예시** — 없음.
+- **화면에서** — 저장된 보드 · 북마크의 `sum:inspected@1` · `follow=processed_with@1` 같은 옛 철자가 다시 값을 냅니다. 값 맵의 키는 보낸 measure 문자열 그대로입니다. `group_by=wafer` 가 웨이퍼마다 무리를 냅니다(전에는 빈 무리).
+- **필요한 조건** — 서버 재기동(API).
+- **바뀐 동작** — 전에는 `group_by` · `measure` 에 선언에 없는 이름을 주면 조용히 빈 무리 · 빈 값이었습니다. 이제 422(`value_name_not_declared`). 거절 문구는 «type 'x' is not declared in world W - pick one from 'declared'» 모양 하나로 모였습니다. `seed_type` 거절의 고를 수 있는 목록 칸은 `choices` 에서 `declared` 로 바뀝니다. 응답의 `value_sources` 맨 앞에 `keys` 가 붙고, 한 노드에서 키와 술어 · 수식어가 같은 이름으로 답하면 422(`ambiguous_value_name`, 두 출처를 이름 댑니다).
+- **자세히** — 이 항목과 같은 커밋 · RUN.md 같은 절.
+
 ## 2026-10-06 · 화면에서 «@N» 은퇴 — Version 줄 · 새 이름의 @1 · 이름 벗기기
 
 - **무엇** — 서버가 이름을 어디서나 맨이름으로 내게 된 뒤(f34f16892), 화면에 남아 있던 버전 축을 걷었습니다. 선언 화면 상세의 `Version` 줄이 없어졌고(모든 노드에서 `None` 이던 줄), 새 선언을 만들 때 이름에 `@1` 을 붙이던 제안(`→ lot@1`)이 없어져 친 이름 그대로 만들어집니다. 걷기 화면과 공용 걷기 전선(`rnd_board/api.js`)은 이름을 «받은 그대로» 보내고 견줍니다 — `@` 를 벗기던 자리가 없어졌습니다. R&D 보드의 걷기 상자 안 한 자리는 보드 동결(소유자 10-06)로 그대로 두었습니다 — 맨이름에는 아무 일도 안 합니다.

@@ -1,5 +1,19 @@
 # 지금 돌리면 되는 것
 
+> ## [10-06] **걷기 요청 이름을 한 자리에서 — 옛 철자 접고, group_by 는 키 이름도, 없는 이름 거절 (총괄 17b6337e4 · a588e5d80) — 이주 «불필요» · 재기동 «필요»(API)**
+>
+> ```
+> 재기동 뒤     curl "http://<서버>:<포트>/api/ledger/subgraph?id=<노드 id>&group_by=type&measure=sum:inspected@1"
+> 뜻           groups[].value 의 키가 "sum:inspected@1"(보낸 그대로)이고 값이 sum:inspected 와 같다
+>             follow=processed_with@1 · collect=wafer@1 · seed_type=wafer@1 도 맨이름과 같은 걷기
+>             없는 이름 -> 422, detail = {reason, argument(칸), unknown, declared, world}
+>             group_by · measure 의 없는 이름은 전에 «빈 값»이었다 — 이제 422 value_name_not_declared
+>             group_by=wafer -> 웨이퍼마다 무리(노드 keys 에서). value_sources 맨 앞이 "keys"
+> 급할 때       git revert <이 커밋> -> 재기동 (옛 철자가 다시 빈 값, 없는 이름도 다시 빈 값, group_by=wafer 도 다시 빈 무리)
+> ```
+
+---
+
 > ## [10-06] **서버와 화면은 함께 — 화면이 이름의 @ 를 더는 벗기지 않는다 (총괄 2c4093eac) — 화면 빌드 · 서버 재기동 «같이»**
 >
 > ```
