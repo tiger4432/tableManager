@@ -377,3 +377,11 @@ def test_every_kind_specific_field_of_a_binding_is_locked_to_its_kind():
         # 종류 목록은 «발행되는 닫힌 목록»에서 읽는다 — 여기에 적으면 셋째 종류가 생기는 날
         # 이 시험이 «그 이유로» 죽는다.
         assert field["when"]["is"] in closed_lists()["binding_kinds"], field["key"]
+
+
+def test_a_binding_type_is_drawn_as_the_name_leaf():
+    """An `either` node the form cannot draw blanked the entity-type box at restart - today's names
+    too (f1238d6ef, reverted). The node is the ref leaf the form has always drawn; a type read from
+    a column is written in the raw declaration until the form picks a branch by the value's shape."""
+    (field,) = [f for f in skeleton()["defs"]["binding"]["fields"] if f["key"] == "entity_type"]
+    assert field["node"] == {"kind": "leaf", "hint": "ref", "section": "entities"}

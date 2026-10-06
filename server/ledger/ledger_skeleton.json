@@ -79,17 +79,9 @@
             "is": "entity"
           },
           "node": {
-            "kind": "either",
-            "of": [
-              {
-                "kind": "leaf",
-                "hint": "ref",
-                "section": "entities"
-              },
-              {
-                "use": "entity_type_column"
-              }
-            ]
+            "kind": "leaf",
+            "hint": "ref",
+            "section": "entities"
           }
         },
         {
@@ -112,7 +104,7 @@
     },
     "entity_type_column": {
       "kind": "record",
-      "note": "An entity binding's type read from a column of each row - the row's value must be a type the predicate admits in that role, or that row is refused (type_not_admitted).",
+      "note": "An entity binding's type read from a column of each row - the row's value must be a type the predicate admits in that role, or that row is refused (type_not_admitted). Not yet offered at binding.entity_type: written in the raw declaration until the form picks a branch by the value's shape.",
       "fields": [
         {
           "key": "kind",
