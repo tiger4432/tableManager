@@ -796,9 +796,12 @@ async function suite(probe) {
   // ── T. the run_in list rides on the rules/raw answer (order ac4d3a2ac; server ff60fe669 ②) ──
   // The server's next skeleton names the cell's list (`hint: choice, list: run_in`) and puts the
   // list at the top of the same answer. Lands BEFORE the server: no list in the answer, no change.
-  const choiceSkeleton = JSON.parse(JSON.stringify(SKELETON), (key, value) => (
-    value && value.key === 'run_in' && value.node
-      ? { ...value, node: { kind: 'leaf', hint: 'choice', list: 'run_in' } } : value));
+  // Both shapes are made here, not read off the shipped file: since ac159b4bc the shipped file IS
+  // the choice shape, and T2 is the server before it (a free leaf, no list) -- a box not restarted.
+  const runInAs = (node) => JSON.parse(JSON.stringify(SKELETON), (key, value) => (
+    value && value.key === 'run_in' && value.node ? { ...value, node } : value));
+  const choiceSkeleton = runInAs({ kind: 'leaf', hint: 'choice', list: 'run_in' });
+  const freeSkeleton = runInAs({ kind: 'leaf', hint: 'free' });
   const serveRunIn = (extra, skeleton) => {
     answer = (call) => (call.url.includes('/admin/mappers/list') ? { status: 200, body: MAPPERS }
       : isCatalogue(call) ? { status: 200, body: { tables: TABLES } }
@@ -816,7 +819,7 @@ async function suite(probe) {
     ? all(runIn).filter((o) => o.tagName === 'OPTION').map((o) => o.value).filter(Boolean) : [];
   ok(JSON.stringify(runInOffered) === '["chain","operation"]',
      `T1 the answer's run_in list is the cell's two choices [${runInOffered.join(',')}]`);
-  serveRunIn({}, SKELETON);
+  serveRunIn({}, freeSkeleton);
   await refreshChainRule(RULE.name);
   await flush();
   ok(Boolean(runInCell()) && runInCell().tagName === 'INPUT' && !noChoice(),
