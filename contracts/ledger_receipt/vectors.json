@@ -6,7 +6,7 @@
   "is_row_deleted": "true on every receipt, and it is not about deletion: `row_id` is the BATCH's id, so no row of the table carries it and the existence probe says so. A receipt must not be drawn as a deleted row.",
   "failed": "one receipt PER SOURCE that could not be followed, sharing the transaction id of the event. Written in a commit of its own, because the batch's own rolled back and took any receipt inside it.",
   "worlds": "followed_in_two_worlds and one_world_failed (2026-10-04): captured on the isolated PostgreSQL scratch schema (server 6922cd6cb) through the route functions behind /audit_logs/transaction/{tx}, not the box: one edit followed in two live worlds - a receipt per world, each with `world`, beside the edit itself - and the same edit with the branch world's translation made to raise (its failure receipt names the world too). The branch world's name is the test's own. `is_row_deleted` is false on a receipt since 218f907f5.",
-  "recent_groups": "recent_group_* (2026-10-06): captured on the isolated PostgreSQL scratch schema (server c49217a06) through the route function behind /audit_logs/recent - the list's own group shape: ONE representative log, the transaction's summary_columns, and receipt_worlds (each world its receipts were written into, in the order written). The same two transactions as followed_in_two_worlds / one_world_failed, read from the list."
+  "recent_groups": "recent_group_* (2026-10-06, re-captured the same day): captured on the isolated PostgreSQL scratch schema (server c49217a06; re-captured with the lead's two history-list changes) through the route function behind /audit_logs/recent - the list's own group shape: ONE representative log - the newest that is not a ledger receipt, so here the edit itself; a group of receipts only shows its newest - the transaction's summary_columns, and receipt_worlds (each world its receipts were written into, in the order written, and `failed`: how many of them say that world's translation failed). The same two transactions as followed_in_two_worlds / one_world_failed, read from the list."
  },
  "cases": {
   "followed_success": {
@@ -253,7 +253,7 @@
    ]
   },
   "recent_group_followed_in_two_worlds": {
-   "transaction_id": "01a10e8d-fce6-7012-aa83-ad612a575605",
+   "transaction_id": "01a10fe5-9115-7659-98dd-90756614b0ab",
    "total_count": 3,
    "summary_columns": [
     "ledger_batch",
@@ -261,46 +261,35 @@
    ],
    "logs": [
     {
-     "id": 20,
+     "id": 18,
      "table_name": "wafer_process",
-     "row_id": "01a10e8e-0506-756b-a600-d5145f239ce1",
-     "column_name": "ledger_batch",
-     "old_value": null,
-     "new_value": {
-      "rows": 1,
-      "molecules": 1,
-      "atoms_written": 1,
-      "atoms_deduped": 0,
-      "atoms_withdrawn": 1,
-      "refused": 0,
-      "reasons": {},
-      "unsaid": 0,
-      "translator_ver": "ledger-v2:1af9c7d40167ecbe81d85cf729a1fce7e6c8ff182cbe6ba755b0210d98ee96cd",
-      "world": "a19608gw0",
-      "status": "ok",
-      "error": null
-     },
-     "source_name": "ledger",
-     "updated_by": "ledger",
-     "transaction_id": "01a10e8d-fce6-7012-aa83-ad612a575605",
-     "business_key": null,
-     "timestamp": "2026-10-06T09:12:30.957467+09:00",
+     "row_id": "01a10fe5-7ba7-7c40-90a1-194f1c34e599",
+     "column_name": "recipe_id",
+     "old_value": "RCP-1",
+     "new_value": "RCP-2",
+     "source_name": "user",
+     "updated_by": "probe",
+     "transaction_id": "01a10fe5-9115-7659-98dd-90756614b0ab",
+     "business_key": "P1",
+     "timestamp": "2026-10-06T15:27:45.675438+09:00",
      "is_row_deleted": false
     }
    ],
    "receipt_worlds": [
     {
      "world": "default",
-     "receipts": 1
+     "receipts": 1,
+     "failed": 0
     },
     {
-     "world": "a19608gw0",
-     "receipts": 1
+     "world": "a43084gw0",
+     "receipts": 1,
+     "failed": 0
     }
    ]
   },
   "recent_group_one_world_failed": {
-   "transaction_id": "01a10e8e-062e-77d7-8fa4-c94edb6fa10e",
+   "transaction_id": "01a10fe5-99d3-7c83-873a-a4bb342a5d4a",
    "total_count": 3,
    "summary_columns": [
     "ledger_batch",
@@ -308,33 +297,30 @@
    ],
    "logs": [
     {
-     "id": 23,
+     "id": 21,
      "table_name": "wafer_process",
-     "row_id": "01a10e8e-0b3d-7395-b416-aa65cca2ea9b",
-     "column_name": "ledger_batch",
-     "old_value": null,
-     "new_value": {
-      "source": "wafer_process_recipe",
-      "world": "a19608gw0",
-      "status": "failed",
-      "error": "RuntimeError: a translator blew up"
-     },
-     "source_name": "ledger",
-     "updated_by": "ledger",
-     "transaction_id": "01a10e8e-062e-77d7-8fa4-c94edb6fa10e",
-     "business_key": null,
-     "timestamp": "2026-10-06T09:12:32.445320+09:00",
+     "row_id": "01a10fe5-7ba7-7c40-90a1-194f1c34e599",
+     "column_name": "recipe_id",
+     "old_value": "RCP-2",
+     "new_value": "RCP-3",
+     "source_name": "user",
+     "updated_by": "probe",
+     "transaction_id": "01a10fe5-99d3-7c83-873a-a4bb342a5d4a",
+     "business_key": "P1",
+     "timestamp": "2026-10-06T15:27:47.896454+09:00",
      "is_row_deleted": false
     }
    ],
    "receipt_worlds": [
     {
      "world": "default",
-     "receipts": 1
+     "receipts": 1,
+     "failed": 0
     },
     {
-     "world": "a19608gw0",
-     "receipts": 1
+     "world": "a43084gw0",
+     "receipts": 1,
+     "failed": 1
     }
    ]
   }

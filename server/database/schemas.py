@@ -109,6 +109,9 @@ class ReceiptWorld(BaseModel):
     #: the world a ledger receipt says it was written into; None for a receipt from before 6922cd6cb
     world: Optional[str] = None
     receipts: int
+    #: of those, the receipts of a translation that failed - a world that failed is not one that
+    #: wrote (클라 9cdbda108 · 총괄)
+    failed: int = 0
 
 
 class AuditLogGroupResponse(BaseModel):

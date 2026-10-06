@@ -204,15 +204,18 @@ console.log('\n[7] the list\'s group: one representative log, the kind from the 
   state.tableList = { tables: [], worlds: ['default'], operating: 'default' };
   const one = createGlobalTimelineItemDom(group).innerHTML;
   state.tableList = saved;
-  ok('CANARY: the list carried one log of three, a receipt, and named two worlds',
-    c.logs.length === 1 && c.total_count === 3 && c.logs[0].column_name === LEDGER_BATCH_COLUMN && written.length === 2,
-    JSON.stringify({ logs: c.logs.length, total: c.total_count, written }));
+  // The representative is the transaction's first log that is not a receipt (server, lead 9cdbda108 proposal).
+  ok('CANARY: the list carried one log of three, the edit rather than a receipt, and named two worlds',
+    c.logs.length === 1 && c.total_count === 3 && c.logs[0].column_name !== LEDGER_BATCH_COLUMN
+      && c.summary_columns.includes(LEDGER_BATCH_COLUMN) && written.length === 2,
+    JSON.stringify({ logs: c.logs.length, total: c.total_count, column: c.logs[0].column_name, written }));
   ok('K1 an edit with its receipts is not called a ledger batch - the kind reads the whole transaction',
     !/kind-ledger">LEDGER</.test(many) && /kind-batch">BATCH</.test(many), many.slice(0, 300));
   ok('W1 two worlds on the install: the row says the worlds its receipts were written into, in that order',
     many.includes(`Ledger · ${written.join(' · ')}`), many);
-  ok('W2 one world on the install: no worlds line - the representative receipt\'s own line as before',
-    !one.includes('Ledger · ') && one.includes('atoms_written'), one);
+  ok('W2 one world on the install: no worlds line - the edit the row carries, old to new',
+    !one.includes('Ledger · ') && !one.includes('atoms_written')
+      && one.includes(String(c.logs[0].old_value)) && one.includes(String(c.logs[0].new_value)), one);
   eq('W3 a receipt from before the world was written reads as absent, several from one world are counted',
     `Ledger · default ×3 · ${ABSENT}`,
     T.receiptWorldsLine({ receipt_worlds: [{ world: 'default', receipts: 3 }, { world: null, receipts: 1 }] },

@@ -72,7 +72,7 @@ FOLLOWUP_JOB = "chain_followup"
 #: The audit column, source layer and writer a ledger receipt carries. Imported from the
 #: one place that already names them so the failure receipt below and the success receipt
 #: in `runtime_v2` cannot describe themselves differently.
-from .runtime_v2 import RECEIPT_COLUMN, RECEIPT_SOURCE                # noqa: E402
+from .runtime_v2 import RECEIPT_COLUMN, RECEIPT_FAILED, RECEIPT_SOURCE  # noqa: E402
 RECEIPT_WRITER = "ledger"
 
 #: A bound so a stalled drain cannot eat the worker's memory. Overflow is COUNTED and named
@@ -307,7 +307,7 @@ def _write_failure_receipt(engine, relation, source, transaction_id, exc, world)
 
         row = crud.create_audit_log(
             None, relation, str(uuid6.uuid7()), RECEIPT_COLUMN, None,
-            {"source": source, "world": world, "status": "failed",
+            {"source": source, "world": world, "status": RECEIPT_FAILED,
              "error": f"{type(exc).__name__}: {exc}"},
             RECEIPT_SOURCE, RECEIPT_WRITER,
             transaction_id=transaction_id, add_to_cache=False)

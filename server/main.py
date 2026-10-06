@@ -1353,7 +1353,7 @@ def resolve_missing_business_keys(db: Session, log_models: list) -> None:
             lm.business_key = bk
 
 
-from ledger.runtime_v2 import RECEIPT_COLUMN  # noqa: E402
+from ledger.runtime_v2 import RECEIPT_COLUMN, RECEIPT_FAILED  # noqa: E402
 
 
 def has_row_id(table_name) -> bool:
@@ -1475,6 +1475,13 @@ def get_recent_audit_logs(response: Response, limit_groups: int = 100,
     return _shape_recent_groups(db, cache_groups, truncated, next_cursor, limit_groups)
 
 
+def _representative(logs):
+    """The one log a folded row shows: the newest that is not a ledger receipt - the write the
+    transaction was about, whose writer the user cell names (클라 9cdbda108 · 총괄); a group of
+    receipts only shows its newest. `logs` is newest first."""
+    return next((log for log in logs if log.column_name != RECEIPT_COLUMN), logs[0])
+
+
 def _shape_recent_groups(db: Session, cache_groups, truncated, next_cursor,
                          limit_groups: int):
     """The `{groups, truncated, next_cursor, limit_groups, returned}` envelope.
@@ -1492,7 +1499,7 @@ def _shape_recent_groups(db: Session, cache_groups, truncated, next_cursor,
     for g in cache_groups:
         logs = g.get("logs", [])
         if not logs: continue
-        repr_log = logs[0]
+        repr_log = _representative(logs)
         if _names_a_row(repr_log):
             keys_to_check.append((repr_log.table_name, repr_log.row_id))
 
@@ -1510,26 +1517,29 @@ def _shape_recent_groups(db: Session, cache_groups, truncated, next_cursor,
                 cols.append(c)
                 
         # Populate is_row_deleted flag for representing log
-        repr_log = logs[0].model_copy()
+        repr_log = _representative(logs).model_copy()
         is_deleted = _names_a_row(repr_log) and (repr_log.table_name, repr_log.row_id) not in existing_keys
         repr_log.is_row_deleted = is_deleted
         
         if is_deleted and not repr_log.business_key:
             repr_log.business_key = get_deleted_row_business_key(db, repr_log.table_name, repr_log.row_id)
                 
-        # the receipts behind the one representative, per world, in the order written (3e8b6171f ②)
+        # the receipts behind the one representative, per world, in the order written (3e8b6171f ②),
+        # and how many of them say the translation failed - a failed world is not one that wrote
         receipts = {}
         for l in reversed(logs):
             if l.column_name == RECEIPT_COLUMN:
-                world = l.new_value.get("world") if isinstance(l.new_value, dict) else None
-                receipts[world] = receipts.get(world, 0) + 1
+                value = l.new_value if isinstance(l.new_value, dict) else {}
+                counted = receipts.setdefault(value.get("world"), {"receipts": 0, "failed": 0})
+                counted["receipts"] += 1
+                counted["failed"] += value.get("status") == RECEIPT_FAILED
 
         groups.append({
             "transaction_id": g.get("transaction_id"),
             "total_count": g.get("total_count", len(logs)),
             "summary_columns": cols,
             "logs": [repr_log], # 대표 로그 1건만 포함
-            "receipt_worlds": [{"world": world, "receipts": n} for world, n in receipts.items()],
+            "receipt_worlds": [{"world": world, **counted} for world, counted in receipts.items()],
         })
     return {
         "groups": groups,
