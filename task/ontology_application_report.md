@@ -35940,3 +35940,25 @@ git grep -n -E "<아래 낱말들>" -- server/*.py ':!server/tests'
          둘 다 안 지었다. 저장된 보드 · 북마크에 measure 문자열이 남는 자리가 있는지는 안 셌다
 문서     9534c9ef8 — WALK.md 이름 찾기(맨이름 · @1 은 빈다) · LEDGER_TECHNICAL_SPEC 「id 는 버전이 붙는다」 은퇴(838bafd89 때 빠뜨린 현재형 줄)
 ```
+
+---
+
+## [C 응용] 10-06 총괄 지시 — @N 은퇴 뒤 문서 (서버 f34f16892 · 클라 96855816b) · cf8aa94a4
+
+```
+                                        전      후
+CODE_MAP 은퇴 함수 이름, 표지 없는 줄     2      0     declarationIdFor(store 줄) · bareName(derive.js 줄, 이름 목록과 사유 문장) -> ⚰️ 96855816b
+                                                       versioned_sections 는 838bafd89 에 이미 ⚰️ — 세 줄이 이 셋
+선언 이름의 name@N, 표지 없는 줄          148     44
+                     표지 있는 줄(~~ · 해시) 10      13
+셈      살아 있는 문서(docs .md − history · _archive · RELEASE_LOG), 이름 = 샘플 선언 둘의 vocabulary · entities.
+        매퍼 이름(declarative-role@1 · direct-join@1 · lot-lineage@1 …)은 이름이 아니라 안 셈
+바꾼 것  예시와 현재형 줄을 맨이름으로 — 안내서 셋(선언 예시 · ONTOLOGY_LEDGER_SETUP · PRIMER) · APPLICATION_GAP_SPEC 표(gap_names.json 과 같은 철자) ·
+        스펙 넷 · README · BASIS · PRIMITIVES · LEDGER_SCHEMA_COMPLETENESS 소스 표 · WALK.md inverse_of 예시 · CODE_MAP 기전 그래프 줄
+        규칙 줄 ONTOLOGY_LEDGER_SETUP 「반드시 versioned ID」 -> 「맨이름 · 옛 x@1 도 읽을 때 접히고 저장하면 맨이름」
+        LEDGER_SCHEMA_COMPLETENESS B1 「/declaration 이 wafer@1 로 알려 주는데」 -> ✅ 맨이름, 상태 ① / ⚠️ -> ①
+        CODE_MAP walk_columns 미끼 줄 -> 노드 타입도 선언 키도 맨이름(96855816b), 미끼는 클라 반쪽 선언에
+        코드 블록 안 표는 지운 글자만큼 공백으로 칸을 맞춤
+남긴 것  44 줄 — 날짜 붙은 실측 · 결함 큐 기록 · ⚰️ 절 · Pack 이름(transfer@1/movement · packs) · 「옛 철자도 접힌다」는 줄(WALK collect=die@1 · sum:x@1)
+        architecture/CODE_MAP.md 10 · spec/LEDGER_EVIDENCE_SUBGRAPH_SPEC.md 9 · guide/ledger/PRIMER.md 5 · process/SERVER_DEFECT_QUEUE.md 5 · spec/LEDGER_TECHNICAL_SPEC.md 5 · architecture/WALK.md 3 · spec/APPLICATION_GAP_SPEC.md 2 · spec/ONTOLOGY_GRAPH_SPEC.md 2 · architecture/LEDGER_FRAME_CHAIN_MAPPER.md 1 · architecture/LEDGER_SCHEMA_COMPLETENESS.md 1 · guide/config/ledger_declaration_by_example.md 1
+```
