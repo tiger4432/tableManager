@@ -107,7 +107,7 @@ const declarationFor = (vcase) => ([{
  *  leaves out is left out (the server sends no `attributes` for a node the walk did not reach, lead 0cde56e07). */
 const nodeFor = (vcase) => {
   const expect = vcase.expect || {};
-  const node = { id: `ledger-entity:v1:${TYPE}:1`, type: TYPE, depth: 0, label: '1',
+  const node = { id: `ledger-entity:v1:${TYPE}:1`, type: TYPE, depth: 0, label: expect.label,
     keys: { [IDENTITY_KEY]: '1' } };
   for (const key of ['attributes', 'attribute_conflicts', 'attributes_by_world']) {
     if (Object.prototype.hasOwnProperty.call(expect, key)) node[key] = expect[key];
@@ -120,17 +120,21 @@ const ALL_NAMES = [...new Set(CASES.flatMap((c) => c.declared_attributes || []))
 
 // ══ ① THE FILE IS THE AUTHORITY, AND IT STILL SAYS WHAT IT SAID ═════════════════════════
 console.log('\n[1] the shared vectors');
-eq('A1 five shapes: the four an operator meets in one world, and two worlds saying a name apart', 5, CASES.length);
+eq('A1 six shapes: the four an operator meets in one world, two worlds saying a name apart, and a node named by '
+  + 'its declared names', 6, CASES.length);
 // The three are there, or all absent where the walk did not reach the node - as the server sends it (v3, lead 0cde56e07).
 const isMap = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 const THREE = ['attributes', 'attribute_conflicts', 'attributes_by_world'];
-ok('A2 each case declares names; its map, count and each world\'s values are all there or all absent',
-  CASES.every((c) => Array.isArray(c.declared_attributes) && isMap(c.expect)
+ok('A2 each case declares names and expects a label; its map, count and each world\'s values are all there or all absent',
+  CASES.every((c) => Array.isArray(c.declared_attributes) && isMap(c.expect) && typeof c.expect.label === 'string'
     && (THREE.every((k) => c.expect[k] === undefined)
       || (isMap(c.expect.attributes) && Number.isInteger(c.expect.attribute_conflicts)
         && isMap(c.expect.attributes_by_world)))));
 ok('A3 identity stays keys-only — an attribute never makes a node new',
   (VECTORS.identity || {}).keys_only === true);
+// 🔴 A label that is the key alone in every case would let a client that draws the key pass [6] below.
+ok('A6 some case names its node by something other than its key',
+  CASES.some((c) => c.expect.label !== nodeFor(c).keys[IDENTITY_KEY]));
 // 🔴 The pair that decides the COUNT. If these two ever expected the same number the file
 //    would have stopped pinning ruling 124's definition, and both halves could drift.
 {
@@ -282,6 +286,24 @@ console.log('\n[5] each world\'s value, as the facts box holds it');
   ok('G3 ...and its facts hold no attribute and no world row', !!facts
     && Object.keys(facts.node.attributes).length === 0 && Object.keys(facts.node.attributesByWorld).length === 0,
     JSON.stringify(facts && facts.node));
+}
+
+// ══ ⑥ THE LABEL — the server's, drawn as sent (lead 03bc94b6b) ═════════════════════════════════════════════
+// 🔴 The server builds it from the entity declaration's `label` names; the client computes nothing. The table's
+//    Label cell, the graph's node and the facts head all read the label the response carried, case by case.
+console.log('\n[6] the label, as sent');
+{
+  const sg = await import(pathToFileURL(join(WALK_SRC, 'subgraph_view.js')).href);
+  for (const c of CASES) {
+    const out = await readWalk(nodeFor(c));
+    const node = out.ok && out.nodes && out.nodes.length ? out.nodes[0] : null;
+    const layout = node ? sg.subgraphLayout([{ results: [out] }], declarationFor(c)) : null;
+    const drawn = layout ? (layout.nodes.find((n) => n.id === node.id) || {}).label : undefined;
+    const facts = layout ? sg.nodeFacts(layout, node.id) : null;
+    const seen = [node && derive.cellSource({ kind: 'label' }, node, {}), drawn, facts && facts.node.label];
+    ok(`H «${c.name}» draws the label as sent - table cell, graph node, facts head`,
+      seen.every((v) => v === c.expect.label), `${JSON.stringify(seen)} vs ${JSON.stringify(c.expect.label)}`);
+  }
 }
 
 console.log(`\n${failures.length === 0 ? 'OK' : 'DIVERGED'}: ${pass} passed, `

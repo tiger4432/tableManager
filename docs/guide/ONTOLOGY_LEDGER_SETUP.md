@@ -630,8 +630,9 @@ Vocabulary는 “어떤 문장이 문법적으로 가능한가”를 정한다. 
 |---|---:|---|
 | Entity ID | 예 | 맨이름, 예: `Lot` — 옛 `Lot@1` 도 읽을 때 접히고 저장하면 맨이름으로 다시 쓰인다(10-06 `f34f16892` · ~~versioned ID~~) |
 | `keys` | 예 | 개체를 식별하는 논리 key 이름. 비어 있거나 중복될 수 없다. |
-| `key_types` | 아니오 | key 이름 → trimmed nonblank type 문자열. 키 집합은 `keys`와 정확히 같아야 한다. |
+| ~~`key_types`~~ | — | ⚰️ 은퇴(판정 165) — 읽는 곳이 없었다. 적으면 로드가 `unknown_field` 로 거절한다. |
 | `allow_null` | 아니오 | 명시적 boolean. 생략 시 null key를 허용하는 것으로 추측하지 않는다. |
+| `label` | 아니오 | 🆕 10-06(총괄 03bc94b6b) 노드를 보일 이름 — 이 개체의 key 또는 `attributes` 이름 목록. 걷기가 적힌 순서대로 값을 「 · 」로 잇고, 값이 없는 이름은 건너뛴다. 비우면 key. 걷기만 읽어 소스 지문 · 원장 소급 0. key 도 attribute 도 아닌 이름은 로드가 그 이름을 대어 거절한다. |
 
 여기서 `lot`은 논리 key 이름이지 반드시 물리 컬럼명일 필요는 없다. 소스 A의 `bind`는
 `lot_id`를, 소스 B의 `bind`는 `batch_name`을 같은 `Lot.keys.lot`에 binding할 수 있다.
@@ -643,18 +644,14 @@ Vocabulary는 “어떤 문장이 문법적으로 가능한가”를 정한다. 
 {
   "Die": {
     "keys": ["wafer", "x", "y"],
-    "key_types": {
-      "wafer": "string",
-      "x": "number",
-      "y": "number"
-    },
+    "attributes": ["bin"],
+    "label": ["bin", "x", "y"],
     "allow_null": false
   }
 }
 ```
 
-`key_types.x`에 객체, 배열, null, bool, 숫자 자체, blank 문자열을 넣으면 구조화된 오류로
-거절한다. 닫힌 type enum은 현재 계약에 없으므로 임의 enum을 발명하지 않는다.
+이 다이는 걷기에서 「<bin> · <x> · <y>」로 보인다. bin 값이 없는 다이는 「<x> · <y>」다.
 
 ### 7.3 ⚰️ `sources.<id>.prepare` — 은퇴 (setup_version 6, 총괄 e14416950)
 

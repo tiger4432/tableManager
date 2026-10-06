@@ -121,9 +121,8 @@ import hashlib
 import json
 import logging
 import os
-from collections.abc import Mapping
 
-from declaration_names import bare_name as _bare_name, fold_versions
+from declaration_names import fold_versions
 
 logger = logging.getLogger("Ledger.Config")
 #: `(origin, declaration)` pairs already said to be NOT read, this process.
@@ -1178,84 +1177,6 @@ def declared_inference_derivations(cfg: dict) -> frozenset:
                 if name:
                     out.add(name)
     return frozenset(out)
-
-
-def _bound_words(mapping, vocabulary) -> set:
-    """Every vocabulary and entity name ONE mapping names. Declaration only.
-
-    ⚠️ TWO PLACES, BOTH IN THE MAPPING: the predicate is the mapping's own `predicate`, and
-    an entity appears wherever a bind leaf says `kind: "entity"`. Reading only the first
-    would answer 「which sources use this predicate」 and silently say 「none」 for every
-    entity - an absence that looks exactly like a fact.
-
-    A role whose type is read from a column names every type its predicate admits there -
-    `vocabulary[predicate].entity_types_of(role)` (총괄 564a46193 ②: left out, renaming one of
-    them would say this source does not re-run).
-    """
-    from .setup_bundle import column_typed_entity_types
-
-    found = set()
-    if not isinstance(mapping, Mapping):
-        return found
-    predicate = str(mapping.get("predicate") or "").strip()
-    if predicate:
-        found.add(predicate)
-
-    def walk(node):
-        if isinstance(node, Mapping):
-            if str(node.get("kind") or "") == "entity":
-                entity = node.get("entity_type")
-                if isinstance(entity, str) and entity.strip():
-                    found.add(entity.strip())
-            for value in node.values():
-                walk(value)
-        elif isinstance(node, (list, tuple)):
-            for value in node:
-                walk(value)
-
-    walk(mapping.get("bind"))
-    for types in column_typed_entity_types(mapping, vocabulary).values():
-        found.update(types)
-    return found
-
-
-def sources_binding(cfg: dict, name: str, vocabulary) -> tuple:
-    """Which sources name this vocabulary word or entity type. Reads the DECLARATION only.
-
-    🔴 THE QUESTION A COST PREVIEW ASKS (S-143, 판정 322). Editing one source is one
-    source's worth of re-translation; editing a PREDICATE re-runs every source that utters
-    it, and nothing answered that. The three functions that looked close are all on other
-    axes - `followup.sources_for_table` is TABLE -> sources, `declared_derivations` is
-    SOURCE -> derivations, `_declared_entities` is a name list - so this is the one place
-    that answers word -> sources.
-
-    ⚠️ DECLARATION ONLY, ON PURPOSE. `chain_graph` walks the runtime graph for a different
-    question; a second walker here would be two answers to 「what does this word touch」.
-
-    ⚠️ AND THE VERSION IS STRIPPED, as `_collectable_types` strips it: the caller should not
-    have to know whether the declaration happens to spell `wafer` or `wafer@1`.
-
-    An EMPTY tuple is an answer - no source utters this word - and is not the same fact as
-    「not counted here」. The caller keeps those apart.
-
-    `vocabulary` is the compiled one (`snapshot.vocabulary`): what a type read from a column
-    can be is the predicate's declaration (`_bound_words`).
-    """
-    wanted = _bare_name(name)
-    if not wanted:
-        return tuple()
-
-    hits = []
-    for source_name, source_cfg in sorted((cfg or {}).get("sources", {}).items()):
-        if str(source_name).startswith("__") or not isinstance(source_cfg, Mapping):
-            continue
-        mappings = ((source_cfg.get("bind") or {}).get("mappings") or {})
-        words = set()
-        for mapping in (mappings.values() if isinstance(mappings, Mapping) else ()):
-            words |= _bound_words(mapping, vocabulary)
-        if any(_bare_name(word) == wanted for word in words):
-            hits.append(str(source_name))
-    return tuple(hits)
 
 
 def declared_derivations(cfg: dict, source: str) -> frozenset:

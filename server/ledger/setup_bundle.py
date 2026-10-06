@@ -1748,7 +1748,7 @@ def _validate_entities(section: Mapping[str, Any], problems: _Problems) -> None:
         if not problems.exact(
                 item, path, required=("keys",),
                 optional=("allow_null", "references", "class",
-                          "attributes", "attribute_cardinality", "status")):
+                          "attributes", "attribute_cardinality", "label", "status")):
             continue
         _validate_class(item, path, problems, "invalid_entity_ref")
         # 🔴 THE SAME TWO WORDS THE PREDICATE USES. Retiring a type used to mean DELETING
@@ -1824,6 +1824,19 @@ def _validate_entities(section: Mapping[str, Any], problems: _Problems) -> None:
                             f"{attribute_name!r} is not in this entity's `attributes`. "
                             f"Cardinality says how many values a DECLARED attribute holds; "
                             f"a name only written here would carry no values at all.")
+        # 🔴 THE NAMES A NODE IS SHOWN BY (총괄 03bc94b6b) - this entity's own keys or
+        # attributes, in order; empty is today's key label. A name it does not carry would
+        # show nothing, silently, so it is refused by name. Read by the walk only and compiled
+        # nowhere, so no source's fingerprint moves (`inverse_of`'s seat).
+        if "label" in item:
+            _nonblank_list(item["label"], f"{path}.label", problems, allow_empty=True)
+            carried = set(_column_values(keys)) | set(_column_values(item.get("attributes")))
+            for name in _column_values(item["label"]):
+                if name not in carried:
+                    problems.add(
+                        "unknown_id", f"{path}.label",
+                        f"{name!r} is neither an identity key nor an attribute of this "
+                        f"entity; a label shows the node's own values.")
         why = (validation.flag_refusal("allow_null", item["allow_null"])
                if "allow_null" in item else None)
         if why:

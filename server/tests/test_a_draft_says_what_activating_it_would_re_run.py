@@ -10,13 +10,17 @@ from a DECLARATION change, which is the moment an operator is deciding.
 carried. `/admin/retroactive/{op}/count` already taught the screen these names, and a second
 spelling here would make one number answer to two.
 
-⚠️ AND A WORD IS NOT COUNTED ON PURPOSE. Editing a predicate re-runs every source that utters
-it; counting that is one dry-run PER SOURCE on a request path. The sources are named and
-`absence` says so, because 「cannot be counted」 sends an operator nowhere while 「not counted
-here」 tells them the count is still on the retroactive route.
+⚠️ AND A WORD IS NOT COUNTED ON PURPOSE. A word's sources are the running sources whose cursor
+stamp the draft moves (총괄 03bc94b6b); counting them is one dry-run PER SOURCE on a request path.
+The sources are named and `absence` says so, because 「cannot be counted」 sends an operator nowhere
+while 「not counted here」 tells them the count is still on the retroactive route.
 """
+import copy
+import json
 import os
+import shutil
 import sys
+import tempfile
 from types import SimpleNamespace
 
 import pytest
@@ -60,7 +64,7 @@ CFG = {"sources": {
 def test_without_a_session_there_is_no_cost_and_that_is_not_a_zero():
     """⛔ `None` MEANS THE QUESTION WAS NOT ASKED. A CLI or a test builds a preview with no
     request behind it; answering 「nothing re-runs」 there would be a statement nobody made."""
-    assert config_drafts._redo_for(_setup(CFG), _node("source_plan", "s_utters"), None) is None
+    assert config_drafts._redo_for(_setup(CFG), _node("source_plan", "s_utters"), None, None) is None
 
 
 def test_the_existing_callers_still_get_a_preview_without_one():
@@ -92,7 +96,7 @@ def test_a_source_node_carries_the_counters_answer_unchanged(monkeypatch):
         return COUNTER_ANSWER
 
     monkeypatch.setattr(retroactive, "count", fake_count)
-    redo = config_drafts._redo_for(_setup(CFG), _node("source_plan", "dt_transfer"), "SESSION")
+    redo = config_drafts._redo_for(_setup(CFG), _node("source_plan", "dt_transfer"), "SESSION", None)
 
     assert redo["count"] is COUNTER_ANSWER
     assert redo["op"] == "ledger_backfill"
@@ -107,54 +111,68 @@ def test_the_op_is_the_whole_source_one_and_not_the_scoped_one(monkeypatch):
     it changes what the source means for every row it reads. Measured before wiring (판정 320);
     the first ruling named the scoped counter and it could not have been called."""
     monkeypatch.setattr(retroactive, "count", lambda db, op, params, **kw: {"op": op})
-    redo = config_drafts._redo_for(_setup(CFG), _node("source_plan", "x"), "SESSION")
+    redo = config_drafts._redo_for(_setup(CFG), _node("source_plan", "x"), "SESSION", None)
     assert redo["op"] == "ledger_backfill"
     assert "scope_column" not in redo["params"]
 
 
 # ---------------------------------------------------------------------------
-# 🔴 a word: named, not counted
+# 🔴 a word: the sources whose cursor stamp the draft moves, named, not counted (총괄 03bc94b6b)
 # ---------------------------------------------------------------------------
 
-def test_a_predicate_names_its_sources_and_says_it_did_not_count(monkeypatch):
-    called = []
-    monkeypatch.setattr(retroactive, "count",
-                        lambda *a, **k: called.append(a) or {"never": "reached"})
-
-    redo = config_drafts._redo_for(_setup(CFG), _node("predicate", "measures@1"), "SESSION")
-
-    assert redo["sources"] == ["s_utters"]
-    assert redo["op"] is None and redo["params"] is None
-    assert redo["count"] == {"absence": retroactive.ABSENCE_NOT_COUNTED_HERE}
-    assert not called, (
-        "counting a word means one dry-run PER SOURCE on a request path - the drift gate")
+SAMPLE = os.path.join(server_dir, "config", "sample")
 
 
-def test_an_entity_a_source_reads_from_a_column_names_that_source(monkeypatch):
-    """총괄 564a46193 ②: the preview hands the compiled vocabulary over - without it a type read
-    per row is left out and renaming it says less re-runs than will."""
-    from test_a_word_knows_which_sources_utter_it import TYPED
-    from ledger.setup_registry import PredicateDescriptor
+@pytest.fixture(scope="module")
+def sample_setup():
+    """The shipped sample, loaded the way the explorer loads its root - never the box's."""
+    from ledger import setup_bundle
+    from ledger.setup import load_setup
 
-    monkeypatch.setattr(retroactive, "count", lambda *a, **k: {"never": "reached"})
-    probes = PredicateDescriptor(
-        predicate_id="probes", status="active", subject_entity_types=("wafer", "die"),
-        object_kind="entity", object_entity_types=("lot",), required_qualifiers=(),
-        optional_qualifiers=(), config_path="bundle.vocabulary.probes")
-    redo = config_drafts._redo_for(_setup(TYPED, {"probes": probes}), _node("entity", "die"),
-                                   "SESSION")
-    assert redo["sources"] == ["d_typed"]
-    assert redo["count"] == {"absence": retroactive.ABSENCE_NOT_COUNTED_HERE}
+    catalog = setup_bundle.load_physical_catalog(os.path.join(SAMPLE, "table_config.json.sample"))
+    root = tempfile.mkdtemp(prefix="redo_")
+    try:
+        shutil.copy(os.path.join(SAMPLE, "ledger_config.json.sample"),
+                    os.path.join(root, "ledger_config.json"))
+        yield load_setup(root, catalog=catalog)
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
 
 
-def test_an_unuttered_word_is_truly_none_and_not_not_counted_here(monkeypatch):
-    """🔴 TWO DIFFERENT EMPTIES. Nothing re-runs, versus something does and this seat declined
-    to count it. Rendering them the same would tell an operator a predicate is unused when it
-    is merely uncounted."""
-    monkeypatch.setattr(retroactive, "count", lambda *a, **k: pytest.fail("must not count"))
+def _word_redo(setup, key, edit, monkeypatch):
+    """The cost a real preview states for this draft; counting a word is the drift gate."""
+    from ledger.config_explorer import build_explorer_index
 
-    redo = config_drafts._redo_for(_setup(CFG), _node("vocabulary", "nobody_says_this"),
-                                   "SESSION")
+    monkeypatch.setattr(retroactive, "count", lambda *a, **k: pytest.fail("a word is not counted"))
+    node = build_explorer_index(setup).nodes[key]
+    preview = config_drafts.compile_draft_preview(
+        setup, node, edit(copy.deepcopy(dict(node.raw))), db="SESSION")
+    assert preview.valid, preview.errors
+    return preview.redo
+
+
+def test_a_label_only_draft_re_runs_no_source(sample_setup, monkeypatch):
+    """A label is compiled into no source's material: nothing re-runs, truly none."""
+    running = {s for s, plan in sample_setup.snapshot.source_plans.items() if plan.runs}
+    assert "die_inspection" in running                     # canary: a running source says `die`
+    redo = _word_redo(sample_setup, "entity|die",
+                      lambda raw: dict(raw, label=["mat_id", "x"]), monkeypatch)
+    assert redo == {"op": None, "params": None, "sources": [],
+                    "count": {"absence": retroactive.ABSENCE_TRULY_NONE}}
+
+
+def test_a_draft_that_reorders_the_keys_names_the_sources_it_moves(sample_setup, monkeypatch):
+    redo = _word_redo(sample_setup, "entity|die",
+                      lambda raw: dict(raw, keys=list(reversed(raw["keys"]))), monkeypatch)
+    assert redo == {"op": None, "params": None,
+                    "sources": ["die_inspection", "transfer_event"],
+                    "count": {"absence": retroactive.ABSENCE_NOT_COUNTED_HERE}}
+
+
+def test_an_inverse_only_predicate_draft_re_runs_no_source(sample_setup, monkeypatch):
+    """`inverse_of` is walk-only, like a label (WALK.md): the sources uttering it stay put."""
+    redo = _word_redo(sample_setup, "predicate|inspected",
+                      lambda raw: dict(raw, inverse_of="in_container@1"), monkeypatch)
     assert redo["sources"] == []
     assert redo["count"] == {"absence": retroactive.ABSENCE_TRULY_NONE}
 
@@ -166,27 +184,20 @@ def test_the_absence_word_lives_in_the_counters_vocabulary():
     assert retroactive.ABSENCE_TRULY_NONE in retroactive.ABSENCE_WORDS
 
 
-def test_there_is_no_second_absence_outside_the_count():
-    """⛔ `absence` SITS IN ONE PLACE (판정 323). An outer copy would let the two disagree, and
-    a reader would have no way to know which one to believe."""
-    redo = config_drafts._redo_for(_setup(CFG), _node("entity", "nobody"), "SESSION")
-    assert "absence" not in redo
-    assert set(redo) == {"op", "params", "sources", "count"}
-
-
 # ---------------------------------------------------------------------------
 # the shape is one shape
 # ---------------------------------------------------------------------------
 
-@pytest.mark.parametrize("kind,name", [("source_plan", "s"), ("predicate", "measures@1"),
-                                       ("vocabulary", "unused")])
-def test_the_outer_keys_are_the_same_four_whatever_the_node_is(kind, name, monkeypatch):
+def test_the_outer_keys_are_the_same_four_for_a_source_and_a_word(sample_setup, monkeypatch):
     """🔴 A FIXED KEY SET IS WHY THIS IS NOT 「두 상태 한 응답」. That defect comes from mixing
     key-absent, value-null and value-zero; fixing the keys removes the mix, and the difference
-    lives in `count` where a reader already knows to look."""
+    lives in `count` where a reader already knows to look. ⛔ `absence` sits in `count` only
+    (판정 323) - an outer copy would let the two disagree."""
+    word = _word_redo(sample_setup, "entity|die",
+                      lambda raw: dict(raw, keys=list(reversed(raw["keys"]))), monkeypatch)
     monkeypatch.setattr(retroactive, "count", lambda *a, **k: COUNTER_ANSWER)
-    redo = config_drafts._redo_for(_setup(CFG), _node(kind, name), "SESSION")
-    assert set(redo) == {"op", "params", "sources", "count"}
+    source = config_drafts._redo_for(_setup(CFG), _node("source_plan", "s"), "SESSION", None)
+    assert set(word) == set(source) == {"op", "params", "sources", "count"}
 
 
 # ---------------------------------------------------------------------------

@@ -769,8 +769,8 @@ class InMemoryEvidenceLookup:
 
 
 #: {declaration file: (key order per entity type, plural attributes per bare entity type
-#: (S-144), absence confirmers (S-149))} - three facts from ONE read of one file, so they can
-#: never come from different revisions. The confirmers: 「이 술어가 안 보이는 것이 무슨 뜻인가」
+#: (S-144), absence confirmers (S-149), inverse pairs, label names per entity type)} - facts
+#: from ONE read of one file, so they can never come from different revisions. The confirmers: 「이 술어가 안 보이는 것이 무슨 뜻인가」
 #: — bare finding predicate -> (bare examination predicate, whether that examination is itself
 #: declared); the population of `node["absence"]` is THAT MAP, not the data.
 _declaration_facts = {}
@@ -819,7 +819,7 @@ def _read_entity_declaration():
     facts = _declaration_facts.get(paths)
     if facts is not None:
         return facts
-    order, plural_by_type, confirmers, inverses = {}, {}, {}, {}
+    order, plural_by_type, confirmers, inverses, labels = {}, {}, {}, {}, {}
     try:
         documents = []
         for path in paths:
@@ -848,6 +848,10 @@ def _read_entity_declaration():
             keys = [str(key) for key in (spec.get("keys") or [])]
             if keys:
                 order[bare] = keys
+            # The fifth: the names a node is shown by (총괄 03bc94b6b) - read by `_node_label`.
+            label = [str(name) for name in (spec.get("label") or [])]
+            if label:
+                labels[bare] = label
             cardinality = spec.get("attribute_cardinality")
             if isinstance(cardinality, dict):
                 plural = frozenset(
@@ -856,8 +860,8 @@ def _read_entity_declaration():
                 if plural:
                     plural_by_type[bare] = plural
     except Exception:
-        order, plural_by_type, confirmers, inverses = {}, {}, {}, {}
-    facts = _declaration_facts[paths] = (order, plural_by_type, confirmers, inverses)
+        order, plural_by_type, confirmers, inverses, labels = {}, {}, {}, {}, {}
+    facts = _declaration_facts[paths] = (order, plural_by_type, confirmers, inverses, labels)
     return facts
 
 
@@ -1033,6 +1037,7 @@ def _apply_registrations(nodes, registrations, order=None):
         node["attributes"] = values
         node["attribute_conflicts"] = conflicts
         node["attributes_by_world"] = by_world
+        node["label"] = _node_label(node.get("type"), node.get("keys"), values) or node.get("label")
 
 
 def _in_picked_order(picked):
@@ -1089,24 +1094,53 @@ def _apply_current_conflicts(nodes, atoms, cardinalities):
                 1 for held in by_predicate.values() if len(held) > 1)
 
 
+def _node_label(entity_type, keys, attributes=None):
+    """THE ONE SEAT of an entity node's name: `_entity_node` asks it with the keys, and
+    `_apply_registrations` again once the attributes are read. None for a type the
+    declaration does not name - the label `explorer._entity` gave stands.
+
+    🔴 THE DECLARED `label` FIRST (총괄 03bc94b6b, 소유자 10-06 「그래프에는 의미 없는 키로만
+    떠서 불편, 속성이 보여야 함」): its names in its order, a key spelled as the key is, an
+    attribute as read (several values joined with 「, 」), joined with 「 · 」; a name this node
+    has no value for is left out. None has one, or no label is declared: every declared key in
+    the declared order, a number folded the way the ledger folds a key (`canonical_key_value`:
+    1 and 1.0 -> '1'), text trimmed (총괄 1d07f1dae - the first two values labelled 278 dies
+    with 42 names on the box).
+    """
+    import map_overlay
+    from database import crud
+
+    keys, attributes = keys or {}, attributes or {}
+    # the facts are keyed by the bare name; a type spelled `shape@1` asks the same entry
+    bare = _bare_name(str(entity_type))
+    order = _declared_key_order(bare)
+
+    def key_text(name):
+        value = keys.get(name)
+        return map_overlay.canonical_key_value(
+            value, "number" if isinstance(value, (int, float))
+            and not isinstance(value, bool) else None)
+
+    def attribute_text(name):
+        value = attributes.get(name)
+        said = [str(item) for item in (value if isinstance(value, list) else [value])
+                if not crud.is_blank_value(item)]
+        return ", ".join(said) or None
+
+    named = [key_text(name) if name in (order or ()) else attribute_text(name)
+             for name in _read_entity_declaration()[4].get(bare) or ()]
+    named = [text for text in named if text is not None]
+    if named:
+        return " · ".join(named)
+    if order:
+        return " / ".join(v for v in map(key_text, order) if v is not None) or str(entity_type)
+    return None
+
+
 def _entity_node(entity_type, keys):
     node = explorer._entity(entity_type, keys)
     node.update({"node_kind": "entity", "schema_kind": "entity_instance"})
-    order = _declared_key_order(entity_type)
-    if order:
-        # 🔴 EVERY DECLARED KEY, IN THE DECLARED ORDER, SPELLED AS THE KEY IS (총괄 1d07f1dae).
-        # The first two values labelled 278 dies with 42 names on the box - {.. x 1, y 10} and
-        # {.. x 1, y 4} both 「SYN-CX-BW-001 / 1.0」. A number folds the way the ledger folds a
-        # key (`canonical_key_value`: 1 and 1.0 -> '1'); text is trimmed. Types the declaration
-        # does not name keep the label `_entity` gives them.
-        import map_overlay
-
-        values = [map_overlay.canonical_key_value(
-                      keys.get(name),
-                      "number" if isinstance(keys.get(name), (int, float))
-                      and not isinstance(keys.get(name), bool) else None)
-                  for name in order]
-        node["label"] = " / ".join(v for v in values if v is not None) or str(entity_type)
+    node["label"] = _node_label(entity_type, keys) or node["label"]
     return node
 
 
