@@ -1,3 +1,21 @@
+> ## [16:39 디자인] 세상 줄의 실패 표시 + 실시간 길로 영수증이 오나 (총괄 97273c98d) — cc4eee546
+
+**결론** ① 착지했습니다. ② 영수증은 실시간 길로 **오지 않습니다**(잰 법 아래) — 지시대로 여기서 끝냅니다.
+
+**① 세상 줄의 실패**
+- 세상이 둘 이상인 설치의 접힌 줄: 세상마다 `failed` 가 0 보다 크면 `(n failed)` 를 붙입니다. 칸이 없거나 0 이면 전과 같습니다.
+- **같이 고친 것**: 대표 로그가 사람의 고침이 되자, 세상 둘 설치의 접힌 줄이 「옛 값 → Ledger · default · w1」 로 읽혔습니다 — 그 옛 값은 세상 줄의 옛 값이 아니라 거짓입니다. 화살표는 그 로그의 새 값이 설 때만 섭니다.
+- 하니스 `ledger_receipt_timeline` 43 칸 실패 0 (바닥 41 → 43). 임시 변이 둘(실패 표시 뺌 → W4 빨강 · 옛 값 남김 → W5 빨강).
+- 미리보기(빌드된 메인 화면이 자기 `/audit_logs/recent` 읽기로, 다시 뜬 벡터를 받음, 1440): 세상 둘 → `BATCH · probe · Ledger · default · a43084gw0` / `BATCH · probe · Ledger · default · a43084gw0 (1 failed)` · 세상 하나 → `BATCH · probe · RCP-1 → RCP-2` / `BATCH · probe · RCP-2 → RCP-3`. 러너 초록 · 계약 13 개 어긋남 0. RELEASE_LOG 한 항목.
+
+**② 영수증이 실시간 길로 오나 — 안 온다 (코드로 잼)**
+- 클라에서 실시간 길(`appendHistoryLocally`)을 부르는 자리는 1 곳 — 웹소켓 메시지의 `created_logs` 입니다.
+- 서버에서 `created_logs` 를 싣는 메시지 두 종류(`batch_refresh_message` · `row_delete_message`)를 부르는 자리는 `server/chain/ingestion_worker.py` 3 · `server/main.py` 12 — 체인 워커와 API 뿐입니다.
+- 영수증을 쓰는 두 자리(`ledger/followup.py` 의 실패 영수증 · `ledger/runtime_v2.py` 의 배치 영수증)는 `crud.create_audit_log` 로 행을 만들어 감사 표에 직접 넣습니다(`followup.py:1` · `runtime_v2.py:2`). 행 쓰기가 돌려주는 로그 묶음을 지나지 않고, `server/ledger` 안에 알림을 보내는 줄은 0 개입니다.
+- ⚠️ 실행으로는 안 쟀습니다(웹소켓을 붙잡고 후속을 돌리는 시험 없음). 코드의 모든 송신 자리를 센 것입니다.
+
+**여쭐 것**: 세상이 하나뿐인 설치에서는 접힌 줄에 실패 표시가 없습니다(세상 줄이 안 섬, 대표가 사람의 고침). 그 설치에서도 실패가 있을 때만 `Ledger · 1 failed` 같은 줄을 세울까요? 짓지 않았습니다.
+
 > ## [15:42 디자인] 토스트의 겹친 `!stale()` 지움 (총괄 답) — efe01e8b3
 
 **결론** map_editor.js 한 자리를 고쳤습니다(주석 없음). 그 줄을 겨누던 이 하니스의 변이 셋은 같은 커밋에서 새 줄로 겨눴습니다(N4 · O2 다시 겨눔, M5 는 토스트 바꿔치기를 뺌). 동작은 그대로입니다.
