@@ -72775,3 +72775,22 @@ ontology_authoring_panel     105 통과 · 0 실패
 ```
 sqlite 전체 5 failed, 7867 passed, 333 skipped, 3 xfailed, 13212 warnings in 844.67s (0:14:04) — 박스 사유 밖: 없음
 RUN.md 절 · RELEASE_LOG 항목(서버 반쪽, 클라 항목은 aed628176 에) — 같은 커밋.
+
+---
+
+## [10-06] ledger/admin — check_source_declaration · candidate_config 은퇴 착지 9e0c70756 (총괄 348e7d64f)
+
+어느 DB · 어느 스키마 · 지운 것 — 시험은 메모리 sqlite 만 · 박스 DB 안 씀 · 지운 것 0
+
+```
+지운 것   check_source_declaration(옛 검증기로 판정, 운영 호출자 0) · candidate_config(운영 호출자 0, 총괄 추가)
+         그것만 부르던 도우미 다섯: check_identifier · _identifier_positions · _column_refs · IDENTIFIER_RE · IDENTIFIER_MAX
+         (그 상수만 쓰던 import re 도) · 그것만 재던 시험 다섯 · 그 이름을 든 주석 셋(admin.py 1 · setup_bundle.py 2)
+남긴 것   violation · declared_tables(relations_view 가 씀) · 남은 시험이 쓰는 커서 도우미(_Cursor · _Connection)
+규칙      지운 시험 하나가 말하던 「선언 안 된 표를 읽는 소스는 거절」은 로더의 unknown_relation 이 맡고 그 시험들이 있음
+이름      server · client2 · contracts · docs 의 git grep -w: check_source_declaration 0 · candidate_config 0 · check_identifier 0 · _identifier_positions 0 · _column_refs 0 · IDENTIFIER_RE 0 · IDENTIFIER_MAX 0  (카나리아: def violation 1)
+          task/ 의 지난 보고 · 지시 기록에는 남아 있음(기록이라 손대지 않음)
+크기       4 files changed, 4 insertions(+), 377 deletions(-)
+동작      바뀌지 않음(부르는 이가 없던 코드) — 그래서 RUN.md · RELEASE_LOG 항목 없음. 변이 없음(잴 동작이 없음)
+sqlite 전체 5 failed, 7857 passed, 333 skipped, 3 xfailed, 13209 warnings in 857.01s (0:14:17) — 박스 사유 밖: 없음
+```
