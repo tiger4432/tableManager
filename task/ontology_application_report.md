@@ -36127,3 +36127,20 @@ m.n 은 자기 값 holder-mn 을 들고 있었는데 병합 뒤 shell-mn 이 보
 결정적이고 세 번 같다(층 규칙대로). 다만 dry run 은 「merged: row · folded_key · into」 만 — 받는 행의 어느 칸이 무엇에서 무엇으로 바뀌는지는 없다.
 병합은 되돌릴 수 없다(커밋 문장). 미리보기에 «바뀌는 칸»을 실을지 — 안 지었다
 ```
+
+---
+
+## [C 응용] 10-06 🔴 ac159b4bc(서버 run_in 닫힌 선택) 뒤 main 의 클라 하니스 하나가 빨강 — chain_rule_user_path T2 (시험 전제가 낡음, 제품은 아님)
+
+```
+잰 것    공유 트리 @951de68ad(client2 · chain_skeleton.json 미커밋 0), 클라 하니스를 그대로
+         OK   T1 the answer's run_in list is the cell's two choices [chain,operation]
+         BAD  T2 no list in the answer: today's screen, the cell is the text box
+         OK   T3 an empty list is a fact: "No choices", no picker (No choices · run_in)
+         FAILED: T2 no list in the answer: today's screen, the cell is the text box
+         이웃(같은 스켈레톤을 읽는 것): chain_rule_form ASSERTIONS 108 0 · chain_rule_panel ASSERTIONS 67 0 · chain_list_edit ASSERTIONS 20 0
+왜       T2 는 「옛 서버 — 응답에 run_in 목록 없음」을 «서버가 낸 진짜 스켈레톤»(server/chain_skeleton.json)으로 흉내 낸다.
+         35afc7f1b 때 그 파일의 run_in 은 free 칸이라 맞았고, ac159b4bc 가 그 파일을 choice 로 바꾸자 전제가 무너졌다(같은 하니스 12:2x 90/0)
+제품     스켈레톤과 목록은 같은 서버가 함께 낸다 — 「choice 스켈레톤 + 목록 없는 답」 은 운영에 안 생긴다(T1 · T3 초록)
+할 일    클라 레인: T2 를 «옛 스켈레톤 모양»(free 칸) 고정틀로 — 지금 main 의 check_harnesses 바닥이 이 하나로 빨강
+```
