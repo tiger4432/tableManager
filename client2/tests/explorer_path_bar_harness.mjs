@@ -148,9 +148,10 @@ function suite(view, bar) {
     }
   };
   collect(CAPTURE.skeleton);
-  // JS words, plus `value`: the page's click contract (`data-action` · `data-value`) the bar writes.
+  // JS words, plus `value`: the page's click contract (`data-action` · `data-value`) the bar writes; and `label`, the
+  // bar's own step field (`{ label, action, value }`) - the skeleton's entity record has a `label` field since 54fb4cfd5.
   const JS = new Set(['class', 'object', 'function', 'return', 'const', 'let', 'new', 'this', 'if', 'else', 'for', 'import', 'export', 'default', 'true', 'false', 'null', 'type',
-    'map', 'Object', 'value']);
+    'map', 'Object', 'value', 'label']);
   const code = bar.__source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
   const population = [...words].filter((w) => !JS.has(w));
   const shown = population.filter((w) => walk(form).some((n) => n.textContent === w)).length;

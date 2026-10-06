@@ -1,21 +1,18 @@
 {
  "captured_by": "client2/tests/fixtures/capture_authoring_skeleton.py",
- "server_at": "fc9a122faa1a463118479cfced58875fd0ffb456",
+ "server_at": "04782e22e7210e8d264d2adde226ca31caeacd7f",
  "authorable_kinds": [
   {
    "id": "entity",
-   "section": "entities",
-   "versioned": true
+   "section": "entities"
   },
   {
    "id": "predicate",
-   "section": "vocabulary",
-   "versioned": true
+   "section": "vocabulary"
   },
   {
    "id": "source_plan",
-   "section": "sources",
-   "versioned": false
+   "section": "sources"
   }
  ],
  "skeleton": {
@@ -99,9 +96,26 @@
        "is": "entity"
       },
       "node": {
-       "kind": "leaf",
-       "hint": "ref",
-       "section": "entities"
+       "kind": "oneOf",
+       "hint": "choice",
+       "pick": "shape",
+       "branches": {
+        "name": {
+         "kind": "leaf",
+         "hint": "ref",
+         "section": "entities"
+        },
+        "column": {
+         "use": "entity_type_column"
+        }
+       },
+       "empty": {
+        "name": "",
+        "column": {
+         "kind": "column",
+         "column": ""
+        }
+       }
       }
      },
      {
@@ -118,6 +132,30 @@
        "of": {
         "use": "identity_binding"
        }
+      }
+     }
+    ]
+   },
+   "entity_type_column": {
+    "kind": "record",
+    "note": "An entity binding's type read from a column of each row - the row's value must be a type the predicate admits in that role, or that row is refused (type_not_admitted). The column branch of binding.entity_type, which picks its branch by the value's shape: a name is the type, an object reads it per row.",
+    "fields": [
+     {
+      "key": "kind",
+      "required": true,
+      "label": "Type from",
+      "node": {
+       "kind": "leaf",
+       "hint": "choice",
+       "list": "entity_type_binding_kinds"
+      }
+     },
+     {
+      "key": "column",
+      "required": true,
+      "node": {
+       "kind": "leaf",
+       "hint": "free"
       }
      }
     ]
@@ -203,6 +241,20 @@
          "required": false,
          "label": "Attributes",
          "help": "Names of the values this entity carries. Must not repeat an identity key.",
+         "node": {
+          "kind": "map",
+          "keyed_by": "index",
+          "member": "Name",
+          "of": {
+           "kind": "leaf",
+           "hint": "free"
+          }
+         }
+        },
+        {
+         "key": "label",
+         "required": false,
+         "label": "Label - key or attribute names a node is shown by, in order (blank = the keys)",
          "node": {
           "kind": "map",
           "keyed_by": "index",
