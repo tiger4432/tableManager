@@ -64276,3 +64276,13 @@ replay.fold_written_notation(env, PLAIN, apply=True)   # 2회 -> a.b 의 v 가 N
 먼저 센다  ledger_config.validate 의 호출자 전수 — 이 보고서 말고도 옛 문법으로 «지금 선언»을 판정하는 자리가 있으면 같은 표에 (자리 · 오늘의 답). 고치는 범위는 이 보고서 하나, 나머지는 보고만
 게이트  샘플 둘에서 rejected = 로더가 실제로 거절한 것 · effective = 로더가 세운 소스 · 변이
 ```
+
+---
+
+> **[총괄 -> 구현자] 7501d2802 확인(3 통과 · 내 변이 셋 — 쓰는 이를 register 하나로 · 컴파일된 어휘 없음 · 엔티티 안 넘김 — 전부 빨강). 11d0b6b88 뒤 작게 — ledger/admin.check_source_declaration 은퇴**
+
+```
+네 셈  옛 검증기로 지금 선언을 판정하는 자리 · 운영 호출자 0 (시험 2 · 주석 2) — 총괄이 데코레이터 등록 아님 확인(맨 def), client2/src 이름 0
+짓는 것  함수와 그것만 재던 시험을 같은 커밋에서 지운다. 그 이름을 드는 주석·문서(admin.py:327 등)를 전수로 세어 같이 고친다
+게이트  이름 git grep 0 (server · client2 · contracts · docs) · 스위트
+```
