@@ -1,5 +1,16 @@
 # 지금 돌리면 되는 것
 
+> ## [10-06] **체인 규칙 run_in 을 목록에서 고른다 (총괄 ff60fe669 ② · 클라 4256feacb 뒤) — 이주 «불필요» · 재기동 «필요»(API)**
+>
+> ```
+> 재기동 뒤        관리 화면 체인 규칙 응답(/admin/chain/rules/raw)에 "run_in": ["chain", "operation"]
+>                규칙 폼의 run_in 칸(평면 · 통합 limits 둘 다)이 chain / operation 고르개
+> 오타            저장 때 bad_run_in: run_in must be one of chain, operation, got '<값>' — 파일은 안 바뀐다
+> 급할 때          쓰는 값을 바꾸지 않는다 — 원문 편집기로도 적을 수 있다
+> ```
+
+---
+
 > ## [10-06] **선언 고치기 미리보기 — 칸에서 타입을 읽는 소스도 센다 (총괄 564a46193 ②) — 이주 «불필요» · 재기동 «필요»(API)**
 >
 > ```

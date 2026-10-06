@@ -685,6 +685,10 @@ def _node_for(key):
         # Tracked code reads only `reference.table` (`reference_tables`); the rest is the
         # owner's mapper's. The form writes by path into the raw document, so those survive.
         return _record(_field(REFERENCE_TABLE_KEY, {"kind": "leaf", "hint": "ref"}))
+    if key == RUN_IN_KEY:
+        # A closed choice; the chain rules payload carries the list under the same name, as
+        # the ledger's does `occurred_at_basis` (총괄 ff60fe669 ②).
+        return {"kind": "leaf", "hint": "choice", "list": RUN_IN_KEY}
     if key in _LIST_CELLS:
         member, hint = _LIST_CELLS[key]
         return {"kind": "map", "keyed_by": "index", "member": member,
@@ -805,7 +809,7 @@ def _unified_root():
                                      if kind not in rule_shape.RETIRED_INTO_KINDS}},
                required=True),
         _field(rule_shape.KEY_CELL, _key_node()),
-        _field("limits", _record(*[_field(cell, _leaf(cell))
+        _field("limits", _record(*[_field(cell, _node_for(cell))
                                    for cell in rule_shape._LIMIT_KEYS])),
         # 🔴 [판정 536 ① · 546 ①] THE FOURTEEN THE UNIFIED SHAPE HAD NO ROOM FOR. Measured
         #   2026-09-17: nine of the ten rules in this box carry cells the form could not

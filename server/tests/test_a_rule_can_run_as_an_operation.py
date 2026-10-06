@@ -38,6 +38,8 @@ from database.context import channel, outbox_mode                     # noqa: E4
 from database.database import Base                                    # noqa: E402
 from utils import heartbeat                                           # noqa: E402
 from utils.payload_helper import get_payload_dict                     # noqa: E402
+from test_a_yes_no_cell_holds_true_or_false import (                  # noqa: E402,F401
+    UNIFIED, fixture_rules_file, fixture_tables)
 
 TABLES = {name: {"business_key": "k", "composite_key_source": ["k"],
                  "column_types": {"k": "string", "n": "string"}, "display_columns": ["k", "n"]}
@@ -348,6 +350,44 @@ def test_a_bad_cell_is_refused_at_load(cells, code):
         _rule("q", "q_txt", "q_cand", "fast", **cells), "rules[0]",
         mapper_resolvable=lambda _name: True, derived_tables=())
     assert code in {issue.code for issue in issues}
+
+
+def _run_in_nodes(node):
+    """Every node the skeleton gives the `run_in` cell, under whichever root carries it."""
+    if isinstance(node, dict):
+        if node.get("key") == chain_bindings.RUN_IN_KEY:
+            yield node["node"]
+        for value in node.values():
+            yield from _run_in_nodes(value)
+    elif isinstance(node, list):
+        for value in node:
+            yield from _run_in_nodes(value)
+
+
+def test_the_form_picks_run_in_from_the_list_the_chain_payload_carries(rules_file):
+    """총괄 ff60fe669 ②: one closed leaf in both grammars; the payload carries its members."""
+    from ledger import admin
+
+    nodes = list(_run_in_nodes(chain_bindings.skeleton()))
+    assert len(nodes) == 2, "the flat root and the unified `limits`"
+    assert all(node == {"kind": "leaf", "hint": "choice", "list": "run_in"} for node in nodes)
+    assert admin.chain_rule_raw_view()["run_in"] == ["chain", "operation"]
+
+
+def test_a_typo_in_run_in_is_refused_before_it_is_saved(rules_file):
+    from ledger import admin
+
+    path = rules_file([])
+    base = admin.file_fingerprint(str(path))
+    with pytest.raises(Exception) as raised:
+        admin.save_chain_rule_raw("q_typo", dict(UNIFIED, name="q_typo",
+                                                 limits={"run_in": "operaton"}), base)
+    assert raised.value.detail["code"] == "bad_run_in"
+    assert "run_in must be one of chain, operation, got 'operaton'" in json.dumps(
+        raised.value.detail)
+    assert json.loads(path.read_text(encoding="utf-8")) == {"rules": []}
+    admin.save_chain_rule_raw("q_ok", dict(UNIFIED, name="q_ok", limits={"run_in": "operation"}),
+                              base)
 
 
 def test_the_cells_are_one_spelling():

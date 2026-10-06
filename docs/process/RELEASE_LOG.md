@@ -9,6 +9,15 @@
 
 ---
 
+## 2026-10-06 · 체인 규칙 — run_in 을 목록에서 고른다
+
+- **무엇** — 체인 규칙 폼의 `run_in` 칸이 닫힌 목록(`chain` · `operation`)이 됩니다. 스켈레톤은 평면 문법과 통합 문법(`limits`) 두 곳 모두 `{"kind": "leaf", "hint": "choice", "list": "run_in"}` 이고, `/admin/chain/rules/raw` 응답이 같은 이름의 목록 `"run_in": ["chain", "operation"]` 을 싣습니다(원장 선언 화면의 `occurred_at_basis` 와 같은 모양).
+- **선언 예시** — `server/config/chain_rules.json` 의 규칙: `"limits": {"run_in": "operation"}` (통합) 또는 최상위 `"run_in": "operation"` (평면).
+- **화면에서** — 클라가 응답의 목록을 폼에 넣으면 그 칸이 드롭다운으로 그려집니다(클라 몫).
+- **필요한 조건** — 서버 재기동(API).
+- **바뀐 동작** — 없음. 틀린 철자는 전처럼 저장 전에 `bad_run_in` 으로 거절됩니다: `run_in must be one of chain, operation, got 'operaton'`.
+- **자세히** — 이 항목과 같은 커밋 · RUN.md 같은 절.
+
 ## 2026-10-06 · 선언 고치기 미리보기 — 칸에서 타입을 읽는 소스도 «다시 도는 소스»로 센다
 
 - **무엇** — 온톨로지 탐색기에서 엔티티 타입이나 술어를 고치는 초안을 미리 보면, 그 낱말을 쓰는 소스가 «다시 도는 소스»로 나옵니다. 엔티티 타입을 행의 칸에서 읽는 바인딩(`"entity_type": {"kind": "column", "column": "<칸>"}`)은 그 목록에서 빠져 있었습니다. 이제 그 바인딩은 술어가 그 역할에 받는 타입 전부를 쓰는 것으로 셉니다(`entity_types_of(role)` — 원장이 행을 거를 때 읽는 바로 그 목록).
