@@ -64244,3 +64244,23 @@ _stored_then_declared(env, tmp_path, monkeypatch, PLAIN, [("f01.csv", [
 replay.fold_written_notation(env, PLAIN, apply=True)   # 1회
 replay.fold_written_notation(env, PLAIN, apply=True)   # 2회 -> a.b 의 v 가 None 이 된다 (오늘)
 ```
+
+---
+
+> **[총괄 -> 구현자] 5f76e5447 확인(네 파일 98 통과 · 내 변이 넷 — 함수가 빈 답 · emits 가 칸 타입 건너뜀 · 탐색기 선 없음 · 카탈로그가 빈 어휘 — 전부 빨강). 다음 줄(oneOf ② 뒤) — «소스가 쓰는 술어» 의 둘째 자리**
+
+```
+찾은 것  config_resolve_report._ledger_emitted_predicates 가 setup_bundle.emitted_predicates 와 «같은 물음»에 따로 답한다
+        읽는 문법이 옛 것(source kind: lineage · observation · transfer · declared emit) — 지금 문법(bind.mappings)의 소스는 못 읽는다
+총괄이 잰 것 (샘플 선언 파일 둘, 두 함수를 같은 문서에 부름 — 저장소 파일이라 운영에도 참)
+   ledger_config.json.sample  소스 7 (kind 없음 · bind.mappings 7) · 어휘 16
+      둘째 자리 «쓴다» 1 (register) -> 보고서가 «아무 번역기도 안 쓴다» 고 적는 술어 15
+      정본 함수로는 7 (bonded_from · in_container · leads_to · measures · observed · of_kind · slot_map)
+   transfer_explorer/ledger_config.json  소스 1 · 어휘 4 -> 둘째 자리 4 전부 «안 씀», 정본 0
+   운영자가 보는 문장  "No translator states the declared predicates ... so the ledger has none yet." — 거짓
+짓는 것
+   둘째 자리를 지우고 보고서가 정본 emitted_predicates 를 부른다 (컴파일된 어휘는 네가 정한 길로 — load_setup 이 맞으면 그것)
+   그 전에 «소스 말고 원자를 쓰는 이»(추론 도출 declared_inference_derivations · 체인이 쓰는 표를 읽는 소스 등)가 정본의 답에 들어가야 하는지 센다
+      예: leads_to 가 추론으로만 생기면 정본도 «안 씀» 이라 한다 — 그것도 거짓이면 같은 착지에서 정본을 넓힌다(새 함수 금지)
+게이트  샘플 둘에서 보고서의 «안 씀» 목록 = 잰 참 · 둘째 자리 이름 git grep 0 · 변이
+```
