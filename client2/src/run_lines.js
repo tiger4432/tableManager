@@ -35,6 +35,8 @@ export function runLineView(row) {
     cancel: Boolean(r.cancel) && !r.stopping,
     summary: textOf(r.summary),
     reason: textOf(r.reason),
+    failure: (Array.isArray(r.failure) ? r.failure : [])
+      .map((cell) => ({ label: textOf(cell && cell.label), value: textOf(cell && cell.value) })),
     extras: Array.isArray(r.extras) ? r.extras : [],
   };
 }
@@ -99,11 +101,17 @@ export class RunLines {
 
     // What it did — the server's words, on its own full-width line. A failure reason sits here too.
     const boxes = this.resultBoxes(v.extras) || [];
-    if (boxes.length || v.summary || v.reason) {
+    if (boxes.length || v.summary || v.reason || v.failure.length) {
       const result = this._el('div', 'run-line__result');
       boxes.forEach((box) => result.appendChild(box));
       if (v.summary) result.appendChild(this._el('span', 'run-line__summary', v.summary));
       if (v.reason) result.appendChild(this._el('span', 'run-line__reason', v.reason));
+      for (const cell of v.failure) {
+        const pair = this._el('span', 'run-line__cell');
+        pair.appendChild(this._el('span', 'run-line__label', cell.label));
+        pair.appendChild(this._el('span', 'run-line__reason', cell.value));
+        result.appendChild(pair);
+      }
       line.appendChild(result);
     }
     return line;

@@ -61,7 +61,8 @@ const BASE_URL = pathToFileURL(BASE_PATH).href;
 /** Import a (possibly mutated) copy of the view module without writing into client2/src.
  *  The relative import is rewritten to an absolute file URL so a data: module can resolve it. */
 async function loadView(source) {
-  const rewritten = source.replaceAll("'./config_resolve_view.js'", `'${BASE_URL}'`);
+  const rewritten = source.replaceAll("'./config_resolve_view.js'", `'${BASE_URL}'`)
+    .replaceAll("'./failure_summary.js'", `'${pathToFileURL(join(SRC, 'failure_summary.js')).href}'`);
   return import(`data:text/javascript;base64,${Buffer.from(rewritten, 'utf8').toString('base64')}`);
 }
 
@@ -594,6 +595,23 @@ async function suite(source) {
     ok(fv.rows[0].what && fv.rows[0].what.text.length > 0,
       'G7: ... the reason is an ADDITION -- what the row already said is still there');
 
+    // G7b -- a `rule_rows` run stores the chain's failure record as JSON (server 67b2e423b). One
+    // record, one shape: the Chain tab's five cells (lead's answer). A record cut short stays text.
+    const record = { failed_at: '2026-10-06T10:00:00', reason: 'boom', rules: ['r_llm'],
+      tables: ['notes'], rows: 6, row: null };
+    const cut = JSON.stringify(record).slice(0, 40);
+    const qv = view.buildRunsView({ runs: [
+      { run_id: 'q1', op: 'rule_rows', label: 'Run', state: 'failed', error: JSON.stringify(record) },
+      { run_id: 'q2', op: 'rule_rows', label: 'Run', state: 'failed', error: cut },
+    ], ingestions: [] }, NOW, {});
+    ok(same(qv.rows[0].failure.map((c) => [c.label.text, c.value.text]), [['Rule', 'r_llm'],
+      ['Table', 'notes'], ['Rows', '6'], ['Row', 'not given by the error'], ['Reason', 'boom']]),
+      'G7b: a failure record is drawn as its five cells');
+    ok(qv.rows[0].reason === null, 'G7b: ... and not also as its JSON');
+    ok(qv.rows[1].reason && qv.rows[1].reason.text === cut && qv.rows[1].failure.length === 0,
+      'G7b: a record cut short stays the text it was');
+    ok(fv.rows[0].failure.length === 0, 'G7b: a sentence is no record');
+
     // G8 -- what a finished run actually DID. The server composes the sentence (retroactive.py
     // `run_result_sentence`) because `result` has different keys per operation and the
     // declaration does not fix its shape, so a screen deciding 「this number is called that」
@@ -905,6 +923,10 @@ const swap = (from, to) => (src) => {
 };
 
 const DEFECTS = [
+  ['a failure record is not read, so its JSON is the line',
+    swap('const record = failureRecordOf(run.error);', 'const record = null;')],
+  ['a failure record is drawn as its JSON too',
+    swap('reason: record ? null : text(run.error),', 'reason: text(run.error),')],
   ['the downstream note is dropped',
     swap('downstreamNote: text(spec && spec.downstream_note),', 'downstreamNote: null,')],
   ['bare number reaches the screen',

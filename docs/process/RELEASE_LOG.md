@@ -9,6 +9,14 @@
 
 ---
 
+## 2026-10-06 · Retroactive 실행 줄 — 체인 실패 기록은 Chain 탭과 같은 다섯 칸으로
+
+- **무엇** — 규칙을 작업으로 돌리는 `rule_rows` 실행이 실패하면 서버가 체인 격리와 같은 실패 기록을 JSON 글자로 `error` 에 남깁니다(67b2e423b). 실행 줄은 그 글자를 기록으로 읽을 수 있으면 Chain 탭 진단과 같은 다섯 칸(Rule · Table · Rows · Row · Reason)으로 그리고, 못 읽으면(문장 · 중간에 잘린 기록) 전처럼 글자로 그립니다. 판정은 글자의 모양으로 하고 작업 이름은 묻지 않습니다.
+- **선언 예시** — 없음.
+- **화면에서** — 어드민 Overview 의 Retroactive 펼침(최근 결과): 실패한 줄 아래 `Rule note_links  Table inspection_note  Rows 6  Row not given by the error  Reason …` (칸 이름은 흐린 글씨, 값은 실패 색).
+- **필요한 조건** — 클라 빌드. 서버는 67b2e423b 이후 코드로 재기동해야 `rule_rows` 실행이 생깁니다.
+- **바뀐 동작** — 다른 작업의 실패 사유(문장)는 그대로입니다.
+- **자세히** — 이 항목과 같은 커밋
 ## 2026-10-06 · 체인 규칙을 «작업»으로 돌리기 · 글에서 LLM 으로 원인 -> 현상 후보
 
 - **무엇** — 체인 규칙에 `run_in: operation` 을 적으면, 그 규칙을 깨운 묶음이 맵퍼를 돌리지 않고 작업(`rule_rows`)으로 줄 세운 뒤 다음 묶음으로 갑니다. 작업은 체인과 같은 묶음 함수를 부릅니다 — 맵퍼 호출 · `allow_retraction` · 쓰기 · 실패 기록이 같습니다. 작업 하나가 드는 트리거 행 수는 `rows_per_run`(기본 6). 맵퍼가 LLM 을 부르는 자리 `mapper_sdk.ask_json` 과, 글을 `find_links` 와 같은 후보 행으로 읽는 `mapper_sdk.ask_links` 가 생겼습니다.

@@ -26,6 +26,7 @@
 //   `truncated` appear here only as inputs to a colour, never as inputs to a sentence; anything
 //   this file has no colour for draws neutral rather than being guessed at.
 import { CHROME, srv, val, chrome, count } from './config_resolve_view.js';
+import { failureRecordCells, failureRecordOf } from './failure_summary.js';
 
 // The failure sentences are NOT re-authored here. `CHROME.FETCH_*` and `fetchFailureLine` already
 // split "nothing answered" / "the process is older than the route" / "our gate said no" / "a proxy
@@ -471,6 +472,9 @@ export function buildRunsView(payload, now, cancellable, formParams) {
     //    카운트(예행) 경로와 «같은 함수»입니다. 둘째를 손으로 그리면 같은 사실이 두 화면에서
     //    다른 모양이 되고, 그것이 문 가르기입니다.
     const extras = buildExtras(run.result);
+    // The chain's failure record, when the error IS one (a `rule_rows` run): the Chain tab's five
+    // cells, not its JSON. Asked of the text, never of the operation's name.
+    const record = failureRecordOf(run.error);
     (finished ? done : rows).push({
       // 🔴 id 는 «열쇠»이지 화면에 나가는 문장이 아닙니다. 태그를 붙이면 취소가 어느 행을
       //    가리키는지 잃습니다 -- 이 파일의 `text()` 는 출처를 «달아» 객체로 만듭니다.
@@ -505,7 +509,8 @@ export function buildRunsView(payload, now, cancellable, formParams) {
       // ⚠️ 이건 «봉투»의 오류가 아니라 «행의 칸»입니다 —
       //    목록은 «성공»으로 오고 실패한 «줄»이 그 안에 있습니다.
       //    그래서 `body_error.errorText` 를 여기 갖다 대면 아무것도 안 잡힙니다.
-      reason: text(run.error),
+      reason: record ? null : text(run.error),
+      failure: record ? failureRecordCells(record).map(([label, value]) => ({ label: chrome(label), value: srv(value) })) : [],
       extras,
       // 🔴 서버가 만든 문장을 «그대로» 나릅니다. 여기서 해석하면
       //    연산별 갈래가 화면에 생기고, 그것이 판정 33 이 막는 그것입니다.

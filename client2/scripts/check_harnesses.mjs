@@ -1275,13 +1275,13 @@ const FLOORS = new Map([
   //    green while a member was swapped, and a member is exactly what protects a column.
   ['push_gate_harness.mjs', 37],   // 34 -> 37: [13] the pickers + M17 (lead e67ef53f3)
   // 345 -> 347 (lead 668fa004c): the operation's downstream note reaches its card, as sent.
-  ['retroactive_view_harness.mjs', 347],
+  ['retroactive_view_harness.mjs', 351],
   // New with lead a274c90f0: one run is one line of five cells, its result a line under it.
   // Floor is the count it reports on the commit that introduces it.
-  ['run_lines_harness.mjs', 19],
+  ['run_lines_harness.mjs', 24],
   // New with lead e573a6edf · 2f2a2f570: the failure section folds to one line per (table · kind · day).
   // Floor is the count it reports on the commit that introduces it.
-  ['failure_summary_harness.mjs', 24],
+  ['failure_summary_harness.mjs', 28],
   // NEW 2026-09-03 at the count it reports on the commit that revives it -- there is no
   // earlier tree to measure it against, because it scored nothing from 2026-07-30 to here.
   // 6 of the 34 are the absence check standing in for the five deleted subjects, and one of

@@ -12,6 +12,7 @@ import { loadWithProbe } from './lib/probe.mjs';
 import { scoreMutants } from './lib/mutation_scorer.mjs';
 import { makeDoc, byClass } from './lib/board_dom.mjs';
 import { buildRunsView } from '../src/retroactive_view.js';
+import { failureRecordCells } from '../src/failure_summary.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const FILE = path.join(HERE, '..', 'src', 'run_lines.js');
@@ -83,6 +84,23 @@ async function suite(mod) {
   eq('E1 the title carries the form\'s params and not the rest',
     (cells(byId('r1'))[0] || {}).textContent, 'Recompute shown values (R3) · void_obs · slow');
 
+  // A `rule_rows` run's error is the chain's failure record (server 67b2e423b): drawn as the Chain
+  // tab's five cells, label then value, and never as its JSON. A record cut short stays text.
+  const record = { failed_at: '2026-10-06T10:00:00', reason: 'boom', rules: ['r_llm'], tables: ['notes'], rows: 6, row: null };
+  const cut = JSON.stringify(record).slice(0, 40);
+  const failedRun = (id, error) => ({ run_id: id, op: 'rule_rows', label: "Run a rule's queued rows",
+    state: 'failed', params: {}, finished_at: '2026-09-25T09:01:00+00:00', error });
+  const mount3 = doc.createElement('div');
+  new mod.RunLines(mount3, { doc }).render(buildRunsView({ state_names: RUNS.state_names,
+    runs: [failedRun('q1', JSON.stringify(record)), failedRun('q2', cut)] }, NOW, {}, {}).rows);
+  const resultIn = (id) => (byClass(mount3, 'run-line').find((l) => l.getAttribute('data-run-id') === id) || { children: [] })
+    .children.find((c) => c.className === 'run-line__result') || { children: [], textContent: null };
+  eq('B5 a failure record is the Chain tab\'s five cells, label then value',
+    resultIn('q1').children.map((c) => c.children.map((x) => x.textContent)),
+    failureRecordCells(record));
+  eq('B6 ...and its JSON is not drawn', /[{}]/.test(resultIn('q1').textContent || ''), false);
+  eq('B7 a record cut short stays the text it was', resultIn('q2').textContent, cut);
+
   const mount2 = doc.createElement('div');
   const other = new mod.RunLines(mount2, { doc });
   other.render([VIEW.rows[0]]);
@@ -108,6 +126,11 @@ const MUTANTS = [
     mutate: (s) => s.replace('    cancel: Boolean(r.cancel) && !r.stopping,', '    cancel: Boolean(r.cancel),') },
   { id: 'R5', what: 'the failure reason is dropped', catches: ['B3'],
     mutate: (s) => s.replace("      if (v.reason) result.appendChild(this._el('span', 'run-line__reason', v.reason));\n", '') },
+  { id: 'R6', what: 'a failure record\'s cells are not drawn', catches: ['B5'],
+    mutate: (s) => s.replace('    if (boxes.length || v.summary || v.reason || v.failure.length) {',
+      '    if (boxes.length || v.summary || v.reason) {') },
+  { id: 'R7', what: 'a cell loses its label', catches: ['B5'],
+    mutate: (s) => s.replace("        pair.appendChild(this._el('span', 'run-line__label', cell.label));\n", '') },
 ];
 console.log('');
 console.log('-- defect mutants (each must be CAUGHT by its named line) -----------');

@@ -43,6 +43,20 @@ export function failureRecordCells(errorLog) {
   ];
 }
 
+/**
+ * An error TEXT read back as that record, or null. A `rule_rows` run stores the chain's record as
+ * JSON in its error (server 67b2e423b); one record is drawn one way (lead, 67b2e423b answer). A
+ * text that does not parse — a sentence, or a record cut short — stays text.
+ * @returns {object|null}
+ */
+export function failureRecordOf(errorText) {
+  if (typeof errorText !== 'string') return null;
+  let record = null;
+  try { record = JSON.parse(errorText); } catch { return null; }
+  return record && typeof record === 'object' && !Array.isArray(record)
+    && Object.prototype.hasOwnProperty.call(record, 'reason') ? record : null;
+}
+
 /** The key of one line — what the unfold asks the route for. */
 export function lineKey(line) {
   const l = line || {};

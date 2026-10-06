@@ -53,6 +53,13 @@ async function suite(mod) {
     Object.values(cells(undefined)), Array(5).fill('not recorded'));
   eq('R5 a record that names no rule says none, not "not recorded"',
     cells({ rules: [], tables: ['t'], rows: 0, row: null, reason: 'x' }).Rule, 'none');
+  // A run's error text read back as the record (a `rule_rows` run stores it as JSON, 67b2e423b).
+  const record = { failed_at: '2026-10-06T10:00:00', reason: 'boom', rules: ['r'], tables: ['t'], rows: 6, row: null };
+  eq('R6 a record stored as JSON reads back as that record',
+    mod.failureRecordOf(JSON.stringify(record)), record);
+  eq('R7 a sentence, a record cut short, a list, an object with no reason, no text: not a record',
+    ['relation x does not exist', JSON.stringify(record).slice(0, 40), '[1]', '{"rows": 6}', null]
+      .map((t) => mod.failureRecordOf(t)), [null, null, null, null, null]);
   eq('A2 each line keeps its own numbers', view.lines.map((l) => l.count), [33, 2]);
   eq('A3 a line carries the key the unfold asks by', view.lines[0].filter,
     { table: 'dt_inventory', event_type: 'EDIT', day: '2026-09-23' });
@@ -108,6 +115,10 @@ const MUTANTS = [
     mutate: (s) => s.replace("  const names = (key) => (!has(key) ? NOT_RECORDED\n", "  const names = (key) => (!has(key) ? 'none'\n") },
   { id: 'Y8', what: 'a null row is drawn as the text "null"', catches: ['R2'],
     mutate: (s) => s.replace("    : log.row === null || (Array.isArray(log.row) && !log.row.length) ? ROW_NOT_GIVEN\n", "    : Array.isArray(log.row) && !log.row.length ? ROW_NOT_GIVEN\n") },
+  { id: 'Y9', what: 'any JSON object is taken for a record, so one with no reason draws five "not recorded"', catches: ['R7'],
+    mutate: (s) => s.replace("\n    && Object.prototype.hasOwnProperty.call(record, 'reason') ? record : null;", ' ? record : null;') },
+  { id: 'Y10', what: 'a record stored as JSON is never read back', catches: ['R6'],
+    mutate: (s) => s.replace('  try { record = JSON.parse(errorText); } catch { return null; }', '  return null;') },
 ];
 console.log('');
 console.log('-- defect mutants (each must be CAUGHT by its named line) -----------');
