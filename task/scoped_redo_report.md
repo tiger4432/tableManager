@@ -72674,3 +72674,24 @@ RUN.md 절 둘 · RELEASE_LOG 항목 둘 · chain_rules 안내서 한 줄 — �
 
 **다음** — 남은 틈 둘(emitted_predicates 의 references 엣지 · 탐색기 그래프 선)을 같이 짓습니다. 세 자리가 모두
 「이 바인딩이 어느 타입을 이름 대나」를 각자 걷고 있어서, setup_bundle 에 함수 하나로 접고 방금 고친 _bound_words 도 그것을 부르게 합니다.
+
+---
+
+## [10-06] 칸 타입 역할 — 남은 틈 둘 착지 5f76e5447 (총괄 564a46193 ②)
+
+어느 DB · 어느 스키마 · 지운 것 — 시험은 메모리 sqlite 만 · 박스 DB 안 씀 · 지운 것 0
+
+```
+함수 하나  setup_bundle.column_typed_entity_types(매핑, 어휘) — 역할 -> 술어가 그 역할에 받는 타입(entity_types_of)
+          entity_type_column 옆. 칸 타입이 아닌 역할 · 어휘에 없는 술어는 없음
+부르는 자리 (AST, 시험 밖 추적 파일 294, def 1 — 카나리아)
+          server/ledger/config.py:_bound_words · server/ledger/config_explorer.py:build_explorer_index · server/ledger/setup_bundle.py:emitted_predicates
+emits     emitted_predicates 가 어휘를 받는다 — 선언 카탈로그(trace_router)는 그 소스를 세운 세상의 snapshot.vocabulary
+탐색기     바인딩 -> 받는 타입마다 binding_entity 선 (포인터는 그 바인딩의 entity_type)
+철자       세 자리가 읽는 문서는 로더처럼 버전을 접은 것(번들 to_mapping · ledger.config.load) — 컴파일된 어휘 키도 접힌 이름
+게이트     샘플 die_inspection 의 target 을 칸 타입(method)으로: emits 에 die 의 references 엣지 · 어휘 없이는 없음(대조)
+          선언 카탈로그 라우트로도 · 탐색기 선 = 받는 타입 · 비용 미리보기는 앞선 착지 게이트 그대로
+변이 6  그 함수가 아무것도 안 냄 RED · 모든 역할을 받음 RED · 비용 미리보기가 안 부름 RED · emitted_predicates 가 안 부름 RED · 탐색기가 선을 안 그림 RED · 카탈로그가 어휘를 안 넘김 RED
+sqlite 전체 5 failed, 7858 passed, 333 skipped, 3 xfailed, 13188 warnings in 721.97s (0:12:01) — 박스 사유 밖: 없음
+```
+RUN.md 절 · RELEASE_LOG 항목 — 같은 커밋. 개발 스크립트 generate_source_rows 는 지시대로 그대로.
