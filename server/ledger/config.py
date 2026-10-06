@@ -1180,14 +1180,20 @@ def declared_inference_derivations(cfg: dict) -> frozenset:
     return frozenset(out)
 
 
-def _bound_words(mapping) -> set:
+def _bound_words(mapping, vocabulary) -> set:
     """Every vocabulary and entity name ONE mapping names. Declaration only.
 
     ⚠️ TWO PLACES, BOTH IN THE MAPPING: the predicate is the mapping's own `predicate`, and
     an entity appears wherever a bind leaf says `kind: "entity"`. Reading only the first
     would answer 「which sources use this predicate」 and silently say 「none」 for every
     entity - an absence that looks exactly like a fact.
+
+    A role whose type is read from a column names every type its predicate admits there -
+    `vocabulary[predicate].entity_types_of(role)` (총괄 564a46193 ②: left out, renaming one of
+    them would say this source does not re-run).
     """
+    from .setup_bundle import entity_type_column
+
     found = set()
     if not isinstance(mapping, Mapping):
         return found
@@ -1198,7 +1204,6 @@ def _bound_words(mapping) -> set:
     def walk(node):
         if isinstance(node, Mapping):
             if str(node.get("kind") or "") == "entity":
-                # a type read per row is no word of this mapping (총괄 7255b4918 ④)
                 entity = node.get("entity_type")
                 if isinstance(entity, str) and entity.strip():
                     found.add(entity.strip())
@@ -1209,10 +1214,15 @@ def _bound_words(mapping) -> set:
                 walk(value)
 
     walk(mapping.get("bind"))
+    bind = mapping.get("bind") if isinstance(mapping.get("bind"), Mapping) else {}
+    descriptor = vocabulary.get(predicate) if predicate else None
+    for role, binding in bind.items():
+        if descriptor is not None and entity_type_column(binding):
+            found.update(descriptor.entity_types_of(role))
     return found
 
 
-def sources_binding(cfg: dict, name: str) -> tuple:
+def sources_binding(cfg: dict, name: str, vocabulary) -> tuple:
     """Which sources name this vocabulary word or entity type. Reads the DECLARATION only.
 
     🔴 THE QUESTION A COST PREVIEW ASKS (S-143, 판정 322). Editing one source is one
@@ -1230,6 +1240,9 @@ def sources_binding(cfg: dict, name: str) -> tuple:
 
     An EMPTY tuple is an answer - no source utters this word - and is not the same fact as
     「not counted here」. The caller keeps those apart.
+
+    `vocabulary` is the compiled one (`snapshot.vocabulary`): what a type read from a column
+    can be is the predicate's declaration (`_bound_words`).
     """
     wanted = _bare_name(name)
     if not wanted:
@@ -1242,7 +1255,7 @@ def sources_binding(cfg: dict, name: str) -> tuple:
         mappings = ((source_cfg.get("bind") or {}).get("mappings") or {})
         words = set()
         for mapping in (mappings.values() if isinstance(mappings, Mapping) else ()):
-            words |= _bound_words(mapping)
+            words |= _bound_words(mapping, vocabulary)
         if any(_bare_name(word) == wanted for word in words):
             hits.append(str(source_name))
     return tuple(hits)

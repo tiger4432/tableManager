@@ -42,8 +42,9 @@ def _node(kind, canonical_id):
     return SimpleNamespace(kind=kind, canonical_id=canonical_id)
 
 
-def _setup(cfg):
-    return SimpleNamespace(bundle=SimpleNamespace(to_mapping=lambda: cfg))
+def _setup(cfg, vocabulary=None):
+    return SimpleNamespace(bundle=SimpleNamespace(to_mapping=lambda: cfg),
+                           snapshot=SimpleNamespace(vocabulary=vocabulary or {}))
 
 
 CFG = {"sources": {
@@ -127,6 +128,23 @@ def test_a_predicate_names_its_sources_and_says_it_did_not_count(monkeypatch):
     assert redo["count"] == {"absence": retroactive.ABSENCE_NOT_COUNTED_HERE}
     assert not called, (
         "counting a word means one dry-run PER SOURCE on a request path - the drift gate")
+
+
+def test_an_entity_a_source_reads_from_a_column_names_that_source(monkeypatch):
+    """총괄 564a46193 ②: the preview hands the compiled vocabulary over - without it a type read
+    per row is left out and renaming it says less re-runs than will."""
+    from test_a_word_knows_which_sources_utter_it import TYPED
+    from ledger.setup_registry import PredicateDescriptor
+
+    monkeypatch.setattr(retroactive, "count", lambda *a, **k: {"never": "reached"})
+    probes = PredicateDescriptor(
+        predicate_id="probes", status="active", subject_entity_types=("wafer", "die"),
+        object_kind="entity", object_entity_types=("lot",), required_qualifiers=(),
+        optional_qualifiers=(), config_path="bundle.vocabulary.probes")
+    redo = config_drafts._redo_for(_setup(TYPED, {"probes": probes}), _node("entity", "die"),
+                                   "SESSION")
+    assert redo["sources"] == ["d_typed"]
+    assert redo["count"] == {"absence": retroactive.ABSENCE_NOT_COUNTED_HERE}
 
 
 def test_an_unuttered_word_is_truly_none_and_not_not_counted_here(monkeypatch):
