@@ -13,7 +13,7 @@
 
 메인 클라이언트는 **`client2`(웹)**이고, 데스크톱 앱은 그것을 감싸는 QtWebEngine 셸입니다.
 
-- **`client2/`** — Vite 멀티페이지 앱. 바닐라 ESM + AG-Grid. 프레임워크 없음
+- **`client2/`** — Vite 멀티페이지 앱. 바닐라 ESM + AG-Grid. 프레임워크 없음. 🆕 10-06 걷기 그래프는 `cytoscape` + `cytoscape-dagre`(MIT, 소유자 승인 — `132d4c6ee`). 빌드가 번들에 든 패키지마다 판 · 라이선스 · 라이선스 파일을 `dist/THIRD_PARTY_LICENSES.txt` 로 쓴다(`scripts/third_party_licenses.mjs`, 손으로 적는 목록 없음 — 설치본이 아닌 사전 번들 사본이면 빌드가 멈춤, `10ee4e09b`)
 - **`desktop/desktop_wrapper.py`** — `{해석된 서버}/?client=desktop` 를 로드하는 `QWebEngineView`.
   그 플래그가 `state.isDesktop` 을 켜고, 웹앱은 그때만 네이티브 경로를 씁니다
 
