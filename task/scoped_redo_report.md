@@ -72647,3 +72647,30 @@ sqlite 전체 6 failed, 7849 passed, 333 skipped, 3 xfailed, 13188 warnings in 7
 RUN.md 절(명령 하나 · 세 수의 뜻 · 소급 다시 돌리지 말 것 유지) · RELEASE_LOG «바뀐 동작».
 
 들고 있는 것 — 이름 바꾸기 비용 미리보기(wt-impl 커밋, 미착지) · ff60 ② run_in(지어 둠, 미착지). 이것 다음에 착지합니다.
+
+---
+
+## [10-06] 이름 바꾸기 비용 미리보기 착지 b9df83956 (총괄 564a46193 ②) · ff60fe669 ② run_in 고르개 착지 ac159b4bc
+
+어느 DB · 어느 스키마 · 지운 것 — 시험은 메모리 sqlite 만 · 박스 DB 안 씀 · 지운 것 0
+
+**이름 바꾸기 비용 미리보기**
+```
+전   sources_binding(낱말 -> 소스)이 entity_type 을 칸에서 읽는 바인딩을 건너뜀
+     -> 그 소스가 실을 수 있는 타입을 고치는 초안이 「이 소스는 안 돈다」고 말함(적게)
+지금  _bound_words 가 칸에서 타입을 읽는 «역할»마다 vocabulary[술어].entity_types_of(역할) 을 셈
+     (원장이 행을 거를 때 읽는 그 목록). 판별은 setup_bundle.entity_type_column 한 자리
+     sources_binding 이 컴파일된 어휘를 받고, 미리보기(_redo_for)가 active_setup.snapshot.vocabulary 를 넘김
+게이트  받는 타입 셋 다 그 소스 · 이름을 적은 다른 역할의 받는 타입은 안 셈(대조) · 미리보기를 거쳐 sources
+변이 4  칸 타입 역할이 아무것도 안 더함 RED · 모든 역할이 받는 목록을 더함 RED · 역할을 안 물음 RED · 미리보기가 어휘를 안 넘김 RED
+```
+**ff60 ② run_in 고르개** — 클라 4256feacb 병합 뒤(총괄 메시지)
+```
+스켈레톤  _node_for 한 자리 + 통합 limits 도 그 자리 · 응답 맨 위 "run_in": ["chain","operation"]
+변이 3  run_in 이 자유 입력 RED · 통합 limits 가 한 자리를 건너뜀 RED · 응답에 목록 없음 RED
+```
+sqlite 전체(두 착지를 같이 얹은 트리) 5 failed, 7855 passed, 333 skipped, 3 xfailed, 13141 warnings in 744.51s (0:12:24) — 박스 사유 밖: 없음
+RUN.md 절 둘 · RELEASE_LOG 항목 둘 · chain_rules 안내서 한 줄 — 각 커밋에.
+
+**다음** — 남은 틈 둘(emitted_predicates 의 references 엣지 · 탐색기 그래프 선)을 같이 짓습니다. 세 자리가 모두
+「이 바인딩이 어느 타입을 이름 대나」를 각자 걷고 있어서, setup_bundle 에 함수 하나로 접고 방금 고친 _bound_words 도 그것을 부르게 합니다.
