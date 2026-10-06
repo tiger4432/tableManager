@@ -179,6 +179,30 @@ function suite(M) {
   ok(shownIn(rAt('word_list[0]')) === 'Lot' && !boxAt(read, 'word_list[1]'),
     `R4 read mode shows a word in a list of words as its one member [${shownIn(rAt('word_list[0]'))}]`);
 
+  // V -- a oneOf picked by the value's shape (lead 068c904a6 ②): the picker says the branch the
+  //      value's shape is in, and that branch is drawn at the cell's OWN path -- no branch key.
+  const SHAPED = { kind: 'record', fields: [{ key: 'typ', node: { kind: 'oneOf', hint: 'choice', pick: 'shape',
+    branches: { word: LEAF, from_col: { kind: 'record', fields: [{ key: 'via', node: LEAF }, { key: 'col', node: LEAF }] } },
+    empty: { word: '', from_col: { via: 'column', col: '' } } } }] };
+  const drawShaped = (value) => M.renderSkeletonForm(context(false), SHAPED, '', value === undefined ? {} : { typ: value }, 0, 's');
+  const pickerOf = (root) => walk(root).find((n) => n.tagName === 'SELECT' && n.dataset && n.dataset.action === 'edit-shape-branch');
+  const pickedIn = (root) => (pickerOf(root) ? (walk(pickerOf(root)).find((o) => o.tagName === 'OPTION' && o.selected) || {}).value : null);
+  const inputOf = (root, p) => walk(root).find((n) => n.tagName === 'INPUT' && n.dataset && n.dataset.value === p);
+  const word = drawShaped('lot');
+  ok(pickedIn(word) === 'word' && inputOf(word, 'typ') && inputOf(word, 'typ').value === 'lot',
+    `V1 a word: the picker says word, and the word's box at the cell's own path holds it [${pickedIn(word)}]`);
+  const rec = drawShaped({ via: 'column', col: 'c1' });
+  ok(pickedIn(rec) === 'from_col' && inputOf(rec, 'typ.col') && inputOf(rec, 'typ.col').value === 'c1'
+     && !inputOf(rec, 'typ.from_col.col'),
+    `V2 a mapping: the picker says the record branch, its fields at typ.col, no branch key on the path [${pickedIn(rec)}]`);
+  const none = drawShaped(undefined);
+  ok(pickedIn(none) === 'word' && inputOf(none, 'typ') && inputOf(none, 'typ').value === '',
+    'V3 nothing yet: the word branch, empty -- the cell as it was before it had a second branch');
+  const odd = drawShaped(['x']);
+  ok(!pickerOf(odd) && controlsIn(odd).length === 0 && walk(odd).some((n) => cls(n).includes('oe-value')
+     && String(n.textContent) === '["x"]'),
+    'V4 a value of neither shape is shown as the value, with no picker and nothing to type over it');
+
   return { pass: pass - before.pass, fail: fail - before.fail };
 }
 
@@ -248,6 +272,16 @@ const base = { pass: pass - base0.pass, fail: fail - base0.fail };
 
 // -- mutants -----------------------------------------------------------------------------
 const DEFECTS = [
+  // V -- lead 068c904a6 ②
+  ['a shape-picked oneOf is read by branch key, so a word opens no branch',
+    (s) => s.replace('  const chosen = shaped ? shapeBranch(node, value, context.deref)',
+                     '  const chosen = false ? shapeBranch(node, value, context.deref)')],
+  ['the picked branch is drawn under its key, so its fields write typ.from_col.col',
+    (s) => s.replace('    const at = shaped ? path : `${path}.${chosen}`;', '    const at = `${path}.${chosen}`;')],
+  ['the branch is handed the value under its key, so the word box is empty',
+    (s) => s.replace('    const own = shaped ? value : held[chosen];', '    const own = held[chosen];')],
+  ['a value of neither shape gets a picker and no value',
+    (s) => s.replace('  if (shaped && !shapeBranch(node, value, context.deref) && !isBlank(value)) {', '  if (false) {')],
   ['a leaf opens its control over a value it cannot hold',
     (s) => s.replace('  if (!valueFits(node, value)) {', '  if (false) {')],
   ['a branch holding the wrong shape is drawn as an empty branch',

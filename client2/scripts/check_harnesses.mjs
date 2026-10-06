@@ -935,7 +935,7 @@ const FLOORS = new Map([
   // a refused make stays on the world it was on and says why; the setup offer keeps its own refusal.
   // 114 -> 123 (lead 99032248f): beneath gives way to Empty / Copy of (copy_from), the walk's world set row, Live
   // paused and resumed (asked once, one PUT, the worlds read again), Paused said, each history line says what.
-  ['explorer_open_path_harness.mjs', 123],
+  ['explorer_open_path_harness.mjs', 130],
   // New with lead 619befe8c: where an edit sits in the ledger form — a guide per ancestor on every
   // row of the real skeleton's form, the trail as the declaration path's own words, the path bar
   // part, and no skeleton word in the bar's code.
@@ -1462,7 +1462,7 @@ const FLOORS = new Map([
   // record/map/oneOf). Floor is the count it reports on the commit that introduces it. 🔴 IT
   // READS THE SHIPPED CHAIN SKELETON for the descent today's screens take, and a hand fixture
   // for a oneOf nested under a oneOf, which nothing shipped nests yet.
-  ['skeleton_oneof_descent_harness.mjs', 23],
+  ['skeleton_oneof_descent_harness.mjs', 31],
   // New 2026-09-08 with C-41 (the ten-user driver). Floor is the count it reports on the
   // commit that introduces it. 🔴 A LOAD DRIVER'S DEFECTS ALL LOOK LIKE GOOD NEWS -- a lane
   // sharing another's table is fast because a cache answered, ten lanes run one after another
@@ -1694,7 +1694,7 @@ const FLOORS = new Map([
   // control whose first keystroke would overwrite it. P3 is the Lead's census run through the
   // real chain panel on the shipped skeleton: 9 blank cells before, 0 now, and it is written so
   // it stays true when the skeleton learns lists.
-  ['skeleton_value_fit_harness.mjs', 22],
+  ['skeleton_value_fit_harness.mjs', 26],
   // New 2026-09-24 with the list skeleton (90b9f443). In the owner's Chrome the chain window's lists
   // folded shut and did not open, and `+ pair` did nothing: the renderer draws a fold toggle, `+`,
   // a named `+` and `-` on every map, and only the explorer received them. Scored through the real

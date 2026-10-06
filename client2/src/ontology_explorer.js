@@ -15,7 +15,7 @@ import { BranchPicker } from './branch_picker.js';
 import {
   splitBundlePath, setAtPath, getAtPath, deleteAtPath, writeShapeAtPath, addMember,
 } from './ontology_path.js';
-import { declarationShape, shapeAt } from './ontology_skeleton.js';
+import { declarationShape, pickBranch, shapeAt } from './ontology_skeleton.js';
 import { censusBySource, censusNames } from './source_backlog.js';
 
 /**
@@ -1499,6 +1499,17 @@ No effect`;
     }
     if (event.target.dataset.action === 'edit-shape-flag') {
       editShapeAtPath(event.target.dataset.value, event.target.checked);
+      return;
+    }
+    // A oneOf's picker: the same writer as the chain rule form (`pickBranch`).
+    if (event.target.dataset.action === 'edit-shape-branch') {
+      const relative = event.target.dataset.value;
+      let raw;
+      try { raw = JSON.parse(state.editorText || ''); } catch { return; }
+      const next = pickBranch(shapeForPath(relative), event.target.value,
+                              getAtPath(raw, splitBundlePath(relative)),
+                              state.authoringSchema?.skeleton?.defs);
+      if (next !== undefined) editShapeAtPath(relative, next);
       return;
     }
     if (event.target.dataset.action === 'edit-field-item') {

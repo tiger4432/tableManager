@@ -15,6 +15,7 @@
 //   record  fixed field names        { fields: [ { key, required, when?, node } ] }
 //   map     members named elsewhere  { keyed_by: 'name' | 'index', member, of }
 //   oneOf   one shape out of several { hint: 'choice', branches: { <value>: node } }
+//           `pick: 'shape'`: the value IS the branch's value and its shape picks (`shapeBranch`)
 //   leaf    a value                  { hint: free | ref | role | choice | flag }
 // plus `{ use: '<name>' }`, which is not a fifth kind but a name for one of the four --
 // a binding holds bindings under its identity keys, and a document that cannot say so
@@ -57,10 +58,47 @@ function childOf(node, step, defs) {
   if (node.kind === 'map') return deref(node.of, defs);
   if (node.kind === 'oneOf') {
     const branches = node.branches && typeof node.branches === 'object' ? node.branches : {};
+    // Picked by shape, no branch key is on the path: the step is a field of the record branch.
+    if (node.pick === 'shape') return childOf(deref(branches[shapeBranch(node, {}, defs)], defs), step, defs);
     const branch = branches[String(step)];
     return branch ? deref(branch, defs) : null;
   }
   return null;                                   // a leaf has nothing under it
+}
+
+/**
+ * The branch a `pick: 'shape'` oneOf's value is in (lead 068c904a6 ②): a word, or nothing yet,
+ * is the leaf branch -- the cell as it was before it had a second branch; a mapping is the record
+ * branch. A value of neither shape is in none ('').
+ * @param {(node: any) => any|object} [resolve] the defs, or a function that follows `{use}`
+ */
+export function shapeBranch(node, value, resolve) {
+  const branches = node && node.branches && typeof node.branches === 'object' ? node.branches : {};
+  const real = typeof resolve === 'function' ? resolve : (n) => deref(n, resolve);
+  const want = value === undefined || value === null || typeof value === 'string' || typeof value === 'number'
+    ? 'leaf' : typeof value === 'object' && !Array.isArray(value) ? 'record' : '';
+  return Object.keys(branches).find((key) => want && (real(branches[key]) || {}).kind === want) || '';
+}
+
+/**
+ * What a oneOf holds once its picker moves to `picked` -- the one writer both forms call.
+ *   keyed  the picked branch alone under its key, `kind` kept in step when the value states one
+ *   shape  the branch's own value, from the skeleton's `empty` -- unless it already is that shape
+ * @returns {any} undefined when `picked` is no branch
+ */
+export function pickBranch(node, picked, was, defs) {
+  const branches = node && node.branches && typeof node.branches === 'object' ? node.branches : {};
+  if (!picked || !branches[picked]) return undefined;
+  if (node.pick === 'shape') {
+    if (shapeBranch(node, was, defs) === picked) return was;
+    return node.empty && Object.prototype.hasOwnProperty.call(node.empty, picked)
+      ? JSON.parse(JSON.stringify(node.empty[picked])) : emptyOf(branches[picked], defs);
+  }
+  const kept = was && typeof was === 'object' && !Array.isArray(was) ? was : {};
+  const next = {};
+  if (Object.prototype.hasOwnProperty.call(kept, 'kind')) next.kind = picked;
+  next[picked] = kept[picked] === undefined ? emptyOf(branches[picked], defs) : kept[picked];
+  return next;
 }
 
 /** The node describing the value at `steps`, walking from `node`. */
@@ -126,6 +164,10 @@ export function missingRequired(node, held, defs, at = '') {
   }
   if (shape.kind === 'oneOf') {
     const branches = shape.branches && typeof shape.branches === 'object' ? shape.branches : {};
+    if (shape.pick === 'shape') {
+      const picked = shapeBranch(shape, held, defs);
+      return picked ? missingRequired(branches[picked], held, defs, at) : out;
+    }
     const picked = held && typeof held === 'object'
       ? Object.keys(branches).find((key) => held[key] !== undefined) : '';
     if (picked) {
@@ -169,7 +211,8 @@ export function emptyOf(node, defs, depth = 0) {
   // under its key, so an unpicked one is that mapping with no key yet. Before this, a
   // required oneOf fell through to the leaf tail below and was seeded `''` -- a string where
   // a mapping belongs, drawn the same and loaded the same only while both sides stay lenient.
-  if (shape.kind === 'oneOf') return {};
+  // Picked by shape, nothing picked yet is the leaf branch's empty -- the cell as it always began.
+  if (shape.kind === 'oneOf') return shape.pick === 'shape' ? pickBranch(shape, shapeBranch(shape, undefined, defs), {}, defs) : {};
   if (shape.kind === 'record') {
     // 🔴 A REQUIRED CONTAINER IS THERE FROM THE START, NOT WHEN SOMEBODY FILLS IT. Same
     // rule the server seeds a new declaration with (`empty_declaration`), applied to a
@@ -212,7 +255,8 @@ export function emptyOf(node, defs, depth = 0) {
       if (!fieldApplies(field, seeded)) continue;
       const child = childOf(shape, field.key, defs);
       if (!child) continue;
-      if (child.kind === 'leaf' && child.hint !== 'flag') continue;
+      // A oneOf picked by shape begins as its leaf branch, so it stays absent like a leaf.
+      if ((child.kind === 'leaf' || child.pick === 'shape') && child.hint !== 'flag') continue;
       seeded[field.key] = emptyOf(field.node, defs, depth + 1);
     }
     return seeded;
