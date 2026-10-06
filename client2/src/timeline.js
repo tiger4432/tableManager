@@ -345,7 +345,8 @@ function allLogsAre(group, column) {
  */
 export function receiptWorldsLine(group, worlds) {
   const rows = Array.isArray(group && group.receipt_worlds) ? group.receipt_worlds : [];
-  if (!rows.length || worldList(worlds).length < 2) return '';
+  // The line stands on two or more worlds, or on any failure - a failed world must not read like a written one.
+  if (!rows.length || (worldList(worlds).length < 2 && !rows.some((row) => row.failed > 0))) return '';
   return ['Ledger', ...rows.map((row) => `${row.world == null ? ABSENT : row.world}`
     + `${row.receipts > 1 ? ` ×${row.receipts}` : ''}`
     + `${row.failed > 0 ? ` (${row.failed} failed)` : ''}`)].join(' · ');

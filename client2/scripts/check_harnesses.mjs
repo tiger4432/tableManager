@@ -959,7 +959,7 @@ const FLOORS = new Map([
   // commit that introduces it. 🔴 THE FIXTURE IS THE CONTRACT VECTOR, captured off the live
   // route: the receipt has TWO envelopes and the failed one carries no counts at all, so a
   // harness built from the description would have scored three blanks and called it correct.
-  ['ledger_receipt_timeline_harness.mjs', 43],
+  ['ledger_receipt_timeline_harness.mjs', 45],
   // New 2026-09-10 with C-59 (S-92's screen half). Floor is the count it reports on the
   // commit that introduces it. 🔴 THE TWO CASES HAVE DIFFERENT COLUMNS -- that is the whole
   // discriminant: a hard-coded table passes one and dies on the other, and the columns come

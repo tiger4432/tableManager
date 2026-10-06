@@ -229,6 +229,11 @@ console.log('\n[7] the list\'s group: one representative log, the kind from the 
   ok('W4 two worlds, one failed: that world carries its failed count, the other none',
     failedIn.length === 1 && failedLine.includes(`${failedIn[0].world} (${failedIn[0].failed} failed)`)
       && (failedLine.match(/failed\)/g) || []).length === 1, failedLine);
+  // One world (lead's answer to cc4eee546): the line stands when any world failed, and only then.
+  const oneFailed = T.receiptWorldsLine(f, ['default']);
+  ok('W6 one world, a failure: the line stands and says it',
+    oneFailed.startsWith('Ledger · ') && oneFailed.includes(`(${failedIn[0].failed} failed)`), oneFailed);
+  eq('W7 one world, no failure: no line, as before', '', T.receiptWorldsLine(c, ['default']));
 }
 
 console.log('\n[6] the value cell is read at the panel\'s width (lead 3e8b6171f) - the stylesheet is the subject');
