@@ -72695,3 +72695,24 @@ emits     emitted_predicates 가 어휘를 받는다 — 선언 카탈로그(tra
 sqlite 전체 5 failed, 7858 passed, 333 skipped, 3 xfailed, 13188 warnings in 721.97s (0:12:01) — 박스 사유 밖: 없음
 ```
 RUN.md 절 · RELEASE_LOG 항목 — 같은 커밋. 개발 스크립트 generate_source_rows 는 지시대로 그대로.
+
+---
+
+## [10-06] 설정 해석 보고서 — «안 쓰는 술어» 를 정본으로 착지 7501d2802 (총괄 6142e81bc)
+
+어느 DB · 어느 스키마 · 지운 것 — 시험은 메모리 sqlite 만 · 박스 DB 안 씀 · 지운 것 0
+
+```
+먼저 센 것  지금 문법에서 원자를 쓰는 이 = 소스 문장(register 도 문장) · 엔티티 참조 엣지 — 둘 다 정본이 센다
+           추론 도출(declared_inference_derivations)은 옛 declared 문법의 emit 규칙에서만 — 지금 문법엔 없음
+           샘플의 안 쓰는 7 낱말은 선언의 어휘 밖 어디에도 안 나옴 -> 정본을 넓힐 것 없음
+지은 것    둘째 답(_ledger_emitted_predicates) 지움 · 보고서가 소스마다 setup_bundle.emitted_predicates
+           컴파일된 어휘 = 보고서가 읽은 «그 파일»의 폴더로 load_setup (컴파일 실패면 로그 한 줄 · 칸 타입은 안 셈)
+옛 이름     server · client2 · contracts 의 git grep 0 줄 (카나리아: 보고서에 emitted_predicates server/config_resolve_report.py:2 줄)
+게이트     샘플 ledger_config.json.sample -> 안 씀 7 (전엔 15) · transfer_explorer -> 0 (전엔 4)
+           셋째: die 의 참조가 칸 타입 역할로만 생기는 경우 -> in_container 는 씀(어휘가 «읽은 파일»에서 넘어옴)
+변이 4  보고서가 register 만 쓴다고 함(옛 답) RED · 보고서가 어휘를 안 넘김 RED · 엔티티 없이 물음 RED · 읽은 파일 대신 기본 뿌리를 컴파일 RED
+sqlite 전체 5 failed, 7861 passed, 333 skipped, 3 xfailed, 13194 warnings in 932.31s (0:15:32) — 박스 사유 밖: 없음
+```
+RUN.md 절 · RELEASE_LOG «바뀐 동작» — 같은 커밋.
+같은 함수의 둘째 거짓(소스 줄을 옛 검증기로 재서 샘플 소스 7 전부 rejected)은 총괄께 물음으로 올렸습니다 — 이 착지에 안 넣음.
