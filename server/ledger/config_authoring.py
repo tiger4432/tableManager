@@ -398,10 +398,11 @@ SKELETON_PATH = Path(__file__).parent / "ledger_skeleton.json"
 #: first using it somewhere, and makes DELETING the last use of one silently narrow the
 #: language.
 #:
-#: ⚠️ `oneOf` IS THE ONE THIS ROUND ADDS, and the ledger skeleton does not use it. The
-#: chain grammar has two 「pick one」 axes (`derive` of three kinds, `into` of two) and the
-#: vocabulary could not say so - `hint: choice` picks a VALUE, not a SHAPE. A form drawing
-#: that by hand would be a second author of the grammar.
+#: ⚠️ `oneOf` IS THE ONE THIS ROUND ADDS. The chain grammar has two 「pick one」 axes (`derive`
+#: of three kinds, `into` of two) and the vocabulary could not say so - `hint: choice` picks a
+#: VALUE, not a SHAPE. A form drawing that by hand would be a second author of the grammar.
+#: The ledger's `binding.entity_type` is one too, picked by the value's shape (`pick: shape` -
+#: a name, or `{kind: column}`) rather than by a branch key (총괄 068c904a6 ②).
 SKELETON_NODE_KINDS = ("record", "map", "leaf", "oneOf")
 
 
