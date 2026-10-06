@@ -1055,38 +1055,63 @@ def _resolve_ledger() -> dict:
     except Exception as e:
         load_error = f"{e.__class__.__name__}: {e}"
 
+    # 🔴 THE LOADER'S OWN VERDICT, of the very file read (총괄 11d0b6b88). The source lines asked
+    #    the retired grammar's validator, so every source of today's grammar was 「rejected」 -
+    #    and a source the ledger reads was reported as one it refuses.
+    setup, setup_error = None, None
+    if not load_error and read_path == sources_path:
+        try:
+            from ledger.setup import load_setup
+
+            setup = load_setup(os.path.dirname(sources_path))
+        except Exception as e:                         # noqa: BLE001 - reported below
+            setup_error = f"{e.__class__.__name__}: {e}"
+
+    declared_names = sorted(name for name in (document.get("sources") or {})
+                            if not str(name).startswith("__"))
     if load_error:
         rejected.append(entry(
             SCOPE_FILE, os.path.basename(sources_path),
             f"The source declaration file could not be read ({load_error}). While it "
             f"cannot be read, no table is translated into the ledger.",
             reason=REASON_MAPPING_UNAVAILABLE))
+    elif setup_error:
+        rejected.append(entry(
+            SCOPE_FILE, os.path.basename(sources_path),
+            f"The declaration does not compile ({setup_error}). Until it does, no table is "
+            f"translated into the ledger.",
+            reason=REASON_MAPPING_UNAVAILABLE))
+    elif setup is None and declared_names:
+        ineffective.append(entry(
+            SCOPE_FILE, os.path.basename(sources_path),
+            f"There is no declaration file; the shipped sample is shown and no table is "
+            f"translated into the ledger.",
+            reason=REASON_NOT_DECLARED))
     else:
-        declared_sources = (document.get("sources") or {})
-        for name, declaration in sorted(declared_sources.items()):
-            if str(name).startswith("__"):
-                continue
-            kind = (declaration or {}).get("kind", ledger_config.SOURCE_KIND_LINEAGE)
-            try:
-                ledger_config.validate({"sources": {name: declaration}},
-                                       origin=read_path)
-            except Exception as e:
+        plans = setup.snapshot.source_plans if setup is not None else {}
+        for name in declared_names:
+            plan = plans.get(name)
+            refusal = (plan.refusal or {}) if plan is not None else {}
+            if plan is None or not plan.planned:
                 rejected.append(entry(
                     SCOPE_RULE, name,
-                    f"Source `{name}` failed validation - {e}",
+                    f"Source `{name}` is not read - " + (
+                        f"{refusal.get('path')}: {refusal.get('message')}" if refusal
+                        else "the loader left it out of the setup."),
                     reason=REASON_MAPPING_UNAVAILABLE,
-                    fields={"source": name, "kind": kind}))
-                continue
-            version = ledger_config.translator_version(
-                {"version": document.get("version", 1),
-                 "sources": {name: declaration}}, name)
-            effective.append(entry(
-                SCOPE_RULE, name,
-                f"`{name}` translates in the {kind} grammar. It stamps the provenance "
-                f"{version} on every atom, so each claim can be traced to the rule that "
-                f"made it.",
-                fields={"source": name, "kind": kind, "translator_ver": version,
-                        "subject_types": list(declaration.get("subject_types") or [])}))
+                    fields={"source": name, **({"code": refusal.get("code")}
+                                               if refusal.get("code") else {})}))
+            elif plan.status != "active":
+                effective.append(entry(
+                    SCOPE_RULE, name,
+                    f"`{name}` is {plan.status}: its atoms stay and the ledger no longer reads "
+                    f"`{plan.relation}`.",
+                    fields={"source": name, "relation": plan.relation, "status": plan.status}))
+            else:
+                effective.append(entry(
+                    SCOPE_RULE, name,
+                    f"`{name}` is read: the ledger translates the rows of `{plan.relation}`.",
+                    fields={"source": name, "relation": plan.relation, "status": plan.status}))
 
     # ---- 어휘 — 선언이 «유일한» 출처
     # 🔴 이 자리는 낱말을 «두 출처»로 갈라 보고했습니다 — 코드가 싣는 것과 선언이 늘린 것.
@@ -1105,15 +1130,7 @@ def _resolve_ledger() -> dict:
         # 🔴 «소스가 쓰는 술어»는 정본 하나로 — `setup_bundle.emitted_predicates` (총괄 6142e81bc).
         #    여기 따로 있던 둘째 답은 옛 문법만 읽어, 샘플의 16 낱말 중 15 를 「안 쓴다」고 했다.
         #    칸에서 타입을 읽는 역할은 컴파일된 어휘가 답한다 — 이 보고가 읽은 그 파일의 것만.
-        vocabulary = {}
-        if read_path == sources_path:
-            try:
-                from ledger.setup import load_setup
-
-                vocabulary = load_setup(os.path.dirname(sources_path)).snapshot.vocabulary
-            except Exception as e:                     # noqa: BLE001 - says what went quiet
-                logger.warning("[config report] the setup did not compile (%s) - a type read "
-                               "from a column is not counted among what sources write", e)
+        vocabulary = setup.snapshot.vocabulary if setup is not None else {}
         emitters = {predicate
                     for name, declaration in (document.get("sources") or {}).items()
                     if not str(name).startswith("__")
