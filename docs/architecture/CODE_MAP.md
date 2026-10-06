@@ -4530,6 +4530,7 @@ python -m chain  replay    [옵션]   -> scripts/chain_replay_cli.py        main
 >                                              -- 파일 «이름»으로 세면 계약 아닌 것을 센다
 >                                              🆕 10-04 `e71cde056` +1 test_walk_node_shape_contract.py — walk_node_shape 의 서버 쪽(전엔 클라만 채점)
 > client2/tests 최상위 .mjs 117   (구 표기 82)  <- check_harnesses.mjs 가 실제로 «도는» 수
+> 🆕 10-06 `10ecf3a4f` 하니스 글에 `process.argv.includes('--mutate')` 가 있으면 관문이 «`--mutate` 로» 돌린다(`readsMutate`) — 변이를 «읽기만 하고 안 돌던» 하니스가 없다(디자인 36400b19c 이 그런 하니스 21 을 셌다)
 > 하위까지 세면             127   (구 표기 89)  <- 러너는 lib/·oracle/·fixtures/ 를 «안 돈다»
 > ```
 >
