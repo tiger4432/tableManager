@@ -17,6 +17,25 @@
 - **필요한 조건** — 클라 빌드. 고르개는 서버 스켈레톤이 그 칸을 oneOf 로 내는 착지 뒤에 섭니다. 그 전에는 오늘과 같은 이름 칸입니다.
 - **바뀐 동작** — 없음(서버가 스켈레톤을 바꾸기 전까지). 체인 규칙 폼의 가지 바꾸기는 같은 함수로 옮겼고 쓰는 값은 같습니다.
 - **자세히** — 이 항목과 같은 커밋 (068c904a6 지시)
+
+## 2026-10-06 · 설정 해석 보고서 — 안 쓰는 술어 목록이 참이 된다
+
+- **무엇** — 설정 해석 보고서의 원장 도메인은 「어휘에 실렸는데 아무 소스도 쓰지 않는 술어」를 적습니다. 그 «쓰는 술어»를 옛 문법(소스 kind)으로 따로 세던 자리가 지금 문법(`bind.mappings`)의 소스를 못 읽어, 거의 모든 술어를 「안 쓴다」고 적었습니다. 이제 표 머리 emits · 비용 미리보기와 같은 정본(`setup_bundle.emitted_predicates` — 소스 문장 · 엔티티 참조 엣지 · 칸에서 읽는 타입까지)으로 셉니다.
+- **선언 예시** — 새 선언 없음. 샘플 `server/config/sample/ledger_config.json.sample` 의 어휘 16 중 안 쓰는 것은 7 (`bonded_from` · `in_container` · `leads_to` · `measures` · `observed` · `of_kind` · `slot_map`) — 전에는 15 로 적었습니다.
+- **화면에서** — 관리 화면 설정 해석 보고서(`/admin/config/resolve`)의 원장 도메인, 「No translator states the declared predicates …」 줄.
+- **필요한 조건** — 서버 재기동(API).
+- **바뀐 동작** — 그 줄의 목록이 줄어듭니다(실제로 쓰이는 술어가 빠짐). 다른 줄은 그대로입니다.
+- **자세히** — 이 항목과 같은 커밋 · RUN.md 같은 절.
+
+## 2026-10-06 · 칸에서 타입을 읽는 바인딩 — 표 머리 emits · 탐색기 선
+
+- **무엇** — 엔티티 타입을 행의 칸에서 읽는 바인딩(`"entity_type": {"kind": "column", "column": "<칸>"}`)은 이름을 적지 않아서, 그 소스가 쓰는 references 엣지가 표 머리의 emits 목록에서 빠지고 온톨로지 탐색기에서도 그 바인딩에 엔티티 선이 없었습니다. 이제 둘 다 술어가 그 역할에 받는 타입 전부(`entity_types_of(role)`, 원장이 행을 거를 때 읽는 그 목록)를 씁니다. 선언 고치기 미리보기와 같은 함수 하나(`setup_bundle.column_typed_entity_types`)를 지납니다.
+- **선언 예시** — 소스 바인딩 `"target": {"kind": "entity", "entity_type": {"kind": "column", "column": "method"}, "keys": {...}}` 이고 술어가 target 에 `die` 를 받으며 `die` 에 `references` 가 있으면, 그 엣지가 그 소스의 emits 에 나옵니다.
+- **화면에서** — 그리드 표 머리 `ledger source — <소스> · emits ...` 와 온톨로지 탐색기의 바인딩 → 엔티티 선.
+- **필요한 조건** — 서버 재기동(API).
+- **바뀐 동작** — 칸 타입 바인딩이 있는 소스의 emits 와 탐색기 선이 늘어납니다. 없는 선언은 그대로입니다.
+- **자세히** — 이 항목과 같은 커밋 · RUN.md 같은 절.
+
 ## 2026-10-06 · 체인 규칙 — run_in 을 목록에서 고른다
 
 - **무엇** — 체인 규칙 폼의 `run_in` 칸이 닫힌 목록(`chain` · `operation`)이 됩니다. 스켈레톤은 평면 문법과 통합 문법(`limits`) 두 곳 모두 `{"kind": "leaf", "hint": "choice", "list": "run_in"}` 이고, `/admin/chain/rules/raw` 응답이 같은 이름의 목록 `"run_in": ["chain", "operation"]` 을 싣습니다(원장 선언 화면의 `occurred_at_basis` 와 같은 모양).

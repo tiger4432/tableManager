@@ -1192,7 +1192,7 @@ def _bound_words(mapping, vocabulary) -> set:
     `vocabulary[predicate].entity_types_of(role)` (총괄 564a46193 ②: left out, renaming one of
     them would say this source does not re-run).
     """
-    from .setup_bundle import entity_type_column
+    from .setup_bundle import column_typed_entity_types
 
     found = set()
     if not isinstance(mapping, Mapping):
@@ -1214,11 +1214,8 @@ def _bound_words(mapping, vocabulary) -> set:
                 walk(value)
 
     walk(mapping.get("bind"))
-    bind = mapping.get("bind") if isinstance(mapping.get("bind"), Mapping) else {}
-    descriptor = vocabulary.get(predicate) if predicate else None
-    for role, binding in bind.items():
-        if descriptor is not None and entity_type_column(binding):
-            found.update(descriptor.entity_types_of(role))
+    for types in column_typed_entity_types(mapping, vocabulary).values():
+        found.update(types)
     return found
 
 

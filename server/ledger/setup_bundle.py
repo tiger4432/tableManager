@@ -857,6 +857,20 @@ def entity_type_column(binding: Any) -> str | None:
     return None
 
 
+def column_typed_entity_types(mapping: Any, vocabulary: Mapping[str, Any]) -> dict:
+    """role -> every entity type a role whose type is read from a column can carry: what its
+    predicate admits there, `vocabulary[predicate].entity_types_of(role)` - the list the ledger
+    checks each row against (총괄 564a46193 ②). A role that names its type is not here; neither
+    is a mapping whose predicate the compiled vocabulary does not hold."""
+    if not isinstance(mapping, Mapping) or not isinstance(mapping.get("bind"), Mapping):
+        return {}
+    descriptor = vocabulary.get(str(mapping.get("predicate") or "").strip())
+    if descriptor is None:
+        return {}
+    return {role: tuple(descriptor.entity_types_of(role))
+            for role, binding in mapping["bind"].items() if entity_type_column(binding)}
+
+
 def column_typed_bindings(profile: Any) -> tuple:
     """(sentence, role, type column) for every role of a profile whose type is read from a column."""
     mappings = profile.get("mappings") if isinstance(profile, Mapping) else None
@@ -1835,10 +1849,12 @@ def entity_references(item) -> list:
     return [value] if isinstance(value, Mapping) else value
 
 
-def emitted_predicates(source, entities) -> list:
+def emitted_predicates(source, entities, vocabulary) -> list:
     """The predicates one declared source writes: its sentences', and the `references` edges of
     every entity its bindings name (총괄 29047aedc - the translator writes those for any source).
-    ONE answer, so the declaration screen does not list less than the ledger receives."""
+    ONE answer, so the declaration screen does not list less than the ledger receives. A role
+    whose type is read from a column names every type it can carry (`column_typed_entity_types`
+    on the compiled `vocabulary`)."""
     mappings = ((source or {}).get("bind") or {}).get("mappings") or {}
     found = {mapping.get("predicate") for mapping in mappings.values()
              if isinstance(mapping, Mapping) and mapping.get("predicate")}
@@ -1854,6 +1870,9 @@ def emitted_predicates(source, entities) -> list:
             for item in node:
                 scan(item)
     scan(mappings)
+    for mapping in mappings.values():
+        for types in column_typed_entity_types(mapping, vocabulary).values():
+            named.update(types)
     for entity_id in named:
         item = (entities or {}).get(entity_id)
         if isinstance(item, Mapping) and not is_retired(item):

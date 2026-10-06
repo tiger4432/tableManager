@@ -1114,11 +1114,13 @@ def ledger_declaration_catalog(
         from ledger.event_frame import base_select_columns
         from ledger.setup_bundle import emitted_predicates
 
-        plans, planned_in = {}, {}
+        plans, planned_in, vocabulary_of = {}, {}, {}
         for names in _worlds(world):
-            for source_id, plan in load_setup(names.declaration_root).snapshot.source_plans.items():
+            snapshot = load_setup(names.declaration_root).snapshot
+            for source_id, plan in snapshot.source_plans.items():
                 if source_id not in plans:
                     plans[source_id], planned_in[source_id] = plan, names.name
+                    vocabulary_of[source_id] = snapshot.vocabulary
         declared_sources = declared.get("sources") or {}
         # 🔴 READ, NEVER COUNT (D5, 판정 180). 「표 행 N · 색인 M · 남은 N−M」 is two scans --
         # `count(*)` on a relation that may hold ten million rows and
@@ -1157,7 +1159,7 @@ def ledger_declaration_catalog(
                 **({"planned": False,
                     "refusal": dict(plan.refusal or {})} if not plan.planned else {}),
                 "emits": emitted_predicates(declared_sources.get(source_id),
-                                            declared.get("entities")),
+                                            declared.get("entities"), vocabulary_of[source_id]),
                 # ⛔ OMITTED, NOT EMPTIED, ON A RETIRED SOURCE. This list is compiled
                 # from the read plan, and a retired source has none; `[]` would say 「reads
                 # no columns」, which is a different and false fact.

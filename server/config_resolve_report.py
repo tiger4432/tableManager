@@ -1102,7 +1102,23 @@ def _resolve_ledger() -> dict:
     else:
         from ledger import setup_bundle
 
-        emitters = _ledger_emitted_predicates(document)
+        # 🔴 «소스가 쓰는 술어»는 정본 하나로 — `setup_bundle.emitted_predicates` (총괄 6142e81bc).
+        #    여기 따로 있던 둘째 답은 옛 문법만 읽어, 샘플의 16 낱말 중 15 를 「안 쓴다」고 했다.
+        #    칸에서 타입을 읽는 역할은 컴파일된 어휘가 답한다 — 이 보고가 읽은 그 파일의 것만.
+        vocabulary = {}
+        if read_path == sources_path:
+            try:
+                from ledger.setup import load_setup
+
+                vocabulary = load_setup(os.path.dirname(sources_path)).snapshot.vocabulary
+            except Exception as e:                     # noqa: BLE001 - says what went quiet
+                logger.warning("[config report] the setup did not compile (%s) - a type read "
+                               "from a column is not counted among what sources write", e)
+        emitters = {predicate
+                    for name, declaration in (document.get("sources") or {}).items()
+                    if not str(name).startswith("__")
+                    for predicate in setup_bundle.emitted_predicates(
+                        declaration, document.get("entities"), vocabulary)}
         for key in sorted(declared_vocabulary):
             name = _bare_name(key)
             # [총괄 e6dd72526] the classes it was given, read by the one reader - only when written
@@ -1145,45 +1161,6 @@ def _resolve_ledger() -> dict:
     ]
     return build_domain(DOMAIN_LEDGER, DOMAIN_TITLES[DOMAIN_LEDGER],
                         sources, settings, effective, ineffective, rejected)
-
-
-def _ledger_emitted_predicates(document: dict) -> set:
-    """선언된 소스들이 «발화할 수 있는» 술어 집합.
-
-    번역기가 어느 낱말을 내는지는 코드의 사실이므로 여기서 유도한다 — 선언 파일에 「이
-    소스는 X를 낸다」는 칸이 없기 때문이다. 그 칸이 생기는 날(derivation 종류, R-M ⑤)
-    이 함수는 선언을 읽는 쪽으로 바뀐다.
-    """
-    from ledger import config as ledger_config
-
-    out = {"register"}
-    for name, declaration in (document.get("sources") or {}).items():
-        if str(name).startswith("__") or not isinstance(declaration, dict):
-            continue
-        kind = declaration.get("kind", ledger_config.SOURCE_KIND_LINEAGE)
-        if kind == ledger_config.SOURCE_KIND_DECLARED:
-            # 🔴 이 문법만은 **선언이 직접 말한다** — 다른 셋은 번역기 코드가 낱말을
-            # 소유하므로 여기서 유도해야 하지만, 선언형은 `emit`이 곧 그 목록이다.
-            # 그래서「등재는 했는데 아무도 발화하지 않는다」가 이 문법으로 소스를 하나
-            # 선언하는 순간 «자동으로» 해소된다.
-            out.update(str(rule.get("predicate") or "").strip()
-                       for rule in (declaration.get("emit") or [])
-                       if isinstance(rule, dict) and rule.get("predicate"))
-        elif kind == ledger_config.SOURCE_KIND_OBSERVATION:
-            out.add(ledger_config.OBSERVATION_PREDICATE)
-        elif kind == ledger_config.SOURCE_KIND_TRANSFER:
-            out.add(ledger_config.TRANSFER_PREDICATE)
-        else:
-            for rule in (declaration.get("vocabulary") or {}).values():
-                if not isinstance(rule, dict):
-                    continue
-                if rule.get("lineage") == "parent_child":
-                    out.add("derived_from")
-                if rule.get("slot_pairing", "none") != "none":
-                    out.add("slot_map")
-                if rule.get("emit_has_wafer"):
-                    out.add("has_wafer")
-    return out
 
 
 # 도메인 등록기. 나머지 config는 여기에 한 줄씩 붙는다.

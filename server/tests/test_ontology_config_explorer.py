@@ -233,6 +233,24 @@ def test_every_resolved_edge_has_symmetric_used_by_and_exact_pointer(active_setu
         "/sources/lot_slot_wafer/bind/mappings/seat-holds-wafer/predicate")
 
 
+def test_a_type_read_from_a_column_draws_a_line_to_every_type_the_role_can_carry(tmp_path):
+    """총괄 564a46193 ②: the role names no type, so the binding stood with no line to any entity."""
+    document = json.loads(
+        (SHIPPED / "ledger_config.json.sample").read_text(encoding="utf-8"))
+    bind = document["sources"]["die_inspection"]["bind"]["mappings"]["die-inspected"]["bind"]
+    bind["target"]["entity_type"] = {"kind": "column", "column": "method"}
+    root = tmp_path / "typed_ontology"
+    root.mkdir()
+    (root / "ledger_config.json").write_text(json.dumps(document), encoding="utf-8")
+    setup = load_setup(root, catalog=shipped_catalog())
+
+    lines = {edge.to_key for edge in build_explorer_index(setup).edges
+             if edge.reference_kind == "binding_entity"
+             and edge.from_key.endswith("die_inspection#profile#mapping:die-inspected#binding:target")}
+    admitted = setup.snapshot.vocabulary["inspected"].entity_types_of("target")
+    assert admitted and lines == {"entity|%s" % name for name in admitted}
+
+
 def test_actual_round_trip_source_profile_mapping_predicate(active_setup):
     index = build_explorer_index(active_setup)
     edges = {(edge.from_key, edge.to_key, edge.reference_kind) for edge in index.edges}
