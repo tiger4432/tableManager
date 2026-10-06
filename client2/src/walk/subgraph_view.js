@@ -712,7 +712,6 @@ export class SubgraphView {
     if (this.cy) return this.cy;
     // A real element is drawn into; the stub document of the harnesses has none, so the same part runs headless.
     const canRender = typeof this.canvas.getBoundingClientRect === 'function';
-    this._canRender = canRender;
     const cy = cytoscape({ container: canRender ? this.canvas : undefined, headless: !canRender, styleEnabled: true,
       style: this._style(), elements: [], minZoom: 0.1, maxZoom: 3,
       boxSelectionEnabled: false });
@@ -799,7 +798,6 @@ export class SubgraphView {
     if (full) this._layoutAll(view);
     else this._place(view, added);
     cy.nodes().forEach((n) => { this.pos.set(n.id(), { ...n.position() }); });
-    if (!this._canRender) return;
     // The view moves on the first draw and Reset only (lead 03bc94b6b). A box not yet on the page has no size to
     // fit into; the fit then waits for the first draw that has one.
     if (full) this._fitPending = true;

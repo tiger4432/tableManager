@@ -740,6 +740,27 @@ async function suite(m, makeWalk = createWalkBoxWalk, css = REAL_CSS) {
       JSON.stringify({ lumps: lumpsOf(s).length, nodes: nodesOf(s).length, first: dieFirst.size }));
   }
 
+  console.log('\n[Z] the first picture and Reset stop at the readable zoom; Fit goes below it (lead 10-07)');
+  {
+    // A box with a width is on the page, so the first draw fits. Headless the picture has a 1x1 viewport, so fitting
+    // all of it always needs a zoom below the floor - Z2 shows that it did. The floor is the owner's readable size:
+    // a 15px name drawn no smaller than 12px.
+    const READABLE = 0.8;
+    const doc = stubDoc(false);
+    const make = doc.createElement.bind(doc);
+    doc.createElement = (tag) => Object.assign(make(tag), { clientWidth: 640 });
+    const s = await seat([DIE], { doc });
+    const zoom = () => (s.view.cy ? s.view.cy.zoom() : NaN);
+    const click = (cls) => { const b = byClass(s.host, cls)[0]; if (b) b.dispatch('click', {}); return zoom(); };
+    const first = zoom();
+    const fitted = click('sg-fit');
+    const reset = click('sg-reset');
+    say('Z1 the first picture stands at the readable zoom, not at what fitting all of it needs', first === READABLE,
+      JSON.stringify({ first, fitted }));
+    say('Z2 Fit fits all of it, below the readable zoom', fitted < READABLE, JSON.stringify({ fitted }));
+    say('Z3 Reset fits as the first picture does', reset === READABLE, JSON.stringify({ reset }));
+  }
+
   console.log('\n[Q] Mark is the one press that marks; the facts stay in sight (lead 9dc2a5695 ① ②)');
   {
     const s = await seat([DIE, STEP2]);
@@ -994,6 +1015,9 @@ const failures = [];
       '      this._worldRows(box, edge.byWorld, (said) => [said.source_who, said.occurred_at]);\n', ''),
     M('A4m', 'the world rows are drawn whatever the walk reads', 'W7',
       '    if (!this.worldChips) return;\n', ''),
+    M('Z1m', 'the first fit has no floor (lead 10-07)', 'Z1', '    if (cy.zoom() >= READABLE_ZOOM) return;\n', '    return;\n'),
+    M('Z2m', 'Fit keeps the floor', 'Z2', 'if (this.cy) this.cy.fit(undefined, GEOMETRY.fitPad);', 'if (this.cy) this._firstFit();'),
+    M('Z3m', 'the first draw is not fitted', 'Z1', '    if (full) this._fitPending = true;\n', ''),
   ];
   const scored = await scoreMutants(MUTANTS, async (mu) => {
     const mutate = mu.mutate || ((t) => swap(t, mu.from, mu.to));
