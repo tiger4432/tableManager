@@ -72744,3 +72744,53 @@ planned 거짓 -> rejected, 로더의 refusal 문장 그대로(path: message)
 sqlite 전체 5 failed, 7867 passed, 333 skipped, 3 xfailed, 13204 warnings in 823.90s (0:13:43) — 박스 사유 밖: 없음
 ```
 RUN.md 절 · RELEASE_LOG «바뀐 동작» — 같은 커밋.
+
+---
+
+## [10-06] 원장 스켈레톤 — 엔티티 타입 칸 oneOf «값 모양 가지» 착지 adcd304ff (총괄 068c904a6 ② · 클라 aed628176 뒤)
+
+어느 DB · 어느 스키마 · 지운 것 — 시험은 메모리 sqlite 만 · 박스 DB 안 씀 · 지운 것 0
+
+```
+노드     defs.binding.entity_type = {"kind":"oneOf","hint":"choice","pick":"shape",
+           "branches":{"name":<ref 잎>,"column":{"use":"entity_type_column"}},"empty":{"name":"","column":{kind,column}}}
+         새 kind 0 (SKELETON_NODE_KINDS 넷 그대로) · 문법 · 번역은 이미 둘 다 받음(f1238d6ef)
+서버 시험  노드 모양 · 가지별 빈 값이 def 의 required 칸과 같음 · 칸 가지 kind 가 발행 목록 안
+         oneOf 의 choice 는 «가지»를 고르므로 목록 이름을 요구하는 것은 잎의 choice 만(체인 derive/into 와 같은 철자)
+서버 걷는 자리  원장 스켈레톤을 걷는 config_authoring 셋(empty_value · _skeleton_node · _drop_switched_off) 중
+         entity_type «아래» 경로를 묻는 호출자 0 — 고칠 것 없음. validation.flag_refusals 는 체인 스켈레톤만 걷음
+변이 3  가지를 키로 고름 RED · 칸 가지 시작값에 column 없음 RED · 이름 가지가 ref 잎이 아님 RED
+```
+**클라 하니스 — 이 서버 스켈레톤 위에서 (총괄 요청 다섯 + 원장 스켈레톤을 읽는 둘)**
+```
+skeleton_oneof_descent       31 통과 · 0 실패
+skeleton_value_fit           26 통과 · 0 실패
+explorer_open_path           130 통과 · 0 실패
+chain_rule_form              108 통과 · 0 실패
+chain_rule_user_path         90 통과 · 0 실패
+declaration_attribute_seats  21 통과 · 0 실패
+ontology_authoring_panel     105 통과 · 0 실패
+클라 하니스 전체(check_harnesses): 163 harnesses ― 161 gated, 2 on the known-red debt list (2 still red, 0 recovered). — 막힌 것 전부 초록 예 · 남은 빨강 2 는 이미 있던 빚(맵 정렬 · 다이 프레임)
+계약(check_contracts): ✓ 13 contracts, no divergence.
+```
+sqlite 전체 5 failed, 7867 passed, 333 skipped, 3 xfailed, 13212 warnings in 844.67s (0:14:04) — 박스 사유 밖: 없음
+RUN.md 절 · RELEASE_LOG 항목(서버 반쪽, 클라 항목은 aed628176 에) — 같은 커밋.
+
+---
+
+## [10-06] ledger/admin — check_source_declaration · candidate_config 은퇴 착지 9e0c70756 (총괄 348e7d64f)
+
+어느 DB · 어느 스키마 · 지운 것 — 시험은 메모리 sqlite 만 · 박스 DB 안 씀 · 지운 것 0
+
+```
+지운 것   check_source_declaration(옛 검증기로 판정, 운영 호출자 0) · candidate_config(운영 호출자 0, 총괄 추가)
+         그것만 부르던 도우미 다섯: check_identifier · _identifier_positions · _column_refs · IDENTIFIER_RE · IDENTIFIER_MAX
+         (그 상수만 쓰던 import re 도) · 그것만 재던 시험 다섯 · 그 이름을 든 주석 셋(admin.py 1 · setup_bundle.py 2)
+남긴 것   violation · declared_tables(relations_view 가 씀) · 남은 시험이 쓰는 커서 도우미(_Cursor · _Connection)
+규칙      지운 시험 하나가 말하던 「선언 안 된 표를 읽는 소스는 거절」은 로더의 unknown_relation 이 맡고 그 시험들이 있음
+이름      server · client2 · contracts · docs 의 git grep -w: check_source_declaration 0 · candidate_config 0 · check_identifier 0 · _identifier_positions 0 · _column_refs 0 · IDENTIFIER_RE 0 · IDENTIFIER_MAX 0  (카나리아: def violation 1)
+          task/ 의 지난 보고 · 지시 기록에는 남아 있음(기록이라 손대지 않음)
+크기       4 files changed, 4 insertions(+), 377 deletions(-)
+동작      바뀌지 않음(부르는 이가 없던 코드) — 그래서 RUN.md · RELEASE_LOG 항목 없음. 변이 없음(잴 동작이 없음)
+sqlite 전체 5 failed, 7857 passed, 333 skipped, 3 xfailed, 13209 warnings in 857.01s (0:14:17) — 박스 사유 밖: 없음
+```

@@ -56,46 +56,7 @@ def test_there_is_no_delete_route_anywhere_under_admin_ledger():
                 f"atoms are already lying in the ledger under that word")
 
 
-# ------------------------------------------------- SQL identifiers (a NEW risk, today)
-@pytest.mark.parametrize("bad", [
-    "wafer; DROP TABLE ledger_events",
-    'wafer" , (SELECT 1) AS "x',
-    "Wafer",                    # unquoted identifiers fold to lower case in PostgreSQL
-    "wafer id",
-    "1_wafer",
-    "",
-])
-def test_an_identifier_that_would_land_in_an_interpolation_is_refused(bad):
-    """The fetches build SQL with f-strings, so this is the ONLY place to say no.
-
-    An identifier is not a bind parameter, so the check cannot be moved downstream. Until
-    today a human typed these into a file; from today an HTTP request does.
-    """
-    assert codes(admin.check_identifier(bad, "columns.wafer")) \
-        == ["invalid_identifier"]
-
-
-def test_a_legal_identifier_passes():
-    assert admin.check_identifier("base_wafer_id", "columns.wafer") == []
-
-
 # --------------------------- the source surface: declared tables, and raw editing
-def test_a_source_on_an_undeclared_table_is_refused_at_SAVE_not_only_hidden(monkeypatch):
-    """🔴 The picker rule needs an enforcement point or it is advice.
-
-    Owner, 2026-08-15: the table list is `table_config`'s declared set only. Hiding
-    undeclared tables from the picker would leave the rule advisory, because the RAW JSON
-    editor is a second door into the same save. The reason is addressing rather than
-    permission: a table the rest of the system does not declare has no key columns, no
-    ingestion and no chain, so atoms about its rows name something nothing else can point
-    at.
-    """
-    monkeypatch.setattr(admin, "declared_tables", lambda: ["void_obs"])
-    violations = admin.check_source_declaration(None, "some_other_table", {})
-    assert codes(violations) == ["undeclared_table"]
-    assert "table_config.json" in violations[0]["detail_ko"]
-
-
 def test_an_undeclared_table_is_NAMED_rather_than_silently_absent():
     """An operator who types a table they can SEE in the database and gets an empty list
     learns the screen is broken; one who gets a sentence learns what to do next. Same
@@ -199,15 +160,6 @@ def test_the_refusal_codes_are_closed():
     # The control: a code that IS in the closed set builds, so the assertion above is
     # about the CODE and not about `violation` raising for everything.
     assert admin.violation("invalid_identifier", "columns.wafer", "…")
-
-
-# ---------------------------------------------------------------- the dry run's config
-def test_the_candidate_config_carries_only_the_source_under_preview():
-    """A broken NEIGHBOUR must not be able to refuse this preview - and vice versa."""
-    declaration = {"occurred_at_column": "t", "occurred_at_timezone": "Asia/Seoul",
-                   "subject_types": ["wafer"]}
-    cfg = admin.candidate_config("my_table", declaration)
-    assert list(cfg["sources"]) == ["my_table"]
 
 
 # ---------------------------- the hand-built read queries (R-…-08-15-O)

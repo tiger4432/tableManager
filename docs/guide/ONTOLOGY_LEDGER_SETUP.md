@@ -907,7 +907,7 @@ Entity key 집합은 Entity descriptor의 `keys`와 정확히 같아야 한다. 
 
 > 🔴 **`binding_origin` · `approval_status` · `suggestion_reason` 셋은 선언에서 «없어졌다».**
 > binding은 이제 **종류와 그 payload만** 말한다 — `kind` + (`column` | `value` | `entity_type`·`keys`).
-> 🆕 10-06 `f1238d6ef` `entity_type` 은 타입 이름(글자) 또는 `{"kind": "column", "column": "<타입 칸>"}` — 행마다 그 칸의 타입을 읽고, 그 자리(subject · target)가 받는 타입인지 행마다 본다. 아니면 «그 행만» `type_not_admitted`, 타입 칸이나 그 타입의 키 칸이 비면 `no_identity`. `keys` 에는 받는 타입들의 키를 «모두» 적는다(행은 자기 타입의 키만 쓴다). 칸 타입에는 `attributes` 를 못 달고, 구현은 `declarative-role` 만, `register` 문장의 주어면 `read.registration_probe` 가 필수 — 어기면 로드에서 이름 대어 거절. 예시는 `TEXT_LINKS_GUIDE.md` §7
+> 🆕 10-06 `f1238d6ef` `entity_type` 은 타입 이름(글자) 또는 `{"kind": "column", "column": "<타입 칸>"}` — 행마다 그 칸의 타입을 읽고, 그 자리(subject · target)가 받는 타입인지 행마다 본다. 아니면 «그 행만» `type_not_admitted`, 타입 칸이나 그 타입의 키 칸이 비면 `no_identity`. `keys` 에는 받는 타입들의 키를 «모두» 적는다(행은 자기 타입의 키만 쓴다). 칸 타입에는 `attributes` 를 못 달고, 구현은 `declarative-role` 만, `register` 문장의 주어면 `read.registration_probe` 가 필수 — 어기면 로드에서 이름 대어 거절. 예시는 `TEXT_LINKS_GUIDE.md` §7. 🆕 10-06 `adcd304ff` 선언 폼의 이 칸은 고르개 하나 — `name`(타입 이름 칸) / `column`(Type from column), 값의 모양이 가지를 정한다
 >
 > **왜:** 소유자가 화면에서 그 셋을 보고 「바인딩이 이렇게 복잡하게 할 일이야? 그냥 주어, 목적어
 > 등 당 타입, 키만 입력하게 해」라고 판정했다. 실측이 뒷받침했다 — 라이브 40개 binding에서

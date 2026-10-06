@@ -286,7 +286,8 @@ def test_every_choice_names_a_list_the_server_publishes():
     def walk(node):
         if not isinstance(node, dict):
             return
-        if node.get("hint") == "choice":
+        # a leaf's choice picks a value from a list; a oneOf's picks one of its own branches
+        if node.get("hint") == "choice" and node.get("kind") != "oneOf":
             named.append(str(node.get("list")))
         for key in ("fields", "of", "node", "root"):
             value = node.get(key)
@@ -379,9 +380,18 @@ def test_every_kind_specific_field_of_a_binding_is_locked_to_its_kind():
         assert field["when"]["is"] in closed_lists()["binding_kinds"], field["key"]
 
 
-def test_a_binding_type_is_drawn_as_the_name_leaf():
-    """An `either` node the form cannot draw blanked the entity-type box at restart - today's names
-    too (f1238d6ef, reverted). The node is the ref leaf the form has always drawn; a type read from
-    a column is written in the raw declaration until the form picks a branch by the value's shape."""
+def test_a_binding_type_picks_its_branch_by_the_values_shape():
+    """총괄 068c904a6 ②: a oneOf picked by shape, not a new kind (the `either` of f1238d6ef blanked
+    the box at restart and was reverted). A name is the ref leaf the form has always drawn; an
+    object reads the type per row (`defs.entity_type_column`). Each branch starts from its own
+    empty value, written in place - no branch key in the document."""
     (field,) = [f for f in skeleton()["defs"]["binding"]["fields"] if f["key"] == "entity_type"]
-    assert field["node"] == {"kind": "leaf", "hint": "ref", "section": "entities"}
+    node = field["node"]
+    assert (node["kind"], node["pick"]) == ("oneOf", "shape")
+    assert node["branches"] == {"name": {"kind": "leaf", "hint": "ref", "section": "entities"},
+                                "column": {"use": "entity_type_column"}}
+    assert set(node["empty"]) == set(node["branches"])
+    assert node["empty"]["name"] == ""
+    column = skeleton()["defs"]["entity_type_column"]
+    assert set(node["empty"]["column"]) == {f["key"] for f in column["fields"] if f["required"]}
+    assert node["empty"]["column"]["kind"] in closed_lists()["entity_type_binding_kinds"]
