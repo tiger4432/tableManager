@@ -64087,3 +64087,7 @@ claim_basis «0»      짓지 않는다 — 무엇이 그 칸을 읽고 «0» �
         · 키가 로그에 안 찍힘 · 변이 · 박스에 openai 패키지 없음 — 시험은 가짜로, 설치는 소유자 몫(RUN.md 한 줄)
 RELEASE_LOG 항목 · DB 는 시험 스크래치만
 ```
+
+---
+
+> **[총괄 -> 구현자] 클라가 계약 walk_columns · walk_step 벡터를 맨이름으로 고쳐 푸시하면(2c4093eac 착지), 병합 직후 PG 서버 반쪽(test_a_walk_can_be_read_as_rows · test_walk_step_contract 등 그 벡터를 읽는 시험 전수)을 돌려 결과 한 줄 — 빨강이면 서버 쪽을 같은 날 맞춘다**
