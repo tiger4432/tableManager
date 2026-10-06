@@ -9345,7 +9345,7 @@ export async function resolveValidDie(meta, targetTable, homeMapKey) {
     }
     // [F8] 밀림을 알린다. 대가를 셀 것이 없으므로(`classifyUnsavableCells`를 부르지 않는다)
     // 마스크가 앉은 뒤여야 할 이유도 없지만, 지정이 실제로 성립한 뒤에만 말하는 것이 맞다.
-    if ((originDiffer || dimsDiffer) && !stale()) {
+    if (originDiffer || dimsDiffer) {
       // 사유는 성립한 것만 말한다 ― 원점과 치수는 서로 독립이고, 둘 다 어긋날 수도 있다.
       // ⚠️ **cp949를 벗어나는 문자를 쓰지 않는다.** 운영 콘솔이 한국어 Windows 콘솔이라
       //    em dash(U+2014) 한 글자에 로깅 핸들러가 **줄 전체를 버린다** ― 이 진단은 그동안

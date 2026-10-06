@@ -1813,7 +1813,7 @@ const MUTATIONS = [
    s => s.replace('    const rawKeys = [...projectCellsToPhys(cells, refFrame).keys()];',
                   '    const rawKeys = [...projectCellsToPhys(cells, currentFrame()).keys()];')],
   ['N4 the offset goes UNANNOUNCED (an offset mask with no visible cause)',
-   s => s.replace('    if ((originDiffer || dimsDiffer) && !stale()) {', '    if (false) {')],
+   s => s.replace('    if (originDiffer || dimsDiffer) {', '    if (false) {')],
   ['N5 a differing grid REFUSES again (the behaviour the user reversed, twice)',
    s => s.replace("    const out = set('ref', keys, '', ref, {",
                   "    if (refResolved.cols !== hereResolved.cols || refResolved.rows !== hereResolved.rows) {\n"
@@ -1823,17 +1823,13 @@ const MUTATIONS = [
    s => s.replace('    if (rows.length > OVERLAY_CELL_LIMIT) {', '    if (false) {')],
   // ── the stale generation guard, RETARGETED to what it now protects ────────────────────
   //
-  // 🔴 IT REMOVES EVERY COPY ON TODAY'S PATH: set's early return, the diagnosis block, the toast.
-  //    The toast's own `!stale()` is REDUNDANT -- dimsDiffer/originDiffer are set only inside the
-  //    guarded diagnosis block and nothing is awaited between it and the toast -- so removing it
-  //    alone changes nothing; what IS scored is the guard, so the mutation removes the guard.
+  // 🔴 IT REMOVES EVERY COPY ON TODAY'S PATH: set's early return and the diagnosis block.
   ['M5 the stale-generation guard is removed (a superseded resolution narrates a screen the user left)',
    s => s
      .replace('  const set = (basis, keys, reason, ref, physPreset) => {\n    if (stale()) return validDie;\n',
               '  const set = (basis, keys, reason, ref, physPreset) => {\n')
      .replace('    if (!stale()) {\n      const diag = diagnoseDesignationAlignment(',
-              '    {\n      const diag = diagnoseDesignationAlignment(')
-     .replace('    if ((originDiffer || dimsDiffer) && !stale()) {', '    if (originDiffer || dimsDiffer) {')],
+              '    {\n      const diag = diagnoseDesignationAlignment(')],
 
   // ── [MEDIUM-1] the ONE definition of "this many cells make Push refuse" ────────────────
   ['M7b pushBlockingCount folds stray in (the measured 4-vs-2 divergence, put back)',
@@ -1870,8 +1866,8 @@ const MUTATIONS = [
   ['O1 the origin axis is removed (the dimension-only guard, restored)',
    s => s.replace('  if (sx !== refMinX || sy !== refMinY) {', '  if (false) {')],
   ['O2 the origin difference is computed but never announced (silent again at the toast)',
-   s => s.replace('    if ((originDiffer || dimsDiffer) && !stale()) {',
-                  '    if (dimsDiffer && !stale()) {')],
+   s => s.replace('    if (originDiffer || dimsDiffer) {',
+                  '    if (dimsDiffer) {')],
   // O3 (the origins compared as DECLARED STARTS) went: that comparison is now the design --
   // diagnoseDesignationAlignment solves the origin by the declared START (owner 2026-07-30).
   ['O4 the dimension axis is dropped when the origin axis is added (one blind spot for another)',
