@@ -932,6 +932,7 @@ def build_explorer_index(setup: Any, *, snapshot_hash: str | None = None) -> Exp
                 "mapping_predicate", pointer(*mapping_path, "predicate"),
             )
             compiled_bindings = mapping_compiled.get("bindings", {})
+            typed = setup_bundle.column_typed_entity_types(mapping, snapshot.vocabulary)
             for role_id, binding in sorted(mapping.get("bind", {}).items()):
                 binding_ref = f"{mapping_ref}#binding:{role_id}"
                 binding_path = (*mapping_path, "bind", role_id)
@@ -950,6 +951,12 @@ def build_explorer_index(setup: Any, *, snapshot_hash: str | None = None) -> Exp
                     builder.add_edge(
                         binding_key, entity_id, "entity", "binding_entity",
                         entity_pointer,
+                    )
+                # a type read from a column: a line to every type the role can carry
+                for entity_id in typed.get(role_id, ()):
+                    builder.add_edge(
+                        binding_key, entity_id, "entity", "binding_entity",
+                        pointer(*binding_path, "entity_type"),
                     )
         # 🔴 THE MAPPER IS A POSITION INSIDE THE SOURCE, exactly like a `claim` inside a
         # pack: its `bundle_path` EXTENDS the source's, which is what `owning_section` and

@@ -158,16 +158,39 @@ def test_the_reference_moves_only_the_cursors_of_sources_that_name_the_entity(sn
     assert "dt_job" not in moved and "lot_event" not in moved
 
 
-def test_the_declaration_says_a_source_naming_the_entity_writes_the_edge():
+def test_the_declaration_says_a_source_naming_the_entity_writes_the_edge(snapshot):
     from ledger.setup_bundle import emitted_predicates
 
     with open(os.path.join(SAMPLE, "ledger_config.json.sample"), encoding="utf-8") as fh:
         document = json.load(fh)
     _with_reference(document)
-    entities = document["entities"]
-    assert "in_container@1" in emitted_predicates(document["sources"]["die_inspection"], entities)
-    assert "in_container@1" in emitted_predicates(document["sources"]["transfer_event"], entities)
-    assert "in_container@1" not in emitted_predicates(document["sources"]["dt_job"], entities)
+    entities, vocabulary = document["entities"], snapshot.vocabulary
+    for source, emits in (("die_inspection", True), ("transfer_event", True), ("dt_job", False)):
+        said = emitted_predicates(document["sources"][source], entities, vocabulary)
+        assert ("in_container@1" in said) is emits, source
+
+
+def _type_from_a_column(document):
+    _with_reference(document)
+    target = document["sources"]["die_inspection"]["bind"]["mappings"]["die-inspected"]["bind"]
+    target["target"]["entity_type"] = {"kind": "column", "column": "method"}
+
+
+def test_a_type_read_from_a_column_writes_the_edges_of_every_type_it_can_carry():
+    """총괄 564a46193 ②: the role names no type, so the edge came from nowhere - the screen listed
+    less than the ledger receives. Folded as the loader folds (`ledger.config.load`)."""
+    from declaration_names import fold_versions
+    from ledger.setup_bundle import emitted_predicates
+
+    with open(os.path.join(SAMPLE, "ledger_config.json.sample"), encoding="utf-8") as fh:
+        document = json.load(fh)
+    _type_from_a_column(document)
+    document = fold_versions(document)
+    source, entities = document["sources"]["die_inspection"], document["entities"]
+    assert "in_container" in emitted_predicates(source, entities,
+                                                _snapshot(_type_from_a_column).vocabulary)
+    assert "in_container" not in emitted_predicates(source, entities, {}), (
+        "the edge comes through the predicate's admitted types, nothing else")
 
 
 @pytest.mark.parametrize("change, path, code", [
@@ -185,3 +208,26 @@ def test_a_wrong_reference_is_refused_by_name(change, path, code):
     document["entities"]["die@1"]["references"] = dict(REFERENCE, **change)
     errors = validate_bundle_errors(document, catalog=catalog)
     assert ("bundle.entities.die." + path, code) in {(e.path, e.code) for e in errors}, errors
+
+
+def test_the_declaration_catalogue_lists_that_edge_for_the_source(tmp_path, monkeypatch):
+    """The route's `emits` is the same answer: it hands over the vocabulary of the world that
+    planned the source (총괄 564a46193 ②)."""
+    from declaration_names import fold_versions
+    from ledger import config as ledger_config
+    from ledger import setup as ledger_setup
+    from ledger import trace_router
+
+    with open(os.path.join(SAMPLE, "ledger_config.json.sample"), encoding="utf-8") as fh:
+        document = json.load(fh)
+    _type_from_a_column(document)
+    root = tmp_path / "typed"
+    root.mkdir()
+    (root / "ledger_config.json").write_text(json.dumps(document), encoding="utf-8")
+    built = ledger_setup.load_setup(root, catalog=load_physical_catalog(
+        os.path.join(SAMPLE, "table_config.json.sample")))
+    monkeypatch.setattr(ledger_setup, "load_setup", lambda *_a, **_k: built)
+    monkeypatch.setattr(ledger_config, "load", lambda *_a, **_k: fold_versions(document))
+
+    sources = {item["source"]: item for item in trace_router.ledger_declaration_catalog()["sources"]}
+    assert "in_container" in sources["die_inspection"]["emits"]

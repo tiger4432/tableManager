@@ -9,6 +9,15 @@
 
 ---
 
+## 2026-10-06 · 칸에서 타입을 읽는 바인딩 — 표 머리 emits · 탐색기 선
+
+- **무엇** — 엔티티 타입을 행의 칸에서 읽는 바인딩(`"entity_type": {"kind": "column", "column": "<칸>"}`)은 이름을 적지 않아서, 그 소스가 쓰는 references 엣지가 표 머리의 emits 목록에서 빠지고 온톨로지 탐색기에서도 그 바인딩에 엔티티 선이 없었습니다. 이제 둘 다 술어가 그 역할에 받는 타입 전부(`entity_types_of(role)`, 원장이 행을 거를 때 읽는 그 목록)를 씁니다. 선언 고치기 미리보기와 같은 함수 하나(`setup_bundle.column_typed_entity_types`)를 지납니다.
+- **선언 예시** — 소스 바인딩 `"target": {"kind": "entity", "entity_type": {"kind": "column", "column": "method"}, "keys": {...}}` 이고 술어가 target 에 `die` 를 받으며 `die` 에 `references` 가 있으면, 그 엣지가 그 소스의 emits 에 나옵니다.
+- **화면에서** — 그리드 표 머리 `ledger source — <소스> · emits ...` 와 온톨로지 탐색기의 바인딩 → 엔티티 선.
+- **필요한 조건** — 서버 재기동(API).
+- **바뀐 동작** — 칸 타입 바인딩이 있는 소스의 emits 와 탐색기 선이 늘어납니다. 없는 선언은 그대로입니다.
+- **자세히** — 이 항목과 같은 커밋 · RUN.md 같은 절.
+
 ## 2026-10-06 · 체인 규칙 — run_in 을 목록에서 고른다
 
 - **무엇** — 체인 규칙 폼의 `run_in` 칸이 닫힌 목록(`chain` · `operation`)이 됩니다. 스켈레톤은 평면 문법과 통합 문법(`limits`) 두 곳 모두 `{"kind": "leaf", "hint": "choice", "list": "run_in"}` 이고, `/admin/chain/rules/raw` 응답이 같은 이름의 목록 `"run_in": ["chain", "operation"]` 을 싣습니다(원장 선언 화면의 `occurred_at_basis` 와 같은 모양).
