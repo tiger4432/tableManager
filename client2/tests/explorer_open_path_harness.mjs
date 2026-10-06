@@ -1387,6 +1387,95 @@ console.log('\n[9] the source form writes only what was picked');
     back.read && !('exclude_when' in back.read), JSON.stringify(back));
 }
 
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+// [10] lead 068c904a6 ② — a oneOf picked by the value's shape (`pick: 'shape'`), through the
+//      controller's own events: the picker writes the branch's VALUE at the cell, no branch key.
+//      The fixture's names exist nowhere in the product; the ledger's entity_type is the case.
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+console.log('\n[10] a oneOf picked by shape writes the branch value itself');
+{
+  const { loadWithProbe } = await import('./lib/probe.mjs');
+  const SUBJECT = join(HERE, '..', 'src', 'ontology_explorer.js');
+  const leaf = { kind: 'leaf', hint: 'free' };
+  const SHAPED = { kind: 'oneOf', hint: 'choice', pick: 'shape',
+    branches: { word: { kind: 'leaf', hint: 'ref' }, from_col: { use: 'col_ref' } },
+    empty: { word: '', from_col: { via: 'column', col: '' } } };
+  const SCHEMA_T = { authorable_kinds: [{ id: 'thing', section: 'things', versioned: false }],
+    skeleton: { defs: { col_ref: { kind: 'record', fields: [
+      { key: 'via', required: true, node: { kind: 'leaf', hint: 'choice', list: 'vias' } },
+      { key: 'col', required: true, node: leaf }] } },
+    root: { kind: 'record', fields: [{ key: 'things', required: true, node: { kind: 'map', keyed_by: 'name',
+      member: 'Thing', of: { kind: 'record', fields: [{ key: 'type', required: true, node: SHAPED }] } } }] } },
+    vias: ['column'] };
+  const TKEY = 'thing|t';
+  const START = { type: 'lot' };
+  const walk = async (create) => {
+    const on = { click: [], change: [], input: [] };
+    const root = element('div');
+    root.addEventListener = (type, fn) => { if (on[type]) on[type].push(fn); };
+    const settle = async () => { for (let i = 0; i < 20; i += 1) await new Promise((r) => setImmediate(r)); };
+    const fire = async (type, target) => { for (const fn of on[type]) await fn({ target }); await settle(); };
+    const SEL = { key: TKEY, canonical_id: 't', kind: 'thing', context_token: 'ctx:1', raw: START };
+    const TDRAFT = { draft_id: 'd1', target_key: TKEY, target_kind: 'thing', target_id: 't',
+      revision: 1, raw: START, lifecycle_status: 'draft', validation_errors: [], context_token: 'ctx:1' };
+    const fetchOf = async (url, init = {}) => {
+      const u = String(url);
+      const path = u.split('?')[0];
+      const method = init.method || 'GET';
+      let body = /draft_id=d1/.test(u) ? { ...COMPILE, selection: SEL, items: [SEL], draft: TDRAFT }
+        : { ...COMPILE, selection: SEL, items: [SEL] };
+      if (/\/drafts$/.test(path) && method === 'POST') body = TDRAFT;
+      else if (path.endsWith('/authoring/schema')) body = SCHEMA_T;
+      else if (path.endsWith('/authoring/plan')) body = { ...AUTHORING, fields: [] };
+      return { ok: true, status: 200, json: async () => body };
+    };
+    const controller = create({ root, apiBase: '', adminFetch: fetchOf, showToast: () => {} });
+    await controller.refresh();
+    await settle();
+    const create1 = { dataset: { action: 'create-draft' }, disabled: false };
+    create1.closest = () => create1;
+    await fire('click', create1);
+    const held = () => { try { return JSON.parse(controller.getState().editorText).type; } catch (e) { return null; } };
+    const picker = () => walkAll(root).find((n) => n.tagName === 'SELECT' && n.dataset?.action === 'edit-shape-branch'
+      && n.dataset.value === 'type');
+    const pick = (value) => fire('input', { dataset: { action: 'edit-shape-branch', value: 'type' }, value });
+    // This DOM has no select.value of its own: the picked option is the one marked selected.
+    const shown = () => (picker() ? ((picker().children || []).find((o) => o.selected) || {}).value : null);
+    const out = { start: held(), pickerAtStart: shown() };
+    await pick('from_col');
+    out.afterRecord = held();
+    out.pickerAfterRecord = shown();
+    out.colBox = Boolean(walkAll(root).find((n) => n.tagName === 'INPUT' && n.dataset?.value === 'type.col'));
+    await fire('input', { dataset: { action: 'edit-shape', value: 'type.col' }, value: 'kind_col' });
+    out.typedCol = held();
+    await pick('from_col');
+    out.samePick = held();
+    await pick('word');
+    out.afterWord = held();
+    return out;
+  };
+  const say = (name, cond, detail) => ok(name, cond, detail);
+  const judge = (o) => [
+    ['S1 the word value opens on the word branch', o.pickerAtStart === 'word' && o.start === 'lot'],
+    ['S2 picking the record branch writes its empty value at the cell, no branch key',
+      JSON.stringify(o.afterRecord) === JSON.stringify({ via: 'column', col: '' })],
+    ['S3 ...the picker then says that branch, and its fields are at the cell\'s own path (type.col)',
+      o.pickerAfterRecord === 'from_col' && o.colBox === true],
+    ['S4 a field typed lands inside the value', JSON.stringify(o.typedCol) === JSON.stringify({ via: 'column', col: 'kind_col' })],
+    ['S5 picking the branch it is already in keeps what is there', JSON.stringify(o.samePick) === JSON.stringify(o.typedCol)],
+    ['S6 picking the word branch writes the empty word', o.afterWord === ''],
+  ];
+  const base = await walk(createOntologyExplorerController);
+  for (const [name, cond] of judge(base)) say(name, cond, JSON.stringify(base));
+  // The mutant: the controller ignores the picker, as it did before 068c904a6 ②.
+  const mutated = await walk((await loadWithProbe(SUBJECT, { mutate: (t) => {
+    const from = "    if (event.target.dataset.action === 'edit-shape-branch') {";
+    if (!t.includes(from)) throw new Error('mutation anchor is GONE: edit-shape-branch');
+    return t.split(from).join('    if (false) {');
+  } })).module.createOntologyExplorerController);
+  ok('S-M1 mutant (the picker is not handled) is caught by S2', !judge(mutated)[1][1], JSON.stringify(mutated));
+}
+
 console.log(`\n════ RESULT: ${ran - failed} passed, ${failed} failed ════`);
 console.log(`ASSERTIONS ${ran} ${failed}`);
 process.exit(failed === 0 ? 0 : 1);

@@ -26,7 +26,7 @@
 import { ABSENT, countText } from './absent.js';
 import { CHOOSE } from './ui_words.js';
 import { renderSkeletonForm } from './ontology_explorer_view.js';
-import { emptyOf, missingRequired, shapeAt } from './ontology_skeleton.js';
+import { emptyOf, missingRequired, pickBranch, shapeAt } from './ontology_skeleton.js';
 // The grid's own reader of pasted sheet text (lead f382dacfb: no second parser).
 import { parseTsv, serializeTsv } from './tsv.js';
 // The one clipboard writer that works on plain HTTP (check_clipboard_convention), lead 72aa14785.
@@ -870,19 +870,11 @@ export class RawRegistryPanel {
             const picked2 = String(el.value || '');
             if (!picked2) return;
             const was = getAtPath(held2, splitBundlePath(String(path)));
-            const kept = was && typeof was === 'object' && !Array.isArray(was) ? was : {};
-            const next2 = {};
-            if (Object.prototype.hasOwnProperty.call(kept, 'kind')) next2.kind = picked2;
-            // 🔴 새 가지의 «빈 값»은 스켈레톤이 정합니다(`emptyOf`) — 레코드면 `{}`,
-            //    잎이면 빈 문자열입니다. 항상 `{}` 를 적으면 잎 자리에 «문법에 없는 모양»을
-            //    적는 것이고, 그 문서는 로더가 거절합니다.
+            // 🔴 새 가지의 «빈 값»은 스켈레톤이 정합니다 — 원장 폼과 «같은 함수»(`pickBranch`).
             const oneOfNode = shapeAt(root, splitBundlePath(String(path)),
                                       (payload.skeleton || {}).defs);
-            const branchNode = oneOfNode && oneOfNode.branches
-              ? oneOfNode.branches[picked2] : null;
-            next2[picked2] = kept[picked2] === undefined
-              ? (branchNode ? emptyOf(branchNode, (payload.skeleton || {}).defs) : {})
-              : kept[picked2];
+            const next2 = pickBranch(oneOfNode, picked2, was, (payload.skeleton || {}).defs);
+            if (next2 === undefined) return;
             const written2 = writeShapeAtPath(held2, String(path), next2);
             if (written2 === null) return;
             area.value = JSON.stringify(written2, null, 2);

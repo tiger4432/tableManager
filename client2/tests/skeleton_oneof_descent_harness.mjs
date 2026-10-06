@@ -36,6 +36,11 @@ const ok = (cond, name, detail = '') => {
 const show = (v) => (v === null || v === undefined ? String(v) : JSON.stringify(v));
 
 const CHAIN = JSON.parse(readFileSync(CHAIN_FILE, 'utf8'));
+const LEDGER = JSON.parse(readFileSync(join(ROOT, 'server', 'ledger', 'ledger_skeleton.json'), 'utf8'));
+// The entity binding's type as the implementer spelled it for lead 068c904a6 ② (10-06).
+const SPELLED = { kind: 'oneOf', hint: 'choice', pick: 'shape',
+  branches: { name: { kind: 'leaf', hint: 'ref', section: 'entities' }, column: { use: 'entity_type_column' } },
+  empty: { name: '', column: { kind: 'column', column: '' } } };
 
 // ── the nesting fixture ─────────────────────────────────────────────────────────────────
 // A oneOf under a oneOf, one branch of which is a `{use}` -- the shipped grammar allows both
@@ -176,6 +181,54 @@ function suite(M) {
       show(M.missingRequired(NESTED, { pick: { outer_b: 'x' }, name: 'n', flag: true }, DEFS)));
   }
 
+  // ══ ⑤ 값의 모양으로 가지 고르기 (`pick: 'shape'`, 총괄 068c904a6 ②) ═══════════════════════
+  // The shipped ledger record, with its entity_type node as spelled for the server's landing:
+  // until that lands the shipped node is the name leaf, so the spelling is put in here.
+  {
+    const LDEFS = LEDGER.defs;
+    const BINDING = { ...LDEFS.binding, fields: LDEFS.binding.fields.map(
+      (f) => (f.key === 'entity_type' ? { ...f, node: SPELLED } : f)) };
+    const COL = { kind: 'column', column: 'type_col' };
+    ok(show(['lot', undefined, '', COL, ['x'], true].map((v) => M.shapeBranch(SPELLED, v, LDEFS)))
+       === show(['name', 'name', 'name', 'column', '', '']),
+      'S1 the shape picks: a word or nothing is the name branch, a mapping the column branch, others none',
+      show(['lot', undefined, '', COL, ['x'], true].map((v) => M.shapeBranch(SPELLED, v, LDEFS))));
+    const colLeaf = M.shapeAt(BINDING, ['entity_type', 'column'], LDEFS);
+    const kindLeaf = M.shapeAt(BINDING, ['entity_type', 'kind'], LDEFS);
+    ok(colLeaf && colLeaf.kind === 'leaf' && colLeaf.hint === 'free'
+       && kindLeaf && kindLeaf.list === 'entity_type_binding_kinds',
+      'S2 the step after entity_type is a field of the record branch: entity_type.column, entity_type.kind',
+      show([colLeaf, kindLeaf]));
+    ok(M.shapeAt(BINDING, ['entity_type', 'name'], LDEFS) === null,
+      'S3 CONTROL: no branch name is on the path');
+    const toCol = M.pickBranch(SPELLED, 'column', 'lot', LDEFS);
+    const toName = M.pickBranch(SPELLED, 'name', COL, LDEFS);
+    ok(show(toCol) === show({ kind: 'column', column: '' }) && toName === ''
+       && M.pickBranch(SPELLED, 'column', COL, LDEFS) === COL
+       && M.pickBranch(SPELLED, 'nope', 'lot', LDEFS) === undefined,
+      'S4 the picker writes the branch value itself; the branch it is already in keeps what is there',
+      show([toCol, toName]));
+    toCol.column = 'scribbled';
+    ok(show(SPELLED.empty.column) === show({ kind: 'column', column: '' }),
+      'S5 what is written is a copy -- the skeleton\'s empty is not edited by the next keystroke');
+    const SEEDED = { kind: 'record', fields: [{ key: 't', required: true, node: SPELLED }] };
+    ok(M.emptyOf(SPELLED, LDEFS) === '' && show(M.emptyOf(SEEDED, LDEFS)) === '{}',
+      'S6 a new one starts as the name leaf did: empty is \'\', and a required one is left absent',
+      show([M.emptyOf(SPELLED, LDEFS), M.emptyOf(SEEDED, LDEFS)]));
+    const short = (type) => M.missingRequired(BINDING, { kind: 'entity', keys: { k: { kind: 'column', column: 'c' } },
+      ...(type === undefined ? {} : { entity_type: type }) }, LDEFS).filter((p) => p.startsWith('entity_type'));
+    ok(show([short({ kind: 'column', column: '' }), short('lot'), short(undefined)])
+       === show([['entity_type.column'], [], ['entity_type']]),
+      'S7 required inside the picked branch is named at the cell\'s own path; a word is complete',
+      show([short({ kind: 'column', column: '' }), short('lot'), short(undefined)]));
+    const derive = M.shapeAt(CHAIN.unified_root, ['derive'], CHAIN.defs);
+    const keyed = M.pickBranch(derive, 'decide', { kind: 'join', join: { take: ['x'] } }, CHAIN.defs);
+    ok(Object.keys(keyed).join(',') === 'kind,decide' && keyed.kind === 'decide'
+       && M.pickBranch(derive, 'decide', { join: {} }, CHAIN.defs).kind === undefined,
+      'S8 a keyed oneOf still writes the branch under its key, its stated kind kept in step',
+      show(keyed));
+  }
+
   return { fail: failures.length - before };
 }
 
@@ -192,7 +245,29 @@ const DEFECTS = [
     (s) => s.replace('    return branch ? deref(branch, defs) : null;',
                      '    return deref(Object.values(branches)[0] || null, defs);')],
   ['a oneOf empties to the leaf tail again, so a required oneOf is seeded as a string',
-    (s) => s.replace("  if (shape.kind === 'oneOf') return {};", '')],
+    (s) => s.replace("  if (shape.kind === 'oneOf') return shape.pick === 'shape' ? pickBranch(shape, shapeBranch(shape, undefined, defs), {}, defs) : {};", '')],
+  // ⑤ lead 068c904a6 ② -- a oneOf picked by the value's shape.
+  ['a oneOf picked by shape is descended by branch key, so entity_type.column is unreachable',
+    (s) => s.replace("    if (node.pick === 'shape') return childOf(", "    if (false) return childOf(")],
+  ['the shape is not read, so every value is the first branch',
+    (s) => s.replace("  const want = value === undefined", "  const want = 'leaf'; void (value === undefined")
+      .replace("    ? 'leaf' : typeof value === 'object' && !Array.isArray(value) ? 'record' : '';",
+               "    ? 'leaf' : typeof value === 'object' && !Array.isArray(value) ? 'record' : '');")],
+  ['the picker writes the branch under its key, as a keyed oneOf',
+    (s) => s.replace("  if (node.pick === 'shape') {\n    if (shapeBranch(node, was, defs) === picked) return was;",
+                     "  if (false) {\n    if (shapeBranch(node, was, defs) === picked) return was;")],
+  ['picking the branch it is already in empties it',
+    (s) => s.replace('    if (shapeBranch(node, was, defs) === picked) return was;\n', '')],
+  ['the skeleton\'s own empty is handed out, so the next keystroke edits the skeleton',
+    (s) => s.replace('JSON.parse(JSON.stringify(node.empty[picked]))', 'node.empty[picked]')],
+  ['a new one starts as a mapping, so a new binding opens on the column branch',
+    (s) => s.replace("return shape.pick === 'shape' ? pickBranch(shape, shapeBranch(shape, undefined, defs), {}, defs) : {};",
+                     'return {};')],
+  ['a required one is seeded, so a new binding holds a type nobody picked',
+    (s) => s.replace("(child.kind === 'leaf' || child.pick === 'shape')", "child.kind === 'leaf'")],
+  ['required inside the picked branch is named under the branch key',
+    (s) => s.replace('      return picked ? missingRequired(branches[picked], held, defs, at) : out;',
+                     '      return picked ? missingRequired(branches[picked], held, defs, `${at}.${picked}`) : out;')],
   ['a blank is never blank, so the window saves a declaration that cannot run',
     (s) => s.replace('function isBlank(value) {', 'function isBlank(value) {\n  return false;')],
   ['an empty record counts as filled, so `into: {}` passes the gate that exists for it',

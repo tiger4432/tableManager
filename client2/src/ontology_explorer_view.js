@@ -6,9 +6,10 @@ import { commitTree } from './dom_patch.js';
 import { splitBundlePath, getAtPath } from './ontology_path.js';
 import { pathSteps } from './path_bar.js';
 import {
-  asList, declarationShape, fieldApplies, memberPath, membersOf, shapeAt, valueFits,
+  asList, declarationShape, fieldApplies, memberPath, membersOf, shapeAt, shapeBranch, valueFits,
 } from './ontology_skeleton.js';
 import { closedListChoice, renderClosedList } from './closed_list.js';
+import { isBlank } from './absent.js';
 // 🔴 C-121. 이 화면이 보내는 수 옆에 «그 0 이 무엇인지»를 붙이는 정본. 새 어휘가 아니라서
 //    호출자가 여섯째입니다(admin 넷 · chain_queue_panel 둘).
 import { countWithAbsence } from './count_with_absence.js';
@@ -1948,11 +1949,18 @@ function renderSkeletonOneOf(context, node, path, value, depth, label, required)
   const branches = node.branches && typeof node.branches === 'object' ? node.branches : {};
   const names = Object.keys(branches);
   const held = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+  // `pick: 'shape'` (lead 068c904a6 ②): the value IS the branch's value, at this same path, and
+  // its shape picks. A value of neither shape is shown as the value, as any cell that cannot hold it.
+  const shaped = node.pick === 'shape';
+  if (shaped && !shapeBranch(node, value, context.deref) && !isBlank(value)) {
+    return renderTreeLeaf(context, { kind: 'leaf', hint: 'free' }, path, value, depth, label, required);
+  }
   // 🔴 「지금 무엇을 고랐나」는 로더와 «같은 순서»로 읽습니다: 적힌 `kind` 가 먼저고,
   //    없으면 «든 가지 키»가 답입니다(`rule_shape.from_declaration`). 화면이 다른 순서를 쓰면
   //    같은 문서를 두고 로더와 화면이 다른 답을 합니다.
   const stated = typeof held.kind === 'string' && branches[held.kind] ? held.kind : '';
-  const chosen = stated || names.find((name) => held[name] !== undefined) || '';
+  const chosen = shaped ? shapeBranch(node, value, context.deref)
+    : stated || names.find((name) => held[name] !== undefined) || '';
   const box = h('div', 'oe-node');
   box.dataset.path = path;
   const head = h('div', 'oe-node-head');
@@ -1971,10 +1979,11 @@ function renderSkeletonOneOf(context, node, path, value, depth, label, required)
   //    같은 낱말을 두 번 적는 줄이 됩니다.
   if (chosen && branches[chosen]) {
     const branch = context.deref(branches[chosen]) || branches[chosen];
+    const at = shaped ? path : `${path}.${chosen}`;
+    const own = shaped ? value : held[chosen];
     box.appendChild(branch.kind === 'record'
-      ? renderSkeletonRecord(context, branch, `${path}.${chosen}`, held[chosen], depth)
-      : renderSkeletonForm(context, branches[chosen], `${path}.${chosen}`,
-                           held[chosen], depth + 1, chosen));
+      ? renderSkeletonRecord(context, branch, at, own, depth)
+      : renderSkeletonForm(context, branches[chosen], at, own, depth + 1, chosen));
   }
   return box;
 }

@@ -940,9 +940,8 @@ const DEFECTS = [
   //    이 하니스는 한 번에 «모듈 하나»만 갈아 끼우고, 폼을 그리는 것은 `ontology_explorer_view.js`
   //    입니다. 그 주장들은 U3·U4·U7 이 «진짜 모듈»로 채점합니다 — 과장하지 않고 적어 둡니다.
   ['picking a branch keeps the old one, so the document names two',
-    s => s.replace('            const oneOfNode = shapeAt(root, splitBundlePath(String(path)),',
-                   '            Object.assign(next2, kept);\n'
-                   + '            const oneOfNode = shapeAt(root, splitBundlePath(String(path)),')],
+    s => s.replace('            const written2 = writeShapeAtPath(held2, String(path), next2);',
+                   '            const written2 = writeShapeAtPath(held2, String(path), { ...was, ...next2 });')],
   ['the branch picker writes nothing at all',
     s => s.replace("          if (action === 'edit-shape-branch') {", '          if (false) {')],
   ['the screen stops saying which grammar the rule is in',
