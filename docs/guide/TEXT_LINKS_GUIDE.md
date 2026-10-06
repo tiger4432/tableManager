@@ -158,4 +158,4 @@ def text_cause_links_llm(df, db):
 - 그 자리가 받지 않는 타입의 행은 그 행만 `type_not_admitted` 로 거절되고 다른 행은 들어간다 — 받는 타입은 술어 목록(`subjects` · `object.types`)이 정한다.
 - 타입 칸이 비거나 그 타입의 키 칸이 빈 행은 `no_identity`.
 - 적재에서 거절: 받는 타입의 키를 안 적음 · 어느 타입에도 없는 키 · 칸 타입에 속성 · 받는 타입에 소스 속성(`bind.entities`) · 코드 맵퍼 · `register` 문장인데 `read.registration_probe` 없음.
-- 선언 화면은 이 모양(이름 또는 칸)을 아직 읽기 전용으로만 보인다.
+- 선언 화면의 타입 칸은 아직 이름만 고른다 — 칸에서 읽는 모양은 선언 원본(JSON)으로 적는다.

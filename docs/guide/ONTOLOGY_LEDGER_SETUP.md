@@ -163,7 +163,7 @@ server/config/sample/ontology/transfer_explorer/ledger_config.json
 - `dt_log`를 cursor가 읽는다.
 - `dt_log`가 `dt_inventory` 쪽 컬럼 아홉(`dt_lot` … `final_chip`)을 자기 컬럼으로 든다 — 소스는
   그것을 읽고 조인하지 않는다(§7.3).
-- `CoreDie@1 → DTDie@1 → BondComponent@1 → FinalChip@1` 연속 계보를 선언한다.
+- `CoreDie → DTDie → BondComponent → FinalChip` 연속 계보를 선언한다.
 - 오른쪽 relation의 `dt_job_id`는 business key와 UNIQUE index로 단일성을 증명한다.
 
 주의: config가 이름으로 부를 수 있는 구현은 **코드에 실재하는 클래스**뿐이다. 파일을
@@ -539,7 +539,7 @@ JSON 블록은 모두 `ledger_config.json` 안 해당 키의 **값**이다.
 {
   "register": {
     "status": "active",
-    "subjects": ["Lot@1", "Wafer@1"],
+    "subjects": ["Lot", "Wafer"],
     "object": {
       "kind": "none",
       "qualifiers": {"required": [], "optional": []}
@@ -547,28 +547,28 @@ JSON 블록은 모두 `ledger_config.json` 안 해당 키의 **값**이다.
   },
   "has_wafer": {
     "status": "active",
-    "subjects": ["Lot@1"],
+    "subjects": ["Lot"],
     "object": {
       "kind": "entity_ref",
-      "types": ["Wafer@1"],
+      "types": ["Wafer"],
       "qualifiers": {"required": ["slot"], "optional": []}
     }
   },
   "derived_from": {
     "status": "active",
-    "subjects": ["Lot@1"],
+    "subjects": ["Lot"],
     "object": {
       "kind": "entity_ref",
-      "types": ["Lot@1"],
+      "types": ["Lot"],
       "qualifiers": {"required": [], "optional": []}
     }
   },
   "slot_map": {
     "status": "active",
-    "subjects": ["Lot@1"],
+    "subjects": ["Lot"],
     "object": {
       "kind": "entity_ref",
-      "types": ["Lot@1"],
+      "types": ["Lot"],
       "qualifiers": {
         "required": ["from", "to", "wafer"],
         "optional": []
@@ -619,8 +619,8 @@ Vocabulary는 “어떤 문장이 문법적으로 가능한가”를 정한다. 
 
 ```json
 {
-  "Lot@1": {"keys": ["lot"]},
-  "Wafer@1": {"keys": ["wafer"]}
+  "Lot": {"keys": ["lot"]},
+  "Wafer": {"keys": ["wafer"]}
 }
 ```
 
@@ -628,20 +628,20 @@ Vocabulary는 “어떤 문장이 문법적으로 가능한가”를 정한다. 
 
 | 필드 | 필수 | 설명 |
 |---|---:|---|
-| Entity ID | 예 | versioned ID, 예: `Lot@1` |
+| Entity ID | 예 | 맨이름, 예: `Lot` — 옛 `Lot@1` 도 읽을 때 접히고 저장하면 맨이름으로 다시 쓰인다(10-06 `f34f16892` · ~~versioned ID~~) |
 | `keys` | 예 | 개체를 식별하는 논리 key 이름. 비어 있거나 중복될 수 없다. |
 | `key_types` | 아니오 | key 이름 → trimmed nonblank type 문자열. 키 집합은 `keys`와 정확히 같아야 한다. |
 | `allow_null` | 아니오 | 명시적 boolean. 생략 시 null key를 허용하는 것으로 추측하지 않는다. |
 
 여기서 `lot`은 논리 key 이름이지 반드시 물리 컬럼명일 필요는 없다. 소스 A의 `bind`는
-`lot_id`를, 소스 B의 `bind`는 `batch_name`을 같은 `Lot@1.keys.lot`에 binding할 수 있다.
+`lot_id`를, 소스 B의 `bind`는 `batch_name`을 같은 `Lot.keys.lot`에 binding할 수 있다.
 이것이 source 이름과 column 이름이 바뀌어도 같은 술어를 재사용할 수 있는 이유다.
 
 복합 개체 예시는 다음과 같다.
 
 ```json
 {
-  "Die@1": {
+  "Die": {
     "keys": ["wafer", "x", "y"],
     "key_types": {
       "wafer": "string",
@@ -781,7 +781,7 @@ kind `symbolic`과 `order`도 **도출될 수 없다.** 좁힌 binding이나 닫
       "bind": {
         "subject": {
           "kind": "entity",
-          "entity_type": "Lot@1",
+          "entity_type": "Lot",
           "keys": {
             "lot": {
               "kind": "column",
@@ -878,7 +878,7 @@ constant는 임의 문자열을 무조건 통과시키지 않는다. null 허용
 ```json
 {
   "kind": "entity",
-  "entity_type": "Die@1",
+  "entity_type": "Die",
   "keys": {
     "wafer": {
       "kind": "column",
@@ -907,6 +907,7 @@ Entity key 집합은 Entity descriptor의 `keys`와 정확히 같아야 한다. 
 
 > 🔴 **`binding_origin` · `approval_status` · `suggestion_reason` 셋은 선언에서 «없어졌다».**
 > binding은 이제 **종류와 그 payload만** 말한다 — `kind` + (`column` | `value` | `entity_type`·`keys`).
+> 🆕 10-06 `f1238d6ef` `entity_type` 은 타입 이름(글자) 또는 `{"kind": "column", "column": "<타입 칸>"}` — 행마다 그 칸의 타입을 읽고, 그 자리(subject · target)가 받는 타입인지 행마다 본다. 아니면 «그 행만» `type_not_admitted`, 타입 칸이나 그 타입의 키 칸이 비면 `no_identity`. `keys` 에는 받는 타입들의 키를 «모두» 적는다(행은 자기 타입의 키만 쓴다). 칸 타입에는 `attributes` 를 못 달고, 구현은 `declarative-role` 만, `register` 문장의 주어면 `read.registration_probe` 가 필수 — 어기면 로드에서 이름 대어 거절. 예시는 `TEXT_LINKS_GUIDE.md` §7
 >
 > **왜:** 소유자가 화면에서 그 셋을 보고 「바인딩이 이렇게 복잡하게 할 일이야? 그냥 주어, 목적어
 > 등 당 타입, 키만 입력하게 해」라고 판정했다. 실측이 뒷받침했다 — 라이브 40개 binding에서
@@ -1414,10 +1415,10 @@ Source cursor는 `dt_log`만 읽는다. 목적지 identity(`dt_lot` … `final_c
 이 예제가 보여 주는 의미 계보는 다음과 같다.
 
 ```text
-CoreDie@1
-  → DTDie@1
-    → BondComponent@1
-      → FinalChip@1
+CoreDie
+  → DTDie
+    → BondComponent
+      → FinalChip
 ```
 
 중요한 점:
@@ -1461,7 +1462,7 @@ malformed JSON도 raw traceback 대신 구조화된 `code/path/message`로 거�
 {
   "code": "unknown_entity_type",
   "path": "bundle.sources.my_source.bind.mappings.my_sentence.bind.subject.entity_type",
-  "message": "unknown entity type 'Missing@1'"
+  "message": "unknown entity type 'Missing'"
 }
 ```
 
