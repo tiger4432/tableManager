@@ -41,6 +41,7 @@
        리빌드 때 꺼낼 것 (소유자 10-06 「대기열 올려놓고 나중에 보드 제대로 한번 리빌드 할 때 꺼내」)
          · 기본 추세 좌석 둘(client2/src/rnd_board/main.js)이 도메인 낱말을 코드에 박음 — group_by 'wafer' · sum:inspected / sum:observed
            -> 그 좌석이 무엇으로 묶고 무엇의 비율을 내는지를 «사용자가 적는 칸»으로(코드에 도메인 낱말 0)
+         · 같은 좌석 주석 「inspected@1 로 물으면 값이 비어 옵니다」는 3ff7341fe 뒤로 거짓(서버가 measure 이름도 접음) — 리빌드 때 같이
 ```
 어휘(`Action` · `applies_to` · `based_on` · `released_by`)는 아직 없다 — §5-bis 는 «제안» 상태. **지시서 없음.**
 
