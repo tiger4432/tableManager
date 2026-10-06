@@ -1,3 +1,18 @@
+> ## [10:39 디자인] Retroactive 실행 줄 — 체인 실패 기록은 Chain 탭과 같은 다섯 칸으로 (서버 67b2e423b · 총괄 답 «가») — c646e98a9
+
+**결론** 착지했습니다.
+
+- **판정 자리 하나**: `failure_summary.js` 의 `failureRecordOf` 가 「이 error 글자가 체인 실패 기록인가」에 답합니다(JSON 객체이고 reason 칸이 있으면). 작업 이름은 묻지 않습니다. 문장 · 중간에 잘린 기록 · 목록 · reason 없는 객체는 글자로 남습니다.
+- **그리기**: `buildRunsView` 가 기록이면 `failureRecordCells`(Chain 탭 진단과 같은 함수)로 다섯 칸을 싣고 reason 은 비웁니다. 실행 줄은 결과 줄에 칸 이름(흐린 글씨) · 값(실패 색)으로 그립니다.
+- **주석**: `rule_outcome.js` 머리 주석의 서버 토큰 수를 «닫힌 일곱»(7) 로(서버 `RULE_OUTCOMES` 를 불러 셈).
+- 하니스 `failure_summary` 28 칸 실패 0 (바닥 24 → 28) · `retroactive_view` 351 칸 실패 0 (바닥 347 → 351) · `run_lines` 24 칸 실패 0 (바닥 19 → 24) · 변이 이번에 더한 6 개 다 잡힘(세 하니스 합 52/52). 미리보기(빌드된 어드민 화면, Overview 최근 결과, 1440): 기록 → `Rule note_links` · `Table inspection_note` · `Rows 6` · `Row not given by the error` · `Reason LlmRefused: the answer is not a JSON object` · JSON 글자 없음 · 잘린 기록 → 글자 그대로 예 · 문장 → `relation x does not exist` · 칸 이름과 값 사이 3px, 칸 사이 7px · 보내지 않은 비-GET 0. 러너 초록 · 계약 13 개 어긋남 0. RELEASE_LOG 한 항목.
+
+**UI 제안**(짓지 않음)
+
+| 항목 | 왜 | 크기 |
+|---|---|---|
+| 실패한 `rule_rows` 줄에 다시 돌리기 버튼 | 지금은 운영자가 Retroactive 폼에 rule · transaction · events · rows 를 손으로 옮겨 적어야 다시 돕니다 — 실행 기록에 그 값이 다 있습니다 | 안 쟀다 |
+
 > ## [09:31 디자인] 발견 2 — 변경 이력 접힌 줄: 종류는 트랜잭션 전체로, 영수증 세상 줄 (서버 c49217a06) — 9cdbda108
 
 **결론** 착지했습니다.
