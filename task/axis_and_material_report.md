@@ -1,3 +1,23 @@
+> ## [06:53 디자인] 제3자 라이선스 파일을 빌드가 dist 에 냅니다 (총괄 10-06) — 10ee4e09b
+
+**결론** 착지했습니다. 빌드가 `client2/dist/THIRD_PARTY_LICENSES.txt` 를 씁니다. 번들에 든 패키지 6 개(@dagrejs/dagre 3.0.0 · @dagrejs/graphlib 4.0.1 · ag-charts-types 13.3.0 · ag-grid-community 35.3.0 · cytoscape 3.34.3 · cytoscape-dagre 4.0.1)마다 이름 · 판 · 라이선스와 LICENSE 전문이 들어갑니다. 손으로 적은 패키지 목록은 없고, 빌드가 성공했다면 그 파일이 온전합니다.
+
+**정한 것**
+- 패키지를 찾는 길은 셋입니다. 빌드의 청크 모듈 목록, 그 파일 자기 소스맵에 든 «다른 패키지»의 원본(미리 묶인 것), 그리고 찾은 패키지의 dependencies 입니다. 찾을 때는 node 와 같이 자기 node_modules 부터 위로 올라갑니다. ag-grid-community 도 들어갑니다(총괄 답).
+- 빌드가 멈추는 경우는 둘입니다. LICENSE 를 못 읽는 패키지가 있을 때, 그리고 미리 묶인 사본이 설치된 패키지의 같은 파일과 바이트 단위로 다를 때입니다. 소스맵에 판 번호가 없어서, 문장의 «품은 판» 자리에는 품은 쪽이 package.json 에 적은 범위가 들어갑니다(총괄 승인).
+- `@dagrejs/dagre` 3.0.0 을 정확한 판으로 devDependency 에 넣었습니다(소유자가 이 세션에서 승인). graphlib 4.0.1 이 그 의존성으로 따라옵니다. 번들 크기는 그대로입니다.
+- 러너의 dist 단언은 넣지 않았습니다(총괄이 거둠: 빌드 전 게이트가 고칠 빌드를 막음).
+
+**잰 것**
+- 하니스 `third_party_licenses` 10 칸 실패 0 (새 바닥 10). 플러그인 모듈을 import 해서, 임시 폴더에 만든 node_modules(미리 묶인 사본이 같을 때와 다를 때 · 안쪽 의존성 · 위로 올라간 의존성 · LICENSE 없는 패키지)로 재고, 플러그인을 번들러가 부르는 모양으로 부릅니다.
+- 변이 9 개 전부 이름 붙은 칸에서 잡힘: own-sources-count-as-copies(F2) · no-carried-discovery(F1) · no-dependency-following(F1) · lookup-stops-at-its-own-node_modules(F1) · no-content-comparison(F5) · unreadable-package-dropped-silently(F6) · plugin-ignores-drift(P2) · plugin-emits-beside-the-root(P1) · license-text-left-out(F3).
+- 짓는 중에 잡은 결함 하나: 패키지 자기 소스맵의 «자기 src» 파일까지 품은 사본으로 세고 있었습니다. 실제 트리는 cytoscape-dagre 가 src 를 같이 내서 우연히 통과했습니다. 고쳤고 F2 가 그 대조군입니다.
+- 실제 트리: 빌드한 dist 에서 바뀐 것은 이 파일 하나(6,659 B)이고, 다른 자산의 이름(내용 해시)은 그대로입니다. @dagrejs/dagre 를 잠깐 치우고 빌드하면 「@dagrejs/dagre ships in this build but has no installed package.json with a license file」로 exit 1 이었고, 되돌렸습니다.
+- 러너 초록 · 계약 13 개 어긋남 0.
+- 서버: dist 루트의 파일을 내는 경로가 있어 `/THIRD_PARTY_LICENSES.txt` 로 나갑니다. 코드로만 확인했고 요청은 안 해 봤습니다.
+
+**알려 드릴 것** main 트리는 이번 착지 뒤에 `client2` 에서 `npm ci` 를 한 번 더 해야 빌드가 됩니다(@dagrejs/dagre). 안 하면 빌드가 위 문장으로 멈춥니다.
+
 > ## [23:30 디자인] 걷기 그래프를 Cytoscape 뷰어로 · 덩어리에서 골라 펼치기 · 보던 시점 유지 (총괄 5e1d9e372 · e523cfe91 · 03bc94b6b) — 132d4c6ee
 
 **결론** 착지했습니다. 세 지시를 한 부품(SubgraphView)에 지었고, 바깥 계약(생성자 인자 · main.js 의 자리)과 걷기 요청 모양은 그대로입니다. 들인 것: cytoscape 3.34.3 · cytoscape-dagre 4.0.1(MIT, dagre 는 cytoscape-dagre 안에 묶여 있어 따로 받은 것 없음).
