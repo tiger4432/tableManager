@@ -72716,3 +72716,31 @@ sqlite 전체 5 failed, 7861 passed, 333 skipped, 3 xfailed, 13194 warnings in 9
 ```
 RUN.md 절 · RELEASE_LOG «바뀐 동작» — 같은 커밋.
 같은 함수의 둘째 거짓(소스 줄을 옛 검증기로 재서 샘플 소스 7 전부 rejected)은 총괄께 물음으로 올렸습니다 — 이 착지에 안 넣음.
+
+---
+
+## [10-06] 설정 해석 보고서 — 소스 줄이 로더의 판정 그대로 착지 08392a2c2 (총괄 11d0b6b88)
+
+어느 DB · 어느 스키마 · 지운 것 — 시험은 메모리 sqlite 만 · 박스 DB 안 씀 · 지운 것 0
+
+**짓기 전 셈 — 옛 검증기 ledger_config.validate 를 부르는 자리 (AST, 시험 밖 추적 파일 294)**
+```
+validate  <- server/config_resolve_report.py:_resolve_ledger (ledger_config.validate)
+validate  <- server/ledger/admin.py:check_source_declaration (ledger_config.validate)
+validate  <- server/ledger/config.py:_validate_for_version (bare)
+-> 지금 선언을 옛 문법으로 판정하던 자리: 보고서(이번에 고침) · check_source_declaration(운영 호출자 0 — 348e7d64f 로 은퇴)
+   load 는 판본으로 가름(5 미만만 옛 검증기) — 그 독자 6 은 맞음
+```
+**지은 것**
+```
+보고서가 «읽은 그 파일»의 폴더로 load_setup 한 번 — 어휘(7501d2802)와 source_plans 를 같이 씀
+planned -> fine 「`<소스>` is read: …」 (은퇴면 「is retired: …」)
+planned 거짓 -> rejected, 로더의 refusal 문장 그대로(path: message)
+컴파일 실패 -> 파일 줄 하나 · 운영 파일이 없어 샘플을 읽으면 -> 「샘플을 보임, 아무것도 안 읽음」 한 줄
+옛 검증기 호출 · 「translates in the … grammar」 문장 지움
+게이트  샘플 둘 + 뷰를 읽는 소스 하나 더한 경우: read = 로더가 세운 것 · rejected = 로더가 거절한 것(그 문장 그대로)
+        컴파일 실패 · 파일 없음 · 은퇴한 소스 — 각자의 줄
+변이 5  거절한 소스를 read 로 RED · 로더의 문장을 버림 RED · 컴파일 실패를 안 말함 RED · 샘플을 운영 선언처럼 RED · 은퇴한 소스를 read 로 RED
+sqlite 전체 5 failed, 7867 passed, 333 skipped, 3 xfailed, 13204 warnings in 823.90s (0:13:43) — 박스 사유 밖: 없음
+```
+RUN.md 절 · RELEASE_LOG «바뀐 동작» — 같은 커밋.
