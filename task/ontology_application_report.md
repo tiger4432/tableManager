@@ -35962,3 +35962,25 @@ CODE_MAP 은퇴 함수 이름, 표지 없는 줄     2      0     declarationIdF
 남긴 것  44 줄 — 날짜 붙은 실측 · 결함 큐 기록 · ⚰️ 절 · Pack 이름(transfer@1/movement · packs) · 「옛 철자도 접힌다」는 줄(WALK collect=die@1 · sum:x@1)
         architecture/CODE_MAP.md 10 · spec/LEDGER_EVIDENCE_SUBGRAPH_SPEC.md 9 · guide/ledger/PRIMER.md 5 · process/SERVER_DEFECT_QUEUE.md 5 · spec/LEDGER_TECHNICAL_SPEC.md 5 · architecture/WALK.md 3 · spec/APPLICATION_GAP_SPEC.md 2 · spec/ONTOLOGY_GRAPH_SPEC.md 2 · architecture/LEDGER_FRAME_CHAIN_MAPPER.md 1 · architecture/LEDGER_SCHEMA_COMPLETENESS.md 1 · guide/config/ledger_declaration_by_example.md 1
 ```
+
+---
+
+## [C 응용] 10-06 3ff7341fe(걷기 요청 이름 한 자리) QA · 문서 c0f523f4b — 결함 없음
+
+```
+잰 것    5504a325a 의 같은 계기(group_nodes 에 맨이름 술어 수 3 인 노드, DB 없음 · 공유 트리 server 미커밋 0)
+         sum:inspected -> [{'key': 'wafer', 'n': 1, 'value': {'sum:inspected': 3.0}}]
+         sum:inspected@1 -> [{'key': 'wafer', 'n': 1, 'value': {'sum:inspected@1': 3.0}}]
+         -> 옛 철자가 접히고 답의 키는 물은 그대로 — 5504a325a 의 빈 값이 닫혔다
+시험     착지 시험 + 이웃 다섯(공유 트리) : 102 passed, 1 skipped, 6 warnings in 3.91s
+문서     c0f523f4b — WALK.md(이름 찾기에 keys · measure 줄 「빈다」 -> 「접힌다 · 없는 이름은 value_name_not_declared」 · 한 자리 줄) ·
+         LEDGER_SCHEMA_COMPLETENESS B3 · B10(거절 이름 넷 -> 여섯 줄) · CODE_MAP trace_router(_declared_or_refused · _value_names) · ledger_subgraph(VALUE_SOURCES keys)
+남은 말   서버 주석 「선언이 버전을 붙인다」 7 줄(f34f16892 때 8, 35d060a6d 가 넷을 고쳤다는데 이 문구로는 하나 줄었다 — 고친 넷이 다른 문구였을 수 있다):
+         server/ledger/roleframe.py:1638:    #: (versioned entity type, keys, the row naming it, that row's source rows) - what the
+         server/ledger/setup_bundle.py:2008:    versioned vocabulary id, not a `<pack>/<claim>` pair, so the pattern that parsed one
+         server/ledger/setup_registry.py:745:    Keys are matched as well as values because an entity id is a versioned name
+         server/ledger/trace_router.py:461:    only authority, bare names because the declaration versions its ids, and a second
+         server/ledger/trace_router.py:525:    Bare names, because the declaration versions its ids (`defect_kind@1`) and a projected
+         server/ledger/trace_router.py:1086:    # anyone who needs it; nobody has to look. `subjects` stays VERSIONED (`die@1`) because
+         server/ledger_api/ledger_subgraph.py:1936:    # names because the declaration versions its ids (`defect_kind@1`) and a projected node
+```
