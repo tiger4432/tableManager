@@ -72794,3 +72794,39 @@ RUN.md 절 · RELEASE_LOG 항목(서버 반쪽, 클라 항목은 aed628176 에) 
 동작      바뀌지 않음(부르는 이가 없던 코드) — 그래서 RUN.md · RELEASE_LOG 항목 없음. 변이 없음(잴 동작이 없음)
 sqlite 전체 5 failed, 7857 passed, 333 skipped, 3 xfailed, 13209 warnings in 857.01s (0:14:17) — 박스 사유 밖: 없음
 ```
+
+---
+
+## [10-06] 이력 목록 둘 — 대표 로그 · 세상마다 실패 수 착지 67f156c11 (총괄 a40ec0283 · 클라 9cdbda108 제안)
+
+어느 DB · 어느 스키마 · 지운 것 — sqlite 시험은 메모리 · 벡터 뜨기는 격리 PG(assy_test) 의 시험 틀 임시 스키마
+(assy_pytest_pg_<프로세스>), 틀이 지우고 남지 않음을 확인 · 박스 DB 안 씀 · 그 밖에 지운 것 0
+
+```
+① 실패 수   receipt_worlds 원소마다 failed = status 가 runtime_v2.RECEIPT_FAILED 인 영수증 수
+           followup 의 실패 영수증도 같은 상수로 씀(낱말이 둘로 갈라질 자리를 하나로)
+② 대표 로그  main._representative 하나 — 영수증이 아닌 가장 새 로그, 영수증만 있으면 가장 새 영수증
+           「행이 지워졌나」 확인과 줄 자체가 같은 함수를 부름. 대표를 고르는 서버 자리는 이 하나
+           (/audit_logs/transaction 은 로그 전부를 냄)
+칸 이름     짓기 전에 클라에 메시지로 보냄 — {"world", "receipts", "failed"}
+게이트      test_m 을 고쳐 씀: 실패 영수증의 값은 진짜 쓰는 함수(_write_failure_receipt)에서 받음
+           영수증이 다 뒤에 쓰여도 대표는 고친 줄 · 확인한 행은 그 줄 · 영수증만인 그룹은 가장 새 영수증
+변이        6/6 빨강(전부 failed 시험) · md5 전후 같음
+         RED  the representative is the newest log, receipt or not
+         RED  the row check asks about the newest log, the shown line the edit
+         RED  a group of receipts only shows its oldest
+         RED  a failed receipt is not counted
+         RED  the failure receipt says its status in another word
+         RED  the response drops the failed count
+벡터        contracts/ledger_receipt 의 recent_group_* 둘을 진짜 /audit_logs/recent 라우트로 다시 뜸
+           두 세상  대표 recipe_id RCP-1 -> RCP-2 (user) · default receipts 1 failed 0 · a43084gw0 receipts 1 failed 0
+           한 세상 실패  대표 recipe_id RCP-2 -> RCP-3 (user) · default receipts 1 failed 0 · a43084gw0 receipts 1 failed 1
+클라 하니스  ledger_receipt_timeline 새 벡터에서 고치기 전 39 통과 2 빨강(CANARY · W2 — 옛 대표=영수증을 단언)
+           클라가 두 단언을 고친 파일을 줘서 같은 커밋에 넣음 -> 41 통과 0 빨강
+           check_harnesses: 163 harnesses ― 161 gated, 2 on the known-red debt list (2 still red, 0 recovered). · 모두 초록
+크기         9 files changed, 126 insertions(+), 72 deletions(-)
+sqlite 전체 5 failed, 7857 passed, 333 skipped, 3 xfailed, 13201 warnings in 891.90s (0:14:51) — 박스 사유 밖: 없음
+```
+
+클라에 건넨 것 하나(짓지 않음): 실시간 경로 `timeline.js appendHistoryLocally` 는 새 로그를 그룹의 logs[0] 에
+unshift 합니다. 영수증이 그 길로 들어오면 화면의 대표가 다시 영수증이 됩니다. 영수증이 WS 로 오는지는 안 쟀습니다.
