@@ -1823,17 +1823,16 @@ const MUTATIONS = [
    s => s.replace('    if (rows.length > OVERLAY_CELL_LIMIT) {', '    if (false) {')],
   // ── the stale generation guard, RETARGETED to what it now protects ────────────────────
   //
-  // 🔴 IT REMOVES BOTH COPIES, AND MEASURING THAT WAS A FINDING. There are two stale checks on
-  //    this path — an early `return` inside the dimension branch and a `!stale()` on the toast —
-  //    and they are REDUNDANT: removing either one alone leaves the run silent, so the first
-  //    version of this mutation reported STILL GREEN. Neither copy is independently scored,
-  //    which is worth knowing; what IS scored is the guard, so the mutation removes the guard.
+  // 🔴 IT REMOVES EVERY COPY ON TODAY'S PATH: set's early return, the diagnosis block, the toast.
+  //    The toast's own `!stale()` is REDUNDANT -- dimsDiffer/originDiffer are set only inside the
+  //    guarded diagnosis block and nothing is awaited between it and the toast -- so removing it
+  //    alone changes nothing; what IS scored is the guard, so the mutation removes the guard.
   ['M5 the stale-generation guard is removed (a superseded resolution narrates a screen the user left)',
    s => s
-     .replace('    if (oHere.x !== oThere.x || oHere.y !== oThere.y) {\n      if (stale()) return validDie;\n',
-              '    if (oHere.x !== oThere.x || oHere.y !== oThere.y) {\n')
-     .replace('      // \ub0a1\uc740 \ud574\uc11d\uc740 \ud654\uba74\uc744 \uac74\ub4dc\ub9ac\uc9c0 \uc54a\ub294\ub2e4 \u2014 \uc774\uc81c \ud654\uba74\uc744 \ubc14\uafb8\uc9c0 \uc54a\uc73c\ubbc0\ub85c \ud1a0\uc2a4\ud2b8\ub3c4 \ub0b4\uc9c0 \uc54a\ub294\ub2e4.\n      if (stale()) return validDie;\n',
-              '')
+     .replace('  const set = (basis, keys, reason, ref, physPreset) => {\n    if (stale()) return validDie;\n',
+              '  const set = (basis, keys, reason, ref, physPreset) => {\n')
+     .replace('    if (!stale()) {\n      const diag = diagnoseDesignationAlignment(',
+              '    {\n      const diag = diagnoseDesignationAlignment(')
      .replace('    if ((originDiffer || dimsDiffer) && !stale()) {', '    if (originDiffer || dimsDiffer) {')],
 
   // ── [MEDIUM-1] the ONE definition of "this many cells make Push refuse" ────────────────
