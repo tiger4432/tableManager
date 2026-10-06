@@ -72469,3 +72469,47 @@ sqlite 전체 6 failed, 7817 passed, 330 skipped, 3 xfailed, 13071 warnings in 7
            고친 뒤 그 두 파일 27 passed, 82 warnings in 5.84s · 그 사이 코드 변경 0
 ```
 **④ 상태** — 전수 끝 · 갈림 넷 답 받음(entity_type 자리가 {kind: column, column} 도 받음 · 키는 허용 타입 키 이름의 합 · 칸 타입에 속성 거절 · register 주어가 칸 타입이면 probe 없을 때 거절). 짓는 중입니다.
+
+---
+
+## [10-06] 총괄 b5b335f2e ④ · 7255b4918 착지 f1238d6ef — 엔티티 타입을 행의 칸에서 (확정한 후보 -> leads_to + certainty)
+
+어느 DB · 어느 스키마 · 지운 것 — 시험은 메모리(출하 견본 + 후보 표 하나를 시험 안에서) · 이 박스는 선언 파일 읽기만 · 쓴 것 · 지운 것 0
+
+**선언법 두 줄** (TEXT_LINKS_GUIDE §7)
+```
+후보 표의 확정 칸을 소스 read.exclude_when 에 — 빈 행은 원장이 안 읽는다
+원인 · 현상 타입은 entity_type: {kind: column, column: <타입 칸>}, keys 에는 그 자리가 받는 타입들의 키를 다
+```
+**기존 선언 전후 지문** (같은 선언 파일을 옛 코드 · 새 코드로 컴파일)
+```
+sample (tracked)                     지문 6 중 같음 6 · 스냅숏 해시 같음 · 못 읽어 빠진 소스 0
+transfer_explorer sample (tracked)   지문 0 중 같음 0 · 스냅숏 해시 같음 · 못 읽어 빠진 소스 2
+BOX live (gitignored)                지문 5 중 같음 5 · 스냅숏 해시 같음 · 못 읽어 빠진 소스 10
+```
+transfer_explorer 견본은 출하 표 설정과 맞지 않아 두 소스 다 빠져서 비교할 지문이 없었습니다(옛 · 새 같음).
+
+**전수 — 바인딩의 entity_type 을 읽거나 바인딩을 걷던 자리, 각각의 처리**
+```
+고침(칸 타입을 안다)   문법 _validate_binding · 교차 _cross_binding_entity_types(+_column_type_refs) · _binding_refs
+                     번역 _evaluate_binding · validate_role_frame · event_frame 필수 칸 · 행 거절(새 사유 type_not_admitted)
+                     걷기 _binding_columns · _entity_key_columns · 스켈레톤(either) · 지문(그대로)
+적재에서 막음         코드 맵퍼(_entity_value · subject_type_of · object_type_of 에 닿지 않음) · 칸 타입의 속성
+                     · 받는 타입의 소스 속성 · register 인데 probe 없음
+문자열만 읽게 막음     _bind_entities_refs · with_source_attributes · _registered_subject_columns · _registering_sentences
+                     · _inherited_attribute_fields(위 덕에 안 터짐)
+남는 틈(말로만)       emitted_predicates — 칸 타입이 받는 타입들의 references 엣지를 목록에 안 넣음(받는 목록이 손에 없음)
+                     config._bound_words — 이름 바꾸기 비용 미리보기에 칸 타입 소스가 안 잡힘
+                     config_explorer — 칸 타입 바인딩에서 엔티티로 가는 선을 안 그림
+                     선언 화면 폼 — 이름 또는 칸 모양을 읽기 전용으로만, 키 줄을 안 보임(클라 일, 메시지 보냄)
+                     scripts/generate_source_rows — 타입 칸에 아무 값이나 채움(개발 스크립트)
+```
+**게이트**
+```
+시험       칸 타입 행마다 제 타입 · 제 키 / 받지 않는 타입 그 행만 거절 / 빈 타입 · 빈 키 no_identity /
+           확정 안 한 행 원자 0 / leads_to + certainty / 출하 견본은 전처럼 오류 0
+           적재 거절 — 빠진 키 · 어느 타입에도 없는 키 · 칸 타입의 속성 · 물려받는 속성 · 코드 맵퍼 ·
+           칸 아닌 모양 · probe 없는 register
+변이 10    받지 않는 타입을 안 거절 RED · 그 타입의 키 칸을 안 봄 RED · 행이 모든 타입의 키를 씀 RED · 행 타입을 안 접음 RED · 역할 틀이 행 타입을 바인딩과 견줌 RED · 받는 타입의 빠진 키 안 거절 RED · 어느 타입에도 없는 키 안 거절 RED · 물려받는 속성 안 거절 RED · 코드 맵퍼 허용 RED · register 에 probe 안 요구 RED
+sqlite 전체 5 failed, 7827 passed, 330 skipped, 3 xfailed, 13089 warnings in 795.17s (0:13:15) — 박스 사유 밖: 없음
+```
