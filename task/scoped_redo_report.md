@@ -72513,3 +72513,26 @@ transfer_explorer 견본은 출하 표 설정과 맞지 않아 두 소스 다 �
 변이 10    받지 않는 타입을 안 거절 RED · 그 타입의 키 칸을 안 봄 RED · 행이 모든 타입의 키를 씀 RED · 행 타입을 안 접음 RED · 역할 틀이 행 타입을 바인딩과 견줌 RED · 받는 타입의 빠진 키 안 거절 RED · 어느 타입에도 없는 키 안 거절 RED · 물려받는 속성 안 거절 RED · 코드 맵퍼 허용 RED · register 에 probe 안 요구 RED
 sqlite 전체 5 failed, 7827 passed, 330 skipped, 3 xfailed, 13089 warnings in 795.17s (0:13:15) — 박스 사유 밖: 없음
 ```
+
+---
+
+## [10-06] 긴급 ① 착지 9b4374ec5 (스켈레톤 either 되돌림) · 표기 규칙 collapse_repeats 착지 5ea34762f (총괄 c1ddec935)
+
+어느 DB · 어느 스키마 · 지운 것 — 시험은 메모리 sqlite 만 · 박스 DB 안 씀 · 지운 것 0
+
+**① 되돌림** — f1238d6ef 가 바인딩의 entity_type 노드를 either 로 바꿨고, 폼이 그 모양을 못 그려 재기동하면 타입 칸이 비었습니다(오늘의 이름 타입까지 — 클라가 재서 잡음). 노드를 이름 leaf 로 되돌리고 SKELETON_NODE_KINDS 를 넷으로. config_authoring 은 f1238d6ef 전과 같은 바이트. defs.entity_type_column 은 검증기의 칸 모양 닻이라 남김(어디서도 안 씀, note 에 적음). 문법 · 번역의 칸 타입 받기는 그대로 — 선언 원본으로 적음. 시험 하나: 바인딩 타입 노드가 이름 leaf.
+
+**표기 규칙 collapse_repeats** — write 칸 전용 값 규칙. 값은 마디를 가르는 한 글자.
+```
+a.a.a -> a · a.b.b -> a.b · a.a.b -> a.b · a.b.a · ab.b · a..a · a...a 그대로 · case 와 같이 A.a.a -> A
+차례 맨 끝(별칭 -> join -> pad_last_number -> replace -> case -> 이것) — _write_fold 한 곳이라
+쓰기 문 · 미리보기 · folds_again · 소급(Fold stored values into the declared spelling) 이 같이 지남
+비교 SQL 엔진은 안 씀 — write 칸은 접혀 저장돼 비교 쪽이 날 철자를 안 봄(짓기 전 판단, 엔진 필요한 자리 못 찾음)
+거절(이름 대어) write 없이 · 한 글자 아님 · time 옆 — time 의 「declare write」 문장은 쓰기 전용 규칙 한 고리로 접음
+키 칸에 write 로 적고 옛 철자 행이 있으면 새 행 0 — 쓰기 문이 옛 철자로 찾아 키를 접음(기존 기제)
+```
+**게이트**
+```
+변이 6   쓰기 접기가 안 접음 RED · 빈 마디도 접음 RED · 다른 규칙보다 먼저 접음 RED · write 없이 받음 RED · 두 글자 이상 받음 RED · time 옆에 받음 RED
+sqlite 전체(두 커밋 같이) 5 failed, 7841 passed, 330 skipped, 3 xfailed, 13136 warnings in 742.19s (0:12:22) — 박스 사유 밖: 없음
+```
