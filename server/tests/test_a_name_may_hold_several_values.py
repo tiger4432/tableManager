@@ -187,7 +187,7 @@ def test_a_type_the_declaration_never_named_keeps_todays_reading(declared):
 
 
 def test_the_version_does_not_have_to_be_spelled_by_the_node(declared):
-    """⚠️ A NODE'S `type` IS BARE and the declaration is keyed with its version — the same
+    """⚠️ A NODE'S `type` IS BARE, and an old `wafer@1` key still answers for it — the same
     fold `_declared_columns` makes, in the same direction."""
     declared({"wafer@1": {"keys": ["wid"], "attributes": ["product"],
                           "attribute_cardinality": {"product": "many"}}})

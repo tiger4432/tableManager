@@ -1720,11 +1720,9 @@ def _declared_columns(nodes, entities):
     leaves it blank rather than shifting its row.
     """
     # 🔴 THE DECLARATION SIDE IS FOLDED TO BARE, NOT THE NODE SIDE (measured live: every
-    # declared column came back empty). A node's `type` is ALREADY bare (`wafer`) and the
-    # declaration is keyed with its version (`wafer@1`), so looking the node up in the
-    # declaration as-is can never match — and folding the node would be folding the half
-    # that is already folded. The client does exactly this, in this direction:
-    # `bareName(e.type) === bare`.
+    # declared column came back empty when neither was). A node's `type` is bare and a
+    # reader folds an old `wafer@1` key at load (`declaration_names.fold_versions`); this
+    # fold keeps such a key handed in directly answering the same.
     declared_by_bare = {}
     for name, spec in (entities or {}).items():
         declared_by_bare.setdefault(_bare(name), spec)
