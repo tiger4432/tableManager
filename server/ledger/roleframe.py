@@ -37,7 +37,8 @@ from .ledger_frame import (
     ledger_frame_of,
     validate_ledger_rows,
 )
-from .setup_bundle import DECLARATIVE_ROLE, OCCURRED_AT_ROLE, is_event_time_role
+from .setup_bundle import (
+    DECLARATIVE_ROLE, OCCURRED_AT_ROLE, entity_type_column, is_event_time_role)
 from .setup_registry import (
     ClaimDescriptor,
     ImplementationKey,
@@ -394,7 +395,8 @@ class DeclarativeRoleMapper(BaseLedgerMapper):
                 roles[role_id] = _evaluate_binding(
                     binding, unit, columns=unit_columns,
                     path=f"{mapping.config_path}.bind.{role_id}",
-                    relation=context.source_plan.relation)
+                    relation=context.source_plan.relation,
+                    entities=context.snapshot.entities)
             out.append(RoleEmission(
                 sentence=sentence,
                 roles=roles,
@@ -1059,7 +1061,8 @@ def aware_time(value: Any, timezone_name: str, path: str, error=None) -> datetim
 
 def _evaluate_binding(binding: Mapping[str, Any], unit: pd.DataFrame, *, path: str,
                       columns: Mapping[Any, tuple] | None = None,
-                      relation: str | None = None) -> Any:
+                      relation: str | None = None, entities: Mapping[str, Any] | None = None
+                      ) -> Any:
     # `approval_status` gated this call until 2026-08-21.  It refused any binding that did
     # not say `approved`, and no file in the tree ever held another value -- 40 of 40 live
     # bindings said `approved`, so the gate could not fire and the field could not be
@@ -1104,14 +1107,23 @@ def _evaluate_binding(binding: Mapping[str, Any], unit: pd.DataFrame, *, path: s
         # key value meets its column; a code mapper's keys do not pass here.
         import map_overlay
 
+        named, key_bindings = binding.get("entity_type"), binding.get("keys", {})
+        if entity_type_column(binding):
+            # 🔴 총괄 7255b4918 ④: the type is the row's cell, folded bare; the keys are that
+            # type's own, out of every admitted type's (`event_frame` refused any other type)
+            named = bare_name(str(_evaluate_binding(
+                binding["entity_type"], unit, path=f"{path}.entity_type", columns=columns)
+                ).strip())
+            wanted = set((entities or {})[named].identity_keys)
+            key_bindings = {key: child for key, child in key_bindings.items() if key in wanted}
         keys = {
             key: map_overlay.canonical_key_value(
                 _evaluate_binding(child, unit, path=f"{path}.keys.{key}", columns=columns),
                 map_overlay.declared_column_type(relation, child.get("column"))
                 if isinstance(child, Mapping) and child.get("kind") == "column" else None)
-            for key, child in binding.get("keys", {}).items()
+            for key, child in key_bindings.items()
         }
-        payload = {"type": binding.get("entity_type"), "keys": keys}
+        payload = {"type": named, "keys": keys}
         # 🔴 ATTRIBUTES RIDE BESIDE THE KEYS AND ARE NOT PART OF THE ENTITY'S IDENTITY
         # (S-52). Two payloads differing only in an attribute name the SAME entity: what
         # makes an entity that entity is `keys`, and `entity_id` folds `type` + `keys`.
@@ -1412,6 +1424,7 @@ def validate_role_frame(
                     path=f"{row_path}.roles.{role_id}")
                 binding = mapping.bindings.get(role_id)
                 if (isinstance(binding, Mapping) and binding.get("kind") == "entity"
+                        and not entity_type_column(binding)
                         and isinstance(roles[role_id], Mapping)
                         and roles[role_id].get("type") != binding.get("entity_type")):
                     raise RoleFrameError(

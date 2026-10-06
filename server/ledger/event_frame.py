@@ -31,10 +31,12 @@ from .roleframe import (
     _is_missing,
     read_columns_once,
 )
+from .setup_bundle import entity_type_column
 from .setup_registry import (
     LedgerSetupSnapshot,
     SourcePlan,
 )
+from declaration_names import bare_name
 
 
 #: The frame column of every dynamic table, read by the ENGINE rather than by a declaration
@@ -360,7 +362,11 @@ def _without_excluded_rows(context: SourcePreparationContext,
                     for position in range(len(out))]
         context.excluded_rows.append(sum(excluded))
         out = out.loc[[not value for value in excluded]].reset_index(drop=True)
-    for column in _required_entity_columns(context.source_plan):
+    typed_key_columns = tuple(
+        child["column"] for _mapping, _role, binding, _type in _row_typed(context.source_plan)
+        for child in binding.get("keys", {}).values()
+        if isinstance(child, Mapping) and child.get("kind") == "column")
+    for column in _required_entity_columns(context.source_plan) + typed_key_columns:
         # 🔴 A MISSING COLUMN IS A PAGE REFUSAL AND A MISSING VALUE IS NOT. The column is a
         # fact about the DECLARATION; an empty cell is a fact about ONE ROW, and it refuses
         # that row's molecule by name in `_refuse_molecule`.
@@ -373,16 +379,67 @@ def _without_excluded_rows(context: SourcePreparationContext,
 
 
 def _required_entity_columns(source_plan: SourcePlan) -> tuple[str, ...]:
+    """The cells every row must fill to name its entities. A type read per row is its TYPE
+    column here; which key columns that row needs depends on its type (`_row_type_refusal`)."""
     columns: set[str] = set()
     for mapping in source_plan.profile.mappings.values():
         for binding in mapping.bindings.values():
             if not isinstance(binding, Mapping) or binding.get("kind") != "entity":
+                continue
+            if entity_type_column(binding):
+                columns.add(entity_type_column(binding))
                 continue
             for key_binding in binding.get("keys", {}).values():
                 if (isinstance(key_binding, Mapping)
                         and key_binding.get("kind") == "column"):
                     columns.add(key_binding["column"])
     return tuple(sorted(columns))
+
+
+def _row_typed(source_plan: SourcePlan) -> tuple:
+    """(mapping, role, binding, type column) for every role whose type is read per row."""
+    return tuple(
+        (mapping, role, binding, entity_type_column(binding))
+        for _sentence, mapping in sorted(source_plan.profile.mappings.items())
+        for role, binding in sorted(mapping.bindings.items())
+        if entity_type_column(binding))
+
+
+def _row_type_refusal(context, cells, positions, key):
+    """A row whose type, read from a column, the predicate does not admit in that role - or
+    whose own type's key cell is empty (총괄 7255b4918 ④). The type is the cell as written,
+    folded by `bare_name`."""
+    from .gate import REFUSE_NO_IDENTITY, REFUSE_TYPE_NOT_ADMITTED
+
+    for mapping, role, binding, type_column in _row_typed(context.source_plan):
+        if type_column not in cells:
+            continue
+        admitted = context.snapshot.vocabulary[mapping.predicate_id].entity_types_of(role)
+        for position in positions:
+            named = bare_name(str(cells[type_column][position]).strip())
+            path = f"event_frame.rows[{position}].{type_column}"
+            if named not in admitted:
+                return MoleculeRefusal(
+                    reason=REFUSE_TYPE_NOT_ADMITTED,
+                    detail=(f"molecule {key}: the row at {path} names type {named!r}, which "
+                            f"{mapping.predicate_id!r} does not admit as its {role} "
+                            f"({', '.join(admitted)})"),
+                    rows=len(positions),
+                    addresses=({"code": "invalid_entity_ref", "path": path},))
+            declared = context.snapshot.entities.get(named)
+            for key_name in (declared.identity_keys if declared is not None else ()):
+                child = binding.get("keys", {}).get(key_name)
+                column = (child.get("column") if isinstance(child, Mapping)
+                          and child.get("kind") == "column" else None)
+                if column in cells and is_blank_source_value(cells[column][position]):
+                    path = f"event_frame.rows[{position}].{column}"
+                    return MoleculeRefusal(
+                        reason=REFUSE_NO_IDENTITY,
+                        detail=(f"molecule {key}: a row of type {named!r} needs {column!r} "
+                                f"and the row at {path} leaves it empty"),
+                        rows=len(positions),
+                        addresses=({"code": "source_preparation_incomplete", "path": path},))
+    return None
 
 
 def _aware_time(value: Any, timezone_name: str, path: str) -> datetime:
@@ -483,7 +540,7 @@ def _refuse_molecule(context, cells, positions) -> "MoleculeRefusal | None":
                     addresses=({"code": "source_preparation_incomplete",
                                 "path": path},),
                 )
-    return None
+    return _row_type_refusal(context, cells, positions, key)
 
 
 def _event_frames(

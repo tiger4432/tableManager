@@ -123,3 +123,39 @@ def text_cause_links_llm(df, db):
 - 운영자 지시는 셋째 인자 — `ask_links(text, names, instruction="<지시>")`. 프롬프트에 들어가는 낱말은 사전 행 · 지시 · 글뿐이다.
 - 틀린 답(JSON 아님 · `links` 없음 · 원인/현상/근거 빔 · 근거 문장이 글에 없음)은 `LlmRefused` 로 이름 대어 거절된다. 그 글의 작업이 실패하고, 작업의 error 에 체인 격리와 같은 기록(`error_log` 모양)이 남는다. 관리 화면에서 다시 돌린다.
 - LLM 을 한 번 더 부르는 다른 쓰임새는 `ask_json(프롬프트)` — 답한 JSON 객체를 준다.
+
+## 7. 원장으로 — 확정한 후보만 `leads_to`
+
+1. 후보 표에 사람이 채우는 확정 칸을 두고, 원장 소스의 `read.exclude_when` 에 그 칸을 적는다 — 빈 행은 원장이 안 읽는다
+2. 원인 · 현상의 타입은 `entity_type: {"kind": "column", "column": "<타입 칸>"}` 으로 행에서 읽고, `keys` 에는 그 자리가 받는 타입들의 키를 다 적는다
+
+```json
+"leads_to": {
+  "subjects": ["<원인 타입>"],
+  "object": { "kind": "entity_ref", "types": ["<현상 타입>", "<다른 현상 타입>"],
+              "qualifiers": { "required": [], "optional": ["certainty"] } }
+}
+```
+
+```json
+"<후보 소스>": {
+  "relation": "<후보 표>",
+  "read": { "unit": "row", "identity": ["<후보 id 칸>"], "order_by": ["<후보 id 칸>"],
+            "occurred_at": { "basis": "ingested", "timezone": "Asia/Seoul" },
+            "exclude_when": [{ "column": "<확정 칸>", "blank": true }] },
+  "map": { "implementation_id": "declarative-role", "implementation_version": 1, "unit": { "kind": "row" } },
+  "bind": { "mappings": { "leads": { "predicate": "leads_to", "bind": {
+    "subject": { "kind": "entity", "entity_type": { "kind": "column", "column": "cause_type" },
+                 "keys": { "<원인 타입의 키>": { "kind": "column", "column": "cause_key" } } },
+    "target": { "kind": "entity", "entity_type": { "kind": "column", "column": "phenomenon_type" },
+                "keys": { "<현상 타입의 키>": { "kind": "column", "column": "phenomenon_key" },
+                          "<다른 현상 타입의 키>": { "kind": "column", "column": "phenomenon_key" } } },
+    "certainty": { "kind": "column", "column": "certainty" } } } } }
+}
+```
+
+- 타입 칸의 값은 선언된 타입 이름 그대로다(옛 철자 `x@1` 도 접힌다). 행마다 그 타입의 키만 쓴다.
+- 그 자리가 받지 않는 타입의 행은 그 행만 `type_not_admitted` 로 거절되고 다른 행은 들어간다 — 받는 타입은 술어 목록(`subjects` · `object.types`)이 정한다.
+- 타입 칸이 비거나 그 타입의 키 칸이 빈 행은 `no_identity`.
+- 적재에서 거절: 받는 타입의 키를 안 적음 · 어느 타입에도 없는 키 · 칸 타입에 속성 · 받는 타입에 소스 속성(`bind.entities`) · 코드 맵퍼 · `register` 문장인데 `read.registration_probe` 없음.
+- 선언 화면은 이 모양(이름 또는 칸)을 아직 읽기 전용으로만 보인다.

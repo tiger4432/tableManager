@@ -1198,9 +1198,10 @@ def _bound_words(mapping) -> set:
     def walk(node):
         if isinstance(node, Mapping):
             if str(node.get("kind") or "") == "entity":
-                entity = str(node.get("entity_type") or "").strip()
-                if entity:
-                    found.add(entity)
+                # a type read per row is no word of this mapping (총괄 7255b4918 ④)
+                entity = node.get("entity_type")
+                if isinstance(entity, str) and entity.strip():
+                    found.add(entity.strip())
             for value in node.values():
                 walk(value)
         elif isinstance(node, (list, tuple)):
