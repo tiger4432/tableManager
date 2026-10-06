@@ -1,3 +1,36 @@
+> ## [14:18 디자인] 변이가 게이트에서 안 도는 하니스 세기 + isBlank 변이 다시 겨눔 (총괄 답) — f7bd78995
+
+**결론** 러너가 돌리는 하니스 163 개 중 `--mutate` 를 읽는 것이 23 개입니다. 그중 2 개(`geometry_origin_reseat_harness` · `valid_die_authoring_harness`)는 깃발이 출력만 바꾸고 변이는 늘 돌아서, 변이가 게이트에서 «한 번도 안 도는» 하니스는 **21 개**입니다. 그 안에서 겨눌 자리를 잃은 변이는 지금 **8 개**(`valid_die_frame_adoption_harness` 8 — 러너의 known red 주석이 이미 적고 있는 여덟)입니다. `skeleton_oneof_descent` 의 2 개는 이번에 고쳤습니다.
+
+- **센 법**: 러너는 `client2/tests` 의 `.mjs` 를 인자 없이 띄웁니다(NOT_A_HARNESS 셋 제외). `--mutate` 를 읽는 파일마다 인자 없이 한 번, `--mutate` 로 한 번 돌려 두 출력을 남겼습니다. 인자 없는 출력에 변이 요약 줄이 있으면 «늘 돈다», 없으면 «게이트에서 안 돈다»로 셌습니다. 카나리아로 스물셋 모두 `--mutate` 출력에 자기 요약 줄을 냈습니다.
+- **겨눌 자리 잃음**: 각 하니스가 스스로 말한 줄로 셌습니다(`did not apply` 수). probe 로더는 안 바뀐 변이를 만나면 exit 2 로 멈추는데, `--mutate` 실행 중 exit 2 는 0 이었습니다(known red 둘은 exit 1, 요약 줄까지 감).
+- **고친 것** (`f7bd78995`): 옛 변이 하나(«빈 것을 절대 빈 것으로 안 봄»)는 absent.js 의 isBlank 를 변이시켜 probe 의 import 바꿔 끼우기로 스켈레톤 모듈에 넘깁니다. 다른 하나(«빈 객체를 채운 것으로 봄»)는 blank_rule_harness 에 같은 변이가 있어 지웠습니다. 그리고 제 aed628176 의 픽스처가 변이 실행 사이에 오염돼 대조군이 빨개지던 것도 같이 고쳤습니다. `--mutate` 14/14 잡힘, 대조군 빠져나감, 기본 31/0.
+- **따로**: `alignment_verdict`(known red, 기본 7 실패)는 `--mutate` 에서 대조군 하나가 잡혀 「12/13 scored as intended」입니다. 겨눌 자리 잃음이 아니라 기본이 빨간 데서 오는 것으로 보이며, 안 팠습니다.
+
+| 하니스 | `--mutate` 때 스스로 낸 요약 |
+|---|---|
+| `alignment_verdict_harness` | 12/13 scored as intended. |
+| `changed_rows_harness` | mutations: 7/7 caught (7 declared) |
+| `confirm_ruling_harness` | mutations: 5/5 caught (5 declared) |
+| `declaration_attribute_seats_harness` | mutations: 6/6 caught |
+| `excel_form_roundtrip_harness` | 16/16 scored as intended. |
+| `m4_symbol_extractability_probe` | 6/6 mutants killed. |
+| `map_cell_query_harness` | mutations: 4/4 caught (4 declared) |
+| `map_open_timing_harness` | mutations: 7/7 caught (7 declared) |
+| `map_table_list_harness` | mutations: 6/6 caught (6 declared) |
+| `offset_pitch_guard_harness` | 11/11 scored as intended. |
+| `refusal_cell_harness` | mutations: 11/11 caught (11 declared) |
+| `retroactive_note_harness` | mutations: 5/5 caught (5 declared) |
+| `retroactive_progress_harness` | mutations: 5/5 caught (5 declared) |
+| `skeleton_oneof_descent_harness` | mutations: 14/14 caught |
+| `sort_params_harness` | mutations: 6/6 caught (6 declared) |
+| `source_backlog_harness` | mutations: 18/18 caught (18 declared) |
+| `standard_frame_origin_harness` | mutations: 7 declared · 7 applied · 0 did not apply · caught by a NAMED assertion 7 · caught only by a crash 0 · undetected 0 |
+| `ten_user_driver_harness` | mutations: 14/14 caught |
+| `valid_die_frame_adoption_harness` | mutations: 26 declared · 18 applied · 8 did not apply · caught by a NAMED assertion 18 · caught only by a crash 0 · undetected 0 |
+| `valid_die_origin_alignment_harness` | All mutations caught. |
+| `verification_note_harness` | mutations: 4/4 caught (4 declared) |
+
 > ## [14:05 디자인] 원장 선언 폼 — 엔티티 타입을 값의 모양으로 고르는 oneOf (지시 068c904a6 ② · 구현자 철자) — aed628176
 
 **결론** 착지했습니다. 클라가 옛 스켈레톤(이름 잎)과 새 스켈레톤(`pick: "shape"` oneOf) 둘 다에서 돕니다. 병합 뒤 서버 스켈레톤이 들어와도 그 칸이 깨지지 않습니다.
