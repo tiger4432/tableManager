@@ -9,6 +9,15 @@
 
 ---
 
+## 2026-10-06 · 설정 해석 보고서 — 소스 줄이 로더의 판정 그대로
+
+- **무엇** — 설정 해석 보고서의 원장 도메인은 소스마다 한 줄을 씁니다. 그 줄을 옛 문법의 검증기로 재서, 지금 문법(`bind.mappings`)의 소스를 전부 「failed validation」 으로 거절 목록에 올렸습니다(샘플 7 중 7). 이제 로더가 그 파일을 컴파일한 결과(`source_plans` 의 planned · refusal)를 그대로 씁니다 — 세운 소스는 fine, 거절한 소스는 로더의 거절 문장 그대로 rejected, 선언이 컴파일되지 않으면 파일 줄 하나.
+- **선언 예시** — 새 선언 없음. `server/config/ontology/ledger_config.json` 의 소스가 표가 아닌 뷰를 읽으면 `Source \`<소스>\` is not read - bundle.sources.<소스>.relation: source '<소스>' reads '<뷰>', which is not a table that has row_id (view); …`.
+- **화면에서** — 관리 화면 설정 해석 보고서(`/admin/config/resolve`) 원장 도메인의 소스 줄.
+- **필요한 조건** — 서버 재기동(API).
+- **바뀐 동작** — 소스 줄의 문장과 그 줄이 서는 목록(fine / rejected)이 로더의 판정을 따릅니다. 「translates in the … grammar」 문장은 없어졌습니다.
+- **자세히** — 이 항목과 같은 커밋 · RUN.md 같은 절.
+
 ## 2026-10-06 · 원장 선언 폼 — 엔티티 타입을 이름으로도 칼럼으로도 (oneOf 를 값의 모양으로 고르기, 서버보다 먼저)
 
 - **무엇** — 스켈레톤의 oneOf 가 `pick: "shape"` 를 가지면 폼은 값의 모양으로 가지를 고릅니다. 글자이거나 비었으면 이름 가지(오늘의 타입 칸과 그 계획 줄 그대로), 객체이면 칼럼 가지(`Type from` · `column`)입니다. 가지 이름은 경로에 안 나옵니다(`…entity_type.column`). 고르개는 체인 규칙 폼의 oneOf 와 같은 것이고, 바꾸면 그 가지의 빈 값(`""` 또는 `{kind: column, column: ""}`)을 그 칸에 그대로 씁니다. 원장 폼에 그 고르개를 받는 자리가 새로 생겼고, 체인 폼과 같은 함수(`pickBranch`)를 부릅니다. 새 엔티티 바인딩은 오늘처럼 타입이 빈 채 시작합니다.
