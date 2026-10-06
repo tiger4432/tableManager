@@ -78,48 +78,6 @@ def test_declared_contract_catches_a_signature_conflict_before_a_row_hits_that_r
     assert "wafer" in issue["detail_ko"] and "vocabulary" in issue["detail_ko"]
 
 
-def test_admin_save_gate_rejects_translator_vocabulary_conflict_before_dry_run(
-        monkeypatch):
-    source = {
-        "kind": "declared",
-        "occurred_at_column": "created_at",
-        "occurred_at_format": "%Y-%m-%dT%H:%M:%S",
-        "occurred_at_timezone": "Asia/Seoul",
-        "occurred_at_basis": "claim_time",
-        "subject_types": ["wafer"],
-        "register_entity_types": ["wafer"],
-        "watermark": {"columns": ["updated_at", "id"]},
-        "columns": {"row_identity": "id"},
-        "emit": [{
-            "rule": "bad_subject", "predicate": "observed",
-            "class": "observation",
-            "subject": {"type": "wafer", "keys": {"wafer": "$product"}},
-            "object": {"kind": "value", "payload": {
-                "finding_kind": "void", "method": "map", "run_uid": "$run"}},
-        }],
-    }
-    columns = {"created_at", "updated_at", "id", "product", "run"}
-    monkeypatch.setattr(admin, "declared_tables", lambda: ["product_registry"])
-    from ledger import column_stats
-    monkeypatch.setattr(column_stats, "physical_columns",
-                        lambda _db, _name: {name: "text" for name in columns})
-
-    violations = admin.check_source_declaration(
-        object(), "product_registry", source)
-    # 🔴 `in`, NOT `==`, AND THE REASON IS A SEAM THAT IS MID-MOVE. `ledger/config.py`
-    # takes its entity types from the DECLARATION as of 2026-08-27; `ledger_admin.py` still
-    # reads `vocabulary.ENTITY_TYPES`, which is another lane's file in the same retirement.
-    # Until that lands, one of the two authorities refuses whichever spelling the other
-    # accepts, and a declared type collects an extra `undeclared_entity_type` on the way
-    # past. What this test is about - that the vocabulary conflict is caught BEFORE the dry
-    # run - is asserted exactly as before.
-    codes = [v["code"] for v in violations]
-    assert "translator_vocabulary_mismatch" in codes, codes
-    issue = next(v for v in violations if v["code"] == "translator_vocabulary_mismatch")
-    assert issue["field"] == "emit[0]"
-    assert "wafer" in violations[0]["detail_ko"]
-
-
 class _Cursor:
     def __init__(self, *, rows=(), one=None):
         self.rows = list(rows)

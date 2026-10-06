@@ -2580,10 +2580,9 @@ def _cross_validate(bundle: Mapping[str, Any], catalog: Mapping[str, Any],
     # (Both bodies now sit UNDER the source, so that particular ordering no longer applies;
     # the skip below is still what keeps the column complaints from burying the root.)
     # Every one of those complaints is downstream of "the table is not declared" and each
-    # points at the wrong file to fix.  `ledger_admin.check_source_declaration` already
-    # ruled this way for the legacy syntax ("before the column checks, because it is the
-    # ROOT refusal"); this is the same rule, not a second one.  Only the affected source
-    # is skipped -- an unrelated source keeps being validated.
+    # points at the wrong file to fix - it is the ROOT refusal, so it comes before the column
+    # checks.  Only the affected source is skipped -- an unrelated source keeps being
+    # validated.
     # 🔴 A RETIRED SOURCE'S RELATION MAY BE GONE, AND THAT IS NOT A FAULT (S-177 ①). The
     # table a source stopped reading is exactly the table an operator is then free to drop,
     # so asking the catalogue about it turns 「retired」 into 「the bundle will not load」.
@@ -3255,9 +3254,7 @@ def _relation_columns(relation: Any, columns: Sequence[Any], tables: Mapping[str
         # never writes -- `void` is the live shape of this -- can be missing from
         # `table_config.json`, and the answer is to DECLARE IT THERE, never to keep a copy
         # here: that file is the physical authority, and declaring a table in it brings
-        # drift detection and the grid along with it.  Same refusal
-        # `ledger_admin.check_source_declaration` already gives for the legacy syntax, so
-        # an operator meets one sentence rather than two.
+        # drift detection and the grid along with it.
         problems.add(
             "unknown_relation", path,
             f"relation {relation!r} is not declared in {PHYSICAL_CATALOG_FILENAME}; "
