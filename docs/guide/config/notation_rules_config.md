@@ -138,9 +138,13 @@ None                 ->  None         (문자열이 아니면 그대로 통과)
   "wafer_log": {
     "wafer_id":   {"write": true, "rules": {"join": "-", "pad_last_number": 2}},
     "event_time": {"write": true, "rules": {"time": {"from": ["%Y/%m/%d %H:%M:%S", "%d.%m.%Y %H:%M"]}}}
+  },
+  "item_master": {
+    "item_id":    {"write": true, "rules": {"replace": [[" *[.] *", "."]], "collapse_repeats": "."}}
   }
 }
 ```
+`item_id` 는 «a.b.c» 계층을 적되 하위가 없으면 같은 이름을 반복해 적는 표 — `a.a.a` → `a` · `a.b.b` → `a.b` · `a. b` → `a.b`.
 
 | 규칙 | 하는 일 | 비교 때도 접나 |
 |---|---|---|
@@ -148,8 +152,9 @@ None                 ->  None         (문자열이 아니면 그대로 통과)
 | `pad_last_number` | 끝 숫자가 n 자리(1–9)보다 짧으면 앞에 0. 길면 그대로 — `zero_pad`(앞 0 제거)와 반대 방향 | 예 — 두 엔진 |
 | `replace` | `[[패턴, 바꿀 것], ...]` 차례로. 위 둘로 안 되는 경우 | 예 — 두 엔진 |
 | `time` | 적힌 입력 모양 중 맞는 것을 `YYYY-MM-DD HH:MM:SS`로. 그 칸의 유일한 규칙, `write` 필수 | 아니오 — 쓸 때만 |
+| `collapse_repeats` | 이 한 글자로 가른 마디가 바로 앞 마디와 같으면 하나로 — `a.a.b` → `a.b`. `a.b.a` · `ab.b` · 빈 마디(`a..a`)는 그대로. `write` 필수 | 아니오 — 쓸 때만 |
 
-- **순서**: 별칭 표 → `join` → `pad_last_number` → `replace` → `case`.
+- **순서**: 별칭 표 → `join` → `pad_last_number` → `replace` → `case` → `collapse_repeats`. 마디는 마지막 철자로 견줍니다(`case` 와 같이 `A.a.a` → `A`).
 - 🔴 **`write` 칸에서는 적은 규칙만 돕니다**(총괄 47aba5d44) — 기본값 `separator`·`case`는 비교만 하는 칸에만 들어옵니다. 저장값을 바꾸는 접기는 운영자가 적은 것만(칸이나 그 위 테이블·파일 `rules`에). 그래서 위 선언은 `wafer.1` → `wafer-01`(대소문자 그대로), `{"pad_last_number": 2}`만 적은 칸은 `wafer.1` → `wafer.01`.
 - **`write: true`** — 그 칸의 값을 접힌 모양으로 **저장**합니다. 없으면 비교 때만 접습니다. `true`/`false` 가 아닌 값(`"true"` · `1`)은 해석 보고서에 「write must be true or false, … the column is folded for comparison only」로 이름 대고 비교만 접습니다. 파일 · 격자 · 체인 — 모든 쓰기 문이 같은 자리에서 접어 저장합니다.
 - **별칭 표 `notation_alias`**(제품 표, 비어서 출하): 한 행 = 「`table_name`.`column_name`에 정확히 `written`으로 온 값은 `canonical`로」. 규칙보다 먼저, `write` 칸에만.
@@ -335,7 +340,7 @@ CREATE UNIQUE INDEX CONCURRENTLY uq_vjoin_..._nf ON "core_wafer_map" (
 | `columns` | 파일 최상위 | `{테이블: {컬럼: true\|false\|{rules}}}` | 🔴 **비어 있으면 이 기능은 완전 무동작** |
 | 컬럼 선언 | `columns.<테이블>` 아래 | `true` / `false` / `{"rules": {...}}` | ~~문자열(파생 컬럼 이름)~~ 은 **거절됩니다** |
 | `write` | 컬럼 선언 객체 안 | `true`, 기본 없음 | 접힌 모양으로 저장(§2.3) |
-| `join` · `pad_last_number` · `replace` · `time` | `rules` 안 | 글자 · 1–9 · `[[패턴, 바꿀 것]]` · `{"from": [모양]}` | §2.3 |
+| `join` · `pad_last_number` · `replace` · `time` · `collapse_repeats` | `rules` 안 | 글자 · 1–9 · `[[패턴, 바꿀 것]]` · `{"from": [모양]}` · 글자 | §2.3 |
 | `_`로 시작하는 이름 | 어디든 | — | **주석**. 로더가 통째로 무시합니다 |
 
 > 2026-08-04 이 환경의 실제 상태: `server/config/notation_rules.json`은 **아직 존재하지 않습니다**(`.sample`만). 파일이 없는 것은 거절이 아니라 「선언 없음」입니다. 출하되는 샘플은 `"columns": {}`라 **그대로 복사해 두면 완전 무동작**입니다.

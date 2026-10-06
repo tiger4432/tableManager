@@ -1,5 +1,18 @@
 # 지금 돌리면 되는 것
 
+> ## [10-06] **표기 규칙 collapse_repeats — 연달아 같은 마디는 하나로 (총괄 c1ddec935) — 이주 «불필요» · 재기동 «필요»(API · 체인 데몬 · 수집기)**
+>
+> ```
+> 선언           notation_rules.json 칸에 {"write": true, "rules": {"collapse_repeats": "."}}
+> 먼저 볼 것      그 칸의 미리보기 — 병합군에 a.b.b · a.a.b · a.b 가 한 줄로, folds_again 0
+> 저장된 값       관리 화면 Retroactive 의 Fold stored values into the declared spelling 으로 그 표를 접는다(먼저 dry run)
+> 거절이면        해석 보고서의 그 칸 줄: 'collapse_repeats' folds a value when it is written ...
+>                (write 없음) · must be the one character that splits segments (값) · 'time' is the only rule
+> 급할 때         그 칸의 collapse_repeats 를 지운다 — 몇 초 안에 다시 읽힌다. 이미 접어 저장한 값은 그대로
+> ```
+
+---
+
 > ## [10-06] **선언 화면 — 엔티티 바인딩 타입 칸을 이름 고르개로 되돌림 (f1238d6ef 의 either 되돌리기, 총괄 긴급) — 재기동 «필요»(API)**
 >
 > ```

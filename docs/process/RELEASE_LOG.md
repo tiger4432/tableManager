@@ -9,6 +9,15 @@
 
 ---
 
+## 2026-10-06 · 표기 규칙 — 연달아 같은 마디는 하나로 (`collapse_repeats`)
+
+- **무엇** — `write` 칸의 값 규칙 하나: 값을 이 한 글자로 갈라, 바로 앞 마디와 같은 마디를 지웁니다. `a.a.a` → `a` · `a.b.b` → `a.b` · `a.a.b` → `a.b`. `a.b.a` · `ab.b` · 빈 마디(`a..a`)는 그대로. 규칙 차례의 맨 끝이라 마지막 철자로 견줍니다(`case` 와 같이 `A.a.a` → `A`).
+- **선언 예시** — `server/config/notation_rules.json` 의 칸 선언: `"item_id": {"write": true, "rules": {"replace": [[" *[.] *", "."]], "collapse_repeats": "."}}` (`docs/guide/config/notation_rules_config.md` §2.3).
+- **화면에서** — 미리보기의 병합군과 «한 번 더 접으면 또 바뀌는 값», 관리 화면 Retroactive 의 Fold stored values into the declared spelling 이 이 규칙으로 접습니다.
+- **필요한 조건** — 서버 재기동(API · 체인 데몬 · 수집기). 규칙 파일은 몇 초 안에 다시 읽힙니다.
+- **바뀐 동작** — 없음(새 규칙). `write` 없이 적거나 값이 한 글자가 아니거나 `time` 옆에 적으면 이름 대어 거절됩니다.
+- **자세히** — 이 항목과 같은 커밋 · RUN.md 같은 절.
+
 ## 2026-10-06 · 원장 — 엔티티 타입을 행의 칸에서 읽기 (확정한 후보 -> leads_to)
 
 - **무엇** — 원장 선언에서 엔티티 바인딩의 `entity_type` 이 선언된 이름 말고 `{"kind": "column", "column": "<칸>"}` 도 받습니다. 행마다 그 칸의 값이 타입이고, 술어가 그 자리(`subjects` · `object.types`)에 받는 타입이어야 합니다. 받지 않는 타입의 행은 그 행만 `type_not_admitted` 로 거절되고 다른 행은 들어갑니다. `keys` 에는 받는 타입들의 키를 다 적고, 행마다 그 타입의 키만 씁니다.
