@@ -72591,3 +72591,59 @@ sqlite 전체(① 만) 5 failed, 7843 passed, 330 skipped, 3 xfailed, 13105 warn
 착지     클라가 응답의 run_in 을 lists 에 넣는 커밋이 main 에 들어가고 총괄 메시지가 오면
 ```
 RUN.md 절 · RELEASE_LOG · chain_rules 안내서 한 줄 — ① 커밋에. 앞선 표기 소급 절 뒤에 빠졌던 RUN.md 구분선도 같이.
+
+---
+
+## [10-06] 합치기가 빈 층을 안 남긴다 착지 26a3e0e9a (총괄 c773b0fed)
+
+어느 DB · 어느 스키마 · 지운 것 — sqlite 메모리 · PG 는 assy_test DB 의 스크래치 스키마 assy_pytest_pg_<실행 토큰>(픽스처가 만들고 지움) · 박스 DB(assy_manager)는 계수 스크립트 읽기만(BOX 수) · 지운 것 0
+
+**① 고침** — _merge_into_key_holder 의 폴백 갈래가 «넘어가는 행이 값을 가진 칸»만 층으로 넘긴다. 빈 값 판정은 crud.is_blank_value(정본) 그대로. 사람의 고의 빈 층은 «층»이라 폴백이 아닌 갈래로 전처럼 넘어간다.
+
+**② 다시 계산하는 자리 — 한 문**
+```
+자리                                   오늘의 답
+replay  cell_layer._resolve_cell        compute_priority_value — 빈 층도 서열 · 최신대로 이김
+쓰기 문  apply_row_update_internal         같은 함수 (쓰기 묶음 _apply_batch_updates_once 도 이리로)
+층 지우기 delete_cell_source_batch         같은 함수
+핀      set_cell_manual_priority_batch    같은 함수
+파일 층 접기 file_layer_fold · stacked_file_layers   같은 함수(서열만)
+표시    main.py 셋                        같은 함수(이긴 소스 이름만)
+-> 앞에서 빈 층을 거르는 자리 0. 둘째 문 없음
+```
+**③ 이미 저장된 유령 층 — 못 세던 것을 센다 (총괄 답 ㄱ)**
+```
+잰 것   고치기 전 코드로 sqlite: 소급 · 쓰기 문 기계 · 쓰기 문 사람 — 값 ''  ·  PG: 키 고치기 — 값 JSON "" (SQL NULL 아님)
+        옛 스크립트는 넷 다 0 — JSON null 만 셌다
+빈 값   스크립트의 값 조건을 정본 하나로: blank_sql_condition(column_text_sql(value)) — JSON null · SQL NULL · "" 같은 답
+        깔때기 column_text_sql 이 JSON 칸을 배움(CAST 대신 스칼라: PG #>> '{}' · sqlite json_extract '$')
+        오늘 그 함수에 JSON 칸을 넘기는 독자 0 — 독자 셋(enrichment 매퍼 둘 · join_into) 다 동적 칸(Float · DateTime · String)
+세 수   ① 비울 수 없는 쓴 이의 빈 층(S-243-b 그대로) ② 합치기 사본 · 기계 = 부재 확정 ③ 합치기 사본 · 사람 · 체인 = 구별 불가
+        사본인지는 crud.layer_writer(merged_layer_name 을 읽는 한 자리) — 이름에 « (» 가 든 파일 소스는 ②로 읽힌다(둘 다 부재라 합은 맞음)
+읽기만  지우기 없음. 명령은 RUN.md
+```
+**④ 쓰기 문 합치기도 같은 층을 남겼다(잼)** — 기계 · 사람 둘 다, 고친 뒤 0. 행 갱신(apply_row_update_internal 직접)은 고치기 전에도 0.
+
+**게이트**
+```
+소급 2회(소유자 item_id 선언) -> 값 그대로 · 2회 dry 0/0/0 · 빈 층 0
+쓰기 문 합치기 기계 · 사람 -> 받는 행 값 그대로 · 빈 층 0
+키 고치기 합치기(PG) -> 같은 단언  · PG 증명 13 passed, 8178 deselected in 28.36s
+대조군  사람이 비운 칸 -> 사본 'user (…)' 가 받는 행으로 넘어감
+세기    "" 와 null 같은 답 · 합치기 사본 쓴 이별 · 사람 자기 빈 층 안 셈 · PG 같은 답
+변이 7  폴백이 빈 층을 다시 만듦 RED · 깔때기가 JSON 을 CAST RED · 합치기 사본을 제 이름 그대로 읽음 RED · 사본을 쓴 이 대신 이름으로 가름 RED · 사람 자기 빈 층을 셈 RED · 폴백이 빈 층을 다시 만듦(PG 키 고치기) RED · 깔때기가 JSON 을 CAST(PG 세기) RED
+sqlite 전체 6 failed, 7849 passed, 333 skipped, 3 xfailed, 13188 warnings in 728.12s (0:12:08) — 박스 사유 밖: test_a_type_the_funnel_has_never_heard_of_is_cast_not_passed_through
+```
+깔때기 시험 하나(test_a_type_the_funnel_has_never_heard_of_is_cast_not_passed_through)는 «JSON 은 깔때기가 모르는 타입이라 CAST» 를 전제로 했다 — 이번에 깔때기가 JSON 을
+배워서 그 목록에서 JSON 을 빼고, 방언별로 «스칼라를 꺼낸다»를 새 시험으로. 바닥(글자 타입 · 안 터짐)은 그대로 잰다. 그 파일 5 통과 · 변이 빨강.
+
+**BOX 수 (이 박스 DB, 읽기만 — 운영 주장 아님)**
+```
+① 비울 수 없는 쓴 이의 빈 층   719808, 그중 «값을 가리는» 것 310
+② 합치기 사본 · 기계(부재 확정)  42, 그중 «값을 가리는» 것 27
+③ 합치기 사본 · 사람 · 체인     25, 그중 «값을 가리는» 것 13
+옛 스크립트로 같은 DB: 파일 소스의 NULL 층 719808 — 그중 «값을 가리는» 것 310  -> ① 은 그대로, ② · ③ 이 옛 스크립트가 못 보던 몫
+```
+RUN.md 절(명령 하나 · 세 수의 뜻 · 소급 다시 돌리지 말 것 유지) · RELEASE_LOG «바뀐 동작».
+
+들고 있는 것 — 이름 바꾸기 비용 미리보기(wt-impl 커밋, 미착지) · ff60 ② run_in(지어 둠, 미착지). 이것 다음에 착지합니다.
