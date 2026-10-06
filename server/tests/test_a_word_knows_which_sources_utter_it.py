@@ -48,43 +48,67 @@ CFG = {
 }
 
 
+TYPED = {"sources": {"d_typed": {"bind": {"mappings": {"p": {
+    "predicate": "probes",
+    "bind": {"subject": {"kind": "entity", "entity_type": {"kind": "column", "column": "kind"},
+                         "keys": {"id": {"kind": "column", "column": "id"}}},
+             "target": {"kind": "entity", "entity_type": "lot",
+                        "keys": {"lot": {"kind": "column", "column": "lot"}}}}}}}}}}
+
+
+def test_a_type_read_from_a_column_names_every_type_its_predicate_admits_in_that_role():
+    """총괄 564a46193 ②: renaming one of them re-runs this source - left out, the cost preview
+    says it does not."""
+    from ledger.setup_registry import PredicateDescriptor
+
+    probes = PredicateDescriptor(
+        predicate_id="probes", status="active", subject_entity_types=("wafer", "die"),
+        object_kind="entity", object_entity_types=("lot", "carrier"), required_qualifiers=(),
+        optional_qualifiers=(), config_path="bundle.vocabulary.probes")
+    vocabulary = {"probes": probes}
+    for name in ("wafer", "die", "lot"):
+        assert ledger_config.sources_binding(TYPED, name, vocabulary) == ("d_typed",), name
+    assert ledger_config.sources_binding(TYPED, "carrier", vocabulary) == (), (
+        "the target names its type - only the role read from a column takes the admitted list")
+
+
 def test_a_predicate_names_only_the_sources_that_utter_it():
-    assert ledger_config.sources_binding(CFG, "measures@1") == ("b_measures",)
-    assert ledger_config.sources_binding(CFG, "transfer@1") == ("a_transfers",)
+    assert ledger_config.sources_binding(CFG, "measures@1", {}) == ("b_measures",)
+    assert ledger_config.sources_binding(CFG, "transfer@1", {}) == ("a_transfers",)
 
 
 def test_an_entity_is_found_through_the_bind_leaves_not_just_the_predicate():
     """🔴 THE HALF THAT WOULD HAVE BEEN MISSED. Reading only `predicate` answers for
     vocabulary and says 「no sources」 for every entity — an absence indistinguishable from a
     fact, which is the failure this whole report exists to avoid."""
-    assert ledger_config.sources_binding(CFG, "wafer@1") == ("a_transfers", "b_measures")
-    assert ledger_config.sources_binding(CFG, "quantity@1") == ("b_measures",)
+    assert ledger_config.sources_binding(CFG, "wafer@1", {}) == ("a_transfers", "b_measures")
+    assert ledger_config.sources_binding(CFG, "quantity@1", {}) == ("b_measures",)
 
 
 def test_the_version_does_not_have_to_be_spelled():
     """⚠️ AS `_collectable_types` STRIPS IT. A caller should not have to know whether the
     declaration happens to write `wafer` or `wafer@1`."""
-    assert (ledger_config.sources_binding(CFG, "wafer")
-            == ledger_config.sources_binding(CFG, "wafer@1"))
+    assert (ledger_config.sources_binding(CFG, "wafer", {})
+            == ledger_config.sources_binding(CFG, "wafer@1", {}))
 
 
 def test_a_word_nobody_utters_is_an_empty_tuple_and_that_is_a_fact():
     """🔴 THIS EMPTY IS `truly_none`, NOT 「not counted here」. Two different empties, and the
     caller must not render them the same: one says nothing re-runs, the other says something
     does and this seat declined to count it."""
-    assert ledger_config.sources_binding(CFG, "no_such_word") == ()
-    assert ledger_config.sources_binding(CFG, "") == ()
+    assert ledger_config.sources_binding(CFG, "no_such_word", {}) == ()
+    assert ledger_config.sources_binding(CFG, "", {}) == ()
 
 
 def test_an_annotation_key_is_not_a_source():
-    assert "__comment" not in ledger_config.sources_binding(CFG, "measures@1")
+    assert "__comment" not in ledger_config.sources_binding(CFG, "measures@1", {})
 
 
 def test_the_answer_is_sorted_so_a_diff_between_two_runs_means_something():
     """⚠️ AN UNORDERED ANSWER MAKES EVERY RE-READ LOOK LIKE A CHANGE, and a screen comparing
     two previews would show movement that is only dictionary order."""
-    assert list(ledger_config.sources_binding(CFG, "wafer@1")) == sorted(
-        ledger_config.sources_binding(CFG, "wafer@1"))
+    assert list(ledger_config.sources_binding(CFG, "wafer@1", {})) == sorted(
+        ledger_config.sources_binding(CFG, "wafer@1", {}))
 
 
 def test_it_answers_on_the_shipped_declaration_too():
@@ -94,12 +118,12 @@ def test_it_answers_on_the_shipped_declaration_too():
         shipped = json.load(handle)
 
     # ⚠️ [총괄 f3bc02f6e] `measures@1` was uttered only by the view sources the sample lost.
-    utterers = ledger_config.sources_binding(shipped, "has_wafer@1")
+    utterers = ledger_config.sources_binding(shipped, "has_wafer@1", {})
     assert utterers, "the shipped declaration utters `has_wafer@1` somewhere"
     for name in utterers:
         assert not name.startswith("__")
 
-    wafer = ledger_config.sources_binding(shipped, "wafer")
+    wafer = ledger_config.sources_binding(shipped, "wafer", {})
     assert len(wafer) > len(utterers), (
         "an entity is bound by more sources than one predicate is uttered by; if this "
         "flips, the entity leaves are no longer being walked")

@@ -640,6 +640,8 @@ def chain_rule_raw_view(name: str = None) -> dict:
         # when it is about to create one. A skeleton that only arrived beside an EXISTING
         # rule would be absent at the only moment it is needed.
         "skeleton": chain_bindings.skeleton(),
+        # the closed list the skeleton's `run_in` leaf names (총괄 ff60fe669 ②)
+        chain_bindings.RUN_IN_KEY: list(chain_bindings.RUN_IN_VALUES),
         # 🔴 [판정 513] A NEW RULE IS WRITTEN IN THE UNIFIED GRAMMAR, AND THE SERVER SAYS SO.
         # This cell used to be set only inside `if name is not None`, so the one call a screen
         # makes when it is about to CREATE a rule carried no grammar - and `chain_rule_panel`

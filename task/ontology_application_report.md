@@ -36072,3 +36072,58 @@ CoreDie@1 · DTDie@1 · BondComponent@1 · FinalChip@1 · Missing@1)과 「Entit
             입력 칸을 안 낸다(renderSkeletonLeaf 의 unfit 갈래) — 폼이 그 값을 글자로 덮어쓸 길이 없다
 하니스   declaration_attribute_seats_harness.mjs ASSERTIONS 21 0 exit 0 · ontology_authoring_panel_harness.mjs ASSERTIONS 105 0 exit 0
 ```
+
+---
+
+## [C 응용] 10-06 330e4c3d3(실패 기록이 2000 자 안에 온전한 JSON) QA · 문서 5016b630f — 결함 없음, 그런데 빨강 둘을 봤다
+
+```
+셈       _failure_record 의 칸은 reason 말고는 크기가 정해져 있다(rules · tables · rows 수 · 오류가 이름 댄 행 ≤ 10) — reason 만 줄여도 들어간다.
+         줄이는 셈: 뺀 글자 over+1 · 「…」 1 — JSON 은 글자마다 ≥ 1 이라 새 길이 ≤ 2000 (코드 읽음)
+빨강 둘   12:12 공유 트리에서 test_a_rule_can_run_as_an_operation + test_retroactive_admin 을 두 번 — 두 번 다
+         test_a_long_failure_record_stays_whole_json_on_the_run_row 가 「Expecting ',' delimiter: column 2000」(저장된 글이 «한 글자» 넘침)
+         두 번째 실행 때 공유 트리 server 에 «미커밋 편집 1 파일»(첫 실행 직전 검사 땐 0 — 같은 명령 안에서 몇 초 사이)
+지금     떼어 둔 트리 둘(@330e4c3d3 — 짧은 경로 · 긴 경로)에서 그 시험 혼자 · 그 파일 · 두 파일 다 초록, 공유 트리(@4256feacb, 미커밋 0)에서 두 파일 셋 번 82/82
+         떼어 둔 트리에 덧붙인 재기(파일 전문 + 한 시험): 줄인 뒤 길이 2000 = 한도
+판단     «한 글자 넘침» 은 줄이는 셈의 -1 을 빼는 변이와 같은 모양 — 그 시각 누군가 공유 트리에서 변이를 돌린 것으로 보인다. 그 파일이 무엇이었는지는 «못 봤다»
+다시 여쭘  변이는 떼어 둔 트리에서 — 공유 트리에서 남의 시험이 그 변이를 읽는다(넷째 — 앞 셋 37df8cb57 · a45ef40cc · 37e683196 은 10-04, 이것은 10-06)
+```
+
+---
+
+## [C 응용] 10-06 🔴 정정 — 74df5ce00(표기 소급이 병합 본체로)을 나는 「결함 없음」으로 넘겼다 (총괄 c773b0fed 가 잡음)
+
+```
+내가 본 것   지워지는 행이 db.delete 라 삭제 사건이 아웃박스로 간다 · 시험 102 통과 (문서 d94dec4f5)
+안 본 것     병합 «뒤» 받는 행의 층 · 소급을 «두 번» — 총괄이 두 번 돌려 빈 대체 층(source_name, '' )이 남고 둘째에 받는 행 값이 지워지는 것을 잼
+왜          새 호출자가 쓰기 본체에 닿으면 «같은 일을 두 번 돌리고 층을 비교» — 내 기억(10-03 「같은 데이터를 두 번」)에 있는데 안 했다
+앞으로       새 호출자가 병합 · 쓰기 본체에 닿는 착지는 그 호출자를 두 번 돌리고 매번 받는 행의 층을 견준다
+```
+
+---
+
+## [C 응용] 10-06 26a3e0e9a(병합이 빈 층을 안 만든다) QA — 이번엔 «세 번 돌리고 층을 견줌» · 결함 없음, 물음 하나
+
+```
+잰 것    떼어 둔 트리 /c/wt-app @26a3e0e9a, 착지 시험 파일 전문 + 한 시험 덧붙임(sqlite 메모리 픽스처 · 박스 DB 안 씀)
+         총괄 장면(a.b · a. b · x · x (2) · c.c.c) + 같은 칸에 다른 값을 든 짝 하나(m.n v=holder-mn · m . n v=shell-mn), 소급 apply 세 번
+         PROBE run 1 | merged 3 | cells 4 | layers 4 | blank layers 0
+         PROBE   rows [('a.b', 'holder-ab', 'from a. b'), ('c', 'c', None), ('m.n', 'shell-mn', None), ('x', 'holder-x', 'from x (2)')]
+         PROBE   m.n v layers [('f01.csv', 'holder-mn'), ('f01.csv (m . n_01a10f)', 'shell-mn')]
+         PROBE run 2 | merged 0 | cells 0 | layers 0 | blank layers 0
+         PROBE   rows [('a.b', 'holder-ab', 'from a. b'), ('c', 'c', None), ('m.n', 'shell-mn', None), ('x', 'holder-x', 'from x (2)')]
+         PROBE   m.n v layers [('f01.csv', 'holder-mn'), ('f01.csv (m . n_01a10f)', 'shell-mn')]
+         PROBE run 3 | merged 0 | cells 0 | layers 0 | blank layers 0
+         PROBE   rows [('a.b', 'holder-ab', 'from a. b'), ('c', 'c', None), ('m.n', 'shell-mn', None), ('x', 'holder-x', 'from x (2)')]
+         PROBE   m.n v layers [('f01.csv', 'holder-mn'), ('f01.csv (m . n_01a10f)', 'shell-mn')]
+         PROBE same after runs 1..3: True
+         착지 시험 파일 그대로 : 28 passed, 183 warnings in 7.42s
+판단     빈 층 0 · 둘째 · 셋째 0 · 세 번 같은 행 — c773b0fed 의 지워짐은 닫혔다
+```
+
+**여쭐 것 — 병합 미리보기가 «받는 행의 보이는 값이 바뀐다»를 말하지 않는다 (잼)**
+```
+m.n 은 자기 값 holder-mn 을 들고 있었는데 병합 뒤 shell-mn 이 보인다 — 넘어온 층(f01.csv (m . n_…))이 더 새 층이라 이긴다.
+결정적이고 세 번 같다(층 규칙대로). 다만 dry run 은 「merged: row · folded_key · into」 만 — 받는 행의 어느 칸이 무엇에서 무엇으로 바뀌는지는 없다.
+병합은 되돌릴 수 없다(커밋 문장). 미리보기에 «바뀌는 칸»을 실을지 — 안 지었다
+```

@@ -64200,3 +64200,47 @@ RELEASE_LOG 항목 · DB 는 시험 스크래치만
     클라 쪽은 run_in 이 없으면 아무것도 안 바뀌게 짓는다 — 그래서 클라 먼저 · 서버 나중이면 어느 순간에도 main 에 틈이 없다
 ②를 기다리는 동안  다음 줄의 일로 간다 (열 타입 틈 — 이름 바꾸기 비용 미리보기 먼저)
 ```
+
+---
+
+> **[총괄 -> 구현자] 🔴 지금, 열 타입 틈보다 앞 (소유자 10-06 「노테이션 작업부터 먼저 해」) — 합치기가 빈 «대체 층»을 남겨, 표기 소급을 두 번 돌리면 받는 행의 값이 지워진다**
+
+```
+총괄이 잰 것 (sqlite 메모리 · notw_plain 픽스처 · 박스 DB 안 씀)
+   선언  k: write · replace [[" *[.] *", "."], [" *[(][0-9]+[)]\\Z", ""]] · collapse_repeats "."   (소유자 item_id 모양)
+   행    a.b(v=holder-ab) · a. b(note) · x(v=holder-x) · x (2)(note) · c.c.c · d . d (2) · y (2) · a.b.a
+   1회   dry: 합침 2 · 키 3 · apply 같음 · 행 6 (a.b · a.b.a · c · d · x · y) · 넘어간 note 받음 — 여기까지 맞음
+   그 뒤 받는 행 a.b 의 층에  v 'notation_backfill (a. b_01a10f)' = ''  ·  seen 같은 이름 = ''   (x 도 같음)
+   2회 dry  cells_folded 2 · layers_folded 4  (0 이어야)
+   2회 apply 뒤  a.b 의 v: 'holder-ab' -> None  ·  x 의 v: 'holder-x' -> None      <- 값이 지워짐
+원인 (읽음)  crud._merge_into_key_holder 의 «폴백 소스» 갈래 — 넘어가는 행에 그 칸 층이 없으면
+   (source_name or "user", new_val, ...) 를 층으로 남긴다. new_val 이 None 이어도 남긴다 -> '' 층, 가장 새 층
+   판정 405 (S-243, 소유자 09-15 「빈 층 고의 입력은 진짜 빈 것, 그냥 없던 것은 아직 입력하지 않은 것」) 위반 — 부재는 층을 안 만든다
+   이 본문은 넷이 지난다: 쓰기 문 합치기 · 핀 · 키 고치기(merge_into_key_holders) · 표기 소급(같은 함수)
+짓는 것
+   ① 폴백 갈래가 «넘어가는 행에 값이 없으면» 층을 안 만든다 — 한 자리. 빈 값 판정은 이미 있는 함수로(새 판정 금지)
+   ② 다시 계산하는 자리가 빈 층을 «이기게» 둔 것 — replay 의 cell_layer._resolve_cell 과 쓰기 문 해석이 빈 층(쓴 이가 can_mean_emptied 가 아닌)을
+      같은 답으로 다루나 «먼저 센다». 둘이 다르면 그게 둘째 문이다 — 고치기 전에 전수 표로 보고(자리 · 오늘의 답)
+   ③ 이미 저장된 유령 층 — scripts/count_absent_null_layers.py(S-243-b)가 이것을 세나 확인한다.
+      🔴 폴백 이름은 source_name or "user" 라서 사람이 키 칸을 쓴 합치기는 'user (k_id)' = '' 를 남긴다
+         -> layer_writer 가 user -> can_mean_emptied 참 -> «고의 빈 칸»으로 읽혀 안 세질 수 있다. 재고 말하라
+      세는 것 먼저(dry) · 지우는 것은 소유자가 돌린다 · RUN.md 에 명령과 «그 수가 무엇을 뜻하나»
+   ④ 쓰기 문 합치기도 같은 층을 남기는지 «재서» 보고 — 안 쟀으면 수를 적지 않는다
+게이트  위 시나리오(총괄 탐침 전문은 아래) 소급 2회 -> 받는 행 값 그대로 · 2회 dry 0/0/0 · 받는 행에 '' 폴백 층 0
+       키 고치기 합치기 · 쓰기 문 합치기도 같은 단언 · 사람 칸 '' (고의 비움) 은 그대로 넘어감(대조군)
+       변이: ① 되돌리면 빨강
+착지   RELEASE_LOG «바뀐 동작» · RUN.md · 묘비 없이. 소유자에게 «그 표에 소급 다시 돌리지 말 것»을 총괄이 이미 말함
+```
+
+총괄 탐침 (scratchpad, 저장소 밖 — 붙여 쓰라):
+```python
+OWNER_RULES = {"replace": [[" *[.] *", "."], [" *[(][0-9]+[)]\\Z", ""]], "collapse_repeats": "."}
+DECLARED = {PLAIN: {"k": {"write": True, "rules": OWNER_RULES}}}
+_stored_then_declared(env, tmp_path, monkeypatch, PLAIN, [("f01.csv", [
+    {"k": "a.b", "v": "holder-ab"}, {"k": "a. b", "note": "from a. b"},
+    {"k": "x", "v": "holder-x"}, {"k": "x (2)", "note": "from x (2)"},
+    {"k": "c.c.c", "v": "c"}, {"k": "d . d (2)", "v": "d"}, {"k": "y (2)", "v": "y"},
+    {"k": "a.b.a", "v": "aba"}])], declared=DECLARED)
+replay.fold_written_notation(env, PLAIN, apply=True)   # 1회
+replay.fold_written_notation(env, PLAIN, apply=True)   # 2회 -> a.b 의 v 가 None 이 된다 (오늘)
+```

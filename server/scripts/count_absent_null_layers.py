@@ -35,80 +35,88 @@ except Exception:                                                  # noqa: BLE00
 MAX_ROWS_SHOWN = 40
 
 
+#: What a counted layer is (총괄 c773b0fed ③). A merge names its copy of a layer
+#: `<writer> (<old key>_<row>)` (`crud.merged_layer_name`), and only those are split by writer.
+ABSENT = "absent"
+MERGED_ABSENT = "merged_absent"
+MERGED_UNSURE = "merged_unsure"
+KINDS = (ABSENT, MERGED_ABSENT, MERGED_UNSURE)
+MEANING = {
+    ABSENT: "비울 수 없는 쓴 이(파일 등)의 빈 층 (S-243-b) — 판정 405 이전에 쌓인 부재",
+    MERGED_ABSENT: "합치기가 남긴 빈 사본, 비울 수 없는 쓴 이 — 부재로 확정 (판정 405)",
+    MERGED_UNSURE: ("합치기가 남긴 빈 사본, 사람 · 체인 — 부재인지, 일부러 비운 칸의 사본인지 "
+                    "구별이 안 된다"),
+}
+
+
 def count(db) -> list:
-    """(표, 컬럼, 소스, NULL 층 수, 그중 «가리는» 수). 큰 것부터.
+    """(종류, 표, 컬럼, 소스, 빈 층 수, 그중 «가리는» 수). 종류마다 큰 것부터.
 
     ⚠️ 「가린다」의 정의를 여기 적는다: 같은 (표, 행, 컬럼) 에 «값이 있는 다른 층»이 하나라도
-    있으면 이 NULL 층이 그 위에 앉아 있을 수 있다. 서열까지 따지지 않는 이유는 그것이 이
+    있으면 이 빈 층이 그 위에 앉아 있을 수 있다. 서열까지 따지지 않는 이유는 그것이 이
     수의 «쓰임»이기 때문이다 — 이 수는 「지울 후보가 몇이냐」이지 「지금 무엇이 보이냐」가
     아니고, 후자는 지우기 전에 내보낼 목록이 답한다.
+
+    🔴 «빈 값»은 정본 하나로 — `blank_sql_condition(column_text_sql(value))`. JSON null · SQL
+    NULL · "" 가 같은 답이다. 이 스크립트가 JSON null 만 세던 때, 합치기가 남긴 "" 층을
+    0 으로 셌다 (총괄 c773b0fed, sqlite · PG 둘 다 잼).
     """
-    from sqlalchemy import text
+    from sqlalchemy import and_, case, exists, func
+    from sqlalchemy.orm import aliased
 
-    from database import crud
+    from database import crud, models
 
-    # 🔴 A 「NULL LAYER」 IS THE JSON LITERAL `null`, NOT SQL NULL, AND THAT IS THE WHOLE
-    # DIFFERENCE BETWEEN THIS SCRIPT AND A SCRIPT THAT ALWAYS ANSWERS 「없음」.
-    # `cell_sources.value` is a JSON column, so a blank written through the real door lands
-    # as the four characters `null`. Measured through `apply_batch_updates` on 2026-09-15:
-    # a blank from `user`, from `chain_ingestion` and from a file ALL store `null`, and
-    # `value IS NULL` is false for every one of them. The order for this round specified
-    # `value IS NULL`; that predicate counts ZERO on a database full of exactly the rows it
-    # is looking for, and a false zero here reads as 「치울 것이 없다」.
-    #
-    # ⚠️ SQL NULL IS KEPT IN THE FILTER ANYWAY. A row that never had a value set at all
-    # is the same absence, and including it costs nothing.
-    #
-    # ⚠️ AND AN EMPTY STRING DOES NOT NEED A THIRD CASE: storage is canonical
-    # (`normalize_stored_text`), and the same measurement shows `""` arriving as `null` too.
-    rows = db.execute(text("""
-        SELECT s.table_name, s.column_name, s.source_name,
-               COUNT(*) AS layers,
-               SUM(CASE WHEN EXISTS (
-                     SELECT 1 FROM cell_sources o
-                      WHERE o.table_name = s.table_name
-                        AND o.row_id = s.row_id
-                        AND o.column_name = s.column_name
-                        AND o.source_name <> s.source_name
-                        AND o.value IS NOT NULL
-                        AND CAST(o.value AS TEXT) <> 'null'
-                   ) THEN 1 ELSE 0 END) AS hiding
-          FROM cell_sources s
-         WHERE s.value IS NULL OR CAST(s.value AS TEXT) = 'null'
-         GROUP BY s.table_name, s.column_name, s.source_name
-    """)).fetchall()
+    s, o = models.CellSource, aliased(models.CellSource)
+    hides = exists().where(and_(
+        o.table_name == s.table_name, o.row_id == s.row_id, o.column_name == s.column_name,
+        o.source_name != s.source_name,
+        crud.not_blank_sql_condition(crud.column_text_sql(o.value))))
+    rows = (db.query(s.table_name, s.column_name, s.source_name, func.count(),
+                     func.sum(case((hides, 1), else_=0)))
+            .filter(crud.blank_sql_condition(crud.column_text_sql(s.value)))
+            .group_by(s.table_name, s.column_name, s.source_name).all())
 
     out = []
     for table_name, column_name, source_name, layers, hiding in rows:
+        writer = crud.layer_writer(source_name)
         # 🔴 THE ONE PREDICATE, IMPORTED. A person's cleared cell and the chain's asserted
         # blank are ANSWERS and must not be counted as debris - they are the two layers
-        # ruling 405 deliberately keeps.
-        if crud.can_mean_emptied(source_name):
-            continue
-        out.append((table_name, column_name, source_name,
+        # ruling 405 deliberately keeps. A merge's copy of one is not told apart from a copy
+        # the merge made of nothing, so it is counted under its own kind.
+        if writer == source_name:
+            if crud.can_mean_emptied(source_name):
+                continue
+            kind = ABSENT
+        else:
+            kind = MERGED_UNSURE if crud.can_mean_emptied(writer) else MERGED_ABSENT
+        out.append((kind, table_name, column_name, source_name,
                     int(layers or 0), int(hiding or 0)))
-    out.sort(key=lambda entry: (-entry[4], -entry[3], entry[0], entry[1]))
+    out.sort(key=lambda entry: (KINDS.index(entry[0]), -entry[5], -entry[4],
+                                entry[1], entry[2]))
     return out
 
 
 def render(found: list) -> str:
-    """운영자가 읽는 것. 「수」와 「그 수가 무엇을 뜻하나」를 같이 낸다."""
+    """운영자가 읽는 것. 종류마다 「수」와 「그 수가 무엇을 뜻하나」를 같이 낸다."""
     if not found:
-        return ("파일 소스의 NULL 층: «없음». 판정 405 이전에 쌓인 것이 이 설치에는 "
-                "남아 있지 않습니다 → 다음: 없음")
+        return ("빈 층: «없음». 판정 405 이전에 쌓인 것도, 합치기가 남긴 것도 이 설치에는 "
+                "없습니다 → 다음: 없음")
 
-    layers = sum(entry[3] for entry in found)
-    hiding = sum(entry[4] for entry in found)
-    lines = ["파일 소스의 NULL 층 %d — 그중 «값을 가리는» 것 %d" % (layers, hiding),
-             "",
-             "%-24s %-20s %-24s %8s %8s" % ("표", "컬럼", "소스", "NULL 층", "가림"),
-             "-" * 88]
-    for entry in found[:MAX_ROWS_SHOWN]:
-        lines.append("%-24s %-20s %-24s %8d %8d" % entry)
-    if len(found) > MAX_ROWS_SHOWN:
-        lines.append("... 그리고 %d 조합 더 (수는 위 합계에 «전부» 들어 있습니다)"
-                     % (len(found) - MAX_ROWS_SHOWN))
-    lines.append("")
+    lines = []
+    for kind in KINDS:
+        entries = [entry[1:] for entry in found if entry[0] == kind]
+        layers = sum(entry[3] for entry in entries)
+        hiding = sum(entry[4] for entry in entries)
+        lines += ["%s — 빈 층 %d, 그중 «값을 가리는» 것 %d" % (MEANING[kind], layers, hiding)]
+        if entries:
+            lines += ["%-24s %-20s %-24s %8s %8s" % ("표", "컬럼", "소스", "빈 층", "가림"),
+                      "-" * 88]
+            lines += ["%-24s %-20s %-24s %8d %8d" % entry for entry in entries[:MAX_ROWS_SHOWN]]
+            if len(entries) > MAX_ROWS_SHOWN:
+                lines.append("... 그리고 %d 조합 더 (수는 위 합계에 «전부» 들어 있습니다)"
+                             % (len(entries) - MAX_ROWS_SHOWN))
+        lines.append("")
+    hiding = sum(entry[5] for entry in found)
     lines.append("→ 다음: " + (
         "없음 — 가리는 층이 0 입니다. 지워도 화면이 안 바뀝니다"
         if hiding == 0 else

@@ -200,7 +200,7 @@ def _redo_for(active_setup: Any, node: ExplorerNode, db) -> Mapping[str, Any] | 
     from ledger import config as ledger_config
 
     sources = list(ledger_config.sources_binding(
-        active_setup.bundle.to_mapping(), node.canonical_id))
+        active_setup.bundle.to_mapping(), node.canonical_id, active_setup.snapshot.vocabulary))
     absence = (retroactive.ABSENCE_NOT_COUNTED_HERE if sources
                else retroactive.ABSENCE_TRULY_NONE)
     # ⚠️ ONE KEY, NOT A HOLLOWED-OUT COUNT. A `count` carrying nulls under every numeric name
