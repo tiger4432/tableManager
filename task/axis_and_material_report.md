@@ -1,3 +1,17 @@
+> ## [09:10 디자인] 2c4093eac — 화면의 @N 은퇴 (Version 줄 · @1 붙이기 · 벗기기) + 계약 둘 — 96855816b
+
+**결론** 착지했습니다. 보드 걷기 상자 안 한 자리만 보드 동결로 남겼습니다.
+
+- **은퇴**: 선언 화면 상세 `Version` 줄 · 새 선언 이름 밑 `→ name@N` 제안과 그 함수(`declarationIdFor`) · 걷기 화면과 공용 걷기 전선(`rnd_board/api.js`)의 `@` 벗기기 — `bareName`(`walk/derive.js`) · `bareType` · 전선의 follow / collect / 씨앗 id / 키 값 타입 / 서술 씨앗. 이름은 서버가 보낸 그대로 보내고 견줍니다. 벗기기를 약속하던 주석도 같이 지웠습니다.
+- **남긴 것**: `rnd_board/walk_box_panel.js` 의 `bareTypeName` — 보드 전용 부품이고 보드가 동결됐습니다(소유자 10-06). 맨이름에는 아무 일도 안 합니다.
+- **하니스**: 먹이는 선언 이름을 서버가 지금 내는 맨이름으로 접었습니다(walk_wire · walk_layout · walk_route_fill · rnd_board_walk_box). 캡처 고정틀 `walk_start_declaration.json` 은 서버의 `declaration_names.bare_name` 으로 접고 `_what` 에 그렇게 적었습니다. 은퇴: walk_route_fill B1 · 벗기기를 재던 변이 둘. 바닥 walk_route_fill 81 → 80 · walk_wire 94 → 95.
+- **계약(총괄 판정대로)**: walk_columns 의 declaration_key 를 서버 `bare_name` 으로 맨이름으로(미끼 선언 그대로) · walk_step 의 versioned_* 둘 은퇴. 클라 반쪽 둘 초록, PG 없는 서버 반쪽 41 통과 · 1 건너뜀(PG). PG 서버 반쪽은 병합 뒤 구현자 몫.
+- **대조군 두 줄**(은퇴 증상): walk_wire G3b «@1 을 든 이름은 든 그대로 전선에» — 벗기기를 되살리면 G3b 빨강 · walk_step 클라 반쪽 «recipe@1 은 정적 recipe 가 아니다» — 접기를 되살리면 그 줄 빨강.
+- 러너 초록 · 계약 13 개 어긋남 0. RELEASE_LOG 한 항목. RUN.md 맨 위에 «서버와 화면은 함께».
+- 문서 · 서버 쪽에 남은 말: CODE_MAP 세 줄이 은퇴한 함수 이름을 들고, `server/tests/test_a_walk_can_be_read_as_rows.py` 의 주석 한 줄이 「declaration is keyed with its version」 이라고 합니다 — 응용 · 구현자 몫으로 둡니다.
+
+**총괄께** 🔴 main 에 넣은 뒤 박스는 서버 재기동과 같이 — RUN.md 맨 위 절.
+
 > ## [08:11 디자인] 35d763c2c — 화면의 @N: R&D 보드 트렌드 좌석이 맨이름으로 묻게 고침 — 6d938a2ef
 
 **결론** A2 는 앞 착지(f53ba0d74)에서 v3 대로 고쳤습니다. git grep 으로 화면 글자의 `@N` 을 훑으니 하나가 남아 있었고, 같은 결로 고쳤습니다.
