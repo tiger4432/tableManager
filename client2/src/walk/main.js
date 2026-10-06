@@ -30,7 +30,7 @@ import { fetchDeclaration, createWalkBoxWalk, pathsBetween, routeWith, fetchKeyV
 // 🔴 겉모양은 «부품과 같이» 다닙니다 (총괄 판정 2026-09-06).
 import { ensureWalkStyles } from './styles.js';
 import {
-  followFromRoute, followChoices, predicatesTouching, noFollowSentence, keepWalkableRoutes,
+  followFromRoute, followChoices, keepWalkableRoutes,
   cutBudgets,
 } from './derive.js';
 // 🔴 C-72. 표의 «결정»은 전부 여기 있고 이 파일에는 DOM 쓰기만 남습니다.
@@ -98,8 +98,6 @@ export function boot(doc, host, deps) {
     view: 'table',
     // Which loop chips are on, per route row (`routeKey`). Off unless pressed (lead 5d5b8d750).
     loopsOn: new Map(),
-    // The follow list is one folded line until opened (lead 2b5819e1d).
-    followOpen: false,
   };
   const routeKey = (r) => `${r.to}|${r.follow.slice().sort().join('+')}`;
   const loopsOf = (r) => state.loopsOn.get(routeKey(r)) || new Set();
@@ -123,13 +121,11 @@ export function boot(doc, host, deps) {
     markings.replace(GRAPH_CHAIN[0], named ? [[entitySeedId(state.type, state.keys), SIGN.CASE]] : []);
     graph.show(opts);
   };
-  // 🔴 술어도 «선언»에서, 그리고 «고른 타입에 닿는 것»(씨앗의 첫 걸음)만. 규칙과 사유는
-  //    `derive.js` 에 있고 R&D 걷기 상자도 «같은 함수»를 부릅니다.
+  // 🔴 체크칸은 선언된 술어 «전부» (소유자 10-06 「엣지 리스트 다 주고 체크하는걸 메인으로」).
+  //    거르는 것은 걷기의 일입니다. R&D 걷기 상자는 동결이라 닿는 것만 그립니다.
   const declaredPredicates = () => (state.decl && state.decl.predicates) || [];
   const allPredicates = () => declaredPredicates().map((p) => p.name);
-  const followOptions = () => followChoices(
-    predicatesTouching(declaredPredicates(), state.type, entities()),
-    allPredicates(), state.follow);
+  const followOptions = () => followChoices(allPredicates(), allPredicates(), state.follow);
 
   /**
    * 시작 타입에서 «고른 도착지»까지 선언이 아는 길. 지어내지 않고 `pathsBetween` 을 씁니다.
@@ -209,13 +205,11 @@ export function boot(doc, host, deps) {
     }
     sel.addEventListener('change', () => {
       state.type = sel.value;
-      // 타입을 바꾸면 그 타입에 «없는» 키와 술어는 따라올 자격이 없습니다.
+      // 타입을 바꾸면 그 타입에 «없는» 키는 따라올 자격이 없습니다. 체크는 남습니다 — 목록에 전부
+      // 보이니 숨은 체크가 없습니다 (총괄 10-06, 10-02 판정을 뒤집음).
       const allowedKeys = new Set(keysOf(state.type));
       state.keys = Object.fromEntries(
         Object.entries(state.keys).filter(([k]) => allowedKeys.has(k)));
-      // 🔴 닿는 술어로 거릅니다 — R&D 걷기 상자와 같은 답입니다.
-      const allowed = new Set(predicatesTouching(declaredPredicates(), state.type, entities()));
-      state.follow = new Set([...state.follow].filter((f) => allowed.has(f)));
       state.result = null; state.run = 'idle';
       render();
       loadSubjects();
@@ -323,7 +317,8 @@ export function boot(doc, host, deps) {
   }
 
   // ── 경로: 시작과 도착지가 정해지면 선언이 «길을 알려 줍니다» ──────────────────
-  // 🔴 채워 주는 것이지 «뺏는 게 아닙니다». 누르면 follow 와 hops 가 채워지고, 손으로 고쳐도 됩니다.
+  // 🔴 채워 주는 것이지 «뺏는 게 아닙니다». 누르면 그 길의 술어가 체크에 «더해지고» hops 가 채워집니다.
+  //    이미 있는 체크는 지우지 않습니다 (소유자 10-06 「경로는 보조용」).
   //    지금 고른 줄은 «지금 칸의 값»과 같은 줄입니다 — 손으로 고치면 표시가 정직하게 빠집니다.
   function renderRoutes(root) {
     if (!state.type || !state.collect.size) return;
@@ -342,7 +337,7 @@ export function boot(doc, host, deps) {
     const useRoute = (r, on) => {
       const asked = routeWith(r, on);
       // 채우는 두 줄. 규칙은 `derive.js` 에 있고, 지우면 그쪽 하니스가 빨개집니다.
-      state.follow = new Set(followFromRoute(allPredicates(), asked.follow));
+      state.follow = new Set([...state.follow, ...followFromRoute(allPredicates(), asked.follow)]);
       state.hops = String(asked.hops);
       render();
     };
@@ -413,45 +408,31 @@ export function boot(doc, host, deps) {
     root.append(box);
   }
 
-  // ── follow: 접힌 한 줄(지금 고른 술어), 펴면 오늘의 체크 목록 ─────────────────────────
-  // 🔴 고를 것이 «없으면» 접을 것도 없습니다 — 그 문장을 바로 그립니다.
+  // ── follow: 선언된 술어 전부를 체크로. 이것이 «주»이고 경로 목록이 «보조»입니다 ─────────
   function renderFollow(root) {
     const opts = followOptions();
-    const box = el(doc, 'div', 'wk-field');
+    const box = field('Follow');
     if (!opts.length) {
-      box.append(el(doc, 'div', 'wk-label', 'Follow'));
-      box.append(el(doc, 'div', 'wk-note', state.type
-        ? noFollowSentence(state.type)
-        : 'No predicate declared'));
+      box.append(el(doc, 'div', 'wk-note', 'No predicate declared'));
       root.append(box);
       return;
     }
-    const summary = state.follow.size ? [...state.follow].join(', ') : SERVER_DEFAULT;
-    const fold = el(doc, 'button', 'wk-fold');
-    fold.type = 'button';
-    fold.setAttribute('aria-expanded', state.followOpen ? 'true' : 'false');
-    fold.append(el(doc, 'span', 'wk-foldtext', `Follow · ${summary}`),
-      el(doc, 'span', 'wk-foldmark', state.followOpen ? '▾' : '▸'));
-    fold.addEventListener('click', () => { state.followOpen = !state.followOpen; render(); });
-    box.append(fold);
-    if (state.followOpen) {
-      const list = el(doc, 'div', 'wk-checks');
-      for (const name of opts) {
-        const row = el(doc, 'label', 'wk-check' + (state.follow.has(name) ? ' is-on' : ''));
-        row.setAttribute('data-follow', name);
-        const cb = el(doc, 'input');
-        cb.type = 'checkbox';
-        cb.checked = state.follow.has(name);
-        cb.addEventListener('change', () => {
-          if (state.follow.has(name)) state.follow.delete(name); else state.follow.add(name);
-          render();
-        });
-        row.append(cb, el(doc, 'span', '', name));
-        list.append(row);
-      }
-      box.append(list);
-      box.append(el(doc, 'div', 'wk-note', `${UNPICKED} · ${SERVER_DEFAULT}`));
+    const list = el(doc, 'div', 'wk-checks');
+    for (const name of opts) {
+      const row = el(doc, 'label', 'wk-check' + (state.follow.has(name) ? ' is-on' : ''));
+      row.setAttribute('data-follow', name);
+      const cb = el(doc, 'input');
+      cb.type = 'checkbox';
+      cb.checked = state.follow.has(name);
+      cb.addEventListener('change', () => {
+        if (state.follow.has(name)) state.follow.delete(name); else state.follow.add(name);
+        render();
+      });
+      row.append(cb, el(doc, 'span', '', name));
+      list.append(row);
     }
+    box.append(list);
+    if (!state.follow.size) box.append(el(doc, 'div', 'wk-note', `${UNPICKED} · ${SERVER_DEFAULT}`));
     root.append(box);
   }
 
@@ -616,9 +597,9 @@ export function boot(doc, host, deps) {
     } else {
       renderStart(body);
       renderCollect(body);
+      renderFollow(body);
       renderRoutes(body);
       renderStep(body);
-      renderFollow(body);
       renderGo(foot);
       renderHead(main);
       if (state.view === 'graph') main.append(graphMount);

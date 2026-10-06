@@ -86,12 +86,6 @@ export const WALK_CSS = `
 .wk-route { display: flex; flex-direction: column; gap: var(--space-2); margin: 0 0 var(--space-2);
   padding: var(--space-2); border: 1px solid var(--border); border-radius: 8px; }
 .wk-route.is-on { border-color: var(--accent); background: var(--accent-weak); }
-/* Follow: one folded line saying what is picked; opened, today's check list. */
-.wk-fold { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3);
-  width: 100%; min-height: 44px; padding: 0 var(--space-3); font: inherit; font-size: 14px; text-align: left;
-  color: var(--text); background: var(--bg-header); border: 1px solid var(--border); border-radius: 6px;
-  cursor: pointer; }
-.wk-foldtext { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .wk-go { width: 100%; border: 0; border-radius: 8px;
   background: var(--accent, #2563eb); color: var(--accent-contrast); font-weight: 600; }

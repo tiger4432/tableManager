@@ -96,9 +96,8 @@ async function stand(mod) {
     unchip: async (t) => { fire(find((e) => e.attrs && e.attrs['data-collect'] === t), 'click'); await settle(); },
     route: async () => { fire(find((e) => e.className === 'wk-path'), 'click'); await settle(); },
     loop: async () => { fire(find((e) => classes(e).includes('wk-loopchip')), 'click'); await settle(); },
-    fold: async () => { fire(find((e) => e.className === 'wk-fold'), 'click'); await settle(); },
     tick: async (name) => {
-      // A mutant can leave the list shut; the cell that follows then fails, the run must not throw.
+      // A mutant can leave a row undrawn; the cell that follows then fails, the run must not throw.
       const row = find((e) => e.attrs && e.attrs['data-follow'] === name);
       if (row) fire(row.children.find((c) => c.tagName === 'input'), 'change');
       await settle();
@@ -109,7 +108,9 @@ async function stand(mod) {
     },
     walk: async () => { fire(find((e) => e.className === 'wk-go'), 'click'); await settle(); },
   };
-  return { host, handle, asked, all, find, act };
+  const ticked = () => all().filter((e) => e.attrs && e.attrs['data-follow'] !== undefined
+    && e.children.some((c) => c.tagName === 'input' && c.checked)).map((e) => e.attrs['data-follow']).join(',');
+  return { host, handle, asked, all, find, act, ticked };
 }
 
 async function suite(mod, css = REAL_CSS) {
@@ -135,13 +136,18 @@ async function suite(mod, css = REAL_CSS) {
     && views.every((e) => inMain.has(e)) && walkAll(main || { children: [] }).some((e) => e.className === 'wk-result'),
     `${views.length} views`);
 
-  console.log(`${LF}-- Follow is one folded line until opened --`);
+  // 🔴 THE CHECK LIST IS THE MAIN PICK, THE ROUTES THE AID (owner 10-06, lead bf3653401).
+  console.log(`${LF}-- Follow: every declared predicate, open, before the routes --`);
   const follows = () => page.all().filter((e) => e.attrs && e.attrs['data-follow'] !== undefined).length;
-  const foldText = () => (page.find((e) => e.className === 'wk-fold') || { textContent: '' }).textContent;
-  ok('L3 folded at first: no follow box drawn, the line says what the route picked',
-    follows() === 0 && foldText().startsWith('Follow · in_container, transfer'), `${follows()} | ${foldText()}`);
-  await page.act.fold();
-  ok('L4 one press opens the list', follows() === 3, String(follows()));
+  ok('L3 open at first: one box per declared predicate, and the route press ticked its predicates',
+    follows() === DECL.predicates.length && page.ticked() === 'in_container,transfer',
+    `${follows()} of ${DECL.predicates.length} | ${page.ticked()}`);
+  const form = rail ? rail.children[0] : { children: [] };
+  const holds = (test) => form.children.findIndex((c) => walkAll(c).some(test));
+  const followAt = holds((e) => e.attrs && e.attrs['data-follow'] !== undefined);
+  const routesAt = holds((e) => e.className === 'wk-path');
+  ok('L4 the follow list stands before the route list in the form', followAt >= 0 && routesAt > followAt,
+    `follow ${followAt} | routes ${routesAt}`);
 
   console.log(`${LF}-- the picked route is the one the fields hold --`);
   const picked = () => page.all().filter((e) => classes(e).includes('wk-route') && classes(e).includes('is-on')).length;
@@ -162,6 +168,22 @@ async function suite(mod, css = REAL_CSS) {
   await bare.act.walk();
   eq('L8 a type and a key, nothing else: the same request as before', bare.asked.filter((u) => u.includes('/subgraph'))[0],
     BEFORE.bare);
+  const sentFollow = (p) => {
+    const url = p.asked.filter((u) => u.includes('/subgraph')).pop() || '';
+    return new URLSearchParams(url.split('?')[1] || '').getAll('follow').join(',');
+  };
+  const one = await stand(mod);
+  await one.act.type('die');
+  one.act.key('mat_id', 'M-1');
+  await one.act.tick('transfer');
+  await one.act.walk();
+  eq('L13 one box of three ticked: only that one goes as follow', sentFollow(one), 'transfer');
+  const kept = await stand(mod);
+  await kept.act.type('die');
+  await kept.act.add('wafer');
+  await kept.act.tick('observed');
+  await kept.act.route();
+  eq('L14 a route press adds its predicates and keeps a box ticked by hand', kept.ticked(), 'in_container,observed');
 
   console.log(`${LF}-- the result's title is what was asked, not what the form holds now --`);
   const title = () => (page.find((e) => e.className === 'wk-title') || { textContent: '' }).textContent;
@@ -210,8 +232,9 @@ const swap = (text, from, to) => {
 const MUTANTS = [
   { id: 'W1', what: 'the step knobs are drawn in the result instead of the rail', catches: 'L1 every',
     mutate: (t) => swap(t, '      renderStep(body);', '      renderStep(main);') },
-  { id: 'W2', what: 'Follow starts open', catches: 'L3 folded',
-    mutate: (t) => swap(t, '    followOpen: false,', '    followOpen: true,') },
+  { id: 'W2', what: 'Follow is drawn after the routes again', catches: 'L4 the follow',
+    mutate: (t) => swap(swap(t, '      renderFollow(body);', ''),
+      '      renderStep(body);', '      renderStep(body); renderFollow(body);') },
   { id: 'W3', what: 'the picked mark is always on', catches: 'L6 a follow',
     mutate: (t) => swap(t, "      const route = el(doc, 'div', 'wk-route' + (picked ? ' is-on' : ''));",
       "      const route = el(doc, 'div', 'wk-route is-on');") },
@@ -231,6 +254,15 @@ const MUTANTS = [
     mutate: (t) => swap(t, '      renderGo(foot);', '      renderGo(body);') },
   { id: 'W10', what: 'the stylesheet stops pinning the foot', catches: 'L12 Walk', file: STYLES,
     mutate: (t) => swap(t, '.wk-rail-foot { flex: none;', '.wk-rail-foot { flex: 1 1 auto;') },
+  { id: 'W11', what: 'every drawn box is sent, ticked or not', catches: 'L13 ',
+    mutate: (t) => swap(t, '    if (state.follow.size) out.follow = [...state.follow];',
+      '    out.follow = followOptions();') },
+  { id: 'W12', what: 'a route press replaces the ticks, as before 10-06', catches: 'L14 ',
+    mutate: (t) => swap(t, '      state.follow = new Set([...state.follow, ...followFromRoute(allPredicates(), asked.follow)]);',
+      '      state.follow = new Set(followFromRoute(allPredicates(), asked.follow));') },
+  { id: 'W13', what: 'a route press no longer ticks anything', catches: 'L3 open',
+    mutate: (t) => swap(t, '      state.follow = new Set([...state.follow, ...followFromRoute(allPredicates(), asked.follow)]);',
+      '') },
 ];
 const run = async (m) => {
   ran = 0; NAMES.length = 0; failures = [];

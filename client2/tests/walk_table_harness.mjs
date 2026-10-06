@@ -209,12 +209,6 @@ async function suite(mod) {
         sel.value = type;
         for (const fn of sel.listeners.change || []) fn();
         await settle();
-        // The follow list is one folded line until opened (lead 2b5819e1d) - open it, as a person does.
-        const fold = byClass(host, 'wk-fold')[0];
-        if (fold && fold.attrs['aria-expanded'] === 'false') {
-          for (const fn of fold.listeners.click || []) fn();
-          await settle();
-        }
       } };
     };
     const follow = (h) => walkAll(h).filter((e) => e.attrs && e.attrs['data-follow'] !== undefined)
@@ -228,16 +222,16 @@ async function suite(mod) {
     ok('F2 the seed field is Pick a node and offers the node the server listed',
       walkAll(listed.host).some((e) => e.className === 'wk-label' && e.textContent === 'Pick a node')
         && offered.includes('R-1  (3)'), offered.join(' | '));
-    // 🔴 THE SEED'S FIRST STEP IS OPEN (owner 10-02, lead c24ba7d82): static recipe@1 too.
-    eq('F6 static recipe@1 offers what enters it', follow(listed.host), 'processed_with@1');
+    // 🔴 EVERY DECLARED PREDICATE, WHATEVER THE TYPE (owner 10-06, lead bf3653401) — the walk filters, not the list.
+    const ALL = DECL2.predicates.map((p) => p.name).join(',');
+    eq('F6 static recipe@1 draws every declared predicate', follow(listed.host), ALL);
     await listed.pick('note@1');
-    ok('F7 a type no predicate touches says so', follow(listed.host) === ''
-      && notes(listed.host).includes('No predicate touches note@1'), notes(listed.host));
+    eq('F7 a type no predicate touches still draws every declared predicate', follow(listed.host), ALL);
     await listed.pick('defect@1');
-    eq('F1 defect@1, only ever an object, offers the predicate that enters it',
-      follow(listed.host), 'observed@1');
-    // 🔴 A TICKED FOLLOW THAT DOES NOT TOUCH THE NEW TYPE LEAVES WITH THE TYPE (lead 10-02) — and one
-    //    that does stays ticked. The R&D box gives the same answer (its harness, H3).
+    eq('F1 defect@1 draws every declared predicate, those that do not touch it too',
+      follow(listed.host), ALL);
+    // 🔴 A TYPE CHANGE KEEPS EVERY TICK (lead 10-06, reversing 10-02): every box is drawn, so no tick is hidden.
+    //    The frozen R&D box still drops what does not touch the new type (its harness, H3).
     const tick = (h, name) => {
       const row = walkAll(h).find((e) => e.attrs && e.attrs['data-follow'] === name);
       const cb = row && row.children.find((c) => c.tagName === 'input');
@@ -252,12 +246,20 @@ async function suite(mod) {
     const dropped = ticked(listed.host);
     tick(listed.host, 'processed_with@1');
     await listed.pick('wafer@1');
-    ok('F8 changing the type drops a ticked follow that does not touch it, and keeps one that does',
-      before === 'inspected@1' && dropped === '' && ticked(listed.host) === 'processed_with@1',
+    ok('F8 changing the type keeps every tick, those that do not touch the new type too',
+      before === 'inspected@1' && dropped === 'inspected@1' && ticked(listed.host) === 'inspected@1,processed_with@1',
       `${before} / ${dropped} / ${ticked(listed.host)}`);
     await listed.pick('die@1');
-    eq('F3 die@1 offers what leaves it and what enters it, in declaration order',
-      follow(listed.host), 'inspected@1,observed@1');
+    // The page half of the board harness's old B8 (lead 10-06): every declared type, every declared predicate.
+    const apart = [];
+    for (const { type } of DECL2.entities) {
+      await listed.pick(type);
+      if (follow(listed.host) !== ALL) apart.push(`${type}: ${follow(listed.host)}`);
+    }
+    ok('F9 every declared type draws every declared predicate', apart.length === 0, apart.join(' ; '));
+    await listed.pick('die@1');
+    eq('F3 die@1 draws every declared predicate, in declaration order',
+      follow(listed.host), 'inspected@1,processed_with@1,observed@1');
 
     const empty = await stand({ nodes: [], scanned: 0, scan_truncated: false, values_truncated: false });
     await empty.pick('recipe@1');
@@ -308,18 +310,16 @@ const MUTANTS = [
     catches: 'P1 picking the placeholder',
     from: "    none.value = '';\n", to: '' },
   // ── 29cee1d47 ────────────────────────────────────────────────────────────────────────
-  { id: 'M7', what: 'the page keeps its own subject-only copy of the follow list',
+  { id: 'M7', what: 'the list is drawn from what touches the start type again, as before 10-06',
     catches: 'F1 defect@1',
-    from: '    predicatesTouching(declaredPredicates(), state.type, entities()),',
-    to: '    declaredPredicates().filter((p) => !state.type'
-      + ' || (p.subjects || []).includes(state.type)).map((p) => p.name),' },
-  { id: 'M11', what: 'the type change filters through followOptions again, which keeps every tick',
+    from: '  const followOptions = () => followChoices(allPredicates(), allPredicates(), state.follow);',
+    to: '  const followOptions = () => followChoices(declaredPredicates().filter((p) => !state.type'
+      + ' || (p.subjects || []).includes(state.type) || ((p.object || {}).types || []).includes(state.type))'
+      + '.map((p) => p.name), allPredicates(), state.follow);' },
+  { id: 'M11', what: 'a type change drops the ticks again',
     catches: 'F8 changing the type',
-    from: '      const allowed = new Set(predicatesTouching(declaredPredicates(), state.type, entities()));',
-    to: '      const allowed = new Set(followOptions());' },
-  { id: 'M10', what: 'an empty follow list is drawn as nothing',
-    catches: 'F7 a type no predicate touches',
-    from: '        ? noFollowSentence(state.type)', to: "        ? ''" },
+    from: '        Object.entries(state.keys).filter(([k]) => allowedKeys.has(k)));',
+    to: '        Object.entries(state.keys).filter(([k]) => allowedKeys.has(k))); state.follow = new Set();' },
   { id: 'M8', what: 'the node list reads the retired wire cell',
     catches: 'F2 the seed field',
     from: '      state.subjects = got.nodes;', to: '      state.subjects = got.subjects;' },

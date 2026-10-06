@@ -177,41 +177,15 @@ async function suite(mods) {
     noteText.includes('No predicate touches'), noteText.slice(0, 90));
   ok('B5 the sentence names the type it is talking about', noteText.includes('note'));
   eq('B6 no follow checkbox is drawn', byAttr(host, 'data-follow').length, 0);
-  // 🔴 ONE SEAT, SCORED ON BOTH SCREENS (lead 10-02). The walk page is stood up from disk with the
-  //    same declaration; for every declared type its drawn follow rows must equal this box's list.
+  // The two-screen follow compare (B8) left 10-06 (lead): the walk page draws every declared predicate
+  // (owner 10-06), this frozen box what touches the type. It comes back when the board follows the page.
   const walkPage = await import('../src/walk/main.js');
-  const wdoc = makeDoc();
-  wdoc.head = wdoc.createElement('head');
-  const whost = wdoc.createElement('div');
-  const wpage = walkPage.boot(wdoc, whost, { apiBase: '',
-    fetchImpl: async () => ({ ok: true, status: 200, json: async () => DECL }) });
-  await settle();
-  // The page's follow list is one folded line until opened (lead 2b5819e1d); the list is compared open.
-  wpage.state.followOpen = true;
-  const differ = [];
-  for (const { type } of DECL.entities) {
-    wpage.state.type = type;
-    wpage.render();
-    panel.setType(type);
-    if (drawnFollow(whost) !== panel.followOptions().join(',')) {
-      differ.push(`${type}: page ${drawnFollow(whost)} | box ${panel.followOptions().join(',')}`);
-    }
-  }
-  ok('B8 the walk page and this box offer the same follow list for every declared type',
-    differ.length === 0, differ.join(' ; '));
-  // 🔴 A TYPE CHANGE, ON BOTH SCREENS (lead 10-02): a ticked follow that does not touch the new type
-  //    leaves, one that does stays.
-  const pageType = (type) => {
-    const sel = walkAll(whost).find((e) => e.className === 'wk-select');
-    sel.value = type;
-    sel.fire('change');
-  };
-  pageType('die'); wpage.state.follow = new Set(['inspected', 'processed_with']); pageType('recipe');
+  // 🔴 A TYPE CHANGE (lead 10-02): a ticked follow that does not touch the new type leaves, one that does
+  //    stays. This box only - the walk page keeps every tick since 10-06 (lead).
   panel.setType('die'); panel.follow = new Set(['inspected', 'processed_with']); panel.setType('recipe');
   await settle();
-  ok('H3 a type change keeps only the ticked follow that touches the new type, on both screens',
-    [...wpage.state.follow].join(',') === 'processed_with' && [...panel.follow].join(',') === 'processed_with',
-    `page ${[...wpage.state.follow]} | box ${[...panel.follow]}`);
+  ok('H3 a type change keeps only the ticked follow that touches the new type',
+    [...panel.follow].join(',') === 'processed_with', [...panel.follow].join(','));
 
   console.log(`${LF}-- K. the route list leaves out what the walk refuses, as the walk page does --`);
   {
@@ -874,7 +848,7 @@ const MUTANTS = [
     from: "    return predicatesTouching(decl.predicates || [], this.nodeType, decl.entities);",
     to: "    return (decl.predicates || []).map((p) => p.name);" },
   // 🔴 10-02. The copy this round removed: the box answering on its own, subject side only.
-  { name: 'the-box-keeps-its-own-subject-only-copy', catches: ['B1', 'B3', 'B8'],
+  { name: 'the-box-keeps-its-own-subject-only-copy', catches: ['B1', 'B3'],
     from: "    return predicatesTouching(decl.predicates || [], this.nodeType, decl.entities);",
     to: "    const all = decl.predicates || []; if (!this.nodeType) return all.map((p) => p.name);"
         + " return all.filter((p) => (p.subjects || []).includes(this.nodeType)).map((p) => p.name);" },

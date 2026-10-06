@@ -1448,10 +1448,14 @@ const FLOORS = new Map([
   // M1 is a copy put back, and it changes no count at all.
   // 15 -> 17 (lead b417e2ad8, P1 and M6): picking the type placeholder again is no type - Run off,
   // no subject list asked.
+  // 30 -> 30 (lead bf3653401 and its 10-06 answer): every declared predicate is a box for every type
+  // (F9, the page half of the board harness's old B8); a type change keeps every tick (F8, reversing 10-02);
+  // M10 retired with the empty-list sentence it guarded (the list is empty only when nothing is declared).
   ['walk_table_harness.mjs', 30],
-  // New (lead 2b5819e1d): walk layout A - the form is the rail, the result its own part, Follow folded,
+  // New (lead 2b5819e1d): walk layout A - the form is the rail, the result its own part,
   // the same choices send the request recorded before the layout (fixtures/walk_wire_before.json).
-  ['walk_layout_harness.mjs', 22],
+  // 22 -> 27 (lead bf3653401): Follow open, before the routes; a route adds; only the ticked are sent.
+  ['walk_layout_harness.mjs', 27],
   ['walk_route_fill_harness.mjs', 80],
   // New 2026-09-08 with C-40 ② (the declaration form's three attribute seats). Floor is
   // the count it reports on the commit that introduces it -- there is no earlier tree to
@@ -1536,7 +1540,9 @@ const FLOORS = new Map([
   // the board part: reach
   ['rnd_board_reach_harness.mjs', 63],
   // the board part: the walk box
-  ['rnd_board_walk_box_harness.mjs', 99],   // 87 -> 99: RC1-RC11, the loop chips (lead 5d5b8d750)
+  // 87 -> 99: RC1-RC11, the loop chips (lead 5d5b8d750). 99 -> 98 (lead 10-06): B8, the two-screen
+  // follow compare, leaves until the board follows the walk page; H3 scores this box only.
+  ['rnd_board_walk_box_harness.mjs', 98],
   // the board part: Save contrast (lead 3a262cc76) — one contrast_run row per save, the list
   // with the run row's own computed facts (Not computed yet / factors N · computed HH:MM, one read),
   // two instances on one screen, the real chain's run rows through the real route (J), and the
