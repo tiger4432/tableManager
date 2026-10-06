@@ -36099,3 +36099,31 @@ CoreDie@1 · DTDie@1 · BondComponent@1 · FinalChip@1 · Missing@1)과 「Entit
 왜          새 호출자가 쓰기 본체에 닿으면 «같은 일을 두 번 돌리고 층을 비교» — 내 기억(10-03 「같은 데이터를 두 번」)에 있는데 안 했다
 앞으로       새 호출자가 병합 · 쓰기 본체에 닿는 착지는 그 호출자를 두 번 돌리고 매번 받는 행의 층을 견준다
 ```
+
+---
+
+## [C 응용] 10-06 26a3e0e9a(병합이 빈 층을 안 만든다) QA — 이번엔 «세 번 돌리고 층을 견줌» · 결함 없음, 물음 하나
+
+```
+잰 것    떼어 둔 트리 /c/wt-app @26a3e0e9a, 착지 시험 파일 전문 + 한 시험 덧붙임(sqlite 메모리 픽스처 · 박스 DB 안 씀)
+         총괄 장면(a.b · a. b · x · x (2) · c.c.c) + 같은 칸에 다른 값을 든 짝 하나(m.n v=holder-mn · m . n v=shell-mn), 소급 apply 세 번
+         PROBE run 1 | merged 3 | cells 4 | layers 4 | blank layers 0
+         PROBE   rows [('a.b', 'holder-ab', 'from a. b'), ('c', 'c', None), ('m.n', 'shell-mn', None), ('x', 'holder-x', 'from x (2)')]
+         PROBE   m.n v layers [('f01.csv', 'holder-mn'), ('f01.csv (m . n_01a10f)', 'shell-mn')]
+         PROBE run 2 | merged 0 | cells 0 | layers 0 | blank layers 0
+         PROBE   rows [('a.b', 'holder-ab', 'from a. b'), ('c', 'c', None), ('m.n', 'shell-mn', None), ('x', 'holder-x', 'from x (2)')]
+         PROBE   m.n v layers [('f01.csv', 'holder-mn'), ('f01.csv (m . n_01a10f)', 'shell-mn')]
+         PROBE run 3 | merged 0 | cells 0 | layers 0 | blank layers 0
+         PROBE   rows [('a.b', 'holder-ab', 'from a. b'), ('c', 'c', None), ('m.n', 'shell-mn', None), ('x', 'holder-x', 'from x (2)')]
+         PROBE   m.n v layers [('f01.csv', 'holder-mn'), ('f01.csv (m . n_01a10f)', 'shell-mn')]
+         PROBE same after runs 1..3: True
+         착지 시험 파일 그대로 : 28 passed, 183 warnings in 7.42s
+판단     빈 층 0 · 둘째 · 셋째 0 · 세 번 같은 행 — c773b0fed 의 지워짐은 닫혔다
+```
+
+**여쭐 것 — 병합 미리보기가 «받는 행의 보이는 값이 바뀐다»를 말하지 않는다 (잼)**
+```
+m.n 은 자기 값 holder-mn 을 들고 있었는데 병합 뒤 shell-mn 이 보인다 — 넘어온 층(f01.csv (m . n_…))이 더 새 층이라 이긴다.
+결정적이고 세 번 같다(층 규칙대로). 다만 dry run 은 「merged: row · folded_key · into」 만 — 받는 행의 어느 칸이 무엇에서 무엇으로 바뀌는지는 없다.
+병합은 되돌릴 수 없다(커밋 문장). 미리보기에 «바뀌는 칸»을 실을지 — 안 지었다
+```
