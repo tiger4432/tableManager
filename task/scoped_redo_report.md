@@ -72564,3 +72564,30 @@ PG      키 고치기 증명 10 passed, 8170 deselected in 25.62s (본문을 옮
 sqlite 전체 5 failed, 7842 passed, 330 skipped, 3 xfailed, 13117 warnings in 747.19s (0:12:27) — 박스 사유 밖: 없음
 ```
 RUN.md 절(순서 · 되돌릴 수 없음) · RELEASE_LOG «바뀐 동작» · 표기 가이드 소급 문단 — 같은 커밋.
+
+---
+
+## [10-06] ff60fe669 — ① 착지 330e4c3d3 · ② 들고 있음(총괄 ㄱ)
+
+어느 DB · 어느 스키마 · 지운 것 — 시험은 메모리 sqlite 만 · 박스 DB 안 씀 · 지운 것 0
+
+**① 실패 기록이 2000자 안에서 온전한 JSON**
+```
+한도   retroactive.RUN_ERROR_LIMIT 하나 — _mark_run 이 그것으로 자름
+줄이기  _run_rule_rows 가 기록을 넣을 때 reason 칸의 «가운데»를 … 하나로 (같은 칸, 새 칸 없음)
+       머리 = [rules=<규칙> target=<표>], 꼬리 = 올라온 오류. 끝을 자르면 정작 오류 줄이 사라져서 가운데
+정확히  자른 글자 하나가 JSON 에서 적어도 하나 줄고 … 는 하나 — 한 번에 맞음
+게이트  긴 사유로 실패시켜 «진짜 _mark_run» 을 거친 행의 error 가 JSON.parse 되고 길이 = 한도
+       (자르는 가운데가 평문이어야 한 글자를 본다 — 그 조건 자체를 단언으로)
+변이 4  사유를 안 줄임 RED · 한 글자 모자라게 줄임 RED · 가운데 대신 꼬리를 자름 RED · 행이 다른 수로 자름 RED
+sqlite 전체(① 만) 5 failed, 7843 passed, 330 skipped, 3 xfailed, 13105 warnings in 849.99s (0:14:09) — 박스 사유 밖: 없음
+```
+**② run_in 닫힌 목록 — 지어 두고 들고 있음**
+```
+스켈레톤  _node_for 한 자리에서 {"kind":"leaf","hint":"choice","list":"run_in"}
+         통합 문법의 limits 도 _node_for 를 지나게 (다른 limit 칸의 노드는 오늘 그대로 — 재서 확인)
+응답     /admin/chain/rules/raw 맨 위 "run_in": ["chain","operation"]
+변이 3  run_in 이 자유 입력 RED · 통합 limits 가 한 자리를 건너뜀 RED · 응답에 목록 없음 RED
+착지     클라가 응답의 run_in 을 lists 에 넣는 커밋이 main 에 들어가고 총괄 메시지가 오면
+```
+RUN.md 절 · RELEASE_LOG · chain_rules 안내서 한 줄 — ① 커밋에. 앞선 표기 소급 절 뒤에 빠졌던 RUN.md 구분선도 같이.
