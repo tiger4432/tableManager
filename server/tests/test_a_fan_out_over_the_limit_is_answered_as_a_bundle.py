@@ -126,7 +126,7 @@ def test_the_route_passes_both_cells_through(monkeypatch):
                   direction="both", since=None, until=None, node_limit=400, edge_limit=1200,
                   positive=None, negative=None, follow=None, backbone_hops=0, collect=None,
                   include_superseded=False)
-    router.evidence_subgraph(fanout_limit=20, expand=["n|p|outgoing"], **common)
+    router.evidence_subgraph(fanout_limit=20, expand=["n|processed_with|outgoing"], **common)
     router.evidence_subgraph(**common)
-    assert (seen[0]["fanout_limit"], seen[0]["expand"]) == (20, ["n|p|outgoing"])
+    assert (seen[0]["fanout_limit"], seen[0]["expand"]) == (20, ["n|processed_with|outgoing"])
     assert (seen[1]["fanout_limit"], seen[1]["expand"]) == (None, None)

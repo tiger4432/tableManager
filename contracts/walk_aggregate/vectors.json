@@ -43,7 +43,7 @@
     "group_by": "`type`, or the name of a value a node carries",
     "measure": "one of the seven, `name:<value name>` for the arithmetic five; a LIST is allowed and every entry becomes a key of `value`",
     "groups": "[{key, n, value, at?}] sorted by key — `value` is ALWAYS a map keyed by the measure string, and `at` is ABSENT when the group's nodes carry no edge with a time",
-    "value_sources": "where a measure's name is looked up, in order: attributes, qualifiers, predicates[].count"
+    "value_sources": "where a measure's name is looked up, in order: keys, attributes, qualifiers, predicates[].count"
   },
   "vectors": [
     {

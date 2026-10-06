@@ -35940,3 +35940,47 @@ git grep -n -E "<아래 낱말들>" -- server/*.py ':!server/tests'
          둘 다 안 지었다. 저장된 보드 · 북마크에 measure 문자열이 남는 자리가 있는지는 안 셌다
 문서     9534c9ef8 — WALK.md 이름 찾기(맨이름 · @1 은 빈다) · LEDGER_TECHNICAL_SPEC 「id 는 버전이 붙는다」 은퇴(838bafd89 때 빠뜨린 현재형 줄)
 ```
+
+---
+
+## [C 응용] 10-06 총괄 지시 — @N 은퇴 뒤 문서 (서버 f34f16892 · 클라 96855816b) · cf8aa94a4
+
+```
+                                        전      후
+CODE_MAP 은퇴 함수 이름, 표지 없는 줄     2      0     declarationIdFor(store 줄) · bareName(derive.js 줄, 이름 목록과 사유 문장) -> ⚰️ 96855816b
+                                                       versioned_sections 는 838bafd89 에 이미 ⚰️ — 세 줄이 이 셋
+선언 이름의 name@N, 표지 없는 줄          148     44
+                     표지 있는 줄(~~ · 해시) 10      13
+셈      살아 있는 문서(docs .md − history · _archive · RELEASE_LOG), 이름 = 샘플 선언 둘의 vocabulary · entities.
+        매퍼 이름(declarative-role@1 · direct-join@1 · lot-lineage@1 …)은 이름이 아니라 안 셈
+바꾼 것  예시와 현재형 줄을 맨이름으로 — 안내서 셋(선언 예시 · ONTOLOGY_LEDGER_SETUP · PRIMER) · APPLICATION_GAP_SPEC 표(gap_names.json 과 같은 철자) ·
+        스펙 넷 · README · BASIS · PRIMITIVES · LEDGER_SCHEMA_COMPLETENESS 소스 표 · WALK.md inverse_of 예시 · CODE_MAP 기전 그래프 줄
+        규칙 줄 ONTOLOGY_LEDGER_SETUP 「반드시 versioned ID」 -> 「맨이름 · 옛 x@1 도 읽을 때 접히고 저장하면 맨이름」
+        LEDGER_SCHEMA_COMPLETENESS B1 「/declaration 이 wafer@1 로 알려 주는데」 -> ✅ 맨이름, 상태 ① / ⚠️ -> ①
+        CODE_MAP walk_columns 미끼 줄 -> 노드 타입도 선언 키도 맨이름(96855816b), 미끼는 클라 반쪽 선언에
+        코드 블록 안 표는 지운 글자만큼 공백으로 칸을 맞춤
+남긴 것  44 줄 — 날짜 붙은 실측 · 결함 큐 기록 · ⚰️ 절 · Pack 이름(transfer@1/movement · packs) · 「옛 철자도 접힌다」는 줄(WALK collect=die@1 · sum:x@1)
+        architecture/CODE_MAP.md 10 · spec/LEDGER_EVIDENCE_SUBGRAPH_SPEC.md 9 · guide/ledger/PRIMER.md 5 · process/SERVER_DEFECT_QUEUE.md 5 · spec/LEDGER_TECHNICAL_SPEC.md 5 · architecture/WALK.md 3 · spec/APPLICATION_GAP_SPEC.md 2 · spec/ONTOLOGY_GRAPH_SPEC.md 2 · architecture/LEDGER_FRAME_CHAIN_MAPPER.md 1 · architecture/LEDGER_SCHEMA_COMPLETENESS.md 1 · guide/config/ledger_declaration_by_example.md 1
+```
+
+---
+
+## [C 응용] 10-06 3ff7341fe(걷기 요청 이름 한 자리) QA · 문서 c0f523f4b — 결함 없음
+
+```
+잰 것    5504a325a 의 같은 계기(group_nodes 에 맨이름 술어 수 3 인 노드, DB 없음 · 공유 트리 server 미커밋 0)
+         sum:inspected -> [{'key': 'wafer', 'n': 1, 'value': {'sum:inspected': 3.0}}]
+         sum:inspected@1 -> [{'key': 'wafer', 'n': 1, 'value': {'sum:inspected@1': 3.0}}]
+         -> 옛 철자가 접히고 답의 키는 물은 그대로 — 5504a325a 의 빈 값이 닫혔다
+시험     착지 시험 + 이웃 다섯(공유 트리) : 102 passed, 1 skipped, 6 warnings in 3.91s
+문서     c0f523f4b — WALK.md(이름 찾기에 keys · measure 줄 「빈다」 -> 「접힌다 · 없는 이름은 value_name_not_declared」 · 한 자리 줄) ·
+         LEDGER_SCHEMA_COMPLETENESS B3 · B10(거절 이름 넷 -> 여섯 줄) · CODE_MAP trace_router(_declared_or_refused · _value_names) · ledger_subgraph(VALUE_SOURCES keys)
+남은 말   서버 주석 「선언이 버전을 붙인다」 7 줄(f34f16892 때 8, 35d060a6d 가 넷을 고쳤다는데 이 문구로는 하나 줄었다 — 고친 넷이 다른 문구였을 수 있다):
+         server/ledger/roleframe.py:1638:    #: (versioned entity type, keys, the row naming it, that row's source rows) - what the
+         server/ledger/setup_bundle.py:2008:    versioned vocabulary id, not a `<pack>/<claim>` pair, so the pattern that parsed one
+         server/ledger/setup_registry.py:745:    Keys are matched as well as values because an entity id is a versioned name
+         server/ledger/trace_router.py:461:    only authority, bare names because the declaration versions its ids, and a second
+         server/ledger/trace_router.py:525:    Bare names, because the declaration versions its ids (`defect_kind@1`) and a projected
+         server/ledger/trace_router.py:1086:    # anyone who needs it; nobody has to look. `subjects` stays VERSIONED (`die@1`) because
+         server/ledger_api/ledger_subgraph.py:1936:    # names because the declaration versions its ids (`defect_kind@1`) and a projected node
+```

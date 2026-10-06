@@ -257,13 +257,13 @@ S-65-d 뷰 삭제   A4 「삭제 — row_id 없는 뷰」   ✅ ② («이름 �
 |---|---|---|---|
 | B1 마킹 | ① | `id`(별칭, 항상 positive) + `positive[]` + `negative[]` (`ledger/trace_router.py:85,:95,:97`) · 합치는 자리는 `_signed_start` :166 «하나» | 노드 id 문자열 |
 | B1 이름 붙은 마킹 «여럿» | ② | 🔴 라우트는 «한 번에 한 질의»다. 「마킹1 · 마킹2」는 «클라의 저장소»가 들고 부품이 각자 걷는다 — 서버는 «부호 두 갈래»만 안다 | |
-| B1 씨앗 해소 | ① / ⚠️ | 키 → 노드. ⚠️ `/declaration` 이 `wafer@1` 로 알려 주는데 그 철자로 씨앗을 만들면 «빈 그래프»다 — `wafer` 여야 한다(WALK.md §6 · 큐 C-25). 클라는 `entitySeedId` 가 벗겨서 안 걸린다 | |
+| B1 씨앗 해소 | ① | 키 → 노드. ✅ 10-06 `f34f16892` `/declaration` 이 맨이름(`wafer`)으로 알려 준다 — ~~`wafer@1` 로 알려 주는데 그 철자로 씨앗을 만들면 «빈 그래프»~~(WALK.md §6 · 큐 C-25). 클라는 `entitySeedId` 가 벗겨서 안 걸린다 | |
 | B2 `follow` | ① | `follow[]`, `이름:키1,키2` 로 «목적지 키» 제약까지 :99~103. 없으면 «전부» | 🔴 선언된 술어만 — 아니면 **422 `predicate_not_declared`** + `unknown`/`declared` 집합 :146 |
 | B2 `direction` | ① | `outgoing|incoming|both` :88 | 닫힌 셋(FastAPI pattern) |
 | B2 `hops` | ① | 1–40, 기본 12 :86 | |
 | B2 **인접 반전 규칙** | ① | 🔵 **착지 확인** — `arrivals` 가 노드마다 `(술어, incoming|outgoing)` 을 들고(:917,:1135), 같은 술어로 들어온 뒤 «되짚어 나가는» 걸음을 :1130~1133 에서 거절한다. ⚠️ 정적↔정적은 «예외» — 원인으로 되짚어 다른 결과로 가는 것이 «묻고 있는 차이»라서(:1124~1129, 실측 21 중 2) | |
 | B2 정적→동적 정책 | ① | `class == static` 인 노드에 «닿되 나가지 않는다» :1071~1072 — 🆕 10-02 `c46163324` «씨앗»은 예외(정적 씨앗의 첫 걸음은 동적 노드로), 판정 한 자리 `ledger_subgraph._held_to_names` | 선언의 `class`(A1) |
-| B3 `collect` | ① | `collect[]` :104~109 — 도메인 «노드 타입». 없으면 전부. `@` 버전은 있어도 없어도 됨 | 🔴 선언된 타입만 — 아니면 **422 `node_type_not_declared`** :131 |
+| B3 `collect` | ① | `collect[]` :104~109 — 도메인 «노드 타입». 없으면 전부. `@` 버전은 있어도 없어도 됨(🆕 10-06 `3ff7341fe` 요청 이름 «전부»가 한 자리에서 접힌다 — follow · group_by · measure 도) | 🔴 선언된 타입만 — 아니면 **422 `node_type_not_declared`** :131 |
 
 ## B4 그룹 · B5 집계 — 🔴 둘 다 ③
 
@@ -299,7 +299,7 @@ S-65-d 뷰 삭제   A4 「삭제 — row_id 없는 뷰」   ✅ ② («이름 �
 | B9 그 밖 | ① | `seeds`(부호) · `propagation` · `walk`(모드·방향·씨앗 부호 수·`hops_reached`) · `limits` · `truncated` |
 | **B11 근거 동반** (BASIS §3-0) | 🔵 **엣지 ① / 순위 트레일 ⚠️** | **엣지**: 원자에서 온 엣지는 `claim_id`(= `atom.id`)와 `basis`(= `atom.source_raw_ref`)를 «답니다» (`ledger_subgraph.py:996~999`), 그리고 응답은 `ordered_edges = sorted(edges.values(), …)` :1361 로 «투영 없이» 그대로 나갑니다 — 즉 「어느 원자가 이 엣지를 받쳤나」는 **이미 실립니다**. ⚠️ `WALK.md` §4 는 엣지를 `{source,target,predicate,qualifiers}` «넷»으로 적어 두었습니다 — **문서가 코드보다 좁습니다**(고칠 것). 🔴 **순위 트레일은 그것을 «안 씁니다»**: `_evidence` :565~593 의 hop 은 `atom`/`ref` 를 «노드»에서 읽는데(`nodes[item].keys.id` · `source_raw_ref` · `basis`), `_entity_node` :375 는 «셋 다 없습니다» — 엔티티 키는 도메인 키(wafer·x·y)라 `id` 가 없습니다. 그래서 **엔티티 홉의 `atom`·`ref` 는 «전부 null»** 이고, 걷기의 노드는 사실상 전부 엔티티입니다. 즉 순위는 「어느 길로 닿았나」는 말하고 「어느 «사실»이 그 걸음을 받쳤나」는 못 말합니다. 🔵 그런데 그 사실은 «같은 응답 안»에 있습니다 — 트레일이 «노드»가 아니라 «두 홉 사이의 엣지»를 보면 `claim_id`·`basis` 가 거기 있습니다. 잇는 일이지 «짓는» 일이 아닙니다 |
 | B11-bis 엣지의 «빈» 근거 칸 | ⚰️ **닫힘 — «은퇴»** (S-150 `8d344e1d` 다음 커밋, 판정 340) | `sources: []`·`witnesses: 1`·`rank: None` 세 상수를 «지웠습니다». 읽는 쪽 0 인 선언 칸은 계약이 아니라 사본이라는 `key_types`(판정 165) 부류이고, 「채움」은 «부르는 곳이 생기는» 라운드의 일입니다. 🔵 **`basis`·`qualifiers` 는 남았습니다** — 둘은 원자에서 «채워지므로» 상수가 아니라 초기화입니다(같은 실측의 나머지 반쪽). ⚠️ 낱말이 아니라 «객체»로 쟀습니다: `ledger_explorer` 의 `witnesses` 는 «실제로 세는» 다른 칸이고 노드의 `rank` 는 전파 층입니다. 🪦 당시 근거: `_edge()` :388~394 가 매 엣지에 `sources: []` · `witnesses: 1` · `rank: None` 을 답니다. `git grep` 으로 이 셋에 «쓰는» 자리 «0**(시험·다른 뜻의 동명이인 제외) — key_types·supersedes 와 «같은 부류»입니다 |
-| B10 거절 | ① 대부분 | «이름 대어» 넷: `predicate_not_declared` · `node_type_not_declared` · `subgraph_request_invalid` · 관계 부재. 범위·열거는 FastAPI 가 422 |
+| B10 거절 | ① 대부분 | «이름 대어»: `predicate_not_declared` · `node_type_not_declared` · 🆕 `seed_type_not_declared` · 🆕 `value_name_not_declared`(10-06 `3ff7341fe` group_by · measure — 전엔 빈 무리 · 빈 값) · `subgraph_request_invalid` · 관계 부재. 범위·열거는 FastAPI 가 422 |
 | B10 «조용한 불가» | 🔵 **0 (이 라우트에서는)** | 선언에 없는 술어·타입을 «빈 그래프»로 답하지 않는다 — :117~129,:143~152 가 그 이유를 적어 두었다(「오타와 사실을 부르는 쪽이 못 가른다」) |
 
 ## B1-bis — 🔴 마킹 «대수»는 없다 (BASIS §4.8 의심 ① 의 답, 서버 쪽)
@@ -1791,11 +1791,11 @@ map      lot-event-role (파이썬) · unit.kind = event   -> 매퍼가 «그룹
 ```
 | 문장 | 술어 | when | 주어 키 | 목적어 키 |
 |---|---|---|---|---|
-| `descent` | `derived_from@1` | **없음(무조건)** | `child_lot` | `parent_lot` |
-| `first_sight_holder` | `register@1` | 없음 | `lot`(준비기 산출) | — |
-| `first_sight_item` | `register@1` | 없음 | `wafers`(준비기 산출) | — |
-| `split` | `split_from@1` | `event_type=split` | `child_lot` | `parent_lot` |
-| `merge` | `merged_into@1` | `event_type=merge` | **`lot_id`** | `parent_lot` |
+| `descent` | `derived_from` | **없음(무조건)** | `child_lot` | `parent_lot` |
+| `first_sight_holder` | `register` | 없음 | `lot`(준비기 산출) | — |
+| `first_sight_item` | `register` | 없음 | `wafers`(준비기 산출) | — |
+| `split` | `split_from` | `event_type=split` | `child_lot` | `parent_lot` |
+| `merge` | `merged_into` | `event_type=merge` | **`lot_id`** | `parent_lot` |
 ```
 🔴 결정적인 규칙 하나: 분자가 «그룹»이면 바인딩이 읽는 컬럼은 그 그룹에서 «값이 하나»여야 합니다 —
    `roleframe._evaluate_binding` 이 빈 값에 `missing_binding_value`, 값이 둘이면 `ambiguous_binding_value`

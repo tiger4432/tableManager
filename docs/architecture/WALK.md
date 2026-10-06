@@ -223,6 +223,8 @@ follow=inspected,observed                nodes «250» edges 249  🔵 길만 �
   + collect=defect                       nodes 121 (defect 만)
 collect=die@1                            die 와 «같은 답» — 버전 접미를 양쪽에서 벗긴다
 collect=banana                           🔴 거절 `node_type_not_declared` + unknown/declared 집합
+🆕 10-06 `3ff7341fe` 걷기 요청의 이름(collect · follow · expand 의 술어 · seed_type · group_by · measure)과 key-values 의 type 은
+     «한 자리»를 지난다 — 맨이름으로 접고, 고른 세상들 선언에 없으면 422(reason · argument · unknown · declared · world)
 ```
 
 ## 6. ⚠️ «아직» 안 된 것 (총괄이 재서 갱신 · 2026-09-06 22:3x)
@@ -304,7 +306,7 @@ why     `not_declared`(검사 술어가 선언 안 됨) · `truncated` 의 그 �
 
 ## 🔵 역 술어 — `inverse_of` (걷기 제어 가, 총괄 739edd59c · f3fb29a44, 10-01)
 ```
-선언  어휘 술어의 칸 하나 — "inspected@1": {…, "inverse_of": "in_container@1"}. 한쪽만 적어도 양쪽으로 읽힌다
+선언  어휘 술어의 칸 하나 — "inspected": {…, "inverse_of": "in_container"}. 한쪽만 적어도 양쪽으로 읽힌다
       두 술어가 «한 연결을 두 끝에서» 말할 때 적는다. 적지 않으면 둘은 서로 다른 술어로 걸린다
 검증  가리키는 술어가 선언돼 있나(unknown_id) · 두 끝 타입이 뒤집혀 맞나 · 한 술어에 역은 하나(invalid_predicate)
 읽는 곳 걷기뿐 — 컴파일되지 않아 소스 지문이 안 움직이고 원장 소급 0
@@ -389,10 +391,12 @@ GET /api/ledger/subgraph?…&group_by=<type|값 이름>&measure=<일곱 중 하�
            🔵 `at` = 그 무리 «노드에 붙은 엣지» 중 가장 늦은 occurred_at.
               엣지가 없으면 «키가 없습니다»(null 아님). 엔터티에는 «순간»이 없고 사실에 있습니다
 measure     «여러 번» 줄 수 있습니다 — 각각이 value 의 키가 됩니다 (같은 걷기·같은 예산)
-이름 찾기    attributes → qualifiers → «노드가 든 predicates[].count»  (S-146-c, 판정 336)
+이름 찾기    🆕 keys → attributes → qualifiers → «노드가 든 predicates[].count»  (S-146-c, 판정 336 · keys 는 10-06 `3ff7341fe` —
+           group_by=wafer 가 노드의 키로 묶는다, 전엔 빈 무리)
            🔴 그래서 `sum:<술어 id>` = 「이 무리의 노드들이 든 그 술어의 claim 수」입니다 —
-              🆕 10-06 이름은 맨이름(`sum:inspected`). 옛 `sum:inspected@1` 은 접히지도 거절되지도 않고 값이 빈다
-              (`f34f16892` 뒤 노드의 predicates 이름이 맨이름 · R&D 보드 추세 좌석이 그렇게 비었다 `6d938a2ef`)
+              🆕 10-06 `3ff7341fe` 이름은 한 자리(`trace_router._declared_or_refused`)가 맨이름으로 접는다 — `sum:inspected@1` 은
+              `sum:inspected` 와 같은 값이고 답의 키는 «물은 그대로»(저장된 보드가 자기 문자열로 찾는다). 고른 세상들 선언에 없는
+              이름은 422 `value_name_not_declared`(unknown · declared · world). ~~접히지도 거절되지도 않고 값이 빈다~~(f34f16892 ~ 이 착지 사이)
               비율 축의 분자·분모가 «둘 다 노드 쪽 사실»이라 엣지를 다시 걸 필요가 없습니다
            ⛔ 두 출처가 같은 이름에 답하면 «거절»(`ambiguous_value_name`) — 한쪽을 고르면
               그 선택이 답을 정합니다. 순서는 응답의 `value_sources` 가 말합니다

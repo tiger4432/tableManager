@@ -500,7 +500,7 @@ walk 에서 삭제됐고, 같은 밤 `entities.die@1.references` 도 지워졌�
 선언**하지 참조를 합성하지 않는다.
 
 > ✅ **그리고 다리는 «그 규칙대로» 돌아왔다 (2026-08-29 — 이 절의 생존자 줄).**
-> `in_container@1` 은 오늘 **`vocabulary` 의 선언된 술어**다 — `die@1` → `wafer@1`, 원자를
+> `in_container` 은 오늘 **`vocabulary` 의 선언된 술어**다 — `die` → `wafer`, 원자를
 > 가지며, `bonded_from` 소스의 매핑 «둘»(`core-die-in-core-wafer` · `base-die-in-base-wafer`)이
 > 발화한다(실측 2026-08-29, 라이브 선언).
 > ```
@@ -519,12 +519,12 @@ walk 에서 삭제됐고, 같은 밤 `entities.die@1.references` 도 지워졌�
 > `entities.<개체>.references` 는 원자를 만들지 않는다. **투영이 «합성»하는 엣지**였다.
 
 ```jsonc
-"die@1": {
+"die": {
   "keys": ["mat_id", "x", "y", "mat_type"],
   "references": [
     { "edge": "in_container",
       "from": { "when": { "mat_type": "Wafer" } },
-      "to":   { "entity": "wafer@1", "keys": { "wafer": { "key": "mat_id" } } } }
+      "to":   { "entity": "wafer", "keys": { "wafer": { "key": "mat_id" } } } }
   ]
 }
 ```

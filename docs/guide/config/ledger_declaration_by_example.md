@@ -8,16 +8,16 @@
 
 | 파운드리 | 원장 선언 | 어디에 적나 |
 |---|---|---|
-| Object type (`Wafer`) | 엔티티 `wafer@1` | `entities` |
+| Object type (`Wafer`) | 엔티티 `wafer` | `entities` |
 | Primary key | `keys` | `entities.<t>.keys` |
 | Property (`product`, `lot`) | **`attributes`** | `entities.<t>.attributes` (이름) + `sources.<s>.bind.entities.<t>.attributes` (컬럼, 소스당 한 번) |
-| Link type (`Wafer → Die: inspected`) | 술어 `inspected@1` | `vocabulary` (`subjects` · `object.kind: entity_ref` · `types`) |
+| Link type (`Wafer → Die: inspected`) | 술어 `inspected` | `vocabulary` (`subjects` · `object.kind: entity_ref` · `types`) |
 | Link property (링크에 붙는 값) | 술어의 `qualifiers` | `vocabulary.<p>.object.qualifiers` + 문장 bind 의 같은 이름 |
 | Link a key implies (`Die` in the `Wafer` its `mat_id` names) | 🆕 엔티티의 `references`(10-02 `f45c75442`) | `entities.<t>.references` — `edge`(어휘의 술어) · `to.entity` · `to.keys`(상위 키: 이 엔티티의 키) · `from.when`. 그 엔티티를 부르는 소스마다 번역기가 원자를 쓴다(시각은 사건 시각 아님) |
 | Backing dataset | 소스 `relation` + `read` | `sources.<s>` |
 
 > 🆕 **키 값의 철자**(10-01 `7350027a6`) — 엔티티 키는 그 컬럼의 `table_config` 선언 타입으로 접혀서 같은 것이 한 키가 됩니다. `number` 칸이면 `01` · `1` · ` 1 ` · `1.0` 이 모두 `1`(정수가 아닌 수는 그대로 `7.5`), 그 밖의 칸은 앞뒤 공백만 뗍니다. 빈 값은 키가 없는 것입니다. 상수로 적은 키는 공백만 뗍니다. 코드 맵퍼가 스스로 지은 키는 이 접기를 안 지납니다. ⚠️ 그 전에 번역된 원자는 옛 철자(`7.0`) 그대로입니다 — 소스 하나만 다시 번역하면 그 소스의 개체만 새 철자가 되어 다른 소스가 부르는 같은 개체와 «다른 노드»가 됩니다. 그래서 그 엔티티를 부르는 소스는 «전부» 다시 번역합니다(총괄 `6736254fd`). 박스에 남은 갈림은 뷰를 읽는 소스 탓이고, 운영은 뷰를 안 씁니다(소유자 09-25, `f3bc02f6e`).
-| Object materialization | 등록 원자 (`register@1`, 목적어 없음 — 속성은 그 원자의 qualifiers) | 소스가 속성을 매기면 «암묵 등록» |
+| Object materialization | 등록 원자 (`register`, 목적어 없음 — 속성은 그 원자의 qualifiers) | 소스가 속성을 매기면 «암묵 등록» |
 | Link materialization | 사실 원자 (주어 → 술어 → 목적어) | 문장 `mappings` |
 | Edits layer (사용자 편집) | 표 쪽 `cell_sources` 사용자 층 (원장은 «쓰기 없음») | — |
 | Dataset version / Branch / 시간 여행 (표 «전체» 단위) | «없음» — 우리 이력은 «사실 단위»(원자의 occurred_at) (방향 논의 ③④) | — |
@@ -36,14 +36,14 @@ Link type    inspected  Wafer -> Die                              backing datase
 {
   "setup_version": 1,
   "entities": {
-    "wafer@1": { "keys": ["wafer"], "attributes": ["product", "lot"] },
-    "die@1":   { "keys": ["wafer", "x", "y"] }
+    "wafer": { "keys": ["wafer"], "attributes": ["product", "lot"] },
+    "die":   { "keys": ["wafer", "x", "y"] }
   },
   "vocabulary": {
-    "register@1":  { "status": "active", "subjects": ["wafer@1"],
+    "register":  { "status": "active", "subjects": ["wafer"],
                      "object": { "kind": "none", "qualifiers": { "required": [], "optional": [] } } },
-    "inspected@1": { "status": "active", "subjects": ["wafer@1"],
-                     "object": { "kind": "entity_ref", "types": ["die@1"],
+    "inspected": { "status": "active", "subjects": ["wafer"],
+                     "object": { "kind": "entity_ref", "types": ["die"],
                                  "qualifiers": { "required": [], "optional": [] } } }
   },
   "sources": {
@@ -57,16 +57,16 @@ Link type    inspected  Wafer -> Die                              backing datase
       "map":     { "implementation_id": "declarative-role", "implementation_version": 1, "unit": { "kind": "row" } },
       "bind": {
         "entities": {
-          "wafer@1": { "attributes": {
+          "wafer": { "attributes": {
             "product": { "kind": "column", "column": "product_code" },
             "lot":     { "kind": "column", "column": "lot_id" } } }
         },
         "mappings": {
           "wafer-registers": {
-            "predicate": "register@1",
+            "predicate": "register",
             "bind": {
               "occurred_at": { "kind": "column", "column": "updated_at" },
-              "subject": { "kind": "entity", "entity_type": "wafer@1",
+              "subject": { "kind": "entity", "entity_type": "wafer",
                            "keys": { "wafer": { "kind": "column", "column": "wafer_id" } } }
             }
           }
@@ -84,12 +84,12 @@ Link type    inspected  Wafer -> Die                              backing datase
       "bind": {
         "mappings": {
           "wafer-inspected-die": {
-            "predicate": "inspected@1",
+            "predicate": "inspected",
             "bind": {
               "occurred_at": { "kind": "column", "column": "inspected_at" },
-              "subject": { "kind": "entity", "entity_type": "wafer@1",
+              "subject": { "kind": "entity", "entity_type": "wafer",
                            "keys": { "wafer": { "kind": "column", "column": "wafer_id" } } },
-              "target":  { "kind": "entity", "entity_type": "die@1",
+              "target":  { "kind": "entity", "entity_type": "die",
                            "keys": { "wafer": { "kind": "column", "column": "wafer_id" },
                                      "x":     { "kind": "column", "column": "die_x" },
                                      "y":     { "kind": "column", "column": "die_y" } } }
@@ -105,7 +105,7 @@ Link type    inspected  Wafer -> Die                              backing datase
 ### 읽는 법 — 파운드리 사람에게
 ```
 · 「Object type 의 property」는 «엔티티에 이름», «소스에 컬럼» — 두 줄. 문장마다 «안» 적는다(소스당 한 번, 판정 124)
-· 「Object 가 materialize 된다」= 그 소스가 register@1 문장을 내거나, 속성을 매긴 것만으로 «암묵 등록»(판정 127·Ⓖ — 타입이 register@1.subjects 에 있어야 함)
+· 「Object 가 materialize 된다」= 그 소스가 register   문장을 내거나, 속성을 매긴 것만으로 «암묵 등록»(판정 127·Ⓖ — 타입이 register.subjects 에 있어야 함)
 · 「Link」는 술어. 링크에 값이 붙으면 술어의 qualifiers 로 — 노드 속성(attributes)과 «다른 것»이다
 · «걷기»가 파운드리의 Object set 질의: 씨앗 노드에서 follow(술어)로 걸어 collect(타입)를 가져온다. 노드는 {id, type, keys, attributes}
 · 파운드리와 «다른 것»은 append-only 여부가 «아니라» «이력의 단위»다(소유자 정정 09-08 08:3x). 파운드리는 «데이터셋 버전»(트랜잭션마다 새 버전, 시간 여행은 버전으로), 우리는 «사실(원자)» 단위(원자마다 occurred_at · 속성이 바뀌면 새 등록 원자). 표 «전체»의 버전·브랜치는 우리에게 없다(방향 논의 ③④). 걷기는 최신을 보여 주고 충돌 «수»를 낸다
@@ -133,7 +133,7 @@ Link type    inspected  Wafer -> Die                              backing datase
 
 ## 4. 2026-09-09 에 열린 칸 «넷» — 칸마다 «두 줄»
 
-> 넷 다 «선택»이고 기본값이 «적혀» 있습니다(`setup_bundle.py:140~155`). 출하 샘플에 «기본값을 그대로 쓴» 예시가 한 벌 있습니다 — `has_netdie@1` · `defect@1` · 소스 `bonded_from`.
+> 넷 다 «선택»이고 기본값이 «적혀» 있습니다(`setup_bundle.py:140~155`). 출하 샘플에 «기본값을 그대로 쓴» 예시가 한 벌 있습니다 — `has_netdie` · `defect` · 소스 `bonded_from`.
 > 🔵 **기본값을 «명시»해도 뜻이 안 바뀝니다** — 이 넷은 「안 적음」과 「기본값을 적음」이 같습니다.
 > ⚠️ `class` 는 «다릅니다**: 거기서는 「안 적음」과 「dynamic 이라 적음」을 «구별»하므로 기본값을 쓰지 마십시오(`setup_bundle.py:1112` 주석).
 
@@ -219,12 +219,12 @@ retired 로 적어도 계속 번역합니다」라고 적혀 있었고, 오늘�
 운영에서는 소스의 `bind.mappings.<문장>` 에 `when: {컬럼: 값}` 을 적으면 됩니다.
 그 칸 값이 맞는 행만 그 문장을 말합니다 — 한 표가 값에 따라 «다른 주어»로 말하게 할 때 씁니다.
 ```
-출하 샘플 `wafer_process_recipe` 가 그 모양입니다 — 같은 술어 `processed_with@1` 을 문장 «둘»로 적고 주어만 가릅니다:
+출하 샘플 `wafer_process_recipe` 가 그 모양입니다 — 같은 술어 `processed_with` 을 문장 «둘»로 적고 주어만 가릅니다:
 ```json
-"wafer-processed-with-recipe":   { "predicate": "processed_with@1", "when": {"mat_type": ""},   "bind": { "subject": { "entity_type": "wafer@1",   ... } } },
-"dtwafer-processed-with-recipe": { "predicate": "processed_with@1", "when": {"mat_type": "DT"}, "bind": { "subject": { "entity_type": "dtwafer@1", ... } } }
+"wafer-processed-with-recipe":   { "predicate": "processed_with", "when": {"mat_type": ""},   "bind": { "subject": { "entity_type": "wafer",   ... } } },
+"dtwafer-processed-with-recipe": { "predicate": "processed_with", "when": {"mat_type": "DT"}, "bind": { "subject": { "entity_type": "dtwafer", ... } } }
 ```
-`mat_type` 은 체인 조인이 단계 표(`step_phase` — DT 단계만 적음)에서 채웁니다. 조인이 안 닿은 행은 빈 값이라 전처럼 `wafer@1` 로 말합니다.
+`mat_type` 은 체인 조인이 단계 표(`step_phase` — DT 단계만 적음)에서 채웁니다. 조인이 안 닿은 행은 빈 값이라 전처럼 `wafer` 로 말합니다.
 - **빈 칸은 `""` 입니다** — 값이 없는(NULL) 칸은 `""` 로 견줍니다(09-30 전엔 `"nan"` 이 돼 어느 문장도 안 맞았다). 견줄 때 칸 값과 적은 값을 «둘 다» 같은 글자로 접습니다 — 앞뒤 공백을 떼고, `7.0` 같은 정수 실수는 `"7"`(10-01 `0ba4c82ce`, `clean_str_value`).
 - **어느 문장도 안 고른 행은 «세고 이름 댑니다»** — 모든 문장이 `when` 을 들고 그 어느 것도 안 맞으면 그 행은 아무것도 말하지 않고, 값마다 세어 하트비트 노트에 실립니다(`units no sentence said: units=N | <소스>:mat_type='WF'=N`). 한 값이 1 · 10 · 100 … 단위에 닿을 때 한 줄(10-01 d4a949a8c ⑧):
   `[Ledger] Next: correct the value in the table it comes from, or declare a sentence whose when names it. <소스>: mat_type='WF' said no sentence - every sentence's when passed it over | units so far in this process: N`

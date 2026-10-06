@@ -72336,3 +72336,99 @@ sqlite 전체    5 failed, 7773 passed, 330 skipped, 3 xfailed, 13055 warnings i
 ```
 receipt_worlds — 위 모양. 접힌 줄의 종류는 logs(1건) 말고 summary_columns 로 가려야 «전부 영수증»이 맞게 셈 (클라 몫)
 ```
+
+---
+
+## [10-06] 총괄 17b6337e4 · a588e5d80 착지 3ff7341fe — 걷기 요청 이름은 한 자리, group_by 는 키 이름도
+
+어느 DB · 어느 스키마 · 지운 것 — 시험은 sqlite 임시 파일만 · 이 박스는 읽기만(라이브 선언 파일, 로더가 박스 DB 카탈로그를 읽음) · 쓴 것 · 지운 것 0
+
+**17b6337e4 — 걷기 요청이 드는 이름은 한 자리를 지난다**
+```
+자리     trace_router._declared_or_refused — 맨이름으로 접고, 고른 세상 선언에 없으면 422
+칸       collect · follow(제약 키도 맨이름) · expand 의 술어 · seed_type · group_by(type 빼고)
+        · measure 의 이름 · key-values 의 type
+거절     detail = {reason, argument(칸), unknown, declared, world, message}
+값 맵    measure 키는 보낸 문자열 그대로 — sum:x@1 과 sum:x 가 같은 수
+은퇴     걷기 안쪽의 seed_type 검사 — 라우트가 같은 사유로 먼저 거절해서 한 물음에 자리가 둘이었다
+```
+**a588e5d80 — group_by 가 선언된 키 이름도 받는다**
+```
+값 출처   ledger_subgraph.VALUE_SOURCES 맨 앞에 keys (노드의 keys 에서 읽음)
+라우트    선언된 엔티티 키 이름을 받음. 키 · 속성 · 수식어 · 술어 어디에도 없는 이름만 422
+measure   값을 읽는 좌석이 하나(_values_of)라 measure 도 키 이름을 받음 (예: distinct:wafer)
+한 규칙   판정 336 그대로 — 한 노드는 한 출처. 한 노드에서 둘이 답하면 422 ambiguous_value_name, 두 출처를 이름 댐
+         한 엔티티의 키와 속성이 같은 이름인 선언은 검증기가 이미 거절한다
+이 박스   라이브 선언(읽기만)에서 값 이름 29 -> 41 · wafer 거절 -> 받음
+         보드 추세 좌석의 이름(group_by · measure 둘 · follow 셋): 전부 통과
+```
+**물음의 답 (총괄 메시지)** — «어느 쪽이 답했나» 칸은 더하지 않음. value_sources(맨 앞 keys)와 판정 336 거절로 충분.
+
+**게이트**
+```
+변이 9    자리가 안 접음 RED · follow 제약 키가 옛 이름 RED · group_by 안 물음 RED · measure 이름 안 물음 RED · expand 술어 그대로 RED · 접기가 measure 이름 그대로 RED · keys 가 출처 아님 RED · 라우트가 키 이름 거절 RED · 한 노드 키·술어 겹침을 안 거절 RED
+sqlite 전체 5 failed, 7785 passed, 330 skipped, 3 xfailed, 13050 warnings in 853.35s (0:14:13) — 박스 사유 밖: 없음  (rebase 전 트리에서)
+rebase 뒤   origin/main 6b54ce2b0 위에서 걷기 시험(행 읽기 · walk_step · 이름 한 자리 · walk_aggregate · walk_node_shape) 89 passed, 1 skipped, 6 warnings in 2.09s
+PG         안 돌림 — 바뀐 것은 파이썬 접기와 이름 검사, SQL 변경 0
+```
+**클라에 보낸 것** — seed_type 거절의 목록 칸 choices -> declared · value_sources 맨 앞 keys · rnd_board/main.js 주석 「inspected@1 로 물으면 값이 비어 옵니다」는 이제 거짓(옛 철자도 같은 값)
+
+---
+
+## [10-06] 총괄 7fa7fa4a1 — 클라 96855816b 의 walk_columns · walk_step 벡터, 서버 반쪽 초록 · 낡은 주석 35d060a6d
+
+어느 DB · 어느 스키마 · 지운 것 — DB 안 씀 (벡터를 읽는 순수 시험) · 지운 것 0
+```
+그 벡터를 읽는 시험 전수   server/tests 에서 contracts 경로를 읽는 파일 중 이 둘만 — test_a_walk_can_be_read_as_rows · test_walk_step_contract
+결과 (origin/main 6b54ce2b0 위)   41 passed, 1 skipped, 6 warnings in 0.82s
+건너뛴 것   tests\test_a_walk_can_be_read_as_rows.py (no walkable seed on this box: 500) — 벡터를 안 읽는 걷기 라우트 끝-끝 시험(PostgreSQL 걷기에서만 돎)
+-m pg 로는   no tests collected (42 deselected) — 둘 다 PG 픽스처가 없는 순수 시험이라, PG 판은 따로 없음
+서버 쪽 변경   코드 0. «선언은 판 번호로 키 잡혀 있다»는 주석만 고침 — _declared_columns ·
+              행 읽기 시험의 픽스처 주석과 벡터 루프 주석 · 다값 시험의 docstring
+```
+
+---
+
+## [10-06] 총괄 b5b335f2e ③ 먼저 잰 것 — 느린 맵퍼는 다른 표의 체인 그룹을 «막는다». 그래서 작업 문으로 — 어떻게 들일지 안 셋
+
+어느 DB · 어느 스키마 · 지운 것 — 메모리 sqlite(StaticPool)와 임시 폴더만 · 박스 DB 안 씀 · 지운 것 0
+
+**잰 것** — 진짜 process_pending_groups · 진짜 그룹 본체 · 진짜 맵퍼 파일. 그룹 1 = 글 표 2 행(느린 규칙, 글마다 sleep), 그룹 2 = 다른 표 1 행(빠른 규칙), 그룹 1 다음에 커밋
+```
+                 글마다    그룹 1 (글)          그룹 2 (다른 표)      그룹 2 가 기다린 것
+대조              0.0s     0.0 -> 0.015 s          0.031 -> 0.031 s          0.031 s
+가짜 LLM          10.0s     0.0 -> 20.032 s          20.032 -> 20.047 s          20.032 s
+두 판 다 결과가 남음: 후보 표 2 행 · 다른 표 1 행
+```
+**왜 (코드)** — 워커는 그룹을 «하나씩» 기다린다 (ingestion_worker.process_pending_groups: for 그룹 -> await, gather 없음). 규칙이 행마다면 맵퍼도 행마다 한 번씩 차례로. 맵퍼 · 그룹 시간 상한 없음. 동시성 설정 없음.
+그러니 운영에서 «글 N 개 · 글마다 T 초»면 그 뒤에 줄 선 그룹은 표와 상관없이 N×T 초 선다 (잰 것은 다른 표 하나, 나머지는 위 for 에서 읽음).
+
+**작업 문에 대해 미리 알릴 것 (코드로 읽음, 안 잼)** — 소급 작업은 «게이트 하나»를 모든 프로세스가 같이 쓴다 (retroactive.gate_refusal -> in_flight). LLM 작업이 도는 동안 리플레이 · 원장 따라잡기 · 회수가 줄을 선다. 작업은 체인 루프 밖 자식 프로세스라 그룹 순서에는 안 낀다 (안 잼).
+
+**안 셋 — 「붙여넣으면 후보가 써진다」에 어떻게 닿나**
+
+ㄱ (추천) 규칙은 그대로, 규칙에 «작업 문으로 돈다» 칸 하나
+- 무엇: 체인 워커가 그 칸이 있는 규칙을 만나면 맵퍼를 부르지 않고 그 글 id 들로 작업 하나를 줄 세운다(retroactive.publish). 작업(소급 자식 프로세스)이 같은 run_rule -> apply_chain_writes 로 후보를 쓴다
+- 운영자: 규칙 JSON 에 한 칸
+- 좋은 점: 붙여넣기만으로 돈다 · 선언이 규칙 한 곳 · 철회와 «사람이 손댄 후보 안 지움»이 체인과 같은 길
+- 위험: 규칙 칸 하나로 실행이 갈린다 — 「kind 는 실행이 갈리는 축이 아니다」에 닿는다. 위 게이트
+- 크기: 안 쟀다
+
+ㄴ 작업 하나만 — 운영자가 누른다 (화면 버튼 · CLI)
+- 무엇: OPERATIONS 에 «글 뽑기» 하나. 아직 후보 없는 글 또는 고른 글을 읽어 같은 쓰기 길로 쓴다. 체인 규칙 없음
+- 운영자: 붙여넣고 «누른다»
+- 좋은 점: 체인 · 워커 변경 0, 실행 갈래 0
+- 위험: 도착지 문장 「붙여넣으면 LLM 이 쓴다」가 «안 된다». 위 게이트
+- 크기: 안 쟀다 (셋 중 가장 작다고 봄)
+
+ㄷ ㄴ + 스케줄러가 «할 일이 있으면» 스스로 줄 세움
+- 무엇: 작업 항목에 칸 하나, 스케줄러가 그 작업의 count 가 0 보다 크면 줄 세운다
+- 운영자: 붙여넣기만
+- 좋은 점: 체인 변경 0 + 자동
+- 위험: 스케줄러 주기만큼 늦다 · 「이 글이 바뀌어 다시 뽑을 일」 판정을 새로 지어야 한다(글의 갱신 시각 대 후보의 뽑은 시각) · 위 게이트
+- 크기: 안 쟀다
+
+**여쭐 것**
+1. 셋 중 어느 것인가요. ㄱ 이면 «실행이 갈리는 규칙 칸»을 들여도 되나요
+2. 게이트를 LLM 작업이 오래 쥐는 것 — 받아들이나요, 아니면 글을 몇 개씩 끊어 작업을 여럿으로 줄 세울까요(끊는 수는 값으로)
+3. ① (mapper_sdk 의 LLM 한 자리)은 어느 안이든 같아서 답을 기다리는 동안 먼저 지어도 되나요

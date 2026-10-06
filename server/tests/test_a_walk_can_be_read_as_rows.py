@@ -27,12 +27,11 @@ SEED = "seed-1"
 MID = "die-1"
 LEAF = "defect-1"
 
-# 🔴 THE SHAPE THE PRODUCT ACTUALLY PRODUCES, and it is not symmetric: a walk's node
-# carries a BARE type (`wafer`) while the declaration is keyed with its version
-# (`wafer@1`). The first fixtures here used bare on both sides — which is why the live
-# route returned ZERO declared columns while this file was green, and worse, why
-# `unknown_type` was vacuous: with bare declarations nothing matched, so every type was
-# "unknown" and the control could not fail.
+# 🔴 THE DECLARATION KEYS KEEP THE OLD SPELLING (`wafer@1`) ON PURPOSE: a node's type is
+# bare (`wafer`), and `_declared_columns` must fold what it is handed the way a reader folds
+# the file. The first fixtures here were bare on both sides while the lookup folded nothing -
+# the live route returned ZERO declared columns while this file was green, and
+# `unknown_type` was vacuous.
 NODES = {
     SEED: {"id": SEED, "type": "wafer", "depth": 0, "keys": {"mat_id": "W1"}},
     MID: {"id": MID, "type": "die", "depth": 1,
@@ -248,9 +247,7 @@ def test_the_server_half_matches_every_contract_vector():
     for case in cases:
         nodes = [{"type": case["type"],
                   "qualifiers": {name: 1 for name in case["qualifiers_present"]}}]
-        # 🔴 KEYED BY THE VERSIONED NAME while the node carries the bare one — the
-        # product's own asymmetry. A symmetric fixture is exactly what let a lookup that
-        # matched NOTHING pass all seven of these.
+        # the vector's key is bare, as the declaration reads after the fold (클라 96855816b)
         entities = ({} if case["declaration"] is None
                     else {case["declaration_key"]: case["declaration"]})
         assert ls._declared_columns(nodes, entities) == case["expect"], case["name"]

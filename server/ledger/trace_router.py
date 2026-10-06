@@ -149,14 +149,14 @@ def evidence_subgraph(
     group_by: str | None = Query(
         None,
         description=("이 걷기가 «닿은 노드»를 무엇으로 묶나 — `type`(노드 타입) 또는 "
-                     "노드가 드는 «값의 이름»(속성·수식어). 없으면 봉투에 `groups` 칸이 "
+                     "노드가 드는 «값의 이름»(키·속성·수식어). 없으면 봉투에 `groups` 칸이 "
                      "«생기지 않는다»(null 이 아니라 «없음» — 안 물은 것이다). "
                      "술어는 여기 오지 않는다: 길은 `follow` 가 고른다")),
     measure: list[str] | None = Query(
         None,
         description=("무리마다 무엇을 재나 — `count`·`distinct`·`sum`·`mean`·`min`·"
                      "`max`·`median`. 수를 접는 다섯은 «이름이 필요»하다: `mean:<이름>`. "
-                     "이름은 속성·수식어·«술어»(그 노드가 든 그 술어의 claim 수) 순으로 찾고 "
+                     "이름은 키·속성·수식어·«술어»(그 노드가 든 그 술어의 claim 수) 순으로 찾고 "
                      "둘이 답하면 «거절»한다 — 순서는 응답의 `value_sources` 가 말한다. "
                      "«여러 번» 줄 수 있고, 무리의 `value` 는 measure 문자열로 키 잡은 «맵»이다 "
                      "(하나여도 맵). 없으면 `count`. 이 일곱은 화면이 이미 고르던 그 일곱이다")),
@@ -204,35 +204,40 @@ def evidence_subgraph(
     # function rather than the route, and an omitted argument is then the `Query` object
     # itself - truthy, and not iterable. Through the app it is always a list or None.
     collect = list(collect) if isinstance(collect, (list, tuple, set)) else None
-    # 🔴 SAME RULE AS `follow`, AND FOR THE SAME REASON. A type nobody declared can never
-    # match, so answering it with an empty graph hands back exactly what "there is nothing
-    # here" hands back and the caller cannot tell a typo from a fact.
+    # 🔴 EVERY NAME THIS REQUEST BRINGS GOES THROUGH `_declared_or_refused` (총괄 17b6337e4):
+    # folded bare and, when the picked worlds do not declare it, refused by name - a filter
+    # that can never match hands back what "there is nothing here" hands back.
     if collect:
-        collectable = _collectable_types(world)
-        unknown = sorted({_bare_name(name) for name in collect
-                          if str(name).strip()} - collectable)
-        if unknown:
-            raise HTTPException(status_code=422, detail={
-                "reason": "node_type_not_declared", "unknown": unknown,
-                "declared": sorted(collectable),
-                "message": ("Not a declared node type: " + ", ".join(unknown)
-                            + " - pick one from 'declared'"),
-            })
+        collect = _declared_or_refused(
+            [name for name in collect if str(name).strip()], _collectable_types(world),
+            reason="node_type_not_declared", what="type", world=world, argument="collect")
     follow = _follow_classes(follow, world)
     follow, follow_keys = _split_follow(follow)
     if follow:
-        followable = _followable_predicates(world)
         # 🔴 THE BARE HALF IS WHAT IS CHECKED. `inspected:x,y` is the declared predicate
         # `inspected` with a constraint on it, so refusing the whole string would make every
         # keyed request a 422 for a predicate that is in fact declared.
-        unknown = sorted(set(follow) - followable)
-        if unknown:
-            raise HTTPException(status_code=422, detail={
-                "reason": "predicate_not_declared", "unknown": unknown,
-                "declared": sorted(followable),
-                "message": ("Not a declared predicate: " + ", ".join(unknown)
-                            + " - pick one from 'declared'"),
-            })
+        follow = _declared_or_refused(
+            follow, _followable_predicates(world), reason="predicate_not_declared",
+            what="predicate", world=world, argument="follow")
+        follow_keys = {_bare_name(name): keys for name, keys in follow_keys.items()}
+    if isinstance(expand, (list, tuple)):
+        expand = [_expanded_bundle(item, world) for item in expand]
+    if isinstance(seed_type, str) and seed_type.strip():
+        (seed_type,) = _declared_or_refused(
+            [seed_type], _collectable_types(world), reason="seed_type_not_declared",
+            what="type", world=world, argument="seed_type")
+    if isinstance(group_by, str) and group_by.strip() and group_by != ledger_subgraph.GROUP_BY_TYPE:
+        (group_by,) = _declared_or_refused(
+            [group_by], _value_names(world), reason="value_name_not_declared",
+            what="value name", world=world, argument="group_by")
+    if isinstance(measure, (list, tuple)):
+        # validated, not rewritten: the answer keys each value by the measure AS ASKED - a saved
+        # board looks its number up by its own string - and the fold folds the name it reads
+        _declared_or_refused(
+            [spelled.partition(":")[2] for spelled in measure if spelled.partition(":")[2].strip()],
+            _value_names(world), reason="value_name_not_declared", what="value name",
+            world=world, argument="measure")
     interval = {}
     for name, raw in (("since", since), ("until", until)):
         # ⚠️ NOT `is None`. This endpoint is also CALLED DIRECTLY, by tests and by
@@ -680,17 +685,11 @@ def ledger_key_values(
     `values_truncated` 는 「값이 더 있는데 안 실었다」다. 모든 키로 묶으면 노드 하나가 값
     하나라 둘은 대개 같이 켜진다 -- 축 하나로 묶을 때 갈린다.
     """
-    wanted_type = _bare_name(type)
     # The world asked is the declaration asked (총괄 5fec118bb ②): a type another world
     # declares used to pass here and be refused below as 「declares no keys」.
-    collectable = _collectable_types(world)
-    if wanted_type not in collectable:
-        named = ", ".join(each.name for each in _worlds(world))
-        raise HTTPException(status_code=422, detail={
-            "reason": "node_type_not_declared", "unknown": [wanted_type],
-            "declared": sorted(collectable), "world": named,
-            "message": "type '%s' is not declared in world %s - pick one from 'declared'"
-                       % (wanted_type, named)})
+    (wanted_type,) = _declared_or_refused(
+        [type], _collectable_types(world), reason="node_type_not_declared", what="type",
+        world=world, argument="type")
 
     declared_keys = _declared_keys(wanted_type, world)
     # 🔴 [판정 524] SIBLING OF THE SEAT 521 FOLDED, IN THIS SAME FILE. Folding one seat and
@@ -794,6 +793,59 @@ def _declared_keys(bare_type: str, world=None) -> set:
         if _bare_name(name) == bare_type:
             return {str(k) for k in ((spec or {}).get("keys") or [])}
     return set()
+
+
+def _declared_or_refused(names, declared, *, reason, what, world, argument):
+    """🔴 THE ONE SEAT FOR A NAME A WALK REQUEST BRINGS (총괄 17b6337e4): folded by `bare_name` - a
+    saved board or a bookmark still says `x@1` - and refused by name, with what IS declared in
+    the picked worlds, when it is not there. Never answered with an empty walk. Returns the
+    names folded, in the order asked."""
+    folded = [_bare_name(name) for name in names]
+    unknown = sorted(set(folded) - set(declared))
+    if unknown:
+        named = ", ".join(each.name for each in _worlds(world))
+        raise HTTPException(status_code=422, detail={
+            "reason": reason, "argument": argument, "unknown": unknown,
+            "declared": sorted(declared), "world": named,
+            "message": "%s %s is not declared in world %s - pick one from 'declared'"
+                       % (what, ", ".join("'%s'" % each for each in unknown), named)})
+    return folded
+
+
+def _expanded_bundle(item, world=None):
+    """`<node id>|<predicate>|<direction>` with its predicate through `_declared_or_refused`; a
+    shape that is not three parts goes on to the walk, which refuses it by its own words."""
+    parts = str(item).split("|")
+    if len(parts) != 3 or not parts[1].strip():
+        return item
+    (parts[1],) = _declared_or_refused(
+        [parts[1]], _followable_predicates(world), reason="predicate_not_declared",
+        what="predicate", world=world, argument="expand")
+    return "|".join(parts)
+
+
+def _value_names(world=None):
+    """Every name `group_by` and `measure` may read a value under - the fold's sources
+    (`ledger_subgraph.VALUE_SOURCES`): an entity's keys and attributes, a predicate's
+    qualifiers, a predicate itself (the claims a node carries). Read from the picked worlds'
+    declaration."""
+    try:
+        declared = _declaration(world) or {}
+    except Exception as exc:                       # noqa: BLE001 - same backstop as /kinds
+        logger.error("declaration unreadable while resolving value names: %s", exc)
+        raise HTTPException(status_code=503, detail={
+            "reason": "declaration_unreadable",
+            "message": f"The declaration could not be read: {exc} - fix the declaration and reload"})
+    names = set()
+    for key, item in (declared.get("vocabulary") or {}).items():
+        names.add(_bare_name(key))
+        qualifiers = ((item or {}).get("object") or {}).get("qualifiers") or {}
+        names |= {str(name) for name in (*(qualifiers.get("required") or ()),
+                                         *(qualifiers.get("optional") or ()))}
+    for item in (declared.get("entities") or {}).values():
+        names |= {str(name) for name in (*((item or {}).get("keys") or ()),
+                                         *((item or {}).get("attributes") or ()))}
+    return names
 
 
 def _collectable_types(world=None):

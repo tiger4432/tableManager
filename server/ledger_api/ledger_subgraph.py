@@ -129,7 +129,9 @@ def _fold(measure, values):
 #: 🔴 SPELLED ONCE AND CARRIED IN THE ENVELOPE, so the screen learns the order rather than
 #: guessing it. A name that resolves in two of these is REFUSED: silently preferring one
 #: would let that preference decide the answer, and the two numbers are not the same number.
-VALUE_SOURCES = ("attributes", "qualifiers", "predicates")
+#: `keys` - an entity's declared identity keys (총괄 a588e5d80: group_by=wafer). A key and an
+#: attribute of one entity cannot share a name: the declaration refuses that.
+VALUE_SOURCES = ("keys", "attributes", "qualifiers", "predicates")
 
 
 def _source_values(node, source, name):
@@ -140,7 +142,7 @@ def _source_values(node, source, name):
         # predicate」 therefore needs no edge walk and no second query - the ratio axis's
         # numerator and denominator are both node-side facts that were already on the wire.
         return [entry.get("count") for entry in (node.get("predicates") or ())
-                if entry.get("predicate") == name and entry.get("count") is not None]
+                if _bare_name(entry.get("predicate")) == name and entry.get("count") is not None]
     carried = (node.get(source) or {})
     if name not in carried:
         return []
@@ -189,7 +191,9 @@ def _split_measure(measure):
             "measure_needs_a_name",
             "measure %r folds values, so it needs a name: %s:<attribute>" % (name, name),
             AGGREGATE_MEASURES)
-    return name, qualifier
+    # the name read bare - a saved board still says `sum:x@1` (총괄 17b6337e4); the answer's key
+    # stays the measure as asked
+    return name, _bare_name(qualifier) if qualifier else qualifier
 
 
 def _latest_edge_instant(members, edges_by_node):
@@ -907,15 +911,6 @@ def reset_declaration_cache():
     order came from the new one - the split this module's 「one read」 note exists to stop.
     """
     _declaration_facts.clear()
-
-
-def _declared_entity_facts_names():
-    """The bare names the declaration gives entity types. Empty when it cannot be read.
-
-    ⚠️ EMPTY MEANS 「cannot say」, NOT 「none are declared」 — the caller must not turn an
-    unreadable declaration into a refusal of every type.
-    """
-    return frozenset(_read_entity_declaration()[0])
 
 
 def _declared_plural_attributes(entity_type):
@@ -1725,11 +1720,9 @@ def _declared_columns(nodes, entities):
     leaves it blank rather than shifting its row.
     """
     # 🔴 THE DECLARATION SIDE IS FOLDED TO BARE, NOT THE NODE SIDE (measured live: every
-    # declared column came back empty). A node's `type` is ALREADY bare (`wafer`) and the
-    # declaration is keyed with its version (`wafer@1`), so looking the node up in the
-    # declaration as-is can never match — and folding the node would be folding the half
-    # that is already folded. The client does exactly this, in this direction:
-    # `bareName(e.type) === bare`.
+    # declared column came back empty when neither was). A node's `type` is bare and a
+    # reader folds an old `wafer@1` key at load (`declaration_names.fold_versions`); this
+    # fold keeps such a key handed in directly answering the same.
     declared_by_bare = {}
     for name, spec in (entities or {}).items():
         declared_by_bare.setdefault(_bare(name), spec)
@@ -1912,15 +1905,8 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
         expand_keys.add(parts)
     bundles = []
     if seed_type:
-        # ⛔ AN UNDECLARED TYPE IS REFUSED BEFORE THE QUERY RUNS, and by name. Asking the
-        # ledger for a type the declaration never named returns zero rows, which would read
-        # as 「that type has no subjects」 -- a fact about the data rather than about the
-        # request. The walk already refuses an undeclared `collect` this way.
-        declared = _declared_entity_facts_names()
-        if declared and _bare(str(seed_type)) not in declared:
-            raise AggregateRefused(
-                "seed_type_not_declared",
-                "no declared entity type named %r" % (seed_type,), sorted(declared))
+        # ⛔ An undeclared type is refused before this, by name, at the route's one seat for a
+        # request's names (`trace_router._declared_or_refused`, 총괄 17b6337e4).
         described = lookup.subjects_of_type(seed_type, seed_limit)
         seed_cut = described.cut
         if not described.ids:

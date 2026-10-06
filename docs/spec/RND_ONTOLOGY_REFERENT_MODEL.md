@@ -15,8 +15,8 @@
 >
 > **여기서 던진 질문은 살아 있고, 답이 바뀌었습니다.** 「웨이퍼에서 발견으로 내려갈 때
 > 수만 건을 자동 확장하지 않으려면?」의 오늘 답은 **두 수준 투영**이 아니라
-> **발견을 노드로 선언하고 `follow` 로 좁히는 것**입니다 — `observed@1` 이 `die@1` → `defect@1`,
-> `of_kind@1` 이 `defect@1` → `defect_kind@1`. 그래서 발견에서 **걸어 나갈 수** 있습니다
+> **발견을 노드로 선언하고 `follow` 로 좁히는 것**입니다 — `observed` 이 `die` → `defect`,
+> `of_kind` 이 `defect` → `defect_kind`. 그래서 발견에서 **걸어 나갈 수** 있습니다
 > (종점이던 것이 이 판의 요점입니다). 정본은
 > [LEDGER_EVIDENCE_SUBGRAPH_SPEC](./LEDGER_EVIDENCE_SUBGRAPH_SPEC.md) ·
 > [PRIMER](../guide/ledger/PRIMER.md).
