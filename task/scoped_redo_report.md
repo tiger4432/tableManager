@@ -72536,3 +72536,31 @@ a.a.a -> a · a.b.b -> a.b · a.a.b -> a.b · a.b.a · ab.b · a..a · a...a 그
 변이 6   쓰기 접기가 안 접음 RED · 빈 마디도 접음 RED · 다른 규칙보다 먼저 접음 RED · write 없이 받음 RED · 두 글자 이상 받음 RED · time 옆에 받음 RED
 sqlite 전체(두 커밋 같이) 5 failed, 7841 passed, 330 skipped, 3 xfailed, 13136 warnings in 742.19s (0:12:22) — 박스 사유 밖: 없음
 ```
+
+---
+
+## [10-06] 표기 소급 — 부딪히면 합친다 착지 74df5ce00 (총괄 5ffa48232)
+
+어느 DB · 어느 스키마 · 지운 것 — sqlite 메모리 · PG 증명은 assy_test DB 의 스크래치 스키마 assy_pytest_pg_<실행 토큰>(픽스처가 만들고 지움) · 박스 DB 안 씀 · 지운 것 0
+
+```
+전   접은 키를 다른 행이 가지면 건너뛰고 이름만 댐
+지금  그 행으로 합침 — crud._merge_into_key_holder 그대로. 키 고치기의 merge_rekeys 본문을
+     crud.merge_into_key_holders 로 올려 키 고치기 · 소급이 같이 부름. 새 합치기 0 · 새 판정 0
+순서  행 자기 칸 · 층을 먼저 접고 합침 -> 받는 행이 접힌 값을 받음
+셋 이상  그 키를 가진 행이 없으면 row_id 가 가장 작은 행이 받음(스캔이 row_id 순)
+사람 칸  빈 집합 — 받는 행의 사람 값은 그 행의 표시로 남음
+드라이런  rows_merged · merged(row_id · 옛 키 · 접은 키 · into)
+        count 문장: N row(s) fold onto another row's key - the run merges each into that row (e.g. 견본 셋); a merge cannot be undone.
+이름     rows_skipped/skipped -> rows_merged/merged (count extra · run result)
+        client2/src 에서 rows_skipped 읽는 곳 0 (git grep · 같은 호출 server 의 rows_merged 12 줄)
+```
+**게이트**
+```
+sqlite  두 행: 드라이런 수 · 견본 · 문장 -> 적용 -> 행 1 · 사람 값 남음 · 층 옮김(접힌 값으로) · 사라진 행 층 0 · 감사 줄
+        셋 모이기(row_id 가장 작은 행) · 다시 돌리면 0
+PG      키 고치기 증명 10 passed, 8170 deselected in 25.62s (본문을 옮긴 뒤)
+변이 10  합치지 않음 RED · 이번 소급이 준 키는 받는 행 아님 RED · 합칠 행도 키를 바꿈 RED · 드라이런이 받는 행 안 댐 RED · 문장에 「되돌릴 수 없음」 없음 RED · 모든 칸을 사람 칸으로 RED · 감사 줄 안 남김 RED · 층 안 옮김 RED · 층 접기 전에 합침 RED · 키 고치기가 합치지 않음(PG) RED
+sqlite 전체 5 failed, 7842 passed, 330 skipped, 3 xfailed, 13117 warnings in 747.19s (0:12:27) — 박스 사유 밖: 없음
+```
+RUN.md 절(순서 · 되돌릴 수 없음) · RELEASE_LOG «바뀐 동작» · 표기 가이드 소급 문단 — 같은 커밋.
