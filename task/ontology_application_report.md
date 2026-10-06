@@ -36144,3 +36144,27 @@ m.n 은 자기 값 holder-mn 을 들고 있었는데 병합 뒤 shell-mn 이 보
 제품     스켈레톤과 목록은 같은 서버가 함께 낸다 — 「choice 스켈레톤 + 목록 없는 답」 은 운영에 안 생긴다(T1 · T3 초록)
 할 일    클라 레인: T2 를 «옛 스켈레톤 모양»(free 칸) 고정틀로 — 지금 main 의 check_harnesses 바닥이 이 하나로 빨강
 ```
+
+---
+
+## [C 응용] 10-06 🔴 5f76e5447 — 칸 타입 역할이 받는 타입이 «둘 이상»이면 탐색기 색인 짓기가 통째로 거절된다 (잼)
+
+```
+잰 것    공유 트리 @0905b9a83(server 미커밋 0). f1238d6ef 착지 시험의 document()(출하 샘플 + 원인→현상 후보 소스, import) 를 load_setup -> build_explorer_index
+         == shipped (canary)
+         OK   authoring_plan
+         OK   load_setup
+         OK   build_explorer_index
+         == column-typed
+         OK   authoring_plan
+         OK   load_setup
+         FAIL build_explorer_index -> ConfigExplorerError /sources/cause_candidates/bind/mappings/leads/bind/target/entity_type: the same reference edge was extracted more than once
+         같은 계기가 f1238d6ef 때(a6bd26efc)는 build_explorer_index OK 였다
+원인     config_explorer 의 새 줄(「a type read from a column: a line to every type the role can carry」)이 받는 타입마다 엣지를 긋는데
+         위치는 모두 pointer(*binding_path, "entity_type") 하나, 그리고 색인의 엣지 신원은 (from_key, ref_kind, ref_pointer) — «도착 타입이 없다».
+         target 이 받는 타입 = leads_to 의 object.types = quantity · defect_kind 둘 -> 둘째 줄이 첫째와 같은 신원 -> ConfigExplorerError
+누가 맞나  소유자가 시킨 그 모양(회의록 원인 -> 현상, 현상 타입 여럿)이 정확히 이 경우다. 착지 시험의 탐색기 줄 시험은 이 선언을 안 지난다(그 시험은 초록)
+그래서    그런 선언을 든 설치는 build_explorer_index 를 부르는 자리(config_explorer_service 의 색인 · config_drafts 의 미리보기)가 거절된다 — 탐색기 · 초안 미리보기
+         (재기동 뒤부터. 지금 운영 선언에 칸 타입 소스가 있는지는 «모른다»)
+고칠 곳   한 자리 — 줄마다 위치를 가르거나(타입을 위치에 덧붙임) 신원에 도착을 넣거나. 어느 쪽인지는 구현자 판단, 안 지었다
+```
