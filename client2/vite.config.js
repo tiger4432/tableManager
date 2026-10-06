@@ -1,8 +1,10 @@
 import { defineConfig } from 'vite';
 import { resolve } from 'path';
 import os from 'os';
+import { thirdPartyLicenses } from './scripts/third_party_licenses.mjs';
 
 export default defineConfig({
+  plugins: [thirdPartyLicenses()],
   define: {
     'import.meta.env.VITE_USER': JSON.stringify(
       process.env.USERNAME || 

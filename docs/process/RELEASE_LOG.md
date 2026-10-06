@@ -9,6 +9,16 @@
 
 ---
 
+## 2026-10-07 · 제3자 라이선스 파일 — 빌드가 dist 에 같이 냅니다
+
+- **무엇** — 빌드가 `client2/dist/THIRD_PARTY_LICENSES.txt` 를 씁니다. 번들에 실제로 든 패키지마다 이름 · 판 · 라이선스와 그 패키지 LICENSE 파일 전문입니다. 지금은 6 개(@dagrejs/dagre 3.0.0 · @dagrejs/graphlib 4.0.1 · ag-charts-types 13.3.0 · ag-grid-community 35.3.0 · cytoscape 3.34.3 · cytoscape-dagre 4.0.1), 라이선스는 MIT 입니다(6,659 B). 전에는 이런 파일 없이 나갔습니다. ag-grid-community 도 마찬가지였습니다.
+  패키지는 손으로 적은 목록이 아니라 빌드의 모듈 목록에서 나옵니다. 다른 패키지를 미리 묶어 내는 패키지(cytoscape-dagre 가 @dagrejs/dagre 를 품음)는 그 패키지 소스맵의 원본 목록으로 찾고, 찾은 패키지의 의존성을 따라갑니다.
+- **선언 예시** — 없음.
+- **화면에서** — 없음. 서버의 dist 루트 경로가 `/THIRD_PARTY_LICENSES.txt` 로 내줍니다.
+- **필요한 조건** — 클라 빌드. 새 devDependency `@dagrejs/dagre` 3.0.0(정확한 판, 소유자 승인). 번들에는 안 들어가고, 빌드가 그 LICENSE 와 판을 읽는 데만 씁니다. 새 체크아웃은 `client2` 에서 `npm ci` 한 번.
+- **바뀐 동작** — 빌드가 멈추는 경우가 둘 생겼습니다. 번들에 든 패키지의 LICENSE 를 못 읽을 때, 그리고 미리 묶인 사본이 설치된 패키지의 같은 파일과 다를 때입니다. 뒤의 것은 「cytoscape-dagre … carries @dagrejs/dagre (built against …) whose dist/dagre.esm.js is not the installed @dagrejs/dagre …'s - raise them together」 한 문장으로 멈춥니다. 그때는 cytoscape-dagre 와 그 devDependency 를 같이 올립니다. 빌드가 성공했다면 이 파일이 온전합니다.
+- **자세히** — 이 항목과 같은 커밋. 플러그인 `client2/scripts/third_party_licenses.mjs`, 하니스 `client2/tests/third_party_licenses_harness.mjs`.
+
 ## 2026-10-06 · 걷기 그래프 보기 — Cytoscape 뷰어, 덩어리에서 골라 펼치기, 보던 시점 유지
 
 - **무엇** — 걷기 페이지 Graph 보기의 그림을 Cytoscape.js 와 dagre(왼쪽 → 오른쪽)로 그립니다. 열은 오늘처럼 서버의 depth 이고, 열 안 순서와 엇갈림 줄이기는 dagre 가 합니다. 확대 · 이동은 그림 상자 안에서, 전체 맞춤은 `Fit` 버튼으로만 합니다. 선은 곡선이고, 옆이나 뒤로 가는 선은 흐리게, 고른 노드의 선은 진하게(술어 이름이 섬) 그립니다. 노드에 마우스를 올리면 그 노드와 이웃만 밝게 남습니다.

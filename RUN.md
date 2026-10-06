@@ -7,6 +7,7 @@
 > 뜻             걷기 그래프가 cytoscape · cytoscape-dagre 를 import 한다. 설치 전에는 그것을 부르는 하니스가 ERR_MODULE_NOT_FOUND
 >                러너(check_harnesses.mjs)가 package.json 에 적혔는데 node_modules 에 없는 패키지를 이름으로 대고 이 명령을 낸다
 >                node_modules 가 있는데 빠졌으면 빨강(BLOCKING) · node_modules 가 아예 없으면 「이 트리에서 못 잼」
+>                빌드는 devDependency @dagrejs/dagre 도 읽는다(라이선스 파일) — 없으면 빌드가 그 이름을 대고 멈춘다
 > 급할 때          dist 는 커밋돼 있어 화면은 설치 없이 뜬다 — 설치가 필요한 것은 하니스와 빌드뿐
 > ```
 

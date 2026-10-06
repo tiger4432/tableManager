@@ -1727,6 +1727,9 @@ const FLOORS = new Map([
   // New 2026-09-28 (lead 40bae1219). The map editor's column save: changed cells only, one column,
   // no overwrite of a cell changed since the load, and the «send every cell» mutant.
   ['column_save_harness.mjs', 18],
+  // New 2026-10-07 (lead 10-06). The build's license notice: a pre-bundled copy that differs and a package with no
+  // license file each stop the build, forced on packages made in a temp folder; nine mutants.
+  ['third_party_licenses_harness.mjs', 10],
 ]);
 
 // ── the ceilings ────────────────────────────────────────────────────────────────
