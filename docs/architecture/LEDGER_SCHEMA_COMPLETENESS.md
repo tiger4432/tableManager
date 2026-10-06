@@ -257,7 +257,7 @@ S-65-d 뷰 삭제   A4 「삭제 — row_id 없는 뷰」   ✅ ② («이름 �
 |---|---|---|---|
 | B1 마킹 | ① | `id`(별칭, 항상 positive) + `positive[]` + `negative[]` (`ledger/trace_router.py:85,:95,:97`) · 합치는 자리는 `_signed_start` :166 «하나» | 노드 id 문자열 |
 | B1 이름 붙은 마킹 «여럿» | ② | 🔴 라우트는 «한 번에 한 질의»다. 「마킹1 · 마킹2」는 «클라의 저장소»가 들고 부품이 각자 걷는다 — 서버는 «부호 두 갈래»만 안다 | |
-| B1 씨앗 해소 | ① / ⚠️ | 키 → 노드. ⚠️ `/declaration` 이 `wafer@1` 로 알려 주는데 그 철자로 씨앗을 만들면 «빈 그래프»다 — `wafer` 여야 한다(WALK.md §6 · 큐 C-25). 클라는 `entitySeedId` 가 벗겨서 안 걸린다 | |
+| B1 씨앗 해소 | ① | 키 → 노드. ✅ 10-06 `f34f16892` `/declaration` 이 맨이름(`wafer`)으로 알려 준다 — ~~`wafer@1` 로 알려 주는데 그 철자로 씨앗을 만들면 «빈 그래프»~~(WALK.md §6 · 큐 C-25). 클라는 `entitySeedId` 가 벗겨서 안 걸린다 | |
 | B2 `follow` | ① | `follow[]`, `이름:키1,키2` 로 «목적지 키» 제약까지 :99~103. 없으면 «전부» | 🔴 선언된 술어만 — 아니면 **422 `predicate_not_declared`** + `unknown`/`declared` 집합 :146 |
 | B2 `direction` | ① | `outgoing|incoming|both` :88 | 닫힌 셋(FastAPI pattern) |
 | B2 `hops` | ① | 1–40, 기본 12 :86 | |
@@ -1791,11 +1791,11 @@ map      lot-event-role (파이썬) · unit.kind = event   -> 매퍼가 «그룹
 ```
 | 문장 | 술어 | when | 주어 키 | 목적어 키 |
 |---|---|---|---|---|
-| `descent` | `derived_from@1` | **없음(무조건)** | `child_lot` | `parent_lot` |
-| `first_sight_holder` | `register@1` | 없음 | `lot`(준비기 산출) | — |
-| `first_sight_item` | `register@1` | 없음 | `wafers`(준비기 산출) | — |
-| `split` | `split_from@1` | `event_type=split` | `child_lot` | `parent_lot` |
-| `merge` | `merged_into@1` | `event_type=merge` | **`lot_id`** | `parent_lot` |
+| `descent` | `derived_from` | **없음(무조건)** | `child_lot` | `parent_lot` |
+| `first_sight_holder` | `register` | 없음 | `lot`(준비기 산출) | — |
+| `first_sight_item` | `register` | 없음 | `wafers`(준비기 산출) | — |
+| `split` | `split_from` | `event_type=split` | `child_lot` | `parent_lot` |
+| `merge` | `merged_into` | `event_type=merge` | **`lot_id`** | `parent_lot` |
 ```
 🔴 결정적인 규칙 하나: 분자가 «그룹»이면 바인딩이 읽는 컬럼은 그 그룹에서 «값이 하나»여야 합니다 —
    `roleframe._evaluate_binding` 이 빈 값에 `missing_binding_value`, 값이 둘이면 `ambiguous_binding_value`

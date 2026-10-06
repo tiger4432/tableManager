@@ -13,7 +13,7 @@
 > | `/api/ledger/trends` · `/composition` · `/selection/resolve` · `/subgraph/table` | **라우트 없음.** 데이터에 답하는 것은 `GET /api/ledger/subgraph` 하나 |
 > | `Entity–Event–Claim 그래프` · 「Claim/Event 를 seed 로 연다」 · `event_id` | **Event 는 노드가 아니고 Claim 은 엣지다**(2026-08-25). 씨앗 접두어는 `ledger-entity:v1:` 하나이고 나머지 철자는 **422** |
 > | `WaferLeg` | **선언된 엔터티가 아니다.** 마킹 단위는 «웨이퍼»이고 실험 구간은 `bonding_leg` «수식어» |
-> | 술어 `transferred` | **선언에 없다.** 살아 있는 철자는 `transfer@1`(die → die) |
+> | 술어 `transferred` | **선언에 없다.** 살아 있는 철자는 `transfer`(die → die) |
 > | typed `properties` long table | **없다**(`shape=tables` · `/subgraph/table` 함께 은퇴) |
 >
 > 「P 의 Trend/Composition/Selection 이 착지했다」는 문장은 **착지했다가 은퇴했다**로 읽으십시오.

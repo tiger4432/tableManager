@@ -537,7 +537,7 @@ JSON 블록은 모두 `ledger_config.json` 안 해당 키의 **값**이다.
 
 ```json
 {
-  "register@1": {
+  "register": {
     "status": "active",
     "subjects": ["Lot@1", "Wafer@1"],
     "object": {
@@ -545,7 +545,7 @@ JSON 블록은 모두 `ledger_config.json` 안 해당 키의 **값**이다.
       "qualifiers": {"required": [], "optional": []}
     }
   },
-  "has_wafer@1": {
+  "has_wafer": {
     "status": "active",
     "subjects": ["Lot@1"],
     "object": {
@@ -554,7 +554,7 @@ JSON 블록은 모두 `ledger_config.json` 안 해당 키의 **값**이다.
       "qualifiers": {"required": ["slot"], "optional": []}
     }
   },
-  "derived_from@1": {
+  "derived_from": {
     "status": "active",
     "subjects": ["Lot@1"],
     "object": {
@@ -563,7 +563,7 @@ JSON 블록은 모두 `ledger_config.json` 안 해당 키의 **값**이다.
       "qualifiers": {"required": [], "optional": []}
     }
   },
-  "slot_map@1": {
+  "slot_map": {
     "status": "active",
     "subjects": ["Lot@1"],
     "object": {
@@ -582,19 +582,19 @@ JSON 블록은 모두 `ledger_config.json` 안 해당 키의 **값**이다.
 
 | 필드 | 허용값/용도 |
 |---|---|
-| Vocabulary ID | 반드시 versioned ID, 예: `has_wafer@1` |
+| Vocabulary ID | 맨이름, 예: `has_wafer` — 옛 `has_wafer@1` 도 읽을 때 접히고 저장하면 맨이름으로 다시 쓰인다(10-06 `f34f16892` · ~~반드시 versioned ID~~) |
 | `status` | `active` 또는 `retired` |
 | `subjects` | 허용되는 versioned Entity ID 목록 |
 | `object.kind` | `none`, `entity_ref`, `value`, `event_ref` |
 | `object.types` | `entity_ref`일 때 허용되는 Entity ID 목록 |
 | `object.value_type` | `value`일 때 그 값의 «타입» — `number`(기본) · `string` · `boolean` · `timestamp`. 적지 않으면 `number` 다(디스크의 모든 선언이 뜻하는 것). 🔴 컴파일러가 이것으로 Role 종류를 정한다: number→`quantity` · string/boolean→`attribute` · timestamp→`time`. ⚠️ `string` 이 `symbolic` 이 «아닌» 것은 취향이 아니라 실측이다 — `symbolic` 갈래만 `allowed_values` 멤버십을 추가로 요구하는데 그것을 쓰는 코드가 «없어서», 그리로 보내면 모든 문자열이 거절된다 (S-84) |
 | `cardinality` | `many`(기본) 또는 `one`. `one` = 「한 주어에 이 술어의 목적어는 «지금» 하나」. 🔴 **키가 아니라 «값»이다** — 늦게 온 더 이른 행이 값을 바꾸면 키였을 경우 행의 정체성이 바뀌어 이미 확정된 것이 고아가 된다. 그 «지금»은 occurred_at 이 가장 늦은 사실이고 걷기가 읽을 때 정한다 — 도착 순서는 안 본다, 쓰기에서 거절도 대체 표지도 없다(총괄 22ebdd153, 판정 256 뒤집음). 옛 사실은 `?include_superseded=true` 로 보고 엣지에 `not_current`, 가장 늦은 시각에 목적어가 둘이면 둘 다 지금 것이고 노드의 `current_conflicts` 가 센다. 걷기 응답의 엣지가 이 값을 싣는다 (S-133) |
-| `inverse_of` | (선택) 같은 연결을 «반대 끝에서» 말하는 술어의 ID — 예: `inspected@1` 에 `in_container@1`. 한쪽만 적어도 양쪽으로 읽힌다. 두 끝 타입이 뒤집혀 맞아야 하고 역은 하나뿐이다. 걷기만 읽는다(형제로 «도로 내려가지» 않기) — 소스 지문 · 원장 무변 |
+| `inverse_of` | (선택) 같은 연결을 «반대 끝에서» 말하는 술어의 ID — 예: `inspected` 에 `in_container`. 한쪽만 적어도 양쪽으로 읽힌다. 두 끝 타입이 뒤집혀 맞아야 하고 역은 하나뿐이다. 걷기만 읽는다(형제로 «도로 내려가지» 않기) — 소스 지문 · 원장 무변 |
 | `object.qualifiers.required` | 문장이 반드시 공급해야 하는 qualifier 이름. 🔴 **각 이름이 그대로 필수 Role이 된다**(§7.5) |
 | `object.qualifiers.optional` | 선택적으로 공급할 수 있는 qualifier 이름. 각 이름이 그대로 «선택» Role이 된다 |
 
 required와 optional은 겹칠 수 없다. `object.kind: "none"`에는 qualifier나 type을 붙일 수
-없다. `slot_map@1`을 내는 문장이 `from`, `to`, `wafer` 중 하나를 빠뜨리면
+없다. `slot_map`을 내는 문장이 `from`, `to`, `wafer` 중 하나를 빠뜨리면
 `missing_required_payload`, 선언하지 않은 이름(`depth` 같은 것)을 추가하면
 `unknown_payload_field`로 거절한다.
 
@@ -743,8 +743,8 @@ Role 목록과 `emit` 절을 선언했다. 둘 다 **그 Claim이 내던 술어�
 | `object.qualifiers.required[]` | 각 이름이 **그 이름 그대로** Role(`attribute`, 필수) |
 | `object.qualifiers.optional[]` | 각 이름이 **그 이름 그대로** Role(`attribute`, 선택) |
 
-그래서 `register@1`(`object.kind: "none"`)은 `subject`·`occurred_at` 둘을 요구하고,
-`has_wafer@1`(`entity_ref` + required qualifier `slot`)은
+그래서 `register`(`object.kind: "none"`)은 `subject`·`occurred_at` 둘을 요구하고,
+`has_wafer`(`entity_ref` + required qualifier `slot`)은
 `subject`·`target`·`occurred_at`·`slot` 넷을 요구한다. 🔴 **양끝의 이름은 상수다** —
 `subject`/`target`이지 `$child`/`$parent`가 아니다. vocabulary가 `subjects`로 말하는 것은
 그 자리에 올 수 있는 **entity 타입**이지 자리의 «이름»이 아니어서, 술어마다 철자를 정하게
@@ -777,7 +777,7 @@ kind `symbolic`과 `order`도 **도출될 수 없다.** 좁힌 binding이나 닫
 "bind": {
   "mappings": {
     "first_sight_holder": {
-      "predicate": "register@1",
+      "predicate": "register",
       "bind": {
         "subject": {
           "kind": "entity",
@@ -806,7 +806,7 @@ kind `symbolic`과 `order`도 **도출될 수 없다.** 좁힌 binding이나 닫
 |---|---|
 | `mappings` | **문장 이름 → mapping**인 객체. 비어 있을 수 없다 |
 | `mappings.<문장>` | 그 키가 곧 이 mapping이 실현하는 **문장의 이름**이다 (아래) |
-| `mappings.<문장>.predicate` | 이 문장이 내는 **vocabulary id**. 예: `register@1` |
+| `mappings.<문장>.predicate` | 이 문장이 내는 **vocabulary id**. 예: `register` |
 | `mappings.<문장>.bind` | **그 술어가 강제하는** Role 이름 → binding (§7.5) |
 
 `bind`의 필드는 지금 `mappings` 하나뿐이지만 **record로 남는다**(소유자 판정: 「ㅇㅇ 남겨」)
@@ -833,7 +833,7 @@ kind `symbolic`과 `order`도 **도출될 수 없다.** 좁힌 binding이나 닫
 실제로 선언하는 쪽**이다.
 
 ```text
-bind.mappings.counted.predicate       has_netdie@1
+bind.mappings.counted.predicate       has_netdie
 bind.mappings.first_sight_holder      lot_event의 FIRST_SIGHT, 「가진 쪽」에 대해
 bind.mappings.first_sight_item        그리고 「담긴 쪽」에 대해
 ```
@@ -1011,7 +1011,7 @@ subject/object entity type으로 모양을 계산해 후보를 골랐고, 그래
 | `read.occurred_at.basis` | 표에 세계 시각이 **없을 때** `column` 대신. 현재 `"ingested"` 하나 |
 | `read.occurred_at.timezone` | 명시적 IANA timezone. 묵시 기본값 없음 |
 | `read.cursor.columns` | physical keyset cursor 컬럼. 🔴 **[2026-08-22 `90383987`] 더 이상 «묻지 않는다»** — `read.order_by`에서 파생돼 번들에 쓰인다(아래) |
-| `read.registration_probe` | 이미 등록된 개체를 가려내는 probe. **`bind`가 `register@1`을 내는 소스에는 필수** — 🆕 10-02 안 적으면 등록하는 주어마다 그 키 칼럼 하나로 채운다(키가 하나가 아닌 주어는 기본값 없음 → 오늘처럼 `registration_context_required`) |
+| `read.registration_probe` | 이미 등록된 개체를 가려내는 probe. **`bind`가 `register`을 내는 소스에는 필수** — 🆕 10-02 안 적으면 등록하는 주어마다 그 키 칼럼 하나로 채운다(키가 하나가 아닌 주어는 기본값 없음 → 오늘처럼 `registration_context_required`) |
 | ⚰️ `prepare` | 은퇴(setup_version 6) — 적으면 `prepare_retired` (§7.3) |
 | `map` | 이 소스의 mapper 본문 (§7.4) |
 | `bind` | 이 소스의 문장 별명 → Role binding (§7.6) |
@@ -1035,7 +1035,7 @@ subject/object entity type으로 모양을 계산해 후보를 골랐고, 그래
   작성자는 같은 답을 두 번 붙여넣고 있었다(소유자: 「커서 어차피 복붙할건데 왜 적으라 그래?」).
 
 🔴 **`registration_probe`의 「선택」은 문법의 말이지 소스의 말이 아니다.** `bind`의 문장
-가운데 하나라도 `register@1`을 내면 이 절은 **필수**다 — `runtime_v2._filtered_event_atoms`가
+가운데 하나라도 `register`을 내면 이 절은 **필수**다 — `runtime_v2._filtered_event_atoms`가
 `registration_context_required`로 **런을 통째로 거절**한다(`backfill._probe_subjects`가
 probe 없는 소스에 `None`을 돌려주기 때문이고, 빈 집합을 돌려주면 첫 등록이 매 batch 중복
 발화한다). `lot_event`가 오래 돌지 못한 이유가 이것이었다. 화면은 이 조건을 소스마다
@@ -1325,7 +1325,7 @@ binding만으로 표현되면 Python을 한 줄도 쓰지 않는다. `map.implem
 1. mapper가 말하는 **문장 이름**마다 `mappings.<문장>` 항목을 만든다. 전용 mapper면 그
    목록의 정본은 mapper 파일의 `SentenceShape` 속성들이고, `declarative-role@1`이면 이름은
    그냥 이 mapping을 부를 이름이다.
-2. 각 항목에 `predicate`(정확한 vocabulary id, 예 `has_wafer@1`)를 적는다. **어느 술어를
+2. 각 항목에 `predicate`(정확한 vocabulary id, 예 `has_wafer`)를 적는다. **어느 술어를
    쓰는지 따로 모아 적는 자리는 없다** — `predicate`가 그 답이다.
 3. 그 술어가 강제하는 required Role을 모두 binding한다. **목록은 §7.5가 도출한다** —
    고를 것은 없고, 빠뜨리면 `missing_required_role`, 없는 이름을 적으면 `unknown_role`이다. (🆕 10-02 `occurred_at` 은 예외 — 빼면 그 매핑이 사건 엣지가 아닐 뿐이다)
@@ -1381,7 +1381,7 @@ sources.lot_lineage
   relation  lot_lineage
   read      row · identity lot_lineage_key · order_by (event_time, lot_lineage_key)
   map       declarative-role v1
-  bind      descent_split · descent_merge -> derived_from@1 (when event_type = split / merge)
+  bind      descent_split · descent_merge -> derived_from   (when event_type = split / merge)
 ```
 
 어느 한 층도 다른 층의 일을 대신하지 않는다. 짝 맞추기·파생은 체인이 하고, 원장 선언은

@@ -7,8 +7,8 @@
 > ⚠️ **[2026-09-10 정정] `finding_kinds.py` 는 «있습니다»** — `server/scripts/support/finding_kinds.py`
 >   (08-28 `bef61462` 로 «읽는 스크립트 옆»으로 옮겼습니다). 여기 「모듈 없음」이라 적혀 있었고,
 >   같이 적힌 `server/ledger_api/finding_kinds.py` 는 «한 번도 없던 철자»입니다 ·
-> `server/config/finding_kinds.json` (선언 없음) · 주어 타입 `WaferLeg`(선언 안 됨 — `observed@1` 의
-> 주어는 `die@1` 하나다) · 술어 `transferred`(선언 안 됨 — 살아 있는 철자는 `transfer@1`).
+> `server/config/finding_kinds.json` (선언 없음) · 주어 타입 `WaferLeg`(선언 안 됨 — `observed` 의
+> 주어는 `die` 하나다) · 술어 `transferred`(선언 안 됨 — 살아 있는 철자는 `transfer`).
 > §5 의 인덱스 처방 둘은 **어느 원자도 갖지 않는 술어** 위의 부분 인덱스입니다.
 >
 > 🔴 **여기 적힌 절차를 그대로 따르면 전부 실패합니다.** 오늘 「선언으로 무엇을 늘리나」의

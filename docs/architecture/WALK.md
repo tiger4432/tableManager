@@ -304,7 +304,7 @@ why     `not_declared`(검사 술어가 선언 안 됨) · `truncated` 의 그 �
 
 ## 🔵 역 술어 — `inverse_of` (걷기 제어 가, 총괄 739edd59c · f3fb29a44, 10-01)
 ```
-선언  어휘 술어의 칸 하나 — "inspected@1": {…, "inverse_of": "in_container@1"}. 한쪽만 적어도 양쪽으로 읽힌다
+선언  어휘 술어의 칸 하나 — "inspected": {…, "inverse_of": "in_container"}. 한쪽만 적어도 양쪽으로 읽힌다
       두 술어가 «한 연결을 두 끝에서» 말할 때 적는다. 적지 않으면 둘은 서로 다른 술어로 걸린다
 검증  가리키는 술어가 선언돼 있나(unknown_id) · 두 끝 타입이 뒤집혀 맞나 · 한 술어에 역은 하나(invalid_predicate)
 읽는 곳 걷기뿐 — 컴파일되지 않아 소스 지문이 안 움직이고 원장 소급 0

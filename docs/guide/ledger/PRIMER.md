@@ -47,8 +47,8 @@ event_type=split · event_time=2026-01-01 13:00:00 · lot_slot_wafer_key=NAB123|
 | 5 | ⚰️ **`prepare`** | (은퇴) | setup_version 6 에서 은퇴 — 조인·계산은 체인이 표에 쓰고 소스는 그 컬럼을 읽는다 | 없음 |
 | 6 | **`map`** | 통역사 | 분자를 원자 후보로 편다. **구현은 «선언이 고르는 것»이다** | `implementation_id: declarative-role` |
 | 7 | **`bind`** | 문장 작성 | 원자의 «칸마다» 어느 컬럼이 들어가는지 적는다. 코드 0줄 | 아래 §2 |
-| 8 | **선언의 `vocabulary`** | 문법책 | 술어마다 주어·목적어의 «서명». 서명에 안 맞으면 못 들어온다 | `has_wafer@1`: 주어 `lot_slot@1`, 목적어 `entity_ref` → `wafer@1`, 수식어 없음 |
-| 9 | **선언의 `entities`** | 국어사전 | 개체 타입과 그 «신원 키» | `lot_slot@1`: keys `[lot, slot]` · `wafer@1`: keys `[wafer]` |
+| 8 | **선언의 `vocabulary`** | 문법책 | 술어마다 주어·목적어의 «서명». 서명에 안 맞으면 못 들어온다 | `has_wafer`: 주어 `lot_slot`, 목적어 `entity_ref` → `wafer`, 수식어 없음 |
+| 9 | **선언의 `entities`** | 국어사전 | 개체 타입과 그 «신원 키» | `lot_slot`: keys `[lot, slot]` · `wafer`: keys `[wafer]` |
 | 10 | **게이트** (`ledger/gate.py`) | 검문소 | 원자마다 선언과 대조 — 하나라도 틀리면 **분자 전체** 거절 | 주어가 `lot_slot` 인가? 목적어가 `wafer` ref 인가? |
 | 11 | **봉투** (`ledger/envelope.py`) | 규격 서류 양식 | 모든 원자의 고정 필드 모양 | §3 의 실물 원자 |
 | 12 | **원장** (`ledger_events`) | 등기부 | 통과한 문장이 영구히 눕는 곳. 추가 전용 | 원자 1 삽입 — 같은 트랜잭션에 행 색인(`ledger_source_row_ref`) 1 줄 |
@@ -59,13 +59,13 @@ event_type=split · event_time=2026-01-01 13:00:00 · lot_slot_wafer_key=NAB123|
 이 소스의 `bind.mappings["seat-holds-wafer"]` 전문(커밋된 샘플 `server/config/sample/ledger_config.json.sample` 에서 인용 — 이 박스의 선언도 같은 문장, `approval_status` 생략):
 
 ```jsonc
-{ "predicate": "has_wafer@1",
+{ "predicate": "has_wafer",
   "bind": {
     "occurred_at": { "kind": "column", "column": "event_time" },
-    "subject":     { "kind": "entity", "entity_type": "lot_slot@1",
+    "subject":     { "kind": "entity", "entity_type": "lot_slot",
                      "keys": { "lot":  { "kind": "column", "column": "lot" },
                                "slot": { "kind": "column", "column": "slot" } } },
-    "target":      { "kind": "entity", "entity_type": "wafer@1",
+    "target":      { "kind": "entity", "entity_type": "wafer",
                      "keys": { "wafer": { "kind": "column", "column": "wafer" } } } } }
 ```
 
@@ -115,9 +115,9 @@ ledger_source_row_ref   relation=lot_slot_wafer · row_id=01a05648-d135-7914-846
 
 🔴 **[2026-08-28] 종전 이 자리의 `observed` 예시는 `object_kind: "value"` 에 수식어
 `finding_kind: "void"` 를 달고 있었고, 그 원자는 «오늘 게이트가 거절한다».**
-`observed@1` 의 목적어는 이제 `entity_ref` → `defect@1` 이고, `finding_kind` 는 수식어 목록에
-없다(`unknown_payload_field`). 발견의 «종류»는 수식어가 아니라 **노드**다 — `of_kind@1` 이
-`defect@1` 에서 `defect_kind@1` 로 간다. 그 판의 요점은 이름 바꾸기가 아니라 **종점을 없애는
+`observed` 의 목적어는 이제 `entity_ref` → `defect` 이고, `finding_kind` 는 수식어 목록에
+없다(`unknown_payload_field`). 발견의 «종류»는 수식어가 아니라 **노드**다 — `of_kind` 이
+`defect` 에서 `defect_kind` 로 간다. 그 판의 요점은 이름 바꾸기가 아니라 **종점을 없애는
 것**이다: 발견이 노드면 거기서 종류·스캔·같은 스캔의 다른 발견으로 «걸어 나갈 수» 있고,
 값이면 거기서 끝이라 붙일 자리가 없다.
 
