@@ -36072,3 +36072,19 @@ CoreDie@1 · DTDie@1 · BondComponent@1 · FinalChip@1 · Missing@1)과 「Entit
             입력 칸을 안 낸다(renderSkeletonLeaf 의 unfit 갈래) — 폼이 그 값을 글자로 덮어쓸 길이 없다
 하니스   declaration_attribute_seats_harness.mjs ASSERTIONS 21 0 exit 0 · ontology_authoring_panel_harness.mjs ASSERTIONS 105 0 exit 0
 ```
+
+---
+
+## [C 응용] 10-06 330e4c3d3(실패 기록이 2000 자 안에 온전한 JSON) QA · 문서 5016b630f — 결함 없음, 그런데 빨강 둘을 봤다
+
+```
+셈       _failure_record 의 칸은 reason 말고는 크기가 정해져 있다(rules · tables · rows 수 · 오류가 이름 댄 행 ≤ 10) — reason 만 줄여도 들어간다.
+         줄이는 셈: 뺀 글자 over+1 · 「…」 1 — JSON 은 글자마다 ≥ 1 이라 새 길이 ≤ 2000 (코드 읽음)
+빨강 둘   12:12 공유 트리에서 test_a_rule_can_run_as_an_operation + test_retroactive_admin 을 두 번 — 두 번 다
+         test_a_long_failure_record_stays_whole_json_on_the_run_row 가 「Expecting ',' delimiter: column 2000」(저장된 글이 «한 글자» 넘침)
+         두 번째 실행 때 공유 트리 server 에 «미커밋 편집 1 파일»(첫 실행 직전 검사 땐 0 — 같은 명령 안에서 몇 초 사이)
+지금     떼어 둔 트리 둘(@330e4c3d3 — 짧은 경로 · 긴 경로)에서 그 시험 혼자 · 그 파일 · 두 파일 다 초록, 공유 트리(@4256feacb, 미커밋 0)에서 두 파일 셋 번 82/82
+         떼어 둔 트리에 덧붙인 재기(파일 전문 + 한 시험): 줄인 뒤 길이 2000 = 한도
+판단     «한 글자 넘침» 은 줄이는 셈의 -1 을 빼는 변이와 같은 모양 — 그 시각 누군가 공유 트리에서 변이를 돌린 것으로 보인다. 그 파일이 무엇이었는지는 «못 봤다»
+다시 여쭘  변이는 떼어 둔 트리에서 — 공유 트리에서 남의 시험이 그 변이를 읽는다(오늘 넷째: 37df8cb57 · a45ef40cc · 37e683196 · 이것)
+```
