@@ -9,6 +9,15 @@
 
 ---
 
+## 2026-10-06 · 설정 해석 보고서 — 안 쓰는 술어 목록이 참이 된다
+
+- **무엇** — 설정 해석 보고서의 원장 도메인은 「어휘에 실렸는데 아무 소스도 쓰지 않는 술어」를 적습니다. 그 «쓰는 술어»를 옛 문법(소스 kind)으로 따로 세던 자리가 지금 문법(`bind.mappings`)의 소스를 못 읽어, 거의 모든 술어를 「안 쓴다」고 적었습니다. 이제 표 머리 emits · 비용 미리보기와 같은 정본(`setup_bundle.emitted_predicates` — 소스 문장 · 엔티티 참조 엣지 · 칸에서 읽는 타입까지)으로 셉니다.
+- **선언 예시** — 새 선언 없음. 샘플 `server/config/sample/ledger_config.json.sample` 의 어휘 16 중 안 쓰는 것은 7 (`bonded_from` · `in_container` · `leads_to` · `measures` · `observed` · `of_kind` · `slot_map`) — 전에는 15 로 적었습니다.
+- **화면에서** — 관리 화면 설정 해석 보고서(`/admin/config/resolve`)의 원장 도메인, 「No translator states the declared predicates …」 줄.
+- **필요한 조건** — 서버 재기동(API).
+- **바뀐 동작** — 그 줄의 목록이 줄어듭니다(실제로 쓰이는 술어가 빠짐). 다른 줄은 그대로입니다.
+- **자세히** — 이 항목과 같은 커밋 · RUN.md 같은 절.
+
 ## 2026-10-06 · 칸에서 타입을 읽는 바인딩 — 표 머리 emits · 탐색기 선
 
 - **무엇** — 엔티티 타입을 행의 칸에서 읽는 바인딩(`"entity_type": {"kind": "column", "column": "<칸>"}`)은 이름을 적지 않아서, 그 소스가 쓰는 references 엣지가 표 머리의 emits 목록에서 빠지고 온톨로지 탐색기에서도 그 바인딩에 엔티티 선이 없었습니다. 이제 둘 다 술어가 그 역할에 받는 타입 전부(`entity_types_of(role)`, 원장이 행을 거를 때 읽는 그 목록)를 씁니다. 선언 고치기 미리보기와 같은 함수 하나(`setup_bundle.column_typed_entity_types`)를 지납니다.
