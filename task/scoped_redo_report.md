@@ -72432,3 +72432,40 @@ PG         안 돌림 — 바뀐 것은 파이썬 접기와 이름 검사, SQL �
 1. 셋 중 어느 것인가요. ㄱ 이면 «실행이 갈리는 규칙 칸»을 들여도 되나요
 2. 게이트를 LLM 작업이 오래 쥐는 것 — 받아들이나요, 아니면 글을 몇 개씩 끊어 작업을 여럿으로 줄 세울까요(끊는 수는 값으로)
 3. ① (mapper_sdk 의 LLM 한 자리)은 어느 안이든 같아서 답을 기다리는 동안 먼저 지어도 되나요
+
+---
+
+## [10-06] 총괄 b5b335f2e · be0abe305 · cb522d1f2 ①②③ 착지 67b2e423b — 규칙 칸이 «언제»를 정하고, LLM 은 한 자리로
+
+어느 DB · 어느 스키마 · 지운 것 — 메모리 sqlite(StaticPool)와 임시 폴더만 · 박스 DB 안 씀 · 지운 것 0
+
+**잰 것** — 진짜 process_pending_groups · 진짜 묶음 함수 · 가짜 LLM 글마다 10.0s, 글 2 개 묶음 다음에 다른 표 묶음
+```
+                             다른 표 묶음이 시작한 때
+체인 안에서(전)                 20.032 s
+대조(글마다 0 s)               0.031 s
+run_in: operation(후)          0.016 s   줄 선 작업 1 · 후보는 작업이 돌 때 써짐(그 전 0 행)
+```
+**지은 것**
+```
+① utils/llm.ask_json (mapper_sdk.ask_json) — ASSY_LLM_BASE_URL · _MODEL · _API_KEY · _TIMEOUT_S, openai 는 함수 안에서 import
+   답은 JSON 객체로 읽고 아니면 LlmRefused 로 이름 대어 거절 · 키는 가리고 원래 예외를 꼬리로 안 붙임
+② text_links.ask_links (mapper_sdk.ask_links) — find_links 와 같은 행 + extractor('llm:<모델>') · evidence
+   사전 말을 답하면 키, 그 밖의 말은 타입 · 키 비고 구절만 · 확신도는 글이 말한 대로, 말 없으면 suspected
+   근거 문장이 글에 없으면 틀린 답 · 프롬프트 틀에 도메인 낱말 0 · find_links 행에도 extractor('rules') · evidence(그 문장)
+③ 규칙 칸 run_in(chain | operation, 없으면 chain) · rows_per_run(기본 6) — 문법 · 거절 · 체인 스켈레톤
+   묶음은 지금 도는 규칙만 묶음 함수에 넘기고, 성공하면 나머지를 rule_rows 작업으로 줄 세움(같은 세션 = 같은 커밋)
+   작업은 같은 _process_chain_transaction_group_sync 를 그 규칙으로 부름 · 실패는 체인의 _failure_record 하나
+   chain activity: queued:operation · run_id
+   LLM 규칙 견본은 rows_per_run 1 — 작업 하나 = 글 하나라 틀린 답은 그 글만 실패(쪼개거나 다시 돌리지 않음)
+지나는 김에  «선언 id 에 판 번호» 주석 일곱 (응용 4de947d82 목록)
+```
+**게이트**
+```
+변이 16    묶음이 미룬 규칙도 돌림 RED · 줄 세우지 않음 RED · 실패한 묶음도 줄 세움 RED · rows_per_run 안 읽음 RED · 작업으로 넘김 기록 안 함 RED · 작업이 다른 함수를 부름 RED · 모은 사건이 행을 안 나눔 RED · 작업 실패가 제 기록을 씀 RED · 나쁜 run_in 안 거절 RED · 아무 말에나 사전 키 RED · 글에 없는 근거를 받음 RED · 말 없는 확신도가 confirmed RED · find_links 에 extractor 없음 RED · 키를 안 가림 RED · 클라이언트 예외가 꼬리로 붙음 RED · 묶음 쓰기가 부른 쪽 채널을 씀 RED
+sqlite 전체 6 failed, 7817 passed, 330 skipped, 3 xfailed, 13071 warnings in 741.59s (0:12:21) — 박스 사유 밖: test_the_form_says_what_a_run_does_to_the_chain
+           그 하나는 «모든 작업의 쓰기는 아무것도 안 깨운다»를 재던 시험 — rule_rows 는 체인 채널로 써서
+           다음 규칙을 깨운다(체인 안과 같게). 그 노트를 시험에 적고, 채널을 재는 단언을 더함(변이 빨강)
+           고친 뒤 그 두 파일 27 passed, 82 warnings in 5.84s · 그 사이 코드 변경 0
+```
+**④ 상태** — 전수 끝 · 갈림 넷 답 받음(entity_type 자리가 {kind: column, column} 도 받음 · 키는 허용 타입 키 이름의 합 · 칸 타입에 속성 거절 · register 주어가 칸 타입이면 probe 없을 때 거절). 짓는 중입니다.
