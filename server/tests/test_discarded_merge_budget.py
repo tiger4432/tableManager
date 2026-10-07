@@ -346,7 +346,7 @@ async def test_chain_at_threshold_still_builds_the_items_it_ships(db_session):
     assert len(upserts) == 1
     assert len(upserts[0]["items"]) == BROADCAST_ITEM_LIMIT
     item = upserts[0]["items"][0]
-    assert item["data"]["prod_line"] == "L1"
+    assert item["data"]["prod_line"]["value"] == "L1"     # a wrapped cell, as every sender's (9eb902922 ①)
     assert item["created_at"] and item["updated_at"]
 
     assert len(selects_from(recorded, CHAIN_TABLE)) == BROADCAST_ITEM_LIMIT + 1, (

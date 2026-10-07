@@ -73110,3 +73110,225 @@ sqlite 전체 5 failed, 7851 passed, 338 skipped, 3 xfailed, 13214 warnings in 7
 칸 값은 grid.js rawCellValue 하나가 «감싼 셀»과 «날 값»을 둘 다 읽습니다.
 
 다음: ② 는 총괄 지시대로 세웠습니다 — cascade · written_by · 게이트 · 안내서 두 곳을 wt-impl 로컬 가지 wip-confirm-cascade 90107fa67 에 들고 있음(푸시 안 함). 실시간 모양 재현으로 갑니다.
+
+---
+
+## [10-07] 조인 누수 — 실시간 모양 재현: 24 칸에서 «안 샜다» (총괄 10-07, 고치지 않음)
+
+어느 DB · 어느 스키마 · 지운 것 — PG 시험 스키마(conftest pg_engine, 끝에 스키마째 DROP)에 표 셋(lv_log · lv_inv · lv_ref) · 박스 DB 안 씀 · 실서버 HTTP 는 requests send 를 막아 안 나감 · 지운 것: 그 스키마뿐
+프로브: 스크래치 test_zz_probe_live_leak.py (wt-impl 에 잠깐 넣고 돌린 뒤 뺌) — 1 passed, 6 warnings in 531.34s (0:08:51)
+
+```
+모양      선언 = 샘플 그대로: 로그(lv_log) -> decide(인벤토리 lv_inv, 키 lot, fields wafer, auto_confirm, rows=count 라 «파일마다 인벤토리 행이 바뀜»)
+          -> 자동 확정(참조 lv_ref 에 후보 하나) -> 조인(lv_inv -> lv_log, take wafer, allow_chain_trigger)
+동시에    감시자: 옵저버 스레드가 파일마다 on_created -> _handle_event -> 레인(일반 · 인라인) -> 파서 -> crud (파일마다 디바운스 1 s, 운영값)
+          체인: 별 스레드가 운영 바퀴를 같은 순서로 — pending_chain_events -> 같은 tx 마저 읽기(JSONB) -> trim -> group_events
+                -> merge_consecutive_groups -> process_pending_groups (진짜 함수들, 규칙만 이 선언)
+축        키(lot) 하나 · 파일 4 개 순차(파일당 3 행) · 확정이 k 번째 파일에서 일어나게 = 참조 행을 파일 k 바로 앞에 넣음
+          순서 asc/desc · 간격 0(파일 연달아) / quiet(체인이 멎은 뒤 다음 파일)
+          체인 지연 0 / 2.5 s(한 바퀴가 파일 둘 이상 늦게 돎 = 파일이 체인 한 바퀴보다 빨리 옴 · 한 바퀴에 여러 파일 사건이 섞임)
+결과      24 칸 중 «앞 파일 행이 빈 칸» 0 · 전부 settled=True · 체인 루프 예외 []
+```
+
+| 순서 | k | 간격 | 지연(s) | wafer 붙은 행 | 바퀴 | 파일+확정 한 바퀴 | 그중 파일 묶음이 먼저 |
+|---|---|---|---|---|---|---|---|
+| asc | 1 | 0 | 0.0 | 12/12 | 11 | 0 | 0 |
+| asc | 1 | 0 | 2.5 | 12/12 | 4 | 1 | 0 |
+| asc | 1 | quiet | 0.0 | 12/12 | 11 | 0 | 0 |
+| asc | 1 | quiet | 2.5 | 12/12 | 10 | 0 | 0 |
+| asc | 2 | 0 | 0.0 | 12/12 | 10 | 0 | 0 |
+| asc | 2 | 0 | 2.5 | 12/12 | 4 | 0 | 0 |
+| asc | 2 | quiet | 0.0 | 12/12 | 11 | 0 | 0 |
+| asc | 2 | quiet | 2.5 | 12/12 | 10 | 0 | 0 |
+| asc | 4 | 0 | 0.0 | 12/12 | 10 | 0 | 0 |
+| asc | 4 | 0 | 2.5 | 12/12 | 4 | 0 | 0 |
+| asc | 4 | quiet | 0.0 | 12/12 | 11 | 0 | 0 |
+| asc | 4 | quiet | 2.5 | 12/12 | 10 | 0 | 0 |
+| desc | 1 | 0 | 0.0 | 12/12 | 10 | 0 | 0 |
+| desc | 1 | 0 | 2.5 | 12/12 | 4 | 1 | 0 |
+| desc | 1 | quiet | 0.0 | 12/12 | 11 | 0 | 0 |
+| desc | 1 | quiet | 2.5 | 12/12 | 10 | 0 | 0 |
+| desc | 2 | 0 | 0.0 | 12/12 | 10 | 0 | 0 |
+| desc | 2 | 0 | 2.5 | 12/12 | 4 | 1 | 0 |
+| desc | 2 | quiet | 0.0 | 12/12 | 11 | 0 | 0 |
+| desc | 2 | quiet | 2.5 | 12/12 | 10 | 0 | 0 |
+| desc | 4 | 0 | 0.0 | 12/12 | 10 | 0 | 0 |
+| desc | 4 | 0 | 2.5 | 12/12 | 4 | 1 | 0 |
+| desc | 4 | quiet | 0.0 | 12/12 | 11 | 0 | 0 |
+| desc | 4 | quiet | 2.5 | 12/12 | 10 | 0 | 0 |
+
+읽는 법
+- «한 바퀴에 파일 묶음과 확정 묶음이 같이» 든 것이 4 번, 전부 «확정 묶음이 먼저»(4)였습니다. «파일 묶음이 먼저 · 같은 바퀴 뒤에 확정»은 0 번 — 이 박스에서 안 생겼습니다.
+  확정 쓰기는 그 트리거(dedup 의 인벤토리 쓰기)를 처리하는 묶음 «안에서» 커밋되므로, 그 뒤에 오는 파일 묶음의 조인 :target 은 이미 확정된 wafer 를 읽습니다.
+- 묶음 합치기(merge_consecutive_groups)는 «같은 규칙을 깨우는 이웃 묶음»만 접어서, 확정(인벤토리)과 파일(로그)은 한 묶음이 되지 않았습니다(이 선언에 max_group_rows 칸 없음).
+- 이 모양에서 앞 파일 행이 비려면 «확정의 인벤토리 쓰기를 조인 규칙이 안 받는» 일이 있어야 하는데, 조인 규칙(lv_join)이 돈 칸 24/24 · 칸마다 최소 2 번(출력 파일의 runs).
+
+이 박스 모양이 운영과 «다른» 자리 (안 잰 축)
+| 축 | 이 재현 | 운영에서 다를 수 있는 것 |
+|---|---|---|
+| 들어오는 길 | raws/ 에 평평한 파일, 일반 레인 인라인 | 소유자가 본 표는 raws/<폴더> — 트리 일꾼 경로 · 헤비 레인 |
+| 파일 크기 | 파일당 3 행 — 쓰기 한 번(한 커밋) | 수천 행 — 쓰기 청크마다 커밋이 갈려, 체인이 «파일의 앞 청크»만 보고 돌 수 있음 |
+| 확정이 가능해지는 때 | 참조 표에 행이 들어옴(체인 밖) | 후보의 출처가 무엇인지 모름 — 로그 자신의 칸이면 다른 순서 |
+| 키 | lot 하나 | 한 파일에 lot 여럿 · 인벤토리 키가 여러 칸 |
+| 체인 일꾼 | 한 스레드 | 운영 체인 일꾼 수 · 다른 규칙들이 같은 바퀴에 섞임 |
+
+여쭐 것: 운영에서 «빈 행 하나»에 대해 다음 셋을 볼 수 있으면 원인이 좁혀집니다 — 그 로그 행의 wafer 칸 층(cell_sources: 어느 source 가 무엇을 썼나) · 그 lot 의 인벤토리 행이 wafer 를 얻은 시각(감사 로그) · 그 시각 이후 조인이 쓴 행 수.
+그동안 차례대로 여섯째(체인 워커 방송)로 갑니다. 위 «안 잰 축» 중 무엇을 먼저 재야 할지 정해 주시면 그 축으로 다시 돌립니다(제 추천: 폴더 + 수천 행 파일 — 청크 커밋이 갈리는 자리).
+
+---
+
+## [10-07] 체인 워커 방송(여섯째)도 upsert_item 으로 — datetime 칸 표의 체인 쓰기가 행 갱신으로 닿는다 · 착지 dda476ce0 (총괄 9eb902922 ①)
+
+어느 DB · 어느 스키마 · 지운 것 — 게이트는 PG 시험 스키마에 표 둘(time_cell_probe · time_cell_src)을 시험마다 만들고 DROP · 박스 DB 안 씀 · 그 밖에 지운 것 0
+(BOX 읽기: 게이트의 TestClient 가 앱을 띄울 때 박스 chain_rules.json 을 읽는다 — 다섯 라우트 시험도 같음, 쓰기 없음)
+
+```
+원인     체인 워커의 «broadcast build»가 칸 값을 날로 실었다(None 만 감쌈) — datetime 칸이면 날 datetime 이
+         웹서버로 보내는 requests 직렬화에서 터지고, broadcast_at 이 안 찍혀 스윕이 늦은 «전체 새로고침»을 보냈다
+         (응용 레인 cbd09746b 이 PG 로 잼 — 이 보고는 그 결과를 다시 재지 않았다)
+고침     칸은 모두 감싼 셀 · item 은 event_constants.upsert_item — 다섯 격자 라우트와 같은 함수
+         upsert_item 을 부르는 줄(server, 시험 빼고): 6 · 「"event": "batch_row_upsert"」 메시지 머리: 6 (카나리아 def upsert_item 1)
+클라     바꿀 것 없음 — batch_row_upsert 를 읽는 곳은 websocket.js 한 곳(item.data 를 행에 섞음), 칸 값은 grid.js 의 한 함수가
+         감싼 셀 · 날 값 둘 다 읽는다. 감싼 datetime 셀 읽기는 이미 grid_datetime_render_harness B1 이 단언 — 16 passed, 0 failed; 6/6 defects caught, 0 escaped; 2/2 controls escaped.
+게이트   표가 여섯 줄: 다섯 라우트 + 체인(조인이 같은 행의 v 를 씀, 방송을 json.dumps 에 통과시켜) — 방송된 칸 == 격자 읽기 — 6 passed, 16 warnings in 7.99s
+         체인 줄의 시작 행은 v 를 비운다: 사람이 쓴 층이 체인 층보다 앞서 «보이는 값이 안 바뀌면» 방송 item 이 0 이다(처음 짠 고정물이 그것으로 빨갰음)
+변이     3/3 빨강(전부 failed 시험) · md5 전후 같음
+         RED  the chain rides a value bare again (only an empty cell wrapped) TypeError: string indices must be integers, not 'str'
+         RED  the chain builds its item by hand, past upsert_item            TypeError: Object of type datetime is not JSON serializable
+         RED  the chain spells a cell by str                                 AssertionError: assert {'e': None, '...:00:00+09:00'} == {'e': None, '...:00:00+09
+크기      5 files changed, 99 insertions(+), 37 deletions(-)
+sqlite 전체 6 failed, 7850 passed, 339 skipped, 3 xfailed, 13151 warnings in 753.86s (0:12:33) — 박스 사유 밖: test_chain_at_threshold_still_builds_the_items_it_ships[asyncio]
+         -> test_discarded_merge_budget 이 «날 칸»(data.prod_line == "L1")을 단언하고 있었다 — 같은 커밋에서 감싼 칸으로 고치고 그 파일만 다시 돌림(9 passed, 34 warnings in 3.12s)
+```
+
+---
+
+## [10-07] 조인 누수 둘째 판 — 폴더 · 트리 일꾼 · 헤비 레인 · 청크 커밋 · lot 셋: 16 칸에서 «안 샜다» (총괄 ffb694d57, 고치지 않음)
+
+어느 DB · 어느 스키마 · 지운 것 — PG 시험 DB 의 프로세스마다 스크래치 스키마(conftest pg_engine, 끝에 스키마째 DROP) · 표 셋(lw_log · lw_inv · lw_ref) · 박스 DB 안 씀 · 실서버 HTTP 막음
+  지운 것: 위 스키마들 + «중간에 멈춘» 첫 실행(케이스 출력을 끝에 한 번만 쓰는 꼴이라 55 분 제한에 다 잃을 판)이 남긴 스키마 assy_pytest_pg_39328_gw0 하나(DROP SCHEMA CASCADE) — 지금 다시 찾으면: database: assy_test · found: [] · left after drop: 0
+
+```
+모양      첫 판과 같은 선언(로그 -> decide 인벤토리 · rows=count -> 자동 확정(참조 표 후보 하나) -> 조인 take wafer)
+들어오는 길 raws/<폴더>/ 에 파일 — 폴더 생성 사건(on_created) + 주기 스윕(request_tree_ingest, 0.5 s) -> 트리 일꾼 -> _handle_event
+          -> 헤비 레인(HeavyIngestionLane 일꾼 1, heavy_file_mb 0.01 로 이 파일들을 헤비로) -> 파서 -> crud
+파일      4 개 · 파일당 lot A, B, C 각 800 행 = 2400 행 · 감시자 쓰기 청크 1000 행(코드 batch_size) -> 청크마다 커밋
+확정 시점  lot 마다 다른 파일: 참조 행이 «그 파일의 첫 청크가 쓰일 때» 들어감 — 투입 순번 {"A": 1, "B": 2, "C": 4} (참조 착지 48 번 = 16 칸 × 3 lot)
+체인      첫 판과 같은 운영 바퀴 스레드(pending -> 같은 tx -> trim -> group -> merge -> process_pending_groups)
+축        행 배치 blocked(lot 별로 몰림)/interleaved(섞임) × 순서 asc/desc × 간격 0/quiet × 체인 지연 0/2.5 s = 16 칸(뺀 칸 없음)
+결과      빈 칸 0 · 파일 상태 {'SUCCESS': 4} · 체인 루프 예외 []
+          «체인이 한 파일을 여러 바퀴에 나눠 본»(앞 청크만 본 바퀴가 있던) 칸 14/16 · «파일과 확정이 한 바퀴»였던 칸 12/16
+실행      blocked_asc: 1 passed, 6 warnings in 284.72s (0:04:44) | blocked_desc: 1 passed, 6 warnings in 280.65s (0:04:40) | interleaved_asc: 1 passed, 6 warnings in 276.03s (0:04:36) | interleaved_desc: 1 passed, 6 warnings in 288.51s (0:04:48)
+```
+
+| 배치 | 순서 | 간격 | 지연(s) | wafer 붙은 행 | 빈 칸 | 바퀴 | 여러 바퀴에 나뉜 파일 | 파일+확정 한 바퀴 |
+|---|---|---|---|---|---|---|---|---|
+| blocked | asc | 0 | 0.0 | 9600/9600 | 0 | 8 | 1/4 | 3 |
+| blocked | asc | 0 | 2.5 | 9600/9600 | 0 | 6 | 3/4 | 1 |
+| blocked | asc | quiet | 0.0 | 9600/9600 | 0 | 19 | 4/4 | 1 |
+| blocked | asc | quiet | 2.5 | 9600/9600 | 0 | 15 | 3/4 | 0 |
+| blocked | desc | 0 | 0.0 | 9600/9600 | 0 | 8 | 2/4 | 3 |
+| blocked | desc | 0 | 2.5 | 9600/9600 | 0 | 6 | 1/4 | 1 |
+| blocked | desc | quiet | 0.0 | 9600/9600 | 0 | 19 | 4/4 | 1 |
+| blocked | desc | quiet | 2.5 | 9600/9600 | 0 | 14 | 0/4 | 0 |
+| interleaved | asc | 0 | 0.0 | 9600/9600 | 0 | 7 | 1/4 | 3 |
+| interleaved | asc | 0 | 2.5 | 9600/9600 | 0 | 6 | 1/4 | 1 |
+| interleaved | asc | quiet | 0.0 | 9600/9600 | 0 | 18 | 4/4 | 1 |
+| interleaved | asc | quiet | 2.5 | 9600/9600 | 0 | 14 | 0/4 | 0 |
+| interleaved | desc | 0 | 0.0 | 9600/9600 | 0 | 7 | 2/4 | 3 |
+| interleaved | desc | 0 | 2.5 | 9600/9600 | 0 | 5 | 3/4 | 2 |
+| interleaved | desc | quiet | 0.0 | 9600/9600 | 0 | 18 | 4/4 | 1 |
+| interleaved | desc | quiet | 2.5 | 9600/9600 | 0 | 14 | 2/4 | 0 |
+
+읽는 법
+- 둘째 판이 노린 두 칸은 실제로 생겼습니다: 앞 청크만 본 바퀴가 있던 칸 14/16, 파일과 확정이 한 바퀴에 섞인 칸 12/16. 그 칸들에서도 앞 파일 행이 비지 않았습니다.
+- lot C 는 마지막(4 번째) 파일에서 확정되는데, 그 lot 의 1~3 번째 파일 행이 전부 채워졌습니다 — 확정 «뒤» 조인이 앞 행을 채운 것이고, 이 재현이 공허하지 않다는 근거입니다(파일별 칸은 출력 파일의 per lot/file).
+
+이번에도 못 덮은 축
+| 축 | 이 재현 | 운영에서 다를 수 있는 것 |
+|---|---|---|
+| 체인 루프 | 운영 바퀴의 함수들을 같은 순서로 부르는 스레드 | 진짜 start_chain_ingestion_worker — LISTEN/NOTIFY 로 깨기 · 리플레이 스윕 · 방송 · 미전달 스윕이 같은 바퀴에 섞임 |
+| 조인 실행 길 | 묶음 안에서 바로(run_in 없음) | 선언에 run_in: operation 이 있으면 큰 묶음이 «작업»으로 미뤄져 스케줄러가 돌림 — 이 재현엔 스케줄러 없음 |
+| 다른 규칙 | 이 세 선언뿐 | 같은 표를 읽고 쓰는 다른 규칙 · max_group_rows 로 묶음이 합쳐지는 선언 |
+| 동시 쓰기 | 감시자와 체인뿐 | 같은 표를 사람이 격자에서 고침 · 다른 표 적재가 같은 헤비 레인에 줄 섬(일꾼 수) |
+| 파일 크기 · lot 수 | 2400 행 · lot 3 | 더 큰 파일(청크 10 개 이상) · 한 파일에 lot 수십 |
+| 확정 후보의 출처 | 별도 참조 표에 행이 들어옴 | 후보가 로그 자신의 칸이나 다른 체인 표에서 올 때 |
+| 재기동 | 없음 | 파일 도중 감시자 · 체인 재기동(체크포인트로 이어 적재) |
+
+여쭐 것: 위 표에서 운영에 «있는» 것을 알려 주시면 그 축으로 다시 돌립니다 — 특히 그 선언에 run_in: operation 이 있는지(선언 한 줄이라 소유자 상설의 «운영 데이터»가 아니라 «선언»입니다).
+그동안 다음 차례인 테스트 런 원자 견본으로 갑니다 — 짓기 전에 갈래 하나와 철자를 따로 올립니다.
+
+---
+
+## [10-07] 조인 누수 — 조건 전수 census (총괄 1c5298491, 고치지 않음)
+
+어느 DB · 어느 스키마 · 지운 것 — 강제 시험은 sqlite 메모리(시험마다 새 엔진) · PG 안 씀 · 박스 DB 안 씀 · 지운 것 0
+🔴 실수 하나: 강제 시험 첫 실행에서 `run_in` 두 칸의 소급 층이 실서버 127.0.0.1:8080 /internal/events/broadcast 로 알림 POST 를 보냈습니다(토큰이 없어 401 거절 — 서버 상태 영향 없음). 프로브에 HTTP 막기를 넣고 다시 돌렸고 그 실행의 8080 줄은 0 입니다. 아래 결과는 다시 돌린 것입니다.
+
+```
+물음     인벤토리 행이 wafer 를 얻었는데 같은 lot 의 로그 행이 비어 남을 수 있는 조건
+센 길     인벤토리 쓰기(before_flush 사건 짓기) -> 사건 가져오기(tick) -> 묶음 -> 받기(fires · _rule_accepts_event) -> run_in 갈림
+         -> run_rule -> 조인(join_into) -> 로그 행 쓰기(apply_chain_writes -> crud.apply_batch_updates 와 crud 도우미 두 겹)
+센 것     함수 71 개의 AST — return(이른 것 + 마지막) · continue · break · 컴프리헨션 if · raise = 노드 235 (HEAD 6bc502984)
+         break 4 · continue 36 · filter 44 · raise 23 · return 80 · return-last 48
+명령      python census_join_leak_path.py (AST) -> python classify_census.py (노드마다 조건 코드, 이름표 없는 노드 0 · 안 쓰인 줄 예외 0 을 단언)
+카나리아   목록의 함수 71 개를 다 찾음(못 찾으면 멈춤 — 첫 실행에서 `run` 이라는 없는 이름을 잡음) · tick 의 pending 루프 1 개 · 노드 > 0
+         첫 셈은 «마지막 return» 을 뺐다가 `_rule_accepts_event` 의 거절이 바로 그 줄이라 넣어 다시 셈
+AST 밖    SQL 술어(조인의 require 거르기 · 키 tuple IN 비교 — 표기 차이가 여기서 «짝 없음»이 됨) · 층 우선순위(보이는 값 고르기)는 노드가 아니라 못 셈
+강제 시험  소유자 흐름 그대로(로그 -> 인벤토리 파생 rows=count -> 자동 확정 -> 조인) · f1 -> 참조 -> f2(여기서 확정) -> f3, 묶음마다 끝까지 · 9 passed, 27 warnings in 2.53s
+         대조군(조인에 allow_chain_trigger 있음): f1 3/3 · f2 3/3 · f3 2/2 — 대조군에 없던 줄 0 · 기준 쪽 조인(cl_join) 실행 줄 2 (대조군 2) · 사건 SUCCESS 10
+```
+
+| 코드 | 조건 | 노드 | 술어 | 남는 것(코드로 읽음) | 소유자 흐름이 닿나 | 강제 시험 결과 |
+|---|---|---|---|---|---|---|
+| A0 | 동적 표가 하나도 없다 | 1 | `if not dynamic_classes: return` | 없음 | 아니오 | 안 함 — 설치에 표가 있으면 안 탐 |
+| A1 | 그래프 메타 칸만 바뀐 행 | 1 | `all(col in graph_meta_cols ...)` -> continue | 없음 | 아니오 — wafer 는 메타 칸 아님 | 안 함 |
+| B1 | 처리된 사건 · 다른 데몬의 CONTROL 사건 | 2 | pending 질의 · tick 의 CONTROL 건너뛰기 | 없음 | 아니오 — 인벤토리 EDIT | 안 함 |
+| B2 | 깊이 한도 초과 | 4 | `depth > max_chain_depth`(기본 8) | WARNING [Chain Depth] · 사건 FAILED | 선언에 max_chain_depth 가 2 이하일 때만(확정 사건 홉 2) | f1 0/3 · f2 0/3 · f3 2/2 — 대조군에 없던 줄 1: WARNING [Chain Depth] outbox#<n> reached hop 2 over 1 · 기준 쪽 조인(cl_join) 실행 줄 1 (대조군 2) · 사건 FAILED 1 · SUCCESS 8 |
+| B3 | 행 예산 자르기 | 2 | `kept and total + cost > budget` -> break | INFO Deferring | 예 — 다음 바퀴로 미룸(잃지 않음) | 안 함 — 미룸 |
+| C1 | 묶음 키 · 이웃 묶음 합치기 | 8 | group_id · merge_consecutive_groups | 없음 | 예 — 묶는 모양만 바뀜 | 첫·둘째 판 40 칸에서 안 샘 |
+| C2 | 멈춤 | 4 | `chain_control.paused()` | WARNING paused | 운영자가 멈출 때 — 재개하면 그대로 | 안 함 |
+| C3 | 막힌 대상 표 · 행이 아직 안 보임 | 2 | blocked_targets · ROWS_NOT_VISIBLE 미룸 | INFO deferring | 예 — 미룸, 상한 넘으면 C4 | 안 함 |
+| C4 | 묶음 · 작업 실패(예외 · 쓰기 실패) | 5 | `return False` · raise | ERROR 줄 · 사건 FAILED · 재시도 | 오류가 날 때 | 안 함 — 흔적이 큼 |
+| D1 | run_in: operation -> 작업으로 미룸 | 5 | `runs_as_operation(rule)` | INFO [Retroactive] queued run_id · 대기 작업 | 선언에 limits.run_in 이 있을 때만 | f1 0/3 · f2 0/3 · f3 0/2 — 대조군에 없던 줄 4: INFO [ChainRule] rule=enrichment_dedup:cl_decide kind=declared:enrich target=cl_inv rows_i / INFO [Retroactive] queued run_id=<id> op=rule_rows params={'rule': 'cl_join', 'transaction · 기준 쪽 조인(cl_join) 실행 줄 0 (대조군 2) · 사건 PENDING 5 · SUCCESS 8 |
+| D1b | 미룬 작업의 사건이 아웃박스에서 사라짐 | 1 | `if gone: raise RetroactiveRefused` | 작업 failed + 문장 | D1 이고 작업이 보관 기한 뒤에 돌 때 | 안 함 |
+| D2 | 꺼진 규칙 | 2 | `rule_shape.is_switched_off(rule)` | 활동 기록 skipped:disabled | 아니오 — 켜져 있음 | 안 함 |
+| D3 | 다른 규칙의 리플레이 | 4 | `only is not None and name != only` | 없음 | 아니오 — 라이브 | 안 함 |
+| D4 | 다른 표 · 걸린 사건 없음 | 1 | `trigger_table != event.table_name` | 없음 | 아니오 | 안 함 |
+| D45 | (D4 의 활동 기록 갈래) | 1 | `_rule_outcome_before_running` 끝 | 활동 기록 skipped:not_triggered | 아니오 | 안 함 |
+| D5 | 바뀐 칸이 규칙 칸에 안 닿음 | 3 | `columns_meet(wanted, changed)` | INFO [Chain] rule X skipped: none of [...] changed | 아니오 — 확정은 wafer 를 씀 | 안 함 — 대조군에도 이 줄(dedup 의 rows 쓰기) |
+| D6 | 체인 쓰기 + 조인에 allow_chain_trigger 없음 | 2 | `return bool(rule.get("allow_chain_trigger"))` | 없음 — 사건 SUCCESS, 활동 기록 이유는 다음 묶음에 덮임 | 예 — 통합 조인은 이 칸을 적어야 켜짐, 동봉 샘플 조인 2 개 중 2 개가 안 적음 | f1 0/3 · f2 0/3 · f3 2/2 — 대조군에 없던 줄 0 · 기준 쪽 조인(cl_join) 실행 줄 0 (대조군 2) · 사건 SUCCESS 9 |
+| D7 | 소급 쓰기 + cascade 없음 | 2 | `if not cascade_of(payload): return False` | 없음 (D6 와 같음) | 확정을 소급 작업(enrichment_confirm)으로 할 때 | f1 0/3 · f2 0/3 · f3 2/2 — 대조군에 없던 줄 0 · 기준 쪽 조인(cl_join) 실행 줄 1 (대조군 2) · 사건 SUCCESS 9 |
+| D8 | 자기 선언의 쓰기 | 3 | `wrote == {declaration_of(rule)}` | 없음 | 아니오 — 확정 쓰기의 작성자는 확정 규칙 | 안 함 |
+| D9 | 트리거 사건 아님 | 3 | event_type 이 CREATE/EDIT 아님 | 없음 | 아니오 — EDIT | 안 함 |
+| DF | (받기 술어를 묻는 자리) | 6 | `fires(r, e)` 를 부르는 거르기 | - | - | D2~D8 의 행 |
+| DA | (받기 거절을 D6~D8 로 나누는 자리) | 1 | `if not _rule_accepts_event` -> FIRE_REFUSED_CHAIN | - | - | D6~D8 의 행 |
+| DS | 아무 규칙도 안 받은 사건 -> SUCCESS(다시 안 옴) | 1 | `if not valid_events: return True` | 없음 — 이것이 D6 · D7 의 «이미 처리» | D6 · D7 와 같이 | D6 · D7 결과에 포함 |
+| E0 | 선언 결함 · 구현 못 찾음 | 21 | _missing · resolve · map metadata | 규칙 줄 refusal= 또는 ERROR | 아니오 — 선언이 맞으면 | 안 함 |
+| E1 | require 칸이 빈 트리거 행 | 2 | `held_back` 의 is_blank_value | INFO not handed over | 선언에 require 가 있을 때만 | f1 3/3 · f2 3/3 · f3 2/2 — 대조군에 없던 줄 1: INFO [ChainRule] rule=enrichment_dedup:cl_decide kind=declared:enrich target=cl_inv rows_i · 기준 쪽 조인(cl_join) 실행 줄 2 (대조군 2) · 사건 SUCCESS 10 |
+| E2 | 넘어온 행 0 · 맞는 왼쪽 행 0 | 5 | propose · _left_rows_for_reference | 규칙 줄 refusal= | 아니오 | 안 함 |
+| E3 | 로그 행의 키가 전부 빈 값 | 2 | `_every_part_blank(key)` | INFO every join key empty | 그 행은 lot 이 없어 «같은 lot» 이 아님 | 안 함 |
+| E4 | 오른쪽 짝 없음(표기 차이 포함) | 1 | `not row.matched` | 페이지 전부일 때만 refusal=, 일부면 없음 | 아니오 — 인벤토리 lot 은 그 로그 lot 에서 파생 | 안 함 |
+| E5 | 오른쪽 행 2 개 이상 | 1 | fanned (`n > 1`) | WARNING operator_line | 아니오 — 아래 거절 | 선언이 거절됨: cl_decide: derived table composite_key_source must be a subset of decision_key (violation: ['rows']) |
+| E6 | blank: skip + 빈 답 | 3 | `_unsaid` | INFO blank answer(s) not written | 아니오 — wafer 는 값 | 안 함 |
+| E7 | row_id 없는 payload 거르기 | 1 | `if p.get("row_id")` | 없음 | 아니오 | 안 함 |
+| E8 | 접힌 사건의 행을 다시 못 읽음 | 3 | unreadable · row None | INFO deferring 또는 실패 | 행이 그 사이 지워졌을 때 | 안 함 |
+| F1 | 키 없는 체인 쓰기 전부 거절 | 1 | key gate `if not kept: continue` | ERROR [ChainKeyGate] | 아니오 — 조인은 row_id 로 씀 | 안 함 |
+| F2 | 버전 게이트 | 5 | version_column 선언 + 쓰기에 버전 칸 없음 | WARNING 첫 회 + INFO 묶음마다 | 로그 표에 version_column 이 있을 때 — 그때는 «모든» 행이 빔 | f1 0/3 · f2 0/3 · f3 0/2 — 대조군에 없던 줄 4: INFO [VersionGate] 'cl_log' version column 'v', source 'chain_ingestion': version_missing= / INFO [VersionGate] 'cl_log' version column 'v', source 'chain_ingestion': version_missing= · 기준 쪽 조인(cl_join) 실행 줄 2 (대조군 2) · 사건 SUCCESS 8 |
+| F3 | 선언 안 된 칸 · 매핑 안 된 칸 | 4 | loadable · unmapped | 떨굼 보고 | 아니오 — wafer 는 선언된 칸 | 안 함 |
+| F4 | 빈 값 + 비울 수 없는 원천 | 1 | `is_blank_value and not can_mean_emptied` | 없음 | 아니오 — 값 W | 안 함 |
+| F5 | 보기(view)에 쓰기 | 1 | refuse_write_to_view | 예외 | 아니오 | 안 함 |
+| F6 | virtual join 중복 거절 | 14 | refuse_virtual_join_duplicates | 거절 | 아니오 | 안 함 |
+| F7 | 키 조립 · nokey 채우기 | 14 | assemble · fill_nokey_keys | - | 아니오 — 파일 쓰기 쪽 | 안 함 |
+| F8 | replace_map 범위 | 20 | derive_replace_map_scope 등 | 거절 | 아니오 — 조인은 replace_map 안 씀 | 안 함 |
+| F9 | 키 충돌 재시도 · 제약 거절 | 10 | BK unique 위반 등 | ERROR · 재시도 | 드묾 — 실패(C4)로 흔적 | 안 함 |
+
+건너뛰기가 아닌 값 반환(N0): 62 노드 — 노드별 이름표는 스크래치 census_labeled.json
+
+### 빈 행을 남기고 «아무 흔적도» 안 남기는 조건 (강제 시험으로 확인): D6 · D7
+- **D6 — 체인 쓰기를 조인이 안 받음.** 자동 확정은 체인 쓰기이고, 통합 조인 선언은 `allow_chain_trigger: true` 를 «적어야만» 체인 쓰기에 깹니다(rule_shape 주석: 「NOTHING HERE OPTS IT INTO ITS OWN WRITES」). 동봉 샘플(config/sample/chain_rules.json.sample)의 조인 2 개 중 이 칸을 안 적은 것 2 개: step_phase_to_wafer_process · sample_unified_join.
+  그러면 확정 전 파일과 «확정이 일어난 파일»의 로그 행이 비고, 확정 뒤 파일만 :target 쪽(파일 쓰기에 깸)으로 채워집니다 — 소유자가 본 모양 그대로입니다.
+  남는 것: 그 사건은 SUCCESS(DS)이고, 기준 쪽 조인의 실행 줄이 대조군보다 적을 뿐 그것을 말하는 줄이 없습니다. 활동 기록의 «마지막 결과»는 그 묶음에서 이유(FIRE_REFUSED_CHAIN)를 적지만(코드로 읽음) 다음 묶음에 덮입니다 — 강제 시험 끝에서 cl_join 의 마지막 결과 「skipped:not_triggered」 = 대조군 「skipped:not_triggered」.
+- **D7 — 소급 쓰기(cascade 없음)를 조인이 안 받음.** 확정을 소급 작업으로 돌렸을 때 — 같은 모양 · 같은 무흔적. ② 로 지어 둔 것(wip-confirm-cascade)이 이 칸입니다.
+
+흔적이 남는 조건(강제 시험으로 확인): B2 깊이 한도(WARNING · FAILED) · F2 버전 게이트(WARNING · INFO, 이때는 «모든» 행이 빔) · D1 run_in 작업이 안 돎(INFO queued · 대기 작업)

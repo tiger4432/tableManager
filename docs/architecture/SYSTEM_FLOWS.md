@@ -437,6 +437,7 @@ batch_row_upsert        발신 6곳 · 칸 집합 «셋»    7칸(체인) / 7칸
 batch_row_delete        발신 6곳 · 칸 집합 «셋»    4칸(체인) / 3칸 / 5칸
 batch_refresh_required  발신 9곳 · 칸 집합 «넷»    4칸(omitted 팔) / 3~4칸(created_logs 조건부) / 6칸(체인) / 3칸(스윕)
 ```
+🆕 10-07 `a61cdb35f` · `dda476ce0` — `batch_row_upsert` 의 «항목»은 발신 6 자리(`main.py` 다섯 + 체인 워커) 모두 `event_constants.upsert_item` 하나로 짓는다(`data` = `jsonable_encoder`, 칸은 모두 감싼 셀). 메시지 머리의 칸 집합은 그대로다. 체인 워커는 `dda476ce0` 전까지 값을 맨값으로 실어, datetime 칸 행의 메시지가 직렬화에서 실패하고 안전망 스윕의 표 새로고침으로만 닿았다(`cbd09746b` 잼).
 🔴 **그리고 `created_logs` 를 «통째로 버리는» 가드가 넷 있는데(`main.py:436·3035·3467·3534·5609`, `<= 5000`) 버렸다는 수를 아무도 안 싣는다.** `deleted_row_ids_omitted` 가 없애려던 침묵과 «같은 모양»이 한 층 위에 그대로 있다.
 
 ⚠️ `event_constants.py:125` 의 주석이 `MAX_AUDIT_VALUE_TRUNCATION_SUFFIX` 를 상수처럼 부르는데 **그 이름은 파일에 없다**(`truncate_audit_value` 가 f-string 으로 인라인, `:268`·`:277-279`).
