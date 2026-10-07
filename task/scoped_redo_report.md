@@ -73751,3 +73751,65 @@ ca_file   git grep -c ca_file -- server RUN.md docs/guide = 0 (출력 없음)
 남긴 것    docs/guide/DEPLOY_SETUP.md 의 «켜는 것 … + 환경변수 ASSY_OIDC_CLIENT_SECRET + 재기동» — 응용 세션 문서라 안 건드림. 이제 «비밀은 있으면»
           RUN.md 의 앞 10-07 SSO 절 제목 «비밀 하나» — 새 절이 «이제 있으면»이라고 적음
 ```
+
+---
+
+## [10-07 밤] 멈춘 수집 폴더(③) — 걸림 줄 · 스윕 줄 · 파일 쓰기 잠금 상한 · 착지 3959975eb (총괄 ③ · 갈래 셋 ㄱ · ㄴ · ㄱ)
+
+어느 DB · 어느 스키마 · 지운 것 — sqlite 는 메모리 · PG 게이트와 PG 변이는 assy_test DB 의 pg_engine 스크래치 스키마(프로세스 이름 · 끝에 DROP 하고 카탈로그로 확인) · 그 안에서 시험이 만든 표 둘과 그 표 이름의 file_ingestion_logs · checkpoints 행을 지움 · public 안 씀
+
+```
+보이게    heartbeat.stalled_lines(name, probe, shown) — 걸림 줄 «한» 함수. 체인 워커와 감시자(주기 스윕 루프, 박동 칸마다)가 부르고 각자 제 이름표로 찍는다
+          감시자 줄: [Watcher] ingest <파일>: stalled N s in <단계> (folder <폴더> · db pid <pid>) - <db_waits 문장>. 걸림마다 한 번(갈래 1 ㄱ)
+          체인 줄은 바이트 그대로 — pid 를 못 적은 경우의 문구만 «for this group» -> «for this work»
+          스윕이 처리 중 폴더에서 None 을 받으면: [<표>] 📂 Tree ingestion of '<폴더>' has been running for N min (now: ingest <파일>)
+풀리게    database._bound_the_file_writes(after_begin) — 파일 채널 트랜잭션마다 SET LOCAL lock_timeout · statement_timeout
+          값 ingestion_settings.json lock_timeout_seconds(없으면 300 = 걸림 판정) · statement_timeout_seconds(없으면 끔) · 숫자 아니면 «없음»
+          청크가 55P03(db_safety.waited_past_the_lock_timeout) -> 표본기 정지 · LockWaitedOut(사유 = 표본기가 본 잠금 쥔 쪽 문장)
+          그 파일은 봉인 · 이동 없이 FAILED 행 하나(retry_count = 마지막 성공 뒤 이번 전 잠금 실패 수), 일꾼 · 폴더는 다음 파일로(갈래 2 ㄴ)
+          트리 폴더는 다음 스윕이 원래 다시 돌리고, raws/ 바로 아래 파일은 스윕의 (mtime, size) 기억을 waiting_on_a_lock 이 넘긴다
+```
+
+### 게이트
+
+```
+PG        4 passed, 8311 deselected in 32.89s — 막힘 재현(다른 연결이 f1 둘째 청크의 행을 FOR UPDATE, 상한 1 s)
+          f1 FAILED «… (1 s) in chunk 2 - waiting Lock:transactionid on pid <쥔 pid> …» retry 0 · 다음 스윕 retry 1 · 제자리 · checkpoint IN_PROGRESS 1000
+          같은 폴더 f2 SUCCESS · 잠금 푼 뒤 스윕이 f1 을 마저 넣고 표의 행 · 셀 값 = 같은 파일을 한 번 넣은 대조군(갈래 2 의 칸)
+          raws/ 바로 아래 파일이 같은 감시자의 다음 스윕에 다시 돈다 · 걸림 줄 한 번(루프가 다섯 칸 더 돈 뒤에도) · 스윕 줄 · statement_timeout 이 같은 트랜잭션에 걸림
+sqlite    1 passed, 4 skipped in 0.30s — 기본값 300 = 걸림 판정 · 틀린 철자는 기본값 · null/0 은 상한 없음
+체인 걸림  6 passed, 8309 deselected in 16.99s (기존 시험 그대로 — 옮긴 함수)
+변이      13/13 빨강(failed 시험으로 센 수) · md5 전후 같음
+          첫 판에 초록 둘이었다: the stalled line repeats every slice · the lock limit has no default — 앞은 시험이 첫 줄 직후 루프를 세워 반복을 볼 틈이 없었고(1 s 더 돌게 고침), 뒤는 sqlite 칸이라 PG 판에 안 들었다. 둘 다 다시 빨강
+          RED  the lock wait is not named
+          RED  no limit is set on a file's transaction
+          RED  the statement limit is not set
+          RED  a file that waited is sealed like any failure
+          RED  the retry number stays 0
+          RED  the holder is not named
+          RED  a file that waited is not remembered
+          RED  the sweep does not try a waited top-level file again
+          RED  the folder is not noted
+          RED  the sweep says nothing of a folder in flight
+          RED  the stalled line repeats every slice
+          RED  the sweep loop does not ask the stalled line
+          RED  the lock limit has no default
+첫 전체    주기 루프를 흉내 낸 기존 시험(test_an_idle_watcher_still_beats)이 새 메서드를 몰라 빨강 -> 걸림 줄 함수를 모듈 함수로 옮김(그 변이 다시 빨강)
+          같은 실행에서 test_config_reload_integrity::test_h3 도 졌으나 혼자 통과 — test_inv_9_1 과 같은 파일 감시 타이밍 계열
+sqlite 전체 5 failed, 7962 passed, 345 skipped, 3 xfailed, 13176 warnings in 728.62s (0:12:08)
+          tests\test_a_sentence_says_itself_only_for_the_rows_it_names.py::test_the_sample_is_written_in_the_one_format_both_writers_use
+          tests\test_core_alignment_mapper.py::test_live_mapper_and_tracked_sample_are_byte_identical
+          tests\test_core_usage_mapper.py::test_live_mapper_and_tracked_sample_are_byte_identical
+          tests\test_dt_inventory_metadata_mapper.py::test_live_mapper_matches_tracked_sample
+          tests\test_one_place_decides_where_the_server_is.py::test_the_repo_root_is_one_above_it
+RELEASE   예시를 착지한 RELEASE_LOG 에서 읽어 제품의 file_write_timeouts 로 읽음 — example {"lock_timeout_seconds": 300, "statement_timeout_seconds": null} -> (lock s, statement s) = (300.0, None)
+```
+
+```
+곁에 고친 것  실패한 청크의 표본기가 멈추지 않고 계속 돌던 것 — 이제 실패 갈래에서도 멈춘다(사유를 읽으려면 멈춰야 해서)
+안 잰 것      운영의 정상 잠금 대기 길이 — 300 s 는 판정(걸림과 같은 수)이지 측정이 아니다. RUN.md 에 줄이고 늘리는 기준을 적었다
+남은 틈       외부 소스(raws/ 밖) 파일 — _handle_event 로 같은 process_with_retry 를 지나 같은 상한 · 같은 FAILED 갈래를 탄다(folder 사실은 없어 «folder -»).
+             그러나 외부 스윕의 기억(_external_sweep_attempted)은 waiting_on_a_lock 을 안 본다 -> 그 파일은 다음 외부 스윕에 다시 돌지 않는다
+             (재기동이나 파일이 바뀔 때까지). 짓지 않았다 — 물음으로 올림. 시험도 없다
+본 것(안 지음) load_ingestion_settings 가 utf-8 로 연다 — BOM 이 붙은 ingestion_settings.json 은 경고 한 줄 뒤 전부 기본값이 된다. SSO 와 같은 종류
+```
