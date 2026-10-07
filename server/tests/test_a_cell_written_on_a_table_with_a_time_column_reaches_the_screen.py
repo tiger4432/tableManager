@@ -1,8 +1,10 @@
 # -*- coding: utf-8 -*-
-"""총괄 9eb902922 ① (소유자 10-07 「Object of type datetime is not JSON serializable」): a grid cell
-write on a table with a datetime column committed, then its broadcast died in `json.dumps` - the row's
-datetime cell rode `items[].data` as a Python datetime - so no screen heard of the write. The item is
-spelled as the grid's read spells it. On PostgreSQL: sqlite's DateTime refuses the written text first."""
+"""총괄 9eb902922 ① (소유자 10-07 「Object of type datetime is not JSON serializable」): five grid
+routes announce a changed row as a `batch_row_upsert` item, and each passed the row's data as it
+held it - a datetime cell is a Python datetime there, so `json.dumps` died AFTER the write had
+committed (the cell write's broadcast; the four cell-menu routes raised outright). They all build
+the item in `event_constants.upsert_item` now. On PostgreSQL: sqlite's DateTime refuses the written
+text first."""
 import json
 
 import pytest
@@ -11,7 +13,8 @@ from database import crud, models
 
 TABLE = "time_cell_probe"
 ENTRY = {"business_key": "k", "composite_key_source": ["k"],
-         "column_types": {"k": "string", "when": "datetime", "v": "string"}}
+         "column_types": {"k": "string", "when": "datetime", "n": "number", "e": "string",
+                          "v": "string"}}
 
 
 @pytest.fixture
@@ -48,26 +51,43 @@ def grid(pg_engine, monkeypatch):
 
 
 def _write(client, **cells):
-    answer = client.put("/tables/%s/data/updates" % TABLE, json={"updates": [
+    return client.put("/tables/%s/data/updates" % TABLE, json={"updates": [
         {"updates": cells, "business_key_val": cells["k"], "source_name": "user",
          "updated_by": "probe"}]})
-    assert answer.status_code == 200, answer.text
 
 
-def _heard_cell(heard, column):
-    [item] = [item for msg in heard if msg.get("event") == "batch_row_upsert"
-              for item in msg["items"]]
-    return item["data"][column]["value"]
+def _read(client):
+    [row] = client.get("/tables/%s/data" % TABLE).json()["data"]
+    return row
+
+
+# Each route acts on cell `v` of the one row; the row also holds a datetime, a number and an empty cell.
+ROUTES = {
+    "cell write": lambda c, rid: _write(c, k="A", v="y"),
+    "pin one": lambda c, rid: c.put("/tables/%s/%s/v/priority" % (TABLE, rid),
+                                    json={"source_name": "user"}),
+    "pin batch": lambda c, rid: c.put("/tables/%s/cells/priority/batch" % TABLE, json={
+        "updates": [{"row_id": rid, "column_name": "v"}], "source_name": "user"}),
+    "delete source one": lambda c, rid: c.delete("/tables/%s/%s/v/sources/user" % (TABLE, rid)),
+    "delete source batch": lambda c, rid: c.post("/tables/%s/cells/sources/delete/batch" % TABLE, json={
+        "cells": [{"row_id": rid, "column_name": "v"}], "source_name": "user"}),
+}
 
 
 @pytest.mark.pg
-def test_a_written_row_with_a_time_cell_is_broadcast_as_the_grid_reads_it(grid):
+@pytest.mark.parametrize("route", sorted(ROUTES))
+def test_a_route_announces_the_row_as_the_grid_reads_it(grid, route):
     client, heard = grid
-    _write(client, k="A", when="2026-10-07 10:00:00", v="x")
-    [row] = client.get("/tables/%s/data" % TABLE).json()["data"]
-    read = row["data"]["when"]["value"]
-    assert read and "2026-10-07" in read                     # canary: the grid reads the cell
-    assert _heard_cell(heard, "when") == read
+    assert _write(client, k="A", when="2026-10-07 10:00:00", n=1.5, e="", v="x").status_code == 200
+    row = _read(client)
+    before = row["data"]
+    assert ("2026-10-07" in before["when"]["value"], before["n"]["value"],
+            before["e"]["value"]) == (True, 1.5, None)               # canary: the three kinds are there
     heard.clear()
-    _write(client, k="A", v="y")                             # another cell of the same row
-    assert (_heard_cell(heard, "when"), _heard_cell(heard, "v")) == (read, "y")
+    answer = ROUTES[route](client, row["row_id"])
+    assert (answer.status_code, answer.json()["status"]) == (200, "success"), answer.text
+    [item] = [item for msg in heard if msg.get("event") == "batch_row_upsert"
+              for item in msg["items"]]
+    read = _read(client)["data"]
+    assert {c: item["data"][c]["value"] for c in ("when", "n", "e", "v")} == \
+        {c: read[c]["value"] for c in ("when", "n", "e", "v")}

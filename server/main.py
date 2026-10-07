@@ -3719,16 +3719,9 @@ async def apply_batch_updates_endpoint(
         items = []
         for row, is_new in results:
             inject_system_columns(row)
-            items.append({
-                "row_id": row.row_id,
-                "is_new": is_new,
-                # A datetime cell is a Python datetime here, and `json.dumps` below refused it,
-                # so no write on a table with a datetime column reached a screen (총괄
-                # 9eb902922 ①). Spelled as the grid's read spells it (`_table_data_response`).
-                "data": jsonable_encoder(row.data),
-                "created_at": to_local_str(row.created_at),
-                "updated_at": to_local_str(row.updated_at)
-            })
+            items.append(event_constants.upsert_item(
+                row.row_id, row.data, to_local_str(row.created_at),
+                to_local_str(row.updated_at), is_new=is_new))
         return items
 
     # [P1] The size branch is decided HERE, before the work, not after it. Above the
@@ -4086,13 +4079,9 @@ async def delete_cell_source(table_name: str, row_id: str, col_name: str, source
         if not updated_row:
             return None
         inject_system_columns(updated_row)
-        return {
-            "row_id": row_id,
-            "is_new": False,
-            "data": updated_row.data,
-            "created_at": to_local_str(updated_row.created_at),
-            "updated_at": to_local_str(updated_row.updated_at)
-        }, len(changed_cols)
+        return event_constants.upsert_item(
+            row_id, updated_row.data, to_local_str(updated_row.created_at),
+            to_local_str(updated_row.updated_at)), len(changed_cols)
 
     built = await run_in_threadpool(_delete_and_build)
     if not built:
@@ -4146,13 +4135,8 @@ async def set_cell_priority(
     await manager.broadcast(json.dumps({
         "event": "batch_row_upsert",
         "table_name": table_name,
-        "items": [{
-            "row_id": row_id, 
-            "is_new": False, 
-            "data": merged_item["data"],
-            "created_at": merged_item["created_at"],
-            "updated_at": merged_item["updated_at"]
-        }],
+        "items": [event_constants.upsert_item(
+            row_id, merged_item["data"], merged_item["created_at"], merged_item["updated_at"])],
         "change_count": len(changed_cols)
     }))
     return {"status": "success", "row_id": row_id, "deleted_row_ids": deleted_row_ids}
@@ -4213,14 +4197,10 @@ async def set_cell_priority_batch_endpoint(
                 event_constants.row_delete_message(table_name, deleted_row_ids)))
 
         # WebSocket 브로드캐스트 (통합 규격: batch_row_upsert 사용)
-        msg_items = [{
-            "row_id": item["row_id"],
-            "is_new": False,
-            "data": item["data"],
-            "created_at": item["created_at"],
-            "updated_at": item["updated_at"]
-        } for item in merged_items]
-        
+        msg_items = [event_constants.upsert_item(
+            item["row_id"], item["data"], item["created_at"], item["updated_at"])
+            for item in merged_items]
+
         # [P1b] `len(changed_rows)` is what `len(msg_items)` was - see the equality note in
         # `_apply_and_merge`. It is read here because on this arm `msg_items` is now empty
         # by construction, exactly as in the batch-update endpoint.
@@ -4277,14 +4257,10 @@ async def delete_cell_source_batch_endpoint(
         invalidate_table_cache(table_name)
 
         # WebSocket 브로드캐스트 (통합 규격: batch_row_upsert 사용)
-        msg_items = [{
-            "row_id": item["row_id"],
-            "is_new": False,
-            "data": item["data"],
-            "created_at": item["created_at"],
-            "updated_at": item["updated_at"]
-        } for item in merged_items]
-        
+        msg_items = [event_constants.upsert_item(
+            item["row_id"], item["data"], item["created_at"], item["updated_at"])
+            for item in merged_items]
+
         # [P1b] `len(changed_rows)` is what `len(msg_items)` was - `msg_items` is empty by
         # construction on this arm now. See `_delete_and_merge`.
         if len(changed_rows) > BROADCAST_ITEM_LIMIT:
