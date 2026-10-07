@@ -74368,9 +74368,10 @@ C 지금은 안 짓는다
 ### 1 무엇
 
 ```
-규칙의 칸   rule_run.written_columns(규칙, 이번 행): 이번에 낸 행의 칸 -> 없으면 제품 종류의 선언(dynamic_mappers.columns_of, 조인은 take 의 into)
+규칙의 칸   rule_run.columns_a_rule_writes(규칙, 이번 행): 이번에 낸 행의 칸 -> 없으면 제품 종류의 선언(dynamic_mappers.columns_declared_for, 조인은 join_into.take_targets)
             -> 없으면 이 프로세스에서 그 규칙이 마지막으로 쓴 칸 -> 없으면 모름
-찍나        그룹 단계가 «이번 실행»이 아니라 «그 규칙»에 묻는다(rule_run.stamps_origin) — 낸 행이 있으면 이번 실행의 답과 같다
+찍나        그룹 단계가 «이번 실행»이 아니라 «그 규칙»에 묻는다(rule_run.stamps_its_origin — ②③의 stamps_origin 을 개명: dynamic_mappers.stamps_origin 과 이름이 같아
+            «체인 규칙에서 읽는 칸» 전수 시험이 이름을 따라 남의 함수로 새었다. 같은 까닭으로 say(rule) 호출도 없앰) — 낸 행이 있으면 이번 실행의 답과 같다
 쓰기 문     쓴 행이 하나도 없어도 고칠 때 회수 단계가 돈다
 모를 때     거두지 않고 [ChainRetract] <규칙>: 이 규칙이 무엇을 쓰는지 아직 모릅니다 … 한 줄 (재기동 뒤 아직 행을 안 낸 파일 맵퍼)
 ```
