@@ -98,6 +98,8 @@ python server/scripts/install_product_tables.py --apply    # 실제 반영
 
 ### 1-4. `ASSY_ADMIN_TOKEN` — 어드민 접근 토큰 (2026-07-27 신설)
 
+> 🆕 10-07 `eeb942d5b` — 회사 로그인을 켜면(§2-1) `/admin/*` 은 이 토큰 대신 로그인한 관리자를 묻고, 이 토큰은 `/internal/*`(워커 통지)만 지킨다. 아래 「로그인 화면도, 사용자 계정도 없다」는 로그인이 «꺼진» 동안의 말이다.
+
 `/admin/*`은 **인증이 전혀 없었다.** 사내망에 패킷을 보낼 수 있는 누구나 `POST /admin/scripts/code`로 임의의 파이썬 파일을 쓰고 `POST /admin/auto-update/run-now`로 그것을 실행시킬 수 있었다. 이제 **공유 토큰 하나**로 잠근다 — 로그인 화면도, 사용자 계정도 없다(2~5명 사내 공유 환경이라 의도적으로 그렇게 두었다).
 
 #### 증상에서 시작하기 — 어느 항으로 갈 것인가
@@ -413,6 +415,28 @@ NO_PROXY만  → {'no': '127.0.0.1,localhost'}
 
 ```bash
 curl http://localhost:8080/api/transfer-plan/stages
+```
+
+### 2-1. 회사 로그인(OIDC · ADFS) — 켤 때만 (🆕 10-07 `eeb942d5b`)
+
+꺼진 것이 기본이다 — 그동안은 오늘처럼 로그인 없이 들어오고 `/admin/*` 은 §1-4 의 토큰이 지킨다.
+
+```
+켜는 것   server/config/auth_config.json (모양: server/config/sample/auth_config.json.sample) + 환경변수 ASSY_OIDC_CLIENT_SECRET + 재기동
+          enabled true · issuer(https://<adfs 호스트>/adfs) · client_id · redirect_uri(IT 에 등록한 글자 그대로, https) · name_claim · admins
+          설정은 프로세스마다 한 번 읽는다 — 바꾸면 재기동
+켜지면    /auth/* · /internal/* · /health 말고는 로그인해야 한다 — 화면 GET 은 회사 로그인으로 갔다가 돌아오고, API 는 401
+          /admin/* 은 admins 에 적힌 이름(name_claim 값 그대로)만 — X-Admin-Token 은 «안 읽는다»
+          /internal/* (워커 통지)는 그대로 ASSY_ADMIN_TOKEN — 워커는 바꿀 것 없음
+          기록의 «누가»는 로그인한 이름. 세션 12 시간, 로그아웃하면 끝
+스크립트   토큰으로 /admin/* 을 부르던 프로그램은 관리자의 개인 키로 — 로그인한 채 POST /auth/keys {"name": "<이름>"} ->
+          응답의 key 를 Authorization: Bearer <key> 로(그 응답에서 한 번만 보인다)
+          ⚠️ 개인 키는 만료가 없고 지우는 것은 그 주인뿐이다(DELETE /auth/keys/<id>). 회사 계정이 막혀도 키는 산다 — admins 에서 빼면 관리 권한만 빠진다
+기동 줄   [sso] ON - issuer …                                       켜짐
+          [sso] OFF - enabled is true but not set: <칸>              그 칸을 채우고 재기동
+          [sso] OFF - redirect_uri (…) is not an https address       https 앞단 뒤에서만 켠다
+          [sso] OFF - enabled is not true in auth_config.json        꺼짐(기본)
+끄기      enabled false + 재기동
 ```
 
 ---
