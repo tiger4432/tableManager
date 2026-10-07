@@ -36290,3 +36290,21 @@ a61cdb35f  방송 item 다섯 자리 -> event_constants.upsert_item
   읽음      놓는 때는 루트의 mouseover · focusin 두 사건뿐, ontology_explorer.js 에 scroll 듣는 자리 없음
             -> 보이는 동안 목록을 굴려도 같은 줄 위면 주석이 옛 자리에 남는다(그리드 미리보기는 onBodyScroll 이 거둔다). 안 쟀다 — 작으면 버려 주십시오
 ```
+
+---
+
+## [C 응용] 10-07 dda476ce0(체인 방송 여섯째) QA — 고쳐졌음을 «같은 계기»로 잼. 문서 1a0317cf6
+
+```
+같은 프로브   cbd09746b 의 그 프로브를 사설 작업 트리 @dda476ce0 · 선언된 시험 PG · 시험 스키마에서 다시
+  전 @825964014   datetime 대상 upsert TypeError · 원천 broadcast_at NULL · 스윕이 표 셋 통째 새로고침
+  후 @dda476ce0   datetime 대상 upsert 인코딩됨 · 카나리아(datetime 없는 대상) 인코딩됨 · 원천 broadcast_at 찍힘 — 스윕이 할 일 없음
+                 item 의 칸: 전 k · n 맨 str  ->  후 전부 dict(value · is_overwrite · sources · updated_by)
+  지운 것        시험 스키마 안 내 프로브 표 셋 · 작업 트리. public 0
+시험 census    batch_row_upsert 를 든 server/tests 파일 10 개 — item 칸을 «맨값»으로 단언하는 줄 0
+               (카나리아: 같은 패턴이 고치기 전 test_discarded_merge_budget 의 맨값 단언 한 줄을 잡음). PG 표지 파일은 착지 게이트 하나뿐
+클라           is_overwrite: false 자리표시자 — api.js · clipboard.js 가 읽지만 종전 맨값의 undefined 와 같이 거짓으로 읽힌다. 화면 변화 없음(읽음)
+비용(박스)     upsert_item 의 jsonable_encoder — 100 행(임계 BROADCAST_ITEM_LIMIT = 100) × 열 10 / 30 / 60 = 15 / 41 / 80 ms (best of 5)
+               임계 «아래» 그룹만 낸다. 행당 0.15 ~ 0.8 ms — 체인 목표 5 ms/행 의 3 ~ 16 %. 다섯 격자 라우트(a61cdb35f)도 같은 함수라 같은 값
+               결정을 바꿀 수이면 총괄 판단 — 저는 짓지 않습니다
+```
