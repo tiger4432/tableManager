@@ -687,6 +687,21 @@ def batch_refresh_message(table_name, change_count, *, transaction_id=None,
             "deleted ids beyond BROADCAST_ITEM_LIMIT")}
     return message
 
+
+def upsert_item(row_id, data, created_at, updated_at, *, is_new=False):
+    """One `batch_row_upsert` item, built in one place.
+
+    🔴 FIVE GRID WRITES BUILT THIS BY HAND and passed `data` as the row held it - a datetime
+    cell is a Python `datetime` there, so `json.dumps` refused the message AFTER the write had
+    committed: the cell write's broadcast died, and the four cell-menu routes (pin · delete
+    source, one and batch) raised for a change that was already in (총괄 9eb902922 ①, measured
+    on PostgreSQL). `data` is spelled as the grid's read spells it (`main._table_data_response`'s
+    fallback), so the broadcast cell and a reload agree.
+    """
+    from fastapi.encoders import jsonable_encoder
+    return {"row_id": row_id, "is_new": is_new, "data": jsonable_encoder(data),
+            "created_at": created_at, "updated_at": updated_at}
+
 # [P1b] Row count above which a write's broadcast degrades from per-row `batch_row_upsert`
 # items to a single `batch_refresh_required` carrying only a count (the client refetches).
 #

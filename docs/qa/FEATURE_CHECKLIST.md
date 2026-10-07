@@ -626,7 +626,7 @@ dirty 3선택, ACTIVE/DRAFT, review→revise와 reviewed JSON read-only를 확�
 
 - [ ] **인벤토리가 «선언 그대로»다**: `GET /admin/retroactive/operations` → 각 항목에 `params`·`cli`·`cli_only`가 있다. 🔴 **개수를 세지 마십시오 — 이 목록의 정본은 `server/admin/retroactive.py`의 `OPERATIONS`입니다**(이 문서는 한 번 「넷」으로 낡았습니다). 원장 쪽 둘(`ledger_backfill`·`ledger_rescope`)이 보이는지만 확인합니다.
 - [ ] 🎯 **[신설] 닫힌 파라미터는 «선택지»로 온다**: `ledger_backfill`의 `pace` 항목에 `choices`가 있고, 원소가 **값만이 아니라 `{value, label, when}`**이다. 🔴 **선언 안 된 파라미터는 `[]`가 아니라 `null`이어야 한다** — 빈 배열이면 화면이 「고를 수 있는 것이 없다」를 그린다. 화면에서도 그 칸이 **텍스트 입력이 아니라 선택**으로 그려지는지 본다.
-- [ ] 🎯 **[신설] 실행 목록이 서버를 따른다**: 실행을 걸고 `GET /admin/retroactive/runs` → 그 `run_id`가 `running`으로 보이고 `processed_rows`가 «움직인다». 끝나면 `done`이 되고 **화면의 시계도 멈춘다**(끝난 실행을 계속 「도는 중」으로 세면 결함).
+- [ ] 🎯 **[신설] 실행 목록이 서버를 따른다**: 실행을 걸고 `GET /admin/retroactive/runs` → 그 `run_id`가 `running`으로 보이고 `processed_rows`가 «움직인다». 끝나면 `done`이 되고 **화면의 시계도 멈춘다**(끝난 실행을 계속 「도는 중」으로 세면 결함). 🆕 10-07 `f5f3b92ea` 끝난 줄은 끝난 뒤 **10 분** 동안만 Overview 펼침에 남고, 도는 것이 없으면 목록은 **30 초**마다 읽는다(끝난 줄만 남았는데 3 초 박자면 결함).
 - [ ] 🎯 **[신설] 취소는 «부탁»이고 즉시가 아니다**: 도는 실행에 `POST /admin/retroactive/runs/{run_id}/cancel` → 상태가 **`cancel_requested`**로 바뀌고, 지금 도는 배치가 끝난 «뒤» **`cancelled`**가 된다. 🔴 **둘을 같은 것으로 그리면 결함**이다(부탁했다 ≠ 멈췄다). 프로세스는 죽지 않고 `/health`의 스케줄러는 계속 `ok`다.
 - [ ] 🎯 **[신설] 끝난 실행의 취소는 «거절»한다**: `done`인 `run_id`에 취소 → 200으로 조용히 성공하지 않고, **이미 커밋됐고 되돌릴 수 없다**는 문장으로 거절한다. 🔴 조용히 성공하면 운영자는 되돌린 줄 안다.
 - [ ] 🎯 **못 멈추는 연산은 버튼이 «없다»**: 인벤토리에서 `cancellable: false`인 항목은 화면에 **취소 버튼이 그려지지 않는다**. 🆕 09-25 `3bf01b96` 부터 그런 항목은 없다 — 일곱 다 참이라 도는 줄마다 × 가 있어야 한다(종전 `ledger_rescope`·`enrichment_confirm`). 🔴 **눌러도 아무 일 없는 버튼이 있으면 결함**이다 — 그것이 이 선언이 존재하는 이유다.
