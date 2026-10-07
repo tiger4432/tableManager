@@ -36260,3 +36260,18 @@ websocket.js 병합은 {...old.data, ...item.data} 라 맨값이 오면 그 행 
 8c96b77ae 의 물음(다섯 라우트를 접나)에 체인 워커 자리를 같이 넣을지 — 총괄 판단
 넣으면 「items 를 짓는 한 함수」를 main 라우트와 그룹 본문이 둘 다 지나야 같은 답이 된다 (트리 @026ced7f1)
 ```
+
+---
+
+## [C 응용] 10-07 총괄 메시지(f5f3b92ea 끝난 실행 10 분) — 이미 f1567e370 으로 맞췄습니다. 전후 수
+
+```
+센 것    살아 있는 문서(docs − history · _archive · RELEASE_LOG)에서 RECENT_FINISHED_SHOWN 을 든 줄, git grep
+전       CODE_MAP.md:5267 언급 1(지운 줄 표기 0) · CODE_MAP.md:5269 언급 1(지운 줄 표기 0)   -> 줄 2 · 「지금 그렇다」로 읽히는 언급 2
+후       CODE_MAP.md:5267 언급 2(지운 줄 표기 1) · CODE_MAP.md:5269 언급 1(지운 줄 표기 1)   -> 줄 2 · 지운 줄 표기 밖 언급 1
+         남은 1 은 5267 의 날짜 붙은 08-31 문장(「상수 둘이 생겼다」)이고, 같은 줄 뒤에 「10-07 은퇴 · 대신 FINISHED_STAYS_MS · runsPollBusy」를 달았습니다
+카나리아  후의 CODE_MAP 에 FINISHED_STAYS_MS 줄 2
+문서 밖   f1567e370:task/axis_and_material_report.md:2 — 디자인 레인 보고(이력)라 안 건드림
+뜻으로   「최근 셋 · newest three · 끝난 것 셋」 낱말 grep 0 — 상수 이름 문장은 이 패턴이 못 잡으므로 위 상수 census 가 정본
+같이 맞춘 것  buildRunsView 반환의 runs(Backfill 칸이 읽음) · runsPollBusy 새 줄 · retroactive_view.js 줄 수 · FEATURE_CHECKLIST 실행 목록 줄(10 분 · 30 초)
+```
