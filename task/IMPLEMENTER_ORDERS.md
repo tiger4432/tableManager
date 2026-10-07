@@ -64457,3 +64457,41 @@ run_in  소유자께 묻지 않는다. 그 조건도 표의 한 행으로 강제
 보고   표 + 「빈 행을 남기고 아무 흔적도 안 남기는 조건」 목록 · 고치지 않는다
 DB     PG 이름 붙인 스크래치 스키마만 · 「어느 DB · 어느 스키마 · 지운 것」
 ```
+
+---
+
+> **[총괄 -> 구현자 · 클라] 회사 SSO 로그인 (소유자 10-07 「sso 붙이자」 · 「일단 설치하고 지어봐」). 구현자: 원자 견본 다음 · 클라: 원자 표 다음**
+
+```
+소유자가 정한 것   운영 서버는 https · SSO 종류 모름(OIDC 로 간다) · «보는 것도» 로그인 필요 · 관리 권한은 «목록» · 사람이 짠 스크립트가 API 를 부른다
+설치됨            authlib 1.8.0 (+ cryptography 50.0.2 · joserfc 1.7.5) — assy_manager env, 총괄이 설치 · environment.yml pip 절에 authlib==1.8.0 (총괄이 같은 커밋에 넣음)
+⛔ 다른 패키지 설치 금지 (itsdangerous 포함). 필요하면 짓기 «전»에 총괄에게
+```
+```
+켜는 스위치   OIDC 환경변수(발급자 주소 · 클라이언트 ID · 비밀값)가 «다» 있을 때만 켜진다. 하나도 없으면 오늘 동작 그대로(X-User 신뢰 · 관리 토큰) — 박스와 기존 시험이 이 갈래
+             일부만 있으면 기동 때 그 사실을 한 줄로 말하고 켜지지 않는다(fail closed 아님 — 꺼짐이 오늘 동작이다)
+켜졌을 때 서버
+  로그인      /auth/login -> 발급자(discovery 로 끝점 찾기) Authorization Code + PKCE + state + nonce -> /auth/callback 에서 교환 · ID 토큰 서명(JWKS) · iss · aud · exp · nonce 검사
+  세션        «서버 쪽» 세션 표(무작위 id 의 해시 · 사용자 · 만료) · 쿠키에는 id 만(Secure · HttpOnly · SameSite=Lax) · /auth/logout 은 그 행을 지운다
+  사람 이름    request_user = 세션(또는 API 키)의 사용자. X-User 는 «읽지 않는다». 어느 클레임을 이름으로 쓸지는 설정 한 칸(기본 email)
+  모든 요청    /auth/* 와 /internal/*(서비스 토큰, 오늘 그대로) 밖은 전부 로그인 필요
+              페이지 GET -> /auth/login?next=<같은 출처 상대 경로만> 으로 보냄 · API -> 401(본문에 다음 행동) · /ws -> 핸드셰이크에서 거절
+  관리 권한    관리자 이메일 목록은 설정 파일 한 칸(사용자가 적는 자리, 값은 비워 둔다). 비어 있으면 관리자 0. /admin/* 는 «로그인 + 목록»
+              관리 토큰(X-Admin-Token)은 켜졌을 때 /admin/* 에서 받지 않는다 · /internal/* 서비스 토큰은 그대로
+  개인 API 키  사람이 짠 스크립트용. 로그인한 사람이 «자기» 키를 만들고(한 번만 보임) · 지우고 · 목록(이름 · 만든 때 · 마지막 사용)
+              표에는 해시만. 요청은 Authorization: Bearer <키> -> request_user = 키 주인, 관리 권한도 같은 목록으로
+  /auth/me    {user, is_admin, sso: true|false} — 꺼졌을 때도 답한다(sso: false)
+게이트(서버)  가짜 OIDC 발급자 픽스처(discovery · JWKS · 토큰 끝점, joserfc 로 서명)로 «한 바퀴»:
+              로그인 리디렉트에 state·nonce·PKCE · 콜백 교환 · 틀린 서명/iss/aud/nonce/만료 각각 거절 · 세션 뒤 request_user 가 감사 행에 남는 이름 · X-User 를 넣어도 무시
+              next 가 다른 출처면 거절 · 관리 목록 안/밖 · API 키 만들기·쓰기·지우기(지운 키 401) · /internal/* 토큰 그대로 · 꺼진 갈래가 오늘과 같은 답 · 변이
+문서          RUN.md 에 회사 IT 에 받을 것(발급자 주소 · 클라이언트 ID · 비밀값 · 돌아올 주소 https://<서버>/auth/callback 등록) · 넣을 환경변수 · 끄는 법(환경변수 빼고 재기동) · 볼 로그 줄
+              RELEASE_LOG 항목 · 마이그레이션이 있으면 그 명령
+```
+```
+클라 (서버 철자가 오면)
+  401 을 받으면 /auth/login?next=<지금 경로> 로 · /ws 가 로그인 때문에 거절되면 같은 길
+  머리줄에 로그인한 사람 이름 + Log out · /auth/me 의 sso:false 면 오늘 화면 그대로
+  API 키 칸: Create key(이름) -> 키를 한 번만 보여 주고 Copy · 목록 · Revoke
+  UI 영어 · 설명 문구 없이
+게이트(클라)  401 -> 로그인 이동(next 보존) · 이름 표시 · 키 한 번만 보임 · sso:false 에서 오늘 그대로 · 변이
+```
