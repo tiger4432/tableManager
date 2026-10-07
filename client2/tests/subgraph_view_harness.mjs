@@ -1069,6 +1069,35 @@ async function suite(m, makeWalk = createWalkBoxWalk, css = REAL_CSS) {
       again.s.urls.length === 1 && paramsOf(again.s.urls[0] || '').getAll('collect').join() === 'measurement_event'
         && textOf(again.s.view.factsBox, 'sg-lv-meta').join() === `Points ${valued.length}`,
       JSON.stringify({ urls: again.s.urls.length, meta: textOf(again.s.view.factsBox, 'sg-lv-meta') }));
+    // A picture with no measurement in it: the list is the declaration's, whatever the picture holds (lead 10-08 gate).
+    const bare = (body) => {
+      const gone = new Set(body.nodes.filter((n) => n.type === 'measurement_event').map((n) => n.id));
+      return { ...body, nodes: body.nodes.filter((n) => !gone.has(n.id)),
+        edges: body.edges.filter((e) => !gone.has(e.source) && !gone.has(e.target)) };
+    };
+    const lean = await (async () => {
+      const t = await seat([bare(FOLD_WAFER), FOLD_PROCESS], { declaration: FOLD_DECL, storage: memory() });
+      const wafer = startId(FOLD_WAFER);
+      press(t, wafer);
+      const fold = byClass(t.host, 'sg-fold')[0];
+      if (fold) fold.dispatch('click', {});
+      press(t, `big:${wafer}`);
+      const row = rowsOf(t).find((r) => r.attrs['data-value'].includes('|underwent|'));
+      if (row) tickRow(row);
+      openTicked(t);
+      const small = lumpsOf(t, 'small').filter((n) => String(n.data('key')).includes('|underwent|'))[0];
+      if (small) press(t, small.id());
+      t.urls.length = 0;
+      const trend = byClass(t.view.factsBox, 'sg-lv-kind').find((k) => k.textContent === 'Trend');
+      if (trend) trend.dispatch('click', {});
+      await settle();
+      return { t, small };
+    })();
+    say('I5 no measurement in the picture: Points from still lists the declaration\'s types, measurement_event among them; nothing asked',
+      Boolean(lean.small) && !nodesOf(lean.t).some((n) => n.data('type') === 'measurement_event')
+        && JSON.stringify(optionsOf(choiceOf(lean.t, 'Points from'))) === JSON.stringify(['', ...reachable])
+        && lean.t.urls.length === 0,
+      JSON.stringify({ small: Boolean(lean.small), options: optionsOf(choiceOf(lean.t, 'Points from')), urls: lean.t.urls.length }));
     const none = await seatProcess(null, null);
     say('I4 no declaration to route by and no storage: nothing to pick from, nothing asked',
       Boolean(none.lump) && none.s.urls.length === 0 && JSON.stringify(optionsOf(choiceOf(none.s, 'Points from'))) === '[""]'
@@ -1402,6 +1431,9 @@ const failures = [];
     M('I2m', 'a picked lump\'s walk collects everything on the way, not the type picked', 'I2',
       '        collect: [pick.picked] } : null };', '        } : null };'),
     M('I3m', 'the pick is not kept', 'I3', '    rememberPick(this.storage, key, { from: type });\n', ''),
+    M('I5m', 'Points from offers only the types the picture already shows', 'I5',
+      '        .filter((type) => from.some(',
+      '        .filter((type) => this.layout.nodes.some((n) => n.type === type) && from.some('),
     M('Z2m', 'Fit keeps the floor', 'Z2', 'if (this.cy) this.cy.fit(undefined, GEOMETRY.fitPad);', 'if (this.cy) this._firstFit();'),
     M('Z3m', 'the first draw is not fitted', 'Z1', '    if (full) this._fitPending = true;\n', ''),
     M('Z4m', 'a change of size fits the picture again', 'Z4', '    else this.cy.resize();\n', '    else this._firstFit();\n'),
