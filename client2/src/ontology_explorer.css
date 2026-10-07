@@ -329,10 +329,13 @@
    sustains itself.  `pointer-events: none` answers both at once: the pointer passes
    through to the row underneath, and leaving the row's own box ends the hover.
    What that gives up is selecting the annotation's text, which is a hover tooltip that
-   disappears the moment you reach for it anyway. */
+   disappears the moment you reach for it anyway.
+   🔴 AND IT TAKES NO ROOM: `fixed`, placed beside its row by the script (`placePopover`). An `absolute` one below
+   the last row of a list grew that list's scroll box - a scrollbar came under the pointer, the row narrowed out
+   from under it, the annotation went, the scrollbar went, and again (owner 10-07, lead dee90e340). */
 #ontology-explorer-root .oe-popover {
   pointer-events: none;
-  display: none; position: absolute; z-index: 30; left: 6.8px; top: calc(100% - 2px);
+  display: none; position: fixed; z-index: 30;
   width: min(250px, calc(100vw - 36px)); padding: 10.2px; border: 1px solid var(--oe-line);
   background: var(--oe-surface); color: var(--oe-text);
   box-shadow: 0 8px 24px rgb(0 0 0 / .18); text-align: left; white-space: normal;

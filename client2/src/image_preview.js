@@ -16,6 +16,19 @@ export const LOADING = 'Loading';
 export const SIZE_TOKEN = '--image-preview-max';
 export const EDGE_TOKEN = '--space-2';
 
+/**
+ * Where a floating box (position: fixed) stands beside `rect`: under it, above it when the window has no room below,
+ * kept `edge` inside the window (`view`: width, height). One placement - the image preview and the declaration
+ * screen's annotations both stand here (lead dee90e340).
+ */
+export function placeBeside(rect, width, height, view, edge) {
+  const left = Math.max(edge, Math.min(rect.left, view.width - width - edge));
+  let top = rect.bottom + edge;
+  if (top + height > view.height - edge) top = rect.top - edge - height;
+  top = Math.max(edge, Math.min(top, view.height - height - edge));
+  return { left, top };
+}
+
 /** The one address of a ref, for the preview and the new window alike. The value goes as written. */
 export function imageRefUrl(base, ref) {
   return `${base || ''}${IMAGE_ROUTE}?ref=${encodeURIComponent(String(ref))}`;
@@ -139,10 +152,7 @@ export class ImagePreview {
     const h = Math.min(box.offsetHeight || cap, cap);
     const r = this.anchor && this.anchor.getBoundingClientRect
       ? this.anchor.getBoundingClientRect() : { left: edge, top: edge, bottom: edge };
-    const left = Math.max(edge, Math.min(r.left, view.width - w - edge));
-    let top = r.bottom + edge;
-    if (top + h > view.height - edge) top = r.top - edge - h;
-    top = Math.max(edge, Math.min(top, view.height - h - edge));
+    const { left, top } = placeBeside(r, w, h, view, edge);
     box.style.left = `${left}px`;
     box.style.top = `${top}px`;
   }

@@ -1730,6 +1730,9 @@ const FLOORS = new Map([
   // New 2026-10-07 (lead 10-06). The build's license notice: a pre-bundled copy that differs and a package with no
   // license file each stop the build, forced on packages made in a temp folder; nine mutants.
   ['third_party_licenses_harness.mjs', 10],
+  // New 2026-10-07 (lead dee90e340). The declaration screen's hover annotation takes no room: fixed, placed beside
+  // its row when the pointer or the focus reaches it; five mutants.
+  ['annotation_float_harness.mjs', 7],
 ]);
 
 // ── the ceilings ────────────────────────────────────────────────────────────────

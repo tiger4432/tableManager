@@ -10,6 +10,7 @@ import {
 } from './ontology_skeleton.js';
 import { closedListChoice, renderClosedList } from './closed_list.js';
 import { isBlank } from './absent.js';
+import { placeBeside } from './image_preview.js';
 // 🔴 C-121. 이 화면이 보내는 수 옆에 «그 0 이 무엇인지»를 붙이는 정본. 새 어휘가 아니라서
 //    호출자가 여섯째입니다(admin 넷 · chain_queue_panel 둘).
 import { countWithAbsence } from './count_with_absence.js';
@@ -90,6 +91,23 @@ function addPopover(target, node) {
   );
   target.append(popover);
   return target;
+}
+
+/**
+ * An annotation floats (position: fixed) beside its row, so it takes no room in its list: a list that grew a
+ * scrollbar under the pointer moved the row out from under it, the annotation went, the scrollbar went, and it
+ * came again (owner 10-07 「호버링하면 어노테이션 때문에 UI 진동」, lead dee90e340). Placed when the pointer or the
+ * focus reaches the row, by the placement the image preview uses.
+ */
+export function placePopover(row) {
+  const popover = row && row.querySelector(':scope > .oe-popover');
+  const view = row && row.ownerDocument && row.ownerDocument.defaultView;
+  if (!popover || !view) return;
+  const edge = parseFloat(view.getComputedStyle(row.ownerDocument.documentElement).getPropertyValue('--space-2')) || 0;
+  const at = placeBeside(row.getBoundingClientRect(), popover.offsetWidth, popover.offsetHeight,
+    { width: view.innerWidth, height: view.innerHeight }, edge);
+  popover.style.left = `${at.left}px`;
+  popover.style.top = `${at.top}px`;
 }
 
 // The naming row. Free text HERE is correct and is the one place it is: the operator is

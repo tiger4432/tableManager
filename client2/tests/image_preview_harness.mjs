@@ -363,7 +363,7 @@ const failures = [];
     M('M5', 'the new window gets another address', 'D5', PREVIEW,
       "this.openWindow(imageRefUrl(this.base, ref), '_blank', 'noopener')", "this.openWindow(String(ref), '_blank', 'noopener')"),
     M('M6', 'the box is not kept inside the window', 'D6', PREVIEW,
-      '    const left = Math.max(edge, Math.min(r.left, view.width - w - edge));', '    const left = r.left;'),
+      '  const left = Math.max(edge, Math.min(rect.left, view.width - width - edge));', '  const left = rect.left;'),
     M('M7', 'one at a time kept across every preview on the page, not per preview', 'D7', PREVIEW,
       '    this.drop();\n    if (isBlank(ref)) return;',
       '    if (globalThis.__lastPreview) globalThis.__lastPreview.drop();\n    globalThis.__lastPreview = this;\n'

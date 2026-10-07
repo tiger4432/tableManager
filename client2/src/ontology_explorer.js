@@ -7,7 +7,7 @@ import {
   // 791c0f45e: whether the draft moved a leaf the plan marks as shaping the form.
   draftReshapesPlan,
 } from './ontology_explorer_store.js';
-import { renderOntologyExplorer, nodeTrail } from './ontology_explorer_view.js';
+import { renderOntologyExplorer, nodeTrail, placePopover } from './ontology_explorer_view.js';
 import { PathBar } from './path_bar.js';
 import { withWorld } from './world.js';
 import { CURRENT_USER } from './config.js';
@@ -760,6 +760,13 @@ No effect`;
     markFormCursor();
     pathBar.show(trailNow());
   });
+  // An annotation floats beside its row (lead dee90e340): placed when the pointer or the focus reaches the row.
+  const placeAnnotation = (event) => {
+    const row = event.target.closest?.('.oe-has-popover');
+    if (row) placePopover(row);
+  };
+  root.addEventListener('mouseover', placeAnnotation);
+  root.addEventListener('focusin', placeAnnotation);
   // With nothing being edited, the bar follows the pointer instead.
   root.addEventListener('mouseover', (event) => {
     const node = event.target.closest?.('.oe-bucket--form .oe-node[data-path]');
