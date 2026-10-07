@@ -16,7 +16,7 @@ import pytest
 import requests
 from fastapi.testclient import TestClient
 from joserfc import jwt
-from joserfc.jwk import RSAKey
+from joserfc.jwk import OctKey, RSAKey
 from starlette.websockets import WebSocketDisconnect
 
 import main
@@ -46,6 +46,9 @@ class FakeIssuer:
         self.signing = "k1"
         self.claims = dict(ADFS_CLAIMS)
         self.overrides = {}
+        self.algorithms = ["RS256"]           # what discovery lists
+        self.forge = None                      # "none" | "HS256": the token the issuer hands back
+        self.secret_key = OctKey.import_key("s" * 32, parameters={"kid": "k-oct"})
         self.codes = {}
         self.answered = []
 
@@ -76,10 +79,13 @@ class FakeIssuer:
         if address == ISSUER + "/.well-known/openid-configuration":
             return self._answer(request, 200, {
                 "issuer": ISSUER, "authorization_endpoint": AUTHORIZE, "token_endpoint": TOKEN,
-                "jwks_uri": JWKS, "id_token_signing_alg_values_supported": ["RS256"]})
+                "jwks_uri": JWKS, "id_token_signing_alg_values_supported": self.algorithms})
         if address == JWKS:
             kids = self.published.pop(0) if len(self.published) > 1 else self.published[0]
-            return self._answer(request, 200, {"keys": [self.key(k).as_dict(private=False) for k in kids]})
+            keys = [self.key(k).as_dict(private=False) for k in kids]
+            if self.forge == "HS256":
+                keys.append(self.secret_key.as_dict())      # a symmetric key in the published set
+            return self._answer(request, 200, {"keys": keys})
         if address == TOKEN:
             form = {k: v[0] for k, v in parse_qs(request.body).items()}
             basic = base64.b64encode(("%s:%s" % (CLIENT_ID, CLIENT_SECRET)).encode()).decode()
@@ -93,7 +99,13 @@ class FakeIssuer:
             claims = dict({"iss": ISSUER, "aud": CLIENT_ID, "iat": now, "exp": now + 3600,
                            "nonce": nonce}, **self.claims)
             claims.update(self.overrides)
-            id_token = jwt.encode({"alg": "RS256", "kid": self.signing}, claims, self.key(self.signing))
+            if self.forge == "none":
+                id_token = ".".join(base64.urlsafe_b64encode(json.dumps(part).encode()).rstrip(b"=").decode()
+                                    for part in ({"alg": "none", "kid": "k1"}, claims)) + "."
+            elif self.forge == "HS256":
+                id_token = jwt.encode({"alg": "HS256", "kid": "k-oct"}, claims, self.secret_key)
+            else:
+                id_token = jwt.encode({"alg": "RS256", "kid": self.signing}, claims, self.key(self.signing))
             return self._answer(request, 200, {"access_token": "at", "token_type": "Bearer",
                                                "expires_in": 3600, "id_token": id_token})
         raise AssertionError("the fake issuer does not serve %s" % address)
@@ -377,6 +389,16 @@ def test_a_kid_the_keys_lack_reads_the_keys_once_more(issuer):
     assert issuer.answered.count(JWKS) == 2
 
 
+@pytest.mark.parametrize("forged", ["none", "HS256"])
+def test_an_unsigned_or_symmetric_token_is_refused_whatever_discovery_lists(issuer, forged):
+    """총괄 10-07: joserfc takes `none`, or HS256 against a symmetric key in the set, when the
+    caller lists them - so the list discovery hands over is cut to asymmetric families."""
+    issuer.algorithms = ["none", "HS256"]
+    issuer.forge = forged
+    back = _sign_in(_client(), issuer)
+    assert back.status_code == 401 and _session_rows() == []
+
+
 def test_a_kid_the_issuer_never_published_is_refused_after_one_more_read(issuer):
     issuer.signing = "k9"
     back = _sign_in(_client(), issuer)
@@ -387,14 +409,16 @@ def test_a_kid_the_issuer_never_published_is_refused_after_one_more_read(issuer)
 # --- admins ------------------------------------------------------------------------------------
 
 def test_admin_routes_want_a_name_on_the_list_and_not_the_token(issuer):
+    spelled = "Kim@Corp.Test"                             # the token's spelling is what is kept
+    issuer.claims["upn"] = spelled
     client = _client()
     _sign_in(client, issuer)
     refused = client.get("/admin/chain/pause", headers={auth.ADMIN_TOKEN_HEADER: ADMIN_TOKEN})
     assert (refused.status_code, refused.json(), refused.headers[CHALLENGE]) == (
         403, {"detail": sso.ADMIN_REQUIRED}, sso.SESSION_CHALLENGE)
-    issuer.config(admins=[UPN])
+    issuer.config(admins=[spelled.upper()])              # AD reads a upn in any case (총괄 10-07)
     assert client.get("/admin/chain/pause").status_code == 200
-    assert client.get("/auth/me").json()["is_admin"] is True
+    assert client.get("/auth/me").json() == {"user": spelled, "is_admin": True, "sso": True}
 
 
 # --- leaving -----------------------------------------------------------------------------------

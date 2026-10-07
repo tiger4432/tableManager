@@ -73468,3 +73468,133 @@ sqlite 전체 5 failed, 7932 passed, 339 skipped, 3 xfailed, 13203 warnings in 7
 
 관찰(짓지 않음): 시험은 sso.CONFIG_PATH 를 임시 파일로 바꿔 쓴다. 나머지 시험은 박스의 server/config/auth_config.json 을 그대로 읽으므로, 이 박스에 enabled true 인 그 파일이 생기면 시험 전체가 로그인을 요구하게 된다(DATABASE_URL 처럼 conftest 에서 막는 자리는 짓지 않았다).
 아직 모르는 것: ADFS ID 토큰에 upn 이 기본으로 실리는지 — 첫 로그인의 거절 문장이 답한다(RUN.md).
+
+---
+
+## [10-07] SSO 후속 — 비대칭 서명만 · 관리자 목록 대소문자 접기 · 착지 ae579a9a2 (총괄 10-07)
+
+어느 DB · 어느 스키마 · 지운 것 — 메모리 sqlite · DB 안 씀 · 지운 것 0
+
+```
+잰 것(joserfc 1.7.5, 네트워크 없음 — probe_alg.py)
+          none, algs [none] -> ACCEPTED {'x': 1}
+          HS256, rsa-only keys, algs [HS256] -> refused InvalidKeyIdError
+          HS256, keys with oct, algs [none, HS256] -> ACCEPTED {'x': 1}
+          HS256, keys with oct, algs [RS256] -> refused UnsupportedAlgorithmError
+-> joserfc 는 none 이 목록에 있기만 하면 받고, HS256 은 목록에 있고 키 집합에 대칭 키가 섞이면 받는다. discovery 목록을 RS · PS · ES 로 자르고 비면 RS256
+관리자    is_admin 한 함수가 양쪽을 casefold 해 견준다(require_admin · /auth/me). 기록 이름은 토큰 철자 그대로
+게이트    discovery 가 ["none", "HS256"] 만 줄 때 서명 없는 토큰 · HS256 토큰(JWKS 에 대칭 키를 섞음) 거절 · 대문자 목록이 섞인 철자 이름을 받고 /auth/me 는 토큰 철자
+변이      3/3 빨강(failed 시험으로 센 수) · md5 전후 같음
+          RED  discovery's list is taken whole
+          RED  the admin list is compared as spelled
+          RED  the recorded name is folded too
+말        RUN.md 의 admins 줄: 대소문자 안 가림 · 기록은 토큰 철자
+sqlite 전체 5 failed, 7936 passed, 339 skipped, 3 xfailed, 13232 warnings in 771.61s (0:12:51)
+```
+
+---
+
+## [10-07] 등록 문장 정리 — 짓기 전 보고 (총괄 a6db2f469 · 안 ㄱ) · 짓지 않았음
+
+어느 DB · 어느 스키마 · 지운 것 — 코드 읽기와 git grep 만. 설정 수는 이 박스의 server/config/ontology/ledger_config.json(gitignore)과 동봉 sample 로 셌다 = 박스 수 · DB 안 씀 · 지운 것 0
+
+### 1. 전수 — 등록 문장이 하는 일, 그리고 새 길에서 어디로 가나
+
+```
+일                      오늘 자리                                              새 길(안 ㄱ)
+속성 싣기               setup_bundle.predicate_claim 이 «목적어 없는 술어»에만      번역기가 엔티티마다 같은 모양의 원자를 스스로 낸다
+                        속성 칸을 연다 · roleframe._with_attribute_values 는
+                        «주어 롤»에서만 값을 채운다
+존재 알리기              속성 없는 등록 원자(bare)                                  그대로 — 기존 등록 문장은 이번에 은퇴 안 함
+배치 안 중복 거르기       runtime_v2._filtered_event_atoms (이름 "register")       새 원자가 같은 이름이면 그대로 지난다
+                        — 같은 (주어, 속성 상태) 의 첫 원자만 남긴다
+원장 기준 거르기          known 은 실행 · 미리보기 · 테스트 런 모두 () 또는 None   은퇴 후보(아래)
+                        -> 원장을 보고 거르는 일은 오늘 «없다»
+read.registration_probe 값은 원장 조회에 안 쓰인다. 「선언했나」만 None/() 를 가른다  은퇴 후보 — 기본값이 등록 문장에서 채워지므로 사실상 하는 일 없음
+registration_context_  register 원자를 내는데 probe 가 None 일 때 거절. 코드상 남는 경우: 등록 문장의 주어가
+required                키 둘 이상이거나 키가 칸으로 안 묶여 기본 probe 를 못 지을 때(setup_bundle._registered_subject_columns)
+                        known 이 언제나 () 이므로 이 거절이 막는 «중복»은 실제로 없다 -> 거절만 남은 갈래
+existing_registrations   호출자 0 (ff9ed1447). idx_ledger_register · 검색 인덱스(predicate='register') 가 그 이유로 서 있다
+걷기                     trace_router._self_describing_predicates — 어휘에서 object.kind 가 none 인 술어(모양)  같은 함수가 시스템 상수까지 읽는다
+노드 칸 · label          ledger_subgraph._apply_registrations · _node_label — 모양으로 읽음   바뀌지 않음
+테스트 런                견본 = 실행 원자 그대로                                    새 원자가 자동으로 «쓴다»로 보인다
+화면 폼                  클라 등록 문장 전용 폼 0. 서버 config_authoring 의 probe 줄(_source_fields) · _registering_sentences   probe 은퇴 시 그 줄도
+```
+
+**등록을 알아보는 판단이 둘** (git grep, server, 시험 · 스크립트 · 주석 제외)
+```
+이름 "register"   runtime_v2 세 자리(:614 거절 · :625/:646 거르기) · setup_bundle.REGISTER_PREDICATE(:822) + registering_sentences(:840 — 부르는 곳 :970 기본 probe · :2404 검증 · config_authoring :1299 · :1561)
+                  store.existing_registrations SQL(:218) · schema 부분 인덱스 둘(:552 · :717) · v1 source_contract(:100)
+모양 «목적어 없음» setup_bundle.predicate_claim(:713 · :750) + 검증(:1717) · roleframe(:1693) · trace_router._self_describing_predicates(:478) · schema 체크(OBJECTLESS_PAYLOAD) · v1 source_contract(:284)
+```
+접는 안: 한 함수 `setup_bundle.is_registration(predicate, vocabulary)`가 답한다. 답은 «모양»(목적어 없음)입니다. predicate_claim 이 이미 «술어 이름으로 쓰지 않는다»고 적어 둔 기준입니다. 이름으로 묻던 자리가 모두 그 함수를 부릅니다. SQL 두 자리(store · schema 인덱스)는 은퇴와 함께 사라집니다.
+
+**속성을 적는 자리 둘**
+```
+bind.entities.<타입>.attributes   setup_registry.with_source_attributes 가 그 타입의 «모든 롤»에 복사
+롤 자신의 attributes              롤 쪽이 이긴다
+🔴 대상(목적어) 롤의 속성은 오늘 어디에도 안 실린다 — roleframe._evaluate_binding 이 payload["attributes"] 에 쓰지만
+   compile_role_rows 는 대상의 type · keys 만 읽는다. 등록 문장이 있어도 같다(등록 원자는 주어 롤만 본다)
+   소유자 「롤별 속성을 선언하고 백필했는데 안 들어간다」의 원인일 수 있다(운영 설정은 못 봤다)
+박스 수: 속성을 묶은 소스 1(dt_job, bind.entities) — 그 소스에 등록 문장 있음 · 등록이 안 실어 나르는 속성을 가진 소스 0 · 롤 속성 0
+```
+
+### 2. 술어 — 안 셋
+
+```
+안 1  시스템이 기존 상수 REGISTER_PREDICATE("register") 로 낸다 — 개념을 넓힌다
+      무엇     번역기가 속성이 묶인 엔티티 롤마다(주어 · 대상) 목적어 없는 원자를 낸다. 어휘에 register@1 이 없어도 claim 은 시스템이 짓는다
+      운영자   bind 에 엔티티와 속성만 적는다
+      좋은 점  저장 모양 · 배치 거르기 · 걷기 · label · 견본이 모두 오늘 코드 그대로 읽는다. 옛 원자와 새 원자가 같은 모양
+      위험     어휘에 register@1 이 없는 세상 — 걷기 함수가 상수를 더 읽어야 한다(같은 함수 안 한 줄)
+      크기     안 쟀다
+안 2  새 이름(예: has_attributes)으로 낸다
+      좋은 점  «존재»와 «속성»이 이름으로 갈린다
+      위험     같은 모양에 이름이 둘 -> 이름으로 묻는 자리마다 둘을 알아야 하고 라벨 병합이 두 술어를 섞는다. 옆에 만드는 길
+      크기     안 쟀다 · 안 1 보다 크다
+안 3  로더가 «암묵 등록 문장»을 끼워 넣는다 — source_defaults(빠진 read.* 를 채우는 기존 문)가 그 소스에
+      등록 문장 없는 속성 엔티티마다 register 매핑을 하나 지어 profile 에 넣는다
+      좋은 점  실행 경로에 새 갈래 0 — 선언된 등록 문장과 똑같이 돈다. 기본 probe · 지문도 기존 길
+      위험     매핑의 주어 키 · 시각을 «다른 매핑의 롤 바인딩»에서 가져와야 한다 — 그 엔티티가 롤 둘에 나오면 하나를 고를 수 없다
+               register@1 어휘의 subjects 에 그 타입이 없으면 claim 이 안 선다(로더가 어휘를 넓히면 «선언에 없는 것을 지은» 것)
+      크기     안 쟀다
+추천  안 1. 안 3 은 «기존 문»이지만 대상 롤 속성(오늘 안 실림)을 못 덮는다 — 대상 롤은 등록 매핑의 주어가 아니다
+```
+
+### 3. 겹침 — 한 규칙
+
+```
+같은 소스에 그 엔티티를 «주어로 등록하는 선언된 문장»이 있으면, 그 엔티티의 시스템 원자는 내지 않는다(선언이 이긴다)
+-> 등록 문장이 있는 소스는 원자 바이트가 오늘과 같다(대조군 게이트)
+배치 안 거르기가 같은 (주어, 속성 상태) 를 하나로 접는 것은 그대로 — 그러나 선언 원자와 시스템 원자는 occurred_at 이 다를 수 있어 거르기에만 기대지 않는다
+```
+
+### 4. 소급
+
+```
+코드만 바뀌면 지문(cursor_translator_version)은 안 움직인다 — 지문은 «선언의 닫힘»이다(setup_registry.source_cursor_fingerprint)
+compiler_contract_version 을 올리면 «모든» 소스가 움직인다 -> 너무 넓다
+그래서: 시스템 원자의 계획을 소스의 컴파일된 계획에 «있을 때만» 싣는다(비면 칸 자체가 없음)
+  -> 그 계획이 생긴 소스만 지문이 움직인다
+⚠️ 지문이 움직여도 과거 행은 다시 번역되지 않는다 — 재기동의 restamp 는 지문 문자열만 바꾸고 위치 · 원자는 그대로다
+   (store.restamp_cursor, 소유자 08-21 「원장은 append」). 새로 들어오는 행부터 속성 원자가 생긴다
+   과거 행까지 원하면 그 소스를 rescope(whole_source, 기존 ledger_rescope 길)로 다시 번역 — 소스 단위 명령 하나
+범위 = «등록이 안 실어 나르는 속성을 묶은 소스» + «대상 롤 속성을 묶은 소스». 박스에서 0 개(위 수). 운영 수는 모른다 —
+      재기동 로그가 지문이 움직인 소스를 이름으로 적는다 -> RUN.md 에 그 줄과 소스별 rescope 명령
+```
+
+### 판정해 주실 것
+
+```
+1  술어: 안 1 / 안 2 / 안 3
+2  시각축(소유자 10-02 「가장 큰 리스크」): 시스템 원자의 occurred_at 은
+     ㄱ) 그 행의 사건 시각(오늘 선언된 등록 원자와 같음) — 노드 칸의 «최근 값이 이김»이 사건 순서를 따른다
+     ㄴ) 적재 시각(기준 'ingested') — 사건 시각이 없는 소스도 낼 수 있다
+   제 추천 ㄱ, 사건 시각이 없는 소스는 ㄴ(오늘 «사건 시각을 묶지 않는 매핑»과 같은 규칙)
+3  한 소스에서 한 엔티티 타입이 롤 둘에 나올 때(예: 부모 lot · 자식 lot) bind.entities 속성은 오늘 «모든 롤에 복사»된다 —
+   두 노드에 같은 값이 실린다. 시스템 원자도 그대로 따를지, 그런 타입은 롤 속성만 받을지
+4  은퇴 범위(이 라운드에 넣나): read.registration_probe · registration_context_required 갈래 · existing_registrations ·
+   idx_ledger_register / 검색 인덱스(마이그레이션 필요 — 인덱스 DROP) · config_authoring 의 probe 줄
+5  등록 판단 접기: «모양» 하나로 — 사용자가 목적어 없는 다른 술어를 적으면 그것도 등록으로 읽힌다(오늘 속성 칸 · 걷기가 이미 그렇게 읽음)
+```
+게이트에 넣을 것(총괄 10-07): PG 에 실제로 쓴 원자의 occurred_at_basis 가 선언한 기준과 같다(사건 시각 기준 하나 · 세상 시각 하나) — 오늘의 atom_record 변이(기준 None)가 그 칸에서 빨강.
