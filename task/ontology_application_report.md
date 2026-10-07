@@ -36340,3 +36340,19 @@ a61cdb35f  방송 item 다섯 자리 -> event_constants.upsert_item
 비용      identify 가 쿠키 있는 요청마다 세션 행을 한 번 읽는다(정적 파일 요청까지) — 개인 키는 거기에 UPDATE 하나(구현자 a14bfb2d2 가 적음). 안 쟀다
 문서      DEPLOY_SETUP §2-1 신설(켜는 것 · 켜지면 · 스크립트 · 기동 줄 · 끄기) + §1-4 머리에 「켜지면 토큰은 /internal/* 만」 (이 보고와 같은 커밋)
 ```
+
+---
+
+## [C 응용] 10-07 총괄 메시지(DEPLOY_SETUP 비밀 줄 · bd33605af · b29b14e09 동기화) — 끝. 38aaca86e · 3a5d39ddb · 53e2dbdd1
+
+```
+비밀 줄     DEPLOY_SETUP §2-1 — RUN.md b29b14e09 절과 같은 말: «있으면» · 없으면 public client(PKCE 만) · invalid_client 면 IT 에 비밀
+            + 거절 줄(invalid_client) · .cer 안 넣음 · BOM 없는 UTF-8 (BOM 도 읽음)
+b29b14e09   기동 줄 셋(못 읽음 · "true" 글자 · admins 가 목록 아님)과 secret|public client — 같은 절
+bd33605af   은퇴 이름(registration_probe · existing_registrations · registration_context_required · RegistrationProbePlan · _v2_registration_subjects)을
+            든 살아 있는 문서 줄 중 은퇴 표시 없는 것: 전 9(구현자 d6795570a 가 셋) -> 후 3
+            남은 3 은 LEDGER_SCHEMA_COMPLETENESS 의 「아래는 그때의 실측이다」 머리 밑 측정 기록(구현자가 단 머리) — 그대로 둠
+            INDEXES 줄의 제 메모를 「함수 은퇴 · 인덱스 DROP 은 다음 라운드」로
+안 고침     ledger_declaration_by_example 의 「속성을 매긴 것만으로 «암묵 등록»(… 타입이 register.subjects 에 있어야 함)」 —
+            그 조건이 지금도 참인지 코드로 못 세웠다(attribute_registrations 는 그 목록을 안 묻는다 · 게이트가 묻는지는 안 열었다). 참이 아니면 한 줄 고칩니다
+```
