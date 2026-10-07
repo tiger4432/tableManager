@@ -67,8 +67,9 @@ async function suite(m) {
   const odd = [{ ...node, id: 'a', attributes: { value: 'S1' } }, { ...node, id: 'b', attributesByWorld: {} },
     { ...node, id: 'c', attributes: {} }, node];
   const q = m.pointsOf(odd, 'value', new Set());
-  say('P2 a value that is not a number and a value said at no time are left out and counted; a node without it is not counted',
-    q.points.length === 1 && q.notNumber === 1 && q.noTime === 1, JSON.stringify({ points: q.points.length, notNumber: q.notNumber, noTime: q.noTime }));
+  say('P2 a value that is not a number, a value said at no time and a node without it are left out, each counted',
+    q.points.length === 1 && q.notNumber === 1 && q.noTime === 1 && q.noValue === 1,
+    JSON.stringify({ points: q.points.length, notNumber: q.notNumber, noTime: q.noTime, noValue: q.noValue }));
 
   console.log('\n[W] the window of the one more step');
   const w = m.windowAround([Date.parse('2026-10-01T00:00:00Z'), Date.parse('2026-10-03T00:00:00Z'), NaN]);
@@ -118,6 +119,8 @@ const failures = [];
       'return new Set((steps || []).flatMap((s) => s.results || [])'),
     M('Pm1', 'the points are not lit from the start branch', 'P1', 'lit: Boolean(lit && lit.has(node.id))', 'lit: false'),
     M('Pm2', 'a value said at no time stands at time 0', 'P2', "if (t === null) { noTime += 1; continue; }", ''),
+    M('Pm3', 'a node without the attribute is dropped uncounted (lead 161757c35)', 'P2',
+      'if (!(attribute in attrs)) { noValue += 1; continue; }', 'if (!(attribute in attrs)) continue;'),
     M('Wm1', 'the window is a day each side', 'W1', 'export const AROUND_DAYS = 7;', 'export const AROUND_DAYS = 1;'),
     M('Dm1', 'the start branch is drawn under the rest', 'D1', '[...labels, ...rest, ...lit]', '[...labels, ...lit, ...rest]'),
     M('Dm2', 'the rest is not faded', 'D1', ' opacity="0.4"/>', '/>'),

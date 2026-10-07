@@ -1051,7 +1051,19 @@ async function suite(m, makeWalk = createWalkBoxWalk, css = REAL_CSS) {
       return { s, meta: textOf(s.view.factsBox, 'sg-lv-meta').join(), spark: lump ? s.view.cy.getElementById(lump.id()).data('spark') : null };
     };
     const capped = await seeRecipe({ ...FOLD_STEP, truncated: { ...FOLD_STEP.truncated, nodes: true, reason: 'nodes' } });
-    say('O1 a walk the cap cut says so, with the cap', capped.meta.endsWith(` · Capped at ${STEP_NODE_LIMIT}`), capped.meta);
+    say('O1 a walk the node cap cut says so in the picture\'s own words, with the cap the answer names',
+      capped.meta.endsWith(` · Truncated · nodes ${FOLD_STEP.limits.nodes}`), capped.meta);
+    // A claims cut (lead 161757c35): the answer carries nodes whose attributes did not arrive.
+    const bare = JSON.parse(JSON.stringify(FOLD_STEP));
+    const stripped = bare.nodes.filter((n) => n.attributes && 'value' in n.attributes).slice(0, 2);
+    for (const n of stripped) { n.attributes = {}; n.attributes_by_world = {}; }
+    bare.truncated = { ...bare.truncated, claims: true, reason: 'claims' };
+    const claims = await seeRecipe(bare);
+    const held = FOLD_STEP.nodes.filter((n) => n.attributes && 'value' in n.attributes).length - stripped.length;
+    say('O5 a claims cut is said with the node cut\'s words, and the nodes it left bare are counted beside the rest',
+      stripped.length === 2 && claims.meta.startsWith(`Points ${held} · Window `)
+        && claims.meta.endsWith(` · Truncated · claims ${FOLD_STEP.limits.claims} · 2 without value`),
+      claims.meta);
     const refused = await seeRecipe(FOLD_STEP, (s) => { s.view.walk = async () => ({ ok: false, message: 'Refused' }); });
     say('O2 a walk refused says so in the info box, and the lump carries no picture',
       textOf(refused.s.view.factsBox, 'sg-fail').join() === 'Failed · Refused' && !refused.spark,
@@ -1485,7 +1497,10 @@ const failures = [];
     M('VL1m', 'a lump of values is treated as one to pick a type for (lead mutant 8504654f0)', 'S3',
       '    if (!members.length || valueAttributes(members).length) return { nodes: members };',
       '    if (!members.length) return { nodes: members };'),
-    M('O1m', 'a capped walk says nothing of the cap', 'O1', '    if (data.capped) said.push(`Capped at ${STEP_NODE_LIMIT}`);\n', ''),
+    M('O1m', 'a cut walk says nothing of the cut', 'O1', '    if (data.cut && data.cut.length) said.push(truncatedWords(data.cut));\n', ''),
+    M('O5m', 'a lump\'s walk says only the node cut, as before (lead 161757c35)', 'O5',
+      'cut: cutBudgets(res.truncatedAxes, res.limits) }', "cut: cutBudgets((res.truncatedAxes || []).filter((a) => a === 'nodes'), res.limits) }"),
+    M('O6m', 'the nodes left bare are not said', 'O5', "    if (got.noValue) said.push(`${got.noValue} without ${y || 'values'}`);\n", ''),
     M('O2m', 'a refused walk reads as no points', 'O2',
       "    if (data.state === 'failed') { box.appendChild(this._el('div', 'sg-fail', `${FAILED} · ${data.reason}`)); return box; }\n", ''),
     M('J9m', 'a definition lump\'s walk collects everything, not the owner\'s type', 'J2',
