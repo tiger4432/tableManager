@@ -36426,3 +36426,25 @@ bd33605af   은퇴 이름(registration_probe · existing_registrations · regist
 
 > [27eea6f65 물음 — 총괄 판단 「지금처럼 거둔다」를 받음] 경계는 «맵퍼가 답했나»다 — 답했으면(행 · 빈 답 · refusal 을 실은 빈 답) 고친 행이 먹이던 옛 층을 거두고,
 > 터졌으면(예외) 묶음 단계가 거둘 일을 적는 줄 «앞»에서 except 로 빠져 return False — apply_chain_writes 까지 안 가므로 쓰기도 거두기도 없이 옛 층이 남는다(origin/main 코드로 읽음 · 안 잼).
+
+---
+
+## [C 응용] 10-08 db120a54c(접힌 묶음 보기) QA — 총괄 메시지의 두 물음. 둘 다 코드로 읽음 · 안 잼
+
+```
+① startBranch   startBranch(steps) = steps[0].results 의 노드 전부
+   여러 걸음     Continue 는 steps 끝에 붙인다 -> steps[0] 그대로 -> 같은 답
+   새 시작       show() 가 steps 를 비운다 -> 새 첫 걸음의 답
+   묶음 열기     화면이 접은 묶음(openLump)은 steps 를 안 건드린다 -> 같은 답
+                서버가 안 보낸 묶음을 «첫 걸음에서» 열면(expandBundle(0, …)) 그 답이 steps[0].results 에 더해져 시작 갈래가 «넓어진다»
+                — 정의(첫 시작에서 닿음)대로다. 다른 걸음의 묶음은 안 바꾼다
+   ⚠️ 어긋날 자리  묶음 보기의 데이터는 처음 볼 때 한 번 걷고 lumpSeen 에 둔다. 점의 «밝힘»은 그릴 때마다 startBranch 를 다시 묻지만,
+                정의 멤버 묶음의 «기간»(windowAround — 시작 갈래의 시각 앞뒤 7 일)은 그때 한 번 정해진다 — 그 뒤 첫 걸음 묶음을 열어 시작 갈래가 넓어져도 기간은 옛 것
+② 기간 없음 + 상한  시작 갈래에 시각이 없으면 windowAround -> null -> since/until 없이 걷고 상자는 «Window all time»,
+                서버 truncated.nodes 가 참이면(truncatedAxes 에 'nodes') «Capped at 200» — 둘 다 말한다
+   ⚠️ 말 안 하는 컷  묶음 걷기의 다른 컷(claims · edges · depth)은 상자가 안 읽는다(capped 는 'nodes' 만).
+                claims(등록 예산)가 잘리면 노드에 속성이 안 실리고, pointsOf 는 그 속성이 없는 노드를 «세지도 않고» 건너뛴다
+                -> Trend 의 점이 조용히 줄고 «not numbers» · «no time» 어디에도 안 든다
+문서     PRIMITIVES 에 walkableRoutes · startBranch 한 항목(R&D 보드 상자의 사본 · 첫 걸음 묶음 열기가 시작 갈래를 넓힘을 함정으로) — 이 보고와 같은 커밋
+         CODE_MAP 은 a1f9bb454 에서 맞춤(fold_views.js 신설 줄 · subgraph_view · derive.walkableRoutes)
+```
