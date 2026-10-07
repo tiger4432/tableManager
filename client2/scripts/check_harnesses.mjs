@@ -1028,7 +1028,7 @@ const FLOORS = new Map([
   // The Auto Update row's Backfill cell (lead 09f0be40f): the window's three states, this
   // collector's latest run read through buildRunsView, and what the page keeps drawn and escaped.
   // 19 -> 24 (lead 75bac3964, D1-D5): Start is the latest run's next_start, verbatim, until typed.
-  ['collector_backfill_harness.mjs', 24],
+  ['collector_backfill_harness.mjs', 25],
   //
   // New with lead f0e668bb8: File Ingestion's retry under a folder. The number on Retry is the
   // server's preview count, a changed folder needs a new preview, 0 is off with the server's words.
@@ -1275,7 +1275,7 @@ const FLOORS = new Map([
   //    green while a member was swapped, and a member is exactly what protects a column.
   ['push_gate_harness.mjs', 37],   // 34 -> 37: [13] the pickers + M17 (lead e67ef53f3)
   // 345 -> 347 (lead 668fa004c): the operation's downstream note reaches its card, as sent.
-  ['retroactive_view_harness.mjs', 351],
+  ['retroactive_view_harness.mjs', 359],
   // New with lead a274c90f0: one run is one line of five cells, its result a line under it.
   // Floor is the count it reports on the commit that introduces it.
   ['run_lines_harness.mjs', 24],

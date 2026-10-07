@@ -46,7 +46,8 @@ export function collectorBackfillView(col, runsBody) {
   const latest = runs.find((r) => r && r.op === BACKFILL_OP && r.params && r.params.collector === key);
   if (!latest) return { show: true, title, offReason, key, nextStart: '', line: null };
   const nextStart = typeof latest.next_start === 'string' ? latest.next_start : '';
-  const row = buildRunsView({ runs: [latest], state_names: runsBody.state_names || {} }, Date.now(), {}, {}).rows[0];
+  // `runs`, not `rows`: the Overview list keeps a finished run ten minutes, this cell its latest run whenever it ended.
+  const row = buildRunsView({ runs: [latest], state_names: runsBody.state_names || {} }, Date.now(), {}, {}).runs[0];
   const word = row.stateName && row.stateName.text ? row.stateName.text : '';
   const total = Number(latest.total_rows);
   const done = Number(latest.processed_rows);
