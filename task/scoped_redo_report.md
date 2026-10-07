@@ -72927,3 +72927,104 @@ sqlite 전체 5 failed, 7851 passed, 333 skipped, 3 xfailed, 13227 warnings in 8
 가능한 갈래 — ① 확정 작업이 cascade 로 쓴다(격자 클릭 리플레이가 쓰는 그 표시) ② 확정 작업이 끝에 그 lot 의 조인을 스스로 돌린다(「아래는 그것도 돌려서 돈다」) ③ 운영자가 확정 뒤 조인을 소급으로 돌린다(지금도 가능, 선언 0).
 
 시험 12 passed, 39 warnings in 2.70s (일회용 프로브 — 저장소에 안 넣음, 사본은 스크래치에 보관)
+
+---
+
+## [10-07] raws 폴더 하나의 트리 일꾼이 걸리면 그 폴더가 막힌다 — 대기 자리 · 재현 · 로그 (총괄 af0fae18c · 소유자 10-07)
+
+어느 DB · 어느 스키마 · 지운 것 — sqlite 메모리만(시험 틀) · 박스 DB 안 씀 · 지운 것 0 · 코드 고친 것 0
+
+### ① 일꾼이 끝나지 않을 수 있는 자리 (코드를 읽어 셈 — 도구 셈 아님)
+
+길: request_tree_ingest → _tree_ingest_worker → _ingest_directory_tree → 파일마다 _handle_event(순서대로, 같은 스레드) → _route_and_process → (작은 파일) 그 스레드에서 process_with_retry.
+폴더 키는 일꾼이 «돌아올 때만» _ingesting_dirs 에서 빠진다.
+
+| 자리 | 기다리는 것 | 상한 |
+|---|---|---|
+| _wait_tree_quiescent | 폴더가 멈출 때까지 잠 | 있음 — FLATTEN_STABILITY_MAX_WAIT_SECONDS |
+| os.walk · os.stat · compute_file_signature(파일 전체 읽기) | 파일 시스템(공유 폴더면 OS) | 없음 |
+| settle_already_terminal · _try_path_stat_skip · _try_dedup_skip · _plan_checkpoint · _finalize_checkpoint · 실패 기록 | DB 문장 | 없음 — 엔진에 statement_timeout · lock_timeout 이 없다(database.build_engine). 풀 빌리기만 30 s(SQLAlchemy 기본) |
+| _resolve_rows | 파서 — 파이프라인 스크립트(운영자 파이썬) · 표준 파서 | 없음 |
+| _send_to_upsert → crud.apply_batch_updates | DB 쓰기 — 행 · 유일 키 잠금을 다른 세션이 쥐면 그 세션이 끝날 때까지 | 없음 — 같은 이유 |
+| _serial_lock.acquire() (heavy 레인 제출이 실패했을 때의 마지막 대비) · heavy 일 `with self._serial_lock` | 같은 작업공간의 다른 파일 처리 | 없음 |
+| 디바운스 1 s · 잠긴 파일 재시도 3 회 · 페이스 쉼 · 완료 통지(post_event timeout=5) | — | 있음 |
+
+그래서 «그 표만» 서는 것과 맞다: 작업공간 직렬 잠금은 표마다 하나다. 한 파일이 DB 쓰기에서 서면 그 표의 인라인 파일 · heavy 파일 둘 다 그 잠금 뒤에 선다.
+
+### ② 재현 (시험 하네스 — test_nested_dir_ingestion 의 틀, 일회용 · 저장소에 안 넣음)
+
+f1 의 쓰기(_send_to_upsert)를 «돌아오지 않게» 막고, 같은 폴더에 새 이름 f2 를 넣고, 그 폴더를 다시 요청(스윕 · watchdog 이 하는 그 호출)했다.
+- 막혀 있는 동안: 일꾼 살아 있음 True · 다시 요청 3 번 → [None, None, None] · f2 의 적재 기록 0 건
+- 막힌 1 초 동안 그 표의 로그 줄: 0 줄
+- 풀어 주면: 일꾼 살아 있음 False, 다음 요청 started → 기록 [('f1.csv', 'SUCCESS'), ('f2.csv', 'SUCCESS')]
+- watchdog 은 recursive=False 라 «폴더 안에 새로 생긴 파일»에는 사건이 없다 — 그 파일을 집는 것은 주기 스윕뿐이고, 스윕은 None 을 받고 아무 줄도 안 남긴다(그 자리 sweep_existing_files 의 handler.request_tree_ingest(fp); continue).
+
+### ③ 그때 로그에 무엇이 남나
+
+- 0 줄(위 재현, 1 초 창). 코드상 막히기 전 마지막 줄은 f1 의 「New file detected」 이다(쓰기 전에 찍힌다).
+- ChunkWaitSampler 가 쓰기 중 자기 백엔드의 대기를 재지만, 그 줄은 «청크가 끝날 때» 쓴다 — 끝나지 않는 청크는 아무것도 안 쓴다.
+- 체인 워커에는 같은 경우를 위한 줄이 있다(_say_what_a_stalled_group_waits_on — 300 s 넘게 멈춘 일에 「멈춘 초 · 단계 · db pid · 무엇을 기다리나」 한 줄). 감시자 쪽에는 그 짝이 없다.
+- /health 의 감시자 작업 표지(heartbeat.work_claim)가 멈춘 시간을 들고 있다고 주석에 적혀 있다 — 이번에 화면은 안 열었다(안 쟀다).
+
+### 셋으로 — 고치는 방향 (짓지 않음)
+
+| 갈래 | 무엇 | 크기 |
+|---|---|---|
+| 보이게 | 감시자에 체인 워커와 같은 줄을 둔다 — 300 s 넘게 안 움직인 작업 표지마다 「폴더 · 몇 분째 · 파일 · 단계 · db pid · 무엇을 기다리나(db_waits)」 한 줄, 한 번씩. 스윕이 None 을 받을 때 「이 폴더는 N분 전 시작한 일꾼이 아직 처리 중(파일 f1)」 한 줄 | 작음 — 체인 쪽 함수 · db_waits 를 같이 씀(안 쟀다) |
+| 풀리게 | 감시자 세션의 DB 문장에 상한(lock_timeout / statement_timeout, 값은 선언 칸) — 넘으면 그 파일은 오류로 끝나 err · 재시도로 가고 일꾼은 다음 파일로, 폴더 키도 풀림. ⚠️ 폴더 키만 풀어 주는 것은 소용없다 — 같은 표의 다음 파일이 작업공간 잠금 뒤에 다시 선다 | 중간 — 상한 값은 운영 증거로 정해야 함 |
+| 원인 자리 | 무엇이 그 잠금을 쥐었나 — 소유자의 pg_stat_activity 결과가 답한다(체인 워커의 열린 트랜잭션 · idle in transaction · 같은 업무 키의 동시 삽입 중 무엇인지) | 증거를 받은 뒤 |
+
+시험 1 passed, 6 warnings in 1.88s (일회용 프로브 — 사본은 스크래치에 보관)
+
+---
+
+## [10-07] 어드민 체인 목록 · 선언 화면이 왜 느린가 — 요청 전수 · 단계별 시간 (소유자 10-07 · 총괄)
+
+어느 DB · 어느 스키마 · 지운 것 — 박스 DB 를 «읽기만»(GET) · 선언은 이 박스 라이브 config 의 «임시 사본»(ASSY_DATA_ROOT, 끝나고 지움) · 코드는 wt-impl(origin/main) · 지운 것 0
+⚠️ 이 박스의 수다(BOX). 운영 주장이 아니다. 처리기를 프로세스 안에서 불러 잼(HTTP · 인증 · 브라우저 시간 없음 — 어드민 라우트는 토큰 없이 401 이라 돌고 있는 서버로는 못 쟀다).
+
+요청 전수 — 탭을 열 때 클라가 보내는 것(client2/src/admin.js fetchData · refreshChainRule · refreshChainGraph · chainPauseReads · refreshTableConfig):
+
+| 화면 | 요청 | 답 | 시간 1(차가움) / 2 / 3 (s) | 먹는 단계 |
+|---|---|---|---|---|
+| chain | `/admin/chain/rules/raw` | 200 | 0.040 / 0.011 / 0.005 | - · 가장 큰 함수 main.py:6517 get_chain_rule_raw 0.001 s · 같은 파일 두 번: chain_rules.json ×2 |
+| chain | `/admin/chain/rules` | 200 | 0.017 / 0.014 / 0.007 | - · 가장 큰 함수 main.py:6115 get_chain_rules 0.008 s |
+| chain | `/admin/mappers/list` | 200 | 0.040 / 0.089 / 0.025 | ast.parse 0.072 s · 가장 큰 함수 main.py:6231 get_mappers 0.082 s |
+| chain | `/admin/chain/queue` | 200 | 0.202 / 0.018 / 0.015 | - · 가장 큰 함수 main.py:4611 get_chain_queue_depth 0.011 s · 같은 파일 두 번: chain.json ×2, graph.json ×2, ledger.json ×2, scheduler.json ×2, watcher.json ×2 |
+| chain | `/admin/outbox/failed` | 실패 — raised ProgrammingError: (psycopg2.errors.UndefinedColumn) 오류:  database_outbox.ledger_state 칼럼 없음 | 0.010 / 0.008 / 0.006 | - · 가장 큰 함수 main.py:5089 get_failed_outbox_events 0.002 s |
+| chain | `/chain/graph` | 200 | 0.078 / 0.176 / 0.068 | - · 가장 큰 함수 main.py:4493 get_chain_graph 0.172 s · 같은 파일 두 번: ledger_config.json ×2 |
+| chain | `/runtime` | 200 | 0.025 / 0.012 / 0.008 | - · 가장 큰 함수 main.py:4513 get_runtime_loops 0.006 s |
+| chain | `/admin/chain/pause` | 200 | 0.002 / 0.003 / 0.002 | - · 가장 큰 함수 main.py:142 db_context_middleware 0.000 s |
+| chain | `/health` | 200 | 0.021 / 0.009 / 0.008 | - · 가장 큰 함수 main.py:258 _health_probe_and_release 0.003 s |
+| chain | `/admin/retroactive/runs` | 200 | 0.013 / 0.022 / 0.011 | - · 가장 큰 함수 main.py:6871 list_retroactive_runs 0.006 s |
+| chain | `/admin/file-ingestion/active` | 200 | 0.002 / 0.003 / 0.002 | - · 가장 큰 함수 main.py:142 db_context_middleware 0.000 s |
+| tables | `/admin/tables/config/raw` | 200 | 0.004 / 0.006 / 0.004 | - · 가장 큰 함수 main.py:6487 get_table_config_raw 0.002 s · 같은 파일 두 번: table_config.json ×2 |
+| tables | `/admin/ledger/relations` | 200 | 0.067 / 0.033 / 0.019 | db (do_execute) 0.007 s · 가장 큰 함수 main.py:6570 get_ledger_relations 0.009 s |
+| file | `/admin/file-ingestion/logs` | 200 | 0.036 / 0.018 / 0.012 | - · 가장 큰 함수 main.py:5232 get_file_ingestion_logs 0.008 s |
+| file | `/admin/file-ingestion/workspaces` | 200 | 0.004 / 0.003 / 0.002 | - · 가장 큰 함수 main.py:142 db_context_middleware 0.000 s |
+| autoupdate | `/admin/auto-update/status` | 200 | 0.005 / 0.005 / 0.003 | - · 가장 큰 함수 main.py:7047 get_auto_update_status 0.001 s |
+| scripts | `/admin/scripts/list` | 200 | 0.003 / 0.005 / 0.003 | - · 가장 큰 함수 main.py:7287 list_admin_scripts 0.000 s |
+
+읽는 법
+- 체인 탭이 여는 요청의 서버 시간 합(데운 둘째 호출, 실패 하나 뺌): 0.357 s — 브라우저는 이것들을 «동시에» 보낸다.
+- 가장 큰 것: `/chain/graph` 0.176 s(둘째) — 요청마다 원장 선언을 «처음부터 컴파일»(ledger.setup.load_setup). `/admin/mappers/list` 0.089 s(둘째) — 요청마다 매퍼 파일 전부를 ast.parse.
+- `/admin/outbox/failed` 는 이 박스 DB 에 database_outbox.ledger_state 칸이 없어 실패했다 — wt-impl 코드와 박스 DB 의 차이(박스 상태). 시간은 못 잼.
+- `/admin/file-ingestion/workspaces` · `/admin/scripts/list` 는 임시 데이터 루트에 작업공간이 없어 «빈 답»이다 — 이 둘의 수는 대표가 아니다.
+
+같은 일을 두 번 하는 자리 (잰 것)
+- 요청 «안»: 같은 파일을 두 번 엶 — 위 표의 「같은 파일 두 번」 칸(chain_rules.json · table_config.json · ledger_config.json · 각 일꾼 heartbeat 파일).
+- 요청 «사이»: 한 화면이 여는 요청들이 같은 선언을 «각자» 다시 읽고 컴파일한다 — chain_rules.json 은 rules/raw · rules 가 각각, 원장 선언은 graph 가 매번. 결과를 지문(파일 시각 · 크기)으로 묶어 두는 자리가 없다(안 셌다: 다른 화면까지 몇 번인지).
+
+이 박스에서는 서버 처리기가 «느리다»고 할 수가 없다(위 합). 그러면 소유자가 본 느림은 다음 중 하나다 — 이 박스로는 못 가른다:
+- 운영 선언이 더 크다(규칙 · 원장 소스 · 매퍼 파일 수) — 컴파일 · ast.parse 가 그 크기로 는다
+- 돌고 있는 서버의 대기(동기 처리기 스레드 풀 · 같은 프로세스의 다른 일) — 처리기 밖의 시간
+- 클라(요청 뒤 그리기 · 편집기 띄우기)
+
+고칠 방향 셋 (짓지 않음)
+| 갈래 | 무엇 | 크기 |
+|---|---|---|
+| 보이게 | 어드민 요청마다 서버 시간을 응답 머리(Server-Timing)와 «느린 것만» 로그 한 줄로 — 운영에서 «어느 요청이» 느린지 소유자가 그대로 읽게 | 작음 |
+| 반복 없애기 | 선언 컴파일 결과(원장 setup · 체인 규칙 펼침 · 매퍼 목록)를 «파일 지문»으로 묶어 두고, 바뀌면 다시 — 리로드가 이미 비우는 자리(reload_local_process_cache)와 같은 문 | 중간 — 무효화가 핵심 |
+| 운영에서 재기 | 운영 박스에서 같은 표를 한 번 — 위 «보이게»가 들어가면 화면을 열기만 하면 된다 | 위에 딸림 |
+
+재는 스크립트: 스크래치 measure_admin_screens.py (일회용)
