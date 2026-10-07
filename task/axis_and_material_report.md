@@ -1,3 +1,12 @@
+> ## [01:08 디자인] 원장 선언 폼 견본 둘 — 은퇴한 registration_probe 를 서버의 지금 답으로 다시 뜸 (총괄 10-07) — c7afff981
+
+**결론** 두 견본에서 `registration_probe` 가 0 입니다. 견본을 읽는 하니스 셋이 초록입니다.
+
+- 폼 뼈대(`authoring_skeleton.json`): `sources.*.read` 아래 `registration_probe` 칸 하나가 빠졌습니다. 그 밖의 칸은 같습니다.
+- dt_job 계획(`authoring_inherited_plan.json`): 줄 35 → 32. 빠진 줄 중 `registration_probe` 줄 3 개. 서버의 지금 답에서 sample 의 엔티티 이름이 `dtjob@1` 이 아니라 `dtjob` 입니다.
+- `explorer_inherited_attributes` 의 I1 칸이 옛 이름 `dtjob@1` 을 기대값에 손으로 적어 두어 빨개졌습니다. 이제 그 줄의 `ground.from_paths` 에서 경로를 읽습니다. I1 을 노리는 변이는 그대로 잡힙니다.
+- 하니스 form_grammar 21 · inherited_attributes 8 · path_bar 20 칸 실패 0. 러너 초록 · 계약 13 개 어긋남 0. 서버 · 화면 코드 변경 0.
+
 > ## [00:44 디자인] 걷기 그래프 — 노드 누르기 · 확대 축소 · 새 시작의 마킹 · 덩어리 Loading (총괄 5f1eb137e, 소유자 10-07) — 53d39f897
 
 **결론**
