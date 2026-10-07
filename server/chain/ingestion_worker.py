@@ -1798,26 +1798,22 @@ def apply_chain_writes(db, tx_id, rule, incoming_depth, rules_by_target,
                         # move back.
                         needs_items = len(results) <= BROADCAST_ITEM_LIMIT
                         msg_items = []
+
+                        # 🔴 EVERY CELL IS WRAPPED, as every other sender's is (총괄 9eb902922 ① 여섯째).
+                        #    Only an empty one was: a value rode bare, so a datetime cell reached
+                        #    `json.dumps` as a Python datetime and the group's row broadcast was lost.
+                        def _cell(value):
+                            return {"value": value, "is_overwrite": False, "sources": {},
+                                    "updated_by": "system"}
+
                         for row, is_new in (results if needs_items else ()):
                             c_at_str = to_local_str(row.created_at)
                             u_at_str = to_local_str(row.updated_at)
-                        
-                            r_data = {}
-                            for col in user_cols:
-                                val = getattr(row, col)
-                                if val is None:
-                                    val = {"value": None, "is_overwrite": False, "sources": {}, "updated_by": "system"}
-                                r_data[col] = val
-                            r_data["created_at"] = {"value": c_at_str, "is_overwrite": False, "sources": {}, "updated_by": "system"}
-                            r_data["updated_at"] = {"value": u_at_str, "is_overwrite": False, "sources": {}, "updated_by": "system"}
-                        
-                            msg_items.append({
-                                "row_id": row.row_id,
-                                "is_new": is_new,
-                                "data": r_data,
-                                "created_at": c_at_str,
-                                "updated_at": u_at_str
-                            })
+                            r_data = {col: _cell(getattr(row, col)) for col in user_cols}
+                            r_data["created_at"] = _cell(c_at_str)
+                            r_data["updated_at"] = _cell(u_at_str)
+                            msg_items.append(event_constants.upsert_item(
+                                row.row_id, r_data, c_at_str, u_at_str, is_new=is_new))
                         
                         user_name = "chain_worker"
                     
