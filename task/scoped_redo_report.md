@@ -73257,3 +73257,78 @@ sqlite 전체 6 failed, 7850 passed, 339 skipped, 3 xfailed, 13151 warnings in 7
 
 여쭐 것: 위 표에서 운영에 «있는» 것을 알려 주시면 그 축으로 다시 돌립니다 — 특히 그 선언에 run_in: operation 이 있는지(선언 한 줄이라 소유자 상설의 «운영 데이터»가 아니라 «선언»입니다).
 그동안 다음 차례인 테스트 런 원자 견본으로 갑니다 — 짓기 전에 갈래 하나와 철자를 따로 올립니다.
+
+---
+
+## [10-07] 조인 누수 — 조건 전수 census (총괄 1c5298491, 고치지 않음)
+
+어느 DB · 어느 스키마 · 지운 것 — 강제 시험은 sqlite 메모리(시험마다 새 엔진) · PG 안 씀 · 박스 DB 안 씀 · 지운 것 0
+🔴 실수 하나: 강제 시험 첫 실행에서 `run_in` 두 칸의 소급 층이 실서버 127.0.0.1:8080 /internal/events/broadcast 로 알림 POST 를 보냈습니다(토큰이 없어 401 거절 — 서버 상태 영향 없음). 프로브에 HTTP 막기를 넣고 다시 돌렸고 그 실행의 8080 줄은 0 입니다. 아래 결과는 다시 돌린 것입니다.
+
+```
+물음     인벤토리 행이 wafer 를 얻었는데 같은 lot 의 로그 행이 비어 남을 수 있는 조건
+센 길     인벤토리 쓰기(before_flush 사건 짓기) -> 사건 가져오기(tick) -> 묶음 -> 받기(fires · _rule_accepts_event) -> run_in 갈림
+         -> run_rule -> 조인(join_into) -> 로그 행 쓰기(apply_chain_writes -> crud.apply_batch_updates 와 crud 도우미 두 겹)
+센 것     함수 71 개의 AST — return(이른 것 + 마지막) · continue · break · 컴프리헨션 if · raise = 노드 235 (HEAD 6bc502984)
+         break 4 · continue 36 · filter 44 · raise 23 · return 80 · return-last 48
+명령      python census_join_leak_path.py (AST) -> python classify_census.py (노드마다 조건 코드, 이름표 없는 노드 0 · 안 쓰인 줄 예외 0 을 단언)
+카나리아   목록의 함수 71 개를 다 찾음(못 찾으면 멈춤 — 첫 실행에서 `run` 이라는 없는 이름을 잡음) · tick 의 pending 루프 1 개 · 노드 > 0
+         첫 셈은 «마지막 return» 을 뺐다가 `_rule_accepts_event` 의 거절이 바로 그 줄이라 넣어 다시 셈
+AST 밖    SQL 술어(조인의 require 거르기 · 키 tuple IN 비교 — 표기 차이가 여기서 «짝 없음»이 됨) · 층 우선순위(보이는 값 고르기)는 노드가 아니라 못 셈
+강제 시험  소유자 흐름 그대로(로그 -> 인벤토리 파생 rows=count -> 자동 확정 -> 조인) · f1 -> 참조 -> f2(여기서 확정) -> f3, 묶음마다 끝까지 · 9 passed, 27 warnings in 2.53s
+         대조군(조인에 allow_chain_trigger 있음): f1 3/3 · f2 3/3 · f3 2/2 — 대조군에 없던 줄 0 · 기준 쪽 조인(cl_join) 실행 줄 2 (대조군 2) · 사건 SUCCESS 10
+```
+
+| 코드 | 조건 | 노드 | 술어 | 남는 것(코드로 읽음) | 소유자 흐름이 닿나 | 강제 시험 결과 |
+|---|---|---|---|---|---|---|
+| A0 | 동적 표가 하나도 없다 | 1 | `if not dynamic_classes: return` | 없음 | 아니오 | 안 함 — 설치에 표가 있으면 안 탐 |
+| A1 | 그래프 메타 칸만 바뀐 행 | 1 | `all(col in graph_meta_cols ...)` -> continue | 없음 | 아니오 — wafer 는 메타 칸 아님 | 안 함 |
+| B1 | 처리된 사건 · 다른 데몬의 CONTROL 사건 | 2 | pending 질의 · tick 의 CONTROL 건너뛰기 | 없음 | 아니오 — 인벤토리 EDIT | 안 함 |
+| B2 | 깊이 한도 초과 | 4 | `depth > max_chain_depth`(기본 8) | WARNING [Chain Depth] · 사건 FAILED | 선언에 max_chain_depth 가 2 이하일 때만(확정 사건 홉 2) | f1 0/3 · f2 0/3 · f3 2/2 — 대조군에 없던 줄 1: WARNING [Chain Depth] outbox#<n> reached hop 2 over 1 · 기준 쪽 조인(cl_join) 실행 줄 1 (대조군 2) · 사건 FAILED 1 · SUCCESS 8 |
+| B3 | 행 예산 자르기 | 2 | `kept and total + cost > budget` -> break | INFO Deferring | 예 — 다음 바퀴로 미룸(잃지 않음) | 안 함 — 미룸 |
+| C1 | 묶음 키 · 이웃 묶음 합치기 | 8 | group_id · merge_consecutive_groups | 없음 | 예 — 묶는 모양만 바뀜 | 첫·둘째 판 40 칸에서 안 샘 |
+| C2 | 멈춤 | 4 | `chain_control.paused()` | WARNING paused | 운영자가 멈출 때 — 재개하면 그대로 | 안 함 |
+| C3 | 막힌 대상 표 · 행이 아직 안 보임 | 2 | blocked_targets · ROWS_NOT_VISIBLE 미룸 | INFO deferring | 예 — 미룸, 상한 넘으면 C4 | 안 함 |
+| C4 | 묶음 · 작업 실패(예외 · 쓰기 실패) | 5 | `return False` · raise | ERROR 줄 · 사건 FAILED · 재시도 | 오류가 날 때 | 안 함 — 흔적이 큼 |
+| D1 | run_in: operation -> 작업으로 미룸 | 5 | `runs_as_operation(rule)` | INFO [Retroactive] queued run_id · 대기 작업 | 선언에 limits.run_in 이 있을 때만 | f1 0/3 · f2 0/3 · f3 0/2 — 대조군에 없던 줄 4: INFO [ChainRule] rule=enrichment_dedup:cl_decide kind=declared:enrich target=cl_inv rows_i / INFO [Retroactive] queued run_id=<id> op=rule_rows params={'rule': 'cl_join', 'transaction · 기준 쪽 조인(cl_join) 실행 줄 0 (대조군 2) · 사건 PENDING 5 · SUCCESS 8 |
+| D1b | 미룬 작업의 사건이 아웃박스에서 사라짐 | 1 | `if gone: raise RetroactiveRefused` | 작업 failed + 문장 | D1 이고 작업이 보관 기한 뒤에 돌 때 | 안 함 |
+| D2 | 꺼진 규칙 | 2 | `rule_shape.is_switched_off(rule)` | 활동 기록 skipped:disabled | 아니오 — 켜져 있음 | 안 함 |
+| D3 | 다른 규칙의 리플레이 | 4 | `only is not None and name != only` | 없음 | 아니오 — 라이브 | 안 함 |
+| D4 | 다른 표 · 걸린 사건 없음 | 1 | `trigger_table != event.table_name` | 없음 | 아니오 | 안 함 |
+| D45 | (D4 의 활동 기록 갈래) | 1 | `_rule_outcome_before_running` 끝 | 활동 기록 skipped:not_triggered | 아니오 | 안 함 |
+| D5 | 바뀐 칸이 규칙 칸에 안 닿음 | 3 | `columns_meet(wanted, changed)` | INFO [Chain] rule X skipped: none of [...] changed | 아니오 — 확정은 wafer 를 씀 | 안 함 — 대조군에도 이 줄(dedup 의 rows 쓰기) |
+| D6 | 체인 쓰기 + 조인에 allow_chain_trigger 없음 | 2 | `return bool(rule.get("allow_chain_trigger"))` | 없음 — 사건 SUCCESS, 활동 기록 이유는 다음 묶음에 덮임 | 예 — 통합 조인은 이 칸을 적어야 켜짐, 동봉 샘플 조인 2 개 중 2 개가 안 적음 | f1 0/3 · f2 0/3 · f3 2/2 — 대조군에 없던 줄 0 · 기준 쪽 조인(cl_join) 실행 줄 0 (대조군 2) · 사건 SUCCESS 9 |
+| D7 | 소급 쓰기 + cascade 없음 | 2 | `if not cascade_of(payload): return False` | 없음 (D6 와 같음) | 확정을 소급 작업(enrichment_confirm)으로 할 때 | f1 0/3 · f2 0/3 · f3 2/2 — 대조군에 없던 줄 0 · 기준 쪽 조인(cl_join) 실행 줄 1 (대조군 2) · 사건 SUCCESS 9 |
+| D8 | 자기 선언의 쓰기 | 3 | `wrote == {declaration_of(rule)}` | 없음 | 아니오 — 확정 쓰기의 작성자는 확정 규칙 | 안 함 |
+| D9 | 트리거 사건 아님 | 3 | event_type 이 CREATE/EDIT 아님 | 없음 | 아니오 — EDIT | 안 함 |
+| DF | (받기 술어를 묻는 자리) | 6 | `fires(r, e)` 를 부르는 거르기 | - | - | D2~D8 의 행 |
+| DA | (받기 거절을 D6~D8 로 나누는 자리) | 1 | `if not _rule_accepts_event` -> FIRE_REFUSED_CHAIN | - | - | D6~D8 의 행 |
+| DS | 아무 규칙도 안 받은 사건 -> SUCCESS(다시 안 옴) | 1 | `if not valid_events: return True` | 없음 — 이것이 D6 · D7 의 «이미 처리» | D6 · D7 와 같이 | D6 · D7 결과에 포함 |
+| E0 | 선언 결함 · 구현 못 찾음 | 21 | _missing · resolve · map metadata | 규칙 줄 refusal= 또는 ERROR | 아니오 — 선언이 맞으면 | 안 함 |
+| E1 | require 칸이 빈 트리거 행 | 2 | `held_back` 의 is_blank_value | INFO not handed over | 선언에 require 가 있을 때만 | f1 3/3 · f2 3/3 · f3 2/2 — 대조군에 없던 줄 1: INFO [ChainRule] rule=enrichment_dedup:cl_decide kind=declared:enrich target=cl_inv rows_i · 기준 쪽 조인(cl_join) 실행 줄 2 (대조군 2) · 사건 SUCCESS 10 |
+| E2 | 넘어온 행 0 · 맞는 왼쪽 행 0 | 5 | propose · _left_rows_for_reference | 규칙 줄 refusal= | 아니오 | 안 함 |
+| E3 | 로그 행의 키가 전부 빈 값 | 2 | `_every_part_blank(key)` | INFO every join key empty | 그 행은 lot 이 없어 «같은 lot» 이 아님 | 안 함 |
+| E4 | 오른쪽 짝 없음(표기 차이 포함) | 1 | `not row.matched` | 페이지 전부일 때만 refusal=, 일부면 없음 | 아니오 — 인벤토리 lot 은 그 로그 lot 에서 파생 | 안 함 |
+| E5 | 오른쪽 행 2 개 이상 | 1 | fanned (`n > 1`) | WARNING operator_line | 아니오 — 아래 거절 | 선언이 거절됨: cl_decide: derived table composite_key_source must be a subset of decision_key (violation: ['rows']) |
+| E6 | blank: skip + 빈 답 | 3 | `_unsaid` | INFO blank answer(s) not written | 아니오 — wafer 는 값 | 안 함 |
+| E7 | row_id 없는 payload 거르기 | 1 | `if p.get("row_id")` | 없음 | 아니오 | 안 함 |
+| E8 | 접힌 사건의 행을 다시 못 읽음 | 3 | unreadable · row None | INFO deferring 또는 실패 | 행이 그 사이 지워졌을 때 | 안 함 |
+| F1 | 키 없는 체인 쓰기 전부 거절 | 1 | key gate `if not kept: continue` | ERROR [ChainKeyGate] | 아니오 — 조인은 row_id 로 씀 | 안 함 |
+| F2 | 버전 게이트 | 5 | version_column 선언 + 쓰기에 버전 칸 없음 | WARNING 첫 회 + INFO 묶음마다 | 로그 표에 version_column 이 있을 때 — 그때는 «모든» 행이 빔 | f1 0/3 · f2 0/3 · f3 0/2 — 대조군에 없던 줄 4: INFO [VersionGate] 'cl_log' version column 'v', source 'chain_ingestion': version_missing= / INFO [VersionGate] 'cl_log' version column 'v', source 'chain_ingestion': version_missing= · 기준 쪽 조인(cl_join) 실행 줄 2 (대조군 2) · 사건 SUCCESS 8 |
+| F3 | 선언 안 된 칸 · 매핑 안 된 칸 | 4 | loadable · unmapped | 떨굼 보고 | 아니오 — wafer 는 선언된 칸 | 안 함 |
+| F4 | 빈 값 + 비울 수 없는 원천 | 1 | `is_blank_value and not can_mean_emptied` | 없음 | 아니오 — 값 W | 안 함 |
+| F5 | 보기(view)에 쓰기 | 1 | refuse_write_to_view | 예외 | 아니오 | 안 함 |
+| F6 | virtual join 중복 거절 | 14 | refuse_virtual_join_duplicates | 거절 | 아니오 | 안 함 |
+| F7 | 키 조립 · nokey 채우기 | 14 | assemble · fill_nokey_keys | - | 아니오 — 파일 쓰기 쪽 | 안 함 |
+| F8 | replace_map 범위 | 20 | derive_replace_map_scope 등 | 거절 | 아니오 — 조인은 replace_map 안 씀 | 안 함 |
+| F9 | 키 충돌 재시도 · 제약 거절 | 10 | BK unique 위반 등 | ERROR · 재시도 | 드묾 — 실패(C4)로 흔적 | 안 함 |
+
+건너뛰기가 아닌 값 반환(N0): 62 노드 — 노드별 이름표는 스크래치 census_labeled.json
+
+### 빈 행을 남기고 «아무 흔적도» 안 남기는 조건 (강제 시험으로 확인): D6 · D7
+- **D6 — 체인 쓰기를 조인이 안 받음.** 자동 확정은 체인 쓰기이고, 통합 조인 선언은 `allow_chain_trigger: true` 를 «적어야만» 체인 쓰기에 깹니다(rule_shape 주석: 「NOTHING HERE OPTS IT INTO ITS OWN WRITES」). 동봉 샘플(config/sample/chain_rules.json.sample)의 조인 2 개 중 이 칸을 안 적은 것 2 개: step_phase_to_wafer_process · sample_unified_join.
+  그러면 확정 전 파일과 «확정이 일어난 파일»의 로그 행이 비고, 확정 뒤 파일만 :target 쪽(파일 쓰기에 깸)으로 채워집니다 — 소유자가 본 모양 그대로입니다.
+  남는 것: 그 사건은 SUCCESS(DS)이고, 기준 쪽 조인의 실행 줄이 대조군보다 적을 뿐 그것을 말하는 줄이 없습니다. 활동 기록의 «마지막 결과»는 그 묶음에서 이유(FIRE_REFUSED_CHAIN)를 적지만(코드로 읽음) 다음 묶음에 덮입니다 — 강제 시험 끝에서 cl_join 의 마지막 결과 「skipped:not_triggered」 = 대조군 「skipped:not_triggered」.
+- **D7 — 소급 쓰기(cascade 없음)를 조인이 안 받음.** 확정을 소급 작업으로 돌렸을 때 — 같은 모양 · 같은 무흔적. ② 로 지어 둔 것(wip-confirm-cascade)이 이 칸입니다.
+
+흔적이 남는 조건(강제 시험으로 확인): B2 깊이 한도(WARNING · FAILED) · F2 버전 게이트(WARNING · INFO, 이때는 «모든» 행이 빔) · D1 run_in 작업이 안 돎(INFO queued · 대기 작업)
