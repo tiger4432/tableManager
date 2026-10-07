@@ -20,6 +20,7 @@ server_dir = os.path.abspath(os.path.join(script_dir, ".."))
 if server_dir not in sys.path:
     sys.path.insert(0, server_dir)
 
+import db_safety
 from database.database import SessionLocal
 from maps import alignment_batch_counts
 from sqlalchemy import text as _sa_text
@@ -177,15 +178,36 @@ def _analyze_after_load(table_name: str, rows: int, why: str = None) -> bool:
         # driver is not psycopg2 lands in the warning below exactly as it did before.
         import psycopg2
 
-        connection = psycopg2.connect(
-            url.set(drivername="postgresql").render_as_string(hide_password=False))
+        dsn = url.set(drivername="postgresql").render_as_string(hide_password=False)
+        connection = psycopg2.connect(dsn)
+        sampler = None
         try:
             connection.set_isolation_level(0)
             with connection.cursor() as cursor:
                 if search_path:
                     cursor.execute("SET search_path TO %s" % search_path)
-                cursor.execute(f'ANALYZE "{table_name}"')
+                # 🔴 THE FILE'S LOCK LIMIT HERE TOO (총괄 10-07 ③, 응용 QA 8652ddb26): ANALYZE
+                # waits on a CREATE INDEX CONCURRENTLY · VACUUM · another ANALYZE of the table,
+                # and a wait without end stops the folder again. Past it, only ANALYZE is skipped.
+                limit = file_write_timeouts()[0]
+                if limit:
+                    cursor.execute("SET lock_timeout = '%dms'" % int(limit * 1000))
+                    if load_ingestion_settings().get(WAIT_SAMPLE_SETTING, True):
+                        sampler = ChunkWaitSampler(dsn, connection.get_backend_pid()).start()
+                try:
+                    cursor.execute(f'ANALYZE "{table_name}"')
+                except Exception as analyze_err:                       # noqa: BLE001
+                    if not db_safety.waited_past_the_lock_timeout(analyze_err):
+                        raise
+                    if sampler is not None:
+                        sampler.stop()
+                    logger.warning("[%s] ANALYZE skipped: %s locked by %s", table_name, table_name,
+                                   sampler.blocker if sampler is not None and sampler.blocker
+                                   else "a session the sampler did not see")
+                    return False
         finally:
+            if sampler is not None:
+                sampler.stop()
             connection.close()
         logger.info("[%s] statistics re-analysed after %d row(s) in %.3fs - %s",
                     table_name, rows, time.time() - started,
@@ -360,23 +382,48 @@ INGESTION_SETTINGS_PATH = paths.config_path("ingestion_settings.json")
 
 
 def load_ingestion_settings() -> dict:
-    """인제션 시스템 설정(ingestion_settings.json) 로드 — 실패 시 빈 dict(기본값 동작)."""
-    import json
-    try:
-        if os.path.exists(INGESTION_SETTINGS_PATH):
-            with open(INGESTION_SETTINGS_PATH, "r", encoding="utf-8") as f:
-                loaded = json.load(f)
-            if isinstance(loaded, dict):
-                return loaded
-    except Exception as e:
-        logger.warning(f"Could not load ingestion settings ({INGESTION_SETTINGS_PATH}): {e}")
-    return {}
+    """인제션 시스템 설정(ingestion_settings.json) 로드 — 실패 시 빈 dict(기본값 동작).
+    그 파일의 «한» 읽기(`ingestion.settings`)를 이 모듈의 경로로 부른다(총괄 10-07)."""
+    from ingestion.settings import read_ingestion_settings
+    return read_ingestion_settings(INGESTION_SETTINGS_PATH)
 
 
 
 #: One `ingestion_settings.json` cell turns the wait sampler off. Default ON, because the
 #: question it answers ("what was the chunk WAITING on") is the one production cannot ask.
 WAIT_SAMPLE_SETTING = "chunk_wait_sampling"
+#: Seconds a file's write waits for another session's lock before the file fails and its folder
+#: is let go (총괄 10-07 ③). Left out: the stalled-work threshold - one number for 「stuck」.
+#: null or 0: no limit.
+LOCK_TIMEOUT_SETTING = "lock_timeout_seconds"
+#: Seconds one statement of a file's write may run. Left out, null or 0: no limit (the default -
+#: a large healthy write must not die of it). A value that is not a positive number is read as
+#: left out, for both cells.
+STATEMENT_TIMEOUT_SETTING = "statement_timeout_seconds"
+
+
+def file_write_timeouts(settings=None):
+    """`(lock seconds, statement seconds)` for a file's write transactions, None = no limit.
+    Set on every transaction the file channel begins (`database._bound_the_file_writes`)."""
+    settings = load_ingestion_settings() if settings is None else settings
+
+    def seconds(cell, absent):
+        value = settings.get(cell, absent)
+        if value is None or value == 0:
+            return None
+        good = isinstance(value, (int, float)) and not isinstance(value, bool) and value > 0
+        return float(value) if good else absent         # a wrong spelling keeps the default
+    return (seconds(LOCK_TIMEOUT_SETTING, heartbeat.DEFAULT_STALL_AFTER_SEC),
+            seconds(STATEMENT_TIMEOUT_SETTING, None))
+
+
+#: How a lock-timeout failure's message begins - its rows are counted by it (`_lock_waits_before`).
+LOCK_WAITED_OUT_PREFIX = "waited past the lock timeout"
+
+
+class LockWaitedOut(RuntimeError):
+    """A file's write waited past the lock timeout. Not the file's fault: it is left where it
+    lies, unsealed, for the next sweep (총괄 10-07 ③ ㄴ), and the message names who held it."""
 #: Above this many seconds a chunk's prefetch explains itself, ONCE per file.
 SLOW_PREFETCH_EXPLAIN_S = "slow_prefetch_explain_seconds"
 SLOW_PREFETCH_EXPLAIN_DEFAULT = 1.0
@@ -1545,10 +1592,14 @@ class IngestionHandler(FileSystemEventHandler):
         self._heavy_backlog = 0
         # [Deprecation] 레거시 워크스페이스 config.json 파싱 결과 캐시 (파일은 정적 자산 취급)
         self._legacy_config_cache = None
-        # normcase abs paths of directories currently being tree-ingested.
+        # normcase abs paths of directories currently being tree-ingested -> when the
+        # worker started (the sweep's 「running for N min」 line, 총괄 10-07 ③).
         # Guarded by _processing_lock; makes tree triggers idempotent and
         # re-entrant (event + sweep firing on the same tree never race).
-        self._ingesting_dirs = set()
+        self._ingesting_dirs = {}
+        # Files whose last attempt waited past the lock timeout: left in place, unsealed, and
+        # the sweep tries them again although their (mtime, size) is one it has tried (③ ㄴ).
+        self.waiting_on_a_lock = set()
         # External roots are read-only contexts for this handler.  They affect
         # parser metadata only; ownership remains raws/-only (`is_managed_source`).
         self._external_sources = {}
@@ -1795,7 +1846,7 @@ class IngestionHandler(FileSystemEventHandler):
         with self._processing_lock:
             if key in self._ingesting_dirs:
                 return None
-            self._ingesting_dirs.add(key)
+            self._ingesting_dirs[key] = time.time()
         t = threading.Thread(
             target=self._tree_ingest_worker, args=(abs_dir, key),
             name=f"tree-ingest-{os.path.basename(abs_dir)}", daemon=True,
@@ -1814,7 +1865,22 @@ class IngestionHandler(FileSystemEventHandler):
             )
         finally:
             with self._processing_lock:
-                self._ingesting_dirs.discard(key)
+                self._ingesting_dirs.pop(key, None)
+
+    def say_a_tree_still_running(self, dir_path: str):
+        """The sweep asked for a folder whose tree worker is still at it: one line - since
+        when, and the file it is on (총괄 10-07 ③). Quiet for a folder nobody is ingesting."""
+        abs_dir = os.path.abspath(dir_path)
+        with self._processing_lock:
+            started = self._ingesting_dirs.get(os.path.normcase(abs_dir))
+        if started is None:
+            return
+        folder = os.path.basename(abs_dir)
+        now_on = [claim["what"] for claim in heartbeat.open_claims()
+                  if claim["name"] == HEARTBEAT_NAME and claim["facts"].get("folder") == folder]
+        logger.info("[%s] 📂 Tree ingestion of '%s' has been running for %d min (now: %s)",
+                    self.table_name, folder, (time.time() - started) // 60,
+                    ", ".join(now_on) or "no file")
 
     @staticmethod
     def _snapshot_tree(abs_dir: str):
@@ -2183,11 +2249,16 @@ class IngestionHandler(FileSystemEventHandler):
         with heartbeat.work_claim(HEARTBEAT_NAME,
                                   f"ingest {os.path.basename(file_path)}"), \
                 channel(event_constants.CHANNEL_FILE):
+            # The raws/ folder this file came in (the stalled line and the sweep's line, ③).
+            under = self.relative_source_path(file_path, self.raws_path)
+            if under is not None:
+                heartbeat.note_work(folder=under.split("/")[0] if "/" in under else "raws")
             return self._process_with_retry(file_path, uploader, retries, delay)
 
     def _process_with_retry(self, file_path: str, uploader: str = "system", retries: int = 3, delay: float = 1.0):
         abs_path = os.path.abspath(file_path)
         basename = os.path.basename(file_path)
+        self.waiting_on_a_lock.discard(abs_path)
         # [D1] 파일당 1회 스냅샷 — 해석·검증·업서트·로그가 전부 같은 config 스냅샷을 본다.
         # 파일 처리 도중 table_config가 바뀌어도 이 파일은 시작 시점 기준으로 완결된다.
         t_name, table_info = self._snapshot_table_context()
@@ -2300,6 +2371,19 @@ class IngestionHandler(FileSystemEventHandler):
                 self._log_ingestion_success(file_path, dest_path, t_name=t_name, detail=detail)
                 if self.on_file_processed_callback:
                     self.on_file_processed_callback(t_name, basename, "SUCCESS", detail)
+                return
+            except LockWaitedOut as e:
+                # 총괄 10-07 ③ ㄴ: another session's lock, not this file - so it stays where it
+                # lies, unsealed, and the next sweep tries again from its last committed chunk.
+                # How many times it has already waited is the row's `retry_count` and the line's.
+                retry = self._lock_waits_before(abs_path)
+                error_msg = "%s (retry %d)" % (e, retry)
+                logger.warning(f"[{t_name}] ⏳ {basename}: {error_msg} - left in place for the next sweep")
+                self._log_ingestion_record(file_path, file_path, t_name, "FAILED", error_msg,
+                                           retry_count=retry)
+                self.waiting_on_a_lock.add(abs_path)
+                if self.on_file_processed_callback:
+                    self.on_file_processed_callback(t_name, basename, "FAILED", error_msg)
                 return
             except PermissionError:
                 logger.warning(f"[{t_name}] 🔒 File locked, retrying in {delay}s: {os.path.basename(file_path)}")
@@ -2694,7 +2778,7 @@ class IngestionHandler(FileSystemEventHandler):
             db.close()
 
     def _log_ingestion_record(self, original_path: str, archived_path: str, t_name: str,
-                              status: str, message: str = None):
+                              status: str, message: str = None, retry_count: int = 0):
         """FileIngestionLog 1행 기록 (성공/실패/스킵 공용).
 
         `error_message`는 FAILED에서는 오류 트레이스, SUCCESS/SKIPPED에서는 **detail 슬롯**이다
@@ -2708,7 +2792,7 @@ class IngestionHandler(FileSystemEventHandler):
                 table_name=t_name or "unknown",
                 status=status,
                 error_message=message,
-                retry_count=0
+                retry_count=retry_count
             )
             db.add(log_obj)
             db.commit()
@@ -2778,6 +2862,25 @@ class IngestionHandler(FileSystemEventHandler):
                 "[%s] The reduced %s ingestion log row for %s ALSO failed, so this file "
                 "has no record and will not appear in the failure list: %s",
                 t_name or "unknown", status, os.path.basename(original_path), reduced_error)
+
+    def _lock_waits_before(self, abs_path: str) -> int:
+        """How many times this file, where it lies, has already waited past the lock timeout
+        since it last loaded - its own FAILED rows, so the count survives a restart (③ ㄴ)."""
+        from sqlalchemy import func
+        from database.models import FileIngestionLog as Log
+        db = SessionLocal()
+        try:
+            loaded = (db.query(func.max(Log.created_at))
+                      .filter(Log.filepath == abs_path, Log.status == "SUCCESS").scalar_subquery())
+            return db.query(func.count(Log.id)).filter(
+                Log.filepath == abs_path, Log.status == "FAILED",
+                Log.error_message.like(LOCK_WAITED_OUT_PREFIX + "%"),
+                (loaded.is_(None)) | (Log.created_at > loaded)).scalar() or 0
+        except Exception as exc:                                   # noqa: BLE001
+            logger.warning("[Ingest] could not count the lock waits of %s: %s", abs_path, exc)
+            return 0
+        finally:
+            db.close()
 
     def _log_ingestion_failure(self, original_path: str, archived_path: str, error_msg: str, t_name: str = None):
         if t_name is None:
@@ -3448,6 +3551,7 @@ class IngestionHandler(FileSystemEventHandler):
 
                     # 1,000건 청크 단위로 DB 세션을 격리하여 트랜잭션 처리
                     db = SessionLocal()
+                    _sampler = None
                     try:
                         batch_obj = schemas.GeneralUpdateBatch(
                             updates=items,
@@ -3468,7 +3572,6 @@ class IngestionHandler(FileSystemEventHandler):
 
                         # The sampler watches THIS session's backend while it applies; one
                         # settings cell turns it off and it never raises into the chunk.
-                        _sampler = None
                         try:
                             if load_ingestion_settings().get(WAIT_SAMPLE_SETTING, True):
                                 _eng = db.get_bind()
@@ -3519,9 +3622,21 @@ class IngestionHandler(FileSystemEventHandler):
                         logger.info(f"[{t_name}] 💾 Local batch update success ({len(items)} rows). Changed cells: {len(changed_cells)}")
                     except Exception as e:
                         db.rollback()
+                        if _sampler is not None:
+                            _sampler.stop()
                         # [D3] `{e}` here wrote ~25 KB per failed chunk - see `_db_error_brief`.
                         logger.error(f"[{t_name}] ❌ Failed to apply local batch update: "
                                      f"{_db_error_brief(e)}")
+                        if db_safety.waited_past_the_lock_timeout(e):
+                            # 총괄 10-07 ③: who held the lock is the reason, not the trace.
+                            _limit = file_write_timeouts()[0]
+                            raise LockWaitedOut(
+                                "%s (%s) in chunk %d - %s" % (
+                                    LOCK_WAITED_OUT_PREFIX,
+                                    "%g s" % _limit if _limit else "set in the database",
+                                    chunk_index,
+                                    _sampler.blocker if _sampler is not None and _sampler.blocker
+                                    else "the lock holder was not seen")) from e
                         raise e
                     finally:
                         db.close()
@@ -3682,6 +3797,31 @@ class ExternalSourceEventHandler(FileSystemEventHandler):
         if not event.is_directory:
             self.ingestion_handler.mark_external_modified(event.src_path)
             self.dispatch_path(event.src_path)
+
+
+def _tried_already(memo, key, signature, handler, abs_path):
+    """The one rule both sweeps skip by (총괄 10-07 ③): a file tried at this (mtime, size) is
+    not tried again - unless that try waited past the lock timeout, which was not the file."""
+    return memo.get(key) == signature and abs_path not in handler.waiting_on_a_lock
+
+
+def _say_what_stalled_files_wait_on():
+    """The stalled line every claimed worker says (`heartbeat.stalled_lines`), for the watcher's
+    files - once per episode; the sweep's line repeats 「running for N min」 (총괄 10-07 ③)."""
+    try:
+        import db_waits
+        session = SessionLocal()                      # the files' own engine; opens no connection
+        try:
+            bind_url = session.get_bind().url
+        finally:
+            session.close()
+        for what, line in heartbeat.stalled_lines(
+                HEARTBEAT_NAME, lambda pid: db_waits.what_a_backend_waits_on(bind_url, pid),
+                (("folder", "-"),)):
+            logger.warning("[Watcher] %s: %s", what, line)
+    except Exception as exc:                                       # noqa: BLE001
+        # The observer goes quiet, never the loop it rides on.
+        logger.warning("[Watcher] the stall check went quiet this slice: %s", exc)
 
 
 class WorkspaceWatcher:
@@ -4003,7 +4143,8 @@ class WorkspaceWatcher:
                             # external-source watcher: a watchdog observer on a
                             # share can miss events, and the periodic sweep is what
                             # makes a miss temporary instead of permanent.
-                            handler.request_tree_ingest(fp)
+                            if handler.request_tree_ingest(fp) is None:
+                                handler.say_a_tree_still_running(fp)
                             continue
                         if not os.path.isfile(fp):
                             continue
@@ -4012,7 +4153,7 @@ class WorkspaceWatcher:
                         continue  # 열거 중 이동/삭제된 파일
                     seen_paths.add(fp)
                     sig = (st.st_mtime, st.st_size)
-                    if self._sweep_attempted.get(fp) == sig:
+                    if _tried_already(self._sweep_attempted, fp, sig, handler, os.path.abspath(fp)):
                         continue
                     # The tier-1 key comes off the stat we ALREADY took — the
                     # whole point of asking here rather than one dispatch deeper.
@@ -4130,7 +4271,8 @@ class WorkspaceWatcher:
                     cache_key = (source_id, abs_path)
                     seen_keys.add(cache_key)
                     signature = (stat.st_mtime, stat.st_size)
-                    if self._external_sweep_attempted.get(cache_key) == signature:
+                    if _tried_already(self._external_sweep_attempted, cache_key, signature,
+                                      target["handler"], abs_path):
                         continue
                     candidates.append((
                         stat.st_mtime, source_id, abs_path, target["handler"],
@@ -4232,6 +4374,7 @@ class WorkspaceWatcher:
             # claims' job (`heartbeat.work_claim`), and this beat carries their stall age
             # exactly as the split-mode poller's does.
             heartbeat.beat(HEARTBEAT_NAME)
+            _say_what_stalled_files_wait_on()
             if waited >= PERIODIC_SWEEP_INTERVAL_SECONDS:
                 waited = 0.0
                 self._sweep_safely(None, "periodic")

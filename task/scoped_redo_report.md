@@ -73598,3 +73598,763 @@ compiler_contract_version 을 올리면 «모든» 소스가 움직인다 -> 너
 5  등록 판단 접기: «모양» 하나로 — 사용자가 목적어 없는 다른 술어를 적으면 그것도 등록으로 읽힌다(오늘 속성 칸 · 걷기가 이미 그렇게 읽음)
 ```
 게이트에 넣을 것(총괄 10-07): PG 에 실제로 쓴 원자의 occurred_at_basis 가 선언한 기준과 같다(사건 시각 기준 하나 · 세상 시각 하나) — 오늘의 atom_record 변이(기준 None)가 그 칸에서 빨강.
+
+---
+
+## [10-07] 등록 문장 정리 — 소스에 묶은 속성이 그 개체의 등록이 된다 · probe 은퇴 · 착지 bd33605af + 약속 자리 정리 d6795570a (총괄 a6db2f469 · 10-07 답 셋 · ③ ㄱ)
+
+어느 DB · 어느 스키마 · 지운 것 — sqlite 는 메모리 · PG 게이트와 PG 변이는 assy_test DB 의 스크래치 스키마 `assy_pytest_registration…`(시험이 만들고 끝에 DROP) · public 안 씀 · 그 밖에 지운 것 0
+
+```
+지은 것    번역기가 «선언되지 않은 원자»를 쓰는 한 자리 roleframe._reference_rows 를 넓혔다
+          등록할 롤의 속성 -> register 원자(목적어 없음 · 부른 행의 시각 · 그 문장의 시각 규칙)
+          누가 등록되나  setup_bundle.attribute_registrations 한 곳 -> 컴파일된 매핑의 registered_roles(비면 지문 재료 아님)
+          등록인가      setup_bundle.is_registration(목적어 없음) 한 함수 — runtime 접기 · 걷기 · 테스트 런 · 술어 검증이 부른다
+          걷기 이름 목록 setup_bundle.registration_predicates 한 함수(목적어 없는 술어 ∪ REGISTER_PREDICATE) — trace_router 가 부른다
+판정 3    ③ ㄱ 대로 «키 갈래 수». setup_bundle.keying 한 함수가 키 바인딩 전체를 키 순서대로 견준다
+          (approval_status 처럼 바인딩에 적힌 칸도 «전체»에 든다)
+은퇴      existing_registrations · registration_context_required 갈래 · _v2_registration_subjects · RegistrationProbePlan
+          read.registration_probe 는 문법이 받고 로드가 «retired cell … can be deleted» 한 줄 · 폼 줄 · 스켈레톤 노드 · sample 두 칸
+```
+
+### 게이트
+
+```
+sqlite    18 passed, 2 skipped in 1.68s
+PG        2 passed, 8283 deselected in 7.22s
+대조군     등록 문장 있는 소스의 원자 = 이 라운드 전 코드(88c8f3654)가 같은 행에서 쓴 바이트 — 문서별 레코드 declared_registration 8 · declared_registration_with_attribute 8 · no_attribute 4
+변이      sqlite 15/15 빨강(failed 시험으로 센 수) · PG 2/2 빨강(proofs run in    postgresql://postgres:***@localhost:5432/assy_test) · md5 전후 같음
+          RED  the translator writes no registration
+          RED  a role's own attributes are not registered
+          RED  the source's shared attributes are not registered
+          RED  a declared registration does not win
+          RED  two keyings are registered anyway
+          RED  the registration takes the source's time rule
+          RED  a code mapper's role keeps no attributes
+          RED  the walk's list lacks the translator's name
+          RED  registrations are folded by their name
+          RED  the retired probe is not said
+          RED  the re-stamp line does not say who registers
+          RED  every mapping carries a plan
+          RED  a keying is compared by the bound value only
+          RED  a keying ignores the key order
+          RED  two roles are not registered whatever their keying
+          RED  the ledger write drops the time basis
+          RED  a re-stamp moves the position too
+전체가 잡은 것(첫 전체 실행이 알려진 다섯 밖의 실패를 냄 -> 고침. 그 출력은 둘째 실행이 덮어써 수를 안 적는다)
+          내 잘못  폼의 probe 줄을 지우며 바로 아래 _TIMEZONE_FALLBACK 상수까지 지웠다 -> 빈 루트 작성 셋이 NameError. 상수 복원
+          v6 이주 시험  얼린 v5 선언은 probe 칸을 그대로 두고, 비교가 은퇴 칸을 뺀다 — 같은 시험의 map.input_columns 선례를 넓힘
+sqlite 전체 6 failed, 7935 passed, 341 skipped, 3 xfailed, 13215 warnings in 727.04s (0:12:07)
+          실패 6 — 박스 실패로 알려진 다섯과 같은 이름인지: 아래 목록
+          tests\test_a_sentence_says_itself_only_for_the_rows_it_names.py::test_the_sample_is_written_in_the_one_format_both_writers_use
+          tests\test_config_reload_integrity.py::test_inv_9_1_atomic_save_event_applies_physical_alter
+          tests\test_core_alignment_mapper.py::test_live_mapper_and_tracked_sample_are_byte_identical
+          tests\test_core_usage_mapper.py::test_live_mapper_and_tracked_sample_are_byte_identical
+          tests\test_dt_inventory_metadata_mapper.py::test_live_mapper_matches_tracked_sample
+          tests\test_one_place_decides_where_the_server_is.py::test_the_repo_root_is_one_above_it
+RELEASE   예시를 착지한 RELEASE_LOG 에서 읽어 출하 sample 에 얹고 setup.load_setup 으로 읽음 — left out naming lot_slot_wafer: [] | registered roles: {'seat-holds-wafer': ('target',)}
+```
+
+### occurred_at 독자 전수 (소유자 10-02 · 총괄 ②)
+
+모집단: `git grep -c occurred_at -- 'server/*.py' ':!server/tests' ':!server/scripts'` = 33 파일. 쓰기·선언 쪽을 빼고 «저장된 원자의 시각을 읽는» 자리를 열어 본 표입니다.
+
+| 자리 | 이 원자에게 하는 일 | 등록 문장 원자와 |
+|---|---|---|
+| 쓰기 `roleframe._reference_rows` · `runtime_v2._stamp_occurred_at_basis` | 시각 = 그 개체를 부른 행의 시각, 기준 = 그 문장의 기준(`naming_sentence`) | 같은 규칙 · PG 게이트 |
+| 배치 접기 `runtime_v2._filtered_event_atoms` | 한 배치에서 (개체 · 상태)마다 가장 이른 것 하나 | 같음 · 모양으로 묻는다 |
+| 저장 분할 · `uq_ledger_atom` | 행 시각의 분할에 든다. 유일 키에 시각이 있어 다음 배치의 같은 상태는 새 원자 | 같음(전부터 그랬다) |
+| 걷기 창 `ledger_subgraph._interval_clause` | since/until 은 사건 시각 기준에만 — 같은 행의 관계 원자와 같은 판정 | 같음 |
+| 걷기 등록 예산 `claims_for_entities` | 최신순 `노드 수 × REGISTRATIONS_FETCHED_PER_NODE` 까지, 잘리면 truncated | 같음 |
+| 노드 칸·이름표 `_apply_registrations` | 이름마다 가장 늦은 값, 세상마다 따로 | 같음 |
+| 테스트 런 `runtime_v2.atoms_sample` | 원장 철자 그대로(시각·기준 포함) | 같음 · 게이트 |
+| 첫 등장 `gaps` first_seen | 사건 시각의 최소 — 부른 행의 관계 원자와 같은 시각이라 값이 안 바뀜 | 같음 |
+| 간선 `explorer._edge_rows` · 계보 `trace` | 대상이 없어 안 읽음 · 선언된 follow 만 걷는다 | 안 읽음 |
+| 현재 아님 `_not_current_clause` | `one` 술어만 — register 는 선언 술어가 아니라 안 읽음 | 안 읽음 |
+
+### 두 부류 (총괄 ②)
+
+```
+부류 1  시스템 원자가 생긴 소스 — 재기동 re-stamped 줄의 그 소스 항목 끝에 «the translator registers the bound attributes of …»
+        과거 행은 rescope(whole_source) 로. RUN.md 10-07 절
+부류 2  probe 만 빠진 소스(등록 문장이 있는 소스) — 꼬리 없음. 위치 그대로 · 다시 번역 0 (PG 게이트)
+박스     15 소스 중 부류 1 0 · 부류 2 2(dt_job · lot_event) · 갈래 둘이라 안 실림 0 · probe 칸 적힘 2(dt_job · lot_event)
+        — gitignore 된 박스 라이브 선언(gitignored). 운영에 대해 말하지 않는다
+```
+
+### 남긴 자리 (총괄이 «그대로 둔다» 한 것과 내가 찾은 것)
+
+```
+known_registrations 인자     server/ledger · server/chain 에 22 줄 — 모든 문이 () 를 넘김
+v1 source_contract           1 줄 이름("register") + "none"/None 모양 접기 한 자리
+SQL 이 이름으로 묻는 자리     schema.py 4 줄 — 다음에 지울 것: 부분 인덱스 둘(idx_ledger_register · 검색 GIN), 운영 이주
+이주 스크립트                 1 줄 — 옛 선언을 옮길 때 probe 칸을 읽는 자리(역사)
+시험 지원 v5_setup            probe 칸 2 줄 — 얼린 옛 선언. v6 이주 시험이 «남아 있음»을 단언하고 비교에서 뺀다
+은퇴 이름이 남은 «살아 있는» 파일(역사 · 보관 · task 제외) — d6795570a 뒤에 다시 셈. 남은 것은 은퇴 표시(⚰️) ·
+          로드 알림 · 문법의 선택 키 · 날짜 박힌 실측 주석 · 대조군 선언 · 클라 픽스처 · RELEASE_LOG 옛 항목
+          registration_probe            RUN.md 2 · client2/tests/fixtures/authoring_inherited_plan.json 4 · client2/tests/fixtures/authoring_skeleton.json 1 · docs/architecture/BASIS.md 1 · docs/architecture/LEDGER_SCHEMA_COMPLETENESS.md 9 · docs/guide/ONTOLOGY_LEDGER_SETUP.md 2 · docs/process/RELEASE_LOG.md 3 · docs/process/SERVER_DEFECT_QUEUE.md 1 · server/ledger/config_explorer_service.py 1 · server/ledger/setup.py 3 · server/ledger/setup_bundle.py 1 · server/scripts/migrate_ledger_slim_sources.py 1 · server/tests/support/v5_setup/ledger_config.json 2 · server/tests/test_a_test_run_shows_the_atoms_its_rows_became.py 1 · server/tests/test_an_attribute_bound_on_a_source_becomes_its_entitys_registration.py 3 · server/tests/test_ledger_skeleton.py 2 · server/tests/test_the_v6_migration_moves_descent_to_the_chain.py 3
+          registration_context_required docs/architecture/CODE_MAP.md 2 · docs/guide/ONTOLOGY_LEDGER_SETUP.md 1 · docs/process/SERVER_DEFECT_QUEUE.md 1 · server/tests/test_a_rescope_preview_can_be_taken_of_a_source_that_registers.py 2 · server/tests/test_an_attribute_bound_on_a_source_becomes_its_entitys_registration.py 1
+          existing_registrations        docs/architecture/CODE_MAP.md 2 · docs/spec/LEDGER_TECHNICAL_SPEC.md 1 · server/ledger/schema.py 1
+          _v2_registration_subjects     docs/architecture/CODE_MAP.md 1
+          RegistrationProbePlan         docs/architecture/CODE_MAP.md 1
+```
+
+### 안 잰 것 · 물음
+
+```
+안 잼   되돌린 코드로 부류 1 소스를 통째로 다시 번역하면 시스템 등록 원자가 거둬지는지 — 행 색인으로 겨냥하는 길이라 거둬질 것으로 읽지만 안 쟀다
+안 잼   부류 1 소스의 원자 수 증가 — 배치마다 (개체 · 상태)당 하나. 이 박스엔 부류 1 소스가 0 이라 셀 수 없다
+클라    client2/tests/fixtures 의 authoring_inherited_plan.json · authoring_skeleton.json 에 은퇴한 probe 줄 · 노드가 남아 있다 — 클라 레인에 알림
+```
+
+---
+
+## [10-07 저녁] SSO 설정 수리 — 파일 하나로 안 멈춤 · 비밀은 선택(public client) · 착지 b29b14e09 (총괄 10-07 셋 · ca_file 은 정정대로 안 지음)
+
+어느 DB · 어느 스키마 · 지운 것 — 메모리 sqlite · DB 안 씀 · 지운 것 0
+
+```
+지은 것    sso.settings 가 crud._decode_config_text 로 읽는다(table_config 와 같은 읽기 · BOM 읽음)
+          못 읽으면(문법 · 맨 위가 객체 아님 · OSError) 터지지 않고 «못 읽음»을 기억 -> off_reason 의 첫 사유. lru_cache 가 그 상태를 들고 있어
+          기동 배너 · 미들웨어 · 웹소켓 · is_admin 이 같은 함수를 지나며 안 터진다
+          enabled 가 글자 "true" -> 'enabled must be true (not "true")' · admins 가 목록이 아님 -> 관리자 0명 + ON 배너 끝 한 줄
+          비밀 없음 = public client(token_endpoint_auth_method none, PKCE 그대로) · 배너 «secret client» / «public client»
+          토큰 교환 거절(OAuthError) -> _provider_refused — 돌아온 주소의 error 와 «한 문장». 상태가 401 -> 400 으로 바뀐다
+게이트    100 passed in 12.42s
+          기동 표(main.startup_event 를 TestClient 로 실제로 돌림 -> 배너 한 줄 · /auth/me 200 · /health 200|503): top-level-array · top-level-null · syntax-error · enabled-as-text · admins-as-text · utf-8-bom · utf-16-bom
+          OFF 시험 전부를 OFF 파일 5 가지에서 다시 돌림: absent · syntax-error · top-level-array · top-level-null · enabled-as-text — «오늘처럼»을 기존 시험으로 잰다
+          코드 교환 모양 secret × public — client_secret 은 폼에 없음, Authorization Basic 은 비밀 있을 때만, public 은 폼에 client_id
+          invalid_client — 화면과 로그에 ADFS 낱말 그대로, 세션 0
+변이      11/11 빨강(failed 시험으로 센 수) · md5 전후 같음
+          RED  the file is read as plain utf-8
+          RED  a parse error is raised
+          RED  a top level that is not an object is taken
+          RED  an unreadable file is not said
+          RED  enabled written as text is not said
+          RED  admins written as text is read letter by letter
+          RED  admins written as text is not said
+          RED  the secret is required again
+          RED  the token endpoint's refusal falls to the generic sentence
+          RED  the banner does not say which client
+          RED  the secret travels in the form
+sqlite 전체 5 failed, 7961 passed, 341 skipped, 3 xfailed, 13191 warnings in 725.52s (0:12:05)
+          tests\test_a_sentence_says_itself_only_for_the_rows_it_names.py::test_the_sample_is_written_in_the_one_format_both_writers_use
+          tests\test_core_alignment_mapper.py::test_live_mapper_and_tracked_sample_are_byte_identical
+          tests\test_core_usage_mapper.py::test_live_mapper_and_tracked_sample_are_byte_identical
+          tests\test_dt_inventory_metadata_mapper.py::test_live_mapper_matches_tracked_sample
+          tests\test_one_place_decides_where_the_server_is.py::test_the_repo_root_is_one_above_it
+RELEASE   예시를 착지한 RELEASE_LOG 에서 읽어 비밀 환경변수 없이 sso.settings 로 읽음 — info | [sso] ON - issuer https://adfs.example.com/adfs, return address https://assy.example.com/, public client. Every route bu
+ca_file   git grep -c ca_file -- server RUN.md docs/guide = 0 (출력 없음)
+```
+
+```
+남긴 것    docs/guide/DEPLOY_SETUP.md 의 «켜는 것 … + 환경변수 ASSY_OIDC_CLIENT_SECRET + 재기동» — 응용 세션 문서라 안 건드림. 이제 «비밀은 있으면»
+          RUN.md 의 앞 10-07 SSO 절 제목 «비밀 하나» — 새 절이 «이제 있으면»이라고 적음
+```
+
+---
+
+## [10-07 밤] 멈춘 수집 폴더(③) — 걸림 줄 · 스윕 줄 · 파일 쓰기 잠금 상한 · 착지 3959975eb (총괄 ③ · 갈래 셋 ㄱ · ㄴ · ㄱ)
+
+어느 DB · 어느 스키마 · 지운 것 — sqlite 는 메모리 · PG 게이트와 PG 변이는 assy_test DB 의 pg_engine 스크래치 스키마(프로세스 이름 · 끝에 DROP 하고 카탈로그로 확인) · 그 안에서 시험이 만든 표 둘과 그 표 이름의 file_ingestion_logs · checkpoints 행을 지움 · public 안 씀
+
+```
+보이게    heartbeat.stalled_lines(name, probe, shown) — 걸림 줄 «한» 함수. 체인 워커와 감시자(주기 스윕 루프, 박동 칸마다)가 부르고 각자 제 이름표로 찍는다
+          감시자 줄: [Watcher] ingest <파일>: stalled N s in <단계> (folder <폴더> · db pid <pid>) - <db_waits 문장>. 걸림마다 한 번(갈래 1 ㄱ)
+          체인 줄은 바이트 그대로 — pid 를 못 적은 경우의 문구만 «for this group» -> «for this work»
+          스윕이 처리 중 폴더에서 None 을 받으면: [<표>] 📂 Tree ingestion of '<폴더>' has been running for N min (now: ingest <파일>)
+풀리게    database._bound_the_file_writes(after_begin) — 파일 채널 트랜잭션마다 SET LOCAL lock_timeout · statement_timeout
+          값 ingestion_settings.json lock_timeout_seconds(없으면 300 = 걸림 판정) · statement_timeout_seconds(없으면 끔) · 숫자 아니면 «없음»
+          청크가 55P03(db_safety.waited_past_the_lock_timeout) -> 표본기 정지 · LockWaitedOut(사유 = 표본기가 본 잠금 쥔 쪽 문장)
+          그 파일은 봉인 · 이동 없이 FAILED 행 하나(retry_count = 마지막 성공 뒤 이번 전 잠금 실패 수), 일꾼 · 폴더는 다음 파일로(갈래 2 ㄴ)
+          트리 폴더는 다음 스윕이 원래 다시 돌리고, raws/ 바로 아래 파일은 스윕의 (mtime, size) 기억을 waiting_on_a_lock 이 넘긴다
+```
+
+### 게이트
+
+```
+PG        4 passed, 8311 deselected in 32.89s — 막힘 재현(다른 연결이 f1 둘째 청크의 행을 FOR UPDATE, 상한 1 s)
+          f1 FAILED «… (1 s) in chunk 2 - waiting Lock:transactionid on pid <쥔 pid> …» retry 0 · 다음 스윕 retry 1 · 제자리 · checkpoint IN_PROGRESS 1000
+          같은 폴더 f2 SUCCESS · 잠금 푼 뒤 스윕이 f1 을 마저 넣고 표의 행 · 셀 값 = 같은 파일을 한 번 넣은 대조군(갈래 2 의 칸)
+          raws/ 바로 아래 파일이 같은 감시자의 다음 스윕에 다시 돈다 · 걸림 줄 한 번(루프가 다섯 칸 더 돈 뒤에도) · 스윕 줄 · statement_timeout 이 같은 트랜잭션에 걸림
+sqlite    1 passed, 4 skipped in 0.30s — 기본값 300 = 걸림 판정 · 틀린 철자는 기본값 · null/0 은 상한 없음
+체인 걸림  6 passed, 8309 deselected in 16.99s (기존 시험 그대로 — 옮긴 함수)
+변이      13/13 빨강(failed 시험으로 센 수) · md5 전후 같음
+          첫 판에 초록 둘이었다: the stalled line repeats every slice · the lock limit has no default — 앞은 시험이 첫 줄 직후 루프를 세워 반복을 볼 틈이 없었고(1 s 더 돌게 고침), 뒤는 sqlite 칸이라 PG 판에 안 들었다. 둘 다 다시 빨강
+          RED  the lock wait is not named
+          RED  no limit is set on a file's transaction
+          RED  the statement limit is not set
+          RED  a file that waited is sealed like any failure
+          RED  the retry number stays 0
+          RED  the holder is not named
+          RED  a file that waited is not remembered
+          RED  the sweep does not try a waited top-level file again
+          RED  the folder is not noted
+          RED  the sweep says nothing of a folder in flight
+          RED  the stalled line repeats every slice
+          RED  the sweep loop does not ask the stalled line
+          RED  the lock limit has no default
+첫 전체    주기 루프를 흉내 낸 기존 시험(test_an_idle_watcher_still_beats)이 새 메서드를 몰라 빨강 -> 걸림 줄 함수를 모듈 함수로 옮김(그 변이 다시 빨강)
+          같은 실행에서 test_config_reload_integrity::test_h3 도 졌으나 혼자 통과 — test_inv_9_1 과 같은 파일 감시 타이밍 계열
+sqlite 전체 5 failed, 7962 passed, 345 skipped, 3 xfailed, 13176 warnings in 728.62s (0:12:08)
+          tests\test_a_sentence_says_itself_only_for_the_rows_it_names.py::test_the_sample_is_written_in_the_one_format_both_writers_use
+          tests\test_core_alignment_mapper.py::test_live_mapper_and_tracked_sample_are_byte_identical
+          tests\test_core_usage_mapper.py::test_live_mapper_and_tracked_sample_are_byte_identical
+          tests\test_dt_inventory_metadata_mapper.py::test_live_mapper_matches_tracked_sample
+          tests\test_one_place_decides_where_the_server_is.py::test_the_repo_root_is_one_above_it
+RELEASE   예시를 착지한 RELEASE_LOG 에서 읽어 제품의 file_write_timeouts 로 읽음 — example {"lock_timeout_seconds": 300, "statement_timeout_seconds": null} -> (lock s, statement s) = (300.0, None)
+```
+
+```
+곁에 고친 것  실패한 청크의 표본기가 멈추지 않고 계속 돌던 것 — 이제 실패 갈래에서도 멈춘다(사유를 읽으려면 멈춰야 해서)
+안 잰 것      운영의 정상 잠금 대기 길이 — 300 s 는 판정(걸림과 같은 수)이지 측정이 아니다. RUN.md 에 줄이고 늘리는 기준을 적었다
+남은 틈       외부 소스(raws/ 밖) 파일 — _handle_event 로 같은 process_with_retry 를 지나 같은 상한 · 같은 FAILED 갈래를 탄다(folder 사실은 없어 «folder -»).
+             그러나 외부 스윕의 기억(_external_sweep_attempted)은 waiting_on_a_lock 을 안 본다 -> 그 파일은 다음 외부 스윕에 다시 돌지 않는다
+             (재기동이나 파일이 바뀔 때까지). 짓지 않았다 — 물음으로 올림. 시험도 없다
+본 것(안 지음) load_ingestion_settings 가 utf-8 로 연다 — BOM 이 붙은 ingestion_settings.json 은 경고 한 줄 뒤 전부 기본값이 된다. SSO 와 같은 종류
+```
+
+---
+
+## [10-07 밤 · 후속] ③ 후속 — ANALYZE 잠금 상한 · 두 스윕 한 규칙 · 설정 BOM · utf-8 설정 읽기 «세기» · 착지 aca9d8d24 (총괄 ③ 물음 둘 답 · 응용 QA 8652ddb26 읽음 2)
+
+어느 DB · 어느 스키마 · 지운 것 — sqlite 는 메모리 · PG 는 assy_test 의 pg_engine 스크래치 스키마(끝에 DROP) · 그 안 시험 표 둘과 그 표 이름의 로그 · 체크포인트 행 · public 안 씀
+
+```
+지은 것    _analyze_after_load 의 자기 연결에 file_write_timeouts() 의 lock_timeout · 넘으면 ANALYZE 만 건너뜀 — 파일 SUCCESS
+          줄: [<표>] ANALYZE skipped: <표> locked by <표본기가 본 쪽 문장>  (표본기 칸이 꺼져 있으면 «a session the sampler did not see»)
+          _tried_already — raws/ 스윕과 외부 스윕이 부르는 «한» 규칙(같은 (mtime, size) 는 건너뜀, 잠금으로 기다린 파일은 빼고)
+          load_ingestion_settings — crud._decode_config_text (table_config 와 같은 읽기, BOM 읽음)
+게이트    PG 5 passed, 8313 deselected in 39.76s — 다른 연결이 표에 SHARE UPDATE EXCLUSIVE 를 쥔 채 폴더 적재: f1 · f2 SUCCESS · 건너뜀 줄 둘(쥔 pid) · 폴더 비움 (+ 앞 판 넷)
+          sqlite 3 passed, 5 skipped in 0.50s — 두 스윕이 첫눈에 둘 · 다시는 0 · 기다린 표시 뒤 둘 다 다시 · BOM 설정 읽힘 (+ 기본값 칸)
+변이      7/7 빨강(failed 시험으로 센 수) · md5 전후 같음
+          RED  the rule ignores the waiting set
+          RED  the external sweep keeps its own rule
+          RED  the raws sweep keeps its own rule
+          RED  the settings are read as plain utf-8
+          RED  ANALYZE has no lock limit
+          RED  ANALYZE's lock wait fails it as before
+          RED  the ANALYZE line names no holder
+sqlite 전체 5 failed, 7964 passed, 346 skipped, 3 xfailed, 13166 warnings in 731.35s (0:12:11)
+          tests\test_a_sentence_says_itself_only_for_the_rows_it_names.py::test_the_sample_is_written_in_the_one_format_both_writers_use
+          tests\test_core_alignment_mapper.py::test_live_mapper_and_tracked_sample_are_byte_identical
+          tests\test_core_usage_mapper.py::test_live_mapper_and_tracked_sample_are_byte_identical
+          tests\test_dt_inventory_metadata_mapper.py::test_live_mapper_matches_tracked_sample
+          tests\test_one_place_decides_where_the_server_is.py::test_the_repo_root_is_one_above_it
+RELEASE   예시를 BOM 붙여 임시 ingestion_settings.json 에 쓰고 제품 함수로 읽음 — example (written with a BOM) {"lock_timeout_seconds": 300, "analyze_after_rows": 10000} -> ((300.0, None), 10000)
+```
+
+### server/config JSON 을 utf-8 로 직접 여는 자리 — «세기만» (총괄 ③ 2)
+
+```
+명령      scratchpad/census_utf8_config_reads.py (AST) — 모집단: git ls-files server/*.py, server/tests 제외 = 295 파일
+술어      open/io.open/codecs.open 에 encoding 이 utf-8 · utf8(utf-8-sig 아님) · 읽기 모드 · 같은 함수가 json.load/loads 를 부름
+          경로는 «이름»이 아니라 «풀어서» 가른다: 모듈 상수의 값이 config_path( · CONFIG_DIR · CONFIG_PATH · config 를 담으면 config
+카나리아   utils/heartbeat.read_all(하트비트 파일의 utf-8 JSON 읽기) = 1 — 0 이면 계기 고장
+수(이 커밋 뒤)  utf-8 JSON 읽기 68 · 그중 config 로 풀린 것 20(제품 7 · 도구(scripts · setup · migrations) 13)
+          · 경로가 인자나 지역 계산이라 안 풀린 것 48(그중 제품 28) — 이 안에 config 가 더 있을 수 있다. 안 열어 봤다
+⚠️ 대리    config 로 센 것 중 지역 변수 이름 config_path 로만 걸린 자리가 있다(예: main.get_ingestion_workspaces) — 이름을 센 부분이다
+같은 파일  ingestion_settings.json 을 utf-8 로 여는 자리가 아직 셋 남았다(이 커밋은 load_ingestion_settings 하나만 고침):
+          server/chain/enrichment/candidates.py:_load_ingestion_settings
+          server/chain/enrichment/config.py:_load_ingestion_settings
+          server/run_watcher.py:reclaim_grace_setting
+          — BOM 이 붙은 파일이면 이 셋은 지금도 기본값으로 읽는다
+config 로 풀린 자리 전부
+          server/chain/enrichment/candidates.py:_load_ingestion_settings (INGESTION_SETTINGS_PATH)
+          server/chain/enrichment/config.py:_load_ingestion_settings (INGESTION_SETTINGS_PATH)
+          server/main.py:load_maps_config (MAPS_CONFIG_PATH)
+          server/main.py:get_ingestion_workspaces (config_path)
+          server/migrations/migrate_jsonb_numeric.py:run_migration (config_path)
+          server/parsers/directory_watcher.py:load_global_table_config (global_config_path)
+          server/parsers/directory_watcher.py:_load_legacy_config (self.config_path)
+          server/run_watcher.py:reclaim_grace_setting (paths.config_path("ingestion_settings.json"))
+          server/scripts/archive/profile_fetch.py:profile (config_path)
+          server/scripts/check_missing_business_key.py:main (CONFIG)
+          server/scripts/dev_env/snapshot_db.py:build_target_schema (paths.config_path("table_config.json"))
+          server/scripts/dev_env/snapshot_db.py:run (paths.config_path("table_config.json"))
+          server/scripts/list_undeclared_tables.py:declared_tables (config_path)
+          server/scripts/list_undeclared_tables.py:build_models (config_path)
+          server/scripts/load_mechanism_edge_rows.py:build_rows (_config_path())
+          server/scripts/migrate_jsonb_to_rdb.py:main (config_path)
+          server/setup/init_db.py:setup_database (config_path)
+          server/setup/reset_db.py:reset_database (config_path)
+          server/setup/seed_data.py:seed (config_path)
+          server/setup/setup_workspace.py:setup_workspace (config_path)
+```
+
+---
+
+## [10-07 밤] ingestion_settings.json 읽기 넷을 하나로 · 착지 665a5dff4 (총괄 «세기» 판정)
+
+어느 DB · 어느 스키마 · 지운 것 — 메모리 sqlite · DB 안 씀 · 지운 것 0
+
+```
+지은 것    server/ingestion/settings.py read_ingestion_settings(path=None) — 그 파일을 «여는» 자리 하나(BOM 읽음, _decode_config_text)
+          감시자 load_ingestion_settings · enrichment candidates/config 의 _load_ingestion_settings · run_watcher.reclaim_grace_setting 이 부른다
+          가벼운 모듈이라 체인 워커는 여전히 watchdog 를 안 들인다 · 각자의 경로 상수는 남김(시험과 isolated_data_root 가 바꿔 끼움)
+게이트    BOM 파일에서 네 자리가 같은 값 42 를 읽는다 · 그 경로를 바꿔 끼우던 시험들 그대로 통과
+변이      5/5 빨강(failed 시험으로 센 수) · md5 전후 같음
+          RED  the watcher reads the file its own way
+          RED  the enrichment candidates read the file their own way
+          RED  the enrichment config reads the file its own way
+          RED  the retry poller reads the file its own way
+          RED  the one read drops the BOM rule
+sqlite 전체 5 failed, 7965 passed, 346 skipped, 3 xfailed, 13154 warnings in 729.64s (0:12:09)
+          tests\test_a_sentence_says_itself_only_for_the_rows_it_names.py::test_the_sample_is_written_in_the_one_format_both_writers_use
+          tests\test_core_alignment_mapper.py::test_live_mapper_and_tracked_sample_are_byte_identical
+          tests\test_core_usage_mapper.py::test_live_mapper_and_tracked_sample_are_byte_identical
+          tests\test_dt_inventory_metadata_mapper.py::test_live_mapper_matches_tracked_sample
+          tests\test_one_place_decides_where_the_server_is.py::test_the_repo_root_is_one_above_it
+다시 센 수  utf-8 JSON 읽기 65 · config 로 풀린 17(제품 4 · 도구 13) · ingestion_settings 를 utf-8 로 여는 자리 0
+CODE_MAP  _decode_config_text 행 아래 «다음에 만지면» 한 줄(수는 이 셈에서 채움)
+고친 말    앞 RELEASE 항목(aca9d8d24)의 «ingestion_settings.json 에 BOM 이 붙어도 읽습니다»는 그때 감시자 읽기 하나만 참이었다 — 이 커밋으로 네 자리 모두 참
+```
+
+---
+
+## [10-07 밤] ④ 모든 요청의 시간 — Server-Timing(total · db) · 느린 요청 한 줄 · 착지 a34bfbe63 (총괄 1ㄴ · 2ㄴ server_settings.json · 3ㄴ)
+
+어느 DB · 어느 스키마 · 지운 것 — 메모리 sqlite · DB 안 씀 · 지운 것 0
+
+```
+지은 것    server/runtime/request_timing.py — 요청 contextvar 하나, Engine 의 before/after_cursor_execute 훅이 그것이 있을 때만 질의 시간 · 수를 더함
+          main.time_the_request — db_context_middleware 뒤에 등록(그 바깥 · SSO 거절도 잼), CORS 는 여전히 가장 바깥
+          머리: Server-Timing: total;dur=<ms>, db;dur=<ms>;desc="<N> queries" — 모든 HTTP 응답
+          문턱: server/config/server_settings.json slow_request_ms(sample 포함) · 없으면 1000 · null 끔 · 규칙은 event_constants.slow_warn_ms · 프로세스당 한 번 읽음
+          줄: [Slow] <메서드> <경로> <상태> - <slow_sentence> · db <ms> ms · <N> queries — 쿼리 문자열 · 바디 없음
+게이트    3 passed in 0.40s — 머리 모양(시험 경로 + /health) · 그 요청 질의 3(요청이 띄운 스레드의 2 는 안 셈) · 문턱 1 ms 위 한 줄 · 100000 ms 아래 0 줄
+          · 줄 모양 정확히(경로 · 상태 · total · db · 질의 수) · 쿼리 문자열 값(SECRET) · 바디 값 · 'token' 없음 · 기본 1000 · 250 · null
+변이      8/8 빨강(failed 시험으로 센 수) · md5 전후 같음
+          RED  the header carries no database time
+          RED  the queries are not counted
+          RED  a query outside the request is counted
+          RED  the slow line carries the query string
+          RED  the budget has no default
+          RED  a request under the budget is said too
+          RED  the line leaves out the database
+          RED  the timing middleware is not installed
+sqlite 전체 5 failed, 7968 passed, 346 skipped, 3 xfailed, 13187 warnings in 752.69s (0:12:32)  (ingestion_settings 접기 665a5dff4 위)
+          tests\test_a_sentence_says_itself_only_for_the_rows_it_names.py::test_the_sample_is_written_in_the_one_format_both_writers_use
+          tests\test_core_alignment_mapper.py::test_live_mapper_and_tracked_sample_are_byte_identical
+          tests\test_core_usage_mapper.py::test_live_mapper_and_tracked_sample_are_byte_identical
+          tests\test_dt_inventory_metadata_mapper.py::test_live_mapper_matches_tracked_sample
+          tests\test_one_place_decides_where_the_server_is.py::test_the_repo_root_is_one_above_it
+RELEASE   예시를 착지한 RELEASE_LOG 에서 읽어 request_timing.slow_request_ms 로 읽음 — example {"slow_request_ms": 1000} -> slow_request_ms() = 1000
+```
+
+```
+안 잰 것   운영 응답 시간 — 이 박스 수 없음. 스트리밍 응답(파일 내려받기)은 머리를 보내는 순간까지만 잰다(본문 전송 시간 빠짐)
+안 잰 것   PG 위의 db 칸 — 훅은 엔진 종류와 무관하지만 시험은 sqlite 로만 돌렸다
+          교차 출처(개발 서버 5173)에서는 브라우저가 Timing-Allow-Origin 없이 Server-Timing 을 안 보여 줄 수 있다 — 운영(같은 출처)엔 해당 없음. 안 붙였다
+```
+
+---
+
+## [10-07 밤] 원천 행 «고칠 때»도 출처 행 단위 회수 — 짓기 전 보고 (총괄 e35500433 · 4c3417ccb · b13de0353) · 아무것도 안 지음
+
+어느 DB · 어느 스키마 · 지운 것 — assy_test 의 pg_engine 스크래치 스키마(끝에 DROP) · 재기 시험 파일은 커밋 안 함(scratchpad) · public 안 씀
+
+### 1 재현 — 생긴다 (보류 복사 hold_world, 한 행 · 묶음 둘 다 같은 답)
+
+```
+A(J1 · x 1 · y 2 · netdie 7) 적재 -> 공식 행 하나 agreed · 원장 [J1 7]
+A 의 좌표 x 1 -> 5 로 고침 -> 공식 행 2 개: 새 키 행 agreed, 옛 키 행이 «그대로» 남음
+   옛 행에 남은 A 의 층(origin A, 이름 chain_ingestion (<A>)) 칸: dt_job, dt_x, dt_y, netdie
+   옛 행 hold = agreed · 원장 = [['J1', '7.0'], ['J1', '7.0']]  <- 옛 행 원자가 그대로 남아 J1 이 둘
+그 뒤 값만 고침(netdie 8) -> 공식 행 2 개, 원장 = [['J1', '7.0'], ['J1', '8.0']]  <- 옛 행 7 이 계속 말함
+옛 행에는 origin 없는 «chain_ingestion» 층도 있다: dt_job, dt_x, dt_y, hold — origin 회수가 안 건드리는 층이라,
+   고칠 때 회수가 생기면 옛 행은 키만 남은 행이 될 것이다(지울 때 오늘 모양). hold 는 재셈이 원천 0 으로 비우고 원장 exclude_when 이
+   원자를 거둘 것이다 — 지울 때의 길을 그대로 탄다는 «예상»이고, 고칠 때는 그 길이 아직 없어 안 쟀다
+```
+
+### 2 자리
+
+```
+오늘     DELETE 만: 원장 후속 drain -> _retract_what_those_rows_fed -> cell_layer.withdraw_by_origin(출처 행들)
+         (모집단 = cells_stamped_by, origin_row_id 로) -> 층 잃은 행에 chain 채널 EDIT -> allow_chain_trigger 규칙(재셈) -> 원장 exclude_when
+안       넓히는 자리 «하나»: withdraw_by_origin 에 범위 셋을 더함 — table(규칙 대상) · columns(그 규칙이 쓰는 칸, 덧붙임 1) · keep_rows
+         (이번 쓰기가 그 출처로 쓴 행). 지울 때는 범위 없이 오늘 그대로. 고칠 때는 apply_chain_writes 의 쓰기 직후, 이 묶음의 EDIT 트리거
+         행 중 그 규칙이 출처를 찍은 것으로 부름. «층 잃은 행에 EDIT»은 지금 _retract_what_those_rows_fed 안의 몇 줄을 함수로 꺼내 둘이 부름
+모집단    cells_stamped_by(출처 행 -> 칸 층) 와 plan_retraction(일 값 -> 행) 이 «둘»인가: 단위(층 vs 행) · 거두는 법(층 회수 vs 행 purge) ·
+         켜는 법(기본 vs allow_retraction)이 다르다. 이번 일은 cells_stamped_by 하나만 쓰고 plan_retraction 은 손대지 않는 안
+         접는 안(«전에 낸 것 − 이번에 낸 것» 한 함수에 단위를 인자로)은 크기 안 쟀고 추천하지 않음
+이번 쓰기가 낸 칸  apply_batch_updates 가 돌려주는 results(행) 로 «행» keep 은 된다. 칸 단위 집합(cell_sources_to_upsert)은 함수 안 지역이라
+         안 돌려준다. changed_cells 는 «보이는 값이 바뀐 칸»만이라 못 쓴다. 덧붙임 1(그 규칙의 칸) + 행 keep 이면 칸 단위가 없어도 된다고 봄
+```
+
+### 3 비용 (PG 박스, hold_world 1,000 원천 행 — 박스 수, 운영 주장 아님)
+
+```
+좌표 안 바뀐 수정   거둘 것 0 이어야 함 -> 더해지는 것은 읽기 한 번: cells_stamped_by 1,000 출처 행 = 22~29 ms (다섯 번) · 쓰기 0
+좌표 바뀐 수정      withdraw_by_origin 이 층 이름마다 withdraw_source 를 한 번씩 부른다 — 보류 복사는 층 이름이 출처 행마다 따로라
+                   묶음 수 = 행 수(1000) -> 1,000 행 dry-run 111 s (4000 칸)
+                   운영 규격(1,000 행 ≤ 5 s) 밖. 🔴 오늘 «지울 때»도 같은 함수다 — 1,000 행 삭제가 같은 꼴(삭제로는 안 쟀다)
+덤                 이 하니스의 1,000 행 적재(복사 + 재셈 + 원장 후속) settle 213 s — 규격 밖. 단계별로는 안 쟀다
+```
+
+### 4 겹침
+
+```
+보류 복사   층 이름이 출처 행마다 따로 -> 같은 키를 받치는 다른 원천 행의 층은 안 건드림. 재셈이 남은 원천으로 hold 를 다시 셈 — 안전
+조인        층 이름이 «chain_ingestion» 하나라 (표 · 행 · 칸 · 층) 한 줄에 origin 이 하나(마지막에 쓴 행)만 남는다
+            -> 다른 원천 행도 받치던 칸이면 회수가 그 칸을 비운다, 그 원천이 다시 쓸 때까지. 지울 때도 오늘 같은 위험
+사람 층     PROTECTED_SOURCES(user) 건너뜀 · manual_priority_source 로 고정된 칸 건너뜀(withdraw_source) — 손 안 댐
+origin 없는 층  키 칸 · hold 의 «chain_ingestion» 은 안 거둠 -> 옛 행은 키만 남은 행
+자기 행 규칙  출처 = 자기 행, 층 이름이 겹칠 수 있음 -> columns 로 그 규칙의 칸만(덧붙임 1)
+고리        회수 EDIT 은 chain 채널 -> allow_chain_trigger 규칙만 깬다. 자기 행 규칙이 그것을 켰으면 다시 돌아 같은 행을 쓴다 -> keep_rows 에
+            그 행이 들어 회수 0 -> EDIT 0 -> 끝. 게이트로 «사건 수 상한»을 단언(덧붙임 2)
+```
+
+### 5 mapper_sdk 기본 찍기
+
+```
+자리 없음   @mapper 는 (df_in) -> df_out 이고 df_to_updates 는 updates · source_name · updated_by 만 싣는다. register(name, fn, params) 에
+            출처 칸이 없다. 출처는 쓰기 항목의 origin_row_id(GeneralUpdateItem)라 함수가 직접 적어야 한다(hold_copy 처럼)
+본 결함     «찍는 종류인가»는 dynamic_mappers.TEMPLATE_FACTS 에만 있다(join True · decide 둘 False). SDK 로 등록된 보류 복사 · contrast_walk 는
+            거기 없어 retraction_refusal 이 «파일 맵퍼는 … 적는지는 제품이 모릅니다»를 말한다 -> 그 원천 표를 지울 때마다 경고 한 줄(실제로는 찍음)
+기본 안     행 체인 맵퍼의 출력 df 에 입력 행의 row_id 칸이 남아 있으면 SDK(df_to_updates)가 그 값을 각 항목의 origin_row_id 로 옮긴다
+            «찍나»는 TEMPLATE_FACTS 대신 «쓴 항목에 origin 이 실렸나»로 retraction_refusal 이 판단한다
+기본이 없을 때 작성자가 적을 것
+            출력 행마다 origin_row_id 칸에 그 입력 행의 row_id 를 싣는다(register 함수면 item["origin_row_id"] = row["row_id"])
+            지금은 그것을 «찍는 종류»로 제품에 알릴 자리가 없다 — TEMPLATE_FACTS 는 내장 종류만
+```
+
+### 여쭐 것
+
+```
+1  withdraw_source 를 «여러 층 이름 한 번에»로 묶는 일 — 넓히기의 선행으로 같은 라운드에 넣을지. 안 하면 좌표 바뀐 1,000 행이 위 dry-run 꼴(지울 때도)
+2  행 keep(이번 쓰기가 그 출처로 쓴 행) + 그 규칙의 칸 으로 충분한지 — 칸 단위 집합을 apply_batch_updates 에서 돌려받는 안은 크기가 크다(안 쟀다)
+3  plan_retraction 은 접지 않는 안
+4  mapper_sdk 기본 찍기(위 두 줄)와 retraction_refusal 의 판단 바꾸기를 이 라운드에 넣을지 — 넣으면 보류 복사의 잘못된 경고 줄도 같이 닫힌다
+```
+
+---
+
+## [10-07 밤] ① 회수 묶기 착지 fa1279a31 — 출처 행 회수를 표마다 한 번에 (총괄 e35500433 · 4c3417ccb · b13de0353 ①)
+
+어느 DB · 어느 스키마 · 지운 것 — PG 는 assy_test 의 pg_engine 스크래치 스키마(끝에 DROP) · sqlite 는 메모리 · 재기 시험 파일은 커밋 안 함 · public 안 씀
+
+### 1 무엇이 바뀌었나
+
+```
+전   withdraw_by_origin 이 (표, 층 이름)마다 withdraw_source 를 한 번씩 불렀다. 보류 복사는 층 이름이 원천 행마다 따로라 1,000 행 = 1,000 번
+     (부를 때마다 claim 읽기 · 행 읽기 · 층 · 핀 읽기 · 지우기 · 커밋)
+후   표마다 한 번. claim 읽기 한 질의(층 이름 IN · 칸 IN · 행 IN, 각 층의 자기 칸 x 행으로 거름) -> 1,000 행 덩어리마다
+     행 · 층 · 핀 읽기 한 번 · 지우기는 칸마다 (층 이름, 행) 쌍 IN · 커밋은 덩어리마다
+     withdraw_source 도 같은 한 벌(_withdraw_cells)을 지난다 — 운영자 · CLI · 소급의 반환 키는 그대로
+한 칸을 여러 층이 claim   이름 순서로 하나씩 거두고, 뒤 층은 앞 층이 빠진 뒤를 보고 푼다(apply) — 층마다 따로 부르던 때의 순서 · 답
+```
+
+### 2 게이트 — 같은 1,000 행(4,000 칸), PG 박스 수(운영 주장 아님)
+
+```
+                 전                후
+시간             332.537 s        1.575 s        목표 5 s 이내
+묶음(층 이름)     1000              1000
+거둔 칸          3999              3999
+사람 층 건너뜀    1                 1
+남은 층          4006              4006
+감사 줄          998               998
+사건             998               998
+```
+바이트 비교(거래 id · 시각만 가림, 항목 수는 전 기준):
+```
+   감사       998    같음
+   남은 층     4006   같음
+   사건       998    같음
+   보이는 값    1000   같음
+   통계              같음
+```
+🔴 가린 것 하나는 «값이 바뀐» 것입니다 — 회수 사건의 거래 id 가 전 998 개 -> 후 1 개. 층 이름마다 한 거래였던 것이 표마다 한 거래가 됐고,
+체인 워커는 그것을 한 그룹으로 받습니다. 이것이 원장 후속 드레인 횟수를 바꾸는지는 안 쟀습니다.
+
+### 3 새 게이트 — 한 칸을 두 층이 claim (sqlite, test_a_deleted_row_takes_back_the_cells_it_fed.py)
+
+```
+칸 하나에 seed(Z) · s_b(B) · s_a(A), 새것이 보임. s_a · s_b 를 출처로 거둠
+   apply              남은 층 seed · 보임 Z · 감사 A->B (s_a) 다음 B->Z (s_b)
+   apply, s_a 핀      남은 층 s_a · seed · 보임 A · 감사 없음
+   dry-run            세 층 그대로 · 보임 A
+변이 (모두 «실패한 시험»으로 빨강, 기준 초록, md5 전후 같음, 복원 됨)
+   no carry between layers of one cell      1 failed, 9 passed, 16 warnings
+   delete ignores the source of the pair    2 failed, 8 passed, 16 warnings
+   pin check ignored                        1 failed, 9 passed, 16 warnings
+```
+
+### 4 스위트
+
+```
+sqlite 전체   5 failed, 7971 passed, 346 skipped, 3 xfailed, 13235 warnings in 747.53s (0:12:27)
+   실패 = 알려진 박스 실패: test_the_sample_is_written_in_the_one_format_both_writers_use, test_live_mapper_and_tracked_sample_are_byte_identical, test_live_mapper_and_tracked_sample_are_byte_identical, test_live_mapper_matches_tracked_sample, test_the_repo_root_is_one_above_it
+PG 회수 근처  29 passed, 8296 deselected, 52 warnings in 168.54s (0:02:48)   (보류 복사 · 삭제 회수 · 소급 · chain_replay)
+```
+
+### 5 정산 213 s 를 단계별로 — 1,000 행 보류 복사 적재, PG 박스
+
+```
+push                     1.767 s
+run_chain                5.345 s   (체인 그룹 2 개, 그 안 2.518 s)
+원장 후속 drain          212.17 s   (1002 번 불림, 한 번 평균 212 ms)
+하니스 stale_check       1.786 s   (6 번 — 시험 세상의 계기, 제품 아님)
+```
+체인은 10-02 수 그대로이고, 차이는 원장 후속 drain 입니다. 이번 ①은 회수만 묶었고 drain 은 손대지 않았습니다.
+
+### 6 말이 바뀐 것
+
+```
+withdraw_by_origin 경로 로그   층 이름마다 두 줄 -> 표마다 두 줄
+   [withdraw] <N> source(s) claim <M> cell(s) across <R> row(s) in '<표>'
+   [withdraw] apply: <K> cell(s) withdrawn (... revealed another source, ... left empty, ... skipped as human-pinned)
+withdraw_source 경로(운영자 · CLI · 소급)의 줄은 그대로
+문서 넷   data_model §2.2 · PRIMITIVES 도장 절 · cells_stamped_by · _retract_what_those_rows_fed 독스트링 —
+          「withdraw_by_origin 이 withdraw_source 를 부른다」를 「같은 한 벌을 지난다」로
+```
+
+### 여쭐 것
+
+```
+claim 읽기가 둘이 됐습니다 — withdraw_source 는 _claimed_filter(count_withdrawable 와 공유, ops 스크립트 EXPLAIN 이 고정),
+출처 경로는 _claimed_cells(층 이름 여럿 한 질의). 접으려면 _claimed_filter 의 모양을 바꿔야 합니다. 접을지 판정 부탁드립니다
+다음은 ② 고칠 때 회수 · ③ SDK 기본 찍기 — 같은 푸시로 올립니다
+```
+
+---
+
+## [10-07 밤] ②③ 착지 91da9c781 — 고칠 때 회수 · @mapper 기본 도장 · 회수 경고는 «그 규칙의 출력»으로 (총괄 e35500433 · 4c3417ccb · b13de0353)
+
+어느 DB · 어느 스키마 · 지운 것 — PG 는 assy_test 의 pg_engine 스크래치 스키마(끝에 DROP) · sqlite 는 메모리 · 재기 시험 파일 둘은 커밋 안 함 · public 안 씀
+
+### 1 무엇이 바뀌었나
+
+```
+고칠 때   출처를 찍는 규칙(이번 실행에 낸 행에 origin_row_id 가 하나라도 실림)이 EDIT 트리거 행에 다시 돌면, 모든 묶음을 쓴 뒤에
+          그 트리거 행이 찍은 층 중 «그 규칙이 이번에 쓴 칸»이고 «이번 쓰기가 그 원천 행으로 쓴 (원천, 행) 밖»인 것을 거둔다
+          규칙별 «EDIT 행 · 칸»은 run_rule 이 돌아온 자리(그룹 단계)에서 잡는다 — 쓰기 문에서는 규칙들의 행이 이미 섞여 있다
+          거두는 쪽은 지울 때와 같은 함수 하나 _withdraw_and_tell = withdraw_by_origin(table · columns · keep) + 층 잃은 행 EDIT
+지울 때   cells_stamped_by 가 층 하나씩 돌려주고 그 층만 거둔다 — 층 이름의 (칸 x 행) 곱(_claimed_cells)은 지웠다(판정 받음)
+고리      거두는 쪽이 내는 사건 전부(값 비움 · 층 잃은 행 EDIT)를 그 규칙이 쓴 것으로 찍는다(written_by) -> 그 규칙은 안 깬다
+③ 도장    @mapper: 작성자 프레임에 __origin_row_id 칸(그 행 row_id 사본)을 얹고, 출력 행에 그 칸이 남아 있으면 그 값으로 찍고 칸은 안 쓴다
+③ 경고    rule_run.stamps_origin(규칙) = 이 프로세스에서 그 규칙이 마지막으로 낸 행에 출처가 실렸나 · 안 돌았으면 제품 종류는 선언, 파일 맵퍼는 모름
+          retraction_refusal 은 «안 실림»일 때만 말한다(모름 = 말 안 함). 문장은 하나로:
+          「<규칙>: 「<종류>」 규칙의 출력에 «어느 행에서 왔는지»가 실리지 않습니다 — 그래서 그 행이 지워지거나 고쳐져도 이 규칙이 쓴 칸은 «그대로 남습니다»」
+조인      조인도 출처를 찍어 낸다 -> 값 쪽 행의 키를 고치면 옛 키로 채웠던 행의 가져온 칸이 빈다(기존 시험 한 줄이 이것을 단언하게 바꿈)
+```
+
+### 2 ③ 표시 칸을 고른 이유 (색인 맞추기 대신)
+
+```
+payloads_to_df 는 RangeIndex(0..n-1)를 준다 -> reset_index · 정수 키 groupby 가 같은 라벨을 다른 행에 돌려줘, 색인으로 맞추면 «조용히 다른 행»을 찍는다
+표시 칸은 행을 따라 다닌다(거르기 · 정렬 · reset_index). 칸을 골라 새로 만들거나 agg 로 모으면 칸이 빠져 «안 찍힘» — 안전한 쪽
+🔴 지시의 전제 하나를 뒤집습니다: «index reset = 대응 없음»이 아닙니다. 표시 칸은 reset 뒤에도 행과 같이 있어 «맞는 행»으로 찍힙니다(시험 칸)
+남는 것   groupby().first() 처럼 표시 칸까지 모으면 그 묶음 첫 행으로 찍힌다 — 시험 안 함
+          작성자가 보는 프레임에 칸이 하나 는다(__origin_row_id) — 칸 전부를 도는 맵퍼는 그 칸을 본다
+```
+
+### 3 게이트
+
+```
+sqlite (test_an_edited_source_row_takes_back_what_it_no_longer_feeds.py 외)
+   자기 행을 채우는 규칙 둘 · 하나만 다시 돎     다른 칸 층 그대로 · 돈 규칙 [er_x] · 사건 정확히 둘(고침 · er_x 쓰기)
+   남의 행을 채우는 규칙 · 원천 행이 옮김        옛 행에서 그 층만 빠짐 · 옛 행 키의 사람 층 그대로 · 돈 규칙 [er_z] 한 번
+                                              사건 정확히 넷(고침 · 새 행 쓰기 · 옛 행 값 비움 · 층 잃은 행 EDIT), 체인 사건 전부 written_by [er_z]
+   같은 남의 행 · 둘째 규칙(다른 칸)             첫째만 다시 돌면 둘째 칸 그대로
+   @mapper 도장 다섯 모양                        프레임 그대로 · 칸 골라냄(안 찍힘) · 거르고 reset · 정렬 · 집계(안 찍힘)
+   경고 넷                                       안 돈 규칙 말 안 함 · 실림 · 안 실림(이름 대고) · 섞임
+   곱 과잉 대조군(지울 때)                       같은 이름 층, 다른 원천 행의 칸 그대로
+PG (hold_world, 한 행 · 묶음 둘 다)
+   좌표 고침     옛 행에 A 층 없음(사람 층만 남음) · 옛 키 hold 빈 값 · 새 키 agreed · 원장 J1 하나
+   키 안 바뀜    회수 감사 · 회수 사건 0 · agreed · 원장 8.0
+   한 일 두 묶음  형제 층 그대로 · agreed · 원장 둘
+   옛 키 정리    이 착지 전 모양을 만들고(회수 끔) 다시 세기 -> 복사 순서로 리플레이 -> 옛 층 0 · hold 빈 값 · 원장 하나
+결과   sqlite 191 passed, 8 deselected, 577 warnings · PG 37 passed, 8308 deselected, 68 warnings(회수 근처 포함)
+```
+
+### 4 곱 과잉 대조군 — 옛 코드(fa1279a31)에서 돌림
+
+```
+OLD fa1279a31 exit 1  1 failed, 6 warnings in 0.79s
+E       AssertionError: another row's cell under the same name was taken
+-> 옛 코드에서 빨강(다른 원천 행의 칸까지 거둠), 새 코드에서 초록
+```
+
+### 5 변이 (모두 «실패한 시험»으로 빨강, md5 전후 같음)
+
+```
+   keep ignored                                 2 failed, 20 passed, 8 deselected, 20 warnings
+   columns scope ignored                        1 failed, 21 passed, 8 deselected, 20 warnings
+   withdrawal not stamped as the rule's         1 failed, 21 passed, 8 deselected, 20 warnings
+   no spec built (edit retraction off)          6 failed, 2 passed, 8337 deselected, 20 warnings
+   SDK mark not put on the frame                3 failed, 19 passed, 8 deselected, 20 warnings
+   not-yet-known warned like unstamped          4 failed, 18 passed, 8 deselected, 20 warnings
+   no spec built - the join's old left row      1 failed, 2 passed, 14 warnings
+```
+
+### 6 비용 — PG 박스, 보류 복사 1,000 행 한 묶음(운영 주장 아님)
+
+```
+                    이 단계 없이     있음       단계 자체 · 질의 수(엔진 cursor 훅)   거둔 칸
+값만 고침            1.459 s         1.727 s    0.321 s · 3                     0
+키를 다 옮김         1.656 s         3.712 s    2.093 s · 17                    4000
+   그 뒤 묶음        -                다시 세기 1.62 s(1000 사건) · 0.901 s(1 사건, 층 잃은 행 EDIT)
+묶음마다 5 s 안. 키를 옮기면 옛 행마다 «값 비움 사건»과 «층 잃은 행 EDIT»이 둘 다 나가 다시 세기가 두 번 돈다 — 10-03 설계 그대로(지울 때도 같음)
+```
+
+### 7 순서 한 줄 — plan_retraction 과 고칠 때 회수가 같은 칸을 거둘 때
+
+```
+plan_retraction 은 묶음마다 쓰기 바로 뒤, 고칠 때 회수는 모든 묶음 뒤. 같은 칸이면 plan_retraction 이 행을 지우며(crud.purge_map_rows) 층도 같이 지워
+고칠 때 회수는 그 행에서 거둘 것이 없다
+```
+
+### 8 ① 다시 잼 — ②가 withdraw_by_origin 속을 바꿔서
+
+```
+같은 1,000 행(4,000 칸)  1.646 s · 거둔 칸 3999 · 사람 층 건너뜀 1 · 남은 층 4006 · 감사 998 · 사건 998
+① 전 덤프와 바이트 비교(거래 id · 시각만 가림)   감사 같음 · 남은 층 같음 · 사건 같음 · 보이는 값 같음 · 통계 같음
+```
+
+### 9 스위트
+
+```
+sqlite 전체   6 failed, 7982 passed, 354 skipped, 3 xfailed, 13268 warnings
+   실패 = 알려진 박스 다섯 + test_the_join_wakes_on_its_key_and_its_take_columns_on_both_sides
+   그 하나는 이 변경이 조인에도 걸려서다(옛 키 행의 가져온 칸이 비며 사건이 는다) — 그 시험을 새 동작을 단언하게 고쳤고 단독 3 passed,
+   «회수 끔» 변이에서 빨강(5절 마지막 줄)
+```
+
+### 10 말이 바뀐 것
+
+```
+로그      [ChainRetract] table=<표> edited_rows=… 줄이 새로(출처를 찍는 규칙이 고친 행을 받은 묶음마다, 0 이어도). deleted_rows 줄은 그대로
+          protected_skipped 는 실제 사람 층 수(전에는 칸 수 x 행 수)
+경고 문장  두 벌(종류 문장 · 파일 맵퍼 문장) -> 하나. 안 돈 규칙은 말 안 함
+run_rule  답에 stamps_origin 칸
+문서      RELEASE_LOG · RUN.md(재기동 · 옛 키 정리 리플레이 순서) · CODE_MAP cell_layer 줄(fe14f384b 줄을 고침 — 지시 문장 넣음) ·
+          PRIMITIVES 두 줄 · data_model 한 줄 · hold_copy 독스트링
+```
+
+### 남은 것 · 여쭐 것
+
+```
+1 다시 세기 두 번 — 회수의 «값 비움 사건(행마다)»과 «층 잃은 행 EDIT»이 둘 다 다시 세기를 깨운다. 줄이려면 회수 쪽 사건을 하나로 합치는 일(크기 안 잼). 지금 할지
+2 그 묶음에서 낸 행이 0 인 규칙은 «찍나»를 몰라 거두지 않는다(예: 고친 행이 전부 require 에 걸려 맵퍼가 아무것도 안 냄) — 옛 층이 남는다
+3 옛 키 정리 리플레이는 순서가 있다(다시 세기 -> 복사). 반대로 돌리면 원장 후속이 그 행을 missing value 로 실패시킨다 — RUN.md 에 적음
+다음: 원장 후속 묶어 드레인 — 짓기 전 보고부터
+```
+
+---
+
+## [10-07 밤] 10-12 시연 — 접은 덩어리의 걷기 확인 · 견본 셋 (총괄 793017c62 · 83ff2c3e6 · 6064ab1f9 · edcc0568c) · main 5f5be18ce
+
+어느 DB · 어느 스키마 · 지운 것 — assy_test 의 pg_engine 스크래치 스키마(끝에 DROP) · 선언은 임시 설정 폴더(paths.CONFIG_DIR) · public 안 씀
+
+### 1 정의 노드(레시피) 시작 · 한 걸음 · 기간 · 상한 — 된다 (코드 그대로, PG 로 확인)
+
+```
+요청   GET /api/ledger/subgraph?id=<레시피>&hops=1&direction=incoming&since=..&until=..&node_limit=..&collect=measurement_event
+답     그 레시피를 쓴 측정 이벤트 전부 — 시작 웨이퍼 것과 다른 웨이퍼 것이 같이. 노드마다 attributes.value 와
+       attributes_by_world.value[0].occurred_at(측정 시각)
+기간   since 를 좁히면 앞의 측정이 빠지고 truncated.interval_excluded 가 그 수를 말한다 · 상한은 limits.nodes
+막는 것 없음. 레시피가 static 이어도 «씨앗의 첫 걸음»은 열려 있다(10-02 규칙). 걷는 도중 만난 레시피는 그대로 막혀서
+       웨이퍼 시작 걷기에는 다른 웨이퍼 측정이 안 온다 — 그래서 정의 노드에서 «한 번 더» 걷는 요청이 필요하다(지시 모양 그대로)
+시험   server/tests/test_a_recipe_walk_brings_the_measurements_other_wafers_made.py (PG) — 웨이퍼 · 레시피 · 덩어리 세 걷기와 창 · 상한
+```
+
+### 2 견본 — client2/tests/fixtures/walk_fold_{wafer, recipe_step, process_lump}.json · 다시 뜨기 capture_walk_fold.py
+
+```
+표      출하 샘플의 metro · process_event(source_config.xlsx 계열) — metro 는 샘플에 키가 없어 txn_seq 를 키로 적음(임시 설정만)
+선언    샘플 + measurement_event(value, label=value) · process_event(step) · measured · used · of · underwent
+데이터  웨이퍼 셋, 레시피 RCP-A 에 시작 웨이퍼 W1 의 측정 둘과 W2 · W3 의 측정 하나씩이 섞임, 다른 레시피 하나
+길      원천 행 -> backfill.run -> 원장 -> 맨 앱의 실제 라우트(TestClient)
+철자    클라에 메시지로 보냄. 🔴 운영 모양 표의 value 가 글자(string)라 견본의 attributes.value 도 글자 — 클라가 숫자로 읽는다
+```
+
+### 3 운영 모양에서 공정 이벤트와 측정이 이어지는 길 (출하 샘플 표 기준 · 걷기 코드로 확인한 것만)
+
+```
+웨이퍼 경유   된다 — process_event ◀underwent─ wafer ─measured▶ measurement_event, 2 홉(도로 내려가기 규칙은 타입이 달라 안 막음).
+             견본 셋째가 이것. 다만 그 웨이퍼의 측정 «전부»가 온다(그 공정 다음 측정만이 아니다)
+직접 엣지     술어를 선언하면 걷는다. 그런데 샘플 metro 행에는 공정 이벤트 행을 가리키는 칸이 없다 — 두 표가 같이 든 칸은
+             wafer_id · lot_id · step_seq · rcp_id · eqp_id · event_time 뿐이라 묶을 키가 없다(운영 표는 못 봄)
+공통 정의 노드 step · recipe · eqp 를 노드로 선언하면 2 홉. static 이면 도중에 막혀 그 노드에서 한 번 더 걸어야 하고, 그 노드의 모든 웨이퍼 측정이 온다
+시각 창       since · until 은 엣지를 자르기만 한다. «가까운 시각끼리 잇는» 걷기 코드는 없다
+```
+
+### 다음에 볼 것
+
+```
+다시 세기가 두 번 도는 것(회수의 값 비움 사건 + 층 잃은 행 EDIT) — 총괄 판정으로 지금은 그대로, 10-03 설계
+원장 후속 묶어 드레인 짓기 전 보고 — 지금 잼(조사 수 둘 받음), 이어서 올립니다
+```
+
+---
+
+## [10-08 새벽] 원장 후속 묶어 드레인 — 짓기 전 보고 · 아무것도 안 지음 · 🔴 정정 먼저: 박스 초의 대부분은 «시험 엔진의 연결»이었습니다
+
+어느 DB · 어느 스키마 · 지운 것 — assy_test 의 pg_engine 스크래치 스키마(끝에 DROP) · 재기 시험 파일은 커밋 안 함 · public 안 씀
+
+### 0 정정 — ① 보고와 «정산 213 s»의 수
+
+```
+원인     시험 엔진 pg_engine 은 NullPool — 트랜잭션마다 PostgreSQL 연결을 새로 엽니다. 제품 엔진은 pool_size=20(database/database.py)
+잰 것    드레인 10 번 cProfile: 연결 20 번에 2.46 s(한 번 123 ms) / 드레인 전체 2.69 s — 아무 소스도 안 읽는 사건
+         드레인 10 번: 연결 80 번에 10.07 s / 드레인 전체 10.98 s — 소스가 읽는 사건(드레인 한 번에 연결 8)
+그래서   ① 의 «332.5 s -> 1.6 s»와 «원장 후속 212 s»는 대부분 그 연결 비용입니다. 풀 엔진으로 다시 잰 수:
+   ① 1,000 행 회수     옛 코드(61eb47134) 9.301 s -> 지금 1.244 s   (같은 시험 세상, 거둔 칸 4000)
+   원장 후속(1,000 행 지움)  드레인 1003 번 13.578 s   (NullPool 에선 865.767 · 922.967 s)
+①의 개선은 있습니다. 보고의 211 배가 틀렸습니다 — 풀에서 7.5 배입니다
+```
+
+### 1 1,002 번은 어디서 나오나
+
+```
+단위     드레인 하나 = 아웃박스 «행» 하나(drain_outbox_once 가 «체인이 처리했고 원장이 안 따라간» 가장 오래된 행 하나)
+적재 1,000 행
+   하니스 push(행마다 사건)   드레인 1001 번 — hc_log CREATE one row 1000 번 241.8 s · hc_official CREATE many rows 1 번 2.5 s   (NullPool)
+   접힌 사건(파일 감시자 · 그리드 묶음이 이렇게 씀)  드레인 2 번 — 풀 엔진 2.194 s
+   -> 1,002 의 1,000 은 하니스의 적재 모양이었습니다. 운영 파일 적재는 접힌 사건이라 두 번입니다
+지움 1,000 행(접힌 사건으로 적재한 뒤)
+   드레인 1003 번 — hc_official EDIT one row 1000 번 13.5 s · hc_official EDIT many rows 2 번 0.1 s · hc_log DELETE many rows 1 번 0.0 s   (풀 엔진)
+   -> 1,000 은 «회수가 보이는 값을 바꾼 행마다 하나씩» 내는 사건입니다(_withdraw_cells 의 값 바꾸기가 접힘 모드 밖이라 행마다)
+거래 id  회수 사건이 표마다 거래 하나(①)가 되어도 드레인은 아웃박스 «행»마다라 수가 그대로입니다 — 지움 단계 거래 id 3 개에 드레인 1003 번
+소스     원장 소스 1 개(hc_official)
+```
+
+### 2 조인 퍼짐 — 값 쪽 행 하나가 왼쪽 1,000 행을 채운 상태에서 그 행의 키를 고침 (NullPool, 응용 레인 QA 요청)
+
+```
+체인      3.648 s — 값 쪽 묶음 1.801 s(그 안 고칠 때 회수 0.916 s · 질의 11 · 거둔 칸 1000) + 회수 사건 묶음 둘
+원장 후속  드레인 1003 번 962.883 s — 지움과 같은 꼴(회수의 행마다 사건 1,000). 풀 엔진으로는 안 잼(지움의 풀 수와 같은 정도일 것 — 추정)
+결과      왼쪽 값 J1 0 · J2 1,000 · 원장 원자 J2 1,000 — 옳게 옮겨감
+🔴 빈 자리  값 쪽 행의 키를 «아무 왼쪽 행도 안 가진 키»로 고치면 거두지 않습니다: 체인 0.193 s · 거둔 칸 0 ·
+          왼쪽 값 {'J1': 0, 'J2': 1000} · 원장 원자 {'J2': 1000} 그대로. 그 묶음에서 조인이 낸 행이 0 이라 «찍나»와 «칸»을 몰라서입니다
+          (②③ 보고의 남은 것 2 의 실제 모양 — 1,000 칸이 옛 값으로 남음)
+```
+
+### 3 안 셋 — 짓지 않았습니다
+
+```
+A 회수의 값 바꾸기를 접힌 사건으로 낸다
+  무엇      _withdraw_cells 의 값 바꾸기를 접힘 모드로 감싼다 -> 1,000 행 지움 · 키 고침의 원장 후속이 드레인 1003 -> 3 (접힌 EDIT · 층 잃은 행 EDIT · DELETE)
+  운영자    재기동만
+  좋은 점   사건이 나는 자리에서 줄인다 · 다시 세기 두 번도 같이 줄일 길이 열린다(층 잃은 행 EDIT 와 하나로 접을 수 있음)
+  위험      회수 사건의 모양이 «행마다(값 실음)» -> «접힘(행 id · 칸)». 체인은 접힌 사건을 펼쳐 읽고, 방송은 회수 사건을 안 씀(R2 주석) — 그 밖의 읽는 쪽은 안 셌음
+  크기      안 쟀다(자리 하나 + 시험)
+B 드레인이 같은 표 · 같은 종류의 «잇닿은» 사건을 한 번에 따른다
+  무엇      drain_outbox_once 가 행 하나 대신 같은 (표, 종류)의 연속 행 N 개를 묶어 행 id 를 합쳐 한 번 번역
+  좋은 점   행마다 사건을 내는 모든 쪽(그리드 한 칸 고침 · API · 회수)에 듣는다
+  위험      실패가 묶음 전부를 FAILED 로 · 번역 범위가 커짐(N 상한 필요) · 순서는 «같은 종류 연속만»으로 지켜야 함
+  크기      안 쟀다(중간 — 표시 · 다시 넣기 · 시험)
+C 지금은 안 짓는다
+  근거      제품 엔진은 풀이라 1,000 행 지움의 원장 후속이 13.578 s(박스) — 규격(묶음 1,000 행 ≤ 5 s)보다 크지만 «함흥차사»의 크기는 아님
+  남는 것   소유자의 «큰 거 돌리면 함흥차사»의 원인은 이 박스에서 못 찾았습니다 — 운영에서 큰 적재 중 「python -m ledger followup」(따라갈 일 · 실패 수)을 보면 갈립니다
+```
+
+### 추천 · 여쭐 것
+
+```
+추천   시연 전은 C(안정). 시연 뒤 A — 사건이 나는 자리에서 줄이고 다시 세기 두 번도 같이 정리
+여쭐 것 1 조인 «아무도 안 가진 키로 옮김»의 빈 자리 — 낸 행이 0 인 묶음에도 그 규칙의 마지막 관찰과 마지막에 쓴 칸으로 거두는 안(크기 안 잼). 시연 전에 할지
+       2 소유자께 운영 「python -m ledger followup」 을 큰 적재 중에 한 번 봐 달라고 할지 — 함흥차사가 원장 후속인지 체인인지 갈림
+```

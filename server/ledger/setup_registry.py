@@ -18,6 +18,7 @@ from declaration_names import bare_name
 
 from .setup_bundle import (
     NOT_AN_EVENT_BASIS,
+    attribute_registrations,
     SUBJECT_ROLE,
     TARGET_ROLE,
     DEFAULT_CARDINALITY,
@@ -230,6 +231,17 @@ def is_reference_derivation(derivation) -> bool:
     return str(derivation or "").startswith(REFERENCE_DERIVATION_PREFIX)
 
 
+#: A registration the translator writes for a role's bound attributes (총괄 a6db2f469): its
+#: derivation is this and the sentence that named the entity, whose time rule it keeps (10-07 ②).
+REGISTRATION_DERIVATION_PREFIX = "entity-attributes:"
+
+
+def naming_sentence(derivation):
+    """The sentence a translator-written registration came from, or None for any other atom."""
+    text = str(derivation or "")
+    return text[len(REGISTRATION_DERIVATION_PREFIX):] if text.startswith(REGISTRATION_DERIVATION_PREFIX) else None
+
+
 @dataclass(frozen=True)
 class ReferenceDescriptor:
     """One compiled reference: `predicate_id` from this entity to `target_type`, whose keys are
@@ -331,6 +343,9 @@ class ProfileMappingDescriptor:
     #: S-99. `{column: value}` - the rows this sentence is said for, ANDed, equality only.
     #: Empty means "every row", which is what every sentence declared before this meant.
     when: Mapping[str, Any] = MappingProxyType({})
+    #: The roles whose bound attributes the translator registers (`setup_bundle.attribute_registrations`).
+    #: Empty is not fingerprint material, so only a source that gains one re-stamps.
+    registered_roles: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -387,21 +402,6 @@ class OccurredAtPlan:
 
 
 @dataclass(frozen=True)
-class RegistrationProbePlan:
-    """One entity type's first-sight probe over the columns the source reads."""
-
-    entity_type: str
-    identity_key: str
-    columns: tuple[str, ...]
-    list_separator: str | None
-
-    @property
-    def subject_type(self) -> str:
-        """The name atoms carry."""
-        return bare_name(self.entity_type)
-
-
-@dataclass(frozen=True)
 class SourceDriverPlan:
     unit: str
     identity: tuple[str, ...]
@@ -410,7 +410,6 @@ class SourceDriverPlan:
     occurred_at: OccurredAtPlan
     cursor_columns: tuple[str, ...]
     mapper: MapperDescriptor
-    registration_probe: tuple[RegistrationProbePlan, ...] = ()
     #: S-91. `({"column": <name>, "blank": True}, ...)` - a row matching ANY clause is not
     #: this source's. Empty where a source declares none (`read.exclude_when`).
     exclude_when: tuple[Mapping[str, Any], ...] = ()
@@ -683,7 +682,7 @@ def compile_setup_snapshot(
     mappers = _compile_mappers(bundle.section("sources"))
     claims = _compile_claims(bundle.section("vocabulary"),
                              bundle.section("entities"))
-    profiles = _compile_profiles(bundle.section("sources"))
+    profiles = _compile_profiles(bundle.section("sources"), bundle.section("vocabulary"))
     source_plans = _compile_source_plans(
         bundle.section("sources"), mappers, profiles, entities, catalog, refused_sources)
 
@@ -741,11 +740,10 @@ def _reachable_entity_ids(value: Any, known: frozenset[str], found: set[str]) ->
     """Collect every declared entity id that OCCURS anywhere in already-plain material.
 
     🔴 SCANNED, NOT ENUMERATED, AND DELIBERATELY SO. An entity id reaches a source through
-    at least four unrelated shapes -- a predicate's `subjects`, a predicate's
-    `object.types`, a `read.registration_probe[].entity_type`, and a binding's
-    `entity_type` nested under `bind.mappings.<sentence>.bind.<role>` -- and a binding may
-    nest further. Enumerating those four would be a list that goes silently WRONG the day
-    a fifth shape is declared, and a closure that is too SMALL fails by not blocking a
+    at least three unrelated shapes -- a predicate's `subjects`, a predicate's
+    `object.types`, and a binding's `entity_type` nested under
+    `bind.mappings.<sentence>.bind.<role>` -- and a binding may nest further. Enumerating
+    those would be a list that goes silently WRONG the day another shape is declared, and a closure that is too SMALL fails by not blocking a
     cursor that should have been blocked. A scan over the material errs the other way:
     a new shape is covered the day it lands, and the worst case is an extra entity in the
     closure, which only ever blocks more than strictly necessary.
@@ -1043,7 +1041,8 @@ def with_source_attributes(bind: Mapping[str, Any],
     return out
 
 
-def _compile_profiles(section: Mapping[str, Any]) -> ProfileRegistry:
+def _compile_profiles(section: Mapping[str, Any],
+                      vocabulary: Mapping[str, Any] = None) -> ProfileRegistry:
     """One profile per SOURCE, keyed by the source it maps -- see `_compile_mappers`."""
     builder = _RegistryBuilder(ProfileRegistry)
     for source_id, source in section.items():
@@ -1060,12 +1059,14 @@ def _compile_profiles(section: Mapping[str, Any]) -> ProfileRegistry:
         # a single expression instead of a rule the runtime re-derives per unit, and it
         # is why a declaration with no attributes compiles to byte-identical bindings.
         by_type = item.get("entities") or {}
+        registered, _unregistered = attribute_registrations(source, vocabulary or {})
         mappings = MappingProxyType({
             sentence: ProfileMappingDescriptor(
                 predicate_id=mapping["predicate"],
                 bindings=_freeze(with_source_attributes(mapping["bind"], by_type)),
                 config_path=f"{path}.mappings.{sentence}",
                 when=_freeze(mapping.get("when") or {}),
+                registered_roles=registered.get(sentence, ()),
             )
             for sentence, mapping in sorted(item["mappings"].items())
         })
@@ -1095,30 +1096,6 @@ def _occurred_at_plan(declared: Mapping) -> OccurredAtPlan:
         column=declared["column"],
         timezone=declared["timezone"],
     )
-
-
-def _compile_registration_probe(
-    value: Any,
-    entities: EntityTypeRegistry,
-) -> tuple[RegistrationProbePlan, ...]:
-    """The identity key comes from the ENTITY declaration, never from the probe.
-
-    Stating the key in both places would let them disagree, and the probe is the half
-    nobody would re-read. ``_cross_registration_probe`` has already refused a composite-key
-    entity, so exactly one key is available here.
-    """
-    if not value:
-        return ()
-    out = []
-    for item in value:
-        entity = entities[item["entity_type"]]
-        out.append(RegistrationProbePlan(
-            entity_type=item["entity_type"],
-            identity_key=entity.identity_keys[0],
-            columns=tuple(item["columns"]),
-            list_separator=item.get("list_separator"),
-        ))
-    return tuple(sorted(out, key=lambda probe: probe.entity_type))
 
 
 def relation_columns(catalog: Mapping[str, Any] | None, relation: Any) -> tuple[str, ...]:
@@ -1225,8 +1202,6 @@ def _compile_source_plans(
                 exclude_when=tuple(
                     _freeze(clause) for clause in driver.get("exclude_when", ())),
                 mapper=mappers[source_id],
-                registration_probe=_compile_registration_probe(
-                    driver.get("registration_probe"), entities),
             ),
             profile=profiles[source_id],
             config_path=path,

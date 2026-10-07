@@ -36340,3 +36340,71 @@ a61cdb35f  방송 item 다섯 자리 -> event_constants.upsert_item
 비용      identify 가 쿠키 있는 요청마다 세션 행을 한 번 읽는다(정적 파일 요청까지) — 개인 키는 거기에 UPDATE 하나(구현자 a14bfb2d2 가 적음). 안 쟀다
 문서      DEPLOY_SETUP §2-1 신설(켜는 것 · 켜지면 · 스크립트 · 기동 줄 · 끄기) + §1-4 머리에 「켜지면 토큰은 /internal/* 만」 (이 보고와 같은 커밋)
 ```
+
+---
+
+## [C 응용] 10-07 총괄 메시지(DEPLOY_SETUP 비밀 줄 · bd33605af · b29b14e09 동기화) — 끝. 38aaca86e · 3a5d39ddb · 53e2dbdd1
+
+```
+비밀 줄     DEPLOY_SETUP §2-1 — RUN.md b29b14e09 절과 같은 말: «있으면» · 없으면 public client(PKCE 만) · invalid_client 면 IT 에 비밀
+            + 거절 줄(invalid_client) · .cer 안 넣음 · BOM 없는 UTF-8 (BOM 도 읽음)
+b29b14e09   기동 줄 셋(못 읽음 · "true" 글자 · admins 가 목록 아님)과 secret|public client — 같은 절
+bd33605af   은퇴 이름(registration_probe · existing_registrations · registration_context_required · RegistrationProbePlan · _v2_registration_subjects)을
+            든 살아 있는 문서 줄 중 은퇴 표시 없는 것: 전 9(구현자 d6795570a 가 셋) -> 후 3
+            남은 3 은 LEDGER_SCHEMA_COMPLETENESS 의 「아래는 그때의 실측이다」 머리 밑 측정 기록(구현자가 단 머리) — 그대로 둠
+            INDEXES 줄의 제 메모를 「함수 은퇴 · 인덱스 DROP 은 다음 라운드」로
+안 고침     ledger_declaration_by_example 의 「속성을 매긴 것만으로 «암묵 등록»(… 타입이 register.subjects 에 있어야 함)」 —
+            그 조건이 지금도 참인지 코드로 못 세웠다(attribute_registrations 는 그 목록을 안 묻는다 · 게이트가 묻는지는 안 열었다). 참이 아니면 한 줄 고칩니다
+```
+
+> 정정(바로 위 09e5e4402): 「전 9(구현자 d6795570a 가 셋)」는 손으로 적은 수였습니다. 같은 술어로 잰 수 — bd33605af 11 · d6795570a 9 · 38aaca86e 3.
+> 구현자 줄 셋 중 이 술어에 걸린 것이 둘이었습니다. 끝 수 3 은 그대로.
+
+---
+
+## [C 응용] 10-07 3959975eb(잠금에 걸린 폴더) QA — 주 경로 결함 못 찾음. 읽은 것 둘 · 문서 edbfeb3cc
+
+```
+주 경로    게이트가 진짜 process_with_retry 를 PG 에서 돌리고 대상 행을 SELECT … FOR UPDATE 로 잡는다 — 잠금 상한이 그 쓰기에 닿는 것을 잰다
+           SET LOCAL 은 Session 의 after_begin 에서 — 파일 채널 · PostgreSQL 일 때만, 트랜잭션과 함께 끝난다
+읽음 1     다시 시도에 상한이 없다 — 잠금이 남아 있는 동안 그 파일은 스윕마다 lock_timeout(기본 300 s)만큼 워커를 잡고 FAILED (retry N) 를 하나씩 남긴다. 설계로 보이나 말해 둠
+읽음 2     적재 뒤 ANALYZE(_analyze_after_load)는 자기 psycopg2 연결이라 이 잠금 상한 밖이다. ANALYZE 는 SHARE UPDATE EXCLUSIVE 라
+           같은 표의 VACUUM · ALTER · CREATE INDEX CONCURRENTLY 를 기다릴 수 있다 — 그 동안 폴더는 그 자리에 선다. 안 쟀다
+문서       config/ingestion_settings.md 키 표에 lock_timeout_seconds · statement_timeout_seconds 두 줄
+```
+
+---
+
+## [C 응용] 10-07 a34bfbe63(요청 시간 · Server-Timing) QA — 원장을 raw 연결로 읽는 요청은 db 가 0 으로 보인다 (잼)
+
+```
+잰 것     같은 0.2 s 쿼리(select pg_sleep(0.2), 박스 DB 읽기만)를 request_timing.begin/end 안에서
+            SQLAlchemy 연결   total;dur=544.9, db;dur=210.4;desc="1 queries"   (카나리아)
+            raw_connection   total;dur=204.6, db;dur=0.0;desc="0 queries"
+왜        db 는 Engine 의 before/after_cursor_execute 훅이 센다 — engine.raw_connection() 의 DBAPI 커서는 그 훅을 안 지난다
+누가 만나나  LedgerStore.connection() 이 raw 연결이다(store.py 의 self.connection() 14 자리) · 그 밖에 raw 로 읽는 함수:
+            backfill._person_counts · backfill._scope_pages · backfill.count_excluded_but_indexed · backfill.count_orphan_atoms · backfill.count_rows_missing · backfill.index_existing_refs · backfill.preview_first_batch · backfill.preview_rescope · backfill.retranslate_drifted · backfill.rows_drifted · backfill.rows_gone_from_the_source · backfill.rows_missing_from_the_index · backfill.rows_not_yet_translated · followup._follow · followup._write_failure_receipt · observability.probe_group_head · observability.probe_keyset_head · observability.probe_source_head
+          요청 경로로 확인한 것: 원장 테스트 런(config_explorer_service.test_run -> preview_first_batch · count_rows_missing)
+          -> 그 요청의 Server-Timing 이 «db 0» 이라 「DB 가 아니다」로 읽힌다 — 오늘 이 계기를 단 이유가 바로 그 판단이다
+          observability.probe_* · store 읽기가 요청에서 불리는지는 안 셌다
+          [Slow] 줄의 db ms · queries 도 같은 수
+안 쟀다    어느 원장 라우트가 실제로 느린지 · raw 를 세는 법(커서 감싸기 등)의 비용 — 고칠지 · 어떻게는 총괄 판단
+문서      config/README 표에 server_settings.json(이 caveat 포함) · auth_config.json 두 줄
+```
+
+---
+
+## [C 응용] 10-07 91da9c781(고칠 때 회수) QA — 결함 못 찾음. 안 잰 비용 하나 · 문서 782e2b524
+
+```
+게이트     8 시험 — 키 이동 · 키 안 바뀐 수정은 0(같은 데이터 두 번) · 두 묶음으로 갈린 작업의 형제 · 옛 키 행 정리 순서 · @mapper 모양별 도장
+           구현자 보고 37d44633f: 옛 코드(fa1279a31)에서 곱 과잉 대조군이 빨강 · 새 코드 초록, ① 덤프와 바이트 같음
+안 잰 것   비용은 보류 복사(원천 한 행 -> 대상 한 행) 1,000 행에서 잼 — 값만 고침 +0.321 s · 질의 3
+           조인도 이제 출처를 찍는다. 조인은 값 쪽 한 행이 대상 N 행을 채우므로, 그 값 행을 고칠 때마다 cells_stamped_by 가 읽는 층이 N 배다
+           (키가 안 바뀌어 거둘 것이 0 이어도). 퍼짐이 큰 조인(예: 레시피 한 행 -> 수만 행)에서의 단계 시간은 아무도 안 쟀다
+문서       chain_ingestion_guide §1 origin_row_id 문단 — 고칠 때도 같은 표적 · @mapper 기본 도장(집계는 안 찍힘) · 회수 경고는 «이 프로세스에서 본» 규칙만
+           CODE_MAP 의 cell_layer 줄은 구현자가 이미 넓힘
+```
+
+> 정정(a14c5af4a 의 「값만 고침 +0.321 s」): 그 수는 시험 엔진(NullPool, 트랜잭션마다 새 연결)의 연결 비용이 대부분이었다 — 1c2bb577c 이 풀 엔진으로 다시 잼:
+> 값만 고침 1.36 s(이 단계 없이 1.34 s, 차이 0.02 s) · 키를 다 옮김 3.07 s(없이 1.43 s). 조인 퍼짐에서의 단계 시간은 여전히 안 잼 — 그 물음은 그대로. CODE_MAP cell_layer 줄의 332.5 s 도 고침

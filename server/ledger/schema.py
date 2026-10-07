@@ -709,10 +709,9 @@ def indexes(names: WorldNames) -> tuple:
         f"CREATE INDEX IF NOT EXISTS idx_ledger_subject_lot ON {names.ledger} "
         f"((subject_keys->>'lot'), predicate)",
 
-        # CONSUMER: `store.existing_registrations`, once per page rather than once per row -
-        # a per-entity lookup is what makes a ten-million row backfill quadratic. PARTIAL,
-        # because registers are O(entities) while the table is O(atoms), so this index stops
-        # growing long before the table does. PRICE: 16.6 B/atom and falling.
+        # ⚠️ NO CONSUMER SINCE 10-07: `store.existing_registrations` retired with the probe (총괄
+        # 10-07 ④) - execution never handed the filter a ledger-held set. Dropping it is an
+        # operating migration and waits for its own round. PRICE: 16.6 B/atom and falling.
         f"CREATE INDEX IF NOT EXISTS idx_ledger_register ON {names.ledger} "
         f"(subject_type, subject_keys) WHERE predicate = 'register'",
 

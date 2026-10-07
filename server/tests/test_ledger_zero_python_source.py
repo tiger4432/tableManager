@@ -62,8 +62,6 @@ SHIPMENT_SETUP = {
             # list, so this list is what the cursor used to declare.
             "order_by": ["shipped_at", "shipment_id"],
             "occurred_at": {"column": "shipped_at", "timezone": "Asia/Seoul"},
-            "registration_probe": [
-                {"entity_type": "Box@1", "columns": ["box"]}],
         },
         "map": {
             "implementation_id": "declarative-role", "implementation_version": 1,
@@ -140,18 +138,6 @@ def test_the_source_is_served_by_generic_implementations_and_no_source_specific_
     plan = snapshot.source_plans["shipment"]
     assert role_mapper_registry().resolve(
         plan.driver.mapper.implementation).__class__ is DeclarativeRoleMapper
-
-
-def test_first_sight_suppression_is_declaration_driven_for_this_source(snapshot, rows):
-    """The probe that used to name lot_event's columns now answers for this table too."""
-    from ledger.backfill import _v2_registration_subjects
-    from ledger.envelope import canonical_keys
-
-    subjects = _v2_registration_subjects(snapshot.source_plans["shipment"], rows)
-    assert subjects == {
-        ("Box", canonical_keys({"box": "BX-01"})),
-        ("Box", canonical_keys({"box": "BX-02"})),
-    }
 
 
 def test_a_second_sight_is_suppressed_so_register_lands_once(snapshot, rows):

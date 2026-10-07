@@ -236,35 +236,56 @@ def rule_label(rule):
     return "mapper"
 
 
+#: rule name -> did its last run that proposed rows carry `origin_row_id` on them. This process's
+#: runs only: after a restart a rule is 「not known yet」 until it runs again.
+_ORIGIN_SEEN = {}
+
+
+def item_cell(item, name):
+    """One cell of a proposed item, whether the mapper built a dict or a `GeneralUpdateItem`."""
+    return item.get(name) if isinstance(item, dict) else getattr(item, name, None)
+
+
+def output_stamps(items):
+    """True when any of these proposed items carries the row it was read from, False when none
+    does, None when there are none to ask."""
+    items = list(items or ())
+    return any(item_cell(item, "origin_row_id") for item in items) if items else None
+
+
+def stamps_origin(rule):
+    """Does this rule's output say which row it came from? True · False · None (not known yet).
+
+    🔴 [총괄 4c3417ccb ③] ASKED OF THE OUTPUT - the last run of this rule that proposed rows. Until
+    a run says, a kind the product builds answers with its declared fact and a file mapper is not
+    known yet.
+    """
+    seen = _ORIGIN_SEEN.get((rule or {}).get("name"))
+    if seen is not None:
+        return seen
+    mapper_name = (rule or {}).get("mapper")
+    if dynamic_mappers.label_for(mapper_name) is not None:
+        return dynamic_mappers.stamps_origin(mapper_name)
+    return None
+
+
 def retraction_refusal(rule):
-    """None if this rule's answer can be withdrawn when its input row is deleted, or the
-    operator sentence saying it cannot — 「이 종류는 되돌릴 수 없다」.
+    """None if this rule's answer can be withdrawn when its input row is deleted or edited, or
+    the operator sentence saying it cannot — 「이 규칙은 되돌릴 수 없다」.
 
     🔴 [판정 434 ④] THE SEAT ANSWERS, AND IT ANSWERS BY NAME. A retraction aims with
-    `cell_sources.origin_row_id`, so a kind whose writer never stamps it leaves cells
+    `cell_sources.origin_row_id`, so a rule whose output never carries it leaves cells
     nothing can find — and the note's NULL cannot carry that meaning, because NULL already
-    means 「이 행은 도장이 생기기 전에 쓰였다」. Two facts under one spelling is the defect
-    this whole round is about, so the second one is said out loud here instead.
+    means 「이 행은 도장이 생기기 전에 쓰였다」. So it is said out loud here instead.
 
-    ⚠️ A FILE MAPPER IS 「말 안 함」 AND NOT 「못 한다」. `GeneralUpdateItem.origin_row_id`
-    is on the schema every mapper already builds, so a mapper CAN stamp; whether the live
-    ones do is not countable from here (`server/mappers/` is the owner's and gitignored).
-    Naming them as unable would be a claim about rows I cannot see.
+    ⚠️ NOT KNOWN YET IS SILENCE (총괄 4c3417ccb ③). A rule that has not run in this process has
+    said nothing about its output, and a warning on every deletion would be a guess.
     """
-    from chain import synthesis
-
-    from chain import dynamic_mappers
-
-    mapper_name = (rule or {}).get("mapper")
-    label = dynamic_mappers.label_for(mapper_name)
-    name = (rule or {}).get("name") or "<이름 없는 규칙>"
-    if label is None:
-        return ("%s: 파일 맵퍼는 자기가 읽은 행을 «적을 수 있지만», 이 맵퍼가 적는지는 "
-                "제품이 모릅니다 — 도장이 없으면 이 규칙이 쓴 칸은 철회되지 않습니다" % name)
-    if dynamic_mappers.stamps_origin(mapper_name):
+    if stamps_origin(rule) is not False:
         return None
-    return ("%s: 「%s」 종류는 자기 답이 «어느 행에서 왔는지»를 안 적습니다 — 그래서 그 행이 "
-            "지워져도 이 규칙이 쓴 칸은 «그대로 남습니다»" % (name, label))
+    name = (rule or {}).get("name") or "<이름 없는 규칙>"
+    return ("%s: 「%s」 규칙의 출력에 «어느 행에서 왔는지»가 실리지 않습니다 — 그래서 그 행이 "
+            "지워지거나 고쳐져도 이 규칙이 쓴 칸은 «그대로 남습니다»" % (name, rule_label(rule)))
 
 
 def _uniform():
@@ -282,7 +303,7 @@ def _uniform():
     seat only carries them; the write door asks them, at the rule's place in the order.
     """
     return {"updates": [], "map_metadata_updates": [], "batches": [],
-            "written": None, "refusal": None, "next_page": []}
+            "written": None, "refusal": None, "next_page": [], "stamps_origin": None}
 
 
 #: How a resolved rule takes its input. The seat hands one or the other and nothing else
@@ -541,6 +562,13 @@ def run_rule(db, rule, payloads=None, row_ids=None, done=None, depth=None,
                 # shape. Any proposal can carry it; nothing here asks which rule it came from.
                 if result.get("next_page") is not None:
                     answer["next_page"].append(result["next_page"])
+            # 🔴 WHAT ITS OUTPUT SAYS ABOUT WHERE IT CAME FROM (총괄 4c3417ccb ③) - the edit's
+            #    withdrawal reads it here, a deletion's warning from `_ORIGIN_SEEN`.
+            answer["stamps_origin"] = output_stamps(
+                list(answer["updates"]) + [item for batch in answer["batches"]
+                                           for item in (item_cell(batch, "updates") or ())])
+            if answer["stamps_origin"] is not None:
+                _ORIGIN_SEEN[name] = answer["stamps_origin"]
             # ⚠️ PROPOSED PLUS WRITTEN. A rule does one or the other, so this equals whichever
             #    it did - and a rule that did both is counted once for each, which is what
             #    「이 규칙이 낸 행」 means to the operator reading the queue.

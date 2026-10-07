@@ -11,7 +11,8 @@ distinct value sets of `columns` among the source rows of that key. Exactly one 
 the same updates (one commit), under the plain chain layer - its blank is a chain write.
 
 Two rules call it. On the source table it copies and holds; on the target table (trigger =
-target, `source_table` named) it only recounts the hold - a deleted source row or a person's edit.
+target, `source_table` named) it only recounts the hold - a source row deleted or moved to another key
+(its layer is withdrawn either way, 총괄 b13de0353), or a person's edit.
 
 🔴 THE KEYS ARE COMPARED WITH `=` WHERE THEY HAVE A VALUE: `IS NOT DISTINCT FROM` takes no
 index, so on a table of a million rows every count was a full scan. A key holding a NULL is

@@ -461,23 +461,21 @@ def _self_describing_predicates(world=None):
     only authority, read bare (an old `x@1` folds), and a second
     objectless predicate widens this with no edit here.
 
-    ⚠️ EMPTY DOES NOT MEAN 「today's walk」 HERE, WHICH IS WHERE THIS SIBLING DIFFERS.
-    An empty static set expands no static node and an empty cardinality map says nothing;
-    an empty set here means NO NODE CARRIES ITS COLUMNS. It arises two ways and they are
-    not the same: a declaration that has no objectless predicate genuinely has no
-    registration to sweep, and a declaration that cannot be READ is a walk already
-    answering without cardinalities and without static types. Refusing the graph over it
-    would be this function deciding a question the route owns.
+    The list is `setup_bundle.registration_predicates` - the declared object-less predicates and
+    the name the translator registers bound attributes under (총괄 10-07 ⑤), so a declaration
+    with no object-less predicate still carries those columns.
+
+    ⚠️ EMPTY only when the declaration cannot be READ - a walk already answering without
+    cardinalities and without static types. Refusing the graph over it would be this function
+    deciding a question the route owns.
     """
+    from ledger.setup_bundle import registration_predicates
+
     try:
         declared = _declaration(world) or {}
     except Exception:                                                  # noqa: BLE001
         return set()
-    names = set()
-    for key, rule in (declared.get("vocabulary") or {}).items():
-        if str((((rule or {}).get("object") or {}).get("kind")) or "") == "none":
-            names.add(_bare_name(key))
-    return names
+    return set(registration_predicates(declared.get("vocabulary") or {}))
 
 
 def _followable_predicates(world=None):

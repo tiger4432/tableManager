@@ -7,6 +7,7 @@ from database.database import SessionLocal, engine, get_db, SQLALCHEMY_DATABASE_
 from outbox_listener import OutboxListener
 from database import models, schemas, crud
 from runtime import system_reload
+from runtime import request_timing  # Server-Timing and the slow-request line (총괄 10-07 ④)
 from listing_absence import absent_listing
 from ingestion.file_ingestion_status import FILE_INGESTION_STATUS_VOCABULARY
 import uuid 
@@ -166,6 +167,19 @@ async def db_context_middleware(request: Request, call_next):
         request_user.reset(token_user)
         request_transaction_id.reset(token_tx)
         request_source.reset(token_src)
+
+
+@app.middleware("http")
+async def time_the_request(request: Request, call_next):
+    """Server-Timing on every response, and a line for one over `slow_request_ms` (총괄 10-07 ④).
+    Added after the request context above, so it is outside it and times its refusals too."""
+    began = request_timing.begin()
+    response = None
+    try:
+        response = await call_next(request)
+        return response
+    finally:
+        request_timing.end(began, request.method, request.url.path, response)
 
 # --- CORS Middleware Config ---
 app.add_middleware(

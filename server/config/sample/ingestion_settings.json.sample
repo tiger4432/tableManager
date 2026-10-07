@@ -12,6 +12,10 @@
   "archive_processed_files": true,
   "_resume_from_checkpoint_doc": "[P2] 중단된 파일 적재를 마지막으로 커밋된 오프셋부터 재개합니다(기본 true). 재개 불가(시그니처/총행수/파서 불일치, 오프셋 손상) 시에는 처음부터 재처리하고 그 사유를 로그와 FileIngestionLog에 명시합니다. false로 두면 항상 처음부터 적재합니다.",
   "resume_from_checkpoint": true,
+  "_lock_timeout_seconds_doc": "파일 쓰기가 다른 세션의 잠금을 기다리는 상한(초). 넘으면 그 파일은 FAILED 로 끝나고 폴더는 다음 파일로 갑니다. 그 파일은 봉인하지 않고 제자리에 두어 다음 스윕이 마지막 커밋된 청크부터 다시 넣습니다. 적지 않으면 300(걸림 판정과 같은 수). null 이나 0 이면 상한 없음. 재기동 없이 다음 트랜잭션부터 읽습니다. 적재 뒤 ANALYZE 도 같은 상한이고, 넘으면 ANALYZE 만 건너뜁니다(파일은 SUCCESS). 줄이고 늘리는 기준은 RUN.md 10-07 밤 절.",
+  "lock_timeout_seconds": 300,
+  "_statement_timeout_seconds_doc": "파일 쓰기의 문장 하나가 걸릴 수 있는 상한(초). 기본은 끔(null) — 큰 정상 쓰기를 죽이지 않게. 켜면 넘은 파일은 FAILED(다른 실패처럼 봉인).",
+  "statement_timeout_seconds": null,
   "_flatten_nested_dirs_doc": "raws/에 폴더(다중 층위 포함)가 들어오면 트리가 안정된 뒤 파일만 raws/ 루트로 승격하고 빈 폴더 트리를 제거합니다(기본 true). 이름 충돌 시 상대경로 접두(구분자 ~)로 개명하며 절대 덮어쓰지 않습니다. Thumbs.db/desktop.ini/.DS_Store/._* 는 폴더와 함께 폐기됩니다. false로 두면 폴더를 건드리지 않습니다(종전 동작: 무시). 핫리로드: 다음 폴더 트리거부터 반영.",
   "flatten_nested_dirs": true,
 

@@ -171,6 +171,66 @@ def test_a_dry_run_writes_nothing(db):
         "a dry run withdrew the cell, so nothing distinguishes previewing from doing")
 
 
+def test_a_shared_layer_name_takes_only_the_cells_the_deleted_row_stamped(db):
+    """🔴 [총괄 10-07 ②] THE STAMP, NOT (COLUMNS x ROWS) OF A NAME. O1 fed (P-1, grade) and (P-2,
+    ref_key), O2 fed (P-2, grade), all under the one name `chain_ingestion`. A per-name group
+    of O1 is {grade, ref_key} x {P-1, P-2}, which names (P-2, grade) - O2's cell."""
+    rows = [_write(db, TARGET, {"part_no": p}) for p in ("P-1", "P-2")]
+    for row_id, column, origin in ((rows[0], "grade", "O1"), (rows[1], "ref_key", "O1"),
+                                   (rows[1], "grade", "O2")):
+        db.add(models.CellSource(table_name=TARGET, row_id=row_id, column_name=column,
+                                 source_name=join_into.CHAIN_LAYER, value="v", origin_row_id=origin))
+    db.commit()
+
+    cell_layer.withdraw_by_origin(db, ["O1"], apply=True)
+    db.commit()
+
+    assert _chain_cells(db) == {rows[1]: "O2"}, "another row's cell under the same name was taken"
+
+
+# 총괄 10-07 ① — one pass per table, so a cell two withdrawn layers claim gives them up in turn.
+# (source, value, hour stamped) - the newest shows. Layers are withdrawn in name order.
+LAYERS = [("seed", "Z", 1), ("s_b", "B", 2), ("s_a", "A", 3)]
+TWO_LAYER_CASES = {
+    # case: (apply, pinned layer, layers left, shown, audit [(old, new, by)], cells withdrawn)
+    "apply": (True, None, ["seed"], "Z", [("A", "B", "withdraw:s_a"), ("B", "Z", "withdraw:s_b")], 2),
+    "apply, s_a pinned": (True, "s_a", ["s_a", "seed"], "A", [], 1),
+    "dry-run": (False, None, ["s_a", "s_b", "seed"], "A", [], 2),
+}
+
+
+@pytest.mark.parametrize("case", sorted(TWO_LAYER_CASES))
+def test_a_cell_two_withdrawn_layers_claim_gives_up_each_in_turn(db, case):
+    from datetime import datetime, timezone
+
+    apply, pinned, left, shown, audit, withdrawn = TWO_LAYER_CASES[case]
+    row_id = _write(db, TARGET, {"part_no": "P-1"})
+    db.query(models.CellSource).filter_by(table_name=TARGET, row_id=row_id).delete()
+    for source, value, hour in LAYERS:
+        db.add(models.CellSource(table_name=TARGET, row_id=row_id, column_name="grade",
+                                 source_name=source, value=value,
+                                 ingested_at=datetime(2026, 1, 1, hour, tzinfo=timezone.utc),
+                                 origin_row_id=None if source == "seed" else "origin-" + source))
+    if pinned:
+        db.add(models.CellOverwrite(table_name=TARGET, row_id=row_id, column_name="grade",
+                                    is_overwrite=True, updated_by="t", manual_priority_source=pinned))
+    db.query(models.DYNAMIC_TABLES[TARGET]).filter_by(row_id=row_id).one().grade = "A"
+    db.commit()
+    audit_from = db.query(models.AuditLog.id).order_by(models.AuditLog.id.desc()).limit(1).scalar() or 0
+
+    stats = cell_layer.withdraw_by_origin(db, ["origin-s_a", "origin-s_b"], apply=apply)
+    db.commit()
+
+    assert stats["cells_withdrawn"] == withdrawn
+    assert sorted(s for (s,) in db.query(models.CellSource.source_name).filter_by(
+        table_name=TARGET, row_id=row_id, column_name="grade")) == left
+    assert db.query(models.DYNAMIC_TABLES[TARGET]).filter_by(row_id=row_id).one().grade == shown
+    assert [(a.old_value, a.new_value, a.updated_by) for a in db.query(models.AuditLog).filter(
+        models.AuditLog.id > audit_from, models.AuditLog.column_name == "grade")
+        .order_by(models.AuditLog.id)] == audit, (
+        "the second layer was resolved against what was there before the first one left")
+
+
 # ---------------------------------------------------------------------------
 # 판정 434 ④ — a kind with no correspondent answers BY NAME
 # ---------------------------------------------------------------------------
@@ -213,15 +273,35 @@ def test_a_kind_that_stamps_its_origin_refuses_nothing():
         {"name": "j2", "mapper": join_into.JOIN_INTO_MAPPER}) is None
 
 
-def test_a_file_mapper_is_written_down_as_unknown_not_as_unable():
-    """⚠️ 「말 안 함」 AND 「못 한다」 STAY DIFFERENT. `GeneralUpdateItem.origin_row_id` is on
-    the schema every mapper already builds, so a file mapper CAN stamp. Whether the live ones
-    do is not countable from here - `server/mappers/` is the owner's and gitignored - and
-    naming them unable would be a claim about rows I cannot see."""
-    said = rule_run.retraction_refusal(
-        {"name": "custom", "mapper_module": "m", "mapper_function": "f"})
+STAMPED = {"origin_row_id": "src-1", "updates": {"part_no": "P-1"}}
+UNSTAMPED = {"updates": {"part_no": "P-1"}}
 
-    assert said and "custom" in said
+
+# 총괄 4c3417ccb ③ — what the rule's output said decides; a rule not run yet is not warned about.
+@pytest.mark.parametrize("output,stamps,refuses", [
+    ([], None, False),                       # ran and proposed nothing: still not known
+    ([STAMPED], True, False),
+    ([UNSTAMPED], False, True),
+    ([UNSTAMPED, STAMPED], True, False),
+])
+def test_a_mappers_refusal_is_what_its_output_said(monkeypatch, output, stamps, refuses):
+    import mapper_sdk
+
+    monkeypatch.setattr(rule_run, "_ORIGIN_SEEN", {})
+    name = "s280_probe_mapper"
+    mapper_sdk.register(name, lambda db, payload, rule=None: {"updates": [dict(i) for i in output]})
+    rule = {"name": "custom", "mapper": name, "target_table": TARGET}
+    try:
+        assert rule_run.retraction_refusal(rule) is None, "a rule that has not run was warned about"
+        answer = rule_run.run_rule(None, rule, payloads=[{"row_id": "src-1"}])
+    finally:
+        mapper_sdk.MAPPER_REGISTRY.pop(name, None)
+        mapper_sdk.MAPPER_PARAMS.pop(name, None)
+
+    assert answer["stamps_origin"] is stamps
+    said = rule_run.retraction_refusal(rule)
+    assert (said is not None) is refuses, said
+    assert not refuses or "custom" in said
 
 
 def test_every_registered_kind_answers_the_question_one_way_or_the_other():

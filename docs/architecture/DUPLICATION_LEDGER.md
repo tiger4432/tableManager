@@ -79,7 +79,9 @@
 - **왜 아직 안 합쳤나**: 자재 해석은 **클라와 맞아야** 하고, bk 파싱을 따르면 서버 안에서는 일관되지만 화면과 갈린다. 이미 판정이 끝난 항목이다.
 - **합칠 때의 함정**: 🔴 **새 코드가 "`_`로 자르면 되겠지"로 시작하면 셋 중 아무거나 고르게 된다.** 표·결정 근거·못 풀 때의 거부 규약은 [PRIMITIVES §2 「`_`를 나눠 쓰는 관례가 셋이다」](./PRIMITIVES.md#2-키와-정체)가 정본이다. ⚠️ 클라가 아직 `lastIndexOf('_')`를 하드코딩해 2필드 형태를 가정한다 — **넷째가 생길 다음 지점**이다.
 
-### D-4. `ingestion_settings.json` 리더 — **3곳**
+### D-4. ✅ `ingestion_settings.json` 리더 — **3곳** → 🆕 10-07 `665a5dff4` **하나**
+
+> ✅ **닫힘**: `server/ingestion/settings.py` `read_ingestion_settings(path=None)` 하나가 연다(BOM 을 읽는다 — table_config 와 같은 읽기). 부르는 곳 4 파일 — `chain/enrichment/candidates.py` · `chain/enrichment/config.py` · `parsers/directory_watcher.py` · `run_watcher.py`. 아래 「함정」의 답 그대로 «`watchdog` 을 안 끌어오는 모듈»로 내렸다(단 `database.crud._decode_config_text` 를 import — 체인 워커 · 워처는 이미 그것을 싣는다). 각자 자기 경로 상수는 남긴다(시험 · 격리 데이터 루트가 바꿔 끼운다). 아래는 그때의 기록이다.
 
 - **무엇이 중복인가**: 같은 파일을 읽어 dict로 돌려주는 10줄짜리 함수가 셋.
 - **몇 곳 (2, 실측 — 2026-09-07 에 셋에서 줄었다)**: `parsers/directory_watcher.py` `load_ingestion_settings`(원형) · `enrichment/candidates.py` `_load_ingestion_settings`. ⚰️ `map_meta_registrar.py` 의 사본은 자동 등록 은퇴와 «같이» 사라졌다 — 사본을 «합쳐서»가 아니라 «읽을 이유가 없어져서»다. 뒤 둘은 본문이 사실상 동일하다.

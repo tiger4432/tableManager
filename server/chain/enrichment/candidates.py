@@ -111,7 +111,6 @@ NOT BUILT HERE (needs lead approval - boundary contract + a held file)
     boundary-contract changes. The predicate they would call is complete here,
     so neither would re-implement it.
 """
-import json
 import logging
 import os
 
@@ -241,21 +240,10 @@ _warned_once = set()
 
 
 def _load_ingestion_settings() -> dict:
-    """Minimal reader for ingestion_settings.json.
-
-    A deliberate (tiny) local copy of the same read in map_meta_registrar /
-    directory_watcher: importing either from here would drag watchdog and the
-    legacy import shim into the chain worker for a 10-line file read.
-    """
-    try:
-        if os.path.exists(INGESTION_SETTINGS_PATH):
-            with open(INGESTION_SETTINGS_PATH, "r", encoding="utf-8") as f:
-                loaded = json.load(f)
-            if isinstance(loaded, dict):
-                return loaded
-    except Exception as e:
-        logger.warning("Could not load ingestion settings (%s): %s", INGESTION_SETTINGS_PATH, e)
-    return {}
+    """ingestion_settings.json through its one read (`ingestion.settings`, 총괄 10-07) - a light
+    module, so the chain worker still does not import watchdog for it."""
+    from ingestion.settings import read_ingestion_settings
+    return read_ingestion_settings(INGESTION_SETTINGS_PATH)
 
 
 def _warn_once(key, msg, *args):

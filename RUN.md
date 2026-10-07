@@ -1,5 +1,158 @@
 # 지금 돌리면 되는 것
 
+> ## [10-07 밤 · ②③] **원천 행을 «고칠 때»도 그 행이 먹이던 칸을 거둔다 · @mapper 출력에 출처 기본 도장 · 회수 경고는 «그 규칙의 출력»으로 — 이주 «없음» · 재기동 «필요»(체인 워커)**
+>
+> ```
+> 무엇이 바뀌나  출처를 찍는 규칙(낸 행에 origin_row_id 가 실린 규칙)이 고친 원천 행에 다시 돌면, 쓰기 뒤에 그 행이 찍은 층 중
+>                «그 규칙의 칸»이고 «이번 쓰기가 그 원천 행으로 쓴 행 밖»인 것을 거둔다
+>                보류 복사에서 좌표(키)를 고치면 옛 키 행에서 그 층만 빠지고 보류를 다시 센다 -> 원장에서 옛 키 원자가 빠진다
+>                조인에서 값 쪽 행의 키를 고치면 옛 키로 채웠던 행의 가져온 칸이 빈다
+>                같은 행의 다른 규칙 칸 · 사람 층 · 핀은 그대로. 키가 안 바뀐 수정은 거두는 것 0
+>              지울 때는 그 원천 행이 «찍은 층»만 거둔다 — 같은 이름 층(chain_ingestion)을 쓰는 다른 원천 행의 칸은 이제 안 거둔다
+>              @mapper 의 출력 행이 입력 행을 이어 왔으면(거르기 · 정렬 · reset_index 포함) 그 입력 행이 출처로 찍힌다
+>                집계(groupby · agg)나 칸을 골라 새로 만든 표는 안 찍힌다
+>              회수 경고는 그 규칙이 «이 프로세스에서» 낸 행에 출처가 없을 때만 — 재기동 뒤 아직 안 돈 규칙은 말하지 않는다
+> 볼 줄          [ChainRetract] table=<원천 표> edited_rows=<N> groups=<G> cells_withdrawn=<C> protected_skipped=<P> rows_told=<R>
+>                 = 고친 원천 행 N 개가 더는 안 먹이는 층 C 개를 거뒀다. 출처를 찍는 규칙이 고친 행을 받은 묶음마다 한 줄(0 이어도)
+>              [ChainRetract] table=<원천 표> deleted_rows=<N> … — 지울 때, 그대로
+>                 P(사람 층 건너뜀)는 이제 «실제 사람 층 수» — 전에는 칸 수 x 행 수의 곱이었다
+>              [ChainRetract] <규칙>: 「<종류>」 규칙의 출력에 «어느 행에서 왔는지»가 실리지 않습니다 — …
+>                 = 그 규칙이 쓴 칸은 원천 행을 지우거나 고쳐도 남는다. 맵퍼가 출력 행에 origin_row_id 를 실어야 한다
+>              🔴 [ChainRetract] Table: '<표>' | TX: … | rule: <규칙> | the edit's withdrawal failed AFTER a committed write; old layers may remain
+>                 = 쓰기는 들어갔고 거두기만 실패. 옛 층이 남을 수 있다 — 아래 «옛 키 행 정리»로 다시 거둔다
+> 옛 키 행 정리  이 착지 «전»에 좌표를 고쳐 남은 옛 키 행은 두 규칙을 «이 순서로» 리플레이한다 (스크립트 리플레이는 다른 규칙을 안 깨운다)
+>                1  conda run -n assy_manager python server/scripts/chain_replay_cli.py replay <보류 다시 세기 규칙> --apply
+>                2  conda run -n assy_manager python server/scripts/chain_replay_cli.py replay <복사 규칙> --apply
+>                🔴 순서를 바꾸면 옛 행의 값이 먼저 비고 보류는 agreed 인 채로 남아, 원장 후속이 그 행을 missing value 로 실패시킨다
+>                   그때는 1 을 돌리고 python -m ledger followup --requeue-failed (server 폴더)
+> 급할 때       스위치 없음. 되돌리려면 이 커밋을 되돌리고 체인 워커 재기동
+> ```
+
+---
+
+> ## [10-07 밤 · ①] **입력 행을 지울 때의 회수를 표마다 한 번에 — 이주 «없음» · 재기동 «필요»(체인 워커)**
+>
+> ```
+> 무엇이 바뀌나  입력 행이 지워지면 그 행이 먹인 칸을 거두는 일(체인 워커의 원장 후속)이 층 이름마다가 아니라 표마다 한 번에 돈다
+>                보류 복사 1,000 행: 9.3 s -> 1.2 s (PG 박스 시험 수 · 풀 엔진, 운영 수 아님)
+>                거둔 층 · 남은 층 · 보이는 값 · 감사 · 사건은 전과 같다. 다만 회수 사건이 표마다 한 거래로 묶인다(전에는 층 이름마다 한 거래)
+>              운영자 회수(소급 withdraw · CLI)도 같은 한 벌을 지난다 — 답과 줄은 그대로
+> 볼 줄          [withdraw] <N> source(s) claim <M> cell(s) across <R> row(s) in '<표>'
+>                [withdraw] apply: <K> cell(s) withdrawn (... revealed another source, ... left empty, ... skipped as human-pinned)
+>                 = 표마다 두 줄(전에는 층 이름마다 두 줄 — 1,000 행 삭제면 2,000 줄이었다)
+>              [ChainRetract] table=<표> deleted_rows=… groups=… cells_withdrawn=… — 그대로
+> 급할 때       스위치 없음. 되돌리려면 이 커밋을 되돌리고 체인 워커 재기동
+> ```
+
+---
+
+> ## [10-07 밤] **모든 요청에 Server-Timing(total · db) · 느린 요청 한 줄 — 이주 «없음» · 재기동 «필요»(API)**
+>
+> ```
+> 무엇이 바뀌나  모든 HTTP 응답 머리에 Server-Timing: total;dur=<ms>, db;dur=<ms>;desc="<N> queries"
+>                db 는 «그 요청 안»에서 돈 질의의 시간 합과 수 — 워커 · 요청이 띄운 스레드의 질의는 안 들어간다
+>              slow_request_ms 를 넘은 요청은 서버 로그에 한 줄
+> 보는 법        브라우저 개발자 도구 -> Network -> 그 요청 -> Timing 탭(Server Timing) 에 total · db 가 보인다
+>                total 이 크고 db 가 작다 = 파이썬 쪽 · db 가 total 에 가깝다 = 질의 쪽(queries 수가 크면 질의를 너무 많이 낸다)
+> 적는 곳       server/config/server_settings.json (모양: server/config/sample/server_settings.json.sample)
+>                 slow_request_ms   없으면 1000 · null 이면 줄을 안 남김(머리는 그대로) · 재기동 때 읽음
+> 볼 줄          [Slow] <메서드> <경로> <상태> - 응답이 <N>ms 걸렸습니다 (예산 <B>ms) · db <D> ms · <Q> queries
+>                 = 그 요청이 예산을 넘었다. 쿼리 문자열 · 바디는 싣지 않는다
+> 급할 때       slow_request_ms 를 null 로 + 재기동 — 줄이 멈춘다(머리는 남는다)
+> ```
+
+---
+
+> ## [10-07 밤 · 후속] **멈춘 수집 폴더 후속 — 적재 뒤 ANALYZE 에도 같은 잠금 상한 · 외부 소스 파일도 다음 스윕에 다시 · ingestion_settings.json 의 BOM — 이주 «없음» · 재기동 «필요»(감시자)**
+>
+> ```
+> 무엇이 바뀌나  적재 뒤 ANALYZE(analyze_after_rows 를 넘은 파일)도 lock_timeout_seconds 를 넘게 기다리지 않는다 — 넘으면 ANALYZE 만 건너뜀, 파일은 SUCCESS
+>                (같은 표에 CREATE INDEX CONCURRENTLY · VACUUM · 다른 ANALYZE 가 돌 때 폴더가 다시 멈추던 자리)
+>              잠금 상한으로 실패한 외부 소스 파일도 raws/ 파일처럼 다음 외부 스윕이 다시 돌린다
+>              ingestion_settings.json 에 BOM 이 붙어도 읽는다 — 전에는 경고 한 줄 뒤 모든 값이 기본값이었다
+> 볼 줄          [<표>] ANALYZE skipped: <표> locked by waiting Lock:relation on pid <쥔 pid> (<앱>, <상태> …): <그 질의>
+>                 = 그 표의 통계 갱신만 미뤄졌다. 다음 적재나 autovacuum 이 갱신한다. 할 일 없음
+>                   같은 쥔 쪽이 줄마다 나오면 그 세션(인덱스 만들기 · VACUUM)이 끝났는지 본다
+> 급할 때       lock_timeout_seconds 를 null 로 — 파일 쓰기와 ANALYZE 둘 다 전처럼 끝없이 기다린다
+> ```
+
+---
+
+> ## [10-07 밤] **멈춘 수집 폴더 — 걸림 줄 · 스윕 줄 · 파일 쓰기 잠금 상한(기본 300 s) — 이주 «없음» · 재기동 «필요»(감시자)**
+>
+> ```
+> 무엇이 바뀌나  감시자의 파일 쓰기 트랜잭션마다 lock_timeout(기본 300 s). 남의 잠금을 그보다 오래 기다리면 그 파일은 FAILED,
+>                폴더 일꾼은 다음 파일로 간다. 그 파일은 봉인하지 않고 제자리에 둔다 — 다음 스윕이 마지막 커밋된 청크부터 다시 넣는다
+>              걸린 파일은 걸림마다 «걸림 줄» 한 번, 폴더 일꾼이 도는 동안은 스윕(5분)마다 «처리 중 줄»
+> 적는 곳       server/config/ingestion_settings.json (모양: server/config/sample/ingestion_settings.json.sample)
+>                 lock_timeout_seconds       없으면 300(걸림 판정과 같은 수) · null 이나 0 = 상한 없음(전과 같음)
+>                 statement_timeout_seconds  없으면 끔 — 켜면 문장 하나가 그보다 길 때 그 파일 FAILED(이건 봉인, 다른 실패와 같음)
+>              값은 감시자 재기동 없이 다음 트랜잭션부터 읽는다. 숫자가 아닌 값은 «없음»으로 읽는다
+> 볼 줄          [Watcher] ingest <파일>: stalled N s in <단계> (folder <폴더> · db pid <pid>) - waiting Lock:… on pid <쥔 pid> (<앱>, <상태> …): <그 질의>
+>                 = 그 파일이 300 s 째 안 움직인다. 쥔 pid 의 앱 · 상태 · 질의가 원인. 걸림 한 번에 한 줄
+>              [<표>] 📂 Tree ingestion of '<폴더>' has been running for N min (now: ingest <파일>)
+>                 = 그 폴더 일꾼이 아직 돈다(스윕마다). now: no file = 폴더가 안정되기를 기다리거나 파일 사이
+>              [<표>] ⏳ <파일>: waited past the lock timeout (300 s) in chunk K - waiting Lock:… on pid <쥔 pid> … (retry R) - left in place for the next sweep
+>                 = 상한으로 FAILED. R 은 그 자리의 그 파일이 마지막 성공 뒤 «이번 전에» 잠금으로 실패한 횟수 — 첫 실패는 0
+>                   (file_ingestion_logs.retry_count 와 같은 값)
+> 값을 고칠 때   ⏳ 줄의 retry 가 계속 오르고 쥔 pid 가 매번 같은 앱 · 같은 질의 = 그 세션이 원인. 값이 아니라 그 세션을 본다
+>              ⏳ 줄이 정상 쓰기(체인 · 소급 · 다른 파일)를 쥔 쪽으로 대고 한두 번 뒤 풀린다 = 상한이 짧다 — 늘린다
+>              걸림 줄이 나온 뒤 ⏳ 까지 폴더가 막혀 있는 시간이 너무 길다 = 줄인다
+> 급할 때       lock_timeout_seconds 를 null 로 — 전처럼 끝없이 기다린다(재기동 없이)
+> ```
+
+---
+
+> ## [10-07 저녁] **SSO — 설정 파일 하나로 서버가 안 멈춘다 · 클라이언트 비밀은 선택(public client) — 이주 «없음» · 재기동 «필요»**
+>
+> ```
+> 무엇이 바뀌나  auth_config.json 을 못 읽어도(문법 오류 · 맨 위가 객체 아님) 기동은 계속된다 — SSO 는 OFF, 요청은 오늘처럼
+>              BOM 이 붙어도 읽는다(table_config.json 과 같은 읽기)
+>              클라이언트 비밀은 선택 — 없으면 public client(PKCE 만)로 코드를 토큰으로 바꾼다. 위 10-07 절의 «비밀 하나»는 이제 «있으면»
+> 적는 곳       메모장은 BOM 없는 UTF-8로 저장, 틀리면 기동 로그 [sso] OFF 줄이 이유를 말한다
+>              회사 가이드의 토큰 서명 인증서(.cer)는 넣지 않는다. 서버가 ADFS의 키 주소에서 받는다
+>              비밀 없으면 public, invalid_client면 IT에 비밀 받기 — 받으면 환경변수 ASSY_OIDC_CLIENT_SECRET 에 두고 재기동
+> 재기동 뒤 볼 줄  [sso] ON - issuer …, return address …, public client. …   = 비밀 없이 켜짐
+>              [sso] ON - issuer …, return address …, secret client. …   = 비밀로 켜짐
+>              [sso] ON - … admins (auth_config.json) is not a list, so no one is an administrator.
+>                 = admins 를 ["이름", …] 목록으로 고치고 재기동. 그때까지 관리 화면은 아무도 못 쓴다
+>              [sso] OFF - auth_config.json could not be read: line <줄> column <칸> (char …): <무엇>   = 그 자리를 고치고 재기동
+>              [sso] OFF - auth_config.json could not be read: the top level is …, not an object       = 파일 전체를 { … } 하나로
+>              [sso] OFF - enabled must be true (not "true") in auth_config.json                      = 따옴표 없이 true
+> 거절 줄        [sso] The identity provider refused the sign-in: invalid_client - …   = ADFS 가 비밀을 원한다 -> IT 에 클라이언트 비밀 받기
+>              화면에도 같은 문장과 Try again
+> 급할 때       enabled false + 재기동 (오늘과 같음)
+> ```
+
+---
+
+> ## [10-07] **소스에 묶은 속성이 그 개체의 칸이 된다(등록 문장 없이) · 등록 probe 은퇴 — 마이그레이션 «없음» · 재기동 «필요» · 다시 번역은 «부류 1» 소스만, 운영자가**
+>
+> ```
+> 무엇이 바뀌나  소스 bind 의 개체 속성 — bind.entities.<타입>.attributes, 그리고 롤 자신의 attributes(목적어 롤 포함) —
+>                을 번역기가 그 행의 시각으로 원장에 남긴다. 걷기 노드 칸과 이름표가 그것을 읽는다
+>              등록 문장을 적어 둔 소스는 그대로 — 그 문장이 그 타입의 속성을 정한다
+>              read.registration_probe 은퇴 — 읽는 곳이 없다. 적혀 있어도 거절하지 않는다
+> 돌릴 명령     재기동 — run_app.bat 전체
+>              부류 1 소스만, 이미 읽은 행에도 싣고 싶으면 (whole_source 는 화면 폼에 없어 명령줄):
+>                 python server/ledger/backfill.py --source <소스> --whole-source              (미리보기 — 행 · 잃은 행 · 그 원자, 안 씀)
+>                 python server/ledger/backfill.py --source <소스> --whole-source --apply --pace slow
+>                 가지면 --world <가지> — 아래 재기동 줄의 (<세상>) 칸
+> 재기동 뒤 볼 줄  [Ledger] re-stamped N cursor(s) whose declaration did not change: <소스> (<세상>): <옛> -> <새> (position stays …) | …
+>                 부류 1  그 소스 항목이 " - the translator registers the bound attributes of <타입들>: rows read before carry none of them until this source is rescoped whole" 로 끝남
+>                         = 새 행부터 속성이 실린다. 과거 행은 위 명령으로. 대상 소스 = 이 꼬리가 붙은 소스
+>                 부류 2  그 꼬리 없이 끝남 = 등록 문장이 있던 소스의 다시 찍기뿐. 위치 그대로 · 다시 번역 0 · 할 일 없음
+>              [Ledger] retired cell: sources.<소스>.read.registration_probe is read by nothing -- it can be deleted
+>                 = 그 칸을 지워도 된다. 안 지워도 돈다
+>              [Ledger] attributes not registered: sources.<소스> names <타입> through different keys (<롤들>), …
+>                 = 그 타입을 부르는 롤들의 키 바인딩(키 순서 · 칼럼/상수 · 값)이 갈려 bind.entities 속성을 어느 개체에 실을지 모른다
+>                   — 롤마다 자기 attributes 에 적는다. 바인딩이 같으면 롤이 둘이어도 한 개체라 실리고 이 줄은 안 나온다
+> 뜻           다시 번역 전의 부류 1 소스 — 같은 개체라도 재기동 뒤에 읽은 행에서 온 속성만 보인다
+> 급할 때       커밋 되돌리기 + 재기동. 이미 쓰인 등록 원자는 남는다 — 되돌린 코드로 그 소스를 통째로 다시 번역하면 거둬지는지는 안 쟀다
+> ```
+
+---
+
 > ## [10-07] **회사 SSO 로그인(OIDC · ADFS) — 켜기 = auth_config.json + 환경변수 비밀 하나 + 재기동 · 이주 «불필요»(부팅이 표 셋을 만든다) · 재기동 «필요»**
 >
 > ```
@@ -842,7 +995,7 @@
 >
 > ```
 > 무엇이 바뀌나  bind.occurred_at 을 안 적은 매핑 = 사건 엣지 아님(원자 basis 'ingested', 저장 시각은 같은 행의 사건 시각 — 사건 id 하나)
->              read 칸을 안 적으면 제품이 채움(unit · identity · order_by · group_by · occurred_at · registration_probe · map.unit · input_columns)
+>              read 칸을 안 적으면 제품이 채움(unit · identity · order_by · group_by · occurred_at · map.unit · input_columns)
 >              적은 선언은 그대로 — 박스 미리보기 5 소스 · 원자 1,198 가 전후 같음(사건 id · 시각 · basis · 번역 버전), 묶음 해시 같음
 > 확인         재기동 뒤  python -m scripts.migrate_ledger_slim_sources   (미리보기, 아무것도 안 씀 — server 폴더에서)
 > 뜻           「movable - atoms unchanged」 옮겨도 원자가 같다 · 「movable - atoms change」 옮기면 시각 · 사건 id 가 바뀐다

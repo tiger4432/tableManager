@@ -1046,8 +1046,6 @@ def test_a_scoped_redo_re_reads_the_row_so_a_humans_correction_reaches_the_ledge
     monkeypatch.setattr(ledger_backfill, "_fetch_v2_lineage_rows", _fetch)
     monkeypatch.setattr(ledger_backfill, "_readable_columns", lambda engine, plan: ())   # the read is faked, so is its catalogue question
     monkeypatch.setattr(ledger_backfill, "_v2_frame", pd.DataFrame)
-    monkeypatch.setattr(ledger_backfill, "_v2_registration_subjects",
-                        lambda plan, frame: None)
     monkeypatch.setattr(store_module, "LedgerStore", _Store)
     monkeypatch.setattr(ledger_setup_module, "execute_selected_scoped_batch", _write)
 

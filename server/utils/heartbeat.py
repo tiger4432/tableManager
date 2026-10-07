@@ -334,6 +334,37 @@ def mark_stalled(claim_id, what_it_waits_on):
             claim["stalled_on"] = str(what_it_waits_on)
 
 
+def stalled_lines(name, probe, shown=()):
+    """`[(what, line)]` - the one stalled line, once per episode, for every claim of worker
+    `name` that entered no stage for `DEFAULT_STALL_AFTER_SEC`; each is marked stalled with it.
+    The chain and the watcher both ask this (총괄 10-07 ③). `probe(pid)` says what that backend
+    waits on; `shown` is `((fact, word when absent), ...)` printed before the pid. A probe that
+    raises only goes quiet - the line says which question went unanswered."""
+    now = time.time()
+    lines = []
+    for claim in open_claims():
+        since = now - claim["last_progress"]
+        if (claim["name"] != name or claim["stalled_on"] is not None
+                or since <= DEFAULT_STALL_AFTER_SEC):
+            continue
+        facts = claim["facts"]
+        pid = facts.get("db_pid")
+        if pid is None:
+            said = "not probed (no database pid was noted for this work)"
+        else:
+            try:
+                said = probe(pid)
+            except Exception as exc:                               # noqa: BLE001
+                said = "not probed (%s: %s)" % (type(exc).__name__, exc)
+        line = "stalled %d s in %s (%s) - %s" % (
+            since, claim["stage"] or "no stage yet",
+            " · ".join(["%s %s" % (fact, facts.get(fact) or absent) for fact, absent in shown]
+                       + ["db pid %s" % pid]), said)
+        mark_stalled(claim["id"], line)
+        lines.append((claim["what"], line))
+    return lines
+
+
 @contextmanager
 def work_claim(name, what, note=None):
     """Declare a unit of real work in progress for worker ``name``.

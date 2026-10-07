@@ -172,13 +172,3 @@ def test_an_admitted_type_with_source_attributes_is_refused(shipped, catalog):
     found = {(issue.code, issue.path) for issue in validate_bundle_errors(doc, catalog=catalog)}
     assert ("invalid_binding", f"bundle.sources.{CANDIDATES}.bind.mappings.leads.bind.subject"
             ".entity_type") in found, found
-
-
-def test_a_register_sentence_reading_its_type_needs_a_probe(shipped, catalog):
-    source = copy.deepcopy(SOURCE)
-    source["bind"]["mappings"]["register"] = {"predicate": "register@1", "bind": {
-        "subject": typed("cause_type", {"quantity": column("cause_key")})}}
-    found = {(issue.code, issue.path) for issue in validate_bundle_errors(
-        document(shipped, source), catalog=catalog)}
-    assert ("registration_probe_required",
-            f"bundle.sources.{CANDIDATES}.read.registration_probe") in found, found

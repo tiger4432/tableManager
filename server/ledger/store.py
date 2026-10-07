@@ -194,39 +194,6 @@ class LedgerStore:
             schema.ensure_partition(connection, when, known=self._known_partitions,
                                     names=self.names)
 
-    def existing_registrations(self, connection, subjects):
-        """Which of `subjects` already have a `register` atom.
-
-        `subjects` is an iterable of `(subject_type, canonical_keys_json)` - the memo
-        form `envelope.canonical_keys` produces - and the return value is a set in the
-        same form, so the caller can union it straight into the translator's memo.
-
-        ONE query per chunk for the whole page. A per-entity lookup is what turns a
-        ten-million row backfill quadratic; this is the query `idx_ledger_register`
-        exists for, and that index is partial (`WHERE predicate = 'register'`) because
-        registers are O(entities) while the table is O(atoms).
-        """
-        wanted = sorted(set(subjects))
-        if not wanted:
-            return set()
-        found = set()
-        with connection.cursor() as cursor:
-            for start in range(0, len(wanted), INSERT_PAGE_SIZE):
-                chunk = wanted[start:start + INSERT_PAGE_SIZE]
-                cursor.execute(
-                    f"SELECT subject_type, subject_keys FROM {self.names.ledger} "
-                    f"WHERE predicate = 'register' "
-                    f"  AND (subject_type, subject_keys) IN %s",
-                    (tuple((t, _json(json.loads(k))) for t, k in chunk),))
-                for subject_type, keys in cursor.fetchall():
-                    found.add((subject_type, json.dumps(
-                        keys, sort_keys=True, separators=(",", ":"), ensure_ascii=False)))
-        return found
-
-    # ⚰️ `current_atoms_for_subjects` - the latest atom per subject on one predicate, which the
-    # write-time `supersedes` stamp pointed at. It went with the stamp (총괄 22ebdd153): the
-    # current value is read, by occurred_at, where the walk fetches.
-
     def insert_atoms(self, connection, atoms):
         """Insert on an OPEN transaction. Returns `(attempted, inserted)`.
 

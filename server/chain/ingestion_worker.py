@@ -1489,8 +1489,12 @@ def _in_rule_order(table_updates):
 def apply_chain_writes(db, tx_id, rule, incoming_depth, rules_by_target,
                        table_updates, map_metadata_updates, scoped_batches,
                        table_contributors, broadcast_messages, woken_by_a_replay=False,
-                       cascade=False, declarations_by_target=None, run=None):
+                       cascade=False, declarations_by_target=None, run=None,
+                       edit_retractions=None):
     """The chain's WRITE, as a door. -> `(True, None)` or `(False, error_msg)`.
+
+    `edit_retractions` {target: [spec]} - what a stamping rule's EDITED source rows no longer
+    feed, withdrawn after every batch is written (총괄 e35500433 · b13de0353).
 
     🔴 [판정 603 · 604 ㉠] 소유자 v2: 「… 맵퍼 실행 -> «쓰기 문» -> 쓰기 -> 아웃박스 -> 반복」.
     This block WAS 368 lines inside `_process_chain_transaction_group_sync`, wired to ten of
@@ -1561,6 +1565,7 @@ def apply_chain_writes(db, tx_id, rule, incoming_depth, rules_by_target,
             # one source, so there is nothing for the write path to do up front.
             scoped = [(target, updates, scope is not None, scope, retract)
                       for target, updates, scope, retract in scoped_batches]
+            written = defaultdict(list)    # target -> the items its batches wrote, keys composed
             # The tables are read LAZILY: a paging proposal's next page is asked only after
             # the page before it was written and committed (총괄 e10c58e5e).
             for target_table, updates_list, replace_map, scope, retract in itertools.chain(
@@ -1646,6 +1651,7 @@ def apply_chain_writes(db, tx_id, rule, incoming_depth, rules_by_target,
                       written_by((declarations_by_target or {}).get(target_table, ()))):
                     results, changed_cells, created_logs, deleted_row_ids = crud.apply_batch_updates(
                         db, target_table, batch_data, drop_report=drop_report)
+                written[target_table].extend(batch_data.updates)
 
                 if drop_report.get("dropped_cells") or drop_report.get("empty_rows_suppressed"):
                     logger.warning(
@@ -1766,15 +1772,6 @@ def apply_chain_writes(db, tx_id, rule, incoming_depth, rules_by_target,
                 # Not a loop: writes land on the DERIVED table while the
                 # enrichment rule triggers on the SOURCE table, and the
                 # absent-only gate makes a second pass a no-op regardless.
-                # ⚰️ THE HOOK LEFT THIS PATH (S-151, 판정 262). Measured here at 0.875 s per
-                # 1,000-row group - 35 % of everything the group spent outside the mapper -
-                # and it is FOLLOW-UP work: nobody is waiting for a confirmation that the
-                # next read would compute anyway. 「요청/커밋 경로 인라인 금지, 뒤따르는 일은
-                # 페이싱된 별도 작업」 is the standing rule, and this was the inline case of it.
-                # It now runs on the ledger follow-up drain, paced - see
-                # the `builtin:auto_confirm` kind. NOTHING IS ENQUEUED HERE: these rows reach
-                # that queue already, through their own collapsed outbox events, so a second
-                # enqueue would double the ledger's re-translation to save this.
 
                 # 5. Collect WebSocket broadcast messages (dispatched AFTER commit, fire-and-forget).
                 #    이벤트명/페이로드 형식은 절대 변경하지 않고 타이밍만 커밋 이후로 미룬다.
@@ -1876,7 +1873,29 @@ def apply_chain_writes(db, tx_id, rule, incoming_depth, rules_by_target,
                             f"notified: [{type(ws_err).__name__}] {ws_err}",
                             exc_info=True,
                         )
-                    
+
+            # 🔴 [총괄 e35500433 · b13de0353] AN EDITED SOURCE ROW TAKES BACK WHAT IT NO LONGER FEEDS:
+            #   the layers it stamped in the columns of the rule that ran, off the rows that rule's
+            #   write did not just put it on. After every batch, so a row `plan_retraction` purged
+            #   has no layers left to find. Contained like that one: a failure leaves stale layers,
+            #   never a hole.
+            for target_table, specs in sorted((edit_retractions or {}).items()):
+                with alignment_batch_counts.stage("edit retraction:%s" % target_table):
+                    keep = _rows_written_from(db, target_table, written.get(target_table))
+                    for spec in specs:
+                        try:
+                            _withdraw_and_tell(db, spec["trigger_table"], spec["origins"], "edited",
+                                               declarations=(spec["declaration"],),
+                                               table=target_table, columns=spec["columns"],
+                                               keep=keep)
+                        except Exception as retract_err:               # noqa: BLE001
+                            db.rollback()
+                            logger.error(
+                                f"🔴 [ChainRetract] Table: '{target_table}' | TX: '{chain_tx_id}' | "
+                                f"rule: {spec['declaration']} | the edit's withdrawal failed AFTER a "
+                                f"committed write; old layers may remain: "
+                                f"[{type(retract_err).__name__}] {retract_err}", exc_info=True)
+
         except Exception as e:
             import traceback
             # 🔴 THE TARGET WHOSE WRITE FAILED, AND ITS RULES (총괄 a4cb623e0 ②) - not every
@@ -2030,6 +2049,9 @@ def _process_chain_transaction_group_sync(tx_id, events, db, rules):
     # The declarations writing each target - stamped on what that write stages, so none of
     # their rules is woken by it (총괄 ebefd20e8). Filled at the same place, from the rule.
     declarations_by_target = defaultdict(set)
+    # target -> what each stamping rule's EDITED trigger rows no longer feed (총괄 b13de0353):
+    # only here is a rule's own output still apart from the others' on its target.
+    edit_retractions = defaultdict(list)
 
     # 3. Evaluate rules for this transaction
     # To support batch rules, we group rules by trigger table to execute them efficiently.
@@ -2116,6 +2138,14 @@ def _process_chain_transaction_group_sync(tx_id, events, db, rules):
                                                   depth=incoming_depth,
                                                   woken_by_a_replay=woken_by_a_replay,
                                                   cascade=cascade, run=run)
+                edited = [p.get("row_id") for e in trigger_events if e.event_type == "EDIT"
+                          for p in expanded[outbox_expand.event_key(e)] if p.get("row_id")]
+                if target_payload["stamps_origin"] and edited:
+                    edit_retractions[target_table].append({
+                        "trigger_table": table_name, "declaration": rule_shape.declaration_of(rule),
+                        "origins": edited,
+                        "columns": {column for item in target_payload["updates"]
+                                    for column in (rule_run.item_cell(item, "updates") or ())}})
                 if target_payload["updates"]:
                     table_updates[target_table].extend(target_payload.get("updates"))
                     if rule.get("name") not in table_contributors[target_table]:
@@ -2179,7 +2209,8 @@ def _process_chain_transaction_group_sync(tx_id, events, db, rules):
         db, tx_id, rule, incoming_depth, rules_by_target, table_updates,
         map_metadata_updates, scoped_batches, table_contributors,
         broadcast_messages, woken_by_a_replay=woken_by_a_replay, cascade=cascade,
-        declarations_by_target=declarations_by_target, run=run)
+        declarations_by_target=declarations_by_target, run=run,
+        edit_retractions=edit_retractions)
     if not written_ok:
         return False, write_error, []
 
@@ -2297,11 +2328,6 @@ def _queue_operation_runs(tx_id, events, db, rules):
             "run_id %s" % ", ".join(runs))
 
 
-#: How long the stalled line's own question may run. It reads two system views and takes
-#: no lock, so this bounds a database that cannot answer at all.
-STALL_PROBE_TIMEOUT_MS = 5000
-
-
 async def _await_group_beating(group, db):
     """Wait for a group while beating «alive» every `HEARTBEAT_SLICE_SECONDS`, and say once
     per episode what a group that stopped moving is waiting on (fc1c0781d ③④).
@@ -2324,46 +2350,13 @@ async def _await_group_beating(group, db):
 
 
 async def _say_what_a_stalled_group_waits_on(db):
-    now = time.time()
-    for claim in heartbeat.open_claims():
-        since = now - claim["last_progress"]
-        if (claim["name"] != "chain" or claim["stalled_on"] is not None
-                or since <= heartbeat.DEFAULT_STALL_AFTER_SEC):
-            continue
-        facts = claim["facts"]
-        pid = facts.get("db_pid")
-        if pid is None:
-            said = "not probed (no database pid was noted for this group)"
-        else:
-            try:
-                said = await asyncio.to_thread(_what_a_backend_waits_on,
-                                               db.get_bind().url, pid)
-            except Exception as exc:                               # noqa: BLE001
-                # 🔴 THE PROBE ONLY GOES QUIET. Health keeps its verdict; this says which
-                # question went unanswered.
-                said = "not probed (%s: %s)" % (type(exc).__name__, exc)
-        line = "stalled %d s in %s (rule %s · db pid %s) - %s" % (
-            since, claim["stage"] or "no stage yet", facts.get("rule") or "none yet", pid,
-            said)
-        heartbeat.mark_stalled(claim["id"], line)
-        logger.warning("[Chain] %s: %s", claim["what"], line)
-
-
-def _what_a_backend_waits_on(bind_url, pid):
-    """`db_waits` over a connection of its own, outside the pool (S-167), read-only and
-    bounded - the group's own session is the one that is stuck."""
-    import db_safety
+    """The stalled line every claimed worker says (`heartbeat.stalled_lines`), for the chain."""
     import db_waits
-    from database.database import connection_name
-    probe = db_safety.open_readonly_engine(
-        bind_url, application_name=connection_name() + "_probe",
-        statement_timeout_ms=STALL_PROBE_TIMEOUT_MS)
-    try:
-        with probe.connect() as conn:
-            rows = db_waits.backend_waits(conn.connection.dbapi_connection, pid)
-    finally:
-        probe.dispose()
-    return db_waits.wait_sentence(rows[0] if rows else None, pid)
+    bind_url = db.get_bind().url
+    for what, line in await asyncio.to_thread(
+            heartbeat.stalled_lines, "chain",
+            lambda pid: db_waits.what_a_backend_waits_on(bind_url, pid), (("rule", "none yet"),)):
+        logger.warning("[Chain] %s: %s", what, line)
 
 
 #: Follow-up rules for the `builtin:` dispatcher, held across drain batches.
@@ -3127,7 +3120,7 @@ def _retract_what_those_rows_fed(db, table, row_ids):
 
     🔴 [S-280 · 판정 435 ④] THREE THINGS THAT ALREADY EXISTED. The listener is the outbox
     row's ledger mark, which every processed event carries, DELETE included (ruling 129 ㉤); the pacing is this drain, which already runs off the request path; the
-    withdrawal is `cell_layer.withdraw_source`, reached with the arguments that make it act.
+    withdrawal is `cell_layer.withdraw_by_origin` - `withdraw_source`'s per-cell pass, with `apply`.
     So the CREATE/EDIT gate five places assert on is not touched — the ruling behind it
     (endless cascade) stays intact and DELETE never enters the rule loop.
 
@@ -3138,33 +3131,13 @@ def _retract_what_those_rows_fed(db, table, row_ids):
     ⚠️ CONTAINED, like its neighbour: a failure here must not cost the ledger follow-up that
     already succeeded, nor propagate into the drain loop.
     """
-    from chain import cell_layer
-    from database import crud
     from database.context import channel
-    from database.database import stage_collapsed_event
 
     try:
         # The follow-up lap is the chain's own write - said, so it does not lean on the
         # source name the way events queued before the channel do.
         with channel(event_constants.CHANNEL_CHAIN):
-            stats = cell_layer.withdraw_by_origin(db, row_ids, apply=True)
-            # 🔴 [총괄 e11bb4de0 (나)] A layer that was not the shown one goes without changing a
-            #   cell, so no edit event left and a rule that counts layers (the hold recount)
-            #   never heard. One EDIT per row that lost a layer, by the door an ordinary edit
-            #   writes, in the withdrawal's own envelope - so only rules that opt into chain
-            #   events wake. A row whose shown value moved gets this beside its own edit.
-            tx_id = "%s_%s" % (cell_layer.R2_AUDIT_SOURCE, uuid.uuid4().hex[:8])
-            told = 0
-            with crud.transaction_context(cell_layer.R2_AUDIT_SOURCE, tx_id,
-                                          cell_layer.R1_SOURCE_NAME):
-                for target, (columns, ids) in sorted(stats["lost_a_layer"].items()):
-                    stage_collapsed_event(db, "EDIT", target, sorted(ids), sorted(columns))
-                    told += len(ids)
-                db.commit()
-        logger.info("[ChainRetract] table=%s deleted_rows=%d groups=%d cells_withdrawn=%d "
-                    "protected_skipped=%d rows_told=%d", table, len(row_ids),
-                    stats.get("groups", 0), stats.get("cells_withdrawn", 0),
-                    stats.get("protected_skipped", 0), told)
+            _withdraw_and_tell(db, table, row_ids, "deleted")
         # ⚰️ [소유자 정본] THIS WALKED `_rules_for_the_follow_up_pass()`, the deferred set.
         #   There is one set now, so it walks the loader's - and that is WIDER, which is
         #   right: a rule that cannot be reverted is worth naming whichever path runs it.
@@ -3177,6 +3150,64 @@ def _retract_what_those_rows_fed(db, table, row_ids):
     except Exception as err:                                       # noqa: BLE001
         logger.error("[ChainRetract] retraction failed for table %s "
                      "(the ledger follow-up itself is unaffected): %s", table, err)
+
+
+def _withdraw_and_tell(db, from_table, row_ids, why, declarations=(), **scope):
+    """Withdraw what `row_ids` of `from_table` fed, then one EDIT per row that lost a layer. `why` is
+    「deleted」 or 「edited」; an edit passes the rule that ran (`declarations`) and narrows the
+    withdrawal (`scope`: `table` · `columns` · `keep`, see `cell_layer.withdraw_by_origin`).
+    -> the withdrawal's stats."""
+    from chain import cell_layer
+    from database import crud
+    from database.context import written_by
+    from database.database import stage_collapsed_event
+
+    # 🔴 [총괄 b13de0353 고리] WHAT THE WITHDRAWAL STAGES SAYS THE RULE THAT RAN WROTE IT, the way its
+    #   own writes do - the cells it reveals and the EDIT below - so a self-filling rule is not
+    #   woken by its own withdrawal. A deletion has no rule.
+    with written_by(declarations):
+        stats = cell_layer.withdraw_by_origin(db, row_ids, apply=True, **scope)
+        # 🔴 [총괄 e11bb4de0 (나)] A layer that was not the shown one goes without changing a
+        #   cell, so no edit event left and a rule that counts layers (the hold recount)
+        #   never heard. One EDIT per row that lost a layer, by the door an ordinary edit
+        #   writes, in the withdrawal's own envelope - so only rules that opt into chain
+        #   events wake. A row whose shown value moved gets this beside its own edit.
+        tx_id = "%s_%s" % (cell_layer.R2_AUDIT_SOURCE, uuid.uuid4().hex[:8])
+        told = 0
+        with crud.transaction_context(cell_layer.R2_AUDIT_SOURCE, tx_id, cell_layer.R1_SOURCE_NAME):
+            for target, (columns, ids) in sorted(stats["lost_a_layer"].items()):
+                stage_collapsed_event(db, "EDIT", target, sorted(ids), sorted(columns))
+                told += len(ids)
+            db.commit()
+    logger.info("[ChainRetract] table=%s %s_rows=%d groups=%d cells_withdrawn=%d "
+                "protected_skipped=%d rows_told=%d", from_table, why, len(row_ids),
+                stats.get("groups", 0), stats.get("cells_withdrawn", 0),
+                stats.get("protected_skipped", 0), told)
+    return stats
+
+
+def _rows_written_from(db, table, items):
+    """{(origin_row_id, row_id)} - the rows these written items put each origin's output on, by
+    the key the write composed (`dt_map_derivation.derived_keys_of` reads it the same way)."""
+    from chain.keyset_scan import DEFAULT_CHUNK_SIZE
+    from database import models
+
+    pairs, by_key = set(), {}
+    for item in items or ():
+        origin = getattr(item, "origin_row_id", None)
+        if not origin:
+            continue
+        if getattr(item, "row_id", None):
+            pairs.add((origin, item.row_id))
+        elif getattr(item, "business_key_val", None) is not None:
+            by_key.setdefault(item.business_key_val, set()).add(origin)
+    model = models.DYNAMIC_TABLES[table]
+    keys = list(by_key)
+    for i in range(0, len(keys), DEFAULT_CHUNK_SIZE):
+        for row_id, key in (db.query(model.row_id, model.business_key_val)
+                            .filter(model.business_key_val.in_(keys[i:i + DEFAULT_CHUNK_SIZE]))):
+            pairs.update((origin, row_id) for origin in by_key.get(key, ()))
+    return pairs
 
 
 
@@ -3543,8 +3574,19 @@ def _restamp_moved_fingerprints_sync(db_session_factory):
             if verdict != "restamp":
                 continue
             if store.restamp_cursor(source, expect=stored, translator_ver=wanted):
+                # 🔴 TWO KINDS MOVE ON ONE DEPLOY (총괄 10-07): a source whose translator now
+                # registers bound attributes has rows read before this boot carrying none of
+                # them - a rescope covers those - while any other source is a re-stamp only.
+                plan = setup.snapshot.source_plans[source]
+                registers = sorted({
+                    str(mapping.bindings[role].get("entity_type")).split("@")[0]
+                    for mapping in plan.profile.mappings.values()
+                    for role in mapping.registered_roles})
                 moved.append(f"{source} ({world}): {stored} -> {wanted} "
-                             f"(position stays {existing.get('cursor_value')!r})")
+                             f"(position stays {existing.get('cursor_value')!r})"
+                             + (f" - the translator registers the bound attributes of "
+                                f"{', '.join(registers)}: rows read before carry none of them "
+                                f"until this source is rescoped whole" if registers else ""))
             else:
                 refused.append(f"{source} ({world}) (row changed under us)")
         if moved:

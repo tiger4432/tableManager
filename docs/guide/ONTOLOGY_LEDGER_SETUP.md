@@ -72,7 +72,7 @@ server/config/ontology/ledger_config.json
   ├─ sources            소스 하나가 실행 순서대로 네 절을 «직접» 든다 — 여기 있으면 «돈다»
   │    ├─ relation      읽는 물리 표
   │    ├─ read          물리 batch를 어떻게 긁나 (unit·identity·group_by·order_by·
-  │    │                occurred_at·cursor·registration_probe)
+  │    │                occurred_at·cursor)
   │    ├─ map           EventFrame → RoleEmission     (옛 `mappers` 본문)
   │    └─ bind          문장 이름 → 술어 + Role binding (옛 `profiles` 본문)
   └─ virtual_joins      (선택) 로더가 검증만 한다 — 읽는 소스 없음(§6)
@@ -383,7 +383,7 @@ SQLAlchemy에 매핑된 표 전부를 훑는데, 여기에 `table_config.json`�
 
 | `table_config.json` 키 | 원장이 쓰는 곳 |
 |---|---|
-| `column_types` | `order_by`·`cursor.columns`·`occurred_at.column`·registration probe 컬럼이 **실재하는 컬럼인지** · 🆕 10-03 맵퍼가 받는 칸 전부(그 표의 칸) |
+| `column_types` | `order_by`·`cursor.columns`·`occurred_at.column` 컬럼이 **실재하는 컬럼인지** · 🆕 10-03 맵퍼가 받는 칸 전부(그 표의 칸) |
 | `composite_key_source` | 그 컬럼 묶음이 **행의 유일 키**다. cursor 전순서 증거로 인정된다 |
 | `business_key` | 그 컬럼이 `column_types`에 실재할 때만 유일 키로 인정된다 |
 
@@ -653,6 +653,16 @@ Vocabulary는 “어떤 문장이 문법적으로 가능한가”를 정한다. 
 
 이 다이는 걷기에서 「<bin> · <x> · <y>」로 보인다. bin 값이 없는 다이는 「<x> · <y>」다.
 
+🆕 **[10-07, 총괄 a6db2f469] 속성은 소스의 `bind` 에 적으면 그 개체의 칸이 된다 — 등록 문장을 따로 적지 않는다.**
+`bind.entities.<타입>.attributes` 는 그 소스에서 그 타입이 나오는 롤 모두에, 롤 자신의 `attributes` 는 그 롤의
+개체에 실린다(목적어 롤도). 번역기가 그 값으로 목적어 없는 원자 하나(`register`, 사용자가 적지 않는 배관 이름)를
+그 행의 시각으로 쓰고, 걷기는 그것을 노드 칸과 `label` 로 읽는다.
+- 같은 소스에 그 타입을 주어로 등록하는 문장이 있으면 그 문장이 그 타입의 속성을 정한다(오늘과 같다).
+- 같은 타입을 부르는 롤들의 키 바인딩(키 순서 · 칼럼/상수 · 값)이 하나라도 다르면 `bind.entities` 속성은
+  어느 개체인지 고를 수 없어 실리지 않고(바인딩이 같으면 롤이 둘이어도 한 개체라 실린다),
+  로드가 「attributes not registered: …」 한 줄을 남긴다 — 롤마다 자기 `attributes` 로 적는다.
+- 이미 읽은 행에는 실리지 않는다. 그 소스를 통째로 다시 번역하면 실린다(RUN.md 10-07 절).
+
 ### 7.3 ⚰️ `sources.<id>.prepare` — 은퇴 (setup_version 6, 총괄 e14416950)
 
 소스에는 `prepare` 절이 **없다**. 적으면 **그 소스만** 이름 대어 거절된다 —
@@ -904,7 +914,7 @@ Entity key 집합은 Entity descriptor의 `keys`와 정확히 같아야 한다. 
 
 > 🔴 **`binding_origin` · `approval_status` · `suggestion_reason` 셋은 선언에서 «없어졌다».**
 > binding은 이제 **종류와 그 payload만** 말한다 — `kind` + (`column` | `value` | `entity_type`·`keys`).
-> 🆕 10-06 `f1238d6ef` `entity_type` 은 타입 이름(글자) 또는 `{"kind": "column", "column": "<타입 칸>"}` — 행마다 그 칸의 타입을 읽고, 그 자리(subject · target)가 받는 타입인지 행마다 본다. 아니면 «그 행만» `type_not_admitted`, 타입 칸이나 그 타입의 키 칸이 비면 `no_identity`. `keys` 에는 받는 타입들의 키를 «모두» 적는다(행은 자기 타입의 키만 쓴다). 칸 타입에는 `attributes` 를 못 달고, 구현은 `declarative-role` 만, `register` 문장의 주어면 `read.registration_probe` 가 필수 — 어기면 로드에서 이름 대어 거절. 예시는 `TEXT_LINKS_GUIDE.md` §7. 🆕 10-06 `adcd304ff` 선언 폼의 이 칸은 고르개 하나 — `name`(타입 이름 칸) / `column`(Type from column), 값의 모양이 가지를 정한다
+> 🆕 10-06 `f1238d6ef` `entity_type` 은 타입 이름(글자) 또는 `{"kind": "column", "column": "<타입 칸>"}` — 행마다 그 칸의 타입을 읽고, 그 자리(subject · target)가 받는 타입인지 행마다 본다. 아니면 «그 행만» `type_not_admitted`, 타입 칸이나 그 타입의 키 칸이 비면 `no_identity`. `keys` 에는 받는 타입들의 키를 «모두» 적는다(행은 자기 타입의 키만 쓴다). 칸 타입에는 `attributes` 를 못 달고, 구현은 `declarative-role` 만 — 어기면 로드에서 이름 대어 거절. 예시는 `TEXT_LINKS_GUIDE.md` §7. 🆕 10-06 `adcd304ff` 선언 폼의 이 칸은 고르개 하나 — `name`(타입 이름 칸) / `column`(Type from column), 값의 모양이 가지를 정한다
 >
 > **왜:** 소유자가 화면에서 그 셋을 보고 「바인딩이 이렇게 복잡하게 할 일이야? 그냥 주어, 목적어
 > 등 당 타입, 키만 입력하게 해」라고 판정했다. 실측이 뒷받침했다 — 라이브 40개 binding에서
@@ -995,7 +1005,7 @@ subject/object entity type으로 모양을 계산해 후보를 골랐고, 그래
 그건 정규 해시 재료라서 고치지 않는다 — **읽는 순서는 스켈레톤이 만든다**(화면 라벨
 읽기 · 준비 · 매핑 · 연결. 키는 영어 그대로).
 
-🆕 **[10-02 `3a2d79ff9`] `read` 칸은 안 적으면 제품이 채운다**(`setup_bundle.with_read_defaults` 한 자리, 적은 칸은 그대로 — 같은 값을 손으로 적은 소스와 같은 번들): `unit`(group_by 가 있으면 group, 없으면 row) · `identity` · `order_by`(표 선언의 가장 짧은 유일 키) · `group_by`(`unit: group` 이면 `identity`) · `occurred_at`(사건 엣지들이 적은 칼럼과 시간대 — 사건 엣지가 없으면 행의 저장 시각, `ingested` · UTC) · `registration_probe`(등록하는 주어마다 그 키 칼럼 하나) · `map.unit`(⚰️ `map.input_columns` 기본값 `[]` 은 10-03 에 같이 은퇴). 사건 엣지들이 서로 다른 칼럼을 적거나 시간대 없이 적으면 `missing_time` 으로 거절한다(시각을 짐작하지 않는다). 폼에는 접힌 한 줄(`Defaults · N`)로 보이고, 펼치면 칸마다 기본값(`Default: …`)이다(10-02 `d06199e6a`). 초안은 파일에 적힌 선언 그대로 열리고, 저장은 로더가 채우는 칸을 파일에 적지 않는다. 소스 시각을 사건 엣지로 옮기는 이주는 `python -m scripts.migrate_ledger_slim_sources`(미리보기) → `--apply --source <소스>`.
+🆕 **[10-02 `3a2d79ff9`] `read` 칸은 안 적으면 제품이 채운다**(`setup_bundle.with_read_defaults` 한 자리, 적은 칸은 그대로 — 같은 값을 손으로 적은 소스와 같은 번들): `unit`(group_by 가 있으면 group, 없으면 row) · `identity` · `order_by`(표 선언의 가장 짧은 유일 키) · `group_by`(`unit: group` 이면 `identity`) · `occurred_at`(사건 엣지들이 적은 칼럼과 시간대 — 사건 엣지가 없으면 행의 저장 시각, `ingested` · UTC) · `map.unit`(⚰️ `map.input_columns` 기본값 `[]` 은 10-03 에 같이 은퇴). 사건 엣지들이 서로 다른 칼럼을 적거나 시간대 없이 적으면 `missing_time` 으로 거절한다(시각을 짐작하지 않는다). 폼에는 접힌 한 줄(`Defaults · N`)로 보이고, 펼치면 칸마다 기본값(`Default: …`)이다(10-02 `d06199e6a`). 초안은 파일에 적힌 선언 그대로 열리고, 저장은 로더가 채우는 칸을 파일에 적지 않는다. 소스 시각을 사건 엣지로 옮기는 이주는 `python -m scripts.migrate_ledger_slim_sources`(미리보기) → `--apply --source <소스>`.
 
 | 필드 | 설명 |
 |---|---|
@@ -1009,13 +1019,13 @@ subject/object entity type으로 모양을 계산해 후보를 골랐고, 그래
 | `read.occurred_at.basis` | 표에 세계 시각이 **없을 때** `column` 대신. 현재 `"ingested"` 하나 |
 | `read.occurred_at.timezone` | 명시적 IANA timezone. 묵시 기본값 없음 |
 | `read.cursor.columns` | physical keyset cursor 컬럼. 🔴 **[2026-08-22 `90383987`] 더 이상 «묻지 않는다»** — `read.order_by`에서 파생돼 번들에 쓰인다(아래) |
-| `read.registration_probe` | 이미 등록된 개체를 가려내는 probe. **`bind`가 `register`을 내는 소스에는 필수** — 🆕 10-02 안 적으면 등록하는 주어마다 그 키 칼럼 하나로 채운다(키가 하나가 아닌 주어는 기본값 없음 → 오늘처럼 `registration_context_required`) |
+| ⚰️ `read.registration_probe` | 은퇴(10-07, 총괄 a6db2f469 ④) — 읽는 곳이 없다(실행은 원장에 이미 있는 등록으로 거른 적이 없었다). 적혀 있으면 로드가 「retired cell: … can be deleted」 한 줄을 남기고 받는다 · 거절하지 않는다 |
 | ⚰️ `prepare` | 은퇴(setup_version 6) — 적으면 `prepare_retired` (§7.3) |
 | `map` | 이 소스의 mapper 본문 (§7.4) |
 | `bind` | 이 소스의 문장 별명 → Role binding (§7.6) |
 
 `read`의 여섯(`unit`·`identity`·`group_by`·`order_by`·`occurred_at`·`cursor`)은 번들에 전부
-있어야 하고 `registration_probe`만 문법상 선택이다. **다만 사람이 적는 것은 다섯이다(row 소스는 넷)** —
+있어야 한다. **다만 사람이 적는 것은 다섯이다(row 소스는 넷)** —
 `cursor`는 아래대로 파생되고, row 소스는 `group_by`를 적지 않는다. `occurred_at`의 `column`과 `basis`는 **정확히 하나**여야 한다 —
 둘 다 적거나 둘 다 없으면 거절된다. 자세한 것은 §7.9.
 
@@ -1032,24 +1042,7 @@ subject/object entity type으로 모양을 계산해 후보를 골랐고, 그래
   컬럼으로 페이징하고 있었다 — 두 칸을 한 계약으로 채점하던 탓에 결함 하나가 둘로 보고됐고
   작성자는 같은 답을 두 번 붙여넣고 있었다(소유자: 「커서 어차피 복붙할건데 왜 적으라 그래?」).
 
-🔴 **`registration_probe`의 「선택」은 문법의 말이지 소스의 말이 아니다.** `bind`의 문장
-가운데 하나라도 `register`을 내면 이 절은 **필수**다 — `runtime_v2._filtered_event_atoms`가
-`registration_context_required`로 **런을 통째로 거절**한다(`backfill._probe_subjects`가
-probe 없는 소스에 `None`을 돌려주기 때문이고, 빈 집합을 돌려주면 첫 등록이 매 batch 중복
-발화한다). `lot_event`가 오래 돌지 못한 이유가 이것이었다. 화면은 이 조건을 소스마다
-따져서 묻는다 — `config_authoring._registering_sentences`가 `bind`의 문장에서 `register`를
-찾고, 찾으면 `bundle.sources.<id>.read.registration_probe` 칸을 **`missing`으로 세운다.**
-`entity_type` 후보는 전체 개체가 아니라 **그 문장들이 실제로 등록하는 것들로 좁혀지고**,
-어느 소스·컬럼·이름 패턴에도 키를 걸지 않는다 — 문장이 「등록한다」인지는 그 술어가
-`vocabulary.PREDICATES`의 정준 `register`로 풀리느냐로 판정하며, 이는 `runtime_v2`와
-`backfill`이 원자를 대조할 때 쓰는 **같은 철자**다.
-
-🔴 **`registration_probe.columns`는 «물리» 컬럼이다 — 준비기가 만든 이름이 아니다.**
-`bind`가 쓰는 철자를 기억으로 옮겨 적으면 `'lot_event' has no column 'lot'`으로 거절된다.
-(⚰️ 그 차이를 보여 주던 `lot_event` — probe는 물리 `lot_id`·`waferids`, binding은 준비기 출력
-`lot`·`wafers` — 는 setup_version 6 에서 은퇴했다. 준비기가 없으니 오늘은 binding도 물리 컬럼이다.)
-화면은 그래서 **relation의 물리
-카탈로그 컬럼**을 후보로 내놓는다: probe가 진짜로 읽는 우주가 그것이다.
+⚰️ **[10-07] `registration_probe` 와 `registration_context_required` 는 은퇴했다.** 등록 문장이 있는 소스는 probe 없이 돈다 — 키가 둘 이상인 주어도 마찬가지다.
 
 `order_by`는 catalog가 선언한 유일 키를 완전히 포함해야 하고, `cursor.columns`는 그것과
 **같은 값**이 되므로 같은 성질을 물려받는다. 위 `lot_event`는 `row_id`가 유일 키라

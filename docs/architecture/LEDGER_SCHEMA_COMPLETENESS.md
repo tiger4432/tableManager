@@ -38,7 +38,7 @@
 | 속성 — 값 | ① 자리 / 🔴 **③ 정의역** | `sources.<s>.bind.entities.<t>.attributes.<name>` = `column`\|`constant` (:1821~1850). 역할 층 override 는 `…bind.<role>.attributes` :1425 | 🔴 `attribute` 역할 → `_scalar` → **스칼라 «하나»**. 목록 ❌ · 객체 ❌ · 시각 ❌. DB 는 JSONB 라 목록을 «담을 수는» 있는데 발행이 거절한다 — 층이 어긋난 자리 | 원자 `object_payload.qualifiers` · CHECK `ck_ledger_objectless_carries_only_qualifiers`(`schema.py:99`) · 걷기 노드 `attributes` · 클라 |
 | 속성 — 복수값 | 🔴 **③ — 09-11 재측정, «오늘도 참»** (`roleframe._scalar` 가 스칼라 하나만 받습니다) | 위 정의역의 귀결. 「이 웨이퍼의 product 가 «둘»」을 적을 자리가 없다 — 두 값은 «충돌»로 읽힌다(걷기 `attribute_conflicts`) | — | — |
 | 존재 — 등록 | ② | 🔴 **술어 이름이 «고정»이다: `register`.** 선언이 못 바꾼다 — `REGISTER_PREDICATE`(`config_authoring.py:101`) · DB CHECK `ck_ledger_register_has_no_object`(`schema.py`) · 부분 인덱스 `WHERE predicate = 'register'`(`store.py:117,:129`) | — | 셋 다 |
-| 존재 — 첫 목격 | ① | `sources.<s>.read.registration_probe[]` = `{entity_type, columns, list_separator?}` :1526~ | 목록 · 물리 컬럼 이름 | 드라이버가 페이지마다 store 에 묻고 «중복 register 를 억누른다» |
+| 존재 — 첫 목격 | ① | ~~`sources.<s>.read.registration_probe[]` = `{entity_type, columns, list_separator?}`~~ ⚰️ 10-07 `bd33605af` 은퇴 — 실행은 이 값으로 원장에 묻지 않았다(모든 문 `known_registrations=()`). 로드는 「retired cell … can be deleted」 한 줄 | ~~목록 · 물리 컬럼 이름~~ | ~~드라이버가 페이지마다 store 에 묻고 «중복 register 를 억누른다»~~ |
 | 존재 — **은퇴** | ✅ **① (09-11 D-3c 재측정 — 이 행이 «거짓»이었습니다)** — `entities.<t>` 의 optional 에 `status` 가 «있고»(`setup_bundle.py`), 은퇴한 타입을 내는 문장은 `_retired_entity_types` 가 «이름 대어» 거절합니다. S-103(`b61c67fa`, 09-10 07:23)이 닫았고 이 행만 남아 있었습니다. 🪦 당시 근거: | `entities.<t>` 의 optional 목록 :1119 = `(key_types, allow_null, references, class, attributes)` — **`status` 가 없다.** 술어에는 있다(A2) | — | — |
 | 시간(속성 변경) | ① | 새 등록 원자. 걷기가 최신 `occurred_at` 을 이기고 서로 다른 값의 수를 `attribute_conflicts` 로(`WALK.md` §4) | — | 걷기 · 클라 |
 | 표면 `label` | ② | 🔴 선언 칸이 «없다» — `ledger_subgraph.py:384` 가 **`keys` 앞 «둘»을 `" / "` 로 이어** 만든다. 비면 타입 이름 | — | 화면 |
@@ -650,7 +650,7 @@ C-5 마킹 대수           🔴 ③ 그대로 = 표 B B1-1. 걷기에 ∩·∖�
 | `qualifiers.required/optional` | `fact` 의 **Q** | ✅ |
 | `status`(술어) | D_P 의 «수명» | ✅ |
 | `sources.<s>` 의 `relation`·`read`·`map`·`bind`(🆕 10-01 `0b59a2f30` — ~~`prepare`~~ 은퇴) | **Π** 로 가는 번역 | ✅ |
-| `registration_probe` | Π 의 「첫 목격」 — fact(register) 를 «한 번만» | ✅ |
+| ~~`registration_probe`~~ | ~~Π 의 「첫 목격」 — fact(register) 를 «한 번만»~~ | ⚰️ 10-07 `bd33605af` 은퇴 |
 | `occurred_at`(+ `basis`) | **τ** | ✅ |
 | `setup_version` · 지문 | **Π** 의 리비전 | ✅ |
 | 🔴 `key_types` | **없다** — 어느 생성자의 인자도 아니고 «읽는 쪽»도 0 | ③′ → 삭제(판정 165) |
@@ -1138,6 +1138,7 @@ Q-짝짓기  «분자 안의 위치» — 같은 분자의 «다른 행/다른 �
 ```
 
 ## D-7-2. ✅ 「처음 본 주어인가」 — 칸이 «있습니다». 제 「전제 밖」도 틀렸습니다
+> ⚰️ 10-07 `read.registration_probe` 은퇴(총괄 a6db2f469 ④) — 실행은 그 값으로 원장을 조회한 적이 없었다(모든 문 `known_registrations=()`). 아래는 그때의 실측이다.
 ```
 실측   `read.registration_probe` 가 문법 칸입니다(`required: false`) — 검증 `_validate_registration_probe`,
       읽는 곳 `backfill.py:1573` (`plan.driver.registration_probe`), 폼·작성기 `config_authoring.py:1751~1772`
@@ -1183,7 +1184,7 @@ Q-짝짓기  «분자 안의 위치» — 같은 분자의 «다른 행/다른 �
 | `list_separator` | **emit** 의 다중 | ① |
 | `object.value_type` | **emit** 의 정의역 | ① (넷 다 · timestamp 는 바인딩 `timezone` 필요) |
 | `entities.*.allow_null` | **emit** 의 부재 | ② |
-| `read.registration_probe` | **규칙의 «명시된 예외»**(비국소) | ① |
+| ~~`read.registration_probe`~~ | ~~**규칙의 «명시된 예외»**(비국소)~~ — 10-07 `bd33605af` 은퇴, 예외는 닫혔다(BASIS `d6795570a`) | ① |
 | `decision_key` | 번역 인자 «아님** — 표의 판단 단위(판정 165) | ① |
 | ⚰️ ~~`prepare.accepts_verified_join_rules` · `inherit_virtual_join_rules`~~(🆕 10-01 `0b59a2f30` 은퇴) | **규칙 «밖»**(조인) | 칸 있음 · 샘플 소비 0 → S-100 |
 | `status` (술어) | 번역 인자 «아님** — 선언의 수명 | ✅ ① — «읽힙니다**(`roleframe._emission_plan` `predicate.status != "active"` 면 발행 안 함) |
@@ -1200,7 +1201,7 @@ Q-짝짓기  «분자 안의 위치» — 같은 분자의 «다른 행/다른 �
 방향 ①  ✅ 참 — 문법 칸 중 인자로 안 가는 것 «0» (D-4)
 방향 ②  🔴 «하나» 남음 — select(문장 선택) = S-99.
         값 변환 · 그룹 집계 · 짝짓기는 «규칙 밖»이므로 동결 대상이 아니라 S-100 «부채»다
-        「처음 본 주어」는 규칙의 명시된 예외이고 칸이 있다(`read.registration_probe`)
+        「처음 본 주어」는 규칙의 명시된 예외이고 칸이 있다(`read.registration_probe`)   ⚰️ 10-07 `bd33605af` 은퇴
 🔴 그리고 이 셈 «밖»에 둘이 더 있다 — 「엔티티·소스의 수명」(③′, D-7-6) ·
    그리고 D-7-3 이 연 「제외된 행의 옛 원자」(칸의 문제가 아니라 «기제»의 문제)
 => 2026-09-09 18:2x 기준: 번역 인자의 ③ = «1»(S-99). 문법 칸 전체로는 ③′ 이 «하나» 더(수명).
@@ -1325,7 +1326,7 @@ lot-event-live-frame (준비기)  같은 부류
 방향 ②  ✅ 참   여섯 인자가 «전부» 칸을 갖는다
                read ① · filter ①(S-91) · unit ① · **select ①(S-99, 18:33 닫힘)** ·
                emit ①(t ① · 다중 ① · 정의역 ② · 부재 ②)
-               규칙의 «명시된 예외» registration_probe ① (비국소성이 칸으로 이미 표현돼 있다)
+               규칙의 «명시된 예외» registration_probe ① (비국소성이 칸으로 이미 표현돼 있다)   ⚰️ 10-07 `bd33605af` 은퇴
 
 넷째 항  ✅ 참   **출하 샘플이 «혼자» 선다** (판정 09-03 의 문법 동결 정의 ④ · 실측 19:0x)
                한 파일 루트에 `ledger_config.json.sample` «하나»만 두고 제품의 진입점으로:

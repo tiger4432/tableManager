@@ -443,6 +443,26 @@ def _present(value) -> bool:
         and bool(str(value).strip())
 
 
+#: 🔴 [총괄 4c3417ccb ③] THE ROW EACH OUTPUT ROW WAS READ FROM, carried by the frame itself. The
+#: author's frame gets this column (a copy of its `row_id`); an output row that still has it is
+#: stamped with it, and the column is not written. NOT THE INDEX: `payloads_to_df` hands a
+#: RangeIndex, and a reset or a groupby on whole numbers hands back the same labels for rows that
+#: came from elsewhere. An aggregate that drops the column is stamped with nothing.
+ORIGIN_MARK = "__origin_row_id"
+
+
+def _stamped_updates(out, table, *, source_name, updated_by) -> dict:
+    """`df_to_updates` of the author's frame, each item stamped with the row it came from while the
+    frame still carries `ORIGIN_MARK` - row for row, in the order `df_to_updates` keeps."""
+    origins = out[ORIGIN_MARK].tolist() if ORIGIN_MARK in out.columns else ()
+    result = df_to_updates(out.drop(columns=[ORIGIN_MARK], errors="ignore"), table,
+                           source_name=source_name, updated_by=updated_by)
+    for item, origin in zip(result["updates"], origins):
+        if _present(origin):
+            item["origin_row_id"] = str(origin)
+    return result
+
+
 def _removal_batches(rule, table, rows_in, out, *, source_name, updated_by) -> dict:
     """The rule's removal flag as the scoped batches the seat reads (ed70c3970 ② · 717f60124).
 
@@ -473,7 +493,7 @@ def _removal_batches(rule, table, rows_in, out, *, source_name, updated_by) -> d
     # ⚠️ LINEAR IN THE ROWS. `df_to_updates` gives one item per row in row order, so it runs ONCE
     #    and each job's items are picked by position (measured: per-job masks and calls took
     #    36.7 s for 5,000 jobs x 50,000 rows).
-    items = (df_to_updates(out, table, source_name=source_name, updated_by=updated_by)["updates"]
+    items = (_stamped_updates(out, table, source_name=source_name, updated_by=updated_by)["updates"]
              if not out.empty else [])
     at = {}
     if not out.empty:
@@ -564,6 +584,8 @@ def mapper(target_table=None, *, source_name: str = "chain_ingestion",
                     f"is decided from that table's declaration, so there is nothing to "
                     f"decide it from.")
             rows_in = payloads_to_df(payloads)
+            if "row_id" in rows_in.columns:
+                rows_in[ORIGIN_MARK] = rows_in["row_id"]
             out = fn(rows_in, db)
             if out is not None and not isinstance(out, pd.DataFrame):
                 raise MapperContractError(
@@ -575,8 +597,8 @@ def mapper(target_table=None, *, source_name: str = "chain_ingestion",
                                         updated_by=updated_by or fn.__name__)
             if out is None:
                 return {"updates": []}
-            return df_to_updates(out, table, source_name=source_name,
-                                 updated_by=updated_by or fn.__name__)
+            return _stamped_updates(out, table, source_name=source_name,
+                                    updated_by=updated_by or fn.__name__)
         setattr(run, _MADE_BY_SDK, True)
         # 🔴 REGISTERED UNDER THE AUTHOR'S FUNCTION NAME unless one is given. The name a
         # rule writes has to be a name the author can see in their own file; a generated

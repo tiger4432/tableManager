@@ -444,24 +444,13 @@ def _preview_frame(engine, setup, source, plan, frame, world=None):
     from .runtime_v2 import _filtered_event_atoms, last_cursor
 
     result = {}
-    subjects = _v2_registration_subjects(plan, frame)
     cursor_value = last_cursor(plan, frame)
+    # `()` - "nothing assumed already registered" - on every door: the preview counts what the
+    # apply then writes, so the two ask on the same basis (the probe that could say otherwise
+    # retired 10-07; nothing ever handed it a live set).
     preview = preview_selected_cursor_batch(
-        setup, source, frame, cursor_value,
-        known_registrations=None if subjects is None else ())
-    # 🔴 THE SAME REGISTRATION BASIS AS THE LINE ABOVE, AND IT HAS TO BE. `None` there
-    # means "this source declares no probe"; here it means "no snapshot was supplied", and
-    # `_filtered_event_atoms` refuses that outright the moment any `register` atom appears
-    # (`registration_context_required`). So a source that registers -- which is most of
-    # them -- could never get a rescope PREVIEW at all, while `rescope` itself offered `()`
-    # and worked. Two spellings of one question, and the preview held the wrong one from
-    # `b98f0c38` (2026-08-17) until now.
-    #
-    # `()` is "nothing assumed already registered", which is exactly what `rescope`'s own
-    # docstring says it offers: the preview counts what the apply then writes, so the two
-    # have to ask on the same basis or the number shown is not the number produced.
-    atoms = [atom for group in _filtered_event_atoms(
-                preview.event_results, None if subjects is None else ())
+        setup, source, frame, cursor_value, known_registrations=())
+    atoms = [atom for group in _filtered_event_atoms(preview.event_results, ())
              for atom in group]
     refs = sorted({str(atom.source_raw_ref) for atom in atoms})
     result["remake"] = len(atoms)
@@ -756,12 +745,11 @@ def rescope(engine, setup, source, scope_column, scope_values, apply=False,
         # Neither the new translation nor the index says anything about these rows: there
         # is nothing to withdraw and nothing to put in its place.
         if aimed is None or aimed:
-            subjects = _v2_registration_subjects(plan, frame)
             # a whole source names each page by its own rows - the door proves a batch
             # is exactly what was named, page by page
             executed = execute_selected_scoped_batch(
                 setup, source, frame, scoped or (plan.frame_row_id, scope_row_ids), store,
-                known_registrations=None if subjects is None else (),
+                known_registrations=(),
                 withdraw_refs=aimed, preview=previewed and previewed["preview"])
             written = executed.store_result
             for key in ("withdrawn", "attempted", "inserted", "deduped"):
@@ -1719,20 +1707,13 @@ def preview_first_batch(engine, setup, source, fetch_rows=PREVIEW_FETCH_ROWS,
     is the only position that answers the question for a new source and an old one alike.
     Nothing here reads or writes `ledger_cursor`.
 
-    🔴 `known_registrations` IS THE EMPTY SNAPSHOT WHEN A PROBE IS DECLARED, and that is a
-    decision rather than a shortcut. Passing the LIVE set makes every `register` sentence
-    report zero on a source that has already been backfilled -- measured on `lot_event`:
-    1,173 atoms with the live set against 1,323 with the empty one, the difference being
-    150 registrations the ledger already holds. A sentence reporting zero because the work
-    is done reads identically to a sentence that emits nothing, which is the silent hole
-    this whole surface exists to remove. The empty snapshot answers what the DECLARATION
-    says about these rows.
-
-    🔴 `None` WHEN NO PROBE IS DECLARED, and that is NOT the same as empty. `None` is what
-    makes `runtime_v2._filtered_event_atoms` refuse with `registration_context_required`
-    for a source that emits `register` without declaring how to look one up -- one of the
-    five refusals `lot_event` met at backfill while the screen was green. Substituting an
-    empty set here would swallow it.
+    🔴 `known_registrations` IS THE EMPTY SNAPSHOT, as on every door. Passing the LIVE set
+    makes every registration report zero on a source that has already been backfilled --
+    measured on `lot_event`: 1,173 atoms with the live set against 1,323 with the empty one,
+    the difference being 150 registrations the ledger already holds. A sentence reporting zero
+    because the work is done reads identically to a sentence that emits nothing. The empty
+    snapshot answers what the DECLARATION says about these rows - and it is what execution
+    hands the filter too.
     """
     from .runtime_v2 import last_cursor
     from .setup import preview_selected_cursor_batch
@@ -1777,12 +1758,9 @@ def preview_first_batch(engine, setup, source, fetch_rows=PREVIEW_FETCH_ROWS,
             if sample_rows and not page_keys:
                 page_keys = _rows_sample(plan, complete, len(complete))
             frame = _v2_frame(complete)
-            subjects = _v2_registration_subjects(plan, frame)
-            known = None if subjects is None else ()
             cursor_value = last_cursor(plan, frame)
             answered = preview_selected_cursor_batch(
-                setup, source, frame, cursor_value,
-                known_registrations=known)
+                setup, source, frame, cursor_value, known_registrations=())
             refusals.extend(answered.refusals)
             if answered.excluded_rows is not None:
                 excluded = (excluded or 0) + answered.excluded_rows
@@ -2079,65 +2057,6 @@ def _fetch_v2_lineage_rows(connection, plan, columns, *, after=None, group_value
         cursor.execute(query, tuple(params))
         names = [description[0] for description in cursor.description]
         return [dict(zip(names, row)) for row in cursor.fetchall()]
-
-
-def _v2_registration_subjects(plan, frame):
-    """One batched first-sight query, driven by the source's declared probe.
-
-    This function used to be `_v2_lot_event_subjects` and named `lot_id`, `parent_lot`,
-    `child_lot`, `waferids`, `"Lot"`, `"Wafer"` and `":"` as literals -- so `run()` sent
-    EVERY v2 source down a branch that could only work for one table. That is why no
-    second source could be stood up on v2 at all, and it is what this replaces.
-
-    Returns `None` when the source declares no probe. `None` is not "no subjects": it is
-    "this source did not answer the question", and `runtime_v2._filtered_event_atoms`
-    refuses with `registration_context_required` if the source emits `register` anyway. A
-    source that emits no `register` needs no probe and is unaffected. Returning an empty
-    set instead would claim nothing is registered yet, which SUPPRESSES nothing and
-    duplicates every first-sight atom -- the unsafe direction (see
-    `setup_bundle._validate_registration_probe` for why the error is one-sided).
-    """
-    import map_overlay
-    from .envelope import canonical_keys
-
-    probes = plan.driver.registration_probe
-    if not probes:
-        return None
-    subjects = set()
-    for probe in probes:
-        values = []
-        for column in probe.columns:
-            if column in frame.columns:
-                values.extend((column, value) for value in frame[column].tolist())
-        for column, value in values:
-            # 🔴 `or ""` HERE IS NOT `crud.is_blank_value`, AND ON THIS PATH THE DIFFERENCE
-            # IS REACHABLE. `values` comes from `frame[column].tolist()` - the SOURCE
-            # ROWS - so whatever the probe column actually holds arrives here. `or ""`
-            # swallows every falsy value before `str` sees it, so a probe column holding
-            # exactly `0` or `False` reads as blank and the subject is skipped with no
-            # error and no log line.
-            #
-            # NOT A DEFECT TODAY, MEASURED 2026-09-03: every probe column the shipped
-            # declaration names is an identifier - `dt_job`, `lot_id`, `waferids` - and an
-            # identifier is never `0`. But the grammar constrains `columns` to a list of
-            # NAMES and says nothing about their type, so declaring a numeric probe column
-            # is one config line away, and the day it happens this loses rows silently.
-            # Left as it is on the lead PM's ruling (report it, do not fix it); what makes
-            # it safe is the declaration, not this line.
-            text = str(value or "").strip()
-            if not text:
-                continue
-            parts = (text.split(probe.list_separator) if probe.list_separator
-                     else [text])
-            for part in parts:
-                # 🔴 [총괄 7233a7a31] THE SPELLING THE KEY GETS IN THE ATOM - the one key
-                # canonicalizer, by this column's declared type - or a number key would be
-                # first-seen again on every run.
-                key = map_overlay.canonical_bind_value(plan.relation, column, part)
-                if key:
-                    subjects.add((probe.subject_type,
-                                  canonical_keys({probe.identity_key: key})))
-    return subjects
 
 
 def beat(result):

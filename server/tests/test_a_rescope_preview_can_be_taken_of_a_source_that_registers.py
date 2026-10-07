@@ -17,8 +17,8 @@ preview.
 
 ⚠️ NO DATABASE HERE, AND THE FETCH IS THE ONLY THING STANDING IN. `_fetch_v2_lineage_rows`
 and the ledger store are replaced; everything between them -- `_v2_frame`,
-`_v2_registration_subjects`, `preview_selected_cursor_batch`, `_filtered_event_atoms` -- is
-the production path, and it is where the defect lived.
+`preview_selected_cursor_batch`, `_filtered_event_atoms` -- is the production path, and it is
+where the defect lived. (The probe and `registration_context_required` retired 10-07.)
 """
 import json
 import os
@@ -172,13 +172,9 @@ def test_the_preview_counts_the_register_the_apply_would_write(setup, no_databas
 def test_the_preview_asks_on_exactly_the_basis_the_apply_offers(setup, no_database,
                                                                 monkeypatch):
     """🔴 THE PROPERTY, NOT JUST THE SYMPTOM. Two spellings of one question is what this
-    was, so what is pinned is the ARGUMENT: `()` for a source that declares a probe --
-    "nothing assumed already registered", which is what `rescope` applies on -- and `None`
-    for one that declares none, which is the one-sided safety that makes an unexpected
-    `register` a refusal rather than a silent duplicate.
-
-    Passing `()` unconditionally would fix the symptom and lose the second half; nothing
-    else in this file could tell, because a source with no probe emits no `register`."""
+    was, so what is pinned is the ARGUMENT: `()` -- "nothing assumed already registered",
+    which is what `rescope` applies on -- at both askers, for every source (the probe and its
+    `None` refusal retired 총괄 10-07 ④)."""
     from ledger import runtime_v2
 
     seen = []
@@ -196,9 +192,8 @@ def test_the_preview_asks_on_exactly_the_basis_the_apply_offers(setup, no_databa
                         lambda *args, **kwargs: transfer_log_rows())
     backfill.preview_rescope(
         no_database, setup, "transfer_event", "dt_cell_key", ["C0"])
-    assert len(seen) == 2 and all(basis is None for basis in seen), (
-        "a source that declares no probe must keep, at both askers, the refusal that "
-        "catches an unexpected register")
+    assert len(seen) == 2 and all(basis == () for basis in seen), (
+        "a source that registers nothing is asked on the same basis")
 
 
 def test_a_source_that_does_not_register_is_unchanged(setup, no_database, monkeypatch):

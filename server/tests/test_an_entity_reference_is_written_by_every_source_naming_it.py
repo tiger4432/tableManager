@@ -143,7 +143,7 @@ def test_one_entity_named_twice_is_one_atom_backed_by_every_row_that_named_it(sn
             "object_payload": {"type": "die", "keys": die}, "occurred_at": "t", "source_who": "s",
             "source_translator_ver": "v", "source_raw_ref": "r", "supersedes": None, "molecule_ref": "m",
             "derivation": "die-inspected"}
-    named = [("die", die, base, ("row-1",)), ("die", dict(die), dict(base), ("row-2",))]
+    named = [("die", die, base, ("row-1",), None), ("die", dict(die), dict(base), ("row-2",), None)]
     made = roleframe._reference_rows(SimpleNamespace(snapshot=snapshot), named, [base], "event-ref", "p#")
     assert len(made) == 1
     assert json.loads(made[0]["source_raw_ref"])["rows"] == ["row-1", "row-2"]

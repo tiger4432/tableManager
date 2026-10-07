@@ -72,7 +72,6 @@ def rescope_doors(monkeypatch):
     monkeypatch.setattr(backfill, "_readable_columns", lambda engine, plan: ())   # the read is faked, so is its catalogue question
     monkeypatch.setattr(backfill, "_scope_predicate", lambda plan, scope: scope)
     monkeypatch.setattr(setup_module, "_require_declared_source", lambda setup, source: source)
-    monkeypatch.setattr(backfill, "_v2_registration_subjects", lambda plan, frame: None)
     monkeypatch.setattr(backfill, "_preview_frame", lambda e, s, src, plan, frame, **_: {
         "withdraw": len(frame), "remake": len(frame), "refs": list(frame["row_id"]),
         "preview": None})

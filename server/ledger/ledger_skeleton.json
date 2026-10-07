@@ -665,50 +665,6 @@
                       }
                     },
                     {
-                      "key": "registration_probe",
-                      "required": false,
-                      "node": {
-                        "kind": "map",
-                        "keyed_by": "index",
-                        "member": "Probe",
-                        "of": {
-                          "kind": "record",
-                          "fields": [
-                            {
-                              "key": "entity_type",
-                              "required": true,
-                              "node": {
-                                "kind": "leaf",
-                                "hint": "ref",
-                                "section": "entities"
-                              }
-                            },
-                            {
-                              "key": "columns",
-                              "required": true,
-                              "node": {
-                                "kind": "map",
-                                "keyed_by": "index",
-                                "member": "Column",
-                                "of": {
-                                  "kind": "leaf",
-                                  "hint": "free"
-                                }
-                              }
-                            },
-                            {
-                              "key": "list_separator",
-                              "required": false,
-                              "node": {
-                                "kind": "leaf",
-                                "hint": "free"
-                              }
-                            }
-                          ]
-                        }
-                      }
-                    },
-                    {
                       "key": "exclude_when",
                       "required": false,
                       "label": "Exclude when",

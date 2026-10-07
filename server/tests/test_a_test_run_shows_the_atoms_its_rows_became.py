@@ -48,23 +48,13 @@ def _service(tmp_path, document):
         config_root=root, draft_root=tmp_path / "drafts", catalog_loader=lambda: catalog)
 
 
-def _run(tmp_path, document, relation, sample_rows, registered=frozenset()):
+def _run(tmp_path, document, relation, sample_rows):
     service = _service(tmp_path, document)
     setup, _index, _ = service.active()
-    asked = []
-
-    def existing(self, connection, subjects):
-        asked.append(set(subjects))
-        return set(subjects) & set(registered)
-    original = store.LedgerStore.existing_registrations
-    store.LedgerStore.existing_registrations = existing
-    try:
-        plan = setup.snapshot.source_plans[SOURCE]
-        result = service.test_run(_StubEngine(relation, plan.driver.cursor_columns[0]),
-                                  source_id=SOURCE, sample_rows=sample_rows)
-    finally:
-        store.LedgerStore.existing_registrations = original
-    return setup, result, asked
+    plan = setup.snapshot.source_plans[SOURCE]
+    result = service.test_run(_StubEngine(relation, plan.driver.cursor_columns[0]),
+                              source_id=SOURCE, sample_rows=sample_rows)
+    return setup, result
 
 
 def _preview(setup, relation, sample_rows):
@@ -79,7 +69,7 @@ def _record(entry):
 
 def test_the_sample_is_what_execution_writes_spelled_as_the_ledger_writes_it(tmp_path):
     relation = [_row(i) for i in range(4)]
-    setup, result, _ = _run(tmp_path, _document(registered_wafer=True, attribute=True), relation, 2)
+    setup, result = _run(tmp_path, _document(registered_wafer=True, attribute=True), relation, 2)
     reading = _preview(setup, relation, 2)
     kept = runtime_v2._screened_atoms(setup.snapshot, SOURCE, reading.preview)  # execution's own
     shown_rows = {row["row_id"] for row in result["rows_sample"]}
@@ -101,7 +91,7 @@ def test_the_ledger_write_goes_through_the_same_record(monkeypatch, tmp_path):
     import psycopg2.extras
 
     relation = [_row(i) for i in range(3)]
-    setup, _result, _ = _run(tmp_path, _document(registered_wafer=True, attribute=True), relation, 3)
+    setup, _result = _run(tmp_path, _document(registered_wafer=True, attribute=True), relation, 3)
     atoms = runtime_v2._screened_atoms(setup.snapshot, SOURCE, _preview(setup, relation, 3).preview)
     written = []
     monkeypatch.setattr(psycopg2.extras, "execute_values",
@@ -126,7 +116,7 @@ def test_the_ledger_write_goes_through_the_same_record(monkeypatch, tmp_path):
 
 
 def test_a_role_attribute_shows_on_its_own_registration_not_inside_the_relation(tmp_path):
-    _setup, result, _ = _run(tmp_path, _document(registered_wafer=True, attribute=True),
+    _setup, result = _run(tmp_path, _document(registered_wafer=True, attribute=True),
                              [_row(i) for i in range(2)], 1)
     by_sentence = {entry["sentence"]: entry for entry in result["atoms_sample"]}
     assert by_sentence["wafer-registered"]["object_payload"] == {"qualifiers": {"event_type": "track_in"}}
@@ -139,13 +129,13 @@ def test_an_event_of_a_source_that_admits_its_time_basis_shows_that_basis(tmp_pa
     document = _document()
     document["sources"][SOURCE]["read"]["occurred_at"] = {"basis": basis, "timezone": "Asia/Seoul"}
     rows = [dict(_row(i), created_at=datetime(2026, 10, 7, 1, i, tzinfo=timezone.utc)) for i in range(2)]
-    _setup, result, _ = _run(tmp_path, document, rows, 2)
+    _setup, result = _run(tmp_path, document, rows, 2)
     assert [(entry["sentence"], entry["occurred_at_basis"]) for entry in result["atoms_sample"]] == [
         ("seat-holds-wafer", basis)] * 2
 
 
 def test_every_atom_points_into_the_rows_shown_and_none_comes_from_outside(tmp_path):
-    _setup, result, _ = _run(tmp_path, _document(), [_row(i) for i in range(4)], 2)
+    _setup, result = _run(tmp_path, _document(), [_row(i) for i in range(4)], 2)
     shown = {row["row_id"] for row in result["rows_sample"]}
     assert result["atoms"] == 4 and shown == {"ROW-000", "ROW-001"}      # canary: the page made more
     assert {r for entry in result["atoms_sample"] for r in entry["row_ids"]} == shown
@@ -159,7 +149,7 @@ def test_the_rows_the_atoms_and_the_sentences_come_from_one_page(tmp_path):
     document["sources"][SOURCE]["read"]["exclude_when"] = [{"column": "wafer", "blank": True}]
     blank = backfill.PREVIEW_FETCH_ROWS
     relation = [_row(i, filled=False) for i in range(blank)] + [_row(i) for i in range(blank, blank + 3)]
-    _setup, result, _ = _run(tmp_path, document, relation, 2)
+    _setup, result = _run(tmp_path, document, relation, 2)
     assert result["pages"] == 2 and result["atoms"] == 3                 # canary: the head was skipped
     first_page = {"ROW-%03d" % i for i in range(blank - 1)}             # cut on a group boundary
     shown = [row["row_id"] for row in result["rows_sample"]]
@@ -172,31 +162,26 @@ def test_rows_with_no_row_id_are_refused_before_any_atom(tmp_path):
     """Every planned source reads rows that carry a row id (총괄 f3bc02f6e), so there is no
     untied sample to show: such rows stop the run before an atom exists."""
     relation = [{k: v for k, v in _row(i).items() if k != "row_id"} for i in range(3)]
-    _setup, result, _ = _run(tmp_path, _document(), relation, 2)
+    _setup, result = _run(tmp_path, _document(), relation, 2)
     assert (result["status"], result["refusal"]["code"]) == ("refused", "source_preparation_incomplete")
     assert "atoms_sample" not in result
 
 
 def test_more_atoms_than_the_limit_are_cut_and_counted(tmp_path):
     over = runtime_v2.ATOMS_SAMPLE_LIMIT + 7
-    _setup, result, _ = _run(tmp_path, _document(), [_row(i) for i in range(over)], over)
+    _setup, result = _run(tmp_path, _document(), [_row(i) for i in range(over)], over)
     assert len(result["atoms_sample"]) == runtime_v2.ATOMS_SAMPLE_LIMIT
     assert (result["truncated"]["atoms_sample"]["cut"], result["truncated"]["atoms_sample"]["omitted"]) == (True, 7)
 
 
 def test_a_registration_the_ledger_already_holds_is_written_as_execution_writes_it(tmp_path):
     """총괄 10-07 ㄱ: `rescope` hands the registration filter no ledger-held subjects, so the
-    sample asks the ledger nothing and marks nothing a ledger holding W000 would change."""
-    from ledger.envelope import registration_token
-
-    held = registration_token("wafer", {"wafer": "W000"})
-    _setup, result, asked = _run(tmp_path, _document(registered_wafer=True), [_row(i) for i in range(5)],
-                                 3, registered={held})
+    sample reads no ledger and marks no registration as dropped."""
+    _setup, result = _run(tmp_path, _document(registered_wafer=True), [_row(i) for i in range(5)], 3)
     assert result["atoms"] == 10                                         # canary: the page has more
     registrations = [e for e in result["atoms_sample"] if e["sentence"] == "wafer-registered"]
     assert [(e["subject_keys"]["wafer"], e["writes"], e["drop_reason"]) for e in registrations] == [
         ("W000", True, None), ("W001", True, None), ("W002", True, None)]
-    assert asked == []
 
 
 def test_a_gate_refusal_marks_every_atom_and_moves_no_process_counter(monkeypatch, tmp_path):
@@ -207,7 +192,7 @@ def test_a_gate_refusal_marks_every_atom_and_moves_no_process_counter(monkeypatc
         return real(source, atoms, *args, **kwargs)
     monkeypatch.setattr(gate, "screen_compiled_molecule", refusing)
     before = gate.refusals()
-    _setup, result, _ = _run(tmp_path, _document(), [_row(i) for i in range(2)], 2)
+    _setup, result = _run(tmp_path, _document(), [_row(i) for i in range(2)], 2)
     assert result["atoms_sample"]                                        # canary
     assert {(e["writes"], e["drop_reason"]) for e in result["atoms_sample"]} == {
         (False, gate.REFUSE_ATOMICITY)}

@@ -29,8 +29,9 @@ from .roleframe import (
 )
 from .event_frame import bound_select_columns
 from .schema import NOT_AN_EVENT_BASIS
-from .setup_bundle import is_event_time_role
-from .setup_registry import LedgerSetupSnapshot, cursor_translator_version, is_reference_derivation
+from .setup_bundle import is_event_time_role, is_registration
+from .setup_registry import (
+    LedgerSetupSnapshot, cursor_translator_version, is_reference_derivation, naming_sentence)
 
 
 class LedgerV2RuntimeError(ValueError):
@@ -545,14 +546,8 @@ def atoms_sample(snapshot: LedgerSetupSnapshot, source_id: str, preview, row_ids
 
 
 def _known_registrations(value: Any) -> tuple[tuple[str, str], ...] | None:
-    """Normalize the existing LedgerStore registration memo without DB capability.
-
-    The existing cursor driver obtains this set with the existing batched
-    ``LedgerStore.existing_registrations`` query.  Supplying it keeps first-sight state
-    outside Mapper code and makes dry-run/execute consume the same immutable snapshot.
-    ``None`` is distinct from an explicitly empty set and fails closed only when the
-    compiled candidates actually contain ``register`` Claims.
-    """
+    """Normalize a registration memo without DB capability - every door hands `()` today
+    (nothing assumed already registered); `None` reads the same."""
     if value is None:
         return None
     if isinstance(value, (str, bytes, bytearray, Mapping)):
@@ -611,18 +606,11 @@ def _filtered_event_atoms(
 ) -> tuple[tuple[Any, ...], ...]:
     raw = tuple(tuple(atoms_from_ledger_rows(result.ledger_rows))
                 for result in event_results)
-    has_register = any(atom.predicate == "register"
-                       for atoms in raw for atom in atoms)
-    if has_register and known_registrations is None:
-        raise LedgerV2RuntimeError(
-            "registration_context_required", "known_registrations",
-            "sources emitting register require an explicit existing-registration snapshot",
-        )
     known = set(known_registrations or ())
     selected: dict[tuple, tuple[tuple[Any, ...], tuple[int, int]]] = {}
     for event_index, atoms in enumerate(raw):
         for atom_index, atom in enumerate(atoms):
-            if atom.predicate != "register":
+            if not is_registration(atom.object_kind):
                 continue
             token = _registration_slot(atom)
             # 🔴 THE `known` SKIP APPLIES TO REGISTRATIONS THAT SAY NOTHING (S-52, ruling
@@ -643,7 +631,7 @@ def _filtered_event_atoms(
     for event_index, atoms in enumerate(raw):
         kept = []
         for atom_index, atom in enumerate(atoms):
-            if atom.predicate == "register":
+            if is_registration(atom.object_kind):
                 token = _registration_slot(atom)
                 if ((not token[2] and token[:2] in known)
                         or selected[token][1] != (event_index, atom_index)):
@@ -672,7 +660,8 @@ def _stamp_occurred_at_basis(source_plan, event_atoms) -> None:
     mappings = source_plan.profile.mappings
     for atoms in event_atoms:
         for atom in atoms:
-            mapping = mappings.get(atom.derivation)
+            # a registration the translator wrote keeps the time rule of the sentence that named it
+            mapping = mappings.get(naming_sentence(atom.derivation) or atom.derivation)
             if is_reference_derivation(atom.derivation) or (
                     mapping is not None and not any(
                         is_event_time_role(role) for role in mapping.bindings)):

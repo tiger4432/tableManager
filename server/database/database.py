@@ -137,6 +137,23 @@ def _note_the_backend(session, transaction, connection):
     from utils import heartbeat
     heartbeat.note_work(db_pid=pid)
 
+
+@event.listens_for(Session, "after_begin")
+def _bound_the_file_writes(session, transaction, connection):
+    """A file's write waits for another session's lock at most `lock_timeout_seconds`, and a
+    statement of it runs at most `statement_timeout_seconds` (ingestion_settings.json, 총괄
+    10-07 ③) - on every transaction begun on the file channel, which only the watcher's work
+    claims open. `SET LOCAL`: it ends with the transaction, so the pooled connection goes back
+    as it came."""
+    import event_constants
+    from database.context import request_channel
+    if request_channel.get() != event_constants.CHANNEL_FILE or connection.dialect.name != "postgresql":
+        return
+    from parsers.directory_watcher import file_write_timeouts
+    for setting, seconds in zip(("lock_timeout", "statement_timeout"), file_write_timeouts()):
+        if seconds:
+            connection.exec_driver_sql("SET LOCAL %s = '%dms'" % (setting, int(seconds * 1000)))
+
 Base = declarative_base()
 
 def get_db():

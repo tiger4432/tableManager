@@ -41,12 +41,14 @@ def as_v5(ledger, tables, rules):
     return ledger, tables, rules
 
 
-def without_input_columns(ledger):
-    """⚰️ `map.input_columns` retired (총괄 2a8d9073c): a file that has it keeps it - read and
-    ignored, never rewritten - and the shipped sample no longer writes it."""
+def without_retired_cells(ledger):
+    """⚰️ `map.input_columns` (총괄 2a8d9073c) and `read.registration_probe` (총괄 a6db2f469)
+    retired: a file that has them keeps them - read and ignored, never rewritten - and the
+    shipped sample no longer writes them."""
     ledger = copy.deepcopy(ledger)
     for source in ledger["sources"].values():
         (source.get("map") or {}).pop("input_columns", None)
+        (source.get("read") or {}).pop("registration_probe", None)
     return ledger
 
 
@@ -56,7 +58,8 @@ def test_a_v5_setup_migrates_to_exactly_what_ships(shipped):
     said = v6.migrate(ledger, tables, rules)
 
     assert any("input_columns" in source.get("map", {}) for source in ledger["sources"].values())
-    assert (without_input_columns(ledger), tables, rules) == shipped
+    assert any("registration_probe" in source.get("read", {}) for source in ledger["sources"].values())
+    assert (without_retired_cells(ledger), tables, rules) == shipped
     assert said == [
         "sources.lot_event.bind.mappings.descent -> sources.lot_lineage (derived_from for split, merge)",
         "sources.lot_event: retired (its atoms stay)",
