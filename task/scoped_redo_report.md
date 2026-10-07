@@ -74027,3 +74027,93 @@ origin 없는 층  키 칸 · hold 의 «chain_ingestion» 은 안 거둠 -> 옛
 3  plan_retraction 은 접지 않는 안
 4  mapper_sdk 기본 찍기(위 두 줄)와 retraction_refusal 의 판단 바꾸기를 이 라운드에 넣을지 — 넣으면 보류 복사의 잘못된 경고 줄도 같이 닫힌다
 ```
+
+---
+
+## [10-07 밤] ① 회수 묶기 착지 fa1279a31 — 출처 행 회수를 표마다 한 번에 (총괄 e35500433 · 4c3417ccb · b13de0353 ①)
+
+어느 DB · 어느 스키마 · 지운 것 — PG 는 assy_test 의 pg_engine 스크래치 스키마(끝에 DROP) · sqlite 는 메모리 · 재기 시험 파일은 커밋 안 함 · public 안 씀
+
+### 1 무엇이 바뀌었나
+
+```
+전   withdraw_by_origin 이 (표, 층 이름)마다 withdraw_source 를 한 번씩 불렀다. 보류 복사는 층 이름이 원천 행마다 따로라 1,000 행 = 1,000 번
+     (부를 때마다 claim 읽기 · 행 읽기 · 층 · 핀 읽기 · 지우기 · 커밋)
+후   표마다 한 번. claim 읽기 한 질의(층 이름 IN · 칸 IN · 행 IN, 각 층의 자기 칸 x 행으로 거름) -> 1,000 행 덩어리마다
+     행 · 층 · 핀 읽기 한 번 · 지우기는 칸마다 (층 이름, 행) 쌍 IN · 커밋은 덩어리마다
+     withdraw_source 도 같은 한 벌(_withdraw_cells)을 지난다 — 운영자 · CLI · 소급의 반환 키는 그대로
+한 칸을 여러 층이 claim   이름 순서로 하나씩 거두고, 뒤 층은 앞 층이 빠진 뒤를 보고 푼다(apply) — 층마다 따로 부르던 때의 순서 · 답
+```
+
+### 2 게이트 — 같은 1,000 행(4,000 칸), PG 박스 수(운영 주장 아님)
+
+```
+                 전                후
+시간             332.537 s        1.575 s        목표 5 s 이내
+묶음(층 이름)     1000              1000
+거둔 칸          3999              3999
+사람 층 건너뜀    1                 1
+남은 층          4006              4006
+감사 줄          998               998
+사건             998               998
+```
+바이트 비교(거래 id · 시각만 가림, 항목 수는 전 기준):
+```
+   감사       998    같음
+   남은 층     4006   같음
+   사건       998    같음
+   보이는 값    1000   같음
+   통계              같음
+```
+🔴 가린 것 하나는 «값이 바뀐» 것입니다 — 회수 사건의 거래 id 가 전 998 개 -> 후 1 개. 층 이름마다 한 거래였던 것이 표마다 한 거래가 됐고,
+체인 워커는 그것을 한 그룹으로 받습니다. 이것이 원장 후속 드레인 횟수를 바꾸는지는 안 쟀습니다.
+
+### 3 새 게이트 — 한 칸을 두 층이 claim (sqlite, test_a_deleted_row_takes_back_the_cells_it_fed.py)
+
+```
+칸 하나에 seed(Z) · s_b(B) · s_a(A), 새것이 보임. s_a · s_b 를 출처로 거둠
+   apply              남은 층 seed · 보임 Z · 감사 A->B (s_a) 다음 B->Z (s_b)
+   apply, s_a 핀      남은 층 s_a · seed · 보임 A · 감사 없음
+   dry-run            세 층 그대로 · 보임 A
+변이 (모두 «실패한 시험»으로 빨강, 기준 초록, md5 전후 같음, 복원 됨)
+   no carry between layers of one cell      1 failed, 9 passed, 16 warnings
+   delete ignores the source of the pair    2 failed, 8 passed, 16 warnings
+   pin check ignored                        1 failed, 9 passed, 16 warnings
+```
+
+### 4 스위트
+
+```
+sqlite 전체   5 failed, 7971 passed, 346 skipped, 3 xfailed, 13235 warnings in 747.53s (0:12:27)
+   실패 = 알려진 박스 실패: test_the_sample_is_written_in_the_one_format_both_writers_use, test_live_mapper_and_tracked_sample_are_byte_identical, test_live_mapper_and_tracked_sample_are_byte_identical, test_live_mapper_matches_tracked_sample, test_the_repo_root_is_one_above_it
+PG 회수 근처  29 passed, 8296 deselected, 52 warnings in 168.54s (0:02:48)   (보류 복사 · 삭제 회수 · 소급 · chain_replay)
+```
+
+### 5 정산 213 s 를 단계별로 — 1,000 행 보류 복사 적재, PG 박스
+
+```
+push                     1.767 s
+run_chain                5.345 s   (체인 그룹 2 개, 그 안 2.518 s)
+원장 후속 drain          212.17 s   (1002 번 불림, 한 번 평균 212 ms)
+하니스 stale_check       1.786 s   (6 번 — 시험 세상의 계기, 제품 아님)
+```
+체인은 10-02 수 그대로이고, 차이는 원장 후속 drain 입니다. 이번 ①은 회수만 묶었고 drain 은 손대지 않았습니다.
+
+### 6 말이 바뀐 것
+
+```
+withdraw_by_origin 경로 로그   층 이름마다 두 줄 -> 표마다 두 줄
+   [withdraw] <N> source(s) claim <M> cell(s) across <R> row(s) in '<표>'
+   [withdraw] apply: <K> cell(s) withdrawn (... revealed another source, ... left empty, ... skipped as human-pinned)
+withdraw_source 경로(운영자 · CLI · 소급)의 줄은 그대로
+문서 넷   data_model §2.2 · PRIMITIVES 도장 절 · cells_stamped_by · _retract_what_those_rows_fed 독스트링 —
+          「withdraw_by_origin 이 withdraw_source 를 부른다」를 「같은 한 벌을 지난다」로
+```
+
+### 여쭐 것
+
+```
+claim 읽기가 둘이 됐습니다 — withdraw_source 는 _claimed_filter(count_withdrawable 와 공유, ops 스크립트 EXPLAIN 이 고정),
+출처 경로는 _claimed_cells(층 이름 여럿 한 질의). 접으려면 _claimed_filter 의 모양을 바꿔야 합니다. 접을지 판정 부탁드립니다
+다음은 ② 고칠 때 회수 · ③ SDK 기본 찍기 — 같은 푸시로 올립니다
+```
