@@ -355,6 +355,10 @@ export function nodeFacts(layout, id) {
   return { node, edges };
 }
 
+/** A cut walk's words, the picture's status line and a lump's head alike (lead 161757c35): every axis cut, with its
+ *  budget where the answer says it (`cutBudgets`). */
+const truncatedWords = (budgets, where = '') => `Truncated · ${where}${budgets.join(' · ')}`;
+
 /** The words «Points from» says before anything is picked (lead 10-08). */
 const PICK_TYPE = 'Pick a type';
 
@@ -686,7 +690,7 @@ export class SubgraphView {
         // A new start meanwhile made its own `lumpSeen`: this answer lands in the old one, which nothing reads.
         seen.data.set(lump.id, res && res.ok
           ? { state: 'done', nodes: subgraphLayout([{ results: [res] }], this.entities()).nodes, pick: source.pick,
-            window: source.window, windowed: source.windowed, capped: (res.truncatedAxes || []).includes('nodes') }
+            window: source.window, windowed: source.windowed, cut: cutBudgets(res.truncatedAxes, res.limits) }
           : { state: 'failed', reason: (res && res.message) || '' });
       }
     }
@@ -760,7 +764,7 @@ export class SubgraphView {
     status.appendChild(this._el('div', 'sg-counts', `Nodes ${layout.nodes.length} · Edges ${layout.edges.length}`));
     for (const one of layout.cut) {
       const where = this.steps.length > 1 ? `step ${one.step} · ` : '';
-      status.appendChild(this._el('div', 'sg-trunc', `Truncated · ${where}${one.budgets.join(' · ')}`));
+      status.appendChild(this._el('div', 'sg-trunc', truncatedWords(one.budgets, where)));
     }
     if (layout.unplaced) status.appendChild(this._el('div', 'sg-note', `No depth · ${layout.unplaced} nodes`));
     if (layout.loose) status.appendChild(this._el('div', 'sg-note', `Not drawn · ${layout.loose} edges`));
@@ -1213,9 +1217,10 @@ export class SubgraphView {
     const said = [`Points ${got.points.length}`];
     if (data.window) said.push(`Window ${localMinute(new Date(data.window.since))} – ${localMinute(new Date(data.window.until))}`);
     else if (data.windowed) said.push('Window all time');
-    if (data.capped) said.push(`Capped at ${STEP_NODE_LIMIT}`);
+    if (data.cut && data.cut.length) said.push(truncatedWords(data.cut));
     if (got.notNumber) said.push(`${got.notNumber} not numbers`);
     if (got.noTime) said.push(`${got.noTime} no time`);
+    if (got.noValue) said.push(`${got.noValue} without ${y || 'values'}`);
     box.appendChild(this._el('div', 'sg-lv-meta', said.join(' · ')));
     if (kind === FOLD_VIEWS[2]) {
       const plot = this._el('img', 'sg-lv-plot');

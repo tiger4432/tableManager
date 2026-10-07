@@ -82,15 +82,18 @@ export function startBranch(steps) {
 
 /**
  * The points one attribute gives: every node holding it, at the time it was said. A value that does not read as a
- * number, or one said at no time, is not a point - each is counted, so the view can say how many it left out.
+ * number, one said at no time, or a node without it at all, is not a point - each is counted, so the view can say
+ * how many it left out.
  */
 export function pointsOf(nodes, attribute, lit) {
   const points = [];
   let notNumber = 0;
   let noTime = 0;
+  let noValue = 0;
   for (const node of nodes || []) {
     const attrs = (node && node.attributes) || {};
-    if (!(attribute in attrs)) continue;
+    // A node the walk brought without it (a claims cut leaves nodes bare, lead 161757c35) is counted, not dropped.
+    if (!(attribute in attrs)) { noValue += 1; continue; }
     const v = numberOf(attrs[attribute]);
     if (v === null) { notNumber += 1; continue; }
     const t = saidAt(node, attribute);
@@ -98,7 +101,7 @@ export function pointsOf(nodes, attribute, lit) {
     points.push({ id: node.id, label: node.label, t, v, lit: Boolean(lit && lit.has(node.id)) });
   }
   points.sort((a, b) => a.t - b.t);
-  return { points, notNumber, noTime };
+  return { points, notNumber, noTime, noValue };
 }
 
 /** The window a definition node's one more step reads: the start branch's times, AROUND_DAYS each side; none known,
