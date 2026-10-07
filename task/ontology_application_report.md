@@ -36183,3 +36183,20 @@ m.n 은 자기 값 holder-mn 을 들고 있었는데 병합 뒤 shell-mn 이 보
 그래서    구현자 갈래 ①(확정 작업이 cascade 로 쓴다)은 기제 ①의 셋째 사용자가 되고, ②(끝에 조인을 스스로)는 새 길이다.
          「소급 쓰기가 아래를 깨운다」의 답이 이미 둘(cascade · 체인 채널)이라 — 어느 쪽으로 모을지도 같이 정할 물음이다. 판정의 주인은 소유자
 ```
+
+---
+
+## [C 응용] 10-07 dc2ef8848(걷기 그림이 창을 채움) QA — 관문 하나가 흔들린다: subgraph_view 의 Z4
+
+```
+잰 것    공유 트리 @d677c9f0e(client2 미커밋 0), node tests/subgraph_view_harness.mjs 를 네 번
+         1 회  ASSERTIONS 152 2   (어느 둘인지 안 찍었다)
+         2 회  ASSERTIONS 152 1
+         3 회  ASSERTIONS 152 0
+         4 회  ASSERTIONS 152 0
+         빨간 줄  FAIL Z4 the box changes size: the picture follows it, the view stays (zoom and pan) -- {"resized":1,"was":"[1.3,{\"x\":17,\"y\":-29}]","now":"[0.1,{\"x\":-33.3975,\"y\":-8.66}]"}
+읽음     _resized: 첫 맞춤이 «미뤄져» 있으면(_fitPending — 첫 그리기 때 상자 폭 0) 맞춤을 하고, 아니면 cy.resize 만.
+         Z4 는 배율 1.3 · 위치를 놓고 _resized 를 부르는데, 그 실행에서 첫 그리기 때 폭이 안 잡혔으면 미룬 첫 맞춤이 여기서 돌아 0.1 로 간다.
+         미루기 자체는 설계(「a box that only now has a size gets the first fit」) — 하니스 seat 의 폭이 첫 그리기 «전에 잡히나»가 실행마다 다른 것으로 보인다(짐작, 안 쟀다)
+그래서   제품이 아니라 «관문»이 흔들린다 — 「러너 초록」이 실행마다 다른 답. 클라 레인: Z4 의 시작에서 첫 맞춤이 끝났는지(_fitPending false)를 먼저 단언하거나 폭을 고정
+```
