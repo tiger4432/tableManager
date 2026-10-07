@@ -3531,7 +3531,7 @@ note_naive_time(...)      셈 · `naive_time_counts()` · `naive_time_note()` �
 | `INSERT_PAGE_SIZE = 1000` | `crud.py`가 쓰기 경로에서 이미 잰 청크 상수와 같은 값 |
 | `class LedgerStore(engine, who="ledger")` | 🔴 **연결은 `engine.raw_connection()`에서만 온다.** `database.database`가 Engine 클래스에 `db_safety` 가드를 설치하고, **raw `psycopg2.connect`는 그 가드를 그냥 지나친다** |
 | `LedgerStore.connection()` / `ensure_schema()` / `ensure_partitions(connection, occurred_ats)` | |
-| `LedgerStore.existing_registrations(connection, subjects)` | `(subject_type, canonical_keys_json)` 집합 → 같은 모양의 집합. **페이지당 1질의**(엔터티당 조회는 1천만 행 백필을 2차식으로 만든다). `idx_ledger_register`가 존재하는 이유 |
+| `LedgerStore.existing_registrations(connection, subjects)` | `(subject_type, canonical_keys_json)` 집합 → 같은 모양의 집합. **페이지당 1질의**(엔터티당 조회는 1천만 행 백필을 2차식으로 만든다). `idx_ledger_register`가 존재하는 이유. ⚠️ **호출자 0** (10-07 테스트 런 견본에서 뺌 — 실행 `rescope` 는 `known_registrations=()` 를 넘긴다). 은퇴는 등록 은퇴 라운드 |
 | `LedgerStore.insert_atoms(connection, atoms) -> (attempted, inserted)` | `execute_values` 다중행 INSERT + `ON CONFLICT DO NOTHING`. 🔴 **두 수를 절대 합치지 않는다** — `attempted > inserted`는 「커서가 이미 끝난 일을 통과시켰고 인덱스가 알아봤다」는 뜻이고 운영자가 그걸 볼 수 있어야 한다. **commit하지 않는다** |
 | `atom_record(atom) -> dict` (모듈 함수) | 원자 하나를 원장 행 칸(`ROW_COLUMNS`)으로 — `insert_atoms` 가 이것으로 쓰고, 시험 실행의 원자 견본(`runtime_v2.atoms_sample`)이 같은 것을 보인다(총괄 026ced7f1) |
 | `LedgerStore.read_cursor(connection, source)` | 커서 행을 dict로 |
