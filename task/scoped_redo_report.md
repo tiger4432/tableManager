@@ -73813,3 +73813,71 @@ RELEASE   예시를 착지한 RELEASE_LOG 에서 읽어 제품의 file_write_tim
              (재기동이나 파일이 바뀔 때까지). 짓지 않았다 — 물음으로 올림. 시험도 없다
 본 것(안 지음) load_ingestion_settings 가 utf-8 로 연다 — BOM 이 붙은 ingestion_settings.json 은 경고 한 줄 뒤 전부 기본값이 된다. SSO 와 같은 종류
 ```
+
+---
+
+## [10-07 밤 · 후속] ③ 후속 — ANALYZE 잠금 상한 · 두 스윕 한 규칙 · 설정 BOM · utf-8 설정 읽기 «세기» · 착지 aca9d8d24 (총괄 ③ 물음 둘 답 · 응용 QA 8652ddb26 읽음 2)
+
+어느 DB · 어느 스키마 · 지운 것 — sqlite 는 메모리 · PG 는 assy_test 의 pg_engine 스크래치 스키마(끝에 DROP) · 그 안 시험 표 둘과 그 표 이름의 로그 · 체크포인트 행 · public 안 씀
+
+```
+지은 것    _analyze_after_load 의 자기 연결에 file_write_timeouts() 의 lock_timeout · 넘으면 ANALYZE 만 건너뜀 — 파일 SUCCESS
+          줄: [<표>] ANALYZE skipped: <표> locked by <표본기가 본 쪽 문장>  (표본기 칸이 꺼져 있으면 «a session the sampler did not see»)
+          _tried_already — raws/ 스윕과 외부 스윕이 부르는 «한» 규칙(같은 (mtime, size) 는 건너뜀, 잠금으로 기다린 파일은 빼고)
+          load_ingestion_settings — crud._decode_config_text (table_config 와 같은 읽기, BOM 읽음)
+게이트    PG 5 passed, 8313 deselected in 39.76s — 다른 연결이 표에 SHARE UPDATE EXCLUSIVE 를 쥔 채 폴더 적재: f1 · f2 SUCCESS · 건너뜀 줄 둘(쥔 pid) · 폴더 비움 (+ 앞 판 넷)
+          sqlite 3 passed, 5 skipped in 0.50s — 두 스윕이 첫눈에 둘 · 다시는 0 · 기다린 표시 뒤 둘 다 다시 · BOM 설정 읽힘 (+ 기본값 칸)
+변이      7/7 빨강(failed 시험으로 센 수) · md5 전후 같음
+          RED  the rule ignores the waiting set
+          RED  the external sweep keeps its own rule
+          RED  the raws sweep keeps its own rule
+          RED  the settings are read as plain utf-8
+          RED  ANALYZE has no lock limit
+          RED  ANALYZE's lock wait fails it as before
+          RED  the ANALYZE line names no holder
+sqlite 전체 5 failed, 7964 passed, 346 skipped, 3 xfailed, 13166 warnings in 731.35s (0:12:11)
+          tests\test_a_sentence_says_itself_only_for_the_rows_it_names.py::test_the_sample_is_written_in_the_one_format_both_writers_use
+          tests\test_core_alignment_mapper.py::test_live_mapper_and_tracked_sample_are_byte_identical
+          tests\test_core_usage_mapper.py::test_live_mapper_and_tracked_sample_are_byte_identical
+          tests\test_dt_inventory_metadata_mapper.py::test_live_mapper_matches_tracked_sample
+          tests\test_one_place_decides_where_the_server_is.py::test_the_repo_root_is_one_above_it
+RELEASE   예시를 BOM 붙여 임시 ingestion_settings.json 에 쓰고 제품 함수로 읽음 — example (written with a BOM) {"lock_timeout_seconds": 300, "analyze_after_rows": 10000} -> ((300.0, None), 10000)
+```
+
+### server/config JSON 을 utf-8 로 직접 여는 자리 — «세기만» (총괄 ③ 2)
+
+```
+명령      scratchpad/census_utf8_config_reads.py (AST) — 모집단: git ls-files server/*.py, server/tests 제외 = 295 파일
+술어      open/io.open/codecs.open 에 encoding 이 utf-8 · utf8(utf-8-sig 아님) · 읽기 모드 · 같은 함수가 json.load/loads 를 부름
+          경로는 «이름»이 아니라 «풀어서» 가른다: 모듈 상수의 값이 config_path( · CONFIG_DIR · CONFIG_PATH · config 를 담으면 config
+카나리아   utils/heartbeat.read_all(하트비트 파일의 utf-8 JSON 읽기) = 1 — 0 이면 계기 고장
+수(이 커밋 뒤)  utf-8 JSON 읽기 68 · 그중 config 로 풀린 것 20(제품 7 · 도구(scripts · setup · migrations) 13)
+          · 경로가 인자나 지역 계산이라 안 풀린 것 48(그중 제품 28) — 이 안에 config 가 더 있을 수 있다. 안 열어 봤다
+⚠️ 대리    config 로 센 것 중 지역 변수 이름 config_path 로만 걸린 자리가 있다(예: main.get_ingestion_workspaces) — 이름을 센 부분이다
+같은 파일  ingestion_settings.json 을 utf-8 로 여는 자리가 아직 셋 남았다(이 커밋은 load_ingestion_settings 하나만 고침):
+          server/chain/enrichment/candidates.py:_load_ingestion_settings
+          server/chain/enrichment/config.py:_load_ingestion_settings
+          server/run_watcher.py:reclaim_grace_setting
+          — BOM 이 붙은 파일이면 이 셋은 지금도 기본값으로 읽는다
+config 로 풀린 자리 전부
+          server/chain/enrichment/candidates.py:_load_ingestion_settings (INGESTION_SETTINGS_PATH)
+          server/chain/enrichment/config.py:_load_ingestion_settings (INGESTION_SETTINGS_PATH)
+          server/main.py:load_maps_config (MAPS_CONFIG_PATH)
+          server/main.py:get_ingestion_workspaces (config_path)
+          server/migrations/migrate_jsonb_numeric.py:run_migration (config_path)
+          server/parsers/directory_watcher.py:load_global_table_config (global_config_path)
+          server/parsers/directory_watcher.py:_load_legacy_config (self.config_path)
+          server/run_watcher.py:reclaim_grace_setting (paths.config_path("ingestion_settings.json"))
+          server/scripts/archive/profile_fetch.py:profile (config_path)
+          server/scripts/check_missing_business_key.py:main (CONFIG)
+          server/scripts/dev_env/snapshot_db.py:build_target_schema (paths.config_path("table_config.json"))
+          server/scripts/dev_env/snapshot_db.py:run (paths.config_path("table_config.json"))
+          server/scripts/list_undeclared_tables.py:declared_tables (config_path)
+          server/scripts/list_undeclared_tables.py:build_models (config_path)
+          server/scripts/load_mechanism_edge_rows.py:build_rows (_config_path())
+          server/scripts/migrate_jsonb_to_rdb.py:main (config_path)
+          server/setup/init_db.py:setup_database (config_path)
+          server/setup/reset_db.py:reset_database (config_path)
+          server/setup/seed_data.py:seed (config_path)
+          server/setup/setup_workspace.py:setup_workspace (config_path)
+```
