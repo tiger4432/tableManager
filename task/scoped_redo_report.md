@@ -72975,3 +72975,56 @@ f1 의 쓰기(_send_to_upsert)를 «돌아오지 않게» 막고, 같은 폴더�
 | 원인 자리 | 무엇이 그 잠금을 쥐었나 — 소유자의 pg_stat_activity 결과가 답한다(체인 워커의 열린 트랜잭션 · idle in transaction · 같은 업무 키의 동시 삽입 중 무엇인지) | 증거를 받은 뒤 |
 
 시험 1 passed, 6 warnings in 1.88s (일회용 프로브 — 사본은 스크래치에 보관)
+
+---
+
+## [10-07] 어드민 체인 목록 · 선언 화면이 왜 느린가 — 요청 전수 · 단계별 시간 (소유자 10-07 · 총괄)
+
+어느 DB · 어느 스키마 · 지운 것 — 박스 DB 를 «읽기만»(GET) · 선언은 이 박스 라이브 config 의 «임시 사본»(ASSY_DATA_ROOT, 끝나고 지움) · 코드는 wt-impl(origin/main) · 지운 것 0
+⚠️ 이 박스의 수다(BOX). 운영 주장이 아니다. 처리기를 프로세스 안에서 불러 잼(HTTP · 인증 · 브라우저 시간 없음 — 어드민 라우트는 토큰 없이 401 이라 돌고 있는 서버로는 못 쟀다).
+
+요청 전수 — 탭을 열 때 클라가 보내는 것(client2/src/admin.js fetchData · refreshChainRule · refreshChainGraph · chainPauseReads · refreshTableConfig):
+
+| 화면 | 요청 | 답 | 시간 1(차가움) / 2 / 3 (s) | 먹는 단계 |
+|---|---|---|---|---|
+| chain | `/admin/chain/rules/raw` | 200 | 0.040 / 0.011 / 0.005 | - · 가장 큰 함수 main.py:6517 get_chain_rule_raw 0.001 s · 같은 파일 두 번: chain_rules.json ×2 |
+| chain | `/admin/chain/rules` | 200 | 0.017 / 0.014 / 0.007 | - · 가장 큰 함수 main.py:6115 get_chain_rules 0.008 s |
+| chain | `/admin/mappers/list` | 200 | 0.040 / 0.089 / 0.025 | ast.parse 0.072 s · 가장 큰 함수 main.py:6231 get_mappers 0.082 s |
+| chain | `/admin/chain/queue` | 200 | 0.202 / 0.018 / 0.015 | - · 가장 큰 함수 main.py:4611 get_chain_queue_depth 0.011 s · 같은 파일 두 번: chain.json ×2, graph.json ×2, ledger.json ×2, scheduler.json ×2, watcher.json ×2 |
+| chain | `/admin/outbox/failed` | 실패 — raised ProgrammingError: (psycopg2.errors.UndefinedColumn) 오류:  database_outbox.ledger_state 칼럼 없음 | 0.010 / 0.008 / 0.006 | - · 가장 큰 함수 main.py:5089 get_failed_outbox_events 0.002 s |
+| chain | `/chain/graph` | 200 | 0.078 / 0.176 / 0.068 | - · 가장 큰 함수 main.py:4493 get_chain_graph 0.172 s · 같은 파일 두 번: ledger_config.json ×2 |
+| chain | `/runtime` | 200 | 0.025 / 0.012 / 0.008 | - · 가장 큰 함수 main.py:4513 get_runtime_loops 0.006 s |
+| chain | `/admin/chain/pause` | 200 | 0.002 / 0.003 / 0.002 | - · 가장 큰 함수 main.py:142 db_context_middleware 0.000 s |
+| chain | `/health` | 200 | 0.021 / 0.009 / 0.008 | - · 가장 큰 함수 main.py:258 _health_probe_and_release 0.003 s |
+| chain | `/admin/retroactive/runs` | 200 | 0.013 / 0.022 / 0.011 | - · 가장 큰 함수 main.py:6871 list_retroactive_runs 0.006 s |
+| chain | `/admin/file-ingestion/active` | 200 | 0.002 / 0.003 / 0.002 | - · 가장 큰 함수 main.py:142 db_context_middleware 0.000 s |
+| tables | `/admin/tables/config/raw` | 200 | 0.004 / 0.006 / 0.004 | - · 가장 큰 함수 main.py:6487 get_table_config_raw 0.002 s · 같은 파일 두 번: table_config.json ×2 |
+| tables | `/admin/ledger/relations` | 200 | 0.067 / 0.033 / 0.019 | db (do_execute) 0.007 s · 가장 큰 함수 main.py:6570 get_ledger_relations 0.009 s |
+| file | `/admin/file-ingestion/logs` | 200 | 0.036 / 0.018 / 0.012 | - · 가장 큰 함수 main.py:5232 get_file_ingestion_logs 0.008 s |
+| file | `/admin/file-ingestion/workspaces` | 200 | 0.004 / 0.003 / 0.002 | - · 가장 큰 함수 main.py:142 db_context_middleware 0.000 s |
+| autoupdate | `/admin/auto-update/status` | 200 | 0.005 / 0.005 / 0.003 | - · 가장 큰 함수 main.py:7047 get_auto_update_status 0.001 s |
+| scripts | `/admin/scripts/list` | 200 | 0.003 / 0.005 / 0.003 | - · 가장 큰 함수 main.py:7287 list_admin_scripts 0.000 s |
+
+읽는 법
+- 체인 탭이 여는 요청의 서버 시간 합(데운 둘째 호출, 실패 하나 뺌): 0.357 s — 브라우저는 이것들을 «동시에» 보낸다.
+- 가장 큰 것: `/chain/graph` 0.176 s(둘째) — 요청마다 원장 선언을 «처음부터 컴파일»(ledger.setup.load_setup). `/admin/mappers/list` 0.089 s(둘째) — 요청마다 매퍼 파일 전부를 ast.parse.
+- `/admin/outbox/failed` 는 이 박스 DB 에 database_outbox.ledger_state 칸이 없어 실패했다 — wt-impl 코드와 박스 DB 의 차이(박스 상태). 시간은 못 잼.
+- `/admin/file-ingestion/workspaces` · `/admin/scripts/list` 는 임시 데이터 루트에 작업공간이 없어 «빈 답»이다 — 이 둘의 수는 대표가 아니다.
+
+같은 일을 두 번 하는 자리 (잰 것)
+- 요청 «안»: 같은 파일을 두 번 엶 — 위 표의 「같은 파일 두 번」 칸(chain_rules.json · table_config.json · ledger_config.json · 각 일꾼 heartbeat 파일).
+- 요청 «사이»: 한 화면이 여는 요청들이 같은 선언을 «각자» 다시 읽고 컴파일한다 — chain_rules.json 은 rules/raw · rules 가 각각, 원장 선언은 graph 가 매번. 결과를 지문(파일 시각 · 크기)으로 묶어 두는 자리가 없다(안 셌다: 다른 화면까지 몇 번인지).
+
+이 박스에서는 서버 처리기가 «느리다»고 할 수가 없다(위 합). 그러면 소유자가 본 느림은 다음 중 하나다 — 이 박스로는 못 가른다:
+- 운영 선언이 더 크다(규칙 · 원장 소스 · 매퍼 파일 수) — 컴파일 · ast.parse 가 그 크기로 는다
+- 돌고 있는 서버의 대기(동기 처리기 스레드 풀 · 같은 프로세스의 다른 일) — 처리기 밖의 시간
+- 클라(요청 뒤 그리기 · 편집기 띄우기)
+
+고칠 방향 셋 (짓지 않음)
+| 갈래 | 무엇 | 크기 |
+|---|---|---|
+| 보이게 | 어드민 요청마다 서버 시간을 응답 머리(Server-Timing)와 «느린 것만» 로그 한 줄로 — 운영에서 «어느 요청이» 느린지 소유자가 그대로 읽게 | 작음 |
+| 반복 없애기 | 선언 컴파일 결과(원장 setup · 체인 규칙 펼침 · 매퍼 목록)를 «파일 지문»으로 묶어 두고, 바뀌면 다시 — 리로드가 이미 비우는 자리(reload_local_process_cache)와 같은 문 | 중간 — 무효화가 핵심 |
+| 운영에서 재기 | 운영 박스에서 같은 표를 한 번 — 위 «보이게»가 들어가면 화면을 열기만 하면 된다 | 위에 딸림 |
+
+재는 스크립트: 스크래치 measure_admin_screens.py (일회용)
