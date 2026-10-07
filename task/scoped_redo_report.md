@@ -73028,3 +73028,51 @@ f1 의 쓰기(_send_to_upsert)를 «돌아오지 않게» 막고, 같은 폴더�
 | 운영에서 재기 | 운영 박스에서 같은 표를 한 번 — 위 «보이게»가 들어가면 화면을 열기만 하면 된다 | 위에 딸림 |
 
 재는 스크립트: 스크래치 measure_admin_screens.py (일회용)
+
+---
+
+## [10-07] datetime 칸이 있는 표 — 셀 쓰기가 다른 화면에 닿는다 · 착지 825964014 (총괄 9eb902922 ①)
+
+어느 DB · 어느 스키마 · 지운 것 — 게이트는 PG 시험 스키마(conftest PG_TEST_SCHEMA)에 표 time_cell_probe 하나를 만들고 끝에 DROP · 박스 DB 안 씀 · 그 밖에 지운 것 0
+
+```
+원인     격자 셀 쓰기 라우트(apply_batch_updates_endpoint)는 커밋한 «뒤» 화면들에 batch_row_upsert 를 방송한다
+         그 방송의 items[].data 가 행 data 그대로였고, datetime 칸의 셀 값은 파이썬 datetime 이라
+         json.dumps 가 「Object of type datetime is not JSON serializable」로 터졌다 — 쓰기는 들어가고 «방송만» 죽는다
+         한 번이 아니라 «그 표의 쓰기마다» — 다른 칸만 고쳐도 같은 행의 datetime 칸이 실리므로
+재현(PG) new row with a datetime cell · edit another cell of that row · edit the datetime cell
+         datetime 이 실린 자리: '.items[i].data.when.value' (created_logs 쪽은 없음)
+고침     그 item 의 data 를 격자 읽기(_table_data_response 의 대체 직렬화)와 같은 jsonable_encoder 로 — ISO 철자
+게이트   진짜 라우트를 PG 에서: 방송된 셀 == 격자를 다시 읽은 셀 · 같은 행의 다른 칸만 써도 방송됨 — 1 passed, 6 warnings in 3.02s
+         sqlite 로 못 잰 이유: sqlite 의 DateTime 이 쓰는 글자를 먼저 거절한다
+변이     2/2 빨강(전부 failed 시험) · md5 전후 같음
+         RED  the row's data rides the broadcast as it is — E       TypeError: Object of type datetime is not JSON serializable
+         RED  the data is spelled by str, not as the grid reads it — E       AssertionError: assert '2026-10-07 10:00:00+09:00' == '2026-10-07T10:00:00+09:00'
+크기      4 files changed, 97 insertions(+), 1 deletion(-)
+sqlite 전체 5 failed, 7851 passed, 334 skipped, 3 xfailed, 13138 warnings in 793.37s (0:13:13) — 박스 사유 밖: 없음
+```
+
+### 🔴 물음 — 같은 결함이 셀 메뉴 라우트 4 곳에 더 있다 (잼, 안 고침)
+
+셀 우클릭 메뉴의 «원천 지우기 · 우선 소스 고정»도 행 data 를 그대로 batch_row_upsert 에 싣는다.
+이쪽은 방송이 «백그라운드가 아니라 처리기 안»이라, 쓰기가 커밋된 «뒤» 요청 자체가 터진다 —
+요청이 예외로 끝나는데(시험 클라이언트가 그 예외를 올림 — 실서버의 응답 코드 · 화면 문구는 안 열었다) DB 는 이미 바뀌어 있다. 다른 화면도 모른다.
+
+```
+PG 프로브 (같은 표 · 같은 고정물, 시험 스키마 · 끝에 DROP)
+PROBE PUT priority (one cell)            status=raised upserts=0 TypeError: Object of type datetime is not JSON serializable
+PROBE PUT priority/batch                 status=raised upserts=0 TypeError: Object of type datetime is not JSON serializable
+PROBE POST sources/delete/batch          status=raised upserts=0 TypeError: Object of type datetime is not JSON serializable
+PROBE   v after batch delete: None
+PROBE DELETE sources (one cell)          status=raised upserts=0 TypeError: Object of type datetime is not JSON serializable
+PROBE   v after one-cell delete: None
+PROBE control: PUT data/updates          status=200 upserts=1 
+지우기 둘 다 «요청은 터졌는데» 값은 지워져 있음: 2/2
+대조군(고친 셀 쓰기 라우트)은 같은 프로브에서 200 · 방송 1
+```
+
+여쭐 것: 이 4 곳을 같은 고침(행 data 를 격자 읽기와 같은 jsonable_encoder 철자로)으로 «이번 ① 의 연장»으로 접을까요?
+접는다면 다섯 자리(이미 고친 하나 포함)가 «방송 item 을 짓는 함수 하나»를 지나게 하고, 게이트는 다섯 라우트 × 「방송된 셀 == 읽은 셀」 표 하나로 하겠습니다.
+답 오기 전까지 이건 세워 두고 ② 로 갑니다.
+
+그 밖에 안 잰 것: main.py 에서 manager.broadcast(json.dumps( 를 부르는 줄은 20 줄(git grep, 카나리아 def apply_batch_updates_endpoint 1)이다 — 위 다섯 라우트 밖의 줄이 행 data 를 싣는지는 안 쟀다.
