@@ -120,7 +120,7 @@ return {
 > ⚠️ **「말 안 함」이지 「못 함」이 아닙니다.** 이 칸은 **모든 맵퍼가 이미 짓는 `GeneralUpdateItem` 에 있으므로** 파일 맵퍼도 «적을 수 있습니다». 다만 제품은 «라이브 맵퍼가 적는지»를 셀 수 없어서(`server/mappers/` 는 소유자의 것) 그 규칙 이름을 대며 한 줄 남깁니다(`chain/rule_run.py::retraction_refusal`) — 🆕 10-07 `91da9c781` «그 규칙이 이 프로세스에서 낸 행에 출처가 없었을 때»만(`stamps_origin` — 재기동 뒤 아직 안 돈 규칙은 말하지 않는다).
 > 🔴 **한 행에서 안 왔으면 «비워 두십시오».** 반쪽 출처를 적으면 자기 몫이 아닌 행 때문에 셀을 거둬 갑니다 — `enrichment_auto_confirm` 이 «일부러» 안 적는 이유가 그것입니다. 개념·함정 전부는 [PRIMITIVES §1](../architecture/PRIMITIVES.md).
 
-Return `{"updates": []}` for an intentional no-op. Chain-created events reach
+Return `{"updates": []}` for an intentional no-op. 🆕 10-08 `de09e2499` ⚠️ **출처를 찍는 규칙**(낸 행에 `origin_row_id`)이 «고친» 원천 행에 빈 답을 내면, 그 행이 그 규칙의 칸에 먹이던 옛 층을 거둡니다 — 빈 답은 「이제 아무것도 안 먹인다」로 읽힙니다(`refusal` 을 실은 빈 답도 같다). 「바뀐 것이 없다」는 뜻이면 빈 답이 아니라 같은 행을 다시 내십시오. Chain-created events reach
 a downstream mapper only when that downstream rule explicitly sets
 `allow_chain_trigger: true`.
 
