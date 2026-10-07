@@ -36359,3 +36359,16 @@ bd33605af   은퇴 이름(registration_probe · existing_registrations · regist
 
 > 정정(바로 위 09e5e4402): 「전 9(구현자 d6795570a 가 셋)」는 손으로 적은 수였습니다. 같은 술어로 잰 수 — bd33605af 11 · d6795570a 9 · 38aaca86e 3.
 > 구현자 줄 셋 중 이 술어에 걸린 것이 둘이었습니다. 끝 수 3 은 그대로.
+
+---
+
+## [C 응용] 10-07 3959975eb(잠금에 걸린 폴더) QA — 주 경로 결함 못 찾음. 읽은 것 둘 · 문서 edbfeb3cc
+
+```
+주 경로    게이트가 진짜 process_with_retry 를 PG 에서 돌리고 대상 행을 SELECT … FOR UPDATE 로 잡는다 — 잠금 상한이 그 쓰기에 닿는 것을 잰다
+           SET LOCAL 은 Session 의 after_begin 에서 — 파일 채널 · PostgreSQL 일 때만, 트랜잭션과 함께 끝난다
+읽음 1     다시 시도에 상한이 없다 — 잠금이 남아 있는 동안 그 파일은 스윕마다 lock_timeout(기본 300 s)만큼 워커를 잡고 FAILED (retry N) 를 하나씩 남긴다. 설계로 보이나 말해 둠
+읽음 2     적재 뒤 ANALYZE(_analyze_after_load)는 자기 psycopg2 연결이라 이 잠금 상한 밖이다. ANALYZE 는 SHARE UPDATE EXCLUSIVE 라
+           같은 표의 VACUUM · ALTER · CREATE INDEX CONCURRENTLY 를 기다릴 수 있다 — 그 동안 폴더는 그 자리에 선다. 안 쟀다
+문서       config/ingestion_settings.md 키 표에 lock_timeout_seconds · statement_timeout_seconds 두 줄
+```
