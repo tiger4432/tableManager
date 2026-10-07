@@ -18,6 +18,7 @@ import { MarkingStore, SIGN } from '../src/rnd_board/marking_store.js';
 import { walkTableView } from '../src/walk/table_view.js';
 import { LOADING } from '../src/ui_words.js';
 import { STEP_NODE_LIMIT } from '../src/walk/fold_views.js';
+import { walkableRoutes } from '../src/walk/derive.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SUBJECT = path.join(HERE, '..', 'src', 'walk', 'subgraph_view.js');
@@ -116,7 +117,7 @@ async function suite(m, makeWalk = createWalkBoxWalk, css = REAL_CSS) {
     const chain = opts.chain || ['s0', 's1', 's2'];
     if (!opts.keepStart) markings.replace(chain[0], [[startId(bodies[0]), SIGN.CASE]]);
     const view = new m.SubgraphView(host, { doc, walk: wire(bodies, urls), entities: () => ENTITIES, markings, chain,
-      worldChips: opts.worldChips, declaration: () => opts.declaration || null });
+      worldChips: opts.worldChips, declaration: () => opts.declaration || null, storage: opts.storage });
     seated.push(view);
     await view.show();
     return { doc, host, view, urls, markings, chain };
@@ -1009,11 +1010,14 @@ async function suite(m, makeWalk = createWalkBoxWalk, css = REAL_CSS) {
       counted.meta.startsWith(`Points ${left} · `) && counted.meta.endsWith(' · 1 not numbers · 1 no time'), counted.meta);
   }
 
-  console.log('\n[I] a lump of events that hold no number walks the declaration\'s routes to what does (lead 10-08)');
+  console.log('\n[I] a lump of events that hold no number: its points come from the type the operator picks (lead 10-08)');
   {
+    // A browser's storage, as far as the part touches it.
+    const memory = () => { const kept = new Map(); return { getItem: (k) => (kept.has(k) ? kept.get(k) : null),
+      setItem: (k, v) => { kept.set(k, String(v)); } }; };
     // The start wafer's branches folded, its `underwent` key opened: a small lump holding the process events.
-    const seatProcess = async (declaration) => {
-      const s = await seat([FOLD_WAFER, FOLD_PROCESS], { declaration });
+    const seatProcess = async (declaration, storage) => {
+      const s = await seat([FOLD_WAFER, FOLD_PROCESS], { declaration, storage });
       const wafer = startId(FOLD_WAFER);
       press(s, wafer);
       const fold = byClass(s.host, 'sg-fold')[0];
@@ -1030,23 +1034,46 @@ async function suite(m, makeWalk = createWalkBoxWalk, css = REAL_CSS) {
       await settle();
       return { s, lump };
     };
-    const { s, lump } = await seatProcess(FOLD_DECL);
+    const choiceOf = (s, word) => {
+      const label = byClass(s.view.factsBox, 'sg-lv-choice').find((l) => textOf(l, 'sg-lv-word').join() === word);
+      return label ? byClass(label, 'sg-lv-y')[0] || label.children[1] : null;
+    };
+    const optionsOf = (select) => (select ? [...select.children].map((o) => o.attrs.value) : null);
+    const storage = memory();
+    const { s, lump } = await seatProcess(FOLD_DECL, storage);
+    const from = choiceOf(s, 'Points from');
+    const reachable = FOLD_DECL.entities.map((e) => e.type)
+      .filter((t) => t !== 'process_event' && walkableRoutes(FOLD_DECL, 'process_event', t).length);
+    say('I1 before a pick, Points from lists the types the route list reaches from the members\' type but theirs; nothing is asked',
+      Boolean(lump) && JSON.stringify(optionsOf(from)) === JSON.stringify(['', ...reachable])
+        && reachable.includes('measurement_event') && !reachable.includes('process_event')
+        && s.urls.length === 0 && textOf(s.view.factsBox, 'sg-note').join() === 'Pick a type' && !byClass(s.view.factsBox, 'sg-lv-plot').length,
+      JSON.stringify({ lump: Boolean(lump), options: optionsOf(from), urls: s.urls.length }));
+    if (from) { from.value = 'measurement_event'; from.dispatch('change', {}); }
+    await settle();
     const params = paramsOf(s.urls[0] || '');
     const asked = new URLSearchParams(FOLD_PROCESS._asked.map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join('&'));
     const valued = FOLD_PROCESS.nodes.filter((n) => n.attributes && 'value' in n.attributes);
     const meta = textOf(s.view.factsBox, 'sg-lv-meta').join();
-    say('I1 walked from its members along the route the walk page lists, as the implementer asked it; the values it reaches are its points',
-      Boolean(lump) && s.urls.length === 1
+    say('I2 picked, walked once along every route to that type and collecting it - as the implementer asked it; its values are the points',
+      s.urls.length === 1
         && JSON.stringify(params.getAll('positive').sort()) === JSON.stringify(asked.getAll('positive').sort())
         && JSON.stringify(params.getAll('follow').sort()) === JSON.stringify(asked.getAll('follow').sort())
         && JSON.stringify(params.getAll('collect')) === JSON.stringify(asked.getAll('collect'))
         && params.get('hops') === asked.get('hops') && params.get('direction') === asked.get('direction')
-        && !params.get('since') && valued.length > 0 && meta === `Points ${valued.length}`,
-      JSON.stringify({ lump: Boolean(lump), urls: s.urls.length, q: [...params.entries()].filter(([k]) => k !== 'id'), meta }));
-    const none = await seatProcess(null);
-    say('I2 no route to anything holding a number: nothing is asked and the count says 0',
-      Boolean(none.lump) && none.s.urls.length === 0 && textOf(none.s.view.factsBox, 'sg-lv-meta').join() === 'Points 0',
-      JSON.stringify({ urls: none.s.urls.length, meta: textOf(none.s.view.factsBox, 'sg-lv-meta') }));
+        && !params.get('since') && valued.length > 0 && meta === `Points ${valued.length}`
+        && choiceOf(s, 'Points from').value === 'measurement_event' && Boolean(choiceOf(s, 'Value')),
+      JSON.stringify({ urls: s.urls.length, q: [...params.entries()].filter(([k]) => k !== 'id'), meta }));
+    const again = await seatProcess(FOLD_DECL, storage);
+    say('I3 this browser remembers the pick for the members\' type: the next time it is walked at once, nothing to pick',
+      again.s.urls.length === 1 && paramsOf(again.s.urls[0] || '').getAll('collect').join() === 'measurement_event'
+        && textOf(again.s.view.factsBox, 'sg-lv-meta').join() === `Points ${valued.length}`,
+      JSON.stringify({ urls: again.s.urls.length, meta: textOf(again.s.view.factsBox, 'sg-lv-meta') }));
+    const none = await seatProcess(null, null);
+    say('I4 no declaration to route by and no storage: nothing to pick from, nothing asked',
+      Boolean(none.lump) && none.s.urls.length === 0 && JSON.stringify(optionsOf(choiceOf(none.s, 'Points from'))) === '[""]'
+        && textOf(none.s.view.factsBox, 'sg-note').join() === 'Pick a type',
+      JSON.stringify({ urls: none.s.urls.length, options: optionsOf(choiceOf(none.s, 'Points from')) }));
   }
 
   console.log('\n[Q] Mark is the one press that marks; the facts stay in sight (lead 9dc2a5695 ① ②)');
@@ -1370,11 +1397,12 @@ const failures = [];
     M('J9m', 'a definition lump\'s walk collects everything, not the owner\'s type', 'J2',
       '      collect: owner ? [owner.type] : undefined,\n', ''),
     M('O3m', 'the values left out are not counted', 'O3', '    if (got.notNumber) said.push(`${got.notNumber} not numbers`);\n', ''),
-    M('I2m', 'a routed lump\'s walk collects everything on the way, not the types holding a number', 'I1',
-      "        follow: [...new Set(routes.flatMap((r) => r.follow))], collect: [...to] } };",
-      '        follow: [...new Set(routes.flatMap((r) => r.follow))] } };'),
-    M('I1m', 'a lump of events that hold no number is not walked to its values', 'I1',
-      '      if (!routes.length) return { nodes: [] };\n', '      return { nodes: members };\n'),    M('Z2m', 'Fit keeps the floor', 'Z2', 'if (this.cy) this.cy.fit(undefined, GEOMETRY.fitPad);', 'if (this.cy) this._firstFit();'),
+    M('I1m', 'the part picks the type for the operator', 'I1',
+      'picked: this._pickedFrom(lump.id, from) };', 'picked: this._pickedFrom(lump.id, from) || this._pickChoices(from)[0] };'),
+    M('I2m', 'a picked lump\'s walk collects everything on the way, not the type picked', 'I2',
+      '        collect: [pick.picked] } : null };', '        } : null };'),
+    M('I3m', 'the pick is not kept', 'I3', '    rememberPick(this.storage, key, { from: type });\n', ''),
+    M('Z2m', 'Fit keeps the floor', 'Z2', 'if (this.cy) this.cy.fit(undefined, GEOMETRY.fitPad);', 'if (this.cy) this._firstFit();'),
     M('Z3m', 'the first draw is not fitted', 'Z1', '    if (full) this._fitPending = true;\n', ''),
     M('Z4m', 'a change of size fits the picture again', 'Z4', '    else this.cy.resize();\n', '    else this._firstFit();\n'),
     M('Z5m', 'a change of size leaves the picture at its old size', 'Z4', '    else this.cy.resize();\n', ''),

@@ -16,7 +16,30 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 
 /** What each lump is seen as, its y and what was walked for it - nothing yet. A part holds its own. */
 export function openLumpSeen() {
-  return { kind: new Map(), y: new Map(), data: new Map() };
+  return { kind: new Map(), y: new Map(), data: new Map(), from: new Map(), choices: new Map() };
+}
+
+/** Where this browser keeps, per members' type, the type a lump's points were taken from and the value attribute. */
+const PICKS_KEY = 'walk.lumpPointsFrom';
+
+/** What this browser remembers for a members' type - `{from, y}` - or nothing (no storage, none kept, unreadable). */
+export function rememberedPick(storage, membersType) {
+  try {
+    return JSON.parse(storage.getItem(PICKS_KEY) || '{}')[membersType] || null;
+  } catch (e) {
+    return null;
+  }
+}
+
+/** Keep a pick for a members' type; a browser that keeps nothing asks for the pick again next time. */
+export function rememberPick(storage, membersType, pick) {
+  try {
+    const all = JSON.parse(storage.getItem(PICKS_KEY) || '{}');
+    all[membersType] = { ...(all[membersType] || {}), ...pick };
+    storage.setItem(PICKS_KEY, JSON.stringify(all));
+  } catch (e) {
+    // Nothing kept: the picker shows again.
+  }
 }
 
 /** A value as a number, or null: the server sends text, so '10.1' reads as 10.1 and 'S1' or '' as nothing. */

@@ -240,6 +240,8 @@ export const WALK_CSS = `
   font-weight: 600; }
 .sg-lv-y { min-height: 36px; padding: 0 var(--space-2); font: inherit; color: var(--text); background: var(--bg-inset);
   border: 1px solid var(--border); border-radius: 0; }
+.sg-lv-choice { display: inline-flex; align-items: center; gap: var(--space-2); }
+.sg-lv-word { font-size: var(--fs-meta); color: var(--text-dim); }
 .sg-lv-meta { font-size: var(--fs-meta); color: var(--text-dim); font-variant-numeric: tabular-nums; }
 .sg-lv-plot { display: block; width: 100%; height: 80px; flex: none; }
 .sg-fact { font-family: 'JetBrains Mono', monospace; font-size: var(--fs-label); overflow-wrap: anywhere; }
