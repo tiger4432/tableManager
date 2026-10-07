@@ -36408,3 +36408,21 @@ bd33605af   은퇴 이름(registration_probe · existing_registrations · regist
 
 > 정정(a14c5af4a 의 「값만 고침 +0.321 s」): 그 수는 시험 엔진(NullPool, 트랜잭션마다 새 연결)의 연결 비용이 대부분이었다 — 1c2bb577c 이 풀 엔진으로 다시 잼:
 > 값만 고침 1.36 s(이 단계 없이 1.34 s, 차이 0.02 s) · 키를 다 옮김 3.07 s(없이 1.43 s). 조인 퍼짐에서의 단계 시간은 여전히 안 잼 — 그 물음은 그대로. CODE_MAP cell_layer 줄의 332.5 s 도 고침
+
+---
+
+## [C 응용] 10-08 de09e2499(아무것도 안 낸 규칙도 거둔다) QA — 물음 하나: «거절»도 거둔다 (코드로 읽음)
+
+```
+읽음     묶음 단계는 run_rule 이 돌아온 뒤 refusal 을 묻지 않고 거둘 일을 적는다(known = stamps_its_origin · columns = columns_a_rule_writes)
+         mapper 가 {"updates": [], "refusal": "..."} 를 내도 updates 가 비었으니 칸은 «이 프로세스에서 본» 칸(_COLUMNS_SEEN)으로 답한다
+         -> 출처를 찍는 규칙이 «고친» 행에서 거절하면 그 행이 먹이던 옛 층을 거둔다. 거절(오류)이 「더는 안 먹인다」와 같은 길을 탄다
+오늘 닿는 자리  추적된 맵퍼 중 출처를 찍는 것: hold_copy(빈 답은 입력이 빌 때뿐) · contrast_walk(거절 「no run rows reached」 — 실행 행이 아닌 행이면 먹인 층도 없다)
+               cross_table_lookup · dt_map 은 거절에 빈 답을 내지만 출처를 안 찍어(origin_row_id 0) 안 걸린다. 운영 맵퍼는 소유자 것이라 셀 수 없다
+물음     거절은 «거두지 않음»(옛 층 유지)이어야 하나, 지금처럼 거둠이어야 하나 — 총괄 판단. 안 쟀다
+덧붙임   다음 쪽(next_page)은 같은 묶음 안에서 다 쓰인 뒤 거두므로(_in_rule_order) 거뒀다 다시 쓰는 흔들림은 없다
+문서     chain_ingestion_guide 의 「Return {"updates": []} for an intentional no-op」 옆에 — 출처를 찍는 규칙이 고친 행에 빈 답이면 거둔다(거절 포함) · 「바뀐 것 없음」은 같은 행을 다시 내라
+```
+
+> [27eea6f65 물음 — 총괄 판단 「지금처럼 거둔다」를 받음] 경계는 «맵퍼가 답했나»다 — 답했으면(행 · 빈 답 · refusal 을 실은 빈 답) 고친 행이 먹이던 옛 층을 거두고,
+> 터졌으면(예외) 묶음 단계가 거둘 일을 적는 줄 «앞»에서 except 로 빠져 return False — apply_chain_writes 까지 안 가므로 쓰기도 거두기도 없이 옛 층이 남는다(origin/main 코드로 읽음 · 안 잼).

@@ -74358,3 +74358,58 @@ C 지금은 안 짓는다
 여쭐 것 1 조인 «아무도 안 가진 키로 옮김»의 빈 자리 — 낸 행이 0 인 묶음에도 그 규칙의 마지막 관찰과 마지막에 쓴 칸으로 거두는 안(크기 안 잼). 시연 전에 할지
        2 소유자께 운영 「python -m ledger followup」 을 큰 적재 중에 한 번 봐 달라고 할지 — 함흥차사가 원장 후속인지 체인인지 갈림
 ```
+
+---
+
+## [10-08] 빈 자리 닫음 de09e2499 — 낸 행이 0 인 묶음도 그 규칙이 쓰던 칸을 거둔다 (총괄 10-08 (1))
+
+어느 DB · 어느 스키마 · 지운 것 — PG 는 assy_test 의 pg_engine 스크래치 스키마(끝에 DROP, 조인 세상은 풀 엔진) · sqlite 는 메모리 · public 안 씀
+
+### 1 무엇
+
+```
+규칙의 칸   rule_run.columns_a_rule_writes(규칙, 이번 행): 이번에 낸 행의 칸 -> 없으면 제품 종류의 선언(dynamic_mappers.columns_declared_for, 조인은 join_into.take_targets)
+            -> 없으면 이 프로세스에서 그 규칙이 마지막으로 쓴 칸 -> 없으면 모름
+찍나        그룹 단계가 «이번 실행»이 아니라 «그 규칙»에 묻는다(rule_run.stamps_its_origin — ②③의 stamps_origin 을 개명: dynamic_mappers.stamps_origin 과 이름이 같아
+            «체인 규칙에서 읽는 칸» 전수 시험이 이름을 따라 남의 함수로 새었다. 같은 까닭으로 say(rule) 호출도 없앰) — 낸 행이 있으면 이번 실행의 답과 같다
+쓰기 문     쓴 행이 하나도 없어도 고칠 때 회수 단계가 돈다
+모를 때     거두지 않고 [ChainRetract] <규칙>: 이 규칙이 무엇을 쓰는지 아직 모릅니다 … 한 줄 (재기동 뒤 아직 행을 안 낸 파일 맵퍼)
+```
+
+### 2 게이트
+
+```
+PG 조인(왼쪽 30 행씩 두 키, 원장 소스가 왼쪽 표를 읽음, 풀 엔진)
+   J1 -> J2 로 옮김(낸 행 있음)   J1 칸 0 · J2 칸 30 · 원장 원자 J2 30 — 오늘과 같은 답
+   J2 -> J9 로 옮김(낸 행 0, 재기동처럼 본 것을 비움)   J1 · J2 칸 0 · 원장 원자 없음 — 선언(take)으로 거둠
+sqlite   낸 행 0 · 전에 낸 적 있음 -> 마지막 칸으로 거둠 / 낸 행 0 · 본 적 없음 -> 안 거두고 규칙 이름 한 줄
+옛 코드(91da9c781 네 파일)로 조인 게이트: OLD 91da9c781 exit 1  1 failed, 8349 deselected, 6 warnings in 10.44s
+   >       monkeypatch.setattr(rule_run, "_COLUMNS_SEEN", {})
+   -> 낸 행이 있는 두 이동(J1 -> J2 까지)의 단언은 옛 코드에서도 지나고, 셋째 걸음 앞(재기동 흉내 줄)에서 멈춤
+```
+
+### 3 변이 (모두 «실패한 시험»으로 빨강, md5 전후 같음)
+
+```
+   stamps asked of this run only              1 failed, 8349 deselected, 6 warnings
+   stamps asked of this run only              1 failed, 23 passed, 9 deselected, 22 warnings
+   the door skips when nothing was written    1 failed, 8349 deselected, 6 warnings
+   the door skips when nothing was written    1 failed, 23 passed, 9 deselected, 22 warnings
+   no declared columns                        1 failed, 8349 deselected, 6 warnings
+   no last-seen columns                       1 failed, 23 passed, 9 deselected, 22 warnings
+   no line when nothing is known              1 failed, 23 passed, 9 deselected, 22 warnings
+```
+
+### 4 스위트
+
+```
+sqlite 전체   5 failed, 7985 passed, 357 skipped, 3 xfailed, 13225 warnings
+   실패 = 알려진 박스 실패: test_the_sample_is_written_in_the_one_format_both_writers_use, test_live_mapper_and_tracked_sample_are_byte_identical, test_live_mapper_and_tracked_sample_are_byte_identical, test_live_mapper_matches_tracked_sample, test_the_repo_root_is_one_above_it
+```
+
+### 말이 바뀐 것
+
+```
+로그   [ChainRetract] <규칙>: 이 규칙이 무엇을 쓰는지 아직 모릅니다(이 프로세스에서 낸 행이 없음) — … 한 줄 새로
+문서   RELEASE_LOG · RUN.md(재기동 · 그 줄의 뜻) · data_model 한 줄 · TEMPLATE_FACTS 에 columns 칸
+```

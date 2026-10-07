@@ -175,6 +175,7 @@ def _enrich(db, payload, rule=None):
 #:   label          what an operator's list calls this rule (`rule_census`, the form)
 #:   stamps_origin  whether what it writes can be WITHDRAWN when its input row is deleted
 #:                  (판정 434 ④: a retraction aims with `cell_sources.origin_row_id`)
+#:   columns        rule -> the columns it writes, when a run proposed nothing (`columns_declared_for`)
 TEMPLATE_FACTS = {}
 
 
@@ -182,6 +183,13 @@ def label_for(name):
     """What a rule naming this mapper is called in a list, or None when nothing built it."""
     return (TEMPLATE_FACTS.get(name) or {}).get("label")
 
+
+
+def columns_declared_for(rule):
+    """The columns a rule naming a kind the product builds writes, read from its declaration - None
+    when the kind does not say (총괄 10-08: a run that proposed nothing still knows what it owns)."""
+    facts = TEMPLATE_FACTS.get((rule or {}).get("mapper")) or {}
+    return facts["columns"](rule) if facts.get("columns") else None
 
 
 def stamps_origin(name) -> bool:
@@ -221,7 +229,7 @@ def _install_templates():
     #   different statement from 「it takes none」 - auto-confirm is handed an enrichment
     #   rule whose cells that file owns. An empty tuple would refuse all of them.
     TEMPLATE_FACTS[join_into.JOIN_INTO_MAPPER] = {
-        "label": "join", "stamps_origin": True,
+        "label": "join", "stamps_origin": True, "columns": join_into.take_targets,
         # ⚰️ `join_into.JOIN_CELLS` WAS PUT HERE AND TAKEN BACK OUT. Declaring the list
         #    makes the loader REFUSE a cell outside it - and 판정 397 settled the
         #    opposite: an unknown join cell is NAMED and the rule still runs,

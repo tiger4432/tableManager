@@ -178,6 +178,11 @@ def _takes(spec: dict) -> list:
     return out
 
 
+def take_targets(rule) -> list:
+    """The left table's columns this join writes - its `take` targets, by the declaration."""
+    return [into for _right, into in _takes(join_spec(rule))]
+
+
 def _folded(column, fold):
     """The key expression, folded and NULL-safe - the SAME shape the unique index has.
 

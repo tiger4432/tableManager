@@ -1517,7 +1517,8 @@ def apply_chain_writes(db, tx_id, rule, incoming_depth, rules_by_target,
     least DECLARED; what it SHOULD be is 「whose write is this」, and that question is answered
     when the hop arrives (㉡), not by this move.
     """
-    if table_updates or map_metadata_updates or scoped_batches:
+    # `edit_retractions` too: a rule that proposed nothing this time can still owe a withdrawal
+    if table_updates or map_metadata_updates or scoped_batches or edit_retractions:
         from database import schemas, crud
         from database.context import (request_user, request_transaction_id, request_source,
                                       request_chain_depth, request_channel,
@@ -2140,12 +2141,19 @@ def _process_chain_transaction_group_sync(tx_id, events, db, rules):
                                                   cascade=cascade, run=run)
                 edited = [p.get("row_id") for e in trigger_events if e.event_type == "EDIT"
                           for p in expanded[outbox_expand.event_key(e)] if p.get("row_id")]
-                if target_payload["stamps_origin"] and edited:
+                # 🔴 [총괄 10-08] ASKED OF THE RULE, NOT OF THIS RUN ALONE: a run that proposed nothing
+                #   still owns what it wrote before - a join whose value row moved to a key no left
+                #   row carries proposes nothing, and the cells it filled under the old key stay.
+                known = rule_run.stamps_its_origin(rule) if edited else False
+                columns = rule_run.columns_a_rule_writes(rule, target_payload["updates"]) if known else None
+                if columns:
                     edit_retractions[target_table].append({
                         "trigger_table": table_name, "declaration": rule_shape.declaration_of(rule),
-                        "origins": edited,
-                        "columns": {column for item in target_payload["updates"]
-                                    for column in (rule_run.item_cell(item, "updates") or ())}})
+                        "origins": edited, "columns": columns})
+                elif known is not False:
+                    logger.warning(
+                        "[ChainRetract] %s: 이 규칙이 무엇을 쓰는지 아직 모릅니다(이 프로세스에서 낸 행이 없음) — "
+                        "고친 원천 행 %d 개가 먹이던 옛 층을 거두지 않았습니다", _rule_name, len(edited))
                 if target_payload["updates"]:
                     table_updates[target_table].extend(target_payload.get("updates"))
                     if rule.get("name") not in table_contributors[target_table]:
