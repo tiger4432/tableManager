@@ -1,0 +1,783 @@
+{
+ "_what": "REAL server output (repository route code, PostgreSQL scratch schema, the declaration in test_a_recipe_walk_brings_the_measurements_other_wafers_made.py). GET /api/ledger/subgraph?id=ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlcxIn1d&positive=ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlcxIn1d&hops=2",
+ "_server_at": "b2b6a166ab75c85e9efe4d9bddaa8f4bbec98e24",
+ "_asked": [
+  [
+   "id",
+   "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlcxIn1d"
+  ],
+  [
+   "positive",
+   "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlcxIn1d"
+  ],
+  [
+   "hops",
+   "2"
+  ]
+ ],
+ "state": "ready",
+ "generated_at": "2026-10-07T14:41:20.470797+00:00",
+ "seed": {
+  "id": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlcxIn1d",
+  "type": "wafer",
+  "keys": {
+   "wafer": "W1"
+  },
+  "label": "W1",
+  "depth": 0,
+  "claim_count": 4,
+  "predicates": [
+   {
+    "predicate": "measured",
+    "count": 2
+   },
+   {
+    "predicate": "underwent",
+    "count": 2
+   }
+  ],
+  "node_kind": "entity",
+  "schema_kind": "entity_instance"
+ },
+ "nodes": [
+  {
+   "id": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlcxIn1d",
+   "type": "wafer",
+   "keys": {
+    "wafer": "W1"
+   },
+   "label": "W1",
+   "depth": 0,
+   "claim_count": 4,
+   "predicates": [
+    {
+     "predicate": "measured",
+     "count": 2
+    },
+    {
+     "predicate": "underwent",
+     "count": 2
+    }
+   ],
+   "node_kind": "entity",
+   "schema_kind": "entity_instance"
+  },
+  {
+   "id": "ledger-entity:v1:WyJtZWFzdXJlbWVudF9ldmVudCIseyJldmVudCI6Ik0xIn1d",
+   "type": "measurement_event",
+   "keys": {
+    "event": "M1"
+   },
+   "label": "10.1",
+   "depth": 1,
+   "claim_count": 3,
+   "predicates": [
+    {
+     "predicate": "measured",
+     "count": 1
+    },
+    {
+     "predicate": "of",
+     "count": 1
+    },
+    {
+     "predicate": "used",
+     "count": 1
+    }
+   ],
+   "node_kind": "entity",
+   "schema_kind": "entity_instance",
+   "attributes": {
+    "value": "10.1"
+   },
+   "attribute_conflicts": 0,
+   "attributes_by_world": {
+    "value": [
+     {
+      "world": "default",
+      "value": "10.1",
+      "occurred_at": "2026-10-01T00:10:00+00:00",
+      "source_who": "metro"
+     }
+    ]
+   }
+  },
+  {
+   "id": "ledger-entity:v1:WyJtZWFzdXJlbWVudF9ldmVudCIseyJldmVudCI6Ik0yIn1d",
+   "type": "measurement_event",
+   "keys": {
+    "event": "M2"
+   },
+   "label": "10.4",
+   "depth": 1,
+   "claim_count": 3,
+   "predicates": [
+    {
+     "predicate": "measured",
+     "count": 1
+    },
+    {
+     "predicate": "of",
+     "count": 1
+    },
+    {
+     "predicate": "used",
+     "count": 1
+    }
+   ],
+   "node_kind": "entity",
+   "schema_kind": "entity_instance",
+   "attributes": {
+    "value": "10.4"
+   },
+   "attribute_conflicts": 0,
+   "attributes_by_world": {
+    "value": [
+     {
+      "world": "default",
+      "value": "10.4",
+      "occurred_at": "2026-10-01T02:10:00+00:00",
+      "source_who": "metro"
+     }
+    ]
+   }
+  },
+  {
+   "id": "ledger-entity:v1:WyJwcm9jZXNzX2V2ZW50Iix7ImV2ZW50IjoiUDEifV0",
+   "type": "process_event",
+   "keys": {
+    "event": "P1"
+   },
+   "label": "S1",
+   "depth": 1,
+   "claim_count": 1,
+   "predicates": [
+    {
+     "predicate": "underwent",
+     "count": 1
+    }
+   ],
+   "node_kind": "entity",
+   "schema_kind": "entity_instance",
+   "attributes": {
+    "step": "S1"
+   },
+   "attribute_conflicts": 0,
+   "attributes_by_world": {
+    "step": [
+     {
+      "world": "default",
+      "value": "S1",
+      "occurred_at": "2026-10-01T00:00:00+00:00",
+      "source_who": "process_event"
+     }
+    ]
+   }
+  },
+  {
+   "id": "ledger-entity:v1:WyJwcm9jZXNzX2V2ZW50Iix7ImV2ZW50IjoiUDIifV0",
+   "type": "process_event",
+   "keys": {
+    "event": "P2"
+   },
+   "label": "S2",
+   "depth": 1,
+   "claim_count": 1,
+   "predicates": [
+    {
+     "predicate": "underwent",
+     "count": 1
+    }
+   ],
+   "node_kind": "entity",
+   "schema_kind": "entity_instance",
+   "attributes": {
+    "step": "S2"
+   },
+   "attribute_conflicts": 0,
+   "attributes_by_world": {
+    "step": [
+     {
+      "world": "default",
+      "value": "S2",
+      "occurred_at": "2026-10-01T02:00:00+00:00",
+      "source_who": "process_event"
+     }
+    ]
+   }
+  },
+  {
+   "id": "ledger-entity:v1:WyJyZWNpcGUiLHsicmVjaXBlIjoiUkNQLUEifV0",
+   "type": "recipe",
+   "keys": {
+    "recipe": "RCP-A"
+   },
+   "label": "RCP-A",
+   "depth": 2,
+   "claim_count": 2,
+   "predicates": [
+    {
+     "predicate": "used",
+     "count": 2
+    }
+   ],
+   "node_kind": "entity",
+   "schema_kind": "entity_instance"
+  },
+  {
+   "id": "ledger-entity:v1:WyJxdWFudGl0eSIseyJxdWFudGl0eSI6IlRISyJ9XQ",
+   "type": "quantity",
+   "keys": {
+    "quantity": "THK"
+   },
+   "label": "THK",
+   "depth": 2,
+   "claim_count": 2,
+   "predicates": [
+    {
+     "predicate": "of",
+     "count": 2
+    }
+   ],
+   "node_kind": "entity",
+   "schema_kind": "entity_instance"
+  }
+ ],
+ "edges": [
+  {
+   "id": "ledger-evidence-edge:v1:WyJtZWFzdXJlZCIsImxlZGdlci1lbnRpdHk6djE6V3lKM1lXWmxjaUlzZXlKM1lXWmxjaUk2SWxjeEluMWQiLCJsZWRnZXItZW50aXR5OnYxOld5SnRaV0Z6ZFhKbGJXVnVkRjlsZG1WdWRDSXNleUpsZG1WdWRDSTZJazB4SW4xZCJd",
+   "source": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlcxIn1d",
+   "target": "ledger-entity:v1:WyJtZWFzdXJlbWVudF9ldmVudCIseyJldmVudCI6Ik0xIn1d",
+   "predicate": "measured",
+   "predicate_label": "measured",
+   "original_predicate": "measured",
+   "basis": "{\"event\":\"{\\\"relation\\\":\\\"metro\\\",\\\"rows\\\":[\\\"metro:{\\\\\\\"row_id\\\\\\\":\\\\\\\"01a116cf-c6ce-7ceb-b4cc-8e16df3cafd0\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"metro:{\\\"row_id\\\":\\\"01a116cf-c6ce-7ceb-b4cc-8e16df3cafd0\\\"}\"]}",
+   "qualifiers": {},
+   "cardinality": null,
+   "claim_id": "01a116cf-ca27-7000-b1e7-910b9f66e2e0",
+   "occurred_at": "2026-10-01T00:10:00+00:00",
+   "source_who": "metro",
+   "worlds": [
+    "default"
+   ],
+   "by_world": [
+    {
+     "world": "default",
+     "claim_id": "01a116cf-ca27-7000-b1e7-910b9f66e2e0",
+     "occurred_at": "2026-10-01T00:10:00+00:00",
+     "source_who": "metro",
+     "basis": "{\"event\":\"{\\\"relation\\\":\\\"metro\\\",\\\"rows\\\":[\\\"metro:{\\\\\\\"row_id\\\\\\\":\\\\\\\"01a116cf-c6ce-7ceb-b4cc-8e16df3cafd0\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"metro:{\\\"row_id\\\":\\\"01a116cf-c6ce-7ceb-b4cc-8e16df3cafd0\\\"}\"]}"
+    }
+   ]
+  },
+  {
+   "id": "ledger-evidence-edge:v1:WyJtZWFzdXJlZCIsImxlZGdlci1lbnRpdHk6djE6V3lKM1lXWmxjaUlzZXlKM1lXWmxjaUk2SWxjeEluMWQiLCJsZWRnZXItZW50aXR5OnYxOld5SnRaV0Z6ZFhKbGJXVnVkRjlsZG1WdWRDSXNleUpsZG1WdWRDSTZJazB5SW4xZCJd",
+   "source": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlcxIn1d",
+   "target": "ledger-entity:v1:WyJtZWFzdXJlbWVudF9ldmVudCIseyJldmVudCI6Ik0yIn1d",
+   "predicate": "measured",
+   "predicate_label": "measured",
+   "original_predicate": "measured",
+   "basis": "{\"event\":\"{\\\"relation\\\":\\\"metro\\\",\\\"rows\\\":[\\\"metro:{\\\\\\\"row_id\\\\\\\":\\\\\\\"01a116cf-c6cf-71ab-a5d5-385d414369ed\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"metro:{\\\"row_id\\\":\\\"01a116cf-c6cf-71ab-a5d5-385d414369ed\\\"}\"]}",
+   "qualifiers": {},
+   "cardinality": null,
+   "claim_id": "01a116cf-ca27-7004-a129-04318ff14c5b",
+   "occurred_at": "2026-10-01T02:10:00+00:00",
+   "source_who": "metro",
+   "worlds": [
+    "default"
+   ],
+   "by_world": [
+    {
+     "world": "default",
+     "claim_id": "01a116cf-ca27-7004-a129-04318ff14c5b",
+     "occurred_at": "2026-10-01T02:10:00+00:00",
+     "source_who": "metro",
+     "basis": "{\"event\":\"{\\\"relation\\\":\\\"metro\\\",\\\"rows\\\":[\\\"metro:{\\\\\\\"row_id\\\\\\\":\\\\\\\"01a116cf-c6cf-71ab-a5d5-385d414369ed\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"metro:{\\\"row_id\\\":\\\"01a116cf-c6cf-71ab-a5d5-385d414369ed\\\"}\"]}"
+    }
+   ]
+  },
+  {
+   "id": "ledger-evidence-edge:v1:WyJ1bmRlcndlbnQiLCJsZWRnZXItZW50aXR5OnYxOld5SjNZV1psY2lJc2V5SjNZV1psY2lJNklsY3hJbjFkIiwibGVkZ2VyLWVudGl0eTp2MTpXeUp3Y205alpYTnpYMlYyWlc1MElpeDdJbVYyWlc1MElqb2lVREVpZlYwIl0",
+   "source": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlcxIn1d",
+   "target": "ledger-entity:v1:WyJwcm9jZXNzX2V2ZW50Iix7ImV2ZW50IjoiUDEifV0",
+   "predicate": "underwent",
+   "predicate_label": "underwent",
+   "original_predicate": "underwent",
+   "basis": "{\"event\":\"{\\\"relation\\\":\\\"process_event\\\",\\\"rows\\\":[\\\"process_event:{\\\\\\\"row_id\\\\\\\":\\\\\\\"01a116cf-c75d-7cef-864d-57c29c6587d2\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"process_event:{\\\"row_id\\\":\\\"01a116cf-c75d-7cef-864d-57c29c6587d2\\\"}\"]}",
+   "qualifiers": {},
+   "cardinality": null,
+   "claim_id": "01a116cf-ce5a-7000-be61-b8a1c43b471b",
+   "occurred_at": "2026-10-01T00:00:00+00:00",
+   "source_who": "process_event",
+   "worlds": [
+    "default"
+   ],
+   "by_world": [
+    {
+     "world": "default",
+     "claim_id": "01a116cf-ce5a-7000-be61-b8a1c43b471b",
+     "occurred_at": "2026-10-01T00:00:00+00:00",
+     "source_who": "process_event",
+     "basis": "{\"event\":\"{\\\"relation\\\":\\\"process_event\\\",\\\"rows\\\":[\\\"process_event:{\\\\\\\"row_id\\\\\\\":\\\\\\\"01a116cf-c75d-7cef-864d-57c29c6587d2\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"process_event:{\\\"row_id\\\":\\\"01a116cf-c75d-7cef-864d-57c29c6587d2\\\"}\"]}"
+    }
+   ]
+  },
+  {
+   "id": "ledger-evidence-edge:v1:WyJ1bmRlcndlbnQiLCJsZWRnZXItZW50aXR5OnYxOld5SjNZV1psY2lJc2V5SjNZV1psY2lJNklsY3hJbjFkIiwibGVkZ2VyLWVudGl0eTp2MTpXeUp3Y205alpYTnpYMlYyWlc1MElpeDdJbVYyWlc1MElqb2lVRElpZlYwIl0",
+   "source": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlcxIn1d",
+   "target": "ledger-entity:v1:WyJwcm9jZXNzX2V2ZW50Iix7ImV2ZW50IjoiUDIifV0",
+   "predicate": "underwent",
+   "predicate_label": "underwent",
+   "original_predicate": "underwent",
+   "basis": "{\"event\":\"{\\\"relation\\\":\\\"process_event\\\",\\\"rows\\\":[\\\"process_event:{\\\\\\\"row_id\\\\\\\":\\\\\\\"01a116cf-c75e-78df-a51f-b2dd3ad122f6\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"process_event:{\\\"row_id\\\":\\\"01a116cf-c75e-78df-a51f-b2dd3ad122f6\\\"}\"]}",
+   "qualifiers": {},
+   "cardinality": null,
+   "claim_id": "01a116cf-ce5a-7002-aeee-c05c6e2bdac3",
+   "occurred_at": "2026-10-01T02:00:00+00:00",
+   "source_who": "process_event",
+   "worlds": [
+    "default"
+   ],
+   "by_world": [
+    {
+     "world": "default",
+     "claim_id": "01a116cf-ce5a-7002-aeee-c05c6e2bdac3",
+     "occurred_at": "2026-10-01T02:00:00+00:00",
+     "source_who": "process_event",
+     "basis": "{\"event\":\"{\\\"relation\\\":\\\"process_event\\\",\\\"rows\\\":[\\\"process_event:{\\\\\\\"row_id\\\\\\\":\\\\\\\"01a116cf-c75e-78df-a51f-b2dd3ad122f6\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"process_event:{\\\"row_id\\\":\\\"01a116cf-c75e-78df-a51f-b2dd3ad122f6\\\"}\"]}"
+    }
+   ]
+  },
+  {
+   "id": "ledger-evidence-edge:v1:WyJvZiIsImxlZGdlci1lbnRpdHk6djE6V3lKdFpXRnpkWEpsYldWdWRGOWxkbVZ1ZENJc2V5SmxkbVZ1ZENJNklrMHhJbjFkIiwibGVkZ2VyLWVudGl0eTp2MTpXeUp4ZFdGdWRHbDBlU0lzZXlKeGRXRnVkR2wwZVNJNklsUklTeUo5WFEiXQ",
+   "source": "ledger-entity:v1:WyJtZWFzdXJlbWVudF9ldmVudCIseyJldmVudCI6Ik0xIn1d",
+   "target": "ledger-entity:v1:WyJxdWFudGl0eSIseyJxdWFudGl0eSI6IlRISyJ9XQ",
+   "predicate": "of",
+   "predicate_label": "of",
+   "original_predicate": "of",
+   "basis": "{\"event\":\"{\\\"relation\\\":\\\"metro\\\",\\\"rows\\\":[\\\"metro:{\\\\\\\"row_id\\\\\\\":\\\\\\\"01a116cf-c6ce-7ceb-b4cc-8e16df3cafd0\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"metro:{\\\"row_id\\\":\\\"01a116cf-c6ce-7ceb-b4cc-8e16df3cafd0\\\"}\"]}",
+   "qualifiers": {},
+   "cardinality": null,
+   "claim_id": "01a116cf-ca27-7001-9286-fd62eca36efb",
+   "occurred_at": "2026-10-01T00:10:00+00:00",
+   "source_who": "metro",
+   "worlds": [
+    "default"
+   ],
+   "by_world": [
+    {
+     "world": "default",
+     "claim_id": "01a116cf-ca27-7001-9286-fd62eca36efb",
+     "occurred_at": "2026-10-01T00:10:00+00:00",
+     "source_who": "metro",
+     "basis": "{\"event\":\"{\\\"relation\\\":\\\"metro\\\",\\\"rows\\\":[\\\"metro:{\\\\\\\"row_id\\\\\\\":\\\\\\\"01a116cf-c6ce-7ceb-b4cc-8e16df3cafd0\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"metro:{\\\"row_id\\\":\\\"01a116cf-c6ce-7ceb-b4cc-8e16df3cafd0\\\"}\"]}"
+    }
+   ]
+  },
+  {
+   "id": "ledger-evidence-edge:v1:WyJvZiIsImxlZGdlci1lbnRpdHk6djE6V3lKdFpXRnpkWEpsYldWdWRGOWxkbVZ1ZENJc2V5SmxkbVZ1ZENJNklrMHlJbjFkIiwibGVkZ2VyLWVudGl0eTp2MTpXeUp4ZFdGdWRHbDBlU0lzZXlKeGRXRnVkR2wwZVNJNklsUklTeUo5WFEiXQ",
+   "source": "ledger-entity:v1:WyJtZWFzdXJlbWVudF9ldmVudCIseyJldmVudCI6Ik0yIn1d",
+   "target": "ledger-entity:v1:WyJxdWFudGl0eSIseyJxdWFudGl0eSI6IlRISyJ9XQ",
+   "predicate": "of",
+   "predicate_label": "of",
+   "original_predicate": "of",
+   "basis": "{\"event\":\"{\\\"relation\\\":\\\"metro\\\",\\\"rows\\\":[\\\"metro:{\\\\\\\"row_id\\\\\\\":\\\\\\\"01a116cf-c6cf-71ab-a5d5-385d414369ed\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"metro:{\\\"row_id\\\":\\\"01a116cf-c6cf-71ab-a5d5-385d414369ed\\\"}\"]}",
+   "qualifiers": {},
+   "cardinality": null,
+   "claim_id": "01a116cf-ca27-7005-a03b-7900b8a589fa",
+   "occurred_at": "2026-10-01T02:10:00+00:00",
+   "source_who": "metro",
+   "worlds": [
+    "default"
+   ],
+   "by_world": [
+    {
+     "world": "default",
+     "claim_id": "01a116cf-ca27-7005-a03b-7900b8a589fa",
+     "occurred_at": "2026-10-01T02:10:00+00:00",
+     "source_who": "metro",
+     "basis": "{\"event\":\"{\\\"relation\\\":\\\"metro\\\",\\\"rows\\\":[\\\"metro:{\\\\\\\"row_id\\\\\\\":\\\\\\\"01a116cf-c6cf-71ab-a5d5-385d414369ed\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"metro:{\\\"row_id\\\":\\\"01a116cf-c6cf-71ab-a5d5-385d414369ed\\\"}\"]}"
+    }
+   ]
+  },
+  {
+   "id": "ledger-evidence-edge:v1:WyJ1c2VkIiwibGVkZ2VyLWVudGl0eTp2MTpXeUp0WldGemRYSmxiV1Z1ZEY5bGRtVnVkQ0lzZXlKbGRtVnVkQ0k2SWsweEluMWQiLCJsZWRnZXItZW50aXR5OnYxOld5SnlaV05wY0dVaUxIc2ljbVZqYVhCbElqb2lVa05RTFVFaWZWMCJd",
+   "source": "ledger-entity:v1:WyJtZWFzdXJlbWVudF9ldmVudCIseyJldmVudCI6Ik0xIn1d",
+   "target": "ledger-entity:v1:WyJyZWNpcGUiLHsicmVjaXBlIjoiUkNQLUEifV0",
+   "predicate": "used",
+   "predicate_label": "used",
+   "original_predicate": "used",
+   "basis": "{\"event\":\"{\\\"relation\\\":\\\"metro\\\",\\\"rows\\\":[\\\"metro:{\\\\\\\"row_id\\\\\\\":\\\\\\\"01a116cf-c6ce-7ceb-b4cc-8e16df3cafd0\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"metro:{\\\"row_id\\\":\\\"01a116cf-c6ce-7ceb-b4cc-8e16df3cafd0\\\"}\"]}",
+   "qualifiers": {},
+   "cardinality": null,
+   "claim_id": "01a116cf-ca27-7002-86b2-cb79e136b141",
+   "occurred_at": "2026-10-01T00:10:00+00:00",
+   "source_who": "metro",
+   "worlds": [
+    "default"
+   ],
+   "by_world": [
+    {
+     "world": "default",
+     "claim_id": "01a116cf-ca27-7002-86b2-cb79e136b141",
+     "occurred_at": "2026-10-01T00:10:00+00:00",
+     "source_who": "metro",
+     "basis": "{\"event\":\"{\\\"relation\\\":\\\"metro\\\",\\\"rows\\\":[\\\"metro:{\\\\\\\"row_id\\\\\\\":\\\\\\\"01a116cf-c6ce-7ceb-b4cc-8e16df3cafd0\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"metro:{\\\"row_id\\\":\\\"01a116cf-c6ce-7ceb-b4cc-8e16df3cafd0\\\"}\"]}"
+    }
+   ]
+  },
+  {
+   "id": "ledger-evidence-edge:v1:WyJ1c2VkIiwibGVkZ2VyLWVudGl0eTp2MTpXeUp0WldGemRYSmxiV1Z1ZEY5bGRtVnVkQ0lzZXlKbGRtVnVkQ0k2SWsweUluMWQiLCJsZWRnZXItZW50aXR5OnYxOld5SnlaV05wY0dVaUxIc2ljbVZqYVhCbElqb2lVa05RTFVFaWZWMCJd",
+   "source": "ledger-entity:v1:WyJtZWFzdXJlbWVudF9ldmVudCIseyJldmVudCI6Ik0yIn1d",
+   "target": "ledger-entity:v1:WyJyZWNpcGUiLHsicmVjaXBlIjoiUkNQLUEifV0",
+   "predicate": "used",
+   "predicate_label": "used",
+   "original_predicate": "used",
+   "basis": "{\"event\":\"{\\\"relation\\\":\\\"metro\\\",\\\"rows\\\":[\\\"metro:{\\\\\\\"row_id\\\\\\\":\\\\\\\"01a116cf-c6cf-71ab-a5d5-385d414369ed\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"metro:{\\\"row_id\\\":\\\"01a116cf-c6cf-71ab-a5d5-385d414369ed\\\"}\"]}",
+   "qualifiers": {},
+   "cardinality": null,
+   "claim_id": "01a116cf-ca27-7006-8a47-044a16f77137",
+   "occurred_at": "2026-10-01T02:10:00+00:00",
+   "source_who": "metro",
+   "worlds": [
+    "default"
+   ],
+   "by_world": [
+    {
+     "world": "default",
+     "claim_id": "01a116cf-ca27-7006-8a47-044a16f77137",
+     "occurred_at": "2026-10-01T02:10:00+00:00",
+     "source_who": "metro",
+     "basis": "{\"event\":\"{\\\"relation\\\":\\\"metro\\\",\\\"rows\\\":[\\\"metro:{\\\\\\\"row_id\\\\\\\":\\\\\\\"01a116cf-c6cf-71ab-a5d5-385d414369ed\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"metro:{\\\"row_id\\\":\\\"01a116cf-c6cf-71ab-a5d5-385d414369ed\\\"}\"]}"
+    }
+   ]
+  }
+ ],
+ "attribute_cardinality": {},
+ "seeds": [
+  {
+   "id": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlcxIn1d",
+   "sign": "+",
+   "node_kind": "entity"
+  }
+ ],
+ "propagation": {
+  "contrast": "unexamined",
+  "complete": false,
+  "state": "ranked",
+  "ranked": [
+   {
+    "id": "ledger-entity:v1:WyJtZWFzdXJlbWVudF9ldmVudCIseyJldmVudCI6Ik0yIn1d",
+    "type": "measurement_event",
+    "label": "10.4",
+    "reach": [
+     1,
+     0
+    ],
+    "reachable": [
+     1,
+     0
+    ],
+    "rank": 1,
+    "top": true,
+    "tied": true,
+    "incomparable": false,
+    "evidence": [
+     {
+      "seed": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlcxIn1d",
+      "sign": "+",
+      "hops": [
+       {
+        "id": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlcxIn1d",
+        "node_kind": "entity",
+        "label": "W1",
+        "atom": null,
+        "ref": null
+       },
+       {
+        "id": "ledger-entity:v1:WyJtZWFzdXJlbWVudF9ldmVudCIseyJldmVudCI6Ik0yIn1d",
+        "node_kind": "entity",
+        "label": "10.4",
+        "atom": null,
+        "ref": null,
+        "predicates": [
+         "measured"
+        ]
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "id": "ledger-entity:v1:WyJwcm9jZXNzX2V2ZW50Iix7ImV2ZW50IjoiUDIifV0",
+    "type": "process_event",
+    "label": "S2",
+    "reach": [
+     1,
+     0
+    ],
+    "reachable": [
+     1,
+     0
+    ],
+    "rank": 1,
+    "top": true,
+    "tied": true,
+    "incomparable": false,
+    "evidence": [
+     {
+      "seed": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlcxIn1d",
+      "sign": "+",
+      "hops": [
+       {
+        "id": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlcxIn1d",
+        "node_kind": "entity",
+        "label": "W1",
+        "atom": null,
+        "ref": null
+       },
+       {
+        "id": "ledger-entity:v1:WyJwcm9jZXNzX2V2ZW50Iix7ImV2ZW50IjoiUDIifV0",
+        "node_kind": "entity",
+        "label": "S2",
+        "atom": null,
+        "ref": null,
+        "predicates": [
+         "underwent"
+        ]
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "id": "ledger-entity:v1:WyJtZWFzdXJlbWVudF9ldmVudCIseyJldmVudCI6Ik0xIn1d",
+    "type": "measurement_event",
+    "label": "10.1",
+    "reach": [
+     1,
+     0
+    ],
+    "reachable": [
+     1,
+     0
+    ],
+    "rank": 1,
+    "top": true,
+    "tied": true,
+    "incomparable": false,
+    "evidence": [
+     {
+      "seed": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlcxIn1d",
+      "sign": "+",
+      "hops": [
+       {
+        "id": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlcxIn1d",
+        "node_kind": "entity",
+        "label": "W1",
+        "atom": null,
+        "ref": null
+       },
+       {
+        "id": "ledger-entity:v1:WyJtZWFzdXJlbWVudF9ldmVudCIseyJldmVudCI6Ik0xIn1d",
+        "node_kind": "entity",
+        "label": "10.1",
+        "atom": null,
+        "ref": null,
+        "predicates": [
+         "measured"
+        ]
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "id": "ledger-entity:v1:WyJwcm9jZXNzX2V2ZW50Iix7ImV2ZW50IjoiUDEifV0",
+    "type": "process_event",
+    "label": "S1",
+    "reach": [
+     1,
+     0
+    ],
+    "reachable": [
+     1,
+     0
+    ],
+    "rank": 1,
+    "top": true,
+    "tied": true,
+    "incomparable": false,
+    "evidence": [
+     {
+      "seed": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlcxIn1d",
+      "sign": "+",
+      "hops": [
+       {
+        "id": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlcxIn1d",
+        "node_kind": "entity",
+        "label": "W1",
+        "atom": null,
+        "ref": null
+       },
+       {
+        "id": "ledger-entity:v1:WyJwcm9jZXNzX2V2ZW50Iix7ImV2ZW50IjoiUDEifV0",
+        "node_kind": "entity",
+        "label": "S1",
+        "atom": null,
+        "ref": null,
+        "predicates": [
+         "underwent"
+        ]
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "id": "ledger-entity:v1:WyJyZWNpcGUiLHsicmVjaXBlIjoiUkNQLUEifV0",
+    "type": "recipe",
+    "label": "RCP-A",
+    "reach": [
+     1,
+     0
+    ],
+    "reachable": [
+     1,
+     0
+    ],
+    "rank": 1,
+    "top": true,
+    "tied": true,
+    "incomparable": false,
+    "evidence": [
+     {
+      "seed": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlcxIn1d",
+      "sign": "+",
+      "hops": [
+       {
+        "id": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlcxIn1d",
+        "node_kind": "entity",
+        "label": "W1",
+        "atom": null,
+        "ref": null
+       },
+       {
+        "id": "ledger-entity:v1:WyJtZWFzdXJlbWVudF9ldmVudCIseyJldmVudCI6Ik0xIn1d",
+        "node_kind": "entity",
+        "label": "10.1",
+        "atom": null,
+        "ref": null,
+        "predicates": [
+         "measured"
+        ]
+       },
+       {
+        "id": "ledger-entity:v1:WyJyZWNpcGUiLHsicmVjaXBlIjoiUkNQLUEifV0",
+        "node_kind": "entity",
+        "label": "RCP-A",
+        "atom": null,
+        "ref": null,
+        "predicates": [
+         "used"
+        ]
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "id": "ledger-entity:v1:WyJxdWFudGl0eSIseyJxdWFudGl0eSI6IlRISyJ9XQ",
+    "type": "quantity",
+    "label": "THK",
+    "reach": [
+     1,
+     0
+    ],
+    "reachable": [
+     1,
+     0
+    ],
+    "rank": 1,
+    "top": true,
+    "tied": true,
+    "incomparable": false,
+    "evidence": [
+     {
+      "seed": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlcxIn1d",
+      "sign": "+",
+      "hops": [
+       {
+        "id": "ledger-entity:v1:WyJ3YWZlciIseyJ3YWZlciI6IlcxIn1d",
+        "node_kind": "entity",
+        "label": "W1",
+        "atom": null,
+        "ref": null
+       },
+       {
+        "id": "ledger-entity:v1:WyJtZWFzdXJlbWVudF9ldmVudCIseyJldmVudCI6Ik0xIn1d",
+        "node_kind": "entity",
+        "label": "10.1",
+        "atom": null,
+        "ref": null,
+        "predicates": [
+         "measured"
+        ]
+       },
+       {
+        "id": "ledger-entity:v1:WyJxdWFudGl0eSIseyJxdWFudGl0eSI6IlRISyJ9XQ",
+        "node_kind": "entity",
+        "label": "THK",
+        "atom": null,
+        "ref": null,
+        "predicates": [
+         "of"
+        ]
+       }
+      ]
+     }
+    ]
+   }
+  ],
+  "top_set": [
+   "ledger-entity:v1:WyJtZWFzdXJlbWVudF9ldmVudCIseyJldmVudCI6Ik0yIn1d",
+   "ledger-entity:v1:WyJwcm9jZXNzX2V2ZW50Iix7ImV2ZW50IjoiUDIifV0",
+   "ledger-entity:v1:WyJtZWFzdXJlbWVudF9ldmVudCIseyJldmVudCI6Ik0xIn1d",
+   "ledger-entity:v1:WyJwcm9jZXNzX2V2ZW50Iix7ImV2ZW50IjoiUDEifV0",
+   "ledger-entity:v1:WyJyZWNpcGUiLHsicmVjaXBlIjoiUkNQLUEifV0",
+   "ledger-entity:v1:WyJxdWFudGl0eSIseyJxdWFudGl0eSI6IlRISyJ9XQ"
+  ],
+  "message": null
+ },
+ "walk": {
+  "mode": "evidence_graph",
+  "direction": "both",
+  "start": {
+   "positive": 1,
+   "negative": 0
+  },
+  "hops_requested": 2,
+  "hops_reached": 2,
+  "claims_scanned": 16,
+  "actions_scanned": 0,
+  "enrich_actions": false,
+  "raw_claims": true,
+  "resolver_applied": false
+ },
+ "limits": {
+  "nodes": 400,
+  "edges": 1200,
+  "claims": 2400,
+  "actions": 1200,
+  "max_hops": 40
+ },
+ "truncated": {
+  "depth": true,
+  "nodes": false,
+  "edges": false,
+  "claims": false,
+  "actions": false,
+  "reason": "depth"
+ },
+ "message": null
+}

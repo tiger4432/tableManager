@@ -1,0 +1,512 @@
+{
+ "_what": "REAL server output (repository route code, PostgreSQL scratch schema, the declaration in test_a_recipe_walk_brings_the_measurements_other_wafers_made.py). GET /api/ledger/subgraph?id=ledger-entity:v1:WyJyZWNpcGUiLHsicmVjaXBlIjoiUkNQLUEifV0&hops=1&direction=incoming&since=2026-10-01T00:00:00+09:00&until=2026-10-02T00:00:00+09:00&node_limit=200&collect=measurement_event",
+ "_server_at": "b2b6a166ab75c85e9efe4d9bddaa8f4bbec98e24",
+ "_asked": [
+  [
+   "id",
+   "ledger-entity:v1:WyJyZWNpcGUiLHsicmVjaXBlIjoiUkNQLUEifV0"
+  ],
+  [
+   "hops",
+   "1"
+  ],
+  [
+   "direction",
+   "incoming"
+  ],
+  [
+   "since",
+   "2026-10-01T00:00:00+09:00"
+  ],
+  [
+   "until",
+   "2026-10-02T00:00:00+09:00"
+  ],
+  [
+   "node_limit",
+   "200"
+  ],
+  [
+   "collect",
+   "measurement_event"
+  ]
+ ],
+ "state": "ready",
+ "generated_at": "2026-10-07T14:41:20.509813+00:00",
+ "seed": {
+  "id": "ledger-entity:v1:WyJyZWNpcGUiLHsicmVjaXBlIjoiUkNQLUEifV0",
+  "type": "recipe",
+  "keys": {
+   "recipe": "RCP-A"
+  },
+  "label": "RCP-A",
+  "depth": 0,
+  "claim_count": 4,
+  "predicates": [
+   {
+    "predicate": "used",
+    "count": 4
+   }
+  ],
+  "node_kind": "entity",
+  "schema_kind": "entity_instance"
+ },
+ "nodes": [
+  {
+   "id": "ledger-entity:v1:WyJtZWFzdXJlbWVudF9ldmVudCIseyJldmVudCI6Ik0xIn1d",
+   "type": "measurement_event",
+   "keys": {
+    "event": "M1"
+   },
+   "label": "10.1",
+   "depth": 1,
+   "claim_count": 1,
+   "predicates": [
+    {
+     "predicate": "used",
+     "count": 1
+    }
+   ],
+   "node_kind": "entity",
+   "schema_kind": "entity_instance",
+   "attributes": {
+    "value": "10.1"
+   },
+   "attribute_conflicts": 0,
+   "attributes_by_world": {
+    "value": [
+     {
+      "world": "default",
+      "value": "10.1",
+      "occurred_at": "2026-10-01T00:10:00+00:00",
+      "source_who": "metro"
+     }
+    ]
+   }
+  },
+  {
+   "id": "ledger-entity:v1:WyJtZWFzdXJlbWVudF9ldmVudCIseyJldmVudCI6Ik0yIn1d",
+   "type": "measurement_event",
+   "keys": {
+    "event": "M2"
+   },
+   "label": "10.4",
+   "depth": 1,
+   "claim_count": 1,
+   "predicates": [
+    {
+     "predicate": "used",
+     "count": 1
+    }
+   ],
+   "node_kind": "entity",
+   "schema_kind": "entity_instance",
+   "attributes": {
+    "value": "10.4"
+   },
+   "attribute_conflicts": 0,
+   "attributes_by_world": {
+    "value": [
+     {
+      "world": "default",
+      "value": "10.4",
+      "occurred_at": "2026-10-01T02:10:00+00:00",
+      "source_who": "metro"
+     }
+    ]
+   }
+  },
+  {
+   "id": "ledger-entity:v1:WyJtZWFzdXJlbWVudF9ldmVudCIseyJldmVudCI6Ik00In1d",
+   "type": "measurement_event",
+   "keys": {
+    "event": "M4"
+   },
+   "label": "12.9",
+   "depth": 1,
+   "claim_count": 1,
+   "predicates": [
+    {
+     "predicate": "used",
+     "count": 1
+    }
+   ],
+   "node_kind": "entity",
+   "schema_kind": "entity_instance",
+   "attributes": {
+    "value": "12.9"
+   },
+   "attribute_conflicts": 0,
+   "attributes_by_world": {
+    "value": [
+     {
+      "world": "default",
+      "value": "12.9",
+      "occurred_at": "2026-10-01T04:10:00+00:00",
+      "source_who": "metro"
+     }
+    ]
+   }
+  },
+  {
+   "id": "ledger-entity:v1:WyJtZWFzdXJlbWVudF9ldmVudCIseyJldmVudCI6Ik0zIn1d",
+   "type": "measurement_event",
+   "keys": {
+    "event": "M3"
+   },
+   "label": "9.7",
+   "depth": 1,
+   "claim_count": 1,
+   "predicates": [
+    {
+     "predicate": "used",
+     "count": 1
+    }
+   ],
+   "node_kind": "entity",
+   "schema_kind": "entity_instance",
+   "attributes": {
+    "value": "9.7"
+   },
+   "attribute_conflicts": 0,
+   "attributes_by_world": {
+    "value": [
+     {
+      "world": "default",
+      "value": "9.7",
+      "occurred_at": "2026-10-01T01:10:00+00:00",
+      "source_who": "metro"
+     }
+    ]
+   }
+  }
+ ],
+ "edges": [
+  {
+   "id": "ledger-evidence-edge:v1:WyJ1c2VkIiwibGVkZ2VyLWVudGl0eTp2MTpXeUp0WldGemRYSmxiV1Z1ZEY5bGRtVnVkQ0lzZXlKbGRtVnVkQ0k2SWswMEluMWQiLCJsZWRnZXItZW50aXR5OnYxOld5SnlaV05wY0dVaUxIc2ljbVZqYVhCbElqb2lVa05RTFVFaWZWMCJd",
+   "source": "ledger-entity:v1:WyJtZWFzdXJlbWVudF9ldmVudCIseyJldmVudCI6Ik00In1d",
+   "target": "ledger-entity:v1:WyJyZWNpcGUiLHsicmVjaXBlIjoiUkNQLUEifV0",
+   "predicate": "used",
+   "predicate_label": "used",
+   "original_predicate": "used",
+   "basis": "{\"event\":\"{\\\"relation\\\":\\\"metro\\\",\\\"rows\\\":[\\\"metro:{\\\\\\\"row_id\\\\\\\":\\\\\\\"01a116cf-c6d1-7d96-9d2e-967f3547452d\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"metro:{\\\"row_id\\\":\\\"01a116cf-c6d1-7d96-9d2e-967f3547452d\\\"}\"]}",
+   "qualifiers": {},
+   "cardinality": null,
+   "claim_id": "01a116cf-ca27-700e-9302-1c6f41f13174",
+   "occurred_at": "2026-10-01T04:10:00+00:00",
+   "source_who": "metro",
+   "worlds": [
+    "default"
+   ],
+   "by_world": [
+    {
+     "world": "default",
+     "claim_id": "01a116cf-ca27-700e-9302-1c6f41f13174",
+     "occurred_at": "2026-10-01T04:10:00+00:00",
+     "source_who": "metro",
+     "basis": "{\"event\":\"{\\\"relation\\\":\\\"metro\\\",\\\"rows\\\":[\\\"metro:{\\\\\\\"row_id\\\\\\\":\\\\\\\"01a116cf-c6d1-7d96-9d2e-967f3547452d\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"metro:{\\\"row_id\\\":\\\"01a116cf-c6d1-7d96-9d2e-967f3547452d\\\"}\"]}"
+    }
+   ]
+  },
+  {
+   "id": "ledger-evidence-edge:v1:WyJ1c2VkIiwibGVkZ2VyLWVudGl0eTp2MTpXeUp0WldGemRYSmxiV1Z1ZEY5bGRtVnVkQ0lzZXlKbGRtVnVkQ0k2SWsweEluMWQiLCJsZWRnZXItZW50aXR5OnYxOld5SnlaV05wY0dVaUxIc2ljbVZqYVhCbElqb2lVa05RTFVFaWZWMCJd",
+   "source": "ledger-entity:v1:WyJtZWFzdXJlbWVudF9ldmVudCIseyJldmVudCI6Ik0xIn1d",
+   "target": "ledger-entity:v1:WyJyZWNpcGUiLHsicmVjaXBlIjoiUkNQLUEifV0",
+   "predicate": "used",
+   "predicate_label": "used",
+   "original_predicate": "used",
+   "basis": "{\"event\":\"{\\\"relation\\\":\\\"metro\\\",\\\"rows\\\":[\\\"metro:{\\\\\\\"row_id\\\\\\\":\\\\\\\"01a116cf-c6ce-7ceb-b4cc-8e16df3cafd0\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"metro:{\\\"row_id\\\":\\\"01a116cf-c6ce-7ceb-b4cc-8e16df3cafd0\\\"}\"]}",
+   "qualifiers": {},
+   "cardinality": null,
+   "claim_id": "01a116cf-ca27-7002-86b2-cb79e136b141",
+   "occurred_at": "2026-10-01T00:10:00+00:00",
+   "source_who": "metro",
+   "worlds": [
+    "default"
+   ],
+   "by_world": [
+    {
+     "world": "default",
+     "claim_id": "01a116cf-ca27-7002-86b2-cb79e136b141",
+     "occurred_at": "2026-10-01T00:10:00+00:00",
+     "source_who": "metro",
+     "basis": "{\"event\":\"{\\\"relation\\\":\\\"metro\\\",\\\"rows\\\":[\\\"metro:{\\\\\\\"row_id\\\\\\\":\\\\\\\"01a116cf-c6ce-7ceb-b4cc-8e16df3cafd0\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"metro:{\\\"row_id\\\":\\\"01a116cf-c6ce-7ceb-b4cc-8e16df3cafd0\\\"}\"]}"
+    }
+   ]
+  },
+  {
+   "id": "ledger-evidence-edge:v1:WyJ1c2VkIiwibGVkZ2VyLWVudGl0eTp2MTpXeUp0WldGemRYSmxiV1Z1ZEY5bGRtVnVkQ0lzZXlKbGRtVnVkQ0k2SWsweUluMWQiLCJsZWRnZXItZW50aXR5OnYxOld5SnlaV05wY0dVaUxIc2ljbVZqYVhCbElqb2lVa05RTFVFaWZWMCJd",
+   "source": "ledger-entity:v1:WyJtZWFzdXJlbWVudF9ldmVudCIseyJldmVudCI6Ik0yIn1d",
+   "target": "ledger-entity:v1:WyJyZWNpcGUiLHsicmVjaXBlIjoiUkNQLUEifV0",
+   "predicate": "used",
+   "predicate_label": "used",
+   "original_predicate": "used",
+   "basis": "{\"event\":\"{\\\"relation\\\":\\\"metro\\\",\\\"rows\\\":[\\\"metro:{\\\\\\\"row_id\\\\\\\":\\\\\\\"01a116cf-c6cf-71ab-a5d5-385d414369ed\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"metro:{\\\"row_id\\\":\\\"01a116cf-c6cf-71ab-a5d5-385d414369ed\\\"}\"]}",
+   "qualifiers": {},
+   "cardinality": null,
+   "claim_id": "01a116cf-ca27-7006-8a47-044a16f77137",
+   "occurred_at": "2026-10-01T02:10:00+00:00",
+   "source_who": "metro",
+   "worlds": [
+    "default"
+   ],
+   "by_world": [
+    {
+     "world": "default",
+     "claim_id": "01a116cf-ca27-7006-8a47-044a16f77137",
+     "occurred_at": "2026-10-01T02:10:00+00:00",
+     "source_who": "metro",
+     "basis": "{\"event\":\"{\\\"relation\\\":\\\"metro\\\",\\\"rows\\\":[\\\"metro:{\\\\\\\"row_id\\\\\\\":\\\\\\\"01a116cf-c6cf-71ab-a5d5-385d414369ed\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"metro:{\\\"row_id\\\":\\\"01a116cf-c6cf-71ab-a5d5-385d414369ed\\\"}\"]}"
+    }
+   ]
+  },
+  {
+   "id": "ledger-evidence-edge:v1:WyJ1c2VkIiwibGVkZ2VyLWVudGl0eTp2MTpXeUp0WldGemRYSmxiV1Z1ZEY5bGRtVnVkQ0lzZXlKbGRtVnVkQ0k2SWswekluMWQiLCJsZWRnZXItZW50aXR5OnYxOld5SnlaV05wY0dVaUxIc2ljbVZqYVhCbElqb2lVa05RTFVFaWZWMCJd",
+   "source": "ledger-entity:v1:WyJtZWFzdXJlbWVudF9ldmVudCIseyJldmVudCI6Ik0zIn1d",
+   "target": "ledger-entity:v1:WyJyZWNpcGUiLHsicmVjaXBlIjoiUkNQLUEifV0",
+   "predicate": "used",
+   "predicate_label": "used",
+   "original_predicate": "used",
+   "basis": "{\"event\":\"{\\\"relation\\\":\\\"metro\\\",\\\"rows\\\":[\\\"metro:{\\\\\\\"row_id\\\\\\\":\\\\\\\"01a116cf-c6d0-7612-bffb-7a054608f7ec\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"metro:{\\\"row_id\\\":\\\"01a116cf-c6d0-7612-bffb-7a054608f7ec\\\"}\"]}",
+   "qualifiers": {},
+   "cardinality": null,
+   "claim_id": "01a116cf-ca27-700a-9c23-a98774f673c9",
+   "occurred_at": "2026-10-01T01:10:00+00:00",
+   "source_who": "metro",
+   "worlds": [
+    "default"
+   ],
+   "by_world": [
+    {
+     "world": "default",
+     "claim_id": "01a116cf-ca27-700a-9c23-a98774f673c9",
+     "occurred_at": "2026-10-01T01:10:00+00:00",
+     "source_who": "metro",
+     "basis": "{\"event\":\"{\\\"relation\\\":\\\"metro\\\",\\\"rows\\\":[\\\"metro:{\\\\\\\"row_id\\\\\\\":\\\\\\\"01a116cf-c6d0-7612-bffb-7a054608f7ec\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"metro:{\\\"row_id\\\":\\\"01a116cf-c6d0-7612-bffb-7a054608f7ec\\\"}\"]}"
+    }
+   ]
+  }
+ ],
+ "attribute_cardinality": {},
+ "seeds": [
+  {
+   "id": "ledger-entity:v1:WyJyZWNpcGUiLHsicmVjaXBlIjoiUkNQLUEifV0",
+   "sign": "+",
+   "node_kind": "entity"
+  }
+ ],
+ "propagation": {
+  "contrast": "unexamined",
+  "complete": false,
+  "state": "ranked",
+  "ranked": [
+   {
+    "id": "ledger-entity:v1:WyJtZWFzdXJlbWVudF9ldmVudCIseyJldmVudCI6Ik00In1d",
+    "type": "measurement_event",
+    "label": "12.9",
+    "reach": [
+     1,
+     0
+    ],
+    "reachable": [
+     1,
+     0
+    ],
+    "rank": 1,
+    "top": true,
+    "tied": true,
+    "incomparable": false,
+    "evidence": [
+     {
+      "seed": "ledger-entity:v1:WyJyZWNpcGUiLHsicmVjaXBlIjoiUkNQLUEifV0",
+      "sign": "+",
+      "hops": [
+       {
+        "id": "ledger-entity:v1:WyJyZWNpcGUiLHsicmVjaXBlIjoiUkNQLUEifV0",
+        "node_kind": "entity",
+        "label": "RCP-A",
+        "atom": null,
+        "ref": null
+       },
+       {
+        "id": "ledger-entity:v1:WyJtZWFzdXJlbWVudF9ldmVudCIseyJldmVudCI6Ik00In1d",
+        "node_kind": "entity",
+        "label": "12.9",
+        "atom": null,
+        "ref": null,
+        "predicates": [
+         "used"
+        ]
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "id": "ledger-entity:v1:WyJtZWFzdXJlbWVudF9ldmVudCIseyJldmVudCI6Ik0yIn1d",
+    "type": "measurement_event",
+    "label": "10.4",
+    "reach": [
+     1,
+     0
+    ],
+    "reachable": [
+     1,
+     0
+    ],
+    "rank": 1,
+    "top": true,
+    "tied": true,
+    "incomparable": false,
+    "evidence": [
+     {
+      "seed": "ledger-entity:v1:WyJyZWNpcGUiLHsicmVjaXBlIjoiUkNQLUEifV0",
+      "sign": "+",
+      "hops": [
+       {
+        "id": "ledger-entity:v1:WyJyZWNpcGUiLHsicmVjaXBlIjoiUkNQLUEifV0",
+        "node_kind": "entity",
+        "label": "RCP-A",
+        "atom": null,
+        "ref": null
+       },
+       {
+        "id": "ledger-entity:v1:WyJtZWFzdXJlbWVudF9ldmVudCIseyJldmVudCI6Ik0yIn1d",
+        "node_kind": "entity",
+        "label": "10.4",
+        "atom": null,
+        "ref": null,
+        "predicates": [
+         "used"
+        ]
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "id": "ledger-entity:v1:WyJtZWFzdXJlbWVudF9ldmVudCIseyJldmVudCI6Ik0zIn1d",
+    "type": "measurement_event",
+    "label": "9.7",
+    "reach": [
+     1,
+     0
+    ],
+    "reachable": [
+     1,
+     0
+    ],
+    "rank": 1,
+    "top": true,
+    "tied": true,
+    "incomparable": false,
+    "evidence": [
+     {
+      "seed": "ledger-entity:v1:WyJyZWNpcGUiLHsicmVjaXBlIjoiUkNQLUEifV0",
+      "sign": "+",
+      "hops": [
+       {
+        "id": "ledger-entity:v1:WyJyZWNpcGUiLHsicmVjaXBlIjoiUkNQLUEifV0",
+        "node_kind": "entity",
+        "label": "RCP-A",
+        "atom": null,
+        "ref": null
+       },
+       {
+        "id": "ledger-entity:v1:WyJtZWFzdXJlbWVudF9ldmVudCIseyJldmVudCI6Ik0zIn1d",
+        "node_kind": "entity",
+        "label": "9.7",
+        "atom": null,
+        "ref": null,
+        "predicates": [
+         "used"
+        ]
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "id": "ledger-entity:v1:WyJtZWFzdXJlbWVudF9ldmVudCIseyJldmVudCI6Ik0xIn1d",
+    "type": "measurement_event",
+    "label": "10.1",
+    "reach": [
+     1,
+     0
+    ],
+    "reachable": [
+     1,
+     0
+    ],
+    "rank": 1,
+    "top": true,
+    "tied": true,
+    "incomparable": false,
+    "evidence": [
+     {
+      "seed": "ledger-entity:v1:WyJyZWNpcGUiLHsicmVjaXBlIjoiUkNQLUEifV0",
+      "sign": "+",
+      "hops": [
+       {
+        "id": "ledger-entity:v1:WyJyZWNpcGUiLHsicmVjaXBlIjoiUkNQLUEifV0",
+        "node_kind": "entity",
+        "label": "RCP-A",
+        "atom": null,
+        "ref": null
+       },
+       {
+        "id": "ledger-entity:v1:WyJtZWFzdXJlbWVudF9ldmVudCIseyJldmVudCI6Ik0xIn1d",
+        "node_kind": "entity",
+        "label": "10.1",
+        "atom": null,
+        "ref": null,
+        "predicates": [
+         "used"
+        ]
+       }
+      ]
+     }
+    ]
+   }
+  ],
+  "top_set": [
+   "ledger-entity:v1:WyJtZWFzdXJlbWVudF9ldmVudCIseyJldmVudCI6Ik00In1d",
+   "ledger-entity:v1:WyJtZWFzdXJlbWVudF9ldmVudCIseyJldmVudCI6Ik0yIn1d",
+   "ledger-entity:v1:WyJtZWFzdXJlbWVudF9ldmVudCIseyJldmVudCI6Ik0zIn1d",
+   "ledger-entity:v1:WyJtZWFzdXJlbWVudF9ldmVudCIseyJldmVudCI6Ik0xIn1d"
+  ],
+  "message": null
+ },
+ "walk": {
+  "mode": "evidence_graph",
+  "direction": "incoming",
+  "start": {
+   "positive": 1,
+   "negative": 0
+  },
+  "hops_requested": 1,
+  "hops_reached": 1,
+  "claims_scanned": 4,
+  "actions_scanned": 0,
+  "enrich_actions": false,
+  "raw_claims": true,
+  "resolver_applied": false
+ },
+ "limits": {
+  "nodes": 200,
+  "edges": 1200,
+  "claims": 2400,
+  "actions": 1200,
+  "max_hops": 40
+ },
+ "truncated": {
+  "depth": true,
+  "nodes": false,
+  "edges": false,
+  "claims": false,
+  "actions": false,
+  "reason": "depth",
+  "interval_excluded": 0
+ },
+ "message": null
+}
