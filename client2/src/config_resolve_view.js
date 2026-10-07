@@ -1,4 +1,5 @@
 import { isGateRejection } from './admin_token.js';
+import { isSessionRejection } from './auth_gate.js';
 
 // CONFIG RESOLVE REPORT — the view model for `GET /admin/config/resolve`.
 //
@@ -47,6 +48,9 @@ export const CHROME = Object.freeze({
   FETCH_UNREACHABLE: 'Server unreachable · check it is running',
   FETCH_UNAUTHORIZED: 'Token declined · reload, then enter it again',
   FETCH_INTERCEPTED: 'Not the admin gate · check the proxy in front',
+  // Company SSO's gate (WWW-Authenticate: Session, lead 2095014ee): its 401 and its 403.
+  FETCH_SIGNED_OUT: 'Not signed in · reload to sign in',
+  FETCH_NOT_ADMIN: 'Not an administrator · ask to be on the admin list',
   NO_DOMAINS: 'No config domains',
   // C-87. 막힌 걸음이 «기다리는 걸음»을 가리키는 부호. 문장이 아니라 부호 하나이고, 번호는
   // 서버의 값입니다 — 「⑤ 가 안 서서 막혔습니다」라고 쓰면 그 문장의 저자가 화면이 됩니다.
@@ -66,7 +70,7 @@ export const TEXT_SOURCES = Object.freeze(['server', 'value', 'chrome', 'count']
  * `gate` must come from the caller's existing `isGateRejection` rather than from a status
  * comparison here — see `fetchFailureText`.
  *
- * @typedef {{status: number, gate: boolean, server: string}} FetchFailure
+ * @typedef {{status: number, gate: boolean, session: boolean, server: string}} FetchFailure
  */
 
 /** Why the request failed, said as the thing to DO about it.
@@ -78,15 +82,17 @@ export const TEXT_SOURCES = Object.freeze(['server', 'value', 'chrome', 'count']
  *   at all. The 404 IS the answer, and only the client is positioned to read it.
  *
  *   So the words stay in the frozen CHROME table above, tagged as chrome like every other
- *   client-owned string, and nothing is composed per call: this maps a failure onto one of five
- *   constants. No interpolation, no per-status sentence building. (The one dynamic fact worth
+ *   client-owned string, and nothing is composed per call: this maps a failure onto one of the
+ *   constants below. No interpolation, no per-status sentence building. (The one dynamic fact worth
  *   showing is separated out into `fetchFailureEvidence` precisely so that stays true.)
  *
- * WHY FIVE AND NOT ONE. 「조회 실패」 answered every one of these with the same shrug, and they
+ * WHY NOT ONE. 「조회 실패」 answered every one of these with the same shrug, and they
  * put different hands on different things:
  *
  *   no response    nothing answered at all      → is the server running
  *   404            the process is older than the route → RESTART the server
+ *   401, session   the SSO gate: not signed in  → sign in
+ *   403, session   the SSO gate: not an admin   → the admin list
  *   401/403, gate  our admin gate rejected us    → the token
  *   401/403, NOT   something else answered       → what is on this port
  *   anything else  the route is there and it broke → the caller's own failure label
@@ -108,6 +114,7 @@ export function fetchFailureText(failure, fallback = CHROME.FETCH_FAILED) {
   if (!failure) return CHROME.FETCH_UNREACHABLE;
   if (failure.status === 404) return CHROME.FETCH_OLD_SERVER;
   if (failure.status === 401 || failure.status === 403) {
+    if (failure.session) return failure.status === 401 ? CHROME.FETCH_SIGNED_OUT : CHROME.FETCH_NOT_ADMIN;
     return failure.gate ? CHROME.FETCH_UNAUTHORIZED : CHROME.FETCH_INTERCEPTED;
   }
   return fallback;
@@ -158,6 +165,7 @@ export function failureFactOf(res) {
   return {
     status: res.status,
     gate: isGateRejection(res),
+    session: isSessionRejection(res),
     server: (res.headers && res.headers.get ? res.headers.get('Server') : '') || '',
   };
 }
@@ -166,7 +174,7 @@ export function failureFactOf(res) {
  *
  * 400 거절(알 수 없는 연산·파라미터 누락·보호된 소스 회수 시도·계산 불가)에는 서버가 이유를
  * 문장으로 담아 보낸다. 그것을 버리고 「조회 실패」로 뭉개면 운영자를 로그로 돌려보내는 것이다.
- * 반대로 404·401/403·무응답은 서버가 자기에 대해 말할 수 없는 상태라 클라의 다섯 상수가 답이다
+ * 반대로 404·401/403·무응답은 서버가 자기에 대해 말할 수 없는 상태라 클라의 상수가 답이다
  * — 그 가름은 `fetchFailureText`가 이미 소유하고 있으므로, 서버 문장을 **fallback으로 넘기는
  * 것만으로** 두 규칙이 하나의 분류기 안에서 만난다. 새 분기를 만들지 않는다.
  */

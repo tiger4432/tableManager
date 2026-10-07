@@ -4,6 +4,7 @@
    weight, spacing and column figure in this file is px and lands either way. Do not drop
    this line on a failed load; that is the owner's call. */
 @import url("https://fonts.googleapis.com/css2?family=Barlow:ital,wght@0,400;0,600;1,400&family=Barlow+Condensed:wght@400;600&display=swap");
+@import './rnd_board/table_part.css';
 
 /* ── Industry design system, applied to this screen only ────────────────────────────────
    Owner: 「css는 이거쓰고 컬러만 기존거」 · 「목업이랑 컬러 제외 디자인 똑같이, 폰트, 버튼
@@ -1371,6 +1372,22 @@
   font-family: var(--oe-font-mono); font-size: var(--fs-label); font-weight: 600;
   text-align: right; font-variant-numeric: tabular-nums;
 }
+/* 026ced7f1 — with an atom sample a sentence line narrows the atom table below it. */
+#ontology-explorer-root button.oe-testrun-sentence {
+  border: 0; background: transparent; color: inherit; font: inherit; text-align: left;
+  padding: var(--space-1) var(--space-2); cursor: pointer;
+}
+#ontology-explorer-root button.oe-testrun-sentence:hover { background: var(--oe-tint-hover); }
+#ontology-explorer-root button.oe-testrun-sentence.is-current {
+  background: var(--oe-accent-soft); box-shadow: inset 2px 0 0 var(--oe-accent);
+}
+#ontology-explorer-root .oe-testrun-atomtable { max-height: 320px; overflow: auto; }
+/* As wide as its columns' declared minimums, at least its box; the box scrolls both ways. */
+#ontology-explorer-root .oe-testrun-atomtable .rb-table { overflow: visible; width: min-content; min-width: 100%; }
+#ontology-explorer-root .oe-testrun-atomtable .rb-table-row { cursor: pointer; }
+/* Keys, objects and qualifiers are the ledger's JSON: wrapped whole, never cut to an ellipsis. */
+#ontology-explorer-root .oe-testrun-atomtable .rb-table-cell,
+#ontology-explorer-root .oe-testrun-atomtable .rb-table-sub { white-space: normal; overflow-wrap: anywhere; }
 
 /* C-49 — 「거절 N」 아래에 «어느 행이». Same shape as the sentence list above it: this is
    a second table on one panel, so it takes the first one's geometry rather than a new

@@ -193,6 +193,7 @@ function adminFetch(url, init) {
   return sendWithAdminToken(url, init, {
     onServiceUnavailable: (detail) => showToast(detail, 'error', { ttl: 12000 }),
     askForToken: (message) => (adminTokenDeclined ? '' : askForAdminToken(message)),
+    onAdminRequired: (message) => showToast(message, 'error', { sticky: true }),
   });
 }
 

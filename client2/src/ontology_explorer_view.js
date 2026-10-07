@@ -18,7 +18,10 @@ import { countWithAbsence } from './count_with_absence.js';
 import { setDisabledReason } from './disabled_reason.js';
 import { orderingVerdicts, UNIQUENESS_UNREAD } from './uniqueness.js';
 import { demandState } from './form_demand.js';
-import { refusalSummary, excludedNote, refusalSamples, testRunRows } from './refusal_cell.js';
+import {
+  refusalSummary, excludedNote, refusalSamples, testRunRows, testRunAtoms, ATOM_KEY,
+} from './refusal_cell.js';
+import { MarkingStore, SIGN } from './rnd_board/marking_store.js';
 // 🔴 C-59. 표는 «새로 쓰지 않습니다» — 구성·순위 표와 같은 부품입니다(상설: 근원 템플릿
 //    요소 개발 후 데이터 갈아끼우기). 실측 2026-09-10: 마킹 저장소 없이도 그립니다.
 import { TablePart } from './rnd_board/table_part.js';
@@ -920,6 +923,14 @@ function renderTestRun(state) {
   // 🔴 표 코드를 «새로 쓰지 않습니다» — 구성·순위 표와 «같은 부품»(`TablePart`)을 씁니다
   //    (상설: 근원 템플릿 요소 개발 후 데이터 갈아끼우기). 실측 2026-09-10: 마킹 저장소 «없이»
   //    그립니다. 열은 `rows_sample[0]` 의 «키에서» 나옵니다 — 선언마다 다르므로 하드코딩 0.
+  // 026ced7f1. The atoms this run built; a picked atom marks its rows in the read-rows table (same row_id).
+  const pick = state.testRunPick || {};
+  const atoms = testRunAtoms(run, pick);
+  const links = new MarkingStore();
+  if (atoms) {
+    links.replace('rows', atoms.linked.map((id) => [id, SIGN.CASE]));
+    if (pick.atom != null) links.replace('atom', [[String(pick.atom), SIGN.CASE]]);
+  }
   const readRows = testRunRows(run);
   if (readRows.columns.length) {
     const host = h('div', 'oe-testrun-rows');
@@ -929,6 +940,9 @@ function renderTestRun(state) {
       columns: readRows.columns,
       rows: readRows.rows,
       emptyText: 'No rows read',
+      rowKey: atoms ? 'row_id' : null,
+      markings: links,
+      reads: 'rows',
     }).render();
   }
   const samples = refusalSamples(run.refused);
@@ -953,13 +967,34 @@ function renderTestRun(state) {
   if (run.sentences?.length) {
     const list = h('div', 'oe-testrun-sentences');
     for (const row of run.sentences) {
-      const line = h('div', 'oe-testrun-sentence');
+      const line = atoms ? button('', 'test-run-sentence', row.sentence, 'oe-testrun-sentence')
+        : h('div', 'oe-testrun-sentence');
+      if (atoms) {
+        const picked = pick.sentence === row.sentence;
+        if (picked) line.classList.add('is-current');
+        line.setAttribute('aria-pressed', String(picked));
+      }
       line.append(h('span', 'oe-testrun-name', row.sentence));
       line.append(h('code', 'oe-testrun-predicate', row.predicate));
       line.append(h('span', 'oe-testrun-atoms', String(row.atoms)));
       list.append(line);
     }
     box.append(list);
+  }
+  if (atoms) {
+    for (const note of atoms.notes) box.append(h('span', 'oe-testrun-note', note));
+    const host = h('div', 'oe-testrun-atomtable');
+    box.append(host);
+    new TablePart(host, {
+      doc: document,
+      columns: atoms.columns,
+      rows: atoms.rows,
+      emptyText: 'No atoms',
+      rowKey: ATOM_KEY,
+      rowAction: 'test-run-atom',
+      markings: links,
+      reads: 'atom',
+    }).render();
   }
   // 🔴 SAID EVERY TIME, BECAUSE IT IS TRUE EVERY TIME. The run compiles the declaration
   // that is IN THE FILE -- on this screen a save is the write to the file, so a saved

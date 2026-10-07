@@ -38,6 +38,8 @@ export class TablePart extends Panel {
     this.detailFor = options.detailFor || null;
     // 행을 눌렀을 때 «표가 마킹한 뒤» 부르는 것. 표는 여전히 마킹만 압니다.
     this.onRowClick = options.onRowClick || null;
+    // 누르기를 `data-action` 으로 받는 화면(원장 선언 화면)이면 그 이름 — 행이 그것을 달고, 마킹 대신 화면이 받습니다.
+    this.rowAction = options.rowAction || null;
   }
 
   /** 데이터만 갈아끼웁니다. 컬럼 선언은 그대로입니다. */
@@ -105,8 +107,11 @@ export class TablePart extends Panel {
       + (sign === SIGN.CASE ? ' is-marked-case' : '')
       + (sign === SIGN.CONTROL ? ' is-marked-control' : '');
     el.style.gridTemplateColumns = this._template();
-    if (id) {
-      el.setAttribute('data-row-id', String(id));
+    if (id) el.setAttribute('data-row-id', String(id));
+    if (id && this.rowAction) {
+      el.dataset.action = this.rowAction;
+      el.dataset.value = String(id);
+    } else if (id) {
       // 마킹은 «노드»로 겁니다. 쓸 이름을 선언 안 한 표에서는 `mark` 가 그냥 돌아옵니다.
       el.addEventListener('click', (event) => {
         const intent = markingIntent(event);

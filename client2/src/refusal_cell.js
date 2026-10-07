@@ -169,6 +169,67 @@ export function testRunRows(run) {
 export const MARK_COLUMN = '_mark';
 /** 행이 «읽힌 것»인지 «거절»인지. 표 부품이 쓰는 값이 아니라 이 표의 사실입니다. */
 export const KIND_FIELD = '_kind';
+/** 원자 견본에서 몇 번째인가 — 원자 줄의 열쇠이자 「#」 열. 원장 id 는 응답에 없습니다(쓸 때 짓는 값). */
+export const ATOM_KEY = '_atom';
+
+const ATOM_COLUMNS = Object.freeze([
+  { key: ATOM_KEY, label: '#', align: 'right', width: '4ch' },
+  { key: 'sentence', label: 'Sentence', kind: 'mono', width: 'minmax(14ch, 1fr)' },
+  { key: 'subject_type', label: 'Subject', kind: 'two_line', subKey: 'subject_keys', width: 'minmax(18ch, 1.2fr)' },
+  { key: 'predicate', label: 'Predicate', kind: 'mono', width: 'minmax(12ch, 1fr)' },
+  { key: 'object_kind', label: 'Object', kind: 'two_line', subKey: 'object', width: 'minmax(22ch, 1.4fr)' },
+  { key: 'qualifiers', label: 'Qualifiers', kind: 'mono', width: 'minmax(16ch, 1fr)' },
+  { key: 'occurred_at', label: 'Occurred at', kind: 'two_line', subKey: 'occurred_at_basis', width: 'minmax(25ch, 1fr)' },
+  { key: 'row_ids', label: 'Rows', kind: 'mono', width: 'minmax(8ch, 0.6fr)' },
+  { key: 'writes', label: 'Writes', kind: 'two_line', subKey: 'drop_reason', width: 'minmax(18ch, 1fr)' },
+].map(Object.freeze));
+
+const stored = (value) => (value == null ? '' : JSON.stringify(value));
+
+/**
+ * 총괄 026ced7f1 — 시험 실행이 지은 원자를 표 하나의 열과 행으로(그리기는 표 부품).
+ * 값은 응답의 철자 그대로입니다: 키 · 목적어 · qualifiers 는 원장에 쓰는 JSON 그대로 찍습니다.
+ * `pick.sentence` 가 있으면 그 문장 원자만, `pick.atom` 이면 그 원자의 원천 행이 `linked` 입니다.
+ * 견본이 없는 옛 서버면 `null` — 화면은 오늘 그대로입니다.
+ */
+export function testRunAtoms(run, pick) {
+  const src = run && typeof run === 'object' ? run : {};
+  if (!Array.isArray(src.atoms_sample)) return null;
+  const sentence = pick && pick.sentence != null ? String(pick.sentence) : null;
+  const atom = pick && pick.atom != null ? String(pick.atom) : null;
+  const rows = [];
+  let linked = [];
+  src.atoms_sample.forEach((a, i) => {
+    if (!a || typeof a !== 'object') return;
+    const key = String(i + 1);
+    const rowIds = (Array.isArray(a.row_ids) ? a.row_ids : []).map(String);
+    if (key === atom) linked = rowIds;
+    if (sentence !== null && String(a.sentence) !== sentence) return;
+    const payload = a.object_payload && typeof a.object_payload === 'object' ? a.object_payload : {};
+    const { qualifiers, ...object } = payload;
+    rows.push(Object.freeze({
+      [ATOM_KEY]: key,
+      sentence: a.sentence,
+      subject_type: a.subject_type,
+      subject_keys: stored(a.subject_keys),
+      predicate: a.predicate,
+      object_kind: a.object_kind,
+      object: Object.keys(object).length ? stored(object) : '',
+      qualifiers: stored(qualifiers),
+      occurred_at: a.occurred_at,
+      occurred_at_basis: a.occurred_at_basis,
+      row_ids: rowIds.join(', '),
+      writes: typeof a.writes === 'boolean' ? (a.writes ? 'yes' : 'no') : '',
+      drop_reason: a.drop_reason,
+    }));
+  });
+  const cut = src.truncated && src.truncated.atoms_sample && src.truncated.atoms_sample.cut === true;
+  const notes = [];
+  if (cut) notes.push(`${CAP_MARK} ${src.atoms_sample.length}`);
+  return Object.freeze({
+    columns: ATOM_COLUMNS, rows: Object.freeze(rows), linked: Object.freeze(linked), notes: Object.freeze(notes),
+  });
+}
 
 // ⚰️ C-54. `refusalCell` 은 «은퇴했습니다». 그것이 읽던 라우트
 //    `GET /admin/ontology-explorer/refusals` 가 404 가 됐고(S-113/S-114: 거절 분해는 이제

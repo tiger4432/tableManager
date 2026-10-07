@@ -321,8 +321,8 @@ const TOKEN_DEFECTS = [
   ['M1 전송이 토큰을 «안 붙인다» -> T1',
    (s) => s.replace('  if (!token) return init;', '  return init;')],
   ['M2 503 에도 토큰을 «묻는다» -> T4/T5',
-   (s) => s.replace('    return res;\n  }\n\n  if (!isGateRejection(res)) return res;',
-                    '  }\n\n  if (!isGateRejection(res) && res.status !== 503) return res;')],
+   (s) => s.replace('      } catch (e) { /* not a JSON body - let the caller report it */ }\n    }\n    return res;\n  }', '      } catch (e) { /* not a JSON body - let the caller report it */ }\n    }\n  }')
+     .replace('  if (!isGateRejection(res)) return res;', '  if (!isGateRejection(res) && res.status !== 503) return res;')],
   ['M3 프록시의 401 도 게이트로 읽는다 -> T9',
    (s) => s.replace('  if (res.status !== 401 && res.status !== 403) return false;\n'
                     + '  const challenge = res.headers && res.headers.get\n'
