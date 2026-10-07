@@ -1,3 +1,21 @@
+> ## [03:51 디자인] 걷기 그래프 — 숫자 값이 없는 덩어리는 «Points from» 에서 고른 타입으로 (총괄 10-08 · b6453243f · 242b23aef) — 74806d84e
+
+**결론** 공정 이벤트처럼 숫자 값도 없고 정의 노드도 아닌 덩어리는, 어느 타입의 값을 그릴지 화면이 짐작하지 않습니다. 정보 칸의 `Points from [type ▾]` 에서 운영자가 고릅니다. 목록은 걷기 화면의 경로 목록 함수(`walkableRoutes`)가 그 구성원 타입에서 닿는 선언 타입들입니다.
+
+**진짜 빌드** 견본 응답(`walk_fold_process_lump.json`), 공정 이벤트 덩어리, `Trend`.
+
+| 경우 | 결과 |
+|---|---|
+| 고르기 전 | 요청 0 · 칸의 글 `Pick a type` · 목록 defect · defect_kind · die · lot_slot · quantity · recipe · wafer · measurement_event |
+| `measurement_event` 고름 | 요청 1 (follow underwent · measured · collect measurement_event) · 머리줄 `Points 2` |
+| 페이지를 새로 열고 같은 덩어리 | 요청 1 (고르지 않음, 기억한 `measurement_event`) · 머리줄 `Points 2` |
+
+- 기억은 이 브라우저의 localStorage, 구성원 타입별 `{from, y}` 입니다. 읽기 · 쓰기는 try/catch 이고, 저장이 막히면 다시 고르기부터입니다.
+- 콘솔 오류 0 · 막은 쓰기 0.
+- 정의 노드 한 걸음(레시피)은 그대로입니다(총괄 승인).
+
+**시험** `subgraph_view` 203 칸 실패 0. [I] 고르기 전 요청 0 · 목록 = 경로 목록 함수의 타입 · 고르면 요청이 구현자 견본의 `_asked` 와 같음 · 기억 · 선언 없으면 고를 것 없음. 변이 I1m(화면이 대신 고름) · I2m(고른 타입만 모으지 않음) · I3m(기억 안 함) 잡힘. 러너 초록 · 계약 13 개 어긋남 0.
+
 > ## [03:13 디자인] 일곱 페이지 판정 반영 — 대조 목록 «Not set up» · 맵 정렬기 제목 영어 · api.js 거짓 주석 (총괄 10-08) — b340386fe
 
 **결론**
