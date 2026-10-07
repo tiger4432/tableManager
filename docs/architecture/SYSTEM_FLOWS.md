@@ -357,7 +357,7 @@ Enrichment Queue · 맵 오버레이 · 전사 계획 · 어드민 5탭 · 실�
 | `POST /admin/ontology-explorer/test-run` (`ontology_config_explorer_router.py:121`) | `config_explorer_service.py:673 _test_run_refusal` | 운영자가 「시험 실행」 버튼 (`ontology_explorer.js:1110`) | HTTP body `{source_id}` → 응답 dict | `{code, path, message, form_path}` + 조건부 `rows_read`·`rows_missing`·`column`·`partial_apply` | **1** — `ontology_explorer_view.js:745 renderTestRunRefusal` | 시끄럽다 — 500 을 안 낸다(`config_explorer_service.py:618 except Exception`). 거절이 «답»으로 나간다 | ✅ 이어짐 |
 | 위 응답 | 화면 픽셀 | 같은 클릭 | DOM | `form_path` 있으면 폼으로 가는 **버튼**(`map-goto`), 없으면 `path` 를 `<code>` 로. `rows_read/rows_missing/column` 셋이 다 있을 때만 「N행 중 M행 · 컬럼」. `partial_apply === false` 일 때만 「좋은 행도 안 들어갑니다」 | **1** — 그리고 «출하본에 들어 있다»: `client2/dist/assets/admin-eErqdtgQ.js` 에 `oe-testrun-refusal` · `form_path`(2) · `rows_missing`(1) · `partial_apply`(1) 존재 | 시끄럽다 | ✅ 이어짐 |
 | `gate.py:122-123 MoleculeRefused.code/.path` | `_test_run_refusal` 의 `getattr(exc,"code")` | — | 예외 속성 | 첫 주소의 `code`·`path` | **0 (이 경로에서 도달 불가)** — 아래 ⚰️ 근거 참조 | — | ⚰️ 죽은 갈래 |
-| `gate.py:275 captured()` | — | — | contextmanager | 프로세스 카운터를 격리해 미리보기가 라이브 거절 총계를 오염시키지 않게 함 | **1** — `runtime_v2.atoms_sample`(시험 실행의 원자 견본, 총괄 026ced7f1)이 게이트를 이 안에서 돌린다 | — | 산 갈래 |
+| `gate.py:275 captured()` | — | — | contextmanager | 프로세스 카운터를 격리해 미리보기가 라이브 거절 총계를 오염시키지 않게 함 | **1** — `runtime_v2.atoms_sample`(시험 실행의 원자 견본, 총괄 026ced7f1)이 게이트를 이 안에서 돌린다. ⚠️ 창 안에서 «같은 프로세스의 다른 스레드»가 기록한 진짜 거절도 끝의 복원(`reset_counters` 뒤 저장본 되돌림)이 지운다 — 응용 레인 잼: 창이 열린 동안 `record_incomplete` 1 → 닫힌 뒤 사라짐. 체인 워커가 웹 프로세스 안에서 도는 비-DECOUPLED 모드에서만 만난다(운영은 DECOUPLED — `main.py` 주석). 프로세스 카운터만이고 원천 등록 행의 거절 사유는 안 건드린다 | — | 산 갈래 |
 
 ### ⚰️ 근거 — 「게이트 거절은 시험 실행 화면에 도달할 수 없다」
 

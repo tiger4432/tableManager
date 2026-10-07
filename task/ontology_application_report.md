@@ -36308,3 +36308,21 @@ a61cdb35f  방송 item 다섯 자리 -> event_constants.upsert_item
                임계 «아래» 그룹만 낸다. 행당 0.15 ~ 0.8 ms — 체인 목표 5 ms/행 의 3 ~ 16 %. 다섯 격자 라우트(a61cdb35f)도 같은 함수라 같은 값
                결정을 바꿀 수이면 총괄 판단 — 저는 짓지 않습니다
 ```
+
+---
+
+## [C 응용] 10-07 3307b6880(테스트 런 원자 견본) QA — 쓰기 길은 같음. 새로 닿은 옛 코드 하나 잼 · 하나 읽음
+
+```
+쓰기 길    insert_atoms 가 atom_record 를 거쳐 쓴다 — ROW_COLUMNS 순서 == 옛 손 튜플 순서, atom_record 열쇠 14 == ROW_COLUMNS
+           원장 INSERT 는 store.insert_atoms 하나(git grep ROW_COLUMNS · names.ledger)
+잰 것      gate.captured() 는 이 착지 전 호출자 0, 뒤 1 (git grep). 창은 카운터를 비웠다가 끝에 저장본으로 «되돌린다»
+           그래서 창 안에서 같은 프로세스의 다른 스레드가 기록한 진짜 거절이 지워진다
+           잰 것: 카나리아 record_incomplete 1 -> {live_src: 1} · 창 열고 다른 스레드에서 1 더 -> 닫힌 뒤 {live_src: 1} (남았으면 2). DB 안 씀
+           누가 만나나: 체인 워커(번역)가 웹 프로세스 안에서 도는 비-DECOUPLED 모드뿐 — 운영은 DECOUPLED(main.py 주석, 운영에서 확인 안 함)
+           잃는 것: 프로세스 카운터(heartbeat 줄 · 로그 줄)만. 원천 등록 행의 거절 사유는 안 건드린다
+           문서: SYSTEM_FLOWS 의 captured 줄에 ⚠️ 한 줄 (이 보고와 같은 커밋)
+읽음       preview_first_batch — rows_sample 은 이제 «마지막» 페이지, page_keys 는 여전히 «첫» 페이지
+           refusals 는 모든 페이지에서 쌓이는데 거절 행의 키는 page_keys[위치] 로 찾는다 -> 두 페이지 이상 읽은 테스트 런에서
+           둘째 페이지부터 난 거절은 첫 페이지 같은 위치의 키로 보인다. 이건 이 착지 «전»부터다. 이 착지로 견본 행과 거절 키가 다른 페이지를 말하게 됐다. 안 쟀다
+```
