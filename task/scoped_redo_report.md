@@ -73598,3 +73598,111 @@ compiler_contract_version 을 올리면 «모든» 소스가 움직인다 -> 너
 5  등록 판단 접기: «모양» 하나로 — 사용자가 목적어 없는 다른 술어를 적으면 그것도 등록으로 읽힌다(오늘 속성 칸 · 걷기가 이미 그렇게 읽음)
 ```
 게이트에 넣을 것(총괄 10-07): PG 에 실제로 쓴 원자의 occurred_at_basis 가 선언한 기준과 같다(사건 시각 기준 하나 · 세상 시각 하나) — 오늘의 atom_record 변이(기준 None)가 그 칸에서 빨강.
+
+---
+
+## [10-07] 등록 문장 정리 — 소스에 묶은 속성이 그 개체의 등록이 된다 · probe 은퇴 · 착지 bd33605af + 약속 자리 정리 d6795570a (총괄 a6db2f469 · 10-07 답 셋 · ③ ㄱ)
+
+어느 DB · 어느 스키마 · 지운 것 — sqlite 는 메모리 · PG 게이트와 PG 변이는 assy_test DB 의 스크래치 스키마 `assy_pytest_registration…`(시험이 만들고 끝에 DROP) · public 안 씀 · 그 밖에 지운 것 0
+
+```
+지은 것    번역기가 «선언되지 않은 원자»를 쓰는 한 자리 roleframe._reference_rows 를 넓혔다
+          등록할 롤의 속성 -> register 원자(목적어 없음 · 부른 행의 시각 · 그 문장의 시각 규칙)
+          누가 등록되나  setup_bundle.attribute_registrations 한 곳 -> 컴파일된 매핑의 registered_roles(비면 지문 재료 아님)
+          등록인가      setup_bundle.is_registration(목적어 없음) 한 함수 — runtime 접기 · 걷기 · 테스트 런 · 술어 검증이 부른다
+          걷기 이름 목록 setup_bundle.registration_predicates 한 함수(목적어 없는 술어 ∪ REGISTER_PREDICATE) — trace_router 가 부른다
+판정 3    ③ ㄱ 대로 «키 갈래 수». setup_bundle.keying 한 함수가 키 바인딩 전체를 키 순서대로 견준다
+          (approval_status 처럼 바인딩에 적힌 칸도 «전체»에 든다)
+은퇴      existing_registrations · registration_context_required 갈래 · _v2_registration_subjects · RegistrationProbePlan
+          read.registration_probe 는 문법이 받고 로드가 «retired cell … can be deleted» 한 줄 · 폼 줄 · 스켈레톤 노드 · sample 두 칸
+```
+
+### 게이트
+
+```
+sqlite    18 passed, 2 skipped in 1.68s
+PG        2 passed, 8283 deselected in 7.22s
+대조군     등록 문장 있는 소스의 원자 = 이 라운드 전 코드(88c8f3654)가 같은 행에서 쓴 바이트 — 문서별 레코드 declared_registration 8 · declared_registration_with_attribute 8 · no_attribute 4
+변이      sqlite 15/15 빨강(failed 시험으로 센 수) · PG 2/2 빨강(proofs run in    postgresql://postgres:***@localhost:5432/assy_test) · md5 전후 같음
+          RED  the translator writes no registration
+          RED  a role's own attributes are not registered
+          RED  the source's shared attributes are not registered
+          RED  a declared registration does not win
+          RED  two keyings are registered anyway
+          RED  the registration takes the source's time rule
+          RED  a code mapper's role keeps no attributes
+          RED  the walk's list lacks the translator's name
+          RED  registrations are folded by their name
+          RED  the retired probe is not said
+          RED  the re-stamp line does not say who registers
+          RED  every mapping carries a plan
+          RED  a keying is compared by the bound value only
+          RED  a keying ignores the key order
+          RED  two roles are not registered whatever their keying
+          RED  the ledger write drops the time basis
+          RED  a re-stamp moves the position too
+전체가 잡은 것(첫 전체 실행이 알려진 다섯 밖의 실패를 냄 -> 고침. 그 출력은 둘째 실행이 덮어써 수를 안 적는다)
+          내 잘못  폼의 probe 줄을 지우며 바로 아래 _TIMEZONE_FALLBACK 상수까지 지웠다 -> 빈 루트 작성 셋이 NameError. 상수 복원
+          v6 이주 시험  얼린 v5 선언은 probe 칸을 그대로 두고, 비교가 은퇴 칸을 뺀다 — 같은 시험의 map.input_columns 선례를 넓힘
+sqlite 전체 6 failed, 7935 passed, 341 skipped, 3 xfailed, 13215 warnings in 727.04s (0:12:07)
+          실패 6 — 박스 실패로 알려진 다섯과 같은 이름인지: 아래 목록
+          tests\test_a_sentence_says_itself_only_for_the_rows_it_names.py::test_the_sample_is_written_in_the_one_format_both_writers_use
+          tests\test_config_reload_integrity.py::test_inv_9_1_atomic_save_event_applies_physical_alter
+          tests\test_core_alignment_mapper.py::test_live_mapper_and_tracked_sample_are_byte_identical
+          tests\test_core_usage_mapper.py::test_live_mapper_and_tracked_sample_are_byte_identical
+          tests\test_dt_inventory_metadata_mapper.py::test_live_mapper_matches_tracked_sample
+          tests\test_one_place_decides_where_the_server_is.py::test_the_repo_root_is_one_above_it
+RELEASE   예시를 착지한 RELEASE_LOG 에서 읽어 출하 sample 에 얹고 setup.load_setup 으로 읽음 — left out naming lot_slot_wafer: [] | registered roles: {'seat-holds-wafer': ('target',)}
+```
+
+### occurred_at 독자 전수 (소유자 10-02 · 총괄 ②)
+
+모집단: `git grep -c occurred_at -- 'server/*.py' ':!server/tests' ':!server/scripts'` = 33 파일. 쓰기·선언 쪽을 빼고 «저장된 원자의 시각을 읽는» 자리를 열어 본 표입니다.
+
+| 자리 | 이 원자에게 하는 일 | 등록 문장 원자와 |
+|---|---|---|
+| 쓰기 `roleframe._reference_rows` · `runtime_v2._stamp_occurred_at_basis` | 시각 = 그 개체를 부른 행의 시각, 기준 = 그 문장의 기준(`naming_sentence`) | 같은 규칙 · PG 게이트 |
+| 배치 접기 `runtime_v2._filtered_event_atoms` | 한 배치에서 (개체 · 상태)마다 가장 이른 것 하나 | 같음 · 모양으로 묻는다 |
+| 저장 분할 · `uq_ledger_atom` | 행 시각의 분할에 든다. 유일 키에 시각이 있어 다음 배치의 같은 상태는 새 원자 | 같음(전부터 그랬다) |
+| 걷기 창 `ledger_subgraph._interval_clause` | since/until 은 사건 시각 기준에만 — 같은 행의 관계 원자와 같은 판정 | 같음 |
+| 걷기 등록 예산 `claims_for_entities` | 최신순 `노드 수 × REGISTRATIONS_FETCHED_PER_NODE` 까지, 잘리면 truncated | 같음 |
+| 노드 칸·이름표 `_apply_registrations` | 이름마다 가장 늦은 값, 세상마다 따로 | 같음 |
+| 테스트 런 `runtime_v2.atoms_sample` | 원장 철자 그대로(시각·기준 포함) | 같음 · 게이트 |
+| 첫 등장 `gaps` first_seen | 사건 시각의 최소 — 부른 행의 관계 원자와 같은 시각이라 값이 안 바뀜 | 같음 |
+| 간선 `explorer._edge_rows` · 계보 `trace` | 대상이 없어 안 읽음 · 선언된 follow 만 걷는다 | 안 읽음 |
+| 현재 아님 `_not_current_clause` | `one` 술어만 — register 는 선언 술어가 아니라 안 읽음 | 안 읽음 |
+
+### 두 부류 (총괄 ②)
+
+```
+부류 1  시스템 원자가 생긴 소스 — 재기동 re-stamped 줄의 그 소스 항목 끝에 «the translator registers the bound attributes of …»
+        과거 행은 rescope(whole_source) 로. RUN.md 10-07 절
+부류 2  probe 만 빠진 소스(등록 문장이 있는 소스) — 꼬리 없음. 위치 그대로 · 다시 번역 0 (PG 게이트)
+박스     15 소스 중 부류 1 0 · 부류 2 2(dt_job · lot_event) · 갈래 둘이라 안 실림 0 · probe 칸 적힘 2(dt_job · lot_event)
+        — gitignore 된 박스 라이브 선언(gitignored). 운영에 대해 말하지 않는다
+```
+
+### 남긴 자리 (총괄이 «그대로 둔다» 한 것과 내가 찾은 것)
+
+```
+known_registrations 인자     server/ledger · server/chain 에 22 줄 — 모든 문이 () 를 넘김
+v1 source_contract           1 줄 이름("register") + "none"/None 모양 접기 한 자리
+SQL 이 이름으로 묻는 자리     schema.py 4 줄 — 다음에 지울 것: 부분 인덱스 둘(idx_ledger_register · 검색 GIN), 운영 이주
+이주 스크립트                 1 줄 — 옛 선언을 옮길 때 probe 칸을 읽는 자리(역사)
+시험 지원 v5_setup            probe 칸 2 줄 — 얼린 옛 선언. v6 이주 시험이 «남아 있음»을 단언하고 비교에서 뺀다
+은퇴 이름이 남은 «살아 있는» 파일(역사 · 보관 · task 제외) — d6795570a 뒤에 다시 셈. 남은 것은 은퇴 표시(⚰️) ·
+          로드 알림 · 문법의 선택 키 · 날짜 박힌 실측 주석 · 대조군 선언 · 클라 픽스처 · RELEASE_LOG 옛 항목
+          registration_probe            RUN.md 2 · client2/tests/fixtures/authoring_inherited_plan.json 4 · client2/tests/fixtures/authoring_skeleton.json 1 · docs/architecture/BASIS.md 1 · docs/architecture/LEDGER_SCHEMA_COMPLETENESS.md 9 · docs/guide/ONTOLOGY_LEDGER_SETUP.md 2 · docs/process/RELEASE_LOG.md 3 · docs/process/SERVER_DEFECT_QUEUE.md 1 · server/ledger/config_explorer_service.py 1 · server/ledger/setup.py 3 · server/ledger/setup_bundle.py 1 · server/scripts/migrate_ledger_slim_sources.py 1 · server/tests/support/v5_setup/ledger_config.json 2 · server/tests/test_a_test_run_shows_the_atoms_its_rows_became.py 1 · server/tests/test_an_attribute_bound_on_a_source_becomes_its_entitys_registration.py 3 · server/tests/test_ledger_skeleton.py 2 · server/tests/test_the_v6_migration_moves_descent_to_the_chain.py 3
+          registration_context_required docs/architecture/CODE_MAP.md 2 · docs/guide/ONTOLOGY_LEDGER_SETUP.md 1 · docs/process/SERVER_DEFECT_QUEUE.md 1 · server/tests/test_a_rescope_preview_can_be_taken_of_a_source_that_registers.py 2 · server/tests/test_an_attribute_bound_on_a_source_becomes_its_entitys_registration.py 1
+          existing_registrations        docs/architecture/CODE_MAP.md 2 · docs/spec/LEDGER_TECHNICAL_SPEC.md 1 · server/ledger/schema.py 1
+          _v2_registration_subjects     docs/architecture/CODE_MAP.md 1
+          RegistrationProbePlan         docs/architecture/CODE_MAP.md 1
+```
+
+### 안 잰 것 · 물음
+
+```
+안 잼   되돌린 코드로 부류 1 소스를 통째로 다시 번역하면 시스템 등록 원자가 거둬지는지 — 행 색인으로 겨냥하는 길이라 거둬질 것으로 읽지만 안 쟀다
+안 잼   부류 1 소스의 원자 수 증가 — 배치마다 (개체 · 상태)당 하나. 이 박스엔 부류 1 소스가 0 이라 셀 수 없다
+클라    client2/tests/fixtures 의 authoring_inherited_plan.json · authoring_skeleton.json 에 은퇴한 probe 줄 · 노드가 남아 있다 — 클라 레인에 알림
+```
