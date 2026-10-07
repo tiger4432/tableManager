@@ -17,6 +17,7 @@ import { createWalkBoxWalk, entitySeedId } from '../src/rnd_board/api.js';
 import { MarkingStore, SIGN } from '../src/rnd_board/marking_store.js';
 import { walkTableView } from '../src/walk/table_view.js';
 import { LOADING } from '../src/ui_words.js';
+import { STEP_NODE_LIMIT } from '../src/walk/fold_views.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SUBJECT = path.join(HERE, '..', 'src', 'walk', 'subgraph_view.js');
@@ -30,6 +31,20 @@ const DIE = fx('walk_start_die.json');
 const STEP2 = fx('walk_start_die_step2.json');
 const BUNDLES = fx('walk_bundles_die.json');
 const EXPANDED = fx('walk_bundles_die_expanded.json');
+// The implementer's captures of the folded lumps' walks (real server, PostgreSQL): the start wafer, the recipe's one
+// more step (lead 793017c62 · edcc0568c).
+const FOLD_WAFER = fx('walk_fold_wafer.json');
+const FOLD_STEP = fx('walk_fold_recipe_step.json');
+const FOLD_PROCESS = fx('walk_fold_process_lump.json');
+// The declaration those captures were walked under: the box's, plus the types and predicates
+// server/tests/test_a_recipe_walk_brings_the_measurements_other_wafers_made.py declares (copied, not invented).
+const ref = (type) => ({ kind: 'entity_ref', types: [type], qualifiers: { required: [], optional: [] } });
+const FOLD_DECL = { ...DECL,
+  entities: [...DECL.entities, { type: 'measurement_event', keys: ['event'], class: null, attributes: ['value'] },
+    { type: 'process_event', keys: ['event'], class: null, attributes: ['step'] }],
+  predicates: [...DECL.predicates, ...[['measured', 'wafer', 'measurement_event'], ['used', 'measurement_event', 'recipe'],
+    ['of', 'measurement_event', 'quantity'], ['underwent', 'wafer', 'process_event']]
+    .map(([name, subject, object]) => ({ name, subjects: [subject], object: ref(object), origin: 'vocabulary', class: null }))] };
 const ENTITIES = DECL.entities;
 // The oracle reads the declaration itself: the types whose classes hold 'static'.
 const STATIC = new Set(ENTITIES.filter((e) => Array.isArray(e.class) && e.class.includes('static'))
@@ -101,7 +116,7 @@ async function suite(m, makeWalk = createWalkBoxWalk, css = REAL_CSS) {
     const chain = opts.chain || ['s0', 's1', 's2'];
     if (!opts.keepStart) markings.replace(chain[0], [[startId(bodies[0]), SIGN.CASE]]);
     const view = new m.SubgraphView(host, { doc, walk: wire(bodies, urls), entities: () => ENTITIES, markings, chain,
-      worldChips: opts.worldChips });
+      worldChips: opts.worldChips, declaration: () => opts.declaration || null });
     seated.push(view);
     await view.show();
     return { doc, host, view, urls, markings, chain };
@@ -872,6 +887,168 @@ async function suite(m, makeWalk = createWalkBoxWalk, css = REAL_CSS) {
       JSON.stringify({ label: labelOf(f), fail: textOf(f.host, 'sg-fail') }));
   }
 
+  console.log('\n[J] a folded lump seen as its list, a table or points; the start branch lit in all (lead 10-08)');
+  {
+    const s = await seat([FOLD_WAFER, FOLD_STEP]);
+    const startIds = new Set(FOLD_WAFER.nodes.map((n) => n.id));
+    // M1's branches are one big lump; its `used` key opened is a small lump holding the recipe.
+    const owner = FOLD_WAFER.nodes.find((n) => FOLD_WAFER.edges.some((e) => e.source === n.id && e.predicate === 'used'));
+    press(s, `big:${owner.id}`);
+    const usedRow = rowsOf(s).find((r) => r.attrs['data-value'].includes('|used|'));
+    if (usedRow) tickRow(usedRow);
+    openTicked(s);
+    const small = lumpsOf(s, 'small').filter((n) => n.data('owner') === owner.id)[0];
+    const id = small ? small.id() : '';
+    const box = () => s.view.factsBox;
+    const kinds = () => byClass(box(), 'sg-lv-kind');
+    const switchTo = (word) => { const b = kinds().find((k) => k.textContent === word); if (b) b.dispatch('click', {}); return Boolean(b); };
+    const was = positions(s);
+    const viewWas = viewport(s);
+    s.urls.length = 0;
+    press(s, id);
+    const pickerRows = rowsOf(s);
+    say('J1 pressed, the info box holds the lump - its words and Nodes · Table · Trend, Nodes on - and its list opens as today, the start branch lit',
+      Boolean(small) && JSON.stringify(kinds().map((k) => [k.textContent, k.getAttribute('aria-pressed')]))
+        === '[["Nodes","true"],["Table","false"],["Trend","false"]]'
+        && pickerRows.length > 0 && pickerRows.every((r) => r.className.includes('is-lit') === startIds.has(r.attrs['data-value']))
+        && pickerRows.some((r) => r.className.includes('is-lit')) && s.urls.length === 0,
+      JSON.stringify({ small: Boolean(small), kinds: kinds().map((k) => k.textContent), rows: pickerRows.length }));
+    switchTo('Trend');
+    const during = textOf(box(), 'sg-note').join();
+    await settle();
+    const params = paramsOf(s.urls[0] || '');
+    const recipe = FOLD_WAFER.edges.find((e) => e.source === owner.id && e.predicate === 'used').target;
+    const times = FOLD_WAFER.nodes.filter((n) => n.type === owner.type)
+      .flatMap((n) => Object.values(n.attributes_by_world || {}).flat().map((w) => Date.parse(w.occurred_at)));
+    const DAY = 24 * 60 * 60 * 1000;
+    const since = new Date(Math.min(...times) - 7 * DAY).toISOString();
+    const until = new Date(Math.max(...times) + 7 * DAY).toISOString();
+    say('J2 a lump of definition nodes walks one step back along its predicate, the start branch\'s times a week each side, capped; once',
+      during === LOADING && s.urls.length === 1 && JSON.stringify(params.getAll('positive')) === JSON.stringify([recipe])
+        && params.get('hops') === '1' && JSON.stringify(params.getAll('follow')) === '["used"]'
+        && JSON.stringify(params.getAll('collect')) === JSON.stringify([owner.type])
+        && params.get('direction') === 'incoming' && params.get('node_limit') === String(STEP_NODE_LIMIT)
+        && params.get('since') === since && params.get('until') === until && !pickerOf(s),
+      JSON.stringify({ during, urls: s.urls.length, q: [...params.entries()].filter(([k]) => k !== 'id' && k !== 'positive'), since, until }));
+    const circles = (src) => [...decodeURIComponent(String(src || '').split(',').slice(1).join(',')).matchAll(/<circle [^>]*>/g)].map((c) => c[0]);
+    const plot = byClass(box(), 'sg-lv-plot')[0];
+    const dots = circles(plot && plot.getAttribute('src'));
+    const valued = FOLD_STEP.nodes.filter((n) => n.attributes && 'value' in n.attributes);
+    const litCount = valued.filter((n) => startIds.has(n.id)).length;
+    const meta = textOf(box(), 'sg-lv-meta').join();
+    say('J3 its points: one per node that holds a number, the start branch\'s drawn over the rest; the count and the window said as values',
+      dots.length === valued.length && litCount > 0 && litCount < valued.length
+        && dots.slice(-litCount).every((c) => !c.includes('opacity')) && dots.slice(0, -litCount).every((c) => c.includes('opacity'))
+        && meta.startsWith(`Points ${valued.length} · Window `) && !meta.includes('Capped'),
+      JSON.stringify({ dots: dots.length, valued: valued.length, litCount, meta }));
+    const picture = s.view.cy.getElementById(id);
+    say('J4 the lump carries the same points as its own picture',
+      picture.nonempty() && circles(picture.data('spark')).length === valued.length, String(picture.nonempty() && picture.data('spark')).slice(0, 40));
+    s.urls.length = 0;
+    switchTo('Table');
+    await settle();
+    const tableRows = byClass(box(), 'rb-table-row');
+    const head = byClass(box(), 'rb-table-head')[0];
+    say('J5 as a table: a row per node it walked, the start branch\'s lit, nothing asked again; and its picture goes',
+      s.urls.length === 0 && tableRows.length === FOLD_STEP.nodes.length
+        && tableRows.filter((r) => r.className.includes('is-lit')).length === FOLD_STEP.nodes.filter((n) => startIds.has(n.id)).length
+        && head && [...head.children].map((c) => c.textContent).join() === 'Name,value,Time' && !s.view.cy.getElementById(id).data('spark'),
+      JSON.stringify({ urls: s.urls.length, rows: tableRows.length, head: head && [...head.children].map((c) => c.textContent) }));
+    say('J6 seeing a lump another way moves nothing: the nodes stand, the view stays',
+      was.size > 0 && stayed(was, s) && viewport(s) === viewWas, JSON.stringify({ view: viewport(s) === viewWas }));
+    switchTo('Nodes');
+    say('J7 back to Nodes, its list opens again and nothing is asked',
+      Boolean(pickerOf(s)) && s.urls.length === 0 && kinds().find((k) => k.textContent === 'Nodes').getAttribute('aria-pressed') === 'true',
+      JSON.stringify({ picker: Boolean(pickerOf(s)), urls: s.urls.length }));
+    press(s, owner.id);
+    say('J8 a node pressed, the info box holds that node again', byClass(box(), 'sg-lv-kind').length === 0
+      && textOf(box(), 'sg-facts-head').join().includes(owner.type), textOf(box(), 'sg-facts-head').join());
+    // A new start while a lump's walk is on its way: the answer lands nowhere, and nothing of the lumps stays.
+    press(s, id);
+    switchTo('Trend');
+    await s.view.show();
+    await settle();
+    say('J9 a new start keeps no lump\'s view, choice or walk - an answer that comes after lands nowhere',
+      s.view.lumpSeen.kind.size === 0 && s.view.lumpSeen.data.size === 0 && s.view.pickedLump === null
+        && byClass(box(), 'sg-lv-kind').length === 0,
+      JSON.stringify({ kind: s.view.lumpSeen.kind.size, data: s.view.lumpSeen.data.size, picked: s.view.pickedLump }));
+  }
+
+  console.log('\n[O] what the info box says of a lump\'s walk: capped, refused, values that are not numbers (lead 10-08)');
+  {
+    // The recipe lump behind the start wafer's first measurement, seen as points; `second` is its walk's answer.
+    const seeRecipe = async (second, beforeTrend) => {
+      const s = await seat([FOLD_WAFER, second]);
+      const owner = FOLD_WAFER.nodes.find((n) => FOLD_WAFER.edges.some((e) => e.source === n.id && e.predicate === 'used'));
+      press(s, `big:${owner.id}`);
+      const row = rowsOf(s).find((r) => r.attrs['data-value'].includes('|used|'));
+      if (row) tickRow(row);
+      openTicked(s);
+      const lump = lumpsOf(s, 'small').filter((n) => n.data('owner') === owner.id)[0];
+      if (lump) press(s, lump.id());
+      if (beforeTrend) beforeTrend(s);
+      const trend = byClass(s.view.factsBox, 'sg-lv-kind').find((k) => k.textContent === 'Trend');
+      if (trend) trend.dispatch('click', {});
+      await settle();
+      return { s, meta: textOf(s.view.factsBox, 'sg-lv-meta').join(), spark: lump ? s.view.cy.getElementById(lump.id()).data('spark') : null };
+    };
+    const capped = await seeRecipe({ ...FOLD_STEP, truncated: { ...FOLD_STEP.truncated, nodes: true, reason: 'nodes' } });
+    say('O1 a walk the cap cut says so, with the cap', capped.meta.endsWith(` · Capped at ${STEP_NODE_LIMIT}`), capped.meta);
+    const refused = await seeRecipe(FOLD_STEP, (s) => { s.view.walk = async () => ({ ok: false, message: 'Refused' }); });
+    say('O2 a walk refused says so in the info box, and the lump carries no picture',
+      textOf(refused.s.view.factsBox, 'sg-fail').join() === 'Failed · Refused' && !refused.spark,
+      JSON.stringify({ fail: textOf(refused.s.view.factsBox, 'sg-fail'), spark: Boolean(refused.spark) }));
+    const odd = JSON.parse(JSON.stringify(FOLD_STEP));
+    const [a, b] = odd.nodes.filter((n) => n.attributes && 'value' in n.attributes);
+    a.attributes.value = 'n/a';
+    a.attributes_by_world.value = a.attributes_by_world.value.map((w) => ({ ...w, value: 'n/a' }));
+    b.attributes_by_world.value = b.attributes_by_world.value.map(({ occurred_at: _, ...w }) => w);
+    const left = FOLD_STEP.nodes.filter((n) => n.attributes && 'value' in n.attributes).length - 2;
+    const counted = await seeRecipe(odd);
+    say('O3 a value that is not a number and one said at no time are left out, each counted as a value',
+      counted.meta.startsWith(`Points ${left} · `) && counted.meta.endsWith(' · 1 not numbers · 1 no time'), counted.meta);
+  }
+
+  console.log('\n[I] a lump of events that hold no number walks the declaration\'s routes to what does (lead 10-08)');
+  {
+    // The start wafer's branches folded, its `underwent` key opened: a small lump holding the process events.
+    const seatProcess = async (declaration) => {
+      const s = await seat([FOLD_WAFER, FOLD_PROCESS], { declaration });
+      const wafer = startId(FOLD_WAFER);
+      press(s, wafer);
+      const fold = byClass(s.host, 'sg-fold')[0];
+      if (fold) fold.dispatch('click', {});
+      press(s, `big:${wafer}`);
+      const row = rowsOf(s).find((r) => r.attrs['data-value'].includes('|underwent|'));
+      if (row) tickRow(row);
+      openTicked(s);
+      const lump = lumpsOf(s, 'small').filter((n) => String(n.data('key')).includes('|underwent|'))[0];
+      if (lump) press(s, lump.id());
+      s.urls.length = 0;
+      const trend = byClass(s.view.factsBox, 'sg-lv-kind').find((k) => k.textContent === 'Trend');
+      if (trend) trend.dispatch('click', {});
+      await settle();
+      return { s, lump };
+    };
+    const { s, lump } = await seatProcess(FOLD_DECL);
+    const params = paramsOf(s.urls[0] || '');
+    const asked = new URLSearchParams(FOLD_PROCESS._asked.map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join('&'));
+    const valued = FOLD_PROCESS.nodes.filter((n) => n.attributes && 'value' in n.attributes);
+    const meta = textOf(s.view.factsBox, 'sg-lv-meta').join();
+    say('I1 walked from its members along the route the walk page lists, as the implementer asked it; the values it reaches are its points',
+      Boolean(lump) && s.urls.length === 1
+        && JSON.stringify(params.getAll('positive').sort()) === JSON.stringify(asked.getAll('positive').sort())
+        && JSON.stringify(params.getAll('follow').sort()) === JSON.stringify(asked.getAll('follow').sort())
+        && JSON.stringify(params.getAll('collect')) === JSON.stringify(asked.getAll('collect'))
+        && params.get('hops') === asked.get('hops') && params.get('direction') === asked.get('direction')
+        && !params.get('since') && valued.length > 0 && meta === `Points ${valued.length}`,
+      JSON.stringify({ lump: Boolean(lump), urls: s.urls.length, q: [...params.entries()].filter(([k]) => k !== 'id'), meta }));
+    const none = await seatProcess(null);
+    say('I2 no route to anything holding a number: nothing is asked and the count says 0',
+      Boolean(none.lump) && none.s.urls.length === 0 && textOf(none.s.view.factsBox, 'sg-lv-meta').join() === 'Points 0',
+      JSON.stringify({ urls: none.s.urls.length, meta: textOf(none.s.view.factsBox, 'sg-lv-meta') }));
+  }
+
   console.log('\n[Q] Mark is the one press that marks; the facts stay in sight (lead 9dc2a5695 ① ②)');
   {
     const s = await seat([DIE, STEP2]);
@@ -1175,7 +1352,29 @@ const failures = [];
         "    if (!lump) return;\n    if (lump.level === 'big') {"),
         "    if (!step || this.state !== 'done' || step.expand.includes(key)) return;\n",
         '    if (!step || step.expand.includes(key)) return;\n') },
-    M('Z2m', 'Fit keeps the floor', 'Z2', 'if (this.cy) this.cy.fit(undefined, GEOMETRY.fitPad);', 'if (this.cy) this._firstFit();'),
+    M('J0m', 'every view reads an empty start branch - the one question answered nowhere (lead 10-08)', 'J3',
+      'startBranch(this.steps)', 'new Set()'),
+    M('J1m', 'a lump\'s chosen view is not kept', 'J2', '    this.lumpSeen.kind.set(id, kind);\n', ''),
+    M('J2m', 'a definition lump walks forward, not back along its predicate', 'J2',
+      "      direction: lump.direction === 'incoming' ? 'outgoing' : 'incoming', node_limit:", '      direction: lump.direction, node_limit:'),
+    M('J3m', 'the window is not sent', 'J2', '      ...(window ? { since:', '      ...(false ? { since:'),
+    M('J4m', 'the lump does not carry its points', 'J4', '        spark: this._spark(l, lit), label:', "        spark: '', label:"),
+    M('J5m', 'the table does not light the start branch', 'J5', 'rowLit: (row) => lit.has(row.id),', 'rowLit: null,'),
+    M('J6m', 'a lump\'s walk is asked again at every switch', 'J5', '    if (!seen.data.has(lump.id)) {\n', '    if (true) {\n'),
+    M('J7m', 'a new start keeps the lumps\' views', 'J9',
+      '    this.lumpSeen = openLumpSeen();\n    this.pickedLump = null;\n    this.pos = new Map();\n', '    this.pos = new Map();\n'),
+    M('J8m', 'the lump\'s list does not light the start branch', 'J1', '      lit: lit.has(m) }));', '      lit: false }));'),
+    M('O1m', 'a capped walk says nothing of the cap', 'O1', '    if (data.capped) said.push(`Capped at ${STEP_NODE_LIMIT}`);\n', ''),
+    M('O2m', 'a refused walk reads as no points', 'O2',
+      "    if (data.state === 'failed') { box.appendChild(this._el('div', 'sg-fail', `${FAILED} · ${data.reason}`)); return box; }\n", ''),
+    M('J9m', 'a definition lump\'s walk collects everything, not the owner\'s type', 'J2',
+      '      collect: owner ? [owner.type] : undefined,\n', ''),
+    M('O3m', 'the values left out are not counted', 'O3', '    if (got.notNumber) said.push(`${got.notNumber} not numbers`);\n', ''),
+    M('I2m', 'a routed lump\'s walk collects everything on the way, not the types holding a number', 'I1',
+      "        follow: [...new Set(routes.flatMap((r) => r.follow))], collect: [...to] } };",
+      '        follow: [...new Set(routes.flatMap((r) => r.follow))] } };'),
+    M('I1m', 'a lump of events that hold no number is not walked to its values', 'I1',
+      '      if (!routes.length) return { nodes: [] };\n', '      return { nodes: members };\n'),    M('Z2m', 'Fit keeps the floor', 'Z2', 'if (this.cy) this.cy.fit(undefined, GEOMETRY.fitPad);', 'if (this.cy) this._firstFit();'),
     M('Z3m', 'the first draw is not fitted', 'Z1', '    if (full) this._fitPending = true;\n', ''),
     M('Z4m', 'a change of size fits the picture again', 'Z4', '    else this.cy.resize();\n', '    else this._firstFit();\n'),
     M('Z5m', 'a change of size leaves the picture at its old size', 'Z4', '    else this.cy.resize();\n', ''),

@@ -1433,8 +1433,12 @@ const FLOORS = new Map([
   // 88 -> 138 (leads 5e1d9e372 · e523cfe91 · 03bc94b6b): drawn by Cytoscape, read off the part's instance; one
   // lump opens only what is ticked, the view and what stands never move; tokens, curves, the pointer, Reset;
   // a press lands on a node's name and survives a hand that wanders a little (lead 5f1eb137e); a new start keeps
-  // none of the last picture's marks, and a lump on its way reads Loading and is asked once (lead 10-07).
-  ['subgraph_view_harness.mjs', 171],
+  // none of the last picture's marks, and a lump on its way reads Loading and is asked once (lead 10-07); a folded
+  // lump seen as its list, a table or points with the start branch lit, walked once for its values (lead 10-08).
+  ['subgraph_view_harness.mjs', 200],
+  // New (leads 793017c62 · edcc0568c · 10-08): a folded lump's views, pure half - what a value reads as, the one
+  // start-branch question, the points, the window, the one drawing.
+  ['fold_views_harness.mjs', 18],
   // New (lead 65754c39a): the one layered-SVG template - both screens draw their pinned pictures, two
   // declarations on one page apart, the template's own slots/shapes/texts/presses; (lead 2cbd0756d) the nine
   // category colours of their own, measured, and seven token mutants. 33 -> 30 (lead 5e1d9e372): the subgraph

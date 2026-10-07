@@ -25,12 +25,12 @@
 //
 // ⛔ 걷기 API 는 «안 건드립니다» — 소유자 지시. 부르기만 합니다.
 
-import { fetchDeclaration, createWalkBoxWalk, pathsBetween, routeWith, fetchKeyValues, PICK_TYPE_FIRST }
+import { fetchDeclaration, createWalkBoxWalk, routeWith, fetchKeyValues, PICK_TYPE_FIRST }
   from '../rnd_board/api.js';
 // 🔴 겉모양은 «부품과 같이» 다닙니다 (총괄 판정 2026-09-06).
 import { ensureWalkStyles } from './styles.js';
 import {
-  followFromRoute, followChoices, keepWalkableRoutes,
+  followFromRoute, followChoices, walkableRoutes,
   cutBudgets,
 } from './derive.js';
 // 🔴 C-72. 표의 «결정»은 전부 여기 있고 이 파일에는 DOM 쓰기만 남습니다.
@@ -114,7 +114,7 @@ export function boot(doc, host, deps) {
   const markings = new MarkingStore();
   const graphMount = el(doc, 'div', 'wk-graph');
   const graph = new SubgraphView(graphMount, { doc, walk, entities, markings, chain: GRAPH_CHAIN,
-    worldChips: worlds.length > 1 });
+    worldChips: worlds.length > 1, declaration: () => state.decl });
   /** The form's subject becomes the chain's first marking; no subject, no mark (the part says so). */
   const showGraph = (opts) => {
     const named = Object.keys(state.keys || {}).length > 0;
@@ -134,14 +134,11 @@ export function boot(doc, host, deps) {
   function routes() {
     if (!state.decl || !state.type || !state.collect.size) return [];
     const out = [];
+    // 🔴 걷기가 «거절할» 길은 내놓지 않습니다. 규칙과 사유는 `derive.js` 의 `walkableRoutes` 에 있습니다.
     for (const to of state.collect) {
-      for (const r of pathsBetween(state.decl, state.type, to)) {
-        out.push({ ...r, to });
-      }
+      for (const r of walkableRoutes(state.decl, state.type, to)) out.push({ ...r, to });
     }
-    // 🔴 걷기가 «거절할» 길은 내놓지 않습니다. 규칙과 사유는 `derive.js` 에 있습니다.
-    const walkable = keepWalkableRoutes(entities(), out);
-    return walkable.sort((a, b) => a.hops - b.hops || a.follow.length - b.follow.length);
+    return out.sort((a, b) => a.hops - b.hops || a.follow.length - b.follow.length);
   }
 
   /** 폼의 칸 -> 전선의 인자. «빈 칸은 안 싣습니다» — 그것이 「안 골랐다」의 정직한 모양입니다. */

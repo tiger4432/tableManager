@@ -14,6 +14,7 @@
 .rb-table-row:hover { background: var(--surface-hover); }
 .rb-table-row.is-marked-case { background: var(--accent-weak); box-shadow: inset 2px 0 0 var(--accent); }
 .rb-table-row.is-marked-control { background: var(--bg-inset); box-shadow: inset 2px 0 0 var(--text-muted); }
+.rb-table-row.is-lit { font-weight: 600; box-shadow: inset 2px 0 0 var(--accent); }
 .rb-table-cell { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
 .rb-table-cell.is-right { text-align: right; }
 /* 🔴 없는 값은 «없다고» 보입니다. 0 과 같은 픽셀이 되면 안 됩니다. */

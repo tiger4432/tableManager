@@ -211,6 +211,7 @@ export const WALK_CSS = `
 .sg-pick-row { display: flex; align-items: center; gap: var(--space-2); min-height: 36px; padding: 0 var(--space-3);
   cursor: pointer; }
 .sg-pick-row[hidden] { display: none; }
+.sg-pick-row.is-lit { font-weight: 600; box-shadow: inset 2px 0 0 var(--accent); }
 .sg-pick-row:hover { background: color-mix(in srgb, var(--text) 7%, transparent); }
 .sg-pick-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sg-pick-n { margin-left: auto; color: var(--text-dim); font-variant-numeric: tabular-nums; }
@@ -232,6 +233,15 @@ export const WALK_CSS = `
 .sg-mark.is-on { color: var(--accent); background: var(--accent-weak); border-color: var(--accent); font-weight: 600; }
 .sg-mark[disabled] { opacity: 0.5; cursor: not-allowed; }
 .sg-facts-head { font-weight: 600; }
+/* A lump in the info box (lead 10-08): what it is, its switch and its y on one line, its counts, then the table or the
+   points. The box keeps its height and scrolls inside itself. */
+.sg-lv-kind { min-height: 36px; padding: 0 var(--space-3); }
+.sg-lv-kind[aria-pressed="true"] { color: var(--accent); background: var(--accent-weak); border-color: var(--accent);
+  font-weight: 600; }
+.sg-lv-y { min-height: 36px; padding: 0 var(--space-2); font: inherit; color: var(--text); background: var(--bg-inset);
+  border: 1px solid var(--border); border-radius: 0; }
+.sg-lv-meta { font-size: var(--fs-meta); color: var(--text-dim); font-variant-numeric: tabular-nums; }
+.sg-lv-plot { display: block; width: 100%; height: 80px; flex: none; }
 .sg-fact { font-family: 'JetBrains Mono', monospace; font-size: var(--fs-label); overflow-wrap: anywhere; }
 /* Which world says an edge or an attribute, when the walk reads several (leads 99032248f, ee0f66e7b, 4e1e49fe9):
    one row per world under it, its chip first, then what that world says. */

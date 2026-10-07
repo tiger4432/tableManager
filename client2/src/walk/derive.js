@@ -9,6 +9,7 @@
 // 🔴 BOTH EXIST BECAUSE OF A MEASURED DEFECT, not for symmetry. Clicking a route filled `hops`
 //    and ticked nothing, and the second-hop predicate had no checkbox at all because the list
 //    only offered predicates whose subject is the START type.
+import { pathsBetween } from '../rnd_board/api.js';
 
 /** The declared predicates a route follows. */
 export function followFromRoute(declaredNames, routeFollow) {
@@ -331,6 +332,15 @@ export function keepWalkableRoutes(entities, routes) {
     }
     return true;
   });
+}
+
+/**
+ * The routes the walk can take from one declared type to another: the declaration's paths (`pathsBetween`) less the
+ * ones the walk refuses. The walk page's route list and a folded lump's walk to its values (lead 10-08) ask this one.
+ * ⚠️ The R&D board's walk box (frozen) still composes the same two calls itself.
+ */
+export function walkableRoutes(declaration, from, to) {
+  return keepWalkableRoutes((declaration && declaration.entities) || [], pathsBetween(declaration, from, to));
 }
 
 /**

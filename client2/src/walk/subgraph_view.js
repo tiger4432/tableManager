@@ -19,10 +19,15 @@
 
 import cytoscape from 'cytoscape';
 import dagre from 'cytoscape-dagre';
-import { staticTypes, cutBudgets } from './derive.js';
+import { staticTypes, cutBudgets, walkableRoutes } from './derive.js';
 import { SIGN } from '../rnd_board/marking_store.js';
 import { setDisabledReason } from '../disabled_reason.js';
-import { LOADING, unitText } from '../ui_words.js';
+import { FAILED, LOADING, unitText } from '../ui_words.js';
+import { localMinute } from '../server_time.js';
+import { TablePart } from '../rnd_board/table_part.js';
+// A folded lump seen as a table or as points, its start branch lit (leads 793017c62 · edcc0568c · 5ef260acf · 10-08).
+import { FOLD_VIEWS, STEP_NODE_LIMIT, openLumpSeen, pointsOf, pointsSvg, saidAt, startBranch, svgAddress,
+  valueAttributes, windowAround } from './fold_views.js';
 // The look travels with the part (the walk page's rule): one stamp, one sheet per document.
 import { ensureWalkStyles } from './styles.js';
 
@@ -370,6 +375,7 @@ export class SubgraphView {
    *   `chain` names the markings: the first is the start, each next one takes the marks of a step.
    *   `fanoutLimit` (declaration, default DEFAULT_FANOUT_LIMIT): a fan-out over it comes back as an unsent lump.
    *   `worldChips`: the page reads several worlds, so each fact says which (lead 99032248f).
+   *   `declaration()`: the declaration whose routes a folded lump walks to its values (lead 10-08).
    */
   constructor(mount, deps = {}) {
     if (!mount) throw new Error('SubgraphView needs a mount element');
@@ -380,6 +386,7 @@ export class SubgraphView {
     this.doc = deps.doc || mount.ownerDocument;
     this.walk = deps.walk;
     this.entities = deps.entities || (() => []);
+    this.declaration = deps.declaration || (() => null);
     this.markings = deps.markings;
     this.chain = deps.chain.slice();
     this.fanoutLimit = Number.isFinite(deps.fanoutLimit) ? deps.fanoutLimit : DEFAULT_FANOUT_LIMIT;
@@ -416,6 +423,9 @@ export class SubgraphView {
     this._from = null;
     this._relayout = true;
     this.expanding = [];
+    // How each lump is seen and the lump the info box holds - this instance's, a new start's to clear.
+    this.lumpSeen = openLumpSeen();
+    this.pickedLump = null;
     // Another part writing the same name is seen here: same name, same marking.
     for (const name of this.chain) this.markings.subscribe(name, () => this._restyle());
   }
@@ -434,6 +444,8 @@ export class SubgraphView {
     this.layout = null;
     this.selected = null;
     this.fold = openFold();
+    this.lumpSeen = openLumpSeen();
+    this.pickedLump = null;
     this.pos = new Map();
     this._relayout = true;
     this._closePicker();
@@ -577,8 +589,18 @@ export class SubgraphView {
       if (this._view().lumps.some((l) => l.id === id && !l.unsent)) await this.openLump(id);
       return;
     }
+    // The info box holds the lump now (lead 10-08): its switch, and - seen as a table or points - those instead of the list.
+    this.pickedLump = id;
+    this.selected = null;
+    if (this._kindOf(id) !== FOLD_VIEWS[0]) {
+      this._closePicker();
+      await this._seeLump(lump);
+      return;
+    }
     const view = this._view();
-    const items = lump.members.map((m) => ({ value: m, text: this._labelOf(m), count: view.behind(m) || undefined }));
+    const lit = startBranch(this.steps);
+    const items = lump.members.map((m) => ({ value: m, text: this._labelOf(m), count: view.behind(m) || undefined,
+      lit: lit.has(m) }));
     this._openPicker(id, items, `${lump.predicate} · ${lump.farType}`,
       `${lump.count} not drawn · from ${this._labelOf(lump.owner)}`, (members) => {
         const opened = this.fold.lumped.get(lump.key);
@@ -589,6 +611,66 @@ export class SubgraphView {
         }
         this._openedFrom(id, members);
       });
+    this._swapFacts();
+    this._restyle();
+  }
+
+  /** See a lump another way (lead 10-08): its list (today's), its nodes as a table, or their points. The view stays put. */
+  setLumpView(id, kind) {
+    this.lumpSeen.kind.set(id, kind);
+    return this.openLump(id);
+  }
+
+  _kindOf(id) { return this.lumpSeen.kind.get(id) || FOLD_VIEWS[0]; }
+
+  /** A lump seen as a table or points: what it needs is walked once, by its own answer, and drawn when it comes. */
+  async _seeLump(lump) {
+    const seen = this.lumpSeen;
+    if (!seen.data.has(lump.id)) {
+      const source = this._lumpSource(lump);
+      if (!source.ask) seen.data.set(lump.id, { state: 'done', nodes: source.nodes });
+      else {
+        seen.data.set(lump.id, { state: 'loading' });
+        this.render();
+        const res = await this.walk(source.ask);
+        // A new start meanwhile made its own `lumpSeen`: this answer lands in the old one, which nothing reads.
+        seen.data.set(lump.id, res && res.ok
+          ? { state: 'done', nodes: subgraphLayout([{ results: [res] }], this.entities()).nodes,
+            window: source.window, windowed: source.windowed, capped: (res.truncatedAxes || []).includes('nodes') }
+          : { state: 'failed', reason: (res && res.message) || '' });
+      }
+    }
+    this.render();
+  }
+
+  /**
+   * THE ONE SEAT that says where a lump's points come from (lead 10-08). Members that hold numbers are the points;
+   * nothing is asked. Members that are definition nodes (static) take one more step back along the lump's predicate -
+   * to whatever does with them what the lump's owner does (collect: the owner's type) - within the start branch's
+   * times, AROUND_DAYS each side (none known: no window), capped at STEP_NODE_LIMIT. Any other members are walked from
+   * along the declaration's routes (`walkableRoutes`, the walk page's own list) to the types this picture shows
+   * holding a number (collect: those types). The walk does the choosing; the views draw what it brought.
+   */
+  _lumpSource(lump) {
+    const byId = new Map(this.layout.nodes.map((n) => [n.id, n]));
+    const members = lump.members.map((m) => byId.get(m)).filter(Boolean);
+    if (!members.length || valueAttributes(members).length) return { nodes: members };
+    if (!members.every((n) => n.static)) {
+      const from = new Set(members.map((n) => n.type));
+      const to = new Set(this.layout.nodes.filter((n) => !from.has(n.type) && valueAttributes([n]).length).map((n) => n.type));
+      const routes = [...from].flatMap((a) => [...to].flatMap((b) => walkableRoutes(this.declaration(), a, b)));
+      if (!routes.length) return { nodes: [] };
+      return { ask: { positive: lump.members, direction: 'both', hops: Math.max(...routes.map((r) => r.hops)),
+        follow: [...new Set(routes.flatMap((r) => r.follow))], collect: [...to] } };
+    }
+    const owner = byId.get(lump.owner);
+    const lit = startBranch(this.steps);
+    const window = windowAround(this.layout.nodes.filter((n) => lit.has(n.id) && owner && n.type === owner.type)
+      .flatMap((n) => Object.keys(n.attributes).map((name) => saidAt(n, name))));
+    return { window, windowed: true, ask: { positive: lump.members, hops: 1, follow: [lump.predicate],
+      collect: owner ? [owner.type] : undefined,
+      direction: lump.direction === 'incoming' ? 'outgoing' : 'incoming', node_limit: STEP_NODE_LIMIT,
+      ...(window ? { since: new Date(window.since).toISOString(), until: new Date(window.until).toISOString() } : {}) } };
   }
 
   /** Draw what a lump let out, stacked where the lump stood; the lump, if anything is left in it, goes under. */
@@ -701,6 +783,7 @@ export class SubgraphView {
         'border-color': t('--text') }) },
       { selector: 'node[kind = "lump"][?unsent]', style: { 'border-style': 'dashed' } },
       { selector: 'node[kind = "lump"][?loading]', style: { label: LOADING } },
+      { selector: 'node[kind = "lump"][?spark]', style: { 'background-image': 'data(spark)', 'background-fit': 'contain' } },
       { selector: 'node.is-lit', style: set({ 'overlay-color': t('--accent'), 'overlay-opacity': 0.1, 'overlay-padding': 6.8 }) },
       { selector: 'edge', style: set({
         width: 1.4, 'line-color': t('--border-strong'), 'target-arrow-color': t('--border-strong'),
@@ -757,7 +840,8 @@ export class SubgraphView {
     // The site's theme toggle (data-theme on the root) restyles the picture; the instance owns its observer.
     const Observer = this.doc.defaultView && this.doc.defaultView.MutationObserver;
     if (Observer) {
-      this._themeWatch = new Observer(() => { if (this.cy) this.cy.style(this._style()); });
+      // The dots are drawn with the tokens' values, so they are drawn again too.
+      this._themeWatch = new Observer(() => { if (this.cy) { this.cy.style(this._style()); this.render(); } });
       this._themeWatch.observe(this.doc.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
     }
     this.cy = cy;
@@ -767,6 +851,7 @@ export class SubgraphView {
   /** The elements a view draws: its nodes, its edges, its lumps and the line from each lump to its node. */
   _elements(view) {
     const layerOf = new Map(view.nodes.map((n) => [n.id, n.layer]));
+    const lit = startBranch(this.steps);
     const out = [];
     for (const n of view.nodes) {
       out.push({ group: 'nodes', data: { id: n.id, kind: 'node', label: n.label, type: n.type, layer: n.layer,
@@ -775,7 +860,7 @@ export class SubgraphView {
     for (const l of view.lumps) {
       out.push({ group: 'nodes', data: { id: l.id, kind: 'lump', level: l.level, owner: l.owner, key: l.key || '',
         count: l.count, unsent: Boolean(l.unsent), loading: Boolean(l.unsent) && this.expanding.includes(l.key),
-        label: lumpLabel(l), layer: (layerOf.get(l.owner) || 0) + 1 } });
+        spark: this._spark(l, lit), label: lumpLabel(l), layer: (layerOf.get(l.owner) || 0) + 1 } });
     }
     for (const e of view.edges) {
       // A line one column forward is the walk's own step; any other runs sideways or back and stands back.
@@ -987,6 +1072,9 @@ export class SubgraphView {
   }
 
   _facts() {
+    const lump = this.pickedLump && this.layout
+      && this._view().lumps.find((l) => l.id === this.pickedLump && l.level === 'small');
+    if (lump) return this._lumpFacts(lump);
     const box = this._el('div', 'sg-facts');
     this.markButton = null;
     const facts = this.layout && this.selected ? nodeFacts(this.layout, this.selected) : null;
@@ -1027,6 +1115,94 @@ export class SubgraphView {
     return box;
   }
 
+  /**
+   * The info box holding a lump (lead 10-08): what it is and its switch, then - seen as a table or points - its counts
+   * as values and the table or the points, the start branch lit in both (the one `startBranch`).
+   */
+  _lumpFacts(lump) {
+    const box = this._el('div', 'sg-facts sg-lumpview');
+    this.markButton = null;
+    const kind = this._kindOf(lump.id);
+    const head = this._el('div', 'sg-facts-acts');
+    head.appendChild(this._el('span', 'sg-facts-head', `${arrowed(lump)} ${lump.farType}`));
+    for (const one of FOLD_VIEWS) {
+      const button = this._el('button', 'sg-tool sg-lv-kind', one);
+      button.setAttribute('type', 'button');
+      button.setAttribute('data-lump-view', one);
+      button.setAttribute('aria-pressed', String(one === kind));
+      if (button.addEventListener) button.addEventListener('click', () => { this.setLumpView(lump.id, one); });
+      head.appendChild(button);
+    }
+    box.appendChild(head);
+    const data = this.lumpSeen.data.get(lump.id);
+    if (kind === FOLD_VIEWS[0] || !data) return box;
+    if (data.state === 'loading') { box.appendChild(this._el('div', 'sg-note', LOADING)); return box; }
+    if (data.state === 'failed') { box.appendChild(this._el('div', 'sg-fail', `${FAILED} · ${data.reason}`)); return box; }
+    const ys = valueAttributes(data.nodes);
+    const y = this._yOf(lump.id, ys);
+    const lit = startBranch(this.steps);
+    const got = pointsOf(data.nodes, y, lit);
+    if (ys.length) {
+      const pick = this._el('select', 'sg-lv-y');
+      for (const name of ys) {
+        const option = this._el('option', '', name);
+        option.setAttribute('value', name);
+        pick.appendChild(option);
+      }
+      pick.value = y;
+      if (pick.addEventListener) pick.addEventListener('change', () => { this.lumpSeen.y.set(lump.id, pick.value); this.render(); });
+      head.appendChild(pick);
+    }
+    const said = [`Points ${got.points.length}`];
+    if (data.window) said.push(`Window ${localMinute(new Date(data.window.since))} – ${localMinute(new Date(data.window.until))}`);
+    else if (data.windowed) said.push('Window all time');
+    if (data.capped) said.push(`Capped at ${STEP_NODE_LIMIT}`);
+    if (got.notNumber) said.push(`${got.notNumber} not numbers`);
+    if (got.noTime) said.push(`${got.noTime} no time`);
+    box.appendChild(this._el('div', 'sg-lv-meta', said.join(' · ')));
+    if (kind === FOLD_VIEWS[2]) {
+      const plot = this._el('img', 'sg-lv-plot');
+      plot.setAttribute('alt', '');
+      plot.setAttribute('src', svgAddress(pointsSvg(got.points,
+        { width: 480, height: 80, pad: 6.8, r: 3.4, colours: this._dotColours(), axes: true })));
+      box.appendChild(plot);
+      return box;
+    }
+    const names = [...new Set(data.nodes.flatMap((n) => Object.keys(n.attributes)))];
+    const timeOf = (n) => saidAt(n, y);
+    const rows = data.nodes.slice().sort((a, b) => (timeOf(a) ?? Infinity) - (timeOf(b) ?? Infinity)).map((n) => ({
+      id: n.id, name: n.label, time: timeOf(n) === null ? null : localMinute(new Date(timeOf(n))),
+      ...Object.fromEntries(names.map((name) => [`a:${name}`, n.attributes[name]])) }));
+    const host = this._el('div', 'sg-lv-table');
+    new TablePart(host, { doc: this.doc, rows, rowLit: (row) => lit.has(row.id), emptyText: 'No nodes',
+      columns: [{ key: 'name', label: 'Name' },
+        ...names.map((name) => ({ key: `a:${name}`, label: name, kind: ys.includes(name) ? 'number' : 'text' })),
+        { key: 'time', label: 'Time' }] }).render();
+    box.appendChild(host);
+    return box;
+  }
+
+  /** The attribute a lump's points stand on: the one picked if it is still there, else the first that holds a number. */
+  _yOf(id, ys) {
+    const picked = this.lumpSeen.y.get(id);
+    return ys.includes(picked) ? picked : ys[0];
+  }
+
+  /** The dots' colours, as the tokens are now - an image reads no page variable. */
+  _dotColours() {
+    const t = (name) => this._token(name);
+    return { lit: t('--accent'), ring: t('--text'), rest: t('--text-dim'), text: t('--text-dim'), font: t('--font-sans') };
+  }
+
+  /** A lump seen as points carries them as its own picture (lead 10-08), drawn by the same one drawing, smaller. */
+  _spark(lump, lit) {
+    const data = this.lumpSeen.data.get(lump.id);
+    if (this._kindOf(lump.id) !== FOLD_VIEWS[2] || !data || data.state !== 'done') return '';
+    const got = pointsOf(data.nodes, this._yOf(lump.id, valueAttributes(data.nodes)), lit);
+    return got.points.length ? svgAddress(pointsSvg(got.points,
+      { width: 136, height: 54.4, pad: 6.8, r: 2.4, colours: this._dotColours(), axes: false })) : '';
+  }
+
   /** Under a fact, when the walk reads several worlds, a row per world that says it: its chip, then what it says. */
   _worldRows(box, saids, words) {
     if (!this.worldChips) return;
@@ -1057,7 +1233,7 @@ export class SubgraphView {
     }
     const list = this._el('div', 'sg-pick-list');
     const rows = items.map((item) => {
-      const row = this._el('label', 'sg-pick-row');
+      const row = this._el('label', `sg-pick-row${item.lit ? ' is-lit' : ''}`);
       row.setAttribute('data-value', item.value);
       const cb = this._el('input');
       cb.setAttribute('type', 'checkbox');
@@ -1183,6 +1359,7 @@ export class SubgraphView {
 
   /** Pick a node: the facts box is swapped; the picture is not laid out again. */
   select(id) {
+    this.pickedLump = null;
     this.selected = id;
     this._swapFacts();
     this._restyle();
