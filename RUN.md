@@ -1,5 +1,28 @@
 # 지금 돌리면 되는 것
 
+> ## [10-07 저녁] **SSO — 설정 파일 하나로 서버가 안 멈춘다 · 클라이언트 비밀은 선택(public client) — 이주 «없음» · 재기동 «필요»**
+>
+> ```
+> 무엇이 바뀌나  auth_config.json 을 못 읽어도(문법 오류 · 맨 위가 객체 아님) 기동은 계속된다 — SSO 는 OFF, 요청은 오늘처럼
+>              BOM 이 붙어도 읽는다(table_config.json 과 같은 읽기)
+>              클라이언트 비밀은 선택 — 없으면 public client(PKCE 만)로 코드를 토큰으로 바꾼다. 위 10-07 절의 «비밀 하나»는 이제 «있으면»
+> 적는 곳       메모장은 BOM 없는 UTF-8로 저장, 틀리면 기동 로그 [sso] OFF 줄이 이유를 말한다
+>              회사 가이드의 토큰 서명 인증서(.cer)는 넣지 않는다. 서버가 ADFS의 키 주소에서 받는다
+>              비밀 없으면 public, invalid_client면 IT에 비밀 받기 — 받으면 환경변수 ASSY_OIDC_CLIENT_SECRET 에 두고 재기동
+> 재기동 뒤 볼 줄  [sso] ON - issuer …, return address …, public client. …   = 비밀 없이 켜짐
+>              [sso] ON - issuer …, return address …, secret client. …   = 비밀로 켜짐
+>              [sso] ON - … admins (auth_config.json) is not a list, so no one is an administrator.
+>                 = admins 를 ["이름", …] 목록으로 고치고 재기동. 그때까지 관리 화면은 아무도 못 쓴다
+>              [sso] OFF - auth_config.json could not be read: line <줄> column <칸> (char …): <무엇>   = 그 자리를 고치고 재기동
+>              [sso] OFF - auth_config.json could not be read: the top level is …, not an object       = 파일 전체를 { … } 하나로
+>              [sso] OFF - enabled must be true (not "true") in auth_config.json                      = 따옴표 없이 true
+> 거절 줄        [sso] The identity provider refused the sign-in: invalid_client - …   = ADFS 가 비밀을 원한다 -> IT 에 클라이언트 비밀 받기
+>              화면에도 같은 문장과 Try again
+> 급할 때       enabled false + 재기동 (오늘과 같음)
+> ```
+
+---
+
 > ## [10-07] **소스에 묶은 속성이 그 개체의 칸이 된다(등록 문장 없이) · 등록 probe 은퇴 — 마이그레이션 «없음» · 재기동 «필요» · 다시 번역은 «부류 1» 소스만, 운영자가**
 >
 > ```

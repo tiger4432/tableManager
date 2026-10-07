@@ -4,6 +4,7 @@ call - `requests.Session.send` is replaced before a request can leave, and an ad
 serve fails the test. The settings file is a temp file; sessions and keys live in the suite's
 in-memory database."""
 import base64
+import codecs
 import hashlib
 import json
 import logging
@@ -51,6 +52,9 @@ class FakeIssuer:
         self.secret_key = OctKey.import_key("s" * 32, parameters={"kid": "k-oct"})
         self.codes = {}
         self.answered = []
+        self.secret = CLIENT_SECRET            # None: the client is public (no secret, PKCE only)
+        self.exchanges = []                    # (Authorization header, form) of every code exchange
+        self.token_refusal = None              # (error, description): the token endpoint refuses
 
     def key(self, kid):
         return self.keys.setdefault(kid, RSAKey.generate_key(2048, parameters={"kid": kid}))
@@ -88,12 +92,16 @@ class FakeIssuer:
             return self._answer(request, 200, {"keys": keys})
         if address == TOKEN:
             form = {k: v[0] for k, v in parse_qs(request.body).items()}
-            basic = base64.b64encode(("%s:%s" % (CLIENT_ID, CLIENT_SECRET)).encode()).decode()
+            self.exchanges.append((request.headers.get("Authorization"), form))
+            if self.token_refusal:
+                return self._answer(request, 401, dict(zip(("error", "error_description"), self.token_refusal)))
+            basic = base64.b64encode(("%s:%s" % (CLIENT_ID, self.secret)).encode()).decode()
             challenge, nonce = self.codes.pop(form["code"])
             proof = base64.urlsafe_b64encode(
                 hashlib.sha256(form["code_verifier"].encode()).digest()).rstrip(b"=").decode()
-            if (request.headers.get("Authorization") != "Basic " + basic or proof != challenge
-                    or form["redirect_uri"] != self.returns):
+            who = (request.headers.get("Authorization") == "Basic " + basic if self.secret
+                   else "Authorization" not in request.headers and form.get("client_id") == CLIENT_ID)
+            if not who or proof != challenge or form["redirect_uri"] != self.returns:
                 return self._answer(request, 400, {"error": "invalid_grant"})
             now = int(time.time())
             claims = dict({"iss": ISSUER, "aud": CLIENT_ID, "iat": now, "exp": now + 3600,
@@ -146,9 +154,18 @@ def issuer(request, monkeypatch, tmp_path):
     _clear()
 
 
-@pytest.fixture
-def off(monkeypatch, tmp_path):
-    monkeypatch.setattr(sso, "CONFIG_PATH", str(tmp_path / "absent.json"))
+#: Settings files that leave sign-in OFF without stopping anything (총괄 10-07): every OFF test runs
+#: on each, so "OFF works as it always did" is measured on them, not re-asserted.
+OFF_FILES = {"absent": None, "syntax-error": b'{"enabled": true,', "top-level-array": b"[]",
+             "top-level-null": b"null", "enabled-as-text": b'{"enabled": "true"}'}
+
+
+@pytest.fixture(params=OFF_FILES.values(), ids=OFF_FILES)
+def off(request, monkeypatch, tmp_path):
+    path = tmp_path / sso.CONFIG_FILE
+    if request.param is not None:
+        path.write_bytes(request.param)
+    monkeypatch.setattr(sso, "CONFIG_PATH", str(path))
     monkeypatch.delenv(sso.CLIENT_SECRET_ENV, raising=False)
     monkeypatch.setenv(auth.ADMIN_TOKEN_ENV, ADMIN_TOKEN)
     sso.settings.cache_clear()
@@ -186,7 +203,7 @@ def _rounds():
 
 @pytest.mark.parametrize("enabled, drop, level, words", [
     (True, None, "info", None),
-    (True, "secret", "warning", "enabled is true but not set: " + sso.CLIENT_SECRET_ENV),
+    (True, "secret", "info", None),                    # 총괄 10-07: no secret is a public client
     (True, "client_id", "warning", "enabled is true but not set: client_id (%s)" % sso.CONFIG_FILE),
     (False, None, "info", "enabled is not true"),
     (False, "secret", "info", "enabled is not true"),
@@ -206,6 +223,7 @@ def test_sign_in_is_on_only_when_enabled_and_every_setting_is_there(monkeypatch,
     assert said[0] == level
     if words is None:
         assert said[1].startswith("[sso] ON") and ISSUER in said[1] and RETURNS[0] in said[1]
+        assert ("public client" if drop == "secret" else "secret client") in said[1]
         assert _client().get("/auth/me").json() == {"user": None, "is_admin": False, "sso": True}
     else:
         assert said[1].startswith("[sso] OFF") and words in said[1] and CLIENT_SECRET not in said[1]
@@ -221,6 +239,75 @@ def test_a_change_waits_for_the_restart(issuer):
     assert sso.enabled()                                          # read once per process
     sso.settings.cache_clear()
     assert not sso.enabled()
+
+
+GOOD = {"enabled": True, "issuer": ISSUER, "client_id": CLIENT_ID, "redirect_uri": RETURNS[0],
+        "name_claim": "upn", "admins": [UPN]}
+AS_WRITTEN = {   # 총괄 10-07: the file as an editor may leave it -> (bytes, level, what the boot line says, admins)
+    "top-level-array": (b"[]", "warning",
+                        "OFF - auth_config.json could not be read: the top level is [], not an object", []),
+    "top-level-null": (b"null", "warning",
+                       "OFF - auth_config.json could not be read: the top level is null, not an object", []),
+    "syntax-error": (b'{"enabled": true,', "warning", "OFF - auth_config.json could not be read: line 1 column 18", []),
+    "enabled-as-text": (json.dumps(dict(GOOD, enabled="true")).encode(), "warning",
+                        'OFF - enabled must be true (not "true") in auth_config.json', [UPN]),
+    "admins-as-text": (json.dumps(dict(GOOD, admins=UPN)).encode(), "warning",
+                       "admins (auth_config.json) is not a list, so no one is an administrator.", []),
+    "utf-8-bom": (codecs.BOM_UTF8 + json.dumps(GOOD).encode(), "info", "ON - issuer " + ISSUER, [UPN]),
+    "utf-16-bom": (json.dumps(GOOD).encode("utf-16"), "info", "ON - issuer " + ISSUER, [UPN]),
+}
+
+
+@pytest.mark.parametrize("written, level, words, admins", AS_WRITTEN.values(), ids=AS_WRITTEN)
+def test_a_settings_file_as_written_never_stops_the_server(monkeypatch, tmp_path, caplog, written, level, words,
+                                                           admins):
+    """It boots (the startup banner is read in `main.startup_event`), it says why, and requests are
+    answered - none of them a 500."""
+    _setup(monkeypatch, tmp_path, RETURNS[0])
+    (tmp_path / sso.CONFIG_FILE).write_bytes(written)
+    sso.settings.cache_clear()
+    monkeypatch.setattr(main, "_admin_auth_banner_logged", False)
+    with caplog.at_level(logging.INFO, logger="Server"), TestClient(main.app, base_url="https://testserver") as client:
+        said = [(r.levelname.lower(), r.getMessage()) for r in caplog.records if r.getMessage().startswith("[sso]")]
+        answers = {path: client.get(path) for path in ("/auth/me", "/health")}
+    assert len(said) == 1 and said[0][0] == level and words in said[0][1], said
+    assert answers["/auth/me"].status_code == 200 and answers["/health"].status_code in (200, 503)
+    assert answers["/auth/me"].json()["sso"] is said[0][1].startswith("[sso] ON")
+    assert sso.settings()["admins"] == admins and sso.is_admin(UPN) is bool(admins)
+    sso.settings.cache_clear()
+
+
+@pytest.mark.parametrize("secret", [CLIENT_SECRET, None], ids=["secret", "public"])
+def test_the_code_exchange_carries_a_secret_only_when_there_is_one(issuer, monkeypatch, secret):
+    """총괄 10-07: no secret is a public client - the exchange is client_id and the PKCE verifier."""
+    if secret is None:
+        monkeypatch.delenv(sso.CLIENT_SECRET_ENV)
+        sso.settings.cache_clear()
+    issuer.secret = secret
+    assert sso.enabled() and ("%s client" % ("secret" if secret else "public")) in sso.startup_banner()[1]
+    back = _sign_in(_client(), issuer)
+    assert back.status_code == 302 and len(_session_rows()) == 1
+    (authorization, form), = issuer.exchanges
+    assert "client_secret" not in form and form["code_verifier"]
+    if secret:
+        assert authorization == "Basic " + base64.b64encode(("%s:%s" % (CLIENT_ID, secret)).encode()).decode()
+    else:
+        assert authorization is None and form["client_id"] == CLIENT_ID
+
+
+def test_the_token_endpoint_refusing_the_client_says_its_word(issuer, monkeypatch, caplog):
+    """invalid_client is what an issuer that wants a secret answers a public client: the word is the
+    operator's next move (ask IT for a client secret), so it reaches the screen and the log."""
+    monkeypatch.delenv(sso.CLIENT_SECRET_ENV)
+    sso.settings.cache_clear()
+    issuer.secret = None
+    issuer.token_refusal = ("invalid_client", "MSIS9622: Client authentication failed.")
+    with caplog.at_level(logging.WARNING, logger="Server"):
+        back = _sign_in(_client(), issuer)
+    sentence = "The identity provider refused the sign-in: invalid_client - MSIS9622: Client authentication failed."
+    assert back.status_code == 400 and sentence in back.text
+    assert any(sentence in record.getMessage() for record in caplog.records)
+    assert _session_rows() == []
 
 
 def test_off_never_says_login_required_and_the_admin_token_still_rules(off):

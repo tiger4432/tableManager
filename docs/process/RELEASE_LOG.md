@@ -9,6 +9,19 @@
 
 ---
 
+## 2026-10-07 · SSO — 클라이언트 비밀 없이도 켜고, 설정 파일이 틀려도 서버는 선다
+
+- **무엇** — 회사가 클라이언트 비밀을 주지 않는 방식(public client, PKCE)으로도 회사 로그인을 켭니다. `auth_config.json` 에 BOM 이 붙어도 읽습니다. 문법이 틀리거나, 맨 위가 객체가 아니거나, `enabled` 가 `"true"` 처럼 글자로 적혀도 서버는 기동하고 SSO 는 꺼진 채 기동 로그가 이유를 말합니다.
+- **선언 예시** — `server/config/auth_config.json`, 비밀 환경변수 없이:
+  <!-- example: auth_config_public -->
+  ```json
+  {"enabled": true, "issuer": "https://adfs.example.com/adfs", "client_id": "<클라이언트 ID>", "redirect_uri": "https://assy.example.com/", "name_claim": "upn", "admins": ["kim@example.com"]}
+  ```
+- **화면에서** — 로그인 흐름은 같습니다. ADFS 가 비밀 없는 교환을 거절하면 거절 화면에 `invalid_client` 가 그대로 보입니다.
+- **필요한 조건** — 서버 재기동.
+- **바뀐 동작** — 비밀이 없어도 켜집니다(전에는 OFF). 토큰 교환 거절은 ADFS 의 낱말로 400 입니다(전에는 «the ID token did not verify (OAuthError)» 401). `admins` 가 목록이 아니면 관리자 0명이고 배너가 그렇게 말합니다.
+- **자세히** — 이 항목과 같은 커밋 · RUN.md 같은 절.
+
 ## 2026-10-07 · 소스에 묶은 속성이 그 개체의 칸이 된다 — 등록 문장을 따로 적지 않는다
 
 - **무엇** — 소스의 `bind` 에 개체 속성을 적으면 번역기가 그 행의 값으로 그 개체의 속성을 원장에 남기고, 걷기가 그것을 노드 칸과 이름표로 보입니다. 전에는 같은 소스에 «등록 문장»을 따로 적어야 실렸고, 관계의 대상 쪽 개체(목적어 롤)에 적은 속성은 어디에도 실리지 않았습니다.

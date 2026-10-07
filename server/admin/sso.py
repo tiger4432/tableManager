@@ -1,8 +1,8 @@
 """Company sign-in over OIDC (lead 2095014ee, ADFS).
 
 On only when auth_config.json says ``enabled`` and names the issuer, the client id and the return
-address, the client secret is in the environment, and the return address is https - read once, at
-start. Then every route but ``/auth/*``,
+address, and the return address is https - read once, at start. The client secret (environment) is
+optional: without it the server is a public client. Then every route but ``/auth/*``,
 ``/internal/*`` and ``/health`` needs a person, and the admin gate asks for a name on the admin
 list instead of ``X-Admin-Token``. Sessions, login rounds and personal keys are server-side rows
 holding digests, never secrets.
@@ -26,7 +26,7 @@ from starlette.requests import HTTPConnection
 import paths
 from admin.auth import GATE_CHALLENGE_HEADER
 from database import database, models
-from database.crud import is_blank_value
+from database.crud import _decode_config_text, _parse_position, is_blank_value
 
 logger = logging.getLogger("Server")
 
@@ -62,28 +62,42 @@ router = APIRouter()
 @functools.lru_cache(maxsize=None)
 def settings():
     """Every sign-in setting, read in one place and once per process - a change waits for the
-    restart (lead 10-07): auth_config.json and the client secret."""
-    loaded = {}
+    restart (lead 10-07): auth_config.json and the client secret. A file that cannot be read is
+    remembered as such, not raised - boot and every request read this (lead 10-07)."""
+    loaded, unreadable = {}, None
     if os.path.exists(CONFIG_PATH):
-        with open(CONFIG_PATH, encoding="utf-8") as handle:
-            loaded = json.load(handle)
+        try:
+            with open(CONFIG_PATH, "rb") as handle:
+                loaded = json.loads(_decode_config_text(handle.read()))
+        except (OSError, ValueError) as exc:
+            loaded, unreadable = {}, _parse_position(exc)
+        if not isinstance(loaded, dict):
+            loaded, unreadable = {}, "the top level is %s, not an object" % json.dumps(loaded)[:40]
     cells = {name: loaded.get(name) for name in REQUIRED_CELLS + ("name_claim",)}
     cells = {name: None if is_blank_value(value) else str(value) for name, value in cells.items()}
     cells["enabled"] = loaded.get("enabled") is True
-    cells["admins"] = [str(name) for name in loaded.get("admins") or []]
+    cells["enabled_as_written"] = loaded.get("enabled")
+    admins = loaded.get("admins")
+    cells["admins"] = [str(name) for name in admins] if isinstance(admins, list) else []
+    cells["admins_unread"] = admins is not None and not isinstance(admins, list)
     secret = os.environ.get(CLIENT_SECRET_ENV)
     cells["client_secret"] = None if is_blank_value(secret) else secret.strip()
+    cells["unreadable"] = unreadable
     return cells
 
 
 def off_reason():
-    """Why sign-in is off, as one sentence naming only the missing cells, or None when it is on."""
+    """Why sign-in is off, as one sentence naming only the missing cells, or None when it is on.
+    The client secret is optional: without it the server is a public client (PKCE only)."""
     cells = settings()
+    if cells["unreadable"] is not None:
+        return "%s could not be read: %s" % (CONFIG_FILE, cells["unreadable"])
     if not cells["enabled"]:
+        written = cells["enabled_as_written"]
+        if isinstance(written, str) and written.strip().lower() == "true":
+            return 'enabled must be true (not "%s") in %s' % (written, CONFIG_FILE)
         return "enabled is not true in %s" % CONFIG_FILE
     missing = ["%s (%s)" % (name, CONFIG_FILE) for name in REQUIRED_CELLS if cells[name] is None]
-    if cells["client_secret"] is None:
-        missing.append(CLIENT_SECRET_ENV)
     if missing:
         return "enabled is true but not set: " + ", ".join(missing)
     if not cells["redirect_uri"].lower().startswith("https://"):
@@ -98,11 +112,16 @@ def enabled():
 
 def startup_banner():
     """``(level, message)`` the server logs once at startup."""
-    reason = off_reason()
+    reason, cells = off_reason(), settings()
     if reason is None:
-        return "info", ("[sso] ON - issuer %s, return address %s. Every route but /auth/*, "
-                        "/internal/* and /health needs a signed-in person; admin routes need a name "
-                        "on the admin list." % (settings()["issuer"], settings()["redirect_uri"]))
+        message = ("[sso] ON - issuer %s, return address %s, %s client. Every route but /auth/*, "
+                   "/internal/* and /health needs a signed-in person; admin routes need a name on the "
+                   "admin list." % (cells["issuer"], cells["redirect_uri"],
+                                    "secret" if cells["client_secret"] else "public"))
+        if cells["admins_unread"]:
+            return "warning", message + (" admins (%s) is not a list, so no one is an administrator."
+                                         % CONFIG_FILE)
+        return "info", message
     level = "info" if reason.startswith("enabled is not true") else "warning"
     return level, "[sso] OFF - %s. Sign-in is not required." % reason
 
@@ -208,8 +227,10 @@ def _client():
     from authlib.integrations.requests_client import OAuth2Session
 
     cells = settings()
+    # No secret is a public client: the code exchange carries client_id and the PKCE verifier only.
     return OAuth2Session(cells["client_id"], cells["client_secret"], scope=SCOPE,
-                         redirect_uri=cells["redirect_uri"], code_challenge_method="S256")
+                         redirect_uri=cells["redirect_uri"], code_challenge_method="S256",
+                         token_endpoint_auth_method="client_secret_basic" if cells["client_secret"] else "none")
 
 
 def _verified_claims(id_token, meta, nonce):
@@ -241,6 +262,15 @@ def _refused(status, sentence):
         % html.escape(sentence, quote=False)))
 
 
+def _provider_refused(error, description):
+    """The issuer's refusal, in its own word and its description cut short."""
+    description = description or ""
+    if len(description) > ERROR_DESCRIPTION_CHARS:
+        description = description[:ERROR_DESCRIPTION_CHARS] + "..."
+    return _refused(400, "The identity provider refused the sign-in: %s%s" % (
+        error, (" - " + description) if description else ""))
+
+
 def _sweep(db):
     """A login round leaves by its return; one that never returned, and expired sessions, leave here."""
     now = _now()
@@ -261,16 +291,18 @@ def _returned(query):
     if round_ is None or round_[3] < _now() - LOGIN_ROUND_SECONDS:
         return _refused(400, "This sign-in has expired or was already used.")
     if query.get("error"):
-        description = query.get("error_description") or ""
-        if len(description) > ERROR_DESCRIPTION_CHARS:
-            description = description[:ERROR_DESCRIPTION_CHARS] + "..."
-        return _refused(400, "The identity provider refused the sign-in: %s%s" % (
-            query["error"], (" - " + description) if description else ""))
+        return _provider_refused(query["error"], query.get("error_description"))
     nonce, verifier, next_path, _created = round_
+    from authlib.integrations.base_client import OAuthError
+
     try:
         meta = _discovery()
         token = _client().fetch_token(meta["token_endpoint"], code=query["code"], code_verifier=verifier)
         claims = _verified_claims(token.get("id_token") or "", meta, nonce)
+    except OAuthError as exc:
+        # The token endpoint's own word - invalid_client is a public client the issuer does not
+        # allow: ask IT for a client secret (lead 10-07).
+        return _provider_refused(exc.error, exc.description)
     except Exception as exc:
         return _refused(401, "Sign-in refused: the ID token did not verify (%s)." % type(exc).__name__)
     name_claim = settings()["name_claim"]
