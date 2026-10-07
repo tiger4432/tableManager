@@ -975,6 +975,63 @@ async function suite(m, makeWalk = createWalkBoxWalk, css = REAL_CSS) {
       JSON.stringify({ kind: s.view.lumpSeen.kind.size, data: s.view.lumpSeen.data.size, picked: s.view.pickedLump }));
   }
 
+  console.log('\n[S] a key let out of a big lump stands clear of it; a big lump\'s row goes to points in one press; a lump of values asks nothing (owner 10-08)');
+  {
+    const owner = FOLD_WAFER.nodes.find((n) => FOLD_WAFER.edges.some((e) => e.source === n.id && e.predicate === 'used'));
+    const boxOf = (n) => n.boundingBox({ includeLabels: false });
+    const apart = (a, b) => a.x2 <= b.x1 || b.x2 <= a.x1 || a.y2 <= b.y1 || b.y2 <= a.y1;
+    const s = await seat([FOLD_WAFER, FOLD_STEP]);
+    press(s, `big:${owner.id}`);
+    const usedRow = rowsOf(s).find((r) => r.attrs['data-value'].includes('|used|'));
+    if (usedRow) tickRow(usedRow);
+    openTicked(s);
+    const small = lumpsOf(s, 'small').filter((n) => n.data('owner') === owner.id)[0];
+    const big = lumpsOf(s, 'big').filter((n) => n.data('owner') === owner.id)[0];
+    say('S1 the small lump a big one let out and the big one left do not overlap, by their boxes',
+      Boolean(small) && Boolean(big) && apart(boxOf(small), boxOf(big)),
+      JSON.stringify({ small: small && boxOf(small), big: big && boxOf(big) }));
+    // The long way took one walk for the recipe's points (J2); the row's own Trend takes the same.
+    const t = await seat([FOLD_WAFER, FOLD_STEP]);
+    press(t, `big:${owner.id}`);
+    t.urls.length = 0;
+    const trendOf = (key) => byClass(pickerOf(t) || { children: [] }, 'sg-pick-view')
+      .find((b) => String(b.attrs['data-value']).includes(key));
+    const rowTrend = trendOf('|used|');
+    if (rowTrend) rowTrend.dispatch('click', {});
+    await settle();
+    const opened = lumpsOf(t, 'small').filter((n) => n.data('owner') === owner.id)[0];
+    const kinds = byClass(t.view.factsBox, 'sg-lv-kind').map((k) => [k.textContent, k.getAttribute('aria-pressed')]);
+    say('S2 a big lump\'s row has its own Trend: one press opens that key and shows its points, asking what the long way asks',
+      Boolean(rowTrend) && rowTrend.textContent === 'Trend' && Boolean(opened) && t.view.pickedLump === opened.id()
+        && JSON.stringify(kinds) === '[["Nodes","false"],["Table","false"],["Trend","true"]]'
+        && byClass(t.view.factsBox, 'sg-lv-plot').length === 1 && t.urls.length === 1 && !pickerOf(t),
+      JSON.stringify({ button: Boolean(rowTrend), opened: Boolean(opened), kinds, urls: t.urls.length }));
+    // The start wafer's own measurements folded and opened: members that hold the values themselves.
+    const v = await seat([FOLD_WAFER], { declaration: FOLD_DECL });
+    const wafer = startId(FOLD_WAFER);
+    press(v, wafer);
+    const fold = byClass(v.host, 'sg-fold')[0];
+    if (fold) fold.dispatch('click', {});
+    press(v, `big:${wafer}`);
+    const measuredRow = rowsOf(v).find((r) => r.attrs['data-value'].includes('|measured|'));
+    if (measuredRow) tickRow(measuredRow);
+    openTicked(v);
+    const values = lumpsOf(v, 'small').filter((n) => String(n.data('key')).includes('|measured|'))[0];
+    if (values) press(v, values.id());
+    v.urls.length = 0;
+    const trend = byClass(v.view.factsBox, 'sg-lv-kind').find((k) => k.textContent === 'Trend');
+    if (trend) trend.dispatch('click', {});
+    await settle();
+    const members = values ? values.data('count') : 0;
+    const dots = (() => { const p = byClass(v.view.factsBox, 'sg-lv-plot')[0];
+      return p ? (decodeURIComponent(String(p.getAttribute('src')).split(',').slice(1).join(',')).match(/<circle /g) || []).length : -1; })();
+    say('S3 a lump whose members hold the values: Trend asks nothing, a point per member, no Points from',
+      Boolean(values) && members > 0 && v.urls.length === 0 && dots === members
+        && textOf(v.view.factsBox, 'sg-lv-meta').join() === `Points ${members}`
+        && !byClass(v.view.factsBox, 'sg-lv-word').some((w) => w.textContent === 'Points from'),
+      JSON.stringify({ values: Boolean(values), members, urls: v.urls.length, dots, meta: textOf(v.view.factsBox, 'sg-lv-meta') }));
+  }
+
   console.log('\n[O] what the info box says of a lump\'s walk: capped, refused, values that are not numbers (lead 10-08)');
   {
     // The recipe lump behind the start wafer's first measurement, seen as points; `second` is its walk's answer.
@@ -1341,7 +1398,7 @@ const failures = [];
     M('L4m', 'an opening fits the view', 'LM5',
       '    else this._place(view, added);\n', '    else { this._place(view, added); cy.zoom(cy.zoom() * 1.1); }\n'),
     M('L5m', 'the lump left is not moved under what came out', 'LM6',
-      '      if (left.nonempty() && row) left.position(', '      if (false) left.position('),
+      '      if (left.nonempty() && first) left.position(', '      if (false) left.position('),
     M('L6m', 'a long list has no filter field', 'LM7', '    if (items.length > PICK_FILTER_AT) {\n', '    if (false) {\n'),
     M('L7m', 'Esc does not close the picker', 'LM7',
       "    this._onKey = (ev) => { if (ev && ev.key === 'Escape') this._closePicker(); };\n", '    this._onKey = () => {};\n'),
@@ -1420,6 +1477,14 @@ const failures = [];
     M('J7m', 'a new start keeps the lumps\' views', 'J9',
       '    this.lumpSeen = openLumpSeen();\n    this.pickedLump = null;\n    this.pos = new Map();\n', '    this.pos = new Map();\n'),
     M('J8m', 'the lump\'s list does not light the start branch', 'J1', '      lit: lit.has(m) }));', '      lit: false }));'),
+    M('OV1m', 'what a lump lets out is stacked a row apart whatever its height (owner 10-08)', 'S1',
+      '      const stepOf = (id) => Math.max(GEOMETRY.row, cy.getElementById(id).height() + GEOMETRY.row / 4);',
+      '      const stepOf = () => GEOMETRY.row;'),
+    M('RT1m', 'a big lump\'s row Trend opens the key but shows its list', 'S2',
+      '        this.lumpSeen.kind.set(`lump:${key}`, FOLD_VIEWS[2]);\n', ''),
+    M('VL1m', 'a lump of values is treated as one to pick a type for (lead mutant 8504654f0)', 'S3',
+      '    if (!members.length || valueAttributes(members).length) return { nodes: members };',
+      '    if (!members.length) return { nodes: members };'),
     M('O1m', 'a capped walk says nothing of the cap', 'O1', '    if (data.capped) said.push(`Capped at ${STEP_NODE_LIMIT}`);\n', ''),
     M('O2m', 'a refused walk reads as no points', 'O2',
       "    if (data.state === 'failed') { box.appendChild(this._el('div', 'sg-fail', `${FAILED} · ${data.reason}`)); return box; }\n", ''),

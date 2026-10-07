@@ -585,7 +585,7 @@ export class SubgraphView {
     if (!lump || this.state !== 'done') return;
     if (lump.level === 'big') {
       const items = lump.groups.map((g) => ({ value: g.key, text: `${arrowed(g)} ${g.farType}`, count: g.count }));
-      this._openPicker(id, items, `Behind ${this._labelOf(lump.owner)}`, `${lump.count} folded`, (keys) => {
+      const open = (keys) => {
         const inBig = this.fold.big.get(lump.owner);
         for (const key of keys) {
           inBig.delete(key);
@@ -593,7 +593,15 @@ export class SubgraphView {
         }
         if (!inBig.size) this.fold.big.delete(lump.owner);
         this._openedFrom(id, keys.map((key) => `lump:${key}`));
-      });
+      };
+      // A row's own Trend (owner 10-08): that key opened as its small lump, seen as points at once.
+      const asPoints = (key) => {
+        this.lumpSeen.kind.set(`lump:${key}`, FOLD_VIEWS[2]);
+        open([key]);
+        return this.openLump(`lump:${key}`);
+      };
+      this._openPicker(id, items, `Behind ${this._labelOf(lump.owner)}`, `${lump.count} folded`, open,
+        { word: FOLD_VIEWS[2], run: asPoints });
       return;
     }
     if (lump.unsent) {
@@ -1069,15 +1077,20 @@ export class SubgraphView {
     this._from = null;
     // 1. what a lump let out, stacked where it stood
     if (from) {
-      let row = 0;
+      // One under the other by its own height - a row for a node, more for a lump, which is taller than a row
+      // (owner 10-08: a small lump let out overlapped the big one left) - the first where the lump stood.
+      const stepOf = (id) => Math.max(GEOMETRY.row, cy.getElementById(id).height() + GEOMETRY.row / 4);
+      const first = [...from.out].find((id) => pending.has(id));
+      let top = first ? from.y - stepOf(first) / 2 : from.y;
       // In the picker's order, the order the person read them in.
       for (const id of from.out) {
         if (!pending.has(id)) continue;
-        put(id, { x: layerOf.has(id) ? this._colX(layerOf.get(id)) : from.x, y: from.y + row * GEOMETRY.row });
-        row += 1;
+        const step = stepOf(id);
+        put(id, { x: layerOf.has(id) ? this._colX(layerOf.get(id)) : from.x, y: top + step / 2 });
+        top += step;
       }
       const left = cy.getElementById(from.lumpId);
-      if (left.nonempty() && row) left.position({ x: from.x, y: from.y + row * GEOMETRY.row + left.height() / 2 });
+      if (left.nonempty() && first) left.position({ x: from.x, y: top + GEOMETRY.row / 2 + left.height() / 2 });
     }
     // 2. back where they stood
     for (const id of added) if (pending.has(id) && this.pos.has(id)) put(id, this.pos.get(id));
@@ -1278,7 +1291,8 @@ export class SubgraphView {
 
   // ── the picker: what to open out of a lump (lead 03bc94b6b) ─────────────────────────────────────────────────
 
-  _openPicker(lumpId, items, title, sub, onOpen) {
+  /** `rowView` (if any): a press of its own on each row, `{word, run(value)}` - a big lump's rows' Trend. */
+  _openPicker(lumpId, items, title, sub, onOpen, rowView) {
     this._closePicker();
     const box = this._el('div', 'sg-pick');
     box.setAttribute('role', 'dialog');
@@ -1304,6 +1318,19 @@ export class SubgraphView {
       row.appendChild(cb);
       row.appendChild(this._el('span', 'sg-pick-text', item.text));
       if (item.count !== undefined) row.appendChild(this._el('span', 'sg-pick-n', String(item.count)));
+      if (rowView) {
+        const view = this._el('button', 'sg-tool sg-pick-view', rowView.word);
+        view.setAttribute('type', 'button');
+        view.setAttribute('data-value', item.value);
+        if (view.addEventListener) {
+          view.addEventListener('click', (ev) => {
+            // The row is a label: the press must not tick its box as well.
+            if (ev && ev.preventDefault) ev.preventDefault();
+            rowView.run(item.value);
+          });
+        }
+        row.appendChild(view);
+      }
       list.appendChild(row);
       return { row, cb, value: item.value, text: String(item.text).toLowerCase() };
     });

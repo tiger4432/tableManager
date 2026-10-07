@@ -1436,8 +1436,9 @@ const FLOORS = new Map([
   // none of the last picture's marks, and a lump on its way reads Loading and is asked once (lead 10-07); a folded
   // lump seen as its list, a table or points with the start branch lit, walked once for its values (lead 10-08);
   // a lump of events walked to the type the operator picks in Points from, the pick kept per members' type;
-  // the list is the declaration's, a picture with no measurement in it lists them too.
-  ['subgraph_view_harness.mjs', 205],
+  // the list is the declaration's, a picture with no measurement in it lists them too; what a lump lets out
+  // stands clear of it, a big lump's row goes to points in one press, a lump of values asks nothing (owner 10-08).
+  ['subgraph_view_harness.mjs', 211],
   // New (leads 793017c62 · edcc0568c · 10-08): a folded lump's views, pure half - what a value reads as, the one
   // start-branch question, the points, the window, the one drawing.
   ['fold_views_harness.mjs', 18],

@@ -215,6 +215,7 @@ export const WALK_CSS = `
 .sg-pick-row:hover { background: color-mix(in srgb, var(--text) 7%, transparent); }
 .sg-pick-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sg-pick-n { margin-left: auto; color: var(--text-dim); font-variant-numeric: tabular-nums; }
+.sg-pick-view { min-height: 28px; padding: 0 var(--space-2); }
 .sg-pick-foot { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-2) var(--space-3);
   border-top: 1px solid var(--border); }
 .sg-pick-all { display: inline-flex; align-items: center; gap: var(--space-1); margin-right: auto; color: var(--text-dim); }
