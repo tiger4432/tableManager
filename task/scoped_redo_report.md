@@ -74241,3 +74241,49 @@ run_rule  답에 stamps_origin 칸
 3 옛 키 정리 리플레이는 순서가 있다(다시 세기 -> 복사). 반대로 돌리면 원장 후속이 그 행을 missing value 로 실패시킨다 — RUN.md 에 적음
 다음: 원장 후속 묶어 드레인 — 짓기 전 보고부터
 ```
+
+---
+
+## [10-07 밤] 10-12 시연 — 접은 덩어리의 걷기 확인 · 견본 셋 (총괄 793017c62 · 83ff2c3e6 · 6064ab1f9 · edcc0568c) · main 5f5be18ce
+
+어느 DB · 어느 스키마 · 지운 것 — assy_test 의 pg_engine 스크래치 스키마(끝에 DROP) · 선언은 임시 설정 폴더(paths.CONFIG_DIR) · public 안 씀
+
+### 1 정의 노드(레시피) 시작 · 한 걸음 · 기간 · 상한 — 된다 (코드 그대로, PG 로 확인)
+
+```
+요청   GET /api/ledger/subgraph?id=<레시피>&hops=1&direction=incoming&since=..&until=..&node_limit=..&collect=measurement_event
+답     그 레시피를 쓴 측정 이벤트 전부 — 시작 웨이퍼 것과 다른 웨이퍼 것이 같이. 노드마다 attributes.value 와
+       attributes_by_world.value[0].occurred_at(측정 시각)
+기간   since 를 좁히면 앞의 측정이 빠지고 truncated.interval_excluded 가 그 수를 말한다 · 상한은 limits.nodes
+막는 것 없음. 레시피가 static 이어도 «씨앗의 첫 걸음»은 열려 있다(10-02 규칙). 걷는 도중 만난 레시피는 그대로 막혀서
+       웨이퍼 시작 걷기에는 다른 웨이퍼 측정이 안 온다 — 그래서 정의 노드에서 «한 번 더» 걷는 요청이 필요하다(지시 모양 그대로)
+시험   server/tests/test_a_recipe_walk_brings_the_measurements_other_wafers_made.py (PG) — 웨이퍼 · 레시피 · 덩어리 세 걷기와 창 · 상한
+```
+
+### 2 견본 — client2/tests/fixtures/walk_fold_{wafer, recipe_step, process_lump}.json · 다시 뜨기 capture_walk_fold.py
+
+```
+표      출하 샘플의 metro · process_event(source_config.xlsx 계열) — metro 는 샘플에 키가 없어 txn_seq 를 키로 적음(임시 설정만)
+선언    샘플 + measurement_event(value, label=value) · process_event(step) · measured · used · of · underwent
+데이터  웨이퍼 셋, 레시피 RCP-A 에 시작 웨이퍼 W1 의 측정 둘과 W2 · W3 의 측정 하나씩이 섞임, 다른 레시피 하나
+길      원천 행 -> backfill.run -> 원장 -> 맨 앱의 실제 라우트(TestClient)
+철자    클라에 메시지로 보냄. 🔴 운영 모양 표의 value 가 글자(string)라 견본의 attributes.value 도 글자 — 클라가 숫자로 읽는다
+```
+
+### 3 운영 모양에서 공정 이벤트와 측정이 이어지는 길 (출하 샘플 표 기준 · 걷기 코드로 확인한 것만)
+
+```
+웨이퍼 경유   된다 — process_event ◀underwent─ wafer ─measured▶ measurement_event, 2 홉(도로 내려가기 규칙은 타입이 달라 안 막음).
+             견본 셋째가 이것. 다만 그 웨이퍼의 측정 «전부»가 온다(그 공정 다음 측정만이 아니다)
+직접 엣지     술어를 선언하면 걷는다. 그런데 샘플 metro 행에는 공정 이벤트 행을 가리키는 칸이 없다 — 두 표가 같이 든 칸은
+             wafer_id · lot_id · step_seq · rcp_id · eqp_id · event_time 뿐이라 묶을 키가 없다(운영 표는 못 봄)
+공통 정의 노드 step · recipe · eqp 를 노드로 선언하면 2 홉. static 이면 도중에 막혀 그 노드에서 한 번 더 걸어야 하고, 그 노드의 모든 웨이퍼 측정이 온다
+시각 창       since · until 은 엣지를 자르기만 한다. «가까운 시각끼리 잇는» 걷기 코드는 없다
+```
+
+### 다음에 볼 것
+
+```
+다시 세기가 두 번 도는 것(회수의 값 비움 사건 + 층 잃은 행 EDIT) — 총괄 판정으로 지금은 그대로, 10-03 설계
+원장 후속 묶어 드레인 짓기 전 보고 — 지금 잼(조사 수 둘 받음), 이어서 올립니다
+```
