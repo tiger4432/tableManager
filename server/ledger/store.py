@@ -95,6 +95,23 @@ def _json(value):
     return Json(value)
 
 
+def atom_record(atom) -> dict:
+    """One atom as the ledger row it is written as, column by column (`ROW_COLUMNS`) - the ONE
+    spelling: `insert_atoms` writes it, and the test run's atom sample shows it (총괄 026ced7f1)."""
+    atom.ensure_source_event_identity()
+    return {
+        "id": atom.id, "subject_type": atom.subject_type, "subject_keys": atom.subject_keys,
+        "predicate": atom.predicate, "object_kind": atom.object_kind,
+        "object_payload": atom.object_payload, "occurred_at": atom.occurred_at,
+        "source_who": atom.source_who, "source_translator_ver": atom.source_translator_ver,
+        "source_raw_ref": atom.source_raw_ref,
+        "supersedes": str(atom.supersedes) if atom.supersedes else None,
+        "source_event_id": str(atom.source_event_id),
+        "source_event_state": atom.source_event_state,
+        "occurred_at_basis": atom.occurred_at_basis,
+    }
+
+
 def _insert_audit_row(connection, row):
     """INSERT one audit row on `connection`, in whatever transaction it is already in.
 
@@ -227,17 +244,12 @@ class LedgerStore:
         rows = []
         for atom in atoms:
             atom.ensure_id()
-            atom.ensure_source_event_identity()
-            rows.append((
-                str(atom.id), atom.subject_type, _json(atom.subject_keys),
-                atom.predicate, atom.object_kind,
-                None if atom.object_payload is None else _json(atom.object_payload),
-                atom.occurred_at, atom.source_who, atom.source_translator_ver,
-                atom.source_raw_ref,
-                str(atom.supersedes) if atom.supersedes else None,
-                str(atom.source_event_id), atom.source_event_state,
-                atom.occurred_at_basis,
-            ))
+            record = atom_record(atom)
+            record["id"] = str(record["id"])
+            record["subject_keys"] = _json(record["subject_keys"])
+            if record["object_payload"] is not None:
+                record["object_payload"] = _json(record["object_payload"])
+            rows.append(tuple(record[column] for column in ROW_COLUMNS))
         if not rows:
             return 0, 0
 

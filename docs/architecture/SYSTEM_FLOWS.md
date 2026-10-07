@@ -357,7 +357,7 @@ Enrichment Queue · 맵 오버레이 · 전사 계획 · 어드민 5탭 · 실�
 | `POST /admin/ontology-explorer/test-run` (`ontology_config_explorer_router.py:121`) | `config_explorer_service.py:673 _test_run_refusal` | 운영자가 「시험 실행」 버튼 (`ontology_explorer.js:1110`) | HTTP body `{source_id}` → 응답 dict | `{code, path, message, form_path}` + 조건부 `rows_read`·`rows_missing`·`column`·`partial_apply` | **1** — `ontology_explorer_view.js:745 renderTestRunRefusal` | 시끄럽다 — 500 을 안 낸다(`config_explorer_service.py:618 except Exception`). 거절이 «답»으로 나간다 | ✅ 이어짐 |
 | 위 응답 | 화면 픽셀 | 같은 클릭 | DOM | `form_path` 있으면 폼으로 가는 **버튼**(`map-goto`), 없으면 `path` 를 `<code>` 로. `rows_read/rows_missing/column` 셋이 다 있을 때만 「N행 중 M행 · 컬럼」. `partial_apply === false` 일 때만 「좋은 행도 안 들어갑니다」 | **1** — 그리고 «출하본에 들어 있다»: `client2/dist/assets/admin-eErqdtgQ.js` 에 `oe-testrun-refusal` · `form_path`(2) · `rows_missing`(1) · `partial_apply`(1) 존재 | 시끄럽다 | ✅ 이어짐 |
 | `gate.py:122-123 MoleculeRefused.code/.path` | `_test_run_refusal` 의 `getattr(exc,"code")` | — | 예외 속성 | 첫 주소의 `code`·`path` | **0 (이 경로에서 도달 불가)** — 아래 ⚰️ 근거 참조 | — | ⚰️ 죽은 갈래 |
-| `gate.py:275 captured()` | — | — | contextmanager | 프로세스 카운터를 격리해 미리보기가 라이브 거절 총계를 오염시키지 않게 함 | **0 (운영)** — 히트는 `tests/test_ledger_admin_setup.py:240·254` 뿐. `ledger/dry_run.py:190 preview()` 는 «첫 실행 문장에서 `DryRunUnavailable` 을 raise» 하므로 그것을 부를 자리 자체가 없다 | — | ⚰️ 죽은 갈래 |
+| `gate.py:275 captured()` | — | — | contextmanager | 프로세스 카운터를 격리해 미리보기가 라이브 거절 총계를 오염시키지 않게 함 | **1** — `runtime_v2.atoms_sample`(시험 실행의 원자 견본, 총괄 026ced7f1)이 게이트를 이 안에서 돌린다 | — | 산 갈래 |
 
 ### ⚰️ 근거 — 「게이트 거절은 시험 실행 화면에 도달할 수 없다」
 
@@ -371,6 +371,7 @@ Enrichment Queue · 맵 오버레이 · 전사 계획 · 어드민 5탭 · 실�
            → runtime_v2.execute_cursor_batch(:115) -> `_screened_atoms`(:146) -> building_molecule(:306)
 ```
 `_screened_atoms`(`runtime_v2.py:293`)의 호출자는 `:146`·`:226` 둘뿐이고 **둘 다 execute 계열**이다. 즉 미리보기는 게이트를 통과하지 않으므로 `MoleculeRefused` 가 나올 수 없고, `gate.py:109-114` 가 이 리더를 위해 붙인 `code`/`path` 는 이 경로에서 한 번도 쓰이지 않는다. (백필 경로에서는 raise 되지만 그쪽 리더는 `_test_run_refusal` 이 아니다.)
+🔴 [총괄 026ced7f1] 셋째 호출자: 시험 실행이 원자 견본을 지을 때 `runtime_v2.atoms_sample` 이 `gate.captured()` 안에서 `_screened_atoms` 를 부른다. 거기서 난 `MoleculeRefused` 는 견본 안에서 잡혀 원자마다 `writes: false · drop_reason: <사유>` 가 되고, `_test_run_refusal` 로는 여전히 안 간다.
 
 ### ⚠️ 낡은 서술 (「상태」에 기록해야 할 발견)
 

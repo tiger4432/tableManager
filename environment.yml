@@ -32,4 +32,6 @@ dependencies:
   - pip:
     - neo4j
     - beautifulsoup4
+    # Company SSO (OIDC) login - owner 10-07. Brings cryptography and joserfc.
+    - authlib==1.8.0
 

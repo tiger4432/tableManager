@@ -455,7 +455,18 @@ def _require_scope(base_rows: Any, scope: Any) -> None:
 # `_atom_subject`, `_conflicting_subjects` and `_stamp_supersedes` went with it.
 
 
-def _screened_atoms(snapshot: LedgerSetupSnapshot, source_id: str, preview) -> list:
+def _event_atoms_to_write(snapshot: LedgerSetupSnapshot, source_id: str, preview) -> tuple:
+    """Each event's atoms as execution hands them to the gate - the batch's registration
+    filter, then the time basis stamped. The prefix `_screened_atoms` and the test run's
+    sample share, so the sample shows the atoms the gate sees."""
+    event_atoms = _filtered_event_atoms(
+        preview.event_results, preview.known_registrations)
+    _stamp_occurred_at_basis(_source_plan(snapshot, source_id), event_atoms)
+    return event_atoms
+
+
+def _screened_atoms(snapshot: LedgerSetupSnapshot, source_id: str, preview,
+                    event_atoms=None) -> list:
     """Gate every complete event and return what survives. One copy, both doors.
 
     Extracted the moment there were two callers rather than copied into the second: a
@@ -463,9 +474,8 @@ def _screened_atoms(snapshot: LedgerSetupSnapshot, source_id: str, preview) -> l
     forward scan's gate refuses, which is the one thing it must not be.
     """
     kept_all = []
-    event_atoms = _filtered_event_atoms(
-        preview.event_results, preview.known_registrations)
-    _stamp_occurred_at_basis(_source_plan(snapshot, source_id), event_atoms)
+    if event_atoms is None:
+        event_atoms = _event_atoms_to_write(snapshot, source_id, preview)
     for result, atoms in zip(preview.event_results, event_atoms):
         molecule_ref = result.role_rows.attrs["molecule_ref"]
         with gate.building_molecule(source_id):
@@ -491,6 +501,58 @@ def _screened_atoms(snapshot: LedgerSetupSnapshot, source_id: str, preview) -> l
             )
             kept_all.extend(kept)
     return kept_all
+
+
+#: How many atoms the test run shows (총괄 026ced7f1).
+ATOMS_SAMPLE_LIMIT = 50
+#: The drop reason of a registration the ledger already holds - execution's registration
+#: filter leaves it out, and the test run (which reads no ledger) would otherwise show it as written.
+DROP_ALREADY_REGISTERED = "already_registered"
+
+
+def atoms_sample(snapshot: LedgerSetupSnapshot, source_id: str, preview, row_ids,
+                 registered) -> tuple:
+    """The atoms execution would hand the ledger for the read rows `row_ids`, in write order,
+    each in the ledger's own spelling (`store.atom_record`, its id left out - minted at write)
+    beside its sentence, its rows and whether execution writes it -> (sample, omitted).
+    Every planned source reads rows that carry a row id (총괄 f3bc02f6e), so an atom always has
+    rows to point at.
+
+    The gate runs under `gate.captured()`, so a look moves no refusal counter. A refusal stops
+    the whole batch in execution, so it marks every atom. `registered(subjects)` answers which
+    of the shown attribute-less registrations the ledger already holds - one narrowed read."""
+    from . import store
+
+    event_atoms = _event_atoms_to_write(snapshot, source_id, preview)
+    refused = None
+    with gate.captured():
+        try:
+            _screened_atoms(snapshot, source_id, preview, event_atoms=event_atoms)
+        except gate.MoleculeRefused as exc:
+            refused = exc.reason
+    rows_of: dict = {}
+    for _relation, row_id, raw_ref in preview.row_refs:
+        rows_of.setdefault(raw_ref, set()).add(str(row_id))
+    wanted = {str(row_id) for row_id in row_ids}
+    picked = [atom for atoms in event_atoms for atom in atoms
+              if wanted & rows_of.get(atom.source_raw_ref, set())]
+    shown = picked[:ATOMS_SAMPLE_LIMIT]
+
+    def bare_registration(atom):
+        return atom.predicate == "register" and not registration_fingerprint(atom.object_payload)
+
+    known = set(registered({registration_token(a.subject_type, a.subject_keys)
+                            for a in shown if bare_registration(a)}) or ())
+    sample = []
+    for atom in shown:
+        record = store.atom_record(atom)
+        del record["id"]
+        drop = refused or (DROP_ALREADY_REGISTERED if bare_registration(atom) and registration_token(
+            atom.subject_type, atom.subject_keys) in known else None)
+        sample.append(dict(record, sentence=str(atom.derivation),
+                           row_ids=sorted(rows_of.get(atom.source_raw_ref, ())),
+                           writes=drop is None, drop_reason=drop))
+    return sample, len(picked) - len(shown)
 
 
 def _known_registrations(value: Any) -> tuple[tuple[str, str], ...] | None:
