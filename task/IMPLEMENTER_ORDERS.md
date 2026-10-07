@@ -64303,3 +64303,29 @@ replay.fold_written_notation(env, PLAIN, apply=True)   # 2회 -> a.b 의 v 가 N
 계약   walk_node_shape 에 경우 하나(label 이 속성 · 값 없는 이름 건너뜀 · 전부 없으면 키) — 서버 · 클라 같은 벡터
 게이트  선언 거절(없는 이름) · 걷기 label 셋 경우 · 지문 같음 · 변이 · RUN.md · RELEASE_LOG · 안내서(LEDGER_GUIDE 엔티티 절) 한 줄
 ```
+
+---
+
+> **[총괄 -> 구현자] 새 일 — table_config 의 `indexes`: 적은 열에 인덱스를 서버가 뒤에서 보장 (소유자 10-07 「인덱스 좋긴하네 ㄱ 만들까」 → 「ㅇㅇ 지우는것 같이」)**
+
+```
+왜     운영 실측(소유자 10-07): 열 필터 contains + order=updated_at 의 ID Scan 5 s, EXPLAIN Rows Removed by Filter 23만(dead 0)
+       -> 그 열 하나에 손 GIN(gin_trgm_ops) 뒤 0.2 s. 운영 PG 18 · pg_trgm 됨 (S-125-b 줄에 적음)
+두 줄  「운영에서는 table_config 의 그 표에 "indexes": ["<열>"] 을 적으면 됩니다.
+        서버가 뒤에서 만들고, 설정 보고서에 열마다 있음 / 만드는 중 / 실패(사유)가 뜹니다.」
+선언   `indexes` = 열 이름 목록. 그 표의 column_types 에 없는 이름은 그 이름을 대어 거절(나머지는 돈다)
+종류   열 타입이 정한다 — 문자열: GIN gin_trgm_ops (contains · equals · startsWith · endsWith, PG14+ 는 = 도) · 숫자 · 시각 · 참거짓: btree
+       pg_trgm 없음(CREATE EXTENSION 실패 포함) -> 문자열 줄만 사유 대어 건너뜀, 서버는 뜬다
+같음   이미 있는 인덱스는 «이름이 아니라 정의»로 견준다(같은 열 · 같은 방식 · 같은 opclass, 유효한 것) -> 있으면 받아들이고 안 만든다
+       (소유자가 오늘 손으로 만든 것도 그 열을 적으면 받아들여짐 — 둘째 인덱스 0)
+지우기  서버가 만든 것(정한 이름 접두, 63자 넘으면 해시)만 관리한다 — 선언에서 빠지면 DROP INDEX CONCURRENTLY. 손 인덱스는 절대 안 지운다
+       관리 이름의 INVALID(만들다 끊긴 것)는 지우고 다시 만든다
+도는 곳  요청 경로 · 기동 인라인 금지 — 페이싱된 뒤 일 하나(스케줄러 쪽, 기존 일의 자리를 찾아 넓힌다), 한 번에 하나, CONCURRENTLY(트랜잭션 밖 자기 연결)
+       깨우는 때: 기동 · table_config 리로드. 기존 «선언 인덱스 보장» 함수(S-124 ② `_ensure_one_index`)를 넓힌다 — 둘째 보장 함수 금지
+보임   설정 보고서(config_resolve_report)의 그 표에 열마다 상태 한 줄 · 행동마다 로그 한 줄(만듦 · 받아들임 · 지움 · 실패 사유)
+먼저 센다  세상마다 있는 표 복사본(다른 스키마의 world relation)도 같은 인덱스가 필요한가 — 수와 자리만 보고, 짓는 것은 그 표 하나
+게이트  PG 스크래치 스키마에서: 문자열 열 -> GIN 만들어짐 · «그리드가 실제로 보내는 필터 식»(column_filter 의 CAST(열 AS VARCHAR) ILIKE)이 EXPLAIN 에서 그 인덱스를 탐 ·
+       숫자 열 -> btree · 같은 정의 손 인덱스 받아들임(둘째 0) · 선언에서 빼면 관리 것만 지워짐 · 손 것 남음 · INVALID 다시 만듦 · 없는 열 거절 ·
+       pg_trgm 없음 흉내 -> 그 줄만 사유 · sqlite 는 «이 방언에서 안 함» 한 줄 · 변이
+착지   RUN.md(적는 법 · 보고서 문장의 뜻 · 되돌리기 = 줄 지우기) · RELEASE_LOG · table_config 안내서 한 절
+```
