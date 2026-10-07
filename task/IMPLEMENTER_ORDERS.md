@@ -64391,3 +64391,18 @@ indexed_columns  지금까지 지은 것은 wt-impl 에 들고 있어라(착지 
    캐시(선언 컴파일 · 매퍼 목록 재사용)는 짓지 않는다 — 운영 수를 본 뒤
 ⑤ indexed_columns(wip-indexed-columns b25a0b67e) 이어서
 ```
+
+---
+
+> **[총괄 -> 구현자] 9eb902922 의 ② 다음(③ 앞) — ledger_atom_rows 를 그리드로 열면 Entity Fetch 22 s (소유자 10-07 운영)**
+
+```
+소유자가 본 것  보기 마이그레이션 다시 돌린 뒤(occurred_at_basis 칸 없던 옛 보기 -> 500 이었음) 열리지만 [get_table_data] Entity Fetch 22 s
+총괄 짐작(확인 전)  get_table_data 는 두 단계 — ID Scan(정렬 · 키만) 뒤 Entity Fetch(`tuple_(*page_keys).in_(id_list)`). 보기는 키가 셋(atom_id · source_relation · source_row_id)이고
+                  그 키로 찾는 색인이 없어 두 번째 단계가 보기를 통째로 다시 계산하는 것으로 보임
+먼저 잰다  PG 스크래치 스키마에 그 보기(add_ledger_atom_rows 의 정의 그대로) + 원장 · 행 참조 표를 운영 모양 쪽으로 키워 두 단계 각각 EXPLAIN (ANALYZE, BUFFERS)
+고치는 방향(재고 셋으로 보고, 짓기 전에)  «키로 다시 찾는 길이 싼가»를 묻는 자리 하나 — 싸지 않으면 ID Scan 질의 하나로 행까지 가져온다(두 번째 단계 없음)
+       종류(view/table)로 가르는 if 는 짓지 않는다 — 묻는 것은 «그 키에 색인이 있나» · 일반 표의 오늘 길은 그대로(대조군)
+       그 밖에: 보기 정의 쪽에서 키 찾기가 밀려 내려가게(pushdown) 하는 길이 있으면 같이
+게이트  보기 · 일반 표 둘 다 같은 행 · 같은 순서(계약) · 보기의 Entity Fetch 단계 시간 전후 · 변이
+```
