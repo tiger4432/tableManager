@@ -74413,3 +74413,133 @@ sqlite 전체   5 failed, 7985 passed, 357 skipped, 3 xfailed, 13225 warnings
 로그   [ChainRetract] <규칙>: 이 규칙이 무엇을 쓰는지 아직 모릅니다(이 프로세스에서 낸 행이 없음) — … 한 줄 새로
 문서   RELEASE_LOG · RUN.md(재기동 · 그 줄의 뜻) · data_model 한 줄 · TEMPLATE_FACTS 에 columns 칸
 ```
+
+---
+
+## [10-08] 수집기가 하위 폴더 파일을 못 보는 경우 — 조사만, 코드 0 줄 (총괄 161757c35)
+
+어느 DB · 어느 스키마 · 지운 것 — DB 안 씀 (코드 · 이력 읽기만)
+
+### 지금 무엇이 막나 (코드로 읽음)
+
+```
+하위 폴더 파일의 길은 «하나»다
+   raws 감시는 바로 밑만 본다. 폴더가 들어오면(또는 300 초 점검이 폴더를 보면) «트리 적재»가 불린다
+   트리 적재는 폴더 «전체»가 1 초 동안 그대로일 때까지 최대 600 초 기다린다
+   못 기다리면 손대지 않고 끝내고, 다음 점검이 다시 부른다 -> 또 최대 600 초
+그래서   폴더 안의 파일 «하나»가 쉬지 않고 자라거나 파일이 1 초보다 촘촘히 계속 들어오면
+        같은 폴더의 «다 쓴» 파일까지 그 폴더가 조용해질 때까지 «매번» 못 들어간다. 한 번이 아니다
+막히는 범위  그 폴더 하나. 다른 폴더와 raws 바로 밑 파일은 안 막힌다(기다림이 폴더마다 따로)
+운영에서 나는지  안 쟀다 — 소유자 watcher.log 에서 볼 두 줄:
+   [<표>] Tree ingestion deferred — tree still changing after 600s: <폴더 경로> (periodic sweep will retry)
+   [<표>] 📂 Tree ingestion of '<폴더>' has been running for <분> min (now: <지금 파일>)
+덧붙여   «이 파일 다 썼나»를 묻는 자리가 둘이고 답이 다르다
+   raws 바로 밑  1 초 쉬고 바로 읽는다 — 크기를 다시 읽지만 견주지 않는다(복사 중 잠금이면 재시도)
+   하위 폴더    폴더 전체를 1 초 간격으로 두 번 찍어 같을 때까지
+```
+
+### 1 recursive=False 의 사유 — 못 찾았다
+
+```
+처음     be27a3aa3 (2026-04-12) 수집기 첫 판에 이미 있다. 커밋 글에 사유 없음
+펼치기    0c6ac1a89 (2026-07-28) — 그보다 «석 달 뒤»다. 보드의 「펼치기 설계의 잔재로 보임」은 순서가 반대다
+         펼치기 기록은 이 칸을 «결함»으로 적었다(폴더째 들어온 파일이 「영영 방치」) — 칸은 두고 폴더 사건 문을 더했다
+제자리    600b49de4 (2026-07-30) 제자리 적재로 바뀌면서 «폴더 전체 조용» 기다림을 그대로 물려받았다
+외부 소스  2dec4fb82 (2026-08-17) recursive 칸을 외부 소스에만 열었다. raws 는 «범위 밖»이라고만 적었다
+훑은 곳   git -S: recursive=False · request_tree_ingest · Tree ingestion deferred · flatten_nested_dirs · raw.get("recursive", True)
+         docs(보관 포함) · task: 하위 폴더 · 하위폴더 · 서브폴더 · subfolder · 펼치기 · FLATTEN · nested · 중첩 폴더 · recursive
+안 훑은 낱말  「조용」 · 「tree ingest」
+```
+
+### 2 안 셋 — 표 하나 (시험 칸은 읽어서 짚음, 돌리지 않음 · 줄 수는 안 쟀다)
+
+| 안 | 증상 | 하위 폴더 새 파일 | 크기 |
+|---|---|---|---|
+| ㄴ 트리 적재를 파일마다 | 혼자 닫음 | 폴더가 들어올 때 · 그 뒤는 다음 점검(오늘과 같음) | 함수 3 + 새 도우미 1 |
+| ㄱ 하위까지 실시간 | ㄴ 을 품어야 닫음 | 약 1 초 | ㄴ + 함수 6 + 트리에만 있는 거르기 넷 옮김 |
+| ㄷ 운영자가 고름 | 켠 곳만, ㄱ 을 품어야 | 켠 곳은 ㄱ | ㄱ + 새 칸 · 검증 · 재기동 |
+
+```
+새 도우미  «파일 하나가 1 초 동안 크기 · 수정시각 그대로인가». 새 기제가 아니라 지금 트리 판정(폴더 전체 두 번 찍기)의 «한 칸»이다
+```
+
+**ㄴ — 트리 적재가 다 쓴 파일부터 넣는다**
+```
+바뀌는 함수   _ingest_directory_tree · _wait_tree_quiescent · _snapshot_tree
+부르는 곳     request_tree_ingest 를 부르는 자리 3(폴더 생김 · 폴더 옮겨 옴 · 점검) — 안 바뀜
+             파일은 지금처럼 _handle_event 하나로 들어간다 — 안 바뀜
+시험          새로 필요  「자라는 파일 옆의 다 쓴 파일이 들어온다」 — 지금 없다
+             test_mid_copy_waits_until_tree_is_stable · test_never_stable_tree_is_deferred_untouched
+             둘 다 폴더 안 파일이 «자라는 그 하나»뿐이라 초록으로 남을 것 — 미룸 문장이 바뀌면 뒤의 것이 빨강
+위험          파일 하나 끝나고 폴더가 빈 순간 «빈 폴더 지우기»가 돈다 — 장비가 계속 쓰는 폴더면 부딪힌다(물음 1)
+```
+
+**ㄱ — raws 를 하위까지 실시간으로 보고, 트리 적재는 놓친 것만**
+```
+바뀌는 함수   ㄴ 의 것 + _register_workspace · on_created · on_moved · _handle_event · _process_with_retry · _classify_lane
+트리에만 있는 넷  OS 찌꺼기 거르기(_is_discardable_system_file) · raws 밖으로 새는 경로 거절 · 끄는 칸(flatten_nested_dirs) · 빈 폴더 지우기
+             실시간 길도 지나도록 «한 자리»로 옮겨야 한다. 안 옮기면 끄는 칸을 꺼도 실시간 길로 들어온다
+부르는 곳     _handle_event 를 부르는 자리 6(사건 둘 · 트리 · 외부 소스 · 점검 둘)
+             _register_workspace ← discover_and_watch · sync_new_workspaces
+ㄱ 은 ㄴ 을 품는다  «놓친 것 메우기»가 트리 적재다. 그것이 폴더 전체를 기다리면 같은 구멍이 바닥에 남는다
+바로 밑 파일   기다림을 _handle_event 한 자리에 두면 raws 바로 밑 파일의 기다림도 같이 바뀐다. 하위만 다르게 하면 갈래가 하나 는다
+시험          하위 폴더 시험은 트리 적재나 점검을 부른다. raws 처리기의 on_created · on_moved 를 지나는 시험은 없다 — 사건을 넣는 시험은 2 파일이고(git grep) 각각 test_config_reload_integrity.py -> 설정 재적재 처리기 · test_external_source_watcher.py -> 외부 소스 어댑터 에 넣는다(열어서 봄)
+             -> 실시간 길이 거르기 넷을 건너뛰어도 기존 시험은 초록으로 남는다. 빨강이 안 나는 것이 위험이다
+             test_watcher_startup_sweep 의 「observer recursive=False와 동일 범위」 문장이 거짓이 된다(시험은 그대로)
+위험          실시간 길이 1 초 만에 반쯤 쓴 파일을 읽으면, 나중의 온전한 파일은 크기 · 내용이 달라
+             원장의 두 문(경로+크기 · 내용 서명)이 둘 다 새 파일로 본다 -> 같은 파일이 두 번 처리된다. 새 도우미가 그래서 필요하다
+             윈도우에서 큰 트리를 하위까지 볼 때 알림이 넘치는지 — 안 쟀다
+```
+
+**ㄷ — 외부 소스의 recursive 칸을 raws 에도 연다**
+```
+지금          raws 에는 선언 자리가 없다. raws 는 데이터 폴더를 훑어 찾고, recursive 는 ingestion_settings 의 external_sources 항목 안에만 있다
+바뀌는 함수   ㄱ 의 것 + 그 칸 읽기(_register_workspace) · 검증(flag_refusal 재사용)
+같은 낱말, 다른 일  외부 소스는 읽기만 · 안 옮김 · 안 지움 · 수정 사건도 받음. raws 는 옮기고 지운다
+켜기만 하면   하위 파일이 1 초 기다림으로 실시간에 들어가고, 같은 파일을 폴더 사건의 트리 적재도 잡는다 — 두 길이 아래 문에서만 만난다
+바꾸면        재기동이 있어야 든다(이미 보는 폴더는 다시 등록 안 함 — 외부 소스도 같다)
+시험          ㄱ 의 것 + test_a_yes_no_cell_holds_true_or_false 에 칸 하나
+```
+
+### 3 같은 파일이 두 길로 두 번 들어오지 않게 막는 지금의 문
+
+```
+이름        processing_files (처리기마다 한 벌) — _handle_event 맨 앞에서 _processing_lock 아래 «확인하고 넣기»
+지나는 길    실시간 사건 · 트리 적재 · 두 점검 · 외부 소스 사건 — 전부 _handle_event 로 들어온다
+막는 동안    «처리 중»일 때만. 끝나면 빠진다(무거운 레인은 그 일이 끝날 때)
+끝난 뒤      보관 켜짐 -> 파일이 옮겨져 «없음»으로 끝
+            보관 꺼짐 -> 원장 1단(경로 + 크기 · 수정시각, settle_already_terminal 로 묶어 묻기) · 2단(내용 서명)
+오늘         하위 폴더 파일은 길이 하나(트리)라 두 길이 만나지 않는다. ㄱ · ㄷ 에서 처음 만난다
+본 범위      directory_watcher.py 의 중복 문: processing_files · _ingesting_dirs(폴더 단위) ·
+            점검 기억 _tried_already(raws 바로 밑만 — 트리 길엔 없다) · 원장 1단 · 2단
+```
+
+### 추천 — ㄴ 먼저. 데모 전이면 ㄴ 만
+
+```
+소유자 증상(쉬지 않는 폴더의 다 쓴 파일을 영영 못 봄)을 ㄴ 이 혼자 닫는다
+길이 하나로 남아 «반쪽 두 번 읽기» · «큰 트리 알림 넘침»이 새로 생기지 않는다
+ㄱ 은 ㄴ 을 품으므로 ㄴ 은 버려지는 일이 아니다. ㄱ 은 «하위 폴더 새 파일을 1 초 안에»가 필요할 때(물음 3)
+ㄷ 은 지금 안 한다 — 같은 낱말이 외부와 raws 에서 다른 일을 하게 되고, 켜기만 하면 거르기 넷 없는 실시간 길이 생긴다
+```
+
+### 소유자께 여쭐 것
+
+```
+1 그 하위 폴더는 «한 번 들어오고 끝나는 묶음»인가, 장비가 «계속 써 넣는 상설 폴더»인가
+  상설이면 빈 폴더 지우기를 꺼야 한다. 오늘은 폴더 전체가 조용할 때만 지워서 안 부딪힌다
+2 막히는 모양이 «파일이 촘촘히 계속 들어옴»인가 «한 파일이 쉬지 않고 자람»인가 (로그 줄은 같다)
+  앞이면 ㄴ 으로 다 들어온다. 뒤면 ㄴ 으로도 «그 파일만»은 계속 기다린다 — 언제 끝났다고 볼지가 따로 필요하다
+3 하위 폴더 새 파일이 «다음 점검(300 초) 안»이면 되나, «1 초 안»이어야 하나 — 뒤면 ㄱ
+```
+
+### 덧붙여 작게 — 선언 응답 견본 5201b22c5
+
+```
+무엇    걷기 견본 셋과 «같은 스크래치 세상»에서 GET /api/ledger/declaration 을 떠 client2/tests/fixtures/walk_fold_declaration.json 으로
+다시 뜨기  python client2/tests/fixtures/capture_walk_fold.py — 넷을 한 번에
+같은 판에 다시 뜬 걷기 셋   per-run id(row_id · claim_id · generated_at · _server_at) 빼고 — walk_fold_wafer 같음 · walk_fold_recipe_step 같음 · walk_fold_process_lump 같음
+클라 하니스  fold_views 18 passed, 0 failed · subgraph_view 211 passed, 0 failed
+어느 DB · 어느 스키마 · 지운 것  assy_test 의 assy_pytest_pg_<pid>_<worker> (돌 때마다 새 이름) · 끝에 그 스키마째 DROP · public 안 씀
+sqlite 전체  5 failed, 7984 passed, 358 skipped, 3 xfailed, 13189 warnings — 실패는 알려진 박스 실패뿐
+```

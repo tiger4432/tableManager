@@ -12,6 +12,7 @@ WALK_FOLD_CAPTURE_DIR set to this folder and writes:
     walk_fold_wafer.json         the start wafer W1, two hops - its measurements M1 · M2
     walk_fold_recipe_step.json   the recipe RCP-A, one step in, one day, cap 200 - M1 · M2 (W1) and M3 (W2) · M4 (W3)
     walk_fold_process_lump.json  W1's process events P1 · P2 as seeds, through the wafer - M1 · M2
+    walk_fold_declaration.json   GET /api/ledger/declaration - the declaration those three were walked under
 """
 import os
 import subprocess
@@ -28,5 +29,5 @@ if __name__ == "__main__":
                           "-p", "no:cacheprovider", "-q"], cwd=SERVER, env=env)
     if run.returncode != 0:
         raise SystemExit("the walk test failed - nothing captured")
-    for name in ("walk_fold_wafer", "walk_fold_recipe_step", "walk_fold_process_lump"):
+    for name in ("walk_fold_wafer", "walk_fold_recipe_step", "walk_fold_process_lump", "walk_fold_declaration"):
         print(os.path.join(HERE, name + ".json"))

@@ -36448,3 +36448,27 @@ bd33605af   은퇴 이름(registration_probe · existing_registrations · regist
 문서     PRIMITIVES 에 walkableRoutes · startBranch 한 항목(R&D 보드 상자의 사본 · 첫 걸음 묶음 열기가 시작 갈래를 넓힘을 함정으로) — 이 보고와 같은 커밋
          CODE_MAP 은 a1f9bb454 에서 맞춤(fold_views.js 신설 줄 · subgraph_view · derive.walkableRoutes)
 ```
+
+---
+
+## [C 응용] 10-08 총괄 메시지 — 클라 착지 넷 QA (코드로 읽음 · 안 잼). 남은 거짓 주석 둘
+
+```
+74806d84e · 7c32e143e  «Points from»
+  목록     _pickChoices = 선언 entities 의 타입 중 멤버 타입에서 walkableRoutes 가 비지 않은 것 — 맞다
+           멤버 자기 타입은 pathsBetween 이 시작 타입으로 못 돌아와(seen 에 시작이 들어 있음 · chain 이 빌 때 도착 안 셈) 안 나온다
+  고르기 전  pick.picked 가 비면 ask null -> _seeLump 가 걷지 않는다 — 요청 0. 단 이 브라우저가 기억한 고름이 지금 목록에 있으면 처음 볼 때 바로 걷는다(설계)
+  기억     _pickedFrom 이 기억을 _pickChoices 에 «있을 때만» 쓴다 — 지금 선언에 없는 타입은 버려진다(저장소에서 지우지는 않음 · 무해). 값 칸도 _yOf 가 지금 칸에 있을 때만
+f0bf4e816
+  쌓기     stepOf = max(한 줄, 그 요소 높이 + 줄/4) — 높이가 아직 0 이면 한 줄로 떨어진다. 첫 것을 묶음 자리에 두고 아래로, 남은 묶음은 그 아래
+  줄 Trend  버튼이 label 안의 «상호작용 요소»라 label 활성이 안 일고, 클릭에서 preventDefault 도 한다. 줄에 다른 click 듣기가 없다(체크박스 change 만) — 상자 안 켜짐
+b340386fe
+  Not set up  목록 읽기의 404 만 그것 — GET /tables/{t}/data 의 404 는 「Table not found」 하나(main.py). 다른 실패는 거절 문장 그대로
+  거짓 주석   collect 세 덩어리는 지워졌다. 남은 것 둘(client2/src/rnd_board/api.js):
+    줄 1614  createWalk 안 — 「If this key merely fell into `rest`, `fetchSubgraph` would drop it on its fixed parameter list」
+            -> 거짓. C-53(dec8a5df3) 부터 fetchSubgraph 는 collect 를 싣는다. 어제 지시를 틀리게 만든 바로 그 믿음이다
+    줄 895  「every part declares `{ start, collect }` and asks here」 와 그 아래 걷기 표의 collect: …
+            -> 낡음. createWalk 는 collect 를 거절하고(바로 그 가드) 키는 legacyRoute 다
+    (줄 610 근처 「collect=quantity … collect=entity」 는 날짜 붙은 옛 관측이라 둠)
+문서     CODE_MAP — subgraph_view(Points from · 쌓기 · 줄 Trend) · fold_views(rememberPick) · contrast_save_panel(Not set up) — 이 보고와 같은 커밋
+```
