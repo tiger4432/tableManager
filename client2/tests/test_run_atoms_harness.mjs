@@ -49,8 +49,9 @@ const walk = (n, out = []) => { out.push(n); for (const c of n.children || []) w
 const byClass = (root, name) => walk(root).filter((n) => n._classes?.includes(name));
 const rowsOf = (root, host) => (byClass(root, host)[0] ? byClass(byClass(root, host)[0], 'rb-table-row') : []);
 
-// The implementer's spelling (10-07): four read rows with row_id; seven atoms from two sentences (a third says
-// nothing), one the run would not write, one built from two rows (a group_by molecule), one with qualifiers only.
+// The implementer's spelling (10-07, ff9ed1447): four read rows with row_id; seven atoms from two sentences (a third
+// says nothing), one built from two rows (a group_by molecule), one with qualifiers only. Every atom is written; a
+// batch the gate refuses (REFUSED) marks every atom not written with the one refusal code.
 const atom = (sentence, rowIds, keys, over = {}) => ({ sentence, row_ids: rowIds, subject_type: 'job', subject_keys: keys,
   predicate: sentence === 'job_ran' ? 'ran_on' : 'registered', object_kind: null, object_payload: null,
   occurred_at: '2026-10-07T09:00:00+09:00', occurred_at_basis: null, source_raw_ref: null, source_event_id: null,
@@ -62,7 +63,7 @@ const RUN = {
   refused: { count: 0, reasons: {}, samples: [] },
   rows_sample: ['r1', 'r2', 'r3', 'r4'].map((id, i) => ({ dt_job: `J-10${i + 1}`, eqp: 'EQ-7', row_id: id })),
   atoms_sample: [
-    atom('job_registered', ['r1'], { dt_job: 'J-101' }, { writes: false, drop_reason: 'already_registered' }),
+    atom('job_registered', ['r1'], { dt_job: 'J-101' }),
     atom('job_ran', ['r1'], { dt_job: 'J-101' }, { object_kind: 'entity_ref',
       object_payload: { type: 'eqp', keys: { eqp: 'EQ-7' }, qualifiers: { role: 'main' } }, occurred_at_basis: 'created_at' }),
     atom('job_registered', ['r2'], { dt_job: 'J-102' }, { object_payload: { qualifiers: { lot: 'L-1' } } }),
@@ -73,6 +74,7 @@ const RUN = {
   ],
   truncated: { atoms_sample: { cut: false, omitted: 0, reason: null } },
 };
+const REFUSED = { ...RUN, atoms_sample: RUN.atoms_sample.map((a) => ({ ...a, writes: false, drop_reason: 'occurred_at_empty' })) };
 const { atoms_sample: _a, truncated: _t, ...OLD } = RUN;
 OLD.rows_sample = RUN.rows_sample.map(({ row_id: _r, ...rest }) => rest);
 
@@ -100,8 +102,11 @@ async function suite({ cell, store, Part, view, makeController }) {
     second.subject_keys === '{"dt_job":"J-101"}' && second.object === '{"type":"eqp","keys":{"eqp":"EQ-7"}}'
     && second.qualifiers === '{"role":"main"}' && third.object === '' && third.qualifiers === '{"lot":"L-1"}'
     && fourth.object === '{"value":"42"}' && fifth.object === '{"value":42}', JSON.stringify([second, third.object, fourth.object]));
-  ok('A4 an atom the run would not write says so, with its reason', first.writes === 'no' && first.drop_reason === 'already_registered'
-    && second.writes === 'yes', JSON.stringify([first.writes, first.drop_reason, second.writes]));
+  const refusedRows = testRunAtoms(REFUSED, {}).rows;
+  ok('A4 a batch the gate refuses: every atom not written, with the refusal code; otherwise written',
+    refusedRows.every((r) => r.writes === 'no' && r.drop_reason === 'occurred_at_empty')
+    && all.rows.every((r) => r.writes === 'yes' && (r.drop_reason == null || r.drop_reason === '')),
+    JSON.stringify([refusedRows[0]?.writes, refusedRows[0]?.drop_reason, first.writes]));
   ok('A5 the rows an atom came from', fifth.row_ids === 'r3, r4' && first.row_ids === 'r1', fifth.row_ids);
   const ranOnly = testRunAtoms(RUN, { sentence: 'job_ran' });
   ok('A6 a picked sentence: its atoms only, keeping their place', same(ranOnly.rows.map((r) => r[ATOM_KEY]), ['2', '4', '5', '7']),
