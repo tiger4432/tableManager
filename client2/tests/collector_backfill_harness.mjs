@@ -33,6 +33,8 @@ const RUNS = { state_names: NAMES, runs: [
 const only = (run) => ({ state_names: NAMES, runs: [run] });
 const PICKUP = { op: 'collector_backfill', params: { collector: 'lot_master/daily.py', start: '2026-09-01' },
   state: 'failed', processed_rows: 3, total_rows: 7, next_start: '2026-09-21 06:00:00' };
+const OLD_DONE = { op: 'collector_backfill', params: { collector: 'lot_master/daily.py' }, state: 'done',
+  processed_rows: 7, total_rows: 7, finished_at: new Date(Date.now() - 24 * 3600 * 1000).toISOString() };
 
 console.log('\n── A. THE WINDOW\'S THREE STATES ─────────────────────────────');
 {
@@ -66,6 +68,10 @@ console.log('\n── B. THIS ROW\'S LINE IS THIS COLLECTOR\'S LATEST RUN ──
   ok('B4 a finished run says done with its result sentence', doneV.line.tone === 'done'
     && doneV.line.text === 'Done · 7/7 days · days 7 · days collected 7', doneV.line);
   ok('B5 no runs read yet is no line (not an empty run)', X.collectorBackfillView(COL, null).line === null);
+  // The Overview list keeps a finished run ten minutes (lead 9eb902922); this cell is the latest run whenever it ended.
+  const longAgo = X.collectorBackfillView(COL, only(OLD_DONE));
+  ok('B9 a run that finished a day ago still says done on its row', longAgo.line && longAgo.line.tone === 'done'
+    && longAgo.line.text.startsWith('Done'), longAgo.line);
   const noTotal = X.collectorBackfillView(COL, only({ op: 'collector_backfill', params: { collector: 'lot_master/daily.py' },
     state: 'running', processed_rows: null, total_rows: null }));
   ok('B6 a run with no total yet draws no day count - never 0/0', noTotal.line.text === 'Running', noTotal.line);
@@ -132,6 +138,8 @@ const DEFECTS = [
   ['M4 the day count drops the total', swap('`${Number.isFinite(done) ? done : 0}/${total} days`', '`${done} days`')],
   ['M5 a null window is read as declared', swap("const declared = typeof c.window === 'string' ? c.window.trim() : '';",
     "const declared = String(c.window);")],
+  ['M7 the cell reads the Overview list\'s rows, so a run that ended over ten minutes ago has none',
+    swap('{}, {}).runs[0];', '{}, {}).rows[0];')],
   ['M6 the screen counts the next start itself (start + finished days)',
     swap("const nextStart = typeof latest.next_start === 'string' ? latest.next_start : '';",
       'const nextStart = latest.params && latest.params.start ? new Date(Date.parse(latest.params.start)'
@@ -159,7 +167,8 @@ function verdict(M) {
     || !v.line || v.line.text !== 'Running · 3/7 days'
     || f.line.tone !== 'danger'
     || M.collectorBackfillView({ ...COL, window: null }, null).offReason !== 'Declare # window: to backfill'
-    || M.collectorBackfillView(COL, only(PICKUP)).nextStart !== PICKUP.next_start;
+    || M.collectorBackfillView(COL, only(PICKUP)).nextStart !== PICKUP.next_start
+    || M.collectorBackfillView(COL, only(OLD_DONE)).line.tone !== 'done';
 }
 if (verdict(BASELINE)) die('the scorer already fails on the UNMUTATED module');
 if (rowsVerdict(await import('../src/admin_rows.js'))) die('the cell scorer already fails on the UNMUTATED module');

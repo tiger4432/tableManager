@@ -27,11 +27,11 @@ const RUNS = {
       processed_rows: 50, total_rows: 100, started_at: '2026-09-25T10:20:00+00:00' },
     { run_id: 'r2', op: 'resolve', label: 'Recompute shown values (R3)', state: 'done',
       params: { table: 'void_obs' }, processed_rows: 103858, total_rows: null,
-      started_at: '2026-09-25T10:00:00+00:00', finished_at: '2026-09-25T10:05:00+00:00',
+      started_at: '2026-09-25T10:20:00+00:00', finished_at: '2026-09-25T10:25:00+00:00',
       result_sentence: 'cells changed 0 · cells examined 1 · rows scanned 103858' },
     { run_id: 'r3', op: 'resolve', label: 'Recompute shown values (R3)', state: 'failed',
-      params: { table: 'x' }, started_at: '2026-09-25T09:00:00+00:00',
-      finished_at: '2026-09-25T09:01:00+00:00', error: 'relation x does not exist' },
+      params: { table: 'x' }, started_at: '2026-09-25T10:24:00+00:00',
+      finished_at: '2026-09-25T10:25:00+00:00', error: 'relation x does not exist' },
     { run_id: 'r4', op: 'resolve', label: 'Recompute shown values (R3)', state: 'cancel_requested',
       params: { table: 'void_obs' }, processed_rows: 5, started_at: '2026-09-25T10:25:00+00:00' },
   ],
@@ -89,7 +89,7 @@ async function suite(mod) {
   const record = { failed_at: '2026-10-06T10:00:00', reason: 'boom', rules: ['r_llm'], tables: ['notes'], rows: 6, row: null };
   const cut = JSON.stringify(record).slice(0, 40);
   const failedRun = (id, error) => ({ run_id: id, op: 'rule_rows', label: "Run a rule's queued rows",
-    state: 'failed', params: {}, finished_at: '2026-09-25T09:01:00+00:00', error });
+    state: 'failed', params: {}, finished_at: '2026-09-25T10:25:00+00:00', error });
   const mount3 = doc.createElement('div');
   new mod.RunLines(mount3, { doc }).render(buildRunsView({ state_names: RUNS.state_names,
     runs: [failedRun('q1', JSON.stringify(record)), failedRun('q2', cut)] }, NOW, {}, {}).rows);

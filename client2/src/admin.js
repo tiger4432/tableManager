@@ -82,7 +82,7 @@ import { planDryRunView } from './plan_dry_run.js';
 // 않는다**: 다섯 중 넷은 요청 경로에서 정확할 수 없고, 그 한정어가 라벨 안에 들어 있다.
 import {
   buildOperationsView, buildCountView, buildRunView, buildConfirmLines, buildActionsView,
-  resolveCount, paramEntries, paramsKey, RETRO_CHROME, buildRunsView,
+  resolveCount, paramEntries, paramsKey, RETRO_CHROME, buildRunsView, runsPollBusy,
   buildConfirmActions, groupExtras,
 } from './retroactive_view.js';
 import { RunLines } from './run_lines.js';
@@ -2866,8 +2866,8 @@ let runsTimer = null;
 
 function scheduleRunsPoll() {
   if (runsTimer) clearTimeout(runsTimer);
-  // «빈 목록»과 «아직 안 읽음»은 다릅니다. 안 읽었으면 빨리 한 번 더 갑니다.
-  const busy = !runsView || !runsView.empty;
+  // The pace is what runs (`runsPollBusy`); not read yet is one more try soon.
+  const busy = runsPollBusy(runsView);
   runsTimer = setTimeout(() => {
     // 숨은 탭·다른 탭에서는 쉽니다 -- 옆의 공용 자동 갱신이 지키는 것과 같은 규칙입니다.
     // 그리고 다시 돌아왔을 때를 위해 «타이머는 계속 돕니다».

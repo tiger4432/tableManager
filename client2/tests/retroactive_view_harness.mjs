@@ -526,6 +526,8 @@ async function suite(source) {
   // ── G. 진행 목록 — 「도는 것들」 한 목록, [무엇] [진행] [ × ] ──────────
   {
     const NOW = Date.parse('2026-08-31T09:00:00+09:00');
+    // A finished run is kept ten minutes after its end (lead 9eb902922); these ended a minute ago.
+    const JUST_ENDED = '2026-08-31T08:59:00+09:00';
     const payload = {
       runs: [
         { run_id: 'r1', op: 'ledger_backfill', label: '원장 백필', params: { source: 'lot_event' },
@@ -534,7 +536,7 @@ async function suite(source) {
         { run_id: 'r2', op: 'chain_replay', label: '체인 리플레이', params: { rule: 'inv' },
           state: 'cancelling', processed_rows: 5, total_rows: null,
           started_at: '2026-08-31T08:58:00+09:00' },
-        { run_id: 'r3', op: 'ledger_rescope', label: '끝남', state: 'done' },
+        { run_id: 'r3', op: 'ledger_rescope', label: '끝남', state: 'done', finished_at: '2026-08-31T08:57:00+09:00' },
       ],
       ingestions: [{ table_name: 'dt_log', filename: 'a.csv', status: 'PROCESSING',
                      processed_rows: 430, total_rows: 1000, elapsed_seconds: 190 }],
@@ -583,9 +585,9 @@ async function suite(source) {
     // arrives successful and the failure is a FIELD ON ONE ROW inside it, which is why copying
     // that helper here would compile and catch nothing.
     const failedPayload = { runs: [
-      { run_id: 'r9', op: 'ledger_backfill', label: '원장 백필', state: 'failed',
+      { run_id: 'r9', op: 'ledger_backfill', label: '원장 백필', state: 'failed', finished_at: JUST_ENDED,
         error: 'OperationalError: server closed the connection' },
-      { run_id: 'r8', op: 'ledger_backfill', label: '성한 것', state: 'done' },
+      { run_id: 'r8', op: 'ledger_backfill', label: '성한 것', state: 'done', finished_at: JUST_ENDED },
     ], ingestions: [] };
     const fv = view.buildRunsView(failedPayload, NOW, {});
     ok(fv.rows[0].reason && fv.rows[0].reason.text.includes('OperationalError'),
@@ -601,8 +603,8 @@ async function suite(source) {
       tables: ['notes'], rows: 6, row: null };
     const cut = JSON.stringify(record).slice(0, 40);
     const qv = view.buildRunsView({ runs: [
-      { run_id: 'q1', op: 'rule_rows', label: 'Run', state: 'failed', error: JSON.stringify(record) },
-      { run_id: 'q2', op: 'rule_rows', label: 'Run', state: 'failed', error: cut },
+      { run_id: 'q1', op: 'rule_rows', label: 'Run', state: 'failed', finished_at: JUST_ENDED, error: JSON.stringify(record) },
+      { run_id: 'q2', op: 'rule_rows', label: 'Run', state: 'failed', finished_at: JUST_ENDED, error: cut },
     ], ingestions: [] }, NOW, {});
     ok(same(qv.rows[0].failure.map((c) => [c.label.text, c.value.text]), [['Rule', 'r_llm'],
       ['Table', 'notes'], ['Rows', '6'], ['Row', 'not given by the error'], ['Reason', 'boom']]),
@@ -617,9 +619,9 @@ async function suite(source) {
     // declaration does not fix its shape, so a screen deciding 「this number is called that」
     // would be inventing the contract rather than reading it (ruling 33).
     const summaryPayload = { runs: [
-      { run_id: 'r7', op: 'ledger_backfill', label: '끝난 것', state: 'done',
+      { run_id: 'r7', op: 'ledger_backfill', label: '끝난 것', state: 'done', finished_at: JUST_ENDED,
         result_sentence: 'atoms 1,204 · skipped 3' },
-      { run_id: 'r6', op: 'ledger_backfill', label: '수 없음', state: 'done' },
+      { run_id: 'r6', op: 'ledger_backfill', label: '수 없음', state: 'done', finished_at: JUST_ENDED },
     ], ingestions: [] };
     const sv = view.buildRunsView(summaryPayload, NOW, {});
     ok(sv.rows[0].summary && sv.rows[0].summary.text === 'atoms 1,204 · skipped 3',
@@ -646,7 +648,7 @@ async function suite(source) {
       skipped_blank_identity_group: 'not_made',
     };
     const runRow = (result, sentence) => view.buildRunsView({ runs: [{
-      run_id: 'r9', op: 'enrichment_backfill', label: 'backfill', state: 'done',
+      run_id: 'r9', op: 'enrichment_backfill', label: 'backfill', state: 'done', finished_at: JUST_ENDED,
       result, result_sentence: sentence,
     }], ingestions: [] }, NOW, {}).rows[0];
 
@@ -749,7 +751,8 @@ async function suite(source) {
     //    it. A fixture using `succeeded` would agree with both spellings and decide nothing.
     const doneRun = (id, state) => ({ run_id: id, op: 'ledger_backfill', label: id, params: {},
       state, processed_rows: 80, total_rows: null,
-      started_at: '2026-08-31T08:52:00+09:00', queued_at: '2026-08-31T08:47:00+09:00' });
+      started_at: '2026-08-31T08:52:00+09:00', queued_at: '2026-08-31T08:47:00+09:00',
+      finished_at: '2026-08-31T08:55:00+09:00' });
     const dv = view.buildRunsView({
       runs: [
         doneRun('d1', 'done'),
@@ -770,8 +773,8 @@ async function suite(source) {
       'G9: ... and none of them carries an x, because pressing it can do nothing');
     ok(dv.rows.slice(1).every((r) => r.moving === false),
       'G9: ... and none of them is painted as moving');
-    ok(dv.rows.length === 4,
-      'G9: only the most recent few finished rows are kept, so the list stays a list');
+    ok(dv.rows.length === 6,
+      'G9: every run that finished within the ten minutes is kept - no count of them (lead 9eb902922 retired the three)');
     ok(dv.empty === false,
       'G9: a page holding only finished rows still has something to draw');
 
@@ -802,6 +805,31 @@ async function suite(source) {
       'G9: a finished run reports how long it TOOK, not how long ago it started');
     ok(stopped.rows[0].progress.elapsed !== '8m',
       'G9: ... so its clock stops instead of climbing for as long as the page is open');
+
+    // ── G10. A FINISHED RUN STAYS TEN MINUTES, THEN LEAVES (lead 9eb902922, owner 10-07) ────────
+    // 0c2cefc0d kept the newest three by count, so a run that ended days ago stayed on the list in the
+    // same shape as a running one and read as the queue (「done 왜 안 빠져」). 「Did it run」 is kept for
+    // the ten minutes. The oracle is the lead's number, not the module's constant.
+    const ended = (id, minutesAgo) => ({ run_id: id, op: 'ledger_backfill', label: id, params: {}, state: 'done',
+      started_at: '2026-08-31T08:00:00+09:00', finished_at: new Date(NOW - minutesAgo * 60000).toISOString() });
+    const tv = view.buildRunsView({ runs: [ended('m1', 1), ended('m9', 9.9), ended('m11', 11), ended('d1', 60 * 24),
+      { run_id: 'nt', op: 'ledger_backfill', label: 'nt', params: {}, state: 'done' }], ingestions: [] }, NOW, {});
+    const ids = tv.rows.map((r) => r.id);
+    ok(view.FINISHED_STAYS_MS === 10 * 60 * 1000, 'G10: the time a finished run stays is one named constant, ten minutes');
+    ok(ids.includes('m1') && ids.includes('m9'), 'G10: a run that finished within the ten minutes is on the list');
+    ok(!ids.includes('m11') && !ids.includes('d1'), 'G10: once the ten minutes have passed it leaves, a day-old one too');
+    ok(!ids.includes('nt'), 'G10: a finished run with no end time cannot be timed and is not kept');
+    ok(same(tv.runs.map((r) => r.id), ['m1', 'm9', 'm11', 'd1', 'nt']),
+      'G10: every run\'s row is still there for a reader of one run (the Backfill cell), whenever it ended');
+
+    // ── G11. THE POLL'S PACE IS WHAT RUNS ────────────────────────────────────────────────────────
+    const live = { run_id: 'lv', op: 'ledger_backfill', label: 'lv', params: {}, state: 'running',
+      started_at: '2026-08-31T08:58:00+09:00' };
+    ok(view.runsPollBusy(view.buildRunsView({ runs: [ended('m1', 1)], ingestions: [] }, NOW, {})) === false,
+      'G11: only finished rows on the list - the busy pace stops');
+    ok(view.runsPollBusy(view.buildRunsView({ runs: [ended('m1', 1), live], ingestions: [] }, NOW, {})) === true,
+      'G11: a running row appears - the busy pace comes back');
+    ok(view.runsPollBusy(null) === true, 'G11: not read yet is busy - one more try soon');
   }
 
   // ── W. WHO QUEUED IT — THE SAME ANSWER ON BOTH SCREENS ────────
@@ -923,6 +951,15 @@ const swap = (from, to) => (src) => {
 };
 
 const DEFECTS = [
+  ['G10: a finished run stays however long ago it ended',
+    swap('    else if (now - stopped < FINISHED_STAYS_MS) recent.push(row);', '    else recent.push(row);')],
+  ['G10: a finished run leaves the moment it ends',
+    swap('    else if (now - stopped < FINISHED_STAYS_MS) recent.push(row);', '')],
+  ['G10: the stay is not ten minutes', swap('export const FINISHED_STAYS_MS = 10 * 60 * 1000;',
+    'export const FINISHED_STAYS_MS = 30 * 60 * 1000;')],
+  ['G10: a reader of one run gets the list\'s rows', swap('    runs: runRows,', '    runs: rows.concat(recent),')],
+  ['G11: finished rows keep the poll busy', swap('(view) => !view || view.liveCount > 0;', '(view) => !view || !view.empty;')],
+  ['G11: a running row does not bring the busy pace back', swap('(view) => !view || view.liveCount > 0;', '(view) => !view;')],
   ['a failure record is not read, so its JSON is the line',
     swap('const record = failureRecordOf(run.error);', 'const record = null;')],
   ['a failure record is drawn as its JSON too',

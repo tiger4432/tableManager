@@ -405,9 +405,10 @@ export function buildCountView(payload) {
 //    거르지 않았고, 실행 행이 0 인 동안은 그 사실이 «안 보였습니다». 끝난 작업이 「Running」에
 //    세어지고 그 줄에 죽은 × 가 달린 것이 그 결과입니다.
 const RUN_FINISHED = ['done', 'cancelled', 'failed'];
-// 끝난 것도 «몇 개는» 남깁니다 -- 방금 끝난 것이 목록에서 즉시 사라지면 「돌긴 했나」를
-// 화면이 못 답합니다. 세지는 않고, × 도 안 답니다.
-const RECENT_FINISHED_SHOWN = 3;
+// 끝난 것은 끝난 뒤 «이만큼만» 남깁니다 (총괄 9eb902922, 소유자 10-07) -- 방금 끝난 것이 즉시 사라지면 「돌긴 했나」를
+// 화면이 못 답하고(0c2cefc0d), 개수로 남기면 며칠 전 것이 도는 줄과 같은 모양으로 남아 대기열로 읽혔습니다.
+// 세지 않고, × 도 안 답니다. 끝난 시각이 없는 줄은 잴 수 없어 남기지 않습니다(서버는 끝낼 때 늘 찍습니다).
+export const FINISHED_STAYS_MS = 10 * 60 * 1000;
 
 /** 몇 분째인가. 시각이 없으면 «null» — 0 분으로 적으면 「방금 시작」으로 읽힙니다. */
 export function elapsedMinutes(startedAt, now) {
@@ -453,7 +454,8 @@ export function buildRunsView(payload, now, cancellable, formParams) {
   const forms = formParams || {};
   const stateNames = data.state_names && typeof data.state_names === 'object' ? data.state_names : {};
   const rows = [];
-  const done = [];
+  const recent = [];
+  const runRows = [];
 
   for (const run of Array.isArray(data.runs) ? data.runs : []) {
     if (!run) continue;
@@ -475,7 +477,7 @@ export function buildRunsView(payload, now, cancellable, formParams) {
     // The chain's failure record, when the error IS one (a `rule_rows` run): the Chain tab's five
     // cells, not its JSON. Asked of the text, never of the operation's name.
     const record = failureRecordOf(run.error);
-    (finished ? done : rows).push({
+    const row = {
       // 🔴 id 는 «열쇠»이지 화면에 나가는 문장이 아닙니다. 태그를 붙이면 취소가 어느 행을
       //    가리키는지 잃습니다 -- 이 파일의 `text()` 는 출처를 «달아» 객체로 만듭니다.
       id: String(run.run_id || ''),
@@ -527,7 +529,10 @@ export function buildRunsView(payload, now, cancellable, formParams) {
       moving: !finished && state !== 'queued',
       finished,
       state,
-    });
+    };
+    runRows.push(row);
+    if (!finished) rows.push(row);
+    else if (now - stopped < FINISHED_STAYS_MS) recent.push(row);
   }
 
   for (const job of Array.isArray(data.ingestions) ? data.ingestions : []) {
@@ -553,10 +558,12 @@ export function buildRunsView(payload, now, cancellable, formParams) {
     });
   }
 
-  // 끝난 것은 «아래»에, 그리고 몇 개만. 서버가 최근 것부터 주므로 순서는 그대로입니다.
-  const recent = done.slice(0, RECENT_FINISHED_SHOWN);
+  // 끝난 것은 «아래»에, 끝난 뒤 FINISHED_STAYS_MS 동안만. 서버가 최근 것부터 주므로 순서는 그대로입니다.
   return {
     rows: rows.concat(recent),
+    // Every run's row, finished or not, in the server's order - a reader of one run's state (the Auto Update
+    // Backfill cell) is not this list's ten minutes.
+    runs: runRows,
     // 🔴 「몇 개가 도나」는 «도는 것»만 셉니다. 끝난 줄을 같이 세면 접힌 줄 하나로
     //    판단하는 이 화면이 「지금 하나 돌고 있다」고 거짓을 말합니다.
     liveCount: rows.length,
@@ -564,6 +571,13 @@ export function buildRunsView(payload, now, cancellable, formParams) {
     empty: rows.length + recent.length === 0,
   };
 }
+
+/**
+ * The list's poll pace: busy while anything runs, idle otherwise (lead 9eb902922). Finished rows still on the list
+ * do not keep it busy - they kept it at the busy pace for as long as any finished run was among the last fifty.
+ * Not read yet is busy: one more try soon.
+ */
+export const runsPollBusy = (view) => !view || view.liveCount > 0;
 
 /** `POST /admin/retroactive/{op}/run` — the acknowledgement.
  *
