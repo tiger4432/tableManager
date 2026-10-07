@@ -1,6 +1,6 @@
 {
  "captured_by": "client2/tests/fixtures/capture_authoring_skeleton.py",
- "server_at": "04782e22e7210e8d264d2adde226ca31caeacd7f",
+ "server_at": "5ccd9bbc5bc4d2dc5964a6c4981e3e4d68e260f7",
  "authorable_kinds": [
   {
    "id": "entity",
@@ -679,50 +679,6 @@
                }
               }
              ]
-            }
-           },
-           {
-            "key": "registration_probe",
-            "required": false,
-            "node": {
-             "kind": "map",
-             "keyed_by": "index",
-             "member": "Probe",
-             "of": {
-              "kind": "record",
-              "fields": [
-               {
-                "key": "entity_type",
-                "required": true,
-                "node": {
-                 "kind": "leaf",
-                 "hint": "ref",
-                 "section": "entities"
-                }
-               },
-               {
-                "key": "columns",
-                "required": true,
-                "node": {
-                 "kind": "map",
-                 "keyed_by": "index",
-                 "member": "Column",
-                 "of": {
-                  "kind": "leaf",
-                  "hint": "free"
-                 }
-                }
-               },
-               {
-                "key": "list_separator",
-                "required": false,
-                "node": {
-                 "kind": "leaf",
-                 "hint": "free"
-                }
-               }
-              ]
-             }
             }
            },
            {

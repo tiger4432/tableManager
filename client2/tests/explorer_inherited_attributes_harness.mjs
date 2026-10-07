@@ -73,7 +73,8 @@ function suite(view) {
   eq('I1 in the value column: the server\'s sentence, then the path in the declaration\'s words; the name column empty',
     header.length ? [textOf(header[0], 'oe-ground-text'), textOf(header[0], 'oe-ground-from'),
       JSON.stringify(textOf(header[0], 'oe-node-name'))].join(' | ') : '(no block)',
-    [row.ground.text, 'bind › entities › dtjob@1 › attributes', '""'].join(' | '));
+    // The path is where the server says the value comes from, below this source, in the form's separators.
+    [row.ground.text, row.ground.from_paths[0].slice(`${PLAN.base}.`.length).split('.').join(' › '), '""'].join(' | '));
   const members = Object.keys(row.value).map((key) => nodeAt(form, `${ROLE}.${key}`));
   eq('I2 each inherited member is drawn with its value', members.map((n) => (n ? n.textContent.includes(
     row.value[n.dataset.path.split('.').pop()].column) : false)).join(','), Object.keys(row.value).map(() => 'true').join(','));

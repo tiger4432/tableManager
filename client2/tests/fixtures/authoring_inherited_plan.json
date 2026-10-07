@@ -1,6 +1,6 @@
 {
  "captured_by": "client2/tests/fixtures/capture_authoring_inherited_plan.py",
- "server_at": "fc9a122faa1a463118479cfced58875fd0ffb456",
+ "server_at": "5ccd9bbc5bc4d2dc5964a6c4981e3e4d68e260f7",
  "base": "bundle.sources.dt_job",
  "fields": [
   {
@@ -87,7 +87,7 @@
    "remaining": false
   },
   {
-   "path": "bundle.sources.dt_job.bind.entities.dtjob@1.attributes",
+   "path": "bundle.sources.dt_job.bind.entities.dtjob.attributes",
    "step": "sources",
    "label": "Attributes",
    "state": "derived",
@@ -100,12 +100,12 @@
    "conflicts": false,
    "ground": {
     "rule": "entity_binding_attributes_from_entity",
-    "text": "Filled: the attributes of dtjob@1",
+    "text": "Filled: the attributes of dtjob",
     "from_paths": [
-     "bundle.entities.dtjob@1.attributes"
+     "bundle.entities.dtjob.attributes"
     ],
     "from_keys": [
-     "entity|dtjob@1"
+     "entity|dtjob"
     ],
     "from_value": [
      "dt_eqp"
@@ -123,7 +123,7 @@
    "remaining": false
   },
   {
-   "path": "bundle.sources.dt_job.bind.entities.dtjob@1.attributes.dt_eqp",
+   "path": "bundle.sources.dt_job.bind.entities.dtjob.attributes.dt_eqp",
    "step": "sources",
    "label": "Attribute dt_eqp",
    "state": "answered",
@@ -184,28 +184,28 @@
    "label": "Predicate",
    "state": "answered",
    "tier": "constrained_input",
-   "value": "has_netdie@1",
-   "declared": "has_netdie@1",
+   "value": "has_netdie",
+   "declared": "has_netdie",
    "has_declared": true,
    "conflicts": false,
    "ground": null,
    "candidates": [
-    "bonded_from@1",
-    "derived_from@1",
-    "has_netdie@1",
-    "has_wafer@1",
-    "in_container@1",
-    "inspected@1",
-    "leads_to@1",
-    "measures@1",
-    "merged_into@1",
-    "observed@1",
-    "of_kind@1",
-    "processed_with@1",
-    "register@1",
-    "slot_map@1",
-    "split_from@1",
-    "transfer@1"
+    "bonded_from",
+    "derived_from",
+    "has_netdie",
+    "has_wafer",
+    "in_container",
+    "inspected",
+    "leads_to",
+    "measures",
+    "merged_into",
+    "observed",
+    "of_kind",
+    "processed_with",
+    "register",
+    "slot_map",
+    "split_from",
+    "transfer"
    ],
    "universe": null,
    "universe_note": "",
@@ -233,12 +233,12 @@
    "conflicts": false,
    "ground": {
     "rule": "bind_rows_from_predicate",
-    "text": "Filled: the 3 roles predicate has_netdie@1 requires",
+    "text": "Filled: the 3 roles predicate has_netdie requires",
     "from_paths": [
-     "bundle.vocabulary.has_netdie@1"
+     "bundle.vocabulary.has_netdie"
     ],
     "from_keys": [
-     "predicate|has_netdie@1"
+     "predicate|has_netdie"
     ],
     "from_value": [
      "occurred_at",
@@ -319,22 +319,22 @@
    "label": "Entity type",
    "state": "answered",
    "tier": "constrained_input",
-   "value": "dtjob@1",
-   "declared": "dtjob@1",
+   "value": "dtjob",
+   "declared": "dtjob",
    "has_declared": true,
    "conflicts": false,
    "ground": null,
    "candidates": [
-    "defect@1",
-    "defect_kind@1",
-    "die@1",
-    "dtjob@1",
-    "dtwafer@1",
-    "lot@1",
-    "lot_slot@1",
-    "quantity@1",
-    "recipe@1",
-    "wafer@1"
+    "defect",
+    "defect_kind",
+    "die",
+    "dtjob",
+    "dtwafer",
+    "lot",
+    "lot_slot",
+    "quantity",
+    "recipe",
+    "wafer"
    ],
    "universe": null,
    "universe_note": "",
@@ -362,12 +362,12 @@
    "conflicts": false,
    "ground": {
     "rule": "entity_binding_keys_from_entity",
-    "text": "Filled: the identity keys of dtjob@1",
+    "text": "Filled: the identity keys of dtjob",
     "from_paths": [
-     "bundle.entities.dtjob@1.keys"
+     "bundle.entities.dtjob.keys"
     ],
     "from_keys": [
-     "entity|dtjob@1"
+     "entity|dtjob"
     ],
     "from_value": [
      "dt_job"
@@ -482,9 +482,9 @@
    "conflicts": false,
    "ground": {
     "rule": "inherited_from_source",
-    "text": "Inherited: this source's attributes of dtjob@1",
+    "text": "Inherited: this source's attributes of dtjob",
     "from_paths": [
-     "bundle.sources.dt_job.bind.entities.dtjob@1.attributes"
+     "bundle.sources.dt_job.bind.entities.dtjob.attributes"
     ],
     "from_keys": [
      "source_plan|dt_job"
@@ -513,28 +513,28 @@
    "label": "Predicate",
    "state": "answered",
    "tier": "constrained_input",
-   "value": "register@1",
-   "declared": "register@1",
+   "value": "register",
+   "declared": "register",
    "has_declared": true,
    "conflicts": false,
    "ground": null,
    "candidates": [
-    "bonded_from@1",
-    "derived_from@1",
-    "has_netdie@1",
-    "has_wafer@1",
-    "in_container@1",
-    "inspected@1",
-    "leads_to@1",
-    "measures@1",
-    "merged_into@1",
-    "observed@1",
-    "of_kind@1",
-    "processed_with@1",
-    "register@1",
-    "slot_map@1",
-    "split_from@1",
-    "transfer@1"
+    "bonded_from",
+    "derived_from",
+    "has_netdie",
+    "has_wafer",
+    "in_container",
+    "inspected",
+    "leads_to",
+    "measures",
+    "merged_into",
+    "observed",
+    "of_kind",
+    "processed_with",
+    "register",
+    "slot_map",
+    "split_from",
+    "transfer"
    ],
    "universe": null,
    "universe_note": "",
@@ -562,12 +562,12 @@
    "conflicts": false,
    "ground": {
     "rule": "bind_rows_from_predicate",
-    "text": "Filled: the 3 roles predicate register@1 requires",
+    "text": "Filled: the 3 roles predicate register requires",
     "from_paths": [
-     "bundle.vocabulary.register@1"
+     "bundle.vocabulary.register"
     ],
     "from_keys": [
-     "predicate|register@1"
+     "predicate|register"
     ],
     "from_value": [
      "dt_eqp",
@@ -673,22 +673,22 @@
    "label": "Entity type",
    "state": "answered",
    "tier": "constrained_input",
-   "value": "dtjob@1",
-   "declared": "dtjob@1",
+   "value": "dtjob",
+   "declared": "dtjob",
    "has_declared": true,
    "conflicts": false,
    "ground": null,
    "candidates": [
-    "defect@1",
-    "defect_kind@1",
-    "die@1",
-    "dtjob@1",
-    "dtwafer@1",
-    "lot@1",
-    "lot_slot@1",
-    "quantity@1",
-    "recipe@1",
-    "wafer@1"
+    "defect",
+    "defect_kind",
+    "die",
+    "dtjob",
+    "dtwafer",
+    "lot",
+    "lot_slot",
+    "quantity",
+    "recipe",
+    "wafer"
    ],
    "universe": null,
    "universe_note": "",
@@ -716,12 +716,12 @@
    "conflicts": false,
    "ground": {
     "rule": "entity_binding_keys_from_entity",
-    "text": "Filled: the identity keys of dtjob@1",
+    "text": "Filled: the identity keys of dtjob",
     "from_paths": [
-     "bundle.entities.dtjob@1.keys"
+     "bundle.entities.dtjob.keys"
     ],
     "from_keys": [
-     "entity|dtjob@1"
+     "entity|dtjob"
     ],
     "from_value": [
      "dt_job"
@@ -783,9 +783,9 @@
    "conflicts": false,
    "ground": {
     "rule": "inherited_from_source",
-    "text": "Inherited: this source's attributes of dtjob@1",
+    "text": "Inherited: this source's attributes of dtjob",
     "from_paths": [
-     "bundle.sources.dt_job.bind.entities.dtjob@1.attributes"
+     "bundle.sources.dt_job.bind.entities.dtjob.attributes"
     ],
     "from_keys": [
      "source_plan|dt_job"
@@ -1080,108 +1080,6 @@
      "column": "row_id",
      "blank": true
     }
-   ],
-   "universe": "RELATION",
-   "universe_note": "Table columns",
-   "comparison": "equal",
-   "reshapes": false,
-   "disposition": "",
-   "forbidden": [],
-   "note": "",
-   "refusals": [],
-   "remaining": false
-  },
-  {
-   "path": "bundle.sources.dt_job.read.registration_probe",
-   "step": "sources",
-   "label": "Registration probe",
-   "state": "answered",
-   "tier": "constrained_input",
-   "value": [
-    {
-     "entity_type": "dtjob@1",
-     "columns": [
-      "dt_job"
-     ]
-    }
-   ],
-   "declared": [
-    {
-     "entity_type": "dtjob@1",
-     "columns": [
-      "dt_job"
-     ]
-    }
-   ],
-   "has_declared": true,
-   "conflicts": false,
-   "ground": {
-    "rule": "registration_probe_required_by_register_sentences",
-    "text": "Needed: this source has 1 register sentences (register)",
-    "from_paths": [
-     "bundle.sources.dt_job.bind.mappings.register"
-    ],
-    "from_keys": [
-     "source_plan|dt_job"
-    ],
-    "from_value": null
-   },
-   "candidates": null,
-   "universe": null,
-   "universe_note": "",
-   "comparison": "equal",
-   "reshapes": false,
-   "disposition": "",
-   "forbidden": [],
-   "note": "Required when there is a register sentence · without it the whole backfill is refused",
-   "refusals": [],
-   "remaining": false
-  },
-  {
-   "path": "bundle.sources.dt_job.read.registration_probe[0].entity_type",
-   "step": "sources",
-   "label": "Registration probe entity",
-   "state": "answered",
-   "tier": "constrained_input",
-   "value": "dtjob@1",
-   "declared": "dtjob@1",
-   "has_declared": true,
-   "conflicts": false,
-   "ground": null,
-   "candidates": [
-    "dtjob@1"
-   ],
-   "universe": null,
-   "universe_note": "",
-   "comparison": "equal",
-   "reshapes": false,
-   "disposition": "",
-   "forbidden": [],
-   "note": "The entity a register sentence registers · one identity key",
-   "refusals": [],
-   "remaining": false
-  },
-  {
-   "path": "bundle.sources.dt_job.read.registration_probe[0].columns",
-   "step": "sources",
-   "label": "Registration probe columns",
-   "state": "answered",
-   "tier": "constrained_input",
-   "value": [
-    "dt_job"
-   ],
-   "declared": [
-    "dt_job"
-   ],
-   "has_declared": true,
-   "conflicts": false,
-   "ground": null,
-   "candidates": [
-    "dt_eqp",
-    "dt_job",
-    "event_time",
-    "netdie_count",
-    "row_id"
    ],
    "universe": "RELATION",
    "universe_note": "Table columns",
