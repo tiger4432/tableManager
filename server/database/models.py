@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Boolean, JSON, DateTime, Index, text, BigInteger
+from sqlalchemy import Column, Integer, String, Boolean, JSON, DateTime, Index, text, BigInteger, UniqueConstraint
 from sqlalchemy.sql import func
 from .database import Base, is_sqlite
 
@@ -888,6 +888,45 @@ class FrameConfirmationSource(Base):
         # 인덱스를 만들지 않는다). `idx_sources_confirmation`과 같은 계급이다.
         Index("idx_frame_conf_src_map", "source_table", "map_id"),
     )
+
+
+class AuthLoginRound(Base):
+    """One sign-in on its way to the issuer and back (admin/sso.py). Spent by its return; one that
+    never returns is swept by the next sign-in. Times are epoch seconds."""
+
+    __tablename__ = "auth_login_states"
+
+    state = Column(String(64), primary_key=True)
+    nonce = Column(String(64), nullable=False)
+    code_verifier = Column(String(128), nullable=False)
+    next_path = Column(String, nullable=False)
+    created_at = Column(BigInteger, nullable=False)
+
+
+class AuthSession(Base):
+    """A signed-in browser. The key is sha256 of the cookie; the cookie itself is never stored."""
+
+    __tablename__ = "auth_sessions"
+
+    id_hash = Column(String(64), primary_key=True)
+    user_name = Column(String(320), nullable=False)
+    created_at = Column(BigInteger, nullable=False)
+    expires_at = Column(BigInteger, nullable=False, index=True)
+
+
+class AuthApiKey(Base):
+    """A person's own key for their scripts (Authorization: Bearer). Only its sha256 is stored."""
+
+    __tablename__ = "auth_api_keys"
+
+    id = Column(String(32), primary_key=True)
+    user_name = Column(String(320), nullable=False)
+    name = Column(String(120), nullable=False)
+    key_hash = Column(String(64), nullable=False, unique=True)
+    created_at = Column(BigInteger, nullable=False)
+    last_used_at = Column(BigInteger, nullable=True)
+
+    __table_args__ = (UniqueConstraint("user_name", "name", name="uq_auth_api_keys_user_name"),)
 
 
 import sys

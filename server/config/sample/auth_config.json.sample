@@ -1,0 +1,8 @@
+{
+  "enabled": false,
+  "issuer": "",
+  "client_id": "",
+  "redirect_uri": "",
+  "name_claim": "",
+  "admins": []
+}

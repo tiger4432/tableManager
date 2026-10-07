@@ -185,6 +185,10 @@ def test_create_all_does_not_add_a_column_to_an_existing_table(unmigrated_db):
 # that is in the pull request.
 SYSTEM_TABLE_COLUMNS = {
     "audit_logs": ('business_key', 'column_name', 'id', 'new_value', 'old_value', 'row_id', 'source_name', 'table_name', 'timestamp', 'transaction_id', 'updated_by'),
+    # auth_*: company sign-in (admin/sso.py), new tables made whole by create_all
+    "auth_api_keys": ('created_at', 'id', 'key_hash', 'last_used_at', 'name', 'user_name'),
+    "auth_login_states": ('code_verifier', 'created_at', 'next_path', 'nonce', 'state'),
+    "auth_sessions": ('created_at', 'expires_at', 'id_hash', 'user_name'),
     "cell_overwrites": ('column_name', 'id', 'is_overwrite', 'manual_priority_source', 'row_id', 'table_name', 'updated_at', 'updated_by'),
     # confirmation_uid: migrations/add_frame_confirmation.py
     # origin_row_id:    migrations/add_cell_source_origin_row.sql  (S-280 · 판정 434)

@@ -6,6 +6,7 @@ from typing import Any
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 
+from admin import sso
 from admin.auth import require_admin_token, require_admin_token_strict
 from database.database import get_db
 from ledger.column_stats import ColumnStatsError
@@ -94,7 +95,7 @@ def set_world_live(world: str, request: Request, payload: dict[str, Any] = Body(
     if not isinstance(live, bool):
         raise HTTPException(status_code=400, detail={
             "reason": "live_required", "message": "Send live: true or false."})
-    by = request.headers.get("X-User")
+    by = sso.who(request, request.headers.get("X-User"))
     try:
         schema.set_live(world, live, by)
     except (LookupError, ValueError) as exc:
@@ -122,7 +123,7 @@ def operate_world(request: Request, payload: dict[str, Any] = Body(...)):
             "reason": "world_required", "message": "Name the world to operate."})
     try:
         schema.ensure_world(engine, schema.require_world(world))
-        schema.operate(world, request.headers.get("X-User"))
+        schema.operate(world, sso.who(request, request.headers.get("X-User")))
     except (LookupError, ValueError) as exc:
         raise HTTPException(status_code=404, detail={
             "reason": "world_unknown", "world": world, "message": str(exc)})

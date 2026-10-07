@@ -225,13 +225,24 @@ def _enforce(request, fail_closed):
                             headers=dict(_GATE_HEADERS))
 
 
+def _admin(request, fail_closed):
+    """With company sign-in on (admin/sso.py), a signed-in name on the admin list and never
+    the header; otherwise the token, as before."""
+    from admin import sso
+
+    if sso.enabled():
+        sso.require_admin(request)
+    else:
+        _enforce(request, fail_closed)
+
+
 def require_admin_token(request: Request) -> None:
     """Gate for ordinary ``/admin/*`` routes.
 
     Enforces the header when a token is configured; stays open when it is not,
     so a first restart into this build does not black out the admin page.
     """
-    _enforce(request, fail_closed=False)
+    _admin(request, fail_closed=False)
 
 
 def require_admin_token_strict(request: Request) -> None:
@@ -240,13 +251,19 @@ def require_admin_token_strict(request: Request) -> None:
     Same as :func:`require_admin_token` when a token is configured, but refuses
     with 503 when it is not. These routes are never open.
     """
-    _enforce(request, fail_closed=True)
+    _admin(request, fail_closed=True)
+
+
+def require_worker_token(request: Request) -> None:
+    """Gate for ``/internal/*``: the daemons' token whether or not sign-in is on - a worker
+    has no person to sign in."""
+    _enforce(request, fail_closed=False)
 
 
 #: Every dependency this module offers. The route-coverage test walks the
 #: FastAPI app and asserts each /admin route resolves to one of these, so a new
 #: admin route added later fails the suite instead of shipping unprotected.
-ADMIN_GATES = (require_admin_token, require_admin_token_strict)
+ADMIN_GATES = (require_admin_token, require_admin_token_strict, require_worker_token)
 
 
 def internal_event_headers():
@@ -269,6 +286,15 @@ def startup_banner():
     requirement by trial, so the unset case names the variable and says exactly
     what stops working.
     """
+    from admin import sso
+
+    if sso.enabled():
+        guarded = configured_token() is not None
+        return ("info" if guarded else "warning"), (
+            f"[admin-auth] [sso] is ON, so /admin/* asks for a signed-in administrator and "
+            f"does not read {ADMIN_TOKEN_HEADER}. {ADMIN_TOKEN_ENV} (token fingerprint "
+            f"{token_fingerprint()}) guards only /internal/*"
+            + ("." if guarded else ", which is therefore open to anyone on the network."))
     if token_is_unusable():
         # Loudest of the three: the operator believes the surface is locked.
         return "error", (
