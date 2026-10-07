@@ -9,6 +9,19 @@
 
 ---
 
+## 2026-10-07 · 적재 뒤 통계 갱신(ANALYZE)도 남의 잠금에 끝없이 걸리지 않는다
+
+- **무엇** — 파일을 넣은 뒤의 ANALYZE 가 같은 표의 인덱스 만들기(CONCURRENTLY) · VACUUM · 다른 ANALYZE 에 걸리면, 파일 쓰기와 같은 상한(`lock_timeout_seconds`) 뒤 ANALYZE 만 건너뛰고 한 줄을 남깁니다. 파일은 SUCCESS 이고 폴더는 다음 파일로 갑니다. 잠금 상한으로 실패한 외부 소스 파일도 다음 외부 스윕이 다시 돌립니다. `ingestion_settings.json` 에 BOM 이 붙어도 읽습니다.
+- **선언 예시** — `server/config/ingestion_settings.json`:
+  <!-- example: ingestion_timeouts_analyze -->
+  ```json
+  {"lock_timeout_seconds": 300, "analyze_after_rows": 10000}
+  ```
+- **화면에서** — 바뀐 것 없음. 서버 로그에 «ANALYZE skipped: <표> locked by …» 한 줄이 남습니다.
+- **필요한 조건** — 감시자 재기동.
+- **바뀐 동작** — 전에는 ANALYZE 가 잠금 상한 밖이어서 폴더가 다시 멈출 수 있었습니다. 이제 상한 뒤 ANALYZE 만 건너뜁니다. 통계는 다음 적재나 autovacuum 이 갱신합니다.
+- **자세히** — 이 항목과 같은 커밋 · RUN.md 같은 절.
+
 ## 2026-10-07 · 수집 폴더가 남의 잠금에 걸려도 영영 막히지 않는다
 
 - **무엇** — raws/ 폴더의 파일 쓰기가 다른 세션의 잠금을 `lock_timeout_seconds`(기본 300 s)보다 오래 기다리면, 그 파일은 FAILED 로 끝나고 폴더 일꾼은 다음 파일로 갑니다. 그 파일은 그대로 남아 다음 스윕이 마지막으로 커밋된 청크부터 다시 넣습니다. 걸린 동안에는 «무엇을 기다리나» 한 줄이, 폴더 일꾼이 도는 동안에는 스윕마다 «몇 분째 · 지금 파일» 한 줄이 남습니다.

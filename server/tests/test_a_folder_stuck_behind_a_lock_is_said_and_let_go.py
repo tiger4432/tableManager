@@ -12,6 +12,7 @@ On a real PostgreSQL, another connection holds a row lock the second chunk of f1
      folder, the file and the holder
   statement_timeout_seconds is set on the same transactions
 """
+import codecs
 import json
 import logging
 import os
@@ -26,6 +27,8 @@ from conftest import retire_dynamic_model
 from database import crud, models
 from database.database import Base
 from parsers import directory_watcher as dw
+from tests.test_a_failed_external_file_retries_on_its_own_handler import env  # noqa: F401 - its harness
+from tests.test_external_source_watcher import _write_voids
 from utils import heartbeat
 
 TABLE, CONTROL = "lock_probe_parts", "lock_probe_control"
@@ -83,14 +86,15 @@ def fixture_box(pg_engine, monkeypatch, tmp_path):
         return path
 
     class Locker:
-        """Another session holding `HELD`'s row - released by the test, or by the safety timer."""
+        """Another session holding `HELD`'s row (or what `statement` takes) - released by the
+        test, or by the safety timer."""
 
-        def __init__(self):
+        def __init__(self, statement=None):
             self.conn = pg_engine.connect()
             self.tx = self.conn.begin()
             self.pid = self.conn.execute(text("SELECT pg_backend_pid()")).scalar()
-            self.conn.execute(text('SELECT 1 FROM "%s" WHERE business_key_val = :k FOR UPDATE' % TABLE),
-                              {"k": HELD})
+            self.conn.execute(text(statement or 'SELECT 1 FROM "%s" WHERE business_key_val = :k FOR UPDATE'
+                                   % TABLE), {} if statement else {"k": HELD})
             self._timer = threading.Timer(SAFETY_RELEASE_S, self.release)
             self._timer.start()
             self._released = threading.Lock()
@@ -264,3 +268,58 @@ def test_the_lock_limit_defaults_to_the_stall_threshold_and_a_wrong_spelling_kee
     assert dw.file_write_timeouts({"lock_timeout_seconds": "5", "statement_timeout_seconds": -1}) == (stall, None)
     assert dw.file_write_timeouts({"lock_timeout_seconds": None, "statement_timeout_seconds": 30}) == (None, 30.0)
     assert dw.file_write_timeouts({"lock_timeout_seconds": 0}) == (None, None)
+
+
+@pytest.mark.pg
+def test_an_analyze_held_up_by_a_lock_is_skipped_and_the_folder_goes_on(box, caplog):
+    """Applied QA 8652ddb26: ANALYZE runs on its own connection and takes SHARE UPDATE EXCLUSIVE,
+    so a CREATE INDEX CONCURRENTLY, a VACUUM or another ANALYZE of the table held it without end."""
+    box["settings"](lock_timeout_seconds=1, analyze_after_rows=1)
+    handler = box["handler_for"](TABLE)
+    for name, row in (("f1.csv", "A-1,Cap,1\n"), ("f2.csv", "A-2,Cap,2\n")):
+        box["write"](handler, os.path.join("batch", name), HEADER + row)
+    locker = box["Locker"]('LOCK TABLE "%s" IN SHARE UPDATE EXCLUSIVE MODE' % TABLE)
+    try:
+        with caplog.at_level(logging.WARNING):
+            _tree(handler, "batch")
+    finally:
+        locker.release()
+    assert [box["logs"](name)[-1][0] for name in ("f1.csv", "f2.csv")] == ["SUCCESS", "SUCCESS"]
+    skipped = [r.getMessage() for r in caplog.records if "ANALYZE skipped" in r.getMessage()]
+    said = "[%s] ANALYZE skipped: %s locked by waiting Lock:relation on pid %d " % (TABLE, TABLE, locker.pid)
+    assert len(skipped) == 2 and all(line.startswith(said) for line in skipped), skipped
+    assert not os.path.exists(os.path.join(handler.raws_path, "batch"))
+
+
+def test_the_ingestion_settings_file_is_read_with_a_bom(monkeypatch, tmp_path):
+    """총괄 10-07: the same reading as table_config (crud._decode_config_text)."""
+    path = tmp_path / "ingestion_settings.json"
+    path.write_bytes(codecs.BOM_UTF8 + b'{"lock_timeout_seconds": 7}')
+    monkeypatch.setattr(dw, "INGESTION_SETTINGS_PATH", str(path))
+    assert dw.file_write_timeouts() == (7.0, None)
+
+
+def test_both_sweeps_try_again_a_file_that_waited_on_a_lock_and_only_that_file(env, monkeypatch):
+    """총괄 10-07 ③ 1) ㄱ: the raws/ sweep and the external sweep skip by one rule (`_tried_already`)."""
+    import directory_watcher as running                 # the module the external harness wires
+    dispatched = []
+    monkeypatch.setattr(running.IngestionHandler, "_handle_event",
+                        lambda self, fp: dispatched.append(os.path.basename(fp)))
+    watcher = env["watcher"]({})
+    raws = watcher.raws_root_for("rt_parts")
+    top = os.path.join(raws, "parts.csv")
+    with open(top, "w", encoding="utf-8") as fh:
+        fh.write(HEADER + "P-1,Cap,1\n")
+    external = str(_write_voids(env["external"]))
+
+    def sweep():
+        dispatched.clear()
+        watcher.sweep_existing_files()
+        watcher.sweep_external_sources()
+        return sorted(dispatched)
+
+    assert sweep() == ["parts.csv", "voids.json"]                    # first sight
+    assert sweep() == []                                              # tried at this (mtime, size)
+    for root, path in ((raws, top), (watcher.raws_root_for("void_obs"), external)):
+        watcher.handlers_by_raw_path[root].waiting_on_a_lock.add(os.path.abspath(path))
+    assert sweep() == ["parts.csv", "voids.json"]

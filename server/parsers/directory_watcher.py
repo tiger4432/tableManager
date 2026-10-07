@@ -25,6 +25,7 @@ from database.database import SessionLocal
 from maps import alignment_batch_counts
 from sqlalchemy import text as _sa_text
 from database import crud, schemas
+from database.crud import _decode_config_text
 from utils import heartbeat
 
 # [B1/B2 follow-up] Name of the progress beat the ingestion path publishes.
@@ -178,15 +179,36 @@ def _analyze_after_load(table_name: str, rows: int, why: str = None) -> bool:
         # driver is not psycopg2 lands in the warning below exactly as it did before.
         import psycopg2
 
-        connection = psycopg2.connect(
-            url.set(drivername="postgresql").render_as_string(hide_password=False))
+        dsn = url.set(drivername="postgresql").render_as_string(hide_password=False)
+        connection = psycopg2.connect(dsn)
+        sampler = None
         try:
             connection.set_isolation_level(0)
             with connection.cursor() as cursor:
                 if search_path:
                     cursor.execute("SET search_path TO %s" % search_path)
-                cursor.execute(f'ANALYZE "{table_name}"')
+                # 🔴 THE FILE'S LOCK LIMIT HERE TOO (총괄 10-07 ③, 응용 QA 8652ddb26): ANALYZE
+                # waits on a CREATE INDEX CONCURRENTLY · VACUUM · another ANALYZE of the table,
+                # and a wait without end stops the folder again. Past it, only ANALYZE is skipped.
+                limit = file_write_timeouts()[0]
+                if limit:
+                    cursor.execute("SET lock_timeout = '%dms'" % int(limit * 1000))
+                    if load_ingestion_settings().get(WAIT_SAMPLE_SETTING, True):
+                        sampler = ChunkWaitSampler(dsn, connection.get_backend_pid()).start()
+                try:
+                    cursor.execute(f'ANALYZE "{table_name}"')
+                except Exception as analyze_err:                       # noqa: BLE001
+                    if not db_safety.waited_past_the_lock_timeout(analyze_err):
+                        raise
+                    if sampler is not None:
+                        sampler.stop()
+                    logger.warning("[%s] ANALYZE skipped: %s locked by %s", table_name, table_name,
+                                   sampler.blocker if sampler is not None and sampler.blocker
+                                   else "a session the sampler did not see")
+                    return False
         finally:
+            if sampler is not None:
+                sampler.stop()
             connection.close()
         logger.info("[%s] statistics re-analysed after %d row(s) in %.3fs - %s",
                     table_name, rows, time.time() - started,
@@ -361,12 +383,13 @@ INGESTION_SETTINGS_PATH = paths.config_path("ingestion_settings.json")
 
 
 def load_ingestion_settings() -> dict:
-    """인제션 시스템 설정(ingestion_settings.json) 로드 — 실패 시 빈 dict(기본값 동작)."""
+    """인제션 시스템 설정(ingestion_settings.json) 로드 — 실패 시 빈 dict(기본값 동작).
+    table_config 와 같은 읽기(BOM 을 읽는다, 총괄 10-07)."""
     import json
     try:
         if os.path.exists(INGESTION_SETTINGS_PATH):
-            with open(INGESTION_SETTINGS_PATH, "r", encoding="utf-8") as f:
-                loaded = json.load(f)
+            with open(INGESTION_SETTINGS_PATH, "rb") as f:
+                loaded = json.loads(_decode_config_text(f.read()))
             if isinstance(loaded, dict):
                 return loaded
     except Exception as e:
@@ -3785,6 +3808,12 @@ class ExternalSourceEventHandler(FileSystemEventHandler):
             self.dispatch_path(event.src_path)
 
 
+def _tried_already(memo, key, signature, handler, abs_path):
+    """The one rule both sweeps skip by (총괄 10-07 ③): a file tried at this (mtime, size) is
+    not tried again - unless that try waited past the lock timeout, which was not the file."""
+    return memo.get(key) == signature and abs_path not in handler.waiting_on_a_lock
+
+
 def _say_what_stalled_files_wait_on():
     """The stalled line every claimed worker says (`heartbeat.stalled_lines`), for the watcher's
     files - once per episode; the sweep's line repeats 「running for N min」 (총괄 10-07 ③)."""
@@ -4133,8 +4162,7 @@ class WorkspaceWatcher:
                         continue  # 열거 중 이동/삭제된 파일
                     seen_paths.add(fp)
                     sig = (st.st_mtime, st.st_size)
-                    if (self._sweep_attempted.get(fp) == sig
-                            and os.path.abspath(fp) not in handler.waiting_on_a_lock):
+                    if _tried_already(self._sweep_attempted, fp, sig, handler, os.path.abspath(fp)):
                         continue
                     # The tier-1 key comes off the stat we ALREADY took — the
                     # whole point of asking here rather than one dispatch deeper.
@@ -4252,7 +4280,8 @@ class WorkspaceWatcher:
                     cache_key = (source_id, abs_path)
                     seen_keys.add(cache_key)
                     signature = (stat.st_mtime, stat.st_size)
-                    if self._external_sweep_attempted.get(cache_key) == signature:
+                    if _tried_already(self._external_sweep_attempted, cache_key, signature,
+                                      target["handler"], abs_path):
                         continue
                     candidates.append((
                         stat.st_mtime, source_id, abs_path, target["handler"],

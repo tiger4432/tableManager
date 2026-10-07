@@ -1,5 +1,20 @@
 # 지금 돌리면 되는 것
 
+> ## [10-07 밤 · 후속] **멈춘 수집 폴더 후속 — 적재 뒤 ANALYZE 에도 같은 잠금 상한 · 외부 소스 파일도 다음 스윕에 다시 · ingestion_settings.json 의 BOM — 이주 «없음» · 재기동 «필요»(감시자)**
+>
+> ```
+> 무엇이 바뀌나  적재 뒤 ANALYZE(analyze_after_rows 를 넘은 파일)도 lock_timeout_seconds 를 넘게 기다리지 않는다 — 넘으면 ANALYZE 만 건너뜀, 파일은 SUCCESS
+>                (같은 표에 CREATE INDEX CONCURRENTLY · VACUUM · 다른 ANALYZE 가 돌 때 폴더가 다시 멈추던 자리)
+>              잠금 상한으로 실패한 외부 소스 파일도 raws/ 파일처럼 다음 외부 스윕이 다시 돌린다
+>              ingestion_settings.json 에 BOM 이 붙어도 읽는다 — 전에는 경고 한 줄 뒤 모든 값이 기본값이었다
+> 볼 줄          [<표>] ANALYZE skipped: <표> locked by waiting Lock:relation on pid <쥔 pid> (<앱>, <상태> …): <그 질의>
+>                 = 그 표의 통계 갱신만 미뤄졌다. 다음 적재나 autovacuum 이 갱신한다. 할 일 없음
+>                   같은 쥔 쪽이 줄마다 나오면 그 세션(인덱스 만들기 · VACUUM)이 끝났는지 본다
+> 급할 때       lock_timeout_seconds 를 null 로 — 파일 쓰기와 ANALYZE 둘 다 전처럼 끝없이 기다린다
+> ```
+
+---
+
 > ## [10-07 밤] **멈춘 수집 폴더 — 걸림 줄 · 스윕 줄 · 파일 쓰기 잠금 상한(기본 300 s) — 이주 «없음» · 재기동 «필요»(감시자)**
 >
 > ```
