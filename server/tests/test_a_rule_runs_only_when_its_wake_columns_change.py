@@ -185,10 +185,11 @@ def test_the_join_wakes_on_its_key_and_its_take_columns_on_both_sides(db, caplog
         _drain(db, stood)
     assert len(_skipped(caplog, "wc_join")) == 1
 
-    # value side - the key changes
+    # value side - the key changes: f2 takes v1's value, and f1 gives back the one v1 no longer
+    # feeds (총괄 b13de0353 - an edited source row's stamped layer is withdrawn)
     _push(db, VAL, [{"vid": "v1", "k": "D"}])
     _drain(db, stood)
-    assert _values(db)["f2"] == "2"
+    assert _values(db) == {"f1": None, "f2": "2"}
 
     # `:target` side - a new row, then its key changes
     _push(db, VAL, [{"vid": "v2", "k": "E", "v": "9"}])
@@ -208,9 +209,13 @@ def test_the_join_wakes_on_its_key_and_its_take_columns_on_both_sides(db, caplog
     assert len(_skipped(caplog, target["name"])) == 1
 
     # `:target` side - the join's own take write names only what it wrote
+    from chain import cell_layer
+
     wrote = [e for e in db.query(models.DatabaseOutbox).filter(
                  models.DatabaseOutbox.table_name == FILL).all()
-             if event_constants.channel_of(get_payload_dict(e)) == event_constants.CHANNEL_CHAIN]
+             if event_constants.channel_of(get_payload_dict(e)) == event_constants.CHANNEL_CHAIN
+             and not str(get_payload_dict(e).get("transaction_id") or "").startswith(
+                 cell_layer.R2_AUDIT_SOURCE)]    # the withdrawal above writes too, not as the take
     assert wrote
     assert {worker.fire_refusal(target, e) for e in wrote} == {worker.FIRE_REFUSED_COLUMNS}
 

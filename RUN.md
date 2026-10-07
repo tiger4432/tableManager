@@ -1,5 +1,35 @@
 # 지금 돌리면 되는 것
 
+> ## [10-07 밤 · ②③] **원천 행을 «고칠 때»도 그 행이 먹이던 칸을 거둔다 · @mapper 출력에 출처 기본 도장 · 회수 경고는 «그 규칙의 출력»으로 — 이주 «없음» · 재기동 «필요»(체인 워커)**
+>
+> ```
+> 무엇이 바뀌나  출처를 찍는 규칙(낸 행에 origin_row_id 가 실린 규칙)이 고친 원천 행에 다시 돌면, 쓰기 뒤에 그 행이 찍은 층 중
+>                «그 규칙의 칸»이고 «이번 쓰기가 그 원천 행으로 쓴 행 밖»인 것을 거둔다
+>                보류 복사에서 좌표(키)를 고치면 옛 키 행에서 그 층만 빠지고 보류를 다시 센다 -> 원장에서 옛 키 원자가 빠진다
+>                조인에서 값 쪽 행의 키를 고치면 옛 키로 채웠던 행의 가져온 칸이 빈다
+>                같은 행의 다른 규칙 칸 · 사람 층 · 핀은 그대로. 키가 안 바뀐 수정은 거두는 것 0
+>              지울 때는 그 원천 행이 «찍은 층»만 거둔다 — 같은 이름 층(chain_ingestion)을 쓰는 다른 원천 행의 칸은 이제 안 거둔다
+>              @mapper 의 출력 행이 입력 행을 이어 왔으면(거르기 · 정렬 · reset_index 포함) 그 입력 행이 출처로 찍힌다
+>                집계(groupby · agg)나 칸을 골라 새로 만든 표는 안 찍힌다
+>              회수 경고는 그 규칙이 «이 프로세스에서» 낸 행에 출처가 없을 때만 — 재기동 뒤 아직 안 돈 규칙은 말하지 않는다
+> 볼 줄          [ChainRetract] table=<원천 표> edited_rows=<N> groups=<G> cells_withdrawn=<C> protected_skipped=<P> rows_told=<R>
+>                 = 고친 원천 행 N 개가 더는 안 먹이는 층 C 개를 거뒀다. 출처를 찍는 규칙이 고친 행을 받은 묶음마다 한 줄(0 이어도)
+>              [ChainRetract] table=<원천 표> deleted_rows=<N> … — 지울 때, 그대로
+>                 P(사람 층 건너뜀)는 이제 «실제 사람 층 수» — 전에는 칸 수 x 행 수의 곱이었다
+>              [ChainRetract] <규칙>: 「<종류>」 규칙의 출력에 «어느 행에서 왔는지»가 실리지 않습니다 — …
+>                 = 그 규칙이 쓴 칸은 원천 행을 지우거나 고쳐도 남는다. 맵퍼가 출력 행에 origin_row_id 를 실어야 한다
+>              🔴 [ChainRetract] Table: '<표>' | TX: … | rule: <규칙> | the edit's withdrawal failed AFTER a committed write; old layers may remain
+>                 = 쓰기는 들어갔고 거두기만 실패. 옛 층이 남을 수 있다 — 아래 «옛 키 행 정리»로 다시 거둔다
+> 옛 키 행 정리  이 착지 «전»에 좌표를 고쳐 남은 옛 키 행은 두 규칙을 «이 순서로» 리플레이한다 (스크립트 리플레이는 다른 규칙을 안 깨운다)
+>                1  conda run -n assy_manager python server/scripts/chain_replay_cli.py replay <보류 다시 세기 규칙> --apply
+>                2  conda run -n assy_manager python server/scripts/chain_replay_cli.py replay <복사 규칙> --apply
+>                🔴 순서를 바꾸면 옛 행의 값이 먼저 비고 보류는 agreed 인 채로 남아, 원장 후속이 그 행을 missing value 로 실패시킨다
+>                   그때는 1 을 돌리고 python -m ledger followup --requeue-failed (server 폴더)
+> 급할 때       스위치 없음. 되돌리려면 이 커밋을 되돌리고 체인 워커 재기동
+> ```
+
+---
+
 > ## [10-07 밤 · ①] **입력 행을 지울 때의 회수를 표마다 한 번에 — 이주 «없음» · 재기동 «필요»(체인 워커)**
 >
 > ```

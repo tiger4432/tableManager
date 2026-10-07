@@ -75,12 +75,12 @@
 
 ### ⭐⭐ **셀을 쓸 때 «어느 행에서 읽었나»를 도장 찍어 둔다 — 그 행이 지워지면 그 도장으로 겨냥한다** (2026-09-16 등록 · S-280 `e1318d28` · 판정 434)
 - **무엇**: 「이 값은 저 행에서 읽었다」를 셀 옆에 적어 두면, 그 행이 DELETE 될 때 **그 셀들만** 철회할 수 있다. 단위가 «셀»이라 번역 단계가 없다 — 키 단위 도장은 「키→셀」을 풀어 줄 조인이 따로 있어야 한다. 핵심은 **도장을 «소스 이름»으로 철자하지 않는 것**이다 — 그러면 우선순위 사전이 미등재를 99 로 돌려 **도장이 자기가 찍은 값을 강등시킨다.**
-- **어디**: 컬럼 `cell_sources.origin_row_id` (`database/models.py:556` · 부분 인덱스 `idx_sources_by_origin` 은 **그 컬럼을 앞에 둔다** — 철회는 row id 만 들고 시작한다) · 실어 나르기 `schemas.GeneralUpdateItem.origin_row_id` → `crud.apply_row_update_internal` · 되읽기·철회 `chain/cell_layer.py::cells_stamped_by` · `::withdraw_by_origin` · 배선 `chain/ingestion_worker.py::_retract_what_those_rows_fed`(후속 드레인의 DELETE 갈래 — 🆕 10-03 거둔 뒤 층을 잃은 행마다 EDIT 하나, `withdraw_by_origin` 의 `lost_a_layer`) · 「이 종류는 도장을 안 찍는다」의 좌석 `chain/rule_run.py::retraction_refusal` · 마이그레이션 `migrations/add_cell_source_origin_row.sql`.
+- **어디**: 컬럼 `cell_sources.origin_row_id` (`database/models.py:556` · 부분 인덱스 `idx_sources_by_origin` 은 **그 컬럼을 앞에 둔다** — 철회는 row id 만 들고 시작한다) · 실어 나르기 `schemas.GeneralUpdateItem.origin_row_id` → `crud.apply_row_update_internal` · 되읽기·철회 `chain/cell_layer.py::cells_stamped_by` · `::withdraw_by_origin` · 배선 `chain/ingestion_worker.py::_retract_what_those_rows_fed`(후속 드레인의 DELETE 갈래 — 🆕 10-03 거둔 뒤 층을 잃은 행마다 EDIT 하나, `withdraw_by_origin` 의 `lost_a_layer`) · 🆕 10-07 고칠 때 `apply_chain_writes` 의 쓰기 뒤(출처를 찍는 규칙의 EDIT 트리거 행 × 그 규칙의 칸 × 이번 쓰기가 그 출처로 쓴 행 밖) — 둘 다 `_withdraw_and_tell` · 「이 종류는 도장을 안 찍는다」의 좌석 `chain/rule_run.py::retraction_refusal` · 마이그레이션 `migrations/add_cell_source_origin_row.sql`.
 - **언제 재사용**: 「A 가 B 를 읽어 쓴 것을 B 가 사라지면 거둬야 한다」가 필요한 **모든** 쓰기. 회수 문을 새로 만들지 말고 출처 행으로는 `withdraw_by_origin`, 층 이름 하나로는 `withdraw_source` 를 부른다 — 둘 다 같은 한 벌(`cell_layer._withdraw_cells`)을 지난다. `withdraw_source` 는 `columns`+`row_ids`+`apply` 셋을 **다 넘겨야** 겨냥한다.
 - **함정**:
   - 🔴 **마이그레이션은 «선행 조건»이지 최적화가 아니다.** `create_all` 은 있는 표에 컬럼을 안 더하므로, 안 돌리면 `apply_batch_updates` 를 지나는 쓰기가 **전부** `UndefinedColumn` 으로 죽는다.
-  - 🔴 **`source_name` 만으로 좁히면 표 전체 철회가 된다** — `chain_ingestion` 은 공유 채널 이름이라 그것만으로는 한 규칙의 승자를 못 가른다. (columns × rows) 가 그것을 가른다.
-  - 🔴 **「못 한다」를 NULL 로 말하지 마라.** NULL 은 이미 「도장이 생기기 전에 쓰였다」 뜻이다 — 한 철자에 뜻 둘은 이 라운드가 고치려던 바로 그 결함이다. 그래서 종류별 답은 `retraction_refusal` 이 **이름으로** 한다.
+  - 🔴 **`source_name` 만으로 좁히면 표 전체 철회가 된다** — `chain_ingestion` 은 공유 채널 이름이라 그것만으로는 한 규칙의 승자를 못 가른다. 🆕 [10-07 ②] (columns × rows) 곱도 못 가른다 — 같은 이름으로 다른 원천 행이 찍은 칸이 곱 안에 들어온다. 도장이 찍힌 **층 하나씩**(`cells_stamped_by`)이 가른다.
+  - 🔴 **「못 한다」를 NULL 로 말하지 마라.** NULL 은 이미 「도장이 생기기 전에 쓰였다」 뜻이다 — 한 철자에 뜻 둘은 이 라운드가 고치려던 바로 그 결함이다. 그래서 답은 `retraction_refusal` 이 **이름으로** 한다. 🆕 [10-07 ③] 그 답은 «규칙의 출력에 출처가 실렸나»(`rule_run.stamps_origin` — 이 프로세스에서 그 규칙이 마지막으로 낸 행들)다. 안 돈 규칙은 «아직 모름»이라 말하지 않고, 제품이 짓는 종류는 돌기 전에는 선언된 사실이 답한다. `@mapper` 의 출력 행은 입력 행에서 왔으면 기본으로 도장이 찍힌다(`mapper_sdk.ORIGIN_MARK`).
   - ⚠️ **여러 입력 행에서 나온 셀은 일부러 NULL 이다** — 반쪽 출처를 적으면 자기 몫이 아닌 행 때문에 셀을 거둬 간다. 같은 이유로 `enrichment_auto_confirm` 은 **일부러 도장을 안 찍는다**(답이 한 행이 아니라 뷰 위 탐색에서 오므로).
   - ⚠️ **백필은 없고 앞으로도 없다.** 그리고 `user` 층은 철회에서 **건너뛰고 센다**(`protected_skipped`) — 던지면 같은 삭제의 다른 그룹까지 못 거둔다.
 

@@ -123,96 +123,82 @@ def _resolve_cell(table_name: str, col_types: dict, row, col: str,
         "changed": crud.values_differ(old_val, new_val, col_types.get(col, "string")),
     }
 
-def cells_stamped_by(db, origin_row_ids, chunk_size: int = DEFAULT_CHUNK_SIZE) -> dict:
-    """`{(table_name, source_name): (columns, row_ids)}` for cells these rows fed.
+def cells_stamped_by(db, origin_row_ids, chunk_size: int = DEFAULT_CHUNK_SIZE) -> list:
+    """`[(table_name, row_id, column_name, source_name, origin_row_id)]` - the layers these rows fed.
 
     🔴 [S-280 · 판정 434] THE NOTE READ BACK. `origin_row_id` was written while the input
     row was still there, so this answers 「그 행이 먹인 칸이 어디인가」 after the row is
     gone — which is the one question a deleted row cannot be asked itself.
 
-    READ ONLY, grouped by (table, layer name) with the columns and rows each covers.
+    READ ONLY, one layer a tuple: a (columns x rows) group per layer name also named cells
+    another row fed under a shared name (`chain_ingestion`).
     """
     from database import models
 
     ids = [str(item) for item in (origin_row_ids or ()) if item]
-    found = {}
+    found = []
     for i in range(0, len(ids), chunk_size):
-        rows = (db.query(models.CellSource.table_name, models.CellSource.source_name,
-                         models.CellSource.column_name, models.CellSource.row_id)
-                .filter(models.CellSource.origin_row_id.in_(ids[i:i + chunk_size])).all())
-        for table_name, source_name, column_name, row_id in rows:
-            columns, row_ids = found.setdefault((table_name, source_name), (set(), set()))
-            columns.add(column_name)
-            row_ids.add(row_id)
+        found.extend(tuple(row) for row in (
+            db.query(models.CellSource.table_name, models.CellSource.row_id,
+                     models.CellSource.column_name, models.CellSource.source_name,
+                     models.CellSource.origin_row_id)
+            .filter(models.CellSource.origin_row_id.in_(ids[i:i + chunk_size])).all()))
     return found
 
 
-def withdraw_by_origin(db, origin_row_ids, apply: bool = False, log=logger.info) -> dict:
+def withdraw_by_origin(db, origin_row_ids, apply: bool = False, log=logger.info,
+                       table: str = None, columns=None, keep=()) -> dict:
     """Withdraw every cell stamped as having been read FROM one of these rows.
 
-    🔴 [S-280 · 판정 435 ③] `columns` AND `row_ids` AND `apply`, all three. Narrowing by
-    the source NAME alone is the whole-table withdrawal ruling 433 ③ found standing in
-    `retract_rows`; narrowing by (columns x rows) resolves even a shared channel name —
-    `chain_ingestion`, which `join_into` writes under by the owner's own ruling — down to
-    exactly the cells one rule wrote on the rows it wrote them on.
+    🔴 [S-280 · 판정 435 ③] THE LAYER THE STAMP NAMES, NOT ITS NAME. Narrowing by the source
+    NAME alone is the whole-table withdrawal ruling 433 ③ found standing in `retract_rows`;
+    `chain_ingestion` is a shared name (`join_into` writes under it by the owner's own ruling).
 
     ⛔ A `user` LAYER IS SKIPPED AND COUNTED, NOT RAISED ON. `withdraw_source` refuses that
     source outright, and one such group would otherwise abort the withdrawal of every other
     group in the same deletion. A human's value carrying a chain's origin stamp is a
     contradiction worth a line, not a reason to leave the rest standing.
 
-    `lost_a_layer` is {table: (columns, row ids)} of the groups withdrawn - what the delete path
+    🔴 AN EDIT IS THE SAME WITHDRAWAL, NARROWED (총괄 e35500433 · b13de0353): `table` and `columns`
+    are the rule that ran, and `keep` {(origin_row_id, row_id)} the rows its write just put that
+    origin's output on. A deletion passes none of the three.
+
+    `lost_a_layer` is {table: (columns, row ids)} of the layers withdrawn - what the delete path
     tells the rules (총괄 e11bb4de0 (나)).
     """
     stats = {"mode": "apply" if apply else "dry-run", "groups": 0, "cells_withdrawn": 0,
              "protected_skipped": 0, "lost_a_layer": {}}
-    groups_by_table = {}
-    for (table_name, source_name), (columns, row_ids) in sorted(
-            cells_stamped_by(db, origin_row_ids).items()):
-        if source_name in PROTECTED_SOURCES:
-            stats["protected_skipped"] += len(columns) * len(row_ids)
-            log("[withdraw-origin] '%s' on '%s' is a protected layer and was NOT withdrawn "
-                "— a human's value cannot carry a chain's origin, so this is worth reading",
-                source_name, table_name)
+    keep = set(keep or ())
+    claims_by_table, groups, protected = {}, set(), set()
+    for table_name, row_id, column, source_name, origin in cells_stamped_by(db, origin_row_ids):
+        if ((table is not None and table_name != table) or (columns is not None and column not in columns)
+                or (origin, row_id) in keep):
             continue
-        stats["groups"] += 1
-        groups_by_table.setdefault(table_name, {})[source_name] = (columns, row_ids)
+        if source_name in PROTECTED_SOURCES:
+            stats["protected_skipped"] += 1
+            protected.add((table_name, source_name))
+            continue
+        groups.add((table_name, source_name))
+        claims_by_table.setdefault(table_name, {}).setdefault((row_id, column), set()).add(source_name)
         lost_columns, lost_rows = stats["lost_a_layer"].setdefault(table_name, (set(), set()))
-        lost_columns.update(columns)
-        lost_rows.update(row_ids)
+        lost_columns.add(column)
+        lost_rows.add(row_id)
+    for table_name, source_name in sorted(protected):
+        log("[withdraw-origin] '%s' on '%s' is a protected layer and was NOT withdrawn "
+            "— a human's value cannot carry a chain's origin, so this is worth reading",
+            source_name, table_name)
+    stats["groups"] = len(groups)
     # 🔴 ONE WITHDRAWAL PER TABLE, NOT ONE PER LAYER NAME (총괄 10-07 ①). A copy names its layer per
     # source row, so a group was a row: 1,000 rows were 1,000 `withdraw_source` calls, each its own
-    # queries and commit - measured 332 s on PostgreSQL. The claims are read for the table at once
-    # and withdrawn in one pass with the same per-cell order, so the layers left are the same.
-    for table_name, groups in sorted(groups_by_table.items()):
-        target = resolve_target(table_name, sorted({col for cols, _rows in groups.values() for col in cols}))
-        one = _withdraw_cells(db, table_name, target, _claimed_cells(db, table_name, groups),
-                              apply=apply, log=log, label="%d source(s) claim" % len(groups))
+    # queries and commit - measured 332 s on PostgreSQL. One pass, the same per-cell order.
+    for table_name, claims in sorted(claims_by_table.items()):
+        target = resolve_target(table_name, sorted({col for _row, col in claims}))
+        one = _withdraw_cells(db, table_name, target,
+                              {cell: sorted(names) for cell, names in claims.items()},
+                              apply=apply, log=log,
+                              label="%d source(s) claim" % len({g for g in groups if g[0] == table_name}))
         stats["cells_withdrawn"] += one.get("cells_withdrawn", 0)
     return stats
-
-
-def _claimed_cells(db, table_name: str, groups: dict, chunk_size: int = DEFAULT_CHUNK_SIZE) -> dict:
-    """`{(row_id, column): [source_name, ...]}` - the cells each `source_name` claims on `table_name`
-    among ITS OWN `(columns, row_ids)`: the predicate `withdraw_source` asks, for many sources at once."""
-    from database import models
-
-    sources = sorted(groups)
-    all_rows = sorted({row for _cols, rows in groups.values() for row in rows})
-    all_columns = sorted({col for cols, _rows in groups.values() for col in cols})
-    claims = {}
-    for i in range(0, len(all_rows), chunk_size):
-        for row_id, col, source_name in (
-                db.query(models.CellSource.row_id, models.CellSource.column_name,
-                         models.CellSource.source_name)
-                .filter(models.CellSource.table_name == table_name,
-                        models.CellSource.source_name.in_(sources),
-                        models.CellSource.column_name.in_(all_columns),
-                        models.CellSource.row_id.in_(all_rows[i:i + chunk_size])).all()):
-            columns, row_ids = groups[source_name]
-            if col in columns and row_id in row_ids:
-                claims.setdefault((row_id, col), []).append(source_name)
-    return {cell: sorted(names) for cell, names in claims.items()}
 
 
 def resolve_target(table_name: str, columns: list = None):
