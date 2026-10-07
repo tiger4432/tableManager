@@ -98,6 +98,8 @@ export const initialExplorerState = Object.freeze({
   // beside a different declaration.
   testRun: null,
   testRunning: false,
+  // Which sentence the atom table shows and which atom's rows are marked (026ced7f1). It belongs to one run.
+  testRunPick: { sentence: null, atom: null },
 });
 
 const CONTEXT_COLLECTIONS = [
@@ -344,9 +346,16 @@ export function reduceExplorerState(state = initialExplorerState, action) {
     // `testRun` like any other -- only a transport failure is an error, because only that
     // one leaves nothing to read.
     case 'TEST_RUN_STARTED':
-      return { ...state, testRunning: true, testRun: null };
+      return { ...state, testRunning: true, testRun: null, testRunPick: initialExplorerState.testRunPick };
     case 'TEST_RUN_RECEIVED':
       return { ...state, testRunning: false, testRun: action.result };
+    // A second press on the same sentence or atom lets go; a new sentence lets go of the atom.
+    case 'TEST_RUN_SENTENCE_PICKED':
+      return { ...state, testRunPick: {
+        sentence: state.testRunPick?.sentence === action.sentence ? null : action.sentence, atom: null } };
+    case 'TEST_RUN_ATOM_PICKED':
+      return { ...state, testRunPick: { ...state.testRunPick,
+        atom: state.testRunPick?.atom === action.atom ? null : action.atom } };
     case 'TEST_RUN_FAILED':
       return {
         ...state,

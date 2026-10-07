@@ -1733,6 +1733,9 @@ const FLOORS = new Map([
   // New 2026-10-07 (lead dee90e340). The declaration screen's hover annotation takes no room: fixed, placed beside
   // its row when the pointer or the focus reaches it and again when its list scrolls (lead 2fdb61e00).
   ['annotation_float_harness.mjs', 8],
+  // New 2026-10-07 (lead 026ced7f1). The ledger test run's atom table: the sample in the stored spelling, the
+  // sentence filter, the atom's rows marked by row_id, an older server's screen unchanged.
+  ['test_run_atoms_harness.mjs', 21],
 ]);
 
 // ── the ceilings ────────────────────────────────────────────────────────────────

@@ -1326,6 +1326,10 @@ No effect`;
         });
         restoreScroll(saved);
       }
+    } else if (action === 'test-run-sentence') {
+      dispatch({ type: 'TEST_RUN_SENTENCE_PICKED', sentence: target.dataset.value });
+    } else if (action === 'test-run-atom') {
+      dispatch({ type: 'TEST_RUN_ATOM_PICKED', atom: target.dataset.value });
     } else if (action === 'test-run') {
       // 🔴 THE SCREEN RUNS THE REAL THING ONCE, rather than growing a second judge.
       // Measured 2026-08-21: the runtime refuses 85 ways, this screen refuses 57, and the
