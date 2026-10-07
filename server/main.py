@@ -3722,7 +3722,10 @@ async def apply_batch_updates_endpoint(
             items.append({
                 "row_id": row.row_id,
                 "is_new": is_new,
-                "data": row.data,
+                # A datetime cell is a Python datetime here, and `json.dumps` below refused it,
+                # so no write on a table with a datetime column reached a screen (총괄
+                # 9eb902922 ①). Spelled as the grid's read spells it (`_table_data_response`).
+                "data": jsonable_encoder(row.data),
                 "created_at": to_local_str(row.created_at),
                 "updated_at": to_local_str(row.updated_at)
             })
