@@ -62,8 +62,6 @@ SHIPMENT_SETUP = {
             # list, so this list is what the cursor used to declare.
             "order_by": ["shipped_at", "shipment_id"],
             "occurred_at": {"column": "shipped_at", "timezone": "Asia/Seoul"},
-            "registration_probe": [
-                {"entity_type": "Box@1", "columns": ["box"]}],
         },
         "map": {
             "implementation_id": "declarative-role", "implementation_version": 1,

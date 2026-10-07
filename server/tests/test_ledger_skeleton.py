@@ -85,8 +85,6 @@ ANCHORS = {
     # placed it: the cursor stopped being asked and became a copy of `read.order_by`,
     # written by `setup_bundle._derived_cursor`.  A stale anchor is silent here, which is
     # why it is removed by hand -- see the note above about `_validate_packs`.
-    ("_validate_registration_probe", "item_path"):
-        "sources.*.read.registration_probe.*",
 }
 
 

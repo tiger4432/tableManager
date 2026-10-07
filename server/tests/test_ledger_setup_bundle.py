@@ -1597,7 +1597,7 @@ def test_a_root_shape_problem_is_reported_without_its_downstream_consequences(tm
 
 def test_a_column_name_is_judged_against_the_relation():
     """RELATION = the catalog's columns -- order_by, occurred_at.column, driver.identity,
-    driver.group_by, mapper unit.columns, registration_probe, bindings.
+    driver.group_by, mapper unit.columns, bindings.
 
     ⚰️ A second universe, MAPPER IN (a profile binds only what `input_columns` names), was
     retired by 총괄 c38eae7cf - the read fetches a bound column. ⚰️ A third, PREPARED, left
