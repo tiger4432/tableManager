@@ -680,7 +680,7 @@ class OntologyExplorerService:
     MAX_SAMPLE_ROWS = 100
 
     def test_run(self, engine: Any, *, source_id: str,
-                 sample_rows: int = DEFAULT_SAMPLE_ROWS) -> dict[str, Any]:
+                 sample_rows: int = DEFAULT_SAMPLE_ROWS, world: str | None = None) -> dict[str, Any]:
         """Run one write-free batch for `source_id` and report what it produced.
 
         Never raises for a declaration problem -- a refusal is the ANSWER this endpoint
@@ -850,6 +850,9 @@ class OntologyExplorerService:
         # 있나」). The page was in memory and thrown away, so the screen could say how many
         # and never which. No extra scan: this is the same page the compile used.
         result["rows_sample"] = [dict(row) for row in reading.rows_sample]
+        # 🔴 WHAT THOSE ROWS BECAME (총괄 026ced7f1, 소유자 「테스트런에서 생성 원자 자세히」): the
+        #    atoms execution would hand the ledger for the rows above, as the ledger writes them.
+        self._atoms_sample(engine, setup, source_id, preview, result, world)
         if preview.molecule_count:
             result["status"] = "passed"
             self._record_test_run(result)
@@ -899,6 +902,30 @@ class OntologyExplorerService:
         except (OSError, ValueError):
             return {}
         return stored.get("sources") or {} if isinstance(stored, Mapping) else {}
+
+    def _atoms_sample(self, engine, setup, source_id, preview, result, world) -> None:
+        """`atoms_sample` · `truncated.atoms_sample` onto `result`: the atoms of the rows in
+        `rows_sample`, the same page the sentence counts come from."""
+        import event_constants
+        from . import runtime_v2
+        from .store import LedgerStore
+
+        def registered(subjects):
+            if not subjects:
+                return set()
+            connection = engine.raw_connection()
+            try:
+                return LedgerStore(engine, world=world).existing_registrations(connection, subjects)
+            finally:
+                connection.rollback()
+                connection.close()
+
+        sample, omitted = runtime_v2.atoms_sample(
+            setup.snapshot, source_id, preview,
+            [row.get("row_id") for row in result["rows_sample"]], registered)
+        result["atoms_sample"] = sample
+        result.setdefault("truncated", {})["atoms_sample"] = event_constants.truncated_note(
+            omitted > 0, omitted, "atoms past the first %d" % runtime_v2.ATOMS_SAMPLE_LIMIT)
 
     def _record_test_run(self, result: Mapping[str, Any]) -> None:
         """Remember a PASS, against the exact declaration text that passed.

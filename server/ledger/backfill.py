@@ -1682,8 +1682,11 @@ def _sample_columns(plan) -> tuple:
     for name in (_page_key(plan),) + tuple(plan.driver.cursor_columns):
         if name and name not in columns:
             columns.append(str(name))
+    from .event_frame import FRAME_ROW_ID_COLUMN
+
     occurred = getattr(plan.driver, "occurred_at", None)
-    for name in (getattr(occurred, "column", None),):
+    # The row id, when the relation has one, is what the atom sample points back with.
+    for name in (getattr(occurred, "column", None), FRAME_ROW_ID_COLUMN):
         if name and name not in columns:
             columns.append(str(name))
     return tuple(columns)
@@ -1760,10 +1763,12 @@ def preview_first_batch(engine, setup, source, fetch_rows=PREVIEW_FETCH_ROWS,
                 break
             pages += 1
             rows_read += len(complete)
-            # 🔴 THE FIRST PAGE THAT ANSWERED, AND NO EXTRA READ (S-92). These rows are
+            # 🔴 THE PAGE WHOSE PREVIEW IS REPORTED, AND NO EXTRA READ (S-92). These rows are
             # already in memory; the run used to count them and drop them, which is why
-            # the screen could say 「200 rows」 and not 「which 200」.
-            if sample_rows and not sampled:
+            # the screen could say 「200 rows」 and not 「which 200」. The last page read is the
+            # one `answered` describes, so the rows, the atoms and the sentence counts speak of
+            # one page (총괄 026ced7f1) - the first page did, until a blank head was skipped.
+            if sample_rows:
                 sampled = _rows_sample(plan, complete, sample_rows)
             # 🔴 THE WHOLE PAGE'S KEYS, SO A REFUSAL CAN BE LOOKED UP (S-92 판정 251). An
             # operator finds a row in their table by its KEY, not by a position in a frame
