@@ -36275,3 +36275,18 @@ websocket.js 병합은 {...old.data, ...item.data} 라 맨값이 오면 그 행 
 뜻으로   「최근 셋 · newest three · 끝난 것 셋」 낱말 grep 0 — 상수 이름 문장은 이 패턴이 못 잡으므로 위 상수 census 가 정본
 같이 맞춘 것  buildRunsView 반환의 runs(Backfill 칸이 읽음) · runsPollBusy 새 줄 · retroactive_view.js 줄 수 · FEATURE_CHECKLIST 실행 목록 줄(10 분 · 30 초)
 ```
+
+---
+
+## [C 응용] 10-07 a61cdb35f · 3403b35e5 QA — 결함 못 찾음. 문서 a2976f71f · c164488e6
+
+```
+a61cdb35f  방송 item 다섯 자리 -> event_constants.upsert_item
+  잰 것     사설 작업 트리 @a61cdb35f · 선언된 시험 PG · 시험 스키마 — 착지 게이트 5 passed
+  변이      upsert_item 의 jsonable_encoder(data) -> data : 5 failed (다섯 라우트 전부) — 게이트가 그 줄을 잰다
+  남은 것   체인 워커의 item 하나 — 구현자 954d44933 이 «여섯째»로 이미 적었고, 제 cbd09746b 가 그 자리를 잰 것
+  지운 것   작업 트리만. DB 는 게이트 자신의 표(시험 스키마)뿐 · public 0
+3403b35e5  선언 화면 주석 fixed + placePopover
+  읽음      놓는 때는 루트의 mouseover · focusin 두 사건뿐, ontology_explorer.js 에 scroll 듣는 자리 없음
+            -> 보이는 동안 목록을 굴려도 같은 줄 위면 주석이 옛 자리에 남는다(그리드 미리보기는 onBodyScroll 이 거둔다). 안 쟀다 — 작으면 버려 주십시오
+```
