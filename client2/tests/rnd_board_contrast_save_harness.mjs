@@ -48,7 +48,7 @@ const CONTROL = 'w:good-1';
 const QUESTION = { legacyRoute: 'candidate', direction: 'outgoing', node_limit: 1000 };
 
 /** The tables' routes, as far as this part touches them. `compute` is what the chain writes on a run. */
-function fakeTables({ refuseSave, refuseList } = {}) {
+function fakeTables({ refuseSave, refuseList, listStatus } = {}) {
   const server = { runs: [], puts: [], gets: [] };
   server.compute = (runId, cells) => {
     const row = server.runs.find((r) => r.data.run_id && r.data.run_id.value === runId);
@@ -69,7 +69,7 @@ function fakeTables({ refuseSave, refuseList } = {}) {
     }
     server.gets.push(u);
     if (u.pathname === '/tables/contrast_run/data') {
-      if (refuseList) return reply(422, { detail: refuseList });
+      if (refuseList) return reply(listStatus || 422, { detail: refuseList });
       if (!['id', 'updated_at', 'row_id', 'run_id', 'until'].includes(u.searchParams.get('order_by'))) {
         return reply(422, { detail: `cannot sort by '${u.searchParams.get('order_by')}'` });
       }
@@ -278,6 +278,20 @@ async function suite(mods) {
   const empty = seat(emptyServer);
   await settle();
   ok('G4 a readable empty list says it is empty', lines(empty.host, 'rb-cand-line--absent').includes(CONTRAST_WORDS.empty));
+  // The box's answer when the run table is not declared (measured 10-08: 404 "Table 'contrast_run' not found").
+  const undeclared = seat(fakeTables({ refuseList: "Table 'contrast_run' not found", listStatus: 404 }));
+  await settle();
+  ok('G7 a run table the box does not declare is said as not set up - a fact, not a refusal, not empty (lead 10-08)',
+    JSON.stringify(lines(undeclared.host, 'rb-cand-line--absent')) === JSON.stringify([CONTRAST_WORDS.notSetUp])
+      && CONTRAST_WORDS.notSetUp === 'Not set up — table contrast_run is not declared'
+      && lines(undeclared.host, 'rb-cand-line--refused').length === 0,
+    lines(undeclared.host, 'rb-cand-line').join(' | '));
+  const broken = seat(fakeTables({ refuseList: 'boom', listStatus: 500 }));
+  await settle();
+  ok('G8 any other failure of the list is still a refusal',
+    JSON.stringify(lines(broken.host, 'rb-cand-line--refused')) === JSON.stringify(['Saved contrasts unreadable — boom'])
+      && !lines(broken.host, 'rb-cand-line--absent').includes(CONTRAST_WORDS.notSetUp),
+    lines(broken.host, 'rb-cand-line').join(' | '));
   // The server's other refusal shapes (lead d4a949a8c ㉮, C-52): a named reason and a list.
   const refusedWith = async (detail) => {
     const s = seat(fakeTables({ refuseSave: detail }));
@@ -483,6 +497,14 @@ async function suite(mods) {
 }
 
 const MUTANTS = [
+  { name: 'an-undeclared-table-reads-as-a-refusal', catches: ['G7'], file: 'api.js',
+    from: '        if (res.status === 404) return { ok: false, notSetUp: true };\n', to: '' },
+  { name: 'every-failure-reads-as-not-set-up', catches: ['G8'], file: 'api.js',
+    from: '        if (res.status === 404) return { ok: false, notSetUp: true };\n',
+    to: '        if (!res.ok) return { ok: false, notSetUp: true };\n' },
+  { name: 'not-set-up-says-nothing', catches: ['G7'],
+    from: "    if (this.listNotSetUp) list.appendChild(el('div', 'rb-cand-line rb-cand-line--absent', CONTRAST_WORDS.notSetUp));\n    else if",
+    to: '    if' },
   { name: 'the-save-reads-only-a-message', catches: ['G5', 'G6'], file: 'api.js',
     from: "    const said = refusalSentence(await res.json().catch(() => null), res.status, '');\n",
     to: "    const body = await res.json().catch(() => null);\n    const detail = body && body.detail;\n"

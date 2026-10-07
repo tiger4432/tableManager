@@ -1564,7 +1564,8 @@ const FLOORS = new Map([
   // 70 -> 71 (lead ccf374d48 answer 1): Default's saved list reads the runs with no world.
   // 71 -> 72 (lead 120450931 ①): the empty choice is named after the operating world; the default by its name.
   // 72 -> 73 (lead 99032248f): two worlds - every request carries both in order, the run names them comma-joined.
-  ['rnd_board_contrast_save_harness.mjs', 73],
+  // 73 -> 75 (lead 10-08): an undeclared run table is said as not set up; any other list failure stays a refusal.
+  ['rnd_board_contrast_save_harness.mjs', 75],
   // the board part: the walk itself. 32 -> 34 (D5 and its mutant X11, lead d4a949a8c ㉱): the two
   // lists walk through one prelude. 34 -> 39 (H0-H2 and X12 X13, lead 9dd1e378b): measured reads the
   // hops' predicates, the same answer the retired pairing function gave on the same fixture.

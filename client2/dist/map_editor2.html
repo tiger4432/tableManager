@@ -6,7 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <!-- FOUC 방지: CSS 로드 전에 저장된 테마를 <html data-theme>에 스탬프 (theme.js와 동일 키) -->
   <script>(function(){try{var t=localStorage.getItem('theme');document.documentElement.setAttribute('data-theme',t==='dark'?'dark':'light');}catch(e){document.documentElement.setAttribute('data-theme','light');}})();</script>
-  <title>AssyManager - Map Editor 2 / 좌표계 확정</title>
+  <title>AssyManager - Map Editor 2 / Confirm coordinate frame</title>
   <link rel="icon" type="image/svg+xml"
     href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22><circle cx=%2212%22 cy=%2212%22 r=%229%22 fill=%22none%22 stroke=%22%2354c2f5%22 stroke-width=%222%22/><path d=%22M4 12h16M12 4v16%22 stroke=%22%2354c2f5%22 stroke-width=%221%22/></svg>" />
   <!-- Google Fonts (client2 공통 톤: Outfit + JetBrains Mono) -->
@@ -15,7 +15,7 @@
   <link
     href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
     rel="stylesheet">
-  <!-- 디자인 토큰 SSOT. <link>로 직접 물려 JS 엔트리 없이도 이 페이지가 단독 렌더된다. -->
+  <!-- 디자인 토큰 SSOT. <link>로 직접 물려 JS 엔트리 없이도 이 페이지가 단독 렌더된다. -->
   <script type="module" crossorigin src="/assets/map_editor2-CYwrM-wZ.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/tokens-C_y8d5Ap.js">
   <link rel="modulepreload" crossorigin href="/assets/config-BUp4smhE.js">
@@ -60,7 +60,7 @@
           </svg>
         </div>
         <div>
-          <h1>좌표계 확정</h1>
+          <h1>Confirm coordinate frame</h1>
           <div class="logo-sub">설비 · 제품 단위 좌표계</div>
         </div>
       </div>
@@ -881,7 +881,7 @@
 
   <div id="toast-container"></div>
 
-  <!-- MODULE-ENTRY: 배선 레인이 붙였다. 이 파일에서 배선이 건드리는 유일한 줄이다. -->
+  <!-- MODULE-ENTRY: 배선 레인이 붙였다. 이 파일에서 배선이 건드리는 유일한 줄이다. -->
 </body>
 
 </html>

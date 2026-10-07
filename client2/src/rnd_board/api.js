@@ -393,13 +393,6 @@ export async function fetchSubgraph(params) {
   } else {
     query.set('id', nodeId);
   }
-  // 🔴 `collect` LEFT 2026-08-28 (round Z). It was TRUE and load-bearing when it was written:
-  //    the walk collected one node KIND and this argument chose which, and naming it here was
-  //    the fix for a screen that had been landing on the server default by accident. Revision 6
-  //    ended the kinds -- every node is a declared entity now -- and the route dropped the
-  //    parameter the same day, so the server had been IGNORING this line rather than refusing
-  //    it: no error, no warning, and a screen that looked like it was still asking. What
-  //    narrows a walk is `follow`, which is a predicate the declaration owns.
   // The signed sets the route already declares. Absent lists change nothing: a request that
   // names neither reaches the server exactly as it did before.
   for (const id of positive || []) query.append('positive', id);
@@ -1553,11 +1546,6 @@ export const LEGACY_ROUTES = Object.freeze({
     // 🔴 `positive`/`negative` are the marking itself, carried through unchanged. A start with
     //    neither is the single-seed call this screen already makes; the contract's control
     //    side arrives the day a part passes them (`task/MARKING_CONTRACT.md` §1).
-    // 🔴 `collect` USED TO BE NAMED HERE, and naming it was right while it existed: the walk
-    //    collected one node kind, this row wanted `quantity`, and leaving it off meant landing
-    //    on a server default by accident. Revision 6 ended the kinds and the route dropped the
-    //    argument on 2026-08-28, so the line stopped being a choice and became a string the
-    //    server discards. Removed in round Z with the parameter itself.
     params: (start) => (start.value
       ? { nodeId: start.value, positive: start.positive, negative: start.negative }
       : {}),
@@ -1572,8 +1560,7 @@ export const LEGACY_ROUTES = Object.freeze({
   //    서버가 `finding_kind`·`position` 을 제대로 실으면 «이 선언도 부품도 안 바뀌고» 값만
   //    나타나야 합니다. 그날 그게 이 항목이 맞았다는 증거입니다.
   // 🔴 `point` LEFT 2026-08-28 (round Z). It was already the walk -- the same fetch and the
-  //    same model as `candidate`, differing only by a `collect` argument the server stopped
-  //    accepting. The seat that used it (chip-zoom) already declared `follow` and `hops`, so
+  //    same model as `candidate`, differing only by a `collect` argument. The seat that used it (chip-zoom) already declared `follow` and `hops`, so
   //    what this row contributed was the NAME, and the name is the thing this round removes.
   //    The measured note above stays true and moves with the question: it now belongs to the
   //    seat's own declaration in `main.js`, which is where the question lives.
@@ -2146,6 +2133,8 @@ export function createContrastStore(deps) {
         const onWorld = world ? { filterType: 'text', type: 'equals', filter: world } : { filterType: 'text', type: 'blank' };
         const res = await doFetch(`${table(CONTRAST.runTable)}/data?limit=${limit || 10}&order_by=updated_at&order_desc=true`
           + `&filters=${encodeURIComponent(JSON.stringify({ world: onWorld }))}`);
+        // A table the box does not declare answers 404 (lead 10-08): not set up, not a failure. Others stay refusals.
+        if (res.status === 404) return { ok: false, notSetUp: true };
         if (!res.ok) return refused(res, 'Saved contrasts unreadable');
         return { ok: true, runs: contrastListModel(await res.json().catch(() => null)) };
       } catch (err) {

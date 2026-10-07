@@ -9,7 +9,7 @@
 // ═══════════════════════════════════════════════════════════════════════════════
 
 import { Panel } from './panel.js';
-import { createContrastStore, newContrastRunId } from './api.js';
+import { CONTRAST, createContrastStore, newContrastRunId } from './api.js';
 import { setDisabledReason } from '../disabled_reason.js';
 import { localShort, localHourMinute } from '../server_time.js';
 
@@ -21,6 +21,8 @@ export const CONTRAST_WORDS = Object.freeze({
   noControls: 'No controls — saved as unexamined',
   nothingMarked: 'Nothing marked — default',
   empty: 'No saved contrasts',
+  // The box declares no run table (lead 10-08): said as a fact, not as a failure.
+  notSetUp: `Not set up — table ${CONTRAST.runTable} is not declared`,
   notComputed: 'Not computed yet',
   unexamined: 'unexamined',
   incomplete: 'incomplete',
@@ -41,6 +43,7 @@ export class ContrastSavePanel extends Panel {
     this.refusal = '';
     this.runs = null;        // null = not read yet
     this.listRefusal = '';
+    this.listNotSetUp = false;
   }
 
   mount() {
@@ -56,7 +59,8 @@ export class ContrastSavePanel extends Panel {
   async loadList() {
     const got = await this.store.list(10);
     this.runs = got && got.ok ? got.runs : this.runs;
-    this.listRefusal = got && got.ok ? '' : ((got && got.message) || '');
+    this.listNotSetUp = Boolean(got && got.notSetUp);
+    this.listRefusal = (got && got.ok) || this.listNotSetUp ? '' : ((got && got.message) || '');
     this.render();
   }
 
@@ -117,7 +121,8 @@ export class ContrastSavePanel extends Panel {
     if (this.refusal) root.appendChild(el('div', 'rb-cand-line rb-cand-line--refused', this.refusal));
 
     const list = el('div', 'rb-contrast-list');
-    if (this.listRefusal) list.appendChild(el('div', 'rb-cand-line rb-cand-line--refused', this.listRefusal));
+    if (this.listNotSetUp) list.appendChild(el('div', 'rb-cand-line rb-cand-line--absent', CONTRAST_WORDS.notSetUp));
+    else if (this.listRefusal) list.appendChild(el('div', 'rb-cand-line rb-cand-line--refused', this.listRefusal));
     else if (Array.isArray(this.runs) && !this.runs.length) {
       list.appendChild(el('div', 'rb-cand-line rb-cand-line--absent', CONTRAST_WORDS.empty));
     }
