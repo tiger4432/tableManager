@@ -36372,3 +36372,22 @@ bd33605af   은퇴 이름(registration_probe · existing_registrations · regist
            같은 표의 VACUUM · ALTER · CREATE INDEX CONCURRENTLY 를 기다릴 수 있다 — 그 동안 폴더는 그 자리에 선다. 안 쟀다
 문서       config/ingestion_settings.md 키 표에 lock_timeout_seconds · statement_timeout_seconds 두 줄
 ```
+
+---
+
+## [C 응용] 10-07 a34bfbe63(요청 시간 · Server-Timing) QA — 원장을 raw 연결로 읽는 요청은 db 가 0 으로 보인다 (잼)
+
+```
+잰 것     같은 0.2 s 쿼리(select pg_sleep(0.2), 박스 DB 읽기만)를 request_timing.begin/end 안에서
+            SQLAlchemy 연결   total;dur=544.9, db;dur=210.4;desc="1 queries"   (카나리아)
+            raw_connection   total;dur=204.6, db;dur=0.0;desc="0 queries"
+왜        db 는 Engine 의 before/after_cursor_execute 훅이 센다 — engine.raw_connection() 의 DBAPI 커서는 그 훅을 안 지난다
+누가 만나나  LedgerStore.connection() 이 raw 연결이다(store.py 의 self.connection() 14 자리) · 그 밖에 raw 로 읽는 함수:
+            backfill._person_counts · backfill._scope_pages · backfill.count_excluded_but_indexed · backfill.count_orphan_atoms · backfill.count_rows_missing · backfill.index_existing_refs · backfill.preview_first_batch · backfill.preview_rescope · backfill.retranslate_drifted · backfill.rows_drifted · backfill.rows_gone_from_the_source · backfill.rows_missing_from_the_index · backfill.rows_not_yet_translated · followup._follow · followup._write_failure_receipt · observability.probe_group_head · observability.probe_keyset_head · observability.probe_source_head
+          요청 경로로 확인한 것: 원장 테스트 런(config_explorer_service.test_run -> preview_first_batch · count_rows_missing)
+          -> 그 요청의 Server-Timing 이 «db 0» 이라 「DB 가 아니다」로 읽힌다 — 오늘 이 계기를 단 이유가 바로 그 판단이다
+          observability.probe_* · store 읽기가 요청에서 불리는지는 안 셌다
+          [Slow] 줄의 db ms · queries 도 같은 수
+안 쟀다    어느 원장 라우트가 실제로 느린지 · raw 를 세는 법(커서 감싸기 등)의 비용 — 고칠지 · 어떻게는 총괄 판단
+문서      config/README 표에 server_settings.json(이 caveat 포함) · auth_config.json 두 줄
+```
