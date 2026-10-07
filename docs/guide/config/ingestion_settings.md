@@ -5,6 +5,8 @@
 
 <!-- Loader evidence (2026-07-28):
   load: server/parsers/directory_watcher.py:147 load_ingestion_settings (missing/corrupt -> {} = defaults)
+  10-07 665a5dff4: the one read is server/ingestion/settings.py read_ingestion_settings (a BOM is read);
+    load_ingestion_settings and the other three readers call it
   heavy_file_mb: directory_watcher.py:173 get_heavy_threshold_bytes (read per file event; bool/non-positive -> warn once + default 10)
   dedup_by_signature: directory_watcher.dedup_by_signature_enabled (default True)
   resume_from_checkpoint: directory_watcher.resume_from_checkpoint_enabled (default True)
