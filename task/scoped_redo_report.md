@@ -73174,3 +73174,29 @@ sqlite 전체 5 failed, 7851 passed, 338 skipped, 3 xfailed, 13214 warnings in 7
 
 여쭐 것: 운영에서 «빈 행 하나»에 대해 다음 셋을 볼 수 있으면 원인이 좁혀집니다 — 그 로그 행의 wafer 칸 층(cell_sources: 어느 source 가 무엇을 썼나) · 그 lot 의 인벤토리 행이 wafer 를 얻은 시각(감사 로그) · 그 시각 이후 조인이 쓴 행 수.
 그동안 차례대로 여섯째(체인 워커 방송)로 갑니다. 위 «안 잰 축» 중 무엇을 먼저 재야 할지 정해 주시면 그 축으로 다시 돌립니다(제 추천: 폴더 + 수천 행 파일 — 청크 커밋이 갈리는 자리).
+
+---
+
+## [10-07] 체인 워커 방송(여섯째)도 upsert_item 으로 — datetime 칸 표의 체인 쓰기가 행 갱신으로 닿는다 · 착지 dda476ce0 (총괄 9eb902922 ①)
+
+어느 DB · 어느 스키마 · 지운 것 — 게이트는 PG 시험 스키마에 표 둘(time_cell_probe · time_cell_src)을 시험마다 만들고 DROP · 박스 DB 안 씀 · 그 밖에 지운 것 0
+(BOX 읽기: 게이트의 TestClient 가 앱을 띄울 때 박스 chain_rules.json 을 읽는다 — 다섯 라우트 시험도 같음, 쓰기 없음)
+
+```
+원인     체인 워커의 «broadcast build»가 칸 값을 날로 실었다(None 만 감쌈) — datetime 칸이면 날 datetime 이
+         웹서버로 보내는 requests 직렬화에서 터지고, broadcast_at 이 안 찍혀 스윕이 늦은 «전체 새로고침»을 보냈다
+         (응용 레인 cbd09746b 이 PG 로 잼 — 이 보고는 그 결과를 다시 재지 않았다)
+고침     칸은 모두 감싼 셀 · item 은 event_constants.upsert_item — 다섯 격자 라우트와 같은 함수
+         upsert_item 을 부르는 줄(server, 시험 빼고): 6 · 「"event": "batch_row_upsert"」 메시지 머리: 6 (카나리아 def upsert_item 1)
+클라     바꿀 것 없음 — batch_row_upsert 를 읽는 곳은 websocket.js 한 곳(item.data 를 행에 섞음), 칸 값은 grid.js 의 한 함수가
+         감싼 셀 · 날 값 둘 다 읽는다. 감싼 datetime 셀 읽기는 이미 grid_datetime_render_harness B1 이 단언 — 16 passed, 0 failed; 6/6 defects caught, 0 escaped; 2/2 controls escaped.
+게이트   표가 여섯 줄: 다섯 라우트 + 체인(조인이 같은 행의 v 를 씀, 방송을 json.dumps 에 통과시켜) — 방송된 칸 == 격자 읽기 — 6 passed, 16 warnings in 7.99s
+         체인 줄의 시작 행은 v 를 비운다: 사람이 쓴 층이 체인 층보다 앞서 «보이는 값이 안 바뀌면» 방송 item 이 0 이다(처음 짠 고정물이 그것으로 빨갰음)
+변이     3/3 빨강(전부 failed 시험) · md5 전후 같음
+         RED  the chain rides a value bare again (only an empty cell wrapped) TypeError: string indices must be integers, not 'str'
+         RED  the chain builds its item by hand, past upsert_item            TypeError: Object of type datetime is not JSON serializable
+         RED  the chain spells a cell by str                                 AssertionError: assert {'e': None, '...:00:00+09:00'} == {'e': None, '...:00:00+09
+크기      5 files changed, 99 insertions(+), 37 deletions(-)
+sqlite 전체 6 failed, 7850 passed, 339 skipped, 3 xfailed, 13151 warnings in 753.86s (0:12:33) — 박스 사유 밖: test_chain_at_threshold_still_builds_the_items_it_ships[asyncio]
+         -> test_discarded_merge_budget 이 «날 칸»(data.prod_line == "L1")을 단언하고 있었다 — 같은 커밋에서 감싼 칸으로 고치고 그 파일만 다시 돌림(9 passed, 34 warnings in 3.12s)
+```
