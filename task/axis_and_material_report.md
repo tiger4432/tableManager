@@ -1,3 +1,33 @@
+> ## [16:20 디자인] 회사 SSO — 화면 쪽: 로그인 문 · 머리줄 · API 키 · 세션 거절 표지 (총괄 2095014ee, 소유자 10-07) — acbb857ee
+
+**결론** 화면이 SSO 를 따라 움직입니다. «우리 세션의 거절인가»를 묻는 자리는 `isSessionRejection` 하나입니다(401/403 + `WWW-Authenticate: Session`). 로그인 문 · 관리 화면 전송 문 · 실패 줄 분류기가 모두 이 함수를 부릅니다. SSO 가 꺼진 서버에서는 화면이 전과 같습니다.
+
+**지은 것**
+- 로그인 문(`auth_gate.js`): 페이지마다 fetch 를 한 번 감쌉니다. 그 401 이면 `/auth/login?next=<경로+검색+#조각>` 으로 한 번만 갑니다. /auth/* 요청에는 걸지 않습니다. 응답은 같은 객체 그대로이고 본문을 읽지 않습니다. 소켓이 4401 로 닫혀도 같은 문을 지납니다.
+- 머리줄 부품(`account_badge.js`): 이름과 `Log out`. 이름을 누르면 `API keys`(Create key · 한 번만 보이는 키와 Copy · 목록 · Revoke). sso:false 면 자리가 상자 없이 빕니다. 페이지 7 개 모두 `account_boot.js` 를 자기 스크립트보다 먼저 싣습니다.
+- 관리 화면: 관리자 목록 밖이면 서버 문장을 한 번 띄웁니다. 토큰 입력 창은 뜨지 않습니다. 패널 실패 줄은 Session 403 이면 `Not an administrator · ask to be on the admin list`, Session 401 이면 `Not signed in · reload to sign in` 입니다. 그 밖은 오늘 문장입니다.
+
+**잰 것** 진짜 빌드, 견본 응답(쓰기는 견본이 받음, 서버로 나간 쓰기 0).
+
+| 게이트 | 결과 |
+|---|---|
+| SSO 꺼짐, 페이지 7 개 | 머리줄 자리 display none · 그린 것 0 · 로그인 문보다 먼저 나간 요청 0 |
+| SSO 켜짐, 페이지 7 개 | 머리줄 글자 kim@corpLog out · 로그인 문보다 먼저 나간 요청 0 |
+| map_editor 자체의 맨 fetch 만 401 + Session 으로 거절 | `/api/map-presets`(호출 스택에 map_editor 조각 · 로그인 문을 지남) → `/auth/login?next=%2Fprobe%2Fsso_map_editor.html%3Fsso%3Dexpired%26refuse%3Dmap_editor-%23somewhere` |
+| 관리자 아님(403 + Session) | /admin 요청 15 개 거절 · 토스트 1 개(`This needs an administrator.`) · 패널 줄 「Not an administrator」 3 · 「proxy」 0 · 로그인으로 안 감 |
+| API 키 | 만든 키 보임 probe_key_shown_once · 닫았다 다시 열면 보이는 키 0 · 화면 · 저장소에 남음 no · Revoke 뒤 목록 nightly · 견본이 받은 쓰기 POST /auth/keys · DELETE /auth/keys/k2 |
+
+- 하니스 `auth_sso` 23 칸 실패 0, 변이 19 개 전부 이름 붙은 칸에서 잡힘. 「표지 함수 하나를 망가뜨린 변이」를 분류기 칸과 로그인 문 칸에서 각각 잡습니다. `refusal_seat` 의 변이 M2 는 503 블록 글자에 다시 겨눴습니다(제 수정이 그 기준 문자열을 가로챘음). 러너 초록 · 계약 13 개 어긋남 0.
+- 소켓 4401 은 이 상자에 그렇게 답하는 서버가 없어 하니스로만 쟀습니다.
+
+**제안 (짓지 않음)**
+
+| 항목 | 왜 | 크기 |
+|---|---|---|
+| 키 이름 칸에서 Enter 로 만들기 | 지금은 버튼만 받음 | 작음 |
+| 키를 만든 뒤 «다시 볼 수 없음»을 보이기 | 창을 닫으면 사라지는 것을 처음 쓰는 사람이 모름 — 다만 설명 문구 금지라 모양으로(예: Copy 강조) | 작음 |
+| 관리자 아님일 때 패널 폴링 멈추기 | 지금은 403 이 계속 오고 줄만 그대로 | 안 쟀음 |
+
 > ## [13:44 디자인] 원장 선언 테스트 런 — 원자 표 · 문장 거르기 · 원천 행 잇기, 그리고 표 양식을 한 파일로 (총괄 026ced7f1, 소유자 10-07) — 0f624d916
 
 **결론** 테스트 런 결과의 문장 목록 아래에 원자 표가 나옵니다. 문장 줄을 누르면 그 문장 원자만 남고, 원자 줄을 누르면 위 읽은 행 표에서 그 원자를 만든 행이 표시됩니다. 철자는 구현자가 10-07 에 보낸 그대로입니다(atoms_sample · truncated.atoms_sample · rows_sample 의 row_id). 서버 쪽은 구현자가 짓는 중이라, 지금 서버에서는 화면이 전과 같습니다.
