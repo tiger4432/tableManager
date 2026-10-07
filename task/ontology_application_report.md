@@ -36472,3 +36472,23 @@ b340386fe
     (줄 610 근처 「collect=quantity … collect=entity」 는 날짜 붙은 옛 관측이라 둠)
 문서     CODE_MAP — subgraph_view(Points from · 쌓기 · 줄 Trend) · fold_views(rememberPick) · contrast_save_panel(Not set up) — 이 보고와 같은 커밋
 ```
+
+---
+
+## [C 응용] 10-08 총괄 메시지 — b8046608b · 2332c38fa QA. api.js 에 낡은 collect 문장 둘 남음
+
+```
+① 잘린 축    묶음 머리 = truncatedWords(cutBudgets(res.truncatedAxes, res.limits)) — 상태줄도 truncatedWords(one.budgets) 이고 one.budgets 가 같은 cutBudgets 에서 온다. 같은 함수 · 같은 말 (읽음)
+② «N without»  pointsOf 가 세는 것은 data.nodes 전부다. 그 노드가 무엇이냐가 답:
+              구성원 그대로 갈래  data.nodes = 구성원 -> 구성원 중 그 속성 없는 것 (총괄 말과 같음)
+              걸은 갈래(정의 한 걸음 · Points from)  data.nodes = 그 걷기의 답 전부 — 그런데 collect 를 주면 서버가 «collect 타입만» 돌려준다:
+                잰 것(잡아 둔 진짜 서버 답) recipe 한 걸음  collect measurement_event -> 노드 4 개, 타입 ['measurement_event'] (씨앗 recipe 없음)
+                                         process 묶음   collect measurement_event -> 노드 2 개, 타입 ['measurement_event'] (씨앗 process_event · 거쳐 간 wafer 없음)
+              -> 출발 노드 · 다른 타입 노드는 안 세어진다. 세어지는 것은 collect 타입인데 그 속성이 없는 노드(다른 칸을 잰 측정 등) — 뜻대로
+③ api.js     2332c38fa 가 둘을 고쳤다. 남은 낡은 문장 둘(client2/src/rnd_board/api.js):
+                줄 1015  // 「닿는 곳」은 언제나 `hops: 1` 로 묻습니다(COLLECTS.reach), 그래서 depth 는 «질문»입니다 --
+                줄 1894  * 🔴 `createWalk` 을 못 씁니다 -- 그쪽 `collect` 는 «화면이 선언한 질문 이름»이고, 이쪽은
+                -> 1015: COLLECTS 는 이제 없다(LEGACY_ROUTES). 1894: createWalk 의 키는 legacyRoute 이고 collect 는 거절한다 — 「같은 낱말이 두 뜻」은 이제 아니다
+              (1533 · 1557 의 「같은 collect」는 옛 이름을 쓴 날짜 붙은 설명 · 610 은 날짜 붙은 옛 관측 — 둠)
+문서         CODE_MAP subgraph_view(머리줄이 자른 축 전부) · fold_views(noValue) — 이 보고와 같은 커밋
+```
