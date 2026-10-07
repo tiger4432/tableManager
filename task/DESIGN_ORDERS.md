@@ -36735,20 +36735,10 @@ OUT  그 밖 — 정의 노드(레시피)에서 한 걸음 더 가져온 다른 
 정의 노드 한 걸음(구성원에서 덩어리 술어를 반대로 한 걸음 · 덩어리 주인 타입 · 앞뒤 7일 · 이름 붙인 상한)은 승인 그대로. 공정 이벤트 덩어리는 마지막
 ```
 
-> **[총괄 -> 클라] 🔴 접기 보기 «앞»에 하나 — 걷기 화면의 collect 가 서버에 안 실린다 (10-08, 클라가 a46575078 보고에서 지나가며 본 것을 총괄이 코드로 확인)**
+> **[총괄 -> 클라] ⛔ 거둠 — 「걷기 화면의 collect 가 서버에 안 실린다」(b6453243f)는 틀렸다 (10-08 클라 정정, 총괄 확인)**
 
 ```
-사실(코드로 읽음 · 화면은 안 열어 봄)
-  서버  GET /api/ledger/subgraph 가 collect 를 받는다 — server/ledger/trace_router.py evidence_subgraph 의 collect Query
-  클라  rnd_board/api.js fetchSubgraph 가 collect 를 인자로 받고(구조 분해) 질의에 싣지 않는다. 그 옆 주석 「collect LEFT 2026-08-28 … the route dropped the parameter」는 오늘 거짓
-  닿는 곳 walk/main.js spec() 이 고른 collect 를 싣고 -> createWalkBoxWalk -> fetchSubgraph 에서 버려진다
-          그런데 화면은 「Nodes N (collect: X)」라고 적는다(walk/main.js 결과 머리줄) — 서버는 전부 돌려준 수인데 화면은 X 만 모았다고 말한다
-할 일
-  fetchSubgraph 가 collect 를 positive · negative 와 같은 모양(반복 인자, 없으면 안 실음)으로 싣는다 · 거짓 주석은 지금 참인 한 줄로 바꾼다
-  🔴 먼저 셀 것 — fetchSubgraph 를 부르는 자리 «전부»에서 collect 를 넘기는 자리가 어디인지(walk 상자 말고 rnd_board 의 다른 좌석도). 넘기는데 «전부 받는 것»에 기대던 자리가 있으면 고치기 전에 그 자리와 수를 메시지로
-게이트
-  하니스 칸 — collect 를 넘기면 질의에 실린다 · 안 넘기면 안 실린다(바이트 같음) + 변이(싣는 줄 지우기 -> 빨강)
-  진짜 빌드 — 걷기 화면에서 collect 하나 고르고 걸어 «Nodes N» 이 고른 타입 수만큼인지 · 스샷
-  UI 낱말은 그대로(새 문구 없음)
-그다음 접기 보기로 돌아간다
+fetchSubgraph 는 collect 를 싣는다 — 같은 함수 뒷부분 C-53 줄(query.append('collect', …), dec8a5df3 2026-09-06). 고칠 것 없음
+총괄도 클라도 같은 함수 «앞부분» 주석 「collect LEFT 2026-08-28 … the route dropped the parameter」만 읽고 단정했다
+남는 일 하나  그 주석 덩어리는 오늘 거짓이고 두 사람을 틀리게 읽혔다 — api.js 를 다음에 만지는 커밋에서 지운다(따로 라운드 안 연다)
 ```
