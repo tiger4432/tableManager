@@ -36405,3 +36405,6 @@ bd33605af   은퇴 이름(registration_probe · existing_registrations · regist
 문서       chain_ingestion_guide §1 origin_row_id 문단 — 고칠 때도 같은 표적 · @mapper 기본 도장(집계는 안 찍힘) · 회수 경고는 «이 프로세스에서 본» 규칙만
            CODE_MAP 의 cell_layer 줄은 구현자가 이미 넓힘
 ```
+
+> 정정(a14c5af4a 의 「값만 고침 +0.321 s」): 그 수는 시험 엔진(NullPool, 트랜잭션마다 새 연결)의 연결 비용이 대부분이었다 — 1c2bb577c 이 풀 엔진으로 다시 잼:
+> 값만 고침 1.36 s(이 단계 없이 1.34 s, 차이 0.02 s) · 키를 다 옮김 3.07 s(없이 1.43 s). 조인 퍼짐에서의 단계 시간은 여전히 안 잼 — 그 물음은 그대로. CODE_MAP cell_layer 줄의 332.5 s 도 고침
