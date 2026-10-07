@@ -1,0 +1,416 @@
+{
+ "declared_registration": [
+  {
+   "object_kind": "entity_ref",
+   "object_payload": {
+    "keys": {
+     "wafer": "W000"
+    },
+    "type": "wafer"
+   },
+   "occurred_at": "2026-08-17 10:00:00+09:00",
+   "occurred_at_basis": null,
+   "predicate": "has_wafer",
+   "source_event_id": "2c8b11b6-d8a3-5096-9dc4-65c84b6982ec",
+   "source_event_state": "source_molecule",
+   "source_raw_ref": "{\"event\":\"{\\\"relation\\\":\\\"lot_slot_wafer\\\",\\\"rows\\\":[\\\"lot_slot_wafer:{\\\\\\\"lot_slot_wafer_key\\\\\\\":\\\\\\\"K000\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"lot_slot_wafer:{\\\"lot_slot_wafer_key\\\":\\\"K000\\\"}\"]}",
+   "source_who": "lot_slot_wafer",
+   "subject_keys": {
+    "lot": "L000",
+    "slot": "1"
+   },
+   "subject_type": "lot_slot",
+   "supersedes": null
+  },
+  {
+   "object_kind": "entity_ref",
+   "object_payload": {
+    "keys": {
+     "wafer": "W001"
+    },
+    "type": "wafer"
+   },
+   "occurred_at": "2026-08-17 10:00:01+09:00",
+   "occurred_at_basis": null,
+   "predicate": "has_wafer",
+   "source_event_id": "8bac7bed-3226-51bf-bf37-2ea357de3ac0",
+   "source_event_state": "source_molecule",
+   "source_raw_ref": "{\"event\":\"{\\\"relation\\\":\\\"lot_slot_wafer\\\",\\\"rows\\\":[\\\"lot_slot_wafer:{\\\\\\\"lot_slot_wafer_key\\\\\\\":\\\\\\\"K001\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"lot_slot_wafer:{\\\"lot_slot_wafer_key\\\":\\\"K001\\\"}\"]}",
+   "source_who": "lot_slot_wafer",
+   "subject_keys": {
+    "lot": "L001",
+    "slot": "1"
+   },
+   "subject_type": "lot_slot",
+   "supersedes": null
+  },
+  {
+   "object_kind": "entity_ref",
+   "object_payload": {
+    "keys": {
+     "wafer": "W002"
+    },
+    "type": "wafer"
+   },
+   "occurred_at": "2026-08-17 10:00:02+09:00",
+   "occurred_at_basis": null,
+   "predicate": "has_wafer",
+   "source_event_id": "98c6aa0e-cb55-5221-b1f2-96279cbf759d",
+   "source_event_state": "source_molecule",
+   "source_raw_ref": "{\"event\":\"{\\\"relation\\\":\\\"lot_slot_wafer\\\",\\\"rows\\\":[\\\"lot_slot_wafer:{\\\\\\\"lot_slot_wafer_key\\\\\\\":\\\\\\\"K002\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"lot_slot_wafer:{\\\"lot_slot_wafer_key\\\":\\\"K002\\\"}\"]}",
+   "source_who": "lot_slot_wafer",
+   "subject_keys": {
+    "lot": "L002",
+    "slot": "1"
+   },
+   "subject_type": "lot_slot",
+   "supersedes": null
+  },
+  {
+   "object_kind": "entity_ref",
+   "object_payload": {
+    "keys": {
+     "wafer": "W003"
+    },
+    "type": "wafer"
+   },
+   "occurred_at": "2026-08-17 10:00:03+09:00",
+   "occurred_at_basis": null,
+   "predicate": "has_wafer",
+   "source_event_id": "4e5cb929-c9d8-5647-be55-a918240bdcbd",
+   "source_event_state": "source_molecule",
+   "source_raw_ref": "{\"event\":\"{\\\"relation\\\":\\\"lot_slot_wafer\\\",\\\"rows\\\":[\\\"lot_slot_wafer:{\\\\\\\"lot_slot_wafer_key\\\\\\\":\\\\\\\"K003\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"lot_slot_wafer:{\\\"lot_slot_wafer_key\\\":\\\"K003\\\"}\"]}",
+   "source_who": "lot_slot_wafer",
+   "subject_keys": {
+    "lot": "L003",
+    "slot": "1"
+   },
+   "subject_type": "lot_slot",
+   "supersedes": null
+  },
+  {
+   "object_kind": null,
+   "object_payload": null,
+   "occurred_at": "2026-08-17 10:00:00+09:00",
+   "occurred_at_basis": null,
+   "predicate": "register",
+   "source_event_id": "2c8b11b6-d8a3-5096-9dc4-65c84b6982ec",
+   "source_event_state": "source_molecule",
+   "source_raw_ref": "{\"event\":\"{\\\"relation\\\":\\\"lot_slot_wafer\\\",\\\"rows\\\":[\\\"lot_slot_wafer:{\\\\\\\"lot_slot_wafer_key\\\\\\\":\\\\\\\"K000\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"lot_slot_wafer:{\\\"lot_slot_wafer_key\\\":\\\"K000\\\"}\"]}",
+   "source_who": "lot_slot_wafer",
+   "subject_keys": {
+    "wafer": "W000"
+   },
+   "subject_type": "wafer",
+   "supersedes": null
+  },
+  {
+   "object_kind": null,
+   "object_payload": null,
+   "occurred_at": "2026-08-17 10:00:01+09:00",
+   "occurred_at_basis": null,
+   "predicate": "register",
+   "source_event_id": "8bac7bed-3226-51bf-bf37-2ea357de3ac0",
+   "source_event_state": "source_molecule",
+   "source_raw_ref": "{\"event\":\"{\\\"relation\\\":\\\"lot_slot_wafer\\\",\\\"rows\\\":[\\\"lot_slot_wafer:{\\\\\\\"lot_slot_wafer_key\\\\\\\":\\\\\\\"K001\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"lot_slot_wafer:{\\\"lot_slot_wafer_key\\\":\\\"K001\\\"}\"]}",
+   "source_who": "lot_slot_wafer",
+   "subject_keys": {
+    "wafer": "W001"
+   },
+   "subject_type": "wafer",
+   "supersedes": null
+  },
+  {
+   "object_kind": null,
+   "object_payload": null,
+   "occurred_at": "2026-08-17 10:00:02+09:00",
+   "occurred_at_basis": null,
+   "predicate": "register",
+   "source_event_id": "98c6aa0e-cb55-5221-b1f2-96279cbf759d",
+   "source_event_state": "source_molecule",
+   "source_raw_ref": "{\"event\":\"{\\\"relation\\\":\\\"lot_slot_wafer\\\",\\\"rows\\\":[\\\"lot_slot_wafer:{\\\\\\\"lot_slot_wafer_key\\\\\\\":\\\\\\\"K002\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"lot_slot_wafer:{\\\"lot_slot_wafer_key\\\":\\\"K002\\\"}\"]}",
+   "source_who": "lot_slot_wafer",
+   "subject_keys": {
+    "wafer": "W002"
+   },
+   "subject_type": "wafer",
+   "supersedes": null
+  },
+  {
+   "object_kind": null,
+   "object_payload": null,
+   "occurred_at": "2026-08-17 10:00:03+09:00",
+   "occurred_at_basis": null,
+   "predicate": "register",
+   "source_event_id": "4e5cb929-c9d8-5647-be55-a918240bdcbd",
+   "source_event_state": "source_molecule",
+   "source_raw_ref": "{\"event\":\"{\\\"relation\\\":\\\"lot_slot_wafer\\\",\\\"rows\\\":[\\\"lot_slot_wafer:{\\\\\\\"lot_slot_wafer_key\\\\\\\":\\\\\\\"K003\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"lot_slot_wafer:{\\\"lot_slot_wafer_key\\\":\\\"K003\\\"}\"]}",
+   "source_who": "lot_slot_wafer",
+   "subject_keys": {
+    "wafer": "W003"
+   },
+   "subject_type": "wafer",
+   "supersedes": null
+  }
+ ],
+ "declared_registration_with_attribute": [
+  {
+   "object_kind": "entity_ref",
+   "object_payload": {
+    "keys": {
+     "wafer": "W000"
+    },
+    "type": "wafer"
+   },
+   "occurred_at": "2026-08-17 10:00:00+09:00",
+   "occurred_at_basis": null,
+   "predicate": "has_wafer",
+   "source_event_id": "2c8b11b6-d8a3-5096-9dc4-65c84b6982ec",
+   "source_event_state": "source_molecule",
+   "source_raw_ref": "{\"event\":\"{\\\"relation\\\":\\\"lot_slot_wafer\\\",\\\"rows\\\":[\\\"lot_slot_wafer:{\\\\\\\"lot_slot_wafer_key\\\\\\\":\\\\\\\"K000\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"lot_slot_wafer:{\\\"lot_slot_wafer_key\\\":\\\"K000\\\"}\"]}",
+   "source_who": "lot_slot_wafer",
+   "subject_keys": {
+    "lot": "L000",
+    "slot": "1"
+   },
+   "subject_type": "lot_slot",
+   "supersedes": null
+  },
+  {
+   "object_kind": "entity_ref",
+   "object_payload": {
+    "keys": {
+     "wafer": "W001"
+    },
+    "type": "wafer"
+   },
+   "occurred_at": "2026-08-17 10:00:01+09:00",
+   "occurred_at_basis": null,
+   "predicate": "has_wafer",
+   "source_event_id": "8bac7bed-3226-51bf-bf37-2ea357de3ac0",
+   "source_event_state": "source_molecule",
+   "source_raw_ref": "{\"event\":\"{\\\"relation\\\":\\\"lot_slot_wafer\\\",\\\"rows\\\":[\\\"lot_slot_wafer:{\\\\\\\"lot_slot_wafer_key\\\\\\\":\\\\\\\"K001\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"lot_slot_wafer:{\\\"lot_slot_wafer_key\\\":\\\"K001\\\"}\"]}",
+   "source_who": "lot_slot_wafer",
+   "subject_keys": {
+    "lot": "L001",
+    "slot": "1"
+   },
+   "subject_type": "lot_slot",
+   "supersedes": null
+  },
+  {
+   "object_kind": "entity_ref",
+   "object_payload": {
+    "keys": {
+     "wafer": "W002"
+    },
+    "type": "wafer"
+   },
+   "occurred_at": "2026-08-17 10:00:02+09:00",
+   "occurred_at_basis": null,
+   "predicate": "has_wafer",
+   "source_event_id": "98c6aa0e-cb55-5221-b1f2-96279cbf759d",
+   "source_event_state": "source_molecule",
+   "source_raw_ref": "{\"event\":\"{\\\"relation\\\":\\\"lot_slot_wafer\\\",\\\"rows\\\":[\\\"lot_slot_wafer:{\\\\\\\"lot_slot_wafer_key\\\\\\\":\\\\\\\"K002\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"lot_slot_wafer:{\\\"lot_slot_wafer_key\\\":\\\"K002\\\"}\"]}",
+   "source_who": "lot_slot_wafer",
+   "subject_keys": {
+    "lot": "L002",
+    "slot": "1"
+   },
+   "subject_type": "lot_slot",
+   "supersedes": null
+  },
+  {
+   "object_kind": "entity_ref",
+   "object_payload": {
+    "keys": {
+     "wafer": "W003"
+    },
+    "type": "wafer"
+   },
+   "occurred_at": "2026-08-17 10:00:03+09:00",
+   "occurred_at_basis": null,
+   "predicate": "has_wafer",
+   "source_event_id": "4e5cb929-c9d8-5647-be55-a918240bdcbd",
+   "source_event_state": "source_molecule",
+   "source_raw_ref": "{\"event\":\"{\\\"relation\\\":\\\"lot_slot_wafer\\\",\\\"rows\\\":[\\\"lot_slot_wafer:{\\\\\\\"lot_slot_wafer_key\\\\\\\":\\\\\\\"K003\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"lot_slot_wafer:{\\\"lot_slot_wafer_key\\\":\\\"K003\\\"}\"]}",
+   "source_who": "lot_slot_wafer",
+   "subject_keys": {
+    "lot": "L003",
+    "slot": "1"
+   },
+   "subject_type": "lot_slot",
+   "supersedes": null
+  },
+  {
+   "object_kind": null,
+   "object_payload": {
+    "qualifiers": {
+     "event_type": "track_in"
+    }
+   },
+   "occurred_at": "2026-08-17 10:00:00+09:00",
+   "occurred_at_basis": null,
+   "predicate": "register",
+   "source_event_id": "2c8b11b6-d8a3-5096-9dc4-65c84b6982ec",
+   "source_event_state": "source_molecule",
+   "source_raw_ref": "{\"event\":\"{\\\"relation\\\":\\\"lot_slot_wafer\\\",\\\"rows\\\":[\\\"lot_slot_wafer:{\\\\\\\"lot_slot_wafer_key\\\\\\\":\\\\\\\"K000\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"lot_slot_wafer:{\\\"lot_slot_wafer_key\\\":\\\"K000\\\"}\"]}",
+   "source_who": "lot_slot_wafer",
+   "subject_keys": {
+    "wafer": "W000"
+   },
+   "subject_type": "wafer",
+   "supersedes": null
+  },
+  {
+   "object_kind": null,
+   "object_payload": {
+    "qualifiers": {
+     "event_type": "track_in"
+    }
+   },
+   "occurred_at": "2026-08-17 10:00:01+09:00",
+   "occurred_at_basis": null,
+   "predicate": "register",
+   "source_event_id": "8bac7bed-3226-51bf-bf37-2ea357de3ac0",
+   "source_event_state": "source_molecule",
+   "source_raw_ref": "{\"event\":\"{\\\"relation\\\":\\\"lot_slot_wafer\\\",\\\"rows\\\":[\\\"lot_slot_wafer:{\\\\\\\"lot_slot_wafer_key\\\\\\\":\\\\\\\"K001\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"lot_slot_wafer:{\\\"lot_slot_wafer_key\\\":\\\"K001\\\"}\"]}",
+   "source_who": "lot_slot_wafer",
+   "subject_keys": {
+    "wafer": "W001"
+   },
+   "subject_type": "wafer",
+   "supersedes": null
+  },
+  {
+   "object_kind": null,
+   "object_payload": {
+    "qualifiers": {
+     "event_type": "track_in"
+    }
+   },
+   "occurred_at": "2026-08-17 10:00:02+09:00",
+   "occurred_at_basis": null,
+   "predicate": "register",
+   "source_event_id": "98c6aa0e-cb55-5221-b1f2-96279cbf759d",
+   "source_event_state": "source_molecule",
+   "source_raw_ref": "{\"event\":\"{\\\"relation\\\":\\\"lot_slot_wafer\\\",\\\"rows\\\":[\\\"lot_slot_wafer:{\\\\\\\"lot_slot_wafer_key\\\\\\\":\\\\\\\"K002\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"lot_slot_wafer:{\\\"lot_slot_wafer_key\\\":\\\"K002\\\"}\"]}",
+   "source_who": "lot_slot_wafer",
+   "subject_keys": {
+    "wafer": "W002"
+   },
+   "subject_type": "wafer",
+   "supersedes": null
+  },
+  {
+   "object_kind": null,
+   "object_payload": {
+    "qualifiers": {
+     "event_type": "track_in"
+    }
+   },
+   "occurred_at": "2026-08-17 10:00:03+09:00",
+   "occurred_at_basis": null,
+   "predicate": "register",
+   "source_event_id": "4e5cb929-c9d8-5647-be55-a918240bdcbd",
+   "source_event_state": "source_molecule",
+   "source_raw_ref": "{\"event\":\"{\\\"relation\\\":\\\"lot_slot_wafer\\\",\\\"rows\\\":[\\\"lot_slot_wafer:{\\\\\\\"lot_slot_wafer_key\\\\\\\":\\\\\\\"K003\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"lot_slot_wafer:{\\\"lot_slot_wafer_key\\\":\\\"K003\\\"}\"]}",
+   "source_who": "lot_slot_wafer",
+   "subject_keys": {
+    "wafer": "W003"
+   },
+   "subject_type": "wafer",
+   "supersedes": null
+  }
+ ],
+ "no_attribute": [
+  {
+   "object_kind": "entity_ref",
+   "object_payload": {
+    "keys": {
+     "wafer": "W000"
+    },
+    "type": "wafer"
+   },
+   "occurred_at": "2026-08-17 10:00:00+09:00",
+   "occurred_at_basis": null,
+   "predicate": "has_wafer",
+   "source_event_id": "2c8b11b6-d8a3-5096-9dc4-65c84b6982ec",
+   "source_event_state": "source_molecule",
+   "source_raw_ref": "{\"event\":\"{\\\"relation\\\":\\\"lot_slot_wafer\\\",\\\"rows\\\":[\\\"lot_slot_wafer:{\\\\\\\"lot_slot_wafer_key\\\\\\\":\\\\\\\"K000\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"lot_slot_wafer:{\\\"lot_slot_wafer_key\\\":\\\"K000\\\"}\"]}",
+   "source_who": "lot_slot_wafer",
+   "subject_keys": {
+    "lot": "L000",
+    "slot": "1"
+   },
+   "subject_type": "lot_slot",
+   "supersedes": null
+  },
+  {
+   "object_kind": "entity_ref",
+   "object_payload": {
+    "keys": {
+     "wafer": "W001"
+    },
+    "type": "wafer"
+   },
+   "occurred_at": "2026-08-17 10:00:01+09:00",
+   "occurred_at_basis": null,
+   "predicate": "has_wafer",
+   "source_event_id": "8bac7bed-3226-51bf-bf37-2ea357de3ac0",
+   "source_event_state": "source_molecule",
+   "source_raw_ref": "{\"event\":\"{\\\"relation\\\":\\\"lot_slot_wafer\\\",\\\"rows\\\":[\\\"lot_slot_wafer:{\\\\\\\"lot_slot_wafer_key\\\\\\\":\\\\\\\"K001\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"lot_slot_wafer:{\\\"lot_slot_wafer_key\\\":\\\"K001\\\"}\"]}",
+   "source_who": "lot_slot_wafer",
+   "subject_keys": {
+    "lot": "L001",
+    "slot": "1"
+   },
+   "subject_type": "lot_slot",
+   "supersedes": null
+  },
+  {
+   "object_kind": "entity_ref",
+   "object_payload": {
+    "keys": {
+     "wafer": "W002"
+    },
+    "type": "wafer"
+   },
+   "occurred_at": "2026-08-17 10:00:02+09:00",
+   "occurred_at_basis": null,
+   "predicate": "has_wafer",
+   "source_event_id": "98c6aa0e-cb55-5221-b1f2-96279cbf759d",
+   "source_event_state": "source_molecule",
+   "source_raw_ref": "{\"event\":\"{\\\"relation\\\":\\\"lot_slot_wafer\\\",\\\"rows\\\":[\\\"lot_slot_wafer:{\\\\\\\"lot_slot_wafer_key\\\\\\\":\\\\\\\"K002\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"lot_slot_wafer:{\\\"lot_slot_wafer_key\\\":\\\"K002\\\"}\"]}",
+   "source_who": "lot_slot_wafer",
+   "subject_keys": {
+    "lot": "L002",
+    "slot": "1"
+   },
+   "subject_type": "lot_slot",
+   "supersedes": null
+  },
+  {
+   "object_kind": "entity_ref",
+   "object_payload": {
+    "keys": {
+     "wafer": "W003"
+    },
+    "type": "wafer"
+   },
+   "occurred_at": "2026-08-17 10:00:03+09:00",
+   "occurred_at_basis": null,
+   "predicate": "has_wafer",
+   "source_event_id": "4e5cb929-c9d8-5647-be55-a918240bdcbd",
+   "source_event_state": "source_molecule",
+   "source_raw_ref": "{\"event\":\"{\\\"relation\\\":\\\"lot_slot_wafer\\\",\\\"rows\\\":[\\\"lot_slot_wafer:{\\\\\\\"lot_slot_wafer_key\\\\\\\":\\\\\\\"K003\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"lot_slot_wafer:{\\\"lot_slot_wafer_key\\\":\\\"K003\\\"}\"]}",
+   "source_who": "lot_slot_wafer",
+   "subject_keys": {
+    "lot": "L003",
+    "slot": "1"
+   },
+   "subject_type": "lot_slot",
+   "supersedes": null
+  }
+ ]
+}

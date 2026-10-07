@@ -280,6 +280,41 @@ def _announce_dead_cells(dead) -> bool:
     return True
 
 
+def _registration_notes(sources, vocabulary) -> list:
+    """What the loader says about registration (총괄 10-07): a `read.registration_probe` still
+    written - retired, read by nothing, deletable - and an entity type whose shared attributes
+    the translator does not register because the source names it through different keys."""
+    from .setup_bundle import attribute_registrations
+
+    notes = []
+    for source_id in sorted(sources or {}, key=str):
+        source = sources[source_id]
+        if not isinstance(source, Mapping):
+            continue
+        read = source.get("read")
+        if isinstance(read, Mapping) and "registration_probe" in read:
+            notes.append(f"retired cell: sources.{source_id}.read.registration_probe is read by "
+                         f"nothing -- it can be deleted")
+        for entity_type, roles in attribute_registrations(source, vocabulary)[1]:
+            notes.append(f"attributes not registered: sources.{source_id} names {entity_type} through "
+                         f"different keys ({', '.join(roles)}), so bind.entities.{entity_type}.attributes "
+                         f"cannot pick one -- write them on each role's own attributes")
+    return notes
+
+
+#: Which registration notes this PROCESS has said - keyed by the notes, like the two above.
+_REGISTRATION_NOTES_ANNOUNCED: set = set()
+
+
+def _announce_registration_notes(notes) -> bool:
+    if not notes or tuple(notes) in _REGISTRATION_NOTES_ANNOUNCED:
+        return False
+    _REGISTRATION_NOTES_ANNOUNCED.add(tuple(notes))
+    for note in notes:
+        logger.info("[Ledger] %s", note)
+    return True
+
+
 def _refused_sources(invalid: Mapping[str, Any]) -> dict[str, Any]:
     """The resolver's report, narrowed to SOURCES and shaped for the compiler.
 
@@ -387,6 +422,8 @@ def load_setup(
     _announce_dead_cells(_dead_time_cells(bundle.section("sources")))
     _announce_unscored_bindings(
         _unscored_self_edge_sentences(bundle.section("sources")))
+    _announce_registration_notes(
+        _registration_notes(bundle.section("sources"), bundle.section("vocabulary")))
     snapshot = compile_setup_snapshot(
         bundle, trusted_implementations(),
         catalog=resolved_catalog, refused_sources=refused)

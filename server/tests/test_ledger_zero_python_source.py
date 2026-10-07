@@ -142,18 +142,6 @@ def test_the_source_is_served_by_generic_implementations_and_no_source_specific_
         plan.driver.mapper.implementation).__class__ is DeclarativeRoleMapper
 
 
-def test_first_sight_suppression_is_declaration_driven_for_this_source(snapshot, rows):
-    """The probe that used to name lot_event's columns now answers for this table too."""
-    from ledger.backfill import _v2_registration_subjects
-    from ledger.envelope import canonical_keys
-
-    subjects = _v2_registration_subjects(snapshot.source_plans["shipment"], rows)
-    assert subjects == {
-        ("Box", canonical_keys({"box": "BX-01"})),
-        ("Box", canonical_keys({"box": "BX-02"})),
-    }
-
-
 def test_a_second_sight_is_suppressed_so_register_lands_once(snapshot, rows):
     """The whole point of the probe: a subject already in the store emits no register."""
     from ledger.envelope import canonical_keys

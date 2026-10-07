@@ -150,7 +150,7 @@ def test_a_boot_restamps_the_moved_cursors_and_names_every_one(monkeypatch, capl
     # a stamp, because a retired or refused source is compiled with no material to
     # fingerprint and this loop has no per-source guard. `None` was thin enough while
     # nothing was asked; it is not now.
-    _runs = type("Plan", (), {"runs": True})
+    _runs = type("Plan", (), {"runs": True, "profile": type("Profile", (), {"mappings": {}})()})
     snapshot = type("S", (), {"source_plans": {"stale": _runs(), "fresh": _runs(),
                                                "legacy": _runs()}})()
     monkeypatch.setattr(ledger_setup, "load_setup",

@@ -1766,15 +1766,6 @@ def apply_chain_writes(db, tx_id, rule, incoming_depth, rules_by_target,
                 # Not a loop: writes land on the DERIVED table while the
                 # enrichment rule triggers on the SOURCE table, and the
                 # absent-only gate makes a second pass a no-op regardless.
-                # ⚰️ THE HOOK LEFT THIS PATH (S-151, 판정 262). Measured here at 0.875 s per
-                # 1,000-row group - 35 % of everything the group spent outside the mapper -
-                # and it is FOLLOW-UP work: nobody is waiting for a confirmation that the
-                # next read would compute anyway. 「요청/커밋 경로 인라인 금지, 뒤따르는 일은
-                # 페이싱된 별도 작업」 is the standing rule, and this was the inline case of it.
-                # It now runs on the ledger follow-up drain, paced - see
-                # the `builtin:auto_confirm` kind. NOTHING IS ENQUEUED HERE: these rows reach
-                # that queue already, through their own collapsed outbox events, so a second
-                # enqueue would double the ledger's re-translation to save this.
 
                 # 5. Collect WebSocket broadcast messages (dispatched AFTER commit, fire-and-forget).
                 #    이벤트명/페이로드 형식은 절대 변경하지 않고 타이밍만 커밋 이후로 미룬다.
@@ -3543,8 +3534,19 @@ def _restamp_moved_fingerprints_sync(db_session_factory):
             if verdict != "restamp":
                 continue
             if store.restamp_cursor(source, expect=stored, translator_ver=wanted):
+                # 🔴 TWO KINDS MOVE ON ONE DEPLOY (총괄 10-07): a source whose translator now
+                # registers bound attributes has rows read before this boot carrying none of
+                # them - a rescope covers those - while any other source is a re-stamp only.
+                plan = setup.snapshot.source_plans[source]
+                registers = sorted({
+                    str(mapping.bindings[role].get("entity_type")).split("@")[0]
+                    for mapping in plan.profile.mappings.values()
+                    for role in mapping.registered_roles})
                 moved.append(f"{source} ({world}): {stored} -> {wanted} "
-                             f"(position stays {existing.get('cursor_value')!r})")
+                             f"(position stays {existing.get('cursor_value')!r})"
+                             + (f" - the translator registers the bound attributes of "
+                                f"{', '.join(registers)}: rows read before carry none of them "
+                                f"until this source is rescoped whole" if registers else ""))
             else:
                 refused.append(f"{source} ({world}) (row changed under us)")
         if moved:

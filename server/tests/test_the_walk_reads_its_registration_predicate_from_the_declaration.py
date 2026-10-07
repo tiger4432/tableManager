@@ -90,11 +90,13 @@ class RecordingLookup:
 
 def test_the_registration_predicate_is_the_one_the_declaration_gives_no_object(monkeypatch):
     """🔴 THE GATE. One vocabulary entry of each object kind, so the derivation cannot
-    pass by returning everything or the first thing it sees."""
+    pass by returning everything or the first thing it sees - and the name the translator
+    registers bound attributes under, which no declaration writes (총괄 10-07 ③)."""
     from ledger import config as ledger_config
+    from ledger.setup_bundle import REGISTER_PREDICATE
     monkeypatch.setattr(ledger_config, "load", lambda *a, **k: DECLARED)
 
-    assert trace_router._self_describing_predicates() == {"enrolled"}
+    assert trace_router._self_describing_predicates() == {"enrolled", REGISTER_PREDICATE}
 
 
 def test_an_unreadable_declaration_names_no_predicate_rather_than_guessing_one(monkeypatch):
@@ -161,4 +163,4 @@ def test_the_route_hands_the_walk_what_it_derived(monkeypatch):
         object(), node_id=explorer.entity_id("wafer", {"wafer": "W1"}), hops=1,
         direction="both", node_limit=10, edge_limit=10)
 
-    assert handed["registration_follow"] == {"enrolled"}
+    assert handed["registration_follow"] == {"enrolled", "register"}

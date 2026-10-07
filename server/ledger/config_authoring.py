@@ -91,7 +91,6 @@ from .setup_bundle import (
     read_group_by,
     default_ordering_key,
     is_event_time_role,
-    registering_sentences,
     role_binding_kinds,
     role_must_be_bound,
     source_defaults,
@@ -1291,19 +1290,6 @@ def _attribute_binding_fields(path: str, entity_type: str, declared: Sequence[An
         )
 
 
-def _registering_sentences(source: Any) -> tuple[tuple[str, str], ...]:
-    """(sentence, subject entity type) for every sentence of this source that REGISTERS -
-    which sentences do is `setup_bundle.registering_sentences`, the word the runtime keys on.
-    The entity type is `""` while the subject binding names none."""
-    found: list[tuple[str, str]] = []
-    for sentence, mapping in registering_sentences(source):
-        bind = mapping.get("bind") if isinstance(mapping.get("bind"), Mapping) else {}
-        subject = bind.get(SUBJECT_ROLE) if isinstance(bind, Mapping) else None
-        entity_type = subject.get("entity_type") if isinstance(subject, Mapping) else None
-        found.append((sentence, entity_type if isinstance(entity_type, str) else ""))
-    return tuple(found)
-
-
 #: The timezone offered when the file answers nowhere at all.
 #:
 #: 🔴 A DEFAULT, NOT A CONSTRAINT (lead, 2026-08-21).  Both live sources say `Asia/Seoul`,
@@ -1346,7 +1332,6 @@ def _answer_or_default(answer: Any, default: Any, from_path: str) -> dict:
 
 def _source_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
                    ) -> Iterable[Field]:
-    entities = _section(bundle, "entities")
     # The most-used answer in the file, ties broken alphabetically so two runs of the same
     # file never disagree about which chip a new source is offered.
     zones = _declared_timezones(bundle)
@@ -1546,75 +1531,6 @@ def _source_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
             candidates=tuple({"column": name, "blank": True} for name in physical),
             universe=UNIVERSE_RELATION,
         )
-        probes = _listed(driver.get("registration_probe"))
-        single_key = tuple(sorted(
-            name for name, entity in entities.items()
-            if isinstance(entity, Mapping) and len(_listed(entity.get("keys"))) == 1))
-        # 🔴 THE SENTENCES SAY WHETHER THIS DECLARATION IS OPTIONAL, AND THE SKELETON
-        # CANNOT.  `registration_probe` is `required: false` in the grammar and that is
-        # right for most sources -- one that emits no `register` needs no probe.  For one
-        # that DOES, it is not optional at all: `runtime_v2._filtered_event_atoms` refuses
-        # the whole run with `registration_context_required`, which is why `lot_event`
-        # never ran until 2026-08-21.  The refusal lands at backfill, hours and one screen
-        # away from the person who filled the form and passed save.  So the condition is
-        # asked here, per source, off the same `bind` the compiler reads.
-        registers = _registering_sentences(source)
-        # Both grounds, kept: the entity must be one this source registers (a probe for
-        # anything else suppresses nothing) AND single-keyed, which is what
-        # `_cross_registration_probe` refuses with `unsupported_registration_probe`.
-        probe_entities = tuple(
-            name for name in sorted({entity for _, entity in registers if entity})
-            if name in single_key)
-        if registers or probes:
-            probe_default = None if probes else filled.get("registration_probe")
-            yield Field(
-                path=f"{base}.read.registration_probe", step="sources",
-                label="Registration probe",
-                state="answered" if probes else "derived" if probe_default else "missing",
-                tier=TIER_CONSTRAINED,
-                value=([dict(probe) for probe in probes if isinstance(probe, Mapping)]
-                       or probe_default or []),
-                declared=list(probes) if probes else _ABSENT,
-                ground=Ground(
-                    "registration_probe_required_by_register_sentences",
-                    f"Needed: this source has {len(registers)} register sentences "
-                    f"({', '.join(sentence for sentence, _ in registers) or 'none'})",
-                    tuple(f"{base}.bind.mappings.{sentence}"
-                          for sentence, _ in registers) or (base,)),
-                note="Required when there is a register sentence · without it the whole backfill is refused",
-            )
-        for probe_index, probe in enumerate(probes):
-            if not isinstance(probe, Mapping):
-                continue
-            ppath = f"{base}.read.registration_probe[{probe_index}]"
-            yield Field(
-                path=f"{ppath}.entity_type",
-                step="sources", label="Registration probe entity",
-                state="answered" if probe.get("entity_type") else "missing",
-                tier=TIER_CONSTRAINED, value=probe.get("entity_type"),
-                declared=probe.get("entity_type"),
-                candidates=probe_entities,
-                note="The entity a register sentence registers · one identity key",
-            )
-            columns = list(_listed(probe.get("columns")))
-            yield Field(
-                path=f"{ppath}.columns", step="sources", label="Registration probe columns",
-                state="answered" if columns else "missing", tier=TIER_CONSTRAINED,
-                value=columns, declared=columns if columns else _ABSENT,
-                candidates=tuple(physical), universe=UNIVERSE_RELATION,
-            )
-            # 🔴 `list_separator` GETS NO ROW HERE, AND THE MEASUREMENT IS WHY.  It reads
-            # like the obvious third row -- `waferids` is `:`-separated and probing the
-            # unsplit string finds none of the wafers, the under-approximation that
-            # duplicates `register`.  But a plan row REPLACES the skeleton's own control
-            # for a leaf (`renderTreeLeaf` prefers it), and `renderAuthoringRow` builds no
-            # control at all unless the row carries candidates -- so a candidate-less row
-            # here DELETES the text box the operator types the separator into.  Measured
-            # 2026-08-21 on the live `lot_event`: with the row, `INPUT.oe-field-input`
-            # disappears from both probes; without it, the skeleton draws it for both.  No
-            # catalog knows a separator, so there are no candidates to give, and inventing
-            # a list of punctuation would be this module authoring a closed list it does
-            # not own.  The plan speaks for a leaf when it has something to say about it.
 
 
 # ------------------------------------------------------------ removability, measured

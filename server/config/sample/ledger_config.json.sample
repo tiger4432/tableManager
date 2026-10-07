@@ -359,15 +359,7 @@
         "occurred_at": {
           "basis": "ingested",
           "timezone": "Asia/Seoul"
-        },
-        "registration_probe": [
-          {
-            "entity_type": "dtjob@1",
-            "columns": [
-              "dt_job"
-            ]
-          }
-        ]
+        }
       },
       "map": {
         "implementation_id": "declarative-role",
@@ -591,22 +583,7 @@
           "event_time",
           "row_id"
         ],
-        "unit": "group",
-        "registration_probe": [
-          {
-            "entity_type": "lot@1",
-            "columns": [
-              "lot_id"
-            ]
-          },
-          {
-            "entity_type": "wafer@1",
-            "columns": [
-              "waferids"
-            ],
-            "list_separator": ":"
-          }
-        ]
+        "unit": "group"
       },
       "relation": "lot_event",
       "status": "retired"

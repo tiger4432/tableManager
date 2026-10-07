@@ -38,8 +38,10 @@ from .ledger_frame import (
     validate_ledger_rows,
 )
 from .setup_bundle import (
-    DECLARATIVE_ROLE, OCCURRED_AT_ROLE, entity_type_column, is_event_time_role)
+    DECLARATIVE_ROLE, OCCURRED_AT_ROLE, REGISTER_PREDICATE, entity_type_column,
+    is_event_time_role, is_registration)
 from .setup_registry import (
+    REGISTRATION_DERIVATION_PREFIX,
     ClaimDescriptor,
     ImplementationKey,
     LedgerSetupSnapshot,
@@ -1153,14 +1155,7 @@ def _evaluate_binding(binding: Mapping[str, Any], unit: pd.DataFrame, *, path: s
             # Everything else about the binding is still the general evaluator's: a group
             # whose rows disagree is `ambiguous_binding_value`, and a column the frame does
             # not carry is `missing_binding_column`.
-            evaluated = {
-                name: _attribute_value(child, unit,
-                                       path=f"{path}.attributes.{name}",
-                                       columns=columns)
-                for name, child in attributes.items()
-            }
-            kept = {name: value for name, value in evaluated.items()
-                    if value is not _NO_ATTRIBUTE_VALUE}
+            kept = _attribute_values(attributes, unit, path=path, columns=columns)
             if kept:
                 payload["attributes"] = kept
         return payload
@@ -1171,6 +1166,14 @@ def _evaluate_binding(binding: Mapping[str, Any], unit: pd.DataFrame, *, path: s
 
 #: An attribute the rows say nothing about. Distinct from `None`, which would be a value.
 _NO_ATTRIBUTE_VALUE = object()
+
+
+def _attribute_values(attributes: Mapping[str, Any], unit: pd.DataFrame, *, path: str,
+                      columns: Mapping[Any, tuple] | None = None) -> dict:
+    """A role's bound attributes for this unit, those the rows say nothing about left out."""
+    evaluated = {name: _attribute_value(child, unit, path=f"{path}.attributes.{name}", columns=columns)
+                 for name, child in attributes.items()}
+    return {name: value for name, value in evaluated.items() if value is not _NO_ATTRIBUTE_VALUE}
 
 
 def _attribute_value(binding: Mapping[str, Any], unit: pd.DataFrame, *, path: str,
@@ -1231,13 +1234,23 @@ def _with_attribute_values(
     claim = None if mapping is None else context.snapshot.claims.get(mapping.predicate_id)
     if claim is None:
         return emission
+    roles = dict(emission.roles)
+    # 🔴 THE ROLES THE TRANSLATOR REGISTERS (총괄 a6db2f469): a code mapper hands over an entity
+    # with its keys only, so the role's bound attributes are read HERE, as the declarative one
+    # reads them - one reading of one binding, whichever mapper ran.
+    for role in mapping.registered_roles:
+        value = roles.get(role)
+        bound = (mapping.bindings.get(role) or {}).get("attributes")
+        if isinstance(value, Mapping) and "attributes" not in value and isinstance(bound, Mapping):
+            kept = _attribute_values(bound, unit, path=f"{mapping.config_path}.bind.{role}",
+                                     columns=columns)
+            if kept:
+                roles[role] = {**value, "attributes": kept}
     subject_role = claim.emission.subject.role_id
     binding = mapping.bindings.get(subject_role)
     attributes = binding.get("attributes") if isinstance(binding, Mapping) else None
-    if not isinstance(attributes, Mapping) or not attributes:
-        return emission
-    roles = dict(emission.roles)
-    for name, reference in claim.emission.qualifiers.items():
+    for name, reference in (claim.emission.qualifiers.items()
+                            if isinstance(attributes, Mapping) and attributes else ()):
         if name not in attributes:
             continue
         if reference.role_id in roles:
@@ -1690,7 +1703,7 @@ def compile_role_rows(context: MapperContext, role_frame) -> LedgerRows:
                 "unknown_payload_field", f"{plan.claim.config_path}.emit.object."
                 f"qualifiers.{unknown}",
                 f"predicate does not allow qualifier {unknown!r}")
-        if emission.object_kind == "none":
+        if is_registration(emission.object_kind):
             object_kind = None
             # 🔴 A SENTENCE WITH NO OBJECT STILL HAS SOMEWHERE TO PUT ITS QUALIFIERS
             # (S-52). `register@1` says nothing about an object and everything about its
@@ -1751,20 +1764,33 @@ def compile_role_rows(context: MapperContext, role_frame) -> LedgerRows:
             "molecule_ref": molecule_ref,
             "derivation": row["sentence"],
         })
-        named.append((subject["type"], subject["keys"], rows[-1], row["source_row_refs"]))
+        named.append((subject["type"], subject["keys"], rows[-1], row["source_row_refs"],
+                      _registered(context, row, emission.subject.role_id)))
         if emission.object_kind == "entity_ref":
-            named.append((obj_value["type"], obj_value["keys"], rows[-1], row["source_row_refs"]))
+            named.append((obj_value["type"], obj_value["keys"], rows[-1], row["source_row_refs"],
+                          _registered(context, row, emission.object_role.role_id)))
     rows.extend(_reference_rows(context, named, rows, source_raw_ref, translator_prefix))
     return validate_ledger_rows(LedgerRows(
         tuple(rows),
         MappingProxyType({LEDGER_FRAME_ATTR: LEDGER_FRAME_SCHEMA_VERSION})))
 
 
+def _registered(context: MapperContext, row, role_id: str):
+    """The attributes this row's `role_id` carries for the translator to register, or None."""
+    mapping = context.source_plan.profile.mappings.get(row["sentence"])
+    if mapping is None or role_id not in mapping.registered_roles:
+        return None
+    attributes = (row["roles"].get(role_id) or {}).get("attributes")
+    return _plain(attributes) if attributes else None
+
+
 def _reference_rows(context: MapperContext, named, rows, source_raw_ref: str,
                     translator_prefix: str) -> list:
-    """🔴 [총괄 29047aedc] THE ONE SEAT where `entities.<type>.references` become atoms: for every
-    entity this molecule names (subject or `entity_ref` object, any source, any mapper), each
-    reference whose `when` holds adds one edge to the entity it points at.
+    """🔴 [총괄 29047aedc] THE ONE SEAT where the translator writes atoms no sentence declares: for
+    every entity this molecule names (subject or `entity_ref` object, any source, any mapper), each
+    `entities.<type>.references` whose `when` holds adds one edge to the entity it points at - and
+    (총괄 a6db2f469) the attributes a registered role carries become one registration of that entity,
+    under `REGISTER_PREDICATE`, with no object, at the naming row's time.
 
     One per molecule: the same entity named twice makes one atom, backed by every source row
     that named it (so deleting one of those rows withdraws it only with the last). A fact the
@@ -1776,7 +1802,20 @@ def _reference_rows(context: MapperContext, named, rows, source_raw_ref: str,
     stated = {(r["subject_type"], json.dumps(r["subject_keys"], sort_keys=True), r["predicate"],
                json.dumps(r["object_payload"], sort_keys=True)) for r in rows}
     made: dict = {}
-    for entity_type, keys, base, refs in named:
+    for entity_type, keys, base, refs, attributes in named:
+        if attributes:
+            derivation = f"{REGISTRATION_DERIVATION_PREFIX}{base['derivation']}"
+            payload = {"qualifiers": attributes}
+            fact = (bare_name(entity_type), json.dumps(_plain(keys), sort_keys=True),
+                    REGISTER_PREDICATE, json.dumps(payload, sort_keys=True))
+            if fact not in stated and fact not in made:
+                made[fact] = (dict(base, subject_type=fact[0], subject_keys=_plain(keys),
+                                   predicate=REGISTER_PREDICATE, object_kind=None,
+                                   object_payload=payload,
+                                   source_translator_ver=f"{translator_prefix}{derivation}",
+                                   derivation=derivation), set())
+            if fact in made:
+                made[fact][1].update(refs)
         if entity_type not in entities:
             continue
         for ref in entities[entity_type].references:

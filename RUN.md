@@ -1,5 +1,32 @@
 # 지금 돌리면 되는 것
 
+> ## [10-07] **소스에 묶은 속성이 그 개체의 칸이 된다(등록 문장 없이) · 등록 probe 은퇴 — 마이그레이션 «없음» · 재기동 «필요» · 다시 번역은 «부류 1» 소스만, 운영자가**
+>
+> ```
+> 무엇이 바뀌나  소스 bind 의 개체 속성 — bind.entities.<타입>.attributes, 그리고 롤 자신의 attributes(목적어 롤 포함) —
+>                을 번역기가 그 행의 시각으로 원장에 남긴다. 걷기 노드 칸과 이름표가 그것을 읽는다
+>              등록 문장을 적어 둔 소스는 그대로 — 그 문장이 그 타입의 속성을 정한다
+>              read.registration_probe 은퇴 — 읽는 곳이 없다. 적혀 있어도 거절하지 않는다
+> 돌릴 명령     재기동 — run_app.bat 전체
+>              부류 1 소스만, 이미 읽은 행에도 싣고 싶으면 (whole_source 는 화면 폼에 없어 명령줄):
+>                 python server/ledger/backfill.py --source <소스> --whole-source              (미리보기 — 행 · 잃은 행 · 그 원자, 안 씀)
+>                 python server/ledger/backfill.py --source <소스> --whole-source --apply --pace slow
+>                 가지면 --world <가지> — 아래 재기동 줄의 (<세상>) 칸
+> 재기동 뒤 볼 줄  [Ledger] re-stamped N cursor(s) whose declaration did not change: <소스> (<세상>): <옛> -> <새> (position stays …) | …
+>                 부류 1  그 소스 항목이 " - the translator registers the bound attributes of <타입들>: rows read before carry none of them until this source is rescoped whole" 로 끝남
+>                         = 새 행부터 속성이 실린다. 과거 행은 위 명령으로. 대상 소스 = 이 꼬리가 붙은 소스
+>                 부류 2  그 꼬리 없이 끝남 = 등록 문장이 있던 소스의 다시 찍기뿐. 위치 그대로 · 다시 번역 0 · 할 일 없음
+>              [Ledger] retired cell: sources.<소스>.read.registration_probe is read by nothing -- it can be deleted
+>                 = 그 칸을 지워도 된다. 안 지워도 돈다
+>              [Ledger] attributes not registered: sources.<소스> names <타입> through different keys (<롤들>), …
+>                 = 그 타입을 부르는 롤들의 키 바인딩(키 순서 · 칼럼/상수 · 값)이 갈려 bind.entities 속성을 어느 개체에 실을지 모른다
+>                   — 롤마다 자기 attributes 에 적는다. 바인딩이 같으면 롤이 둘이어도 한 개체라 실리고 이 줄은 안 나온다
+> 뜻           다시 번역 전의 부류 1 소스 — 같은 개체라도 재기동 뒤에 읽은 행에서 온 속성만 보인다
+> 급할 때       커밋 되돌리기 + 재기동. 이미 쓰인 등록 원자는 남는다 — 되돌린 코드로 그 소스를 통째로 다시 번역하면 거둬지는지는 안 쟀다
+> ```
+
+---
+
 > ## [10-07] **회사 SSO 로그인(OIDC · ADFS) — 켜기 = auth_config.json + 환경변수 비밀 하나 + 재기동 · 이주 «불필요»(부팅이 표 셋을 만든다) · 재기동 «필요»**
 >
 > ```
@@ -842,7 +869,7 @@
 >
 > ```
 > 무엇이 바뀌나  bind.occurred_at 을 안 적은 매핑 = 사건 엣지 아님(원자 basis 'ingested', 저장 시각은 같은 행의 사건 시각 — 사건 id 하나)
->              read 칸을 안 적으면 제품이 채움(unit · identity · order_by · group_by · occurred_at · registration_probe · map.unit · input_columns)
+>              read 칸을 안 적으면 제품이 채움(unit · identity · order_by · group_by · occurred_at · map.unit · input_columns)
 >              적은 선언은 그대로 — 박스 미리보기 5 소스 · 원자 1,198 가 전후 같음(사건 id · 시각 · basis · 번역 버전), 묶음 해시 같음
 > 확인         재기동 뒤  python -m scripts.migrate_ledger_slim_sources   (미리보기, 아무것도 안 씀 — server 폴더에서)
 > 뜻           「movable - atoms unchanged」 옮겨도 원자가 같다 · 「movable - atoms change」 옮기면 시각 · 사건 id 가 바뀐다

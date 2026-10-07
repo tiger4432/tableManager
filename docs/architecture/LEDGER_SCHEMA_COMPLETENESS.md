@@ -1138,6 +1138,7 @@ Q-짝짓기  «분자 안의 위치» — 같은 분자의 «다른 행/다른 �
 ```
 
 ## D-7-2. ✅ 「처음 본 주어인가」 — 칸이 «있습니다». 제 「전제 밖」도 틀렸습니다
+> ⚰️ 10-07 `read.registration_probe` 은퇴(총괄 a6db2f469 ④) — 실행은 그 값으로 원장을 조회한 적이 없었다(모든 문 `known_registrations=()`). 아래는 그때의 실측이다.
 ```
 실측   `read.registration_probe` 가 문법 칸입니다(`required: false`) — 검증 `_validate_registration_probe`,
       읽는 곳 `backfill.py:1573` (`plan.driver.registration_probe`), 폼·작성기 `config_authoring.py:1751~1772`

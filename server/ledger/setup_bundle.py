@@ -710,7 +710,9 @@ def predicate_claim(predicate_id: str, predicate: Any,
     # the entity section, and that is CORRECT rather than tolerated: a declaration that
     # gives an entity a new attribute IS a different declaration, and a snapshot hash that
     # did not move for it would be saying the two are the same.
-    if object_kind == "none" and isinstance(entities, Mapping):
+    # a half-written predicate (no kind yet) is not a registration - only a declared "none" is
+    objectless = isinstance(object_kind, str) and is_registration(object_kind)
+    if objectless and isinstance(entities, Mapping):
         declared = []
         for subject_type in _column_values(predicate.get("subjects")
                                            if isinstance(predicate, Mapping) else None):
@@ -747,7 +749,7 @@ def predicate_claim(predicate_id: str, predicate: Any,
         emit_object["value"] = f"${VALUE_ROLE}"
     # An object-less sentence carries qualifiers too, WHEN THERE ARE ANY. Empty stays
     # absent so a vocabulary that declares none emits exactly the bytes it did before.
-    if object_kind != "none" or required_qualifiers or optional_qualifiers:
+    if not objectless or required_qualifiers or optional_qualifiers:
         emit_object["qualifiers"] = {
             **{name: f"${name}" for name in required_qualifiers},
             **{name: f"${name}?" for name in optional_qualifiers},
@@ -817,9 +819,31 @@ def read_group_by(read: Mapping[str, Any]) -> Any:
 #: timezone-aware, so this zone answers no value - it is here because the read record requires one.
 DEFAULT_TIME_ORIGIN = {"basis": NOT_AN_EVENT_BASIS, "timezone": "UTC"}
 
-#: The predicate whose emission makes `read.registration_probe` load-bearing - the atom spelling
-#: `runtime_v2._filtered_event_atoms` compares against; the config addresses it as `register@1`.
+#: The name the translator registers an entity's bound attributes under - plumbing, not a word
+#: an author writes (총괄 a6db2f469 안 1). A declared sentence of this name still reads as before.
 REGISTER_PREDICATE = "register"
+
+
+def is_registration(object_kind: Any) -> bool:
+    """THE one answer to 「is this a registration」 (총괄 10-07 ⑤): a sentence or an atom with no
+    object says what its SUBJECT is. Asked of a predicate's declared `object.kind` ("none") or
+    of an atom's `object_kind` (None) - never of a predicate's name."""
+    return object_kind is None or object_kind == "none"
+
+
+def _declared_object_kinds(vocabulary: Any) -> dict:
+    return {bare_name(key): ((rule.get("object") or {}).get("kind")
+                             if isinstance(rule, Mapping) and isinstance(rule.get("object"), Mapping)
+                             else "")
+            for key, rule in (vocabulary.items() if isinstance(vocabulary, Mapping) else ())}
+
+
+def registration_predicates(vocabulary: Any) -> frozenset:
+    """The bare names a node's registrations are fetched under: every declared predicate with
+    no object, and the translator's own. The one list - the walk and the screen ask here."""
+    return frozenset({REGISTER_PREDICATE} | {
+        name for name, kind in _declared_object_kinds(vocabulary).items()
+        if isinstance(kind, str) and kind and is_registration(kind)})
 
 
 def role_must_be_bound(role_id: Any, role: Mapping[str, Any]) -> bool:
@@ -829,15 +853,77 @@ def role_must_be_bound(role_id: Any, role: Mapping[str, Any]) -> bool:
     return role.get("required") is True and not is_event_time_role(role_id)
 
 
-def registering_sentences(source: Any) -> tuple[tuple[str, Mapping[str, Any]], ...]:
-    """(sentence, mapping) for every sentence of this source whose predicate is `register`."""
+def registering_sentences(source: Any, vocabulary: Any) -> tuple[tuple[str, Mapping[str, Any]], ...]:
+    """(sentence, mapping) for every sentence of this source that registers its subject - its
+    predicate has no object (`is_registration`)."""
+    kinds = _declared_object_kinds(vocabulary)
     profile = source.get("bind") if isinstance(source, Mapping) else None
     mappings = profile.get("mappings") if isinstance(profile, Mapping) else None
     return tuple(
         (sentence, mapping) for sentence, mapping in sorted(
             (mappings or {}).items() if isinstance(mappings, Mapping) else (), key=lambda p: str(p[0]))
         if isinstance(mapping, Mapping) and isinstance(mapping.get("predicate"), str)
-        and bare_name(mapping["predicate"]) == REGISTER_PREDICATE)
+        and isinstance(kinds.get(bare_name(mapping["predicate"])), str)
+        and kinds[bare_name(mapping["predicate"])] and is_registration(kinds[bare_name(mapping["predicate"])]))
+
+
+def keying(binding: Any) -> tuple:
+    """The keying an entity binding names its entity through. Two bindings are one keying only when
+    every key is bound the same - the whole binding, in the same key order (총괄 10-07 ③)."""
+    keys = binding.get("keys") if isinstance(binding, Mapping) else None
+    if not isinstance(keys, Mapping):
+        return (json.dumps(keys, sort_keys=True, default=str),)
+    return tuple((str(name), json.dumps(value, sort_keys=True, default=str)) for name, value in keys.items())
+
+
+def attribute_registrations(source: Any, vocabulary: Any) -> tuple[dict, tuple]:
+    """Which entity roles of a source the translator registers the bound attributes of, and the
+    types it cannot - `({sentence: (role, ...)}, ((entity type, (sentence.role, ...)), ...))`.
+
+    A role's OWN attributes are its entity's. `bind.entities.<type>.attributes` reach every role of
+    that type - unless the source names the type through more than one `keying` (two entities, no
+    ground to pick one: 총괄 10-07 ③), when the type is reported and not registered. A type a declared
+    registration sentence of this source registers is that sentence's (the declaration wins), and
+    a type read per row is unknown here."""
+    declared = registering_sentences(source, vocabulary)
+    registered = set()
+    for _sentence, mapping in declared:
+        subject = (mapping.get("bind") or {}).get(SUBJECT_ROLE) if isinstance(mapping.get("bind"), Mapping) else None
+        if isinstance(subject, Mapping) and isinstance(subject.get("entity_type"), str):
+            registered.add(bare_name(subject["entity_type"]))
+    profile = source.get("bind") if isinstance(source, Mapping) else None
+    mappings = profile.get("mappings") if isinstance(profile, Mapping) else None
+    by_type = profile.get("entities") if isinstance(profile, Mapping) else None
+    by_type = by_type if isinstance(by_type, Mapping) else {}
+    own, inherited, keyings = {}, {}, {}
+    for sentence, mapping in sorted((mappings or {}).items() if isinstance(mappings, Mapping) else (),
+                                    key=lambda p: str(p[0])):
+        bind = mapping.get("bind") if isinstance(mapping, Mapping) else None
+        if not isinstance(bind, Mapping) or any(sentence == name for name, _ in declared):
+            continue
+        for role, binding in sorted(bind.items(), key=lambda p: str(p[0])):
+            if not (isinstance(binding, Mapping) and binding.get("kind") == "entity"
+                    and isinstance(binding.get("entity_type"), str)):
+                continue
+            entity_type = bare_name(binding["entity_type"])
+            if entity_type in registered:
+                continue
+            keyings.setdefault(entity_type, set()).add(keying(binding))
+            if isinstance(binding.get("attributes"), Mapping) and binding["attributes"]:
+                own.setdefault(sentence, []).append(role)
+            elif isinstance((by_type.get(binding["entity_type"]) or {}).get("attributes"), Mapping) \
+                    and by_type[binding["entity_type"]]["attributes"]:
+                inherited.setdefault(entity_type, []).append((sentence, role))
+    roles = {sentence: list(found) for sentence, found in own.items()}
+    unregistered = []
+    for entity_type, found in sorted(inherited.items()):
+        if len(keyings[entity_type]) > 1:
+            unregistered.append((entity_type, tuple("%s.%s" % pair for pair in found)))
+            continue
+        for sentence, role in found:
+            roles.setdefault(sentence, []).append(role)
+    return ({sentence: tuple(sorted(found)) for sentence, found in sorted(roles.items())},
+            tuple(unregistered))
 
 
 #: What an entity binding's `entity_type` may be besides a declared name: read per row.
@@ -927,10 +1013,6 @@ def source_defaults(source: Any, catalog: Mapping[str, Any]) -> Any:
         origin = _event_edge_time(source.get("bind"))
         if origin is not None:
             read["occurred_at"] = origin
-    if "registration_probe" not in read:
-        probe = _registered_subject_columns(source)
-        if probe:
-            read["registration_probe"] = probe
     group_by = read_group_by(read)
     mapper.setdefault("unit", {"kind": "group_by", "columns": list(group_by)}
                       if _is_list(group_by) and group_by else {"kind": "row"})
@@ -960,25 +1042,6 @@ def _event_edge_time(profile: Any) -> Any:
         return None
     column, zone = times.pop()
     return {"column": column, "timezone": zone}
-
-
-def _registered_subject_columns(source: Any) -> list:
-    """`read.registration_probe` a source leaves out: for each entity its register sentences
-    register, the column bound to that entity's one key. An entity bound any other way gets no
-    default - the run then refuses as it does today (`registration_context_required`)."""
-    columns: dict = {}
-    for _sentence, mapping in registering_sentences(source):
-        bind = mapping.get("bind") if isinstance(mapping.get("bind"), Mapping) else {}
-        subject = bind.get(SUBJECT_ROLE)
-        keys = subject.get("keys") if isinstance(subject, Mapping) else None
-        entity_type = subject.get("entity_type") if isinstance(subject, Mapping) else None
-        if not (isinstance(entity_type, str) and isinstance(keys, Mapping) and len(keys) == 1):
-            continue
-        (binding,) = keys.values()
-        if isinstance(binding, Mapping) and binding.get("kind") == "column" and binding.get("column"):
-            columns.setdefault(entity_type, set()).add(binding["column"])
-    return [{"entity_type": entity_type, "columns": sorted(found)}
-            for entity_type, found in sorted(columns.items())]
 
 
 def validate_bundle(value: Mapping[str, Any], *,
@@ -1714,7 +1777,7 @@ def _validate_vocabulary(section: Mapping[str, Any], problems: _Problems) -> Non
                     problems.add(
                         "invalid_predicate", qpath,
                         f"qualifier names must not be both required and optional: {overlap!r}")
-                if (kind == "none"
+                if (isinstance(kind, str) and is_registration(kind)
                         and (_column_values(required) or _column_values(optional))):
                     problems.add(
                         "invalid_predicate", qpath,
@@ -2394,18 +2457,6 @@ def _validate_sources(section: Mapping[str, Any], problems: _Problems) -> None:
                 "missing_time", f"{path}.read.occurred_at",
                 "no time to read: bind occurred_at (a column and its timezone) on the event-edge "
                 "mappings - one column for all of them - or write read.occurred_at")
-        _validate_registration_probe(
-            read.get("registration_probe"), f"{path}.read.registration_probe",
-            problems)
-        # 🔴 총괄 7255b4918 ④: a register sentence whose subject type is read per row gets no
-        # default probe (`_registered_subject_columns` names one type), so it is asked for
-        if "registration_probe" not in read and any(
-                entity_type_column((mapping.get("bind") or {}).get(SUBJECT_ROLE))
-                for _sentence, mapping in registering_sentences(source)
-                if isinstance(mapping.get("bind"), Mapping)):
-            problems.add("registration_probe_required", f"{path}.read.registration_probe",
-                         "a register sentence reads its subject's type from a column, so no "
-                         "probe can be derived - write read.registration_probe")
         # S-91, under `read` since the preparer section retired (소유자 10-01 「남겨」)
         _validate_exclude_when(read.get("exclude_when"), f"{path}.read.exclude_when",
                                problems)
@@ -2443,97 +2494,6 @@ def _validate_sources(section: Mapping[str, Any], problems: _Problems) -> None:
                 except ZoneInfoNotFoundError:
                     problems.add("invalid_timezone", f"{path}.read.occurred_at.timezone",
                                  f"unknown timezone {timezone!r}")
-
-
-def _validate_registration_probe(value: Any, path: str, problems: _Problems) -> None:
-    """Which BASE columns can name an entity that might already be registered.
-
-    🔴 WHY THIS IS A DECLARATION AND NOT AN INFERENCE.
-    The driver asks the store, once per page, which of this batch's subjects already exist,
-    so a `register` atom is emitted only on FIRST sight.  That question is asked BEFORE
-    preparation, on physical column names, while the Profile binds POST-preparation logical
-    names -- so the answer cannot be read off the bindings.  Until this declaration existed
-    the driver hard-coded one source's column names, which is why exactly one source could
-    run at all.
-
-    🔴 THE DIRECTION OF ERROR IS NOT SYMMETRIC, AND THAT IS THE WHOLE SAFETY ARGUMENT.
-    The probe result is used only to SUPPRESS a register atom for a subject already in the
-    store.  Naming a column that contributes no subject is therefore free -- it yields
-    candidates no atom mentions, and they match nothing.  MISSING a column is not free: a
-    subject that is already registered goes unsuppressed and the batch emits a duplicate
-    `register`.  So the declaration must be a SUPERSET of the subjects the atoms can
-    mention, and over-declaring is the safe side to err on.
-
-    `list_separator` exists because a column may carry a positional list of ids in one
-    string.  Probing for the unsplit string would find none of them -- an
-    under-approximation, the unsafe direction.  The retired grammar declared this as
-    `list_separator` too; the current one had lost it into a hard-coded separator.
-    """
-    if value is None:
-        return
-    if not _is_list(value):
-        problems.add("invalid_registration_probe", path, "must be a list")
-        return
-    seen: set[str] = set()
-    for index, item in enumerate(value):
-        item_path = f"{path}[{index}]"
-        if not problems.exact(
-                item, item_path, required=("entity_type", "columns"),
-                optional=("list_separator",)):
-            continue
-        entity_type = item.get("entity_type")
-        _declared_name(entity_type, f"{item_path}.entity_type", problems, _REFERENCE)
-        if isinstance(entity_type, str):
-            if entity_type in seen:
-                problems.add(
-                    "duplicate_registration_probe", f"{item_path}.entity_type",
-                    f"entity type {entity_type!r} is probed twice; merge the columns")
-            seen.add(entity_type)
-        _nonblank_list(item.get("columns"), f"{item_path}.columns", problems)
-        if "list_separator" in item:
-            separator = item.get("list_separator")
-            if not isinstance(separator, str) or not separator:
-                problems.add(
-                    "invalid_registration_probe", f"{item_path}.list_separator",
-                    "must be a non-empty string")
-
-
-def _cross_registration_probe(value: Any, path: str, relation: Any,
-                              physical: set[str], tables: Mapping[str, Any],
-                              entities: Mapping[str, Any],
-                              problems: _Problems) -> None:
-    """The probed entity must exist, be single-keyed, and name real base columns."""
-    if not _is_list(value):
-        return
-    for index, item in enumerate(value):
-        if not isinstance(item, Mapping):
-            continue
-        item_path = f"{path}[{index}]"
-        entity_type = item.get("entity_type")
-        entity = entities.get(entity_type) if isinstance(entity_type, str) else None
-        if entity is None:
-            problems.add(
-                "unknown_entity_type", f"{item_path}.entity_type",
-                f"entity type {entity_type!r} is not declared")
-            continue
-        keys = entity.get("keys")
-        if _is_list(keys) and len(keys) != 1:
-            # A composite-key entity needs one column per key part, and guessing which
-            # declared column feeds which part is exactly the kind of inference this
-            # declaration exists to remove. Refuse rather than probe a partial identity:
-            # a partial probe under-approximates, which is the direction that duplicates
-            # `register` atoms.
-            problems.add(
-                "unsupported_registration_probe", f"{item_path}.entity_type",
-                f"entity type {entity_type!r} has {len(keys)} identity keys; the probe "
-                f"supports single-keyed entities only")
-            continue
-        if isinstance(relation, str) and _is_list(item.get("columns")) and tables.get(relation):
-            for column in item["columns"]:
-                if isinstance(column, str) and column not in physical:
-                    problems.add(
-                        "unknown_column", f"{item_path}.columns",
-                        f"{relation!r} has no column {column!r}")
 
 
 def _cross_validate(bundle: Mapping[str, Any], catalog: Mapping[str, Any],
@@ -2638,9 +2598,6 @@ def _cross_validate(bundle: Mapping[str, Any], catalog: Mapping[str, Any],
                 base_columns.append(occurred_column)
         _relation_columns(relation, base_columns, tables, f"{path}.relation", problems)
         physical = set(_table_columns(tables, relation))
-        _cross_registration_probe(
-            driver.get("registration_probe"), f"{path}.read.registration_probe",
-            relation, physical, tables, entities, problems)
         # S-91. The column has to BE in the relation.
         for index, clause in enumerate(driver.get("exclude_when") or []):
             if not isinstance(clause, Mapping):

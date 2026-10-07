@@ -220,7 +220,9 @@ def skeleton_fields() -> dict[str, set[str]]:
 #: 2026-09-05; the syntax stays, because retiring it would fail every config that carries
 #: one. `test_form_does_not_offer_references.py` holds that other half.
 #: ⚠️ An entry here is a claim that a field is unreachable, not that it is unimportant.
-NOT_OFFERED = ("entities.*.references",)
+#: `sources.*.read.registration_probe` retired 10-07 (총괄 ④): the grammar still accepts it, only so the
+#: loader can say it is read by nothing and can be deleted - nothing offers it.
+NOT_OFFERED = ("entities.*.references", "sources.*.read.registration_probe")
 
 
 def deliberately_not_offered(path: str) -> bool:

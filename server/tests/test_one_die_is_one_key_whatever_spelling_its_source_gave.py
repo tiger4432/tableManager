@@ -20,9 +20,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 
 from database import crud                                               # noqa: E402
 from ledger import explorer                                             # noqa: E402
-from ledger.backfill import _v2_frame, _v2_registration_subjects        # noqa: E402
 from support.read_frame import as_read                                  # noqa: E402
-from ledger.envelope import canonical_keys                              # noqa: E402
 from ledger.implementations import (role_mapper_registry,                # noqa: E402
                                     trusted_implementations)
 from ledger.runtime_v2 import preview_cursor_batch                      # noqa: E402
@@ -105,16 +103,3 @@ def test_a_text_column_keeps_its_spelling_and_a_number_column_folds_it(snapshot)
     (number_said,) = _atoms(snapshot, NUM, ["1.0"], 21)
     assert text_said["object_payload"]["keys"]["x"] == "1.0"
     assert number_said["object_payload"]["keys"]["x"] == "1"
-
-
-def test_a_registration_probe_names_a_number_key_as_the_atom_does(snapshot):
-    """The probe's token and the atom's key are one spelling, or the key re-registers. The
-    probe reads two things off a plan - its relation and its probes - so that is all this
-    stands in for."""
-    probe = type("Probe", (), {"subject_type": "die", "identity_key": "x",
-                               "columns": ("base_x",), "list_separator": None})()
-    driver = type("Driver", (), {"registration_probe": (probe,)})()
-    plan = type("Plan", (), {"relation": TABLES[NUM], "driver": driver})()
-    frame = _v2_frame([{"base_x": 1.0}, {"base_x": "01"}, {"base_x": 3}])
-    assert _v2_registration_subjects(plan, frame) == {
-        ("die", canonical_keys({"x": "1"})), ("die", canonical_keys({"x": "3"}))}
