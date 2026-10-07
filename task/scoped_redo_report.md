@@ -73076,3 +73076,37 @@ PROBE control: PUT data/updates          status=200 upserts=1
 답 오기 전까지 이건 세워 두고 ② 로 갑니다.
 
 그 밖에 안 잰 것: main.py 에서 manager.broadcast(json.dumps( 를 부르는 줄은 20 줄(git grep, 카나리아 def apply_batch_updates_endpoint 1)이다 — 위 다섯 라우트 밖의 줄이 행 data 를 싣는지는 안 쟀다.
+
+---
+
+## [10-07] 방송 item 다섯 자리를 함수 하나로 — 셀 메뉴 넷이 오류 없이 끝난다 · 착지 a61cdb35f (총괄 9eb902922 ① 연장)
+
+어느 DB · 어느 스키마 · 지운 것 — 게이트는 PG 시험 스키마에 표 time_cell_probe 하나를 시험마다 만들고 DROP · 박스 DB 안 씀 · 그 밖에 지운 것 0
+
+```
+함수     event_constants.upsert_item(row_id, data, created_at, updated_at, is_new) — data 를 격자 읽기와 같은 jsonable_encoder 철자로
+부르는 곳 main.py 에서 5 줄(git grep event_constants.upsert_item(, 카나리아 def upsert_item 1) — 셀 쓰기 · 우선 소스 고정 한 칸 · 일괄 · 원천 지우기 한 칸 · 일괄
+         「"event": "batch_row_upsert"」를 손으로 적는 자리(server, 시험 빼고): 6 줄 — main.py 의 다섯 메시지 머리와 체인 워커 하나(아래 여섯째)
+게이트   다섯 라우트 × 한 행(datetime · 숫자 1.5 · 빈 값 "" · 대상 칸 v) — 라우트마다 200 · status success · 방송 item 하나 ·
+         방송된 칸 값 == 격자를 다시 읽은 칸 값(when · n · e · v) — 5 passed, 10 warnings in 7.73s
+변이     7/7 빨강(전부 failed 시험) · md5 전후 같음 — 셀 쓰기 자리 변이는 다섯 다 빨강(시험마다 첫 쓰기가 그 라우트라서)
+         RED  upsert_item hands the data over as the row holds it 5 failed
+         RED  upsert_item spells the data by str, not as the grid reads it 5 failed
+         RED  cell write builds its item by hand               5 failed
+         RED  delete source one builds its item by hand        1 failed, 4 passed
+         RED  pin one builds its item by hand                  1 failed, 4 passed
+         RED  pin batch builds its items by hand               1 failed, 4 passed
+         RED  delete source batch builds its items by hand     1 failed, 4 passed
+크기      5 files changed, 91 insertions(+), 59 deletions(-)
+sqlite 전체 5 failed, 7851 passed, 338 skipped, 3 xfailed, 13214 warnings in 785.92s (0:13:05) — 박스 사유 밖: 없음
+```
+
+운영 행에 남은 손상(판단, 코드로): 없다고 봅니다 — 셀 메뉴 넷은 crud 가 «방송 전에» 커밋합니다
+(delete_cell_source_batch · set_cell_manual_priority_batch 의 db.commit() 수 delete_cell_source_batch 1 · set_cell_manual_priority_batch 1, 한 칸 둘은 그 일괄 함수를 부름: delete_cell_source True · set_cell_manual_priority True).
+그래서 값은 의도대로 들어갔고, 잃은 것은 그 동작의 «응답»(오류로 보임)과 «다른 화면 방송»뿐입니다 — 새로고침하면 맞는 값이 보입니다.
+안 잰 것: 사용자가 오류를 보고 «다시 누른» 경우 두 번째 동작이 무엇을 남겼는지(감사 줄이 하나 더 생기는지 등).
+
+클라 쪽(여섯째 자리 준비, 읽기만): batch_row_upsert 를 읽는 자리 client2/src 에 1 줄(websocket.js 한 곳) — item.data 를 행 data 에 그대로 섞고,
+칸 값은 grid.js rawCellValue 하나가 «감싼 셀»과 «날 값»을 둘 다 읽습니다.
+
+다음: ② 는 총괄 지시대로 세웠습니다 — cascade · written_by · 게이트 · 안내서 두 곳을 wt-impl 로컬 가지 wip-confirm-cascade 90107fa67 에 들고 있음(푸시 안 함). 실시간 모양 재현으로 갑니다.
