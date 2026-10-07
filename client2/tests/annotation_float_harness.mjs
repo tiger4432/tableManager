@@ -93,6 +93,11 @@ async function suite(css, view, makeController) {
   const focused = row({ left: 200, top: 400, bottom: 436, right: 424 });
   fire('focusin', { closest: (sel) => (sel === '.oe-has-popover' ? focused : null) });
   ok('C2 the focus reaching a row places its annotation', focused.pop.style.top === `${436 + EDGE}px`, JSON.stringify(focused.pop.style));
+  // Keyboard focus stays on its row while the list scrolls (measured: the row 120 px up, the annotation left behind).
+  const kept = row({ left: 200, top: 280, bottom: 316, right: 424 });
+  root.querySelector = (sel) => (/focus-visible/.test(sel) ? kept : null);
+  fire('scroll', { closest: () => null });
+  ok('C3 a list scrolling under a shown annotation places it again', kept.pop.style.top === `${316 + EDGE}px`, JSON.stringify(kept.pop.style));
   return { ran, failed: failed.slice() };
 }
 
@@ -111,6 +116,8 @@ const MUTANTS = [
     mutate: swap("  root.addEventListener('mouseover', placeAnnotation);\n", '') },
   { name: 'the focus reaching a row places nothing', catches: ['C2'], file: 'screen',
     mutate: swap("  root.addEventListener('focusin', placeAnnotation);\n", '') },
+  { name: 'a scrolling list leaves a shown annotation behind', catches: ['C3'], file: 'screen',
+    mutate: swap("  root.addEventListener('scroll', () => {\n", "  root.addEventListener('scroll-unheard', () => {\n") },
 ];
 
 console.log('== baseline ==');

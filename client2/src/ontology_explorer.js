@@ -767,6 +767,13 @@ No effect`;
   };
   root.addEventListener('mouseover', placeAnnotation);
   root.addEventListener('focusin', placeAnnotation);
+  // A list scrolling under a shown one (keyboard focus stays on its row; the pointer moves to another row and is
+  // placed by mouseover) - measured on 3403b35e5: the row went 120 px up, the annotation stayed. Scroll does not
+  // bubble, so the root hears it in the capture phase.
+  root.addEventListener('scroll', () => {
+    const row = root.querySelector('.oe-has-popover:hover, .oe-has-popover:focus-visible');
+    if (row) placePopover(row);
+  }, true);
   // With nothing being edited, the bar follows the pointer instead.
   root.addEventListener('mouseover', (event) => {
     const node = event.target.closest?.('.oe-bucket--form .oe-node[data-path]');
