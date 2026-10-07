@@ -1736,6 +1736,9 @@ const FLOORS = new Map([
   // New 2026-10-07 (lead 026ced7f1). The ledger test run's atom table: the sample in the stored spelling, the
   // sentence filter, the atom's rows marked by row_id, an older server's screen unchanged.
   ['test_run_atoms_harness.mjs', 21],
+  // New 2026-10-07 (lead 2095014ee). Company SSO on the screen: the login door, the admin door over SSO's refusals,
+  // the account part and its keys, the socket's 4401.
+  ['auth_sso_harness.mjs', 23],
 ]);
 
 // ── the ceilings ────────────────────────────────────────────────────────────────

@@ -1,0 +1,39 @@
+/* The signed-in name, Log out and the API keys window (account_badge.js). Loaded by account_boot.js, the one script
+   every page carries for company SSO; with SSO off the part draws nothing and these rules match nothing. */
+.acct-host { position: relative; display: inline-flex; align-items: center; }
+/* SSO off: no box at all, so the head bar's gaps are what they were. */
+.acct-host:empty { display: none; }
+.acct { display: inline-flex; align-items: center; gap: var(--space-2); font-size: var(--fs-label); color: var(--text); }
+.acct button {
+  font: inherit; color: inherit; background: transparent; border: 1px solid var(--border);
+  padding: var(--space-1) var(--space-2); cursor: pointer;
+}
+.acct button:hover { background: var(--surface-hover); }
+.acct-name[aria-expanded="true"] { border-color: var(--accent); }
+.acct-error { color: var(--color-danger); }
+.acct-keys {
+  position: absolute; top: calc(100% + var(--space-2)); right: 0; z-index: 40;
+  display: flex; flex-direction: column; gap: var(--space-2);
+  min-width: 360px; max-width: min(520px, calc(100vw - 2 * var(--space-3)));
+  padding: var(--space-3); background: var(--bg-surface); border: 1px solid var(--border);
+  box-shadow: 0 8px 24px rgb(0 0 0 / .18);
+}
+.acct-title { font-size: var(--fs-label); text-transform: uppercase; letter-spacing: .08em; color: var(--text-muted); }
+.acct-create { display: flex; gap: var(--space-2); }
+.acct-key-name {
+  flex: 1 1 auto; min-width: 0; font: inherit; color: var(--text); background: var(--bg-surface);
+  border: 1px solid var(--border); padding: var(--space-1) var(--space-2);
+}
+.acct-fresh { display: flex; gap: var(--space-2); align-items: center; }
+.acct-fresh-key {
+  flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; font-family: var(--font-mono);
+  padding: var(--space-1) var(--space-2); border: 1px solid var(--accent);
+}
+.acct-list { display: flex; flex-direction: column; max-height: 240px; overflow: auto; }
+.acct-row {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto auto auto; gap: var(--space-2); align-items: center;
+  padding: var(--space-1) 0; border-bottom: 1px solid var(--border);
+}
+.acct-row-name { overflow-wrap: anywhere; }
+.acct-row-time { color: var(--text-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.acct-empty { color: var(--text-muted); }

@@ -16,15 +16,15 @@
     rel="stylesheet">
   <!-- 토큰(SSOT)과 이 화면의 뼈대. main.js 는 CSS 를 임포트하지 않는다 — bare node 로
        채점 가능해야 하기 때문. 그 규율의 근거는 ledger_map_panel.js 머리 주석. -->
-  <script type="module" crossorigin src="/assets/rnd_board-BrcXGo2d.js"></script>
-  <link rel="modulepreload" crossorigin href="/assets/tokens-DOzbin0I.js">
+  <script type="module" crossorigin src="/assets/rnd_board-DClv_tQ8.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/tokens-BIwMcrMG.js">
   <link rel="modulepreload" crossorigin href="/assets/preload-helper-zJ_50EbN.js">
   <link rel="modulepreload" crossorigin href="/assets/absent-o9jpRT19.js">
-  <link rel="modulepreload" crossorigin href="/assets/server_time-BtxF7Pd1.js">
-  <link rel="modulepreload" crossorigin href="/assets/branch_picker-DDMA_vv7.js">
+  <link rel="modulepreload" crossorigin href="/assets/disabled_reason-CowgvRid.js">
+  <link rel="modulepreload" crossorigin href="/assets/branch_picker-D19kbPkG.js">
   <link rel="modulepreload" crossorigin href="/assets/painter-Chj-t6K2.js">
-  <link rel="modulepreload" crossorigin href="/assets/table_part-BWhn11W8.js">
-  <link rel="stylesheet" crossorigin href="/assets/tokens-CuWep6Ka.css">
+  <link rel="modulepreload" crossorigin href="/assets/table_part-qG2cdxdr.js">
+  <link rel="stylesheet" crossorigin href="/assets/tokens-DUAdWSyv.css">
   <link rel="stylesheet" crossorigin href="/assets/rnd_board-C8-ios1l.css">
 </head>
 
@@ -36,10 +36,11 @@
            누르는 것과 그 결과를 등호로 잇는 것이 이 사실의 전부이고, 그 밖은 설명입니다. -->
       <span class="rb-page__note">Click = mark · Shift+click = control (−)</span>
       <span id="rb-branch" class="rb-page__branch"></span>
+      <div id="account-badge" class="acct-host"></div>
     </header>
     <!-- 배치는 이 페이지에 없다. 셸이 선언(main.js 의 BOARD)을 읽어 격자에 앉힌다. -->
     <div id="rb-board"></div>
-  </div>
+  </div>
 </body>
 
 </html>

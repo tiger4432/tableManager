@@ -13,6 +13,7 @@ import { fileEndView, isDoneStatus, statusToastTone } from './retry_verdict.js';
 import { triggerHistoryReloadDebounced, appendHistoryLocally } from './timeline.js';
 import { updateGridSortState, updateLoadedCount, updatePaginationUI } from './grid.js';
 import { chainRefreshNote } from './chain_refresh_note.js';
+import { goToLogin, WS_LOGIN_REQUIRED } from './auth_gate.js';
 
 /**
  * Queue the next reconnect attempt and advance the backoff ladder.
@@ -269,8 +270,10 @@ export function initWebSocket() {
     }
   };
 
-  state.ws.onclose = () => {
+  state.ws.onclose = (event) => {
     clearConnectWatchdog();   // the attempt resolved on its own — this timer has nothing left to do
+    // Refused for want of a login (company SSO): the page's login door, not the reconnect ladder.
+    if (event && event.code === WS_LOGIN_REQUIRED) { goToLogin(window); return; }
     elements.wsStatus.textContent = 'WS: DISCONNECTED';
     elements.wsStatus.className = 'status-badge offline';
     document.querySelector('.status-ws').classList.remove('active');

@@ -10,6 +10,8 @@
 //    그건 오류를 내지 않습니다 — 조용히 틀립니다.
 // ═══════════════════════════════════════════════════════════════════════════════
 
+import { isSessionRejection } from './auth_gate.js';
+
 export const ADMIN_TOKEN_KEY = 'assy.adminToken';
 
 // 헤더로만 보냅니다. 질의 문자열은 서버 접근 로그에 남고 헤더는 남지 않습니다.
@@ -67,6 +69,8 @@ export function withAdminToken(init) {
 // 대해 아무 말도 안 하므로 두 번째 프롬프트를 띄우면 안 됩니다. 이것이 없으면
 // 「일곱 요청에 프롬프트 하나」가 «타이밍 운»이 됩니다.
 let generation = 0;
+// SSO's 「not an administrator」 is said once per page, however many requests come back with it.
+let adminRequiredSaid = false;
 /** 지금 세대. 토큰이 바뀌었는지를 «비교»하는 쪽이 씁니다. */
 export function tokenGeneration() { return generation; }
 /** 토큰을 새로 저장한 쪽이 «한 번» 부릅니다. */
@@ -78,12 +82,14 @@ export function bumpTokenGeneration() { generation += 1; }
  * @param {string} url
  * @param {object} [init]
  * @param {{onServiceUnavailable?: (detail: string) => void,
- *          askForToken?: (message: string) => Promise<string>|string}} [deps]
+ *          askForToken?: (message: string) => Promise<string>|string,
+ *          onAdminRequired?: (message: string) => void}} [deps]
  *
- * 🔴 `deps` 가 둘뿐인 이유: 페이지마다 다른 것이 그 둘뿐입니다.
+ * 🔴 `deps` 가 셋인 이유: 페이지마다 다른 것이 그 셋입니다.
  *    · `onServiceUnavailable` — 503 본문을 «어디에» 세우나. 어드민은 토스트, 그리드는
  *      그 줄 자체가 답을 들고 있어 «안 넘깁니다»(안 그러면 같은 문장이 두 번 뜹니다 — 실측).
  *    · `askForToken` — 그리드 페이지에는 모달이 없습니다. 안 넘기면 «안 묻습니다».
+ *    · `onAdminRequired` — SSO 의 「관리자 아님」 문장을 «어디에» 세우나. 안 넘기면 안 띄웁니다.
  */
 export async function adminFetch(url, init, deps = {}) {
   const generationAtSend = generation;
@@ -101,6 +107,15 @@ export async function adminFetch(url, init, deps = {}) {
       } catch (e) { /* not a JSON body - let the caller report it */ }
     }
     return res;
+  }
+
+  // Company SSO's 403 - not an administrator (lead 2095014ee) - says the server's sentence once per page. Its refusals
+  // carry no X-Admin-Token challenge, so the token is never asked for over them; its 401 is the login door's.
+  if (res.status === 403 && isSessionRejection(res) && !adminRequiredSaid && deps.onAdminRequired) {
+    adminRequiredSaid = true;
+    let sentence = '';
+    try { sentence = (await res.clone().json())?.detail?.message || ''; } catch (e) { /* not JSON */ }
+    deps.onAdminRequired(String(sentence));
   }
 
   if (!isGateRejection(res)) return res;
