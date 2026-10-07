@@ -422,7 +422,8 @@ curl http://localhost:8080/api/transfer-plan/stages
 꺼진 것이 기본이다 — 그동안은 오늘처럼 로그인 없이 들어오고 `/admin/*` 은 §1-4 의 토큰이 지킨다.
 
 ```
-켜는 것   server/config/auth_config.json (모양: server/config/sample/auth_config.json.sample) + 환경변수 ASSY_OIDC_CLIENT_SECRET + 재기동
+켜는 것   server/config/auth_config.json (모양: server/config/sample/auth_config.json.sample) + 재기동
+          환경변수 ASSY_OIDC_CLIENT_SECRET 은 선택 — 있으면 secret client, 없으면 public client(PKCE 만, 10-07 `b29b14e09`). IT 가 어느 쪽으로 등록했는지에 맞춘다
           enabled true · issuer(https://<adfs 호스트>/adfs) · client_id · redirect_uri(IT 에 등록한 글자 그대로, https) · name_claim · admins
           설정은 프로세스마다 한 번 읽는다 — 바꾸면 재기동
 켜지면    /auth/* · /internal/* · /health 말고는 로그인해야 한다 — 화면 GET 은 회사 로그인으로 갔다가 돌아오고, API 는 401
@@ -432,7 +433,9 @@ curl http://localhost:8080/api/transfer-plan/stages
 스크립트   토큰으로 /admin/* 을 부르던 프로그램은 관리자의 개인 키로 — 화면 머리줄의 이름 -> API keys -> Create key
           (또는 로그인한 채 POST /auth/keys {"name": "<이름>"}) -> 그 key 를 Authorization: Bearer <key> 로(한 번만 보인다)
           ⚠️ 개인 키는 만료가 없고 지우는 것은 그 주인뿐이다(DELETE /auth/keys/<id>). 회사 계정이 막혀도 키는 산다 — admins 에서 빼면 관리 권한만 빠진다
-기동 줄   [sso] ON - issuer …                                       켜짐
+기동 줄   [sso] ON - issuer …, secret|public client …               켜짐 (경고로 « admins … is not a list» 가 붙으면 관리자 0 — 목록 ["…"] 으로 적는다)
+          [sso] OFF - auth_config.json could not be read: <줄 · 칸>   그 자리를 고치고 재기동 — 서버는 멈추지 않는다
+          [sso] OFF - enabled must be true (not "true") …          따옴표 없는 true 로
           [sso] OFF - enabled is true but not set: <칸>              그 칸을 채우고 재기동
           [sso] OFF - redirect_uri (…) is not an https address       https 앞단 뒤에서만 켠다
           [sso] OFF - enabled is not true in auth_config.json        꺼짐(기본)
