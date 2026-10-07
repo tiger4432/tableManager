@@ -1104,8 +1104,8 @@ FastAPI 웹서버. 모든 REST/WS의 단일 진입점. 워커·워처와는 outb
 > | `admit(request)` | **로그인 문** — `db_context_middleware` 가 켜졌을 때만 부른다. 돌아올 주소의 경로에 state + (code 또는 error) 면 `_returned` 로 왕복을 끝내고, 아니면 `request.state.sso_user` 를 채우고, 열린 경로(`/auth/*` · `/internal/*` · `/health`) 밖에서 이름이 없으면 화면 GET 은 302 `/auth/login?next=`, 그 밖은 401 `login_required` + `WWW-Authenticate: Session` |
 > | `who(request, fallback)` | **«누가 했나» 다섯 자리**(미들웨어 `request_user` · 체인 일시정지 · 세상 live · 운영 세상 · 파일 올리기)가 부른다 — 로그인한 이름, 없으면 그 자리의 오늘 값 |
 > | `identify(connection)` | 세션 쿠키(sha256 으로 `auth_sessions` 조회) 또는 `Authorization: Bearer`(개인 키, `last_used_at` 갱신) → 이름. `/ws` 도 이것으로 4401 |
-> | `require_admin(request)` | 401 `login_required` / 403 `admin_required`(둘 다 `WWW-Authenticate: Session`) |
-> | `_returned(query)` / `_verified_claims` / `_refused` | 왕복 행을 쓰고 지움 → IdP 오류면 거절 페이지 · 아니면 토큰 교환(authlib, PKCE) → joserfc 로 서명 · iss · aud · exp · nonce(여유 `CLOCK_SKEW_SECONDS`) · 모르는 kid 는 JWKS 한 번 더 → 이름 클레임 없으면 «설정 값 + 토큰의 클레임 이름 목록» 거절. 거절은 전부 `_refused` 한 모양(로그 한 줄 + Try again) |
+> | `require_admin(request)` · 🆕 `is_admin(user)` | 401 `login_required` / 403 `admin_required`(둘 다 `WWW-Authenticate: Session`). 🆕 10-07 `ae579a9a2` 관리자 목록은 «양쪽을 casefold» 해 견준다 — `is_admin` 하나(`require_admin` · `/auth/me` 가 부름). 기록되는 이름은 토큰의 철자 그대로 |
+> | `_returned(query)` / `_verified_claims` / `_refused` | 왕복 행을 쓰고 지움 → IdP 오류면 거절 페이지 · 아니면 토큰 교환(authlib, PKCE) → joserfc 로 서명(🆕 `ae579a9a2` 비대칭만 — `ASYMMETRIC_ALGORITHM_FAMILIES` RS · PS · ES 로 discovery 목록을 거르고, 남는 것 없으면 RS256. `none` · HS* 는 discovery 가 적어도 안 받는다) · iss · aud · exp · nonce(여유 `CLOCK_SKEW_SECONDS`) · 모르는 kid 는 JWKS 한 번 더 → 이름 클레임 없으면 «설정 값 + 토큰의 클레임 이름 목록» 거절. 거절은 전부 `_refused` 한 모양(로그 한 줄 + Try again) |
 > | 라우트 | `GET /auth/login` · `POST /auth/logout` · `GET /auth/me` · `POST/GET /auth/keys` · `DELETE /auth/keys/{id}`. 꺼졌으면 `/auth/me` 만 답하고(`sso:false`) 나머지 404 |
 > | 표 셋(`models.py`) | `auth_login_states` · `auth_sessions` · `auth_api_keys` — 부팅 `create_all` 이 만든다. 시각은 epoch 초. 지난 왕복 · 만료 세션은 다음 `/auth/login` 이 같은 트랜잭션에서 지운다(`_sweep`) |
 

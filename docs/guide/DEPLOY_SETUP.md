@@ -426,7 +426,7 @@ curl http://localhost:8080/api/transfer-plan/stages
           enabled true · issuer(https://<adfs 호스트>/adfs) · client_id · redirect_uri(IT 에 등록한 글자 그대로, https) · name_claim · admins
           설정은 프로세스마다 한 번 읽는다 — 바꾸면 재기동
 켜지면    /auth/* · /internal/* · /health 말고는 로그인해야 한다 — 화면 GET 은 회사 로그인으로 갔다가 돌아오고, API 는 401
-          /admin/* 은 admins 에 적힌 이름(name_claim 값 그대로)만 — X-Admin-Token 은 «안 읽는다»
+          /admin/* 은 admins 에 적힌 이름(name_claim 값, 대소문자 무시 — 10-07 `ae579a9a2`)만 — X-Admin-Token 은 «안 읽는다»
           /internal/* (워커 통지)는 그대로 ASSY_ADMIN_TOKEN — 워커는 바꿀 것 없음
           기록의 «누가»는 로그인한 이름. 세션 12 시간, 로그아웃하면 끝
 스크립트   토큰으로 /admin/* 을 부르던 프로그램은 관리자의 개인 키로 — 화면 머리줄의 이름 -> API keys -> Create key
