@@ -769,6 +769,17 @@ async function suite(m, makeWalk = createWalkBoxWalk, css = REAL_CSS) {
       JSON.stringify({ resized, was, now }));
   }
 
+  console.log('\n[X] a press lands: the name is part of the node, a hand that wanders a little still presses (lead 5f1eb137e)');
+  {
+    const s = await seat([DIE]);
+    const node = nodesOf(s)[0];
+    const textEvents = node ? node.pstyle('text-events').strValue : null;
+    say('X1 a node\'s name takes the press as its dot does', textEvents === 'yes', String(textEvents));
+    const slop = s.view.cy ? s.view.cy._private.options.desktopTapThreshold : null;
+    say('X2 a press may wander TAP_SLOP px before it drags, more than the library\'s 4', slop === m.TAP_SLOP && m.TAP_SLOP > 4,
+      JSON.stringify({ slop, TAP_SLOP: m.TAP_SLOP }));
+  }
+
   console.log('\n[Q] Mark is the one press that marks; the facts stay in sight (lead 9dc2a5695 ① ②)');
   {
     const s = await seat([DIE, STEP2]);
@@ -1049,6 +1060,10 @@ const failures = [];
     M('A4m', 'the world rows are drawn whatever the walk reads', 'W7',
       '    if (!this.worldChips) return;\n', ''),
     M('Z1m', 'the first fit has no floor (lead 10-07)', 'Z1', '    if (cy.zoom() >= READABLE_ZOOM) return;\n', '    return;\n'),
+    M('X1m', 'a node\'s name is not part of it again (lead 5f1eb137e)', 'X1',
+      "        'text-events': 'yes', 'border-width': 1.5,", "        'border-width': 1.5,"),
+    M('X2m', 'a press that wanders past the library\'s 4 px drags again (lead 5f1eb137e)', 'X2',
+      '      boxSelectionEnabled: false, desktopTapThreshold: TAP_SLOP });', '      boxSelectionEnabled: false });'),
     M('Z2m', 'Fit keeps the floor', 'Z2', 'if (this.cy) this.cy.fit(undefined, GEOMETRY.fitPad);', 'if (this.cy) this._firstFit();'),
     M('Z3m', 'the first draw is not fitted', 'Z1', '    if (full) this._fitPending = true;\n', ''),
     M('Z4m', 'a change of size fits the picture again', 'Z4', '    else this.cy.resize();\n', '    else this._firstFit();\n'),

@@ -40,6 +40,9 @@ export const DEFAULT_FANOUT_LIMIT = 20;
 const PICK_FILTER_AT = 8;
 /** The first fit never zooms out past this: a 15px name stays at the 12px meta size (「작은 글씨는 없느니만 못하다」). */
 const READABLE_ZOOM = 0.8;
+/** How far (px) a press may wander and still be a press, not a node drag (owner 10-07 「노드 클릭이 불안정」, lead
+ *  5f1eb137e: on the built page a press that moved a few px past the library's 4 dragged the node and picked nothing). */
+export const TAP_SLOP = 10;
 
 /** The signed ids of a marking, as the walk takes them. */
 export function seedsOf(entries) {
@@ -672,7 +675,8 @@ export class SubgraphView {
       { selector: 'node[kind = "node"]', style: set({
         width: GEOMETRY.node, height: GEOMETRY.node, shape: 'ellipse', label: 'data(label)',
         'font-size': px('--fs-body', 15), 'text-valign': 'center', 'text-halign': 'right', 'text-margin-x': 6.8,
-        'border-width': 1.5, 'border-color': t('--bg-surface') }) },
+        // The name is what a person aims at; the dot alone is a GEOMETRY.node target (lead 5f1eb137e).
+        'text-events': 'yes', 'border-width': 1.5, 'border-color': t('--bg-surface') }) },
       { selector: 'node[kind = "node"][?static]', style: { shape: 'rectangle' } },
       { selector: 'node[kind = "node"][step > 1]', style: set({ 'border-style': 'dashed', 'border-color': t('--text') }) },
       { selector: 'node.is-seed', style: set({ 'border-width': 2, 'border-style': 'solid', 'border-color': t('--accent') }) },
@@ -720,7 +724,7 @@ export class SubgraphView {
     const canRender = typeof this.canvas.getBoundingClientRect === 'function';
     const cy = cytoscape({ container: canRender ? this.canvas : undefined, headless: !canRender, styleEnabled: true,
       style: this._style(), elements: [], minZoom: 0.1, maxZoom: 3,
-      boxSelectionEnabled: false });
+      boxSelectionEnabled: false, desktopTapThreshold: TAP_SLOP });
     // Headless there is no frame to draw; the library's frame loop would only keep a node process from ending.
     if (!canRender) cy.stopAnimationLoop();
     cy.on('tap', 'node', (ev) => {

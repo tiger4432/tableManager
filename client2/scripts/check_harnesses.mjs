@@ -1431,8 +1431,9 @@ const FLOORS = new Map([
   // a press marks into the store, Continue walks that marking onto the same picture; bundle chips
   // (lead 1d07f1dae): one per bundle answered, a press expands it on the same picture.
   // 88 -> 138 (leads 5e1d9e372 · e523cfe91 · 03bc94b6b): drawn by Cytoscape, read off the part's instance; one
-  // lump opens only what is ticked, the view and what stands never move; tokens, curves, the pointer, Reset.
-  ['subgraph_view_harness.mjs', 152],
+  // lump opens only what is ticked, the view and what stands never move; tokens, curves, the pointer, Reset;
+  // a press lands on a node's name and survives a hand that wanders a little (lead 5f1eb137e).
+  ['subgraph_view_harness.mjs', 156],
   // New (lead 65754c39a): the one layered-SVG template - both screens draw their pinned pictures, two
   // declarations on one page apart, the template's own slots/shapes/texts/presses; (lead 2cbd0756d) the nine
   // category colours of their own, measured, and seven token mutants. 33 -> 30 (lead 5e1d9e372): the subgraph
