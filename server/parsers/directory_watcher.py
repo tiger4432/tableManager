@@ -1016,10 +1016,10 @@ def archive_processed_files_enabled() -> bool:
 # ── [Flatten] nested directory flatten (raws/ 하위 폴더 트리 → 파일만 승격) ──
 # A directory dropped into raws/ (arbitrarily nested) is NOT watched as permanent
 # structure, but its STRUCTURE IS THE DATA: the folder names carry information
-# (lot, equipment, date, ...). Once the tree is quiescent, every regular file is
-# dispatched THROUGH THE UNCHANGED PIPELINE AT ITS REAL NESTED LOCATION (event
-# path → lane routing → parser → checkpoint/dedup → archives/, err/) and the
-# directories that end up empty are removed.
+# (lot, equipment, date, ...). Once a file has finished writing it is dispatched
+# THROUGH THE UNCHANGED PIPELINE AT ITS REAL NESTED LOCATION (event path → lane
+# routing → parser → checkpoint/dedup → archives/, err/); once the whole tree is
+# quiet, the directories that end up empty are removed.
 #
 # NOT flattened into raws/ (superseded 2026-07-30). Promoting the files meant
 # encoding the folder names into the filename with a separator and decoding them
@@ -1032,14 +1032,17 @@ def archive_processed_files_enabled() -> bool:
 # operator's existing off-switch is not silently disabled by the rename.
 DEFAULT_FLATTEN_NESTED_DIRS = True
 
-# Tree-quiescence poll. Generalizes the existing per-file stability primitive
-# (the 1s pre-processing debounce + the sweep's (mtime, size) signature) over a
-# directory tree: two consecutive identical snapshots of {relpath: (size, mtime)}
-# taken FLATTEN_STABILITY_INTERVAL_SECONDS apart mean the copy has finished.
+# Tree-quiescence poll: snapshots of {relpath: (size, mtime)} taken
+# FLATTEN_STABILITY_INTERVAL_SECONDS apart. A FILE whose entry is the same in two
+# of them has finished writing and is ingested then - one file still growing does
+# not hold back the finished ones beside it (owner 10-08). The TREE is quiet when
+# the whole snapshot is the same, and only then are emptied folders removed.
 FLATTEN_STABILITY_INTERVAL_SECONDS = 1.0
-# Give up waiting after this long; the directory is left untouched and the
-# periodic sweep (PERIODIC_SWEEP_INTERVAL_SECONDS) re-triggers the tree later.
+# Stop waiting after this long; the files still being written and every folder are
+# left, and the periodic sweep (PERIODIC_SWEEP_INTERVAL_SECONDS) re-triggers later.
 FLATTEN_STABILITY_MAX_WAIT_SECONDS = 600
+# How many of the files still being written the deferral line names.
+FLATTEN_DEFERRED_NAMES_SHOWN = 5
 
 # OS junk files discarded together with the folder (never ingested, never kept).
 # Exact names, case-insensitive, plus macOS AppleDouble "._*" sidecar files.
@@ -1908,13 +1911,23 @@ class IngestionHandler(FileSystemEventHandler):
             return None
         return snap
 
-    def _wait_tree_quiescent(self, abs_dir: str) -> bool:
-        """Wait until the tree stops changing (total content stable across one
-        poll interval — a folder mid-copy must not be flattened half-full).
+    @staticmethod
+    def _files_written(prev, cur) -> dict:
+        """The files that finished writing: {relpath: (size, mtime)} for each file whose
+        entry is the same in two snapshots one poll apart. The per-file cell of the
+        tree's quiescence - the tree is quiet when every entry is the same and none
+        came or went (`cur == prev`). An entry that could not be stat'ed never matches."""
+        return {key[1]: entry for key, entry in cur.items() if key[0] == "f" and prev.get(key) == entry}
 
-        True  → tree is quiescent, safe to flatten.
-        False → directory vanished, or still changing after the max wait
-                (left untouched; the periodic sweep re-triggers later).
+    def _wait_tree_quiescent(self, abs_dir: str, take) -> bool:
+        """Wait until the tree stops changing, handing `take` each file as soon as THAT
+        file has finished writing (`_files_written`) - a half-written file is never read,
+        and a file still growing does not hold back the finished ones (owner 10-08).
+
+        `take({relpath: (size, mtime)})` returns how many files this pass has dispatched.
+        True  → tree is quiet - every file was handed over; emptied folders may go.
+        False → directory vanished, or still changing after the max wait (the files
+                still being written and every folder are left; the sweep re-triggers).
         """
         deadline = time.monotonic() + FLATTEN_STABILITY_MAX_WAIT_SECONDS
         prev = self._snapshot_tree(abs_dir)
@@ -1923,12 +1936,18 @@ class IngestionHandler(FileSystemEventHandler):
             cur = self._snapshot_tree(abs_dir)
             if cur is None:
                 return False
+            written = self._files_written(prev, cur)
+            dispatched = take(written)
             if cur == prev:
                 return True
             if time.monotonic() >= deadline:
+                still = sorted(rel for kind, rel in cur if kind == "f" and rel not in written)
+                named = ", ".join(still[:FLATTEN_DEFERRED_NAMES_SHOWN])
+                more = ", …" if len(still) > FLATTEN_DEFERRED_NAMES_SHOWN else ""
                 logger.warning(
-                    f"[{self.table_name}] Tree ingestion deferred — tree still changing after "
-                    f"{FLATTEN_STABILITY_MAX_WAIT_SECONDS}s: {abs_dir} (periodic sweep will retry)"
+                    f"[{self.table_name}] Tree ingestion deferred — {len(still)} file(s) still being "
+                    f"written after {FLATTEN_STABILITY_MAX_WAIT_SECONDS}s, {dispatched} finished file(s) "
+                    f"dispatched: {abs_dir} (still writing: {named}{more}; periodic sweep will retry)"
                 )
                 return False
             prev = cur
@@ -1974,9 +1993,11 @@ class IngestionHandler(FileSystemEventHandler):
         return rel.replace(os.sep, "/")
 
     def _ingest_directory_tree(self, abs_dir: str):
-        """Dispatch every regular file of a quiescent tree AT ITS REAL LOCATION,
-        then remove ONLY the directories that ended up empty (os.rmdir — a
-        directory still containing anything is never deleted).
+        """Dispatch every regular file of the tree AT ITS REAL LOCATION as soon as that
+        file has finished writing, then - once the WHOLE tree is quiet - remove ONLY
+        the directories that ended up empty (os.rmdir — a directory still containing
+        anything is never deleted). A folder emptied while another file is still being
+        written stays: a producer may still be writing into it (owner 10-08).
 
         Files are NOT promoted to raws/. They go through the unchanged existing
         event path (_handle_event → lane routing → parser → checkpoint/dedup →
@@ -1990,16 +2011,19 @@ class IngestionHandler(FileSystemEventHandler):
         t_name = self.table_name  # display only; processing snapshots per file
         dir_label = os.path.basename(abs_dir)
         raws_root = os.path.abspath(self.raws_path)
-        if not self._wait_tree_quiescent(abs_dir):
-            return
+        taken, junk = set(), []
+        done = {"dispatched": 0, "cleared": 0, "refused": 0}
 
-        # Collect regular files (mtime ascending — same ordering rule as the sweep)
-        # and junk files to discard.
-        to_process, junk, refused = [], [], 0
-        for dirpath, _dirnames, filenames in os.walk(abs_dir):
-            for fn in filenames:
-                fp = os.path.join(dirpath, fn)
-                if self._is_discardable_system_file(fn):
+        def take(written):
+            # Each version of a file once per pass: a file processing leaves in place
+            # (archive off, heavy lane still busy) reads as written at every poll.
+            to_process = []
+            for rel, entry in sorted(written.items()):
+                if (rel, entry) in taken:
+                    continue
+                taken.add((rel, entry))
+                fp = os.path.join(abs_dir, rel)
+                if self._is_discardable_system_file(os.path.basename(fp)):
                     junk.append(fp)
                     continue
                 # Refuse anything that does not resolve to a path UNDER raws/ —
@@ -2010,21 +2034,41 @@ class IngestionHandler(FileSystemEventHandler):
                         f"[{t_name}] Tree ingestion: refused '{fp}' — it does not resolve to a "
                         f"path under raws/ (escaping component). Left untouched, not ingested."
                     )
-                    refused += 1
+                    done["refused"] += 1
                     continue
                 try:
                     st = os.stat(fp)
                 except OSError:
-                    continue  # vanished between snapshot and walk
+                    continue  # vanished between snapshot and stat
                 # Carry the tier-1 key off the stat we just took (same reason as
                 # the sweep: the expensive part is getting to the question).
                 to_process.append((
                     st.st_mtime, fp,
                     (mtime_ns_to_datetime(st.st_mtime_ns), int(st.st_size)),
                 ))
-        to_process.sort(key=lambda x: x[0])
+            if not to_process:
+                return done["dispatched"]
+            to_process.sort(key=lambda x: x[0])  # mtime ascending — the sweep's ordering rule
+            # [Tier 1, hoisted] The same batched question the sweep asks, for a reason
+            # that bites HARDER here: this dispatches every file of the tree on every
+            # trigger, and it has no equivalent of the sweep's in-memory (mtime, size)
+            # cache. When files are left in place the tree is never emptied, so each
+            # periodic sweep re-triggers it and re-pays ~92 ms per file — not once per
+            # restart, but every cycle, forever.
+            cleared = self.settle_already_terminal(
+                [(os.path.abspath(fp), fstat) for _m, fp, fstat in to_process])
+            done["cleared"] += len(cleared)
+            for _mtime, fp, _fstat in to_process:
+                if os.path.abspath(fp) in cleared:
+                    continue
+                self._handle_event(fp)
+                done["dispatched"] += 1
+            return done["dispatched"]
 
-        # Junk goes first so the rmdir pass below can actually empty a directory
+        if not self._wait_tree_quiescent(abs_dir, take):
+            return
+
+        # Junk goes before the rmdir pass below so it can actually empty a directory
         # whose only other content was a Thumbs.db.
         for fp in junk:
             try:
@@ -2038,21 +2082,6 @@ class IngestionHandler(FileSystemEventHandler):
                     f"[{t_name}] Tree ingestion: could not discard system file {fp}: {e}"
                 )
 
-        # [Tier 1, hoisted] The same batched question the sweep asks, for a reason
-        # that bites HARDER here: this loop dispatches every file of the tree on
-        # every trigger, and it has no equivalent of the sweep's in-memory
-        # (mtime, size) cache. When files are left in place the tree is never
-        # emptied, so each periodic sweep re-triggers it and re-pays ~92 ms per
-        # file — not once per restart, but every cycle, forever.
-        cleared = self.settle_already_terminal(
-            [(os.path.abspath(fp), fstat) for _m, fp, fstat in to_process])
-        dispatched = 0
-        for _mtime, fp, _fstat in to_process:
-            if os.path.abspath(fp) in cleared:
-                continue
-            self._handle_event(fp)
-            dispatched += 1
-
         # Remove emptied directories bottom-up. os.rmdir fails on non-empty
         # directories by design — that failure IS the "never delete a directory
         # containing anything" guarantee (files still queued on the heavy lane,
@@ -2064,23 +2093,23 @@ class IngestionHandler(FileSystemEventHandler):
                 os.rmdir(dirpath)
             except OSError:
                 removed_all = False
-        settled = f", {len(cleared)} already concluded (tier-1)" if cleared else ""
-        if refused or not removed_all:
+        settled = f", {done['cleared']} already concluded (tier-1)" if done["cleared"] else ""
+        if done["refused"] or not removed_all:
             logger.warning(
                 f"[{t_name}] 📂 Tree ingestion incomplete for '{dir_label}': dispatched "
-                f"{dispatched} file(s){settled}, {refused} refused — directory preserved; "
+                f"{done['dispatched']} file(s){settled}, {done['refused']} refused — directory preserved; "
                 f"periodic sweep will retry."
             )
         else:
             logger.info(
-                f"[{t_name}] 📂 Tree ingested '{dir_label}': {dispatched} file(s) "
+                f"[{t_name}] 📂 Tree ingested '{dir_label}': {done['dispatched']} file(s) "
                 f"processed in place{settled}, directory tree removed."
             )
 
         # NOTE: the flatten design ended here with a second dispatch pass over the
         # files it had MOVED into the watched root. In-place ingestion has no move
-        # step — `to_process` is dispatched above at its nested path — so that pass
-        # is gone. Re-adding one over `to_process` would double-process every file.
+        # step — every file is dispatched by `take` at its nested path — so that pass
+        # is gone. Re-adding one would double-process every file.
 
     # ── [Heavy Lane P1] 레인 라우팅 ──────────────────────────────────────
 

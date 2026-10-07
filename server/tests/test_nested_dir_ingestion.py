@@ -6,7 +6,9 @@ the folder names encoded into its filename (superseded 2026-07-30: that was a ro
 trip through a string for information the callee already holds).
 
 Spec verified here:
-1. quiescence: a tree mid-copy is not read (tree-generalized stability check),
+1. readiness: a file is read once, when IT has finished writing - never half-written,
+   and one file still growing does not hold back the finished ones beside it; emptied
+   folders are removed only when the whole tree is quiet (owner 10-08),
 2. in-place dispatch: every regular file goes through the UNCHANGED pipeline
    (event path → lane routing → parser → checkpoint/dedup → archives/, err/) at
    its nested path, and only the directories that end up empty are removed,
@@ -411,11 +413,13 @@ def test_mid_copy_waits_until_tree_is_stable(flat_env, monkeypatch):
     monkeypatch.setattr(directory_watcher, "FLATTEN_STABILITY_INTERVAL_SECONDS", 0.1)
     ws, handler = flat_env["make_handler"]()
     seen = {}
+    reads = []
     raws = ws / "raws"
     batch = raws / "copying"
     target = _write(batch / "grow.csv", "start\n")
 
     def record(fp, uploader="system", retries=3, delay=1.0):
+        reads.append(fp)
         with open(fp, encoding="utf-8") as f:
             seen[os.path.relpath(fp, str(raws)).replace(os.sep, "/")] = f.read()
 
@@ -434,8 +438,9 @@ def test_mid_copy_waits_until_tree_is_stable(flat_env, monkeypatch):
     elapsed = time.monotonic() - t0
     w.join()
 
-    # The file was READ only after the writer went quiet, and read WHOLE.
+    # The file was READ only after the writer went quiet, ONCE, and read WHOLE.
     assert elapsed >= 0.35
+    assert len(reads) == 1, reads
     content = seen["copying/grow.csv"]
     assert content.startswith("start\n") and content.endswith("more-data\n")
 
@@ -466,7 +471,78 @@ def test_never_stable_tree_is_deferred_untouched(flat_env, monkeypatch, caplog):
 
     assert batch.exists() and os.path.exists(target)  # untouched
     assert calls == []                                # nothing dispatched
-    assert any("Tree ingestion deferred" in r.message for r in caplog.records)
+    deferred = [r.message for r in caplog.records if "Tree ingestion deferred" in r.message]
+    assert len(deferred) == 1 and "1 file(s) still being written" in deferred[0] \
+        and "0 finished file(s) dispatched" in deferred[0] and "still writing: grow.csv;" in deferred[0], deferred
+
+
+# ---------------------------------------------------------------------------
+# Per-file readiness (owner 10-08): a file goes in when IT has finished writing;
+# emptied folders go only when the whole tree is quiet
+# ---------------------------------------------------------------------------
+
+def _grow(path, prefix, stop):
+    """Append a row every 20 ms until `stop` is set - a file that never finishes writing."""
+    def writer():
+        n = 0
+        while not stop.is_set():
+            n += 1
+            with open(path, "a", encoding="utf-8", newline="") as f:
+                f.write(f"{prefix}-{n},Cap,{n}\n")
+            time.sleep(0.02)
+    w = threading.Thread(target=writer, daemon=True)
+    w.start()
+    return w
+
+
+def test_a_finished_file_beside_a_growing_one_goes_in_that_pass(flat_env, monkeypatch, caplog):
+    monkeypatch.setattr(directory_watcher, "FLATTEN_STABILITY_MAX_WAIT_SECONDS", 0.4)
+    ws, handler = flat_env["make_handler"]()
+    calls = _stub_processing(handler)
+    batch = ws / "raws" / "batch"
+    _write(batch / "done.csv", _csv(1))
+    grow = _write(batch / "grow.csv", "part_no,category,stock_qty\n")
+    stop = threading.Event()
+    w = _grow(grow, "G", stop)
+    try:
+        with caplog.at_level("WARNING"):
+            _ingest_sync(handler, str(batch))
+    finally:
+        stop.set()
+        w.join()
+
+    assert "batch/grow.csv" not in calls       # half-written: never read
+    assert calls == ["batch/done.csv"]         # finished: in this pass, once - though it reads as written every poll
+    deferred = [r.message for r in caplog.records if "Tree ingestion deferred" in r.message]
+    assert len(deferred) == 1 and "1 file(s) still being written" in deferred[0] \
+        and "1 finished file(s) dispatched" in deferred[0] and "still writing: grow.csv;" in deferred[0], deferred
+
+
+def test_a_file_taken_before_the_tree_is_quiet_is_not_taken_again_and_its_folder_waits(flat_env, monkeypatch):
+    monkeypatch.setattr(directory_watcher, "FLATTEN_STABILITY_MAX_WAIT_SECONDS", 0.5)
+    ws, handler = flat_env["make_handler"]()
+    _speed_up_processing(handler)
+    batch = ws / "raws" / "batch"
+    _write(batch / "a" / "done.csv", _csv(2, "D"))
+    grow = _write(batch / "b" / "grow.csv", "part_no,category,stock_qty\n")
+    stop = threading.Event()
+    w = _grow(grow, "G", stop)
+    try:
+        _ingest_sync(handler, str(batch))      # the tree never goes quiet in this pass
+    finally:
+        stop.set()
+        w.join()
+
+    # the finished file went in and was archived; the folder it emptied waits for the whole tree
+    assert {r.part_no for r in _rows(flat_env)} == {"D-1", "D-2"}
+    assert (batch / "a").is_dir() and os.listdir(batch / "a") == []
+
+    monkeypatch.setattr(directory_watcher, "FLATTEN_STABILITY_MAX_WAIT_SECONDS", 5.0)
+    _ingest_sync(handler, str(batch))          # the next sweep's pass: quiet now
+
+    assert [log.filename for log in _logs(flat_env)].count("done.csv") == 1   # not taken again
+    assert {"D-1", "D-2", "G-1"} <= {r.part_no for r in _rows(flat_env)}
+    assert not batch.exists()                  # quiet: emptied folders removed, as before
 
 
 # ---------------------------------------------------------------------------
