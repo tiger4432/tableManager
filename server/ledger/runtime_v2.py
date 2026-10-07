@@ -505,13 +505,9 @@ def _screened_atoms(snapshot: LedgerSetupSnapshot, source_id: str, preview,
 
 #: How many atoms the test run shows (총괄 026ced7f1).
 ATOMS_SAMPLE_LIMIT = 50
-#: The drop reason of a registration the ledger already holds - execution's registration
-#: filter leaves it out, and the test run (which reads no ledger) would otherwise show it as written.
-DROP_ALREADY_REGISTERED = "already_registered"
 
 
-def atoms_sample(snapshot: LedgerSetupSnapshot, source_id: str, preview, row_ids,
-                 registered) -> tuple:
+def atoms_sample(snapshot: LedgerSetupSnapshot, source_id: str, preview, row_ids) -> tuple:
     """The atoms execution would hand the ledger for the read rows `row_ids`, in write order,
     each in the ledger's own spelling (`store.atom_record`, its id left out - minted at write)
     beside its sentence, its rows and whether execution writes it -> (sample, omitted).
@@ -519,8 +515,9 @@ def atoms_sample(snapshot: LedgerSetupSnapshot, source_id: str, preview, row_ids
     rows to point at.
 
     The gate runs under `gate.captured()`, so a look moves no refusal counter. A refusal stops
-    the whole batch in execution, so it marks every atom. `registered(subjects)` answers which
-    of the shown attribute-less registrations the ledger already holds - one narrowed read."""
+    the whole batch in execution, so it marks every atom. Registrations are filtered as
+    execution filters them - `rescope` hands the filter no ledger-held registrations, so a
+    subject the ledger already holds is written again (총괄 10-07 ㄱ)."""
     from . import store
 
     event_atoms = _event_atoms_to_write(snapshot, source_id, preview)
@@ -537,21 +534,13 @@ def atoms_sample(snapshot: LedgerSetupSnapshot, source_id: str, preview, row_ids
     picked = [atom for atoms in event_atoms for atom in atoms
               if wanted & rows_of.get(atom.source_raw_ref, set())]
     shown = picked[:ATOMS_SAMPLE_LIMIT]
-
-    def bare_registration(atom):
-        return atom.predicate == "register" and not registration_fingerprint(atom.object_payload)
-
-    known = set(registered({registration_token(a.subject_type, a.subject_keys)
-                            for a in shown if bare_registration(a)}) or ())
     sample = []
     for atom in shown:
         record = store.atom_record(atom)
         del record["id"]
-        drop = refused or (DROP_ALREADY_REGISTERED if bare_registration(atom) and registration_token(
-            atom.subject_type, atom.subject_keys) in known else None)
         sample.append(dict(record, sentence=str(atom.derivation),
                            row_ids=sorted(rows_of.get(atom.source_raw_ref, ())),
-                           writes=drop is None, drop_reason=drop))
+                           writes=refused is None, drop_reason=refused))
     return sample, len(picked) - len(shown)
 
 

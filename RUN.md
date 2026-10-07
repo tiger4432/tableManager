@@ -1,14 +1,46 @@
 # 지금 돌리면 되는 것
 
+> ## [10-07] **회사 SSO 로그인(OIDC · ADFS) — 켜기 = auth_config.json + 환경변수 비밀 하나 + 재기동 · 이주 «불필요»(부팅이 표 셋을 만든다) · 재기동 «필요»**
+>
+> ```
+> IT 에 받을 것   ADFS 애플리케이션 그룹 · 그 안의 서버 애플리케이션(= 클라이언트 ID) · 리디렉션 URI · 클라이언트 비밀
+>               요청 scope 는 openid 하나. ADFS ID 토큰에 upn 이 기본으로 실리는지는 «아직 확인 못 한 사실» — 첫 로그인이 알려 준다(아래 거절 줄)
+> 적는 곳        server/config/auth_config.json — 모양은 server/config/sample/auth_config.json.sample
+>                 enabled      true 면 켬. 없거나 false 면 꺼짐(오늘 그대로)
+>                 issuer       https://<adfs 호스트>/adfs — 끝점은 그 아래 /.well-known/openid-configuration 에서 찾는다
+>                 client_id    서버 애플리케이션의 클라이언트 ID
+>                 redirect_uri IT 에 등록한 주소를 «글자 그대로, 끝 / 유무까지». https 여야 켜진다
+>                 name_claim   사람 이름으로 쓸 클레임 이름(대개 upn). 비워 두고 켜도 된다 — 첫 로그인 거절 문장이 토큰에 있는 클레임 이름을 보여 준다
+>                 admins       관리 화면을 쓸 사람 — name_claim 으로 나온 값 그대로(대소문자까지)
+>               환경변수 ASSY_OIDC_CLIENT_SECRET = 클라이언트 비밀. 파일에는 적지 않는다
+> 켜기 전에       관리 토큰(X-Admin-Token)으로 관리 기능을 부르던 프로그램은 관리자 목록에 있는 사람의 개인 키로 바꾼다
+>                 로그인 -> POST /auth/keys {"name": "<이름>"} -> 응답의 key 를 Authorization: Bearer <key> 로. 키는 그 응답에서 한 번만 보인다
+>               워커는 바꿀 것 없음 — /internal/* 은 그대로 ASSY_ADMIN_TOKEN
+> 재기동 뒤 볼 줄  [sso] ON - issuer … return address …                 = 켜짐
+>               [sso] OFF - enabled is true but not set: <칸 이름>      = 그 칸을 채우고 재기동
+>               [sso] OFF - redirect_uri (auth_config.json) is not an https address = https 앞단(10-01 nginx 절) 뒤에서만 켠다
+>               [sso] OFF - enabled is not true in auth_config.json   = 꺼짐, 오늘 그대로
+> 뜻            켜지면 /auth/* · /internal/* · /health 말고는 로그인해야 한다. 화면은 회사 로그인으로 갔다가 돌아온다
+>               관리 라우트는 admins 에 있는 사람만 — /admin/* 에서 X-Admin-Token 은 안 받는다
+>               기록의 «누가»는 로그인한 이름이다 — 로그인한 요청에서는 X-User 와 쿼리 user 를 안 읽는다
+>               세션은 12 시간, 로그아웃하면 끝
+> 거절 줄        [sso] Sign-in refused: name_claim in auth_config.json is '…', … Claims in the token: … = 목록 중 하나를 name_claim 에 적고 재기동
+>               [sso] The identity provider refused the sign-in: <error> = ADFS 쪽 거절 — 화면에 같은 문장과 Try again
+>               [sso] Sign-in refused: the ID token did not verify (…) = issuer · client_id 가 ADFS 와 맞는지 먼저
+> 끄기           enabled false + 재기동. 꺼진 동안은 누구나 로그인 없이 들어온다(오늘과 같음)
+> ```
+
+---
+
 > ## [10-07] **원장 선언 테스트 런에 원자 견본 — 읽은 행이 된 원자를 원장 철자 그대로, 쓰는지 · 버리는지와 함께 (총괄 026ced7f1) — 이주 «불필요» · 재기동 «필요»(API)**
 >
 > ```
 > 재기동 뒤        온톨로지 탐색기에서 소스 하나 테스트 런 -> 응답에 atoms_sample(최대 50) · truncated.atoms_sample · rows_sample[].row_id
 > 뜻             atoms_sample 은 rows_sample 행들에서 나온 원자다(원자의 row_ids 가 그 행을 가리킴) — 실행 순서, 원장에 쓰는 철자
->                writes:false 면 drop_reason 이 사유다 — already_registered(원장에 이미 있는 주어의 속성 없는 등록) 또는 게이트 거절 코드(그때는 배치 전체)
+>                writes:false 면 drop_reason 이 게이트 거절 코드다(그때는 배치 전체). 원장에 이미 있는 주어의 등록 원자도 실행처럼 «쓴다»(10-07 고침)
 >                rows_sample 은 이제 «원자 수를 낸 페이지»의 행이다 — 빈 머리를 건너뛰었으면 pages 가 2 이상
 > 급할 때          이 커밋을 되돌리면 견본만 사라지고 rows_sample 이 첫 페이지로 돌아간다 — 쓰기 · 커서는 이 기능과 무관(0)
-> 볼 것           테스트 런 한 번에 게이트가 쓰는 시간은 작다(샘플 선언 · 가짜 행 199 · 원자 398 에서 게이트 중앙값 4.8 ms) — 원장 읽기는 견본의 등록 주어로 좁힌 질의 하나
+> 볼 것           테스트 런 한 번에 게이트가 쓰는 시간은 작다(샘플 선언 · 가짜 행 199 · 원자 398 에서 게이트 중앙값 4.8 ms) — 원장은 읽지 않는다
 > ```
 
 ---

@@ -73368,3 +73368,103 @@ sqlite 전체 5 failed, 7860 passed, 339 skipped, 3 xfailed, 13186 warnings in 7
 
 관찰(고치지 않음 — 총괄이 소유자께 올림): 소스의 bind.entities 에 엔티티 속성을 적어도, 그 소스에 그 엔티티의 «등록 문장»이 없으면 속성 값이 어느 원자에도 실리지 않고 거절도 알림도 없다.
 잰 모양: 동봉 샘플 lot_slot_wafer 에 wafer@1.event_type 을 선언 → 테스트 런 원자는 모두 has_wafer 이고 qualifier 가 없음. 같은 소스에 wafer 등록 문장(register@1)을 더하면 그 등록 원자의 qualifiers 에 event_type 이 실림(관계 원자 안에는 없음).
+
+---
+
+## [10-07] 원자 견본 수리 — 시각 기준 칸 · 이미 등록된 주어도 «쓴다» · 착지 ff9ed1447 (총괄 10-07 검증 1 · ㄱ)
+
+어느 DB · 어느 스키마 · 지운 것 — sqlite 시험은 메모리. PG 증명은 assy_test (run_pg_tests.py, 증명 픽스처가 자기 스크래치 스키마를 만들고 지움) · 제가 지운 것 0
+
+```
+시각 기준   시험 한 칸: 소스가 기준 "ingested" 를 선언하면 사건 문장 seat-holds-wafer 원자가 그 기준을 싣는다
+            변이(store.atom_record 의 occurred_at_basis -> None)
+              이 시험 파일      RED  1 failed, 9 passed, 6 warnings in 1.76s
+              기준을 이름으로 부르는 다른 sqlite 시험 파일 10 개   GREEN  128 passed, 34 skipped, 6 warnings in 7.71s
+              PG 증명 그중 34 개(-k)   GREEN  기준선 2 failed, 32 passed, 8174 deselected in 27.76s · 변이 2 failed, 32 passed, 8174 deselected in 31.25s
+              PG 증명 전체            GREEN  기준선 3 failed, 295 passed, 7910 deselected in 1411.90s (0:23:31) · 변이 3 failed, 295 passed, 7910 deselected in 1376.97s (0:22:56) · 잡은 시험 0 개
+            -> 원장 «쓰기» 쪽에서 이 칸을 재는 시험은 없다(PG 전체 기준선과 실패 집합이 같음). 지을지는 총괄 판정
+            기준선의 PG 실패 3 개는 이 일과 무관: test_an_install_that_predates_attributes_is_widened_once · test_the_live_door_writes_the_refusal_breakdown_to_the_registry_row · test_two_independent_refusals_are_counted_and_named_in_one_run
+ㄱ          견본의 already_registered 표시 · 원장 읽기 · world 인자를 뺐다. 견본은 실행과 같은 필터(같은 미리보기의 known = 빈 집합)
+            시험을 뒤집었다: 원장이 W000 을 가진 척해도 등록 원자 셋 모두 writes:true · 원장 질의 0
+            베껴 적은 등록 판단(2번)은 이것으로 닫힘
+변이        2/2 빨강(failed 시험으로 센 수) · md5 전후 같음
+              RED  the record drops the time basis
+              RED  a registration is shown as not written again
+existing_registrations   git grep "existing_registrations(" 와 "existing_registrations" (server, 시험 제외): 정의 1 · 호출 0 · 이름만 적힌 줄 2
+            server/ledger/runtime_v2.py:551 / server/ledger/schema.py:712
+            할 일: 은퇴는 등록 은퇴 라운드에서 — 함수 · 그것을 이유로 선 idx_ledger_register · 위 낱말 줄을 함께. CODE_MAP 줄에는 «호출자 0» 을 적어 둠
+말          RUN.md · RELEASE_LOG 의 10-07 원자 견본 항목에서 «already_registered» 와 «원장 읽기» 줄을 고침
+            시험 docstring 의 «row id 없는 행도 원자를 보인다»(빠진 갈래) 를 «거절된다» 로 고침
+크기         7 files changed, 32 insertions(+), 42 deletions(-)
+sqlite 전체 5 failed, 7861 passed, 339 skipped, 3 xfailed, 13188 warnings in 747.83s (0:12:27) — 박스 사유 밖: 없음
+```
+
+---
+
+## [10-07] 회사 SSO 로그인 (OIDC · ADFS) — 착지 eeb942d5b (총괄 2095014ee · 10-07 판정들)
+
+어느 DB · 어느 스키마 · 지운 것 — 시험은 메모리 sqlite(표 셋을 시험마다 비움) · 가짜 ADFS 발급자(requests.Session.send 를 처음부터 막음, 모르는 주소면 시험 실패) · PG 안 씀 · 지운 것 0
+
+```
+켜짐       auth_config.json 의 enabled true + issuer · client_id · redirect_uri + 환경변수 ASSY_OIDC_CLIENT_SECRET + redirect_uri https — 한 번 읽음(재기동)
+상수       SCOPE "openid" · SESSION_SECONDS 12 * 3600 · LOGIN_ROUND_SECONDS 10 * 60 · CLOCK_SKEW_SECONDS 60 · ERROR_DESCRIPTION_CHARS 200
+           COOKIE_NAME "assy_session" · WWW-Authenticate "Session" · 열린 경로 ("/auth/", "/internal/") ("/health",)
+시계 여유   60 초 — authlib 의 토큰 만료 여유 기본값과 같은 값. 도메인 PC 는 DC 와 시각을 맞춘다
+정리       지난 로그인 왕복 · 만료 세션은 다음 /auth/login 이 같은 트랜잭션에서 지운다(새 작업 없음). 끝난 왕복은 돌아올 때 지운다
+알 것       개인 키로 부른 요청마다 last_used_at 를 쓴다(키 행 하나 UPDATE)
+누가 했나   sso.who 를 부르는 자리 5 — git grep "sso.who(" (server, 시험 제외)
+             server/ledger_api/ontology_config_explorer_router.py:98
+             server/ledger_api/ontology_config_explorer_router.py:126
+             server/main.py:150
+             server/main.py:3988
+             server/main.py:4585
+           켜짐 · 로그인함 -> 그 이름(X-User · 쿼리 user 를 넣어도) · 꺼짐 또는 열린 경로에 로그인 없음 -> 그 자리의 오늘 값
+/internal  require_worker_token 으로 옮김 — 켜짐과 무관하게 토큰. 토큰 비교는 _enforce 하나
+게이트     215 passed, 206 warnings in 16.71s
+           켜짐 조건(enabled × 나머지 다 있음·일부 빠짐, 그리고 http) · 재기동 전 안 바뀜 · 꺼짐에 login_required 0 · 관리 토큰 401/403 그대로
+           API 401 + Session 헤더(로그인 문만 지키는 /tables 와 관리 라우트) · 화면 GET 302 next · /ws 4401 · /health 키 고정 · /internal 토큰
+           돌아올 주소 "/" 와 "/auth/callback" 두 설정 × 전 칸 · code/state 없는 돌아올 주소는 오늘 화면과 같은 바이트 · next 의 #조각 보존 · 밖 주소는 "/"
+           aud · iss · nonce · 지난 exp · 위조 서명 -> 세션 0 · 30 초 늦은 토큰은 받음 · 모르는 state 는 code/error 똑같이 거절 · 왕복 한 번만
+           IdP error -> 400 페이지(이동 0 · escape · 설명 상한) + 로그 한 줄 + 왕복 행 지움
+           ADFS 모양 토큰(upn · unique_name, email 없음): name_claim email · 빈칸 -> 403 + 설정 값 + 클레임 이름 목록(값 0) + 로그
+           kid 교체 -> 한 번 더 읽고 통과(JWKS 2 회) · 모르는 kid -> 2 회 읽고 거절
+           관리자 목록 403/200 · 로그아웃 · 만료 세션 · 정리 · 개인 키(해시만 · Bearer · 409 · 422 · 남의 키 404 · 지우면 401)
+           누가 했나 위 자리 전부 × (켜짐 · 꺼짐 두 가지) + 열린 경로 × 켜짐
+변이       25/25 빨강(failed 시험으로 센 수, 최종 코드) · md5 전후 같음
+             RED  who ignores the session
+             RED  health needs a login
+             RED  the nonce is not compared
+             RED  the audience is not compared
+             RED  the issuer is not compared
+             RED  an unknown kid is not read again
+             RED  the cookie is not Secure
+             RED  the admin list is not read
+             RED  a key is deleted by anyone
+             RED  a missing name claim falls back to sub
+             RED  a new login sweeps nothing
+             RED  an issuer error is not a return
+             RED  the return path is fixed
+             RED  the switch is not read
+             RED  settings are read every time
+             RED  refusals carry no challenge
+             RED  the refusal page is not escaped
+             RED  a spent round can be spent again
+             RED  the token still opens admin while sign-in is on
+             RED  workers go through sign-in
+             RED  upload reads the query user
+             RED  every path is an open path
+             RED  no clock leeway
+             RED  a next of /\host is kept
+             RED  the socket is not closed
+           첫 판에서 빨강이 아니던 4 개: admin routes are open paths · no clock leeway · a next of //host is kept · the socket is not closed
+             관리 라우트는 게이트가 같은 401 을 내 «문»만의 결함이 안 보였다 -> /tables 를 더하고 변이를 «전부 열린 경로»로
+             시험이 상수를 읽어 계산해 변이와 같이 움직였다 -> «30 초 늦음은 받는다»를 값으로
+             «//» 검사는 urlsplit 가 이미 막는 죽은 줄이었다 -> 지우고 변이를 «/\» 검사에
+             소켓을 안 닫는 변이에서 시험이 받기에서 멈췄다 -> 시간 상한 있는 스레드로 받는다
+크기        11 files changed, 1090 insertions(+), 18 deletions(-)
+sqlite 전체 5 failed, 7932 passed, 339 skipped, 3 xfailed, 13203 warnings in 751.31s (0:12:31) — 박스 사유 밖: 없음
+           (첫 전체 판이 시스템 표 목록 SYSTEM_TABLE_COLUMNS 에 새 표 셋이 없다고 잡았다 -> 넣고 다시 돌린 것이 위 줄)
+```
+
+관찰(짓지 않음): 시험은 sso.CONFIG_PATH 를 임시 파일로 바꿔 쓴다. 나머지 시험은 박스의 server/config/auth_config.json 을 그대로 읽으므로, 이 박스에 enabled true 인 그 파일이 생기면 시험 전체가 로그인을 요구하게 된다(DATABASE_URL 처럼 conftest 에서 막는 자리는 짓지 않았다).
+아직 모르는 것: ADFS ID 토큰에 upn 이 기본으로 실리는지 — 첫 로그인의 거절 문장이 답한다(RUN.md).

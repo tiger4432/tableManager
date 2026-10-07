@@ -3,9 +3,10 @@
 sampled rows became - the atoms execution hands the ledger, in the ledger's own spelling
 (`store.atom_record`, which the ledger write itself goes through), each with whether execution
 writes it. The rows, the atoms and the sentence counts speak of one page. Rows that carry no row
-id still show their atoms, untied. On the shipped sample's `lot_slot_wafer`, rows from memory."""
+id are refused before any atom. On the shipped sample's `lot_slot_wafer`, rows from memory."""
 import json
 import os
+from datetime import datetime, timezone
 from types import SimpleNamespace
 
 import pytest
@@ -132,6 +133,17 @@ def test_a_role_attribute_shows_on_its_own_registration_not_inside_the_relation(
     assert "qualifiers" not in by_sentence["seat-holds-wafer"]["object_payload"]
 
 
+def test_an_event_of_a_source_that_admits_its_time_basis_shows_that_basis(tmp_path):
+    """총괄 검증 10-07: with every atom's basis None the record could drop the field unseen."""
+    basis = "ingested"
+    document = _document()
+    document["sources"][SOURCE]["read"]["occurred_at"] = {"basis": basis, "timezone": "Asia/Seoul"}
+    rows = [dict(_row(i), created_at=datetime(2026, 10, 7, 1, i, tzinfo=timezone.utc)) for i in range(2)]
+    _setup, result, _ = _run(tmp_path, document, rows, 2)
+    assert [(entry["sentence"], entry["occurred_at_basis"]) for entry in result["atoms_sample"]] == [
+        ("seat-holds-wafer", basis)] * 2
+
+
 def test_every_atom_points_into_the_rows_shown_and_none_comes_from_outside(tmp_path):
     _setup, result, _ = _run(tmp_path, _document(), [_row(i) for i in range(4)], 2)
     shown = {row["row_id"] for row in result["rows_sample"]}
@@ -172,7 +184,9 @@ def test_more_atoms_than_the_limit_are_cut_and_counted(tmp_path):
     assert (result["truncated"]["atoms_sample"]["cut"], result["truncated"]["atoms_sample"]["omitted"]) == (True, 7)
 
 
-def test_a_registration_the_ledger_already_holds_is_shown_dropped(tmp_path):
+def test_a_registration_the_ledger_already_holds_is_written_as_execution_writes_it(tmp_path):
+    """총괄 10-07 ㄱ: `rescope` hands the registration filter no ledger-held subjects, so the
+    sample asks the ledger nothing and marks nothing a ledger holding W000 would change."""
     from ledger.envelope import registration_token
 
     held = registration_token("wafer", {"wafer": "W000"})
@@ -181,9 +195,8 @@ def test_a_registration_the_ledger_already_holds_is_shown_dropped(tmp_path):
     assert result["atoms"] == 10                                         # canary: the page has more
     registrations = [e for e in result["atoms_sample"] if e["sentence"] == "wafer-registered"]
     assert [(e["subject_keys"]["wafer"], e["writes"], e["drop_reason"]) for e in registrations] == [
-        ("W000", False, runtime_v2.DROP_ALREADY_REGISTERED), ("W001", True, None), ("W002", True, None)]
-    # one narrowed read: the shown registrations' subjects, nothing else
-    assert asked == [{registration_token("wafer", {"wafer": "W%03d" % i}) for i in range(3)}]
+        ("W000", True, None), ("W001", True, None), ("W002", True, None)]
+    assert asked == []
 
 
 def test_a_gate_refusal_marks_every_atom_and_moves_no_process_counter(monkeypatch, tmp_path):

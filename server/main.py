@@ -51,8 +51,9 @@ from admin import audit_history  # keyset paging + config ceiling for row/cell /
 # Shared-token gate for /admin/*. Every route below whose path starts with
 # /admin carries one of these two dependencies; server/tests/test_admin_auth.py
 # enumerates the app's routes and fails if a new one ever misses.
-from admin.auth import require_admin_token, require_admin_token_strict
+from admin.auth import require_admin_token, require_admin_token_strict, require_worker_token
 from admin import auth
+from admin import sso  # company sign-in (총괄 2095014ee): off unless auth_config.json turns it on
 script_dir = os.path.dirname(os.path.abspath(__file__))
 logger.info(f"[paths] {paths.describe()}")
 # Which DB URL source won (env / config file / default) - password masked, never raw.
@@ -141,7 +142,12 @@ from database.context import (request_user, request_transaction_id, request_sour
 
 @app.middleware("http")
 async def db_context_middleware(request: Request, call_next):
-    user = request.headers.get("X-User") or request.query_params.get("user") or "user"
+    if sso.enabled():
+        from starlette.concurrency import run_in_threadpool
+        refusal = await run_in_threadpool(sso.admit, request)
+        if refusal is not None:
+            return refusal
+    user = sso.who(request, request.headers.get("X-User") or request.query_params.get("user") or "user")
     tx_id = request.headers.get("X-Transaction-ID") or request.query_params.get("transaction_id") or str(uuid.uuid4())
     source = request.headers.get("X-Source") or request.query_params.get("source") or "user"
     
@@ -209,6 +215,7 @@ async def _read_only_relation_refused(request: Request, exc: crud.ReadOnlyRelati
 # reader looking for it, and S-259 spent a pass finding out it was gone.
 from ledger import trace_router  # noqa: E402
 app.include_router(trace_router.router)
+app.include_router(sso.router)  # /auth/* - above the SPA catch-all for the same reason
 
 # --- Ledger v2 ontology config explorer (admin read/draft surface) --------
 # Registered above the SPA catch-all; write endpoints carry the strict admin gate inside
@@ -358,6 +365,8 @@ async def startup_event():
     if not _admin_auth_banner_logged:
         _admin_auth_banner_logged = True
         _lvl, _msg = auth.startup_banner()
+        getattr(logger, _lvl)(_msg)
+        _lvl, _msg = sso.startup_banner()
         getattr(logger, _lvl)(_msg)
 
     # [#16a] Physical schema first: it used to run at import, so it completed
@@ -3906,6 +3915,12 @@ RETIRED_GRAPH_TABLES = ("graph_nodes", "graph_edges", "graph_sync_state")
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
+    if sso.enabled():
+        from starlette.concurrency import run_in_threadpool
+        if await run_in_threadpool(sso.identify, websocket) is None:
+            await websocket.accept()
+            await websocket.close(code=4401, reason=sso.LOGIN_REQUIRED["reason"])
+            return
     await manager.connect(websocket)
     try:
         while True:
@@ -3917,7 +3932,7 @@ async def websocket_endpoint(websocket: WebSocket):
         manager.disconnect(websocket)
 
 @app.post("/tables/{table_name}/upload")
-async def upload_file(table_name: str, user: str = "Unknown",
+async def upload_file(request: Request, table_name: str, user: str = "Unknown",
                       relative_path: str = "", file: UploadFile = File(...)):
     """
     클라이언트에서 보낸 로그 파일을 수신하여 해당 테이블의 인제션 워크스페이스(raws/)에 저장합니다.
@@ -3970,7 +3985,7 @@ async def upload_file(table_name: str, user: str = "Unknown",
     parts = parts[:10]
 
     orig_name, ext = os.path.splitext(_safe_component(file.filename))
-    safe_user = _safe_component(user) or "Unknown"
+    safe_user = _safe_component(sso.who(request, user)) or "Unknown"
     # 🔴 THE LEAF NAME IS KEPT WHEN A TREE IS GIVEN, and that is the same guard reading
     #    a different situation rather than a relaxed one. The uuid suffix protects a FLAT
     #    directory, where two uploads of `voids.json` would be one file. With a tree, the
@@ -4567,7 +4582,7 @@ def pause_chain(body: ChainPauseRequest, request: Request, db: Session = Depends
     rewound at its next stage and its query cancelled now. Nothing queued is lost. Held
     across restarts until Resume. -> `{paused: {by, at, reason, cancelled_pid}}`."""
     from chain import control as chain_control
-    by = request.headers.get("X-User") or "operator"
+    by = sso.who(request, request.headers.get("X-User") or "operator")
     return {"paused": chain_control.pause_now(db, by, body.reason)}
 
 
@@ -7142,7 +7157,7 @@ def trigger_auto_update_run_now(
 # own. The workers inherit the variable from the launcher's environment, so
 # nothing extra has to be configured. Open when no token is set, exactly like
 # the ordinary admin routes, so an unconfigured server behaves as it does today.
-@app.post("/internal/events/batch-refresh", dependencies=[Depends(require_admin_token)])
+@app.post("/internal/events/batch-refresh", dependencies=[Depends(require_worker_token)])
 async def internal_event_batch_refresh(
     table_name: str = Body(..., embed=True),
     change_count: int = Body(..., embed=True),
@@ -7180,7 +7195,7 @@ async def internal_event_batch_refresh(
     await manager.broadcast(text_msg)
     return {"status": "ok"}
 
-@app.post("/internal/events/broadcast", dependencies=[Depends(require_admin_token)])
+@app.post("/internal/events/broadcast", dependencies=[Depends(require_worker_token)])
 async def internal_event_broadcast(payload: dict = Body(...)):
     """외부 데몬 프로세스로부터 임의의 WebSocket 메시지를 받아 중계하는 엔드포인트입니다."""
     import json
@@ -7222,7 +7237,7 @@ async def internal_event_broadcast(payload: dict = Body(...)):
     await manager.broadcast(text_msg)
     return {"status": "ok"}
 
-@app.post("/internal/events/file-processed", dependencies=[Depends(require_admin_token)])
+@app.post("/internal/events/file-processed", dependencies=[Depends(require_worker_token)])
 async def internal_event_file_processed(
     table_name: str = Body(..., embed=True),
     filename: str = Body(..., embed=True),
@@ -7249,7 +7264,7 @@ async def internal_event_file_processed(
     return {"status": "ok"}
 
 
-@app.post("/internal/events/ingestion-state", dependencies=[Depends(require_admin_token)])
+@app.post("/internal/events/ingestion-state", dependencies=[Depends(require_worker_token)])
 async def internal_event_ingestion_state(payload: dict = Body(...)):
     """[Heavy Lane P1] watcher 프로세스가 인제션 라이프사이클 상태(QUEUED/PROCESSING/FINISHED)를
     웹서버 진행 스냅샷 레지스트리에 push하는 내부 이벤트 엔드포인트.
