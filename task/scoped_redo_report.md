@@ -73368,3 +73368,33 @@ sqlite 전체 5 failed, 7860 passed, 339 skipped, 3 xfailed, 13186 warnings in 7
 
 관찰(고치지 않음 — 총괄이 소유자께 올림): 소스의 bind.entities 에 엔티티 속성을 적어도, 그 소스에 그 엔티티의 «등록 문장»이 없으면 속성 값이 어느 원자에도 실리지 않고 거절도 알림도 없다.
 잰 모양: 동봉 샘플 lot_slot_wafer 에 wafer@1.event_type 을 선언 → 테스트 런 원자는 모두 has_wafer 이고 qualifier 가 없음. 같은 소스에 wafer 등록 문장(register@1)을 더하면 그 등록 원자의 qualifiers 에 event_type 이 실림(관계 원자 안에는 없음).
+
+---
+
+## [10-07] 원자 견본 수리 — 시각 기준 칸 · 이미 등록된 주어도 «쓴다» · 착지 ff9ed1447 (총괄 10-07 검증 1 · ㄱ)
+
+어느 DB · 어느 스키마 · 지운 것 — sqlite 시험은 메모리. PG 증명은 assy_test (run_pg_tests.py, 증명 픽스처가 자기 스크래치 스키마를 만들고 지움) · 제가 지운 것 0
+
+```
+시각 기준   시험 한 칸: 소스가 기준 "ingested" 를 선언하면 사건 문장 seat-holds-wafer 원자가 그 기준을 싣는다
+            변이(store.atom_record 의 occurred_at_basis -> None)
+              이 시험 파일      RED  1 failed, 9 passed, 6 warnings in 1.76s
+              기준을 이름으로 부르는 다른 sqlite 시험 파일 10 개   GREEN  128 passed, 34 skipped, 6 warnings in 7.71s
+              PG 증명 그중 34 개(-k)   GREEN  기준선 2 failed, 32 passed, 8174 deselected in 27.76s · 변이 2 failed, 32 passed, 8174 deselected in 31.25s
+              PG 증명 전체            GREEN  기준선 3 failed, 295 passed, 7910 deselected in 1411.90s (0:23:31) · 변이 3 failed, 295 passed, 7910 deselected in 1376.97s (0:22:56) · 잡은 시험 0 개
+            -> 원장 «쓰기» 쪽에서 이 칸을 재는 시험은 없다(PG 전체 기준선과 실패 집합이 같음). 지을지는 총괄 판정
+            기준선의 PG 실패 3 개는 이 일과 무관: test_an_install_that_predates_attributes_is_widened_once · test_the_live_door_writes_the_refusal_breakdown_to_the_registry_row · test_two_independent_refusals_are_counted_and_named_in_one_run
+ㄱ          견본의 already_registered 표시 · 원장 읽기 · world 인자를 뺐다. 견본은 실행과 같은 필터(같은 미리보기의 known = 빈 집합)
+            시험을 뒤집었다: 원장이 W000 을 가진 척해도 등록 원자 셋 모두 writes:true · 원장 질의 0
+            베껴 적은 등록 판단(2번)은 이것으로 닫힘
+변이        2/2 빨강(failed 시험으로 센 수) · md5 전후 같음
+              RED  the record drops the time basis
+              RED  a registration is shown as not written again
+existing_registrations   git grep "existing_registrations(" 와 "existing_registrations" (server, 시험 제외): 정의 1 · 호출 0 · 이름만 적힌 줄 2
+            server/ledger/runtime_v2.py:551 / server/ledger/schema.py:712
+            할 일: 은퇴는 등록 은퇴 라운드에서 — 함수 · 그것을 이유로 선 idx_ledger_register · 위 낱말 줄을 함께. CODE_MAP 줄에는 «호출자 0» 을 적어 둠
+말          RUN.md · RELEASE_LOG 의 10-07 원자 견본 항목에서 «already_registered» 와 «원장 읽기» 줄을 고침
+            시험 docstring 의 «row id 없는 행도 원자를 보인다»(빠진 갈래) 를 «거절된다» 로 고침
+크기         7 files changed, 32 insertions(+), 42 deletions(-)
+sqlite 전체 5 failed, 7861 passed, 339 skipped, 3 xfailed, 13188 warnings in 747.83s (0:12:27) — 박스 사유 밖: 없음
+```
