@@ -36200,3 +36200,63 @@ m.n 은 자기 값 holder-mn 을 들고 있었는데 병합 뒤 shell-mn 이 보
          미루기 자체는 설계(「a box that only now has a size gets the first fit」) — 하니스 seat 의 폭이 첫 그리기 «전에 잡히나»가 실행마다 다른 것으로 보인다(짐작, 안 쟀다)
 그래서   제품이 아니라 «관문»이 흔들린다 — 「러너 초록」이 실행마다 다른 답. 클라 레인: Z4 의 시작에서 첫 맞춤이 끝났는지(_fitPending false)를 먼저 단언하거나 폭을 고정
 ```
+
+---
+
+## [C 응용] 10-07 825964014(그리드 datetime 칸 방송) QA — 같은 결함이 «체인 워커의 방송»에도. PG 로 잼
+
+```
+구현자 8c96b77ae 넷   셀 메뉴 라우트 — 저도 그중 하나(DELETE sources)를 PG 로 쟀고 같은 답(TypeError, 들은 방송 0). 중복이라 더 안 적습니다
+census 밖           8c96b77ae 는 main.py 의 manager.broadcast(json.dumps( 줄을 셌습니다. 체인 워커는 다른 프로세스 · 다른 발신 길이라 그 수에 안 듭니다
+```
+
+### 자리
+```
+짓는 곳   chain/ingestion_worker.py 그룹 본문 — batch_row_upsert 의 items[].data 를 r_data[col] = getattr(row, col) 로. datetime 칸은 파이썬 datetime 그대로
+보내는 곳  post_event_async -> internal_event_client.send_internal_event -> requests .post(json=payload) — default 없음
+실패      do_post 의 except 가 「[Chain Worker] Failed to send API notification: …」 한 줄 찍고 False
+```
+
+### 잰 것 — 선언된 시험 PG · 시험 스키마(conftest PG_TEST_SCHEMA) · 사설 작업 트리 @825964014 (지금은 지움)
+```
+꾸민 것  HTTP 세션 하나 — requests 자기 본문 인코더(PreparedRequest.prepare_body json=)를 돌리고 200 을 답한다
+진짜     그 위 전부 — process_pending_groups · 그룹 본문 · do_post · _dispatch_broadcasts · broadcast_at 스탬프 · 안전망 스윕
+씨앗     원천 행 하나 -> 같은 그룹의 규칙 둘: datetime 칸 대상(when = "2026-10-07 10:00:00") · datetime 칸 없는 대상
+결과
+  datetime 대상 upsert     TypeError: Object of type datetime is not JSON serializable  (위 ERROR 줄)
+  카나리아 · 없는 대상       인코딩됨
+  원천 이벤트               status SUCCESS · broadcast_at NULL
+  스윕(created_at 을 1 분 당겨 유예를 넘김)
+      [Reliability F1] Recovery sweep re-delivered 3 table refresh(es) for 1 undelivered row(s): ['zzp_plain', 'zzp_src', 'zzp_time']
+      그 뒤 broadcast_at 찍힘
+지운 것   시험 스키마 안 내 프로브 표 셋뿐 · public 0
+```
+
+### 그래서 운영자가 보는 것
+```
+체인이 datetime 칸에 값을 쓰는 «그룹마다» — 한 번이 아니라 그 뒤로 계속
+  행 단위 갱신이 안 온다 · ERROR 줄 하나
+  유예 5 s + 스윕 주기 5.0 s 안에, 그 그룹이 닿은 표 «전부»(원천 + 대상 전부, datetime 없는 대상까지)가 통째 새로고침
+데이터는 커밋돼 있다. 화면이 늦고 통째다 — 큰 표일수록 비싸다
+```
+
+### 하나 더 — 같은 사건(batch_row_upsert)의 items 를 짓는 자리가 둘이고 모양이 다르다 (잼)
+```
+그리드 라우트(main)   items[].data[col] = 칸 dict {value, sources, …}  (825964014 시험이 ["value"] 로 읽는다)
+체인 워커             items[].data[col] = 맨값 — 프로브: k · n 이 str, created_at · updated_at 만 dict
+클라 grid.js rawCellValue 는 둘 다 읽는다(dict 면 .value, 아니면 그대로)
+websocket.js 병합은 {...old.data, ...item.data} 라 맨값이 오면 그 행 캐시에서 그 칸의 sources · is_overwrite 가 빠진다 — 화면이 그것을 쓰는지는 안 열었다
+```
+
+### 안 잰 것
+```
+소급 rule_rows   admin/retroactive._send_broadcasts — 같은 그룹 본문이 지은 메시지를 같은 send_internal_event 로. 실패는 「[Retroactive] broadcast failed: …」로 삼킴
+                그 쓰기의 broadcast_at 을 스윕이 회수하는지 · 9eb902922 ② 컨펌 잡 cascade 가 이 길을 지나는지 안 쟀다
+워처            run_watcher 의 넷은 읽어서 행 칸을 안 싣는다. ingestion-state 는 state dict 를 펼쳐서 안 열었다
+```
+
+### 물음
+```
+8c96b77ae 의 물음(다섯 라우트를 접나)에 체인 워커 자리를 같이 넣을지 — 총괄 판단
+넣으면 「items 를 짓는 한 함수」를 main 라우트와 그룹 본문이 둘 다 지나야 같은 답이 된다 (트리 @026ced7f1)
+```
