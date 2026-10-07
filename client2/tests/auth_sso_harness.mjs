@@ -5,11 +5,13 @@
 // back as the same object with no body read. The socket's 4401 takes the same door. The admin door never asks for a
 // token over SSO's refusals and says its 403 once. The account part draws nothing with SSO off, shows a new key once,
 // and two of them on one page do not touch each other. Each layer has a defect that must go red at its named line.
+import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadWithProbe } from './lib/probe.mjs';
 import { scoreMutants } from './lib/mutation_scorer.mjs';
 import * as REAL_CFG from '../src/config.js';
+import * as REAL_GATE from '../src/auth_gate.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SRC = path.join(HERE, '..', 'src');
@@ -18,6 +20,8 @@ const BADGE = path.join(SRC, 'account_badge.js');
 const ADMIN = path.join(SRC, 'admin_token.js');
 const CLASSIFY = path.join(SRC, 'config_resolve_view.js');
 const WS = path.join(SRC, 'websocket.js');
+// What the sign-in routes really answer, captured through the server's own suite (fixtures/capture_sso_spelling.py).
+const FX = JSON.parse(readFileSync(path.join(HERE, 'fixtures', 'sso_spelling.json'), 'utf8'));
 
 let ran = 0;
 let failed = [];
@@ -44,10 +48,10 @@ const response = (status, body, headers = {}) => {
   first.cloned = 0;
   return first;
 };
-const LOGIN_REQUIRED = { detail: { reason: 'login_required', login: '/auth/login', message: 'Sign in to continue.' } };
-const ADMIN_REQUIRED = { detail: { reason: 'admin_required', message: 'This needs an administrator.' } };
+const LOGIN_REQUIRED = FX.api_signed_out.body;
+const ADMIN_REQUIRED = FX.admin_not_listed.body;
 const TOKEN_GATE = [401, { detail: 'Admin token required' }, { 'WWW-Authenticate': 'X-Admin-Token' }];
-const SESSION = { 'WWW-Authenticate': 'Session' };
+const SESSION = { 'WWW-Authenticate': FX.api_signed_out.challenge };
 
 /** A page: its location, its `fetch` answering from `answer(url, init)`, and every navigation it was asked for. */
 const page = (answer, at = { pathname: '/admin.html', search: '?x=1', hash: '#ontology' }) => {
@@ -58,6 +62,14 @@ const page = (answer, at = { pathname: '/admin.html', search: '?x=1', hash: '#on
 };
 
 async function suite({ gate, Badge, admin, wsDrive, classify }) {
+  console.log('\n── X. the captured answers are the server\'s ──');
+  ok('X1 the SSO gate marks its 401 and its 403 alike, and the socket closes with the code the screen listens for',
+    FX.api_signed_out.status === 401 && FX.admin_not_listed.status === 403 && FX.api_signed_out.challenge === FX.admin_not_listed.challenge
+    && gate.isSessionRejection(response(401, LOGIN_REQUIRED, SESSION)) && FX.ws_signed_out.closed === true
+    && FX.ws_signed_out.code === gate.WS_LOGIN_REQUIRED, JSON.stringify([FX.api_signed_out.challenge, FX.ws_signed_out]));
+  ok('X2 the key list carries every field the part reads', ['id', 'name', 'created_at', 'last_used_at']
+    .every((k) => Object.prototype.hasOwnProperty.call(FX.keys_listed.body[0], k)), JSON.stringify(FX.keys_listed.body[0]));
+
   console.log('\n── W. the login door ──');
   {
     const seen = [];
@@ -149,9 +161,10 @@ async function suite({ gate, Badge, admin, wsDrive, classify }) {
       if (url === '/auth/keys' && method === 'GET') return response(200, keys);
       if (url === '/auth/keys' && method === 'POST') {
         const { name } = JSON.parse(init.body);
-        if (keys.some((k) => k.name === name)) return response(409, { detail: { reason: 'key_name_taken', message: `You already have a key named "${name}".` } });
+        if (!name.trim()) return response(FX.key_name_required.status, FX.key_name_required.body);
+        if (keys.some((k) => k.name === name)) return response(FX.key_name_taken.status, FX.key_name_taken.body);
         keys = [...keys, { id: 'k2', name, created_at: '2026-10-07T10:00:00+09:00', last_used_at: null }];
-        return response(201, { id: 'k2', name, key: 'ak_secret_once', created_at: '2026-10-07T10:00:00+09:00' });
+        return response(FX.key_made.status, { ...FX.key_made.body, id: 'k2', name, key: 'ak_secret_once' });
       }
       if (url.startsWith('/auth/keys/') && method === 'DELETE') { keys = keys.filter((k) => `/auth/keys/${k.id}` !== url); return response(204); }
       if (url === '/auth/logout') return response(204);
@@ -168,14 +181,14 @@ async function suite({ gate, Badge, admin, wsDrive, classify }) {
     return { host, part, srv, copied, reloads: () => reloads };
   };
   {
-    const off = make({ user: null, is_admin: null, sso: false });
+    const off = make(FX.me_off.body);
     await off.part.mount();
     ok('B1 SSO off: the part draws nothing and asks only /auth/me', off.host.children.length === 0 && same(off.srv.calls, ['GET /auth/me']),
       JSON.stringify([off.host.children.length, off.srv.calls]));
   }
-  const on = make({ user: 'kim@corp', is_admin: false, sso: true });
+  const on = make(FX.me_signed_in.body);
   await on.part.mount();
-  ok('B2 signed in: the name and Log out', same(texts(on.host, 'acct-name'), ['kim@corp']) && texts(on.host, 'acct-logout').length === 1,
+  ok('B2 signed in: the name and Log out', same(texts(on.host, 'acct-name'), [FX.me_signed_in.body.user]) && texts(on.host, 'acct-logout').length === 1,
     JSON.stringify(texts(on.host, 'acct-name')));
   await click(on.host, 'acct-name');
   ok('B3 the name opens the keys: listed by name with their times', same(texts(on.host, 'acct-row-name'), ['nightly'])
@@ -193,7 +206,11 @@ async function suite({ gate, Badge, admin, wsDrive, classify }) {
     && !JSON.stringify(on.part).includes('ak_secret_once'), JSON.stringify(texts(on.host, 'acct-fresh-key')));
   find(on.host, 'acct-key-name')[0].value = 'nightly';
   await click(on.host, 'acct-create-key');
-  ok('B6 a refused key says the server\'s sentence', same(texts(on.host, 'acct-error'), ['You already have a key named "nightly".']),
+  ok('B6 a refused key says the server\'s sentence', same(texts(on.host, 'acct-error'), [FX.key_name_taken.body.detail.message]),
+    JSON.stringify(texts(on.host, 'acct-error')));
+  find(on.host, 'acct-key-name')[0].value = '  ';
+  await click(on.host, 'acct-create-key');
+  ok('B10 a nameless key says the server\'s sentence too', same(texts(on.host, 'acct-error'), [FX.key_name_required.body.detail.message]),
     JSON.stringify(texts(on.host, 'acct-error')));
   await click(find(on.host, 'acct-row').find((r) => texts(r, 'acct-row-name')[0] === 'nightly'), 'acct-revoke');
   ok('B7 Revoke deletes that key and reads the list again', on.srv.calls.includes('DELETE /auth/keys/k1')
@@ -201,8 +218,8 @@ async function suite({ gate, Badge, admin, wsDrive, classify }) {
   await click(on.host, 'acct-logout');
   ok('B8 Log out ends the session, then reloads', on.srv.calls.at(-1) === 'POST /auth/logout' && on.reloads() === 1);
   {
-    const one = make({ user: 'kim@corp', is_admin: true, sso: true });
-    const two = make({ user: 'kim@corp', is_admin: true, sso: true });
+    const one = make(FX.me_signed_in.body);
+    const two = make(FX.me_signed_in.body);
     await one.part.mount(); await two.part.mount();
     await click(one.host, 'acct-name');
     ok('B9 two on one page: opening one leaves the other shut and unasked', find(one.host, 'acct-keys').length === 1
@@ -230,8 +247,8 @@ async function suite({ gate, Badge, admin, wsDrive, classify }) {
   }
 
   console.log('\n── S. the socket takes the same door ──');
-  const login = await wsDrive(4401);
-  const drop = await wsDrive(1006);
+  const login = await wsDrive(FX.ws_signed_out.code, FX.ws_signed_out.reason);
+  const drop = await wsDrive(1006, '');
   ok('S1 closed for want of a login: to the login, no reconnect', login.went === 1 && login.retry === false, JSON.stringify(login));
   ok('S2 any other close: reconnect as today, nobody leaves', drop.went === 0 && drop.retry === true, JSON.stringify(drop));
   return { ran, failed: failed.slice() };
@@ -262,7 +279,7 @@ const click = async (root, cls) => {
 };
 
 // ── the socket, driven the way ws_connect_watchdog_harness drives it ─────────────────
-const makeWsDrive = (mutate) => async (code) => {
+const makeWsDrive = (mutate) => async (code, reason) => {
   let went = 0;
   const state = { ws: null, wsReconnectDelay: REAL_CFG.WS_RECONNECT_BASE_MS, wsRetryTimer: null, wsOpenedAt: 0,
     wsPrevReconnectDelay: REAL_CFG.WS_RECONNECT_BASE_MS, wsLastWakeAt: 0, wsWakeSignalsInstalled: true,
@@ -276,7 +293,7 @@ const makeWsDrive = (mutate) => async (code) => {
       './state.js': { state },
       './dom.js': { elements: { get wsStatus() { return badge; }, tableSelect: { value: 't' } } },
       './api.js': { checkServerHealth: async () => {}, loadTables: async () => {}, fetchData: () => {} },
-      './auth_gate.js': { WS_LOGIN_REQUIRED: 4401, goToLogin: () => { went += 1; } },
+      './auth_gate.js': { WS_LOGIN_REQUIRED: REAL_GATE.WS_LOGIN_REQUIRED, goToLogin: () => { went += 1; } },
     },
   });
   const saved = { WebSocket: globalThis.WebSocket, document: globalThis.document, window: globalThis.window,
@@ -290,7 +307,7 @@ const makeWsDrive = (mutate) => async (code) => {
   globalThis.console = { log() {}, error() {}, warn() {}, info() {}, debug() {} };
   try {
     probe.initWebSocket();
-    sock.onclose({ code, reason: code === 4401 ? 'login_required' : '' });
+    sock.onclose({ code, reason });
     return { went, retry: state.wsRetryTimer !== null };
   } finally { Object.assign(globalThis, saved); }
 };

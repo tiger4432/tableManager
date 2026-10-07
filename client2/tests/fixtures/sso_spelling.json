@@ -1,0 +1,125 @@
+{
+ "captured_by": "client2/tests/fixtures/capture_sso_spelling.py",
+ "server_at": "7b0de677fd7620756f39ae7e6fa0496b2c7733ae",
+ "me_off": {
+  "status": 200,
+  "body": {
+   "user": null,
+   "is_admin": null,
+   "sso": false
+  },
+  "challenge": null
+ },
+ "keys_off": {
+  "status": 404,
+  "body": {
+   "detail": "Sign-in is not set up on this server."
+  },
+  "challenge": null
+ },
+ "me_signed_out": {
+  "status": 200,
+  "body": {
+   "user": null,
+   "is_admin": false,
+   "sso": true
+  },
+  "challenge": null
+ },
+ "api_signed_out": {
+  "status": 401,
+  "body": {
+   "detail": {
+    "reason": "login_required",
+    "login": "/auth/login",
+    "message": "Sign in to continue."
+   }
+  },
+  "challenge": "Session"
+ },
+ "ws_signed_out": {
+  "closed": true,
+  "code": 4401,
+  "reason": "login_required"
+ },
+ "me_signed_in": {
+  "status": 200,
+  "body": {
+   "user": "kim@corp.test",
+   "is_admin": false,
+   "sso": true
+  },
+  "challenge": null
+ },
+ "admin_not_listed": {
+  "status": 403,
+  "body": {
+   "detail": {
+    "reason": "admin_required",
+    "message": "This needs an administrator."
+   }
+  },
+  "challenge": "Session"
+ },
+ "key_made": {
+  "status": 201,
+  "body": {
+   "id": "de831aa6f76f4246b8dac56e5443f4f8",
+   "name": "nightly",
+   "created_at": "2026-10-07T07:25:07+00:00",
+   "key": "<the key>"
+  },
+  "challenge": null
+ },
+ "keys_listed": {
+  "status": 200,
+  "body": [
+   {
+    "id": "de831aa6f76f4246b8dac56e5443f4f8",
+    "name": "nightly",
+    "created_at": "2026-10-07T07:25:07+00:00",
+    "last_used_at": null
+   }
+  ],
+  "challenge": null
+ },
+ "key_name_taken": {
+  "status": 409,
+  "body": {
+   "detail": {
+    "reason": "key_name_taken",
+    "message": "You already have a key named \"nightly\"."
+   }
+  },
+  "challenge": null
+ },
+ "key_name_required": {
+  "status": 422,
+  "body": {
+   "detail": {
+    "reason": "key_name_required",
+    "message": "Give the key a name."
+   }
+  },
+  "challenge": null
+ },
+ "key_deleted": {
+  "status": 204,
+  "body": null,
+  "challenge": null
+ },
+ "logout": {
+  "status": 204,
+  "body": null,
+  "challenge": null
+ },
+ "me_after_logout": {
+  "status": 200,
+  "body": {
+   "user": null,
+   "is_admin": false,
+   "sso": true
+  },
+  "challenge": null
+ }
+}

@@ -1738,7 +1738,7 @@ const FLOORS = new Map([
   ['test_run_atoms_harness.mjs', 21],
   // New 2026-10-07 (lead 2095014ee). Company SSO on the screen: the login door, the admin door over SSO's refusals,
   // the account part and its keys, the socket's 4401.
-  ['auth_sso_harness.mjs', 23],
+  ['auth_sso_harness.mjs', 26],
 ]);
 
 // ── the ceilings ────────────────────────────────────────────────────────────────
