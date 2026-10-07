@@ -429,8 +429,8 @@ curl http://localhost:8080/api/transfer-plan/stages
           /admin/* 은 admins 에 적힌 이름(name_claim 값 그대로)만 — X-Admin-Token 은 «안 읽는다»
           /internal/* (워커 통지)는 그대로 ASSY_ADMIN_TOKEN — 워커는 바꿀 것 없음
           기록의 «누가»는 로그인한 이름. 세션 12 시간, 로그아웃하면 끝
-스크립트   토큰으로 /admin/* 을 부르던 프로그램은 관리자의 개인 키로 — 로그인한 채 POST /auth/keys {"name": "<이름>"} ->
-          응답의 key 를 Authorization: Bearer <key> 로(그 응답에서 한 번만 보인다)
+스크립트   토큰으로 /admin/* 을 부르던 프로그램은 관리자의 개인 키로 — 화면 머리줄의 이름 -> API keys -> Create key
+          (또는 로그인한 채 POST /auth/keys {"name": "<이름>"}) -> 그 key 를 Authorization: Bearer <key> 로(한 번만 보인다)
           ⚠️ 개인 키는 만료가 없고 지우는 것은 그 주인뿐이다(DELETE /auth/keys/<id>). 회사 계정이 막혀도 키는 산다 — admins 에서 빼면 관리 권한만 빠진다
 기동 줄   [sso] ON - issuer …                                       켜짐
           [sso] OFF - enabled is true but not set: <칸>              그 칸을 채우고 재기동
