@@ -192,6 +192,40 @@ def test_a_row_filled_from_another_row_loses_only_that_layer_when_it_moves_away(
                if event_constants.channel_of(get_payload_dict(e)) == event_constants.CHANNEL_CHAIN)
 
 
+def test_a_rule_that_now_writes_nothing_still_takes_back_what_it_wrote_before(db):
+    """총괄 10-08: C points nowhere now, so er_z proposes nothing - and its cell on P1 still goes, by
+    the columns er_z last wrote."""
+    rules = _rules("er_z")
+    _push(db, [{"k": "P1"}, {"k": "C", "p": "P1"}])
+    _drain(db, rules)
+    assert _row(db, "P1").z == "C!"
+
+    _push(db, [{"k": "C", "p": ""}])
+    _drain(db, rules)
+
+    assert _row(db, "P1").z is None
+    assert [l for l in _layers(db, "P1") if l[2] == _row(db, "C").row_id] == []
+
+
+def test_a_rule_this_process_has_not_seen_write_says_so_and_takes_back_nothing(db, monkeypatch, caplog):
+    import logging
+    from chain import rule_run
+
+    rules = _rules("er_z")
+    _push(db, [{"k": "P1"}, {"k": "C", "p": "P1"}])
+    _drain(db, rules)
+    monkeypatch.setattr(rule_run, "_ORIGIN_SEEN", {})            # a restart: nothing seen yet
+    monkeypatch.setattr(rule_run, "_COLUMNS_SEEN", {})
+
+    with caplog.at_level(logging.WARNING):
+        _push(db, [{"k": "C", "p": ""}])
+        _drain(db, rules)
+
+    assert _row(db, "P1").z == "C!"
+    said = [r.getMessage() for r in caplog.records if "[ChainRetract]" in r.getMessage()]
+    assert len(said) == 1 and "er_z" in said[0], said
+
+
 def test_a_second_rule_filling_the_same_other_row_keeps_its_cell_when_only_the_first_reruns(db):
     """Same origin, same target row, two rules: only the rule that ran gives its columns back."""
     rules = _rules("er_z", "er_v")
@@ -377,3 +411,181 @@ def test_rows_left_behind_before_this_landing_are_cleaned_by_replaying_the_recou
     assert _layers_of(world, old, a) == []
     assert _official(world)[NEW][1] == "agreed"
     assert hw.said(world) == [("J1", "7.0")]
+
+
+# ---------------------------------------------------------------------------------------------
+# PG - a join's fan-out: one value row fills many left rows, then its key moves (총괄 10-08)
+# ---------------------------------------------------------------------------------------------
+
+JL, JR = "er_join_left", "er_join_right"
+JOIN_TABLES = {
+    JL: {"business_key": "lk", "composite_key_source": ["lk"],
+         "column_types": {"lk": "string", "dt_job": "string", "netdie": "number"},
+         "display_columns": ["lk", "dt_job", "netdie"]},
+    JR: {"business_key": "rk", "composite_key_source": ["rk"],
+         "column_types": {"rk": "string", "dt_job": "string", "netdie": "number"},
+         "display_columns": ["rk", "dt_job", "netdie"]},
+}
+JOIN = {"name": "er_join", "on": {"table": JR},
+        "derive": {"kind": "join", "join": {"on": [{"left": "dt_job", "right": "dt_job"}],
+                                            "take": [{"from": "netdie", "into": "netdie"}]}},
+        "into": {"table": JL}}
+JOIN_SOURCE = "er_join_left_src"
+JOIN_LEFT_ROWS = 30
+
+
+@pytest.fixture(name="join_world")
+def fixture_join_world(pg_engine, monkeypatch, tmp_path):
+    from pathlib import Path
+    from sqlalchemy import MetaData
+    from conftest import PG_TEST_SCHEMA, retire_dynamic_model
+    from ledger import followup, schema
+    from ledger.implementations import role_mapper_registry, trusted_implementations
+    from ledger.setup import LedgerSetup
+    from ledger.setup_bundle import load_physical_catalog, require_ready_bundle, validate_bundle
+    from ledger.setup_registry import compile_setup_snapshot
+    from datetime import datetime, timezone
+
+    mapper_sdk.discover()
+    saved = dict(crud.TABLE_CONFIG)
+    for name in JOIN_TABLES:
+        retire_dynamic_model(name)
+    models.init_dynamic_models(JOIN_TABLES)
+    crud.TABLE_CONFIG.update(JOIN_TABLES)
+
+    def clean():
+        with pg_engine.begin() as conn:
+            for name in JOIN_TABLES:
+                conn.execute(text('DROP TABLE IF EXISTS "%s"."%s"' % (PG_TEST_SCHEMA, name)))
+            for table in ("cell_sources", "database_outbox"):
+                conn.execute(text('DELETE FROM "%s".%s WHERE table_name IN (:a, :b)' % (PG_TEST_SCHEMA, table)),
+                             {"a": JL, "b": JR})
+            for table in (schema.LEDGER_TABLE, schema.ROW_REF_TABLE):
+                conn.execute(text('DELETE FROM "%s".%s WHERE source_who = :s' % (PG_TEST_SCHEMA, table)),
+                             {"s": JOIN_SOURCE})
+            conn.execute(text('DELETE FROM "%s".%s WHERE source = :s' % (PG_TEST_SCHEMA, schema.CURSOR_TABLE)),
+                         {"s": JOIN_SOURCE})
+
+    raw = pg_engine.raw_connection()
+    try:
+        schema.ensure_schema(raw)
+        raw.commit()
+        schema.ensure_partition(raw, datetime.now(timezone.utc))
+    finally:
+        raw.close()
+    clean()
+    scratch = MetaData(schema=PG_TEST_SCHEMA)
+    for name in JOIN_TABLES:
+        models.DYNAMIC_TABLES[name].__table__.to_metadata(scratch, schema=None)
+    scratch.create_all(pg_engine)
+    rules_path = tmp_path / "chain_rules.json"
+    rules_path.write_text(json.dumps({"rules": [JOIN]}), encoding="utf-8")
+    monkeypatch.setattr(worker, "RULES_PATH", str(rules_path))
+    rules = [r for r in worker.load_chain_rules() if str(r.get("name", "")).startswith("er_join")]
+    assert rules, "the join stood no rule"
+    monkeypatch.setattr(worker, "loaded_chain_rules", lambda: rules)
+    sample = hw.sample("table_config.json.sample")
+    sample.update(JOIN_TABLES)
+    catalog_path = tmp_path / "table_config.json"
+    catalog_path.write_text(json.dumps(sample), encoding="utf-8")
+    catalog = load_physical_catalog(catalog_path)
+    doc = hw.sample("ledger_config.json.sample")
+    doc["sources"] = {JOIN_SOURCE: {
+        "relation": JL, "read": {"exclude_when": [{"column": "netdie", "blank": True}]},
+        "map": {"implementation_id": "declarative-role", "implementation_version": 1},
+        "bind": {"mappings": {"counted": {"predicate": "has_netdie@1", "bind": {
+            "subject": {"kind": "entity", "entity_type": "dtjob@1",
+                        "keys": {"dt_job": {"kind": "column", "column": "dt_job"}}},
+            "value": {"kind": "column", "column": "netdie"}}}}}}}
+    bundle = require_ready_bundle(validate_bundle(doc, catalog=catalog))
+    setup = LedgerSetup(config_root=Path(hw.SAMPLE), bundle=bundle,
+                        snapshot=compile_setup_snapshot(bundle, trusted_implementations(), catalog=catalog),
+                        mappers=role_mapper_registry(), catalog=catalog)
+    from support.isolated_pg import scratch_connect_args
+
+    # pooled, as the product's engine is - on the test's NullPool every drain opens new connections
+    pooled = create_engine(pg_engine.url, connect_args=scratch_connect_args(PG_TEST_SCHEMA), pool_size=5)
+    session = sessionmaker(autocommit=False, autoflush=False, bind=pooled)()
+    followup.reset()
+    try:
+        yield {"db": session, "engine": pooled, "setup": setup, "rules": rules}
+    finally:
+        session.close()
+        pooled.dispose()
+        followup.reset()
+        clean()
+        crud.TABLE_CONFIG.clear()
+        crud.TABLE_CONFIG.update(saved)
+        for name in JOIN_TABLES:
+            retire_dynamic_model(name)
+
+
+def _join_push(world, table, rows):
+    from database.context import channel, outbox_mode
+
+    with channel(event_constants.CHANNEL_API), outbox_mode(event_constants.OUTBOX_MODE_COLLAPSED):
+        crud.apply_batch_updates(world["db"], table, schemas.GeneralUpdateBatch(updates=[
+            schemas.GeneralUpdateItem(updates=dict(r), source_name="user", updated_by="er") for r in rows]))
+    world["db"].commit()
+
+
+def _join_settle(world):
+    from ledger import followup
+
+    db = world["db"]
+    for _ in range(12):
+        pending = (db.query(models.DatabaseOutbox)
+                   .filter(models.DatabaseOutbox.processed_chain.is_(False),
+                           models.DatabaseOutbox.table_name.in_([JL, JR]))
+                   .order_by(models.DatabaseOutbox.id).all())
+        if not pending:
+            break
+        by_tx = {}
+        for item in pending:
+            by_tx.setdefault(get_payload_dict(item).get("transaction_id"), []).append(item)
+        for tx_id, events in by_tx.items():
+            ok, error, _ = worker._process_chain_transaction_group_sync(tx_id, events, db, world["rules"])
+            assert ok, error
+            for item in events:
+                event_constants.mark_processed(item, "SUCCESS")
+            db.commit()
+    while True:
+        done = followup.drain_outbox_once(world["engine"], world["setup"])
+        if done is None:
+            return
+        assert not any("error" in (s or {}) for s in (done.get("sources") or {}).values()), done
+
+
+def _join_state(world):
+    from ledger import schema
+
+    with world["engine"].connect() as conn:
+        filled = dict(conn.execute(text('SELECT dt_job, count(netdie) FROM "%s" GROUP BY dt_job' % JL)).fetchall())
+        atoms = dict(conn.execute(text(
+            "SELECT subject_keys->>'dt_job', count(*) FROM %s WHERE source_who = :s GROUP BY 1"
+            % schema.LEDGER_TABLE), {"s": JOIN_SOURCE}).fetchall())
+    return {"filled": filled, "atoms": atoms}
+
+
+@pytest.mark.pg
+def test_a_join_value_row_moved_to_a_key_no_left_row_carries_empties_what_it_filled(join_world, monkeypatch):
+    from chain import rule_run
+
+    _join_push(join_world, JL, [{"lk": "L%03d" % i, "dt_job": "J1" if i < JOIN_LEFT_ROWS else "J2"}
+                                for i in range(2 * JOIN_LEFT_ROWS)])
+    _join_push(join_world, JR, [{"rk": "r1", "dt_job": "J1", "netdie": 7}])
+    _join_settle(join_world)
+    assert _join_state(join_world) == {"filled": {"J1": JOIN_LEFT_ROWS, "J2": 0}, "atoms": {"J1": JOIN_LEFT_ROWS}}
+
+    # the join writes the new key's rows: the old key's give their value back (as on 91da9c781)
+    _join_push(join_world, JR, [{"rk": "r1", "dt_job": "J2"}])
+    _join_settle(join_world)
+    assert _join_state(join_world) == {"filled": {"J1": 0, "J2": JOIN_LEFT_ROWS}, "atoms": {"J2": JOIN_LEFT_ROWS}}
+
+    # no left row carries J9: the join proposes nothing, and what it filled under J2 still goes - after
+    # a restart too, when nothing of it was seen: the join's declaration says what it writes
+    monkeypatch.setattr(rule_run, "_ORIGIN_SEEN", {})
+    monkeypatch.setattr(rule_run, "_COLUMNS_SEEN", {})
+    _join_push(join_world, JR, [{"rk": "r1", "dt_job": "J9"}])
+    _join_settle(join_world)
+    assert _join_state(join_world) == {"filled": {"J1": 0, "J2": 0}, "atoms": {}}

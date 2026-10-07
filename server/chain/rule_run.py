@@ -239,6 +239,8 @@ def rule_label(rule):
 #: rule name -> did its last run that proposed rows carry `origin_row_id` on them. This process's
 #: runs only: after a restart a rule is 「not known yet」 until it runs again.
 _ORIGIN_SEEN = {}
+#: rule name -> the columns its last run that proposed rows wrote. Same scope.
+_COLUMNS_SEEN = {}
 
 
 def item_cell(item, name):
@@ -253,7 +255,7 @@ def output_stamps(items):
     return any(item_cell(item, "origin_row_id") for item in items) if items else None
 
 
-def stamps_origin(rule):
+def stamps_its_origin(rule):
     """Does this rule's output say which row it came from? True · False · None (not known yet).
 
     🔴 [총괄 4c3417ccb ③] ASKED OF THE OUTPUT - the last run of this rule that proposed rows. Until
@@ -269,6 +271,23 @@ def stamps_origin(rule):
     return None
 
 
+def columns_a_rule_writes(rule, items=()):
+    """The columns this rule writes, or None - not known.
+
+    This run's rows when it proposed any. 🔴 [총괄 10-08] A run that proposed none still owns what it
+    wrote before - a join whose value row moved to a key no left row carries proposes nothing, and
+    its old cells have to go - so then a kind the product builds answers from its declaration
+    (`dynamic_mappers.columns_declared_for`) and any other mapper with what it last wrote in this process.
+    """
+    columns = {column for item in items or () for column in (item_cell(item, "updates") or ())}
+    if columns:
+        return columns
+    declared = dynamic_mappers.columns_declared_for(rule)
+    if declared:
+        return set(declared)
+    return set(_COLUMNS_SEEN.get((rule or {}).get("name")) or ()) or None
+
+
 def retraction_refusal(rule):
     """None if this rule's answer can be withdrawn when its input row is deleted or edited, or
     the operator sentence saying it cannot — 「이 규칙은 되돌릴 수 없다」.
@@ -281,7 +300,7 @@ def retraction_refusal(rule):
     ⚠️ NOT KNOWN YET IS SILENCE (총괄 4c3417ccb ③). A rule that has not run in this process has
     said nothing about its output, and a warning on every deletion would be a guess.
     """
-    if stamps_origin(rule) is not False:
+    if stamps_its_origin(rule) is not False:
         return None
     name = (rule or {}).get("name") or "<이름 없는 규칙>"
     return ("%s: 「%s」 규칙의 출력에 «어느 행에서 왔는지»가 실리지 않습니다 — 그래서 그 행이 "
@@ -564,11 +583,12 @@ def run_rule(db, rule, payloads=None, row_ids=None, done=None, depth=None,
                     answer["next_page"].append(result["next_page"])
             # 🔴 WHAT ITS OUTPUT SAYS ABOUT WHERE IT CAME FROM (총괄 4c3417ccb ③) - the edit's
             #    withdrawal reads it here, a deletion's warning from `_ORIGIN_SEEN`.
-            answer["stamps_origin"] = output_stamps(
-                list(answer["updates"]) + [item for batch in answer["batches"]
-                                           for item in (item_cell(batch, "updates") or ())])
+            proposed = list(answer["updates"]) + [item for batch in answer["batches"]
+                                                  for item in (item_cell(batch, "updates") or ())]
+            answer["stamps_origin"] = output_stamps(proposed)
             if answer["stamps_origin"] is not None:
                 _ORIGIN_SEEN[name] = answer["stamps_origin"]
+                _COLUMNS_SEEN[name] = sorted(columns_a_rule_writes(rule, proposed) or ())
             # ⚠️ PROPOSED PLUS WRITTEN. A rule does one or the other, so this equals whichever
             #    it did - and a rule that did both is counted once for each, which is what
             #    「이 규칙이 낸 행」 means to the operator reading the queue.
