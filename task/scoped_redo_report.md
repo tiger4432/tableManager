@@ -72927,3 +72927,51 @@ sqlite 전체 5 failed, 7851 passed, 333 skipped, 3 xfailed, 13227 warnings in 8
 가능한 갈래 — ① 확정 작업이 cascade 로 쓴다(격자 클릭 리플레이가 쓰는 그 표시) ② 확정 작업이 끝에 그 lot 의 조인을 스스로 돌린다(「아래는 그것도 돌려서 돈다」) ③ 운영자가 확정 뒤 조인을 소급으로 돌린다(지금도 가능, 선언 0).
 
 시험 12 passed, 39 warnings in 2.70s (일회용 프로브 — 저장소에 안 넣음, 사본은 스크래치에 보관)
+
+---
+
+## [10-07] raws 폴더 하나의 트리 일꾼이 걸리면 그 폴더가 막힌다 — 대기 자리 · 재현 · 로그 (총괄 af0fae18c · 소유자 10-07)
+
+어느 DB · 어느 스키마 · 지운 것 — sqlite 메모리만(시험 틀) · 박스 DB 안 씀 · 지운 것 0 · 코드 고친 것 0
+
+### ① 일꾼이 끝나지 않을 수 있는 자리 (코드를 읽어 셈 — 도구 셈 아님)
+
+길: request_tree_ingest → _tree_ingest_worker → _ingest_directory_tree → 파일마다 _handle_event(순서대로, 같은 스레드) → _route_and_process → (작은 파일) 그 스레드에서 process_with_retry.
+폴더 키는 일꾼이 «돌아올 때만» _ingesting_dirs 에서 빠진다.
+
+| 자리 | 기다리는 것 | 상한 |
+|---|---|---|
+| _wait_tree_quiescent | 폴더가 멈출 때까지 잠 | 있음 — FLATTEN_STABILITY_MAX_WAIT_SECONDS |
+| os.walk · os.stat · compute_file_signature(파일 전체 읽기) | 파일 시스템(공유 폴더면 OS) | 없음 |
+| settle_already_terminal · _try_path_stat_skip · _try_dedup_skip · _plan_checkpoint · _finalize_checkpoint · 실패 기록 | DB 문장 | 없음 — 엔진에 statement_timeout · lock_timeout 이 없다(database.build_engine). 풀 빌리기만 30 s(SQLAlchemy 기본) |
+| _resolve_rows | 파서 — 파이프라인 스크립트(운영자 파이썬) · 표준 파서 | 없음 |
+| _send_to_upsert → crud.apply_batch_updates | DB 쓰기 — 행 · 유일 키 잠금을 다른 세션이 쥐면 그 세션이 끝날 때까지 | 없음 — 같은 이유 |
+| _serial_lock.acquire() (heavy 레인 제출이 실패했을 때의 마지막 대비) · heavy 일 `with self._serial_lock` | 같은 작업공간의 다른 파일 처리 | 없음 |
+| 디바운스 1 s · 잠긴 파일 재시도 3 회 · 페이스 쉼 · 완료 통지(post_event timeout=5) | — | 있음 |
+
+그래서 «그 표만» 서는 것과 맞다: 작업공간 직렬 잠금은 표마다 하나다. 한 파일이 DB 쓰기에서 서면 그 표의 인라인 파일 · heavy 파일 둘 다 그 잠금 뒤에 선다.
+
+### ② 재현 (시험 하네스 — test_nested_dir_ingestion 의 틀, 일회용 · 저장소에 안 넣음)
+
+f1 의 쓰기(_send_to_upsert)를 «돌아오지 않게» 막고, 같은 폴더에 새 이름 f2 를 넣고, 그 폴더를 다시 요청(스윕 · watchdog 이 하는 그 호출)했다.
+- 막혀 있는 동안: 일꾼 살아 있음 True · 다시 요청 3 번 → [None, None, None] · f2 의 적재 기록 0 건
+- 막힌 1 초 동안 그 표의 로그 줄: 0 줄
+- 풀어 주면: 일꾼 살아 있음 False, 다음 요청 started → 기록 [('f1.csv', 'SUCCESS'), ('f2.csv', 'SUCCESS')]
+- watchdog 은 recursive=False 라 «폴더 안에 새로 생긴 파일»에는 사건이 없다 — 그 파일을 집는 것은 주기 스윕뿐이고, 스윕은 None 을 받고 아무 줄도 안 남긴다(그 자리 sweep_existing_files 의 handler.request_tree_ingest(fp); continue).
+
+### ③ 그때 로그에 무엇이 남나
+
+- 0 줄(위 재현, 1 초 창). 코드상 막히기 전 마지막 줄은 f1 의 「New file detected」 이다(쓰기 전에 찍힌다).
+- ChunkWaitSampler 가 쓰기 중 자기 백엔드의 대기를 재지만, 그 줄은 «청크가 끝날 때» 쓴다 — 끝나지 않는 청크는 아무것도 안 쓴다.
+- 체인 워커에는 같은 경우를 위한 줄이 있다(_say_what_a_stalled_group_waits_on — 300 s 넘게 멈춘 일에 「멈춘 초 · 단계 · db pid · 무엇을 기다리나」 한 줄). 감시자 쪽에는 그 짝이 없다.
+- /health 의 감시자 작업 표지(heartbeat.work_claim)가 멈춘 시간을 들고 있다고 주석에 적혀 있다 — 이번에 화면은 안 열었다(안 쟀다).
+
+### 셋으로 — 고치는 방향 (짓지 않음)
+
+| 갈래 | 무엇 | 크기 |
+|---|---|---|
+| 보이게 | 감시자에 체인 워커와 같은 줄을 둔다 — 300 s 넘게 안 움직인 작업 표지마다 「폴더 · 몇 분째 · 파일 · 단계 · db pid · 무엇을 기다리나(db_waits)」 한 줄, 한 번씩. 스윕이 None 을 받을 때 「이 폴더는 N분 전 시작한 일꾼이 아직 처리 중(파일 f1)」 한 줄 | 작음 — 체인 쪽 함수 · db_waits 를 같이 씀(안 쟀다) |
+| 풀리게 | 감시자 세션의 DB 문장에 상한(lock_timeout / statement_timeout, 값은 선언 칸) — 넘으면 그 파일은 오류로 끝나 err · 재시도로 가고 일꾼은 다음 파일로, 폴더 키도 풀림. ⚠️ 폴더 키만 풀어 주는 것은 소용없다 — 같은 표의 다음 파일이 작업공간 잠금 뒤에 다시 선다 | 중간 — 상한 값은 운영 증거로 정해야 함 |
+| 원인 자리 | 무엇이 그 잠금을 쥐었나 — 소유자의 pg_stat_activity 결과가 답한다(체인 워커의 열린 트랜잭션 · idle in transaction · 같은 업무 키의 동시 삽입 중 무엇인지) | 증거를 받은 뒤 |
+
+시험 1 passed, 6 warnings in 1.88s (일회용 프로브 — 사본은 스크래치에 보관)
