@@ -22,7 +22,7 @@ import dagre from 'cytoscape-dagre';
 import { staticTypes, cutBudgets } from './derive.js';
 import { SIGN } from '../rnd_board/marking_store.js';
 import { setDisabledReason } from '../disabled_reason.js';
-import { unitText } from '../ui_words.js';
+import { LOADING, unitText } from '../ui_words.js';
 // The look travels with the part (the walk page's rule): one stamp, one sheet per document.
 import { ensureWalkStyles } from './styles.js';
 
@@ -415,6 +415,7 @@ export class SubgraphView {
     this.picker = null;
     this._from = null;
     this._relayout = true;
+    this.expanding = [];
     // Another part writing the same name is seen here: same name, same marking.
     for (const name of this.chain) this.markings.subscribe(name, () => this._restyle());
   }
@@ -427,6 +428,8 @@ export class SubgraphView {
     const key = JSON.stringify(this.markings.entries(this.chain[0]));
     if (opts.reuse && key === this.asked && this.state === 'done') return;
     this.asked = key;
+    // A new start: what the last picture's Mark wrote is that picture's, not this one's (lead 10-07).
+    for (const name of this.chain.slice(1)) this.markings.clear(name);
     this.steps = [];
     this.layout = null;
     this.selected = null;
@@ -527,10 +530,13 @@ export class SubgraphView {
     const steps = this.steps;
     const before = fresh && this.layout ? new Set(this._view().nodes.map((n) => n.id)) : new Set();
     this.state = 'running';
+    // What this ask walks, so the lump pressed reads as on its way (lead 10-07); a newer ask owns it after.
+    this.expanding = expand;
     this.render();
     const res = await this.walk({ positive: step.positive, negative: step.negative,
       fanout_limit: this.fanoutLimit, expand });
     if (this.steps !== steps) return;   // a new start was asked meanwhile
+    this.expanding = [];
     if (res && res.ok) {
       this.steps = next(res);
       this.layout = subgraphLayout(this.steps, this.entities());
@@ -694,6 +700,7 @@ export class SubgraphView {
       { selector: 'node[kind = "lump"][level = "big"]', style: set({ 'font-weight': 600, 'border-width': 2.5,
         'border-color': t('--text') }) },
       { selector: 'node[kind = "lump"][?unsent]', style: { 'border-style': 'dashed' } },
+      { selector: 'node[kind = "lump"][?loading]', style: { label: LOADING } },
       { selector: 'node.is-lit', style: set({ 'overlay-color': t('--accent'), 'overlay-opacity': 0.1, 'overlay-padding': 6.8 }) },
       { selector: 'edge', style: set({
         width: 1.4, 'line-color': t('--border-strong'), 'target-arrow-color': t('--border-strong'),
@@ -767,7 +774,8 @@ export class SubgraphView {
     }
     for (const l of view.lumps) {
       out.push({ group: 'nodes', data: { id: l.id, kind: 'lump', level: l.level, owner: l.owner, key: l.key || '',
-        count: l.count, unsent: Boolean(l.unsent), label: lumpLabel(l), layer: (layerOf.get(l.owner) || 0) + 1 } });
+        count: l.count, unsent: Boolean(l.unsent), loading: Boolean(l.unsent) && this.expanding.includes(l.key),
+        label: lumpLabel(l), layer: (layerOf.get(l.owner) || 0) + 1 } });
     }
     for (const e of view.edges) {
       // A line one column forward is the walk's own step; any other runs sideways or back and stands back.

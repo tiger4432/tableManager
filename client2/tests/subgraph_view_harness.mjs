@@ -16,6 +16,7 @@ import { makeDoc, byClass, flush } from './lib/board_dom.mjs';
 import { createWalkBoxWalk, entitySeedId } from '../src/rnd_board/api.js';
 import { MarkingStore, SIGN } from '../src/rnd_board/marking_store.js';
 import { walkTableView } from '../src/walk/table_view.js';
+import { LOADING } from '../src/ui_words.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SUBJECT = path.join(HERE, '..', 'src', 'walk', 'subgraph_view.js');
@@ -780,6 +781,97 @@ async function suite(m, makeWalk = createWalkBoxWalk, css = REAL_CSS) {
       JSON.stringify({ slop, TAP_SLOP: m.TAP_SLOP }));
   }
 
+  console.log('\n[Y] a new start keeps nothing of the last picture: no mark, no fold, no opened lump (lead 10-07)');
+  {
+    const markings = new MarkingStore();
+    const s = await seat([BUNDLES, EXPANDED, WAFER], { markings, chain: ['y0', 'y1', 'y2'] });
+    // The last picture: an unsent lump walked and opened, then a node marked that the next start does not reach.
+    const first = EXPANDED._expanded;
+    press(s, `lump:${first.node}|${first.predicate}|${first.direction}`);
+    await settle();
+    tickAll(s);
+    openTicked(s);
+    const inWafer = new Set(WAFER.nodes.map((n) => n.id));
+    const x = nodesOf(s).filter((n) => !inWafer.has(n.id()) && n.id() !== startId(BUNDLES))[0];
+    if (x) press(s, x.id());
+    mark(s.host);
+    // A name of the page's own, outside the chain, holding the same node.
+    markings.replace('named', x ? [[x.id(), SIGN.CASE]] : []);
+    const markedA = markings.count('y1');
+    const named = JSON.stringify(markings.entries('named'));
+    markings.replace('y0', [[startId(WAFER), SIGN.CASE]]);
+    s.urls.length = 0;
+    await s.view.show();
+    await settle();
+    const fresh = await seat([WAFER]);
+    const ids = (t) => JSON.stringify([...nodesOf(t).map((n) => n.id()), ...lumpsOf(t).map((n) => n.id())].sort());
+    const go = s.view.continueButton;
+    say('Y1 the last picture\'s marks are gone: none in the marking Continue walks, none drawn, Continue off',
+      Boolean(x) && markedA === 1 && markings.count('y1') === 0 && !nodesOf(s).some((n) => n.hasClass('is-marked'))
+        && Boolean(go) && go.disabled === true && go.getAttribute('title') === 'Mark a node',
+      JSON.stringify({ x: Boolean(x), markedA, y1: markings.count('y1'), title: go && go.getAttribute('title') }));
+    const params = paramsOf(s.urls[0] || '');
+    say('Y2 the new start is walked once, asking it alone; what comes is the first picture of that start, no list open',
+      s.urls.length === 1 && params.get('id') === startId(WAFER) && params.getAll('expand').length === 0
+        && ids(s) === ids(fresh) && !pickerOf(s),
+      JSON.stringify({ urls: s.urls.length, id: params.get('id') === startId(WAFER), expand: params.getAll('expand'),
+        same: ids(s) === ids(fresh), picker: Boolean(pickerOf(s)) }));
+    s.urls.length = 0;
+    if (go) go.dispatch('click', {});
+    await settle();
+    say('Y3 Continue then asks nothing', s.urls.length === 0, String(s.urls.length));
+    say('Y4 a marking the page names itself keeps what it held, a node not in this picture too',
+      Boolean(x) && named.includes(x.id()) && JSON.stringify(markings.entries('named')) === named
+        && s.view.cy.getElementById(x.id()).empty(), JSON.stringify(markings.entries('named')));
+    // The same start shown again (the page's view switch) is the same picture: its marks stay, nothing is asked.
+    const r = await seat([WAFER], { chain: ['r0', 'r1'] });
+    const node = nodesOf(r).filter((n) => n.id() !== startId(WAFER))[0];
+    if (node) press(r, node.id());
+    mark(r.host);
+    const before = r.markings.count('r1');
+    r.urls.length = 0;
+    await r.view.show({ reuse: true });
+    say('Y5 the same start shown again keeps its marks and asks nothing',
+      before === 1 && r.markings.count('r1') === 1 && r.urls.length === 0 && node.hasClass('is-marked'),
+      JSON.stringify({ before, after: r.markings.count('r1'), urls: r.urls.length }));
+    await r.view.show();
+    await settle();
+    const again = node && r.view.cy.getElementById(node.id());
+    say('Y6 the same start walked anew is a new picture: its marks go, on the node drawn again too',
+      r.urls.length === 1 && r.markings.count('r1') === 0 && Boolean(again) && again.nonempty() && !again.hasClass('is-marked'),
+      JSON.stringify({ urls: r.urls.length, r1: r.markings.count('r1'), marked: again && again.nonempty() && again.hasClass('is-marked') }));
+  }
+
+  console.log('\n[U] a lump on its way says so; pressed again meanwhile it asks nothing more (lead 10-07)');
+  {
+    const first = EXPANDED._expanded;
+    const id = `lump:${first.node}|${first.predicate}|${first.direction}`;
+    const labelOf = (t) => { const n = t.view.cy && t.view.cy.getElementById(id); return n && n.nonempty() ? n.pstyle('label').strValue : null; };
+    const s = await seat([BUNDLES, EXPANDED]);
+    const words = labelOf(s);
+    s.urls.length = 0;
+    press(s, id);
+    const during = labelOf(s);
+    press(s, id);
+    press(s, id);
+    await settle();
+    say('U1 pressed, the lump reads Loading until its list comes; pressed again meanwhile, nothing more is asked',
+      Boolean(words) && words !== LOADING && during === LOADING && s.urls.length === 1,
+      JSON.stringify({ words, during, urls: s.urls.length }));
+    const lump = s.view.cy.getElementById(id);
+    say('U2 the list come, the lump reads its own words again and the list is open',
+      labelOf(s) !== LOADING && lump.nonempty() && labelOf(s) === lump.data('label') && Boolean(pickerOf(s)),
+      JSON.stringify({ label: labelOf(s), picker: Boolean(pickerOf(s)) }));
+    // A walk that is refused: the lump does not read Loading for ever.
+    const f = await seat([BUNDLES]);
+    f.view.walk = async () => ({ ok: false, message: 'Refused' });
+    press(f, id);
+    await settle();
+    say('U3 refused, the lump reads its own words again and the refusal is said',
+      labelOf(f) !== null && labelOf(f) !== LOADING && textOf(f.host, 'sg-fail').join() === 'Failed · Refused',
+      JSON.stringify({ label: labelOf(f), fail: textOf(f.host, 'sg-fail') }));
+  }
+
   console.log('\n[Q] Mark is the one press that marks; the facts stay in sight (lead 9dc2a5695 ① ②)');
   {
     const s = await seat([DIE, STEP2]);
@@ -1064,6 +1156,25 @@ const failures = [];
       "        'text-events': 'yes', 'border-width': 1.5,", "        'border-width': 1.5,"),
     M('X2m', 'a press that wanders past the library\'s 4 px drags again (lead 5f1eb137e)', 'X2',
       '      boxSelectionEnabled: false, desktopTapThreshold: TAP_SLOP });', '      boxSelectionEnabled: false });'),
+    M('Y1m', 'a new start keeps the last picture\'s marks (lead 10-07)', 'Y1',
+      '    for (const name of this.chain.slice(1)) this.markings.clear(name);\n', ''),
+    { ...M('Y2m', 'the same start shown again loses its marks', 'Y5'),
+      mutate: (t) => swap(swap(t, '    for (const name of this.chain.slice(1)) this.markings.clear(name);\n', ''),
+        '    if (opts.reuse && key === this.asked',
+        '    for (const name of this.chain.slice(1)) this.markings.clear(name);\n    if (opts.reuse && key === this.asked') },
+    M('Y3m', 'a new start clears every name on the page, not only its chain', 'Y4',
+      'for (const name of this.chain.slice(1)) this.markings.clear(name);',
+      'for (const name of this.markings.names().filter((n) => n !== this.chain[0])) this.markings.clear(name);'),
+    M('U1m', 'a lump on its way reads as before (lead 10-07)', 'U1',
+      'loading: Boolean(l.unsent) && this.expanding.includes(l.key),', 'loading: false,'),
+    M('U2m', 'a lump reads Loading after its walk is answered', 'U3',
+      '    if (this.steps !== steps) return;   // a new start was asked meanwhile\n    this.expanding = [];\n',
+      '    if (this.steps !== steps) return;   // a new start was asked meanwhile\n'),
+    { ...M('U3m', 'a lump pressed again on its way is asked again', 'U1'),
+      mutate: (t) => swap(swap(t, "    if (!lump || this.state !== 'done') return;\n    if (lump.level === 'big') {",
+        "    if (!lump) return;\n    if (lump.level === 'big') {"),
+        "    if (!step || this.state !== 'done' || step.expand.includes(key)) return;\n",
+        '    if (!step || step.expand.includes(key)) return;\n') },
     M('Z2m', 'Fit keeps the floor', 'Z2', 'if (this.cy) this.cy.fit(undefined, GEOMETRY.fitPad);', 'if (this.cy) this._firstFit();'),
     M('Z3m', 'the first draw is not fitted', 'Z1', '    if (full) this._fitPending = true;\n', ''),
     M('Z4m', 'a change of size fits the picture again', 'Z4', '    else this.cy.resize();\n', '    else this._firstFit();\n'),
