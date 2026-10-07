@@ -1,5 +1,30 @@
 # 지금 돌리면 되는 것
 
+> ## [10-07 밤] **멈춘 수집 폴더 — 걸림 줄 · 스윕 줄 · 파일 쓰기 잠금 상한(기본 300 s) — 이주 «없음» · 재기동 «필요»(감시자)**
+>
+> ```
+> 무엇이 바뀌나  감시자의 파일 쓰기 트랜잭션마다 lock_timeout(기본 300 s). 남의 잠금을 그보다 오래 기다리면 그 파일은 FAILED,
+>                폴더 일꾼은 다음 파일로 간다. 그 파일은 봉인하지 않고 제자리에 둔다 — 다음 스윕이 마지막 커밋된 청크부터 다시 넣는다
+>              걸린 파일은 걸림마다 «걸림 줄» 한 번, 폴더 일꾼이 도는 동안은 스윕(5분)마다 «처리 중 줄»
+> 적는 곳       server/config/ingestion_settings.json (모양: server/config/sample/ingestion_settings.json.sample)
+>                 lock_timeout_seconds       없으면 300(걸림 판정과 같은 수) · null 이나 0 = 상한 없음(전과 같음)
+>                 statement_timeout_seconds  없으면 끔 — 켜면 문장 하나가 그보다 길 때 그 파일 FAILED(이건 봉인, 다른 실패와 같음)
+>              값은 감시자 재기동 없이 다음 트랜잭션부터 읽는다. 숫자가 아닌 값은 «없음»으로 읽는다
+> 볼 줄          [Watcher] ingest <파일>: stalled N s in <단계> (folder <폴더> · db pid <pid>) - waiting Lock:… on pid <쥔 pid> (<앱>, <상태> …): <그 질의>
+>                 = 그 파일이 300 s 째 안 움직인다. 쥔 pid 의 앱 · 상태 · 질의가 원인. 걸림 한 번에 한 줄
+>              [<표>] 📂 Tree ingestion of '<폴더>' has been running for N min (now: ingest <파일>)
+>                 = 그 폴더 일꾼이 아직 돈다(스윕마다). now: no file = 폴더가 안정되기를 기다리거나 파일 사이
+>              [<표>] ⏳ <파일>: waited past the lock timeout (300 s) in chunk K - waiting Lock:… on pid <쥔 pid> … (retry R) - left in place for the next sweep
+>                 = 상한으로 FAILED. R 은 그 자리의 그 파일이 마지막 성공 뒤 «이번 전에» 잠금으로 실패한 횟수 — 첫 실패는 0
+>                   (file_ingestion_logs.retry_count 와 같은 값)
+> 값을 고칠 때   ⏳ 줄의 retry 가 계속 오르고 쥔 pid 가 매번 같은 앱 · 같은 질의 = 그 세션이 원인. 값이 아니라 그 세션을 본다
+>              ⏳ 줄이 정상 쓰기(체인 · 소급 · 다른 파일)를 쥔 쪽으로 대고 한두 번 뒤 풀린다 = 상한이 짧다 — 늘린다
+>              걸림 줄이 나온 뒤 ⏳ 까지 폴더가 막혀 있는 시간이 너무 길다 = 줄인다
+> 급할 때       lock_timeout_seconds 를 null 로 — 전처럼 끝없이 기다린다(재기동 없이)
+> ```
+
+---
+
 > ## [10-07 저녁] **SSO — 설정 파일 하나로 서버가 안 멈춘다 · 클라이언트 비밀은 선택(public client) — 이주 «없음» · 재기동 «필요»**
 >
 > ```

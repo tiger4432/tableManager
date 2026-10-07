@@ -2288,11 +2288,6 @@ def _queue_operation_runs(tx_id, events, db, rules):
             "run_id %s" % ", ".join(runs))
 
 
-#: How long the stalled line's own question may run. It reads two system views and takes
-#: no lock, so this bounds a database that cannot answer at all.
-STALL_PROBE_TIMEOUT_MS = 5000
-
-
 async def _await_group_beating(group, db):
     """Wait for a group while beating «alive» every `HEARTBEAT_SLICE_SECONDS`, and say once
     per episode what a group that stopped moving is waiting on (fc1c0781d ③④).
@@ -2315,46 +2310,13 @@ async def _await_group_beating(group, db):
 
 
 async def _say_what_a_stalled_group_waits_on(db):
-    now = time.time()
-    for claim in heartbeat.open_claims():
-        since = now - claim["last_progress"]
-        if (claim["name"] != "chain" or claim["stalled_on"] is not None
-                or since <= heartbeat.DEFAULT_STALL_AFTER_SEC):
-            continue
-        facts = claim["facts"]
-        pid = facts.get("db_pid")
-        if pid is None:
-            said = "not probed (no database pid was noted for this group)"
-        else:
-            try:
-                said = await asyncio.to_thread(_what_a_backend_waits_on,
-                                               db.get_bind().url, pid)
-            except Exception as exc:                               # noqa: BLE001
-                # 🔴 THE PROBE ONLY GOES QUIET. Health keeps its verdict; this says which
-                # question went unanswered.
-                said = "not probed (%s: %s)" % (type(exc).__name__, exc)
-        line = "stalled %d s in %s (rule %s · db pid %s) - %s" % (
-            since, claim["stage"] or "no stage yet", facts.get("rule") or "none yet", pid,
-            said)
-        heartbeat.mark_stalled(claim["id"], line)
-        logger.warning("[Chain] %s: %s", claim["what"], line)
-
-
-def _what_a_backend_waits_on(bind_url, pid):
-    """`db_waits` over a connection of its own, outside the pool (S-167), read-only and
-    bounded - the group's own session is the one that is stuck."""
-    import db_safety
+    """The stalled line every claimed worker says (`heartbeat.stalled_lines`), for the chain."""
     import db_waits
-    from database.database import connection_name
-    probe = db_safety.open_readonly_engine(
-        bind_url, application_name=connection_name() + "_probe",
-        statement_timeout_ms=STALL_PROBE_TIMEOUT_MS)
-    try:
-        with probe.connect() as conn:
-            rows = db_waits.backend_waits(conn.connection.dbapi_connection, pid)
-    finally:
-        probe.dispose()
-    return db_waits.wait_sentence(rows[0] if rows else None, pid)
+    bind_url = db.get_bind().url
+    for what, line in await asyncio.to_thread(
+            heartbeat.stalled_lines, "chain",
+            lambda pid: db_waits.what_a_backend_waits_on(bind_url, pid), (("rule", "none yet"),)):
+        logger.warning("[Chain] %s: %s", what, line)
 
 
 #: Follow-up rules for the `builtin:` dispatcher, held across drain batches.

@@ -1,7 +1,7 @@
 """What a database backend is doing, and who holds it up - one question, one answer.
 
 Asked by the watcher's chunk sampler, by `scripts/diagnose_db_health.py`'s lock section and
-by the chain's stalled line (총괄 fc1c0781d ②). Each used to spell its own SQL; a second
+by the stalled line of the chain and the watcher (총괄 fc1c0781d ② · 10-07 ③). Each used to spell its own SQL; a second
 spelling is a second answer, so they pass through here.
 
 Takes a DBAPI (psycopg2) connection: the sampler holds one outside any pool on purpose
@@ -76,6 +76,28 @@ def wait_sentence(row, pid=None):
         return "%s %s - the time is not in the database (last query: %s)" % (
             state, _age(row["state_age"]), row["query"])
     return "%s %s (last query: %s)" % (state, _age(row["state_age"]), row["query"])
+
+
+#: How long the stalled line's own question may run. It reads two system views and takes
+#: no lock, so this bounds a database that cannot answer at all.
+STALL_PROBE_TIMEOUT_MS = 5000
+
+
+def what_a_backend_waits_on(bind_url, pid):
+    """The sentence for one backend, asked over a connection of its own outside the pool
+    (S-167), read-only and bounded - the stalled work's own session is the one that is stuck.
+    The stalled line of every claimed worker asks this (총괄 10-07 ③: chain and watcher alike)."""
+    import db_safety
+    from database.database import connection_name
+    probe = db_safety.open_readonly_engine(
+        bind_url, application_name=connection_name() + "_probe",
+        statement_timeout_ms=STALL_PROBE_TIMEOUT_MS)
+    try:
+        with probe.connect() as conn:
+            rows = backend_waits(conn.connection.dbapi_connection, pid)
+    finally:
+        probe.dispose()
+    return wait_sentence(rows[0] if rows else None, pid)
 
 
 def _seconds(value):
