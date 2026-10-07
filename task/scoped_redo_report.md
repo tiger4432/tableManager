@@ -73706,3 +73706,48 @@ SQL 이 이름으로 묻는 자리     schema.py 4 줄 — 다음에 지울 것:
 안 잼   부류 1 소스의 원자 수 증가 — 배치마다 (개체 · 상태)당 하나. 이 박스엔 부류 1 소스가 0 이라 셀 수 없다
 클라    client2/tests/fixtures 의 authoring_inherited_plan.json · authoring_skeleton.json 에 은퇴한 probe 줄 · 노드가 남아 있다 — 클라 레인에 알림
 ```
+
+---
+
+## [10-07 저녁] SSO 설정 수리 — 파일 하나로 안 멈춤 · 비밀은 선택(public client) · 착지 b29b14e09 (총괄 10-07 셋 · ca_file 은 정정대로 안 지음)
+
+어느 DB · 어느 스키마 · 지운 것 — 메모리 sqlite · DB 안 씀 · 지운 것 0
+
+```
+지은 것    sso.settings 가 crud._decode_config_text 로 읽는다(table_config 와 같은 읽기 · BOM 읽음)
+          못 읽으면(문법 · 맨 위가 객체 아님 · OSError) 터지지 않고 «못 읽음»을 기억 -> off_reason 의 첫 사유. lru_cache 가 그 상태를 들고 있어
+          기동 배너 · 미들웨어 · 웹소켓 · is_admin 이 같은 함수를 지나며 안 터진다
+          enabled 가 글자 "true" -> 'enabled must be true (not "true")' · admins 가 목록이 아님 -> 관리자 0명 + ON 배너 끝 한 줄
+          비밀 없음 = public client(token_endpoint_auth_method none, PKCE 그대로) · 배너 «secret client» / «public client»
+          토큰 교환 거절(OAuthError) -> _provider_refused — 돌아온 주소의 error 와 «한 문장». 상태가 401 -> 400 으로 바뀐다
+게이트    100 passed in 12.42s
+          기동 표(main.startup_event 를 TestClient 로 실제로 돌림 -> 배너 한 줄 · /auth/me 200 · /health 200|503): top-level-array · top-level-null · syntax-error · enabled-as-text · admins-as-text · utf-8-bom · utf-16-bom
+          OFF 시험 전부를 OFF 파일 5 가지에서 다시 돌림: absent · syntax-error · top-level-array · top-level-null · enabled-as-text — «오늘처럼»을 기존 시험으로 잰다
+          코드 교환 모양 secret × public — client_secret 은 폼에 없음, Authorization Basic 은 비밀 있을 때만, public 은 폼에 client_id
+          invalid_client — 화면과 로그에 ADFS 낱말 그대로, 세션 0
+변이      11/11 빨강(failed 시험으로 센 수) · md5 전후 같음
+          RED  the file is read as plain utf-8
+          RED  a parse error is raised
+          RED  a top level that is not an object is taken
+          RED  an unreadable file is not said
+          RED  enabled written as text is not said
+          RED  admins written as text is read letter by letter
+          RED  admins written as text is not said
+          RED  the secret is required again
+          RED  the token endpoint's refusal falls to the generic sentence
+          RED  the banner does not say which client
+          RED  the secret travels in the form
+sqlite 전체 5 failed, 7961 passed, 341 skipped, 3 xfailed, 13191 warnings in 725.52s (0:12:05)
+          tests\test_a_sentence_says_itself_only_for_the_rows_it_names.py::test_the_sample_is_written_in_the_one_format_both_writers_use
+          tests\test_core_alignment_mapper.py::test_live_mapper_and_tracked_sample_are_byte_identical
+          tests\test_core_usage_mapper.py::test_live_mapper_and_tracked_sample_are_byte_identical
+          tests\test_dt_inventory_metadata_mapper.py::test_live_mapper_matches_tracked_sample
+          tests\test_one_place_decides_where_the_server_is.py::test_the_repo_root_is_one_above_it
+RELEASE   예시를 착지한 RELEASE_LOG 에서 읽어 비밀 환경변수 없이 sso.settings 로 읽음 — info | [sso] ON - issuer https://adfs.example.com/adfs, return address https://assy.example.com/, public client. Every route bu
+ca_file   git grep -c ca_file -- server RUN.md docs/guide = 0 (출력 없음)
+```
+
+```
+남긴 것    docs/guide/DEPLOY_SETUP.md 의 «켜는 것 … + 환경변수 ASSY_OIDC_CLIENT_SECRET + 재기동» — 응용 세션 문서라 안 건드림. 이제 «비밀은 있으면»
+          RUN.md 의 앞 10-07 SSO 절 제목 «비밀 하나» — 새 절이 «이제 있으면»이라고 적음
+```
