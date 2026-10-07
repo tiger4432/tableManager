@@ -36423,3 +36423,6 @@ bd33605af   은퇴 이름(registration_probe · existing_registrations · regist
 덧붙임   다음 쪽(next_page)은 같은 묶음 안에서 다 쓰인 뒤 거두므로(_in_rule_order) 거뒀다 다시 쓰는 흔들림은 없다
 문서     chain_ingestion_guide 의 「Return {"updates": []} for an intentional no-op」 옆에 — 출처를 찍는 규칙이 고친 행에 빈 답이면 거둔다(거절 포함) · 「바뀐 것 없음」은 같은 행을 다시 내라
 ```
+
+> [27eea6f65 물음 — 총괄 판단 「지금처럼 거둔다」를 받음] 경계는 «맵퍼가 답했나»다 — 답했으면(행 · 빈 답 · refusal 을 실은 빈 답) 고친 행이 먹이던 옛 층을 거두고,
+> 터졌으면(예외) 묶음 단계가 거둘 일을 적는 줄 «앞»에서 except 로 빠져 return False — apply_chain_writes 까지 안 가므로 쓰기도 거두기도 없이 옛 층이 남는다(origin/main 코드로 읽음 · 안 잼).
