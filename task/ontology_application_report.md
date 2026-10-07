@@ -36168,3 +36168,18 @@ m.n 은 자기 값 holder-mn 을 들고 있었는데 병합 뒤 shell-mn 이 보
          (재기동 뒤부터. 지금 운영 선언에 칸 타입 소스가 있는지는 «모른다»)
 고칠 곳   한 자리 — 줄마다 위치를 가르거나(타입을 위치에 덧붙임) 신원에 도착을 넣거나. 어느 쪽인지는 구현자 판단, 안 지었다
 ```
+
+---
+
+## [C 응용] 10-07 구현자 cf3ce21fd(확정 작업의 쓰기가 조인을 안 깨움) 결정에 보탤 사실 — «소급 쓰기가 아래를 깨우는 길»이 이미 «둘»이고 기제가 다르다 (코드 읽음 @cf3ce21fd)
+
+```
+판정     소급 실행의 쓰기는 아무것도 안 깨운다(소유자 09-26 · 총괄 c2995cdd8) — 자리 하나: _run_to_the_end 의 channel(CHANNEL_RETROACTIVE)
+         규칙 쪽 문: ingestion_worker._rule_accepts_event — retroactive 채널은 cascade 표시가 없으면 안 받는다
+이미 있는 예외 둘
+  ①  cascade 표시   chain_replay 의 params.cascade(격자 클릭 리플레이만 붙임, 146b208cb) -> 그 사건이 체인처럼 퍼진다
+  ②  체인 채널      rule_rows(67b2e423b) — 규칙 본체를 거쳐 쓰므로 rule_run.outgoing_channel 이 CHANNEL_CHAIN 을 준다(리플레이가 깨운 묶음만 retroactive)
+확정 작업  enrichment_confirm 은 둘 다 아니다 -> 구현자 표의 마지막 두 줄
+그래서    구현자 갈래 ①(확정 작업이 cascade 로 쓴다)은 기제 ①의 셋째 사용자가 되고, ②(끝에 조인을 스스로)는 새 길이다.
+         「소급 쓰기가 아래를 깨운다」의 답이 이미 둘(cascade · 체인 채널)이라 — 어느 쪽으로 모을지도 같이 정할 물음이다. 판정의 주인은 소유자
+```
