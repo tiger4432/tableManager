@@ -11,7 +11,7 @@
 >                 client_id    서버 애플리케이션의 클라이언트 ID
 >                 redirect_uri IT 에 등록한 주소를 «글자 그대로, 끝 / 유무까지». https 여야 켜진다
 >                 name_claim   사람 이름으로 쓸 클레임 이름(대개 upn). 비워 두고 켜도 된다 — 첫 로그인 거절 문장이 토큰에 있는 클레임 이름을 보여 준다
->                 admins       관리 화면을 쓸 사람 — name_claim 으로 나온 값 그대로(대소문자까지)
+>                 admins       관리 화면을 쓸 사람 — name_claim 으로 나온 값(대소문자는 안 가림 · 기록에는 토큰 철자 그대로)
 >               환경변수 ASSY_OIDC_CLIENT_SECRET = 클라이언트 비밀. 파일에는 적지 않는다
 > 켜기 전에       관리 토큰(X-Admin-Token)으로 관리 기능을 부르던 프로그램은 관리자 목록에 있는 사람의 개인 키로 바꾼다
 >                 로그인 -> POST /auth/keys {"name": "<이름>"} -> 응답의 key 를 Authorization: Bearer <key> 로. 키는 그 응답에서 한 번만 보인다

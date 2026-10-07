@@ -42,6 +42,9 @@ LOGIN_ROUND_SECONDS = 10 * 60
 #: Leeway on the ID token's exp / iat / nbf - authlib's own default leeway for token expiry.
 CLOCK_SKEW_SECONDS = 60
 HTTP_TIMEOUT_SECONDS = 10
+#: The ID token signatures accepted, whatever discovery lists: asymmetric only - never `none`,
+#: never HS* (signed with a secret the client also holds) (lead 10-07).
+ASYMMETRIC_ALGORITHM_FAMILIES = ("RS", "PS", "ES")
 ERROR_DESCRIPTION_CHARS = 200
 COOKIE_NAME = "assy_session"
 OPEN_PREFIXES = ("/auth/", "/internal/")
@@ -171,8 +174,14 @@ def _person(request: Request):
     return user
 
 
+def is_admin(user):
+    """Whether a signed-in name is on the admin list - case folded on both sides, as AD reads a
+    upn (lead 10-07). The name recorded anywhere else keeps the token's spelling."""
+    return user is not None and user.casefold() in {name.casefold() for name in settings()["admins"]}
+
+
 def require_admin(request: Request):
-    if _person(request) not in settings()["admins"]:
+    if not is_admin(_person(request)):
         raise HTTPException(status_code=403, detail=ADMIN_REQUIRED, headers=dict(_CHALLENGE))
 
 
@@ -210,7 +219,8 @@ def _verified_claims(id_token, meta, nonce):
     from joserfc.errors import InvalidKeyIdError
     from joserfc.jwk import KeySet
 
-    algorithms = meta.get("id_token_signing_alg_values_supported") or ["RS256"]
+    algorithms = [name for name in meta.get("id_token_signing_alg_values_supported") or ()
+                  if str(name)[:2] in ASYMMETRIC_ALGORITHM_FAMILIES] or ["RS256"]
     try:
         token = jwt.decode(id_token, KeySet.import_key_set(_get_json(meta["jwks_uri"])), algorithms)
     except InvalidKeyIdError:
@@ -320,7 +330,7 @@ def me(request: Request):
     if not enabled():
         return {"user": None, "is_admin": None, "sso": False}
     user = getattr(request.state, "sso_user", None)
-    return {"user": user, "is_admin": user is not None and user in settings()["admins"], "sso": True}
+    return {"user": user, "is_admin": is_admin(user), "sso": True}
 
 
 def _key_answer(row):
