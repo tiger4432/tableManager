@@ -73200,3 +73200,60 @@ sqlite 전체 5 failed, 7851 passed, 338 skipped, 3 xfailed, 13214 warnings in 7
 sqlite 전체 6 failed, 7850 passed, 339 skipped, 3 xfailed, 13151 warnings in 753.86s (0:12:33) — 박스 사유 밖: test_chain_at_threshold_still_builds_the_items_it_ships[asyncio]
          -> test_discarded_merge_budget 이 «날 칸»(data.prod_line == "L1")을 단언하고 있었다 — 같은 커밋에서 감싼 칸으로 고치고 그 파일만 다시 돌림(9 passed, 34 warnings in 3.12s)
 ```
+
+---
+
+## [10-07] 조인 누수 둘째 판 — 폴더 · 트리 일꾼 · 헤비 레인 · 청크 커밋 · lot 셋: 16 칸에서 «안 샜다» (총괄 ffb694d57, 고치지 않음)
+
+어느 DB · 어느 스키마 · 지운 것 — PG 시험 DB 의 프로세스마다 스크래치 스키마(conftest pg_engine, 끝에 스키마째 DROP) · 표 셋(lw_log · lw_inv · lw_ref) · 박스 DB 안 씀 · 실서버 HTTP 막음
+  지운 것: 위 스키마들 + «중간에 멈춘» 첫 실행(케이스 출력을 끝에 한 번만 쓰는 꼴이라 55 분 제한에 다 잃을 판)이 남긴 스키마 assy_pytest_pg_39328_gw0 하나(DROP SCHEMA CASCADE) — 지금 다시 찾으면: database: assy_test · found: [] · left after drop: 0
+
+```
+모양      첫 판과 같은 선언(로그 -> decide 인벤토리 · rows=count -> 자동 확정(참조 표 후보 하나) -> 조인 take wafer)
+들어오는 길 raws/<폴더>/ 에 파일 — 폴더 생성 사건(on_created) + 주기 스윕(request_tree_ingest, 0.5 s) -> 트리 일꾼 -> _handle_event
+          -> 헤비 레인(HeavyIngestionLane 일꾼 1, heavy_file_mb 0.01 로 이 파일들을 헤비로) -> 파서 -> crud
+파일      4 개 · 파일당 lot A, B, C 각 800 행 = 2400 행 · 감시자 쓰기 청크 1000 행(코드 batch_size) -> 청크마다 커밋
+확정 시점  lot 마다 다른 파일: 참조 행이 «그 파일의 첫 청크가 쓰일 때» 들어감 — 투입 순번 {"A": 1, "B": 2, "C": 4} (참조 착지 48 번 = 16 칸 × 3 lot)
+체인      첫 판과 같은 운영 바퀴 스레드(pending -> 같은 tx -> trim -> group -> merge -> process_pending_groups)
+축        행 배치 blocked(lot 별로 몰림)/interleaved(섞임) × 순서 asc/desc × 간격 0/quiet × 체인 지연 0/2.5 s = 16 칸(뺀 칸 없음)
+결과      빈 칸 0 · 파일 상태 {'SUCCESS': 4} · 체인 루프 예외 []
+          «체인이 한 파일을 여러 바퀴에 나눠 본»(앞 청크만 본 바퀴가 있던) 칸 14/16 · «파일과 확정이 한 바퀴»였던 칸 12/16
+실행      blocked_asc: 1 passed, 6 warnings in 284.72s (0:04:44) | blocked_desc: 1 passed, 6 warnings in 280.65s (0:04:40) | interleaved_asc: 1 passed, 6 warnings in 276.03s (0:04:36) | interleaved_desc: 1 passed, 6 warnings in 288.51s (0:04:48)
+```
+
+| 배치 | 순서 | 간격 | 지연(s) | wafer 붙은 행 | 빈 칸 | 바퀴 | 여러 바퀴에 나뉜 파일 | 파일+확정 한 바퀴 |
+|---|---|---|---|---|---|---|---|---|
+| blocked | asc | 0 | 0.0 | 9600/9600 | 0 | 8 | 1/4 | 3 |
+| blocked | asc | 0 | 2.5 | 9600/9600 | 0 | 6 | 3/4 | 1 |
+| blocked | asc | quiet | 0.0 | 9600/9600 | 0 | 19 | 4/4 | 1 |
+| blocked | asc | quiet | 2.5 | 9600/9600 | 0 | 15 | 3/4 | 0 |
+| blocked | desc | 0 | 0.0 | 9600/9600 | 0 | 8 | 2/4 | 3 |
+| blocked | desc | 0 | 2.5 | 9600/9600 | 0 | 6 | 1/4 | 1 |
+| blocked | desc | quiet | 0.0 | 9600/9600 | 0 | 19 | 4/4 | 1 |
+| blocked | desc | quiet | 2.5 | 9600/9600 | 0 | 14 | 0/4 | 0 |
+| interleaved | asc | 0 | 0.0 | 9600/9600 | 0 | 7 | 1/4 | 3 |
+| interleaved | asc | 0 | 2.5 | 9600/9600 | 0 | 6 | 1/4 | 1 |
+| interleaved | asc | quiet | 0.0 | 9600/9600 | 0 | 18 | 4/4 | 1 |
+| interleaved | asc | quiet | 2.5 | 9600/9600 | 0 | 14 | 0/4 | 0 |
+| interleaved | desc | 0 | 0.0 | 9600/9600 | 0 | 7 | 2/4 | 3 |
+| interleaved | desc | 0 | 2.5 | 9600/9600 | 0 | 5 | 3/4 | 2 |
+| interleaved | desc | quiet | 0.0 | 9600/9600 | 0 | 18 | 4/4 | 1 |
+| interleaved | desc | quiet | 2.5 | 9600/9600 | 0 | 14 | 2/4 | 0 |
+
+읽는 법
+- 둘째 판이 노린 두 칸은 실제로 생겼습니다: 앞 청크만 본 바퀴가 있던 칸 14/16, 파일과 확정이 한 바퀴에 섞인 칸 12/16. 그 칸들에서도 앞 파일 행이 비지 않았습니다.
+- lot C 는 마지막(4 번째) 파일에서 확정되는데, 그 lot 의 1~3 번째 파일 행이 전부 채워졌습니다 — 확정 «뒤» 조인이 앞 행을 채운 것이고, 이 재현이 공허하지 않다는 근거입니다(파일별 칸은 출력 파일의 per lot/file).
+
+이번에도 못 덮은 축
+| 축 | 이 재현 | 운영에서 다를 수 있는 것 |
+|---|---|---|
+| 체인 루프 | 운영 바퀴의 함수들을 같은 순서로 부르는 스레드 | 진짜 start_chain_ingestion_worker — LISTEN/NOTIFY 로 깨기 · 리플레이 스윕 · 방송 · 미전달 스윕이 같은 바퀴에 섞임 |
+| 조인 실행 길 | 묶음 안에서 바로(run_in 없음) | 선언에 run_in: operation 이 있으면 큰 묶음이 «작업»으로 미뤄져 스케줄러가 돌림 — 이 재현엔 스케줄러 없음 |
+| 다른 규칙 | 이 세 선언뿐 | 같은 표를 읽고 쓰는 다른 규칙 · max_group_rows 로 묶음이 합쳐지는 선언 |
+| 동시 쓰기 | 감시자와 체인뿐 | 같은 표를 사람이 격자에서 고침 · 다른 표 적재가 같은 헤비 레인에 줄 섬(일꾼 수) |
+| 파일 크기 · lot 수 | 2400 행 · lot 3 | 더 큰 파일(청크 10 개 이상) · 한 파일에 lot 수십 |
+| 확정 후보의 출처 | 별도 참조 표에 행이 들어옴 | 후보가 로그 자신의 칸이나 다른 체인 표에서 올 때 |
+| 재기동 | 없음 | 파일 도중 감시자 · 체인 재기동(체크포인트로 이어 적재) |
+
+여쭐 것: 위 표에서 운영에 «있는» 것을 알려 주시면 그 축으로 다시 돌립니다 — 특히 그 선언에 run_in: operation 이 있는지(선언 한 줄이라 소유자 상설의 «운영 데이터»가 아니라 «선언»입니다).
+그동안 다음 차례인 테스트 런 원자 견본으로 갑니다 — 짓기 전에 갈래 하나와 철자를 따로 올립니다.
