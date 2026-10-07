@@ -1,5 +1,21 @@
 # 지금 돌리면 되는 것
 
+> ## [10-07 밤 · ①] **입력 행을 지울 때의 회수를 표마다 한 번에 — 이주 «없음» · 재기동 «필요»(체인 워커)**
+>
+> ```
+> 무엇이 바뀌나  입력 행이 지워지면 그 행이 먹인 칸을 거두는 일(체인 워커의 원장 후속)이 층 이름마다가 아니라 표마다 한 번에 돈다
+>                보류 복사 1,000 행: 332.5 s -> 1.6 s (PG 박스 시험 수, 운영 수 아님)
+>                거둔 층 · 남은 층 · 보이는 값 · 감사 · 사건은 전과 같다. 다만 회수 사건이 표마다 한 거래로 묶인다(전에는 층 이름마다 한 거래)
+>              운영자 회수(소급 withdraw · CLI)도 같은 한 벌을 지난다 — 답과 줄은 그대로
+> 볼 줄          [withdraw] <N> source(s) claim <M> cell(s) across <R> row(s) in '<표>'
+>                [withdraw] apply: <K> cell(s) withdrawn (... revealed another source, ... left empty, ... skipped as human-pinned)
+>                 = 표마다 두 줄(전에는 층 이름마다 두 줄 — 1,000 행 삭제면 2,000 줄이었다)
+>              [ChainRetract] table=<표> deleted_rows=… groups=… cells_withdrawn=… — 그대로
+> 급할 때       스위치 없음. 되돌리려면 이 커밋을 되돌리고 체인 워커 재기동
+> ```
+
+---
+
 > ## [10-07 밤] **모든 요청에 Server-Timing(total · db) · 느린 요청 한 줄 — 이주 «없음» · 재기동 «필요»(API)**
 >
 > ```

@@ -171,6 +171,49 @@ def test_a_dry_run_writes_nothing(db):
         "a dry run withdrew the cell, so nothing distinguishes previewing from doing")
 
 
+# 총괄 10-07 ① — one pass per table, so a cell two withdrawn layers claim gives them up in turn.
+# (source, value, hour stamped) - the newest shows. Layers are withdrawn in name order.
+LAYERS = [("seed", "Z", 1), ("s_b", "B", 2), ("s_a", "A", 3)]
+TWO_LAYER_CASES = {
+    # case: (apply, pinned layer, layers left, shown, audit [(old, new, by)], cells withdrawn)
+    "apply": (True, None, ["seed"], "Z", [("A", "B", "withdraw:s_a"), ("B", "Z", "withdraw:s_b")], 2),
+    "apply, s_a pinned": (True, "s_a", ["s_a", "seed"], "A", [], 1),
+    "dry-run": (False, None, ["s_a", "s_b", "seed"], "A", [], 2),
+}
+
+
+@pytest.mark.parametrize("case", sorted(TWO_LAYER_CASES))
+def test_a_cell_two_withdrawn_layers_claim_gives_up_each_in_turn(db, case):
+    from datetime import datetime, timezone
+
+    apply, pinned, left, shown, audit, withdrawn = TWO_LAYER_CASES[case]
+    row_id = _write(db, TARGET, {"part_no": "P-1"})
+    db.query(models.CellSource).filter_by(table_name=TARGET, row_id=row_id).delete()
+    for source, value, hour in LAYERS:
+        db.add(models.CellSource(table_name=TARGET, row_id=row_id, column_name="grade",
+                                 source_name=source, value=value,
+                                 ingested_at=datetime(2026, 1, 1, hour, tzinfo=timezone.utc),
+                                 origin_row_id=None if source == "seed" else "origin-" + source))
+    if pinned:
+        db.add(models.CellOverwrite(table_name=TARGET, row_id=row_id, column_name="grade",
+                                    is_overwrite=True, updated_by="t", manual_priority_source=pinned))
+    db.query(models.DYNAMIC_TABLES[TARGET]).filter_by(row_id=row_id).one().grade = "A"
+    db.commit()
+    audit_from = db.query(models.AuditLog.id).order_by(models.AuditLog.id.desc()).limit(1).scalar() or 0
+
+    stats = cell_layer.withdraw_by_origin(db, ["origin-s_a", "origin-s_b"], apply=apply)
+    db.commit()
+
+    assert stats["cells_withdrawn"] == withdrawn
+    assert sorted(s for (s,) in db.query(models.CellSource.source_name).filter_by(
+        table_name=TARGET, row_id=row_id, column_name="grade")) == left
+    assert db.query(models.DYNAMIC_TABLES[TARGET]).filter_by(row_id=row_id).one().grade == shown
+    assert [(a.old_value, a.new_value, a.updated_by) for a in db.query(models.AuditLog).filter(
+        models.AuditLog.id > audit_from, models.AuditLog.column_name == "grade")
+        .order_by(models.AuditLog.id)] == audit, (
+        "the second layer was resolved against what was there before the first one left")
+
+
 # ---------------------------------------------------------------------------
 # 판정 434 ④ — a kind with no correspondent answers BY NAME
 # ---------------------------------------------------------------------------

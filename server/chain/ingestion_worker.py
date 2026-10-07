@@ -3080,7 +3080,7 @@ def _retract_what_those_rows_fed(db, table, row_ids):
 
     🔴 [S-280 · 판정 435 ④] THREE THINGS THAT ALREADY EXISTED. The listener is the outbox
     row's ledger mark, which every processed event carries, DELETE included (ruling 129 ㉤); the pacing is this drain, which already runs off the request path; the
-    withdrawal is `cell_layer.withdraw_source`, reached with the arguments that make it act.
+    withdrawal is `cell_layer.withdraw_by_origin` - `withdraw_source`'s per-cell pass, with `apply`.
     So the CREATE/EDIT gate five places assert on is not touched — the ruling behind it
     (endless cascade) stays intact and DELETE never enters the rule loop.
 

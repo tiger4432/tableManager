@@ -130,8 +130,7 @@ def cells_stamped_by(db, origin_row_ids, chunk_size: int = DEFAULT_CHUNK_SIZE) -
     row was still there, so this answers 「그 행이 먹인 칸이 어디인가」 after the row is
     gone — which is the one question a deleted row cannot be asked itself.
 
-    READ ONLY, and grouped the way `withdraw_source` takes its arguments, so the caller
-    does no regrouping of its own.
+    READ ONLY, grouped by (table, layer name) with the columns and rows each covers.
     """
     from database import models
 
@@ -162,11 +161,12 @@ def withdraw_by_origin(db, origin_row_ids, apply: bool = False, log=logger.info)
     group in the same deletion. A human's value carrying a chain's origin stamp is a
     contradiction worth a line, not a reason to leave the rest standing.
 
-    `lost_a_layer` is {table: (columns, row ids)} of the groups handed to `withdraw_source` - what
-    the delete path tells the rules (총괄 e11bb4de0 (나)).
+    `lost_a_layer` is {table: (columns, row ids)} of the groups withdrawn - what the delete path
+    tells the rules (총괄 e11bb4de0 (나)).
     """
     stats = {"mode": "apply" if apply else "dry-run", "groups": 0, "cells_withdrawn": 0,
              "protected_skipped": 0, "lost_a_layer": {}}
+    groups_by_table = {}
     for (table_name, source_name), (columns, row_ids) in sorted(
             cells_stamped_by(db, origin_row_ids).items()):
         if source_name in PROTECTED_SOURCES:
@@ -176,13 +176,43 @@ def withdraw_by_origin(db, origin_row_ids, apply: bool = False, log=logger.info)
                 source_name, table_name)
             continue
         stats["groups"] += 1
-        one = withdraw_source(db, table_name, source_name, columns=sorted(columns),
-                              row_ids=sorted(row_ids), apply=apply, log=log)
-        stats["cells_withdrawn"] += one.get("cells_withdrawn", 0)
+        groups_by_table.setdefault(table_name, {})[source_name] = (columns, row_ids)
         lost_columns, lost_rows = stats["lost_a_layer"].setdefault(table_name, (set(), set()))
         lost_columns.update(columns)
         lost_rows.update(row_ids)
+    # 🔴 ONE WITHDRAWAL PER TABLE, NOT ONE PER LAYER NAME (총괄 10-07 ①). A copy names its layer per
+    # source row, so a group was a row: 1,000 rows were 1,000 `withdraw_source` calls, each its own
+    # queries and commit - measured 332 s on PostgreSQL. The claims are read for the table at once
+    # and withdrawn in one pass with the same per-cell order, so the layers left are the same.
+    for table_name, groups in sorted(groups_by_table.items()):
+        target = resolve_target(table_name, sorted({col for cols, _rows in groups.values() for col in cols}))
+        one = _withdraw_cells(db, table_name, target, _claimed_cells(db, table_name, groups),
+                              apply=apply, log=log, label="%d source(s) claim" % len(groups))
+        stats["cells_withdrawn"] += one.get("cells_withdrawn", 0)
     return stats
+
+
+def _claimed_cells(db, table_name: str, groups: dict, chunk_size: int = DEFAULT_CHUNK_SIZE) -> dict:
+    """`{(row_id, column): [source_name, ...]}` - the cells each `source_name` claims on `table_name`
+    among ITS OWN `(columns, row_ids)`: the predicate `withdraw_source` asks, for many sources at once."""
+    from database import models
+
+    sources = sorted(groups)
+    all_rows = sorted({row for _cols, rows in groups.values() for row in rows})
+    all_columns = sorted({col for cols, _rows in groups.values() for col in cols})
+    claims = {}
+    for i in range(0, len(all_rows), chunk_size):
+        for row_id, col, source_name in (
+                db.query(models.CellSource.row_id, models.CellSource.column_name,
+                         models.CellSource.source_name)
+                .filter(models.CellSource.table_name == table_name,
+                        models.CellSource.source_name.in_(sources),
+                        models.CellSource.column_name.in_(all_columns),
+                        models.CellSource.row_id.in_(all_rows[i:i + chunk_size])).all()):
+            columns, row_ids = groups[source_name]
+            if col in columns and row_id in row_ids:
+                claims.setdefault((row_id, col), []).append(source_name)
+    return {cell: sorted(names) for cell, names in claims.items()}
 
 
 def resolve_target(table_name: str, columns: list = None):
@@ -223,19 +253,14 @@ def withdraw_source(db, table_name: str, source_name: str, columns: list = None,
         counted as `pinned_skipped`. The pin is a human saying "show me this
         one"; silently honouring the withdrawal would override that choice.
     """
-    from database import crud, models
+    from database import models
 
     if source_name in PROTECTED_SOURCES:
         raise ReplayRefused(
             f"refusing to withdraw source '{source_name}': it is the layer that means "
             f"'a human typed this'. Withdrawing it would remove a human's value, which "
             f"this tool does not do. Edit the cell instead.")
-    model, col_types = resolve_target(table_name, columns)
-
-    stats = {"mode": "apply" if apply else "dry-run", "table": table_name,
-             "source": source_name, "cells_matched": 0, "cells_withdrawn": 0,
-             "revealed": 0, "emptied": 0, "pinned_skipped": 0,
-             "value_unchanged": 0, "samples": []}
+    target = resolve_target(table_name, columns)
 
     # 1) Cells this source claims.
     #
@@ -257,15 +282,37 @@ def withdraw_source(db, table_name: str, source_name: str, columns: list = None,
          .filter(*_claimed_filter(table_name, source_name, columns)))
     if row_ids:
         q = q.filter(models.CellSource.row_id.in_(list(row_ids)))
-    claimed = q.all()
-    stats["cells_matched"] = len(claimed)
-    if not claimed:
+    claims = {}
+    for row_id, col in q.all():
+        claims.setdefault((row_id, col), []).append(source_name)
+    stats = {"mode": "apply" if apply else "dry-run", "table": table_name, "source": source_name}
+    stats.update(_withdraw_cells(db, table_name, target, claims, apply=apply, chunk_size=chunk_size,
+                                 log=log, checkpoint=checkpoint, label=f"'{source_name}' claims"))
+    return stats
+
+
+def _withdraw_cells(db, table_name: str, target, claims: dict, apply: bool = False,
+                    chunk_size: int = DEFAULT_CHUNK_SIZE, log=logger.info, checkpoint=None,
+                    label: str = "") -> dict:
+    """R2's one pass over `claims` {(row_id, column): [source_name, ...]}.
+
+    A cell claimed by several sources withdraws them in that order, each seeing what the one
+    before it left on apply - what one `withdraw_source` call per source did, in one pass."""
+    from sqlalchemy import tuple_
+    from database import crud, models
+
+    model, col_types = target
+    stats = {"mode": "apply" if apply else "dry-run", "table": table_name,
+             "cells_matched": sum(len(names) for names in claims.values()), "cells_withdrawn": 0,
+             "revealed": 0, "emptied": 0, "pinned_skipped": 0,
+             "value_unchanged": 0, "samples": []}
+    if not claims:
         return stats
 
     by_row = {}
-    for row_id, col in claimed:
+    for row_id, col in claims:
         by_row.setdefault(row_id, set()).add(col)
-    log(f"[withdraw] '{source_name}' claims {len(claimed)} cell(s) across {len(by_row)} row(s) "
+    log(f"[withdraw] {label} {stats['cells_matched']} cell(s) across {len(by_row)} row(s) "
         f"in '{table_name}'")
 
     tx_id = f"{R2_AUDIT_SOURCE}_{uuid.uuid4().hex[:8]}"
@@ -282,8 +329,8 @@ def withdraw_source(db, table_name: str, source_name: str, columns: list = None,
     #
     # ⚠️ WHY THIS IS SAFE HERE EVEN THOUGH R2 DELETES A LAYER - the question R3 did
     # not have to answer. The deletion predicate is built from the `source_name`
-    # PARAMETER (`_claimed_filter`, and the `CellSource.source_name == source_name`
-    # filter in the delete below), never from `request_source`. So do the two
+    # PARAMETER (`_claimed_filter`, and the (source_name, row_id) pairs the claims
+    # carry into the delete below), never from `request_source`. So do the two
     # refusals: `source_name in PROTECTED_SOURCES` and `pins.get(cell) ==
     # source_name`. The context var and the parameter share a concept and nothing
     # else - there is no path from one to the other. Verified by measurement rather
@@ -317,11 +364,13 @@ def withdraw_source(db, table_name: str, source_name: str, columns: list = None,
             remaining, pins = _load_cell_state(db, table_name, chunk)
 
             delete_keys = []
+            carried = {}
             for row_id in chunk:
                 row = rows.get(row_id)
                 if row is None:
                     continue
-                for col in sorted(by_row.get(row_id, ())):
+                for col, source_name in ((c, s) for c in sorted(by_row.get(row_id, ()))
+                                         for s in claims[(row_id, c)]):
                     cell = (row_id, col)
                     if pins.get(cell) == source_name:
                         stats["pinned_skipped"] += 1
@@ -334,7 +383,7 @@ def withdraw_source(db, table_name: str, source_name: str, columns: list = None,
                         continue
 
                     decision = _resolve_cell(table_name, col_types, row, col,
-                                             remaining.get(cell), pins.get(cell),
+                                             carried.get(cell, remaining.get(cell)), pins.get(cell),
                                              exclude_source=source_name)
                     survivors = decision["survivors"]
                     old_val = decision["old_value"]
@@ -364,7 +413,8 @@ def withdraw_source(db, table_name: str, source_name: str, columns: list = None,
                             "remaining_sources": sorted(survivors)})
 
                     if apply:
-                        delete_keys.append(cell)
+                        carried[cell] = survivors  # the next source on this cell sees this one gone
+                        delete_keys.append((source_name, row_id, col))
                         if changed:
                             setattr(row, col, new_val)
                             # Make the withdrawal legible in the place the client
@@ -381,15 +431,15 @@ def withdraw_source(db, table_name: str, source_name: str, columns: list = None,
                 # 1000 rows x N columns would otherwise build a several-thousand-term
                 # predicate that no planner handles well.
                 by_col = {}
-                for r, c in delete_keys:
-                    by_col.setdefault(c, []).append(r)
-                for col, rids in by_col.items():
-                    for j in range(0, len(rids), chunk_size):
+                for s, r, c in delete_keys:
+                    by_col.setdefault(c, []).append((s, r))
+                for col, pairs in by_col.items():
+                    for j in range(0, len(pairs), chunk_size):
                         db.query(models.CellSource).filter(
                             models.CellSource.table_name == table_name,
-                            models.CellSource.source_name == source_name,
                             models.CellSource.column_name == col,
-                            models.CellSource.row_id.in_(rids[j:j + chunk_size]),
+                            tuple_(models.CellSource.source_name, models.CellSource.row_id)
+                            .in_(pairs[j:j + chunk_size]),
                         ).delete(synchronize_session=False)
                 db.commit()
 

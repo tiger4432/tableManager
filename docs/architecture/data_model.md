@@ -270,7 +270,7 @@ SOURCE_PRIORITY = { user: 0, collision_merge: 1, pipeline_parser: 2, custom_scri
 
 지금까지 레이어 스택은 **추가만** 가능했다. R2가 **한 소스의 기여를 되돌리는** 유일한 경로를 추가한다 — 행이 아니라 **셀 레이어** 단위다.
 
-🆕 🔴 **[2026-09-17] `withdraw_source` 는 여전히 «유일한 경로»이지만 «유일한 방아쇠»는 아니다** (S-280 `e1318d28`). 운영자/CLI 말고 **두 번째 호출자**가 생겼다 — 입력 행이 DELETE 되면 `chain/cell_layer.py::withdraw_by_origin` 이 `origin_row_id` 로 그 셀들을 찾아 **같은 `withdraw_source`** 를 `columns`+`row_ids`+`apply` 를 다 채워 부른다(옵트인 없음 · 자동 · `apply=True`). `user` 층은 **건너뛰고 센다**(`protected_skipped`) — 던지면 같은 삭제의 다른 그룹까지 못 거둔다.
+🆕 🔴 **[2026-09-17] `withdraw_source` 는 여전히 «유일한 경로»이지만 «유일한 방아쇠»는 아니다** (S-280 `e1318d28`). 운영자/CLI 말고 **두 번째 호출자**가 생겼다 — 입력 행이 DELETE 되면 `chain/cell_layer.py::withdraw_by_origin` 이 `origin_row_id` 로 그 셀들을 찾아 `withdraw_source` 와 **같은 한 벌**(`_withdraw_cells` — 칸마다 층을 이름 순서로 거두고 남은 층으로 다시 푼다)로 거둔다(옵트인 없음 · 자동 · `apply=True`). 🆕 [10-07 ①] 층 이름마다 부르지 않고 **표마다 한 번** — 보류 복사는 층 이름이 원천 행마다 따로라 1,000 행이 1,000 번이었다. `user` 층은 **건너뛰고 센다**(`protected_skipped`) — 던지면 같은 삭제의 다른 그룹까지 못 거둔다.
 🆕 [2026-10-03 총괄 e11bb4de0 (나)] 그 호출자(`ingestion_worker._retract_what_those_rows_fed`)는 거둔 뒤 **층을 잃은 행마다 EDIT 사건 하나**를 낸다(`stage_collapsed_event` · 체인 채널 · 거둔 칸 이름) — 보이던 값이 아닌 층은 칸을 안 바꿔 사건이 없었고, 층을 세는 규칙(보류 다시 세기)이 못 들었다. `withdraw_source` 와 운영자 경로는 그대로.
 
 - `cell_sources` 행 **하나**를 삭제하고, 남은 소스로 `compute_priority_value`를 재계산해 표시값을 되쓴다. 소스가 둘이었다면 **아래 레이어가 드러나고 구멍이 남지 않는다.** (행 삭제·컬럼 NULL 처리는 다른 소스의 기여까지 파괴하므로 하지 않는다.)
