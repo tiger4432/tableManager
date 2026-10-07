@@ -891,18 +891,20 @@ export function waferFactsFromLotMap(result, axis) {
 // ═══════════════════════════════════════════════════════════════════════════════
 // 🔴 ONE CALL — 소유자가 그린 «클라 데이터 흐름» (2026-08-24).
 //
-//    The owner drew the board as SEVEN WALKS and no other route: every part declares
-//    `{ start, collect }` and asks here. A part never names a route, a query parameter or a
-//    model again -- which is why the map and the trend can be 「같은 collect, 시작점만 다름」
-//    without either part knowing the other exists.
+//    The owner drew the board as SEVEN WALKS and no other route. A part asks here with
+//    `{ start, legacyRoute }`, naming a row of `LEGACY_ROUTES`, or names no row and declares
+//    its own `follow`, which is the walk itself (round Z). `createWalk` refuses `collect`.
+//    The drawing is why the map and the trend can be 「같은 collect, 시작점만 다름」 without
+//    either part knowing the other exists.
 //
-//      walk ①  start: each wafer          collect: trend_y        기본 트렌드
-//      walk ③  start: marking 1           collect: candidate      후보
-//      walk ④  start: marking 1           collect: wafer_process  자재 정보
-//      walk ⑤  start: marking 1           collect: trend_y        맵  (같은 collect)
-//      walk ⑦  start: marking 2           collect: candidate      후보 트렌드 · 후보 맵
+//    The drawing as of 2026-08-24, when the route column was named `collect`:
+//      walk ①  start: each wafer          trend_y        기본 트렌드
+//      walk ③  start: marking 1           candidate      후보
+//      walk ④  start: marking 1           wafer_process  자재 정보
+//      walk ⑤  start: marking 1           trend_y        맵  (같은 collect)
+//      walk ⑦  start: marking 2           candidate      후보 트렌드 · 후보 맵
 //
-// 🔴 THE COLLECT TABLE IS THE DECLARATION; THE ROUTES UNDER IT ARE TODAY'S MATERIAL.
+// 🔴 THE ROUTE TABLE IS THE DECLARATION; THE ROUTES UNDER IT ARE TODAY'S MATERIAL.
 //    The ledger carries coordinates as a subject on ONE family today (die transfer, 1,405
 //    atoms), so `map` still reads `lot_map` -- the Lead PM's standing ruling is that the old
 //    path stays alive until the walk itself can draw. When it can, ONE line here changes and
@@ -1609,11 +1611,11 @@ export function createWalk(deps) {
   return function walk(spec) {
     const { start, legacyRoute, ...rest } = spec || {};
     // 🔴 `collect` CHANGED HANDS, AND THE OLD KEY IS REFUSED RATHER THAN IGNORED.
-    //    It named a ROW IN THE TABLE BELOW -- a route selector -- and the wire is taking the
-    //    word back for the ledger's own vocabulary (a domain node type). If this key merely
-    //    fell into `rest`, `fetchSubgraph` would drop it on its fixed parameter list and a
-    //    seat still written the old way would ask a different question in silence. A refusal
-    //    costs one round trip of nobody's time and cannot be misread.
+    //    It named a ROW IN THE TABLE BELOW -- a route selector, now `legacyRoute` -- and the
+    //    wire took the word back for the ledger's own vocabulary (a domain node type, C-53).
+    //    A seat still written the old way names no `legacyRoute`, so without this refusal it
+    //    would get the walk itself and ask a different question in silence. A refusal costs
+    //    one round trip of nobody's time and cannot be misread.
     // ⏭ This guard is the RENAME's, not the feature's: the round that lets a seat declare a
     //    domain type replaces it with forwarding, and it must be removed in that same commit.
     if (rest.collect !== undefined) {
