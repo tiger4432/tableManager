@@ -36356,3 +36356,6 @@ bd33605af   은퇴 이름(registration_probe · existing_registrations · regist
 안 고침     ledger_declaration_by_example 의 「속성을 매긴 것만으로 «암묵 등록»(… 타입이 register.subjects 에 있어야 함)」 —
             그 조건이 지금도 참인지 코드로 못 세웠다(attribute_registrations 는 그 목록을 안 묻는다 · 게이트가 묻는지는 안 열었다). 참이 아니면 한 줄 고칩니다
 ```
+
+> 정정(바로 위 09e5e4402): 「전 9(구현자 d6795570a 가 셋)」는 손으로 적은 수였습니다. 같은 술어로 잰 수 — bd33605af 11 · d6795570a 9 · 38aaca86e 3.
+> 구현자 줄 셋 중 이 술어에 걸린 것이 둘이었습니다. 끝 수 3 은 그대로.
