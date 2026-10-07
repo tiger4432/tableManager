@@ -73332,3 +73332,39 @@ AST 밖    SQL 술어(조인의 require 거르기 · 키 tuple IN 비교 — 표
 - **D7 — 소급 쓰기(cascade 없음)를 조인이 안 받음.** 확정을 소급 작업으로 돌렸을 때 — 같은 모양 · 같은 무흔적. ② 로 지어 둔 것(wip-confirm-cascade)이 이 칸입니다.
 
 흔적이 남는 조건(강제 시험으로 확인): B2 깊이 한도(WARNING · FAILED) · F2 버전 게이트(WARNING · INFO, 이때는 «모든» 행이 빔) · D1 run_in 작업이 안 돎(INFO queued · 대기 작업)
+
+---
+
+## [10-07] 원장 선언 테스트 런 — 원자 견본 · 착지 3307b6880 (총괄 026ced7f1 · 안 1 · «라» · «가»)
+
+어느 DB · 어느 스키마 · 지운 것 — 시험은 메모리의 가짜 엔진(동봉 샘플 선언 · 행은 메모리) · DB 안 씀 · 지운 것 0
+
+```
+응답      atoms_sample(최대 50) — rows_sample 행에서 나온 원자, 실행 순서, 원장 철자(store.atom_record — insert_atoms 도 이것으로 씀, id 는 뺌)
+          원자마다 + sentence · row_ids · writes · drop_reason(already_registered | 게이트 거절 코드 — 그때는 배치 전체)
+          truncated.atoms_sample = event_constants.truncated_note · rows_sample 에 row_id
+바뀐 동작  rows_sample 은 «원자 수를 낸 페이지»의 행(전에는 처음 행이 나온 페이지 — 빈 머리를 건너뛰면 행과 문장 수가 다른 페이지를 말했다)
+게이트    9 칸 — 견본 == 실행이 쓸 원자의 atom_record · 원장 쓰기도 같은 기록 · 롤 속성은 자기 등록 문장에(관계 원자 안엔 없음)
+          · 견본 원자는 rows_sample 행만 가리키고 밖 행의 원자는 없음 · 세 견본이 같은 페이지(빈 머리 한 페이지)
+          · row_id 없는 행이면 테스트 런이 source_preparation_incomplete 로 거절되고 견본 없음 · 상한 넘으면 잘림 수
+          · 원장에 있는 주어의 속성 없는 등록은 already_registered, 원장 읽기는 보인 주어로만 · 게이트 거절은 모든 원자를 표시하고 프로세스 카운터 그대로 — 9 passed, 6 warnings in 1.28s
+변이      9/9 빨강(failed 시험으로 센 수) · md5 전후 같음(ledger/backfill.py · ledger/runtime_v2.py · ledger/store.py)
+         RED  the ledger write spells its own row, past atom_record
+         RED  the sample spells occurred_at its own way
+         RED  the sample takes every atom of the page, not the shown rows'
+         RED  the rows are sampled off the first page again
+         RED  no limit
+         RED  a held registration is shown as written
+         RED  the ledger is asked about every registration of the page
+         RED  a look moves the gate's counters
+         RED  a refused batch reads as written
+          첫 판에서 2 개가 초록이었다(the ledger write spells its own row, past atom_record · the ledger is asked about every registration of the page) — 고정물이 그 차이를 못 보였다(그 칸 값이 원래 None · 보인 주어 = 페이지 전체). 고정물 · 변이를 고쳐 다시 돌린 것이 위 표
+게이트 비용 테스트 런 한 번(동봉 샘플 + wafer 등록 · 가짜 행 199 · 원자 398) 5 번: 전체 중앙값 458.2 ms · 그중 게이트 4.8 ms (전체 [458.2, 486.3, 433.1, 444.2, 489.0] · 게이트 [4.6, 4.8, 4.7, 6.5, 4.9])
+크기       10 files changed, 354 insertions(+), 22 deletions(-)
+sqlite 전체 5 failed, 7860 passed, 339 skipped, 3 xfailed, 13186 warnings in 792.90s (0:13:12) — 박스 사유 밖: 없음
+```
+
+빠진 것 하나(총괄 승인으로 뺌): «row_id 없는 관계는 잇지 않고 보여 주기» — 계획되는 소스는 모두 row_id 가 있는 행 표를 읽어(총괄 f3bc02f6e) 아무도 안 타는 갈래였다. 클라에도 그 칸을 빼라고 알렸고 클라가 뺐다.
+
+관찰(고치지 않음 — 총괄이 소유자께 올림): 소스의 bind.entities 에 엔티티 속성을 적어도, 그 소스에 그 엔티티의 «등록 문장»이 없으면 속성 값이 어느 원자에도 실리지 않고 거절도 알림도 없다.
+잰 모양: 동봉 샘플 lot_slot_wafer 에 wafer@1.event_type 을 선언 → 테스트 런 원자는 모두 has_wafer 이고 qualifier 가 없음. 같은 소스에 wafer 등록 문장(register@1)을 더하면 그 등록 원자의 qualifiers 에 event_type 이 실림(관계 원자 안에는 없음).
