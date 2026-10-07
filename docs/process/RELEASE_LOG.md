@@ -9,6 +9,19 @@
 
 ---
 
+## 2026-10-07 · 화면을 한 번 열면 어느 요청이 느린지, DB 때문인지가 보인다
+
+- **무엇** — 모든 HTTP 응답에 `Server-Timing` 머리(그 요청의 총시간, 그 안의 DB 시간과 질의 수)가 붙습니다. 예산(`slow_request_ms`, 기본 1000 ms)을 넘은 요청은 서버 로그에 한 줄이 남습니다 — 경로 · 상태 · 총시간 · DB 시간 · 질의 수. 쿼리 문자열과 바디는 싣지 않습니다.
+- **선언 예시** — `server/config/server_settings.json`:
+  <!-- example: server_settings -->
+  ```json
+  {"slow_request_ms": 1000}
+  ```
+- **화면에서** — 브라우저 개발자 도구 Network → 그 요청 → Timing 에 `total` · `db` 가 보입니다. 화면 자체는 바뀌지 않았습니다.
+- **필요한 조건** — 서버(API) 재기동.
+- **바뀐 동작** — 응답 머리가 하나 늘었습니다. 느린 요청은 로그 한 줄이 늘었습니다. 그 밖은 같습니다.
+- **자세히** — 이 항목과 같은 커밋 · RUN.md 같은 절.
+
 ## 2026-10-07 · 적재 뒤 통계 갱신(ANALYZE)도 남의 잠금에 끝없이 걸리지 않는다
 
 - **무엇** — 파일을 넣은 뒤의 ANALYZE 가 같은 표의 인덱스 만들기(CONCURRENTLY) · VACUUM · 다른 ANALYZE 에 걸리면, 파일 쓰기와 같은 상한(`lock_timeout_seconds`) 뒤 ANALYZE 만 건너뛰고 한 줄을 남깁니다. 파일은 SUCCESS 이고 폴더는 다음 파일로 갑니다. 잠금 상한으로 실패한 외부 소스 파일도 다음 외부 스윕이 다시 돌립니다. `ingestion_settings.json` 에 BOM 이 붙어도 읽습니다.

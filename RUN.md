@@ -1,5 +1,22 @@
 # 지금 돌리면 되는 것
 
+> ## [10-07 밤] **모든 요청에 Server-Timing(total · db) · 느린 요청 한 줄 — 이주 «없음» · 재기동 «필요»(API)**
+>
+> ```
+> 무엇이 바뀌나  모든 HTTP 응답 머리에 Server-Timing: total;dur=<ms>, db;dur=<ms>;desc="<N> queries"
+>                db 는 «그 요청 안»에서 돈 질의의 시간 합과 수 — 워커 · 요청이 띄운 스레드의 질의는 안 들어간다
+>              slow_request_ms 를 넘은 요청은 서버 로그에 한 줄
+> 보는 법        브라우저 개발자 도구 -> Network -> 그 요청 -> Timing 탭(Server Timing) 에 total · db 가 보인다
+>                total 이 크고 db 가 작다 = 파이썬 쪽 · db 가 total 에 가깝다 = 질의 쪽(queries 수가 크면 질의를 너무 많이 낸다)
+> 적는 곳       server/config/server_settings.json (모양: server/config/sample/server_settings.json.sample)
+>                 slow_request_ms   없으면 1000 · null 이면 줄을 안 남김(머리는 그대로) · 재기동 때 읽음
+> 볼 줄          [Slow] <메서드> <경로> <상태> - 응답이 <N>ms 걸렸습니다 (예산 <B>ms) · db <D> ms · <Q> queries
+>                 = 그 요청이 예산을 넘었다. 쿼리 문자열 · 바디는 싣지 않는다
+> 급할 때       slow_request_ms 를 null 로 + 재기동 — 줄이 멈춘다(머리는 남는다)
+> ```
+
+---
+
 > ## [10-07 밤 · 후속] **멈춘 수집 폴더 후속 — 적재 뒤 ANALYZE 에도 같은 잠금 상한 · 외부 소스 파일도 다음 스윕에 다시 · ingestion_settings.json 의 BOM — 이주 «없음» · 재기동 «필요»(감시자)**
 >
 > ```

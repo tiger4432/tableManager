@@ -1,0 +1,5 @@
+{
+  "_comment": "서버 전역 설정. 실제 적용하려면 이 파일을 server_settings.json 으로 복사하세요. 파일이 없으면 모든 값이 기본값으로 동작합니다. 서버 재기동 때 읽습니다.",
+  "_slow_request_ms_doc": "HTTP 요청 하나가 이 ms 를 넘으면 서버 로그에 한 줄 «[Slow] <메서드> <경로> <상태> - 응답이 …ms 걸렸습니다 (예산 …ms) · db … ms · … queries» 를 남깁니다(쿼리 문자열과 바디는 싣지 않음). 적지 않으면 1000. null 이면 남기지 않습니다. 응답 머리 Server-Timing(total · db)은 값과 무관하게 모든 요청에 붙습니다.",
+  "slow_request_ms": 1000
+}
