@@ -73909,3 +73909,41 @@ sqlite 전체 5 failed, 7965 passed, 346 skipped, 3 xfailed, 13154 warnings in 7
 CODE_MAP  _decode_config_text 행 아래 «다음에 만지면» 한 줄(수는 이 셈에서 채움)
 고친 말    앞 RELEASE 항목(aca9d8d24)의 «ingestion_settings.json 에 BOM 이 붙어도 읽습니다»는 그때 감시자 읽기 하나만 참이었다 — 이 커밋으로 네 자리 모두 참
 ```
+
+---
+
+## [10-07 밤] ④ 모든 요청의 시간 — Server-Timing(total · db) · 느린 요청 한 줄 · 착지 a34bfbe63 (총괄 1ㄴ · 2ㄴ server_settings.json · 3ㄴ)
+
+어느 DB · 어느 스키마 · 지운 것 — 메모리 sqlite · DB 안 씀 · 지운 것 0
+
+```
+지은 것    server/runtime/request_timing.py — 요청 contextvar 하나, Engine 의 before/after_cursor_execute 훅이 그것이 있을 때만 질의 시간 · 수를 더함
+          main.time_the_request — db_context_middleware 뒤에 등록(그 바깥 · SSO 거절도 잼), CORS 는 여전히 가장 바깥
+          머리: Server-Timing: total;dur=<ms>, db;dur=<ms>;desc="<N> queries" — 모든 HTTP 응답
+          문턱: server/config/server_settings.json slow_request_ms(sample 포함) · 없으면 1000 · null 끔 · 규칙은 event_constants.slow_warn_ms · 프로세스당 한 번 읽음
+          줄: [Slow] <메서드> <경로> <상태> - <slow_sentence> · db <ms> ms · <N> queries — 쿼리 문자열 · 바디 없음
+게이트    3 passed in 0.40s — 머리 모양(시험 경로 + /health) · 그 요청 질의 3(요청이 띄운 스레드의 2 는 안 셈) · 문턱 1 ms 위 한 줄 · 100000 ms 아래 0 줄
+          · 줄 모양 정확히(경로 · 상태 · total · db · 질의 수) · 쿼리 문자열 값(SECRET) · 바디 값 · 'token' 없음 · 기본 1000 · 250 · null
+변이      8/8 빨강(failed 시험으로 센 수) · md5 전후 같음
+          RED  the header carries no database time
+          RED  the queries are not counted
+          RED  a query outside the request is counted
+          RED  the slow line carries the query string
+          RED  the budget has no default
+          RED  a request under the budget is said too
+          RED  the line leaves out the database
+          RED  the timing middleware is not installed
+sqlite 전체 5 failed, 7968 passed, 346 skipped, 3 xfailed, 13187 warnings in 752.69s (0:12:32)  (ingestion_settings 접기 665a5dff4 위)
+          tests\test_a_sentence_says_itself_only_for_the_rows_it_names.py::test_the_sample_is_written_in_the_one_format_both_writers_use
+          tests\test_core_alignment_mapper.py::test_live_mapper_and_tracked_sample_are_byte_identical
+          tests\test_core_usage_mapper.py::test_live_mapper_and_tracked_sample_are_byte_identical
+          tests\test_dt_inventory_metadata_mapper.py::test_live_mapper_matches_tracked_sample
+          tests\test_one_place_decides_where_the_server_is.py::test_the_repo_root_is_one_above_it
+RELEASE   예시를 착지한 RELEASE_LOG 에서 읽어 request_timing.slow_request_ms 로 읽음 — example {"slow_request_ms": 1000} -> slow_request_ms() = 1000
+```
+
+```
+안 잰 것   운영 응답 시간 — 이 박스 수 없음. 스트리밍 응답(파일 내려받기)은 머리를 보내는 순간까지만 잰다(본문 전송 시간 빠짐)
+안 잰 것   PG 위의 db 칸 — 훅은 엔진 종류와 무관하지만 시험은 sqlite 로만 돌렸다
+          교차 출처(개발 서버 5173)에서는 브라우저가 Timing-Allow-Origin 없이 Server-Timing 을 안 보여 줄 수 있다 — 운영(같은 출처)엔 해당 없음. 안 붙였다
+```
