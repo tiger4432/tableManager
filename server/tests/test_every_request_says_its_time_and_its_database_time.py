@@ -20,6 +20,9 @@ from runtime import request_timing
 
 PROBE = "/__request_timing_probe"
 SHAPE = re.compile(r'^total;dur=(\d+\.\d), db;dur=(\d+\.\d);desc="(\d+) queries"$')
+#: One query long enough that its time cannot round to 0.0 ms (총괄 QA: db;dur must be measured).
+SLOW_QUERY = ("WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM c WHERE x < 50000) "
+              "SELECT count(*) FROM c")
 
 
 @pytest.fixture(name="declare")
@@ -28,8 +31,8 @@ def fixture_declare(monkeypatch, tmp_path):
     def probe(sleep: float = 0.0, token: str = None, payload: dict = Body(None)):
         session = database.SessionLocal()
         try:
-            for _ in range(3):
-                session.execute(text("SELECT 1"))
+            for statement in ("SELECT 1", "SELECT 1", SLOW_QUERY):
+                session.execute(text(statement))
         finally:
             session.close()
 
@@ -72,7 +75,7 @@ def test_every_response_carries_its_time_and_only_its_own_queries(declare):
     answered = client.get(PROBE)
     total, db, queries = SHAPE.match(answered.headers["Server-Timing"]).groups()
     assert answered.status_code == 200 and queries == "3", answered.headers["Server-Timing"]
-    assert float(total) >= float(db)
+    assert 0 < float(db) <= float(total), answered.headers["Server-Timing"]     # the db time is measured
     other = client.get("/health")                              # a route nobody set up for this
     assert SHAPE.match(other.headers["Server-Timing"]), other.headers.get("Server-Timing")
 
