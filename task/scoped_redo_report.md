@@ -73947,3 +73947,83 @@ RELEASE   예시를 착지한 RELEASE_LOG 에서 읽어 request_timing.slow_requ
 안 잰 것   PG 위의 db 칸 — 훅은 엔진 종류와 무관하지만 시험은 sqlite 로만 돌렸다
           교차 출처(개발 서버 5173)에서는 브라우저가 Timing-Allow-Origin 없이 Server-Timing 을 안 보여 줄 수 있다 — 운영(같은 출처)엔 해당 없음. 안 붙였다
 ```
+
+---
+
+## [10-07 밤] 원천 행 «고칠 때»도 출처 행 단위 회수 — 짓기 전 보고 (총괄 e35500433 · 4c3417ccb · b13de0353) · 아무것도 안 지음
+
+어느 DB · 어느 스키마 · 지운 것 — assy_test 의 pg_engine 스크래치 스키마(끝에 DROP) · 재기 시험 파일은 커밋 안 함(scratchpad) · public 안 씀
+
+### 1 재현 — 생긴다 (보류 복사 hold_world, 한 행 · 묶음 둘 다 같은 답)
+
+```
+A(J1 · x 1 · y 2 · netdie 7) 적재 -> 공식 행 하나 agreed · 원장 [J1 7]
+A 의 좌표 x 1 -> 5 로 고침 -> 공식 행 2 개: 새 키 행 agreed, 옛 키 행이 «그대로» 남음
+   옛 행에 남은 A 의 층(origin A, 이름 chain_ingestion (<A>)) 칸: dt_job, dt_x, dt_y, netdie
+   옛 행 hold = agreed · 원장 = [['J1', '7.0'], ['J1', '7.0']]  <- 옛 행 원자가 그대로 남아 J1 이 둘
+그 뒤 값만 고침(netdie 8) -> 공식 행 2 개, 원장 = [['J1', '7.0'], ['J1', '8.0']]  <- 옛 행 7 이 계속 말함
+옛 행에는 origin 없는 «chain_ingestion» 층도 있다: dt_job, dt_x, dt_y, hold — origin 회수가 안 건드리는 층이라,
+   고칠 때 회수가 생기면 옛 행은 키만 남은 행이 될 것이다(지울 때 오늘 모양). hold 는 재셈이 원천 0 으로 비우고 원장 exclude_when 이
+   원자를 거둘 것이다 — 지울 때의 길을 그대로 탄다는 «예상»이고, 고칠 때는 그 길이 아직 없어 안 쟀다
+```
+
+### 2 자리
+
+```
+오늘     DELETE 만: 원장 후속 drain -> _retract_what_those_rows_fed -> cell_layer.withdraw_by_origin(출처 행들)
+         (모집단 = cells_stamped_by, origin_row_id 로) -> 층 잃은 행에 chain 채널 EDIT -> allow_chain_trigger 규칙(재셈) -> 원장 exclude_when
+안       넓히는 자리 «하나»: withdraw_by_origin 에 범위 셋을 더함 — table(규칙 대상) · columns(그 규칙이 쓰는 칸, 덧붙임 1) · keep_rows
+         (이번 쓰기가 그 출처로 쓴 행). 지울 때는 범위 없이 오늘 그대로. 고칠 때는 apply_chain_writes 의 쓰기 직후, 이 묶음의 EDIT 트리거
+         행 중 그 규칙이 출처를 찍은 것으로 부름. «층 잃은 행에 EDIT»은 지금 _retract_what_those_rows_fed 안의 몇 줄을 함수로 꺼내 둘이 부름
+모집단    cells_stamped_by(출처 행 -> 칸 층) 와 plan_retraction(일 값 -> 행) 이 «둘»인가: 단위(층 vs 행) · 거두는 법(층 회수 vs 행 purge) ·
+         켜는 법(기본 vs allow_retraction)이 다르다. 이번 일은 cells_stamped_by 하나만 쓰고 plan_retraction 은 손대지 않는 안
+         접는 안(«전에 낸 것 − 이번에 낸 것» 한 함수에 단위를 인자로)은 크기 안 쟀고 추천하지 않음
+이번 쓰기가 낸 칸  apply_batch_updates 가 돌려주는 results(행) 로 «행» keep 은 된다. 칸 단위 집합(cell_sources_to_upsert)은 함수 안 지역이라
+         안 돌려준다. changed_cells 는 «보이는 값이 바뀐 칸»만이라 못 쓴다. 덧붙임 1(그 규칙의 칸) + 행 keep 이면 칸 단위가 없어도 된다고 봄
+```
+
+### 3 비용 (PG 박스, hold_world 1,000 원천 행 — 박스 수, 운영 주장 아님)
+
+```
+좌표 안 바뀐 수정   거둘 것 0 이어야 함 -> 더해지는 것은 읽기 한 번: cells_stamped_by 1,000 출처 행 = 22~29 ms (다섯 번) · 쓰기 0
+좌표 바뀐 수정      withdraw_by_origin 이 층 이름마다 withdraw_source 를 한 번씩 부른다 — 보류 복사는 층 이름이 출처 행마다 따로라
+                   묶음 수 = 행 수(1000) -> 1,000 행 dry-run 111 s (4000 칸)
+                   운영 규격(1,000 행 ≤ 5 s) 밖. 🔴 오늘 «지울 때»도 같은 함수다 — 1,000 행 삭제가 같은 꼴(삭제로는 안 쟀다)
+덤                 이 하니스의 1,000 행 적재(복사 + 재셈 + 원장 후속) settle 213 s — 규격 밖. 단계별로는 안 쟀다
+```
+
+### 4 겹침
+
+```
+보류 복사   층 이름이 출처 행마다 따로 -> 같은 키를 받치는 다른 원천 행의 층은 안 건드림. 재셈이 남은 원천으로 hold 를 다시 셈 — 안전
+조인        층 이름이 «chain_ingestion» 하나라 (표 · 행 · 칸 · 층) 한 줄에 origin 이 하나(마지막에 쓴 행)만 남는다
+            -> 다른 원천 행도 받치던 칸이면 회수가 그 칸을 비운다, 그 원천이 다시 쓸 때까지. 지울 때도 오늘 같은 위험
+사람 층     PROTECTED_SOURCES(user) 건너뜀 · manual_priority_source 로 고정된 칸 건너뜀(withdraw_source) — 손 안 댐
+origin 없는 층  키 칸 · hold 의 «chain_ingestion» 은 안 거둠 -> 옛 행은 키만 남은 행
+자기 행 규칙  출처 = 자기 행, 층 이름이 겹칠 수 있음 -> columns 로 그 규칙의 칸만(덧붙임 1)
+고리        회수 EDIT 은 chain 채널 -> allow_chain_trigger 규칙만 깬다. 자기 행 규칙이 그것을 켰으면 다시 돌아 같은 행을 쓴다 -> keep_rows 에
+            그 행이 들어 회수 0 -> EDIT 0 -> 끝. 게이트로 «사건 수 상한»을 단언(덧붙임 2)
+```
+
+### 5 mapper_sdk 기본 찍기
+
+```
+자리 없음   @mapper 는 (df_in) -> df_out 이고 df_to_updates 는 updates · source_name · updated_by 만 싣는다. register(name, fn, params) 에
+            출처 칸이 없다. 출처는 쓰기 항목의 origin_row_id(GeneralUpdateItem)라 함수가 직접 적어야 한다(hold_copy 처럼)
+본 결함     «찍는 종류인가»는 dynamic_mappers.TEMPLATE_FACTS 에만 있다(join True · decide 둘 False). SDK 로 등록된 보류 복사 · contrast_walk 는
+            거기 없어 retraction_refusal 이 «파일 맵퍼는 … 적는지는 제품이 모릅니다»를 말한다 -> 그 원천 표를 지울 때마다 경고 한 줄(실제로는 찍음)
+기본 안     행 체인 맵퍼의 출력 df 에 입력 행의 row_id 칸이 남아 있으면 SDK(df_to_updates)가 그 값을 각 항목의 origin_row_id 로 옮긴다
+            «찍나»는 TEMPLATE_FACTS 대신 «쓴 항목에 origin 이 실렸나»로 retraction_refusal 이 판단한다
+기본이 없을 때 작성자가 적을 것
+            출력 행마다 origin_row_id 칸에 그 입력 행의 row_id 를 싣는다(register 함수면 item["origin_row_id"] = row["row_id"])
+            지금은 그것을 «찍는 종류»로 제품에 알릴 자리가 없다 — TEMPLATE_FACTS 는 내장 종류만
+```
+
+### 여쭐 것
+
+```
+1  withdraw_source 를 «여러 층 이름 한 번에»로 묶는 일 — 넓히기의 선행으로 같은 라운드에 넣을지. 안 하면 좌표 바뀐 1,000 행이 위 dry-run 꼴(지울 때도)
+2  행 keep(이번 쓰기가 그 출처로 쓴 행) + 그 규칙의 칸 으로 충분한지 — 칸 단위 집합을 apply_batch_updates 에서 돌려받는 안은 크기가 크다(안 쟀다)
+3  plan_retraction 은 접지 않는 안
+4  mapper_sdk 기본 찍기(위 두 줄)와 retraction_refusal 의 판단 바꾸기를 이 라운드에 넣을지 — 넣으면 보류 복사의 잘못된 경고 줄도 같이 닫힌다
+```
