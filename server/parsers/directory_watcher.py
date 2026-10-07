@@ -25,7 +25,6 @@ from database.database import SessionLocal
 from maps import alignment_batch_counts
 from sqlalchemy import text as _sa_text
 from database import crud, schemas
-from database.crud import _decode_config_text
 from utils import heartbeat
 
 # [B1/B2 follow-up] Name of the progress beat the ingestion path publishes.
@@ -384,17 +383,9 @@ INGESTION_SETTINGS_PATH = paths.config_path("ingestion_settings.json")
 
 def load_ingestion_settings() -> dict:
     """인제션 시스템 설정(ingestion_settings.json) 로드 — 실패 시 빈 dict(기본값 동작).
-    table_config 와 같은 읽기(BOM 을 읽는다, 총괄 10-07)."""
-    import json
-    try:
-        if os.path.exists(INGESTION_SETTINGS_PATH):
-            with open(INGESTION_SETTINGS_PATH, "rb") as f:
-                loaded = json.loads(_decode_config_text(f.read()))
-            if isinstance(loaded, dict):
-                return loaded
-    except Exception as e:
-        logger.warning(f"Could not load ingestion settings ({INGESTION_SETTINGS_PATH}): {e}")
-    return {}
+    그 파일의 «한» 읽기(`ingestion.settings`)를 이 모듈의 경로로 부른다(총괄 10-07)."""
+    from ingestion.settings import read_ingestion_settings
+    return read_ingestion_settings(INGESTION_SETTINGS_PATH)
 
 
 

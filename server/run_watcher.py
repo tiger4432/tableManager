@@ -198,15 +198,10 @@ def reload_watcher_cache():
 
 # Database polling for PENDING_RETRY logs
 def reclaim_grace_setting():
-    """The operator's grace if they declared one; `None` means "use the derivation"."""
-    try:
-        import json
-
-        import paths
-        with open(paths.config_path("ingestion_settings.json"), encoding="utf-8") as f:
-            return json.load(f).get("retry_reclaim_after_seconds")
-    except Exception:
-        return None
+    """The operator's grace if they declared one; `None` means "use the derivation".
+    Through the file's one read (`ingestion.settings`, 총괄 10-07)."""
+    from ingestion.settings import read_ingestion_settings
+    return read_ingestion_settings().get("retry_reclaim_after_seconds")
 
 
 def reclaim_stranded_claims(db):

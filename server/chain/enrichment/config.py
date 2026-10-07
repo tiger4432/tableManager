@@ -39,7 +39,6 @@
 (dedup mapper가 판단키로부터 business_key_val을 결정론적으로 조립하기 위함 — 위반 시 규칙 스킵.)
 """
 import copy
-import json
 import logging
 import os
 import re
@@ -154,17 +153,10 @@ def _load_ingestion_settings() -> dict:
     D1 discipline. Used only when a caller supplies no settings; the auto-confirm
     paths hand their OWN already-loaded snapshot to `load_read_caps`, so a work
     unit reads this file once and the knobs and the caps cannot come from two
-    different reads of it.
+    different reads of it. The file's one read is `ingestion.settings` (총괄 10-07).
     """
-    try:
-        if os.path.exists(INGESTION_SETTINGS_PATH):
-            with open(INGESTION_SETTINGS_PATH, "r", encoding="utf-8") as f:
-                loaded = json.load(f)
-            if isinstance(loaded, dict):
-                return loaded
-    except Exception as e:
-        logger.warning("Could not load ingestion settings (%s): %s", INGESTION_SETTINGS_PATH, e)
-    return {}
+    from ingestion.settings import read_ingestion_settings
+    return read_ingestion_settings(INGESTION_SETTINGS_PATH)
 
 
 def read_cap_home(name: str) -> str:
