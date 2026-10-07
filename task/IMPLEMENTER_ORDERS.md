@@ -64329,3 +64329,7 @@ replay.fold_written_notation(env, PLAIN, apply=True)   # 2회 -> a.b 의 v 가 N
        pg_trgm 없음 흉내 -> 그 줄만 사유 · sqlite 는 «이 방언에서 안 함» 한 줄 · 변이
 착지   RUN.md(적는 법 · 보고서 문장의 뜻 · 되돌리기 = 줄 지우기) · RELEASE_LOG · table_config 안내서 한 절
 ```
+
+---
+
+> **[총괄 -> 구현자] 1aedc9e72 갈림길 답 — 칸 이름 `indexed_columns`(오늘의 `indexes` = 유일 주장과 뜻이 달라 칸을 가름) · 자리 = retroactive OPERATIONS 의 op 하나 · 실패 사유 = 그 run 기록. 리로드 인라인 CONCURRENTLY 는 옮기지 않고 표로만 보고**
