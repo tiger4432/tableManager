@@ -759,6 +759,14 @@ async function suite(m, makeWalk = createWalkBoxWalk, css = REAL_CSS) {
       JSON.stringify({ first, fitted }));
     say('Z2 Fit fits all of it, below the readable zoom', fitted < READABLE, JSON.stringify({ fitted }));
     say('Z3 Reset fits as the first picture does', reset === READABLE, JSON.stringify({ reset }));
+    // The box takes the height the window leaves (owner 10-07), so it changes size under a picture already fitted.
+    let resized = 0;
+    if (s.view.cy) { s.view.cy.on('resize', () => { resized += 1; }); s.view.cy.zoom(1.3); s.view.cy.pan({ x: 17, y: -29 }); }
+    const was = s.view.cy ? JSON.stringify([s.view.cy.zoom(), s.view.cy.pan()]) : '';
+    s.view._resized();
+    const now = s.view.cy ? JSON.stringify([s.view.cy.zoom(), s.view.cy.pan()]) : '';
+    say('Z4 the box changes size: the picture follows it, the view stays (zoom and pan)', resized === 1 && now === was,
+      JSON.stringify({ resized, was, now }));
   }
 
   console.log('\n[Q] Mark is the one press that marks; the facts stay in sight (lead 9dc2a5695 ① ②)');
@@ -788,13 +796,28 @@ async function suite(m, makeWalk = createWalkBoxWalk, css = REAL_CSS) {
     const rules = [...css.replace(/\/\*[\s\S]*?\*\//g, ' ').matchAll(/([^{}]+)\{([^}]*)\}/g)]
       .map((m2) => [m2[1].split(',').map((x) => x.trim()), m2[2]]);
     const ruled = (selector, prop) => rules.some(([sels, body]) => sels.includes(selector) && body.includes(prop));
-    say('Q3 the facts box is pinned to the bottom of what scrolls the picture, capped, with its own scroll',
-      ruled('.sg-facts', 'position: sticky') && ruled('.sg-facts', 'bottom: 0') && ruled('.sg-facts', 'overflow: auto')
-        && ruled('.sg-facts', 'max-height'));
+    // Owner 10-07 (lead d78bf28bd): above the picture, in a cell the row holds at one height - so a pick moves nothing.
+    const rootKids = (byClass(s.host, 'sg-view')[0] || { children: [] }).children;
+    const holds = (k) => byClass(k, 'sg-facts').length > 0;
+    const above = rootKids.findIndex(holds) >= 0 && rootKids.findIndex(holds) < rootKids.findIndex((k) => has(k, 'sg-canvas-wrap'));
+    const rowFixed = rules.some(([sels, body]) => sels.includes('.sg-top') && /grid-template-rows:\s*[\d.]+px;/.test(body));
+    say('Q3 the facts box is above the picture, held in a cell of a fixed height, with its own scroll',
+      above && rowFixed && ruled('.sg-factslot > .sg-facts', 'position: absolute') && ruled('.sg-factslot > .sg-facts', 'inset: 0')
+        && ruled('.sg-facts', 'overflow: auto'), JSON.stringify({ above, rowFixed, kids: rootKids.map((k) => k.className) }));
+    const headBox = byClass(s.host, 'sg-head')[0] || { children: [] };
+    const toolsAt = rootKids.findIndex((k) => byClass(k, 'sg-continue').length > 0);
+    say('Q12 the tools (Fit, Reset, Continue) are above the picture, first in their cell',
+      toolsAt >= 0 && toolsAt < rootKids.findIndex((k) => has(k, 'sg-canvas-wrap'))
+        && has(headBox.children[0] || {}, 'sg-acts') && byClass(headBox.children[0], 'sg-continue').length === 1,
+      JSON.stringify(headBox.children.map((k) => k.className)));
     say('Q4 nothing picked draws no box', ruled('.sg-facts:empty', 'display: none')
       && byClass((await seat([WAFER])).host, 'sg-facts').every((b) => b.children.length === 0));
-    say('Q6 the picture is a box of the graph height token, panning inside itself',
-      ruled('.sg-canvas-wrap', 'height: var(--graph-max-height)') && ruled('.sg-canvas-wrap', 'overflow: hidden'));
+    // A height of its own would cut the picture to it; `min-height` is the floor, not a height.
+    const fixedHeight = rules.some(([sels, body]) => sels.includes('.sg-canvas-wrap') && /(^|[;{\s])height\s*:/.test(body));
+    say('Q6 the picture takes the height left (owner 10-07), panning inside itself',
+      ruled('.sg-canvas-wrap', 'flex: 1 1 auto') && !fixedHeight && ruled('.sg-canvas-wrap', 'overflow: hidden')
+        && ruled('.wk-graph', 'flex: 1 1 auto') && ruled('.wk-graph', 'min-height: 0')
+        && ruled('.wk-graph > .sg-view', 'flex: 1 1 auto'), JSON.stringify({ fixedHeight }));
   }
 
   console.log('\n[W] several worlds read: under each attribute and each edge, a row per world that says it (leads ee0f66e7b, 4e1e49fe9)');
@@ -889,14 +912,24 @@ const failures = [];
       "      setDisabledReason(this.markButton, name ? '' : 'End of chain');\n", ''),
     M('Q4m', 'Mark stands after the facts', 'Q2',
       '    box.appendChild(acts);\n    for (const [name, value]', '    for (const [name, value]'),
-    { ...M('Q5m', 'the facts box is not pinned', 'Q3',
-      'position: sticky; bottom: 0; z-index: 1;', 'z-index: 1;'), file: STYLES },
+    { ...M('Q5m', 'the facts box is not held in its cell', 'Q3',
+      '.sg-factslot > .sg-facts { position: absolute; inset: 0; }\n', ''), file: STYLES },
+    M('Q10m', 'the facts are below the picture again', 'Q3',
+      '    this.root.appendChild(this.top);\n    this.root.appendChild(this.wrap);\n',
+      '    this.root.appendChild(this.wrap);\n    this.root.appendChild(this.top);\n'),
+    M('Q12m', 'the tools stand last in their cell', 'Q12',
+      '    this.head.insertBefore(acts, status);\n', '    this.head.appendChild(acts);\n'),
+    { ...M('Q11m', 'the row above the picture grows with what it holds', 'Q3',
+      '  grid-template-rows: 163.2px; gap:', '  gap:'), file: STYLES },
     M('Q7m', 'node names back at the tag size', 'Q5',
       "'font-size': px('--fs-body', 15),", "'font-size': px('--fs-tag', 15),"),
     { ...M('Q6m', 'an empty facts box is drawn as a bar', 'Q4',
       '.sg-facts:empty { display: none; }\n', ''), file: STYLES },
-    { ...M('Q8m', 'the picture box grows with the picture', 'Q6',
-      '.sg-canvas-wrap { position: relative; height: var(--graph-max-height);', '.sg-canvas-wrap { position: relative;'), file: STYLES },
+    { ...M('Q8m', 'the picture box is cut to the graph height token again', 'Q6',
+      '.sg-canvas-wrap { position: relative; flex: 1 1 auto;', '.sg-canvas-wrap { position: relative; height: var(--graph-max-height);'),
+      file: STYLES },
+    { ...M('Q9m', 'the part does not grow into the result column', 'Q6',
+      '.wk-graph > .sg-view { flex: 1 1 auto; min-height: 0; }\n', ''), file: STYLES },
     M('M11', 'Continue walks the start again, not the marking', 'K2',
       '    if (!name || this.state !== \'done\') return;\n    await this._step(name);\n',
       '    if (!name || this.state !== \'done\') return;\n    await this._step(this.chain[0]);\n'),
@@ -960,7 +993,7 @@ const failures = [];
       "      { selector: 'node[kind = \"lump\"][level = \"big\"]', style: set({ 'font-weight': 600, 'border-width': 2.5,",
       "      { selector: 'node[kind = \"lump\"][level = \"big\"]', style: set({ shape: 'ellipse', 'font-weight': 600, 'border-width': 2.5,"),
     M('F8', 'the folded count is not said', 'N4',
-      "    if (view.hidden) this.head.appendChild(this._el('div', 'sg-note', `Folded · ${unitText(view.hidden, 'node')}`));\n", ''),
+      "    if (view.hidden) status.appendChild(this._el('div', 'sg-note', `Folded · ${unitText(view.hidden, 'node')}`));\n", ''),
     M('F9', 'the picture draws the folded nodes anyway', 'N3',
       '    nodes: layout.nodes.filter((n) => shown(n.id)),\n', '    nodes: layout.nodes,\n'),
     M('L1m', 'opening a big lump opens every key, not the ticked', 'LM2',
@@ -1018,6 +1051,8 @@ const failures = [];
     M('Z1m', 'the first fit has no floor (lead 10-07)', 'Z1', '    if (cy.zoom() >= READABLE_ZOOM) return;\n', '    return;\n'),
     M('Z2m', 'Fit keeps the floor', 'Z2', 'if (this.cy) this.cy.fit(undefined, GEOMETRY.fitPad);', 'if (this.cy) this._firstFit();'),
     M('Z3m', 'the first draw is not fitted', 'Z1', '    if (full) this._fitPending = true;\n', ''),
+    M('Z4m', 'a change of size fits the picture again', 'Z4', '    else this.cy.resize();\n', '    else this._firstFit();\n'),
+    M('Z5m', 'a change of size leaves the picture at its old size', 'Z4', '    else this.cy.resize();\n', ''),
   ];
   const scored = await scoreMutants(MUTANTS, async (mu) => {
     const mutate = mu.mutate || ((t) => swap(t, mu.from, mu.to));

@@ -384,16 +384,20 @@ export class SubgraphView {
     ensureWalkStyles(this.doc);
     this.root = this._el('div', 'sg-view');
     this.mount.appendChild(this.root);
-    // Three boxes, made once: the lines above the picture (redrawn), the picture (kept - Cytoscape lives in it),
-    // and the picked node's facts (swapped).
+    // Made once: above the picture (owner 10-07, lead d78bf28bd) a cell that always holds the picked node's facts
+    // (swapped) beside the lines with the tools (redrawn); then the picture (kept - Cytoscape lives in it).
+    this.top = this._el('div', 'sg-top');
+    this.factSlot = this._el('div', 'sg-factslot');
+    this.factsBox = this._el('div', 'sg-facts');
+    this.factSlot.appendChild(this.factsBox);
     this.head = this._el('div', 'sg-head');
+    this.top.appendChild(this.factSlot);
+    this.top.appendChild(this.head);
     this.wrap = this._el('div', 'sg-canvas-wrap is-empty');
     this.canvas = this._el('div', 'sg-canvas');
     this.wrap.appendChild(this.canvas);
-    this.factsBox = this._el('div', 'sg-facts');
-    this.root.appendChild(this.head);
+    this.root.appendChild(this.top);
     this.root.appendChild(this.wrap);
-    this.root.appendChild(this.factsBox);
     this.state = 'idle';
     this.reason = '';
     this.steps = [];
@@ -603,22 +607,24 @@ export class SubgraphView {
     this.continueButton = null;
     const drawn = Boolean(this.layout) && this.state !== 'empty';
     this.wrap.className = `sg-canvas-wrap${drawn ? '' : ' is-empty'}`;
-    if (this.state === 'empty') this.head.appendChild(this._el('div', 'sg-note', 'Nothing marked'));
-    if (this.state === 'failed') this.head.appendChild(this._el('div', 'sg-fail', `Failed · ${this.reason}`));
-    if (this.state === 'running') this.head.appendChild(this._el('div', 'sg-note', 'Walking'));
+    // The counts and notes are one line that wraps: a note coming or going does not stack a line of its own.
+    const status = this._el('div', 'sg-status');
+    this.head.appendChild(status);
+    if (this.state === 'empty') status.appendChild(this._el('div', 'sg-note', 'Nothing marked'));
+    if (this.state === 'failed') status.appendChild(this._el('div', 'sg-fail', `Failed · ${this.reason}`));
+    if (this.state === 'running') status.appendChild(this._el('div', 'sg-note', 'Walking'));
     if (!drawn) { this._swapFacts(); return; }
     const layout = this.layout;
-    this.head.appendChild(this._el('div', 'sg-counts', `Nodes ${layout.nodes.length} · Edges ${layout.edges.length}`));
+    status.appendChild(this._el('div', 'sg-counts', `Nodes ${layout.nodes.length} · Edges ${layout.edges.length}`));
     for (const one of layout.cut) {
       const where = this.steps.length > 1 ? `step ${one.step} · ` : '';
-      this.head.appendChild(this._el('div', 'sg-trunc', `Truncated · ${where}${one.budgets.join(' · ')}`));
+      status.appendChild(this._el('div', 'sg-trunc', `Truncated · ${where}${one.budgets.join(' · ')}`));
     }
-    if (layout.unplaced) this.head.appendChild(this._el('div', 'sg-note', `No depth · ${layout.unplaced} nodes`));
-    if (layout.loose) this.head.appendChild(this._el('div', 'sg-note', `Not drawn · ${layout.loose} edges`));
+    if (layout.unplaced) status.appendChild(this._el('div', 'sg-note', `No depth · ${layout.unplaced} nodes`));
+    if (layout.loose) status.appendChild(this._el('div', 'sg-note', `Not drawn · ${layout.loose} edges`));
     const view = this._view();
-    if (view.hidden) this.head.appendChild(this._el('div', 'sg-note', `Folded · ${unitText(view.hidden, 'node')}`));
+    if (view.hidden) status.appendChild(this._el('div', 'sg-note', `Folded · ${unitText(view.hidden, 'node')}`));
 
-    const bar = this._el('div', 'sg-bar');
     const legend = this._el('div', 'sg-legend');
     for (const item of layout.legend) {
       const chip = this._el('span', `sg-chip sg-type-${item.colour}`);
@@ -627,7 +633,6 @@ export class SubgraphView {
       chip.appendChild(this._el('span', '', `${item.type} ${item.count}`));
       legend.appendChild(chip);
     }
-    bar.appendChild(legend);
     const acts = this._el('div', 'sg-acts');
     for (const [cls, word, act] of [['sg-fit', 'Fit', () => this.fit()], ['sg-reset', 'Reset', () => this.reset()]]) {
       const button = this._el('button', `sg-tool ${cls}`, word);
@@ -640,8 +645,9 @@ export class SubgraphView {
     if (go.addEventListener) go.addEventListener('click', () => { this.continueWalk(); });
     this.continueButton = go;
     acts.appendChild(go);
-    bar.appendChild(acts);
-    this.head.appendChild(bar);
+    // The tools first, so a long legend or many notes scroll inside the cell and never take them out of sight.
+    this.head.insertBefore(acts, status);
+    this.head.appendChild(legend);
     this._draw(view);
     this._swapFacts();
     this._restyle();
@@ -731,10 +737,10 @@ export class SubgraphView {
     cy.on('mouseout', 'node', () => { cy.elements().removeClass('is-faded'); });
     cy.on('dragfree', 'node', (ev) => { this.pos.set(ev.target.id(), { ...ev.target.position() }); });
     cy.on('viewport', () => { if (this.picker) this._closePicker(); });
-    // A box that gets its size later (the page puts the picture in after the walk answered) gets the first fit then.
+    // The box takes the height the window leaves (owner 10-07), so its size changes under the picture.
     const Sizer = this.doc.defaultView && this.doc.defaultView.ResizeObserver;
     if (Sizer && canRender) {
-      this._sizeWatch = new Sizer(() => { if (this._fitPending && this.canvas.clientWidth) this._firstFit(); });
+      this._sizeWatch = new Sizer(() => this._resized());
       this._sizeWatch.observe(this.canvas);
     }
     // The site's theme toggle (data-theme on the root) restyles the picture; the instance owns its observer.
@@ -802,6 +808,16 @@ export class SubgraphView {
     // fit into; the fit then waits for the first draw that has one.
     if (full) this._fitPending = true;
     if (this._fitPending && this.canvas.clientWidth) this._firstFit();
+  }
+
+  /**
+   * The box changed size. A box that only now has one (the page put the picture in after the walk answered) gets
+   * the first fit; otherwise the picture follows the box and the view stays where it is (lead 03bc94b6b, d78bf28bd).
+   */
+  _resized() {
+    if (!this.cy || !this.canvas.clientWidth) return;
+    if (this._fitPending) this._firstFit();
+    else this.cy.resize();
   }
 
   /** The whole walk in the box; if that needs names too small to read, the start at the left, readable instead. */
@@ -953,12 +969,8 @@ export class SubgraphView {
   /** Swap the facts box for the picked node's. */
   _swapFacts() {
     const next = this._facts();
-    if (this.factsBox.parentNode === this.root) {
-      this.root.insertBefore(next, this.factsBox);
-      this.root.removeChild(this.factsBox);
-    } else {
-      this.root.appendChild(next);
-    }
+    this.factSlot.insertBefore(next, this.factsBox);
+    this.factSlot.removeChild(this.factsBox);
     this.factsBox = next;
   }
 

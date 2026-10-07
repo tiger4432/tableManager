@@ -152,6 +152,26 @@ export const WALK_CSS = `
    with more types than tokens repeats a colour; the legend names them. */
 .sg-view { display: flex; flex-direction: column; gap: 6.8px; padding: 10.2px 13.6px;
   border: 1px solid var(--border); background: var(--bg-surface); color: var(--text); }
+/* The graph takes the height the window leaves (owner 10-07, lead d78bf28bd): the result column, the part and its
+   picture each grow into what is left. A phone scrolls the page (layout A), so there the result column is the
+   screen's height and the picture fills the screen below its bar once scrolled to. */
+.wk-graph { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+.wk-graph > .sg-view { flex: 1 1 auto; min-height: 0; }
+@media (max-width: 760px) {
+  .wk-main:has(> .wk-graph) { box-sizing: border-box; height: 100vh; height: 100dvh; }
+}
+/* Above the picture (owner 10-07, lead d78bf28bd): the picked node's facts beside the lines and the tools, in one row
+   of a fixed height - a pick, or a node with more facts, never moves the picture. Each cell scrolls inside itself.
+   A phone stacks them: the facts cell keeps its height, the lines take theirs. */
+.sg-top { flex: none; display: grid; grid-template-columns: minmax(0, 3fr) minmax(272px, 2fr);
+  grid-template-rows: 163.2px; gap: var(--space-3); }
+.sg-factslot { position: relative; min-width: 0; border: 1px solid var(--border); background: var(--bg-surface); }
+.sg-factslot > .sg-facts { position: absolute; inset: 0; }
+.sg-head { display: flex; flex-direction: column; gap: 6.8px; min-width: 0; min-height: 0; overflow: auto; }
+.sg-status { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-1) var(--space-3); }
+@media (max-width: 760px) {
+  .sg-top { grid-template-columns: minmax(0, 1fr); grid-template-rows: 163.2px auto; }
+}
 .sg-counts { font-weight: 600; }
 .sg-note { font-size: var(--fs-meta); color: var(--text-dim); }
 .sg-fail { color: var(--danger); }
@@ -170,12 +190,12 @@ export const WALK_CSS = `
   border: 1px solid var(--border); font-family: 'JetBrains Mono', monospace; font-size: var(--fs-label); }
 .sg-swatch { width: 10.2px; height: 10.2px; border-radius: 50%; background: var(--sg-c); }
 .sg-swatch.is-static { border-radius: 0; }
-/* The picture: Cytoscape draws into a box of the graph height token; it pans and zooms inside it (lead 5e1d9e372). */
-.sg-canvas-wrap { position: relative; height: var(--graph-max-height); border: 1px solid var(--border);
+/* The picture: Cytoscape draws into the height left (no fixed height); it pans and zooms inside it (lead 5e1d9e372).
+   The floor keeps a picture on a very short window; the result column scrolls then. */
+.sg-canvas-wrap { position: relative; flex: 1 1 auto; min-height: 240px; border: 1px solid var(--border);
   background: var(--bg-inset); overflow: hidden; }
 .sg-canvas-wrap.is-empty { display: none; }
 .sg-canvas { position: absolute; inset: 0; }
-.sg-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6.8px; }
 .sg-acts { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
 .sg-tool { min-height: 44px; padding: 0 var(--space-4); font: inherit; color: var(--text);
   background: var(--bg-surface); border: 1px solid var(--border); border-radius: 0; cursor: pointer; }
@@ -200,11 +220,10 @@ export const WALK_CSS = `
 .sg-continue { min-height: 44px; padding: 0 13.6px; font: inherit; color: var(--accent-contrast);
   background: var(--accent); border: 1px solid var(--accent); border-radius: 0; cursor: pointer; }
 .sg-continue[disabled] { opacity: 0.5; cursor: not-allowed; }
-/* The picked node's facts stay in sight (lead 9dc2a5695 ①): pinned to the bottom of whatever scrolls the
-   picture, capped with a scroll of their own, Mark and Fold first. Nothing picked draws nothing. */
-.sg-facts { display: flex; flex-direction: column; gap: 3.4px; position: sticky; bottom: 0; z-index: 1;
-  max-height: 45vh; overflow: auto; padding: var(--space-3); background: var(--bg-surface);
-  border-top: 1px solid var(--border); }
+/* The picked node's facts stay in sight (lead 9dc2a5695 ①): in their cell above the picture, with a scroll of
+   their own, Mark and Fold first. Nothing picked draws nothing; the cell keeps its place. */
+.sg-facts { display: flex; flex-direction: column; gap: 3.4px; overflow: auto; padding: var(--space-3);
+  background: var(--bg-surface); }
 .sg-facts:empty { display: none; }
 .sg-facts-acts { display: flex; flex-wrap: wrap; gap: var(--space-2); }
 /* Mark (into the marking Continue walks) and Fold branches / Unfold (lead 43a738d58 ③) - their own presses. */
