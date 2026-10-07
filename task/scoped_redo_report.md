@@ -74117,3 +74117,127 @@ claim 읽기가 둘이 됐습니다 — withdraw_source 는 _claimed_filter(coun
 출처 경로는 _claimed_cells(층 이름 여럿 한 질의). 접으려면 _claimed_filter 의 모양을 바꿔야 합니다. 접을지 판정 부탁드립니다
 다음은 ② 고칠 때 회수 · ③ SDK 기본 찍기 — 같은 푸시로 올립니다
 ```
+
+---
+
+## [10-07 밤] ②③ 착지 91da9c781 — 고칠 때 회수 · @mapper 기본 도장 · 회수 경고는 «그 규칙의 출력»으로 (총괄 e35500433 · 4c3417ccb · b13de0353)
+
+어느 DB · 어느 스키마 · 지운 것 — PG 는 assy_test 의 pg_engine 스크래치 스키마(끝에 DROP) · sqlite 는 메모리 · 재기 시험 파일 둘은 커밋 안 함 · public 안 씀
+
+### 1 무엇이 바뀌었나
+
+```
+고칠 때   출처를 찍는 규칙(이번 실행에 낸 행에 origin_row_id 가 하나라도 실림)이 EDIT 트리거 행에 다시 돌면, 모든 묶음을 쓴 뒤에
+          그 트리거 행이 찍은 층 중 «그 규칙이 이번에 쓴 칸»이고 «이번 쓰기가 그 원천 행으로 쓴 (원천, 행) 밖»인 것을 거둔다
+          규칙별 «EDIT 행 · 칸»은 run_rule 이 돌아온 자리(그룹 단계)에서 잡는다 — 쓰기 문에서는 규칙들의 행이 이미 섞여 있다
+          거두는 쪽은 지울 때와 같은 함수 하나 _withdraw_and_tell = withdraw_by_origin(table · columns · keep) + 층 잃은 행 EDIT
+지울 때   cells_stamped_by 가 층 하나씩 돌려주고 그 층만 거둔다 — 층 이름의 (칸 x 행) 곱(_claimed_cells)은 지웠다(판정 받음)
+고리      거두는 쪽이 내는 사건 전부(값 비움 · 층 잃은 행 EDIT)를 그 규칙이 쓴 것으로 찍는다(written_by) -> 그 규칙은 안 깬다
+③ 도장    @mapper: 작성자 프레임에 __origin_row_id 칸(그 행 row_id 사본)을 얹고, 출력 행에 그 칸이 남아 있으면 그 값으로 찍고 칸은 안 쓴다
+③ 경고    rule_run.stamps_origin(규칙) = 이 프로세스에서 그 규칙이 마지막으로 낸 행에 출처가 실렸나 · 안 돌았으면 제품 종류는 선언, 파일 맵퍼는 모름
+          retraction_refusal 은 «안 실림»일 때만 말한다(모름 = 말 안 함). 문장은 하나로:
+          「<규칙>: 「<종류>」 규칙의 출력에 «어느 행에서 왔는지»가 실리지 않습니다 — 그래서 그 행이 지워지거나 고쳐져도 이 규칙이 쓴 칸은 «그대로 남습니다»」
+조인      조인도 출처를 찍어 낸다 -> 값 쪽 행의 키를 고치면 옛 키로 채웠던 행의 가져온 칸이 빈다(기존 시험 한 줄이 이것을 단언하게 바꿈)
+```
+
+### 2 ③ 표시 칸을 고른 이유 (색인 맞추기 대신)
+
+```
+payloads_to_df 는 RangeIndex(0..n-1)를 준다 -> reset_index · 정수 키 groupby 가 같은 라벨을 다른 행에 돌려줘, 색인으로 맞추면 «조용히 다른 행»을 찍는다
+표시 칸은 행을 따라 다닌다(거르기 · 정렬 · reset_index). 칸을 골라 새로 만들거나 agg 로 모으면 칸이 빠져 «안 찍힘» — 안전한 쪽
+🔴 지시의 전제 하나를 뒤집습니다: «index reset = 대응 없음»이 아닙니다. 표시 칸은 reset 뒤에도 행과 같이 있어 «맞는 행»으로 찍힙니다(시험 칸)
+남는 것   groupby().first() 처럼 표시 칸까지 모으면 그 묶음 첫 행으로 찍힌다 — 시험 안 함
+          작성자가 보는 프레임에 칸이 하나 는다(__origin_row_id) — 칸 전부를 도는 맵퍼는 그 칸을 본다
+```
+
+### 3 게이트
+
+```
+sqlite (test_an_edited_source_row_takes_back_what_it_no_longer_feeds.py 외)
+   자기 행을 채우는 규칙 둘 · 하나만 다시 돎     다른 칸 층 그대로 · 돈 규칙 [er_x] · 사건 정확히 둘(고침 · er_x 쓰기)
+   남의 행을 채우는 규칙 · 원천 행이 옮김        옛 행에서 그 층만 빠짐 · 옛 행 키의 사람 층 그대로 · 돈 규칙 [er_z] 한 번
+                                              사건 정확히 넷(고침 · 새 행 쓰기 · 옛 행 값 비움 · 층 잃은 행 EDIT), 체인 사건 전부 written_by [er_z]
+   같은 남의 행 · 둘째 규칙(다른 칸)             첫째만 다시 돌면 둘째 칸 그대로
+   @mapper 도장 다섯 모양                        프레임 그대로 · 칸 골라냄(안 찍힘) · 거르고 reset · 정렬 · 집계(안 찍힘)
+   경고 넷                                       안 돈 규칙 말 안 함 · 실림 · 안 실림(이름 대고) · 섞임
+   곱 과잉 대조군(지울 때)                       같은 이름 층, 다른 원천 행의 칸 그대로
+PG (hold_world, 한 행 · 묶음 둘 다)
+   좌표 고침     옛 행에 A 층 없음(사람 층만 남음) · 옛 키 hold 빈 값 · 새 키 agreed · 원장 J1 하나
+   키 안 바뀜    회수 감사 · 회수 사건 0 · agreed · 원장 8.0
+   한 일 두 묶음  형제 층 그대로 · agreed · 원장 둘
+   옛 키 정리    이 착지 전 모양을 만들고(회수 끔) 다시 세기 -> 복사 순서로 리플레이 -> 옛 층 0 · hold 빈 값 · 원장 하나
+결과   sqlite 191 passed, 8 deselected, 577 warnings · PG 37 passed, 8308 deselected, 68 warnings(회수 근처 포함)
+```
+
+### 4 곱 과잉 대조군 — 옛 코드(fa1279a31)에서 돌림
+
+```
+OLD fa1279a31 exit 1  1 failed, 6 warnings in 0.79s
+E       AssertionError: another row's cell under the same name was taken
+-> 옛 코드에서 빨강(다른 원천 행의 칸까지 거둠), 새 코드에서 초록
+```
+
+### 5 변이 (모두 «실패한 시험»으로 빨강, md5 전후 같음)
+
+```
+   keep ignored                                 2 failed, 20 passed, 8 deselected, 20 warnings
+   columns scope ignored                        1 failed, 21 passed, 8 deselected, 20 warnings
+   withdrawal not stamped as the rule's         1 failed, 21 passed, 8 deselected, 20 warnings
+   no spec built (edit retraction off)          6 failed, 2 passed, 8337 deselected, 20 warnings
+   SDK mark not put on the frame                3 failed, 19 passed, 8 deselected, 20 warnings
+   not-yet-known warned like unstamped          4 failed, 18 passed, 8 deselected, 20 warnings
+   no spec built - the join's old left row      1 failed, 2 passed, 14 warnings
+```
+
+### 6 비용 — PG 박스, 보류 복사 1,000 행 한 묶음(운영 주장 아님)
+
+```
+                    이 단계 없이     있음       단계 자체 · 질의 수(엔진 cursor 훅)   거둔 칸
+값만 고침            1.459 s         1.727 s    0.321 s · 3                     0
+키를 다 옮김         1.656 s         3.712 s    2.093 s · 17                    4000
+   그 뒤 묶음        -                다시 세기 1.62 s(1000 사건) · 0.901 s(1 사건, 층 잃은 행 EDIT)
+묶음마다 5 s 안. 키를 옮기면 옛 행마다 «값 비움 사건»과 «층 잃은 행 EDIT»이 둘 다 나가 다시 세기가 두 번 돈다 — 10-03 설계 그대로(지울 때도 같음)
+```
+
+### 7 순서 한 줄 — plan_retraction 과 고칠 때 회수가 같은 칸을 거둘 때
+
+```
+plan_retraction 은 묶음마다 쓰기 바로 뒤, 고칠 때 회수는 모든 묶음 뒤. 같은 칸이면 plan_retraction 이 행을 지우며(crud.purge_map_rows) 층도 같이 지워
+고칠 때 회수는 그 행에서 거둘 것이 없다
+```
+
+### 8 ① 다시 잼 — ②가 withdraw_by_origin 속을 바꿔서
+
+```
+같은 1,000 행(4,000 칸)  1.646 s · 거둔 칸 3999 · 사람 층 건너뜀 1 · 남은 층 4006 · 감사 998 · 사건 998
+① 전 덤프와 바이트 비교(거래 id · 시각만 가림)   감사 같음 · 남은 층 같음 · 사건 같음 · 보이는 값 같음 · 통계 같음
+```
+
+### 9 스위트
+
+```
+sqlite 전체   6 failed, 7982 passed, 354 skipped, 3 xfailed, 13268 warnings
+   실패 = 알려진 박스 다섯 + test_the_join_wakes_on_its_key_and_its_take_columns_on_both_sides
+   그 하나는 이 변경이 조인에도 걸려서다(옛 키 행의 가져온 칸이 비며 사건이 는다) — 그 시험을 새 동작을 단언하게 고쳤고 단독 3 passed,
+   «회수 끔» 변이에서 빨강(5절 마지막 줄)
+```
+
+### 10 말이 바뀐 것
+
+```
+로그      [ChainRetract] table=<표> edited_rows=… 줄이 새로(출처를 찍는 규칙이 고친 행을 받은 묶음마다, 0 이어도). deleted_rows 줄은 그대로
+          protected_skipped 는 실제 사람 층 수(전에는 칸 수 x 행 수)
+경고 문장  두 벌(종류 문장 · 파일 맵퍼 문장) -> 하나. 안 돈 규칙은 말 안 함
+run_rule  답에 stamps_origin 칸
+문서      RELEASE_LOG · RUN.md(재기동 · 옛 키 정리 리플레이 순서) · CODE_MAP cell_layer 줄(fe14f384b 줄을 고침 — 지시 문장 넣음) ·
+          PRIMITIVES 두 줄 · data_model 한 줄 · hold_copy 독스트링
+```
+
+### 남은 것 · 여쭐 것
+
+```
+1 다시 세기 두 번 — 회수의 «값 비움 사건(행마다)»과 «층 잃은 행 EDIT»이 둘 다 다시 세기를 깨운다. 줄이려면 회수 쪽 사건을 하나로 합치는 일(크기 안 잼). 지금 할지
+2 그 묶음에서 낸 행이 0 인 규칙은 «찍나»를 몰라 거두지 않는다(예: 고친 행이 전부 require 에 걸려 맵퍼가 아무것도 안 냄) — 옛 층이 남는다
+3 옛 키 정리 리플레이는 순서가 있다(다시 세기 -> 복사). 반대로 돌리면 원장 후속이 그 행을 missing value 로 실패시킨다 — RUN.md 에 적음
+다음: 원장 후속 묶어 드레인 — 짓기 전 보고부터
+```
