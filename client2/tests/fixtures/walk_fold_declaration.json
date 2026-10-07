@@ -1,0 +1,584 @@
+{
+ "_what": "REAL server output (repository route code, PostgreSQL scratch schema, the declaration in test_a_recipe_walk_brings_the_measurements_other_wafers_made.py). GET /api/ledger/declaration",
+ "_server_at": "161757c356ea1c9ec3c526810ae0851e37f75c3e",
+ "_asked": [],
+ "state": "ready",
+ "entities": [
+  {
+   "type": "defect",
+   "keys": [
+    "void_uid"
+   ],
+   "class": null,
+   "world": "default"
+  },
+  {
+   "type": "defect_kind",
+   "keys": [
+    "defect_kind"
+   ],
+   "class": [
+    "static"
+   ],
+   "world": "default"
+  },
+  {
+   "type": "die",
+   "keys": [
+    "mat_id",
+    "x",
+    "y",
+    "mat_type"
+   ],
+   "class": null,
+   "world": "default"
+  },
+  {
+   "type": "dtjob",
+   "keys": [
+    "dt_job"
+   ],
+   "class": null,
+   "world": "default",
+   "attributes": [
+    "dt_eqp"
+   ]
+  },
+  {
+   "type": "dtwafer",
+   "keys": [
+    "wafer"
+   ],
+   "class": null,
+   "world": "default"
+  },
+  {
+   "type": "lot",
+   "keys": [
+    "lot"
+   ],
+   "class": null,
+   "world": "default"
+  },
+  {
+   "type": "lot_slot",
+   "keys": [
+    "lot",
+    "slot"
+   ],
+   "class": null,
+   "world": "default"
+  },
+  {
+   "type": "measurement_event",
+   "keys": [
+    "event"
+   ],
+   "class": null,
+   "world": "default",
+   "attributes": [
+    "value"
+   ]
+  },
+  {
+   "type": "process_event",
+   "keys": [
+    "event"
+   ],
+   "class": null,
+   "world": "default",
+   "attributes": [
+    "step"
+   ]
+  },
+  {
+   "type": "quantity",
+   "keys": [
+    "quantity"
+   ],
+   "class": [
+    "static"
+   ],
+   "world": "default"
+  },
+  {
+   "type": "recipe",
+   "keys": [
+    "recipe"
+   ],
+   "class": [
+    "static"
+   ],
+   "world": "default"
+  },
+  {
+   "type": "wafer",
+   "keys": [
+    "wafer"
+   ],
+   "class": null,
+   "world": "default"
+  }
+ ],
+ "predicates": [
+  {
+   "name": "bonded_from",
+   "subjects": [
+    "die"
+   ],
+   "object": {
+    "kind": "entity_ref",
+    "types": [
+     "die"
+    ],
+    "qualifiers": {
+     "required": [],
+     "optional": []
+    }
+   },
+   "origin": "vocabulary",
+   "class": null,
+   "world": "default"
+  },
+  {
+   "name": "derived_from",
+   "subjects": [
+    "lot"
+   ],
+   "object": {
+    "kind": "entity_ref",
+    "types": [
+     "lot"
+    ],
+    "qualifiers": {
+     "required": [],
+     "optional": []
+    }
+   },
+   "origin": "vocabulary",
+   "class": null,
+   "world": "default"
+  },
+  {
+   "name": "has_netdie",
+   "subjects": [
+    "dtjob"
+   ],
+   "object": {
+    "kind": "value",
+    "value_type": "number",
+    "qualifiers": {
+     "required": [],
+     "optional": []
+    }
+   },
+   "origin": "vocabulary",
+   "class": null,
+   "world": "default"
+  },
+  {
+   "name": "has_wafer",
+   "subjects": [
+    "lot_slot"
+   ],
+   "object": {
+    "kind": "entity_ref",
+    "types": [
+     "wafer"
+    ],
+    "qualifiers": {
+     "required": [],
+     "optional": []
+    }
+   },
+   "origin": "vocabulary",
+   "class": null,
+   "world": "default"
+  },
+  {
+   "name": "in_container",
+   "subjects": [
+    "die"
+   ],
+   "object": {
+    "kind": "entity_ref",
+    "types": [
+     "wafer"
+    ],
+    "qualifiers": {
+     "required": [],
+     "optional": []
+    }
+   },
+   "origin": "vocabulary",
+   "class": null,
+   "world": "default"
+  },
+  {
+   "name": "inspected",
+   "subjects": [
+    "wafer"
+   ],
+   "object": {
+    "kind": "entity_ref",
+    "types": [
+     "die"
+    ],
+    "qualifiers": {
+     "required": [],
+     "optional": []
+    }
+   },
+   "origin": "vocabulary",
+   "class": null,
+   "world": "default"
+  },
+  {
+   "name": "leads_to",
+   "subjects": [
+    "quantity"
+   ],
+   "object": {
+    "kind": "entity_ref",
+    "types": [
+     "quantity",
+     "defect_kind"
+    ],
+    "qualifiers": {
+     "required": [],
+     "optional": [
+      "dir",
+      "model"
+     ]
+    }
+   },
+   "origin": "vocabulary",
+   "class": null,
+   "world": "default"
+  },
+  {
+   "name": "measured",
+   "subjects": [
+    "wafer"
+   ],
+   "object": {
+    "kind": "entity_ref",
+    "types": [
+     "measurement_event"
+    ],
+    "qualifiers": {
+     "required": [],
+     "optional": []
+    }
+   },
+   "origin": "vocabulary",
+   "class": null,
+   "world": "default"
+  },
+  {
+   "name": "measures",
+   "subjects": [
+    "wafer"
+   ],
+   "object": {
+    "kind": "entity_ref",
+    "types": [
+     "quantity"
+    ],
+    "qualifiers": {
+     "required": [],
+     "optional": [
+      "value",
+      "value_text",
+      "role",
+      "step",
+      "eqp_id"
+     ]
+    }
+   },
+   "origin": "vocabulary",
+   "class": null,
+   "world": "default"
+  },
+  {
+   "name": "merged_into",
+   "subjects": [
+    "lot"
+   ],
+   "object": {
+    "kind": "entity_ref",
+    "types": [
+     "lot"
+    ],
+    "qualifiers": {
+     "required": [],
+     "optional": []
+    }
+   },
+   "origin": "vocabulary",
+   "class": null,
+   "world": "default"
+  },
+  {
+   "name": "observed",
+   "subjects": [
+    "die"
+   ],
+   "object": {
+    "kind": "entity_ref",
+    "types": [
+     "defect"
+    ],
+    "qualifiers": {
+     "required": [],
+     "optional": [
+      "radius_x",
+      "inchip_x",
+      "inchip_y",
+      "radius_y",
+      "unit",
+      "gate",
+      "run_uid"
+     ]
+    }
+   },
+   "origin": "vocabulary",
+   "class": null,
+   "world": "default"
+  },
+  {
+   "name": "of",
+   "subjects": [
+    "measurement_event"
+   ],
+   "object": {
+    "kind": "entity_ref",
+    "types": [
+     "quantity"
+    ],
+    "qualifiers": {
+     "required": [],
+     "optional": []
+    }
+   },
+   "origin": "vocabulary",
+   "class": null,
+   "world": "default"
+  },
+  {
+   "name": "of_kind",
+   "subjects": [
+    "defect"
+   ],
+   "object": {
+    "kind": "entity_ref",
+    "types": [
+     "defect_kind"
+    ],
+    "qualifiers": {
+     "required": [],
+     "optional": []
+    }
+   },
+   "origin": "vocabulary",
+   "class": null,
+   "world": "default"
+  },
+  {
+   "name": "processed_with",
+   "subjects": [
+    "wafer",
+    "dtwafer"
+   ],
+   "object": {
+    "kind": "entity_ref",
+    "types": [
+     "recipe"
+    ],
+    "qualifiers": {
+     "required": [],
+     "optional": [
+      "step"
+     ]
+    }
+   },
+   "origin": "vocabulary",
+   "class": null,
+   "world": "default"
+  },
+  {
+   "name": "register",
+   "subjects": [
+    "dtjob"
+   ],
+   "object": {
+    "kind": "none",
+    "qualifiers": {
+     "required": [],
+     "optional": []
+    }
+   },
+   "origin": "vocabulary",
+   "class": null,
+   "world": "default"
+  },
+  {
+   "name": "slot_map",
+   "subjects": [
+    "lot_slot"
+   ],
+   "object": {
+    "kind": "entity_ref",
+    "types": [
+     "lot_slot"
+    ],
+    "qualifiers": {
+     "required": [],
+     "optional": [
+      "event_type"
+     ]
+    }
+   },
+   "origin": "vocabulary",
+   "class": null,
+   "world": "default"
+  },
+  {
+   "name": "split_from",
+   "subjects": [
+    "lot"
+   ],
+   "object": {
+    "kind": "entity_ref",
+    "types": [
+     "lot"
+    ],
+    "qualifiers": {
+     "required": [],
+     "optional": []
+    }
+   },
+   "origin": "vocabulary",
+   "class": null,
+   "world": "default"
+  },
+  {
+   "name": "transfer",
+   "subjects": [
+    "die"
+   ],
+   "object": {
+    "kind": "entity_ref",
+    "qualifiers": {
+     "optional": [],
+     "required": []
+    },
+    "types": [
+     "die"
+    ]
+   },
+   "origin": "vocabulary",
+   "class": null,
+   "world": "default"
+  },
+  {
+   "name": "underwent",
+   "subjects": [
+    "wafer"
+   ],
+   "object": {
+    "kind": "entity_ref",
+    "types": [
+     "process_event"
+    ],
+    "qualifiers": {
+     "required": [],
+     "optional": []
+    }
+   },
+   "origin": "vocabulary",
+   "class": null,
+   "world": "default"
+  },
+  {
+   "name": "used",
+   "subjects": [
+    "measurement_event"
+   ],
+   "object": {
+    "kind": "entity_ref",
+    "types": [
+     "recipe"
+    ],
+    "qualifiers": {
+     "required": [],
+     "optional": []
+    }
+   },
+   "origin": "vocabulary",
+   "class": null,
+   "world": "default"
+  }
+ ],
+ "census_names": {
+  "relation_rows": "Table rows",
+  "indexed_rows": "Indexed",
+  "difference": "Table less indexed",
+  "measured_at": "Measured",
+  "source_refused": "Refused by the loader",
+  "rows_new": "New, not translated",
+  "rows_drifted": "Edited, not followed",
+  "rows_gone": "Gone, atoms remain",
+  "rows_unprinted": "Not yet printed",
+  "not_yet": "Table less indexed"
+ },
+ "sources": [
+  {
+   "source": "metro",
+   "relation": "metro",
+   "world": "default",
+   "status": "active",
+   "emits": [
+    "measured",
+    "of",
+    "used"
+   ],
+   "scope_columns": [
+    "eqp_id",
+    "event_time",
+    "item_id",
+    "lot_id",
+    "rcp_id",
+    "row_id",
+    "step_seq",
+    "subitem_id",
+    "txn_seq",
+    "value",
+    "wafer_id"
+   ]
+  },
+  {
+   "source": "process_event",
+   "relation": "process_event",
+   "world": "default",
+   "status": "active",
+   "emits": [
+    "underwent"
+   ],
+   "scope_columns": [
+    "eqp_id",
+    "event_time",
+    "lot_id",
+    "rcp_id",
+    "row_id",
+    "step_seq",
+    "txn_seq",
+    "wafer_id"
+   ]
+  }
+ ],
+ "worlds": [
+  "default"
+ ],
+ "operating": "default"
+}

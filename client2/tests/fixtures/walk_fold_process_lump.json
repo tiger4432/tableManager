@@ -1,6 +1,6 @@
 {
  "_what": "REAL server output (repository route code, PostgreSQL scratch schema, the declaration in test_a_recipe_walk_brings_the_measurements_other_wafers_made.py). GET /api/ledger/subgraph?id=ledger-entity:v1:WyJwcm9jZXNzX2V2ZW50Iix7ImV2ZW50IjoiUDEifV0&positive=ledger-entity:v1:WyJwcm9jZXNzX2V2ZW50Iix7ImV2ZW50IjoiUDEifV0&positive=ledger-entity:v1:WyJwcm9jZXNzX2V2ZW50Iix7ImV2ZW50IjoiUDIifV0&hops=2&direction=both&follow=underwent&follow=measured&collect=measurement_event",
- "_server_at": "b2b6a166ab75c85e9efe4d9bddaa8f4bbec98e24",
+ "_server_at": "161757c356ea1c9ec3c526810ae0851e37f75c3e",
  "_asked": [
   [
    "id",
@@ -36,7 +36,7 @@
   ]
  ],
  "state": "ready",
- "generated_at": "2026-10-07T14:41:20.553456+00:00",
+ "generated_at": "2026-10-07T22:35:53.485302+00:00",
  "seed": {
   "id": "ledger-entity:v1:WyJwcm9jZXNzX2V2ZW50Iix7ImV2ZW50IjoiUDEifV0",
   "type": "process_event",
@@ -143,10 +143,10 @@
    "predicate": "underwent",
    "predicate_label": "underwent",
    "original_predicate": "underwent",
-   "basis": "{\"event\":\"{\\\"relation\\\":\\\"process_event\\\",\\\"rows\\\":[\\\"process_event:{\\\\\\\"row_id\\\\\\\":\\\\\\\"01a116cf-c75d-7cef-864d-57c29c6587d2\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"process_event:{\\\"row_id\\\":\\\"01a116cf-c75d-7cef-864d-57c29c6587d2\\\"}\"]}",
+   "basis": "{\"event\":\"{\\\"relation\\\":\\\"process_event\\\",\\\"rows\\\":[\\\"process_event:{\\\\\\\"row_id\\\\\\\":\\\\\\\"01a11882-3e7e-7883-ac3f-9f91faa2ce25\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"process_event:{\\\"row_id\\\":\\\"01a11882-3e7e-7883-ac3f-9f91faa2ce25\\\"}\"]}",
    "qualifiers": {},
    "cardinality": null,
-   "claim_id": "01a116cf-ce5a-7000-be61-b8a1c43b471b",
+   "claim_id": "01a11882-44d6-7000-994e-b9e158a3bd52",
    "occurred_at": "2026-10-01T00:00:00+00:00",
    "source_who": "process_event",
    "worlds": [
@@ -155,10 +155,10 @@
    "by_world": [
     {
      "world": "default",
-     "claim_id": "01a116cf-ce5a-7000-be61-b8a1c43b471b",
+     "claim_id": "01a11882-44d6-7000-994e-b9e158a3bd52",
      "occurred_at": "2026-10-01T00:00:00+00:00",
      "source_who": "process_event",
-     "basis": "{\"event\":\"{\\\"relation\\\":\\\"process_event\\\",\\\"rows\\\":[\\\"process_event:{\\\\\\\"row_id\\\\\\\":\\\\\\\"01a116cf-c75d-7cef-864d-57c29c6587d2\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"process_event:{\\\"row_id\\\":\\\"01a116cf-c75d-7cef-864d-57c29c6587d2\\\"}\"]}"
+     "basis": "{\"event\":\"{\\\"relation\\\":\\\"process_event\\\",\\\"rows\\\":[\\\"process_event:{\\\\\\\"row_id\\\\\\\":\\\\\\\"01a11882-3e7e-7883-ac3f-9f91faa2ce25\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"process_event:{\\\"row_id\\\":\\\"01a11882-3e7e-7883-ac3f-9f91faa2ce25\\\"}\"]}"
     }
    ]
   },
@@ -169,10 +169,10 @@
    "predicate": "underwent",
    "predicate_label": "underwent",
    "original_predicate": "underwent",
-   "basis": "{\"event\":\"{\\\"relation\\\":\\\"process_event\\\",\\\"rows\\\":[\\\"process_event:{\\\\\\\"row_id\\\\\\\":\\\\\\\"01a116cf-c75e-78df-a51f-b2dd3ad122f6\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"process_event:{\\\"row_id\\\":\\\"01a116cf-c75e-78df-a51f-b2dd3ad122f6\\\"}\"]}",
+   "basis": "{\"event\":\"{\\\"relation\\\":\\\"process_event\\\",\\\"rows\\\":[\\\"process_event:{\\\\\\\"row_id\\\\\\\":\\\\\\\"01a11882-3e7f-7dfd-9987-b77839e4399a\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"process_event:{\\\"row_id\\\":\\\"01a11882-3e7f-7dfd-9987-b77839e4399a\\\"}\"]}",
    "qualifiers": {},
    "cardinality": null,
-   "claim_id": "01a116cf-ce5a-7002-aeee-c05c6e2bdac3",
+   "claim_id": "01a11882-44d6-7002-b8b1-7a18a57581d5",
    "occurred_at": "2026-10-01T02:00:00+00:00",
    "source_who": "process_event",
    "worlds": [
@@ -181,10 +181,10 @@
    "by_world": [
     {
      "world": "default",
-     "claim_id": "01a116cf-ce5a-7002-aeee-c05c6e2bdac3",
+     "claim_id": "01a11882-44d6-7002-b8b1-7a18a57581d5",
      "occurred_at": "2026-10-01T02:00:00+00:00",
      "source_who": "process_event",
-     "basis": "{\"event\":\"{\\\"relation\\\":\\\"process_event\\\",\\\"rows\\\":[\\\"process_event:{\\\\\\\"row_id\\\\\\\":\\\\\\\"01a116cf-c75e-78df-a51f-b2dd3ad122f6\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"process_event:{\\\"row_id\\\":\\\"01a116cf-c75e-78df-a51f-b2dd3ad122f6\\\"}\"]}"
+     "basis": "{\"event\":\"{\\\"relation\\\":\\\"process_event\\\",\\\"rows\\\":[\\\"process_event:{\\\\\\\"row_id\\\\\\\":\\\\\\\"01a11882-3e7f-7dfd-9987-b77839e4399a\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"process_event:{\\\"row_id\\\":\\\"01a11882-3e7f-7dfd-9987-b77839e4399a\\\"}\"]}"
     }
    ]
   },
@@ -195,10 +195,10 @@
    "predicate": "measured",
    "predicate_label": "measured",
    "original_predicate": "measured",
-   "basis": "{\"event\":\"{\\\"relation\\\":\\\"metro\\\",\\\"rows\\\":[\\\"metro:{\\\\\\\"row_id\\\\\\\":\\\\\\\"01a116cf-c6ce-7ceb-b4cc-8e16df3cafd0\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"metro:{\\\"row_id\\\":\\\"01a116cf-c6ce-7ceb-b4cc-8e16df3cafd0\\\"}\"]}",
+   "basis": "{\"event\":\"{\\\"relation\\\":\\\"metro\\\",\\\"rows\\\":[\\\"metro:{\\\\\\\"row_id\\\\\\\":\\\\\\\"01a11882-3deb-7b64-891c-7b4f7ed822a8\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"metro:{\\\"row_id\\\":\\\"01a11882-3deb-7b64-891c-7b4f7ed822a8\\\"}\"]}",
    "qualifiers": {},
    "cardinality": null,
-   "claim_id": "01a116cf-ca27-7000-b1e7-910b9f66e2e0",
+   "claim_id": "01a11882-40fc-7000-9e71-c0565782b2e1",
    "occurred_at": "2026-10-01T00:10:00+00:00",
    "source_who": "metro",
    "worlds": [
@@ -207,10 +207,10 @@
    "by_world": [
     {
      "world": "default",
-     "claim_id": "01a116cf-ca27-7000-b1e7-910b9f66e2e0",
+     "claim_id": "01a11882-40fc-7000-9e71-c0565782b2e1",
      "occurred_at": "2026-10-01T00:10:00+00:00",
      "source_who": "metro",
-     "basis": "{\"event\":\"{\\\"relation\\\":\\\"metro\\\",\\\"rows\\\":[\\\"metro:{\\\\\\\"row_id\\\\\\\":\\\\\\\"01a116cf-c6ce-7ceb-b4cc-8e16df3cafd0\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"metro:{\\\"row_id\\\":\\\"01a116cf-c6ce-7ceb-b4cc-8e16df3cafd0\\\"}\"]}"
+     "basis": "{\"event\":\"{\\\"relation\\\":\\\"metro\\\",\\\"rows\\\":[\\\"metro:{\\\\\\\"row_id\\\\\\\":\\\\\\\"01a11882-3deb-7b64-891c-7b4f7ed822a8\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"metro:{\\\"row_id\\\":\\\"01a11882-3deb-7b64-891c-7b4f7ed822a8\\\"}\"]}"
     }
    ]
   },
@@ -221,10 +221,10 @@
    "predicate": "measured",
    "predicate_label": "measured",
    "original_predicate": "measured",
-   "basis": "{\"event\":\"{\\\"relation\\\":\\\"metro\\\",\\\"rows\\\":[\\\"metro:{\\\\\\\"row_id\\\\\\\":\\\\\\\"01a116cf-c6cf-71ab-a5d5-385d414369ed\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"metro:{\\\"row_id\\\":\\\"01a116cf-c6cf-71ab-a5d5-385d414369ed\\\"}\"]}",
+   "basis": "{\"event\":\"{\\\"relation\\\":\\\"metro\\\",\\\"rows\\\":[\\\"metro:{\\\\\\\"row_id\\\\\\\":\\\\\\\"01a11882-3dec-7821-9a26-41669b8da89a\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"metro:{\\\"row_id\\\":\\\"01a11882-3dec-7821-9a26-41669b8da89a\\\"}\"]}",
    "qualifiers": {},
    "cardinality": null,
-   "claim_id": "01a116cf-ca27-7004-a129-04318ff14c5b",
+   "claim_id": "01a11882-40fc-7004-9400-9dda63139136",
    "occurred_at": "2026-10-01T02:10:00+00:00",
    "source_who": "metro",
    "worlds": [
@@ -233,10 +233,10 @@
    "by_world": [
     {
      "world": "default",
-     "claim_id": "01a116cf-ca27-7004-a129-04318ff14c5b",
+     "claim_id": "01a11882-40fc-7004-9400-9dda63139136",
      "occurred_at": "2026-10-01T02:10:00+00:00",
      "source_who": "metro",
-     "basis": "{\"event\":\"{\\\"relation\\\":\\\"metro\\\",\\\"rows\\\":[\\\"metro:{\\\\\\\"row_id\\\\\\\":\\\\\\\"01a116cf-c6cf-71ab-a5d5-385d414369ed\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"metro:{\\\"row_id\\\":\\\"01a116cf-c6cf-71ab-a5d5-385d414369ed\\\"}\"]}"
+     "basis": "{\"event\":\"{\\\"relation\\\":\\\"metro\\\",\\\"rows\\\":[\\\"metro:{\\\\\\\"row_id\\\\\\\":\\\\\\\"01a11882-3dec-7821-9a26-41669b8da89a\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"metro:{\\\"row_id\\\":\\\"01a11882-3dec-7821-9a26-41669b8da89a\\\"}\"]}"
     }
    ]
   }

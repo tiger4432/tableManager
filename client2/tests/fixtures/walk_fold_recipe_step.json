@@ -1,6 +1,6 @@
 {
  "_what": "REAL server output (repository route code, PostgreSQL scratch schema, the declaration in test_a_recipe_walk_brings_the_measurements_other_wafers_made.py). GET /api/ledger/subgraph?id=ledger-entity:v1:WyJyZWNpcGUiLHsicmVjaXBlIjoiUkNQLUEifV0&hops=1&direction=incoming&since=2026-10-01T00:00:00+09:00&until=2026-10-02T00:00:00+09:00&node_limit=200&collect=measurement_event",
- "_server_at": "b2b6a166ab75c85e9efe4d9bddaa8f4bbec98e24",
+ "_server_at": "161757c356ea1c9ec3c526810ae0851e37f75c3e",
  "_asked": [
   [
    "id",
@@ -32,7 +32,7 @@
   ]
  ],
  "state": "ready",
- "generated_at": "2026-10-07T14:41:20.509813+00:00",
+ "generated_at": "2026-10-07T22:35:53.442273+00:00",
  "seed": {
   "id": "ledger-entity:v1:WyJyZWNpcGUiLHsicmVjaXBlIjoiUkNQLUEifV0",
   "type": "recipe",
@@ -189,10 +189,10 @@
    "predicate": "used",
    "predicate_label": "used",
    "original_predicate": "used",
-   "basis": "{\"event\":\"{\\\"relation\\\":\\\"metro\\\",\\\"rows\\\":[\\\"metro:{\\\\\\\"row_id\\\\\\\":\\\\\\\"01a116cf-c6d1-7d96-9d2e-967f3547452d\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"metro:{\\\"row_id\\\":\\\"01a116cf-c6d1-7d96-9d2e-967f3547452d\\\"}\"]}",
+   "basis": "{\"event\":\"{\\\"relation\\\":\\\"metro\\\",\\\"rows\\\":[\\\"metro:{\\\\\\\"row_id\\\\\\\":\\\\\\\"01a11882-3dee-7d56-892e-dac47a155880\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"metro:{\\\"row_id\\\":\\\"01a11882-3dee-7d56-892e-dac47a155880\\\"}\"]}",
    "qualifiers": {},
    "cardinality": null,
-   "claim_id": "01a116cf-ca27-700e-9302-1c6f41f13174",
+   "claim_id": "01a11882-40fd-7006-9306-ed02cb9a018d",
    "occurred_at": "2026-10-01T04:10:00+00:00",
    "source_who": "metro",
    "worlds": [
@@ -201,10 +201,10 @@
    "by_world": [
     {
      "world": "default",
-     "claim_id": "01a116cf-ca27-700e-9302-1c6f41f13174",
+     "claim_id": "01a11882-40fd-7006-9306-ed02cb9a018d",
      "occurred_at": "2026-10-01T04:10:00+00:00",
      "source_who": "metro",
-     "basis": "{\"event\":\"{\\\"relation\\\":\\\"metro\\\",\\\"rows\\\":[\\\"metro:{\\\\\\\"row_id\\\\\\\":\\\\\\\"01a116cf-c6d1-7d96-9d2e-967f3547452d\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"metro:{\\\"row_id\\\":\\\"01a116cf-c6d1-7d96-9d2e-967f3547452d\\\"}\"]}"
+     "basis": "{\"event\":\"{\\\"relation\\\":\\\"metro\\\",\\\"rows\\\":[\\\"metro:{\\\\\\\"row_id\\\\\\\":\\\\\\\"01a11882-3dee-7d56-892e-dac47a155880\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"metro:{\\\"row_id\\\":\\\"01a11882-3dee-7d56-892e-dac47a155880\\\"}\"]}"
     }
    ]
   },
@@ -215,10 +215,10 @@
    "predicate": "used",
    "predicate_label": "used",
    "original_predicate": "used",
-   "basis": "{\"event\":\"{\\\"relation\\\":\\\"metro\\\",\\\"rows\\\":[\\\"metro:{\\\\\\\"row_id\\\\\\\":\\\\\\\"01a116cf-c6ce-7ceb-b4cc-8e16df3cafd0\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"metro:{\\\"row_id\\\":\\\"01a116cf-c6ce-7ceb-b4cc-8e16df3cafd0\\\"}\"]}",
+   "basis": "{\"event\":\"{\\\"relation\\\":\\\"metro\\\",\\\"rows\\\":[\\\"metro:{\\\\\\\"row_id\\\\\\\":\\\\\\\"01a11882-3deb-7b64-891c-7b4f7ed822a8\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"metro:{\\\"row_id\\\":\\\"01a11882-3deb-7b64-891c-7b4f7ed822a8\\\"}\"]}",
    "qualifiers": {},
    "cardinality": null,
-   "claim_id": "01a116cf-ca27-7002-86b2-cb79e136b141",
+   "claim_id": "01a11882-40fc-7002-a5cf-e5bff0c267e1",
    "occurred_at": "2026-10-01T00:10:00+00:00",
    "source_who": "metro",
    "worlds": [
@@ -227,10 +227,10 @@
    "by_world": [
     {
      "world": "default",
-     "claim_id": "01a116cf-ca27-7002-86b2-cb79e136b141",
+     "claim_id": "01a11882-40fc-7002-a5cf-e5bff0c267e1",
      "occurred_at": "2026-10-01T00:10:00+00:00",
      "source_who": "metro",
-     "basis": "{\"event\":\"{\\\"relation\\\":\\\"metro\\\",\\\"rows\\\":[\\\"metro:{\\\\\\\"row_id\\\\\\\":\\\\\\\"01a116cf-c6ce-7ceb-b4cc-8e16df3cafd0\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"metro:{\\\"row_id\\\":\\\"01a116cf-c6ce-7ceb-b4cc-8e16df3cafd0\\\"}\"]}"
+     "basis": "{\"event\":\"{\\\"relation\\\":\\\"metro\\\",\\\"rows\\\":[\\\"metro:{\\\\\\\"row_id\\\\\\\":\\\\\\\"01a11882-3deb-7b64-891c-7b4f7ed822a8\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"metro:{\\\"row_id\\\":\\\"01a11882-3deb-7b64-891c-7b4f7ed822a8\\\"}\"]}"
     }
    ]
   },
@@ -241,10 +241,10 @@
    "predicate": "used",
    "predicate_label": "used",
    "original_predicate": "used",
-   "basis": "{\"event\":\"{\\\"relation\\\":\\\"metro\\\",\\\"rows\\\":[\\\"metro:{\\\\\\\"row_id\\\\\\\":\\\\\\\"01a116cf-c6cf-71ab-a5d5-385d414369ed\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"metro:{\\\"row_id\\\":\\\"01a116cf-c6cf-71ab-a5d5-385d414369ed\\\"}\"]}",
+   "basis": "{\"event\":\"{\\\"relation\\\":\\\"metro\\\",\\\"rows\\\":[\\\"metro:{\\\\\\\"row_id\\\\\\\":\\\\\\\"01a11882-3dec-7821-9a26-41669b8da89a\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"metro:{\\\"row_id\\\":\\\"01a11882-3dec-7821-9a26-41669b8da89a\\\"}\"]}",
    "qualifiers": {},
    "cardinality": null,
-   "claim_id": "01a116cf-ca27-7006-8a47-044a16f77137",
+   "claim_id": "01a11882-40fc-7006-aed6-2dc99eba14d6",
    "occurred_at": "2026-10-01T02:10:00+00:00",
    "source_who": "metro",
    "worlds": [
@@ -253,10 +253,10 @@
    "by_world": [
     {
      "world": "default",
-     "claim_id": "01a116cf-ca27-7006-8a47-044a16f77137",
+     "claim_id": "01a11882-40fc-7006-aed6-2dc99eba14d6",
      "occurred_at": "2026-10-01T02:10:00+00:00",
      "source_who": "metro",
-     "basis": "{\"event\":\"{\\\"relation\\\":\\\"metro\\\",\\\"rows\\\":[\\\"metro:{\\\\\\\"row_id\\\\\\\":\\\\\\\"01a116cf-c6cf-71ab-a5d5-385d414369ed\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"metro:{\\\"row_id\\\":\\\"01a116cf-c6cf-71ab-a5d5-385d414369ed\\\"}\"]}"
+     "basis": "{\"event\":\"{\\\"relation\\\":\\\"metro\\\",\\\"rows\\\":[\\\"metro:{\\\\\\\"row_id\\\\\\\":\\\\\\\"01a11882-3dec-7821-9a26-41669b8da89a\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"metro:{\\\"row_id\\\":\\\"01a11882-3dec-7821-9a26-41669b8da89a\\\"}\"]}"
     }
    ]
   },
@@ -267,10 +267,10 @@
    "predicate": "used",
    "predicate_label": "used",
    "original_predicate": "used",
-   "basis": "{\"event\":\"{\\\"relation\\\":\\\"metro\\\",\\\"rows\\\":[\\\"metro:{\\\\\\\"row_id\\\\\\\":\\\\\\\"01a116cf-c6d0-7612-bffb-7a054608f7ec\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"metro:{\\\"row_id\\\":\\\"01a116cf-c6d0-7612-bffb-7a054608f7ec\\\"}\"]}",
+   "basis": "{\"event\":\"{\\\"relation\\\":\\\"metro\\\",\\\"rows\\\":[\\\"metro:{\\\\\\\"row_id\\\\\\\":\\\\\\\"01a11882-3ded-7f04-b4c4-f85edad0be64\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"metro:{\\\"row_id\\\":\\\"01a11882-3ded-7f04-b4c4-f85edad0be64\\\"}\"]}",
    "qualifiers": {},
    "cardinality": null,
-   "claim_id": "01a116cf-ca27-700a-9c23-a98774f673c9",
+   "claim_id": "01a11882-40fd-7002-8429-7f2a94110431",
    "occurred_at": "2026-10-01T01:10:00+00:00",
    "source_who": "metro",
    "worlds": [
@@ -279,10 +279,10 @@
    "by_world": [
     {
      "world": "default",
-     "claim_id": "01a116cf-ca27-700a-9c23-a98774f673c9",
+     "claim_id": "01a11882-40fd-7002-8429-7f2a94110431",
      "occurred_at": "2026-10-01T01:10:00+00:00",
      "source_who": "metro",
-     "basis": "{\"event\":\"{\\\"relation\\\":\\\"metro\\\",\\\"rows\\\":[\\\"metro:{\\\\\\\"row_id\\\\\\\":\\\\\\\"01a116cf-c6d0-7612-bffb-7a054608f7ec\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"metro:{\\\"row_id\\\":\\\"01a116cf-c6d0-7612-bffb-7a054608f7ec\\\"}\"]}"
+     "basis": "{\"event\":\"{\\\"relation\\\":\\\"metro\\\",\\\"rows\\\":[\\\"metro:{\\\\\\\"row_id\\\\\\\":\\\\\\\"01a11882-3ded-7f04-b4c4-f85edad0be64\\\\\\\"}\\\"],\\\"verified_joins\\\":[]}\",\"rows\":[\"metro:{\\\"row_id\\\":\\\"01a11882-3ded-7f04-b4c4-f85edad0be64\\\"}\"]}"
     }
    ]
   }

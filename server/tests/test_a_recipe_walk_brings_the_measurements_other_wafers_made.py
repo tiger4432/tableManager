@@ -11,7 +11,8 @@ own `metro` and `process_event` tables, a ledger declaration under a temporary c
                        its value and the time it was measured; `since`/`until` cut it, `node_limit` caps it
   process-event lump   the lump's members as seeds, through their wafer to that wafer's measurements
 
-`WALK_FOLD_CAPTURE_DIR` set: the three answers are written there (client2/tests/fixtures/capture_walk_fold.py).
+`WALK_FOLD_CAPTURE_DIR` set: the three answers and GET /api/ledger/declaration are written there
+(client2/tests/fixtures/capture_walk_fold.py).
 """
 import copy
 import io
@@ -228,8 +229,12 @@ def test_a_recipe_walk_brings_the_measurements_other_wafers_made(client):
     assert sorted(_events(lump)) == ["M1", "M2"]
 
     if os.environ.get("WALK_FOLD_CAPTURE_DIR"):
-        _capture(os.environ["WALK_FOLD_CAPTURE_DIR"], {"walk_fold_wafer": wafer, "walk_fold_recipe_step": recipe,
-                                                        "walk_fold_process_lump": lump})
+        declared = client.get("/api/ledger/declaration")
+        assert declared.status_code == 200, declared.text[:600]
+        walked = {"walk_fold_wafer": wafer, "walk_fold_recipe_step": recipe, "walk_fold_process_lump": lump}
+        _capture(os.environ["WALK_FOLD_CAPTURE_DIR"], {
+            **{name: ("/api/ledger/subgraph", WALKS[name], body) for name, body in walked.items()},
+            "walk_fold_declaration": ("/api/ledger/declaration", [], declared.json())})
 
 
 def test_the_recipe_step_is_cut_by_its_window_and_capped_by_its_limit(client):
@@ -246,12 +251,11 @@ def _capture(directory, bodies):
 
     commit = subprocess.run(["git", "rev-parse", "HEAD"], cwd=SERVER_DIR, capture_output=True, text=True,
                             check=True).stdout.strip()
-    for name, body in bodies.items():
-        asked = WALKS[name]
+    for name, (route, asked, body) in bodies.items():
         with io.open(os.path.join(directory, name + ".json"), "w", encoding="utf-8", newline="\n") as fh:
             json.dump({"_what": "REAL server output (repository route code, PostgreSQL scratch schema, the "
-                                "declaration in %s). GET /api/ledger/subgraph?%s" % (
-                                    os.path.basename(__file__),
-                                    "&".join("%s=%s" % pair for pair in asked)),
+                                "declaration in %s). GET %s%s" % (
+                                    os.path.basename(__file__), route,
+                                    "?" + "&".join("%s=%s" % pair for pair in asked) if asked else ""),
                        "_server_at": commit, "_asked": asked, **body}, fh, ensure_ascii=False, indent=1)
             fh.write("\n")
