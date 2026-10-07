@@ -73881,3 +73881,31 @@ config 로 풀린 자리 전부
           server/setup/seed_data.py:seed (config_path)
           server/setup/setup_workspace.py:setup_workspace (config_path)
 ```
+
+---
+
+## [10-07 밤] ingestion_settings.json 읽기 넷을 하나로 · 착지 665a5dff4 (총괄 «세기» 판정)
+
+어느 DB · 어느 스키마 · 지운 것 — 메모리 sqlite · DB 안 씀 · 지운 것 0
+
+```
+지은 것    server/ingestion/settings.py read_ingestion_settings(path=None) — 그 파일을 «여는» 자리 하나(BOM 읽음, _decode_config_text)
+          감시자 load_ingestion_settings · enrichment candidates/config 의 _load_ingestion_settings · run_watcher.reclaim_grace_setting 이 부른다
+          가벼운 모듈이라 체인 워커는 여전히 watchdog 를 안 들인다 · 각자의 경로 상수는 남김(시험과 isolated_data_root 가 바꿔 끼움)
+게이트    BOM 파일에서 네 자리가 같은 값 42 를 읽는다 · 그 경로를 바꿔 끼우던 시험들 그대로 통과
+변이      5/5 빨강(failed 시험으로 센 수) · md5 전후 같음
+          RED  the watcher reads the file its own way
+          RED  the enrichment candidates read the file their own way
+          RED  the enrichment config reads the file its own way
+          RED  the retry poller reads the file its own way
+          RED  the one read drops the BOM rule
+sqlite 전체 5 failed, 7965 passed, 346 skipped, 3 xfailed, 13154 warnings in 729.64s (0:12:09)
+          tests\test_a_sentence_says_itself_only_for_the_rows_it_names.py::test_the_sample_is_written_in_the_one_format_both_writers_use
+          tests\test_core_alignment_mapper.py::test_live_mapper_and_tracked_sample_are_byte_identical
+          tests\test_core_usage_mapper.py::test_live_mapper_and_tracked_sample_are_byte_identical
+          tests\test_dt_inventory_metadata_mapper.py::test_live_mapper_matches_tracked_sample
+          tests\test_one_place_decides_where_the_server_is.py::test_the_repo_root_is_one_above_it
+다시 센 수  utf-8 JSON 읽기 65 · config 로 풀린 17(제품 4 · 도구 13) · ingestion_settings 를 utf-8 로 여는 자리 0
+CODE_MAP  _decode_config_text 행 아래 «다음에 만지면» 한 줄(수는 이 셈에서 채움)
+고친 말    앞 RELEASE 항목(aca9d8d24)의 «ingestion_settings.json 에 BOM 이 붙어도 읽습니다»는 그때 감시자 읽기 하나만 참이었다 — 이 커밋으로 네 자리 모두 참
+```
