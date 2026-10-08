@@ -1,3 +1,24 @@
+> ## [00:32 디자인] 대기열 줄의 «waiting for <표>» · «slot pid N» (총괄 메시지 · 슬롯 422d075c7) — 032237e3d
+
+**결론** 상태 함수 하나(`chainStateWhy`)에 `waiting_for_table` 한 갈래 — 근거 줄 «waiting for <표>». 두 대기열이 같이 부르는 상태 칸 함수(`chainStateCell`)가 줄의 slot pid 를 받아 근거 줄 밑에 «slot pid N» 한 줄을 그립니다. 값이 올 때만, 칸은 그대로. 어드민 줄은 `slot_pid` 를 넘기고, 그리드 행도 넘기지만 서버가 아직 안 실어 그리지 않습니다.
+
+| 진짜 빌드(대기열 읽기만 페이지 안에서 답함) | 결과 |
+|---|---|
+| 어드민 `/assets/admin-C2z6I6GD.js` — 표를 기다리는 줄 | «waiting for dt_map» 밑에 «slot pid 4242» |
+| 어드민 — 도는 줄 | «slot pid 5151» |
+| 어드민 — 기다리는 줄(pid 없음) | pid 줄 없음 · 모두 칸 안 · 쓰기 요청 0 |
+| 그리드 `/assets/main-CnWWgQsX.js` Queue 탭 | «waiting for dt_map» · pid 줄 없음(서버가 안 실음) |
+
+**시험** chain_queue_panel_harness 236 · outbox_queue_panel_harness 67 · 러너 초록 · 계약 13 개 어긋남 0 · RELEASE_LOG 같은 커밋.
+- 상태 픽스처에 `waiting_for_table` 을 더함 — 손으로 안 적고 서버의 `chain_state_of` 답 그대로.
+- 새 칸: S7(pid 가 칸 맨 끝 · 어드민 줄도 · 없으면 안 그림), W3(그리드 행이 같은 함수에 pid 를 넘김). 변이 SM7 표 갈래 · SM8 pid 줄 · SM9 어드민이 안 넘김 · SM10 없는데 «slot pid null» · WM3 그리드가 안 넘김 — 모두 잡힘.
+- 어드민 화면은 브라우저 창에서 열어 봄(헤드리스는 어드민 페이지에서 죽어서 스샷 파일 없음).
+
+**남은 것**
+- 걷기 전선의 `expand` 인자 — 클라에서 보내는 곳 0. 시연 뒤 «은퇴 — 든 자리 전수»로 따로(총괄 판정, 지금은 그대로).
+
+다음: 대기열 × 의 200 «already» 토스트.
+
 > ## [00:00 디자인] 그래프 덩어리 열기 = 그 노드에서 한 걸음 · «+M more» · stepAlong 방향 인자 (총괄 11e5ea207 · c06b45ea5) — 222985513
 
 **결론** 덩어리를 누르면 그 노드에서 그 술어 · 그 방향 · 먼 타입으로 한 걸음만 묻습니다(`stepAlong`, hops 1, 상한 · expand 없음). 덩어리는 «그리지 않은 나머지»(count − drawn)를 «+M more» 로 셉니다. 진짜 빌드 `/assets/walk-DIkPMpZW.js` 를 열어 잼 — 걷기 답은 오늘 이 워크트리의 서버 코드(36c44751e 포함)로 박스 원장에서 뜬 캡처입니다. 박스 서버(8080)는 옛 코드라 노드 목록부터 못 읽습니다(지금도 `subjects` 로 답함). 쓰기 요청 0.

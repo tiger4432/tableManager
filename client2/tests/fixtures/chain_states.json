@@ -1,9 +1,10 @@
 {
-  "_what": "The eight chain states in the shape the implementer announced for 248ae20cd (chain_state: {state, why}), each with the one line and the tone the state cell draws. Read by chain_queue_panel_harness and outbox_queue_panel_harness - one fixture for both queues.",
+  "_what": "The chain states in the shape the implementer announced for 248ae20cd (chain_state: {state, why}), each with the one line and the tone the state cell draws. Read by chain_queue_panel_harness and outbox_queue_panel_harness - one fixture for both queues. waiting_for_table (slot 422d075c7) is the server's own chain_state_of answer for a running line whose stage waits for a table.",
   "states": [
     { "chain_state": { "state": "waiting", "why": { "waiting_seconds": 90 } }, "why": "", "tone": null },
     { "chain_state": { "state": "running", "why": { "stage": "dt_log_to_dt_map -> dt_map · page 3 · 500 rows", "moved_seconds": 4, "elapsed_seconds": 72 } },
       "why": "dt_log_to_dt_map -> dt_map · page 3 · 500 rows · moved 4s ago · 1m 12s", "tone": "ok" },
+    { "chain_state": { "state": "waiting_for_table", "why": { "table": "dt_map", "stage": "waiting for dt_map", "moved_seconds": 3, "elapsed_seconds": 40 } }, "why": "waiting for dt_map", "tone": null },
     { "chain_state": { "state": "stalled", "why": { "stage": "dt_log_to_dt_map -> dt_map · page 3 · 500 rows", "moved_seconds": 900, "elapsed_seconds": 1000, "stalled_on": "lock on dt_map" } },
       "why": "dt_log_to_dt_map -> dt_map · page 3 · 500 rows · moved 15m ago · 16m 40s · on lock on dt_map", "tone": "warn" },
     { "chain_state": { "state": "retrying", "why": { "attempt": 2, "cap": 3, "last_failure": "ValueError: no wafer" } },

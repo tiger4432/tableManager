@@ -171,6 +171,7 @@ export function chainStateWhy(chainState) {
   const attempt = isCount(w.attempt) ? `attempt ${w.attempt}${isCount(w.cap) ? `/${w.cap}` : ''}` : '';
   const parts = {
     running: [w.stage, moved && `moved ${moved} ago`, formatAge(w.elapsed_seconds)],
+    waiting_for_table: [w.table && `waiting for ${w.table}`],
     stalled: [w.stage, moved && `moved ${moved} ago`, formatAge(w.elapsed_seconds), w.stalled_on && `on ${w.stalled_on}`],
     retrying: [attempt, w.last_failure],
     paused: [w.by && `by ${w.by}`, w.at, w.reason],
@@ -182,8 +183,9 @@ export function chainStateWhy(chainState) {
   return parts.filter((p) => p !== null && p !== undefined && p !== '').map(String).join(' · ');
 }
 
-/** The state cell both queues draw: the token, then `chainStateWhy` under it, read to the end (base.css), and in its title. */
-export function chainStateCell(doc, chainState) {
+/** The state cell both queues draw: the token, then `chainStateWhy` under it, read to the end (base.css), and in its title;
+ *  then the slot process running the line when one is sent - the pid an operator kills (lead, slot 422d075c7). */
+export function chainStateCell(doc, chainState, slotPid = null) {
   const cell = doc.createElement('div');
   cell.className = 'queue-line-state';
   const token = chainState && chainState.state ? String(chainState.state) : '';
@@ -195,6 +197,9 @@ export function chainStateCell(doc, chainState) {
     const said = line(doc, 'meta queue-line-state-why', why);
     said.setAttribute('title', why);
     cell.appendChild(said);
+  }
+  if (slotPid !== null && slotPid !== undefined && slotPid !== '') {
+    cell.appendChild(line(doc, 'meta queue-line-slot-pid', `slot pid ${slotPid}`));
   }
   return cell;
 }
@@ -465,6 +470,7 @@ export function queueView(payload, opts = {}) {
     skip: skipOf(cancelOf(t.cancel), t.events),
     // The server's `{state, why}` (248ae20cd), drawn under the age - no sixth column (d886307b6, lead 10-08).
     chainState: t.chain_state || null,
+    slotPid: t.slot_pid ?? null,
   }));
 
   // ── rule ④: a cut list says it was cut ──
@@ -760,7 +766,7 @@ export class ChainQueuePanel {
 
       const tdAge = this._td(r.age, 'age');
       if (r.at) tdAge.title = `Waiting since ${r.at}`;
-      if (r.chainState) tdAge.appendChild(chainStateCell(doc, r.chainState));
+      if (r.chainState) tdAge.appendChild(chainStateCell(doc, r.chainState, r.slotPid));
       tr.appendChild(tdAge);
       tr.appendChild(this._td(r.tables, 'tables'));
       // The event count rides the Rows cell as a badge on its own line above the number (admin.html),
