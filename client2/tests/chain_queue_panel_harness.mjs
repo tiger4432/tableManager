@@ -19,6 +19,7 @@
 //    sign flipped.
 //
 // Run: node client2/tests/chain_queue_panel_harness.mjs
+import { readFileSync } from 'node:fs';
 import { queueView, formatAge, failedSince, MINUTE_SECONDS, ChainQueuePanel } from '../src/chain_queue_panel.js';
 import { ABSENT } from '../src/absent.js';
 import { localShort, localStamp } from '../src/server_time.js';
@@ -906,7 +907,45 @@ async function xSuite(m, say) {
     refreshed.length === 2 && byClass(none, 'chain-queue-refresh').length === 0
       && byClass(byClass(r.host, 'chain-queue-meta')[0] || r.host, 'chain-queue-refresh').length === 1,
     JSON.stringify([refreshed.length, byClass(none, 'chain-queue-refresh').length]));
+  // The chain state, one function for both queues (lead 248ae20cd): eight tokens, their one line, their tone.
+  const whys = STATES.map((s) => m.chainStateWhy(s.chain_state));
+  say('S1 each of the eight states says its why in the lead\'s order, and waiting and done say none',
+    same(whys, STATES.map((s) => s.why)), JSON.stringify(whys));
+  const nulls = [
+    m.chainStateWhy({ state: 'stalled', why: { stage: 'a', moved_seconds: 5, elapsed_seconds: 6, stalled_on: null } }),
+    m.chainStateWhy({ state: 'retrying', why: { attempt: 1, cap: 3, last_failure: null } }),
+    m.chainStateWhy({ state: 'running', why: { stage: 'a', moved_seconds: null, elapsed_seconds: 6 } })];
+  say('S2 a field the server leaves null is left out, never drawn as a word', same(nulls, ['a · moved 5s ago · 6s',
+    'attempt 1/3', 'a · 6s']), JSON.stringify(nulls));
+  const sd = makeDoc();
+  const cells = STATES.map((s) => m.chainStateCell(sd, s.chain_state));
+  const drawn = cells.map((c) => {
+    const tag = byClass(c, 'tag')[0];
+    const why = byClass(c, 'queue-line-state-why')[0];
+    return [tag && tag.textContent, tag && tag.getAttribute('data-tone'), why ? why.textContent : '', why ? why.getAttribute('title') || '' : ''];
+  });
+  say('S3 the cell draws the token on a tag with its tone, then its why once, whole in a title',
+    same(drawn, STATES.map((s) => [s.chain_state.state, s.tone, s.why, s.why])), JSON.stringify(drawn));
+  const blank = m.chainStateCell(sd, null);
+  say('S4 no state is a dash, with no line', byClass(blank, 'tag')[0].textContent === ABSENT
+    && byClass(blank, 'queue-line-state-why').length === 0, blank.textContent);
+  const odd = [m.chainStateWhy({ state: 'waiting', why: { waiting_seconds: 5, unexpected_status: 'SKIPPED' } }),
+    m.chainStateWhy({ state: 'done', why: { unexpected_status: 'ERROR' } })];
+  say('S5 a waiting or done row in a status the server did not expect says that status', same(odd,
+    ['status SKIPPED', 'status ERROR']), JSON.stringify(odd));
+  // The admin's lines (lead 10-08 ①): under the Waiting cell's age, what chainStateCell draws; a line without one, none.
+  const shape = (n) => walk(n).map((c) => [String(c.className || ''), c.getAttribute('data-tone'), c.getAttribute('title'),
+    c.children.length ? '' : c._text].join('/')).join('|');
+  const lines = seat({ ...BODY, waiting_transactions: [...STATES.map((st, i) => ({ transaction_id: `tx-${i}`, events: 1,
+    rows: 1, tables: ['t'], waiting_seconds: 30, chain_state: st.chain_state })),
+  { transaction_id: 'tx-none', events: 1, rows: 1, tables: ['t'], waiting_seconds: 30 }] });
+  const ages = rowsOf(lines.host).map((tr) => tr.children.find((td) => td.getAttribute('data-col') === 'age'));
+  const inAge = ages.map((td) => (td ? td.children.map(shape).join('+') : 'no age cell'));
+  const wantAge = [...STATES.map((st) => shape(m.chainStateCell(makeDoc(), st.chain_state))), ''];
+  say('S6 each admin line\'s Waiting cell holds its age, then exactly what chainStateCell draws; no state, no cell',
+    same(inAge, wantAge) && ages.every((td) => td && td._text === '30s'), JSON.stringify(inAge));
 }
+const STATES = JSON.parse(readFileSync(new URL('./fixtures/chain_states.json', import.meta.url), 'utf8')).states;
 const refreshed = [];
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const X_NAMES = [];
@@ -941,6 +980,16 @@ await xSuite(await import('../src/chain_queue_panel.js'), (name, cond, detail) =
     { id: 'YM1', what: 'Refresh asks nothing', catches: 'Y1', mutate: swap("btn.addEventListener('click', () => this.onRefresh());", '') },
     { id: 'YM2', what: 'a queue that could not be read has no Refresh', catches: 'Y1',
       mutate: swap('      const again = this._refresh();\n      if (again) this.root.appendChild(again);\n', '') },
+    { id: 'SM1', what: 'running does not say when it last moved', catches: 'S1',
+      mutate: swap('    running: [w.stage, moved && `moved ${moved} ago`, formatAge(w.elapsed_seconds)],', '    running: [w.stage, formatAge(w.elapsed_seconds)],') },
+    { id: 'SM2', what: 'a null field is drawn', catches: 'S2',
+      mutate: swap("parts.filter((p) => p !== null && p !== undefined && p !== '')", "parts.filter((p) => p !== undefined && p !== '')") },
+    { id: 'SM3', what: 'stalled loses its tone', catches: 'S3', mutate: swap(" stalled: 'warn',", '') },
+    { id: 'SM4', what: 'a cut line keeps no title', catches: 'S3', mutate: swap("    said.setAttribute('title', why);\n", '') },
+    { id: 'SM5', what: 'an unexpected status is not said', catches: 'S5',
+      mutate: swap("    waiting: [w.unexpected_status && `status ${w.unexpected_status}`],\n", '') },
+    { id: 'SM6', what: 'the admin line draws no state', catches: 'S6',
+      mutate: swap('      if (r.chainState) tdAge.appendChild(chainStateCell(doc, r.chainState));\n', '') },
   ];
   const scored = await scoreMutants(MUTANTS, async (mu) => {
     const m = (await loadWithProbe(SUBJECT.pathname.replace(/^\/([A-Za-z]:)/, '$1'), { mutate: mu.mutate })).module;

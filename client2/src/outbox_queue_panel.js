@@ -4,7 +4,7 @@
 //    「체인 대기열」이라는 이름이 읽는 사람을 체인으로 보냈다. 서버도 경로에서 뺐다.
 // 🔴 판단을 여기서 «다시 내리지» 않는다 — 나이는 chain_queue_panel 의 좌석, 상태는 서버 어휘.
 // 🔴 실패 행은 이 표에 «안 온다» — 서버가 모집단에서 뺐다(`2eb1d38d`). 경계는 모집단 문장이 말한다.
-import { formatAge, line } from './chain_queue_panel.js';
+import { chainStateCell, formatAge, line } from './chain_queue_panel.js';
 
 const str = (v) => (v == null ? '' : String(v));
 const list = (v) => (Array.isArray(v) ? v : []);
@@ -60,10 +60,9 @@ export function outboxQueueView(payload, opts = {}) {
       // 읽을 수 없는 나이는 «—», 절대 「0초」가 아니다 — 그 좌석의 규칙 그대로.
       age: formatAge(row.waiting_seconds) ?? '—',
       at: str(row.created_at),
-      state: str(row.chain_state),
-      // 🔴 「아직 안 돌았다」와 「돌다 실패해 재시도 중」은 둘 다 waiting 이다. 사유를 상태
-      //    낱말에 안 섞은 것이 어휘 규율이고, 그 대신 «이 칸»이 말한다 (판정 2026-09-22).
-      stateDetail: str(row.state_detail),
+      // The server's `{state, why}` (248ae20cd); `state_detail` folded into its why.
+      state: str(row.chain_state && row.chain_state.state),
+      chainState: row.chain_state || null,
       broadcast: str(row.broadcast_state),
       rules: Object.freeze(rules),
     });
@@ -210,14 +209,7 @@ export class OutboxQueuePanel {
       line.appendChild(this._cell('queue-age', row.age, row.at));
 
       const state = this._cell('queue-state', '');
-      state.appendChild(this._line('audit-pill kind-auto', row.state));
-      // 「기다리는 중」과 「재시도 중」을 가르는 것은 이 칸이다 — 상태 낱말은 둘 다 waiting 이다.
-      // 좁아서 잘린다(실측: 배지 뒤 21px). 잘린 글자의 답은 이 화면에서 «하나»다 — title.
-      if (row.stateDetail) {
-        const detail = this._line('queue-state-detail', row.stateDetail);
-        detail.setAttribute('title', row.stateDetail);
-        state.appendChild(detail);
-      }
+      state.appendChild(chainStateCell(this.doc, row.chainState));
       line.appendChild(state);
 
       line.appendChild(this._rulesCell(row.rules));
