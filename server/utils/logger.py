@@ -338,3 +338,12 @@ def count_crossed(counts, key, n=1):
     before = counts.get(key, 0)
     counts[key] = total = before + n
     return total if announce_crossed(before, total) else None
+
+
+def count_cleared(counts, prefix):
+    """Forget the counts whose key starts with `prefix` - the episode they counted ended in a
+    success, so a failure after it is said from #1 again (총괄 10-09, 응용 QA 6f4735207: counted
+    for the process's life, a failure that came back after a fix stayed silent to its 100th - the
+    shape of a heartbeat's stall cleared by progress)."""
+    for key in [key for key in counts if key[:len(prefix)] == prefix]:
+        del counts[key]

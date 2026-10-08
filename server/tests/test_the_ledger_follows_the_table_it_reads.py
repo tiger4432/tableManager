@@ -285,6 +285,32 @@ def test_a_source_failing_on_every_event_is_said_on_the_1st_and_10th(monkeypatch
     assert len(receipts) == 25 and "failed=25" in followup.note()
 
 
+def test_a_failure_that_comes_back_after_a_success_is_said_from_the_1st_again(monkeypatch, caplog):
+    """총괄 10-09 (응용 QA 6f4735207): counted by episode - the source's success ends its failures'
+    episode, so a fault that returns after a fix is said again rather than at the 100th."""
+    failing = {"now": True}
+
+    def rescope(*args, **kwargs):
+        if failing["now"]:
+            raise RuntimeError("no")
+        return {}
+
+    monkeypatch.setattr(backfill, "rescope", rescope)
+    monkeypatch.setattr(followup, "_write_failure_receipt", lambda *a: None)
+    caplog.set_level("WARNING", logger=followup.logger.name)
+
+    def follow(events, fails):
+        failing["now"] = fails
+        for i in range(events):
+            followup.enqueue("dt_log", ["r%d" % i], "EDIT")
+            followup.drain_once(FakeEngine([("J1",)]), one_source_on("dt_log"))
+
+    follow(15, True)
+    follow(1, False)
+    follow(20, True)
+    assert _counts_said(caplog, "failed in world") == [1, 10, 1, 10]
+
+
 def test_a_delete_failing_on_every_event_is_said_on_the_1st_and_10th(monkeypatch, caplog):
     def boom(*args, **kwargs):
         raise RuntimeError("no")

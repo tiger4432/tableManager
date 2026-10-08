@@ -73,7 +73,7 @@ FOLLOWUP_JOB = "chain_followup"
 #: one place that already names them so the failure receipt below and the success receipt
 #: in `runtime_v2` cannot describe themselves differently.
 from .runtime_v2 import RECEIPT_COLUMN, RECEIPT_FAILED, RECEIPT_SOURCE  # noqa: E402
-from utils.logger import count_crossed  # noqa: E402
+from utils.logger import count_cleared, count_crossed  # noqa: E402
 RECEIPT_WRITER = "ledger"
 
 #: A bound so a stalled drain cannot eat the worker's memory. Overflow is COUNTED and named
@@ -447,6 +447,9 @@ def _follow(item, engine, setup, world=None, sources=None):
                 "inserted": result.get("inserted", 0),
                 "deduped": result.get("deduped", 0),
             }
+            with _lock:
+                # its failures' episode ends here: one after this is said from #1 again (총괄 10-09)
+                count_cleared(REPEATS, ("source", source, table, _named(world)))
         except Exception as exc:  # named, counted, and NOT requeued -- see the docstring
             with _lock:
                 _failed += 1
