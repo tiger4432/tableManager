@@ -1012,7 +1012,7 @@ export function reachModel(result) {
   }));
   // 큰 것부터. 동수는 «이름»으로 갈라 응답 순서가 대표를 정하지 못하게 합니다.
   rows.sort((a, b) => b.count - a.count || String(a.predicate).localeCompare(String(b.predicate)));
-  // 「닿는 곳」은 언제나 `hops: 1` 로 묻습니다(COLLECTS.reach), 그래서 depth 는 «질문»입니다 --
+  // 「닿는 곳」은 언제나 `hops: 1` 로 묻습니다(LEGACY_ROUTES.reach), 그래서 depth 는 «질문»입니다 --
   // 이 파일이 원래 여기에만 적어 두었던 그 구분이고, 이제 판정이 «한 자리»에 삽니다.
   const cutAxes = truncationAxes(body.truncated, { hopsChosen: true }) || [];
   return {
@@ -1632,7 +1632,7 @@ export function createWalk(deps) {
     // 404 whole. A seat naming `[observed, inspected, bonded_from]` names things the
     // declaration owns, and a walk answers it.
     const declared = legacyRoute ? LEGACY_ROUTES[legacyRoute] : WALK;
-    // A collect nobody declared is a BUG IN THE SCREEN, not an empty answer: returning `null`
+    // A `legacyRoute` nobody declared is a BUG IN THE SCREEN, not an empty answer: returning `null`
     // here would let a part draw 「없음」 for a question that was never asked.
     if (!declared) return Promise.reject(new Error(`walk: undeclared legacyRoute — ${legacyRoute}`));
     const key = JSON.stringify([legacyRoute, start || null, rest]);
@@ -1891,8 +1891,8 @@ function refusalSentence(body, status, fallback = `Walk failed (${status})`) {
  * 걷기 walk. 부르는 쪽이 «고른 것»을 그대로 받습니다:
  * `{type, keys, follow?, direction?, hops?, node_limit?}`.
  *
- * 🔴 `createWalk` 을 못 씁니다 -- 그쪽 `collect` 는 «화면이 선언한 질문 이름»이고, 이쪽은
- *    «서버의 노드 종류»입니다. 같은 낱말이 두 뜻이라 섞으면 조용히 빈 답이 됩니다.
+ * 🔴 `createWalk` 을 못 씁니다 -- 그쪽은 `collect` 를 거절하고 경로 행을 `legacyRoute` 로 받습니다.
+ *    이쪽은 `collect` 를 «서버의 노드 종류»로 그대로 싣습니다.
  *
  * ═══ 🔴 이 함수는 «반쪽만» 배선돼 있었습니다 (2026-09-06 감사 실측) ═══
  * 부르는 쪽이 `spec.hops` 를 «싣는데»(walk_box_panel.js:230) 여기가 그것을 «안 꺼냈습니다».
