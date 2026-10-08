@@ -75740,3 +75740,184 @@ MUTANT OLD (origin/main sources)            exit 1  14 failed, 58 passed, 5 skip
 슬롯(19f6a9277) — slots-wip(54f6cbdc9) 위에 총괄 답 반영: 창 = 대기열 줄 묶기 질의 함수 하나 · 로그는 배정자가 chain_worker.log 하나에 ·
 slot_pid · 표/규칙/거래 빼기도 줄마다 stop_line · waiting_for_table 을 이 함수에 더함
 ```
+
+---
+
+## [10-08] 대기열 줄 하나 = 슬롯 프로세스 하나 422d075c7 (총괄 19f6a9277)
+
+어느 DB · 어느 스키마 · 지운 것 — 격리 시험 DB assy_test · 스키마 assy_pytest_pg_<pid>_gw0(실행마다 하니스가 만들고 끝에 DROP SCHEMA) · 그 밖에 지운 것 0 · sqlite 는 메모리
+
+```
+배정자    체인 워커 = SlotPool.tick — 슬롯 N 개(chain_slots, 기본 2)를 띄우고 줄을 맡김. 슬롯 = python -m chain.slots <n>
+         슬롯은 물음 하나에 «한 배치»(ingestion_worker.drain_events 를 지남) — 배치 뒤 더 오래 쉰 줄이 기다리면 놓음
+창        줄은 대기열의 줄 묶기 함수 하나 chain.queue_lines.waiting_lines (어드민 대기열 라우트에서 옮김 — 둘이 같은 함수)
+         git grep -c "waiting_lines(" 착지 커밋, 시험 밖:
+           422d075c7:server/chain/queue_lines.py:1
+           422d075c7:server/chain/slots.py:1
+           422d075c7:server/main.py:1
+순서      앞선 미완료 행 단위 줄과 표가 겹치면 뒤 줄은 기다림(lines_to_give)
+표 가드   chain.table_locks.hold — 묶음이 닿는 표(대상 ∪ 읽는 표)를 PG advisory lock 으로, 정렬 순서. 기다리는 동안 상태 waiting_for_table
+끄기      stop_line ③ = slots.stop_slot(그 줄을 쥔 슬롯, 명령줄 확인 뒤) — 답 slot_pid · 죽은 슬롯은 배정자가 그 줄의 남은 대기를 빼고 다시 안 줌
+         git grep -c "stop_slot(" 착지 커밋, 시험 밖:
+           422d075c7:server/chain/control.py:1
+           422d075c7:server/chain/slots.py:1
+         카나리아 def waiting_lines · def stop_slot = 422d075c7:server/chain/queue_lines.py:1 422d075c7:server/chain/slots.py:1
+Pause    체인과 슬롯 박동 전부의 db_pid · lock_db_pid 를 끊음 — 답 cancelled_pid -> cancelled_pids
+로그      파일 하나 chain_worker.log — 슬롯은 stderr 로 보내고 배정자가 [slot n pid P] 를 붙여 씀
+연결      슬롯 풀 ASSY_DB_POOL_SIZE 2 · ASSY_DB_MAX_OVERFLOW 2 (database.py 가 환경을 읽게 — 없으면 20 · 10 그대로)
+바뀐 칸   대기열 줄에 slot_pid 더함 · × 답 cancelled_pid -> slot_pid · Pause 답 cancelled_pid -> cancelled_pids
+         클라가 읽나 — git grep -c "cancelled_pid\|slot_pid" client2/src: 0 (히트 없음) (카나리아 outboxQueueView = 422d075c7:client2/src/outbox_queue_panel.js:2)
+```
+
+### 잰 것 — 이 박스, 격리 PG
+
+```
+a person's save on the replay's tables finished in 1.34 s; replay groups waiting at the save 4, at its end 4 (this box, 1,000-row groups)
+connections while 2 slots ran a 3,000-event replay and a live line: slots' peak 4, this database's peak 5 (this box)
+-> 「슬롯 2 + 큰 소급이 돌 때의 최대 연결 수」는 위 줄의 슬롯 몫. 소급 묶음은 맵퍼 안에서 문(gate)에 붙잡힌 채로 잼
+API 접촉   시험 출력에서 127.0.0.1:8080 이 나온 줄 0 (슬롯의 API_BASE_URL 은 닫힌 포트 :9)
+PG 전부    손댄 파일들의 PG 시험 같이(슬롯 · 시간 상한 · 멈춤 · 소급 · 홉 · 그리드 대기열 · 걸린 묶음): 36 passed, 8444 deselected, 69 warnings
+           = 2판 변이의 최종 기준(슬롯 파일 전부가 이 안에 있음)
+바로 쓰기  탐침(착지 안 함, 한 번 돌리고 지움) — 슬롯과 같은 풀(2 + 2)에서 묶음 하나:
+           one group of 1000 events: 1.39 s · 2 at-once beat write(s) · answer ok=True  (거래 수를 센 계기는 0 을 내서 수를 안 적음)
+           = 묶음 시작의 db_pid · 표 잠금의 lock_db_pid. 묶음 안에서 연결이 바뀔 때만 더 씀
+           와처의 파일 적재는 acted_on 이 아니라 바로 쓰기 없음 — 잰 수가 아니라 코드와 sqlite 칸(acted_on 아닌 일은 안 씀)
+```
+
+### 게이트 · 변이 — md5 같음 (같은 시험 파일 전부, 10 분을 안 넘게 조각으로)
+
+```
+1판 — 빼기 일 «전» 원천 위 (기준은 그 판의 마지막 시험 파일)
+BASELINE exit 0  10 passed, 8465 deselected, 42 warnings in 194.66s (0:03:14)
+MUTANT no table locks                           exit 1  1 failed, 9 passed, 8465 deselected, 42 warnings in 186.16s (0:03:06)
+    FAILED test_a_replay_that_read_v1_before_a_person_saved_v2_cannot_land_after_the_v2_group
+MUTANT lines go to slot 1 only                  exit 1  3 failed, 7 passed, 8465 deselected, 42 warnings in 248.22s (0:04:08)
+    FAILED test_a_line_behind_three_thousand_replay_events_takes_the_free_slot
+    FAILED test_a_line_held_in_one_slot_does_not_hold_a_line_in_another
+    FAILED test_a_pause_rewinds_the_held_group_and_resume_runs_the_line
+MUTANT a dead slot's line is given again        exit 1  2 failed, 8 passed, 8465 deselected, 42 warnings in 231.79s (0:03:51)
+    FAILED test_a_pause_rewinds_the_held_group_and_resume_runs_the_line
+    FAILED test_a_slot_killed_by_its_pid_sets_its_line_aside_and_the_line_does_not_run_again
+MUTANT row-by-row order freed                   exit 1  1 failed, 9 passed, 8465 deselected, 42 warnings in 190.65s (0:03:10)
+    FAILED test_a_row_by_row_line_resting_after_a_failure_keeps_a_later_one_on_its_tables_waiting
+MUTANT a cross stops no slot                    exit 1  2 failed, 8 passed, 8465 deselected, 42 warnings in 186.46s (0:03:06)
+    FAILED test_a_cross_on_a_running_line_stops_its_slot_only[done
+    FAILED test_a_cross_on_a_running_line_stops_its_slot_only[transaction]
+MUTANT a paused chain still gives lines         exit 0  10 passed, 8465 deselected, 42 warnings in 192.09s (0:03:12)
+MUTANT the window reads the first line only     exit 1  2 failed, 8 passed, 8465 deselected, 42 warnings in 252.81s (0:04:12)
+    FAILED test_a_line_behind_three_thousand_replay_events_takes_the_free_slot
+    FAILED test_a_line_held_in_one_slot_does_not_hold_a_line_in_another
+MUTANT a slot's log is not relayed              exit 1  1 failed, 9 passed, 8465 deselected, 42 warnings in 207.83s (0:03:27)
+    FAILED test_a_slots_log_lines_land_in_the_dispatchers_log_under_its_pid
+MUTANT a paused chain still gives lines         exit 1  1 failed, 9 passed, 8465 deselected, 42 warnings in 191.53s (0:03:11)
+    FAILED test_a_pause_rewinds_the_held_group_and_resume_runs_the_line
+
+2판 — 마지막 원천 위 (빼기 끊기 · 되감기 · 끝난 줄 창에서 지우기)
+BASELINE exit 0  13 passed, 8466 deselected, 54 warnings in 333.45s (0:05:33)
+MUTANT a cut group is failed, not rewound       exit 1  2 failed, 11 passed, 8466 deselected, 54 warnings in 335.36s (0:05:35)
+    FAILED test_a_pause_rewinds_the_held_group_and_resume_runs_the_line
+    FAILED test_setting_a_table_aside_cuts_the_group_holding_it_and_its_line_runs_on_in_the_slot
+MUTANT every failure a set-aside landed on rewinds exit 1  1 failed, 12 passed, 8466 deselected, 54 warnings in 287.24s (0:04:47)
+    FAILED test_a_mapper_error_in_a_group_a_set_aside_landed_on_is_a_failure_as_before
+MUTANT a set-aside cuts every group             exit 1  1 failed, 12 passed, 8466 deselected, 54 warnings in 315.05s (0:05:15)
+    FAILED test_a_set_aside_cuts_no_group_that_does_not_hold_its_events
+MUTANT a drained line stays in the window       exit 1  1 failed, 12 passed, 8466 deselected, 54 warnings in 291.28s (0:04:51)
+    FAILED test_a_line_held_in_one_slot_does_not_hold_a_line_in_another
+MUTANT a batch that raised ends the slot        exit 1  1 failed, 13 passed, 8466 deselected, 58 warnings in 283.54s (0:04:43)
+    FAILED test_a_set_aside_cuts_a_group_waiting_for_a_table_and_its_line_runs_on_in_the_slot
+MUTANT the table-wait stage after the pid       exit 1  2 failed, 12 passed, 8466 deselected, 58 warnings in 336.93s (0:05:36)
+    FAILED test_a_pause_rewinds_the_held_group_and_resume_runs_the_line
+    FAILED test_a_set_aside_cuts_a_group_waiting_for_a_table_and_its_line_runs_on_in_the_slot
+```
+```
+살아남은 변이 하나 — 「멈춤 중에도 줄을 줌」 첫 회는 초록이었음: 슬롯도 멈춤이면 배치를 거절해 아무것도 안 돌았고, 시험은 «돌았나»만 봤음
+   그 변이가 하는 일은 «헛돎»(멈춘 동안 배정자가 계속 묻고 슬롯이 계속 거절) -> pause 칸에 「멈춘 동안 배정자가 보낸 물음 0」을 더하고 다시 돌림
+함께 빨개진 칸 — 변이된 칸이 남긴 줄(시험들이 한 스키마를 씀)이 다음 칸의 같은 표 앞에 서서 순서 규칙대로 막은 것 (예: kill 변이 -> pause 칸)
+```
+
+### 전체 sqlite
+
+```
+test_[a-k]*: 4 failed, 4140 passed, 209 skipped, 1 xfailed, 5909 warnings
+test_[l-z]*: 1 failed, 3941 passed, 182 skipped, 2 xfailed, 7227 warnings
+FAILED test_the_sample_is_written_in_the_one_format_both_writers_use
+FAILED test_live_mapper_and_tracked_sample_are_byte_identical
+FAILED test_live_mapper_and_tracked_sample_are_byte_identical
+FAILED test_live_mapper_matches_tracked_sample
+FAILED test_the_repo_root_is_one_above_it
+-> 실패는 알려진 박스 실패뿐
+```
+
+### 놓쳤던 것 · 지난 요청
+
+```
+전체 스위트가 잡은 것 — 진짜 체인 루프를 도는 단위 시험이 진짜 슬롯 프로세스(python -m chain.slots)를 띄웠음
+   루프를 도는 시험 파일 6 개(git grep -l "start_chain_ingestion_worker(" server/tests)
+   슬롯은 그 시험의 sqlite 에 표가 없어 죽었고, 띄우는 값만큼 루프가 느려져 「저장 열 번」 시험이 리로드 확인 하나를 못 셈
+   박스 DB 에는 안 닿음 — 자식이 PYTEST_VERSION 을 물려받아 db_safety.under_pytest() 가 참, 시험 DB 아닌 연결은 거절
+고침   conftest autouse 하나 — slot_box 를 안 쓰는 시험에서는 SlotPool._size 가 아무것도 안 띄움
+잼     그 시험 파일을 -s 로: [Chain] 줄 38 (카나리아) · 슬롯 시작 줄 0
+또     둘째 절반(test_[l-z]*)이 처음 돌며 잡은 셋 — 고친 뒤 위 «전체 sqlite» 는 다시 돈 수
+       가짜 이벤트(id 없음) · 빈 이벤트로 묶음을 도는 시험 둘: event_span 이 id 를 가정했음 -> id 있는 것만으로(없으면 None)
+       리로드 자리 소스 검사 하나: note_reload 가 reload_rules 로 옮겨 감 -> 루프와 reload_rules 둘을 읽게
+       PG 최종 실행은 이 event_span 고침 «전» — 그 고침은 id 없는 이벤트에서만 다르게 돎
+       그리고 conftest 픽스처가 처음엔 monkeypatch 를 청해 그 정리 순서를 바꿔 test_backfill_enrichment 다섯을 깼음
+       (delitem 한 모델이 표 없이 돌아옴) -> monkeypatch 없이 직접 바꾸고 되돌림
+같이   SlotPool.close — 부르는 곳 0(제품 · 시험) 이라 지움. 변이는 지우기 «전» 파일 위에서 돌았고 지운 자리는 어느 변이 자리와도 안 겹침
+       로그 낱말 시험(한 낱말)에 중계 꼬리표 "slot %d pid %d" 를 더함 — 슬롯 프로세스의 줄을 배정자가 체인 로그에 씀
+```
+```
+daf4985d5 요청(시간 상한 시험 픽스처가 진짜 API 에 알리지 않게) — 놓쳤었음. 이번에 픽스처가 _dispatch_broadcasts 를 대신함
+리스너 이름  database._bound_the_file_writes -> _set_file_and_chain_time_limits (체인 묶음에도 걸어서) — CODE_MAP · 주석 같이
+```
+
+### 아직 열린 것
+
+```
+끊기의 틈   박동을 읽은 뒤 끊기까지 몇 ms 사이에 그 묶음이 끝나고 같은 연결로 «다른» 묶음이 시작되면 그 묶음이 끊김
+           -> 그 묶음엔 빼 둔 것이 없으니 실패 길(상한 1 이면 FAILED). 박동은 일을 열 때 · 닫을 때 바로 쓰여 틈은 읽기~끊기 사이뿐
+           가드는 안 지었습니다(지시 밖). 막으려면 끊는 질의에 «그 묶음이 시작한 뒤 연 거래인가»를 같이 거는 것 — 필요하면 말씀 주십시오
+질의 밖     맵퍼가 파이썬 일 중이면 끊을 질의가 없음 — 그 묶음은 끝까지 돌고 빼 둔 표시는 남음(오늘 × 의 성질과 같음)
+클라 몫     클라(af5f2bbde chainStateCell)는 낱말을 받은 그대로 태그로 그림 — waiting_for_table 은 보이나 why.table(기다리는 표)은
+           chainStateWhy 에 칸이 없어 안 보임 · 줄의 slot_pid 도 아직 안 그림. 대기열 줄 · 행의 칸은 «더하기만» 했음(slot_pid · 낱말 하나)
+```
+
+### 총괄 답대로 지은 것 — 빼기는 고른 것만, 끊기는 그 묶음만
+
+```
+빼기      set_aside.set_aside(표 · 규칙 · 거래 · ids) 가 고른 이벤트만 표시(한 번에, 지금 그대로) -> 표시한 것으로 control.cancel_running_group(db, ids=)
+끊기      도는 묶음이 박동에 싣는 line_keys · event_span(첫 · 끝 이벤트 id) 으로 «그 이벤트를 쥔 묶음»만 골라 질의를 끊음 — 슬롯은 안 죽임
+되감기    워커 실패 자리: 돌던 중 빼 둔 이벤트 있음 «그리고» 실패가 QueryCanceled -> 나머지는 시도 그대로 대기(되감김)
+          상한이 끊은 것은 _said_timeout 이 이미 다른 문장으로 바꿔 둠 — 남은 QueryCanceled 는 그 자리의 판정대로 «남이 끊은 것» (둘째 판정 없음)
+지나는 곳  × (set_aside_line) · 소급 연산 set_aside · outbox_triage --cancel · 멈춘 실행의 끝 · 죽은 슬롯 거두기 — 다 이 몸
+슬롯 끄기  줄 전체일 때만(× · 실행 Cancel · pid kill) — 그대로
+같이 찾음  다 빠진 줄을 배정자가 1 초 전 창에서 다시 줌 -> 몇 ms 마다 빈 배치 + 「runs line」 줄. 창에서 지우게 고침
+표 기다림  묶음이 «표 잠금을 기다리는 중» 끊기면 그 끊김이 묶음 몸 «밖»(table_locks.hold)에서 예외로 나와 슬롯이 끝났고,
+          슬롯의 끝이 그 줄 «전체»를 빼 뒀음(고르지 않은 B 까지). 더 넓게: 배치의 어떤 예외든 슬롯을 끝내고 줄 전체를 뺐음
+          -> 체인 루프의 옛 계약을 슬롯에 되살림(chain.slots._run_batch): 롤백 · 한 줄 로그 · failed 답 -> 1 초 쉬고 이벤트 그대로 다시
+          «누가 끊었나»를 새로 가르는 자리는 안 만듦. 그 묶음의 B 는 시도 0 으로 끝까지 돎(칸 있음)
+          같이: 기다림의 단계(waiting for <표>)를 pid 보다 먼저 적음 — 바뀐 pid 가 박동을 바로 쓰니 대기열의 waiting_for_table 이 바로 보임
+stop_line  ids 칸은 안 넓힘 — 부르는 곳이 없음. ③ 의 «그 묶음만 끊기»는 빼기 몸(set_aside) 안의 cancel_running_group(ids) 한 자리,
+          × · 소급 연산 · triage CLI 가 그 몸을 같이 지남
+맵퍼 오류  칸은 시험 규칙의 상한 3 이라 retry_count 1 · RETRYING 뒤 SUCCESS — 기본 상한 1 이면 그 자리에서 FAILED
+1판 변이  빼기 일 «전» 원천 위에서 돌았음 — 그 변이들의 바늘 · 칸은 이번 고침과 안 겹침(바늘은 모두 지금 원천에서 한 번씩 맞음)
+```
+
+### 기준이 빨갰던 판 — 끊기가 빗나감, 원인은 박동 파일의 낡은 pid
+
+```
+BASELINE exit 1  2 failed, 11 passed, 8465 deselected, 54 warnings in 303.80s (0:05:03)
+원인   끊기는 박동 «파일»의 db_pid 로 함. 묶음 안 커밋 뒤 세션이 풀에서 다른 연결을 받으면(QueuePool 은 FIFO)
+       after_begin 훅은 메모리의 사실만 고치고 파일은 다음 박동까지 옛 pid -> 다른 연결의 pg_sleep 이 안 끊김
+       같은 성질이 Pause 의 질의 끊기에도 있었음(Pause 는 단계 경계에서 다시 멈춰 드러나지 않았음)
+고침   heartbeat.note_work — db_pid · lock_db_pid 가 «바뀌면» 박동 파일을 바로 다시 씀(WRITTEN_AT_ONCE). 진척은 안 셈 · 메모 그대로
+       끊는 기제는 pid 하나 그대로
+칸     (sqlite) 「바뀐 pid 는 다음 박동 전에 파일에 있다」:
+BASELINE (sqlite) 4 passed, 6 skipped, 6 warnings
+MUTANT a changed pid waits for the next beat (sqlite)  1 failed, 3 passed, 6 skipped, 6 warnings
+    FAILED test_a_changed_backend_pid_is_on_disk_before_the_next_beat
+MUTANT every claim writes a changed pid at once (sqlite)  1 failed, 3 passed, 6 skipped, 6 warnings
+    FAILED test_a_changed_backend_pid_is_on_disk_before_the_next_beat
+MD5 AFTER  same
+       PG 끊기 칸은 고친 뒤 이어서 네 번 다 초록 — 풀이 연결을 바꾸는지는 우연이라 PG 칸만으로는 이 축을 못 잼, 그래서 위 칸
+```

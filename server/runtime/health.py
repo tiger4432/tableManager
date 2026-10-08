@@ -417,6 +417,36 @@ def compute_health(db_result, heartbeats, supervisor_status, outbox_result,
     # heartbeats would trade a false alarm for a blind spot, and the file is still on
     # disk. They are named, with their age, and they do not escalate: nothing declares
     # them, so nothing is promised about them.
+    # 🔴 THE CHAIN'S SLOTS (총괄 19f6a9277) beat as `chain-slot-<n>`. The chain worker starts them,
+    #    not the launcher, so no roster names them - and the chain's groups run in them, so a
+    #    slot that stopped beating, or whose group stopped moving, is the chain's stall.
+    import event_constants
+    from chain.slots import BEAT_PREFIX as SLOT_BEAT_PREFIX
+    from runtime.running import work_facts
+
+    for hb_name in sorted(n for n in heartbeats if n.startswith(SLOT_BEAT_PREFIX) and n not in workers):
+        hb = heartbeats.get(hb_name) or {}
+        entry = {"heartbeat": hb_name, "status": STATUS_OK, "age_seconds": hb.get("age_seconds"),
+                 "beats": hb.get("beats"), "stale_after_seconds": stale_after}
+        work = hb.get("work") or {}
+        if work.get("open"):
+            # the slot's word from the queue's one seat (총괄 248ae20cd) - waiting for a table
+            # another slot holds is not stalled; that slot is the one that would be
+            entry["chain_state"] = event_constants.chain_state_of(False, None, running=work_facts(work))
+        if hb.get("stale"):
+            entry["status"] = "wedged"
+            escalate(STATUS_UNHEALTHY)
+            problems.append(f"chain slot '{hb_name}' has made no progress for "
+                            f"{hb.get('age_seconds')}s (threshold {stale_after:.0f}s)")
+        elif (entry.get("chain_state") or {}).get("state") == event_constants.CHAIN_STATE_STALLED:
+            entry["status"], entry["work"] = "stalled", work
+            escalate(STATUS_UNHEALTHY)
+            problems.append(f"chain slot '{hb_name}' is beating but its work has not progressed for "
+                            f"{work.get('no_progress_seconds')}s: {work.get('what')}"
+                            + (f" - {work['stalled_on']}" if work.get("stalled_on") else
+                               f" in {work['stage']}" if work.get("stage") else ""))
+        workers[hb_name] = entry
+
     from runtime.loops import on_demand_processes
 
     on_demand = on_demand_processes()

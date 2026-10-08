@@ -73,7 +73,7 @@ def set_aside(db, tables=(), rules=(), transactions=(), since=None, per_row_only
               apply=False, reason="set aside by an operator", checkpoint=None, ids=()):
     """-> `{"events", "rows", "by_table"}` for what is (dry run) or was (apply) set aside -
     apply adds `marked`: the events this call ended, which leaves out any the chain finished
-    in between."""
+    in between - and cuts the query of a group running one of them (`control.cancel_running_group`)."""
     found = [(event.id, event.table_name, len(rows_of(payload)))
              for event, payload in _in_scope(db, False, tables, rules, transactions, since,
                                              per_row_only, ids)]
@@ -84,7 +84,7 @@ def set_aside(db, tables=(), rules=(), transactions=(), since=None, per_row_only
     if not apply or not found:
         return dict(out, marked=0) if apply else out
     found_ids = [i for i, _t, _r in found]
-    out["marked"] = 0
+    out["marked"], done = 0, 0
     for start in range(0, len(found_ids), CHUNK):
         # Between committed chunks - the one place a stop is safe (a run's cancel).
         if checkpoint is not None and checkpoint(start):
@@ -92,6 +92,11 @@ def set_aside(db, tables=(), rules=(), transactions=(), since=None, per_row_only
             break
         out["marked"] += _mark(db, found_ids[start:start + CHUNK], reason)
         db.commit()
+        done = start + CHUNK
+    # A group running one of them now is cut and rewinds without them - the rest of its line
+    # runs on in the same slot (총괄 10-08: only stopping a WHOLE line stops its slot).
+    from chain import control
+    control.cancel_running_group(db, ids=found_ids[:done])
     return out
 
 

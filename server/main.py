@@ -4595,7 +4595,7 @@ class ChainPauseRequest(BaseModel):
 def pause_chain(body: ChainPauseRequest, request: Request, db: Session = Depends(get_db)):
     """The emergency stop (총괄 3840af307 ㄱ): the chain takes no new group, a running one is
     rewound at its next stage and its query cancelled now. Nothing queued is lost. Held
-    across restarts until Resume. -> `{paused: {by, at, reason, cancelled_pid}}`."""
+    across restarts until Resume. -> `{paused: {by, at, reason, cancelled_pids}}`."""
     from chain import control as chain_control
     by = sso.who(request, request.headers.get("X-User") or "operator")
     return {"paused": chain_control.pause_now(db, by, body.reason)}
@@ -4647,8 +4647,6 @@ def get_chain_queue_depth(db: Session = Depends(get_db)):
     **아직 기다리는 행 중** 재시도된 수이므로, 이름이 그 좁힘을 말한다. 지나간 재시도는
     세지 않는다.
     """
-    from types import SimpleNamespace
-
     from sqlalchemy import func as _f
 
     outbox = models.DatabaseOutbox
@@ -4660,46 +4658,18 @@ def get_chain_queue_depth(db: Session = Depends(get_db)):
     #    one grouping by (line, kind, table), ranked by the line's first id and cut at the cap in SQL,
     #    so only the listed lines come back. Both scan the waiting rows only (`idx_outbox_unprocessed`).
     # 🔴 이 표를 비우는 것은 «둘»이다 — 깊이와 나이를 «소유자별로» 가른다(2026-09-04, 소급 실행 «한 건»이
-    #    나이만 먹는 동안 화면이 사람을 체인으로 보냈다).
-    # 🔴 [총괄 b3a4334db] 줄의 신원은 소급 실행(`run_id`)이 있으면 그것, 없으면 `transaction_id`,
-    #    둘 다 없으면 그 행 하나 — `event_constants.queue_line_key`, × 와 워커가 같이 부르는 하나.
-    #    상한은 «줄»에 건다(⚰️ «앞 200 이벤트»를 자른 뒤 접으면 큰 잡 뒤의 잡이 안 보였다).
-    from sqlalchemy import select as _select
-
-    kinds = (db.query(outbox.event_type, _f.count(), _f.min(outbox.created_at),
+    #    나이만 먹는 동안 화면이 사람을 체인으로 보냈다). 줄의 신원과 상한은 `chain.queue_lines` 가 말한다.
+    kinds =(db.query(outbox.event_type, _f.count(), _f.min(outbox.created_at),
                       _f.count().filter(outbox.retry_count > 0))
              .filter(waiting_only).group_by(outbox.event_type).order_by(outbox.event_type).all())
     waiting = sum(count for _kind, count, _oldest, _retried in kinds)
     retried = sum(retried_of_kind for _kind, _count, _oldest, retried_of_kind in kinds)
     by_type = [(kind, count, oldest) for kind, count, oldest, _retried in kinds]
 
-    run_of = outbox.payload["run_id"].as_string()
     line_key = event_constants.queue_line_key(outbox)
-    pairs = (_select(line_key.label("key"), _f.max(run_of).label("run"), outbox.table_name,
-                     outbox.event_type, _f.count().label("events"),
-                     # 묶인 이벤트는 «몇 행»을 싣는지 들고 있다(`row_count`); 행 하나짜리는 1
-                     _f.sum(_f.coalesce(outbox.payload["row_count"].as_integer(), 1)).label("rows"),
-                     _f.min(outbox.id).label("first_id"), _f.min(outbox.created_at).label("created_at"),
-                     _f.max(outbox.retry_count).label("max_retry"))
-             .where(waiting_only).group_by(line_key, outbox.table_name, outbox.event_type).subquery())
-    by_line = _select(pairs, _f.min(pairs.c.first_id).over(partition_by=pairs.c.key)
-                      .label("line_first")).subquery()
-    numbered = _select(by_line, _f.dense_rank().over(order_by=(by_line.c.line_first, by_line.c.key))
-                       .label("line_no")).subquery()
-    counted = _select(numbered, _f.max(numbered.c.line_no).over().label("lines_total")).subquery()
-    folded = {}
-    for pair in db.execute(_select(counted).where(counted.c.line_no <= _QUEUE_LIST_CAP)
-                           .order_by(counted.c.line_no, counted.c.table_name, counted.c.event_type)):
-        line = folded.setdefault(pair.key, {
-            "key": pair.key, "run": None, "events": 0, "rows": 0, "first_id": pair.line_first,
-            "created_at": None, "max_retry": 0, "lines_total": pair.lines_total, "pairs": []})
-        line["run"] = max(filter(None, (line["run"], pair.run)), default=None)
-        line["events"] += pair.events
-        line["rows"] += pair.rows or 0
-        line["created_at"] = min(filter(None, (line["created_at"], pair.created_at)), default=None)
-        line["max_retry"] = max(line["max_retry"], pair.max_retry or 0)
-        line["pairs"].append((pair.table_name, pair.event_type))
-    lines = [SimpleNamespace(**line) for line in folded.values()]
+    # the lines - the one grouping the slot dispatcher gives lines from (총괄 19f6a9277)
+    from chain import queue_lines
+    lines = queue_lines.waiting_lines(db, _QUEUE_LIST_CAP)
     # 가장 오래 기다린 줄이 머리다(`id` 는 단조) — 그 줄의 가장 이른 시각이 큐 전체의 것
     oldest = lines[0].created_at if lines else None
 
@@ -4811,6 +4781,8 @@ def get_chain_queue_depth(db: Session = Depends(get_db)):
                     if line.max_retry else None),
                 payload={event_constants.LAST_FAILURE: last_failure.get(line.key)},
                 waiting_seconds=_age(line.created_at), running=running.get(line.key), paused=paused),
+            # the slot process running it - killing that pid stops this line only (총괄 19f6a9277)
+            "slot_pid": (running.get(line.key) or {}).get("pid"),
         })
 
     owners = {}

@@ -5,7 +5,7 @@ One control file in the config directory, the `auto_update_control.json` shape: 
 atomically, read on every call - so a pause survives a restart (a restart must not release
 the brake) and a resume reaches a running worker without one.
 
-Paused, the chain loop takes no new group, a running group is rewound at its next stage
+Paused, the chain gives no slot a new line, a running group is rewound at its next stage
 boundary (`alignment_batch_counts.interrupt_at_stages`, on the group's own thread) and not
 charged as a failure, and the query it is running is cancelled by the pause itself. Its
 events stay queued: nothing is lost, and Resume runs them.
@@ -67,42 +67,66 @@ def raise_if_paused():
         raise ChainPaused("the chain is paused")
 
 
-def cancel_running_group(db, line_key=None):
-    """Cancel the query the running chain group is waiting on, if there is one - by the pid its
-    beat published (up to one beat old) and only while that pid is still a chain connection,
-    so a pid the database has handed to someone else is never touched. With `line_key` (a ×
-    on one queue line, 소유자 10-08), only when the running group is that line. -> the pid, or None."""
+def cancel_running_group(db, ids=None):
+    """Cancel the queries the running chain groups wait on - each group publishes its database
+    pids in its process's beat (the chain's, a slot's - 총괄 19f6a9277): its session's, and its
+    lock connection's while it waits for a table. Up to one beat old, so only a pid still a
+    chain connection is touched - one the database handed to someone else never is.
+    `ids` (events just set aside, 총괄 10-08): only a group holding one of them - its query is cut,
+    the group rewinds and runs on without them in the same slot; a pause cuts every group.
+    -> the pids cancelled, in order."""
     from sqlalchemy import text
-    from chain import ingestion_worker
+    from chain import ingestion_worker, slots
     from database.database import connection_name
     from utils import heartbeat
 
-    work = (heartbeat.read_all().get("chain") or {}).get("work") or {}
-    facts = work.get("facts") or {}
-    pid = facts.get("db_pid")
-    if line_key is not None and line_key not in (facts.get("line_keys") or ()):
-        return None
-    if pid is None or db.get_bind().dialect.name != "postgresql":
-        return None
-    cancelled = db.execute(text(
-        "SELECT pg_cancel_backend(pid) FROM pg_stat_activity"
-        " WHERE pid = :pid AND application_name = :name"),
-        {"pid": pid, "name": connection_name(ingestion_worker.logger.name)}).scalar()
+    if db.get_bind().dialect.name != "postgresql":
+        return []
+    groups = [((beat.get("work") or {}).get("facts") or {}) for name, beat in heartbeat.read_all().items()
+              if name == ingestion_worker.GROUP_BEAT or name.startswith(slots.BEAT_PREFIX)]
+    if ids is not None:
+        groups = [facts for facts in groups if _holds_one_of(db, facts, ids)]
+    pids = sorted({facts[fact] for facts in groups for fact in ("db_pid", "lock_db_pid") if facts.get(fact)})
+    if not pids:
+        return []
+    cancelled = [row[0] for row in db.execute(text(
+        "SELECT pid FROM pg_stat_activity WHERE pid = ANY(:pids) AND application_name LIKE :chain"
+        " AND pg_cancel_backend(pid) ORDER BY pid"),
+        {"pids": pids, "chain": connection_name(ingestion_worker.logger.name) + "%"})]
     db.commit()
-    return pid if cancelled else None
+    return cancelled
+
+
+def _holds_one_of(db, facts, ids):
+    """Whether the group these work facts describe holds one of `ids`: an event of its line
+    (`line_keys`) within its first and last event (`event_span`)."""
+    import event_constants
+    from chain.set_aside import CHUNK
+    from database.models import DatabaseOutbox as outbox
+
+    span, keys = facts.get("event_span"), facts.get("line_keys")
+    if not span or not keys:
+        return False
+    inside = sorted(i for i in ids if span[0] <= i <= span[1])
+    for start in range(0, len(inside), CHUNK):
+        if db.query(outbox.id).filter(outbox.id.in_(inside[start:start + CHUNK]),
+                                      event_constants.queue_line_key(outbox).in_(keys)).first() is not None:
+            return True
+    return False
 
 
 def stop_line(db, key, by, must_be_run=False):
     """Stop one piece of work - one chain queue line (총괄 e2b5b6f35, 소유자 「x 버튼도 이미 끝난거라고
     안먹어 근데 왜 대기열에 있어?」). Whatever state its run is in, all three: ① a retroactive run
-    is asked to stop ② the line's waiting chain events are set aside ③ the running group's query
-    is cancelled when it is that line. A replay run only stages events and is `done` long before
-    the worker has eaten them, so a stop that ended at ① left the work running.
+    is asked to stop ② the line's waiting chain events are set aside ③ the slot process running
+    that line is stopped (`chain.slots.stop_slot`, 총괄 19f6a9277 - its pid is `slot_pid`).
+    A replay run only stages events and is `done` long before the worker has eaten them, so a
+    stop that ended at ① left the work running.
     The queue line's × and a run's Cancel both call this; `must_be_run` (the latter) refuses a
-    key that is not a run before anything moves. -> `{"run"?, "skipped_events", "cancelled_pid",
+    key that is not a run before anything moves. -> `{"run"?, "skipped_events", "slot_pid",
     "kept"?, "already"?}` - `run` the run's state read back, `done` stays `done`."""
     from admin import retroactive
-    from chain import set_aside
+    from chain import set_aside, slots
     from database import models
 
     run = db.query(models.RetroactiveRun.run_id).filter(models.RetroactiveRun.run_id == key).first() is not None
@@ -110,7 +134,7 @@ def stop_line(db, key, by, must_be_run=False):
         raise retroactive.RetroactiveRefused(f"unknown run_id '{key}'")
     answer = {"run": retroactive.request_cancel(db, key)["state"]} if run else {}
     done = set_aside.set_aside_line(db, key, by, run=run)
-    answer.update(skipped_events=done["marked"], cancelled_pid=cancel_running_group(db, line_key=key))
+    answer.update(skipped_events=done["marked"], slot_pid=slots.stop_slot(db, key))
     if done["kept"]:
         answer["kept"] = {"events": done["kept"],
                           "why": "not chain events - the worker that owns them empties them"}
@@ -121,6 +145,7 @@ def stop_line(db, key, by, must_be_run=False):
 
 def pause_now(db, by, reason):
     """The one act a route and a script both take: record the pause, then cancel the running
-    group's query so it stops within seconds rather than at its next stage boundary."""
+    groups' queries - every slot's - so they stop within seconds rather than at their next stage
+    boundary."""
     state = pause(by, reason)
-    return dict(state, cancelled_pid=cancel_running_group(db))
+    return dict(state, cancelled_pids=cancel_running_group(db))

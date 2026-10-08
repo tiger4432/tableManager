@@ -1,5 +1,46 @@
 # 지금 돌리면 되는 것
 
+> ## [10-08] **체인 대기열 줄 하나 = 슬롯 프로세스 하나 — 줄마다 slot_pid, × 나 그 pid 를 죽이면 그 줄만 멈춘다 — 이주 «없음» · 재기동 «체인 워커 · 서버»**
+>
+> ```
+> 급할 때 — 증상마다 다른 스위치
+>   순서가 틀어진 것 같다(같은 표의 저장이 뒤집힘 · 줄이 앞뒤로 섞임)
+>                -> ingestion_settings.json 에 "chain_slots": 1   한 번에 한 줄, 재기동 없이 다음 바퀴부터
+>   슬롯 자체가 안 뜬다 · 계속 죽는다 · 체인이 아예 안 돈다
+>                -> git revert <이 커밋> -> 체인 워커 · 서버 재기동    chain_slots 1 로는 안 고쳐진다(슬롯 하나도 슬롯이다)
+>
+> 무엇이 바뀌나    체인 워커가 슬롯 프로세스 N 개(python -m chain.slots <n>)를 띄우고 대기열 줄을 맡긴다. 슬롯은 줄을 한 배치씩 돈다
+>                큰 소급 줄 하나는 슬롯 하나만 잡고, 다른 줄은 다른 슬롯에서 돈다. 더 오래 기다린 줄이 있으면 배치 경계에서 그 줄이 슬롯을 받는다
+>                두 슬롯이 같은 표를 동시에 쓰지 않는다 — 같은 표의 줄은 지금 도는 묶음 하나만 기다린다
+> 값 칸          ingestion_settings.json 의 "chain_slots" (적지 않으면 2)
+> 볼 곳          GET /admin/chain/queue 의 줄마다 "slot_pid" (그 줄을 쥔 슬롯의 pid, 없으면 null) 와 "chain_state"
+>                chain_state.state 에 새 낱말 waiting_for_table — why.table 이 그 줄이 기다리는 표
+> 끄기           그 줄의 × — 답의 slot_pid 가 멈춘 슬롯의 pid
+>                또는 cmd 에서: taskkill /F /PID <slot_pid>
+>                pid 를 죽이면 chain_worker.log 에 한 줄:
+>                  [Chain] slot pid <P> ended (exit <C>) before finishing line <열쇠> - <N> waiting event(s) set aside; run them again with rerun_set_aside
+>                  = 그 줄의 남은 대기 이벤트를 빼 두었고 그 줄은 다시 안 돈다. 다른 줄은 계속 돈다
+>                다시 돌리려면 소급 탭의 rerun_set_aside (그 표 · 규칙)
+>                10 초 안에: [Chain] slot <n> started, pid <새 pid>
+> 빼 두기         표 · 규칙 · 거래로 고른 것(소급 연산 set_aside · outbox_triage --cancel)은 고른 이벤트만 뺀다
+>                그 이벤트를 쥔 묶음이 도는 중이면 그 묶음의 질의만 끊고 되감는다 — 슬롯은 살아 그 줄을 이어 간다
+>                chain_worker.log: [slot <n> pid <P>] [Chain] tx '<열쇠>': <N> event(s) were set aside while it ran - left set aside; the other <M> rewound, not failed
+>                  = 같은 줄의 나머지는 시도 수 그대로 다시 돈다
+>                이 줄이 없으면 끊을 질의가 없었던 것(맵퍼가 파이썬 일 중) — 그 묶음은 끝까지 돌았고 빼 둔 표시는 남는다
+>                «the other <M> fail as the group did» 면 질의 끊김이 아니라 맵퍼 오류 — 나머지는 전처럼 실패 길(시도 1 셈)
+>                표를 기다리던 묶음이 끊기면 ERROR 한 줄:
+>                  [slot <n> pid <P>] [Chain] a batch of line <열쇠> raised - its events wait as they were and run again: (…QueryCanceled) …
+>                  = 빼 두기가 그 기다림을 끊었다. 나머지는 시도 수 그대로 1 초 뒤 다시 돈다. QueryCanceled 가 아니면 진짜 예외 — 같은 줄이 계속 나오면 올린다
+>                슬롯을 끄는 것은 줄 전체(× · 실행 Cancel · pid kill)뿐
+> Pause 의 답     cancelled_pid -> cancelled_pids (끊은 pid 목록 — 체인 워커와 슬롯 전부)
+> 로그           파일은 그대로 chain_worker.log 하나. 슬롯의 줄은 머리에 [slot <n> pid <P>] 가 붙어 거기 들어간다
+> 재기동 뒤 볼 줄  chain_worker.log: [Chain] slot 1 started, pid … · [Chain] slot 2 started, pid …
+>                                 [slot 1 pid …] [Chain] slot 1 up, pid …
+>                대기열에 줄이 있으면: [Chain] slot 1 (pid …) runs line <열쇠>
+>                /health 의 workers 에 chain-slot-1 · chain-slot-2
+> ```
+
+---
 > ## [10-08] **대기열 줄 · 행마다 상태 낱말 하나와 그 근거 — 「도는지 · 멈췄는지 · 왜」 — 이주 «없음» · 재기동 «서버 · 체인 워커»**
 >
 > ```
@@ -45,11 +86,11 @@
 > ```
 > 돌릴 것        서버 재기동 뒤 Overview 대기열에서 그 소급 줄(열쇠 = run_id)의 × 한 번
 >                (소급 탭의 그 실행 Cancel 도 같은 함수 — 어느 쪽이든 한 번)
-> 답의 뜻        {"run": "done", "skipped_events": N, "cancelled_pid": P}
+> 답의 뜻        {"run": "done", "skipped_events": N, "slot_pid": P}
 >                run             그 실행의 상태 되읽기. done = 실행은 이미 끝났다 — N 이 그 실행이 넣어 두고 체인이 아직 안 먹은 이벤트
 >                                cancel_requested = 넣는 중 — 실행이 다음 페이지에서 멈추며, 그 사이 넣은 것도 그 자리에서 뺀다
 >                skipped_events  이번에 빼 둔 대기 체인 이벤트 수(지우지 않음 · cancelled_by=operator 표시). 0 = 그 줄에 기다리는 것이 없었다
->                cancelled_pid   돌던 묶음이 그 줄이었으면 끊은 DB pid, 아니면 null
+>                slot_pid        그 줄을 쥔 슬롯 프로세스의 pid — 그 프로세스를 끈다, 쥔 슬롯이 없으면 null (10-08 슬롯, 전엔 cancelled_pid)
 >                두 번 눌러도 안전 — 둘째 답은 skipped_events 0
 > 취소로 끝난 실행  누가 멈췄든(× · Cancel · 앱 정지) 끝나는 자리에서 남은 대기 이벤트를 뺀다 — 이유 칸 「run <id> cancelled」
 >                전엔 앱 정지로 끊긴 소급의 남은 이벤트를 재기동 뒤 워커가 먹었다(반쪽 소급이 조용히 돌았다)

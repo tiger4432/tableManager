@@ -190,8 +190,27 @@ def _configured_logger(process_name: str) -> logging.Logger:
     return logger
 
 
-def get_process_logger(process_name: str, log_filename: str) -> logging.Logger:
+#: A relayed line - what a child process writes to its stderr so its parent can write it into ITS
+#: log file (`relayed`): level, logger name, message, tab-separated. Continuation lines of a
+#: traceback carry no tabs.
+RELAY_FORMAT = "%(levelname)s\t%(name)s\t%(message)s"
+
+
+def relayed(line):
+    """-> `(level, logger name, message)` of a relayed line, or None for a continuation line."""
+    parts = line.rstrip("\r\n").split("\t", 2)
+    if len(parts) == 3 and parts[0] in logging._nameToLevel:
+        return logging._nameToLevel[parts[0]], parts[1], parts[2]
+    return None
+
+
+def get_process_logger(process_name: str, log_filename: str, relay=None) -> logging.Logger:
     """
+    🆕 `relay` (a stream, 총괄 19f6a9277): the process writes NO file of its own - one handler
+    writes `RELAY_FORMAT` lines to `relay`, and the parent that reads them writes them into
+    `log_filename`. A chain slot's lines land in chain_worker.log through its dispatcher - one
+    writer per file, and the owner reads one chain log.
+
     공통 로깅 규격을 따르며, 프로세스별 고유 컬러(ANSI) 스트림 핸들러와
     깨끗한 Plain-Text 파일 핸들러가 결합된 전용 Logger 인스턴스를 반환합니다.
 
@@ -255,6 +274,16 @@ def get_process_logger(process_name: str, log_filename: str) -> logging.Logger:
         except Exception:
             pass
     root_logger.setLevel(logging.INFO)
+
+    if relay is not None:
+        relay_handler = ConsoleSafeHandler(relay)
+        relay_handler.setFormatter(logging.Formatter(RELAY_FORMAT))
+        root_logger.addHandler(relay_handler)
+        for noisy in NOISY_THIRD_PARTY:
+            logging.getLogger(noisy).setLevel(logging.WARNING)
+        _ACTIVE.update({"process_name": process_name, "filename": log_filename,
+                        "path": paths.log_path(log_filename)})
+        return _configured_logger(process_name)
 
     # 1. 콘솔 핸들러 (동적 컬러 Formatter 장착)
     # ConsoleSafeHandler, not StreamHandler: this one line covers every process

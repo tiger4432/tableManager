@@ -144,6 +144,11 @@ def fixture_pg_db(pg_engine, tmp_path, monkeypatch):
                         lambda name: str(tmp_path / "beats" / (name + ".json")))
     monkeypatch.setattr(process_logging, "active_process_name", lambda: "Chain")
     monkeypatch.setattr(retroactive, "announce_progress", lambda *a, **k: None)
+
+    async def no_notice(pending, factory):
+        """A group's notices stay here - a test passed or failed never reaches the API a box runs
+        (총괄 daf4985d5 QA: a 401 from 127.0.0.1:8080, nothing sent). The order guard's own stand-in."""
+    monkeypatch.setattr(worker, "_dispatch_broadcasts", no_notice)
     mapper_sdk.discover()
     (tmp_path / "tl_slow.py").write_text(textwrap.dedent(SLOW), encoding="utf-8")
     monkeypatch.syspath_prepend(str(tmp_path))

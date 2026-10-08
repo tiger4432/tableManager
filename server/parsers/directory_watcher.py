@@ -417,7 +417,7 @@ def _timeout_seconds(settings, cell, absent):
 
 def file_write_timeouts(settings=None):
     """`(lock seconds, statement seconds)` for a file's write transactions, None = no limit.
-    Set on every transaction the file channel begins (`database._bound_the_file_writes`)."""
+    Set on every transaction the file channel begins (`database._set_file_and_chain_time_limits`)."""
     settings = load_ingestion_settings() if settings is None else settings
     return (_timeout_seconds(settings, LOCK_TIMEOUT_SETTING, heartbeat.DEFAULT_STALL_AFTER_SEC),
             _timeout_seconds(settings, STATEMENT_TIMEOUT_SETTING, None))
