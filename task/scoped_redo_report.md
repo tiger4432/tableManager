@@ -75139,3 +75139,56 @@ OLD (origin/main worker, screen service, setup, backfill) [sqlite] 3 failed, 9 p
 여쭐 것 ① 운영 세상을 이름 default 가 아니라 operating_world() 로 잡았습니다(가지를 운영으로 돌렸으면 그 가지가 «멈추는» 세상)
        ② 따라가기가 멈춰도 /health 는 안 바뀝니다(지시에 없음) — 붙일지
 ```
+
+---
+
+## [10-08] 걷기 라우트 기본 예산이 걷기 상수를 부른다 a0ceb5992 (총괄 de9455c17)
+
+어느 DB · 어느 스키마 · 지운 것 — 시험은 DB 없음(라우트를 앱에 얹고 걷기 자리를 가로챔) · 박스 잼은 읽기 전용 엔진(db_safety.open_readonly_engine)으로 박스 DB assy_manager public 을 «읽기만» · 쓴 것 · 지운 것 0
+
+### 1 셈 — 숫자 사본
+
+```
+trace_router.evidence_subgraph  hops 12 · le 40 · node_limit 400 · le 1000 · edge_limit 1200(걷기 상수 6000 과 갈라짐)
+                                -> 다섯 다 ledger_subgraph 상수를 부름
+ledger/explorer.py              MAX_HOPS · DEFAULT_NODE_LIMIT 400 · DEFAULT_EDGE_LIMIT 1200 — 읽는 코드 0 (git grep) -> 지움
+claims 상한                      min(MAX_CLAIM_SCAN, max(200, 2 x edge)) — 엣지 6000 이면 6000 (전엔 2400)
+```
+
+### 2 박스 잼 — 걷기 화면 기본 요청(id + fanout_limit 20), 엣지 1200 대 6000 · 운영 모양 아님
+
+```
+seed: the wafer with the most atoms {"wafer": "SYN-CX-BW-001"} atoms 256
+   canary atoms in the operating ledger: 2380869
+   edge_limit  1200  0.99 s  nodes    1  edges     0  bundles   2  claims limit 2400  cut []
+   edge_limit  6000  0.17 s  nodes    1  edges     0  bundles   2  claims limit 6000  cut []
+   edge_limit  1200  0.16 s  nodes    1  edges     0  bundles   2  claims limit 2400  cut []
+   edge_limit  6000  0.20 s  nodes    1  edges     0  bundles   2  claims limit 6000  cut []
+seed: wafer SYN-BW-101-16 (board path in ledger_subgraph's comment)
+   canary atoms in the operating ledger: 2380869
+   edge_limit  1200  1.18 s  nodes   19  edges    18  bundles   2  claims limit 2400  cut []
+   edge_limit  6000  0.20 s  nodes   19  edges    18  bundles   2  claims limit 6000  cut []
+   edge_limit  1200  0.19 s  nodes   19  edges    18  bundles   2  claims limit 2400  cut []
+   edge_limit  6000  0.22 s  nodes   19  edges    18  bundles   2  claims limit 6000  cut []
+```
+두 씨앗 다 1200 과 6000 이 같은 그림 — 갈래 묶음(fanout 20)이 엣지 상한보다 먼저 걷기를 줄인다. 첫 씨앗은 «1 노드 · 0 엣지 · 묶음 2» — 11e5ea207 의 증상이 이 박스에서도 보임
+
+### 3 게이트 · 변이 — md5 같음
+
+```
+BASELINE exit 0  10 passed, 6 warnings
+MUTANT the route spells 1200 again                              exit 1  1 failed, 9 passed, 6 warnings
+    FAILED test_a_request_that_names_no_budget_walks_on_the_walks_own_defaults
+MUTANT the route spells 400 nodes again, the walk's at 300      exit 1  1 failed, 9 passed, 6 warnings
+    FAILED test_a_request_that_names_no_budget_walks_on_the_walks_own_defaults
+MUTANT the walk's node constant moved to 300 (expected green)   exit 0  10 passed, 6 warnings
+MUTANT the walk's edge constant moved to 5000 (expected green)  exit 0  10 passed, 6 warnings
+MUTANT OLD (origin/main trace_router)                           exit 1  1 failed, 9 passed, 6 warnings
+    FAILED test_a_request_that_names_no_budget_walks_on_the_walks_own_defaults
+```
+
+### 4 전체 sqlite
+
+```
+5 failed, 8027 passed, 374 skipped, 3 xfailed, 13214 warnings — 실패는 알려진 박스 실패뿐
+```
