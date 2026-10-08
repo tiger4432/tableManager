@@ -4903,10 +4903,11 @@ def skip_chain_queue_line(request: Request, body: dict = Body(...), db: Session 
     (`chain/set_aside`) - so the source rows and the ledger follow-up stay as they are, and the
     rule's replay brings them back (`rerun_set_aside`). The mark is committed BEFORE the running
     group's query is cancelled, so that group's failure finds it and leaves it.
-    A retroactive run's line goes to the run's own cancel and answers what it answers. A key that
-    no longer waits answers 200 with what became of it - a line often empties between the list
-    and the click."""
-    from chain import control, set_aside
+    A retroactive run's line is stopped as a whole - the run asked to stop, its waiting events set
+    aside, its running group cut - whatever state the run is in (`chain.control.stop_line`, 총괄
+    e2b5b6f35). A key that no longer waits answers 200 with what became of it - a line often
+    empties between the list and the click."""
+    from chain import control
 
     key = body.get("key") if isinstance(body, dict) else None
     prefix = event_constants.QUEUE_ROW_KEY_PREFIX
@@ -4914,40 +4915,14 @@ def skip_chain_queue_line(request: Request, body: dict = Body(...), db: Session 
             or (key.startswith(prefix) and not key[len(prefix):].isdigit())):
         raise HTTPException(status_code=422,
                             detail="key must be the cancel.key a line of GET /admin/chain/queue carries")
-    if db.query(models.RetroactiveRun.run_id).filter(models.RetroactiveRun.run_id == key).first():
-        return cancel_retroactive_run(key, db)
-    outbox = models.DatabaseOutbox
-    waiting = (db.query(outbox.id, outbox.event_type)
-               .filter(outbox.processed_chain == False,  # noqa: E712 - 부분 인덱스의 술어 철자
-                       *event_constants.queue_line_rows(outbox, key)).all())
-    if not waiting:
-        return {"skipped_events": 0, "already": _queue_line_already(db, key)}
-    by = sso.who(request, request.headers.get("X-User") or set_aside.OPERATOR)
-    chain_ids = [row.id for row in waiting if row.event_type in event_constants.CHAIN_OWNED_EVENT_TYPES]
-    done = (set_aside.set_aside(db, ids=chain_ids, apply=True,
-                                reason="skipped from the chain queue by %s" % by)
-            if chain_ids else {"marked": 0, "by_table": {}})
-    for table, events in sorted(done["by_table"].items()):
-        crud.create_audit_log(db, table, "*", "*", key, events, set_aside.QUEUE_SKIP_SOURCE, by)
-    db.commit()
-    answer = {"skipped_events": done["marked"],
-              "cancelled_pid": control.cancel_running_group(db, line_key=key)}
-    if len(waiting) > len(chain_ids):
-        answer["kept"] = {"events": len(waiting) - len(chain_ids),
-                          "why": "not chain events - the worker that owns them empties them"}
-    return answer
+    return control.stop_line(db, key, _who_stops(request))
 
 
-def _queue_line_already(db, key):
-    """What became of a queue line that no longer waits: its rows set aside, ended, or none."""
-    outbox = models.DatabaseOutbox
-    rows = db.query(outbox.id).filter(*event_constants.queue_line_rows(outbox, key))
-    if rows.first() is None:
-        return "gone"
+def _who_stops(request):
+    """Who a stop says did it - the signed-in user, else `X-User`, else the operator."""
     from chain import set_aside
 
-    marked = rows.filter(outbox.payload[event_constants.CANCEL_MARK].as_string() == set_aside.OPERATOR)
-    return "set_aside" if marked.first() is not None else "processed"
+    return sso.who(request, request.headers.get("X-User") or set_aside.OPERATOR)
 
 
 _QUEUE_ROWS_CAP = 200
@@ -6972,8 +6947,10 @@ def list_retroactive_runs(limit: int = 50, db: Session = Depends(get_db)):
 
 @app.post("/admin/retroactive/runs/{run_id}/cancel",
           dependencies=[Depends(require_admin_token)])
-def cancel_retroactive_run(run_id: str, db: Session = Depends(get_db)):
-    """실행에 «멈춰 달라»고 적는다. 프로세스를 죽이지 «않는다».
+def cancel_retroactive_run(run_id: str, request: Request, db: Session = Depends(get_db)):
+    """실행에 «멈춰 달라»고 적는다. 프로세스를 죽이지 «않는다». 대기열 줄 × 와 «같은 함수»
+    (`chain.control.stop_line`, 총괄 e2b5b6f35) — 그 실행의 대기 이벤트도 빼 두고, 돌던 묶음이
+    그 줄이면 질의를 끊는다.
 
     🔴 이 라우트가 하는 일은 값 하나를 세우는 것뿐이고, 멈추는 것은 «연산 자신»이다 —
     배치 사이에서 그 값을 보고 스스로 멈춘다. 그래서 안전하다: 이 등록부의 연산은 전부
@@ -6983,20 +6960,22 @@ def cancel_retroactive_run(run_id: str, db: Session = Depends(get_db)):
     ⚠️ `cancellable: false` 인 연산에는 이 버튼을 «내지 마십시오» — 그 연산은 배치 경계가
     없어서 요청을 세워도 볼 자리가 없습니다. 목록(`/operations`)이 그 값을 들고 있다.
 
-    이미 끝난 실행은 «이름으로 거절»한다. 끝난 것에 「취소됨」을 돌려주면 운영자는 자기
-    데이터가 반만 처리됐다고 읽는데, 사실은 전부 처리됐다.
+    이미 끝난 실행은 거절하지 않고 «그 상태 낱말»로 답한다(`run: "done"`) — 소급 리플레이는
+    이벤트를 넣기만 하고 `done` 이라, 거절이 그 이벤트를 남겼다. 끝난 것을 「취소됨」으로
+    적지는 않는다 — 운영자가 데이터가 반만 처리됐다고 읽는다. 모르는 run_id 는 거절한다.
     """
     from admin import retroactive
+    from chain import control
 
     try:
-        return retroactive.request_cancel(db, run_id)
+        return control.stop_line(db, run_id, _who_stops(request), must_be_run=True)
     except retroactive.RetroactiveRefused as e:
         db.rollback()
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         db.rollback()
-        logger.error(f"[Retroactive] failed to request cancel run_id={run_id}: {e}")
-        raise HTTPException(status_code=500, detail=f"취소 요청을 적지 못했습니다: {e}")
+        logger.error(f"[Retroactive] failed to stop run_id={run_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Could not stop the run: {e}")
 
 
 def _failed_under_folder(logs, folder):

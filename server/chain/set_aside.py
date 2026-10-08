@@ -95,6 +95,37 @@ def set_aside(db, tables=(), rules=(), transactions=(), since=None, per_row_only
     return out
 
 
+def set_aside_line(db, key, by, run=False, reason=None):
+    """One chain queue line's waiting chain events set aside - a stop's second step, and again
+    where a stopped run lands (총괄 e2b5b6f35). One audit line per table says who and how many.
+    Events the chain does not own wait on for their worker. -> `{"waited", "marked", "kept"}`"""
+    reason = reason or "skipped from the chain queue by %s" % by
+    from database import crud
+    from database.models import DatabaseOutbox as outbox
+
+    waiting = (db.query(outbox.id, outbox.event_type)
+               .filter(outbox.processed_chain == False,  # noqa: E712 - 부분 인덱스의 술어 철자
+                       *event_constants.queue_line_rows(outbox, key, run=run)).all())
+    chain_ids = [row.id for row in waiting if row.event_type in event_constants.CHAIN_OWNED_EVENT_TYPES]
+    done = (set_aside(db, ids=chain_ids, apply=True, reason=reason)
+            if chain_ids else {"marked": 0, "by_table": {}})
+    for table, events in sorted(done["by_table"].items()):
+        crud.create_audit_log(db, table, "*", "*", key, events, QUEUE_SKIP_SOURCE, by)
+    db.commit()
+    return {"waited": len(waiting), "marked": done["marked"], "kept": len(waiting) - len(chain_ids)}
+
+
+def line_already(db, key):
+    """What became of a queue line that no longer waits: its rows set aside, ended, or none."""
+    from database.models import DatabaseOutbox as outbox
+
+    rows = db.query(outbox.id).filter(*event_constants.queue_line_rows(outbox, key))
+    if rows.first() is None:
+        return "gone"
+    marked = rows.filter(outbox.payload[event_constants.CANCEL_MARK].as_string() == OPERATOR)
+    return "set_aside" if marked.first() is not None else "processed"
+
+
 def _mark(db, ids, reason):
     """`mark_cancelled` on the rows of `ids` STILL WAITING - set-based on PostgreSQL (a flooded
     queue is 660,000 rows - loading them to edit a dict would be its own outage) and per object

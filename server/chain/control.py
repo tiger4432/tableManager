@@ -92,6 +92,33 @@ def cancel_running_group(db, line_key=None):
     return pid if cancelled else None
 
 
+def stop_line(db, key, by, must_be_run=False):
+    """Stop one piece of work - one chain queue line (총괄 e2b5b6f35, 소유자 「x 버튼도 이미 끝난거라고
+    안먹어 근데 왜 대기열에 있어?」). Whatever state its run is in, all three: ① a retroactive run
+    is asked to stop ② the line's waiting chain events are set aside ③ the running group's query
+    is cancelled when it is that line. A replay run only stages events and is `done` long before
+    the worker has eaten them, so a stop that ended at ① left the work running.
+    The queue line's × and a run's Cancel both call this; `must_be_run` (the latter) refuses a
+    key that is not a run before anything moves. -> `{"run"?, "skipped_events", "cancelled_pid",
+    "kept"?, "already"?}` - `run` the run's state read back, `done` stays `done`."""
+    from admin import retroactive
+    from chain import set_aside
+    from database import models
+
+    run = db.query(models.RetroactiveRun.run_id).filter(models.RetroactiveRun.run_id == key).first() is not None
+    if must_be_run and not run:
+        raise retroactive.RetroactiveRefused(f"unknown run_id '{key}'")
+    answer = {"run": retroactive.request_cancel(db, key)["state"]} if run else {}
+    done = set_aside.set_aside_line(db, key, by, run=run)
+    answer.update(skipped_events=done["marked"], cancelled_pid=cancel_running_group(db, line_key=key))
+    if done["kept"]:
+        answer["kept"] = {"events": done["kept"],
+                          "why": "not chain events - the worker that owns them empties them"}
+    if not done["waited"] and not run:
+        answer["already"] = set_aside.line_already(db, key)
+    return answer
+
+
 def pause_now(db, by, reason):
     """The one act a route and a script both take: record the pause, then cancel the running
     group's query so it stops within seconds rather than at its next stage boundary."""
