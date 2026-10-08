@@ -36733,3 +36733,50 @@ b340386fe
         그 규칙은 전에도 돌다가 터졌으니 잃는 동작은 없다. 단 글자 «하나»짜리 칸 이름(list("k") = ["k"])은 전에 돌았고 이제 빠진다 — 드문 모양
 문서    SETUP_ORDER 의 params 줄에 형 선언 · 거절 — 이 보고와 같은 커밋
 ```
+
+---
+
+## [C 응용] 10-08 397c23f6f(대기열 5 초 · × 의 새 읽기 · outbox 복사) · 2c5fa512a(표에서 이어 걷기) QA — 앞 지적 둘 닫힘 · 물음 하나
+
+```
+397c23f6f  × 뒤 읽기가 가는 중인 읽기를 기다린 뒤 새로 떠난다 — 4d0f68d08 보고의 ① 닫힘(코드로 읽음: 그 약속은 finally 로 비운 뒤에 풀린다)
+           행 하나짜리 줄이 outbox_id 를 «Outbox ID» 로 복사 — f8dbf3399 보고의 «작은 것» 닫힘
+           자체 폴 5000 ms 켬 — 탭이 보일 때만 · 가는 중이면 건너뜀. 간격은 읽기가 «끝난 뒤» 다시 잰다. 운영에서 새 라우트 한 번이 몇 초인지는 아직 아무도 안 쟀다
+           (안 닫힘) 200 {"already": "processed"} 를 화면이 말없이 «됨»으로 — 35eacf3d2 보고 그대로
+2c5fa512a  체크 칸은 그래프의 다음 걸음 마킹에 쓴다 · Next 의 엣지는 선언의 typeGraph · 체크 0 이면 막힘 — 지시 그대로
+하니스     chain_rule_user_path 98/0 · chain_queue_panel 219/0 · walk_table 43/0 · walk_layout 27/0 (통과/실패 · node · 이 트리)
+물음       지시는 「다음 걸음 요청 = 그래프 Continue 가 짓는 그 함수 하나 — 둘째 요청 짓기 금지」였다
+           그런데 그래프 Continue 는 그런 함수를 안 짓는다 — Continue 는 마킹에서 «전체 걷기»(positive · negative · fanout_limit · expand, follow · collect · hops 없음)다
+           그래서 새 함수 stepAlong 이 생겼고 부르는 곳은 표의 Next 하나다. 그래프의 덩어리 걷기(subgraph_view._lumpSource)는 «한 걸음» 요청을 따로 짓는다 —
+           방향을 덩어리 방향의 반대로 하나 · node_limit STEP_NODE_LIMIT · 시간 창(since · until). stepAlong 은 both · 기본 node_limit · 창 없음
+           -> «한 걸음 요청»을 짓는 자리가 지금 둘이고 모양이 갈라져 있다. c06b45ea5 는 «+M more» 덩어리 열기를 stepAlong 으로 하라 했으니
+              그 라운드에 덩어리 걷기도 stepAlong 을 지나게 할지(방향 · 창을 인자로) 총괄 판정
+문서       CODE_MAP — 제가 적은 두 줄(폴 꺼짐 · 글자 복사)을 지금으로 · derive.js 에 stepAlong · table_view 에 nextRoutes — 이 보고와 같은 커밋
+```
+
+---
+
+## [C 응용] 10-08 b91acfd95(exclude_when 의 값 조건) QA — 결함 못 찾음 · 작은 것 하나 (코드로 읽음 · 시험 돌림)
+
+```
+읽음    행 판정은 event_frame.row_excluded 하나 — 부르는 곳 2(페이지 · 백필 셈). 값은 매핑 when 의 _unit_says 로 견준다 — 둘째 비교 없음
+        그 칸이 빈 행은 값 조건으로 안 빠진다(빈 값 ≠ 값) · 검증은 _validate_when 을 그대로 지난다
+시험    두 파일 23 통과 (이 트리 · sqlite)
+작은 것  온톨로지 탐색기의 작성 계획(config_authoring) 「Exclude when」 칸은 후보로 {"column", "blank": true} 만 낸다
+        그 바로 위 주석은 「a candidate is the whole clause _validate_exclude_when accepts」 — 이제 반만 참이다
+        선언 폼(ledger_skeleton.json)은 when 을 적을 수 있으니 소유자가 막히지는 않는다. 후보에 when 모양을 더할지 · 주석을 고칠지는 총괄 판정
+문서    BASIS · LEDGER_SCHEMA_COMPLETENESS 의 exclude_when 철자에 when — 이 보고와 같은 커밋. ONTOLOGY_LEDGER_SETUP · CODE_MAP 은 구현자가 맞춤
+```
+
+---
+
+## [C 응용] 10-08 총괄 e2b5b6f35(stop_line) 에 — 내 83023aa5d 검수가 놓친 것 · 그 함수의 ③ 에 남는 틈
+
+```
+놓친 것  83023aa5d 검수에서 «소급 실행 열쇠면 그 실행의 취소 답»(main.py skip_chain_queue_line 의 return)을 문서에 적고 지나갔다
+        그 답이 «무엇을 안 하는지»(그 run_id 의 대기 이벤트를 안 뺀다)를 묻지 않았다 — 시험 이름(a run's line answers what the run's own cancel answers)을 «맞다»로 읽었다
+남는 틈  stop_line ③(돌던 묶음 질의 끊기)도 pg_cancel_backend 다 — «도는 질의»만 끊는다
+        묶음이 맵퍼(파이썬)이나 문장 사이에 있으면 끊을 것이 없고, 묶음은 끝까지 가서 성공 길에서 SUCCESS 를 쓴다(54a53f894 에서 잼 — 규칙이 돌았는데 행은 «치워 둠»)
+        그래서 ② 로 뺀 행이 실제로는 돌았을 수 있다. 게이트 표에 «× 가 닿을 때 묶음이 파이썬 안» 칸을 더하면 이 틈이 표에 선다
+        (성공 길이 끝 쓰기 전에 _still_waiting 을 묻거나, 그 행을 «돌았음»으로 남기고 답의 skipped_events 에서 빼는 것 — 모양은 총괄 판정)
+```

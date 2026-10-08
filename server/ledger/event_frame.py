@@ -29,9 +29,10 @@ from .roleframe import (
     SOURCE_OCCURRED_AT_COLUMN,
     SOURCE_ROW_REF_COLUMN,
     _is_missing,
+    _unit_says,
     read_columns_once,
 )
-from .setup_bundle import entity_type_column
+from .setup_bundle import entity_type_column, exclusion_columns
 from .setup_registry import (
     LedgerSetupSnapshot,
     SourcePlan,
@@ -163,6 +164,21 @@ def is_blank_source_value(value: Any) -> bool:
     return _is_missing(value) or (isinstance(value, str) and not value.strip())
 
 
+def row_excluded(clauses: Sequence[Mapping[str, Any]], value_of) -> bool:
+    """Does `read.exclude_when` take this row out - ANY clause: its column blank, or its `when`
+    matched the way a mapping's `when` is (`_unit_says`, one spelling of equality) - so a row whose
+    column is empty is not taken out by a value (총괄 e91433bf1). `value_of(column)` reads the row.
+    The page and the backfill's census ask this one function."""
+    for clause in clauses:
+        when = clause.get("when")
+        if when is not None:
+            if _unit_says({column: (value_of(column),) for column in when}, when):
+                return True
+        elif is_blank_source_value(value_of(clause["column"])):
+            return True
+    return False
+
+
 @dataclass(frozen=True)
 class MoleculeRefusal:
     """One molecule the preparation could not build, named the way the GATE names it.
@@ -262,7 +278,8 @@ def bound_select_columns(source_plan: SourcePlan) -> tuple[str, ...]:
         order_by=driver.order_by,
         cursor_columns=driver.cursor_columns,
         occurred_at_column=driver.occurred_at.column,
-        exclude_when_columns=[clause["column"] for clause in driver.exclude_when],
+        exclude_when_columns=[column for clause in driver.exclude_when
+                              for column in exclusion_columns(clause)],
         condition_columns=sorted({
             column
             for mapping in source_plan.profile.mappings.values()
@@ -340,8 +357,8 @@ def _without_excluded_rows(context: SourcePreparationContext,
                            base: pd.DataFrame) -> pd.DataFrame:
     """The page minus the rows `read.exclude_when` says are not this source's.
 
-    A row is excluded when ANY named column is blank (`is_blank_source_value`). The rows
-    leave here before anything asks them for an identity. `lot_event` held two generations
+    A row is excluded when ANY clause takes it (`row_excluded`). The rows leave here before
+    anything asks them for an identity. `lot_event` held two generations
     that spelled the same facts differently, and the old one arrived at the identity loop
     with nothing in it and refused the whole batch.
 
@@ -357,8 +374,7 @@ def _without_excluded_rows(context: SourcePreparationContext,
     exclude_when = context.source_plan.driver.exclude_when
     if exclude_when:
         cells = read_columns_once(out)
-        columns = [clause["column"] for clause in exclude_when]
-        excluded = [any(is_blank_source_value(cells[column][position]) for column in columns)
+        excluded = [row_excluded(exclude_when, lambda column, at=position: cells[column][at])
                     for position in range(len(out))]
         context.excluded_rows.append(sum(excluded))
         out = out.loc[[not value for value in excluded]].reset_index(drop=True)

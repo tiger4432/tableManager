@@ -677,7 +677,7 @@
                           "fields": [
                             {
                               "key": "column",
-                              "required": true,
+                              "required": false,
                               "node": {
                                 "kind": "leaf",
                                 "hint": "free"
@@ -685,10 +685,24 @@
                             },
                             {
                               "key": "blank",
-                              "required": true,
+                              "required": false,
                               "node": {
                                 "kind": "leaf",
                                 "hint": "flag"
+                              }
+                            },
+                            {
+                              "key": "when",
+                              "required": false,
+                              "label": "Row condition",
+                              "node": {
+                                "kind": "map",
+                                "keyed_by": "name",
+                                "member": "Column",
+                                "of": {
+                                  "kind": "leaf",
+                                  "hint": "free"
+                                }
                               }
                             }
                           ]

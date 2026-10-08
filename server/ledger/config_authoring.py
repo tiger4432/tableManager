@@ -1525,7 +1525,7 @@ def _source_fields(bundle: Mapping[str, Any], catalog: Mapping[str, Any]
         # `_validate_exclude_when` accepts, so the screen writes no shape of its own.
         excluded = list(_listed(driver.get("exclude_when")))
         yield Field(
-            path=f"{base}.read.exclude_when", step="sources", label="Exclude when blank",
+            path=f"{base}.read.exclude_when", step="sources", label="Exclude when",
             state="answered" if excluded else "unanswered", tier=TIER_CONSTRAINED,
             value=excluded or None, declared=excluded if excluded else _ABSENT,
             candidates=tuple({"column": name, "blank": True} for name in physical),

@@ -134,3 +134,56 @@ def test_a_predicate_other_than_blank_is_refused():
 # ⚰️ RETIRED with the preparer (setup_version 6): `test_declaring_it_under_a_preparer_that_
 # cannot_read_it_is_refused` (판정 194 ㉡). The clause is applied by the event frame on every
 # source now, so there is no implementation under which it could silently do nothing.
+
+
+# ---------------------------------------------------------------- a value, spelled as a mapping's `when`
+# 총괄 e91433bf1 · f500524be, 소유자 「type 이 bbox 가 아닌 행만 올리려면」: no operator of its own
+
+def _landed(clauses, notes):
+    base = base_rows(len(notes))
+    base["event_at"] = [NOW] * len(notes)
+    base["unselected_note"] = notes
+    frames = prepare_v2_cursor_batch(snapshot(_with_exclusion(clauses)), SOURCE, base)
+    return sorted(source for frame in frames for source in frame["source_id"].tolist())
+
+
+def test_a_value_condition_takes_out_the_rows_it_names_and_not_a_blank_one():
+    landed = _landed([{"when": {"unselected_note": "bbox"}}], ["bbox", "die", None, "   "])
+    assert landed == ["IN-0001", "IN-0002", "IN-0003"], landed      # a blank type stays
+
+
+def test_a_value_condition_compares_as_a_mappings_when_does():
+    """Numbers and text alike - `clean_str_value` on both sides, as a sentence's `when`; two values
+    are two clauses, and a row any clause takes is out."""
+    assert _landed([{"when": {"unselected_note": 1}}], [1.0, 2.0, "1"]) == ["IN-0001"]
+    assert _landed([{"when": {"unselected_note": "bbox"}}, {"when": {"unselected_note": "die"}}],
+                   ["bbox", "die", "wafer"]) == ["IN-0002"]
+
+
+def test_a_column_named_only_by_a_value_condition_still_reaches_the_read():
+    from ledger.event_frame import bound_select_columns
+
+    compiled = snapshot(_with_exclusion([{"when": {"unselected_note": "bbox"}}]))
+    assert "unselected_note" in bound_select_columns(compiled.source_plans[SOURCE])
+
+
+@pytest.mark.parametrize("clause, refused_at", [
+    ({"column": "unselected_note", "blank": True, "when": {"unselected_note": "x"}}, "exclude_when[0]"),
+    ({"when": {}}, "exclude_when[0].when"),
+    ({"when": {"unselected_note": ["bbox", "die"]}}, "exclude_when[0].when.unselected_note"),
+    ({"when": {"not_a_column": "x"}}, "exclude_when[0].when.not_a_column"),
+], ids=["blank-and-when", "empty-when", "a-list-value", "unknown-column"])
+def test_a_value_condition_the_grammar_cannot_read_is_refused(clause, refused_at):
+    new = paths_of(_with_exclusion([clause])) - paths_of(logical_bundle())
+    assert any(path.endswith(refused_at) or (refused_at + ".") in path for path in new), sorted(new)
+
+
+def test_the_clauses_the_form_is_offered_are_the_ones_the_grammar_takes():
+    from ledger.setup_bundle import public_bundle_schema
+
+    offered = public_bundle_schema()["exclude_when_clauses"]
+    filled = [{k: ({"unselected_note": "x"} if k == "when" else
+                   "unselected_note" if v == "<column>" else v) for k, v in shape.items()}
+              for shape in offered]
+    assert len(filled) == 2
+    assert paths_of(_with_exclusion(filled)) == paths_of(logical_bundle())

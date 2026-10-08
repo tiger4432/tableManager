@@ -75512,3 +75512,56 @@ hold copy PG 시험(이 맵퍼가 실제로 도는 시험) — 24 passed, 8410 d
 ```
 5 failed, 8049 passed, 377 skipped, 3 xfailed, 13257 warnings — 실패는 알려진 박스 실패뿐
 ```
+
+---
+
+## [10-08] 원장 소스 read.exclude_when 에 값 조건 — 매핑 when 과 같은 철자 b91acfd95 (총괄 e91433bf1 · f500524be)
+
+어느 DB · 어느 스키마 · 지운 것 — DB 없음(메모리 프레임 · 가짜 색인 저장소) · 쓴 것 · 지운 것 0
+
+```
+문법     한 조건 = {"column", "blank": true} 또는 {"when": {...}} — 안쪽은 _validate_when 그대로(같음만 · 키 AND), 새 낱말 없음
+         값 여럿 = 줄 여럿(하나라도 맞으면 제외 — 지금 규칙) · 둘을 한 줄에 · 빈 when · 리스트 값 · 없는 칸은 거절
+판정     event_frame.row_excluded 하나 — 쪽 거르기와 backfill.count_excluded_but_indexed(전엔 둘이 «빈 칸» 줄을 각자 적음)가 같이 부름
+         값은 roleframe._unit_says(매핑 when 의 그 견주기 — clean_str_value 양쪽) · 그 칸이 빈 행은 값으로 안 빠짐(SQL NOT IN 의 NULL 함정 없음)
+읽을 칸   setup_bundle.exclusion_columns — when 이 부르는 칸도 읽기에 들어감(관계 칸 검사도 같은 함수)
+폼       ledger_skeleton.json 의 Condition 에 when(Row condition) — column · blank 와 나란히(셋 다 선택) ·
+         public_bundle_schema 에 exclude_when_clauses 두 모양 · 칸 이름 «Exclude when»
+         ⚠️ 클라가 값 칸을 그리는지는 클라 몫 — 스켈레톤의 map(keyed_by name) 을 매핑 when 처럼 그리면 된다
+소급     선언만 바꾸면 이미 쓴 행의 원자는 그대로 — 그 행만 다시 번역: python -m ledger.backfill --source <소스>
+         --scope-column <칸> --scope-values <값> (미리보기) -> --apply. RUN.md 같은 절
+```
+
+### 게이트 · 변이 — md5 같음
+
+```
+BASELINE exit 0  28 passed, 6 warnings
+MUTANT a value condition is not asked                   exit 1  3 failed, 25 passed, 6 warnings
+    FAILED test_a_value_condition_added_later_takes_its_rows_atoms_back_on_the_redo
+    FAILED test_a_value_condition_compares_as_a_mappings_when_does
+    FAILED test_a_value_condition_takes_out_the_rows_it_names_and_not_a_blank_one
+MUTANT a blank value is taken out by a value condition  exit 1  1 failed, 27 passed, 6 warnings
+    FAILED test_a_value_condition_takes_out_the_rows_it_names_and_not_a_blank_one
+MUTANT blank and when may sit in one clause             exit 1  1 failed, 27 passed, 6 warnings
+    FAILED test_a_value_condition_the_grammar_cannot_read_is_refused[blank-and-when]
+MUTANT a when column is not read                        exit 1  5 failed, 23 passed, 6 warnings
+    FAILED test_a_column_named_only_by_a_value_condition_still_reaches_the_read
+    FAILED test_a_value_condition_added_later_takes_its_rows_atoms_back_on_the_redo
+    FAILED test_a_value_condition_compares_as_a_mappings_when_does
+    FAILED test_a_value_condition_takes_out_the_rows_it_names_and_not_a_blank_one
+    FAILED test_a_value_condition_the_grammar_cannot_read_is_refused[unknown-column]
+MUTANT OLD (origin/main sources)                        exit 1  7 failed, 21 passed, 6 warnings
+    FAILED test_a_column_named_only_by_a_value_condition_still_reaches_the_read
+    FAILED test_a_value_condition_added_later_takes_its_rows_atoms_back_on_the_redo
+    FAILED test_a_value_condition_compares_as_a_mappings_when_does
+    FAILED test_a_value_condition_takes_out_the_rows_it_names_and_not_a_blank_one
+    FAILED test_a_value_condition_the_grammar_cannot_read_is_refused[a-list-value]
+    FAILED test_a_value_condition_the_grammar_cannot_read_is_refused[unknown-column]
+    FAILED test_the_clauses_the_form_is_offered_are_the_ones_the_grammar_takes
+```
+
+### 전체 sqlite
+
+```
+5 failed, 8058 passed, 377 skipped, 3 xfailed, 13246 warnings — 실패는 알려진 박스 실패뿐
+```
