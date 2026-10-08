@@ -644,6 +644,41 @@ def test_setting_aside_leaves_a_row_the_chain_already_ended(db_q):
     assert _rows(db, PA) == [("SUCCESS", True, 0, None)]
 
 
+def _set_aside_has_nothing_to_announce(db):
+    # A table of its own and a fresh transaction - the PostgreSQL schema is the session's, and a row
+    # left on `PA` was counted by the × tests after it (총괄 a9c5add37 QA).
+    tx = "es-aside-%d" % time.time_ns()
+    db.add(models.DatabaseOutbox(event_uuid=tx, table_name="es_aside_probe", event_type="EDIT",
+                                 payload={"row_id": "x", "transaction_id": tx}, processed_chain=False))
+    db.commit()
+    [event] = [e for e in _pending(db) if get_payload_dict(e).get("transaction_id") == tx]
+    assert set_aside._mark(db, [event.id], "set aside by the test") == 1
+    db.commit()
+    db.expire_all()
+    event = db.get(models.DatabaseOutbox, event.id)
+    return event_constants.broadcast_state_of(event.processed_chain, event.status, event.broadcast_at)
+
+
+def test_a_row_set_aside_has_nothing_to_announce(db_q):
+    """총괄 afa1b6302: SUCCESS with no `broadcast_at` is 「미전달」 - the sweep re-fires it, the grid
+    queue listed it after its ×. One column definition for both writers (`cancelled_columns`)."""
+    assert _set_aside_has_nothing_to_announce(db_q) != event_constants.BROADCAST_STATE_UNDELIVERED
+
+
+@pytest.mark.pg
+def test_a_row_set_aside_in_one_statement_has_nothing_to_announce(pg_engine):
+    """The set-based writer, PostgreSQL's - the same definition as the one-object writer."""
+    _tables(pg_engine)
+    db = sessionmaker(bind=pg_engine)()
+    try:
+        assert _set_aside_has_nothing_to_announce(db) != event_constants.BROADCAST_STATE_UNDELIVERED
+    finally:
+        db.rollback()
+        db.close()
+        for name in TABLES:
+            crud.TABLE_CONFIG.pop(name, None)
+
+
 @pytest.mark.pg
 def test_a_cross_on_the_running_line_cancels_its_query_and_its_rows_stay_set_aside(pg_engine, monkeypatch):
     import main
@@ -884,3 +919,34 @@ def test_the_queue_reads_its_waiting_rows_in_a_fixed_few_queries_and_names_a_one
     _count, answer = queries()
     [line] = [line for line in answer["waiting_transactions"] if line.get("outbox_id") is not None]
     assert (line["outbox_id"], line["transaction_id"]) == (row.id, "(no tx · outbox#%d)" % row.id)
+
+
+def test_a_group_to_be_tried_again_leaves_its_last_failure_on_its_events(db, monkeypatch):
+    """248ae20cd: the queue's `retrying` shows the line the failure ended with - before, only a
+    quarantined group kept its record."""
+    _write(db, PA, [{"k": "K1", "n": "0"}])
+    rules = [dict(_bumpers()[0], max_group_attempts=3)]
+    monkeypatch.setattr(worker, "_process_chain_transaction_group_sync", lambda tx, events, session, rules: (
+        False, "Traceback (most recent call last):\nValueError: boom", []))
+    order, groups = _groups(_pending(db))
+
+    assert asyncio.run(worker.process_pending_groups(db, order, groups, rules, None)) is True
+
+    db.expire_all()
+    assert [(e.status, e.retry_count, get_payload_dict(e).get(event_constants.LAST_FAILURE))
+            for e in _pending(db)] == [("RETRYING", 1, "ValueError: boom")]
+
+
+@pytest.mark.parametrize("seconds, rows, said", [(6.0, 1000, True), (4.0, 1000, False),
+                                                 (0.6, 100, True), (0.4, 100, False)])
+def test_a_group_slower_than_the_norm_says_where_its_time_went(caplog, seconds, rows, said):
+    """248ae20cd: 1,000 rows in at most 5 s, in proportion to the rows - one threshold."""
+    import logging
+
+    summary = {"view_builds": 0, "reference_resolutions": 0, "distinct_maps": 0, "wall_seconds": seconds,
+               "stages": {"mapper": seconds / 2, "write:t": seconds / 2}, "phases": {}, "write_steps": {}}
+    with caplog.at_level(logging.INFO, logger=worker.logger.name):
+        worker._log_group_work("tx-norm", summary, rows)
+    lines = [r.getMessage() for r in caplog.records if "[Chain] group tx-norm" in r.getMessage()]
+    assert bool(lines) is said, lines
+    assert not said or ("mapper" in lines[0] and "write:t" in lines[0] and "%d row(s)" % rows in lines[0])

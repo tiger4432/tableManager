@@ -65,6 +65,28 @@ def ingestion_is_running(job) -> bool:
     return (job or {}).get("status") == event_constants.PROGRESS_STATUS_RUNNING
 
 
+def work_facts(work):
+    """A beat's open work as the chain state's `running` facts (`event_constants.chain_state_of`):
+    the stage, how long since it moved, how long it has been held, what it was found waiting on,
+    and the beat's own stalled verdict - /health's one threshold (총괄 248ae20cd)."""
+    return {"stage": work.get("stage"), "moved_seconds": work.get("no_progress_seconds"),
+            "elapsed_seconds": work.get("held_seconds"), "stalled_on": work.get("stalled_on"),
+            "stalled": bool(work.get("stalled"))}
+
+
+def chain_lines_running(beats=None):
+    """`{line key: running facts}` for the queue line a chain group runs now - read once per
+    request from the chain's beat. A stale beat runs nothing."""
+    from utils import heartbeat
+
+    beat = ((heartbeat.read_all() if beats is None else beats).get("chain") or {})
+    work = beat.get("work") or {}
+    if beat.get("stale") or not work.get("open"):
+        return {}
+    facts = work_facts(work)
+    return {key: facts for key in (work.get("facts") or {}).get("line_keys") or ()}
+
+
 def chain_sight():
     """WHOSE chain loop (총괄 3c3f2b1f2): this process's registry when the loop runs here;
     the chain worker's heartbeat lap when it runs on its own - the API's registry is empty

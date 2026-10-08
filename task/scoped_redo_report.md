@@ -75633,3 +75633,110 @@ test_inv_9_1 (알려진 흔들림) 혼자 다시: 1 passed, 6 warnings in 2.45s
 문서(응용 레인 몫)  「끝난 실행의 취소는 거절」을 아직 든 곳 — PRIMITIVES.md · data_model.md · FEATURE_CHECKLIST.md · SYSTEM_FLOWS.md(A-13 · C-18) · backend.md. CODE_MAP · BACKFILL_GUIDE 는 이 커밋
 다음         19f6a9277(프로세스 할당) — 데이터 가드 답 받음(㉮ ㄱ: 묶음 단위 표 잠금 + 같은 표 행 단위 줄은 id 순서로 하나씩). 착수
 ```
+
+---
+
+## [10-08] 메인 그리드 우측 대기열 = 기다리는 것만 · 빼 둔 행은 알릴 것이 없다 a9c5add37 (총괄 afa1b6302)
+
+어느 DB · 어느 스키마 · 지운 것 — sqlite 메모리 · PG 는 assy_test 의 시험 스크래치 스키마(PG_TEST_SCHEMA) · public 안 씀 · 지운 것 0
+
+```
+① 모집단   GET /outbox/queue/rows = processed_chain=false(어드민 대기열과 같은 술어) - 어느 규칙도 안 돌 행. «미전달»(돈 뒤 통지 안 나간 행) 합집합 뺌
+           머리 문장 population 도 같은 말 · 독스트링 모집단 문장 고침(⚰️ 옛 합집합과 그 이유)
+② 취소 칸   event_constants.cancelled_columns() = 처리 칸 + broadcast_at — 쓰는 자리 둘(mark_cancelled 객체 · set_aside._mark 집합 UPDATE)이 이것 하나를 지남
+           -> 빼 둔 행이 미전달 스윕 · /health 미전달 나이 · 그리드에서 «안 간 알림»으로 안 읽힘(그 셋은 broadcast_at IS NULL 을 봄 — 코드 안 바꿈)
+③ 운영 잔여  RUN.md 맨 위 절에 UPDATE 한 줄(미전달 부분 인덱스 술어 + cancelled_by) — 소유자가 돌림
+안 바꾼 것  행의 broadcast_state · owner(undelivered=) 칸은 그대로(대기 행만 실리니 미전달 갈래는 이 라우트에서 안 탐 — 그 owner 판정은 좌석 시험으로 옮김)
+```
+
+### 게이트 · 변이 — md5 같음
+
+```
+BASELINE sqlite exit 0  61 passed, 5 skipped, 160 warnings
+BASELINE pg     exit 0  1 passed, 8456 deselected, 6 warnings
+MUTANT the grid lists what ran again                exit 1  1 failed, 60 passed, 5 skipped, 160 warnings
+    FAILED test_the_grid_queue_lists_only_what_waits_as_the_admin_queue_does
+MUTANT one object set aside stamps no notice        exit 1  2 failed, 59 passed, 5 skipped, 160 warnings
+    FAILED test_a_row_set_aside_has_nothing_to_announce
+    FAILED test_the_grid_queue_lists_only_what_waits_as_the_admin_queue_does
+MUTANT a set-based set-aside stamps no notice       exit 1  1 failed, 8456 deselected, 6 warnings
+MUTANT OLD (origin/main sources)                    exit 1  3 failed, 58 passed, 5 skipped, 160 warnings
+    FAILED test_a_row_set_aside_has_nothing_to_announce
+    FAILED test_the_grid_queue_lists_only_what_waits_as_the_admin_queue_does
+    FAILED test_the_header_says_the_population_it_actually_read
+```
+
+### 전체 sqlite
+
+```
+5 failed, 8068 passed, 381 skipped, 3 xfailed, 13298 warnings — 실패는 알려진 박스 실패뿐
+```
+
+### 다음
+
+```
+248ae20cd 상태 함수 — 답 모양은 채널로 먼저 보냄(총괄 확인 받음) · 착수
+```
+
+---
+
+## [10-08] 체인 상태 함수 하나를 넓힘 — 줄 · 행마다 낱말 여덟 중 하나와 근거 66b330480 (총괄 248ae20cd)
+
+어느 DB · 어느 스키마 · 지운 것 — sqlite 메모리 · DB 쓰기 없음 · 지운 것 0
+
+```
+함수     event_constants.chain_state_of(processed_chain, status, *, retry_count, attempts_cap, payload, waiting_seconds,
+         running, paused) -> {"state", "why"} — 새 함수 없이 그 자리를 넓힘(부르는 곳 같은 커밋)
+         끝난 행 set_aside > failed > done · 대기 행 paused > running/stalled > retrying > waiting
+도는 사실  runtime.running.chain_lines_running() — 체인 박동의 claim 을 요청마다 한 번(line_keys · stage · no_progress · held ·
+         stalled_on · stalled). stalled 는 박동의 판정 그대로 = /health 와 같은 임계 하나
+부르는 곳  어드민 대기열 줄 · 그리드 대기열 행 · /health workers.chain(도는 일이 있을 때) — 셈(git grep -c "chain_state_of(" 착지 커밋,
+         시험 밖):
+           66b330480:server/event_constants.py:1
+           66b330480:server/main.py:2
+           66b330480:server/runtime/health.py:1
+         카나리아 def chain_state_of = 66b330480:server/event_constants.py:1 (event_constants 의 1 은 그 def 자신 — 부르는 곳은 main 둘 · health 하나)
+retrying  실패를 다시 시도로 남길 때 payload 에 last_failure(failure_cause — 그 실패의 마지막 줄). 상한은 group_attempts_cap
+         (실패 길이 쓰던 계산을 함수 하나로 — 둘이 같은 함수)
+쪽 단계    맵퍼 쪽 루프가 heartbeat.progress("mapper · <규칙> -> <표> · page N · M rows") — 쪽마다 moved 가 0 으로
+묶음 시간  _log_alignment_group_work -> _log_group_work(tx, summary, rows): 정렬 묶음 또는 규격(1,000행 ≤ 5 s, 행 비례)을 넘긴 묶음이면
+         한 줄(mapper · write:<표> · 그 안 단계) — 문턱 GROUP_SECONDS_PER_1000_ROWS 하나 · 행 수는 커밋 «전»에 셈
+         (커밋 뒤에 세면 만료된 이벤트마다 SELECT 하나 — 시험이 잡음)
+은퇴      그리드 행의 state_detail(why 안으로) · 옛 시험 「retrying 은 넷째 값이 아니다」(소유자가 뒤집음 — 시험 이름과 docstring 에 ⚰️)
+```
+
+### 게이트 · 변이 — md5 같음
+
+```
+BASELINE exit 0  72 passed, 5 skipped, 186 warnings
+MUTANT the cancel mark is not read          exit 1  1 failed, 71 passed, 5 skipped, 185 warnings
+MUTANT what runs is not read                exit 1  2 failed, 70 passed, 5 skipped, 186 warnings
+MUTANT a second stall threshold             exit 1  1 failed, 71 passed, 5 skipped, 186 warnings
+MUTANT the pause is not read                exit 1  1 failed, 71 passed, 5 skipped, 186 warnings
+MUTANT a retry leaves no last failure       exit 1  1 failed, 71 passed, 5 skipped, 186 warnings
+MUTANT the norm is not by rows              exit 1  1 failed, 71 passed, 5 skipped, 186 warnings
+MUTANT OLD (origin/main sources)            exit 1  14 failed, 58 passed, 5 skipped, 186 warnings
+```
+
+### 전체 sqlite
+
+```
+5 failed, 8079 passed, 381 skipped, 3 xfailed, 13302 warnings — 실패는 알려진 박스 실패뿐
+```
+
+### a9c5add37 시험 정리 결함(총괄 QA) — 이 커밋에서 닫음
+
+```
+원인   그 커밋의 PG 시험(빼 둔 행은 알릴 것이 없다 · 집합 UPDATE)이 세션 단위 스크래치 스키마의 PA 표에 빼 둔 행을 남김
+       -> 같은 파일의 × PG 시험이 PA 행을 셀 때 하나 더(파일 통째로 돌릴 때만)
+왜 놓쳤나 «알려진 다섯만»은 sqlite 전체 스위트(PG 시험은 건너뜀)의 수였고, PG 는 -k 로 제 시험만 골라 돌렸음
+고침   그 시험의 outbox 행은 자기 표 이름(es_aside_probe) · 호출마다 새 거래 열쇠 — 다른 시험의 표를 안 건드림
+잼     두 파일의 PG 시험 «전부» 같이: 5 passed, 8463 deselected, 14 warnings · 두 파일 sqlite: 72 passed, 5 skipped, 186 warnings
+```
+
+### 다음
+
+```
+슬롯(19f6a9277) — slots-wip(54f6cbdc9) 위에 총괄 답 반영: 창 = 대기열 줄 묶기 질의 함수 하나 · 로그는 배정자가 chain_worker.log 하나에 ·
+slot_pid · 표/규칙/거래 빼기도 줄마다 stop_line · waiting_for_table 을 이 함수에 더함
+```
