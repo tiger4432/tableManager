@@ -1434,7 +1434,8 @@ async function refreshLedgerSources() {
   const count = byId('ledger-sources-count');
   // \ubabb \uc77d\uc5c8\uc73c\uba74 \u00ab0 \uc774 \uc544\ub2c8\ub77c\u00bb \ub300\uc2dc\uc785\ub2c8\ub2e4 \u2014 view.count \uac00 \uc774\ubbf8 \uadf8\ub807\uac8c \ub3cc\uc544\uc635\ub2c8\ub2e4.
   if (count) count.textContent = view.count;
-  overviewBoard().update(ledgerRow(body));
+  lastLedgerSources = body;
+  overviewBoard().update(ledgerRow(body, lastRuntime));
 }
 
 // ── Renderers ──────────────────────────────────────────────
@@ -2833,6 +2834,9 @@ const backfillState = new Map();
 /** 두 출처를 «같이» 읽습니다. 한쪽이 실패해도 다른 쪽은 그립니다 -- 부분이 전부보다 낫습니다. */
 // C-74 — 한 번 만들고 재사용합니다. 패널이 «자기 div» 를 소유하므로 mount 를 안 비웁니다.
 let runtimePanel = null;
+// The Ledger row reads both answers (lead 558a46ef1): the last of each, undefined until it arrives.
+let lastRuntime;
+let lastLedgerSources;
 let chainGraphPanel = null;
 function renderChainGraph(payload) {
   const mount = byId('chain-graph-mount');
@@ -2856,6 +2860,8 @@ function renderRuntime(payload) {
   //    그건 「아무것도 안 돈다」는 거짓입니다 — 이 표가 없애려는 바로 그 침묵입니다.
   runtimePanel.render(payload);
   overviewBoard().update(workersRow(payload));
+  lastRuntime = payload;
+  overviewBoard().update(ledgerRow(lastLedgerSources, payload));
 }
 
 async function refreshRunning() {
