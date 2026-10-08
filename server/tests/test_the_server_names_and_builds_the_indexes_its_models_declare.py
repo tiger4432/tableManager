@@ -118,6 +118,7 @@ def test_the_route_shows_each_declared_index_beside_the_database(scratch):
     assert present["purpose"] and present["serves"] and present["size_bytes"] > 0
     assert (by_name[DROPPED]["columns"], by_name[DROPPED]["include"], by_name[BROKEN]["where"]) == (
         ["timestamp", "id"], ["transaction_id"], "processed_chain = true")
+    assert (by_name["idx_audit_logs_timestamp_brin"]["using"], by_name[DROPPED]["using"]) == ("brin", None)
     assert [(row["name"], row["table"]) for row in said["outside"]] == [("zz_outside_probe", "audit_logs")]
     # the catalogue's own tables are not the models' - loaded here, and left out
     assert models.DYNAMIC_TABLES and not {t.name for t in models.model_tables()} & set(models.DYNAMIC_TABLES)

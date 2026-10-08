@@ -1663,7 +1663,8 @@ def _shape(item):
     options = item.dialect_options["postgresql"]
     return {"columns": [getattr(e, "name", None) or str(e) for e in item.expressions],
             "where": None if options.get("where") is None else str(options["where"]),
-            "include": list(options.get("include") or ()), "using": options.get("using"),
+            # `using` unset is False in SQLAlchemy's options - said as no method, not as `false`
+            "include": list(options.get("include") or ()), "using": options.get("using") or None,
             "unique": bool(item.unique), "constraint": False}
 
 
