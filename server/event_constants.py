@@ -230,12 +230,16 @@ def queue_line_key(outbox):
                          literal(QUEUE_ROW_KEY_PREFIX).concat(cast(outbox.id, String)))
 
 
-def queue_line_rows(outbox, key):
+def queue_line_rows(outbox, key, run=False):
     """SQL criteria for the rows of the queue line `key` names: the key expression itself, behind
     an indexed narrowing - the primary key for a row's key, `idx_outbox_txid` otherwise - so a ×
-    reads that line's rows and not the whole waiting queue (소유자 10-08)."""
+    reads that line's rows and not the whole waiting queue (소유자 10-08).
+    A retroactive run's key (`run`) is narrowed by the run itself - the transaction narrowing found
+    none of its rows - and has no index: asked with `processed_chain` false it reads the waiting
+    rows through `idx_outbox_unprocessed` (총괄 e2b5b6f35)."""
     row = key[len(QUEUE_ROW_KEY_PREFIX):] if key.startswith(QUEUE_ROW_KEY_PREFIX) else None
-    narrow = (outbox.id == int(row) if row is not None and row.isdigit()
+    narrow = (outbox.payload["run_id"].as_string() == key if run
+              else outbox.id == int(row) if row is not None and row.isdigit()
               else outbox.payload["transaction_id"].as_string() == key)
     return narrow, queue_line_key(outbox) == key
 

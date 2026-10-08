@@ -75565,3 +75565,71 @@ MUTANT OLD (origin/main sources)                        exit 1  7 failed, 21 pas
 ```
 5 failed, 8058 passed, 377 skipped, 3 xfailed, 13246 warnings — 실패는 알려진 박스 실패뿐
 ```
+
+---
+
+## [10-08] 대기열 줄 하나를 끄는 함수 하나 — stop_line c8f2de45a (총괄 e2b5b6f35)
+
+어느 DB · 어느 스키마 · 지운 것 — sqlite 메모리 · PG 는 assy_test 의 시험 스크래치 스키마(conftest PG_TEST_SCHEMA, 세션이 끝나며 지우고 카탈로그로 확인) · public 안 씀 · 지운 것 0
+
+```
+함수     chain.control.stop_line(db, key, by, must_be_run=False) — 실행 상태와 무관하게 셋
+         ① 소급 실행 열쇠면 request_cancel ② set_aside.set_aside_line(그 줄의 대기 체인 이벤트 빼기 + 표마다 감사 줄) ③ cancel_running_group(line_key)
+         부르는 곳 둘 — 대기열 줄 × · 실행 Cancel(must_be_run=True: 모르는 run_id 는 아무것도 안 움직이고 400)
+답       {run?, skipped_events, cancelled_pid} (+ kept · already) — run 은 실행 상태 되읽기, done 은 done
+끝난 실행  request_cancel 이 거절 대신 그 상태를 답함(쓰는 것 없음) — 「already finished」로 끝나는 답 없음
+넣는 중   _run_to_the_end 의 cancelled 갈래가 그 줄 빼기를 한 번 더(행이 cancelled 로 읽히기 전) — 모든 취소 착지(앱 정지 포함, 답 ㉠ ㄱ) ·
+         이유 칸 「run <id> cancelled」 — 누가 멈췄는지는 실행 행의 어느 칸에도 없어 안 적음(새 칸 안 만듦)
+좁히기    queue_line_rows(..., run=True) — 실행 열쇠는 payload run_id. 전엔 transaction_id 로 좁혀 그 줄 행을 하나도 못 찾았음(run 갈래가 먼저 return 해서 안 드러남)
+```
+
+### 게이트 표 — 실행 상태 × 부르는 곳 (sqlite)
+
+```
+           줄 ×                 실행 Cancel
+running    대기 0 · ③ 그 열쇠      같음        답 run=cancel_requested
+queued     대기 0 · ③ 그 열쇠      같음        답 run=cancelled
+done       대기 0 · ③ 그 열쇠      같음        답 run=done
+cancelled  대기 0 · ③ 그 열쇠      같음        답 run=cancelled
+넣는 중     착지 뒤 대기 0          같음        (멈춤 전 커밋된 페이지 하나가 착지에서 빠짐 — 시험 안에서 1 을 단언하고 나서)
+           이유 칸: 첫 페이지 「skipped from the chain queue by operator」 · 둘째 「run es-run cancelled」
+run 열쇠    queue_line_rows(run=True) 가 그 실행의 대기 행 둘을 찾고 다른 줄 행은 안 섞음
+칸마다     다른 줄 이벤트는 그대로 대기
+PG        done 실행 줄의 돌던 묶음 질의가 두 곳 다에서 5 s 안에 끊김 · 그 실행 행은 빼 둠
+```
+
+### 변이 — md5 같음
+
+```
+BASELINE exit 0  35 passed, 4 skipped, 70 warnings
+MUTANT the run's line ends at the run's answer          exit 1  10 failed, 25 passed, 4 skipped, 70 warnings
+MUTANT no second set-aside where a stopped run lands    exit 1  2 failed, 33 passed, 4 skipped, 70 warnings
+MUTANT the landing does not say the run was cancelled   exit 1  2 failed, 33 passed, 4 skipped, 70 warnings
+MUTANT a run's rows narrowed by the transaction         exit 1  11 failed, 24 passed, 4 skipped, 70 warnings
+MUTANT a finished run refused again                     exit 1  4 failed, 31 passed, 4 skipped, 70 warnings
+MUTANT the running group is not asked                   exit 1  8 failed, 27 passed, 4 skipped, 70 warnings
+MUTANT OLD (origin/main sources)                        exit 1  14 failed, 21 passed, 4 skipped, 70 warnings
+```
+
+### PG
+
+```
+4 passed, 8451 deselected, 12 warnings (이 파일의 pg 넷 — 새 둘 + 기존 둘)
+```
+
+### 전체 sqlite
+
+```
+6 failed, 8066 passed, 380 skipped, 3 xfailed, 13290 warnings — 실패는 알려진 박스 실패뿐
+test_inv_9_1 (알려진 흔들림) 혼자 다시: 1 passed, 6 warnings in 2.45s
+```
+
+### 열린 것
+
+```
+닫힘 ㉠     모든 cancelled 착지에서 빼기(앱 정지 포함) — 총괄 답 ㄱ 그대로
+안 넣은 것   × 성공 길 결함(54a53f894 · 응용 4b4fb4fe0): ③ 은 «도는 질의»만 끊어, 묶음이 맵퍼(파이썬) 안이면 끝까지 가서 SUCCESS 를 씀
+           — 「같이 닫아도 됨」이었지만 운영 마비라 이것만 먼저 착지. 남은 일로 둠
+문서(응용 레인 몫)  「끝난 실행의 취소는 거절」을 아직 든 곳 — PRIMITIVES.md · data_model.md · FEATURE_CHECKLIST.md · SYSTEM_FLOWS.md(A-13 · C-18) · backend.md. CODE_MAP · BACKFILL_GUIDE 는 이 커밋
+다음         19f6a9277(프로세스 할당) — 데이터 가드 답 받음(㉮ ㄱ: 묶음 단위 표 잠금 + 같은 표 행 단위 줄은 id 순서로 하나씩). 착수
+```

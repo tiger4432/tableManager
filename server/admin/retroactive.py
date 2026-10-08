@@ -2182,12 +2182,12 @@ def request_cancel(db, run_id: str) -> dict:
            .filter(models.RetroactiveRun.run_id == run_id).first())
     if row is None:
         raise RetroactiveRefused(f"unknown run_id '{run_id}'")
-    if row.state in (RUN_DONE, RUN_CANCELLED, RUN_FAILED):
-        raise RetroactiveRefused(
-            f"run '{run_id}' already finished ({row.state}); there is nothing running to "
-            f"stop. Its work is committed and this cannot undo it.")
-
     op, runner = row.op, row.runner
+    # 🔴 A FINISHED RUN IS ANSWERED BY ITS STATE, NOT REFUSED (총괄 e2b5b6f35). A replay is `done`
+    #    while the events it staged still wait, and the refusal ended the stop there. Nothing is
+    #    written: `done` stays `done` - a finished run never reads as cancelled.
+    if row.state in (RUN_DONE, RUN_CANCELLED, RUN_FAILED):
+        return {"run_id": run_id, "op": op, "state": row.state, "released": False}
     # 🔴 A QUEUED RUN HAS NOBODY TO ASK (총괄 10-08). `cancel_requested` is read only by a
     #    runner, and it is an IN_FLIGHT state - on a run that never started it closed the gate for
     #    ever and every run behind it waited for SQL. So it ends now, `cancelled`, if it is still
@@ -2865,6 +2865,14 @@ def _run_to_the_end(run_id, op, spec, params, log, control, raise_failure=False)
         # an operator the operation had covered the whole table.
         if control.stopped:
             out.update(status="cancelled")
+            # 「취소로 끝난 실행은 자기 대기 이벤트를 남기지 않는다」(총괄 e2b5b6f35 ㉠) - whoever
+            # stopped it, an app stop too: a page committed after the stop's own set-aside still
+            # waits, and the worker eating it would run half a retroactive in silence. Before the
+            # row reads cancelled. Who stopped it is on no column of the row, so the reason says
+            # only that it was cancelled. Brought back by `rerun_set_aside`.
+            from chain import set_aside
+            set_aside.set_aside_line(db, run_id, set_aside.OPERATOR, run=True,
+                                     reason="run %s cancelled" % run_id)
             _mark_run(run_id, state=RUN_CANCELLED, finished=True, result=out["result"])
             log(f"[Retroactive] run_id={run_id} op={op} CANCELLED: {out['result']}")
             announce_progress(control.run_id, op, ec.PROGRESS_STATUS_CANCELLED)

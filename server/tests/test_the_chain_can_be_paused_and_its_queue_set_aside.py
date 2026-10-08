@@ -494,19 +494,104 @@ def test_a_group_set_aside_while_it_runs_is_neither_failed_nor_retried_and_the_n
     assert ran == [PA, PB] and failed_any is False and chain_control.paused() is None
 
 
-@pytest.mark.parametrize("state", ["running", "done"])
-def test_a_runs_line_answers_what_the_runs_own_cancel_answers(db_q, queue, state):
-    db = db_q
-    def fresh():
-        db.query(models.RetroactiveRun).filter_by(run_id="es-run").delete()
-        db.add(models.RetroactiveRun(run_id="es-run", op="chain_replay", state=state))
-        db.commit()
+RUN = "es-run"
+#: The two places a stop is pressed - one function behind both (총괄 e2b5b6f35).
+STOPS = {"line": lambda client, key: _cross(client, key),
+         "run": lambda client, key: client.post("/admin/retroactive/runs/%s/cancel" % key)}
+#: The run's state a stop answers with, read back - a finished run keeps its own word.
+STOPPED_AS = {retroactive.RUN_RUNNING: retroactive.RUN_CANCEL_REQUESTED,
+              retroactive.RUN_QUEUED: retroactive.RUN_CANCELLED,
+              retroactive.RUN_DONE: retroactive.RUN_DONE,
+              retroactive.RUN_CANCELLED: retroactive.RUN_CANCELLED}
 
-    fresh()
-    crossed = _cross(queue, "es-run")
-    fresh()
-    own = queue.post("/admin/retroactive/runs/es-run/cancel")
-    assert (crossed.status_code, crossed.json()) == (own.status_code, own.json())
+
+def _run_writes(db, table, rows):
+    from database.context import retroactive_run
+    with retroactive_run(RUN):
+        _write(db, table, rows)
+
+
+def _runs_waiting(db):
+    return [e.id for e in _pending(db) if get_payload_dict(e).get("run_id") == RUN]
+
+
+@pytest.mark.parametrize("caller", sorted(STOPS))
+@pytest.mark.parametrize("state", sorted(STOPPED_AS))
+def test_a_stop_sets_a_runs_waiting_events_aside_whatever_state_the_run_is_in(
+        db_q, queue, monkeypatch, state, caller):
+    """소유자 10-08 「x 버튼도 이미 끝난거라고 안먹어 근데 왜 대기열에 있어?」: a replay is `done` once
+    it has staged its events, and the stop ended at the run's refusal while they waited."""
+    db = db_q
+    db.add(models.RetroactiveRun(run_id=RUN, op="chain_replay", state=state))
+    db.commit()
+    _run_writes(db, PA, [{"k": "K1", "n": "0"}, {"k": "K2", "n": "0"}])
+    _write(db, PB, [{"k": "K3", "n": "0"}])
+    other = [e.id for e in _pending(db) if e.table_name == PB]
+    assert len(_runs_waiting(db)) == 2 and other, "the run's line waits - else this measures nothing"
+    cut = []
+    monkeypatch.setattr(chain_control, "cancel_running_group",
+                        lambda _db, line_key=None: cut.append(line_key) or 4242)
+
+    answer = STOPS[caller](queue, RUN)
+
+    assert answer.status_code == 200, answer.text
+    assert answer.json() == {"run": STOPPED_AS[state], "skipped_events": 2, "cancelled_pid": 4242}
+    assert _runs_waiting(db) == [] and _rows(db, PA) == [SET_ASIDE, SET_ASIDE]
+    assert cut == [RUN]                                     # the running group is asked by this line
+    assert [e.id for e in _pending(db)] == other            # another line waits on
+
+
+@pytest.mark.parametrize("caller", sorted(STOPS))
+def test_a_run_stopped_while_it_inserts_leaves_no_waiting_event_once_it_lands(
+        db_q, queue, monkeypatch, caller):
+    """A page committed after the stop's set-aside and before the run reads the stop is set aside
+    where the run lands cancelled."""
+    db = db_q
+    monkeypatch.setattr(retroactive, "announce_progress", lambda *a, **k: None)
+    monkeypatch.setattr(chain_control, "cancel_running_group", lambda _db, line_key=None: None)
+    db.add(models.RetroactiveRun(run_id=RUN, op="chain_replay", state=retroactive.RUN_RUNNING))
+    db.commit()
+    _write(db, PB, [{"k": "K9", "n": "0"}])
+    other = [e.id for e in _pending(db)]
+    said = []
+
+    def inserting(session, params, log, control):
+        _write(session, PA, [{"k": "K1", "n": "0"}])            # a page, committed
+        said.append(STOPS[caller](queue, RUN).json())           # the stop, while it inserts
+        _write(session, PA, [{"k": "K2", "n": "0"}])            # the page in hand when it came
+        assert len(_runs_waiting(db)) == 1 and control.stop_requested()
+        return {"rows_staged": 2}
+
+    out = retroactive._run_to_the_end(RUN, "chain_replay", {"run": inserting}, {},
+                                      lambda *a: None, retroactive.RunControl(RUN))
+
+    assert out["status"] == "cancelled"
+    assert said == [{"run": retroactive.RUN_CANCEL_REQUESTED, "skipped_events": 1, "cancelled_pid": None}]
+    assert _runs_waiting(db) == [] and _rows(db, PA) == [SET_ASIDE, SET_ASIDE]
+    assert [e.id for e in _pending(db)] == other
+    why = [get_payload_dict(e).get(event_constants.CANCEL_REASON)
+           for e in db.query(models.DatabaseOutbox).filter_by(table_name=PA).order_by(models.DatabaseOutbox.id)]
+    assert why == ["skipped from the chain queue by %s" % set_aside.OPERATOR, "run %s cancelled" % RUN]
+
+
+def test_a_runs_line_rows_are_found_by_its_key(db_q):
+    """The transaction narrowing found none of a run's rows - its key is the run's, not a
+    transaction's (총괄 e2b5b6f35 알림 ②)."""
+    db = db_q
+    _run_writes(db, PA, [{"k": "K1", "n": "0"}, {"k": "K2", "n": "0"}])
+    _write(db, PB, [{"k": "K3", "n": "0"}])
+    outbox = models.DatabaseOutbox
+    found = [row.id for row in db.query(outbox.id).filter(
+        outbox.processed_chain.is_(False), *event_constants.queue_line_rows(outbox, RUN, run=True))]
+    assert found == _runs_waiting(db) and len(found) == 2
+
+
+def test_a_run_cancel_on_a_key_that_is_no_run_is_refused_and_nothing_moves(db_q, queue):
+    db = db_q
+    _write(db, PA, [{"k": "K1", "n": "0"}])
+    answer = queue.post("/admin/retroactive/runs/%s/cancel" % _key_of(queue, PA))
+    assert answer.status_code == 400 and "unknown run_id" in answer.json()["detail"]
+    assert len(_pending(db)) == 1
 
 
 def test_a_key_that_no_longer_waits_says_what_became_of_it(db_q, queue):
@@ -529,12 +614,13 @@ def test_a_key_that_no_longer_waits_says_what_became_of_it(db_q, queue):
                "row_again": _cross(queue, row_key).json(),
                "processed": _cross(queue, by_table[PB]).json(),
                "gone": _cross(queue, "es-never-a-line").json()}
+    none = {"skipped_events": 0, "cancelled_pid": None}
     assert answers == {"waiting": {"skipped_events": 1, "cancelled_pid": None},
-                       "set_aside": {"skipped_events": 0, "already": "set_aside"},
+                       "set_aside": dict(none, already="set_aside"),
                        "row": {"skipped_events": 1, "cancelled_pid": None},
-                       "row_again": {"skipped_events": 0, "already": "set_aside"},
-                       "processed": {"skipped_events": 0, "already": "processed"},
-                       "gone": {"skipped_events": 0, "already": "gone"}}
+                       "row_again": dict(none, already="set_aside"),
+                       "processed": dict(none, already="processed"),
+                       "gone": dict(none, already="gone")}
 
 
 @pytest.mark.parametrize("body", [{"key": ""}, {"key": "  "}, {"key": 5}, {}, {"key": "outbox#x"}],
@@ -603,6 +689,63 @@ def test_a_cross_on_the_running_line_cancels_its_query_and_its_rows_stay_set_asi
         assert out == {"failed_any": False}, out
         assert _rows(db, PA) == [SET_ASIDE] and _rows(db, PB) == [SET_ASIDE]
         assert ran == [PA] and chain_control.paused() is None
+    finally:
+        main.app.dependency_overrides.pop(get_db, None)
+        db.rollback()
+        db.close()
+        other.close()
+        for name in TABLES:
+            crud.TABLE_CONFIG.pop(name, None)
+
+
+@pytest.mark.pg
+@pytest.mark.parametrize("caller", sorted(STOPS))
+def test_a_stop_on_a_done_runs_line_cancels_the_query_its_running_group_waits_on(pg_engine, monkeypatch, caller):
+    import main
+    from fastapi.testclient import TestClient
+    from database.database import get_db
+
+    monkeypatch.setattr(process_logging, "active_process_name", lambda: "Chain")
+    _tables(pg_engine)
+    db = sessionmaker(bind=pg_engine)()
+    other = sessionmaker(bind=pg_engine)()
+    main.app.dependency_overrides[get_db] = lambda: other
+    try:
+        # The schema is the session's: an earlier case's run row and other tests' rows are there.
+        db.query(models.RetroactiveRun).filter_by(run_id=RUN).delete()
+        db.add(models.RetroactiveRun(run_id=RUN, op="chain_replay", state=retroactive.RUN_DONE))
+        db.commit()
+        _run_writes(db, PA, [{"k": "KR-" + caller, "n": "0"}])       # a key no other case wrote
+        assert len(_runs_waiting(db)) == 1, "the run's line does not wait - this measures nothing"
+        client = TestClient(main.app)
+
+        def body(tx_id, events, session, rules):
+            if get_payload_dict(events[0]).get("run_id") != RUN:
+                return True, None, []
+            try:
+                with alignment_batch_counts.stage("mapper"):
+                    session.execute(text("SELECT pg_sleep(30)"))
+            except Exception as exc:                                # noqa: BLE001 - as a rule run does
+                return False, str(exc), []
+            return True, None, []
+
+        thread, out = _run_pending_in_background(db, body, monkeypatch)
+        facts = lambda: ((heartbeat.read_all().get("chain") or {}).get("work") or {}).get("facts", {})  # noqa: E731
+        assert _wait(lambda: RUN in (facts().get("line_keys") or ())), ("the run's line is not running", facts(), out)
+        assert _wait(lambda: facts().get("db_pid")), "the group never published its pid"
+        stopped = STOPS[caller](client, RUN).json()
+        started = time.time()
+        thread.join(15)
+
+        assert (stopped["run"], stopped["skipped_events"]) == (retroactive.RUN_DONE, 1) and stopped["cancelled_pid"]
+        assert time.time() - started < 5, "the stop waited the query out"
+        assert out == {"failed_any": False}, out
+        db.expire_all()
+        the_runs = [(e.status, e.processed_chain, e.retry_count or 0,
+                     get_payload_dict(e).get(event_constants.CANCEL_MARK))
+                    for e in db.query(models.DatabaseOutbox).filter_by(table_name=PA)
+                    if get_payload_dict(e).get("run_id") == RUN]
+        assert the_runs and set(the_runs) == {SET_ASIDE}, the_runs
     finally:
         main.app.dependency_overrides.pop(get_db, None)
         db.rollback()
@@ -690,7 +833,7 @@ def test_a_queued_run_is_cancelled_at_once_and_the_run_behind_it_starts(db_q, qu
 
     crossed = _cross(queue, "es-q1").json()
 
-    assert (crossed["state"], crossed["released"]) == (retroactive.RUN_CANCELLED, True)
+    assert crossed["run"] == retroactive.RUN_CANCELLED
     assert retroactive.gate_refusal(db) is None                                 # the gate is open
     started = []
     monkeypatch.setattr(retroactive, "spawn_claimed", lambda run_id, log=None: started.append(run_id))
@@ -705,7 +848,7 @@ def test_a_running_runs_cancel_is_asked_as_before(db_q, queue):
     db.add(models.RetroactiveRun(run_id="es-r1", op="withdraw", state=retroactive.RUN_RUNNING))
     db.commit()
     crossed = _cross(queue, "es-r1").json()
-    assert (crossed["state"], crossed["released"]) == (retroactive.RUN_CANCEL_REQUESTED, False)
+    assert crossed["run"] == retroactive.RUN_CANCEL_REQUESTED
 
 
 def test_the_queue_reads_its_waiting_rows_in_a_fixed_few_queries_and_names_a_one_row_line(db_q, queue):
