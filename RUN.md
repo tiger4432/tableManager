@@ -1,5 +1,25 @@
 # 지금 돌리면 되는 것
 
+> ## [10-08] **로그아웃이 ADFS 로그인도 끝낸다 — 이주 «없음» · 재기동 «필요»(서버)**
+>
+> ```
+> 무엇이 바뀌나  Log out 은 우리 세션을 먼저 지우고, 브라우저를 ADFS 의 로그아웃 주소(설정 문서의 end_session_endpoint)로 보낸다
+>                POST /auth/logout 은 200 {"next": …} (전엔 204). 클라 버튼은 그 next 로 간다(204 를 받으면 전처럼 새로고침)
+> 재기동        서버 — 소유자 몫
+> 지금(IT 등록 전)  auth_config.json 에 post_logout_redirect_uri 를 «적지 않는다» -> ADFS 자기 «로그아웃됨» 화면에 멈춘다
+> IT 에 등록할 주소  https://<서버>/auth/signed-out   — 로그인 돌아올 주소를 등록한 그 앱의 RedirectUris 에 더해 달라고
+>                등록되면 auth_config.json 에 "post_logout_redirect_uri": "https://<서버>/auth/signed-out" (같은 값) · 재기동
+>                -> ADFS 가 우리 Signed out 화면(Signed out + Sign in)으로 돌려보낸다
+> 볼 줄          [sso] Signed out here only: the issuer's discovery names no end_session_endpoint, so the issuer's sign-in did not end.
+>                  = 설정 문서에 end_session_endpoint 가 없다 — ADFS 로그인은 안 끝난다. Signed out 에 멈추고 Sign in 은 같은 계정으로 들어온다
+>                [sso] Signed out here only: the issuer's discovery could not be read (…), so the issuer's sign-in did not end.
+>                  = 그 순간 ADFS 설정 문서를 못 읽었다(프록시 · 네트워크) — 로그인이 되는지 먼저 본다
+> 확인          <issuer>/.well-known/openid-configuration 에 "end_session_endpoint" 가 있는지
+> 급할 때       스위치 없음. 되돌리려면 이 커밋을 되돌리고 서버 재기동(클라 버튼은 204 를 받으면 전처럼 새로고침)
+> ```
+
+---
+
 > ## [10-08] **표 비우기 도구가 모든 표를 «선언된 표가 아닙니다»로 거절하던 것 고침 — 이주 «없음» · 재기동 «불필요»(스크립트)**
 >
 > ```

@@ -428,6 +428,8 @@ curl http://localhost:8080/api/transfer-plan/stages
           토큰 서명 인증서(.cer)는 넣지 않는다 — 서버가 ADFS 의 키 주소에서 받는다. 파일은 BOM 없는 UTF-8 로(BOM 이 붙어도 읽는다)
           enabled true · issuer(https://<adfs 호스트>/adfs) · client_id · redirect_uri(IT 에 등록한 글자 그대로, https) · name_claim · admins
           users(들어올 사람 — 고를 때만. sample 에는 일부러 없다: 베끼면 들어올 사람이 바뀐다)
+          post_logout_redirect_uri(로그아웃 뒤 ADFS 가 돌려보낼 주소 — IT 가 그 앱의 RedirectUris 에 https://<서버>/auth/signed-out 을
+             등록한 «뒤에만» 같은 값을 적는다. 등록 안 된 주소를 실으면 ADFS 가 오류 화면을 낼 수 있다)
           설정은 프로세스마다 한 번 읽는다 — 바꾸면 재기동
 켜지면    /auth/* · /internal/* · /health 말고는 로그인해야 한다 — 화면 GET 은 회사 로그인으로 갔다가 돌아오고, API 는 401
           /admin/* 은 admins 에 적힌 이름(name_claim 값, 대소문자 무시 — 10-07 `ae579a9a2`)만 — X-Admin-Token 은 «안 읽는다»
@@ -438,6 +440,9 @@ curl http://localhost:8080/api/transfer-plan/stages
              /auth/* · /internal/* · /health 는 목록과 상관없이 위와 같다
           /internal/* (워커 통지)는 그대로 ASSY_ADMIN_TOKEN — 워커는 바꿀 것 없음
           기록의 «누가»는 로그인한 이름. 세션 12 시간, 로그아웃하면 끝
+          로그아웃(10-08)  우리 세션을 먼저 지우고 브라우저를 ADFS 설정 문서의 end_session_endpoint 로 보내 ADFS 로그인도 끝낸다
+             post_logout_redirect_uri 를 적었으면 ADFS 가 우리 /auth/signed-out(Signed out + Sign in)으로 돌려보내고, 안 적었으면 ADFS 자기 화면에 멈춘다
+             설정 문서에 end_session_endpoint 가 없거나 못 읽으면 바로 /auth/signed-out — 이때 ADFS 로그인은 안 끝나서 Sign in 은 같은 계정으로 들어온다
 스크립트   토큰으로 /admin/* 을 부르던 프로그램은 관리자의 개인 키로 — 화면 머리줄의 이름 -> API keys -> Create key
           (또는 로그인한 채 POST /auth/keys {"name": "<이름>"}) -> 그 key 를 Authorization: Bearer <key> 로(한 번만 보인다)
           ⚠️ 개인 키는 만료가 없고 지우는 것은 그 주인뿐이다(DELETE /auth/keys/<id>). 회사 계정이 막혀도 키는 산다 — admins 에서 빼면 관리 권한만 빠진다
@@ -451,6 +456,8 @@ curl http://localhost:8080/api/transfer-plan/stages
           [sso] OFF - redirect_uri (…) is not an https address       https 앞단 뒤에서만 켠다
           [sso] OFF - enabled is not true in auth_config.json        꺼짐(기본)
 거절 줄   [sso] The identity provider refused the sign-in: invalid_client - …   ADFS 가 비밀을 원한다 -> IT 에 클라이언트 비밀 받기(화면에도 같은 문장과 Try again)
+          [sso] Signed out here only: the issuer's discovery names no end_session_endpoint | could not be read (…), so the issuer's sign-in did not end.
+             우리 세션만 끝났다 — 설정 문서(<issuer>/.well-known/openid-configuration)에 end_session_endpoint 가 있는지 본다
           [sso] <이름> is not on the users list in auth_config.json - ask an administrator to add the name.   그 이름을 users 에 넣고 재기동(넣을 사람이면)
 막힐 때   (10-08 소유자 서버 첫 로그인에서 실제로 막힌 둘)
           ① 프록시 — /auth/login 이 «HTTPSConnectionPool … connect timeout» 으로 실패하고 화면에는 500 으로 보인다(그 길은 예외를 안 잡는다)

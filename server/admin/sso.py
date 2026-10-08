@@ -47,6 +47,7 @@ HTTP_TIMEOUT_SECONDS = 10
 ASYMMETRIC_ALGORITHM_FAMILIES = ("RS", "PS", "ES")
 ERROR_DESCRIPTION_CHARS = 200
 COOKIE_NAME = "assy_session"
+SIGNED_OUT_PATH = "/auth/signed-out"
 OPEN_PREFIXES = ("/auth/", "/internal/")
 OPEN_PATHS = ("/health",)
 #: What this gate's refusals name in WWW-Authenticate, as the token gate names X-Admin-Token.
@@ -74,7 +75,7 @@ def settings():
             loaded, unreadable = {}, _parse_position(exc)
         if not isinstance(loaded, dict):
             loaded, unreadable = {}, "the top level is %s, not an object" % json.dumps(loaded)[:40]
-    cells = {name: loaded.get(name) for name in REQUIRED_CELLS + ("name_claim",)}
+    cells = {name: loaded.get(name) for name in REQUIRED_CELLS + ("name_claim", "post_logout_redirect_uri")}
     cells = {name: None if is_blank_value(value) else str(value) for name, value in cells.items()}
     cells["enabled"] = loaded.get("enabled") is True
     cells["enabled_as_written"] = loaded.get("enabled")
@@ -302,12 +303,17 @@ def _verified_claims(id_token, meta, nonce):
     return token.claims
 
 
-def _refused(status, sentence):
-    """Every sign-in refusal: one sentence, logged as said, and one way on. No automatic move."""
-    logger.warning("[sso] %s", sentence)
+def _page(status, title, sentence, sign_in):
+    """A sign-in page: one sentence and one way on - the sign-in link. No automatic move."""
     return HTMLResponse(status_code=status, content=(
-        '<!doctype html><title>Sign-in refused</title><p>%s</p><p><a href="/auth/login">Try again</a></p>'
-        % html.escape(sentence, quote=False)))
+        '<!doctype html><title>%s</title><p>%s</p><p><a href="/auth/login">%s</a></p>'
+        % (title, html.escape(sentence, quote=False), sign_in)))
+
+
+def _refused(status, sentence):
+    """Every sign-in refusal: one sentence, logged as said."""
+    logger.warning("[sso] %s", sentence)
+    return _page(status, "Sign-in refused", sentence, "Try again")
 
 
 def _provider_refused(error, description):
@@ -394,17 +400,46 @@ def login(next: str = "/"):
     return RedirectResponse(address, status_code=302)
 
 
-@router.post("/auth/logout", status_code=204)
+def _sign_out_next():
+    """Where the browser goes after our session ends: the issuer's end_session_endpoint, so its own
+    sign-in ends too - carrying post_logout_redirect_uri only when auth_config.json names one (an
+    address the issuer does not hold registered can show its error page) - else our Signed out page
+    (owner 10-08)."""
+    try:
+        end = _discovery().get("end_session_endpoint")
+    except Exception as exc:
+        end, why = None, "the issuer's discovery could not be read (%s)" % type(exc).__name__
+    else:
+        why = "the issuer's discovery names no end_session_endpoint"
+    if is_blank_value(end) or not isinstance(end, str):
+        logger.warning("[sso] Signed out here only: %s, so the issuer's sign-in did not end.", why)
+        return SIGNED_OUT_PATH
+    back = settings()["post_logout_redirect_uri"]
+    if back is None:
+        return end
+    from authlib.common.urls import add_params_to_uri
+
+    return add_params_to_uri(end, {"post_logout_redirect_uri": back})
+
+
+@router.post("/auth/logout")
 def logout(request: Request):
+    """Our session ends first, whatever the issuer answers; then {"next": where the browser goes}."""
     _require_on()
     cookie = request.cookies.get(COOKIE_NAME)
     if cookie:
         with database.SessionLocal() as db:
             db.query(models.AuthSession).filter_by(id_hash=_digest(cookie)).delete()
             db.commit()
-    response = Response(status_code=204)
+    response = JSONResponse({"next": _sign_out_next()})
     response.delete_cookie(COOKIE_NAME, path="/", secure=True, httponly=True, samesite="lax")
     return response
+
+
+@router.get(SIGNED_OUT_PATH)
+def signed_out():
+    _require_on()
+    return _page(200, "Signed out", "Signed out", "Sign in")
 
 
 @router.get("/auth/me")

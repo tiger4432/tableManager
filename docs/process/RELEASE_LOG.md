@@ -9,6 +9,15 @@
 
 ---
 
+## 2026-10-08 · 로그아웃이 회사 로그인(ADFS)도 끝낸다
+
+- **무엇** — Log out 을 누르면 우리 세션만 지워져서, 다시 열면 ADFS 가 묻지 않고 같은 이름으로 들여보냈습니다. 이제 우리 세션을 먼저 지우고 브라우저를 ADFS 의 로그아웃 주소로 보내 ADFS 로그인도 끝냅니다.
+- **선언 예시** — `auth_config.json` 에 `"post_logout_redirect_uri": "https://<서버>/auth/signed-out"` — IT 가 그 주소를 ADFS 앱의 RedirectUris 에 등록한 뒤에만 적습니다. 적으면 ADFS 가 우리 «Signed out» 화면으로 돌려보내고, 안 적으면 ADFS 자기 «로그아웃됨» 화면에 멈춥니다.
+- **화면에서** — 새 화면 `/auth/signed-out`: «Signed out» 과 Sign in 링크만 있고 저절로 어디로도 가지 않습니다.
+- **필요한 조건** — 서버 재기동. 돌려보내기까지 하려면 IT 등록과 위 칸.
+- **바뀐 동작** — `POST /auth/logout` 이 204 대신 200 `{"next": …}` 를 줍니다. ADFS 설정 문서에 `end_session_endpoint` 가 없거나 못 읽으면 next 는 `/auth/signed-out` 이고 ADFS 로그인은 끝나지 않습니다(로그에 한 줄).
+- **자세히** — 이 항목과 같은 커밋 · RUN.md 같은 절 · DEPLOY_SETUP §2-1.
+
 ## 2026-10-08 · 고침 — 표 비우기 도구가 명령으로 돌 때 모든 표를 거절하던 것
 
 - **무엇** — `python server/scripts/empty_table.py <표>` 가 «'<표>' 는 선언된 표가 아닙니다»로 거절했습니다. 그 프로세스가 `table_config.json` 의 표를 등록하지 않아서였습니다. 이제 다른 진입점과 같이 먼저 등록합니다. 명령은 그대로입니다.
