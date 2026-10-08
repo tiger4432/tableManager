@@ -2866,6 +2866,7 @@ note_naive_time(...)      셈 · `naive_time_counts()` · `naive_time_note()` �
    `undeclared_param` 으로 거절한다(판정 562. 실측은 `_install_templates` 주석에 있다 — 선언이
    로드에서 통째로 떨어져 규칙 목록이 비었다). ⚠️ `None` 은 「제품이 인자를 «제약하지 않는다»」이고
    빈 튜플은 「하나도 legal 하지 않다」다 — 다른 문장이다.
+🆕 10-08 `67dffd619` 인자 선언이 `{이름: 형}` 이면(`mapper_sdk.register` 가 그대로 둔다 — 튜플은 전처럼 튜플) `chain_bindings.rule_refusals` 가 `list` 형 인자에 리스트 아닌 값이 적힌 것을 `param_not_a_list` 로 거절한다(「columns must be a list, e.g. ["c_bn"]」 — 로드 · 저장 · 설정 보고가 지나는 그 자리). 추적되는 제품 맵퍼 중 리스트 인자를 선언한 것은 `copy_rows_with_hold`(`key_columns` · `columns`) 하나 — 나머지는 인자 선언이 없어 형을 물을 수 없다.
 ```
 
 ### 🆕㉘ `server/chain/synthesis.py` (🆕 **268줄** @`3c9da31f` — ⚰️ `chain/builtins.py` 로 살던 때: ~~446 @`6c71084f`~~ · ~~413 @`c4b010c8`~~ · ~~334 @`2c93ae9f`~~, 332 @`b1db471a`, 177 @`dc877746`, 구 표기 171, S-189 ⓒ `1964c65a` 신설 · S-195 에서 120→171) — 합성 «한 자리» + «선언한 유일 키»를 세우는 껍데기. ⚰️ `builtin:` 종류 표는 판정 562 에서 지워졌고, 이름은 `3c9da31f` 에서 따라왔다

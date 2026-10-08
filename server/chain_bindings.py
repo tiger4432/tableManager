@@ -63,6 +63,7 @@ ships), so a helper placed beside the mappers would not reach a deployment at al
 """
 from __future__ import annotations
 
+import json
 import logging
 
 import dt_map_derivation
@@ -485,12 +486,22 @@ def rule_refusals(rule, path, *, mapper_resolvable, derived_tables, mapper_param
 
     declared = mapper_params(one_cell) if (mapper_params and resolvable and one_cell) else None
     if declared is not None:
-        for name in sorted(set(params_of(candidate)) - set(declared)):
+        written = params_of(candidate)
+        for name in sorted(set(written) - set(declared)):
             issues.append(validation.DeclarationValidationError(
                 "undeclared_param", path + "." + name,
                 "'%s' does not read an argument by this name (it declares: %s) - a "
                 "misspelling here runs against the whole table"
                 % (one_cell, ", ".join(sorted(declared)) or "none")))
+        # 🔴 A LIST WRITTEN AS TEXT (총괄 67dffd619, 소유자 운영): `list("c_bn")` is four letters, and
+        #    the mapper failed on 'c' mid-run. Where the mapper declared the kind, it is refused here.
+        kinds = declared if isinstance(declared, dict) else {}
+        for name in sorted(name for name, kind in kinds.items()
+                           if kind is list and name in written and not isinstance(written[name], list)):
+            issues.append(validation.DeclarationValidationError(
+                "param_not_a_list", path + ".params." + name,
+                "%s must be a list, e.g. %s" % (name, json.dumps(
+                    [written[name]] if isinstance(written[name], str) else ["<column>"]))))
     return issues
 
 

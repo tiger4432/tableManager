@@ -271,7 +271,8 @@ MAPPER_REGISTRY: dict[str, object] = {}
 
 #: name -> the argument names that mapper reads out of its rule's `params` block. Declared
 #: in CODE, beside the logic, because `server/mappers/**` is the OWNER's and gitignored:
-#: the product cannot discover what a mapper reads, so the mapper has to say.
+#: the product cannot discover what a mapper reads, so the mapper has to say. A mapping
+#: `{name: kind}` says what each must be too - `list` is checked (총괄 67dffd619).
 MAPPER_PARAMS: dict[str, tuple] = {}
 
 #: Has anyone walked the mapper package in THIS process yet. Not "did it succeed" -
@@ -328,7 +329,7 @@ def register(name: str, fn, params=()):
             f"{_origin(existing)} and {_origin(fn)}. "
             f"Rename one - a rule naming '{name}' cannot say which it meant.")
     MAPPER_REGISTRY[name] = fn
-    MAPPER_PARAMS[name] = tuple(params)
+    MAPPER_PARAMS[name] = dict(params) if isinstance(params, dict) else tuple(params)
     return fn
 
 
