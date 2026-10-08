@@ -36845,3 +36845,20 @@ ec00cb905  admin.js 에서 navigator.clipboard 를 직접 부르는 자리 0(주
         처리 이력 1000000 · 대기 100000 -> 다섯 번 0.73 0.53 0.34 0.31 0.32 초
         CODE_MAP 의 제 줄을 새 수로 바꾸고 옛 수는 줄 그어 둠 — 이 보고와 같은 커밋
 ```
+
+---
+
+## [C 응용] 10-08 66b330480(체인 상태 낱말 여덟) QA — 알려진 이음새 하나를 잼 · 물음 하나
+
+```
+읽음    상태를 묻는 자리 = chain_state_of 하나 — 부르는 곳 3(어드민 줄 · 그리드 행 · /health). 끝난 행 순서 set_aside > failed > done, 기다리는 행 paused > running/stalled > retrying > waiting
+        어드민 패널은 새 칸(chain_state)을 안 읽어 그대로다
+잰 것   probe_grid_state_shape.mjs — 오늘의 그리드 패널(outbox_queue_panel.outboxQueueView, import) 에 행 하나씩
+        old shape (canary) | state "waiting" | detail "retrying"
+        new shape          | state "[object Object]" | detail ""
+        -> RUN.md 의 「클라 착지 전에는 … 그 객체를 그대로 보일 수 있다」는 실제로 «[object Object]» 이고, 재시도 사유 칸은 «빈 칸»이 된다(state_detail 은퇴)
+        서버 · 체인 워커를 재기동하고 클라 반이 오기 전이면, 그리드 대기열의 모든 행 상태가 그 글자다
+물음    원인은 «있던 칸의 형을 바꾼 것»(chain_state: 글자 -> {state, why}) · state_detail 은퇴다
+        11e5ea207(덩어리)의 규칙은 「옛 클라가 깨지지 않게 칸은 더하기만」이었다 — 같은 규칙이면 낱말은 그 칸에 글자로 두고 근거를 새 칸으로 더하는 모양이 된다
+        클라 반이 곧 오면 그대로 둘지, 재기동 순서(클라 반과 함께)를 RUN.md 에 걸지는 총괄 판정
+```
