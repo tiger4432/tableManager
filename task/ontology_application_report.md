@@ -36733,3 +36733,23 @@ b340386fe
         그 규칙은 전에도 돌다가 터졌으니 잃는 동작은 없다. 단 글자 «하나»짜리 칸 이름(list("k") = ["k"])은 전에 돌았고 이제 빠진다 — 드문 모양
 문서    SETUP_ORDER 의 params 줄에 형 선언 · 거절 — 이 보고와 같은 커밋
 ```
+
+---
+
+## [C 응용] 10-08 397c23f6f(대기열 5 초 · × 의 새 읽기 · outbox 복사) · 2c5fa512a(표에서 이어 걷기) QA — 앞 지적 둘 닫힘 · 물음 하나
+
+```
+397c23f6f  × 뒤 읽기가 가는 중인 읽기를 기다린 뒤 새로 떠난다 — 4d0f68d08 보고의 ① 닫힘(코드로 읽음: 그 약속은 finally 로 비운 뒤에 풀린다)
+           행 하나짜리 줄이 outbox_id 를 «Outbox ID» 로 복사 — f8dbf3399 보고의 «작은 것» 닫힘
+           자체 폴 5000 ms 켬 — 탭이 보일 때만 · 가는 중이면 건너뜀. 간격은 읽기가 «끝난 뒤» 다시 잰다. 운영에서 새 라우트 한 번이 몇 초인지는 아직 아무도 안 쟀다
+           (안 닫힘) 200 {"already": "processed"} 를 화면이 말없이 «됨»으로 — 35eacf3d2 보고 그대로
+2c5fa512a  체크 칸은 그래프의 다음 걸음 마킹에 쓴다 · Next 의 엣지는 선언의 typeGraph · 체크 0 이면 막힘 — 지시 그대로
+하니스     chain_rule_user_path 98/0 · chain_queue_panel 219/0 · walk_table 43/0 · walk_layout 27/0 (통과/실패 · node · 이 트리)
+물음       지시는 「다음 걸음 요청 = 그래프 Continue 가 짓는 그 함수 하나 — 둘째 요청 짓기 금지」였다
+           그런데 그래프 Continue 는 그런 함수를 안 짓는다 — Continue 는 마킹에서 «전체 걷기»(positive · negative · fanout_limit · expand, follow · collect · hops 없음)다
+           그래서 새 함수 stepAlong 이 생겼고 부르는 곳은 표의 Next 하나다. 그래프의 덩어리 걷기(subgraph_view._lumpSource)는 «한 걸음» 요청을 따로 짓는다 —
+           방향을 덩어리 방향의 반대로 하나 · node_limit STEP_NODE_LIMIT · 시간 창(since · until). stepAlong 은 both · 기본 node_limit · 창 없음
+           -> «한 걸음 요청»을 짓는 자리가 지금 둘이고 모양이 갈라져 있다. c06b45ea5 는 «+M more» 덩어리 열기를 stepAlong 으로 하라 했으니
+              그 라운드에 덩어리 걷기도 stepAlong 을 지나게 할지(방향 · 창을 인자로) 총괄 판정
+문서       CODE_MAP — 제가 적은 두 줄(폴 꺼짐 · 글자 복사)을 지금으로 · derive.js 에 stepAlong · table_view 에 nextRoutes — 이 보고와 같은 커밋
+```
