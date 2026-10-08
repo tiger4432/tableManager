@@ -2325,15 +2325,18 @@ def _ran_though_set_aside(db, tx_id, events):
     from database import crud
     from database.models import DatabaseOutbox
 
-    # the same question the failure path asks, then - only for a row that ended meanwhile - its mark
-    live = {event.id for event in _still_waiting(db, events)[0]}
-    ids, late = [event.id for event in events if event.id not in live], {}
+    # 🔴 LOCKED, IN ID ORDER, RIGHT BEFORE THE END IS WRITTEN (총괄 10-09). A mark read here is
+    #    cleared; a × that comes after waits for this commit, then finds the row no longer waiting
+    #    and leaves it - unlocked, its mark landed under this SUCCESS. `set_aside._mark` locks in
+    #    the same order, so a × and a group never wait on each other in a circle.
+    ids, marked = sorted(event.id for event in events), []
     for start in range(0, len(ids), WAITING_CHECK_CHUNK):
-        for event_id, payload in (db.query(DatabaseOutbox.id, DatabaseOutbox.payload)
-                                  .filter(DatabaseOutbox.id.in_(ids[start:start + WAITING_CHECK_CHUNK]))):
-            payload = get_payload_dict(payload) or {}
-            if payload.get(event_constants.CANCEL_MARK) == set_aside.OPERATOR:
-                late[event_id] = payload
+        marked += [event_id for event_id, by_operator in
+                   (db.query(DatabaseOutbox.id, set_aside.by_operator(DatabaseOutbox))
+                    .filter(DatabaseOutbox.id.in_(ids[start:start + WAITING_CHECK_CHUNK]))
+                    .order_by(DatabaseOutbox.id).with_for_update()) if by_operator]
+    late = {event_id: get_payload_dict(payload) or {} for event_id, payload in
+            db.query(DatabaseOutbox.id, DatabaseOutbox.payload).filter(DatabaseOutbox.id.in_(marked))} if marked else {}
     from sqlalchemy.orm.attributes import flag_modified
 
     tables = {}

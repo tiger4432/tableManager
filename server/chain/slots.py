@@ -64,6 +64,11 @@ SLOT_POOL = {"ASSY_DB_POOL_SIZE": "2", "ASSY_DB_MAX_OVERFLOW": "2"}
 CHAIN_WORKER = "chain worker"
 #: How long a stop waits for a killed slot, and then for each of its connections, to end.
 STOP_WAIT_SECONDS = 5
+#: How long a × reads the slot beats again while one of them does not read (`holding`).
+HOLDING_READ_SECONDS = 1.0
+#: `holding`'s third answer - a slot beat did not read - and what a × says then (총괄 10-09).
+UNREAD = "unread"
+SLOT_NOT_FOUND = "slot not found - the line's events are set aside; its running group may finish"
 
 logger = logging.getLogger("Chain")
 
@@ -376,14 +381,26 @@ def _remove_beat(name):
 
 
 def holding(key, beats=None):
-    """`(index, pid)` of the slot whose beat says it holds line `key`, or None."""
+    """`(index, pid)` of the slot whose beat says it holds line `key`, None when none does, or
+    `UNREAD` when a slot's beat did not read - read again for up to `HOLDING_READ_SECONDS` first
+    (총괄 10-09: a beat being written reads as unreadable, and that was taken for «no slot»).
+    Given `beats`, that one read."""
     from utils import heartbeat
 
-    for name, beat in (heartbeat.read_all() if beats is None else beats).items():
-        if (name.startswith(BEAT_PREFIX) and name[len(BEAT_PREFIX):].isdigit() and not beat.get("stale")
-                and ((beat.get("laps") or {}).get(HOLDS) or {}).get("line") == key):
-            return int(name[len(BEAT_PREFIX):]), beat.get("pid")
-    return None
+    deadline = time.monotonic() + HOLDING_READ_SECONDS
+    while True:
+        unread = False
+        for name, beat in (heartbeat.read_all() if beats is None else beats).items():
+            if not (name.startswith(BEAT_PREFIX) and name[len(BEAT_PREFIX):].isdigit()):
+                continue
+            unread = unread or bool(beat.get("error"))
+            if not beat.get("stale") and ((beat.get("laps") or {}).get(HOLDS) or {}).get("line") == key:
+                return int(name[len(BEAT_PREFIX):]), beat.get("pid")
+        if not unread:
+            return None
+        if beats is not None or time.monotonic() >= deadline:
+            return UNREAD
+        time.sleep(0.05)
 
 
 def is_slot(pid, index):
@@ -401,8 +418,10 @@ def stop_slot(db, key):
     """Stop the slot process holding line `key` (a ×, 총괄 19f6a9277): killed and waited for, then
     its database connections ended and waited for - what it committed is in the table when this
     returns (총괄 54a53f894: the × counts after it). The dispatcher reaps it, sets aside what of the
-    line still waits and starts a new slot. -> the pid stopped, or None."""
+    line still waits and starts a new slot. -> the pid stopped, None, or `UNREAD` (`holding`)."""
     found = holding(key)
+    if found == UNREAD:
+        return UNREAD
     if found is None or not is_slot(found[1], found[0]):
         return None
     import psutil

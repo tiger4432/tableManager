@@ -129,7 +129,7 @@ def stop_line(db, key, by, must_be_run=False):
     stop that ended at ① left the work running.
     The queue line's × and a run's Cancel both call this; `must_be_run` (the latter) refuses a
     key that is not a run before anything moves. -> `{"run"?, "skipped_events",
-    "already_processed", "slot_pid", "kept"?, "already"?}` - `run` the run's state read back,
+    "already_processed", "slot_pid", "slot_not_found"?, "kept"?, "already"?}` - `run` the run's state read back,
     `done` stays `done`; of the line's chain events waiting when the × read, `skipped_events`
     are set aside and `already_processed` ran, counted once the slot has ended."""
     from admin import retroactive
@@ -142,6 +142,8 @@ def stop_line(db, key, by, must_be_run=False):
     answer = {"run": retroactive.request_cancel(db, key)["state"]} if run else {}
     done = set_aside.set_aside_line(db, key, by, run=run)
     slot_pid = slots.stop_slot(db, key)
+    if slot_pid == slots.UNREAD:                      # said, not a silent null (총괄 10-09)
+        slot_pid, answer["slot_not_found"] = None, slots.SLOT_NOT_FOUND
     # 🔴 COUNTED AFTER THE SLOT HAS ENDED (총괄 54a53f894): a group that commits between the mark
     #    and the slot's end ran its rows - the count at mark time says 「set aside」 of rows that ran.
     aside, ran = set_aside.what_became_of(db, done["ids"])

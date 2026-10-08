@@ -46,6 +46,8 @@ def every_event_still_waiting(db, events):
 @pytest.fixture(autouse=True)
 def _fake_session_holds_every_event_waiting(monkeypatch):
     monkeypatch.setattr(ciw, "_still_waiting", every_event_still_waiting)
+    # and none was set aside while it ran - the success path's locked read (총괄 10-09)
+    monkeypatch.setattr(ciw, "_ran_though_set_aside", lambda db, tx_id, events: 0)
 
 
 # 규칙: 트리거 tblA_src -> target table_A, 트리거 tblB_src -> target table_B

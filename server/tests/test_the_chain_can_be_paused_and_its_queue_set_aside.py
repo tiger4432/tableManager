@@ -367,6 +367,86 @@ def test_a_cross_answers_its_lines_rows_as_the_table_has_them_once_the_slot_has_
 
 
 @pytest.mark.pg
+def test_a_cross_that_comes_after_the_success_paths_read_waits_and_the_row_reads_as_ran(pg_engine, monkeypatch):
+    """총괄 10-09: the success path locks its rows before it writes their end - a × between that read
+    and the commit waits for the commit, then finds the row no longer waiting. Unlocked, its mark
+    landed under the SUCCESS: a row that ran read as set aside, and running them again ran it twice."""
+    monkeypatch.setattr(process_logging, "active_process_name", lambda: "Chain")
+    _tables(pg_engine)
+    db = sessionmaker(bind=pg_engine)()
+    other = sessionmaker(bind=pg_engine)()
+    try:
+        stamp = "%d" % (time.time() * 1000)
+        _write(db, PA, [{"k": "L" + stamp, "n": "1"}])
+        row_id = db.query(models.DYNAMIC_TABLES[PA].row_id).filter_by(k="L" + stamp).scalar()
+        [event] = [e for e in _pending(db) if get_payload_dict(e).get("row_id") == row_id]
+        key = get_payload_dict(event).get("transaction_id")
+        cross_pid = other.connection().connection.dbapi_connection.get_backend_pid()
+        said, started = {}, []
+        cross = threading.Thread(target=lambda: said.update(chain_control.stop_line(other, key, "kim")))
+
+        def ending_after_a_cross(row, status, ending=worker.mark_processed):   # after the read, before the commit
+            if not started:
+                started.append(cross.start())
+                with pg_engine.connect() as conn:
+                    assert _wait(lambda: not cross.is_alive() or conn.execute(text(
+                        "SELECT wait_event_type = 'Lock' FROM pg_stat_activity WHERE pid = :pid"),
+                        {"pid": cross_pid}).scalar(), 30), "the × neither waited nor ended"
+            return ending(row, status)
+        monkeypatch.setattr(worker, "mark_processed", ending_after_a_cross)
+        monkeypatch.setattr(worker, "_process_chain_transaction_group_sync", lambda *a: (True, None, []))
+        monkeypatch.setattr(chain_slots, "stop_slot", lambda _db, line: None)
+        order, groups = _groups([event])
+        asyncio.run(worker.process_pending_groups(db, order, groups, [], None))
+        cross.join(30)
+
+        assert started and not cross.is_alive()
+        db.expire_all()
+        ended = db.get(models.DatabaseOutbox, event.id)
+        assert (ended.status, ended.processed_chain,
+                get_payload_dict(ended).get(event_constants.CANCEL_MARK)) == ("SUCCESS", True, None)
+        assert (said["skipped_events"], said["already_processed"]) == (0, 1)
+        assert row_id not in set_aside.rows_set_aside(db, tables=[PA]).get(PA, [])
+        # the mark never landed, so no group cleared one: the too-late line is for a mark read before the lock
+        assert [a for a in db.query(models.AuditLog).filter_by(source_name=set_aside.SKIP_TOO_LATE_SOURCE)
+                if a.old_value == key] == []
+    finally:
+        db.rollback()
+        db.close()
+        other.close()
+        for name in TABLES:
+            crud.TABLE_CONFIG.pop(name, None)
+
+
+def _slot_beat(line=None):
+    """A slot's beat as `heartbeat.read_all` gives it - holding `line`, or one that did not read."""
+    if line is None:
+        return {"pid": None, "stale": True, "error": "unreadable heartbeat: PermissionError"}
+    return {"pid": 4242, "stale": False, "laps": {chain_slots.HOLDS: {"line": line}}}
+
+
+def test_a_slot_beat_that_does_not_read_is_read_again(monkeypatch):
+    """총괄 10-09: a beat being written reads as unreadable - read once, a × took that for «no slot»."""
+    reads = iter([{"chain-slot-1": _slot_beat()}, {"chain-slot-1": _slot_beat("tx-1")}])
+    monkeypatch.setattr(heartbeat, "read_all", lambda *a, **k: next(reads))
+    assert chain_slots.holding("tx-1") == (1, 4242)
+
+
+def test_a_cross_whose_slot_beat_never_reads_says_so(db_q, queue, monkeypatch):
+    """Not a silent `slot_pid: null` (총괄 10-09): the line is set aside, which slot runs it is not known."""
+    _write(db_q, PA, [{"k": "K1", "n": "0"}])
+    key = _key_of(queue, PA)
+    monkeypatch.setattr(heartbeat, "read_all", lambda *a, **k: {"chain-slot-1": _slot_beat()})
+
+    answer = _cross(queue, key)
+
+    assert (answer.status_code, answer.json()) == (200, {
+        "skipped_events": 1, "already_processed": 0, "slot_pid": None,
+        "slot_not_found": chain_slots.SLOT_NOT_FOUND})
+    assert _rows(db_q, PA) == [SET_ASIDE]
+
+
+@pytest.mark.pg
 def test_a_pause_cancels_the_query_a_group_is_waiting_on(pg_engine, monkeypatch):
     monkeypatch.setattr(process_logging, "active_process_name", lambda: "Chain")
     _tables(pg_engine)

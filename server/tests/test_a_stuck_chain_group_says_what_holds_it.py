@@ -42,6 +42,8 @@ def _probe_events_are_still_waiting(monkeypatch):
     """The probe's events are not outbox rows: each is still waiting - the worker asks before a
     group runs and before its ending is written (소유자 10-08)."""
     monkeypatch.setattr(iw, "_still_waiting", lambda db, events: (list(events), set()))
+    # and none was set aside while it ran - the success path's locked read (총괄 10-09)
+    monkeypatch.setattr(iw, "_ran_though_set_aside", lambda db, tx_id, events: 0)
 
 
 @pytest.fixture()

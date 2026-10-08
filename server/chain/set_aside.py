@@ -124,7 +124,7 @@ def set_aside_line(db, key, by, run=False, reason=None):
             "ids": chain_ids}
 
 
-def _by_operator(outbox):
+def by_operator(outbox):
     """The SQL of 「set aside by an operator」 - the mark `_mark` writes."""
     return outbox.payload[event_constants.CANCEL_MARK].as_string() == OPERATOR
 
@@ -136,7 +136,7 @@ def line_already(db, key):
     rows = db.query(outbox.id).filter(*event_constants.queue_line_rows(outbox, key))
     if rows.first() is None:
         return "gone"
-    return "set_aside" if rows.filter(_by_operator(outbox)).first() is not None else "processed"
+    return "set_aside" if rows.filter(by_operator(outbox)).first() is not None else "processed"
 
 
 def what_became_of(db, ids):
@@ -149,7 +149,7 @@ def what_became_of(db, ids):
 
     if not ids:
         return 0, 0
-    aside, ended = (db.query(func.count(case((_by_operator(outbox), 1))), func.count())
+    aside, ended = (db.query(func.count(case((by_operator(outbox), 1))), func.count())
                     .filter(outbox.id.in_(list(ids)), outbox.processed_chain.is_(True)).one())
     return aside, ended - aside
 
@@ -164,6 +164,10 @@ def _mark(db, ids, reason):
 
     waiting = (DatabaseOutbox.id.in_(ids), DatabaseOutbox.processed_chain.is_(False))
     if db.get_bind().dialect.name == "postgresql":
+        # 🔴 LOCKED IN ID ORDER FIRST (총괄 10-09) - the order a group's success path locks its rows
+        #    in, so the two never wait on each other in a circle. A row a group holds is waited for,
+        #    then, ended by it, no longer waiting: it keeps the group's ending.
+        db.query(DatabaseOutbox.id).filter(*waiting).order_by(DatabaseOutbox.id).with_for_update().all()
         return db.execute(
             update(DatabaseOutbox).where(*waiting).values(
                 **event_constants.cancelled_columns(),
