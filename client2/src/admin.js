@@ -33,7 +33,7 @@ import {
 import { queueQuery } from './enrichment_queue.js';
 // 「체인 요청이 몇 개 씹히는 것 같다」를 수로 바꾸는 계측기. 뷰 모델이 DOM 없는 자기 모듈에
 // 살아서 하니스가 import 로 채점한다 (`client2/tests/chain_queue_panel_harness.mjs`).
-import { ChainQueuePanel } from './chain_queue_panel.js';
+import { ChainQueuePanel, skipLine } from './chain_queue_panel.js';
 import { ChainPauseControl, chainPauseView } from './chain_pause.js';
 // 시안 A ② Status — 줄 판정은 `overview_status` 한 자리, 판은 그리기만 한다.
 import { OverviewBoard } from './overview_board.js';
@@ -1447,7 +1447,7 @@ function renderChainQueue(payload, opts) {
   if (!chainQueuePanels) {
     chainQueuePanels = ['chain-queue-mount', 'overview-queue-mount']
       .map((id) => byId(id)).filter(Boolean)
-      .map((mount) => new ChainQueuePanel(mount, { onCancel: (id) => requestRunCancel(id) }));
+      .map((mount) => new ChainQueuePanel(mount, { onCancel: (cancel) => cancelQueueLine(cancel) }));
   }
   // Both queue reads pass here — the chain rule form learns which rules file the worker holds.
   if (chainRulePanel && payload) {
@@ -2895,6 +2895,15 @@ async function requestRunCancel(runId) {
   }
   // 서버가 값을 세웠고, 실제로 멈추는 것은 그다음입니다. 목록을 다시 읽어 «멈추는 중»을 보입니다.
   refreshRunning();
+}
+
+/** × on a queue line: its key when the server gave one (lead d32261987), else the run's own cancel as before.
+ *  Done, the tab is read again and the line is gone; refused, the server's sentence. */
+async function cancelQueueLine(cancel) {
+  if (!cancel.key) { await requestRunCancel(cancel.runId); return; }
+  const got = await skipLine(cancel.key, { adminFetch, apiBase: API_BASE });
+  if (!got.ok) { showToast(got.line, 'error'); return; }
+  void fetchData({ silent: true });
 }
 
 // 🔴 총괄 a274c90f0 · 78ebdcfc0 — the line is ONE part (`RunLines`), mounted here and, next, in the

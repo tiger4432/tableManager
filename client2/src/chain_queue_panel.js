@@ -1,8 +1,8 @@
 // CHAIN QUEUE INSTRUMENT — turns 「체인 요청이 몇 개 씹히는 것 같다」 into numbers.
 //
-// Reads `GET /admin/chain/queue` and draws it. READ ONLY: there is no cancel, no retry, no
-// reordering here, and there must not be. The queue's own worker owns the queue; a screen that
-// could reorder it would be a second writer.
+// Reads `GET /admin/chain/queue` and draws it. Its one write is a line's × (the line leaves the
+// queue, lead d32261987); there is no retry and no reordering here, and there must not be. The
+// queue's own worker owns the queue; a screen that could reorder it would be a second writer.
 //
 // ═══ THE THREE RULES THIS FILE EXISTS TO KEEP ═══════════════════════════════════════════
 //
@@ -53,6 +53,35 @@ import { retroactiveNote } from './retroactive_note.js';
 import { NO_TIME, localShort, localStamp } from './server_time.js';
 import { RunLines } from './run_lines.js';
 import { buildProgressCell } from './retroactive_view.js';
+import { failureFactOf, fetchFailureLine, retroFailureLine } from './config_resolve_view.js';
+
+const CANCEL_REFUSED = 'Cancel refused';
+
+/** A line's ×: the server's line key (lead d32261987), else a run id (a server from before the queue's ×),
+ *  else none. The one place this file asks which. */
+export function cancelOf(cancel) {
+  const c = cancel && typeof cancel === 'object' ? cancel : {};
+  if (c.key != null && String(c.key) !== '') return Object.freeze({ key: String(c.key) });
+  if (c.run_id) return Object.freeze({ runId: String(c.run_id) });
+  return null;
+}
+
+/** What a × carries: the cancel and the one question asked before it goes. */
+const skipOf = (cancel, events) => (cancel ? Object.freeze({ cancel,
+  question: isCount(events) ? `Skip ${unitText(countText(events), 'event')}?` : 'Skip this line?' }) : null);
+
+/** × on a line with a key: POST /admin/chain/queue/cancel {key}, through the page's admin door. `{ok: true}`, or
+ *  the refusal's line - the server's sentence first, through the same seat as a run's ×. */
+export async function skipLine(key, { adminFetch, apiBase = '' }) {
+  try {
+    const res = await adminFetch(`${apiBase}/admin/chain/queue/cancel`, { method: 'POST',
+      headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key }) });
+    if (res.ok) return { ok: true };
+    return { ok: false, line: await retroFailureLine(res, failureFactOf(res), CANCEL_REFUSED) };
+  } catch (e) {
+    return { ok: false, line: fetchFailureLine(null, CANCEL_REFUSED) };
+  }
+}
 
 // 🔴 총괄 8e331ca17 — each item carries `state` (running · orphaned · unknown), the server's one
 //    judgment (utils/heartbeat.runner_state). The ONE place this file asks it: the count, the
@@ -73,14 +102,15 @@ export function runLineRow(item) {
   const p = r.progress || {};
   const cell = buildProgressCell(p.processed, p.total, known ? Math.floor(secs / 60) : NaN);
   const where = [r.where, r.pid != null ? `pid ${r.pid}` : ''].filter(Boolean).join(' · ');
-  const runId = r.cancel && r.cancel.run_id ? String(r.cancel.run_id) : '';
+  const cancel = cancelOf(r.cancel);
   return Object.freeze({
-    id: runId || `${r.where || ''}:${r.what || ''}`,
+    id: (cancel && (cancel.key || cancel.runId)) || `${r.where || ''}:${r.what || ''}`,
     what: { text: r.what ? String(r.what) : ABSENT },
     detail: where ? { text: where } : null,
     progress: { ...cell, elapsed: known ? formatAge(secs) : '' },
     stateName: r.state ? { text: String(r.state) } : null,
-    cancel: Boolean(runId),
+    cancel: Boolean(cancel),
+    skip: skipOf(cancel),
     moving: isRunningItem(r),
     finished: false,
     stopping: false,
@@ -385,6 +415,7 @@ export function queueView(payload, opts = {}) {
     // An empty string means zero retries. The badge exists to surface the NON-zero ones,
     // and a 「0」 on every row is noise that hides the one row that is not 0.
     maxRetry: Number(t.max_retry) > 0 ? countOf(t.max_retry) : '',
+    skip: skipOf(cancelOf(t.cancel), t.events),
   }));
 
   // ── rule ④: a cut list says it was cut ──
@@ -457,8 +488,21 @@ export class ChainQueuePanel {
     this.root = this.doc.createElement('div');
     this.root.className = 'chain-queue-panel';
     this.mount.appendChild(this.root);
-    // × on a running line asks the page to cancel by run id; the page owns the route.
+    // A × asks once (`confirm`), then hands the page the line's cancel - {key} or {runId}; the page owns the route.
     this.onCancel = deps.onCancel || (() => {});
+    this.confirm = deps.confirm || ((text) => globalThis.confirm(text));
+  }
+
+  _skip(skip) {
+    if (skip && this.confirm(skip.question)) this.onCancel(skip.cancel);
+  }
+
+  _x(skip) {
+    const x = this.doc.createElement('button');
+    x.className = 'admin-btn running-x';
+    x.textContent = '×';
+    x.addEventListener('click', () => this._skip(skip));
+    return x;
   }
 
   /** @param {string} cls @param {string} text */
@@ -540,7 +584,8 @@ export class ChainQueuePanel {
       const box = this.doc.createElement('div');
       box.className = 'chain-queue-running';
       this.root.appendChild(box);
-      new RunLines(box, { doc: this.doc, onCancel: this.onCancel }).render(view.runningRows);
+      const skips = new Map(view.runningRows.map((r) => [r.id, r.skip]));
+      new RunLines(box, { doc: this.doc, onCancel: (id) => this._skip(skips.get(id)) }).render(view.runningRows);
     }
     // 「도는 중인데 주인이 없음」 — the heartbeat decided it, not this file.
     for (const orphan of (view.pickup ? view.pickup.orphaned : [])) {
@@ -620,8 +665,10 @@ export class ChainQueuePanel {
     const thead = doc.createElement('thead');
     thead.className = 'table-header';
     const hr = doc.createElement('tr');
+    // The × column stands only when a line has a × - a server before the queue's × draws the table it drew.
+    const act = rows.some((r) => r.skip);
     for (const [label, col] of [['Job / Transaction', 'tx'], [WAITING, 'age'], ['Tables', 'tables'],
-                                ['Rows', 'rows'], ['Drained by', 'owners']]) {
+                                ['Rows', 'rows'], ['Drained by', 'owners'], ...(act ? [['', 'act']] : [])]) {
       const th = doc.createElement('th');
       th.textContent = label;
       th.setAttribute('data-col', col);
@@ -679,6 +726,11 @@ export class ChainQueuePanel {
         tdOwners.appendChild(retry);
       }
       tr.appendChild(tdOwners);
+      if (act) {
+        const tdAct = this._td('', 'act');
+        if (r.skip) tdAct.appendChild(this._x(r.skip));
+        tr.appendChild(tdAct);
+      }
       tbody.appendChild(tr);
     }
     table.appendChild(tbody);

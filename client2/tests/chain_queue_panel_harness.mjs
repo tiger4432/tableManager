@@ -715,7 +715,7 @@ console.log('\n[8] the owner split, and unknown is not chain');
   const drawn = (over) => {
     const d = makeDoc();
     const host = d.createElement('div');
-    new ChainQueuePanel(host, { doc: d, onCancel: (id) => cancelled.push(id) }).render(BODY(over));
+    new ChainQueuePanel(host, { doc: d, onCancel: (c) => cancelled.push(c), confirm: () => true }).render(BODY(over));
     return host;
   };
 
@@ -751,7 +751,7 @@ console.log('\n[8] the owner split, and unknown is not chain');
   const xs = byClass(host, 'running-x');
   eq('C14 ...with one ×', xs.length, 1);
   (xs[0] && xs[0].listeners && xs[0].listeners.click || []).forEach((fn) => fn());
-  eq('C15 pressing it asks the page to cancel that run by id', cancelled, ['run-9']);
+  eq('C15 pressing it asks the page to cancel that run by id', cancelled, [{ runId: 'run-9' }]);
   eq('C16 NEGATIVE CONTROL: nothing running paints no run line', byClass(drawn({}), 'run-line').length, 0);
   eq('C16a an unseen loop blinds the count, not the lines the seat did read',
     [valueOf(drawn({ now_running: NOW_THREE, loop_seen_via: null }), 'running'),
@@ -797,6 +797,121 @@ console.log('\n[8] the owner split, and unknown is not chain');
   eq('ST10 an older server\'s items (no state key) are all counted, as before', numberOf(old, 'running').value, '3');
   eq('ST11 ...and all move, with no state word invented', [old.runningRows.map((r) => r.moving), old.runningRows.map((r) => r.stateName)],
     [[true, true, true], [null, null, null]]);
+}
+
+// ═══ X: a × on every queue line (lead d32261987, owner 10-08) ═══════════════════════════════
+// The server adds `cancel: {key}` to each line; a line with a key goes to POST /admin/chain/queue/cancel, a
+// line with only `run_id` (a server before the queue's ×) goes the run's own way, a line with neither has no ×.
+// The fixture holds all three on both lists, and one line with a key AND a run id - so «key first» is measured.
+const SUBJECT = new URL('../src/chain_queue_panel.js', import.meta.url);
+const { fetchFailureLine } = await import('../src/config_resolve_view.js');
+async function xSuite(m, say) {
+  const BODY = {
+    waiting: 3, oldest_waiting_seconds: 30, waiting_by_owner: [], retried_among_waiting: 0, loop_seen_via: 'this_process',
+    waiting_transactions: [
+      { transaction_id: 'aaaaaaaa-1111', events: 12, rows: 40, tables: ['wafer_process'], waiting_seconds: 30,
+        cancel: { key: 'tx:aaaaaaaa-1111' } },
+      { run_id: 'run-7', op: 'recompute', transaction_id: null, events: 3, rows: 3, tables: [], waiting_seconds: 20,
+        cancel: { key: 'run:run-7', run_id: 'run-7' } },
+      { transaction_id: 'cccccccc-1111', events: 1, rows: 1, tables: ['lot_master'], waiting_seconds: 10 },
+    ],
+    now_running: [
+      { what: 'rule_a', where: 'chain_worker', pid: 7, elapsed_seconds: 5, progress: null, cancel: { key: 'group:5' } },
+      { what: 'Recompute shown values (R3)', where: 'own_process', pid: 42, elapsed_seconds: 60,
+        progress: { processed: 1, total: 2 }, cancel: { run_id: 'run-9' } },
+      { what: 'lot_master/collect', where: 'scheduler', pid: 9, elapsed_seconds: 9, progress: null, cancel: null },
+    ],
+  };
+  const seat = (body, answer = true) => {
+    const d = makeDoc();
+    const host = d.createElement('div');
+    const asked = [];
+    const got = [];
+    new m.ChainQueuePanel(host, { doc: d, onCancel: (c) => got.push(c), confirm: (t) => { asked.push(t); return answer; } })
+      .render(body);
+    return { host, asked, got };
+  };
+  const press = (node) => (node && node.listeners.click || []).forEach((fn) => fn());
+  const rowXs = (host) => rowsOf(host).map((tr) => byClass(tr, 'running-x')[0] || null);
+  const runXs = (host) => byClass(host, 'run-line').map((l) => byClass(l, 'running-x')[0] || null);
+  const s = seat(BODY);
+  say('X1 every line the server gave a cancel has a ×, on both lists',
+    same(rowXs(s.host).map(Boolean), [true, true, false]) && same(runXs(s.host).map(Boolean), [true, true, false]),
+    JSON.stringify([rowXs(s.host).map(Boolean), runXs(s.host).map(Boolean)]));
+  press(rowXs(s.host)[0]);
+  say('X2 a waiting line\'s ×: asked once with its events, then the page gets that line\'s key',
+    same(s.asked, ['Skip 12 events?']) && same(s.got, [{ key: 'tx:aaaaaaaa-1111' }]), JSON.stringify([s.asked, s.got]));
+  const no = seat(BODY, false);
+  press(rowXs(no.host)[0]);
+  say('X3 declined: nothing reaches the page', no.asked.length === 1 && no.got.length === 0, JSON.stringify(no.got));
+  const both = seat(BODY);
+  press(rowXs(both.host)[1]);
+  say('X4 a line that also names a run hands its key, not the run id', same(both.got, [{ key: 'run:run-7' }]),
+    JSON.stringify(both.got));
+  const run = seat(BODY);
+  press(runXs(run.host)[0]);
+  say('X5 a running line with a key hands its key, asked without a count',
+    same(run.asked, ['Skip this line?']) && same(run.got, [{ key: 'group:5' }]), JSON.stringify([run.asked, run.got]));
+  const old = seat(BODY);
+  press(runXs(old.host)[1]);
+  say('X6 a server before the queue\'s × (run id only): the run\'s id, as before', same(old.got, [{ runId: 'run-9' }]),
+    JSON.stringify(old.got));
+  const bare = seat({ ...BODY, waiting_transactions: BODY.waiting_transactions.map(({ cancel, ...t }) => t) });
+  say('X7 a table with no × on any line keeps its five columns', byTag(bare.host, 'TH').length === 5
+    && rowXs(bare.host).every((x) => !x), String(byTag(bare.host, 'TH').length));
+  const sent = [];
+  const answer = (status, body) => async (url, init) => {
+    sent.push({ url, method: init.method, body: init.body });
+    return { ok: status < 300, status, headers: { get: () => '' }, json: async () => body };
+  };
+  // The contract's answers (lead be5457365): 200 {skipped_events}, a key no longer waiting 200 with `already`, a
+  // malformed key 422; no 404.
+  const done = await m.skipLine('tx:aaaaaaaa-1111', { adminFetch: answer(200, { skipped_events: 12 }), apiBase: 'http://box' });
+  const gone = await m.skipLine('tx:old', { adminFetch: answer(200, { skipped_events: 0, already: 'processed' }) });
+  say('X8 the key goes as POST /admin/chain/queue/cancel {key}; a 200 is done, a key already gone too',
+    done.ok === true && gone.ok === true && same(sent[0], { url: 'http://box/admin/chain/queue/cancel', method: 'POST',
+      body: JSON.stringify({ key: 'tx:aaaaaaaa-1111' }) }), JSON.stringify([done, gone, sent[0]]));
+  const refused = await m.skipLine('k', { adminFetch: answer(422, { detail: 'Not a queue line key' }) });
+  const away = await m.skipLine('k', { adminFetch: async () => { throw new Error('offline'); } });
+  say('X9 refused: the server\'s sentence, with its status; unreachable: the unreachable line',
+    refused.ok === false && refused.line === 'Not a queue line key (HTTP 422)'
+      && away.ok === false && away.line === fetchFailureLine(null, 'Cancel refused'), JSON.stringify([refused, away]));
+}
+const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+const X_NAMES = [];
+await xSuite(await import('../src/chain_queue_panel.js'), (name, cond, detail) => { X_NAMES.push(name); ok(name, cond, detail); });
+{
+  const { loadWithProbe } = await import('./lib/probe.mjs');
+  const { scoreMutants } = await import('./lib/mutation_scorer.mjs');
+  const swap = (from, to) => (t) => { if (!t.includes(from)) throw new Error(`mutation anchor is GONE: ${from.slice(0, 60)}`); return t.split(from).join(to); };
+  const MUTANTS = [
+    { id: 'XM1', what: 'a key is not read', catches: 'X1',
+      mutate: swap("  if (c.key != null && String(c.key) !== '') return Object.freeze({ key: String(c.key) });\n", '') },
+    { id: 'XM2', what: 'a run id wins over the key', catches: 'X4',
+      mutate: swap("  if (c.key != null && String(c.key) !== '')", "  if (!c.run_id && c.key != null && String(c.key) !== '')") },
+    { id: 'XM3', what: 'no question is asked', catches: 'X3',
+      mutate: swap('if (skip && this.confirm(skip.question)) this.onCancel(skip.cancel);', 'if (skip) this.onCancel(skip.cancel);') },
+    { id: 'XM4', what: 'the question does not say how many', catches: 'X2',
+      mutate: swap("`Skip ${unitText(countText(events), 'event')}?`", "'Skip this line?'") },
+    { id: 'XM5', what: 'the × column always stands', catches: 'X7',
+      mutate: swap('const act = rows.some((r) => r.skip);', 'const act = true;') },
+    { id: 'XM6', what: 'the POST carries no key', catches: 'X8', mutate: swap('body: JSON.stringify({ key })', 'body: JSON.stringify({})') },
+    { id: 'XM7', what: 'a refusal says a fixed word, not the server\'s sentence', catches: 'X9',
+      mutate: swap('line: await retroFailureLine(res, failureFactOf(res), CANCEL_REFUSED)', 'line: CANCEL_REFUSED') },
+    { id: 'XM8', what: 'a running line\'s × goes nowhere', catches: 'X5',
+      mutate: swap('onCancel: (id) => this._skip(skips.get(id))', 'onCancel: () => {}') },
+    { id: 'XM9', what: 'a run id alone is not read', catches: 'X6',
+      mutate: swap('  if (c.run_id) return Object.freeze({ runId: String(c.run_id) });\n', '') },
+  ];
+  const scored = await scoreMutants(MUTANTS, async (mu) => {
+    const m = (await loadWithProbe(SUBJECT.pathname.replace(/^\/([A-Za-z]:)/, '$1'), { mutate: mu.mutate })).module;
+    const got = [];
+    let ran = 0;
+    await xSuite(m, (name, cond) => { ran += 1; if (!cond) got.push(name); });
+    return { failures: got, ran };
+  }, { baselineRan: X_NAMES.length, baselineNames: X_NAMES, title: '\n  [mutants] - each must be caught by the check it names.' });
+  pass += MUTANTS.length - scored.wrong;
+  for (let i = 0; i < scored.wrong; i += 1) failures.push(`mutant verdict ${i + 1}`);
 }
 
 console.log(`\n════ RESULT: ${pass} passed, ${failures.length} failed ════`);
