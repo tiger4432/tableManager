@@ -173,7 +173,7 @@ conda run -n assy_manager python server/migrations/drop_redundant_layering_index
 SELECT indexname FROM pg_indexes
 WHERE tablename = 'audit_logs' AND indexname = 'idx_audit_user_recorrection';
 ```
-없으면 `ops_setup_db_performance.py`를 실행한다. 인덱스가 없어도 대시보드가 느려지지는 않는다(1500ms `statement_timeout` + 60초 캐시로 방어) — 대신 그 칸이 `—`로 비고 사유가 표시된다. 즉 **`—`가 계속 보이면 이 인덱스를 의심할 것.**
+🆕 10-09 `9acf4243e` — 모델(`models.py`)에 선언된 인덱스는 체인 워커가 기동 때 «없음 · 무효»를 이름 대어 한 줄 알리고 하나씩 `CONCURRENTLY` 로 만든다(`ingestion_settings.json` 의 `build_missing_indexes`, 기본 켬 · `GET /admin/indexes`) — 이 인덱스도 그 선언이다. 꺼 두었으면 `ops_setup_db_performance.py`를 실행한다. 인덱스가 없어도 대시보드가 느려지지는 않는다(1500ms `statement_timeout` + 60초 캐시로 방어) — 대신 그 칸이 `—`로 비고 사유가 표시된다. 즉 **`—`가 계속 보이면 이 인덱스를 의심할 것.**
 
 #### 상호작용 점수 인덱스 (`uq_effort_transaction` · `idx_effort_window`)
 **정본 계기**(완료까지의 상호작용 점수, [data_model §2.4](../architecture/data_model.md))가 쓰는 인덱스 2종. `interaction_effort_logs`는 신규 테이블이므로 **신규 설치에서는 `create_all`이 테이블과 인덱스를 함께 만든다** — 이 절이 필요한 경우는 **테이블만 먼저 생긴 DB**(구버전 기동 이력이 있는 운영 DB)다. 그 경우 `create_all`은 인덱스를 추가하지 않으므로 위 경고가 그대로 적용된다.
@@ -189,7 +189,7 @@ WHERE tablename = 'interaction_effort_logs';
 | `uq_effort_transaction` (UNIQUE) | **tx당 1행 불변식이 깨진다.** 클라 재시도가 같은 공수를 두 번 기록해 그 세션의 평균이 조용히 왜곡된다 — 숫자가 틀렸다는 신호가 어디에도 뜨지 않으므로 가장 위험하다 |
 | `idx_effort_window` (커버링) | 창 집계가 Seq Scan으로 떨어진다. 대시보드는 느려지지 않고(1500ms timeout + 60초 캐시) 그 칸이 `—`로 빈다 |
 
-없으면 `ops_setup_db_performance.py`(Step 3.7)를 실행한다. `uq_effort_transaction` **생성이 실패하면 이미 중복 `transaction_id` 행이 있다는 뜻**이므로, 스크립트 출력의 `Failed to create uq_effort_transaction`을 그냥 넘기지 말 것 — 중복을 먼저 정리해야 한다.
+🆕 10-09 `9acf4243e` — 모델(`models.py`)에 선언된 인덱스는 체인 워커가 기동 때 «없음 · 무효»를 이름 대어 한 줄 알리고 하나씩 `CONCURRENTLY` 로 만든다(`ingestion_settings.json` 의 `build_missing_indexes`, 기본 켬 · `GET /admin/indexes`) — 두 인덱스 다 그 선언이다. 꺼 두었으면 `ops_setup_db_performance.py`(Step 3.7)를 실행한다. `uq_effort_transaction` **생성이 실패하면 이미 중복 `transaction_id` 행이 있다는 뜻**이므로, 스크립트 출력의 `Failed to create uq_effort_transaction`을 그냥 넘기지 말 것 — 중복을 먼저 정리해야 한다.
 
 ```sql
 -- 중복 확인 (정상이면 0행)
@@ -197,7 +197,7 @@ SELECT transaction_id, count(*) FROM interaction_effort_logs
 GROUP BY transaction_id HAVING count(*) > 1;
 ```
 
-#### R2 회수 범위 인덱스 (`idx_sources_by_source`) — 2026-07-31 `1948338`
+#### ⚰️ R2 회수 범위 인덱스 (`idx_sources_by_source`) — 2026-07-31 `1948338` · 09-10 `532f08f66` 에 은퇴(→ 부분 인덱스 `idx_sources_human_claims`, `models.py` 주석)
 
 「이 소스가 이 테이블에서 주장하는 셀은 무엇인가」를 좁히는 **유일한** 인덱스. R2 회수(`chain_replay.count_withdrawable`/`withdraw_source`)와 그 카운트를 **요청 경로에서** 내놓는 `GET /admin/retroactive/withdraw/count`([BACKFILL_GUIDE §7](./BACKFILL_GUIDE.md))가 소비자다.
 
@@ -213,7 +213,7 @@ WHERE ci.relname = 'idx_sources_by_source';
 
 - 🔴 **기존 `idx_sources_lookup_source`가 이 일을 대신하지 못한다.** 그쪽 키 순서는 `(table_name, row_id, column_name, source_name)`이라 **`source_name`이 마지막**이고, `(table_name, source_name)` 술어로는 쓸 수 없다. 없으면 플래너는 `cell_sources` **전량 스캔**으로 떨어진다 — 실측 근거(행 수·소요·버퍼·버려진 행 수)는 `server/database/models.py`의 이 인덱스 주석과 `server/scripts/ops_setup_db_performance.py` Step 3.10에 **기록돼 있으니 그쪽을 읽을 것**(여기 사본을 두지 않는다).
 - **키 순서가 계약이다** — `column_name`이 **세 번째**라야 `--columns` 허용목록이 인덱스 내부 Filter가 아니라 **`Index Cond`의 일부**가 되고, `row_id`가 **네 번째**라야 회수 1단계(`(row_id, column_name)` 조회)가 **커버링**이 된다. 커버링이 아니면 플래너가 매치당 heap fetch와 Seq Scan을 저울질하다 **다시 Seq Scan을 고를 수 있다.**
-- **두 곳에 선언돼 있고 둘 다 고쳐야 한다** — `models.py`(신규 설치의 `create_all`)와 `ops_setup_db_performance.py` Step 3.10(**기존 DB의 유일한 경로**). 위 ⚠️ 경고가 그대로 적용된다.
+- **두 곳에 선언돼 있고 둘 다 고쳐야 한다** — `models.py`(신규 설치의 `create_all`)와 `ops_setup_db_performance.py` Step 3.10(~~기존 DB의 유일한 경로~~ — 🆕 10-09 `9acf4243e` — 모델(`models.py`)에 선언된 인덱스는 체인 워커가 기동 때 «없음 · 무효»를 이름 대어 한 줄 알리고 하나씩 `CONCURRENTLY` 로 만든다(`ingestion_settings.json` 의 `build_missing_indexes`, 기본 켬 · `GET /admin/indexes`)). 위 ⚠️ 경고가 그대로 적용된다.
 - **스크립트는 만든 뒤 플래너가 실제로 그것을 골랐는지까지 검사한다**(Step 3.11). 검사 술어는 `chain_replay._claimed_filter` — **서빙되는 질의를 만드는 그 빌더**에서 컴파일하므로 검증한 계획과 서빙되는 계획이 갈릴 수 없고, 프로브 쌍은 합성 리터럴이 아니라 **데이터에서 가장 큰 실제 `(table_name, source_name)`**이다. 인덱스 **이름이 계획에 나타나는지**까지 따로 본다(다른 인덱스가 만든 그럴듯한 계획은 이 인덱스를 죽은 무게로 남긴다).
 - ⚠️ **`WITHDRAW_PLAN_MIN_ROWS` 미만이면 실패가 아니라 `NOT VERIFIED`**를 찍는다. 작은 표에서 Seq Scan은 **옳은 계획**이고, 거기서 우는 검사는 운영자가 검사를 무시하게 만든다. 표가 커진 뒤 다시 돌릴 것.
 - 이 인덱스는 **아무것도 대체하지 않는다** — 기존 UNIQUE 복합 인덱스는 업서트의 충돌 대상이라 그대로 필요하다.

@@ -434,10 +434,10 @@ CLI로 돌리는 **완전한** 백필은 「새로운가」를 **파생 테이�
 
 ### 6.6 ⓑ R2의 카운트에는 **인덱스가 필요합니다** (2026-07-31 `1948338`)
 
-「이 소스가 이 테이블에서 주장하는 셀은 몇 개인가」는 `cell_sources`를 `(table_name, source_name)`으로 좁히는 질문입니다. 그 술어를 받는 인덱스는 **`idx_sources_by_source`(`table_name, source_name, column_name, row_id`) 하나**입니다 — 기존 `idx_sources_lookup_source`는 `source_name`이 **마지막 키**라 이 술어에 쓸 수 없습니다.
+「이 소스가 이 테이블에서 주장하는 셀은 몇 개인가」는 `cell_sources`를 `(table_name, source_name)`으로 좁히는 질문입니다. ⚰️ (09-10 `532f08f66` 에 은퇴 — 전량 인덱스가 모든 셀 쓰기에 값을 치렀다. 사람 층만 받는 부분 인덱스 `idx_sources_human_claims` 로 바뀜, 까닭과 실측은 `models.py` 주석) ~~그 술어를 받는 인덱스는~~ **`idx_sources_by_source`(`table_name, source_name, column_name, row_id`) 하나**입니다 — 기존 `idx_sources_lookup_source`는 `source_name`이 **마지막 키**라 이 술어에 쓸 수 없습니다.
 
 - **없으면 이 카운트가 `cell_sources` 전량 스캔이 되고, 그 비용이 요청 경로에 앉습니다**(§7의 `count` 라우트). 실측 근거(행 수·소요·버퍼·플래너 판정)는 `server/database/models.py`의 `idx_sources_by_source` 주석과 `server/scripts/ops_setup_db_performance.py` Step 3.10에 **기록돼 있습니다** — 여기 사본을 만들지 않습니다.
-- **반영 경로는 하나입니다**: `conda run -n assy_manager python server/scripts/ops_setup_db_performance.py`(Step 3.10). `create_all`은 **이미 있는 테이블에 인덱스를 추가하지 않으므로**, `models.py` 선언만으로는 기존 운영 DB에 생기지 않습니다.
+- 🆕 10-09 `9acf4243e` — 모델(`models.py`)에 선언된 인덱스는 체인 워커가 기동 때 «없음 · 무효»를 이름 대어 한 줄 알리고 하나씩 `CONCURRENTLY` 로 만든다(`ingestion_settings.json` 의 `build_missing_indexes`, 기본 켬 · `GET /admin/indexes`). ~~**반영 경로는 하나입니다**~~: `conda run -n assy_manager python server/scripts/ops_setup_db_performance.py`(Step 3.10). `create_all`은 **이미 있는 테이블에 인덱스를 추가하지 않으므로**, `models.py` 선언만으로는 기존 운영 DB에 생기지 않습니다.
 - 스크립트가 만든 뒤 **플래너가 실제로 그것을 골랐는지까지 검사**합니다(Step 3.11). 표가 작으면(`WITHDRAW_PLAN_MIN_ROWS` 미만) **실패가 아니라 `NOT VERIFIED`**를 찍습니다 — 작은 표에서 Seq Scan은 옳은 계획이고, 거기서 우는 검사는 운영자가 검사를 무시하게 만듭니다.
 - 운영 관점 전문은 [POSTGRES_OPERATIONS §3.1](./POSTGRES_OPERATIONS_GUIDE.md).
 
