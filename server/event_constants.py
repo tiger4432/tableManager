@@ -245,14 +245,15 @@ def queue_line_rows(outbox, key, run=False):
 
 
 def mark_cancelled(event, by: str, reason: str):
-    """End an event without running it: the mark and the reason, then `mark_processed`."""
+    """End an event without running it: the mark and the reason, then `cancelled_columns`."""
     from utils.payload_helper import get_payload_dict
 
     payload = dict(get_payload_dict(event) or {})
     payload[CANCEL_MARK] = by
     payload[CANCEL_REASON] = reason
     event.payload = payload
-    mark_processed(event, "SUCCESS")
+    for column, value in cancelled_columns().items():
+        setattr(event, column, value)
 
 
 def processed_columns(status):
@@ -262,6 +263,16 @@ def processed_columns(status):
     from sqlalchemy import func
 
     return {"status": status, "processed_chain": True, "processed_at": func.now()}
+
+
+def cancelled_columns():
+    """What 「ended without running」 writes beside its mark - ONE definition, for `mark_cancelled`
+    on one object and `chain.set_aside._mark` set-based. The processed columns, and
+    `broadcast_at`: a row set aside has nothing to deliver, so it is not 「미전달」 - the sweep, the
+    undelivered age and the grid queue leave it (소유자 10-08 「우측 대기열 쓰레기네」, 총괄 afa1b6302)."""
+    from sqlalchemy import func
+
+    return dict(processed_columns("SUCCESS"), broadcast_at=func.now())
 
 
 def _undelivered_when():

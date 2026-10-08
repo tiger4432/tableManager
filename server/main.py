@@ -4953,9 +4953,12 @@ def get_outbox_queue_rows(limit: int = 50, cursor: int = None,
     ⛔ `payload` 는 «응답에 안 나간다». 질의는 싣는다 — `_rule_accepts_event` 가
        `source_name` 을 읽어야 「이 규칙이 도나」를 답할 수 있기 때문이고, 읽고 버린다.
 
-    ⚠️ 모집단은 「기다리는 행(`processed_chain=false`, RETRYING 포함) ∪ 「돌았는데 통지가
-       안 나간」 행」에서 **«아무것도 돌지 않을» 행을 뺀 것**이다 (소유자 2026-09-23
+    ⚠️ 모집단은 «기다리는 행»(`processed_chain=false`, RETRYING 포함) — `/admin/chain/queue` 와
+       «같은 술어» — 에서 **«아무것도 돌지 않을» 행을 뺀 것**이다 (소유자 2026-09-23
        「빼. 안 돌거는 다빼」). 「돈다」는 좌석 둘이 답한다 — `_is_trigger_event` 와 `fires`.
+       ⚰️ 「돌았는데 통지가 안 나간」(미전달) 행도 있었다. 이미 돈 행이라 «앞으로 돌 것»이 아니고,
+       빼 둔(×) 행이 그 모양으로 남아 × 뒤에도 이 목록에 있었다(소유자 10-08 「x 버튼 눌러서
+       어드민 대기열 지웠는데 왜 메인그리드 우측 대기열은 그대로임?」, 총괄 afa1b6302).
        그래서 쪽이 `limit` 보다 «짧게» 나올 수 있고, 그때도 `next_cursor` 는 마지막으로
        «읽은» 행을 가리킨다.
        **실패는 여기 «안 온다», 그리고 그것이 설계다**
@@ -4988,10 +4991,9 @@ def get_outbox_queue_rows(limit: int = 50, cursor: int = None,
     asked = int(limit or 50)
     limit = max(1, min(asked, _QUEUE_ROWS_CAP))
 
-    # 부분 인덱스 셋의 술어를 «그대로» 쓴다 — 화면이 말하는 집합과 스윕·워커가 집는
-    # 집합이 갈리면 운영자가 「왜 안 없어지나」를 묻게 된다.
+    # 대기 부분 인덱스의 술어를 «그대로» 쓴다 — 화면이 말하는 집합과 워커 · 어드민 대기열이
+    # 집는 집합이 갈리면 운영자가 「왜 안 없어지나」를 묻게 된다.
     waiting = (outbox.processed_chain == False)                        # noqa: E712
-    undelivered = event_constants.undelivered_clause(outbox)
     # ⚰️ [소유자 2026-09-22] 「대기열에 failed 는 띄우지 마. «앞으로 돌 것만» 띄워」
     #    한 시간 전 이 자리에 `failed` 가 «있었다» — 실패가 기본 모집단에서 빠지는 것을
     #    찾고 합집합에 넣었는데, 그건 「무엇이 안 돌았나」의 답이지 이 화면의 물음이 아니다.
@@ -5022,7 +5024,7 @@ def get_outbox_queue_rows(limit: int = 50, cursor: int = None,
 
     q = db.query(outbox.id, outbox.event_type, outbox.table_name, outbox.status,
                  outbox.processed_chain, outbox.created_at, outbox.broadcast_at,
-                 outbox.payload).filter(and_(or_(waiting, undelivered), could_run))
+                 outbox.payload).filter(and_(waiting, could_run))
     if cursor is not None:
         q = q.filter(outbox.id > int(cursor))
     # 🔴 한 행 «더» 읽고 버린다. 그래야 「더 있다」가 «재어서 아는 사실»이 된다 —
@@ -5134,7 +5136,7 @@ def get_outbox_queue_rows(limit: int = 50, cursor: int = None,
         },
         # 🔴 이 문자열이 «화면 머리»에 그대로 나간다. 모집단을 바꾸고 이 줄을 안 고치면
         #    화면이 안 하는 일을 한다고 말한다 — 말이 기제보다 오래 사는 자리다.
-        "population": "processed_chain=false ∪ (done & undelivered), "
+        "population": "processed_chain=false (the admin queue's own), "
                       "minus rows no rule will run for",
     }
 

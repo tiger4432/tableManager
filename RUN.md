@@ -1,5 +1,22 @@
 # 지금 돌리면 되는 것
 
+> ## [10-08] **메인 그리드 우측 대기열 = 어드민 대기열과 같은 «기다리는 것»만 · 빼 둔(×) 행은 알릴 것이 없다 — 이주 «없음» · 재기동 «서버 · 체인 워커» · 운영 SQL 한 번**
+>
+> ```
+> 무엇이 바뀌나  그리드 우측 대기열(GET /outbox/queue/rows)이 기다리는 행만 싣는다 — 어드민 대기열과 같은 술어
+>                × · 빼 두기로 끝낸 행은 broadcast_at 도 찍는다 — 「미전달」로 안 읽혀 그리드 · 미전달 스윕 · /health 미전달 나이에서 빠진다
+> 운영에 이미 남은 행  재기동 뒤 한 번 (psql 또는 DB 도구):
+>                UPDATE database_outbox SET broadcast_at = now()
+>                 WHERE processed_chain = true AND status = 'SUCCESS' AND broadcast_at IS NULL
+>                   AND payload->>'cancelled_by' IS NOT NULL;
+>                답 UPDATE N = 빼 둔 채 「미전달」로 남아 있던 행 수(그리드에 남아 보이던 것). 0 이면 남은 것이 없었다
+>                미전달 부분 인덱스(idx_outbox_undelivered) 위에서 돈다 — 큰 표 전체를 훑지 않는다
+> 확인          × 를 누른 줄이 어드민 · 그리드 두 대기열에서 같이 사라진다
+> 급할 때       git revert <이 커밋> -> 서버 · 체인 워커 재기동 (SQL 로 찍은 broadcast_at 은 되돌릴 필요 없음 — 알릴 것이 없던 행)
+> ```
+
+---
+
 > ## [10-08] **대기열 줄 × 와 소급 실행 Cancel 이 «일 하나를 끈다» — 이미 끝난 소급의 대기 이벤트도 뺀다 — 이주 «없음» · 재기동 «서버»(체인 워커 코드는 안 바뀜)**
 >
 > ```

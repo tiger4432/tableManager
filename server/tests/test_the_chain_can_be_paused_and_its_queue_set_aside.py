@@ -644,6 +644,38 @@ def test_setting_aside_leaves_a_row_the_chain_already_ended(db_q):
     assert _rows(db, PA) == [("SUCCESS", True, 0, None)]
 
 
+def _set_aside_has_nothing_to_announce(db):
+    db.add(models.DatabaseOutbox(event_uuid="es-aside-%d" % time.time_ns(), table_name=PA, event_type="EDIT",
+                                 payload={"row_id": "x", "transaction_id": "es-aside"}, processed_chain=False))
+    db.commit()
+    [event] = [e for e in _pending(db) if get_payload_dict(e).get("transaction_id") == "es-aside"]
+    assert set_aside._mark(db, [event.id], "set aside by the test") == 1
+    db.commit()
+    db.expire_all()
+    event = db.get(models.DatabaseOutbox, event.id)
+    return event_constants.broadcast_state_of(event.processed_chain, event.status, event.broadcast_at)
+
+
+def test_a_row_set_aside_has_nothing_to_announce(db_q):
+    """총괄 afa1b6302: SUCCESS with no `broadcast_at` is 「미전달」 - the sweep re-fires it, the grid
+    queue listed it after its ×. One column definition for both writers (`cancelled_columns`)."""
+    assert _set_aside_has_nothing_to_announce(db_q) != event_constants.BROADCAST_STATE_UNDELIVERED
+
+
+@pytest.mark.pg
+def test_a_row_set_aside_in_one_statement_has_nothing_to_announce(pg_engine):
+    """The set-based writer, PostgreSQL's - the same definition as the one-object writer."""
+    _tables(pg_engine)
+    db = sessionmaker(bind=pg_engine)()
+    try:
+        assert _set_aside_has_nothing_to_announce(db) != event_constants.BROADCAST_STATE_UNDELIVERED
+    finally:
+        db.rollback()
+        db.close()
+        for name in TABLES:
+            crud.TABLE_CONFIG.pop(name, None)
+
+
 @pytest.mark.pg
 def test_a_cross_on_the_running_line_cancels_its_query_and_its_rows_stay_set_aside(pg_engine, monkeypatch):
     import main

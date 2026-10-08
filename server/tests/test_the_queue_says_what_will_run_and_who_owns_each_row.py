@@ -221,27 +221,40 @@ def test_the_payload_never_reaches_the_response(client, db_session):
 # 게이트 ④⑧⑨ — 상태 두 칸 · 어휘 밖 · 커서
 # ---------------------------------------------------------------------------
 
-def test_done_and_undelivered_are_two_fields_not_one(client, db_session):
-    """🔴 게이트 ④. 한 값으로 접으면 「돌았는데 아직 안 알려졌다」가 「돌았다」에 묻힌다.
-    그 행은 스윕이 «다시 쏜다» — 운영자가 봐야 하는 이유가 그것이다."""
-    r = row(db_session, status=event_constants.UNDELIVERED_MARKER_STATUS,
-            processed_chain=True, broadcast_at=None)
+def test_the_grid_queue_lists_only_what_waits_as_the_admin_queue_does(client, db_session):
+    """총괄 afa1b6302 (소유자 10-08 「x 버튼 눌러서 어드민 대기열 지웠는데 왜 메인그리드 우측 대기열은
+    그대로임?」). A row that ran and is not yet announced is not «what will run»; a row set aside
+    has nothing to announce. The admin queue counts the same rows, and a × takes them off both."""
+    from chain import set_aside
+
+    waits = row(db_session, payload={"transaction_id": "tx-waits"})
+    ran = row(db_session, status=event_constants.UNDELIVERED_MARKER_STATUS, processed_chain=True,
+              payload={"transaction_id": "tx-ran"})
+    aside = row(db_session, payload={"transaction_id": "tx-aside"})
+    event_constants.mark_cancelled(aside, set_aside.OPERATOR, "set aside by the test")
+    db_session.commit()
+    assert event_constants.broadcast_state_of(ran.processed_chain, ran.status, ran.broadcast_at) \
+        == event_constants.BROADCAST_STATE_UNDELIVERED, "the fixture holds no undelivered row"
+
     _body, by_id = rows_of(client)
+    admin = client.get("/admin/chain/queue").json()
 
-    assert by_id[r.id]["chain_state"] == event_constants.CHAIN_STATE_DONE
-    assert by_id[r.id]["broadcast_state"] == event_constants.BROADCAST_STATE_UNDELIVERED
+    assert set(by_id) == {waits.id}
+    # the admin queue's lines on `t` (the grid also leaves tables no rule watches)
+    [line] = [line for line in admin["waiting_transactions"] if "t" in line["tables"]]
+    assert line["events"] == 1
+    assert event_constants.broadcast_state_of(aside.processed_chain, aside.status, aside.broadcast_at) \
+        != event_constants.BROADCAST_STATE_UNDELIVERED, "a row set aside reads as a notice not sent"
+    assert client.post("/admin/chain/queue/cancel", json={"key": line["cancel"]["key"]}).json()["skipped_events"] == 1
+    assert rows_of(client)[1] == {}
 
 
-def test_an_undelivered_row_is_owned_by_the_one_that_announces_it(client, db_session):
+def test_an_undelivered_row_is_owned_by_the_one_that_announces_it():
     """총괄 bed890af2 ③ · 0f2825324 ㄴ - the recovery marker is born waiting for its notice,
-    and so is a scheduler row that ran; the chain worker's sweep empties both."""
-    marker = row(db_session, event_type=event_constants.EVENT_BROADCAST_RECOVERY,
-                 status=event_constants.UNDELIVERED_MARKER_STATUS, processed_chain=True)
-    ran = row(db_session, event_type=event_constants.EVENT_RETROACTIVE_RUN,
-              table_name=event_constants.RETROACTIVE_RUN_TABLE,
-              status=event_constants.UNDELIVERED_MARKER_STATUS, processed_chain=True)
-    _body, by_id = rows_of(client)
-    assert {by_id[marker.id]["owner"], by_id[ran.id]["owner"]} == {
+    and so is a scheduler row that ran; the chain worker's sweep empties both. (Asked of the
+    seat itself: the grid queue no longer lists a row that ran - 총괄 afa1b6302.)"""
+    assert {event_constants.outbox_owner(event_constants.EVENT_BROADCAST_RECOVERY, undelivered=True),
+            event_constants.outbox_owner(event_constants.EVENT_RETROACTIVE_RUN, undelivered=True)} == {
         event_constants.OUTBOX_OWNER_CHAIN}
 
 
@@ -274,7 +287,7 @@ def test_the_header_says_the_population_it_actually_read(client, db_session):
     화면이 「failed 도 본다」고 말하면서 안 본다 — 말이 기제보다 오래 산다."""
     body = client.get(URL).json()
     assert "failed" not in body["population"], body["population"]
-    assert "undelivered" in body["population"]
+    assert "undelivered" not in body["population"], body["population"]       # 총괄 afa1b6302
     # 🔴 모집단이 좁아진 것도 «그 줄»이 말해야 한다. 안 그러면 화면이 안 하는 일을 한다고 말한다.
     assert "no rule will run" in body["population"], body["population"]
 

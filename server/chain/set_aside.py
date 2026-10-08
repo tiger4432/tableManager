@@ -138,7 +138,7 @@ def _mark(db, ids, reason):
     if db.get_bind().dialect.name == "postgresql":
         return db.execute(
             update(DatabaseOutbox).where(*waiting).values(
-                **event_constants.processed_columns("SUCCESS"),
+                **event_constants.cancelled_columns(),
                 payload=DatabaseOutbox.payload.op("||")(func.jsonb_build_object(
                     event_constants.CANCEL_MARK, OPERATOR,
                     event_constants.CANCEL_REASON, reason)))
