@@ -74633,3 +74633,113 @@ sqlite 전체   5 failed, 7986 passed, 358 skipped, 3 xfailed, 13205 warnings �
       마감이 take 가 파일을 보관으로 옮긴 바로 뒤 폴에 걸리면 「0 file(s) still being written … M finished」로 나올 수 있다 — 참이고 다음 점검이 마무리한다
 재기동  수집기 — 분리 안 한 배포면 서버. 소유자 몫, RUN.md 에 적음
 ```
+
+---
+
+## [10-08] 회사 로그인 «들어올 사람» 목록 13a92f8f2 (총괄 c55b1a890 · /ws ㄱ · 소유자 10-08 「ㄴ 파일 목록」 · 「시연 전」)
+
+어느 DB · 어느 스키마 · 지운 것 — 시험은 스위트의 sqlite 메모리 DB(auth 표 셋은 시험마다 비움) · 설정은 임시 파일. PG 안 씀 · public 안 씀
+
+### 1 무엇
+
+```
+칸        auth_config.json 의 users — settings() 한 곳에서 읽음
+           없음 · null -> 제한 없음(전과 같음)   목록 -> 그 이름들 + admins   [] -> admins 만   목록 아님 -> admins 만 + 기동 경고
+비교      _on_list(user, names) 하나 — is_admin(admins) · may_come_in(users) 둘 다 이것을 부름
+목록 묻기  may_come_in 하나 — 부르는 곳 _returned · admit · socket_refusal (AST: may_come_in 을 부르는 함수) · _on_list 를 부르는 함수 is_admin · may_come_in · main.py 더한 3 줄 중 비교 0
+           _returned  세션을 «만들기 전에» 403 한 문장
+           admit      화면 GET 은 같은 문장의 403 페이지(로그인으로 안 보냄) · 그 밖은 403 not_on_users_list
+           socket_refusal(/ws)  4403 not_on_users_list — main.py 는 이 함수를 부를 뿐, 비교 없음
+문장      <이름> is not on the users list in auth_config.json - ask an administrator to add the name.
+안 바뀐 것  /health · /internal/* · /auth/*(키 만들기 포함) · admins · require_admin. sample 파일 그대로(값 안 넣음)
+```
+
+### 2 게이트 — 같은 픽스처(issuer, 돌아올 주소 둘), 10 칸
+
+| 칸 | 답 | 시험 |
+|---|---|---|
+| users 없음 | 아무 이름이나 화면 · API 200 | test_without_a_users_list_anyone_signed_in_comes_in 초록 (2/2) |
+| users ["kim"] | kim 200 · lee 는 로그인 완료 403 문장 + 세션 행 0 | test_a_name_off_the_list_is_refused_at_sign_in_and_gets_no_session 초록 (2/2) |
+| lee 의 옛 세션 | 화면 403 문장(이동 없음) · API 403 JSON | test_a_session_opened_before_the_list_is_refused_from_the_next_request 초록 (2/2) |
+| lee 의 개인 키 | 403 | test_a_personal_key_of_a_name_off_the_list_is_refused 초록 (2/2) |
+| admins ["park"] · users ["kim"] | park 200 (관리도) | test_an_administrator_comes_in_without_being_on_users 초록 (2/2) |
+| 대소문자 | admins 와 같은 답 | test_users_is_read_with_the_same_case_rule_as_admins 초록 (2/2) |
+| users "kim"(목록 아님) | admins 만 + 기동 경고 | test_a_users_cell_that_names_no_one_lets_in_the_administrators_only 초록 (4/4) |
+| users [] | admins 만 | test_a_users_cell_that_names_no_one_lets_in_the_administrators_only 초록 (4/4) |
+| /health · /internal/* · /auth/me | 전과 같음 | test_the_open_paths_answer_a_name_off_the_list_as_today 초록 (2/2) |
+| /ws | 목록 밖 4403 · 목록 안 붙음 | test_the_socket_closes_on_a_name_off_the_list_and_lets_a_listed_name_in 초록 (2/2) |
+
+### 3 변이 (빨강 = «실패한 시험», 기준 먼저 초록, md5 전후 같음)
+
+```
+BASELINE                                                 120 passed, 6 warnings
+the list check removed                                   14 failed, 106 passed, 8 warnings
+      FAILED test_a_name_off_the_list_is_refused_at_sign_in_and_gets_no_session[https://testserver/]
+      FAILED test_a_name_off_the_list_is_refused_at_sign_in_and_gets_no_session[https://testserver/auth/callback]
+      FAILED test_a_personal_key_of_a_name_off_the_list_is_refused[https://testserver/]
+      FAILED test_a_personal_key_of_a_name_off_the_list_is_refused[https://testserver/auth/callback]
+      FAILED test_a_session_opened_before_the_list_is_refused_from_the_next_request[https://testserver/]
+      FAILED test_a_session_opened_before_the_list_is_refused_from_the_next_request[https://testserver/auth/callback]
+      FAILED test_a_users_cell_that_names_no_one_lets_in_the_administrators_only[https://testserver/-empty]
+      FAILED test_a_users_cell_that_names_no_one_lets_in_the_administrators_only[https://testserver/-not-a-list]
+      FAILED test_a_users_cell_that_names_no_one_lets_in_the_administrators_only[https://testserver/auth/callback-empty]
+      FAILED test_a_users_cell_that_names_no_one_lets_in_the_administrators_only[https://testserver/auth/callback-not-a-lis
+      FAILED test_the_socket_closes_on_a_name_off_the_list_and_lets_a_listed_name_in[https://testserver/]
+      FAILED test_the_socket_closes_on_a_name_off_the_list_and_lets_a_listed_name_in[https://testserver/auth/callback]
+      FAILED test_users_is_read_with_the_same_case_rule_as_admins[https://testserver/]
+      FAILED test_users_is_read_with_the_same_case_rule_as_admins[https://testserver/auth/callback]
+the session made first, then checked                     6 failed, 114 passed, 6 warnings
+      FAILED test_a_name_off_the_list_is_refused_at_sign_in_and_gets_no_session[https://testserver/]
+      FAILED test_a_name_off_the_list_is_refused_at_sign_in_and_gets_no_session[https://testserver/auth/callback]
+      FAILED test_a_users_cell_that_names_no_one_lets_in_the_administrators_only[https://testserver/-empty]
+      FAILED test_a_users_cell_that_names_no_one_lets_in_the_administrators_only[https://testserver/-not-a-list]
+      FAILED test_a_users_cell_that_names_no_one_lets_in_the_administrators_only[https://testserver/auth/callback-empty]
+      FAILED test_a_users_cell_that_names_no_one_lets_in_the_administrators_only[https://testserver/auth/callback-not-a-lis
+a users cell that is not a list read as no limit         2 failed, 118 passed, 6 warnings
+      FAILED test_a_users_cell_that_names_no_one_lets_in_the_administrators_only[https://testserver/-not-a-list]
+      FAILED test_a_users_cell_that_names_no_one_lets_in_the_administrators_only[https://testserver/auth/callback-not-a-lis
+the /ws list check removed                               2 failed, 118 passed, 8 warnings
+      FAILED test_the_socket_closes_on_a_name_off_the_list_and_lets_a_listed_name_in[https://testserver/]
+      FAILED test_the_socket_closes_on_a_name_off_the_list_and_lets_a_listed_name_in[https://testserver/auth/callback]
+OLD (origin/main sso.py + main.py)                       14 failed, 106 passed, 8 warnings
+      FAILED test_a_name_off_the_list_is_refused_at_sign_in_and_gets_no_session[https://testserver/]
+      FAILED test_a_name_off_the_list_is_refused_at_sign_in_and_gets_no_session[https://testserver/auth/callback]
+      FAILED test_a_personal_key_of_a_name_off_the_list_is_refused[https://testserver/]
+      FAILED test_a_personal_key_of_a_name_off_the_list_is_refused[https://testserver/auth/callback]
+      FAILED test_a_session_opened_before_the_list_is_refused_from_the_next_request[https://testserver/]
+      FAILED test_a_session_opened_before_the_list_is_refused_from_the_next_request[https://testserver/auth/callback]
+      FAILED test_a_users_cell_that_names_no_one_lets_in_the_administrators_only[https://testserver/-empty]
+      FAILED test_a_users_cell_that_names_no_one_lets_in_the_administrators_only[https://testserver/-not-a-list]
+      FAILED test_a_users_cell_that_names_no_one_lets_in_the_administrators_only[https://testserver/auth/callback-empty]
+      FAILED test_a_users_cell_that_names_no_one_lets_in_the_administrators_only[https://testserver/auth/callback-not-a-lis
+      FAILED test_the_socket_closes_on_a_name_off_the_list_and_lets_a_listed_name_in[https://testserver/]
+      FAILED test_the_socket_closes_on_a_name_off_the_list_and_lets_a_listed_name_in[https://testserver/auth/callback]
+      FAILED test_users_is_read_with_the_same_case_rule_as_admins[https://testserver/]
+      FAILED test_users_is_read_with_the_same_case_rule_as_admins[https://testserver/auth/callback]
+```
+
+### 4 스위트
+
+```
+sqlite 전체   6 failed, 8005 passed, 358 skipped, 3 xfailed, 13235 warnings — 🔴 모르는 실패: test_one_of_two_rules_filling_their_own_row_reruns_and_the_other_column_stays
+   다섯 밖의 하나는 내 시험(91da9c781)의 시각 흔들림 — 두 쓰기 사이에 초가 넘어가면 사건의 칸 목록에 updated_at 이 끼었다
+   그 시험 단독 재실행은 초록. 다른 시험과 같은 처리(updated_at 빼고 읽기)로 고쳐 같은 푸시에 따로 올림 — db19e0f52
+```
+
+### 5 클라에서 보이는 것 (사실만 — 클라 몫, 손대지 않음)
+
+```
+목록 밖 사람이 열어 둔 화면  API 는 403(not_on_users_list) — 클라의 로그인 문은 401 만 로그인으로 보내므로 화면에 머문다
+                         /ws 4403 은 클라의 재연결 사다리(점점 길어지는 간격)를 탄다. 4401 만 로그인으로 보낸다
+새로 여는 사람            화면 GET 이 403 문장 페이지라 앱이 안 뜬다
+```
+
+### 말이 바뀐 것
+
+```
+기동 줄  … Only the N name(s) on users (auth_config.json) and the administrators may come in.   (목록이 읽힘)
+        … users (auth_config.json) is not a list, so only the administrators may come in.        (경고)
+거절 줄  [sso] <이름> is not on the users list in auth_config.json - ask an administrator to add the name.
+문서    DEPLOY_SETUP §2-1 · CODE_MAP sso 절 · RELEASE_LOG · RUN.md
+재기동  서버 — 소유자 몫, RUN.md 에 적음
+```
