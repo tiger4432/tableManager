@@ -3292,7 +3292,16 @@ def _drain_ledger_followup_sync(db_session_factory):
     db = db_session_factory()
     try:
         engine = db.get_bind()
-        followers = [(world, _compiled_setup(world)) for world in schema.live_worlds()]
+        followers = []
+        for world in schema.live_worlds():
+            try:
+                followers.append((world, _compiled_setup(world)))
+            except Exception as exc:                    # noqa: BLE001 - said by name below
+                # 🔴 ONE WORLD'S BROKEN DECLARATION STOPS ONLY ITSELF (총괄 6c6ccad8f, 소유자 「ㄷ」) - the
+                #    operating world's still stops everything; it never switches itself off.
+                if world == schema.operating_world():
+                    raise FollowUpStopped(world, exc) from exc
+                _switch_off(world, exc)
         done = ledger_followup.drain_outbox_once(engine, None, followers)
         # ⚰️ [소유자 정본] `_run_the_follow_up_pass(db, done)` STOOD HERE and ran the deferred
         #   rules on the drained rows. That lap is not in 「트랜잭션 - 아웃박스 - 트리거 -
@@ -3312,31 +3321,134 @@ def _drain_ledger_followup_sync(db_session_factory):
         db.close()
 
 
-#: {declaration root: (the stamps it was compiled at, the compiled declaration)}
+#: {declaration root: (the stamps it was compiled at, the compiled declaration or what it raised)}
 _COMPILED = {}
 
 
 def _compiled_setup(world):
     """A world's declaration, compiled again only when its file or the catalogue changed -
-    not every batch (총괄 86d5061a0)."""
+    not every batch (총괄 86d5061a0). A failure is held the same way: the same files fail the
+    same way, so they are not compiled again until one changes (총괄 558a46ef1)."""
     from ledger import schema
-    from ledger.setup import load_setup, physical_catalog_path
+    from ledger.setup import file_stamp, load_setup, physical_catalog_path
 
     names = schema.world_names(world)
-    stamp = tuple(_file_stamp(path)
+    stamp = tuple(file_stamp(path)
                   for path in (names.declaration_path, physical_catalog_path()))
     held = _COMPILED.get(names.declaration_root)
     if held is None or held[0] != stamp:
-        held = _COMPILED[names.declaration_root] = (stamp, load_setup(names.declaration_root))
+        try:
+            held = (stamp, load_setup(names.declaration_root))
+        except Exception as exc:                            # noqa: BLE001 - raised below
+            held = (stamp, exc)
+        _COMPILED[names.declaration_root] = held
+    if isinstance(held[1], Exception):
+        raise held[1].with_traceback(None)
     return held[1]
 
 
-def _file_stamp(path):
-    try:
-        status = os.stat(path)
-    except FileNotFoundError:
-        return None
-    return status.st_mtime_ns, status.st_size
+#: How many sources' refusals a stop sentence names before it counts the rest.
+FOLLOWUP_REFUSALS_SHOWN = 3
+#: The `by` a world the follow-up switched off carries in the layout's history - its sentence follows.
+FOLLOWUP_SWITCHED_OFF_BY = "ledger follow-up: "
+
+
+def _declaration_failure(world, exc):
+    """One world's declaration that did not compile, as one sentence - the world, its file, the
+    code and the first sources' refusals (총괄 558a46ef1)."""
+    from ledger import schema
+
+    refusals = getattr(exc, "refusals", ())
+    said = ["%s: %s %s" % refusal for refusal in refusals[:FOLLOWUP_REFUSALS_SHOWN]]
+    if len(refusals) > FOLLOWUP_REFUSALS_SHOWN:
+        said.append("+%d more" % (len(refusals) - FOLLOWUP_REFUSALS_SHOWN))
+    return "world %s · declaration %s · %s · %s" % (
+        world, schema.world_names(world).declaration_path,
+        getattr(exc, "code", None) or type(exc).__name__,
+        "; ".join(said) if said else (str(exc).strip().splitlines() or [""])[-1])
+
+
+class FollowUpStopped(Exception):
+    """The operating world's declaration does not compile, so the follow-up follows nothing."""
+
+    def __init__(self, world, cause):
+        self.world = world
+        self.sentence = _declaration_failure(world, cause)
+        super().__init__(self.sentence)
+
+
+def _switch_off(world, exc):
+    """A live world that is not the operating one and does not compile: its live off, once, with the
+    sentence in the layout's history, and the next step said (총괄 6c6ccad8f)."""
+    from ledger import schema
+    from ledger.backfill import catch_up_command
+
+    sentence = _declaration_failure(world, exc)
+    schema.set_live(world, False, by=FOLLOWUP_SWITCHED_OFF_BY + sentence)
+    logger.error("[LedgerFollowUp] live switched OFF: %s - the other worlds go on. Next: fix it, "
+                 "switch its live on (the screen runs the catch-up), or from server/: %s",
+                 sentence, catch_up_command(world))
+    _record_followup_lap(state=FOLLOWUP_FLOWING)
+
+
+def _switched_off_by_the_follow_up():
+    """[{world, at, said}] - the worlds the follow-up switched off that are off still, read from the
+    layout's history, which outlives this process."""
+    from ledger import schema
+
+    last = {}
+    for entry in schema.layout().get("history") or ():
+        if "live" in entry:
+            last[entry.get("world")] = entry
+    return [{"world": world, "at": entry.get("at"),
+             "said": str(entry["by"])[len(FOLLOWUP_SWITCHED_OFF_BY):]}
+            for world, entry in sorted(last.items())
+            if entry.get("live") is False
+            and str(entry.get("by") or "").startswith(FOLLOWUP_SWITCHED_OFF_BY)]
+
+
+FOLLOWUP_FLOWING, FOLLOWUP_STOPPED = "flowing", "stopped"
+#: Every how often a stop that lasts is said again, with what is waiting (총괄 558a46ef1 · cb419a8a0).
+FOLLOWUP_STOP_REMINDER_SECONDS = 600.0
+#: {"world", "sentence", "since", "said_at"} while the follow-up is stopped.
+_FOLLOWUP_STOP = {}
+
+
+def _record_followup_lap(**cells):
+    """The follow-up's row on the admin (`/runtime`, loop `ledger_followup`) - its state, and the
+    worlds it switched off, on every lap it records."""
+    heartbeat.record_lap("chain", "ledger_followup",
+                         switched_off=_switched_off_by_the_follow_up() or None, **cells)
+
+
+def _say_the_follow_up(stop, waiting, now=None):
+    """A stop said when it starts or changes, again every ten minutes while it lasts, and once
+    when it ends - each line with what is waiting. `stop`: a `FollowUpStopped`, or None when the
+    operating world compiles. `waiting`: a callable, asked only when a line is said."""
+    now = time.time() if now is None else now
+    held = _FOLLOWUP_STOP
+    if stop is None:
+        if held:
+            count = waiting()
+            logger.warning("[LedgerFollowUp] flowing again: world %s compiles, after %.0f s "
+                           "stopped; %d event(s) waiting", held["world"], now - held["since"], count)
+            held.clear()
+            _record_followup_lap(depth=count, state=FOLLOWUP_FLOWING)
+        return
+    if held.get("sentence") == stop.sentence:
+        if now - held["said_at"] < FOLLOWUP_STOP_REMINDER_SECONDS:
+            return
+        line = "[LedgerFollowUp] still stopped, %.0f s: %%s; %%d event(s) waiting" % (
+            now - held["since"])
+    else:
+        held.update(world=stop.world, sentence=stop.sentence, since=held.get("since", now))
+        line = ("[LedgerFollowUp] stopped: %s; %d event(s) waiting - nothing is followed until "
+                "it compiles")
+    held["said_at"] = now
+    count = waiting()
+    logger.error(line, stop.sentence, count)
+    _record_followup_lap(depth=count, state=FOLLOWUP_STOPPED, since=held["since"],
+                         world=stop.world, said=stop.sentence)
 
 
 def _measure_one_source_sync(db_session_factory, source):
@@ -3506,11 +3618,18 @@ async def run_ledger_followup(db_session_factory):
                 # they were computed. Carried, not re-measured.
                 done = await asyncio.to_thread(_drain_ledger_followup_sync,
                                                db_session_factory)
+            except FollowUpStopped as stop:
+                await asyncio.to_thread(_say_the_follow_up, stop,
+                                        lambda: _ledger_outbox_depth_sync(db_session_factory))
+                break
             except Exception as exc:
                 # The event stays unmarked and is taken again after the rest - going on
                 # here would take the same one in a tight loop.
                 logger.warning("[LedgerFollowUp] batch failed: %s", exc)
                 break
+            if _FOLLOWUP_STOP:
+                await asyncio.to_thread(_say_the_follow_up, None,
+                                        lambda: _ledger_outbox_depth_sync(db_session_factory))
             if done is None:
                 break
             confirmed_total += done.get("auto_confirmed") or 0
@@ -3538,7 +3657,7 @@ async def run_ledger_followup(db_session_factory):
                                 for s, n in sorted(skipped.items())))
             # S-176: the same three numbers, carried instead of dropped. No new
             # measurement -- `lap_seconds` and `depth_left` are the log line's own.
-            heartbeat.record_lap("chain", "ledger_followup", seconds=lap_seconds,
+            _record_followup_lap(seconds=lap_seconds,
                                  depth=depth_left, items=drained, pace=rest,
                                  # S-176 덧붙임 (판정 292): the auto-confirm half runs on
                                  # THIS lap, so its two counts belong on this row. A lap
@@ -3546,7 +3665,7 @@ async def run_ledger_followup(db_session_factory):
                                  # ran are different facts — both are values here.
                                  auto_confirmed=confirmed_total,
                                  auto_refused=refused_total,
-                                 skipped=skipped or None)
+                                 skipped=skipped or None, state=FOLLOWUP_FLOWING)
         await asyncio.sleep(rest if drained else max(rest, FOLLOWUP_IDLE_SECONDS))
 
 

@@ -1172,6 +1172,11 @@ DRIFTED_FLAG = "--drifted"
 CATCH_UP_FLAG = "--catch-up"
 
 
+def catch_up_command(world):
+    """What a person runs, from `server/`, to bring `world` level with its tables."""
+    return f"{PROG} --world {world} {CATCH_UP_FLAG}"
+
+
 def next_step(source, census, world):
     """What a person runs next for this record (총괄 e1648e884), or None: the catch-up when a
     person's count found rows new, edited or gone (총괄 6091a7ae3 ② - one command takes all
@@ -1187,7 +1192,7 @@ def next_step(source, census, world):
         return f"{CENSUS_PROG} --source {source} --world {world}"
     if any((census.get(box) or {}).get("estimate")
            for box in ("rows_new", "rows_drifted", "rows_gone")):
-        return f"{PROG} --world {world} {CATCH_UP_FLAG}"
+        return catch_up_command(world)
     return None
 
 

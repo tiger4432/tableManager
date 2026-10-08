@@ -25,6 +25,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 import json
 import logging
+import os
 from pathlib import Path
 import sys
 from types import MappingProxyType
@@ -88,13 +89,25 @@ def live_physical_catalog() -> Mapping[str, Any]:
     return load_physical_catalog(physical_catalog_path())
 
 
+def file_stamp(path):
+    """`(mtime_ns, size)` of one file, or None when it is not there - the one stamp the follow-up's
+    compile and the declaration screen's both take, the catalogue's included (총괄 558a46ef1)."""
+    try:
+        status = os.stat(path)
+    except FileNotFoundError:
+        return None
+    return status.st_mtime_ns, status.st_size
+
+
 class LedgerSetupError(ValueError):
     """Stable Stage 7 config or selection refusal."""
 
-    def __init__(self, code: str, path: str, message: str):
+    def __init__(self, code: str, path: str, message: str, refusals=()):
         self.code = code
         self.path = path
         self.message = message
+        #: ((source, path, message), ...) when the refusal is several sources' (`every_source_refused`)
+        self.refusals = tuple(refusals)
         super().__init__(f"{path}: {message}")
 
     def to_mapping(self) -> dict[str, str]:
@@ -377,13 +390,14 @@ def _resolve_refused_declarations(root_path: Path, catalog: Mapping[str, Any],
     # ledger then stands still with nothing saying why. Refused by name, with each
     # source's own reason, because the operator has to fix them one at a time.
     if not bundle.section("sources"):
+        refusals = [(source_id, entry["refusal"].get("path"), entry["refusal"].get("message"))
+                    for source_id, entry in sorted(refused.items())]
         raise LedgerSetupError(
             "every_source_refused", "bundle.sources",
             "every declared source was refused, so nothing would be read: "
-            + "; ".join(
-                f"{source_id}: {entry['refusal'].get('path')} "
-                f"{entry['refusal'].get('message')}"
-                for source_id, entry in sorted(refused.items())))
+            + "; ".join(f"{source_id}: {path} {message}"
+                        for source_id, path, message in refusals),
+            refusals=refusals)
     for source_id, entry in sorted(refused.items()):
         logger.error("[Ledger] source %s is NOT planned: %s %s", source_id,
                      entry["refusal"].get("path"), entry["refusal"].get("message"))

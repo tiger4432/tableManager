@@ -1,5 +1,28 @@
 # 지금 돌리면 되는 것
 
+> ## [10-08] **원장 따라가기가 «왜 섰는지» 스스로 말한다 · 운영 아닌 세상이 깨지면 그 세상만 live 끔 — 이주 «없음» · 재기동 «필요»(체인 · 서버)**
+>
+> ```
+> 무엇이 바뀌나  따라가기가 live 세상의 선언을 컴파일하지 못하면
+>                운영 세상(지금 운영 중인 세상 — 기본 default) -> 전처럼 따라가기 전체가 선다. 줄은 셋: 처음 · 10 분마다 · 풀릴 때
+>                다른 live 세상 -> 그 세상만 live 를 끈다(worlds.json 이력에 사유) · 줄 하나 · 나머지 세상은 계속 따라간다
+>                같은 선언 파일 · 같은 table_config.json 이면 다시 컴파일하지 않는다(같은 실패를 기억) — 같은 줄이 바퀴마다 쌓이지 않음
+>                선언 화면 · 테스트 런이 table_config.json 변경도 본다(전엔 선언 폴더만 봐서 카탈로그가 바뀌어도 옛 «OK»)
+>                거절된 소스의 테스트 런은 그 거절을 답한다(전엔 AttributeError … cursor_columns)
+> 재기동         체인(따라가기) · 서버(화면) — 소유자 몫
+> 볼 줄          [LedgerFollowUp] stopped: world default · declaration <파일> · every_source_refused · <소스>: <경로> <사유>; … (+N more); N event(s) waiting - nothing is followed until it compiles
+>                  = 운영 세상 선언이 컴파일 안 됨. 그 파일의 그 소스를(또는 table_config.json 을) 고치면 다음 바퀴에 풀린다
+>                [LedgerFollowUp] still stopped, 600 s: …  = 10 분째 그대로(대기 수 같이)
+>                [LedgerFollowUp] flowing again: world default compiles, after N s stopped; N event(s) waiting  = 풀렸다
+>                [LedgerFollowUp] live switched OFF: world <세상> · declaration <파일> · … - the other worlds go on. Next: … python -m ledger.backfill --world <세상> --catch-up
+>                  = 그 세상만 꺼졌다. 고친 뒤 화면에서 Live 켜기(따라잡기가 저절로 돈다) 또는 server 폴더에서 그 명령
+> 어드민         GET /runtime 의 ledger_followup 줄 — state flowing|stopped · 멈췄으면 world · said(위 문장) · since · depth(대기)
+>                · switched_off(따라가기가 끈 세상과 그 문장 — worlds.json 이력에서 읽어 재기동해도 남음)
+> 급할 때       git revert <이 커밋> -> 재기동. 꺼진 세상은 화면 Live 켜기로 다시
+> ```
+
+---
+
 > ## [10-08] **체인 묶음의 SQL 문장 하나에 2 분 상한 — 이주 «없음» · 재기동 «필요»(체인)**
 >
 > ```
