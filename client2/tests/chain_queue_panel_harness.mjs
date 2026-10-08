@@ -827,9 +827,10 @@ async function xSuite(m, say) {
     const host = d.createElement('div');
     const asked = [];
     const got = [];
-    new m.ChainQueuePanel(host, { doc: d, onCancel: (c) => got.push(c), confirm: (t) => { asked.push(t); return answer; } })
-      .render(body);
-    return { host, asked, got };
+    const copied = [];
+    new m.ChainQueuePanel(host, { doc: d, onCancel: (c) => got.push(c), confirm: (t) => { asked.push(t); return answer; },
+      copy: (id, label) => copied.push([id, label]) }).render(body);
+    return { host, asked, got, copied };
   };
   const press = (node) => (node && node.listeners.click || []).forEach((fn) => fn());
   const rowXs = (host) => rowsOf(host).map((tr) => byClass(tr, 'running-x')[0] || null);
@@ -876,6 +877,16 @@ async function xSuite(m, say) {
   say('X9 refused: the server\'s sentence, with its status; unreachable: the unreachable line',
     refused.ok === false && refused.line === 'Not a queue line key (HTTP 422)'
       && away.ok === false && away.line === fetchFailureLine(null, 'Cancel refused'), JSON.stringify([refused, away]));
+  // A line's id is drawn short and copied in full on a press, through the page's one copy (lead 421191402).
+  const chips = (host) => rowsOf(host).map((tr) => byClass(tr, 'tx-id-chip')[0]);
+  const c = seat(BODY);
+  press(chips(c.host)[0]);
+  press(chips(c.host)[1]);
+  say('K1 pressing a line\'s id hands the page the full id and its kind',
+    same(c.copied, [['aaaaaaaa-1111', 'Transaction ID'], ['run-7', 'Run ID']]), JSON.stringify(c.copied));
+  say('K2 the id is still drawn short, with the full id on hover',
+    chips(c.host)[0].textContent === 'aaaaaaaa…' && chips(c.host)[0].title === 'aaaaaaaa-1111',
+    JSON.stringify([chips(c.host)[0].textContent, chips(c.host)[0].title]));
 }
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const X_NAMES = [];
@@ -902,6 +913,9 @@ await xSuite(await import('../src/chain_queue_panel.js'), (name, cond, detail) =
       mutate: swap('onCancel: (id) => this._skip(skips.get(id))', 'onCancel: () => {}') },
     { id: 'XM9', what: 'a run id alone is not read', catches: 'X6',
       mutate: swap('  if (c.run_id) return Object.freeze({ runId: String(c.run_id) });\n', '') },
+    { id: 'KM1', what: 'a press copies the short label', catches: 'K1', mutate: swap('this.copy(r.id, r.idLabel)', 'this.copy(r.label, r.idLabel)') },
+    { id: 'KM2', what: 'a run id is called a transaction id', catches: 'K1', mutate: swap("idLabel: 'Run ID'", "idLabel: 'Transaction ID'") },
+    { id: 'KM3', what: 'the chip draws the full id', catches: 'K2', mutate: swap('chip.textContent = r.label;', 'chip.textContent = r.id;') },
   ];
   const scored = await scoreMutants(MUTANTS, async (mu) => {
     const m = (await loadWithProbe(SUBJECT.pathname.replace(/^\/([A-Za-z]:)/, '$1'), { mutate: mu.mutate })).module;

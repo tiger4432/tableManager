@@ -228,8 +228,8 @@ function shortTx(id) {
  *  A job's label is two lines, op over the run head: nothing hides behind a hover (lead 362f1a91d). */
 function lineName(t) {
   const run = t.run_id == null ? '' : String(t.run_id);
-  if (!run) return { id: String(t.transaction_id ?? ''), label: shortTx(t.transaction_id) };
-  return { id: run, label: [t.op == null ? '' : String(t.op), shortTx(run)].filter(Boolean).join('\n') };
+  if (!run) return { id: String(t.transaction_id ?? ''), label: shortTx(t.transaction_id), idLabel: 'Transaction ID' };
+  return { id: run, label: [t.op == null ? '' : String(t.op), shortTx(run)].filter(Boolean).join('\n'), idLabel: 'Run ID' };
 }
 
 /**
@@ -491,6 +491,8 @@ export class ChainQueuePanel {
     // A × asks once (`confirm`), then hands the page the line's cancel - {key} or {runId}; the page owns the route.
     this.onCancel = deps.onCancel || (() => {});
     this.confirm = deps.confirm || ((text) => globalThis.confirm(text));
+    // A line's id is drawn short; a press hands the page the full id to copy (lead 421191402).
+    this.copy = deps.copy || (() => {});
   }
 
   _skip(skip) {
@@ -688,6 +690,7 @@ export class ChainQueuePanel {
       chip.className = 'tx-id-chip';
       chip.title = r.id;
       chip.textContent = r.label;
+      chip.addEventListener('click', () => this.copy(r.id, r.idLabel));
       tdId.appendChild(chip);
       tr.appendChild(tdId);
 

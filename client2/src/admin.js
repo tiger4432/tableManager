@@ -404,6 +404,13 @@ function formatTimestamp(value) {
 }
 
 // Transaction ID 축약 (감사 F8): head8… — 풀값은 title/클릭복사로
+/** A shortened id, copied in full on a press: the failed table's and the queue lines' one copy (lead 421191402). */
+function copyFullId(id, label) {
+  navigator.clipboard.writeText(id)
+    .then(() => showToast(`📋 ${label} [${shortTxId(id)}] copied in full`, 'info'))
+    .catch(() => showToast('❌ Copy failed', 'error'));
+}
+
 function shortTxId(txId) {
   const s = String(txId || '');
   if (s.startsWith('single_')) {
@@ -1447,7 +1454,8 @@ function renderChainQueue(payload, opts) {
   if (!chainQueuePanels) {
     chainQueuePanels = ['chain-queue-mount', 'overview-queue-mount']
       .map((id) => byId(id)).filter(Boolean)
-      .map((mount) => new ChainQueuePanel(mount, { onCancel: (cancel) => cancelQueueLine(cancel) }));
+      .map((mount) => new ChainQueuePanel(mount, { onCancel: (cancel) => cancelQueueLine(cancel),
+        copy: (id, label) => copyFullId(id, label) }));
   }
   // Both queue reads pass here — the chain rule form learns which rules file the worker holds.
   if (chainRulePanel && payload) {
@@ -1589,9 +1597,7 @@ function renderOutboxTable() {
     const idChip = row.querySelector('.tx-id-chip');
     idChip.addEventListener('click', (e) => {
       e.stopPropagation();
-      navigator.clipboard.writeText(tx.transaction_id)
-        .then(() => showToast(`📋 Transaction ID [${shortTxId(tx.transaction_id)}] copied in full`, 'info'))
-        .catch(() => showToast('❌ Copy failed', 'error'));
+      copyFullId(tx.transaction_id, 'Transaction ID');
     });
 
     const retryBtn = row.querySelector('.btn-retry-tx');
