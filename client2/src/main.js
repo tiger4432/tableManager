@@ -96,6 +96,7 @@ const copyHeaderToggles = () =>
   [elements.copyHeaderToggle, elements.copyHeaderMenuToggle].filter(Boolean);
 import { activateHistoryTab, showHistoryPane } from './history_tabs.js';
 import { OutboxQueuePanel } from './outbox_queue_panel.js';
+import { pollBeat, pollQueue } from './queue_poll.js';
 import { onBroadcast } from './websocket.js';
 import { hideReferenceView, installReferenceKeyboardIsolation, showReferenceView } from './enrichment_reference_view.js';
 import {
@@ -611,12 +612,15 @@ function setupEventListeners() {
 
   // 「대기열」 — 이 표의 변경으로 앞으로 무엇이 돌 예정인가. 비인증 라우트다.
   // 🔴 부품은 웹소켓을 «안 부른다». 화면이 구독해서 부품의 메서드를 부른다(조립식).
-  //    그리고 폴링은 «없다» — 방아쇠는 탭을 열 때와 브로드캐스트가 올 때다.
+  //    방아쇠는 탭을 열 때 · 브로드캐스트가 올 때 · 탭이 열려 보이는 동안의 박자(어드민 대기열과 같은 queue_poll,
+  //    총괄 427451855) — 체인이 막히면 브로드캐스트가 안 와서 목록이 굳었다.
   let queuePanel = null;
+  let queueReading = false;
   const refreshQueue = async () => {
     const mount = elements.queueView;
     if (!mount) return;
     if (!queuePanel) queuePanel = new OutboxQueuePanel(mount);
+    queueReading = true;
     try {
       const res = await fetch(`${API_BASE}/outbox/queue/rows?limit=50`);
       // 사유 없는 「모름」은 고칠 자리가 없다 — 실패 문장은 그 좌석이 짓는다.
@@ -624,8 +628,12 @@ function setupEventListeners() {
         res.ok ? {} : { failed: fetchFailureLine(failureFactOf(res), CHROME.FETCH_FAILED) });
     } catch (e) {
       queuePanel.render(null, { failed: String((e && e.message) || e) });
+    } finally {
+      queueReading = false;
     }
   };
+  pollQueue(() => pollBeat({ onScreen: () => !document.hidden && state.activeHistoryTab === 'queue',
+    busy: () => queueReading, read: refreshQueue }));
   if (elements.tabQueueBtn) {
     elements.tabQueueBtn.addEventListener('click', () => {
       activateHistoryTab(elements.tabQueueBtn);

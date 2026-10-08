@@ -231,6 +231,64 @@ console.log('\n[㉰ 머리글이 «이 쪽»을 말한다 — 수는 이 쪽의 
   ok('F3b ...while the column that IS shared still is', mixed.includes('EDIT'), mixed);
 }
 
+// ═══ P: the Queue tab reads itself on the admin queue's beat (lead 427451855) ═══════════════════
+// The beat is queue_poll.js, imported; the two pages that call it cannot be imported (they wire the page), so their
+// calls are read as text - the same as smart_paste_choice's N2.
+{
+  const { readFileSync } = await import('node:fs');
+  const SRC = new URL('../src/', import.meta.url);
+  const POLL = new URL('queue_poll.js', SRC);
+  const pollSuite = async (m, say) => {
+    const beats = [];
+    const read = () => { beats.push('read'); return Promise.resolve(); };
+    const off = await m.pollBeat({ onScreen: () => false, busy: () => false, read });
+    const busy = await m.pollBeat({ onScreen: () => true, busy: () => true, read });
+    const on = await m.pollBeat({ onScreen: () => true, busy: () => false, read });
+    say('PL1 a beat reads only while the queue is on screen and no read is on its way',
+      off === false && busy === false && on === true && beats.length === 1, JSON.stringify([off, busy, on, beats.length]));
+    const waits = [];
+    let fails = 0;
+    m.pollQueue(() => { fails += 1; return Promise.reject(new Error('read failed')); }, (fn, ms) => waits.push({ fn, ms }));
+    waits[0].fn();
+    await Promise.resolve(); await Promise.resolve();
+    say('PL2 the beat comes every QUEUE_POLL_MS (5 s), and a failed read still sets the next',
+      m.QUEUE_POLL_MS === 5000 && waits.length === 2 && waits.every((w) => w.ms === 5000) && fails === 1,
+      JSON.stringify([m.QUEUE_POLL_MS, waits.length, fails]));
+  };
+  const P_NAMES = [];
+  await pollSuite(await import('../src/queue_poll.js'), (name, cond, shown) => { P_NAMES.push(name); ok(name, cond, shown); });
+  // A checkout may carry CRLF; the wiring is read on LF.
+  const text = (f) => readFileSync(new URL(f, SRC), 'utf8').split(String.fromCharCode(13)).join('');
+  const grid = text('main.js');
+  const admin = text('admin.js');
+  ok('PL3 the grid\'s Queue tab beats while it is open and shown, skipping while its read is on its way',
+    grid.includes("pollQueue(() => pollBeat({ onScreen: () => !document.hidden && state.activeHistoryTab === 'queue',")
+      && grid.includes('busy: () => queueReading, read: refreshQueue }));')
+      && grid.includes('    queueReading = true;\n') && grid.includes('      queueReading = false;\n'), 'main.js wiring');
+  ok('PL4 one interval: the grid and the admin call the one beat and declare none of their own',
+    admin.includes('pollQueue(queuePollTick);') && !/QUEUE_POLL_MS\s*=/.test(grid) && !/QUEUE_POLL_MS\s*=/.test(admin)
+      && !grid.includes('폴링은 «없다»'), 'a second interval or the retired promise');
+  const { loadWithProbe } = await import('./lib/probe.mjs');
+  const { scoreMutants } = await import('./lib/mutation_scorer.mjs');
+  const swap = (from, to) => (t) => { if (!t.includes(from)) throw new Error(`mutation anchor is GONE: ${from.slice(0, 50)}`); return t.split(from).join(to); };
+  const MUTANTS = [
+    { id: 'PM1', what: 'a beat reads while a read is on its way', catches: 'PL1',
+      mutate: swap('  if (!onScreen() || busy()) return Promise.resolve(false);', '  if (!onScreen()) return Promise.resolve(false);') },
+    { id: 'PM2', what: 'a beat reads off screen', catches: 'PL1',
+      mutate: swap('  if (!onScreen() || busy()) return Promise.resolve(false);', '  if (busy()) return Promise.resolve(false);') },
+    { id: 'PM3', what: 'a failed read stops the beat', catches: 'PL2', mutate: swap('beat().then(next, next);', 'beat().then(next, () => {});') },
+  ];
+  const scored = await scoreMutants(MUTANTS, async (mu) => {
+    const m = (await loadWithProbe(POLL.pathname.replace(/^\/([A-Za-z]:)/, '$1'), { mutate: mu.mutate })).module;
+    const got = [];
+    let ran = 0;
+    await pollSuite(m, (name, cond) => { ran += 1; if (!cond) got.push(name); });
+    return { failures: got, ran };
+  }, { baselineRan: P_NAMES.length, baselineNames: P_NAMES, title: '\n  [mutants] - each must be caught by the check it names.' });
+  pass += MUTANTS.length - scored.wrong;
+  for (let i = 0; i < scored.wrong; i += 1) failures.push(`mutant verdict ${i + 1}`);
+}
+
 console.log(`\n════ RESULT: ${pass} passed, ${failures.length} failed ════`);
 console.log(`ASSERTIONS ${pass + failures.length} ${failures.length}`);
 process.exit(failures.length === 0 ? 0 : 1);

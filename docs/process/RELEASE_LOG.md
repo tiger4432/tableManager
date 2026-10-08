@@ -1834,6 +1834,15 @@ key	key
 
 ---
 
+## 2026-10-08 · 메인 그리드 «Queue» 탭도 5 초마다 스스로 다시 읽는다
+
+- **무엇** — 그리드 오른쪽 이력 칸의 `Queue` 탭은 탭을 열 때와 체인이 돈 뒤의 알림 때만 다시 읽어서, 체인이 막히면 목록과 나이가 그 자리에 굳었습니다(소유자 10-08 「메인그리드 대기열 리스트 시간은 왜 재깍재깍 동기화 안 됨?」). 이제 그 탭이 열려 있고 페이지가 보이는 동안 5 초마다 다시 읽습니다(앞 읽기가 안 끝났으면 그 박자는 건너뜀). 어드민 대기열과 같은 박자 하나입니다.
+- **선언 예시** — 없음.
+- **화면에서** — 메인 그리드 → 이력 칸 `Queue` 탭.
+- **필요한 조건** — 클라 빌드.
+- **바뀐 동작** — 탭을 다른 것으로 바꾸거나 페이지가 숨으면 읽지 않습니다.
+- **자세히** — 이 항목과 같은 커밋.
+
 ## 2026-08 — Ledger V2 & Ontology Config Explorer
 
 - **2026-08-18 | Ledger/Ontology** | **Ledger V2 1~7단계와 Ontology Config Explorer 전체 계약 승인 완료.** manifest 단일 진입점, config-only Registry, verified batch join, RoleFrame/Pack compiler, 기존 gate/store/cursor transaction, 비파괴 `lot_event` cutover를 확정했다. Explorer는 compiled 참조 그래프·Used by·단일 context history·draft preview/review/revise/CAS activation과 반응형 3단 UI를 제공한다. 운영 reset/replay·migration·legacy 삭제는 별도 승인 전 금지. [인수인계](./FORK_SESSION_BRIEF.md) · [Ledger V2](../_archive/ledger_v2_redesign_plan_20260817/README.md) · [Explorer 근거](../_archive/ontology_config_explorer_plan_20260817/02_IMPLEMENTATION_AND_ACCEPTANCE.md)
