@@ -37058,3 +37058,16 @@ ec00cb905  admin.js 에서 navigator.clipboard 를 직접 부르는 자리 0(주
         덤: 문장 「INVALID from an earlier failure」는 이 경우 참이 아니다
 고칠 모양 수리 자리가 지우기 직전에 진행 행(같은 _BUILDING 질의)을 묻고, 있으면 «만드는 중 — 건너뜀» 한 줄 — 총괄 판정
 ```
+
+---
+
+## [C 응용] 10-09 901b01f07(GET /admin/indexes 의 using — 안 적었으면 null) QA — 결함 없음
+
+```
+잰 것   경로 칸 test_the_route_shows_each_declared_index_beside_the_database — 사설 워크트리 · PG 스크래치(픽스처가 지움)
+        이 커밋        1 passed
+        «or None» 뺀 변이  1 failed — assert ('brin', False) == ('brin', None)
+        -> 새 단언이 고친 것을 잰다
+독자    using 을 읽는 자리는 _shape 의 출력(index_states -> 경로) 하나 — 비교·빌드는 이 칸을 안 읽는다
+문서    CODE_MAP 의 GET /admin/indexes 줄에 「using(방법 이름, 안 적었으면 null)」
+```
