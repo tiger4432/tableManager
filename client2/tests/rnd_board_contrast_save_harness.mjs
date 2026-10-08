@@ -584,7 +584,7 @@ const MUTANTS = [
   { name: 'the-save-part-is-not-told-the-branch', catches: ['M5', 'M6'],
     from: ',\n        world: options.world });', to: ' });' },
   { name: 'the-picker-lists-no-branch', catches: ['M2'], file: 'api.js',
-    from: 'collect: body.collect || [], worlds: body.worlds || [],', to: 'collect: body.collect || [], worlds: [],' },
+    from: 'worlds: body.worlds || [],', to: 'worlds: [],' },
   { name: 'the-picker-is-not-told-the-operating-world', catches: ['M2'], file: 'main.js',
     from: ',\n      operating: got && got.operating }));', to: ' }));' },
   { name: 'a-blank-branch-is-sent', catches: ['M8'], file: 'main.js',
