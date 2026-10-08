@@ -65077,3 +65077,40 @@ RELEASE_LOG · RUN.md(재기동 뒤 그 줄 × 한 번 · 답의 skipped_events 
 같은 커밋  라우트 docstring 의 모집단 문장 · RELEASE_LOG · RUN.md
 순서  지금(슬롯 짓던 것은 그대로 이어서)
 ```
+
+> **[총괄 -> 구현자 · 클라] 10-08 🔴 지금(그리드 대기열 모집단 afa1b6302 바로 다음, 슬롯 앞) — 대기열 상태를 «waiting / done» 둘로 끝내지 않는다: 상태 함수 «하나»를 넓힌다 (소유자 10-08 「체인 한 덩어리가 제대로 도는지 어케 알아?」 · 「그게 안 보이니 답답한데?」 · 「waiting done 이 두 개로 끝내는 게 제일 별로임」 -> 안 ㄱ)**
+
+```
+지금(총괄이 코드로 읽음)  event_constants.chain_state_of(processed_chain, status) -> waiting · done · failed 셋
+   도는 묶음 = waiting · 재시도 대기 = waiting(사유 retrying) · 빼 둔 것 = done. «도는지 · 멈췄는지 · 왜»가 화면에 없다
+   그런데 재료는 이미 있다: 하트비트 work_claim(what · stage · last_progress · stalled_on · db_pid) · retry_count · max_group_attempts · 취소 표시(cancelled_by · cancel_reason) · chain_control.paused()
+도착지  두 줄
+   「대기열의 줄(행)마다 상태 낱말 하나와 그 근거가 보인다 — 도는 중이면 단계와 마지막으로 움직인 지 몇 초」
+   「어드민 대기열 · 그리드 대기열 · /health 가 같은 함수 하나로 같은 낱말을 쓴다」
+구현자
+   chain_state_of 를 «넓힌다»(새 함수를 옆에 두지 않음 — 이름이 바뀌면 부르는 곳 전부 같은 커밋)
+   입력  행 사실(processed_chain · status · retry_count · 취소 표시 · 실패 기록) + 요청마다 «한 번» 읽은 도는 사실(하트비트의 도는 줄 열쇠 · stage · last_progress · stalled_on) + pause
+   닫힌 낱말(토큰 · 화면 그대로 · 영어)
+      waiting      아직 안 집힘                      근거: 기다린 초
+      running      그 줄의 묶음이 지금 도는 중         근거: stage · moved_seconds(last_progress 부터) · elapsed
+      retrying     실패, 다시 시도 예정               근거: attempt n / cap · 마지막 실패 문장 한 줄
+      stalled      도는데 정체 임계 넘게 안 움직임     근거: stalled_on(무엇이 붙잡나) — 임계는 /health 가 쓰는 그 값 «하나»
+      paused       체인 Pause 중                      근거: by · at · reason
+      set_aside    × · 빼 두기로 뺌                   근거: by · reason
+      failed       포기                              근거: 실패 문장
+      done         끝남
+      waiting_for_table 은 «슬롯이 착지할 때» 이 함수에 더한다(지금 만들지 않음)
+   stage 를 쪽 단위로: 맵퍼 쪽 루프(「[Chain] <rule> -> <target>: page N, M row(s)」 로그 자리)에서 heartbeat.progress("<rule> -> <target> · page N · M rows") — 메모리만, 쓰기 0. 그래야 moved 가 쪽마다 새로 고쳐진다
+   부르는 곳  GET /admin/chain/queue 줄 · GET /outbox/queue/rows 행 · /health chain 항목(stalled 문장이 같은 근거를 쓰게) — 상태를 «묻는» 자리는 이 함수 하나(AST 로 세어 보고)
+   답 모양  {"state": 토큰, "why": {…근거 칸…}} — 줄 · 행 둘 다 같은 모양
+게이트(표)  낱말 여덟 × 부르는 곳 둘(어드민 줄 · 그리드 행): 픽스처가 각 낱말을 «실제로» 만든다(도는 묶음은 하트비트 claim 을 연 채로) · 같은 이벤트면 두 곳이 같은 낱말
+   쪽이 넘어가면 moved_seconds 가 0 으로 돌아감 · 정체 임계 넘기면 running -> stalled
+   변이: 취소 표시 무시 -> set_aside 칸 빨강 · 하트비트 무시 -> running 칸 빨강 · 임계 두 값으로 -> stalled 칸 빨강
+같은 커밋  RELEASE_LOG · CODE_MAP · 라우트 docstring
+클라(서버 착지 뒤)
+   상태 칸 그리는 함수 «하나»(어드민 chain_queue_panel · 그리드 outbox_queue_panel 둘 다 그것을 부른다 — 근원 템플릿 규칙)
+   토큰 그대로 + 근거 한 줄: running 이면 「<stage> · moved 4 s ago」, retrying 이면 「attempt 2/3 · <문장>」 …
+   moved 가 정체 임계에 다가가면 강조(색만, 문장 추가 없음) · 배지 색은 스타일시트가 실제로 그리는 것만
+   게이트 하니스(낱말 여덟 × 패널 둘 · 같은 함수) + 변이 + 진짜 빌드 스샷(running 줄 하나 · set_aside 줄 하나)
+순서  구현자: 그리드 모집단(afa1b6302) -> 이것 -> 슬롯 / 클라: 그리드 100 % 맞추기 -> 이것(서버 뒤) -> 덩어리 열기
+```
