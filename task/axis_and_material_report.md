@@ -1,3 +1,12 @@
+> ## [10:01 디자인] 선언 결과의 죽은 collect 칸을 지움 · 대비 저장 변이 앵커를 새 줄로 (총괄) — 1c430cb7f
+
+**결론** `fetchDeclaration` 이 돌려주던 `collect: body.collect || []` 를 지웠습니다. 서버 선언 라우트가 그 키를 안 실어 늘 빈 배열이었고, 읽는 곳은 총괄과 제 셈 모두 0 이었습니다.
+
+- 그 글자에 기대던 변이 `the-picker-lists-no-branch`(`rnd_board_contrast_save_harness.mjs`)의 앵커를 `worlds: body.worlds || [],` 로 고쳤습니다(api.js 안에 1 곳). 새 앵커로도 M2 가 빨개져 «caught» 입니다. 대비 저장 75 칸 실패 0.
+- `git grep -c -F body.collect -- client2` 는 exit 1(0 곳)입니다.
+- 러너 초록(166 게이트) · 계약 13 개 어긋남 0. 빌드는 admin · rnd-board · walk 페이지와 공유 조각 branch_picker 가 바뀌었습니다. 운영자가 보는 것이 안 바뀌어 RELEASE_LOG 항목은 안 적었습니다.
+- 그대로 둔 것: 시험 둘이 가짜 서버 응답에 `collect: []` 를 싣습니다(disabled_reason_harness.mjs:149 · walk_worlds_harness.mjs:23). 서버에 없는 키를 흉내 내지만 결과를 단언하지 않아 지금은 아무것도 안 잽니다. 지울지는 지시 주시면 합니다.
+
 > ## [09:29 디자인] api.js 의 collect 낱말 전수 — 낡은 문장 셋 더 고침 (총괄 · 앱 QA e2832df7f) — 7cddce5d4
 
 **결론** 총괄이 짚은 둘(`COLLECTS.reach` · 「createWalk 을 못 씁니다 … 같은 낱말이 두 뜻」)과 훑다 나온 하나(「A collect nobody declared」 → 「A `legacyRoute` nobody declared」)를 고쳤습니다. 주석만이라 빌드 결과가 그대로입니다.
