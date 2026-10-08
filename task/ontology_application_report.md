@@ -36862,3 +36862,18 @@ ec00cb905  admin.js 에서 navigator.clipboard 를 직접 부르는 자리 0(주
         11e5ea207(덩어리)의 규칙은 「옛 클라가 깨지지 않게 칸은 더하기만」이었다 — 같은 규칙이면 낱말은 그 칸에 글자로 두고 근거를 새 칸으로 더하는 모양이 된다
         클라 반이 곧 오면 그대로 둘지, 재기동 순서(클라 반과 함께)를 RUN.md 에 걸지는 총괄 판정
 ```
+
+---
+
+## [C 응용] 10-08 af5f2bbde(두 대기열의 상태 칸 한 함수) QA — 04a702b34 닫힘
+
+```
+읽음    chainStateCell 을 부르는 곳 2(어드민 줄 · 그리드 행) — 근거 문장은 chainStateWhy 하나
+잰 것   probe_grid_state_shape2.mjs — 그리드 패널 · 상태 함수 import
+        new server | state "retrying" | why "attempt 2/3 · boom"
+        old server | state "" | why ""
+        -> 새 서버 모양은 낱말과 근거를 읽는다(전엔 [object Object] · 빈 사유). 재기동 전 옛 서버 프로세스면 «—»(모름) — 틀린 낱말이 아니라 모름이라 정직
+하니스  chain_queue_panel 231/0 · outbox_queue_panel 65/0 (통과/실패 · node · 이 트리)
+남은 것 보드의 「착지 전 운영 pull 금지」는 이 착지로 풀린다 — 다만 pull 뒤 서버 · 체인 워커 재기동까지 해야 «—» 가 아니다
+문서    CODE_MAP 대기열 절에 두 함수 — 이 보고와 같은 커밋
+```
