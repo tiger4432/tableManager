@@ -188,7 +188,7 @@ D_T   타입 선언      keys · attributes(이름 · «읽기 규칙» 단수/�
 D_P   술어 선언      subjects · object.kind(∅|V|N) · V 의 «타입» · qualifiers(이름 · 타입) · «제약»(카디널리티 · 필수) · status
 D_Π   출처 선언      소스 = row_id 가 있는 표 → fact 로 가는 «번역»(09-25 `c193986a8` — 뷰는 이름 대어 거절)(read · prepare · map · bind) · decision_key(판단 단위) · status
                  · ✅ **행 선택** 「이 행이 «이 소스의» 행인가」 — S-91 착지(09-09 17:10)로 «칸 있음»:
-                   `sources.<s>.read.exclude_when: [{column, blank:true}]`  (🆕 10-01 `0b59a2f30` — 전엔 `prepare.exclude_when`)
+                   `sources.<s>.read.exclude_when: [{column, blank:true} | {when: {<칸>: <값>}}]`  (🆕 10-01 `0b59a2f30` — 전엔 `prepare.exclude_when` · 🆕 10-08 `b91acfd95` 값 조건 = 매핑 when 철자)
                    (떨구는 곳 `event_frame._without_excluded_rows` · 그때 줄 번호: 검증 `setup_bundle.py:1351` · 폼 `ledger_skeleton.json:576`)
                  · ✅ **문장 선택** 「이 분자가 «이 문장»을 말하나」 — S-99 착지(09-09 18:33)로 «칸 있음»:
                    `sources.<s>.bind.mappings.<문장>.when`  (§2-0 의 `select_s`)

@@ -36753,3 +36753,17 @@ b340386fe
               그 라운드에 덩어리 걷기도 stepAlong 을 지나게 할지(방향 · 창을 인자로) 총괄 판정
 문서       CODE_MAP — 제가 적은 두 줄(폴 꺼짐 · 글자 복사)을 지금으로 · derive.js 에 stepAlong · table_view 에 nextRoutes — 이 보고와 같은 커밋
 ```
+
+---
+
+## [C 응용] 10-08 b91acfd95(exclude_when 의 값 조건) QA — 결함 못 찾음 · 작은 것 하나 (코드로 읽음 · 시험 돌림)
+
+```
+읽음    행 판정은 event_frame.row_excluded 하나 — 부르는 곳 2(페이지 · 백필 셈). 값은 매핑 when 의 _unit_says 로 견준다 — 둘째 비교 없음
+        그 칸이 빈 행은 값 조건으로 안 빠진다(빈 값 ≠ 값) · 검증은 _validate_when 을 그대로 지난다
+시험    두 파일 23 통과 (이 트리 · sqlite)
+작은 것  온톨로지 탐색기의 작성 계획(config_authoring) 「Exclude when」 칸은 후보로 {"column", "blank": true} 만 낸다
+        그 바로 위 주석은 「a candidate is the whole clause _validate_exclude_when accepts」 — 이제 반만 참이다
+        선언 폼(ledger_skeleton.json)은 when 을 적을 수 있으니 소유자가 막히지는 않는다. 후보에 when 모양을 더할지 · 주석을 고칠지는 총괄 판정
+문서    BASIS · LEDGER_SCHEMA_COMPLETENESS 의 exclude_when 철자에 when — 이 보고와 같은 커밋. ONTOLOGY_LEDGER_SETUP · CODE_MAP 은 구현자가 맞춤
+```
