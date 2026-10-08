@@ -37058,3 +37058,34 @@ ec00cb905  admin.js 에서 navigator.clipboard 를 직접 부르는 자리 0(주
         덤: 문장 「INVALID from an earlier failure」는 이 경우 참이 아니다
 고칠 모양 수리 자리가 지우기 직전에 진행 행(같은 _BUILDING 질의)을 묻고, 있으면 «만드는 중 — 건너뜀» 한 줄 — 총괄 판정
 ```
+
+---
+
+## [C 응용] 10-09 901b01f07(GET /admin/indexes 의 using — 안 적었으면 null) QA — 결함 없음
+
+```
+잰 것   경로 칸 test_the_route_shows_each_declared_index_beside_the_database — 사설 워크트리 · PG 스크래치(픽스처가 지움)
+        이 커밋        1 passed
+        «or None» 뺀 변이  1 failed — assert ('brin', False) == ('brin', None)
+        -> 새 단언이 고친 것을 잰다
+독자    using 을 읽는 자리는 _shape 의 출력(index_states -> 경로) 하나 — 비교·빌드는 이 칸을 안 읽는다
+문서    CODE_MAP 의 GET /admin/indexes 줄에 「using(방법 이름, 안 적었으면 null)」
+```
+
+---
+
+## [C 응용] 10-09 cc85f2a78(소스 실패 셈을 «이번 고장» 단위로) QA — 6f4735207 의 물음 닫힘 · 읽을 것 하나(잼)
+
+```
+잰 것   사설 워크트리 · sqlite — 시험 파일 test_the_ledger_follows_the_table_it_reads.py
+        이 커밋                24 passed
+        비우는 줄을 뺀 변이       1 failed — test_a_failure_that_comes_back_after_a_success_is_said_from_the_1st_again
+        6f4735207 의 재기를 진짜 count_crossed · count_cleared 로 다시: 고장 15 · 성공 · 고장 20 -> 줄 [1, 10] [1, 10] (전엔 [1, 10] [])
+        한 소스가 성공해도 옆 소스의 셈은 남는다: [(('source', 's2', 't1', 'default', 'OperationalError'), 5)]
+읽을 것 성공 사이사이 나는 고장(데이터에 따라 어떤 묶음만 넘어지는 것)은 매번 #1 로 말한다
+        고장 · 성공을 번갈아 20 번 -> 줄 20 (전엔 2) — «이번 고장» 단위의 뜻 그대로다
+        다만 RUN.md 의 앞선 10-09 절이 아직 「#1 만 있다 = 그 실패가 아직 10 번이 안 됐다」라고 읽어 준다
+        -> 이제 #1 이 여럿 = 사이사이 나은 고장. 몇 번인지는 하트비트 failed=N · python -m ledger followup
+        RUN.md 그 줄을 고칠지는 총괄 판정(제가 안 고쳤습니다)
+문서    PRIMITIVES 의 1 · 10 · 100 알림 항목 «어디»에 count_crossed · count_cleared 두 자리
+```
