@@ -17,6 +17,7 @@ import { initTheme, getTheme, THEME_CHANGE_EVENT } from './theme.js';
 // [전역 토스트] 자체 구현을 폐기하고 공용(utils.js)으로 일원화한다 —
 // 구 admin 구현도 setTimeout 단독 수명이라 백그라운드 탭에서 동일하게 누적됐다.
 import { showToast, escapeHtml } from './utils.js';
+import { writeClipboardRich } from './clipboard_write.js';
 // C-14: 서버가 준 «이름»을 찍는 목록 행 다섯. 하니스가 import 로 채점할 수 있게 자기 모듈에
 // 삽니다 — 이 파일은 `tokens.css` 를 import 해서 node 가 못 읽습니다.
 import {
@@ -404,11 +405,11 @@ function formatTimestamp(value) {
 }
 
 // Transaction ID 축약 (감사 F8): head8… — 풀값은 title/클릭복사로
-/** A shortened id, copied in full on a press: the failed table's and the queue lines' one copy (lead 421191402). */
+/** A shortened id, copied in full on a press: the failed table's and the queue lines' one copy (lead 421191402),
+ *  through the app's clipboard writer - on the plain-HTTP LAN `navigator.clipboard` does not exist (QA 2fdc6b16a). */
 function copyFullId(id, label) {
-  navigator.clipboard.writeText(id)
-    .then(() => showToast(`📋 ${label} [${shortTxId(id)}] copied in full`, 'info'))
-    .catch(() => showToast('❌ Copy failed', 'error'));
+  if (writeClipboardRich('', id)) showToast(`📋 ${label} [${shortTxId(id)}] copied in full`, 'info');
+  else showToast('❌ Copy failed', 'error');
 }
 
 function shortTxId(txId) {

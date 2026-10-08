@@ -131,6 +131,10 @@ globalThis.fetch = async (url, init) => {
 
 // Rebuilt by `freshPage()` before each run -- see there for why one page cannot serve two.
 let mount = null;
+// What the page hands the app's clipboard writer and the toast (U): stubbed, so the writer's answer is the harness's.
+const clip = [];
+const toasts = [];
+let clipAnswer = true;
 
 // 🔴 [판정 540·542] THE ROUTE ALWAYS SENDS `grammar`, AND THE LIST SENDS A MAP BESIDE IT.
 //    A fixture that left `grammar` out was simulating 「the grammar cannot be read」 while
@@ -242,8 +246,10 @@ const loadAdmin = (tag, mutate) => {
     doc.body.appendChild(drawer[key]);
   }
   return loadWithProbe(ADMIN, {
-    tag, mutate, expose: ['refreshChainRule', 'saveChainRule', 'showEventDiagnostics', 'renderChainQueue'],
+    tag, mutate, expose: ['refreshChainRule', 'saveChainRule', 'showEventDiagnostics', 'renderChainQueue', 'copyFullId'],
     state: ['chainData'],
+    stubs: { './clipboard_write.js': { writeClipboardRich: (html, text) => { clip.push([html, text]); return clipAnswer; } },
+      './utils.js': { showToast: (text, kind) => { toasts.push([text, kind]); } } },
   });
 };
 
@@ -851,6 +857,20 @@ async function suite(probe) {
   ok(String(drawer.trace.textContent).startsWith('Rule    not recorded')
      && String(drawer.title.textContent) === 'Raw Event Payload / Details',
      'P an old record says "not recorded" and offers no mapper it would have to guess');
+
+  // ── U. a shortened id copies in full through the app's clipboard writer (lead, application QA 2fdc6b16a) ──
+  // The failed table and the queue panel both call this one function; plain HTTP has no navigator.clipboard.
+  const copyFullId = probe.probe.copyFullId;
+  clip.length = 0;
+  toasts.length = 0;
+  clipAnswer = true;
+  if (typeof copyFullId === 'function') copyFullId('aaaaaaaa-1111-2222-3333-444444444444', 'Transaction ID');
+  clipAnswer = false;
+  if (typeof copyFullId === 'function') copyFullId('run-7', 'Run ID');
+  ok(JSON.stringify(clip) === JSON.stringify([['', 'aaaaaaaa-1111-2222-3333-444444444444'], ['', 'run-7']])
+     && JSON.stringify(toasts) === JSON.stringify([['📋 Transaction ID [aaaaaaaa…] copied in full', 'info'],
+       ['❌ Copy failed', 'error']]),
+     `U the writer gets the full id; copied says so, a failed copy says it failed (${JSON.stringify([clip, toasts])})`);
   return { pass: pass - before.pass, fail: fail - before.fail };
 }
 
@@ -929,6 +949,11 @@ const DEFECTS = [
   ['the failed drawer guesses the rule from the table again',
     s => s.replace('  const rule = named ? chainData.find(r => r.name === named) : null;',
                    '  const rule = chainData.find(r => r.trigger_table === ev.table_name || r.target_table === ev.table_name);')],
+  // QA 2fdc6b16a: the copy hands the writer what is shown, or says it copied when it did not.
+  ['the copy hands the writer the shortened id',
+    s => s.replace("  if (writeClipboardRich('', id)) ", "  if (writeClipboardRich('', shortTxId(id))) ")],
+  ['a copy that failed says it copied',
+    s => s.replace("  if (writeClipboardRich('', id)) ", "  if (writeClipboardRich('', id) || true) ")],
 ];
 
 // Controls must ESCAPE: a change that alters no behaviour must not redden anything, or the
