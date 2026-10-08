@@ -246,8 +246,9 @@ const loadAdmin = (tag, mutate) => {
     doc.body.appendChild(drawer[key]);
   }
   return loadWithProbe(ADMIN, {
-    tag, mutate, expose: ['refreshChainRule', 'saveChainRule', 'showEventDiagnostics', 'renderChainQueue', 'copyFullId'],
-    state: ['chainData'],
+    tag, mutate, expose: ['refreshChainRule', 'saveChainRule', 'showEventDiagnostics', 'renderChainQueue', 'copyFullId',
+      'refreshQueue', 'queuePollTick', 'cancelQueueLine'],
+    state: ['chainData', 'currentTab'],
     stubs: { './clipboard_write.js': { writeClipboardRich: (html, text) => { clip.push([html, text]); return clipAnswer; } },
       './utils.js': { showToast: (text, kind) => { toasts.push([text, kind]); } } },
   });
@@ -262,6 +263,10 @@ function freshPage() {
   const c = doc.createElement('span');
   c.setAttribute('id', 'chain-rule-editor-count');
   doc.body.appendChild(c);
+  // The Overview's queue seat (V): the page seats its queue panel here the first time it draws the queue.
+  const q = doc.createElement('div');
+  q.setAttribute('id', 'overview-queue-mount');
+  doc.body.appendChild(q);
   mount = m;
   catalogueReads = 0;
 }
@@ -871,6 +876,44 @@ async function suite(probe) {
      && JSON.stringify(toasts) === JSON.stringify([['📋 Transaction ID [aaaaaaaa…] copied in full', 'info'],
        ['❌ Copy failed', 'error']]),
      `U the writer gets the full id; copied says so, a failed copy says it failed (${JSON.stringify([clip, toasts])})`);
+
+  // ── V. the queue's one read: its own poll, Refresh and a ×'s re-read ask the queue alone (lead 0eadab810) ──
+  answer = (call) => (call.url.includes('/admin/chain/queue/cancel') ? { status: 200, body: { skipped_events: 1 } }
+    : call.url.includes('/admin/chain/queue') ? { status: 200, body: { waiting: 0, oldest_waiting_seconds: null,
+      waiting_transactions: [], waiting_by_owner: [], retried_among_waiting: 0 } } : { status: 404, body: null });
+  const queueAsked = () => calls.map((c) => `${c.method} ${c.url.replace(/^https?:\/\/[^/]+/, '')}`);
+  const tick = probe.probe.queuePollTick;
+  const refreshQueue = probe.probe.refreshQueue;
+  const cancelQueueLine = probe.probe.cancelQueueLine;
+  probe.probe.currentTab = 'overview';
+  doc.hidden = true;
+  calls.length = 0;
+  const hiddenRead = typeof tick === 'function' ? await tick() : null;
+  ok(hiddenRead === false && calls.length === 0, `V a hidden tab is not read (${JSON.stringify(queueAsked())})`);
+  doc.hidden = false;
+  probe.probe.currentTab = 'tables';
+  const otherRead = typeof tick === 'function' ? await tick() : null;
+  ok(otherRead === false && calls.length === 0, `V a tab that shows no queue is not read (${JSON.stringify(queueAsked())})`);
+  probe.probe.currentTab = 'overview';
+  const shownRead = typeof tick === 'function' ? await tick() : null;
+  ok(shownRead === true && JSON.stringify(queueAsked()) === '["GET /admin/chain/queue"]',
+     `V the Overview shown: the queue alone is read (${JSON.stringify(queueAsked())})`);
+  calls.length = 0;
+  if (typeof refreshQueue === 'function') await Promise.all([refreshQueue(), refreshQueue(), tick()]);
+  ok(JSON.stringify(queueAsked()) === '["GET /admin/chain/queue"]',
+     `V reads that meet are one request (${JSON.stringify(queueAsked())})`);
+  calls.length = 0;
+  const again = all(doc.body).find((el) => String(el.className || '').split(/\s+/).includes('chain-queue-refresh'));
+  if (again) again.dispatch('click', {});
+  await flush();
+  ok(Boolean(again) && JSON.stringify(queueAsked()) === '["GET /admin/chain/queue"]',
+     `V the panel's Refresh asks the queue alone (${JSON.stringify(queueAsked())})`);
+  calls.length = 0;
+  if (typeof cancelQueueLine === 'function') await cancelQueueLine({ key: 'tx:aaaaaaaa' });
+  await flush();
+  ok(JSON.stringify(queueAsked()) === '["POST /admin/chain/queue/cancel","GET /admin/chain/queue"]',
+     `V after a ×, the queue alone is read again (${JSON.stringify(queueAsked())})`);
+  doc.hidden = undefined;
   return { pass: pass - before.pass, fail: fail - before.fail };
 }
 
@@ -954,6 +997,20 @@ const DEFECTS = [
     s => s.replace("  if (writeClipboardRich('', id)) ", "  if (writeClipboardRich('', shortTxId(id))) ")],
   ['a copy that failed says it copied',
     s => s.replace("  if (writeClipboardRich('', id)) ", "  if (writeClipboardRich('', id) || true) ")],
+  // lead 0eadab810: the queue's one read.
+  ['the queue poll reads a hidden tab',
+    s => s.replace("  if (document.hidden || !(currentTab === 'overview' || currentTab === 'chain') || queueRead) {",
+                   "  if (!(currentTab === 'overview' || currentTab === 'chain') || queueRead) {")],
+  ['the queue poll reads whatever tab shows',
+    s => s.replace("  if (document.hidden || !(currentTab === 'overview' || currentTab === 'chain') || queueRead) {",
+                   '  if (document.hidden || queueRead) {')],
+  ['a read on its way is sent again',
+    s => s.replace('  if (!queueRead) {\n    queueRead = adminFetch(', '  if (true) {\n    queueRead = adminFetch(')],
+  ['Refresh reads the whole tab',
+    s => s.replace('onRefresh: () => { void refreshQueue(); }', 'onRefresh: () => { void fetchData({ silent: true }); }')],
+  ['a × re-reads the whole tab',
+    s => s.replace("  if (!got.ok) { showToast(got.line, 'error'); return; }\n  void refreshQueue();",
+                   "  if (!got.ok) { showToast(got.line, 'error'); return; }\n  void fetchData({ silent: true });")],
 ];
 
 // Controls must ESCAPE: a change that alters no behaviour must not redden anything, or the

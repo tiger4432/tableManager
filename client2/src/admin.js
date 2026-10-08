@@ -359,6 +359,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initRetroactiveLine();
   refreshRunning();
   scheduleRunsPoll();
+  scheduleQueuePoll();
   initOntologyExplorer({
     root: ontologyExplorerRoot,
     apiBase: API_BASE,
@@ -944,7 +945,7 @@ async function fetchData(options = {}) {
         adminFetch(`${API_BASE}/admin/outbox/failed?page=1&limit=1&tz=${zone}`),
         adminFetch(`${API_BASE}/admin/chain/rules`),
         adminFetch(`${API_BASE}/admin/mappers/list`),
-        adminFetch(`${API_BASE}/admin/chain/queue`).catch(() => null),
+        readQueue(),
         lineRows,
       ]);
       const ob = obRes.ok ? await obRes.json().catch(() => null) : null;
@@ -954,7 +955,8 @@ async function fetchData(options = {}) {
       // 🔴 못 읽은 이유를 «이름으로» 넘긴다. 404 는 「이 프로세스에 라우트가 없다」이고,
       //    그것은 「대기가 없다」와 «완전히 다른» 사실이다.
       //    C-80: 그 낱말은 이제 `chainQueueFrom` «한 곳»에 있다 — Overview 도 같은 것을 부른다.
-      const { body: queueBody, opts: queueOpts } = await chainQueueFrom(queueRes);
+      const { body: queueBody, opts: readOpts } = queueRes;
+      const queueOpts = { ...readOpts };
       // C-1. 규칙 표가 읽을 자리에 둡니다. 못 읽었으면 «null 그대로» — 지난번 값을 남기면
       // 낡은 결과를 «지금»으로 읽습니다.
       chainRuleOutcomes = (queueBody && typeof queueBody.rule_outcomes === 'object'
@@ -966,6 +968,7 @@ async function fetchData(options = {}) {
       //    실패한 행은 `processed_chain=true` 라 큐에서 빠지므로, 「대기 0」이 혼자 서면
       //    「밀린 것 없음」으로 읽힙니다. 못 읽었으면 null — 패널이 Failed 칸째 뺍니다 (0 이 아닙니다).
       queueOpts.failed = ob;
+      queueFailed = ob;
       renderChainQueue(queueBody, queueOpts);
       renderChainPause(await chainPauseFrom(await pauseReads));
       if (queueOpts.unavailable) allRead = false;
@@ -1446,6 +1449,42 @@ async function chainQueueFrom(res) {
   return { body: await res.json().catch(() => null), opts: {} };
 }
 
+// 🔴 THE QUEUE'S ONE READ (lead 0eadab810). The page's 30-second read, the queue's own poll, the panel's Refresh
+//    and a ×'s re-read all ask here; a read already on its way is joined, never sent a second time.
+let queueRead = null;
+// The failed-outbox answer the page read last: the Failed cell beside the queue, kept for the queue-only reads.
+let queueFailed = null;
+function readQueue() {
+  if (!queueRead) {
+    queueRead = adminFetch(`${API_BASE}/admin/chain/queue`).catch(() => null).then(chainQueueFrom)
+      .finally(() => { queueRead = null; });
+  }
+  return queueRead;
+}
+
+/** The queue alone, read and drawn: Refresh, a ×'s re-read, the queue's own poll. */
+async function refreshQueue() {
+  const { body, opts } = await readQueue();
+  renderChainQueue(body, { ...opts, failed: queueFailed });
+}
+
+// The queue's own poll. 0 is off: it is switched on once the queue route reads its waiting events in one pass
+// (implementer order 6d7046a42) - one read takes about 5 s on the operating box today (lead 0eadab810).
+const QUEUE_POLL_MS = 0;
+
+/** One tick: read only while a tab that shows the queue is visible and no read is on its way. */
+function queuePollTick() {
+  if (document.hidden || !(currentTab === 'overview' || currentTab === 'chain') || queueRead) {
+    return Promise.resolve(false);
+  }
+  return refreshQueue().then(() => true);
+}
+
+function scheduleQueuePoll() {
+  if (!QUEUE_POLL_MS) return;
+  setTimeout(() => { queuePollTick().then(scheduleQueuePoll, scheduleQueuePoll); }, QUEUE_POLL_MS);
+}
+
 // Chain 탭 §오류: 실패 트랜잭션 목록 (Grouped by Transaction ID)
 // 한 번만 만들고 재사용한다. 패널이 자기 div 를 소유하므로 mount 를 비울 필요가 없다.
 // 🔴 C-80: 자리가 «둘»이다 (Chain 탭 · Overview). 같은 클래스의 «두 인스턴스»이고, 한 번 받은
@@ -1456,7 +1495,7 @@ function renderChainQueue(payload, opts) {
     chainQueuePanels = ['chain-queue-mount', 'overview-queue-mount']
       .map((id) => byId(id)).filter(Boolean)
       .map((mount) => new ChainQueuePanel(mount, { onCancel: (cancel) => cancelQueueLine(cancel),
-        copy: (id, label) => copyFullId(id, label) }));
+        copy: (id, label) => copyFullId(id, label), onRefresh: () => { void refreshQueue(); } }));
   }
   // Both queue reads pass here — the chain rule form learns which rules file the worker holds.
   if (chainRulePanel && payload) {
@@ -2905,12 +2944,12 @@ async function requestRunCancel(runId) {
 }
 
 /** × on a queue line: its key when the server gave one (lead d32261987), else the run's own cancel as before.
- *  Done, the tab is read again and the line is gone; refused, the server's sentence. */
+ *  Done, the queue alone is read again and the line is gone (lead 0eadab810); refused, the server's sentence. */
 async function cancelQueueLine(cancel) {
   if (!cancel.key) { await requestRunCancel(cancel.runId); return; }
   const got = await skipLine(cancel.key, { adminFetch, apiBase: API_BASE });
   if (!got.ok) { showToast(got.line, 'error'); return; }
-  void fetchData({ silent: true });
+  void refreshQueue();
 }
 
 // 🔴 총괄 a274c90f0 · 78ebdcfc0 — the line is ONE part (`RunLines`), mounted here and, next, in the
@@ -3579,7 +3618,7 @@ async function fetchOverview(isStale) {
     adminFetch(`${API_BASE}/admin/mappers/list`),
     adminFetch(`${API_BASE}/admin/auto-update/status`),
     adminFetch(`${API_BASE}/admin/file-ingestion/active`), // [Heavy Lane P1] 진행 중 인제션
-    adminFetch(`${API_BASE}/admin/chain/queue`)
+    readQueue()
   ].map(p => p.catch(() => null)));
 
   const jsonOf = async (r) => (r && r.ok) ? r.json().catch(() => null) : null;
@@ -3604,8 +3643,9 @@ async function fetchOverview(isStale) {
   {
     // Chain 탭과 «같은» 읽기·«같은» 그리기 — 다른 것은 「언제 부르나」뿐이다.
     // ⚠️ 낡음 검사 «뒤»다. 앞에 두면 이미 떠난 탭의 답을 그릴 수 있다.
-    const queue = await chainQueueFrom(queueRes);
+    const queue = queueRes;
     // Failed 칸은 Chain 탭과 «같은» 응답에서 — 한쪽만 넘기면 두 판이 번갈아 칸을 잃는다.
+    queueFailed = outbox;
     renderChainQueue(queue.body, { ...queue.opts, failed: outbox });
     renderChainPause(await chainPauseFrom(await pauseReads));
   }

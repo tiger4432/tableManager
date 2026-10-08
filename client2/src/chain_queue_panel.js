@@ -493,6 +493,17 @@ export class ChainQueuePanel {
     this.confirm = deps.confirm || ((text) => globalThis.confirm(text));
     // A line's id is drawn short; a press hands the page the full id to copy (lead 421191402).
     this.copy = deps.copy || (() => {});
+    // Refresh reads the queue alone again; the page owns the read (lead 0eadab810). No dep, no button.
+    this.onRefresh = deps.onRefresh || null;
+  }
+
+  _refresh() {
+    if (!this.onRefresh) return null;
+    const btn = this.doc.createElement('button');
+    btn.className = 'admin-btn chain-queue-refresh';
+    btn.textContent = 'Refresh';
+    btn.addEventListener('click', () => this.onRefresh());
+    return btn;
   }
 
   _skip(skip) {
@@ -538,6 +549,8 @@ export class ChainQueuePanel {
 
     if (!view.available) {
       this.root.appendChild(this._empty('⚪', view.reason));
+      const again = this._refresh();
+      if (again) this.root.appendChild(again);
       return view;
     }
 
@@ -567,7 +580,8 @@ export class ChainQueuePanel {
     this.root.appendChild(view.rows.length
       ? this._table(view.rows) : this._line('chain-queue-empty', 'Nothing waiting'));
 
-    if (view.meta.length) {
+    const again = this._refresh();
+    if (view.meta.length || again) {
       const meta = doc.createElement('div');
       meta.className = 'chain-queue-meta';
       for (const m of view.meta) {
@@ -576,6 +590,7 @@ export class ChainQueuePanel {
         piece.textContent = m.text;
         meta.appendChild(piece);
       }
+      if (again) meta.appendChild(again);
       this.root.appendChild(meta);
     }
 
