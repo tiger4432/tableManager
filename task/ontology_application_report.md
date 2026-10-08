@@ -37038,3 +37038,23 @@ ec00cb905  admin.js 에서 navigator.clipboard 를 직접 부르는 자리 0(주
         실패 «기록»(ledger_state · 영수증)은 그대로라 데이터 손실은 아니다. 그 열쇠가 성공하면 셈을 비울지(에피소드마다 1 · 10 · 100)는 총괄 판정
 작은 것 «batch failed» 의 열쇠는 예외 «이름» 하나 — 같은 OperationalError 라도 원인(연결 끊김 · 교착 · 표 없음)이 다르면 한 열쇠로 묶여 둘째 원인이 다음 표시까지 안 나온다
 ```
+
+---
+
+## [C 응용] 10-09 9acf4243e(인덱스 마스터 = 모델 선언 · 빠진 것 스스로 만들기) QA — 이름 깨끗 · 결함 하나(잼)
+
+```
+이름    index=True 를 Index(...) 로 바꾼 것이 PG 가 받는 이름을 바꾸면, 운영에 있는 인덱스를 «없다»로 읽고 큰 표에 같은 것을 하나 더 만든다
+        dump_index_ddl.py — 두 커밋의 모델을 각각 PG DDL 로 컴파일해 이름 비교(사설 워크트리)
+        같은 이름 47 · 빠진 것 ix_cell_sources_column_name · ix_cell_sources_table_name · 새로 생긴 것 0 — 빠진 둘은 은퇴한 cell_sources 인덱스(커밋 문장 그대로). 이름 때문에 다시 만드는 일은 없다
+결함    수리 자리(_ensure_one_index)가 «다른 세션이 CONCURRENTLY 로 만드는 중»인 인덱스를 지우고 자기 것을 만든다
+잰 것   test_zz_probe_repair_vs_build.py — PG 스크래치(픽스처가 지움) · 열린 쓰기 트랜잭션 하나가 손 빌드를 붙잡은 사이에 수리 자리를 부름
+        hand build row while waiting: oid 9939192 valid False | progress rows visible 1
+        repair said: ["[Schema Sync] probe index 'idx_probe' is INVALID from an earlier failure; dropping and rebuilding."] | result built
+        hand build finished False | final index oid 9939193 valid True | same index as the hand build's: False
+        -> 진행 행이 서버에서 «보이는데도» 수리 자리는 indisvalid 만 다시 읽고 「earlier failure」라 말하며 DROP INDEX CONCURRENTLY — 손 빌드는 못 끝남
+까닭    «만드는 중» 거르기는 기동 때 index_states 에서 한 번(owed = missing · invalid). 차례가 온 뒤의 수리 자리는 그것을 다시 묻지 않는다
+        빌드는 하나씩 돌고 큰 표 하나가 몇 시간 — 그 사이 소유자가 손으로 시작한 빌드(오늘 idx_sources_by_origin 처럼)가 그 이름 차례에 지워진다
+        덤: 문장 「INVALID from an earlier failure」는 이 경우 참이 아니다
+고칠 모양 수리 자리가 지우기 직전에 진행 행(같은 _BUILDING 질의)을 묻고, 있으면 «만드는 중 — 건너뜀» 한 줄 — 총괄 판정
+```
