@@ -215,6 +215,30 @@ def mark_processed(event, status: str):
 CANCEL_MARK = "cancelled_by"
 CANCEL_REASON = "cancel_reason"
 
+#: A chain queue line's key for a row that carries neither a run nor a transaction.
+QUEUE_ROW_KEY_PREFIX = "outbox#"
+
+
+def queue_line_key(outbox):
+    """The SQL of a chain queue line's key: the retroactive run its rows carry, else their
+    transaction, else the row itself (총괄 b3a4334db). ONE expression - the queue list, its ×
+    and the worker's running group all ask it, so a key one hands out the others find."""
+    from sqlalchemy import String, cast, func, literal
+
+    return func.coalesce(outbox.payload["run_id"].as_string(),
+                         outbox.payload["transaction_id"].as_string(),
+                         literal(QUEUE_ROW_KEY_PREFIX).concat(cast(outbox.id, String)))
+
+
+def queue_line_rows(outbox, key):
+    """SQL criteria for the rows of the queue line `key` names: the key expression itself, behind
+    an indexed narrowing - the primary key for a row's key, `idx_outbox_txid` otherwise - so a ×
+    reads that line's rows and not the whole waiting queue (소유자 10-08)."""
+    row = key[len(QUEUE_ROW_KEY_PREFIX):] if key.startswith(QUEUE_ROW_KEY_PREFIX) else None
+    narrow = (outbox.id == int(row) if row is not None and row.isdigit()
+              else outbox.payload["transaction_id"].as_string() == key)
+    return narrow, queue_line_key(outbox) == key
+
 
 def mark_cancelled(event, by: str, reason: str):
     """End an event without running it: the mark and the reason, then `mark_processed`."""

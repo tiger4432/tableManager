@@ -15,6 +15,8 @@ from utils.payload_helper import get_payload_dict
 
 #: Who a set-aside says did it - the operator, from a screen or a script.
 OPERATOR = "operator"
+#: The source of the audit line a chain queue × writes - who, which line, how many events.
+QUEUE_SKIP_SOURCE = "chain_queue_skip"
 CHUNK = 1000
 
 
@@ -33,15 +35,24 @@ def _rules_named(names):
     return [by_name[n] for n in names if n in by_name]
 
 
-def _in_scope(db, done, tables=(), rules=(), transactions=(), since=None, per_row_only=False):
+def _in_scope(db, done, tables=(), rules=(), transactions=(), since=None, per_row_only=False,
+              ids=()):
     """Chain events in scope - waiting ones (`done=False`) or ones set aside (`done=True`).
-    Every criterion given narrows the set; `rules` asks the worker's own `fires`."""
+    Every criterion given narrows the set; `rules` asks the worker's own `fires`; `ids` is
+    one chain queue line's rows (its ×, 소유자 10-08)."""
     from database.models import DatabaseOutbox
     from chain.ingestion_worker import fires
 
     query = db.query(DatabaseOutbox).filter(
         DatabaseOutbox.processed_chain.is_(done),
         DatabaseOutbox.event_type.in_(sorted(event_constants.CHAIN_OWNED_EVENT_TYPES)))
+    # 🔴 THE KEYS ARE ASKED IN SQL (소유자 10-08 「빼 두기가 5분 넘게」). Read whole and sieved
+    #    here, a transaction's events cost the whole waiting queue; `idx_outbox_txid` answers
+    #    them by the transaction.
+    if ids:
+        query = query.filter(DatabaseOutbox.id.in_(list(ids)))
+    if transactions:
+        query = query.filter(DatabaseOutbox.payload["transaction_id"].as_string().in_(list(transactions)))
     if tables:
         query = query.filter(DatabaseOutbox.table_name.in_(list(tables)))
     if since:
@@ -53,53 +64,58 @@ def _in_scope(db, done, tables=(), rules=(), transactions=(), since=None, per_ro
             continue
         if per_row_only and event_constants.is_collapsed_payload(payload):
             continue
-        if transactions and payload.get("transaction_id") not in transactions:
-            continue
         if rules and not any(fires(rule, event) for rule in rules):
             continue
         yield event, payload
 
 
 def set_aside(db, tables=(), rules=(), transactions=(), since=None, per_row_only=False,
-              apply=False, reason="set aside by an operator", checkpoint=None):
-    """-> `{"events", "rows", "by_table"}` for what is (dry run) or was (apply) set aside."""
+              apply=False, reason="set aside by an operator", checkpoint=None, ids=()):
+    """-> `{"events", "rows", "by_table"}` for what is (dry run) or was (apply) set aside -
+    apply adds `marked`: the events this call ended, which leaves out any the chain finished
+    in between."""
     found = [(event.id, event.table_name, len(rows_of(payload)))
              for event, payload in _in_scope(db, False, tables, rules, transactions, since,
-                                             per_row_only)]
+                                             per_row_only, ids)]
     by_table = {}
     for _id, table, rows in found:
         by_table[table] = by_table.get(table, 0) + 1
     out = {"events": len(found), "rows": sum(r for _i, _t, r in found), "by_table": by_table}
     if not apply or not found:
-        return out
-    ids = [i for i, _t, _r in found]
-    for start in range(0, len(ids), CHUNK):
+        return dict(out, marked=0) if apply else out
+    found_ids = [i for i, _t, _r in found]
+    out["marked"] = 0
+    for start in range(0, len(found_ids), CHUNK):
         # Between committed chunks - the one place a stop is safe (a run's cancel).
         if checkpoint is not None and checkpoint(start):
             out["stopped_after"] = start
             break
-        _mark(db, ids[start:start + CHUNK], reason)
+        out["marked"] += _mark(db, found_ids[start:start + CHUNK], reason)
         db.commit()
     return out
 
 
 def _mark(db, ids, reason):
-    """`mark_cancelled`, set-based on PostgreSQL (a flooded queue is 660,000 rows - loading
-    them to edit a dict would be its own outage) and per object elsewhere."""
+    """`mark_cancelled` on the rows of `ids` STILL WAITING - set-based on PostgreSQL (a flooded
+    queue is 660,000 rows - loading them to edit a dict would be its own outage) and per object
+    elsewhere. A row the chain finished in between keeps its own ending: marking it would make a
+    run row read as set aside, and `rerun_set_aside` would run it again (소유자 10-08). -> marked."""
     from sqlalchemy import func, update
     from database.models import DatabaseOutbox
 
+    waiting = (DatabaseOutbox.id.in_(ids), DatabaseOutbox.processed_chain.is_(False))
     if db.get_bind().dialect.name == "postgresql":
-        db.execute(
-            update(DatabaseOutbox).where(DatabaseOutbox.id.in_(ids)).values(
+        return db.execute(
+            update(DatabaseOutbox).where(*waiting).values(
                 **event_constants.processed_columns("SUCCESS"),
                 payload=DatabaseOutbox.payload.op("||")(func.jsonb_build_object(
                     event_constants.CANCEL_MARK, OPERATOR,
                     event_constants.CANCEL_REASON, reason)))
-            .execution_options(synchronize_session=False))
-        return
-    for event in db.query(DatabaseOutbox).filter(DatabaseOutbox.id.in_(ids)).all():
+            .execution_options(synchronize_session=False)).rowcount
+    events = db.query(DatabaseOutbox).filter(*waiting).all()
+    for event in events:
         event_constants.mark_cancelled(event, OPERATOR, reason)
+    return len(events)
 
 
 def rows_set_aside(db, tables=(), rules=(), transactions=()):

@@ -537,8 +537,9 @@ class SqlEvidenceLookup:
         return [_atom_from_row(row) for row in rows[:limit]], cut
 
     def claims_for_entities(self, entities, direction, limit, *,
-                            follow=None):
-        """`follow` narrows which predicates the walk fetches at all.
+                            follow=None, exclude=None):
+        """`follow` narrows which predicates the walk fetches at all; `exclude` leaves some out -
+        an opened bundle's predicate, already read first (총괄 11e5ea207).
 
         🔴 IT BELONGS IN THE SQL, NOT IN A PROJECTION, because a predicate filtered here is
         never fetched and therefore never spends the budget. Filtering after the fetch would
@@ -556,6 +557,9 @@ class SqlEvidenceLookup:
         if follow:
             params["follow"] = list(follow)
             follow_clause = "e.predicate = ANY(%(follow)s)"
+        if exclude:
+            params["exclude"] = list(exclude)
+            follow_clause = " AND ".join(filter(None, (follow_clause, "e.predicate <> ALL(%(exclude)s)")))
 
         def _where(*conditions):
             kept = [item for item in conditions if item]
@@ -730,11 +734,11 @@ class InMemoryEvidenceLookup:
         return _DescribedSeeds(ids[:int(limit)], max(0, len(ids) - int(limit)))
 
     def claims_for_entities(self, entities, direction, limit, *,
-                            follow=None):
+                            follow=None, exclude=None):
         wanted = {(item[0], _canonical(item[1])) for item in entities}
         rows = []
         for atom in self.atoms:
-            if follow and atom.predicate not in follow:
+            if (follow and atom.predicate not in follow) or (exclude and atom.predicate in exclude):
                 continue
             subject = (atom.subject_type, _canonical(atom.subject_keys))
             payload = atom.object_payload or {}
@@ -2339,6 +2343,26 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
         add_node(_seed_node(item, ref, action_lookup), ref, 0)
         dep_cost[item] = 0
 
+    def _reads(group, group_follow):
+        """What one frontier group reads, in order: an opened bundle's predicate first, then the
+        rest of its node, then the rest of the group - an opened bundle spends the budget first,
+        within its depth (총괄 11e5ea207 · c06b45ea5). Nothing opened: the one read it always was."""
+        opened = defaultdict(set)
+        for node_id, predicate, _direction in expand_keys:
+            if not group_follow or predicate in group_follow:
+                opened[node_id].add(predicate)
+        by_predicates = defaultdict(list)
+        for item in group:
+            if item["id"] in opened:
+                by_predicates[tuple(sorted(opened[item["id"]]))].append(item)
+        if not by_predicates:
+            return [(group, group_follow, None)]
+        firsts = sorted(by_predicates.items())
+        rest = [item for item in group if item["id"] not in opened]
+        return ([(items, list(predicates), None) for predicates, items in firsts]
+                + [(items, group_follow, list(predicates)) for predicates, items in firsts]
+                + ([(rest, group_follow, None)] if rest else []))
+
     for depth in range(budget_hops):
         # 🔴 A NODE THAT HAS SPENT ITS DEPARTURES IS NOT EXPANDED, however shallow it is.
         # That is the whole of the second budget: the walk keeps going while it stays on
@@ -2395,18 +2419,24 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
                 continue
             if group_is_static and not group_follow:
                 continue
-            batch, cut = lookup.claims_for_entities(
-                [(item["type"], item["keys"]) for item in group],
-                direction, remaining,
-                follow=group_follow)
-            claims_scanned += len(batch); remaining -= len(batch); claim_cut |= cut
-            fetched.extend(batch)
             frontier_entities = {item["id"] for item in group}
-            steps = [(atom, _step(atom, depth, frontier_entities)) for atom in batch]
-            # 🔴 A FAN-OUT OVER `fanout_limit` IS ANSWERED, NOT DRAWN (총괄 c9bf53033 ㄴ).
+            steps = []
+            for items, read_follow, read_exclude in _reads(group, group_follow):
+                if remaining <= 0:
+                    claim_cut = True                    # a read the budget left unread
+                    break
+                batch, cut = lookup.claims_for_entities(
+                    [(item["type"], item["keys"]) for item in items],
+                    direction, remaining, follow=read_follow,
+                    **({"exclude": read_exclude} if read_exclude else {}))
+                claims_scanned += len(batch); remaining -= len(batch); claim_cut |= cut
+                fetched.extend(batch)
+                steps.extend((atom, _step(atom, depth, frontier_entities)) for atom in batch)
+            # 🔴 A FAN-OUT OVER `fanout_limit` DRAWS ITS FIRST `fanout_limit` AND BUNDLES THE REST
+            # (총괄 11e5ea207, 소유자 「잘려도 일부는 나와야지」 - it used to draw none, c9bf53033 ㄴ).
             # Distinct far nodes per (node, predicate, direction, far type), over the steps the
-            # guards pass - so `count` is what expanding the bundle draws. A bundle is not a
-            # node: it rides in `bundles`, beside `truncated` and never inside it.
+            # guards pass; the first are the first read (the lookup's order, newest first). A
+            # bundle is not a node: it rides in `bundles`, beside `truncated` and never inside it.
             fanned = defaultdict(set)
             for atom, step in steps:
                 if step is not None and step["fan_key"] is not None:
@@ -2414,12 +2444,26 @@ def _walk(seed_id, lookup, *, hops=DEFAULT_HOPS, direction="both",
             over = {key for key, far in fanned.items()
                     if fanout_limit is not None and len(far) > fanout_limit
                     and key[:3] not in expand_keys}
-            bundles.extend({"node": key[0], "predicate": key[1], "direction": key[2],
-                            "far_type": key[3], "count": len(fanned[key])}
-                           for key in sorted(over, key=str))
+            taken = defaultdict(set)
             for atom, step in steps:
-                if step is None or step["fan_key"] not in over:
-                    _expand_atom(atom, step)
+                key = None if step is None else step["fan_key"]
+                if key in over:
+                    if step["far_id"] not in taken[key] and len(taken[key]) >= fanout_limit:
+                        continue
+                    taken[key].add(step["far_id"])
+                _expand_atom(atom, step)
+            # An opened bundle the budget still cut comes back as one, with what it drew - a far
+            # node counts as drawn when this step's edge was kept, not merely its node.
+            told = over | {key for key in fanned if key[:3] in expand_keys}
+            joined = ({(_bare(e["predicate"]), e["source"], e["target"]) for e in edges.values()}
+                      if told else set())
+            for key in sorted(told, key=str):
+                drawn = sum(1 for far in (taken[key] if key in over else fanned[key])
+                            if ((_bare(key[1]), key[0], far) if key[2] == "outgoing"
+                                else (_bare(key[1]), far, key[0])) in joined)
+                if key in over or drawn < len(fanned[key]):
+                    bundles.append({"node": key[0], "predicate": key[1], "direction": key[2],
+                                    "far_type": key[3], "count": len(fanned[key]), "drawn": drawn})
 
         # 🔴 FOUR BRANCHES LEFT HERE ON 2026-08-28: finding summaries, finding
         # points, quantities and source events, plus the enrich-action tail. Each expanded a

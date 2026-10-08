@@ -32,7 +32,12 @@ from chain import ingestion_worker as worker                           # noqa: E
 from chain import replay                                               # noqa: E402
 from chain.cell_layer import ReplayRefused                             # noqa: E402
 from database import crud                                              # noqa: E402
-from test_chain_hol_scheduling import FakeDB, FakeEvent                # noqa: E402
+from test_chain_hol_scheduling import FakeDB, FakeEvent, every_event_still_waiting  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def _fake_session_holds_every_event_waiting(monkeypatch):
+    monkeypatch.setattr(worker, "_still_waiting", every_event_still_waiting)
 
 TRIGGER = "s155_src"
 REPEATS_BADLY = {"name": "repeats_badly", "trigger_table": TRIGGER,

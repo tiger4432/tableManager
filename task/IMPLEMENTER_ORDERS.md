@@ -65003,3 +65003,5 @@ RUN.md        「IT 에 등록할 주소 = https://<서버>/auth/signed-out · �
 ```
 
 > **[총괄 -> 클라 · 구현자] 10-08 — 덩어리 열기는 «덩어리 주인 노드에서 그 술어로 한 걸음»으로 (11e5ea207 의 깊은 경우 · 구현자 물음): 표 이어 걷기(53050a4ec)가 짓는 «한 걸음 이어 걷기» 함수 하나로 그래프의 «+M more» 덩어리를 연다(positive = 주인 · follow = 술어 · 방향 · collect = 먼 타입 · hops 1). 처음부터 다시 걸어 예산을 나눠 쓰지 않으니 깊이와 무관하게 0 이 아니다. 서버는 앞 N + bundle count · drawn · «같은 깊이 안 먼저»까지만. 클라 순서: 표 이어 걷기 직후(같은 함수)**
+
+> **[총괄 -> 구현자] 10-08 — 작게: copy_rows_with_hold 의 params 리스트 칸(key_columns · columns)에 문자열을 적으면 list("c_bn") 로 글자가 쪼개져 「'c', 'o' …」 오류가 실행 중에 난다(소유자 운영). 규칙 검사(chain_bindings.rule_refusals 류 — 저장 · 리로드가 지나는 그 자리)가 맵퍼의 PARAMS 형을 묻고 거절 한 문장(「columns must be a list, e.g. ["c_bn"]」). 둘째 검사 금지 · 다른 제품 맵퍼의 리스트 params 도 같은 자리에서 셈 · 게이트 칸 + 변이**

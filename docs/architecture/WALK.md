@@ -317,14 +317,17 @@ why     `not_declared`(검사 술어가 선언 안 됨) · `truncated` 의 그 �
 
 ## 🔵 펼침 묶음 — `fanout_limit` · `expand` · `bundles` (총괄 c9bf53033 ㄴ, 10-01)
 ```
-요청  fanout_limit=<정수>              한 노드에서 한 술어 · 한 방향으로 먼 노드가 이 수를 «넘으면» 그리지 않는다. 없으면 오늘과 같다
+요청  fanout_limit=<정수>              한 노드에서 한 술어 · 한 방향으로 먼 노드가 이 수를 «넘으면» 앞 fanout_limit 개만 그리고(원장 조회 순서 — 최신 먼저) 나머지는 묶음 (🆕 10-08 36c44751e · ~~그리지 않는다~~). 없으면 오늘과 같다
       expand=<노드 id>|<술어>|<방향>     그 묶음만 상한을 넘겨 그린다. 여러 번 줄 수 있다. 모양이 틀리면 422 subgraph_request_invalid
-응답  bundles: [{node, predicate, direction, far_type, count}]   fanout_limit 을 물었을 때만 있다
+                                       🆕 연 묶음의 술어는 그 깊이에서 «먼저» 읽는다(예산을 먼저 씀). 그래도 잘리면 그린 만큼 + 묶음으로 다시 온다
+응답  bundles: [{node, predicate, direction, far_type, count, drawn}]   fanout_limit 을 물었을 때만 있다
+      🆕 drawn = 그 걸음의 엣지가 남은 먼 노드 수(count 안에 든다)
 수    가드(정적 · 도로 내려가기 · 키 제약)를 «지난» 걸음의 서로 다른 먼 노드 — 그 묶음을 펼치면 그려지는 수.
       판정은 `_step` 한 함수를 펼치기와 같이 지난다
 ```
 ⚠️ 묶음은 노드가 아니다 — `nodes` 에 없고 `truncated` 와 별개 칸이다.
 ⚠️ 원자는 오늘처럼 읽고 «가져온 뒤» 가른다. `truncated.claims` 가 참이면 묶음의 수도 읽은 만큼이다.
+⚠️ 🆕 넘친 갈래마다 앞 N 이 노드 예산을 쓴다 — 갈래가 여럿인 깊이에서는 «넘치지 않은» 가지가 전보다 먼저 잘릴 수 있다(응용 잼 · 박스가 지은 모양: 로트 → 웨이퍼 25 · 웨이퍼마다 디펙 30 · 로트 → 레시피 → 장비 → 사이트. 전 lot 1 · recipe 1 · site 1 · tool 1 · 뒤 defect 378 · lot 1 · recipe 1 · wafer 20 · 잘림 nodes).
 
 ## 🔵 서술된 씨앗 — `seed_type` · 씨앗 예산 (S-148-a, 판정 337, 2026-09-13)
 

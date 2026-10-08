@@ -67,17 +67,21 @@ def raise_if_paused():
         raise ChainPaused("the chain is paused")
 
 
-def cancel_running_group(db):
+def cancel_running_group(db, line_key=None):
     """Cancel the query the running chain group is waiting on, if there is one - by the pid its
     beat published (up to one beat old) and only while that pid is still a chain connection,
-    so a pid the database has handed to someone else is never touched. -> the pid, or None."""
+    so a pid the database has handed to someone else is never touched. With `line_key` (a ×
+    on one queue line, 소유자 10-08), only when the running group is that line. -> the pid, or None."""
     from sqlalchemy import text
     from chain import ingestion_worker
     from database.database import connection_name
     from utils import heartbeat
 
     work = (heartbeat.read_all().get("chain") or {}).get("work") or {}
-    pid = (work.get("facts") or {}).get("db_pid")
+    facts = work.get("facts") or {}
+    pid = facts.get("db_pid")
+    if line_key is not None and line_key not in (facts.get("line_keys") or ()):
+        return None
     if pid is None or db.get_bind().dialect.name != "postgresql":
         return None
     cancelled = db.execute(text(

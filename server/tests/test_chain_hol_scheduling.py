@@ -37,6 +37,17 @@ class FakeDB:
         self.rollbacks += 1
 
 
+def every_event_still_waiting(db, events):
+    """The fake session has no outbox table, so every event it is handed is still waiting - the
+    worker asks before a group runs and before its ending is written (소유자 10-08)."""
+    return list(events), set()
+
+
+@pytest.fixture(autouse=True)
+def _fake_session_holds_every_event_waiting(monkeypatch):
+    monkeypatch.setattr(ciw, "_still_waiting", every_event_still_waiting)
+
+
 # 규칙: 트리거 tblA_src -> target table_A, 트리거 tblB_src -> target table_B
 RULES = [
     {"name": "rA", "trigger_table": "tblA_src", "target_table": "table_A", "enabled": True},

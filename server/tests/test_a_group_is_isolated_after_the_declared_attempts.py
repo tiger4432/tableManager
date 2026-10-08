@@ -98,7 +98,12 @@ def test_the_reader_holds_no_module_state(monkeypatch):
 # ⚠️ ONE SPELLING OF THE FAKES. `test_chain_hol_scheduling` already drives this same
 # function with them; a second copy here would be a second outbox event shape, and the day
 # the real one grows a field only one of them would learn.
-from test_chain_hol_scheduling import FakeDB, FakeEvent                   # noqa: E402
+from test_chain_hol_scheduling import FakeDB, FakeEvent, every_event_still_waiting  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def _fake_session_holds_every_event_waiting(monkeypatch):
+    monkeypatch.setattr(worker, "_still_waiting", every_event_still_waiting)
 
 STRICT, LAX = 2, 5
 
