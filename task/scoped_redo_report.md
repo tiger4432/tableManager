@@ -76290,3 +76290,186 @@ test_[l-z]*: 1 failed, 3945 passed, 187 skipped, 2 xfailed, 7351 warnings
 ```
 
 같이: ingestion_worker 를 만진 김에 «없어진 따라가기 규칙 캐시»의 설명 주석 덩어리를 지움(그 캐시가 auto-confirm 을 그 길에서 돌린다고 아직 말하고 있었음, 총괄 10-07 메모).
+
+---
+
+## [10-09] 인덱스 마스터 = 모델 선언 · 체인 워커가 알리고 스스로 만든다 · GET /admin/indexes 9acf4243e · 901b01f07 (총괄 e0e8020fb · d71f931c7)
+
+어느 DB · 어느 스키마 · 지운 것 — 격리 시험 DB assy_test · 스키마는 하니스가 만들고 DROP 하는 assy_pytest_pg_* — 시험이 그 스키마 안에서 인덱스 하나를 지우고 하나를 무효로 만들고(pg_index.indisvalid 를 손으로 false — 슈퍼유저 시험 DB 의 카탈로그 손질) 다시 지었음 · 그 밖에 지운 것 0
+
+```
+정본       정적 모델 표 13 개의 선언 49 개 = Index 47 + UNIQUE 제약 2. 기본 키는 선언된 것으로 침(목록 밖 · «선언 밖»에도 안 나옴)
+           선언마다 info = {"purpose", "serves"} (화면에 그려지므로 영어). 없으면 빨강 — test_every_declared_index_says_what_it_is_for
+index=True  같은 이름의 Index(...) 로. unique=True(key_hash) 는 PostgreSQL 이 붙인 그 이름 그대로 UniqueConstraint 로
+은퇴 둘     ix_cell_sources_table_name · ix_cell_sources_column_name — 선언에서 뺌(선언 밖 · 은퇴됨). 은퇴 판정:
+server/migrations/drop_redundant_layering_indexes.py:142:    "ix_cell_sources_table_name": "cell_sources",
+server/migrations/drop_redundant_layering_indexes.py:143:    "ix_cell_sources_column_name": "cell_sources",
+선언 전후   (drop 전후를 같은 스크립트로 PostgreSQL DDL 로 떠서 diff)
+34d33
+< CREATE INDEX ix_cell_sources_column_name ON cell_sources (column_name)
+36d34
+< CREATE INDEX ix_cell_sources_table_name ON cell_sources (table_name)
+50c48
+< auth_api_keys UNIQUE (key_hash) name=None
+---
+> auth_api_keys UNIQUE (key_hash) name=auth_api_keys_key_hash_key
+           = 은퇴 둘이 빠지고, key_hash 제약이 이름을 가진 것뿐 — DB 가 보는 모양은 그대로
+견주기 하나  models.index_states — 부르는 곳
+server/main.py:4627:    return models.index_states(db.get_bind())
+server/database/models.py:1679:def index_states(engine):
+server/database/models.py:1726:    owed = [row for row in index_states(engine)["declared"] if row["state"] in (INDEX_MISSING, INDEX_INVALID)]
+만드는 곳   체인 워커 _start_index_work 안, 선언된 조인 키 일 «다음»에 같은 태스크에서 — 둘이 동시에 만들지 않음
+           하나씩 models._ensure_one_index (CONCURRENTLY · 무효면 지우고 다시 · built/present/failed)
+           배정자를 막지 않음: 인덱스 일은 스레드에서 —
+server/chain/ingestion_worker.py:2705:        await asyncio.to_thread(_ensure_model_indexes_sync, db_session_factory)
+           슬롯 배정자는 루프에서 —
+server/chain/ingestion_worker.py:4834:                given = pool.tick(db, rules, notified=loop_wake_ts is not None)
+_ensure_one_index 셋  ① 이름을 «이 연결의 스키마»에서만 찾음(전엔 모든 스키마 — 다른 스키마의 같은 이름이면 「있음」)
+           ② statement_timeout 0 으로 만들고 끝나면 RESET  ③ 수리 · 실패 줄을 부른 쪽의 로거로(say) — 체인 로그에 사유가 남음
+기다림      pg_stat_progress_create_index + pg_stat_activity — «building - waiting for transactions older than it: pid P (application_name)»
+           GET /admin/indexes 의 state=building · building 칸, 그리고 chain_worker.log 에 600 초마다
+스위치      ingestion_settings.json "build_missing_indexes" — 기본 켬, false 면 알리기만
+UNIQUE 제약  빠졌으면 이름은 알리되 만들지 않음(ALTER TABLE 이지 인덱스가 아님)
+```
+
+### 같이 (총괄 지시)
+
+```
+× 감사 줄   chain_queue_skip 감사 줄이 «× 가 읽을 때 기다리던 수»가 아니라 «표시한 수»(표마다). 0 이면 줄 없음
+           _mark 가 표마다 센 수를 돌려줌(PG 는 UPDATE ... RETURNING table_name) · 답에 marked_by_table 더함(더하기만)
+ops 스크립트  scripts/ops_setup_db_performance.py — 없는 withdraw_idx 를 읽던 은퇴 인덱스 짓기와 그 계획 확인(3.11)을 걷음 — «안 죽게»만
+           그 확인 함수 _verify_withdraw_plan 은 이제 부르는 곳이 없음(남겨 둠 · 단계 정리는 시연 뒤)
+로그 꼬리표  체인 로그 꼬리표 게이트(test_a_rule_is_run_by_one_seat)에 «Indexes» 를 그 뜻과 함께 더함 — 첫 반쪽에서 빨강이었음
+뒤따름     901b01f07 — 라우트의 using 이 보통 인덱스에서 false 로 나가던 것을 null 로(SQLAlchemy 의 빈 값이 False). 이 보고의 견본을 만들다 봄
+           라우트 칸에 brin · null 단언 + 변이(false 로 되돌리면 빨강) · sqlite 반쪽 둘 다 다시
+```
+🔴 제 실수 하나: _mark 의 답 모양(수 → 표마다 수)을 바꾸면서 그 함수를 «직접» 부르는 시험 두 칸을 안 셌습니다 — 둘째 반쪽에서 빨강, 새 모양으로 고친 뒤 다시 돌린 수가 아래입니다.
+
+### 게이트
+
+```
+PG 손댄 파일(인덱스 · 멈춤) 한 번에: 11 passed, 47 deselected, 14 warnings · 8080 접촉 줄 0
+견주기     지운 것 -> missing · 무효 -> invalid · 그대로 -> present(+ purpose · size) · 선언 없는 것 하나 -> outside 에 그것 하나
+           모델 표에 동적 표(시험 카탈로그)가 섞이지 않음
+UNIQUE 제약 key_hash 제약을 지움 -> 줄에 이름(missing) · «not built here» · 만든 것 없음({}) · 시험 끝에 되돌림
+알림+만듦   missing + invalid -> 줄 1 (둘을 이름으로) · 둘 다 built · 전부 present · 다시 -> 줄 0 · {}
+스위치 끔   줄 1 «not built: build_missing_indexes is off» · 여전히 missing
+기다림      다른 연결이 audit_logs 에 쓰고 커밋 안 함 -> «still building ... waiting for transactions older than it: pid» 줄 · 라우트 state=building
+           그 트랜잭션을 끝내면 built
+순서        인덱스 일 = 조인 키 다음 모델 인덱스
+× 감사      표시 0 -> chain_queue_skip 줄 0 (앞 라운드 잠금 칸에 한 줄 더)
+```
+
+### 변이 — md5 같음
+
+```
+BASELINE PG 5 passed, 52 deselected, 6 warnings | plain 4 passed, 4 skipped, 6 warnings
+MUTANT an index without a purpose               PG 1 failed, 4 passed, 52 deselected, 6 warnings | plain 1 failed, 3 passed, 4 skipped, 6 warnings
+    FAILED test_every_declared_index_says_what_it_is_for
+    FAILED test_the_route_shows_each_declared_index_beside_the_database
+MUTANT a retired index declared again           PG 1 failed, 4 passed, 52 deselected, 6 warnings | plain 2 failed, 2 passed, 4 skipped, 6 warnings
+    FAILED test_a_retired_index_is_not_declared
+    FAILED test_every_declared_index_says_what_it_is_for
+    FAILED test_the_route_shows_each_declared_index_beside_the_database
+MUTANT an invalid index reads as present        PG 2 failed, 3 passed, 52 deselected, 6 warnings | plain 4 passed, 4 skipped, 6 warnings
+    FAILED test_the_index_work_names_what_is_owed_in_one_line_and_builds_it
+    FAILED test_the_route_shows_each_declared_index_beside_the_database
+MUTANT what is owed is not built                PG 3 failed, 2 passed, 52 deselected, 6 warnings, 4 errors | plain 4 passed, 4 skipped, 6 warnings
+    FAILED test_a_build_waiting_on_an_older_transaction_says_whom_and_ends_after_it
+    FAILED test_build_missing_indexes_off_names_what_is_owed_and_builds_nothing
+    FAILED test_the_index_work_names_what_is_owed_in_one_line_and_builds_it
+    FAILED test_the_route_shows_each_declared_index_beside_the_database
+MUTANT the switch is not read                   PG 1 failed, 4 passed, 52 deselected, 6 warnings | plain 4 passed, 4 skipped, 6 warnings
+    FAILED test_build_missing_indexes_off_names_what_is_owed_and_builds_nothing
+MUTANT a waiting build says nothing             PG 1 failed, 4 passed, 52 deselected, 6 warnings | plain 4 passed, 4 skipped, 6 warnings
+    FAILED test_a_build_waiting_on_an_older_transaction_says_whom_and_ends_after_it
+MUTANT the route does not show a build          PG 1 failed, 4 passed, 52 deselected, 6 warnings | plain 4 passed, 4 skipped, 6 warnings
+    FAILED test_a_build_waiting_on_an_older_transaction_says_whom_and_ends_after_it
+MUTANT a name is looked up in every schema      PG 3 failed, 2 passed, 52 deselected, 6 warnings, 4 errors | plain 4 passed, 4 skipped, 6 warnings
+    FAILED test_a_build_waiting_on_an_older_transaction_says_whom_and_ends_after_it
+    FAILED test_build_missing_indexes_off_names_what_is_owed_and_builds_nothing
+    FAILED test_the_index_work_names_what_is_owed_in_one_line_and_builds_it
+    FAILED test_the_route_shows_each_declared_index_beside_the_database
+MUTANT the index work skips the model indexes   PG 5 passed, 52 deselected, 6 warnings | plain 1 failed, 3 passed, 4 skipped, 6 warnings
+    FAILED test_the_index_work_builds_the_model_indexes_after_the_declared_keys
+MUTANT the x audit counts what it read          PG 1 failed, 4 passed, 52 deselected, 6 warnings | plain 4 passed, 4 skipped, 6 warnings
+    FAILED test_a_cross_that_comes_after_the_success_paths_read_waits_and_the_row_reads_as_ran
+BASELINE PG 6 passed, 52 deselected, 6 warnings | plain 4 passed, 5 skipped, 6 warnings
+MUTANT a missing constraint is built like an index PG 1 failed, 5 passed, 52 deselected, 6 warnings | plain 4 passed, 5 skipped, 6 warnings
+    FAILED test_a_missing_unique_constraint_is_named_and_not_built
+```
+초록 없음
+
+### 전체 sqlite
+
+```
+test_[a-k]*: 4 failed, 4151 passed, 210 skipped, 1 xfailed, 5933 warnings
+test_[l-z]*: 1 failed, 3949 passed, 192 skipped, 2 xfailed, 7336 warnings
+-> 실패는 알려진 박스 실패(와 흔들림)뿐
+```
+
+### 범위 밖 — 셈만 (총괄 지시)
+
+```
+원장 인덱스  ledger/schema.py 의 raw SQL, 세상(w_<세상>)마다 같은 이름 — 이름 12 개: idx_ledger_id · idx_ledger_object_entity · idx_ledger_register · idx_ledger_register_search · idx_ledger_row_ref_raw · idx_ledger_row_ref_row · idx_ledger_source_event · idx_ledger_subject_entity · idx_ledger_subject_gin · idx_ledger_subject_lot · idx_ledger_type_pred_time · uq_ledger_atom
+동적 표     models.py 의 짓기 함수가 따로 — ix_<표>_updated_at · idx_<표>_updated(체인 워커 기동) · idx_<표>_map_key · idx_<표>_decision_key(설정 다시 읽기)
+           · uq_bk_<표>(체인 워커 기동, 마이그레이션 함수) · ix_<표>_business_key_val · idx_<표>_declared_key(마이그레이션만)
+           · idx_suggest_*(ops 스크립트). 이번 견주기에 안 들어감
+복사 맵퍼   원본 표 키 복합 인덱스(복사 맵퍼 key_columns)는 이 범위 밖 — 시연 뒤 «맵퍼가 필요한 인덱스를 선언하는 자리»로
+```
+
+### 은퇴 후보로 보이는 것 — 짓지 않음, 셈만
+
+조건 없는 btree 단일 칸 인덱스 중, 같은 표의 조건 없는 btree 선언이 같은 칸으로 «시작»하는 것(drop_redundant_layering_indexes 가 cell_sources 에서 은퇴시킨 모양). 쓰인 횟수는 재지 않았습니다 — 운영의 GET /admin/indexes scans 로 판단할 것:
+```
+idx_frame_conf_src_lookup (frame_confirmation_source.confirmation_uid) - idx_frame_conf_src_unique start(s) with it
+ix_audit_logs_table_name (audit_logs.table_name) - idx_audit_cell_history, idx_audit_row_history start(s) with it
+ix_cell_overwrites_table_name (cell_overwrites.table_name) - idx_overwrites_lookup, idx_overwrites_lookup_col start(s) with it
+ix_retroactive_runs_state (retroactive_runs.state) - idx_retroactive_runs_recent start(s) with it
+```
+
+### 클라 반쪽에 줄 응답 견본 (모양 — 값은 예시)
+
+```
+{
+ "declared": [
+  {
+   "name": "idx_audit_cell_history",
+   "table": "audit_logs",
+   "columns": [
+    "table_name",
+    "row_id",
+    "column_name",
+    "timestamp",
+    "id"
+   ],
+   "where": null,
+   "include": [],
+   "using": null,
+   "unique": false,
+   "constraint": false,
+   "purpose": "one cell's history a page at a time",
+   "serves": "history tab, cell",
+   "state": "present",
+   "building": null,
+   "size_bytes": 106496,
+   "scans": 12
+  }
+ ],
+ "outside": [
+  {
+   "name": "<이름>",
+   "table": "<표>",
+   "valid": true,
+   "building": null,
+   "size_bytes": 8192,
+   "scans": 0
+  }
+ ]
+}
+```
+
+### 남은 것 — 시험이 못 잰 것
+
+- statement_timeout 0 → RESET: 이 박스 엔진엔 기본 상한이 없어(연결 인자에 없음) 빼도 시험이 안 갈립니다. 변이를 안 돌렸습니다.
+- 진행 읽기가 실패할 때의 한 줄(«its progress did not read ... unwatched»): 그 실패를 만들어 돌린 칸이 없습니다.
