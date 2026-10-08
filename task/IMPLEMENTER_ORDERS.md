@@ -64908,3 +64908,17 @@ RUN.md        「IT 에 등록할 주소 = https://<서버>/auth/signed-out · �
 ```
 
 > **[총괄 -> 구현자] 10-08 — 대기열 × 서버 커밋에 한 칸: 행 하나짜리 줄(outbox#N)은 transaction_id 에 «(no tx · outbox#N)» 글자 대신 outbox_id 를 칸으로도 싣는다(클라가 그 값을 복사 · 앱 QA 2fdc6b16a). transaction_id 글자는 옛 화면을 위해 그대로**
+
+> **[총괄 -> 구현자] 10-08 — 원장 read.exclude_when 에 값 조건 «in» · 시연 전 · 순서: 원장 따라가기가 말하기(558a46ef1) -> 대기열 × -> 이것 -> 인덱스 (소유자 10-08 「type 이 bbox 가 아닌 행만 올리려면」 -> 「ㄱ」 · 「시연 전」)**
+
+```
+지금   _validate_exclude_when: 조건은 {"column", "blank": true} 하나뿐(값 비교는 «이름으로 요청되면» — 소유자가 지금 요청)
+넓힘   한 조건 = {"column": "<칸>", "blank": true} 또는 {"column": "<칸>", "in": [<값>, …]} — 둘 중 «하나»만. 목록 안 조건 중 하나라도 맞으면 그 행 제외(지금 규칙)
+       같은 기제(__source_row_excluded) · 같은 자리를 넓힌다. 새 절 · 새 낱말 없음
+견주기  값 비교는 제품이 이미 쓰는 «한 견주기»를 지난다(키 견주기 · 표기 접기 중 맞는 것) — 둘째 비교 함수를 적지 않는다. 숫자 칸 · 글자 칸 둘 다 시험
+🔴 빈 값  type 이 비어 있는(NULL · '') 행은 «in» 으로 제외되지 않는다 — SQL 이면 NOT IN 의 NULL 함정(행이 통째로 빠짐)을 막는다
+폼     선언 폼이 같은 스켈레톤에서 «in» 을 적게(스켈레톤 · public_bundle_schema 같은 커밋)
+소급   이미 올라간 bbox 행의 원자: 선언을 바꾼 뒤 그 소스의 다시 번역(rescope/backfill)이 거둔다 — RUN.md 에 실제 명령과 «몇 행이 다시 도나» 어림
+게이트  in 일치 -> 제외 · 불일치 -> 올라감 · 빈 type -> 올라감 · blank 조건 그대로 · blank+in 같이 -> 거절 · in 빈 목록 -> 거절
+       · 선언 바꾼 뒤 다시 번역 -> bbox 원자 거둬짐 · 폼에서 적힘 + 변이 · RELEASE_LOG · ONTOLOGY_LEDGER_SETUP §7.7 문법 줄
+```
