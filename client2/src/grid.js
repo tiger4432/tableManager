@@ -427,6 +427,8 @@ export function renderFilterBar() {
       const label = document.createElement('span');
       label.className = 'filter-chip-label';
       label.textContent = filterChipText(colId, model[colId]);
+      // The chip may be cut to fit the header's one row; its whole value is its title (lead bfb62503e).
+      label.title = label.textContent;
       const remove = document.createElement('button');
       remove.type = 'button';
       // Phase 0: the banner's own close button, not a private one that looks like it.
@@ -509,16 +511,20 @@ function showChipsPanel(all, bar, more) {
   }
   chipsPanel.replaceChildren(...all);
   const anchor = more.getBoundingClientRect();
-  const origin = (chipsPanel.offsetParent || document.body).getBoundingClientRect();
+  const originEl = chipsPanel.offsetParent || document.body;
+  const origin = originEl.getBoundingClientRect();
+  // The rectangles are px on screen; left/top are the header's own px, and the header is drawn at --header-zoom.
+  // One screen px is 1/scale of them - without this the panel opened far left of its button (lead bfb62503e).
+  const scale = origin.width / (originEl.offsetWidth || origin.width) || 1;
   // 껍데기는 `right: 0` 으로 붙습니다. 왼쪽을 «쓰면서» 오른쪽을 안 풀면 판이 둘 사이로
   // 늘어나 화면 폭만큼 벌어집니다.
   chipsPanel.style.right = 'auto';
-  chipsPanel.style.top = `${Math.round(anchor.bottom - origin.top + 8)}px`;
+  chipsPanel.style.top = `${Math.round((anchor.bottom - origin.top + 8) / scale)}px`;
   // 오른쪽 끝을 버튼에 맞춥니다. 왼쪽에 맞추면 좁은 창에서 판이 화면 밖으로 나갑니다.
   const width = chipsPanel.getBoundingClientRect().width;
   const wanted = anchor.right - origin.left - width;
   const rightmost = (document.documentElement.clientWidth || 0) - origin.left - width - 8;
-  chipsPanel.style.left = `${Math.round(Math.max(8, Math.min(wanted, rightmost)))}px`;
+  chipsPanel.style.left = `${Math.round(Math.max(8, Math.min(wanted, rightmost)) / scale)}px`;
 }
 
 /** 칩을 스트립으로 돌려놓고 판을 치웁니다. 판만 숨기면 다음 접힘이 «빈 스트립»을 잽니다. */
