@@ -129,3 +129,40 @@ def test_the_grammar_does_not_reach_into_the_registry():
             named.add(node.module.split(".")[0])
 
     assert "mapper_sdk" not in named
+
+
+# ---------------------------------------------------------------------------
+# 🔴 a list argument written as text (총괄 67dffd619): `list("c_bn")` is four letters
+# ---------------------------------------------------------------------------
+
+KINDS = {"key_columns": list, "columns": list, "hold_column": str}
+
+
+def test_a_list_argument_written_as_text_is_refused_with_its_list_spelling():
+    rule = dict(RUNNABLE, params={"key_columns": ["lot"], "columns": "c_bn", "hold_column": "hold"})
+
+    named = [i for i in _refusals(rule, declared=KINDS) if i.code == "param_not_a_list"]
+
+    assert [(i.path, i.message) for i in named] == [
+        ("rule.params.columns", 'columns must be a list, e.g. ["c_bn"]')]
+
+
+def test_a_list_written_as_a_list_and_a_mapper_that_declared_no_kinds_pass():
+    as_list = dict(RUNNABLE, params={"key_columns": ["lot"], "columns": ["c_bn"], "hold_column": "hold"})
+    assert "param_not_a_list" not in _codes(_refusals(as_list, declared=KINDS))
+    as_text = dict(RUNNABLE, params={"columns": "c_bn"})
+    assert "param_not_a_list" not in _codes(_refusals(as_text, declared=("columns",)))
+
+
+def test_the_product_mapper_that_reads_lists_declares_them():
+    """The registry's own declaration - the seat the loader, the save and the report ask."""
+    import mapper_sdk
+
+    mapper_sdk.discover()
+    rule = {"name": "r", "trigger_table": "t", "mapper": "copy_rows_with_hold",
+            "params": {"key_columns": "lot", "columns": ["c_bn"], "hold_column": "h", "source_table": "s"}}
+    issues = chain_bindings.rule_refusals(
+        rule, "rule", mapper_resolvable=mapper_sdk.MAPPER_REGISTRY.get, derived_tables=(),
+        mapper_params=mapper_sdk.MAPPER_PARAMS.get)
+    assert [(i.code, i.path) for i in issues if i.code == "param_not_a_list"] == [
+        ("param_not_a_list", "rule.params.key_columns")]

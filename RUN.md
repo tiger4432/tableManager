@@ -1,5 +1,18 @@
 # 지금 돌리면 되는 것
 
+> ## [10-08] **copy_rows_with_hold 의 리스트 칸에 글자를 적으면 규칙 검사가 거절 — 이주 «없음» · 재기동 «필요»(서버 · 체인)**
+>
+> ```
+> 무엇이 바뀌나  key_columns · columns 에 "c_bn" 처럼 글자를 적으면 저장 · 리로드 때 거절: columns must be a list, e.g. ["c_bn"]
+>                전엔 실행 중에 글자로 쪼개져 'c', 'o' … 오류가 났다
+> 고칠 것        chain_rules.json 의 그 규칙 params 를 ["c_bn"] 처럼 리스트로
+> 볼 줄          [ChainRules] <규칙> refused (1): param_not_a_list <경로>.params.columns: columns must be a list, e.g. ["c_bn"]
+>                  = 그 규칙만 로드에서 빠진다(다른 규칙은 그대로)
+> 급할 때       git revert <이 커밋> -> 재기동 (검사만 빠짐 — 글자로 적은 규칙은 다시 실행 중에 실패)
+> ```
+
+---
+
 > ## [10-08] **체인 대기열 «모든 줄»에 × — 이주 «없음» · 재기동 «필요»(서버 · 체인 워커)**
 >
 > ```

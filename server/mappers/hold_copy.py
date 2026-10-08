@@ -23,7 +23,8 @@ read. The raw function goes into the same registry with its `params`.
 from __future__ import annotations
 
 NAME = "copy_rows_with_hold"
-PARAMS = ("key_columns", "columns", "hold_column", "source_table")
+#: what each argument must be - a list written as text was read a letter at a time (총괄 67dffd619)
+PARAMS = {"key_columns": list, "columns": list, "hold_column": str, "source_table": str}
 AGREED = "agreed"
 
 
