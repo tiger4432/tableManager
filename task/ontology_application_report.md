@@ -36900,3 +36900,17 @@ ec00cb905  admin.js 에서 navigator.clipboard 를 직접 부르는 자리 0(주
            구현자 초록과 내 빨강이 갈린 까닭으로 이것을 올린다 — 게이트를 이 박스에서 «혼자» 돌려야 하는지, 시험이 스키마별 열쇠 · 이름을 써야 하는지는 총괄 판정
 문서       CODE_MAP · SYSTEM_FLOWS · ingestion_settings · FEATURE_CHECKLIST 는 구현자가 맞춤. 안내서의 chain_worker.log grep 은 슬롯 줄에도 맞는다(줄 머리 [slot n pid P] 뒤 같은 글자)
 ```
+
+---
+
+## [C 응용] 10-08 a2342ce2f(취소에 끊긴 묶음은 누가 끊었든 되감기) QA — 결함 못 찾음 · 알 것 둘 (코드로 읽음)
+
+```
+닫힘    8c293fea7 의 «시험 DB 를 같이 쓰는 두 판이 서로의 슬롯 연결을 끊음»에 답이 왔다 — 시험 슬롯 이름에 실행 열쇠
+알 것①  이제 QueryCanceled 는 «체인 상한이 끊은 것»(묶음 나이 ≥ 상한)만 실패, 나머지는 «시도 횟수 그대로» 되감기
+        SET LOCAL 로 문장 상한을 거는 자리 5 — database.py(파일 · 체인 상한) · main.py 대시보드 둘 · value_suggest(라우트 · 수집기 표지) · 진단 스크립트 하나
+        체인 묶음 안에서 닿는 것은 체인 상한 하나(chain · mappers 에서 나머지를 부르는 곳 0) — 제품 스스로는 고리가 안 생긴다
+        제품 «밖»의 취소가 되풀이되면(운영 DB · 역할의 기본 statement_timeout, 감시 도구의 pg_cancel_backend) 그 묶음은 끝없이 되감겨 돈다 — FAILED 도 격리도 안 된다. 로그 줄 「its query was cancelled, not by the statement limit - rewound」이 반복되는 것으로만 보인다
+        운영 DB 에 그런 기본값이 있는지는 모른다(박스로 답할 수 없는 물음 — 소유자 쪽 확인)
+알 것②  소유자가 오늘 손으로 SQL 취소로 체인을 끄던 길은 이제 «다시 돌기»가 된다 — 끄는 문은 × 와 Pause. RUN.md 에 한 줄이 필요한지는 총괄 판정
+```
