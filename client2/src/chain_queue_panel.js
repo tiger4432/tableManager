@@ -182,7 +182,7 @@ export function chainStateWhy(chainState) {
   return parts.filter((p) => p !== null && p !== undefined && p !== '').map(String).join(' · ');
 }
 
-/** The state cell both queues draw: the token, then `chainStateWhy` - a line cut short keeps its whole in a title. */
+/** The state cell both queues draw: the token, then `chainStateWhy` under it, read to the end (base.css), and in its title. */
 export function chainStateCell(doc, chainState) {
   const cell = doc.createElement('div');
   cell.className = 'queue-line-state';
