@@ -406,11 +406,16 @@ function formatTimestamp(value) {
 }
 
 // Transaction ID 축약 (감사 F8): head8… — 풀값은 title/클릭복사로
-/** A shortened id, copied in full on a press: the failed table's and the queue lines' one copy (lead 421191402),
- *  through the app's clipboard writer - on the plain-HTTP LAN `navigator.clipboard` does not exist (QA 2fdc6b16a). */
-function copyFullId(id, label) {
-  if (writeClipboardRich('', id)) showToast(`📋 ${label} [${shortTxId(id)}] copied in full`, 'info');
+/** Text onto the clipboard through the app's writer, then the toast that says so - or that it failed. The one place
+ *  admin.js writes the clipboard: on the plain-HTTP LAN `navigator.clipboard` does not exist (lead, QA 2fdc6b16a). */
+function copyText(text, said, kind) {
+  if (writeClipboardRich('', text)) showToast(said, kind);
   else showToast('❌ Copy failed', 'error');
+}
+
+/** A shortened id, copied in full on a press: the failed table's and the queue lines' one copy (lead 421191402). */
+function copyFullId(id, label) {
+  copyText(id, `📋 ${label} [${shortTxId(id)}] copied in full`, 'info');
 }
 
 function shortTxId(txId) {
@@ -766,9 +771,7 @@ function setupEventListeners() {
     }
 
     if (payloadToCopy) {
-      navigator.clipboard.writeText(JSON.stringify(payloadToCopy, null, 2))
-        .then(() => showToast('📋 Payload copied', 'success'))
-        .catch(() => showToast('❌ Copy failed', 'error'));
+      copyText(JSON.stringify(payloadToCopy, null, 2), '📋 Payload copied', 'success');
     } else {
       showToast('⚠️ Nothing selected to copy', 'warning');
     }

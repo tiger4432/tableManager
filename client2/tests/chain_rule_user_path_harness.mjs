@@ -1017,9 +1017,9 @@ const DEFECTS = [
                    '  const rule = chainData.find(r => r.trigger_table === ev.table_name || r.target_table === ev.table_name);')],
   // QA 2fdc6b16a: the copy hands the writer what is shown, or says it copied when it did not.
   ['the copy hands the writer the shortened id',
-    s => s.replace("  if (writeClipboardRich('', id)) ", "  if (writeClipboardRich('', shortTxId(id))) ")],
+    s => s.replace('  copyText(id, `📋 ${label}', '  copyText(shortTxId(id), `📋 ${label}')],
   ['a copy that failed says it copied',
-    s => s.replace("  if (writeClipboardRich('', id)) ", "  if (writeClipboardRich('', id) || true) ")],
+    s => s.replace("  if (writeClipboardRich('', text)) ", "  if (writeClipboardRich('', text) || true) ")],
   // lead 0eadab810: the queue's one read.
   ['the queue poll reads a hidden tab',
     s => s.replace("  if (document.hidden || !(currentTab === 'overview' || currentTab === 'chain') || queueRead) {",
