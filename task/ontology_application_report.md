@@ -36609,3 +36609,35 @@ b340386fe
 오늘    소유자가 만드는 idx_sources_by_origin 은 마이그레이션 파일이 CONCURRENTLY 다 — 그 파일로 만들면 쓰기를 안 막는다. 손으로 CONCURRENTLY 없이 치면 그 표에 쓰는 묶음이 120 초마다 실패한다
 문서    ingestion_settings.md 의 chain_statement_timeout_seconds 줄에 「잠금 기다림도 센다」 — 이 보고와 같은 커밋. RUN.md 는 안 건드림
 ```
+
+---
+
+## [C 응용] 10-08 8d0a22064(id 복사가 앱의 복사 쓰개로) QA — 결함 못 찾음. 같은 파일에 남은 하나 (코드로 읽음 · 하니스 돌림)
+
+```
+읽음    copyFullId -> writeClipboardRich('', id) — execCommand('copy') + copy 이벤트, 동기. 두 호출자(실패 표 칩 · 대기열 칩) 다 클릭 처리기 안에서 곧바로 부른다(await 없음)
+        쓰개가 false 면 «Copy failed» — 전엔 평문 HTTP 에서 아무 말도 없던 자리가 이제 말한다
+하니스  chain_rule_user_path 91 통과 · 실패 0(node · 이 트리)
+남은 하나  admin.js 에 navigator.clipboard 를 직접 부르는 자리가 하나 더 있다(주석 빼고 센 수 1) — 오류 상세의 «Raw Event Payload / Details» 옆 «📋 Copy» 버튼
+        평문 HTTP 에서 같은 모양으로 막힌다(누르면 동기로 터짐 · 복사 안 됨 · 토스트 없음). 이번 착지 전부터 그랬다
+        같은 쓰개로 보내면 «한 경로»가 된다 — 고칠지는 총괄 판정
+문서    CODE_MAP 의 대기열 id 칩 줄에서 제 경고(평문 HTTP 에서 터짐)를 걷고 쓰개를 적음 — 이 보고와 같은 커밋
+```
+
+---
+
+## [C 응용] 10-08 0e7530cef(원장 따라가기가 왜 섰는지 · 깨진 다른 세상은 스스로 끔) QA — 작은 것 하나 · 상태 하나 (코드로 읽음 · 안 잼)
+
+```
+읽음    운영 세상이 안 읽히면 FollowUpStopped — 처음 · 600 초마다 · 풀릴 때 줄, 줄마다 대기 N. /runtime ledger_followup 줄에 state · world · said · since · depth
+        운영 아닌 켜진 세상이 안 읽히면 그 세상 live 를 끄고 worlds.json 이력 by 에 문장 · 줄 하나 + 따라잡기 명령 · 나머지 세상 계속. 운영 세상은 스스로 안 끈다
+        실패도 성공처럼 스탬프(선언 파일 · table_config.json)로 붙잡는다 — load_setup 이 읽는 것이 그 둘뿐이라(setup.py 에 엔진 · 세션 0) 고치면 풀린다
+        선언 파일 저장(admin._atomic_write)은 pid 붙은 tmp + os.replace — 따라가기가 반쯤 쓴 선언을 읽고 세상을 끄는 길은 못 찾음
+작은 것  worlds.json 을 쓰는 프로세스가 이제 둘 — API 라우트(operate · drop_world · set_live)와 체인 워커의 따라가기(set_live)
+        _write_layout 은 잠금 없이 «읽고-고치고-쓰기»이고 tmp 이름이 pid 없는 worlds.json.tmp 하나
+        -> 두 프로세스가 같은 순간에 쓰면 한쪽 변경(운영자의 운영 바꾸기 · 세상 지우기 · live 켜기 · 따라가기의 끄기)이 사라질 수 있다
+        같은 성질(여러 프로세스가 같이 읽고 쓰는 설정 파일)에 선언 파일 쓰개는 pid 를 붙인다 — 기제가 둘
+        겹치는 때는 «운영 아닌 세상의 선언이 깨진 그 랩»과 «운영자의 worlds.json 쓰기»가 같은 순간일 때뿐 — 드물다. 고칠지는 총괄 판정
+상태    클라 반(어드민 원장 줄의 빨간 칩 · 서버 문장)은 아직 — 오늘은 로그 줄과 /runtime 값으로만 보인다
+문서    LEDGER_GUIDE §4.9 에 「선언이 깨지면」 한 줄 — 이 보고와 같은 커밋
+```

@@ -333,9 +333,13 @@ def _make(world, name, document, *sources):
     return schema.require_world(name)
 
 
+def _asking():
+    """A request as the routes read it: who asks, and nobody signed in (`sso.who` reads `state`)."""
+    return SimpleNamespace(headers={"X-User": "tester"}, state=SimpleNamespace())
+
+
 def _operate(world, name):
-    return world["router"].operate_world(SimpleNamespace(headers={"X-User": "tester"}),
-                                         {"world": name})
+    return world["router"].operate_world(_asking(), {"world": name})
 
 
 def _follow(world):
@@ -522,7 +526,7 @@ def test_every_live_world_follows_an_edit_and_one_switched_on_again_catches_up(w
     assert person_census() == behind
     assert person_census(exact=False) == behind
     answer = world["router"].set_world_live(
-        C, SimpleNamespace(headers={"X-User": "tester"}), {"live": True}, db=world["db"])
+        C, _asking(), {"live": True}, db=world["db"])
     queued = world["db"].query(models.RetroactiveRun).filter(
         models.RetroactiveRun.run_id == answer["run_id"]).one()
     try:
@@ -769,3 +773,210 @@ def test_the_grid_reads_the_atom_view_of_the_world_it_names(world):
     assert main.get_table_data_count(VIEW, db=db)["total"] == in_a
     listed = main.list_tables()
     assert (listed["operating"], A in listed["worlds"], listed["per_world"]) == (A, True, [VIEW])
+
+
+# ------------------------------------------------- a declaration that does not compile (총괄 558a46ef1 · 6c6ccad8f)
+
+GONE = "no_such_relation"
+
+
+def _refused_everywhere():
+    """`_only(CHANGED)` reading a relation the catalogue does not declare - its one source refused."""
+    document = _only(CHANGED)
+    document["sources"][CHANGED]["relation"] = GONE
+    return document
+
+
+def _follow_up_refusals(world_name):
+    from chain import ingestion_worker
+
+    with pytest.raises(Exception) as refused:
+        ingestion_worker._compiled_setup(world_name)
+    return refused.value
+
+
+def _screen(world_name, monkeypatch):
+    from ledger_api import ontology_config_explorer_router as explorer_router
+
+    monkeypatch.setattr(explorer_router, "_services", {})
+    return explorer_router._service_for(world_name)
+
+
+def _screen_refusals(service):
+    """{source: the refusal's path} the declaration screen's check shows, and whether it says valid."""
+    view = service.view()
+    said = {key: record["reasons"][0]["path"] for key, record in view["invalid"].items()}
+    return said, view["active_snapshot"]["valid"]
+
+
+def test_a_failure_to_compile_is_held_until_its_files_change(config, monkeypatch):
+    from chain import ingestion_worker
+    from ledger import setup as ledger_setup
+
+    monkeypatch.setattr(ingestion_worker, "_COMPILED", {})
+    _declare(A, _refused_everywhere())
+    compiled = []
+    real = ledger_setup.load_setup
+    monkeypatch.setattr(ledger_setup, "load_setup", lambda *a, **k: compiled.append(1) or real(*a, **k))
+
+    first, again = _follow_up_refusals(A), _follow_up_refusals(A)
+
+    assert (first.code, again.code, len(compiled)) == ("every_source_refused", "every_source_refused", 1)
+    assert [source for source, _path, _message in first.refusals] == [CHANGED]
+    _declare(A, _refused_everywhere() | {"_note": "touched"})              # the file changed
+    _follow_up_refusals(A)
+    assert len(compiled) == 2
+
+
+def test_the_screen_its_test_run_and_the_follow_up_refuse_one_declaration_alike(config, monkeypatch):
+    from chain import ingestion_worker
+
+    monkeypatch.setattr(ingestion_worker, "_COMPILED", {})
+    _declare(A, _refused_everywhere())
+    service = _screen(A, monkeypatch)
+
+    followed = {source: path for source, path, _message in _follow_up_refusals(A).refusals}
+    shown, valid = _screen_refusals(service)
+    ran = service.test_run(None, source_id=CHANGED)
+
+    assert followed and set(followed.values()) == set(shown.values()), (followed, shown)
+    assert valid is False
+    assert (ran["status"], ran["refusal"]["path"]) == ("refused", followed[CHANGED]), ran
+
+
+def test_a_catalogue_change_reaches_the_screen_as_it_reaches_the_follow_up(config, monkeypatch):
+    from chain import ingestion_worker
+
+    monkeypatch.setattr(ingestion_worker, "_COMPILED", {})
+    _declare(A, _only(CHANGED))
+    service = _screen(A, monkeypatch)
+    assert ingestion_worker._compiled_setup(A) is not None
+    assert _screen_refusals(service) == ({}, True)                        # both compile it
+
+    catalog_path = config / "table_config.json"
+    catalog = json.loads(catalog_path.read_text(encoding="utf-8"))
+    catalog.pop("wafer_process")                                          # the relation it reads
+    catalog_path.write_text(json.dumps(catalog), encoding="utf-8")
+
+    followed = {source: path for source, path, _message in _follow_up_refusals(A).refusals}
+    shown, valid = _screen_refusals(service)
+    assert (set(shown.values()), valid) == (set(followed.values()), False), (followed, shown)
+    assert "wafer_process" not in service.active()[0].catalog            # what a save is judged on
+
+
+@pytest.mark.pg
+def test_a_live_world_that_does_not_compile_switches_itself_off_and_the_others_go_on(
+        world, monkeypatch, caplog):
+    """총괄 6c6ccad8f: its live off once, the history says why, one line names it with the
+    catch-up; the operating world and the other world follow the row; the event is done. Fixed,
+    switched on and caught up, it holds what the world that stayed live holds."""
+    from admin import retroactive
+    from chain import ingestion_worker
+    from database import models
+    from runtime import loops
+    from tests.support.retro_door import run_without_a_record
+    from utils import heartbeat
+
+    monkeypatch.setattr(backfill, "beat", lambda result: None)
+    monkeypatch.setattr(ingestion_worker, "_COMPILED", {})
+    _seed(world)
+    a = _make(world, A, _only(CHANGED), CHANGED)
+    c = _make(world, C, _only(CHANGED), CHANGED)
+    _declare(A, _refused_everywhere())
+    _write(world, "wafer_process", [{"proc_id": "P2", "wafer_id": "W2", "step": "S1",
+                                     "recipe_id": "RCP-9", "eventtime": LATER}])
+    _follow(world)
+
+    said = [r.getMessage() for r in caplog.records if "live switched OFF" in r.getMessage()]
+    assert len(said) == 1 and ("world %s · declaration %s · every_source_refused · %s: "
+                               % (A, a.declaration_path, CHANGED)) in said[0], said
+    assert backfill.catch_up_command(A) in said[0]
+    last = schema.layout()["history"][-1]
+    assert (schema.live(A), schema.live(C), last["world"], last["live"]) == (False, True, A, False)
+    assert last["by"].startswith(ingestion_worker.FOLLOWUP_SWITCHED_OFF_BY + "world %s" % A)
+    assert (_saying(world, schema.LEDGER_TABLE, "RCP-9"), _saying(world, c.ledger, "RCP-9"),
+            _saying(world, a.ledger, "RCP-9")) == ({CHANGED}, {CHANGED}, set())
+    assert followup.outbox_depth(world["engine"]) == 0                    # the event is done
+    row = loops._lap_cells({"laps": heartbeat._laps.get("chain")}, "ledger_followup")
+    assert row["state"] == "flowing" and [w["world"] for w in row["switched_off"]] == [A]
+    assert row["switched_off"][0]["said"] == last["by"][len(ingestion_worker.FOLLOWUP_SWITCHED_OFF_BY):]
+
+    _declare(A, _only(CHANGED))
+    answer = world["router"].set_world_live(
+        A, _asking(), {"live": True}, db=world["db"])
+    queued = world["db"].query(models.RetroactiveRun).filter(
+        models.RetroactiveRun.run_id == answer["run_id"]).one()
+    try:
+        run_without_a_record(world["engine"])(queued.op, json.loads(queued.params))
+        held = "source_who, predicate, subject_keys::text, coalesce(object_payload::text, '')"
+        assert _rows(world, a.ledger, held) == _rows(world, c.ledger, held)
+        assert _saying(world, a.ledger, "RCP-9") == {CHANGED}
+        assert ingestion_worker._switched_off_by_the_follow_up() == []
+    finally:
+        with world["engine"].begin() as conn:
+            conn.execute(text('DELETE FROM "%s".retroactive_runs WHERE run_id = :r'
+                              % PG_TEST_SCHEMA), {"r": answer["run_id"]})
+            conn.execute(text('DELETE FROM "%s".database_outbox WHERE table_name = :t'
+                              % PG_TEST_SCHEMA), {"t": retroactive.RUN_EVENT_TABLE})
+
+
+@pytest.mark.pg
+def test_the_operating_world_that_does_not_compile_stops_the_follow_up_and_says_so(
+        world, monkeypatch, caplog):
+    """총괄 558a46ef1: stopped, said once with the world, the file, the code, the refusal and what
+    waits; again only after ten minutes; flowing again said once - and the admin row says each."""
+    from chain import ingestion_worker
+    from runtime import loops
+    from utils import heartbeat
+
+    monkeypatch.setattr(ingestion_worker, "_COMPILED", {})
+    monkeypatch.setattr(ingestion_worker, "_FOLLOWUP_STOP", {})
+    _seed(world)
+    _make(world, A, _only(CHANGED), CHANGED)
+    default_file = schema.world_names(DEFAULT).declaration_path
+    good = Path(default_file).read_text(encoding="utf-8")
+    Path(default_file).write_text(json.dumps(_refused_everywhere()), encoding="utf-8")
+    _write(world, "wafer_process", [{"proc_id": "P2", "wafer_id": "W2", "step": "S1",
+                                     "recipe_id": "RCP-9", "eventtime": LATER}])
+    with world["engine"].begin() as conn:
+        conn.execute(text('UPDATE "%s".database_outbox SET processed_chain = true '
+                          "WHERE table_name = 'wafer_process'" % PG_TEST_SCHEMA))
+    waiting = lambda: followup.outbox_depth(world["engine"])               # noqa: E731
+
+    def lines():
+        return [r.getMessage() for r in caplog.records if "[LedgerFollowUp]" in r.getMessage()]
+
+    def row():
+        return loops._lap_cells({"laps": heartbeat._laps.get("chain")}, "ledger_followup")
+
+    def stopped(now):
+        with pytest.raises(ingestion_worker.FollowUpStopped) as stop:
+            ingestion_worker._drain_ledger_followup_sync(world["maker"])
+        ingestion_worker._say_the_follow_up(stop.value, waiting, now=now)
+        return stop.value
+
+    stop = stopped(1000.0)
+    depth = waiting()
+    assert depth > 0 and schema.live(A) and schema.live(DEFAULT)         # nothing switched off
+    expected = ("[LedgerFollowUp] stopped: world %s · declaration %s · every_source_refused · %s: "
+                % (DEFAULT, default_file, CHANGED))
+    assert len(lines()) == 1 and lines()[0].startswith(expected), lines()
+    assert lines()[0].endswith("; %d event(s) waiting - nothing is followed until it compiles" % depth)
+    assert (row()["state"], row()["world"], row()["since"], row()["said"], row()["depth"]) == (
+        "stopped", DEFAULT, 1000.0, stop.sentence, depth)
+    stopped(1000.0 + 60)
+    assert len(lines()) == 1                                              # not again within ten minutes
+    stopped(1000.0 + 600)
+    assert len(lines()) == 2 and lines()[1].startswith(
+        "[LedgerFollowUp] still stopped, 600 s: world %s" % DEFAULT), lines()
+
+    Path(default_file).write_text(good, encoding="utf-8")
+    ingestion_worker._drain_ledger_followup_sync(world["maker"])
+    ingestion_worker._say_the_follow_up(None, waiting, now=1000.0 + 700)
+    assert len(lines()) == 3 and lines()[2].startswith(
+        "[LedgerFollowUp] flowing again: world %s compiles, after 700 s stopped" % DEFAULT), lines()
+    assert row()["state"] == "flowing"
+    ingestion_worker._say_the_follow_up(None, waiting, now=1000.0 + 800)
+    assert len(lines()) == 3                                              # said once
+    _follow(world)
+    assert _saying(world, schema.LEDGER_TABLE, "RCP-9") == {CHANGED}

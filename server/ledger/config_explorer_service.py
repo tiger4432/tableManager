@@ -32,7 +32,8 @@ from .config_explorer import (
     reference_diff,
 )
 from .setup import (
-    DEFAULT_ONTOLOGY_ROOT, live_physical_catalog, load_setup, setup_from_document,
+    DEFAULT_ONTOLOGY_ROOT, file_stamp, live_physical_catalog, load_setup, physical_catalog_path,
+    setup_from_document,
 )
 from .setup_bundle import (
     CONFIG_FILENAME, LOGICAL_SECTIONS, SETUP_VERSION, LedgerSetupValidationError,
@@ -728,7 +729,10 @@ class OntologyExplorerService:
         # snapshot, so there is nothing to run -- and the reason it was dropped is already
         # measured. Reporting "unknown source" here would send the operator looking for a
         # missing name while the real refusal sits in `invalid`.
-        if not declared:
+        # 🔴 REFUSED, NOT 「NOT COMPILED」 (총괄 558a46ef1). When every source is refused the
+        #    resolved setup still carries their plans, and running one answered an AttributeError
+        #    where the screen and the follow-up both hold the refusal.
+        if key in self._invalid:
             reasons = self._invalid[key]["reasons"]
             result["refusal"] = self._test_run_refusal(
                 reasons[0] if reasons else {
@@ -1171,17 +1175,14 @@ class OntologyExplorerService:
         return result
 
     def _file_stamp(self) -> tuple[Any, ...]:
+        # 🔴 THE CATALOGUE TOO (총괄 558a46ef1). It sits outside this folder, so a changed
+        #    `table_config.json` left this screen and its test runs on the old compile's 「OK」
+        #    while the follow-up, which stamps it, refused on the new one.
+        catalog = ("catalog", file_stamp(physical_catalog_path()))
         if not self.config_root.is_dir():
-            return ((str(self.config_root), "missing"),)
-        values = []
-        for path in sorted(self.config_root.rglob("*.json")):
-            stat = path.stat()
-            values.append((
-                path.relative_to(self.config_root).as_posix(),
-                stat.st_mtime_ns,
-                stat.st_size,
-            ))
-        return tuple(values)
+            return ((str(self.config_root), "missing"), catalog)
+        return (*((path.relative_to(self.config_root).as_posix(), file_stamp(path))
+                  for path in sorted(self.config_root.rglob("*.json"))), catalog)
 
     @staticmethod
     def _assert_context(payload: dict[str, Any]) -> None:

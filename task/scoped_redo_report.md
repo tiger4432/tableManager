@@ -74995,3 +74995,147 @@ OLD (origin/main database.py + ingestion_worker.py) [sqlite]   1 failed, 7 passe
 ② 3 의 «안 걸림» 넷에 상한을 걸지 — 소유자께 여쭐 일로 올립니다
 ③ 4 의 PG 순서 의존(wide_join 뒤 edited_source setup 오류)을 따로 고칠지
 ```
+
+---
+
+## [10-08] 원장 따라가기가 «왜 섰는지» 말하고, 운영 아닌 세상이 깨지면 그 세상만 끈다 0e7530cef (총괄 558a46ef1 · 6c6ccad8f)
+
+어느 DB · 어느 스키마 · 지운 것 — 시험은 sqlite 메모리 · tmp 설정 폴더(세상 선언 · table_config.json · worlds.json 전부 tmp)
+   PG 는 assy_test 의 assy_pytest_pg_<pid>_<worker>(끝에 스키마째 DROP) — 기존 worlds 픽스처의 clean() 이 앞뒤로
+   w_<세상> 스키마 DROP · wafer_process · lot_slot_wafer 표 DROP · 그 표 이름의 cell_sources · database_outbox · audit_logs 행 ·
+   두 소스의 원장 행 지움, 새 시험은 retroactive_runs 의 그 run 한 줄과 그 사건 줄을 지움 · public 안 씀
+
+### 1 먼저 센 것 — 화면과 따라가기의 컴파일 (코드로 확인)
+
+| 자리 | 세상 | 선언 파일 | 카탈로그 | 다시 읽는 때 |
+|---|---|---|---|---|
+| 따라가기 `_compiled_setup` | live 세상 전부 | 그 세상 ledger_config.json | table_config.json 새로 | 선언 파일 · 카탈로그 도장 |
+| 화면 검사 `/view` | ?world= 없으면 운영 세상 | 같은 파일 · 같은 load_setup(실패면 같은 resolve_declarations) | 같음 | 🔴 선언 폴더 *.json 만 — 카탈로그 없음 |
+| 테스트 런 | 같음 | 화면이 든 설정 | 화면이 든 설정 | 화면과 같음 |
+| 저장 관문(초안 미리보기 · 활성화) | 같음 | 화면이 든 설정 + 초안 | 화면이 든 설정의 카탈로그 | 화면과 같음 · 활성화엔 컴파일 관문 없음 |
+
+같은 파일을 다르게 판정하던 길 셋 — 고침
+```
+① 카탈로그만 바뀌면 화면 · 테스트 런 · 저장 관문은 옛 «OK», 따라가기는 새 카탈로그로 거절
+   -> 도장 함수 하나(ledger.setup.file_stamp)를 둘이 같이 부르고 화면 도장에 카탈로그를 더함
+② 소스 전부가 거절되면 화면의 너그러운 설정이 그 소스의 계획을 «들고» 있어 테스트 런이 그걸 돌려
+   AttributeError(cursor_columns)를 답했다 — 화면과 따라가기는 거절을 들고 있었다
+   -> 테스트 런은 거절된 소스(key in _invalid)면 그 거절을 답함
+③ 화면은 운영 세상, 따라가기는 live 세상 전부 — 다른 세상이 깨지면 화면엔 안 보이고 따라가기 전체가 섰다
+   -> 6c6ccad8f: 그 세상만 live 끔 + 줄 + 어드민
+```
+
+### 2 무엇
+
+```
+기억      _compiled_setup 이 실패도 같은 도장 동안 들고 있다(다시 컴파일 안 함) · 예외에 소스별 거절(refusals)
+문장      _declaration_failure — world <세상> · declaration <파일> · <코드> · <소스>: <경로> <사유>; … (+N more)
+운영 세상  schema.operating_world() 가 실패 -> FollowUpStopped -> 따라가기 멈춤
+          _say_the_follow_up: 처음 · 600 s 마다 · 풀릴 때 한 줄씩, 대기 수는 줄을 말할 때만 셈
+다른 세상  _switch_off: set_live(w, False, by="ledger follow-up: " + 문장) 한 번 · 줄 하나 + catch_up_command(w) · 나머지 계속
+어드민     새 라우트 없음 — /runtime 의 ledger_followup 줄(체인 박동 lap)에 state · world · said · since · depth · switched_off
+          switched_off 는 worlds.json 이력에서 읽음(재기동해도 남음)
+명령 철자  backfill.catch_up_command(world) 하나 — next_step 도 그것을 부름
+```
+
+### 3 곁에 찾은 것
+
+```
+eeb942d5b(회사 로그인, 10-07)부터 sso.who 가 request.state 를 읽어, origin/main 에서 이 파일의 PG 시험이 깨져 있었다
+   (sqlite 묶음은 PG 를 안 돌려 안 보였다) — origin/main 그대로 돌린 결과:
+   🔴 test_every_live_world_follows_an_edit_and_one_switched_on_again_catches_up
+   🔴 test_the_census_the_panel_and_a_backfill_naming_no_world_are_the_operating_worlds
+   🔴 test_the_boot_restamp_and_the_script_naming_no_world_move_the_operating_worlds_cursors
+   🔴 test_the_grid_reads_the_atom_view_of_the_world_it_names
+   -> 이 파일의 요청 대역을 _asking() 하나로(state 를 든다). 제품 코드는 안 바꿈
+```
+
+### 4 게이트 — test_ledger_worlds_are_independent_and_meet_in_a_walk.py
+
+```
+PG
+   초록     test_two_worlds_are_independent_and_meet_only_in_a_walk_that_picks_both
+   초록     test_a_nodes_attribute_shows_each_worlds_value_beside_the_one
+   초록     test_a_fact_is_current_or_not_within_its_own_world
+   초록     test_every_live_world_follows_an_edit_and_one_switched_on_again_catches_up
+   초록     test_an_edit_is_translated_once_and_writes_what_two_translations_wrote
+   초록     test_each_live_world_leaves_its_own_receipt_and_says_which
+   초록     test_with_no_branch_the_follow_up_and_the_walk_are_todays
+   초록     test_a_deletion_is_withdrawn_in_every_live_world_and_not_in_one_switched_off
+   초록     test_every_worlds_ledger_has_the_columns_the_walk_names
+   초록     test_a_two_world_walk_stays_flat
+   초록     test_the_census_the_panel_and_a_backfill_naming_no_world_are_the_operating_worlds
+   초록     test_the_boot_restamp_and_the_script_naming_no_world_move_the_operating_worlds_cursors
+   초록     test_a_world_copied_starts_as_that_declaration_once_and_is_walked_before_it_is_translated
+   초록     test_the_grid_reads_the_atom_view_of_the_world_it_names
+   초록     test_a_live_world_that_does_not_compile_switches_itself_off_and_the_others_go_on
+   초록     test_the_operating_world_that_does_not_compile_stops_the_follow_up_and_says_so
+   16/16 초록
+sqlite
+   초록     test_no_layout_is_today
+   초록     test_every_seat_that_names_no_world_reads_the_operating_one
+   초록     test_a_world_is_switched_off_and_on_by_name_and_the_history_says_who
+   초록     test_the_operating_world_and_the_default_are_not_deleted
+   초록     test_every_answer_that_lists_the_worlds_carries_one_shape
+   초록     test_a_walk_reads_the_worlds_picked_in_the_order_picked_and_filters_none
+   초록     test_a_walk_over_worlds_is_spelled_with_no_ledger_read
+   초록     test_a_name_two_worlds_declare_is_the_first_picked
+   초록     test_a_type_the_named_world_does_not_declare_is_refused_by_that_world
+   초록     test_a_failure_to_compile_is_held_until_its_files_change
+   초록     test_the_screen_its_test_run_and_the_follow_up_refuse_one_declaration_alike
+   초록     test_a_catalogue_change_reaches_the_screen_as_it_reaches_the_follow_up
+   12/12 초록
+```
+
+### 5 변이 — md5 4 번 다 같음 (원본 파일 넷)
+
+```
+BASELINE [pg]                                                  16 passed, 8392 deselected, 53 warnings
+BASELINE [sqlite]                                              12 passed, 16 skipped, 6 warnings
+the operating world switches itself off too [pg]               1 failed, 15 passed, 8392 deselected, 53 warnings
+      FAILED test_the_operating_world_that_does_not_compile_stops_the_follow_up_and_says_so
+the operating world switches itself off too [sqlite]           12 passed, 16 skipped, 6 warnings
+a broken world is not switched off and keeps failing [pg]      1 failed, 15 passed, 8392 deselected, 53 warnings
+      FAILED test_a_live_world_that_does_not_compile_switches_itself_off_and_the_others_go_on
+a broken world is not switched off and keeps failing [sqlite]  12 passed, 16 skipped, 6 warnings
+a failure is compiled again every batch [pg]                   16 passed, 8392 deselected, 53 warnings
+a failure is compiled again every batch [sqlite]               1 failed, 11 passed, 16 skipped, 6 warnings
+      FAILED test_a_failure_to_compile_is_held_until_its_files_change
+the screen's stamp leaves the catalogue out [pg]               16 passed, 8392 deselected, 53 warnings
+the screen's stamp leaves the catalogue out [sqlite]           1 failed, 11 passed, 16 skipped, 6 warnings
+      FAILED test_a_catalogue_change_reaches_the_screen_as_it_reaches_the_follow_up
+a lasting stop is said every batch [pg]                        1 failed, 15 passed, 8392 deselected, 53 warnings
+      FAILED test_the_operating_world_that_does_not_compile_stops_the_follow_up_and_says_so
+a lasting stop is said every batch [sqlite]                    12 passed, 16 skipped, 6 warnings
+flowing again is never said [pg]                               1 failed, 15 passed, 8392 deselected, 53 warnings
+      FAILED test_the_operating_world_that_does_not_compile_stops_the_follow_up_and_says_so
+flowing again is never said [sqlite]                           12 passed, 16 skipped, 6 warnings
+the test run runs a refused source [pg]                        16 passed, 8392 deselected, 53 warnings
+the test run runs a refused source [sqlite]                    1 failed, 11 passed, 16 skipped, 6 warnings
+      FAILED test_the_screen_its_test_run_and_the_follow_up_refuse_one_declaration_alike
+the sentence leaves the refusals out [pg]                      2 failed, 14 passed, 8392 deselected, 53 warnings
+      FAILED test_a_live_world_that_does_not_compile_switches_itself_off_and_the_others_go_on
+      FAILED test_the_operating_world_that_does_not_compile_stops_the_follow_up_and_says_so
+the sentence leaves the refusals out [sqlite]                  12 passed, 16 skipped, 6 warnings
+OLD (origin/main worker, screen service, setup, backfill) [pg] 2 failed, 14 passed, 8392 deselected, 53 warnings
+      FAILED test_a_live_world_that_does_not_compile_switches_itself_off_and_the_others_go_on
+      FAILED test_the_operating_world_that_does_not_compile_stops_the_follow_up_and_says_so
+OLD (origin/main worker, screen service, setup, backfill) [sqlite] 3 failed, 9 passed, 16 skipped, 6 warnings
+      FAILED test_a_catalogue_change_reaches_the_screen_as_it_reaches_the_follow_up
+      FAILED test_a_failure_to_compile_is_held_until_its_files_change
+      FAILED test_the_screen_its_test_run_and_the_follow_up_refuse_one_declaration_alike
+```
+
+### 6 전체 sqlite
+
+```
+5 failed, 8026 passed, 374 skipped, 3 xfailed, 13214 warnings — 실패는 알려진 박스 실패뿐
+```
+
+### 7 위험 · 여쭐 것
+
+```
+위험  운영 아닌 세상의 선언 파일을 손으로 «쓰는 도중»(반쯤 쓴 JSON)에 따라가기가 읽으면 그 세상이 꺼진다 — ㄷ 의 값. 화면 저장은 통째 바꿔치기라 안 걸림(코드로 읽음)
+여쭐 것 ① 운영 세상을 이름 default 가 아니라 operating_world() 로 잡았습니다(가지를 운영으로 돌렸으면 그 가지가 «멈추는» 세상)
+       ② 따라가기가 멈춰도 /health 는 안 바뀝니다(지시에 없음) — 붙일지
+```
