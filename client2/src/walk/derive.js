@@ -294,6 +294,12 @@ export function cutBudgets(axes, limits) {
   });
 }
 
+/** One step from some nodes along one predicate to one type: the walk's arguments (lead 53050a4ec). The table's Next
+ *  asks it; both directions, as a lump's walk takes a predicate. */
+export function stepAlong({ positive, predicate, farType }) {
+  return { positive: [...positive], follow: [predicate], collect: [farType], direction: 'both', hops: 1 };
+}
+
 /** An edge's qualifiers as the walk answer carries them, or null - the one read the table's columns, the graph's
  *  labels and its info box share (lead 3181313b5). */
 export function edgeQualifiers(edge) {

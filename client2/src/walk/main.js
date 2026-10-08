@@ -31,10 +31,10 @@ import { fetchDeclaration, createWalkBoxWalk, routeWith, fetchKeyValues, PICK_TY
 import { ensureWalkStyles } from './styles.js';
 import {
   followFromRoute, followChoices, walkableRoutes,
-  cutBudgets,
+  cutBudgets, stepAlong,
 } from './derive.js';
 // 🔴 C-72. 표의 «결정»은 전부 여기 있고 이 파일에는 DOM 쓰기만 남습니다.
-import { walkTableView } from './table_view.js';
+import { walkTableView, nextRoutes } from './table_view.js';
 // 🔴 C-120. 「꺼짐 + 왜」의 좌석 하나 — 메인 그리드의 쓰기 버튼 셋이 쓰던 그 기제입니다.
 import { setDisabledReason } from '../disabled_reason.js';
 // The graph view of a start (lead c9bf53033) — a part with its own div; this page only places it.
@@ -54,6 +54,9 @@ const GRAPH_CHAIN = Object.freeze(['walk-start', 'walk-2', 'walk-3', 'walk-4']);
 
 /** 라벨«이자» 꺼진 사유. 한 상수라 둘이 갈라질 수 없습니다. */
 const RUNNING = WALKING;
+
+/** Why a table's Next is off: it walks on from the rows checked (lead 53050a4ec, owner 「행 선택은 해야지」). */
+const CHECK_ROWS_FIRST = 'Check rows first';
 
 /** 서버가 받는 값 그대로. 화면이 «자기 이름»을 만들지 않습니다. */
 const DIRECTIONS = ['both', 'outgoing', 'incoming'];
@@ -98,6 +101,10 @@ export function boot(doc, host, deps) {
     view: 'table',
     // Which loop chips are on, per route row (`routeKey`). Off unless pressed (lead 5d5b8d750).
     loopsOn: new Map(),
+    // The table's steps after the form's walk, each from the rows checked along one edge (lead 53050a4ec), and
+    // which one is shown: 0 is the form's walk.
+    steps: [],
+    at: 0,
   };
   const routeKey = (r) => `${r.to}|${r.follow.slice().sort().join('+')}`;
   const loopsOf = (r) => state.loopsOn.get(routeKey(r)) || new Set();
@@ -162,6 +169,9 @@ export function boot(doc, host, deps) {
     const asked = spec();
     state.run = 'running'; state.result = null; state.reason = '';
     state.asked = { ...asked, keys: { ...asked.keys } };
+    // A new start clears the steps and what their checks wrote, as the graph's new start does (lead 53050a4ec).
+    state.steps = []; state.at = 0;
+    for (const name of GRAPH_CHAIN.slice(1)) markings.clear(name);
     render();
     const res = await walk(asked);
     if (res && res.ok) { state.run = 'done'; state.result = res; }
@@ -170,6 +180,29 @@ export function boot(doc, host, deps) {
       state.run = 'failed';
       state.reason = (res && res.message) || UNKNOWN;
     }
+    render();
+  }
+
+  // ── the table's steps (lead 53050a4ec): a step's checked rows are the page's marking the graph reads too ──
+  /** The marking a step's checks write, the graph's chain after its start; none once the chain is used up. */
+  const checksOf = (at) => GRAPH_CHAIN[at + 1] || '';
+  /** The step shown: the form's walk, or one walked on from it. */
+  const shownStep = () => (state.at === 0
+    ? { run: state.run, result: state.result, reason: state.reason }
+    : state.steps[state.at - 1]);
+
+  /** From the rows checked on step `at`, one step along `route`; it stands after `at`, the steps beyond it go. */
+  async function walkOn(at, ids, route) {
+    const asked = stepAlong({ positive: ids, predicate: route.predicate, farType: route.to });
+    const step = { title: `${route.predicate} → ${route.to}`, asked, run: 'running', result: null, reason: '' };
+    state.steps = [...state.steps.slice(0, at), step];
+    state.at = at + 1;
+    for (const name of GRAPH_CHAIN.slice(at + 2)) markings.clear(name);
+    render();
+    const res = await walk(asked);
+    if (state.steps[at] !== step) return;   // walked over meanwhile
+    if (res && res.ok) { step.run = 'done'; step.result = res; }
+    else { step.run = 'failed'; step.reason = (res && res.message) || UNKNOWN; }
     render();
   }
 
@@ -453,6 +486,8 @@ export function boot(doc, host, deps) {
   function renderTable(box, r) {
     // C-98. 선언의 술어 목록이 «같이» 갑니다 — 확인 술어를 이름 대는 것은 선언입니다.
     const view = walkTableView(r, entities(), (state.decl && state.decl.predicates) || []);
+    const at = state.at;
+    const checks = checksOf(at);
     for (const section of view.sections) {
       const sec = el(doc, 'div', 'wk-sec');
       sec.append(el(doc, 'div', 'wk-sechead', section.heading));
@@ -460,6 +495,7 @@ export function boot(doc, host, deps) {
       const table = el(doc, 'table', 'wk-table');
       const thead = el(doc, 'thead');
       const hr = el(doc, 'tr');
+      if (checks) hr.append(el(doc, 'th', 'wk-check'));
       for (const column of section.columns) hr.append(el(doc, 'th', '', column.name));
       thead.append(hr);
       table.append(thead);
@@ -467,6 +503,16 @@ export function boot(doc, host, deps) {
       const tbody = el(doc, 'tbody');
       for (const row of section.rows) {
         const tr = el(doc, 'tr');
+        if (checks) {
+          const td = el(doc, 'td', 'wk-check');
+          const cb = el(doc, 'input');
+          cb.type = 'checkbox';
+          cb.setAttribute('data-row', row.id);
+          cb.checked = markings.signOf(checks, row.id) === SIGN.CASE;
+          cb.addEventListener('change', () => { markings.toggle(checks, row.id, SIGN.CASE); render(); });
+          td.append(cb);
+          tr.append(td);
+        }
         for (const cell of row.cells) {
           const td = el(doc, 'td', cell.numeric ? 'wk-num' : '', cell.text);
           if (cell.kind === 'id') td.className = 'wk-id';
@@ -476,12 +522,42 @@ export function boot(doc, host, deps) {
       }
       table.append(tbody);
       sec.append(table);
+      if (checks) sec.append(nextRow(at, section, checks));
       box.append(sec);
     }
 
     if (view.hidden) {
       box.append(el(doc, 'div', 'wk-note', `${view.hidden} more not drawn`));
     }
+  }
+
+  /** Under a section: the declared edges one step from its type; each walks on from the rows checked of it. */
+  function nextRow(at, section, checks) {
+    const line = el(doc, 'div', 'wk-next');
+    line.append(el(doc, 'span', 'wk-label', 'Next'));
+    const ids = section.rows.map((row) => row.id).filter((id) => markings.signOf(checks, id) === SIGN.CASE);
+    for (const route of nextRoutes(state.decl, section.type)) {
+      const go = el(doc, 'button', 'wk-next-edge', `${route.predicate} → ${route.to}`);
+      go.type = 'button';
+      setDisabledReason(go, ids.length ? '' : CHECK_ROWS_FIRST);
+      go.addEventListener('click', () => { if (ids.length) void walkOn(at, ids, route); });
+      line.append(go);
+    }
+    return line;
+  }
+
+  /** The steps walked: the form's walk, then each step on from it; a press shows that step's table again. */
+  function renderSteps(root) {
+    if (!state.steps.length) return;
+    const line = el(doc, 'div', 'wk-steps');
+    const titles = [askedTitle(state.asked || {}), ...state.steps.map((s) => s.title)];
+    titles.forEach((title, i) => {
+      const b = el(doc, 'button', 'wk-step' + (state.at === i ? ' is-on' : ''), `Step ${i + 1} · ${title}`);
+      b.type = 'button';
+      b.addEventListener('click', () => { state.at = i; render(); });
+      line.append(b);
+    });
+    root.append(line);
   }
 
   /** What the shown walk asked: the start's type and key values, and the types it collects. */
@@ -493,12 +569,14 @@ export function boot(doc, host, deps) {
 
   function renderHead(root) {
     const head = el(doc, 'div', 'wk-mainhead');
-    const r = state.result;
-    if (state.view === 'table' && state.run === 'done' && r && state.asked) {
-      head.append(el(doc, 'span', 'wk-title', askedTitle(state.asked)));
+    const shown = shownStep();
+    const r = shown.result;
+    const askedOf = state.at === 0 ? state.asked : shown.asked;
+    if (state.view === 'table' && shown.run === 'done' && r && askedOf) {
+      head.append(el(doc, 'span', 'wk-title', state.at === 0 ? askedTitle(askedOf) : shown.title));
       // 🔴 두 수가 «다른 모집단»입니다. collect 는 노드를 거르고 엣지는 «안 거릅니다», 그래서
       //    collect 가 걸렸을 때만 «주어»를 답니다.
-      const asked = (state.asked.collect || []).join(', ');
+      const asked = (askedOf.collect || []).join(', ');
       head.append(el(doc, 'span', 'wk-counts', asked
         ? `Nodes ${r.nodes.length} (collect: ${asked}) · Edges ${r.edges.length} (all)`
         : `Nodes ${r.nodes.length} · Edges ${r.edges.length}`));
@@ -522,17 +600,18 @@ export function boot(doc, host, deps) {
 
   function renderResult(root) {
     const box = el(doc, 'div', 'wk-result');
-    if (state.run === 'idle') {
+    const shown = shownStep();
+    if (shown.run === 'idle') {
       box.append(el(doc, 'div', 'wk-note', 'No walk yet'));
-    } else if (state.run === 'running') {
+    } else if (shown.run === 'running') {
       box.append(el(doc, 'div', 'wk-note', RUNNING));
-    } else if (state.run === 'failed') {
+    } else if (shown.run === 'failed') {
       // 🔴 사유를 «서버의 말»로. 여기서 다시 쓰면 같은 거절이 두 화면에서 달라집니다.
       const line = el(doc, 'div', 'wk-fail');
-      line.append(el(doc, 'b', '', FAILED), el(doc, 'span', '', ' · ' + state.reason));
+      line.append(el(doc, 'b', '', FAILED), el(doc, 'span', '', ' · ' + shown.reason));
       box.append(line);
-    } else if (state.result) {
-      const r = state.result;
+    } else if (shown.result) {
+      const r = shown.result;
       // 🔴 몇 홉을 «실제로» 걸었나. 요청한 수와 다르면 그 자체가 답입니다.
       if (r.walk) {
         box.append(el(doc, 'div', 'wk-walk',
@@ -557,8 +636,10 @@ export function boot(doc, host, deps) {
         }
         const dist = el(doc, 'div', 'wk-dist');
         dist.append(el(doc, 'span', 'wk-distlabel', 'Types'));
+        // The types the shown walk collected: the form's, or the step's far type.
+        const collected = state.at === 0 ? state.collect : new Set(shown.asked.collect);
         for (const [t, n] of [...byType.entries()].sort((a, b) => b[1] - a[1])) {
-          const chip = el(doc, 'span', 'wk-distchip' + (state.collect.has(t) ? ' is-asked' : ''));
+          const chip = el(doc, 'span', 'wk-distchip' + (collected.has(t) ? ' is-asked' : ''));
           chip.append(el(doc, 'b', '', t), el(doc, 'span', '', ` ${n}`));
           dist.append(chip);
         }
@@ -600,7 +681,7 @@ export function boot(doc, host, deps) {
       renderGo(foot);
       renderHead(main);
       if (state.view === 'graph') main.append(graphMount);
-      else renderResult(main);
+      else { renderSteps(main); renderResult(main); }
     }
     rail.append(body, foot);
     host.append(rail, main);

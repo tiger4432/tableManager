@@ -119,6 +119,17 @@ export const WALK_CSS = `
 /* 결과 표. 구획마다 «자기 키 컬럼»이라 표가 여럿입니다. */
 .wk-sec { margin: 10px 0 14px; }
 .wk-sechead { font-weight: 700; font-size: 0.86rem; margin: 0 0 4px; }
+/* A section's Next: the declared edges one step on, walked from its checked rows (lead 53050a4ec). */
+.wk-next { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin: 6.8px 0 0; }
+.wk-next-edge { min-height: 44px; padding: 0 12px; border: 1px solid var(--border); border-radius: 0;
+  background: var(--bg-surface); color: var(--text); font: inherit; font-size: 0.82rem; cursor: pointer; }
+.wk-next-edge:disabled { color: var(--text-dim, #71717a); cursor: not-allowed; }
+/* The steps walked; a press shows that step's table, the shown one lit. */
+.wk-steps { display: flex; flex-wrap: wrap; gap: 6.8px; margin: 6.8px 0; }
+.wk-step { min-height: 44px; padding: 0 13.6px; font: inherit; font-size: 0.82rem; color: var(--text);
+  background: var(--bg-surface); border: 1px solid var(--border); border-radius: 0; cursor: pointer; }
+.wk-step.is-on { border-color: var(--accent); color: var(--accent); font-weight: 600; }
+.wk-table th.wk-check, .wk-table td.wk-check { width: 1%; }
 .wk-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; display: block;
   overflow-x: auto; white-space: nowrap; }
 .wk-table th, .wk-table td { border-bottom: 1px solid var(--border);

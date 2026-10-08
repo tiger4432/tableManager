@@ -1464,7 +1464,7 @@ const FLOORS = new Map([
   // 30 -> 30 (lead bf3653401 and its 10-06 answer): every declared predicate is a box for every type
   // (F9, the page half of the board harness's old B8); a type change keeps every tick (F8, reversing 10-02);
   // M10 retired with the empty-list sentence it guarded (the list is empty only when nothing is declared).
-  ['walk_table_harness.mjs', 30],
+  ['walk_table_harness.mjs', 43],
   // New (lead 2b5819e1d): walk layout A - the form is the rail, the result its own part,
   // the same choices send the request recorded before the layout (fixtures/walk_wire_before.json).
   // 22 -> 27 (lead bf3653401): Follow open, before the routes; a route adds; only the ticked are sent.

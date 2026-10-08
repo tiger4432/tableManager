@@ -15,6 +15,21 @@
 // ═══════════════════════════════════════════════════════════════════════════════
 import { confirmedPredicates, sectionsByType, sectionHeading, tableColumns, cellSource, pluralAttributes,
   edgeQualifiers } from './derive.js';
+import { typeGraph } from '../rnd_board/api.js';
+
+/** The edges one step from a type (lead 53050a4ec): each declared predicate touching it and the type at its other
+ *  end, read off the type graph the route list reads - a predicate within the type (bonded_to die -> die) included,
+ *  which the route list keeps as a loop chip. The walk takes any first step. Nothing is guessed from the data. */
+export function nextRoutes(declaration, type) {
+  const out = [];
+  for (const edge of typeGraph(declaration).edges) {
+    const to = edge.from === type ? edge.to : edge.to === type ? edge.from : null;
+    if (to !== null && !out.some((r) => r.predicate === edge.predicate && r.to === to)) {
+      out.push({ predicate: edge.predicate, to });
+    }
+  }
+  return out;
+}
 
 /** 한 번에 그리는 행 상한. 넘은 것은 «수»로 말합니다 — 조용히 자르지 않습니다. */
 export const ROW_CAP = 200;

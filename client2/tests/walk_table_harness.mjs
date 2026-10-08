@@ -24,6 +24,7 @@ import { fileURLToPath } from 'node:url';
 import { loadWithProbe } from './lib/probe.mjs';
 import { scoreMutants } from './lib/mutation_scorer.mjs';
 import { walkTableView } from '../src/walk/table_view.js';
+import { SIGN } from '../src/rnd_board/marking_store.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SRC = path.join(HERE, '..', 'src', 'walk', 'main.js');
@@ -61,6 +62,8 @@ function option(tag, node) {
 const walkAll = (el, out = []) => { out.push(el); el.children.forEach((c) => walkAll(c, out)); return out; };
 const byClass = (host, cls) => walkAll(host).filter((e) => (e.className || '') === cls);
 const byTag = (host, tag) => walkAll(host).filter((e) => e.tagName === tag);
+// The view's own cells: the table's check column (lead 53050a4ec) is the page's, not the view's.
+const viewCells = (host, tag) => byTag(host, tag).filter((e) => e.className !== 'wk-check');
 const settle = async () => { for (let i = 0; i < 8; i += 1) await Promise.resolve(); };
 
 // ── fixtures ─────────────────────────────────────────────────────────────────────────────
@@ -122,23 +125,23 @@ async function suite(mod) {
     byClass(host, 'wk-sechead').map((e) => e.textContent).join(' | '),
     view.sections.map((s) => s.heading).join(' | '));
   eq('V2 the column labels are the view\'s, in the view\'s order',
-    byTag(host, 'th').map((e) => e.textContent).join(','),
+    viewCells(host, 'th').map((e) => e.textContent).join(','),
     view.sections.flatMap((s) => s.columns.map((c) => c.name)).join(','));
   eq('V3 every cell is the view\'s text, in the view\'s order',
-    byTag(host, 'td').map((e) => e.textContent).join('|'),
+    viewCells(host, 'td').map((e) => e.textContent).join('|'),
     view.sections.flatMap((s) => s.rows.flatMap((r) => r.cells.map((c) => c.text))).join('|'));
   // 🔴 0 IS A VALUE. `x: 0` in the fixture is the discriminant: a renderer using `v || ''`
   //    draws it as the same blank an absent key gets, and the row then lies about the die.
   ok('V4 a zero is drawn as 0 and an absent key as a blank, not as the same glyph',
-    byTag(host, 'td').map((e) => e.textContent).includes('0')
-      && byTag(host, 'td').map((e) => e.textContent).includes(''),
-    byTag(host, 'td').map((e) => e.textContent).join('|'));
+    viewCells(host, 'td').map((e) => e.textContent).includes('0')
+      && viewCells(host, 'td').map((e) => e.textContent).includes(''),
+    viewCells(host, 'td').map((e) => e.textContent).join('|'));
   eq('V5 the numeric class follows the view\'s reading of each cell',
-    byTag(host, 'td').map((e) => (e.className === 'wk-num' ? 1 : 0)).join(''),
+    viewCells(host, 'td').map((e) => (e.className === 'wk-num' ? 1 : 0)).join(''),
     view.sections.flatMap((s) => s.rows.flatMap((r) => r.cells.map(
       (c) => (c.numeric && c.kind !== 'id' ? 1 : 0)))).join(''));
   eq('V6 the id cell keeps its own class rather than the numeric one',
-    byTag(host, 'td').filter((e) => e.className === 'wk-id').length,
+    viewCells(host, 'td').filter((e) => e.className === 'wk-id').length,
     view.sections.reduce((n, s) => n + s.rows.length, 0));
 
   console.log(`${LF}-- the cap is a number the screen SAYS --`);
@@ -270,6 +273,80 @@ async function suite(mod) {
     ok('F5 not read to the end says how many nodes were read',
       notes(cut.host).includes('Not every node read (up to 1001)'), notes(cut.host));
   }
+
+  console.log(`${LF}-- the table walks on from its checked rows along a declared edge (lead 53050a4ec) --`);
+  {
+    // A predicate within a type (bonded_to die -> die) as well as across: the list is the declaration's, both kinds.
+    const DECL3 = { ok: true,
+      entities: [{ type: 'die@1', keys: ['mat_id'] }, { type: 'wafer@1', keys: ['wafer'] }],
+      predicates: [
+        { name: 'inspected@1', subjects: ['wafer@1'], object: { types: ['die@1'] } },
+        { name: 'bonded_to@1', subjects: ['die@1'], object: { types: ['die@1'] } }] };
+    const START = { nodes: [
+      { id: 'n:1', type: 'die@1', label: 'D-1', keys: { mat_id: 'M-1' } },
+      { id: 'n:2', type: 'die@1', label: 'D-2', keys: { mat_id: 'M-2' } }], edges: [] };
+    const STEP = { nodes: [{ id: 'n:1', type: 'die@1', label: 'D-1', keys: { mat_id: 'M-1' } },
+      { id: 'n:4', type: 'die@1', label: 'D-4', keys: { mat_id: 'M-4' } }],
+    edges: [{ id: 'e:4', source: 'n:1', target: 'n:4', predicate: 'bonded_to@1' }], truncated: null };
+    const asked = [];
+    const doc = makeDoc();
+    const host = doc.createElement('div');
+    const handle = mod.boot(doc, host, { apiBase: '', fetchImpl: async (url) => {
+      const u = String(url);
+      if (u.includes('/subgraph')) asked.push(u);
+      return { ok: true, status: 200, json: async () => (u.includes('/subgraph') ? STEP : DECL3) };
+    } });
+    await settle();
+    handle.state.type = 'die@1';
+    handle.state.asked = { type: 'die@1', keys: { mat_id: 'M-1' } };
+    handle.state.run = 'done';
+    handle.state.result = START;
+    handle.render();
+    const edges = (h) => walkAll(h).filter((e) => e.className === 'wk-next-edge');
+    const press = (e) => { for (const fn of (e && e.listeners.click) || []) fn(); };
+    const tick = (h, id) => {
+      const cb = walkAll(h).find((e) => e.attrs && e.attrs['data-row'] === id);
+      for (const fn of (cb && cb.listeners.change) || []) fn();
+    };
+    const steps = (h) => walkAll(h).filter((e) => /^wk-step( is-on)?$/.test(e.className || ''));
+    const rowsShown = (h) => walkAll(h).filter((e) => e.attrs && e.attrs['data-row']).map((e) => e.attrs['data-row']);
+    eq('N1 the Next of the die section is the declaration\'s edges one step from die@1, both kinds',
+      edges(host).map((e) => e.textContent).join(' | '), 'inspected@1 → wafer@1 | bonded_to@1 → die@1');
+    press(edges(host)[1]);
+    await settle();
+    ok('N2 nothing checked: every edge is off with its reason, and a press asks nothing',
+      edges(host).length === 2 && edges(host).every((e) => e.disabled === true && e.attrs.title === 'Check rows first')
+        && asked.length === 0, `${edges(host).map((e) => e.disabled)} ${asked.length}`);
+    tick(host, 'n:1');
+    const marked = handle.graph.markings.signOf('walk-2', 'n:1');
+    ok('N3 a checked row is the page\'s marking the graph reads (walk-2), and the edges come on',
+      marked === SIGN.CASE && edges(host).every((e) => e.disabled === false), String(marked));
+    press(edges(host).find((e) => e.textContent === 'bonded_to@1 → die@1'));
+    await settle();
+    const q = new URLSearchParams((asked[0] || '').split('?')[1] || '');
+    ok('N4 a press walks one step from the checked row alone, along that edge to its type',
+      asked.length === 1 && q.getAll('positive').join() === 'n:1' && q.getAll('follow').join() === 'bonded_to@1'
+        && q.getAll('collect').join() === 'die@1' && q.get('hops') === '1' && q.get('direction') === 'both',
+      asked[0]);
+    ok('N5 the step stacks: Step 2 lit, and the table is that step\'s answer',
+      steps(host).length === 2 && steps(host)[1].className === 'wk-step is-on'
+        && steps(host)[1].textContent === 'Step 2 · bonded_to@1 → die@1' && rowsShown(host).join() === 'n:1,n:4',
+      `${steps(host).map((s) => s.textContent)} ${rowsShown(host)}`);
+    tick(host, 'n:4');
+    press(edges(host).find((e) => e.textContent === 'bonded_to@1 → die@1'));
+    await settle();
+    const third = steps(host).length;
+    press(steps(host)[0]);
+    ok('N6 a second step stacks a third; Step 1 shows the first table again and the chain stays',
+      third === 3 && steps(host).length === 3 && steps(host)[0].className === 'wk-step is-on'
+        && rowsShown(host).join() === 'n:1,n:2', `${third} ${rowsShown(host)}`);
+    handle.state.view = 'table';
+    void handle.fire();
+    await settle();
+    ok('N7 a new start clears the steps and what their checks wrote',
+      steps(host).length === 0 && handle.graph.markings.count('walk-2') === 0 && handle.state.steps.length === 0,
+      `${steps(host).length} ${handle.graph.markings.count('walk-2')}`);
+  }
 }
 
 // ═══ baseline ═══════════════════════════════════════════════════════════════════════════
@@ -327,6 +404,23 @@ const MUTANTS = [
     catches: 'F4 read and empty',
     from: '          subjBox.append(el(doc, \'div\', \'wk-note\', state.subjectsScanCut',
     to: '          subjBox.append(el(doc, \'div\', \'wk-note\', true' },
+  // ── lead 53050a4ec: the table's continue ────────────────────────────────────────────────
+  { id: 'NM1', what: 'the Next walks from every row of the section, not the checked ones', catches: 'N2',
+    from: '    const ids = section.rows.map((row) => row.id).filter((id) => markings.signOf(checks, id) === SIGN.CASE);',
+    to: '    const ids = section.rows.map((row) => row.id);' },
+  { id: 'NM2', what: 'a press with nothing checked still asks', catches: 'N2',
+    from: "      go.addEventListener('click', () => { if (ids.length) void walkOn(at, ids, route); });",
+    to: "      go.addEventListener('click', () => { void walkOn(at, ids, route); });" },
+  { id: 'NM3', what: 'the next step builds its own walk instead of the one step', catches: 'N4',
+    from: '    const asked = stepAlong({ positive: ids, predicate: route.predicate, farType: route.to });',
+    to: '    const asked = { positive: ids, follow: [route.predicate] };' },
+  { id: 'NM4', what: 'the checks are kept apart from the graph\'s marking', catches: 'N3',
+    from: "  const checksOf = (at) => GRAPH_CHAIN[at + 1] || '';", to: '  const checksOf = (at) => `table-${at}`;' },
+  { id: 'NM5', what: 'a new start keeps the steps', catches: 'N7',
+    from: '    state.steps = []; state.at = 0;\n', to: '' },
+  { id: 'NM6', what: 'a step pressed does not go back', catches: 'N6',
+    from: "      b.addEventListener('click', () => { state.at = i; render(); });",
+    to: "      b.addEventListener('click', () => { render(); });" },
   // 🔴 CONTROL: a comment cannot change an answer. If this reddens something, the harness is
   //    reading text rather than behaviour.
   { id: 'M5', what: 'CONTROL: a comment line is removed', control: true,
