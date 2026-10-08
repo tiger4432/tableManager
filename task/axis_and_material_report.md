@@ -1,3 +1,7 @@
+> ## [06:29 디자인] 정정 — 인덱스 표는 «Overview 를 읽을 때마다» 읽는다 (응용 QA 30acc6022) — 고친 대상 f6f4d211c
+
+f6f4d211c 의 커밋 문장과 4bc003362 보고에 «Overview 를 읽을 때 한 번»이라 적었습니다 — 틀렸습니다. 읽기는 `fetchOverview` 안이라 탭을 열 때와, Overview 탭이 보이는 동안 `AUTO_REFRESH_MS` 마다 갑니다(admin.js 의 자동 갱신 — 옆의 Ledger 소스 읽기와 같은 자리 · 같은 주기). 그래서 만드는 중 문장도 그 주기로 새로 옵니다. 코드는 그대로입니다.
+
 > ## [05:35 디자인] 어드민 Overview 인덱스 표 (총괄 d71f931c7 · 서버 9acf4243e) — f6f4d211c
 
 **결론** Overview 맨 아래 «Indexes» 절 — 선언된 인덱스마다 이름 · 상태 · 표 · 칸 · purpose · serves · 크기 · scans, 아래에 «Not declared». 상태는 서버 낱말 그대로 배지(present ok · building warn · missing · invalid danger — 스타일시트가 그리는 세 색), building 이면 서버 문장 그대로 밑에, scans 0 은 흐리게. 읽기만(만들기 단추 없음). Overview 를 읽을 때 한 번 읽음.
