@@ -373,3 +373,13 @@ def test_the_number_is_stamped_as_a_sample_with_its_method(setup_excluding, monk
         "a sample rendered as an exact count is the 「about 13 million」 defect `measured` "
         "exists to stop")
     assert "5 rows" in stamped["excluded_but_indexed"]["method"]
+
+
+def test_a_value_condition_added_later_takes_its_rows_atoms_back_on_the_redo(monkeypatch):
+    """총괄 e91433bf1: the declaration now says rows whose `dt_eqp` is EQP-7 are not this source's -
+    the redo of those rows (the scoped backfill) withdraws what they said and makes nothing."""
+    store = IndexStore()
+    result = run(compiled([{"when": {"dt_eqp": "EQP-7"}}]), monkeypatch, store, rows(eqp="EQP-7"))
+
+    assert (result["applied"], result["inserted"]) == (True, 0)
+    assert withdrawn_refs(store) == indexed_refs()

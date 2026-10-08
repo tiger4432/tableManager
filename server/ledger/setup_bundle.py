@@ -581,6 +581,10 @@ def public_bundle_schema() -> dict[str, Any]:
         # `identity_binding_kinds` sits above, and read from the constant so the
         # form and the refusal cannot name different words.
         "attribute_cardinalities": list(ATTRIBUTE_CARDINALITIES),
+        # The two clauses `read.exclude_when` takes - `_validate_exclude_when` judges the same
+        # two - so the form offers both rather than a shape of its own (총괄 e91433bf1 · f500524be).
+        "exclude_when_clauses": [{"column": "<column>", "blank": True},
+                                 {"when": {"<column>": "<value>"}}],
         # `tables` joins the list: naming it here is what turns "I pasted my old section
         # back in" from a silent no-op into `unknown_field` at `ledger_config.tables`.
         # `source_preparers` and `mappers` join it for the same reason on 2026-08-20 --
@@ -2040,8 +2044,15 @@ def _validate_references(value, path, own_keys, section, problems):
                                  "must name one of this entity's identity keys")
 
 
+def exclusion_columns(clause: Mapping[str, Any]) -> tuple:
+    """The columns one `read.exclude_when` clause reads - its `column`, or its `when`'s keys."""
+    when = clause.get("when")
+    return tuple(when) if isinstance(when, Mapping) else (clause.get("column"),)
+
+
 def _validate_exclude_when(value: Any, path: str, problems: _Problems) -> None:
-    """`[{"column": <name>, "blank": true}, ...]` - rows this source says are not its own.
+    """`[{"column": <name>, "blank": true} | {"when": {<column>: <value>, ...}}, ...]` - rows this
+    source says are not its own.
 
     🔴 S-91. The mechanism (`__source_row_excluded`) already existed and only a PREPARER
     CLASS could emit it, so a relation whose early rows leave an identity part blank made
@@ -2051,11 +2062,11 @@ def _validate_exclude_when(value: Any, path: str, problems: _Problems) -> None:
 
     A list, and a row matching ANY clause is excluded.
 
-    ⛔ ONE PREDICATE, AND `blank` MUST BE `true`. Value comparisons are not built here:
-    nothing today needs them, and a grammar that grows an operator per question is how a
-    declaration turns into a query language. `blank: false` is refused rather than read as
-    "keep only the blanks" - that is a different feature and it should be asked for by
-    name, not arrived at by flipping a flag nobody designed to be flipped.
+    🔴 A VALUE IS ASKED THE WAY A MAPPING'S `when` ASKS IT (총괄 e91433bf1 · f500524be, 소유자 「type
+    이 bbox 가 아닌 행만」): `{"when": {...}}` is `_validate_when` - equality, keys ANDed; several
+    values are several clauses. No operator of its own - one spelling of a condition here.
+    ⛔ `blank` MUST BE `true`, and a clause is one or the other. `blank: false` is refused rather
+    than read as "keep only the blanks" - a different feature, to be asked for by name.
     """
     if value is None:
         return
@@ -2065,6 +2076,10 @@ def _validate_exclude_when(value: Any, path: str, problems: _Problems) -> None:
         return
     for index, clause in enumerate(value):
         spot = f"{path}[{index}]"
+        if isinstance(clause, Mapping) and "when" in clause:
+            if problems.exact(clause, spot, required=("when",)):
+                _validate_when(clause["when"], f"{spot}.when", problems)
+            continue
         if not problems.exact(clause, spot, required=("column", "blank")):
             continue
         column = clause.get("column")
@@ -2602,11 +2617,12 @@ def _cross_validate(bundle: Mapping[str, Any], catalog: Mapping[str, Any],
         for index, clause in enumerate(driver.get("exclude_when") or []):
             if not isinstance(clause, Mapping):
                 continue
-            column = clause.get("column")
-            if isinstance(column, str) and column not in physical:
-                problems.add(
-                    "unknown_column", f"{path}.read.exclude_when[{index}].column",
-                    f"column {column!r} is not in relation {relation!r}")
+            for column in exclusion_columns(clause):
+                if isinstance(column, str) and column not in physical:
+                    problems.add(
+                        "unknown_column", f"{path}.read.exclude_when[{index}]."
+                        + (f"when.{column}" if "when" in clause else "column"),
+                        f"column {column!r} is not in relation {relation!r}")
         table = tables.get(relation)
         if isinstance(table, Mapping):
             # ONE ordering, scored once.  This was a two-entry loop over `order_by` and

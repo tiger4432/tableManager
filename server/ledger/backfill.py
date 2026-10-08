@@ -1846,14 +1846,12 @@ def count_excluded_but_indexed(engine, setup, source, fetch_rows=PREVIEW_FETCH_R
     Empty for a source that declares no clause - the question has no subject, which is not
     the same as an answer of zero.
     """
-    from .event_frame import is_blank_source_value
+    from .event_frame import row_excluded
     from .store import LedgerStore
 
     plan = setup.snapshot.source_plans[source]
-    columns = [clause.get("column")
-               for clause in plan.driver.exclude_when
-               if isinstance(clause, Mapping) and clause.get("column")]
-    if not columns:
+    clauses = [clause for clause in plan.driver.exclude_when if isinstance(clause, Mapping)]
+    if not clauses:
         return 0, 0
     readable = _readable_columns(engine, plan)
     read = engine.raw_connection()
@@ -1868,7 +1866,7 @@ def count_excluded_but_indexed(engine, setup, source, fetch_rows=PREVIEW_FETCH_R
     for row in rows:
         if not isinstance(row, dict):
             continue
-        if any(is_blank_source_value(row.get(column)) for column in columns):
+        if row_excluded(clauses, row.get):
             row_id = row.get(plan.frame_row_id)
             if row_id is not None:
                 excluded.append(str(row_id))

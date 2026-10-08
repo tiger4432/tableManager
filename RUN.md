@@ -1,5 +1,23 @@
 # 지금 돌리면 되는 것
 
+> ## [10-08] **원장 소스의 read.exclude_when 에 값 조건 — 매핑 when 과 같은 철자 — 이주 «없음» · 재기동 «필요»(서버 · 체인)**
+>
+> ```
+> 적는 법        read.exclude_when: [{"when": {"type": "bbox"}}]   — 그 칸이 bbox 인 행은 이 소스의 행이 아니다
+>                값 여럿은 줄 여럿: [{"when": {"type": "bbox"}}, {"when": {"type": "ruler"}}] (하나라도 맞으면 제외)
+>                같음만 · 키 AND · 숫자 1 과 1.0 은 같다(매핑 when 과 같은 견주기) · 그 칸이 빈 행은 값 조건으로 안 빠진다
+>                {"column": …, "blank": true} 와 한 줄에 같이 못 쓴다(거절) · 빈 when 은 거절
+> 이미 올라간 원자  선언만 바꾸면 이미 쓴 bbox 행의 원자는 그대로다. 그 행만 다시 번역해 거둔다 (server 폴더에서)
+>                python -m ledger.backfill --source <소스> --scope-column <칸> --scope-values bbox
+>                  = 미리보기 — 몇 행이 다시 도는지 · 무엇이 바뀌는지만 말하고 쓰지 않는다
+>                python -m ledger.backfill --source <소스> --scope-column <칸> --scope-values bbox --apply
+>                  = 그 행들의 원자를 거두고 다시 만든다(이제 제외라 만들 것 없음)
+>                어림: python -m ledger census --source <소스> 의 excluded_but_indexed(첫 쪽 표본 — 같은 판정) · 미리보기의 행 수
+> 급할 때       선언에서 그 줄을 지우면 된다(재기동 없이 다음 바퀴부터) · 코드 되돌리기는 git revert <이 커밋> -> 재기동
+> ```
+
+---
+
 > ## [10-08] **copy_rows_with_hold 의 리스트 칸에 글자를 적으면 규칙 검사가 거절 — 이주 «없음» · 재기동 «필요»(서버 · 체인)**
 >
 > ```

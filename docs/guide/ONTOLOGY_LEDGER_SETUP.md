@@ -674,6 +674,8 @@ Vocabulary는 “어떤 문장이 문법적으로 가능한가”를 정한다. 
                                왼쪽 표에 칼럼을 써 넣는다
                                -> 소스는 그 칼럼을 자기 relation 의 칼럼으로 읽는다
 「이 행은 내 것이 아니다」        read.exclude_when: [{"column": "<컬럼>", "blank": true}]  (§7.7)
+                               값으로는 매핑의 when 과 같은 철자 — [{"when": {"<컬럼>": "<값>"}}] (같음만 · 키 AND)
+                               값 여럿 = 줄 여럿(하나라도 맞으면 제외) · 그 칸이 빈 행은 값 조건으로 안 빠진다 (10-08)
 옛 파일(setup_version 5)       로더가 메모리에서 6 으로 읽는다 — direct-join 과 은퇴 소스의 prepare 는 버리고
                                적재 노트 한 줄. 일하는 준비기를 든 active 소스만 이름 거절
                                파일로 쓰기: python server/scripts/migrate_ledger_config_to_v6.py (미리보기) -> --apply
