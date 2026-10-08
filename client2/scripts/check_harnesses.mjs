@@ -1439,7 +1439,7 @@ const FLOORS = new Map([
   // the list is the declaration's, a picture with no measurement in it lists them too; what a lump lets out
   // stands clear of it, a big lump's row goes to points in one press, a lump of values asks nothing (owner 10-08);
   // a lump's head says every axis its walk cut and the nodes left bare (lead 161757c35).
-  ['subgraph_view_harness.mjs', 214],
+  ['subgraph_view_harness.mjs', 215],
   // New (leads 793017c62 · edcc0568c · 10-08): a folded lump's views, pure half - what a value reads as, the one
   // start-branch question, the points, the window, the one drawing; a node without the attribute is counted.
   ['fold_views_harness.mjs', 19],

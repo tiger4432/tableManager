@@ -37,15 +37,9 @@ const EXPANDED = fx('walk_bundles_die_expanded.json');
 const FOLD_WAFER = fx('walk_fold_wafer.json');
 const FOLD_STEP = fx('walk_fold_recipe_step.json');
 const FOLD_PROCESS = fx('walk_fold_process_lump.json');
-// The declaration those captures were walked under: the box's, plus the types and predicates
-// server/tests/test_a_recipe_walk_brings_the_measurements_other_wafers_made.py declares (copied, not invented).
-const ref = (type) => ({ kind: 'entity_ref', types: [type], qualifiers: { required: [], optional: [] } });
-const FOLD_DECL = { ...DECL,
-  entities: [...DECL.entities, { type: 'measurement_event', keys: ['event'], class: null, attributes: ['value'] },
-    { type: 'process_event', keys: ['event'], class: null, attributes: ['step'] }],
-  predicates: [...DECL.predicates, ...[['measured', 'wafer', 'measurement_event'], ['used', 'measurement_event', 'recipe'],
-    ['of', 'measurement_event', 'quantity'], ['underwent', 'wafer', 'process_event']]
-    .map(([name, subject, object]) => ({ name, subjects: [subject], object: ref(object), origin: 'vocabulary', class: null }))] };
+// The declaration those captures were walked under, captured in the same run (implementer 5201b22c5). A hand-built
+// one drifts from the server's in silence (lead).
+const FOLD_DECL = fx('walk_fold_declaration.json');
 const ENTITIES = DECL.entities;
 // The oracle reads the declaration itself: the types whose classes hold 'static'.
 const STATIC = new Set(ENTITIES.filter((e) => Array.isArray(e.class) && e.class.includes('static'))
@@ -95,7 +89,7 @@ function stubDoc(withTokens) {
   return doc;
 }
 
-async function suite(m, makeWalk = createWalkBoxWalk, css = REAL_CSS) {
+async function suite(m, makeWalk = createWalkBoxWalk, css = REAL_CSS, foldDecl = FOLD_DECL) {
   const wire = wireWith(makeWalk);
   const names = [];
   const fails = [];
@@ -1007,7 +1001,7 @@ async function suite(m, makeWalk = createWalkBoxWalk, css = REAL_CSS) {
         && byClass(t.view.factsBox, 'sg-lv-plot').length === 1 && t.urls.length === 1 && !pickerOf(t),
       JSON.stringify({ button: Boolean(rowTrend), opened: Boolean(opened), kinds, urls: t.urls.length }));
     // The start wafer's own measurements folded and opened: members that hold the values themselves.
-    const v = await seat([FOLD_WAFER], { declaration: FOLD_DECL });
+    const v = await seat([FOLD_WAFER], { declaration: foldDecl });
     const wafer = startId(FOLD_WAFER);
     press(v, wafer);
     const fold = byClass(v.host, 'sg-fold')[0];
@@ -1109,10 +1103,10 @@ async function suite(m, makeWalk = createWalkBoxWalk, css = REAL_CSS) {
     };
     const optionsOf = (select) => (select ? [...select.children].map((o) => o.attrs.value) : null);
     const storage = memory();
-    const { s, lump } = await seatProcess(FOLD_DECL, storage);
+    const { s, lump } = await seatProcess(foldDecl, storage);
     const from = choiceOf(s, 'Points from');
-    const reachable = FOLD_DECL.entities.map((e) => e.type)
-      .filter((t) => t !== 'process_event' && walkableRoutes(FOLD_DECL, 'process_event', t).length);
+    const reachable = foldDecl.entities.map((e) => e.type)
+      .filter((t) => t !== 'process_event' && walkableRoutes(foldDecl, 'process_event', t).length);
     say('I1 before a pick, Points from lists the types the route list reaches from the members\' type but theirs; nothing is asked',
       Boolean(lump) && JSON.stringify(optionsOf(from)) === JSON.stringify(['', ...reachable])
         && reachable.includes('measurement_event') && !reachable.includes('process_event')
@@ -1133,7 +1127,7 @@ async function suite(m, makeWalk = createWalkBoxWalk, css = REAL_CSS) {
         && !params.get('since') && valued.length > 0 && meta === `Points ${valued.length}`
         && choiceOf(s, 'Points from').value === 'measurement_event' && Boolean(choiceOf(s, 'Value')),
       JSON.stringify({ urls: s.urls.length, q: [...params.entries()].filter(([k]) => k !== 'id'), meta }));
-    const again = await seatProcess(FOLD_DECL, storage);
+    const again = await seatProcess(foldDecl, storage);
     say('I3 this browser remembers the pick for the members\' type: the next time it is walked at once, nothing to pick',
       again.s.urls.length === 1 && paramsOf(again.s.urls[0] || '').getAll('collect').join() === 'measurement_event'
         && textOf(again.s.view.factsBox, 'sg-lv-meta').join() === `Points ${valued.length}`,
@@ -1145,7 +1139,7 @@ async function suite(m, makeWalk = createWalkBoxWalk, css = REAL_CSS) {
         edges: body.edges.filter((e) => !gone.has(e.source) && !gone.has(e.target)) };
     };
     const lean = await (async () => {
-      const t = await seat([bare(FOLD_WAFER), FOLD_PROCESS], { declaration: FOLD_DECL, storage: memory() });
+      const t = await seat([bare(FOLD_WAFER), FOLD_PROCESS], { declaration: foldDecl, storage: memory() });
       const wafer = startId(FOLD_WAFER);
       press(t, wafer);
       const fold = byClass(t.host, 'sg-fold')[0];
@@ -1514,6 +1508,9 @@ const failures = [];
     M('I5m', 'Points from offers only the types the picture already shows', 'I5',
       '        .filter((type) => from.some(',
       '        .filter((type) => this.layout.nodes.some((n) => n.type === type) && from.some('),
+    // The captured declaration less one predicate; the part is not touched (lead).
+    { id: 'ID1m', what: 'the declaration loses measured: Points from no longer reaches measurement_event', catches: 'I1',
+      declaration: { ...FOLD_DECL, predicates: FOLD_DECL.predicates.filter((p) => p.name !== 'measured') } },
     M('Z2m', 'Fit keeps the floor', 'Z2', 'if (this.cy) this.cy.fit(undefined, GEOMETRY.fitPad);', 'if (this.cy) this._firstFit();'),
     M('Z3m', 'the first draw is not fitted', 'Z1', '    if (full) this._fitPending = true;\n', ''),
     M('Z4m', 'a change of size fits the picture again', 'Z4', '    else this.cy.resize();\n', '    else this._firstFit();\n'),
@@ -1521,12 +1518,12 @@ const failures = [];
   ];
   const scored = await scoreMutants(MUTANTS, async (mu) => {
     const mutate = mu.mutate || ((t) => swap(t, mu.from, mu.to));
-    const loaded = (await loadWithProbe(mu.file || SUBJECT, { mutate })).module;
+    const loaded = mu.declaration ? real : (await loadWithProbe(mu.file || SUBJECT, { mutate })).module;
     const quiet = console.log;
     console.log = () => {};
     try {
       if (mu.file === STYLES) return await suite(real, createWalkBoxWalk, loaded.WALK_CSS);
-      return mu.file ? await suite(real, loaded.createWalkBoxWalk) : await suite(loaded);
+      return mu.file ? await suite(real, loaded.createWalkBoxWalk) : await suite(loaded, undefined, undefined, mu.declaration);
     } finally { console.log = quiet; }
   }, { baselineRan: base.ran, baselineNames: base.names,
        title: '\n  [mutants] - each must be caught by the check it names.' });
