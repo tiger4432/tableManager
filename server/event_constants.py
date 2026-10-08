@@ -311,6 +311,13 @@ def mark_cancelled(event, by: str, reason: str):
         setattr(event, column, value)
 
 
+def without_cancel_mark(payload):
+    """The payload with no set-aside mark - a row that RAN though a set-aside landed while its
+    group ran: 「ran」 wins over 「set aside」 (총괄 54a53f894), or running it again runs it twice."""
+    return {key: value for key, value in dict(payload or {}).items()
+            if key not in (CANCEL_MARK, CANCEL_REASON)}
+
+
 def processed_columns(status):
     """What 「this row stopped being work」 writes - ONE definition. `mark_processed` sets it
     on one object; a set-based UPDATE spreads it where rows are too many for the ORM

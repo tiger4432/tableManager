@@ -62,6 +62,8 @@ READ_EVERY_SECONDS = 1.0
 SLOT_POOL = {"ASSY_DB_POOL_SIZE": "2", "ASSY_DB_MAX_OVERFLOW": "2"}
 #: Who a set-aside by the dispatcher says did it.
 CHAIN_WORKER = "chain worker"
+#: How long a stop waits for a killed slot, and then for each of its connections, to end.
+STOP_WAIT_SECONDS = 5
 
 logger = logging.getLogger("Chain")
 
@@ -396,34 +398,43 @@ def is_slot(pid, index):
 
 
 def stop_slot(db, key):
-    """Stop the slot process holding line `key` (a ×, 총괄 19f6a9277): killed, then its database
-    connections ended. The dispatcher reaps it, sets aside what of the line still waits and
-    starts a new slot. -> the pid stopped, or None."""
+    """Stop the slot process holding line `key` (a ×, 총괄 19f6a9277): killed and waited for, then
+    its database connections ended and waited for - what it committed is in the table when this
+    returns (총괄 54a53f894: the × counts after it). The dispatcher reaps it, sets aside what of the
+    line still waits and starts a new slot. -> the pid stopped, or None."""
     found = holding(key)
     if found is None or not is_slot(found[1], found[0]):
         return None
     import psutil
 
     try:
-        psutil.Process(int(found[1])).kill()
+        process = psutil.Process(int(found[1]))
+        process.kill()
     except psutil.NoSuchProcess:
         return None
+    try:
+        process.wait(STOP_WAIT_SECONDS)
+    except psutil.TimeoutExpired:
+        logger.warning("[Chain] slot %d pid %s had not ended %d s after its kill - its line is "
+                       "counted as it stands", found[0], found[1], STOP_WAIT_SECONDS)
     end_connections(db, found[0])
     return found[1]
 
 
 def end_connections(db, index):
-    """End slot `index`'s database connections - a killed process's query runs on until it next
-    writes to the client. -> how many. PostgreSQL only."""
+    """End slot `index`'s database connections and wait, up to `STOP_WAIT_SECONDS` each, until
+    they have gone (`pg_terminate_backend(pid, timeout)`, PG 14+) - a killed process's query runs
+    on until it next writes to the client, and a commit it sent lands before its connection goes.
+    -> how many. PostgreSQL only."""
     from sqlalchemy import text
     from database.database import connection_name
 
     if db.get_bind().dialect.name != "postgresql":
         return 0
     ended = db.execute(text(
-        "SELECT count(pg_terminate_backend(pid)) FROM pg_stat_activity"
+        "SELECT count(pg_terminate_backend(pid, :wait_ms)) FROM pg_stat_activity"
         " WHERE application_name = :name AND datname = current_database()"),
-        {"name": connection_name(process_name(index))}).scalar()
+        {"name": connection_name(process_name(index)), "wait_ms": STOP_WAIT_SECONDS * 1000}).scalar()
     db.commit()
     return ended
 

@@ -2314,6 +2314,44 @@ def _still_waiting(db, events):
 #: Rows per `IN` list of `_still_waiting` - under SQLite's bound-parameter limit.
 WAITING_CHECK_CHUNK = 1000
 
+
+def _ran_though_set_aside(db, tx_id, events):
+    """The group RAN, and a set-aside landed on some of its rows while it did - a cut that found no
+    query to cut, the group being in Python (총괄 54a53f894, 응용 QA 54a53f894). 「Ran」 wins: the
+    mark is cleared and the row ends SUCCESS like the rest, and one audit line per table says the
+    stop came too late - otherwise the row read as set aside and running it again ran it twice.
+    -> how many rows."""
+    from chain import set_aside
+    from database import crud
+    from database.models import DatabaseOutbox
+
+    # the same question the failure path asks, then - only for a row that ended meanwhile - its mark
+    live = {event.id for event in _still_waiting(db, events)[0]}
+    ids, late = [event.id for event in events if event.id not in live], {}
+    for start in range(0, len(ids), WAITING_CHECK_CHUNK):
+        for event_id, payload in (db.query(DatabaseOutbox.id, DatabaseOutbox.payload)
+                                  .filter(DatabaseOutbox.id.in_(ids[start:start + WAITING_CHECK_CHUNK]))):
+            payload = get_payload_dict(payload) or {}
+            if payload.get(event_constants.CANCEL_MARK) == set_aside.OPERATOR:
+                late[event_id] = payload
+    from sqlalchemy.orm.attributes import flag_modified
+
+    tables = {}
+    for event in events:
+        if event.id in late:
+            event.payload = event_constants.without_cancel_mark(late[event.id])
+            # written even when it equals what this session read at pick time - the mark is only
+            # in the database, so the ORM would see «no change» and leave it there
+            flag_modified(event, "payload")
+            tables[event.table_name] = tables.get(event.table_name, 0) + 1
+    for table, count in sorted(tables.items()):
+        crud.create_audit_log(db, table, "*", "*", tx_id, count, set_aside.SKIP_TOO_LATE_SOURCE,
+                              slots.CHAIN_WORKER)
+    if late:
+        logger.info("[Chain] tx '%s': %d event(s) were set aside while it ran and it ran - they read "
+                    "as ran, not set aside", tx_id, len(late))
+    return len(late)
+
 #: While a slot runs a line the loop looks this often for its answer, so a freed slot is given
 #: the next line at once rather than at the next NOTIFY or the 2 s idle wait.
 SLOT_ANSWER_WAIT_SECONDS = 0.25
@@ -2842,6 +2880,8 @@ async def process_pending_groups(db, group_order, groups, rules, db_session_fact
                 # 0.875 s hook in the first place.
                 with alignment_batch_counts.stage("mark processed"):
                     event_ids = [event.id for event in events_in_tx]
+                    # asked right before the ending is written, as the failure path asks (총괄 54a53f894)
+                    _ran_though_set_aside(db, tx_id, events_in_tx)
                     for event in events_in_tx:
                         mark_processed(event, "SUCCESS")
                         # [Reliability F1] 통지할 메시지가 없는 no-op 그룹은 전달할 것이 없으므로 즉시 전달 확정(스윕 제외).

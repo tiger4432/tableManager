@@ -1,5 +1,24 @@
 # 지금 돌리면 되는 것
 
+> ## [10-09] **× 의 답은 슬롯이 끝난 «뒤»의 행 수 · 빼 두는 사이 끝까지 돈 행은 «돌았음» — 이주 «없음» · 재기동 «서버 · 체인 워커»**
+>
+> ```
+> 무엇이 바뀌나    × 는 슬롯을 끈 뒤 그 프로세스와 DB 연결이 «끝날 때까지» 기다리고(각각 최대 5 초) 그 줄의 행을 다시 센다
+>                답 skipped_events    = × 가 읽을 때 기다리던 그 줄의 체인 이벤트 중 지금 «빼 둔» 것
+>                답 already_processed = 그중 «돈» 것 — 표시와 슬롯 종료 사이에 묶음이 커밋했거나, 읽기와 표시 사이에 체인이 끝낸 것
+>                묶음이 파이썬 일 중이라 끊을 질의가 없었고 끝까지 돌았으면 그 행은 «돌았음»(SUCCESS, 빼 둔 표시를 지움)
+>                  — rerun_set_aside 가 그 행을 다시 돌리지 않는다
+> 볼 줄          chain_worker.log:
+>                  [slot <n> pid <P>] [Chain] tx '<열쇠>': <N> event(s) were set aside while it ran and it ran - they read as ran, not set aside
+>                  = × 가 늦었다. 그 행은 이미 돌았다. 감사 줄 출처 chain_queue_skip_too_late (표마다 · 열쇠 · 수)
+>                서버 로그:
+>                  [Chain] slot <n> pid <P> had not ended 5 s after its kill - its line is counted as it stands
+>                  = 슬롯이 그 안에 안 끝났다. 그 답의 두 수는 그 순간의 것 — 대기열을 다시 읽어 본다
+> 확인           × 한 번 -> 응답 JSON 에 already_processed 칸(화면은 아직 이 수를 안 그린다)
+> 급할 때        git revert <이 커밋> -> 서버 · 체인 워커 재기동
+> ```
+
+---
 > ## [10-08] **글자로 적힌 시각 칸은 선언한 형식(format)으로 읽는다 · 못 읽는 시각은 그 분자만 거절 — 이주 «없음» · 재기동 «서버 · 체인 워커»**
 >
 > ```
@@ -58,7 +77,8 @@
 >                그 이벤트를 쥔 묶음이 도는 중이면 그 묶음의 질의만 끊고 되감는다 — 슬롯은 살아 그 줄을 이어 간다
 >                chain_worker.log: [slot <n> pid <P>] [Chain] tx '<열쇠>': <N> event(s) were set aside while it ran - left set aside; the other <M> rewound, not failed
 >                  = 같은 줄의 나머지는 시도 수 그대로 다시 돈다
->                이 줄이 없으면 끊을 질의가 없었던 것(맵퍼가 파이썬 일 중) — 그 묶음은 끝까지 돌았고 빼 둔 표시는 남는다
+>                이 줄이 없으면 끊을 질의가 없었던 것(맵퍼가 파이썬 일 중) — 그 묶음은 끝까지 돌았고 그 행은 «돌았음»(빼 둔 표시를 지움, 10-09):
+>                  [slot <n> pid <P>] [Chain] tx '<열쇠>': <N> event(s) were set aside while it ran and it ran - they read as ran, not set aside
 >                «the other <M> fail as the group did» 면 질의 끊김이 아니라 맵퍼 오류 — 나머지는 전처럼 실패 길(시도 1 셈)
 >                표를 기다리던 묶음이 끊기면 ERROR 한 줄:
 >                  [slot <n> pid <P>] [Chain] a batch of line <열쇠> raised - its events wait as they were and run again: (…QueryCanceled) …

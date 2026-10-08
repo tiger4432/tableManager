@@ -17,6 +17,9 @@ from utils.payload_helper import get_payload_dict
 OPERATOR = "operator"
 #: The source of the audit line a chain queue × writes - who, which line, how many events.
 QUEUE_SKIP_SOURCE = "chain_queue_skip"
+#: The source of the audit line a group writes when a set-aside landed on its rows while it ran
+#: and it ran anyway - those rows are «ran», not «set aside» (총괄 54a53f894).
+SKIP_TOO_LATE_SOURCE = "chain_queue_skip_too_late"
 CHUNK = 1000
 
 
@@ -117,7 +120,13 @@ def set_aside_line(db, key, by, run=False, reason=None):
     for table, events in sorted(done["by_table"].items()):
         crud.create_audit_log(db, table, "*", "*", key, events, QUEUE_SKIP_SOURCE, by)
     db.commit()
-    return {"waited": len(waiting), "marked": done["marked"], "kept": len(waiting) - len(chain_ids)}
+    return {"waited": len(waiting), "marked": done["marked"], "kept": len(waiting) - len(chain_ids),
+            "ids": chain_ids}
+
+
+def _by_operator(outbox):
+    """The SQL of 「set aside by an operator」 - the mark `_mark` writes."""
+    return outbox.payload[event_constants.CANCEL_MARK].as_string() == OPERATOR
 
 
 def line_already(db, key):
@@ -127,8 +136,22 @@ def line_already(db, key):
     rows = db.query(outbox.id).filter(*event_constants.queue_line_rows(outbox, key))
     if rows.first() is None:
         return "gone"
-    marked = rows.filter(outbox.payload[event_constants.CANCEL_MARK].as_string() == OPERATOR)
-    return "set_aside" if marked.first() is not None else "processed"
+    return "set_aside" if rows.filter(_by_operator(outbox)).first() is not None else "processed"
+
+
+def what_became_of(db, ids):
+    """-> `(set aside, ran)` of the chain events `ids` as the table has them now - a ×'s answer,
+    read once the slot running its line has ended (총괄 54a53f894: a group that commits after the
+    mark ran its rows, and 「ran」 wins). One query. 「Ran」 is any ending but the operator's,
+    a row the chain finished between the ×'s read and its mark included."""
+    from sqlalchemy import case, func
+    from database.models import DatabaseOutbox as outbox
+
+    if not ids:
+        return 0, 0
+    aside, ended = (db.query(func.count(case((_by_operator(outbox), 1))), func.count())
+                    .filter(outbox.id.in_(list(ids)), outbox.processed_chain.is_(True)).one())
+    return aside, ended - aside
 
 
 def _mark(db, ids, reason):

@@ -128,8 +128,10 @@ def stop_line(db, key, by, must_be_run=False):
     A replay run only stages events and is `done` long before the worker has eaten them, so a
     stop that ended at ① left the work running.
     The queue line's × and a run's Cancel both call this; `must_be_run` (the latter) refuses a
-    key that is not a run before anything moves. -> `{"run"?, "skipped_events", "slot_pid",
-    "kept"?, "already"?}` - `run` the run's state read back, `done` stays `done`."""
+    key that is not a run before anything moves. -> `{"run"?, "skipped_events",
+    "already_processed", "slot_pid", "kept"?, "already"?}` - `run` the run's state read back,
+    `done` stays `done`; of the line's chain events waiting when the × read, `skipped_events`
+    are set aside and `already_processed` ran, counted once the slot has ended."""
     from admin import retroactive
     from chain import set_aside, slots
     from database import models
@@ -139,7 +141,11 @@ def stop_line(db, key, by, must_be_run=False):
         raise retroactive.RetroactiveRefused(f"unknown run_id '{key}'")
     answer = {"run": retroactive.request_cancel(db, key)["state"]} if run else {}
     done = set_aside.set_aside_line(db, key, by, run=run)
-    answer.update(skipped_events=done["marked"], slot_pid=slots.stop_slot(db, key))
+    slot_pid = slots.stop_slot(db, key)
+    # 🔴 COUNTED AFTER THE SLOT HAS ENDED (총괄 54a53f894): a group that commits between the mark
+    #    and the slot's end ran its rows - the count at mark time says 「set aside」 of rows that ran.
+    aside, ran = set_aside.what_became_of(db, done["ids"])
+    answer.update(skipped_events=aside, already_processed=ran, slot_pid=slot_pid)
     if done["kept"]:
         answer["kept"] = {"events": done["kept"],
                           "why": "not chain events - the worker that owns them empties them"}
