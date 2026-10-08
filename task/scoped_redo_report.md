@@ -76225,3 +76225,68 @@ test_[l-z]*: 1 failed, 3942 passed, 187 skipped, 2 xfailed, 7361 warnings
 ### 남은 것 하나 (안 지음)
 
 × 의 감사 줄(chain_queue_skip)은 «표시한 수»가 아니라 «× 가 읽을 때 기다리던 수»를 적습니다(set_aside_line 의 by_table 이 found 에서 셈). 위 칸 ①처럼 × 가 기다렸다가 아무것도 안 빼도 감사 줄은 「1 건 건너뜀」입니다. × 의 답(skipped_events)은 맞습니다. 감사 줄도 표시한 수로 고칠까요?
+
+---
+
+## [10-09] 원장 따라가기의 실패 줄은 같은 실패의 1 · 10 · 100 … 번째에만 92091395f (총괄 cb419a8a0 ㄴ)
+
+어느 DB · 어느 스키마 · 지운 것 — sqlite 시험은 하니스의 임시 DB · PG 는 격리 시험 DB assy_test, 하니스가 만들고 DROP 하는 assy_pytest_pg_* · 그 밖에 지운 것 0
+
+```
+ㄱ(선언 깨짐 — 기억 · 처음/풀림/10 분 줄)은 전 라운드 0e7530cef 에 이미 착지. 이번은 ㄴ
+줄 셋     소스 실패(소스 · 표 · 세상 · 예외 이름) · 삭제 실패(표 · 세상 · 예외 이름) · batch failed(예외 이름) — 행 값은 열쇠에 없음
+          줄 끝에 #N. 실패 «기록»(영수증 · ledger_state · failed=N)은 그대로
+자리
+          server/chain/ingestion_worker.py:3763
+          server/ledger/followup.py:390
+          server/ledger/followup.py:453
+한 함수   판정은 이미 하나였습니다 — 넷 다 utils.logger.announce_crossed 를 부름(카나리아 def announce_crossed = 92091395f:server/utils/logger.py:1)
+          사본은 «셈 보관»(before · total · dict) — 그것을 count_crossed(counts, key, n=1) 로 한 번 적고 새 자리 셋이 부름
+```
+
+### 앞선 넷 — 접기는 시연 뒤 (지시대로 셈만)
+
+```
+database/crud.py               announce_crossed 줄 154        이름을 드는 시험 파일 3  (git grep -l '_warn_undeclared_column_once' -- server/tests)
+chain/key_gate.py              announce_crossed 줄 155        이름을 드는 시험 파일 8  (git grep -l 'key_gate' -- server/tests)
+ledger/gate.py                 announce_crossed 줄 431, 463   이름을 드는 시험 파일 16  (git grep -l 'ledger.gate\|ledger import gate\|from ledger import.*gate' -- server/tests)
+parsers/void_sat_format.py     announce_crossed 줄 385        이름을 드는 시험 파일 6  (git grep -l 'void_sat_format' -- server/tests)
+같은 판정인가  예 — 넷 다 announce_crossed(before, total). 다른 것은 열쇠 모양과 한 번에 더하는 수(crud 는 1)
+접으면        count_crossed(counts, key, n) 로 셈 보관 줄이 빠짐. crud 는 열쇠별 «예산 넘김» 갈래가 따로 있어 그 갈래는 남음
+```
+
+### 게이트
+
+```
+소스 실패 이벤트 25  -> 줄 #1 · #10 · 영수증 25 · failed=25
+삭제 실패 이벤트 25  -> 줄 #1 · #10 · failed=25
+batch failed 15 바퀴 -> 줄 #1 · #10
+PG 원장 따라가기 파일 셋(잃지 않음 · 안 본 칸 건너뜀 · 지운 행) 한 번에: 18 passed, 13 deselected, 36 warnings · 8080 접촉 줄 0
+   (손댄 시험 파일 test_the_ledger_follows_the_table_it_reads 에는 PG 칸이 없어, 바뀐 길을 PG 로 지나는 파일을 돌림)
+```
+
+### 변이 — md5 같음
+
+```
+BASELINE 4 passed, 19 deselected, 6 warnings
+MUTANT every repeat is said                     3 failed, 1 passed, 19 deselected, 6 warnings
+    FAILED test_a_batch_failing_every_lap_is_said_on_the_1st_and_10th
+    FAILED test_a_delete_failing_on_every_event_is_said_on_the_1st_and_10th
+    FAILED test_a_source_failing_on_every_event_is_said_on_the_1st_and_10th
+MUTANT a source failure keys on its rows        1 failed, 3 passed, 19 deselected, 6 warnings
+    FAILED test_a_source_failing_on_every_event_is_said_on_the_1st_and_10th
+MUTANT a delete failure keys on its rows        1 failed, 3 passed, 19 deselected, 6 warnings
+    FAILED test_a_delete_failing_on_every_event_is_said_on_the_1st_and_10th
+MUTANT a batch failure keys on the exception    1 failed, 3 passed, 19 deselected, 6 warnings
+    FAILED test_a_batch_failing_every_lap_is_said_on_the_1st_and_10th
+```
+
+### 전체 sqlite
+
+```
+test_[a-k]*: 5 failed, 4150 passed, 210 skipped, 1 xfailed, 5916 warnings
+test_[l-z]*: 1 failed, 3945 passed, 187 skipped, 2 xfailed, 7351 warnings
+-> 실패는 알려진 박스 실패뿐
+```
+
+같이: ingestion_worker 를 만진 김에 «없어진 따라가기 규칙 캐시»의 설명 주석 덩어리를 지움(그 캐시가 auto-confirm 을 그 길에서 돌린다고 아직 말하고 있었음, 총괄 10-07 메모).
