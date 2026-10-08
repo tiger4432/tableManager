@@ -1,3 +1,26 @@
+> ## [01:36 디자인] 어드민 원장 줄 — 따라가기 멈춤 · 꺼진 세상 (총괄 558a46ef1 · 서버 0e7530cef) — 259d46afc
+
+**결론** 원장 줄이 이미 읽는 `/runtime` 답의 따라가기 줄을 함께 읽습니다(새 요청 없음). 칩 요소 · 다섯째 낱말 없이 닫힌 넷과 사실 칸만(총괄 575a844f7, 이번에 확인).
+
+| 진짜 빌드 `/assets/admin-DYLsMzc7.js` (`/runtime` · `/admin/ledger/sources` 를 페이지 안에서 답함, 쓰기 요청 0) | 원장 줄 |
+|---|---|
+| 멈춤 | «Failing» · world default · declarations/ledger_config.json · every_source_refused · s1: no column wafer_id · waiting 37 |
+| 세상 하나 꺼짐 | «Warning» · Translated 1 · Not run 1 · live off: trial |
+| 흐름 | «OK» · Translated 1 · Not run 1 |
+
+**시험** overview_board_harness 61(L4–L7 · 결함 S6b–S6g 잡힘) · 러너 초록 · 계약 13 개 어긋남 0 · RELEASE_LOG 같은 커밋.
+- 화면은 브라우저 창에서 연 세 장(멈춤 · 꺼짐 · 흐름) — 헤드리스는 어드민 페이지에서 죽어 파일 없음.
+
+**남은 것**
+- 걷기 전선의 `expand` 인자 — 시연 뒤 «은퇴 — 든 자리 전수»(총괄 판정, 그대로).
+- 응용 QA 의 반쪽(× 토스트): 소급 실행 줄이 다 돈 뒤의 × 는 서버가 `already` 를 안 실어 말이 없음. 서버가 실으면 클라는 바꿀 것 없이 말함(`skipLine` 이 열쇠 종류와 무관하게 `already` 를 읽음) — 실을지는 총괄 판정.
+- ca87ffdb3 · 시각 format 미리 채우기 — 시연 뒤(총괄 판정). format 칸은 스켈레톤으로 이미 그려짐. 표본을 읽을 길 셋:
+  - /columns 답에 칸마다 값 몇 개 — 새 라우트 없음 · 초안 칸 그대로, 그러나 요청 안에서 칸마다 훑음(D5 요청 안 스캔 금지 · 빈 칸 많은 큰 표에서 비쌈) → 서버 일로 따로 잼
+  - 테스트 런의 rows_sample — 지금 있는 길, 그러나 활성화된 선언을 돌림(새 소스는 unknown_source · 초안에서 바꾼 시각 칸은 옛 칸) · 테스트 런 뒤에만
+  - GET /tables/{t}/columns/{c}/values — 값은 주나 이 폼은 안 씀 · prefix 최소 길이 · table_config 에 선언된 표만 · world 없음
+
+다음: 인덱스 표(서버 /admin/indexes 착지 뒤). 그 사이엔 지시서 감시만 켜 둡니다.
+
 > ## [01:04 디자인] 이미 끝난 대기열 줄의 × — 무엇이 되었는지 한 낱말 토스트 (총괄 be5457365 · 앱 QA ②) — 0b20c0459
 
 **결론** × 의 200 답에 `already` 가 있으면 짧은 토스트로 말하고(`processed` «Already ran» · `set_aside` «Already set aside» · `gone` «Gone»), 대기열을 다시 읽어 줄이 빠집니다. 건너뛴 줄의 × 는 전처럼 말 없이 다시 읽기만. 서버가 나중에 낱말을 더하면 그 낱말을 그대로 말합니다.
