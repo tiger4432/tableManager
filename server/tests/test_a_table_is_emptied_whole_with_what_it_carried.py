@@ -48,6 +48,33 @@ def _count(world, sql, **params):
     return world["db"].execute(text(sql), params).scalar()
 
 
+def test_main_run_as_a_script_registers_the_declared_tables_itself(world, monkeypatch, tmp_path, pg_engine, capsys):
+    """총괄 151688c2b (소유자 10-08): run as a script, nothing has registered the tables yet - main() must
+    read table_config and register them, as the other entry points do. Here the world's tables are taken
+    out of DYNAMIC_TABLES first, and main() is handed only what a fresh process would read."""
+    from sqlalchemy.orm import sessionmaker
+    from conftest import retire_dynamic_model
+    from database import database
+    from ledger import setup as ledger_setup
+
+    _seeded(world)
+    before = set(models.DYNAMIC_TABLES)
+    for name in hw.TABLES:
+        retire_dynamic_model(name)
+    monkeypatch.setattr(crud, "CONFIG_PATH", str(tmp_path / "table_config.json"))    # the world's table_config
+    monkeypatch.setattr(database, "SessionLocal", sessionmaker(bind=pg_engine))
+    monkeypatch.setattr(database, "engine", pg_engine)
+    monkeypatch.setattr(ledger_setup, "load_setup", lambda: world["setup"])
+    try:
+        code = empty_table.main([hw.OFFICIAL])
+    finally:
+        for name in set(models.DYNAMIC_TABLES) - before:              # what main registered beyond the world
+            retire_dynamic_model(name)
+    said = capsys.readouterr().out
+    assert code == 0 and "선언된 표가 아닙니다" not in said, said
+    assert said.startswith("표 %s — 행 2 " % hw.OFFICIAL), said
+
+
 def test_the_report_says_what_goes_and_writes_nothing(world):
     _seeded(world)
     found = empty_table.report(world["db"], world["setup"], hw.OFFICIAL, world["rules"])
