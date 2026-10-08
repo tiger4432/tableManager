@@ -5333,6 +5333,7 @@ export const COMPUTABLE_TOKENS = Object.freeze([DECLARED, ASSUMED, CONFIRMED]);
 - `runLineView(run)` 순수 · `class RunLines` 부품. 줄은 언제나 다섯 칸(제목 | 진행 | 경과 | 상태 | ×), 결과 문장 · 실패 사유는 그 줄 «아래» 전폭 한 줄. 끝난 줄은 흐림이 아니라 muted 글자 토큰 + 상태 낱말(서버 `state_names`). 읽는 자: `admin.js`(Retroactive 목록). 앞으로 위 대기열 RUNNING 이 같은 부품을 쓸 자리(총괄 78ebdcfc0)
 
 ### 🆕 `overview_status.js` (**204줄**, 09-25 `5efa71f75` 신설) — Overview 현황판의 «판정»
+- 🆕 10-08 `259d46afc` `ledgerRow(sources, runtime)` — `/runtime` 의 `ledger_followup` 줄(`LEDGER_FOLLOWUP_LOOP`)을 같이 읽는다: `stopped` 면 Failing + 서버 문장 + «waiting N», 따라가기가 끈 세상마다 «live off: <세상>»(적어도 Warning). 페이지는 두 답의 마지막 것을 들고 어느 쪽이 와도 줄을 다시 그린다
 - 줄마다 순수 함수 하나 — `workersRow` · `fileRow` · `chainRow` · `autoRow` · `enrichmentRow` · `ledgerRow` · `declarationsRow` · `retroactiveRow` · `recorrectionRow` · `effortRow`, 순서는 `ROW_ORDER`. 낱말은 닫힌 넷 `WORDS`(OK · Warning · Failing · Unknown). 🔴 한 줄에 판정자 «하나» — 전에는 카드와 숨은 스트립이 같은 응답을 두 번 판정했다. 읽는 자: `admin.js` · `overview_board.js`
 
 ### 🆕 `overview_board.js` (**97줄**, 09-25 `5efa71f75` 신설) — 현황판 부품

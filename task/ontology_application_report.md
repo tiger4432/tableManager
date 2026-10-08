@@ -36988,3 +36988,15 @@ ec00cb905  admin.js 에서 navigator.clipboard 를 직접 부르는 자리 0(주
         ②: 바인딩 칸이 읽기 시각 칸과 같을 때 바인딩의 형식을 읽기에도 걸지, 폼에서 한 자리로 모을지
 문서    PRIMITIVES 의 해석기 자리 · LEDGER_TECHNICAL_SPEC §6.1 주입 규칙(이제 utils.time_format 과 ledger.store 두 이름) — 이 보고와 같은 커밋
 ```
+
+---
+
+## [C 응용] 10-09 259d46afc(Overview 원장 줄이 따라가기 멈춤을 말함) QA — 결함 못 찾음 · 작은 것 하나 (코드로 읽음 · 하니스 돌림)
+
+```
+읽음    /runtime 의 ledger_followup 줄(state · said · depth · switched_off)을 원장 줄이 같이 읽는다 — 새 요청 없음 · 닫힌 네 낱말 그대로
+하니스  overview_board 61/0 (통과/실패 · node · 이 트리)
+작은 것 그 줄은 따라가기의 «마지막 랩»을 읽고 그 프로세스의 alive 는 안 본다(/runtime 줄에는 alive 가 옆에 있다)
+        체인 워커가 흐르던 채로 죽으면 원장 줄은 «마지막에 흐름»을 그대로 그린다 — 죽음은 Workers 줄이 따로 말한다. 원장 줄도 alive 를 볼지는 총괄 판정
+문서    CODE_MAP overview_status 절에 한 줄 — 이 보고와 같은 커밋
+```
