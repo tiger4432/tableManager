@@ -12,7 +12,7 @@
 
 ## 2026-10-08 · 두 대기열이 체인 상태 낱말과 그 근거를 같은 모양으로 보인다
 
-- **무엇** — 서버가 대기열 줄마다 상태 낱말 여덟(waiting · running · retrying · stalled · paused · set_aside · failed · done)과 근거를 보내게 된 것(66b330480)을 화면이 그립니다. 어드민 대기열(Overview)은 줄의 Waiting 칸 안 나이 아래에, 메인 그리드 오른쪽 Queue 탭은 State 칸에 — 함수 하나가 둘 다 그립니다. 낱말은 배지(running 초록 · retrying · stalled 노랑 · failed 빨강), 근거는 한 줄: running 이면 «단계 · moved 4s ago · 1m 12s», retrying 이면 «attempt 2/3 · 마지막 실패». waiting 은 배지만(기다린 시간은 옆 나이 칸). 잘린 근거는 툴팁에 전체가 있습니다. 서버만 먼저 올라오면 그리드 State 칸이 «[object Object]» 로 보이던 것이 이것으로 닫힙니다.
+- **무엇** — 서버가 대기열 줄마다 상태 낱말 여덟(waiting · running · retrying · stalled · paused · set_aside · failed · done)과 근거를 보내게 된 것(66b330480)을 화면이 그립니다. 어드민 대기열(Overview)은 줄의 Waiting 칸 안 나이 아래에, 메인 그리드 오른쪽 Queue 탭은 State 칸에 — 함수 하나가 둘 다 그립니다. 낱말은 배지(running 초록 · retrying · stalled 노랑 · failed 빨강), 근거는 한 줄: running 이면 «단계 · moved 4s ago · 1m 12s», retrying 이면 «attempt 2/3 · 마지막 실패». waiting 은 배지만(기다린 시간은 옆 나이 칸). 근거는 배지 아래 줄에 끝까지 보입니다 — 그리드 State 칸에서는 칸 폭 안에서 줄바꿈하고, 어드민에서는 한 줄입니다. 서버만 먼저 올라오면 그리드 State 칸이 «[object Object]» 로 보이던 것이 이것으로 닫힙니다.
 - **선언 예시** — 없음.
 - **화면에서** — 어드민 → Overview → 대기열 표의 Waiting 칸. 메인 그리드 → 이력 칸 `Queue` 탭의 State 칸.
 - **필요한 조건** — 서버 66b330480 이후 + 클라 빌드.

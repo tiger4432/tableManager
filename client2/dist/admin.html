@@ -272,6 +272,9 @@
     .chain-queue-table .table-header th,
     .chain-queue-table .table-row td { white-space: nowrap; }
     .chain-queue-table [data-col="tables"] { width: 100%; white-space: normal; overflow-wrap: anywhere; }
+    /* The state's why stays on one line here like every other cell: allowed to wrap, Tables took the width and
+       the why folded into 71px (base.css wraps it for the grid's fixed State column). */
+    .chain-queue-table .queue-line-state-why { white-space: nowrap; }
     .chain-queue-table [data-col="rows"] { text-align: right; }
     /* 13 = 캐논 h6 (토큰 없음, 위와 같은 사정). */
     .chain-queue-table .table-row td[data-col="tx"] { font-family: var(--font-mono); font-size: var(--fs-button); }
@@ -1667,7 +1670,7 @@
     .retro-group.is-chosen { border-color: var(--accent); color: var(--accent); }
 
   </style>
-  <script type="module" crossorigin src="/assets/admin-HBX1CNzK.js"></script>
+  <script type="module" crossorigin src="/assets/admin-BQzcf3p4.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/tokens-AVWcfJRC.js">
   <link rel="modulepreload" crossorigin href="/assets/absent-o9jpRT19.js">
   <link rel="modulepreload" crossorigin href="/assets/disabled_reason-CowgvRid.js">
@@ -1679,7 +1682,7 @@
   <link rel="modulepreload" crossorigin href="/assets/tsv-Bnz3RdzL.js">
   <link rel="stylesheet" crossorigin href="/assets/tokens-DUAdWSyv.css">
   <link rel="stylesheet" crossorigin href="/assets/admin-DPHdcsuU.css">
-  <link rel="stylesheet" crossorigin href="/assets/base-DT3bIY7Y.css">
+  <link rel="stylesheet" crossorigin href="/assets/base-C-W9ijXA.css">
 </head>
 <body>
   <header>

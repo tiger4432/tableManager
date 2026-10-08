@@ -209,7 +209,8 @@
 :where(.tag[data-tone="ok"]) { color: var(--success); background: var(--success-weak); border-color: transparent; }
 :where(.tag[data-tone="warn"]) { color: var(--warning); background: var(--warning-weak); border-color: transparent; }
 :where(.tag[data-tone="danger"]) { color: var(--danger); background: var(--danger-weak); border-color: transparent; }
-/* A queue line's chain state, one function on two pages (chainStateCell, lead 248ae20cd): its tag, then its one
-   line beside it, which stops at the cell and keeps its whole in a title. */
-:where(.queue-line-state) { display: flex; align-items: center; gap: var(--space-1); min-width: 0; }
-:where(.queue-line-state-why) { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+/* A queue line's chain state, one function on two pages (chainStateCell, lead 248ae20cd): its tag, then its why
+   under it, wrapped inside the cell so it reads to the end. Beside the tag it was cut to a letter in the grid's
+   State column (lead 10-08: the why is what the owner reads there). */
+:where(.queue-line-state) { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-1); min-width: 0; }
+:where(.queue-line-state-why) { white-space: normal; overflow-wrap: anywhere; min-width: 0; }
