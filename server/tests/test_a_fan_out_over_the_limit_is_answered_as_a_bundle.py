@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
-"""Walk control ㄴ (총괄 c9bf53033): a step from one node along one predicate and direction to
-more than `fanout_limit` nodes is not drawn - `bundles` says it, with its count.
+"""Walk control ㄴ (총괄 c9bf53033 · 11e5ea207): a step from one node along one predicate and direction
+to more than `fanout_limit` nodes draws its first `fanout_limit` - the first read - and `bundles` says
+the rest, with the count and what was drawn (소유자 「잘려도 일부는 나와야지」).
 
 The count is taken over the steps the walk's guards pass (`_step`), so it is what expanding
 that bundle draws. A bundle is not a node and not a truncation.
@@ -16,6 +17,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 
 from ledger import explorer  # noqa: E402
 from ledger_api import ledger_subgraph  # noqa: E402
+from tests.test_ledger_trace_pg import ledger_engine  # noqa: E402,F401 - the shipped ledger schema
 
 NOW = datetime(2026, 5, 1, tzinfo=timezone.utc)
 DIES = 25
@@ -56,14 +58,21 @@ def _dies(body):
     return {n["id"] for n in body["nodes"] if n["type"] == "die"}
 
 
-def test_a_fan_out_over_the_limit_is_a_bundle_and_its_count_is_what_expanding_draws():
+def _drawn(body, predicate):
+    """The dies one predicate's edges reach from the wafer."""
+    return {e["source"] if e["target"] == WAFER else e["target"] for e in body["edges"]
+            if e["predicate"] == predicate and WAFER in (e["source"], e["target"])}
+
+
+def test_a_fan_out_over_the_limit_draws_its_first_n_and_its_count_is_what_expanding_draws():
     body = _walk(_wafer_of_dies(), fanout_limit=20)
     assert body["bundles"] == [
         {"node": WAFER, "predicate": "in_container", "direction": "incoming",
-         "far_type": "die", "count": DIES},
+         "far_type": "die", "count": DIES, "drawn": 20},
         {"node": WAFER, "predicate": "inspected", "direction": "outgoing",
-         "far_type": "die", "count": DIES}]
-    assert _dies(body) == {SEED}, "a bundled step drew its nodes"
+         "far_type": "die", "count": DIES, "drawn": 20}]
+    # the seed's own two edges are its depth-0 step, not the wafer's fan-out
+    assert len(_drawn(body, "in_container") - {SEED}) == 20 == len(_drawn(body, "inspected") - {SEED}),         "a fan-out did not draw its first twenty"
 
     opened = _walk(_wafer_of_dies(), fanout_limit=20,
                    expand=[f"{WAFER}|in_container|incoming"])
@@ -83,7 +92,7 @@ def test_a_step_a_guard_refuses_is_not_counted():
     body = _walk(_wafer_of_dies(seed_in_container=False), fanout_limit=20)
     assert body["bundles"] == [
         {"node": WAFER, "predicate": "in_container", "direction": "incoming",
-         "far_type": "die", "count": DIES - 1}]
+         "far_type": "die", "count": DIES - 1, "drawn": 20}]
 
 
 def test_no_fanout_limit_answers_as_today():
@@ -101,8 +110,9 @@ def test_no_fanout_limit_answers_as_today():
 def test_a_bundle_is_not_a_truncation():
     cut = _walk(_wafer_of_dies(), node_limit=10)
     assert cut["truncated"]["nodes"] is True and "bundles" not in cut
-    bundled = _walk(_wafer_of_dies(), node_limit=10, fanout_limit=20)
-    assert bundled["truncated"]["reason"] is None and len(bundled["bundles"]) == 2
+    bundled = _walk(_wafer_of_dies(), node_limit=60, fanout_limit=20)    # room for what it draws
+    assert (bundled["truncated"]["nodes"], bundled["truncated"]["edges"],
+            len(bundled["bundles"])) == (False, False, 2)
 
 
 @pytest.mark.parametrize("item", ["W|in_container", "W|in_container|sideways", "|x|incoming"])
@@ -157,3 +167,131 @@ def test_a_request_that_names_no_budget_walks_on_the_walks_own_defaults(monkeypa
     assert (seen[0]["hops"], seen[0]["node_limit"], seen[0]["edge_limit"]) == (
         ledger_subgraph.DEFAULT_HOPS, ledger_subgraph.DEFAULT_NODE_LIMIT,
         ledger_subgraph.DEFAULT_EDGE_LIMIT)
+
+
+def _wafer_of_defects_and_newer_measures(defects=300, measures=300):
+    """One wafer: `defects` older defects on it, and `measures` newer measures it carries - the
+    newer branch alone fills a small claims budget (the lookup reads newest first)."""
+    atoms = [_atom(1 + k, "defect", {"d": f"F{k}"}, "on_wafer", "wafer", {"w": "W"})
+             for k in range(defects)]
+    atoms += [_atom(100_000 + k, "wafer", {"w": "W"}, "measured", "measure", {"m": f"M{k}"})
+              for k in range(measures)]
+    return atoms
+
+
+def test_an_opened_bundle_reads_first_within_its_depth():
+    """총괄 11e5ea207 · c06b45ea5: the newer branch spends the budget, so the older one is not even
+    read; opened, it is read first and drawn - and what the budget still cut comes back as a bundle."""
+    atoms = _wafer_of_defects_and_newer_measures()
+    seed = explorer.entity_id("wafer", {"w": "W"})
+
+    def walk(**kw):
+        return ledger_subgraph.subgraph(seed, ledger_subgraph.InMemoryEvidenceLookup(atoms), hops=1,
+                                        edge_limit=100, fanout_limit=20, **kw)   # claims: 200
+
+    def defects(body):
+        return {n["id"] for n in body["nodes"] if n["type"] == "defect"}
+
+    shut = walk()
+    assert (defects(shut), [b["predicate"] for b in shut["bundles"]]) == (set(), ["measured"])
+    opened = walk(expand=[f"{seed}|on_wafer|incoming"])
+    (bundle,) = [b for b in opened["bundles"] if b["predicate"] == "on_wafer"]
+    assert defects(opened) and 0 < bundle["drawn"] < bundle["count"] == 200, bundle
+    assert opened["truncated"]["claims"] is True
+
+
+# ------------------------------------------------- on PostgreSQL, the operating shape (총괄 11e5ea207 · e963e6eac)
+
+PG_DEFECTS, PG_REGISTRATIONS = 3000, 3
+
+
+def _pg_shape(measures=0):
+    """One wafer; `PG_DEFECTS` defects `on_wafer` it, each registered `PG_REGISTRATIONS` times
+    (a day later); and `measures` newer `measured` steps out of the wafer (two days later)."""
+    import json
+    from datetime import timedelta
+
+    def row(subject_type, keys, predicate, kind, payload, when, raw):
+        return {"id": str(uuid.uuid4()), "st": subject_type, "sk": json.dumps(keys), "p": predicate,
+                "ok": kind, "op": json.dumps(payload), "oa": NOW + when, "who": "fanout",
+                "ver": "fanout/1", "raw": raw, "sup": None}
+    rows = []
+    for k in range(PG_DEFECTS):
+        keys = {"defect": "F%05d" % k}
+        rows.append(row("defect", keys, "on_wafer", "entity_ref", {"type": "wafer", "keys": {"wafer": "W1"}},
+                        timedelta(seconds=k), "d:%d" % k))
+        rows.extend(row("defect", keys, "register", None, {"qualifiers": {"a%d" % j: "v%d" % k}},
+                        timedelta(days=1, seconds=k * PG_REGISTRATIONS + j), "r:%d:%d" % (k, j))
+                    for j in range(PG_REGISTRATIONS))
+    rows.extend(row("wafer", {"wafer": "W1"}, "measured", "entity_ref", {"type": "measure", "keys": {"m": "M%05d" % k}},
+                    timedelta(days=2, seconds=k), "m:%d" % k) for k in range(measures))
+    return rows
+
+
+@pytest.fixture(name="pg_walk")
+def fixture_pg_walk(request):
+    from sqlalchemy import text
+    from tests.test_ledger_trace_pg import insert
+
+    engine = request.getfixturevalue("ledger_engine")
+
+    def seeded(measures=0):
+        with engine.begin() as conn:
+            conn.execute(text("TRUNCATE ledger_events"))
+            rows = _pg_shape(measures)
+            for start in range(0, len(rows), 5000):
+                insert(conn, rows[start:start + 5000])
+
+    def walk(**kw):
+        with engine.connect() as conn:
+            return ledger_subgraph.subgraph(
+                explorer.entity_id("wafer", {"wafer": "W1"}), ledger_subgraph.SqlEvidenceLookup(conn),
+                hops=ledger_subgraph.DEFAULT_HOPS, registration_follow={"register"}, **kw)
+    try:
+        yield seeded, walk
+    finally:
+        with engine.begin() as conn:
+            conn.execute(text("TRUNCATE ledger_events"))
+
+
+def _pg_defects(body):
+    return {n["id"] for n in body["nodes"] if n["type"] == "defect"}
+
+
+def _pg_bundle(body, predicate):
+    found = [b for b in body.get("bundles") or () if b["predicate"] == predicate]
+    return found[0] if found else None
+
+
+@pytest.mark.pg
+def test_thousands_of_defects_on_a_wafer_draw_their_first_twenty_and_open_past_them(pg_walk):
+    seeded, walk = pg_walk
+    seeded()
+    wafer = explorer.entity_id("wafer", {"wafer": "W1"})
+
+    shut = walk(fanout_limit=20)
+    assert len(_pg_defects(shut)) == 20
+    assert {k: _pg_bundle(shut, "on_wafer")[k] for k in ("count", "drawn")} == {"count": PG_DEFECTS, "drawn": 20}
+
+    opened = walk(fanout_limit=20, expand=[f"{wafer}|on_wafer|incoming"])
+    left = _pg_bundle(opened, "on_wafer")
+    assert 20 < left["drawn"] < left["count"] == PG_DEFECTS, left       # the node budget cut it
+    assert opened["truncated"]["nodes"] is True
+    # read once: the wafer's defects, then each drawn defect's own atoms - its step back and its registrations
+    assert opened["walk"]["claims_scanned"] == PG_DEFECTS + (1 + PG_REGISTRATIONS) * left["drawn"]
+
+    plain = walk()                                                    # no fan-out: as before
+    assert "bundles" not in plain and len(_pg_defects(plain)) == len(_pg_defects(opened))
+
+
+@pytest.mark.pg
+def test_an_opened_bundle_is_read_before_a_newer_branch_that_fills_the_budget(pg_walk):
+    seeded, walk = pg_walk
+    seeded(measures=ledger_subgraph.MAX_CLAIM_SCAN + 1000)
+    wafer = explorer.entity_id("wafer", {"wafer": "W1"})
+
+    shut = walk(fanout_limit=20)
+    assert (_pg_defects(shut), _pg_bundle(shut, "on_wafer")) == (set(), None)   # never read
+    assert shut["truncated"]["claims"] is True
+    opened = walk(fanout_limit=20, expand=[f"{wafer}|on_wafer|incoming"])
+    assert len(_pg_defects(opened)) > 20 and _pg_bundle(opened, "on_wafer")["drawn"] > 20
