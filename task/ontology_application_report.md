@@ -36930,3 +36930,16 @@ ec00cb905  admin.js 에서 navigator.clipboard 를 직접 부르는 자리 0(주
         고칠 모양(연 답의 남은 수를 서버가 덩어리로 · 연 걸음에 상한을 걸어 «+M more» 를 이어 가기 · 그대로)은 총괄 판정
 문서    CODE_MAP 의 stepAlong 줄(제가 적은 것)을 새 서명 · 부르는 곳으로 — 이 보고와 같은 커밋. WALK.md 는 디자인 레인이 맞춤
 ```
+
+---
+
+## [C 응용] 10-09 0b20c0459(이미 멈춘 줄의 × 가 무엇이 됐나 말함) QA — 66d32dc69 의 물음 닫힘(반) (코드로 읽음 · 하니스 돌림)
+
+```
+닫힘    거래 · 행 줄: 200 already 가 «Already ran / Already set aside / Gone» 토스트 한 번, 그다음 대기열만 다시 읽음
+하니스  chain_queue_panel 238/0 · chain_rule_user_path 99/0 (통과/실패 · node · 이 트리)
+반쪽    서버 stop_line 은 already 를 «소급 실행이 아닌» 열쇠에만 싣는다(not run) — 소급 실행 줄이 이미 다 돈 뒤의 × 는
+        200 {run: "done", skipped_events: 0} 이고 화면은 여전히 말이 없다. 소급 줄이 대기열의 큰 줄이라 이 경우가 흔하다
+        서버가 run 열쇠에도 already 를 실을지는 총괄 판정
+문서    CODE_MAP 대기열 줄(제 35eacf3d2 줄)에 토스트 — 이 보고와 같은 커밋
+```
