@@ -75633,3 +75633,47 @@ test_inv_9_1 (알려진 흔들림) 혼자 다시: 1 passed, 6 warnings in 2.45s
 문서(응용 레인 몫)  「끝난 실행의 취소는 거절」을 아직 든 곳 — PRIMITIVES.md · data_model.md · FEATURE_CHECKLIST.md · SYSTEM_FLOWS.md(A-13 · C-18) · backend.md. CODE_MAP · BACKFILL_GUIDE 는 이 커밋
 다음         19f6a9277(프로세스 할당) — 데이터 가드 답 받음(㉮ ㄱ: 묶음 단위 표 잠금 + 같은 표 행 단위 줄은 id 순서로 하나씩). 착수
 ```
+
+---
+
+## [10-08] 메인 그리드 우측 대기열 = 기다리는 것만 · 빼 둔 행은 알릴 것이 없다 a9c5add37 (총괄 afa1b6302)
+
+어느 DB · 어느 스키마 · 지운 것 — sqlite 메모리 · PG 는 assy_test 의 시험 스크래치 스키마(PG_TEST_SCHEMA) · public 안 씀 · 지운 것 0
+
+```
+① 모집단   GET /outbox/queue/rows = processed_chain=false(어드민 대기열과 같은 술어) - 어느 규칙도 안 돌 행. «미전달»(돈 뒤 통지 안 나간 행) 합집합 뺌
+           머리 문장 population 도 같은 말 · 독스트링 모집단 문장 고침(⚰️ 옛 합집합과 그 이유)
+② 취소 칸   event_constants.cancelled_columns() = 처리 칸 + broadcast_at — 쓰는 자리 둘(mark_cancelled 객체 · set_aside._mark 집합 UPDATE)이 이것 하나를 지남
+           -> 빼 둔 행이 미전달 스윕 · /health 미전달 나이 · 그리드에서 «안 간 알림»으로 안 읽힘(그 셋은 broadcast_at IS NULL 을 봄 — 코드 안 바꿈)
+③ 운영 잔여  RUN.md 맨 위 절에 UPDATE 한 줄(미전달 부분 인덱스 술어 + cancelled_by) — 소유자가 돌림
+안 바꾼 것  행의 broadcast_state · owner(undelivered=) 칸은 그대로(대기 행만 실리니 미전달 갈래는 이 라우트에서 안 탐 — 그 owner 판정은 좌석 시험으로 옮김)
+```
+
+### 게이트 · 변이 — md5 같음
+
+```
+BASELINE sqlite exit 0  61 passed, 5 skipped, 160 warnings
+BASELINE pg     exit 0  1 passed, 8456 deselected, 6 warnings
+MUTANT the grid lists what ran again                exit 1  1 failed, 60 passed, 5 skipped, 160 warnings
+    FAILED test_the_grid_queue_lists_only_what_waits_as_the_admin_queue_does
+MUTANT one object set aside stamps no notice        exit 1  2 failed, 59 passed, 5 skipped, 160 warnings
+    FAILED test_a_row_set_aside_has_nothing_to_announce
+    FAILED test_the_grid_queue_lists_only_what_waits_as_the_admin_queue_does
+MUTANT a set-based set-aside stamps no notice       exit 1  1 failed, 8456 deselected, 6 warnings
+MUTANT OLD (origin/main sources)                    exit 1  3 failed, 58 passed, 5 skipped, 160 warnings
+    FAILED test_a_row_set_aside_has_nothing_to_announce
+    FAILED test_the_grid_queue_lists_only_what_waits_as_the_admin_queue_does
+    FAILED test_the_header_says_the_population_it_actually_read
+```
+
+### 전체 sqlite
+
+```
+5 failed, 8068 passed, 381 skipped, 3 xfailed, 13298 warnings — 실패는 알려진 박스 실패뿐
+```
+
+### 다음
+
+```
+248ae20cd 상태 함수 — 답 모양은 채널로 먼저 보냄(총괄 확인 받음) · 착수
+```
