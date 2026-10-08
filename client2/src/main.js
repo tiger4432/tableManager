@@ -1349,14 +1349,18 @@ function setupEventListeners() {
     const SIDEBAR_WIDTH_KEY = 'assy.sidebarWidth';
     const clampSidebarWidth = (width, containerWidth) =>
       Math.min(Math.max(width, 300), Math.max(300, containerWidth - 350));
+    // The width put on the panel, restored or dragged: it does not grow, and it still yields so the grid keeps its
+    // floor - its bottom bar's controls. `none` held it: 900 stored overflowed a 1536 screen (lead cb04c0487).
+    const putSidebarWidth = (width) => {
+      historySidebar.style.width = `${width}px`;
+      historySidebar.style.flex = '0 1 auto';
+    };
 
     try {
       const stored = Number(localStorage.getItem(SIDEBAR_WIDTH_KEY));
       const mainLayout = document.querySelector('.main-layout');
       if (Number.isFinite(stored) && stored > 0 && mainLayout) {
-        const width = clampSidebarWidth(stored, mainLayout.getBoundingClientRect().width);
-        historySidebar.style.width = `${width}px`;
-        historySidebar.style.flex = 'none';
+        putSidebarWidth(clampSidebarWidth(stored, mainLayout.getBoundingClientRect().width));
       }
     } catch { /* storage disabled or full: the CSS width is a correct fallback */ }
 
@@ -1384,8 +1388,7 @@ function setupEventListeners() {
         if (sidebarWidth < minWidth) sidebarWidth = minWidth;
         if (sidebarWidth > maxWidth) sidebarWidth = maxWidth;
 
-        historySidebar.style.width = `${sidebarWidth}px`;
-        historySidebar.style.flex = 'none'; // flex-grow 간섭 방지
+        putSidebarWidth(sidebarWidth);
 
         // AG-Grid 컬럼 가로 크기 반응형 자동 피팅
         if (state.gridApi) {

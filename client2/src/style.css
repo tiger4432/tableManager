@@ -246,10 +246,13 @@ body {
 }
 
 /* Layout Structure */
+/* 🔴 The body is what the header leaves (lead cb04c0487). It was `height: calc(100vh - 70px)` — a one-row header —
+   but the header wraps (99px at 1920, 149px at 1280), and a tall Global list held the body at that height, so the
+   grid's bottom bar went 29px under a 1920x950 screen. `min-height: 0` lets `flex: 1` alone decide. */
 .main-layout {
   flex: 1;
+  min-height: 0;
   display: flex;
-  height: calc(100vh - 70px);
   background-color: var(--bg-app);
 }
 
@@ -317,6 +320,9 @@ body.resizing-active .history-sidebar {
      its content unless it is told otherwise, which is why 「flex: 1」 alone never yielded. */
   flex: 1 1 auto;
   min-width: 0;
+  /* Nor does its one-line text set the grid column's narrowest width (lead cb04c0487): that was 907px, so the side
+     panel was pushed off a 1280 screen. The column's floor is now the controls, which keep their size. */
+  contain: inline-size;
   display: flex;
   align-items: center;
   gap: 8px;
