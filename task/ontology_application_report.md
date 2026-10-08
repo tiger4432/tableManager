@@ -36569,3 +36569,20 @@ b340386fe
         대기열 읽기가 운영에서 5 초라 그 틈이 있다. already 일 때 한 줄(예: Already processed - nothing skipped)을 띄울지는 총괄 판정
 문서    CODE_MAP chain_queue_panel 절에 한 줄 — 이 보고와 같은 커밋. SYSTEM_FLOWS 의 POST 줄은 서버 착지 때
 ```
+
+---
+
+## [C 응용] 10-08 f8dbf3399(대기열 줄 id 전체 복사) QA — 조건 하나 · 작은 것 하나 (코드로 읽음 · 브라우저로 안 잼)
+
+```
+읽음    복사는 함수 하나(admin.js copyFullId)를 실패 표와 대기열이 같이 부른다 — 지시 그대로. 하니스 214 통과 · 실패 0
+조건    copyFullId 는 navigator.clipboard.writeText 를 바로 부른다. 그 API 는 보안 문맥(https · localhost)에만 있다
+        평문 HTTP 로 열면 navigator.clipboard 가 undefined -> 누르는 순간 «동기»로 TypeError -> 복사 안 됨 · 토스트도 안 뜸(.catch 는 약속 거절만 받는다)
+        이 저장소의 추적 코드 셋(clipboard.js · tsv.js · main.js)이 「운영은 평문 HTTP 사내망」이라고 적고, 그래서 그리드 복사는 e.clipboardData 로 간다
+        한편 DEPLOY_SETUP §2-1 은 회사 로그인을 https 앞단 뒤에서만 켠다 — 로그인이 켜진 주소로 열면 된다
+        -> 소유자가 어드민을 «어느 주소»로 여는지가 이 기능이 도는지를 가른다. 실패 표의 같은 복사도 평문 HTTP 에서는 전부터 같았다(이번에 새로 깨진 것 아님)
+        RELEASE_LOG 항목의 「필요한 조건 — 클라 빌드」에 https 조건이 없다(RELEASE_LOG 는 총괄 몫이라 안 고침)
+작은 것  행 하나짜리 줄은 서버가 transaction_id 칸에 «(no tx · outbox#N)» 글자를 넣어 보낸다 -> 그 글자 그대로가 «Transaction ID» 로 복사된다
+        지시는 outbox#번호 도 복사 대상으로 적었다 — 붙여 넣을 자리에서 쓸 수 있는 값은 N 이다
+문서    CODE_MAP chain_queue_panel 절에 한 줄 — 이 보고와 같은 커밋
+```
