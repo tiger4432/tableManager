@@ -118,7 +118,7 @@ GET /api/ledger/subgraph
   &hops=12
   &direction=both
   &node_limit=400
-  &edge_limit=1200
+  &edge_limit=6000
   &follow=inspected&follow=bonded_from
   &backbone_hops=0
 ```
@@ -129,7 +129,7 @@ GET /api/ledger/subgraph
 | `hops` | 아니오 | 12 | 1..40 | 구조 홉 |
 | `direction` | 아니오 | `both` | `outgoing`·`incoming`·`both` | 주어 쪽·목적어 쪽 중 어느 arm 을 인출할지 |
 | `node_limit` | 아니오 | 400 | 10..1000 | 응답 노드 하드캡 |
-| `edge_limit` | 아니오 | 1200 | 20..6000 | 응답 엣지 하드캡 |
+| `edge_limit` | 아니오 | 6000 | 20..6000 | 응답 엣지 하드캡. 기본은 `ledger_subgraph.DEFAULT_EDGE_LIMIT`(10-08 `a0ceb5992`, ~~1200~~) · claims 상한 = min(6000, max(200, 2 × edge_limit)) |
 | `positive` | 아니오 | — | 노드 id, 반복 가능 | 추가 관측 씨앗. `id` 는 항상 positive 다 |
 | `negative` | 아니오 | — | 노드 id, 반복 가능 | 대조군 씨앗. **목록에 없는 주어는 미검사이지 대조군이 아니다** |
 | `follow` | 아니오 | — | `술어` 또는 `술어:키1,키2`, **반복 가능** | 이 술어만 따라간다. 없으면 전부. **SQL 에서 좁힌다**(§5 규칙 ①). 🆕 콜론 뒤에 키를 대면 **그 엣지는 씨앗과 그 키가 같은 노드로만** 걷는다(§5 규칙 ④) |
