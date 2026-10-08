@@ -37000,3 +37000,17 @@ ec00cb905  admin.js 에서 navigator.clipboard 를 직접 부르는 자리 0(주
         체인 워커가 흐르던 채로 죽으면 원장 줄은 «마지막에 흐름»을 그대로 그린다 — 죽음은 Workers 줄이 따로 말한다. 원장 줄도 alive 를 볼지는 총괄 판정
 문서    CODE_MAP overview_status 절에 한 줄 — 이 보고와 같은 커밋
 ```
+
+---
+
+## [C 응용] 10-09 62f067a1a(빼 두기가 닿았는데 돈 묶음은 «돌았음») QA — 54a53f894 의 결함 닫힘 (잼)
+
+```
+잰 것   test_zz_probe_cross_then_success.py 를 이 커밋 위에서 다시(사설 워크트리 · sqlite 메모리 · 진짜 묶음 몸 · 진짜 라우트 · 진짜 맵퍼)
+        대상 표     [] after: [('K1', '1')]  (카나리아 — 규칙이 돌았다)
+        원천 행     [('SUCCESS', True, 0, None)] reads as SET_ASIDE: False
+        다시 돌리기  {}
+        -> 돈 행은 «돌았음»으로 읽히고 rerun_set_aside 가 안 집는다 — 같은 변경이 두 번 먹는 길이 닫혔다
+읽을 것 × 의 답 [{'skipped_events': 1, 'already_processed': 0, 'slot_pid': None}] 은 이 재기의 모양 탓이다 — sqlite 라 죽일 슬롯이 없어 × 가 답한 «뒤»에 묶음이 돈다
+        운영 길은 슬롯을 죽이고 끝나기를 기다린 «뒤» 다시 센다(stop_slot · what_became_of) — 그 답은 구현자 시험이 잰다
+```
