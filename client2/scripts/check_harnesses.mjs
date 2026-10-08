@@ -316,7 +316,10 @@ const FLOORS = new Map([
   // with no inline widths, 「retry N」 badges, the local As of. 13 mutants, 13 caught.
   // 165 -> 166 (a80361a63): seen and 0 is a plain 0 — 「Truly none」 under it is gone.
   // 166 -> 167 (lead e573a6edf): with a summary, Failed counts the rows it folded.
+  // -> 238 (slot 422d075c7 · lead be5457365): waiting for a table and the slot pid (S7, SM7-SM10); a x on a line
+  // already stopped says what became of it (XA, XM10).
   ['chain_queue_panel_harness.mjs', 238],
+  // -> 67 (slot 422d075c7): a grid row sent its slot pid draws it the admin's way (W3, WM3).
   ['outbox_queue_panel_harness.mjs', 67],
   ['company_roundtrip_harness.mjs', 84],
   ['coord_table_paste_harness.mjs', 52],
@@ -1422,6 +1425,7 @@ const FLOORS = new Map([
   // 75 -> 76 (Q): a queue body with loop_seen_via null says 「not seen」.
   // 76 -> 83 (lead c6a8c069c: from on the wire, none for a new rule, a refused rename re-read by the name opened (E, G, R)).
   // 83 -> 87 (lead 43f4823dc: a rename answered in place - picked, one line, its note; rule_name_held in its own words).
+  // -> 99 (lead be5457365): a x on a line already set aside says so once, then the queue is read again (V, one defect).
   ['chain_rule_user_path_harness.mjs', 99],
   // New (lead a2c41fed3): the table registry walked through admin.js - + Add table opens a name box,
   // a paste, a save with no from; a picked table as today. The panel harness hands forNew directly.
@@ -1439,6 +1443,8 @@ const FLOORS = new Map([
   // the list is the declaration's, a picture with no measurement in it lists them too; what a lump lets out
   // stands clear of it, a big lump's row goes to points in one press, a lump of values asks nothing (owner 10-08);
   // a lump's head says every axis its walk cut and the nodes left bare (lead 161757c35).
+  // -> 239 (lead 11e5ea207 · c06b45ea5): a bundle opens as one step from its node and counts what the walk did not
+  // draw (P1-P9, PB, PC, PD, PN, NF); the wire's expand mutant retired - no cell asks expand.
   ['subgraph_view_harness.mjs', 239],
   // New (leads 793017c62 · edcc0568c · 10-08): a folded lump's views, pure half - what a value reads as, the one
   // start-branch question, the points, the window, the one drawing; a node without the attribute is counted.
@@ -1464,6 +1470,7 @@ const FLOORS = new Map([
   // 30 -> 30 (lead bf3653401 and its 10-06 answer): every declared predicate is a box for every type
   // (F9, the page half of the board harness's old B8); a type change keeps every tick (F8, reversing 10-02);
   // M10 retired with the empty-list sentence it guarded (the list is empty only when nothing is declared).
+  // -> 45 (lead 11e5ea207): the Next along a same-type predicate brings both sides (N8, NM7).
   ['walk_table_harness.mjs', 45],
   // New (lead 2b5819e1d): walk layout A - the form is the rail, the result its own part,
   // the same choices send the request recorded before the layout (fixtures/walk_wire_before.json).
@@ -1734,7 +1741,11 @@ const FLOORS = new Map([
   // judge per row (File · Auto Update stay in health_card_absence), and the board part itself.
   // 48 -> 49 (lead 909ea2052 ①): the Ledger row draws the server's state names.
   // 49 -> 51 (lead 13aa739f3): an idle on-demand process leaves 「N of M」 - one check, one mutant.
+  // 51 -> 61 (lead 558a46ef1): the Ledger row says a stopped follow-up and the worlds it switched off (L4-L7, S6b-S6g).
   ['overview_board_harness.mjs', 61],
+  // New 2026-10-09 (lead d71f931c7). The index table: the server's declared indexes beside the database, each state
+  // its token on a base-layer tag, a build's sentence whole, no scans dim, those nothing declares below; 8 mutants.
+  ['index_table_panel_harness.mjs', 15],
   // New 2026-09-28 (lead 40bae1219). The map editor's column save: changed cells only, one column,
   // no overwrite of a cell changed since the load, and the «send every cell» mutant.
   ['column_save_harness.mjs', 18],

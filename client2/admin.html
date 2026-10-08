@@ -226,6 +226,9 @@
     /* 손잡이는 경로라 고정폭으로 읽습니다. */
     .runtime-table td[data-col="knob"] { font-family: var(--font-mono); color: var(--text-dim); }
     .runtime-table td[data-col="loop"] { font-weight: 600; }
+    /* Indexes (총괄 d71f931c7) wear the runtime table's look; a number's head stands over its number. */
+    .index-table th.num { text-align: right; }
+    .index-outside-title { margin: var(--space-4) 0 var(--space-2); }
 
     /* Chain 대기열 — 시안 A (소유자 「A 로 해」): 숫자 넷 · 표 · 메타 한 줄. 두 자리(Overview 절 ·
        Chain 탭)에 같은 모양. 여백은 격자 토큰으로만. */
@@ -1733,6 +1736,14 @@
               <span class="ov-section-sub">one line per part · red rows need a look</span>
             </div>
             <div class="ov-section-body"><div id="overview-status-mount"></div></div>
+          </section>
+          <!-- Indexes: the models' declared indexes beside the database, and those nothing declares (총괄 d71f931c7).
+               Read only - the chain worker builds what is owed. The table flows inside its own box. -->
+          <section class="ov-section" id="overview-indexes">
+            <div class="ov-section-head">
+              <span class="ov-section-title">Indexes</span>
+            </div>
+            <div class="ov-section-body ov-scroll"><div id="overview-indexes-mount"></div></div>
           </section>
           <!-- 줄 펼침 — admin.js 가 판에 «한 번» 옮겨 앉힌다(부품은 자기 mount 를 그대로 가진다). -->
           <div id="overview-row-bodies" hidden>
