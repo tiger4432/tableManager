@@ -36943,3 +36943,48 @@ ec00cb905  admin.js 에서 navigator.clipboard 를 직접 부르는 자리 0(주
         서버가 run 열쇠에도 already 를 실을지는 총괄 판정
 문서    CODE_MAP 대기열 줄(제 35eacf3d2 줄)에 토스트 — 이 보고와 같은 커밋
 ```
+
+---
+
+## [C 응용] 10-09 총괄 요청(교차 세션) — ㉠ L1 PG 둘의 «not declared» · ㉡ b2fe1f02f 운영 모양 QA
+
+### ㉠ 언제부터 · 무엇이 무엇을 따라가야 하나 (재료만, 안 고침)
+
+```
+언제    c193986a8(09-25) 부터 — 사설 워크트리 · run_pg_tests -k 두 시험(DB assy_test · 스크래치 스키마)
+          55fb15d08 | 2 passed, 6913 deselected, 6 warnings, 5 errors | no not-declared line
+          c193986a8 | 2 failed, 6897 deselected, 6 warnings, 5 errors | is not declared in shipped_ledger_jge4b6pp
+무엇    그 커밋이 «뷰를 읽는 소스»를 은퇴시키며 견본에서 «9 view sources and 10 view catalog entries» 를 지웠다(커밋 문장)
+        process_param_num_measure 는 relation process_param_num 를 읽었고, 그 relation 은 출하 카탈로그에서 kind view 였다 — 은퇴 대상 그대로
+        시험(test_ledger_l1_pg)은 자기 픽스처에서 process_param_num 을 «표»로 만들고 출하 견본에 그 소스가 있다고 기대한다 — 은퇴 때 안 따라감
+        그 뒤 이 시험 파일을 만진 커밋 4 — 이 둘은 PG 표시라 기본 러너에 안 걸려 2 주 가까이 빨강이 안 보였다
+재료    선언이 시험을 따라가면: 출하 견본에 «뷰 relation» 소스를 되살리는 것 — 은퇴 판정(뷰 소스는 이름 대어 거절)과 정면으로 어긋난다
+        시험이 선언을 따라가면: 시험의 전제는 「신원도 칸 · 시각도 칸인 출하 소스 하나 — 빈칸 둘에서 거절 둘」
+          지금 출하 소스 중 read.occurred_at 이 칸인 것 6: die_inspection · lot_event · lot_lineage · lot_slot_wafer · transfer_event · wafer_process_recipe
+          wafer_process_recipe 는 옛 소스와 같은 칸 이름(eventtime)을 시각으로 읽는다 — 픽스처 DDL(PROCESS_PARAM_DDL)을 그 relation 모양으로 바꾸는 일이 된다
+        어느 쪽인지는 총괄 판정
+```
+
+### ㉡ b2fe1f02f — 운영 모양(출하 소스 · 출하 카탈로그 · 진짜 백필 · PG 스크래치)
+
+```
+모양    출하 wafer_process_recipe 가 출하 카탈로그의 wafer_process 를 읽는다 — 그 eventtime 이 «string» 칸(소유자 모양 그대로)
+        행 넷: 20261008_101500 · 20261008_101600 · «2026-10-08»(형식과 다름) · 20261008_101800 / 형식 %Y%m%d_%H%M%S 를 «어디 적나»로 네 판
+        none    result {"rows_read": 4, "inserted": 4} | atoms [('{"wafer": "W1"}', '2026-10-08 10:15:00'), ('{"wafer": "W2"}', '2026-10-08 10:16:00'), ('{"wafer": "W3"}', '2026-10-08 00:00:00'), ('{"wafer": "W4"}', '2026-10-08 10:18:00')]
+        read    result {"rows_read": 4, "inserted": 3} | atoms [('{"wafer": "W1"}', '2026-10-08 10:15:00'), ('{"wafer": "W2"}', '2026-10-08 10:16:00'), ('{"wafer": "W4"}', '2026-10-08 10:18:00')]
+        binding result {"rows_read": 4, "inserted": 4} | atoms [('{"wafer": "W1"}', '2026-10-08 10:15:00'), ('{"wafer": "W2"}', '2026-10-08 10:16:00'), ('{"wafer": "W3"}', '2026-10-08 00:00:00'), ('{"wafer": "W4"}', '2026-10-08 10:18:00')]
+        both    result {"rows_read": 4, "inserted": 3} | atoms [('{"wafer": "W1"}', '2026-10-08 10:15:00'), ('{"wafer": "W2"}', '2026-10-08 10:16:00'), ('{"wafer": "W4"}', '2026-10-08 10:18:00')]
+① 형식을 «안 적어도» 소유자 모양이 읽힌다 — 형식 없는 길은 datetime.fromisoformat 이고, 이 박스 파이썬 3.12.13 에서
+          20261008_101500 2026-10-08 10:15:00 / 2026-10-08 2026-10-08 00:00:00 / 20261008123000 ValueError
+        roleframe 독스트링 「Nothing is guessed: no format, no reading」은 이 길에서 참이 아니다 — 날짜만 있는 글자가 자정이 된다
+        fromisoformat 이 받는 모양은 파이썬 3.11 에서 넓어졌다 — 운영 서버의 파이썬 판은 저장소 어디에도 고정돼 있지 않다(모름)
+        소유자의 「occurred_at 이 datetime 이 아니라 안 됨」은 운영 파이썬이 3.11 보다 낮거나 글자 모양이 다를 때의 모습으로 읽힌다 — 소유자 쪽 확인
+② «바인딩에만» 적으면 형식이 안 지켜진다 — 형식과 다른 «2026-10-08» 이 거절 대신 자정으로 원장에 들어감(위 binding 판)
+        이 소스는 바인딩 칸(eventtime)이 read.occurred_at 칸과 같아, 바인딩이 받는 값이 이미 읽힌 datetime 이다 — 바인딩의 형식은 «글자일 때만» 쓰인다(코드)
+        «읽기에»(또는 둘 다) 적으면 그 행만 거절되고 나머지 셋이 바른 시각(서울)으로 들어간다 — 지시 게이트 그대로
+③ 폼 — 스켈레톤에 format 칸 둘: 바인딩 쪽은 라벨 «Time format» + 도움말, read.occurred_at 쪽은 라벨 없음 -> 폼이 키 이름 «format» 을 그린다(field.label || field.key)
+        같은 칸이 두 이름이다. 어드민 화면은 관리자 토큰이 있어야 열려 직접 열지 않았다(스켈레톤 · 폼 코드로 읽음)
+물음    ①: 형식 없는 글자를 fromisoformat 으로 넓게 받는 지금 길을 그대로 둘지(파이썬 판에 따라 읽히는 모양이 다름) — 은퇴시키면 지금 읽히던 소스가 거절로 바뀐다
+        ②: 바인딩 칸이 읽기 시각 칸과 같을 때 바인딩의 형식을 읽기에도 걸지, 폼에서 한 자리로 모을지
+문서    PRIMITIVES 의 해석기 자리 · LEDGER_TECHNICAL_SPEC §6.1 주입 규칙(이제 utils.time_format 과 ledger.store 두 이름) — 이 보고와 같은 커밋
+```

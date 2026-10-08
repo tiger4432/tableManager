@@ -1422,8 +1422,9 @@ difference도 같은 final-wafer mark를 보존한다. 따라서 비교 행→Tr
 **결함 주입으로만 잡히는 것 둘**(명세로 남길 값어치가 있는 방법):
 ① **단언은 instant «와» offset을 둘 다 검사한다** — `astimezone` 철자의 결함은 instant를 보존하므로
 instant만 보는 테스트에는 **아예 안 보인다.**
-② **주입은 `ledger.store`와 번역기 모듈 «양쪽»에** 걸어야 한다 — 번역기가 `parse_occurred_at`을
-자기 이름으로 import해 들고 있어서 **한쪽만 패치하면 성공해 보이는 주입 아래서 진짜 코드가 돈다.**
+② **주입은 «두 이름»에** 걸어야 한다 — 🆕 10-08 `b2fe1f02f` 부터 집은 `utils.time_format`: 번역기(`roleframe`)는 `time_format.parse_occurred_at` 을
+모듈 이름으로 불러 그 모듈을 패치하면 닿고, `ledger.store` 는 같은 이름을 다시 내보내 들고 있어 그 이름으로 부르는 자리(`observability` 커서 지연)는
+store 를 패치해야 닿는다. **한쪽만 패치하면 성공해 보이는 주입 아래서 진짜 코드가 돈다** — 그 규칙은 그대로다.
 
 ### 6.2 오염된 트랜잭션 규율
 
