@@ -108,16 +108,20 @@ def evidence_subgraph(
                          description="Entity/Event/Claim/Collection/Point/Value/Action의 불투명 id"),
     world: list[str] | None = Query(
         None, description="Ledger worlds, repeated (world=a&world=c); none = the operating world"),
-    hops: int = Query(12, ge=1, le=40, description="증거 그래프 탐색 깊이"),
+    hops: int = Query(ledger_subgraph.DEFAULT_HOPS, ge=1, le=ledger_subgraph.MAX_HOPS,
+                      description="증거 그래프 탐색 깊이"),
     direction: str = Query("both", pattern="^(outgoing|incoming|both)$",
                            description="Entity 주장 방향; 구조 엣지는 항상 양쪽 보존"),
     since: str | None = Query(
         None, description="이 시각 «이상»의 원자만 (ISO 8601). 없으면 전 구간"),
     until: str | None = Query(
         None, description="이 시각 «미만»의 원자만 (ISO 8601). 없으면 전 구간"),
-    node_limit: int = Query(400, ge=10, le=1000, description="응답 노드 상한"),
+    # 🔴 THE WALK'S OWN DEFAULTS, CALLED (총괄 de9455c17): this route said 1200 edges while the walk
+    #    measured 6000, so the screen, which sends none, was cut at 1200 edges and 2400 claims.
+    node_limit: int = Query(ledger_subgraph.DEFAULT_NODE_LIMIT, ge=10,
+                            le=ledger_subgraph.MAX_NODE_LIMIT, description="응답 노드 상한"),
     edge_limit: int = Query(
-        1200, ge=20, le=ledger_subgraph.MAX_EDGE_LIMIT,
+        ledger_subgraph.DEFAULT_EDGE_LIMIT, ge=20, le=ledger_subgraph.MAX_EDGE_LIMIT,
         description="응답 엣지 상한"),
     positive: list[str] | None = Query(
         None, description="추가 관측 씨앗. `id` 는 항상 positive 다"),

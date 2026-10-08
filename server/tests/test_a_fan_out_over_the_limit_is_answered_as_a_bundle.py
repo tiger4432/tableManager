@@ -130,3 +130,30 @@ def test_the_route_passes_both_cells_through(monkeypatch):
     router.evidence_subgraph(**common)
     assert (seen[0]["fanout_limit"], seen[0]["expand"]) == (20, ["n|processed_with|outgoing"])
     assert (seen[1]["fanout_limit"], seen[1]["expand"]) == (None, None)
+
+
+def test_a_request_that_names_no_budget_walks_on_the_walks_own_defaults(monkeypatch):
+    """총괄 de9455c17: the route said 1200 edges while the walk measured 6000, and the screen sends
+    none - so the screen was cut at 1200 edges and 2400 claims. Through the mounted route, so
+    FastAPI fills the defaults."""
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from admin.auth import require_admin_token
+    from database.database import get_db
+    from ledger import trace_router as router
+
+    seen = []
+    monkeypatch.setattr(router, "_evidence_graph", lambda *a, **kw: seen.append(kw) or {})
+    monkeypatch.setattr(router, "_signed_start", lambda *a, **kw: "seed")
+    app = FastAPI()
+    app.dependency_overrides[require_admin_token] = lambda: None
+    app.dependency_overrides[get_db] = lambda: type("_Db", (), {"connection": lambda self: None})()
+    app.include_router(router.router)
+
+    answer = TestClient(app).get("/api/ledger/subgraph", params={"id": "seed"})
+
+    assert answer.status_code == 200, answer.text
+    assert (seen[0]["hops"], seen[0]["node_limit"], seen[0]["edge_limit"]) == (
+        ledger_subgraph.DEFAULT_HOPS, ledger_subgraph.DEFAULT_NODE_LIMIT,
+        ledger_subgraph.DEFAULT_EDGE_LIMIT)
