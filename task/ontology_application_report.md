@@ -37089,3 +37089,17 @@ ec00cb905  admin.js 에서 navigator.clipboard 를 직접 부르는 자리 0(주
         RUN.md 그 줄을 고칠지는 총괄 판정(제가 안 고쳤습니다)
 문서    PRIMITIVES 의 1 · 10 · 100 알림 항목 «어디»에 count_crossed · count_cleared 두 자리
 ```
+
+---
+
+## [C 응용] 10-09 f6f4d211c(어드민 Overview 의 Indexes 표) QA — 결함 없음 (잼)
+
+```
+잰 것   index_table_panel_harness.mjs — 사설 워크트리
+        이 커밋             7 passed · 변이 8/8 잡힘 · 단언 15
+        내 변이(invalid 를 warn 으로)  I2 이 빨강 — 상태 색 칸이 «낱말마다» 잰다
+읽을 것 커밋 문장은 「Overview 가 열릴 때 한 번」이지만 읽기는 fetchOverview 안이라 30 s 자동 갱신마다도 간다
+        옆의 Ledger 읽기와 같은 자리 · 같은 주기다. RELEASE_LOG 항목은 「한 번」이라 안 적었고 읽기 0.046 s(박스 수, 디자인 측정)
+        -> 만드는 중 문장이 30 s 마다 새로 온다. 결함 아님
+문서    CODE_MAP — 클라 모듈 표에 index_table_panel.js 줄 · GET /admin/indexes 줄에 소비자
+```

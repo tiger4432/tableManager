@@ -20,8 +20,9 @@
    ✅ 10-09 착지·총괄 확인  프로세스 할당(422d075c7 · 변이 넷) · 끊긴 묶음 되감기(a2342ce2f) · 원장 시각 format(b2fe1f02f · 변이 셋)
                      · × 늦은 경우 «돌았음이 이김» + 슬롯 끝난 뒤 다시 세기(62f067a1a) · 잠금 순서 · 슬롯 못 찾음 한 줄(5250ca1bd · 82 통과 · 변이)
                      · 클라: 상태 칸 + 근거 줄바꿈 · 헤더 한 줄(0.67 · 11px) · 덩어리 열기 · waiting_for_table · slot pid · × already 토스트 · 원장 줄 멈춤/live off
-   🔨 구현자  빠진 인덱스 알리고 스스로 만들기 + 인덱스 마스터(e0e8020fb · d71f931c7 — 정적 모델 51, 기본 켬 build_missing_indexes, 만드는 중 기다리는 pid 보임) -> 원장 도배(cb419a8a0)
-   🔨 클라    인덱스 표(서버 뒤) — 그 전엔 대기
+   ✅ 10-09 시연 전 마지막  인덱스 마스터(9acf4243e · 901b01f07 · 58 통과 · 선언 49, 빠지면 체인 워커가 하나씩 만듦, build_missing_indexes 기본 켬)
+                     · 원장 실패 줄 1·10·100 + 성공하면 셈 비움(92091395f · cc85f2a78) · 어드민 인덱스 표(f6f4d211c)
+   레인       구현자 · 클라 대기(시연 전 일 끝)
    시연 뒤   시각 format 미리 채우기(요청 안 스캔 문제) · expand 인자 은퇴 · already/already_processed 말 정리 · 맵퍼가 필요한 인덱스 선언 자리(복사 key_columns) · 옆 패널 접기 · subgraph_view 하니스 9 분
    응용 QA   test_ledger_l1_pg 둘이 main 에서 빨강(shipped 선언에 소스 없음) — 판정 재료 · b2fe1f02f 운영 모양 QA
    소유자(운영)  상태 칸 클라 착지 뒤 pull + 재기동(서버 · 체인 워커) · RUN.md 의 빼 둔 행 broadcast_at SQL 한 번 · chain_statement_timeout_seconds 0(소급 묶음엔 2 분이 짧았음 — 총괄 판단 착오)
