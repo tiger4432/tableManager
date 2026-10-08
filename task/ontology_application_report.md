@@ -36527,3 +36527,15 @@ b340386fe
 ④ RUN.md    볼 줄 둘(deferred · Tree ingested)은 코드 문장과 낱말까지 같다(600s 는 FLATTEN_STABILITY_MAX_WAIT_SECONDS 그대로). 「Tree ingestion incomplete … directory preserved」 줄은 RUN.md 에 없음(전부터 있던 줄)
 문서     INGESTION_GUIDE 정온 게이트 줄에 「600 초에 처리 시간도 든다 · 처리 중 다 쓴 파일은 다음 점검까지」 — 이 보고와 같은 커밋
 ```
+
+---
+
+## [C 응용] 10-08 13a92f8f2(SSO 들어올 사람 목록) QA — 결함 못 찾음. 작은 것 하나 (코드로 읽음 · 안 잼)
+
+```
+읽음     목록 밖 이름은 로그인 완료에서 세션을 안 만든다 · 이미 있는 세션과 개인 키도 admit 이 요청마다 may_come_in 을 물어 403
+         -> 어제 물음(개인 키는 만료 없고 주인만 지운다)의 반은 풀렸다: users 목록이 있으면 거기서 빼면 그 사람의 키도 다음 요청부터 막힌다(목록이 없으면 그대로)
+작은 것  /ws 가 목록 밖 이름에 4403 으로 닫히는데 화면(websocket.js)은 4401 만 안다 — 4403 은 보통 끊김처럼 재연결 사다리를 탄다
+         목록 밖 사람은 화면 페이지 자체가 403 이라 거의 안 만난다. 열린 페이지를 둔 채 목록에서 빠진 사람만 — 그 페이지가 끝없이(물러서며) 다시 붙는다
+문서     DEPLOY_SETUP §2-1 은 구현자가 이미 맞춤(제 키 줄까지). config/README 의 auth_config.json 줄에 users — 이 보고와 같은 커밋
+```

@@ -427,21 +427,31 @@ curl http://localhost:8080/api/transfer-plan/stages
           ADFS 가 invalid_client 로 거절하면(아래 거절 줄) 그때 IT 에 클라이언트 비밀을 받아 이 환경변수에 두고 재기동
           토큰 서명 인증서(.cer)는 넣지 않는다 — 서버가 ADFS 의 키 주소에서 받는다. 파일은 BOM 없는 UTF-8 로(BOM 이 붙어도 읽는다)
           enabled true · issuer(https://<adfs 호스트>/adfs) · client_id · redirect_uri(IT 에 등록한 글자 그대로, https) · name_claim · admins
+          users(들어올 사람 — 고를 때만. sample 에는 일부러 없다: 베끼면 들어올 사람이 바뀐다)
           설정은 프로세스마다 한 번 읽는다 — 바꾸면 재기동
 켜지면    /auth/* · /internal/* · /health 말고는 로그인해야 한다 — 화면 GET 은 회사 로그인으로 갔다가 돌아오고, API 는 401
           /admin/* 은 admins 에 적힌 이름(name_claim 값, 대소문자 무시 — 10-07 `ae579a9a2`)만 — X-Admin-Token 은 «안 읽는다»
+          들어올 사람(10-08) users 칸 없음 = 회사 로그인 되는 누구나 · ["이름", …] = 그 이름들과 admins 만(대소문자는 admins 와 같은 규칙)
+             [] = admins 만 · 목록이 아닌 값 = admins 만 + 기동 경고. 목록 밖 이름은 로그인 완료에서 403 한 문장(세션 안 만듦),
+             이미 열린 세션 · 개인 키도 다음 요청부터 403 — 화면은 같은 문장의 페이지(로그인으로 다시 안 보냄), API 는 reason not_on_users_list,
+             표 변경 방송(/ws)은 4403 not_on_users_list 로 닫힌다
+             /auth/* · /internal/* · /health 는 목록과 상관없이 위와 같다
           /internal/* (워커 통지)는 그대로 ASSY_ADMIN_TOKEN — 워커는 바꿀 것 없음
           기록의 «누가»는 로그인한 이름. 세션 12 시간, 로그아웃하면 끝
 스크립트   토큰으로 /admin/* 을 부르던 프로그램은 관리자의 개인 키로 — 화면 머리줄의 이름 -> API keys -> Create key
           (또는 로그인한 채 POST /auth/keys {"name": "<이름>"}) -> 그 key 를 Authorization: Bearer <key> 로(한 번만 보인다)
           ⚠️ 개인 키는 만료가 없고 지우는 것은 그 주인뿐이다(DELETE /auth/keys/<id>). 회사 계정이 막혀도 키는 산다 — admins 에서 빼면 관리 권한만 빠진다
+             users 목록이 있으면 거기서(admins 에서도) 빼고 재기동하면 그 키도 다음 요청부터 403
 기동 줄   [sso] ON - issuer …, secret|public client …               켜짐 (경고로 « admins … is not a list» 가 붙으면 관리자 0 — 목록 ["…"] 으로 적는다)
+          … Only the N name(s) on users (auth_config.json) and the administrators may come in.   users 목록이 읽혔다 — N 이 적은 수인지 본다
+          … users (auth_config.json) is not a list, so only the administrators may come in.        (경고) 목록 ["…"] 으로 적는다
           [sso] OFF - auth_config.json could not be read: <줄 · 칸>   그 자리를 고치고 재기동 — 서버는 멈추지 않는다
           [sso] OFF - enabled must be true (not "true") …          따옴표 없는 true 로
           [sso] OFF - enabled is true but not set: <칸>              그 칸을 채우고 재기동
           [sso] OFF - redirect_uri (…) is not an https address       https 앞단 뒤에서만 켠다
           [sso] OFF - enabled is not true in auth_config.json        꺼짐(기본)
 거절 줄   [sso] The identity provider refused the sign-in: invalid_client - …   ADFS 가 비밀을 원한다 -> IT 에 클라이언트 비밀 받기(화면에도 같은 문장과 Try again)
+          [sso] <이름> is not on the users list in auth_config.json - ask an administrator to add the name.   그 이름을 users 에 넣고 재기동(넣을 사람이면)
 막힐 때   (10-08 소유자 서버 첫 로그인에서 실제로 막힌 둘)
           ① 프록시 — /auth/login 이 «HTTPSConnectionPool … connect timeout» 으로 실패하고 화면에는 500 으로 보인다(그 길은 예외를 안 잡는다)
              서버의 requests 는 윈도우에서 환경변수에 프록시가 없으면 시스템(인터넷 옵션) 프록시를 읽는다. curl 은 안 읽어서 curl 은 되고 서버는 안 된다
