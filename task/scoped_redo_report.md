@@ -74543,3 +74543,93 @@ sqlite 전체   5 failed, 7985 passed, 357 skipped, 3 xfailed, 13225 warnings
 어느 DB · 어느 스키마 · 지운 것  assy_test 의 assy_pytest_pg_<pid>_<worker> (돌 때마다 새 이름) · 끝에 그 스키마째 DROP · public 안 씀
 sqlite 전체  5 failed, 7984 passed, 358 skipped, 3 xfailed, 13189 warnings — 실패는 알려진 박스 실패뿐
 ```
+
+---
+
+## [10-08] 하위 폴더 — 다 쓴 파일부터 들어간다 31802478c (총괄 0fbbac97c · 소유자 10-08 「ㄴ 파일마다」 · 「시연 전」)
+
+어느 DB · 어느 스키마 · 지운 것 — 시험은 sqlite 메모리 · 임시 폴더. PG 안 씀 · public 안 씀
+
+### 1 무엇
+
+```
+도우미      _files_written(prev, cur) — 두 스냅샷에서 같은 파일 {경로: (크기, 수정시각)}
+            정온 판정의 «한 칸»이다: 스냅샷 «전체»가 같으면 정온
+대기        _wait_tree_quiescent(abs_dir, take) — 폴마다 다 쓴 파일을 take 에 넘긴다. 정온이면 True
+들어가는 문  take 안에서 전과 같이 settle_already_terminal(묶어 묻기) -> _handle_event 하나
+한 판 안    같은 (경로, 크기 · 수정시각)은 한 번만 — 보관 꺼짐 · heavy 레인 대기 파일은 폴마다 «다 씀»으로 다시 읽히므로
+빈 폴더     트리 정온일 때만 (전과 같은 조건). 다른 파일이 쓰는 중이면 비워진 폴더도 둔다
+안 바뀐 것   request_tree_ingest · _handle_event · _route_and_process · _process_with_retry · sweep_existing_files — 바뀐 줄 0/0/0/0/0 (git diff -U0 의 옛쪽 줄 범위를 옛 파일 AST 함수 범위와 견줌 · 계기: _ingest_directory_tree · _wait_tree_quiescent 는 10/4)
+```
+
+### 2 게이트 — 같은 픽스처(flat_env), 7 칸
+
+| 칸 | 답 | 시험 |
+|---|---|---|
+| 자라는 파일 옆의 다 쓴 파일 | 그 판에서 한 번 들어감 | test_a_finished_file_beside_a_growing_one_goes_in_that_pass 초록 |
+| 자라는 파일 하나만 | 손 안 댐 · 문장 «1 쓰는 중 · 0 넣음 · grow.csv» | test_never_stable_tree_is_deferred_untouched 초록 |
+| 복사 중 트리 | 다 쓸 때까지 기다려 «한 번» 온전히 읽음 | test_mid_copy_waits_until_tree_is_stable 초록 |
+| 반쯤 쓴 파일 | 안 읽음 | test_a_finished_file_beside_a_growing_one_goes_in_that_pass 초록 |
+| 첫 판에서 넣은 파일 | 다음 판에 다시 안 들어감 (보관 이동) | test_a_file_taken_before_the_tree_is_quiet_is_not_taken_again_and_its_folder_waits 초록 |
+| 쓰는 파일 있음 / 폴더 전체 조용 | 비워진 폴더 둠 / 지움 | test_a_file_taken_before_the_tree_is_quiet_is_not_taken_again_and_its_folder_waits 초록 · test_nested_three_levels_all_ingested_and_archived_folders_gone 초록 |
+| raws 바로 밑 파일 | 전과 같음 | test_sweep_triggers_tree_ingest_for_directories 초록 |
+
+```
+복사 중 트리 칸에 «한 번 읽음» 단언을 더했다 — 도우미가 늘 «예»여도 그 시험은 초록이었다(기록기가 마지막 읽기로 덮어씀)
+raws 바로 밑 칸의 코드 쪽  _process_with_retry(1 초 쉼이 사는 곳) 0 줄 · sweep_existing_files 0 줄 바뀜 — 위 견줌과 같은 계기
+```
+
+### 3 변이 (빨강 = «실패한 시험», 기준 먼저 초록, md5 전후 같음)
+
+```
+BASELINE                                                                 24 passed, 29 warnings
+helper always yes                                                        4 failed, 20 passed, 29 warnings
+      FAILED test_a_file_taken_before_the_tree_is_quiet_is_not_taken_again_and_its_folder_waits
+      FAILED test_a_finished_file_beside_a_growing_one_goes_in_that_pass
+      FAILED test_mid_copy_waits_until_tree_is_stable
+      FAILED test_never_stable_tree_is_deferred_untouched
+helper always no                                                         13 failed, 11 passed, 29 warnings
+      FAILED test_a_file_taken_before_the_tree_is_quiet_is_not_taken_again_and_its_folder_waits
+      FAILED test_a_finished_file_beside_a_growing_one_goes_in_that_pass
+      FAILED test_a_walk_entry_that_escapes_raws_is_refused_and_not_ingested
+      FAILED test_disabled_by_setting_leaves_directory_alone
+      FAILED test_heavy_file_in_folder_routes_to_heavy_lane_in_place
+      FAILED test_hidden_system_files_discarded_with_folder
+      FAILED test_locked_file_preserves_directory_then_retry_completes
+      FAILED test_mid_copy_waits_until_tree_is_stable
+      FAILED test_nested_files_are_dispatched_at_their_real_path
+      FAILED test_nested_three_levels_all_ingested_and_archived_folders_gone
+      FAILED test_pipeline_parser_receives_the_relative_path
+      FAILED test_same_basename_in_two_folders_never_overwrites_in_archives
+      FAILED test_second_trigger_on_same_tree_is_noop_while_in_flight
+folders removed when the files finished, not when the tree is quiet      1 failed, 23 passed, 29 warnings
+      FAILED test_a_file_taken_before_the_tree_is_quiet_is_not_taken_again_and_its_folder_waits
+OLD (origin/main watcher)                                                3 failed, 21 passed, 29 warnings
+      FAILED test_a_file_taken_before_the_tree_is_quiet_is_not_taken_again_and_its_folder_waits
+      FAILED test_a_finished_file_beside_a_growing_one_goes_in_that_pass
+      FAILED test_never_stable_tree_is_deferred_untouched
+```
+
+### 4 스위트
+
+```
+sqlite 전체   5 failed, 7986 passed, 358 skipped, 3 xfailed, 13205 warnings — 실패는 알려진 박스 실패뿐
+```
+
+### 5 raws 바로 밑 파일 — 한 줄 (짓지 않음)
+
+```
+도우미를 거기도 쓰려면  _process_with_retry 의 1 초 쉼 한 자리를 «쉬기 전후 크기 · 수정시각 견주기, 다르면 다시»로
+닿는 곳  _handle_event 로 들어오는 6 자리 전부(사건 둘 · 트리 · 외부 소스 · 점검 둘) — 외부 소스 파일까지
+크기     함수 하나 · 줄 수 안 쟀다. 다 쓴 파일은 지금과 같은 1 초, 쓰는 중인 파일만 늦어진다
+```
+
+### 말이 바뀐 것
+
+```
+로그   Tree ingestion deferred — N file(s) still being written after 600s, M finished file(s) dispatched: <폴더> (still writing: <이름 최대 5>; periodic sweep will retry)
+      그 줄을 읽는 시험 하나(test_never_stable_tree_is_deferred_untouched)는 같은 커밋
+문서   INGESTION_GUIDE §1.9 두 곳 · PRIMITIVES 정온 게이트 행 · CODE_MAP 5 곳 · RELEASE_LOG · RUN.md
+      마감이 take 가 파일을 보관으로 옮긴 바로 뒤 폴에 걸리면 「0 file(s) still being written … M finished」로 나올 수 있다 — 참이고 다음 점검이 마무리한다
+재기동  수집기 — 분리 안 한 배포면 서버. 소유자 몫, RUN.md 에 적음
+```

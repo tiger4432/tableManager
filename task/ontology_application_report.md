@@ -36472,3 +36472,58 @@ b340386fe
     (줄 610 근처 「collect=quantity … collect=entity」 는 날짜 붙은 옛 관측이라 둠)
 문서     CODE_MAP — subgraph_view(Points from · 쌓기 · 줄 Trend) · fold_views(rememberPick) · contrast_save_panel(Not set up) — 이 보고와 같은 커밋
 ```
+
+---
+
+## [C 응용] 10-08 총괄 메시지 — b8046608b · 2332c38fa QA. api.js 에 낡은 collect 문장 둘 남음
+
+```
+① 잘린 축    묶음 머리 = truncatedWords(cutBudgets(res.truncatedAxes, res.limits)) — 상태줄도 truncatedWords(one.budgets) 이고 one.budgets 가 같은 cutBudgets 에서 온다. 같은 함수 · 같은 말 (읽음)
+② «N without»  pointsOf 가 세는 것은 data.nodes 전부다. 그 노드가 무엇이냐가 답:
+              구성원 그대로 갈래  data.nodes = 구성원 -> 구성원 중 그 속성 없는 것 (총괄 말과 같음)
+              걸은 갈래(정의 한 걸음 · Points from)  data.nodes = 그 걷기의 답 전부 — 그런데 collect 를 주면 서버가 «collect 타입만» 돌려준다:
+                잰 것(잡아 둔 진짜 서버 답) recipe 한 걸음  collect measurement_event -> 노드 4 개, 타입 ['measurement_event'] (씨앗 recipe 없음)
+                                         process 묶음   collect measurement_event -> 노드 2 개, 타입 ['measurement_event'] (씨앗 process_event · 거쳐 간 wafer 없음)
+              -> 출발 노드 · 다른 타입 노드는 안 세어진다. 세어지는 것은 collect 타입인데 그 속성이 없는 노드(다른 칸을 잰 측정 등) — 뜻대로
+③ api.js     2332c38fa 가 둘을 고쳤다. 남은 낡은 문장 둘(client2/src/rnd_board/api.js):
+                줄 1015  // 「닿는 곳」은 언제나 `hops: 1` 로 묻습니다(COLLECTS.reach), 그래서 depth 는 «질문»입니다 --
+                줄 1894  * 🔴 `createWalk` 을 못 씁니다 -- 그쪽 `collect` 는 «화면이 선언한 질문 이름»이고, 이쪽은
+                -> 1015: COLLECTS 는 이제 없다(LEGACY_ROUTES). 1894: createWalk 의 키는 legacyRoute 이고 collect 는 거절한다 — 「같은 낱말이 두 뜻」은 이제 아니다
+              (1533 · 1557 의 「같은 collect」는 옛 이름을 쓴 날짜 붙은 설명 · 610 은 날짜 붙은 옛 관측 — 둠)
+문서         CODE_MAP subgraph_view(머리줄이 자른 축 전부) · fold_views(noValue) — 이 보고와 같은 커밋
+```
+
+---
+
+## [C 응용] 10-08 31802478c(하위 폴더는 다 쓴 파일부터) QA — 결함 못 찾음. 문서의 «절대» 한 군데에 조건을 닮
+
+```
+읽음     «다 씀» = _files_written — 두 스냅샷(FLATTEN_STABILITY_INTERVAL_SECONDS = 1.0 초 간격)에서 (크기, 수정 시각)이 같은 파일
+         한 패스에서 (경로, 그 모양) 한 번만 넘긴다 · 비워진 폴더는 트리 전체가 같을 때만 · 600 초 넘으면 쓰는 중인 것만 두고 유예 — 다 커밋 설명과 같음
+비교     raws/ 맨 위 파일은 고정 지연(sleep) 뒤 바로 읽는다 — 하위 폴더 파일의 규칙이 오히려 더 엄하다
+잃은 것  옛 규칙(트리 전체가 같아야 함)은 «옆 파일이 아직 바뀌는 동안» 잠깐 멈춘 쓰기도 지켜 줬다. 이제 파일마다라 1.0 초 넘게 멈춘 쓰기는 다 쓴 것으로 읽힌다
+         느린 네트워크 · 장비가 한 파일을 끊어 쓰면 반쪽이 들어갈 수 있다 — 운영 생산자가 그렇게 쓰는지는 소유자 지식. 안 쟀다
+문서     INGESTION_GUIDE · CODE_MAP · PRIMITIVES 의 「반쯤 쓴 파일은 읽지 않는다」 옆에 그 조건 — 이 보고와 같은 커밋
+```
+
+---
+
+## [C 응용] 10-08 총괄 메시지 — 31802478c 네 물음. 진짜 _ingest_directory_tree 로 잼(DB 0 · 임시 폴더만)
+
+```
+계기     probe_tree_quiet.py — IngestionHandler 의 진짜 _ingest_directory_tree · _wait_tree_quiescent · _snapshot_tree.
+         바꾼 것: _handle_event(처리 시간을 자고 파일을 옮김 = 보관) · settle_already_terminal(빈 집합) · 간격 0.2 s · 기한 1.0 s
+① 처리 시간   루프가 «cur 를 찍고 -> take 로 처리(인라인) -> cur == prev ? -> 기한?» 순이라, 기한(600 s)에 «처리 시간»이 든다
+   잰 것     f3 은 처음 0.05 s 에 한 번 자라고 멈춤 · f1 f2 처리 1.6 s(기한 1.0 s 넘김)
+            -> Tree ingestion deferred — 1 file(s) still being written … (still writing: f3) · f3 은 이번 판에 안 들어감
+            f3 은 그때 이미 1.7 s 째 멈춰 있었다 — «still writing» 은 처리 «전» 스냅샷으로 판정한다
+   운영에서  한 폴더의 다 쓴 파일 처리가 600 s 를 넘기면, 그 사이 다 쓴 파일이 «still writing» 으로 불리고 다음 점검(300 s)까지 남는다(늦음 · 데이터 손실 아님)
+            RUN.md 의 「N 이 늘 같은 이름이면 그 파일이 쉬지 않고 자라는 것」은 이때 틀린 읽기가 된다. «1 초» 판정 자체는 처리 뒤 창이 길어져 «더 엄해»지는 쪽
+② 보관 끔    한 판 안: (경로, 모양)을 taken 에 넣어 다시 안 넘김(읽음). 판을 넘어: 다음 점검이 트리를 다시 부르면 take 가 settle_already_terminal
+            (경로 · 크기 · 수정시각으로 이미 끝난 것)을 먼저 걸러 안 넘긴다 — 다시 넣지 않는다(읽음 · 이 갈래는 안 잼)
+③ 빈 폴더    _wait_tree_quiescent 가 True 일 때만 rmdir 로 간다 — 맞다. 단 «조용함»은 마지막 take 의 처리 «전» 스냅샷으로 판정한다
+   잰 것     g1 처리 중에 생산자가 lot2/incoming 을 만듦 -> 「Tree ingested 'lot2' … directory tree removed」, incoming 도 지워짐
+            이건 이 착지 «전»에도 같다(옛 코드도 조용함 판정 뒤 파일을 전부 처리하고 rmdir). 새 결함 아님 — 다만 「생산자가 아직 쓸 수 있어 조용할 때만」의 약속은 처리 시간만큼 낡은 판정이다
+④ RUN.md    볼 줄 둘(deferred · Tree ingested)은 코드 문장과 낱말까지 같다(600s 는 FLATTEN_STABILITY_MAX_WAIT_SECONDS 그대로). 「Tree ingestion incomplete … directory preserved」 줄은 RUN.md 에 없음(전부터 있던 줄)
+문서     INGESTION_GUIDE 정온 게이트 줄에 「600 초에 처리 시간도 든다 · 처리 중 다 쓴 파일은 다음 점검까지」 — 이 보고와 같은 커밋
+```
