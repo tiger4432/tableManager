@@ -1,3 +1,13 @@
+> ## [21:29 디자인] 상태 칸 근거가 끝까지 읽힌다 (총괄 10-08 · af5f2bbde 의 결함) — a9db721a3
+
+**결론** 근거를 배지 아래 줄로 내리고 칸 안에서 줄바꿈합니다(base.css, 생략표 없음). 진짜 빌드 1920×950 에서 두 화면 모두 근거가 잘린 줄 0 · 모두 칸 안입니다.
+- 그리드 State 칸(96 px, 폭 그대로) 근거 줄 수: waiting 0 · running 5 · stalled 7 · retrying 3 · paused 3 · set_aside 1 · failed 1 · done 0. 긴 근거를 가진 줄만 키가 커집니다 — Rules 칸과 폭을 나누면 키는 줄지만 규칙 이름이 모든 줄에서, 근거 없는 waiting 줄까지 두 줄이 되어 그대로 두었습니다.
+- 어드민: 같은 규칙에서 근거가 줄바꿈을 허락받자 표가 남는 폭을 Tables 칸에 주어 근거가 좁은 띠로 접혔습니다. 어드민 표는 칸마다 한 줄이 규칙이라 그 줄도 한 줄로 두었습니다(admin.html 한 줄): waiting 0 · running 1 · stalled 1 · retrying 1 · paused 1 · set_aside 1 · failed 1 · done 0.
+- RELEASE_LOG 항목과 chainStateCell 주석의 «잘린 근거는 툴팁»을 지금 그리는 것으로 고쳤습니다.
+- 스샷(그리드): `C:/Users/kk980/AppData/Local/Temp/claude/C--Users-kk980-Developments-assyManager/c2c07335-c153-4434-b3fd-738de17bd036/scratchpad/state/grid_states_wrap_1920x950.png` · 진짜 빌드 `/assets/main-eJDxrbn3.js` · `/assets/admin-BQzcf3p4.js`. 어드민은 브라우저 창에서 열어 잼(헤드리스 렌더러가 그 페이지에서 죽음).
+
+**시험** 러너 초록 · 계약 13 개 어긋남 0. 바뀐 것이 CSS 라 node 하니스는 그대로(231 · 65) — 게이트는 위 진짜 빌드 측정입니다.
+
 > ## [20:57 디자인] 두 대기열의 상태 칸 — 함수 하나 (총괄 248ae20cd · 서버 66b330480) — af5f2bbde
 
 **결론** 상태 칸 함수 하나(`chainStateCell` · `chainStateWhy`, chain_queue_panel.js)를 그리드 Queue 탭 State 칸과 어드민 Overview 대기열 Waiting 칸(나이 아래, 여섯째 칸 없음)이 같이 부릅니다. 지금 main 의 그리드가 그리던 «[object Object]» 가 이것으로 닫힙니다.
