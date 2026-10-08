@@ -1,4 +1,5 @@
 import asyncio
+import contextvars
 import copy
 import json
 import math
@@ -2269,6 +2270,34 @@ def _log_alignment_group_work(tx_id, summary) -> None:
         max(write_total - sum(write_steps.values()), 0.0))
 
 
+#: The chain queue line keys of the group about to run - set by `process_pending_groups`,
+#: read on the group's own thread (`to_thread` carries the context) and published as a work
+#: fact, so a × on the queue can tell the running line from the others (소유자 10-08).
+_GROUP_LINE_KEYS = contextvars.ContextVar("chain_group_line_keys", default=())
+
+
+def _still_waiting(db, events):
+    """-> (the events no one has ended meanwhile, their chain queue line keys). An operator's ×
+    sets rows aside while this worker holds them in its batch (소유자 10-08): asked before a
+    group runs, so a set-aside row does not run, and before its ending is written, so a mark
+    that landed while it ran is not written over."""
+    from database.models import DatabaseOutbox
+
+    by_id = {event.id: event for event in events}
+    ids, live, keys = list(by_id), set(), set()
+    for start in range(0, len(ids), WAITING_CHECK_CHUNK):
+        for event_id, key in (db.query(DatabaseOutbox.id, event_constants.queue_line_key(DatabaseOutbox))
+                              .filter(DatabaseOutbox.id.in_(ids[start:start + WAITING_CHECK_CHUNK]),
+                                      DatabaseOutbox.processed_chain.is_(False))):
+            live.add(event_id)
+            keys.add(key)
+    return [event for event in events if event.id in live], keys
+
+
+#: Rows per `IN` list of `_still_waiting` - under SQLite's bound-parameter limit.
+WAITING_CHECK_CHUNK = 1000
+
+
 async def process_chain_transaction_group(tx_id, events, db, rules):
     """Run one group off the event loop.
 
@@ -2305,6 +2334,10 @@ def _claimed_group_sync(tx_id, events, db, rules):
                 db_pid=db.connection().connection.dbapi_connection.get_backend_pid())
         except Exception:                                   # noqa: BLE001 - SQLite has none
             pass
+        heartbeat.note_work(line_keys=sorted(_GROUP_LINE_KEYS.get()))
+        # Written now, not at the next slice (20 s): a × lands on a group that has just started
+        # to look stuck, and it reads the pid and the line from this file (총괄 10-08).
+        heartbeat.beat("chain", note=_worker_note(), force=True)
         try:
             answer = _process_chain_transaction_group_sync(
                 tx_id, events, db, [r for r in rules if not runs_as_operation(r)])
@@ -2684,7 +2717,12 @@ async def process_pending_groups(db, group_order, groups, rules, db_session_fact
     for tx_id in group_order:
         if chain_control.paused() is not None:
             break                              # 🔴 the emergency stop: no new group
-        events_in_tx = groups[tx_id]
+        events_in_tx, line_keys = _still_waiting(db, groups[tx_id])
+        if not events_in_tx:
+            logger.info("[Chain] tx '%s' was set aside before it ran - %d event(s), not run",
+                        tx_id, len(groups[tx_id]))
+            continue
+        _GROUP_LINE_KEYS.set(tuple(line_keys))
         group_targets = _group_target_tables(events_in_tx, rules)
         # 🔴 «읽기»도 순서에 걸린다. 앞선 그룹이 실패한 표를 이 그룹이 «읽으면», 그 답은
         #    낡은 값 위에서 나오고 오류가 «안 난다» — 선언된 교차 다섯이 그 모양이었다.
@@ -2795,6 +2833,17 @@ async def process_pending_groups(db, group_order, groups, rules, db_session_fact
                 # 재시도·리플레이가 안전한 것은 «같은 값 업서트는 헛쓰기»라서다(총괄 e10c58e5e).
                 with alignment_batch_counts.stage("rollback"):
                     db.rollback()
+                # 🔴 A ROW SET ASIDE WHILE THE GROUP RAN IS NOT FAILED OR RETRIED (소유자 10-08). A ×
+                #    on a running line marks its rows, then cancels the query that fails it here -
+                #    and FAILED would write over the mark from the payload read at pick time.
+                set_aside_now = len(events_in_tx)
+                events_in_tx = _still_waiting(db, events_in_tx)[0]
+                set_aside_now -= len(events_in_tx)
+                if set_aside_now:
+                    logger.info("[Chain] tx '%s': %d event(s) were set aside while it ran - "
+                                "left set aside, not failed", tx_id, set_aside_now)
+                if not events_in_tx:
+                    continue
 
                 # Increment retry count for all events in the failed transaction group
                 failed_permanently_count = 0

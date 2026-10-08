@@ -2188,6 +2188,18 @@ def request_cancel(db, run_id: str) -> dict:
             f"stop. Its work is committed and this cannot undo it.")
 
     op, runner = row.op, row.runner
+    # 🔴 A QUEUED RUN HAS NOBODY TO ASK (총괄 10-08). `cancel_requested` is read only by a
+    #    runner, and it is an IN_FLIGHT state - on a run that never started it closed the gate for
+    #    ever and every run behind it waited for SQL. So it ends now, `cancelled`, if it is still
+    #    queued; one a daemon took in between goes on to the running answer below.
+    if row.state == RUN_QUEUED and _mark_run(run_id, state=RUN_CANCELLED, finished=True,
+                                             expect_state=RUN_QUEUED):
+        db.expire_all()
+        logger.info("[Retroactive] cancelled run_id=%s op=%s before it started", run_id, op)
+        moved = (db.query(models.RetroactiveRun)
+                 .filter(models.RetroactiveRun.run_id == run_id).first())
+        return {"run_id": run_id, "op": op,
+                "state": moved.state if moved else None, "released": True}
     if _runner_state(runner) == "orphaned":
         # 🔴 `failed`, NOT `cancelled` (총괄 판정 ①). Nobody stopped it - the process
         #    died - and its work did not finish and never will. `cancelled` would tell the

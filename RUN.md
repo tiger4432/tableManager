@@ -1,5 +1,30 @@
 # 지금 돌리면 되는 것
 
+> ## [10-08] **체인 대기열 «모든 줄»에 × — 이주 «없음» · 재기동 «필요»(서버 · 체인 워커)**
+>
+> ```
+> × 의 뜻      「그 변경들로는 체인 규칙을 안 돌린다」. 원천 행은 그대로 · 원장 따라가기도 그대로 · 지우지 않는다
+>             그 줄의 기다리는 체인 사건에 «운영자가 뺐다»(cancelled_by=operator · 사유)를 남긴다 — 비상 정지의 치워 두기와 같은 표시
+>             도는 묶음이면 그 질의도 끊는다. 체인 전체는 멈추지 않는다
+> 재기동       서버(× 라우트) · 체인 워커(빠진 줄을 안 집고, 끊긴 묶음이 표시를 안 덮음) — 소유자 몫
+> 되돌리기     그 행들을 다시 돌림: 어드민 Retroactive 탭 「Run set-aside events again」 (표 · 규칙 · 트랜잭션 중 하나)
+>             또는  python server/scripts/outbox_triage.py --rerun-set-aside --tables <표> --apply
+> 볼 줄        [Chain] tx '<열쇠>' was set aside before it ran - N event(s), not run
+>               = 워커가 이미 집어 둔 줄이었는데 × 가 먼저 닿았다 — 안 돌았다
+>             [Chain] tx '<열쇠>': N event(s) were set aside while it ran - left set aside, not failed
+>               = 도는 묶음에 × — 질의가 끊겼고 그 행은 «뺐다»로 남았다(재시도 없음). 이미 쓴 표는 남는다(묶음은 표마다 커밋)
+> 감사         audit_logs 의 source_name = chain_queue_skip 한 줄(표마다) — 누가 · 열쇠 · 사건 수
+> 소급 줄 ×     아직 시작 안 한(queued) 실행은 바로 cancelled — 게이트가 열리고 뒤의 실행이 다음 틱에 돈다
+>             도는 실행은 전과 같이 «멈춰 달라»(cancel_requested)
+> 같이 빨라짐    Retroactive 탭 「Set queued chain events aside」의 transactions 범위 — 대기열 전체를 읽던 것을 그 트랜잭션만
+> × 는 소급 게이트 뒤에 줄 서지 않는다 — 다른 소급이 돌고 있어도 그 자리에서 답한다
+> 대기열 화면    GET /admin/chain/queue 가 기다리는 행의 payload 를 «한 번»만 읽는다 — 줄 수와 무관하게 질의 몇 개로. 응답 모양 그대로
+>             볼 것: 응답 머리 Server-Timing 의 db 시간 · 질의 수(재기 수는 보고서)
+> 행 하나짜리 줄  outbox_id 칸(값)이 같이 온다 — transaction_id 의 «(no tx · outbox#N)» 글자는 옛 화면 몫으로 그대로
+> ```
+
+---
+
 > ## [10-08] **많은 갈래가 «하나도 안 나오던» 걷기 — 앞 20 을 그리고 나머지는 덩어리 — 이주 «없음» · 재기동 «필요»(서버)**
 >
 > ```

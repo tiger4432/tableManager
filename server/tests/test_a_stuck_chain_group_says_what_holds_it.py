@@ -37,6 +37,13 @@ OUTBOX_OK = {"pending": 0, "pending_capped": False, "oldest_age_seconds": None}
 SERVER_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
+@pytest.fixture(autouse=True)
+def _probe_events_are_still_waiting(monkeypatch):
+    """The probe's events are not outbox rows: each is still waiting - the worker asks before a
+    group runs and before its ending is written (소유자 10-08)."""
+    monkeypatch.setattr(iw, "_still_waiting", lambda db, events: (list(events), set()))
+
+
 @pytest.fixture()
 def fast(monkeypatch, tmp_path):
     """Seconds instead of minutes - the same code, shorter numbers."""

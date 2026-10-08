@@ -4647,49 +4647,59 @@ def get_chain_queue_depth(db: Session = Depends(get_db)):
     **아직 기다리는 행 중** 재시도된 수이므로, 이름이 그 좁힘을 말한다. 지나간 재시도는
     세지 않는다.
     """
+    from types import SimpleNamespace
+
     from sqlalchemy import func as _f
 
     outbox = models.DatabaseOutbox
     waiting_only = (outbox.processed_chain == False)  # noqa: E712 - 부분 인덱스의 술어 철자
 
-    waiting = db.query(_f.count()).select_from(outbox).filter(waiting_only).scalar()
-    retried = (db.query(_f.count()).select_from(outbox)
-               .filter(waiting_only, outbox.retry_count > 0).scalar())
-
-    # ── 누가 이 행을 비우나 ────────────────────────────────────────────────────
-    # 🔴 이 라우트의 이름은 「체인 대기열」인데 이 표를 비우는 것은 «둘»이다. 합친 수는
-    # 「체인이 밀렸다」로 읽히고, 2026-09-04 실제로 그렇게 읽혔다 — 소급 실행 «한 건»이
-    # 제자리에서 나이만 먹는 동안 /health 는 체인을 건강하다 했고, 화면은 사람을 체인으로
-    # 보냈다. 그래서 깊이와 나이를 «소유자별로» 가른다.
-    #
-    # 같은 부분 인덱스(`idx_outbox_unprocessed`)를 탄다 — EXPLAIN 상 위 count 와 같은
-    # 스캔이고, 훑는 범위는 «대기 중인 행»이지 표 전체가 아니다. `min(created_at)` 도
-    # 여기서는 싸다: 위 주석이 경고하는 전수 훑기는 «WHERE 가 없을 때»의 이야기다.
-    by_type = (db.query(outbox.event_type, _f.count(), _f.min(outbox.created_at))
-               .filter(waiting_only).group_by(outbox.event_type).all())
-
-    # ── 대기 «줄» — 한 잡은 한 줄 ────────────────────────────────────────────────
+    # 🔴 THE PAYLOAD OF THE WAITING ROWS IS READ ONCE (소유자 10-08 「대기열 화면 로딩 5초」 · 총괄 6d7046a42).
+    #    Two reads where five were, two of them over every payload: the kinds - depth, retries, the
+    #    owners' depth and age - need no payload; the lines and each line's tables and kinds come from
+    #    one grouping by (line, kind, table), ranked by the line's first id and cut at the cap in SQL,
+    #    so only the listed lines come back. Both scan the waiting rows only (`idx_outbox_unprocessed`).
+    # 🔴 이 표를 비우는 것은 «둘»이다 — 깊이와 나이를 «소유자별로» 가른다(2026-09-04, 소급 실행 «한 건»이
+    #    나이만 먹는 동안 화면이 사람을 체인으로 보냈다).
     # 🔴 [총괄 b3a4334db] 줄의 신원은 소급 실행(`run_id`)이 있으면 그것, 없으면 `transaction_id`,
-    #    둘 다 없으면 그 행 하나. 접기는 «자르기 전»에 SQL 로 하고 상한은 «줄»에 건다.
-    # ⚰️ 전에는 «앞에서부터 200 이벤트»를 자른 «뒤» 파이썬으로 접었다(색인 없는 payload 를
-    #    SQL 로 묶으면 전수를 훑는다는 이유). 그래서 한 잡이 200 이벤트를 넘기면 그 뒤 잡이 안
-    #    보였고, 한 잡이 연산 · 워커 쓰기마다 tx 를 따로 지어 여러 줄이 됐다. 훑는 범위는 그때나
-    #    지금이나 «기다리는 행»(부분 인덱스 `idx_outbox_unprocessed`)이다.
-    from sqlalchemy import String as _String, cast as _cast, literal as _literal
+    #    둘 다 없으면 그 행 하나 — `event_constants.queue_line_key`, × 와 워커가 같이 부르는 하나.
+    #    상한은 «줄»에 건다(⚰️ «앞 200 이벤트»를 자른 뒤 접으면 큰 잡 뒤의 잡이 안 보였다).
+    from sqlalchemy import select as _select
+
+    kinds = (db.query(outbox.event_type, _f.count(), _f.min(outbox.created_at),
+                      _f.count().filter(outbox.retry_count > 0))
+             .filter(waiting_only).group_by(outbox.event_type).order_by(outbox.event_type).all())
+    waiting = sum(count for _kind, count, _oldest, _retried in kinds)
+    retried = sum(retried_of_kind for _kind, _count, _oldest, retried_of_kind in kinds)
+    by_type = [(kind, count, oldest) for kind, count, oldest, _retried in kinds]
+
     run_of = outbox.payload["run_id"].as_string()
-    line_key = _f.coalesce(run_of, outbox.payload["transaction_id"].as_string(),
-                           _literal("outbox#").concat(_cast(outbox.id, _String)))
-    lines = (db.query(line_key.label("key"),
-                      _f.max(run_of).label("run"),
-                      _f.count().label("events"),
-                      # 묶인 이벤트는 «몇 행»을 싣는지 들고 있다(`row_count`); 행 하나짜리는 1
-                      _f.sum(_f.coalesce(outbox.payload["row_count"].as_integer(), 1)).label("rows"),
-                      _f.min(outbox.id).label("first_id"),
-                      _f.min(outbox.created_at).label("created_at"),
-                      _f.max(outbox.retry_count).label("max_retry"),
-                      _f.count().over().label("lines_total"))
-             .filter(waiting_only).group_by(line_key)
-             .order_by(_f.min(outbox.id)).limit(_QUEUE_LIST_CAP).all())
+    line_key = event_constants.queue_line_key(outbox)
+    pairs = (_select(line_key.label("key"), _f.max(run_of).label("run"), outbox.table_name,
+                     outbox.event_type, _f.count().label("events"),
+                     # 묶인 이벤트는 «몇 행»을 싣는지 들고 있다(`row_count`); 행 하나짜리는 1
+                     _f.sum(_f.coalesce(outbox.payload["row_count"].as_integer(), 1)).label("rows"),
+                     _f.min(outbox.id).label("first_id"), _f.min(outbox.created_at).label("created_at"),
+                     _f.max(outbox.retry_count).label("max_retry"))
+             .where(waiting_only).group_by(line_key, outbox.table_name, outbox.event_type).subquery())
+    by_line = _select(pairs, _f.min(pairs.c.first_id).over(partition_by=pairs.c.key)
+                      .label("line_first")).subquery()
+    numbered = _select(by_line, _f.dense_rank().over(order_by=(by_line.c.line_first, by_line.c.key))
+                       .label("line_no")).subquery()
+    counted = _select(numbered, _f.max(numbered.c.line_no).over().label("lines_total")).subquery()
+    folded = {}
+    for pair in db.execute(_select(counted).where(counted.c.line_no <= _QUEUE_LIST_CAP)
+                           .order_by(counted.c.line_no, counted.c.table_name, counted.c.event_type)):
+        line = folded.setdefault(pair.key, {
+            "key": pair.key, "run": None, "events": 0, "rows": 0, "first_id": pair.line_first,
+            "created_at": None, "max_retry": 0, "lines_total": pair.lines_total, "pairs": []})
+        line["run"] = max(filter(None, (line["run"], pair.run)), default=None)
+        line["events"] += pair.events
+        line["rows"] += pair.rows or 0
+        line["created_at"] = min(filter(None, (line["created_at"], pair.created_at)), default=None)
+        line["max_retry"] = max(line["max_retry"], pair.max_retry or 0)
+        line["pairs"].append((pair.table_name, pair.event_type))
+    lines = [SimpleNamespace(**line) for line in folded.values()]
     # 가장 오래 기다린 줄이 머리다(`id` 는 단조) — 그 줄의 가장 이른 시각이 큐 전체의 것
     oldest = lines[0].created_at if lines else None
 
@@ -4715,11 +4725,8 @@ def get_chain_queue_depth(db: Session = Depends(get_db)):
     keys = [line.key for line in lines]
     detail = {key: {"tables": [], "event_types": [], "retroactive": []} for key in keys}
     if keys:
-        for key, table_name, event_type in (
-                db.query(line_key, outbox.table_name, outbox.event_type)
-                .filter(waiting_only, line_key.in_(keys))
-                .group_by(line_key, outbox.table_name, outbox.event_type)
-                .order_by(line_key, outbox.table_name, outbox.event_type).all()):
+        for key, table_name, event_type in ((line.key, table_name, event_type) for line in lines
+                                            for table_name, event_type in line.pairs):
             d = detail[key]
             # 🔴 «없는 표 이름»은 표로 안 센다. 표가 없는 행은 자리를 채우려고 이름을 «지어낸다»
             #    (`event_constants.PLACEHOLDER_TABLE_NAMES` — 그 선언이 「이 이름들은 표가 아니다」
@@ -4731,10 +4738,13 @@ def get_chain_queue_depth(db: Session = Depends(get_db)):
                 d["event_types"].append(event_type)
         # [S-36] 소급 통제 행은 «자기 payload 에» 누가 · 무슨 op · 어느 인자를 들고 있다.
         #    ⚠️ 키가 «없는» 것(소급 행이 안 섞임)과 칸이 None(아무도 안 적음)은 다르다.
+        #    Asked only for the listed lines that hold one - it read every waiting row to find none.
+        held = [d_key for d_key, d in detail.items()
+                if event_constants.EVENT_RETROACTIVE_RUN in d["event_types"]]
         for row in (db.query(outbox.id, outbox.payload, line_key)
-                    .filter(waiting_only, line_key.in_(keys),
+                    .filter(waiting_only, line_key.in_(held),
                             outbox.event_type == event_constants.EVENT_RETROACTIVE_RUN)
-                    .order_by(outbox.id).all()):
+                    .order_by(outbox.id).all() if held else ()):
             _rp = get_payload_dict(row.payload) or {}
             detail[row[2]]["retroactive"].append({
                 "run_id": _rp.get("run_id"), "op": _rp.get("op"),
@@ -4758,13 +4768,15 @@ def get_chain_queue_depth(db: Session = Depends(get_db)):
     for line in lines:
         d = detail[line.key]
         is_run = bool(line.run)
-        is_row = not is_run and line.key == f"outbox#{line.first_id}"
+        is_row = not is_run and line.key == f"{event_constants.QUEUE_ROW_KEY_PREFIX}{line.first_id}"
         waiting_transactions.append({
             # 줄의 신원 셋 중 하나만 찬다 — 잡(run_id) · 트랜잭션 · 그 행 하나
             "run_id": line.run if is_run else None,
             "op": runs.get(line.run) if is_run else None,
             "transaction_id": (None if is_run else
                                f"(no tx · outbox#{line.first_id})" if is_row else line.key),
+            # a one-row line's row as a value, for the screen to copy (총괄 6c678dd13 · 앱 QA 2fdc6b16a)
+            **({"outbox_id": line.first_id} if is_row else {}),
             "events": int(line.events),
             "rows": int(line.rows or 0),
             "tables": d["tables"],
@@ -4775,6 +4787,8 @@ def get_chain_queue_depth(db: Session = Depends(get_db)):
             "max_retry": int(line.max_retry or 0),
             "waiting_seconds": _age(line.created_at),
             "waiting_at": to_local_str(line.created_at) if line.created_at is not None else None,
+            # × on this line: POST /admin/chain/queue/cancel {"key"} (소유자 10-08)
+            "cancel": {"key": line.key},
         })
 
     owners = {}
@@ -4879,6 +4893,61 @@ def get_chain_queue_depth(db: Session = Depends(get_db)):
             "processed_recently": "processed_at 에 인덱스가 없어 표 전체를 훑는다 (EXPLAIN 비용 272,817)",
         },
     }
+
+
+@app.post("/admin/chain/queue/cancel", dependencies=[Depends(require_admin_token)])
+def skip_chain_queue_line(request: Request, body: dict = Body(...), db: Session = Depends(get_db)):
+    """× on one chain queue line (소유자 10-08): 「그 변경들로는 체인 규칙을 안 돌린다」.
+
+    Its waiting chain events are set aside, not deleted - the emergency stop's own mark
+    (`chain/set_aside`) - so the source rows and the ledger follow-up stay as they are, and the
+    rule's replay brings them back (`rerun_set_aside`). The mark is committed BEFORE the running
+    group's query is cancelled, so that group's failure finds it and leaves it.
+    A retroactive run's line goes to the run's own cancel and answers what it answers. A key that
+    no longer waits answers 200 with what became of it - a line often empties between the list
+    and the click."""
+    from chain import control, set_aside
+
+    key = body.get("key") if isinstance(body, dict) else None
+    prefix = event_constants.QUEUE_ROW_KEY_PREFIX
+    if (not isinstance(key, str) or not key.strip()
+            or (key.startswith(prefix) and not key[len(prefix):].isdigit())):
+        raise HTTPException(status_code=422,
+                            detail="key must be the cancel.key a line of GET /admin/chain/queue carries")
+    if db.query(models.RetroactiveRun.run_id).filter(models.RetroactiveRun.run_id == key).first():
+        return cancel_retroactive_run(key, db)
+    outbox = models.DatabaseOutbox
+    waiting = (db.query(outbox.id, outbox.event_type)
+               .filter(outbox.processed_chain == False,  # noqa: E712 - 부분 인덱스의 술어 철자
+                       *event_constants.queue_line_rows(outbox, key)).all())
+    if not waiting:
+        return {"skipped_events": 0, "already": _queue_line_already(db, key)}
+    by = sso.who(request, request.headers.get("X-User") or set_aside.OPERATOR)
+    chain_ids = [row.id for row in waiting if row.event_type in event_constants.CHAIN_OWNED_EVENT_TYPES]
+    done = (set_aside.set_aside(db, ids=chain_ids, apply=True,
+                                reason="skipped from the chain queue by %s" % by)
+            if chain_ids else {"marked": 0, "by_table": {}})
+    for table, events in sorted(done["by_table"].items()):
+        crud.create_audit_log(db, table, "*", "*", key, events, set_aside.QUEUE_SKIP_SOURCE, by)
+    db.commit()
+    answer = {"skipped_events": done["marked"],
+              "cancelled_pid": control.cancel_running_group(db, line_key=key)}
+    if len(waiting) > len(chain_ids):
+        answer["kept"] = {"events": len(waiting) - len(chain_ids),
+                          "why": "not chain events - the worker that owns them empties them"}
+    return answer
+
+
+def _queue_line_already(db, key):
+    """What became of a queue line that no longer waits: its rows set aside, ended, or none."""
+    outbox = models.DatabaseOutbox
+    rows = db.query(outbox.id).filter(*event_constants.queue_line_rows(outbox, key))
+    if rows.first() is None:
+        return "gone"
+    from chain import set_aside
+
+    marked = rows.filter(outbox.payload[event_constants.CANCEL_MARK].as_string() == set_aside.OPERATOR)
+    return "set_aside" if marked.first() is not None else "processed"
 
 
 _QUEUE_ROWS_CAP = 200
