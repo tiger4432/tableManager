@@ -131,9 +131,12 @@ def main(argv=None) -> int:
         return 2
 
     from chain.ingestion_worker import loaded_chain_rules
+    from database import crud, models
     from database.database import SessionLocal, engine
     from ledger.setup import load_setup
 
+    # A script process has registered no table yet: the same read as the other entry points (총괄 151688c2b).
+    models.init_dynamic_models(crud.load_table_config_or_raise())
     db = SessionLocal()
     try:
         setup, rules = load_setup(), loaded_chain_rules()

@@ -31,6 +31,7 @@ RETURNS = ("https://testserver/auth/callback", "https://testserver/")
 JWKS = ISSUER + "/discovery/keys"
 TOKEN = ISSUER + "/oauth2/token"
 AUTHORIZE = ISSUER + "/oauth2/authorize"
+END_SESSION = ISSUER + "/oauth2/logout"
 UPN = "kim@corp.test"
 ADFS_CLAIMS = {"upn": UPN, "unique_name": "CORP\\kim", "sub": "s-kim"}
 ADMIN_TOKEN = "worker-token-for-tests"
@@ -55,6 +56,8 @@ class FakeIssuer:
         self.secret = CLIENT_SECRET            # None: the client is public (no secret, PKCE only)
         self.exchanges = []                    # (Authorization header, form) of every code exchange
         self.token_refusal = None              # (error, description): the token endpoint refuses
+        self.end_session = END_SESSION         # None: discovery names no end_session_endpoint
+        self.discovery_down = False            # True: discovery answers 503
 
     def key(self, kid):
         return self.keys.setdefault(kid, RSAKey.generate_key(2048, parameters={"kid": kid}))
@@ -81,9 +84,13 @@ class FakeIssuer:
         address = request.url
         self.answered.append(address)
         if address == ISSUER + "/.well-known/openid-configuration":
-            return self._answer(request, 200, {
-                "issuer": ISSUER, "authorization_endpoint": AUTHORIZE, "token_endpoint": TOKEN,
-                "jwks_uri": JWKS, "id_token_signing_alg_values_supported": self.algorithms})
+            if self.discovery_down:
+                return self._answer(request, 503, {})
+            meta = {"issuer": ISSUER, "authorization_endpoint": AUTHORIZE, "token_endpoint": TOKEN,
+                    "jwks_uri": JWKS, "id_token_signing_alg_values_supported": self.algorithms}
+            if self.end_session:
+                meta["end_session_endpoint"] = self.end_session
+            return self._answer(request, 200, meta)
         if address == JWKS:
             kids = self.published.pop(0) if len(self.published) > 1 else self.published[0]
             keys = [self.key(k).as_dict(private=False) for k in kids]
@@ -316,11 +323,12 @@ def test_off_never_says_login_required_and_the_admin_token_still_rules(off):
                client.get("/admin/chain/pause", headers={auth.ADMIN_TOKEN_HEADER: "wrong"}),
                client.get("/admin/chain/pause", headers={auth.ADMIN_TOKEN_HEADER: ADMIN_TOKEN}),
                client.get("/auth/me"), client.get("/auth/keys"), client.get("/auth/login"),
-               client.get("/admin", headers={"Accept": "text/html"}, follow_redirects=False)]
+               client.get("/admin", headers={"Accept": "text/html"}, follow_redirects=False),
+               client.post("/auth/logout"), client.get(sso.SIGNED_OUT_PATH)]
     assert [answers[0].status_code, answers[0].headers[CHALLENGE]] == [401, auth.ADMIN_TOKEN_HEADER]
     assert [answers[1].status_code, answers[1].headers[CHALLENGE]] == [403, auth.ADMIN_TOKEN_HEADER]
     assert answers[2].status_code == 200
-    assert answers[4].status_code == 404 and answers[5].status_code == 404
+    assert [answers[i].status_code for i in (4, 5, 7, 8)] == [404, 404, 404, 404]
     assert all("login_required" not in answer.text for answer in answers)
     with client.websocket_connect("/ws"):
         pass
@@ -510,12 +518,44 @@ def test_admin_routes_want_a_name_on_the_list_and_not_the_token(issuer):
 
 # --- leaving -----------------------------------------------------------------------------------
 
-def test_signing_out_ends_the_session(issuer):
+def test_signing_out_ends_the_session_and_sends_the_browser_to_end_the_issuers(issuer):
     client = _client()
     _sign_in(client, issuer)
-    assert client.post("/auth/logout").status_code == 204
+    out = client.post("/auth/logout")
+    assert (out.status_code, out.json()) == (200, {"next": END_SESSION})     # no return address written: none sent
+    assert "%s=" % sso.COOKIE_NAME in out.headers["set-cookie"] and "Max-Age=0" in out.headers["set-cookie"]
     assert _session_rows() == []
     assert client.get("/auth/keys").status_code == 401
+
+
+def test_a_written_return_address_rides_to_the_issuer_as_written(issuer):
+    back = "https://testserver/auth/signed-out?from=adfs"
+    issuer.config(post_logout_redirect_uri=back)
+    client = _client()
+    _sign_in(client, issuer)
+    sent = urlsplit(client.post("/auth/logout").json()["next"])
+    assert "%s://%s%s" % (sent.scheme, sent.netloc, sent.path) == END_SESSION
+    assert parse_qs(sent.query) == {"post_logout_redirect_uri": [back]}
+
+
+@pytest.mark.parametrize("issuer_says", ["no-end-point", "discovery-down"])
+def test_without_the_issuers_end_point_the_browser_stops_on_signed_out(issuer, caplog, issuer_says):
+    client = _client()
+    _sign_in(client, issuer)
+    issuer.end_session = None
+    issuer.discovery_down = issuer_says == "discovery-down"
+    with caplog.at_level(logging.WARNING, logger="Server"):
+        out = client.post("/auth/logout")
+    assert (out.status_code, out.json()) == (200, {"next": sso.SIGNED_OUT_PATH})
+    assert _session_rows() == []
+    assert any("the issuer's sign-in did not end" in r.getMessage() for r in caplog.records)
+
+
+def test_signed_out_is_open_says_so_and_moves_nowhere(issuer):
+    page = _client().get(sso.SIGNED_OUT_PATH, follow_redirects=False)
+    assert page.status_code == 200 and "location" not in page.headers
+    assert "<title>Signed out</title>" in page.text and '<a href="/auth/login">Sign in</a>' in page.text
+    assert "<script" not in page.text and "http-equiv" not in page.text
 
 
 def test_a_session_past_its_hours_is_no_one(issuer):

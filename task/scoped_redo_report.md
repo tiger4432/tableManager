@@ -74743,3 +74743,95 @@ sqlite 전체   6 failed, 8005 passed, 358 skipped, 3 xfailed, 13235 warnings �
 문서    DEPLOY_SETUP §2-1 · CODE_MAP sso 절 · RELEASE_LOG · RUN.md
 재기동  서버 — 소유자 몫, RUN.md 에 적음
 ```
+
+---
+
+## [10-08] 고침 — 표 비우기 도구가 명령으로 돌 때 모든 표를 거절하던 것 8f4f474e2 (총괄 151688c2b · 소유자 10-08)
+
+어느 DB · 어느 스키마 · 지운 것 — 시험은 assy_test 의 assy_pytest_pg_<pid>_<worker>(돌 때마다 새 이름, 끝에 스키마째 DROP) · public 안 씀
+
+```
+고침     scripts/empty_table.py main() 이 보고 · 비우기 전에 models.init_dynamic_models(crud.load_table_config_or_raise()) — schema_drift 와 같은 읽기
+게이트   test_main_run_as_a_script_registers_the_declared_tables_itself — 그 세상의 표를 DYNAMIC_TABLES 에서 빼고(새 프로세스와 같은 처지)
+         main 에는 새 프로세스가 읽을 것만 준다(table_config 경로 · 세션 · 원장 설정). 보고 첫 줄 「표 hc_official — 행 2 」를 단언
+         고치기 전 코드  빨강 — 「거절: 'hc_official' 는 선언된 표가 아닙니다 (table_config)」 (소유자가 본 문장 그대로)
+변이     main() registers no table — 1 failed, 4 passed, 8376 deselected, 14 warnings · test_main_run_as_a_script_registers_the_declared_tables_itself
+         md5 전후 같음
+그 파일   test_a_table_is_emptied_whole_with_what_it_carried — 5 passed, 8376 deselected, 16 warnings
+말       RUN.md 한 절(6 · 7 명령 그대로, 우회 불필요) · RELEASE_LOG 고침 한 줄. 재기동 없음 — git pull 만
+```
+
+---
+
+## [10-08] 로그아웃이 ADFS 로그인도 끝낸다 4f39aff3b (총괄 02b372670 · eb6e5f9ab · 소유자 「ㄷ 둘 다」 · 「토큰 없이 먼저」)
+
+어느 DB · 어느 스키마 · 지운 것 — 시험은 스위트의 sqlite 메모리 DB(auth 표 셋은 시험마다 비움) · 설정은 임시 파일. PG 안 씀 · public 안 씀
+
+### 1 무엇
+
+```
+POST /auth/logout   세션 행 · 쿠키를 «먼저» 지우고 200 {"next": …}
+next                설정 문서의 end_session_endpoint — auth_config.json 의 post_logout_redirect_uri 를 «적었을 때만» 실어 보냄(authlib add_params_to_uri)
+                    끝 주소 없음 · 설정 문서 못 읽음 -> /auth/signed-out + 경고 한 줄(ADFS 로그인은 안 끝났다)
+GET /auth/signed-out  Signed out + Sign in(/auth/login). 자동 이동 없음. /auth/* 라 열림. 꺼져 있으면 404
+한 모양              _page — 거절 페이지(_refused)와 Signed out 이 같은 함수
+안 한 것            id_token 칸 · id_token_hint · state(소유자 「토큰 없이 먼저」) · 클라 버튼(클라 몫)
+```
+
+### 2 게이트 — 같은 픽스처(issuer, 돌아올 주소 둘)
+
+| 칸 | 답 | 시험 |
+|---|---|---|
+| 세션 있음 · 칸 없음 | 행 0 · 쿠키 지움 · next = 끝 주소 그대로(post_logout_redirect_uri 없음) | test_signing_out_ends_the_session_and_sends_the_browser_to_end_the_issuers 초록 (2/2) |
+| 칸 있음 | next 에 그 값 그대로(인코딩) | test_a_written_return_address_rides_to_the_issuer_as_written 초록 (2/2) |
+| end_session 없음 · 설정 문서 못 읽음 | next = /auth/signed-out · 행 0 · 경고 줄 | test_without_the_issuers_end_point_the_browser_stops_on_signed_out 초록 (4/4) |
+| /auth/signed-out | 200 · 로그인 없이 · 이동 없음 · Sign in 링크 | test_signed_out_is_open_says_so_and_moves_nowhere 초록 (2/2) |
+| SSO 꺼짐 | logout · signed-out 둘 다 404 (logout 은 전과 같음) | test_off_never_says_login_required_and_the_admin_token_still_rules 초록 (5/5) |
+
+### 3 변이 (빨강 = «실패한 시험», 기준 먼저 초록, md5 전후 같음)
+
+```
+BASELINE                                           128 passed, 6 warnings
+an unreadable discovery is not caught              2 failed, 126 passed, 6 warnings
+      FAILED test_without_the_issuers_end_point_the_browser_stops_on_signed_out[https://testserver/-discovery-down]
+      FAILED test_without_the_issuers_end_point_the_browser_stops_on_signed_out[https://testserver/auth/callback-discovery-
+an unwritten return address is sent anyway         2 failed, 126 passed, 6 warnings
+      FAILED test_signing_out_ends_the_session_and_sends_the_browser_to_end_the_issuers[https://testserver/]
+      FAILED test_signing_out_ends_the_session_and_sends_the_browser_to_end_the_issuers[https://testserver/auth/callback]
+no end point sends the browser to sign in          4 failed, 124 passed, 6 warnings
+      FAILED test_without_the_issuers_end_point_the_browser_stops_on_signed_out[https://testserver/-discovery-down]
+      FAILED test_without_the_issuers_end_point_the_browser_stops_on_signed_out[https://testserver/-no-end-point]
+      FAILED test_without_the_issuers_end_point_the_browser_stops_on_signed_out[https://testserver/auth/callback-discovery-
+      FAILED test_without_the_issuers_end_point_the_browser_stops_on_signed_out[https://testserver/auth/callback-no-end-poi
+OLD (origin/main sso.py)                           15 failed, 113 passed, 6 warnings
+      FAILED test_a_written_return_address_rides_to_the_issuer_as_written[https://testserver/]
+      FAILED test_a_written_return_address_rides_to_the_issuer_as_written[https://testserver/auth/callback]
+      FAILED test_off_never_says_login_required_and_the_admin_token_still_rules[absent]
+      FAILED test_off_never_says_login_required_and_the_admin_token_still_rules[enabled-as-text]
+      FAILED test_off_never_says_login_required_and_the_admin_token_still_rules[syntax-error]
+      FAILED test_off_never_says_login_required_and_the_admin_token_still_rules[top-level-array]
+      FAILED test_off_never_says_login_required_and_the_admin_token_still_rules[top-level-null]
+      FAILED test_signed_out_is_open_says_so_and_moves_nowhere[https://testserver/]
+      FAILED test_signed_out_is_open_says_so_and_moves_nowhere[https://testserver/auth/callback]
+      FAILED test_signing_out_ends_the_session_and_sends_the_browser_to_end_the_issuers[https://testserver/]
+      FAILED test_signing_out_ends_the_session_and_sends_the_browser_to_end_the_issuers[https://testserver/auth/callback]
+      FAILED test_without_the_issuers_end_point_the_browser_stops_on_signed_out[https://testserver/-discovery-down]
+      FAILED test_without_the_issuers_end_point_the_browser_stops_on_signed_out[https://testserver/-no-end-point]
+      FAILED test_without_the_issuers_end_point_the_browser_stops_on_signed_out[https://testserver/auth/callback-discovery-
+      FAILED test_without_the_issuers_end_point_the_browser_stops_on_signed_out[https://testserver/auth/callback-no-end-poi
+```
+
+### 4 스위트
+
+```
+sqlite 전체   5 failed, 8014 passed, 359 skipped, 3 xfailed, 13225 warnings — 실패는 알려진 박스 실패뿐
+```
+
+### 말이 바뀐 것
+
+```
+전선  POST /auth/logout 204 -> 200 {"next"} — 클라 버튼은 204 면 전처럼 새로고침이라 착지 순서 무관(총괄 지시)
+로그  [sso] Signed out here only: <the issuer's discovery names no end_session_endpoint | … could not be read (…)>, so the issuer's sign-in did not end.
+문서  DEPLOY_SETUP §2-1(칸 · 로그아웃 · 거절 줄) · CODE_MAP sso 라우트 행 · RELEASE_LOG · RUN.md(IT 에 등록할 주소 그대로)
+재기동  서버 — 소유자 몫. IT 등록 뒤 칸을 적을 때 한 번 더
+```
