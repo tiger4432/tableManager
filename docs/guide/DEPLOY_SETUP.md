@@ -442,6 +442,15 @@ curl http://localhost:8080/api/transfer-plan/stages
           [sso] OFF - redirect_uri (…) is not an https address       https 앞단 뒤에서만 켠다
           [sso] OFF - enabled is not true in auth_config.json        꺼짐(기본)
 거절 줄   [sso] The identity provider refused the sign-in: invalid_client - …   ADFS 가 비밀을 원한다 -> IT 에 클라이언트 비밀 받기(화면에도 같은 문장과 Try again)
+막힐 때   (10-08 소유자 서버 첫 로그인에서 실제로 막힌 둘)
+          ① 프록시 — /auth/login 이 «HTTPSConnectionPool … connect timeout» 으로 실패하고 화면에는 500 으로 보인다(그 길은 예외를 안 잡는다)
+             서버의 requests 는 윈도우에서 환경변수에 프록시가 없으면 시스템(인터넷 옵션) 프록시를 읽는다. curl 은 안 읽어서 curl 은 되고 서버는 안 된다
+             고침: NO_PROXY=<ADFS 호스트> 를 «서버를 띄우는 터미널» 환경에 — PowerShell 은 $env:NO_PROXY = "<ADFS 호스트>" 뒤 그 터미널에서 기동
+                   (setx 는 이미 떠 있는 터미널 · VS Code 원격 터미널에 안 들어간다)
+             확인: 그 터미널에서 python -c "import requests; print(requests.utils.get_environ_proxies('<issuer>/.well-known/openid-configuration'))" 가 {}
+             돌아올 주소에서 같은 일이 나면 «Sign-in refused: the ID token did not verify (ConnectTimeout)» 거절 페이지로 보인다 — 서버의 ADFS 요청 시한 10초
+          ② client_id — ADFS 화면이 «client id 가 잘못»이면 auth_config.json 의 client_id 를 IT 가 등록한 OIDC 클라이언트 식별자(GUID)로 맞추고 재기동
+             앱 이름이나 신뢰 당사자 식별자(https://…)가 아니다. 이때 서버 로그에 돌아올 주소의 code= 요청은 0 이다(ADFS 가 돌려보내기 전에 거절)
 끄기      enabled false + 재기동
 ```
 

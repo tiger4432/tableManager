@@ -64683,3 +64683,56 @@ OUT  그 밖 — 정의 노드(레시피)에서 한 걸음 더 가져온 다른 
 ```
 
 > **[총괄 -> 구현자] 10-08 — 31802478c 확인(시험 24 · 총괄 변이 셋 빨강). 소유자 「쉬기 — 안정 우선」: 시연(10-12) 전 새 서버 일 없음. 앱 QA 결함만 고친다. raws 바로 밑 파일 판정 · 원장 후속 묶기는 시연 뒤**
+
+---
+
+> **[총괄 -> 구현자] 10-08 — SSO «들어올 사람» 목록 칸 · 시연 전 («쉬기»를 이 한 건만 푼다) (소유자 10-08 「회사 사람 접속 아무나 다 되는데」 -> 「ㄴ 파일 목록」 · 「시연 전」)**
+
+```
+도착지   auth_config.json 에 «들어올 사람» 칸이 있으면 그 이름들과 admins 만 화면 · API 에 들어온다. 칸이 없으면 오늘처럼 회사 로그인 되는 사람 누구나
+두 줄    「보기 접속을 막으려면 auth_config.json 의 users 에 이름 목록을 적고 재기동합니다.
+          관리는 지금처럼 admins 입니다 — admins 는 users 에 없어도 들어옵니다」
+칸       이름은 users(admins 와 같은 모양 · 같은 읽기 settings() 한 곳). 이름 비교는 admins 와 «같은 함수 하나»(지금 is_admin 의 casefold) — 둘째 비교를 적지 않는다
+         없음 · null  -> 제한 없음(오늘)
+         []           -> admins 만
+         목록이 아님   -> admins 만(닫힌 쪽) + 기동 배너 경고 한 줄(admins_unread 와 같은 모양) — 잘못 적은 값이 «누구나»로 열리면 안 된다
+확인 자리 로그인 완료(_returned): 목록 밖이면 세션을 «안 만들고» 403 한 문장(이름 · auth_config.json users · 관리자에게)
+         요청마다(admit): 쿠키 · 개인 키로 알아본 이름이 목록 밖이면 — 화면 GET 은 같은 문장의 403 페이지(로그인으로 다시 보내지 않는다 — 돌기 막기) · API 는 403 JSON(reason 하나)
+         그래서 목록에서 빼면 열린 세션 · 개인 키도 다음 요청부터 막힌다. /health · /internal/* · /auth/* 는 오늘 그대로
+안 하는 것 그룹 클레임(ㄷ) · 화면에서 목록 고치기 · 설정 다시 읽기(바꾸면 재기동 — 오늘 규칙)
+게이트(표로, 같은 픽스처)
+  users 없음                     -> 아무 로그인 이름이나 화면 200 (오늘)
+  users ["kim"]                  -> kim 200 · lee 는 로그인 완료에서 403 문장 + auth_sessions 행 0
+  users ["kim"], lee 의 옛 세션    -> 화면 GET 403 문장 · API 403 JSON
+  users ["kim"], lee 의 개인 키     -> 403
+  admins ["park"], users ["kim"]  -> park 200 (관리도)
+  대소문자                        -> admins 와 같은 답(같은 함수)
+  users "kim"(목록 아님)           -> admins 만 + 기동 배너 경고
+  users []                        -> admins 만
+  /health · /internal/* · /auth/me -> 오늘과 같음
+  + 변이(목록 확인 지움 · 세션을 먼저 만들고 확인 · 목록 아님을 «제한 없음»으로) 빨강 · 기준 먼저 초록
+같은 커밋  RELEASE_LOG · RUN.md(재기동 · 볼 기동 줄 · 끄는 법 = users 칸 지우고 재기동) · DEPLOY_SETUP §2-1 줄
+         ⚠️ sample 파일에는 «베껴 쓰면 들어올 사람이 바뀌는 값»을 넣지 않는다 — 칸 설명은 DEPLOY_SETUP 에
+재기동은 소유자
+```
+
+---
+
+> **[총괄 -> 구현자 · 클라] 10-08 — 로그아웃이 «같은 이름으로 돌아온다» -> 우리 세션 + ADFS 로그인을 끝내고 «Signed out» 화면에 멈춘다 · 시연 전 (소유자 10-08 「로그아웃이 작동 안 하네」 -> 「ㄷ 둘 다」 · 「시연 전」)**
+
+```
+지금(코드로 읽음)  POST /auth/logout 은 우리 세션 행과 쿠키만 지운다(204) -> account_badge.js 가 reload -> 로그인 안 됨 -> /auth/login -> ADFS 가 자기 로그인(또는 윈도우 로그인)으로 묻지 않고 돌려보냄 -> 같은 이름
+도착지   Log out 을 누르면 우리 세션이 끝나고, ADFS 로그인도 끝나고, 우리 «Signed out» 화면에 멈춘다. 다시 들어가려면 그 화면의 Sign in 을 누른다
+계약(둘이 같은 모양을 쓴다)  POST /auth/logout -> 200 {"next": "<브라우저가 갈 주소>"}
+         next = ADFS end_session_endpoint(설정 문서에 있을 때) + post_logout_redirect_uri=<origin>/auth/signed-out (+ ADFS 가 요구하는 것)
+                설정 문서에 없거나 못 읽으면 next = /auth/signed-out — 로그아웃은 어느 경우에도 «된다»(우리 세션은 먼저 지운다)
+         GET /auth/signed-out -> «Signed out» + Sign in(/auth/login) — 자동으로 아무 데도 안 간다. /auth/* 라 열림. UI 영어 · 설명 문구 없음
+구현자 (users 목록 착지 «다음»)
+  🔴 짓기 «전» 메시지로 하나: ADFS 가 post_logout_redirect_uri 를 받으려면 무엇이 필요한가 — id_token_hint 가 필요하면 세션 행에 id_token 을 두어야 하나(auth_sessions 칸 하나 = 스키마 변경 · 이주) · 그 주소를 IT 에 등록해야 하나.
+     안 되는 것을 지어내지 않는다 — ADFS 문서 · authlib 에서 확인한 것만, 모르면 「모른다」. 총괄이 소유자께 IT 요청 여부를 여쭌다
+  게이트  세션 있음 -> 행 0 · 쿠키 지움 · next = 끝 주소 / end_session 없음 · 설정 문서 못 읽음 -> next = /auth/signed-out(그래도 행 0)
+         SSO 꺼짐 -> 오늘과 같음(404) / /auth/signed-out 200 · 로그인 없이 열림 / 변이 · RELEASE_LOG · RUN.md(IT 에 등록할 주소가 있으면 그 주소 그대로)
+클라 (지금 — 계약 위에 견본으로)
+  account_badge.js 의 logout: 200 이면 location 을 next 로(없으면 /auth/signed-out). 204(옛 서버)면 지금처럼 reload — 서버가 먼저 착지해도 · 늦게 착지해도 안 깨진다
+  게이트  하니스 칸(200 next -> 그 주소로 · 204 -> reload · 실패 -> 지금 문장) + 변이 · UI 영어
+```

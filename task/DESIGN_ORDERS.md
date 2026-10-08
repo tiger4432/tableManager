@@ -36777,3 +36777,32 @@ fetchSubgraph 는 collect 를 싣는다 — 같은 함수 뒷부분 C-53 줄(que
 게이트 하니스 칸(claims 컷 응답 -> 머리줄에 Truncated · claims · 건너뛴 수) + 변이 + 빌드에서 잰 수
 시연 뒤로(보드)  ① 첫 걸음 묶음을 열어 시작 가지가 넓어져도 이미 걸은 덩어리의 기간은 옛 것(앱 QA ①)
 ```
+
+> **[총괄 -> 클라] 10-08 — api.js 낡은 문장 둘이 아직 남았다(앱 QA e2832df7f · 메시지가 늦게 닿음). 작은 커밋 하나**
+
+```
+줄 1015 근처  「닿는 곳」은 언제나 hops: 1 로 묻습니다(COLLECTS.reach) — COLLECTS 는 이제 없다(LEGACY_ROUTES)
+줄 1894 근처  createWalk 을 못 씁니다 -- 그쪽 collect 는 «화면이 선언한 질문 이름» — createWalk 키는 legacyRoute, collect 는 거절한다
+날짜 붙은 설명 · 옛 관측(1533 · 1557 · 610 근처)은 둔다. 끝나면 api.js 의 collect · COLLECTS 낱말을 전부 훑어 남은 거짓이 0 인지 — 그 명령과 함께 보고
+```
+
+---
+
+> **[총괄 -> 구현자 · 클라] 10-08 — 로그아웃이 «같은 이름으로 돌아온다» -> 우리 세션 + ADFS 로그인을 끝내고 «Signed out» 화면에 멈춘다 · 시연 전 (소유자 10-08 「로그아웃이 작동 안 하네」 -> 「ㄷ 둘 다」 · 「시연 전」)**
+
+```
+지금(코드로 읽음)  POST /auth/logout 은 우리 세션 행과 쿠키만 지운다(204) -> account_badge.js 가 reload -> 로그인 안 됨 -> /auth/login -> ADFS 가 자기 로그인(또는 윈도우 로그인)으로 묻지 않고 돌려보냄 -> 같은 이름
+도착지   Log out 을 누르면 우리 세션이 끝나고, ADFS 로그인도 끝나고, 우리 «Signed out» 화면에 멈춘다. 다시 들어가려면 그 화면의 Sign in 을 누른다
+계약(둘이 같은 모양을 쓴다)  POST /auth/logout -> 200 {"next": "<브라우저가 갈 주소>"}
+         next = ADFS end_session_endpoint(설정 문서에 있을 때) + post_logout_redirect_uri=<origin>/auth/signed-out (+ ADFS 가 요구하는 것)
+                설정 문서에 없거나 못 읽으면 next = /auth/signed-out — 로그아웃은 어느 경우에도 «된다»(우리 세션은 먼저 지운다)
+         GET /auth/signed-out -> «Signed out» + Sign in(/auth/login) — 자동으로 아무 데도 안 간다. /auth/* 라 열림. UI 영어 · 설명 문구 없음
+구현자 (users 목록 착지 «다음»)
+  🔴 짓기 «전» 메시지로 하나: ADFS 가 post_logout_redirect_uri 를 받으려면 무엇이 필요한가 — id_token_hint 가 필요하면 세션 행에 id_token 을 두어야 하나(auth_sessions 칸 하나 = 스키마 변경 · 이주) · 그 주소를 IT 에 등록해야 하나.
+     안 되는 것을 지어내지 않는다 — ADFS 문서 · authlib 에서 확인한 것만, 모르면 「모른다」. 총괄이 소유자께 IT 요청 여부를 여쭌다
+  게이트  세션 있음 -> 행 0 · 쿠키 지움 · next = 끝 주소 / end_session 없음 · 설정 문서 못 읽음 -> next = /auth/signed-out(그래도 행 0)
+         SSO 꺼짐 -> 오늘과 같음(404) / /auth/signed-out 200 · 로그인 없이 열림 / 변이 · RELEASE_LOG · RUN.md(IT 에 등록할 주소가 있으면 그 주소 그대로)
+클라 (지금 — 계약 위에 견본으로)
+  account_badge.js 의 logout: 200 이면 location 을 next 로(없으면 /auth/signed-out). 204(옛 서버)면 지금처럼 reload — 서버가 먼저 착지해도 · 늦게 착지해도 안 깨진다
+  게이트  하니스 칸(200 next -> 그 주소로 · 204 -> reload · 실패 -> 지금 문장) + 변이 · UI 영어
+```
