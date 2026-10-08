@@ -9,6 +9,7 @@ import inspect
 import itertools
 import uuid
 import select
+import threading
 import time
 from collections import OrderedDict, defaultdict
 
@@ -1891,11 +1892,14 @@ def apply_chain_writes(db, tx_id, rule, incoming_depth, rules_by_target,
                                                keep=keep)
                         except Exception as retract_err:               # noqa: BLE001
                             db.rollback()
+                            limit = _limit_that_stopped(
+                                retract_err, time.time() - _group_claim().get("started", time.time()))
                             logger.error(
                                 f"🔴 [ChainRetract] Table: '{target_table}' | TX: '{chain_tx_id}' | "
                                 f"rule: {spec['declaration']} | the edit's withdrawal failed AFTER a "
                                 f"committed write; old layers may remain: "
-                                f"[{type(retract_err).__name__}] {retract_err}", exc_info=True)
+                                + ("statement timeout · %g s - " % limit if limit else "")
+                                + f"[{type(retract_err).__name__}] {retract_err}", exc_info=True)
 
         except Exception as e:
             import traceback
@@ -2282,10 +2286,20 @@ def _claimed_group_sync(tx_id, events, db, rules):
     rows = sum(len(get_payload_dict(e).get("row_ids") or ()) or 1 for e in events)
     what = "tx %s · %d row(s) of %s" % (
         tx_id, rows, ", ".join(sorted({str(e.table_name) for e in events})))
+    from database.context import chain_group
+    from database.database import _bound_the_file_writes
+
     with heartbeat.work_claim("chain", what, note=_worker_note()), \
-            alignment_batch_counts.interrupt_at_stages(chain_control.raise_if_paused):
-        # The batch's transaction was begun on the loop thread, before this claim - so the
-        # backend is read here once; a later transaction notes its own (database.py).
+            alignment_batch_counts.interrupt_at_stages(chain_control.raise_if_paused), \
+            chain_group():
+        # 🔴 THE TRANSACTION OPEN AT THE GROUP'S START IS BOUNDED WHERE IT STANDS (소유자 10-08 「체인
+        #    타임아웃 걸어」). It was begun on the loop thread, before this group, so the listener never
+        #    saw it - the group's reads, its first write and a retraction with no write before it run
+        #    there. Not a commit: that expires the session, and every event of every group was read
+        #    again, one SELECT each.
+        if db.in_transaction():
+            _bound_the_file_writes(db, None, db.connection())
+        # The backend is read here once; a later transaction notes its own (database.py).
         try:
             heartbeat.note_work(
                 db_pid=db.connection().connection.dbapi_connection.get_backend_pid())
@@ -2303,7 +2317,46 @@ def _claimed_group_sync(tx_id, events, db, rules):
         if answer[0]:
             _queue_operation_runs(tx_id, events, db,
                                   [r for r in rules if runs_as_operation(r)])
-        return answer
+            return answer
+        claim = _group_claim()
+        return False, _said_timeout(answer[1], claim.get("stage"),
+                                    time.time() - claim.get("started", time.time())), answer[2]
+
+
+#: A cancelled statement, by the driver's class name - the server's own words are its locale's.
+QUERY_CANCELED = "QueryCanceled"
+
+
+def _group_claim():
+    """The chain group's work claim open on this thread, or {}."""
+    return next((c for c in heartbeat.open_claims()
+                 if c["name"] == "chain" and c["thread"] == threading.get_ident()), {})
+
+
+def _limit_that_stopped(error, ran_seconds):
+    """The chain statement limit's seconds when `error` is a statement it stopped, else None - a
+    cancel in a group younger than the limit is someone else's (a pause, an operator)."""
+    from parsers.directory_watcher import chain_statement_timeout
+
+    seconds = chain_statement_timeout()
+    if seconds is None or ran_seconds < seconds or QUERY_CANCELED not in str(error or ""):
+        return None
+    return seconds
+
+
+def _said_timeout(error, stage, ran_seconds):
+    """A group failure that is the chain's statement limit, as its one sentence - the limit and the
+    stage the group was in, the rule on the failure's own head (소유자 10-08: the failed list's
+    line). Any other as it was."""
+    from parsers.directory_watcher import CHAIN_STATEMENT_TIMEOUT_SETTING
+
+    seconds = _limit_that_stopped(error, ran_seconds)
+    if seconds is None:
+        return error
+    return named_failure(getattr(error, "rules", None), getattr(error, "tables", None), (
+        "statement timeout · %g s · stage %s - one statement of this group ran past %s "
+        "(ingestion_settings.json); the database stopped it" % (
+            seconds, stage or "(none named)", CHAIN_STATEMENT_TIMEOUT_SETTING)))
 
 
 def _queue_operation_runs(tx_id, events, db, rules):

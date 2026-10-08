@@ -143,14 +143,20 @@ def _bound_the_file_writes(session, transaction, connection):
     """A file's write waits for another session's lock at most `lock_timeout_seconds`, and a
     statement of it runs at most `statement_timeout_seconds` (ingestion_settings.json, 총괄
     10-07 ③) - on every transaction begun on the file channel, which only the watcher's work
-    claims open. `SET LOCAL`: it ends with the transaction, so the pooled connection goes back
-    as it came."""
+    claims open. A chain group's statement runs at most `chain_statement_timeout_seconds` (소유자
+    10-08 「체인 타임아웃 걸어」) - on every transaction begun inside a group, whatever channel
+    its writes take (a replay's group writes on the retroactive one), and on the one a group finds
+    open (`ingestion_worker._claimed_group_sync` calls this). `SET LOCAL`: it ends with
+    the transaction, so the pooled connection goes back as it came."""
     import event_constants
-    from database.context import request_channel
-    if request_channel.get() != event_constants.CHANNEL_FILE or connection.dialect.name != "postgresql":
+    from database.context import request_chain_group, request_channel
+    a_file = request_channel.get() == event_constants.CHANNEL_FILE
+    if not (a_file or request_chain_group.get()) or connection.dialect.name != "postgresql":
         return
-    from parsers.directory_watcher import file_write_timeouts
-    for setting, seconds in zip(("lock_timeout", "statement_timeout"), file_write_timeouts()):
+    from parsers.directory_watcher import chain_statement_timeout, file_write_timeouts
+    limits = (zip(("lock_timeout", "statement_timeout"), file_write_timeouts())
+              if a_file else [("statement_timeout", chain_statement_timeout())])
+    for setting, seconds in limits:
         if seconds:
             connection.exec_driver_sql("SET LOCAL %s = '%dms'" % (setting, int(seconds * 1000)))
 

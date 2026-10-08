@@ -400,21 +400,34 @@ LOCK_TIMEOUT_SETTING = "lock_timeout_seconds"
 #: a large healthy write must not die of it). A value that is not a positive number is read as
 #: left out, for both cells.
 STATEMENT_TIMEOUT_SETTING = "statement_timeout_seconds"
+#: Seconds one statement of a chain group may run (소유자 10-08 「체인 타임아웃 걸어」 · 「2분」).
+#: Left out: the default; null or 0: no limit; not a positive number: the default.
+CHAIN_STATEMENT_TIMEOUT_SETTING = "chain_statement_timeout_seconds"
+CHAIN_STATEMENT_TIMEOUT_DEFAULT = 120.0
+
+
+def _timeout_seconds(settings, cell, absent):
+    """One timeout cell read - null or 0 is no limit, a wrong spelling keeps the default."""
+    value = settings.get(cell, absent)
+    if value is None or value == 0:
+        return None
+    good = isinstance(value, (int, float)) and not isinstance(value, bool) and value > 0
+    return float(value) if good else absent
 
 
 def file_write_timeouts(settings=None):
     """`(lock seconds, statement seconds)` for a file's write transactions, None = no limit.
     Set on every transaction the file channel begins (`database._bound_the_file_writes`)."""
     settings = load_ingestion_settings() if settings is None else settings
+    return (_timeout_seconds(settings, LOCK_TIMEOUT_SETTING, heartbeat.DEFAULT_STALL_AFTER_SEC),
+            _timeout_seconds(settings, STATEMENT_TIMEOUT_SETTING, None))
 
-    def seconds(cell, absent):
-        value = settings.get(cell, absent)
-        if value is None or value == 0:
-            return None
-        good = isinstance(value, (int, float)) and not isinstance(value, bool) and value > 0
-        return float(value) if good else absent         # a wrong spelling keeps the default
-    return (seconds(LOCK_TIMEOUT_SETTING, heartbeat.DEFAULT_STALL_AFTER_SEC),
-            seconds(STATEMENT_TIMEOUT_SETTING, None))
+
+def chain_statement_timeout(settings=None):
+    """Statement seconds for a chain group's transactions, None = no limit - the same file and
+    the same read as `file_write_timeouts`, set by the same listener."""
+    settings = load_ingestion_settings() if settings is None else settings
+    return _timeout_seconds(settings, CHAIN_STATEMENT_TIMEOUT_SETTING, CHAIN_STATEMENT_TIMEOUT_DEFAULT)
 
 
 #: How a lock-timeout failure's message begins - its rows are counted by it (`_lock_waits_before`).

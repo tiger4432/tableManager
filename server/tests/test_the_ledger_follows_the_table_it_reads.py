@@ -15,6 +15,7 @@ column aims the scope, how many calls one event costs, and what the chain path p
 import asyncio
 import os
 import sys
+import types
 
 import pytest
 
@@ -321,7 +322,8 @@ def test_the_chain_group_translates_nothing_and_queues_nothing_in_memory(monkeyp
               FakeEvent("dt_log", "EDIT", {"row_ids": ["r2", "r3"]}),
               FakeEvent("dt_log", "CREATE", {"row_id": "r4"})]
     ok, reason, messages = asyncio.get_event_loop_policy().new_event_loop().run_until_complete(
-        worker.process_chain_transaction_group("tx", events, None, []))
+        worker.process_chain_transaction_group(
+            "tx", events, types.SimpleNamespace(in_transaction=lambda: False), []))
     assert ok is True and reason is None and messages == []
     assert followup.queue_depth() == 0
 
