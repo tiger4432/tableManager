@@ -75474,3 +75474,41 @@ MUTANT OLD (the x-only main.py, wt-impl HEAD)                   exit 1  1 failed
 문서  CODE_MAP(라우트 행 · control · set_aside · process_pending_groups) · BACKFILL_GUIDE §2.8 · RELEASE_LOG · RUN.md(× 의 뜻 · 되돌리기 명령)
 재기동  서버 · 체인 워커 — 소유자 몫
 ```
+
+---
+
+## [10-08] 리스트 칸에 글자를 적은 규칙은 규칙 검사가 거절 576ff6161 (총괄 67dffd619)
+
+어느 DB · 어느 스키마 · 지운 것 — sqlite 메모리 · PG 는 hold copy 시험의 스크래치 스키마(끝에 DROP) · public 안 씀 · 지운 것 0
+
+```
+자리     chain_bindings.rule_refusals — 로드(load_chain_rules) · 저장(ledger.admin) · 설정 보고(config_resolve_report)가 지나는 그 한 자리
+        undeclared_param 옆에 param_not_a_list: 「columns must be a list, e.g. ["c_bn"]」 — 둘째 검사 없음
+선언     맵퍼가 인자를 {이름: 형} 으로 적으면 mapper_sdk.register 가 그대로 둔다(튜플은 전처럼 튜플 — 형 없는 맵퍼는 전과 같음)
+셈       추적되는 제품 맵퍼 중 인자를 선언한 것은 copy_rows_with_hold 하나 — key_columns · columns 가 list
+        lot_lineage · lot_slot_wafer · contrast_walk · ledger_v2_dt_job · 제품 템플릿(join · decide)은 인자 선언이 없어 형을 물을 수 없다
+        (owner 의 gitignore 된 맵퍼는 @mapper(params={…}) 로 형을 적으면 같은 검사를 받는다)
+```
+
+### 게이트 · 변이 — md5 같음
+
+```
+BASELINE exit 0  33 passed, 33 skipped, 10 warnings
+MUTANT the kind is not asked              exit 1  2 failed, 31 passed, 33 skipped, 10 warnings
+    FAILED test_a_list_argument_written_as_text_is_refused_with_its_list_spelling
+    FAILED test_the_product_mapper_that_reads_lists_declares_them
+MUTANT hold_copy declares names only      exit 1  1 failed, 32 passed, 33 skipped, 10 warnings
+    FAILED test_the_product_mapper_that_reads_lists_declares_them
+MUTANT the registry keeps names only      exit 1  1 failed, 32 passed, 33 skipped, 10 warnings
+    FAILED test_the_product_mapper_that_reads_lists_declares_them
+MUTANT OLD (origin/main sources)          exit 1  2 failed, 31 passed, 33 skipped, 10 warnings
+    FAILED test_a_list_argument_written_as_text_is_refused_with_its_list_spelling
+    FAILED test_the_product_mapper_that_reads_lists_declares_them
+```
+hold copy PG 시험(이 맵퍼가 실제로 도는 시험) — 24 passed, 8410 deselected, 52 warnings
+
+### 전체 sqlite
+
+```
+5 failed, 8049 passed, 377 skipped, 3 xfailed, 13257 warnings — 실패는 알려진 박스 실패뿐
+```
