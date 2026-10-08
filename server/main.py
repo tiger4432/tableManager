@@ -4617,6 +4617,16 @@ def resume_chain():
     return {"paused": None}
 
 
+@app.get("/admin/indexes", dependencies=[Depends(require_admin_token)])
+def get_declared_indexes(db: Session = Depends(get_db)):
+    """The static models' declared indexes beside the database - name · table · columns · where ·
+    include · purpose · serves · state (present · missing · invalid · building) · size · scans ·
+    what a build waits on - and the indexes on those tables nothing declares (총괄 d71f931c7: the
+    declaration is the index master). The one comparison the chain worker's index work names and
+    builds from (`models.index_states`). Read-only."""
+    return models.index_states(db.get_bind())
+
+
 @app.get("/admin/chain/queue", dependencies=[Depends(require_admin_token)])
 def get_chain_queue_depth(db: Session = Depends(get_db)):
     """「체인 요청이 몇 개 씹히는 것 같다」를 **수로 바꾼다.** 읽기 전용.

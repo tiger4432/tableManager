@@ -1,5 +1,79 @@
 # 지금 돌리면 되는 것
 
+> ## [10-09] **선언된 인덱스가 DB 에 없으면 체인 워커가 알리고 스스로 만든다 · GET /admin/indexes — 이주 «없음» · 재기동 «체인 워커 · 서버»**
+>
+> ```
+> 무엇이 바뀌나    «있어야 할 인덱스»의 답은 하나 — server/database/models.py 의 Index · UNIQUE 선언(각각 info 의 purpose · serves)
+>                체인 워커가 켜질 때와 설정을 다시 읽을 때 선언 대 DB 를 견주고, 빠졌거나 무효인 것을 한 줄로 알린 뒤 하나씩 만든다
+>                CONCURRENTLY — 표 쓰기를 막지 않는다. 체인 · 슬롯은 그동안 그대로 돈다
+>                은퇴한 둘(ix_cell_sources_table_name · ix_cell_sources_column_name)은 이제 선언에 없다 — 다시 안 만든다
+> 볼 줄          chain_worker.log:
+>                  [Indexes] <N> declared index(es) the database lacks or holds invalid: <이름> on <표> (missing|invalid), ... - building them one at a time
+>                  = 이 DB 에 그 인덱스가 없다(또는 깨졌다). 이어서 하나씩:
+>                  [Indexes] building <이름> on <표>
+>                  [Indexes] <이름> built in <초> s        (failed 면 바로 위에 [Schema Sync] Failed to ensure ... : <사유>)
+>                  [Indexes] <이름> still building after <초> s - building - waiting for transactions older than it: pid <P> (<application_name>)
+>                  = 10 분마다. 그 pid 의 트랜잭션이 끝나야 만들기가 끝난다 — pg_stat_activity 에서 그 pid 가 무엇인지 본다
+>                이 줄들이 없다 = 선언된 인덱스가 전부 있다
+> 볼 곳          GET /admin/indexes  (관리자 토큰)
+>                  declared 의 줄마다 name · table · columns · where · include · purpose · serves · state(present|missing|invalid|building) · building · size_bytes · scans
+>                  outside = 그 표들에 있는데 아무 선언도 없는 인덱스 (기본 키는 선언된 것으로 친다)
+> 끄는 법        ingestion_settings.json 에 "build_missing_indexes": false   -> 알리기만 하고 안 만든다 (다음 기동 · 설정 다시 읽기부터)
+>                만드는 중인 것을 멈추려면 그 만들기의 pid 를 pg_cancel_backend — 남은 무효 인덱스는 다음 기동이 지우고 다시 만든다
+> 급할 때        git revert <이 커밋> -> 체인 워커 · 서버 재기동
+> ```
+
+---
+> ## [10-09] **원장 따라가기의 실패 줄은 같은 실패의 1 · 10 · 100 … 번째에만 — 이주 «없음» · 재기동 «체인 워커»**
+>
+> ```
+> 무엇이 바뀌나    아래 세 줄이 매번이 아니라 같은 실패의 1 · 10 · 100 · 1000 … 번째에만 나온다. 줄 끝에 #N
+>                  [LedgerFollowUp] <소스> <- <표> (N rows) failed in world <세상>: <사유> - #N of this source, table and error (...)
+>                  [LedgerFollowUp] delete on <표> (N rows) failed in world <세상>: <사유> - #N of this table and error (...)
+>                  [LedgerFollowUp] batch failed: <사유> - #N of this error (...)
+>                «같은 실패» = 같은 소스 · 표 · 세상 · 예외 이름(행은 안 가름). 체인 워커를 재기동하면 다시 1 부터
+> 그대로         실패 «기록» — 아웃박스 ledger_state failed · 실패 영수증 · 하트비트의 failed=N
+>                몇 건 · 어느 이벤트인지는  python -m ledger followup        (server 폴더)
+> 답의 뜻        #1 만 있다 = 그 실패가 아직 10 번이 안 됐다 · #10 · #100 이 이어진다 = 같은 실패가 계속 — 그 소스 · 표부터
+> 선언 깨짐       따로 — 처음 · 풀림 · 10 분 알림 줄 셋(전 라운드)은 그대로
+> 급할 때        git revert <이 커밋> -> 체인 워커 재기동
+> ```
+
+---
+> ## [10-09] **× 와 끝을 쓰는 묶음은 행을 id 순으로 잠근다 · 슬롯 박동을 못 읽으면 다시 읽고, 그래도 못 읽으면 답이 말한다 — 이주 «없음» · 재기동 «서버 · 체인 워커»**
+>
+> ```
+> 무엇이 바뀌나    묶음은 끝(SUCCESS)을 쓰기 직전에 그 행을 잠그고 빼 둔 표시를 읽는다
+>                  그 뒤에 온 × 는 그 커밋을 기다렸다가 끝난 행을 비켜 간다 — 그 행은 «돌았음»
+>                × 의 빼 두기도 같은 순서(id 오름차순)로 먼저 잠근다 — 둘이 서로를 기다리며 서지 않게
+>                × 가 슬롯 박동 파일을 못 읽으면(쓰는 중) 1 초 안에서 다시 읽는다
+> 답의 뜻        × 응답에 "slot_not_found": "slot not found - the line's events are set aside; its running group may finish"
+>                  = 그 줄의 대기 이벤트는 빼 뒀다. 어느 슬롯이 돌리는지는 모른다 — 도는 묶음은 끝까지 갈 수 있다
+>                  대기열을 다시 읽어 그 줄에 slot_pid 가 보이면 × 를 한 번 더
+> 늦어지는 것     끝을 쓰는 묶음과 겹친 × 는 그 묶음이 커밋할 때까지 응답이 늦다
+> 급할 때        git revert <이 커밋> -> 서버 · 체인 워커 재기동
+> ```
+
+---
+> ## [10-09] **× 의 답은 슬롯이 끝난 «뒤»의 행 수 · 빼 두는 사이 끝까지 돈 행은 «돌았음» — 이주 «없음» · 재기동 «서버 · 체인 워커»**
+>
+> ```
+> 무엇이 바뀌나    × 는 슬롯을 끈 뒤 그 프로세스와 DB 연결이 «끝날 때까지» 기다리고(각각 최대 5 초) 그 줄의 행을 다시 센다
+>                답 skipped_events    = × 가 읽을 때 기다리던 그 줄의 체인 이벤트 중 지금 «빼 둔» 것
+>                답 already_processed = 그중 «돈» 것 — 표시와 슬롯 종료 사이에 묶음이 커밋했거나, 읽기와 표시 사이에 체인이 끝낸 것
+>                묶음이 파이썬 일 중이라 끊을 질의가 없었고 끝까지 돌았으면 그 행은 «돌았음»(SUCCESS, 빼 둔 표시를 지움)
+>                  — rerun_set_aside 가 그 행을 다시 돌리지 않는다
+> 볼 줄          chain_worker.log:
+>                  [slot <n> pid <P>] [Chain] tx '<열쇠>': <N> event(s) were set aside while it ran and it ran - they read as ran, not set aside
+>                  = × 가 늦었다. 그 행은 이미 돌았다. 감사 줄 출처 chain_queue_skip_too_late (표마다 · 열쇠 · 수)
+>                서버 로그:
+>                  [Chain] slot <n> pid <P> had not ended 5 s after its kill - its line is counted as it stands
+>                  = 슬롯이 그 안에 안 끝났다. 그 답의 두 수는 그 순간의 것 — 대기열을 다시 읽어 본다
+> 확인           × 한 번 -> 응답 JSON 에 already_processed 칸(화면은 아직 이 수를 안 그린다)
+> 급할 때        git revert <이 커밋> -> 서버 · 체인 워커 재기동
+> ```
+
+---
 > ## [10-08] **글자로 적힌 시각 칸은 선언한 형식(format)으로 읽는다 · 못 읽는 시각은 그 분자만 거절 — 이주 «없음» · 재기동 «서버 · 체인 워커»**
 >
 > ```
@@ -58,7 +132,8 @@
 >                그 이벤트를 쥔 묶음이 도는 중이면 그 묶음의 질의만 끊고 되감는다 — 슬롯은 살아 그 줄을 이어 간다
 >                chain_worker.log: [slot <n> pid <P>] [Chain] tx '<열쇠>': <N> event(s) were set aside while it ran - left set aside; the other <M> rewound, not failed
 >                  = 같은 줄의 나머지는 시도 수 그대로 다시 돈다
->                이 줄이 없으면 끊을 질의가 없었던 것(맵퍼가 파이썬 일 중) — 그 묶음은 끝까지 돌았고 빼 둔 표시는 남는다
+>                이 줄이 없으면 끊을 질의가 없었던 것(맵퍼가 파이썬 일 중) — 그 묶음은 끝까지 돌았고 그 행은 «돌았음»(빼 둔 표시를 지움, 10-09):
+>                  [slot <n> pid <P>] [Chain] tx '<열쇠>': <N> event(s) were set aside while it ran and it ran - they read as ran, not set aside
 >                «the other <M> fail as the group did» 면 질의 끊김이 아니라 맵퍼 오류 — 나머지는 전처럼 실패 길(시도 1 셈)
 >                표를 기다리던 묶음이 끊기면 ERROR 한 줄:
 >                  [slot <n> pid <P>] [Chain] a batch of line <열쇠> raised - its events wait as they were and run again: (…QueryCanceled) …

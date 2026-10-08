@@ -419,12 +419,23 @@ def test_a_cross_on_a_running_line_stops_its_slot_only(slot_box, kind):
     else:
         _write(db, SA, rows)
         line, pid = _held(db, SA, "A" + stamp)
+    named = _wait(lambda: [name for name, beat in _live_slots().items() if beat.get("pid") == pid], 10)
+    assert named, ("no live beat has the slot's pid", pid, _live_slots())
+    index = int(named[0][len(slots.BEAT_PREFIX):])
+    with db.get_bind().connect() as conn:
+        backends = conn.execute(text("SELECT array_agg(pid) FROM pg_stat_activity WHERE application_name = :name"),
+                                {"name": connection_name(slots.process_name(index))}).scalar()
+    assert backends, "the slot holds no connection - else its end measures nothing"
 
     answer = chain_control.stop_line(db, line, "kim")
 
     assert (answer["skipped_events"], answer["slot_pid"]) == (2, pid), answer
     assert answer.get("run") == (retroactive.RUN_DONE if kind == "done run" else None), answer
-    assert _wait(lambda: not psutil.pid_exists(pid), 10), "the slot is still running"
+    # the × answers once the slot and its connections have ended (총괄 54a53f894 - it counts after)
+    assert not psutil.pid_exists(pid), "the × answered while its slot was running"
+    with db.get_bind().connect() as conn:
+        assert conn.execute(text("SELECT count(*) FROM pg_stat_activity WHERE pid = ANY(:pids)"),
+                            {"pids": backends}).scalar() == 0, "the × answered while its slot's connections were up"
     assert _ended(_events_of(db, SA, "A" + stamp) + _events_of(db, SA, "B" + stamp)) == [SET_ASIDE] * 2
     assert _wait(lambda: len(_live_slots()) == 2 and pid not in {b["pid"] for b in _live_slots().values()}, 60), \
         "no new slot came up"

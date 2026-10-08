@@ -233,6 +233,7 @@ CHAIN_LOG_TAGS = {
     "Ledger": "the ledger follow-up",
     "LedgerCensus": "the retroactive census",
     "LedgerFollowUp": "the ledger's own lap",
+    "Indexes": "the static models' declared indexes - named and built by the index work",
     "Reload": "the config reload",
     "slot %d pid %d": "a slot process's own line, written into the chain log by its dispatcher",
     # ⚰️ THESE READ `VirtualJoin` UNTIL 2026-09-23. The read-time join retired and the

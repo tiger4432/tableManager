@@ -62,6 +62,13 @@ READ_EVERY_SECONDS = 1.0
 SLOT_POOL = {"ASSY_DB_POOL_SIZE": "2", "ASSY_DB_MAX_OVERFLOW": "2"}
 #: Who a set-aside by the dispatcher says did it.
 CHAIN_WORKER = "chain worker"
+#: How long a stop waits for a killed slot, and then for each of its connections, to end.
+STOP_WAIT_SECONDS = 5
+#: How long a × reads the slot beats again while one of them does not read (`holding`).
+HOLDING_READ_SECONDS = 1.0
+#: `holding`'s third answer - a slot beat did not read - and what a × says then (총괄 10-09).
+UNREAD = "unread"
+SLOT_NOT_FOUND = "slot not found - the line's events are set aside; its running group may finish"
 
 logger = logging.getLogger("Chain")
 
@@ -374,14 +381,26 @@ def _remove_beat(name):
 
 
 def holding(key, beats=None):
-    """`(index, pid)` of the slot whose beat says it holds line `key`, or None."""
+    """`(index, pid)` of the slot whose beat says it holds line `key`, None when none does, or
+    `UNREAD` when a slot's beat did not read - read again for up to `HOLDING_READ_SECONDS` first
+    (총괄 10-09: a beat being written reads as unreadable, and that was taken for «no slot»).
+    Given `beats`, that one read."""
     from utils import heartbeat
 
-    for name, beat in (heartbeat.read_all() if beats is None else beats).items():
-        if (name.startswith(BEAT_PREFIX) and name[len(BEAT_PREFIX):].isdigit() and not beat.get("stale")
-                and ((beat.get("laps") or {}).get(HOLDS) or {}).get("line") == key):
-            return int(name[len(BEAT_PREFIX):]), beat.get("pid")
-    return None
+    deadline = time.monotonic() + HOLDING_READ_SECONDS
+    while True:
+        unread = False
+        for name, beat in (heartbeat.read_all() if beats is None else beats).items():
+            if not (name.startswith(BEAT_PREFIX) and name[len(BEAT_PREFIX):].isdigit()):
+                continue
+            unread = unread or bool(beat.get("error"))
+            if not beat.get("stale") and ((beat.get("laps") or {}).get(HOLDS) or {}).get("line") == key:
+                return int(name[len(BEAT_PREFIX):]), beat.get("pid")
+        if not unread:
+            return None
+        if beats is not None or time.monotonic() >= deadline:
+            return UNREAD
+        time.sleep(0.05)
 
 
 def is_slot(pid, index):
@@ -396,34 +415,45 @@ def is_slot(pid, index):
 
 
 def stop_slot(db, key):
-    """Stop the slot process holding line `key` (a ×, 총괄 19f6a9277): killed, then its database
-    connections ended. The dispatcher reaps it, sets aside what of the line still waits and
-    starts a new slot. -> the pid stopped, or None."""
+    """Stop the slot process holding line `key` (a ×, 총괄 19f6a9277): killed and waited for, then
+    its database connections ended and waited for - what it committed is in the table when this
+    returns (총괄 54a53f894: the × counts after it). The dispatcher reaps it, sets aside what of the
+    line still waits and starts a new slot. -> the pid stopped, None, or `UNREAD` (`holding`)."""
     found = holding(key)
+    if found == UNREAD:
+        return UNREAD
     if found is None or not is_slot(found[1], found[0]):
         return None
     import psutil
 
     try:
-        psutil.Process(int(found[1])).kill()
+        process = psutil.Process(int(found[1]))
+        process.kill()
     except psutil.NoSuchProcess:
         return None
+    try:
+        process.wait(STOP_WAIT_SECONDS)
+    except psutil.TimeoutExpired:
+        logger.warning("[Chain] slot %d pid %s had not ended %d s after its kill - its line is "
+                       "counted as it stands", found[0], found[1], STOP_WAIT_SECONDS)
     end_connections(db, found[0])
     return found[1]
 
 
 def end_connections(db, index):
-    """End slot `index`'s database connections - a killed process's query runs on until it next
-    writes to the client. -> how many. PostgreSQL only."""
+    """End slot `index`'s database connections and wait, up to `STOP_WAIT_SECONDS` each, until
+    they have gone (`pg_terminate_backend(pid, timeout)`, PG 14+) - a killed process's query runs
+    on until it next writes to the client, and a commit it sent lands before its connection goes.
+    -> how many. PostgreSQL only."""
     from sqlalchemy import text
     from database.database import connection_name
 
     if db.get_bind().dialect.name != "postgresql":
         return 0
     ended = db.execute(text(
-        "SELECT count(pg_terminate_backend(pid)) FROM pg_stat_activity"
+        "SELECT count(pg_terminate_backend(pid, :wait_ms)) FROM pg_stat_activity"
         " WHERE application_name = :name AND datname = current_database()"),
-        {"name": connection_name(process_name(index))}).scalar()
+        {"name": connection_name(process_name(index)), "wait_ms": STOP_WAIT_SECONDS * 1000}).scalar()
     db.commit()
     return ended
 

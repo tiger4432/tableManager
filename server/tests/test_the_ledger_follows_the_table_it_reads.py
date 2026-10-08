@@ -261,6 +261,74 @@ def test_a_failed_batch_is_named_and_not_requeued(monkeypatch):
     assert "failed=1" in followup.note()
 
 
+def _counts_said(caplog, words):
+    """The `#N` of each warning line carrying `words` - which repeats were said."""
+    return [int(r.getMessage().split(" - #")[1].split(" ")[0]) for r in caplog.records
+            if words in r.getMessage() and r.levelname == "WARNING"]
+
+
+def test_a_source_failing_on_every_event_is_said_on_the_1st_and_10th(monkeypatch, caplog):
+    """총괄 cb419a8a0 (소유자 「오류 하나만 있어도 하루종일 batch failed 로그로 도배」): a source that
+    fails on every event says so on the 1st, 10th, 100th ... of the same source, table and error.
+    Each failure's RECORD stays as it was - one receipt each, all counted."""
+    def boom(*args, **kwargs):
+        raise RuntimeError("no")
+
+    receipts = []
+    monkeypatch.setattr(backfill, "rescope", boom)
+    monkeypatch.setattr(followup, "_write_failure_receipt", lambda *a: receipts.append(a))
+    caplog.set_level("WARNING", logger=followup.logger.name)
+    for i in range(25):
+        followup.enqueue("dt_log", ["r%d" % i], "EDIT")
+        followup.drain_once(FakeEngine([("J1",)]), one_source_on("dt_log"))
+    assert _counts_said(caplog, "failed in world") == [1, 10]
+    assert len(receipts) == 25 and "failed=25" in followup.note()
+
+
+def test_a_delete_failing_on_every_event_is_said_on_the_1st_and_10th(monkeypatch, caplog):
+    def boom(*args, **kwargs):
+        raise RuntimeError("no")
+
+    monkeypatch.setattr(backfill, "withdraw_deleted_rows", boom)
+    caplog.set_level("WARNING", logger=followup.logger.name)
+    for i in range(25):
+        followup.enqueue("dt_log", ["r%d" % i], "DELETE")
+        followup.drain_once(FakeEngine([("J1",)]), one_source_on("dt_log"))
+    assert _counts_said(caplog, "delete on dt_log") == [1, 10]
+    assert "failed=25" in followup.note()
+
+
+def test_a_batch_failing_every_lap_is_said_on_the_1st_and_10th(monkeypatch, caplog):
+    """The worker's 「batch failed」 (an error that is not a declaration's - a dropped connection):
+    15 laps of the same error, two lines."""
+    from chain import ingestion_worker as worker
+
+    class Stop(Exception):
+        pass
+
+    laps = []
+
+    async def fake_sleep(seconds):
+        laps.append(seconds)
+        if len(laps) == 15:
+            raise Stop
+
+    def boom(_factory):
+        raise ConnectionError("server closed the connection unexpectedly")
+
+    monkeypatch.setattr(worker.asyncio, "sleep", fake_sleep)
+    monkeypatch.setattr(pacing, "job_pace", lambda job: (None, 0))
+    monkeypatch.setattr(worker, "_drain_ledger_followup_sync", boom)
+    caplog.set_level("WARNING", logger=worker.logger.name)
+    loop = asyncio.new_event_loop()
+    try:
+        with pytest.raises(Stop):
+            loop.run_until_complete(worker.run_ledger_followup(None))
+    finally:
+        loop.close()
+    assert len(laps) == 15 and _counts_said(caplog, "batch failed") == [1, 10]
+
+
 def test_an_empty_queue_drains_to_nothing():
     assert followup.drain_once(FakeEngine([]), one_source_on("dt_log")) is None
 

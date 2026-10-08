@@ -76087,3 +76087,389 @@ fromisoformat 의 관대함은 박스마다 다름 — Python 3.11 부터 날짜
 소유자가 본 거절이 aware_time 을 안 지나는 자리(코드 맵퍼가 날 칸을 읽음 등)였다면 이 고침이 그 자리에는 안 닿음 — 그 거절 줄을 받으면 확인
 클라 몫   선언 폼이 시각 칸의 표본 값으로 format 을 미리 채우기(한 가지로만 읽히는 모양만, 확인은 사람) — 서버 변경 없음
 ```
+
+---
+
+## [10-09] × 의 답은 슬롯이 끝난 뒤의 행 수 · 빼 두는 사이 끝까지 돈 행은 «돌았음» 62f067a1a (총괄 54a53f894 ㄱ)
+
+어느 DB · 어느 스키마 · 지운 것 — 격리 시험 DB assy_test · 스키마는 하니스가 만들고 DROP 하는 assy_pytest_pg_* · 그 밖에 지운 것 0
+
+```
+성공 길   묶음이 파이썬 일 중(끊을 질의 없음)에 × 가 그 행을 빼 뒀고 묶음이 끝까지 돌았으면 «돌았음»이 이김
+         빼 둔 표시를 지우고 SUCCESS · 표마다 감사 줄 chain_queue_skip_too_late · 로그 한 줄
+         자리 62f067a1a:server/chain/ingestion_worker.py:2884:                    _ran_though_set_aside(db, tx_id, events_in_tx)
+× 의 답   슬롯을 죽인 뒤 프로세스 끝을 기다리고, 그 슬롯의 DB 연결마다 끝을 기다림(pg_terminate_backend(pid, timeout)) — 각각 최대 5 초
+         그 뒤 질의 하나로 다시 셈: skipped_events = 아직 빼 둠 · already_processed = 돎
+         자리 62f067a1a:server/chain/control.py:147:    aside, ran = set_aside.what_became_of(db, done["ids"])   (카나리아 def what_became_of = 62f067a1a:server/chain/set_aside.py:1)
+세는 대상  × 가 읽을 때 기다리던 그 줄의 체인 이벤트. already_processed 에는 읽기와 표시 사이에 체인이 끝낸 것도 들어감
+답 모양   칸 하나 더함(already_processed, 늘 있음). 기존 칸은 그대로
+같이      죽은 슬롯 거두기(_reap)도 같은 연결 기다림을 지남 — 거두기가 연결마다 최대 5 초 늦어질 수 있음(안 쟀다)
+「운영자가 빼 둠」 SQL 술어는 하나(_by_operator) — line_already 와 새 세기가 같이 씀
+```
+
+### 게이트
+
+```
+PG 손댄 두 파일(멈춤 · 슬롯) 한 번에: 20 passed, 41 deselected, 68 warnings · 8080 접촉 줄 0
+새 칸 ①  test_a_cross_that_lands_while_its_group_is_in_python_reads_as_ran
+         × 가 파이썬 일 중인 묶음에 떨어짐 -> 그 행 SUCCESS · 표시 없음 · rows_set_aside 에 없음 · 감사 줄 한 표
+새 칸 ②  test_a_cross_answers_its_lines_rows_as_the_table_has_them_once_the_slot_has_ended
+         두 행 줄, 한 행의 묶음이 표시 «뒤» · 슬롯 끝 «전»에 커밋 -> 답 (빼 둠, 돎) = 표에서 센 (1, 1)
+진짜 슬롯 test_a_cross_on_a_running_line_stops_its_slot_only — 단언을 조임: × 가 답한 «바로» 그때 슬롯 pid 없음 · 그 슬롯의 연결 0
+         (전엔 pid 가 10 초 안에 없어지기를 기다림)
+```
+
+### 변이 — md5 같음
+
+```
+BASELINE (PG) 4 passed, 41 deselected, 10 warnings
+MUTANT the success path does not ask                      1 failed, 3 passed, 41 deselected, 10 warnings
+    FAILED test_a_cross_that_lands_while_its_group_is_in_python_reads_as_ran
+MUTANT a cleared mark equal to the read is not written    1 failed, 3 passed, 41 deselected, 10 warnings
+    FAILED test_a_cross_that_lands_while_its_group_is_in_python_reads_as_ran
+MUTANT no audit line says the stop came too late          1 failed, 3 passed, 41 deselected, 10 warnings
+    FAILED test_a_cross_that_lands_while_its_group_is_in_python_reads_as_ran
+BASELINE (PG) 3 passed, 58 deselected, 10 warnings
+MUTANT the count is read before the slot has ended      1 failed, 2 passed, 58 deselected, 10 warnings
+    FAILED test_a_cross_answers_its_lines_rows_as_the_table_has_them_once_the_slot_has_ended
+MUTANT skipped_events is the mark's count               1 failed, 2 passed, 58 deselected, 10 warnings
+    FAILED test_a_cross_answers_its_lines_rows_as_the_table_has_them_once_the_slot_has_ended
+MUTANT already_processed is not counted                 1 failed, 2 passed, 58 deselected, 10 warnings
+    FAILED test_a_cross_answers_its_lines_rows_as_the_table_has_them_once_the_slot_has_ended
+MUTANT the killed slot is not waited for                3 passed, 58 deselected, 10 warnings
+MUTANT its connections are not waited for               3 passed, 58 deselected, 10 warnings
+```
+초록 둘(the killed slot is not waited for, its connections are not waited for) — 두 기다림은 시험이 못 잽니다. 이 박스에서는 죽인 슬롯이 스스로 빨리 끝나고 연결도 스스로 닫혀, 기다리지 않아도 «바로» 단언이 맞습니다. 그 조건(죽였는데 안 끝남 · 끊었는데 커밋 중)을 만들어 돌리는 칸은 못 지었습니다.
+
+### 진짜 슬롯 칸 흔들림 — 제 시험 줄이었음
+
+```
+진짜 슬롯 칸 여섯 번(앞 셋은 고치기 전, 뒤 셋은 뒤): 2 failed, 13 deselected · 2 passed, 13 deselected · 2 passed, 13 deselected · 2 passed, 13 deselected · 2 passed, 13 deselected · 2 passed, 13 deselected
+```
+첫 번에 둘 다 빨강: 슬롯 pid 로 박동을 «한 번» 찾는 제 줄이 빈 손 — 그 순간 그 pid 의 live 박동이 없었음. 원인은 재지 않았습니다(heartbeat.read_all 은 못 읽은 파일을 stale 로 돌려주니 그럴 수 있다는 정도). 두 번째 칸은 첫 칸이 남긴 슬롯 때문에 따라 넘어짐. _held 처럼 기다려 찾게 고친 뒤 셋 다 초록.
+첫 변이 실행에서 「skipped_events 가 표시 때 수」 변이가 done run 칸도 빨갛게 했는데 그 문장은 못 봤습니다. 그 변이만 다시 돌리니 그 칸 초록 — 같은 흔들림으로 봅니다(재지 않은 추정).
+
+### 전체 sqlite
+
+```
+test_[a-k]*: 4 failed, 4151 passed, 210 skipped, 1 xfailed, 5928 warnings
+test_[l-z]*: 1 failed, 3940 passed, 186 skipped, 2 xfailed, 7285 warnings
+-> 실패는 알려진 박스 실패뿐
+```
+🔴 제 실수 하나: 첫 반쪽을 -x 로 띄웠다가 멈췄는데 셸만 죽고 pytest 는 계속 돌았습니다(셸이 이미 파일 이름으로 펼쳐 놓아 제 프로세스 거르기가 못 찾음). 두 실행이 1 분쯤 겹쳐 한 파일에 썼고, 그 사이 test_a_collector_script_gets_its_window_filled 의 stdout 칸이 하위 프로세스 0xC0000142(시작 실패)로 빨강. 둘 다 죽이고 깨끗이 다시 돌린 위 수에서 그 칸은 초록입니다.
+
+### 남은 것 · 여쭐 것
+
+1. **창 하나가 남습니다.** 성공 길이 표시를 읽은 «뒤», 커밋 «전»에 × 의 표시가 커밋되면 그 행은 SUCCESS 이면서 빼 둔 표시를 갖습니다 — 돌았는데 «빼 둠»으로 읽히고 rerun_set_aside 가 한 번 더 돌릴 수 있습니다(만들어 재지는 않았고 코드로 읽은 것). 성공 길은 상태 칸만 쓰고 payload 는 안 쓰기 때문입니다. 답의 두 수는 표와 같으니 게이트는 초록입니다. 닫는 길 후보는 성공 길의 읽기를 행 잠금(FOR UPDATE)으로 하는 것 — × 의 표시가 그 커밋을 기다렸다가 「아직 대기 중」이 아닌 것을 보고 안 씁니다. 다만 × 의 집합 UPDATE 와 잠금 순서(교착)를 봐야 해서 짓지 않았습니다. 지을까요?
+2. **슬롯 찾기도 박동을 «한 번» 읽습니다.** stop_slot 의 holding() 이 그 순간 박동을 못 읽으면(stale) 슬롯을 못 찾아 안 끄고, × 의 답은 slot_pid null 입니다. 위 시험 줄에서 같은 모양의 «한 번» 읽기가 고치기 전 세 번 중 한 번 빗나갔습니다(제품 자리에서 잰 것은 아님). 이번엔 안 건드렸습니다 — 고칠까요?
+3. 화면은 두 수를 안 읽습니다(클라는 already 낱말만). 「N ran」을 보이려면 클라 레인 몫입니다. 이름이 나란히 섭니다 — `already`(낱말: processed · set_aside · gone, 기다린 것이 없을 때만) 와 `already_processed`(수, 늘 있음). 판정의 「already processed」를 그대로 따랐습니다.
+4. 기다림 상한 5 초는 고른 값이고 재지 않았습니다.
+
+---
+
+## [10-09] 가드 둘 — 끝을 쓰는 묶음과 × 는 id 순으로 잠근다 · 슬롯 박동을 못 읽으면 다시 읽고 끝내 못 읽으면 말한다 5250ca1bd (총괄 10-09)
+
+어느 DB · 어느 스키마 · 지운 것 — 격리 시험 DB assy_test · 스키마는 하니스가 만들고 DROP 하는 assy_pytest_pg_* · 그 밖에 지운 것 0
+
+```
+창 닫기    성공 길이 끝을 쓰기 직전에 그 행들을 FOR UPDATE(id 오름차순)로 잠그고 빼 둔 표시를 SQL 로 읽음
+          자리 5250ca1bd:server/chain/ingestion_worker.py:2337:                    .order_by(DatabaseOutbox.id).with_for_update()) if by_operator]
+          × 의 빼 두기는 PG 에서 같은 순서로 먼저 잠근 뒤 집합 UPDATE
+          자리 5250ca1bd:server/chain/set_aside.py:170:        db.query(DatabaseOutbox.id).filter(*waiting).order_by(DatabaseOutbox.id).with_for_update().all()
+          표시 술어는 하나(set_aside.by_operator, 이제 공개) — line_already · what_became_of · 성공 길이 같이
+          전과 달라진 읽기: 전엔 기다리는 행의 id · 줄 열쇠를 읽고 끝난 행만 payload. 이제 묶음의 모든 행의 id · 표시 낱말을 잠가 읽고, payload 는 표시된 행만
+박동 읽기   holding() 이 슬롯 박동을 «못 읽음»(error)으로 받으면 1.0 초 안에서 다시 읽음
+          끝내 못 읽으면 셋째 답 UNREAD -> × 의 답에 "slot_not_found": "slot not found - the line's events are set aside; its running group may finish"
+          자리 5250ca1bd:server/chain/control.py:146:        slot_pid, answer["slot_not_found"] = None, slots.SLOT_NOT_FOUND   (카나리아 def holding = 5250ca1bd:server/chain/slots.py:1)
+```
+
+### 게이트
+
+```
+PG 손댄 네 파일(멈춤 · 슬롯 · HOL 순서 · 걸린 묶음) 한 번에: 27 passed, 55 deselected, 70 warnings · 8080 접촉 줄 0
+새 칸 ①  test_a_cross_that_comes_after_the_success_paths_read_waits_and_the_row_reads_as_ran (PG)
+         성공 길 읽기 뒤 · 커밋 전에 × -> × 는 잠금을 기다림(pg_stat_activity 의 Lock 을 보고 진행)
+         -> 행 SUCCESS · 표시 없음 · rows_set_aside 에 없음 · × 의 답 (빼 둠 0, 돎 1)
+         🔴 판정과 다른 한 줄: 이 경우 too_late 감사 줄은 0 입니다 — × 의 표시가 행에 «안 들어가서»(기다렸다가 끝난 행을 비켜 감)
+            묶음이 지울 표시가 없습니다. too_late 줄은 표시가 성공 길 읽기 «전»에 든 경우(앞 라운드 칸)에만 남습니다
+새 칸 ②  test_a_slot_beat_that_does_not_read_is_read_again — 첫 읽기 못 읽음 · 둘째 읽기 그 줄을 쥠 -> (1, pid)
+새 칸 ③  test_a_cross_whose_slot_beat_never_reads_says_so — 끝내 못 읽음 -> 답에 slot_not_found · 행은 빼 둠
+```
+
+### 변이 — md5 같음
+
+```
+BASELINE PG 3 passed, 46 deselected, 10 warnings | sqlite 4 passed, 45 deselected, 10 warnings
+MUTANT the success path does not lock           PG 1 failed, 2 passed, 46 deselected, 10 warnings | sqlite 4 passed, 45 deselected, 10 warnings
+    FAILED test_a_cross_that_comes_after_the_success_paths_read_waits_and_the_row_reads_as_ran
+MUTANT the x does not lock in id order first    PG 3 passed, 46 deselected, 10 warnings | sqlite 4 passed, 45 deselected, 10 warnings
+MUTANT an unreadable beat is not read again     PG 3 passed, 46 deselected, 10 warnings | sqlite 1 failed, 3 passed, 45 deselected, 10 warnings
+    FAILED test_a_slot_beat_that_does_not_read_is_read_again
+MUTANT an unreadable beat reads as no slot      PG 3 passed, 46 deselected, 10 warnings | sqlite 2 failed, 2 passed, 45 deselected, 10 warnings
+    FAILED test_a_cross_whose_slot_beat_never_reads_says_so
+    FAILED test_a_slot_beat_that_does_not_read_is_read_again
+MUTANT the x says nothing of it                 PG 3 passed, 46 deselected, 10 warnings | sqlite 1 failed, 3 passed, 45 deselected, 10 warnings
+    FAILED test_a_cross_whose_slot_beat_never_reads_says_so
+```
+초록 하나(the x does not lock in id order first) — 교착 막기는 박스에서 재현을 못 했습니다(왜 안 나는지는 재지 않음 — 짐작은 id IN 집합 UPDATE 가 이미 대개 id 순으로 잠그는 것). 판정대로 두었고 시험이 못 잽니다.
+
+### 전체 sqlite
+
+```
+test_[a-k]*: 4 failed, 4151 passed, 210 skipped, 1 xfailed, 5908 warnings
+test_[l-z]*: 1 failed, 3942 passed, 187 skipped, 2 xfailed, 7361 warnings
+-> 실패는 알려진 박스 실패뿐
+```
+같이 고친 시험 둘: test_chain_hol_scheduling · test_a_stuck_chain_group_says_what_holds_it 는 query 없는 가짜 세션으로 성공 길을 돌리고 «대기 여부»만 _still_waiting 으로 막아 두었는데, 성공 길이 이제 잠금 읽기를 직접 해서 첫 반쪽에서 일곱 칸이 빨강(AttributeError: no attribute 'query'). 두 파일의 같은 픽스처에 _ran_though_set_aside 막기 한 줄씩 — 위 수는 고친 뒤 다시 돌린 것.
+
+### 남은 것 하나 (안 지음)
+
+× 의 감사 줄(chain_queue_skip)은 «표시한 수»가 아니라 «× 가 읽을 때 기다리던 수»를 적습니다(set_aside_line 의 by_table 이 found 에서 셈). 위 칸 ①처럼 × 가 기다렸다가 아무것도 안 빼도 감사 줄은 「1 건 건너뜀」입니다. × 의 답(skipped_events)은 맞습니다. 감사 줄도 표시한 수로 고칠까요?
+
+---
+
+## [10-09] 원장 따라가기의 실패 줄은 같은 실패의 1 · 10 · 100 … 번째에만 92091395f (총괄 cb419a8a0 ㄴ)
+
+어느 DB · 어느 스키마 · 지운 것 — sqlite 시험은 하니스의 임시 DB · PG 는 격리 시험 DB assy_test, 하니스가 만들고 DROP 하는 assy_pytest_pg_* · 그 밖에 지운 것 0
+
+```
+ㄱ(선언 깨짐 — 기억 · 처음/풀림/10 분 줄)은 전 라운드 0e7530cef 에 이미 착지. 이번은 ㄴ
+줄 셋     소스 실패(소스 · 표 · 세상 · 예외 이름) · 삭제 실패(표 · 세상 · 예외 이름) · batch failed(예외 이름) — 행 값은 열쇠에 없음
+          줄 끝에 #N. 실패 «기록»(영수증 · ledger_state · failed=N)은 그대로
+자리
+          server/chain/ingestion_worker.py:3763
+          server/ledger/followup.py:390
+          server/ledger/followup.py:453
+한 함수   판정은 이미 하나였습니다 — 넷 다 utils.logger.announce_crossed 를 부름(카나리아 def announce_crossed = 92091395f:server/utils/logger.py:1)
+          사본은 «셈 보관»(before · total · dict) — 그것을 count_crossed(counts, key, n=1) 로 한 번 적고 새 자리 셋이 부름
+```
+
+### 앞선 넷 — 접기는 시연 뒤 (지시대로 셈만)
+
+```
+database/crud.py               announce_crossed 줄 154        이름을 드는 시험 파일 3  (git grep -l '_warn_undeclared_column_once' -- server/tests)
+chain/key_gate.py              announce_crossed 줄 155        이름을 드는 시험 파일 8  (git grep -l 'key_gate' -- server/tests)
+ledger/gate.py                 announce_crossed 줄 431, 463   이름을 드는 시험 파일 16  (git grep -l 'ledger.gate\|ledger import gate\|from ledger import.*gate' -- server/tests)
+parsers/void_sat_format.py     announce_crossed 줄 385        이름을 드는 시험 파일 6  (git grep -l 'void_sat_format' -- server/tests)
+같은 판정인가  예 — 넷 다 announce_crossed(before, total). 다른 것은 열쇠 모양과 한 번에 더하는 수(crud 는 1)
+접으면        count_crossed(counts, key, n) 로 셈 보관 줄이 빠짐. crud 는 열쇠별 «예산 넘김» 갈래가 따로 있어 그 갈래는 남음
+```
+
+### 게이트
+
+```
+소스 실패 이벤트 25  -> 줄 #1 · #10 · 영수증 25 · failed=25
+삭제 실패 이벤트 25  -> 줄 #1 · #10 · failed=25
+batch failed 15 바퀴 -> 줄 #1 · #10
+PG 원장 따라가기 파일 셋(잃지 않음 · 안 본 칸 건너뜀 · 지운 행) 한 번에: 18 passed, 13 deselected, 36 warnings · 8080 접촉 줄 0
+   (손댄 시험 파일 test_the_ledger_follows_the_table_it_reads 에는 PG 칸이 없어, 바뀐 길을 PG 로 지나는 파일을 돌림)
+```
+
+### 변이 — md5 같음
+
+```
+BASELINE 4 passed, 19 deselected, 6 warnings
+MUTANT every repeat is said                     3 failed, 1 passed, 19 deselected, 6 warnings
+    FAILED test_a_batch_failing_every_lap_is_said_on_the_1st_and_10th
+    FAILED test_a_delete_failing_on_every_event_is_said_on_the_1st_and_10th
+    FAILED test_a_source_failing_on_every_event_is_said_on_the_1st_and_10th
+MUTANT a source failure keys on its rows        1 failed, 3 passed, 19 deselected, 6 warnings
+    FAILED test_a_source_failing_on_every_event_is_said_on_the_1st_and_10th
+MUTANT a delete failure keys on its rows        1 failed, 3 passed, 19 deselected, 6 warnings
+    FAILED test_a_delete_failing_on_every_event_is_said_on_the_1st_and_10th
+MUTANT a batch failure keys on the exception    1 failed, 3 passed, 19 deselected, 6 warnings
+    FAILED test_a_batch_failing_every_lap_is_said_on_the_1st_and_10th
+```
+
+### 전체 sqlite
+
+```
+test_[a-k]*: 5 failed, 4150 passed, 210 skipped, 1 xfailed, 5916 warnings
+test_[l-z]*: 1 failed, 3945 passed, 187 skipped, 2 xfailed, 7351 warnings
+-> 실패는 알려진 박스 실패뿐
+```
+
+같이: ingestion_worker 를 만진 김에 «없어진 따라가기 규칙 캐시»의 설명 주석 덩어리를 지움(그 캐시가 auto-confirm 을 그 길에서 돌린다고 아직 말하고 있었음, 총괄 10-07 메모).
+
+---
+
+## [10-09] 인덱스 마스터 = 모델 선언 · 체인 워커가 알리고 스스로 만든다 · GET /admin/indexes 9acf4243e · 901b01f07 (총괄 e0e8020fb · d71f931c7)
+
+어느 DB · 어느 스키마 · 지운 것 — 격리 시험 DB assy_test · 스키마는 하니스가 만들고 DROP 하는 assy_pytest_pg_* — 시험이 그 스키마 안에서 인덱스 하나를 지우고 하나를 무효로 만들고(pg_index.indisvalid 를 손으로 false — 슈퍼유저 시험 DB 의 카탈로그 손질) 다시 지었음 · 그 밖에 지운 것 0
+
+```
+정본       정적 모델 표 13 개의 선언 49 개 = Index 47 + UNIQUE 제약 2. 기본 키는 선언된 것으로 침(목록 밖 · «선언 밖»에도 안 나옴)
+           선언마다 info = {"purpose", "serves"} (화면에 그려지므로 영어). 없으면 빨강 — test_every_declared_index_says_what_it_is_for
+index=True  같은 이름의 Index(...) 로. unique=True(key_hash) 는 PostgreSQL 이 붙인 그 이름 그대로 UniqueConstraint 로
+은퇴 둘     ix_cell_sources_table_name · ix_cell_sources_column_name — 선언에서 뺌(선언 밖 · 은퇴됨). 은퇴 판정:
+server/migrations/drop_redundant_layering_indexes.py:142:    "ix_cell_sources_table_name": "cell_sources",
+server/migrations/drop_redundant_layering_indexes.py:143:    "ix_cell_sources_column_name": "cell_sources",
+선언 전후   (drop 전후를 같은 스크립트로 PostgreSQL DDL 로 떠서 diff)
+34d33
+< CREATE INDEX ix_cell_sources_column_name ON cell_sources (column_name)
+36d34
+< CREATE INDEX ix_cell_sources_table_name ON cell_sources (table_name)
+50c48
+< auth_api_keys UNIQUE (key_hash) name=None
+---
+> auth_api_keys UNIQUE (key_hash) name=auth_api_keys_key_hash_key
+           = 은퇴 둘이 빠지고, key_hash 제약이 이름을 가진 것뿐 — DB 가 보는 모양은 그대로
+견주기 하나  models.index_states — 부르는 곳
+server/main.py:4627:    return models.index_states(db.get_bind())
+server/database/models.py:1679:def index_states(engine):
+server/database/models.py:1726:    owed = [row for row in index_states(engine)["declared"] if row["state"] in (INDEX_MISSING, INDEX_INVALID)]
+만드는 곳   체인 워커 _start_index_work 안, 선언된 조인 키 일 «다음»에 같은 태스크에서 — 둘이 동시에 만들지 않음
+           하나씩 models._ensure_one_index (CONCURRENTLY · 무효면 지우고 다시 · built/present/failed)
+           배정자를 막지 않음: 인덱스 일은 스레드에서 —
+server/chain/ingestion_worker.py:2705:        await asyncio.to_thread(_ensure_model_indexes_sync, db_session_factory)
+           슬롯 배정자는 루프에서 —
+server/chain/ingestion_worker.py:4834:                given = pool.tick(db, rules, notified=loop_wake_ts is not None)
+_ensure_one_index 셋  ① 이름을 «이 연결의 스키마»에서만 찾음(전엔 모든 스키마 — 다른 스키마의 같은 이름이면 「있음」)
+           ② statement_timeout 0 으로 만들고 끝나면 RESET  ③ 수리 · 실패 줄을 부른 쪽의 로거로(say) — 체인 로그에 사유가 남음
+기다림      pg_stat_progress_create_index + pg_stat_activity — «building - waiting for transactions older than it: pid P (application_name)»
+           GET /admin/indexes 의 state=building · building 칸, 그리고 chain_worker.log 에 600 초마다
+스위치      ingestion_settings.json "build_missing_indexes" — 기본 켬, false 면 알리기만
+UNIQUE 제약  빠졌으면 이름은 알리되 만들지 않음(ALTER TABLE 이지 인덱스가 아님)
+```
+
+### 같이 (총괄 지시)
+
+```
+× 감사 줄   chain_queue_skip 감사 줄이 «× 가 읽을 때 기다리던 수»가 아니라 «표시한 수»(표마다). 0 이면 줄 없음
+           _mark 가 표마다 센 수를 돌려줌(PG 는 UPDATE ... RETURNING table_name) · 답에 marked_by_table 더함(더하기만)
+ops 스크립트  scripts/ops_setup_db_performance.py — 없는 withdraw_idx 를 읽던 은퇴 인덱스 짓기와 그 계획 확인(3.11)을 걷음 — «안 죽게»만
+           그 확인 함수 _verify_withdraw_plan 은 이제 부르는 곳이 없음(남겨 둠 · 단계 정리는 시연 뒤)
+로그 꼬리표  체인 로그 꼬리표 게이트(test_a_rule_is_run_by_one_seat)에 «Indexes» 를 그 뜻과 함께 더함 — 첫 반쪽에서 빨강이었음
+뒤따름     901b01f07 — 라우트의 using 이 보통 인덱스에서 false 로 나가던 것을 null 로(SQLAlchemy 의 빈 값이 False). 이 보고의 견본을 만들다 봄
+           라우트 칸에 brin · null 단언 + 변이(false 로 되돌리면 빨강) · sqlite 반쪽 둘 다 다시
+```
+🔴 제 실수 하나: _mark 의 답 모양(수 → 표마다 수)을 바꾸면서 그 함수를 «직접» 부르는 시험 두 칸을 안 셌습니다 — 둘째 반쪽에서 빨강, 새 모양으로 고친 뒤 다시 돌린 수가 아래입니다.
+
+### 게이트
+
+```
+PG 손댄 파일(인덱스 · 멈춤) 한 번에: 11 passed, 47 deselected, 14 warnings · 8080 접촉 줄 0
+견주기     지운 것 -> missing · 무효 -> invalid · 그대로 -> present(+ purpose · size) · 선언 없는 것 하나 -> outside 에 그것 하나
+           모델 표에 동적 표(시험 카탈로그)가 섞이지 않음
+UNIQUE 제약 key_hash 제약을 지움 -> 줄에 이름(missing) · «not built here» · 만든 것 없음({}) · 시험 끝에 되돌림
+알림+만듦   missing + invalid -> 줄 1 (둘을 이름으로) · 둘 다 built · 전부 present · 다시 -> 줄 0 · {}
+스위치 끔   줄 1 «not built: build_missing_indexes is off» · 여전히 missing
+기다림      다른 연결이 audit_logs 에 쓰고 커밋 안 함 -> «still building ... waiting for transactions older than it: pid» 줄 · 라우트 state=building
+           그 트랜잭션을 끝내면 built
+순서        인덱스 일 = 조인 키 다음 모델 인덱스
+× 감사      표시 0 -> chain_queue_skip 줄 0 (앞 라운드 잠금 칸에 한 줄 더)
+```
+
+### 변이 — md5 같음
+
+```
+BASELINE PG 5 passed, 52 deselected, 6 warnings | plain 4 passed, 4 skipped, 6 warnings
+MUTANT an index without a purpose               PG 1 failed, 4 passed, 52 deselected, 6 warnings | plain 1 failed, 3 passed, 4 skipped, 6 warnings
+    FAILED test_every_declared_index_says_what_it_is_for
+    FAILED test_the_route_shows_each_declared_index_beside_the_database
+MUTANT a retired index declared again           PG 1 failed, 4 passed, 52 deselected, 6 warnings | plain 2 failed, 2 passed, 4 skipped, 6 warnings
+    FAILED test_a_retired_index_is_not_declared
+    FAILED test_every_declared_index_says_what_it_is_for
+    FAILED test_the_route_shows_each_declared_index_beside_the_database
+MUTANT an invalid index reads as present        PG 2 failed, 3 passed, 52 deselected, 6 warnings | plain 4 passed, 4 skipped, 6 warnings
+    FAILED test_the_index_work_names_what_is_owed_in_one_line_and_builds_it
+    FAILED test_the_route_shows_each_declared_index_beside_the_database
+MUTANT what is owed is not built                PG 3 failed, 2 passed, 52 deselected, 6 warnings, 4 errors | plain 4 passed, 4 skipped, 6 warnings
+    FAILED test_a_build_waiting_on_an_older_transaction_says_whom_and_ends_after_it
+    FAILED test_build_missing_indexes_off_names_what_is_owed_and_builds_nothing
+    FAILED test_the_index_work_names_what_is_owed_in_one_line_and_builds_it
+    FAILED test_the_route_shows_each_declared_index_beside_the_database
+MUTANT the switch is not read                   PG 1 failed, 4 passed, 52 deselected, 6 warnings | plain 4 passed, 4 skipped, 6 warnings
+    FAILED test_build_missing_indexes_off_names_what_is_owed_and_builds_nothing
+MUTANT a waiting build says nothing             PG 1 failed, 4 passed, 52 deselected, 6 warnings | plain 4 passed, 4 skipped, 6 warnings
+    FAILED test_a_build_waiting_on_an_older_transaction_says_whom_and_ends_after_it
+MUTANT the route does not show a build          PG 1 failed, 4 passed, 52 deselected, 6 warnings | plain 4 passed, 4 skipped, 6 warnings
+    FAILED test_a_build_waiting_on_an_older_transaction_says_whom_and_ends_after_it
+MUTANT a name is looked up in every schema      PG 3 failed, 2 passed, 52 deselected, 6 warnings, 4 errors | plain 4 passed, 4 skipped, 6 warnings
+    FAILED test_a_build_waiting_on_an_older_transaction_says_whom_and_ends_after_it
+    FAILED test_build_missing_indexes_off_names_what_is_owed_and_builds_nothing
+    FAILED test_the_index_work_names_what_is_owed_in_one_line_and_builds_it
+    FAILED test_the_route_shows_each_declared_index_beside_the_database
+MUTANT the index work skips the model indexes   PG 5 passed, 52 deselected, 6 warnings | plain 1 failed, 3 passed, 4 skipped, 6 warnings
+    FAILED test_the_index_work_builds_the_model_indexes_after_the_declared_keys
+MUTANT the x audit counts what it read          PG 1 failed, 4 passed, 52 deselected, 6 warnings | plain 4 passed, 4 skipped, 6 warnings
+    FAILED test_a_cross_that_comes_after_the_success_paths_read_waits_and_the_row_reads_as_ran
+BASELINE PG 6 passed, 52 deselected, 6 warnings | plain 4 passed, 5 skipped, 6 warnings
+MUTANT a missing constraint is built like an index PG 1 failed, 5 passed, 52 deselected, 6 warnings | plain 4 passed, 5 skipped, 6 warnings
+    FAILED test_a_missing_unique_constraint_is_named_and_not_built
+```
+초록 없음
+
+### 전체 sqlite
+
+```
+test_[a-k]*: 4 failed, 4151 passed, 210 skipped, 1 xfailed, 5933 warnings
+test_[l-z]*: 1 failed, 3949 passed, 192 skipped, 2 xfailed, 7336 warnings
+-> 실패는 알려진 박스 실패(와 흔들림)뿐
+```
+
+### 범위 밖 — 셈만 (총괄 지시)
+
+```
+원장 인덱스  ledger/schema.py 의 raw SQL, 세상(w_<세상>)마다 같은 이름 — 이름 12 개: idx_ledger_id · idx_ledger_object_entity · idx_ledger_register · idx_ledger_register_search · idx_ledger_row_ref_raw · idx_ledger_row_ref_row · idx_ledger_source_event · idx_ledger_subject_entity · idx_ledger_subject_gin · idx_ledger_subject_lot · idx_ledger_type_pred_time · uq_ledger_atom
+동적 표     models.py 의 짓기 함수가 따로 — ix_<표>_updated_at · idx_<표>_updated(체인 워커 기동) · idx_<표>_map_key · idx_<표>_decision_key(설정 다시 읽기)
+           · uq_bk_<표>(체인 워커 기동, 마이그레이션 함수) · ix_<표>_business_key_val · idx_<표>_declared_key(마이그레이션만)
+           · idx_suggest_*(ops 스크립트). 이번 견주기에 안 들어감
+복사 맵퍼   원본 표 키 복합 인덱스(복사 맵퍼 key_columns)는 이 범위 밖 — 시연 뒤 «맵퍼가 필요한 인덱스를 선언하는 자리»로
+```
+
+### 은퇴 후보로 보이는 것 — 짓지 않음, 셈만
+
+조건 없는 btree 단일 칸 인덱스 중, 같은 표의 조건 없는 btree 선언이 같은 칸으로 «시작»하는 것(drop_redundant_layering_indexes 가 cell_sources 에서 은퇴시킨 모양). 쓰인 횟수는 재지 않았습니다 — 운영의 GET /admin/indexes scans 로 판단할 것:
+```
+idx_frame_conf_src_lookup (frame_confirmation_source.confirmation_uid) - idx_frame_conf_src_unique start(s) with it
+ix_audit_logs_table_name (audit_logs.table_name) - idx_audit_cell_history, idx_audit_row_history start(s) with it
+ix_cell_overwrites_table_name (cell_overwrites.table_name) - idx_overwrites_lookup, idx_overwrites_lookup_col start(s) with it
+ix_retroactive_runs_state (retroactive_runs.state) - idx_retroactive_runs_recent start(s) with it
+```
+
+### 클라 반쪽에 줄 응답 견본 (모양 — 값은 예시)
+
+```
+{
+ "declared": [
+  {
+   "name": "idx_audit_cell_history",
+   "table": "audit_logs",
+   "columns": [
+    "table_name",
+    "row_id",
+    "column_name",
+    "timestamp",
+    "id"
+   ],
+   "where": null,
+   "include": [],
+   "using": null,
+   "unique": false,
+   "constraint": false,
+   "purpose": "one cell's history a page at a time",
+   "serves": "history tab, cell",
+   "state": "present",
+   "building": null,
+   "size_bytes": 106496,
+   "scans": 12
+  }
+ ],
+ "outside": [
+  {
+   "name": "<이름>",
+   "table": "<표>",
+   "valid": true,
+   "building": null,
+   "size_bytes": 8192,
+   "scans": 0
+  }
+ ]
+}
+```
+
+### 남은 것 — 시험이 못 잰 것
+
+- statement_timeout 0 → RESET: 이 박스 엔진엔 기본 상한이 없어(연결 인자에 없음) 빼도 시험이 안 갈립니다. 변이를 안 돌렸습니다.
+- 진행 읽기가 실패할 때의 한 줄(«its progress did not read ... unwatched»): 그 실패를 만들어 돌린 칸이 없습니다.

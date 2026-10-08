@@ -17,9 +17,13 @@
    뿌리  체인 워커 하나가 대기열을 id 순서로 · «끄기»가 문 넷(Pause · 빼 두기 · 실행 Cancel · 줄 ×)으로 갈려 각자 반쪽 · 상태 낱말이 waiting/done 둘
    ✅ 착지·총괄 확인  한 줄 멈춤 stop_line(c8f2de45a · 변이 넷) · 그리드 대기열 = 대기만 + 빼 둔 행 알릴 것 없음(a9c5add37 · 변이 둘)
                      · 상태 여덟 낱말 + 근거(66b330480 · 86 통과 · 변이 셋) · 그리드 Queue 탭 5 초(2ea085988) · 그리드 100 % 맞춤(c1ea9dece)
-   🔨 구현자  프로세스 할당(19f6a9277 — 줄 하나 = 슬롯 하나 · 창은 «줄» 질의 · 묶음 단위 표 잠금 · 로그 하나 · slot_pid · 고른 이벤트 빼기는 묶음만 되감기) 착지 직전
-             -> 빠진 인덱스 알리고 스스로 만들기 + 인덱스 마스터(e0e8020fb · d71f931c7) -> 시각 format(ca87ffdb3) -> exclude_when when · 원장 도배(cb419a8a0)
-   🔨 클라    상태 칸 함수 하나(248ae20cd — 서버 66b330480 짝, 착지 전 운영 pull 금지: 그리드 State 가 [object Object]) -> 글자 큰 토큰 2px ↓ · 헤더 한 줄 + 필터 칩 좁게 · × 보임(bfb62503e) -> 덩어리 열기
+   ✅ 10-09 착지·총괄 확인  프로세스 할당(422d075c7 · 변이 넷) · 끊긴 묶음 되감기(a2342ce2f) · 원장 시각 format(b2fe1f02f · 변이 셋)
+                     · × 늦은 경우 «돌았음이 이김» + 슬롯 끝난 뒤 다시 세기(62f067a1a) · 잠금 순서 · 슬롯 못 찾음 한 줄(5250ca1bd · 82 통과 · 변이)
+                     · 클라: 상태 칸 + 근거 줄바꿈 · 헤더 한 줄(0.67 · 11px) · 덩어리 열기 · waiting_for_table · slot pid · × already 토스트 · 원장 줄 멈춤/live off
+   🔨 구현자  빠진 인덱스 알리고 스스로 만들기 + 인덱스 마스터(e0e8020fb · d71f931c7 — 정적 모델 51, 기본 켬 build_missing_indexes, 만드는 중 기다리는 pid 보임) -> 원장 도배(cb419a8a0)
+   🔨 클라    인덱스 표(서버 뒤) — 그 전엔 대기
+   시연 뒤   시각 format 미리 채우기(요청 안 스캔 문제) · expand 인자 은퇴 · already/already_processed 말 정리 · 맵퍼가 필요한 인덱스 선언 자리(복사 key_columns) · 옆 패널 접기 · subgraph_view 하니스 9 분
+   응용 QA   test_ledger_l1_pg 둘이 main 에서 빨강(shipped 선언에 소스 없음) — 판정 재료 · b2fe1f02f 운영 모양 QA
    소유자(운영)  상태 칸 클라 착지 뒤 pull + 재기동(서버 · 체인 워커) · RUN.md 의 빼 둔 행 broadcast_at SQL 한 번 · chain_statement_timeout_seconds 0(소급 묶음엔 2 분이 짧았음 — 총괄 판단 착오)
                 · 인덱스 idx_sources_by_origin · idx_audit_user_recorrection · 원본 표 키 복합 인덱스 확인 · IT 에 /auth/signed-out 등록(나중)
    물음        막질별 두께 선언 — 계측 표가 세로(한 행 값 하나)인지 가로(막질마다 칸)인지 · 옆 패널 접기 단추(시연 뒤 제안) · 소급 진행률을 «워커가 처리한 행 / 넘긴 행»으로(제안)

@@ -22,7 +22,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 
 # Setup Unified Logger
 from utils import logger as process_logging
-from utils.logger import get_process_logger
+from utils.logger import count_crossed, get_process_logger
 from utils.payload_helper import get_payload_dict
 from utils import heartbeat
 # [H4] Module-level, and deliberately NOT a lazy import of the web application
@@ -2314,6 +2314,47 @@ def _still_waiting(db, events):
 #: Rows per `IN` list of `_still_waiting` - under SQLite's bound-parameter limit.
 WAITING_CHECK_CHUNK = 1000
 
+
+def _ran_though_set_aside(db, tx_id, events):
+    """The group RAN, and a set-aside landed on some of its rows while it did - a cut that found no
+    query to cut, the group being in Python (총괄 54a53f894, 응용 QA 54a53f894). 「Ran」 wins: the
+    mark is cleared and the row ends SUCCESS like the rest, and one audit line per table says the
+    stop came too late - otherwise the row read as set aside and running it again ran it twice.
+    -> how many rows."""
+    from chain import set_aside
+    from database import crud
+    from database.models import DatabaseOutbox
+
+    # 🔴 LOCKED, IN ID ORDER, RIGHT BEFORE THE END IS WRITTEN (총괄 10-09). A mark read here is
+    #    cleared; a × that comes after waits for this commit, then finds the row no longer waiting
+    #    and leaves it - unlocked, its mark landed under this SUCCESS. `set_aside._mark` locks in
+    #    the same order, so a × and a group never wait on each other in a circle.
+    ids, marked = sorted(event.id for event in events), []
+    for start in range(0, len(ids), WAITING_CHECK_CHUNK):
+        marked += [event_id for event_id, by_operator in
+                   (db.query(DatabaseOutbox.id, set_aside.by_operator(DatabaseOutbox))
+                    .filter(DatabaseOutbox.id.in_(ids[start:start + WAITING_CHECK_CHUNK]))
+                    .order_by(DatabaseOutbox.id).with_for_update()) if by_operator]
+    late = {event_id: get_payload_dict(payload) or {} for event_id, payload in
+            db.query(DatabaseOutbox.id, DatabaseOutbox.payload).filter(DatabaseOutbox.id.in_(marked))} if marked else {}
+    from sqlalchemy.orm.attributes import flag_modified
+
+    tables = {}
+    for event in events:
+        if event.id in late:
+            event.payload = event_constants.without_cancel_mark(late[event.id])
+            # written even when it equals what this session read at pick time - the mark is only
+            # in the database, so the ORM would see «no change» and leave it there
+            flag_modified(event, "payload")
+            tables[event.table_name] = tables.get(event.table_name, 0) + 1
+    for table, count in sorted(tables.items()):
+        crud.create_audit_log(db, table, "*", "*", tx_id, count, set_aside.SKIP_TOO_LATE_SOURCE,
+                              slots.CHAIN_WORKER)
+    if late:
+        logger.info("[Chain] tx '%s': %d event(s) were set aside while it ran and it ran - they read "
+                    "as ran, not set aside", tx_id, len(late))
+    return len(late)
+
 #: While a slot runs a line the loop looks this often for its answer, so a freed slot is given
 #: the next line at once rather than at the next NOTIFY or the 2 s idle wait.
 SLOT_ANSWER_WAIT_SECONDS = 0.25
@@ -2490,16 +2531,6 @@ async def _say_what_a_stalled_group_waits_on(db):
         logger.warning("[Chain] %s: %s", what, line)
 
 
-#: Follow-up rules for the `builtin:` dispatcher, held across drain batches.
-#:
-#: 🔴 MEASURED: `load_chain_rules()` COSTS 3.4 ms, and the drain calls its batch function in a
-#: `while` loop — so reading the file, validating every rule and re-running the synthesis on
-#: EVERY batch is pure waste that grows with the rule count. It was invisible when S-189 ⓒ
-#: landed because no join rule matched and the loop did nothing; S-195 puts auto-confirm on
-#: this path, where it would have fired on every batch forever.
-#:
-#: ⚠️ INVALIDATED WHERE EVERY OTHER WORKER CACHE IS. A cache with no reset is the reason a
-#: reload stops meaning anything, and this process already has one seat for that.
 # ⚰️ [소유자 정본] `_FOLLOWUP_BUILTIN_RULES` AND `_rules_for_the_follow_up_pass` STOOD HERE.
 #   The cache existed because the drain called the selector in a `while` loop and
 #   `load_chain_rules()` costs 3.4 ms; there is no drain-side rule loop any more, so there is
@@ -2639,13 +2670,39 @@ def _ensure_declared_indexes_sync(rules, db_session_factory):
                      "(체인은 계속): %s", _key_error)
 
 
+#: ingestion_settings.json - whether the index work builds the static models' declared indexes the
+#: database lacks (the default) or only names them (총괄 e0e8020fb).
+BUILD_MISSING_INDEXES_SETTING = "build_missing_indexes"
+
+
+def _ensure_model_indexes_sync(db_session_factory):
+    """The static models' declared indexes the database lacks or holds invalid: named, and built one
+    at a time unless `build_missing_indexes` is false (`models.ensure_model_indexes`). Contained: an
+    index that cannot be compared or built is a line, never a worker that will not start."""
+    from database import models
+    from parsers.directory_watcher import load_ingestion_settings
+
+    try:
+        db = db_session_factory()
+        try:
+            engine = db.get_bind()
+        finally:
+            db.close()
+        build = load_ingestion_settings().get(BUILD_MISSING_INDEXES_SETTING, True) is not False
+        models.ensure_model_indexes(engine, build=build, say=logger.warning)
+    except Exception as exc:                                            # noqa: BLE001
+        logger.error("[Indexes] the declared indexes were not compared (the chain goes on): %s", exc)
+
+
 def _start_index_work(rules, db_session_factory, after=None):
     """The index work as a task beside the loop - after `after` (the previous start's or
-    reload's), so two never build the same index at once."""
+    reload's), so two never build the same index at once. On a thread: the loop - its slot
+    dispatcher too - goes on while an index builds."""
     async def run():
         if after is not None and not after.done():
             await asyncio.wait({after})
         await asyncio.to_thread(_ensure_declared_indexes_sync, rules, db_session_factory)
+        await asyncio.to_thread(_ensure_model_indexes_sync, db_session_factory)
     return asyncio.create_task(run())
 
 
@@ -2842,6 +2899,8 @@ async def process_pending_groups(db, group_order, groups, rules, db_session_fact
                 # 0.875 s hook in the first place.
                 with alignment_batch_counts.stage("mark processed"):
                     event_ids = [event.id for event in events_in_tx]
+                    # asked right before the ending is written, as the failure path asks (총괄 54a53f894)
+                    _ran_though_set_aside(db, tx_id, events_in_tx)
                     for event in events_in_tx:
                         mark_processed(event, "SUCCESS")
                         # [Reliability F1] 통지할 메시지가 없는 no-op 그룹은 전달할 것이 없으므로 즉시 전달 확정(스윕 제외).
@@ -3725,8 +3784,12 @@ async def run_ledger_followup(db_session_factory):
                 break
             except Exception as exc:
                 # The event stays unmarked and is taken again after the rest - going on
-                # here would take the same one in a tight loop.
-                logger.warning("[LedgerFollowUp] batch failed: %s", exc)
+                # here would take the same one in a tight loop. Its line is said on the 1st,
+                # 10th, 100th ... of its error (총괄 cb419a8a0 - once a lap filled the log all day).
+                nth = count_crossed(ledger_followup.REPEATS, ("batch", type(exc).__name__))
+                if nth:
+                    logger.warning("[LedgerFollowUp] batch failed: %s - #%d of this error (said at the "
+                                   "1st, 10th, 100th ...)", exc, nth)
                 break
             if _FOLLOWUP_STOP:
                 await asyncio.to_thread(_say_the_follow_up, None,

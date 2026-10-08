@@ -273,6 +273,183 @@ def test_a_cancel_never_cuts_its_own_statement(pg_engine, monkeypatch):
 
 
 @pytest.mark.pg
+def test_a_cross_that_lands_while_its_group_is_in_python_reads_as_ran(pg_engine, monkeypatch):
+    """총괄 54a53f894 (응용 QA): a × whose group is in Python has no query to cut, and the group runs
+    to its end. 「Ran」 wins: the row ends SUCCESS with no mark, running the set-aside rows again
+    finds none of it, and one audit line says the stop came too late."""
+    monkeypatch.setattr(process_logging, "active_process_name", lambda: "Chain")
+    _tables(pg_engine)
+    db = sessionmaker(bind=pg_engine)()
+    try:
+        stamp = "%d" % (time.time() * 1000)
+        _write(db, PA, [{"k": "X" + stamp, "n": "1"}])
+        row_id = db.query(models.DYNAMIC_TABLES[PA].row_id).filter_by(k="X" + stamp).scalar()
+        [event] = [e for e in _pending(db) if get_payload_dict(e).get("row_id") == row_id]
+        key = get_payload_dict(event).get("transaction_id")
+
+        def in_python(tx_id, events, session, rules):              # the × lands here
+            other = sessionmaker(bind=pg_engine)()
+            try:
+                chain_control.stop_line(other, key, "kim")
+            finally:
+                other.close()
+            return True, None, []
+        monkeypatch.setattr(worker, "_process_chain_transaction_group_sync", in_python)
+        order, groups = _groups([event])
+        asyncio.run(worker.process_pending_groups(db, order, groups, [], None))
+
+        db.expire_all()
+        ended = db.get(models.DatabaseOutbox, event.id)
+        assert (ended.status, ended.processed_chain,
+                get_payload_dict(ended).get(event_constants.CANCEL_MARK)) == ("SUCCESS", True, None)
+        assert row_id not in set_aside.rows_set_aside(db, tables=[PA]).get(PA, [])
+        said = [a.table_name for a in db.query(models.AuditLog).filter_by(source_name=set_aside.SKIP_TOO_LATE_SOURCE)
+                if a.old_value == key]
+        assert said == [PA]
+    finally:
+        db.rollback()
+        db.close()
+        for name in TABLES:
+            crud.TABLE_CONFIG.pop(name, None)
+
+
+@pytest.mark.pg
+def test_a_cross_answers_its_lines_rows_as_the_table_has_them_once_the_slot_has_ended(pg_engine, monkeypatch):
+    """총괄 54a53f894 ㄱ: a group that commits between the mark and the slot's end ran its rows - the
+    ×'s two numbers are the table's, counted after the slot has ended, not the mark's."""
+    monkeypatch.setattr(process_logging, "active_process_name", lambda: "Chain")
+    _tables(pg_engine)
+    db = sessionmaker(bind=pg_engine)()
+    try:
+        stamp = "%d" % (time.time() * 1000)
+        _write(db, PA, [{"k": "R" + stamp, "n": "1"}, {"k": "S" + stamp, "n": "1"}])
+        row_ids = {db.query(models.DYNAMIC_TABLES[PA].row_id).filter_by(k=k + stamp).scalar() for k in "RS"}
+        events = [e for e in _pending(db) if get_payload_dict(e).get("row_id") in row_ids]
+        [key] = {get_payload_dict(e).get("transaction_id") for e in events}
+        assert len(events) == 2, "two rows of one line wait - else this measures nothing"
+
+        marked, in_python = threading.Event(), threading.Event()
+
+        def until_marked(*_a):                                     # one row's group, in Python
+            in_python.set()
+            assert marked.wait(30)
+            return True, None, []
+        monkeypatch.setattr(worker, "_process_chain_transaction_group_sync", until_marked)
+        order, groups = _groups(events[:1])
+        group = threading.Thread(target=lambda: asyncio.run(worker.process_pending_groups(db, order, groups, [], None)))
+        group.start()
+        assert in_python.wait(30)
+
+        def ends_once_its_group_has_committed(_db, line):          # the slot ends after the group commits
+            assert line == key
+            marked.set()
+            group.join(30)
+            return 4242
+        monkeypatch.setattr(chain_slots, "stop_slot", ends_once_its_group_has_committed)
+        other = sessionmaker(bind=pg_engine)()
+        try:
+            answer = chain_control.stop_line(other, key, "kim")
+        finally:
+            other.close()
+
+        assert not group.is_alive()
+        db.expire_all()
+        rows = [db.get(models.DatabaseOutbox, e.id) for e in events]
+        marks = [get_payload_dict(row).get(event_constants.CANCEL_MARK) for row in rows]
+        assert ([row.processed_chain for row in rows], marks) == ([True, True], [None, set_aside.OPERATOR])
+        assert (answer["skipped_events"], answer["already_processed"], answer["slot_pid"]) == (
+            marks.count(set_aside.OPERATOR), marks.count(None), 4242) == (1, 1, 4242)
+    finally:
+        db.rollback()
+        db.close()
+        for name in TABLES:
+            crud.TABLE_CONFIG.pop(name, None)
+
+
+@pytest.mark.pg
+def test_a_cross_that_comes_after_the_success_paths_read_waits_and_the_row_reads_as_ran(pg_engine, monkeypatch):
+    """총괄 10-09: the success path locks its rows before it writes their end - a × between that read
+    and the commit waits for the commit, then finds the row no longer waiting. Unlocked, its mark
+    landed under the SUCCESS: a row that ran read as set aside, and running them again ran it twice."""
+    monkeypatch.setattr(process_logging, "active_process_name", lambda: "Chain")
+    _tables(pg_engine)
+    db = sessionmaker(bind=pg_engine)()
+    other = sessionmaker(bind=pg_engine)()
+    try:
+        stamp = "%d" % (time.time() * 1000)
+        _write(db, PA, [{"k": "L" + stamp, "n": "1"}])
+        row_id = db.query(models.DYNAMIC_TABLES[PA].row_id).filter_by(k="L" + stamp).scalar()
+        [event] = [e for e in _pending(db) if get_payload_dict(e).get("row_id") == row_id]
+        key = get_payload_dict(event).get("transaction_id")
+        cross_pid = other.connection().connection.dbapi_connection.get_backend_pid()
+        said, started = {}, []
+        cross = threading.Thread(target=lambda: said.update(chain_control.stop_line(other, key, "kim")))
+
+        def ending_after_a_cross(row, status, ending=worker.mark_processed):   # after the read, before the commit
+            if not started:
+                started.append(cross.start())
+                with pg_engine.connect() as conn:
+                    assert _wait(lambda: not cross.is_alive() or conn.execute(text(
+                        "SELECT wait_event_type = 'Lock' FROM pg_stat_activity WHERE pid = :pid"),
+                        {"pid": cross_pid}).scalar(), 30), "the × neither waited nor ended"
+            return ending(row, status)
+        monkeypatch.setattr(worker, "mark_processed", ending_after_a_cross)
+        monkeypatch.setattr(worker, "_process_chain_transaction_group_sync", lambda *a: (True, None, []))
+        monkeypatch.setattr(chain_slots, "stop_slot", lambda _db, line: None)
+        order, groups = _groups([event])
+        asyncio.run(worker.process_pending_groups(db, order, groups, [], None))
+        cross.join(30)
+
+        assert started and not cross.is_alive()
+        db.expire_all()
+        ended = db.get(models.DatabaseOutbox, event.id)
+        assert (ended.status, ended.processed_chain,
+                get_payload_dict(ended).get(event_constants.CANCEL_MARK)) == ("SUCCESS", True, None)
+        assert (said["skipped_events"], said["already_processed"]) == (0, 1)
+        assert row_id not in set_aside.rows_set_aside(db, tables=[PA]).get(PA, [])
+        # the mark never landed, so no group cleared one: the too-late line is for a mark read before the lock
+        assert [a for a in db.query(models.AuditLog).filter_by(source_name=set_aside.SKIP_TOO_LATE_SOURCE)
+                if a.old_value == key] == []
+        # and the × marked nothing, so it says nothing either - its line is what it MARKED (총괄 10-09)
+        assert [a for a in db.query(models.AuditLog).filter_by(source_name=set_aside.QUEUE_SKIP_SOURCE)
+                if a.old_value == key] == []
+    finally:
+        db.rollback()
+        db.close()
+        other.close()
+        for name in TABLES:
+            crud.TABLE_CONFIG.pop(name, None)
+
+
+def _slot_beat(line=None):
+    """A slot's beat as `heartbeat.read_all` gives it - holding `line`, or one that did not read."""
+    if line is None:
+        return {"pid": None, "stale": True, "error": "unreadable heartbeat: PermissionError"}
+    return {"pid": 4242, "stale": False, "laps": {chain_slots.HOLDS: {"line": line}}}
+
+
+def test_a_slot_beat_that_does_not_read_is_read_again(monkeypatch):
+    """총괄 10-09: a beat being written reads as unreadable - read once, a × took that for «no slot»."""
+    reads = iter([{"chain-slot-1": _slot_beat()}, {"chain-slot-1": _slot_beat("tx-1")}])
+    monkeypatch.setattr(heartbeat, "read_all", lambda *a, **k: next(reads))
+    assert chain_slots.holding("tx-1") == (1, 4242)
+
+
+def test_a_cross_whose_slot_beat_never_reads_says_so(db_q, queue, monkeypatch):
+    """Not a silent `slot_pid: null` (총괄 10-09): the line is set aside, which slot runs it is not known."""
+    _write(db_q, PA, [{"k": "K1", "n": "0"}])
+    key = _key_of(queue, PA)
+    monkeypatch.setattr(heartbeat, "read_all", lambda *a, **k: {"chain-slot-1": _slot_beat()})
+
+    answer = _cross(queue, key)
+
+    assert (answer.status_code, answer.json()) == (200, {
+        "skipped_events": 1, "already_processed": 0, "slot_pid": None,
+        "slot_not_found": chain_slots.SLOT_NOT_FOUND})
+    assert _rows(db_q, PA) == [SET_ASIDE]
+
+
+@pytest.mark.pg
 def test_a_pause_cancels_the_query_a_group_is_waiting_on(pg_engine, monkeypatch):
     monkeypatch.setattr(process_logging, "active_process_name", lambda: "Chain")
     _tables(pg_engine)
@@ -464,7 +641,8 @@ def test_a_cross_sets_its_lines_waiting_events_aside_and_leaves_the_others(db_q,
 
     answer = _cross(queue, line["cancel"]["key"], **{"X-User": "kim"})
 
-    assert (answer.status_code, answer.json()) == (200, {"skipped_events": 1, "slot_pid": None})
+    assert (answer.status_code, answer.json()) == (200, {"skipped_events": 1, "already_processed": 0,
+                                                         "slot_pid": None})
     assert _rows(db, PA) == [SET_ASIDE]
     assert [e.id for e in _pending(db)] == other                               # the other line waits
     assert ledger_followup.outbox_depth(db.get_bind()) == followed + 1         # the ledger follows it
@@ -553,7 +731,8 @@ def test_a_stop_sets_a_runs_waiting_events_aside_whatever_state_the_run_is_in(
     answer = STOPS[caller](queue, RUN)
 
     assert answer.status_code == 200, answer.text
-    assert answer.json() == {"run": STOPPED_AS[state], "skipped_events": 2, "slot_pid": 4242}
+    assert answer.json() == {"run": STOPPED_AS[state], "skipped_events": 2, "already_processed": 0,
+                             "slot_pid": 4242}
     assert _runs_waiting(db) == [] and _rows(db, PA) == [SET_ASIDE, SET_ASIDE]
     assert cut == [RUN]                                     # the slot holding this line is asked
     assert [e.id for e in _pending(db)] == other            # another line waits on
@@ -584,7 +763,8 @@ def test_a_run_stopped_while_it_inserts_leaves_no_waiting_event_once_it_lands(
                                       lambda *a: None, retroactive.RunControl(RUN))
 
     assert out["status"] == "cancelled"
-    assert said == [{"run": retroactive.RUN_CANCEL_REQUESTED, "skipped_events": 1, "slot_pid": None}]
+    assert said == [{"run": retroactive.RUN_CANCEL_REQUESTED, "skipped_events": 1, "already_processed": 0,
+                     "slot_pid": None}]
     assert _runs_waiting(db) == [] and _rows(db, PA) == [SET_ASIDE, SET_ASIDE]
     assert [e.id for e in _pending(db)] == other
     why = [get_payload_dict(e).get(event_constants.CANCEL_REASON)
@@ -632,10 +812,10 @@ def test_a_key_that_no_longer_waits_says_what_became_of_it(db_q, queue):
                "row_again": _cross(queue, row_key).json(),
                "processed": _cross(queue, by_table[PB]).json(),
                "gone": _cross(queue, "es-never-a-line").json()}
-    none = {"skipped_events": 0, "slot_pid": None}
-    assert answers == {"waiting": {"skipped_events": 1, "slot_pid": None},
+    none = {"skipped_events": 0, "already_processed": 0, "slot_pid": None}
+    assert answers == {"waiting": dict(none, skipped_events=1),
                        "set_aside": dict(none, already="set_aside"),
-                       "row": {"skipped_events": 1, "slot_pid": None},
+                       "row": dict(none, skipped_events=1),
                        "row_again": dict(none, already="set_aside"),
                        "processed": dict(none, already="processed"),
                        "gone": dict(none, already="gone")}
@@ -657,7 +837,7 @@ def test_setting_aside_leaves_a_row_the_chain_already_ended(db_q):
     [event] = _pending(db)
     event_constants.mark_processed(event, "SUCCESS")
     db.commit()
-    assert set_aside._mark(db, [event.id], "late") == 0
+    assert set_aside._mark(db, [event.id], "late") == {}
     db.commit()
     assert _rows(db, PA) == [("SUCCESS", True, 0, None)]
 
@@ -670,7 +850,7 @@ def _set_aside_has_nothing_to_announce(db):
                                  payload={"row_id": "x", "transaction_id": tx}, processed_chain=False))
     db.commit()
     [event] = [e for e in _pending(db) if get_payload_dict(e).get("transaction_id") == tx]
-    assert set_aside._mark(db, [event.id], "set aside by the test") == 1
+    assert set_aside._mark(db, [event.id], "set aside by the test") == {"es_aside_probe": 1}
     db.commit()
     db.expire_all()
     event = db.get(models.DatabaseOutbox, event.id)

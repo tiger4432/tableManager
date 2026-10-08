@@ -36988,3 +36988,73 @@ ec00cb905  admin.js 에서 navigator.clipboard 를 직접 부르는 자리 0(주
         ②: 바인딩 칸이 읽기 시각 칸과 같을 때 바인딩의 형식을 읽기에도 걸지, 폼에서 한 자리로 모을지
 문서    PRIMITIVES 의 해석기 자리 · LEDGER_TECHNICAL_SPEC §6.1 주입 규칙(이제 utils.time_format 과 ledger.store 두 이름) — 이 보고와 같은 커밋
 ```
+
+---
+
+## [C 응용] 10-09 259d46afc(Overview 원장 줄이 따라가기 멈춤을 말함) QA — 결함 못 찾음 · 작은 것 하나 (코드로 읽음 · 하니스 돌림)
+
+```
+읽음    /runtime 의 ledger_followup 줄(state · said · depth · switched_off)을 원장 줄이 같이 읽는다 — 새 요청 없음 · 닫힌 네 낱말 그대로
+하니스  overview_board 61/0 (통과/실패 · node · 이 트리)
+작은 것 그 줄은 따라가기의 «마지막 랩»을 읽고 그 프로세스의 alive 는 안 본다(/runtime 줄에는 alive 가 옆에 있다)
+        체인 워커가 흐르던 채로 죽으면 원장 줄은 «마지막에 흐름»을 그대로 그린다 — 죽음은 Workers 줄이 따로 말한다. 원장 줄도 alive 를 볼지는 총괄 판정
+문서    CODE_MAP overview_status 절에 한 줄 — 이 보고와 같은 커밋
+```
+
+---
+
+## [C 응용] 10-09 62f067a1a(빼 두기가 닿았는데 돈 묶음은 «돌았음») QA — 54a53f894 의 결함 닫힘 (잼)
+
+```
+잰 것   test_zz_probe_cross_then_success.py 를 이 커밋 위에서 다시(사설 워크트리 · sqlite 메모리 · 진짜 묶음 몸 · 진짜 라우트 · 진짜 맵퍼)
+        대상 표     [] after: [('K1', '1')]  (카나리아 — 규칙이 돌았다)
+        원천 행     [('SUCCESS', True, 0, None)] reads as SET_ASIDE: False
+        다시 돌리기  {}
+        -> 돈 행은 «돌았음»으로 읽히고 rerun_set_aside 가 안 집는다 — 같은 변경이 두 번 먹는 길이 닫혔다
+읽을 것 × 의 답 [{'skipped_events': 1, 'already_processed': 0, 'slot_pid': None}] 은 이 재기의 모양 탓이다 — sqlite 라 죽일 슬롯이 없어 × 가 답한 «뒤»에 묶음이 돈다
+        운영 길은 슬롯을 죽이고 끝나기를 기다린 «뒤» 다시 센다(stop_slot · what_became_of) — 그 답은 구현자 시험이 잰다
+```
+
+---
+
+## [C 응용] 10-09 5250ca1bd(성공 길 · × 가 같은 id 순서로 잠금 · 못 읽은 슬롯 박동을 말함) QA — 결함 못 찾음 (코드로 읽음)
+
+```
+읽음    성공 길: 끝을 적기 «직전» 그 묶음의 행을 id 오름차순 FOR UPDATE 로 읽고 표시를 거둔다 · ×(_mark): 범위의 기다리는 행을 같은 순서로 먼저 잠근 뒤 UPDATE
+        둘 다 «바깥 아웃박스 행만» 같은 순서로 잡으니 서로 돌아가며 기다리는 모양이 없다. × 쪽 잠금은 CHUNK 마다 짧은 트랜잭션
+        슬롯 박동을 못 읽으면 1 초 다시 읽고, 끝내 못 읽으면 답에 slot_not_found 문장 — 전엔 조용한 null
+알 것   성공 길의 FOR UPDATE 는 묶음 트랜잭션 안에서 × 의 짧은 잠금을 기다릴 수 있다 — 체인 질의 상한을 켜 두면 그 기다림도 상한에 든다(21ae4188a 에서 잰 «잠금 기다림도 센다»). 지금 운영은 상한 0(보드)
+```
+
+---
+
+## [C 응용] 10-09 92091395f(따라가기 실패 줄을 1 · 10 · 100 번째만) QA — 물음 하나(잼) · 작은 것 하나
+
+```
+잰 것   진짜 utils.logger.count_crossed 로 한 열쇠(소스 · 표 · 세상 · 예외 이름)를 두 번의 고장으로
+        첫 고장 15 번 -> 줄 [1, 10] · 고친 뒤 두 번째 고장 20 번 -> 줄 [](조용함 20)
+물음    셈(REPEATS)은 프로세스가 사는 동안 쌓이고 «되돌아가지 않는다» — reset() 은 「시험과 워커 다시 읽기 때만, 체인 길에선 안 부름」(부르는 곳 0)
+        -> 고쳤다가 같은 고장이 다시 나면, 다음 줄은 누적 100 번째다. 로그만 보는 운영자에게 «다시 생긴 고장»이 안 보인다
+        실패 «기록»(ledger_state · 영수증)은 그대로라 데이터 손실은 아니다. 그 열쇠가 성공하면 셈을 비울지(에피소드마다 1 · 10 · 100)는 총괄 판정
+작은 것 «batch failed» 의 열쇠는 예외 «이름» 하나 — 같은 OperationalError 라도 원인(연결 끊김 · 교착 · 표 없음)이 다르면 한 열쇠로 묶여 둘째 원인이 다음 표시까지 안 나온다
+```
+
+---
+
+## [C 응용] 10-09 9acf4243e(인덱스 마스터 = 모델 선언 · 빠진 것 스스로 만들기) QA — 이름 깨끗 · 결함 하나(잼)
+
+```
+이름    index=True 를 Index(...) 로 바꾼 것이 PG 가 받는 이름을 바꾸면, 운영에 있는 인덱스를 «없다»로 읽고 큰 표에 같은 것을 하나 더 만든다
+        dump_index_ddl.py — 두 커밋의 모델을 각각 PG DDL 로 컴파일해 이름 비교(사설 워크트리)
+        같은 이름 47 · 빠진 것 ix_cell_sources_column_name · ix_cell_sources_table_name · 새로 생긴 것 0 — 빠진 둘은 은퇴한 cell_sources 인덱스(커밋 문장 그대로). 이름 때문에 다시 만드는 일은 없다
+결함    수리 자리(_ensure_one_index)가 «다른 세션이 CONCURRENTLY 로 만드는 중»인 인덱스를 지우고 자기 것을 만든다
+잰 것   test_zz_probe_repair_vs_build.py — PG 스크래치(픽스처가 지움) · 열린 쓰기 트랜잭션 하나가 손 빌드를 붙잡은 사이에 수리 자리를 부름
+        hand build row while waiting: oid 9939192 valid False | progress rows visible 1
+        repair said: ["[Schema Sync] probe index 'idx_probe' is INVALID from an earlier failure; dropping and rebuilding."] | result built
+        hand build finished False | final index oid 9939193 valid True | same index as the hand build's: False
+        -> 진행 행이 서버에서 «보이는데도» 수리 자리는 indisvalid 만 다시 읽고 「earlier failure」라 말하며 DROP INDEX CONCURRENTLY — 손 빌드는 못 끝남
+까닭    «만드는 중» 거르기는 기동 때 index_states 에서 한 번(owed = missing · invalid). 차례가 온 뒤의 수리 자리는 그것을 다시 묻지 않는다
+        빌드는 하나씩 돌고 큰 표 하나가 몇 시간 — 그 사이 소유자가 손으로 시작한 빌드(오늘 idx_sources_by_origin 처럼)가 그 이름 차례에 지워진다
+        덤: 문장 「INVALID from an earlier failure」는 이 경우 참이 아니다
+고칠 모양 수리 자리가 지우기 직전에 진행 행(같은 _BUILDING 질의)을 묻고, 있으면 «만드는 중 — 건너뜀» 한 줄 — 총괄 판정
+```
