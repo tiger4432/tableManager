@@ -75192,3 +75192,105 @@ MUTANT OLD (origin/main trace_router)                           exit 1  1 failed
 ```
 5 failed, 8027 passed, 374 skipped, 3 xfailed, 13214 warnings — 실패는 알려진 박스 실패뿐
 ```
+
+---
+
+## [10-08] 많은 갈래가 «하나도 안 나오던» 걷기 — 앞 N 을 그린다 36c44751e (총괄 11e5ea207 · c06b45ea5 · e963e6eac)
+
+어느 DB · 어느 스키마 · 지운 것 — PG 는 assy_test 의 assy_pytest_pg_<pid>_<worker>(끝에 스키마째 DROP) 안의 ledger_events 를
+   시험 앞뒤로 TRUNCATE · 재기(probe)도 같은 스크래치 스키마 · sqlite 시험은 메모리 원자 · public 안 씀
+
+### 1 e963e6eac 의 물음 — 속성 원자가 예산을 먼저 먹나 (운영 모양 재현: 웨이퍼 하나 · 디펙 3,000 / 10,000 · 디펙마다 등록 원자 셋)
+
+```
+고치기 전 (조회마다 읽은 원자 · 술어별)
+defects 3000 · edge_limit 1200 · claims limit 2400 · 1.14 s · nodes {'wafer': 1} · edges 0 · cut ['claims', 'reason']
+  bundles [{'predicate': 'on_wafer', 'direction': 'incoming', 'far_type': 'defect', 'count': 2400}]
+  fetch 0: frontier 1 · limit 2400 · read 2400 · cut True · {'on_wafer': 2400}
+  fetch 1: frontier 1 · limit 8 · read 0 · cut False · {} · follow ['register']
+defects 3000 · edge_limit 6000 · claims limit 6000 · 0.93 s · nodes {'wafer': 1} · edges 0 · cut []
+  bundles [{'predicate': 'on_wafer', 'direction': 'incoming', 'far_type': 'defect', 'count': 3000}]
+  fetch 0: frontier 1 · limit 6000 · read 3000 · cut False · {'on_wafer': 3000}
+  fetch 1: frontier 1 · limit 8 · read 0 · cut False · {} · follow ['register']
+defects 10000 · edge_limit 1200 · claims limit 2400 · 0.94 s · nodes {'wafer': 1} · edges 0 · cut ['claims', 'reason']
+  bundles [{'predicate': 'on_wafer', 'direction': 'incoming', 'far_type': 'defect', 'count': 2400}]
+  fetch 0: frontier 1 · limit 2400 · read 2400 · cut True · {'on_wafer': 2400}
+  fetch 1: frontier 1 · limit 8 · read 0 · cut False · {} · follow ['register']
+defects 10000 · edge_limit 6000 · claims limit 6000 · 2.11 s · nodes {'wafer': 1} · edges 0 · cut ['claims', 'reason']
+  bundles [{'predicate': 'on_wafer', 'direction': 'incoming', 'far_type': 'defect', 'count': 6000}]
+  fetch 0: frontier 1 · limit 6000 · read 6000 · cut True · {'on_wafer': 6000}
+  fetch 1: frontier 1 · limit 8 · read 0 · cut False · {} · follow ['register']
+```
+```
+답    아니다. 웨이퍼 깊이의 조회는 on_wafer 엣지만 읽는다 — 디펙의 등록 원자는 그 디펙이 프런티어가 되는 «다음 깊이»에서야 읽힌다
+      0 이 나온 까닭은 예산이 아니라 «넘친 갈래는 하나도 안 그린다»는 규칙이었다(claims 컷은 같이 났지만 0 의 원인은 아님)
+      엣지 기본값(6000)만으로는 디펙 1 만에서 여전히 0 — 위 표 마지막 줄
+```
+
+### 2 고친 뒤 — 같은 재기
+
+```
+기본(덩어리 안 엶)
+defects 3000 · edge_limit 1200 · claims limit 2400 · 1.11 s · nodes {'wafer': 1, 'defect': 20} · edges 20 · cut ['claims', 'reason']
+  bundles [{'predicate': 'on_wafer', 'direction': 'incoming', 'far_type': 'defect', 'count': 2400, 'drawn': 20}]
+defects 3000 · edge_limit 6000 · claims limit 6000 · 1.09 s · nodes {'wafer': 1, 'defect': 20} · edges 20 · cut []
+  bundles [{'predicate': 'on_wafer', 'direction': 'incoming', 'far_type': 'defect', 'count': 3000, 'drawn': 20}]
+defects 10000 · edge_limit 1200 · claims limit 2400 · 0.95 s · nodes {'wafer': 1, 'defect': 20} · edges 20 · cut ['claims', 'reason']
+  bundles [{'predicate': 'on_wafer', 'direction': 'incoming', 'far_type': 'defect', 'count': 2400, 'drawn': 20}]
+defects 10000 · edge_limit 6000 · claims limit 6000 · 2.08 s · nodes {'wafer': 1, 'defect': 20} · edges 20 · cut ['claims', 'reason']
+  bundles [{'predicate': 'on_wafer', 'direction': 'incoming', 'far_type': 'defect', 'count': 6000, 'drawn': 20}]
+덩어리를 엶 (expand = 웨이퍼|on_wafer|incoming)
+defects 3000 · edge_limit 1200 · claims limit 2400 · 2.02 s · nodes {'wafer': 1, 'defect': 399} · edges 399 · cut ['claims', 'nodes', 'reason']
+  bundles [{'predicate': 'on_wafer', 'direction': 'incoming', 'far_type': 'defect', 'count': 2400, 'drawn': 399}]
+defects 3000 · edge_limit 6000 · claims limit 6000 · 2.30 s · nodes {'wafer': 1, 'defect': 399} · edges 399 · cut ['nodes', 'reason']
+  bundles [{'predicate': 'on_wafer', 'direction': 'incoming', 'far_type': 'defect', 'count': 3000, 'drawn': 399}]
+defects 10000 · edge_limit 1200 · claims limit 2400 · 2.03 s · nodes {'wafer': 1, 'defect': 399} · edges 399 · cut ['claims', 'nodes', 'reason']
+  bundles [{'predicate': 'on_wafer', 'direction': 'incoming', 'far_type': 'defect', 'count': 2400, 'drawn': 399}]
+defects 10000 · edge_limit 6000 · claims limit 6000 · 3.86 s · nodes {'wafer': 1, 'defect': 399} · edges 399 · cut ['claims', 'nodes', 'reason']
+  bundles [{'predicate': 'on_wafer', 'direction': 'incoming', 'far_type': 'defect', 'count': 6000, 'drawn': 399}]
+```
+```
+N 의 순서   원장 조회 순서 하나 — occurred_at DESC, id DESC (최신 먼저). 새 정렬 축 없음
+drawn      그 갈래의 «엣지가 남은» 먼 노드 수 — 엣지 예산에 잘려 노드만 남은 것은 안 셈
+연 덩어리    같은 깊이에서 그 술어를 먼저 읽고(_reads), 그 노드의 나머지 술어는 exclude 로, 프런티어 나머지는 뒤에
+           깊은 덩어리는 클라가 주인 노드에서 한 걸음 이어 걷기(c06b45ea5) — 서버는 여기까지
+```
+
+### 3 게이트 — test_a_fan_out_over_the_limit_is_answered_as_a_bundle.py · 변이 — md5 같음
+
+```
+BASELINE [pg] exit 0  2 passed, 8410 deselected, 6 warnings
+BASELINE [sqlite] exit 0  11 passed, 2 skipped, 6 warnings
+MUTANT a fan-out over the limit draws none again [pg] exit 1  1 failed, 1 passed, 8410 deselected, 6 warnings
+    FAILED test_thousands_of_defects_on_a_wafer_draw_their_first_twenty_and_open_past_them
+MUTANT a fan-out over the limit draws none again [sqlite] exit 1  2 failed, 9 passed, 2 skipped, 6 warnings
+    FAILED test_a_fan_out_over_the_limit_draws_its_first_n_and_its_count_is_what_expanding_draws
+    FAILED test_a_step_a_guard_refuses_is_not_counted
+MUTANT an opened bundle is not read first [pg] exit 1  1 failed, 1 passed, 8410 deselected, 6 warnings
+    FAILED test_an_opened_bundle_is_read_before_a_newer_branch_that_fills_the_budget
+MUTANT an opened bundle is not read first [sqlite] exit 1  1 failed, 10 passed, 2 skipped, 6 warnings
+    FAILED test_an_opened_bundle_reads_first_within_its_depth
+MUTANT the SQL read leaves exclude out [pg] exit 1  1 failed, 1 passed, 8410 deselected, 6 warnings
+    FAILED test_thousands_of_defects_on_a_wafer_draw_their_first_twenty_and_open_past_them
+MUTANT the SQL read leaves exclude out [sqlite] exit 0  11 passed, 2 skipped, 6 warnings
+MUTANT drawn counts nodes, not kept edges [pg] exit 0  2 passed, 8410 deselected, 6 warnings
+MUTANT drawn counts nodes, not kept edges [sqlite] exit 1  1 failed, 10 passed, 2 skipped, 6 warnings
+    FAILED test_an_opened_bundle_reads_first_within_its_depth
+MUTANT OLD (origin/main ledger_subgraph.py) [pg] exit 1  2 failed, 8410 deselected, 6 warnings
+    FAILED test_an_opened_bundle_is_read_before_a_newer_branch_that_fills_the_budget
+    FAILED test_thousands_of_defects_on_a_wafer_draw_their_first_twenty_and_open_past_them
+MUTANT OLD (origin/main ledger_subgraph.py) [sqlite] exit 1  3 failed, 8 passed, 2 skipped, 6 warnings
+    FAILED test_a_fan_out_over_the_limit_draws_its_first_n_and_its_count_is_what_expanding_draws
+    FAILED test_a_step_a_guard_refuses_is_not_counted
+    FAILED test_an_opened_bundle_reads_first_within_its_depth
+```
+옛 «하나도 안 그림»을 박아 둔 단언 셋은 새 규칙으로 옮김(앞 20 · drawn 칸 · 그린 20 이 노드 상한 10 을 넘는 경우는 상한 60 으로)
+
+### 4 PG 걷기 곁 시험 · 전체 sqlite
+
+```
+PG -k "subgraph or walk or trace or fan_out or bundle"   46 passed, 8366 deselected, 63 warnings
+sqlite 전체                                              6 failed, 8027 passed, 376 skipped, 3 xfailed, 13243 warnings — 알려진 박스 실패 5 · 옛 규칙 단언 1(아래)
+```
+전체에서 하나 더 — test_a_static_seed_takes_its_first_step_into_the_world 의 «정적 씨앗의 넘친 갈래는 안 그림»도 옛 규칙을
+박아 둔 단언이라 «앞 2 · count 3 · drawn 2»로 옮김. 고친 두 파일 다시: 17 passed, 2 skipped, 6 warnings
