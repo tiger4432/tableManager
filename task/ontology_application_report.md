@@ -36780,3 +36780,40 @@ b340386fe
         그래서 ② 로 뺀 행이 실제로는 돌았을 수 있다. 게이트 표에 «× 가 닿을 때 묶음이 파이썬 안» 칸을 더하면 이 틈이 표에 선다
         (성공 길이 끝 쓰기 전에 _still_waiting 을 묻거나, 그 행을 «돌았음»으로 남기고 답의 skipped_events 에서 빼는 것 — 모양은 총괄 판정)
 ```
+
+---
+
+## [C 응용] 10-08 총괄 cc90e5106 — c8f2de45a(stop_line) 문서 맞추기 · 운영 모양 셋 적대 QA
+
+```
+QA      test_zz_probe_stop_line_shapes.py — 사설 워크트리(끝에 지움) · sqlite 메모리 · 진짜 라우트 · 대기 행은 «진짜 소급»(chain.replay.replay_rule · 묶음 이벤트 · chunk 2)이 넣음
+        구현자 시험은 «실행 문맥 아래 표 쓰기»로 대기 행을 만든다 — 운영 리플레이의 행 모양(transaction_id replay_… · 묶음)과 달라 따로 잼
+        a finished run x | key probe-run-1 | staged events 3 | answer {'run': 'done', 'skipped_events': 3, 'cancelled_pid': None} | that line waiting 0 | other line waiting 1/1
+        b x while inserting (run ended cancelled) | key probe-run-1 | staged events 1 | answer {'run': 'cancel_requested', 'skipped_events': 1, 'cancelled_pid': None} | that line waiting 0 | other line waiting 1/1
+        c CLI replay x | key replay_be50e1da | staged events 3 | answer {'skipped_events': 3, 'cancelled_pid': None} | that line waiting 0 | other line waiting 1/1
+        세 경우 모두 그 줄 대기 0 · 다른 줄 그대로. CLI 줄은 실행 행이 없어 거래 id(replay_…)로 좁혀 찾는다(코드 · 잰 것 일치)
+        끊기(③)는 이 재기에서 바꿔 끼움(sqlite 에 pid 없음) — 그 자리는 구현자 PG 시험이 잰다
+남은 일  묶음이 맵퍼 안일 때 늦은 × 는 성공 길이 덮는다(54a53f894 · 4b4fb4fe0) — 지시대로 다시 안 잼
+문서    «끝난 실행의 취소는 거절» 전수 — 문서 안 RetroactiveRefused 언급을 카나리아로(잡힘), 낱말(거절 · refus · 이미 커밋 · 되돌릴 수 없 · already)과 «뜻»으로 셈
+        고친 곳 여섯: PRIMITIVES · data_model · FEATURE_CHECKLIST · backend · SYSTEM_FLOWS A-13 · SYSTEM_FLOWS C-18(제가 83023aa5d 때 적은 「소급 실행 열쇠는 그 실행의 취소 답」)
+        CODE_MAP 의 그 라우트 줄은 구현자가 이미 새 말 — 손 안 댐
+        새 말: 끝난 실행의 Cancel · 그 줄의 × = 실행 상태를 되읽고(`done` 은 `done`), 그 줄의 대기 체인 이벤트를 빼 두고(지우지 않음 · `rerun_set_aside` 로 되살림), 돌던 묶음이 그 줄이면 질의를 끊는다(`chain.control.stop_line` 하나 · 10-08 `c8f2de45a`). 취소로 끝난 실행은 누가 멈췄든 자기 대기 이벤트를 남기지 않는다(이유 「run <id> cancelled」). 모르는 run_id 는 400
+```
+
+---
+
+## [C 응용] 10-08 ec00cb905(페이로드 복사) · 2ea085988(그리드 Queue 탭 5 초) QA — 앞 지적 닫힘 · 물음 하나 · 잰 수
+
+```
+ec00cb905  admin.js 에서 navigator.clipboard 를 직접 부르는 자리 0(주석 빼고) — 1d5a52986 보고의 «남은 하나» 닫힘. 실패면 «Copy failed»
+2ea085988  박자 한 모듈(queue_poll.js · 5000 ms) · 그리드 탭은 열려 있고 보일 때만 · 읽는 중이면 건너뜀 · 실패해도 finally 로 풀림 — 코드로 읽음
+잰 것     test_zz_probe_queue_rows_scale.py — 사설 워크트리 · DB assy_test · 스키마 assy_pytest_pg_49804_gw0(픽스처가 끝에 지움) · 진짜 라우트 GET /outbox/queue/rows?limit=50
+          박스가 지은 모양: 처리 이력(통지까지 끝난 행) 100만 + 대기 행. 첫 판은 이력의 broadcast_at 을 비워 «미전달»로 셈에 들어가 버림 — 고쳐서 다시 잼
+          처리 이력 1000000 · 대기 20 -> 다섯 번 0.11 0.01 0.01 0.01 0.01 초
+          처리 이력 1000000 · 대기 100000 -> 다섯 번 0.62 0.56 0.34 0.34 0.51 초
+          -> 대기가 많으면 한 읽기가 위 수만큼 걸리고(대기 적을 때의 수십 배), 5 초 박자 × 열린 그리드 탭 수만큼 곱해진다. 운영 크기(대기 66 만)에서는 안 잼
+물음      하니스 PL3 칸이 main.js 를 «글자로» 읽어(grid.includes(...)) 그리드의 박자 연결을 잰다 — 상설 「잘라쓰기 하니스 금지」의 «텍스트가 대리» 쪽
+          연결이 맞아도 줄바꿈 · 철자만 바뀌면 빨강, 틀려도 같은 글자면 초록. 상설의 처방은 «재려는 연결을 import 되는 모듈로 빼기»
+          (PL4 의 「둘째 상수 없음」 · 「은퇴 주석 없음」은 글자가 «주어»라 상설 밖으로 읽힘). 고칠지는 총괄 판정
+문서      CODE_MAP 대기열 절에 박자 모듈 · 그리드 Queue 탭(문서에 이 패널 · 라우트 줄이 아예 없었다) · 제 397c23f6f 줄의 상수 자리 — 이 보고와 같은 커밋
+```
