@@ -1439,7 +1439,7 @@ const FLOORS = new Map([
   // the list is the declaration's, a picture with no measurement in it lists them too; what a lump lets out
   // stands clear of it, a big lump's row goes to points in one press, a lump of values asks nothing (owner 10-08);
   // a lump's head says every axis its walk cut and the nodes left bare (lead 161757c35).
-  ['subgraph_view_harness.mjs', 222],
+  ['subgraph_view_harness.mjs', 239],
   // New (leads 793017c62 · edcc0568c · 10-08): a folded lump's views, pure half - what a value reads as, the one
   // start-branch question, the points, the window, the one drawing; a node without the attribute is counted.
   ['fold_views_harness.mjs', 19],
@@ -1464,7 +1464,7 @@ const FLOORS = new Map([
   // 30 -> 30 (lead bf3653401 and its 10-06 answer): every declared predicate is a box for every type
   // (F9, the page half of the board harness's old B8); a type change keeps every tick (F8, reversing 10-02);
   // M10 retired with the empty-list sentence it guarded (the list is empty only when nothing is declared).
-  ['walk_table_harness.mjs', 43],
+  ['walk_table_harness.mjs', 45],
   // New (lead 2b5819e1d): walk layout A - the form is the rail, the result its own part,
   // the same choices send the request recorded before the layout (fixtures/walk_wire_before.json).
   // 22 -> 27 (lead bf3653401): Follow open, before the routes; a route adds; only the ticked are sent.

@@ -19,6 +19,7 @@
  * 🔴 THE MUTANT THE RULING ASKED FOR IS M1: the renderer names its own columns again. It leaves
  *    the row count and the section count untouched, which is why counting could never find it.
  */
+import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadWithProbe } from './lib/probe.mjs';
@@ -346,6 +347,37 @@ async function suite(mod) {
     ok('N7 a new start clears the steps and what their checks wrote',
       steps(host).length === 0 && handle.graph.markings.count('walk-2') === 0 && handle.state.steps.length === 0,
       `${steps(host).length} ${handle.graph.markings.count('walk-2')}`);
+
+    // A predicate whose subject and object are one type, on real server answers (capture_walk_bundles.py): the
+    // server answers each direction as it was asked, so a Next that walks one way only brings one side (lead 11e5ea207).
+    const SAME = JSON.parse(readFileSync(path.join(HERE, 'fixtures', 'walk_step_same_type.json'), 'utf8'));
+    const sameAsked = [];
+    const sameHost = doc.createElement('div');
+    const same = mod.boot(doc, sameHost, { apiBase: '', fetchImpl: async (url) => {
+      const u = String(url);
+      if (!u.includes('/subgraph')) return { ok: true, status: 200, json: async () => SAME._declaration };
+      sameAsked.push(u);
+      const body = SAME._answers[new URLSearchParams(u.split('?')[1] || '').get('direction')];
+      return body ? { ok: true, status: 200, json: async () => body } : { ok: false, status: 422, json: async () => ({}) };
+    } });
+    await settle();
+    const startNode = SAME._answers.both.nodes.find((n) => n.id === SAME._start.id);
+    same.state.type = SAME._start.type;
+    same.state.asked = { type: SAME._start.type, keys: { ...SAME._start.keys } };
+    same.state.run = 'done';
+    same.state.result = { nodes: [startNode], edges: [] };
+    same.render();
+    tick(sameHost, SAME._start.id);
+    press(edges(sameHost).find((e) => e.textContent === `${SAME._predicate} → ${SAME._start.type}`));
+    await settle();
+    const sideOf = (d) => new Set(SAME._answers[d].nodes.map((n) => n.id).filter((id) => id !== SAME._start.id));
+    const [outSide, inSide] = [sideOf('outgoing'), sideOf('incoming')];
+    const sameRows = rowsShown(sameHost);
+    ok('N8 a same-type predicate: the Next brings both sides - what it leads to and what leads to it',
+      [...outSide].some((id) => !inSide.has(id)) && [...inSide].some((id) => !outSide.has(id))
+        && sameAsked.length === 1 && JSON.stringify([...sameRows].sort())
+          === JSON.stringify([SAME._start.id, ...outSide, ...inSide].sort()),
+      `${sameAsked.length} ${sameRows.length} out ${outSide.size} in ${inSide.size}`);
   }
 }
 
@@ -414,6 +446,10 @@ const MUTANTS = [
   { id: 'NM3', what: 'the next step builds its own walk instead of the one step', catches: 'N4',
     from: '    const asked = stepAlong({ positive: ids, predicate: route.predicate, farType: route.to });',
     to: '    const asked = { positive: ids, follow: [route.predicate] };' },
+  // stepAlong's own default ('both') is imported by main.js and not swapped by this loader; the call site stands in.
+  { id: 'NM7', what: 'the Next walks one way only', catches: 'N8',
+    from: '    const asked = stepAlong({ positive: ids, predicate: route.predicate, farType: route.to });',
+    to: "    const asked = stepAlong({ positive: ids, predicate: route.predicate, farType: route.to, direction: 'outgoing' });" },
   { id: 'NM4', what: 'the checks are kept apart from the graph\'s marking', catches: 'N3',
     from: "  const checksOf = (at) => GRAPH_CHAIN[at + 1] || '';", to: '  const checksOf = (at) => `table-${at}`;' },
   { id: 'NM5', what: 'a new start keeps the steps', catches: 'N7',
