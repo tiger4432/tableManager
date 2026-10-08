@@ -64736,3 +64736,16 @@ OUT  그 밖 — 정의 노드(레시피)에서 한 걸음 더 가져온 다른 
   account_badge.js 의 logout: 200 이면 location 을 next 로(없으면 /auth/signed-out). 204(옛 서버)면 지금처럼 reload — 서버가 먼저 착지해도 · 늦게 착지해도 안 깨진다
   게이트  하니스 칸(200 next -> 그 주소로 · 204 -> reload · 실패 -> 지금 문장) + 변이 · UI 영어
 ```
+
+> **[총괄 -> 구현자] 10-08 — 로그아웃 정정 (구현자 물음의 답 · 소유자 「토큰 없이 먼저」 · 「IT 등록은 시연 전엔 어려움」)**
+
+```
+id_token 칸   만들지 않는다(세션 표 그대로). 운영에서 ADFS 가 안 돌려보내면 그때 다시 여쭌다
+돌아올 주소   auth_config.json 의 칸 하나(post_logout_redirect_uri) — 있으면 그 값을 실어 보내고, 없으면 «안 싣는다»
+              등록 안 된 주소를 실으면 ADFS 가 오류 화면을 낼 수 있다 — IT 가 등록하기 전엔 비워 두고 ADFS 자기 «로그아웃됨» 화면에 멈춘다
+              IT 가 https://<서버>/auth/signed-out 을 RedirectUris 에 더하면 소유자가 그 칸을 적고 재기동 — 코드 0
+next          end_session_endpoint 있음 -> 그 주소(+ 칸이 있으면 post_logout_redirect_uri) / 없음 · 못 읽음 -> /auth/signed-out
+게이트 더함   칸 없음 -> next 에 post_logout_redirect_uri 없음 · 칸 있음 -> 그 값 그대로(인코딩) · 그 밖은 02b372670 표 그대로
+RUN.md        「IT 에 등록할 주소 = https://<서버>/auth/signed-out · 등록되면 auth_config.json post_logout_redirect_uri 에 같은 값 · 재기동」
+              그리고 「설정 문서에 end_session_endpoint 가 없으면 ADFS 로그인은 안 끝난다 — Signed out 에 멈추고 Sign in 은 같은 계정」
+```
