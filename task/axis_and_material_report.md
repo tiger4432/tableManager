@@ -1,3 +1,18 @@
+> ## [10:29 디자인] 로그아웃 — 서버가 주는 next 로 갑니다 · 204 면 지금처럼 새로고침 (총괄 02b372670 · 소유자 10-08) — 6ed12c95e
+
+**결론** `account_badge.js` 의 Log out 이 계약대로 갑니다. 200 이면 `next` 로(없으면 `/auth/signed-out`), 204(옛 서버)면 지금처럼 새로고침, 거절이면 서버 문장을 Log out 옆에 그대로. 그래서 서버가 먼저 착지해도 늦게 착지해도 안 깨집니다. 이동은 `go` 의존성(부팅에서 `window.location.assign`)으로 받았습니다. 새 UI 문구는 없습니다.
+
+**진짜 빌드** walk 페이지 사본에서 `/auth/me` 를 sso 켜짐으로, `POST /auth/logout` 을 페이지 안에서 답했습니다(서버로 «안 보냄»).
+
+- 200 `{next}` — Log out 을 누르자 `/probe/logout_landed.html` 에 닿았습니다(그 전 페이지 `/probe/logout_probe.html?mode=next`).
+- 204 — 같은 페이지 `/probe/logout_probe.html?mode=old` 로 새로고침됐습니다.
+- 둘 다 오류 0 · 그 밖의 쓰기 막음 0 · 버튼 글자 `Log out`.
+- 200 인데 next 가 없는 경우는 진짜 `/auth/signed-out` 으로 가 버려 사본에서 못 잽니다 — 하니스 L2 가 잽니다.
+
+**시험** `auth_sso` 29 칸 실패 0(B8 204 새로고침 · L1 200 next 그대로 · L2 next 없음 -> /auth/signed-out · L3 거절 문장). 변이 다섯 전부 잡힘: 200 이 새로고침(L1) · 204 가 Signed out 으로(B8) · next 무시(L1) · next 없으면 아무 데도(L2) · 거절이 말 없음(L3). 러너 초록 · 계약 13 개 어긋남 0.
+- RELEASE_LOG 는 지시대로 구현자 착지에 붙습니다. 운영자가 보는 변화는 서버가 200 으로 답할 때 생깁니다.
+- 새 칸 이름을 B11~ 이 아니라 L1~ 로 했습니다. 이 파일의 변이 «SSO off draws the part anyway» 가 `B1` 을 지목하는데 B10 이 이미 같은 앞머리라 AMBIGUOUS 로 찍힙니다(전부터). 더 늘리지 않으려고 피했습니다.
+
 > ## [10:01 디자인] 선언 결과의 죽은 collect 칸을 지움 · 대비 저장 변이 앵커를 새 줄로 (총괄) — 1c430cb7f
 
 **결론** `fetchDeclaration` 이 돌려주던 `collect: body.collect || []` 를 지웠습니다. 서버 선언 라우트가 그 키를 안 실어 늘 빈 배열이었고, 읽는 곳은 총괄과 제 셈 모두 0 이었습니다.
