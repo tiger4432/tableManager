@@ -64924,3 +64924,12 @@ RUN.md        「IT 에 등록할 주소 = https://<서버>/auth/signed-out · �
 ```
 
 > **[총괄 -> 구현자] 10-08 — e91433bf1 정정: «in» 을 만들지 않는다. exclude_when 의 값 조건은 매핑 when 과 «같은 철자» — 한 조건 = {"column", "blank": true} 또는 {"when": {<칸>: <값>, …}} (안쪽은 _validate_when 그대로 · 같음만 · 키 AND). 여러 값은 줄 여러 개(하나라도 맞으면 제외 — 지금 규칙). 까닭: _validate_when 이 말하듯 «이 문법에 조건 철자는 하나». 나머지 게이트(빈 type 은 안 빠짐 · 다시 번역이 bbox 원자 거둠 · 폼)는 그대로, «in» 칸은 «when» 으로 바꿔 잼**
+
+> **[총괄 -> 구현자] 10-08 🔴 작게 · 지금 짓는 일 «다음 커밋 앞» — 걷기 라우트의 edge_limit 기본값이 1200 으로 남아 측정된 기본(ledger_subgraph.DEFAULT_EDGE_LIMIT 6000)과 갈라짐 (소유자 10-08 「걷기 엣지 상한으로 안 나오는데 좀 풀어 주면」)**
+
+```
+지금   trace_router evidence_subgraph 의 edge_limit Query 기본 1200(숫자) · 걷기 화면은 edge_limit 를 안 보냄 -> 1200 에서 엣지 컷 · claim_limit = 2 x edge 라 claims 2400 컷(접기 보기 머리줄의 그 수)
+할 일  라우트 기본값이 그 상수를 «부른다»(숫자 사본 금지) — 같은 사본이 다른 라우트(4 군데 node_limit 등)에도 있으면 셈해서 같은 커밋
+잼     박스에서 같은 걷기(기존 견본 · 걷기 화면 기본 요청)의 응답 시간 · 노드 · 엣지 · 컷 축을 고치기 전 · 뒤로 — 운영 모양 아님을 밝히고
+게이트 기본 요청 -> limits.edges = 상수 · 상수를 바꾸면 라우트 기본도 따라옴(변이) · RELEASE_LOG 한 줄
+```
