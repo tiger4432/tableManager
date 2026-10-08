@@ -1,0 +1,957 @@
+{
+ "_what": "REAL server output: models.index_states(engine) - what GET /admin/indexes returns - on the box PostgreSQL, captured 2026-10-08T19:58:26.463189+00:00 by capture_admin_indexes.py.",
+ "declared": [
+  {
+   "name": "idx_audit_cell_history",
+   "table": "audit_logs",
+   "columns": [
+    "table_name",
+    "row_id",
+    "column_name",
+    "timestamp",
+    "id"
+   ],
+   "where": null,
+   "include": [],
+   "using": null,
+   "unique": false,
+   "constraint": false,
+   "purpose": "one cell's history a page at a time",
+   "serves": "history tab, cell",
+   "state": "missing",
+   "building": null,
+   "size_bytes": null,
+   "scans": null
+  },
+  {
+   "name": "idx_audit_logs_timestamp_brin",
+   "table": "audit_logs",
+   "columns": [
+    "timestamp"
+   ],
+   "where": null,
+   "include": [],
+   "using": "brin",
+   "unique": false,
+   "constraint": false,
+   "purpose": "all audit rows in a time range, at 72 kB",
+   "serves": "dashboard edits today",
+   "state": "present",
+   "building": null,
+   "size_bytes": 90112,
+   "scans": 1313
+  },
+  {
+   "name": "idx_audit_recent_groups",
+   "table": "audit_logs",
+   "columns": [
+    "timestamp",
+    "id"
+   ],
+   "where": null,
+   "include": [
+    "transaction_id"
+   ],
+   "using": null,
+   "unique": false,
+   "constraint": false,
+   "purpose": "newest audit rows first, without sorting the table",
+   "serves": "GET /audit_logs/recent",
+   "state": "missing",
+   "building": null,
+   "size_bytes": null,
+   "scans": null
+  },
+  {
+   "name": "idx_audit_row_history",
+   "table": "audit_logs",
+   "columns": [
+    "table_name",
+    "row_id",
+    "timestamp",
+    "id"
+   ],
+   "where": null,
+   "include": [],
+   "using": null,
+   "unique": false,
+   "constraint": false,
+   "purpose": "one row's history a page at a time",
+   "serves": "history tab, row",
+   "state": "missing",
+   "building": null,
+   "size_bytes": null,
+   "scans": null
+  },
+  {
+   "name": "idx_audit_user_recorrection",
+   "table": "audit_logs",
+   "columns": [
+    "timestamp"
+   ],
+   "where": "source_name = 'user'",
+   "include": [
+    "table_name",
+    "row_id",
+    "column_name",
+    "transaction_id"
+   ],
+   "using": null,
+   "unique": false,
+   "constraint": false,
+   "purpose": "human edits in a time window, without reading the table",
+   "serves": "dashboard re-correction rate",
+   "state": "present",
+   "building": null,
+   "size_bytes": 22757376,
+   "scans": 1974
+  },
+  {
+   "name": "ix_audit_logs_row_id",
+   "table": "audit_logs",
+   "columns": [
+    "row_id"
+   ],
+   "where": null,
+   "include": [],
+   "using": null,
+   "unique": false,
+   "constraint": false,
+   "purpose": "audit rows of one row id",
+   "serves": "audit lookups by row",
+   "state": "present",
+   "building": null,
+   "size_bytes": 675512320,
+   "scans": 6111
+  },
+  {
+   "name": "ix_audit_logs_table_name",
+   "table": "audit_logs",
+   "columns": [
+    "table_name"
+   ],
+   "where": null,
+   "include": [],
+   "using": null,
+   "unique": false,
+   "constraint": false,
+   "purpose": "audit rows of one table",
+   "serves": "audit lookups by table",
+   "state": "present",
+   "building": null,
+   "size_bytes": 55984128,
+   "scans": 11
+  },
+  {
+   "name": "ix_audit_logs_transaction_id",
+   "table": "audit_logs",
+   "columns": [
+    "transaction_id"
+   ],
+   "where": null,
+   "include": [],
+   "using": null,
+   "unique": false,
+   "constraint": false,
+   "purpose": "audit rows of one transaction",
+   "serves": "GET /audit_logs/transaction/{tx_id}, row targeting, export",
+   "state": "present",
+   "building": null,
+   "size_bytes": 67198976,
+   "scans": 2004
+  },
+  {
+   "name": "auth_api_keys_key_hash_key",
+   "table": "auth_api_keys",
+   "columns": [
+    "key_hash"
+   ],
+   "where": null,
+   "include": [],
+   "using": null,
+   "unique": true,
+   "constraint": true,
+   "purpose": "one key per hash",
+   "serves": "API key sign-in",
+   "state": "missing",
+   "building": null,
+   "size_bytes": null,
+   "scans": null
+  },
+  {
+   "name": "uq_auth_api_keys_user_name",
+   "table": "auth_api_keys",
+   "columns": [
+    "user_name",
+    "name"
+   ],
+   "where": null,
+   "include": [],
+   "using": null,
+   "unique": true,
+   "constraint": true,
+   "purpose": "a person's key names are their own",
+   "serves": "API key create",
+   "state": "missing",
+   "building": null,
+   "size_bytes": null,
+   "scans": null
+  },
+  {
+   "name": "ix_auth_sessions_expires_at",
+   "table": "auth_sessions",
+   "columns": [
+    "expires_at"
+   ],
+   "where": null,
+   "include": [],
+   "using": null,
+   "unique": false,
+   "constraint": false,
+   "purpose": "sessions past their expiry",
+   "serves": "SSO session sweep",
+   "state": "missing",
+   "building": null,
+   "size_bytes": null,
+   "scans": null
+  },
+  {
+   "name": "idx_overwrites_lookup",
+   "table": "cell_overwrites",
+   "columns": [
+    "table_name",
+    "row_id"
+   ],
+   "where": null,
+   "include": [],
+   "using": null,
+   "unique": false,
+   "constraint": false,
+   "purpose": "the overwrite marks of one row",
+   "serves": "layering, grid cell state",
+   "state": "present",
+   "building": null,
+   "size_bytes": 5677056,
+   "scans": 0
+  },
+  {
+   "name": "idx_overwrites_lookup_col",
+   "table": "cell_overwrites",
+   "columns": [
+    "table_name",
+    "row_id",
+    "column_name"
+   ],
+   "where": null,
+   "include": [],
+   "using": null,
+   "unique": true,
+   "constraint": false,
+   "purpose": "one overwrite mark per cell",
+   "serves": "layering upsert",
+   "state": "present",
+   "building": null,
+   "size_bytes": 19324928,
+   "scans": 11571
+  },
+  {
+   "name": "ix_cell_overwrites_column_name",
+   "table": "cell_overwrites",
+   "columns": [
+    "column_name"
+   ],
+   "where": null,
+   "include": [],
+   "using": null,
+   "unique": false,
+   "constraint": false,
+   "purpose": "the overwrite marks of one column",
+   "serves": "overwrite lookups by column",
+   "state": "present",
+   "building": null,
+   "size_bytes": 1286144,
+   "scans": 2
+  },
+  {
+   "name": "ix_cell_overwrites_row_id",
+   "table": "cell_overwrites",
+   "columns": [
+    "row_id"
+   ],
+   "where": null,
+   "include": [],
+   "using": null,
+   "unique": false,
+   "constraint": false,
+   "purpose": "the overwrite marks of one row id",
+   "serves": "overwrite lookups by row",
+   "state": "present",
+   "building": null,
+   "size_bytes": 4939776,
+   "scans": 1023
+  },
+  {
+   "name": "ix_cell_overwrites_table_name",
+   "table": "cell_overwrites",
+   "columns": [
+    "table_name"
+   ],
+   "where": null,
+   "include": [],
+   "using": null,
+   "unique": false,
+   "constraint": false,
+   "purpose": "the overwrite marks of one table",
+   "serves": "overwrite lookups by table",
+   "state": "present",
+   "building": null,
+   "size_bytes": 1236992,
+   "scans": 12112
+  },
+  {
+   "name": "idx_sources_by_origin",
+   "table": "cell_sources",
+   "columns": [
+    "origin_row_id"
+   ],
+   "where": "origin_row_id IS NOT NULL",
+   "include": [],
+   "using": null,
+   "unique": false,
+   "constraint": false,
+   "purpose": "the cells deleted rows fed",
+   "serves": "chain retraction of a deleted row",
+   "state": "present",
+   "building": null,
+   "size_bytes": 1679360,
+   "scans": 47
+  },
+  {
+   "name": "idx_sources_confirmation",
+   "table": "cell_sources",
+   "columns": [
+    "confirmation_uid",
+    "table_name",
+    "row_id"
+   ],
+   "where": "confirmation_uid IS NOT NULL",
+   "include": [],
+   "using": null,
+   "unique": false,
+   "constraint": false,
+   "purpose": "the cells derived under one frame confirmation",
+   "serves": "frame confirmation scope",
+   "state": "present",
+   "building": null,
+   "size_bytes": 16384,
+   "scans": 0
+  },
+  {
+   "name": "idx_sources_human_claims",
+   "table": "cell_sources",
+   "columns": [
+    "table_name",
+    "row_id",
+    "column_name"
+   ],
+   "where": "source_name = 'user'",
+   "include": [],
+   "using": null,
+   "unique": false,
+   "constraint": false,
+   "purpose": "the cells a person typed",
+   "serves": "enrichment analysis, human claims",
+   "state": "present",
+   "building": null,
+   "size_bytes": 9560064,
+   "scans": 32
+  },
+  {
+   "name": "idx_sources_lookup_source",
+   "table": "cell_sources",
+   "columns": [
+    "table_name",
+    "row_id",
+    "column_name",
+    "source_name"
+   ],
+   "where": null,
+   "include": [],
+   "using": null,
+   "unique": true,
+   "constraint": false,
+   "purpose": "one value per cell and source",
+   "serves": "layering upsert, batch prefetch",
+   "state": "present",
+   "building": null,
+   "size_bytes": 7242833920,
+   "scans": 3094990
+  },
+  {
+   "name": "ix_cell_sources_row_id",
+   "table": "cell_sources",
+   "columns": [
+    "row_id"
+   ],
+   "where": null,
+   "include": [],
+   "using": null,
+   "unique": false,
+   "constraint": false,
+   "purpose": "the source values of one row id",
+   "serves": "layering lookups by row",
+   "state": "present",
+   "building": null,
+   "size_bytes": 1179893760,
+   "scans": 1110
+  },
+  {
+   "name": "idx_outbox_failed",
+   "table": "database_outbox",
+   "columns": [
+    "status",
+    "id"
+   ],
+   "where": "status = 'FAILED'",
+   "include": [],
+   "using": null,
+   "unique": false,
+   "constraint": false,
+   "purpose": "failed events",
+   "serves": "/admin/outbox/failed, retry-failed",
+   "state": "present",
+   "building": null,
+   "size_bytes": 81920,
+   "scans": 9908
+  },
+  {
+   "name": "idx_outbox_ledger_pending",
+   "table": "database_outbox",
+   "columns": [
+    "id"
+   ],
+   "where": "processed_chain = true AND ledger_state IS NULL",
+   "include": [],
+   "using": null,
+   "unique": false,
+   "constraint": false,
+   "purpose": "run events the ledger has not followed yet",
+   "serves": "ledger follow-up",
+   "state": "missing",
+   "building": null,
+   "size_bytes": null,
+   "scans": null
+  },
+  {
+   "name": "idx_outbox_pending",
+   "table": "database_outbox",
+   "columns": [
+    "status"
+   ],
+   "where": "status = 'PENDING'",
+   "include": [],
+   "using": null,
+   "unique": false,
+   "constraint": false,
+   "purpose": "events still pending",
+   "serves": "outbox pending scans",
+   "state": "present",
+   "building": null,
+   "size_bytes": 188416,
+   "scans": 3
+  },
+  {
+   "name": "idx_outbox_purge",
+   "table": "database_outbox",
+   "columns": [
+    "created_at"
+   ],
+   "where": "processed_chain = true",
+   "include": [],
+   "using": null,
+   "unique": false,
+   "constraint": false,
+   "purpose": "run events by age",
+   "serves": "outbox 7-day purge",
+   "state": "present",
+   "building": null,
+   "size_bytes": 540672,
+   "scans": 190
+  },
+  {
+   "name": "idx_outbox_reload",
+   "table": "database_outbox",
+   "columns": [
+    "event_type",
+    "id"
+   ],
+   "where": "event_type = 'SYSTEM_RELOAD'",
+   "include": [],
+   "using": null,
+   "unique": false,
+   "constraint": false,
+   "purpose": "the newest reload event",
+   "serves": "config reload trigger",
+   "state": "present",
+   "building": null,
+   "size_bytes": 16384,
+   "scans": 712748
+  },
+  {
+   "name": "idx_outbox_txid",
+   "table": "database_outbox",
+   "columns": [
+    "((payload->>'transaction_id'))"
+   ],
+   "where": null,
+   "include": [],
+   "using": null,
+   "unique": false,
+   "constraint": false,
+   "purpose": "events of one transaction",
+   "serves": "chain queue lines, the queue x, set-aside by transaction",
+   "state": "present",
+   "building": null,
+   "size_bytes": 3629056,
+   "scans": 1
+  },
+  {
+   "name": "idx_outbox_undelivered",
+   "table": "database_outbox",
+   "columns": [
+    "id"
+   ],
+   "where": "processed_chain = true AND status = 'SUCCESS' AND broadcast_at IS NULL",
+   "include": [],
+   "using": null,
+   "unique": false,
+   "constraint": false,
+   "purpose": "run events not yet broadcast",
+   "serves": "broadcast safety sweep",
+   "state": "present",
+   "building": null,
+   "size_bytes": 40960,
+   "scans": 181275
+  },
+  {
+   "name": "idx_outbox_unprocessed",
+   "table": "database_outbox",
+   "columns": [
+    "processed_chain",
+    "id"
+   ],
+   "where": "processed_chain = false",
+   "include": [],
+   "using": null,
+   "unique": false,
+   "constraint": false,
+   "purpose": "events the chain has not run yet, oldest first",
+   "serves": "chain queue, GET /admin/chain/queue",
+   "state": "present",
+   "building": null,
+   "size_bytes": 385024,
+   "scans": 966371
+  },
+  {
+   "name": "idx_fic_identity",
+   "table": "file_ingestion_checkpoints",
+   "columns": [
+    "table_name",
+    "file_signature"
+   ],
+   "where": null,
+   "include": [],
+   "using": null,
+   "unique": true,
+   "constraint": false,
+   "purpose": "one checkpoint per table and file content",
+   "serves": "resuming an ingestion, skipping a file already done",
+   "state": "present",
+   "building": null,
+   "size_bytes": 2457600,
+   "scans": 0
+  },
+  {
+   "name": "idx_fic_path_stat",
+   "table": "file_ingestion_checkpoints",
+   "columns": [
+    "table_name",
+    "filepath",
+    "file_mtime",
+    "file_size"
+   ],
+   "where": null,
+   "include": [],
+   "using": null,
+   "unique": false,
+   "constraint": false,
+   "purpose": "a file already concluded, asked without hashing it",
+   "serves": "watcher's skip of an unchanged file",
+   "state": "present",
+   "building": null,
+   "size_bytes": 2744320,
+   "scans": 261
+  },
+  {
+   "name": "idx_fic_signature",
+   "table": "file_ingestion_checkpoints",
+   "columns": [
+    "file_signature",
+    "status"
+   ],
+   "where": null,
+   "include": [],
+   "using": null,
+   "unique": false,
+   "constraint": false,
+   "purpose": "checkpoints of one file content",
+   "serves": "ingestion dedup",
+   "state": "present",
+   "building": null,
+   "size_bytes": 2359296,
+   "scans": 16
+  },
+  {
+   "name": "ix_file_ingestion_logs_filename",
+   "table": "file_ingestion_logs",
+   "columns": [
+    "filename"
+   ],
+   "where": null,
+   "include": [],
+   "using": null,
+   "unique": false,
+   "constraint": false,
+   "purpose": "ingestion log rows of one file name",
+   "serves": "ingestion log lookups",
+   "state": "present",
+   "building": null,
+   "size_bytes": 1818624,
+   "scans": 11
+  },
+  {
+   "name": "ix_file_ingestion_logs_status",
+   "table": "file_ingestion_logs",
+   "columns": [
+    "status"
+   ],
+   "where": null,
+   "include": [],
+   "using": null,
+   "unique": false,
+   "constraint": false,
+   "purpose": "ingestion log rows in one state",
+   "serves": "watcher retries (PENDING, PENDING_RETRY), ingestion log filter",
+   "state": "present",
+   "building": null,
+   "size_bytes": 245760,
+   "scans": 639151
+  },
+  {
+   "name": "ix_file_ingestion_logs_table_name",
+   "table": "file_ingestion_logs",
+   "columns": [
+    "table_name"
+   ],
+   "where": null,
+   "include": [],
+   "using": null,
+   "unique": false,
+   "constraint": false,
+   "purpose": "ingestion log rows of one table",
+   "serves": "ingestion log lookups",
+   "state": "present",
+   "building": null,
+   "size_bytes": 262144,
+   "scans": 34
+  },
+  {
+   "name": "idx_frame_conf_assumed",
+   "table": "frame_confirmation",
+   "columns": [
+    "rule_name",
+    "unit_key"
+   ],
+   "where": "geometry_assumed",
+   "include": [],
+   "using": null,
+   "unique": false,
+   "constraint": false,
+   "purpose": "the confirmations standing on an assumed geometry",
+   "serves": "what to revisit when an assumption proves false",
+   "state": "present",
+   "building": null,
+   "size_bytes": 16384,
+   "scans": 0
+  },
+  {
+   "name": "idx_frame_conf_live",
+   "table": "frame_confirmation",
+   "columns": [
+    "dt_eqp",
+    "product"
+   ],
+   "where": "superseded_by IS NULL",
+   "include": [],
+   "using": null,
+   "unique": false,
+   "constraint": false,
+   "purpose": "the live confirmation of an equipment and product (first declaration's trace)",
+   "serves": "frame alignment by equipment and product",
+   "state": "present",
+   "building": null,
+   "size_bytes": 16384,
+   "scans": 0
+  },
+  {
+   "name": "idx_frame_conf_rule_live",
+   "table": "frame_confirmation",
+   "columns": [
+    "rule_name",
+    "unit_key"
+   ],
+   "where": "superseded_by IS NULL",
+   "include": [],
+   "using": null,
+   "unique": false,
+   "constraint": false,
+   "purpose": "the live confirmation of a rule and unit",
+   "serves": "frame alignment",
+   "state": "present",
+   "building": null,
+   "size_bytes": 16384,
+   "scans": 32
+  },
+  {
+   "name": "idx_frame_conf_rule_unit_ver",
+   "table": "frame_confirmation",
+   "columns": [
+    "rule_name",
+    "unit_key",
+    "version"
+   ],
+   "where": null,
+   "include": [],
+   "using": null,
+   "unique": true,
+   "constraint": false,
+   "purpose": "one version number per rule and unit",
+   "serves": "two confirmations at once cannot share a version",
+   "state": "present",
+   "building": null,
+   "size_bytes": 16384,
+   "scans": 0
+  },
+  {
+   "name": "idx_frame_conf_uid",
+   "table": "frame_confirmation",
+   "columns": [
+    "confirmation_uid"
+   ],
+   "where": null,
+   "include": [],
+   "using": null,
+   "unique": true,
+   "constraint": false,
+   "purpose": "one frame confirmation per uid",
+   "serves": "frame confirmation lookup",
+   "state": "present",
+   "building": null,
+   "size_bytes": 16384,
+   "scans": 0
+  },
+  {
+   "name": "idx_frame_conf_unit_ver",
+   "table": "frame_confirmation",
+   "columns": [
+    "dt_eqp",
+    "product",
+    "version"
+   ],
+   "where": null,
+   "include": [],
+   "using": null,
+   "unique": true,
+   "constraint": false,
+   "purpose": "one version per equipment and product (first declaration's trace)",
+   "serves": "nothing beyond idx_frame_conf_rule_unit_ver - NULLs make it enforce nothing",
+   "state": "present",
+   "building": null,
+   "size_bytes": 16384,
+   "scans": 0
+  },
+  {
+   "name": "idx_frame_conf_src_lookup",
+   "table": "frame_confirmation_source",
+   "columns": [
+    "confirmation_uid"
+   ],
+   "where": null,
+   "include": [],
+   "using": null,
+   "unique": false,
+   "constraint": false,
+   "purpose": "the sources of one confirmation",
+   "serves": "frame confirmation sources",
+   "state": "present",
+   "building": null,
+   "size_bytes": 16384,
+   "scans": 0
+  },
+  {
+   "name": "idx_frame_conf_src_map",
+   "table": "frame_confirmation_source",
+   "columns": [
+    "source_table",
+    "map_id"
+   ],
+   "where": null,
+   "include": [],
+   "using": null,
+   "unique": false,
+   "constraint": false,
+   "purpose": "the confirmations a map contributed to",
+   "serves": "transfer plan (layer 9)",
+   "state": "present",
+   "building": null,
+   "size_bytes": 16384,
+   "scans": 0
+  },
+  {
+   "name": "idx_frame_conf_src_unique",
+   "table": "frame_confirmation_source",
+   "columns": [
+    "confirmation_uid",
+    "role",
+    "source_table",
+    "map_id"
+   ],
+   "where": null,
+   "include": [],
+   "using": null,
+   "unique": true,
+   "constraint": false,
+   "purpose": "one row per confirmation, role and source map",
+   "serves": "frame confirmation sources",
+   "state": "present",
+   "building": null,
+   "size_bytes": 40960,
+   "scans": 0
+  },
+  {
+   "name": "idx_effort_window",
+   "table": "interaction_effort_logs",
+   "columns": [
+    "timestamp"
+   ],
+   "where": null,
+   "include": [
+    "session_id",
+    "key_count",
+    "mouse_count",
+    "nav_count",
+    "nav_preserved_count"
+   ],
+   "using": null,
+   "unique": false,
+   "constraint": false,
+   "purpose": "effort rows in a time window, without reading the table",
+   "serves": "dashboard effort average",
+   "state": "present",
+   "building": null,
+   "size_bytes": 32768,
+   "scans": 1093
+  },
+  {
+   "name": "uq_effort_transaction",
+   "table": "interaction_effort_logs",
+   "columns": [
+    "transaction_id"
+   ],
+   "where": null,
+   "include": [],
+   "using": null,
+   "unique": true,
+   "constraint": false,
+   "purpose": "one effort row per transaction - a resend keeps the first",
+   "serves": "effort metric",
+   "state": "present",
+   "building": null,
+   "size_bytes": 16384,
+   "scans": 0
+  },
+  {
+   "name": "idx_retroactive_runs_recent",
+   "table": "retroactive_runs",
+   "columns": [
+    "state",
+    "queued_at"
+   ],
+   "where": null,
+   "include": [],
+   "using": null,
+   "unique": false,
+   "constraint": false,
+   "purpose": "runs in one state, oldest queued first",
+   "serves": "retroactive run queue",
+   "state": "present",
+   "building": null,
+   "size_bytes": 16384,
+   "scans": 0
+  },
+  {
+   "name": "ix_retroactive_runs_op",
+   "table": "retroactive_runs",
+   "columns": [
+    "op"
+   ],
+   "where": null,
+   "include": [],
+   "using": null,
+   "unique": false,
+   "constraint": false,
+   "purpose": "runs of one operation",
+   "serves": "a queued run of the same op",
+   "state": "present",
+   "building": null,
+   "size_bytes": 16384,
+   "scans": 0
+  },
+  {
+   "name": "ix_retroactive_runs_state",
+   "table": "retroactive_runs",
+   "columns": [
+    "state"
+   ],
+   "where": null,
+   "include": [],
+   "using": null,
+   "unique": false,
+   "constraint": false,
+   "purpose": "runs in one state",
+   "serves": "runs in flight, queued runs",
+   "state": "present",
+   "building": null,
+   "size_bytes": 16384,
+   "scans": 0
+  }
+ ],
+ "outside": [
+  {
+   "name": "ix_cell_sources_column_name",
+   "table": "cell_sources",
+   "valid": true,
+   "building": null,
+   "size_bytes": 286973952,
+   "scans": 92
+  },
+  {
+   "name": "ix_cell_sources_table_name",
+   "table": "cell_sources",
+   "valid": true,
+   "building": null,
+   "size_bytes": 279052288,
+   "scans": 22
+  }
+ ]
+}

@@ -45,6 +45,7 @@ import {
 } from './overview_status.js';
 // 🔴 C-74. 아홉 고리의 «값» 표. 판정은 `/health` 가 하고 이 표는 값만 냅니다.
 import { RuntimePanel } from './runtime_panel.js';
+import { IndexTablePanel } from './index_table_panel.js';
 // 🔴 C-75. 네 선언(chain·enrichment·vjoin·ledger)이 «한 그림». 값만 그립니다.
 import { ChainGraphPanel } from './chain_graph.js';
 // 🔴 C-77. 서버 시각은 offset 단 ISO 다 — 자르지 말고 «순간»으로 읽는다.
@@ -1389,6 +1390,17 @@ async function loadSourceCensus() {
   } catch (e) {                                              // noqa
     return { bySource: {}, names: {} };
   }
+}
+
+/** The declared indexes beside the database (lead d71f931c7) — read only; refused, the refusal's line. */
+let indexPanel = null;
+async function refreshIndexes() {
+  const mount = byId('overview-indexes-mount');
+  if (!mount) return;
+  if (!indexPanel) indexPanel = new IndexTablePanel(mount);
+  const res = await adminFetch(`${API_BASE}/admin/indexes`).catch(() => null);
+  const body = res && res.ok ? await res.json().catch(() => null) : null;
+  indexPanel.render(body, body ? '' : fetchFailureLine(res ? failureFactOf(res) : null, 'Index list read failed'));
 }
 
 async function refreshLedgerSources() {
@@ -3619,6 +3631,7 @@ async function fetchOverview(isStale) {
   //    Overview 에 자리만 놓으면 Chain 탭을 «들른 적 없는» 사람에게 빈 상자가 된다.
   // Ledger 줄은 소스 현황과 «같은» 읽기 — 본문 렌더를 기다리지 않는다(위의 설정 반영과 같은 이유).
   void refreshLedgerSources();
+  void refreshIndexes();
   const pauseReads = chainPauseReads();
   const [failedRes, outboxRes, rulesRes, mappersRes, autoRes, activeRes, queueRes] = await Promise.all([
     adminFetch(`${API_BASE}/admin/file-ingestion/failed?page=1&limit=100`),
