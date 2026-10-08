@@ -64922,3 +64922,5 @@ RUN.md        「IT 에 등록할 주소 = https://<서버>/auth/signed-out · �
 게이트  in 일치 -> 제외 · 불일치 -> 올라감 · 빈 type -> 올라감 · blank 조건 그대로 · blank+in 같이 -> 거절 · in 빈 목록 -> 거절
        · 선언 바꾼 뒤 다시 번역 -> bbox 원자 거둬짐 · 폼에서 적힘 + 변이 · RELEASE_LOG · ONTOLOGY_LEDGER_SETUP §7.7 문법 줄
 ```
+
+> **[총괄 -> 구현자] 10-08 — e91433bf1 정정: «in» 을 만들지 않는다. exclude_when 의 값 조건은 매핑 when 과 «같은 철자» — 한 조건 = {"column", "blank": true} 또는 {"when": {<칸>: <값>, …}} (안쪽은 _validate_when 그대로 · 같음만 · 키 AND). 여러 값은 줄 여러 개(하나라도 맞으면 제외 — 지금 규칙). 까닭: _validate_when 이 말하듯 «이 문법에 조건 철자는 하나». 나머지 게이트(빈 type 은 안 빠짐 · 다시 번역이 bbox 원자 거둠 · 폼)는 그대로, «in» 칸은 «when» 으로 바꿔 잼**
