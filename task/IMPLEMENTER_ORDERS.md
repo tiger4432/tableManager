@@ -65059,3 +65059,21 @@ RELEASE_LOG · RUN.md(재기동 뒤 그 줄 × 한 번 · 답의 skipped_events 
 같은 커밋  RUN.md(목록에서 pid 보기 -> × 또는 taskkill /F /PID <pid> · 그 뒤 할 일 rerun) · RELEASE_LOG · CODE_MAP 체인 절
 순서  stop_line -> 이것 -> 시각 format(ca87ffdb3)
 ```
+
+> **[총괄 -> 구현자] 10-08 🔴 작게 · 슬롯 사이에 끼워 지금 — 메인 그리드 우측 대기열이 어드민 대기열과 안 맞는다: 빼 둔(×) 이벤트가 그리드에 «그대로» 남는다 (소유자 10-08 「x 버튼 눌러서 어드민 대기열 지웠는데 왜 메인그리드 우측 대기열은 그대로임?」 · 「우측 대기열 쓰레기네 그냥 완전 안 맞네」)**
+
+```
+원인(총괄이 코드로 읽음)  GET /outbox/queue/rows 의 모집단 = 대기(processed_chain=false) ∪ «미전달»(undelivered_clause: processed_chain=true · status SUCCESS · broadcast_at NULL)
+   빼 둔 이벤트는 mark_cancelled / set_aside._mark 가 processed_columns("SUCCESS") 로 끝내고 broadcast_at 은 NULL -> «미전달»과 모양이 같아 그리드에 남는다
+   어드민 대기열은 대기만 센다 -> 같은 «대기열»에 답이 둘
+소유자 판정(이 라우트 docstring 이 인용)  09-22 「대기열에 failed 는 띄우지 마. «앞으로 돌 것만» 띄워」 · 09-23 「빼. 안 돌 거는 다 빼」
+   미전달 행은 이미 돈 행이라 «앞으로 돌 것»이 아니다 — 모집단에서 뺀다. 빼 둔 행도 같이 빠진다
+고칠 것
+   ① /outbox/queue/rows 모집단 = 대기만(processed_chain=false) — 어드민 대기열과 «같은 술어». could_run 거르기는 그대로
+   ② 빼 둔 이벤트는 «알릴 것이 없다» — 취소 표시가 broadcast_at 도 같이 찍는다. 쓰는 자리 둘(event_constants.mark_cancelled · set_aside._mark 의 set 기반 UPDATE)이 «같은 칸 정의 하나»를 지나게(처리 칸 정의 옆에 취소 칸 정의 하나). 미전달 스윕 · 미전달 수가 빼 둔 행을 «안 간 알림»으로 세지 않게
+   ③ 운영에 이미 남은 빼 둔 행: RUN.md 에 한 줄 SQL(빼 둔 표시가 있고 broadcast_at NULL 인 행에 now() 를 찍음) — 소유자가 돌림
+   미전달을 보는 자리(어드민 쪽 미전달 목록 등)가 따로 있으면 그대로 둔다 — 그리드 «대기열»에서만 빠진다
+게이트  대기 행 하나 · 미전달 행 하나 · 빼 둔 행 하나 -> 그리드 대기열 = 대기 행만 · 어드민 대기열 줄 수와 같은 모집단 / × 뒤 그리드에서도 사라짐 / 빼 둔 행이 미전달 수에 안 들어감 + 변이(① 옛 OR 되살리기 -> 빨강 · ② 한 자리만 찍기 -> 빨강)
+같은 커밋  라우트 docstring 의 모집단 문장 · RELEASE_LOG · RUN.md
+순서  지금(슬롯 짓던 것은 그대로 이어서)
+```
