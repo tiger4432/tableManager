@@ -36767,3 +36767,16 @@ b340386fe
         선언 폼(ledger_skeleton.json)은 when 을 적을 수 있으니 소유자가 막히지는 않는다. 후보에 when 모양을 더할지 · 주석을 고칠지는 총괄 판정
 문서    BASIS · LEDGER_SCHEMA_COMPLETENESS 의 exclude_when 철자에 when — 이 보고와 같은 커밋. ONTOLOGY_LEDGER_SETUP · CODE_MAP 은 구현자가 맞춤
 ```
+
+---
+
+## [C 응용] 10-08 총괄 e2b5b6f35(stop_line) 에 — 내 83023aa5d 검수가 놓친 것 · 그 함수의 ③ 에 남는 틈
+
+```
+놓친 것  83023aa5d 검수에서 «소급 실행 열쇠면 그 실행의 취소 답»(main.py skip_chain_queue_line 의 return)을 문서에 적고 지나갔다
+        그 답이 «무엇을 안 하는지»(그 run_id 의 대기 이벤트를 안 뺀다)를 묻지 않았다 — 시험 이름(a run's line answers what the run's own cancel answers)을 «맞다»로 읽었다
+남는 틈  stop_line ③(돌던 묶음 질의 끊기)도 pg_cancel_backend 다 — «도는 질의»만 끊는다
+        묶음이 맵퍼(파이썬)이나 문장 사이에 있으면 끊을 것이 없고, 묶음은 끝까지 가서 성공 길에서 SUCCESS 를 쓴다(54a53f894 에서 잼 — 규칙이 돌았는데 행은 «치워 둠»)
+        그래서 ② 로 뺀 행이 실제로는 돌았을 수 있다. 게이트 표에 «× 가 닿을 때 묶음이 파이썬 안» 칸을 더하면 이 틈이 표에 선다
+        (성공 길이 끝 쓰기 전에 _still_waiting 을 묻거나, 그 행을 «돌았음»으로 남기고 답의 skipped_events 에서 빼는 것 — 모양은 총괄 판정)
+```
