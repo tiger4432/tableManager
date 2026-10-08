@@ -233,7 +233,7 @@ console.log('\n[㉰ 머리글이 «이 쪽»을 말한다 — 수는 이 쪽의 
 }
 
 // ═══ W: a row's State cell is the admin queue's own function (lead 248ae20cd) ═══════════════════
-// The eight states, the one fixture both queues' harnesses read; each grid row must draw what chainStateCell does.
+// The states, the one fixture both queues' harnesses read; each grid row must draw what chainStateCell does.
 {
   const { readFileSync } = await import('node:fs');
   const STATES = JSON.parse(readFileSync(new URL('./fixtures/chain_states.json', import.meta.url), 'utf8')).states;
@@ -246,11 +246,20 @@ console.log('\n[㉰ 머리글이 «이 쪽»을 말한다 — 수는 이 쪽의 
       chain_state: s.chain_state }))));
     const cells = byClass(mount, 'queue-state').map((c) => c.children.map(shape).join('+'));
     const want = STATES.map((s) => shape(chainStateCell(doc, s.chain_state)));
-    say('W1 each of the eight states, in a grid row, is what chainStateCell draws for it',
-      cells.length === 8 && JSON.stringify(cells) === JSON.stringify(want), cells.join(' || '));
+    say('W1 each state, in a grid row, is what chainStateCell draws for it',
+      cells.length === STATES.length && cells.length > 0 && JSON.stringify(cells) === JSON.stringify(want), cells.join(' || '));
     const marks = byClass(mount, 'queue-row').map((r) => r.getAttribute('data-state'));
     say('W2 ...and its row is marked with the server\'s token',
       JSON.stringify(marks) === JSON.stringify(STATES.map((s) => s.chain_state.state)), marks.join(','));
+    // A row the server sends with the slot process it runs in draws that pid the admin's way (lead, slot 422d075c7).
+    const slotted = doc.createElement('div');
+    const running = STATES.find((s) => s.chain_state.state === 'running').chain_state;
+    new m.OutboxQueuePanel(slotted, { doc }).render(REPLY([{ ...WAITING, outbox_id: 300, chain_state: running, slot_pid: 4242 },
+      { ...WAITING, outbox_id: 301, chain_state: running }]));
+    const slotCells = byClass(slotted, 'queue-state').map((c) => c.children.map(shape).join('+'));
+    say('W3 a row sent with its slot pid draws what chainStateCell draws with it; a row sent without, none',
+      JSON.stringify(slotCells) === JSON.stringify([shape(chainStateCell(doc, running, 4242)), shape(chainStateCell(doc, running))])
+        && slotCells[0] !== slotCells[1], slotCells.join(' || '));
   };
   const S_NAMES = [];
   stateSuite(await import('../src/outbox_queue_panel.js'), (name, cond, shown) => { S_NAMES.push(name); ok(name, cond, shown); });
@@ -260,7 +269,9 @@ console.log('\n[㉰ 머리글이 «이 쪽»을 말한다 — 수는 이 쪽의 
   const SUBJECT = new URL('../src/outbox_queue_panel.js', import.meta.url);
   const MUTANTS = [
     { id: 'WM1', what: 'the grid draws a badge of its own', catches: 'W1',
-      mutate: swap('state.appendChild(chainStateCell(this.doc, row.chainState));', "state.appendChild(this._line('tag', row.state));") },
+      mutate: swap('state.appendChild(chainStateCell(this.doc, row.chainState, row.slotPid));', "state.appendChild(this._line('tag', row.state));") },
+    { id: 'WM3', what: 'the grid does not hand over the row\'s slot pid', catches: 'W3',
+      mutate: swap('chainStateCell(this.doc, row.chainState, row.slotPid)', 'chainStateCell(this.doc, row.chainState)') },
     { id: 'WM2', what: 'the row is not marked with the token', catches: 'W2',
       mutate: swap("line.setAttribute('data-state', row.state || 'unknown');", "line.setAttribute('data-state', 'unknown');") },
   ];

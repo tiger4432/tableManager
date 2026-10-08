@@ -63,6 +63,7 @@ export function outboxQueueView(payload, opts = {}) {
       // The server's `{state, why}` (248ae20cd); `state_detail` folded into its why.
       state: str(row.chain_state && row.chain_state.state),
       chainState: row.chain_state || null,
+      slotPid: row.slot_pid ?? null,
       broadcast: str(row.broadcast_state),
       rules: Object.freeze(rules),
     });
@@ -209,7 +210,7 @@ export class OutboxQueuePanel {
       line.appendChild(this._cell('queue-age', row.age, row.at));
 
       const state = this._cell('queue-state', '');
-      state.appendChild(chainStateCell(this.doc, row.chainState));
+      state.appendChild(chainStateCell(this.doc, row.chainState, row.slotPid));
       line.appendChild(state);
 
       line.appendChild(this._rulesCell(row.rules));

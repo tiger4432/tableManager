@@ -907,9 +907,9 @@ async function xSuite(m, say) {
     refreshed.length === 2 && byClass(none, 'chain-queue-refresh').length === 0
       && byClass(byClass(r.host, 'chain-queue-meta')[0] || r.host, 'chain-queue-refresh').length === 1,
     JSON.stringify([refreshed.length, byClass(none, 'chain-queue-refresh').length]));
-  // The chain state, one function for both queues (lead 248ae20cd): eight tokens, their one line, their tone.
+  // The chain state, one function for both queues (lead 248ae20cd): each token, its one line, its tone.
   const whys = STATES.map((s) => m.chainStateWhy(s.chain_state));
-  say('S1 each of the eight states says its why in the lead\'s order, and waiting and done say none',
+  say('S1 each state says its why in the lead\'s order, and waiting and done say none',
     same(whys, STATES.map((s) => s.why)), JSON.stringify(whys));
   const nulls = [
     m.chainStateWhy({ state: 'stalled', why: { stage: 'a', moved_seconds: 5, elapsed_seconds: 6, stalled_on: null } }),
@@ -944,6 +944,20 @@ async function xSuite(m, say) {
   const wantAge = [...STATES.map((st) => shape(m.chainStateCell(makeDoc(), st.chain_state))), ''];
   say('S6 each admin line\'s Waiting cell holds its age, then exactly what chainStateCell draws; no state, no cell',
     same(inAge, wantAge) && ages.every((td) => td && td._text === '30s'), JSON.stringify(inAge));
+  // The slot process a line runs in (lead, slot 422d075c7): its pid, the one an operator kills, under the state's why.
+  const pidLines = (n) => byClass(n, 'queue-line-slot-pid').map((x) => x.textContent);
+  const running = STATES.find((st) => st.chain_state.state === 'running').chain_state;
+  const withPid = m.chainStateCell(makeDoc(), running, 4242);
+  const slotted = seat({ ...BODY, waiting_transactions: [
+    { transaction_id: 'tx-slot', events: 1, rows: 1, tables: ['t'], waiting_seconds: 30, chain_state: running, slot_pid: 4242 },
+    { transaction_id: 'tx-free', events: 1, rows: 1, tables: ['t'], waiting_seconds: 30, chain_state: running, slot_pid: null }] });
+  const slotOf = (tr) => pidLines(tr.children.find((td) => td.getAttribute('data-col') === 'age'));
+  say('S7 a line run in a slot says «slot pid N» last in its state cell, the admin\'s line too; a line without one says nothing',
+    same(pidLines(withPid), ['slot pid 4242']) && withPid.children[withPid.children.length - 1].textContent === 'slot pid 4242'
+      && pidLines(m.chainStateCell(makeDoc(), running)).length === 0
+      && pidLines(m.chainStateCell(makeDoc(), running, null)).length === 0
+      && same(rowsOf(slotted.host).map(slotOf), [['slot pid 4242'], []]),
+    JSON.stringify([pidLines(withPid), rowsOf(slotted.host).map(slotOf)]));
 }
 const STATES = JSON.parse(readFileSync(new URL('./fixtures/chain_states.json', import.meta.url), 'utf8')).states;
 const refreshed = [];
@@ -989,7 +1003,15 @@ await xSuite(await import('../src/chain_queue_panel.js'), (name, cond, detail) =
     { id: 'SM5', what: 'an unexpected status is not said', catches: 'S5',
       mutate: swap("    waiting: [w.unexpected_status && `status ${w.unexpected_status}`],\n", '') },
     { id: 'SM6', what: 'the admin line draws no state', catches: 'S6',
-      mutate: swap('      if (r.chainState) tdAge.appendChild(chainStateCell(doc, r.chainState));\n', '') },
+      mutate: swap('      if (r.chainState) tdAge.appendChild(chainStateCell(doc, r.chainState, r.slotPid));\n', '') },
+    { id: 'SM7', what: 'waiting for a table says nothing of the table', catches: 'S1',
+      mutate: swap('    waiting_for_table: [w.table && `waiting for ${w.table}`],\n', '') },
+    { id: 'SM8', what: 'the slot pid is not drawn', catches: 'S7',
+      mutate: swap("    cell.appendChild(line(doc, 'meta queue-line-slot-pid', `slot pid ${slotPid}`));\n", '') },
+    { id: 'SM9', what: 'the admin line does not hand over its slot pid', catches: 'S7',
+      mutate: swap('chainStateCell(doc, r.chainState, r.slotPid)', 'chainStateCell(doc, r.chainState)') },
+    { id: 'SM10', what: 'a line without a slot pid says «slot pid null»', catches: 'S7',
+      mutate: swap("  if (slotPid !== null && slotPid !== undefined && slotPid !== '') {", '  if (true) {') },
   ];
   const scored = await scoreMutants(MUTANTS, async (mu) => {
     const m = (await loadWithProbe(SUBJECT.pathname.replace(/^\/([A-Za-z]:)/, '$1'), { mutate: mu.mutate })).module;
