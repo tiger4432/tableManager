@@ -75921,3 +75921,71 @@ MUTANT every claim writes a changed pid at once (sqlite)  1 failed, 3 passed, 6 
 MD5 AFTER  same
        PG 끊기 칸은 고친 뒤 이어서 네 번 다 초록 — 풀이 연결을 바꾸는지는 우연이라 PG 칸만으로는 이 축을 못 잼, 그래서 위 칸
 ```
+
+---
+
+## [10-08] 정정 — 422d075c7 보고의 변이 하나 (총괄 19f6a9277)
+
+```
+틀린 말   메시지에 「변이 모두 제 칸에서 빨강」이라 적었으나 「빼기가 아무 묶음도 안 끊음」은 그때 7조각에서만 돌았고,
+          그 판은 기준부터 같은 칸(끊기 칸)이 빨갰음(낡은 pid) — 그 빨강은 증거가 아니었음. 보고의 2판 목록에서도 빠져 있었음
+다시 잼    착지한 코드(wt-impl b52eafd2a = 422d075c7 와 같은 원천) 위에서:
+MUTANT a set-aside cuts no group                exit 1  1 failed, 13 passed, 8466 deselected, 58 warnings in 415.29s (0:06:55)
+    FAILED test_setting_a_table_aside_cuts_the_group_holding_it_and_its_line_runs_on_in_the_slot
+MD5 AFTER  same
+```
+
+---
+
+## [10-08] 틈 가드 — 끊긴 묶음은 누가 끊었든 되감는다(질의 상한만 빼고) a2342ce2f (총괄 10-08)
+
+어느 DB · 어느 스키마 · 지운 것 — 격리 시험 DB assy_test · 스키마 assy_pytest_pg_<pid>_gw0(하니스가 만들고 DROP) · 그 밖에 지운 것 0
+
+```
+규칙     묶음이 QueryCanceled 로 끝났고 그것이 질의 상한이 아니면 -> 시도 안 셈 · 대기로 되감음 (retry_count · last_failure 그대로)
+판정 하나 상한이 끊은 것은 _said_timeout(_limit_that_stopped) 이 이미 «statement timeout» 문장으로 바꿔 둠 — 남은 QueryCanceled 가 곧 «상한 아님»
+         「돌던 중 빼 둔 것 있음」 조건은 이 규칙 안으로 들어가 따로 없음
+자리     a2342ce2f:server/chain/ingestion_worker.py:2888:                rewound = QUERY_CANCELED in str(error_reason or "")
+         카나리아 def _limit_that_stopped = a2342ce2f:server/chain/ingestion_worker.py:1
+그대로    맵퍼 예외 · 상한 초과는 실패 길(기본 상한 1 이면 FAILED)
+로그     빼 둔 것 없이 되감기면 한 줄: tx '<열쇠>': its query was cancelled, not by the statement limit - its N event(s) rewound, not failed
+         빼 둔 것이 있으면 전처럼: … were set aside while it ran - left set aside; the other N rewound, not failed
+같이     시험 슬롯 이름에 실행 열쇠(scratch_slot.process_name) — 시험 DB 하나에서 두 실행이 서로의 슬롯 연결을 이름으로 끊었음
+         (지난 맵퍼 오류 칸의 흔들림: PG 로그 「관리자 요청에 의해서 연결을 끝냅니다」 — 다른 작업 공간의 슬롯 시험과 겹침). 제품 이름은 그대로
+```
+
+### 게이트
+
+```
+PG 손댄 파일 전부(슬롯 · 시간 상한 · 멈춤 · 소급 · 홉 · 그리드 대기열 · 걸린 묶음): 37 passed, 8444 deselected, 73 warnings · 8080 접촉 줄 0
+새 칸   test_a_cut_that_lands_on_a_group_nothing_was_set_aside_from_rewinds_it — 빼 둔 것 없이 그 묶음의 pg_sleep 을 직접 끊음
+        -> FAILED 아님 · retry_count 0 · 다시 돌아 끝남 (위 실행에서 「not by the statement limit」 줄 1)
+```
+
+### 변이 — md5 같음
+
+```
+MUTANT a cancel not the limit's is charged unless a set-aside exit 1  1 failed, 14 passed, 8466 deselected, 62 warnings in 322.25s (0:05:22)
+    FAILED test_a_cut_that_lands_on_a_group_nothing_was_set_aside_from_rewinds_it
+BASELINE exit 0  14 passed, 8467 deselected, 15 warnings in 74.30s (0:01:14)
+MUTANT the limit's judgment ignored             exit 1  3 failed, 11 passed, 8467 deselected, 15 warnings in 70.79s (0:01:10)
+    FAILED test_a_group_a_replay_woke_is_stopped_the_same
+    FAILED test_a_group_whose_statement_runs_past_the_limit_fails_once_and_the_next_group_runs[one-second]
+    FAILED test_an_edit_retraction_the_limit_stopped_stays_contained_and_says_the_limit
+MUTANT a cut group is failed, not rewound       exit 1  2 failed, 13 passed, 8466 deselected, 62 warnings in 323.83s (0:05:23)
+    FAILED test_a_cut_that_lands_on_a_group_nothing_was_set_aside_from_rewinds_it
+    FAILED test_setting_a_table_aside_cuts_the_group_holding_it_and_its_line_runs_on_in_the_slot
+MUTANT a mapper error a set-aside landed on rewinds exit 1  2 failed, 13 passed, 8466 deselected, 62 warnings in 355.85s (0:05:55)
+    FAILED test_a_mapper_error_in_a_group_a_set_aside_landed_on_is_a_failure_as_before
+    FAILED test_a_pause_rewinds_the_held_group_and_resume_runs_the_line
+```
+
+### 전체 sqlite
+
+```
+test_[a-k]*: 4 failed, 4140 passed, 210 skipped, 1 xfailed, 5924 warnings
+test_[l-z]*: 1 failed, 3941 passed, 182 skipped, 2 xfailed, 7267 warnings
+-> 실패는 알려진 박스 실패뿐
+⚠️ 이 실행이 도는 중에 시험 파일 둘(scratch_slot · 슬롯 시험 — 둘 다 PG 칸)을 고쳤음 — 「도는 동안 손대지 않는다」 위반
+   끝난 뒤 그 둘을 sqlite 로 다시 돌려 import · 수집 오류 없음을 봤고, PG 는 위 게이트가 고친 뒤의 파일로 돎
+```

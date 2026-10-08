@@ -11,7 +11,7 @@ never write one table across each other (데이터 가드 ㉮ ㄱ).
     one log       a slot's log lines land in the dispatcher's log under `[slot n pid P]`
     set aside     by table: the group holding those events is cut and rewinds, the rest of its line
                   runs on in the same slot; a mapper error is a failure as before; a group holding
-                  none of them is not cut
+                  none of them is not cut; a cut that lands on a group anyway rewinds it
     ×             stops that line's slot only - its events set aside, a new slot started
     kill          a slot killed by pid: its line's waiting events set aside by name, not run again
     pause         the held group is rewound, nothing is given; Resume runs the line
@@ -45,8 +45,8 @@ from chain import ingestion_worker as worker                          # noqa: E4
 from chain import set_aside, slots, table_locks                       # noqa: E402
 from database import crud, models, schemas                            # noqa: E402
 from database.context import channel, outbox_mode, retroactive_run    # noqa: E402
-from database.database import Base                                    # noqa: E402
-from tests.support import isolated_pg                                 # noqa: E402
+from database.database import Base, connection_name                   # noqa: E402
+from tests.support import isolated_pg, scratch_slot                   # noqa: E402
 from runtime import running as running_seat                          # noqa: E402
 from utils import heartbeat                                           # noqa: E402
 from utils import logger as process_logging                           # noqa: E402
@@ -149,12 +149,17 @@ def _one_line(db, writes):
     return tx
 
 
+def _this_runs_slots():
+    """`LIKE` for this run's slot connections - another run's slots share the test database."""
+    return connection_name(scratch_slot.process_name("%", isolated_pg.RUN_TOKEN))
+
+
 def _in_a_statement(engine):
     """A slot's group held inside a statement (the mapper's `sleep-`) - what a cancel cuts."""
     with engine.connect() as conn:
         return conn.execute(text(
-            "SELECT pid FROM pg_stat_activity WHERE application_name LIKE 'assy_chainslot%'"
-            " AND state = 'active' AND query LIKE 'SELECT pg_sleep%'")).scalar()
+            "SELECT pid FROM pg_stat_activity WHERE application_name LIKE :slots"
+            " AND state = 'active' AND query LIKE 'SELECT pg_sleep%'"), {"slots": _this_runs_slots()}).scalar()
 
 
 def _events_of(db, table, key):
@@ -305,9 +310,12 @@ def fixture_slot_box(pg_engine, box, tmp_path, monkeypatch):
                         ("API_BASE_URL", "http://127.0.0.1:9"),
                         (isolated_pg.PG_TEST_URL_ENV, url),
                         ("ASSY_SLOT_TEST_SCHEMA", isolated_pg.scratch_schema("assy_pytest_pg")),
+                        (scratch_slot.RUN_ENV, isolated_pg.RUN_TOKEN),
                         ("SL_GATE", str(gate)), ("SL_FAIL_ONCE", str(fail_once))):
         monkeypatch.setenv(name, value)
     monkeypatch.setattr(slots, "SLOT_MODULE", "tests.support.scratch_slot")
+    # this run's slot names - what the dispatcher ends a dead slot's connections by
+    monkeypatch.setattr(slots, "process_name", lambda index: scratch_slot.process_name(index, isolated_pg.RUN_TOKEN))
     monkeypatch.setattr(slots, "RESTART_REST_SECONDS", 0.5)
     wanted = {"n": 2}
     monkeypatch.setattr(slots, "chain_slots", lambda settings=None: wanted["n"])
@@ -512,6 +520,22 @@ def test_a_set_aside_cuts_no_group_that_does_not_hold_its_events(slot_box, pg_en
 
 
 @pytest.mark.pg
+def test_a_cut_that_lands_on_a_group_nothing_was_set_aside_from_rewinds_it(slot_box, pg_engine):
+    """총괄 10-08: a cancel that is not the statement limit's - aimed at a group that ended in
+    between, a pause's, an operator's - rewinds the group it lands on: not failed, not charged, it
+    runs again to its end."""
+    db, stamp = slot_box.db, "%d" % (time.time() * 1000)
+    _write(db, SC, [{"k": "C" + stamp, "n": "sleep-3"}])
+    pid = _wait(lambda: _in_a_statement(pg_engine), 30)
+    assert pid, "the group never reached its statement"
+    with pg_engine.connect() as conn:                       # nothing set aside: the cut aimed elsewhere
+        assert conn.execute(text("SELECT pg_cancel_backend(:pid)"), {"pid": pid}).scalar()
+
+    assert _wait(lambda: _done(db, SC, "C" + stamp), 30) and _value(db, SD, "C" + stamp) == "sleep-3"
+    assert [(e.status, e.retry_count) for e in _events_of(db, SC, "C" + stamp)] == [("SUCCESS", 0)]
+
+
+@pytest.mark.pg
 def test_a_slot_killed_by_its_pid_sets_its_line_aside_and_the_line_does_not_run_again(slot_box):
     db, stamp = slot_box.db, "%d" % (time.time() * 1000)
     slot_box.gate.write_text("held", encoding="utf-8")
@@ -609,7 +633,7 @@ class _ConnectionPeak:
                 slots_now, all_now = conn.execute(text(
                     "SELECT count(*) FILTER (WHERE application_name LIKE :slots), count(*)"
                     " FROM pg_stat_activity WHERE datname = current_database()"),
-                    {"slots": "assy_chainslot%"}).one()
+                    {"slots": _this_runs_slots()}).one()
                 self.peak, self.peak_all = max(self.peak, slots_now), max(self.peak_all, all_now)
 
     def stop(self):

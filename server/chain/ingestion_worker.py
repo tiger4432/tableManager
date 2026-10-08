@@ -2877,17 +2877,22 @@ async def process_pending_groups(db, group_order, groups, rules, db_session_fact
                 set_aside_now = len(events_in_tx)
                 events_in_tx = _still_waiting(db, events_in_tx)[0]
                 set_aside_now -= len(events_in_tx)
-                # 🔴 AND A GROUP THE SET-ASIDE CUT IS REWOUND, LIKE A PAUSE (총괄 10-08). Setting rows
-                #    aside cancels the query of the group holding them (`control.cancel_running_group`);
-                #    the rest waits with its attempts as they were and runs again without them - the
-                #    default cap is ONE attempt, so failing it would end rows nobody chose. A cancel
-                #    the statement limit made is already its own sentence here (`_said_timeout`), so a
-                #    `QueryCanceled` left is someone's stop; a mapper error is a failure as before.
-                rewound = bool(set_aside_now) and QUERY_CANCELED in str(error_reason or "")
+                # 🔴 A GROUP A CANCEL CUT IS REWOUND, LIKE A PAUSE - WHOEVER CUT IT (총괄 10-08). A
+                #    set-aside cuts the group holding its rows (`control.cancel_running_group`), and a
+                #    cut aimed at a group that ended in between lands on the next one on that
+                #    connection: either way the rest waits with its attempts as they were and runs
+                #    again - the default cap is ONE attempt, so failing it would end rows nobody chose.
+                #    A cancel the statement limit made is already its own sentence here
+                #    (`_said_timeout` - `_limit_that_stopped`), so a `QueryCanceled` left is not the
+                #    limit's; a mapper error and the limit are a failure as before.
+                rewound = QUERY_CANCELED in str(error_reason or "")
                 if set_aside_now:
                     logger.info("[Chain] tx '%s': %d event(s) were set aside while it ran - left set "
                                 "aside; the other %d %s", tx_id, set_aside_now, len(events_in_tx),
                                 "rewound, not failed" if rewound else "fail as the group did")
+                elif rewound:
+                    logger.info("[Chain] tx '%s': its query was cancelled, not by the statement limit - "
+                                "its %d event(s) rewound, not failed", tx_id, len(events_in_tx))
                 if rewound or not events_in_tx:
                     continue
 

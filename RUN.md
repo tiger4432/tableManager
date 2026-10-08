@@ -1,5 +1,20 @@
 # 지금 돌리면 되는 것
 
+> ## [10-08] **끊긴 묶음은 누가 끊었든 되감는다(질의 상한만 빼고) — 이주 «없음» · 재기동 «체인 워커»**
+>
+> ```
+> 무엇이 바뀌나    묶음의 질의가 끊기면(빼 두기 · Pause · 다른 묶음을 겨눈 끊기가 이 묶음에 닿음 · 사람의 pg_cancel_backend)
+>                그 묶음은 실패로 세지 않고 대기로 되감는다 — retry_count · last_failure 그대로, 같은 슬롯에서 다시 돈다
+>                질의 상한(chain_statement_timeout_seconds)이 끊은 것과 맵퍼 오류는 전처럼 실패(기본 상한 1 이면 FAILED)
+> 볼 줄          chain_worker.log:
+>                  [slot <n> pid <P>] [Chain] tx '<열쇠>': its query was cancelled, not by the statement limit - its <N> event(s) rewound, not failed
+>                  = 누가 이 묶음의 질의를 끊었다. 그 이벤트는 다시 돈다. 같은 열쇠로 계속 나오면 누가 계속 끊는 것 — pg_stat_activity 를 본다
+>                빼 두기가 끊은 것은 전처럼:
+>                  [Chain] tx '<열쇠>': <M> event(s) were set aside while it ran - left set aside; the other <N> rewound, not failed
+> 급할 때        git revert <이 커밋> -> 체인 워커 재기동
+> ```
+
+---
 > ## [10-08] **체인 대기열 줄 하나 = 슬롯 프로세스 하나 — 줄마다 slot_pid, × 나 그 pid 를 죽이면 그 줄만 멈춘다 — 이주 «없음» · 재기동 «체인 워커 · 서버»**
 >
 > ```

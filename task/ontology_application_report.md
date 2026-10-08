@@ -36877,3 +36877,40 @@ ec00cb905  admin.js 에서 navigator.clipboard 를 직접 부르는 자리 0(주
 남은 것 보드의 「착지 전 운영 pull 금지」는 이 착지로 풀린다 — 다만 pull 뒤 서버 · 체인 워커 재기동까지 해야 «—» 가 아니다
 문서    CODE_MAP 대기열 절에 두 함수 — 이 보고와 같은 커밋
 ```
+
+---
+
+## [C 응용] 10-08 422d075c7(대기열 줄 하나 = 슬롯 프로세스 하나) QA — 데이터 가드 셋 읽음 · 시험 파일이 이 박스에서 흔들림
+
+```
+읽음(코드)  표 잠금 — 그룹 연결과 «따로» 둔 연결(AUTOCOMMIT)의 세션 잠금 · 정렬 순서 · finally 로 풂 · 프로세스가 죽으면 PG 가 풂 — 커밋마다 연결이 바뀌어도 새지 않는다
+           재기동 — 배정자가 죽으면 슬롯은 stdin 이 닫히는 순간 os._exit(0) · 도는 묶음은 DB 가 되감고 이벤트는 기다림에 남는다
+                    새 배정자는 옛 슬롯이 쥔 줄을 모르니 «빼 둠»으로 만들지 않는다(빼 둠은 배정자가 살아 있을 때 슬롯이 죽은 경우만) — 재기동이 일을 버리지 않는다
+           × — 빼 두기 «먼저», 그다음 슬롯 kill. 54a53f894 의 «맵퍼 안 늦은 × 를 성공 길이 덮는» 틈이 묶음 시간 전체에서 «빼 두기 커밋 ~ kill» 사이로 좁아짐(닫힌 것은 아님)
+           덤 — kill 된 묶음이 표마다 이미 커밋한 쓰기는 남는다(전부터의 계약 — 되살리기 rerun_set_aside 가 같은 값 업서트로 맞춘다)
+돌린 것    test_a_queue_line_runs_in_a_slot_of_its_own.py — 사설 워크트리 · run_pg_tests.py(DB assy_test · 스크래치 스키마는 픽스처가 지움)
+           두 판 다 빨강, 빨간 시험이 판마다 다름. 둘째 판 7 실패 / 7 통과:
+             test_a_line_held_in_one_slot_does_not_hold_a_line_in_another · test_a_cross_on_a_running_line_stops_its_slot_only[done · test_a_set_aside_cuts_a_group_waiting_for_a_table_and_its_line_runs_on_in_the_slot · test_a_mapper_error_in_a_group_a_set_aside_landed_on_is_a_failure_as_before · test_a_set_aside_cuts_no_group_that_does_not_hold_its_events · test_a_slot_killed_by_its_pid_sets_its_line_aside_and_the_line_does_not_run_again · test_a_pause_rewinds_the_held_group_and_resume_runs_the_line
+           첫 판의 빨강 둘은 혼자 돌리면 통과(slot_t1.out 1 passed · slot_t2.out 1 passed)
+           둘째 판의 꼴: 슬롯이 줄을 못 잡음 시간 초과 3 · 정리의 DROP SCHEMA 교착 있음 · 세는 수 하나 차이 · slot_pid None
+           둘째 판 동안 다른 레인의 pytest 가 같은 시험 DB 에서 돌고 있었다(22:50 시작 · 원장 시험)
+판정 못 함  코드 결함이라고 말할 근거가 없다 — 시간 · 동시 실행에 흔들리는 게이트로 보인다
+           다만 슬롯 장치는 «DB 전체» 기준이다: 표 잠금 열쇠 = (LOCK_SPACE, hashtext(표 이름)), 연결 끊기 = application_name 이 같은 백엔드 전부(current_database)
+           운영은 DB 하나라 맞다. 시험 DB 를 여러 판이 같이 쓰면 스크래치 스키마가 달라도 서로의 잠금을 기다리고 서로의 슬롯 연결을 끊을 수 있다
+           구현자 초록과 내 빨강이 갈린 까닭으로 이것을 올린다 — 게이트를 이 박스에서 «혼자» 돌려야 하는지, 시험이 스키마별 열쇠 · 이름을 써야 하는지는 총괄 판정
+문서       CODE_MAP · SYSTEM_FLOWS · ingestion_settings · FEATURE_CHECKLIST 는 구현자가 맞춤. 안내서의 chain_worker.log grep 은 슬롯 줄에도 맞는다(줄 머리 [slot n pid P] 뒤 같은 글자)
+```
+
+---
+
+## [C 응용] 10-08 a2342ce2f(취소에 끊긴 묶음은 누가 끊었든 되감기) QA — 결함 못 찾음 · 알 것 둘 (코드로 읽음)
+
+```
+닫힘    8c293fea7 의 «시험 DB 를 같이 쓰는 두 판이 서로의 슬롯 연결을 끊음»에 답이 왔다 — 시험 슬롯 이름에 실행 열쇠
+알 것①  이제 QueryCanceled 는 «체인 상한이 끊은 것»(묶음 나이 ≥ 상한)만 실패, 나머지는 «시도 횟수 그대로» 되감기
+        SET LOCAL 로 문장 상한을 거는 자리 5 — database.py(파일 · 체인 상한) · main.py 대시보드 둘 · value_suggest(라우트 · 수집기 표지) · 진단 스크립트 하나
+        체인 묶음 안에서 닿는 것은 체인 상한 하나(chain · mappers 에서 나머지를 부르는 곳 0) — 제품 스스로는 고리가 안 생긴다
+        제품 «밖»의 취소가 되풀이되면(운영 DB · 역할의 기본 statement_timeout, 감시 도구의 pg_cancel_backend) 그 묶음은 끝없이 되감겨 돈다 — FAILED 도 격리도 안 된다. 로그 줄 「its query was cancelled, not by the statement limit - rewound」이 반복되는 것으로만 보인다
+        운영 DB 에 그런 기본값이 있는지는 모른다(박스로 답할 수 없는 물음 — 소유자 쪽 확인)
+알 것②  소유자가 오늘 손으로 SQL 취소로 체인을 끄던 길은 이제 «다시 돌기»가 된다 — 끄는 문은 × 와 Pause. RUN.md 에 한 줄이 필요한지는 총괄 판정
+```
