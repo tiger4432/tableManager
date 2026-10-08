@@ -89,9 +89,14 @@ def cancel_running_group(db, ids=None):
     pids = sorted({facts[fact] for facts in groups for fact in ("db_pid", "lock_db_pid") if facts.get(fact)})
     if not pids:
         return []
+    # 🔴 THE CANCEL INSIDE A CASE: PostgreSQL evaluates a WHERE's ANDs in no promised order, so
+    #    `pg_cancel_backend` beside the checks could run before them - and it did, on this
+    #    statement's own backend (a pid a beat named can since be the canceller's; the chain
+    #    worker cancels too, on chain connections). A CASE runs its test first.
     cancelled = [row[0] for row in db.execute(text(
-        "SELECT pid FROM pg_stat_activity WHERE pid = ANY(:pids) AND application_name LIKE :chain"
-        " AND pg_cancel_backend(pid) ORDER BY pid"),
+        "SELECT pid FROM pg_stat_activity WHERE CASE WHEN pid = ANY(:pids)"
+        " AND application_name LIKE :chain AND pid <> pg_backend_pid()"
+        " THEN pg_cancel_backend(pid) ELSE false END ORDER BY pid"),
         {"pids": pids, "chain": connection_name(ingestion_worker.logger.name) + "%"})]
     db.commit()
     return cancelled

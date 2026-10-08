@@ -183,8 +183,11 @@ def _write(db, table, row):
 
 
 def _pending(db):
+    """This file's waiting events - the session's scratch schema is shared, and another file's
+    leftovers counted here made `slow, quick = _pending(...)` three (총괄 10-08 QA)."""
     return (db.query(models.DatabaseOutbox)
-            .filter(models.DatabaseOutbox.processed_chain.is_(False))
+            .filter(models.DatabaseOutbox.processed_chain.is_(False),
+                    models.DatabaseOutbox.table_name.in_(sorted(TABLES)))
             .order_by(models.DatabaseOutbox.id).all())
 
 

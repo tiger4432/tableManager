@@ -1,5 +1,22 @@
 # 지금 돌리면 되는 것
 
+> ## [10-08] **글자로 적힌 시각 칸은 선언한 형식(format)으로 읽는다 · 못 읽는 시각은 그 분자만 거절 — 이주 «없음» · 재기동 «서버 · 체인 워커»**
+>
+> ```
+> 적을 곳        선언 폼의 시각 칸(매핑의 occurred_at 바인딩 또는 read.occurred_at)에 «Time format» — strptime 철자
+>                예  20261008_123000 -> %Y%m%d_%H%M%S   ·   20261008123000 -> %Y%m%d%H%M%S
+>                timezone 은 그 옆에 그대로(Asia/Seoul). 글자에 오프셋이 적혀 있으면 오프셋이 이긴다
+>                저장이 거절하면 그 문장대로: 형식이 오늘 시각을 다시 못 읽거나 날짜가 없음(invalid_time_format) · timezone 없음
+> 바꾼 뒤 돌릴 것  server 폴더에서
+>                python -m ledger.backfill --source <소스> --whole-source              (미리보기 — 행 · 원자 · 거절)
+>                python -m ledger.backfill --source <소스> --whole-source --apply      (그 소스를 다시 번역)
+> 답의 뜻        미리보기에 거절이 0 이면 형식이 맞다
+>                「Time unreadable」(unreadable_occurred_at) 이 있으면 그 행의 값이 형식과 다르다 — 문장에 '<값>' does not match format <형식>
+>                  = 그 분자만 빠지고 나머지는 들어간다. 전엔 못 읽는 시각 하나가 그 쪽 전체를 멈췄다
+> 급할 때        format 칸을 지우면 전과 같다(글자는 ISO 읽기 하나로만) · 코드 되돌리기는 git revert <이 커밋> -> 서버 · 체인 워커 재기동
+> ```
+
+---
 > ## [10-08] **끊긴 묶음은 누가 끊었든 되감는다(질의 상한만 빼고) — 이주 «없음» · 재기동 «체인 워커»**
 >
 > ```

@@ -1536,7 +1536,7 @@
 
 ### ⭐ **어긋난 값이 여전히 well-formed하면 어떤 가드도 못 잡는다 — 그 축은 «선언»으로만 지키고, 정정은 재백필이다** (2026-08-13 등록 · `bee1aeb`)
 - **무엇**: 타임스탬프·단위·좌표계처럼 **틀려도 형태가 완벽한** 값이 있다. 9시간 어긋난 시각도 여전히 유효한 시각이라 파서·CHECK·타입·테스트 어느 것도 발화하지 않는다. 그래서 그 축의 정본은 **코드 상수가 아니라 소스별 선언**이어야 하고([SCHEMA_CANON R5](./SCHEMA_CANON.md)), **선언이 없으면 추측하지 말고 거절**해야 한다.
-- **어디**: `ledger_config.json`의 `occurred_at_timezone`(세상 시각의 뜻) · `ledger_trace.DEFAULT_RESOLVER_CONFIG["display_timezone"]`(렌더의 존) · `server/ledger/store.parse_occurred_at`.
+- **어디**: `ledger_config.json`의 `occurred_at_timezone`(세상 시각의 뜻) · `ledger_trace.DEFAULT_RESOLVER_CONFIG["display_timezone"]`(렌더의 존) · `server/utils/time_format.parse_occurred_at`(🆕 10-08 `b2fe1f02f` 에 `ledger/store.py` 에서 옮김 — store 는 같은 이름을 다시 내보냄).
 - **언제 재사용**: 시각·단위·좌표 기준이 소스마다 다를 수 있는 모든 인제션. **「기본값을 UTC로 두고 나중에 고치자」가 정확히 이 결함이다.**
 - **함정**:
   - 🔴 **자기 오프셋을 가진 값에 선언된 존을 덧씌우지 마라.** 그 문자열은 **이미 어느 순간인지 말했다.** 선언은 **naive 텍스트의 뜻**에 대한 것이다.

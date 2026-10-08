@@ -1015,7 +1015,7 @@ def _frame_row_refs(frame: pd.DataFrame) -> tuple[str, ...]:
     return tuple(refs)
 
 
-def aware_time(value: Any, timezone_name: str, path: str, error=None) -> datetime:
+def aware_time(value: Any, timezone_name: str, path: str, error=None, fmt: str | None = None) -> datetime:
     """A timezone-AWARE datetime out of whatever a source column holds. One spelling.
 
     🔴 IT LIVES HERE SO BOTH READERS CAN REACH IT (S-84-b, 판정 09-10 13:44). The
@@ -1028,10 +1028,19 @@ def aware_time(value: Any, timezone_name: str, path: str, error=None) -> datetim
     carries none, which is what makes that declaration mean "the timezone of this value's
     naive readings".
 
+    🆕 `fmt` - the binding's declared `format` (총괄 ca87ffdb3, 소유자 「yyyymmdd_hhmmss」): text
+    is read by THE parser for a declared shape, `time_format.parse_occurred_at` - not a second one.
+    A datetime value reads as it always has. Nothing is guessed: no format, no reading.
+
     A string this cannot read falls through to the refusal rather than being replaced by
     ingestion time: a value we could not read is not a value we may invent.
     """
     refuse = error or (lambda code, at, message: RoleFrameError(code, at, message))
+    if fmt and isinstance(value, str):
+        parsed = time_format.parse_occurred_at(value, fmt, timezone_name)
+        if parsed is None:
+            raise refuse("invalid_time_value", path, f"{value!r} does not match format {fmt}")
+        return parsed
     if isinstance(value, str):
         try:
             value = datetime.fromisoformat(value.replace("Z", "+00:00"))
@@ -1096,7 +1105,7 @@ def _evaluate_binding(binding: Mapping[str, Any], unit: pd.DataFrame, *, path: s
         # same function `occurred_at` has always used.
         timezone_name = binding.get("timezone")
         if timezone_name:
-            return aware_time(values[0], str(timezone_name), f"{path}.column")
+            return aware_time(values[0], str(timezone_name), f"{path}.column", fmt=binding.get("format"))
         return values[0]
     if kind == "constant":
         return _plain(binding.get("value"))

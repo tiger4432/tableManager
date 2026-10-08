@@ -35,8 +35,6 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime, timezone
-from functools import lru_cache
 
 from . import schema
 from .envelope import ROW_COLUMNS
@@ -984,95 +982,6 @@ class LedgerStore:
             connection.close()
 
 
-@lru_cache(maxsize=32)
-def _candidate_formats(fmt: str):
-    """The shapes `parse_occurred_at` will read for one DECLARED format.
-
-    Two widenings, and only two. Both are stated here rather than spread across the
-    reader so that "what this accepts" is one list somebody can read.
-
-    ① THE DATE/TIME SEPARATOR IS TRANSPORT, NOT MEANING.
-       Production emits `2026-08-13T13:45:00`; the trace fixture and the mirrored
-       `lot_event` table on a development box hold `2026-08-13 13:45:00`, and that space
-       is deliberate (`table_config.json` keeps the column TEXT so it sorts
-       lexicographically). RFC 3339 §5.6 permits the space in place of the `T` by
-       agreement, and this system is on both sides of that agreement. 🔴 Admitting both
-       spellings of ONE declared shape is not guessing: no string is readable two ways
-       under this list, so no string can be given two different instants. A shape the
-       declaration did not name is still refused - this widens the SEPARATOR, not the
-       grammar.
-
-    ② A TRAILING OFFSET IS ADMITTED SO THAT IT CAN BE HONOURED.
-       `%z` is not optional in `strptime`, so a shape carrying it and the same shape
-       without it are DISJOINT - exactly one of the pair can match any given string.
-       That is what keeps this a lookup and not a preference order. `%z` reads `+09:00`,
-       `+0900` and `Z`.
-
-    Ordered so the declared spelling costs exactly ONE `strptime` on the hot path; a
-    ten-million row backfill pays for an alternative only on a row that needs it.
-    Memoised on the format string because the candidate list is a pure function of it
-    and rebuilding it per row would be the per-access-config defect in miniature.
-    """
-    shapes = [fmt]
-    for declared, sibling in (("T%H", " %H"), (" %H", "T%H")):
-        if declared in fmt:
-            shapes.append(fmt.replace(declared, sibling, 1))
-            break
-    return tuple(shapes) + tuple(shape + "%z" for shape in shapes)
-
-
-def parse_occurred_at(raw, fmt: str, tzname: str):
-    """Source text -> an aware datetime, or `None` if it cannot be parsed.
-
-    `None` is a REFUSAL signal for the caller, never a licence to substitute `now()`.
-    That substitution is risk 2 of the brief and it is the kind of defect that never
-    announces itself: every atom looks well formed and the ordering of history is wrong.
-
-    🔴 AN EXPLICIT OFFSET IN THE SOURCE WINS; THE DECLARED ZONE IS APPLIED ONLY TO A
-    NAIVE VALUE.
-    `occurred_at_timezone` declares what a source's NAIVE text means. A string that
-    carries its own offset has already said which instant it is, and there are exactly
-    two ways to write the alternative, both of which pass a spot check:
-      * re-localising it (`replace(tzinfo=...)`) keeps the wall clock and throws the
-        offset away - a silent 9-hour shift on every atom that carried one;
-      * converting it (`astimezone(...)`) is a no-op on the instant, which merely hides
-        that the declaration was consulted at all.
-    So the rule is decided once, here. It is not a new rule: this is what the module has
-    always done for a `datetime` input (the branch immediately below), now extended to
-    text so there is ONE rule rather than one per input type.
-
-    ⚠️ THIS AND `utils.time_format.fold_time_value` STATE THE SAME RULE (S-182 ⓐ), and this
-    seat deliberately does NOT call it. Two things here are richer and would be lost:
-    `_zone` REFUSES an unresolvable zone by name rather than answering `None`, and it reads
-    an empty zone as UTC, where the fold reads it as 「undeclared, keep today's behaviour」.
-    Widening the fold to carry both would add a mode for no behaviour, so the two are left
-    as one rule with two callers and named here instead of drifting silently. Round ⓑ moves
-    the cell, and that is the round where these two become one call.
-    """
-    if raw is None:
-        return None
-    if isinstance(raw, datetime):
-        return raw if raw.tzinfo else raw.replace(tzinfo=_zone(tzname))
-    text = str(raw).strip()
-    if not text:
-        return None
-    for candidate in _candidate_formats(fmt):
-        try:
-            parsed = datetime.strptime(text, candidate)
-        except (ValueError, TypeError):
-            continue
-        return parsed if parsed.tzinfo else parsed.replace(tzinfo=_zone(tzname))
-    return None
-
-
-def _zone(tzname: str):
-    if not tzname or tzname.upper() == "UTC":
-        return timezone.utc
-    try:
-        from zoneinfo import ZoneInfo
-        return ZoneInfo(tzname)
-    except Exception as exc:                                      # pragma: no cover
-        raise ValueError(
-            f"ledger_config declares timezone {tzname!r}, which this interpreter cannot "
-            f"resolve ({exc}). The translator refuses rather than fall back to UTC - a "
-            f"silent fallback would shift every occurred_at by the offset.") from exc
+# The one time parser lives in `utils.time_format` (총괄 ca87ffdb3): the declaration's check and
+# the binding's reading reach it there without reaching this module. Same names, same function.
+from utils.time_format import _candidate_formats, _zone, parse_occurred_at  # noqa: E402,F401

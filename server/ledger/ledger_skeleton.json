@@ -60,6 +60,20 @@
           }
         },
         {
+          "key": "format",
+          "required": false,
+          "label": "Time format",
+          "help": "How this column's text is written, in strptime spelling. e.g. %Y%m%d_%H%M%S. Leave empty for a datetime column or ISO text.",
+          "when": {
+            "field": "kind",
+            "is": "column"
+          },
+          "node": {
+            "kind": "leaf",
+            "hint": "free"
+          }
+        },
+        {
           "key": "value",
           "required": true,
           "when": {
@@ -646,6 +660,14 @@
                           },
                           {
                             "key": "column",
+                            "required": false,
+                            "node": {
+                              "kind": "leaf",
+                              "hint": "free"
+                            }
+                          },
+                          {
+                            "key": "format",
                             "required": false,
                             "node": {
                               "kind": "leaf",

@@ -1039,13 +1039,15 @@ def _event_edge_time(profile: Any) -> Any:
                 and isinstance(binding.get("column"), str) and binding["column"].strip()
                 and isinstance(binding.get("timezone"), str) and binding["timezone"].strip()):
             return None
-        times.add((binding["column"], binding["timezone"]))
+        fmt = binding.get("format")                     # judged by the validator, not here
+        times.add((binding["column"], binding["timezone"], fmt if isinstance(fmt, str) else None))
     if not times:
         return dict(DEFAULT_TIME_ORIGIN)
     if len(times) > 1:
         return None
-    column, zone = times.pop()
-    return {"column": column, "timezone": zone}
+    column, zone, fmt = times.pop()
+    # and how its text is written - the edge's `format` is what the read needs too (ca87ffdb3)
+    return {"column": column, "timezone": zone, **({"format": fmt} if fmt else {})}
 
 
 def validate_bundle(value: Mapping[str, Any], *,
@@ -1381,6 +1383,30 @@ def _deterministic_json(value: Any, path: str, problems: _Problems) -> None:
 def _nonblank_text(value: Any, path: str, problems: _Problems) -> None:
     if not isinstance(value, str) or not value.strip():
         problems.add("blank_value", path, "must be a non-blank string")
+
+
+def _time_format(value: Any, path: str, problems: _Problems) -> None:
+    """A declared `format` - how a time column's TEXT is written, in strptime spelling (총괄
+    ca87ffdb3). One check for a time binding and `read.occurred_at`: today's time written in it
+    and read back by THE parser (`utils.time_format.parse_occurred_at`) gives the same text and
+    today's date - a shape that cannot read back, or drops the date, is refused where it can be
+    fixed."""
+    from datetime import datetime
+    from utils.time_format import parse_occurred_at
+
+    if not isinstance(value, str) or not value.strip():
+        problems.add("blank_value", path, "must be a non-blank string")
+        return
+    now = datetime.now()
+    try:
+        text = now.strftime(value)
+        read = parse_occurred_at(text, value, "UTC")
+    except (ValueError, TypeError):
+        read, text = None, None
+    if read is None or read.strftime(value) != text or read.date() != now.date():
+        problems.add("invalid_time_format", path,
+                     f"format {value!r} does not read back today's time - write it in strptime "
+                     f"spelling with the date in it, e.g. %Y%m%d_%H%M%S")
 
 
 def _occurred_at_origin(occurred: Mapping, path: str, problems: _Problems) -> None:
@@ -2306,7 +2332,7 @@ def _validate_binding(value: Any, path: str, problems: _Problems) -> None:
         # in, because that is a fact about the SOURCE. Optional here and required by the
         # value-type check below, so a column binding that carries no timestamp is
         # unchanged - which is every binding on disk today.
-        allowed = ("kind", "column", "timezone")
+        allowed = ("kind", "column", "timezone", "format")
         required = ("kind", "column")
     elif kind == "constant":
         allowed = ("kind", "value")
@@ -2325,6 +2351,12 @@ def _validate_binding(value: Any, path: str, problems: _Problems) -> None:
         _nonblank_text(value.get("column"), f"{path}.column", problems)
         if "timezone" in value:
             _nonblank_text(value.get("timezone"), f"{path}.timezone", problems)
+        if "format" in value:
+            _time_format(value.get("format"), f"{path}.format", problems)
+            if "timezone" not in value:
+                problems.add("invalid_binding", f"{path}.format",
+                             f"format reads a time - declare the timezone its naive text is in "
+                             f"at {path}.timezone, e.g. \"timezone\": \"Asia/Seoul\"")
     elif kind == "constant" and "value" in value:
         _deterministic_json(value["value"], f"{path}.value", problems)
     elif kind == "entity":
@@ -2499,8 +2531,13 @@ def _validate_sources(section: Mapping[str, Any], problems: _Problems) -> None:
         occurred = read.get("occurred_at")
         if occurred is not None and problems.exact(
                 occurred, f"{path}.read.occurred_at",
-                required=("timezone",), optional=("column", "basis")):
+                required=("timezone",), optional=("column", "basis", "format")):
             _occurred_at_origin(occurred, f"{path}.read.occurred_at", problems)
+            if "format" in occurred:
+                _time_format(occurred.get("format"), f"{path}.read.occurred_at.format", problems)
+                if "basis" in occurred:
+                    problems.add("invalid_driver", f"{path}.read.occurred_at.format",
+                                 "format reads a column's text - a basis has no column to read")
             timezone = occurred.get("timezone")
             _nonblank_text(timezone, f"{path}.read.occurred_at.timezone", problems)
             if isinstance(timezone, str) and timezone.strip():

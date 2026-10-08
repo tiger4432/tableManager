@@ -255,6 +255,24 @@ def test_health_says_paused_in_its_own_word_and_a_wedge_still_wins():
 
 
 @pytest.mark.pg
+def test_a_cancel_never_cuts_its_own_statement(pg_engine, monkeypatch):
+    """The chain worker cancels too (a dead slot's line set aside) and its connections are chain
+    ones; a pid a beat named can since be the canceller's own - it cut its own statement (총괄 10-08
+    QA, a pause in the slot file raised QueryCanceled)."""
+    monkeypatch.setattr(process_logging, "active_process_name", lambda: "Chain")   # a chain connection
+    db = sessionmaker(bind=pg_engine)()
+    try:
+        own = db.execute(text("SELECT pg_backend_pid()")).scalar()
+        monkeypatch.setattr(heartbeat, "read_all", lambda *a, **k: {
+            worker.GROUP_BEAT: {"work": {"open": 1, "facts": {"db_pid": own}}}})
+        assert chain_control.cancel_running_group(db) == []
+        assert db.execute(text("SELECT 1")).scalar() == 1
+    finally:
+        db.rollback()
+        db.close()
+
+
+@pytest.mark.pg
 def test_a_pause_cancels_the_query_a_group_is_waiting_on(pg_engine, monkeypatch):
     monkeypatch.setattr(process_logging, "active_process_name", lambda: "Chain")
     _tables(pg_engine)

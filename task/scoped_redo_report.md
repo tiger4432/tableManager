@@ -75989,3 +75989,101 @@ test_[l-z]*: 1 failed, 3941 passed, 182 skipped, 2 xfailed, 7267 warnings
 ⚠️ 이 실행이 도는 중에 시험 파일 둘(scratch_slot · 슬롯 시험 — 둘 다 PG 칸)을 고쳤음 — 「도는 동안 손대지 않는다」 위반
    끝난 뒤 그 둘을 sqlite 로 다시 돌려 import · 수집 오류 없음을 봤고, PG 는 위 게이트가 고친 뒤의 파일로 돎
 ```
+
+---
+
+## [10-08] 글자로 적힌 시각 칸은 선언한 형식으로 읽는다 · 못 읽는 시각은 그 분자만 b2fe1f02f (총괄 ca87ffdb3)
+
+어느 DB · 어느 스키마 · 지운 것 — sqlite 메모리 · PG 는 격리 시험 DB assy_test 의 하니스 스키마(만들고 DROP) · 그 밖에 지운 것 0
+
+```
+칸       시각 바인딩(kind column · timezone)과 read.occurred_at 에 선택 칸 format(strptime). 스켈레톤 두 자리 · 안내서 한 줄
+해석기    하나 — parse_occurred_at 을 ledger/store.py 에서 utils/time_format.py 로 옮김(store 는 같은 이름을 다시 내보냄)
+         roleframe(바인딩 읽기) · setup_bundle(저장 검사)은 store 를 들이면 안 되는 모듈이라(경계 시험) 순수 시간 모듈로 옮겼음
+         setup_bundle 의 허용 목록에 datetime · utils(time_format 하나만 — 단언) 을 «validation 과 같은 조건»으로 들임(전이 검사 더함)
+         def 자리(착지 커밋): b2fe1f02f:server/utils/time_format.py:315:def parse_occurred_at(raw, fmt: str, tzname: str):
+         부르는 곳(시험 밖):
+           b2fe1f02f:server/ledger/observability.py:132:        reached = parse_occurred_at(
+           b2fe1f02f:server/ledger/roleframe.py:1040:        parsed = time_format.parse_occurred_at(value, fmt, timezone_name)
+           b2fe1f02f:server/ledger/setup_bundle.py:1403:        read = parse_occurred_at(text, value, "UTC")
+           b2fe1f02f:server/utils/time_format.py:315:def parse_occurred_at(raw, fmt: str, tzname: str):
+읽기      글자 + format -> 그 해석기(오프셋이 적힌 글자는 오프셋이 이김) · datetime 은 전과 같음 · format 없는 글자도 전과 같음
+닿는 자리  read.occurred_at(event_frame._aware_time) · 매핑의 시각 값 바인딩(roleframe._evaluate_binding -> aware_time) 둘 다
+         read.occurred_at 을 안 적은 소스는 사건 엣지의 format 을 칸 · 시간대와 같이 가져옴(_event_edge_time)
+검사      _time_format 하나를 두 칸이 부름 — 오늘 시각을 그 형식으로 쓰고 다시 읽어 같은 글자 · 같은 날 (아니면 invalid_time_format)
+         바인딩에 format 만 있고 timezone 없음 -> invalid_binding(문장에 칸 이름 · 예 "timezone": "Asia/Seoul") · read 에 basis 와 같이 -> invalid_driver
+거절      못 읽는 시각은 format 이 있든 없든 그 분자만 — unreadable_occurred_at(「Time unreadable」, 문장에 값 · 형식). 전엔 쪽 전체가 멈췄음
+지문      비어 있는 칸은 지문 재료에서 빠짐 — format 을 적은 소스만 다시 찍힘(나머지 커서 그대로)
+```
+
+### 게이트 · 변이 — md5 같음
+
+```
+BASELINE (sqlite) 72 passed, 6 warnings
+MUTANT the binding's format is not read         4 failed, 68 passed, 6 warnings
+    FAILED test_a_row_the_format_does_not_read_is_refused_alone_and_says_the_value_and_the_format
+    FAILED test_a_text_time_in_the_declared_format_is_that_instant_in_the_declared_zone[%Y%m%d%H%M%S-20261008123000]
+    FAILED test_a_timestamp_value_binding_reads_its_text_by_its_format
+    FAILED test_an_event_edge_written_with_a_format_makes_the_atoms_time_that_text
+MUTANT the read does not pass its format        3 failed, 69 passed, 6 warnings
+    FAILED test_a_row_the_format_does_not_read_is_refused_alone_and_says_the_value_and_the_format
+    FAILED test_a_text_time_in_the_declared_format_is_that_instant_in_the_declared_zone[%Y%m%d%H%M%S-20261008123000]
+    FAILED test_an_event_edge_written_with_a_format_makes_the_atoms_time_that_text
+MUTANT the registry drops the format            3 failed, 69 passed, 6 warnings
+    FAILED test_a_row_the_format_does_not_read_is_refused_alone_and_says_the_value_and_the_format
+    FAILED test_a_text_time_in_the_declared_format_is_that_instant_in_the_declared_zone[%Y%m%d%H%M%S-20261008123000]
+    FAILED test_an_event_edge_written_with_a_format_makes_the_atoms_time_that_text
+MUTANT the format is not checked                1 failed, 71 passed, 6 warnings
+    FAILED test_a_format_that_does_not_read_back_today_is_refused_in_both_cells
+MUTANT the default drops the format             2 failed, 70 passed, 6 warnings
+    FAILED test_a_source_that_leaves_the_read_time_out_takes_its_event_edges_format
+    FAILED test_an_event_edge_written_with_a_format_makes_the_atoms_time_that_text
+MUTANT a binding's format needs no timezone     1 failed, 71 passed, 6 warnings
+    FAILED test_a_format_needs_a_timezone_on_a_binding_and_a_column_on_the_read
+MUTANT an unreadable time stops the page        2 failed, 70 passed, 6 warnings
+    FAILED test_a_row_the_format_does_not_read_is_refused_alone_and_says_the_value_and_the_format
+    FAILED test_text_no_reading_takes_is_refused_without_a_format_and_refuses_its_molecule_only
+MUTANT an offset loses to the declared zone     2 failed, 70 passed, 6 warnings
+    FAILED test_an_explicit_offset_is_honoured_and_the_declared_zone_is_not_reapplied
+    FAILED test_an_offset_in_the_text_wins_over_the_declared_zone
+```
+
+### 전체 sqlite · 원장 PG
+
+```
+test_[a-k]*: 4 failed, 4151 passed, 210 skipped, 1 xfailed, 5852 warnings
+test_[l-z]*: 1 failed, 3941 passed, 183 skipped, 2 xfailed, 7330 warnings
+-> 실패는 알려진 박스 실패뿐
+PG(-k ledger · backfill · occurred · translat): 2 failed, 85 passed, 8405 deselected, 107 warnings
+```
+
+### 같이 실은 것 — 총괄 QA(422d075c7 + a2342ce2f)의 시험 오염 · 그리고 찾은 것 하나
+
+```
+오염      시간 상한 시험의 _pending 이 세션 스크래치 스키마의 대기 행 «전부»를 셌음 — 앞 파일(슬롯)이 남긴 행까지
+         -> 자기 표(tl_*)만 셈. 제 앞선 실행이 초록이었던 까닭: run_pg_tests 는 tests 를 알파벳 순으로 모아 시간 상한 파일이 슬롯 파일보다 먼저 돎
+손댄 PG 파일 넷을 총괄의 순서(슬롯 -> 멈춤 -> 걸린 묶음 -> 시간 상한)로 한 번에 — 파일 순서대로 돌리는 실행기로
+   고치기 전: 3 failed, 34 passed, 53 deselected, 73 warnings
+   고친 뒤:  38 passed, 53 deselected, 73 warnings
+찾은 것    같은 실행에서 pause 칸이 QueryCanceled 로 실패 — 끊기 질의가 «자기 자신»을 끊었음
+         원인: PostgreSQL 은 WHERE 의 AND 를 정해진 순서 없이 평가 -> pg_cancel_backend 가 «아직 체인 연결인가 · 자기 아닌가» 검사보다 먼저 불릴 수 있음
+         (박동이 적은 pid 가 그 사이 끊는 쪽 자신의 연결이 될 수 있음 — 체인 워커도 죽은 슬롯을 거두며 끊는다)
+         -> 끊기를 CASE 안에(검사 먼저가 보장되는 유일한 모양). 원래의 「아직 체인 연결인 pid 만」 보장도 순서에 기대고 있었음
+칸        test_a_cancel_never_cuts_its_own_statement (PG) — 박동이 자기 pid 를 적어도 아무것도 안 끊고 터지지 않음:
+   BASELINE (PG) 1 passed, 43 deselected, 6 warnings
+   MUTANT a cancel can cut its own statement (PG)  1 failed, 43 deselected, 6 warnings
+       FAILED test_a_cancel_never_cuts_its_own_statement
+   MD5 AFTER  same
+같이      sqlite 식별 키 칸(test_identity_keys_are_not_offered_an_entity) — 식별 키가 안 내놓는 칸에 format 을 더함(timezone 과 같은 까닭)
+원장 PG   test_ledger_l1_pg 의 둘(거절 세기)은 이 일 «전» main(c0f52a08a)에서도 같은 문장으로 실패 —
+         「source 'process_param_num_measure' is not declared in shipped_ledger_…」 — 이 고침과 무관, 따로 보셔야 할 것
+```
+
+### 남은 것
+
+```
+fromisoformat 의 관대함은 박스마다 다름 — Python 3.11 부터 날짜와 시각 사이에 아무 글자나 받음(20261008_123000 · 20261008 123000 이 이 박스 3.12 에서 형식 없이 읽힘).
+   형식 없는 글자의 읽기는 이번에 안 바꿈(총괄 판정). 형식을 적으면 어느 Python 에서든 선언대로 읽음
+소유자가 본 거절이 aware_time 을 안 지나는 자리(코드 맵퍼가 날 칸을 읽음 등)였다면 이 고침이 그 자리에는 안 닿음 — 그 거절 줄을 받으면 확인
+클라 몫   선언 폼이 시각 칸의 표본 값으로 format 을 미리 채우기(한 가지로만 읽히는 모양만, 확인은 사람) — 서버 변경 없음
+```

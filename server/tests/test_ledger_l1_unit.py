@@ -761,11 +761,15 @@ def _reader_replaced_by(wrong):
     `from .store import parse_occurred_at`, so it held its own reference and patching only
     `ledger.store` would have left it running the correct code - an injection that changes
     nothing looks exactly like a guard that works (server-pm lessons file, 2026-08-11: "a
-    wrapping key generator"). That module was deleted on 2026-08-18 and its door with it,
-    so `ledger.store` is the only door today. Any future module that binds
-    `parse_occurred_at` by value has to be added here or these injections go quietly inert.
+    wrapping key generator"). That module was deleted on 2026-08-18 and its door with it.
+    🆕 10-08 (총괄 ca87ffdb3) the reader's home is `utils.time_format` - a time binding's
+    `format` and its check reach it there - and `ledger.store` binds it by value, so both are
+    doors. Any future module that binds `parse_occurred_at` by value has to be added here or
+    these injections go quietly inert.
     """
-    doors = [(ledger_store, ledger_store.parse_occurred_at)]
+    from utils import time_format
+
+    doors = [(time_format, time_format.parse_occurred_at), (ledger_store, ledger_store.parse_occurred_at)]
     for module, _ in doors:
         module.parse_occurred_at = wrong
     try:
