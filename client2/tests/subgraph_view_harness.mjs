@@ -285,6 +285,41 @@ async function suite(m, makeWalk = createWalkBoxWalk, css = REAL_CSS, foldDecl =
     say('E2 the pick is on that node alone', picked.length === 1 && picked[0] === target.id, JSON.stringify(picked));
   }
 
+  console.log('\n[EQ] a picked node\'s lines say their qualifiers - on the label and in the info box (lead 3181313b5)');
+  {
+    // The captured die walk: the start die touches four lines that carry qualifiers and two that carry none.
+    const s = await seat([BUNDLES]);
+    const has = (e) => Boolean(e.qualifiers) && Object.keys(e.qualifiers).length > 0;
+    const touching = (id) => BUNDLES.edges.filter((e) => e.source === id || e.target === id);
+    const target = BUNDLES.nodes.find((n) => touching(n.id).some(has) && touching(n.id).some((e) => !has(e)));
+    if (target) press(s, target.id);
+    const raw = new Map(BUNDLES.edges.map((e) => [e.id, e]));
+    const name = (e) => e.predicate_label || e.predicate;
+    const words = (q) => Object.entries(q || {}).map(([k, v]) => `${k} ${v}`);
+    const want = (e) => {
+      const w = words(e.qualifiers);
+      return [name(e), ...(w.length > 2 ? [...w.slice(0, 2), `+${w.length - 2}`] : w)].join(' · ');
+    };
+    const hot = edgesOf(s).filter((e) => e.hasClass('is-hot'));
+    const qual = hot.filter((h) => has(raw.get(h.id())));
+    const bare = hot.filter((h) => !has(raw.get(h.id())));
+    say('EQ1 a line with qualifiers is labelled its predicate, its first two and +N, and the label is drawn',
+      Boolean(target) && qual.length > 0 && qual.some((h) => /\+\d+$/.test(h.data('tag')))
+        && qual.every((h) => h.data('tag') === want(raw.get(h.id())) && h.style('label') === h.data('tag')),
+      JSON.stringify(qual.map((h) => [h.data('tag'), h.style('label')]).slice(0, 2)));
+    say('EQ2 a line with none is labelled its predicate alone',
+      bare.length > 0 && bare.every((h) => h.data('tag') === name(raw.get(h.id())) && h.style('label') === h.data('tag')),
+      JSON.stringify(bare.map((h) => h.data('tag'))));
+    const labelOf = new Map(BUNDLES.nodes.map((n) => [n.id, n.label || n.id]));
+    const lineOf = (e) => [`${e.source === target.id ? '→' : '←'} ${name(e)}`,
+      labelOf.get(e.source === target.id ? e.target : e.source), ...(e.occurred_at ? [e.occurred_at] : []),
+      ...words(e.qualifiers)].join(' · ');
+    const lines = textOf(s.host, 'sg-fact');
+    say('EQ3 the info box gives every qualifier of every line, as sent; a line with none, none',
+      Boolean(target) && touching(target.id).every((e) => lines.includes(lineOf(e))),
+      JSON.stringify(touching(target ? target.id : '').map(lineOf).filter((l) => !lines.includes(l)).slice(0, 2)));
+  }
+
   console.log('\n[6] a cut walk says so, in one line');
   {
     const wafer = await seat([WAFER]);
@@ -1515,6 +1550,10 @@ const failures = [];
     M('Z3m', 'the first draw is not fitted', 'Z1', '    if (full) this._fitPending = true;\n', ''),
     M('Z4m', 'a change of size fits the picture again', 'Z4', '    else this.cy.resize();\n', '    else this._firstFit();\n'),
     M('Z5m', 'a change of size leaves the picture at its old size', 'Z4', '    else this.cy.resize();\n', ''),
+    M('EQ1m', 'the label stays the predicate alone', 'EQ1', "label: 'data(tag)'", "label: 'data(predicate)'"),
+    M('EQ2m', 'the label says every qualifier', 'EQ1', 'qualifierWords(e.qualifiers, LABEL_QUALIFIERS)', 'qualifierWords(e.qualifiers)'),
+    M('EQ3m', 'the info box drops the qualifiers', 'EQ3', ', ...qualifierWords(edge.qualifiers)].join', '].join'),
+    M('EQ4m', 'the picture keeps no qualifiers', 'EQ1', '          qualifiers: edgeQualifiers(edge) || {},\n', '          qualifiers: {},\n'),
   ];
   const scored = await scoreMutants(MUTANTS, async (mu) => {
     const mutate = mu.mutate || ((t) => swap(t, mu.from, mu.to));

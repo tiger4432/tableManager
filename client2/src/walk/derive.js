@@ -294,6 +294,21 @@ export function cutBudgets(axes, limits) {
   });
 }
 
+/** An edge's qualifiers as the walk answer carries them, or null - the one read the table's columns, the graph's
+ *  labels and its info box share (lead 3181313b5). */
+export function edgeQualifiers(edge) {
+  const q = edge && edge.qualifiers;
+  return q && typeof q === 'object' ? q : null;
+}
+
+/** Qualifiers as words, `name value` each in the answer's order; past `cap` the rest is one `+N`. The graph's edge
+ *  label and its info box both say them through this (lead 3181313b5). */
+export function qualifierWords(qualifiers, cap = Infinity) {
+  const words = Object.entries(qualifiers || {})
+    .map(([name, value]) => (value === null || value === undefined ? name : `${name} ${value}`));
+  return words.length > cap ? [...words.slice(0, cap), `+${words.length - cap}`] : words;
+}
+
 /**
  * The types the walk treats as static, read off the declaration rather than decided here.
  *

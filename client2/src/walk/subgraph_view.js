@@ -19,7 +19,7 @@
 
 import cytoscape from 'cytoscape';
 import dagre from 'cytoscape-dagre';
-import { staticTypes, cutBudgets, walkableRoutes } from './derive.js';
+import { staticTypes, cutBudgets, walkableRoutes, edgeQualifiers, qualifierWords } from './derive.js';
 import { SIGN } from '../rnd_board/marking_store.js';
 import { setDisabledReason } from '../disabled_reason.js';
 import { FAILED, LOADING, unitText } from '../ui_words.js';
@@ -142,6 +142,7 @@ export function subgraphLayout(steps, entities) {
           occurredAt: edge.occurred_at || '',
           // Each world that says it, with its evidence (lead ee0f66e7b): one line in the picture, one row each here.
           byWorld: Array.isArray(edge.by_world) ? edge.by_world : [],
+          qualifiers: edgeQualifiers(edge) || {},
         });
       }
     }
@@ -351,9 +352,15 @@ export function nodeFacts(layout, id) {
       other: labelOf.get(e.source === id ? e.target : e.source),
       occurredAt: e.occurredAt,
       byWorld: e.byWorld,
+      qualifiers: e.qualifiers,
     }));
   return { node, edges };
 }
+
+/** How many qualifiers a chosen node's edge label says before the rest is one `+N` (lead 3181313b5). */
+const LABEL_QUALIFIERS = 2;
+/** A chosen node's edge label: its predicate, then its first qualifiers. */
+const edgeTag = (e) => [e.predicate, ...qualifierWords(e.qualifiers, LABEL_QUALIFIERS)].join(' · ');
 
 /** A cut walk's words, the picture's status line and a lump's head alike (lead 161757c35): every axis cut, with its
  *  budget where the answer says it (`cutBudgets`). */
@@ -851,7 +858,7 @@ export class SubgraphView {
         'line-style': 'dashed', width: 1 }) },
       { selector: 'edge[kind = "lump"]', style: set({ 'line-color': t('--border'), 'target-arrow-shape': 'none',
         'curve-style': 'straight' }) },
-      { selector: 'edge.is-hot', style: set({ label: 'data(predicate)', width: 2.4, 'line-style': 'solid',
+      { selector: 'edge.is-hot', style: set({ label: 'data(tag)', width: 2.4, 'line-style': 'solid',
         'line-color': t('--accent'), 'target-arrow-color': t('--accent') }) },
       { selector: '.is-faded', style: { opacity: 0.18 } },
     ];
@@ -922,7 +929,7 @@ export class SubgraphView {
       const forward = layerOf.get(e.target) - layerOf.get(e.source) === 1
         || layerOf.get(e.source) - layerOf.get(e.target) === 1;
       out.push({ group: 'edges', data: { id: e.id, source: e.source, target: e.target, kind: 'edge',
-        predicate: e.predicate }, classes: forward ? '' : 'is-far' });
+        predicate: e.predicate, tag: edgeTag(e) }, classes: forward ? '' : 'is-far' });
     }
     for (const l of view.lumps) {
       const back = l.direction === 'incoming';
@@ -1168,8 +1175,8 @@ export class SubgraphView {
       this._worldRows(box, facts.node.attributesByWorld[name], (said) => [said.value, said.source_who, said.occurred_at]);
     }
     for (const edge of facts.edges) {
-      box.appendChild(this._el('div', 'sg-fact',
-        `${edge.out ? '→' : '←'} ${edge.predicate} · ${edge.other}${edge.occurredAt ? ` · ${edge.occurredAt}` : ''}`));
+      box.appendChild(this._el('div', 'sg-fact', [`${edge.out ? '→' : '←'} ${edge.predicate}`, edge.other,
+        ...(edge.occurredAt ? [edge.occurredAt] : []), ...qualifierWords(edge.qualifiers)].join(' · ')));
       this._worldRows(box, edge.byWorld, (said) => [said.source_who, said.occurred_at]);
     }
     return box;

@@ -13,8 +13,8 @@
 // 🔴 텍스트도 여기서 만듭니다. 빈 칸은 «빈 칸»입니다 — 「—」나 0 으로 채우면 「없다」와
 //    「0 이다」가 같은 글자가 됩니다. 그 판정이 렌더러에 있으면 node 가 채점할 수 없습니다.
 // ═══════════════════════════════════════════════════════════════════════════════
-import { confirmedPredicates, sectionsByType, sectionHeading, tableColumns, cellSource, pluralAttributes }
-  from './derive.js';
+import { confirmedPredicates, sectionsByType, sectionHeading, tableColumns, cellSource, pluralAttributes,
+  edgeQualifiers } from './derive.js';
 
 /** 한 번에 그리는 행 상한. 넘은 것은 «수»로 말합니다 — 조용히 자르지 않습니다. */
 export const ROW_CAP = 200;
@@ -39,8 +39,8 @@ export function isNumericText(text) {
 export function qualifiersByNode(edges) {
   const byNode = new Map();
   for (const edge of edges || []) {
-    const quals = edge && edge.qualifiers;
-    if (!quals || typeof quals !== 'object') continue;
+    const quals = edgeQualifiers(edge);
+    if (!quals) continue;
     for (const id of [edge.target, edge.source]) {
       if (!id || !byNode.has(id)) byNode.set(id, byNode.get(id) || {});
     }
