@@ -3,9 +3,9 @@
 On only when auth_config.json says ``enabled`` and names the issuer, the client id and the return
 address, and the return address is https - read once, at start. The client secret (environment) is
 optional: without it the server is a public client. Then every route but ``/auth/*``,
-``/internal/*`` and ``/health`` needs a person, and the admin gate asks for a name on the admin
-list instead of ``X-Admin-Token``. Sessions, login rounds and personal keys are server-side rows
-holding digests, never secrets.
+``/internal/*`` and ``/health`` needs a person - a name on ``users`` or ``admins`` when the file has
+a users list - and the admin gate asks for a name on the admin list instead of ``X-Admin-Token``.
+Sessions, login rounds and personal keys are server-side rows holding digests, never secrets.
 """
 import functools
 import hashlib
@@ -55,6 +55,7 @@ _CHALLENGE = {GATE_CHALLENGE_HEADER: SESSION_CHALLENGE}
 
 LOGIN_REQUIRED = {"reason": "login_required", "login": "/auth/login", "message": "Sign in to continue."}
 ADMIN_REQUIRED = {"reason": "admin_required", "message": "This needs an administrator."}
+NOT_LISTED_REASON = "not_on_users_list"
 
 router = APIRouter()
 
@@ -80,6 +81,11 @@ def settings():
     admins = loaded.get("admins")
     cells["admins"] = [str(name) for name in admins] if isinstance(admins, list) else []
     cells["admins_unread"] = admins is not None and not isinstance(admins, list)
+    # Who may come in (owner 10-08): absent is anyone the issuer signs in; a list is those names and
+    # the admins; anything else is the admins only - a mistyped value must not open the door.
+    users = loaded.get("users")
+    cells["users"] = None if users is None else ([str(name) for name in users] if isinstance(users, list) else [])
+    cells["users_unread"] = users is not None and not isinstance(users, list)
     secret = os.environ.get(CLIENT_SECRET_ENV)
     cells["client_secret"] = None if is_blank_value(secret) else secret.strip()
     cells["unreadable"] = unreadable
@@ -118,10 +124,17 @@ def startup_banner():
                    "/internal/* and /health needs a signed-in person; admin routes need a name on the "
                    "admin list." % (cells["issuer"], cells["redirect_uri"],
                                     "secret" if cells["client_secret"] else "public"))
+        level = "info"
+        if cells["users_unread"]:
+            level, message = "warning", message + (" users (%s) is not a list, so only the administrators "
+                                                   "may come in." % CONFIG_FILE)
+        elif cells["users"] is not None:
+            message += " Only the %d name(s) on users (%s) and the administrators may come in." % (
+                len(cells["users"]), CONFIG_FILE)
         if cells["admins_unread"]:
-            return "warning", message + (" admins (%s) is not a list, so no one is an administrator."
-                                         % CONFIG_FILE)
-        return "info", message
+            level, message = "warning", message + (" admins (%s) is not a list, so no one is an administrator."
+                                                   % CONFIG_FILE)
+        return level, message
     level = "info" if reason.startswith("enabled is not true") else "warning"
     return level, "[sso] OFF - %s. Sign-in is not required." % reason
 
@@ -169,11 +182,19 @@ def admit(request: Request):
     if (request.url.path == urlsplit(settings()["redirect_uri"]).path and query.get("state")
             and (query.get("code") or query.get("error"))):
         return _returned(query)
-    request.state.sso_user = identify(request)
+    user = request.state.sso_user = identify(request)
     path = request.url.path
-    if request.state.sso_user is not None or path in OPEN_PATHS or path.startswith(OPEN_PREFIXES):
+    if path in OPEN_PATHS or path.startswith(OPEN_PREFIXES) or (user is not None and may_come_in(user)):
         return None
-    if request.method == "GET" and "text/html" in (request.headers.get("accept") or ""):
+    screen = request.method == "GET" and "text/html" in (request.headers.get("accept") or "")
+    if user is not None:
+        # Off the users list: the same sentence as at sign-in, and no move back to sign-in - it
+        # would only come back here (owner 10-08).
+        if screen:
+            return _refused(403, _not_listed(user))
+        return JSONResponse(status_code=403, content={"detail": {
+            "reason": NOT_LISTED_REASON, "message": _not_listed(user)}}, headers=dict(_CHALLENGE))
+    if screen:
         here = path + ("?" + request.url.query if request.url.query else "")
         return RedirectResponse("/auth/login?next=" + quote(here, safe=""), status_code=302)
     return JSONResponse(status_code=401, content={"detail": LOGIN_REQUIRED}, headers=dict(_CHALLENGE))
@@ -193,10 +214,37 @@ def _person(request: Request):
     return user
 
 
+def _on_list(user, names):
+    """Whether a signed-in name is on a list - case folded on both sides, as AD reads a upn
+    (lead 10-07). The name recorded anywhere else keeps the token's spelling."""
+    return user is not None and user.casefold() in {name.casefold() for name in names}
+
+
 def is_admin(user):
-    """Whether a signed-in name is on the admin list - case folded on both sides, as AD reads a
-    upn (lead 10-07). The name recorded anywhere else keeps the token's spelling."""
-    return user is not None and user.casefold() in {name.casefold() for name in settings()["admins"]}
+    return _on_list(user, settings()["admins"])
+
+
+def may_come_in(user):
+    """Whether a signed-in name may use the screens and the API: anyone when auth_config.json has
+    no users list, else a name on users or on admins (owner 10-08)."""
+    users = settings()["users"]
+    return users is None or is_admin(user) or _on_list(user, users)
+
+
+def _not_listed(user):
+    return ("%s is not on the users list in %s - ask an administrator to add the name."
+            % (user, CONFIG_FILE))
+
+
+def socket_refusal(websocket):
+    """Why /ws closes, as (close code, reason), or None to let it in: the HTTP door's two answers -
+    no one signed in, a name off the users list - as WebSocket close codes (owner 10-08)."""
+    user = identify(websocket)
+    if user is None:
+        return 4401, LOGIN_REQUIRED["reason"]
+    if not may_come_in(user):
+        return 4403, NOT_LISTED_REASON
+    return None
 
 
 def require_admin(request: Request):
@@ -311,6 +359,8 @@ def _returned(query):
         return _refused(403, "Sign-in refused: name_claim in %s is %r, and the ID token has no such "
                              "claim. Claims in the token: %s."
                         % (CONFIG_FILE, name_claim or "", ", ".join(sorted(claims))))
+    if not may_come_in(name):
+        return _refused(403, _not_listed(name))
     secret = secrets.token_urlsafe(32)
     now = _now()
     with database.SessionLocal() as db:

@@ -659,3 +659,128 @@ def test_on_an_open_path_with_nobody_signed_in_keeps_todays_answer(issuer, monke
         else:
             client.get(path, headers=headers)
     assert recorder.values == ["spoof", "user"]
+
+
+# --- who may come in: the users list (owner 10-08) ----------------------------------------------
+
+LEE, PARK = "lee@corp.test", "park@corp.test"
+HTML = {"Accept": "text/html"}
+
+
+def _as(issuer, name):
+    """A client signed in as `name`, and the return-address answer it got."""
+    issuer.claims["upn"] = name
+    client = _client()
+    return client, _sign_in(client, issuer)
+
+
+def _comes_in(client):
+    return client.get("/tables", headers=HTML).status_code == 200 and client.get("/tables").status_code == 200
+
+
+def _refused_for(answer, name):
+    said = answer.text
+    return answer.status_code == 403 and all(word in said for word in (name, "users", sso.CONFIG_FILE, "administrator"))
+
+
+def test_without_a_users_list_anyone_signed_in_comes_in(issuer):
+    client, back = _as(issuer, LEE)
+    assert back.status_code == 302 and _comes_in(client)
+
+
+def test_a_name_off_the_list_is_refused_at_sign_in_and_gets_no_session(issuer):
+    issuer.config(users=[UPN])
+    kim, back = _as(issuer, UPN)
+    assert back.status_code == 302 and _comes_in(kim)
+    _clear()
+    lee, back = _as(issuer, LEE)
+    assert _refused_for(back, LEE) and "location" not in back.headers, back.text
+    assert _session_rows() == [] and lee.cookies.get(sso.COOKIE_NAME) is None
+
+
+def test_a_session_opened_before_the_list_is_refused_from_the_next_request(issuer):
+    lee, _back_ = _as(issuer, LEE)
+    issuer.config(users=[UPN])
+    page = lee.get("/tables", headers=HTML, follow_redirects=False)
+    assert _refused_for(page, LEE) and "location" not in page.headers         # no move back to sign-in
+    api = lee.get("/tables")
+    assert (api.status_code, api.json()["detail"]["reason"], api.headers[CHALLENGE]) == (
+        403, sso.NOT_LISTED_REASON, sso.SESSION_CHALLENGE) and LEE in api.json()["detail"]["message"]
+
+
+def test_a_personal_key_of_a_name_off_the_list_is_refused(issuer):
+    lee, _back_ = _as(issuer, LEE)
+    key = lee.post("/auth/keys", json={"name": "nightly"}).json()["key"]
+    issuer.config(users=[UPN])
+    answer = _client().get("/tables", headers={"Authorization": "Bearer " + key})
+    assert (answer.status_code, answer.json()["detail"]["reason"]) == (403, sso.NOT_LISTED_REASON)
+
+
+def test_an_administrator_comes_in_without_being_on_users(issuer):
+    issuer.config(admins=[PARK], users=[UPN])
+    park, back = _as(issuer, PARK)
+    assert back.status_code == 302 and _comes_in(park) and park.get("/admin/chain/pause").status_code == 200
+
+
+def test_users_is_read_with_the_same_case_rule_as_admins(issuer):
+    spellings = (UPN, UPN.upper(), "Kim@Corp.Test", " " + UPN, LEE)
+    issuer.config(users=["Kim@Corp.Test"], admins=[])
+    on_users = [sso.may_come_in(name) for name in spellings]
+    issuer.config(users=None, admins=["Kim@Corp.Test"])
+    on_admins = [sso.is_admin(name) for name in spellings]
+    assert on_users == on_admins == [True, True, True, False, False]
+    issuer.config(users=["Kim@Corp.Test"], admins=[])
+    kim, back = _as(issuer, UPN.upper())
+    assert back.status_code == 302 and _comes_in(kim)
+
+
+@pytest.mark.parametrize("users, level, words", [
+    (UPN, "warning", "users (auth_config.json) is not a list, so only the administrators may come in."),
+    ([], "info", "Only the 0 name(s) on users (auth_config.json) and the administrators may come in."),
+], ids=["not-a-list", "empty"])
+def test_a_users_cell_that_names_no_one_lets_in_the_administrators_only(issuer, users, level, words):
+    issuer.config(admins=[PARK], users=users)
+    said = sso.startup_banner()
+    assert said[0] == level and words in said[1], said
+    _kim, back = _as(issuer, UPN)
+    assert _refused_for(back, UPN) and _session_rows() == []
+    park, back = _as(issuer, PARK)
+    assert back.status_code == 302 and _comes_in(park)
+
+
+def _session_cookie(client):
+    """The test client opens /ws as ws://, so it does not send the Secure cookie by itself."""
+    return {"Cookie": "%s=%s" % (sso.COOKIE_NAME, client.cookies.get(sso.COOKIE_NAME))}
+
+
+def test_the_socket_closes_on_a_name_off_the_list_and_lets_a_listed_name_in(issuer):
+    lee, _back_ = _as(issuer, LEE)
+    issuer.config(users=[UPN])
+    heard = {}
+
+    def listen(socket):
+        try:
+            socket.receive_text()
+        except WebSocketDisconnect as closed:
+            heard["closed"] = (closed.code, closed.reason)
+    with lee.websocket_connect("/ws", headers=_session_cookie(lee)) as socket:
+        listener = threading.Thread(target=listen, args=(socket,), daemon=True)
+        listener.start()
+        listener.join(5)                      # a socket left open must fail here, not hang
+    assert heard.get("closed") == (4403, sso.NOT_LISTED_REASON)
+    kim, _back_ = _as(issuer, UPN)
+    before = len(main.manager.active_connections)
+    with kim.websocket_connect("/ws", headers=_session_cookie(kim)):
+        deadline = time.monotonic() + 5
+        while len(main.manager.active_connections) == before and time.monotonic() < deadline:
+            time.sleep(0.01)
+        assert len(main.manager.active_connections) == before + 1
+
+
+def test_the_open_paths_answer_a_name_off_the_list_as_today(issuer):
+    lee, _back_ = _as(issuer, LEE)
+    issuer.config(users=[UPN])
+    assert lee.get("/health").status_code in (200, 503)
+    assert lee.get("/auth/me").json() == {"user": LEE, "is_admin": False, "sso": True}
+    assert lee.post("/internal/events/broadcast", json={"event_type": "noop", "payload": {}},
+                    headers={auth.ADMIN_TOKEN_HEADER: ADMIN_TOKEN}).status_code == 200

@@ -3931,9 +3931,10 @@ RETIRED_GRAPH_TABLES = ("graph_nodes", "graph_edges", "graph_sync_state")
 async def websocket_endpoint(websocket: WebSocket):
     if sso.enabled():
         from starlette.concurrency import run_in_threadpool
-        if await run_in_threadpool(sso.identify, websocket) is None:
+        refusal = await run_in_threadpool(sso.socket_refusal, websocket)
+        if refusal is not None:
             await websocket.accept()
-            await websocket.close(code=4401, reason=sso.LOGIN_REQUIRED["reason"])
+            await websocket.close(code=refusal[0], reason=refusal[1])
             return
     await manager.connect(websocket)
     try:

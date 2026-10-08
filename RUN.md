@@ -1,5 +1,22 @@
 # 지금 돌리면 되는 것
 
+> ## [10-08] **회사 로그인 «들어올 사람» 목록 — auth_config.json 의 users · 이주 «없음» · 재기동 «필요»(서버)**
+>
+> ```
+> 무엇이 바뀌나  auth_config.json 에 users 칸이 있으면 그 이름들과 admins 만 화면 · API · 표 변경 방송(/ws)에 들어온다. 칸이 없으면 전과 같다(회사 로그인 되는 누구나)
+> 적는 법       "users": ["kim@corp.test", "lee@corp.test"]   — name_claim 값 그대로, 대소문자는 무시(admins 와 같은 규칙). sample 에는 없다
+> 재기동        서버 — 소유자 몫. 설정은 프로세스마다 한 번 읽는다
+> 볼 기동 줄    [sso] ON - … Only the <N> name(s) on users (auth_config.json) and the administrators may come in.
+>                  = 목록이 읽혔다. N 이 적은 이름 수와 같은지 본다. 이 문장이 없으면 users 칸이 없는 것(누구나)
+>               [sso] ON - … users (auth_config.json) is not a list, so only the administrators may come in.   (경고)
+>                  = 값이 목록이 아니라 admins 만 들어온다 — ["…"] 로 고치고 재기동
+> 거절 줄       [sso] <이름> is not on the users list in auth_config.json - ask an administrator to add the name.
+>                  = 그 사람이 로그인했거나 화면을 열었다. 세션은 안 만들어졌다. 넣을 사람이면 users 에 넣고 재기동
+> 끄는 법       users 칸을 지우고 재기동 — 전과 같이 누구나
+> ```
+
+---
+
 > ## [10-08] **하위 폴더 안의 다 쓴 파일은 옆 파일이 아직 쓰는 중이어도 들어간다 — 이주 «없음» · 재기동 «필요»(수집기)**
 >
 > ```
