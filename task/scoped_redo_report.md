@@ -76473,3 +76473,47 @@ ix_retroactive_runs_state (retroactive_runs.state) - idx_retroactive_runs_recent
 
 - statement_timeout 0 → RESET: 이 박스 엔진엔 기본 상한이 없어(연결 인자에 없음) 빼도 시험이 안 갈립니다. 변이를 안 돌렸습니다.
 - 진행 읽기가 실패할 때의 한 줄(«its progress did not read ... unwatched»): 그 실패를 만들어 돌린 칸이 없습니다.
+
+---
+
+## [10-09] 원장 따라가기의 소스 실패 셈은 에피소드마다 — 성공하면 비우고 다시 생긴 고장은 #1 부터 cc85f2a78 (총괄 10-09 · 응용 QA 6f4735207)
+
+어느 DB · 어느 스키마 · 지운 것 — sqlite 시험은 하니스의 임시 DB · PG 는 격리 시험 DB assy_test, 하니스가 만들고 DROP 하는 assy_pytest_pg_* · 그 밖에 지운 것 0
+
+```
+비우는 함수  utils.logger.count_cleared(counts, prefix) — count_crossed 옆, 같은 셈 표 (카나리아 def count_cleared = cc85f2a78:server/utils/logger.py:1)
+비우는 자리  그 소스가 따라가기에 성공한 자리 하나 — rescope 가 돌아온 바로 뒤, (소스 · 표 · 세상)의 셈
+server/ledger/followup.py:452:                count_cleared(REPEATS, ("source", source, table, _named(world)))
+           rescope 부르는 자리:
+server/ledger/followup.py:440:                result = backfill.rescope(engine, setup, source, column, values,
+```
+
+### 게이트
+
+```
+고장 15 -> 성공 1 -> 고장 20  -> 줄 [#1, #10, #1, #10]
+PG 원장 따라가기 파일 셋 한 번에: 18 passed, 13 deselected, 36 warnings · 8080 접촉 줄 0
+```
+
+### 변이 — md5 같음
+
+```
+BASELINE 5 passed, 19 deselected, 6 warnings
+MUTANT a success does not end the episode       1 failed, 4 passed, 19 deselected, 6 warnings
+    FAILED test_a_failure_that_comes_back_after_a_success_is_said_from_the_1st_again
+MUTANT clearing forgets nothing                 1 failed, 4 passed, 19 deselected, 6 warnings
+    FAILED test_a_failure_that_comes_back_after_a_success_is_said_from_the_1st_again
+```
+
+### 전체 sqlite
+
+```
+test_[a-k]*: 4 failed, 4151 passed, 210 skipped, 1 xfailed, 5932 warnings
+test_[l-z]*: 1 failed, 3950 passed, 192 skipped, 2 xfailed, 7303 warnings
+-> 실패는 알려진 박스 실패뿐
+```
+
+### 남은 것 (판정대로 안 지음)
+
+- «batch failed» 의 열쇠는 예외 이름 하나 — 같은 예외 이름의 다른 원인은 다음 표시까지 안 나옵니다.
+- 삭제 실패 줄과 «batch failed» 줄의 셈은 성공으로 비우지 않습니다(비우는 자리는 소스 성공 하나). 체인 워커 재기동 때 다시 1.
