@@ -22,7 +22,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 
 # Setup Unified Logger
 from utils import logger as process_logging
-from utils.logger import get_process_logger
+from utils.logger import count_crossed, get_process_logger
 from utils.payload_helper import get_payload_dict
 from utils import heartbeat
 # [H4] Module-level, and deliberately NOT a lazy import of the web application
@@ -2531,16 +2531,6 @@ async def _say_what_a_stalled_group_waits_on(db):
         logger.warning("[Chain] %s: %s", what, line)
 
 
-#: Follow-up rules for the `builtin:` dispatcher, held across drain batches.
-#:
-#: 🔴 MEASURED: `load_chain_rules()` COSTS 3.4 ms, and the drain calls its batch function in a
-#: `while` loop — so reading the file, validating every rule and re-running the synthesis on
-#: EVERY batch is pure waste that grows with the rule count. It was invisible when S-189 ⓒ
-#: landed because no join rule matched and the loop did nothing; S-195 puts auto-confirm on
-#: this path, where it would have fired on every batch forever.
-#:
-#: ⚠️ INVALIDATED WHERE EVERY OTHER WORKER CACHE IS. A cache with no reset is the reason a
-#: reload stops meaning anything, and this process already has one seat for that.
 # ⚰️ [소유자 정본] `_FOLLOWUP_BUILTIN_RULES` AND `_rules_for_the_follow_up_pass` STOOD HERE.
 #   The cache existed because the drain called the selector in a `while` loop and
 #   `load_chain_rules()` costs 3.4 ms; there is no drain-side rule loop any more, so there is
@@ -3768,8 +3758,12 @@ async def run_ledger_followup(db_session_factory):
                 break
             except Exception as exc:
                 # The event stays unmarked and is taken again after the rest - going on
-                # here would take the same one in a tight loop.
-                logger.warning("[LedgerFollowUp] batch failed: %s", exc)
+                # here would take the same one in a tight loop. Its line is said on the 1st,
+                # 10th, 100th ... of its error (총괄 cb419a8a0 - once a lap filled the log all day).
+                nth = count_crossed(ledger_followup.REPEATS, ("batch", type(exc).__name__))
+                if nth:
+                    logger.warning("[LedgerFollowUp] batch failed: %s - #%d of this error (said at the "
+                                   "1st, 10th, 100th ...)", exc, nth)
                 break
             if _FOLLOWUP_STOP:
                 await asyncio.to_thread(_say_the_follow_up, None,

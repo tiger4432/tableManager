@@ -329,3 +329,12 @@ def announce_crossed(before: int, total: int) -> bool:
             break
         last = mark
     return last > before
+
+
+def count_crossed(counts, key, n=1):
+    """Add `n` to `counts[key]` -> the new total when it passed a mark of `ANNOUNCE_AT` (the line
+    to say, with that count), else None. The bookkeeping a repeat-quiet line keeps, written once
+    for the seats that came after the four that each keep their own (총괄 cb419a8a0)."""
+    before = counts.get(key, 0)
+    counts[key] = total = before + n
+    return total if announce_crossed(before, total) else None

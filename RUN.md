@@ -1,5 +1,21 @@
 # 지금 돌리면 되는 것
 
+> ## [10-09] **원장 따라가기의 실패 줄은 같은 실패의 1 · 10 · 100 … 번째에만 — 이주 «없음» · 재기동 «체인 워커»**
+>
+> ```
+> 무엇이 바뀌나    아래 세 줄이 매번이 아니라 같은 실패의 1 · 10 · 100 · 1000 … 번째에만 나온다. 줄 끝에 #N
+>                  [LedgerFollowUp] <소스> <- <표> (N rows) failed in world <세상>: <사유> - #N of this source, table and error (...)
+>                  [LedgerFollowUp] delete on <표> (N rows) failed in world <세상>: <사유> - #N of this table and error (...)
+>                  [LedgerFollowUp] batch failed: <사유> - #N of this error (...)
+>                «같은 실패» = 같은 소스 · 표 · 세상 · 예외 이름(행은 안 가름). 체인 워커를 재기동하면 다시 1 부터
+> 그대로         실패 «기록» — 아웃박스 ledger_state failed · 실패 영수증 · 하트비트의 failed=N
+>                몇 건 · 어느 이벤트인지는  python -m ledger followup        (server 폴더)
+> 답의 뜻        #1 만 있다 = 그 실패가 아직 10 번이 안 됐다 · #10 · #100 이 이어진다 = 같은 실패가 계속 — 그 소스 · 표부터
+> 선언 깨짐       따로 — 처음 · 풀림 · 10 분 알림 줄 셋(전 라운드)은 그대로
+> 급할 때        git revert <이 커밋> -> 체인 워커 재기동
+> ```
+
+---
 > ## [10-09] **× 와 끝을 쓰는 묶음은 행을 id 순으로 잠근다 · 슬롯 박동을 못 읽으면 다시 읽고, 그래도 못 읽으면 답이 말한다 — 이주 «없음» · 재기동 «서버 · 체인 워커»**
 >
 > ```

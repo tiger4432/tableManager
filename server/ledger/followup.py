@@ -73,6 +73,7 @@ FOLLOWUP_JOB = "chain_followup"
 #: one place that already names them so the failure receipt below and the success receipt
 #: in `runtime_v2` cannot describe themselves differently.
 from .runtime_v2 import RECEIPT_COLUMN, RECEIPT_FAILED, RECEIPT_SOURCE  # noqa: E402
+from utils.logger import count_crossed  # noqa: E402
 RECEIPT_WRITER = "ledger"
 
 #: A bound so a stalled drain cannot eat the worker's memory. Overflow is COUNTED and named
@@ -84,6 +85,10 @@ _lock = threading.Lock()
 _queue: deque = deque()
 _dropped = 0
 _failed = 0
+#: How often each follow-up failure has happened in this process, by what failed and the error's
+#: name - never a row - so its line is said on the 1st, 10th, 100th ... (총괄 cb419a8a0: one broken
+#: source failed per event all day). The failure's RECORD (ledger_state · receipt) is as before.
+REPEATS = {}
 
 #: The chain transaction id of the event the batch running on THIS thread is following.
 #:
@@ -216,6 +221,7 @@ def reset():
         _queue.clear()
         _dropped = 0
         _failed = 0
+        REPEATS.clear()
 
 
 # ------------------------------------------------------------------------- the paced side
@@ -381,9 +387,12 @@ def _follow(item, engine, setup, world=None, sources=None):
         except Exception as exc:
             with _lock:
                 _failed += 1
+                nth = count_crossed(REPEATS, ("delete", table, _named(world), type(exc).__name__))
             done["error"] = f"{type(exc).__name__}: {exc}"
-            logger.warning("[LedgerFollowUp] delete on %s (%d rows) failed in world %s: %s",
-                           table, len(row_ids), _named(world), exc)
+            if nth:
+                logger.warning("[LedgerFollowUp] delete on %s (%d rows) failed in world %s: %s - #%d of "
+                               "this table and error (said at the 1st, 10th, 100th ...)",
+                               table, len(row_ids), _named(world), exc, nth)
         return done
     table_sources = [source for source in sources_for_table(setup, table)
                      if sources is None or source in sources]
@@ -441,6 +450,7 @@ def _follow(item, engine, setup, world=None, sources=None):
         except Exception as exc:  # named, counted, and NOT requeued -- see the docstring
             with _lock:
                 _failed += 1
+                nth = count_crossed(REPEATS, ("source", source, table, _named(world), type(exc).__name__))
             done["sources"][source] = {"error": f"{type(exc).__name__}: {exc}"}
             # 🔴 A FAILURE IS THE ONE AN OPERATOR MOST NEEDS TO SEE, AND IT NEEDS ITS OWN
             # COMMIT (S-117, 판정 248). The successful receipt rides the atoms' commit so
@@ -449,9 +459,11 @@ def _follow(item, engine, setup, world=None, sources=None):
             # written afterwards, on its own. That is the shape rejected for the success
             # path, used here because here there is nothing left to ride.
             _write_failure_receipt(engine, table, source, transaction_id, exc, _named(world))
-            logger.warning(
-                "[LedgerFollowUp] %s <- %s (%d rows) failed in world %s: %s",
-                source, table, len(row_ids), _named(world), exc)
+            if nth:
+                logger.warning(
+                    "[LedgerFollowUp] %s <- %s (%d rows) failed in world %s: %s - #%d of this source, "
+                    "table and error (said at the 1st, 10th, 100th ...)",
+                    source, table, len(row_ids), _named(world), exc, nth)
     return done
 
 
