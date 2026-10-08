@@ -76087,3 +76087,80 @@ fromisoformat 의 관대함은 박스마다 다름 — Python 3.11 부터 날짜
 소유자가 본 거절이 aware_time 을 안 지나는 자리(코드 맵퍼가 날 칸을 읽음 등)였다면 이 고침이 그 자리에는 안 닿음 — 그 거절 줄을 받으면 확인
 클라 몫   선언 폼이 시각 칸의 표본 값으로 format 을 미리 채우기(한 가지로만 읽히는 모양만, 확인은 사람) — 서버 변경 없음
 ```
+
+---
+
+## [10-09] × 의 답은 슬롯이 끝난 뒤의 행 수 · 빼 두는 사이 끝까지 돈 행은 «돌았음» 62f067a1a (총괄 54a53f894 ㄱ)
+
+어느 DB · 어느 스키마 · 지운 것 — 격리 시험 DB assy_test · 스키마는 하니스가 만들고 DROP 하는 assy_pytest_pg_* · 그 밖에 지운 것 0
+
+```
+성공 길   묶음이 파이썬 일 중(끊을 질의 없음)에 × 가 그 행을 빼 뒀고 묶음이 끝까지 돌았으면 «돌았음»이 이김
+         빼 둔 표시를 지우고 SUCCESS · 표마다 감사 줄 chain_queue_skip_too_late · 로그 한 줄
+         자리 62f067a1a:server/chain/ingestion_worker.py:2884:                    _ran_though_set_aside(db, tx_id, events_in_tx)
+× 의 답   슬롯을 죽인 뒤 프로세스 끝을 기다리고, 그 슬롯의 DB 연결마다 끝을 기다림(pg_terminate_backend(pid, timeout)) — 각각 최대 5 초
+         그 뒤 질의 하나로 다시 셈: skipped_events = 아직 빼 둠 · already_processed = 돎
+         자리 62f067a1a:server/chain/control.py:147:    aside, ran = set_aside.what_became_of(db, done["ids"])   (카나리아 def what_became_of = 62f067a1a:server/chain/set_aside.py:1)
+세는 대상  × 가 읽을 때 기다리던 그 줄의 체인 이벤트. already_processed 에는 읽기와 표시 사이에 체인이 끝낸 것도 들어감
+답 모양   칸 하나 더함(already_processed, 늘 있음). 기존 칸은 그대로
+같이      죽은 슬롯 거두기(_reap)도 같은 연결 기다림을 지남 — 거두기가 연결마다 최대 5 초 늦어질 수 있음(안 쟀다)
+「운영자가 빼 둠」 SQL 술어는 하나(_by_operator) — line_already 와 새 세기가 같이 씀
+```
+
+### 게이트
+
+```
+PG 손댄 두 파일(멈춤 · 슬롯) 한 번에: 20 passed, 41 deselected, 68 warnings · 8080 접촉 줄 0
+새 칸 ①  test_a_cross_that_lands_while_its_group_is_in_python_reads_as_ran
+         × 가 파이썬 일 중인 묶음에 떨어짐 -> 그 행 SUCCESS · 표시 없음 · rows_set_aside 에 없음 · 감사 줄 한 표
+새 칸 ②  test_a_cross_answers_its_lines_rows_as_the_table_has_them_once_the_slot_has_ended
+         두 행 줄, 한 행의 묶음이 표시 «뒤» · 슬롯 끝 «전»에 커밋 -> 답 (빼 둠, 돎) = 표에서 센 (1, 1)
+진짜 슬롯 test_a_cross_on_a_running_line_stops_its_slot_only — 단언을 조임: × 가 답한 «바로» 그때 슬롯 pid 없음 · 그 슬롯의 연결 0
+         (전엔 pid 가 10 초 안에 없어지기를 기다림)
+```
+
+### 변이 — md5 같음
+
+```
+BASELINE (PG) 4 passed, 41 deselected, 10 warnings
+MUTANT the success path does not ask                      1 failed, 3 passed, 41 deselected, 10 warnings
+    FAILED test_a_cross_that_lands_while_its_group_is_in_python_reads_as_ran
+MUTANT a cleared mark equal to the read is not written    1 failed, 3 passed, 41 deselected, 10 warnings
+    FAILED test_a_cross_that_lands_while_its_group_is_in_python_reads_as_ran
+MUTANT no audit line says the stop came too late          1 failed, 3 passed, 41 deselected, 10 warnings
+    FAILED test_a_cross_that_lands_while_its_group_is_in_python_reads_as_ran
+BASELINE (PG) 3 passed, 58 deselected, 10 warnings
+MUTANT the count is read before the slot has ended      1 failed, 2 passed, 58 deselected, 10 warnings
+    FAILED test_a_cross_answers_its_lines_rows_as_the_table_has_them_once_the_slot_has_ended
+MUTANT skipped_events is the mark's count               1 failed, 2 passed, 58 deselected, 10 warnings
+    FAILED test_a_cross_answers_its_lines_rows_as_the_table_has_them_once_the_slot_has_ended
+MUTANT already_processed is not counted                 1 failed, 2 passed, 58 deselected, 10 warnings
+    FAILED test_a_cross_answers_its_lines_rows_as_the_table_has_them_once_the_slot_has_ended
+MUTANT the killed slot is not waited for                3 passed, 58 deselected, 10 warnings
+MUTANT its connections are not waited for               3 passed, 58 deselected, 10 warnings
+```
+초록 둘(the killed slot is not waited for, its connections are not waited for) — 두 기다림은 시험이 못 잽니다. 이 박스에서는 죽인 슬롯이 스스로 빨리 끝나고 연결도 스스로 닫혀, 기다리지 않아도 «바로» 단언이 맞습니다. 그 조건(죽였는데 안 끝남 · 끊었는데 커밋 중)을 만들어 돌리는 칸은 못 지었습니다.
+
+### 진짜 슬롯 칸 흔들림 — 제 시험 줄이었음
+
+```
+진짜 슬롯 칸 여섯 번(앞 셋은 고치기 전, 뒤 셋은 뒤): 2 failed, 13 deselected · 2 passed, 13 deselected · 2 passed, 13 deselected · 2 passed, 13 deselected · 2 passed, 13 deselected · 2 passed, 13 deselected
+```
+첫 번에 둘 다 빨강: 슬롯 pid 로 박동을 «한 번» 찾는 제 줄이 빈 손 — 그 순간 그 pid 의 live 박동이 없었음. 원인은 재지 않았습니다(heartbeat.read_all 은 못 읽은 파일을 stale 로 돌려주니 그럴 수 있다는 정도). 두 번째 칸은 첫 칸이 남긴 슬롯 때문에 따라 넘어짐. _held 처럼 기다려 찾게 고친 뒤 셋 다 초록.
+첫 변이 실행에서 「skipped_events 가 표시 때 수」 변이가 done run 칸도 빨갛게 했는데 그 문장은 못 봤습니다. 그 변이만 다시 돌리니 그 칸 초록 — 같은 흔들림으로 봅니다(재지 않은 추정).
+
+### 전체 sqlite
+
+```
+test_[a-k]*: 4 failed, 4151 passed, 210 skipped, 1 xfailed, 5928 warnings
+test_[l-z]*: 1 failed, 3940 passed, 186 skipped, 2 xfailed, 7285 warnings
+-> 실패는 알려진 박스 실패뿐
+```
+🔴 제 실수 하나: 첫 반쪽을 -x 로 띄웠다가 멈췄는데 셸만 죽고 pytest 는 계속 돌았습니다(셸이 이미 파일 이름으로 펼쳐 놓아 제 프로세스 거르기가 못 찾음). 두 실행이 1 분쯤 겹쳐 한 파일에 썼고, 그 사이 test_a_collector_script_gets_its_window_filled 의 stdout 칸이 하위 프로세스 0xC0000142(시작 실패)로 빨강. 둘 다 죽이고 깨끗이 다시 돌린 위 수에서 그 칸은 초록입니다.
+
+### 남은 것 · 여쭐 것
+
+1. **창 하나가 남습니다.** 성공 길이 표시를 읽은 «뒤», 커밋 «전»에 × 의 표시가 커밋되면 그 행은 SUCCESS 이면서 빼 둔 표시를 갖습니다 — 돌았는데 «빼 둠»으로 읽히고 rerun_set_aside 가 한 번 더 돌릴 수 있습니다(만들어 재지는 않았고 코드로 읽은 것). 성공 길은 상태 칸만 쓰고 payload 는 안 쓰기 때문입니다. 답의 두 수는 표와 같으니 게이트는 초록입니다. 닫는 길 후보는 성공 길의 읽기를 행 잠금(FOR UPDATE)으로 하는 것 — × 의 표시가 그 커밋을 기다렸다가 「아직 대기 중」이 아닌 것을 보고 안 씁니다. 다만 × 의 집합 UPDATE 와 잠금 순서(교착)를 봐야 해서 짓지 않았습니다. 지을까요?
+2. **슬롯 찾기도 박동을 «한 번» 읽습니다.** stop_slot 의 holding() 이 그 순간 박동을 못 읽으면(stale) 슬롯을 못 찾아 안 끄고, × 의 답은 slot_pid null 입니다. 위 시험 줄에서 같은 모양의 «한 번» 읽기가 고치기 전 세 번 중 한 번 빗나갔습니다(제품 자리에서 잰 것은 아님). 이번엔 안 건드렸습니다 — 고칠까요?
+3. 화면은 두 수를 안 읽습니다(클라는 already 낱말만). 「N ran」을 보이려면 클라 레인 몫입니다. 이름이 나란히 섭니다 — `already`(낱말: processed · set_aside · gone, 기다린 것이 없을 때만) 와 `already_processed`(수, 늘 있음). 판정의 「already processed」를 그대로 따랐습니다.
+4. 기다림 상한 5 초는 고른 값이고 재지 않았습니다.
