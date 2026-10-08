@@ -76164,3 +76164,64 @@ test_[l-z]*: 1 failed, 3940 passed, 186 skipped, 2 xfailed, 7285 warnings
 2. **슬롯 찾기도 박동을 «한 번» 읽습니다.** stop_slot 의 holding() 이 그 순간 박동을 못 읽으면(stale) 슬롯을 못 찾아 안 끄고, × 의 답은 slot_pid null 입니다. 위 시험 줄에서 같은 모양의 «한 번» 읽기가 고치기 전 세 번 중 한 번 빗나갔습니다(제품 자리에서 잰 것은 아님). 이번엔 안 건드렸습니다 — 고칠까요?
 3. 화면은 두 수를 안 읽습니다(클라는 already 낱말만). 「N ran」을 보이려면 클라 레인 몫입니다. 이름이 나란히 섭니다 — `already`(낱말: processed · set_aside · gone, 기다린 것이 없을 때만) 와 `already_processed`(수, 늘 있음). 판정의 「already processed」를 그대로 따랐습니다.
 4. 기다림 상한 5 초는 고른 값이고 재지 않았습니다.
+
+---
+
+## [10-09] 가드 둘 — 끝을 쓰는 묶음과 × 는 id 순으로 잠근다 · 슬롯 박동을 못 읽으면 다시 읽고 끝내 못 읽으면 말한다 5250ca1bd (총괄 10-09)
+
+어느 DB · 어느 스키마 · 지운 것 — 격리 시험 DB assy_test · 스키마는 하니스가 만들고 DROP 하는 assy_pytest_pg_* · 그 밖에 지운 것 0
+
+```
+창 닫기    성공 길이 끝을 쓰기 직전에 그 행들을 FOR UPDATE(id 오름차순)로 잠그고 빼 둔 표시를 SQL 로 읽음
+          자리 5250ca1bd:server/chain/ingestion_worker.py:2337:                    .order_by(DatabaseOutbox.id).with_for_update()) if by_operator]
+          × 의 빼 두기는 PG 에서 같은 순서로 먼저 잠근 뒤 집합 UPDATE
+          자리 5250ca1bd:server/chain/set_aside.py:170:        db.query(DatabaseOutbox.id).filter(*waiting).order_by(DatabaseOutbox.id).with_for_update().all()
+          표시 술어는 하나(set_aside.by_operator, 이제 공개) — line_already · what_became_of · 성공 길이 같이
+          전과 달라진 읽기: 전엔 기다리는 행의 id · 줄 열쇠를 읽고 끝난 행만 payload. 이제 묶음의 모든 행의 id · 표시 낱말을 잠가 읽고, payload 는 표시된 행만
+박동 읽기   holding() 이 슬롯 박동을 «못 읽음»(error)으로 받으면 1.0 초 안에서 다시 읽음
+          끝내 못 읽으면 셋째 답 UNREAD -> × 의 답에 "slot_not_found": "slot not found - the line's events are set aside; its running group may finish"
+          자리 5250ca1bd:server/chain/control.py:146:        slot_pid, answer["slot_not_found"] = None, slots.SLOT_NOT_FOUND   (카나리아 def holding = 5250ca1bd:server/chain/slots.py:1)
+```
+
+### 게이트
+
+```
+PG 손댄 네 파일(멈춤 · 슬롯 · HOL 순서 · 걸린 묶음) 한 번에: 27 passed, 55 deselected, 70 warnings · 8080 접촉 줄 0
+새 칸 ①  test_a_cross_that_comes_after_the_success_paths_read_waits_and_the_row_reads_as_ran (PG)
+         성공 길 읽기 뒤 · 커밋 전에 × -> × 는 잠금을 기다림(pg_stat_activity 의 Lock 을 보고 진행)
+         -> 행 SUCCESS · 표시 없음 · rows_set_aside 에 없음 · × 의 답 (빼 둠 0, 돎 1)
+         🔴 판정과 다른 한 줄: 이 경우 too_late 감사 줄은 0 입니다 — × 의 표시가 행에 «안 들어가서»(기다렸다가 끝난 행을 비켜 감)
+            묶음이 지울 표시가 없습니다. too_late 줄은 표시가 성공 길 읽기 «전»에 든 경우(앞 라운드 칸)에만 남습니다
+새 칸 ②  test_a_slot_beat_that_does_not_read_is_read_again — 첫 읽기 못 읽음 · 둘째 읽기 그 줄을 쥠 -> (1, pid)
+새 칸 ③  test_a_cross_whose_slot_beat_never_reads_says_so — 끝내 못 읽음 -> 답에 slot_not_found · 행은 빼 둠
+```
+
+### 변이 — md5 같음
+
+```
+BASELINE PG 3 passed, 46 deselected, 10 warnings | sqlite 4 passed, 45 deselected, 10 warnings
+MUTANT the success path does not lock           PG 1 failed, 2 passed, 46 deselected, 10 warnings | sqlite 4 passed, 45 deselected, 10 warnings
+    FAILED test_a_cross_that_comes_after_the_success_paths_read_waits_and_the_row_reads_as_ran
+MUTANT the x does not lock in id order first    PG 3 passed, 46 deselected, 10 warnings | sqlite 4 passed, 45 deselected, 10 warnings
+MUTANT an unreadable beat is not read again     PG 3 passed, 46 deselected, 10 warnings | sqlite 1 failed, 3 passed, 45 deselected, 10 warnings
+    FAILED test_a_slot_beat_that_does_not_read_is_read_again
+MUTANT an unreadable beat reads as no slot      PG 3 passed, 46 deselected, 10 warnings | sqlite 2 failed, 2 passed, 45 deselected, 10 warnings
+    FAILED test_a_cross_whose_slot_beat_never_reads_says_so
+    FAILED test_a_slot_beat_that_does_not_read_is_read_again
+MUTANT the x says nothing of it                 PG 3 passed, 46 deselected, 10 warnings | sqlite 1 failed, 3 passed, 45 deselected, 10 warnings
+    FAILED test_a_cross_whose_slot_beat_never_reads_says_so
+```
+초록 하나(the x does not lock in id order first) — 교착 막기는 박스에서 재현을 못 했습니다(왜 안 나는지는 재지 않음 — 짐작은 id IN 집합 UPDATE 가 이미 대개 id 순으로 잠그는 것). 판정대로 두었고 시험이 못 잽니다.
+
+### 전체 sqlite
+
+```
+test_[a-k]*: 4 failed, 4151 passed, 210 skipped, 1 xfailed, 5908 warnings
+test_[l-z]*: 1 failed, 3942 passed, 187 skipped, 2 xfailed, 7361 warnings
+-> 실패는 알려진 박스 실패뿐
+```
+같이 고친 시험 둘: test_chain_hol_scheduling · test_a_stuck_chain_group_says_what_holds_it 는 query 없는 가짜 세션으로 성공 길을 돌리고 «대기 여부»만 _still_waiting 으로 막아 두었는데, 성공 길이 이제 잠금 읽기를 직접 해서 첫 반쪽에서 일곱 칸이 빨강(AttributeError: no attribute 'query'). 두 파일의 같은 픽스처에 _ran_though_set_aside 막기 한 줄씩 — 위 수는 고친 뒤 다시 돌린 것.
+
+### 남은 것 하나 (안 지음)
+
+× 의 감사 줄(chain_queue_skip)은 «표시한 수»가 아니라 «× 가 읽을 때 기다리던 수»를 적습니다(set_aside_line 의 by_table 이 found 에서 셈). 위 칸 ①처럼 × 가 기다렸다가 아무것도 안 빼도 감사 줄은 「1 건 건너뜀」입니다. × 의 답(skipped_events)은 맞습니다. 감사 줄도 표시한 수로 고칠까요?
