@@ -30,8 +30,11 @@ const DECL = fx('walk_start_declaration.json');
 const WAFER = fx('walk_start_wafer.json');
 const DIE = fx('walk_start_die.json');
 const STEP2 = fx('walk_start_die_step2.json');
+// A die walk whose wafer, one step out, holds two fan-outs over the cap (first 20 drawn), and the first opened: one
+// step from the wafer (capture_walk_bundles.py, real server, lead 11e5ea207).
 const BUNDLES = fx('walk_bundles_die.json');
-const EXPANDED = fx('walk_bundles_die_expanded.json');
+const OPENED = fx('walk_bundles_die_opened.json');
+const OPEN_KEY = `${OPENED._opened.node}|${OPENED._opened.predicate}|${OPENED._opened.direction}`;
 // The implementer's captures of the folded lumps' walks (real server, PostgreSQL): the start wafer, the recipe's one
 // more step (lead 793017c62 · edcc0568c).
 const FOLD_WAFER = fx('walk_fold_wafer.json');
@@ -287,8 +290,9 @@ async function suite(m, makeWalk = createWalkBoxWalk, css = REAL_CSS, foldDecl =
 
   console.log('\n[EQ] a picked node\'s lines say their qualifiers - on the label and in the info box (lead 3181313b5)');
   {
-    // The captured die walk: the start die touches four lines that carry qualifiers and two that carry none.
+    // The captured bundle walk, every fold opened so the lines are drawn: a node that touches lines with qualifiers and without.
     const s = await seat([BUNDLES]);
+    openAll(s);
     const has = (e) => Boolean(e.qualifiers) && Object.keys(e.qualifiers).length > 0;
     const touching = (id) => BUNDLES.edges.filter((e) => e.source === id || e.target === id);
     const target = BUNDLES.nodes.find((n) => touching(n.id).some(has) && touching(n.id).some((e) => !has(e)));
@@ -479,62 +483,80 @@ async function suite(m, makeWalk = createWalkBoxWalk, css = REAL_CSS, foldDecl =
         mark: endMark && [endMark.disabled, endMark.getAttribute('title')] }));
   }
 
-  console.log('\n[11] bundles: a fan-out over the cap is an unsent lump; pressed, it is walked, then listed');
+  console.log('\n[11] bundles: a fan-out over the cap draws its first, the rest is an unsent lump; pressed, it is one step from its node, then listed');
   {
     const doc = stubDoc();
     const markings = new MarkingStore();
-    const a = await seat([BUNDLES, EXPANDED], { doc, markings, chain: ['a0', 'a1'] });
+    const a = await seat([BUNDLES, OPENED], { doc, markings, chain: ['a0', 'a1'] });
     const b = await seat([BUNDLES], { doc, markings, chain: ['b0', 'b1'] });
+    // Every fold opened, so each bundle's lump stands on its own beside what the walk drew of it.
+    openAll(a);
     const unsent = (s) => lumpsOf(s).filter((n) => n.data('unsent'));
-    const words = (x) => `${x.direction === 'incoming' ? `← ${x.predicate}` : `${x.predicate} →`}\n${x.count} ${x.far_type}`;
+    const keyOf = (x) => `${x.node}|${x.predicate}|${x.direction}`;
+    const rest = (x) => x.count - x.drawn;
+    const words = (x) => `${x.direction === 'incoming' ? `← ${x.predicate}` : `${x.predicate} →`}\n+${rest(x)} more ${x.far_type}`;
     const want = BUNDLES.bundles.map(words).sort();
     const got = unsent(a).map((n) => n.data('label')).sort();
-    say('P1 one unsent lump per bundle the walk answered, saying its predicate, count and far type, dashed',
-      want.length > 0 && JSON.stringify(got) === JSON.stringify(want)
-        && unsent(a).every((n) => n.style('border-style') === 'dashed'),
+    say('P1 one unsent lump per bundle: its predicate, +what the walk did not draw more, its far type; it counts that rest, dashed',
+      want.length > 1 && BUNDLES.bundles.every((x) => x.drawn > 0 && x.drawn < x.count)
+        && JSON.stringify(got) === JSON.stringify(want) && unsent(a).every((n) => n.style('border-style') === 'dashed')
+        && BUNDLES.bundles.every((x) => a.view.cy.getElementById(`lump:${keyOf(x)}`).data('count') === rest(x)),
       JSON.stringify({ got, want }));
-    const first = EXPANDED._expanded;
-    const key = `${first.node}|${first.predicate}|${first.direction}`;
+    const first = OPENED._opened;
+    const key = OPEN_KEY;
     a.urls.length = 0;
     const bBefore = b.urls.length;
+    const shownBefore = new Set(nodesOf(a).map((n) => n.id()));
     const pressed = press(a, `lump:${key}`);
     await settle();
     const params = paramsOf(a.urls[0] || '');
-    say('P2 pressed, it asks the same marking again with that bundle expanded; the other part asks nothing',
-      pressed && a.urls.length === 1 && JSON.stringify(params.getAll('expand')) === JSON.stringify([key])
-        && params.get('id') === startId(BUNDLES) && params.get('fanout_limit') === '20' && b.urls.length === bBefore,
-      JSON.stringify({ pressed, urls: a.urls.length, expand: params.getAll('expand'), b: b.urls.length - bBefore }));
-    const outgoing = first.direction === 'outgoing';
-    const fan = EXPANDED.edges.filter((e) => e.predicate === first.predicate
-      && (outgoing ? e.source === first.node : e.target === first.node));
-    const fanEnds = new Set(fan.map((e) => (outgoing ? e.target : e.source)));
-    const shownBefore = new Set(nodesOf(a).map((n) => n.id()));
+    say('P2 pressed, it asks one step from the bundle\'s node along its predicate, its direction, to its far type - no cap, no expand; the other part asks nothing',
+      pressed && a.urls.length === 1 && params.get('id') === first.node
+        && JSON.stringify(params.getAll('positive')) === JSON.stringify([first.node])
+        && JSON.stringify(params.getAll('follow')) === JSON.stringify([first.predicate])
+        && JSON.stringify(params.getAll('collect')) === JSON.stringify([first.far_type])
+        && params.get('direction') === first.direction && params.get('hops') === '1'
+        && !params.has('fanout_limit') && params.getAll('expand').length === 0 && b.urls.length === bBefore,
+      JSON.stringify({ pressed, urls: a.urls.length, asked: [...params.entries()], b: b.urls.length - bBefore }));
+    const fanEnds = new Set(OPENED.nodes.map((n) => n.id).filter((id) => id !== first.node));
     const listed = rowsOf(a).map((r) => r.attrs['data-value']);
     const lump = a.view.cy.getElementById(`lump:${key}`);
-    say('P3 then lists what the walk brought, nothing drawn yet: the rows are the fan-out not already in sight, and the lump counts them',
-      listed.length > 0 && listed.length === [...fanEnds].filter((id) => !shownBefore.has(id)).length
+    say('P3 then lists what the step brought that is not in sight - the bundle\'s rest; what the walk drew of it stays drawn',
+      listed.length === rest(first) && listed.length === [...fanEnds].filter((id) => !shownBefore.has(id)).length
         && lump.nonempty() && lump.data('count') === listed.length && !lump.data('unsent')
-        && listed.every((id) => !shownBefore.has(id)),
-      JSON.stringify({ listed: listed.length, fan: fanEnds.size, count: lump.nonempty() && lump.data('count') }));
+        && listed.every((id) => !shownBefore.has(id)) && [...shownBefore].every((id) => a.view.cy.getElementById(id).nonempty()),
+      JSON.stringify({ listed: listed.length, rest: rest(first), fan: fanEnds.size, count: lump.nonempty() && lump.data('count') }));
     tickAll(a);
     openTicked(a);
     const drawnIds = nodesOf(a).map((n) => n.id());
     const drawnEdges = new Set(edgesOf(a).map((e) => e.id()));
-    say('P4 All, opened: the fan-out drawn once, its count; the walked lump is gone and no unsent lump keeps its key',
-      new Set(drawnIds).size === drawnIds.length && [...fanEnds].every((id) => drawnIds.includes(id))
-        && fan.length === first.count && fan.every((e) => drawnEdges.has(e.id))
+    say('P4 All, opened: the bundle\'s whole count drawn once, every line of the step drawn; its lump is gone and no unsent lump keeps its key',
+      new Set(drawnIds).size === drawnIds.length && fanEnds.size === first.count && [...fanEnds].every((id) => drawnIds.includes(id))
+        && OPENED.edges.length > 0 && OPENED.edges.every((e) => drawnEdges.has(e.id))
         && a.view.cy.getElementById(`lump:${key}`).empty() && !unsent(a).some((n) => n.data('key') === key),
-      JSON.stringify({ drawn: drawnIds.length, fan: fan.length, count: first.count,
+      JSON.stringify({ drawn: drawnIds.length, fan: fanEnds.size, count: first.count,
         left: a.view.cy.getElementById(`lump:${key}`).length }));
+    const others = BUNDLES.bundles.filter((x) => keyOf(x) !== key);
+    say('P7 the node\'s other bundle stays as it was: its lump, +its rest more',
+      others.length > 0 && JSON.stringify(unsent(a).map((n) => n.data('label')).sort()) === JSON.stringify(others.map(words).sort()),
+      JSON.stringify(unsent(a).map((n) => n.data('label'))));
+    const layerOf = new Map(a.view.layout.nodes.map((n) => [n.id, n.layer]));
     const firstIds = new Set(BUNDLES.nodes.map((n) => n.id));
+    const brought = [...fanEnds].filter((id) => !firstIds.has(id));
+    say('P8 what the step brought stands one column on from the bundle\'s node, beside what the walk drew of it; its lines run one column',
+      brought.length === rest(first) && brought.every((id) => layerOf.get(id) === layerOf.get(first.node) + 1)
+        && [...fanEnds].filter((id) => firstIds.has(id) && id !== startId(BUNDLES)).every((id) => layerOf.get(id) === layerOf.get(first.node) + 1)
+        && edgesOf(a).filter((e) => brought.includes(e.data('source')) || brought.includes(e.data('target'))).every((e) => !e.hasClass('is-far')),
+      JSON.stringify({ brought: brought.length, layers: [...new Set(brought.map((id) => layerOf.get(id)))], node: layerOf.get(first.node) }));
     const inside = nodesOf(a).find((n) => !firstIds.has(n.id()));
     if (inside) press(a, inside.id());
     mark(a.host);
     say('P5 a point inside the opened bundle can be marked for Continue',
       Boolean(inside) && JSON.stringify(markings.entries('a1')) === JSON.stringify([[inside.id(), SIGN.CASE]]),
       JSON.stringify(markings.entries('a1')));
-    // A lump already walked: one ticked out of it, then pressed again.
-    const c = await seat([BUNDLES, EXPANDED]);
+    // A lump already opened: one ticked out of it, then pressed again.
+    const c = await seat([BUNDLES, OPENED]);
+    openAll(c);
     press(c, `lump:${key}`);
     await settle();
     const total = rowsOf(c).length;
@@ -544,10 +566,74 @@ async function suite(m, makeWalk = createWalkBoxWalk, css = REAL_CSS, foldDecl =
     press(c, `lump:${key}`);
     await settle();
     const again = c.view.cy.getElementById(`lump:${key}`);
-    say('P6 a lump already walked keeps the rest - n more - and, pressed again, lists them and asks nothing',
+    say('P6 a lump already opened keeps the rest - n more - and, pressed again, lists them and asks nothing',
       total > 1 && c.urls.length === asked && rowsOf(c).length === total - 1 && again.nonempty()
         && again.data('label').includes(`${total - 1} more`),
       JSON.stringify({ total, rows: rowsOf(c).length, asked: c.urls.length - asked, label: again.nonempty() && again.data('label') }));
+    // The first picture: the bundle's node is one step out, so its branches - the bundles with what they drew - are
+    // its one big lump. A bundle ticked out of it holds what the walk drew and the rest; nothing comes into sight.
+    const d = await seat([BUNDLES, OPENED]);
+    const bigLump = d.view.cy.getElementById(`big:${first.node}`);
+    if (bigLump.nonempty()) press(d, bigLump.id());
+    const row = rowsOf(d).find((r) => r.attrs['data-value'] === key);
+    const sightBefore = new Set(nodesOf(d).map((n) => n.id()));
+    const drewOf = BUNDLES.edges.filter((e) => e.predicate === first.predicate
+      && (first.direction === 'outgoing' ? e.source === first.node : e.target === first.node))
+      .map((e) => (first.direction === 'outgoing' ? e.target : e.source));
+    const hiddenDrew = [...new Set(drewOf)].filter((id) => !sightBefore.has(id)).length;
+    if (row) tickRow(row);
+    openTicked(d);
+    const small = d.view.cy.getElementById(`lump:${key}`);
+    const tickedCount = small.nonempty() && small.data('count');
+    d.urls.length = 0;
+    press(d, `lump:${key}`);
+    await settle();
+    say('PB in a big lump a bundle counts what the walk drew and its rest; ticked out, it is a lump of both, nothing comes into sight; pressed, it opens and lists them',
+      Boolean(row) && hiddenDrew > 0 && tickedCount === hiddenDrew + rest(first)
+        && JSON.stringify([...sightBefore].sort()) === JSON.stringify(nodesOf(d).map((n) => n.id()).filter((id) => sightBefore.has(id)).sort())
+        && d.urls.length === 1 && paramsOf(d.urls[0]).get('direction') === first.direction
+        && rowsOf(d).length === [...fanEnds].filter((id) => !sightBefore.has(id)).length,
+      JSON.stringify({ row: Boolean(row), hiddenDrew, tickedCount, rest: rest(first), urls: d.urls.length, rows: rowsOf(d).length }));
+    // An opening that brings nothing new: said in a sentence, nothing listed.
+    const e = await seat([BUNDLES, { ...OPENED, nodes: [], edges: [] }]);
+    openAll(e);
+    press(e, `lump:${key}`);
+    await settle();
+    say('PN an opening that brings nothing new says so, and lists nothing',
+      textOf(e.host, 'sg-note').includes(`No more ${first.far_type} · ${first.direction === 'incoming' ? `← ${first.predicate}` : `${first.predicate} →`}`)
+        && !pickerOf(e) && e.view.cy.getElementById(`lump:${key}`).empty(),
+      JSON.stringify({ notes: textOf(e.host, 'sg-note'), picker: Boolean(pickerOf(e)) }));
+    // A hand walk whose bundle's drawn ones are reached through that bundle alone - the wafer's are also reached by
+    // its other bundle, so the real walk cannot tell whether an opening keeps them drawn.
+    const hn = (id, depth) => ({ id, type: 'die', label: id, depth, keys: {} });
+    const he = (source, target) => ({ id: `${source}>${target}`, source, target, predicate: 'p' });
+    const only = (nodes, edges, more = {}) => ({ state: 'ready', seed: { id: 'h:s' }, nodes, edges, truncated: { reason: null }, ...more });
+    const h = await seat([
+      only([hn('h:s', 0), hn('h:w', 1), hn('h:a', 2), hn('h:b', 2)], [he('h:s', 'h:w'), he('h:w', 'h:a'), he('h:w', 'h:b')],
+        { bundles: [{ node: 'h:w', predicate: 'p', direction: 'outgoing', far_type: 'die', count: 4, drawn: 2 }] }),
+      only(['h:a', 'h:b', 'h:c', 'h:d'].map((id) => hn(id, 1)), ['h:a', 'h:b', 'h:c', 'h:d'].map((id) => he('h:w', id)))]);
+    openAll(h);
+    const hLabel = (h.view.cy.getElementById('lump:h:w|p|outgoing').nonempty() && h.view.cy.getElementById('lump:h:w|p|outgoing').data('label'));
+    press(h, 'lump:h:w|p|outgoing');
+    await settle();
+    say('PD opened, what the walk drew of a bundle stays drawn and only the rest is listed',
+      hLabel === 'p →\n+2 more die' && JSON.stringify(rowsOf(h).map((r) => r.attrs['data-value']).sort()) === '["h:c","h:d"]'
+        && ['h:a', 'h:b'].every((id) => h.view.cy.getElementById(id).nonempty()),
+      JSON.stringify({ hLabel, rows: rowsOf(h).map((r) => r.attrs['data-value']) }));
+    // Hand steps: an opened answer's node at depth 0 is not where the step stood, and its cut is said.
+    const hand = { seeds: ['s'], results: [
+      { nodes: [{ id: 's', type: 't', depth: 0 }, { id: 'w', type: 't', depth: 1 }], edges: [{ id: 'sw', source: 's', target: 'w', predicate: 'p' }],
+        bundles: [{ node: 'w', predicate: 'p', direction: 'outgoing', far_type: 't', count: 30, drawn: 20 },
+          { node: 'w', predicate: 'q', direction: 'outgoing', far_type: 't', count: 30, drawn: 20 }] },
+      { opened: 'w|p|outgoing', nodes: [{ id: 'w', type: 't', depth: 0 }, { id: 'x', type: 't', depth: 1 }],
+        edges: [{ id: 'wx', source: 'w', target: 'x', predicate: 'p' }], cut: true, truncatedAxes: ['nodes'], limits: { nodes: 400 } }] };
+    const handLayout = m.subgraphLayout([hand], ENTITIES);
+    say('P9 where a step stood is its marking and its walk\'s depth 0, not an opened bundle\'s node',
+      JSON.stringify(m.startsOf(hand)) === JSON.stringify(['s']), JSON.stringify(m.startsOf(hand)));
+    say('PC an opened bundle\'s chip is gone, the other stays; a cut opening is said like a cut walk',
+      JSON.stringify(handLayout.chips.map((c2) => c2.key)) === JSON.stringify(['w|q|outgoing'])
+        && JSON.stringify(handLayout.cut) === JSON.stringify([{ step: 1, budgets: ['nodes 400'] }]),
+      JSON.stringify({ chips: handLayout.chips.map((c2) => c2.key), cut: handLayout.cut }));
   }
 
   console.log('\n[N] a node folds its branches into one lump, on the picture only (lead 43a738d58 ③ · e523cfe91)');
@@ -557,7 +643,7 @@ async function suite(m, makeWalk = createWalkBoxWalk, css = REAL_CSS, foldDecl =
     // No depth: the fold walks from the seed alone here, so a same-depth edge is the only way to e.
     const node = (id, layer) => ({ id, layer, type: 't' });
     const edge = (source, target) => ({ id: `${source}${target}`, source, target, predicate: 'p', predicateName: 'p' });
-    const chip = (n) => ({ node: n, predicate: 'q', direction: 'outgoing', farType: 'x', count: 2, step: 0, key: `${n}|q|outgoing` });
+    const chip = (n) => ({ node: n, predicate: 'q', direction: 'outgoing', farType: 'x', count: 2, drawn: 0, step: 0, key: `${n}|q|outgoing` });
     const hand = { nodes: [node('s', 0), node('e', 0), node('a', 1), node('d', 1), node('f', 1), node('b', 2), node('c', 3)],
       edges: [edge('s', 'a'), edge('a', 'b'), edge('b', 'c'), edge('s', 'd'), edge('d', 'c'), edge('s', 'e'), edge('f', 'e')],
       chips: [chip('a'), chip('d')] };
@@ -571,6 +657,12 @@ async function suite(m, makeWalk = createWalkBoxWalk, css = REAL_CSS, foldDecl =
       fv.nodes.some((n) => n.id === 'a') && !fv.nodes.some((n) => n.id === 'b') && bigA.length === 1 && bigA[0].count === 3
         && !fv.lumps.some((l) => l.level === 'small' && l.owner === 'a') && fv.lumps.some((l) => l.unsent && l.owner === 'd'),
       JSON.stringify(fv.lumps.map((l) => [l.id, l.count])));
+    const firstFold = m.foldBeyond(hand, m.openFold(), ['s'], new Set());
+    const fv0 = m.lumpView(hand, firstFold, ['s']);
+    say('NF the first picture folds what lies behind a node one step out, but a fan-out the walk drew none of stays its own lump',
+      firstFold.big.has('a') && !firstFold.big.get('a').has('a|q|outgoing')
+        && fv0.lumps.some((l) => l.unsent && l.owner === 'a' && l.key === 'a|q|outgoing'),
+      JSON.stringify(fv0.lumps.map((l) => [l.id, l.count])));
 
     // 🔴 THE RULE ON A HAND GRAPH (owner 10-06): s -> p -> q -> r and s -> v -> u, v -> w. p is folded and in sight,
     //    v and u are in sight; the answer is new for q, r and w. From p: its fold opens, q is drawn and folds r;
@@ -617,11 +709,12 @@ async function suite(m, makeWalk = createWalkBoxWalk, css = REAL_CSS, foldDecl =
       nodesOf(b).length > 0 && JSON.stringify([nodesOf(b).map((n) => n.id()).sort(), lumpsOf(b).map((n) => n.id()).sort()]) === bWas,
       String(nodesOf(b).length));
     const sent = await seat([BUNDLES]);
+    openAll(sent);
     const unsentLump = lumpsOf(sent).filter((n) => n.data('unsent'))[0];
     say('N6 both lumps are one lump: the fold\'s and the unsent fan-out\'s share the kind and the shape, each saying its count',
       Boolean(unsentLump) && big.length === 1 && unsentLump.data('kind') === big[0].data('kind')
         && unsentLump.style('shape') === big[0].style('shape')
-        && /^\d+ folded/.test(big[0].data('label')) && /→\n\d+ \S+$/.test(unsentLump.data('label')),
+        && /^\d+ folded/.test(big[0].data('label')) && /\n\+\d+ more \S+$/.test(unsentLump.data('label')),
       JSON.stringify({ shapes: [unsentLump && unsentLump.style('shape'), big.length && big[0].style('shape')] }));
     const unfold = byClass(a.host, 'sg-fold')[0];
     const unfoldWord = unfold && unfold.textContent;
@@ -705,8 +798,9 @@ async function suite(m, makeWalk = createWalkBoxWalk, css = REAL_CSS, foldDecl =
       ys.length === 2 && ys[0] === lumpAt.y && ys[1] > ys[0] && left.length === 1 && left[0].position('y') > ys[1],
       JSON.stringify({ lumpAt, ys, left: left.length && left[0].position('y') }));
     // A lump of more than eight: a filter field; Cancel and Esc close without opening anything.
-    const many = await seat([BUNDLES, EXPANDED]);
-    const key = `${EXPANDED._expanded.node}|${EXPANDED._expanded.predicate}|${EXPANDED._expanded.direction}`;
+    const many = await seat([BUNDLES, OPENED]);
+    const key = OPEN_KEY;
+    openAll(many);
     press(many, `lump:${key}`);
     await settle();
     const filter = pickerOf(many) && byClass(pickerOf(many), 'sg-pick-filter')[0];
@@ -829,10 +923,10 @@ async function suite(m, makeWalk = createWalkBoxWalk, css = REAL_CSS, foldDecl =
   console.log('\n[Y] a new start keeps nothing of the last picture: no mark, no fold, no opened lump (lead 10-07)');
   {
     const markings = new MarkingStore();
-    const s = await seat([BUNDLES, EXPANDED, WAFER], { markings, chain: ['y0', 'y1', 'y2'] });
+    const s = await seat([BUNDLES, OPENED, WAFER], { markings, chain: ['y0', 'y1', 'y2'] });
     // The last picture: an unsent lump walked and opened, then a node marked that the next start does not reach.
-    const first = EXPANDED._expanded;
-    press(s, `lump:${first.node}|${first.predicate}|${first.direction}`);
+    openAll(s);
+    press(s, `lump:${OPEN_KEY}`);
     await settle();
     tickAll(s);
     openTicked(s);
@@ -889,10 +983,10 @@ async function suite(m, makeWalk = createWalkBoxWalk, css = REAL_CSS, foldDecl =
 
   console.log('\n[U] a lump on its way says so; pressed again meanwhile it asks nothing more (lead 10-07)');
   {
-    const first = EXPANDED._expanded;
-    const id = `lump:${first.node}|${first.predicate}|${first.direction}`;
+    const id = `lump:${OPEN_KEY}`;
     const labelOf = (t) => { const n = t.view.cy && t.view.cy.getElementById(id); return n && n.nonempty() ? n.pstyle('label').strValue : null; };
-    const s = await seat([BUNDLES, EXPANDED]);
+    const s = await seat([BUNDLES, OPENED]);
+    openAll(s);
     const words = labelOf(s);
     s.urls.length = 0;
     press(s, id);
@@ -909,6 +1003,7 @@ async function suite(m, makeWalk = createWalkBoxWalk, css = REAL_CSS, foldDecl =
       JSON.stringify({ label: labelOf(s), picker: Boolean(pickerOf(s)) }));
     // A walk that is refused: the lump does not read Loading for ever.
     const f = await seat([BUNDLES]);
+    openAll(f);
     f.view.walk = async () => ({ ok: false, message: 'Refused' });
     press(f, id);
     await settle();
@@ -1321,14 +1416,14 @@ const failures = [];
     M('M2', 'a static node is drawn as a circle', 'C1',
       "      { selector: 'node[kind = \"node\"][?static]', style: { shape: 'rectangle' } },\n", ''),
     M('M3', 'the part asks with a follow of its own', 'D1',
-      '      fanout_limit: this.fanoutLimit, expand });\n',
-      "      fanout_limit: this.fanoutLimit, expand, follow: ['inspected'] });\n"),
+      ' negative: step.negative, fanout_limit: this.fanoutLimit }, [],',
+      " negative: step.negative, fanout_limit: this.fanoutLimit, follow: ['inspected'] }, [],"),
     M('M4', 'the edges are not drawn', 'A2',
       '    for (const e of view.edges) {\n      // A line one column forward', '    for (const e of []) {\n      // A line one column forward'),
     M('M5', 'a press does not change the facts', 'E1',
       '    this.selected = id;\n    this._swapFacts();', '    this._swapFacts();'),
     M('M6', 'a cut walk says nothing', 'F1',
-      '    if (last.cut) cut.push(', '    if (false) cut.push('),
+      '      if (result.cut) cut.push(', '      if (false) cut.push('),
     M('M7', 'the part draws into the page, not its own mount', 'G1',
       '    this.mount.appendChild(this.root);\n', '    this.doc.body.appendChild(this.root);\n'),
     M('M8', 'a node without a depth is placed anyway', 'B3',
@@ -1371,7 +1466,7 @@ const failures = [];
       '        if (at.has(node.id)) continue;\n',
       '        if (at.has(node.id)) placed.splice(placed.indexOf(at.get(node.id)), 1);\n'),
     M('M13', 'a later step starts at the first column', 'K4',
-      '    const base = index === 0 || !seedLayers.length ? 0 : Math.max(...seedLayers);\n', '    const base = 0;\n'),
+      '    const stepBase = index === 0 || !seedLayers.length ? 0 : Math.max(...seedLayers);\n', '    const stepBase = 0;\n'),
     M('M14', 'a node does not carry its step', 'K4', '          step: index + 1,\n', '          step: 1,\n'),
     M('M15', 'Continue is live with nothing marked', 'K2',
       "    setDisabledReason(this.continueButton, !name ? 'End of chain' : (this.markings.count(name) ? '' : 'Mark a node'));\n",
@@ -1384,24 +1479,43 @@ const failures = [];
     M('M18', 'every draw lays the whole picture out again', 'LM5',
       '    const full = this._relayout;\n', '    const full = true;\n'),
     M('B1', 'the part walks without its fan-out cap', 'D1',
-      '      fanout_limit: this.fanoutLimit, expand });\n', '      expand });\n'),
-    M('B2', 'the unsent lumps are not drawn', 'P1', '      } else if (chip) {\n', '      } else if (false) {\n'),
-    M('B3', 'a lump pressed asks without its bundle', 'P2',
-      '    const expand = [...step.expand, key];\n', '    const expand = [...step.expand];\n'),
+      ' negative: step.negative, fanout_limit: this.fanoutLimit }, [],', ' negative: step.negative }, [],'),
+    M('B2', 'the unsent lumps are not drawn', 'P1',
+      '      if (!members.length && !rest) continue;\n', '      if (!members.length) continue;\n'),
+    // Lead 11e5ea207: a bundle opens as one step from its node, the way it leaves.
+    M('B3', 'a lump opens from the marking, not from its node', 'P2',
+      'stepAlong({ positive: [node], predicate,', 'stepAlong({ positive: this.steps[index].positive, predicate,'),
+    M('B3b', 'a lump opens both ways', 'P2',
+      'farType: chip && chip.farType, direction }),', 'farType: chip && chip.farType }),'),
     M('B4', 'a lump says its far type but not its count', 'P1',
-      "  return `${arrowed(lump)}\\n${lump.count}${lump.more ? ' more' : ''} ${lump.farType}`;",
+      "  return `${arrowed(lump)}\\n${lump.unsent && lump.more ? '+' : ''}${lump.count}${lump.more ? ' more' : ''} ${lump.farType}`;",
       '  return `${arrowed(lump)}\\n${lump.farType}`;'),
-    M('B5', 'the unsent lumps come from a step\'s first answer, so a walked one stays', 'P4',
-      '    return all[all.length - 1] || {};\n', '    return all[0] || {};\n'),
-    M('B6', 'what a walked lump brings is drawn at once, not listed', 'P3',
-      '      if (!this.fold.lumped.has(lump.key)) this.fold.lumped.set(lump.key, new Set());\n', ''),
-    { ...M('B7', 'a walked lump still reads as unsent, and the walk does not guard what it expanded', 'P6'),
-      mutate: (t) => swap(swap(t, 'more: lumped.get(key).size > 0, unsent: false });',
-        'more: lumped.get(key).size > 0, unsent: true, step: 0 });'),
+    M('B4b', 'a lump of a bundle the walk drew part of counts the whole bundle', 'P1',
+      '(unsent.has(key) ? unsent.get(key).count - unsent.get(key).drawn : 0)', '(unsent.has(key) ? unsent.get(key).count : 0)'),
+    M('B4c', 'a lump does not say the walk drew part of its bundle', 'P1', "${lump.unsent && lump.more ? '+' : ''}", ''),
+    M('B5', 'the chips are read from a step\'s latest answer, an opening\'s too', 'P7',
+      '  const walked = (step) => ((step && step.results) || []).find((r) => !r.opened) || {};\n',
+      '  const walked = (step) => ((step && step.results) || []).slice(-1)[0] || {};\n'),
+    M('B5b', 'an opened bundle still stands as a chip', 'P4',
+      '      if (!at.has(b.node) || opened.has(key)) continue;\n', '      if (!at.has(b.node)) continue;\n'),
+    M('B6', 'what an opened lump brings is drawn at once, not listed', 'P3',
+      '      if (!this.fold.lumped.has(lump.key)) {\n', '      if (false) {\n'),
+    M('B6b', 'opening a lump hides what the walk drew of it', 'PD',
+      '          .filter((s) => s.key === lump.key && shown.has(s.to)).map((s) => s.to)));', '          .filter(() => false)));'),
+    { ...M('B7', 'an opened lump still reads as unsent, and the walk does not guard what it opened', 'P6'),
+      mutate: (t) => swap(swap(t, ' : Boolean(chip && chip.drawn), unsent: rest > 0,',
+        ' : Boolean(chip && chip.drawn), unsent: true, step: 0,'),
         '    if (!step || this.state !== \'done\' || step.expand.includes(key)) return;\n',
         '    if (!step || this.state !== \'done\') return;\n') },
-    { ...M('W2', 'the wire drops the expand cells', 'P2',
-      "  for (const key of expand || []) query.append('expand', String(key));\n", ''), file: WIRE },
+    M('B8', 'what an opening brings stands from the step\'s start, not one column on from its node', 'P8',
+      '      const base = owner ? owner.layer : stepBase;\n', '      const base = stepBase;\n'),
+    M('B9', 'an opened bundle\'s node counts as where the step stood', 'P9',
+      '((step && step.results) || []).filter((r) => !r.opened).flatMap(', '((step && step.results) || []).flatMap('),
+    M('B10', 'a cut opening is not said', 'PC', '      if (result.cut) cut.push(', '      if (result.cut && !result.opened) cut.push('),
+    M('B11', 'an opening that brings nothing says nothing', 'PN',
+      '        this.note = `No more ${lump.farType} · ${arrowed(lump)}`;\n', ''),
+    M('B12', 'a bundle ticked out of a big lump lets what the walk drew of it into sight', 'PB',
+      'g.key === key && g.members.length)', 'g.key === key && !g.unsent)'),
     { ...M('W3', 'the wire drops the fan-out cap', 'D1',
       "  if (fanoutLimit !== undefined && fanoutLimit !== null) query.set('fanout_limit', String(fanoutLimit));\n", ''), file: WIRE },
     { ...M('W4', 'the wire does not carry the bundles', 'P1',
@@ -1471,7 +1585,7 @@ const failures = [];
     M('S4m', 'a Continue takes nothing as already in sight', 'K8',
       '    const before = fresh && this.layout ? new Set(this._view().nodes.map((n) => n.id)) : new Set();\n',
       '    const before = new Set();\n'),
-    M('S5m', 'the first picture folds the unsent fan-outs too', 'P1',
+    M('S5m', 'the first picture folds the unsent fan-outs too', 'NF',
       '      fold.big.set(id, new Set(out.map((x) => x.key)));\n',
       '      fold.big.set(id, branchKeys(layout, id));\n'),
     M('A1m', 'an attribute gets no world rows', 'W5',
@@ -1510,7 +1624,7 @@ const failures = [];
       'startBranch(this.steps)', 'new Set()'),
     M('J1m', 'a lump\'s chosen view is not kept', 'J2', '    this.lumpSeen.kind.set(id, kind);\n', ''),
     M('J2m', 'a definition lump walks forward, not back along its predicate', 'J2',
-      "      direction: lump.direction === 'incoming' ? 'outgoing' : 'incoming', node_limit:", '      direction: lump.direction, node_limit:'),
+      "direction: lump.direction === 'incoming' ? 'outgoing' : 'incoming' }),", 'direction: lump.direction }),'),
     M('J3m', 'the window is not sent', 'J2', '      ...(window ? { since:', '      ...(false ? { since:'),
     M('J4m', 'the lump does not carry its points', 'J4', '        spark: this._spark(l, lit), label:', "        spark: '', label:"),
     M('J5m', 'the table does not light the start branch', 'J5', 'rowLit: (row) => lit.has(row.id),', 'rowLit: null,'),
@@ -1533,7 +1647,7 @@ const failures = [];
     M('O2m', 'a refused walk reads as no points', 'O2',
       "    if (data.state === 'failed') { box.appendChild(this._el('div', 'sg-fail', `${FAILED} · ${data.reason}`)); return box; }\n", ''),
     M('J9m', 'a definition lump\'s walk collects everything, not the owner\'s type', 'J2',
-      '      collect: owner ? [owner.type] : undefined,\n', ''),
+      '      farType: owner && owner.type, direction:', '      direction:'),
     M('O3m', 'the values left out are not counted', 'O3', '    if (got.notNumber) said.push(`${got.notNumber} not numbers`);\n', ''),
     M('I1m', 'the part picks the type for the operator', 'I1',
       'picked: this._pickedFrom(lump.id, from) };', 'picked: this._pickedFrom(lump.id, from) || this._pickChoices(from)[0] };'),
