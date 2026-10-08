@@ -75,16 +75,26 @@ def work_facts(work):
 
 
 def chain_lines_running(beats=None):
-    """`{line key: running facts}` for the queue line a chain group runs now - read once per
-    request from the chain's beat. A stale beat runs nothing."""
+    """`{line key: running facts}` for the queue lines chain groups run now - read once per request
+    from the chain's beat and its slots' (총괄 19f6a9277): a slot's line is the one it holds,
+    between two batches too, with the slot's `pid` - the pid that stops that line. A stale beat
+    runs nothing."""
+    from chain import slots
     from utils import heartbeat
 
-    beat = ((heartbeat.read_all() if beats is None else beats).get("chain") or {})
-    work = beat.get("work") or {}
-    if beat.get("stale") or not work.get("open"):
-        return {}
-    facts = work_facts(work)
-    return {key: facts for key in (work.get("facts") or {}).get("line_keys") or ()}
+    out = {}
+    for name, beat in sorted((heartbeat.read_all() if beats is None else beats).items()):
+        if beat.get("stale") or not (name == "chain" or name.startswith(slots.BEAT_PREFIX)):
+            continue
+        work = beat.get("work") or {}
+        held = ((beat.get("laps") or {}).get(slots.HOLDS) or {}).get("line")
+        facts = dict(work_facts(work) if work.get("open") else work_facts({}),
+                     pid=beat.get("pid") if name.startswith(slots.BEAT_PREFIX) else None)
+        for key in ((work.get("facts") or {}).get("line_keys") or ()) if work.get("open") else ():
+            out[key] = facts
+        if held:
+            out.setdefault(held, facts)
+    return out
 
 
 def chain_sight():
@@ -97,16 +107,36 @@ def chain_sight():
     #    server.log, 단독 워커는 chain_worker.log). «이름»이지 경로가 아니다.
     from utils import logger as process_logging
 
+    beats = heartbeat.read_all()
     if activity.registry.attached:
-        return {"via": "this_process", "age": 0.0, "pid": os.getpid(),
-                "log": process_logging.active_log_filename(),
-                "instants": activity.registry.instants()}
-    beat = heartbeat.read_all().get("chain") or {}
+        return _with_slots({"via": "this_process", "age": 0.0, "pid": os.getpid(),
+                            "log": process_logging.active_log_filename(),
+                            "instants": activity.registry.instants()}, beats)
+    beat = beats.get("chain") or {}
     lap = (beat.get("laps") or {}).get("chain") or {}
     if "outcomes" in lap and not beat.get("stale"):
-        return {"via": "chain_worker_heartbeat", "age": beat.get("age_seconds"),
-                "pid": beat.get("pid"), "log": lap.get("log_filename"), "instants": lap}
+        return _with_slots({"via": "chain_worker_heartbeat", "age": beat.get("age_seconds"),
+                            "pid": beat.get("pid"), "log": lap.get("log_filename"), "instants": lap}, beats)
     return {"via": None, "age": None, "pid": None, "log": None, "instants": {}}
+
+
+def _with_slots(sight, beats):
+    """The groups run in the chain's slot processes (총괄 19f6a9277): their running mappers -
+    each with its slot's pid - and their latest outcome per rule join the loop's own."""
+    from chain import slots
+
+    instants = dict(sight["instants"])
+    running = list(instants.get("running") or ())
+    outcomes = dict(instants.get("outcomes") or {})
+    for name, beat in sorted(beats.items()):
+        if not name.startswith(slots.BEAT_PREFIX) or beat.get("stale"):
+            continue
+        lap = (beat.get("laps") or {}).get("chain") or {}
+        running += [dict(e, pid=beat.get("pid")) for e in lap.get("running") or ()]
+        for rule, e in (lap.get("outcomes") or {}).items():
+            if (e.get("at") or 0) > ((outcomes.get(rule) or {}).get("at") or 0):
+                outcomes[rule] = e
+    return dict(sight, instants=dict(instants, running=running, outcomes=outcomes))
 
 
 def _item(what, where, pid, started_at, elapsed, processed=None, total=None, cancel=None,
@@ -119,7 +149,7 @@ def _item(what, where, pid, started_at, elapsed, processed=None, total=None, can
 
 
 def _chain(sight, shape, now):
-    return [_item(e.get("rule"), WHERE_CHAIN_WORKER, sight["pid"],
+    return [_item(e.get("rule"), WHERE_CHAIN_WORKER, e.get("pid") or sight["pid"],
                   None if e.get("running_seconds") is None else
                   (now - timedelta(seconds=e["running_seconds"])).isoformat(),
                   e.get("running_seconds"), total=e.get("rows_in"))

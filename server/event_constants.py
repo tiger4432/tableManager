@@ -142,6 +142,10 @@ APPROVAL_STATES = frozenset({APPROVAL_STATE_APPROVED, APPROVAL_STATE_REFUSED,
 #:    읽으면 「돌았다」와 「돌다 실패했다」가, 「기다린다」와 「돈다」가 같은 값이 된다.
 CHAIN_STATE_WAITING = "waiting"
 CHAIN_STATE_RUNNING = "running"
+#: A slot's group waiting for a table another slot's group holds (총괄 19f6a9277 - its stage
+#: begins `CHAIN_WAITING_FOR`, `chain.table_locks`). Not stalled: it is behind one group.
+CHAIN_STATE_WAITING_FOR_TABLE = "waiting_for_table"
+CHAIN_WAITING_FOR = "waiting for "
 CHAIN_STATE_RETRYING = "retrying"
 CHAIN_STATE_STALLED = "stalled"
 CHAIN_STATE_PAUSED = "paused"
@@ -149,8 +153,8 @@ CHAIN_STATE_SET_ASIDE = "set_aside"
 CHAIN_STATE_FAILED = "failed"
 CHAIN_STATE_DONE = "done"
 
-CHAIN_STATES = frozenset({CHAIN_STATE_WAITING, CHAIN_STATE_RUNNING, CHAIN_STATE_RETRYING,
-                          CHAIN_STATE_STALLED, CHAIN_STATE_PAUSED, CHAIN_STATE_SET_ASIDE,
+CHAIN_STATES = frozenset({CHAIN_STATE_WAITING, CHAIN_STATE_RUNNING, CHAIN_STATE_WAITING_FOR_TABLE,
+                          CHAIN_STATE_RETRYING, CHAIN_STATE_STALLED, CHAIN_STATE_PAUSED, CHAIN_STATE_SET_ASIDE,
                           CHAIN_STATE_FAILED, CHAIN_STATE_DONE})
 #: The payload key a group's failure leaves on its events while they wait to be tried again -
 #: the one line `retrying` shows (a quarantined group's whole record is `error_log`).
@@ -185,7 +189,8 @@ def chain_state_of(processed_chain, status, *, retry_count=0, attempts_cap=None,
     row or line is doing (총괄 248ae20cd). The admin queue's lines, the grid queue's rows and
     /health's chain stall all ask here. 「빈 칸」이 없다 — 모든 조합이 답을 받는다.
 
-    Ended rows: set aside (its cancel mark) > failed > done. Waiting rows: paused > running /
+    Ended rows: set aside (its cancel mark) > failed > done. Waiting rows: paused > waiting for a
+    table (its group's stage, behind another slot's group - not stalled) > running /
     stalled (a group of its line runs - `running`, the work facts `runtime.running` reads from
     the beat once per request; stalled is the beat's own verdict, /health's one threshold) >
     retrying > waiting.
@@ -211,6 +216,8 @@ def chain_state_of(processed_chain, status, *, retry_count=0, attempts_cap=None,
     if running is not None:
         why = {"stage": running.get("stage"), "moved_seconds": running.get("moved_seconds"),
                "elapsed_seconds": running.get("elapsed_seconds")}
+        if str(running.get("stage") or "").startswith(CHAIN_WAITING_FOR):
+            return said(CHAIN_STATE_WAITING_FOR_TABLE, table=running["stage"][len(CHAIN_WAITING_FOR):], **why)
         if running.get("stalled"):
             return said(CHAIN_STATE_STALLED, stalled_on=running.get("stalled_on"), **why)
         return said(CHAIN_STATE_RUNNING, **why)

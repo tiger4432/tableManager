@@ -227,7 +227,9 @@ def view(instants, now=None) -> dict:
     return {
         "running": [{"rule": e.get("rule"), "mapper": e.get("mapper"),
                      "target_table": e.get("target_table"), "rows_in": e.get("rows_in"),
-                     "running_seconds": age(e.get("started"))}
+                     "running_seconds": age(e.get("started")),
+                     # the slot process it runs in (총괄 19f6a9277), when the sight merged slots
+                     **({"pid": e["pid"]} if e.get("pid") else {})}
                     for e in instants.get("running") or ()],
         "rule_outcomes": {name: {"last_outcome": e.get("outcome"),
                                  "last_reason": e.get("reason"),

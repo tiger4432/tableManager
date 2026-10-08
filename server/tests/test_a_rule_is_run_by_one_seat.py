@@ -234,6 +234,7 @@ CHAIN_LOG_TAGS = {
     "LedgerCensus": "the retroactive census",
     "LedgerFollowUp": "the ledger's own lap",
     "Reload": "the config reload",
+    "slot %d pid %d": "a slot process's own line, written into the chain log by its dispatcher",
     # ⚰️ THESE READ `VirtualJoin` UNTIL 2026-09-23. The read-time join retired and the
     #    word stayed in the channel an operator greps - 소유자 caught it in the log. The
     #    prefix `uq_vjoin_` did NOT move with it: that one is matched against indexes

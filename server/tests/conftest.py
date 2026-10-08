@@ -87,6 +87,31 @@ def _the_loaded_chain_rules_are_forgotten():
 
 
 # ===========================================================================
+# A test starts no chain slot process unless it asks  [총괄 19f6a9277]
+# ===========================================================================
+
+@pytest.fixture(autouse=True)
+def _no_chain_slot_process_unless_asked(request):
+    """The chain loop sizes its slot pool every turn: a test running the real loop started real
+    `python -m chain.slots` processes, which died on the test's database and slowed the loop the
+    test was timing. A test that wants slots asks for `slot_box`.
+    ⛔ NOT `monkeypatch`: an autouse fixture asking for it sets it up before the registries'
+    fixture below, so its undo lands after that teardown - a model a test `delitem`-ed came back
+    with no table, and the next test's `create_all` skipped it (test_backfill_enrichment)."""
+    if "slot_box" in request.fixturenames:
+        yield
+        return
+    from chain import slots
+
+    real = slots.SlotPool._size
+    slots.SlotPool._size = lambda self, wanted: None
+    try:
+        yield
+    finally:
+        slots.SlotPool._size = real
+
+
+# ===========================================================================
 # The two model registries come back  [S-200, 판정 309]
 # ===========================================================================
 

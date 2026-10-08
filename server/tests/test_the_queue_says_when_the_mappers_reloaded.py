@@ -96,7 +96,9 @@ def test_the_loop_notes_the_reload_on_the_registry_the_route_reads():
 
     body = inspect.getsource(worker.start_chain_ingestion_worker)
     assert "head_watch.note_reload()" in body
-    assert "activity.registry.note_reload()" in body, (
+    # the reload's work is one function the loop and every slot call (총괄 19f6a9277)
+    assert "rules = reload_rules(reload_work)" in body
+    assert "activity.registry.note_reload()" in inspect.getsource(worker.reload_rules), (
         "the reload is recorded only where the queue view cannot read it again")
 
 

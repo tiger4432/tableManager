@@ -54,10 +54,12 @@ def build_engine(url):
             from sqlalchemy.pool import StaticPool
             extra["poolclass"] = StaticPool
         return create_engine(url, connect_args={"check_same_thread": False}, **extra)
+    # A chain slot opens a small pool (`chain.slots.SLOT_POOL` puts these two in its environment,
+    # 총괄 19f6a9277 ㉲); every other process keeps 20 + 10.
     return create_engine(
         url,
-        pool_size=20,           # 커넥션 풀 크기 (1,000만 행 동시 접속 대응)
-        max_overflow=10,        # 피크 시 추가 허용 커넥션
+        pool_size=int(os.environ.get("ASSY_DB_POOL_SIZE") or 20),      # 커넥션 풀 크기 (1,000만 행 동시 접속 대응)
+        max_overflow=int(os.environ.get("ASSY_DB_MAX_OVERFLOW") or 10),  # 피크 시 추가 허용 커넥션
         pool_recycle=3600,      # 커넥션 재사용 시간
         connect_args={"options": "-c client_encoding=utf8"} # [핵심] DB 연결 시 UTF-8 강제
     )
@@ -139,7 +141,7 @@ def _note_the_backend(session, transaction, connection):
 
 
 @event.listens_for(Session, "after_begin")
-def _bound_the_file_writes(session, transaction, connection):
+def _set_file_and_chain_time_limits(session, transaction, connection):
     """A file's write waits for another session's lock at most `lock_timeout_seconds`, and a
     statement of it runs at most `statement_timeout_seconds` (ingestion_settings.json, 총괄
     10-07 ③) - on every transaction begun on the file channel, which only the watcher's work

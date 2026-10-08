@@ -80,6 +80,8 @@ from chain import rule_order
 #    door: it hands the rule and its input over and reads one answer.
 from chain import rule_run
 from chain import control as chain_control
+from chain import slots
+from chain import table_locks
 import mapper_sdk
 import validation
 from ledger import followup as ledger_followup
@@ -2286,6 +2288,10 @@ def _log_group_work(tx_id, summary, rows) -> None:
 #: fact, so a × on the queue can tell the running line from the others (소유자 10-08).
 _GROUP_LINE_KEYS = contextvars.ContextVar("chain_group_line_keys", default=())
 
+#: The heartbeat a group's work claim and beats are written under - the chain's own, or a slot
+#: process's (`chain.slots` sets it), so two slots never write one file (총괄 19f6a9277).
+GROUP_BEAT = "chain"
+
 
 def _still_waiting(db, events):
     """-> (the events no one has ended meanwhile, their chain queue line keys). An operator's ×
@@ -2308,6 +2314,10 @@ def _still_waiting(db, events):
 #: Rows per `IN` list of `_still_waiting` - under SQLite's bound-parameter limit.
 WAITING_CHECK_CHUNK = 1000
 
+#: While a slot runs a line the loop looks this often for its answer, so a freed slot is given
+#: the next line at once rather than at the next NOTIFY or the 2 s idle wait.
+SLOT_ANSWER_WAIT_SECONDS = 0.25
+
 
 async def process_chain_transaction_group(tx_id, events, db, rules):
     """Run one group off the event loop.
@@ -2327,9 +2337,9 @@ def _claimed_group_sync(tx_id, events, db, rules):
     what = "tx %s · %d row(s) of %s" % (
         tx_id, rows, ", ".join(sorted({str(e.table_name) for e in events})))
     from database.context import chain_group
-    from database.database import _bound_the_file_writes
+    from database.database import _set_file_and_chain_time_limits
 
-    with heartbeat.work_claim("chain", what, note=_worker_note()), \
+    with heartbeat.work_claim(GROUP_BEAT, what, note=_worker_note(), acted_on=True), \
             alignment_batch_counts.interrupt_at_stages(chain_control.raise_if_paused), \
             chain_group():
         # 🔴 THE TRANSACTION OPEN AT THE GROUP'S START IS BOUNDED WHERE IT STANDS (소유자 10-08 「체인
@@ -2338,20 +2348,30 @@ def _claimed_group_sync(tx_id, events, db, rules):
         #    there. Not a commit: that expires the session, and every event of every group was read
         #    again, one SELECT each.
         if db.in_transaction():
-            _bound_the_file_writes(db, None, db.connection())
+            _set_file_and_chain_time_limits(db, None, db.connection())
         # The backend is read here once; a later transaction notes its own (database.py).
         try:
             heartbeat.note_work(
                 db_pid=db.connection().connection.dbapi_connection.get_backend_pid())
         except Exception:                                   # noqa: BLE001 - SQLite has none
             pass
-        heartbeat.note_work(line_keys=sorted(_GROUP_LINE_KEYS.get()))
+        # its first and last event too: a set-aside asks whether this group holds its events, and
+        # cuts this group's query only then (`chain.control.cancel_running_group`, 총괄 10-08)
+        ids = [e.id for e in events if getattr(e, "id", None) is not None]
+        heartbeat.note_work(line_keys=sorted(_GROUP_LINE_KEYS.get()),
+                            event_span=[min(ids), max(ids)] if ids else None)
         # Written now, not at the next slice (20 s): a × lands on a group that has just started
         # to look stuck, and it reads the pid and the line from this file (총괄 10-08).
-        heartbeat.beat("chain", note=_worker_note(), force=True)
+        heartbeat.beat(GROUP_BEAT, note=_worker_note(), force=True)
         try:
-            answer = _process_chain_transaction_group_sync(
-                tx_id, events, db, [r for r in rules if not runs_as_operation(r)])
+            # The tables it touches are held while it runs - its writes commit inside, so a
+            # group of another slot on those tables runs before or after it, never across it
+            # (총괄 19f6a9277 ㉮ ㄱ). The wait is this claim's stage, so the queue list says it,
+            # and its backend a fact, so a pause cancels the wait too.
+            with table_locks.hold(db, _group_target_tables(events, rules) | _group_read_tables(events, rules),
+                                  on_wait=_waiting_for_a_table):
+                answer = _process_chain_transaction_group_sync(
+                    tx_id, events, db, [r for r in rules if not runs_as_operation(r)])
         except Exception as exc:                            # noqa: BLE001
             # A stop the pause made - its stage boundary, or the query it cancelled - comes
             # back as the group's answer, for `process_pending_groups` to rewind (3840af307).
@@ -2367,6 +2387,12 @@ def _claimed_group_sync(tx_id, events, db, rules):
                                     time.time() - claim.get("started", time.time())), answer[2]
 
 
+def _waiting_for_a_table(table, pid):
+    # the stage first: the changed pid writes the beat at once, and the queue reads the stage there
+    heartbeat.progress(table_locks.WAITING_FOR + table)
+    heartbeat.note_work(lock_db_pid=pid)
+
+
 #: A cancelled statement, by the driver's class name - the server's own words are its locale's.
 QUERY_CANCELED = "QueryCanceled"
 
@@ -2374,7 +2400,7 @@ QUERY_CANCELED = "QueryCanceled"
 def _group_claim():
     """The chain group's work claim open on this thread, or {}."""
     return next((c for c in heartbeat.open_claims()
-                 if c["name"] == "chain" and c["thread"] == threading.get_ident()), {})
+                 if c["name"] == GROUP_BEAT and c["thread"] == threading.get_ident()), {})
 
 
 def _limit_that_stopped(error, ran_seconds):
@@ -2451,7 +2477,7 @@ async def _await_group_beating(group, db):
         except Exception as exc:                                   # noqa: BLE001
             # The observer goes quiet, never the group it is watching.
             logger.warning("[Chain] the stall check went quiet this slice: %s", exc)
-        heartbeat.beat("chain", note=_worker_note())
+        heartbeat.beat(GROUP_BEAT, note=_worker_note())
 
 
 async def _say_what_a_stalled_group_waits_on(db):
@@ -2459,7 +2485,7 @@ async def _say_what_a_stalled_group_waits_on(db):
     import db_waits
     bind_url = db.get_bind().url
     for what, line in await asyncio.to_thread(
-            heartbeat.stalled_lines, "chain",
+            heartbeat.stalled_lines, GROUP_BEAT,
             lambda pid: db_waits.what_a_backend_waits_on(bind_url, pid), (("rule", "none yet"),)):
         logger.warning("[Chain] %s: %s", what, line)
 
@@ -2851,10 +2877,18 @@ async def process_pending_groups(db, group_order, groups, rules, db_session_fact
                 set_aside_now = len(events_in_tx)
                 events_in_tx = _still_waiting(db, events_in_tx)[0]
                 set_aside_now -= len(events_in_tx)
+                # 🔴 AND A GROUP THE SET-ASIDE CUT IS REWOUND, LIKE A PAUSE (총괄 10-08). Setting rows
+                #    aside cancels the query of the group holding them (`control.cancel_running_group`);
+                #    the rest waits with its attempts as they were and runs again without them - the
+                #    default cap is ONE attempt, so failing it would end rows nobody chose. A cancel
+                #    the statement limit made is already its own sentence here (`_said_timeout`), so a
+                #    `QueryCanceled` left is someone's stop; a mapper error is a failure as before.
+                rewound = bool(set_aside_now) and QUERY_CANCELED in str(error_reason or "")
                 if set_aside_now:
-                    logger.info("[Chain] tx '%s': %d event(s) were set aside while it ran - "
-                                "left set aside, not failed", tx_id, set_aside_now)
-                if not events_in_tx:
+                    logger.info("[Chain] tx '%s': %d event(s) were set aside while it ran - left set "
+                                "aside; the other %d %s", tx_id, set_aside_now, len(events_in_tx),
+                                "rewound, not failed" if rewound else "fail as the group did")
+                if rewound or not events_in_tx:
                     continue
 
                 # Increment retry count for all events in the failed transaction group
@@ -4211,8 +4245,161 @@ def start_replay_if_queued(db):
     return nxt
 
 
-def pending_chain_events(db, limit: int = 200) -> list:
-    """The waiting rows THIS loop can consume, oldest first (S-252).
+def reload_rules(work):
+    """What a SYSTEM_RELOAD does to the rules THIS process runs - `SCOPE_CHAIN_RULES` re-reads
+    them; `FULL` re-imports the mappers and the dynamic models too. The chain loop and every
+    slot (`chain.slots`) call it, so one reload means one thing. -> the rules."""
+    from runtime import system_reload
+
+    if work == system_reload.SCOPE_CHAIN_RULES:
+        rules = reread_rules_only()
+    else:
+        # 1. Reload dynamic modules cache
+        reload_worker_process_cache()
+        activity.registry.note_reload()
+        # 1-1. [이슈 #7] config 재로드 + 신규 테이블 ORM 등록 + 물리 CREATE 보충
+        #      (웹서버가 1차 CREATE — information_schema 게이트 + checkfirst로 경합 무해)
+        try:
+            from database.database import engine as _db_engine
+            from database import models as _db_models
+            created_tables = _db_models.refresh_dynamic_models(_db_engine)
+            if created_tables:
+                logger.info(f"[Reload] Created missing physical tables at runtime: {created_tables}")
+        except Exception as e:
+            logger.error(f"[Reload] Dynamic model refresh failed: {e}")
+        # 2. Reload chain rules configurations from disk
+        rules = load_chain_rules()
+        # 3. [Warmup] 캐시 무효화로 콜드 스타트가 재발하지 않도록 매퍼를 즉시 재웜업.
+        #    (DB 풀은 리로드에도 유지되므로 프라임 생략 — db_session_factory=None)
+        warmup_worker(rules)
+    logger.info(f"[Reload] Loaded {len(rules)} active chain ingestion rules.")
+    return rules
+
+
+async def drain_events(db, pending_events, rules, db_session_factory, batch_wake_ts=None):
+    """One batch of waiting events, run: normalized, refused past the depth limit, its last
+    transaction completed, cut to the row budget, grouped, merged and processed -> `failed_any`,
+    or None when no event of it could run. The loop and a slot call this one body (총괄
+    19f6a9277: 「둘째 체인 길 금지」)."""
+    from database.models import DatabaseOutbox
+
+    # Dynamic fetch guard: if the last element belongs to a transaction, fetch all remaining events of the same tx
+    # 1. First unpack/normalize all payloads in pending_events and filter out
+    #    CONTROL events (instructions to another daemon, not data changes).
+    #    Membership in the shared set, not a literal: a second control type was
+    #    added (RETROACTIVE_RUN) and a hardcoded name here would have let it
+    #    fall through into process_chain_transaction_group, where a trigger
+    #    payload would be read as a set of changed rows.
+    normalized_events = []
+    # Read once per batch, not per event: the declaration cannot change
+    # mid-batch and reading it N times would invite N different answers.
+    max_depth = event_constants.max_chain_depth(_RULES_DOCUMENT)
+    depth_refused = 0
+    for event in pending_events:
+        payload_data = get_payload_dict(event)
+        event._parsed_payload = payload_data
+        if isinstance(event.payload, str):
+            event.payload = payload_data
+
+        if event.event_type in event_constants.CONTROL_EVENT_TYPES:
+            continue
+
+        # 🔴 [DEPTH] THE LIMIT IS ENFORCED HERE, ONCE, AND IT SAYS SO.
+        # Not inside `_rule_accepts_event`: that is a pure predicate called
+        # five times per event, so refusing there would log five times or
+        # (worse) stay silent - and "silently not running" is the failure this
+        # whole mechanism exists to replace.
+        #
+        # ⚠️ AND THE ROW IS FINISHED, not left pending. An over-deep event that
+        # kept `processed_chain=False` would be re-read on every tick forever
+        # and block the queue behind it - the defect repaired in `92d1c1ff`,
+        # which this must not reintroduce one file away.
+        depth = event_constants.chain_depth_of(payload_data)
+        if depth is not None and depth > max_depth:
+            logger.warning(
+                "[Chain Depth] outbox#%s (%s) reached hop %d, over the "
+                "declared limit of %d; refusing it and marking it finished so "
+                "the queue behind it runs. Raise `max_chain_depth` in "
+                "chain_rules.json if this cascade is meant to be this long.",
+                event.id, event.table_name, depth, max_depth)
+            mark_processed(event, "FAILED")
+            depth_refused += 1
+            continue
+
+        normalized_events.append(event)
+
+    if depth_refused:
+        db.commit()          # the FAILED marks, so they are not re-read
+
+    if not normalized_events:
+        # ⛔ [S-252] THIS `continue` WAS THE HOT LOOP. Rows were fetched and
+        # every one of them was filtered out - by the CONTROL skip above, or by
+        # the depth refusal - so the tick had nothing to do and went round again
+        # without ever yielding. Filtering the query (above) removes today's
+        # cause; this removes the SHAPE, so the next kind of row this loop
+        # fetches and cannot use costs a wait rather than a starved process.
+        return None
+
+    last_event = normalized_events[-1]
+    last_tx_id = last_event._parsed_payload.get("transaction_id") if isinstance(last_event._parsed_payload, dict) else None
+    if last_tx_id:
+        current_ids = {e.id for e in normalized_events}
+        candidates = db.query(DatabaseOutbox).filter(
+            DatabaseOutbox.processed_chain == False,
+            ~DatabaseOutbox.id.in_(current_ids),
+            # [Reliability F3] .as_string()은 CAST(payload -> 'transaction_id' AS VARCHAR)로 컴파일되어
+            # 표현식 인덱스 idx_outbox_txid(= payload ->> 'transaction_id')와 식이 달라 미사용되었다.
+            # payload를 JSONB로 type_coerce 후 .astext를 쓰면 ->> 로 컴파일되어 인덱스와 정확히 일치한다.
+            # (컬럼 타입이 JSON().with_variant(JSONB)라 ORM 레벨 제네릭 JSON엔 .astext가 없어 직접 호출은 불가.)
+            type_coerce(DatabaseOutbox.payload, JSONB)['transaction_id'].astext == last_tx_id
+        ).limit(20000).all()
+
+        extra_events = []
+        for e in candidates:
+            e_pay = get_payload_dict(e)
+            e._parsed_payload = e_pay
+            if isinstance(e.payload, str):
+                e.payload = e_pay
+            extra_events.append(e)
+
+        if extra_events:
+            normalized_events.extend(extra_events)
+            logger.info(f"Loaded {len(extra_events)} extra events to complete tx '{last_tx_id}' (Total size: {len(normalized_events)})")
+
+    # [OUTBOX-4] 🔴 THE 20,000 CAP ABOVE COUNTS EVENTS, AND AFTER THE COLLAPSE
+    # AN EVENT IS UP TO 1,000 ROWS. Left alone it would pull 20,000 chunks =
+    # 20,000,000 rows into ONE mapper call - a 1,000x amplification of the
+    # working set in the one place this codebase is most careful about.
+    # Re-charge the budget in ROWS so the batch stays the size it was before
+    # the collapse. A prefix is kept, never a filter: the tail stays
+    # processed_chain=False and returns in the same order next iteration.
+    trimmed = trim_events_to_row_budget(normalized_events, OUTBOX_GROUP_MAX_ROWS)
+    if len(trimmed) < len(normalized_events):
+        logger.info(
+            f"[OUTBOX-4] Deferring {len(normalized_events) - len(trimmed)} event(s) "
+            f"to the next iteration: this batch already covers ~{OUTBOX_GROUP_MAX_ROWS} "
+            f"ingested rows."
+        )
+        normalized_events = trimmed
+
+    # Group events - by the writer's transaction, or by a rule's `group_by`
+    group_order, groups = group_events(normalized_events, rules)
+
+    # 🔴 [S-153, 판정 378] THE HANDLE, APPLIED ONCE, BEFORE ANYTHING READS THE
+    #    GROUPS. Folding here rather than inside the drain keeps every seat
+    #    downstream - HOL, retries, broadcast order - looking at exactly one
+    #    shape of group, which is what stops 「how big is a group」 from having
+    #    two answers. With no rule declaring a ceiling this returns what it was
+    #    given, so a deployment that says nothing is untouched.
+    group_order, groups = merge_consecutive_groups(group_order, groups, rules)
+
+    # [Latency Fix #5] 실패 그룹은 배치 전체를 중단(break)하지 않고 건너뛴다(순서 보존 가드는 내부 처리).
+    return await process_pending_groups(db, group_order, groups, rules, db_session_factory, batch_wake_ts=batch_wake_ts)
+
+
+def pending_chain_events(db, limit: int = 200, line=None, run=False) -> list:
+    """The waiting rows THIS loop can consume, oldest first (S-252) - of one chain queue line
+    when `line` names it (a slot's, 총괄 19f6a9277; `run` = the key is a retroactive run's).
 
     🔴 ANOTHER DAEMON'S ROW IS NOT THIS LOOP'S QUEUE. A CONTROL row is addressed to
     `run_auto_update.py` (`SCHEDULER_OWNED_EVENT_TYPES`), and this loop has always skipped
@@ -4241,7 +4428,8 @@ def pending_chain_events(db, limit: int = 200) -> list:
 
     return db.query(DatabaseOutbox).filter(
         DatabaseOutbox.processed_chain == False,          # noqa: E712
-        ~DatabaseOutbox.event_type.in_(tuple(event_constants.CONTROL_EVENT_TYPES))
+        ~DatabaseOutbox.event_type.in_(tuple(event_constants.CONTROL_EVENT_TYPES)),
+        *(() if line is None else event_constants.queue_line_rows(DatabaseOutbox, line, run=run))
     ).order_by(DatabaseOutbox.id.asc()).limit(limit).all()
 
 
@@ -4274,11 +4462,15 @@ def _end_queries_a_gone_chain_worker_left_sync(db_session_factory):
     if bind.dialect.name != "postgresql":
         return
     with bind.connect() as conn:
+        # ... and its slots' (총괄 19f6a9277): a slot outliving its dispatcher ends at once, but a
+        # query it left runs on like the worker's own.
         pids = [row[0] for row in conn.execute(text(
-            "SELECT pid FROM pg_stat_activity WHERE application_name = :name"
+            "SELECT pid FROM pg_stat_activity"
+            " WHERE (application_name = :name OR application_name LIKE :slots)"
             " AND datname = current_database() AND pid <> pg_backend_pid()"
             " AND backend_start < to_timestamp(:before)"),
-            {"name": connection_name(), "before": _IMPORTED_AT})]
+            {"name": connection_name(), "slots": connection_name(slots.process_name("")) + "%",
+             "before": _IMPORTED_AT})]
         for pid in pids:
             rows = db_waits.backend_waits(conn.connection.dbapi_connection, pid)
             said = db_waits.wait_sentence(rows[0] if rows else None, pid)
@@ -4459,6 +4651,8 @@ async def start_chain_ingestion_worker(db_session_factory):
     asyncio.create_task(run_ledger_row_census(db_session_factory))
     index_work = None
 
+    pool = slots.SlotPool()
+
     while True:
         # [B1/B2] Progress beat, emitted from the work loop itself. Idle
         # iterations are bounded by the 2 s LISTEN timeout below, so a beat that
@@ -4507,32 +4701,12 @@ async def start_chain_ingestion_worker(db_session_factory):
                 if reload_work == system_reload.SCOPE_CHAIN_RULES:
                     logger.info("[Reload] SYSTEM_RELOAD chain_rules (Event ID: %s) - re-reading "
                                 "the chain rules only", latest_reload.id)
-                    rules = reread_rules_only()
-                    logger.info(f"[Reload] Loaded {len(rules)} active chain ingestion rules.")
                 elif reload_work == system_reload.FULL:
                     logger.info(f"[Reload] SYSTEM_RELOAD trigger detected (Event ID: {latest_reload.id}). Reloading configurations...")
-                    # 1. Reload dynamic modules cache
-                    reload_worker_process_cache()
                     head_watch.note_reload()
-                    activity.registry.note_reload()
-                    # 1-1. [이슈 #7] config 재로드 + 신규 테이블 ORM 등록 + 물리 CREATE 보충
-                    #      (웹서버가 1차 CREATE — information_schema 게이트 + checkfirst로 경합 무해)
-                    try:
-                        from database.database import engine as _db_engine
-                        from database import models as _db_models
-                        created_tables = _db_models.refresh_dynamic_models(_db_engine)
-                        if created_tables:
-                            logger.info(f"[Reload] Created missing physical tables at runtime: {created_tables}")
-                    except Exception as e:
-                        logger.error(f"[Reload] Dynamic model refresh failed: {e}")
-                    # 2. Reload chain rules configurations from disk
-                    rules = load_chain_rules()
-                    logger.info(f"[Reload] Loaded {len(rules)} active chain ingestion rules.")
-                    # 3. [Warmup] 캐시 무효화로 콜드 스타트가 재발하지 않도록 매퍼를 즉시 재웜업.
-                    #    (DB 풀은 리로드에도 유지되므로 프라임 생략 — db_session_factory=None)
-                    warmup_worker(rules)
 
                 if reload_work:
+                    rules = reload_rules(reload_work)
                     # 4. ⑤ The index work again - the comment on its seat promises 「every reload」,
                     #    the rules-only one too: a join saved with `key.unique` gets its index now,
                     #    not at the next restart (총괄 76aa4b6ed ②).
@@ -4585,144 +4759,28 @@ async def start_chain_ingestion_worker(db_session_factory):
                         replay_task = asyncio.create_task(
                             asyncio.to_thread(_execute_retroactive, queued_replay))
 
-                pending_events = pending_chain_events(db)
+                # 🔴 THE LINES RUN IN SLOTS (총괄 19f6a9277): this loop gives each open slot a line
+                #    it may run (`chain.slots`), reaps a slot that died and sizes the pool. It runs
+                #    no group itself - a big line no longer holds every line behind it. A NOTIFY
+                #    (new rows) reads the lines now; otherwise at most once a second.
+                given = pool.tick(db, rules, notified=loop_wake_ts is not None)
+                loop_wake_ts = None
+                head = pending_chain_events(db, limit=1)
 
-                # The head of this ordered fetch is the oldest waiting row. If it is still
-                # the head next time round, and the time after that, the loop is running
-                # and draining nothing - see QueueHeadWatch.
-                stalled = head_watch.observe(
-                    len(pending_events),
-                    pending_events[0].id if pending_events else None)
+                # The head of the queue is the oldest waiting row. If it is still the head next
+                # time round, and the time after that, the slots are running and draining
+                # nothing - see QueueHeadWatch.
+                stalled = head_watch.observe(len(head), head[0].id if head else None)
                 if stalled:
                     logger.error(stalled)
-                
-                if not pending_events:
-                    await idle_wait()
-                    continue
 
-                # [Latency SLO 계측] 배치의 wake 기준점: NOTIFY로 깨어났으면 그 시각, 아니면(백로그 연속 처리
-                #   /타임아웃 폴링 발견) 이번 반복 시작 시각. 소비 후 리셋(다음 배치에 이월 금지).
-                batch_wake_ts = loop_wake_ts if loop_wake_ts is not None else iter_start_ts
-                loop_wake_ts = None
+                if not given:
+                    if pool.busy():
+                        # a slot's answer wakes this at once; a new line waits at most this long
+                        await asyncio.to_thread(pool.woken.wait, SLOT_ANSWER_WAIT_SECONDS)
+                    else:
+                        await idle_wait()
 
-
-                # Dynamic fetch guard: if the last element belongs to a transaction, fetch all remaining events of the same tx
-                # 1. First unpack/normalize all payloads in pending_events and filter out
-                #    CONTROL events (instructions to another daemon, not data changes).
-                #    Membership in the shared set, not a literal: a second control type was
-                #    added (RETROACTIVE_RUN) and a hardcoded name here would have let it
-                #    fall through into process_chain_transaction_group, where a trigger
-                #    payload would be read as a set of changed rows.
-                normalized_events = []
-                # Read once per batch, not per event: the declaration cannot change
-                # mid-batch and reading it N times would invite N different answers.
-                max_depth = event_constants.max_chain_depth(_RULES_DOCUMENT)
-                depth_refused = 0
-                for event in pending_events:
-                    payload_data = get_payload_dict(event)
-                    event._parsed_payload = payload_data
-                    if isinstance(event.payload, str):
-                        event.payload = payload_data
-
-                    if event.event_type in event_constants.CONTROL_EVENT_TYPES:
-                        continue
-
-                    # 🔴 [DEPTH] THE LIMIT IS ENFORCED HERE, ONCE, AND IT SAYS SO.
-                    # Not inside `_rule_accepts_event`: that is a pure predicate called
-                    # five times per event, so refusing there would log five times or
-                    # (worse) stay silent - and "silently not running" is the failure this
-                    # whole mechanism exists to replace.
-                    #
-                    # ⚠️ AND THE ROW IS FINISHED, not left pending. An over-deep event that
-                    # kept `processed_chain=False` would be re-read on every tick forever
-                    # and block the queue behind it - the defect repaired in `92d1c1ff`,
-                    # which this must not reintroduce one file away.
-                    depth = event_constants.chain_depth_of(payload_data)
-                    if depth is not None and depth > max_depth:
-                        logger.warning(
-                            "[Chain Depth] outbox#%s (%s) reached hop %d, over the "
-                            "declared limit of %d; refusing it and marking it finished so "
-                            "the queue behind it runs. Raise `max_chain_depth` in "
-                            "chain_rules.json if this cascade is meant to be this long.",
-                            event.id, event.table_name, depth, max_depth)
-                        mark_processed(event, "FAILED")
-                        depth_refused += 1
-                        continue
-
-                    normalized_events.append(event)
-
-                if depth_refused:
-                    db.commit()          # the FAILED marks, so they are not re-read
-
-                if not normalized_events:
-                    # ⛔ [S-252] THIS `continue` WAS THE HOT LOOP. Rows were fetched and
-                    # every one of them was filtered out - by the CONTROL skip above, or by
-                    # the depth refusal - so the tick had nothing to do and went round again
-                    # without ever yielding. Filtering the query (above) removes today's
-                    # cause; this removes the SHAPE, so the next kind of row this loop
-                    # fetches and cannot use costs a wait rather than a starved process.
-                    await idle_wait()
-                    continue
-
-                last_event = normalized_events[-1]
-                last_tx_id = last_event._parsed_payload.get("transaction_id") if isinstance(last_event._parsed_payload, dict) else None
-                if last_tx_id:
-                    current_ids = {e.id for e in normalized_events}
-                    candidates = db.query(DatabaseOutbox).filter(
-                        DatabaseOutbox.processed_chain == False,
-                        ~DatabaseOutbox.id.in_(current_ids),
-                        # [Reliability F3] .as_string()은 CAST(payload -> 'transaction_id' AS VARCHAR)로 컴파일되어
-                        # 표현식 인덱스 idx_outbox_txid(= payload ->> 'transaction_id')와 식이 달라 미사용되었다.
-                        # payload를 JSONB로 type_coerce 후 .astext를 쓰면 ->> 로 컴파일되어 인덱스와 정확히 일치한다.
-                        # (컬럼 타입이 JSON().with_variant(JSONB)라 ORM 레벨 제네릭 JSON엔 .astext가 없어 직접 호출은 불가.)
-                        type_coerce(DatabaseOutbox.payload, JSONB)['transaction_id'].astext == last_tx_id
-                    ).limit(20000).all()
-                    
-                    extra_events = []
-                    for e in candidates:
-                        e_pay = get_payload_dict(e)
-                        e._parsed_payload = e_pay
-                        if isinstance(e.payload, str):
-                            e.payload = e_pay
-                        extra_events.append(e)
-                            
-                    if extra_events:
-                        normalized_events.extend(extra_events)
-                        logger.info(f"Loaded {len(extra_events)} extra events to complete tx '{last_tx_id}' (Total size: {len(normalized_events)})")
-
-                # [OUTBOX-4] 🔴 THE 20,000 CAP ABOVE COUNTS EVENTS, AND AFTER THE COLLAPSE
-                # AN EVENT IS UP TO 1,000 ROWS. Left alone it would pull 20,000 chunks =
-                # 20,000,000 rows into ONE mapper call - a 1,000x amplification of the
-                # working set in the one place this codebase is most careful about.
-                # Re-charge the budget in ROWS so the batch stays the size it was before
-                # the collapse. A prefix is kept, never a filter: the tail stays
-                # processed_chain=False and returns in the same order next iteration.
-                trimmed = trim_events_to_row_budget(normalized_events, OUTBOX_GROUP_MAX_ROWS)
-                if len(trimmed) < len(normalized_events):
-                    logger.info(
-                        f"[OUTBOX-4] Deferring {len(normalized_events) - len(trimmed)} event(s) "
-                        f"to the next iteration: this batch already covers ~{OUTBOX_GROUP_MAX_ROWS} "
-                        f"ingested rows."
-                    )
-                    normalized_events = trimmed
-
-                # Group events - by the writer's transaction, or by a rule's `group_by`
-                group_order, groups = group_events(normalized_events, rules)
-
-                # 🔴 [S-153, 판정 378] THE HANDLE, APPLIED ONCE, BEFORE ANYTHING READS THE
-                #    GROUPS. Folding here rather than inside the drain keeps every seat
-                #    downstream - HOL, retries, broadcast order - looking at exactly one
-                #    shape of group, which is what stops 「how big is a group」 from having
-                #    two answers. With no rule declaring a ceiling this returns what it was
-                #    given, so a deployment that says nothing is untouched.
-                group_order, groups = merge_consecutive_groups(group_order, groups, rules)
-                
-                # [Latency Fix #5] 실패 그룹은 배치 전체를 중단(break)하지 않고 건너뛴다(순서 보존 가드는 내부 처리).
-                failed_any = await process_pending_groups(db, group_order, groups, rules, db_session_factory, batch_wake_ts=batch_wake_ts)
-
-                if failed_any:
-                    await asyncio.sleep(1)
-                    
             except Exception as e:
                 db.rollback()
                 logger.error(f"Error in Chain Worker execution loop: {e}")

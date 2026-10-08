@@ -208,6 +208,23 @@ def test_a_long_group_whose_stages_move_is_neither_stalled_nor_wedged(fast, monk
     assert out == {"failed_any": False}, out
 
 
+def test_a_changed_backend_pid_is_on_disk_before_the_next_beat(fast):
+    """A pause and a set-aside cancel by the pid the beat FILE names, from another process - a
+    commit inside a group hands its session another pooled connection (총괄 10-08)."""
+    def on_disk():
+        return ((heartbeat.read_all().get("chain") or {}).get("work") or {}).get("facts", {}).get("db_pid")
+
+    with heartbeat.work_claim("chain", "tx probe", acted_on=True):
+        heartbeat.note_work(db_pid=101)
+        assert on_disk() == 101
+        heartbeat.note_work(db_pid=202)                # well inside the beat's write interval
+        assert on_disk() == 202
+    # a claim nobody acts on from outside (a file's ingestion) keeps the one-write-a-second bound
+    with heartbeat.work_claim("chain", "tx probe"):
+        heartbeat.note_work(db_pid=303)
+        assert on_disk() is None
+
+
 def test_a_stall_check_that_raises_goes_quiet_and_the_group_finishes(fast, monkeypatch,
                                                                      caplog):
     db = types.SimpleNamespace(commit=lambda: None, rollback=lambda: None,

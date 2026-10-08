@@ -977,7 +977,7 @@ class TestTheTriggerQueuesAndReturns:
 
         from chain import ingestion_worker
 
-        src = inspect.getsource(ingestion_worker.start_chain_ingestion_worker)
+        src = inspect.getsource(ingestion_worker.drain_events)
         assert "CONTROL_EVENT_TYPES" in src, (
             "the chain worker skips control events by name; a new control type "
             "would be processed as a data transaction")

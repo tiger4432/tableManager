@@ -157,7 +157,7 @@ def test_the_refusal_is_in_one_place_and_is_not_silent():
     assert event_constants.CHAIN_DEPTH_KEY not in predicate
     assert "chain_depth_of" not in predicate
 
-    loop = inspect.getsource(worker.start_chain_ingestion_worker)
+    loop = inspect.getsource(worker.drain_events)
     assert loop.count("chain_depth_of(") == 1, "the limit is decided in more than one place"
     assert "[Chain Depth]" in loop, "the refusal does not name itself"
     assert "max_chain_depth" in loop
@@ -171,7 +171,7 @@ def test_the_refused_row_is_finished_not_left_pending():
 
     from chain import ingestion_worker as worker
 
-    loop = inspect.getsource(worker.start_chain_ingestion_worker)
+    loop = inspect.getsource(worker.drain_events)
     head = loop.split("[Chain Depth]", 1)[1][:600]
     assert "mark_processed(event" in head
     assert "db.commit()" in loop.split("[Chain Depth]", 1)[1][:1200]

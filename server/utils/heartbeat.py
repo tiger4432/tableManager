@@ -224,25 +224,34 @@ def beat(name, note=None, force=False, state=None):
         if not force and (now - st["last_write"]) < MIN_WRITE_INTERVAL_SEC:
             return False
         st["last_write"] = now
-        payload = {
-            "name": name,
-            "pid": os.getpid(),
-            "ts": now,
-            "beats": st["beats"],
-            "started_at": st["started_at"],
-            "note": note,
-            # What the worker says it is doing on purpose - `paused` (the chain's emergency
-            # stop) - beside the beat that says it is alive. Absent when it says nothing.
-            **({"state": state} if state else {}),
-            # Written by whichever thread beats next - which is the point. The
-            # poller reports the ingestion thread's stall.
-            "work": _work_snapshot_locked(name),
-            # S-176: what each loop in THIS process last did. Absent until a loop has
-            # recorded one, so a process with no instrumented loop writes exactly the
-            # payload it wrote before.
-            "laps": dict(_laps.get(name) or {}),
-        }
+        st["note"], st["state"] = note, state
+        payload = _payload_locked(name, now)
+    return _write(name, payload)
 
+
+def _payload_locked(name, now):
+    st = _state[name]
+    return {
+        "name": name,
+        "pid": os.getpid(),
+        "ts": now,
+        "beats": st["beats"],
+        "started_at": st["started_at"],
+        "note": st.get("note"),
+        # What the worker says it is doing on purpose - `paused` (the chain's emergency
+        # stop) - beside the beat that says it is alive. Absent when it says nothing.
+        **({"state": st["state"]} if st.get("state") else {}),
+        # Written by whichever thread beats next - which is the point. The
+        # poller reports the ingestion thread's stall.
+        "work": _work_snapshot_locked(name),
+        # S-176: what each loop in THIS process last did. Absent until a loop has
+        # recorded one, so a process with no instrumented loop writes exactly the
+        # payload it wrote before.
+        "laps": dict(_laps.get(name) or {}),
+    }
+
+
+def _write(name, payload):
     try:
         d = heartbeat_dir()
         os.makedirs(d, exist_ok=True)
@@ -316,14 +325,31 @@ def progress(stage):
         _refresh_mine_locked(time.time(), stage=stage)
 
 
+#: The facts another process ACTS on - a pause and a set-aside cancel by them (`chain.control`).
+#: Written at once when they change on an `acted_on` claim: a commit inside a group hands its
+#: session another pooled connection, and the next beat may be a second away - a set-aside cut
+#: the pid the group had left and the group ran on (총괄 10-08). Other claims keep the
+#: `MIN_WRITE_INTERVAL_SEC` bound - a file's ingestion begins a transaction per chunk.
+WRITTEN_AT_ONCE = ("db_pid", "lock_db_pid")
+
+
 def note_work(**facts):
     """Facts about this thread's open claims (the database pid the work is running on).
-    Not progress - a note refreshes nothing."""
+    Not progress - a note refreshes nothing; a `WRITTEN_AT_ONCE` fact that changed on an
+    `acted_on` claim rewrites the beat."""
+    now = time.time()
     with _state_lock:
         tid = threading.get_ident()
+        changed = set()
         for c in _claims.values():
             if c["thread"] == tid:
+                if c.get("acted_on") and any(c["facts"].get(k) != v for k, v in facts.items()
+                                             if k in WRITTEN_AT_ONCE):
+                    changed.add(c["name"])
                 c["facts"].update(facts)
+        payloads = [(name, _payload_locked(name, now)) for name in sorted(changed) if name in _state]
+    for name, payload in payloads:
+        _write(name, payload)
 
 
 def mark_stalled(claim_id, what_it_waits_on):
@@ -366,7 +392,7 @@ def stalled_lines(name, probe, shown=()):
 
 
 @contextmanager
-def work_claim(name, what, note=None):
+def work_claim(name, what, note=None, acted_on=False):
     """Declare a unit of real work in progress for worker ``name``.
 
     Wrap the whole unit (one file's ingestion), and call ``beat(name)`` or
@@ -376,6 +402,8 @@ def work_claim(name, what, note=None):
 
     `note` is what the entry and exit beats carry; left out, they say start/done. A worker
     whose note is a channel of its own (the chain's drop counts) passes that instead.
+    `acted_on`: another process acts on this claim's `WRITTEN_AT_ONCE` facts (a chain group -
+    a pause and a set-aside cancel by its pids), so they reach the file when they change.
     """
     now = time.time()
     cid = next(_claim_seq)
@@ -383,7 +411,7 @@ def work_claim(name, what, note=None):
         _claims[cid] = {"id": cid, "name": name, "what": str(what)[:200],
                         "thread": threading.get_ident(),
                         "started": now, "last_progress": now,
-                        "stage": None, "facts": {}, "stalled_on": None}
+                        "stage": None, "facts": {}, "stalled_on": None, "acted_on": acted_on}
     # Beat on entry so the claim is visible in the heartbeat file immediately,
     # rather than only after the next poller tick.
     beat(name, note=f"start: {what}" if note is None else note, force=True)
