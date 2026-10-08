@@ -873,6 +873,12 @@ async function xSuite(m, say) {
   say('X8 the key goes as POST /admin/chain/queue/cancel {key}; a 200 is done, a key already gone too',
     done.ok === true && gone.ok === true && same(sent[0], { url: 'http://box/admin/chain/queue/cancel', method: 'POST',
       body: JSON.stringify({ key: 'tx:aaaaaaaa-1111' }) }), JSON.stringify([done, gone, sent[0]]));
+  const words = [];
+  for (const already of ['processed', 'set_aside', 'gone']) {
+    words.push((await m.skipLine('tx:old', { adminFetch: answer(200, { skipped_events: 0, already }) })).already);
+  }
+  say('XA a line that had already stopped says what became of it in a word; a line that was waiting says none',
+    same(words, ['Already ran', 'Already set aside', 'Gone']) && done.already === '', JSON.stringify([words, done.already]));
   const refused = await m.skipLine('k', { adminFetch: answer(422, { detail: 'Not a queue line key' }) });
   const away = await m.skipLine('k', { adminFetch: async () => { throw new Error('offline'); } });
   say('X9 refused: the server\'s sentence, with its status; unreachable: the unreachable line',
@@ -984,6 +990,8 @@ await xSuite(await import('../src/chain_queue_panel.js'), (name, cond, detail) =
       mutate: swap('line: await retroFailureLine(res, failureFactOf(res), CANCEL_REFUSED)', 'line: CANCEL_REFUSED') },
     { id: 'XM8', what: 'a running line\'s × goes nowhere', catches: 'X5',
       mutate: swap('onCancel: (id) => this._skip(skips.get(id))', 'onCancel: () => {}') },
+    { id: 'XM10', what: 'a line that had already stopped says nothing', catches: 'XA',
+      mutate: swap("      return { ok: true, already: already ? ALREADY[already] || String(already) : '' };", "      return { ok: true, already: '' };") },
     { id: 'XM9', what: 'a run id alone is not read', catches: 'X6',
       mutate: swap('  if (c.run_id) return Object.freeze({ runId: String(c.run_id) });\n', '') },
     { id: 'KM1', what: 'a press copies the short label', catches: 'K1', mutate: swap('this.copy(r.id, r.idLabel)', 'this.copy(r.label, r.idLabel)') },

@@ -70,13 +70,21 @@ export function cancelOf(cancel) {
 const skipOf = (cancel, events) => (cancel ? Object.freeze({ cancel,
   question: isCount(events) ? `Skip ${unitText(countText(events), 'event')}?` : 'Skip this line?' }) : null);
 
-/** × on a line with a key: POST /admin/chain/queue/cancel {key}, through the page's admin door. `{ok: true}`, or
- *  the refusal's line - the server's sentence first, through the same seat as a run's ×. */
+/** What a × says of a line that had already stopped waiting - the server's `already` (lead be5457365) - or ''. */
+const ALREADY = Object.freeze({ processed: 'Already ran', set_aside: 'Already set aside', gone: 'Gone' });
+
+/** × on a line with a key: POST /admin/chain/queue/cancel {key}, through the page's admin door. `{ok: true, already}`
+ *  (`already` '' when the line was still waiting), or the refusal's line - the server's sentence first, through the
+ *  same seat as a run's ×. */
 export async function skipLine(key, { adminFetch, apiBase = '' }) {
   try {
     const res = await adminFetch(`${apiBase}/admin/chain/queue/cancel`, { method: 'POST',
       headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key }) });
-    if (res.ok) return { ok: true };
+    if (res.ok) {
+      const said = await res.json().catch(() => null);
+      const already = said && said.already;
+      return { ok: true, already: already ? ALREADY[already] || String(already) : '' };
+    }
     return { ok: false, line: await retroFailureLine(res, failureFactOf(res), CANCEL_REFUSED) };
   } catch (e) {
     return { ok: false, line: fetchFailureLine(null, CANCEL_REFUSED) };

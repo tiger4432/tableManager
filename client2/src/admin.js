@@ -2947,6 +2947,8 @@ async function cancelQueueLine(cancel) {
   if (!cancel.key) { await requestRunCancel(cancel.runId); return; }
   const got = await skipLine(cancel.key, { adminFetch, apiBase: API_BASE });
   if (!got.ok) { showToast(got.line, 'error'); return; }
+  // A line that had already stopped waiting says what became of it; the read below takes it off the list.
+  if (got.already) showToast(got.already, 'info');
   // A read already on its way may have left before the cancel: the line goes only in a read that leaves after it
   // (application QA 54a53f894).
   if (queueRead) await queueRead.catch(() => null);
