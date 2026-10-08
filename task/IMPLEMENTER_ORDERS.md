@@ -64749,3 +64749,15 @@ next          end_session_endpoint 있음 -> 그 주소(+ 칸이 있으면 post_
 RUN.md        「IT 에 등록할 주소 = https://<서버>/auth/signed-out · 등록되면 auth_config.json post_logout_redirect_uri 에 같은 값 · 재기동」
               그리고 「설정 문서에 end_session_endpoint 가 없으면 ADFS 로그인은 안 끝난다 — Signed out 에 멈추고 Sign in 은 같은 계정」
 ```
+
+> **[총괄 -> 구현자] 10-08 🔴 먼저(로그아웃 앞) — empty_table.py 가 운영에서 «모든 표»를 «선언된 표가 아닙니다»로 거절한다 (소유자 10-08 공식 표 비우기 보고에서)**
+
+```
+사실(총괄이 박스에서 잼 · 읽기만)  scripts/empty_table.py main() 은 models.init_dynamic_models 를 안 부른다 -> 스크립트 import 뒤 DYNAMIC_TABLES = 0 (박스 table_config 선언 45)
+   python server/scripts/empty_table.py dt_log -> 「거절: 'dt_log' 는 선언된 표가 아닙니다」 / 먼저 init 하고 main(['dt_log']) -> 보고가 나옴
+   시험은 report() · empty() 를 «모델을 채운 픽스처» 안에서만 불러 이 길을 안 지난다(공허)
+   같은 다시 채우기 순서의 다른 도구: chain_replay_cli 는 init 을 부른다 · 나머지(pause · ledger backfill/census/followup)는 표 모델을 안 쓴다(grep 으로 셈)
+할 일  main() 이 보고 · 비우기 전에 다른 진입점과 같은 한 줄(init_dynamic_models(crud.load_table_config_or_raise()) — schema_drift 와 같은 읽기)
+게이트 «새 프로세스»로 main 을 돌리는 시험 하나(subprocess 또는 DYNAMIC_TABLES 를 비운 채 main) — 지금 코드에서 빨강 · 고친 뒤 초록 · 그 한 줄 지우는 변이 빨강
+같은 커밋 RUN.md 「공식 표 다시 채우기」 6 · 7 은 명령 그대로 — 고친 뒤엔 우회가 필요 없다는 한 줄 · RELEASE_LOG 고침 한 줄
+```
