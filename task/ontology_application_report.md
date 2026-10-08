@@ -36609,3 +36609,17 @@ b340386fe
 오늘    소유자가 만드는 idx_sources_by_origin 은 마이그레이션 파일이 CONCURRENTLY 다 — 그 파일로 만들면 쓰기를 안 막는다. 손으로 CONCURRENTLY 없이 치면 그 표에 쓰는 묶음이 120 초마다 실패한다
 문서    ingestion_settings.md 의 chain_statement_timeout_seconds 줄에 「잠금 기다림도 센다」 — 이 보고와 같은 커밋. RUN.md 는 안 건드림
 ```
+
+---
+
+## [C 응용] 10-08 8d0a22064(id 복사가 앱의 복사 쓰개로) QA — 결함 못 찾음. 같은 파일에 남은 하나 (코드로 읽음 · 하니스 돌림)
+
+```
+읽음    copyFullId -> writeClipboardRich('', id) — execCommand('copy') + copy 이벤트, 동기. 두 호출자(실패 표 칩 · 대기열 칩) 다 클릭 처리기 안에서 곧바로 부른다(await 없음)
+        쓰개가 false 면 «Copy failed» — 전엔 평문 HTTP 에서 아무 말도 없던 자리가 이제 말한다
+하니스  chain_rule_user_path 91 통과 · 실패 0(node · 이 트리)
+남은 하나  admin.js 에 navigator.clipboard 를 직접 부르는 자리가 하나 더 있다(주석 빼고 센 수 1) — 오류 상세의 «Raw Event Payload / Details» 옆 «📋 Copy» 버튼
+        평문 HTTP 에서 같은 모양으로 막힌다(누르면 동기로 터짐 · 복사 안 됨 · 토스트 없음). 이번 착지 전부터 그랬다
+        같은 쓰개로 보내면 «한 경로»가 된다 — 고칠지는 총괄 판정
+문서    CODE_MAP 의 대기열 id 칩 줄에서 제 경고(평문 HTTP 에서 터짐)를 걷고 쓰개를 적음 — 이 보고와 같은 커밋
+```
