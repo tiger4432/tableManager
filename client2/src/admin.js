@@ -35,6 +35,7 @@ import { queueQuery } from './enrichment_queue.js';
 // 「체인 요청이 몇 개 씹히는 것 같다」를 수로 바꾸는 계측기. 뷰 모델이 DOM 없는 자기 모듈에
 // 살아서 하니스가 import 로 채점한다 (`client2/tests/chain_queue_panel_harness.mjs`).
 import { ChainQueuePanel, skipLine } from './chain_queue_panel.js';
+import { pollBeat, pollQueue } from './queue_poll.js';
 import { ChainPauseControl, chainPauseView } from './chain_pause.js';
 // 시안 A ② Status — 줄 판정은 `overview_status` 한 자리, 판은 그리기만 한다.
 import { OverviewBoard } from './overview_board.js';
@@ -406,11 +407,16 @@ function formatTimestamp(value) {
 }
 
 // Transaction ID 축약 (감사 F8): head8… — 풀값은 title/클릭복사로
-/** A shortened id, copied in full on a press: the failed table's and the queue lines' one copy (lead 421191402),
- *  through the app's clipboard writer - on the plain-HTTP LAN `navigator.clipboard` does not exist (QA 2fdc6b16a). */
-function copyFullId(id, label) {
-  if (writeClipboardRich('', id)) showToast(`📋 ${label} [${shortTxId(id)}] copied in full`, 'info');
+/** Text onto the clipboard through the app's writer, then the toast that says so - or that it failed. The one place
+ *  admin.js writes the clipboard: on the plain-HTTP LAN `navigator.clipboard` does not exist (lead, QA 2fdc6b16a). */
+function copyText(text, said, kind) {
+  if (writeClipboardRich('', text)) showToast(said, kind);
   else showToast('❌ Copy failed', 'error');
+}
+
+/** A shortened id, copied in full on a press: the failed table's and the queue lines' one copy (lead 421191402). */
+function copyFullId(id, label) {
+  copyText(id, `📋 ${label} [${shortTxId(id)}] copied in full`, 'info');
 }
 
 function shortTxId(txId) {
@@ -766,9 +772,7 @@ function setupEventListeners() {
     }
 
     if (payloadToCopy) {
-      navigator.clipboard.writeText(JSON.stringify(payloadToCopy, null, 2))
-        .then(() => showToast('📋 Payload copied', 'success'))
-        .catch(() => showToast('❌ Copy failed', 'error'));
+      copyText(JSON.stringify(payloadToCopy, null, 2), '📋 Payload copied', 'success');
     } else {
       showToast('⚠️ Nothing selected to copy', 'warning');
     }
@@ -1468,20 +1472,15 @@ async function refreshQueue() {
   renderChainQueue(body, { ...opts, failed: queueFailed });
 }
 
-// The queue's own poll (lead 0eadab810), on since the queue route reads its waiting events in one pass (83023aa5d).
-const QUEUE_POLL_MS = 5000;
-
-/** One tick: read only while a tab that shows the queue is visible and no read is on its way. */
+/** The queue's own poll (lead 0eadab810), on the beat the grid's Queue tab shares (queue_poll.js): read only while a
+ *  tab that shows the queue is visible and no read is on its way. */
 function queuePollTick() {
-  if (document.hidden || !(currentTab === 'overview' || currentTab === 'chain') || queueRead) {
-    return Promise.resolve(false);
-  }
-  return refreshQueue().then(() => true);
+  return pollBeat({ onScreen: () => !document.hidden && (currentTab === 'overview' || currentTab === 'chain'),
+    busy: () => Boolean(queueRead), read: refreshQueue });
 }
 
 function scheduleQueuePoll() {
-  if (!QUEUE_POLL_MS) return;
-  setTimeout(() => { queuePollTick().then(scheduleQueuePoll, scheduleQueuePoll); }, QUEUE_POLL_MS);
+  pollQueue(queuePollTick);
 }
 
 // Chain 탭 §오류: 실패 트랜잭션 목록 (Grouped by Transaction ID)
