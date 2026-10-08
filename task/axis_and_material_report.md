@@ -1,3 +1,24 @@
+> ## [05:35 디자인] 어드민 Overview 인덱스 표 (총괄 d71f931c7 · 서버 9acf4243e) — f6f4d211c
+
+**결론** Overview 맨 아래 «Indexes» 절 — 선언된 인덱스마다 이름 · 상태 · 표 · 칸 · purpose · serves · 크기 · scans, 아래에 «Not declared». 상태는 서버 낱말 그대로 배지(present ok · building warn · missing · invalid danger — 스타일시트가 그리는 세 색), building 이면 서버 문장 그대로 밑에, scans 0 은 흐리게. 읽기만(만들기 단추 없음). Overview 를 읽을 때 한 번 읽음.
+
+| 진짜 빌드 `/assets/admin-By0ytPrG.js` (답은 박스 PG 에서 뜬 서버 답 + 손 행 둘, 페이지 안에서 답함 · 쓰기 0) | 결과 |
+|---|---|
+| 줄 | 51 · 상태 building(warn) 1 · invalid(danger) 1 · missing(danger) 7 · present(ok) 42 |
+| building 줄 | «building - waiting for transactions older than it: pid 4242 (chain)» |
+| scans 0 흐림 | 15 줄 |
+| Not declared | 2 줄 |
+| 폭 | 표가 제 상자 안에서 가로로 흐름 · 페이지는 안 밀림 |
+
+**시험** index_table_panel_harness 15(I1–I6 · 변이 8 잡힘) · 러너 초록 · 계약 13 개 어긋남 0 · RELEASE_LOG 같은 커밋.
+- 픽스처는 서버 답 그대로: capture_admin_indexes.py 가 박스 PG 에서 `models.index_states` 를 부름(읽기만) — 49 declared - missing 7, present 42 - and 2 outside. 이 박스엔 invalid · building 이 없어 그 둘은 손 행(잡은 행 복사 + 상태 · 서버 모양의 문장).
+- 이 박스에서 그 답 읽기 0.046 s(세 번 중 가장 빠름, 박스 수).
+- 상태 칸을 이름 바로 옆에 둠 — 지시 칸 순서(이름 · 표 · 칸 · purpose · serves · 상태 …)대로면 표가 넓어 상태가 가로 스크롤 밖으로 밀려 «한눈에»가 안 됨. 칸은 그대로, 순서만.
+- missing 과 invalid 는 같은 빨강(스타일시트에 tone 이 셋) — 배지 글자가 다름.
+- 러너의 floor 목록에 이번 라운드(10-09) 제가 올린 floor 들의 «무엇이 · 왜» 줄을 함께 적음(전엔 수만 바꿨음).
+
+받은 클라 일 끝. 지시서 감시를 켜 둡니다.
+
 > ## [01:36 디자인] 어드민 원장 줄 — 따라가기 멈춤 · 꺼진 세상 (총괄 558a46ef1 · 서버 0e7530cef) — 259d46afc
 
 **결론** 원장 줄이 이미 읽는 `/runtime` 답의 따라가기 줄을 함께 읽습니다(새 요청 없음). 칩 요소 · 다섯째 낱말 없이 닫힌 넷과 사실 칸만(총괄 575a844f7, 이번에 확인).
