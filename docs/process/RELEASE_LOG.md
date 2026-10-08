@@ -10,6 +10,15 @@
 ---
 
 
+## 2026-10-09 · 선언된 인덱스가 없으면 체인 워커가 알리고 스스로 만든다 (어드민 인덱스 표의 서버 반쪽)
+
+- **무엇** — 총괄 e0e8020fb · d71f931c7 (소유자 10-08 「빠진 인덱스 알리게 하고 알아서 만들어」 · 「선언이 마스터」). 있어야 할 인덱스의 답은 `server/database/models.py` 의 Index · UNIQUE 선언 하나이고, 선언마다 무엇이 빨라지나(`purpose`)와 어디가 쓰나(`serves`)가 적혀 있습니다. 체인 워커가 켜질 때 선언과 DB 를 견주어 빠졌거나 무효인 인덱스를 한 줄로 알리고 하나씩 CONCURRENTLY 로 만듭니다. 오래된 트랜잭션을 기다리는 동안은 10 분마다 누구를 기다리는지(pid · application_name) 말합니다. `GET /admin/indexes` 가 같은 견주기를 보입니다.
+- **선언 예시** — `Index("idx_audit_recent_groups", "timestamp", "id", postgresql_include=["transaction_id"], info={"purpose": "newest audit rows first, without sorting the table", "serves": "GET /audit_logs/recent"})` (`server/database/models.py`).
+- **화면에서** — 이번은 서버 반쪽입니다. 어드민 표는 클라 레인이 이 응답으로 짓습니다.
+- **필요한 조건** — 체인 워커 · 서버 재기동. 이주 없음. 만들기를 끄려면 `ingestion_settings.json` 에 `"build_missing_indexes": false`(알리기만 합니다).
+- **바뀐 동작** — 전에는 선언이 있어도 이미 있는 DB 에는 사람이 마이그레이션이나 스크립트를 돌려야 인덱스가 생겼습니다. 이제 체인 워커가 만듭니다. 은퇴한 `cell_sources` 인덱스 둘(`ix_cell_sources_table_name` · `ix_cell_sources_column_name`)은 선언에서 빠져 다시 만들어지지 않습니다. 대기열 × 의 감사 줄은 이제 «표시한 수»를 적고, 하나도 표시하지 않았으면 남지 않습니다.
+- **자세히** — 이 항목과 같은 커밋 · RUN.md 같은 절.
+
 ## 2026-10-09 · 원장 따라가기의 실패 줄은 같은 실패의 1 · 10 · 100 … 번째에만 나온다
 
 - **무엇** — 총괄 cb419a8a0 (소유자 10-08 「오류 하나만 있어도 하루종일 batch failed 로그로 도배 — 좀 없애라」). 원장 따라가기의 소스 실패 · 삭제 실패 · «batch failed» 줄이 매번이 아니라 같은 실패(같은 소스 · 표 · 세상 · 예외 이름)의 1 · 10 · 100 · 1000 … 번째에만 나오고, 줄 끝에 몇 번째인지(#N)가 붙습니다.

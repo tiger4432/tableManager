@@ -4,6 +4,7 @@ from .database import Base, is_sqlite
 
 from sqlalchemy.dialects.postgresql import JSONB
 
+import contextlib
 import logging
 
 # Same channel as `database/crud.py` - one process, one logger name, so a schema
@@ -27,16 +28,16 @@ class AuditLog(Base):
     # stops NEW databases from growing them; existing ones are cleaned by
     # `server/migrations/add_business_key_unique_index.py --drop-redundant`.
     id = Column(Integer, primary_key=True)
-    table_name = Column(String, index=True)
-    row_id = Column(String, index=True)
+    table_name = Column(String)
+    row_id = Column(String)
     column_name = Column(String)
-    
+
     old_value = Column(JSON, nullable=True) # Previous value
     new_value = Column(JSON)                # New value
-    
+
     source_name = Column(String)            # user, parser_a, etc.
     updated_by = Column(String)             # user_id or agent_name
-    transaction_id = Column(String, index=True, nullable=True) # [Phase 2] 배치 작업 그룹화용 ID
+    transaction_id = Column(String, nullable=True) # [Phase 2] 배치 작업 그룹화용 ID
     
     timestamp = Column(DateTime(timezone=True), server_default=func.now())
     # [index retirement 2026-08-11] NO `index=True`. Nothing filters on this column.
@@ -56,6 +57,17 @@ class AuditLog(Base):
     business_key = Column(String, nullable=True)
 
     __table_args__ = (
+        # 🔴 EVERY INDEX SAYS WHAT IT IS FOR (총괄 d71f931c7: the declaration IS the index master -
+        #    `info` is what GET /admin/indexes shows, and a declared index without a purpose is red
+        #    in test_every_declared_index_says_what_it_is_for). The three below were `index=True`
+        #    on their columns - the same names, now able to carry one.
+        Index("ix_audit_logs_table_name", "table_name",
+              info={"purpose": "audit rows of one table", "serves": "audit lookups by table"}),
+        Index("ix_audit_logs_row_id", "row_id",
+              info={"purpose": "audit rows of one row id", "serves": "audit lookups by row"}),
+        Index("ix_audit_logs_transaction_id", "transaction_id",
+              info={"purpose": "audit rows of one transaction",
+                    "serves": "GET /audit_logs/transaction/{tx_id}, row targeting, export"}),
         # [재교정률] 대시보드가 매 로드마다 감사 테이블을 훑지 않게 하는 유일한 수단.
         # 이 인덱스가 없으면 7일 창 집계가 병렬 Seq Scan으로 떨어진다(2026-07-27 실측:
         # 2,628,453행/1.6GB 기준 512ms, 128,523 블록 판독). 1,000만 행에서는 그대로 초 단위다.
@@ -73,6 +85,8 @@ class AuditLog(Base):
             "timestamp",
             postgresql_include=["table_name", "row_id", "column_name", "transaction_id"],
             postgresql_where=text("source_name = 'user'"),
+            info={"purpose": "human edits in a time window, without reading the table",
+                  "serves": "dashboard re-correction rate"},
         ),
 
         # [dashboard] "how many edits today", over ALL audit rows. The index above cannot
@@ -94,7 +108,9 @@ class AuditLog(Base):
         # ⚠️ ALSO IN server/migrations/add_audit_logs_timestamp_brin_index.sql -- fix both
         # places. create_all does not add an index to a table that already exists, so that
         # file is the only path onto an existing database.
-        Index("idx_audit_logs_timestamp_brin", "timestamp", postgresql_using="brin"),
+        Index("idx_audit_logs_timestamp_brin", "timestamp", postgresql_using="brin",
+              info={"purpose": "all audit rows in a time range, at 72 kB",
+                    "serves": "dashboard edits today"}),
 
         # [history keyset] The two indexes that make a row click cost O(page)
         # instead of O(everything ever written to that row).
@@ -127,9 +143,11 @@ class AuditLog(Base):
         # this declaration only reaches NEW databases. Existing ones (production
         # included) get them from
         # `server/migrations/add_audit_history_keyset_indexes.sql`.
-        Index("idx_audit_row_history", "table_name", "row_id", "timestamp", "id"),
+        Index("idx_audit_row_history", "table_name", "row_id", "timestamp", "id",
+              info={"purpose": "one row's history a page at a time", "serves": "history tab, row"}),
         Index("idx_audit_cell_history", "table_name", "row_id", "column_name",
-              "timestamp", "id"),
+              "timestamp", "id",
+              info={"purpose": "one cell's history a page at a time", "serves": "history tab, cell"}),
 
         # [recent groups] The ONLY index whose leading column is `timestamp`
         # without a predicate, and therefore the only one that can serve the
@@ -163,7 +181,9 @@ class AuditLog(Base):
         # included) get it from
         # `server/migrations/add_audit_recent_groups_index.sql`.
         Index("idx_audit_recent_groups", "timestamp", "id",
-              postgresql_include=["transaction_id"]),
+              postgresql_include=["transaction_id"],
+              info={"purpose": "newest audit rows first, without sorting the table",
+                    "serves": "GET /audit_logs/recent"}),
     )
 
 
@@ -218,7 +238,9 @@ class InteractionEffortLog(Base):
 
     __table_args__ = (
         # tx당 1행 불변식(위 결정 3). 재도달은 IntegrityError로 걸러 첫 기록을 보존한다.
-        Index("uq_effort_transaction", "transaction_id", unique=True),
+        Index("uq_effort_transaction", "transaction_id", unique=True,
+              info={"purpose": "one effort row per transaction - a resend keeps the first",
+                    "serves": "effort metric"}),
 
         # 집계(`crud.get_effort_stats`)는 창(window) 안의 행을 session_id로 묶어 평균한다.
         # INCLUDE에 GROUP BY 키와 합산 대상 전부를 담아 Index Only Scan으로 끝낸다 —
@@ -230,6 +252,8 @@ class InteractionEffortLog(Base):
             "timestamp",
             postgresql_include=["session_id", "key_count", "mouse_count",
                                 "nav_count", "nav_preserved_count"],
+            info={"purpose": "effort rows in a time window, without reading the table",
+                  "serves": "dashboard effort average"},
         ),
     )
 
@@ -264,37 +288,47 @@ class DatabaseOutbox(Base):
     # 부분 인덱스(postgresql_where)는 PostgreSQL에서만 조건이 적용되고 SQLite에서는 조건이 무시된
     # 일반 인덱스로 생성되므로 두 dialect 모두 안전하게 create_all 가능하다.
     _outbox_index_list = [
-        Index("idx_outbox_pending", "status", postgresql_where=text("status = 'PENDING'")),
+        Index("idx_outbox_pending", "status", postgresql_where=text("status = 'PENDING'"),
+              info={"purpose": "events still pending", "serves": "outbox pending scans"}),
 
         # [Latency Fix #1] SYSTEM_RELOAD 트리거 조회(event_type=='SYSTEM_RELOAD' order by id desc) 전용 부분 인덱스.
         # (event_type, id) 복합으로 id 정렬 first()까지 색인만으로 처리.
-        Index("idx_outbox_reload", "event_type", "id", postgresql_where=text("event_type = 'SYSTEM_RELOAD'")),
+        Index("idx_outbox_reload", "event_type", "id", postgresql_where=text("event_type = 'SYSTEM_RELOAD'"),
+              info={"purpose": "the newest reload event", "serves": "config reload trigger"}),
 
         # [Latency Fix #3] 미처리 체인 이벤트 큐 스캔(processed_chain==false order by id asc) 전용 부분 인덱스.
-        Index("idx_outbox_unprocessed", "processed_chain", "id", postgresql_where=text("processed_chain = false")),
+        Index("idx_outbox_unprocessed", "processed_chain", "id", postgresql_where=text("processed_chain = false"),
+              info={"purpose": "events the chain has not run yet, oldest first",
+                    "serves": "chain queue, GET /admin/chain/queue"}),
 
         # [Reliability F1] 통지 미확정(broadcast_at IS NULL) 교정 행 안전망 스윕 전용 부분 인덱스.
         # 정상 상태(전달 확정)에선 거의 빈 인덱스이므로 1000만행 누적에도 스윕이 O(미전달)로 안전하다.
         Index("idx_outbox_undelivered", "id",
-              postgresql_where=text("processed_chain = true AND status = 'SUCCESS' AND broadcast_at IS NULL")),
+              postgresql_where=text("processed_chain = true AND status = 'SUCCESS' AND broadcast_at IS NULL"),
+              info={"purpose": "run events not yet broadcast", "serves": "broadcast safety sweep"}),
 
         # [C-3] 보관 정책(7일) purge 대상 탐색 전용 부분 인덱스 — 처리 완료 행의 created_at 정렬 탐색.
         # 7일 보관이 유지되는 정상 상태에선 테이블 자체가 소규모로 유지되어 인덱스도 작다.
         Index("idx_outbox_purge", "created_at",
-              postgresql_where=text("processed_chain = true")),
+              postgresql_where=text("processed_chain = true"),
+              info={"purpose": "run events by age", "serves": "outbox 7-day purge"}),
 
         # [C-3] FAILED 격리 이벤트 관리 API(/admin/outbox/failed·retry-failed) 전용 부분 인덱스.
         # 비부분 status 인덱스(ix_database_outbox_status) DROP의 대체 — FAILED는 극소수라 사실상 빈 인덱스.
         Index("idx_outbox_failed", "status", "id",
-              postgresql_where=text("status = 'FAILED'")),
+              postgresql_where=text("status = 'FAILED'"),
+              info={"purpose": "failed events", "serves": "/admin/outbox/failed, retry-failed"}),
         Index("idx_outbox_ledger_pending", "id",
-              postgresql_where=text("processed_chain = true AND ledger_state IS NULL")),
+              postgresql_where=text("processed_chain = true AND ledger_state IS NULL"),
+              info={"purpose": "run events the ledger has not followed yet", "serves": "ledger follow-up"}),
     ]
     if not is_sqlite:
         _outbox_index_list.append(
             # [Latency Fix #3] tx 보완 쿼리(payload->>'transaction_id') 가속용 표현식 인덱스.
             # JSON 연산자는 PostgreSQL 전용이므로 dialect 가드로 SQLite에서는 생성하지 않는다.
-            Index("idx_outbox_txid", text("((payload->>'transaction_id'))")),
+            Index("idx_outbox_txid", text("((payload->>'transaction_id'))"),
+                  info={"purpose": "events of one transaction",
+                        "serves": "chain queue lines, the queue x, set-aside by transaction"}),
         )
     __table_args__ = tuple(_outbox_index_list)
 
@@ -311,17 +345,28 @@ class FileIngestionLog(Base):
     __tablename__ = "file_ingestion_logs"
 
     id = Column(Integer, primary_key=True)  # [D3] see AuditLog.id - no index=True on a PK
-    filename = Column(String, index=True)
+    filename = Column(String)
     filepath = Column(String)
-    table_name = Column(String, index=True)
+    table_name = Column(String)
     # 쓸 수 있는 상태는 `file_ingestion_status.FILE_INGESTION_STATUS_VOCABULARY` 가 정본이다 —
     # 여기에 목록을 «다시 적으면» 그 사본이 낡는다. 실측 2026-09-07: 이 주석은
     # 셋을 적고 있었고 코드는 다섯을 쓰고 있었다.
-    status = Column(String(20), default="FAILED", index=True)
+    status = Column(String(20), default="FAILED")
     error_message = Column(String, nullable=True)
     retry_count = Column(Integer, default=0)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    # once `index=True` on their columns - the same names, now able to say what they are for
+    __table_args__ = (
+        Index("ix_file_ingestion_logs_filename", "filename",
+              info={"purpose": "ingestion log rows of one file name", "serves": "ingestion log lookups"}),
+        Index("ix_file_ingestion_logs_table_name", "table_name",
+              info={"purpose": "ingestion log rows of one table", "serves": "ingestion log lookups"}),
+        Index("ix_file_ingestion_logs_status", "status",
+              info={"purpose": "ingestion log rows in one state",
+                    "serves": "watcher retries (PENDING, PENDING_RETRY), ingestion log filter"}),
+    )
 
 
 class RetroactiveRun(Base):
@@ -350,11 +395,11 @@ class RetroactiveRun(Base):
     # `retroactive.publish` 가 만드는 12자리 hex. 큐 이벤트의 payload 와 «같은 값»이라
     # 아웃박스 행과 이 행이 서로를 가리킨다.
     run_id = Column(String(32), primary_key=True)
-    op = Column(String(64), nullable=False, index=True)
+    op = Column(String(64), nullable=False)
     params = Column(String, nullable=True)          # JSON — 범위를 포함한다
     requested_by = Column(String(120), nullable=True)
     # queued | running | done | cancel_requested | cancelled | failed
-    state = Column(String(20), nullable=False, default="queued", index=True)
+    state = Column(String(20), nullable=False, default="queued")
     processed_rows = Column(Integer, nullable=True)
     total_rows = Column(Integer, nullable=True)      # NULL = 모름 (0 아님)
     result = Column(String, nullable=True)           # JSON — 연산이 돌려준 수들
@@ -374,7 +419,13 @@ class RetroactiveRun(Base):
     finished_at = Column(DateTime(timezone=True), nullable=True)
 
     __table_args__ = (
-        Index("idx_retroactive_runs_recent", "state", "queued_at"),
+        Index("idx_retroactive_runs_recent", "state", "queued_at",
+              info={"purpose": "runs in one state, oldest queued first", "serves": "retroactive run queue"}),
+        # once `index=True` on their columns - the same names
+        Index("ix_retroactive_runs_op", "op",
+              info={"purpose": "runs of one operation", "serves": "a queued run of the same op"}),
+        Index("ix_retroactive_runs_state", "state",
+              info={"purpose": "runs in one state", "serves": "runs in flight, queued runs"}),
     )
 
 
@@ -442,11 +493,16 @@ class FileIngestionCheckpoint(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
     __table_args__ = (
-        Index("idx_fic_identity", "table_name", "file_signature", unique=True),
-        Index("idx_fic_signature", "file_signature", "status"),
+        Index("idx_fic_identity", "table_name", "file_signature", unique=True,
+              info={"purpose": "one checkpoint per table and file content",
+                    "serves": "resuming an ingestion, skipping a file already done"}),
+        Index("idx_fic_signature", "file_signature", "status",
+              info={"purpose": "checkpoints of one file content", "serves": "ingestion dedup"}),
         # [Tier 1] 해시 없이 「이 파일은 이미 결론이 났다」를 묻는 조회. NOT UNIQUE —
         # 위 클래스 도크스트링의 유일성 계약 참조.
-        Index("idx_fic_path_stat", "table_name", "filepath", "file_mtime", "file_size"),
+        Index("idx_fic_path_stat", "table_name", "filepath", "file_mtime", "file_size",
+              info={"purpose": "a file already concluded, asked without hashing it",
+                    "serves": "watcher's skip of an unchanged file"}),
     )
 
 
@@ -455,17 +511,26 @@ class CellOverwrite(Base):
 
     # [D3] no index=True on a PK column - see AuditLog.id
     id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True)
-    table_name = Column(String, nullable=False, index=True)
-    row_id = Column(String, nullable=False, index=True)
-    column_name = Column(String, nullable=False, index=True)
+    table_name = Column(String, nullable=False)
+    row_id = Column(String, nullable=False)
+    column_name = Column(String, nullable=False)
     is_overwrite = Column(Boolean, default=True)
     updated_by = Column(String, nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
     manual_priority_source = Column(String, nullable=True)
 
     __table_args__ = (
-        Index("idx_overwrites_lookup", "table_name", "row_id"),
-        Index("idx_overwrites_lookup_col", "table_name", "row_id", "column_name", unique=True),
+        Index("idx_overwrites_lookup", "table_name", "row_id",
+              info={"purpose": "the overwrite marks of one row", "serves": "layering, grid cell state"}),
+        Index("idx_overwrites_lookup_col", "table_name", "row_id", "column_name", unique=True,
+              info={"purpose": "one overwrite mark per cell", "serves": "layering upsert"}),
+        # once `index=True` on their columns - the same names
+        Index("ix_cell_overwrites_table_name", "table_name",
+              info={"purpose": "the overwrite marks of one table", "serves": "overwrite lookups by table"}),
+        Index("ix_cell_overwrites_row_id", "row_id",
+              info={"purpose": "the overwrite marks of one row id", "serves": "overwrite lookups by row"}),
+        Index("ix_cell_overwrites_column_name", "column_name",
+              info={"purpose": "the overwrite marks of one column", "serves": "overwrite lookups by column"}),
     )
 
 #: The source layer that means "a person typed this".
@@ -509,9 +574,12 @@ class CellSource(Base):
 
     # [D3] no index=True on a PK column - see AuditLog.id
     id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True)
-    table_name = Column(String, nullable=False, index=True)
-    row_id = Column(String, nullable=False, index=True)
-    column_name = Column(String, nullable=False, index=True)
+    # 🔴 NO `index=True` ON `table_name` · `column_name` (총괄 10-09). Their indexes are RETIRED -
+    #    `migrations/drop_redundant_layering_indexes.py` RETIRE_UNUSED drops them - and a flag left
+    #    here declared them still, so the boot's own build would have made them again.
+    table_name = Column(String, nullable=False)
+    row_id = Column(String, nullable=False)
+    column_name = Column(String, nullable=False)
     source_name = Column(String, nullable=False)
     value = Column(JSON, nullable=True)
     ingested_at = Column(DateTime(timezone=True), server_default=func.now())
@@ -580,7 +648,12 @@ class CellSource(Base):
         # anything. Rollback, if it is ever needed:
         #   CREATE INDEX CONCURRENTLY idx_sources_lookup
         #       ON public.cell_sources USING btree (table_name, row_id, column_name);
-        Index("idx_sources_lookup_source", "table_name", "row_id", "column_name", "source_name", unique=True),
+        Index("idx_sources_lookup_source", "table_name", "row_id", "column_name", "source_name", unique=True,
+              info={"purpose": "one value per cell and source", "serves": "layering upsert, batch prefetch"}),
+        # once `index=True` on `row_id` - the same name; kept by the retirement above on purpose
+        # (0.9 GB, and the one a plan actually chooses)
+        Index("ix_cell_sources_row_id", "row_id",
+              info={"purpose": "the source values of one row id", "serves": "layering lookups by row"}),
         # [S-118, 판정 245-b] HUMAN CLAIMS ONLY -- the write path must not pay for the
         # replay path.
         #
@@ -621,7 +694,8 @@ class CellSource(Base):
         # section refuses to drop it until this index exists and is valid. The boot ensure
         # creates this one and NAMES the old one with its size and the command.
         Index(HUMAN_CLAIMS_INDEX, "table_name", "row_id", "column_name",
-              postgresql_where=text("source_name = '%s'" % HUMAN_SOURCE_NAME)),
+              postgresql_where=text("source_name = '%s'" % HUMAN_SOURCE_NAME),
+              info={"purpose": "the cells a person typed", "serves": "enrichment analysis, human claims"}),
 
         # [Frame confirmation] "which cells were derived under this confirmation". PARTIAL
         # so it indexes only stamped rows -- the overwhelming majority of this table is and
@@ -629,7 +703,9 @@ class CellSource(Base):
         # Same caveat as the sibling above: create_all skips an existing table, so
         # migrations/add_frame_confirmation.py is the path onto a live database.
         Index("idx_sources_confirmation", "confirmation_uid", "table_name", "row_id",
-              postgresql_where=text("confirmation_uid IS NOT NULL")),
+              postgresql_where=text("confirmation_uid IS NOT NULL"),
+              info={"purpose": "the cells derived under one frame confirmation",
+                    "serves": "frame confirmation scope"}),
         # [S-280 · 판정 434] "which cells did THESE deleted rows feed". PARTIAL for the same
         # reason as the sibling above, and the reason is measured on that one: a FULL index
         # on this table carried 5,164 MB at 34M rows, and only a chain write stamps here.
@@ -642,7 +718,8 @@ class CellSource(Base):
         # `cell_layer.cells_stamped_by` groups by; it is left off the key so the index stays
         # narrow, and a deletion is rare and batched where an ingest is neither.
         Index("idx_sources_by_origin", "origin_row_id",
-              postgresql_where=text("origin_row_id IS NOT NULL")),
+              postgresql_where=text("origin_row_id IS NOT NULL"),
+              info={"purpose": "the cells deleted rows fed", "serves": "chain retraction of a deleted row"}),
     )
 
 
@@ -815,26 +892,35 @@ class FrameConfirmation(Base):
     enrichment_row_id = Column(String, nullable=True)
 
     __table_args__ = (
-        Index("idx_frame_conf_uid", "confirmation_uid", unique=True),
+        Index("idx_frame_conf_uid", "confirmation_uid", unique=True,
+              info={"purpose": "one frame confirmation per uid", "serves": "frame confirmation lookup"}),
         # 판 번호는 단위 안에서 유일하다. 동시 확정 두 건이 같은 번호를 받는 것을
         # 애플리케이션 락이 아니라 여기서 막는다.
         Index("idx_frame_conf_rule_unit_ver", "rule_name", "unit_key", "version",
-              unique=True),
+              unique=True, info={"purpose": "one version number per rule and unit",
+                                 "serves": "two confirmations at once cannot share a version"}),
         # 「이 단위의 현행 판」 조회 — 부분 인덱스라 지난 판이 쌓여도 크기가 안 자란다.
         Index("idx_frame_conf_rule_live", "rule_name", "unit_key",
-              postgresql_where=text("superseded_by IS NULL")),
+              postgresql_where=text("superseded_by IS NULL"),
+              info={"purpose": "the live confirmation of a rule and unit", "serves": "frame alignment"}),
         # [D3] 「어느 결정이 가정 위에 서 있나」 — 가정이 거짓으로 밝혀진 날 물어질 질문
         # 하나. 부분 인덱스라 가정 없는 판이 아무리 쌓여도 크기가 안 자란다.
         # ⚠️ 이 선언은 **두 곳**이다 — migrations/add_frame_confirmation.py도 같이 고쳐야
         # 한다(create_all은 기존 테이블에 인덱스를 만들지 않는다).
         Index("idx_frame_conf_assumed", "rule_name", "unit_key",
-              postgresql_where=text("geometry_assumed")),
+              postgresql_where=text("geometry_assumed"),
+              info={"purpose": "the confirmations standing on an assumed geometry",
+                    "serves": "what to revisit when an assumption proves false"}),
         # ⚠️ 아래 둘은 첫 선언의 흔적이다(위 dt_eqp/product 주석 참조). 다른 규칙에서는 두 값이
         # NULL이고 PostgreSQL의 UNIQUE는 NULL을 서로 다르게 보므로 아무것도 막지 않는다 —
         # 유일성을 실제로 강제하는 것은 위의 (rule_name, unit_key, version)이다.
-        Index("idx_frame_conf_unit_ver", "dt_eqp", "product", "version", unique=True),
+        Index("idx_frame_conf_unit_ver", "dt_eqp", "product", "version", unique=True,
+              info={"purpose": "one version per equipment and product (first declaration's trace)",
+                    "serves": "nothing beyond idx_frame_conf_rule_unit_ver - NULLs make it enforce nothing"}),
         Index("idx_frame_conf_live", "dt_eqp", "product",
-              postgresql_where=text("superseded_by IS NULL")),
+              postgresql_where=text("superseded_by IS NULL"),
+              info={"purpose": "the live confirmation of an equipment and product (first declaration's trace)",
+                    "serves": "frame alignment by equipment and product"}),
     )
 
 
@@ -880,13 +966,17 @@ class FrameConfirmationSource(Base):
 
     __table_args__ = (
         Index("idx_frame_conf_src_unique", "confirmation_uid", "role", "source_table",
-              "map_id", unique=True),
-        Index("idx_frame_conf_src_lookup", "confirmation_uid"),
+              "map_id", unique=True,
+              info={"purpose": "one row per confirmation, role and source map",
+                    "serves": "frame confirmation sources"}),
+        Index("idx_frame_conf_src_lookup", "confirmation_uid",
+              info={"purpose": "the sources of one confirmation", "serves": "frame confirmation sources"}),
         # 층 ⑨(계획)가 「이 맵이 어느 확정의 기여자였나」를 묻는 방향. 위 UNIQUE는 선두가
         # confirmation_uid라 이 질문에 쓰이지 못한다. ⚠️ 이 선언은 **두 곳**이다 —
         # migrations/add_frame_confirmation.py도 같이 고쳐야 한다(create_all은 기존 테이블에
         # 인덱스를 만들지 않는다). `idx_sources_confirmation`과 같은 계급이다.
-        Index("idx_frame_conf_src_map", "source_table", "map_id"),
+        Index("idx_frame_conf_src_map", "source_table", "map_id",
+              info={"purpose": "the confirmations a map contributed to", "serves": "transfer plan (layer 9)"}),
     )
 
 
@@ -911,7 +1001,11 @@ class AuthSession(Base):
     id_hash = Column(String(64), primary_key=True)
     user_name = Column(String(320), nullable=False)
     created_at = Column(BigInteger, nullable=False)
-    expires_at = Column(BigInteger, nullable=False, index=True)
+    expires_at = Column(BigInteger, nullable=False)
+
+    # once `index=True` on `expires_at` - the same name
+    __table_args__ = (Index("ix_auth_sessions_expires_at", "expires_at",
+                            info={"purpose": "sessions past their expiry", "serves": "SSO session sweep"}),)
 
 
 class AuthApiKey(Base):
@@ -922,11 +1016,17 @@ class AuthApiKey(Base):
     id = Column(String(32), primary_key=True)
     user_name = Column(String(320), nullable=False)
     name = Column(String(120), nullable=False)
-    key_hash = Column(String(64), nullable=False, unique=True)
+    key_hash = Column(String(64), nullable=False)
     created_at = Column(BigInteger, nullable=False)
     last_used_at = Column(BigInteger, nullable=True)
 
-    __table_args__ = (UniqueConstraint("user_name", "name", name="uq_auth_api_keys_user_name"),)
+    __table_args__ = (
+        UniqueConstraint("user_name", "name", name="uq_auth_api_keys_user_name",
+                         info={"purpose": "a person's key names are their own", "serves": "API key create"}),
+        # once `unique=True` on the column - named as PostgreSQL named that one
+        UniqueConstraint("key_hash", name="auth_api_keys_key_hash_key",
+                         info={"purpose": "one key per hash", "serves": "API key sign-in"}),
+    )
 
 
 import sys
@@ -1455,11 +1555,16 @@ INDEX_PRESENT = "present"
 INDEX_FAILED = "failed"
 
 
-def _ensure_one_index(engine, name, statement, what):
+#: An index name is looked up in THIS connection's schema (총괄 10-09) - by name alone, one found in
+#: another schema read 「present」 and nothing was built (a test database holds a schema per run).
+_IN_THIS_SCHEMA = " AND c.relnamespace = (SELECT oid FROM pg_namespace WHERE nspname = current_schema())"
+
+
+def _ensure_one_index(engine, name, statement, what, say=print):
     """Build one index CONCURRENTLY, repairing an invalid leftover first.
 
     Returns `INDEX_BUILT`, `INDEX_PRESENT` or `INDEX_FAILED` - see those constants for why
-    it is not a boolean.
+    it is not a boolean. `say` gets its lines (the repair, a failure and its reason).
 
     🔴 ONE SPELLING, BECAUSE THE REPAIR IS THE HARD PART. A failed `CONCURRENTLY` leaves the
     index behind marked INVALID, the planner will not use it, and `IF NOT EXISTS` then sees
@@ -1472,32 +1577,200 @@ def _ensure_one_index(engine, name, statement, what):
     try:
         with engine.connect().execution_options(
                 isolation_level="AUTOCOMMIT") as connection:
-            # 🔴 "THE STATEMENT RAN" IS NOT "AN INDEX WAS MADE" (S-124, caught by its own
-            # gate). Every caller appends this function's `True` to a list it then reports
-            # as what it BUILT, and `IF NOT EXISTS` succeeds loudly on an index that was
-            # already there - so a second boot announced sixty-eight fresh indexes and
-            # issued sixty-eight pointless CONCURRENTLY builds. A line that says the same
-            # thing whether or not anything happened is the log equivalent of no line.
-            already = connection.execute(_text(
-                "SELECT i.indisvalid FROM pg_class c "
-                "  JOIN pg_index i ON i.indexrelid = c.oid "
-                " WHERE c.relname = :name AND c.relkind = 'i'"), {"name": name}).first()
-            if already is not None and already[0]:
-                return INDEX_PRESENT
-            invalid = connection.execute(_text(
-                "SELECT 1 FROM pg_class c JOIN pg_index i ON i.indexrelid = c.oid "
-                " WHERE c.relname = :name AND NOT i.indisvalid"), {"name": name}
-            ).first()
-            if invalid:
-                print(f"[Schema Sync] {what} index '{name}' is INVALID from an "
-                      f"earlier failure; dropping and rebuilding.")
-                connection.execute(_text(
-                    f'DROP INDEX CONCURRENTLY IF EXISTS "{name}"'))
-            connection.execute(_text(statement))
+            # no statement limit on a build - CONCURRENTLY waits for older transactions by design
+            # (총괄 e0e8020fb) - and the limit as it was before the connection goes back to the pool
+            connection.execute(_text("SET statement_timeout = 0"))
+            try:
+                # 🔴 "THE STATEMENT RAN" IS NOT "AN INDEX WAS MADE" (S-124, caught by its own
+                # gate). Every caller appends this function's `True` to a list it then reports
+                # as what it BUILT, and `IF NOT EXISTS` succeeds loudly on an index that was
+                # already there - so a second boot announced sixty-eight fresh indexes and
+                # issued sixty-eight pointless CONCURRENTLY builds. A line that says the same
+                # thing whether or not anything happened is the log equivalent of no line.
+                already = connection.execute(_text(
+                    "SELECT i.indisvalid FROM pg_class c "
+                    "  JOIN pg_index i ON i.indexrelid = c.oid "
+                    " WHERE c.relname = :name AND c.relkind = 'i'" + _IN_THIS_SCHEMA),
+                    {"name": name}).first()
+                if already is not None and already[0]:
+                    return INDEX_PRESENT
+                if already is not None:
+                    say(f"[Schema Sync] {what} index '{name}' is INVALID from an "
+                        f"earlier failure; dropping and rebuilding.")
+                    connection.execute(_text(
+                        f'DROP INDEX CONCURRENTLY IF EXISTS "{name}"'))
+                connection.execute(_text(statement))
+            finally:
+                with contextlib.suppress(Exception):       # a broken connection is dropped with it
+                    connection.execute(_text("RESET statement_timeout"))
         return INDEX_BUILT
     except Exception as err:
-        print(f"[Schema Sync] Failed to ensure {what} index '{name}': {err}")
+        say(f"[Schema Sync] Failed to ensure {what} index '{name}': {err}")
         return INDEX_FAILED
+
+
+# --------------------------------------------------------------- the static models' indexes
+# 🔴 THE DECLARATION IS THE INDEX MASTER (총괄 e0e8020fb · d71f931c7, 소유자 10-08 「빠진 인덱스
+#    알리게 하고 알아서 만들어」 · 「선언이 마스터」). `create_all` adds no index to a table that
+#    exists, so a declared index reached a running database only when a person ran its
+#    migration. What should exist is the static models' `Index` and UNIQUE declarations - each
+#    with `info` purpose · serves - and no second list: `index_states` compares them with the
+#    database, the chain worker's index work names and builds what is owed, GET /admin/indexes
+#    shows the same answer.
+
+#: How often a build waiting on older transactions says whom it waits for.
+INDEX_WAIT_SAY_SECONDS = 600
+#: A declared index as `index_states` finds it, beside `INDEX_PRESENT`.
+INDEX_MISSING = "missing"
+INDEX_INVALID = "invalid"
+INDEX_BUILDING = "building"
+INDEX_UNKNOWN = "unknown"
+
+_HELD = (
+    "SELECT c.relname AS name, t.relname AS table_name, i.indisvalid AS valid,"
+    "       i.indisprimary AS is_primary, pg_relation_size(c.oid) AS size_bytes, s.idx_scan AS scans"
+    "  FROM pg_index i JOIN pg_class c ON c.oid = i.indexrelid JOIN pg_class t ON t.oid = i.indrelid"
+    "  LEFT JOIN pg_stat_user_indexes s ON s.indexrelid = i.indexrelid"
+    " WHERE t.relnamespace = (SELECT oid FROM pg_namespace WHERE nspname = current_schema())"
+    "   AND t.relname = ANY(:tables)")
+_BUILDING = (
+    "SELECT c.relname AS name, p.phase, p.current_locker_pid AS locker, a.application_name AS app"
+    "  FROM pg_stat_progress_create_index p JOIN pg_class c ON c.oid = p.index_relid"
+    "  LEFT JOIN pg_stat_activity a ON a.pid = p.current_locker_pid"
+    " WHERE 1 = 1" + _IN_THIS_SCHEMA)
+
+
+def model_tables():
+    """The static models' tables - the framework's own, not the catalogue's dynamic ones."""
+    return [table for name, table in sorted(Base.metadata.tables.items()) if name not in DYNAMIC_TABLES]
+
+
+def declared_indexes():
+    """-> [(table, name, item)] - every `Index` and UNIQUE constraint the static models declare, by
+    the name the database gives it. A primary key is the table's identity and is not listed."""
+    out = []
+    for table in model_tables():
+        items = list(table.indexes) + [c for c in table.constraints if isinstance(c, UniqueConstraint)]
+        out += [(table, item.name, item) for item in sorted(items, key=lambda item: item.name)]
+    return out
+
+
+def _shape(item):
+    """What a declared index is over."""
+    if isinstance(item, UniqueConstraint):
+        return {"columns": [column.name for column in item.columns], "where": None, "include": [],
+                "using": None, "unique": True, "constraint": True}
+    options = item.dialect_options["postgresql"]
+    return {"columns": [getattr(e, "name", None) or str(e) for e in item.expressions],
+            "where": None if options.get("where") is None else str(options["where"]),
+            "include": list(options.get("include") or ()), "using": options.get("using"),
+            "unique": bool(item.unique), "constraint": False}
+
+
+def _building(connection):
+    """-> {index name: what its build is doing} - a waiting build names whom it waits for."""
+    return {row.name: ("building - waiting for transactions older than it: pid %s (%s)"
+                       % (row.locker, row.app or "no application_name")) if row.locker
+            else "building - %s" % row.phase
+            for row in connection.execute(text(_BUILDING))}
+
+
+def index_states(engine):
+    """-> {"declared": [...], "outside": [...]} - each declared index beside the database: its
+    state (present · missing · invalid · building), size, scans and what a build waits on; and
+    the database's indexes on these tables that nothing declares (a primary key counts as
+    declared). 🔴 THE ONE COMPARISON - the boot's notice, its build and GET /admin/indexes all
+    read this. PostgreSQL only; elsewhere every state is `unknown`."""
+    declared = [dict(name=name, table=table.name, **_shape(item), purpose=item.info.get("purpose"),
+                     serves=item.info.get("serves"), state=INDEX_UNKNOWN, building=None,
+                     size_bytes=None, scans=None)
+                for table, name, item in declared_indexes()]
+    if engine.dialect.name != "postgresql":
+        return {"declared": declared, "outside": []}
+    with engine.connect() as connection:
+        held = {row.name: row for row in connection.execute(
+            text(_HELD), {"tables": [table.name for table in model_tables()]})}
+        building = _building(connection)
+    for row in declared:
+        found = held.pop(row["name"], None)
+        row["building"] = building.get(row["name"])
+        row["state"] = (INDEX_BUILDING if row["building"] else INDEX_MISSING if found is None
+                        else INDEX_PRESENT if found.valid else INDEX_INVALID)
+        if found is not None:
+            row.update(size_bytes=found.size_bytes, scans=found.scans)
+    outside = [{"name": name, "table": row.table_name, "valid": row.valid, "building": building.get(name),
+                "size_bytes": row.size_bytes, "scans": row.scans}
+               for name, row in sorted(held.items()) if not row.is_primary]
+    return {"declared": declared, "outside": outside}
+
+
+def model_index_ddl(index):
+    """A declared `Index`'s CREATE statement, CONCURRENTLY and IF NOT EXISTS - compiled from the
+    declaration (columns · INCLUDE · WHERE · USING), never written a second time."""
+    from sqlalchemy.dialects import postgresql
+    from sqlalchemy.schema import CreateIndex
+
+    statement = str(CreateIndex(index, if_not_exists=True).compile(dialect=postgresql.dialect()))
+    for head in ("CREATE INDEX IF NOT EXISTS ", "CREATE UNIQUE INDEX IF NOT EXISTS "):
+        if statement.startswith(head):
+            return head.replace("INDEX", "INDEX CONCURRENTLY", 1) + statement[len(head):]
+    raise ValueError("%s compiles to an unexpected statement: %s" % (index.name, statement[:80]))
+
+
+def ensure_model_indexes(engine, build=True, say=print, say_every=INDEX_WAIT_SAY_SECONDS):
+    """The declared indexes the database lacks or holds invalid: named in ONE line, then - when
+    `build` - made one at a time through `_ensure_one_index` (총괄 e0e8020fb). A UNIQUE constraint
+    is named and not built (it is ALTER TABLE, not an index).
+    -> {name: INDEX_BUILT | INDEX_PRESENT | INDEX_FAILED} of what was built."""
+    owed = [row for row in index_states(engine)["declared"] if row["state"] in (INDEX_MISSING, INDEX_INVALID)]
+    if not owed:
+        return {}
+    say("[Indexes] %d declared index(es) the database lacks or holds invalid: %s - %s" % (
+        len(owed), ", ".join("%s on %s (%s)" % (row["name"], row["table"], row["state"]) for row in owed),
+        "building them one at a time" if build else "not built: build_missing_indexes is off"))
+    items = {name: item for _table, name, item in declared_indexes()}
+    done = {}
+    for row in owed if build else ():
+        if row["constraint"]:
+            say("[Indexes] %s is a UNIQUE constraint - not built here" % row["name"])
+            continue
+        done[row["name"]] = _build_one(engine, items[row["name"]], row, say, say_every)
+    return done
+
+
+def _build_one(engine, index, row, say, say_every):
+    """One declared index built, with its start, its end and - while it waits - whom it waits for."""
+    import time
+
+    statement = model_index_ddl(index)
+    say("[Indexes] building %s on %s" % (row["name"], row["table"]))
+    started, stop = time.monotonic(), threading.Event()
+    watcher = threading.Thread(target=_say_while_building, daemon=True,
+                               args=(engine, row["name"], started, stop, say, say_every))
+    watcher.start()
+    try:
+        done = _ensure_one_index(engine, row["name"], statement, "declared", say=say)
+    finally:
+        stop.set()
+        watcher.join()
+    say("[Indexes] %s %s in %.1f s" % (row["name"], done, time.monotonic() - started))
+    return done
+
+
+def _say_while_building(engine, name, started, stop, say, every):
+    """Every `every` seconds while `name` builds: what it is doing. Watching only - a read that
+    fails says so once and stops; the build goes on."""
+    import time
+
+    while not stop.wait(every):
+        try:
+            with engine.connect() as connection:
+                said = _building(connection).get(name)
+        except Exception as exc:                                        # noqa: BLE001
+            say("[Indexes] %s: its progress did not read (%s) - the build goes on, unwatched" % (name, exc))
+            return
+        if said:
+            say("[Indexes] %s still building after %.0f s - %s" % (name, time.monotonic() - started, said))
 
 
 def alignment_decision_key_index_ddl(rule, entry):

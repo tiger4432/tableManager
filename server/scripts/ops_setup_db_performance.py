@@ -532,33 +532,9 @@ def setup_performance():
             except Exception as e:
                 print(f"   Failed to create {idx_name}: {e}")
 
-        idx_name, table, definition, where = withdraw_idx
-        print(f" - Creating {idx_name} on {table} {definition}...")
-        t0 = time.time()
-        built = False
-        try:
-            conn.execute(text(
-                f"CREATE INDEX CONCURRENTLY IF NOT EXISTS {idx_name} "
-                f"ON {table} {definition}"))
-            size = conn.execute(text(
-                "SELECT pg_size_pretty(pg_relation_size(:n))"),
-                {"n": idx_name}).scalar()
-            print(f"   Success ({time.time() - t0:.2f}s, {size})")
-            built = True
-        except Exception as e:
-            print(f"   Failed to create {idx_name}: {e}")
-        if built:
-            # ANALYZE HERE, not in Step 4. Column statistics decide whether the
-            # planner believes the new index is selective, and Step 4 runs AFTER
-            # the verification below — checking the plan on stale statistics would
-            # report a failure the next autovacuum quietly fixes.
-            print(" - ANALYZE cell_sources (before checking the plan)...")
-            conn.execute(text("ANALYZE cell_sources"))
-            print("\nStep 3.11: Verifying withdraw index PLAN SHAPE...")
-            try:
-                _verify_withdraw_plan(conn, idx_name)
-            except Exception as e:
-                print(f" - !! NOT VERIFIED: plan check itself failed ({e})")
+        # ⚰️ THE WITHDRAW INDEX'S BUILD AND ITS PLAN CHECK (3.11) STOOD HERE, reading a
+        #   `withdraw_idx` this file no longer defines - the step died with NameError
+        #   (총괄 10-09: «안 죽게만»). The index is retired (the ⚰️ above).
 
         # 4. 통계 정보 갱신
         print("\nStep 4: Refreshing Statistics (ANALYZE)...")

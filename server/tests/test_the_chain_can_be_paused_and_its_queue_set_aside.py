@@ -410,6 +410,9 @@ def test_a_cross_that_comes_after_the_success_paths_read_waits_and_the_row_reads
         # the mark never landed, so no group cleared one: the too-late line is for a mark read before the lock
         assert [a for a in db.query(models.AuditLog).filter_by(source_name=set_aside.SKIP_TOO_LATE_SOURCE)
                 if a.old_value == key] == []
+        # and the × marked nothing, so it says nothing either - its line is what it MARKED (총괄 10-09)
+        assert [a for a in db.query(models.AuditLog).filter_by(source_name=set_aside.QUEUE_SKIP_SOURCE)
+                if a.old_value == key] == []
     finally:
         db.rollback()
         db.close()
@@ -834,7 +837,7 @@ def test_setting_aside_leaves_a_row_the_chain_already_ended(db_q):
     [event] = _pending(db)
     event_constants.mark_processed(event, "SUCCESS")
     db.commit()
-    assert set_aside._mark(db, [event.id], "late") == 0
+    assert set_aside._mark(db, [event.id], "late") == {}
     db.commit()
     assert _rows(db, PA) == [("SUCCESS", True, 0, None)]
 
@@ -847,7 +850,7 @@ def _set_aside_has_nothing_to_announce(db):
                                  payload={"row_id": "x", "transaction_id": tx}, processed_chain=False))
     db.commit()
     [event] = [e for e in _pending(db) if get_payload_dict(e).get("transaction_id") == tx]
-    assert set_aside._mark(db, [event.id], "set aside by the test") == 1
+    assert set_aside._mark(db, [event.id], "set aside by the test") == {"es_aside_probe": 1}
     db.commit()
     db.expire_all()
     event = db.get(models.DatabaseOutbox, event.id)

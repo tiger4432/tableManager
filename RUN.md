@@ -1,5 +1,29 @@
 # 지금 돌리면 되는 것
 
+> ## [10-09] **선언된 인덱스가 DB 에 없으면 체인 워커가 알리고 스스로 만든다 · GET /admin/indexes — 이주 «없음» · 재기동 «체인 워커 · 서버»**
+>
+> ```
+> 무엇이 바뀌나    «있어야 할 인덱스»의 답은 하나 — server/database/models.py 의 Index · UNIQUE 선언(각각 info 의 purpose · serves)
+>                체인 워커가 켜질 때와 설정을 다시 읽을 때 선언 대 DB 를 견주고, 빠졌거나 무효인 것을 한 줄로 알린 뒤 하나씩 만든다
+>                CONCURRENTLY — 표 쓰기를 막지 않는다. 체인 · 슬롯은 그동안 그대로 돈다
+>                은퇴한 둘(ix_cell_sources_table_name · ix_cell_sources_column_name)은 이제 선언에 없다 — 다시 안 만든다
+> 볼 줄          chain_worker.log:
+>                  [Indexes] <N> declared index(es) the database lacks or holds invalid: <이름> on <표> (missing|invalid), ... - building them one at a time
+>                  = 이 DB 에 그 인덱스가 없다(또는 깨졌다). 이어서 하나씩:
+>                  [Indexes] building <이름> on <표>
+>                  [Indexes] <이름> built in <초> s        (failed 면 바로 위에 [Schema Sync] Failed to ensure ... : <사유>)
+>                  [Indexes] <이름> still building after <초> s - building - waiting for transactions older than it: pid <P> (<application_name>)
+>                  = 10 분마다. 그 pid 의 트랜잭션이 끝나야 만들기가 끝난다 — pg_stat_activity 에서 그 pid 가 무엇인지 본다
+>                이 줄들이 없다 = 선언된 인덱스가 전부 있다
+> 볼 곳          GET /admin/indexes  (관리자 토큰)
+>                  declared 의 줄마다 name · table · columns · where · include · purpose · serves · state(present|missing|invalid|building) · building · size_bytes · scans
+>                  outside = 그 표들에 있는데 아무 선언도 없는 인덱스 (기본 키는 선언된 것으로 친다)
+> 끄는 법        ingestion_settings.json 에 "build_missing_indexes": false   -> 알리기만 하고 안 만든다 (다음 기동 · 설정 다시 읽기부터)
+>                만드는 중인 것을 멈추려면 그 만들기의 pid 를 pg_cancel_backend — 남은 무효 인덱스는 다음 기동이 지우고 다시 만든다
+> 급할 때        git revert <이 커밋> -> 체인 워커 · 서버 재기동
+> ```
+
+---
 > ## [10-09] **원장 따라가기의 실패 줄은 같은 실패의 1 · 10 · 100 … 번째에만 — 이주 «없음» · 재기동 «체인 워커»**
 >
 > ```

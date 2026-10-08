@@ -2670,13 +2670,39 @@ def _ensure_declared_indexes_sync(rules, db_session_factory):
                      "(체인은 계속): %s", _key_error)
 
 
+#: ingestion_settings.json - whether the index work builds the static models' declared indexes the
+#: database lacks (the default) or only names them (총괄 e0e8020fb).
+BUILD_MISSING_INDEXES_SETTING = "build_missing_indexes"
+
+
+def _ensure_model_indexes_sync(db_session_factory):
+    """The static models' declared indexes the database lacks or holds invalid: named, and built one
+    at a time unless `build_missing_indexes` is false (`models.ensure_model_indexes`). Contained: an
+    index that cannot be compared or built is a line, never a worker that will not start."""
+    from database import models
+    from parsers.directory_watcher import load_ingestion_settings
+
+    try:
+        db = db_session_factory()
+        try:
+            engine = db.get_bind()
+        finally:
+            db.close()
+        build = load_ingestion_settings().get(BUILD_MISSING_INDEXES_SETTING, True) is not False
+        models.ensure_model_indexes(engine, build=build, say=logger.warning)
+    except Exception as exc:                                            # noqa: BLE001
+        logger.error("[Indexes] the declared indexes were not compared (the chain goes on): %s", exc)
+
+
 def _start_index_work(rules, db_session_factory, after=None):
     """The index work as a task beside the loop - after `after` (the previous start's or
-    reload's), so two never build the same index at once."""
+    reload's), so two never build the same index at once. On a thread: the loop - its slot
+    dispatcher too - goes on while an index builds."""
     async def run():
         if after is not None and not after.done():
             await asyncio.wait({after})
         await asyncio.to_thread(_ensure_declared_indexes_sync, rules, db_session_factory)
+        await asyncio.to_thread(_ensure_model_indexes_sync, db_session_factory)
     return asyncio.create_task(run())
 
 
