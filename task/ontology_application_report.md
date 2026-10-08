@@ -36719,3 +36719,17 @@ b340386fe
 덤      이 재기의 앞선 판 중 성공 길까지 간 둘에서 통지가 박스에 떠 있는 API 의 /internal/events/broadcast 를 쳤고 401 로 거절됐다(토큰 없음 · 보낸 것 없음). 그 뒤 재기에서 통지를 막았다 — 이 보고의 수는 막은 판
 문서    SYSTEM_FLOWS C-18 에 POST 한 줄 — 이 보고와 같은 커밋. CODE_MAP · BACKFILL_GUIDE · RUN.md 는 구현자가 맞춤
 ```
+
+---
+
+## [C 응용] 10-08 576ff6161(목록 인자를 글자로 적으면 규칙 검사에서 거절) QA — 결함 못 찾음 (코드로 읽음 · 시험 돌림)
+
+```
+읽음    선언이 dict 이면 dict 그대로 남는다 — @mapper(params=…) 도 register 를 지나 같다
+        선언을 읽는 자리 = chain_bindings.rule_refusals 하나(server 에서 mapper_params( 호출 1) — 로더 · 저장 · 설정 보고가 다 거기로. 둘째 검사 없음
+        맵퍼 목록 응답은 list(MAPPER_PARAMS.get(name)) — dict 면 이름만 나가 JSON 이 안 깨진다
+시험    server/tests/test_a_misspelled_cell_is_refused_where_the_mapper_declared.py 10 통과 (이 트리 · sqlite)
+알 것   이미 운영 설정에 글자로 적힌 규칙은 다음 로드에서 «빠진다» — 로더가 unknown_field 말고는 거절 규칙을 뺀다(09-14 사고 뒤 남은 예외 하나).
+        그 규칙은 전에도 돌다가 터졌으니 잃는 동작은 없다. 단 글자 «하나»짜리 칸 이름(list("k") = ["k"])은 전에 돌았고 이제 빠진다 — 드문 모양
+문서    SETUP_ORDER 의 params 줄에 형 선언 · 거절 — 이 보고와 같은 커밋
+```
