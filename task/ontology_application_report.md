@@ -36694,3 +36694,28 @@ b340386fe
          전에는 같은 자리가 «3000» 점선 덩어리였고 열면 서버에 물었다. 재기동 순서(클라 반과 함께)를 RUN.md 에 걸지는 총괄 판정
 문서     WALK.md 펼침 묶음 절(앞 N · drawn · 연 묶음 먼저 읽기 · 위 예산 사실) — 이 보고와 같은 커밋
 ```
+
+---
+
+## [C 응용] 10-08 83023aa5d(대기열 × 서버 반) QA — 결함 하나(잼) · 이제 타는 것 둘
+
+```
+잰 것   test_zz_probe_cross_then_success.py — 사설 워크트리(끝에 지움) · sqlite 메모리 · 진짜 process_pending_groups · 진짜 묶음 몸 · 진짜 라우트 · 진짜 맵퍼(es_bump)
+        묶음이 «파이썬 안»(맵퍼 앞)에 있을 때 × — 표시는 커밋되고, 끊을 질의가 없다(sqlite 는 pid 도 없다)
+        × 의 답       [{'skipped_events': 1, 'cancelled_pid': None}]
+        묶음 답       ok [True] — 끝까지 돌았다
+        대상 표        전 [] · 뒤 [('K1', '1')] — 규칙이 돌았다
+        원천 행        [('SUCCESS', True, 0, 'operator')] reads as SET_ASIDE: True
+        다시 돌리기 범위  {'es_a': 1} — rerun_set_aside 가 이 행을 또 돌린다
+결함    × 가 «건너뜀 1»이라 답하고 행도 «치워 둠»으로 읽히는데, 그 행의 규칙은 돌았다. 다시 돌리기를 누르면 같은 변경이 «두 번» 먹는다
+        까닭(코드로 읽음): _still_waiting 은 «묶음 전»과 «실패 길»에서만 묻는다 — 성공 길은 표시를 안 보고 SUCCESS 를 쓴다
+        치워 둠 표시가 processed_columns("SUCCESS") + cancelled_by 라서, 돈 행과 안 돈 행이 같은 모양이 된다
+        PostgreSQL 에서도 같은 틈이 있다(코드로 읽음): pg_cancel_backend 는 «도는 질의»만 끊는다 — 묶음이 맵퍼(파이썬)에 있거나 문장 사이면 끊을 것이 없고 묶음은 계속 간다
+        커밋 문장 「before its ending is written, so a mark that landed while it ran is not written over」는 실패 길에서만 참이다
+        고칠 모양(성공 길도 끝 쓰기 전에 묻기 · 그 행을 «돌았음»으로 남기고 답을 고치기 등)은 총괄 판정
+이제 타는 것 (앞서 「서버 반 착지 뒤」라 적은 둘)
+        ① × 뒤 다시 읽기가 «가는 중인 읽기»에 붙는다 — 그 읽기가 취소 전에 떠났으면 줄이 다음 30 초 읽기까지 남는다(4d0f68d08 보고)
+        ② 200 {"already": "processed"} 를 화면이 «됨»으로 읽고 말이 없다 — 운영자가 보는 사이 돈 줄에 × 를 누르면 건너뛴 줄 안다(35eacf3d2 보고)
+덤      이 재기의 앞선 판 중 성공 길까지 간 둘에서 통지가 박스에 떠 있는 API 의 /internal/events/broadcast 를 쳤고 401 로 거절됐다(토큰 없음 · 보낸 것 없음). 그 뒤 재기에서 통지를 막았다 — 이 보고의 수는 막은 판
+문서    SYSTEM_FLOWS C-18 에 POST 한 줄 — 이 보고와 같은 커밋. CODE_MAP · BACKFILL_GUIDE · RUN.md 는 구현자가 맞춤
+```
