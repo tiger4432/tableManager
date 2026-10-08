@@ -1,3 +1,17 @@
+> ## [01:04 디자인] 이미 끝난 대기열 줄의 × — 무엇이 되었는지 한 낱말 토스트 (총괄 be5457365 · 앱 QA ②) — 0b20c0459
+
+**결론** × 의 200 답에 `already` 가 있으면 짧은 토스트로 말하고(`processed` «Already ran» · `set_aside` «Already set aside» · `gone` «Gone»), 대기열을 다시 읽어 줄이 빠집니다. 건너뛴 줄의 × 는 전처럼 말 없이 다시 읽기만. 서버가 나중에 낱말을 더하면 그 낱말을 그대로 말합니다.
+
+| 진짜 빌드 `/assets/admin-Ct5zgEyC.js` (대기열 읽기 · cancel POST 를 페이지 안에서 답함, 서버로 보낸 쓰기 0) | 결과 |
+|---|---|
+| × 누름 | 물음 «Skip 1 event?» → 예 |
+| 답 200 `already: set_aside` | 토스트 «Already set aside»(info) 한 번 |
+| 다시 읽기 | 줄 1 → 0 |
+
+**시험** chain_queue_panel_harness 238(XA · XM10) · chain_rule_user_path_harness 99(V 칸 · 결함 하나 더 — 하니스: 26/26 defects caught, 0 escaped) · 러너 초록 · 계약 13 개 어긋남 0 · RELEASE_LOG 같은 커밋.
+
+다음: 558a46ef1 · 원장 후속 칩(GET /runtime 의 ledger_followup — 멈춤은 빨간 칩 + 사유, 꺼짐은 «live off: <세상>»).
+
 > ## [00:32 디자인] 대기열 줄의 «waiting for <표>» · «slot pid N» (총괄 메시지 · 슬롯 422d075c7) — 032237e3d
 
 **결론** 상태 함수 하나(`chainStateWhy`)에 `waiting_for_table` 한 갈래 — 근거 줄 «waiting for <표>». 두 대기열이 같이 부르는 상태 칸 함수(`chainStateCell`)가 줄의 slot pid 를 받아 근거 줄 밑에 «slot pid N» 한 줄을 그립니다. 값이 올 때만, 칸은 그대로. 어드민 줄은 `slot_pid` 를 넘기고, 그리드 행도 넘기지만 서버가 아직 안 실어 그리지 않습니다.

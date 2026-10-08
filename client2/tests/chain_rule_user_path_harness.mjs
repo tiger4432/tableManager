@@ -909,10 +909,24 @@ async function suite(probe) {
   ok(Boolean(again) && JSON.stringify(queueAsked()) === '["GET /admin/chain/queue"]',
      `V the panel's Refresh asks the queue alone (${JSON.stringify(queueAsked())})`);
   calls.length = 0;
+  toasts.length = 0;
   if (typeof cancelQueueLine === 'function') await cancelQueueLine({ key: 'tx:aaaaaaaa' });
   await flush();
   ok(JSON.stringify(queueAsked()) === '["POST /admin/chain/queue/cancel","GET /admin/chain/queue"]',
      `V after a ×, the queue alone is read again (${JSON.stringify(queueAsked())})`);
+  // A line that had already stopped waiting (lead be5457365: 200 with `already`) says what became of it in one word.
+  const skippedToasts = toasts.slice();
+  const plainAnswer = answer;
+  answer = (call) => (call.url.includes('/admin/chain/queue/cancel')
+    ? { status: 200, body: { skipped_events: 0, already: 'set_aside' } } : plainAnswer(call));
+  calls.length = 0;
+  toasts.length = 0;
+  if (typeof cancelQueueLine === 'function') await cancelQueueLine({ key: 'tx:cccccccc' });
+  await flush();
+  answer = plainAnswer;
+  ok(JSON.stringify(toasts) === '[["Already set aside","info"]]' && JSON.stringify(skippedToasts) === '[]'
+     && JSON.stringify(queueAsked()) === '["POST /admin/chain/queue/cancel","GET /admin/chain/queue"]',
+     `V a × on a line already set aside says so once, then the queue is read again; a × that skipped says nothing (${JSON.stringify([skippedToasts, toasts, queueAsked()])})`);
   // A read that left before the cancel is held; the × must not take its answer as the queue after (QA 54a53f894).
   {
     let release = () => {};
@@ -1033,6 +1047,8 @@ const DEFECTS = [
     s => s.replace('onRefresh: () => { void refreshQueue(); }', 'onRefresh: () => { void fetchData({ silent: true }); }')],
   ['a × takes a read that left before it as the queue after (QA 54a53f894)',
     s => s.replace('  if (queueRead) await queueRead.catch(() => null);\n', '')],
+  ['a × on a line that had already stopped says nothing',
+    s => s.replace("  if (got.already) showToast(got.already, 'info');\n", '')],
   ['a × re-reads the whole tab',
     s => s.replace("  if (queueRead) await queueRead.catch(() => null);\n  void refreshQueue();",
                    "  if (queueRead) await queueRead.catch(() => null);\n  void fetchData({ silent: true });")],
