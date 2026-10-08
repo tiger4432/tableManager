@@ -379,6 +379,13 @@ def compute_health(db_result, heartbeats, supervisor_status, outbox_result,
         work = (hb or {}).get("work") or {}
         if work.get("open"):
             entry["work"] = work
+            if hb_name == "chain":
+                # The chain's word and its grounds from the queue's one seat (총괄 248ae20cd) -
+                # stalled there is this beat's own verdict, the threshold below.
+                import event_constants
+                from runtime.running import work_facts
+
+                entry["chain_state"] = event_constants.chain_state_of(False, None, running=work_facts(work))
             if work.get("stalled"):
                 # Do not mask a more specific verdict (down/wedged/missing);
                 # those name a bigger problem than a stalled unit of work.

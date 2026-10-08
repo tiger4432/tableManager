@@ -1,5 +1,28 @@
 # 지금 돌리면 되는 것
 
+> ## [10-08] **대기열 줄 · 행마다 상태 낱말 하나와 그 근거 — 「도는지 · 멈췄는지 · 왜」 — 이주 «없음» · 재기동 «서버 · 체인 워커»**
+>
+> ```
+> 볼 곳          GET /admin/chain/queue 의 줄마다 · GET /outbox/queue/rows 의 행마다 "chain_state": {"state", "why"} — 같은 함수 하나
+>                /health 의 workers.chain 에도 도는 일이 있을 때 같은 칸
+> 낱말 · 근거     waiting    아직 안 집힘                         why.waiting_seconds
+>                running    그 줄의 묶음이 지금 도는 중            why.stage · moved_seconds(마지막으로 움직인 뒤 초) · elapsed_seconds
+>                           stage 예: mapper · <규칙> -> <표> · page 3 · 1000 rows / write:<표>
+>                stalled    도는데 300 s 넘게 안 움직임(/health 와 같은 임계)   why.stalled_on(무엇을 기다리나 — 아직 안 물었으면 null)
+>                retrying   실패, 다시 시도 예정                   why.attempt · cap · last_failure(그 실패의 마지막 줄)
+>                paused     Pause 중                             why.by · at · reason
+>                set_aside · failed · done 은 끝난 행 — 두 대기열은 기다리는 것만 실어 거기 안 나온다
+> 읽는 법        running 인데 moved_seconds 가 계속 커지면 그 단계에서 안 움직이는 것 — 300 s 를 넘으면 stalled 로 바뀐다
+>                묶음이 규격(1,000 행 ≤ 5 s, 행 수에 비례)을 넘기면 chain_worker.log 에 한 줄:
+>                  [Chain] group <tx>: <N> row(s) · view builds … · <초> s · MACHINERY · mapper <초> s · write:<표> <초> s … · INSIDE THE WRITE …
+>                  = 그 묶음이 어디에 몇 초 썼나(정렬 없는 묶음도 이제 남는다)
+> 바뀐 칸        그리드 행의 "chain_state" 가 문자열 -> {"state","why"} · "state_detail" 은 은퇴(why 안으로)
+>                클라 착지 전에는 그리드 우측 대기열의 상태 칸이 그 객체를 그대로 보일 수 있다
+> 급할 때        git revert <이 커밋> -> 서버 · 체인 워커 재기동
+> ```
+
+---
+
 > ## [10-08] **메인 그리드 우측 대기열 = 어드민 대기열과 같은 «기다리는 것»만 · 빼 둔(×) 행은 알릴 것이 없다 — 이주 «없음» · 재기동 «서버 · 체인 워커» · 운영 SQL 한 번**
 >
 > ```

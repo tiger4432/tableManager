@@ -4764,6 +4764,20 @@ def get_chain_queue_depth(db: Session = Depends(get_db)):
         stamped = dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
         return max(0.0, (now_utc - stamped).total_seconds())
 
+    # The line's state is the one seat's (총괄 248ae20cd): what runs and the pause read once, and a
+    # line waiting to be tried again says the failure its rows were left with.
+    from chain import control as chain_control
+    from chain import ingestion_worker as chain_worker
+    from runtime import running as running_seat
+    running, paused = running_seat.chain_lines_running(), chain_control.paused()
+    retrying = [line.key for line in lines if line.max_retry]
+    last_failure = {}
+    for key, said in (db.query(line_key, outbox.payload[event_constants.LAST_FAILURE].as_string())
+                      .filter(waiting_only, line_key.in_(retrying), outbox.status == "RETRYING")
+                      .order_by(outbox.id.desc()).all() if retrying else ()):
+        last_failure.setdefault(key, said)
+    chain_rules = chain_worker.loaded_chain_rules() if retrying else []
+
     waiting_transactions = []
     for line in lines:
         d = detail[line.key]
@@ -4789,6 +4803,14 @@ def get_chain_queue_depth(db: Session = Depends(get_db)):
             "waiting_at": to_local_str(line.created_at) if line.created_at is not None else None,
             # × on this line: POST /admin/chain/queue/cancel {"key"} (소유자 10-08)
             "cancel": {"key": line.key},
+            # {"state", "why"} - the grid queue's rows carry the same (총괄 248ae20cd)
+            "chain_state": event_constants.chain_state_of(
+                False, "RETRYING" if line.max_retry else "PENDING", retry_count=int(line.max_retry or 0),
+                attempts_cap=(chain_worker.group_attempts_cap(
+                    [r.get("name") for r in chain_rules if r.get("trigger_table") in d["tables"]], chain_rules)
+                    if line.max_retry else None),
+                payload={event_constants.LAST_FAILURE: last_failure.get(line.key)},
+                waiting_seconds=_age(line.created_at), running=running.get(line.key), paused=paused),
         })
 
     owners = {}
@@ -5024,7 +5046,8 @@ def get_outbox_queue_rows(limit: int = 50, cursor: int = None,
 
     q = db.query(outbox.id, outbox.event_type, outbox.table_name, outbox.status,
                  outbox.processed_chain, outbox.created_at, outbox.broadcast_at,
-                 outbox.payload).filter(and_(waiting, could_run))
+                 outbox.payload, outbox.retry_count,
+                 event_constants.queue_line_key(outbox).label("line_key")).filter(and_(waiting, could_run))
     if cursor is not None:
         q = q.filter(outbox.id > int(cursor))
     # 🔴 한 행 «더» 읽고 버린다. 그래야 「더 있다」가 «재어서 아는 사실»이 된다 —
@@ -5044,6 +5067,11 @@ def get_outbox_queue_rows(limit: int = 50, cursor: int = None,
         stamped = dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
         return max(0.0, (now_utc - stamped).total_seconds())
 
+    # What runs and the pause, read ONCE for every row (총괄 248ae20cd) - the state is asked below.
+    from chain import control as chain_control
+    from runtime import running as running_seat
+    running, paused = running_seat.chain_lines_running(), chain_control.paused()
+
     rows = []
     for r in head:
         # ⚠️ op 까지 주는 이유 — `RETROACTIVE_RUN` 한 타입이 주인 둘을 덮는다. 여기는
@@ -5054,7 +5082,6 @@ def get_outbox_queue_rows(limit: int = 50, cursor: int = None,
         owner = event_constants.outbox_owner(
             r.event_type, op=(get_payload_dict(r) or {}).get("op"),
             undelivered=broadcast == event_constants.BROADCAST_STATE_UNDELIVERED)
-        state, detail = event_constants.chain_state_of(r.processed_chain, r.status)
 
         # 🔴 이 행에 대해 «무언가 돈다»가 아니면 싣지 않는다.
         # ⚰️ 여기 note 둘이 있었다 — 「%s 는 규칙을 깨우지 않습니다」와 「이 표를 보는 규칙이
@@ -5091,6 +5118,12 @@ def get_outbox_queue_rows(limit: int = 50, cursor: int = None,
 
         if not runs:
             continue
+        payload = get_payload_dict(r) or {}
+        state = event_constants.chain_state_of(
+            r.processed_chain, r.status, retry_count=r.retry_count or 0, payload=payload,
+            attempts_cap=(worker.group_attempts_cap([e["name"] for e in matched if e["will_fire"]], rules)
+                          if r.status == "RETRYING" else None),
+            waiting_seconds=_age(r.created_at), running=running.get(r.line_key), paused=paused)
 
         rows.append({
             "outbox_id": r.id,
@@ -5101,8 +5134,8 @@ def get_outbox_queue_rows(limit: int = 50, cursor: int = None,
             "created_at": to_local_str(r.created_at) if r.created_at else None,
             "waiting_seconds": _age(r.created_at),
             "owner": owner,
+            # {"state", "why"} - the one seat's answer, the admin queue's lines carry the same
             "chain_state": state,
-            "state_detail": detail,
             "broadcast_state": broadcast,
             "rules": matched,
         })

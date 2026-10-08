@@ -135,17 +135,26 @@ APPROVAL_STATE_NOT_ASKED = "not_asked"
 APPROVAL_STATES = frozenset({APPROVAL_STATE_APPROVED, APPROVAL_STATE_REFUSED,
                              APPROVAL_STATE_NOT_ASKED})
 
-#: 아웃박스 «행 하나»가 체인에 대해 서 있는 자리 — 위 둘과 «같은 규율»로 사유는 값이
-#: 아니다. `state_detail` 이 옆에서 말한다(RETRYING · 모순 조합 · 어휘 밖 원값).
-#: 🔴 값을 넷째로 늘리고 싶어지면 그것은 대개 «사유»다. `status` 리터럴을 그대로 상태로
-#:    쓰면 화면이 어휘 밖 값 하나에 「모름」을 그린다 — 실제로 RETRYING 이 그 자리였다.
-#: ⚠️ 이 셋은 `status` 와 `processed_chain` «둘»에서 나온다. 한 칸만 읽으면
-#:    「돌았다」와 「돌다 실패했다」가 같은 값이 된다.
+#: 아웃박스 행 · 대기열 줄 하나가 체인에 대해 서 있는 자리 — 닫힌 낱말 여덟, 화면이 그대로
+#: 그린다(소유자 10-08 「waiting done 이 두 개로 끝내는 게 제일 별로임」, 총괄 248ae20cd).
+#: 낱말마다 근거가 `why` 로 옆에 선다 — 근거는 값이 아니다(위 둘과 같은 규율).
+#: ⚠️ `status` 와 `processed_chain` «둘» + 도는 사실(하트비트) + Pause 에서 나온다. 한 칸만
+#:    읽으면 「돌았다」와 「돌다 실패했다」가, 「기다린다」와 「돈다」가 같은 값이 된다.
 CHAIN_STATE_WAITING = "waiting"
-CHAIN_STATE_DONE = "done"
+CHAIN_STATE_RUNNING = "running"
+CHAIN_STATE_RETRYING = "retrying"
+CHAIN_STATE_STALLED = "stalled"
+CHAIN_STATE_PAUSED = "paused"
+CHAIN_STATE_SET_ASIDE = "set_aside"
 CHAIN_STATE_FAILED = "failed"
+CHAIN_STATE_DONE = "done"
 
-CHAIN_STATES = frozenset({CHAIN_STATE_WAITING, CHAIN_STATE_DONE, CHAIN_STATE_FAILED})
+CHAIN_STATES = frozenset({CHAIN_STATE_WAITING, CHAIN_STATE_RUNNING, CHAIN_STATE_RETRYING,
+                          CHAIN_STATE_STALLED, CHAIN_STATE_PAUSED, CHAIN_STATE_SET_ASIDE,
+                          CHAIN_STATE_FAILED, CHAIN_STATE_DONE})
+#: The payload key a group's failure leaves on its events while they wait to be tried again -
+#: the one line `retrying` shows (a quarantined group's whole record is `error_log`).
+LAST_FAILURE = "last_failure"
 
 #: 통지가 «확정»됐나 — 체인 상태와 «다른 축»이다. 둘을 한 값으로 접으면
 #: 「돌았는데 아직 안 알려졌다」가 「돌았다」에 묻힌다. 그 행은 스윕이 다시 쏜다.
@@ -170,24 +179,63 @@ OUTBOX_NOTIFY_CHANNEL = "outbox_event"
 EVENT_OUTBOX_QUEUE_CHANGED = "outbox_queue_changed"
 
 
-def chain_state_of(processed_chain, status):
-    """(`processed_chain`, `status`) -> (상태, 사유). 「빈 칸」이 없다 — 모든 조합이 답을 받는다.
+def chain_state_of(processed_chain, status, *, retry_count=0, attempts_cap=None, payload=None,
+                   waiting_seconds=None, running=None, paused=None):
+    """-> `{"state": <one of CHAIN_STATES>, "why": {...}}` - the ONE seat that says what a queue
+    row or line is doing (총괄 248ae20cd). The admin queue's lines, the grid queue's rows and
+    /health's chain stall all ask here. 「빈 칸」이 없다 — 모든 조합이 답을 받는다.
 
+    Ended rows: set aside (its cancel mark) > failed > done. Waiting rows: paused > running /
+    stalled (a group of its line runs - `running`, the work facts `runtime.running` reads from
+    the beat once per request; stalled is the beat's own verdict, /health's one threshold) >
+    retrying > waiting.
     🔴 `mark_processed` 가 status 와 `processed_chain=True` 를 «같이» 찍으므로 영구 실패는
-       `processed_chain=true` 다. 그래서 「안 돌린 실패」는 도달 불가이고, 그 조합이 실제로
-       오면 그것은 «모순»이라 숨기지 않고 사유로 말한다.
+       `processed_chain=true` 다. 그래서 「안 돌린 실패」는 도달 불가이고, 어휘 밖 status 는
+       숨기지 않고 근거(`unexpected_status`)로 말한다.
     """
-    if not processed_chain:
-        if status == "RETRYING":
-            return CHAIN_STATE_WAITING, "retrying"
-        if status in ("PENDING", None):
-            return CHAIN_STATE_WAITING, None
-        return CHAIN_STATE_WAITING, "unexpected_status:%s" % (status,)
-    if status == "SUCCESS":
-        return CHAIN_STATE_DONE, None
-    if status == "FAILED":
-        return CHAIN_STATE_FAILED, None
-    return CHAIN_STATE_DONE, "unexpected_status:%s" % (status,)
+    payload = payload or {}
+
+    def said(state, **why):
+        return {"state": state, "why": why}
+
+    if processed_chain:
+        if payload.get(CANCEL_MARK):
+            return said(CHAIN_STATE_SET_ASIDE, by=payload[CANCEL_MARK], reason=payload.get(CANCEL_REASON))
+        if status == "FAILED":
+            return said(CHAIN_STATE_FAILED, failure=failure_cause(
+                (payload.get("error_log") or {}).get("reason") if isinstance(payload.get("error_log"), dict)
+                else payload.get("error_log")))
+        return said(CHAIN_STATE_DONE, **({} if status == "SUCCESS" else {"unexpected_status": status}))
+    if paused is not None:
+        return said(CHAIN_STATE_PAUSED, by=paused.get("by"), at=paused.get("at"), reason=paused.get("reason"))
+    if running is not None:
+        why = {"stage": running.get("stage"), "moved_seconds": running.get("moved_seconds"),
+               "elapsed_seconds": running.get("elapsed_seconds")}
+        if running.get("stalled"):
+            return said(CHAIN_STATE_STALLED, stalled_on=running.get("stalled_on"), **why)
+        return said(CHAIN_STATE_RUNNING, **why)
+    if status == "RETRYING":
+        return said(CHAIN_STATE_RETRYING, attempt=retry_count, cap=attempts_cap,
+                    last_failure=payload.get(LAST_FAILURE))
+    return said(CHAIN_STATE_WAITING, waiting_seconds=waiting_seconds,
+                **({} if status in ("PENDING", None) else {"unexpected_status": status}))
+
+
+def failure_cause(error_reason) -> str:
+    """The one sentence an operator needs from a recorded failure.
+
+    🔴 [S-248] THE LAST NON-EMPTY LINE, NEVER THE FIRST. A traceback's first line is
+    「Traceback (most recent call last):」, so the single line the permanent-failure log
+    carried said nothing at all while the sentence that names the cause sat below the cut.
+    Measured on the box 2026-09-15: a full day of 「매번 다른 행에서 permanently
+    failed」 with the reason invisible, over an index nobody could see.
+
+    ⚠️ A PLAIN ONE-LINE REASON IS ITSELF, which is why this is 「last line」 rather than
+    「the line after Traceback」 - the recorded reason is not always a traceback.
+    (Moved here from the chain worker so the state seat above reads the same sentence.)
+    """
+    lines = [line.strip() for line in str(error_reason or "").splitlines() if line.strip()]
+    return lines[-1] if lines else "(no reason recorded)"
 
 
 def mark_processed(event, status: str):

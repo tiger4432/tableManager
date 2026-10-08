@@ -550,20 +550,16 @@ def max_group_attempts(rule, document) -> int:
     return DEFAULT_MAX_GROUP_ATTEMPTS
 
 
-def failure_cause(error_reason) -> str:
-    """The one sentence an operator needs from a recorded failure.
+def group_attempts_cap(rule_names, rules):
+    """The attempts a group gets - the strictest of the rules it woke (S-221), the document's
+    when it woke none. The failure path and the queue's `retrying` ask this one (총괄 248ae20cd)."""
+    names = {str(name) for name in rule_names}
+    caps = [max_group_attempts(r, _RULES_DOCUMENT) for r in rules if str(r.get("name") or "") in names]
+    return min(caps) if caps else max_group_attempts(None, _RULES_DOCUMENT)
 
-    🔴 [S-248] THE LAST NON-EMPTY LINE, NEVER THE FIRST. A traceback's first line is
-    「Traceback (most recent call last):」, so the single line the permanent-failure log
-    carried said nothing at all while the sentence that names the cause sat below the cut.
-    Measured on the box 2026-09-15: a full day of 「매번 다른 행에서 permanently
-    failed」 with the reason invisible, over an index nobody could see.
 
-    ⚠️ A PLAIN ONE-LINE REASON IS ITSELF, which is why this is 「last line」 rather than
-    「the line after Traceback」 - the recorded reason is not always a traceback.
-    """
-    lines = [line.strip() for line in str(error_reason or "").splitlines() if line.strip()]
-    return lines[-1] if lines else "(no reason recorded)"
+#: The one sentence of a recorded failure - its seat is beside the chain state (총괄 248ae20cd).
+failure_cause = event_constants.failure_cause
 
 
 class NamedFailure(str):
@@ -1481,6 +1477,8 @@ def _in_rule_order(table_updates):
                 updates = list(result.get("updates") or ())
                 logger.info("[Chain] %s -> %s: page %d, %d row(s)", item.rule, target, page,
                             len(updates))
+                # the queue's `running` reads this - and its moved seconds start again (총괄 248ae20cd)
+                heartbeat.progress("mapper · %s -> %s · page %d · %d rows" % (item.rule, target, page, len(updates)))
                 more = result.get("next_page")
                 if updates:
                     yield (target, updates, False, None, None)
@@ -2230,8 +2228,21 @@ def _process_chain_transaction_group_sync(tx_id, events, db, rules):
     return True, None, broadcast_messages
 
 
-def _log_alignment_group_work(tx_id, summary) -> None:
-    """One line saying how much alignment work this group asked for (S-94, 판정 235).
+#: The chain group norm (운영 규격): 1,000 rows in at most this many seconds. A group slower in
+#: proportion to its rows says where its time went - the one threshold (총괄 248ae20cd).
+GROUP_SECONDS_PER_1000_ROWS = 5.0
+
+
+def _group_rows(events):
+    """How many rows a group's events name - a collapsed event's list, a per-row event's one."""
+    return sum(len(get_payload_dict(e).get("row_ids") or ()) or 1 for e in events)
+
+
+def _log_group_work(tx_id, summary, rows) -> None:
+    """One line saying where a group's time went - for a group that asked for alignment work
+    (S-94, 판정 235), and for any group slower than the norm in proportion to its rows (총괄
+    248ae20cd, 소유자 「복사 체인이 왜 오래 걸리는지 안 보인다」): mapper · write:<table> · the
+    steps inside, the stage names a running line shows.
 
     🔴 A VALUE, NOT AN INFERENCE. Whether a group's reference resolutions REPEAT is a
     property of its data - no config file can answer it - and 「큰 깊이는 값으로 보임」 is the
@@ -2239,11 +2250,11 @@ def _log_alignment_group_work(tx_id, summary) -> None:
     arithmetic. `distinct_maps` against `reference_resolutions` is exactly the number that
     decides whether caching the reference across a group is worth anything.
 
-    ⚠️ SILENT FOR A GROUP THAT DID NONE. Most chain groups never touch alignment, and a
-    line of zeros for each of them would bury the ones that did - the log equivalent of a
-    screen explaining what it is not showing.
+    ⚠️ SILENT FOR A GROUP THAT DID NONE AND KEPT THE NORM. A line for every group would bury
+    the ones that matter - the log equivalent of a screen explaining what it is not showing.
     """
-    if not summary or not summary.get("view_builds"):
+    if not summary or not (summary.get("view_builds") or summary.get("wall_seconds", 0.0)
+                           > GROUP_SECONDS_PER_1000_ROWS * max(rows, 1) / 1000.0):
         return
     phases = summary.get("phases") or {}
     stages = summary.get("stages") or {}
@@ -2254,11 +2265,11 @@ def _log_alignment_group_work(tx_id, summary) -> None:
     write_total = sum(seconds for name, seconds in stages.items()
                       if name.startswith("write:"))
     logger.info(
-        "[Chain] group %s: view builds %d · reference resolutions %d · distinct maps %d "
+        "[Chain] group %s: %d row(s) · view builds %d · reference resolutions %d · distinct maps %d "
         "· %.3f s · MACHINERY%s · unnamed %.3f s"
         " · INSIDE THE VIEW%s · unnamed %.3f s"
         " · INSIDE THE WRITE%s · unnamed %.3f s",
-        tx_id, summary["view_builds"], summary["reference_resolutions"],
+        tx_id, rows, summary["view_builds"], summary["reference_resolutions"],
         summary["distinct_maps"], summary["wall_seconds"],
         "".join(" · %s %.3f s" % (name, seconds)
                 for name, seconds in sorted(stages.items())) or " (none named)",
@@ -2312,7 +2323,7 @@ def _claimed_group_sync(tx_id, events, db, rules):
     """The group under a work claim opened ON ITS OWN THREAD - the watcher's mechanism
     (fc1c0781d ③). Stage entries on this thread are its progress; the loop that waits for
     it beats «alive» from another thread and so cannot refresh it."""
-    rows = sum(len(get_payload_dict(e).get("row_ids") or ()) or 1 for e in events)
+    rows = _group_rows(events)
     what = "tx %s · %d row(s) of %s" % (
         tx_id, rows, ", ".join(sorted({str(e.table_name) for e in events})))
     from database.context import chain_group
@@ -2724,6 +2735,7 @@ async def process_pending_groups(db, group_order, groups, rules, db_session_fact
             continue
         _GROUP_LINE_KEYS.set(tuple(line_keys))
         group_targets = _group_target_tables(events_in_tx, rules)
+        group_rows = _group_rows(events_in_tx)          # before its commit expires the events
         # 🔴 «읽기»도 순서에 걸린다. 앞선 그룹이 실패한 표를 이 그룹이 «읽으면», 그 답은
         #    낡은 값 위에서 나오고 오류가 «안 난다» — 선언된 교차 다섯이 그 모양이었다.
         # ⚠️ 실측(출하 아홉): 어느 규칙에서도 `target_table` 이 자기 «읽기 집합 안»에 없다.
@@ -2854,10 +2866,7 @@ async def process_pending_groups(db, group_order, groups, rules, db_session_fact
                 #    A group - merged or not - runs every rule it woke, so a cap that held
                 #    for one of them would be no cap for the others. Same reading, same
                 #    shape and the same `min` as `merge_consecutive_groups`' ceiling.
-                _woke = _rules_for_group(events_in_tx, rules)
-                _caps = [max_group_attempts(r, _RULES_DOCUMENT) for r in rules
-                         if str(r.get("name") or "") in _woke]
-                attempts_cap = min(_caps) if _caps else max_group_attempts(None, _RULES_DOCUMENT)
+                attempts_cap = group_attempts_cap(_rules_for_group(events_in_tx, rules), rules)
 
                 # 🔴 [S-227] THE UNIT'S ATTEMPTS ARE ITS MEMBERS' MAX, AND THE VERDICT IS THE
                 #    UNIT'S. Counting per event made the number depend on WHO IS IN THE GROUP:
@@ -2897,6 +2906,10 @@ async def process_pending_groups(db, group_order, groups, rules, db_session_fact
                         failed_permanently_count += 1
                     else:
                         event.status = "RETRYING"
+                        # what `retrying` shows on the queue - the line this failure ends with
+                        # (총괄 248ae20cd); the whole record is the quarantine's
+                        event.payload = dict(get_payload_dict(event) or {},
+                                             **{event_constants.LAST_FAILURE: failure_cause(error_reason)})
                         retrying_count += 1
 
                 with alignment_batch_counts.stage("commit"):
@@ -2920,7 +2933,7 @@ async def process_pending_groups(db, group_order, groups, rules, db_session_fact
                     _hol_head.setdefault(_t, (tx_id, (error_reason or "").strip()))
                 # [Latency Fix #5] break 제거 — 동일 target_table 그룹만 보류(순서 보존)하고 나머지는 계속 처리.
                 blocked_targets |= group_targets
-        _log_alignment_group_work(tx_id, alignment_summary())
+        _log_group_work(tx_id, alignment_summary(), group_rows)
 
     # [Latency SLO] 배치의 모든 성공 그룹 통지를 group_order 순서대로 **인라인** 발사한다.
     #   배경 태스크(create_task) 예약은 폴링 루프의 동기 구간에 이벤트 루프가 블로킹되는 동안 기아 상태가 되어

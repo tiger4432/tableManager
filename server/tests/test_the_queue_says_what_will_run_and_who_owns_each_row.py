@@ -296,16 +296,22 @@ def test_a_status_outside_the_vocabulary_does_not_break_the_screen(client, db_se
     """게이트 ⑧. 어휘 밖 값은 터지지 않고 «원값»을 사유로 말한다 — RETRYING 이 그 자리였다."""
     r = row(db_session, status="WAT", processed_chain=False)
     _body, by_id = rows_of(client)
-    assert by_id[r.id]["chain_state"] in event_constants.CHAIN_STATES
-    assert "WAT" in by_id[r.id]["state_detail"]
+    assert by_id[r.id]["chain_state"]["state"] == event_constants.CHAIN_STATE_WAITING
+    assert by_id[r.id]["chain_state"]["why"]["unexpected_status"] == "WAT"
 
 
-def test_retrying_is_waiting_with_a_reason_not_a_fourth_value(client, db_session):
-    """⚠️ RULE_STATES 의 규율 — 사유는 값이 아니다."""
-    r = row(db_session, status="RETRYING", processed_chain=False)
+def test_retrying_is_its_own_word_with_its_attempt_and_its_last_failure(client, db_session):
+    """⚰️ 「사유는 값이 아니다 — retrying 은 waiting 의 사유」였다. 소유자가 뒤집었다(10-08
+    「waiting done 이 두 개로 끝내는 게 제일 별로임」, 총괄 248ae20cd): 다시 시도할 행은 그 낱말과
+    몇 번째인지 · 마지막 실패 문장을 단다."""
+    r = row(db_session, status="RETRYING", processed_chain=False,
+            payload={"transaction_id": "tx-retry", event_constants.LAST_FAILURE: "boom: the last line"})
+    r.retry_count = 1
+    db_session.flush()
     _body, by_id = rows_of(client)
-    assert by_id[r.id]["chain_state"] == event_constants.CHAIN_STATE_WAITING
-    assert by_id[r.id]["state_detail"] == "retrying"
+    assert by_id[r.id]["chain_state"]["state"] == event_constants.CHAIN_STATE_RETRYING
+    why = by_id[r.id]["chain_state"]["why"]
+    assert (why["attempt"], why["last_failure"]) == (1, "boom: the last line") and why["cap"] >= 1
 
 
 def test_the_cursor_pages_without_repeating_or_dropping_a_row(client, db_session):
@@ -384,8 +390,9 @@ def test_every_combination_of_the_two_columns_gets_an_answer():
     """⚠️ 빈 칸은 빼지 말고 «단언»한다 — 빠진 칸은 「통과」로 읽힌다."""
     for processed in (False, True):
         for status in ("PENDING", "RETRYING", "SUCCESS", "FAILED", "WAT", None):
-            state, _detail = event_constants.chain_state_of(processed, status)
-            assert state in event_constants.CHAIN_STATES, (processed, status)
+            said = event_constants.chain_state_of(processed, status)
+            assert said["state"] in event_constants.CHAIN_STATES and isinstance(said["why"], dict), (
+                processed, status)
 
 
 def test_the_sql_and_the_python_answer_undelivered_alike(db_session):
@@ -442,3 +449,144 @@ def test_the_response_does_not_reuse_a_name_the_sibling_route_spends_differently
 
     assert "capped" not in listed, "이름이 돌아왔다 — 옆 라우트와 뜻이 갈린다"
     assert listed["cap"] == 200, "상한 «값»은 남는다 — 그건 부른 쪽이 모르는 사실이다"
+
+
+# ---------------------------------------------------------------------------
+# 총괄 248ae20cd — 낱말 여덟 × 부르는 곳 둘(어드민 대기열 줄 · 그리드 대기열 행)
+# 소유자 10-08 「체인 한 덩어리가 제대로 도는지 어케 알아?」 · 「waiting done 이 두 개로 끝내는 게 제일 별로임」
+# ---------------------------------------------------------------------------
+
+def _waiting_row(db, tx, **payload):
+    """A waiting row whose payload is a JSON object - its line key is its transaction."""
+    obj = models.DatabaseOutbox(event_uuid=str(uuid.uuid4()), table_name="t", event_type="EDIT",
+                                status="PENDING", processed_chain=False,
+                                payload=dict({"transaction_id": tx, "row_id": "r-" + tx}, **payload))
+    db.add(obj)
+    db.commit()
+    return obj
+
+
+def _both(client, row_id, key):
+    """`(the admin line's chain_state, the grid row's chain_state)` - the same row, both callers."""
+    lines = {line["cancel"]["key"]: line for line in client.get("/admin/chain/queue").json()["waiting_transactions"]}
+    return lines[key]["chain_state"], rows_of(client)[1][row_id]["chain_state"]
+
+
+@pytest.fixture(name="control_in_tmp")
+def fixture_control_in_tmp(tmp_path, monkeypatch):
+    """The pause file in this test's own config directory."""
+    import paths
+    from chain import control as chain_control
+
+    monkeypatch.setattr(paths, "CONFIG_DIR", str(tmp_path / "config"))
+    yield chain_control
+    chain_control.resume()
+
+
+@pytest.fixture(name="claim")
+def fixture_claim():
+    """A chain group's work claim held open while the routes are asked - what a running group
+    publishes in the chain's beat (its line, its stage)."""
+    from utils import heartbeat
+
+    opened = []
+
+    def open_for(key, stage):
+        cm = heartbeat.work_claim("chain", "tx %s" % key)
+        cm.__enter__()
+        opened.append(cm)
+        heartbeat.note_work(line_keys=[key])
+        heartbeat.progress(stage)
+        heartbeat.beat("chain", force=True)
+    yield open_for
+    for cm in opened:
+        cm.__exit__(None, None, None)
+
+
+def _age_the_claim(seconds):
+    from utils import heartbeat
+
+    import threading
+
+    with heartbeat._state_lock:
+        for c in heartbeat._claims.values():
+            c["last_progress"] -= seconds
+    # from another thread - a beat on the claim's own thread is its progress
+    beater = threading.Thread(target=heartbeat.beat, args=("chain",), kwargs={"force": True})
+    beater.start()
+    beater.join()
+
+
+def test_a_waiting_line_says_waiting_and_how_long_in_both_queues(client, db_session):
+    r = _waiting_row(db_session, "tx-w")
+    for said in _both(client, r.id, "tx-w"):
+        assert said["state"] == event_constants.CHAIN_STATE_WAITING
+        assert said["why"]["waiting_seconds"] is not None
+
+
+def test_a_running_line_says_its_stage_and_since_when_it_moved(client, db_session, claim):
+    r = _waiting_row(db_session, "tx-run")
+    claim("tx-run", "mapper · r -> u · page 2 · 10 rows")
+    for said in _both(client, r.id, "tx-run"):
+        assert said["state"] == event_constants.CHAIN_STATE_RUNNING, said
+        assert said["why"]["stage"] == "mapper · r -> u · page 2 · 10 rows"
+        assert said["why"]["moved_seconds"] < 5 and said["why"]["elapsed_seconds"] is not None
+
+
+def test_a_line_past_the_stall_threshold_is_stalled_and_a_new_page_moves_it_again(client, db_session, claim):
+    """The threshold is the beat's own - /health's one value (`DEFAULT_STALL_AFTER_SEC`)."""
+    from utils import heartbeat
+
+    r = _waiting_row(db_session, "tx-st")
+    claim("tx-st", "write:u")
+    _age_the_claim(heartbeat.DEFAULT_STALL_AFTER_SEC + 5)
+    for said in _both(client, r.id, "tx-st"):
+        assert said["state"] == event_constants.CHAIN_STATE_STALLED, said
+        assert said["why"]["stage"] == "write:u" and said["why"]["moved_seconds"] > heartbeat.DEFAULT_STALL_AFTER_SEC
+
+    heartbeat.progress("mapper · r -> u · page 3 · 10 rows")
+    heartbeat.beat("chain", force=True)
+    for said in _both(client, r.id, "tx-st"):
+        assert said["state"] == event_constants.CHAIN_STATE_RUNNING and said["why"]["moved_seconds"] < 5, said
+
+
+def test_a_line_to_be_tried_again_says_its_attempt_and_its_last_failure(client, db_session):
+    r = _waiting_row(db_session, "tx-re", **{event_constants.LAST_FAILURE: "ValueError: boom"})
+    r.status, r.retry_count = "RETRYING", 1
+    db_session.commit()
+    for said in _both(client, r.id, "tx-re"):
+        assert said["state"] == event_constants.CHAIN_STATE_RETRYING, said
+        assert (said["why"]["attempt"], said["why"]["last_failure"]) == (1, "ValueError: boom")
+        assert said["why"]["cap"] >= 1
+
+
+def test_a_paused_chain_says_paused_with_who_and_why_and_beats_running(client, db_session, claim, control_in_tmp):
+    r = _waiting_row(db_session, "tx-p")
+    claim("tx-p", "mapper")
+    control_in_tmp.pause("kim", "incident drill")
+    for said in _both(client, r.id, "tx-p"):
+        assert said["state"] == event_constants.CHAIN_STATE_PAUSED, said
+        assert (said["why"]["by"], said["why"]["reason"]) == ("kim", "incident drill") and said["why"]["at"]
+
+
+def test_the_ended_words_are_answered_and_neither_queue_lists_an_ended_row(client, db_session):
+    """set aside · failed · done - the seat answers them; both queues list only what waits."""
+    from chain import set_aside
+
+    aside = _waiting_row(db_session, "tx-a")
+    event_constants.mark_cancelled(aside, set_aside.OPERATOR, "skipped from the chain queue by kim")
+    failed = _waiting_row(db_session, "tx-f", error_log={"reason": "Traceback (most recent call last):\nValueError: bad row"})
+    event_constants.mark_processed(failed, "FAILED")
+    done = _waiting_row(db_session, "tx-d")
+    event_constants.mark_processed(done, "SUCCESS")
+    db_session.commit()
+
+    def said(r):
+        return event_constants.chain_state_of(r.processed_chain, r.status, payload=r.payload)
+    assert said(aside) == {"state": event_constants.CHAIN_STATE_SET_ASIDE,
+                           "why": {"by": set_aside.OPERATOR, "reason": "skipped from the chain queue by kim"}}
+    assert said(failed) == {"state": event_constants.CHAIN_STATE_FAILED, "why": {"failure": "ValueError: bad row"}}
+    assert said(done) == {"state": event_constants.CHAIN_STATE_DONE, "why": {}}
+    lines = {line["cancel"]["key"] for line in client.get("/admin/chain/queue").json()["waiting_transactions"]}
+    assert not {"tx-a", "tx-f", "tx-d"} & lines
+    assert not {aside.id, failed.id, done.id} & set(rows_of(client)[1])
