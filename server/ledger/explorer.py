@@ -16,9 +16,8 @@ from datetime import datetime
 from ledger import trace
 
 
-MAX_HOPS = trace.DEFAULT_MAX_DEPTH
-DEFAULT_NODE_LIMIT = 400
-DEFAULT_EDGE_LIMIT = 1200
+# ⚰️ MAX_HOPS · DEFAULT_NODE_LIMIT · DEFAULT_EDGE_LIMIT stood here with nobody reading them - a second
+#   answer (1200) beside the walk's (`ledger_subgraph`, 6000) for the same budget (총괄 de9455c17).
 
 
 def _canonical(value):

@@ -64982,3 +64982,24 @@ RUN.md        「IT 에 등록할 주소 = https://<서버>/auth/signed-out · �
 ```
 
 > **[총괄 -> 클라 · 구현자] 10-08 — 672c42526(양불 그룹 대조) «보류» (소유자 10-08 「3번 일단 보류, 2번으로 되는지 해 볼게」). 클라: 표 이어 걷기(53050a4ec)만 · 부호 마킹 · Contrast 보기 · Trend 세 모양은 짓지 않는다. 구현자: 대조 견본 · 시드 상한 셈도 보류**
+
+> **[총괄 -> 구현자 · 클라] 10-08 🔴 구현자 «지금 맨 앞» — 원장 시각 바인딩에 «format» 칸 (소유자 10-08 「원장 백필이 occurred_at 이 datetime 이 아니라고 안 됨 · yyyymmdd_hhmmss 형식」 -> 「ㄱ 바인딩에 format」 · 「지금 맨 앞」 · 「알아서 인식은 안 됨?」)**
+
+```
+지금(총괄이 코드로 읽음)  roleframe 이 시각 값을 time_format.fold_time_value 로 받는다 — datetime 만 시간대를 붙이고 글자는 None
+   -> envelope 가 「occurred_at is missing or is not a datetime」으로 거절. 글자 시각 칸은 받을 길이 없다
+   그런데 «선언한 형식으로 글자를 읽는» 해석기가 이미 하나 있다 — store.parse_occurred_at(값, 형식, 시간대) (지금은 observability 의 커서 지연만 부름)
+구현자
+  시각 바인딩(kind column · timezone)에 선택 칸 «format»(strptime 철자) — 있으면 글자 값을 parse_occurred_at 로 읽음(같은 해석기 하나 · 둘째 해석기 금지). datetime 값이면 지금 그대로
+  read.occurred_at 에도 같은 칸(같은 검사 함수). 검사: format 은 문자열 · 오늘 시각을 그 형식으로 쓰고 다시 읽어 같아야(왕복) — 아니면 저장 거절 문장
+  읽기 실패 행은 지금처럼 거절하되 문장에 «값 · 선언한 형식» — 「'2026-10-08' does not match format %Y%m%d_%H%M%S」
+  스켈레톤 · public schema · 폼에 칸(같은 커밋) · ONTOLOGY_LEDGER_SETUP 시각 절에 한 줄 · RELEASE_LOG · RUN.md(바꾼 뒤 그 소스 --whole-source)
+  게이트  yyyymmdd_hhmmss 글자 칸 -> 원자 occurred_at 이 그 시각(시간대 적용) / format 없음 + 글자 -> 지금 거절 그대로 / datetime 칸 -> 그대로
+          / 형식 안 맞는 행 -> 그 행만 거절 + 문장 / 오프셋 붙은 글자 -> 오프셋이 이김(parse_occurred_at 의 규칙) + 변이
+클라 (서버 뒤)
+  선언 폼에서 시각 칸을 고르면 그 칸의 표본 값 몇 개로 format 을 «미리 채움» — 확인은 사람. 후보는 «한 가지로만 읽히는» 모양만(ISO · %Y%m%d_%H%M%S · %Y%m%d%H%M%S · %Y/%m/%d %H:%M:%S 등)
+  두 가지로 읽히는 모양(일/월 순서)은 채우지 않음. 표본을 읽는 길은 폼이 이미 쓰는 표본 읽기(있으면 그것 · 새 라우트 만들지 않음 — 없으면 물음)
+  🔴 실행 중에 짐작해서 읽지 않는다 — 형식은 «선언에 적힌 것»만. 미리 채우기는 적는 손을 덜어 줄 뿐
+```
+
+> **[총괄 -> 클라 · 구현자] 10-08 — 덩어리 열기는 «덩어리 주인 노드에서 그 술어로 한 걸음»으로 (11e5ea207 의 깊은 경우 · 구현자 물음): 표 이어 걷기(53050a4ec)가 짓는 «한 걸음 이어 걷기» 함수 하나로 그래프의 «+M more» 덩어리를 연다(positive = 주인 · follow = 술어 · 방향 · collect = 먼 타입 · hops 1). 처음부터 다시 걸어 예산을 나눠 쓰지 않으니 깊이와 무관하게 0 이 아니다. 서버는 앞 N + bundle count · drawn · «같은 깊이 안 먼저»까지만. 클라 순서: 표 이어 걷기 직후(같은 함수)**
