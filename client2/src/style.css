@@ -2527,6 +2527,32 @@ body.resizing-active .history-sidebar {
   gap: 7px;
   overflow: hidden;
 }
+/* 🔴 The header is drawn at --header-zoom (lead bfb62503e, owner 10-08 「줌 67 퍼에서 잘 되었었는데」): its
+   paddings, heights, icons, gaps and borders shrink together, the way the browser at 67 % drew them, and its text
+   is set back so it reads at --fs-header. Every size inside is a token, so the text tokens its parts use are re-said here (the chip's × is h5);
+   the font-size is for what only inherits one. The logo shrinks with it; the map editor's header (same class, same file) does not. */
+.grid-header { zoom: var(--header-zoom); }
+.grid-header .controls-area {
+  --fs-body: calc(var(--fs-header) / var(--header-zoom));
+  --fs-button: var(--fs-body);
+  --fs-label: var(--fs-body);
+  --fs-tag: var(--fs-body);
+  --fs-meta: var(--fs-body);
+  --fs-h5: var(--fs-body);
+  font-size: var(--fs-body);
+}
+/* 🔴 The row stays one at 1920 with filters on (owner 10-08): the strip and the status message yield before
+   the row breaks. An empty strip spends no width - its 240px basis was 240px of nothing. With chips or the TX banner
+   it yields down to one readable chip, «+N» and «Clear all» (16em, measured at 0.67); a 0 basis
+   with no floor is what settled it at 30px on 09-02. The message yields down to «Loaded <n> rows» whole
+   (13em) and never takes more than its own text, so the chips keep the free space. */
+.header-filter-bar:not(:has(.filter-chip, > .tx-filter-banner[style*="flex"])) { flex: 0 0 0; }
+.app-header .header-filter-bar:has(.filter-chip, > .tx-filter-banner[style*="flex"]) { flex: 1 1 0; min-width: 16em; }
+.app-header .log-indicator-area {
+  flex: 1 1 0;
+  min-width: 13em;
+  max-width: max-content;
+}
 
 /* A text control, not a button box — the mockup's 「전체 해제」 is a plain link beside the
    chips, and a bordered button there would outweigh the chips it clears. */
