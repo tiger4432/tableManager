@@ -94,6 +94,26 @@ async function suite({ status: S, board: B }) {
   named.ingestion.state_names = { ran_and_wrote: 'Translated', never_ran: 'Not run' };
   eq('L3 the row draws the server\'s state names, not the machine words', said(r(S.ledgerRow(named))),
     'ok|Translated 1 · Not run 1');
+  // lead 558a46ef1: the follow-up's row of the /runtime answer (server 0e7530cef) — its sentence passes through whole.
+  const STOP = 'world default · declarations/ledger_config.json · every_source_refused · s1: no column wafer_id';
+  const RT = (follow) => ({ loops: [{ loop: 'chain', process: 'chain', alive: true },
+    { loop: S.LEDGER_FOLLOWUP_LOOP, process: 'chain', alive: true, ...follow }] });
+  const OFF = [{ world: 'trial', at: AT, said: 'trial · declarations/ledger_config.json · every_source_refused' },
+    { world: 'side', at: AT, said: 'side · broken' }];
+  eq('L4 a stopped follow-up fails the row: the server\'s sentence whole, then what waits',
+    said(r(S.ledgerRow(LEDGER(0), RT({ state: 'stopped', world: 'default', said: STOP, since: 1760000000, depth: 37 })))),
+    `danger|${STOP} · waiting 37`);
+  eq('L5 each world the follow-up switched off is said, and the row warns',
+    said(r(S.ledgerRow(LEDGER(0), RT({ state: 'flowing', switched_off: OFF })))),
+    'warn|ran_and_wrote 1 · never_ran 1 · live off: trial · live off: side');
+  eq('L6 stopped with a world switched off says both; an unread source list does not hide a stop',
+    [said(r(S.ledgerRow(null, RT({ state: 'stopped', said: STOP, depth: 0, switched_off: OFF.slice(0, 1) })))),
+      said(r(S.ledgerRow(undefined, RT({ state: 'stopped', said: STOP, depth: 2 }))))],
+    [`danger|${STOP} · waiting 0 · live off: trial`, `danger|${STOP} · waiting 2`]);
+  eq('L7 NEGATIVE CONTROL: flowing with nothing switched off is the row it was, so is a runtime without the loop',
+    [said(S.ledgerRow(LEDGER(1234), RT({ state: 'flowing', depth: 0 }))), said(S.ledgerRow(LEDGER(0), { loops: [] })),
+      said(S.ledgerRow(LEDGER(0), null))],
+    [said(S.ledgerRow(LEDGER(1234))), said(S.ledgerRow(LEDGER(0))), said(S.ledgerRow(LEDGER(0)))]);
 
   // ── D Declarations ──
   const decl = r(S.declarationsRow(RESOLVE));
@@ -185,6 +205,18 @@ const MUTANTS = [
     load: onStatus((s) => s.replace("['No rules'], TONE.UNKNOWN)", "['No rules'], TONE.OK)")) },
   { id: 'S6', what: 'refused molecules are ignored', catches: ['L2'],
     load: onStatus((s) => s.replace('  if (refused) facts.push', '  if (false) facts.push')) },
+  { id: 'S6b', what: 'a stopped follow-up only warns', catches: ['L4'],
+    load: onStatus((s) => s.replace("`waiting ${countText(follow.depth)}`, ...off], TONE.DANGER);", "`waiting ${countText(follow.depth)}`, ...off], TONE.WARN);")) },
+  { id: 'S6c', what: 'a stop does not say the server\'s sentence', catches: ['L4'],
+    load: onStatus((s) => s.replace("[follow.said, `waiting ${countText(follow.depth)}`", "[`waiting ${countText(follow.depth)}`")) },
+  { id: 'S6d', what: 'a stop does not say what waits', catches: ['L4'],
+    load: onStatus((s) => s.replace("[follow.said, `waiting ${countText(follow.depth)}`, ...off]", '[follow.said, ...off]')) },
+  { id: 'S6e', what: 'a switched-off world is not said', catches: ['L5'],
+    load: onStatus((s) => s.replace(".filter((w) => w && w.world).map((w) => `live off: ${w.world}`);", '.filter(() => false);')) },
+  { id: 'S6f', what: 'a switched-off world does not warn', catches: ['L5'],
+    load: onStatus((s) => s.replace('base.tone === TONE.DANGER ? TONE.DANGER : TONE.WARN', 'base.tone')) },
+  { id: 'S6g', what: 'a stop is read only once the sources have come', catches: ['L6'],
+    load: onStatus((s) => s.replace("  if (follow && follow.state === 'stopped') {", "  if (sources && follow && follow.state === 'stopped') {")) },
   { id: 'S7', what: 'the oldest run counts finished ones', catches: ['T1'],
     load: onStatus((s) => s.replace('.filter((r) => r && !r.finished)', '.filter((r) => r)')) },
   { id: 'S8', what: 'a small sample is coloured by its rate', catches: ['C1'],

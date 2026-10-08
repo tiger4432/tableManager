@@ -108,12 +108,31 @@ export function enrichmentRow(enrich) {
     enrich.totalMissing > 0 ? TONE.WARN : TONE.OK);
 }
 
+/** The loop in `/runtime` that is the ledger follow-up (server 0e7530cef): its `state`, and when stopped its `said`. */
+export const LEDGER_FOLLOWUP_LOOP = 'ledger_followup';
+
 /**
- * `/admin/ledger/sources` — sources by the server's own state words, and refused molecules.
+ * `/admin/ledger/sources` — sources by the server's own state words, and refused molecules; and the
+ * follow-up's row of the `/runtime` answer the page already reads (lead 558a46ef1).
  * ⚠️ The server ships a MEANING per state, not a colour, so no state is coloured here. The one
  *    colour is a COUNT: refused molecules above 0 is Warning (the lane's choice — reported).
+ * 🔴 A stopped follow-up fails the row with the server's sentence and what waits; each world it switched off is
+ *    «live off: <world>» and the row warns at least. The closed four words stay; the rest is facts (lead 575a844f7).
  */
-export function ledgerRow(sources) {
+export function ledgerRow(sources, runtime) {
+  const follow = runtime && Array.isArray(runtime.loops)
+    ? runtime.loops.find((l) => l && l.loop === LEDGER_FOLLOWUP_LOOP) || null : null;
+  const off = (follow && Array.isArray(follow.switched_off) ? follow.switched_off : [])
+    .filter((w) => w && w.world).map((w) => `live off: ${w.world}`);
+  if (follow && follow.state === 'stopped') {
+    return row('ledger', 'Ledger', [follow.said, `waiting ${countText(follow.depth)}`, ...off], TONE.DANGER);
+  }
+  const base = ledgerSourcesRow(sources);
+  if (!off.length) return base;
+  return row('ledger', 'Ledger', [...base.facts, ...off], base.tone === TONE.DANGER ? TONE.DANGER : TONE.WARN);
+}
+
+function ledgerSourcesRow(sources) {
   if (sources === undefined) return pending('ledger', 'Ledger');
   if (!sources) return row('ledger', 'Ledger', [], TONE.UNKNOWN);
   const view = sourcesView(sources);
