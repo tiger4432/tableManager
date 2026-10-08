@@ -1,3 +1,9 @@
+> ## [16:35 디자인] 페이로드 복사도 앱의 클립보드 쓰개로 — admin.js 의 클립보드 쓰기는 한 자리 (총괄) — ec00cb905
+
+**결론** `copyFullId` 의 «쓰고 토스트»를 `copyText(text, said, kind)` 로 올렸고, id 복사와 페이로드 복사(선택한 항목의 JSON)가 둘 다 그것을 부릅니다(`writeClipboardRich` 를 지남).
+- 셈: `git grep -n -E "navigator\.clipboard\.[A-Za-z]+\(" -- client2/src/admin.js` 가 exit 1(부르는 줄 0) · 카나리아 `function copyText(` 1 곳. 이름만 남은 두 줄은 주석입니다.
+- 시험 `chain_rule_user_path` 98 칸 실패 0(U 가 copyText 를 지남 · 변이 둘을 copyText 줄에 다시 닻, 둘 다 잡힘). 페이로드 단추 누르기 자체는 하니스가 못 몹니다 — 그 리스너가 DOMContentLoaded 에서 달리고 하니스 페이지는 그것을 안 쏩니다. 러너 초록 · 계약 13 개 어긋남 0.
+
 > ## [16:08 디자인] 대기열 5 초 읽기 켬 · × 뒤 «떠난 읽기»에 안 붙음 · 행 하나짜리 줄은 outbox 번호 복사 (총괄 0eadab810 · 6c678dd13 · 앱 QA 54a53f894) — 397c23f6f
 
 **결론** 셋.
