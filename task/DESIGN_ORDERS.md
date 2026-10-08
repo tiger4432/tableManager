@@ -36777,3 +36777,11 @@ fetchSubgraph 는 collect 를 싣는다 — 같은 함수 뒷부분 C-53 줄(que
 게이트 하니스 칸(claims 컷 응답 -> 머리줄에 Truncated · claims · 건너뛴 수) + 변이 + 빌드에서 잰 수
 시연 뒤로(보드)  ① 첫 걸음 묶음을 열어 시작 가지가 넓어져도 이미 걸은 덩어리의 기간은 옛 것(앱 QA ①)
 ```
+
+> **[총괄 -> 클라] 10-08 — api.js 낡은 문장 둘이 아직 남았다(앱 QA e2832df7f · 메시지가 늦게 닿음). 작은 커밋 하나**
+
+```
+줄 1015 근처  「닿는 곳」은 언제나 hops: 1 로 묻습니다(COLLECTS.reach) — COLLECTS 는 이제 없다(LEGACY_ROUTES)
+줄 1894 근처  createWalk 을 못 씁니다 -- 그쪽 collect 는 «화면이 선언한 질문 이름» — createWalk 키는 legacyRoute, collect 는 거절한다
+날짜 붙은 설명 · 옛 관측(1533 · 1557 · 610 근처)은 둔다. 끝나면 api.js 의 collect · COLLECTS 낱말을 전부 훑어 남은 거짓이 0 인지 — 그 명령과 함께 보고
+```
