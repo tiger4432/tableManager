@@ -36539,3 +36539,16 @@ b340386fe
          목록 밖 사람은 화면 페이지 자체가 403 이라 거의 안 만난다. 열린 페이지를 둔 채 목록에서 빠진 사람만 — 그 페이지가 끝없이(물러서며) 다시 붙는다
 문서     DEPLOY_SETUP §2-1 은 구현자가 이미 맞춤(제 키 줄까지). config/README 의 auth_config.json 줄에 users — 이 보고와 같은 커밋
 ```
+
+---
+
+## [C 응용] 10-08 8f4f474e2 · 4f39aff3b QA — 둘 다 결함 못 찾음 (코드로 읽음 · 안 잼)
+
+```
+8f4f474e2  empty_table 이 명령줄에서 «처음으로» 실제로 돈다(전엔 모든 표를 미선언으로 거절) — 넓어진 문이라 그 문의 가드를 열어 봄
+           기본은 보고만 · --apply 는 --confirm-rows <보고의 행 수> 가 있어야 하고 그 수가 지금 행 수와 다르면 거절 · 뷰와 미선언 표는 거절 — 그대로
+4f39aff3b  POST /auth/logout 은 우리 세션을 «먼저» 지우고 나서 발급자에게 묻는다 — discovery 가 안 읽히거나 end_session_endpoint 가 없으면 next = /auth/signed-out(경고 한 줄)
+           /auth/signed-out 은 열린 접두(/auth/)라 세션 없이 열린다 — 로그아웃 직후 그 페이지가 401 로 안 막힌다
+           화면(6ed12c95e)은 204 면 새로고침 · 200 이면 next — 이 착지 뒤로는 늘 200
+문서       DEPLOY_SETUP §2-1 · CODE_MAP 은 구현자가 맞춤. config/README 의 auth_config 줄에 post_logout_redirect_uri — 이 보고와 같은 커밋
+```
