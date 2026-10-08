@@ -123,7 +123,8 @@ def _drain(db, rules, rounds=6):
 
 
 def _events(db, since):
-    return [(e.event_type, sorted(get_payload_dict(e).get("columns") or ()),
+    # updated_at joins the columns when the clock's second turns between two writes - a box flake (suite 10-08)
+    return [(e.event_type, sorted(set(get_payload_dict(e).get("columns") or ()) - {"updated_at"}),
              event_constants.channel_of(get_payload_dict(e)))
             for e in db.query(models.DatabaseOutbox).filter(models.DatabaseOutbox.id > since)
             .order_by(models.DatabaseOutbox.id)]
