@@ -6,22 +6,29 @@ import { localMinute } from './server_time.js';
 const ME = '/auth/me';
 const KEYS = '/auth/keys';
 const LOGOUT = '/auth/logout';
+const SIGNED_OUT = '/auth/signed-out';
 
 const refusal = async (res) => {
   try { const m = (await res.json())?.detail?.message; if (typeof m === 'string' && m) return m; } catch (e) { /* not JSON */ }
   return `HTTP ${res.status}`;
 };
+// Where the browser goes once signed out: the server's `next` (the sign-in's own end, lead 10-08), else our page.
+const nextOf = async (res) => {
+  try { const n = (await res.json())?.next; if (typeof n === 'string' && n) return n; } catch (e) { /* not JSON */ }
+  return SIGNED_OUT;
+};
 
 export class AccountBadge {
   /**
    * @param {HTMLElement} host  the element this part owns
-   * @param {{doc: Document, fetch: Function, reload: Function, clipboard?: {writeText: Function}}} deps
+   * @param {{doc: Document, fetch: Function, reload: Function, go: Function, clipboard?: {writeText: Function}}} deps
    */
   constructor(host, deps) {
     this.host = host;
     this.doc = deps.doc;
     this.fetch = deps.fetch;
     this.reload = deps.reload;
+    this.go = deps.go;
     this.clipboard = deps.clipboard || null;
     this.me = null;
     this.open = false;
@@ -75,7 +82,9 @@ export class AccountBadge {
 
   async logout() {
     const res = await this.fetch(LOGOUT, { method: 'POST' });
-    if (res.ok) { this.reload(); return; }
+    // 204 is a server from before the Signed out page: the reload it always had.
+    if (res.status === 204) { this.reload(); return; }
+    if (res.ok) { this.go(await nextOf(res)); return; }
     this.error = await refusal(res);
     this.render();
   }

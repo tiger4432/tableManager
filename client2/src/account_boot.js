@@ -11,6 +11,7 @@ if (host) {
     doc: document,
     fetch: (url, init) => window.fetch(url, init),
     reload: () => window.location.reload(),
+    go: (url) => window.location.assign(url),
     clipboard: navigator.clipboard || null,
   }).mount();
 }

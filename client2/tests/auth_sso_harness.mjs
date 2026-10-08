@@ -151,7 +151,8 @@ async function suite({ gate, Badge, admin, wsDrive, classify }) {
 
   console.log('\n── B. the account part ──');
   const doc = { createElement: (tag) => element(tag) };
-  const server = (me) => {
+  // `logout` is how the server answers POST /auth/logout: 204 is the server as captured, before the Signed out page.
+  const server = (me, logout = () => response(204)) => {
     const calls = [];
     let keys = [{ id: 'k1', name: 'nightly', created_at: '2026-10-07T09:00:00+09:00', last_used_at: null }];
     const fetch = async (url, init = {}) => {
@@ -167,18 +168,20 @@ async function suite({ gate, Badge, admin, wsDrive, classify }) {
         return response(FX.key_made.status, { ...FX.key_made.body, id: 'k2', name, key: 'ak_secret_once' });
       }
       if (url.startsWith('/auth/keys/') && method === 'DELETE') { keys = keys.filter((k) => `/auth/keys/${k.id}` !== url); return response(204); }
-      if (url === '/auth/logout') return response(204);
+      if (url === '/auth/logout') return logout();
       return response(404, {});
     };
     return { fetch, calls };
   };
-  const make = (me) => {
+  const make = (me, logout) => {
     const host = element('div');
-    const srv = server(me);
+    const srv = server(me, logout);
     const copied = [];
+    const went = [];
     let reloads = 0;
-    const part = new Badge(host, { doc, fetch: srv.fetch, reload: () => { reloads += 1; }, clipboard: { writeText: async (t) => copied.push(t) } });
-    return { host, part, srv, copied, reloads: () => reloads };
+    const part = new Badge(host, { doc, fetch: srv.fetch, reload: () => { reloads += 1; }, go: (url) => went.push(url),
+      clipboard: { writeText: async (t) => copied.push(t) } });
+    return { host, part, srv, copied, went, reloads: () => reloads };
   };
   {
     const off = make(FX.me_off.body);
@@ -216,7 +219,28 @@ async function suite({ gate, Badge, admin, wsDrive, classify }) {
   ok('B7 Revoke deletes that key and reads the list again', on.srv.calls.includes('DELETE /auth/keys/k1')
     && same(texts(on.host, 'acct-row-name'), ['build']), JSON.stringify(on.srv.calls.slice(-3)));
   await click(on.host, 'acct-logout');
-  ok('B8 Log out ends the session, then reloads', on.srv.calls.at(-1) === 'POST /auth/logout' && on.reloads() === 1);
+  ok('B8 a server from before the Signed out page (204): Log out ends the session, then reloads',
+    on.srv.calls.at(-1) === 'POST /auth/logout' && on.reloads() === 1 && on.went.length === 0);
+  {
+    // The contract (lead 10-08): 200 {next} - the sign-in's end with our Signed out page to come back to.
+    const END = 'https://adfs.example/adfs/oauth2/logout?post_logout_redirect_uri=https%3A%2F%2Fbox.example%2Fauth%2Fsigned-out';
+    const to = make(FX.me_signed_in.body, () => response(200, { next: END }));
+    await to.part.mount();
+    await click(to.host, 'acct-logout');
+    ok('L1 200 with next: Log out ends the session, then goes to that address as given, no reload',
+      to.srv.calls.at(-1) === 'POST /auth/logout' && same(to.went, [END]) && to.reloads() === 0, JSON.stringify(to.went));
+    const bare = make(FX.me_signed_in.body, () => response(200, {}));
+    await bare.part.mount();
+    await click(bare.host, 'acct-logout');
+    ok('L2 200 without next: to our Signed out page', same(bare.went, ['/auth/signed-out']) && bare.reloads() === 0,
+      JSON.stringify(bare.went));
+    const refused = make(FX.me_signed_in.body, () => response(503, { detail: { message: 'Sign-out is unavailable' } }));
+    await refused.part.mount();
+    await click(refused.host, 'acct-logout');
+    ok('L3 refused: the server\'s sentence beside Log out, as before; nowhere to go, no reload',
+      same(texts(refused.host, 'acct-error'), ['Sign-out is unavailable']) && refused.went.length === 0 && refused.reloads() === 0,
+      JSON.stringify([texts(refused.host, 'acct-error'), refused.went]));
+  }
   {
     const one = make(FX.me_signed_in.body);
     const two = make(FX.me_signed_in.body);
@@ -353,6 +377,14 @@ const MUTANTS = [
   { name: 'Revoke deletes nothing', catches: ['B7'], file: 'badge',
     mutate: swap("{ method: 'DELETE' }", "{ method: 'GET' }") },
   { name: 'Log out only reloads', catches: ['B8'], file: 'badge', mutate: swap("    const res = await this.fetch(LOGOUT, { method: 'POST' });\n", '    const res = { ok: true };\n') },
+  { name: 'a 200 reloads like the old server', catches: ['L1'], file: 'badge',
+    mutate: swap('    if (res.status === 204) { this.reload(); return; }\n', '    if (res.ok) { this.reload(); return; }\n') },
+  { name: 'a 204 goes to the Signed out page', catches: ['B8'], file: 'badge',
+    mutate: swap('    if (res.status === 204) { this.reload(); return; }\n', '') },
+  { name: 'next is not followed', catches: ['L1'], file: 'badge', mutate: swap('this.go(await nextOf(res));', 'this.go(SIGNED_OUT);') },
+  { name: 'no next goes nowhere', catches: ['L2'], file: 'badge', mutate: swap('  return SIGNED_OUT;\n', "  return '';\n") },
+  { name: 'a refused sign-out says nothing', catches: ['L3'], file: 'badge',
+    mutate: swap('    if (res.ok) { this.go(await nextOf(res)); return; }\n    this.error = await refusal(res);\n', '    if (res.ok) { this.go(await nextOf(res)); return; }\n') },
   { name: 'the failure line never reads the Session marker', catches: ['F1'], file: 'classify',
     mutate: swap('    session: isSessionRejection(res),' + '\n', '    session: false,' + '\n') },
   { name: 'a Session refusal reads as the token gate\'s', catches: ['F1'], file: 'classify',
