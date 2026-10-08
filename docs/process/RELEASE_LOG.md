@@ -9,6 +9,15 @@
 
 ---
 
+## 2026-10-08 · 체인 묶음의 SQL 문장 하나에 2 분 상한
+
+- **무엇** — 체인 묶음 안의 SQL 문장 하나가 2 분을 넘으면 DB 가 그 문장을 끊습니다. 그 묶음은 실패로 끝나고(지금 규칙대로 재시도 없음) 체인은 다음 묶음으로 갑니다. 전에는 문장 하나가 체인 전체를 20 분씩 붙잡을 수 있었습니다.
+- **선언 예시** — `ingestion_settings.json` 에 `"chain_statement_timeout_seconds": 120` (안 적어도 120). `0` 이나 `null` 은 상한 없음.
+- **화면에서** — Chain 탭 실패 목록에서 그 묶음의 Reason 칸이 `[rules=<규칙> target=<표>] statement timeout · 120 s · stage <단계> - one statement of this group ran past chain_statement_timeout_seconds …` 한 줄입니다. 다시 돌리기는 Retry.
+- **필요한 조건** — 체인 프로세스 재기동(코드). 값은 재기동 없이 다음 트랜잭션부터 읽힙니다. PostgreSQL 만.
+- **바뀐 동작** — 리플레이가 깨운 묶음도 같은 상한입니다. 편집 회수가 끊기면 전처럼 그 줄만 오류로 남고 묶음은 성공하며, 그 줄에 `statement timeout · N s` 가 붙습니다. 파일 적재의 상한(`lock_timeout_seconds` · `statement_timeout_seconds`)과 API 요청, 묶음 밖의 일(워커가 돌리는 리플레이 실행 · 원장 따라가기 · 행 세기)은 그대로입니다.
+- **자세히** — 이 항목과 같은 커밋 · RUN.md 같은 절 · `docs/guide/config/ingestion_settings.md` 의 같은 칸.
+
 ## 2026-10-08 · 체인 대기열 줄의 id 를 누르면 전체 값이 복사된다
 
 - **무엇** — 대기열 줄의 실행 id · 트랜잭션 id 가 `aaaaaaaa…` 처럼 줄여 그려져 복사가 안 됐습니다(소유자 10-08). 이제 그 id 를 누르면 전체 값이 복사되고 `📋 Transaction ID [aaaaaaaa…] copied in full`(실행이면 `Run ID`) 토스트가 뜹니다. 마우스를 올리면 전체 값이 보입니다. 실패 트랜잭션 표와 같은 함수입니다.

@@ -1,5 +1,26 @@
 # 지금 돌리면 되는 것
 
+> ## [10-08] **체인 묶음의 SQL 문장 하나에 2 분 상한 — 이주 «없음» · 재기동 «필요»(체인)**
+>
+> ```
+> 무엇이 바뀌나  체인 묶음의 트랜잭션마다(묶음이 시작할 때 열려 있던 것도) SET LOCAL statement_timeout (PostgreSQL 만)
+>                문장 하나가 상한을 넘으면 DB 가 그 문장을 끊고, 그 묶음은 실패(지금 규칙대로 재시도 없이 FAILED), 체인은 다음 묶음으로 간다
+>                리플레이가 깨운 묶음도 같다. 편집 회수가 끊기면 전처럼 그 줄만 오류로 남고 묶음은 성공한다
+> 값 칸          ingestion_settings.json 의 "chain_statement_timeout_seconds" (파일 상한 두 칸과 같은 파일)
+>                없으면 120 · null 이나 0 = 상한 없음(전과 같음) · 양수가 아닌 값은 120
+>                바꾸면 다음 트랜잭션부터(재기동 없이)
+> 재기동         체인 — 이 코드가 들어가려면 한 번. 소유자 몫
+> 볼 줄          Transaction <tx> permanently failed: … 원인: [rules=<규칙> target=<표>] statement timeout · 120 s · stage <단계> - one statement of this group ran past chain_statement_timeout_seconds (ingestion_settings.json); the database stopped it
+>                  = 그 묶음의 문장 하나가 상한을 넘었다. <단계>(mapper · write:<표> · edit retraction:<표> …)가 «어디서»다
+>                  Chain 탭 실패 목록의 Reason 칸에 같은 문장, 다시 돌리기는 Retry. 같은 단계에서 또 끊기면 그 단계의 질의(인덱스)부터 본다
+>                🔴 [ChainRetract] … the edit's withdrawal failed AFTER a committed write; old layers may remain: statement timeout · 120 s - …
+>                  = 편집 회수가 상한에 끊겼다. 묶음은 성공, 그 원천 행이 먹이던 옛 층이 남았을 수 있다
+> 걸지 않은 것   체인 프로세스의 다른 일 — 워커가 돌리는 리플레이 실행 · 원장 따라가기 · 행 세기. 파일 적재 상한과 API 요청은 그대로
+> 급할 때       "chain_statement_timeout_seconds": 0 — 재기동 없이 전처럼 끝없이 기다린다
+> ```
+
+---
+
 > ## [10-08] **로그아웃이 ADFS 로그인도 끝낸다 — 이주 «없음» · 재기동 «필요»(서버)**
 >
 > ```

@@ -36569,3 +36569,43 @@ b340386fe
         대기열 읽기가 운영에서 5 초라 그 틈이 있다. already 일 때 한 줄(예: Already processed - nothing skipped)을 띄울지는 총괄 판정
 문서    CODE_MAP chain_queue_panel 절에 한 줄 — 이 보고와 같은 커밋. SYSTEM_FLOWS 의 POST 줄은 서버 착지 때
 ```
+
+---
+
+## [C 응용] 10-08 f8dbf3399(대기열 줄 id 전체 복사) QA — 조건 하나 · 작은 것 하나 (코드로 읽음 · 브라우저로 안 잼)
+
+```
+읽음    복사는 함수 하나(admin.js copyFullId)를 실패 표와 대기열이 같이 부른다 — 지시 그대로. 하니스 214 통과 · 실패 0
+조건    copyFullId 는 navigator.clipboard.writeText 를 바로 부른다. 그 API 는 보안 문맥(https · localhost)에만 있다
+        평문 HTTP 로 열면 navigator.clipboard 가 undefined -> 누르는 순간 «동기»로 TypeError -> 복사 안 됨 · 토스트도 안 뜸(.catch 는 약속 거절만 받는다)
+        이 저장소의 추적 코드 셋(clipboard.js · tsv.js · main.js)이 「운영은 평문 HTTP 사내망」이라고 적고, 그래서 그리드 복사는 e.clipboardData 로 간다
+        한편 DEPLOY_SETUP §2-1 은 회사 로그인을 https 앞단 뒤에서만 켠다 — 로그인이 켜진 주소로 열면 된다
+        -> 소유자가 어드민을 «어느 주소»로 여는지가 이 기능이 도는지를 가른다. 실패 표의 같은 복사도 평문 HTTP 에서는 전부터 같았다(이번에 새로 깨진 것 아님)
+        RELEASE_LOG 항목의 「필요한 조건 — 클라 빌드」에 https 조건이 없다(RELEASE_LOG 는 총괄 몫이라 안 고침)
+작은 것  행 하나짜리 줄은 서버가 transaction_id 칸에 «(no tx · outbox#N)» 글자를 넣어 보낸다 -> 그 글자 그대로가 «Transaction ID» 로 복사된다
+        지시는 outbox#번호 도 복사 대상으로 적었다 — 붙여 넣을 자리에서 쓸 수 있는 값은 N 이다
+문서    CODE_MAP chain_queue_panel 절에 한 줄 — 이 보고와 같은 커밋
+```
+
+---
+
+## [C 응용] 10-08 daf4985d5(체인 질의 상한) QA — 물음 둘 · 앞으로의 것 하나
+
+```
+잰 것   probe_chain_limit_lockwait.py — 진짜 after_begin 리스너 · 진짜 chain_group() · 진짜 _limit_that_stopped. 바꾼 것은 상한 초(1 s)뿐
+        DB assy_test · 스키마 app_probe_lockwait(끝에 DROP · 남은 스키마 0) · public 안 씀
+        카나리아  잠금 없음 -> 넣기 0.00 s 성공 · 그 트랜잭션의 statement_timeout = 1s(리스너가 걸었다)
+        본 판    다른 세션이 SHARE 잠금(CONCURRENTLY 없는 CREATE INDEX 가 거는 것)만 쥐고 아무것도 안 함
+                -> 묶음의 넣기가 1.09 s 에 QueryCanceled · _limit_that_stopped 가 «상한»으로 읽음 · 서버 문구는 한국어 로캘
+① 물음  같은 문장이 «느린 질의»와 «잠금 기다림» 둘 다다. 수리는 반대다(질의 · 인덱스를 본다 / 쥔 세션을 찾고 질의는 그대로)
+        RUN.md 의 읽기는 「같은 단계에서 또 끊기면 그 단계의 질의(인덱스)부터 본다」 하나뿐 — 잠금 갈래가 없다
+② 물음  막은 세션을 부르는 줄이 이 상한 «뒤»에 있다 (코드로 읽음 · 안 잼)
+        체인의 걸림 줄(09-26 · 막은 pid · 이름 · 상태 · 쿼리)은 단계가 300 초 안 움직여야 나온다. 상한은 120 초
+        -> 단계에 들어간 지 얼마 안 돼 잠금에 걸린 문장은 120 초에 끊겨 실패하고, 그 줄은 안 나온다. 실패 문장은 단계만 말하고 쥔 세션은 안 말한다
+        전에는 기다리다 300 초에 그 줄이 나왔다. 이 착지 뒤로는 이 경우 제품이 «누가 막나»를 말하는 줄이 안 나온다
+        고칠 자리(실패 문장에 막은 세션 · 걸림 판정을 상한보다 짧게 · 그대로 둠)는 총괄 판정
+앞으로  _limit_that_stopped 는 «묶음 나이 ≥ 상한 + QueryCanceled» 면 상한으로 읽는다. 일시정지는 그 앞에서 따로 걸러진다
+        대기열 × 의 서버 반(도는 묶음 × -> cancel_running_group)이 착지하면, 상한보다 오래 된 묶음의 × 가 «statement timeout» 으로 적힌다 — 그 착지 때 같이 볼 것
+오늘    소유자가 만드는 idx_sources_by_origin 은 마이그레이션 파일이 CONCURRENTLY 다 — 그 파일로 만들면 쓰기를 안 막는다. 손으로 CONCURRENTLY 없이 치면 그 표에 쓰는 묶음이 120 초마다 실패한다
+문서    ingestion_settings.md 의 chain_statement_timeout_seconds 줄에 「잠금 기다림도 센다」 — 이 보고와 같은 커밋. RUN.md 는 안 건드림
+```

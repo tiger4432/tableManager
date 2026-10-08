@@ -181,7 +181,8 @@ def test_a_group_in_its_own_slow_query_says_so_with_no_lock(
 
 def test_a_long_group_whose_stages_move_is_neither_stalled_nor_wedged(fast, monkeypatch):
     db = types.SimpleNamespace(get_bind=lambda: types.SimpleNamespace(url=None),
-                               commit=lambda: None, rollback=lambda: None)
+                               commit=lambda: None, rollback=lambda: None,
+                               in_transaction=lambda: False)
 
     def body(tx_id, events, session, rules):
         for step in range(10):                    # 3 s in all - twice the stall window
@@ -202,7 +203,8 @@ def test_a_long_group_whose_stages_move_is_neither_stalled_nor_wedged(fast, monk
 
 def test_a_stall_check_that_raises_goes_quiet_and_the_group_finishes(fast, monkeypatch,
                                                                      caplog):
-    db = types.SimpleNamespace(commit=lambda: None, rollback=lambda: None)
+    db = types.SimpleNamespace(commit=lambda: None, rollback=lambda: None,
+                               in_transaction=lambda: False)
 
     async def breaks(session):
         raise RuntimeError("probe broke")

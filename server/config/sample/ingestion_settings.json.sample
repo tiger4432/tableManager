@@ -16,6 +16,8 @@
   "lock_timeout_seconds": 300,
   "_statement_timeout_seconds_doc": "파일 쓰기의 문장 하나가 걸릴 수 있는 상한(초). 기본은 끔(null) — 큰 정상 쓰기를 죽이지 않게. 켜면 넘은 파일은 FAILED(다른 실패처럼 봉인).",
   "statement_timeout_seconds": null,
+  "_chain_statement_timeout_seconds_doc": "체인 묶음의 SQL 문장 하나가 걸릴 수 있는 상한(초). 넘으면 DB 가 그 문장을 끊고 그 묶음은 실패(재시도 규칙 그대로)로 끝나며 체인은 다음 묶음으로 갑니다. 적지 않으면 120. null 이나 0 이면 상한 없음. 재기동 없이 다음 트랜잭션부터 읽습니다. PostgreSQL 만. 볼 줄과 끄는 법은 RUN.md 10-08 절.",
+  "chain_statement_timeout_seconds": 120,
   "_flatten_nested_dirs_doc": "raws/에 폴더(다중 층위 포함)가 들어오면 트리가 안정된 뒤 파일만 raws/ 루트로 승격하고 빈 폴더 트리를 제거합니다(기본 true). 이름 충돌 시 상대경로 접두(구분자 ~)로 개명하며 절대 덮어쓰지 않습니다. Thumbs.db/desktop.ini/.DS_Store/._* 는 폴더와 함께 폐기됩니다. false로 두면 폴더를 건드리지 않습니다(종전 동작: 무시). 핫리로드: 다음 폴더 트리거부터 반영.",
   "flatten_nested_dirs": true,
 

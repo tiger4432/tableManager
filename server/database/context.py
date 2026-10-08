@@ -55,6 +55,10 @@ request_written_by = sys._context_vars_cache.setdefault(
 #: events woke (총괄 b3a4334db). `None` = no run: the write is its own transaction's.
 request_run_id = sys._context_vars_cache.setdefault(
     "request_run_id", contextvars.ContextVar("request_run_id", default=None))
+#: [CHAIN GROUP] True while a chain group runs - whatever channel its writes go out on - so its
+#: transactions take the chain's statement limit (소유자 10-08 「체인 타임아웃 걸어」).
+request_chain_group = sys._context_vars_cache.setdefault(
+    "request_chain_group", contextvars.ContextVar("request_chain_group", default=False))
 
 
 def _for_the_block(var, value):
@@ -91,6 +95,11 @@ def written_by(declarations):
 def retroactive_run(run_id):
     """Context manager: the writes inside are retroactive run `run_id`'s work (총괄 b3a4334db)."""
     return _for_the_block(request_run_id, run_id or None)
+
+
+def chain_group():
+    """Context manager: the transactions begun inside are a chain group's (소유자 10-08)."""
+    return _for_the_block(request_chain_group, True)
 
 
 def outbox_mode(mode: str):

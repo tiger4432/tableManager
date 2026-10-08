@@ -74835,3 +74835,163 @@ sqlite 전체   5 failed, 8014 passed, 359 skipped, 3 xfailed, 13225 warnings �
 문서  DEPLOY_SETUP §2-1(칸 · 로그아웃 · 거절 줄) · CODE_MAP sso 라우트 행 · RELEASE_LOG · RUN.md(IT 에 등록할 주소 그대로)
 재기동  서버 — 소유자 몫. IT 등록 뒤 칸을 적을 때 한 번 더
 ```
+
+---
+
+## [10-08] 체인 묶음의 SQL 문장 하나에 2 분 상한 daf4985d5 (총괄 7a4f18281 · ㄴ · 소유자 「체인 타임아웃 걸어」 · 「2분」)
+
+어느 DB · 어느 스키마 · 지운 것 — 시험은 sqlite 메모리와 PG assy_test 의 assy_pytest_pg_<pid>_<worker>(끝에 스키마째 DROP)
+   PG 묶음 게이트의 픽스처가 앞뒤로 tl_a · tl_b · tl_c 표를 DROP 하고 그 표 이름의 cell_sources · database_outbox 행을 지움(그 스키마 안)
+   재기(probe)는 sqlite 메모리 · public 안 씀
+
+### 1 무엇
+
+```
+값 칸      ingestion_settings.json "chain_statement_timeout_seconds" — 파일 상한 둘과 같은 파일 · 같은 읽기(_timeout_seconds 하나)
+          없으면 120 · null 이나 0 = 상한 없음 · 양수가 아니면 120 · 캐시 없이 트랜잭션마다 읽음(재기동 없이)
+리스너     database._bound_the_file_writes 그 하나 — 조건이 «파일 채널 또는 체인 묶음 안»(context.chain_group 표시)
+          파일 채널은 전처럼 lock_timeout · statement_timeout, 체인 묶음은 statement_timeout 하나
+표시       _claimed_group_sync 가 묶음 동안 chain_group() — 쓰기 채널이 CHAIN 이든 RETROACTIVE(리플레이가 깨운 묶음)든 같음
+첫 트랜잭션 묶음 시작에 열려 있던 트랜잭션(루프 스레드가 묶음 «전에» 연 것)은 같은 함수를 그 자리에서 불러 상한을 건다
+문장       실패 기록 reason = [rules=<규칙> target=<표>] statement timeout · N s · stage <단계> - one statement of this group ran past
+          chain_statement_timeout_seconds (ingestion_settings.json); the database stopped it
+          끊김 판정  드라이버 예외 이름 QueryCanceled(서버 문구는 로캘이라 안 봄) + 묶음 나이 ≥ 상한(아니면 일시정지 · 운영자 취소)
+편집 회수  전처럼 그 줄만 오류 · 묶음 계속 — 그 줄에 «statement timeout · N s - » 를 붙임
+재시도     지금 규칙(DEFAULT_MAX_GROUP_ATTEMPTS 1) 그대로 — 손대지 않음
+```
+
+### 2 처음 짓은 모양을 바꾼 까닭 — 묶음 시작 커밋은 사건마다 다시 읽게 했다
+
+```
+처음  묶음 시작에 db.commit() — 다음 트랜잭션이 묶음 안에서 열려 리스너가 걸게
+재 보니  커밋이 세션을 만료시켜 «모든 묶음»이 자기 사건을 한 줄씩 다시 읽었다(sqlite 메모리 · 두 묶음 · 사건 40 + 30)
+   origin/main  group 1 (40 events) 문장 47 · 한 줄 다시 읽기 0 · between groups 문장 170 · 한 줄 다시 읽기 100 · group 2 (30 events) 문장 37 · 한 줄 다시 읽기 0
+   묶음 시작 커밋     group 1 (40 events) 문장 87 · 한 줄 다시 읽기 40 · between groups 문장 170 · 한 줄 다시 읽기 100 · group 2 (30 events) 문장 67 · 한 줄 다시 읽기 30
+   지금           group 1 (40 events) 문장 47 · 한 줄 다시 읽기 0 · between groups 문장 170 · 한 줄 다시 읽기 100 · group 2 (30 events) 문장 37 · 한 줄 다시 읽기 0
+지금  커밋 없이, 열려 있는 트랜잭션에 같은 함수로 SET LOCAL — sqlite 문장 수가 origin/main 과 같다(PG 에서는 묶음 시작에 SET LOCAL 한 문장이 더해진다 — 코드로 읽음 · PG 에서 안 셈)
+덤   그 커밋 때문에 넣었던 일시정지 시험 픽스처 변경(StaticPool)도 되돌림 — 지금 그 파일 diff 0
+⚠️ 처음 재기 한 번이 박스에 떠 있는 API 의 /internal/events/broadcast 를 쳤고 401 로 거절됐다(보낸 것 없음) — 재기에서 통지를 꺼서 다시 잼
+```
+
+### 3 체인 프로세스 안의 일 — 어느 채널로 도나, 이번에 걸린 것
+
+| 일 | 채널 | 이번 상한 |
+|---|---|---|
+| 체인 묶음 — 맵퍼 · 규칙 읽기 · 첫 쓰기 | 없음(묶음 전에 열린 트랜잭션) | 걸림 |
+| 체인 묶음 — 표마다 커밋 뒤 쓰기 · 편집 회수 | CHAIN, 리플레이가 깨운 묶음은 RETROACTIVE | 걸림 |
+| 묶음 결과 표시(SUCCESS · FAILED) | 없음 | 묶음 안에서 열린 트랜잭션에 이어 쓰면 그 트랜잭션째 걸림, 아니면 안 걸림 — 어느 쪽이 더 잦은지는 안 셈 |
+| 워커가 돌리는 리플레이 실행 | RETROACTIVE | 안 걸림 |
+| 원장 따라가기 | 없음 · 그 DELETE 회수는 CHAIN | 안 걸림 |
+| 행 세기 | 없음 | 안 걸림 |
+
+거는 것은 소유자께 여쭐 일이라 이번엔 안 걸었다.
+
+### 4 게이트 — test_a_chain_statement_has_a_time_limit.py
+
+```
+PG
+   초록     test_a_transaction_begun_in_a_chain_group_carries_the_chain_limit[group-default]
+   초록     test_a_transaction_begun_in_a_chain_group_carries_the_chain_limit[group-five]
+   초록     test_a_transaction_begun_in_a_chain_group_carries_the_chain_limit[group-off]
+   초록     test_a_transaction_begun_in_a_chain_group_carries_the_chain_limit[group-chain-write]
+   초록     test_a_transaction_begun_in_a_chain_group_carries_the_chain_limit[group-replay-write]
+   초록     test_a_transaction_begun_in_a_chain_group_carries_the_chain_limit[chain-channel-outside-a-group]
+   초록     test_a_transaction_begun_in_a_chain_group_carries_the_chain_limit[replay-run-outside-a-group]
+   초록     test_a_transaction_begun_in_a_chain_group_carries_the_chain_limit[file-unchanged]
+   초록     test_a_transaction_begun_in_a_chain_group_carries_the_chain_limit[api]
+   초록     test_a_transaction_begun_in_a_chain_group_carries_the_chain_limit[nothing]
+   초록     test_a_group_whose_statement_runs_past_the_limit_fails_once_and_the_next_group_runs[one-second]
+   초록     test_a_group_whose_statement_runs_past_the_limit_fails_once_and_the_next_group_runs[off]
+   초록     test_a_group_a_replay_woke_is_stopped_the_same
+   초록     test_an_edit_retraction_the_limit_stopped_stays_contained_and_says_the_limit
+   초록     test_a_pause_cancels_the_query_a_group_is_waiting_on
+   15/15 초록
+sqlite
+   초록     test_the_chain_limit_is_read_as_the_file_limits_are[absent]
+   초록     test_the_chain_limit_is_read_as_the_file_limits_are[zero]
+   초록     test_the_chain_limit_is_read_as_the_file_limits_are[null]
+   초록     test_the_chain_limit_is_read_as_the_file_limits_are[text]
+   초록     test_the_chain_limit_is_read_as_the_file_limits_are[negative]
+   초록     test_the_chain_limit_is_read_as_the_file_limits_are[boolean]
+   초록     test_the_chain_limit_is_read_as_the_file_limits_are[five]
+   초록     test_a_statement_stopped_by_the_limit_is_said_with_the_limit_its_stage_and_its_rule
+   8/8 초록
+```
+
+곁에 바꾼 시험 둘 — 워커가 이제 묶음 시작에 세션의 in_transaction() 을 묻는다
+   test_a_stuck_chain_group_says_what_holds_it 의 대역 둘(SimpleNamespace)과 test_the_ledger_follows_the_table_it_reads 의 None 에
+   in_transaction 을 더함(대역이 이미 commit · rollback · get_bind 를 들고 있던 것과 같은 까닭)
+   첫 전체 실행: 8 failed, 8020 passed, 372 skipped, 3 xfailed, 13260 warnings — 모르는 실패 3: test_a_long_group_whose_stages_move_is_neither_stalled_nor_wedged, test_a_stall_check_that_raises_goes_quiet_and_the_group_finishes, test_the_chain_group_translates_nothing_and_queues_nothing_in_memory
+PG 곁 파일 — test_an_edited_source_row_takes_back_what_it_no_longer_feeds
+   혼자 돌리면 9 passed, 8394 deselected, 20 warnings
+   test_a_wide_join_is_written_page_by_page 와 한 세션에서 돌면 setup 오류 jsonb_typeof(character varying) — origin/main 에서도 같은 오류 9 건
+   이번 변경과 무관한 순서 의존. 손대지 않음(따로 올릴지 여쭘 ③)
+
+### 5 변이 — md5 세 번 다 같음 (원본 파일 넷)
+
+```
+BASELINE [pg]                                                  14 passed, 8389 deselected, 15 warnings
+BASELINE [sqlite]                                              8 passed, 14 skipped, 6 warnings
+the chain group is not a condition [pg]                        7 failed, 7 passed, 8389 deselected, 15 warnings
+      FAILED test_a_group_a_replay_woke_is_stopped_the_same
+      FAILED test_a_group_whose_statement_runs_past_the_limit_fails_once_and_the_next_group_runs[one-second]
+      FAILED test_a_transaction_begun_in_a_chain_group_carries_the_chain_limit[group-chain-write]
+      FAILED test_a_transaction_begun_in_a_chain_group_carries_the_chain_limit[group-default]
+      FAILED test_a_transaction_begun_in_a_chain_group_carries_the_chain_limit[group-five]
+      FAILED test_a_transaction_begun_in_a_chain_group_carries_the_chain_limit[group-replay-write]
+      FAILED test_an_edit_retraction_the_limit_stopped_stays_contained_and_says_the_limit
+the chain group is not a condition [sqlite]                    8 passed, 14 skipped, 6 warnings
+the written value is not read [pg]                             7 failed, 7 passed, 8389 deselected, 15 warnings
+      FAILED test_a_group_a_replay_woke_is_stopped_the_same
+      FAILED test_a_group_whose_statement_runs_past_the_limit_fails_once_and_the_next_group_runs[one-second]
+      FAILED test_a_transaction_begun_in_a_chain_group_carries_the_chain_limit[group-chain-write]
+      FAILED test_a_transaction_begun_in_a_chain_group_carries_the_chain_limit[group-five]
+      FAILED test_a_transaction_begun_in_a_chain_group_carries_the_chain_limit[group-off]
+      FAILED test_a_transaction_begun_in_a_chain_group_carries_the_chain_limit[group-replay-write]
+      FAILED test_an_edit_retraction_the_limit_stopped_stays_contained_and_says_the_limit
+the written value is not read [sqlite]                         8 passed, 14 skipped, 6 warnings
+the transaction open at the group's start is not bounded [pg]  2 failed, 12 passed, 8389 deselected, 15 warnings
+      FAILED test_a_group_a_replay_woke_is_stopped_the_same
+      FAILED test_a_group_whose_statement_runs_past_the_limit_fails_once_and_the_next_group_runs[one-second]
+the transaction open at the group's start is not bounded [sqlite] 8 passed, 14 skipped, 6 warnings
+the group marker is never set [pg]                             3 failed, 11 passed, 8389 deselected, 15 warnings
+      FAILED test_a_group_a_replay_woke_is_stopped_the_same
+      FAILED test_a_group_whose_statement_runs_past_the_limit_fails_once_and_the_next_group_runs[one-second]
+      FAILED test_an_edit_retraction_the_limit_stopped_stays_contained_and_says_the_limit
+the group marker is never set [sqlite]                         8 passed, 14 skipped, 6 warnings
+the failure is not said as the limit [pg]                      2 failed, 12 passed, 8389 deselected, 15 warnings
+      FAILED test_a_group_a_replay_woke_is_stopped_the_same
+      FAILED test_a_group_whose_statement_runs_past_the_limit_fails_once_and_the_next_group_runs[one-second]
+the failure is not said as the limit [sqlite]                  8 passed, 14 skipped, 6 warnings
+the retraction line does not say the limit [pg]                1 failed, 13 passed, 8389 deselected, 15 warnings
+      FAILED test_an_edit_retraction_the_limit_stopped_stays_contained_and_says_the_limit
+the retraction line does not say the limit [sqlite]            8 passed, 14 skipped, 6 warnings
+a cancel younger than the limit is called the limit [pg]       14 passed, 8389 deselected, 15 warnings
+a cancel younger than the limit is called the limit [sqlite]   1 failed, 7 passed, 14 skipped, 6 warnings
+      FAILED test_a_statement_stopped_by_the_limit_is_said_with_the_limit_its_stage_and_its_rule
+OLD (origin/main database.py + ingestion_worker.py) [pg]       7 failed, 7 passed, 8389 deselected, 15 warnings
+      FAILED test_a_group_a_replay_woke_is_stopped_the_same
+      FAILED test_a_group_whose_statement_runs_past_the_limit_fails_once_and_the_next_group_runs[one-second]
+      FAILED test_a_transaction_begun_in_a_chain_group_carries_the_chain_limit[group-chain-write]
+      FAILED test_a_transaction_begun_in_a_chain_group_carries_the_chain_limit[group-default]
+      FAILED test_a_transaction_begun_in_a_chain_group_carries_the_chain_limit[group-five]
+      FAILED test_a_transaction_begun_in_a_chain_group_carries_the_chain_limit[group-replay-write]
+      FAILED test_an_edit_retraction_the_limit_stopped_stays_contained_and_says_the_limit
+OLD (origin/main database.py + ingestion_worker.py) [sqlite]   1 failed, 7 passed, 14 skipped, 6 warnings
+      FAILED test_a_statement_stopped_by_the_limit_is_said_with_the_limit_its_stage_and_its_rule
+```
+
+### 6 전체 sqlite
+
+```
+5 failed, 8023 passed, 372 skipped, 3 xfailed, 13252 warnings — 실패는 알려진 박스 실패뿐
+```
+
+### 7 여쭐 것
+
+```
+① 리스너 이름 _bound_the_file_writes 가 이제 체인 묶음도 건다 — 이름이 하는 일을 다 말하지 않는다
+   이번엔 안 바꿈(총괄이 이 자리를 그 이름으로 짚으셨음). 바꿀지 여쭙니다
+② 3 의 «안 걸림» 넷에 상한을 걸지 — 소유자께 여쭐 일로 올립니다
+③ 4 의 PG 순서 의존(wide_join 뒤 edited_source setup 오류)을 따로 고칠지
+```
