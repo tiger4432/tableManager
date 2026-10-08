@@ -36552,3 +36552,20 @@ b340386fe
            화면(6ed12c95e)은 204 면 새로고침 · 200 이면 next — 이 착지 뒤로는 늘 200
 문서       DEPLOY_SETUP §2-1 · CODE_MAP 은 구현자가 맞춤. config/README 의 auth_config 줄에 post_logout_redirect_uri — 이 보고와 같은 커밋
 ```
+
+---
+
+## [C 응용] 10-08 35eacf3d2(체인 대기열 × 화면) QA — 결함 못 찾음. 물음 하나 (코드로 읽음 · 하니스 돌림)
+
+```
+읽음    서버 반은 아직 없다(server 에 queue/cancel 0 · 같은 grep 의 /admin/chain/queue 는 잡힘)
+        그래서 오늘: 기다리는 줄은 cancel 이 없어 × 칸이 안 선다(전과 같은 표) · 도는 소급 줄은 run_id 만 -> 전처럼 소급 취소 길
+        오늘 바뀐 것은 도는 줄 × 가 «Skip this line?» 을 한 번 묻는 것뿐
+        서버가 착지하면 key 가 run_id 를 이긴다(cancelOf 한 자리) — 도는 소급 줄도 queue/cancel 로 간다(서버가 request_cancel 을 부르는 계약 그대로)
+        성공 뒤 fetchData — Overview · Chain 둘 다 대기열을 다시 읽는다. 422 는 서버 문장 · 망 실패는 Cancel refused
+하니스  chain_queue_panel 209 통과 · 실패 0(node · 이 트리)
+물음    계약의 200 {"already": "processed"} 를 화면이 «됨»으로 읽고 말이 없다(X8 이 그렇게 단언). 줄은 다음 읽기에 사라진다
+        × 의 뜻은 「그 변경들로는 체인 규칙을 안 돌린다」인데, 운영자가 보고 누르는 사이 체인이 그 줄을 돌았으면 «건너뛰었다»로 읽힌다 — 실제로는 돌았다
+        대기열 읽기가 운영에서 5 초라 그 틈이 있다. already 일 때 한 줄(예: Already processed - nothing skipped)을 띄울지는 총괄 판정
+문서    CODE_MAP chain_queue_panel 절에 한 줄 — 이 보고와 같은 커밋. SYSTEM_FLOWS 의 POST 줄은 서버 착지 때
+```
