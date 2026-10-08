@@ -65005,3 +65005,23 @@ RUN.md        「IT 에 등록할 주소 = https://<서버>/auth/signed-out · �
 > **[총괄 -> 클라 · 구현자] 10-08 — 덩어리 열기는 «덩어리 주인 노드에서 그 술어로 한 걸음»으로 (11e5ea207 의 깊은 경우 · 구현자 물음): 표 이어 걷기(53050a4ec)가 짓는 «한 걸음 이어 걷기» 함수 하나로 그래프의 «+M more» 덩어리를 연다(positive = 주인 · follow = 술어 · 방향 · collect = 먼 타입 · hops 1). 처음부터 다시 걸어 예산을 나눠 쓰지 않으니 깊이와 무관하게 0 이 아니다. 서버는 앞 N + bundle count · drawn · «같은 깊이 안 먼저»까지만. 클라 순서: 표 이어 걷기 직후(같은 함수)**
 
 > **[총괄 -> 구현자] 10-08 — 작게: copy_rows_with_hold 의 params 리스트 칸(key_columns · columns)에 문자열을 적으면 list("c_bn") 로 글자가 쪼개져 「'c', 'o' …」 오류가 실행 중에 난다(소유자 운영). 규칙 검사(chain_bindings.rule_refusals 류 — 저장 · 리로드가 지나는 그 자리)가 맵퍼의 PARAMS 형을 묻고 거절 한 문장(「columns must be a list, e.g. ["c_bn"]」). 둘째 검사 금지 · 다른 제품 맵퍼의 리스트 params 도 같은 자리에서 셈 · 게이트 칸 + 변이**
+
+> **[총괄 -> 구현자] 10-08 🔴🔴 «지금 맨 앞 · 하던 일 멈춤» — 소급 줄의 × 가 «이미 끝남»으로 끝나고 대기 이벤트를 안 뺀다 (소유자 운영 마비 중: 「너가 준 x 버튼도 이미 끝난거라고 안먹어 근데 왜 대기열에 있어?」 · 「이걸 끌 수 있는 거 개발해와」 · 「뭐는 대기열만 비우고 뭐는 실행 끄고」 · 「하루종일 체인만 끄다 마네」)**
+
+```
+원인(총괄이 코드로 읽음)  main.py skip_chain_queue_line — key 가 RetroactiveRun.run_id 면 `return cancel_retroactive_run(key, db)` 로 «그것만» 하고 끝 (83023aa5d)
+   100만 행 체인 소급: 실행은 이벤트를 «넣기만» 하고 done. 실제 계산은 워커가 그 run_id 이벤트를 먹는다
+   -> × = 실행 취소 = 「이미 끝남」. 그 줄의 대기 이벤트 · 돌던 묶음 질의는 그대로. 소유자는 Pause + SQL 로 손으로 끔
+고칠 모양 — «일 하나를 끈다» 함수 «하나»
+   stop_line(key): ① 그 key 가 도는 실행이면 실행 취소 요청 ② 그 key 의 대기 체인 이벤트를 set_aside(지금 × 가 하는 그 빼기) ③ 돌던 묶음 질의 끊기(cancel_running_group line_key)
+   실행 상태와 «무관하게» ①②③ 전부. run 분기에서 return 하지 않는다
+   실행이 넣기 도중이면: 취소가 착지하는 자리(실행이 cancelled 로 끝나는 곳)에서 같은 ② 를 한 번 더 — 취소 전에 커밋된 페이지 이벤트가 남지 않게
+   부르는 곳 둘 다 그 함수: 대기열 줄 × (POST /admin/chain/queue/cancel) · 소급 화면의 실행 Cancel. 둘째 끄기 길 금지
+   답: {run: 실행 상태 낱말, skipped_events: N, cancelled_pid} — 「already finished」 하나로 끝나는 답은 없앤다
+게이트(표로)  실행 상태 {넣는 중 · done · cancelled · queued} × 부르는 곳 {줄 × · 실행 Cancel}
+   -> 각 칸: 그 run_id 의 processed_chain=false 이벤트 = 0 · 돌던 묶음이 그 줄이면 질의 끊김 · 다른 줄 이벤트 손 안 탐
+   넣는 중 칸: 취소 뒤 실행이 끝났을 때 남은 이벤트 0
+   변이: run 분기 return 되살리기 -> 빨강 · 착지 자리의 두 번째 빼기 지우기 -> 넣는 중 칸 빨강
+RELEASE_LOG · RUN.md(재기동 뒤 그 줄 × 한 번 · 답의 skipped_events 뜻) 같은 커밋
+시각 format(ca87ffdb3)은 이것 «뒤»로 한 칸 밀림
+```
