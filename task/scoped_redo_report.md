@@ -75294,3 +75294,183 @@ sqlite 전체                                              6 failed, 8027 passed
 ```
 전체에서 하나 더 — test_a_static_seed_takes_its_first_step_into_the_world 의 «정적 씨앗의 넘친 갈래는 안 그림»도 옛 규칙을
 박아 둔 단언이라 «앞 2 · count 3 · drawn 2»로 옮김. 고친 두 파일 다시: 17 passed, 2 skipped, 6 warnings
+
+---
+
+## [10-08] 체인 대기열 «모든 줄»에 × 83023aa5d (총괄 d32261987 · be5457365 · 소유자 「항목별로 지울 수 있게 x 버튼」)
+
+어느 DB · 어느 스키마 · 지운 것 — sqlite 메모리(시험) · PG 는 assy_test 의 assy_pytest_pg_<pid>_<worker>(끝에 스키마째 DROP) · public 안 씀 · 아웃박스 행은 지우지 않음
+
+### 1 무엇
+
+```
+문 하나    POST /admin/chain/queue/cancel {"key"} — 열쇠는 GET 줄의 cancel.key (run_id 는 그대로 남김)
+          열쇠 식  event_constants.queue_line_key(outbox) 하나 — 목록 · × · 워커의 도는 묶음이 같이 부름(main.py 의 coalesce 를 옮김)
+소급 줄    cancel_retroactive_run 을 그대로 불러 그 답(200 · 400 문장)
+대기 줄    그 줄의 기다리는 체인 사건을 set_aside.set_aside(ids=…) 로 뺌 — 비상 정지의 치워 두기와 같은 표시, 지우지 않음
+          표마다 감사 한 줄(source chain_queue_skip · 열쇠 · 사건 수 · 누가) -> 커밋 «뒤에» cancel_running_group(line_key=…)
+          체인 사건이 아닌 행이 섞였으면 그 행은 두고 답에 kept
+안 기다림  200 {"skipped_events": 0, "already": "processed" | "set_aside" | "gone"} — 행 열쇠는 PK, 트랜잭션은 idx_outbox_txid
+모양 틀림  422 한 문장 · 404 안 씀
+```
+
+### 2 지금 코드의 경쟁 — 고친 것 (총괄께 미리 올린 사실)
+
+```
+워커는 기다리는 행을 최대 200 개 들고 묶음마다 «아직 기다리나»를 다시 묻지 않았다 -> 빼 둔 줄도 돌았다
+실패 기록은 집을 때의 payload 사본으로 써서 cancelled_by 를 지웠다 -> 끊긴 묶음은 FAILED 가 되고 «뺐다»가 사라짐
+   (DEFAULT_MAX_GROUP_ATTEMPTS = 1 이라 «다시 대기»는 안 되고 표시만 잃었다)
+_mark 는 조건 없이 썼다 -> 막 끝난 줄을 빼면 돈 행이 «뺐다»가 되어 rerun_set_aside 가 다시 돌린다
+고침  워커 _still_waiting(db, events) 하나 — 묶음 «돌리기 전»(빠진 행 버림, 다 빠지면 건너뜀)과 «실패 기록 전»(rollback 뒤)
+      _mark 는 processed_chain=false 인 행에만 · 쓴 수를 돌려줌(apply 답 marked)
+      비상 정지의 치워 두기도 이 덕을 본다
+남는 틈  워커가 다시 읽은 뒤 · 커밋 전에 표시가 들어오는 순간 — 행 잠금은 안 넣음
+        성공 길은 묻지 않는다 — 돌면서 빠진 행은 어느 쪽이든 «뺐다»로 읽힌다(processed_at 만 다름)
+도는 묶음 알아보기  워커가 묶음 시작에 그 줄 열쇠를 박동 사실(line_keys)로 냄 -> × 는 열쇠가 맞을 때만 질의를 끊음
+        pid · 줄 열쇠를 적자마자 박동을 씀(총괄 ㄱ) — 전엔 다음 조각 박동(HEARTBEAT_SLICE_SECONDS 20 s)까지 파일에 없었다
+```
+
+### 2-bis 같은 커밋에 더한 셋 (총괄 10-08 소유자 실측)
+
+```
+열쇠는 SQL 로   set_aside._in_scope 의 transactions 를 payload->>'transaction_id' IN 으로(idx_outbox_txid) — 전엔 기다리는 사건 «전부»를
+               읽어 파이썬에서 걸렀다(소유자 「빼 두기가 5분 넘게」). × 의 줄 행은 queue_line_rows(열쇠 식 + PK · idx_outbox_txid 좁힘)
+게이트 뒤 아님  × 는 소급 실행으로 줄 서지 않고 라우트가 그 자리에서 set_aside · cancel_running_group 을 부른다
+queued 취소    request_cancel 의 한 갈래 — 아직 시작 안 한 실행은 바로 cancelled(_mark_run expect_state=queued). 전엔 cancel_requested(IN_FLIGHT)를
+               적어 읽을 프로세스가 없는데 게이트가 영원히 닫혔다. 그 사이 집힌 실행은 지금과 같은 «멈춰 달라»
+               queued 실행 줄의 × 도 이 함수를 지난다(줄 열쇠 = run_id)
+```
+
+### 3 게이트 — 같은 파일(test_the_chain_can_be_paused_and_its_queue_set_aside), 같은 표 둘
+
+| 칸 | 답 | 시험 |
+|---|---|---|
+| 대기 줄 × | 그 행 «뺐다» · 다른 줄 그대로 · 원장 따라가기 대기 +1 · 감사 1 | test_a_cross_sets_its_lines_waiting_events_aside_and_leaves_the_others 초록 (1/1) |
+| 워커가 이미 든 줄 × | 안 돎 | test_a_line_already_in_the_workers_batch_does_not_run_once_set_aside 초록 (1/1) |
+| 도는 묶음 × (실패 길 흉내) | FAILED · RETRYING 아님 · 재시도 0 · 다음 줄 돎 · 멈춤 아님 | test_a_group_set_aside_while_it_runs_is_neither_failed_nor_retried_and_the_next_runs 초록 (1/1) |
+| 도는 묶음 × (PG, 진짜 pg_sleep 끊기) | 질의 끊김 5 s 안 · 그 행 «뺐다» · 다른 줄 × 는 안 끊음 · 멈춤 아님 | test_a_cross_on_the_running_line_cancels_its_query_and_its_rows_stay_set_aside 초록 (1/1) |
+| 소급 줄 × | 실행 취소와 같은 답(running · done) | test_a_runs_line_answers_what_the_runs_own_cancel_answers 초록 (2/2) |
+| 이미 빠짐 · 끝남 · 없음 · 행 열쇠 | 200 set_aside · processed · gone | test_a_key_that_no_longer_waits_says_what_became_of_it 초록 (1/1) |
+| 열쇠 모양 틀림 | 422 · 아무것도 안 움직임 | test_a_key_that_is_not_a_line_key_is_refused_and_nothing_moves 초록 (5/5) |
+| 이미 끝난 행 | _mark 가 안 씀 | test_setting_aside_leaves_a_row_the_chain_already_ended 초록 (1/1) |
+| 묶음 시작 (조각 600 s 로 늘림) | 그 줄 열쇠가 박동 파일에 «곧바로» | test_a_group_says_which_line_it_is_as_it_starts_not_a_slice_later 초록 (1/1) |
+| 기다리는 사건 50,000 중 줄 하나 | 읽는 행 = 그 줄의 행(× 1 · transactions 10, SQLite 는 행마다 둘) | test_a_cross_and_a_transactions_set_aside_read_only_their_lines_rows 초록 (1/1) |
+| 다른 소급 실행이 도는 중 | × 즉시 200 | test_a_cross_answers_at_once_while_another_run_is_in_flight 초록 (1/1) |
+| queued 실행 × | cancelled · 게이트 열림 · 뒤 실행이 두 틱 안에 시작 | test_a_queued_run_is_cancelled_at_once_and_the_run_behind_it_starts 초록 (1/1) |
+| running 실행 × | cancel_requested (전과 같음) | test_a_running_runs_cancel_is_asked_as_before 초록 (1/1) |
+
+```
+PG 칸은 박동 조각을 0.2 s 로 줄인 박스 조건(그 파일의 기존 고정물)
+```
+
+### 4 변이 (빨강 = «실패한 시험», 기준 먼저 초록, md5 전후 같음)
+
+```
+sqlite                                                      25 passed, 2 deselected, 50 warnings
+pg                                                          2 passed, 8429 deselected, 8 warnings
+the failure path writes over a set-aside row         sqlite 1 failed, 24 passed, 2 deselected, 50 warnings
+      FAILED test_a_group_set_aside_while_it_runs_is_neither_failed_nor_retried_and_the_next_runs
+the failure path writes over a set-aside row         pg     1 failed, 1 passed, 8429 deselected, 8 warnings
+      FAILED test_a_cross_on_the_running_line_cancels_its_query_and_its_rows_stay_set_aside
+a set-aside row in the batch still runs              sqlite 1 failed, 24 passed, 2 deselected, 50 warnings
+      FAILED test_a_line_already_in_the_workers_batch_does_not_run_once_set_aside
+a set-aside row in the batch still runs              pg     1 failed, 1 passed, 8429 deselected, 8 warnings
+      FAILED test_a_cross_on_the_running_line_cancels_its_query_and_its_rows_stay_set_aside
+a x on any line cancels the running group            sqlite 25 passed, 2 deselected, 50 warnings
+a x on any line cancels the running group            pg     1 failed, 1 passed, 8429 deselected, 8 warnings
+      FAILED test_a_cross_on_the_running_line_cancels_its_query_and_its_rows_stay_set_aside
+setting aside marks a row the chain already ended    sqlite 1 failed, 24 passed, 2 deselected, 50 warnings
+      FAILED test_setting_aside_leaves_a_row_the_chain_already_ended
+setting aside marks a row the chain already ended    pg     2 passed, 8429 deselected, 8 warnings
+transactions sieved in Python again (the old read)   sqlite 1 failed, 24 passed, 2 deselected, 50 warnings
+      FAILED test_a_cross_and_a_transactions_set_aside_read_only_their_lines_rows
+transactions sieved in Python again (the old read)   pg     2 passed, 8429 deselected, 8 warnings
+a queued run's cancel is only requested              sqlite 1 failed, 24 passed, 2 deselected, 50 warnings
+      FAILED test_a_queued_run_is_cancelled_at_once_and_the_run_behind_it_starts
+a queued run's cancel is only requested              pg     2 passed, 8429 deselected, 8 warnings
+the line is written at the next slice only           sqlite 1 failed, 24 passed, 2 deselected, 50 warnings
+      FAILED test_a_group_says_which_line_it_is_as_it_starts_not_a_slice_later
+the line is written at the next slice only           pg     2 passed, 8429 deselected, 8 warnings
+```
+
+### 5 스위트 · 시험 쪽 바뀐 것
+
+```
+sqlite 전체   5 failed, 8046 passed, 377 skipped, 3 xfailed, 13279 warnings — 실패는 알려진 박스 실패뿐
+가짜 세션 넷   test_chain_hol_scheduling · test_a_group_is_isolated_after_the_declared_attempts · test_a_rule_can_say_it_must_not_be_fed_twice ·
+              test_a_stuck_chain_group_says_what_holds_it 는 아웃박스 표가 없는 가짜 세션이라 «모든 사건이 아직 기다림»으로 답하는 고정물 하나씩
+```
+
+### 6 대기열 화면 속도 (총괄 6d7046a42 · 소유자 「대기열 화면 로딩 5초」) · 행 하나짜리 줄의 outbox_id (6c678dd13)
+
+어느 DB · 어느 스키마 · 지운 것 — 재기는 PG assy_test 의 스크래치 스키마 · 풀 엔진(QueuePool) · 기다리는 사건과 같은 수의 끝난 사건을
+   넣고 끝에 그 행(table_name qt_*)과 retroactive_runs 의 probe-run-* 를 지움 · public 안 씀
+
+```
+GET /admin/chain/queue 세 번씩 · Server-Timing (이 박스 스크래치 — 운영 모양 아님. «넓은» = 사건마다 40 칸 행 ~3 KB, TOAST 넘김)
+PROBE before waiting 10000 call 1  total;dur=412.2, db;dur=63.3;desc="7 queries"
+PROBE before waiting 10000 call 2  total;dur=83.6, db;dur=49.4;desc="7 queries"
+PROBE before waiting 10000 call 3  total;dur=71.5, db;dur=45.2;desc="7 queries"
+PROBE before waiting 100000 call 1  total;dur=861.0, db;dur=823.7;desc="7 queries"
+PROBE before waiting 100000 call 2  total;dur=986.2, db;dur=958.8;desc="7 queries"
+PROBE before waiting 100000 call 3  total;dur=729.1, db;dur=701.1;desc="7 queries"
+PROBE after waiting 10000 call 1  total;dur=310.7, db;dur=47.9;desc="3 queries"
+PROBE after waiting 10000 call 2  total;dur=89.1, db;dur=40.7;desc="3 queries"
+PROBE after waiting 10000 call 3  total;dur=87.0, db;dur=40.4;desc="3 queries"
+PROBE after waiting 100000 call 1  total;dur=592.2, db;dur=528.3;desc="3 queries"
+PROBE after waiting 100000 call 2  total;dur=548.8, db;dur=500.2;desc="3 queries"
+PROBE after waiting 100000 call 3  total;dur=718.2, db;dur=662.6;desc="3 queries"
+PROBE before_wide waiting 10000 call 1  total;dur=158.0, db;dur=107.3;desc="7 queries"
+PROBE before_wide waiting 10000 call 2  total;dur=127.2, db;dur=100.8;desc="7 queries"
+PROBE before_wide waiting 10000 call 3  total;dur=128.6, db;dur=101.8;desc="7 queries"
+PROBE before_wide waiting 100000 call 1  total;dur=1298.5, db;dur=1086.9;desc="7 queries"
+PROBE before_wide waiting 100000 call 2  total;dur=1035.6, db;dur=1008.3;desc="7 queries"
+PROBE before_wide waiting 100000 call 3  total;dur=1181.3, db;dur=1155.0;desc="7 queries"
+PROBE after_wide waiting 10000 call 1  total;dur=140.9, db;dur=72.0;desc="3 queries"
+PROBE after_wide waiting 10000 call 2  total;dur=111.5, db;dur=66.5;desc="3 queries"
+PROBE after_wide waiting 10000 call 3  total;dur=112.7, db;dur=67.3;desc="3 queries"
+PROBE after_wide waiting 100000 call 1  total;dur=1101.0, db;dur=860.2;desc="3 queries"
+PROBE after_wide waiting 100000 call 2  total;dur=663.4, db;dur=615.5;desc="3 queries"
+PROBE after_wide waiting 100000 call 3  total;dur=675.9, db;dur=628.6;desc="3 queries"
+같은 픽스처의 응답 (시각 · 나이 칸 빼고, 새 outbox_id 빼고, 소유자 종류 목록은 집합으로 — 옛 질의에 순서가 없었음)
+narrow waiting  10000  answers same  lines 200  one-row lines with outbox_id 20 (each names its row: True)
+narrow waiting 100000  answers same  lines 200  one-row lines with outbox_id 0 (each names its row: True)
+wide  waiting  10000  answers same  lines 200  one-row lines with outbox_id 20 (each names its row: True)
+wide  waiting 100000  answers same  lines 200  one-row lines with outbox_id 0 (each names its row: True)
+```
+```
+무엇     기다리는 행을 읽는 질의 둘 — 종류(깊이 · 재시도 · 소유자 나이)는 payload 없이, 줄은 (줄 · 종류 · 표) 묶음을 첫 id 로
+         dense_rank 해 SQL 에서 상한까지만 — 줄마다 표 · 종류가 같은 묶음에서 나온다(옛 «줄 IN (...)» 두 번째 payload 훑기 없음)
+         소급 통제 행은 실린 줄에 그 종류가 있을 때만 묻는다(없는데도 대기 행 전부를 훑던 한 질의)
+남은 것  100,000(넓은)에서 1 s 언저리 — 거의 전부가 줄 묶음의 payload 읽기. EXPLAIN ANALYZE(넓은 100,000, 소급 통제 행 묻기를 줄이기 전):
+         106.048 ms  SELECT database_outbox.event_type AS database_outbox_event_type, count
+         557.869 ms  SELECT anon_1.key, anon_1.run, anon_1.table_name, anon_1.event_type, a
+         90.594 ms  SELECT database_outbox.id AS database_outbox_id, database_outbox.paylo
+         0.042 ms  SELECT retroactive_runs.run_id AS retroactive_runs_run_id, retroactive
+         더 내리려면 줄 열쇠를 칸으로 두는 것(ㄷ · 이주) — 소유자께 여쭐 일
+게이트   test_the_queue_reads_its_waiting_rows_in_a_fixed_few_queries_and_names_a_one_row_line 초록 (1/1)
+```
+
+변이 (main.py, 대기열 라우트를 부르는 시험 파일 전부, md5 같음)
+```
+BASELINE exit 0  212 passed, 3 skipped, 291 warnings
+MUTANT the control-row lookup runs whatever the lines hold      exit 1  1 failed, 211 passed, 3 skipped, 293 warnings
+    FAILED test_the_queue_reads_its_waiting_rows_in_a_fixed_few_queries_and_names_a_one_row_line
+MUTANT the lines are not cut at the cap in SQL                  exit 1  1 failed, 211 passed, 3 skipped, 291 warnings
+    FAILED test_a_cut_list_says_how_many_lines_there_are
+MUTANT a one-row line does not name its row                     exit 1  1 failed, 211 passed, 3 skipped, 291 warnings
+    FAILED test_the_queue_reads_its_waiting_rows_in_a_fixed_few_queries_and_names_a_one_row_line
+MUTANT OLD (the x-only main.py, wt-impl HEAD)                   exit 1  1 failed, 211 passed, 3 skipped, 293 warnings
+    FAILED test_the_queue_reads_its_waiting_rows_in_a_fixed_few_queries_and_names_a_one_row_line
+```
+× 변이는 다시 얹은 코드에서 한 번 더 돌림 — 위 4 절의 표가 그 결과
+
+### 말이 바뀐 것
+
+```
+로그  [Chain] tx '<열쇠>' was set aside before it ran - N event(s), not run
+      [Chain] tx '<열쇠>': N event(s) were set aside while it ran - left set aside, not failed
+전선  GET /admin/chain/queue 대기 줄마다 cancel: {"key"} 더함 · POST /admin/chain/queue/cancel 새로
+문서  CODE_MAP(라우트 행 · control · set_aside · process_pending_groups) · BACKFILL_GUIDE §2.8 · RELEASE_LOG · RUN.md(× 의 뜻 · 되돌리기 명령)
+재기동  서버 · 체인 워커 — 소유자 몫
+```
