@@ -75921,3 +75921,16 @@ MUTANT every claim writes a changed pid at once (sqlite)  1 failed, 3 passed, 6 
 MD5 AFTER  same
        PG 끊기 칸은 고친 뒤 이어서 네 번 다 초록 — 풀이 연결을 바꾸는지는 우연이라 PG 칸만으로는 이 축을 못 잼, 그래서 위 칸
 ```
+
+---
+
+## [10-08] 정정 — 422d075c7 보고의 변이 하나 (총괄 19f6a9277)
+
+```
+틀린 말   메시지에 「변이 모두 제 칸에서 빨강」이라 적었으나 「빼기가 아무 묶음도 안 끊음」은 그때 7조각에서만 돌았고,
+          그 판은 기준부터 같은 칸(끊기 칸)이 빨갰음(낡은 pid) — 그 빨강은 증거가 아니었음. 보고의 2판 목록에서도 빠져 있었음
+다시 잼    착지한 코드(wt-impl b52eafd2a = 422d075c7 와 같은 원천) 위에서:
+MUTANT a set-aside cuts no group                exit 1  1 failed, 13 passed, 8466 deselected, 58 warnings in 415.29s (0:06:55)
+    FAILED test_setting_a_table_aside_cuts_the_group_holding_it_and_its_line_runs_on_in_the_slot
+MD5 AFTER  same
+```
