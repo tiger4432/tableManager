@@ -156,6 +156,49 @@ export function formatAge(seconds) {
   return h % 24 ? `${d}d ${h % 24}h` : `${d}d`;
 }
 
+// 🔴 248ae20cd — a queue line's chain state is the server's `{state, why}` (one function there), drawn ONE way
+//    in both queues, the admin's lines and the grid's rows: the token as it comes, on the base layer's tag, and
+//    its why as one line. The tone is colour only; the stylesheet draws these three and nothing else.
+const STATE_TONE = Object.freeze({ running: 'ok', retrying: 'warn', stalled: 'warn', failed: 'danger' });
+
+/** A chain state's one line: its `why` fields in the order the lead wrote them, '' where it says nothing. A
+ *  waiting state's seconds are not said - they are the age the line already shows beside it; a waiting or done
+ *  row the server found in an unexpected status says that status. */
+export function chainStateWhy(chainState) {
+  const s = chainState && typeof chainState === 'object' ? chainState : {};
+  const w = s.why && typeof s.why === 'object' ? s.why : {};
+  const moved = formatAge(w.moved_seconds);
+  const attempt = isCount(w.attempt) ? `attempt ${w.attempt}${isCount(w.cap) ? `/${w.cap}` : ''}` : '';
+  const parts = {
+    running: [w.stage, moved && `moved ${moved} ago`, formatAge(w.elapsed_seconds)],
+    stalled: [w.stage, moved && `moved ${moved} ago`, formatAge(w.elapsed_seconds), w.stalled_on && `on ${w.stalled_on}`],
+    retrying: [attempt, w.last_failure],
+    paused: [w.by && `by ${w.by}`, w.at, w.reason],
+    set_aside: [w.by && `by ${w.by}`, w.reason],
+    failed: [w.failure],
+    waiting: [w.unexpected_status && `status ${w.unexpected_status}`],
+    done: [w.unexpected_status && `status ${w.unexpected_status}`],
+  }[s.state] || [];
+  return parts.filter((p) => p !== null && p !== undefined && p !== '').map(String).join(' · ');
+}
+
+/** The state cell both queues draw: the token, then `chainStateWhy` - a line cut short keeps its whole in a title. */
+export function chainStateCell(doc, chainState) {
+  const cell = doc.createElement('div');
+  cell.className = 'queue-line-state';
+  const token = chainState && chainState.state ? String(chainState.state) : '';
+  const tag = line(doc, 'tag', token || ABSENT);
+  if (STATE_TONE[token]) tag.setAttribute('data-tone', STATE_TONE[token]);
+  cell.appendChild(tag);
+  const why = chainStateWhy(chainState);
+  if (why) {
+    const said = line(doc, 'meta queue-line-state-why', why);
+    said.setAttribute('title', why);
+    cell.appendChild(said);
+  }
+  return cell;
+}
+
 // 🔴 `countOf` LIVED HERE UNTIL 2026-09-04 and it had this bug: `Number('') === 0` and
 //    `''` is neither null nor undefined, so an empty string rendered as 「0」. The same
 //    collapse `formatAge` guards against, in the function beside it. It moved to `absent.js`
@@ -420,6 +463,8 @@ export function queueView(payload, opts = {}) {
     // and a 「0」 on every row is noise that hides the one row that is not 0.
     maxRetry: Number(t.max_retry) > 0 ? countOf(t.max_retry) : '',
     skip: skipOf(cancelOf(t.cancel), t.events),
+    // The server's `{state, why}` (248ae20cd), drawn under the age - no sixth column (d886307b6, lead 10-08).
+    chainState: t.chain_state || null,
   }));
 
   // ── rule ④: a cut list says it was cut ──
@@ -715,6 +760,7 @@ export class ChainQueuePanel {
 
       const tdAge = this._td(r.age, 'age');
       if (r.at) tdAge.title = `Waiting since ${r.at}`;
+      if (r.chainState) tdAge.appendChild(chainStateCell(doc, r.chainState));
       tr.appendChild(tdAge);
       tr.appendChild(this._td(r.tables, 'tables'));
       // The event count rides the Rows cell as a badge on its own line above the number (admin.html),

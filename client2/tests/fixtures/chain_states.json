@@ -1,0 +1,17 @@
+{
+  "_what": "The eight chain states in the shape the implementer announced for 248ae20cd (chain_state: {state, why}), each with the one line and the tone the state cell draws. Read by chain_queue_panel_harness and outbox_queue_panel_harness - one fixture for both queues.",
+  "states": [
+    { "chain_state": { "state": "waiting", "why": { "waiting_seconds": 90 } }, "why": "", "tone": null },
+    { "chain_state": { "state": "running", "why": { "stage": "dt_log_to_dt_map -> dt_map · page 3 · 500 rows", "moved_seconds": 4, "elapsed_seconds": 72 } },
+      "why": "dt_log_to_dt_map -> dt_map · page 3 · 500 rows · moved 4s ago · 1m 12s", "tone": "ok" },
+    { "chain_state": { "state": "stalled", "why": { "stage": "dt_log_to_dt_map -> dt_map · page 3 · 500 rows", "moved_seconds": 900, "elapsed_seconds": 1000, "stalled_on": "lock on dt_map" } },
+      "why": "dt_log_to_dt_map -> dt_map · page 3 · 500 rows · moved 15m ago · 16m 40s · on lock on dt_map", "tone": "warn" },
+    { "chain_state": { "state": "retrying", "why": { "attempt": 2, "cap": 3, "last_failure": "ValueError: no wafer" } },
+      "why": "attempt 2/3 · ValueError: no wafer", "tone": "warn" },
+    { "chain_state": { "state": "paused", "why": { "by": "ops", "at": "2026-10-08 18:00:00", "reason": "deploy" } },
+      "why": "by ops · 2026-10-08 18:00:00 · deploy", "tone": null },
+    { "chain_state": { "state": "set_aside", "why": { "by": "kk", "reason": "bad file" } }, "why": "by kk · bad file", "tone": null },
+    { "chain_state": { "state": "failed", "why": { "failure": "gave up after 3" } }, "why": "gave up after 3", "tone": "danger" },
+    { "chain_state": { "state": "done", "why": {} }, "why": "", "tone": null }
+  ]
+}

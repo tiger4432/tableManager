@@ -519,11 +519,10 @@ body.resizing-active .history-sidebar {
 .queue-head, .queue-row { grid-template-columns: 66px 84px 54px 80px 96px 1fr; }
 .queue-row { display: grid; align-items: center; border-bottom: 1px solid var(--border); }
 .queue-row:last-child { border-bottom: none; }
-.queue-owner, .queue-event, .queue-age, .queue-state-detail { white-space: nowrap; }
+.queue-owner, .queue-event, .queue-age { white-space: nowrap; }
 .queue-age, .queue-h-age { justify-content: flex-end; }
 .queue-age { font-variant-numeric: tabular-nums; }
 .queue-state { gap: 4px; }
-.queue-state-detail { color: var(--warning); }
 .queue-cell:last-child { border-right: none; }
 
 .reference-view { flex: 1; min-width: 0; }
@@ -2697,7 +2696,7 @@ body.resizing-active .history-sidebar {
 .audit-cell.audit-tx { border-right: none; }
 .audit-time, .queue-table, .queue-event, .queue-age { font-family: var(--font-mono); font-size: var(--fs-tag); color: var(--text-muted); }
 .audit-user, .queue-owner { font-family: var(--font-body); font-size: var(--fs-label); font-weight: 500; color: var(--accent); }
-.audit-tx, .queue-state-detail { font-family: var(--font-mono); font-size: var(--fs-meta); }
+.audit-tx { font-family: var(--font-mono); font-size: var(--fs-meta); }
 .audit-tx { color: var(--text-dim); gap: 4px; }
 
 /* The kind pill. Six kinds, because six is what the audit rows actually distinguish. */

@@ -27,15 +27,15 @@ const textOf = (mount) => walk(mount).map((n) => n.textContent || '').join(' ');
 // 서버가 «실제로» 내는 모양 (main.py 의 행 조립을 읽고 적음)
 const WAITING = { outbox_id: 11, event_type: 'EDIT', table_name: 'dt_log',
                   created_at: '2026-09-22 20:00:00', waiting_seconds: 90, owner: 'chain',
-                  chain_state: 'waiting', state_detail: '', broadcast_state: 'pending',
+                  chain_state: { state: 'waiting', why: { waiting_seconds: 90 } }, broadcast_state: 'pending',
                   rules: [{ name: 'dt_log_to_dt_map', will_fire: true }] };
-const RETRYING = { ...WAITING, outbox_id: 12, chain_state: 'waiting',
-                   state_detail: 'retrying' };
+const RETRYING = { ...WAITING, outbox_id: 12,
+                   chain_state: { state: 'retrying', why: { attempt: 2, cap: 3, last_failure: 'ValueError: no wafer' } } };
 // 🔴 제어 행 — 규칙이 «없는» 데 목록에 서는 부류다 (서버 9c09e5c34:
 //    「그 행 자체가 일이고 스케줄러가 돌린다」). DELETE 행은 이제 목록에 «안 온다».
 const CONTROL = { outbox_id: 13, event_type: 'CHAIN_RETRY', table_name: null,
                   created_at: '2026-09-22 20:01:00', waiting_seconds: 30, owner: 'scheduler',
-                  chain_state: 'waiting', state_detail: '', broadcast_state: 'not_applicable',
+                  chain_state: { state: 'waiting', why: { waiting_seconds: 30 } }, broadcast_state: 'not_applicable',
                   rules: [] };
 // 🔴 실패가 빠진 «오늘의» 모집단 문장 (서버 2eb1d38d).
 const POP = 'processed_chain=false ∪ (done & undelivered)';
@@ -43,15 +43,15 @@ const REPLY = (rows) => ({ generated_at: '2026-09-22 20:02:00', clock: 'server',
                            rules_known: ['dt_log_to_dt_map'],
                            listed: { cap: 200, next_cursor: null }, population: POP });
 
-console.log('\n[게이트 ③] 기다리는 중 vs 재시도 중 — 둘 다 waiting 이다');
+console.log('\n[게이트 ③] 기다리는 중 vs 재시도 중 — 상태 낱말과 그 근거 (248ae20cd)');
 {
   const mount = mountPanel(REPLY([WAITING, RETRYING]));
-  const details = byClass(mount, 'queue-state-detail').map((n) => n.textContent);
-  eq('G3 the retrying row carries the server\'s detail', details.length, 1);
-  ok('G3b ...and it is the server\'s token, not ours', details[0].includes('retrying'), details[0]);
+  const details = byClass(mount, 'queue-line-state-why').map((n) => n.textContent);
+  eq('G3 only the retrying row carries a why line (waiting\'s seconds are its age)', details.length, 1);
+  eq('G3b ...and it is the server\'s why, in the lead\'s words', details[0], 'attempt 2/3 · ValueError: no wafer');
   // 🔴 잘리는 칸은 이 화면에서 «한 가지 답»만 쓴다 — title. 하나만 빠지면 그게 갈라짐이다.
   eq('G3d ...and the clipped cell carries it in title, like every other clipped cell',
-    byClass(mount, 'queue-state-detail')[0].getAttribute('title'), 'retrying');
+    byClass(mount, 'queue-line-state-why')[0].getAttribute('title'), 'attempt 2/3 · ValueError: no wafer');
   // 🔴 이 둘이 «같은 픽셀»이면 운영자는 멈춘 행을 「아직 안 돌았다」로 읽는다.
   const rows = byClass(mount, 'queue-row').map((n) => walk(n).map((c) => c.textContent).join('|'));
   ok('G3c the two rows do not render identically', rows[0] !== rows[1], rows[0]);
@@ -156,7 +156,7 @@ console.log('\n[게이트 ③ 한 행 = 한 줄. 칸 여섯, 가로지르는 노
   ok('C1b every row has the same six cells, whatever it carries',
     counts.every((n) => n === 6), counts.join(','));
   // 🔴 이전 설계는 규칙·사유·note 를 «행을 가로지르는» 줄로 그렸다. 그 자리가 두 줄의 원인이다.
-  const spanning = walk(mount).filter((n) => ['queue-rule', 'queue-rules-toggle', 'queue-state-detail']
+  const spanning = walk(mount).filter((n) => ['queue-rule', 'queue-rules-toggle', 'queue-line-state-why']
     .some((c) => String(n.className || '').split(/\s+/).includes(c) && n.parentNode
       && String(n.parentNode.className || '').split(/\s+/).includes('queue-row')));
   eq('C2 no node hangs off the row itself any more', spanning.length, 0);
@@ -170,7 +170,8 @@ console.log('\n[게이트 ③ 한 행 = 한 줄. 칸 여섯, 가로지르는 노
   ok('C4c ...and Owner is the first of them',
     byClass(mount, 'audit-head')[0].children[0].textContent === 'Owner',
     byClass(mount, 'audit-head')[0].children.map((c) => c.textContent).join(','));
-  eq('C5 the state cell wears the audit pill', byClass(mount, 'audit-pill').length, 3);
+  // The state badge is the base layer's tag now, the one both queues draw (chainStateCell, lead 248ae20cd).
+  eq('C5 the state cell wears the base tag, one per row', byClass(mount, 'tag').length, 3);
   // 🔴 표가 «자기 상자 안»에서 구른다 — 안 그러면 행 수가 판의 높이가 된다
   eq('C6 rows live in their own scroll box', byClass(mount, 'queue-rows').length, 1);
 }
@@ -229,6 +230,49 @@ console.log('\n[㉰ 머리글이 «이 쪽»을 말한다 — 수는 이 쪽의 
   ok('F3 CONTROL: a mixed column is not named at all',
     !mixed.includes('dt_log') && !mixed.includes('dt_map'), mixed);
   ok('F3b ...while the column that IS shared still is', mixed.includes('EDIT'), mixed);
+}
+
+// ═══ W: a row's State cell is the admin queue's own function (lead 248ae20cd) ═══════════════════
+// The eight states, the one fixture both queues' harnesses read; each grid row must draw what chainStateCell does.
+{
+  const { readFileSync } = await import('node:fs');
+  const STATES = JSON.parse(readFileSync(new URL('./fixtures/chain_states.json', import.meta.url), 'utf8')).states;
+  const { chainStateCell } = await import('../src/chain_queue_panel.js');
+  const shape = (n) => walk(n).map((c) => [String(c.className || ''), c.getAttribute('data-tone'), c.getAttribute('title'),
+    c.children.length ? '' : c.textContent].join('/')).join('|');
+  const stateSuite = (m, say) => {
+    const mount = doc.createElement('div');
+    new m.OutboxQueuePanel(mount, { doc }).render(REPLY(STATES.map((s, i) => ({ ...WAITING, outbox_id: 200 + i,
+      chain_state: s.chain_state }))));
+    const cells = byClass(mount, 'queue-state').map((c) => c.children.map(shape).join('+'));
+    const want = STATES.map((s) => shape(chainStateCell(doc, s.chain_state)));
+    say('W1 each of the eight states, in a grid row, is what chainStateCell draws for it',
+      cells.length === 8 && JSON.stringify(cells) === JSON.stringify(want), cells.join(' || '));
+    const marks = byClass(mount, 'queue-row').map((r) => r.getAttribute('data-state'));
+    say('W2 ...and its row is marked with the server\'s token',
+      JSON.stringify(marks) === JSON.stringify(STATES.map((s) => s.chain_state.state)), marks.join(','));
+  };
+  const S_NAMES = [];
+  stateSuite(await import('../src/outbox_queue_panel.js'), (name, cond, shown) => { S_NAMES.push(name); ok(name, cond, shown); });
+  const { loadWithProbe } = await import('./lib/probe.mjs');
+  const { scoreMutants } = await import('./lib/mutation_scorer.mjs');
+  const swap = (from, to) => (t) => { if (!t.includes(from)) throw new Error(`mutation anchor is GONE: ${from.slice(0, 50)}`); return t.split(from).join(to); };
+  const SUBJECT = new URL('../src/outbox_queue_panel.js', import.meta.url);
+  const MUTANTS = [
+    { id: 'WM1', what: 'the grid draws a badge of its own', catches: 'W1',
+      mutate: swap('state.appendChild(chainStateCell(this.doc, row.chainState));', "state.appendChild(this._line('tag', row.state));") },
+    { id: 'WM2', what: 'the row is not marked with the token', catches: 'W2',
+      mutate: swap("line.setAttribute('data-state', row.state || 'unknown');", "line.setAttribute('data-state', 'unknown');") },
+  ];
+  const scored = await scoreMutants(MUTANTS, async (mu) => {
+    const m = (await loadWithProbe(SUBJECT.pathname.replace(/^\/([A-Za-z]:)/, '$1'), { mutate: mu.mutate })).module;
+    const got = [];
+    let ran = 0;
+    stateSuite(m, (name, cond) => { ran += 1; if (!cond) got.push(name); });
+    return { failures: got, ran };
+  }, { baselineRan: S_NAMES.length, baselineNames: S_NAMES, title: '\n  [mutants] - each must be caught by the check it names.' });
+  pass += MUTANTS.length - scored.wrong;
+  for (let i = 0; i < scored.wrong; i += 1) failures.push(`mutant verdict ${i + 1}`);
 }
 
 // ═══ P: the Queue tab reads itself on the admin queue's beat (lead 427451855) ═══════════════════

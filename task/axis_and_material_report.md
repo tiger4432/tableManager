@@ -1,3 +1,24 @@
+> ## [20:57 디자인] 두 대기열의 상태 칸 — 함수 하나 (총괄 248ae20cd · 서버 66b330480) — af5f2bbde
+
+**결론** 상태 칸 함수 하나(`chainStateCell` · `chainStateWhy`, chain_queue_panel.js)를 그리드 Queue 탭 State 칸과 어드민 Overview 대기열 Waiting 칸(나이 아래, 여섯째 칸 없음)이 같이 부릅니다. 지금 main 의 그리드가 그리던 «[object Object]» 가 이것으로 닫힙니다.
+- 낱말은 기본 배지(running ok · retrying · stalled warn · failed danger), 근거는 한 줄 — 총괄 답대로 waiting 은 배지만, 임계 앞 강조 없음.
+- 서버가 waiting · done 에 `unexpected_status` 를 실을 때가 있어(정해진 모양에 없던 칸) «status X» 로 말합니다 — 이것은 나이와 겹치지 않는 사실이라 넣었습니다. 빼라 하시면 한 줄입니다.
+- 어드민 페이지에 이미 `.chain-state`(규칙 표의 상태 칸)가 있어 클래스 이름을 `queue-line-state` 로 따로 두었습니다 — 처음엔 겹쳐서 어드민 칸이 가운데 세로로 쌓였고, 진짜 빌드에서 보고 고쳤습니다.
+
+**진짜 빌드** (`/assets/main-DQtUPvtM.js` · `/assets/admin-HBX1CNzK.js`, 대기열 GET 을 페이지 안에서 픽스처 여덟으로 답함): 두 화면 모두 낱말 여덟 그대로 · «[object Object]» 없음 · 오류 0 · 보낸 쓰기 0. 그리드 State 칸(96 px)에서는 근거가 6 줄 잘리고 툴팁에 전체가 있습니다 — 예전 재시도 사유 줄도 같은 폭에서 잘렸습니다. 어드민은 한 줄도 안 잘림.
+- 그리드 스샷: `C:/Users/kk980/AppData/Local/Temp/claude/C--Users-kk980-Developments-assyManager/c2c07335-c153-4434-b3fd-738de17bd036/scratchpad/state/grid_states_1920x950.png`
+- 어드민 스샷은 파일로 못 찍었습니다(이 페이지에서 헤드리스 렌더러가 죽음 — 앞 보고와 같음). 브라우저 창에서 열어 보고 위 수를 쟀습니다.
+
+**시험** `chain_queue_panel` 231 칸(S1~S6 · 변이 SM1~SM6 잡힘) · `outbox_queue_panel` 65 칸(W1~W2 · WM1~WM2 잡힘) — 픽스처 하나(tests/fixtures/chain_states.json)를 둘이 같이 읽음. 러너 초록 · 계약 13 개 어긋남 0. RELEASE_LOG 항목 같은 커밋.
+
+**남은 것** `subgraph_view_harness` 는 혼자 돌려 525 s(본 시험 25 s + 변이 118 개 × 시험 전체)입니다. 러너(`check_harnesses.mjs` 의 `spawnSync`)에는 시간 제한이 없고 출력은 19 KB 라 버퍼 상한도 아닙니다 — main 에서 «no ASSERTIONS line» 으로 끊은 것은 러너를 부른 바깥 호출의 시간 상한이고, 다른 스위트와 겹치면 그 상한을 넘습니다. 고치지 않았습니다(총괄 판정).
+
+**제안 표**
+
+| 항목 | 왜 | 크기 |
+|---|---|---|
+| 그리드 State 칸 넓히기(Rules 칸에서) | 96 px 에서는 근거가 한두 글자만 보임 — 툴팁을 올려야 읽힘 | 안 쟀습니다 |
+
 > ## [17:57 디자인] 메인 그리드 100 % 맞추기 — 안 A (총괄 cb04c0487 · 소유자 10-08) — c1ea9dece
 
 **결론** 소유자 화면(1920×950)과 1536×864 · 1280×720 에서 Global · Row · Queue 세 탭 모두 가로 넘침 0, 바닥줄이 화면 안, 바닥줄 버튼 전부 그리드 안. 글자 크기는 그대로입니다. 진짜 빌드 `/assets/main-DhzURXHN.js`.
