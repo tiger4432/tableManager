@@ -829,7 +829,7 @@ async function xSuite(m, say) {
     const got = [];
     const copied = [];
     new m.ChainQueuePanel(host, { doc: d, onCancel: (c) => got.push(c), confirm: (t) => { asked.push(t); return answer; },
-      copy: (id, label) => copied.push([id, label]) }).render(body);
+      copy: (id, label) => copied.push([id, label]), onRefresh: () => refreshed.push(1) }).render(body);
     return { host, asked, got, copied };
   };
   const press = (node) => (node && node.listeners.click || []).forEach((fn) => fn());
@@ -887,7 +887,21 @@ async function xSuite(m, say) {
   say('K2 the id is still drawn short, with the full id on hover',
     chips(c.host)[0].textContent === 'aaaaaaaa…' && chips(c.host)[0].title === 'aaaaaaaa-1111',
     JSON.stringify([chips(c.host)[0].textContent, chips(c.host)[0].title]));
+  // Refresh reads the queue alone again; the page owns the read (lead 0eadab810).
+  refreshed.length = 0;
+  const r = seat(BODY);
+  const down = seat(null);
+  press(byClass(r.host, 'chain-queue-refresh')[0]);
+  press(byClass(down.host, 'chain-queue-refresh')[0]);
+  const d2 = makeDoc();
+  const none = d2.createElement('div');
+  new m.ChainQueuePanel(none, { doc: d2 }).render(BODY);
+  say('Y1 Refresh, read or not, asks the page for the queue once a press; no page read given, no button',
+    refreshed.length === 2 && byClass(none, 'chain-queue-refresh').length === 0
+      && byClass(byClass(r.host, 'chain-queue-meta')[0] || r.host, 'chain-queue-refresh').length === 1,
+    JSON.stringify([refreshed.length, byClass(none, 'chain-queue-refresh').length]));
 }
+const refreshed = [];
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const X_NAMES = [];
 await xSuite(await import('../src/chain_queue_panel.js'), (name, cond, detail) => { X_NAMES.push(name); ok(name, cond, detail); });
@@ -916,6 +930,9 @@ await xSuite(await import('../src/chain_queue_panel.js'), (name, cond, detail) =
     { id: 'KM1', what: 'a press copies the short label', catches: 'K1', mutate: swap('this.copy(r.id, r.idLabel)', 'this.copy(r.label, r.idLabel)') },
     { id: 'KM2', what: 'a run id is called a transaction id', catches: 'K1', mutate: swap("idLabel: 'Run ID'", "idLabel: 'Transaction ID'") },
     { id: 'KM3', what: 'the chip draws the full id', catches: 'K2', mutate: swap('chip.textContent = r.label;', 'chip.textContent = r.id;') },
+    { id: 'YM1', what: 'Refresh asks nothing', catches: 'Y1', mutate: swap("btn.addEventListener('click', () => this.onRefresh());", '') },
+    { id: 'YM2', what: 'a queue that could not be read has no Refresh', catches: 'Y1',
+      mutate: swap('      const again = this._refresh();\n      if (again) this.root.appendChild(again);\n', '') },
   ];
   const scored = await scoreMutants(MUTANTS, async (mu) => {
     const m = (await loadWithProbe(SUBJECT.pathname.replace(/^\/([A-Za-z]:)/, '$1'), { mutate: mu.mutate })).module;
