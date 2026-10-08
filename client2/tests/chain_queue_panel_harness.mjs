@@ -887,6 +887,12 @@ async function xSuite(m, say) {
   say('K2 the id is still drawn short, with the full id on hover',
     chips(c.host)[0].textContent === 'aaaaaaaa…' && chips(c.host)[0].title === 'aaaaaaaa-1111',
     JSON.stringify([chips(c.host)[0].textContent, chips(c.host)[0].title]));
+  // A one-row line: the server words its transaction cell and carries the row as `outbox_id` (lead 6c678dd13).
+  const one = seat({ ...BODY, waiting_transactions: [{ transaction_id: '(no tx · outbox#42)', outbox_id: 42, events: 1,
+    rows: 1, tables: ['lot_master'], waiting_seconds: 5 }] });
+  press(chips(one.host)[0]);
+  say('K3 a one-row line copies its outbox id, named so, not its words',
+    same(one.copied, [['42', 'Outbox ID']]), JSON.stringify(one.copied));
   // Refresh reads the queue alone again; the page owns the read (lead 0eadab810).
   refreshed.length = 0;
   const r = seat(BODY);
@@ -930,6 +936,8 @@ await xSuite(await import('../src/chain_queue_panel.js'), (name, cond, detail) =
     { id: 'KM1', what: 'a press copies the short label', catches: 'K1', mutate: swap('this.copy(r.id, r.idLabel)', 'this.copy(r.label, r.idLabel)') },
     { id: 'KM2', what: 'a run id is called a transaction id', catches: 'K1', mutate: swap("idLabel: 'Run ID'", "idLabel: 'Transaction ID'") },
     { id: 'KM3', what: 'the chip draws the full id', catches: 'K2', mutate: swap('chip.textContent = r.label;', 'chip.textContent = r.id;') },
+    { id: 'KM4', what: 'a one-row line copies its words', catches: 'K3',
+      mutate: swap('  if (!run && t.outbox_id != null) {', '  if (false) {') },
     { id: 'YM1', what: 'Refresh asks nothing', catches: 'Y1', mutate: swap("btn.addEventListener('click', () => this.onRefresh());", '') },
     { id: 'YM2', what: 'a queue that could not be read has no Refresh', catches: 'Y1',
       mutate: swap('      const again = this._refresh();\n      if (again) this.root.appendChild(again);\n', '') },

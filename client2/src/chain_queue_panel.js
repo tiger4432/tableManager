@@ -228,6 +228,10 @@ function shortTx(id) {
  *  A job's label is two lines, op over the run head: nothing hides behind a hover (lead 362f1a91d). */
 function lineName(t) {
   const run = t.run_id == null ? '' : String(t.run_id);
+  // A one-row line is named in words; its row comes as a value, and that is what a press copies (lead 6c678dd13).
+  if (!run && t.outbox_id != null) {
+    return { id: String(t.outbox_id), label: shortTx(t.transaction_id), idLabel: 'Outbox ID' };
+  }
   if (!run) return { id: String(t.transaction_id ?? ''), label: shortTx(t.transaction_id), idLabel: 'Transaction ID' };
   return { id: run, label: [t.op == null ? '' : String(t.op), shortTx(run)].filter(Boolean).join('\n'), idLabel: 'Run ID' };
 }

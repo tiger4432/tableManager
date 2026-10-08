@@ -913,6 +913,29 @@ async function suite(probe) {
   await flush();
   ok(JSON.stringify(queueAsked()) === '["POST /admin/chain/queue/cancel","GET /admin/chain/queue"]',
      `V after a ×, the queue alone is read again (${JSON.stringify(queueAsked())})`);
+  // A read that left before the cancel is held; the × must not take its answer as the queue after (QA 54a53f894).
+  {
+    let release = () => {};
+    const gate = new Promise((r) => { release = r; });
+    const inner = globalThis.fetch;
+    let held = true;
+    globalThis.fetch = async (url, init) => {
+      const res = await inner(url, init);
+      if (held && /\/admin\/chain\/queue$/.test(String(url))) { held = false; await gate; }
+      return res;
+    };
+    calls.length = 0;
+    const early = typeof refreshQueue === 'function' ? refreshQueue() : null;
+    const crossed = typeof cancelQueueLine === 'function' ? cancelQueueLine({ key: 'tx:bbbbbbbb' }) : null;
+    await flush();
+    release();
+    await early;
+    await crossed;
+    await flush();
+    globalThis.fetch = inner;
+    ok(JSON.stringify(queueAsked()) === '["GET /admin/chain/queue","POST /admin/chain/queue/cancel","GET /admin/chain/queue"]',
+       `V a read on its way when a × lands is not the queue after it: a fresh read follows (${JSON.stringify(queueAsked())})`);
+  }
   doc.hidden = undefined;
   return { pass: pass - before.pass, fail: fail - before.fail };
 }
@@ -1008,9 +1031,11 @@ const DEFECTS = [
     s => s.replace('  if (!queueRead) {\n    queueRead = adminFetch(', '  if (true) {\n    queueRead = adminFetch(')],
   ['Refresh reads the whole tab',
     s => s.replace('onRefresh: () => { void refreshQueue(); }', 'onRefresh: () => { void fetchData({ silent: true }); }')],
+  ['a × takes a read that left before it as the queue after (QA 54a53f894)',
+    s => s.replace('  if (queueRead) await queueRead.catch(() => null);\n', '')],
   ['a × re-reads the whole tab',
-    s => s.replace("  if (!got.ok) { showToast(got.line, 'error'); return; }\n  void refreshQueue();",
-                   "  if (!got.ok) { showToast(got.line, 'error'); return; }\n  void fetchData({ silent: true });")],
+    s => s.replace("  if (queueRead) await queueRead.catch(() => null);\n  void refreshQueue();",
+                   "  if (queueRead) await queueRead.catch(() => null);\n  void fetchData({ silent: true });")],
 ];
 
 // Controls must ESCAPE: a change that alters no behaviour must not redden anything, or the

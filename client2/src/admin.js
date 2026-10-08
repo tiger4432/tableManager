@@ -1468,9 +1468,8 @@ async function refreshQueue() {
   renderChainQueue(body, { ...opts, failed: queueFailed });
 }
 
-// The queue's own poll. 0 is off: it is switched on once the queue route reads its waiting events in one pass
-// (implementer order 6d7046a42) - one read takes about 5 s on the operating box today (lead 0eadab810).
-const QUEUE_POLL_MS = 0;
+// The queue's own poll (lead 0eadab810), on since the queue route reads its waiting events in one pass (83023aa5d).
+const QUEUE_POLL_MS = 5000;
 
 /** One tick: read only while a tab that shows the queue is visible and no read is on its way. */
 function queuePollTick() {
@@ -2949,6 +2948,9 @@ async function cancelQueueLine(cancel) {
   if (!cancel.key) { await requestRunCancel(cancel.runId); return; }
   const got = await skipLine(cancel.key, { adminFetch, apiBase: API_BASE });
   if (!got.ok) { showToast(got.line, 'error'); return; }
+  // A read already on its way may have left before the cancel: the line goes only in a read that leaves after it
+  // (application QA 54a53f894).
+  if (queueRead) await queueRead.catch(() => null);
   void refreshQueue();
 }
 

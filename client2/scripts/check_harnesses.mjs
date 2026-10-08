@@ -316,7 +316,7 @@ const FLOORS = new Map([
   // with no inline widths, 「retry N」 badges, the local As of. 13 mutants, 13 caught.
   // 165 -> 166 (a80361a63): seen and 0 is a plain 0 — 「Truly none」 under it is gone.
   // 166 -> 167 (lead e573a6edf): with a summary, Failed counts the rows it folded.
-  ['chain_queue_panel_harness.mjs', 217],
+  ['chain_queue_panel_harness.mjs', 219],
   ['outbox_queue_panel_harness.mjs', 54],
   ['company_roundtrip_harness.mjs', 84],
   ['coord_table_paste_harness.mjs', 52],
@@ -1422,7 +1422,7 @@ const FLOORS = new Map([
   // 75 -> 76 (Q): a queue body with loop_seen_via null says 「not seen」.
   // 76 -> 83 (lead c6a8c069c: from on the wire, none for a new rule, a refused rename re-read by the name opened (E, G, R)).
   // 83 -> 87 (lead 43f4823dc: a rename answered in place - picked, one line, its note; rule_name_held in its own words).
-  ['chain_rule_user_path_harness.mjs', 97],
+  ['chain_rule_user_path_harness.mjs', 98],
   // New (lead a2c41fed3): the table registry walked through admin.js - + Add table opens a name box,
   // a paste, a save with no from; a picked table as today. The panel harness hands forNew directly.
   ['table_config_user_path_harness.mjs', 15],
