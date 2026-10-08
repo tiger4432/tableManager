@@ -36780,3 +36780,22 @@ b340386fe
         그래서 ② 로 뺀 행이 실제로는 돌았을 수 있다. 게이트 표에 «× 가 닿을 때 묶음이 파이썬 안» 칸을 더하면 이 틈이 표에 선다
         (성공 길이 끝 쓰기 전에 _still_waiting 을 묻거나, 그 행을 «돌았음»으로 남기고 답의 skipped_events 에서 빼는 것 — 모양은 총괄 판정)
 ```
+
+---
+
+## [C 응용] 10-08 총괄 cc90e5106 — c8f2de45a(stop_line) 문서 맞추기 · 운영 모양 셋 적대 QA
+
+```
+QA      test_zz_probe_stop_line_shapes.py — 사설 워크트리(끝에 지움) · sqlite 메모리 · 진짜 라우트 · 대기 행은 «진짜 소급»(chain.replay.replay_rule · 묶음 이벤트 · chunk 2)이 넣음
+        구현자 시험은 «실행 문맥 아래 표 쓰기»로 대기 행을 만든다 — 운영 리플레이의 행 모양(transaction_id replay_… · 묶음)과 달라 따로 잼
+        a finished run x | key probe-run-1 | staged events 3 | answer {'run': 'done', 'skipped_events': 3, 'cancelled_pid': None} | that line waiting 0 | other line waiting 1/1
+        b x while inserting (run ended cancelled) | key probe-run-1 | staged events 1 | answer {'run': 'cancel_requested', 'skipped_events': 1, 'cancelled_pid': None} | that line waiting 0 | other line waiting 1/1
+        c CLI replay x | key replay_be50e1da | staged events 3 | answer {'skipped_events': 3, 'cancelled_pid': None} | that line waiting 0 | other line waiting 1/1
+        세 경우 모두 그 줄 대기 0 · 다른 줄 그대로. CLI 줄은 실행 행이 없어 거래 id(replay_…)로 좁혀 찾는다(코드 · 잰 것 일치)
+        끊기(③)는 이 재기에서 바꿔 끼움(sqlite 에 pid 없음) — 그 자리는 구현자 PG 시험이 잰다
+남은 일  묶음이 맵퍼 안일 때 늦은 × 는 성공 길이 덮는다(54a53f894 · 4b4fb4fe0) — 지시대로 다시 안 잼
+문서    «끝난 실행의 취소는 거절» 전수 — 문서 안 RetroactiveRefused 언급을 카나리아로(잡힘), 낱말(거절 · refus · 이미 커밋 · 되돌릴 수 없 · already)과 «뜻»으로 셈
+        고친 곳 여섯: PRIMITIVES · data_model · FEATURE_CHECKLIST · backend · SYSTEM_FLOWS A-13 · SYSTEM_FLOWS C-18(제가 83023aa5d 때 적은 「소급 실행 열쇠는 그 실행의 취소 답」)
+        CODE_MAP 의 그 라우트 줄은 구현자가 이미 새 말 — 손 안 댐
+        새 말: 끝난 실행의 Cancel · 그 줄의 × = 실행 상태를 되읽고(`done` 은 `done`), 그 줄의 대기 체인 이벤트를 빼 두고(지우지 않음 · `rerun_set_aside` 로 되살림), 돌던 묶음이 그 줄이면 질의를 끊는다(`chain.control.stop_line` 하나 · 10-08 `c8f2de45a`). 취소로 끝난 실행은 누가 멈췄든 자기 대기 이벤트를 남기지 않는다(이유 「run <id> cancelled」). 모르는 run_id 는 400
+```
