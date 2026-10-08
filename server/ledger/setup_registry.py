@@ -399,6 +399,8 @@ class OccurredAtPlan:
     column: str
     timezone: str
     basis: str | None = None
+    #: how the column's TEXT is written (strptime), or None - a datetime column, ISO text
+    format: str | None = None
 
 
 @dataclass(frozen=True)
@@ -1095,6 +1097,7 @@ def _occurred_at_plan(declared: Mapping) -> OccurredAtPlan:
     return OccurredAtPlan(
         column=declared["column"],
         timezone=declared["timezone"],
+        format=declared.get("format"),
     )
 
 

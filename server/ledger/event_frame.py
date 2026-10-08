@@ -458,7 +458,7 @@ def _row_type_refusal(context, cells, positions, key):
     return None
 
 
-def _aware_time(value: Any, timezone_name: str, path: str) -> datetime:
+def _aware_time(value: Any, timezone_name: str, path: str, fmt: str | None = None) -> datetime:
     """The `occurred_at` reading, in this layer's refusal vocabulary.
 
     🔴 THE LOGIC MOVED AND DID NOT FORK (S-84-b, 판정 09-10 13:44). A `timestamp` VALUE
@@ -469,7 +469,7 @@ def _aware_time(value: Any, timezone_name: str, path: str) -> datetime:
     layers refusing in their own words, one function deciding what a timestamp IS.
     """
     return roleframe_aware_time(
-        value, timezone_name, path,
+        value, timezone_name, path, fmt=fmt,
         error=lambda code, at, message: SourcePreparationError(
             "source_preparation_incomplete", at,
             "occurred_at value must be datetime" if code == "invalid_time_value"
@@ -632,14 +632,28 @@ def _event_frames(
             cells[driver.occurred_at.column][position]
             for position in positions
         ]
-        occurred_values = [
-            _aware_time(
-                value,
-                driver.occurred_at.timezone,
-                f"source_batch.rows[{position}].{driver.occurred_at.column}",
-            )
-            for position, value in zip(positions, occurred_cells)
-        ]
+        try:
+            occurred_values = [
+                _aware_time(
+                    value,
+                    driver.occurred_at.timezone,
+                    f"source_batch.rows[{position}].{driver.occurred_at.column}",
+                    driver.occurred_at.format,
+                )
+                for position, value in zip(positions, occurred_cells)
+            ]
+        except SourcePreparationError as unread:
+            # 🔴 A TIME THAT DOES NOT READ REFUSES ITS MOLECULE, NOT THE PAGE (총괄 ca87ffdb3 ②).
+            #    Refused here, at the one read, not in `_refuse_molecule` - which would read every
+            #    time twice; an empty time is still refused there, before this.
+            from .gate import REFUSE_UNREADABLE_OCCURRED_AT
+
+            context.refusals.append(MoleculeRefusal(
+                reason=REFUSE_UNREADABLE_OCCURRED_AT,
+                detail=f"molecule {_molecule_key(driver, cells, positions)}: {unread}",
+                rows=len(positions),
+                addresses=({"code": "source_preparation_incomplete", "path": unread.path},)))
+            continue
         # WHICH of the group's reads IS the event's instant.  The two declarations answer
         # differently because they are not the same kind of time.
         #

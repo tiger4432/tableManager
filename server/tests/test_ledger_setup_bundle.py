@@ -1366,11 +1366,26 @@ def test_common_module_has_no_domain_source_branches_or_runtime_imports():
     # `copy` and `logging` joined on 2026-10-01 (총괄 e14416950): the v5 -> v6 reading
     # (`upgrade_setup`) copies the document it reads and says ONE load note - the only line
     # this module writes. Neither reads data or knows a source.
-    STDLIB_ONLY = {"__future__", "collections", "copy", "dataclasses", "difflib", "json",
-                   "logging", "pathlib", "re", "types", "typing", "zoneinfo"}
+    # `datetime` and `utils` (its `time_format` only) joined on 2026-10-08 (총괄 ca87ffdb3): a time
+    # binding's `format` is checked by reading today's time back through THE parser, which moved
+    # there from `store` so this module reaches it without reaching the store - on `validation`'s
+    # terms, and its imports are held to them below.
+    STDLIB_ONLY = {"__future__", "collections", "copy", "dataclasses", "datetime", "difflib", "functools",
+                   "json", "logging", "pathlib", "re", "types", "typing", "zoneinfo"}
     # `declaration_names` joined on 2026-10-04 (총괄 4eb1fe98f): `fold_versions` spells an old
     # `x@1` bare at every read - `re` and strings only, no I/O, no domain - on `validation`'s terms.
-    assert imported <= STDLIB_ONLY | {"validation", "declaration_names"}
+    assert imported <= STDLIB_ONLY | {"validation", "declaration_names", "utils"}
+    utils_modules = {node.module for node in ast.walk(tree)
+                     if isinstance(node, ast.ImportFrom) and (node.module or "").startswith("utils")}
+    assert utils_modules <= {"utils.time_format"}, utils_modules
+    time_format = source_path.parents[1] / "utils" / "time_format.py"
+    time_imports = set()
+    for node in ast.walk(ast.parse(time_format.read_text(encoding="utf-8"))):
+        if isinstance(node, ast.Import):
+            time_imports.update(alias.name.split(".")[0] for alias in node.names)
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            time_imports.add(node.module.split(".")[0])
+    assert time_imports <= STDLIB_ONLY, sorted(time_imports - STDLIB_ONLY)
     for forbidden in ("database", "sqlalchemy", "psycopg2", "backfill", "store",
                       "translator", "chain_mapper"):
         assert forbidden not in imported

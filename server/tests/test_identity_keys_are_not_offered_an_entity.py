@@ -109,11 +109,13 @@ def test_it_takes_fields_away_and_never_adds_any():
     It says what a NAIVE timestamp reading means, and the validator requires it only for a
     role whose value is a timestamp - an identity key is not one, so offering it there
     would put a field on the form that does nothing wherever it is filled in.
+    `format` (how a time column's text is written, 총괄 ca87ffdb3) joined on 2026-10-08 for the
+    same reason.
     """
     wide = {field["key"] for field in skeleton()["defs"]["binding"]["fields"]}
     narrow = {field["key"] for field in identity_node()["fields"]}
     assert narrow < wide
-    assert wide - narrow == {"entity_type", "keys", "attributes", "timezone"}
+    assert wide - narrow == {"entity_type", "keys", "attributes", "timezone", "format"}
 
 
 def test_nothing_under_it_can_nest_another_binding():

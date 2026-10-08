@@ -198,6 +198,11 @@ REFUSE_UNDECLARED_SUBJECT_TYPE = "undeclared_subject_type"
 #: A row whose type, read from a column (총괄 7255b4918 ④), is not one the predicate admits in
 #: that role. That molecule is refused; the others land.
 REFUSE_TYPE_NOT_ADMITTED = "type_not_admitted"
+#: A row whose time is there but does not read - not in its declared `format`, or text no
+#: reading takes (총괄 ca87ffdb3 ②). Its own reason rather than `missing_occurred_at`, because
+#: the operator fixes a different thing: the value or the format, not an empty cell. That
+#: molecule is refused; the others land - it used to stop the whole page.
+REFUSE_UNREADABLE_OCCURRED_AT = "unreadable_occurred_at"
 
 #: Every reason this gate can give. A test asserts the set is closed, for the same
 #: reason the predicate vocabulary is closed: a reason invented at a call site is a
@@ -207,7 +212,7 @@ REFUSAL_REASONS = frozenset({
     REFUSE_MISSING_OCCURRED_AT, REFUSE_NO_IDENTITY, REFUSE_NOT_TRUE_ALONE,
     REFUSE_ATOMICITY, REFUSE_UNDECLARED_DERIVATION, REFUSE_NO_RAW_REF,
     REFUSE_PAYLOAD_NOT_PRESERVABLE, REFUSE_AMBIGUOUS_PAIR,
-    REFUSE_UNDECLARED_SUBJECT_TYPE, REFUSE_TYPE_NOT_ADMITTED,
+    REFUSE_UNDECLARED_SUBJECT_TYPE, REFUSE_TYPE_NOT_ADMITTED, REFUSE_UNREADABLE_OCCURRED_AT,
 })
 
 #: What each reason is CALLED on a screen, shipped with the translator's ledger
@@ -226,6 +231,7 @@ REFUSAL_REASON_NAMES = {
     REFUSE_AMBIGUOUS_PAIR: "Ambiguous pair",
     REFUSE_UNDECLARED_SUBJECT_TYPE: "Undeclared subject type",
     REFUSE_TYPE_NOT_ADMITTED: "Type not admitted",
+    REFUSE_UNREADABLE_OCCURRED_AT: "Time unreadable",
 }
 
 # Detail is capped, counts never are - every detail string here derives from SOURCE

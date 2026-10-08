@@ -1020,6 +1020,7 @@ subject/object entity type으로 모양을 계산해 후보를 골랐고, 그래
 | `read.occurred_at.column` | 세계 시각을 담은 physical column |
 | `read.occurred_at.basis` | 표에 세계 시각이 **없을 때** `column` 대신. 현재 `"ingested"` 하나 |
 | `read.occurred_at.timezone` | 명시적 IANA timezone. 묵시 기본값 없음 |
+| 🆕 `read.occurred_at.format` · 시각 바인딩의 `format` | (10-08 총괄 ca87ffdb3) 그 칸이 **글자**일 때 어떻게 적혀 있나 — strptime 철자(예 `%Y%m%d_%H%M%S`). 있으면 글자를 `utils.time_format.parse_occurred_at` 하나로 읽는다(짐작 없음 · 오프셋이 적힌 글자는 오프셋이 이김). datetime 칸은 그대로. 저장 때 오늘 시각을 그 형식으로 쓰고 다시 읽어 같지 않거나 날짜가 없으면 거절(`invalid_time_format`) · 바인딩에는 `timezone` 이 같이 있어야. `read.occurred_at` 을 안 적으면 사건 엣지의 `format` 도 같이 따라온다 |
 | `read.cursor.columns` | physical keyset cursor 컬럼. 🔴 **[2026-08-22 `90383987`] 더 이상 «묻지 않는다»** — `read.order_by`에서 파생돼 번들에 쓰인다(아래) |
 | ⚰️ `read.registration_probe` | 은퇴(10-07, 총괄 a6db2f469 ④) — 읽는 곳이 없다(실행은 원장에 이미 있는 등록으로 거른 적이 없었다). 적혀 있으면 로드가 「retired cell: … can be deleted」 한 줄을 남기고 받는다 · 거절하지 않는다 |
 | ⚰️ `prepare` | 은퇴(setup_version 6) — 적으면 `prepare_retired` (§7.3) |
