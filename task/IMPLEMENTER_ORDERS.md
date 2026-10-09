@@ -65574,3 +65574,40 @@ RELEASE_LOG · RUN.md(재기동 뒤 그 줄 × 한 번 · 답의 skipped_events 
         reread_files 만 False. 다른 연산 0 바뀜
 게이트  replay 실행 중(가짜 in_flight) -> Re-read 가 바로 돎 · Re-read 실행 중 -> gate_refusal None · 다른 연산 둘이면 지금처럼 닫힘 — 변이: 칸을 안 읽음 -> 앞 둘 빨강
 ```
+
+> **[총괄 -> 구현자] 10-09 밤 — 작은 일(Re-read 관문 커밋 다음): 슬롯이 체인 워커의 하트비트를 자기 pid 로 쓴다 -> foreign_beat (소유자 10-09 「자꾸 체인 포린비트는 왜 떠? 서버 재기동 때 정리가 제대로 안 되는 거야?」)**
+
+```
+원인(총괄이 코드로 읽음) — 재기동 정리 문제가 아니다
+   묶음 몸통 ingestion_worker 2409 · 2432 가 heartbeat.work_claim(GROUP_BEAT="chain") · heartbeat.beat("chain", force=True) 를 부른다
+   422d075c7 뒤 이 몸통은 «슬롯 프로세스»에서 돈다 -> chain.json 을 슬롯 pid 로 씀
+   배정자(감독이 띄운 pid)도 같은 파일을 자기 pid 로 씀 -> 파일의 pid 가 둘 사이를 오감
+   runtime/health.py 가 «hb pid != 감독 pid» 를 foreign_beat 로 판정 -> 묶음이 돌 때마다 뜨고 사라짐(소유자 「자꾸」)
+   그 주석의 까닭(× 가 그 파일에서 pid 를 읽음)은 슬롯 뒤로 slot_pid(줄의 chain-slot-<n> holds lap)가 대신한다 — 확인할 것
+도착지  「묶음의 일 표지(work claim)는 그 묶음을 도는 프로세스의 하트비트 이름에 선다 — 슬롯이면 chain-slot-<n>, 배정자 혼자면 chain」
+   chain.json 은 배정자 pid 만 쓴다 -> foreign_beat 는 «정말 다른 체인 워커가 둘»일 때만
+구현자  GROUP_BEAT 를 그 프로세스의 이름(heartbeat.own_name() 이 슬롯에서 chain-slot-<n>)으로 — 한 함수가 답함
+        체인 상태 자리(chain_state_of · runtime.running.work_facts · health 의 chain_state)가 «도는 묶음»을 슬롯 하트비트들에서 읽는지 전수 — 안 읽으면 같은 커밋에서 그 자리를 넓힘
+        × (stop_line)가 pid 를 읽는 곳 전수 — chain.json 에 기대는 곳이 남아 있으면 줄의 slot_pid 로
+게이트  슬롯 하나가 묶음을 도는 동안 health 의 chain 이 ok(foreign_beat 아님) · 진짜 둘째 체인 워커(다른 pid 가 chain.json)면 foreign_beat
+        대기열 상태가 running + 그 묶음 · × 가 그 슬롯을 끔 — 변이: GROUP_BEAT 를 "chain" 으로 되돌림 -> 첫 칸 빨강
+```
+
+> **[총괄 -> 구현자] 10-09 밤 🔴 지금 맨 앞(접기 표시보다 먼저, 작게) — 다시 읽기는 «운영에서 이미 도는» 재시도 문을 그대로 넓힌다. 소급 연산 reread_files 는 은퇴 (소유자 10-09 「파일 다시 읽기는 그냥 안 돎」 · 「다시 읽기는 뭐가 어려운지 모르겠네」 · 「공유 폴더고 … 카운트는 정상으로 세졌었음」 · 「알아서 해」)**
+
+```
+판정  다시 읽기의 일은 «인입 기록을 PENDING_RETRY 로 표시» 하나다. 그 일을 운영에서 이미 하는 문이 있다:
+      POST /admin/file-ingestion/retry-failed(폴더 · 미리보기 · DECOUPLED 면 PENDING_RETRY 표시 -> run_watcher 가 읽음) — 소유자가 쓰는 길, 운영에서 돈다
+      reread_files 는 같은 일에 «소급 실행 · 스케줄러 · 관문 · 쪽 기다림»을 얹은 둘째 문 — 운영에서 안 돈다(어느 겹에서 끊기는지는 응용이 재는 중, 답을 기다리지 않는다)
+도착지  「파일 인입 화면의 Retry(폴더 · 미리보기)에 Include files that went in 을 켜면, 성공한 파일까지 워처가 지금 파서로 다시 읽는다 — 누르면 바로 «N files handed to the watcher»」
+구현자
+   ① retry-failed 라우트에 statuses(기본 FAILED — 지금 그대로) · since/until 칸. 고르기는 ingestion.reread.select_logs 그대로, 한 파일 한 번(one_per_file) · 자리에 없는 파일 안 넘김(split_missing)은 statuses 가 FAILED 밖일 때
+      표시는 요청 안에서 바로(쪽마다 커밋) — 스케줄러 · 소급 관문 · 기다림 0. 응답: 표시 수 · 상태별 · 폴더별 · 사라진 수 · 앞 다섯 이름
+      DECOUPLED 아님(서버 안 워처)이면 지금 retry-failed 의 그 갈래를 그대로 탄다(두 길 새로 만들지 않음)
+   ② reread_files 소급 연산 은퇴 — 등록부에서 뺌(옛 실행 기록은 목록에 «(retired)»로, run_in 때와 같은 꼴). 45efe02d9 · 7f8a6b241(관문 칸) · marked_rows 문장은 짓지 않는다(연산이 없으니)
+   ③ 워처가 PENDING_RETRY 를 집은 뒤 «읽은 결과»가 보통 인제션과 같은 토스트로 오는지 — 재시도 길(process_archived_file_sync)이 on_file_processed_callback 을 부르는지 확인, 안 부르면 부른다(보통 길과 한 콜백)
+   게이트  ① SUCCESS 파일 셋 + statuses=SUCCESS -> 셋 PENDING_RETRY · 응답 수 = 미리보기 수 ② statuses 안 적음 -> 지금과 같은 답(FAILED 만)
+           ③ 소급 관문이 닫혀 있어도(가짜 in_flight) 바로 표시 ④ 진짜 run_watcher.retry_one 이 읽고 콜백 하나 — 변이: 콜백 지움 -> ④ 빨강
+   클라  파일 인입 화면 Retry 판에 토글 하나 «Include files that went in»(statuses=SUCCESS,FAILED,SKIPPED) — 클라 레인에 같은 지시
+순서  이것 -> 접기 표시 -> 껍데기 행 -> SLOT_POOL -> foreign_beat -> 층 이름 고정 -> VALUES CAST -> 원장 해시 인덱스
+```
