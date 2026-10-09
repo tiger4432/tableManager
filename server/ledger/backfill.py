@@ -918,10 +918,35 @@ def rows_gone_from_the_source(engine, setup, source, world=None):
         connection.close()
 
 
-#: Refs one page of the stale withdrawal hands `store.withdraw`. Each page reads the whole
-#: ledger once - no ledger index leads with source_who - so a page is large (총괄 10-09:
-#: 50,000; box, 2,380,869 atoms: the predicate ~15 s a page).
-STALE_PAGE_REFS = 50000
+#: Refs one page of the stale withdrawal hands `store.withdraw`. With the ref index
+#: (`schema.REF_INDEX`) a page of 1,000 reads the refs it names; at 50,000 the planner
+#: reads the whole ledger again (총괄 10-09, box copy: 1,000 refs 0.883 s -> 0.033 s).
+STALE_PAGE_REFS = 1000
+#: ... and without it every page reads the whole ledger, so pages are few and large (총괄 10-09: 50,000;
+#: box, 2,380,869 atoms: ~15 s a page).
+STALE_PAGE_REFS_UNINDEXED = 50000
+
+
+def stale_page_refs(engine, world=None):
+    """(refs a page, the line that says why) - the one seat that picks it (총괄 7b ⓑ): 1,000 when the
+    ref index is valid (every partition's attached), 50,000 when it is not, with the command that
+    builds it."""
+    from . import schema
+
+    names = schema.world_names(world)
+    name = schema.in_space(names, schema.REF_INDEX)
+    connection = engine.raw_connection()
+    try:
+        valid = schema.index_valid(connection, name)
+    finally:
+        connection.rollback()
+        connection.close()
+    if valid:
+        return STALE_PAGE_REFS, "%s valid - %d refs a page" % (name, STALE_PAGE_REFS)
+    return STALE_PAGE_REFS_UNINDEXED, (
+        "%s missing or not valid - %d refs a page, each reads the whole ledger; build it: "
+        "python server/scripts/build_ledger_ref_index.py --apply%s"
+        % (name, STALE_PAGE_REFS_UNINDEXED, " --world %s" % (world or schema.operating_world())))
 
 
 def _stale_refs(engine, source, relation, world=None):
@@ -963,9 +988,11 @@ def withdraw_stale_atoms(engine, source, relation, apply=False, checkpoint=None,
     from .store import LedgerStore
 
     store = LedgerStore(engine, world=world)
-    page_refs = page_refs or STALE_PAGE_REFS
     result = {"stale_atoms": 0, "stale_refs": 0, "stale_tables": {}, "stale_withdrawn": 0,
               "stale_forgotten": 0, "stale_pages": 0}
+    if apply and not page_refs:
+        page_refs, result["stale_page"] = stale_page_refs(engine, world)
+        logger.info("[Ledger] %s", result["stale_page"])
     page, tables = [], set()
     for ref, named, atoms in _stale_refs(engine, source, relation, world=world):
         result["stale_refs"] += 1

@@ -109,51 +109,12 @@ def _build_indexes(connection):
     contract.  The supported online pattern is: metadata-only index on ONLY parent,
     concurrent physical index per child, then ATTACH PARTITION.
     """
-    connection.commit()
-    # SQLAlchemy's `raw_connection()` returns a ConnectionFairy.  Assigning
-    # `.autocommit` on that wrapper does not reliably reach psycopg2 (the first live
-    # run proved it by PostgreSQL's ActiveSqlTransaction refusal), so unwrap the exact
-    # driver connection for this one operation.
-    driver = getattr(connection, "driver_connection", connection)
-    previous = driver.autocommit
-    driver.autocommit = True
-    try:
-        with driver.cursor() as cursor:
-            for name, columns, predicate in schema.SOURCE_EVENT_INDEX_SPECS:
-                cursor.execute(
-                    f"CREATE INDEX IF NOT EXISTS {name} ON ONLY "
-                    f"{schema.LEDGER_TABLE} {columns} {predicate}")
-        partition_names = [name for name, _bound in schema.partitions(driver)]
-        for parent_name, columns, predicate in schema.SOURCE_EVENT_INDEX_SPECS:
-            for partition in partition_names:
-                suffix = partition.removeprefix(schema.LEDGER_TABLE + "_")
-                child_name = f"{parent_name}_{suffix}"
-                with driver.cursor() as cursor:
-                    print(f"create index concurrently {child_name}")
-                    cursor.execute(
-                        f"CREATE INDEX CONCURRENTLY IF NOT EXISTS {child_name} "
-                        f"ON {partition} {columns} {predicate}")
-    finally:
-        driver.autocommit = previous
-
-    # ATTACH is metadata-only but transactional.  A failed/retried migration asks the
-    # catalogue first so it never mistakes "already attached" for a new defect.
-    for parent_name, _columns, _predicate in schema.SOURCE_EVENT_INDEX_SPECS:
-        for partition, _bound in schema.partitions(connection):
-            suffix = partition.removeprefix(schema.LEDGER_TABLE + "_")
-            child_name = f"{parent_name}_{suffix}"
-            attached = _scalar(connection, """
-                SELECT EXISTS (
-                    SELECT 1 FROM pg_inherits
-                    WHERE inhparent = to_regclass(%s)
-                      AND inhrelid = to_regclass(%s))
-            """, (parent_name, child_name))
-            if attached:
-                continue
-            with connection.cursor() as cursor:
-                cursor.execute(
-                    f"ALTER INDEX {parent_name} ATTACH PARTITION {child_name}")
-            connection.commit()
+    # 🔴 ONE ONLINE BUILD (총괄 10-09): the parent-then-partitions pattern lives in
+    #    `schema.build_partitioned_index`, which the ledger ref index's script calls too - the same
+    #    child names (`<index>_<month>`), driver unwrapped for CONCURRENTLY, attach asked first.
+    for name, columns, predicate in schema.SOURCE_EVENT_INDEX_SPECS:
+        schema.build_partitioned_index(connection, schema.world_names(None), name, columns, predicate,
+                                       apply=True)
 
 
 def _install_constraints(connection):

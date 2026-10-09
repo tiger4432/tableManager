@@ -55,6 +55,7 @@ import logging
 import os
 import re
 import shutil
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from datetime import datetime, timedelta, timezone
@@ -581,6 +582,104 @@ def object_entity_index_sql(names: WorldNames) -> str:
 SOURCE_EVENT_INDEX_SQL = source_event_index_sql(_DEFAULT)
 OBJECT_ENTITY_INDEX_SQL = object_entity_index_sql(_DEFAULT)
 
+#: CONSUMER: `store._withdraw_refs` · `atoms_for_refs` - `source_who = %s AND source_raw_ref = ANY(%s)`
+#: takes it with no change to the statement (총괄 10-09: box copy, 2,380,869 atoms, ANY 1,000 refs
+#: 0.883 s -> 0.033 s, 28.2 B/atom). Hash, because a ref can be longer than a B-tree row may be.
+#: The name and the partitions' names are the ones the owner was given as SQL (총괄 10-09) - a run of
+#: that SQL, whole or half, reads as there and is carried on.
+REF_INDEX = "idx_ledger_events_source_raw_ref_hash"
+REF_INDEX_CHILD = "{partition}_ref_hash"
+REF_INDEX_COLUMNS = "USING hash (source_raw_ref)"
+
+
+def in_space(names: WorldNames, name) -> str:
+    """`name` in the ledger's schema - as the ledger's own name is spelled."""
+    return (names.ledger.rsplit(".", 1)[0] + "." if "." in names.ledger else "") + name
+
+
+def index_valid(connection, name) -> bool:
+    """Is index `name` there and valid. On a partitioned parent that is every partition's own attached -
+    a parent made ON ONLY with a partition still without is there and not valid."""
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT x.indisvalid FROM pg_index x WHERE x.indexrelid = to_regclass(%s)", (name,))
+        row = cursor.fetchone()
+    return bool(row and row[0])
+
+
+def ref_index_parent_sql(names: WorldNames) -> str:
+    """The parent's half alone - metadata, no build: a partition made after it gets its own, and the
+    partitions already there get theirs from `build_partitioned_index` (no write is blocked)."""
+    return f"CREATE INDEX IF NOT EXISTS {REF_INDEX} ON ONLY {names.ledger} {REF_INDEX_COLUMNS}"
+
+
+def build_partitioned_index(connection, names: WorldNames, index, columns, predicate="",
+                            apply=False, say=print, child_name="{index}_{suffix}") -> dict:
+    """An index on the ledger's partitioned parent, built without blocking writes: a metadata-only
+    index on ONLY the parent, then each partition's CONCURRENTLY, then ATTACH - PostgreSQL refuses
+    CONCURRENTLY on a partitioned parent, and a plain parent build scans and locks every partition.
+    A partition that already has an index attached to the parent's (built here before, or made when
+    the partition was) is left alone; an INVALID leftover of a stopped build is dropped and built
+    again, a valid one of that `child_name` is attached. `apply=False` says what it would do and
+    writes nothing. One line a partition.
+    -> {"built", "attached", "already", "would_build", "would_attach", "parent_valid"}"""
+    space = in_space(names, "")
+    ledger_name = names.ledger.rsplit(".", 1)[-1]
+    parent = space + index
+    driver = getattr(connection, "driver_connection", connection)
+    connection.commit()
+    previous = driver.autocommit
+    driver.autocommit = True                          # CONCURRENTLY cannot run in a transaction
+    out = {"built": 0, "attached": 0, "already": 0, "would_build": 0, "would_attach": 0, "parent_valid": None}
+
+    def one(sql, params=()):
+        with driver.cursor() as cursor:
+            cursor.execute(sql, params)
+            return cursor.fetchone()
+
+    def do(sql):
+        with driver.cursor() as cursor:
+            cursor.execute(sql)
+
+    try:
+        if one("SELECT to_regclass(%s)", (parent,))[0] is None:
+            say(f"{names.ledger}: the index {index} on ONLY the parent " + ("made" if apply else "would be made"))
+            if apply:
+                do(f"CREATE INDEX IF NOT EXISTS {index} ON ONLY {names.ledger} {columns} {predicate}")
+        for partition, _bound in partitions(driver, names):
+            child = child_name.format(index=index, suffix=partition.removeprefix(ledger_name + '_'),
+                                      partition=partition)
+            attached = one(
+                "SELECT EXISTS (SELECT 1 FROM pg_inherits i JOIN pg_index x ON x.indexrelid = i.inhrelid "
+                " WHERE i.inhparent = to_regclass(%s) AND x.indrelid = to_regclass(%s))",
+                (parent, space + partition))[0]
+            if attached:
+                out["already"] += 1
+                say(f"{partition}: already has it")
+                continue
+            left = one("SELECT x.indisvalid FROM pg_index x WHERE x.indexrelid = to_regclass(%s)",
+                       (space + child,))
+            there = bool(left and left[0])                # made and not attached - a half-run, carried on
+            if not apply:
+                out["would_attach" if there else "would_build"] += 1
+                say(f"{partition}: would attach the {child} already there" if there else
+                    f"{partition}: would build {child} CONCURRENTLY and attach it")
+                continue
+            if left is not None and not there:
+                do(f"DROP INDEX CONCURRENTLY IF EXISTS {space}{child}")
+            started = time.perf_counter()
+            if not there:
+                do(f"CREATE INDEX CONCURRENTLY IF NOT EXISTS {child} ON {space}{partition} {columns} "
+                   f"{predicate}")
+            do(f"ALTER INDEX {parent} ATTACH PARTITION {space}{child}")
+            size = one("SELECT pg_relation_size(to_regclass(%s))", (space + child,))[0]
+            out["attached" if there else "built"] += 1
+            say(f"{partition}: attached the {child} already there · {size} bytes" if there else
+                f"{partition}: built {child} in {time.perf_counter() - started:.1f} s · {size} bytes · attached")
+        out["parent_valid"] = index_valid(driver, parent)
+    finally:
+        driver.autocommit = previous
+    return out
+
 # Existing ledgers receive only nullable columns during ordinary startup.  That is a
 # metadata-only additive change; the bounded operator migration owns the historical
 # backfill and constraint validation.  New writes always populate both columns.
@@ -975,6 +1074,11 @@ def ensure_schema(connection, names: WorldNames = _DEFAULT):
         _ensure_trigram(cursor)
         for statement in indexes(names):
             cursor.execute(statement)
+        # the ref index's parent half only, asked of the catalogue first so a start takes no lock:
+        # a partition made after it gets its own; the ones already there get theirs from
+        # `scripts/build_ledger_ref_index.py`, CONCURRENTLY (총괄 10-09)
+        if not _relation_exists(cursor, in_space(names, REF_INDEX)):
+            cursor.execute(ref_index_parent_sql(names))
         if not ledger_existed:
             for statement in source_event_indexes(names):
                 cursor.execute(statement)

@@ -108,6 +108,24 @@
 >
 > ---
 >
+> ## [10-10] **원장 ref 해시 인덱스 — 거두기 한 장이 원장 전체를 안 읽게 (총괄 7b) — 이주 «없음» · 재기동 «체인 워커» · 스크립트 한 번**
+>
+> ```
+> 순서        pull -> 체인 워커 재기동(부모 인덱스를 메타데이터로만 만듦)
+>             python server/scripts/build_ledger_ref_index.py              미리보기 — 파티션마다 «already» 또는 «would build»
+>             python server/scripts/build_ledger_ref_index.py --apply      파티션마다 CONCURRENTLY 로 만들고 붙임 · 쓰기를 안 막음
+>             ⚠️ 거두기(--whole-source) «앞»에 — 그래야 한 장이 1,000 ref 로 인덱스를 탄다
+> 끝 줄 뜻     <원장>: N partition(s) built, A attached as they were, M already had it - the parent index is valid       <- 이것이면 끝
+>             ... is not valid yet   <- 안 붙은 파티션이 남음. --apply 를 다시 (이미 된 것은 건너뜀)
+> 소유자 SQL   10-09 에 드린 SQL 을 일부 돌렸어도 됨 — 붙은 파티션은 already, 만들어 두고 안 붙인 <파티션>_ref_hash 는 붙이기만
+> 거두기 로그  [Ledger] <원장>.idx_ledger_events_source_raw_ref_hash valid - 1000 refs a page
+>             ... missing or not valid - 50000 refs a page, each reads the whole ledger; build it: python server/scripts/build_ledger_ref_index.py --apply --world <세계>
+> 급할 때      DROP INDEX idx_ledger_events_source_raw_ref_hash (부모를 지우면 파티션 것도 같이) — 거두기는 50,000 장으로 돌아감
+>             되돌리기 git revert <이 커밋> -> 체인 워커 재기동
+> ```
+>
+> ---
+>
 > ## [10-10] **복사 규칙의 보류 세기 — 키 칸 형이 표마다 달라도 맞게 (총괄 7a) — 이주 «없음» · 재기동 «체인 워커»**
 >
 > ```
