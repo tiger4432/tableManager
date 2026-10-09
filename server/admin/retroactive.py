@@ -571,6 +571,22 @@ def _count_ledger_rescope(db, params, scan_limit):
         said = backfill.rescope(db.get_bind(), _ledger_setup(params), source, None, None,
                                 apply=False, whole_source=True, world=_ledger_world(params))
         total, gone, atoms = said["relation_rows"], said["gone_rows"], said["gone_atoms"]
+        stale = said["stale_atoms"]
+        where = "; ".join("%s: %s" % (table, ", ".join("%s %d" % pair for pair in sorted(by.items())))
+                          for table, by in sorted(said["stale_tables"].items())) or "none"
+        extra = {"source": source, "whole_source": True, "relation_rows": total, "gone_rows": gone,
+                 "gone_atoms": atoms, "stale_atoms": stale, "stale_refs": said["stale_refs"],
+                 "stale_tables": said["stale_tables"]}
+        if total is None:
+            # 총괄 e027f669d: a name today's declaration does not have - its atoms, all of them
+            return {
+                "affected": stale, "affected_label": "atoms withdrawn",
+                "absence": ABSENCE_TRULY_NONE if not stale else None, "count_kind": COUNT_EXACT,
+                "scanned": stale, "scan_limit": None, "truncated": False,
+                "detail": (f"'{source}' is not in today's declaration: withdraws every atom it "
+                           f"wrote - {stale} atom(s) by table and predicate: {where}. Nothing is "
+                           f"re-translated. Cannot be undone."),
+                "extra": extra}
         return {
             "affected": total, "affected_label": "rows re-translated",
             "absence": None, "count_kind": COUNT_EXACT, "scanned": total,
@@ -579,9 +595,10 @@ def _count_ledger_rescope(db, params, scan_limit):
                        f"table) from today's declaration: page by page, each page's old "
                        f"atoms withdrawn and new ones written in one commit. Withdraws "
                        f"{atoms} atom(s) of {gone} row(s) the table no longer has. The "
-                       f"re-translation is not previewed - that would be the whole job."),
-            "extra": {"source": source, "whole_source": True, "relation_rows": total,
-                      "gone_rows": gone, "gone_atoms": atoms}}
+                       f"re-translation is not previewed - that would be the whole job. "
+                       f"Withdraws {stale} atom(s) it wrote from tables today's declaration "
+                       f"does not read, by table and predicate: {where}."),
+            "extra": extra}
     column = params["scope_column"]
     values = params.get("scope_values") or []
     preview = backfill.preview_rescope(
@@ -693,11 +710,14 @@ def _run_ledger_rescope(db, params, log, control=None):
         page_rows=backfill.RESCOPE_PAGE_ROWS, checkpoint=_checkpoint(control),
         whole_source=bool(params.get("whole_source")), world=_ledger_world(params))
     log(f"[rescope] {s['source']} {s['scope_column']}: rows {s['rows_in_scope']}, "
-        f"withdrawn {s['withdrawn']}, written {s['inserted']} of {s['attempted']}")
+        f"withdrawn {s['withdrawn']}, written {s['inserted']} of {s['attempted']}"
+        + (f", from tables the declaration does not read {s['stale_withdrawn']}"
+           if "stale_withdrawn" in s else ""))
     _final_progress(control, s.get("rows_in_scope"), s)
     return {"withdrawn": s["withdrawn"], "attempted": s["attempted"],
             "inserted": s["inserted"], "deduped": s["deduped"],
-            "rows_in_scope": s["rows_in_scope"], "applied": s["applied"]}
+            "rows_in_scope": s["rows_in_scope"], "applied": s["applied"],
+            **{key: s[key] for key in ("stale_withdrawn", "stale_forgotten", "stale_pages") if key in s}}
 
 
 def _run_chain_replay(db, params, log, control=None):

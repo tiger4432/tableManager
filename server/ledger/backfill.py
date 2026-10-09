@@ -694,15 +694,20 @@ def rescope(engine, setup, source, scope_column, scope_values, apply=False,
         if whole_source:
             # 🔴 A WHOLE SOURCE PREVIEWS WHAT IS CHEAP (총괄 3a109bfd9 ③): the table's rows,
             #    the rows it lost and their atoms. Never a translation of every row - that was
-            #    the reason it refused without --apply.
-            plan = setup.snapshot.source_plans[source]
-            gone = rows_gone_from_the_source(engine, setup, source, world=world)
-            aimed = withdraw_deleted_rows(engine, setup, plan.relation, gone, world=world)
-            census = rows_not_yet_translated(engine, setup, source, world=world)
+            #    the reason it refused without --apply. And what the declaration no longer
+            #    makes (총괄 e027f669d) - asked after the one source check, as the run is.
+            plan, _scoped = rescope_scope(setup, source, None, None, whole_source=True)
             result = {"source": source, "whole_source": True, "previewed": False,
-                      "relation_rows": census.get("relation_rows"), "gone_rows": len(gone),
-                      "gone_atoms": sum(item.get("atoms", 0)
-                                        for item in aimed["sources"].values())}
+                      "relation_rows": None, "gone_rows": 0, "gone_atoms": 0}
+            if plan is not None:
+                gone = rows_gone_from_the_source(engine, setup, source, world=world)
+                aimed = withdraw_deleted_rows(engine, setup, plan.relation, gone, world=world)
+                census = rows_not_yet_translated(engine, setup, source, world=world)
+                result.update(relation_rows=census.get("relation_rows"), gone_rows=len(gone),
+                              gone_atoms=sum(item.get("atoms", 0)
+                                             for item in aimed["sources"].values()))
+            result.update(withdraw_stale_atoms(engine, source, plan and plan.relation,
+                                               world=world))
         elif withdraw:
             result = preview_rescope(engine, setup, source, scope_column, scope_values,
                                      world=world)
@@ -714,6 +719,13 @@ def rescope(engine, setup, source, scope_column, scope_values, apply=False,
 
     plan, scoped = rescope_scope(setup, source, scope_column, scope_values,
                                  whole_source=whole_source)
+    if plan is None:
+        # a name the declaration no longer has: no rows to read, its atoms to take back
+        result = {"source": source, "scope_column": None, "scope_values": 0, "withdraw": 0,
+                  "remake": 0, "indexed_refs": 0, "rows_in_scope": 0, "pages": 0, **zeros}
+        result.update(withdraw_stale_atoms(engine, source, None, apply=True,
+                                           checkpoint=checkpoint, world=world))
+        return result
     from . import schema
 
     schema.ensure_world(engine, schema.world_names(world))
@@ -781,6 +793,9 @@ def rescope(engine, setup, source, scope_column, scope_values, apply=False,
                                       world=world)
         result["gone_rows"] = len(gone)
         result["gone_withdrawn"] = sum(item["withdrawn"] for item in taken["sources"].values())
+        # and what today's declaration no longer makes - a table it stopped reading (총괄 e027f669d)
+        result.update(withdraw_stale_atoms(engine, source, plan.relation, apply=True,
+                                           checkpoint=checkpoint, world=world))
     if not result["rows_in_scope"]:
         # 🔴 AN EMPTY SCOPE IS AN ANSWER, NOT A FAULT (S-81) - the row can be gone by the
         # time it is read. Falling through handed an empty frame to the write boundary, which
@@ -901,6 +916,91 @@ def rows_gone_from_the_source(engine, setup, source, world=None):
     finally:
         connection.rollback()
         connection.close()
+
+
+#: Refs one page of the stale withdrawal hands `store.withdraw`. Each page reads the whole
+#: ledger once - no ledger index leads with source_who - so a page is large (총괄 10-09:
+#: 50,000; box, 2,380,869 atoms: the predicate ~15 s a page).
+STALE_PAGE_REFS = 50000
+
+
+def _stale_refs(engine, source, relation, world=None):
+    """`(ref, tables, {predicate: atoms})` for each ref of this source's atoms that names a
+    table other than `relation` - atoms today's declaration does not make (총괄 e027f669d);
+    every ref when `relation` is None (a name the declaration no longer has). Aimed from the
+    ledger's own refs, not the row index: an atom written before 09-08 may have no index line.
+    One pass, streamed - a source's refs are not held at once."""
+    from . import schema
+    from .roleframe import claim_source_row_refs
+
+    connection = engine.raw_connection()
+    try:
+        with connection.cursor(name="stale_refs") as cursor:
+            cursor.itersize = 10000
+            cursor.execute(
+                "SELECT ref, json_object_agg(predicate, atoms) FROM ("
+                f" SELECT source_raw_ref AS ref, predicate, count(*) AS atoms "
+                f"   FROM {schema.world_names(world).ledger} WHERE source_who = %s GROUP BY 1, 2"
+                ") per_predicate GROUP BY ref", (source,))
+            for ref, atoms in cursor:
+                tables = sorted({item.split(":", 1)[0] for item in claim_source_row_refs(ref)
+                                 if ":" in item})
+                if relation is None or (tables and relation not in tables):
+                    yield ref, tables, {str(k): int(v) for k, v in dict(atoms).items()}
+    finally:
+        connection.rollback()
+        connection.close()
+
+
+def withdraw_stale_atoms(engine, source, relation, apply=False, checkpoint=None, world=None,
+                         page_refs=None):
+    """Take back the atoms `_stale_refs` names: `page_refs` refs a page through `store.withdraw`
+    (the one statement, `_withdraw_refs`), then this source's index lines for those tables
+    (`forget_row_refs` with the source - atoms first, lines last, as a deletion). A stop lands
+    between pages and leaves the lines for the re-run. `apply=False` counts, per table and
+    predicate, and writes nothing (총괄 e027f669d)."""
+    from . import schema
+    from .store import LedgerStore
+
+    store = LedgerStore(engine, world=world)
+    page_refs = page_refs or STALE_PAGE_REFS
+    result = {"stale_atoms": 0, "stale_refs": 0, "stale_tables": {}, "stale_withdrawn": 0,
+              "stale_forgotten": 0, "stale_pages": 0}
+    page, tables = [], set()
+    for ref, named, atoms in _stale_refs(engine, source, relation, world=world):
+        result["stale_refs"] += 1
+        result["stale_atoms"] += sum(atoms.values())
+        tables.update(named)
+        by = result["stale_tables"].setdefault(", ".join(named) or "(no table named)", {})
+        for predicate, n in atoms.items():
+            by[predicate] = by.get(predicate, 0) + n
+        if apply:
+            page.append(ref)
+            if len(page) >= page_refs:
+                result["stale_withdrawn"] += store.withdraw(source, page)
+                result["stale_pages"] += 1
+                page = []
+                if checkpoint is not None and checkpoint(result["stale_withdrawn"]):
+                    result["stopped"] = True
+                    return result
+    if not apply:
+        return result
+    if page:
+        result["stale_withdrawn"] += store.withdraw(source, page)
+        result["stale_pages"] += 1
+    connection = engine.raw_connection()
+    try:
+        with connection.cursor() as cursor:
+            for table in sorted(tables):
+                cursor.execute(f"SELECT DISTINCT row_id FROM {schema.world_names(world).row_ref} "
+                               "WHERE relation = %s AND source_who = %s", (table, source))
+                ids = [row[0] for row in cursor.fetchall()]
+                if ids:
+                    result["stale_forgotten"] += store.forget_row_refs(table, ids, source=source)
+    finally:
+        connection.rollback()
+        connection.close()
+    return result
 
 
 def rows_not_yet_translated(engine, setup, source, *, exact_rows=True, world=None):
@@ -1946,9 +2046,15 @@ def rescope_scope(setup, source, scope_column, scope_values, whole_source=False)
     Both rescope entries and the admin's params judgment call this, so they refuse in one
     order with one sentence. A refused source's plan has no driver, and reading its scope
     first met that as an AttributeError.
+
+    `(None, None)` for a whole source the declaration no longer names (총괄 e027f669d): no
+    rows to read, every atom it wrote to take back (`withdraw_stale_atoms`). A retired one is
+    still refused - its atoms stay (판정 198).
     """
     from .setup import _require_declared_source
 
+    if whole_source and source not in setup.snapshot.source_plans:
+        return None, None
     _require_declared_source(setup, source)
     plan = setup.snapshot.source_plans[source]
     # 총괄 8d10633ae ㉡: every row of the source is the scope `_scope_predicate` already
