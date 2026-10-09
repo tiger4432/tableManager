@@ -76752,3 +76752,47 @@ MUTANT rows_per_run defaults to six again                 1 failed, 9 passed
 **클라 레인 몫 한 줄**: client2/src/admin.js 가 응답의 run_in 목록을 아직 읽습니다(그 목록은 이제 안 옵니다 — 죽은 줄). 서버 변경은 없습니다.
 
 어느 DB · 어느 스키마 · 지운 것: 이 착지의 시험은 sqlite 메모리뿐 · 지운 것 0.
+
+## [10-09] 중복 행 접기 — 빈 키 행 그대로 · 먼저 남길 행 착지 41be19bb5 (총괄 9c8b9f919 · 1d2a7e0fd)
+
+**도착지와 대조**
+```
+「키 칸 중 하나라도 빈 행은 접지 않는다 — 미리보기와 결과가 «키가 빈 행 N 개는 그대로 둠»을 말한다」   -> 섰다
+「--prefer-column <칸> --prefer-text <글자> 를 적으면 그 칸에 그 글자가 든 행을 먼저 남긴다 — 그 안에서 지금처럼 시간」 -> 섰다
+```
+**자리**: 빈 판정은 `_blank_key` 하나(키 칸마다 crud.blank_sql_condition 의 OR)이고, 순위에서 빼는 자리와 세는 자리가 같이 부릅니다. prefer 짝 검사는 `_prefer_of` 하나이고, 판정(judge)과 실행이 같이 부릅니다.
+
+**게이트**
+```
+sqlite  20 passed   (test_duplicate_rows_fold_to_one_per_key.py)
+PG      3 passed   (test_folded_duplicates_let_the_official_table_recount.py — 새 PG 칸 하나)
+레지스트리를 읽는 시험 파일 10 개   225 passed, 3 skipped
+변이 (sqlite) — 빨강 = 시험 실패 · md5 same
+MUTANT the blank-key condition is gone    5 failed, 15 passed
+    FAILED test_a_preferred_fold_leaves_blank_key_rows_and_says_what_it_kept
+    FAILED test_an_empty_string_is_blank_as_null_is
+    FAILED test_rows_whose_key_is_all_blank_are_left_as_they_are
+    FAILED test_rows_with_one_blank_key_part_are_left_as_they_are
+    FAILED test_the_preview_the_run_and_the_cli_say_the_rows_left_for_a_blank_key
+MUTANT '' is read as a value              1 failed, 19 passed
+    FAILED test_an_empty_string_is_blank_as_null_is
+MUTANT the preferred term is not ranked   4 failed, 16 passed
+    FAILED test_a_preferred_fold_leaves_blank_key_rows_and_says_what_it_kept
+    FAILED test_a_preferred_row_stays_though_it_is_later
+    FAILED test_of_two_preferred_rows_the_earliest_stays
+    FAILED test_the_text_is_matched_in_any_case
+MUTANT the text is matched in its own case 20 passed
+변이 (PG) — md5 same
+MUTANT the text is matched in its own case (PG) 1 failed, 2 passed
+    FAILED test_on_postgresql_the_preferred_text_matches_in_any_case_and_a_blank_key_row_stays
+```
+대소문자 변이는 sqlite 에서 살아남습니다 — SQLite 의 LIKE 는 ASCII 대소문자를 안 가립니다. 운영은 PostgreSQL 이라 PG 칸을 더해 거기서 빨강을 봤습니다.
+
+**같이 착지한 것**: 77733bc21 — run_in 착지(53bdedde9)가 test_the_skeleton_declares_the_unified_grammar 두 칸을 main 에서 빨갛게 만든 것을 착지 뒤 전체 묶음에서 찾아 고침.
+
+**남은 것**
+- 하위 폴더 착지: test_a_folder_stuck_behind_a_lock_is_said_and_let_go 의 stalled_line 칸이 파일째 돌릴 때 흔들림(「pid … is not in pg_stat_activity」). 같은 조건 대조는 아직 안 쟀다.
+- 층 순위(시연 뒤): 행 층 이름이 합치기 이름과 같은 함수를 빌려 두 뜻 — 틀린 뜻 하나를 은퇴. ㄱ · ㄴ · ㄷ 의 영향 칸 수는 아직 안 셌다.
+- 클라 레인: client2/tests/fixtures/screens_answers.json 에 rule_rows 의 옛 what_is_missing 문장이 남아 있다(캡처 픽스처).
+
+어느 DB · 어느 스키마 · 지운 것: sqlite 메모리 · PG 는 격리 시험 DB(run_pg_files 가 고르는 assy_test) · 지운 것 0(시험이 스스로 치움).
