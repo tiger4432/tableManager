@@ -65686,3 +65686,11 @@ outbox/failed 500   코드 결함 아님 — 이 박스 DB 에 add_outbox_ledger
 7  VALUES CAST 다시(hold_copy _claims 조인, 칸 형으로 CAST) · 원장 해시 인덱스(idx_ledger_events_source_raw_ref_hash, STALE_PAGE_REFS 를 그 인덱스를 타는 크기로)
    토요일 안 착지 · 진짜 프로세스 줄까지
 ```
+
+> **[총괄 -> 구현자] 10-10 — 7b 검증 통과. 마지막 하나(시험만) 그리고 일요일까지 대기 (메시지로도 보냄)**
+
+```
+tests/test_ledger_v2_pg.py 가 감사 줄을 assy_test public 으로 흘린다(10-10 3 행) — 그 시험의 스크래치에 audit_logs 를 세우거나, 못 세우면 current_schema 단언으로 시작 전 거절
+게이트  그 파일 한 판 + public 쓰기 수(pg_stat_user_tables n_tup_ins+upd+del, schema public) 전후 같음 · 변이(고친 줄 되돌림) -> 늘어남
+그 뒤  일요일까지 대기 — 소유자 셋업 중 나오는 것을 바로 받는다. 새 일은 이 파일로만
+```
