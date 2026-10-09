@@ -166,6 +166,11 @@ const KNOWN_RED = new Map([
       "O/aligned/alarm-tracks-the-actual-misalignment",
     ],
     why: 'OWNER RULING 2026-09-03 (ⓐ): a designation adopts the reference PHYSICAL spec and re-derives the grid from it. 228/41 -> 241/13, and every remaining failure is ONE question. Twelve assertions said nothing is adopted: eleven were REPLACED by their inverse (retiring them alone would have left the adoption unscored) and the twelfth was MOVED, because what it scored was whether the CELLS moved. Sixteen scored the wording of a notice that said nothing changed; the notice now names both grids and which one is in use, and the harness selects it by its dedupe key instead of by grepping its text -- pinning wording is what reddened sixteen assertions on a copy edit, none of which was about the sentence. WHAT IS LEFT, AND WHY IT STAYS RED: the ruling settled where the grid comes from, NOT whether a stored coordinate may be re-based when it moves. Measured on fixture A: of 290 painted cells, 224 land where the new frame issues no address and all 66 that remain are the earlier coordinate translated by exactly (0,+8). These are NOT re-aimed to whatever the code produces today -- that would decide the question by writing down the answer -- and their numbers WERE re-measured through an IMPORTED harness on 2026-09-17, which is what this note asked for. THE RE-MEASUREMENT IS CLOSED AND IT MOVED NOTHING: the sliced instrument and the imported one both return 241/13, the same thirteen names, byte-identical failure messages, and the same mutation verdict line (26 declared, 18 applied, 18 caught by a named assertion, 0 undetected). The only difference in the whole output is 107 lines the subject says out loud now that no vm console stub is swallowing them. The converted file also carries a CONTROL that must escape (a scored function touching a module helper: the slicer threw, the import does not), and it reports through die() rather than the counters precisely so it cannot hide inside this already-red exit code or nudge the pinned ran. So these thirteen are a question about the PRODUCT, not an artefact of the instrument, and the ruling that settles them is still the one owed: may a stored coordinate be re-based when the frame moves. Ruling 483: this debt is pinned by MEMBERS above, not by the count — 13 -> 9 as a number says nothing, while four names disappearing is a claim somebody can check. ⚠️ MUTATIONS (this gate runs them, --mutate): 25 declared, 25 apply, 0 do not; caught = a failure the baseline does not have: 25 by a named assertion, 0 by a crash, 0 undetected. The eight that no longer applied were re-aimed 2026-10-06 at where the code went (diagnoseDesignationAlignment, the mask projection, the spec adoption in set) and O3 went, comparing declared starts being the design now; M5 removes the two stale guards on that path. Until then every applied mutation read as caught, the baseline being red.' }],
+  // The screens in real Chrome (lead 1343e5cca). Red on one line only: the R&D board's table head «Measured» is cut
+  // 13 px, and the board is frozen - fix it, mark it, or keep it red is the lead's call (asked 10-09). 42 screen
+  // checks (7 entries x 6 at 1920x950) + 5 mutants.
+  ['screen_layout_harness.mjs', { ran: 47, failed: 1, failures: ['rnd-board.html 1920x950 clip - 1'],
+    why: 'the R&D board is frozen; its head cell «Measured» is cut 13 px at 1920x950 - waiting on the lead' }],
 ]);
 
 // ── the floors ──────────────────────────────────────────────────────────────────
@@ -1746,6 +1751,10 @@ const FLOORS = new Map([
   // New 2026-10-09 (lead d71f931c7). The index table: the server's declared indexes beside the database, each state
   // its token on a base-layer tag, a build's sentence whole, no scans dim, those nothing declares below; 8 mutants.
   ['index_table_panel_harness.mjs', 15],
+  // New 2026-10-09 (owner: the Replay chain dropdown opened away from its button after the header zoom). One function,
+  // dropdown.js placeUnder, puts every panel a header control places from screen px under it and on screen; four
+  // mutants, the parent's scale left out among them.
+  ['dropdown_place_harness.mjs', 8],
   // New 2026-09-28 (lead 40bae1219). The map editor's column save: changed cells only, one column,
   // no overwrite of a cell changed since the load, and the «send every cell» mutant.
   ['column_save_harness.mjs', 18],

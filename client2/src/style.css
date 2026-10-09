@@ -49,7 +49,7 @@ body {
   /* Mockup 2b's seam between the logo and the toolbar. Without it the toolbar now butts
      straight against the wordmark -- `justify-content: space-between` used to hide that by
      shoving the toolbar to the far edge. */
-  gap: 14px;
+  gap: calc(14px + var(--header-gap-plus, 0px));
   /* 🔴 C-118. 넘침 전략입니다: «줄이 늘어난다». 잘리거나 겹치지 않습니다. */
   flex-wrap: wrap;
   row-gap: 8px;
@@ -186,7 +186,7 @@ body {
 .control-group {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: calc(8px + var(--header-gap-plus, 0px));
 }
 
 .control-group label {
@@ -515,8 +515,10 @@ body.resizing-active .history-sidebar {
 .queue-at, .queue-population, .queue-page { font-family: var(--font-mono); }
 .queue-reason { color: var(--warning); }
 .queue-rows { flex: 1; min-height: 0; overflow-y: auto; scrollbar-gutter: stable; }
-/* 10.5px 모노로 재서 잡은 폭: scheduler 50 · DELETE 38 · 「13시간 12분」 63 · 배지 55, + 셀 여백 16. */
-.queue-head, .queue-row { grid-template-columns: 66px 84px 54px 80px 96px 1fr; }
+/* 10.5px 모노로 재서 잡은 폭: scheduler 50 · DELETE 38 · 「13시간 12분」 63, + 셀 여백 16.
+   State 는 가장 넓은 배지에 맞춘다(--queue-state-w, OutboxQueuePanel._fitState) — 96px 에서 WAITING_FOR_TABLE 이 잘렸다.
+   판이 좁아지면 Table(줄임표 · title)이 40px 까지, Rules 가 48px 까지 양보한다 — 앞의 셋은 낱말 폭이라 안 준다. */
+.queue-head, .queue-row { grid-template-columns: 66px minmax(40px, 84px) 54px 80px max(96px, var(--queue-state-w, 96px)) minmax(48px, 1fr); }
 .queue-row { display: grid; align-items: center; border-bottom: 1px solid var(--border); }
 .queue-row:last-child { border-bottom: none; }
 .queue-owner, .queue-event, .queue-age { white-space: nowrap; }
@@ -2524,7 +2526,7 @@ body.resizing-active .history-sidebar {
   min-width: 0;
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: calc(7px + var(--header-gap-plus, 0px));
   overflow: hidden;
 }
 /* 🔴 The header is drawn at --header-zoom (lead bfb62503e, owner 10-08 「줌 67 퍼에서 잘 되었었는데」): its
@@ -2532,6 +2534,9 @@ body.resizing-active .history-sidebar {
    is set back so it reads at --fs-header. Every size inside is a token, so the text tokens its parts use are re-said here (the chip's × is h5);
    the font-size is for what only inherits one. The logo shrinks with it; the map editor's header (same class, same file) does not. */
 .grid-header { zoom: var(--header-zoom); }
+/* 소유자 10-09 「헤더 뱃지들 버튼 마진 2pt 만 늘려줘」: each gap between the header's badges and buttons adds this - 2pt on
+   screen, so divided by the zoom it is drawn at. The joined buttons stay joined (.glass-btn-group, gap 0). */
+.grid-header { --header-gap-plus: calc(2pt / var(--header-zoom)); }
 .grid-header .controls-area {
   --fs-body: calc(var(--fs-header) / var(--header-zoom));
   --fs-button: var(--fs-body);
@@ -2946,7 +2951,7 @@ body.resizing-active .history-sidebar {
 /* ③ The mockup has no status text -- it has the dot beside the wordmark, which this screen
    already draws. The badges keep their words (removing them would lose the reading) but take
    the mockup's density instead of shouting at twice the size. */
-.app-header .status-indicators { gap: 6px; }
+.app-header .status-indicators { gap: calc(6px + var(--header-gap-plus, 0px)); }
 .app-header .status-indicators > * {
   height: 22px;
   font-size: var(--fs-meta);
@@ -3018,13 +3023,13 @@ body.resizing-active .history-sidebar {
    so the space either side of it was wider than the space between the buttons -- which is the
    unevenness. The padding is gone, the row's gap matches the logo seam, and the divider is a
    border on the message rather than a separate element to keep aligned. */
-.app-header .controls-area { gap: 14px; }
+.app-header .controls-area { gap: calc(14px + var(--header-gap-plus, 0px)); }
 /* △소유자: 「label <-> | <-> Options 여기 간격이 다름」 -- and it was: 23px against 14px.
    The box still centred its contents from when it was a full-width `flex: 1` strip, so once it
    shrank to content the leftover slack sat between the badge and the divider. Anchored to the
    right instead, and the empty transaction group beside it no longer spends a gap. */
 .app-header .log-indicator-area {
-  padding: 0 14px 0 0;
+  padding: 0 calc(14px + var(--header-gap-plus, 0px)) 0 0;
   border-right: 1px solid var(--border);
   justify-content: flex-end;
 }

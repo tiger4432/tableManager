@@ -17,6 +17,7 @@ import { state, gridFetch } from './state.js';
 import { NONE, unitText } from './ui_words.js';
 import { writeRefusal } from './write_guard.js';
 import { elements } from './dom.js';
+import { placeUnder } from './dropdown.js';
 import {
   switchTable,
   drawTableMenu,
@@ -963,19 +964,12 @@ function setupEventListeners() {
       if (isVisible) {
         elements.columnSelectorDropdown.style.display = 'none';
       } else {
-        // 드롭다운 위치 조정 (Options 버튼 하단에 배치)
-        const targetBtn = elements.settingsMenuBtn || elements.columnSelectorBtn;
-        const rect = targetBtn.getBoundingClientRect();
-        elements.columnSelectorDropdown.style.top = `${rect.bottom + window.scrollY + 6}px`;
         elements.columnSelectorDropdown.style.display = 'block';
-
         // 현재 컬럼 가시성 상태에 맞춰 리스트 렌더링
         renderColumnSelectorList();
-        // Under the button, kept on screen, measured once the list is in it: with the header at --header-zoom,
-        // Options sits near the right edge at 1536 and the panel ran past it (lead bfb62503e).
-        const width = elements.columnSelectorDropdown.getBoundingClientRect().width;
-        const room = document.documentElement.clientWidth - width - 8;
-        elements.columnSelectorDropdown.style.left = `${Math.max(8, Math.min(rect.left, room)) + window.scrollX}px`;
+        // Under Options, its left edge on the button's, kept on screen - measured once the list is in it.
+        placeUnder(elements.columnSelectorDropdown, elements.settingsMenuBtn || elements.columnSelectorBtn,
+          { align: 'left', gap: 6 });
       }
     });
   }

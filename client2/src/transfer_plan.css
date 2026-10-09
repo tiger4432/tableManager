@@ -260,7 +260,9 @@
 }
 .tp-btn {
   flex: none;
-  /* 클릭 표적 하한 24px — 이 패널의 모든 누를 수 있는 것에 같은 하한이 걸린다. */
+  /* 클릭 표적 하한 24px — 이 패널의 모든 누를 수 있는 것에 같은 하한이 걸린다.
+     height: auto — 바탕 층의 단추 높이(36px)가 이 하한을 덮어 줄 사이에서 혼자 컸다 (화면 검사기, 10-09). */
+  height: auto;
   min-height: 24px;
   display: inline-flex;
   align-items: center;

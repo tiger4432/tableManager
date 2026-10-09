@@ -26,7 +26,7 @@
 
 // 🔴 닫는 방법은 «한 벌»입니다. 필터 칩 펼침이 둘째로 같은 것을 필요로 했고, 두 번째를
 //    손으로 그리는 대신 올렸습니다 (상설: 근원 템플릿 요소 개발 후 데이터 갈아끼우기).
-import { watchForDismiss } from './dropdown.js';
+import { watchForDismiss, placeUnder } from './dropdown.js';
 // 🔴 C-120. 「꺼짐 + 왜」는 이 저장소에 좌석이 «하나»입니다. 메인 그리드의 쓰기 버튼 셋이
 //    쓰던 그 기제이고, 그래서 이 배너와 그 버튼들이 «같은 방식»으로 말합니다.
 import { setDisabledReason } from './disabled_reason.js';
@@ -220,14 +220,7 @@ export class RedoBanner {
    */
   place(box, bar) {
     if (!box.getBoundingClientRect || !bar.getBoundingClientRect) return;
-    const anchor = bar.getBoundingClientRect();
-    const parent = box.offsetParent;
-    const origin = (parent && parent.getBoundingClientRect)
-      ? parent.getBoundingClientRect() : { left: 0, top: 0 };
-    box.style.right = 'auto';
-    box.style.top = `${Math.round(anchor.bottom - origin.top + 8)}px`;
-    const width = box.getBoundingClientRect().width;
-    box.style.left = `${Math.round(Math.max(8, anchor.right - origin.left - width))}px`;
+    placeUnder(box, bar);
   }
 
   button(which, label, enabled) {

@@ -1364,7 +1364,8 @@
     .ov-row[data-tone="danger"] .ov-row-word { color: var(--danger); }
     .ov-row[data-tone="unknown"] .ov-row-word { color: var(--text-dim); }
     .ov-row-open,
-    .ov-show-all {
+    .ov-show-all,
+    .chain-queue-panel .chain-queue-refresh {
       height: auto;
       padding: 0;
       border: 0;
@@ -1376,9 +1377,11 @@
       white-space: nowrap;
     }
     .ov-row-open:focus,
-    .ov-show-all:focus { outline: none; }
+    .ov-show-all:focus,
+    .chain-queue-panel .chain-queue-refresh:focus { outline: none; }
     .ov-row-open:focus-visible,
-    .ov-show-all:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    .ov-show-all:focus-visible,
+    .chain-queue-panel .chain-queue-refresh:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
     .ov-show-all { margin-top: var(--space-2); }
     .ov-row-body { border-bottom: 1px solid var(--border); }
     .ov-scroll { overflow-x: auto; }
