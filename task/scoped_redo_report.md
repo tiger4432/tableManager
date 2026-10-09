@@ -77222,3 +77222,86 @@ REQUIRE-LOSS seen_before=False · A2 layers on the official table 4 -> 4 · offi
 - 까닭: `rule_run.columns_a_rule_writes` 가 이번 실행의 행 → 선언(`dynamic_mappers.columns_declared_for`) → 이 프로세스가 본 것 순으로 답하는데, `copy_rows_with_hold` 는 선언 답이 없다. 그 칸은 params(key_columns · columns · hold_column)로 정해져 있다.
 
 어느 DB · 어느 스키마 · 지운 것: PG 시험 DB(run_pg_files)의 실행 스크래치 · 탐침 표는 끝에 DROP · 지운 것 0.
+
+---
+
+## [10-09 밤] 회수 묶기 + 쌓인 회수 사건 접기 착지 — `af8ef5701` (총괄 eddf9e38e)
+
+어느 DB · 어느 스키마 · 지운 것 — assy_test 의 pg_engine 스크래치 스키마(hold 세상 두 표는 시험마다 DROP, 아웃박스 · 층은 그 두 표 이름의 행만 지움) · public 안 씀 · 박스 라이브 설정 안 씀
+
+### 도착지 두 줄 — 둘 다 닿았습니다
+
+```
+「회수가 칸 N 개를 바꾸면 사건은 표마다 1,000 행에 하나」                  ① _withdraw_cells 가 outbox_mode(COLLAPSED) 안
+「이미 쌓인 회수의 행마다 사건은 한 명령으로 표마다 접힌 사건으로 바뀐다」     ② 소급 Fold row-by-row withdrawal events
+                                                                     = chain_replay_cli.py fold-withdraw-events
+운영    pull -> 체인 워커 · 서버 재기동 -> fold-withdraw-events(미리보기) -> --apply   (RUN.md 같은 절)
+```
+
+### 게이트 (PostgreSQL · 박스 수)
+
+```
+① 1,000 행 지움     회수가 낸 사건 2 개, 행 수 [1000, 1000] — 값 바꾸기 하나 · 층 잃은 행 하나
+                   원장 후속 드레인 DELETE 포함 4 번 — DELETE 하나 · «EDIT 1000 행» 3 · ca0d23b08 은 1,003 번(1,000 이 한 행)
+                   홀드 다시 세기(test_a_copied_row_holds_until_its_claims_agree) 그대로 초록
+② 행마다 회수 사건 2,500(거래 둘) -> 접힌 사건 3 · 행 합집합 같음 · 다른 사건(사람 편집 · 처리됨 · RETRYING · 도는 줄 · 다른 표) 그대로 · 다시 돌리면 0
+   미리보기의 답 = 실행의 답 · 미리보기 문장에 RETRYING 과 도는 줄의 수가 따로
+   봉투   깊이 · 채널 · cascade · written_by · run 그대로, 접기 실행 자기 run_id 는 안 찍힘
+   끝 상태 접은 길과 안 접은 길의 공식 표 값 · hold · 원장 원자가 같음 — 접은 뒤 같은 행에 사람 편집 하나 포함
+   CLI    미리보기 문장 -> --apply 가 실행 기록(done)으로
+```
+
+시험 실행
+```
+eddf9e38e 위   새 게이트 + 회수를 지나는 PG 파일 전부        88 passed, 206 deselected
+origin/main 위  (84c47d818 출처 찾기 되살림과 합친 뒤) 게이트 · hold · 지운 행 회수 PG   28 passed, 14 deselected
+SQLite         연산 목록 · 회수 · CLI 를 지나는 파일             345 passed, 60 deselected
+```
+
+변이 (변이마다 md5 전후 비교)
+```
+BASELINE 4 passed
+MUTANT ① the withdrawal's mode removed      1 failed, 3 deselected
+    test_a_withdrawal_of_a_thousand_rows_stages_no_event_row_by_row
+MUTANT ② the withdrawal's mark not asked    1 failed, 3 deselected
+    test_queued_withdrawal_events_fold_per_table_and_nothing_else_moves
+MUTANT ② a group's run not set              1 failed, 3 deselected
+    test_a_fold_carries_each_group_s_envelope_and_not_its_own_run
+MUTANT ② one row of a group dropped         1 failed, 1 passed, 2 deselected
+    test_queued_withdrawal_events_fold_per_table_and_nothing_else_moves
+MD5 AFTER  same
+MUTANT the reduced keys read off the run's stats 1 failed, 15 deselected
+    test_the_withdrawal_fold_previews_then_folds_as_a_run
+MD5 AFTER same
+```
+②의 «회수 표지 안 물음» 변이는 «다른 사건 그대로» 단언 줄에서 빨갛습니다.
+위 넷은 문장을 fold_said 로 모으기 «전» 코드에서 돌았습니다 — 변이 자리 넷(모드 줄 · 표지 거르기 · run 문 · 접힌 사건 넣기)은 그 뒤 안 바뀌었습니다.
+
+### 바뀐 동작
+
+```
+회수 사건이 바꾼 칸 이름을 싣는다 -> 그 칸을 깨움 칸으로 안 가진 규칙 · 그 칸을 안 읽는 원장 소스는 회수에 안 깬다
+   (다른 접힌 쓰기와 같은 규칙). 기존 시험 하나의 기대값이 이 때문에 바뀜: 회수 사건 칸 [] -> ['z']
+접힌 사건은 새 id 라 큐 뒤로 가고, 돌 때 값으로 행을 다시 읽음 (총괄 승인)
+「모든 연산은 판정기가 있다」 카나리아에 «이름 없는 연산» 목록 하나(fold_withdrawal_events — 인자가 없어 판정할 이름이 없음)
+```
+
+### 제 실수 둘 — 착지 전에 잡았습니다
+
+```
+1  CLI 두 줄을 heredoc 으로 넘겨 역슬래시 n 이 진짜 줄바꿈이 됨 -> SyntaxError. 「역슬래시 든 본문은 파일로」 상설 위반입니다
+   아무 시험도 그 CLI 길을 안 지나서 숨어 있었고, fold-rows CLI 시험이 import 에서 잡았습니다
+2  CLI --apply 가 실행의 «줄이지 않은 답»에서 줄인 칸 이름을 읽어 KeyError 가 날 자리였습니다
+   -> 문장을 함수 하나(cell_layer.fold_said: 로그 · 미리보기 · CLI)로 모으고, CLI 를 끝에서 끝까지 지나는 칸을 더해 변이로 확인
+```
+
+### 모르는 것
+
+```
+운영 큐에 쌓인 회수의 행마다 사건 수   이 박스에서 못 셉니다 — 미리보기가 표마다 그 수를 말합니다
+접기의 운영 규모 초                   안 쟀습니다. 쪽(사건 10,000)마다 고른 id 잠금 · 접힌 사건 넣기 · 옛 사건 지우기가 한 커밋입니다
+```
+
+### 다음
+
+Re-read 관문 놓기(45efe02d9 · 7f8a6b241 · marked_rows 문장) + SLOT_POOL 재기 -> 접기 표시(016a766af · 83c05cfbb) -> 껍데기 행(5eee501eb) -> 층 이름 고정 -> VALUES CAST -> 원장 해시 인덱스
