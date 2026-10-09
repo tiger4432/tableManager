@@ -65451,3 +65451,43 @@ RELEASE_LOG · RUN.md(재기동 뒤 그 줄 × 한 번 · 답의 skipped_events 
    같은 커밋  RUN.md(소유자: pull · 재기동 · 쌓인 것 접기 미리보기 -> --apply) · RELEASE_LOG · 보드의 «시연 뒤 원장 후속 묶기 A» 줄은 총괄이 지움
 순서  이것 -> 원장 해시 인덱스 스크립트(a89f3e7d 메시지) -> 접기 표시(016a766af) -> VALUES 조인 형 맞춤 -> Re-read 두 칸
 ```
+
+> **[총괄 -> 구현자] 10-09 밤 — 줄 끝(해시 인덱스 · 접기 표시 뒤): 제품 프로세스가 «지금 무엇을 얼마나 먹나»를 스스로 말한다 (소유자 10-09 「지금 시스템 전체적으로 다 느려짐」 · 「나보고 뭐 확인하라 하지마」)**
+
+```
+지금  어느 제품 프로세스(서버 · 체인 배정자 · 슬롯 · 수집기 · 소급 실행 · 원장 후속)가 CPU · 메모리 · 디스크를 얼마나 쓰는지 보여 주는 자리 0
+      runtime/process_supervisor.py 가 psutil 을 이미 쓴다 · 하트비트(utils.heartbeat)가 역할 이름을 이미 안다
+도착지  「어드민 Overview 에 제품 프로세스 표 하나 — 역할 · pid · CPU % · 메모리 · 디스크 읽기/쓰기 속도 · 지금 하는 일(하트비트 claim) · 시작 시각」
+   + 같은 답을 CLI 한 줄(python server/scripts/… 하나, 읽기 전용)
+구현자  하트비트 파일이 이름 대는 pid 를 psutil 로 잼(새 등록부 금지 — 하트비트가 그 등록부) · 하트비트 없는 제품 python(명령줄로 앎)은 «beat 없음»으로 한 줄
+        잴 때 1 초 표본 하나 · 요청 경로 인라인 금지(어드민 라우트는 마지막 표본을 읽음)
+게이트  가짜 하트비트 둘 + 진짜 pid 하나 -> 표 셋 줄 · 죽은 pid -> «gone» · 변이
+```
+
+> **[총괄 -> 구현자] 10-09 밤 🔴 회수 접힘(eddf9e38e) 바로 다음 — 맵퍼가 쓰는 층 이름은 chain_ingestion 하나 (소유자 10-09 「이거 체인 출력이 예전 체인에 덮여 있네 · 지금은 dt_inventory 이름, 전에는 chain ingestion 이름」 · 「모든 맵퍼의 소스네임은 chain_ingestion 에서 못 바꾸게 해야 할 듯」)**
+
+```
+지금(총괄이 코드로 읽음)
+   crud.compute_priority_value 의 _rank = priority_map.get(name, 99) — 이름 «그대로» 찾음. SOURCE_PRIORITY 에 chain_ingestion = 4
+   -> 맵퍼가 다른 이름(운영: dt_inventory)으로 쓰면 99. 같은 칸의 옛 chain_ingestion 층(4)이 시각과 상관없이 영원히 이김
+   -> 운영 증상: dt_inventory 의 식 칸 일부가 옛 층 값 -> 식이 섞여 다른 cx,cy 가 같은 core x,y 로(탐색 결과: 식 칸은 칸마다 따로 순위)
+   mapper_sdk.mapper(source_name="chain_ingestion" 기본, 바꿀 수 있음) · 규칙 결과 items 의 source_name 을 seat 가 그대로 씀
+   같은 병: hold_copy 의 행 층 «chain_ingestion (<row_id>)» 도 이름 그대로 찾아 99(층 순위 905235e5c — 시연 뒤로 미뤘던 것)
+도착지  두 줄
+   「맵퍼가 무엇을 적든 체인이 쓴 층의 이름은 chain_ingestion(행 층은 chain_ingestion (<row_id>))이다」
+   「chain_ingestion 집안의 층은 모두 같은 순위(4)이고, 그 안에서는 새것이 이긴다」
+구현자
+   ① seat 한 자리(규칙 결과를 쓰는 곳)에서 items 의 source_name 을 그 집안으로 고정 — layer_writer(name) 가 chain_ingestion 이 아니면 chain_ingestion 으로 바꿔 씀
+      예외는 제품이 «뜻을 정한» 층 이름만: 자동확정 두 이름(candidates.SOURCE_NAME · SOURCE_NAME_PARTIAL_KEY) · enrichment backfill — machine_layer_names 에서 그 셋만. user · collision_merge · pipeline_parser · custom_script 는 맵퍼가 못 씀(바꿔 씀)
+      바꾼 규칙마다 한 줄 «[ChainRules] <rule>: source_name 'X' is written as chain_ingestion» — 선언을 새로 읽을 때만(say_the_declaration 자리)
+      mapper_sdk.mapper 의 source_name 인자는 은퇴 — 읽고 위 한 줄, 거절 안 함
+   ② 순위는 «쓴이»로: _rank 가 priority_map.get(layer_writer(name), 99) — 그래서 chain_ingestion (<row_id>) 도 4. 한 함수(layer_writer)만, 둘째 쪼개기 금지
+      이것이 905235e5c(층 순위)를 닫는다 — 행 층과 합치기 층의 «두 뜻» 문제는 그 판정대로 남기되, 순위만 쓴이로
+   ③ 이미 쌓인 것: 고친 뒤 규칙이 다시 돌면 같은 칸의 chain_ingestion 층을 덮어씀(같은 이름 = 같은 자리). 옛 이름 층(dt_inventory 등)은 남아도 순위가 낮아 안 보임
+      — 지울지는 소유자가 소급 «Withdraw a stale source»(표 · 그 이름 · --columns)로. RUN.md 에 그 순서
+   게이트  ① 맵퍼가 source_name 'X' -> 층 이름 chain_ingestion · 한 줄 한 번 ② 옛 chain_ingestion 층 + 새 쓰기 -> 새 값이 보임
+           ③ chain_ingestion (<row_id>) 와 옛 plain chain_ingestion -> 새것이 보임 ④ user 층은 여전히 이김 ⑤ 자동확정 이름은 그대로(99)
+           변이: ① 고정 지움 -> ② 빨강 · ② 쓴이 대신 이름 그대로 -> ③ 빨강
+   같은 커밋  RUN.md(소유자: pull · 재기동 · 그 규칙 replay) · RELEASE_LOG · mapper_sdk 안내 · chain_rules.md
+순서  회수 접힘(eddf9e38e) -> 이것 -> 원장 해시 인덱스 스크립트 -> 접기 표시(016a766af) -> VALUES 형 맞춤 -> Re-read 두 칸 -> 프로세스 표
+```

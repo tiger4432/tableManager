@@ -27,6 +27,8 @@
 import logging
 import uuid
 
+from sqlalchemy import text
+
 from chain import keyset_scan
 
 logger = logging.getLogger(__name__)
@@ -135,15 +137,31 @@ def cells_stamped_by(db, origin_row_ids, chunk_size: int = DEFAULT_CHUNK_SIZE) -
     """
     from database import models
 
-    ids = [str(item) for item in (origin_row_ids or ()) if item]
+    # Each origin once, in order: per origin, a repeat would be answered twice (QA c762f6820 · 총괄 ③).
+    ids = list(dict.fromkeys(str(item) for item in (origin_row_ids or ()) if item))
+    one_at_a_time = db.get_bind().dialect.name == "postgresql"
     found = []
     for i in range(0, len(ids), chunk_size):
+        chunk = ids[i:i + chunk_size]
         found.extend(tuple(row) for row in (
+            db.execute(STAMPED_BY_EACH_ORIGIN, {"ids": chunk}) if one_at_a_time else
             db.query(models.CellSource.table_name, models.CellSource.row_id,
                      models.CellSource.column_name, models.CellSource.source_name,
                      models.CellSource.origin_row_id)
-            .filter(models.CellSource.origin_row_id.in_(ids[i:i + chunk_size])).all()))
+            .filter(models.CellSource.origin_row_id.in_(chunk)).all()))
     return found
+
+
+#: `cells_stamped_by` on PostgreSQL: each origin asked through `idx_sources_by_origin` on its own.
+#: 🔴 OFFSET 0 KEEPS THE LATERAL FROM BEING FOLDED (총괄 d28171060 - 운영에서 그 인덱스의 scans 가 안
+#:    늘었다). As one `IN (1,000)` the planner sizes the batch from the statistics - believing an
+#:    origin feeds thousands of cells (a join's value row feeds many), it read the whole table:
+#:    measured on 3M rows, 1,000 origins not stamped yet, a Seq Scan 370 ms; this, an index
+#:    probe per origin, 10 ms.
+STAMPED_BY_EACH_ORIGIN = text(
+    "SELECT c.table_name, c.row_id, c.column_name, c.source_name, c.origin_row_id"
+    "  FROM unnest(CAST(:ids AS varchar[])) AS o(id)"
+    "  CROSS JOIN LATERAL (SELECT * FROM cell_sources s WHERE s.origin_row_id = o.id OFFSET 0) c")
 
 
 def withdraw_by_origin(db, origin_row_ids, apply: bool = False, log=logger.info,

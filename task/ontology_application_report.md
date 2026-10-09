@@ -37417,3 +37417,63 @@ test_ledger_l1_pg 재료     이미 채널에 — bad89d307 (같은 날 01:25, �
        ③ 복사 · 평범 묶음 · 체인 도는 동안 그리드 검색 초 · 원장 거두기 전체 훑기
 쓰는 곳 assy_test 의 assy_app_speed_1009 하나(public 아님) · 끝나면 지운 것 0 으로 다시 적습니다
 ```
+
+---
+
+## [C 응용] 10-09 출처 찾기(cells_stamped_by)의 계획 — 운영 크기 표에서 lateral 은 Seq Scan 을 안 고르고, 되돌린 IN 이 고릅니다
+
+```
+잰 곳   박스 · assy_test · assy_app_speed_1009 · cell_sources 34,000,000 행(origin 찍힌 17,000,000 행) · 6211 MB · 모델 DDL 그대로
+        origin 하나가 칸 5 개 · 한 번에 묻는 origin 1,000 개(묶음 크기) · PG 18.3 · random_page_cost 4
+        «새» = 아직 아무 칸도 안 먹인 origin(새 행의 편집) · «찍힌» = 칸을 먹인 origin
+
+                      자연 ANALYZE(n_distinct 337239)          n_distinct 289 덮어씀(운영의 믿음)
+lateral   새           Index Scan · 4 ms                  Bitmap(index) · 7 ms
+(f0b625d23) 찍힌        Index Scan · 39 ms                 Bitmap(index) · 14 ms
+IN        새           Bitmap(index) · 2 ms               Seq Scan · 4.1 s · read 3,381 MB
+(아침 · 지금 main)  찍힌  Bitmap(index) · 11 ms              Seq Scan · 4.1 s · read 3,380 MB
+```
+```
+판정   lateral 안은 289 의 믿음에서도 origin 마다 인덱스(Bitmap)로 갑니다 — per-origin Seq Scan 없음
+       되돌린 IN(8c664d220)은 같은 믿음에서 «표 전체»를 읽습니다 — 1,000 origin 마다 한 번(박스 4 초대 · 3 GB 대)
+       자연 통계에서는 둘 다 인덱스입니다. 갈리는 것은 «통계가 289 를 믿을 때»뿐입니다
+누가 부르나  편집 회수(층을 찍는 규칙 — 조인 · 복사 · 파일 맵퍼 — 의 EDIT 묶음)와 삭제 회수
+       오토컨펌(decide)은 층을 안 찍습니다(stamps_origin False) — 그 묶음 8 번에서 cells_stamped_by 부름 0(박스)
+       -> 「오토컨펌이 느리다」의 원인은 이 줄이 아닙니다. 오토컨펌 칸은 단계별로 따로 재고 있습니다
+물음   운영 표의 pg_stats(origin_row_id 의 null_frac · n_distinct)와 reltuples 는 제가 못 봤습니다
+       289 가 지금도 참이면 main 은 아침의 전체 훑기로 돌아간 것입니다 — 되돌림을 유지할지는 총괄 판정
+가설   전체 훑기가 캐시를 밀어내 검색도 느려질 수 있습니다 — 안 쟀습니다(검색 초는 다음 칸에서 잽니다)
+```
+
+---
+
+## [C 응용] 10-09 오토컨펌 1,000 행 묶음 — 묶음 «몸»은 어제 밤과 오늘 main 이 같습니다(박스)
+
+```
+잰 곳   박스 · assy_test · assy_app_speed_1009 · cell_sources 34M 행 · n_distinct 289 덮어씀 · 대기 행 10 표 × 1,000(다른 줄)
+        규칙  derive decide · auto_confirm · 후보 뷰 하나(SELECT lot AS grade FROM sp_attr WHERE job = :job)
+        묶음  새 키 1,000 행 · 한 트랜잭션 · process_pending_groups 로 한 묶음 · 워밍업 1 + 3 회 × 2 바퀴 교차
+        중앙값(6 회)            f6114c47c(10-08 21:30)   9a15a86e5(main)
+묶음 벽시계              1.75 s(1.67~2.05)       1.89 s(1.71~2.13)
+CPU                    1.27 s             1.33 s
+SQL 문                 2817             2821
+후보 모으기 collect_rows   0.03 s       0.03 s
+뷰 읽기 + 제안 flush      0.43 s       0.39 s     <- 뷰 질의 200 번(키 예산 200 — 1,000 키 중 200/1000 확정, 나머지는 다음 차례)
+쓰기 write              0.12 s       0.14 s
+처리 표시 mark processed  0.59 s       0.70 s
+커밋 commit             0.45 s       0.45 s
+표 잠금 기다림            없음(어제 밤엔 없는 문)   0.00 s(경쟁자 없음)
+층 찾기 cells_stamped_by  부름 0                 부름 0 — 오토컨펌은 층을 안 찍습니다
+큐 줄 읽기 waiting_lines  없음                   0.02~0.10 s(대기 10,000 행)
+```
+```
+판정   이 모양의 묶음 «몸»에는 오늘 착지가 초를 더하지 않았습니다 — 차이가 회차 간 흔들림 안입니다
+       그래서 여기서는 반으로 가르기를 하지 않습니다(가를 차이가 없음)
+못 쟀다  묶음 «바깥» — 코드에서 읽은 것만 적습니다
+        main     슬롯(기본 2)이 줄 하나의 한 차례(대기 이벤트 최대 200 개)를 돌고, 더 오래 안 돈 줄이 있으면 그 줄에 자리를 줍니다(422d075c7)
+                 디스패처는 줄 목록을 1 초에 한 번 읽습니다(알림이 오면 바로)
+        어제 밤   루프 하나가 모든 줄의 대기 이벤트를 id 순으로 200 개씩
+        가설     줄이 많을 때 한 줄이 «끝나는» 데 걸리는 시간이 늘어납니다(돌아가며 도는 대가) — 안 쟀습니다
+다음    실제 워커(디스패처 + 슬롯 프로세스)를 이 스키마에 띄워, 같은 씨앗으로 «쓴 때 -> 다 처리된 때»를 f6114c47c 와 main 에서 잽니다
+        운영의 후보 뷰가 무엇을 읽는지 · 키 예산(enrichment_auto_confirm_max_keys) 값은 제가 못 봤습니다
+```
