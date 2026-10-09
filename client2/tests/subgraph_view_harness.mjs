@@ -92,7 +92,10 @@ function stubDoc(withTokens) {
   return doc;
 }
 
-async function suite(m, makeWalk = createWalkBoxWalk, css = REAL_CSS, foldDecl = FOLD_DECL) {
+async function suite(m, makeWalk = createWalkBoxWalk, css = REAL_CSS, foldDecl = FOLD_DECL, only = null) {
+  // A mutant names the check it must break; only the blocks holding that check run for it (lead 10-09).
+  const asked = only == null ? null : [].concat(only).map(String);
+  const want = (ids) => !asked || ids.some((id) => asked.some((c) => id.startsWith(c)));
   const wire = wireWith(makeWalk);
   const names = [];
   const fails = [];
@@ -189,7 +192,7 @@ async function suite(m, makeWalk = createWalkBoxWalk, css = REAL_CSS, foldDecl =
   const dieFirst = positions(die);
   const dieFirstLumps = lumpsOf(die).map((n) => n.id()).sort().join(',');
   console.log('\n[0] the first picture: the start and its one step; what lies behind is folded (owner 10-06)');
-  {
+  if (want(["A5"])) {
     const r = await wire([DIE], [])(DIE._start);
     const from = new Set([...die.view.steps[0].seeds, ...r.nodes.filter((n) => n.depth === 0).map((n) => n.id)]);
     const near = oneStep(die.view.layout, from);
@@ -223,7 +226,7 @@ async function suite(m, makeWalk = createWalkBoxWalk, css = REAL_CSS, foldDecl =
   }
 
   console.log('\n[2] the column is the step count from the start, the same picture for the same answer');
-  {
+  if (want(["B1", "B2", "B3"])) {
     const s = die;
     const xOf = new Map();
     let sameX = true;
@@ -251,7 +254,7 @@ async function suite(m, makeWalk = createWalkBoxWalk, css = REAL_CSS, foldDecl =
   }
 
   console.log('\n[3] a static type is another shape, by the declaration\'s list');
-  {
+  if (want(["C1"])) {
     const s = die;
     const typeOf = (n) => String(n.data('type')).split('@')[0];
     const wrong = nodesOf(s).filter((n) => (STATIC.has(typeOf(n)) ? 'rectangle' : 'ellipse') !== n.style('shape'));
@@ -261,7 +264,7 @@ async function suite(m, makeWalk = createWalkBoxWalk, css = REAL_CSS, foldDecl =
   }
 
   console.log('\n[4] the part asks its marking and nothing else');
-  {
+  if (want(["D1"])) {
     const { urls } = die;
     const params = paramsOf(urls[0] || '');
     const extra = [...params.keys()].filter((k) => k !== 'id' && k !== 'positive' && k !== 'fanout_limit');
@@ -272,7 +275,7 @@ async function suite(m, makeWalk = createWalkBoxWalk, css = REAL_CSS, foldDecl =
   }
 
   console.log('\n[5] a node pressed shows its facts');
-  {
+  if (want(["E1", "E2"])) {
     const s = die;
     const r = await wire([DIE], [])(DIE._start);
     const touchingOf = (id) => r.edges.filter((e) => e.source === id || e.target === id).length;
@@ -289,7 +292,7 @@ async function suite(m, makeWalk = createWalkBoxWalk, css = REAL_CSS, foldDecl =
   }
 
   console.log('\n[EQ] a picked node\'s lines say their qualifiers - on the label and in the info box (lead 3181313b5)');
-  {
+  if (want(["EQ1", "EQ2", "EQ3"])) {
     // The captured bundle walk, every fold opened so the lines are drawn: a node that touches lines with qualifiers and without.
     const s = await seat([BUNDLES]);
     openAll(s);
@@ -325,7 +328,7 @@ async function suite(m, makeWalk = createWalkBoxWalk, css = REAL_CSS, foldDecl =
   }
 
   console.log('\n[6] a cut walk says so, in one line');
-  {
+  if (want(["F1"])) {
     const wafer = await seat([WAFER]);
     say('F1 the die walk: Truncated with its budget; the wafer walk: no line',
       JSON.stringify(textOf(die.host, 'sg-trunc')) === '["Truncated · nodes 400"]'
@@ -334,7 +337,7 @@ async function suite(m, makeWalk = createWalkBoxWalk, css = REAL_CSS, foldDecl =
   }
 
   console.log('\n[7] two on one page with their own markings do not touch each other');
-  {
+  if (want(["G1"])) {
     const doc = stubDoc();
     const markings = new MarkingStore();
     const a = await seat([WAFER], { doc, markings, chain: ['a0', 'a1'] });
@@ -352,7 +355,7 @@ async function suite(m, makeWalk = createWalkBoxWalk, css = REAL_CSS, foldDecl =
   }
 
   console.log('\n[8] the legend: one chip per type drawn, its count, static marked');
-  {
+  if (want(["H1"])) {
     const { host } = die;
     const chips = byClass(host, 'sg-chip');
     const counted = chips.reduce((n, c) => n + Number(String(c.textContent).split(' ').pop()), 0);
@@ -366,7 +369,7 @@ async function suite(m, makeWalk = createWalkBoxWalk, css = REAL_CSS, foldDecl =
   }
 
   console.log('\n[9] continued by marking: a press picks, Mark marks, Continue walks the marking, one picture');
-  {
+  if (want(["K1", "K2", "K3", "K4", "K5", "K6", "K7", "K8"])) {
     const s = await seat([DIE, STEP2]);
     openAll(s);
     const marked = STEP2._marked;
@@ -454,7 +457,7 @@ async function suite(m, makeWalk = createWalkBoxWalk, css = REAL_CSS, foldDecl =
   }
 
   console.log('\n[10] the same names are the same marking; the chain\'s end is declared');
-  {
+  if (want(["L1", "L2"])) {
     const doc = stubDoc();
     const markings = new MarkingStore();
     const a = await seat([WAFER], { doc, markings, chain: ['a0', 'a1'] });
@@ -484,7 +487,7 @@ async function suite(m, makeWalk = createWalkBoxWalk, css = REAL_CSS, foldDecl =
   }
 
   console.log('\n[11] bundles: a fan-out over the cap draws its first, the rest is an unsent lump; pressed, it is one step from its node, then listed');
-  {
+  if (want(["P1", "P2", "P3", "P4", "P5", "P6", "P7", "P8", "P9", "PB", "PC", "PD", "PN"])) {
     const doc = stubDoc();
     const markings = new MarkingStore();
     const a = await seat([BUNDLES, OPENED], { doc, markings, chain: ['a0', 'a1'] });
@@ -637,7 +640,7 @@ async function suite(m, makeWalk = createWalkBoxWalk, css = REAL_CSS, foldDecl =
   }
 
   console.log('\n[N] a node folds its branches into one lump, on the picture only (lead 43a738d58 ③ · e523cfe91)');
-  {
+  if (want(["N1", "N2", "N3", "N4", "N5", "N6", "N7", "N8", "N9", "NF"])) {
     // A hand graph: s -> a -> b -> c and s -> d -> c. Folding a hides b; c is reached through d.
     // And s -> e at the same depth (a real walk's depth stays put along some edges), f -> e one deeper.
     // No depth: the fold walks from the seed alone here, so a same-depth edge is the only way to e.
@@ -728,7 +731,7 @@ async function suite(m, makeWalk = createWalkBoxWalk, css = REAL_CSS, foldDecl =
   }
 
   console.log('\n[LM] a lump opens only what is ticked, out of where it stood; the view does not move (lead 03bc94b6b)');
-  {
+  if (want(["LM1", "LM2", "LM3", "LM4", "LM5", "LM6", "LM7", "LM8", "LM9"])) {
     const s = await seat([DIE]);
     openAll(s);
     const seeds = s.view.steps.flatMap((x) => x.seeds);
@@ -830,7 +833,7 @@ async function suite(m, makeWalk = createWalkBoxWalk, css = REAL_CSS, foldDecl =
   }
 
   console.log('\n[TK] colours and sizes are the tokens\', in both themes');
-  {
+  if (want(["Q5", "TK1", "TK2"])) {
     const s = await seat([WAFER], { tokens: true });
     const wrong = nodesOf(s).filter((n) => n.style('background-color') !== hex(TOKENS.light[`--cat-${n.data('colour') + 1}`]));
     say('TK1 every node is filled with its type\'s palette token', nodesOf(s).length > 0 && wrong.length === 0,
@@ -845,7 +848,7 @@ async function suite(m, makeWalk = createWalkBoxWalk, css = REAL_CSS, foldDecl =
   }
 
   console.log('\n[V] the picture answers the pointer: neighbours lit, the picked node\'s lines bold, the tangle faint');
-  {
+  if (want(["R1", "V1", "V2", "V3", "V4"])) {
     const s = die;
     const cy = s.view.cy;
     const target = nodesOf(s).sort((p, q) => q.degree() - p.degree())[0];
@@ -881,7 +884,7 @@ async function suite(m, makeWalk = createWalkBoxWalk, css = REAL_CSS, foldDecl =
   }
 
   console.log('\n[Z] the first picture and Reset stop at the readable zoom; Fit goes below it (lead 10-07)');
-  {
+  if (want(["Z1", "Z2", "Z3", "Z4"])) {
     // A box with a width is on the page, so the first draw fits. Headless the picture has a 1x1 viewport, so fitting
     // all of it always needs a zoom below the floor - Z2 shows that it did. The floor is the owner's readable size:
     // a 15px name drawn no smaller than 12px.
@@ -910,7 +913,7 @@ async function suite(m, makeWalk = createWalkBoxWalk, css = REAL_CSS, foldDecl =
   }
 
   console.log('\n[X] a press lands: the name is part of the node, a hand that wanders a little still presses (lead 5f1eb137e)');
-  {
+  if (want(["X1", "X2"])) {
     const s = await seat([DIE]);
     const node = nodesOf(s)[0];
     const textEvents = node ? node.pstyle('text-events').strValue : null;
@@ -921,7 +924,7 @@ async function suite(m, makeWalk = createWalkBoxWalk, css = REAL_CSS, foldDecl =
   }
 
   console.log('\n[Y] a new start keeps nothing of the last picture: no mark, no fold, no opened lump (lead 10-07)');
-  {
+  if (want(["Y1", "Y2", "Y3", "Y4", "Y5", "Y6"])) {
     const markings = new MarkingStore();
     const s = await seat([BUNDLES, OPENED, WAFER], { markings, chain: ['y0', 'y1', 'y2'] });
     // The last picture: an unsent lump walked and opened, then a node marked that the next start does not reach.
@@ -982,7 +985,7 @@ async function suite(m, makeWalk = createWalkBoxWalk, css = REAL_CSS, foldDecl =
   }
 
   console.log('\n[U] a lump on its way says so; pressed again meanwhile it asks nothing more (lead 10-07)');
-  {
+  if (want(["U1", "U2", "U3"])) {
     const id = `lump:${OPEN_KEY}`;
     const labelOf = (t) => { const n = t.view.cy && t.view.cy.getElementById(id); return n && n.nonempty() ? n.pstyle('label').strValue : null; };
     const s = await seat([BUNDLES, OPENED]);
@@ -1013,7 +1016,7 @@ async function suite(m, makeWalk = createWalkBoxWalk, css = REAL_CSS, foldDecl =
   }
 
   console.log('\n[J] a folded lump seen as its list, a table or points; the start branch lit in all (lead 10-08)');
-  {
+  if (want(["J1", "J2", "J3", "J4", "J5", "J6", "J7", "J8", "J9"])) {
     const s = await seat([FOLD_WAFER, FOLD_STEP]);
     const startIds = new Set(FOLD_WAFER.nodes.map((n) => n.id));
     // M1's branches are one big lump; its `used` key opened is a small lump holding the recipe.
@@ -1100,7 +1103,7 @@ async function suite(m, makeWalk = createWalkBoxWalk, css = REAL_CSS, foldDecl =
   }
 
   console.log('\n[S] a key let out of a big lump stands clear of it; a big lump\'s row goes to points in one press; a lump of values asks nothing (owner 10-08)');
-  {
+  if (want(["S1", "S2", "S3"])) {
     const owner = FOLD_WAFER.nodes.find((n) => FOLD_WAFER.edges.some((e) => e.source === n.id && e.predicate === 'used'));
     const boxOf = (n) => n.boundingBox({ includeLabels: false });
     const apart = (a, b) => a.x2 <= b.x1 || b.x2 <= a.x1 || a.y2 <= b.y1 || b.y2 <= a.y1;
@@ -1157,7 +1160,7 @@ async function suite(m, makeWalk = createWalkBoxWalk, css = REAL_CSS, foldDecl =
   }
 
   console.log('\n[O] what the info box says of a lump\'s walk: capped, refused, values that are not numbers (lead 10-08)');
-  {
+  if (want(["O1", "O2", "O3", "O5"])) {
     // The recipe lump behind the start wafer's first measurement, seen as points; `second` is its walk's answer.
     const seeRecipe = async (second, beforeTrend) => {
       const s = await seat([FOLD_WAFER, second]);
@@ -1204,7 +1207,7 @@ async function suite(m, makeWalk = createWalkBoxWalk, css = REAL_CSS, foldDecl =
   }
 
   console.log('\n[I] a lump of events that hold no number: its points come from the type the operator picks (lead 10-08)');
-  {
+  if (want(["I1", "I2", "I3", "I4", "I5"])) {
     // A browser's storage, as far as the part touches it.
     const memory = () => { const kept = new Map(); return { getItem: (k) => (kept.has(k) ? kept.get(k) : null),
       setItem: (k, v) => { kept.set(k, String(v)); } }; };
@@ -1299,7 +1302,7 @@ async function suite(m, makeWalk = createWalkBoxWalk, css = REAL_CSS, foldDecl =
   }
 
   console.log('\n[Q] Mark is the one press that marks; the facts stay in sight (lead 9dc2a5695 ① ②)');
-  {
+  if (want(["Q1", "Q12", "Q2", "Q3", "Q4", "Q6"])) {
     const s = await seat([DIE, STEP2]);
     openAll(s);
     const id = STEP2._marked;
@@ -1350,7 +1353,7 @@ async function suite(m, makeWalk = createWalkBoxWalk, css = REAL_CSS, foldDecl =
   }
 
   console.log('\n[W] several worlds read: under each attribute and each edge, a row per world that says it (leads ee0f66e7b, 4e1e49fe9)');
-  {
+  if (want(["W5", "W6", "W7"])) {
     // As the server answers (351b23ef8, ec6874b28): a node's attributes_by_world beside its one value, an edge's by_world.
     const body = JSON.parse(JSON.stringify(WAFER));
     const touching = (id) => body.edges.filter((e) => e.source === id || e.target === id).length;
@@ -1675,10 +1678,11 @@ const failures = [];
     const quiet = console.log;
     console.log = () => {};
     try {
-      if (mu.file === STYLES) return await suite(real, createWalkBoxWalk, loaded.WALK_CSS);
-      return mu.file ? await suite(real, loaded.createWalkBoxWalk) : await suite(loaded, undefined, undefined, mu.declaration);
+      if (mu.file === STYLES) return await suite(real, createWalkBoxWalk, loaded.WALK_CSS, FOLD_DECL, mu.catches);
+      return mu.file ? await suite(real, loaded.createWalkBoxWalk, REAL_CSS, FOLD_DECL, mu.catches)
+        : await suite(loaded, undefined, undefined, mu.declaration, mu.catches);
     } finally { console.log = quiet; }
-  }, { baselineRan: base.ran, baselineNames: base.names,
+  }, { baselineNames: base.names,
        title: '\n  [mutants] - each must be caught by the check it names.' });
   pass += MUTANTS.length - scored.wrong;
   for (let i = 0; i < scored.wrong; i += 1) failures.push(`mutant verdict ${i + 1}`);
