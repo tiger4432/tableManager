@@ -210,12 +210,12 @@ class TestInventory:
         # `set_aside` / `rerun_set_aside` the same evening - the emergency stop (3840af307).
         # `ledger_catch_up` joined on 2026-10-04 - a world switched back on (총괄 71880678a).
         # `rule_rows` joined on 2026-10-06 - the rows a `run_in: operation` rule's group queued
-        # (총괄 be0abe305).
+        # (총괄 be0abe305). `fold_duplicate_rows` joined on 2026-10-09 - per key one row stays (d72dc0283).
         assert {o["op"] for o in body["operations"]} == {
             "chain_replay", "withdraw", "enrichment_backfill", "enrichment_confirm",
             "ledger_rescope", "ledger_backfill", "resolve", "collector_backfill",
             "fold_file_layers", "set_aside", "rerun_set_aside", "fold_written_notation",
-            "ledger_catch_up", "rule_rows"}
+            "ledger_catch_up", "rule_rows", "fold_duplicate_rows"}
 
     def test_the_run_list_and_the_cancel_request_are_actually_reachable(self, client):
         """🔴 A CONVENTION WITH NO ROUTE IS A FUNCTION NOBODY CAN CALL.

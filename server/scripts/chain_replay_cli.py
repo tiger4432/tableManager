@@ -170,6 +170,15 @@ def main(argv=None):
 
     p = sub.add_parser("list")
 
+    # 총괄 d72dc0283: the retroactive Fold duplicate rows - without --apply, its count's sentence.
+    p = sub.add_parser("fold-rows")
+    p.add_argument("table")
+    p.add_argument("--keys", required=True, help="comma-separated key columns")
+    p.add_argument("--order", required=True, help="the column that picks the row to keep")
+    p.add_argument("--keep", default="min", choices=["min", "max"], help="min (earliest, default) | max")
+    p.add_argument("--pace", default=None, help="fast (default) | slow | trickle - server/pacing.json")
+    p.add_argument("--apply", action="store_true")
+
     args = parser.parse_args(argv)
 
     from database import crud, models
@@ -224,6 +233,17 @@ def main(argv=None):
                     "chunk_size": args.chunk_size})) if args.apply else None)
             for s in out["rules"]:
                 print(_report_replay(s))
+        elif args.cmd == "fold-rows":
+            params = {"table": args.table, "keys": args.keys, "order": args.order,
+                      "keep": args.keep, "pace": args.pace}
+            if args.apply:
+                s = written("fold_duplicate_rows", params)
+                print(f"\nfold-rows '{args.table}': {s['rows_deleted']} of {s['rows_to_delete']} row(s) "
+                      f"deleted in {s['pages']} page(s), {s['keys_folded']} key(s)"
+                      + (" - STOPPED by request, run it again for the rest" if s["stopped"] else ""))
+            else:
+                print("\n" + retroactive.count(db, "fold_duplicate_rows", params)["detail"]
+                      + "\n-> add --apply to delete")
         elif args.cmd == "resolve":
             cols = [c.strip() for c in args.columns.split(",")] if args.columns else None
             print(_report_resolve(written("resolve", {

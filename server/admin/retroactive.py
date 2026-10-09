@@ -961,6 +961,59 @@ def _run_fold_file_layers(db, params, log, control=None):
                                     "layers_after", "rows_scanned")}
 
 
+def _count_fold_duplicate_rows(db, params, scan_limit):
+    from chain import replay
+
+    s = replay.fold_duplicate_rows(db, params["table"], params["keys"], params["order"],
+                                   keep=params.get("keep", "min"), log=lambda m: logger.debug(m))
+    which = "earliest" if params.get("keep", "min") == "min" else "latest"
+    shown = "; ".join(
+        "%s: keeps %s, deletes %s%s" % (
+            ", ".join("%s=%s" % pair for pair in one["key"].items()),
+            (one["kept"] or {}).get(params["order"]),
+            ", ".join(str(d.get(params["order"])) for d in one["deleted"]),
+            " and %d more" % (one["rows"] - 1 - len(one["deleted"]))
+            if one["rows"] - 1 > len(one["deleted"]) else "")
+        for one in s["sample"])
+    return {
+        "affected": s["rows_to_delete"],
+        "absence": ABSENCE_TRULY_NONE if not s["rows_to_delete"] else None,
+        "affected_label": "rows to delete",
+        "count_kind": COUNT_EXACT,
+        "scanned": s["rows"],
+        "scan_limit": scan_limit,
+        "truncated": False,
+        "detail": (
+            f"{s['keys_folded']} key(s) of ({', '.join(params['keys'])}) in '{params['table']}' "
+            f"hold more than one row: {s['rows_to_delete']} row(s) go, {s['rows_kept']} stay. Per key "
+            f"the {which} {params['order']} stays (a blank one last, a tie the smaller row id)."
+            + (f" For example {shown}." if shown else "")
+            + " Each row goes as a grid delete does - its layers and a history line with it, and "
+              "the chain takes back what it fed. Cannot be undone."),
+        "extra": {key: s[key] for key in ("keys_folded", "rows_to_delete", "rows_kept", "sample")},
+    }
+
+
+def _run_fold_duplicate_rows(db, params, log, control=None):
+    from chain import replay
+
+    s = replay.fold_duplicate_rows(db, params["table"], params["keys"], params["order"],
+                                   keep=params.get("keep", "min"), apply=True,
+                                   pace=params.get("pace"), log=log, checkpoint=_checkpoint(control))
+    _final_progress(control, s["rows_deleted"], s)
+    return {key: s[key] for key in ("rows_deleted", "rows_to_delete", "keys_folded", "pages",
+                                    "stopped")}
+
+
+def _judge_fold_duplicate_rows(params):
+    from chain import cell_layer
+
+    try:
+        cell_layer.resolve_target(params["table"], list(params["keys"]) + [params["order"]])
+    except cell_layer.ReplayRefused as e:
+        raise RetroactiveRefused(str(e)) from None
+
+
 def _count_fold_written_notation(db, params, scan_limit):
     from chain import replay
 
@@ -1595,6 +1648,35 @@ OPERATIONS = {
         "commit_granularity": ("one commit per page of rows; a stop lands between pages and "
                                "a re-run finds only what is left"),
         "cli_only": [],
+    },
+    "fold_duplicate_rows": {
+        "label": "Fold duplicate rows",
+        "what_is_missing": "rows that should be one per key went in more than once",
+        "params": [_p("table"),
+                   _p("keys", kind="csv",
+                      help="the columns whose values make a key; rows sharing them fold to one"),
+                   _p("order", help="the column that picks the row to keep"),
+                   _p("keep", required=False,
+                      choices=[{"value": "min", "label": "Keep the earliest"},
+                               {"value": "max", "label": "Keep the latest"}],
+                      help="which row of a key stays, by order; earliest when not given"),
+                   _pace_param()],
+        "count": _count_fold_duplicate_rows,
+        "run": _run_fold_duplicate_rows,
+        "judge": _judge_fold_duplicate_rows,
+        "cli": ("server/scripts/chain_replay_cli.py fold-rows <table> --keys <a,b> --order <column> "
+                "[--keep min|max] [--pace slow] --apply"),
+        # 총괄 d72dc0283: through crud.delete_rows_batch, the grid's delete - each row's layers
+        # and history line go with it and the chain takes back what it fed.
+        "deletes": "table rows (all but one per key), with their cell layers",
+        "reads_as": "number",
+        "cancellable": True,
+        "restartable": True,
+        "commit_granularity": ("one commit per page of 1,000 rows (crud.delete_rows_batch); a stop "
+                               "lands between pages and a re-run finds only what is left"),
+        "cli_only": [],
+        "downstream_note": ("Each deleted row reaches the chain as a deletion - what it fed is "
+                            "taken back and the rules that recount run"),
     },
     "ledger_backfill": {
         "label": "Translate the rows not yet in the ledger",

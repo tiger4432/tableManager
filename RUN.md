@@ -1,5 +1,16 @@
 # 지금 돌리면 되는 것
 
+> ## [10-09] **겹쳐 들어간 행을 키마다 하나로 접는다 — Fold duplicate rows — 이주 «없음» · 재기동 «서버 · 체인 워커»**
+>
+> ```
+> 미리보기   python server/scripts/chain_replay_cli.py fold-rows <로그 표> --keys dt_wafer_id --order <시간 칸>
+> 실행       python server/scripts/chain_replay_cli.py fold-rows <로그 표> --keys dt_wafer_id --order <시간 칸> --pace slow --apply
+>            (가장 늦은 것을 남기려면 --keep max · 소급 탭 «Fold duplicate rows» 도 같은 연산)
+> 답의 뜻    미리보기: 「K key(s) of (dt_wafer_id) … M row(s) go, R stay … For example dt_wafer_id=…: keeps <시간>, deletes <시간>」 — keeps 가 진짜인지 본다. 아무것도 안 씀
+>            실행: 「fold-rows '<표>': M of M row(s) deleted in P page(s), K key(s)」 — 그리드 삭제 문으로 지움(층 · 이력 같이, 원자 · 먹인 층은 원장 따라가기가 거둠). STOPPED 면 다시 돌리면 남은 것만
+> ```
+
+---
 > ## [10-09] **원천 행이 먹인 칸 찾기가 인덱스를 탄다(복사 · 조인의 고친 행 거두기, 지운 행 거두기) — 이주 «없음» · 재기동 «체인 워커»**
 >
 > ```
