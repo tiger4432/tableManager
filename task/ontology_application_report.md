@@ -37909,3 +37909,27 @@ chain_worker.log  「hc_copy: 100 row(s) not handed over - excluding column(s) f
                   bonded_from 소스가 뷰를 읽어 거절돼 follow · 경로 목록에 없음. 운영 선언은 못 봤습니다
 표                일요일 표 ② 에 «누르기로는 안 닿는다» 두 줄(db37f3b6d) — 착지의 결함은 아닙니다, 판정은 총괄
 ```
+
+---
+
+## [C 응용] 10-10 진짜 프로세스로 — 껍데기 행(95cffa5af) 세 칸 다 됩니다 · 소급 탭 카드가 끝난 실행을 queued 로 둡니다 · 소유자 걷기 인스턴스(18766) 떠 있음
+
+```
+모양   운영 런처(서버 · 수집기 · 체인 워커 · 스케줄러) · 소유자 코드 af8ef5701 로 꼬임 -> 84a35f0bd 로 pull · 스크래치 assy_app_reread_shell
+       공식 표 둘(official_dt · 같은 규칙의 둘째 판 official_dt_b)에 껍데기 82 씩 · public 변화 0 · 스키마 지움 · 끊김 0
+① 명령줄   remove-shells official_dt  미리보기 82 -> --apply «82 of 82 row(s) deleted» (삭제 이력 줄 82) -> 다시 미리보기 0
+② 화면     소급 탭 «Remove rows with no source left» · table official_dt_b
+            누른 것 count -> 본 것 «rows to delete 82 · exact» + 명령줄과 같은 문장 (명령줄 미리보기도 82)
+            누른 것 run -> 화면 안 확인판(run · cancel) -> run -> 서버 실행 done · 82 지움 · 이력 줄 82 -> count 다시 0
+            ⚠️ 그 카드는 실행이 끝난 뒤에도 «queued» — 🔄 Refresh 는 /admin/retroactive/operations 만 다시 읽고 runs 는 안 읽습니다(클라 몫 · 여쭙기만)
+③ 그리드   공식 표 X(CW2,1,0)에 사람 값 dt_lot=HAND-EDIT (그리드가 보내는 것과 같은 PUT — 이 창에서 스크립트 두 번 누르기로는 편집기가 안 열려서)
+            dt_log 그리드에서 X · Y 의 원천 행 둘 선택 -> 🗑️ Row -> 확인(스크립트로 예) -> «Deleted 2 rows · 0 s»
+            chain_worker.log «[ChainRetract] table=dt_log deleted_rows=2 groups=4 cells_withdrawn=36» -> «[ChainShell] table=official_dt rows_deleted=1 - only the chain's keys were left»
+            공식 표 그리드(CW2 · core_y 0): 10 행 -> 9 행 · Y(0,0) 사라짐 · X(1,0) 남음(lot HAND-EDIT · job 빈칸) · 그 뒤 미리보기 0
+덤      ⑥ 앞에서 쓸면 82 행을 지우고 복사 replay 가 다시 만든다(공식 표 123 -> 205) — 일요일 표 ⑦ 에 «⑥ 뒤»를 그 까닭과 같이 적었습니다(dae42eb8f)
+```
+```
+소유자 걷기 인스턴스(84a35f0bd) — http://127.0.0.1:18766/walk.html · 서버만 · 스크래치 assy_app_reread_dm + 세상 둘
+가짜     표 fake_measure 32 행 -> 소스 fake_measures -> 원자 32 · 표 fake_mechanism_edge 1 행 -> 소스 fake_mechanism_edge_to_finding_causes(appdemo_vb) -> 원자 1
+         원장에는 backfill 로만 · role 칸 fake. 누르는 순서와 보이는 수는 총괄께 메시지로 드렸습니다. 소유자 «끝»까지 둡니다
+```
