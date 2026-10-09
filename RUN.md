@@ -30,6 +30,9 @@
 >    기동 중 메인 화면 뱃지 «CHAIN: STARTING» · 그 title «starting: <단계>, N s» — 1 분 넘어도 그 단계 중이면 정상 (e032d526e)
 >            리허설: 단계 하나(ensure_human_claims_index)를 92 s 붙잡아도 내내 starting · foreign_beat 0
 >    기동 끝 chain_worker.log «[Chain] startup <합> s - <단계> <초> s · …» — 가장 긴 단계가 «왜 오래 걸렸나»의 답
+>    ⓪ 의 새 칸 재기동 때 체인 워커가 «starting: sync_dynamic_tables_schema» 단계에서 ALTER 한다. 그 표를 다른 연결이 쥐고 있으면 넘어간다:
+>            chain_worker.log «column '<칸>' was not added to '<표>' - another session held the table past 20s. Retried at the next start or config save»
+>            이 줄이 있으면 ⑤ 전에 체인 워커를 한 번 더 재기동 — 리허설(5b-2 40d94309b): 붙잡은 ALTER 가 칸 없이 넘어갔다(그 단계 36.1 s)
 > ② 쌓인 회수 사건 접기       python scripts/chain_replay_cli.py fold-withdraw-events       -> --apply          1.5 · 2.2 초
 >    답      «No waiting withdrawal event goes row by row - 0 row(s)» 면 접을 것 없음
 >    멈춤    소급 탭 × — 쪽 사이에서 선다
