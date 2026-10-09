@@ -76911,3 +76911,124 @@ TALLY after  8 run(s), 0 with a failure
 앞 코드에서도 같은 단언(「pid … is not in pg_stat_activity」)이 빨갰다 — 하위 폴더 커밋이 만든 흔들림이 아니다. 앞 번 전체 묶음 · 반복에서 지금 코드가 4 번 중 2 번 빨갰던 때 다른 세션의 PG 시험이 같이 돌았는지는 모른다.
 
 어느 DB · 어느 스키마 · 지운 것: 박스 assy_manager(public, 읽기 전용 · 되돌림) · 시험 DB(run_pg_files) · 지운 것 0.
+
+---
+
+## [10-09] 하위 폴더에 나중에 온 파일 — 따로 도는 다시 보기 · 남은 파일 줄 하나 a14ea5693 · 원본 id 한 번씩 096faf4b7 (총괄 2f487efb5 · ③)
+
+어느 DB · 어느 스키마 · 지운 것 — 하위 폴더 시험은 sqlite 메모리 · PG 시험은 격리 시험 DB 의 실행마다 스크래치 스키마(끝에 지움) · 원본 칸은 자기가 넣은 행 하나를 자기가 지움 · 그 밖 지운 것 0
+
+### 무엇을 지었나
+
+```
+바퀴     recheck_subfolders · 스레드 watcher-subfolder-recheck · _sweep_lock 밖
+         기동 즉시 한 번, 그 뒤 subfolder_recheck_seconds(ingestion_settings.json · 양수 아니면 30)
+문       일꾼은 «마지막 시작 뒤 바뀐 폴더» 또는 «마지막 시작 뒤 스윕 주기(PERIODIC_SWEEP_INTERVAL_SECONDS) 지난 폴더»만
+         모양(_snapshot_tree, DB 안 감)은 일꾼을 «시작했을 때만» 적는다 -> 꺼짐 · 도는 중은 매 바퀴 다시 묻고 센다
+스윕     하위 폴더를 안 본다(폴더 갈래를 지움)
+줄       say_what_a_folder_left — 폴더 · 파일 수 · 까닭 · 다음 시도 · #k (1 · 10 · 100), 셈 키 = (폴더, 까닭)
+         까닭 표 FOLDER_LEFT_REASONS 하나: running · still_writing · kept · incomplete · nested_off
+         접힌 것: 도는 중 줄(say_a_tree_still_running 은 이제 묻고 말하는 자리 -> bool) · deferred · incomplete · 중첩 끔
+         그대로 둔 낱말: 31802478c 의 "Tree ingestion deferred" · "N file(s) still being written" · "still writing: x;"
+                        · "M finished file(s) dispatched" / 거부 칸의 "Tree ingestion incomplete" / 중첩 끔 칸의 "are NOT ingested"
+         셈 비움: 트리가 다 지워지면 그 폴더 전부 · 바퀴가 일꾼 안 도는 것을 보면 running
+③       cells_stamped_by 가 id 를 한 번씩(순서 유지) — sqlite 의 IN 도 같은 줄을 지나 묶음 사이 겹침도 한 번
+말       "periodic sweep will retry" 를 말하던 줄 · 독스트링 · CODE_MAP · INGESTION_GUIDE · PRIMITIVES · 설정 안내 · 샘플 -> 다시 보기
+```
+
+### 바꾼 단언(깨진 것이 아니라 뜻이 바뀐 것)
+
+```
+test_a_folder_stuck_behind_a_lock_is_said_and_let_go   도는 중 줄 등식 -> 새 줄 · 부르는 것 sweep_existing_files -> recheck_subfolders
+                                                       칸 이름 ..._the_sweep_line_... -> ..._the_folder_line_...
+test_nested_dir_ingestion                              스윕이 폴더를 부르던 칸 -> 스윕은 안 부르고 다시 보기가 부름
+                                                       (test_the_recheck_not_the_sweep_triggers_tree_ingest_for_directories)
+```
+
+### 시험 — test_a_late_file_in_a_raws_subfolder_goes_in.py
+
+```
+test_folder_emptied_and_removed_then_made_again
+test_folder_kept_by_a_file_that_stays
+test_a_growing_file_in_the_folder
+test_same_name_as_the_first
+test_two_levels_down
+test_late_files_while_the_first_is_being_ingested
+test_every_file_on_the_heavy_lane
+test_files_not_archived
+test_a_late_file_goes_in_while_another_collectors_file_holds_the_sweep
+test_a_folder_whose_worker_is_still_at_it_is_said_once_per_episode
+test_an_unchanged_folder_of_20000_kept_files_gets_no_worker_until_a_sweep_interval
+test_nested_ingestion_off_is_said_at_the_1st_and_10th_of_25_looks
+```
+붙잡힌 칸(응용 초안의 빨강)은 «들어감» + 남은 keep.csv 의 줄 한 줄 등식. 2만 파일 칸의 일꾼은 부른 수만 세는 대역.
+
+### 변이 — md5 같음
+
+```
+BASELINE test_a_late_ 12 passed
+BASELINE test_the_ori 3 passed, 6 warnings
+MUTANT the recheck back inside the sweep's lock (no thread of its own) 1 failed, 11 passed
+    FAILED test_a_late_file_goes_in_while_another_collectors_file_holds_the_sweep
+MUTANT no gate: every look asks for a worker                          1 failed, 11 passed
+    FAILED test_an_unchanged_folder_of_20000_kept_files_gets_no_worker_until_a_sweep_interval
+MUTANT archive off is not a reason of its own                         1 failed, 11 passed
+    FAILED test_files_not_archived
+MUTANT each origin not once                                           1 failed, 2 passed, 6 warnings
+    FAILED test_an_origin_asked_twice_counts_a_protected_layer_once
+```
+
+### PG
+
+```
+FILE test_a_folder_stuck_behind_a_lock_is_said_and_let_go.py: 1 failed, 4 passed, 3 deselected, 14 warnings
+  ERROR    Watcher.DirectoryWatcher:directory_watcher.py:3706 [lock_probe_parts] ❌ Failed to apply local batch update: OperationalError: 오류:  잠금 대기 시간 초과로 작업을 취소합
+  ERROR    Watcher.DirectoryWatcher:directory_watcher.py:3815 [lock_probe_parts] Outer error during batch injection loop: LockWaitedOut: waited past the lock time
+  FAILED tests\test_a_folder_stuck_behind_a_lock_is_said_and_let_go.py::test_the_stalled_line_and_the_folder_line_say_the_folder_the_file_and_the_holder
+FILE test_the_origin_lookup_takes_its_index.py: 3 passed, 6 warnings
+```
+
+### 비용 — 이 박스 수(운영 주장 아님)
+
+```
+2만 파일 폴더 훑기(바퀴가 매번 하는 것)        1.13 · 1.14 · 1.15 s
+보관 끔 · 다 끝난 2만 파일 한 번 통과(일꾼)     4.96 s + tier-1 20000 파일 = 40 묶음(원장 시간 뺌 — 대역)
+-> 문이 없으면 30 초마다 통과, 있으면 바뀔 때 · 스윕 주기마다
+```
+
+### 반복 — 하위 폴더 시험 파일을 연달아
+
+```
+run 1: 12 passed
+run 2: 12 passed
+run 3: 12 passed
+```
+
+### 전체 sqlite
+
+```
+test_[a-k]*: 4 failed, 4166 passed, 212 skipped, 1 xfailed
+test_live_mapper_and_tracked_sample_are_byte_identical
+test_live_mapper_matches_tracked_sample
+test_the_sample_is_written_in_the_one_format_both_writers_use
+test_[l-z]*: 3 failed, 3950 passed, 195 skipped, 2 xfailed
+test_the_flat_shape_is_untouched
+test_the_key_and_limit_cells_come_from_their_own_lists
+test_the_repo_root_is_one_above_it
+```
+
+test_the_skeleton_declares_the_unified_grammar 두 칸은 이 착지 몫이 아니라 run_in 착지(53bdedde9)의 몫 — 77733bc21 에서 고쳤다.
+
+### PG 흔들림 — test_a_folder_stuck_behind_a_lock_is_said_and_let_go 의 stalled_line 칸
+
+```
+TALLY before 8 run(s), 1 with a failure
+TALLY after  8 run(s), 0 with a failure
+```
+파일 통째로, 하위 폴더 커밋 앞 코드와 지금 코드를 번갈아 혼자서. 앞 코드에서도 같은 단언(「pid … is not in pg_stat_activity」)이 빨갰다 — 이 커밋의 흔들림이 아니다. 따로 둔다(총괄).
+
+### 모르는 것
+
+- 운영이 보관 켬인지 끔인지 — 문이 있어 어느 쪽이든 30 초마다 원장을 다시 묻지 않는다.
+- 도는 중 줄: 바퀴가 일꾼이 도는 때에 닿으면 #1 한 줄 — 일꾼마다 다시 #1 이라 큰 폴더는 처리마다 한 줄 나올 수 있다.
+- heavy 레인 칸이 지은 첫날 첫 실행에서 한 번 실패했다(출력을 못 남김). 위 «반복»이 그 뒤의 수다.
